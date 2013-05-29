@@ -20,6 +20,7 @@
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/RecursiveASTVisitor.h"
+#include <deque>
 #include <set>
 
 namespace clang {
@@ -277,6 +278,15 @@ public:
     }
   }
 
+  void onEndOfTranslationUnit() {
+    for (std::vector<std::pair<const internal::DynTypedMatcher*,
+                               MatchCallback*> >::const_iterator
+             I = MatcherCallbackPairs->begin(), E = MatcherCallbackPairs->end();
+         I != E; ++I) {
+      I->second->onEndOfTranslationUnit();
+    }
+  }
+
   void set_active_ast_context(ASTContext *NewActiveASTContext) {
     ActiveASTContext = NewActiveASTContext;
   }
@@ -388,7 +398,8 @@ public:
                                  const DynTypedMatcher &Matcher,
                                  BoundNodesTreeBuilder *Builder,
                                  AncestorMatchMode MatchMode) {
-    return matchesAncestorOfRecursively(Node, Matcher, Builder, MatchMode);
+    return memoizedMatchesAncestorOfRecursively(Node, Matcher, Builder,
+                                                MatchMode);
   }
 
   // Matches all registered matchers on the given node and calls the
@@ -421,7 +432,20 @@ public:
   bool shouldUseDataRecursionFor(clang::Stmt *S) const { return false; }
 
 private:
-  bool matchesAncestorOfRecursively(
+  // Returns whether an ancestor of \p Node matches \p Matcher.
+  //
+  // The order of matching ((which can lead to different nodes being bound in
+  // case there are multiple matches) is breadth first search.
+  //
+  // To allow memoization in the very common case of having deeply nested
+  // expressions inside a template function, we first walk up the AST, memoizing
+  // the result of the match along the way, as long as there is only a single
+  // parent.
+  //
+  // Once there are multiple parents, the breadth first search order does not
+  // allow simple memoization on the ancestors. Thus, we only memoize as long
+  // as there is a single parent.
+  bool memoizedMatchesAncestorOfRecursively(
       const ast_type_traits::DynTypedNode &Node, const DynTypedMatcher &Matcher,
       BoundNodesTreeBuilder *Builder, AncestorMatchMode MatchMode) {
     if (Node.get<TranslationUnitDecl>() ==
@@ -435,23 +459,56 @@ private:
       assert(false && "Found node that is not in the parent map.");
       return false;
     }
-    for (ASTContext::ParentVector::const_iterator AncestorI = Parents.begin(),
-                                                  AncestorE = Parents.end();
-         AncestorI != AncestorE; ++AncestorI) {
-      if (Matcher.matches(*AncestorI, this, Builder))
-        return true;
-    }
-    if (MatchMode == ASTMatchFinder::AMM_ParentOnly)
-      return false;
-    for (ASTContext::ParentVector::const_iterator AncestorI = Parents.begin(),
-                                                  AncestorE = Parents.end();
-         AncestorI != AncestorE; ++AncestorI) {
-      if (matchesAncestorOfRecursively(*AncestorI, Matcher, Builder, MatchMode))
-        return true;
-    }
-    return false;
-  }
+    const UntypedMatchInput input(Matcher.getID(), Node.getMemoizationData());
+    MemoizationMap::iterator I = ResultCache.find(input);
+    if (I == ResultCache.end()) {
+      BoundNodesTreeBuilder AncestorBoundNodesBuilder;
+      bool Matches = false;
+      if (Parents.size() == 1) {
+        // Only one parent - do recursive memoization.
+        const ast_type_traits::DynTypedNode Parent = Parents[0];
+        if (Matcher.matches(Parent, this, &AncestorBoundNodesBuilder)) {
+          Matches = true;
+        } else if (MatchMode != ASTMatchFinder::AMM_ParentOnly) {
+          Matches = memoizedMatchesAncestorOfRecursively(
+              Parent, Matcher, &AncestorBoundNodesBuilder, MatchMode);
+        }
+      } else {
+        // Multiple parents - BFS over the rest of the nodes.
+        llvm::DenseSet<const void *> Visited;
+        std::deque<ast_type_traits::DynTypedNode> Queue(Parents.begin(),
+                                                        Parents.end());
+        while (!Queue.empty()) {
+          if (Matcher.matches(Queue.front(), this,
+                              &AncestorBoundNodesBuilder)) {
+            Matches = true;
+            break;
+          }
+          if (MatchMode != ASTMatchFinder::AMM_ParentOnly) {
+            ASTContext::ParentVector Ancestors =
+                ActiveASTContext->getParents(Queue.front());
+            for (ASTContext::ParentVector::const_iterator I = Ancestors.begin(),
+                                                          E = Ancestors.end();
+                 I != E; ++I) {
+              // Make sure we do not visit the same node twice.
+              // Otherwise, we'll visit the common ancestors as often as there
+              // are splits on the way down.
+              if (Visited.insert(I->getMemoizationData()).second)
+                Queue.push_back(*I);
+            }
+          }
+          Queue.pop_front();
+        }
+      }
 
+      I = ResultCache.insert(std::make_pair(input, MemoizedMatchResult()))
+          .first;
+      I->second.Nodes = AncestorBoundNodesBuilder.build();
+      I->second.ResultOfMatch = Matches;
+    }
+    I->second.Nodes.copyTo(Builder);
+    return I->second.ResultOfMatch;
+  }
 
   // Implements a BoundNodesTree::Visitor that calls a MatchCallback with
   // the aggregated bound nodes for each match.
@@ -631,6 +688,7 @@ private:
     Visitor.set_active_ast_context(&Context);
     Visitor.onStartOfTranslationUnit();
     Visitor.TraverseDecl(Context.getTranslationUnitDecl());
+    Visitor.onEndOfTranslationUnit();
     Visitor.set_active_ast_context(NULL);
   }
 
@@ -694,6 +752,14 @@ void MatchFinder::addMatcher(const TypeLocMatcher &NodeMatch,
                              MatchCallback *Action) {
   MatcherCallbackPairs.push_back(std::make_pair(
     new TypeLocMatcher(NodeMatch), Action));
+}
+
+bool MatchFinder::addDynamicMatcher(const internal::DynTypedMatcher &NodeMatch,
+                                    MatchCallback *Action) {
+  MatcherCallbackPairs.push_back(std::make_pair(NodeMatch.clone(), Action));
+  // TODO: Do runtime type checking to make sure the matcher is one of the valid
+  // top-level matchers.
+  return true;
 }
 
 ASTConsumer *MatchFinder::newASTConsumer() {

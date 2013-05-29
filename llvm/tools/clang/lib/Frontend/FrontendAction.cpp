@@ -194,6 +194,10 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
 
     setCurrentInput(Input, AST);
 
+    // Inform the diagnostic client we are processing a source file.
+    CI.getDiagnosticClient().BeginSourceFile(CI.getLangOpts(), 0);
+    HasBegunSourceFile = true;
+
     // Set the shared objects, these are reset when we finish processing the
     // file, otherwise the CompilerInstance will happily destroy them.
     CI.setFileManager(&AST->getFileManager());
@@ -297,8 +301,6 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
       goto failure;
 
     CI.getASTContext().setASTMutationListener(Consumer->GetASTMutationListener());
-    CI.getPreprocessor().setPPMutationListener(
-      Consumer->GetPPMutationListener());
     
     if (!CI.getPreprocessorOpts().ChainedIncludes.empty()) {
       // Convert headers to PCH and chain them.
@@ -306,6 +308,8 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
       source.reset(ChainedIncludesSource::create(CI));
       if (!source)
         goto failure;
+      CI.setModuleManager(static_cast<ASTReader*>(
+         &static_cast<ChainedIncludesSource*>(source.get())->getFinalReader()));
       CI.getASTContext().setExternalSource(source);
 
     } else if (!CI.getPreprocessorOpts().ImplicitPCHInclude.empty()) {

@@ -784,16 +784,16 @@ void TypePrinter::printUnaryTransformAfter(const UnaryTransformType *T,
 
 void TypePrinter::printAutoBefore(const AutoType *T, raw_ostream &OS) { 
   // If the type has been deduced, do not print 'auto'.
-  if (T->isDeduced()) {
+  if (!T->getDeducedType().isNull()) {
     printBefore(T->getDeducedType(), OS);
   } else {
-    OS << "auto";
+    OS << (T->isDecltypeAuto() ? "decltype(auto)" : "auto");
     spaceBeforePlaceHolder(OS);
   }
 }
 void TypePrinter::printAutoAfter(const AutoType *T, raw_ostream &OS) { 
   // If the type has been deduced, do not print 'auto'.
-  if (T->isDeduced())
+  if (!T->getDeducedType().isNull())
     printAfter(T->getDeducedType(), OS);
 }
 
@@ -1083,6 +1083,17 @@ void TypePrinter::printAttributedBefore(const AttributedType *T,
     return printBefore(T->getEquivalentType(), OS);
 
   printBefore(T->getModifiedType(), OS);
+
+  if (T->isMSTypeSpec()) {
+    switch (T->getAttrKind()) {
+    default: return;
+    case AttributedType::attr_ptr32: OS << " __ptr32"; break;
+    case AttributedType::attr_ptr64: OS << " __ptr64"; break;
+    case AttributedType::attr_sptr: OS << " __sptr"; break;
+    case AttributedType::attr_uptr: OS << " __uptr"; break;
+}
+    spaceBeforePlaceHolder(OS);
+  }
 }
 
 void TypePrinter::printAttributedAfter(const AttributedType *T,
@@ -1093,8 +1104,12 @@ void TypePrinter::printAttributedAfter(const AttributedType *T,
     return printAfter(T->getEquivalentType(), OS);
 
   // TODO: not all attributes are GCC-style attributes.
+  if (T->isMSTypeSpec())
+    return;
+
   OS << " __attribute__((";
   switch (T->getAttrKind()) {
+  default: llvm_unreachable("This attribute should have been handled already");
   case AttributedType::attr_address_space:
     OS << "address_space(";
     OS << T->getEquivalentType().getAddressSpace();

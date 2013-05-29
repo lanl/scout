@@ -33,6 +33,7 @@ class FileEntry;
 class FileManager;
 class DiagnosticConsumer;
 class DiagnosticsEngine;
+class HeaderSearch;
 class ModuleMapParser;
   
 class ModuleMap {
@@ -40,6 +41,7 @@ class ModuleMap {
   IntrusiveRefCntPtr<DiagnosticsEngine> Diags;
   const LangOptions &LangOpts;
   const TargetInfo *Target;
+  HeaderSearch &HeaderInfo;
   
   /// \brief The directory used for Clang-supplied, builtin include headers,
   /// such as "stdint.h".
@@ -49,6 +51,9 @@ class ModuleMap {
   ///
   /// These are always simple C language options.
   LangOptions MMapLangOpts;
+
+  // The module that we are building; related to \c LangOptions::CurrentModule.
+  Module *CompilingModule;
 
   /// \brief The top-level modules that are known.
   llvm::StringMap<Module *> Modules;
@@ -75,7 +80,7 @@ class ModuleMap {
 
     // \brief Whether this known header is valid (i.e., it has an
     // associated module).
-    operator bool() const { return Storage.getPointer() != 0; }
+    LLVM_EXPLICIT operator bool() const { return Storage.getPointer() != 0; }
   };
 
   typedef llvm::DenseMap<const FileEntry *, KnownHeader> HeadersMap;
@@ -132,7 +137,20 @@ class ModuleMap {
   Module::ExportDecl 
   resolveExport(Module *Mod, const Module::UnresolvedExportDecl &Unresolved,
                 bool Complain) const;
-  
+
+  /// \brief Resolve the given module id to an actual module.
+  ///
+  /// \param Id The module-id to resolve.
+  ///
+  /// \param Mod The module in which we're resolving the module-id.
+  ///
+  /// \param Complain Whether this routine should complain about unresolvable
+  /// module-ids.
+  ///
+  /// \returns The resolved module, or null if the module-id could not be
+  /// resolved.
+  Module *resolveModuleId(const ModuleId &Id, Module *Mod, bool Complain) const;
+
 public:
   /// \brief Construct a new module map.
   ///
@@ -146,8 +164,9 @@ public:
   /// \param LangOpts Language options for this translation unit.
   ///
   /// \param Target The target for this translation unit.
-  ModuleMap(FileManager &FileMgr, const DiagnosticConsumer &DC,
-            const LangOptions &LangOpts, const TargetInfo *Target);
+  ModuleMap(FileManager &FileMgr, DiagnosticConsumer &DC,
+            const LangOptions &LangOpts, const TargetInfo *Target,
+            HeaderSearch &HeaderInfo);
 
   /// \brief Destroy the module map.
   ///
@@ -262,7 +281,17 @@ public:
   /// false otherwise.
   bool resolveExports(Module *Mod, bool Complain);
 
-  /// \brief Infers the (sub)module based on the given source location and 
+  /// \brief Resolve all of the unresolved conflicts in the given module.
+  ///
+  /// \param Mod The module whose conflicts should be resolved.
+  ///
+  /// \param Complain Whether to emit diagnostics for failures.
+  ///
+  /// \returns true if any errors were encountered while resolving conflicts,
+  /// false otherwise.
+  bool resolveConflicts(Module *Mod, bool Complain);
+
+  /// \brief Infers the (sub)module based on the given source location and
   /// source manager.
   ///
   /// \param Loc The location within the source that we are querying, along

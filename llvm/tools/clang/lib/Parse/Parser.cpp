@@ -97,6 +97,16 @@ Parser::Parser(Preprocessor &pp, Sema &actions, bool skipFunctionBodies)
 
     PP.AddPragmaHandler("OPENCL", FPContractHandler.get());
   }
+  if (getLangOpts().OpenMP)
+    OpenMPHandler.reset(new PragmaOpenMPHandler());
+  else
+    OpenMPHandler.reset(new PragmaNoOpenMPHandler());
+  PP.AddPragmaHandler(OpenMPHandler.get());
+
+  if (getLangOpts().MicrosoftExt) {
+    MSCommentHandler.reset(new PragmaCommentHandler(actions));
+    PP.AddPragmaHandler(MSCommentHandler.get());
+  }
 
   CommentSemaHandler.reset(new ActionCommentHandler(actions));
   PP.addCommentHandler(CommentSemaHandler.get());
@@ -432,6 +442,13 @@ Parser::~Parser() {
     OpenCLExtensionHandler.reset();
     PP.RemovePragmaHandler("OPENCL", FPContractHandler.get());
   }
+  PP.RemovePragmaHandler(OpenMPHandler.get());
+  OpenMPHandler.reset();
+
+  if (getLangOpts().MicrosoftExt) {
+    PP.RemovePragmaHandler(MSCommentHandler.get());
+    MSCommentHandler.reset();
+  }
 
   PP.RemovePragmaHandler("STDC", FPContractHandler.get());
   FPContractHandler.reset();
@@ -632,6 +649,9 @@ Parser::ParseExternalDeclaration(ParsedAttributesWithRange &attrs,
     return DeclGroupPtrTy();
   case tok::annot_pragma_opencl_extension:
     HandlePragmaOpenCLExtension();
+    return DeclGroupPtrTy();
+  case tok::annot_pragma_openmp:
+    ParseOpenMPDeclarativeDirective();
     return DeclGroupPtrTy();
   case tok::semi:
     // Either a C++11 empty-declaration or attribute-declaration.
@@ -1140,8 +1160,8 @@ void Parser::ParseKNRParamDeclarations(Declarator &D) {
            diag::err_invalid_storage_class_in_func_decl);
       DS.ClearStorageClassSpecs();
     }
-    if (DS.isThreadSpecified()) {
-      Diag(DS.getThreadSpecLoc(),
+    if (DS.getThreadStorageClassSpec() != DeclSpec::TSCS_unspecified) {
+      Diag(DS.getThreadStorageClassSpecLoc(),
            diag::err_invalid_storage_class_in_func_decl);
       DS.ClearStorageClassSpecs();
     }
@@ -1873,7 +1893,13 @@ Parser::DeclGroupPtrTy Parser::ParseModuleImport(SourceLocation AtLoc) {
     
     break;
   } while (true);
-  
+
+  if (PP.hadModuleLoaderFatalFailure()) {
+    // With a fatal failure in the module loader, we abort parsing.
+    cutOffParsing();
+    return DeclGroupPtrTy();
+  }
+
   DeclResult Import = Actions.ActOnModuleImport(AtLoc, ImportLoc, Path);
   ExpectAndConsumeSemi(diag::err_module_expected_semi);
   if (Import.isInvalid())
@@ -1888,7 +1914,7 @@ bool BalancedDelimiterTracker::diagnoseOverflow() {
   P.Diag(P.Tok, diag::err_bracket_depth_exceeded)
     << P.getLangOpts().BracketDepth;
   P.Diag(P.Tok, diag::note_bracket_depth);
-  P.SkipUntil(tok::eof);
+  P.SkipUntil(tok::eof, FinalToken);
   return true;  
 }
 
@@ -1918,7 +1944,8 @@ bool BalancedDelimiterTracker::diagnoseMissingClose() {
   }
   P.Diag(P.Tok, DID);
   P.Diag(LOpen, diag::note_matching) << LHSName;
-  if (P.SkipUntil(Close, /*StopAtSemi*/ true, /*DontConsume*/ true))
+  if (P.SkipUntil(Close, FinalToken, /*StopAtSemi*/ true, /*DontConsume*/ true)
+      && P.Tok.is(Close))
     LClose = P.ConsumeAnyToken();
   return true;
 }

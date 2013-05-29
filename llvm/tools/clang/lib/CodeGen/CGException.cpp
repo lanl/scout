@@ -419,14 +419,16 @@ llvm::Value *CodeGenFunction::getSelectorFromSlot() {
   return Builder.CreateLoad(getEHSelectorSlot(), "sel");
 }
 
-void CodeGenFunction::EmitCXXThrowExpr(const CXXThrowExpr *E) {
+void CodeGenFunction::EmitCXXThrowExpr(const CXXThrowExpr *E,
+                                       bool KeepInsertionPoint) {
   if (!E->getSubExpr()) {
     EmitNoreturnRuntimeCallOrInvoke(getReThrowFn(CGM),
                                     ArrayRef<llvm::Value*>());
 
     // throw is an expression, and the expression emitters expect us
     // to leave ourselves at a valid insertion point.
-    EmitBlock(createBasicBlock("throw.cont"));
+    if (KeepInsertionPoint)
+      EmitBlock(createBasicBlock("throw.cont"));
 
     return;
   }
@@ -440,7 +442,8 @@ void CodeGenFunction::EmitCXXThrowExpr(const CXXThrowExpr *E) {
     CGM.getObjCRuntime().EmitThrowStmt(*this, S, false);
     // This will clear insertion point which was not cleared in
     // call to EmitThrowStmt.
-    EmitBlock(createBasicBlock("throw.cont"));
+    if (KeepInsertionPoint)
+      EmitBlock(createBasicBlock("throw.cont"));
     return;
   }
   
@@ -478,7 +481,8 @@ void CodeGenFunction::EmitCXXThrowExpr(const CXXThrowExpr *E) {
 
   // throw is an expression, and the expression emitters expect us
   // to leave ourselves at a valid insertion point.
-  EmitBlock(createBasicBlock("throw.cont"));
+  if (KeepInsertionPoint)
+    EmitBlock(createBasicBlock("throw.cont"));
 }
 
 void CodeGenFunction::EmitStartEHSpec(const Decl *D) {
@@ -762,6 +766,11 @@ llvm::BasicBlock *CodeGenFunction::EmitLandingPad() {
 
   // Save the current IR generation state.
   CGBuilderTy::InsertPoint savedIP = Builder.saveAndClearIP();
+  SourceLocation SavedLocation;
+  if (CGDebugInfo *DI = getDebugInfo()) {
+    SavedLocation = DI->getLocation();
+    DI->EmitLocation(Builder, CurEHLocation);
+  }
 
   const EHPersonality &personality = EHPersonality::get(getLangOpts());
 
@@ -883,6 +892,8 @@ llvm::BasicBlock *CodeGenFunction::EmitLandingPad() {
 
   // Restore the old IR generation state.
   Builder.restoreIP(savedIP);
+  if (CGDebugInfo *DI = getDebugInfo())
+    DI->EmitLocation(Builder, SavedLocation);
 
   return lpad;
 }
@@ -1002,10 +1013,9 @@ static void InitCatchParam(CodeGenFunction &CGF,
     return;
   }
 
-  // Non-aggregates (plus complexes).
-  bool IsComplex = false;
-  if (!CGF.hasAggregateLLVMType(CatchType) ||
-      (IsComplex = CatchType->isAnyComplexType())) {
+  // Scalars and complexes.
+  TypeEvaluationKind TEK = CGF.getEvaluationKind(CatchType);
+  if (TEK != TEK_Aggregate) {
     llvm::Value *AdjustedExn = CallBeginCatch(CGF, Exn, false);
     
     // If the catch type is a pointer type, __cxa_begin_catch returns
@@ -1037,17 +1047,23 @@ static void InitCatchParam(CodeGenFunction &CGF,
     llvm::Type *PtrTy = LLVMCatchTy->getPointerTo(0); // addrspace 0 ok
     llvm::Value *Cast = CGF.Builder.CreateBitCast(AdjustedExn, PtrTy);
 
-    if (IsComplex) {
-      CGF.StoreComplexToAddr(CGF.LoadComplexFromAddr(Cast, /*volatile*/ false),
-                             ParamAddr, /*volatile*/ false);
-    } else {
-      unsigned Alignment =
-        CGF.getContext().getDeclAlign(&CatchParam).getQuantity();
-      llvm::Value *ExnLoad = CGF.Builder.CreateLoad(Cast, "exn.scalar");
-      CGF.EmitStoreOfScalar(ExnLoad, ParamAddr, /*volatile*/ false, Alignment,
-                            CatchType);
+    LValue srcLV = CGF.MakeNaturalAlignAddrLValue(Cast, CatchType);
+    LValue destLV = CGF.MakeAddrLValue(ParamAddr, CatchType,
+                                  CGF.getContext().getDeclAlign(&CatchParam));
+    switch (TEK) {
+    case TEK_Complex:
+      CGF.EmitStoreOfComplex(CGF.EmitLoadOfComplex(srcLV), destLV,
+                             /*init*/ true);
+      return;
+    case TEK_Scalar: {
+      llvm::Value *ExnLoad = CGF.EmitLoadOfScalar(srcLV);
+      CGF.EmitStoreOfScalar(ExnLoad, destLV, /*init*/ true);
+      return;
     }
-    return;
+    case TEK_Aggregate:
+      llvm_unreachable("evaluation kind filtered out!");
+    }
+    llvm_unreachable("bad evaluation kind");
   }
 
   assert(isa<RecordType>(CatchType) && "unexpected catch type!");

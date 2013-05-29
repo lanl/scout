@@ -75,6 +75,7 @@ private:
   IntrusiveRefCntPtr<TargetOptions>       TargetOpts;
   IntrusiveRefCntPtr<HeaderSearchOptions> HSOpts;
   ASTReader *Reader;
+  bool HadModuleLoaderFatalFailure;
 
   struct ASTWriterData;
   OwningPtr<ASTWriterData> WriterData;
@@ -456,7 +457,7 @@ public:
   void setASTContext(ASTContext *ctx) { Ctx = ctx; }
   void setPreprocessor(Preprocessor *pp);
 
-  bool hasSema() const { return TheSema; }
+  bool hasSema() const { return TheSema.isValid(); }
   Sema &getSema() const { 
     assert(TheSema && "ASTUnit does not have a Sema object!");
     return *TheSema; 
@@ -471,6 +472,7 @@ public:
     return OriginalSourceFile;
   }
 
+  ASTMutationListener *getASTMutationListener();
   ASTDeserializationListener *getDeserializationListener();
 
   /// \brief Add a temporary file that the ASTUnit depends on.
@@ -484,6 +486,9 @@ public:
   void setOwnsRemappedFileBuffers(bool val) { OwnsRemappedFileBuffers = val; }
 
   StringRef getMainFileName() const;
+
+  /// \brief If this ASTUnit came from an AST file, returns the filename for it.
+  StringRef getASTFileName() const;
 
   typedef std::vector<Decl *>::iterator top_level_iterator;
 
@@ -840,7 +845,8 @@ public:
 
   virtual void makeModuleVisible(Module *Mod,
                                  Module::NameVisibilityKind Visibility,
-                                 SourceLocation ImportLoc) { }
+                                 SourceLocation ImportLoc,
+                                 bool Complain) { }
 
 };
 

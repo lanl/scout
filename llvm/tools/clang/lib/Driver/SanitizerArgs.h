@@ -37,8 +37,10 @@ class SanitizerArgs {
     NeedsAsanRt = Address,
     NeedsTsanRt = Thread,
     NeedsMsanRt = Memory,
+    NeedsLeakDetection = Leak,
     NeedsUbsanRt = Undefined | Integer,
-    NotAllowedWithTrap = Vptr
+    NotAllowedWithTrap = Vptr,
+    HasZeroBaseShadow = Thread | Memory
   };
   unsigned Kind;
   std::string BlacklistFile;
@@ -50,11 +52,15 @@ class SanitizerArgs {
   SanitizerArgs() : Kind(0), BlacklistFile(""), MsanTrackOrigins(false),
                     AsanZeroBaseShadow(false), UbsanTrapOnError(false) {}
   /// Parses the sanitizer arguments from an argument list.
-  SanitizerArgs(const Driver &D, const ArgList &Args);
+  SanitizerArgs(const ToolChain &TC, const ArgList &Args);
 
   bool needsAsanRt() const { return Kind & NeedsAsanRt; }
   bool needsTsanRt() const { return Kind & NeedsTsanRt; }
   bool needsMsanRt() const { return Kind & NeedsMsanRt; }
+  bool needsLeakDetection() const { return Kind & NeedsLeakDetection; }
+  bool needsLsanRt() const {
+    return needsLeakDetection() && !needsAsanRt();
+  }
   bool needsUbsanRt() const {
     if (UbsanTrapOnError)
       return false;
@@ -63,6 +69,9 @@ class SanitizerArgs {
 
   bool sanitizesVptr() const { return Kind & Vptr; }
   bool notAllowedWithTrap() const { return Kind & NotAllowedWithTrap; }
+  bool hasZeroBaseShadow() const {
+    return (Kind & HasZeroBaseShadow) || AsanZeroBaseShadow;
+  }
 
   void addArgs(const ArgList &Args, ArgStringList &CmdArgs) const {
     if (!Kind)
@@ -90,14 +99,20 @@ class SanitizerArgs {
 
  private:
   /// Parse a single value from a -fsanitize= or -fno-sanitize= value list.
-  /// Returns a member of the \c SanitizeKind enumeration, or \c 0 if \p Value
-  /// is not known.
+  /// Returns OR of members of the \c SanitizeKind enumeration, or \c 0
+  /// if \p Value is not known.
   static unsigned parse(const char *Value) {
-    return llvm::StringSwitch<SanitizeKind>(Value)
+    unsigned ParsedKind = llvm::StringSwitch<SanitizeKind>(Value)
 #define SANITIZER(NAME, ID) .Case(NAME, ID)
 #define SANITIZER_GROUP(NAME, ID, ALIAS) .Case(NAME, ID)
 #include "clang/Basic/Sanitizers.def"
       .Default(SanitizeKind());
+    // Assume -fsanitize=address implies -fsanitize=init-order.
+    // FIXME: This should be either specified in Sanitizers.def, or go away when
+    // we get rid of "-fsanitize=init-order" flag at all.
+    if (ParsedKind & Address)
+      ParsedKind |= InitOrder;
+    return ParsedKind;
   }
 
   /// Parse a -fsanitize= or -fno-sanitize= argument's values, diagnosing any
@@ -193,10 +208,16 @@ class SanitizerArgs {
 
   static bool getDefaultBlacklistForKind(const Driver &D, unsigned Kind,
                                          std::string &BLPath) {
-    // For now, specify the default blacklist location for ASan only.
-    if (Kind & NeedsAsanRt) {
+    const char *BlacklistFile = 0;
+    if (Kind & NeedsAsanRt)
+      BlacklistFile = "asan_blacklist.txt";
+    else if (Kind & NeedsMsanRt)
+      BlacklistFile = "msan_blacklist.txt";
+    else if (Kind & NeedsTsanRt)
+      BlacklistFile = "tsan_blacklist.txt";
+    if (BlacklistFile) {
       SmallString<64> Path(D.ResourceDir);
-      llvm::sys::path::append(Path, "asan_blacklist.txt");
+      llvm::sys::path::append(Path, BlacklistFile);
       BLPath = Path.str();
       return true;
     }

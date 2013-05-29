@@ -109,7 +109,7 @@ SVal SimpleSValBuilder::evalCastFromNonLoc(NonLoc val, QualType castTy) {
 
   // Only handle casts from integers to integers - if val is an integer constant
   // being cast to a non integer type, produce unknown.
-  if (!isLocType && !castTy->isIntegerType())
+  if (!isLocType && !castTy->isIntegralOrEnumerationType())
     return UnknownVal();
 
   llvm::APSInt i = val.castAs<nonloc::ConcreteInt>().getValue();
@@ -137,7 +137,7 @@ SVal SimpleSValBuilder::evalCastFromLoc(Loc val, QualType castTy) {
   if (castTy->isUnionType())
     return UnknownVal();
 
-  if (castTy->isIntegerType()) {
+  if (castTy->isIntegralOrEnumerationType()) {
     unsigned BitWidth = Context.getTypeSize(castTy);
 
     if (!val.getAs<loc::ConcreteInt>())
@@ -179,33 +179,6 @@ SVal SimpleSValBuilder::evalComplement(NonLoc X) {
 //===----------------------------------------------------------------------===//
 // Transfer function for binary operators.
 //===----------------------------------------------------------------------===//
-
-static BinaryOperator::Opcode NegateComparison(BinaryOperator::Opcode op) {
-  switch (op) {
-  default:
-    llvm_unreachable("Invalid opcode.");
-  case BO_LT: return BO_GE;
-  case BO_GT: return BO_LE;
-  case BO_LE: return BO_GT;
-  case BO_GE: return BO_LT;
-  case BO_EQ: return BO_NE;
-  case BO_NE: return BO_EQ;
-  }
-}
-
-static BinaryOperator::Opcode ReverseComparison(BinaryOperator::Opcode op) {
-  switch (op) {
-  default:
-    llvm_unreachable("Invalid opcode.");
-  case BO_LT: return BO_GT;
-  case BO_GT: return BO_LT;
-  case BO_LE: return BO_GE;
-  case BO_GE: return BO_LE;
-  case BO_EQ:
-  case BO_NE:
-    return op;
-  }
-}
 
 SVal SimpleSValBuilder::MakeSymIntVal(const SymExpr *LHS,
                                     BinaryOperator::Opcode op,
@@ -398,7 +371,7 @@ SVal SimpleSValBuilder::evalBinOpNN(ProgramStateRef state,
       case BO_GT:
       case BO_LE:
       case BO_GE:
-        op = ReverseComparison(op);
+        op = BinaryOperator::reverseComparisonOp(op);
         // FALL-THROUGH
       case BO_EQ:
       case BO_NE:
@@ -465,9 +438,13 @@ SVal SimpleSValBuilder::evalBinOpNN(ProgramStateRef state,
           case BO_GE:
           case BO_EQ:
           case BO_NE:
+            assert(resultTy->isBooleanType() ||
+                   resultTy == getConditionType());
+            assert(symIntExpr->getType()->isBooleanType() ||
+                   getContext().hasSameUnqualifiedType(symIntExpr->getType(),
+                                                       getConditionType()));
             // Negate the comparison and make a value.
-            opc = NegateComparison(opc);
-            assert(symIntExpr->getType() == resultTy);
+            opc = BinaryOperator::negateComparisonOp(opc);
             return makeNonLoc(symIntExpr->getLHS(), opc,
                 symIntExpr->getRHS(), resultTy);
           }
@@ -508,27 +485,73 @@ SVal SimpleSValBuilder::evalBinOpNN(ProgramStateRef state,
           // Otherwise, make a SymIntExpr out of the expression.
           return MakeSymIntVal(symIntExpr, op, *RHSValue, resultTy);
         }
-
-
-      } else if (isa<SymbolData>(Sym)) {
-        // Does the symbol simplify to a constant?  If so, "fold" the constant
-        // by setting 'lhs' to a ConcreteInt and try again.
-        if (const llvm::APSInt *Constant = state->getConstraintManager()
-                                                  .getSymVal(state, Sym)) {
-          lhs = nonloc::ConcreteInt(*Constant);
-          continue;
-        }
-
-        // Is the RHS a constant?
-        if (const llvm::APSInt *RHSValue = getKnownValue(state, rhs))
-          return MakeSymIntVal(Sym, op, *RHSValue, resultTy);
       }
+
+      // Does the symbolic expression simplify to a constant?
+      // If so, "fold" the constant by setting 'lhs' to a ConcreteInt
+      // and try again.
+      ConstraintManager &CMgr = state->getConstraintManager();
+      if (const llvm::APSInt *Constant = CMgr.getSymVal(state, Sym)) {
+        lhs = nonloc::ConcreteInt(*Constant);
+        continue;
+      }
+
+      // Is the RHS a constant?
+      if (const llvm::APSInt *RHSValue = getKnownValue(state, rhs))
+        return MakeSymIntVal(Sym, op, *RHSValue, resultTy);
 
       // Give up -- this is not a symbolic expression we can handle.
       return makeSymExprValNN(state, op, InputLHS, InputRHS, resultTy);
     }
     }
   }
+}
+
+static SVal evalBinOpFieldRegionFieldRegion(const FieldRegion *LeftFR,
+                                            const FieldRegion *RightFR,
+                                            BinaryOperator::Opcode op,
+                                            QualType resultTy,
+                                            SimpleSValBuilder &SVB) {
+  // Only comparisons are meaningful here!
+  if (!BinaryOperator::isComparisonOp(op))
+    return UnknownVal();
+
+  // Next, see if the two FRs have the same super-region.
+  // FIXME: This doesn't handle casts yet, and simply stripping the casts
+  // doesn't help.
+  if (LeftFR->getSuperRegion() != RightFR->getSuperRegion())
+    return UnknownVal();
+
+  const FieldDecl *LeftFD = LeftFR->getDecl();
+  const FieldDecl *RightFD = RightFR->getDecl();
+  const RecordDecl *RD = LeftFD->getParent();
+
+  // Make sure the two FRs are from the same kind of record. Just in case!
+  // FIXME: This is probably where inheritance would be a problem.
+  if (RD != RightFD->getParent())
+    return UnknownVal();
+
+  // We know for sure that the two fields are not the same, since that
+  // would have given us the same SVal.
+  if (op == BO_EQ)
+    return SVB.makeTruthVal(false, resultTy);
+  if (op == BO_NE)
+    return SVB.makeTruthVal(true, resultTy);
+
+  // Iterate through the fields and see which one comes first.
+  // [C99 6.7.2.1.13] "Within a structure object, the non-bit-field
+  // members and the units in which bit-fields reside have addresses that
+  // increase in the order in which they are declared."
+  bool leftFirst = (op == BO_LT || op == BO_LE);
+  for (RecordDecl::field_iterator I = RD->field_begin(),
+       E = RD->field_end(); I!=E; ++I) {
+    if (*I == LeftFD)
+      return SVB.makeTruthVal(leftFirst, resultTy);
+    if (*I == RightFD)
+      return SVB.makeTruthVal(!leftFirst, resultTy);
+  }
+
+  llvm_unreachable("Fields not found in parent record's definition");
 }
 
 // FIXME: all this logic will change if/when we have MemRegion::getLocation().
@@ -602,17 +625,19 @@ SVal SimpleSValBuilder::evalBinOpLL(ProgramStateRef state,
         return UnknownVal();
 
       const llvm::APSInt &lVal = lhs.castAs<loc::ConcreteInt>().getValue();
-      return makeNonLoc(rSym, ReverseComparison(op), lVal, resultTy);
+      op = BinaryOperator::reverseComparisonOp(op);
+      return makeNonLoc(rSym, op, lVal, resultTy);
     }
 
     // If both operands are constants, just perform the operation.
     if (Optional<loc::ConcreteInt> rInt = rhs.getAs<loc::ConcreteInt>()) {
       SVal ResultVal =
           lhs.castAs<loc::ConcreteInt>().evalBinOp(BasicVals, op, *rInt);
-      if (Optional<Loc> Result = ResultVal.getAs<Loc>())
-        return evalCastFromLoc(*Result, resultTy);
-      else
-        return UnknownVal();
+      if (Optional<NonLoc> Result = ResultVal.getAs<NonLoc>())
+        return evalCastFromNonLoc(*Result, resultTy);
+
+      assert(!ResultVal.getAs<Loc>() && "Loc-Loc ops should not produce Locs");
+      return UnknownVal();
     }
 
     // Special case comparisons against NULL.
@@ -682,11 +707,11 @@ SVal SimpleSValBuilder::evalBinOpLL(ProgramStateRef state,
       // regions, though.
       return UnknownVal();
 
-    const MemSpaceRegion *LeftMS = LeftMR->getMemorySpace();
-    const MemSpaceRegion *RightMS = RightMR->getMemorySpace();
-    const MemSpaceRegion *UnknownMS = MemMgr.getUnknownRegion();
     const MemRegion *LeftBase = LeftMR->getBaseRegion();
     const MemRegion *RightBase = RightMR->getBaseRegion();
+    const MemSpaceRegion *LeftMS = LeftBase->getMemorySpace();
+    const MemSpaceRegion *RightMS = RightBase->getMemorySpace();
+    const MemSpaceRegion *UnknownMS = MemMgr.getUnknownRegion();
 
     // If the two regions are from different known memory spaces they cannot be
     // equal. Also, assume that no symbolic region (whose memory space is
@@ -721,14 +746,10 @@ SVal SimpleSValBuilder::evalBinOpLL(ProgramStateRef state,
       }
     }
 
-    // FIXME: If/when there is a getAsRawOffset() for FieldRegions, this
-    // ElementRegion path and the FieldRegion path below should be unified.
-    if (const ElementRegion *LeftER = dyn_cast<ElementRegion>(LeftMR)) {
-      // First see if the right region is also an ElementRegion.
-      const ElementRegion *RightER = dyn_cast<ElementRegion>(RightMR);
-      if (!RightER)
-        return UnknownVal();
-
+    // Handle special cases for when both regions are element regions.
+    const ElementRegion *RightER = dyn_cast<ElementRegion>(RightMR);
+    const ElementRegion *LeftER = dyn_cast<ElementRegion>(LeftMR);
+    if (RightER && LeftER) {
       // Next, see if the two ERs have the same super-region and matching types.
       // FIXME: This should do something useful even if the types don't match,
       // though if both indexes are constant the RegionRawOffset path will
@@ -760,17 +781,29 @@ SVal SimpleSValBuilder::evalBinOpLL(ProgramStateRef state,
         // evalBinOpNN expects the two indexes to already be the right type.
         return evalBinOpNN(state, op, *LeftIndex, *RightIndex, resultTy);
       }
+    }
 
-      // If the element indexes aren't comparable, see if the raw offsets are.
-      RegionRawOffset LeftOffset = LeftER->getAsArrayOffset();
-      RegionRawOffset RightOffset = RightER->getAsArrayOffset();
+    // Special handling of the FieldRegions, even with symbolic offsets.
+    const FieldRegion *RightFR = dyn_cast<FieldRegion>(RightMR);
+    const FieldRegion *LeftFR = dyn_cast<FieldRegion>(LeftMR);
+    if (RightFR && LeftFR) {
+      SVal R = evalBinOpFieldRegionFieldRegion(LeftFR, RightFR, op, resultTy,
+                                               *this);
+      if (!R.isUnknown())
+        return R;
+    }
 
-      if (LeftOffset.getRegion() != NULL &&
-          LeftOffset.getRegion() == RightOffset.getRegion()) {
-        CharUnits left = LeftOffset.getOffset();
-        CharUnits right = RightOffset.getOffset();
+    // Compare the regions using the raw offsets.
+    RegionOffset LeftOffset = LeftMR->getAsOffset();
+    RegionOffset RightOffset = RightMR->getAsOffset();
 
-        switch (op) {
+    if (LeftOffset.getRegion() != NULL &&
+        LeftOffset.getRegion() == RightOffset.getRegion() &&
+        !LeftOffset.hasSymbolicOffset() && !RightOffset.hasSymbolicOffset()) {
+      int64_t left = LeftOffset.getOffset();
+      int64_t right = RightOffset.getOffset();
+
+      switch (op) {
         default:
           return UnknownVal();
         case BO_LT:
@@ -785,62 +818,15 @@ SVal SimpleSValBuilder::evalBinOpLL(ProgramStateRef state,
           return makeTruthVal(left == right, resultTy);
         case BO_NE:
           return makeTruthVal(left != right, resultTy);
-        }
       }
-
-      // If we get here, we have no way of comparing the ElementRegions.
-      return UnknownVal();
     }
 
-    // See if both regions are fields of the same structure.
-    // FIXME: This doesn't handle nesting, inheritance, or Objective-C ivars.
-    if (const FieldRegion *LeftFR = dyn_cast<FieldRegion>(LeftMR)) {
-      // Only comparisons are meaningful here!
-      if (!BinaryOperator::isComparisonOp(op))
-        return UnknownVal();
-
-      // First see if the right region is also a FieldRegion.
-      const FieldRegion *RightFR = dyn_cast<FieldRegion>(RightMR);
-      if (!RightFR)
-        return UnknownVal();
-
-      // Next, see if the two FRs have the same super-region.
-      // FIXME: This doesn't handle casts yet, and simply stripping the casts
-      // doesn't help.
-      if (LeftFR->getSuperRegion() != RightFR->getSuperRegion())
-        return UnknownVal();
-
-      const FieldDecl *LeftFD = LeftFR->getDecl();
-      const FieldDecl *RightFD = RightFR->getDecl();
-      const RecordDecl *RD = LeftFD->getParent();
-
-      // Make sure the two FRs are from the same kind of record. Just in case!
-      // FIXME: This is probably where inheritance would be a problem.
-      if (RD != RightFD->getParent())
-        return UnknownVal();
-
-      // We know for sure that the two fields are not the same, since that
-      // would have given us the same SVal.
-      if (op == BO_EQ)
-        return makeTruthVal(false, resultTy);
-      if (op == BO_NE)
-        return makeTruthVal(true, resultTy);
-
-      // Iterate through the fields and see which one comes first.
-      // [C99 6.7.2.1.13] "Within a structure object, the non-bit-field
-      // members and the units in which bit-fields reside have addresses that
-      // increase in the order in which they are declared."
-      bool leftFirst = (op == BO_LT || op == BO_LE);
-      for (RecordDecl::field_iterator I = RD->field_begin(),
-           E = RD->field_end(); I!=E; ++I) {
-        if (*I == LeftFD)
-          return makeTruthVal(leftFirst, resultTy);
-        if (*I == RightFD)
-          return makeTruthVal(!leftFirst, resultTy);
-      }
-
-      llvm_unreachable("Fields not found in parent record's definition");
-    }
+    // At this point we're not going to get a good answer, but we can try
+    // conjuring an expression instead.
+    SymbolRef LHSSym = lhs.getAsLocSymbol();
+    SymbolRef RHSSym = rhs.getAsLocSymbol();
+    if (LHSSym && RHSSym)
+      return makeNonLoc(LHSSym, op, RHSSym, resultTy);
 
     // If we get here, we have no way of comparing the regions.
     return UnknownVal();

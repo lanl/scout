@@ -147,7 +147,7 @@ CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD,
   // If it is not a mesh member, assume we want the pointer to storage
   // for all mesh members of that name.  In that case, figure out the index 
   // to the member and access that.
-  if(!isa<ImplicitParamDecl>(VD) )  {
+  if (!isa<ImplicitParamDecl>(VD) )  {
 
     MeshDecl* MD = MT->getDecl();
     MeshDecl::mesh_field_iterator itr = MD->mesh_field_begin();
@@ -173,7 +173,7 @@ CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD,
   MeshType::MeshDimensionVec exprDims = MT->dimensions();
   llvm::Value *arg = getGlobalIdx();
 
-  if(!vals.empty()) {
+  if (!vals.empty()) {
     SmallVector< llvm::Value *, 3 > dims;
     for(unsigned i = 0, e = exprDims.size(); i < e; ++i) {
       dims.push_back(Builder.CreateLoad(ScoutMeshSizes[i]));
@@ -204,6 +204,7 @@ CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD,
     llvm::Value *tmp1  = Builder.CreateMul(tmp, dims[0]);
     arg = Builder.CreateAdd(tmp1, rem);
   }
+  
   llvm::Value *var = MeshMembers[memberName].first;
   QualType Ty = MeshMembers[memberName].second;
   llvm::Value *addr = Builder.CreateInBoundsGEP(var, arg, "arrayidx");

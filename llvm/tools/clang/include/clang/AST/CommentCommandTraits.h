@@ -100,7 +100,17 @@ struct CommandInfo {
   ///   \fn void f(int a);
   /// \endcode
   unsigned IsDeclarationCommand : 1;
+  
+  /// \brief True if verbatim-like line command is a function declaration.
+  unsigned IsFunctionDeclarationCommand : 1;
 
+  /// \brief True if block command is further describing a container API; such
+  /// as \@coclass, \@classdesign, etc.
+  unsigned IsRecordLikeDetailCommand : 1;
+  
+  /// \brief True if block command is a container API; such as \@interface.
+  unsigned IsRecordLikeDeclarationCommand : 1;
+  
   /// \brief True if this command is unknown.  This \c CommandInfo object was
   /// created during parsing.
   unsigned IsUnknownCommand : 1;
@@ -132,6 +142,8 @@ public:
     llvm_unreachable("the command should be known");
   }
 
+  const CommandInfo *getTypoCorrectCommandInfo(StringRef Typo) const;
+  
   const CommandInfo *getCommandInfo(unsigned CommandID) const;
 
   const CommandInfo *registerUnknownCommand(StringRef CommandName);

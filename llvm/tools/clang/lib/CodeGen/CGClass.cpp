@@ -290,7 +290,7 @@ llvm::Value *CodeGenFunction::GetVTTParameter(GlobalDecl GD,
     return 0;
   }
   
-  const CXXRecordDecl *RD = cast<CXXMethodDecl>(CurFuncDecl)->getParent();
+  const CXXRecordDecl *RD = cast<CXXMethodDecl>(CurCodeDecl)->getParent();
   const CXXRecordDecl *Base = cast<CXXMethodDecl>(GD.getDecl())->getParent();
 
   llvm::Value *VTT;
@@ -451,12 +451,14 @@ static void EmitAggMemberInitializer(CodeGenFunction &CGF,
         LV.setAlignment(std::min(Align, LV.getAlignment()));
       }
 
-      if (!CGF.hasAggregateLLVMType(T)) {
+      switch (CGF.getEvaluationKind(T)) {
+      case TEK_Scalar:
         CGF.EmitScalarInit(Init, /*decl*/ 0, LV, false);
-      } else if (T->isAnyComplexType()) {
-        CGF.EmitComplexExprIntoAddr(Init, LV.getAddress(),
-                                    LV.isVolatileQualified());
-      } else {
+        break;
+      case TEK_Complex:
+        CGF.EmitComplexExprIntoLValue(Init, LV, /*isInit*/ true);
+        break;
+      case TEK_Aggregate: {
         AggValueSlot Slot =
           AggValueSlot::forLValue(LV,
                                   AggValueSlot::IsDestructed,
@@ -464,6 +466,8 @@ static void EmitAggMemberInitializer(CodeGenFunction &CGF,
                                   AggValueSlot::IsNotAliased);
 
         CGF.EmitAggExpr(Init, Slot);
+        break;
+      }
       }
     }
 
@@ -600,16 +604,19 @@ void CodeGenFunction::EmitInitializerForField(FieldDecl *Field,
                                               LValue LHS, Expr *Init,
                                              ArrayRef<VarDecl *> ArrayIndexes) {
   QualType FieldType = Field->getType();
-  if (!hasAggregateLLVMType(FieldType)) {
+  switch (getEvaluationKind(FieldType)) {
+  case TEK_Scalar:
     if (LHS.isSimple()) {
       EmitExprAsInit(Init, Field, LHS, false);
     } else {
       RValue RHS = RValue::get(EmitScalarExpr(Init));
       EmitStoreThroughLValue(RHS, LHS);
     }
-  } else if (FieldType->isAnyComplexType()) {
-    EmitComplexExprIntoAddr(Init, LHS.getAddress(), LHS.isVolatileQualified());
-  } else {
+    break;
+  case TEK_Complex:
+    EmitComplexExprIntoLValue(Init, LHS, /*isInit*/ true);
+    break;
+  case TEK_Aggregate: {
     llvm::Value *ArrayIndexVar = 0;
     if (ArrayIndexes.size()) {
       llvm::Type *SizeTy = ConvertType(getContext().getSizeType());
@@ -637,6 +644,7 @@ void CodeGenFunction::EmitInitializerForField(FieldDecl *Field,
     
     EmitAggMemberInitializer(*this, LHS, Init, ArrayIndexVar, FieldType,
                              ArrayIndexes, 0);
+  }
   }
 
   // Ensure that we destroy this object if an exception is thrown
@@ -702,7 +710,7 @@ void CodeGenFunction::EmitConstructorBody(FunctionArgList &Args) {
   // Before we go any further, try the complete->base constructor
   // delegation optimization.
   if (CtorType == Ctor_Complete && IsConstructorDelegationValid(Ctor) &&
-      CGM.getContext().getTargetInfo().getCXXABI().hasConstructorVariants()) {
+      CGM.getTarget().getCXXABI().hasConstructorVariants()) {
     if (CGDebugInfo *DI = getDebugInfo()) 
       DI->EmitLocation(Builder, Ctor->getLocEnd());
     EmitDelegateCXXConstructorCall(Ctor, Ctor_Base, Args);
@@ -794,9 +802,7 @@ namespace {
         const CGBitFieldInfo &BFInfo = RL.getBitFieldInfo(FirstField);
         Alignment = CharUnits::fromQuantity(BFInfo.StorageAlignment);
       } else {
-        unsigned AlignBits =
-          CGF.getContext().getTypeAlign(FirstField->getType());
-        Alignment = CGF.getContext().toCharUnitsFromBits(AlignBits);
+        Alignment = CGF.getContext().getDeclAlign(FirstField);
       }
 
       assert((CGF.getContext().toCharUnitsFromBits(FirstFieldOffset) %
@@ -853,8 +859,12 @@ namespace {
       }
 
     void addNextField(FieldDecl *F) {
-      assert(F->getFieldIndex() == LastAddedFieldIndex + 1 &&
-             "Cannot aggregate non-contiguous fields.");
+      // For the most part, the following invariant will hold:
+      //   F->getFieldIndex() == LastAddedFieldIndex + 1
+      // The one exception is that Sema won't add a copy-initializer for an
+      // unnamed bitfield, which will show up here as a gap in the sequence.
+      assert(F->getFieldIndex() >= LastAddedFieldIndex + 1 &&
+             "Cannot aggregate fields out of order.");
       LastAddedFieldIndex = F->getFieldIndex();
 
       // The 'first' and 'last' fields are chosen by offset, rather than field
@@ -1133,6 +1143,7 @@ void CodeGenFunction::EmitCtorPrologue(const CXXConstructorDecl *CD,
   InitializeVTablePointers(ClassDecl);
 
   // And finally, initialize class members.
+  FieldConstructionScope FCS(*this, CXXThisValue);
   ConstructorMemcpyizer CM(*this, CD, Args);
   for (; B != E; B++) {
     CXXCtorInitializer *Member = (*B);
@@ -1272,7 +1283,7 @@ void CodeGenFunction::EmitDestructorBody(FunctionArgList &Args) {
     EnterDtorCleanups(Dtor, Dtor_Complete);
 
     if (!isTryBody &&
-        CGM.getContext().getTargetInfo().getCXXABI().hasDestructorVariants()) {
+        CGM.getTarget().getCXXABI().hasDestructorVariants()) {
       EmitCXXDestructorCall(Dtor, Dtor_Base, /*ForVirtualBase=*/false,
                             /*Delegating=*/false, LoadCXXThis());
       break;
@@ -1660,8 +1671,11 @@ CodeGenFunction::EmitCXXConstructorCall(const CXXConstructorDecl *D,
   }
 
   // Non-trivial constructors are handled in an ABI-specific manner.
-  CGM.getCXXABI().EmitConstructorCall(*this, D, Type, ForVirtualBase,
-                                      Delegating, This, ArgBeg, ArgEnd);
+  llvm::Value *Callee = CGM.getCXXABI().EmitConstructorCall(*this, D, Type,
+                            ForVirtualBase, Delegating, This, ArgBeg, ArgEnd);
+  if (CGM.getCXXABI().HasThisReturn(CurGD) &&
+      CGM.getCXXABI().HasThisReturn(GlobalDecl(D, Type)))
+     CalleeWithThisReturn = Callee;
 }
 
 void
@@ -1750,9 +1764,12 @@ CodeGenFunction::EmitDelegateCXXConstructorCall(const CXXConstructorDecl *Ctor,
     EmitDelegateCallArg(DelegateArgs, param);
   }
 
+  llvm::Value *Callee = CGM.GetAddrOfCXXConstructor(Ctor, CtorType);
   EmitCall(CGM.getTypes().arrangeCXXConstructorDeclaration(Ctor, CtorType),
-           CGM.GetAddrOfCXXConstructor(Ctor, CtorType), 
-           ReturnValueSlot(), DelegateArgs, Ctor);
+           Callee, ReturnValueSlot(), DelegateArgs, Ctor);
+  if (CGM.getCXXABI().HasThisReturn(CurGD) &&
+      CGM.getCXXABI().HasThisReturn(GlobalDecl(Ctor, CtorType)))
+     CalleeWithThisReturn = Callee;
 }
 
 namespace {
@@ -1819,6 +1836,9 @@ void CodeGenFunction::EmitCXXDestructorCall(const CXXDestructorDecl *DD,
   EmitCXXMemberCall(DD, SourceLocation(), Callee, ReturnValueSlot(), This,
                     VTT, getContext().getPointerType(getContext().VoidPtrTy),
                     0, 0);
+  if (CGM.getCXXABI().HasThisReturn(CurGD) &&
+      CGM.getCXXABI().HasThisReturn(GlobalDecl(DD, Type)))
+     CalleeWithThisReturn = Callee;
 }
 
 namespace {
@@ -2175,7 +2195,7 @@ void CodeGenFunction::EmitForwardingCallToLambda(const CXXRecordDecl *lambda,
   ReturnValueSlot returnSlot;
   if (!resultType->isVoidType() &&
       calleeFnInfo.getReturnInfo().getKind() == ABIArgInfo::Indirect &&
-      hasAggregateLLVMType(calleeFnInfo.getReturnType()))
+      !hasScalarEvaluationKind(calleeFnInfo.getReturnType()))
     returnSlot = ReturnValueSlot(ReturnValue, resultType.isVolatileQualified());
 
   // We don't need to separately arrange the call arguments because
@@ -2216,10 +2236,10 @@ void CodeGenFunction::EmitLambdaBlockInvokeBody() {
 }
 
 void CodeGenFunction::EmitLambdaToBlockPointerBody(FunctionArgList &Args) {
-  if (cast<CXXMethodDecl>(CurFuncDecl)->isVariadic()) {
+  if (cast<CXXMethodDecl>(CurCodeDecl)->isVariadic()) {
     // FIXME: Making this work correctly is nasty because it requires either
     // cloning the body of the call operator or making the call operator forward.
-    CGM.ErrorUnsupported(CurFuncDecl, "lambda conversion to variadic function");
+    CGM.ErrorUnsupported(CurCodeDecl, "lambda conversion to variadic function");
     return;
   }
 

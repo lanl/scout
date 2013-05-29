@@ -626,6 +626,7 @@ Lexer::ComputePreamble(const llvm::MemoryBuffer *Buffer,
   SourceLocation FileLoc = SourceLocation::getFromRawEncoding(StartOffset);
   Lexer TheLexer(FileLoc, LangOpts, Buffer->getBufferStart(),
                  Buffer->getBufferStart(), Buffer->getBufferEnd());
+  TheLexer.SetCommentRetentionState(true);
 
   // StartLoc will differ from FileLoc if there is a BOM that was skipped.
   SourceLocation StartLoc = TheLexer.getSourceLocation();
@@ -634,6 +635,7 @@ Lexer::ComputePreamble(const llvm::MemoryBuffer *Buffer,
   Token TheTok;
   Token IfStartTok;
   unsigned IfCount = 0;
+  SourceLocation ActiveCommentLoc;
 
   unsigned MaxLineOffset = 0;
   if (MaxLines) {
@@ -681,14 +683,18 @@ Lexer::ComputePreamble(const llvm::MemoryBuffer *Buffer,
     }
 
     // Comments are okay; skip over them.
-    if (TheTok.getKind() == tok::comment)
+    if (TheTok.getKind() == tok::comment) {
+      if (ActiveCommentLoc.isInvalid())
+        ActiveCommentLoc = TheTok.getLocation();
       continue;
-
+    }
+    
     if (TheTok.isAtStartOfLine() && TheTok.getKind() == tok::hash) {
       // This is the start of a preprocessor directive.
       Token HashTok = TheTok;
       InPreprocessorDirective = true;
-
+      ActiveCommentLoc = SourceLocation();
+      
       // Figure out which directive this is. Since we're lexing raw tokens,
       // we don't have an identifier table available. Instead, just look at
       // the raw identifier to recognize and categorize preprocessor directives.
@@ -757,8 +763,15 @@ Lexer::ComputePreamble(const llvm::MemoryBuffer *Buffer,
     // the preamble.
     break;
   } while (true);
+  
+  SourceLocation End;
+  if (IfCount)
+    End = IfStartTok.getLocation();
+  else if (ActiveCommentLoc.isValid())
+    End = ActiveCommentLoc; // don't truncate a decl comment.
+  else
+    End = TheTok.getLocation();
 
-  SourceLocation End = IfCount? IfStartTok.getLocation() : TheTok.getLocation();
   return std::make_pair(End.getRawEncoding() - StartLoc.getRawEncoding(),
                         IfCount? IfStartTok.isAtStartOfLine()
                                : TheTok.isAtStartOfLine());
@@ -854,14 +867,10 @@ bool Lexer::isAtStartOfMacroExpansion(SourceLocation loc,
                                       SourceLocation *MacroBegin) {
   assert(loc.isValid() && loc.isMacroID() && "Expected a valid macro loc");
 
-  std::pair<FileID, unsigned> infoLoc = SM.getDecomposedLoc(loc);
-  // FIXME: If the token comes from the macro token paste operator ('##')
-  // this function will always return false;
-  if (infoLoc.second > 0)
-    return false; // Does not point at the start of token.
+  SourceLocation expansionLoc;
+  if (!SM.isAtStartOfImmediateMacroExpansion(loc, &expansionLoc))
+    return false;
 
-  SourceLocation expansionLoc =
-    SM.getSLocEntry(infoLoc.first).getExpansion().getExpansionLocStart();
   if (expansionLoc.isFileID()) {
     // No other macro expansions, this is the first.
     if (MacroBegin)
@@ -885,16 +894,11 @@ bool Lexer::isAtEndOfMacroExpansion(SourceLocation loc,
   if (tokLen == 0)
     return false;
 
-  FileID FID = SM.getFileID(loc);
-  SourceLocation afterLoc = loc.getLocWithOffset(tokLen+1);
-  if (SM.isInFileID(afterLoc, FID))
-    return false; // Still in the same FileID, does not point to the last token.
+  SourceLocation afterLoc = loc.getLocWithOffset(tokLen);
+  SourceLocation expansionLoc;
+  if (!SM.isAtEndOfImmediateMacroExpansion(afterLoc, &expansionLoc))
+    return false;
 
-  // FIXME: If the token comes from the macro token paste operator ('##')
-  // or the stringify operator ('#') this function will always return false;
-
-  SourceLocation expansionLoc =
-    SM.getSLocEntry(FID).getExpansion().getExpansionLocEnd();
   if (expansionLoc.isFileID()) {
     // No other macro expansions.
     if (MacroEnd)
@@ -972,25 +976,25 @@ CharSourceRange Lexer::makeFileCharRange(CharSourceRange Range,
     return makeRangeFromFileLocs(Range, SM, LangOpts);
   }
 
-  FileID FID;
-  unsigned BeginOffs;
-  llvm::tie(FID, BeginOffs) = SM.getDecomposedLoc(Begin);
-  if (FID.isInvalid())
+  bool Invalid = false;
+  const SrcMgr::SLocEntry &BeginEntry = SM.getSLocEntry(SM.getFileID(Begin),
+                                                        &Invalid);
+  if (Invalid)
     return CharSourceRange();
 
-  unsigned EndOffs;
-  if (!SM.isInFileID(End, FID, &EndOffs) ||
-      BeginOffs > EndOffs)
-    return CharSourceRange();
+  if (BeginEntry.getExpansion().isMacroArgExpansion()) {
+    const SrcMgr::SLocEntry &EndEntry = SM.getSLocEntry(SM.getFileID(End),
+                                                        &Invalid);
+    if (Invalid)
+      return CharSourceRange();
 
-  const SrcMgr::SLocEntry *E = &SM.getSLocEntry(FID);
-  const SrcMgr::ExpansionInfo &Expansion = E->getExpansion();
-  if (Expansion.isMacroArgExpansion() &&
-      Expansion.getSpellingLoc().isFileID()) {
-    SourceLocation SpellLoc = Expansion.getSpellingLoc();
-    Range.setBegin(SpellLoc.getLocWithOffset(BeginOffs));
-    Range.setEnd(SpellLoc.getLocWithOffset(EndOffs));
-    return makeRangeFromFileLocs(Range, SM, LangOpts);
+    if (EndEntry.getExpansion().isMacroArgExpansion() &&
+        BeginEntry.getExpansion().getExpansionLocStart() ==
+            EndEntry.getExpansion().getExpansionLocStart()) {
+      Range.setBegin(SM.getImmediateSpellingLoc(Begin));
+      Range.setEnd(SM.getImmediateSpellingLoc(End));
+      return makeFileCharRange(Range, SM, LangOpts);
+    }
   }
 
   return CharSourceRange();
@@ -1721,7 +1725,9 @@ void Lexer::LexStringLiteral(Token &Result, const char *CurPtr,
       (Kind == tok::utf8_string_literal ||
        Kind == tok::utf16_string_literal ||
        Kind == tok::utf32_string_literal))
-    Diag(BufferPtr, diag::warn_cxx98_compat_unicode_literal);
+    Diag(BufferPtr, getLangOpts().CPlusPlus
+           ? diag::warn_cxx98_compat_unicode_literal
+           : diag::warn_c99_compat_unicode_literal);
 
   char C = getAndAdvanceChar(CurPtr, Result);
   while (C != '"') {
@@ -1886,7 +1892,9 @@ void Lexer::LexCharConstant(Token &Result, const char *CurPtr,
 
   if (!isLexingRawMode() &&
       (Kind == tok::utf16_char_constant || Kind == tok::utf32_char_constant))
-    Diag(BufferPtr, diag::warn_cxx98_compat_unicode_literal);
+    Diag(BufferPtr, getLangOpts().CPlusPlus
+           ? diag::warn_cxx98_compat_unicode_literal
+           : diag::warn_c99_compat_unicode_literal);
 
   char C = getAndAdvanceChar(CurPtr, Result);
   if (C == '\'') {
@@ -1944,7 +1952,9 @@ bool Lexer::SkipWhitespace(Token &Result, const char *CurPtr) {
   // Whitespace - Skip it, then return the token after the whitespace.
   bool SawNewline = isVerticalWhitespace(CurPtr[-1]);
 
-  unsigned char Char = *CurPtr;  // Skip consequtive spaces efficiently.
+  unsigned char Char = *CurPtr;
+
+  // Skip consecutive spaces efficiently.
   while (1) {
     // Skip horizontal whitespace very aggressively.
     while (isHorizontalWhitespace(Char))
@@ -1960,7 +1970,7 @@ bool Lexer::SkipWhitespace(Token &Result, const char *CurPtr) {
       return false;
     }
 
-    // ok, but handle newline.
+    // OK, but handle newline.
     SawNewline = true;
     Char = *++CurPtr;
   }
@@ -2276,7 +2286,7 @@ bool Lexer::SkipBlockComment(Token &Result, const char *CurPtr) {
           // Adjust the pointer to point directly after the first slash. It's
           // not necessary to set C here, it will be overwritten at the end of
           // the outer loop.
-          CurPtr += llvm::CountTrailingZeros_32(cmp) + 1;
+          CurPtr += llvm::countTrailingZeros<unsigned>(cmp) + 1;
           goto FoundSlash;
         }
         CurPtr += 16;
@@ -2945,11 +2955,11 @@ LexNextToken:
     MIOpt.ReadToken();
     return LexNumericConstant(Result, CurPtr);
 
-  case 'u':   // Identifier (uber) or C++0x UTF-8 or UTF-16 string literal
+  case 'u':   // Identifier (uber) or C11/C++11 UTF-8 or UTF-16 string literal
     // Notify MIOpt that we read a non-whitespace/non-comment token.
     MIOpt.ReadToken();
 
-    if (LangOpts.CPlusPlus11) {
+    if (LangOpts.CPlusPlus11 || LangOpts.C11) {
       Char = getCharAndSize(CurPtr, SizeTmp);
 
       // UTF-16 string literal
@@ -2963,7 +2973,8 @@ LexNextToken:
                                tok::utf16_char_constant);
 
       // UTF-16 raw string literal
-      if (Char == 'R' && getCharAndSize(CurPtr + SizeTmp, SizeTmp2) == '"')
+      if (Char == 'R' && LangOpts.CPlusPlus11 &&
+          getCharAndSize(CurPtr + SizeTmp, SizeTmp2) == '"')
         return LexRawStringLiteral(Result,
                                ConsumeChar(ConsumeChar(CurPtr, SizeTmp, Result),
                                            SizeTmp2, Result),
@@ -2979,7 +2990,7 @@ LexNextToken:
                                            SizeTmp2, Result),
                                tok::utf8_string_literal);
 
-        if (Char2 == 'R') {
+        if (Char2 == 'R' && LangOpts.CPlusPlus11) {
           unsigned SizeTmp3;
           char Char3 = getCharAndSize(CurPtr + SizeTmp + SizeTmp2, SizeTmp3);
           // UTF-8 raw string literal
@@ -2997,11 +3008,11 @@ LexNextToken:
     // treat u like the start of an identifier.
     return LexIdentifier(Result, CurPtr);
 
-  case 'U':   // Identifier (Uber) or C++0x UTF-32 string literal
+  case 'U':   // Identifier (Uber) or C11/C++11 UTF-32 string literal
     // Notify MIOpt that we read a non-whitespace/non-comment token.
     MIOpt.ReadToken();
 
-    if (LangOpts.CPlusPlus11) {
+    if (LangOpts.CPlusPlus11 || LangOpts.C11) {
       Char = getCharAndSize(CurPtr, SizeTmp);
 
       // UTF-32 string literal
@@ -3015,7 +3026,8 @@ LexNextToken:
                                tok::utf32_char_constant);
 
       // UTF-32 raw string literal
-      if (Char == 'R' && getCharAndSize(CurPtr + SizeTmp, SizeTmp2) == '"')
+      if (Char == 'R' && LangOpts.CPlusPlus11 &&
+          getCharAndSize(CurPtr + SizeTmp, SizeTmp2) == '"')
         return LexRawStringLiteral(Result,
                                ConsumeChar(ConsumeChar(CurPtr, SizeTmp, Result),
                                            SizeTmp2, Result),
@@ -3225,10 +3237,13 @@ LexNextToken:
       // this as "foo / bar" and langauges with Line comments would lex it as
       // "foo".  Check to see if the character after the second slash is a '*'.
       // If so, we will lex that as a "/" instead of the start of a comment.
-      // However, we never do this in -traditional-cpp mode.
-      if ((LangOpts.LineComment ||
-           getCharAndSize(CurPtr+SizeTmp, SizeTmp2) != '*') &&
-          !LangOpts.TraditionalCPP) {
+      // However, we never do this if we are just preprocessing.
+      bool TreatAsComment = LangOpts.LineComment && !LangOpts.TraditionalCPP;
+      if (!TreatAsComment)
+        if (!(PP && PP->isPreprocessedOutput()))
+          TreatAsComment = getCharAndSize(CurPtr+SizeTmp, SizeTmp2) != '*';
+
+      if (TreatAsComment) {
         if (SkipLineComment(Result, ConsumeChar(CurPtr, SizeTmp, Result)))
           return; // There is a token to return.
 
@@ -3514,6 +3529,12 @@ HandleDirective:
 
   FormTokenWithChars(Result, CurPtr, tok::hash);
   PP->HandleDirective(Result);
+
+  if (PP->hadModuleLoaderFatalFailure()) {
+    // With a fatal failure in the module loader, we abort parsing.
+    assert(Result.is(tok::eof) && "Preprocessor did not set tok:eof");
+    return;
+  }
 
   // As an optimization, if the preprocessor didn't switch lexers, tail
   // recurse.

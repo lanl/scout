@@ -100,11 +100,20 @@ Expr::skipRValueSubobjectAdjustments(
 const Expr *
 Expr::findMaterializedTemporary(const MaterializeTemporaryExpr *&MTE) const {
   const Expr *E = this;
+
+  // This might be a default initializer for a reference member. Walk over the
+  // wrapper node for that.
+  if (const CXXDefaultInitExpr *DAE = dyn_cast<CXXDefaultInitExpr>(E))
+    E = DAE->getExpr();
+
   // Look through single-element init lists that claim to be lvalues. They're
   // just syntactic wrappers in this case.
   if (const InitListExpr *ILE = dyn_cast<InitListExpr>(E)) {
-    if (ILE->getNumInits() == 1 && ILE->isGLValue())
+    if (ILE->getNumInits() == 1 && ILE->isGLValue()) {
       E = ILE->getInit(0);
+      if (const CXXDefaultInitExpr *DAE = dyn_cast<CXXDefaultInitExpr>(E))
+        E = DAE->getExpr();
+    }
   }
 
   // Look through expressions for materialized temporaries (for now).
@@ -280,7 +289,7 @@ static void computeDeclRefDependence(ASTContext &Ctx, NamedDecl *D, QualType T,
   //          expression that is value-dependent [C++11]
   if (VarDecl *Var = dyn_cast<VarDecl>(D)) {
     if ((Ctx.getLangOpts().CPlusPlus11 ?
-           Var->getType()->isLiteralType() :
+           Var->getType()->isLiteralType(Ctx) :
            Var->getType()->isIntegralOrEnumerationType()) &&
         (Var->getType().isConstQualified() ||
          Var->getType()->isReferenceType())) {
@@ -414,7 +423,7 @@ DeclRefExpr *DeclRefExpr::Create(ASTContext &Context,
     FoundD = 0;
 
   std::size_t Size = sizeof(DeclRefExpr);
-  if (QualifierLoc != 0)
+  if (QualifierLoc)
     Size += sizeof(NestedNameSpecifierLoc);
   if (FoundD)
     Size += sizeof(NamedDecl *);
@@ -2176,6 +2185,9 @@ bool Expr::isUnusedResultAWarning(const Expr *&WarnE, SourceLocation &Loc,
   case CXXDefaultArgExprClass:
     return (cast<CXXDefaultArgExpr>(this)
             ->getExpr()->isUnusedResultAWarning(WarnE, Loc, R1, R2, Ctx));
+  case CXXDefaultInitExprClass:
+    return (cast<CXXDefaultInitExpr>(this)
+            ->getExpr()->isUnusedResultAWarning(WarnE, Loc, R1, R2, Ctx));
 
   case CXXNewExprClass:
     // FIXME: In theory, there might be new expressions that don't have side
@@ -2791,6 +2803,7 @@ bool Expr::HasSideEffects(const ASTContext &Ctx) const {
     return false;
 
   case CallExprClass:
+  case MSPropertyRefExprClass:
   case CompoundAssignOperatorClass:
   case VAArgExprClass:
   case AtomicExprClass:
@@ -2859,6 +2872,12 @@ bool Expr::HasSideEffects(const ASTContext &Ctx) const {
 
   case CXXDefaultArgExprClass:
     return cast<CXXDefaultArgExpr>(this)->getExpr()->HasSideEffects(Ctx);
+
+  case CXXDefaultInitExprClass:
+    if (const Expr *E = cast<CXXDefaultInitExpr>(this)->getExpr())
+      return E->HasSideEffects(Ctx);
+    // If we've not yet parsed the initializer, assume it has side-effects.
+    return true;
 
   case CXXDynamicCastExprClass: {
     // A dynamic_cast expression has side-effects if it can throw.
@@ -3057,8 +3076,12 @@ Expr::isNullPointerConstant(ASTContext &Ctx,
     return GE->getResultExpr()->isNullPointerConstant(Ctx, NPC);
   } else if (const CXXDefaultArgExpr *DefaultArg
                = dyn_cast<CXXDefaultArgExpr>(this)) {
-    // See through default argument expressions
+    // See through default argument expressions.
     return DefaultArg->getExpr()->isNullPointerConstant(Ctx, NPC);
+  } else if (const CXXDefaultInitExpr *DefaultInit
+               = dyn_cast<CXXDefaultInitExpr>(this)) {
+    // See through default initializer expressions.
+    return DefaultInit->getExpr()->isNullPointerConstant(Ctx, NPC);
   } else if (isa<GNUNullExpr>(this)) {
     // The GNU __null extension is always a null pointer constant.
     return NPCK_GNUNull;
@@ -3146,7 +3169,7 @@ bool Expr::isObjCSelfExpr() const {
   return M->getSelfDecl() == Param;
 }
 
-FieldDecl *Expr::getBitField() {
+FieldDecl *Expr::getSourceBitField() {
   Expr *E = this->IgnoreParens();
 
   while (ImplicitCastExpr *ICE = dyn_cast<ImplicitCastExpr>(E)) {
@@ -3162,6 +3185,11 @@ FieldDecl *Expr::getBitField() {
       if (Field->isBitField())
         return Field;
 
+  if (ObjCIvarRefExpr *IvarRef = dyn_cast<ObjCIvarRefExpr>(E))
+    if (FieldDecl *Ivar = dyn_cast<FieldDecl>(IvarRef->getDecl()))
+      if (Ivar->isBitField())
+        return Ivar;
+
   if (DeclRefExpr *DeclRef = dyn_cast<DeclRefExpr>(E))
     if (FieldDecl *Field = dyn_cast<FieldDecl>(DeclRef->getDecl()))
       if (Field->isBitField())
@@ -3169,10 +3197,10 @@ FieldDecl *Expr::getBitField() {
 
   if (BinaryOperator *BinOp = dyn_cast<BinaryOperator>(E)) {
     if (BinOp->isAssignmentOp() && BinOp->getLHS())
-      return BinOp->getLHS()->getBitField();
+      return BinOp->getLHS()->getSourceBitField();
 
     if (BinOp->getOpcode() == BO_Comma && BinOp->getRHS())
-      return BinOp->getRHS()->getBitField();
+      return BinOp->getRHS()->getSourceBitField();
   }
 
   return 0;
@@ -3557,13 +3585,12 @@ ShuffleVectorExpr::ShuffleVectorExpr(ASTContext &C, ArrayRef<Expr*> args,
   }
 }
 
-void ShuffleVectorExpr::setExprs(ASTContext &C, Expr ** Exprs,
-                                 unsigned NumExprs) {
+void ShuffleVectorExpr::setExprs(ASTContext &C, ArrayRef<Expr *> Exprs) {
   if (SubExprs) C.Deallocate(SubExprs);
 
-  SubExprs = new (C) Stmt* [NumExprs];
-  this->NumExprs = NumExprs;
-  memcpy(SubExprs, Exprs, sizeof(Expr *) * NumExprs);
+  this->NumExprs = Exprs.size();
+  SubExprs = new (C) Stmt*[NumExprs];
+  memcpy(SubExprs, Exprs.data(), sizeof(Expr *) * Exprs.size());
 }
 
 GenericSelectionExpr::GenericSelectionExpr(ASTContext &Context,

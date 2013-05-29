@@ -434,7 +434,7 @@ int main(int argc_, const char **argv_) {
   // DiagnosticOptions instance.
   TextDiagnosticPrinter *DiagClient
     = new TextDiagnosticPrinter(llvm::errs(), &*DiagOpts);
-  DiagClient->setPrefix(llvm::sys::path::stem(Path.str()));
+  DiagClient->setPrefix(llvm::sys::path::filename(Path.str()));
   IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
 
   DiagnosticsEngine Diags(DiagID, &*DiagOpts, DiagClient);
@@ -506,9 +506,6 @@ int main(int argc_, const char **argv_) {
     // In these cases, generate additional diagnostic information if possible.
     if (CommandRes < 0 || CommandRes == 70) {
       TheDriver.generateCompilationDiagnostics(*C, FailingCommand);
-
-      // FIXME: generateCompilationDiagnostics() needs to be tested when there
-      // are multiple failing commands.
       break;
     }
   }

@@ -37,11 +37,12 @@ class StackFrameContext;
 
 namespace ento {
 
+class CodeTextRegion;
 class MemRegionManager;
 class MemSpaceRegion;
 class SValBuilder;
+class SymbolicRegion;
 class VarRegion;
-class CodeTextRegion;
 
 /// Represent a region's offset within the top level base region.
 class RegionOffset {
@@ -145,6 +146,10 @@ public:
 
   const MemRegion *StripCasts(bool StripBaseCasts = true) const;
 
+  /// \brief If this is a symbolic region, returns the region. Otherwise,
+  /// goes up the base chain looking for the first symbolic base region.
+  const SymbolicRegion *getSymbolicBase() const;
+
   bool hasGlobalsOrParametersStorage() const;
 
   bool hasStackStorage() const;
@@ -168,6 +173,16 @@ public:
 
   /// \brief Print the region for use in diagnostics.
   virtual void printPretty(raw_ostream &os) const;
+
+  /// \brief Returns true if this region's textual representation can be used
+  /// as part of a larger expression.
+  virtual bool canPrintPrettyAsExpr() const;
+
+  /// \brief Print the region as expression.
+  ///
+  /// When this region represents a subexpression, the method is for printing
+  /// an expression containing it.
+  virtual void printPrettyAsExpr(raw_ostream &os) const;
 
   Kind getKind() const { return kind; }
 
@@ -651,9 +666,11 @@ public:
     }
 
     bool operator==(const referenced_vars_iterator &I) const {
+      assert((R == 0) == (I.R == 0));
       return I.R == R;
     }
     bool operator!=(const referenced_vars_iterator &I) const {
+      assert((R == 0) == (I.R == 0));
       return I.R != R;
     }
     referenced_vars_iterator &operator++() {
@@ -872,8 +889,9 @@ public:
     return R->getKind() == VarRegionKind;
   }
 
-  bool canPrintPretty() const;
-  void printPretty(raw_ostream &os) const;
+  bool canPrintPrettyAsExpr() const;
+
+  void printPrettyAsExpr(raw_ostream &os) const;
 };
   
 /// CXXThisRegion - Represents the region for the implicit 'this' parameter
@@ -935,6 +953,8 @@ public:
 
   bool canPrintPretty() const;
   void printPretty(raw_ostream &os) const;
+  bool canPrintPrettyAsExpr() const;
+  void printPrettyAsExpr(raw_ostream &os) const;
 };
 
 class ObjCIvarRegion : public DeclRegion {
@@ -950,8 +970,8 @@ public:
   const ObjCIvarDecl *getDecl() const;
   QualType getValueType() const;
 
-  bool canPrintPretty() const;
-  void printPretty(raw_ostream &os) const;
+  bool canPrintPrettyAsExpr() const;
+  void printPrettyAsExpr(raw_ostream &os) const;
 
   void dumpToStream(raw_ostream &os) const;
 
@@ -1080,6 +1100,10 @@ public:
   static bool classof(const MemRegion *region) {
     return region->getKind() == CXXBaseObjectRegionKind;
   }
+
+  bool canPrintPrettyAsExpr() const;
+  
+  void printPrettyAsExpr(raw_ostream &os) const;
 };
 
 template<typename RegionTy>

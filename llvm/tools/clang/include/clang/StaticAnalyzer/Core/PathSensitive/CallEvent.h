@@ -162,11 +162,11 @@ protected:
   }
 
 
-  typedef SmallVectorImpl<const MemRegion *> RegionList;
+  typedef SmallVectorImpl<SVal> ValueList;
 
   /// \brief Used to specify non-argument regions that will be invalidated as a
   /// result of this call.
-  virtual void getExtraInvalidatedRegions(RegionList &Regions) const {}
+  virtual void getExtraInvalidatedValues(ValueList &Values) const {}
 
 public:
   virtual ~CallEvent() {}
@@ -336,7 +336,9 @@ public:
   /// of some kind.
   static bool isCallStmt(const Stmt *S);
 
-  /// \brief Returns the result type of a function, method declaration.
+  /// \brief Returns the result type of a function or method declaration.
+  ///
+  /// This will return a null QualType if the result type cannot be determined.
   static QualType getDeclaredResultType(const Decl *D);
 
   // Iterator access to formal parameters and their types.
@@ -502,7 +504,7 @@ protected:
   BlockCall(const BlockCall &Other) : SimpleCall(Other) {}
   virtual void cloneTo(void *Dest) const { new (Dest) BlockCall(*this); }
 
-  virtual void getExtraInvalidatedRegions(RegionList &Regions) const;
+  virtual void getExtraInvalidatedValues(ValueList &Values) const;
 
 public:
   /// \brief Returns the region associated with this instance of the block.
@@ -546,7 +548,7 @@ public:
 /// it is written.
 class CXXInstanceCall : public AnyFunctionCall {
 protected:
-  virtual void getExtraInvalidatedRegions(RegionList &Regions) const;
+  virtual void getExtraInvalidatedValues(ValueList &Values) const;
 
   CXXInstanceCall(const CallExpr *CE, ProgramStateRef St,
                   const LocationContext *LCtx)
@@ -729,7 +731,7 @@ protected:
   CXXConstructorCall(const CXXConstructorCall &Other) : AnyFunctionCall(Other){}
   virtual void cloneTo(void *Dest) const { new (Dest) CXXConstructorCall(*this); }
 
-  virtual void getExtraInvalidatedRegions(RegionList &Regions) const;
+  virtual void getExtraInvalidatedValues(ValueList &Values) const;
 
 public:
   virtual const CXXConstructExpr *getOriginExpr() const {
@@ -828,7 +830,7 @@ protected:
   ObjCMethodCall(const ObjCMethodCall &Other) : CallEvent(Other) {}
   virtual void cloneTo(void *Dest) const { new (Dest) ObjCMethodCall(*this); }
 
-  virtual void getExtraInvalidatedRegions(RegionList &Regions) const;
+  virtual void getExtraInvalidatedValues(ValueList &Values) const;
 
   /// Check if the selector may have multiple definitions (may have overrides).
   virtual bool canBeOverridenInSubclass(ObjCInterfaceDecl *IDecl,
@@ -1040,7 +1042,7 @@ namespace llvm {
     typedef const T *SimpleType;
 
     static SimpleType
-    getSimplifiedValue(const clang::ento::CallEventRef<T>& Val) {
+    getSimplifiedValue(clang::ento::CallEventRef<T> Val) {
       return Val.getPtr();
     }
   };

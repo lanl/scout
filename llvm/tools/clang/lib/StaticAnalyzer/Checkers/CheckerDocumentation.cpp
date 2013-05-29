@@ -52,6 +52,7 @@ class CheckerDocumentation : public Checker< check::PreStmt<ReturnStmt>,
                                        check::LiveSymbols,
                                        check::RegionChanges,
                                        check::PointerEscape,
+                                       check::ConstPointerEscape,
                                        check::Event<ImplicitNullDerefEvent>,
                                        check::ASTDecl<FunctionDecl> > {
 public:
@@ -189,7 +190,7 @@ public:
   ///
   /// \returns true if the call has been successfully evaluated
   /// and false otherwise. Note, that only one checker can evaluate a call. If
-  /// more then one checker claim that they can evaluate the same call the
+  /// more than one checker claims that they can evaluate the same call the
   /// first one wins.
   ///
   /// eval::Call
@@ -274,6 +275,17 @@ public:
     return State;
   }
 
+  /// \brief Called when const pointers escape.
+  ///
+  /// Note: in most cases checkPointerEscape callback is sufficient.
+  /// \sa checkPointerEscape
+  ProgramStateRef checkConstPointerEscape(ProgramStateRef State,
+                                     const InvalidatedSymbols &Escaped,
+                                     const CallEvent *Call,
+                                     PointerEscapeKind Kind) const {
+    return State;
+  }
+                                         
   /// check::Event<ImplicitNullDerefEvent>
   void checkEvent(ImplicitNullDerefEvent Event) const {}
 

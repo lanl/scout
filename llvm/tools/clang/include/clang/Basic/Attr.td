@@ -333,7 +333,6 @@ def OpenCLKernel : Attr {
 def OpenCLImageAccess : Attr {
   let Spellings = [GNU<"opencl_image_access">];
   let Args = [IntArgument<"Access">];
-  let ASTNode = 0;
 }
 
 def Deprecated : InheritableAttr {
@@ -632,6 +631,11 @@ def ReqdWorkGroupSize : InheritableAttr {
               UnsignedArgument<"ZDim">];
 }
 
+def Endian : InheritableAttr {
+  let Spellings = [GNU<"endian">];
+  let Args = [IdentifierArgument<"platform">];
+}
+
 def WorkGroupSizeHint :  InheritableAttr {
   let Spellings = [GNU<"work_group_size_hint">];
   let Args = [UnsignedArgument<"XDim">, 
@@ -720,8 +724,9 @@ def VectorSize : Attr {
   let ASTNode = 0;
 }
 
-def VecTypeHint : IgnoredAttr {
+def VecTypeHint : InheritableAttr {
   let Spellings = [GNU<"vec_type_hint">];
+  let Args = [TypeArgument<"TypeHint">, SourceLocArgument<"TypeLoc">];
 }
 
 def Visibility : InheritableAttr {
@@ -847,6 +852,20 @@ def SharedLockFunction : InheritableAttr {
   let TemplateDependent = 1;
 }
 
+def AssertExclusiveLock : InheritableAttr {
+  let Spellings = [GNU<"assert_exclusive_lock">];
+  let Args = [VariadicExprArgument<"Args">];
+  let LateParsed = 1;
+  let TemplateDependent = 1;
+}
+
+def AssertSharedLock : InheritableAttr {
+  let Spellings = [GNU<"assert_shared_lock">];
+  let Args = [VariadicExprArgument<"Args">];
+  let LateParsed = 1;
+  let TemplateDependent = 1;
+}
+
 // The first argument is an integer or boolean value specifying the return value
 // of a successful lock acquisition.
 def ExclusiveTrylockFunction : InheritableAttr {
@@ -923,6 +942,10 @@ def TypeTagForDatatype : InheritableAttr {
 
 // Microsoft-related attributes
 
+def MsProperty : Attr {
+  let Spellings = [Declspec<"property">];
+}
+
 def MsStruct : InheritableAttr {
   let Spellings = [Declspec<"ms_struct">];
 }
@@ -939,6 +962,10 @@ def ForceInline : InheritableAttr {
   let Spellings = [Keyword<"__forceinline">];
 }
 
+def SelectAny : InheritableAttr {
+  let Spellings = [Declspec<"selectany">];
+}
+
 def Win64 : InheritableAttr {
   let Spellings = [Keyword<"__w64">];
 }
@@ -951,16 +978,32 @@ def Ptr64 : InheritableAttr {
   let Spellings = [Keyword<"__ptr64">];
 }
 
-def SingleInheritance : InheritableAttr {
+def SPtr : InheritableAttr {
+  let Spellings = [Keyword<"__sptr">];
+}
+
+def UPtr : InheritableAttr {
+  let Spellings = [Keyword<"__uptr">];
+}
+
+class MSInheritanceAttr : InheritableAttr;
+
+def SingleInheritance : MSInheritanceAttr {
   let Spellings = [Keyword<"__single_inheritance">];
 }
 
-def MultipleInheritance : InheritableAttr {
+def MultipleInheritance : MSInheritanceAttr {
   let Spellings = [Keyword<"__multiple_inheritance">];
 }
 
-def VirtualInheritance : InheritableAttr {
+def VirtualInheritance : MSInheritanceAttr {
   let Spellings = [Keyword<"__virtual_inheritance">];
+}
+
+// This attribute doesn't have any spellings, but we can apply it implicitly to
+// incomplete types that lack any of the other attributes.
+def UnspecifiedInheritance : MSInheritanceAttr {
+  let Spellings = [];
 }
 
 def Unaligned : IgnoredAttr {

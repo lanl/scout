@@ -438,7 +438,7 @@ public:
   /// @name ASTConsumer
   /// {
 
-  bool hasASTConsumer() const { return Consumer != 0; }
+  bool hasASTConsumer() const { return Consumer.isValid(); }
 
   ASTConsumer &getASTConsumer() const {
     assert(Consumer && "Compiler instance has no AST consumer!");
@@ -456,7 +456,7 @@ public:
   /// }
   /// @name Semantic analysis
   /// {
-  bool hasSema() const { return TheSema != 0; }
+  bool hasSema() const { return TheSema.isValid(); }
   
   Sema &getSema() const { 
     assert(TheSema && "Compiler instance has no Sema object!");
@@ -470,12 +470,15 @@ public:
   /// {
 
   ASTReader *getModuleManager() const { return ModuleManager; }
+  void setModuleManager(ASTReader *Reader) { ModuleManager = Reader; }
 
   /// }
   /// @name Code Completion
   /// {
 
-  bool hasCodeCompletionConsumer() const { return CompletionConsumer != 0; }
+  bool hasCodeCompletionConsumer() const {
+    return CompletionConsumer.isValid();
+  }
 
   CodeCompleteConsumer &getCodeCompletionConsumer() const {
     assert(CompletionConsumer &&
@@ -497,7 +500,7 @@ public:
   /// @name Frontend timer
   /// {
 
-  bool hasFrontendTimer() const { return FrontendTimer != 0; }
+  bool hasFrontendTimer() const { return FrontendTimer.isValid(); }
 
   llvm::Timer &getFrontendTimer() const {
     assert(FrontendTimer && "Compiler instance has no frontend timer!");
@@ -535,12 +538,8 @@ public:
   ///
   /// \param ShouldOwnClient If Client is non-NULL, specifies whether 
   /// the diagnostic object should take ownership of the client.
-  ///
-  /// \param ShouldCloneClient If Client is non-NULL, specifies whether that
-  /// client should be cloned.
   void createDiagnostics(DiagnosticConsumer *Client = 0,
-                         bool ShouldOwnClient = true,
-                         bool ShouldCloneClient = true);
+                         bool ShouldOwnClient = true);
 
   /// Create a DiagnosticsEngine object with a the TextDiagnosticPrinter.
   ///
@@ -564,7 +563,6 @@ public:
   createDiagnostics(DiagnosticOptions *Opts,
                     DiagnosticConsumer *Client = 0,
                     bool ShouldOwnClient = true,
-                    bool ShouldCloneClient = true,
                     const CodeGenOptions *CodeGenOpts = 0);
 
   /// Create the file manager and replace any existing one with it.
@@ -706,7 +704,12 @@ public:
 
   virtual void makeModuleVisible(Module *Mod,
                                  Module::NameVisibilityKind Visibility,
-                                 SourceLocation ImportLoc);
+                                 SourceLocation ImportLoc,
+                                 bool Complain);
+
+  bool hadModuleLoaderFatalFailure() const {
+    return ModuleLoader::HadFatalFailure;
+  }
 
 };
 

@@ -50,6 +50,12 @@ struct HeaderFileInfo {
 
   /// \brief Whether this header file info was supplied by an external source.
   unsigned External : 1;
+
+  /// \brief Whether this header is part of a module.
+  unsigned isModuleHeader : 1;
+
+  /// \brief Whether this header is part of the module that we are building.
+  unsigned isCompilingModuleHeader : 1;
   
   /// \brief Whether this structure is considered to already have been
   /// "resolved", meaning that it was loaded from the external source.
@@ -90,7 +96,8 @@ struct HeaderFileInfo {
   
   HeaderFileInfo()
     : isImport(false), isPragmaOnce(false), DirInfo(SrcMgr::C_User), 
-      External(false), Resolved(false), IndexHeaderMapHeader(false),
+      External(false), isModuleHeader(false), isCompilingModuleHeader(false),
+      Resolved(false), IndexHeaderMapHeader(false),
       NumIncludes(0), ControllingMacroID(0), ControllingMacro(0)  {}
 
   /// \brief Retrieve the controlling macro for this header file, if
@@ -189,7 +196,7 @@ class HeaderSearch {
   std::vector<std::pair<const FileEntry*, const HeaderMap*> > HeaderMaps;
 
   /// \brief The mapping between modules and headers.
-  ModuleMap ModMap;
+  mutable ModuleMap ModMap;
   
   /// \brief Describes whether a given directory has a module map in it.
   llvm::DenseMap<const DirectoryEntry *, bool> DirectoryHasModuleMap;
@@ -257,7 +264,7 @@ public:
 
   /// \brief Checks whether the map exists or not.
   bool HasIncludeAliasMap() const {
-    return IncludeAliases;
+    return IncludeAliases.isValid();
   }
 
   /// \brief Map the source include name to the dest include name.
@@ -400,6 +407,9 @@ public:
     getFileInfo(File).DirInfo = SrcMgr::C_System;
   }
 
+  /// \brief Mark the specified file as part of a module.
+  void MarkFileModuleHeader(const FileEntry *File, bool IsCompiledModuleHeader);
+
   /// \brief Increment the count for the number of times the specified
   /// FileEntry has been entered.
   void IncrementIncludeCount(const FileEntry *File) {
@@ -469,7 +479,7 @@ public:
   /// \brief Retrieve the module that corresponds to the given file, if any.
   ///
   /// \param File The header that we wish to map to a module.
-  Module *findModuleForHeader(const FileEntry *File);
+  Module *findModuleForHeader(const FileEntry *File) const;
   
   /// \brief Read the contents of the given module map file.
   ///
@@ -482,7 +492,10 @@ public:
   ///
   /// \param Modules Will be filled with the set of known, top-level modules.
   void collectAllModules(SmallVectorImpl<Module *> &Modules);
-                         
+
+  /// \brief Load all known, top-level system modules.
+  void loadTopLevelSystemModules();
+
 private:
   /// \brief Retrieve a module with the given name, which may be part of the
   /// given framework.
@@ -498,15 +511,16 @@ private:
   Module *loadFrameworkModule(StringRef Name, 
                               const DirectoryEntry *Dir,
                               bool IsSystem);
-  
+
+  /// \brief Load all of the module maps within the immediate subdirectories
+  /// of the given search directory.
+  void loadSubdirectoryModuleMaps(DirectoryLookup &SearchDir);
+
 public:
   /// \brief Retrieve the module map.
   ModuleMap &getModuleMap() { return ModMap; }
   
   unsigned header_file_size() const { return FileInfo.size(); }
-
-  // Used by ASTReader.
-  void setHeaderFileInfoForUID(HeaderFileInfo HFI, unsigned UID);
 
   /// \brief Return the HeaderFileInfo structure for the specified FileEntry.
   const HeaderFileInfo &getFileInfo(const FileEntry *FE) const {

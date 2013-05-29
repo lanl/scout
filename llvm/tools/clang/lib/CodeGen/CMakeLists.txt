@@ -7,6 +7,7 @@ set(LLVM_LINK_COMPONENTS
   asmparser
   bitreader
   bitwriter
+  irreader
   instrumentation
   ipo
   linker
@@ -15,6 +16,7 @@ set(LLVM_LINK_COMPONENTS
 
 add_clang_library(clangCodeGen
   BackendUtil.cpp
+  CGAtomic.cpp
   CGBlocks.cpp
   CGBuiltin.cpp
   CGCall.cpp

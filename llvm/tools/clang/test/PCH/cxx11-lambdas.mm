@@ -34,6 +34,11 @@ inline int to_block_pointer(int n) {
   return block(17);
 }
 
+template<typename T>
+int init_capture(T t) {
+  return [&, x(t)] { return sizeof(x); };
+}
+
 #else
 
 // CHECK-PRINT: T add_slowly
@@ -46,4 +51,8 @@ int add(int x, int y) {
 
 // CHECK-PRINT: inline int add_int_slowly_twice 
 // CHECK-PRINT: lambda = [&] (int z)
+
+// CHECK-PRINT: init_capture
+// CHECK-PRINT: [&, x( t )]
+
 #endif

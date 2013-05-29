@@ -1,5 +1,6 @@
 #include "clang/AST/CommentLexer.h"
 #include "clang/AST/CommentCommandTraits.h"
+#include "clang/AST/CommentDiagnostic.h"
 #include "clang/Basic/CharInfo.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -264,6 +265,7 @@ const char *findCCommentEnd(const char *BufferPtr, const char *BufferEnd) {
   }
   llvm_unreachable("buffer end hit before '*/' was seen");
 }
+    
 } // unnamed namespace
 
 void Lexer::lexCommentText(Token &T) {
@@ -298,6 +300,11 @@ void Lexer::lexCommentText(Token &T) {
     switch(*TokenPtr) {
       case '\\':
       case '@': {
+        // Commands that start with a backslash and commands that start with
+        // 'at' have equivalent semantics.  But we keep information about the
+        // exact syntax in AST for comments.
+        tok::TokenKind CommandKind =
+            (*TokenPtr == '@') ? tok::at_command : tok::backslash_command;
         TokenPtr++;
         if (TokenPtr == CommentEnd) {
           formTextToken(T, TokenPtr);
@@ -348,7 +355,17 @@ void Lexer::lexCommentText(Token &T) {
         if (!Info) {
           formTokenWithChars(T, TokenPtr, tok::unknown_command);
           T.setUnknownCommandName(CommandName);
-          return;
+          if ((Info = Traits.getTypoCorrectCommandInfo(CommandName))) {
+            StringRef CorrectedName = Info->Name;
+            SourceRange CommandRange(T.getLocation().getLocWithOffset(1),
+                                     T.getEndLocation());
+            Diag(T.getLocation(), diag::warn_correct_comment_command_name)
+              << CommandName << CorrectedName
+              << FixItHint::CreateReplacement(CommandRange, CorrectedName);
+          } else {
+            Diag(T.getLocation(), diag::warn_unknown_comment_command_name);
+            return;
+          }
         }
         if (Info->IsVerbatimBlockCommand) {
           setupAndLexVerbatimBlock(T, TokenPtr, *BufferPtr, Info);
@@ -358,7 +375,7 @@ void Lexer::lexCommentText(Token &T) {
           setupAndLexVerbatimLine(T, TokenPtr, Info);
           return;
         }
-        formTokenWithChars(T, TokenPtr, tok::command);
+        formTokenWithChars(T, TokenPtr, CommandKind);
         T.setCommandID(Info->getID());
         return;
       }
@@ -680,10 +697,11 @@ void Lexer::lexHTMLEndTag(Token &T) {
   State = LS_Normal;
 }
 
-Lexer::Lexer(llvm::BumpPtrAllocator &Allocator, const CommandTraits &Traits,
+Lexer::Lexer(llvm::BumpPtrAllocator &Allocator, DiagnosticsEngine &Diags,
+             const CommandTraits &Traits,
              SourceLocation FileLoc,
              const char *BufferStart, const char *BufferEnd):
-    Allocator(Allocator), Traits(Traits),
+    Allocator(Allocator), Diags(Diags), Traits(Traits),
     BufferStart(BufferStart), BufferEnd(BufferEnd),
     FileLoc(FileLoc), BufferPtr(BufferStart),
     CommentState(LCS_BeforeComment), State(LS_Normal) {

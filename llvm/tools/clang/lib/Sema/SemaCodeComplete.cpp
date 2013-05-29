@@ -1476,7 +1476,7 @@ static const char *GetCompletionTypeString(QualType T,
     // Anonymous tag types are constant strings.
     if (const TagType *TagT = dyn_cast<TagType>(T))
       if (TagDecl *Tag = TagT->getDecl())
-        if (!Tag->getIdentifier() && !Tag->getTypedefNameForAnonDecl()) {
+        if (!Tag->hasNameForLinkage()) {
           switch (Tag->getTagKind()) {
           case TTK_Struct: return "struct <anonymous>";
           case TTK_Interface: return "__interface <anonymous>";
@@ -2541,6 +2541,27 @@ CodeCompletionResult::CreateCodeCompletionString(ASTContext &Ctx,
     if (Declaration) {
       Result.addParentContext(Declaration->getDeclContext());
       Pattern->ParentName = Result.getParentName();
+      // Provide code completion comment for self.GetterName where
+      // GetterName is the getter method for a property with name
+      // different from the property name (declared via a property
+      // getter attribute.
+      const NamedDecl *ND = Declaration;
+      if (const ObjCMethodDecl *M = dyn_cast<ObjCMethodDecl>(ND))
+        if (M->isPropertyAccessor())
+          if (const ObjCPropertyDecl *PDecl = M->findPropertyDecl())
+            if (PDecl->getGetterName() == M->getSelector() &&
+                PDecl->getIdentifier() != M->getIdentifier()) {
+              if (const RawComment *RC = 
+                    Ctx.getRawCommentForAnyRedecl(M)) {
+                Result.addBriefComment(RC->getBriefText(Ctx));
+                Pattern->BriefComment = Result.getBriefComment();
+              }
+              else if (const RawComment *RC = 
+                         Ctx.getRawCommentForAnyRedecl(PDecl)) {
+                Result.addBriefComment(RC->getBriefText(Ctx));
+                Pattern->BriefComment = Result.getBriefComment();
+              }
+            }
     }
     
     return Pattern;
@@ -2554,7 +2575,7 @@ CodeCompletionResult::CreateCodeCompletionString(ASTContext &Ctx,
   if (Kind == RK_Macro) {
     const MacroDirective *MD = PP.getMacroDirectiveHistory(Macro);
     assert(MD && "Not a macro?");
-    const MacroInfo *MI = MD->getInfo();
+    const MacroInfo *MI = MD->getMacroInfo();
 
     Result.AddTypedTextChunk(
                             Result.getAllocator().CopyString(Macro->getName()));
@@ -3327,13 +3348,12 @@ void Sema::CodeCompleteDeclSpec(Scope *S, DeclSpec &DS,
   // be a receiver of a class message, this may be a class message send with
   // the initial opening bracket '[' missing. Add appropriate completions.
   if (AllowNonIdentifiers && !AllowNestedNameSpecifiers &&
+      DS.getParsedSpecifiers() == DeclSpec::PQ_TypeSpecifier &&
       DS.getTypeSpecType() == DeclSpec::TST_typename &&
-      DS.getStorageClassSpecAsWritten() == DeclSpec::SCS_unspecified &&
-      !DS.isThreadSpecified() && !DS.isExternInLinkageSpec() &&
       DS.getTypeSpecComplex() == DeclSpec::TSC_unspecified &&
       DS.getTypeSpecSign() == DeclSpec::TSS_unspecified &&
-      DS.getTypeQualifiers() == 0 &&
-      S && 
+      !DS.isTypeAltiVecVector() &&
+      S &&
       (S->getFlags() & Scope::DeclScope) != 0 &&
       (S->getFlags() & (Scope::ClassScope | Scope::TemplateParamScope |
                         Scope::FunctionPrototypeScope | 
@@ -3708,6 +3728,9 @@ void Sema::CodeCompleteTypeQualifiers(DeclSpec &DS) {
   if (getLangOpts().C99 &&
       !(DS.getTypeQualifiers() & DeclSpec::TQ_restrict))
     Results.AddResult("restrict");
+  if (getLangOpts().C11 &&
+      !(DS.getTypeQualifiers() & DeclSpec::TQ_atomic))
+    Results.AddResult("_Atomic");
   Results.ExitScope();
   HandleCodeCompleteResults(this, CodeCompleter, 
                             Results.getCompletionContext(),
@@ -4477,6 +4500,14 @@ static void AddObjCTopLevelResults(ResultBuilder &Results, bool NeedAt) {
   Builder.AddChunk(CodeCompletionString::CK_HorizontalSpace);
   Builder.AddPlaceholderChunk("class");
   Results.AddResult(Result(Builder.TakeString()));
+
+  if (Results.getSema().getLangOpts().Modules) {
+    // @import name
+    Builder.AddTypedTextChunk(OBJC_AT_KEYWORD_NAME(NeedAt, "import"));
+    Builder.AddChunk(CodeCompletionString::CK_HorizontalSpace);
+    Builder.AddPlaceholderChunk("module");
+    Results.AddResult(Result(Builder.TakeString()));
+  }
 }
 
 void Sema::CodeCompleteObjCAtDirective(Scope *S) {
@@ -5307,7 +5338,7 @@ void Sema::CodeCompleteObjCSuperMessage(Scope *S, SourceLocation SuperLoc,
   } else {
     // "super" may be the name of a type or variable. Figure out which
     // it is.
-    IdentifierInfo *Super = &Context.Idents.get("super");
+    IdentifierInfo *Super = getSuperIdentifier();
     NamedDecl *ND = LookupSingleName(S, Super, SuperLoc, 
                                      LookupOrdinaryName);
     if ((CDecl = dyn_cast_or_null<ObjCInterfaceDecl>(ND))) {
@@ -5440,7 +5471,7 @@ static void AddClassMessageCompletions(Sema &SemaRef, Scope *S,
          M != MEnd; ++M) {
       for (ObjCMethodList *MethList = &M->second.second;
            MethList && MethList->Method; 
-           MethList = MethList->Next) {
+           MethList = MethList->getNext()) {
         if (!isAcceptableObjCMethod(MethList->Method, MK_Any, SelIdents, 
                                     NumSelIdents))
           continue;
@@ -5613,7 +5644,7 @@ void Sema::CodeCompleteObjCInstanceMessage(Scope *S, Expr *Receiver,
          M != MEnd; ++M) {
       for (ObjCMethodList *MethList = &M->second.first;
            MethList && MethList->Method; 
-           MethList = MethList->Next) {
+           MethList = MethList->getNext()) {
         if (!isAcceptableObjCMethod(MethList->Method, MK_Any, SelIdents, 
                                     NumSelIdents))
           continue;
@@ -7054,7 +7085,7 @@ void Sema::CodeCompleteObjCMethodDeclSelector(Scope *S,
     for (ObjCMethodList *MethList = IsInstanceMethod ? &M->second.first :
                                                        &M->second.second;
          MethList && MethList->Method; 
-         MethList = MethList->Next) {
+         MethList = MethList->getNext()) {
       if (!isAcceptableObjCMethod(MethList->Method, MK_Any, SelIdents, 
                                   NumSelIdents))
         continue;
