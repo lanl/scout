@@ -811,7 +811,7 @@ void Clang::AddARMTargetArgs(const ArgList &Args,
     CmdArgs.push_back("-arm-darwin-use-movt=0");
   }
 
-  // Setting -mno-global-merge disables the codegen global merge pass. Setting
+  // Setting -mno-global-merge disables the codegen global merge pass. Setting 
   // -mglobal-merge has no effect as the pass is enabled by default.
   if (Arg *A = Args.getLastArg(options::OPT_mglobal_merge,
                                options::OPT_mno_global_merge)) {
@@ -1912,7 +1912,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // SC_TODO -- do we always want to do this?
   CmdArgs.push_back("-pthread");
   // ==========================================================================
-  
   // Select the appropriate action.
   RewriteKind rewriteKind = RK_None;
   
@@ -2991,7 +2990,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
          !Args.hasArg(options::OPT_fno_blocks))) {
     CmdArgs.push_back("-fblocks");
 
-    if (!Args.hasArg(options::OPT_fgnu_runtime) &&
+    if (!Args.hasArg(options::OPT_fgnu_runtime) && 
         !getToolChain().hasBlocksRuntime())
       CmdArgs.push_back("-fblocks-runtime-optional");
   }
@@ -3757,7 +3756,7 @@ void ClangAs::ConstructJob(Compilation &C, const JobAction &JA,
 
   // Add the "effective" target triple.
   CmdArgs.push_back("-triple");
-  std::string TripleStr =
+  std::string TripleStr = 
     getToolChain().ComputeEffectiveClangTriple(Args, Input.getType());
   CmdArgs.push_back(Args.MakeArgString(TripleStr));
 

@@ -666,9 +666,8 @@ static bool LookupDirect(Sema &S, LookupResult &R, const DeclContext *DC) {
   for (DeclContext::lookup_const_iterator I = DR.begin(), E = DR.end(); I != E;
        ++I) {
     NamedDecl *D = *I;
-
-    // scout - convert mesh struct rep to mesh decl - used to
-    // interface with Scout LLDB debugger
+    // ===== Scout ========================================================================
+    // Convert mesh struct rep to mesh decl - used to interface with Scout LLDB debugger.
     if(ValueDecl* vd = dyn_cast<ValueDecl>(D)){
       if(const RecordType* rt =
          dyn_cast<RecordType>(vd->getType().getNonReferenceType().getTypePtr())){
@@ -690,7 +689,7 @@ static bool LookupDirect(Sema &S, LookupResult &R, const DeclContext *DC) {
         }
       }
     }
-    
+    // ====================================================================================
     if ((D = R.getAcceptableDecl(D))) {
       R.addDecl(D);
       Found = true;
@@ -2028,7 +2027,7 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
     case Type::Builtin:
       break;
 
-    // scout - Mesh
+    // ===== Scout ========================================================================
     case Type::UniformMesh:
     case Type::StructuredMesh:
     case Type::RectlinearMesh:
@@ -2038,7 +2037,7 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
         //addAssociatedClassesAndNamespaces(Result, Mesh);
         break;
     }
-        
+    // ====================================================================================
     //     -- If T is a class type (including unions), its associated
     //        classes are: the class itself; the class of which it is a
     //        member, if any; and its direct and indirect base

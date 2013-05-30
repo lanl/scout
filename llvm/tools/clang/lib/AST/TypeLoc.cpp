@@ -17,7 +17,6 @@
 #include "clang/AST/TypeLocVisitor.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
-
 using namespace clang;
 
 //===----------------------------------------------------------------------===//
@@ -56,7 +55,6 @@ namespace {
 /// \brief Returns the size of the type source info data block.
 unsigned TypeLoc::getFullDataSizeForType(QualType Ty) {
   if (Ty.isNull()) return 0;
-  
   return TypeSizer().Visit(TypeLoc(Ty, 0));
 }
 
@@ -221,7 +219,6 @@ SourceRange TypeOfExprTypeLoc::getLocalSourceRange() const {
 TypeSpecifierType BuiltinTypeLoc::getWrittenTypeSpec() const {
   if (needsExtraLocalData())
     return static_cast<TypeSpecifierType>(getWrittenBuiltinSpecs().Type);
-
   switch (getTypePtr()->getKind()) {
   case BuiltinType::Void:
     return TST_void;
@@ -254,8 +251,10 @@ TypeSpecifierType BuiltinTypeLoc::getWrittenTypeSpec() const {
   case BuiltinType::Double:
   case BuiltinType::LongDouble:
     
-  // scout - vector types
-        
+  // ===== Scout ==============================================================
+  // SC_TODO - we need to replace Scout's vector types with Clang's "builtin"
+  // versions.  This has been done within the "refactor" branch but not yet 
+  // merged with "devel". 
   case BuiltinType::Bool2:
   case BuiltinType::Bool3:
   case BuiltinType::Bool4:    
@@ -277,6 +276,7 @@ TypeSpecifierType BuiltinTypeLoc::getWrittenTypeSpec() const {
   case BuiltinType::Double2:
   case BuiltinType::Double3:
   case BuiltinType::Double4: 
+  // ==========================================================================
     llvm_unreachable("Builtin type needs extra local data!");
     // Fall through, if the impossible happens.
       

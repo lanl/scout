@@ -3,7 +3,6 @@
 project(LLVM)
 cmake_minimum_required(VERSION 2.8)
 
-
 # Add path for custom modules
 set(CMAKE_MODULE_PATH
   ${CMAKE_MODULE_PATH}
@@ -462,23 +461,19 @@ endif()
 
 add_subdirectory(cmake/modules)
 
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
+install(DIRECTORY include/
   DESTINATION include
-  # Note: The use of 'files_matching' below is broken under 
-  # CMake 2.8.8 under Mac OS X.  --PM 
   FILES_MATCHING
-  PATTERN "*.h"
   PATTERN "*.def"
+  PATTERN "*.h"
   PATTERN "*.td"
   PATTERN "*.inc"
   PATTERN "LICENSE.TXT"
   PATTERN ".svn" EXCLUDE
   )
 
-install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/llvm/
-  DESTINATION include/llvm/
-  # Note: The use of 'files_matching' below is broken under 
-  # CMake 2.8.8 under Mac OS X.  --PM 
+install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/
+  DESTINATION include
   FILES_MATCHING
   PATTERN "*.def"
   PATTERN "*.h"

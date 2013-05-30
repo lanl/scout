@@ -4,7 +4,7 @@
 void clang_analyzer_eval(int);
 
 void testInvalidation() {
-  __apple_block int i = 0;
+  __block int i = 0;
   ^{
     ++i;
   }();

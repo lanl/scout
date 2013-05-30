@@ -116,7 +116,6 @@ class CGDebugInfo {
   llvm::DIType CreateType(const BlockPointerType *Ty, llvm::DIFile F);
   llvm::DIType CreateType(const FunctionType *Ty, llvm::DIFile F);
   llvm::DIType CreateType(const RecordType *Ty);
-  
   llvm::DIType CreateLimitedType(const RecordType *Ty);
   llvm::DIType CreateType(const ObjCInterfaceType *Ty, llvm::DIFile F);
   llvm::DIType CreateType(const ObjCObjectType *Ty, llvm::DIFile F);

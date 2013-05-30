@@ -30,12 +30,10 @@
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/system_error.h"
-
-//======================================================
+// ===== Scout ================================================================
 // scout - include Scout AST viewer
 #include "clang/Parse/scout/ASTViewScout.h"
-//======================================================
-
+//=============================================================================
 using namespace clang;
 
 namespace {
@@ -204,6 +202,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
     CI.setSourceManager(&AST->getSourceManager());
     CI.setPreprocessor(&AST->getPreprocessor());
     CI.setASTContext(&AST->getASTContext());
+
     // Initialize the action.
     if (!BeginSourceFileAction(CI, InputFile))
       goto failure;
@@ -237,16 +236,13 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
 
     return true;
   }
-
-  // scout - implicity include the Scout headers file if this is a Scout file
+  // ===== Scout ==============================================================================================
+  // Implicity include the Scout headers file if this is a Scout file
   if(CI.getLangOpts().Scout){
     CI.getPreprocessorOpts().Includes.push_back("scout/Runtime/scout.h");
     CI.getPreprocessorOpts().Includes.push_back("scout/Standard/scout.sch");
   }
-  
-  //PreprocessorOptions& opts = CI.getPreprocessorOpts();
-  //const LanguageOptions& langOpts = CI.getLangOpts();
-  
+  // =========================================================================================================
   // If the implicit PCH include is actually a directory, rather than
   // a single file, search for a suitable PCH file in that directory.
   if (!CI.getPreprocessorOpts().ImplicitPCHInclude.empty()) {
@@ -480,8 +476,7 @@ void ASTFrontendAction::ExecuteAction() {
   if (!CI.hasSema())
     CI.createSema(getTranslationUnitKind(), CompletionConsumer);
 
-
-  // =============================================================================
+  // ===== Scout =============================================================
   // scout: Parse the AST
 
   // see if we are using the rewriter or not.
@@ -508,7 +503,7 @@ void ASTFrontendAction::ExecuteAction() {
              CI.getFrontendOpts().SkipFunctionBodies);
 
   }
-  // =============================================================================
+  // ==========================================================================
 }
 
 void PluginASTAction::anchor() { }

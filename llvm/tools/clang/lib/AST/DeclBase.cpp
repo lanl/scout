@@ -31,7 +31,6 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
-
 using namespace clang;
 
 //===----------------------------------------------------------------------===//
@@ -528,7 +527,6 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case ObjCAtDefsField:
     case ObjCIvar:
       return IDNS_Member;
-
     // ===== Scout ============================================================
     case UniformMesh:
     case StructuredMesh:
@@ -536,7 +534,6 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case UnstructuredMesh:
       return IDNS_Tag | IDNS_Type;    
     // ========================================================================
-
     case Record:
     case CXXRecord:
     case Enum:
@@ -915,8 +912,6 @@ DeclContext *DeclContext::getPrimaryContext() {
     }
     //
     // ========================================================================
-
-      
     assert(DeclKind >= Decl::firstFunction && DeclKind <= Decl::lastFunction &&
           "Unknown DeclContext kind");
     return this;

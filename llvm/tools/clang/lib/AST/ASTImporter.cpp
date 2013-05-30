@@ -25,7 +25,6 @@
 #include <deque>
 
 namespace clang {
-
   class ASTNodeImporter : public TypeVisitor<ASTNodeImporter, QualType>,
                           public DeclVisitor<ASTNodeImporter, Decl *>,
                           public StmtVisitor<ASTNodeImporter, Stmt *> {
@@ -66,14 +65,12 @@ namespace clang {
     QualType VisitUnaryTransformType(const UnaryTransformType *T);
     QualType VisitAutoType(const AutoType *T);
     // FIXME: DependentDecltypeType
-
     // ===== Scout ============================================================
     QualType VisitUniformMeshType(const UniformMeshType* T);
     QualType VisitStructuredMeshType(const StructuredMeshType* T);
     QualType VisitRectlinearMeshType(const RectlinearMeshType* T);
     QualType VisitUnstructuredMeshType(const UnstructuredMeshType* T);
     // ========================================================================
-                            
     QualType VisitRecordType(const RecordType *T);
     QualType VisitEnumType(const EnumType *T);
     // FIXME: TemplateTypeParmType
@@ -140,14 +137,12 @@ namespace clang {
     Decl *VisitTypeAliasDecl(TypeAliasDecl *D);
     Decl *VisitEnumDecl(EnumDecl *D);
     Decl *VisitRecordDecl(RecordDecl *D);
-    
     // ===== Scout ============================================================
     Decl* VisitUniformMeshDecl(UniformMeshDecl* D);
     Decl* VisitStructuredMeshDecl(StructuredMeshDecl* D);
     Decl* VisitRectlinearMeshDecl(RectlinearMeshDecl* D);
     Decl* VisitUnstructuredMeshDecl(UnstructuredMeshDecl* D);
     // ========================================================================
-                            
     Decl *VisitEnumConstantDecl(EnumConstantDecl *D);
     Decl *VisitFunctionDecl(FunctionDecl *D);
     Decl *VisitCXXMethodDecl(CXXMethodDecl *D);
@@ -649,7 +644,6 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
                                   cast<AutoType>(T2)->getDeducedType()))
       return false;
     break;
-
   // ===== Scout ==============================================================
   // We do not need to test the structural equivalance of meshes so simply 
   // return false.  
@@ -660,7 +654,6 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
   case Type::UnstructuredMesh:
       return false;
   // ===========================================================================
-      
   case Type::Record:
   case Type::Enum:
     if (!IsStructurallyEquivalent(Context,
@@ -1735,8 +1728,6 @@ QualType ASTNodeImporter::VisitRecordType(const RecordType *T) {
   return Importer.getToContext().getTagDeclType(ToDecl);
 }
 
-
-
 QualType ASTNodeImporter::VisitEnumType(const EnumType *T) {
   EnumDecl *ToDecl
     = dyn_cast_or_null<EnumDecl>(Importer.Import(T->getDecl()));
@@ -2440,8 +2431,6 @@ Decl *ASTNodeImporter::VisitEnumDecl(EnumDecl *D) {
 
   return D2;
 }
-
-
 
 Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
   // If this record has a definition in the translation unit we're coming from,

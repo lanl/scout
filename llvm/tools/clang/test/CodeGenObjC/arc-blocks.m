@@ -105,7 +105,7 @@ void test3(void (^sink)(id*)) {
 void test4(void) {
   id test4_source(void);
   void test4_helper(void (^)(void));
-  __apple_block id var = test4_source();
+  __block id var = test4_source();
   test4_helper(^{ var = 0; });
 
   // CHECK:    define void @test4()
@@ -184,7 +184,7 @@ void test5(void) {
 void test6(void) {
   id test6_source(void);
   void test6_helper(void (^)(void));
-  __apple_block __weak id var = test6_source();
+  __block __weak id var = test6_source();
   test6_helper(^{ var = 0; });
 
   // CHECK:    define void @test6()
@@ -327,7 +327,7 @@ id test9(void) {
 // Test that we correctly initialize __block variables
 // when the initialization captures the variable.
 void test10a(void) {
-  __apple_block void (^block)(void) = ^{ block(); };
+  __block void (^block)(void) = ^{ block(); };
   // CHECK:    define void @test10a()
   // CHECK:      [[BYREF:%.*]] = alloca [[BYREF_T:%.*]],
 
@@ -388,7 +388,7 @@ void test10a(void) {
 // Test that we correctly assign to __block variables when the
 // assignment captures the variable.
 void test10b(void) {
-  __apple_block void (^block)(void);
+  __block void (^block)(void);
   block = ^{ block(); };
 
   // CHECK:    define void @test10b()

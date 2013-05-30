@@ -233,7 +233,7 @@ void ASTStmtWriter::VisitGCCAsmStmt(GCCAsmStmt *S) {
   Writer.AddStmt(S->getAsmString());
 
   // Outputs
-  for (unsigned I = 0, N = S->getNumOutputs(); I != N; ++I) {
+  for (unsigned I = 0, N = S->getNumOutputs(); I != N; ++I) {      
     Writer.AddIdentifierRef(S->getOutputIdentifier(I), Record);
     Writer.AddStmt(S->getOutputConstraintLiteral(I));
     Writer.AddStmt(S->getOutputExpr(I));
@@ -471,15 +471,15 @@ void ASTStmtWriter::VisitOffsetOfExpr(OffsetOfExpr *E) {
     case OffsetOfExpr::OffsetOfNode::Array:
       Record.push_back(ON.getArrayExprIndex());
       break;
-
+        
     case OffsetOfExpr::OffsetOfNode::Field:
       Writer.AddDeclRef(ON.getField(), Record);
       break;
-
+        
     case OffsetOfExpr::OffsetOfNode::Identifier:
       Writer.AddIdentifierRef(ON.getFieldName(), Record);
       break;
-
+        
     case OffsetOfExpr::OffsetOfNode::Base:
       Writer.AddCXXBaseSpecifier(*ON.getBase(), Record);
       break;
@@ -542,7 +542,7 @@ void ASTStmtWriter::VisitMemberExpr(MemberExpr *E) {
   }
 
   Record.push_back(E->hadMultipleCandidates());
-  
+
   DeclAccessPair FoundDecl = E->getFoundDecl();
   Writer.AddDeclRef(FoundDecl.getDecl(), Record);
   Record.push_back(FoundDecl.getAccess());
@@ -559,10 +559,12 @@ void ASTStmtWriter::VisitMemberExpr(MemberExpr *E) {
   Code = serialization::EXPR_MEMBER;
 }
 
+// ===== Scout =================================================================
+// SC_TODO - remove scout vector support. 
 void ASTStmtWriter::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *E) {
 
 }
-
+// =============================================================================
 void ASTStmtWriter::VisitObjCIsaExpr(ObjCIsaExpr *E) {
   VisitExpr(E);
   Writer.AddStmt(E->getBase());
@@ -955,7 +957,7 @@ void ASTStmtWriter::VisitObjCPropertyRefExpr(ObjCPropertyRefExpr *E) {
     Record.push_back(2);
     Writer.AddDeclRef(E->getClassReceiver(), Record);
   }
-
+  
   Code = serialization::EXPR_OBJC_PROPERTY_REF_EXPR;
 }
 
@@ -999,9 +1001,9 @@ void ASTStmtWriter::VisitObjCMessageExpr(ObjCMessageExpr *E) {
     Writer.AddDeclRef(E->getMethodDecl(), Record);
   } else {
     Record.push_back(0);
-    Writer.AddSelectorRef(E->getSelector(), Record);
+    Writer.AddSelectorRef(E->getSelector(), Record);    
   }
-
+    
   Writer.AddSourceLocation(E->getLeftLoc(), Record);
   Writer.AddSourceLocation(E->getRightLoc(), Record);
 
@@ -1335,7 +1337,7 @@ void ASTStmtWriter::VisitCXXDeleteExpr(CXXDeleteExpr *E) {
   Writer.AddDeclRef(E->getOperatorDelete(), Record);
   Writer.AddStmt(E->getArgument());
   Writer.AddSourceLocation(E->getSourceRange().getBegin(), Record);
-
+  
   Code = serialization::EXPR_CXX_DELETE;
 }
 
@@ -1365,7 +1367,7 @@ void ASTStmtWriter::VisitExprWithCleanups(ExprWithCleanups *E) {
   Record.push_back(E->getNumObjects());
   for (unsigned i = 0, e = E->getNumObjects(); i != e; ++i)
     Writer.AddDeclRef(E->getObject(i), Record);
-
+  
   Writer.AddStmt(E->getSubExpr());
   Code = serialization::EXPR_EXPR_WITH_CLEANUPS;
 }
@@ -1373,6 +1375,7 @@ void ASTStmtWriter::VisitExprWithCleanups(ExprWithCleanups *E) {
 void
 ASTStmtWriter::VisitCXXDependentScopeMemberExpr(CXXDependentScopeMemberExpr *E){
   VisitExpr(E);
+
   // Don't emit anything here, HasTemplateKWAndArgsInfo must be
   // emitted first.
 
@@ -1399,6 +1402,7 @@ ASTStmtWriter::VisitCXXDependentScopeMemberExpr(CXXDependentScopeMemberExpr *E){
 void
 ASTStmtWriter::VisitDependentScopeDeclRefExpr(DependentScopeDeclRefExpr *E) {
   VisitExpr(E);
+
   // Don't emit anything here, HasTemplateKWAndArgsInfo must be
   // emitted first.
 
@@ -1429,6 +1433,7 @@ ASTStmtWriter::VisitCXXUnresolvedConstructExpr(CXXUnresolvedConstructExpr *E) {
 
 void ASTStmtWriter::VisitOverloadExpr(OverloadExpr *E) {
   VisitExpr(E);
+
   // Don't emit anything here, HasTemplateKWAndArgsInfo must be
   // emitted first.
 
@@ -1683,7 +1688,7 @@ void ASTWriter::WriteSubStmt(Stmt *S,
   RecordData Record;
   ASTStmtWriter Writer(*this, Record);
   ++NumStatements;
-
+  
   if (!S) {
     Stream.EmitRecord(serialization::STMT_NULL_PTR, Record);
     return;
@@ -1722,7 +1727,7 @@ void ASTWriter::WriteSubStmt(Stmt *S,
   Writer.Code = serialization::STMT_NULL_PTR;
   Writer.AbbrevToUse = 0;
   Writer.Visit(S);
-
+  
 #ifndef NDEBUG
   if (Writer.Code == serialization::STMT_NULL_PTR) {
     SourceManager &SrcMgr
@@ -1741,7 +1746,7 @@ void ASTWriter::WriteSubStmt(Stmt *S,
   // without knowing it in advance.
   while (!SubStmts.empty())
     WriteSubStmt(SubStmts.pop_back_val(), SubStmtEntries, ParentStmts);
-
+  
   Stream.EmitRecord(Writer.Code, Record, Writer.AbbrevToUse);
  
   SubStmtEntries[S] = Stream.GetCurrentBitNo();
@@ -1759,7 +1764,7 @@ void ASTWriter::FlushStmts() {
 
   for (unsigned I = 0, N = StmtsToEmit.size(); I != N; ++I) {
     WriteSubStmt(StmtsToEmit[I], SubStmtEntries, ParentStmts);
-
+    
     assert(N == StmtsToEmit.size() &&
            "Substatement written via AddStmt rather than WriteSubStmt!");
 
@@ -1775,25 +1780,10 @@ void ASTWriter::FlushStmts() {
   StmtsToEmit.clear();
 }
 
-// =============================================================================
-// scout
+// ===== Scout ========================================================================
 //SC_TODO: Implement these
-
-void ASTStmtWriter::VisitForAllStmt(ForAllStmt *S) {
-
-}
-
-void ASTStmtWriter::VisitForAllArrayStmt(ForAllArrayStmt *S) {
-
-}
-
-void ASTStmtWriter::VisitRenderAllStmt(RenderAllStmt *S) {
-
-}
-
-void ASTStmtWriter::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *S) {
-
-}
-
+void ASTStmtWriter::VisitForAllStmt(ForAllStmt *S) { }
+void ASTStmtWriter::VisitForAllArrayStmt(ForAllArrayStmt *S) { }
+void ASTStmtWriter::VisitRenderAllStmt(RenderAllStmt *S) { }
+void ASTStmtWriter::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *S) { }
 // =============================================================================
-

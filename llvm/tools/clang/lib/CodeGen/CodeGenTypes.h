@@ -127,7 +127,6 @@ public:
   // ===== Scout ==============================================================
   llvm::Type *ConvertScoutMeshType(QualType T);
   // ==========================================================================
-  
   /// ConvertTypeForMem - Convert type T into a llvm::Type.  This differs from
   /// ConvertType in that it is used to convert to the memory representation for
   /// a type.  For example, the scalar representation for _Bool is i1, but the

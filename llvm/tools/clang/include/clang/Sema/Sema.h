@@ -1652,10 +1652,8 @@ public:
   bool SpecialMemberIsTrivial(CXXMethodDecl *MD, CXXSpecialMember CSM,
                               bool Diagnose = false);
   CXXSpecialMember getSpecialMember(const CXXMethodDecl *MD);
-
   void ActOnLastBitfield(SourceLocation DeclStart,
                          SmallVectorImpl<Decl *> &AllIvarDecls);
-
   Decl *ActOnIvar(Scope *S, SourceLocation DeclStart,
                   Declarator &D, Expr *BitfieldWidth,
                   tok::ObjCKeywordKind visibility);
@@ -1890,7 +1888,6 @@ public:
                                  QualType &ConvertedType);
   bool IsBlockPointerConversion(QualType FromType, QualType ToType,
                                 QualType& ConvertedType);
-
   bool FunctionArgTypesAreEqual(const FunctionProtoType *OldType,
                                 const FunctionProtoType *NewType,
                                 unsigned *ArgPos = 0);
@@ -2537,7 +2534,6 @@ public:
   /// properties which must be synthesized in the class's \@implementation.
   void DefaultSynthesizeProperties (Scope *S, ObjCImplDecl* IMPDecl,
                                     ObjCInterfaceDecl *IDecl);
-
   void DefaultSynthesizeProperties(Scope *S, Decl *D);
 
   /// CollectImmediateProperties - This routine collects all properties in
@@ -2798,7 +2794,6 @@ public:
                           FullExprArg Third,
                           SourceLocation RParenLoc,
                           Stmt *Body);
-
   ExprResult CheckObjCForCollectionOperand(SourceLocation forLoc,
                                            Expr *collection);
   StmtResult ActOnObjCForCollectionStmt(SourceLocation ForColLoc,
@@ -2985,7 +2980,6 @@ public:
   bool DiagnoseUseOfDecl(NamedDecl *D, SourceLocation Loc,
                          const ObjCInterfaceDecl *UnknownObjCClass=0);
   void NoteDeletedFunction(FunctionDecl *FD);
-
   std::string getDeletedOrUnavailableSuffix(const FunctionDecl *FD);
   bool DiagnosePropertyAccessorMismatch(ObjCPropertyDecl *PD,
                                         ObjCMethodDecl *Getter,
@@ -7024,6 +7018,7 @@ public:
   // For compound assignment, pass both expressions and the converted type.
   QualType CheckAssignmentOperands( // C99 6.5.16.[1,2]
     Expr *LHSExpr, ExprResult &RHS, SourceLocation Loc, QualType CompoundType);
+
   ExprResult checkPseudoObjectIncDec(Scope *S, SourceLocation OpLoc,
                                      UnaryOperatorKind Opcode, Expr *Op);
   ExprResult checkPseudoObjectAssignment(Scope *S, SourceLocation OpLoc,
@@ -7135,7 +7130,6 @@ public:
 
   /// \brief Checks for invalid conversions and casts between
   /// retainable pointers and other pointer kinds.
-
   ARCConversionResult CheckObjCARCConversion(SourceRange castRange,
                                              QualType castType, Expr *&op,
                                              CheckedConversionKind CCK);

@@ -647,14 +647,6 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     case Stmt::DefaultStmtClass:
     case Stmt::DoStmtClass:
     case Stmt::ForStmtClass:
-
-    // scout - Scout Stmts
-    case Stmt::ForAllStmtClass:
-    case Stmt::RenderAllStmtClass:
-    case Stmt::ScoutVectorMemberExprClass:
-    case Stmt::ForAllArrayStmtClass:
-    case Stmt::VolumeRenderAllStmtClass:
-
     case Stmt::GotoStmtClass:
     case Stmt::IfStmtClass:
     case Stmt::IndirectGotoStmtClass:
@@ -667,6 +659,14 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     case Expr::MSDependentExistsStmtClass:
     case Stmt::CapturedStmtClass:
       llvm_unreachable("Stmt should not be in analyzer evaluation loop");
+    // ===== Scout ===================================================================
+    case Stmt::ForAllStmtClass:
+    case Stmt::RenderAllStmtClass:
+    case Stmt::ScoutVectorMemberExprClass:
+    case Stmt::ForAllArrayStmtClass:
+    case Stmt::VolumeRenderAllStmtClass:
+      llvm_unreachable("Stmt should not be in analyzer evaluation loop");
+    // ===============================================================================
 
     case Stmt::ObjCSubscriptRefExprClass:
     case Stmt::ObjCPropertyRefExprClass:
@@ -1621,7 +1621,9 @@ void ExprEngine::VisitCommonDeclRefExpr(const Expr *Ex, const NamedDecl *D,
   const LocationContext *LCtx = Pred->getLocationContext();
 
   if (const VarDecl *VD = dyn_cast<VarDecl>(D)) {
-    assert(Ex->isGLValue());
+    // C permits "extern void v", and if you cast the address to a valid type,
+    // you can even do things with it. We simply pretend 
+    assert(Ex->isGLValue() || VD->getType()->isVoidType());
     SVal V = state->getLValue(VD, Pred->getLocationContext());
 
     // For references, the 'lvalue' is the pointer address stored in the

@@ -1186,13 +1186,13 @@ DeduceTemplateArgumentsByTypeMatch(Sema &S,
     case Type::FunctionNoProto:
     case Type::Record:
       
-    // scout - Mesh
-    // Currently meshes are not used as templates
+    // ===== Scout =====================================================================
+    // Currently meshes can not be used as templates
     case Type::UniformMesh:
     case Type::StructuredMesh:
     case Type::RectlinearMesh:
     case Type::UnstructuredMesh:
-      
+    // =================================================================================      
     case Type::Enum:
     case Type::ObjCObject:
     case Type::ObjCInterface:
@@ -4623,13 +4623,12 @@ MarkUsedTemplateParameters(ASTContext &Ctx, QualType T,
   case Type::VariableArray:
   case Type::FunctionNoProto:
   case Type::Record:
-
-  // scout - Mesh types
+  // ===== Scout =========================================================================
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectlinearMesh:
   case Type::UnstructuredMesh:
-      
+  // =====================================================================================      
   case Type::Enum:
   case Type::ObjCInterface:
   case Type::ObjCObject:

@@ -10,7 +10,7 @@
 
 int main() {
     NSObject *object = 0;
-    __weak __apple_block NSObject* weak_object = object;
+    __weak __block NSObject* weak_object = object;
     void (^callback) (void) = [^{
         if (weak_object)
                 [weak_object copy];

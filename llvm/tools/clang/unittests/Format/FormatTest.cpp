@@ -3640,6 +3640,7 @@ TEST_F(FormatTest, BlockComments) {
             format("#define A\n"
                    "/* */someCall(parameter);",
                    getLLVMStyleWithColumns(15)));
+  EXPECT_EQ("/*\n**\n*/", format("/*\n**\n*/"));
 
   FormatStyle NoBinPacking = getLLVMStyle();
   NoBinPacking.BinPackParameters = false;
@@ -3692,6 +3693,33 @@ TEST_F(FormatTest, BlockCommentsInMacros) {
                    "  /* one line */   \\\n"
                    "  someCall();",
                    getLLVMStyleWithColumns(20)));
+}
+
+TEST_F(FormatTest, BlockCommentsAtEndOfLine) {
+  EXPECT_EQ("a = {\n"
+            "  1111 /*    */\n"
+            "};",
+            format("a = {1111\n"
+                   "/*    */\n"
+                   "};",
+                   getLLVMStyleWithColumns(15)));
+  EXPECT_EQ("a = {\n"
+            "  1111 /*      */\n"
+            "};",
+            format("a = {1111\n"
+                   "/*      */\n"
+                   "};",
+                   getLLVMStyleWithColumns(15)));
+
+  // FIXME: The formatting is still wrong here.
+  EXPECT_EQ("a = {\n"
+            "  1111 /*      a\n"
+            "          */\n"
+            "};",
+            format("a = {1111\n"
+                   "/*      a */\n"
+                   "};",
+                   getLLVMStyleWithColumns(15)));
 }
 
 TEST_F(FormatTest, IndentLineCommentsInStartOfBlockAtEndOfFile) {

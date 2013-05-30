@@ -1223,6 +1223,3 @@ void Stmt::Profile(llvm::FoldingSetNodeID &ID, const ASTContext &Context,
 }
 
 #include "Scout/StmtProfile.cpp"
-
-
-

@@ -13,6 +13,6 @@ void MYFUNC() {
 // CHECK-NEXT: [[T0:%.*]] = load [[OBSERVER_T]]** [[FORWARDING]]
 // CHECK-NEXT: [[OBSERVER:%.*]] = getelementptr inbounds [[OBSERVER_T]]* [[T0]], i32 0, i32 6
 // CHECK-NEXT: store i8* [[T1]], i8** [[OBSERVER]]
-  __apple_block id observer = ^{ return observer; };
+  __block id observer = ^{ return observer; };
 }
 

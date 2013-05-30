@@ -83,16 +83,6 @@ namespace clang {
   class NonTypeTemplateParmDecl;
   class TemplateTemplateParmDecl;
   class TagDecl;
-
-// scout - decls
-  class MeshDecl;
-  class UniformMeshDecl;
-  class StructuredMeshDecl;
-  class RectlinearMeshDecl;
-  class UnstructuredMeshDecl;
-
-  class MemberExpr;
-
   class RecordDecl;
   class CXXRecordDecl;
   class EnumDecl;
@@ -113,7 +103,14 @@ namespace clang {
   class ExtQuals;
   class ExtQualsTypeCommonBase;
   struct PrintingPolicy;
-
+  // ===== Scout =======================================================================================
+  class MeshDecl;
+  class UniformMeshDecl;
+  class StructuredMeshDecl;
+  class RectlinearMeshDecl;
+  class UnstructuredMeshDecl;
+  class MemberExpr;
+  // ===================================================================================================
   template <typename> class CanQual;
   typedef CanQual<Type> CanQualType;
 
@@ -655,7 +652,6 @@ public:
     return getLocalFastQualifiers() || hasLocalNonFastQualifiers();
   }
 
-
   /// \brief Determine whether this type has any qualifiers.
   bool hasQualifiers() const;
 
@@ -1178,9 +1174,9 @@ public:
 #define LAST_TYPE(Class) TypeLast = Class,
 #define ABSTRACT_TYPE(Class, Base)
 #include "clang/AST/TypeNodes.def"
-    TagFirst = Record, TagLast = Enum,
+    TagFirst = Record, TagLast = Enum
     // ===== Scout ========================================================
-    MeshFirst = UniformMesh, MeshLast = UnstructuredMesh
+    , MeshFirst = UniformMesh, MeshLast = UnstructuredMesh
     // ====================================================================
   };
 
@@ -1395,7 +1391,6 @@ protected:
     TypeBits.CachedLinkage = NoLinkage;
     TypeBits.FromAST = false;
   }
-
   friend class ASTContext;
 
   void setDependent(bool D = true) {
@@ -1540,10 +1535,6 @@ public:
   bool isFundamentalType() const;
   bool isCompoundType() const;
 
-  // ===== Scout ========================================================
-  bool isMeshType() const;
-  // ====================================================================
-  
   // Type Predicates: Check to see if this type is structurally the specified
   // type, ignoring typedefs and qualifiers.
   bool isFunctionType() const;
@@ -1614,6 +1605,10 @@ public:
   /// isObjCLifetimeType(), is implicitly __unsafe_unretained rather
   /// than implicitly __strong.
   bool isObjCARCImplicitlyUnretainedType() const;
+
+  // ===== Scout ========================================================
+  bool isMeshType() const;
+  // ====================================================================
 
   /// Return the implicit lifetime for this type, which must not be dependent.
   Qualifiers::ObjCLifetime getObjCARCImplicitLifetime() const;
@@ -2556,11 +2551,13 @@ public:
     case 'y': return 1;
     case 'z': return 2;
     case 'w': return 3;
-    // scout: support color channel access as well. 
+    // ===== Scout =========================================================================
+    // Also support GLSL-like color channel access.
     case 'r': return 0;
     case 'g': return 1;
     case 'b': return 2;
     case 'a': return 3;      
+    // =====================================================================================
     }
   }
   static int getNumericAccessorIdx(char c) {
@@ -3305,25 +3302,8 @@ public:
   static bool classof(const Type *T) { return T->getTypeClass() == Record; }
 };
 
-
-// #include "clang/scout/MeshTypes.h"
-  
-// scout - MeshType
-//
-// TOOD: We should probably add a new type for
-// each mesh possibility (uniform, rectilinear, etc.).
-// They are different types.  As documented below we
-// also need to make it possible to store all mesh
-// data (for edges, faces, cells, ...) within a single
-// mesh type -- this will make it easier to analyze
-// data layout choices by interogating a single type
-// vs. having to visit an instance per attribute.
-// In this case, can the InstanceType be replaced with
-// a set of MemberExpr's per attribute (mesh location).
-// We can then use accessor methods to get hold of each
-// set of location data and also determine if it doesn't
-// have any (e.g. null pointer return).
-//
+// ===== Scout =====================================================================================
+// SC_TODO : Can we move this into a separate file?
 class MeshType : public Type {
   
  public:
@@ -3464,14 +3444,13 @@ public:
     return T->getTypeClass() == UnstructuredMesh;
   }
 };
+// =================================================================================================
 
-
-  // ===== Scout ==========================================================
-  //
-  class MeshFieldType: public Type {
-    
-   public:
-  
+// ===== Scout =====================================================================================
+// SC_TODO - can we move this into a separate file???
+//
+class MeshFieldType: public Type {
+  public:
     enum FieldLocation {
       UnknownFieldLoc = 0,    
       CellsLoc,
@@ -3510,9 +3489,7 @@ public:
     FieldLocation Location;
     friend class ASTContext;   // ASTContext creates these.    
   };
-  
-  //
-  // ========================================================================  
+  // =================================================================================================
   
 /// EnumType - This is a helper class that allows the use of isa/cast/dyncast
 /// to detect TagType objects of enums.
@@ -5029,11 +5006,6 @@ inline bool Type::isCompoundType() const {
          isMemberPointerType();
 }
 
-// Scout 
-inline bool Type::isMeshType() const {
-  return isa<MeshType>(CanonicalType);
-}
-  
 inline bool Type::isFunctionType() const {
   return isa<FunctionType>(CanonicalType);
 }
@@ -5407,6 +5379,11 @@ inline const ArrayType *Type::castAsArrayTypeUnsafe() const {
   return cast<ArrayType>(getUnqualifiedDesugaredType());
 }
 
+// ===== Scout =====================================================================================
+inline bool Type::isMeshType() const {
+  return isa<MeshType>(CanonicalType);
+}
+// =================================================================================================
 }  // end namespace clang
 
 #endif

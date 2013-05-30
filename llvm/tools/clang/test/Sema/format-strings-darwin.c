@@ -17,9 +17,9 @@ void test() {
 
   printf("%D", justRight);
   printf("%D", tooLong);
-  printf("%D", justRight);
+  printf("%U", justRight);
   printf("%U", tooLong);
-  printf("%D", justRight);
+  printf("%O", justRight);
   printf("%O", tooLong);
 
 #ifdef ALLOWED

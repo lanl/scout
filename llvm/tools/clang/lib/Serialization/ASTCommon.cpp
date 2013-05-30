@@ -48,7 +48,8 @@ serialization::TypeIdxFromBuiltin(const BuiltinType *BT) {
   case BuiltinType::Float:      ID = PREDEF_TYPE_FLOAT_ID;      break;
   case BuiltinType::Double:     ID = PREDEF_TYPE_DOUBLE_ID;     break;
 
-  // scout - vector types
+  // ===== Scout =================================================================
+  // SC_TODO - remove Scout vector types. 
   case BuiltinType::Bool2:      ID = PREDEF_TYPE_BOOL2_ID;     break;
   case BuiltinType::Bool3:      ID = PREDEF_TYPE_BOOL3_ID;     break;
   case BuiltinType::Bool4:      ID = PREDEF_TYPE_BOOL4_ID;     break;
@@ -70,6 +71,7 @@ serialization::TypeIdxFromBuiltin(const BuiltinType *BT) {
   case BuiltinType::Double2:    ID = PREDEF_TYPE_DOUBLE2_ID;   break;
   case BuiltinType::Double3:    ID = PREDEF_TYPE_DOUBLE3_ID;   break;
   case BuiltinType::Double4:    ID = PREDEF_TYPE_DOUBLE4_ID;   break;
+  // ============================================================================
   case BuiltinType::LongDouble: ID = PREDEF_TYPE_LONGDOUBLE_ID; break;
   case BuiltinType::NullPtr:    ID = PREDEF_TYPE_NULLPTR_ID;    break;
   case BuiltinType::Char16:     ID = PREDEF_TYPE_CHAR16_ID;     break;
@@ -233,12 +235,13 @@ bool serialization::isRedeclarableDeclKind(unsigned Kind) {
   case Decl::OMPThreadPrivate:
     return false;
 
-  //scout
+  // ===== Scout ==============================================================================
   case Decl::UniformMesh:
   case Decl::StructuredMesh:
   case Decl::RectlinearMesh:
   case Decl::UnstructuredMesh:
     return false;
+  // ==========================================================================================
   }
 
   llvm_unreachable("Unhandled declaration kind");

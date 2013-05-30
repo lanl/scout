@@ -4556,9 +4556,8 @@ QualType TreeTransform<Derived>::TransformRecordType(TypeLocBuilder &TLB,
   return Result;
 }
 
-// scout - Mesh
-// TODO - implement
-
+// ===== Scout ===========================================================================
+// SC_TODO - implement
 /*
 template<typename Derived>
 QualType TreeTransform<Derived>::TransformMeshType(TypeLocBuilder &TLB,
@@ -4612,7 +4611,7 @@ TreeTransform<Derived>::TransformUnstructuredMeshType(TypeLocBuilder &TLB,
                                                       UnstructuredMeshTypeLoc TL) {
   return QualType();
 }
-  
+// ==========================================================================================
 template<typename Derived>
 QualType TreeTransform<Derived>::TransformEnumType(TypeLocBuilder &TLB,
                                                    EnumTypeLoc TL) {
@@ -5570,8 +5569,8 @@ TreeTransform<Derived>::TransformForStmt(ForStmt *S) {
                                      FullInc, S->getRParenLoc(), Body.get());
 }
 
-// scout - Scout Stmts
-// TODO - implement
+// ===== Scout =================================================================================
+// SC_TODO - implement
 template<typename Derived>
 StmtResult
 TreeTransform<Derived>::TransformForAllStmt(ForAllStmt *S) {
@@ -5603,6 +5602,7 @@ TreeTransform<Derived>::TransformVolumeRenderAllStmt(VolumeRenderAllStmt *S) {
   R.set(S);
   return R;
 }
+// ==========================================================================================
   
 template<typename Derived>
 StmtResult
@@ -6698,8 +6698,10 @@ TreeTransform<Derived>::TransformMemberExpr(MemberExpr *E) {
                                         FirstQualifierInScope);
 }
 
-// scout - support for Scout vector member referencing
-  
+
+// ===== Scout =========================================================================
+// support for Scout vector member referencing
+// SC_TODO - remove scout vector support. 
 template<typename Derived>
 ExprResult
 TreeTransform<Derived>::TransformScoutVectorMemberExpr(ScoutVectorMemberExpr *E) {
@@ -6707,6 +6709,7 @@ TreeTransform<Derived>::TransformScoutVectorMemberExpr(ScoutVectorMemberExpr *E)
   R.set(E);
   return R;
 }
+// =====================================================================================
   
 template<typename Derived>
 ExprResult

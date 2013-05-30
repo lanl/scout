@@ -293,9 +293,9 @@ bool ArgType::matchesType(ASTContext &C, QualType argTy) const {
           case BuiltinType::UShort:
             return T == C.ShortTy;
           case BuiltinType::Int:
-            return T == C.IntTy;
-          case BuiltinType::UInt:
             return T == C.UnsignedIntTy;
+          case BuiltinType::UInt:
+            return T == C.IntTy;
           case BuiltinType::Long:
             return T == C.UnsignedLongTy;
           case BuiltinType::ULong:
@@ -336,15 +336,16 @@ bool ArgType::matchesType(ASTContext &C, QualType argTy) const {
         C.getCanonicalType(PT->getPointeeType()).getUnqualifiedType();
       return pointeeTy == C.getWideCharType();
     }
-
+    
     case WIntTy: {
-      QualType PromoArg =
+      
+      QualType PromoArg = 
         argTy->isPromotableIntegerType()
           ? C.getPromotedIntegerType(argTy) : argTy;
-
+      
       QualType WInt = C.getCanonicalType(C.getWIntType()).getUnqualifiedType();
       PromoArg = C.getCanonicalType(PromoArg).getUnqualifiedType();
-
+      
       // If the promoted argument is the corresponding signed type of the
       // wint_t type, then it should match.
       if (PromoArg->hasSignedIntegerRepresentation() &&
@@ -578,7 +579,7 @@ bool FormatSpecifier::hasValidLengthModifier(const TargetInfo &Target) const {
   switch (LM.getKind()) {
     case LengthModifier::None:
       return true;
-
+      
     // Handle most integer flags
     case LengthModifier::AsChar:
     case LengthModifier::AsShort:
@@ -602,7 +603,7 @@ bool FormatSpecifier::hasValidLengthModifier(const TargetInfo &Target) const {
         default:
           return false;
       }
-
+      
     // Handle 'l' flag
     case LengthModifier::AsLong:
       switch (CS.getKind()) {
@@ -631,7 +632,7 @@ bool FormatSpecifier::hasValidLengthModifier(const TargetInfo &Target) const {
         default:
           return false;
       }
-
+      
     case LengthModifier::AsLongDouble:
       switch (CS.getKind()) {
         case ConversionSpecifier::aArg:

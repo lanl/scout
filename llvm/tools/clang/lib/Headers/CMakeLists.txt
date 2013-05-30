@@ -75,7 +75,6 @@ foreach( f ${files} )
       COMMENT "Copying clang's ${f}...")    
     list(APPEND out_files ${other_dst})
   endif()
-
 endforeach( f )
 
 add_custom_command(OUTPUT ${output_dir}/arm_neon.h 

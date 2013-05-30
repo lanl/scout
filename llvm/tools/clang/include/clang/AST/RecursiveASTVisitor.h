@@ -405,14 +405,12 @@ private:
   bool TraverseArrayTypeLocHelper(ArrayTypeLoc TL);
   bool TraverseRecordHelper(RecordDecl *D);
   bool TraverseCXXRecordHelper(CXXRecordDecl *D);
-  
-// scout - Scout mesh types
-  
+  // ===== Scout ==========================================================================
   bool TraverseUniformMeshHelper(UniformMeshDecl* D);
   bool TraverseStructuredMeshHelper(StructuredMeshDecl* D);
   bool TraverseRectlinearMeshHelper(RectlinearMeshDecl* D);
   bool TraverseUnstructuredMeshHelper(UnstructuredMeshDecl* D);
-  
+  // ======================================================================================
   bool TraverseDeclaratorHelper(DeclaratorDecl *D);
   bool TraverseDeclContextHelper(DeclContext *DC);
   bool TraverseFunctionHelper(FunctionDecl *D);
@@ -932,12 +930,13 @@ DEF_TRAVERSE_TYPE(AutoType, {
     TRY_TO(TraverseType(T->getDeducedType()));
   })
 
-// scout - Scout Mesh types
+// ===== Scout ======================================================================
 DEF_TRAVERSE_TYPE(UniformMeshType, { })
 DEF_TRAVERSE_TYPE(StructuredMeshType, { })
 DEF_TRAVERSE_TYPE(RectlinearMeshType, { })
 DEF_TRAVERSE_TYPE(UnstructuredMeshType, { })
-  
+// ==================================================================================
+
 DEF_TRAVERSE_TYPE(RecordType, { })
 DEF_TRAVERSE_TYPE(EnumType, { })
 DEF_TRAVERSE_TYPE(TemplateTypeParmType, { })
@@ -1162,12 +1161,12 @@ DEF_TRAVERSE_TYPELOC(AutoType, {
     TRY_TO(TraverseType(TL.getTypePtr()->getDeducedType()));
   })
 
-// scout - Scout Mesh types
+// ===== Scout =======================================================================
 DEF_TRAVERSE_TYPELOC(UniformMeshType, { })
 DEF_TRAVERSE_TYPELOC(StructuredMeshType, { })
 DEF_TRAVERSE_TYPELOC(RectlinearMeshType, { })
 DEF_TRAVERSE_TYPELOC(UnstructuredMeshType, { })
-  
+// ===================================================================================  
 DEF_TRAVERSE_TYPELOC(RecordType, { })
 DEF_TRAVERSE_TYPELOC(EnumType, { })
 DEF_TRAVERSE_TYPELOC(TemplateTypeParmType, { })
@@ -1605,7 +1604,7 @@ bool RecursiveASTVisitor<Derived>::TraverseRecordHelper(
   return true;
 }
 
-// scout - Scout Mesh
+// ===== Scout ==================================================================================
   
 // Helper methods for MeshDecl types.
 template<typename Derived>
@@ -1643,7 +1642,7 @@ bool RecursiveASTVisitor<Derived>::TraverseUnstructuredMeshHelper(              
   TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
   return true;
 }
-  
+// ==============================================================================================
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseCXXRecordHelper(
     CXXRecordDecl *D) {
@@ -1665,8 +1664,7 @@ DEF_TRAVERSE_DECL(RecordDecl, {
     TRY_TO(TraverseRecordHelper(D));
   })
 
-  
-// scout - Scout Mesh types
+// ===== Scout ==================================================================================
 DEF_TRAVERSE_DECL(UniformMeshDecl, {
   TRY_TO(TraverseUniformMeshHelper(D));
 })
@@ -1682,7 +1680,7 @@ DEF_TRAVERSE_DECL(RectlinearMeshDecl, {
 DEF_TRAVERSE_DECL(UnstructuredMeshDecl, {
   TRY_TO(TraverseUnstructuredMeshHelper(D));
 })
-  
+// ==============================================================================================
 DEF_TRAVERSE_DECL(CXXRecordDecl, {
     TRY_TO(TraverseCXXRecordHelper(D));
   })
@@ -1975,14 +1973,12 @@ DEF_TRAVERSE_STMT(ContinueStmt, { })
 DEF_TRAVERSE_STMT(DefaultStmt, { })
 DEF_TRAVERSE_STMT(DoStmt, { })
 DEF_TRAVERSE_STMT(ForStmt, { })
-
-// scout - Scout Stmts
-  
+// ===== Scout ==========================================================================
 DEF_TRAVERSE_STMT(ForAllStmt, { })
 DEF_TRAVERSE_STMT(ForAllArrayStmt, { })
 DEF_TRAVERSE_STMT(RenderAllStmt, { })  
 DEF_TRAVERSE_STMT(VolumeRenderAllStmt, { })
-
+// ======================================================================================
 DEF_TRAVERSE_STMT(GotoStmt, { })
 DEF_TRAVERSE_STMT(IfStmt, { })
 DEF_TRAVERSE_STMT(IndirectGotoStmt, { })
@@ -2047,13 +2043,13 @@ DEF_TRAVERSE_STMT(MemberExpr, {
         S->getTemplateArgs(), S->getNumTemplateArgs()));
   })
 
-// scout - Scout vector types
-// TODO - implement
-  
+// ===== Scout ========================================================================
+// SC_TODO - This is not implemented -- however, we need to replace Scout's vector 
+// types with Clang's "builtin" support.  This has been done in the "refactor" repo
+// but has not been merged back into "devel". 
 DEF_TRAVERSE_STMT(ScoutVectorMemberExpr, {
-
 })
-  
+// ====================================================================================
 DEF_TRAVERSE_STMT(ImplicitCastExpr, {
     // We don't traverse the cast type, as it's not written in the
     // source code.

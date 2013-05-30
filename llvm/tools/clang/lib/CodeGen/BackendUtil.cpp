@@ -36,7 +36,6 @@
 #include "llvm/Transforms/Instrumentation.h"
 #include "llvm/Transforms/ObjCARC.h"
 #include "llvm/Transforms/Scalar.h"
-
 // ===== Scout ================================================================
 #include "scout/Config/defs.h"
 #ifdef SC_ENABLE_CUDA
@@ -47,8 +46,6 @@
 #endif
 #include "llvm/Transforms/Vectorize.h"
 // ============================================================================
-
-
 using namespace clang;
 using namespace llvm;
 
@@ -261,9 +258,9 @@ void EmitAssemblyHelper::CreateScoutPasses(TargetMachine *TM) {
 
 
 void EmitAssemblyHelper::CreatePasses(TargetMachine *TM) {
-
+  // ===== Scout ==============================================================
   CreateScoutPasses(TM);
-
+  // ============================================================================
   unsigned OptLevel = CodeGenOpts.OptimizationLevel;
   CodeGenOptions::InliningMethod Inlining = CodeGenOpts.getInlining();
 
@@ -325,7 +322,7 @@ void EmitAssemblyHelper::CreatePasses(TargetMachine *TM) {
   PMBuilder.LibraryInfo = new TargetLibraryInfo(TargetTriple);
   if (!CodeGenOpts.SimplifyLibCalls)
     PMBuilder.LibraryInfo->disableAllFunctions();
-
+  
   switch (Inlining) {
   case CodeGenOptions::NoInlining: break;
   case CodeGenOptions::NormalInlining: {

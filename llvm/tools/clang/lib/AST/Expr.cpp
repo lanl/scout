@@ -1363,8 +1363,6 @@ SourceLocation MemberExpr::getLocEnd() const {
   return EndLoc;
 }
 
-
-
 void CastExpr::CheckCastConsistency() const {
   switch (getCastKind()) {
   case CK_DerivedToBase:

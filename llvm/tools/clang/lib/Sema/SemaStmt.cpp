@@ -32,15 +32,13 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
-
-// scout
-#include "clang/AST/StmtVisitor.h"
-
-#include <map>
-
 using namespace clang;
 using namespace sema;
 
+// ===== Scout ===================================================================
+#include "clang/AST/StmtVisitor.h"
+#include <map>
+// ===============================================================================
 StmtResult Sema::ActOnExprStmt(ExprResult FE) {
   if (FE.isInvalid())
     return StmtError();
@@ -2819,7 +2817,6 @@ Sema::ActOnObjCAtThrowStmt(SourceLocation AtLoc, Expr *Throw,
     if (!AtCatchParent)
       return StmtError(Diag(AtLoc, diag::error_rethrow_used_outside_catch));
   }
-  
   return BuildObjCAtThrowStmt(AtLoc, Throw);
 }
 
@@ -3000,11 +2997,12 @@ Sema::ActOnSEHFinallyBlock(SourceLocation Loc,
   return Owned(SEHFinallyStmt::Create(Context,Loc,Block));
 }
 
-// scout - ForAllVisitor class to check that LHS mesh field assignment
+// ===== Scout ==========================================================================
+// ForAllVisitor class to check that LHS mesh field assignment
 // operators do not appear as subsequent RHS values, and various other
 // semantic checks
 
-namespace{
+namespace {
 
   class ForAllVisitor : public StmtVisitor<ForAllVisitor> {
   public:
@@ -3766,6 +3764,7 @@ Sema::ActOnVolumeRenderAllStmt(
 
   return Owned(vrs);
 }
+// ======================================================================================
 
 StmtResult Sema::BuildMSDependentExistsStmt(SourceLocation KeywordLoc,
                                             bool IsIfExists,

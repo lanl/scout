@@ -1,5 +1,4 @@
 include(sc-llvm-link-libs)
-
 set(LLVM_LINK_COMPONENTS
   jit
   interpreter
@@ -21,7 +20,6 @@ add_clang_executable(clang-interpreter
 add_dependencies(clang-interpreter
   clang-headers
   )
-
 
 target_link_libraries(clang-interpreter
   clangFrontend

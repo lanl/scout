@@ -1544,7 +1544,10 @@ StringRef BuiltinType::getName(const PrintingPolicy &Policy) const {
   case ObjCId:            return "id";
   case ObjCClass:         return "Class";
   case ObjCSel:           return "SEL";
-  // scout - vector types to strings
+  // ===== Scout =============================================================
+  // SC_TODO : We need to remove Scout's vector types in favor of Clang's 
+  // "builtin" support.  This has been done within the "refactor" branch 
+  // but has yet to be merged in with "devel". 
   case Bool2:             return "bool2";
   case Bool3:             return "bool3";
   case Bool4:             return "bool4";
@@ -1566,6 +1569,7 @@ StringRef BuiltinType::getName(const PrintingPolicy &Policy) const {
   case Double2:           return "double2";
   case Double3:           return "double3";
   case Double4:           return "double4";
+  // =========================================================================
   case OCLImage1d:        return "image1d_t";
   case OCLImage1dArray:   return "image1d_array_t";
   case OCLImage1dBuffer:  return "image1d_buffer_t";
@@ -2147,7 +2151,7 @@ static CachedProperties computeCachedProperties(const Type *T) {
     //     - it is a fundamental type (3.9.1); or
     return CachedProperties(ExternalLinkage, false);
 
-    // scout - Mesh
+  // ===== Scout =============================================================
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectlinearMesh:
@@ -2160,7 +2164,7 @@ static CachedProperties computeCachedProperties(const Type *T) {
       !Mesh->getIdentifier();
     return CachedProperties(L, IsLocalOrUnnamed);
   }
-
+  // =========================================================================
   case Type::Record:
   case Type::Enum: {
     const TagDecl *Tag = cast<TagType>(T)->getDecl();
@@ -2304,12 +2308,13 @@ static LinkageInfo computeLinkageInfo(const Type *T) {
   case Type::Atomic:
     return computeLinkageInfo(cast<AtomicType>(T)->getValueType());
 
-  //scout
+  // ===== Scout =============================================================
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectlinearMesh:
   case Type::UnstructuredMesh:
     return LinkageInfo::external();
+  // =========================================================================
   }
 
   llvm_unreachable("unhandled type class");

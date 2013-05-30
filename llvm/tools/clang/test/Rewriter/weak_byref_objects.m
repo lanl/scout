@@ -2,8 +2,8 @@
 
 #define nil 0
 int main() {
-        __weak __apple_block id foo = nil;
-        __apple_block id foo2 = nil;
+        __weak __block id foo = nil;
+        __block id foo2 = nil;
         id foo3 = nil;
 
         void (^myblock)() = ^{

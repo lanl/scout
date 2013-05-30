@@ -311,6 +311,10 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.setInlining(Args.hasArg(OPT_fno_inline_functions) ?
                      CodeGenOptions::OnlyAlwaysInlining : Opts.getInlining());
 
+  // ===== Scout =============================================================
+  // SC_TODO - we could move this into our own function call to avoid 
+  // more lines of merging when sync'ing with the trunk… 
+  // 
   // scout enable NVIDIA GPU support if OPT_gpu is present.
   Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
 
@@ -332,7 +336,7 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
 
   if(Opts.ScoutNvidiaGPU && Opts.ScoutAMDGPU)
     Diags.Report(diag::err_scout_gpu_nvidia_amd_combo);
-  
+  // =========================================================================
   if (Args.hasArg(OPT_gline_tables_only)) {
     Opts.setDebugInfo(CodeGenOptions::DebugLineTablesOnly);
   } else if (Args.hasArg(OPT_g_Flag)) {
@@ -584,7 +588,7 @@ bool clang::ParseDiagnosticArgs(DiagnosticOptions &Opts, ArgList &Args,
       << Args.getLastArg(OPT_fdiagnostics_format)->getAsString(Args)
       << Format;
   }
-
+  
   Opts.ShowSourceRanges = Args.hasArg(OPT_fdiagnostics_print_source_range_info);
   Opts.ShowParseableFixits = Args.hasArg(OPT_fdiagnostics_parseable_fixits);
   Opts.ShowPresumedLoc = !Args.hasArg(OPT_fno_diagnostics_use_presumed_location);
@@ -731,12 +735,10 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
   Opts.RelocatablePCH = Args.hasArg(OPT_relocatable_pch);
   Opts.ShowHelp = Args.hasArg(OPT_help);
   Opts.ShowStats = Args.hasArg(OPT_print_stats);
-
-  // =============================================================================
-  // scout - View AST flag
+  // ===== Scout =============================================================
+  // SC_TODO - should we remove this option??? View AST flag
   Opts.ViewAST = Args.hasArg(OPT_view_ast);
-  // =============================================================================
-
+  // =========================================================================
   Opts.ShowTimers = Args.hasArg(OPT_ftime_report);
   Opts.ShowVersion = Args.hasArg(OPT_version);
   Opts.ASTMergeFiles = Args.getAllArgValues(OPT_ast_merge);
@@ -817,10 +819,9 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
       .Case("objective-c++-header", IK_ObjCXX)
       .Cases("ast", "pcm", IK_AST)
       .Case("ir", IK_LLVM_IR)
-
-      // scout - input kind
+      // ===== Scout =========================================================
       .Case("scout", IK_Scout)
-
+      // =====================================================================
       .Default(IK_None);
     if (DashX == IK_None)
       Diags.Report(diag::err_drv_invalid_value)
@@ -888,7 +889,7 @@ static void ParseHeaderSearchArgs(HeaderSearchOptions &Opts, ArgList &Args) {
 
   // Add -I..., -F..., and -index-header-map options in order.
   bool IsIndexHeaderMap = false;
-  for (arg_iterator it = Args.filtered_begin(OPT_I, OPT_F,
+  for (arg_iterator it = Args.filtered_begin(OPT_I, OPT_F, 
                                              OPT_index_header_map),
        ie = Args.filtered_end(); it != ie; ++it) {
     if ((*it)->getOption().matches(OPT_index_header_map)) {
@@ -896,8 +897,8 @@ static void ParseHeaderSearchArgs(HeaderSearchOptions &Opts, ArgList &Args) {
       IsIndexHeaderMap = true;
       continue;
     }
-
-    frontend::IncludeDirGroup Group
+        
+    frontend::IncludeDirGroup Group 
       = IsIndexHeaderMap? frontend::IndexHeaderMap : frontend::Angled;
     
     Opts.AddPath((*it)->getValue(), Group,
@@ -1003,14 +1004,18 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
     case IK_PreprocessedObjC:
       LangStd = LangStandard::lang_gnu99;
       break;
-    // scout - language standard uses C++
-    case IK_Scout:
     case IK_CXX:
     case IK_PreprocessedCXX:
     case IK_ObjCXX:
     case IK_PreprocessedObjCXX:
       LangStd = LangStandard::lang_gnucxx98;
       break;
+    // ===== Scout ===========================================================
+    // We use the C++ language "standard"…
+    case IK_Scout:
+      LangStd = LangStandard::lang_gnucxx98;
+      break;  
+    // =======================================================================
     }
   }
 
@@ -1067,11 +1072,11 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
   Opts.Trigraphs = !Opts.GNUMode;
 
   Opts.DollarIdents = !Opts.AsmPreprocessor;
-
-  // scout - language options
-  if(IK == IK_Scout){
+  // ===== Scout =============================================================
+  if (IK == IK_Scout) {
     Opts.Scout = 1;
   }
+  // =========================================================================
 }
 
 /// Attempt to parse a visibility value out of the given argument.
@@ -1106,7 +1111,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
       Diags.Report(diag::err_drv_invalid_value)
         << A->getAsString(Args) << A->getValue();
     else {
-      // Valid standard, check to make sure language and standard are compatable.
+      // Valid standard, check to make sure language and standard are compatable.    
       const LangStandard &Std = LangStandard::getLangStandardForKind(LangStd);
       switch (IK) {
       case IK_C:
@@ -1117,10 +1122,13 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
           Diags.Report(diag::err_drv_argument_not_allowed_with)
             << A->getAsString(Args) << "C/ObjC";
         break;
-
-      // scout - input kind
+      // ===== Scout =========================================================
       case IK_Scout:
-
+        if (!Std.isCPlusPlus())
+          Diags.Report(diag::err_drv_argument_not_allowed_with)
+            << A->getAsString(Args) << "C++/ObjC++";
+        break;
+      // =====================================================================
       case IK_CXX:
       case IK_ObjCXX:
       case IK_PreprocessedCXX:
@@ -1202,7 +1210,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
     if (Args.hasArg(OPT_fno_objc_infer_related_result_type))
       Opts.ObjCInferRelatedResultType = 0;
   }
-
+    
   if (Args.hasArg(OPT_fgnu89_inline))
     Opts.GNUInline = 1;
 
@@ -1339,14 +1347,16 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
                                  OPT_fno_deprecated_macro,
                                  Opts.Deprecated);
 
-  // scout - detect Scout -gpu flag
+  // ===== Scout =============================================================
+  // Detect -gpu flag
   Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
 
-  // scout - detect Scout -gpu-amd flag
+  // Detect -gpu-amd flag
   Opts.ScoutAMDGPU = Args.hasArg(OPT_gpuAMD);
   
+  // SC_TODO - we should remove this option. 
   Opts.ScoutVectorize = Args.hasArg(OPT_vectorize);
-  
+  // =========================================================================
   // FIXME: Eliminate this dependency.
   unsigned Opt = getOptimizationLevel(Args, IK, Diags),
        OptSize = getOptimizationLevelSize(Args);
@@ -1485,7 +1495,7 @@ static void ParsePreprocessorArgs(PreprocessorOptions &Opts, ArgList &Args,
 
     Opts.addRemappedFile(Split.first, Split.second);
   }
-
+  
   if (Arg *A = Args.getLastArg(OPT_fobjc_arc_cxxlib_EQ)) {
     StringRef Name = A->getValue();
     unsigned Library = llvm::StringSwitch<unsigned>(Name)
@@ -1621,7 +1631,7 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
   }
   // FIXME: ParsePreprocessorArgs uses the FileManager to read the contents of
   // PCH file and find the original header name. Remove the need to do that in
-  // ParsePreprocessorArgs and remove the FileManager
+  // ParsePreprocessorArgs and remove the FileManager 
   // parameters from the function and the "FileManager.h" #include.
   FileManager FileMgr(Res.getFileSystemOpts());
   ParsePreprocessorArgs(Res.getPreprocessorOpts(), *Args, FileMgr, Diags);
@@ -1638,14 +1648,14 @@ namespace {
     SmallVector<uint64_t, 16> Data;
     unsigned CurBit;
     uint64_t CurValue;
-
+    
   public:
     ModuleSignature() : CurBit(0), CurValue(0) { }
-
+    
     void add(uint64_t Value, unsigned Bits);
     void add(StringRef Value);
     void flush();
-
+    
     llvm::APInt getAsInteger() const;
   };
 }
@@ -1656,10 +1666,10 @@ void ModuleSignature::add(uint64_t Value, unsigned int NumBits) {
     CurBit += NumBits;
     return;
   }
-
+  
   // Add the current word.
   Data.push_back(CurValue);
-
+  
   if (CurBit)
     CurValue = Value >> (64-CurBit);
   else
@@ -1670,7 +1680,7 @@ void ModuleSignature::add(uint64_t Value, unsigned int NumBits) {
 void ModuleSignature::flush() {
   if (CurBit == 0)
     return;
-
+  
   Data.push_back(CurValue);
   CurBit = 0;
   CurValue = 0;
@@ -1705,7 +1715,7 @@ std::string CompilerInvocation::getModuleHash() const {
 #define BENIGN_LANGOPT(Name, Bits, Default, Description)
 #define BENIGN_ENUM_LANGOPT(Name, Type, Bits, Default, Description)
 #include "clang/Basic/LangOptions.def"
-
+  
   // Extend the signature with the target options.
   code = hash_combine(code, TargetOpts->Triple, TargetOpts->CPU,
                       TargetOpts->ABI, TargetOpts->CXXABI,
@@ -1717,7 +1727,7 @@ std::string CompilerInvocation::getModuleHash() const {
   const PreprocessorOptions &ppOpts = getPreprocessorOpts();
   const HeaderSearchOptions &hsOpts = getHeaderSearchOpts();
   code = hash_combine(code, ppOpts.UsePredefines, ppOpts.DetailedRecord);
-  
+
   std::vector<StringRef> MacroDefs;
   for (std::vector<std::pair<std::string, bool/*isUndef*/> >::const_iterator 
             I = getPreprocessorOpts().Macros.begin(),

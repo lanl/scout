@@ -452,10 +452,8 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
                                        isAddressOfOperand,
                                        NotCastExpr,
                                        isTypeCast);
-  if (NotCastExpr){
+  if (NotCastExpr)
     Diag(Tok, diag::err_expected_expression);
-  }
-
   return Res;
 }
 
@@ -668,7 +666,6 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
   // to handle the postfix expression suffixes.  Cases that cannot be followed
   // by postfix exprs should return without invoking
   // ParsePostfixExpressionSuffix.
-  
   switch (SavedKind) {
   case tok::l_paren: {
     // If this expression is limited to being a unary-expression, the parent can
@@ -1059,8 +1056,8 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
   case tok::kw_float:
   case tok::kw_double:
 
-  // scout - Scout vector types
-      
+  // ===== Scout ================================================
+  // SC_TODO - remove scout vectors
   case tok::kw_bool2:
   case tok::kw_bool3:
   case tok::kw_bool4: 
@@ -1082,7 +1079,7 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
   case tok::kw_double2:
   case tok::kw_double3:
   case tok::kw_double4: 
-
+  // ===========================================================
   case tok::kw_void:
   case tok::kw_typename:
   case tok::kw_typeof:
@@ -1322,7 +1319,6 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
     }
     // FALL THROUGH.
   default:
-    llvm::errs() << "fall through, bad\n"; 
     NotCastExpr = true;
     return ExprError();
   }

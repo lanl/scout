@@ -24,7 +24,6 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/SaveAndRestore.h"
 #include "llvm/Support/raw_ostream.h"
-
 using namespace clang;
 
 namespace {
@@ -176,11 +175,14 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     case Type::Decltype:
     case Type::UnaryTransform:
 
-    // scout - Mesh types
+    // ===== Scout ===========================================================
     case Type::UniformMesh:
     case Type::StructuredMesh:
     case Type::RectlinearMesh:
     case Type::UnstructuredMesh:
+      CanPrefixQualifiers = true;
+      break;
+    // =======================================================================
       
     case Type::Record:
     case Type::Enum:
@@ -935,9 +937,7 @@ void TypePrinter::printEnumBefore(const EnumType *T, raw_ostream &OS) {
 }
 void TypePrinter::printEnumAfter(const EnumType *T, raw_ostream &OS) { }
 
-
-
-void TypePrinter::printTemplateTypeParmBefore(const TemplateTypeParmType *T,
+void TypePrinter::printTemplateTypeParmBefore(const TemplateTypeParmType *T, 
                                               raw_ostream &OS) { 
   if (IdentifierInfo *Id = T->getIdentifier())
     OS << Id->getName();
@@ -945,7 +945,6 @@ void TypePrinter::printTemplateTypeParmBefore(const TemplateTypeParmType *T,
     OS << "type-parameter-" << T->getDepth() << '-' << T->getIndex();
   spaceBeforePlaceHolder(OS);
 }
-
 void TypePrinter::printTemplateTypeParmAfter(const TemplateTypeParmType *T, 
                                              raw_ostream &OS) { } 
 

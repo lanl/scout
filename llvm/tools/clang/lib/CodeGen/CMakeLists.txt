@@ -1,7 +1,8 @@
-# scout
+# ===== Scout =================================================================
 include_directories(
  ${CMAKE_BINARY_DIR}/scout-config/include
 )
+# =============================================================================
 
 set(LLVM_LINK_COMPONENTS
   asmparser
@@ -55,6 +56,7 @@ add_clang_library(clangCodeGen
   MicrosoftCXXABI.cpp
   ModuleBuilder.cpp
   TargetInfo.cpp
+  # ===== Scout ==============================================================
   scout/CGBlocks.cpp
   scout/MemAlloc.cpp
   scout/CGDebugInfo.cpp

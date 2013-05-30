@@ -11,6 +11,7 @@
 // pretty print the AST back out to C code.
 //
 //===----------------------------------------------------------------------===//
+
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Attr.h"
 #include "clang/AST/DeclCXX.h"
@@ -23,7 +24,6 @@
 #include "clang/Basic/CharInfo.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/Format.h"
-
 using namespace clang;
 
 //===----------------------------------------------------------------------===//
@@ -910,9 +910,9 @@ void StmtPrinter::VisitCallExpr(CallExpr *Call) {
   PrintCallArgs(Call);
   OS << ")";
 }
-
 void StmtPrinter::VisitMemberExpr(MemberExpr *Node) {
   // FIXME: Suppress printing implicit bases (like "this")
+  // ===== Scout =============================================================
   bool isMeshType = false;
   DeclRefExpr* dr = dyn_cast<DeclRefExpr>(Node->getBase());
   if (dr) {
@@ -923,18 +923,21 @@ void StmtPrinter::VisitMemberExpr(MemberExpr *Node) {
     }
   }
   if (!isMeshType)
+  // =========================================================================
     PrintExpr(Node->getBase());
 
   MemberExpr *ParentMember = dyn_cast<MemberExpr>(Node->getBase());
   FieldDecl  *ParentDecl   = ParentMember
     ? dyn_cast<FieldDecl>(ParentMember->getMemberDecl()) : NULL;
 
+  // ===== Scout =============================================================
   if (!isMeshType && (!ParentDecl || !ParentDecl->isAnonymousStructOrUnion()))
     OS << (Node->isArrow() ? "->" : ".");  
-
+  // =========================================================================
   if (FieldDecl *FD = dyn_cast<FieldDecl>(Node->getMemberDecl()))
     if (FD->isAnonymousStructOrUnion())
       return;
+
   if (NestedNameSpecifier *Qualifier = Node->getQualifier())
     Qualifier->print(OS, Policy);
   if (Node->hasTemplateKeyword())
@@ -944,7 +947,6 @@ void StmtPrinter::VisitMemberExpr(MemberExpr *Node) {
     TemplateSpecializationType::PrintTemplateArgumentList(
         OS, Node->getTemplateArgs(), Node->getNumTemplateArgs(), Policy);
 }
-
 void StmtPrinter::VisitObjCIsaExpr(ObjCIsaExpr *Node) {
   PrintExpr(Node->getBase());
   OS << (Node->isArrow() ? "->isa" : ".isa");
@@ -1923,7 +1925,8 @@ void Stmt::printPretty(raw_ostream &OS,
   P.Visit(const_cast<Stmt*>(this));
 }
 
-std::string Stmt::toCPPCode(ASTContext& context){
+// SC_TODO -- is this our function or Clang's?
+std::string Stmt::toCPPCode(ASTContext& context) {
   std::string str;
   llvm::raw_string_ostream ostr(str);
   printPretty(ostr, 0, PrintingPolicy(context.getLangOpts()));
@@ -1938,5 +1941,5 @@ std::string Stmt::toCPPCode(ASTContext& context){
 PrinterHelper::~PrinterHelper() {}
 
 
-#include "Scout/StmtPrinter.cpp"
 
+#include "Scout/StmtPrinter.cpp"

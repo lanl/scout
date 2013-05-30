@@ -1308,7 +1308,8 @@ bool Sema::tryToRecoverWithCall(ExprResult &E, const PartialDiagnostic &PD,
   return true;
 }
 
-bool Sema::isScoutSource(SourceLocation location){
+// ===== Scout ================================================================
+bool Sema::isScoutSource(SourceLocation location) {
   std::string bufferName = SourceMgr.getBufferName(location);
   
   // LLDB uses a buffer named Parse
@@ -1333,6 +1334,7 @@ bool Sema::isScoutSource(SourceLocation location){
   
   return ext == "sc" || ext == "sch";
 }
+// ============================================================================
 
 IdentifierInfo *Sema::getSuperIdentifier() const {
   if (!Ident_super)

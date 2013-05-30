@@ -10,12 +10,12 @@ void y(int a) {}
 extern id opaque_id();
 
 void f() {
-    __apple_block int byref_int = 0;
+    __block int byref_int = 0;
     const id bar = (id) opaque_id();
     id baz = 0;
     __strong id strong_void_sta;
-    __apple_block id byref_bab = (id)0;
-    __apple_block id bl_var1;
+    __block id byref_bab = (id)0;
+    __block id bl_var1;
 
 // CHECK: Inline instruction for block variable layout: 0x0100
 // CHECK-i386: Inline instruction for block variable layout: 0x0100

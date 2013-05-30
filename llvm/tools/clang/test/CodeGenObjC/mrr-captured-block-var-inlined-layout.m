@@ -12,12 +12,12 @@ extern id opaque_id();
 __weak id wid;
 
 void f() {
-    __apple_block int byref_int = 0;
+    __block int byref_int = 0;
     const id bar = (id) opaque_id();
     id baz = 0;
     __strong id strong_void_sta;
-    __apple_block id byref_bab = (id)0;
-    __apple_block id bl_var1;
+    __block id byref_bab = (id)0;
+    __block id bl_var1;
 
 // block variable layout: BL_STRONG:1, BL_OPERATOR:0
 // CHECK: Inline instruction for block variable layout: 0x0100

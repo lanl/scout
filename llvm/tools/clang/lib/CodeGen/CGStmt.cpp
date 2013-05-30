@@ -15,11 +15,9 @@
 #include "CGDebugInfo.h"
 #include "CodeGenModule.h"
 #include "TargetInfo.h"
-
 #include "clang/AST/StmtVisitor.h"
 #include "clang/Basic/PrettyStackTrace.h"
 #include "clang/Basic/TargetInfo.h"
-
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/InlineAsm.h"
@@ -46,7 +44,6 @@ void CodeGenFunction::EmitStopPoint(const Stmt *S) {
 }
 
 void CodeGenFunction::EmitStmt(const Stmt *S) {
-  DEBUG_OUT("EmitStmt");
   assert(S && "Null statement?");
 
   // These statements have their own debug info handling.
@@ -133,6 +130,7 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
   case Stmt::IfStmtClass:       EmitIfStmt(cast<IfStmt>(*S));             break;
   case Stmt::WhileStmtClass:    EmitWhileStmt(cast<WhileStmt>(*S));       break;
   case Stmt::DoStmtClass:       EmitDoStmt(cast<DoStmt>(*S));             break;
+  case Stmt::ForStmtClass:      EmitForStmt(cast<ForStmt>(*S));           break;
 
   // ===== Scout ==============================================================
   case Stmt::ForAllStmtClass:
@@ -148,8 +146,6 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
     EmitVolumeRenderAllStmt(cast<VolumeRenderAllStmt>(*S)); 
     break;
   // ==========================================================================
-
-  case Stmt::ForStmtClass:      EmitForStmt(cast<ForStmt>(*S));           break;
 
   case Stmt::ReturnStmtClass:   EmitReturnStmt(cast<ReturnStmt>(*S));     break;
 
@@ -193,7 +189,6 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
 }
 
 bool CodeGenFunction::EmitSimpleStmt(const Stmt *S) {
-  DEBUG_OUT("EmitSimpleStmt");
   switch (S->getStmtClass()) {
   default: return false;
   case Stmt::NullStmtClass: break;
@@ -217,7 +212,6 @@ bool CodeGenFunction::EmitSimpleStmt(const Stmt *S) {
 /// (for use by the statement expression extension).
 RValue CodeGenFunction::EmitCompoundStmt(const CompoundStmt &S, bool GetLast,
                                          AggValueSlot AggSlot) {
-  DEBUG_OUT("EmitCompoundStmt");
   PrettyStackTraceLoc CrashInfo(getContext().getSourceManager(),S.getLBracLoc(),
                              "LLVM IR generation of compound statement ('{}')");
 
@@ -279,7 +273,6 @@ void CodeGenFunction::SimplifyForwardingBlocks(llvm::BasicBlock *BB) {
 }
 
 void CodeGenFunction::EmitBlock(llvm::BasicBlock *BB, bool IsFinished) {
-  DEBUG_OUT("EmitBlock");
   llvm::BasicBlock *CurBB = Builder.GetInsertBlock();
 
   // Fall out of the current block (if necessary).
@@ -425,7 +418,6 @@ void CodeGenFunction::EmitIndirectGotoStmt(const IndirectGotoStmt &S) {
                                          Int8PtrTy, "addr");
   llvm::BasicBlock *CurBB = Builder.GetInsertBlock();
 
-
   // Get the basic block for the indirect goto.
   llvm::BasicBlock *IndGotoBB = GetIndirectGotoBlock();
 
@@ -437,7 +429,6 @@ void CodeGenFunction::EmitIndirectGotoStmt(const IndirectGotoStmt &S) {
 }
 
 void CodeGenFunction::EmitIfStmt(const IfStmt &S) {
-  DEBUG_OUT("EmitIfStmt");
   // C99 6.8.4.1: The first substatement is executed if the expression compares
   // unequal to 0.  The condition must be a scalar type.
   RunCleanupsScope ConditionScope(*this);
@@ -476,7 +467,7 @@ void CodeGenFunction::EmitIfStmt(const IfStmt &S) {
   EmitBranchOnBoolExpr(S.getCond(), ThenBlock, ElseBlock);
 
   // Emit the 'then' code.
-  EmitBlock(ThenBlock);
+  EmitBlock(ThenBlock); 
   {
     RunCleanupsScope ThenScope(*this);
     EmitStmt(S.getThen());
@@ -627,7 +618,8 @@ void CodeGenFunction::EmitDoStmt(const DoStmt &S) {
     SimplifyForwardingBlocks(LoopCond.getBlock());
 }
 
-void CodeGenFunction::insertMeshDump(llvm::Value* baseAddr){
+// ===== Scout ===============================================================
+void CodeGenFunction::insertMeshDump(llvm::Value* baseAddr) {
   // comment out to enable mesh dumping
   return;
   
@@ -676,9 +668,10 @@ llvm::Value *CodeGenFunction::GetMeshBaseAddr(const ForAllStmt &S) {
 
 // ----- GetMeshDimensions
 //
-void CodeGenFunction::GetMeshDimValues(const ForAllStmt &S,
-                                       llvm::SmallVector<llvm::Value*, 3> &MeshDimensions,
-                                       llvm::Value* MeshBaseAddr) {
+void 
+CodeGenFunction::GetMeshDimValues(const ForAllStmt &S,
+                       llvm::SmallVector<llvm::Value*, 3> &MeshDimensions,
+                       llvm::Value* MeshBaseAddr) {
   
   llvm::Value *BaseAddr;
   if (MeshBaseAddr != 0) {
@@ -697,7 +690,7 @@ void CodeGenFunction::GetMeshDimValues(const ForAllStmt &S,
 }
 
 
-
+// ===========================================================================
 
 void CodeGenFunction::EmitForStmt(const ForStmt &S) {
   JumpDest LoopExit = getJumpDestInCurrentScope("for.end");
@@ -947,7 +940,6 @@ void CodeGenFunction::EmitReturnStmt(const ReturnStmt &S) {
 }
 
 void CodeGenFunction::EmitDeclStmt(const DeclStmt &S) {
-  DEBUG_OUT("EmitDeclStmt");
   // As long as debug info is modeled with instructions, we have to ensure we
   // have a place to insert here and write the stop point here.
   if (HaveInsertPoint())
@@ -1101,7 +1093,7 @@ void CodeGenFunction::EmitCaseStmt(const CaseStmt &S) {
   // Otherwise, iteratively add consecutive cases to this switch stmt.
   while (NextCase && NextCase->getRHS() == 0) {
     CurCase = NextCase;
-    llvm::ConstantInt *CaseVal =
+    llvm::ConstantInt *CaseVal = 
       Builder.getInt(CurCase->getLHS()->EvaluateKnownConstInt(getContext()));
     SwitchInsn->addCase(CaseVal, CaseDest);
     NextCase = dyn_cast<CaseStmt>(CurCase->getSubStmt());
@@ -1656,7 +1648,7 @@ void CodeGenFunction::EmitAsmStmt(const AsmStmt &S) {
           ResultRegTypes.back() = ConvertType(InputTy);
         }
       }
-      if (llvm::Type* AdjTy =
+      if (llvm::Type* AdjTy = 
             getTargetHooks().adjustInlineAsmType(*this, OutputConstraint,
                                                  ResultRegTypes.back()))
         ResultRegTypes.back() = AdjTy;

@@ -22,7 +22,6 @@
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/SemaDiagnostic.h"
 #include "llvm/ADT/SmallString.h"
-
 using namespace clang;
 
 /// ParseNamespace - We know that the current token is a namespace keyword. This

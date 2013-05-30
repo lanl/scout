@@ -3418,7 +3418,7 @@ bool UnnamedLocalNoLinkageFinder::VisitUnaryTransformType(
   return false;
 }
 
-// scout - Mesh types
+// ===== Scout ============================================================================
 bool UnnamedLocalNoLinkageFinder::VisitUniformMeshType(const UniformMeshType* T) {
   return false;
 }
@@ -3434,6 +3434,7 @@ bool UnnamedLocalNoLinkageFinder::VisitRectlinearMeshType(const RectlinearMeshTy
 bool UnnamedLocalNoLinkageFinder::VisitUnstructuredMeshType(const UnstructuredMeshType* T) {
   return false;
 }
+// ========================================================================================
 
 bool UnnamedLocalNoLinkageFinder::VisitAutoType(const AutoType *T) {
   return Visit(T->getDeducedType());

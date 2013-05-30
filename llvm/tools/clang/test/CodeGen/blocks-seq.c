@@ -10,7 +10,7 @@
 int rhs();
 
 void foo() {
-  __apple_block int i;
+  __block int i;
   i = rhs();
   i += rhs();
 }

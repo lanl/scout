@@ -888,10 +888,11 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     break;
 
       
-  // scout - vector and mesh types
+  // ===== Scout ===================================================================
   case DeclSpec::TST_mesh:
     assert(false && "invalid case for TST_mesh");
     break;  
+  // SC_TODO - remove scout vector type.  
   case DeclSpec::TST_bool2:
     Result = Context.Bool2Ty;  
   break;
@@ -955,7 +956,7 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
   case DeclSpec::TST_double4:
     Result = Context.Double4Ty;  
     break;
-
+  // =================================================================================
   case DeclSpec::TST_bool: Result = Context.BoolTy; break; // _Bool or bool
   case DeclSpec::TST_decimal32:    // _Decimal32
   case DeclSpec::TST_decimal64:    // _Decimal64

@@ -20,8 +20,8 @@ typedef double (^myblock)(int);
 double test(myblock I);
 
 int main() {
-  __apple_block int x = 1;
-  __apple_block int y = 2;
+  __block int x = 1;
+  __block int y = 2;
 
   (void)^void *{ return 0; };
 

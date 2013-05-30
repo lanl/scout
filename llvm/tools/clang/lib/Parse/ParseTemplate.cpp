@@ -19,7 +19,6 @@
 #include "clang/Sema/DeclSpec.h"
 #include "clang/Sema/ParsedTemplate.h"
 #include "clang/Sema/Scope.h"
-
 using namespace clang;
 
 /// \brief Parse a template declaration, explicit instantiation, or

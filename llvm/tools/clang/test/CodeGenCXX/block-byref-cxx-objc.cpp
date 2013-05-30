@@ -10,7 +10,7 @@ struct A {
 
 int main()
 {
-	__apple_block A BYREF_VAR;
+	__block A BYREF_VAR;
         ^{ BYREF_VAR.x = 1234; };
 	return 0;
 }
@@ -30,6 +30,6 @@ namespace test1 {
 
   void test() {
     return;
-    __apple_block A a;
+    __block A a;
   }
 }

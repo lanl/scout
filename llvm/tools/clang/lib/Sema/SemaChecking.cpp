@@ -4563,7 +4563,7 @@ static void AnalyzeComparison(Sema &S, BinaryOperator *E) {
 
   Expr *LHS = E->getLHS()->IgnoreParenImpCasts();
   Expr *RHS = E->getRHS()->IgnoreParenImpCasts();
-
+  
   bool IsComparisonConstant = false;
   
   // Check whether an integer constant comparison results in a value

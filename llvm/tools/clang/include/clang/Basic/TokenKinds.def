@@ -44,10 +44,11 @@
 #ifndef ANNOTATION
 #define ANNOTATION(X) TOK(annot_ ## X)
 #endif
+// ===== Scout =================================================================
 #ifndef SCOUT_KEYWORD
 #define SCOUT_KEYWORD(X) KEYWORD(X, KEYSCOUT)
 #endif
-
+// =============================================================================
 //===----------------------------------------------------------------------===//
 // Preprocessor keywords.
 //===----------------------------------------------------------------------===//
@@ -189,9 +190,9 @@ PUNCTUATOR(hash,                "#")
 PUNCTUATOR(hashhash,            "##")
 PUNCTUATOR(hashat,              "#@")
 
-// scout - specific punctuators
+// ===== Scout ==============================================================
 PUNCTUATOR(periodperiod,        "..")
-
+// ==========================================================================
 // C++ Support
 PUNCTUATOR(periodstar,          ".*")
 PUNCTUATOR(arrowstar,           "->*")
@@ -225,8 +226,7 @@ PUNCTUATOR(greatergreatergreater, ">>>")
 //   BOOLSUPPORT - This is a keyword if 'bool' is a built-in type
 //   WCHARSUPPORT - This is a keyword if 'wchar_t' is a built-in type
 //
-
-// scout - Scout keywords
+// ===== Scout ==============================================================
 SCOUT_KEYWORD(bool2)
 SCOUT_KEYWORD(bool3)
 SCOUT_KEYWORD(bool4)
@@ -272,7 +272,7 @@ SCOUT_KEYWORD(stencil)
 SCOUT_KEYWORD(camera)
 SCOUT_KEYWORD(with)
 SCOUT_KEYWORD(to)
-
+// ==========================================================================
 KEYWORD(auto                        , KEYALL)
 KEYWORD(break                       , KEYALL)
 KEYWORD(case                        , KEYALL)

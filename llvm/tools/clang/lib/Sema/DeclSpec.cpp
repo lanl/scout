@@ -274,7 +274,8 @@ bool Declarator::isDeclarationOfFunction() const {
     case TST_enum:
     case TST_error:
 
-    // scout - Scout vector and mesh types
+    // ===== Scout ========================================
+    // SC_TODO - drop scout vector support. 
     case TST_mesh:
     case TST_bool2:
     case TST_bool3:
@@ -297,7 +298,8 @@ bool Declarator::isDeclarationOfFunction() const {
     case TST_double2:
     case TST_double3:
     case TST_double4:
-      
+    // ====================================================      
+
     case TST_float:
     case TST_half:
     case TST_int:
@@ -451,9 +453,9 @@ const char *DeclSpec::getSpecifierName(DeclSpec::TST T) {
   case DeclSpec::TST_float:       return "float";
   case DeclSpec::TST_double:      return "double";
 
-  // scout - Scout vector types to strings
-  
+  // ===== Scout ================================================================
   case DeclSpec::TST_mesh:        return "mesh";
+  // SC_TODO - drop scout vector support. 
   case DeclSpec::TST_bool2:       return "bool2";
   case DeclSpec::TST_bool3:       return "bool3";
   case DeclSpec::TST_bool4:       return "bool4";
@@ -475,7 +477,7 @@ const char *DeclSpec::getSpecifierName(DeclSpec::TST T) {
   case DeclSpec::TST_double2:     return "double2";
   case DeclSpec::TST_double3:     return "double3";
   case DeclSpec::TST_double4:     return "double4";    
-
+  // ============================================================================
   case DeclSpec::TST_bool:        return "_Bool";
   case DeclSpec::TST_decimal32:   return "_Decimal32";
   case DeclSpec::TST_decimal64:   return "_Decimal64";

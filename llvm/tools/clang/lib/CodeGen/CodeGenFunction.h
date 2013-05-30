@@ -28,12 +28,11 @@
 #include "clang/Frontend/CodeGenOptions.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ValueHandle.h"
-
 // ===== Scout =================================================================
+#include "llvm/ADT/SetVector.h"
 #include <map>
 // =============================================================================
 
@@ -286,14 +285,14 @@ public:
     A0_saved a0_saved;
     A1_saved a1_saved;
     A2_saved a2_saved;
-
+    
     void Emit(CodeGenFunction &CGF, Flags flags) {
       A0 a0 = DominatingValue<A0>::restore(CGF, a0_saved);
       A1 a1 = DominatingValue<A1>::restore(CGF, a1_saved);
       A2 a2 = DominatingValue<A2>::restore(CGF, a2_saved);
       T(a0, a1, a2).Emit(CGF, flags);
     }
-
+    
   public:
     ConditionalCleanup3(A0_saved a0, A1_saved a1, A2_saved a2)
       : a0_saved(a0), a1_saved(a1), a2_saved(a2) {}
@@ -309,7 +308,7 @@ public:
     A1_saved a1_saved;
     A2_saved a2_saved;
     A3_saved a3_saved;
-
+    
     void Emit(CodeGenFunction &CGF, Flags flags) {
       A0 a0 = DominatingValue<A0>::restore(CGF, a0_saved);
       A1 a1 = DominatingValue<A1>::restore(CGF, a1_saved);
@@ -317,7 +316,7 @@ public:
       A3 a3 = DominatingValue<A3>::restore(CGF, a3_saved);
       T(a0, a1, a2, a3).Emit(CGF, flags);
     }
-
+    
   public:
     ConditionalCleanup4(A0_saved a0, A1_saved a1, A2_saved a2, A3_saved a3)
       : a0_saved(a0), a1_saved(a1), a2_saved(a2), a3_saved(a3) {}
@@ -721,15 +720,16 @@ public:
 
   llvm::BasicBlock *getInvokeDestImpl();
 
-  typedef llvm::SmallVector< llvm::Value *, 4 > Vector;
-  typedef CallExpr::const_arg_iterator ArgIterator;
-  typedef std::pair< MeshFieldDecl *, int > MeshFieldPair;
-  typedef std::map< llvm::StringRef, std::pair< llvm::Value *, QualType > > MemberMap;
   // ===== Scout ==============================================================
   // SC_TODO - are all of these really necessary?
   // SC_TODO - A lot of this should be moved out of the header file
   //           to make our merges with the clang trunks a happier
   //           activity... 
+
+  typedef llvm::SmallVector< llvm::Value *, 4 > Vector;
+  typedef CallExpr::const_arg_iterator ArgIterator;
+  typedef std::pair< MeshFieldDecl *, int > MeshFieldPair;
+  typedef std::map< llvm::StringRef, std::pair< llvm::Value *, QualType > > MemberMap;
 
   // Scout forall explicit induction variable.
   llvm::Value *ForallIndVar;
@@ -808,7 +808,6 @@ public:
     return hasPrintfNode(S);
   }
   // ==========================================================================
-
   template <class T>
   typename DominatingValue<T>::saved_type saveValueInCond(T value) {
     return DominatingValue<T>::save(*this, value);
@@ -887,11 +886,11 @@ public:
     if (!isInConditionalBranch()) {
       return EHStack.pushCleanup<T>(kind, a0, a1, a2);
     }
-
+    
     typename DominatingValue<A0>::saved_type a0_saved = saveValueInCond(a0);
     typename DominatingValue<A1>::saved_type a1_saved = saveValueInCond(a1);
     typename DominatingValue<A2>::saved_type a2_saved = saveValueInCond(a2);
-
+    
     typedef EHScopeStack::ConditionalCleanup3<T, A0, A1, A2> CleanupType;
     EHStack.pushCleanup<CleanupType>(kind, a0_saved, a1_saved, a2_saved);
     initFullExprCleanup();
@@ -907,12 +906,12 @@ public:
     if (!isInConditionalBranch()) {
       return EHStack.pushCleanup<T>(kind, a0, a1, a2, a3);
     }
-
+    
     typename DominatingValue<A0>::saved_type a0_saved = saveValueInCond(a0);
     typename DominatingValue<A1>::saved_type a1_saved = saveValueInCond(a1);
     typename DominatingValue<A2>::saved_type a2_saved = saveValueInCond(a2);
     typename DominatingValue<A3>::saved_type a3_saved = saveValueInCond(a3);
-
+    
     typedef EHScopeStack::ConditionalCleanup4<T, A0, A1, A2, A3> CleanupType;
     EHStack.pushCleanup<CleanupType>(kind, a0_saved, a1_saved,
                                      a2_saved, a3_saved);
@@ -1082,7 +1081,7 @@ public:
   /// block through the normal cleanup handling code (if any) and then
   /// on to \arg Dest.
   void EmitBranchThroughCleanup(JumpDest Dest);
-
+  
   /// isObviouslyBranchWithoutCleanups - Return true if a branch to the
   /// specified destination obviously has no cleanups to run.  'false' is always
   /// a conservatively correct answer for this method.
@@ -1288,7 +1287,7 @@ public:
       if (Data.isValid()) Data.unbind(CGF);
     }
   };
-
+  
   /// getByrefValueFieldNumber - Given a declaration, returns the LLVM field
   /// number that holds the value.
   unsigned getByRefValueLLVMField(const ValueDecl *VD) const;
@@ -1460,7 +1459,6 @@ public:
 
   CodeGenTypes &getTypes() const { return CGM.getTypes(); }
   ASTContext &getContext() const { return CGM.getContext(); }
-
   /// Returns true if DebugInfo is actually initialized.
   bool maybeInitializeDebugInfo() {
     if (CGM.getModuleDebugInfo()) {
@@ -1472,7 +1470,7 @@ public:
   CGDebugInfo *getDebugInfo() { 
     if (DisableDebugInfo) 
       return NULL;
-    return DebugInfo;
+    return DebugInfo; 
   }
   void disableDebugInfo() { DisableDebugInfo = true; }
   void enableDebugInfo() { DisableDebugInfo = false; }
@@ -1617,9 +1615,7 @@ public:
   // SC_TODO -- Need to make sure some of the member functions
   // below are not also for scout... 
   // ===========================================================================
-  
   llvm::Value *EmitBlockLiteral(const BlockExpr *);
-  
   llvm::Value *EmitBlockLiteral(const CGBlockInfo &Info);
   static void destroyBlockInfos(CGBlockInfo *info);
   llvm::Constant *BuildDescriptorBlockDecl(const BlockExpr *,
@@ -2089,10 +2085,6 @@ public:
                                         CastExpr::path_const_iterator PathEnd,
                                         bool NullCheckValue);
 
-  llvm::Value *GetVirtualBaseClassOffset(llvm::Value *This,
-                                         const CXXRecordDecl *ClassDecl,
-                                         const CXXRecordDecl *BaseClassDecl);
-
   /// GetVTTParameter - Return the VTT parameter that should be passed to a
   /// base constructor/destructor with virtual bases.
   /// FIXME: VTTs are Itanium ABI-specific, so the definition should move
@@ -2114,7 +2106,7 @@ public:
                               llvm::Value *This,
                               CallExpr::const_arg_iterator ArgBeg,
                               CallExpr::const_arg_iterator ArgEnd);
-
+  
   void EmitSynthesizedCXXCopyCtorCall(const CXXConstructorDecl *D,
                               llvm::Value *This, llvm::Value *Src,
                               CallExpr::const_arg_iterator ArgBeg,
@@ -2294,7 +2286,7 @@ public:
                               const VarDecl &var);
   // ==========================================================================
   void EmitAutoVarInit(const AutoVarEmission &emission);
-  void EmitAutoVarCleanups(const AutoVarEmission &emission);
+  void EmitAutoVarCleanups(const AutoVarEmission &emission);  
   void emitAutoVarTypeCleanup(const AutoVarEmission &emission,
                               QualType::DestructionKind dtorKind);
 
@@ -2549,7 +2541,7 @@ public:
   // Note: only available for agg return types
   LValue EmitVAArgExprLValue(const VAArgExpr *E);
   LValue EmitDeclRefLValue(const DeclRefExpr *E);
-   LValue EmitStringLiteralLValue(const StringLiteral *E);
+  LValue EmitStringLiteralLValue(const StringLiteral *E);
   LValue EmitObjCEncodeExprLValue(const ObjCEncodeExpr *E);
   LValue EmitPredefinedLValue(const PredefinedExpr *E);
   LValue EmitUnaryOpLValue(const UnaryOperator *E);
@@ -2683,12 +2675,12 @@ public:
                                 llvm::Type *Ty);
   llvm::Value *BuildVirtualCall(const CXXDestructorDecl *DD, CXXDtorType Type,
                                 llvm::Value *This, llvm::Type *Ty);
-  llvm::Value *BuildAppleKextVirtualCall(const CXXMethodDecl *MD,
+  llvm::Value *BuildAppleKextVirtualCall(const CXXMethodDecl *MD, 
                                          NestedNameSpecifier *Qual,
                                          llvm::Type *Ty);
-
+  
   llvm::Value *BuildAppleKextVirtualDestructorCall(const CXXDestructorDecl *DD,
-                                                   CXXDtorType Type,
+                                                   CXXDtorType Type, 
                                                    const CXXRecordDecl *RD);
 
   RValue EmitCXXMemberCall(const CXXMethodDecl *MD,
@@ -2803,11 +2795,11 @@ public:
   static Destroyer destroyARCStrongPrecise;
   static Destroyer destroyARCWeak;
 
-  void EmitObjCAutoreleasePoolPop(llvm::Value *Ptr);
+  void EmitObjCAutoreleasePoolPop(llvm::Value *Ptr); 
   llvm::Value *EmitObjCAutoreleasePoolPush();
   llvm::Value *EmitObjCMRRAutoreleasePoolPush();
   void EmitObjCAutoreleasePoolCleanup(llvm::Value *Ptr);
-  void EmitObjCMRRAutoreleasePoolPop(llvm::Value *Ptr);
+  void EmitObjCMRRAutoreleasePoolPop(llvm::Value *Ptr); 
 
   /// EmitReferenceBindingToExpr - Emits a reference binding to the passed in
   /// expression. Will emit a temporary variable if E is not an LValue.
@@ -2920,7 +2912,7 @@ public:
                                         bool PerformInit);
 
   void EmitCXXConstructExpr(const CXXConstructExpr *E, AggValueSlot Dest);
-
+  
   void EmitSynthesizedCXXCopyCtor(llvm::Value *Dest, llvm::Value *Src,
                                   const Expr *Exp);
 
@@ -2966,7 +2958,7 @@ public:
   /// If the statement (recursively) contains a switch or loop with a break
   /// inside of it, this is fine.
   static bool containsBreak(const Stmt *S);
-
+  
   /// ConstantFoldsToSimpleInteger - If the specified expression does not fold
   /// to a constant, or if it does but contains a label, return false.  If it
   /// constant folds return true and set the boolean result in Result.
@@ -2976,7 +2968,7 @@ public:
   /// to a constant, or if it does but contains a label, return false.  If it
   /// constant folds return true and set the folded value.
   bool ConstantFoldsToSimpleInteger(const Expr *Cond, llvm::APSInt &Result);
-
+  
   /// EmitBranchOnBoolExpr - Emit a branch on a boolean condition (e.g. for an
   /// if statement) to the specified blocks.  Based on the condition, this might
   /// try to simplify the codegen of the conditional based on the branch.

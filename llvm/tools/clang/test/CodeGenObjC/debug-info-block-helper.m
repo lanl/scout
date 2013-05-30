@@ -13,8 +13,8 @@ extern void foo(void(^)(void));
 @implementation A
 - (void) helper {
  int master = 0;
- __apple_block int m2 = 0;
- __apple_block int dbTransaction = 0;
+ __block int m2 = 0;
+ __block int dbTransaction = 0;
  int (^x)(void) = ^(void) { (void) self; 
 	(void) master; 
 	(void) dbTransaction; 

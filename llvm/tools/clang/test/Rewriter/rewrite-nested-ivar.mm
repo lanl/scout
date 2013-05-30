@@ -4,6 +4,7 @@
 // RUN: %clang_cc1 -fsyntax-only -fblocks -Wno-address-of-temporary -D"id=void*" -D"SEL=void*" -D"__declspec(X)=" %t-rw-modern.cpp
 // radar 7583971
 
+
 @interface NSURLResponse {
 @public
   NSURLResponse *InnerResponse;

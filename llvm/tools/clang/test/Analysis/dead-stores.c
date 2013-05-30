@@ -416,7 +416,7 @@ void f24_A(int y) {
 
 void f24_B(int y) {
   // FIXME: One day this should be reported as dead since 'x' is just overwritten.
-  __apple_block int x = (y > 2); // no-warning
+  __block int x = (y > 2); // no-warning
   ^{
     // FIXME: This should eventually be a dead store since it is never read either.
     x = 5; // no-warning
@@ -425,7 +425,7 @@ void f24_B(int y) {
 
 int f24_C(int y) {
   // FIXME: One day this should be reported as dead since 'x' is just overwritten.
-  __apple_block int x = (y > 2); // no-warning
+  __block int x = (y > 2); // no-warning
   ^{ 
     x = 5; // no-warning
   }();
@@ -433,7 +433,7 @@ int f24_C(int y) {
 }
 
 int f24_D(int y) {
-  __apple_block int x = (y > 2); // no-warning
+  __block int x = (y > 2); // no-warning
   ^{ 
     if (y > 4)
       x = 5; // no-warning
@@ -444,8 +444,8 @@ int f24_D(int y) {
 // This example shows that writing to a variable captured by a block means that it might
 // not be dead.
 int f25(int y) {
-  __apple_block int x = (y > 2);
-  __apple_block int z = 0;
+  __block int x = (y > 2);
+  __block int z = 0;
   void (^foo)() = ^{ z = x + y; };
   x = 4; // no-warning
   foo();
@@ -456,8 +456,8 @@ int f25(int y) {
 // stores for variables that are just marked '__block' is overly conservative.
 int f25_b(int y) {
   // FIXME: we should eventually report a dead store here.
-  __apple_block int x = (y > 2);
-  __apple_block int z = 0;
+  __block int x = (y > 2);
+  __block int z = 0;
   x = 4; // no-warning
   return z; 
 }
@@ -465,7 +465,7 @@ int f25_b(int y) {
 int f26_nestedblocks() {
   int z;
   z = 1;
-  __apple_block int y = 0;
+  __block int y = 0;
   ^{
     int k;
     k = 1; // expected-warning{{Value stored to 'k' is never read}}

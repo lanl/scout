@@ -2057,18 +2057,9 @@ public:
 /// FieldDecl - An instance of this class is created by Sema::ActOnField to
 /// represent a member of a struct/union/class.
 class FieldDecl : public DeclaratorDecl {
-
-private:
-  
   // FIXME: This can be packed into the bitfields in Decl.
   bool Mutable : 1;
   mutable unsigned CachedFieldIndex : 31;
-
-  bool IsExternAlloc : 1;
-  
-  /// \brief A pointer to either the in-class initializer for this field (if
-  /// the boolean value is false), or the bit width expression for this bit
-  /// field (if the boolean value is true).
 
   /// \brief An InClassInitStyle value, and either a bit width expression (if
   /// the InClassInitStyle value is ICIS_NoInit), or a pointer to the in-class
@@ -2179,14 +2170,6 @@ public:
 
   SourceRange getSourceRange() const LLVM_READONLY;
 
-  void setExternAlloc(bool externalloc) {
-    IsExternAlloc = externalloc;
-  }
-
-  bool isExternAlloc() const{
-    return IsExternAlloc;
-  }
-
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
   static bool classofKind(Kind K) { return K >= firstField && K <= lastField; }
@@ -2194,7 +2177,6 @@ public:
   friend class ASTDeclReader;
   friend class ASTDeclWriter;
 };
-
 
 // ===== Scout ===============================================================
 /// MeshFieldDecl - An instance of this class if create by
@@ -2268,7 +2250,8 @@ class MeshFieldDecl : public FieldDecl {
   friend class ASTDeclReader;
   friend class ASTDeclWriter;
 };
-      
+// ===========================================================================
+   
 
 /// EnumConstantDecl - An instance of this object exists for each enum constant
 /// that is defined.  For example, in "enum X {a,b}", each of a/b are
@@ -3323,7 +3306,8 @@ public:
   }
 };
 
-// scout - Scout Mesh
+// ===== Scout =========================================================================================
+// Mesh
 // A mesh declaration is similar to a TagDecl/RecordDecl but different
 // enough that a new subclass of TypeDecl was created. It encapsulates
 // a mesh definition such as:
@@ -3332,6 +3316,9 @@ public:
 //     cells:
 //          float a;
 //   }
+//
+// SC_TODO - from looking at the new LLVM IR we're generating this looks
+// to have horrible alignment details -- need to check on this… 
 class MeshDecl : public TypeDecl, public DeclContext{
   
  private:
@@ -3593,7 +3580,8 @@ public:
   static bool classofKind(Kind K) { return K == UnstructuredMesh; }
   
 };
-  
+//==============================================================================
+
 /// \brief This represents the body of a CapturedStmt, and serves as its
 /// DeclContext.
 class CapturedDecl : public Decl, public DeclContext {

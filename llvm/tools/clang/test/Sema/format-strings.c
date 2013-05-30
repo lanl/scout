@@ -56,7 +56,7 @@ def"
   // <rdar://problem/6079850>, allow 'unsigned' (instead of 'int') to be used for both
   // the field width and precision.  This deviates from C99, but is reasonably safe
   // and is also accepted by GCC.
-  printf("%*u", (unsigned) 1, 1); // no-warning  
+  printf("%*d", (unsigned) 1, 1); // no-warning  
 }
 
 // When calling a non-variadic format function (vprintf, vscanf, NSLogv, ...),
@@ -105,7 +105,7 @@ void check_writeback_specifier()
   printf("%hn", (int*)0); // expected-warning{{format specifies type 'short *' but the argument has type 'int *'}}
 
   printf("%n", (int*)0); // no-warning
-  printf("%un", (unsigned int*)0); // no-warning
+  printf("%n", (unsigned int*)0); // no-warning
   printf("%n", (char*)0); // expected-warning{{format specifies type 'int *' but the argument has type 'char *'}}
 
   printf("%ln", (long*)0); // no-warning

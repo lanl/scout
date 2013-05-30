@@ -461,7 +461,6 @@ bool PrintfSpecifier::fixType(QualType QT, const LangOptions &LangOpt,
     // Misc other stuff which doesn't make sense here.
     return false;
 
-  
   case BuiltinType::UInt:
   case BuiltinType::Int:
   case BuiltinType::Float:

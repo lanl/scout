@@ -533,9 +533,7 @@ def cl_mad_enable : Flag<["-"], "cl-mad-enable">,
 def cl_std_EQ : Joined<["-"], "cl-std=">,
   HelpText<"OpenCL language standard to compile for">;
 
-//===----------------------------------------------------------------------===//
-// scout - Scout Options
-//===----------------------------------------------------------------------===//
+//===== Scout ==================================================================
 def view_ast : Flag<["-"], "view-ast">,
   HelpText<"View the AST of a parsed file with GraphViz">;
 def gpu : Flag<["-"], "gpu">,
@@ -556,6 +554,7 @@ def noRewrite : Flag<["-"], "no-rewrite">,
   HelpText<"do not run the rewriter">;
 def dumpRewrite : Flag<["-"], "dump-rewrite">,
   HelpText<"dump rewritten code to stdout">;
+//==============================================================================
 
 //===----------------------------------------------------------------------===//
 // CUDA Options
@@ -563,4 +562,5 @@ def dumpRewrite : Flag<["-"], "dump-rewrite">,
 
 def fcuda_is_device : Flag<["-"], "fcuda-is-device">,
   HelpText<"Generate code for CUDA device">;
+
 } // let Flags = [CC1Option]

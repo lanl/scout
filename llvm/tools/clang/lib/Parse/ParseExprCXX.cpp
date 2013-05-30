@@ -1665,8 +1665,8 @@ void Parser::ParseCXXSimpleTypeSpecifier(DeclSpec &DS) {
     break;
 
 
-  // scout - Scout vector types
-      
+  // ===== Scout ==========================================================
+  // SC_TODO - remove scout vectors 
   case tok::kw_bool2:
     DS.SetTypeSpecType(DeclSpec::TST_bool2, Loc, PrevSpec, DiagID);
     break;
@@ -1730,8 +1730,7 @@ void Parser::ParseCXXSimpleTypeSpecifier(DeclSpec &DS) {
   case tok::kw_double4:
     DS.SetTypeSpecType(DeclSpec::TST_double4, Loc, PrevSpec, DiagID);
     break;
-    
-  // scout - vector types
+  // =========================================================================
   case tok::kw_wchar_t:
     DS.SetTypeSpecType(DeclSpec::TST_wchar, Loc, PrevSpec, DiagID);
     break;

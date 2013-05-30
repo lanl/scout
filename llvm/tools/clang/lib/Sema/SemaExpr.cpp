@@ -1600,7 +1600,6 @@ bool Sema::DiagnoseEmptyLookup(Scope *S, CXXScopeSpec &SS, LookupResult &R,
                                CorrectionCandidateCallback &CCC,
                                TemplateArgumentListInfo *ExplicitTemplateArgs,
                                llvm::ArrayRef<Expr *> Args) {
-  
   DeclarationName Name = R.getLookupName();
 
   unsigned diagnostic = diag::err_undeclared_var_use;
@@ -1927,11 +1926,12 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
     // If this name wasn't predeclared and if this is not a function
     // call, diagnose the problem.
     if (R.empty()) {
-      // scout - Scout forall/renderall
-      // check undeclared identifiers to see if they can be qualified
+      // ===== Scout =====================================================================
+      // Check for undeclared identifiers to see if they can be qualified
       // as member reference expr's by enclosing forall / renderall 
-      // loop variables
-      
+      // loop variables.
+      //
+      // SC_TODO -- move this to a separate file if possible. 
       for(ScoutLoopStack::iterator sitr = SCLStack.begin(),
           sitrEnd = SCLStack.end();
           sitr != sitrEnd; ++sitr) {
@@ -1994,7 +1994,8 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
           }
         }
       }
-      
+      // ================================================================================
+
       // In Microsoft mode, if we are inside a template class member function
       // whose parent class has dependent base classes, and we can't resolve
       // an identifier, then assume the identifier is type dependent.  The
@@ -8084,10 +8085,12 @@ QualType Sema::CheckAssignmentOperands(Expr *LHSExpr, ExprResult &RHS,
 
   QualType LHSType = LHSExpr->getType();
 
+  // ===== Scout =======================================================================================
   // If this is a mesh member in the case of assigning it to a pointer
   // to allocated mesh values, make it think we have a pointer
   // type as the mesh member.
-
+  //
+  // SC_TODO - move this to a separate file if possible.  
   // Check if this is a Scout mesh member expression.
   if (isa<MemberExpr>(LHSExpr)) {
     
@@ -8121,7 +8124,8 @@ QualType Sema::CheckAssignmentOperands(Expr *LHSExpr, ExprResult &RHS,
       }
     }
   }
-  
+  // ==================================================================================================
+
   QualType RHSType = CompoundType.isNull() ? RHS.get()->getType() :
                                              CompoundType;
   AssignConvertType ConvTy;

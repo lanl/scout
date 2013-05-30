@@ -90,56 +90,21 @@ public:
     return true;
   }
 
-  // scout - stubs to avoid linking errors in libclang
-
-  bool TraverseUniformMeshTypeLoc(UniformMeshTypeLoc){
-    return true;
-  }
-
-  bool TraverseStructuredMeshTypeLoc(StructuredMeshTypeLoc){
-    return true;
-  }
-
-  bool TraverseRectlinearMeshTypeLoc(RectlinearMeshTypeLoc){
-    return true;
-  }
-
-  bool TraverseUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc){
-    return true;
-  }
-
-  bool TraverseUniformMeshDecl(UniformMeshDecl*){
-    return true;
-  }
-
-  bool TraverseStructuredMeshDecl(StructuredMeshDecl*){
-    return true;
-  }
-
-  bool TraverseRectlinearMeshDecl(RectlinearMeshDecl*){
-    return true;
-  }
-
-  bool TraverseUnstructuredMeshDecl(UnstructuredMeshDecl*){
-    return true;
-  }
-
-  bool TraverseUniformMeshType(UniformMeshType*){
-    return true;
-  }
-
-  bool TraverseStructuredMeshType(StructuredMeshType*){
-    return true;
-  }
-
-  bool TraverseRectlinearMeshType(RectlinearMeshType*){
-    return true;
-  }
-
-  bool TraverseUnstructuredMeshType(UnstructuredMeshType*){
-    return true;
-  }
-
+  // ===== Scout ========================================================================
+  // SC_TODO -- implement these.
+  bool TraverseUniformMeshTypeLoc(UniformMeshTypeLoc){ return true; }
+  bool TraverseStructuredMeshTypeLoc(StructuredMeshTypeLoc){ return true; }
+  bool TraverseRectlinearMeshTypeLoc(RectlinearMeshTypeLoc){ return true; }
+  bool TraverseUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc){ return true; }
+  bool TraverseUniformMeshDecl(UniformMeshDecl*){ return true; }
+  bool TraverseStructuredMeshDecl(StructuredMeshDecl*){ return true; }
+  bool TraverseRectlinearMeshDecl(RectlinearMeshDecl*){ return true; }
+  bool TraverseUnstructuredMeshDecl(UnstructuredMeshDecl*){ return true; }
+  bool TraverseUniformMeshType(UniformMeshType*){ return true; }
+  bool TraverseStructuredMeshType(StructuredMeshType*){ return true; }
+  bool TraverseRectlinearMeshType(RectlinearMeshType*){ return true; }
+  bool TraverseUnstructuredMeshType(UnstructuredMeshType*){ return true; }
+  // ====================================================================================
 };
 
 } // anonymous namespace

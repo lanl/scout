@@ -769,11 +769,10 @@ public:
   CanQualType OCLImage3dTy;
   CanQualType OCLSamplerTy, OCLEventTy;
 
-  // scout - vector types
-  // essentially, we keep on QualType for each of the vector
-  // types so that we can do such things as equivalence testing
-  // between types, and for space reduction, this keeps with the 
-  // convention of built-in types above
+  // ===== Scout =====================================================================
+  // SC_TODO - We need to replace Scout's vector types with Clang's "builtin" 
+  // version.  This has been done in the "refactor" branch but needs to be 
+  // merged with "devel". 
   CanQualType Bool2Ty;
   CanQualType Bool3Ty;
   CanQualType Bool4Ty;
@@ -795,6 +794,7 @@ public:
   CanQualType Double2Ty;
   CanQualType Double3Ty;
   CanQualType Double4Ty;
+  // ================================================================================
 
   // Types for deductions in C++0x [stmt.ranged]'s desugaring. Built on demand.
   mutable QualType AutoDeductTy;     // Deduction against 'auto'.
@@ -1055,15 +1055,13 @@ public:
   QualType getTypedefType(const TypedefNameDecl *Decl,
                           QualType Canon = QualType()) const;
 
-  // scout - Mesh types
+  // ===== Scout =========================================================================
   QualType getUniformMeshType(const UniformMeshDecl *Decl) const;
-
   QualType getStructuredMeshType(const StructuredMeshDecl *Decl) const;
-  
   QualType getRectlinearMeshType(const RectlinearMeshDecl *Decl) const;
-  
   QualType getUnstructuredMeshType(const UnstructuredMeshDecl *Decl) const;
-  
+  // =====================================================================================
+
   QualType getRecordType(const RecordDecl *Decl) const;
 
   QualType getEnumType(const EnumDecl *Decl) const;
@@ -1160,12 +1158,12 @@ public:
   /// (struct/union/class/enum) decl.
   QualType getTagDeclType(const TagDecl *Decl) const;
   
-  // scout - Mesh - types
+  // ===== Scout ===================================================================
   QualType getUniformMeshDeclType(const UniformMeshDecl *Decl) const;
   QualType getStructuredMeshDeclType(const StructuredMeshDecl *Decl) const;
   QualType getRectlinearMeshDeclType(const RectlinearMeshDecl *Decl) const;
   QualType getUnstructuredMeshDeclType(const UnstructuredMeshDecl *Decl) const;
-  
+  // ===============================================================================
   /// \brief Return the unique type for "size_t" (C99 7.17), defined in
   /// <stddef.h>.
   ///
@@ -1669,6 +1667,7 @@ public:
   /// record (struct/union/class) \p D, which indicates its size and field
   /// position information.
   const ASTRecordLayout &getASTRecordLayout(const RecordDecl *D) const;
+
   /// \brief Get or compute information about the layout of the specified
   /// Objective-C interface.
   const ASTRecordLayout &getASTObjCInterfaceLayout(const ObjCInterfaceDecl *D)
@@ -2259,9 +2258,6 @@ private:
   // but we include it here so that ASTContext can quickly deallocate them.
   llvm::PointerIntPair<StoredDeclsMap*,1> LastSDM;
 
-  /// \brief A counter used to uniquely identify "blocks".
-  mutable unsigned int UniqueBlockByRefTypeID;
-  
   friend class DeclContext;
   friend class DeclarationNameTable;
   void ReleaseDeclContextMaps();

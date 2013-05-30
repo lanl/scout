@@ -23,7 +23,7 @@ void *P = ^{
 };
 
 void (^test1)(void) = ^(void) {
-  __apple_block int i;
+  __block int i;
   ^ { i = 1; }();
 };
 

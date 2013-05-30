@@ -10,7 +10,7 @@
 int printf(const char *, ...);
 
 void test1() {
-  __apple_block int a;
+  __block int a;
   int b=2;
   a=1;
   printf("a is %d, b is %d\n", a, b);
@@ -21,7 +21,7 @@ void test1() {
 }
 
 void test2() {
-  __apple_block int a;
+  __block int a;
   a=1;
   printf("a is %d\n", a);
   ^{ // needs copy/dispose
@@ -35,8 +35,8 @@ void test2() {
 }
 
 void test3() {
-  __apple_block int k;
-  __apple_block int (^j)(int);
+  __block int k;
+  __block int (^j)(int);
   ^{j=0; k=0;}(); // needs copy/dispose
 }
 
@@ -50,19 +50,19 @@ int test4() {
 int g;
 
 void test5() {
-  __apple_block struct { int i; } i;
+  __block struct { int i; } i;
   ^{ (void)i; }(); // needs copy/dispose
 }
 
 void test6() {
-  __apple_block int i;
+  __block int i;
   ^{ i=1; }(); // needs copy/dispose
   ^{}(); // does not need copy/dispose
 }
 
 void test7() {
   ^{ // does not need copy/dispose
-    __apple_block int i;
+    __block int i;
     ^{ i = 1; }(); // needs copy/dispose
   }();
 }

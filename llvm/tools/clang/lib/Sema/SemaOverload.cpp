@@ -1260,20 +1260,19 @@ TryImplicitConversion(Sema &S, Expr *From, QualType ToType,
     return ICS;
   }
 
-  // scout - handle conversion between mesh types
+  // ===== Scout =========================================================================
   const MeshType* MTFrom = FromType->getAs<MeshType>();
   const MeshType* MTTo = ToType->getAs<MeshType>();
 
-  if(MTFrom && MTTo && MTFrom->getDecl()->canConvertTo(S.Context, MTTo->getDecl())){
+  if (MTFrom && MTTo && MTFrom->getDecl()->canConvertTo(S.Context, MTTo->getDecl())) {
     ICS.setStandard();
     ICS.Standard.setAsIdentityConversion();
     ICS.Standard.setFromType(FromType);
     ICS.Standard.setAllToTypes(ToType);
     ICS.Standard.CopyConstructor = 0;
-    
     return ICS;
   }
-
+  // ====================================================================================
   return TryUserDefinedConversion(S, From, ToType, SuppressUserConversions,
                                   AllowExplicit, InOverloadResolution, CStyle,
                                   AllowObjCWritebackConversion);
@@ -3989,8 +3988,7 @@ Sema::CompareReferenceRelationship(SourceLocation Loc,
   QualType UnqualT1 = Context.getUnqualifiedArrayType(T1, T1Quals);
   QualType UnqualT2 = Context.getUnqualifiedArrayType(T2, T2Quals);
 
-  // scout - allow meshes to be passed by reference when the underlying
-  // decl is the same
+  // ===== Scout ===================================================================
   if(const MeshType* mt1 = dyn_cast<MeshType>(UnqualT1.getTypePtr())){
     if(const MeshType* mt2 = dyn_cast<MeshType>(UnqualT2.getTypePtr())){
       if(mt1->getDecl() == mt2->getDecl()){
@@ -4005,6 +4003,7 @@ Sema::CompareReferenceRelationship(SourceLocation Loc,
       }
     }
   }
+  // ===============================================================================
   
   // C++ [dcl.init.ref]p4:
   //   Given types "cv1 T1" and "cv2 T2," "cv1 T1" is
@@ -4198,7 +4197,7 @@ TryReferenceInit(Sema &S, Expr *Init, QualType DeclType,
                  bool SuppressUserConversions,
                  bool AllowExplicit) {
   assert(DeclType->isReferenceType() && "Reference init needs a reference");
-  
+
   // Most paths end in a failed conversion.
   ImplicitConversionSequence ICS;
   ICS.setBad(BadConversionSequence::no_conversion, Init, DeclType);
@@ -5441,7 +5440,6 @@ Sema::AddOverloadCandidate(FunctionDecl *Function,
       // (13.3.3.1) that converts that argument to the corresponding
       // parameter of F.
       QualType ParamType = Proto->getArgType(ArgIdx);
-            
       Candidate.Conversions[ArgIdx]
         = TryCopyInitialization(*this, Args[ArgIdx], ParamType,
                                 SuppressUserConversions,
@@ -6540,10 +6538,9 @@ class BuiltinOperatorOverloadBuilder {
                         LastPromotedIntegralType = 11;
   static const unsigned FirstPromotedArithmeticType = 0,
                         LastPromotedArithmeticType = 11;
-
-  // scout - updated count from 20 to 41
+  // ===== Scout - updated count from 20 to 41 =============================
   static const unsigned NumArithmeticTypes = 41;
-
+  // =======================================================================
   /// \brief Get the canonical type for a given arithmetic type index.
   CanQualType getArithmeticType(unsigned index) {
     assert(index < NumArithmeticTypes);
@@ -6573,11 +6570,10 @@ class BuiltinOperatorOverloadBuilder {
       &ASTContext::SignedCharTy,
       &ASTContext::ShortTy,
       &ASTContext::UnsignedCharTy,
-      &ASTContext::UnsignedShortTy
+      &ASTContext::UnsignedShortTy,
 
-      // scout - vector types
-        
-      , &ASTContext::Bool2Ty,
+      // ===== Scout ====================================================================
+      &ASTContext::Bool2Ty,
       &ASTContext::Bool3Ty,
       &ASTContext::Bool4Ty,
       &ASTContext::Char2Ty,
@@ -6598,6 +6594,7 @@ class BuiltinOperatorOverloadBuilder {
       &ASTContext::Double2Ty,
       &ASTContext::Double3Ty,
       &ASTContext::Double4Ty
+      // =================================================================================
       // End of integral types.
       // FIXME: What about complex? What about half?
     };

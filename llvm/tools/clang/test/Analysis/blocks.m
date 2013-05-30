@@ -81,7 +81,7 @@ void test2() {
 
 void test2_b() {
   static int y = 0;
-  __apple_block int x;
+  __block int x;
   ^{ y = x + 1; }(); // expected-warning {{left operand of '+' is a garbage value}}
 }
 

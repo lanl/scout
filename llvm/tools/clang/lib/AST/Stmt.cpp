@@ -645,6 +645,7 @@ QualType CXXCatchStmt::getCaughtType() const {
 //===----------------------------------------------------------------------===//
 // Constructors
 //===----------------------------------------------------------------------===//
+
 GCCAsmStmt::GCCAsmStmt(ASTContext &C, SourceLocation asmloc, bool issimple,
                        bool isvolatile, unsigned numoutputs, unsigned numinputs,
                        IdentifierInfo **names, StringLiteral **constraints,
@@ -653,7 +654,7 @@ GCCAsmStmt::GCCAsmStmt(ASTContext &C, SourceLocation asmloc, bool issimple,
                        SourceLocation rparenloc)
   : AsmStmt(GCCAsmStmtClass, asmloc, issimple, isvolatile, numoutputs,
             numinputs, numclobbers), RParenLoc(rparenloc), AsmStr(asmstr) {
-  
+
   unsigned NumExprs = NumOutputs + NumInputs;
 
   Names = new (C) IdentifierInfo*[NumExprs];

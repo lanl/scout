@@ -466,6 +466,9 @@ llvm::DIType CGDebugInfo::CreateType(const BuiltinType *BT) {
   // SC_TODO - we need to replace scout's vector types with clang's "builtin"
   // types.  This has been done in the "refactor" branch but needs to be 
   // merged with "devel"...
+  // 
+  // SC_TODO - even though we're pushing this towards being obsolete, the 
+  // code below seems wrong -- are these all really float encoding?
   case BuiltinType::Bool2:
   case BuiltinType::Bool3:
   case BuiltinType::Bool4:
@@ -1420,9 +1423,6 @@ llvm::DIType CGDebugInfo::getOrCreateInterfaceType(QualType D,
   RetainedTypes.push_back(D.getAsOpaquePtr());
   return T;
 }
-
-
-
 
 /// CreateType - get structure or union type.
 llvm::DIType CGDebugInfo::CreateType(const RecordType *Ty) {

@@ -29,7 +29,7 @@ void test1(NSDictionary * dict) {
 @end
 
 void foo() {
-  __apple_block __weak D *weakSelf;
+  __block __weak D *weakSelf;
   D *l;
   l = weakSelf;
   weakSelf = l;
@@ -38,6 +38,6 @@ void foo() {
 void (^__weak b)(void);
 
 void test2() {
-  __apple_block int i = 0;
+  __block int i = 0;
   b = ^ {  ++i; };
 }

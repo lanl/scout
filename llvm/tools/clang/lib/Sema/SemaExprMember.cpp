@@ -637,9 +637,9 @@ LookupMemberExprInRecord(Sema &SemaRef, LookupResult &R,
   return false;
 }
 
-// scout - Scout Mesh
-// return true if there is an error
-
+// ===== Scout ====================================================================================
+// SC_TODO - can we drop static and move this to another file?
+// 
 static bool
 LookupMemberExprInMesh(Sema &SemaRef, LookupResult &R,
                        SourceRange BaseRange, const MeshType *MTy,
@@ -716,6 +716,7 @@ LookupMemberExprInMesh(Sema &SemaRef, LookupResult &R,
   
   return false;
 }
+// ================================================================================================
 
 ExprResult
 Sema::BuildMemberReferenceExpr(Expr *Base, QualType BaseType,
@@ -923,12 +924,16 @@ static MemberExpr *BuildMemberExpr(Sema &SemaRef,
   return E;
 }
 
+// ===== Scout ==============================================================================
+// SC_TODO - drop scout vector support. 
+// SC_TODO - can we move this to another file (i.e. drop staic and move)?
 static ScoutVectorMemberExpr 
 *BuildScoutVectorMemberExpr(ASTContext &C, Expr* base, SourceLocation loc,
                             unsigned index, QualType ty) {
   
   return ScoutVectorMemberExpr::Create(C, base, loc, index, ty);
 }
+// ==========================================================================================
 
 ExprResult
 Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
@@ -951,9 +956,9 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
   DeclarationName MemberName = MemberNameInfo.getName();
   SourceLocation MemberLoc = MemberNameInfo.getLoc();
 
-  // scout - Scout vector types
-  
-  if(const BuiltinType* BT = dyn_cast<BuiltinType>(BaseExprType.getTypePtr())){
+  // ===== Scout ======================================================================================
+  // SC_TODO - drop vector support. 
+  if (const BuiltinType* BT = dyn_cast<BuiltinType>(BaseExprType.getTypePtr())) {
     QualType VCType;
     bool isScoutVector = false;
     
@@ -1060,7 +1065,7 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
                                               index, VCType));
     }
   }
-  
+  // ===================================================================================================
   if (R.isAmbiguous())
     return ExprError();
 
@@ -1299,7 +1304,6 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
                        bool &IsArrow, SourceLocation OpLoc,
                        CXXScopeSpec &SS,
                        Decl *ObjCImpDecl, bool HasTemplateArgs) {
-
   assert(BaseExpr.get() && "no base expression");
 
   // Perform default conversions.
@@ -1354,8 +1358,8 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
     return Owned((Expr*) 0);
   }
 
-  // scout - Mesh
-  
+  // ===== Scout ========================================================================
+  // SC_TODO -- drop scout vector support, move this to a separate file/function?
   if (const MeshType *MTy = BaseType->getAs<MeshType>()) {
     if (LookupMemberExprInMesh(*this, R, BaseExpr.get()->getSourceRange(),
                                MTy, OpLoc, SS))
@@ -1414,7 +1418,8 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
         break;
     }    
   }
-  
+  // ====================================================================================
+
   // Handle ivar access to Objective-C objects.
   if (const ObjCObjectType *OTy = BaseType->getAs<ObjCObjectType>()) {
     if (!SS.isEmpty() && !SS.isInvalid()) {

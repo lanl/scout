@@ -1,5 +1,4 @@
 // RUN: %clang_cc1 -fsyntax-only -verify %s 
-
 namespace Ns {
   int f(); // expected-note{{previous declaration is here}}
 

@@ -575,7 +575,7 @@ public:
   /// which have any effect other than producing a value. Example is a function
   /// call, volatile variable read, or throwing an exception.
   bool HasSideEffects(const ASTContext &Ctx) const;
-  
+
   /// \brief Determine whether this expression involves a call to any function
   /// that is not trivial.
   bool hasNonTrivialCall(ASTContext &Ctx);
@@ -2183,7 +2183,6 @@ public:
   Expr **getArgs() {
     return reinterpret_cast<Expr **>(SubExprs+getNumPreArgs()+PREARGS_START);
   }
-
   const Expr *const *getArgs() const {
     return const_cast<CallExpr*>(this)->getArgs();
   }
@@ -2540,7 +2539,7 @@ public:
   void setHadMultipleCandidates(bool V = true) {
     HadMultipleCandidates = V;
   }
-  
+
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == MemberExprClass;
   }
@@ -2552,12 +2551,10 @@ public:
   friend class ASTStmtWriter;
 };
 
-// scout
-// represents indexing a scout vector, e.g:
-// float3 v;
-// v.y;
-// v[0];
-
+// ===== Scout =============================================================================================
+// SC_TODO - we need to replace Scout's vector types with the "builtin" support 
+// provided by Clang.  This has been done in the "refactor" branch but needs to 
+// merged into "devel". 
 class ScoutVectorMemberExpr : public Expr {
   Stmt* Base;
 
@@ -2606,7 +2603,7 @@ public:
   friend class ASTReader;
   friend class ASTStmtWriter;
 };
-
+// =========================================================================================================
 /// CompoundLiteralExpr - [C99 6.5.2.5]
 ///
 class CompoundLiteralExpr : public Expr {

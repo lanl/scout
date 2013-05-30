@@ -323,7 +323,7 @@ public:
   void mutateType(Type *Ty) {
     VTy = Ty;
   }
-
+  
 protected:
   unsigned short getSubclassDataFromValue() const { return SubclassData; }
   void setValueSubclassData(unsigned short D) { SubclassData = D; }

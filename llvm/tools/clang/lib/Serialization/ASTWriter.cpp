@@ -258,24 +258,13 @@ void ASTTypeWriter::VisitTagType(const TagType *T) {
          "Cannot serialize in the middle of a type definition");
 }
 
-// scout - Scout Mesh types
-// TODO implement - we are not currently using the AST writer
-void ASTTypeWriter::VisitUniformMeshType(const UniformMeshType *T) {
-
-}
-
-void ASTTypeWriter::VisitStructuredMeshType(const StructuredMeshType *T) {
-  
-}
-
-void ASTTypeWriter::VisitRectlinearMeshType(const RectlinearMeshType *T) {
-  
-}
-
-void ASTTypeWriter::VisitUnstructuredMeshType(const UnstructuredMeshType *T) {
-  
-}
-
+// ===== Scout =====================================================================
+// SC_TODO - implement these 
+void ASTTypeWriter::VisitUniformMeshType(const UniformMeshType *T) { }
+void ASTTypeWriter::VisitStructuredMeshType(const StructuredMeshType *T) { }
+void ASTTypeWriter::VisitRectlinearMeshType(const RectlinearMeshType *T) { }
+void ASTTypeWriter::VisitUnstructuredMeshType(const UnstructuredMeshType *T) { }
+// =================================================================================
 void ASTTypeWriter::VisitRecordType(const RecordType *T) {
   VisitTagType(T);
   Code = TYPE_RECORD;
@@ -552,24 +541,13 @@ void TypeLocWriter::VisitAutoTypeLoc(AutoTypeLoc TL) {
   Writer.AddSourceLocation(TL.getNameLoc(), Record);
 }
 
-// scout - Scout Mesh types
-// TODO implement
-void TypeLocWriter::VisitUniformMeshTypeLoc(UniformMeshTypeLoc TL) {
-
-}
-
-void TypeLocWriter::VisitStructuredMeshTypeLoc(StructuredMeshTypeLoc TL) {
-  
-}
-
-void TypeLocWriter::VisitRectlinearMeshTypeLoc(RectlinearMeshTypeLoc TL) {
-  
-}
-
-void TypeLocWriter::VisitUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc TL) {
-  
-}
-
+// ===== Scout ====================================================================
+// SC_TODO - implement these 
+void TypeLocWriter::VisitUniformMeshTypeLoc(UniformMeshTypeLoc TL) { }
+void TypeLocWriter::VisitStructuredMeshTypeLoc(StructuredMeshTypeLoc TL) { }
+void TypeLocWriter::VisitRectlinearMeshTypeLoc(RectlinearMeshTypeLoc TL) { }
+void TypeLocWriter::VisitUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc TL) { }
+// ================================================================================
 void TypeLocWriter::VisitRecordTypeLoc(RecordTypeLoc TL) {
   Writer.AddSourceLocation(TL.getNameLoc(), Record);
 }

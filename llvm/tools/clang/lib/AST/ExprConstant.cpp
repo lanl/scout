@@ -3807,7 +3807,6 @@ public:
       return true;
     }
     // ========================================================================
-
     const ValueDecl *MD = E->getMemberDecl();
     if (const FieldDecl *FD = dyn_cast<FieldDecl>(E->getMemberDecl())) {
       assert(BaseTy->getAs<RecordType>()->getDecl()->getCanonicalDecl() ==
@@ -3820,7 +3819,7 @@ public:
         return false;
     } else
       return this->Error(E);
-    
+
     if (MD->getType()->isReferenceType()) {
       APValue RefValue;
       if (!handleLValueToRValueConversion(this->Info, E, MD->getType(), Result,
@@ -7945,8 +7944,8 @@ static ICEDiag CheckICE(const Expr* E, ASTContext &Ctx) {
   // ===== Scout ==========================================================
   case Expr::ScoutVectorMemberExprClass:
     return ICEDiag(IK_NotICE, E->getLocStart());
-  }
   // ======================================================================  
+  }
 
   llvm_unreachable("Invalid StmtClass!");
 }

@@ -611,56 +611,6 @@ public:
   EnumDecl *getDecl() const { return getTypePtr()->getDecl(); }
 };
 
-// scout - Mesh support class
-
-class MeshTypeLoc :
-  public InheritingConcreteTypeLoc<TypeSpecTypeLoc,
-  MeshTypeLoc,
-  MeshType> {
-  public:
-    MeshDecl *getDecl() const { return getTypePtr()->getDecl(); }
-    
-    /// \brief True if the tag was defined in this type specifier.
-    bool isDefinition() const {
-      MeshDecl *D = getDecl();
-      
-      return D->isDefinition();
-    }
-};
-  
-/// \brief Wrapper for source info for mesh types.
-class UniformMeshTypeLoc :
-  public InheritingConcreteTypeLoc<MeshTypeLoc,
-  UniformMeshTypeLoc,
-  UniformMeshType> {
-  public:
-    UniformMeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
-};
-
-class StructuredMeshTypeLoc :
-  public InheritingConcreteTypeLoc<MeshTypeLoc,
-  StructuredMeshTypeLoc,
-  StructuredMeshType> {
-  public:
-    StructuredMeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
-};
-
-class RectlinearMeshTypeLoc :
-  public InheritingConcreteTypeLoc<MeshTypeLoc,
-  RectlinearMeshTypeLoc,
-  RectlinearMeshType> {
-  public:
-    RectlinearMeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
-};
-
-class UnstructuredMeshTypeLoc :
-  public InheritingConcreteTypeLoc<MeshTypeLoc,
-  UnstructuredMeshTypeLoc,
-  UnstructuredMeshType> {
-  public:
-    UnstructuredMeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
-};
-  
 /// \brief Wrapper for template type parameters.
 class TemplateTypeParmTypeLoc :
     public InheritingConcreteTypeLoc<TypeSpecTypeLoc,
@@ -1906,6 +1856,56 @@ public:
   }
 };
 
+// ===== Scout =======================================================================================
+
+class MeshTypeLoc :
+  public InheritingConcreteTypeLoc<TypeSpecTypeLoc,
+  MeshTypeLoc,
+  MeshType> {
+  public:
+    MeshDecl *getDecl() const { return getTypePtr()->getDecl(); }
+    
+    /// \brief True if the tag was defined in this type specifier.
+    bool isDefinition() const {
+      MeshDecl *D = getDecl();
+      
+      return D->isDefinition();
+    }
+};
+  
+/// \brief Wrapper for source info for mesh types.
+class UniformMeshTypeLoc :
+  public InheritingConcreteTypeLoc<MeshTypeLoc,
+  UniformMeshTypeLoc,
+  UniformMeshType> {
+  public:
+    UniformMeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
+};
+
+class StructuredMeshTypeLoc :
+  public InheritingConcreteTypeLoc<MeshTypeLoc,
+  StructuredMeshTypeLoc,
+  StructuredMeshType> {
+  public:
+    StructuredMeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
+};
+
+class RectlinearMeshTypeLoc :
+  public InheritingConcreteTypeLoc<MeshTypeLoc,
+  RectlinearMeshTypeLoc,
+  RectlinearMeshType> {
+  public:
+    RectlinearMeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
+};
+
+class UnstructuredMeshTypeLoc :
+  public InheritingConcreteTypeLoc<MeshTypeLoc,
+  UnstructuredMeshTypeLoc,
+  UnstructuredMeshType> {
+  public:
+    UnstructuredMeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
+};
+// ===================================================================================================
 
 }
 

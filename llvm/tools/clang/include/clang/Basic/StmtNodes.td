@@ -18,13 +18,12 @@ def SwitchStmt : Stmt;
 def WhileStmt : Stmt;
 def DoStmt : Stmt;
 def ForStmt : Stmt;
-
-// scout - Scout Stmts
+// ===== Scout =========================================
 def ForAllStmt : Stmt;
 def ForAllArrayStmt : DStmt<ForAllStmt>;
 def RenderAllStmt : DStmt<ForAllStmt>;
 def VolumeRenderAllStmt : Stmt;
-
+// =====================================================
 def GotoStmt : Stmt;
 def IndirectGotoStmt : Stmt;
 def ContinueStmt : Stmt;
@@ -71,10 +70,10 @@ def UnaryExprOrTypeTraitExpr : DStmt<Expr>;
 def ArraySubscriptExpr : DStmt<Expr>;
 def CallExpr : DStmt<Expr>;
 def MemberExpr : DStmt<Expr>;
-
-// scout - Scout Vector Member Expr
+// ===== Scout =============================================
+// SC_TODO - remove scout vector types
 def ScoutVectorMemberExpr : DStmt<Expr>;
-
+// =========================================================
 def CastExpr : DStmt<Expr, 1>;
 def BinaryOperator : DStmt<Expr>;
 def CompoundAssignOperator : DStmt<BinaryOperator>;

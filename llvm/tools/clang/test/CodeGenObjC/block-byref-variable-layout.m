@@ -4,16 +4,16 @@
 @class NSString;
 
 void Test12759433() {
- __apple_block __unsafe_unretained NSString *uuByref = (__bridge NSString *)(void*)0x102030405060708;
+ __block __unsafe_unretained NSString *uuByref = (__bridge NSString *)(void*)0x102030405060708;
  void (^block)() = ^{ uuByref = 0; };
  block();
 }
 // CHECK: %struct.__block_byref_uuByref = type { i8*, %struct.__block_byref_uuByref*, i32, i32, [[ZERO:%.*]]* }
 int main() {
-  __apple_block __weak id wid;
-  __apple_block long XXX;
-  __apple_block id ID;
-  __apple_block struct S {
+  __block __weak id wid;
+  __block long XXX;
+  __block id ID;
+  __block struct S {
      int iS;
      double iD;
      void *pv;
@@ -45,5 +45,5 @@ int main() {
 typedef char mds_path_t[1024];
 void directVolumePerfWaitForStoreState()
 {
- __apple_block mds_path_t path;
+ __block mds_path_t path;
 }

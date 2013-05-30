@@ -3,13 +3,13 @@
 // radar 7540194
 
 extern "C" __declspec(dllexport) void BreakTheRewriter(int i) {
-        __apple_block int aBlockVariable = 0;
+        __block int aBlockVariable = 0;
         void (^aBlock)(void) = ^ {
                 aBlockVariable = 42;
         };
         aBlockVariable++;
 	if (i) {
-	  __apple_block int bbBlockVariable = 0;
+	  __block int bbBlockVariable = 0;
 	  void (^aBlock)(void) = ^ {
                 bbBlockVariable = 42;
           };
@@ -18,7 +18,7 @@ extern "C" __declspec(dllexport) void BreakTheRewriter(int i) {
 
 __declspec(dllexport) extern "C" __declspec(dllexport) void XXXXBreakTheRewriter(void) {
 
-        __apple_block int aBlockVariable = 0;
+        __block int aBlockVariable = 0;
         void (^aBlock)(void) = ^ {
                 aBlockVariable = 42;
         };

@@ -147,14 +147,14 @@ void test15() {
   foo(^{ return LESS; }); // expected-error {{incompatible block pointer types passing 'int (^)(void)' to parameter of type 'long (^)()'}}
 }
 
-__apple_block int test16i;  // expected-error {{__block attribute not allowed, only allowed on local variables}}
+__block int test16i;  // expected-error {{__block attribute not allowed, only allowed on local variables}}
 
-void test16(__apple_block int i) { // expected-error {{__block attribute not allowed, only allowed on local variables}}
+void test16(__block int i) { // expected-error {{__block attribute not allowed, only allowed on local variables}}
   int size = 5;
-  extern __apple_block double extern_var; // expected-error {{__block attribute not allowed, only allowed on local variables}}
-  static __apple_block char * pch; // expected-error {{__block attribute not allowed, only allowed on local variables}}
-  __apple_block int a[size]; // expected-error {{__block attribute not allowed on declaration with a variably modified type}}
-  __apple_block int (*ap)[size]; // expected-error {{__block attribute not allowed on declaration with a variably modified type}}
+  extern __block double extern_var; // expected-error {{__block attribute not allowed, only allowed on local variables}}
+  static __block char * pch; // expected-error {{__block attribute not allowed, only allowed on local variables}}
+  __block int a[size]; // expected-error {{__block attribute not allowed on declaration with a variably modified type}}
+  __block int (*ap)[size]; // expected-error {{__block attribute not allowed on declaration with a variably modified type}}
 }
 
 void f();
@@ -192,7 +192,7 @@ void test18() {
 int test19() {
   goto L0;       // expected-error {{goto into protected scope}}
   
-  __apple_block int x; // expected-note {{jump bypasses setup of __block variable}}
+  __block int x; // expected-note {{jump bypasses setup of __block variable}}
 L0:
   x = 0;
   ^(){ ++x; }();
@@ -214,7 +214,7 @@ void test20() {
 // radr://7438948
 void test21() {
   int a[7]; // expected-note {{declared here}}
-  __apple_block int b[10]; // expected-note {{declared here}}
+  __block int b[10]; // expected-note {{declared here}}
   a[1] = 1;
   ^{
     (void)a[1]; // expected-error {{cannot refer to declaration with an array type inside block}}

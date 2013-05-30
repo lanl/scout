@@ -225,6 +225,7 @@ public:
 
   const Token &getCurToken() const { return Tok; }
   Scope *getCurScope() const { return Actions.getCurScope(); }
+
   Decl  *getObjCDeclContext() const { return Actions.getObjCDeclContext(); }
 
   // Type forwarding.  All of these are statically 'void*', but they may all be
@@ -524,7 +525,8 @@ private:
   // scout - detect float <4>, int <3>, ... iSPC constructs and
   //                 return TST_value of Scout float4, int3, ...
   //                 that should be substituted.  Return same if not iSPC
-  //                 Involves lookahead.  Pure
+  //                 Involves lookahead.
+  // SC_TODO - remove scout vectors. 
   DeclSpec::TST GetIspcScoutExtension(DeclSpec::TST TagType, tok::TokenKind kw);
 
   /// TryAltiVecToken - Check for context-sensitive AltiVec identifier tokens,
@@ -540,7 +542,6 @@ private:
 
     return TryAltiVecTokenOutOfLine(DS, Loc, PrevSpec, DiagID, isInvalid);
   }
-
 
   /// TryAltiVecVectorToken - Check for context-sensitive AltiVec vector
   /// identifier token, replacing it with the non-context-sensitive __vector.
@@ -1206,7 +1207,6 @@ private:
 
   ParsedType ParseObjCTypeName(ObjCDeclSpec &DS, Declarator::TheContext Ctx,
                                ParsedAttributes *ParamAttrs);
-  
   void ParseObjCMethodRequirement();
   Decl *ParseObjCMethodPrototype(
             tok::ObjCKeywordKind MethodImplKind = tok::objc_not_keyword,
@@ -1986,7 +1986,6 @@ private:
                                          SourceLocation StartLoc,
                                          SourceLocation EndLoc);
   void ParseUnderlyingTypeSpecifier(DeclSpec &DS);
-
   void ParseAtomicSpecifier(DeclSpec &DS);
 
   ExprResult ParseAlignArgument(SourceLocation Start,
@@ -2131,7 +2130,7 @@ private:
   MemInitResult ParseMemInitializer(Decl *ConstructorDecl);
   void HandleMemberFunctionDeclDelays(Declarator& DeclaratorInfo,
                                       Decl *ThisDecl);
-  
+
   //===--------------------------------------------------------------------===//
   // C++ 10: Derived classes [class.derived]
   TypeResult ParseBaseTypeSpecifier(SourceLocation &BaseLoc,

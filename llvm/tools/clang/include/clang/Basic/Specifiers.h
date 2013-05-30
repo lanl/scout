@@ -57,7 +57,10 @@ namespace clang {
     TST_typename,     // Typedef, C++ class-name or enum name, etc.
     TST_typeofType,
     TST_typeofExpr,
-    // scout - Scout types
+    // ===== Scout =================================================================
+    // SC_TODO - We need to remove Scout's custom vectors in favor of Clang's
+    // "builtin" support.  This has been done in the "refactor" branch but it
+    // has not been merged into "deve".
     TST_mesh,
     TST_bool2,
     TST_bool3,
@@ -80,6 +83,7 @@ namespace clang {
     TST_double2,
     TST_double3,
     TST_double4,
+    // ===========================================================================
     TST_decltype,         // C++11 decltype
     TST_underlyingType,   // __underlying_type for C++11
     TST_auto,             // C++11 auto

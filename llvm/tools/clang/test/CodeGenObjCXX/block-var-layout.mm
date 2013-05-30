@@ -24,7 +24,7 @@ void y(int a) {}
 extern id opaque_id();
 
 void f() {
-    __apple_block int byref_int = 0;
+    __block int byref_int = 0;
     char ch = 'a';
     char ch1 = 'b';
     char ch2 = 'c';
@@ -32,8 +32,8 @@ void f() {
     const id bar = (id) opaque_id();
     id baz = 0;
     __strong void *strong_void_sta;
-    __apple_block id byref_bab = (id)0;
-    __apple_block void *bl_var1;
+    __block id byref_bab = (id)0;
+    __block void *bl_var1;
     int i; double dob;
 
 // Test 1

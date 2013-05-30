@@ -17,7 +17,7 @@ static __inline NSRange NSMakeRange(NSUInteger loc, NSUInteger len) {
 }
 
 void bar() {
-    __apple_block NSRange previousRange = NSMakeRange(0, 0);    
+    __block NSRange previousRange = NSMakeRange(0, 0);    
     void (^blk)() = ^{
         previousRange = NSMakeRange(1, 0);
     };

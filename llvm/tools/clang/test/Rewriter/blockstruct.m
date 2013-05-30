@@ -10,7 +10,7 @@ struct _s {
 struct _s *r();
 
 void f() {
-    __apple_block struct _s *s = 0;
+    __block struct _s *s = 0;
     a(^{
         s = (struct _s *)r();
     });

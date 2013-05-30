@@ -186,8 +186,6 @@ static bool TypeInfoIsInStandardLibrary(const BuiltinType *Ty) {
     case BuiltinType::Half:
     case BuiltinType::Float:
     case BuiltinType::Double:
-
-  
     case BuiltinType::LongDouble:
     case BuiltinType::Char16:
     case BuiltinType::Char32:
@@ -485,7 +483,6 @@ void RTTIBuilder::BuildVTablePointer(const Type *Ty) {
     VTableName = "_ZTVN10__cxxabiv???__mesh_type_infoE";
     break;
   // ==========================================================================
-      
   case Type::Record: {
     const CXXRecordDecl *RD = 
       cast<CXXRecordDecl>(cast<RecordType>(Ty)->getDecl());
@@ -689,7 +686,7 @@ llvm::Constant *RTTIBuilder::BuildTypeInfo(QualType Ty, bool Force) {
     // abi::__enum_mesh_info adds no data members to std::type_info.
     break;
   // ==========================================================================
-      
+
   case Type::Enum:
     // Itanium C++ ABI 2.9.5p5:
     // abi::__enum_type_info adds no data members to std::type_info.

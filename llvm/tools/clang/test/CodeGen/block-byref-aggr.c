@@ -8,7 +8,7 @@ Agg makeAgg(void);
 // address *after* evaluating the RHS when the RHS has the capacity to
 // cause a block copy.  rdar://9309454
 void test0() {
-  __apple_block Agg a = {100};
+  __block Agg a = {100};
 
  a = makeAgg();
 }
@@ -34,7 +34,7 @@ void test0() {
 // propagate the actual value into the outer variable.
 // rdar://11757470
 void test1() {
-  __apple_block Agg a, b;
+  __block Agg a, b;
   a = b = makeAgg();
 }
 // CHECK:    define void @test1()

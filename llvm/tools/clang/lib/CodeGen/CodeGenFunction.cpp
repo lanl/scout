@@ -43,8 +43,8 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
     LambdaThisCaptureField(0), NormalCleanupDest(0), NextCleanupDestIndex(1),
     FirstBlockInfo(0), EHResumeBlock(0), ExceptionSlot(0), EHSelectorSlot(0),
     RenderAll(0), CurrentForAllArrayStmt(0), //scout
-    DebugInfo(0), DisableDebugInfo(false), DidCallStackSave(false),
-    CalleeWithThisReturn(0), 
+    DebugInfo(0), DisableDebugInfo(false), CalleeWithThisReturn(0),
+    DidCallStackSave(false),
     IndirectBranch(0), SwitchInsn(0), CaseRangeBlock(0), UnreachableBlock(0),
     NumReturnExprs(0), NumSimpleReturnExprs(0),
     CXXABIThisDecl(0), CXXABIThisValue(0), CXXThisValue(0),
@@ -104,7 +104,6 @@ TypeEvaluationKind CodeGenFunction::getEvaluationKind(QualType type) {
   case Type::UnstructuredMesh:
     return TEK_Aggregate; //not sure -dpx 
   // ==========================================================================
-
     // Various scalar types.
     case Type::Builtin:
     case Type::Pointer:
@@ -195,7 +194,6 @@ static void EmitIfUsed(CodeGenFunction &CGF, llvm::BasicBlock *BB) {
 }
 
 void CodeGenFunction::FinishFunction(SourceLocation EndLoc) {
-  DEBUG_OUT("FinishFunction");
   assert(BreakContinueStack.empty() &&
          "mismatched push/pop in break/continue stack!");
 
@@ -492,7 +490,6 @@ void CodeGenFunction::StartFunction(GlobalDecl GD,
                                     const CGFunctionInfo &FnInfo,
                                     const FunctionArgList &Args,
                                     SourceLocation StartLoc) {
-  DEBUG_OUT("StartFunction");
   const Decl *D = GD.getDecl();
 
   DidCallStackSave = false;
@@ -631,7 +628,6 @@ void CodeGenFunction::StartFunction(GlobalDecl GD,
 }
 
 void CodeGenFunction::EmitFunctionBody(FunctionArgList &Args) {
-  DEBUG_OUT("EmitFunctionBody");
   const FunctionDecl *FD = cast<FunctionDecl>(CurGD.getDecl());
   assert(FD->getBody());
   if (const CompoundStmt *S = dyn_cast<CompoundStmt>(FD->getBody()))
@@ -662,7 +658,6 @@ static void TryMarkNoThrow(llvm::Function *F) {
 
 void CodeGenFunction::GenerateCode(GlobalDecl GD, llvm::Function *Fn,
                                    const CGFunctionInfo &FnInfo) {
-  DEBUG_OUT("GenerateCode");
   const FunctionDecl *FD = cast<FunctionDecl>(GD.getDecl());
 
   // Check if we should generate debug info for this function.
@@ -1271,7 +1266,6 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
       llvm_unreachable("unexpected dependent type!");
 
     // These types are never variably-modified.
-
     // ===== Scout ============================================================
     case Type::UniformMesh:
     case Type::StructuredMesh:
@@ -1279,7 +1273,6 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
     case Type::UnstructuredMesh:
       llvm_unreachable("type class is never variably-modified!");
     // ========================================================================      
-
     case Type::Builtin:
     case Type::Complex:
     case Type::Vector:

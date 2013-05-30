@@ -13,7 +13,7 @@ struct Test
 void useBlock(void (^)(void));
 
 int main (void) {
-  __apple_block Test t;
+  __block Test t;
   useBlock(^(void) { t.use(); });
 }
 

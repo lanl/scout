@@ -1116,7 +1116,8 @@ CanThrowResult Sema::canThrow(const Expr *E) {
     // These expressions can never throw.
     return CT_Cannot;
 
-  // scout - cannot throw on scout vector member expr
+  // ===== Scout - cannot throw on scout vector member expr
+  // SC_TODO - remove scout vectors 
   case Expr::ScoutVectorMemberExprClass:
     return CT_Cannot;
 

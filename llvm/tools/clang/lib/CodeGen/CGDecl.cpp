@@ -29,8 +29,8 @@
 using namespace clang;
 using namespace CodeGen;
 
+
 void CodeGenFunction::EmitDecl(const Decl &D) {
-  DEBUG_OUT("EmitDecl");
   switch (D.getKind()) {
   case Decl::TranslationUnit:
   case Decl::Namespace:
@@ -75,16 +75,6 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
   case Decl::UsingShadow:
     llvm_unreachable("Declaration should not be in declstmts!");
   case Decl::Function:  // void X();
-    return;
-
-  // ===== Scout ==============================================================
-  case Decl::UniformMesh:
-  case Decl::StructuredMesh:
-  case Decl::RectlinearMesh:
-  case Decl::UnstructuredMesh:
-    return;
-  // ==========================================================================
-
   case Decl::Record:    // struct/union/class X;
   case Decl::Enum:      // enum X;
   case Decl::EnumConstant: // enum ? { X = ? }
@@ -96,6 +86,15 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
   case Decl::Empty:
     // None of these decls require codegen support.
     return;
+
+  // ===== Scout ==============================================================
+  case Decl::UniformMesh:
+  case Decl::StructuredMesh:
+  case Decl::RectlinearMesh:
+  case Decl::UnstructuredMesh:
+    return;
+  // ==========================================================================
+
 
   case Decl::NamespaceAlias:
     if (CGDebugInfo *DI = getDebugInfo())
@@ -130,7 +129,6 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
 /// EmitVarDecl - This method handles emission of any variable declaration
 /// inside a function, including static vars etc.
 void CodeGenFunction::EmitVarDecl(const VarDecl &D) {
-  DEBUG_OUT("EmitVarDecl");
   if (D.isStaticLocal()) {
     llvm::GlobalValue::LinkageTypes Linkage =
       llvm::GlobalValue::InternalLinkage;
@@ -296,7 +294,6 @@ CodeGenFunction::AddInitializerToStaticVarDecl(const VarDecl &D,
 
 void CodeGenFunction::EmitStaticVarDecl(const VarDecl &D,
                                       llvm::GlobalValue::LinkageTypes Linkage) {
-  DEBUG_OUT("EmitStaticVarDecl");
   llvm::Value *&DMEntry = LocalDeclMap[&D];
   assert(DMEntry == 0 && "Decl already exists in localdeclmap!");
 
@@ -570,7 +567,6 @@ void CodeGenFunction::EmitScalarInit(const Expr *init,
                                      const ValueDecl *D,
                                      LValue lvalue,
                                      bool capturedByInit) {
-  DEBUG_OUT("EmitScalarInit");
   Qualifiers::ObjCLifetime lifetime = lvalue.getObjCLifetime();
   if (!lifetime) {
     llvm::Value *value = EmitScalarExpr(init);
@@ -825,7 +821,6 @@ static bool shouldUseLifetimeMarkers(CodeGenFunction &CGF, const VarDecl &D,
 /// variable declaration with auto, register, or no storage class specifier.
 /// These turn into simple stack objects, or GlobalValues depending on target.
 void CodeGenFunction::EmitAutoVarDecl(const VarDecl &D) {
-  DEBUG_OUT("EmitAutoVarDecl");
   AutoVarEmission emission = EmitAutoVarAlloca(D);
   EmitAutoVarInit(emission);
   EmitAutoVarCleanups(emission);
@@ -835,7 +830,6 @@ void CodeGenFunction::EmitAutoVarDecl(const VarDecl &D) {
 /// local variable.  Does not emit initalization or destruction.
 CodeGenFunction::AutoVarEmission
 CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
-  DEBUG_OUT("EmitAutoVarAlloca");
   QualType Ty = D.getType();
 
   AutoVarEmission emission(D);
@@ -851,7 +845,6 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
     EmitVariablyModifiedType(Ty);
 
   llvm::Value *DeclPtr;
-  
   if (Ty->isConstantSizeType()) {
     bool NRVO = getLangOpts().ElideConstructors &&
       D.isNRVOVariable();
@@ -991,7 +984,6 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
     if (CGDebugInfo *DI = getDebugInfo()) {
       if (CGM.getCodeGenOpts().getDebugInfo()
             >= CodeGenOptions::LimitedDebugInfo) {
-        
         DI->setLocation(D.getLocation());
         DI->EmitDeclareOfAutoVariable(&D, DeclPtr, Builder);
       }
@@ -1071,7 +1063,6 @@ static bool isTrivialInitializer(const Expr *Init) {
   return false;
 }
 void CodeGenFunction::EmitAutoVarInit(const AutoVarEmission &emission) {
-  DEBUG_OUT("EmitAutoVarInit");
   assert(emission.Variable && "emission was not valid!");
 
   // If this was emitted as a global constant, we're done.
@@ -1096,7 +1087,6 @@ void CodeGenFunction::EmitAutoVarInit(const AutoVarEmission &emission) {
 
   if (isTrivialInitializer(Init))
     return;
-
 
   CharUnits alignment = emission.Alignment;
 
@@ -1179,7 +1169,6 @@ void CodeGenFunction::EmitExprAsInit(const Expr *init,
                                      const ValueDecl *D,
                                      LValue lvalue,
                                      bool capturedByInit) {
-  DEBUG_OUT("EmitExprAsInt");
   QualType type = D->getType();
 
   if (type->isReferenceType()) {
@@ -1275,7 +1264,6 @@ void CodeGenFunction::emitAutoVarTypeCleanup(
 }
 
 void CodeGenFunction::EmitAutoVarCleanups(const AutoVarEmission &emission) {
-  DEBUG_OUT("EmitAutoVarCleanups");
   assert(emission.Variable && "emission was not valid!");
 
   // If this was emitted as a global constant, we're done.

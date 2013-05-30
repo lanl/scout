@@ -133,8 +133,11 @@ FLOATING_TYPE(Double, DoubleTy)
 // 'long double'
 FLOATING_TYPE(LongDouble, LongDoubleTy)
 
-//===- Scout Types --------------------------------------------------------===//
-
+// ===== Scout =================================================================
+// SC_TODO - We need to replace Scout's vector types with the the "builtin" 
+// support in Clang.  We've done this in the "refactor" branch but it has not
+// yet been merged into "devel". 
+// 
 BUILTIN_TYPE(Bool2, Bool2Ty) 
 BUILTIN_TYPE(Bool3, Bool3Ty) 
 BUILTIN_TYPE(Bool4, Bool4Ty) 
@@ -156,6 +159,7 @@ BUILTIN_TYPE(Float4, Float4Ty)
 BUILTIN_TYPE(Double2, Double2Ty)
 BUILTIN_TYPE(Double3, Double3Ty)
 BUILTIN_TYPE(Double4, Double4Ty)
+// =============================================================================
 
 //===- Language-specific types --------------------------------------------===//
 
