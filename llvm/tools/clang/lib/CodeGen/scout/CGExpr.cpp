@@ -1,3 +1,4 @@
+#include <stdio.h>
 
 #include "CodeGenFunction.h"
 #include "CGCXXABI.h"
@@ -207,7 +208,12 @@ CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD,
   
   llvm::Value *var = MeshMembers[memberName].first;
   QualType Ty = MeshMembers[memberName].second;
-  llvm::Value *addr = Builder.CreateInBoundsGEP(var, arg, "arrayidx");
+
+  char *IRNameStr = new char[memberName.size() + 16];
+  sprintf(IRNameStr, "%s.idx.", memberName.str().c_str());
+  llvm::Value *addr = Builder.CreateInBoundsGEP(var, arg, IRNameStr);
+  delete []IRNameStr; // SC_TODO: we're assuming this is safe after
+                      // creating the GEP instruction...
   return MakeAddrLValue(addr, Ty);
 }
 
