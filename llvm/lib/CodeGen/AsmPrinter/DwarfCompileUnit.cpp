@@ -33,7 +33,7 @@ using namespace llvm;
 
 /// CompileUnit - Compile unit constructor.
 CompileUnit::CompileUnit(unsigned UID, unsigned L, DIE *D, const MDNode *N,
-			 AsmPrinter *A, DwarfDebug *DW, DwarfUnits *DWU)
+                         AsmPrinter *A, DwarfDebug *DW, DwarfUnits *DWU)
   : UniqueID(UID), Language(L), CUDie(D), Asm(A), DD(DW), DU(DWU),
     IndexTyDie(0), DebugInfoOffset(0) {
   DIEIntegerOne = new (DIEValueAllocator) DIEInteger(1);
@@ -1504,14 +1504,9 @@ DIE *CompileUnit::constructVariableDIE(DbgVariable *DV, bool isScopeAbstract) {
   DIE *VariableDie = new DIE(Tag);
   DbgVariable *AbsVar = DV->getAbstractVariable();
   DIE *AbsDIE = AbsVar ? AbsVar->getDIE() : NULL;
-  if (AbsDIE) {
-    bool InSameCU = AbsDIE->getCompileUnit() == getCUDie();
+  if (AbsDIE)
     addDIEEntry(VariableDie, dwarf::DW_AT_abstract_origin,
-                InSameCU ? dwarf::DW_FORM_ref4 : dwarf::DW_FORM_ref_addr,
-                AbsDIE);
-    if (!InSameCU)
-      DD->setUseRefAddr(true);
-  }
+                            dwarf::DW_FORM_ref4, AbsDIE);
   else {
     addString(VariableDie, dwarf::DW_AT_name, Name);
     addSourceLine(VariableDie, DV->getVariable());
