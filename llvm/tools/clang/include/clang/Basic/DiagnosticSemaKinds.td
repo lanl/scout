@@ -824,6 +824,8 @@ def warn_auto_implicit_atomic_property : Warning<
   InGroup<ImplicitAtomic>, DefaultIgnore;
 def warn_unimplemented_selector:  Warning<
   "creating selector for nonexistent method %0">, InGroup<Selector>, DefaultIgnore;
+def warning_multiple_selectors: Warning<
+  "multiple selectors named %0 found">, InGroup<SelectorTypeMismatch>, DefaultIgnore;
 def warn_unimplemented_protocol_method : Warning<
   "method %0 in protocol not implemented">, InGroup<Protocol>;
 
@@ -1179,6 +1181,9 @@ def ext_static_data_member_in_union : ExtWarn<
 def warn_cxx98_compat_static_data_member_in_union : Warning<
   "static data member %0 in union is incompatible with C++98">,
   InGroup<CXX98Compat>, DefaultIgnore;
+def ext_union_member_of_reference_type : ExtWarn<
+  "union member %0 has reference type %1, which is a Microsoft extension">,
+  InGroup<Microsoft>;
 def err_union_member_of_reference_type : Error<
   "union member %0 has reference type %1">;
 def ext_anonymous_struct_union_qualified : Extension<
