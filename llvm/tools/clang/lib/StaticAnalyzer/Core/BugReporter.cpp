@@ -1582,6 +1582,9 @@ static const Stmt *getTerminatorCondition(const CFGBlock *B) {
   return S;
 }
 
+static const char *StrEnteringLoop = "Entering loop body";
+static const char *StrLoopBodyZero = "Loop body executed 0 times";
+
 static bool
 GenerateAlternateExtensivePathDiagnostic(PathDiagnostic& PD,
                                          PathDiagnosticBuilder &PDB,
@@ -1775,11 +1778,11 @@ GenerateAlternateExtensivePathDiagnostic(PathDiagnostic& PD,
 
             if (isJumpToFalseBranch(&*BE)) {
               if (!IsInLoopBody) {
-                str = "Loop body executed 0 times";
+                str = StrLoopBodyZero;
               }
             }
             else {
-              str = "Entering loop body";
+              str = StrEnteringLoop;
             }
 
             if (str) {
@@ -2227,8 +2230,13 @@ static bool optimizeEdges(PathPieces &path, SourceManager &SM,
   return hasChanges;
 }
 
-static void adjustBranchEdges(PathPieces &pieces, LocationContextMap &LCM,
-                            SourceManager &SM) {
+/// \brief Split edges incident on a branch condition into two edges.
+///
+/// The first edge is incident on the branch statement, the second on the
+/// condition.
+static void splitBranchConditionEdges(PathPieces &pieces,
+                                      LocationContextMap &LCM,
+                                      SourceManager &SM) {
   // Retrieve the parent map for this path.
   const LocationContext *LC = LCM[&pieces];
   ParentMap &PM = LC->getParentMap();
@@ -2237,7 +2245,7 @@ static void adjustBranchEdges(PathPieces &pieces, LocationContextMap &LCM,
        Prev = I, ++I) {
     // Adjust edges in subpaths.
     if (PathDiagnosticCallPiece *Call = dyn_cast<PathDiagnosticCallPiece>(*I)) {
-      adjustBranchEdges(Call->path, LCM, SM);
+      splitBranchConditionEdges(Call->path, LCM, SM);
       continue;
     }
 
@@ -2282,6 +2290,13 @@ static void adjustBranchEdges(PathPieces &pieces, LocationContextMap &LCM,
           Branch = OFS;
         break;
       }
+      if (const BinaryOperator *BO = dyn_cast<BinaryOperator>(Parent)) {
+        if (BO->isLogicalOp()) {
+          if (BO->getLHS()->IgnoreParens() == S)
+            Branch = BO;
+          break;
+        }
+      }
 
       S = Parent;
     }
@@ -2298,34 +2313,117 @@ static void adjustBranchEdges(PathPieces &pieces, LocationContextMap &LCM,
 
     // Now look at the previous edge.  We want to know if this was in the same
     // "level" as the for statement.
-    const Stmt *SrcParent = getStmtParent(Src, PM);
     const Stmt *BranchParent = getStmtParent(Branch, PM);
-    if (SrcParent && SrcParent == BranchParent) {
-      PathDiagnosticLocation L(Branch, SM, LC);
-      bool needsEdge = true;
+    PathDiagnosticLocation L(Branch, SM, LC);
+    bool needsEdge = true;
 
-      if (Prev != E) {
-        if (PathDiagnosticControlFlowPiece *P =
-            dyn_cast<PathDiagnosticControlFlowPiece>(*Prev)) {
-          const Stmt *PrevSrc = getLocStmt(P->getStartLocation());
-          if (PrevSrc) {
-            const Stmt *PrevSrcParent = getStmtParent(PrevSrc, PM);
-            if (PrevSrcParent == BranchParent) {
-              P->setEndLocation(L);
-              needsEdge = false;
-            }
+    if (Prev != E) {
+      if (PathDiagnosticControlFlowPiece *P =
+          dyn_cast<PathDiagnosticControlFlowPiece>(*Prev)) {
+        const Stmt *PrevSrc = getLocStmt(P->getStartLocation());
+        if (PrevSrc) {
+          const Stmt *PrevSrcParent = getStmtParent(PrevSrc, PM);
+          if (PrevSrcParent == BranchParent) {
+            P->setEndLocation(L);
+            needsEdge = false;
           }
         }
       }
+    }
 
-      if (needsEdge) {
-        PathDiagnosticControlFlowPiece *P =
-          new PathDiagnosticControlFlowPiece(PieceI->getStartLocation(), L);
-        pieces.insert(I, P);
+    if (needsEdge) {
+      PathDiagnosticControlFlowPiece *P =
+        new PathDiagnosticControlFlowPiece(PieceI->getStartLocation(), L);
+      pieces.insert(I, P);
+    }
+
+    PieceI->setStartLocation(L);
+  }
+}
+
+/// \brief Move edges from a branch condition to a branch target
+///        when the condition is simple.
+///
+/// This is the dual of splitBranchConditionEdges.  That function creates
+/// edges this may destroy, but they work together to create a more
+/// aesthetically set of edges around branches.  After the call to
+/// splitBranchConditionEdges, we may have (1) an edge to the branch,
+/// (2) an edge from the branch to the branch condition, and (3) an edge from
+/// the branch condition to the branch target.  We keep (1), but may wish
+/// to remove (2) and move the source of (3) to the branch if the branch
+/// condition is simple.
+///
+static void simplifySimpleBranches(PathPieces &pieces) {
+
+
+  for (PathPieces::iterator I = pieces.begin(), E = pieces.end(); I != E; ++I) {
+    // Adjust edges in subpaths.
+    if (PathDiagnosticCallPiece *Call = dyn_cast<PathDiagnosticCallPiece>(*I)) {
+      simplifySimpleBranches(Call->path);
+      continue;
+    }
+
+    PathDiagnosticControlFlowPiece *PieceI =
+      dyn_cast<PathDiagnosticControlFlowPiece>(*I);
+
+    if (!PieceI)
+      continue;
+
+    const Stmt *s1Start = getLocStmt(PieceI->getStartLocation());
+    const Stmt *s1End   = getLocStmt(PieceI->getEndLocation());
+
+    if (!s1Start || !s1End)
+      continue;
+
+    PathPieces::iterator NextI = I; ++NextI;
+    if (NextI == E)
+      break;
+
+    PathDiagnosticControlFlowPiece *PieceNextI = 0;
+
+    while (true) {
+      if (NextI == E)
+        break;
+
+      PathDiagnosticEventPiece *EV = dyn_cast<PathDiagnosticEventPiece>(*NextI);
+      if (EV) {
+        StringRef S = EV->getString();
+        if (S == StrEnteringLoop || S == StrLoopBodyZero) {
+          ++NextI;
+          continue;
+        }
+        break;
       }
 
-      PieceI->setStartLocation(L);
+      PieceNextI = dyn_cast<PathDiagnosticControlFlowPiece>(*NextI);
+      break;
     }
+
+    if (!PieceNextI)
+      continue;
+
+    const Stmt *s2Start = getLocStmt(PieceNextI->getStartLocation());
+    const Stmt *s2End   = getLocStmt(PieceNextI->getEndLocation());
+
+    if (!s2Start || !s2End || s1End != s2Start)
+      continue;
+
+    // We only perform this transformation for specific branch kinds.
+    // We do want to do this for do..while, for example.
+    if (!(isa<ForStmt>(s1Start) || isa<WhileStmt>(s1Start) ||
+          isa<IfStmt>(s1Start) || isa<ObjCForCollectionStmt>(s1Start)))
+      continue;
+
+    // Is s1End the branch condition?
+    if (!isConditionForTerminator(s1Start, s1End))
+      continue;
+
+    // Perform the hoisting by eliminating (2) and changing the start
+    // location of (3).
+    PathDiagnosticLocation L = PieceI->getStartLocation();
+    pieces.erase(I);
+    I = NextI;
+    PieceNextI->setStartLocation(L);
   }
 }
 
@@ -3023,7 +3121,11 @@ bool GRBugReporter::generatePathDiagnostic(PathDiagnostic& PD,
 
         // Adjust edges into loop conditions to make them more uniform
         // and aesthetically pleasing.
-        adjustBranchEdges(PD.getMutablePieces(), LCM, SM);
+        splitBranchConditionEdges(PD.getMutablePieces(), LCM, SM);
+
+        // Hoist edges originating from branch conditions to branches
+        // for simple branches.
+        simplifySimpleBranches(PD.getMutablePieces());
       }
     }
 

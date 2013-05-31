@@ -602,19 +602,35 @@ private:
         else
           Current.Type = TT_BlockComment;
       } else if (Current.is(tok::r_paren)) {
-        bool ParensNotExpr = !Current.Previous ||
+        FormatToken *LeftOfParens = NULL;
+        if (Current.MatchingParen)
+          LeftOfParens = Current.MatchingParen->getPreviousNoneComment();
+        bool IsCast = false;
+        bool ParensAreEmpty = Current.Previous == Current.MatchingParen;
+        bool ParensAreType = !Current.Previous ||
                              Current.Previous->Type == TT_PointerOrReference ||
-                             Current.Previous->Type == TT_TemplateCloser;
+                             Current.Previous->Type == TT_TemplateCloser ||
+                             isSimpleTypeSpecifier(*Current.Previous);
         bool ParensCouldEndDecl =
             Current.Next &&
             Current.Next->isOneOf(tok::equal, tok::semi, tok::l_brace);
         bool IsSizeOfOrAlignOf =
-            Current.MatchingParen && Current.MatchingParen->Previous &&
-            Current.MatchingParen->Previous->isOneOf(tok::kw_sizeof,
-                                                     tok::kw_alignof);
-        if (ParensNotExpr && !ParensCouldEndDecl && !IsSizeOfOrAlignOf &&
+            LeftOfParens &&
+            LeftOfParens->isOneOf(tok::kw_sizeof, tok::kw_alignof);
+        if (ParensAreType && !ParensCouldEndDecl && !IsSizeOfOrAlignOf &&
             Contexts.back().IsExpression)
-          // FIXME: We need to get smarter and understand more cases of casts.
+          IsCast = true;
+        if (Current.Next &&
+            (Current.Next->Tok.isLiteral() ||
+             Current.Next->isOneOf(tok::kw_sizeof, tok::kw_alignof)))
+          IsCast = true;
+        // If there is an identifier after the (), it is likely a cast, unless
+        // there is also an identifier before the ().
+        if (LeftOfParens && LeftOfParens->Tok.getIdentifierInfo() == NULL &&
+            LeftOfParens->Type != TT_ObjCMethodExpr && Current.Next &&
+            (Current.Next->is(tok::identifier)))
+          IsCast = true;
+        if (IsCast && !ParensAreEmpty)
           Current.Type = TT_CastRParen;
       } else if (Current.is(tok::at) && Current.Next) {
         switch (Current.Next->Tok.getObjCKeywordID()) {
@@ -677,7 +693,7 @@ private:
 
   TokenType determinePlusMinusCaretUsage(const FormatToken &Tok) {
     const FormatToken *PrevToken = Tok.getPreviousNoneComment();
-    if (PrevToken == NULL)
+    if (PrevToken == NULL || PrevToken->Type == TT_CastRParen)
       return TT_UnaryOperator;
 
     // Use heuristics to recognize unary operators.
@@ -697,7 +713,7 @@ private:
   /// \brief Determine whether ++/-- are pre- or post-increments/-decrements.
   TokenType determineIncrementUsage(const FormatToken &Tok) {
     const FormatToken *PrevToken = Tok.getPreviousNoneComment();
-    if (PrevToken == NULL)
+    if (PrevToken == NULL || PrevToken->Type == TT_CastRParen)
       return TT_UnaryOperator;
     if (PrevToken->isOneOf(tok::r_paren, tok::r_square, tok::identifier))
       return TT_TrailingUnaryOperator;
@@ -757,6 +773,11 @@ public:
 
   /// \brief Parse expressions with the given operatore precedence.
   void parse(int Precedence = 0) {
+    // Conditional expressions need to be parsed separately for proper nesting.
+    if (Precedence == prec::Conditional + 1) {
+      parseConditionalExpr();
+      return;
+    }
     if (Precedence > prec::PointerToMember || Current == NULL)
       return;
 
@@ -775,22 +796,19 @@ public:
       int CurrentPrecedence = 0;
       if (Current) {
         if (Current->Type == TT_ConditionalExpr)
-          CurrentPrecedence = 1 + (int) prec::Conditional;
+          CurrentPrecedence = 1 + (int)prec::Conditional;
         else if (Current->is(tok::semi) || Current->Type == TT_InlineASMColon)
           CurrentPrecedence = 1;
         else if (Current->Type == TT_BinaryOperator || Current->is(tok::comma))
-          CurrentPrecedence = 1 + (int) Current->getPrecedence();
+          CurrentPrecedence = 1 + (int)Current->getPrecedence();
       }
 
       // At the end of the line or when an operator with higher precedence is
       // found, insert fake parenthesis and return.
       if (Current == NULL || Current->closesScope() ||
           (CurrentPrecedence != 0 && CurrentPrecedence < Precedence)) {
-        if (OperatorFound) {
-          Start->FakeLParens.push_back(prec::Level(Precedence - 1));
-          if (Current)
-            ++Current->Previous->FakeRParens;
-        }
+        if (OperatorFound)
+          addFakeParenthesis(Start, prec::Level(Precedence - 1));
         return;
       }
 
@@ -812,6 +830,26 @@ public:
   }
 
 private:
+  void addFakeParenthesis(FormatToken *Start, prec::Level Precedence) {
+    Start->FakeLParens.push_back(Precedence);
+    if (Current)
+      ++Current->Previous->FakeRParens;
+  }
+
+  void parseConditionalExpr() {
+    FormatToken *Start = Current;
+    parse(prec::LogicalOr + 1);
+    if (!Current || !Current->is(tok::question))
+      return;
+    next();
+    parse(prec::LogicalOr + 1);
+    if (!Current || Current->Type != TT_ConditionalExpr)
+      return;
+    next();
+    parseConditionalExpr();
+    addFakeParenthesis(Start, prec::Conditional);
+  }
+
   void next() {
     if (Current != NULL)
       Current = Current->Next;
