@@ -10,6 +10,15 @@ highlighted there and have not yet been transfered into this file...
 
 -----------------------------------------------------------------------
 
+===== Bugs ====
+
+1. There is a potential bug in the code introduced by changes from a
+   the llvm/clang merging and refactoring that has to do with external
+   linkage/allocation -- see line 227 in ParseDeclCxx.cpp. 
+   (ParseMeshBody), line 187 in CGDecl.cpp (EmitScoutAutoVarAlloca),
+   line 159 in CGExpr.cpp (EmitMeshMemberExpr).  We've replaced 
+   isExternalAlloc() with hasExternalFormalLinkage(). 
+
 ===== Refactoring ===== 
 
 1. [c] Clang front-end : Make mesh fields a subclass of fields versus

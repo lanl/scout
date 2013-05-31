@@ -1,4 +1,4 @@
-; RUN: llc < %s -march=x86-64 | FileCheck %s
+; RUN: llc < %s -mtriple=x86_64-linux-gnu -mcpu=atom | FileCheck %s
 ; <rdar://problem/8006248>
 
 ; This randomly started passing after an unrelated change, if it fails again it
@@ -33,10 +33,12 @@ entry:
   %tmp11 = sext i32 %tmp4 to i64
   %tmp12 = add i64 %tmp11, 5089792279245435153
 
-; CHECK:      addl	$2138875574, %e[[REGISTER_zext:[a-z]+]]
-; CHECK-NEXT: movslq	%e[[REGISTER_zext]], [[REGISTER_tmp:%[a-z]+]]
-; CHECK:      movq	[[REGISTER_tmp]], [[REGISTER_sext:%[a-z]+]]
-; CHECK-NEXT: subq	%r[[REGISTER_zext]], [[REGISTER_sext]]
+; CHECK:      addl	$2138875574, %e[[REGISTER_zext:[a-z0-9]+]]
+; CHECK-NEXT: cmpl	$-8608074, %e[[REGISTER_zext]]
+; CHECK-NEXT: movslq	%e[[REGISTER_zext]], [[REGISTER_tmp:%r[a-z0-9]+]]
+; CHECK:      movq	[[REGISTER_tmp]], [[REGISTER_sext:%r[a-z0-9]+]]
+; CHECK-NOT:  [[REGISTER_zext]]
+; CHECK:      subq	%r[[REGISTER_zext]], [[REGISTER_sext]]
 
   %tmp13 = sub i64 %tmp12, 2138875574
   %tmp14 = zext i32 %tmp4 to i64

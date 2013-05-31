@@ -224,7 +224,8 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
         MeshFieldDecl* FDecl = cast<MeshFieldDecl>(Field);
         FDecl->setMeshLocation(FieldLoc);
         FDecl->setImplicit(false);
-        FDecl->setExternAlloc(externAlloc);
+        // SC_TODO - is this a potential bug?  FIXME -- PM 
+        //FDecl->setExternAlloc(externAlloc);
         FieldDecls.push_back(Field);
         FD.complete(Field);
 

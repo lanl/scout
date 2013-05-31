@@ -8110,7 +8110,7 @@ QualType Sema::CheckAssignmentOperands(Expr *LHSExpr, ExprResult &RHS,
             llvm::StringRef memberName = ME->getMemberDecl()->getName();
             for(MeshDecl::mesh_field_iterator itr = MD->mesh_field_begin(); itr != itr_end; ++itr) {
               if (dyn_cast<NamedDecl>(*itr)->getName() == memberName) {
-                if ((*itr)->isExternAlloc()) {
+                if ((*itr)->hasExternalFormalLinkage()) {
                   LHSType = Context.getPointerType(LHSType);
                 } else {
                   Diags.getDiagnosticLevel(diag::err_typecheck_expression_not_modifiable_lvalue,

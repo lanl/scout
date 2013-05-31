@@ -3141,16 +3141,16 @@ LexNextToken:
     } else if (LangOpts.CPlusPlus && Char == '*') {
       Kind = tok::periodstar;
       CurPtr += SizeTmp;
-    } else if (Char == '.' &&
-               getCharAndSize(CurPtr+SizeTmp, SizeTmp2) == '.') {
-      Kind = tok::ellipsis;
-      CurPtr = ConsumeChar(ConsumeChar(CurPtr, SizeTmp, Result),
-                           SizeTmp2, Result);
+    } else if (Char == '.') {
+      if (getCharAndSize(CurPtr+SizeTmp, SizeTmp2) == '.') {
+        CurPtr = ConsumeChar(ConsumeChar(CurPtr, SizeTmp, Result),
+                             SizeTmp2, Result);
+        Kind = tok::ellipsis;
       } else {
-      // ===== Scout .. punctuator
+        // ===== Scout .. punctuator
         CurPtr = ConsumeChar(CurPtr, SizeTmp, Result);
         Kind = tok::periodperiod;
-      // =====
+        // =====
       }
     } else {
       Kind = tok::period;

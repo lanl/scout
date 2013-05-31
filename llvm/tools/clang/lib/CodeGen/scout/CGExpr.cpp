@@ -156,7 +156,8 @@ CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD,
 
     for(unsigned int i = 4; itr != itr_end; ++itr, ++i) {
       if(dyn_cast<NamedDecl>(*itr)->getName() == memberName) {
-        if ((*itr)->isExternAlloc()) {
+        // SC_TODO - Does this introduce a bug?  Fix me???  -PM 
+        if ((*itr)->hasExternalFormalLinkage()) {
           QualType memberTy = dyn_cast< FieldDecl >(*itr)->getType();
           QualType memberPtrTy = getContext().getPointerType(memberTy);
           llvm::Value* baseAddr = LocalDeclMap[VD];
