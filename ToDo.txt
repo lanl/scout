@@ -74,6 +74,9 @@ highlighted there and have not yet been transfered into this file...
 7. [o] Runtime - volume rendering: Need to understand where rendering 
    artifacts are coming from. 
 
+8. [o] Mesh alignment -- we need to make sure we are picking a 
+   reasonable alignment for our mesh instances. 
+
 ===== Features ===== 
 
 1. [o] Full compiler toolchain: We need to add support for the full
