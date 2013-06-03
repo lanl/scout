@@ -1991,6 +1991,10 @@ TEST_F(FormatTest, LineBreakingInBinaryExpressions) {
                "        TheLine.Last->FormatTok.Tok.getLocation()) -\n"
                "    1);");
 
+  verifyFormat("if ((aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ||\n"
+               "     bbbbbbbbbbbbbbbbbb) && // aaaaaaaaaaaaaaaa\n"
+               "    cccccc) {\n}");
+
   FormatStyle OnePerLine = getLLVMStyle();
   OnePerLine.BinPackParameters = false;
   verifyFormat(
@@ -2831,6 +2835,9 @@ TEST_F(FormatTest, WrapsTemplateDeclarations) {
   verifyFormat("template <typename T>\nclass C {};", AlwaysBreak);
   verifyFormat("template <typename T>\nvoid f();", AlwaysBreak);
   verifyFormat("template <typename T>\nvoid f() {}", AlwaysBreak);
+  verifyFormat("void aaaaaaaaaaaaaaaaaaa<aaaaaaaaaaaaaaaaaaaaaaaaaaaaa,\n"
+               "                         bbbbbbbbbbbbbbbbbbbbbbbbbbbb>(\n"
+               "    ccccccccccccccccccccccccccccccccccccccccccccccc);");
 }
 
 TEST_F(FormatTest, WrapsAtNestedNameSpecifiers) {
@@ -2893,6 +2900,13 @@ TEST_F(FormatTest, UnderstandsTemplateParameters) {
 
   verifyFormat("f<int>();");
   verifyFormat("template <typename T> void f() {}");
+
+  // Not template parameters.
+  verifyFormat("return a < b && c > d;");
+  verifyFormat("void f() {\n"
+               "  while (a < b && c > d) {\n"
+               "  }\n"
+               "}");
 }
 
 TEST_F(FormatTest, UnderstandsBinaryOperators) {
