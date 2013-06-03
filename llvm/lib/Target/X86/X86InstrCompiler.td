@@ -237,7 +237,7 @@ def : Pat<(i64 0), (SUBREG_TO_REG (i64 0), (MOV32r0), sub_32bit)> {
 // that would make it more difficult to rematerialize.
 let AddedComplexity = 1, isReMaterializable = 1, isAsCheapAsAMove = 1,
     isCodeGenOnly = 1, neverHasSideEffects = 1 in
-def MOV32ri64 : Ii32<0x88, AddRegFrm, (outs GR32:$dst), (ins i64i32imm:$src),
+def MOV32ri64 : Ii32<0xb8, AddRegFrm, (outs GR32:$dst), (ins i64i32imm:$src),
                      "", [], IIC_ALU_NONMEM>, Sched<[WriteALU]>;
 
 // This 64-bit pseudo-move can be used for both a 64-bit constant that is
