@@ -38,7 +38,13 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   const MeshType *MT = S.getMeshType();
   MeshType::MeshDimensionVec dims = MT->dimensions();
   MeshDecl *MD = MT->getDecl();
-    
+
+  unsigned int rank = 0;
+  for(unsigned int i = 0; i < dims.size(); ++i) {
+    if (dims[i] != 0)
+      rank++;
+  }
+
   typedef std::map<std::string, bool> MeshFieldMap;
   MeshFieldMap meshFieldMap;
 
@@ -52,7 +58,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   // readable...
   char *IRNameStr = new char[MeshName.size() + 16];
   const char *DimNames[] = { "width", "height", "depth" };
-  for(unsigned i = 0, e = dims.size(); i < e; ++i) {
+  for(unsigned i = 0; i < rank; ++i) {
     sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[i]);
     llvm::Value* lval = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, i+1, IRNameStr);
     ScoutMeshSizes.push_back(lval);
@@ -72,7 +78,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     if (! MFD->isImplicit()) {
       IRNameStr = new char[MeshName.size() + FieldName.size() + 16];
       sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), FieldName.str().c_str());
-      llvm::Value *FieldPtr = Builder.CreateStructGEP(MeshBaseAddr, i+4, IRNameStr);
+      llvm::Value *FieldPtr = Builder.CreateStructGEP(MeshBaseAddr, i+rank+1, IRNameStr);
       FieldPtr = Builder.CreateLoad(FieldPtr);
 
       //insertMeshDump(addr);
@@ -298,7 +304,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     args.clear();
     
     // Add dimension information.
-    for(unsigned i = 0, e = dims.size(); i < e; ++i) {
+    for(unsigned i = 0; i < rank; ++i) {
       args.push_back(TranslateExprToValue(S.getStart(i)));
       args.push_back(TranslateExprToValue(S.getEnd(i)));
     }
@@ -361,7 +367,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
 void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
   
   llvm::SmallVector< llvm::Value *, 3 > ranges;
-  for(size_t i = 0; i < 3; ++i){
+  for(size_t i = 0; i < 3; ++i) {
     Expr* end = S.getEnd(i);
     
     if(!end){
@@ -578,7 +584,6 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   // Use the mesh's name to identify which mesh variable to use whem implicitly defined.
   const IdentifierInfo *MeshII = S.getMesh();
   llvm::StringRef meshName = MeshII->getName();
-  (void)meshName; //supress warning
 
   // Get the number and size of the mesh's dimensions.
   const MeshType *MT = S.getMeshType();
@@ -590,8 +595,16 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
 
   ForallTripCount = one;
   std::vector< llvm::Value * > start, end, diff;
-  
-  for(unsigned i = 0, e = dims.size(); i < e; ++i) {
+
+  unsigned int rank = 0;
+  for(unsigned i = 0; i < dims.size(); ++i) {
+    if (dims[i] != 0)
+      rank++;
+  }
+
+  char *IRNameStr = new char[meshName.size() + 12];
+  const char *DimNames[] = { "width", "height", "depth" };  
+  for(unsigned i = 0; i < rank; ++i) {
     //start.push_back(TranslateExprToValue(S.getStart(i)));
     //end.push_back(TranslateExprToValue(S.getEnd(i)));
 
@@ -599,16 +612,24 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
     //ForallTripCount = Builder.CreateMul(ForallTripCount, diff.back());
 
     llvm::Value* msi;
+
+    // SC_TODO - rename dim.x values below to match width|height|depth
+    // of mesh...
     
-    switch(i){
+    sprintf(IRNameStr, "%s.%s", meshName.str().c_str(), DimNames[i]);
+    
+    switch(i) {
+      
       case 0:
-        msi = Builder.CreateLoad(ScoutMeshSizes[i], "dim.x");
+        msi = Builder.CreateLoad(ScoutMeshSizes[i], IRNameStr);
         break;
+        
       case 1:
-        msi = Builder.CreateLoad(ScoutMeshSizes[i], "dim.y");
+        msi = Builder.CreateLoad(ScoutMeshSizes[i], IRNameStr);
         break;
+        
       case 2:
-        msi = Builder.CreateLoad(ScoutMeshSizes[i], "dim.z");
+        msi = Builder.CreateLoad(ScoutMeshSizes[i], IRNameStr);
         break;
       default:
         assert(false && "Dimension case not handled in EmitForAllStmt");
@@ -617,9 +638,10 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
     start.push_back(zero);
     end.push_back(msi);
     diff.push_back(msi);
-    
     ForallTripCount = Builder.CreateMul(ForallTripCount, msi);
   }
+  
+  delete []IRNameStr;
 
   llvm::Value *indVar = Builder.CreateAlloca(Int32Ty, 0, name);
   if(isSequential() || isCPU())
@@ -631,10 +653,10 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   ScoutIdxVars.clear();
 
   // Initialize the index variables.
-  for(unsigned i = 0, e = dims.size(); i < e; ++i) {
+  for(unsigned i = 0; i < rank; ++i) {
     llvm::Value *lval;
     
-    switch(i){
+    switch(i) {
       case 0:
         lval = Builder.CreateAlloca(Int32Ty, 0, "indvar.x");
         break;
@@ -655,7 +677,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   llvm::Value *lval;
   llvm::Value *cond;
   llvm::BasicBlock *CondBlock;
-  if(isSequential() || isCPU()) {
+  if (isSequential() || isCPU()) {
     // Start the loop with a block that tests the condition.
     JumpDest Continue = getJumpDestInCurrentScope("forall.cond");
     CondBlock = Continue.getBlock();
@@ -669,7 +691,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   llvm::BasicBlock *ForallBody = createBasicBlock("forall.body");
 
   llvm::BasicBlock *ExitBlock;
-  if(isSequential() || isCPU()) {
+  if (isSequential() || isCPU()) {
     ExitBlock = createBasicBlock("forall.end");
     Builder.SetInsertPoint(CondBlock);
     Builder.CreateCondBr(cond, ForallBody, ExitBlock);
@@ -680,10 +702,10 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   Builder.SetInsertPoint(ForallBody);
 
   // Set each dimension's index variable from induction variable.
-  for(unsigned i = 0, e = dims.size(); i < e; ++i) {
+  for(unsigned i = 0; i < rank; ++i) {
     lval = getGlobalIdx();
     llvm::Value *val;
-    if(i > 0) {
+    if (i > 0) {
       if(i == 1)
         val = diff[i - 1];
       else
@@ -692,7 +714,8 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
     }
 
     lval = Builder.CreateURem(lval, diff[i]);
-    lval = Builder.CreateAdd(lval, start[i]);
+    if (start[i] != zero) 
+      lval = Builder.CreateAdd(lval, start[i]);
     Builder.CreateStore(lval, ScoutIdxVars[i]);
   }
 

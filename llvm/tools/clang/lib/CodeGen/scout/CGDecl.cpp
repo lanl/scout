@@ -93,6 +93,12 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
     MeshType::MeshDimensionVec dims;
     dims = cast<MeshType>(T.getTypePtr())->dimensions();
 
+    unsigned int rank = 0;
+    for(unsigned int i = 0; i < dims.size(); ++i) {
+      if (dims[i] != 0) 
+        rank++;
+    }
+    
     // Maybe dimensions needs to hold values???
 
     // Need to make this different for variable dims as
@@ -100,7 +106,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
     // then we want to make an expression multiplying
     // the dims to get numElts as a variable.
     llvm::Value *numElements = Builder.getInt64(1);
-    for(unsigned i = 0, e = dims.size(); i < e; ++i) {
+    for(unsigned i = 0; i < rank; ++i) {
       llvm::Value* intValue;
       Expr* E = dims[i];
       
@@ -132,37 +138,33 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
     }
 
     // store the mesh dimensions
-    for(size_t i = 0; i < 3; ++i){
-      llvm::Value* field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i+1);
-
-      if(i >= dims.size()){
-        // store a 0 in that dim if above size
-        llvm::Value* intValue;
-        intValue = llvm::ConstantInt::getSigned(llvm::IntegerType::get(getLLVMContext(), 32), 0);
-        Builder.CreateStore(intValue, field);
+    // SC_TODO - can we save ourselves some complexity in the code gen
+    // and drop generating zero value mesh dimensions in the code?
+    for(size_t i = 0; i < rank; ++i) {
+      
+      llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i+1);      
+      llvm::Value* intValue;
+      
+      Expr* E = dims[i];
+      if (E->isGLValue()) {
+        // Emit the expression as an lvalue.
+        LValue LV = EmitLValue(E);
+        // We have to load the lvalue.
+        RValue RV = EmitLoadOfLValue(LV);
+        intValue = RV.getScalarVal();
+      } else if (E->isConstantInitializer(getContext(), false)) {
+        bool evalret;
+        llvm::APSInt dimAPValue;
+        evalret = E->EvaluateAsInt(dimAPValue, getContext());
+        // SC_TODO: check the evalret
+        intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
       } else {
-        llvm::Value* intValue;
-        Expr* E = dims[i];
-        if (E->isGLValue()) {
-          // Emit the expression as an lvalue.
-          LValue LV = EmitLValue(E);
-          // We have to load the lvalue.
-          RValue RV = EmitLoadOfLValue(LV);
-          intValue = RV.getScalarVal();
-        } else if (E->isConstantInitializer(getContext(), false)) {
-          bool evalret;
-          llvm::APSInt dimAPValue;
-          evalret = E->EvaluateAsInt(dimAPValue, getContext());
-          // SC_TODO: check the evalret
-          intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
-        } else {
-          // it is an Rvalue
-          RValue RV = EmitAnyExpr(E);
-          intValue = RV.getScalarVal();
-        }
-        //CurFn->viewCFG();
-        Builder.CreateStore(intValue, field);
+        // it is an Rvalue
+        RValue RV = EmitAnyExpr(E);
+        intValue = RV.getScalarVal();
       }
+      
+      Builder.CreateStore(intValue, field);
     }
 
     // need access to these field decls so we
@@ -174,7 +176,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
     MeshDecl::mesh_field_iterator itr_end = MD->mesh_field_end();
 
     llvm::Type *structTy = Alloc->getType()->getContainedType(0);
-    for(unsigned i = 4, e = structTy->getNumContainedTypes(); i < e; ++i) {
+    for(unsigned i = rank+1, e = structTy->getNumContainedTypes(); i < e; ++i) {
 
       // Compute size of needed field memory in bytes
       llvm::Type *fieldTy = structTy->getContainedType(i);
@@ -211,9 +213,4 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
     llvm::Value* AllocVP = Builder.CreateBitCast(Alloc, VoidPtrTy);
     Builder.CreateStore(AllocVP, ScoutDeclDebugPtr);
   }
-
 }
-
-
-
-

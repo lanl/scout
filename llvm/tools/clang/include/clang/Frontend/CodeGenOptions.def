@@ -125,8 +125,6 @@ CODEGENOPT(DebugColumnInfo, 1, 0) ///< Whether or not to use column information
 CODEGENOPT(ScoutNvidiaGPU, 1, 0) /// set with -gpu flag
 CODEGENOPT(ScoutAMDGPU, 1, 0) /// set with -gpu-amd flag
 CODEGENOPT(ScoutCPUThreads, 1, 0) /// set with -mt flag
-// SC_TODO -- remove the -vectorize flag
-CODEGENOPT(ScoutVectorize, 1, 0) /// set with -vectorize flag
 CODEGENOPT(ScoutEmitAllDefinitions, 1, 0) /// set with -emit-all-definitions flag
 // ====================================================================================
 

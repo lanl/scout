@@ -244,14 +244,6 @@ void EmitAssemblyHelper::CreateScoutPasses(TargetMachine *TM) {
   }
   
 #endif
-
-  // SC_TODO - we really don't need this anymore... -O3 will
-  // enable this on versions of LLVM 3.3 or later. 
-  if(CodeGenOpts.ScoutVectorize) {
-    PassManager MPM;
-    MPM.add(createBBVectorizePass());
-    MPM.run(*TheModule);
-  }
 }
 
 // ============================================================================

@@ -33,6 +33,12 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
   MeshType::MeshDimensionVec dims;
   dims = cast<MeshType>(T.getCanonicalType().getTypePtr())->dimensions();
 
+  unsigned int rank = 0;
+  for(int i = 0; i < dims.size(); ++i) {
+    if (dims[i] != 0)
+      rank++;
+  }
+  
   llvm::StringRef meshName = mesh->getName();
   typedef llvm::ArrayType ArrayTy;
   MeshDecl::mesh_field_iterator it     = mesh->mesh_field_begin();
@@ -40,7 +46,7 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
 
   std::vector< llvm::Type * > eltTys;
   // mesh_flags__, width, height, depth
-  for(size_t i = 0; i < 4; ++i) {
+  for(size_t i = 0; i < rank+1 /* 4 */; ++i) {
     eltTys.push_back(llvm::IntegerType::get(getLLVMContext(), 32));
   }
 
@@ -51,8 +57,8 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
       llvm::Type *ty = ConvertType(it->getType());
       uint64_t numElts = 1;
 
-      // Construct a pointer for each type.
-      for(unsigned i = 0; i < dims.size(); ++i) {
+      // Transform each member type into a pointer.
+      for(unsigned i = 0; i < rank /*dims.size()*/; ++i) {
         llvm::APSInt result;
         dims[i]->EvaluateAsInt(result, Context);
         numElts *= result.getSExtValue();

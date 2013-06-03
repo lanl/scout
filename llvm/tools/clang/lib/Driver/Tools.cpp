@@ -2647,10 +2647,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // Emit-all-definitions from compilation. 
   Args.AddAllArgs(CmdArgs, options::OPT_emitAllDefinitions);
   
-  // Enable vectorization pass. 
-  // SC_TODO - we should be able to skip this now... 
-  Args.AddAllArgs(CmdArgs, options::OPT_vectorize);
-
   // Disable automatic standard library inclusion. We use
   // this to bootstrap scc and the building of the standard
   // library.

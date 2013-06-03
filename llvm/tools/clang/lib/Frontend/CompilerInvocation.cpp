@@ -321,9 +321,6 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   // scout enable AMD GPU support if OPT_gpu is present.
   Opts.ScoutAMDGPU = Args.hasArg(OPT_gpuAMD);
   
-  // scout enable autovectorize pass OPT_vectorize is present.
-  Opts.ScoutVectorize = Args.hasArg(OPT_vectorize);
-  
   // scout enable scout CPU multithreading support if OPT_cpuThreads is present.
   Opts.ScoutCPUThreads = Args.hasArg(OPT_cpuThreads);
 
@@ -1350,12 +1347,8 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   // ===== Scout =============================================================
   // Detect -gpu flag
   Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
-
   // Detect -gpu-amd flag
   Opts.ScoutAMDGPU = Args.hasArg(OPT_gpuAMD);
-  
-  // SC_TODO - we should remove this option. 
-  Opts.ScoutVectorize = Args.hasArg(OPT_vectorize);
   // =========================================================================
   // FIXME: Eliminate this dependency.
   unsigned Opt = getOptimizationLevel(Args, IK, Diags),
