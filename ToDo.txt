@@ -12,12 +12,14 @@ highlighted there and have not yet been transfered into this file...
 
 ===== Bugs ====
 
-1. There is a potential bug in the code introduced by changes from a
+1. [0] There is a potential bug in the code introduced by changes from a
    the llvm/clang merging and refactoring that has to do with external
    linkage/allocation -- see line 227 in ParseDeclCxx.cpp. 
    (ParseMeshBody), line 187 in CGDecl.cpp (EmitScoutAutoVarAlloca),
    line 159 in CGExpr.cpp (EmitMeshMemberExpr).  We've replaced 
    isExternalAlloc() with hasExternalFormalLinkage(). 
+
+   Kei submitted to LLVM bug list: 6/3/13.
 
 ===== Refactoring ===== 
 
@@ -32,15 +34,16 @@ highlighted there and have not yet been transfered into this file...
    mapping back to the original scout input.  
 
    NOTE: A first pass of this is now complete, we need to revisit this
-   across all platforms/targets (e.g. GPU, CPU).  There is still some
-   messy details in the GPU code gen pieces. 
+   across all platforms/targets (e.g. GPU, CPU).  There are still some
+   messy details in the GPU code gen pieces and the CPU code remains a
+   bit "wordy" in spots (not sure we really need all the code that is
+   being generated -- see todo #5 below).
 
 3. [o] Clang front-end : We still have some painful string-based
    comparison for Scout details in the codegen.  This is potentially
    not only slow but very difficult to reason about.  We need to make
    several more passes through the source to ferret out these sections
    of code.
-
 
 4. [o/a] Clang front-end: Remove Scout's vector types in favor of
    Clang's "builtin" support.  This will not only give us features
@@ -77,6 +80,9 @@ highlighted there and have not yet been transfered into this file...
 8. [o] Mesh alignment -- we need to make sure we are picking a 
    reasonable alignment for our mesh instances. 
 
+9. [c] Avoid adding (hidden) link flags to 'scc' when not linking 
+   (e.g. '-c', '-S', etc.). 
+
 ===== Features ===== 
 
 1. [o] Full compiler toolchain: We need to add support for the full
@@ -93,6 +99,6 @@ highlighted there and have not yet been transfered into this file...
 
 ===== "Big Picture" Details ===== 
 
-1. [o] How much detail do we want to pump into our runtime in areas
-   that runtimes like Legion can help us???  
+1. [o] How much effort do we want to push into our runtime in areas
+   that other efforts (e.g. Legion) can help us???
 
