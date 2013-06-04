@@ -602,7 +602,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
       rank++;
   }
 
-  char *IRNameStr = new char[meshName.size() + 12];
+  char *IRNameStr = new char[meshName.size() + 16]; 
   const char *DimNames[] = { "width", "height", "depth" };  
   for(unsigned i = 0; i < rank; ++i) {
     //start.push_back(TranslateExprToValue(S.getStart(i)));
@@ -612,10 +612,6 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
     //ForallTripCount = Builder.CreateMul(ForallTripCount, diff.back());
 
     llvm::Value* msi;
-
-    // SC_TODO - rename dim.x values below to match width|height|depth
-    // of mesh...
-    
     sprintf(IRNameStr, "%s.%s", meshName.str().c_str(), DimNames[i]);
     
     switch(i) {
@@ -631,11 +627,16 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
       case 2:
         msi = Builder.CreateLoad(ScoutMeshSizes[i], IRNameStr);
         break;
+        
       default:
         assert(false && "Dimension case not handled in EmitForAllStmt");
     }
-    
-    start.push_back(zero);
+
+    // SC_TODO -- we always start at zero for each rank...
+    // Why build a list to store all zeros?  It is also
+    // not clear why we need to do this with the width, height,
+    // and depth -- we already have them...  ????
+    start.push_back(zero); 
     end.push_back(msi);
     diff.push_back(msi);
     ForallTripCount = Builder.CreateMul(ForallTripCount, msi);
@@ -644,40 +645,48 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   delete []IRNameStr;
 
   llvm::Value *indVar = Builder.CreateAlloca(Int32Ty, 0, name);
+  // SC_TODO - This is likely confusing -- both sequential and
+  // cpu appear to imply the same thing... 
   if(isSequential() || isCPU())
     Builder.CreateStore(zero, indVar);
 
   ForallIndVar = indVar;
-
-  // Clear the list of stale ScoutIdxVars.
-  ScoutIdxVars.clear();
+  ScoutIdxVars.clear(); // Clear the list of stale ScoutIdxVars.
 
   // Initialize the index variables.
   for(unsigned i = 0; i < rank; ++i) {
-    llvm::Value *lval;
+    llvm::Value *lval = 0;
     
     switch(i) {
+      
       case 0:
         lval = Builder.CreateAlloca(Int32Ty, 0, "indvar.x");
         break;
+        
       case 1:
         lval = Builder.CreateAlloca(Int32Ty, 0, "indvar.y");
         break;
+        
       case 2:
         lval = Builder.CreateAlloca(Int32Ty, 0, "indvar.z");
         break;
+        
       default:
         assert(false && "Case not handled for ForAll indvar");
     }
 
-    Builder.CreateStore(start[i], lval);
+    Builder.CreateStore(start[i], lval); // SC_TODO - per above, this is always zero...
     ScoutIdxVars.push_back(lval);
   }
 
-  llvm::Value *lval;
-  llvm::Value *cond;
+  llvm::Value *lval = 0;
+  llvm::Value *cond = 0;
   llvm::BasicBlock *CondBlock;
+
+  // SC_TODO - Again, this could be confusing -- both sequential and
+  // cpu appear to be imply the same thing...
   if (isSequential() || isCPU()) {
+    
     // Start the loop with a block that tests the condition.
     JumpDest Continue = getJumpDestInCurrentScope("forall.cond");
     CondBlock = Continue.getBlock();
@@ -691,6 +700,8 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   llvm::BasicBlock *ForallBody = createBasicBlock("forall.body");
 
   llvm::BasicBlock *ExitBlock;
+  // SC_TODO -- this is probably not as clear as it should be...
+  // Both sequential and CPU appear to imply the same thing...
   if (isSequential() || isCPU()) {
     ExitBlock = createBasicBlock("forall.end");
     Builder.SetInsertPoint(CondBlock);
