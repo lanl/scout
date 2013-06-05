@@ -25,12 +25,13 @@ using namespace clang;
 using namespace CodeGen;
 
 
+static const char *DimNames[] = { "width", "height", "depth" };
+
 // scout - Scout Stmts
 void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   
   DEBUG_OUT("EmitForAllStmtWrapper");
   
-  // Clear stale mesh elements.
   MeshMembers.clear();
   ScoutMeshSizes.clear();
   
@@ -38,12 +39,8 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   const MeshType *MT = S.getMeshType();
   MeshType::MeshDimensionVec dims = MT->dimensions();
   MeshDecl *MD = MT->getDecl();
-
-  unsigned int rank = 0;
-  for(unsigned int i = 0; i < dims.size(); ++i) {
-    if (dims[i] != 0)
-      rank++;
-  }
+  
+  unsigned int rank = dims.size();  // just for clarity below...
 
   typedef std::map<std::string, bool> MeshFieldMap;
   MeshFieldMap meshFieldMap;
@@ -57,7 +54,6 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   // structure).  The naming is key to making the IR code more
   // readable...
   char *IRNameStr = new char[MeshName.size() + 16];
-  const char *DimNames[] = { "width", "height", "depth" };
   for(unsigned i = 0; i < rank; ++i) {
     sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[i]);
     llvm::Value* lval = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, i+1, IRNameStr);
@@ -69,6 +65,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   MeshFieldIterator it = MD->mesh_field_begin(), it_end = MD->mesh_field_end();
   
   for(unsigned i = 0; it != it_end; ++it, ++i) {
+    
     MeshFieldDecl *MFD = dyn_cast<MeshFieldDecl>(*it);
     llvm::StringRef FieldName = MFD->getName();
     QualType Ty = MFD->getType();
@@ -79,10 +76,8 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
       IRNameStr = new char[MeshName.size() + FieldName.size() + 16];
       sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), FieldName.str().c_str());
       llvm::Value *FieldPtr = Builder.CreateStructGEP(MeshBaseAddr, i+rank+1, IRNameStr);
-      FieldPtr = Builder.CreateLoad(FieldPtr);
-
-      //insertMeshDump(addr);
       
+      FieldPtr = Builder.CreateLoad(FieldPtr);
       sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), FieldName.str().c_str());
       llvm::Value *FieldVar = Builder.CreateAlloca(FieldPtr->getType(), 0, IRNameStr);
 
@@ -95,6 +90,8 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   }
 
   // Acquire a local copy of colors buffer.
+  // SC_TODO -- this should go in a separate call stack (for dealing with
+  // rendall specifically).  
   if (isa< RenderAllStmt >(S)) {
     llvm::Type *fltTy = llvm::Type::getFloatTy(getLLVMContext());
     llvm::Type *flt4Ty = llvm::VectorType::get(fltTy, 4);
@@ -181,12 +178,17 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   // SC_TODO: WARNING -- these function names are once again used as a special
   // case within the DoallToPTX transformation pass (in the LLVM source).  If
   // you change the name here you will need to also make the changes to the
-  // pass... 
+  // pass...
+  //
+  // SC_TODO - we should move renderall logic into its own call path... 
   if (isa<RenderAllStmt>(S))
     ForallFn->setName("uniRenderallCellsFn");
   else
     ForallFn->setName("uniForallCellsFn");
 
+
+  // SC_TODO - this is hard to follow in the middle of all the other details.  We
+  // should move GPU lowering details into its own (member) function.
   if (isGPU()) {
 
     std::string name = ForallFn->getName().str();
@@ -196,7 +198,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     llvm::NamedMDNode *ScoutMetadata;
     ScoutMetadata = CGM.getModule().getOrInsertNamedMetadata("scout.kernels");
     
-    SmallVector<llvm::Value *, 4> KMD; // Kernel MetaData
+    SmallVector<llvm::Value *, 4> KMD; // Kernel (as in GPU kernel) metadata. 
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ForallFn));
     // For each function argument, a bit to indicate whether it is a mesh member.
     SmallVector<llvm::Value*, 3> args;
@@ -325,7 +327,6 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     llvm::BasicBlock *cbb = ret->getParent();
     ret->eraseFromParent();
     Builder.SetInsertPoint(cbb);
-    //insertMeshDump(MeshBaseAddr);
     return;
   }
 
@@ -360,8 +361,6 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   // Generate a function call to BlockFn.
   EmitScoutBlockFnCall(BlockFn, blockInfo,
                        ScoutMeshSizes, inputs);
-  
-  //insertMeshDump(MeshBaseAddr);
 }
 
 void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
@@ -603,7 +602,6 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   }
 
   char *IRNameStr = new char[meshName.size() + 16]; 
-  const char *DimNames[] = { "width", "height", "depth" };  
   for(unsigned i = 0; i < rank; ++i) {
     //start.push_back(TranslateExprToValue(S.getStart(i)));
     //end.push_back(TranslateExprToValue(S.getEnd(i)));
