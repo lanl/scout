@@ -1,0 +1,13 @@
+error-lhs-rhs.sc:18:9: error: mesh field appears on LHS then on subsequent RHS
+    b = a;
+        ^
+Stack dump:
+0.	Program arguments: /Users/nickm/scout.new/scout/build/tools/scc/scc -cc1 -triple x86_64-apple-macosx10.6.7 -emit-obj -mrelax-all -disable-free -main-file-name error-lhs-rhs.sc -pic-level 1 -mdisable-fp-elim -masm-verbose -munwind-tables -target-cpu core2 -resource-dir /Users/nickm/scout.new/scout/build/tools/scc/../lib/clang/3.0 -I /Users/nickm/scout.new/scout/build/tools/../../include -fdeprecated-macro -ferror-limit 19 -fmessage-length 0 -stack-protector 1 -fblocks -fcxx-exceptions -fexceptions -fdiagnostics-show-option -o /var/folders/Xa/XaVYyVCbF4yh8uvwmNCWmU+++TI/-Tmp-/cc-hrbshM.o -x scout error-lhs-rhs.sc 
+1.	error-lhs-rhs.sc:21:3: current parser token 'return'
+2.	error-lhs-rhs.sc:5:32: parsing function body 'main'
+3.	error-lhs-rhs.sc:5:32: in compound statement ('{}')
+scc: error: unable to execute command: Segmentation fault
+scc: error: clang frontend command failed due to signal 2 (use -v to see invocation)
+scc: note: diagnostic msg: Please submit a bug report to http://llvm.org/bugs/ and include command line arguments and all diagnostic information.
+scc: note: diagnostic msg: Preprocessed source(s) are located at:
+scc: note: diagnostic msg: /var/folders/Xa/XaVYyVCbF4yh8uvwmNCWmU+++TI/-Tmp-/cc-YjPyEz.ii
