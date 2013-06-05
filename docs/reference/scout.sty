@@ -1,0 +1,82 @@
+%% ----------------------------------------------------------------------
+%%
+%% LaTeX style sheet for Scout
+%%
+%% By Patrick McCormick <pat@lanl.gov>
+%%
+%% ----------------------------------------------------------------------
+%%
+%% PUT_LICENSE_TEXT_HERE
+%%
+%% ----------------------------------------------------------------------
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{scout}[2011/03/18 v1.0 Pretty-print Scout listings]
+
+% Define the scout environment as either scout@plain or scout@gaudy
+% based on a package option.
+\newif{\ifscoutgaudy}
+\DeclareOption{plain}{\scoutgaudyfalse}
+\DeclareOption{gaudy}{\scoutgaudytrue}
+\DeclareOption*{\PassOptionsToPackage{\CurrentOption}{listings}}
+\ProcessOptions\relax
+
+% The listings package does most of our work.
+\RequirePackage{listings}
+
+\definecolor{darkgray}{rgb}{0.75,0.75,0.75}
+\definecolor{lightgray}{rgb}{0.9,0.9,0.9}
+\definecolor{scoutblue}{rgb}{.147,.429,.709}
+
+\definecolor{commentcolor}{rgb}{0.5,0.0,0.75}
+\definecolor{stringcolor}{rgb}{0.0,0.4,0.1}
+\definecolor{keywordcolor}{rgb}{0.6,0.0,0.0}
+\definecolor{builtincolor}{rgb}{0.0,0.5,0.75}
+
+% List all of Scout's keywords.
+\lstdefinelanguage{scout}{
+  morekeywords={char,char2,char3,char4,short,short2,short3,short4,int,int2,int3,int4,
+                long,long2,long3,long4,float,float2,float3,float4,double,double2,double3,
+                double4,unsigned, const, 
+                uniform,mesh,cells,edges,vertices,faces,points, of, 
+				expr,
+                for,while,do,forall,foreach,
+				renderall, color, 
+                where,apply,return, with, camera },
+  emph={main,hsv,hsva,nrange,range,min,max,isosurface, cshift, sten},
+  sensitive=true,
+  basicstyle=\small,
+  commentstyle=\color{commentcolor}\small,
+  stringstyle=\color{stringcolor}\ttfamily,
+  keywordstyle=\color{keywordcolor}\ttfamily,
+  emphstyle=\color{builtincolor}\ttfamily,
+  morecomment=[l]{//}, 
+  morecomment=[s]{/*}{*/},
+  morestring=[b]",
+  frame=single,
+  framesep=5pt,
+  xleftmargin=5pt,
+  xrightmargin=5pt,
+  captionpos=b
+}
+
+
+\renewcommand{\lstlistlistingname}{Source Code Listings}
+
+\lstset{language=scout,tabsize=2,showstringspaces=false,numberblanklines=false}
+\lstset{backgroundcolor=\color{lightgray},rulecolor=\color{scoutblue}}
+\lstset{numbers=none, numberstyle=\tiny, stepnumber=1, numbersep=7pt}
+
+% Select the Scout language.
+\lstnewenvironment{scout}[1][]{%
+  \lstset{%
+    language=scout,
+    #1%
+  }%
+}{}
+
+\newcommand{\cmdcmt}[1]{\hfill{\color{scoutblue}\small\textit{#1}}}
+
+\endinput
+%%
+%% End of file `scout.sty'.

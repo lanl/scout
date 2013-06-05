@@ -1,0 +1,123 @@
+\let\clearforchapter\par % cheating, but saves some space
+
+
+\chapter{Visualization Constructs}
+
+A key feature of the Scout language is the incorporation of visualization and
+rendering operations directly within the syntax and semantics of the language 
+as first-class constructs.  Listing~\ref{renderall1} shows a simple example.
+
+\par\bigskip
+\begin{lstlisting}[float=h,label=renderall1,
+	caption={A \texttt{renderall} loop construct.}]
+	// Example visualization construct for rendering mesh cells. 
+	uniform mesh meshType {
+		cells: float a, b;
+	};
+
+  meshType myMesh[16];
+
+	renderall cells c of myMesh where (a < 0.5)
+  {
+			color = rgb(1.0, 0.0, 0.0);
+		else
+			color = rgb(0.0, 0.0, 1.0);
+	}
+\end{lstlisting}
+\par\bigskip\noindent
+
+In the case where the mesh is three-dimensional, the body of the \texttt{renderall}
+is essentially the transfer function for volume rendering.
+
+Isosurfacing is a built-in visualization function provided by Scout.
+Listing~\ref{renderall2} shows an example of isosurface computation.
+Note isosurfacing is not yet implemented.
+
+\par\bigskip
+\begin{lstlisting}[float=h,label=renderall2,
+	caption={A \texttt{renderall} loop for viewing an isosurface.}]
+	
+	uniform mesh meshType{
+		cells: float a, b;
+	};
+
+  meshType myMesh[16];
+	
+    // Compute two isosurfaces (values 0.5 and 1.0) and store them 
+    // in an unstructured mesh.
+	unstructured mesh mySurfaceType;
+  mySurfaceType mySurface = isosurface(myMesh.a, {0.5, 1.0});
+
+	renderall faces f of mySurface { // "solid" surface
+		...
+	}
+	
+	renderall edges e of mySurface {  // wireframe
+		...
+	}
+	
+	renderall cells c of myMesh {  // how do we volume render?
+		// If the selected mesh is three-dimensional 
+		// we just assume this is a volume rendering
+		// construct.
+		...
+	}
+\end{lstlisting}
+\par\bigskip\noindent
+
+The \texttt{camera} is also a Scout construct.  Cameras are constructed as in
+Listing~\ref{camera1}.
+
+\par\bigskip
+\begin{lstlisting}[float=h,label=camera1,
+	caption={How to construct a \texttt{camera}.}]
+  float3 mypos = float3(-300.0f, -300.0f, -300.0f);
+  float3 mylookat = float3(0.0f, 0.0f, 0.0f);
+  float3 myup = float3(0.0f, 0.0f, -1.0f);
+
+  camera cam {
+    near = 70.0;
+    far = 500.0;
+    fov = 40.0;
+    pos = mypos;
+    lookat = mylookat;
+    up = myup;
+  };
+\end{lstlisting}
+\par\bigskip\noindent
+
+%% TBD
+%The \texttt{window} is also a Scout construct.  Windows are constructed so that images can
+%be displayed on them given a camera.  Windows can have multiple viewports within them.  
+%A \texttt{viewport} has a width and height and offset from lower left corner.
+%Windows and viewports are constructed as shown in Listing~\ref{window1}. 
+
+%\par\bigskip
+%\begin{lstlisting}[float=h,label=window1,
+%	caption={How to declare a \texttt{window}.}]
+%  window win[1024,1024] {
+%    background  = hsv(0.1, 0.2, 0.3);
+%    save_frames = true;
+%    filename    = "heat2d-####.png";
+%  };
+%
+%  viewport aviewport[512, 512] {
+%    x_position = 10.0;  // offset from lower left corner
+%    y_position = 10.0;
+%  };
+%
+%  awindow.add(aviewport);
+%
+%  awindow.display();
+%
+%  // assume a camera and a three-dimensional mesh have been defined
+%
+%  renderall cells c of amesh with acamera onto aviewport {
+%  // ....
+%  }
+%
+%  awindow.delete();  // deletes viewports too
+%\end{lstlisting} 
+%\par\bigskip\noindent
+%%
+

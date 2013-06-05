@@ -1,0 +1,117 @@
+%
+%
+%            -----  The Scout Programming Language -----
+% 
+%  This file is distributed under an open source license by Los Alamos
+%  National Security, LCC.  See the file License.txt (located in the
+%  top level of the source distribution) for details.
+%  
+% -----
+% 
+%  $Revision$
+%  $Date$
+%  $Author$
+%
+% -----
+% 
+% Useful build command: latexmk --pdf reference
+% 
+\documentclass[10pt,letterpaper,extrafontsizes]{memoir}
+\usepackage{fourier,etex,fixltx2e,alltt,xcolor,latexsym}
+\usepackage{dpfloat,url,color,calc,graphicx,soul,fourier} 
+\usepackage{fonttable}
+\usepackage{layouts}
+
+\usepackage{color,calc,graphicx,soul,fourier,scout}
+\usepackage[pdftex, bookmarks, colorlinks=true, linkcolor=blue,
+   pdftitle={Combustion Exascale Co-Design Center -- Work Breakdown Structure}
+   pdfsubject={CECDC -- Work Break-down Structure}]{hyperref}
+
+
+
+\makeatletter
+\newlength\dlf@normtxtw
+\setlength\dlf@normtxtw{\textwidth}
+\def\myhelvetfont{\def\sfdefault{mdput}}
+\newsavebox{\feline@chapter}
+
+
+\setlength{\parskip}{1\baselineskip}
+\setlength{\parindent}{0pt}
+
+\newcommand\feline@chapter@marker[1][4cm]{%
+  \sbox\feline@chapter{%
+    \resizebox{!}{#1}{\fboxsep=0.85pt%
+      \colorbox{scoutblue}{\color{white}\bfseries\sffamily\thechapter}%
+    }}%
+  \raisebox{\depthof{\usebox{\feline@chapter}}}{\usebox{\feline@chapter}}%
+}
+
+\newcommand\feline@chm[1][4cm]{%
+  \sbox\feline@chapter{\feline@chapter@marker[#1]}%
+  \makebox[0pt][l]{% aka \rlap
+    \makebox[1cm][r]{\usebox\feline@chapter}%
+  }}
+\makechapterstyle{daleif1}{
+  \renewcommand\chapnamefont{\normalfont\Large\scshape\raggedleft\so}
+  \renewcommand\chaptitlefont{\normalfont\huge\bfseries\scshape\color{scoutblue}}
+  \renewcommand\chapternamenum{}
+  \renewcommand\printchaptername{}
+  \renewcommand\printchapternum{\null\feline@chm[2.25cm]}
+  \renewcommand\afterchapternum{\hskip 1.5cm} %\par\vskip\midchapskip}
+  \renewcommand\printchaptertitle[1]{\chaptitlefont ##1\par}
+  \renewcommand{\afterchaptertitle}{\par\nobreak\medskip\hrule\vskip\afterchapskip}
+}
+\makeatother
+\chapterstyle{daleif1}
+
+\newcommand*{\titleSC}{\begingroup% Misericords, T&H p 153
+%\tdrop=0.08\txtheight\centering\vspace*{\tdrop}
+\centering
+{\LARGE \scshape The Scout Programming Language}\\[\baselineskip]
+{\Huge\bfseries Language Reference}\\[\baselineskip]
+\includegraphics{images/scout-logo.pdf}
+{\flushleft \includegraphics[width=1.0in]{images/lanl-logo.pdf} \hfill 
+ Version 0.X -- July, 2012}\par
+\vfill
+\endgroup}
+
+\begin{document}
+\pagenumbering{roman}
+\pagestyle{headings}
+\pagestyle{empty}
+\titleSC
+\clearpage
+
+\input{copyright/copyright.tex} 
+
+\tableofcontents
+\setlength{\unitlength}{1pt}
+\clearpage
+\listoffigures
+\clearpage
+\listoftables
+\lstlistoflistings
+
+%\clearpage
+%\listofegresults
+
+\input{preface/preface.tex}
+\clearpage
+\pagenumbering{arabic}
+\input{intro/intro.tex} % introduction 
+\clearpage
+\input{datatypes/datatypes.tex} % data types
+\clearpage
+\input{parallel/parallel.tex} % parallelism
+\clearpage
+\input{vis/vis.tex} % vis/graphics constructs
+\clearpage
+\input{appendix/appendixa.tex} % command line options
+\clearpage
+\input{appendix/appendixb.tex} % Scout grammar
+\clearpage
+
+\end{document}
+
+
