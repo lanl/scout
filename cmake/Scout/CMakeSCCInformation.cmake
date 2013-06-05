@@ -1,0 +1,337 @@
+#
+###########################################################################
+# Copyright (c) 2010, Los Alamos National Security, LLC.
+# All rights reserved.
+# 
+#  Copyright 2010. Los Alamos National Security, LLC. This software was
+#  produced under U.S. Government contract DE-AC52-06NA25396 for Los
+#  Alamos National Laboratory (LANL), which is operated by Los Alamos
+#  National Security, LLC for the U.S. Department of Energy. The
+#  U.S. Government has rights to use, reproduce, and distribute this
+#  software.  NEITHER THE GOVERNMENT NOR LOS ALAMOS NATIONAL SECURITY,
+#  LLC MAKES ANY WARRANTY, EXPRESS OR IMPLIED, OR ASSUMES ANY LIABILITY
+#  FOR THE USE OF THIS SOFTWARE.  If software is modified to produce
+#  derivative works, such modified software should be clearly marked,
+#  so as not to confuse it with the version available from LANL.
+#
+#  Additionally, redistribution and use in source and binary forms,
+#  with or without modification, are permitted provided that the
+#  following conditions are met:
+#
+#    * Redistributions of source code must retain the above copyright
+#      notice, this list of conditions and the following disclaimer.
+#
+#    * Redistributions in binary form must reproduce the above
+#      copyright notice, this list of conditions and the following
+#      disclaimer in the documentation and/or other materials provided 
+#      with the distribution.  
+#
+#    * Neither the name of Los Alamos National Security, LLC, Los
+#      Alamos National Laboratory, LANL, the U.S. Government, nor the
+#      names of its contributors may be used to endorse or promote
+#      products derived from this software without specific prior
+#      written permission.
+#
+#  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
+#  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+#  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+#  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+#  DISCLAIMED. IN NO EVENT SHALL LOS ALAMOS NATIONAL SECURITY, LLC OR
+#  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+#  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+#  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+#  USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+#  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+#  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+#  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+#  SUCH DAMAGE.
+#
+###########################################################################
+#
+
+# This file sets the basic flags for the Scout language in CMake.  It
+# also loads the available platform file for the system-compiler if it
+# exists.  It also loads a system - compiler - processor (or target
+# hardware) specific file, which is mainly useful for crosscompiling
+# and embedded systems.
+
+# some compilers use different extensions (e.g. sdcc uses .rel) so set
+# the extension here first so it can be overridden by the compiler
+# specific file
+IF(UNIX)
+  SET(CMAKE_SCC_OUTPUT_EXTENSION .o)
+ELSE(UNIX)
+  SET(CMAKE_SCC_OUTPUT_EXTENSION .obj)
+ENDIF(UNIX)
+
+SET(_INCLUDED_FILE 0)
+
+# Load compiler-specific information.
+IF(CMAKE_SCC_COMPILER_ID)
+  INCLUDE(Compiler/${CMAKE_SCC_COMPILER_ID}-SCC OPTIONAL)
+ENDIF(CMAKE_SCC_COMPILER_ID)
+
+SET(CMAKE_BASE_NAME)
+GET_FILENAME_COMPONENT(CMAKE_BASE_NAME ${CMAKE_SCC_COMPILER} NAME_WE)
+
+# load a hardware specific file, mostly useful for embedded compilers
+IF(CMAKE_SYSTEM_PROCESSOR)
+  IF(CMAKE_SCC_COMPILER_ID)
+    INCLUDE(Platform/${CMAKE_SYSTEM_NAME}-${CMAKE_SCC_COMPILER_ID}-SCC-${CMAKE_SYSTEM_PROCESSOR} OPTIONAL RESULT_VARIABLE _INCLUDED_FILE)
+  ENDIF(CMAKE_SCC_COMPILER_ID)
+  IF (NOT _INCLUDED_FILE)
+    INCLUDE(Platform/${CMAKE_SYSTEM_NAME}-${CMAKE_BASE_NAME}-${CMAKE_SYSTEM_PROCESSOR} OPTIONAL)
+  ENDIF (NOT _INCLUDED_FILE)
+ENDIF(CMAKE_SYSTEM_PROCESSOR)
+
+# load the system- and compiler specific files
+IF(CMAKE_SCC_COMPILER_ID)
+  INCLUDE(Platform/${CMAKE_SYSTEM_NAME}-${CMAKE_SCC_COMPILER_ID}-SCC OPTIONAL RESULT_VARIABLE _INCLUDED_FILE)
+ENDIF(CMAKE_SCC_COMPILER_ID)
+IF (NOT _INCLUDED_FILE)
+  INCLUDE(Platform/${CMAKE_SYSTEM_NAME}-${CMAKE_BASE_NAME} OPTIONAL
+          RESULT_VARIABLE _INCLUDED_FILE)
+ENDIF (NOT _INCLUDED_FILE)
+# We specify the compiler information in the system file for some
+# platforms, but this language may not have been enabled when the file
+# was first included.  Include it again to get the language info.
+# Remove this when all compiler info is removed from system files.
+IF (NOT _INCLUDED_FILE)
+  INCLUDE(Platform/${CMAKE_SYSTEM_NAME} OPTIONAL)
+ENDIF (NOT _INCLUDED_FILE)
+
+IF(CMAKE_SCC_SIZEOF_DATA_PTR)
+  FOREACH(f ${CMAKE_SCC_ABI_FILES})
+    INCLUDE(${f})
+  ENDFOREACH()
+  UNSET(CMAKE_SCC_ABI_FILES)
+ENDIF()
+
+# This should be included before the _INIT variables are
+# used to initialize the cache.  Since the rule variables 
+# have if blocks on them, users can still define them here.
+# But, it should still be after the platform file so changes can
+# be made to those values.
+
+IF(CMAKE_USER_MAKE_RULES_OVERRIDE)
+  # Save the full path of the file so try_compile can use it.
+  INCLUDE(${CMAKE_USER_MAKE_RULES_OVERRIDE} RESULT_VARIABLE _override)
+  SET(CMAKE_USER_MAKE_RULES_OVERRIDE "${_override}")
+ENDIF()
+
+IF(CMAKE_USER_MAKE_RULES_OVERRIDE_SCC)
+  # Save the full path of the file so try_compile can use it.
+  INCLUDE(${CMAKE_USER_MAKE_RULES_OVERRIDE_SCC} RESULT_VARIABLE _override)
+  SET(CMAKE_USER_MAKE_RULES_OVERRIDE_SCC "${_override}")
+ENDIF()
+
+
+# Create a set of shared library variable specific to SCC
+# For 90% of the systems, these are the same flags as the C versions
+# so if these are not set just copy the flags from the c version
+IF(NOT CMAKE_SHARED_LIBRARY_CREATE_SCC_FLAGS)
+  SET(CMAKE_SHARED_LIBRARY_CREATE_SCC_FLAGS ${CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS})
+ENDIF(NOT CMAKE_SHARED_LIBRARY_CREATE_SCC_FLAGS)
+
+IF(NOT CMAKE_SCC_COMPILE_OPTIONS_PIC)
+  SET(CMAKE_SCC_COMPILE_OPTIONS_PIC ${CMAKE_C_COMPILE_OPTIONS_PIC})
+ENDIF(NOT CMAKE_SCC_COMPILE_OPTIONS_PIC)
+
+IF(NOT CMAKE_SCC_COMPILE_OPTIONS_PIE)
+  SET(CMAKE_SCC_COMPILE_OPTIONS_PIE ${CMAKE_C_COMPILE_OPTIONS_PIE})
+ENDIF(NOT CMAKE_SCC_COMPILE_OPTIONS_PIE)
+
+IF(NOT CMAKE_SCC_COMPILE_OPTIONS_DLL)
+  SET(CMAKE_SCC_COMPILE_OPTIONS_DLL ${CMAKE_C_COMPILE_OPTIONS_DLL})
+ENDIF(NOT CMAKE_SCC_COMPILE_OPTIONS_DLL)
+
+IF(NOT CMAKE_SHARED_LIBRARY_SCC_FLAGS)
+  SET(CMAKE_SHARED_LIBRARY_SCC_FLAGS ${CMAKE_SHARED_LIBRARY_C_FLAGS})
+ENDIF(NOT CMAKE_SHARED_LIBRARY_SCC_FLAGS)
+
+IF(NOT DEFINED CMAKE_SHARED_LIBRARY_LINK_SCC_FLAGS)
+  SET(CMAKE_SHARED_LIBRARY_LINK_SCC_FLAGS ${CMAKE_SHARED_LIBRARY_LINK_C_FLAGS})
+ENDIF(NOT DEFINED CMAKE_SHARED_LIBRARY_LINK_SCC_FLAGS)
+
+IF(NOT CMAKE_SHARED_LIBRARY_RUNTIME_SCC_FLAG)
+  SET(CMAKE_SHARED_LIBRARY_RUNTIME_SCC_FLAG ${CMAKE_SHARED_LIBRARY_RUNTIME_C_FLAG}) 
+ENDIF(NOT CMAKE_SHARED_LIBRARY_RUNTIME_SCC_FLAG)
+
+IF(NOT CMAKE_SHARED_LIBRARY_RUNTIME_SCC_FLAG_SEP)
+  SET(CMAKE_SHARED_LIBRARY_RUNTIME_SCC_FLAG_SEP ${CMAKE_SHARED_LIBRARY_RUNTIME_C_FLAG_SEP})
+ENDIF(NOT CMAKE_SHARED_LIBRARY_RUNTIME_SCC_FLAG_SEP)
+
+IF(NOT CMAKE_SHARED_LIBRARY_RPATH_LINK_SCC_FLAG)
+  SET(CMAKE_SHARED_LIBRARY_RPATH_LINK_SCC_FLAG ${CMAKE_SHARED_LIBRARY_RPATH_LINK_C_FLAG})
+ENDIF(NOT CMAKE_SHARED_LIBRARY_RPATH_LINK_SCC_FLAG)
+
+IF(NOT DEFINED CMAKE_EXE_EXPORTS_SCC_FLAG)
+  SET(CMAKE_EXE_EXPORTS_SCC_FLAG ${CMAKE_EXE_EXPORTS_C_FLAG})
+ENDIF()
+
+IF(NOT DEFINED CMAKE_SHARED_LIBRARY_SONAME_SCC_FLAG)
+  SET(CMAKE_SHARED_LIBRARY_SONAME_SCC_FLAG ${CMAKE_SHARED_LIBRARY_SONAME_C_FLAG})
+ENDIF()
+
+IF(NOT CMAKE_EXECUTABLE_RUNTIME_SCC_FLAG)
+  SET(CMAKE_EXECUTABLE_RUNTIME_SCC_FLAG ${CMAKE_SHARED_LIBRARY_RUNTIME_SCC_FLAG})
+ENDIF(NOT CMAKE_EXECUTABLE_RUNTIME_SCC_FLAG)
+
+IF(NOT CMAKE_EXECUTABLE_RUNTIME_SCC_FLAG_SEP)
+  SET(CMAKE_EXECUTABLE_RUNTIME_SCC_FLAG_SEP ${CMAKE_SHARED_LIBRARY_RUNTIME_SCC_FLAG_SEP})
+ENDIF(NOT CMAKE_EXECUTABLE_RUNTIME_SCC_FLAG_SEP)
+
+IF(NOT CMAKE_EXECUTABLE_RPATH_LINK_SCC_FLAG)
+  SET(CMAKE_EXECUTABLE_RPATH_LINK_SCC_FLAG ${CMAKE_SHARED_LIBRARY_RPATH_LINK_SCC_FLAG})
+ENDIF(NOT CMAKE_EXECUTABLE_RPATH_LINK_SCC_FLAG)
+
+IF(NOT DEFINED CMAKE_SHARED_LIBRARY_LINK_SCC_WITH_RUNTIME_PATH)
+  SET(CMAKE_SHARED_LIBRARY_LINK_SCC_WITH_RUNTIME_PATH ${CMAKE_SHARED_LIBRARY_LINK_C_WITH_RUNTIME_PATH})
+ENDIF(NOT DEFINED CMAKE_SHARED_LIBRARY_LINK_SCC_WITH_RUNTIME_PATH)
+
+IF(NOT CMAKE_INCLUDE_FLAG_SCC)
+  SET(CMAKE_INCLUDE_FLAG_SCC ${CMAKE_INCLUDE_FLAG_C})
+ENDIF(NOT CMAKE_INCLUDE_FLAG_SCC)
+
+IF(NOT CMAKE_INCLUDE_FLAG_SEP_SCC)
+  SET(CMAKE_INCLUDE_FLAG_SEP_SCC ${CMAKE_INCLUDE_FLAG_SEP_C})
+ENDIF(NOT CMAKE_INCLUDE_FLAG_SEP_SCC)
+
+# for most systems a module is the same as a shared library
+# so unless the variable CMAKE_MODULE_EXISTS is set just
+# copy the values from the LIBRARY variables
+IF(NOT CMAKE_MODULE_EXISTS)
+  SET(CMAKE_SHARED_MODULE_SCC_FLAGS ${CMAKE_SHARED_LIBRARY_SCC_FLAGS})
+  SET(CMAKE_SHARED_MODULE_CREATE_SCC_FLAGS ${CMAKE_SHARED_LIBRARY_CREATE_SCC_FLAGS})
+ENDIF(NOT CMAKE_MODULE_EXISTS)
+
+# repeat for modules
+IF(NOT CMAKE_SHARED_MODULE_CREATE_SCC_FLAGS)
+  SET(CMAKE_SHARED_MODULE_CREATE_SCC_FLAGS ${CMAKE_SHARED_MODULE_CREATE_C_FLAGS})
+ENDIF(NOT CMAKE_SHARED_MODULE_CREATE_SCC_FLAGS)
+
+IF(NOT CMAKE_SHARED_MODULE_SCC_FLAGS)
+  SET(CMAKE_SHARED_MODULE_SCC_FLAGS ${CMAKE_SHARED_MODULE_C_FLAGS})
+ENDIF(NOT CMAKE_SHARED_MODULE_SCC_FLAGS)
+
+# Initialize SCC link type selection flags from C versions.
+FOREACH(type SHARED_LIBRARY SHARED_MODULE EXE)
+  IF(NOT CMAKE_${type}_LINK_STATIC_SCC_FLAGS)
+    SET(CMAKE_${type}_LINK_STATIC_SCC_FLAGS
+      ${CMAKE_${type}_LINK_STATIC_C_FLAGS})
+  ENDIF(NOT CMAKE_${type}_LINK_STATIC_SCC_FLAGS)
+  IF(NOT CMAKE_${type}_LINK_DYNAMIC_SCC_FLAGS)
+    SET(CMAKE_${type}_LINK_DYNAMIC_SCC_FLAGS
+      ${CMAKE_${type}_LINK_DYNAMIC_C_FLAGS})
+  ENDIF(NOT CMAKE_${type}_LINK_DYNAMIC_SCC_FLAGS)
+ENDFOREACH(type)
+
+# add the flags to the cache based
+# on the initial values computed in the platform/*.cmake files
+# use _INIT variables so that this only happens the first time
+# and you can set these flags in the cmake cache
+
+IF(CMAKE_SCC_BOOTSTRAP) 
+  SET(CMAKE_SCC_FLAGS_INIT "-disable-sc-stdlib -no-rewrite")
+ENDIF()
+SET(CMAKE_SCC_FLAGS_INIT "$ENV{SCCFLAGS} ${CMAKE_SCC_FLAGS_INIT}")
+
+# avoid just having a space as the initial value for the cache 
+IF(CMAKE_SCC_FLAGS_INIT STREQUAL " ")
+  SET(CMAKE_SCC_FLAGS_INIT)
+ENDIF(CMAKE_SCC_FLAGS_INIT STREQUAL " ")
+SET (CMAKE_SCC_FLAGS "${CMAKE_SCC_FLAGS_INIT}" CACHE STRING
+     "Flags used by the compiler during all build types.")
+
+IF(NOT CMAKE_NOT_USING_CONFIG_FLAGS)
+  SET (CMAKE_SCC_FLAGS_DEBUG "${CMAKE_SCC_FLAGS_DEBUG_INIT}" CACHE STRING
+     "Flags used by the compiler during debug builds.")
+  SET (CMAKE_SCC_FLAGS_MINSIZEREL "${CMAKE_SCC_FLAGS_MINSIZEREL_INIT}" CACHE STRING
+      "Flags used by the compiler during release minsize builds.")
+  SET (CMAKE_SCC_FLAGS_RELEASE "${CMAKE_SCC_FLAGS_RELEASE_INIT}" CACHE STRING
+     "Flags used by the compiler during release builds (/MD /Ob1 /Oi /Ot /Oy /Gs will produce slightly less optimized but smaller files).")
+  SET (CMAKE_SCC_FLAGS_RELWITHDEBINFO "${CMAKE_SCC_FLAGS_RELWITHDEBINFO_INIT}" CACHE STRING
+     "Flags used by the compiler during Release with Debug Info builds.")
+
+ENDIF(NOT CMAKE_NOT_USING_CONFIG_FLAGS)
+
+IF(CMAKE_SCC_STANDARD_LIBRARIES_INIT)
+  SET(CMAKE_SCC_STANDARD_LIBRARIES "${CMAKE_SCC_STANDARD_LIBRARIES_INIT}"
+    CACHE STRING "Libraries linked by defalut with all scout applications.")
+  MARK_AS_ADVANCED(CMAKE_SCC_STANDARD_LIBRARIES)
+ENDIF(CMAKE_SCC_STANDARD_LIBRARIES_INIT)
+
+INCLUDE(CMakeCommonLanguageInclude)
+
+# now define the following rules:
+# CMAKE_SCC_CREATE_SHARED_LIBRARY
+# CMAKE_SCC_CREATE_SHARED_MODULE
+# CMAKE_SCC_COMPILE_OBJECT
+# CMAKE_SCC_LINK_EXECUTABLE
+
+# variables supplied by the generator at use time
+# <TARGET>
+# <TARGET_BASE> the target without the suffix
+# <OBJECTS>
+# <OBJECT>
+# <LINK_LIBRARIES>
+# <FLAGS>
+# <LINK_FLAGS>
+
+# SCC compiler information
+# <CMAKE_SCC_COMPILER>  
+# <CMAKE_SHARED_LIBRARY_CREATE_SCC_FLAGS>
+# <CMAKE_SCC_SHARED_MODULE_CREATE_FLAGS>
+# <CMAKE_SCC_LINK_FLAGS>
+
+# Static library tools
+# <CMAKE_AR> 
+# <CMAKE_RANLIB>
+
+
+# create a shared scc library
+IF(NOT CMAKE_SCC_CREATE_SHARED_LIBRARY)
+  SET(CMAKE_SCC_CREATE_SHARED_LIBRARY
+      "<CMAKE_SCC_COMPILER> <CMAKE_SHARED_LIBRARY_SCC_FLAGS> <LANGUAGE_COMPILE_FLAGS> <LINK_FLAGS> <CMAKE_SHARED_LIBRARY_CREATE_SCC_FLAGS> <SONAME_FLAG><TARGET_SONAME> -o <TARGET> <OBJECTS> <LINK_LIBRARIES>")
+ENDIF(NOT CMAKE_SCC_CREATE_SHARED_LIBRARY)
+
+# create a scc shared module copy the shared library rule by default
+IF(NOT CMAKE_SCC_CREATE_SHARED_MODULE)
+  SET(CMAKE_SCC_CREATE_SHARED_MODULE ${CMAKE_SCC_CREATE_SHARED_LIBRARY})
+ENDIF(NOT CMAKE_SCC_CREATE_SHARED_MODULE)
+
+
+# Create a static archive incrementally for large object file counts.
+# If CMAKE_SCC_CREATE_STATIC_LIBRARY is set it will override these.
+IF(NOT DEFINED CMAKE_SCC_ARCHIVE_CREATE)
+  SET(CMAKE_SCC_ARCHIVE_CREATE "<CMAKE_AR> cr <TARGET> <LINK_FLAGS> <OBJECTS>")
+ENDIF()
+IF(NOT DEFINED CMAKE_SCC_ARCHIVE_APPEND)
+  SET(CMAKE_SCC_ARCHIVE_APPEND "<CMAKE_AR> r  <TARGET> <LINK_FLAGS> <OBJECTS>")
+ENDIF()
+IF(NOT DEFINED CMAKE_SCC_ARCHIVE_FINISH)
+  SET(CMAKE_SCC_ARCHIVE_FINISH "<CMAKE_RANLIB> <TARGET>")
+ENDIF()
+
+# compile a scc file into an object file
+IF(NOT CMAKE_SCC_COMPILE_OBJECT)
+  SET(CMAKE_SCC_COMPILE_OBJECT
+    "<CMAKE_SCC_COMPILER>  <DEFINES> <FLAGS> -o <OBJECT> -c <SOURCE>")
+ENDIF(NOT CMAKE_SCC_COMPILE_OBJECT)
+
+IF(NOT CMAKE_SCC_LINK_EXECUTABLE)
+  SET(CMAKE_SCC_LINK_EXECUTABLE
+    "<CMAKE_SCC_COMPILER>  <FLAGS> <CMAKE_SCC_LINK_FLAGS> <LINK_FLAGS> <OBJECTS>  -o <TARGET> <LINK_LIBRARIES>")
+ENDIF(NOT CMAKE_SCC_LINK_EXECUTABLE)
+
+MARK_AS_ADVANCED(
+CMAKE_BUILD_TOOL
+CMAKE_VERBOSE_MAKEFILE 
+CMAKE_SCC_FLAGS
+CMAKE_SCC_FLAGS_RELEASE
+CMAKE_SCC_FLAGS_RELWITHDEBINFO
+CMAKE_SCC_FLAGS_MINSIZEREL
+CMAKE_SCC_FLAGS_DEBUG)
+
+SET(CMAKE_SCC_INFORMATION_LOADED 1)
+
