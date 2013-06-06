@@ -65,6 +65,14 @@ void Isosurface_CPP::computeColors(thrust::host_vector<psfloat4>* colors_host_ve
       thrust::make_transform_iterator(_isosurface->scalars_end(), color_func));
 }
 
+void Isosurface_CPP::computeColors2(thrust::host_vector<psfloat4>* colors_host_vector,
+              const user_defined_color_func ud_color_func)
+{
+  colors_host_vector->assign(
+      thrust::make_transform_iterator(_isosurface->scalars_begin(), ud_color_func),
+      thrust::make_transform_iterator(_isosurface->scalars_end(), ud_color_func));
+}
+
 // could take mesh ptr and set the fields of it instead of setting globals
 void __sc_isosurface(size_t nx, size_t ny, size_t nz, float* input, float* source, float isoval){
   __sc_isosurface_cpp = new Isosurface_CPP(nx, ny, nz, input, source, isoval);

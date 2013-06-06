@@ -18,7 +18,23 @@ typedef struct psfloat3
 
 typedef struct psfloat4
 {
-  float x, y, z, w;
+//  float x, y, z, w;
+  union {
+    float x;
+    float r;
+  };
+  union {
+    float y;
+    float g;
+  };
+  union {
+    float z;
+    float b;
+  };
+  union {
+    float w;
+    float a;
+  };
 } psfloat4;
 
 struct psuint3

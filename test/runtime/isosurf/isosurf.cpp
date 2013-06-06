@@ -15,6 +15,7 @@
 #include "scout/Runtime/isosurf/isosurface_cpp.h"
 #include "scout/Runtime/renderall/RenderallSurface.h"
 #include "scout/Runtime/isosurf/piston/hsv_color_map.h"
+#include "scout/Runtime/isosurf/user_defined_color_func.h"
 
 #ifdef __APPLE__
 #include <OpenGL/gl.h>
@@ -194,6 +195,7 @@ void printTestData(void *ptest_data,
     }
 }
 
+
 // only supports serial execution at the moment
 
 int main(int argc, char *argv[])
@@ -254,6 +256,7 @@ int main(int argc, char *argv[])
   float isoval = .2f;
   printf("isoval: %f\n", isoval);
 
+
   __sc_isosurface(nx, ny, nz, (float*)data, (float*)data, isoval);
 
   float* verts = __sc_isosurface_cpp->getVertices();
@@ -265,26 +268,44 @@ int main(int argc, char *argv[])
 
   thrust::host_vector<psfloat4>* colors_host_vector = new thrust::host_vector<psfloat4>(num_vertices);
 
-  // iterate over colors and assign
-  piston::hsv_color_map<float> color_func(0.0, 1.0);
-
-  // this will not be interesting, because all scalars are the isoval
-  __sc_isosurface_cpp->computeColors(colors_host_vector, color_func);
-
   float* colors = (float*)thrust::raw_pointer_cast(&(*colors_host_vector)[0]);
 
-  // render surface
-  if (__sc_isosurface_cpp->getNumVertices() > 0) {
-    __scrt_renderall_surface_begin(nx, ny, nz, __sc_isosurface_cpp->getVertices(),
-        __sc_isosurface_cpp->getNormals(), colors, 
-        __sc_isosurface_cpp->getNumVertices(), &camera);
+  for (int i = 1; i <= 10; i++) {
 
-    __scrt_renderall_end();
+    // user-defined color function
+    color_func_t my_color_func = ^ psfloat4 (float scalar, float min, float max)
+    {
+      psfloat4 color;
 
-    sleep(5);
+      // user code here
+      color.r = .10*i;
+      color.g = 1.0- .10*i;
+      color.b = 0.0;
+      color.a = 1.0;
+      // end user code
 
-    __scrt_renderall_delete();
+      return make_psfloat4(color.r, color.g, color.b, color.a);
+    };
 
+    // new way of doing it
+    user_defined_color_func ud_color_func(my_color_func, 0.0, 1.0);
+
+    // this will not be interesting, because all scalars are the isoval
+    __sc_isosurface_cpp->computeColors2(colors_host_vector, ud_color_func);
+
+    // render surface
+    if (__sc_isosurface_cpp->getNumVertices() > 0) {
+      __scrt_renderall_surface_begin(nx, ny, nz, __sc_isosurface_cpp->getVertices(),
+          __sc_isosurface_cpp->getNormals(), colors, 
+          __sc_isosurface_cpp->getNumVertices(), &camera);
+
+	    __scrt_renderall_end();
+
+	    sleep(1);
+
+	    __scrt_renderall_delete();
+
+    }
   }
  
   // cleanup isosurface

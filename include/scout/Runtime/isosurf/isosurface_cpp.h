@@ -20,6 +20,7 @@
 
 #include <scout/Runtime/isosurf/piston/marching_cube.h>
 #include <scout/Runtime/isosurf/colmajor_isodata_field.h>
+#include <scout/Runtime/isosurf/user_defined_color_func.h>
 
 // ----- isosurface for CPP backend of Piston
 // 
@@ -45,6 +46,8 @@ namespace scout
       int getNumVertices();
       void computeColors(thrust::host_vector<psfloat4>* colors_host_vector,
           const piston::hsv_color_map<float>& color_func);
+      void computeColors2(thrust::host_vector<psfloat4>* colors_host_vector,
+          const user_defined_color_func ud_color_func);
       void recompute(float isovalue);
 
     private:
