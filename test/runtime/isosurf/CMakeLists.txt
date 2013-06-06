@@ -10,6 +10,7 @@
 project(scout_rt_test_runtime_isosurf)
 
 set(CMAKE_CXX_COMPILER ${SC_BUILD_DIR}/../llvm/bin/clang++)
+set(CMAKE_CXX_FLAGS "-fblocks")
 
 if(APPLE)
     FIND_LIBRARY(APPKIT_LIBRARY AppKit)
