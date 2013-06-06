@@ -25,6 +25,9 @@
 using namespace std;
 using namespace scout;
 
+//SC_TODO: temporary workaround for broken scout vectors in camera
+typedef float float3d __attribute__((ext_vector_type(3)));
+
 uniform mesh AMeshType{
 cells:
   float data;
@@ -67,9 +70,10 @@ int main(int argc, char *argv[])
 
   printf ("Finished setting data\n");
   
-  float3 mypos = float3(-300.0f, -300.0f, -300.0f);
-  float3 mylookat = float3(0.0f, 0.0f, 0.0f);
-  float3 myup = float3(0.0f, 0.0f, -1.0f);
+  //SC_TODO: temporary workaround for broken scout vectors in camera
+  float3d mypos = (float3d){-300.0f, -300.0f, -300.0f};
+  float3d mylookat = (float3d){0.0f, 0.0f, 0.0f};
+  float3d myup = (float3d){0.0f, 0.0f, -1.0f};
 
   camera cam {
     near = 70.0;
