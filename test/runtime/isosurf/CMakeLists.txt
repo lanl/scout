@@ -30,6 +30,7 @@ include_directories(
 
 set(LIBS
   scRuntime
+  BlocksRuntime
   ${CUDA_LIBRARIES}
   ${OPENGL_LIBRARY}
   ${APPKIT_LIBRARY}
