@@ -3427,6 +3427,11 @@ public:
   }
 };
 
+  enum MeshFormat {
+    FACESET,
+    COUNT
+  };
+
 class UnstructuredMeshType : public MeshType{
 public:
   UnstructuredMeshType(const UnstructuredMeshDecl* D, InstanceType IT=MeshInstance)
@@ -3443,6 +3448,12 @@ public:
   static bool classof(const Type *T) {
     return T->getTypeClass() == UnstructuredMesh;
   }
+
+  MeshFormat getMeshFormat() { return meshFormat; }
+  void setMeshFormat(MeshFormat mf) { meshFormat = mf;}
+   
+ private:
+  MeshFormat meshFormat;
 };
 // =================================================================================================
 

@@ -12107,14 +12107,43 @@ Decl* Sema::ActOnMeshDefinition(Scope* S,
                                 MultiTemplateParamsArg TemplateParameterLists) {
 
   LookupResult LR(*this, Name, NameLoc, LookupTagName, Sema::NotForRedeclaration);
+  UniformMeshDecl* MD;
+  UnstructuredMeshDecl* USMD;
 
-  UniformMeshDecl* MD = UniformMeshDecl::Create(Context, Decl::UniformMesh, CurContext,
-                                                KWLoc, NameLoc,
-                                                Name, 0);
+  switch(MeshType) {
+    
+    case tok::kw_uniform:
+      MD = UniformMeshDecl::Create(Context, Decl::UniformMesh, CurContext,
+                                   KWLoc, NameLoc, Name, 0);
+      PushOnScopeChains(MD, S, true);
+      return MD;
+      break;
 
-  PushOnScopeChains(MD, S, true);
 
-  return MD;
+    case tok::kw_unstructured:
+      USMD = UnstructuredMeshDecl::Create(Context, Decl::UnstructuredMesh, CurContext,
+                                          KWLoc, NameLoc, Name, 0);
+      PushOnScopeChains(USMD, S, true);
+      return USMD;
+      break;
+
+
+    case tok::kw_rectlinear:
+      Diag(NameLoc, diag::err_mesh_not_implemented);
+      return NULL;
+      break;
+
+    case tok::kw_structured:
+      Diag(NameLoc, diag::err_mesh_not_implemented);
+      return NULL;
+      break;
+
+    default:
+      llvm_unreachable("Unknown mesh type");
+      return NULL;
+      break;
+  }
+  return NULL;
 }
 
 // scout - Scout Mesh field

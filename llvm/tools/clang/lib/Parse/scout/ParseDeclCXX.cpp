@@ -146,7 +146,7 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS, const ParsedTemplateInfo &Template
 
 // scout - Scout Mesh
 // parse the body of a defintion of a mesh, e.g:
-// uniform mesh MyMesh [1024,1024] {
+// uniform mesh MyMesh {
 ///     <BODY>
 // }
 // return true on success
