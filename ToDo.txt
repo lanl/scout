@@ -27,7 +27,8 @@ highlighted there and have not yet been transfered into this file...
 
 ===== Refactoring ===== 
 
-0. [o] Remove/disable amd gpu flags...
+0. [c] Remove/disable AMD gpu flags (they're behind us version-wise
+   right now). 
 
 1. [c] Clang front-end : Make mesh fields a subclass of fields versus
    directly modifying Clang fields.  This not only helps us separate

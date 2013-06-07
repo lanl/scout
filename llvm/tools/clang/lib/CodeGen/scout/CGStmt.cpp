@@ -645,7 +645,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   llvm::Value *indVar = Builder.CreateAlloca(Int32Ty, 0, name);
   // SC_TODO - This is likely confusing -- both sequential and
   // cpu appear to imply the same thing... 
-  if(isSequential() || isCPU())
+  if(isSequential() || isMultiCPU())
     Builder.CreateStore(zero, indVar);
 
   ForallIndVar = indVar;
@@ -683,7 +683,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
 
   // SC_TODO - Again, this could be confusing -- both sequential and
   // cpu appear to be imply the same thing...
-  if (isSequential() || isCPU()) {
+  if (isSequential() || isMultiCPU()) {
     
     // Start the loop with a block that tests the condition.
     JumpDest Continue = getJumpDestInCurrentScope("forall.cond");
@@ -700,7 +700,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   llvm::BasicBlock *ExitBlock;
   // SC_TODO -- this is probably not as clear as it should be...
   // Both sequential and CPU appear to imply the same thing...
-  if (isSequential() || isCPU()) {
+  if (isSequential() || isMultiCPU()) {
     ExitBlock = createBasicBlock("forall.end");
     Builder.SetInsertPoint(CondBlock);
     Builder.CreateCondBr(cond, ForallBody, ExitBlock);
@@ -731,7 +731,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   // Generate the statements in the body of the forall.
   EmitStmt(S.getBody());
 
-  if(isSequential() || isCPU()) {
+  if(isSequential() || isMultiCPU()) {
     // Increment the induction variables.
     lval = getGlobalIdx();
     Builder.CreateStore(Builder.CreateAdd(lval, one), ForallIndVar);

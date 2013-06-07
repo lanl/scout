@@ -318,8 +318,9 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   // scout enable NVIDIA GPU support if OPT_gpu is present.
   Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
 
+  // --- Disabled for now (AMD is behind us in version support)
   // scout enable AMD GPU support if OPT_gpu is present.
-  Opts.ScoutAMDGPU = Args.hasArg(OPT_gpuAMD);
+  //Opts.ScoutAMDGPU = Args.hasArg(OPT_gpuAMD);
   
   // scout enable scout CPU multithreading support if OPT_cpuThreads is present.
   Opts.ScoutCPUThreads = Args.hasArg(OPT_cpuThreads);
@@ -1347,8 +1348,9 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   // ===== Scout =============================================================
   // Detect -gpu flag
   Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
+  // --- Disabled for now (AMD is behind us in version support) 
   // Detect -gpu-amd flag
-  Opts.ScoutAMDGPU = Args.hasArg(OPT_gpuAMD);
+  //Opts.ScoutAMDGPU = Args.hasArg(OPT_gpuAMD);
   // =========================================================================
   // FIXME: Eliminate this dependency.
   unsigned Opt = getOptimizationLevel(Args, IK, Diags),

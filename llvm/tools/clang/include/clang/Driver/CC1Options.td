@@ -538,8 +538,9 @@ def view_ast : Flag<["-"], "view-ast">,
   HelpText<"View the AST of a parsed file with GraphViz">;
 def gpu : Flag<["-"], "gpu">,
   HelpText<"Enable NVIDIA GPU support.">;
-def gpuAMD : Flag<["-"], "gpu-amd">,
-  HelpText<"Enable AMD GPU support.">;
+// --- Disabled for now (AMD is off-version of us at present). 
+//def gpuAMD : Flag<["-"], "gpu-amd">,
+//  HelpText<"Enable AMD GPU support.">;
 def emitAllDefinitions : Flag<["-"], "emit-all-definitions">,
   HelpText<"Emit all definitions regardless of it that definition was used.">;
 def vectorize : Flag<["-"], "vectorize">,

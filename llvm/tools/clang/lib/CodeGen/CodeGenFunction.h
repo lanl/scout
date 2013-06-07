@@ -751,21 +751,23 @@ public:
   }
 
   bool isGPU() {
-    return (CGM.getCodeGenOpts().ScoutNvidiaGPU || 
-            CGM.getCodeGenOpts().ScoutAMDGPU)
+    // --- AMD gpu support disabled for now (they're off-version of us)
+    return (CGM.getCodeGenOpts().ScoutNvidiaGPU /* || CGM.getCodeGenOpts().ScoutAMDGPU */)
             && !CallsPrintf;
   }
+  
+  // --- AMD gpu support disabled for now (they're off-version of us)
+  //bool isAMDGPU() {
+  //  return CGM.getCodeGenOpts().ScoutAMDGPU && !CallsPrintf;
+  //}
 
-  bool isAMDGPU() {
-    return CGM.getCodeGenOpts().ScoutAMDGPU && !CallsPrintf;
-  }
 
-  bool isCPU() {
+  bool isMultiCPU() {
     return CGM.getCodeGenOpts().ScoutCPUThreads;
   }
 
   bool isSequential() {
-    return !isCPU() && !isGPU();
+    return !isMultiCPU() && !isGPU();
   }
 
   bool isMeshMember(llvm::Argument *arg, bool& isSigned, std::string& typeStr);

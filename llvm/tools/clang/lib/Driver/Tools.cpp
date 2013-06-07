@@ -2641,8 +2641,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // Enable NVIDIA gpu support (if available).
   Args.AddAllArgs(CmdArgs, options::OPT_gpu);
 
+  // --- Disabled (AMD is a off-version from us at the moment). 
   // Enable AMD gpu support (if available).
-  Args.AddAllArgs(CmdArgs, options::OPT_gpuAMD);
+  //Args.AddAllArgs(CmdArgs, options::OPT_gpuAMD);
   
   // Emit-all-definitions from compilation. 
   Args.AddAllArgs(CmdArgs, options::OPT_emitAllDefinitions);

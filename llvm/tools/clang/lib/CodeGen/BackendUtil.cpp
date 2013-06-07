@@ -236,13 +236,14 @@ void EmitAssemblyHelper::CreateScoutPasses(TargetMachine *TM) {
 #endif
 
 #ifdef SC_ENABLE_OPENCL
-
+  // --- Disabled for now (AMD is off-version from us right now)
+  /*
   if (CodeGenOpts.ScoutAMDGPU) {
     PassManager MPM;
     MPM.add(createDoallToAMDILPass(CodeGenOpts.SccPath));
     MPM.run(*TheModule);
   }
-  
+  */
 #endif
 }
 
