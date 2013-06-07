@@ -5,7 +5,7 @@ struct foo { long x; };
 
 void test() {
   static struct foo _foo;
-  __apple_block i = 0;
+  __block i = 0;
   ^ int_t(struct foo *foo) { return (int_t) foo->x + i; }(&_foo);
 }
 

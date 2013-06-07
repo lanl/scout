@@ -145,11 +145,11 @@ void testBlockVariable() {
     a2(); // no-warning
   };
   
-  __apple_block block_t b1 = ^{ // expected-note{{block will be retained by the captured object}}
+  __block block_t b1 = ^{ // expected-note{{block will be retained by the captured object}}
     b1(); // expected-warning{{capturing 'b1' strongly in this block is likely to lead to a retain cycle}}
   };
 
-  __apple_block block_t b2;
+  __block block_t b2;
   b2 = ^{ // expected-note{{block will be retained by the captured object}}
     b2(); // expected-warning{{capturing 'b2' strongly in this block is likely to lead to a retain cycle}}
   };

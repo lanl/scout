@@ -8,7 +8,7 @@ void f(void *ptr) {
 }
 
 int test_blocks(int x) {
-  __apple_block int y = x;
+  __block int y = x;
   ^{
      static int z = 0;
      y = (++z) + x;

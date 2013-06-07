@@ -7,8 +7,8 @@ void x(int y) {}
 void f() {
     const int bar = 3;
     int baz = 4;
-    __apple_block int bab = 4;
-    __apple_block const int bas = 5;
+    __block int bab = 4;
+    __block const int bas = 5;
     void (^b)() = ^{
         x(bar);
         x(baz);

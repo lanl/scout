@@ -5,7 +5,7 @@
 
 typedef unsigned long size_t;
 extern "C" __declspec(dllexport) void BreakTheRewriter(void) {
-        __apple_block int aBlockVariable = 0;
+        __block int aBlockVariable = 0;
         void (^aBlock)(void) = ^ {
                 aBlockVariable = 42;
         };
@@ -20,7 +20,7 @@ extern "C" __declspec(dllexport) void BreakTheRewriter(void) {
 }
 __declspec(dllexport) extern "C" void AnotherBreakTheRewriter(int *p1, double d) {
 
-        __apple_block int bBlockVariable = 0;
+        __block int bBlockVariable = 0;
         void (^aBlock)(void) = ^ {
                 bBlockVariable = 42;
         };
@@ -40,7 +40,7 @@ __declspec (dllexport)
 
 main (int argc, char *argv[])
 {
-        __apple_block int bBlockVariable = 0;
+        __block int bBlockVariable = 0;
         void (^aBlock)(void) = ^ {
                 bBlockVariable = 42;
         };

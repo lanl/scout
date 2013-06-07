@@ -72,7 +72,7 @@ void test_block_ret() {
 }
 
 void test_block_blockvar() {
-  __apple_block int *p;
+  __block int *p;
   ^(){ // expected-note{{Calling anonymous block}} expected-note{{Returning to caller}}
     p = 0; // expected-note{{Null pointer value stored to 'p'}}
   }();

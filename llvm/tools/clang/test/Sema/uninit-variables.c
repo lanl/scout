@@ -224,7 +224,7 @@ void test30() {
 }
 
 void test31() {
-  __apple_block int x; // no-warning
+  __block int x; // no-warning
   (void) ^{ (void) x; };
 }
 
@@ -246,7 +246,7 @@ int test_34() {
 
 // Test that this case doesn't crash.
 void test35(int x) {
-  __apple_block int y = 0;
+  __block int y = 0;
   ^{ y = (x == 0); }();
 }
 
@@ -352,7 +352,7 @@ void test50()
 
 int test51(void)
 {
-    __apple_block int a;
+    __block int a;
     ^(void) {
       a = 42;
     }();
@@ -401,7 +401,7 @@ void test_vla_sizeof(int x) {
 // Test absurd case of deadcode + use of blocks.  This previously was a false positive
 // due to an analysis bug.
 int test_block_and_dead_code() {
-  __apple_block int x;
+  __block int x;
   ^{ x = 1; }();
   if (0)
     return x;

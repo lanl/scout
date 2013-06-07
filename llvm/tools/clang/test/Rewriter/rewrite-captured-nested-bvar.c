@@ -7,11 +7,11 @@ void q(void (^p)(void)) {
 }
 
 void f() {
-    __apple_block char BYREF_VAR_CHECK = 'a';
-    __apple_block char d = 'd';
+    __block char BYREF_VAR_CHECK = 'a';
+    __block char d = 'd';
     q(^{
         q(^{
-            __apple_block char e = 'e';
+            __block char e = 'e';
             char l = 'l';
             BYREF_VAR_CHECK = 'b';
             d = 'd';
