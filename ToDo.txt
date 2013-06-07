@@ -12,16 +12,22 @@ highlighted there and have not yet been transfered into this file...
 
 ===== Bugs ====
 
-1. [0] There is a potential bug in the code introduced by changes from a
-   the llvm/clang merging and refactoring that has to do with external
-   linkage/allocation -- see line 227 in ParseDeclCxx.cpp. 
+1. [o] There is a potential bug in the code introduced by changes from
+   a the llvm/clang merging and refactoring that has to do with
+   external linkage/allocation -- see line 227 in ParseDeclCxx.cpp.
    (ParseMeshBody), line 187 in CGDecl.cpp (EmitScoutAutoVarAlloca),
-   line 159 in CGExpr.cpp (EmitMeshMemberExpr).  We've replaced 
-   isExternalAlloc() with hasExternalFormalLinkage(). 
+   line 159 in CGExpr.cpp (EmitMeshMemberExpr).  We've replaced
+   isExternalAlloc() with hasExternalFormalLinkage().
 
-   Kei submitted to LLVM bug list: 6/3/13.
+
+2. [o] We've found a LLVM bug related to the mesh-naming test.  Kei
+   submitted to LLVM bug site: 6/3/13.  This will show up under -O0
+   and work correctly with optimization enabled.  Waiting for feedback
+   from the list...
 
 ===== Refactoring ===== 
+
+0. [o] Remove/disable amd gpu flags...
 
 1. [c] Clang front-end : Make mesh fields a subclass of fields versus
    directly modifying Clang fields.  This not only helps us separate
