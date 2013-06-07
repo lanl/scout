@@ -82,7 +82,7 @@ public:
     StringRef Name;
     bool Found = false;
     for (size_t i = 0; i < EnumValues.size(); ++i) {
-      if (EnumValues[i].Value == Value) {
+      if ((int)EnumValues[i].Value == (int)Value) { //scout: fix warning
         Name = EnumValues[i].Name;
         Found = true;
         break;

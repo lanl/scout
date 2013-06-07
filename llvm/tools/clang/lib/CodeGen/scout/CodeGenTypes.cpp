@@ -34,7 +34,7 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
   dims = cast<MeshType>(T.getCanonicalType().getTypePtr())->dimensions();
 
   unsigned int rank = 0;
-  for(int i = 0; i < dims.size(); ++i) {
+  for(unsigned int i = 0; i < dims.size(); ++i) {
     if (dims[i] != 0)
       rank++;
   }

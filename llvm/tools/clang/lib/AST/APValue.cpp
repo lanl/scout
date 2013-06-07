@@ -243,6 +243,7 @@ bool APValue::needsCleanup() const {
   case MemberPointer:
     return reinterpret_cast<const MemberPointerData *>(Data)->hasPathPtr();
   }
+  return true;
 }
 
 void APValue::swap(APValue &RHS) {
