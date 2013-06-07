@@ -117,9 +117,9 @@ static void LLVMErrorHandler(void *UserData, const std::string &Message,
 }
 
 int cc1_main(const char **ArgBegin, const char **ArgEnd,
-    const char *Argv0, void *MainAddr,
-    const std::string& path, bool Rewrite, bool DumpRewrite) {
-  OwningPtr<CompilerInstance> ClangRewrite(new CompilerInstance());
+             const char *Argv0, void *MainAddr,
+             const std::string& path, bool Rewrite, bool DumpRewrite) {
+  OwningPtr<CompilerInstance> Clang(new CompilerInstance());
   IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
 
   // Initialize targets first, so that --version shows registered targets.
@@ -134,29 +134,29 @@ int cc1_main(const char **ArgBegin, const char **ArgEnd,
   TextDiagnosticBuffer *DiagsBuffer = new TextDiagnosticBuffer;
   DiagnosticsEngine Diags(DiagID, &*DiagOpts, DiagsBuffer);
   bool Success;
-  Success = CompilerInvocation::CreateFromArgs(ClangRewrite->getInvocation(),
+  Success = CompilerInvocation::CreateFromArgs(Clang->getInvocation(),
       ArgBegin, ArgEnd, Diags);
 
   // scout - attach the path of the scc executable
-  ClangRewrite->getInvocation().getCodeGenOpts().SccPath = path;
+  Clang->getInvocation().getCodeGenOpts().SccPath = path;
 
   // Infer the builtin include path if unspecified.
-  if (ClangRewrite->getHeaderSearchOpts().UseBuiltinIncludes &&
-      ClangRewrite->getHeaderSearchOpts().ResourceDir.empty())
-    ClangRewrite->getHeaderSearchOpts().ResourceDir =
-        CompilerInvocation::GetResourcesPath(Argv0, MainAddr);
+  if (Clang->getHeaderSearchOpts().UseBuiltinIncludes &&
+      Clang->getHeaderSearchOpts().ResourceDir.empty())
+    Clang->getHeaderSearchOpts().ResourceDir =
+      CompilerInvocation::GetResourcesPath(Argv0, MainAddr);
 
   // Create the actual diagnostics engine.
-  ClangRewrite->createDiagnostics();
-  if (!ClangRewrite->hasDiagnostics())
+  Clang->createDiagnostics();
+  if (!Clang->hasDiagnostics())
     return 1;
 
   // Set an error handler, so that any LLVM backend diagnostics go through our
   // error handler.
   llvm::install_fatal_error_handler(LLVMErrorHandler,
-      static_cast<void*>(&ClangRewrite->getDiagnostics()));
+                                  static_cast<void*>(&Clang->getDiagnostics()));
 
-  DiagsBuffer->FlushDiagnostics(ClangRewrite->getDiagnostics());
+  DiagsBuffer->FlushDiagnostics(Clang->getDiagnostics());
   if (!Success)
     return 1;
 
@@ -164,23 +164,24 @@ int cc1_main(const char **ArgBegin, const char **ArgEnd,
   // scout - hook into the Compiler instance to pass the AST consumer
   // and rewriter
   Rewriter rewriter;
-
+  
   //build an AST consumer with rewriter
-  ScoutASTConsumer consumer(rewriter, ClangRewrite.get());
-  if(Rewrite) {
-    ClangRewrite->setScoutASTConsumer(&consumer);
-    ClangRewrite->setScoutRewriter(&rewriter);
+  ScoutASTConsumer consumer(rewriter, Clang.get());
+
+  if(Rewrite) { 	
+    Clang->setScoutASTConsumer(&consumer);
+    Clang->setScoutRewriter(&rewriter);
   }
   //======================================================
 
 
   // Execute the frontend actions.
-  Success = ExecuteCompilerInvocation(ClangRewrite.get());
+  Success = ExecuteCompilerInvocation(Clang.get());
 
   //======================================================
   // scout - get the modified code and output or recompile
   if(Success && Rewrite) {
-    SourceManager &sourceMgr = ClangRewrite->getSourceManager();
+    SourceManager &sourceMgr = Clang->getSourceManager();
 
     const RewriteBuffer* rewriteBuffer =
         rewriter.getRewriteBufferFor(sourceMgr.getMainFileID()); 
@@ -201,17 +202,17 @@ int cc1_main(const char **ArgBegin, const char **ArgEnd,
     }
    
      // Disable Rewriter and associated ASTConsumer 
-     ClangRewrite->setScoutASTConsumer(NULL);
-     ClangRewrite->setScoutRewriter(NULL);
+     Clang->setScoutASTConsumer(NULL);
+     Clang->setScoutRewriter(NULL);
 
     // Disable warnings as we have already output them with the first call
     // to ExecuteCompilerInvocation() 
-    DiagnosticsEngine& DiagsNoWarnings = ClangRewrite->getDiagnostics();
+    DiagnosticsEngine& DiagsNoWarnings = Clang->getDiagnostics();
     DiagsNoWarnings.setIgnoreAllWarnings(true);
-    ClangRewrite->setDiagnostics(&DiagsNoWarnings);
+    Clang->setDiagnostics(&DiagsNoWarnings);
 
     // Execute the frontend actions on rewritten code
-    Success = ExecuteCompilerInvocation(ClangRewrite.get());
+    Success = ExecuteCompilerInvocation(Clang.get());
   } // end if(Rewrite)
   //====================================================
 
@@ -225,10 +226,10 @@ int cc1_main(const char **ArgBegin, const char **ArgEnd,
   llvm::remove_fatal_error_handler();
 
   // When running with -disable-free, don't do any destruction or shutdown.
-  if (ClangRewrite->getFrontendOpts().DisableFree) {
-    if (llvm::AreStatisticsEnabled() || ClangRewrite->getFrontendOpts().ShowStats)
+  if (Clang->getFrontendOpts().DisableFree) {
+    if (llvm::AreStatisticsEnabled() || Clang->getFrontendOpts().ShowStats)
       llvm::PrintStatistics();
-    ClangRewrite.take();
+    Clang.take();
     return !Success;
   }
 

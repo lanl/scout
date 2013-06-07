@@ -1039,7 +1039,7 @@ struct IntrinsicID_match {
   template<typename OpTy>
   bool match(OpTy *V) {
     IntrinsicInst *II = dyn_cast<IntrinsicInst>(V);
-    return II && II->getIntrinsicID() == ID;
+    return II && II->getIntrinsicID() == (int)ID;  //scout: fix warning
   }
 };
 

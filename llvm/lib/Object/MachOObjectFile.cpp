@@ -427,7 +427,7 @@ MachOObjectFile::MachOObjectFile(MemoryBuffer *Object,
     } else if (Load.C.Type == macho::LCT_Dysymtab) {
       assert(!DysymtabLoadCmd && "Multiple dynamic symbol tables");
       DysymtabLoadCmd = Load.Ptr;
-    } else if (Load.C.Type == SegmentLoadType) {
+    } else if (Load.C.Type == (unsigned)SegmentLoadType) { //scout: fix warning
       uint32_t NumSections = getSegmentLoadCommandNumSections(this, Load);
       for (unsigned J = 0; J < NumSections; ++J) {
         const char *Sec = getSectionPtr(this, Load, J);

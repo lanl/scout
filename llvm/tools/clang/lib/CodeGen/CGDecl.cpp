@@ -919,11 +919,7 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
       DeclPtr = Alloc;
 
       // ===== Scout ========================================================
-      QualType T = D.getType();
-      const clang::Type &Ty = *getContext().getCanonicalType(T).getTypePtr();
-
       // SC_TODO - we need to make sure we handle other mesh types here.
-      if (Ty.getTypeClass() == Type::UniformMesh) 
         EmitScoutAutoVarAlloca(Alloc, D);
       // 
       // ====================================================================

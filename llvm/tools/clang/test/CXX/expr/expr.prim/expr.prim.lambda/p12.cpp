@@ -1,5 +1,4 @@
 // RUN: %clang_cc1 -std=c++11 %s -Wunused -verify
-// REQUIRES: scoutdisable
 
 void odr_used() {
   int i = 17;

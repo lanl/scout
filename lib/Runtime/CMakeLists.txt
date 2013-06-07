@@ -59,6 +59,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fblocks")
 
 include_directories(
   ${SC_INCLUDE_DIR}       
+  ${SC_INCLUDE_DIR}/scout #find our unistd.h wrapper to deal with __block in linux unistd.h
   ${SC_BUILD_DIR}/scout-config/include
   ${SDL_INCLUDE_DIR} 
   ${PNG_INCLUDE_DIR}

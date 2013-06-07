@@ -1,7 +1,6 @@
 // RUN: %clang_cc1 -triple x86_64-apple-darwin10 -fblocks -fsyntax-only -fobjc-arc -x objective-c -fobjc-runtime-has-weak %s.result
 // RUN: arcmt-test --args -triple x86_64-apple-macosx10.7 -fblocks -fsyntax-only %s > %t
 // RUN: diff %t %s.result
-// REQUIRES: scoutdisable
 
 #include "Common.h"
 

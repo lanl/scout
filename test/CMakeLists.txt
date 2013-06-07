@@ -82,7 +82,7 @@ project(scout_test SCC C CXX)
   endif()
   
   if(MPI_FOUND)
-    #add_subdirectory(volren)
+    add_subdirectory(volren)
   endif()
 
   add_subdirectory(display)

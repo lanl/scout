@@ -41,7 +41,7 @@ void test2() {
 
   foo:
   takeblock(^{ x = 4; });  // expected-error {{variable is not assignable (missing __block type specifier)}}
-  __apple_block y = 7;    // expected-warning {{type specifier missing, defaults to 'int'}}
+  __block y = 7;    // expected-warning {{type specifier missing, defaults to 'int'}}
   takeblock(^{ y = 8; });
 }
 

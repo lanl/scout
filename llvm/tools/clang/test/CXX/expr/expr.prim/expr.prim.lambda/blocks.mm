@@ -1,5 +1,4 @@
 // RUN: %clang_cc1 -std=c++11 -fblocks %s -verify
-// REQUIRES: scoutdisable
 
 void block_capture_errors() {
   __block int var; // expected-note 2{{'var' declared here}}

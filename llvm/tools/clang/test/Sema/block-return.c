@@ -88,7 +88,7 @@ void foo4() {
 typedef void (^bptr)(void);
 
 bptr foo5(int j) {
-  __apple_block int i;
+  __block int i;
   if (j)
     return ^{ ^{ i=0; }(); };  // expected-error {{returning block that lives on the local stack}}
   return ^{ i=0; };  // expected-error {{returning block that lives on the local stack}}
@@ -119,11 +119,11 @@ void foo7()
   int (^FF) (void)  = ^{ return i; }; // OK
   int (^EE) (void)  = ^{ return i+1; }; // OK
 
-  __apple_block int j;
+  __block int j;
   int (^JJ) (void)  = ^{ return j; }; // OK
   int (^KK) (void)  = ^{ return j+1; }; // OK
 
-  __apple_block const int k;
+  __block const int k;
   const int cint = 100;
 
   int (^MM) (void)  = ^{ return k; };

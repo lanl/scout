@@ -16,7 +16,7 @@ void g(int (^block)(mystruct s)) {
 }
 
 void f(const void **arg) {
-	__apple_block const void **q = arg;
+	__block const void **q = arg;
 	g(^(mystruct s){
 		*q++ = (void*)s.a;
 		return 314;

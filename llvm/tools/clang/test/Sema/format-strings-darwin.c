@@ -6,7 +6,6 @@
 
 // RUN: %clang_cc1 -fsyntax-only -verify -triple i686-linux-gnu -pedantic %s
 // RUN: %clang_cc1 -fsyntax-only -verify -triple x86_64-unknown-freebsd -pedantic %s
-// REQUIRES: scoutdisable
 
 int printf(const char *restrict, ...);
 int scanf(const char * restrict, ...) ;

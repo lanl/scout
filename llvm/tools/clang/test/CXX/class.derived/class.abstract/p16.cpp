@@ -1,5 +1,4 @@
 // RUN: %clang_cc1 -fsyntax-only -std=c++11 -verify %s
-// REQUIRES: scoutdisable
 
 struct A {
   virtual void a(); // expected-note{{overridden virtual function is here}}

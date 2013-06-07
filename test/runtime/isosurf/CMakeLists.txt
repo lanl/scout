@@ -22,6 +22,7 @@ endif()
 include_directories(
   ${CUDA_INCLUDE_DIRS}
   ${SCOUT_INCLUDE_DIR}
+  ${SCOUT_INCLUDE_DIR}/scout #find our unistd.h wrapper to deal with __block in linux unistd.h
   ${OPENGL_INCLUDE_DIR}
   ${SDL_INCLUDE_DIR}
   ${HWLOC_INCLUDE_DIR}
@@ -30,6 +31,7 @@ include_directories(
 
 set(LIBS
   scRuntime
+  BlocksRuntime
   ${CUDA_LIBRARIES}
   ${OPENGL_LIBRARY}
   ${APPKIT_LIBRARY}
