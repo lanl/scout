@@ -3,7 +3,6 @@
 // RUN: %clang_cc1 -triple x86_64-apple-darwin10 -analyze -analyzer-checker=core,osx.coreFoundation.CFRetainRelease,osx.cocoa.ClassRelease,osx.cocoa.RetainCount -analyzer-store=region -fblocks -verify -x objective-c++ -std=gnu++98 -Wno-objc-root-class %s -analyzer-output=plist -o %t.objcpp.plist
 // FIXLATER: cat %t.objc.plist ; FileCheck --input-file=%t.objc.plist %s
 // FIXLATER: cat %t.objcpp.plist ; FileCheck --input-file=%t.objcpp.plist %s
-// REQUIRES:scoutdisable 
 
 #if __has_feature(attribute_ns_returns_retained)
 #define NS_RETURNS_RETAINED __attribute__((ns_returns_retained))

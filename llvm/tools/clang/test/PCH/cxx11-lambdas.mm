@@ -1,6 +1,5 @@
 // RUN: %clang_cc1 -pedantic-errors -fblocks -std=c++11 -emit-pch %s -o %t-cxx11
 // RUN: %clang_cc1 -ast-print -pedantic-errors -fblocks -std=c++11 -include-pch %t-cxx11  %s | FileCheck -check-prefix=CHECK-PRINT %s
-// REQUIRES: scoutdisable
 
 #ifndef HEADER_INCLUDED
 

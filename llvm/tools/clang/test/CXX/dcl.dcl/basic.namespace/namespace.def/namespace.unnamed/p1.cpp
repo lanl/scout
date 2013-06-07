@@ -1,5 +1,4 @@
 // RUN: %clang_cc1 -emit-llvm-only -verify %s
-// REQUIRES: scoutdisable
 
 // This lame little test was ripped straight from the standard.
 namespace {

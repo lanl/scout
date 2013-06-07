@@ -1,5 +1,4 @@
 // RUN: %clang_cc1 -fsyntax-only -verify %s
-// REQUIRES: scoutdisable
 
 // rdar4641403
 namespace N {
