@@ -1,6 +1,7 @@
 #ifndef SCOUT_H_
 #define SCOUT_H_
 
+#include "scout/unistd.h" // #include unistd.h wrapper to deal with __block in linux unistd.h
 #include "scout/Runtime/renderall/RenderallUniform.h"
 #include "scout/Runtime/window.h"
 #include "scout/Runtime/image.h"
