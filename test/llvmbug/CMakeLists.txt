@@ -48,72 +48,25 @@
 #
 ###########################################################################
 #
-
-include(${CMAKE_BINARY_DIR}/CMake/Modules/Configuration.cmake)
-
-set(CMAKE_MODULE_PATH
-  ${SCOUT_CMAKE_DIR}
-  ${CMAKE_MODULE_PATH}
-)
-
-#C and CXX are here as we need to find them for findMPI to work
-project(scout_test SCC C CXX)
-    
-  cmake_minimum_required(VERSION 2.8.9)
-
-  enable_testing()
-
-  include(${SCOUT_CMAKE_DIR}/ScoutConfig.cmake)
-
-  set(CMAKE_VERBOSE_MAKEFILE ON)
-
-  set(SCOUT_REGRESSION_DIR ${CMAKE_CURRENT_BINARY_DIR}/../../test)
-  set(SCOUT_BINARY_REGRESSION_DIR ${CMAKE_CURRENT_BINARY_DIR})
-
-  add_definitions(-DSC_REG_DATA_PATH=${SCOUT_REGRESSION_DIR}/data)
-  add_definitions(-DSC_REG_BIN_PATH=${SCOUT_BINARY_REGRESSION_DIR})
-
-  if(DEFINED ENV{SDLDIR})
-    set(CMAKE_SCC_LINK_FLAGS -L$ENV{SDLDIR}/lib)
-  endif()
-
-  if(MPI_FOUND AND CUDA_FOUND)
-    add_subdirectory(runtime)
-  endif()
   
-  if(MPI_FOUND)
-    add_subdirectory(volren)
-  endif()
+project(scout_test_llvmbug)
 
-  add_subdirectory(display)
-  add_subdirectory(mthread)
-  add_subdirectory(error)
-  add_subdirectory(driver)
+# work around llvm bug 
+set(CMAKE_SCC_FLAGS "-O2")
 
-  #compile tests that will work w/ -O2 but not without ( remove when llvmbug is fixed)
-  add_subdirectory(llvmbug)
+# Note: By default we pull in all the .sc source files in this
+# directory for inclusion into the regression checks.  
+file(GLOB SC_SRCS *.sc) 
 
-  #if(APPLE) 
-  #add_subdirectory(macosx)
-  #endif()
-
-
-  # Note: By default we pull in all the .sc source files in this
-  # directory for inclusion into the regression checks.  If you want do
-  # build more complex tests we suggest creating a subdirectory for the
-  # source.
-  #
-  file(GLOB SC_SRCS *.sc) 
-
-  # Add an executable and test entry for each source file...
-  foreach (test ${SC_SRCS})
-    get_filename_component(tname ${test} NAME_WE) 
-    if (NOT tname) 
-      message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
-    else (NOT tname)
-      add_executable(${tname} ${test})
-      add_test(${tname} ${CMAKE_CURRENT_BINARY_DIR}/${tname})
-      message(" + added runtime regression test entry: ${tname}")
-    endif(NOT tname)
-  endforeach(test)
+# Add an executable and test entry for each source file...
+foreach (test ${SC_SRCS})
+  get_filename_component(tname ${test} NAME_WE) 
+  if (NOT tname) 
+    message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
+  else (NOT tname)
+    add_executable(${tname} ${test})
+    add_test(${tname} ${CMAKE_CURRENT_BINARY_DIR}/${tname})
+    message(" + added runtime regression test entry: ${tname}")
+  endif(NOT tname)
+endforeach(test)
 
