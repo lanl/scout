@@ -480,9 +480,18 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 #ifndef SC_USE_RT_REWRITER // for testing rewriter
     std::string bc;
     bc = "__scrt_renderall_uniform_begin(";
-    bc += MVD->getName().str() + ".width, ";
-    bc += MVD->getName().str() + ".height, ";
-    bc += MVD->getName().str() + ".depth);";
+    if(dims.size() == 1) {
+      bc += MVD->getName().str() + ".width, 0, 0);";
+    } else if ( dims.size() == 2) {
+      bc += MVD->getName().str() + ".width, ";
+      bc += MVD->getName().str() + ".height, 0);";
+    } else if (dims.size() == 3) {
+      bc += MVD->getName().str() + ".width, ";
+      bc += MVD->getName().str() + ".height, ";
+      bc += MVD->getName().str() + ".depth);";
+    } else {
+      assert(dims.size() <= 3 );
+    }
 
     InsertCPPCode(bc, Tok.getLocation());
 
