@@ -87,7 +87,7 @@
 ///
 ///  UMeshTypeName  my_mesh[xdim,ydim,zdim];  (can be 1, 2 or 3 dimensional)
 ///
-class UniforMeshType : public Type {
+class UniformMeshType : public Type {
 
  public:
   typedef llvm::SmallVector<Expr*, 3>  UniformMeshDimVec;

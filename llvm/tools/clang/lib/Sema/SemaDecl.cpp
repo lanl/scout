@@ -24,6 +24,7 @@
 #include "clang/AST/EvaluatedExprVisitor.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/StmtCXX.h"
+#include "clang/AST/scout/MeshDecls.h"
 #include "clang/Basic/PartialDiagnostic.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
@@ -12267,41 +12268,8 @@ bool Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
   //               instance or the general/generic mesh description)?
   //
   // add Implicit mesh members
-  MeshFieldDecl *PositionFD =
-  MeshFieldDecl::Create(Context, Mesh, Loc, Loc,
-                        &Context.Idents.get("position"), Context.Int4Ty, 0,
-                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
-  PositionFD->setImplicit(true);
-  Mesh->addDecl(PositionFD);
 
-  MeshFieldDecl *WidthFD =
-  MeshFieldDecl::Create(Context, Mesh, Loc, Loc,
-                        &Context.Idents.get("width"), Context.IntTy, 0,
-                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
-  WidthFD->setImplicit(true);
-  Mesh->addDecl(WidthFD);
-
-  MeshFieldDecl *HeightFD =
-  MeshFieldDecl::Create(Context, Mesh, Loc, Loc,
-                        &Context.Idents.get("height"), Context.IntTy, 0,
-                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
-  HeightFD->setImplicit(true);
-  Mesh->addDecl(HeightFD);
-
-  MeshFieldDecl *DepthFD =
-  MeshFieldDecl::Create(Context, Mesh, Loc, Loc,
-                        &Context.Idents.get("depth"), Context.IntTy, 0,
-                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
-  DepthFD->setImplicit(true);
-  Mesh->addDecl(DepthFD);
-
-  // SC_TODO - what the heck is 'ptr' again?  What do we use it for?
-  MeshFieldDecl *PtrFD =
-  MeshFieldDecl::Create(Context, Mesh, Loc, Loc,
-                        &Context.Idents.get("ptr"), Context.VoidPtrTy, 0,
-                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
-  PtrFD->setImplicit(true);
-  Mesh->addDecl(PtrFD);
+	Mesh->addImplicitFields(Loc, Context);
 
   PopDeclContext();
   return IsValidDeclInMesh(Mesh);

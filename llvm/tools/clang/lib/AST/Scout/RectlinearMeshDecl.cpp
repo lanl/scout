@@ -11,6 +11,7 @@
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/TypeLoc.h"
+#include "clang/AST/scout/RectlinearMeshDecl.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Basic/Module.h"
@@ -40,4 +41,4 @@ RectlinearMeshDecl::Create(ASTContext& C, Kind K, DeclContext* DC,
   return M;
 }
 
-
+void RectlinearMeshDecl::addImplicitFields(SourceLocation Loc, const ASTContext &Context) {}

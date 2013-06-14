@@ -53,6 +53,7 @@
  */
 #include "clang/Parse/Parser.h"
 #include "RAIIObjectsForParser.h"
+#include "clang/AST/scout/MeshDecls.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/PrettyStackTrace.h"
 #include "clang/Basic/SourceManager.h"
