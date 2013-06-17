@@ -11,6 +11,7 @@
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/TypeLoc.h"
+#include "clang/AST/scout/UniformMeshDecl.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Basic/Module.h"
@@ -73,42 +74,49 @@ UniformMeshDecl* UniformMeshDecl::CreateFromStructRep(ASTContext& C,
     newField->setImplicit(false);
     M->addDecl(newField);
   }
-  
-  MeshFieldDecl* PositionFD =
-  MeshFieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
-                        &C.Idents.get("position"), C.Int4Ty, 0,
-                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
-  PositionFD->setImplicit(true);
-  M->addDecl(PositionFD);
-  
-  MeshFieldDecl *WidthFD =
-  MeshFieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
-                        &C.Idents.get("width"), C.IntTy, 0,
-                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
-  WidthFD->setImplicit(true);
-  M->addDecl(WidthFD);
-  
-  MeshFieldDecl *HeightFD =
-  MeshFieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
-                        &C.Idents.get("height"), C.IntTy, 0,
-                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
-  HeightFD->setImplicit(true);
-  M->addDecl(HeightFD);
-  
-  MeshFieldDecl *DepthFD =
-  MeshFieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
-                        &C.Idents.get("depth"), C.IntTy, 0,
-                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
-  DepthFD->setImplicit(true);
-  M->addDecl(DepthFD);
 
-  // SC_TODO -- what the heck is 'ptr' again?
-  MeshFieldDecl *PtrFD =
-    MeshFieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
-                          &C.Idents.get("ptr"), C.VoidPtrTy, 0,
-                          0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
-  PtrFD->setImplicit(true);
-  M->addDecl(PtrFD);
-  
+  M->addImplicitFields(SR->getLocStart(), C);
+
   return M;
 }
+
+void UniformMeshDecl::addImplicitFields(SourceLocation Loc, const ASTContext &Context) {
+
+  MeshFieldDecl *PositionFD =
+  MeshFieldDecl::Create(Context, this, Loc, Loc,
+                        &Context.Idents.get("position"), Context.Int4Ty, 0,
+                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
+  PositionFD->setImplicit(true);
+  addDecl(PositionFD);
+
+  MeshFieldDecl *WidthFD =
+  MeshFieldDecl::Create(Context, this, Loc, Loc,
+                        &Context.Idents.get("width"), Context.IntTy, 0,
+                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
+  WidthFD->setImplicit(true);
+  addDecl(WidthFD);
+
+  MeshFieldDecl *HeightFD =
+  MeshFieldDecl::Create(Context, this, Loc, Loc,
+                        &Context.Idents.get("height"), Context.IntTy, 0,
+                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
+  HeightFD->setImplicit(true);
+  addDecl(HeightFD);
+
+  MeshFieldDecl *DepthFD =
+  MeshFieldDecl::Create(Context, this, Loc, Loc,
+                        &Context.Idents.get("depth"), Context.IntTy, 0,
+                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
+  DepthFD->setImplicit(true);
+  addDecl(DepthFD);
+
+  // SC_TODO - what the heck is 'ptr' again?  What do we use it for?
+  MeshFieldDecl *PtrFD =
+  MeshFieldDecl::Create(Context, this, Loc, Loc,
+                        &Context.Idents.get("ptr"), Context.VoidPtrTy, 0,
+                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
+  PtrFD->setImplicit(true);
+  addDecl(PtrFD);
+
+}
+
