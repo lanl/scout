@@ -7731,6 +7731,23 @@ public:
                                    BuiltinType::Kind kind,
                                    Expr *init);
 
+  bool ScoutMemberReferenceExpr(DeclarationName &Name,
+      SourceLocation &NameLoc,
+      DeclarationNameInfo &NameInfo,
+      CXXScopeSpec &SS,
+      const TemplateArgumentListInfo *&TemplateArgs,
+      ExprResult &ER
+  );
+
+  void ScoutMeshExternAlloc(Expr *LHSExpr, QualType &LHSType);
+
+  bool LookupMemberExprInMesh(Sema &SemaRef, LookupResult &R,
+                         SourceRange BaseRange, const MeshType *MTy,
+                         SourceLocation OpLoc, CXXScopeSpec &SS);
+
+  bool ScoutMeshCompareReferenceRelationship(SourceLocation &Loc,
+      QualType &UnqualT1, QualType &UnqualT2, ReferenceCompareResult &Ref);
+
   // support for unqualified variables within a forall / renderall loop
   typedef llvm::SmallVector<VarDecl*, 3> ScoutLoopStack;
 

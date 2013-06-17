@@ -3989,20 +3989,8 @@ Sema::CompareReferenceRelationship(SourceLocation Loc,
   QualType UnqualT2 = Context.getUnqualifiedArrayType(T2, T2Quals);
 
   // ===== Scout ===================================================================
-  if(const MeshType* mt1 = dyn_cast<MeshType>(UnqualT1.getTypePtr())){
-    if(const MeshType* mt2 = dyn_cast<MeshType>(UnqualT2.getTypePtr())){
-      if(mt1->getDecl() == mt2->getDecl()){
-        if(mt1->dimensions().size() == mt2->dimensions().size()){
-          return Ref_Compatible;
-        }
-        Diag(Loc, diag::err_mesh_param_dimensionality_mismatch);
-        return Ref_Incompatible;
-      }
-      else{
-        return Ref_Incompatible; 
-      }
-    }
-  }
+  Sema::ReferenceCompareResult Ref;
+  if(ScoutMeshCompareReferenceRelationship(Loc, UnqualT1, UnqualT2, Ref)) return Ref;
   // ===============================================================================
   
   // C++ [dcl.init.ref]p4:

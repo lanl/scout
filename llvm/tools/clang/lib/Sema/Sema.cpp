@@ -1310,34 +1310,6 @@ bool Sema::tryToRecoverWithCall(ExprResult &E, const PartialDiagnostic &PD,
   return true;
 }
 
-// ===== Scout ================================================================
-bool Sema::isScoutSource(SourceLocation location) {
-  std::string bufferName = SourceMgr.getBufferName(location);
-  
-  // LLDB uses a buffer named Parse
-  if(bufferName == "Parse"){
-    return true;
-  }
-  
-  std::string ext;
-  
-  bool valid = false;
-  for(int i = bufferName.length() - 1; i >= 0; --i){
-    if(bufferName[i] == '.'){
-      valid = true;
-      break;
-    }
-    ext.insert(0, 1, bufferName[i]);
-  }
-  
-  if(!valid){
-    return false;
-  }
-  
-  return ext == "sc" || ext == "sch";
-}
-// ============================================================================
-
 IdentifierInfo *Sema::getSuperIdentifier() const {
   if (!Ident_super)
     Ident_super = &Context.Idents.get("super");
