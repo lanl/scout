@@ -672,29 +672,6 @@ static bool LookupDirect(Sema &S, LookupResult &R, const DeclContext *DC) {
     // ===== Scout ========================================================================
     // Convert mesh struct rep to mesh decl - used to interface with Scout LLDB debugger.
     ScoutLookupMesh(D, S);
-#if 0
-    if(ValueDecl* vd = dyn_cast<ValueDecl>(D)){
-      if(const RecordType* rt =
-         dyn_cast<RecordType>(vd->getType().getNonReferenceType().getTypePtr())){
-        RecordDecl* rd = rt->getDecl();
-        RecordDecl::field_iterator itr = rd->field_begin();
-        if(itr != rd->field_end() && 
-           itr->getName().str() == "mesh_flags__"){
-          UniformMeshDecl* MD =
-            UniformMeshDecl::
-              CreateFromStructRep(S.Context,
-                                  clang::Decl::UniformMesh,
-                                  D->getDeclContext(),
-                                  &S.Context.Idents.get(rd->getName()),
-                                  rd);
-          
-          UniformMeshType* mt = new UniformMeshType(MD); //SC_TDOO: possible alignment issue
-          
-          vd->setType(S.Context.getLValueReferenceType(QualType(mt, 0)));
-        }
-      }
-    }
-#endif
     // ====================================================================================
     if ((D = R.getAcceptableDecl(D))) {
       R.addDecl(D);
