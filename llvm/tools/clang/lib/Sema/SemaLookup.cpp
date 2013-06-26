@@ -51,6 +51,9 @@
 using namespace clang;
 using namespace sema;
 
+
+extern void ScoutLookupMesh( NamedDecl *D, Sema &S);
+
 namespace {
   class UnqualUsingEntry {
     const DeclContext *Nominated;

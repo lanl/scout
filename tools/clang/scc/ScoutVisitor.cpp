@@ -104,6 +104,7 @@ bool ScoutVisitor::VisitStmt(Stmt* s) {
   }
 
   // renderall statement runtime code rewrite
+  // this will not work correctly in the multifile case
   if(isa<RenderAllStmt>(s)) {
     RenderAllStmt* ras = cast<RenderAllStmt>(s);
     std::string begin, end;

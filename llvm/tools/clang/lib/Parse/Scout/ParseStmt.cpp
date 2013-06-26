@@ -53,6 +53,7 @@
  */
 #include "clang/Parse/Parser.h"
 #include "RAIIObjectsForParser.h"
+#include "clang/AST/scout/MeshDecls.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/PrettyStackTrace.h"
 #include "clang/Basic/SourceManager.h"
@@ -481,9 +482,18 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 #ifndef SC_USE_RT_REWRITER // for testing rewriter
     std::string bc;
     bc = "__scrt_renderall_uniform_begin(";
-    bc += MVD->getName().str() + ".width, ";
-    bc += MVD->getName().str() + ".height, ";
-    bc += MVD->getName().str() + ".depth);";
+    if(dims.size() == 1) {
+      bc += MVD->getName().str() + ".width, 0, 0);";
+    } else if ( dims.size() == 2) {
+      bc += MVD->getName().str() + ".width, ";
+      bc += MVD->getName().str() + ".height, 0);";
+    } else if (dims.size() == 3) {
+      bc += MVD->getName().str() + ".width, ";
+      bc += MVD->getName().str() + ".height, ";
+      bc += MVD->getName().str() + ".depth);";
+    } else {
+      assert(dims.size() <= 3 );
+    }
 
     InsertCPPCode(bc, Tok.getLocation());
 
@@ -904,4 +914,172 @@ StmtResult Parser::ParseVolumeRenderAll(Scope* scope,
   return Actions.ActOnVolumeRenderAllStmt(scope, VolRenLoc, LBraceLoc, RBraceLoc,
       MeshII, MVD, CameraII, CameraLoc, Stmts, compoundStmt, false);
 
+}
+
+
+//================================================================================
+  // scout - parse a mesh declaration -this is handled as a special
+  // case because the square brackets look like an array specification
+  // when Clang normally parses a declaration
+ bool Parser::ParseMeshStatementOrDeclaration(StmtVector &Stmts,
+     bool OnlyStatement, Token &Next, StmtResult &SR) {
+
+  CXXScopeSpec SS;
+  IdentifierInfo* Name = Tok.getIdentifierInfo();
+  SourceLocation NameLoc = Tok.getLocation();
+
+  // scout - detect the forall shorthand, e.g:
+  // m.a[1..width-2][1..height-2] = MAX_TEMP;
+  if(isScoutLang()) {
+    if(Actions.isScoutSource(NameLoc)){
+      if(GetLookAheadToken(1).is(tok::period) &&
+         GetLookAheadToken(2).is(tok::identifier) &&
+         GetLookAheadToken(3).is(tok::l_square)){
+
+        LookupResult
+        Result(Actions, Name, NameLoc, Sema::LookupOrdinaryName);
+
+        Actions.LookupName(Result, getCurScope());
+
+        if(Result.getResultKind() == LookupResult::Found){
+          if(VarDecl* vd = dyn_cast<VarDecl>(Result.getFoundDecl())){
+            if(isa<MeshType>(vd->getType().getCanonicalType().getTypePtr())){
+              SR = ParseForAllShortStatement(Name, NameLoc, vd);
+              return true;
+            }
+          }
+        }
+      }
+    }
+
+    Sema::NameClassification Classification
+      = Actions.ClassifyName(getCurScope(), SS, Name, NameLoc, Next, false);
+    if(Classification.getKind() == Sema::NC_Type &&
+        Actions.isScoutSource(Tok.getLocation())){
+      QualType qt = Sema::GetTypeFromParser(Classification.getType());
+
+      if(qt->getAs<MeshType>() &&
+         GetLookAheadToken(1).is(tok::identifier)){
+
+        if(GetLookAheadToken(2).is(tok::l_square)){
+
+          std::string meshType = TokToStr(Tok);
+          ConsumeToken();
+          std::string meshName = TokToStr(Tok);
+          ConsumeToken();
+
+          // parse mesh dimensions, e.g: [512,512]
+
+          MeshType::MeshDimensionVec dims;
+
+          ConsumeBracket();
+
+          ExprResult NumElements;
+
+          for(;;){
+            if(Tok.is(tok::numeric_constant)) {
+              dims.push_back(Actions.ActOnNumericConstant(Tok).get());
+              ConsumeToken();
+            } else if (Tok.isNot(tok::r_square)) {
+              NumElements = ParseConstantExpression(); // consumes it too
+
+              // If there was an error parsing the assignment-expression, recover.
+              // Maybe should print a diagnostic, tho.
+              if (NumElements.isInvalid()) {
+                // If the expression was invalid, skip it.
+                SkipUntil(tok::r_square);
+                SR = StmtError();
+                return true;
+              }
+              dims.push_back(NumElements.get());
+            }
+
+            if(Tok.is(tok::r_square)){
+              break;
+            }
+
+            if(Tok.is(tok::eof)){
+              Diag(Tok, diag::err_expected_lsquare);
+              SR = StmtError();
+              return true;
+            }
+
+            if(Tok.isNot(tok::comma)){
+              Diag(Tok, diag::err_expected_comma);
+              SkipUntil(tok::r_square);
+              SkipUntil(tok::semi);
+              SR = StmtError();
+              return true;
+            }
+
+            ConsumeToken();
+          }
+
+          ConsumeBracket();
+
+          InsertCPPCode(meshType + " " + meshName, NameLoc);
+
+          DeclaringMesh = true;
+          StmtResult result = ParseStatementOrDeclaration(Stmts, OnlyStatement);
+
+          DeclaringMesh = false;
+
+          DeclStmt* ds = dyn_cast<DeclStmt>(result.get());
+          assert(ds->isSingleDecl());
+
+          VarDecl* vd = dyn_cast<VarDecl>(ds->getSingleDecl());
+          assert(vd);
+
+          const UniformMeshType* mt =
+            dyn_cast<UniformMeshType>(vd->getType().getCanonicalType().getTypePtr());
+          assert(mt);
+
+          UniformMeshType* mdt = const_cast<UniformMeshType*>(mt);
+          mdt->setDimensions(dims);
+          vd->setType(QualType(mdt, 0));
+
+          SR = result;
+          return true;
+        }
+        else if(!DeclaringMesh){
+          Diag(Tok, diag::err_expected_lsquare);
+
+          SkipUntil(tok::r_square);
+          SkipUntil(tok::semi);
+          SR = StmtError();
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+
+ // scout - insert call to __scrt_init(gpu) at the top of main
+ void Parser::InsertScoutRuntimeInit(SourceLocation &LBraceLoc) {
+#ifndef SC_USE_RT_REWRITER
+  if(getLangOpts().Scout){
+   FunctionDecl* fd = Actions.getCurFunctionDecl();
+
+   std::string args;
+
+   if(getLangOpts().ScoutNvidiaGPU){
+     args = "ScoutGPUCUDA";
+   }
+   else if(getLangOpts().ScoutAMDGPU){
+     args = "ScoutGPUOpenCL";
+   }
+   else{
+     args = "ScoutGPUNone";
+   }
+
+   if(fd->isMain()){
+     assert(Tok.is(tok::l_brace) &&
+            "expected lbrace when inserting __scrt_init()");
+
+     InsertCPPCode("__scrt_init(" + args + "); atexit(__scrt_end);", LBraceLoc, false);
+   }
+  }
+#endif
 }

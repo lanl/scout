@@ -1593,6 +1593,7 @@ Sema::DecomposeUnqualifiedId(const UnqualifiedId &Id,
   }
 }
 
+
 /// Diagnose an empty lookup.
 ///
 /// \return false if new lookup candidates were found
@@ -1927,73 +1928,8 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
     // call, diagnose the problem.
     if (R.empty()) {
       // ===== Scout =====================================================================
-      // Check for undeclared identifiers to see if they can be qualified
-      // as member reference expr's by enclosing forall / renderall 
-      // loop variables.
-      //
-      // SC_TODO -- move this to a separate file if possible. 
-      for(ScoutLoopStack::iterator sitr = SCLStack.begin(),
-          sitrEnd = SCLStack.end();
-          sitr != sitrEnd; ++sitr) {
-        
-        VarDecl* vd = *sitr;
-        
-        const MeshType* mt = dyn_cast<MeshType>(vd->getType().getCanonicalType());
-        MeshDecl* md = mt->getDecl();
-        
-        for(MeshDecl::field_iterator fitr = md->field_begin(),
-            fitrEnd = md->field_end();
-            fitr != fitrEnd; ++fitr) {
-          
-          MeshFieldDecl* fd = *fitr;
-
-          bool valid;
-
-          if (mt->getInstanceType() == MeshType::MeshInstance) {
-            valid = true;
-          } else {
-            
-            switch(fd->meshLocation()) {
-              
-              case MeshFieldDecl::VertexLoc:
-                valid = mt->getInstanceType() == MeshType::VerticesInstance;
-                break;
-                
-              case MeshFieldDecl::CellLoc:
-                valid = mt->getInstanceType() == MeshType::CellsInstance;
-                break;
-                
-              case MeshFieldDecl::FaceLoc:
-                valid = mt->getInstanceType() == MeshType::FacesInstance;
-                break;
-                
-              case MeshFieldDecl::EdgeLoc:
-                valid = mt->getInstanceType() == MeshType::EdgesInstance;
-                break;
-                
-              case MeshFieldDecl::BuiltIn:
-                valid = true;
-                break;
-                
-              default:
-                assert(false && "invalid field type while attempting "
-                       "to look up unqualified forall/renderall variable");
-            }
-          }
-          
-          if (valid && Name.getAsString() == fd->getName()) {
-            Expr* baseExpr =
-            BuildDeclRefExpr(vd, QualType(mt, 0), VK_LValue, NameLoc).get();
-
-            return Owned(BuildMemberReferenceExpr(baseExpr, QualType(mt, 0),
-                                                  NameLoc, false, 
-                                                  SS, SourceLocation(),
-                                                  0, NameInfo,
-                                                  TemplateArgs));
-                                         
-          }
-        }
-      }
+      ExprResult ER;
+      if (ScoutMemberReferenceExpr(Name, NameLoc, NameInfo, SS, TemplateArgs, ER)) return ER;
       // ================================================================================
 
       // In Microsoft mode, if we are inside a template class member function
@@ -8099,41 +8035,7 @@ QualType Sema::CheckAssignmentOperands(Expr *LHSExpr, ExprResult &RHS,
   // If this is a mesh member in the case of assigning it to a pointer
   // to allocated mesh values, make it think we have a pointer
   // type as the mesh member.
-  //
-  // SC_TODO - move this to a separate file if possible.  
-  // Check if this is a Scout mesh member expression.
-  if (isa<MemberExpr>(LHSExpr)) {
-    
-    Expr *Base = LHSExpr->IgnoreParenImpCasts();
-    MemberExpr *ME = dyn_cast<MemberExpr>(Base);
-    Expr *BaseExpr = ME->getBase()->IgnoreParenImpCasts();
-    
-    if (BaseExpr->getStmtClass() == Expr::DeclRefExprClass) {
-      const NamedDecl *ND = cast< DeclRefExpr >(BaseExpr)->getDecl();
-      
-      if (const VarDecl *VD = dyn_cast<VarDecl>(ND)) {
-        if (isa<MeshType>(VD->getType().getCanonicalType().getNonReferenceType())) {
-          if (!isa<ImplicitParamDecl>(VD) ) {
-            const MeshType *MT = cast<MeshType>(VD->getType().getCanonicalType());
-            MeshDecl* MD = MT->getDecl();
-            MeshDecl::field_iterator itr_end = MD->field_end();
-            llvm::StringRef memberName = ME->getMemberDecl()->getName();
-            for(MeshDecl::field_iterator itr = MD->field_begin(); itr != itr_end; ++itr) {
-              if (dyn_cast<NamedDecl>(*itr)->getName() == memberName) {
-                if ((*itr)->hasExternalFormalLinkage()) {
-                  LHSType = Context.getPointerType(LHSType);
-                } else {
-                  Diags.getDiagnosticLevel(diag::err_typecheck_expression_not_modifiable_lvalue,
-                                           LHSExpr->getLocStart());
-                  // error
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
+  ScoutMeshExternAlloc(LHSExpr, LHSType);
   // ==================================================================================================
 
   QualType RHSType = CompoundType.isNull() ? RHS.get()->getType() :

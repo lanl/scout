@@ -2182,6 +2182,11 @@ public:
 /// MeshFieldDecl - An instance of this class if create by
 /// Sema::ActOnMeshField to represent a member of a Scout mesh.  We build
 /// directly on the features of FieldDecl's.
+///
+/// NOTE:  Can't figure a way to extract MeshFieldDecl from this file, since it
+/// depends on FieldDecl, but RecordDecl depends on MeshFieldDecl being
+/// defined, so you'd get a circular dependency between Decl.h and MeshFieldDecl.h
+/// if you did that. 
 class MeshFieldDecl : public FieldDecl {
 
   // The field index cache value below is borrowed from 

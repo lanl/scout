@@ -31,6 +31,7 @@
 #include "clang/AST/TemplateName.h"
 #include "clang/AST/Type.h"
 #include "clang/AST/TypeLoc.h"
+#include "clang/AST/scout/MeshDecls.h"
 
 // The following three macros are used for meta programming.  The code
 // using them is responsible for defining macro OPERATOR().

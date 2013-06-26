@@ -22,3 +22,22 @@
 
 using namespace clang;
 
+RectlinearMeshDecl*
+RectlinearMeshDecl::Create(ASTContext& C, Kind K, DeclContext* DC,
+                           SourceLocation StartLoc, SourceLocation IdLoc,
+                           IdentifierInfo* Id, RectlinearMeshDecl* PrevDecl){
+  
+  RectlinearMeshDecl* M =
+  new (C) RectlinearMeshDecl(K, DC, StartLoc, IdLoc, Id, PrevDecl);
+  
+  RecordDecl* SR =
+  RecordDecl::Create(C, TTK_Struct, DC, IdLoc,
+                     IdLoc, &C.Idents.get(M->getName()));
+  
+  M->setStructRep(SR);
+  
+  C.getTypeDeclType(M);
+  return M;
+}
+
+void RectlinearMeshDecl::addImplicitFields(SourceLocation Loc, const ASTContext &Context) {}
