@@ -111,7 +111,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 
   ParseScope ForAllScope(this, ScopeFlags);
 
-  if(Tok.isNot(tok::identifier)){
+  if (Tok.isNot(tok::identifier)) {
     Diag(Tok, diag::err_expected_ident);
     SkipUntil(tok::semi);
     return StmtError();
@@ -152,6 +152,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   SourceLocation CameraLoc;
 
   if (elements) {
+    
     if (MemberExpr* me = dyn_cast<MemberExpr>(ParseExpression().get())) {
       if (MeshFieldDecl* fd = dyn_cast<MeshFieldDecl>(me->getMemberDecl())) {
 
@@ -326,9 +327,8 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   if (!elements) {
     Op = 0;
 
-    MT =
-    dyn_cast<UniformMeshType>(MVD->getType().getCanonicalType().
-                          getNonReferenceType().getTypePtr());
+    MT = dyn_cast<UniformMeshType>(MVD->getType().getCanonicalType().
+                                   getNonReferenceType().getTypePtr());
     size_t FieldCount = 0;
     const UniformMeshDecl* MD = MT->getDecl();
 
@@ -363,6 +363,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     }
 
     if (FieldCount == 0) {
+      
       switch(FT) {
         case ForAllStmt::Cells:
           Diag(ForAllLoc, diag::warn_no_cells_fields_forall);
@@ -373,9 +374,12 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
         case ForAllStmt::Vertices:
           Diag(ForAllLoc, diag::warn_no_vertices_fields_forall);
           break;
+        case ForAllStmt::Faces:
+          Diag(ForAllLoc, diag::warn_no_faces_fields_forall);
+          break;          
         case ForAllStmt::ElementSpheres:
         case ForAllStmt::Array:
-        case ForAllStmt::Faces:
+
           break;
       }
     }
@@ -389,7 +393,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     if (!ForAll && (MT->dimensions().size() == 3) && (FT == ForAllStmt::Cells)) {
       if (Tok.is(tok::kw_with)) {
         ConsumeToken();
-        if(Tok.isNot(tok::identifier)){
+        if (Tok.isNot(tok::identifier)) {
           Diag(Tok, diag::err_expected_ident);
           SkipUntil(tok::semi);
           return StmtError();
@@ -401,9 +405,9 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
       }
     }
 
-    if(Tok.is(tok::kw_where)){
+    if (Tok.is(tok::kw_where)) {
       ConsumeToken();
-      if(Tok.isNot(tok::l_paren)){
+      if (Tok.isNot(tok::l_paren)) {
         Diag(Tok, diag::err_invalid_forall_op);
         SkipUntil(tok::r_brace, false, true); //multiline skip, don't consume brace
         return StmtError();
@@ -412,7 +416,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
       LParenLoc = ConsumeParen();
 
       ExprResult OpResult = ParseExpression();
-      if(OpResult.isInvalid()){
+      if (OpResult.isInvalid()) {
         Diag(Tok, diag::err_invalid_forall_op);
         SkipUntil(tok::r_brace, false, true);
         return StmtError();
@@ -420,17 +424,15 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 
       Op = OpResult.get();
 
-      if(Tok.isNot(tok::r_paren)){
+      if (Tok.isNot(tok::r_paren)) {
         Diag(Tok, diag::err_expected_rparen);
         SkipUntil(tok::r_brace, false, true);
         return StmtError();
       }
       RParenLoc = ConsumeParen();
-    }
-    else{
+    } else {
       Op = 0;
     }
-
   }
 
   // Check if this is a volume renderall.  If the mesh is

@@ -1,4 +1,4 @@
-//===- ASTBitCodes.h - Enum values for the PCH bitcode format ---*- C++ -*-===//
+///===- ASTBitCodes.h - Enum values for the PCH bitcode format ---*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -974,6 +974,8 @@ namespace clang {
       DECL_OBJC_PROPERTY_IMPL,
       /// \brief A FieldDecl record.
       DECL_FIELD,
+      /// \brief A MeshFieldDecl record.
+      DECL_MESHFIELD,      
       /// \brief A MSPropertyDecl record.
       DECL_MS_PROPERTY,
       /// \brief A VarDecl record.

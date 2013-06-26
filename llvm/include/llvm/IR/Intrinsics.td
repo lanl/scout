@@ -482,3 +482,7 @@ include "llvm/IR/IntrinsicsHexagon.td"
 include "llvm/IR/IntrinsicsNVVM.td"
 include "llvm/IR/IntrinsicsMips.td"
 include "llvm/IR/IntrinsicsR600.td"
+
+// ===== Scout ================================================================
+include "llvm/IR/IntrinsicsScout.td"
+// ============================================================================

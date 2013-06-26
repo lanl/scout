@@ -2958,8 +2958,38 @@ MeshFieldDecl *MeshFieldDecl::Create(const ASTContext &C,
                                      InClassInitStyle InitStyle,
                                      MeshFieldDeclLocationType DeclLoc) {
   
-  return new (C) MeshFieldDecl(Decl::Field, DC, StartLoc, IdLoc, Id, T, TInfo,
+  return new (C) MeshFieldDecl(Decl::MeshField, DC, StartLoc, IdLoc, Id, T, TInfo,
                                BW, Mutable, InitStyle, DeclLoc);
+}
+
+MeshFieldDecl *MeshFieldDecl::CreateDeserialized(ASTContext &C, unsigned ID,
+                                                 MeshFieldDeclLocationType DeclLoc) {
+  /* SC_TODO -- need to figure out how to deal with location. */   
+  void *Mem = AllocateDeserializedDecl(C, ID, sizeof(MeshFieldDecl));
+  return new (Mem) MeshFieldDecl(Field, 0, SourceLocation(), SourceLocation(),
+                                 0, QualType(), 0, 0, false, ICIS_NoInit,
+                                 DeclLoc);
+}
+
+unsigned MeshFieldDecl::getMeshFieldIndex() const {
+
+  if (CachedFieldIndex) 
+    return CachedFieldIndex - 1;
+
+  unsigned Index = 0;
+  const MeshDecl *MD = cast<MeshDecl>(getDeclContext());
+
+  MD->dump();
+  llvm::errs() << "filling field caches...\n";
+  for (MeshDecl::field_iterator I = MD->field_begin(), E = MD->field_end();
+       I != E; ++I, ++Index) {
+    I->CachedFieldIndex = Index + 1;
+    llvm::errs() << "\tfield name: " << I->getName() << " (cache: " << I->CachedFieldIndex << ")\n";    
+  }
+  llvm::errs() << "\n";
+
+  assert(CachedFieldIndex && "failed to find field in parent");
+  return CachedFieldIndex - 1;
 }
 
 //
@@ -3184,15 +3214,6 @@ RecordDecl::field_iterator RecordDecl::field_begin() const {
 
   return field_iterator(decl_iterator(FirstDecl));
 }
-
-// ===== Scout =================================================================
-RecordDecl::mesh_field_iterator RecordDecl::mesh_field_begin() const {
-  if (hasExternalLexicalStorage() && !LoadedFieldsFromExternalStorage)
-    LoadFieldsFromExternalStorage();
-
-  return mesh_field_iterator(decl_iterator(FirstDecl));
-}
-// =============================================================================
 
 /// completeDefinition - Notes that the definition of this type is now
 /// complete.

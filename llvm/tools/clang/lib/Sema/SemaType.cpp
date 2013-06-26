@@ -889,8 +889,12 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
 
       
   // ===== Scout ===================================================================
-  case DeclSpec::TST_mesh:
-    assert(false && "invalid case for TST_mesh");
+  //case DeclSpec::TST_mesh:
+  case DeclSpec::TST_uniform_mesh:
+  case DeclSpec::TST_structured_mesh:
+  case DeclSpec::TST_rectilinear_mesh:
+  case DeclSpec::TST_unstructured_mesh:
+    assert(false && "invalid case for mesh type.");
     break;  
   // SC_TODO - remove scout vector type.  
   case DeclSpec::TST_bool2:
@@ -2173,6 +2177,15 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
       case TTK_Union:  Error = 2; /* Union member */ break;
       case TTK_Class:  Error = 3; /* Class member */ break;
       case TTK_Interface: Error = 4; /* Interface member */ break;
+
+      case TTK_UniformMesh:
+      case TTK_StructuredMesh:
+      case TTK_RectilinearMesh:
+      case TTK_UnstructuredMesh:
+        // SC_TODO - we probably need our own error value here... 
+        Error = 1;   // Mesh member
+        break;
+
       }
       break;
     case Declarator::CXXCatchContext:

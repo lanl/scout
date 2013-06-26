@@ -1730,7 +1730,7 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
   // Do we need to have an ASTMeshLayout (i.e. like ASTRecordLayout)?
   case Type::UniformMesh:
   case Type::StructuredMesh:
-  case Type::RectlinearMesh:
+  case Type::RectilinearMesh:
   case Type::UnstructuredMesh: {
 
     const MeshType *MT = cast<MeshType>(T);
@@ -2492,7 +2492,7 @@ QualType ASTContext::getVariableArrayDecayedType(QualType type) const {
   // Meshes are not variably-modified
   case Type::UniformMesh:
   case Type::StructuredMesh:
-  case Type::RectlinearMesh:
+  case Type::RectilinearMesh:
   case Type::UnstructuredMesh:
   // ==========================================================================
   case Type::Enum:
@@ -3036,9 +3036,9 @@ QualType ASTContext::getTypeDeclTypeSlow(const TypeDecl *Decl) const {
   } else if (const StructuredMeshDecl *Mesh = 
     dyn_cast<StructuredMeshDecl>(Decl)) {
     return getStructuredMeshType(Mesh);
-  } else if (const RectlinearMeshDecl *Mesh = 
-      dyn_cast<RectlinearMeshDecl>(Decl)) {
-    return getRectlinearMeshType(Mesh);
+  } else if (const RectilinearMeshDecl *Mesh = 
+      dyn_cast<RectilinearMeshDecl>(Decl)) {
+    return getRectilinearMeshType(Mesh);
   } else if (const UnstructuredMeshDecl *Mesh = 
       dyn_cast<UnstructuredMeshDecl>(Decl)) {
     return getUnstructuredMeshType(Mesh);
@@ -5648,7 +5648,7 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
   // ===== Scout ==============================================================
   case Type::UniformMesh:
   case Type::StructuredMesh:
-  case Type::RectlinearMesh:
+  case Type::RectilinearMesh:
   case Type::UnstructuredMesh:
     return;
   // ==========================================================================
@@ -7478,7 +7478,7 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
   // ==== Scout ===============================================================
   case Type::UniformMesh:
   case Type::StructuredMesh:
-  case Type::RectlinearMesh:
+  case Type::RectilinearMesh:
   case Type::UnstructuredMesh:
     return QualType();
   // ==========================================================================

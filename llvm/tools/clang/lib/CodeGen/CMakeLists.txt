@@ -57,14 +57,14 @@ add_clang_library(clangCodeGen
   ModuleBuilder.cpp
   TargetInfo.cpp
   # ===== Scout ==============================================================
-  scout/CGBlocks.cpp
-  scout/MemAlloc.cpp
-  scout/CGDebugInfo.cpp
-  scout/CGDecl.cpp
-  scout/CGExpr.cpp
-  scout/CGStmt.cpp
-  scout/CodeGenFunction.cpp
-  scout/CodeGenTypes.cpp
+  Scout/CGBlocks.cpp
+  Scout/MemAlloc.cpp
+  Scout/CGDebugInfo.cpp
+  Scout/CGDecl.cpp
+  Scout/CGExpr.cpp
+  Scout/CGStmt.cpp
+  Scout/CodeGenFunction.cpp
+  Scout/CodeGenTypes.cpp
   )
 
 add_dependencies(clangCodeGen

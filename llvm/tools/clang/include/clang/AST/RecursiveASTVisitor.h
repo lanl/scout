@@ -408,7 +408,7 @@ private:
   // ===== Scout ==========================================================================
   bool TraverseUniformMeshHelper(UniformMeshDecl* D);
   bool TraverseStructuredMeshHelper(StructuredMeshDecl* D);
-  bool TraverseRectlinearMeshHelper(RectlinearMeshDecl* D);
+  bool TraverseRectilinearMeshHelper(RectilinearMeshDecl* D);
   bool TraverseUnstructuredMeshHelper(UnstructuredMeshDecl* D);
   // ======================================================================================
   bool TraverseDeclaratorHelper(DeclaratorDecl *D);
@@ -933,7 +933,7 @@ DEF_TRAVERSE_TYPE(AutoType, {
 // ===== Scout ======================================================================
 DEF_TRAVERSE_TYPE(UniformMeshType, { })
 DEF_TRAVERSE_TYPE(StructuredMeshType, { })
-DEF_TRAVERSE_TYPE(RectlinearMeshType, { })
+DEF_TRAVERSE_TYPE(RectilinearMeshType, { })
 DEF_TRAVERSE_TYPE(UnstructuredMeshType, { })
 // ==================================================================================
 
@@ -1164,7 +1164,7 @@ DEF_TRAVERSE_TYPELOC(AutoType, {
 // ===== Scout =======================================================================
 DEF_TRAVERSE_TYPELOC(UniformMeshType, { })
 DEF_TRAVERSE_TYPELOC(StructuredMeshType, { })
-DEF_TRAVERSE_TYPELOC(RectlinearMeshType, { })
+DEF_TRAVERSE_TYPELOC(RectilinearMeshType, { })
 DEF_TRAVERSE_TYPELOC(UnstructuredMeshType, { })
 // ===================================================================================  
 DEF_TRAVERSE_TYPELOC(RecordType, { })
@@ -1608,7 +1608,7 @@ bool RecursiveASTVisitor<Derived>::TraverseRecordHelper(
   
 // Helper methods for MeshDecl types.
 template<typename Derived>
-bool RecursiveASTVisitor<Derived>::TraverseUniformMeshHelper(                                                          UniformMeshDecl *D) {
+bool RecursiveASTVisitor<Derived>::TraverseUniformMeshHelper(UniformMeshDecl *D) {
 // We shouldn't traverse D->getTypeForDecl(); it's a result of
 // declaring the type, not something that was written in the source.
     
@@ -1617,7 +1617,7 @@ bool RecursiveASTVisitor<Derived>::TraverseUniformMeshHelper(                   
 }
 
 template<typename Derived>
-bool RecursiveASTVisitor<Derived>::TraverseStructuredMeshHelper(                                                          StructuredMeshDecl *D) {
+bool RecursiveASTVisitor<Derived>::TraverseStructuredMeshHelper(StructuredMeshDecl *D) {
   // We shouldn't traverse D->getTypeForDecl(); it's a result of
   // declaring the type, not something that was written in the source.
   
@@ -1626,7 +1626,7 @@ bool RecursiveASTVisitor<Derived>::TraverseStructuredMeshHelper(                
 }
 
 template<typename Derived>
-bool RecursiveASTVisitor<Derived>::TraverseRectlinearMeshHelper(                                                          RectlinearMeshDecl *D) {
+bool RecursiveASTVisitor<Derived>::TraverseRectilinearMeshHelper(RectilinearMeshDecl *D) {
   // We shouldn't traverse D->getTypeForDecl(); it's a result of
   // declaring the type, not something that was written in the source.
   
@@ -1635,7 +1635,7 @@ bool RecursiveASTVisitor<Derived>::TraverseRectlinearMeshHelper(                
 }
 
 template<typename Derived>
-bool RecursiveASTVisitor<Derived>::TraverseUnstructuredMeshHelper(                                                          UnstructuredMeshDecl *D) {
+bool RecursiveASTVisitor<Derived>::TraverseUnstructuredMeshHelper(UnstructuredMeshDecl *D) {
   // We shouldn't traverse D->getTypeForDecl(); it's a result of
   // declaring the type, not something that was written in the source.
   
@@ -1673,8 +1673,8 @@ DEF_TRAVERSE_DECL(StructuredMeshDecl, {
   TRY_TO(TraverseStructuredMeshHelper(D));
 })
 
-DEF_TRAVERSE_DECL(RectlinearMeshDecl, {
-  TRY_TO(TraverseRectlinearMeshHelper(D));
+DEF_TRAVERSE_DECL(RectilinearMeshDecl, {
+  TRY_TO(TraverseRectilinearMeshHelper(D));
 })
   
 DEF_TRAVERSE_DECL(UnstructuredMeshDecl, {
@@ -1763,6 +1763,14 @@ DEF_TRAVERSE_DECL(MSPropertyDecl, {
   })
 
 DEF_TRAVERSE_DECL(FieldDecl, {
+    TRY_TO(TraverseDeclaratorHelper(D));
+    if (D->isBitField())
+      TRY_TO(TraverseStmt(D->getBitWidth()));
+    else if (D->hasInClassInitializer())
+      TRY_TO(TraverseStmt(D->getInClassInitializer()));
+  })
+
+DEF_TRAVERSE_DECL(MeshFieldDecl, {
     TRY_TO(TraverseDeclaratorHelper(D));
     if (D->isBitField())
       TRY_TO(TraverseStmt(D->getBitWidth()));

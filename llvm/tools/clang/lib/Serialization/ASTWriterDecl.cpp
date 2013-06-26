@@ -81,6 +81,7 @@ namespace clang {
     void VisitCXXDestructorDecl(CXXDestructorDecl *D);
     void VisitCXXConversionDecl(CXXConversionDecl *D);
     void VisitFieldDecl(FieldDecl *D);
+    void VisitMeshFieldDecl(MeshFieldDecl *D);    
     void VisitMSPropertyDecl(MSPropertyDecl *D);
     void VisitIndirectFieldDecl(IndirectFieldDecl *D);
     void VisitVarDecl(VarDecl *D);
@@ -664,6 +665,43 @@ void ASTDeclWriter::VisitFieldDecl(FieldDecl *D) {
 
   Code = serialization::DECL_FIELD;
 }
+
+void ASTDeclWriter::VisitMeshFieldDecl(MeshFieldDecl *D) {
+
+  VisitDeclaratorDecl(D);
+
+  Record.push_back(D->isMutable());
+
+  if (D->InitializerOrBitWidth.getInt() != ICIS_NoInit ||
+      D->InitializerOrBitWidth.getPointer()) {
+    Record.push_back(D->InitializerOrBitWidth.getInt() + 1);
+    Writer.AddStmt(D->InitializerOrBitWidth.getPointer());
+  } else {
+    Record.push_back(0);
+  }
+
+  if (!D->getDeclName())
+    Writer.AddDeclRef(Context.getInstantiatedFromUnnamedFieldDecl(D), Record);
+
+  if (!D->hasAttrs() &&
+      !D->isImplicit() &&
+      !D->isUsed(false) &&
+      !D->isInvalidDecl() &&
+      !D->isReferenced() &&
+      !D->isTopLevelDeclInObjCContainer() &&
+      !D->isModulePrivate() &&
+      !D->getBitWidth() &&
+      !D->hasInClassInitializer() &&
+      !D->hasExtInfo() &&
+      !ObjCIvarDecl::classofKind(D->getKind()) &&
+      !ObjCAtDefsFieldDecl::classofKind(D->getKind()) &&
+      D->getDeclName())
+    AbbrevToUse = Writer.getDeclFieldAbbrev();
+
+  Code = serialization::DECL_MESHFIELD;
+}
+
+
 
 void ASTDeclWriter::VisitMSPropertyDecl(MSPropertyDecl *D) {
   VisitDeclaratorDecl(D);
@@ -1354,6 +1392,8 @@ void ASTWriter::WriteDeclsBlockAbbrevs() {
   // Abbreviation for DECL_FIELD
   Abv = new BitCodeAbbrev();
   Abv->Add(BitCodeAbbrevOp(serialization::DECL_FIELD));
+  // Abbreviation for DECL_MESHFIELD  
+  Abv->Add(BitCodeAbbrevOp(serialization::DECL_MESHFIELD));  
   // Decl
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // DeclContext
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // LexicalDeclContext

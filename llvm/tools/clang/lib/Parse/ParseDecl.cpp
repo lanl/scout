@@ -2120,8 +2120,29 @@ bool Parser::ParseImplicitInt(DeclSpec &DS, CXXScopeSpec *SS,
         TagName="class" ; FixitTagName = "class " ;TagKind=tok::kw_class ;break;
       
       // scout - added TST mesh
-      case DeclSpec::TST_mesh:
-        TagName="mesh" ; FixitTagName = "mesh " ;TagKind=tok::kw_mesh ;break;
+      case DeclSpec::TST_uniform_mesh:
+        TagName      = "uniform mesh"; 
+        FixitTagName = "uniform mesh ";
+        TagKind      = tok::kw_uniform;
+        break;        
+
+      case DeclSpec::TST_structured_mesh:
+        TagName      = "structured mesh"; 
+        FixitTagName = "structured mesh ";
+        TagKind      = tok::kw_structured;
+        break;
+
+      case DeclSpec::TST_rectilinear_mesh:
+        TagName      = "rectilinear mesh"; 
+        FixitTagName = "rectilinear mesh ";
+        TagKind      = tok::kw_rectilinear;
+        break;
+
+      case DeclSpec::TST_unstructured_mesh:
+        TagName      = "unstructured mesh"; 
+        FixitTagName = "unstructured mesh ";
+        TagKind      = tok::kw_unstructured;
+        break;
     }
 
     if (TagName) {
@@ -3254,7 +3275,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
 
     // scout - Mesh definition
     case tok::kw_uniform:
-    case tok::kw_rectlinear:
+    case tok::kw_rectilinear:
     case tok::kw_structured:
     case tok::kw_unstructured: {
 
@@ -4129,7 +4150,7 @@ bool Parser::isKnownToBeTypeSpecifier(const Token &Tok) const {
   case tok::kw_uniform:
   case tok::kw_structured:
   case tok::kw_unstructured:
-  case tok::kw_rectlinear:
+  case tok::kw_rectilinear:
   case tok::kw_mesh:
  
   case tok::kw_bool:
@@ -4242,7 +4263,7 @@ bool Parser::isTypeSpecifierQualifier() {
   case tok::kw_uniform:
   case tok::kw_structured:
   case tok::kw_unstructured:
-  case tok::kw_rectlinear:
+  case tok::kw_rectilinear:
 
   case tok::kw_bool:
   case tok::kw__Bool:
@@ -4429,7 +4450,7 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   case tok::kw_uniform:
   case tok::kw_structured:
   case tok::kw_unstructured:
-  case tok::kw_rectlinear:
+  case tok::kw_rectilinear:
 
   case tok::kw_bool:
   case tok::kw__Bool:

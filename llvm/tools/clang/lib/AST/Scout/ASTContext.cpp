@@ -41,9 +41,9 @@ ASTContext::getStructuredMeshDeclType(const StructuredMeshDecl *Decl) const {
 }
 
 QualType 
-ASTContext::getRectlinearMeshDeclType(const RectlinearMeshDecl *Decl) const {
+ASTContext::getRectilinearMeshDeclType(const RectilinearMeshDecl *Decl) const {
   assert (Decl != 0);
-  return getTypeDeclType(const_cast<RectlinearMeshDecl*>(Decl));
+  return getTypeDeclType(const_cast<RectilinearMeshDecl*>(Decl));
 }
 
 QualType 
@@ -84,14 +84,14 @@ ASTContext::getStructuredMeshType(const StructuredMeshDecl *Decl) const {
 }
 
 QualType 
-ASTContext::getRectlinearMeshType(const RectlinearMeshDecl *Decl) const {
+ASTContext::getRectilinearMeshType(const RectilinearMeshDecl *Decl) const {
   assert(Decl != 0);
 
   if (Decl->TypeForDecl) 
     return QualType(Decl->TypeForDecl, 0);
   
-  RectlinearMeshType *newType;
-  newType = new (*this, TypeAlignment) RectlinearMeshType(Decl);
+  RectilinearMeshType *newType;
+  newType = new (*this, TypeAlignment) RectilinearMeshType(Decl);
   Decl->TypeForDecl = newType;
   Types.push_back(newType);
   return QualType(newType, 0);

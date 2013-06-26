@@ -2509,14 +2509,13 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
 
   // ===== Scout ==============================================================
   // Check if this is a Scout mesh member expression.
-  if (BaseExpr->getStmtClass() == Expr::DeclRefExprClass) {
-    const NamedDecl *ND = cast< DeclRefExpr >(BaseExpr)->getDecl();
-    if (const VarDecl *VD = dyn_cast<VarDecl>(ND)) {
-      // SC_TODO - it would be nice to turn crazy calls sequences like the one 
-      // below into helper functions.
-      if (isa<MeshType>(VD->getType().getCanonicalType().getNonReferenceType())) {
-        return EmitScoutMemberExpr(E, VD);
-      }
+  {
+    NamedDecl *ND = E->getMemberDecl();
+    LValue BaseLV;    
+    if (MeshFieldDecl *MFD = dyn_cast<MeshFieldDecl>(ND)) {
+      VarDecl *VD = dyn_cast<VarDecl>(ND);   
+      LValue LV = EmitScoutMemberExpr(BaseLV, MFD);
+      return LV;
     }
   }
   // ==========================================================================

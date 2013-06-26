@@ -1409,7 +1409,7 @@ void MicrosoftCXXNameMangler::mangleType(const StructuredMeshType *T,
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
 
-void MicrosoftCXXNameMangler::mangleType(const RectlinearMeshType *T, 
+void MicrosoftCXXNameMangler::mangleType(const RectilinearMeshType *T, 
                                          SourceRange) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
@@ -1437,6 +1437,13 @@ void MicrosoftCXXNameMangler::mangleType(const TagType *T) {
       Out << 'W';
       Out << getASTContext().getTypeSizeInChars(
                 cast<EnumDecl>(T->getDecl())->getIntegerType()).getQuantity();
+      break;
+    // SC_TODO -- I have no clue if this is correct for MS stuff... 
+    case TTK_UniformMesh:
+    case TTK_StructuredMesh:
+    case TTK_RectilinearMesh:
+    case TTK_UnstructuredMesh:
+      Out << "U";
       break;
   }
   mangleName(T->getDecl());

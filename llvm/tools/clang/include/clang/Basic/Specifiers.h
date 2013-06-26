@@ -61,7 +61,10 @@ namespace clang {
     // SC_TODO - We need to remove Scout's custom vectors in favor of Clang's
     // "builtin" support.  This has been done in the "refactor" branch but it
     // has not been merged into "deve".
-    TST_mesh,
+    TST_uniform_mesh,
+    TST_structured_mesh,
+    TST_rectilinear_mesh,
+    TST_unstructured_mesh, 
     TST_bool2,
     TST_bool3,
     TST_bool4,

@@ -1941,8 +1941,8 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
         const MeshType* mt = dyn_cast<MeshType>(vd->getType().getCanonicalType());
         MeshDecl* md = mt->getDecl();
         
-        for(MeshDecl::mesh_field_iterator fitr = md->mesh_field_begin(),
-            fitrEnd = md->mesh_field_end();
+        for(MeshDecl::field_iterator fitr = md->field_begin(),
+            fitrEnd = md->field_end();
             fitr != fitrEnd; ++fitr) {
           
           MeshFieldDecl* fd = *fitr;
@@ -2630,6 +2630,16 @@ Sema::BuildDeclarationNameExpr(const CXXScopeSpec &SS,
     case Decl::Field:
     case Decl::IndirectField:
       assert(getLangOpts().CPlusPlus &&
+             "building reference to field in C?");
+
+      // These can't have reference type in well-formed programs, but
+      // for internal consistency we do this anyway.
+      type = type.getNonReferenceType();
+      valueKind = VK_LValue;
+      break;
+
+    case Decl::MeshField:
+      assert(getLangOpts().Scout &&
              "building reference to field in C?");
 
       // These can't have reference type in well-formed programs, but
@@ -8106,9 +8116,9 @@ QualType Sema::CheckAssignmentOperands(Expr *LHSExpr, ExprResult &RHS,
           if (!isa<ImplicitParamDecl>(VD) ) {
             const MeshType *MT = cast<MeshType>(VD->getType().getCanonicalType());
             MeshDecl* MD = MT->getDecl();
-            MeshDecl::mesh_field_iterator itr_end = MD->mesh_field_end();
+            MeshDecl::field_iterator itr_end = MD->field_end();
             llvm::StringRef memberName = ME->getMemberDecl()->getName();
-            for(MeshDecl::mesh_field_iterator itr = MD->mesh_field_begin(); itr != itr_end; ++itr) {
+            for(MeshDecl::field_iterator itr = MD->field_begin(); itr != itr_end; ++itr) {
               if (dyn_cast<NamedDecl>(*itr)->getName() == memberName) {
                 if ((*itr)->hasExternalFormalLinkage()) {
                   LHSType = Context.getPointerType(LHSType);

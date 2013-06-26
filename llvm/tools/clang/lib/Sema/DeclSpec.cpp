@@ -276,7 +276,10 @@ bool Declarator::isDeclarationOfFunction() const {
 
     // ===== Scout ========================================
     // SC_TODO - drop scout vector support. 
-    case TST_mesh:
+    case TST_uniform_mesh:
+    case TST_structured_mesh:
+    case TST_rectilinear_mesh:
+    case TST_unstructured_mesh:
     case TST_bool2:
     case TST_bool3:
     case TST_bool4:
@@ -454,7 +457,10 @@ const char *DeclSpec::getSpecifierName(DeclSpec::TST T) {
   case DeclSpec::TST_double:      return "double";
 
   // ===== Scout ================================================================
-  case DeclSpec::TST_mesh:        return "mesh";
+  case DeclSpec::TST_uniform_mesh:    return "uniform mesh";
+  case DeclSpec::TST_structured_mesh: return "structured mesh";  
+  case DeclSpec::TST_rectilinear_mesh: return "rectilinear mesh";    
+  case DeclSpec::TST_unstructured_mesh: return "unstructured mesh";      
   // SC_TODO - drop scout vector support. 
   case DeclSpec::TST_bool2:       return "bool2";
   case DeclSpec::TST_bool3:       return "bool3";

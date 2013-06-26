@@ -197,6 +197,7 @@ namespace  {
     void VisitIndirectFieldDecl(const IndirectFieldDecl *D);
     void VisitFunctionDecl(const FunctionDecl *D);
     void VisitFieldDecl(const FieldDecl *D);
+    void VisitMeshFieldDecl(const MeshFieldDecl *D);    
     void VisitVarDecl(const VarDecl *D);
     void VisitFileScopeAsmDecl(const FileScopeAsmDecl *D);
     void VisitImportDecl(const ImportDecl *D);
@@ -869,6 +870,56 @@ void ASTDumper::VisitFieldDecl(const FieldDecl *D) {
     dumpStmt(Init);
   }
 }
+
+// ===== Scout ================================================================
+// 
+void ASTDumper::VisitMeshFieldDecl(const MeshFieldDecl *D) {
+
+  dumpName(D);
+  dumpType(D->getType());
+
+  if (D->isMutable())
+    OS << " mutable";
+
+  if (D->isCellLocated()) 
+    OS << " __cell_located__";
+  else if (D->isVertexLocated())
+    OS << " __vertex_located__";
+  else if (D->isEdgeLocated())
+    OS << " __edge_located__";
+  else if (D->isFaceLocated())
+    OS << " __face_located__";
+  else if (D->isBuiltIn())
+    OS << " __sc_built_in__";
+  else 
+    // Normally, we'd assert here but this is good for 
+    // debugging so we'll let it go with a diagnostic
+    // output flagging the error...
+    OS << " __invalid_location__";
+
+  if (D->isModulePrivate())
+    OS << " __module_private__";
+
+  bool OldMoreChildren = hasMoreChildren();
+  bool IsBitField = D->isBitField();
+  Expr *Init = D->getInClassInitializer();
+  bool HasInit = Init;
+
+  setMoreChildren(OldMoreChildren || HasInit);
+  if (IsBitField) {
+    lastChild();
+    dumpStmt(D->getBitWidth());
+  }
+
+  setMoreChildren(OldMoreChildren);
+
+  if (HasInit) {
+    lastChild();
+    dumpStmt(Init);
+  }
+}
+//
+// ============================================================================
 
 void ASTDumper::VisitVarDecl(const VarDecl *D) {
   dumpName(D);

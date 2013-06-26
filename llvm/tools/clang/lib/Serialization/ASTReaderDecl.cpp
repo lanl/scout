@@ -2168,6 +2168,11 @@ Decl *ASTReader::ReadDeclRecord(DeclID ID) {
   case DECL_FIELD:
     D = FieldDecl::CreateDeserialized(Context, ID);
     break;
+  case DECL_MESHFIELD:
+    D = MeshFieldDecl::CreateDeserialized(Context, ID,
+                                          // SC_TODO - need to fix this! 
+                                          MeshFieldDecl::UnknownLoc);
+    break;    
   case DECL_INDIRECTFIELD:
     D = IndirectFieldDecl::CreateDeserialized(Context, ID);
     break;

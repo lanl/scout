@@ -833,6 +833,7 @@ def err_expected_semi_mesh_declaration : Error<
 "expected ';' at end of mesh declaration">;
 def err_no_mesh_field_specifier : Error<
 "no mesh field specifier has been specified, i.e: 'cells', 'vertices', etc.">;
+def err_extern_mesh_field : Error<"'extern' mesh fields are not allowed">;
 def err_expected_numeric_constant_in_window_def : Error<
 "expected a numeric constant in window dimensions definition">;
 def err_mesh_not_implemented : Error< "mesh type is not fully implemented yet">;
@@ -853,9 +854,10 @@ def err_expected_periodperiod : Error<"expected '..'">;
 def err_expected_forall_binary_op : Error<"expected binary operator">;
 
 def warn_empty_mesh : Warning<"mesh definition with no fields">;
-def warn_no_cells_fields_forall : Warning<"no cells fields on mesh in forall cells">;
-def warn_no_edges_fields_forall : Warning<"no edges fields on mesh in forall edges">;
-def warn_no_vertices_fields_forall : Warning<"no vertices fields on mesh in forall vertices">;
+def warn_no_cells_fields_forall    : Warning<"no cell fields on mesh in forall cells">;
+def warn_no_edges_fields_forall    : Warning<"no edge fields on mesh in forall edges">;
+def warn_no_vertices_fields_forall : Warning<"no vertex fields on mesh in forall vertices">;
+def warn_no_faces_fields_forall    : Warning<"no face fields on mesh in forall faces">;
 
 def err_invalid_scout_vector_init : Error<"invalid vector initialization">;
 

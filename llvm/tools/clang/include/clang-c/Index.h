@@ -2104,7 +2104,17 @@ enum CXCursorKind {
    */
   CXCursor_ModuleImportDecl              = 600,
   CXCursor_FirstExtraDecl                = CXCursor_ModuleImportDecl,
-  CXCursor_LastExtraDecl                 = CXCursor_ModuleImportDecl
+  CXCursor_LastExtraDecl                 = CXCursor_ModuleImportDecl,
+
+  // ===== Scout =============================================================
+  CXCursor_UniformMeshDecl               = 700,
+  CXCursor_StructuredMeshDecl            = 701,
+  CXCursor_RectilinearMeshDecl           = 702,
+  CXCursor_UnstructuredMeshDecl          = 703, 
+  CXCursor_MeshFieldDecl                 = 704,
+  CXCursor_FirstMeshDecl                 = CXCursor_UniformMeshDecl,
+  CXCursor_LastMeshDecl                  = CXCursor_UnstructuredMeshDecl
+  // =========================================================================  
 };
 
 /**

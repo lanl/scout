@@ -723,7 +723,11 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
   case TST_double:
 
   // ===== Scout =========================== 
-  case TST_mesh:
+  //case TST_mesh:
+  case TST_uniform_mesh:
+  case TST_structured_mesh:
+  case TST_rectilinear_mesh:
+  case TST_unstructured_mesh:
   // SC_TODO - remove vector types. 
   case TST_bool2:
   case TST_bool3:

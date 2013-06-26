@@ -1860,48 +1860,52 @@ public:
 
 class MeshTypeLoc :
   public InheritingConcreteTypeLoc<TypeSpecTypeLoc,
-  MeshTypeLoc,
-  MeshType> {
+                                   MeshTypeLoc,
+                                   MeshType> {
   public:
     MeshDecl *getDecl() const { return getTypePtr()->getDecl(); }
     
     /// \brief True if the tag was defined in this type specifier.
-    bool isDefinition() const {
-      MeshDecl *D = getDecl();
-      
-      return D->isDefinition();
-    }
+    // 
+    // SC_TODO -- commented out as part of refactoring... Need to 
+    // revisit... 
+    // 
+    //bool isDefinition() const {
+    //  MeshDecl *D = getDecl();
+    //  
+    //  return D->isDefinition();
+    //}
 };
   
 /// \brief Wrapper for source info for mesh types.
 class UniformMeshTypeLoc :
   public InheritingConcreteTypeLoc<MeshTypeLoc,
-  UniformMeshTypeLoc,
-  UniformMeshType> {
+                                   UniformMeshTypeLoc,
+                                   UniformMeshType> {
   public:
     UniformMeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
 };
 
 class StructuredMeshTypeLoc :
   public InheritingConcreteTypeLoc<MeshTypeLoc,
-  StructuredMeshTypeLoc,
-  StructuredMeshType> {
+                                   StructuredMeshTypeLoc,
+                                   StructuredMeshType> {
   public:
     StructuredMeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
 };
 
-class RectlinearMeshTypeLoc :
+class RectilinearMeshTypeLoc :
   public InheritingConcreteTypeLoc<MeshTypeLoc,
-  RectlinearMeshTypeLoc,
-  RectlinearMeshType> {
+                                   RectilinearMeshTypeLoc,
+                                   RectilinearMeshType> {
   public:
-    RectlinearMeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
+    RectilinearMeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
 };
 
 class UnstructuredMeshTypeLoc :
   public InheritingConcreteTypeLoc<MeshTypeLoc,
-  UnstructuredMeshTypeLoc,
-  UnstructuredMeshType> {
+                                   UnstructuredMeshTypeLoc,
+                                   UnstructuredMeshType> {
   public:
     UnstructuredMeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
 };

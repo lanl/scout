@@ -55,6 +55,7 @@ namespace {
     void VisitFunctionDecl(FunctionDecl *D);
     void VisitFriendDecl(FriendDecl *D);
     void VisitFieldDecl(FieldDecl *D);
+    void VisitMeshFieldDecl(MeshFieldDecl *D);    
     void VisitVarDecl(VarDecl *D);
     void VisitLabelDecl(LabelDecl *D);
     void VisitParmVarDecl(ParmVarDecl *D);
@@ -635,6 +636,48 @@ void DeclPrinter::VisitFieldDecl(FieldDecl *D) {
   }
   prettyPrintAttributes(D);
 }
+
+void DeclPrinter::VisitMeshFieldDecl(MeshFieldDecl *D) {
+
+  if (!Policy.SuppressSpecifiers && D->isMutable())
+    Out << "mutable ";
+  
+  if (D->isCellLocated())
+    Out << "[cell located] ";
+  else if (D->isVertexLocated())
+    Out << "[vertex located] ";
+  else if (D->isEdgeLocated())
+    Out << "[edge located] ";
+  else if (D->isFaceLocated())
+    Out << "[face lcoated] ";
+  else
+    assert(0 && "mesh field has no location.");
+
+  if (!Policy.SuppressSpecifiers && D->isModulePrivate())
+    Out << "__module_private__ ";
+
+  Out << D->getASTContext().getUnqualifiedObjCPointerType(D->getType()).
+    stream(Policy, D->getName());
+
+  if (D->isBitField()) {
+    Out << " : ";
+    D->getBitWidth()->printPretty(Out, 0, Policy, Indentation);
+  }
+
+
+  Expr *Init = D->getInClassInitializer();
+  if (!Policy.SuppressInitializers && Init) {
+    if (D->getInClassInitStyle() == ICIS_ListInit)
+      Out << " ";
+    else
+      Out << " = ";
+
+    Init->printPretty(Out, 0, Policy, Indentation);
+  }
+  prettyPrintAttributes(D);
+}
+
+
 
 void DeclPrinter::VisitLabelDecl(LabelDecl *D) {
   Out << *D << ":";

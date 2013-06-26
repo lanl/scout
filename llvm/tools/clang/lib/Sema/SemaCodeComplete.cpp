@@ -1483,6 +1483,11 @@ static const char *GetCompletionTypeString(QualType T,
           case TTK_Class:  return "class <anonymous>";
           case TTK_Union:  return "union <anonymous>";
           case TTK_Enum:   return "enum <anonymous>";
+          // SC_TODO - not sure if this is correct... 
+          case TTK_UniformMesh: return "uniform mesh <anonymous>";
+          case TTK_StructuredMesh: return "structured mesh <anonymous>";
+          case TTK_RectilinearMesh: return "rectilinear mesh <anonymous>";
+          case TTK_UnstructuredMesh: return "unstructured mesh <anonymous>";
           }
         }
   }
@@ -2919,6 +2924,7 @@ CXCursorKind clang::getCursorKindForDecl(const Decl *D) {
     case Decl::Enum:               return CXCursor_EnumDecl;
     case Decl::EnumConstant:       return CXCursor_EnumConstantDecl;
     case Decl::Field:              return CXCursor_FieldDecl;
+    case Decl::MeshField:          return CXCursor_MeshFieldDecl;
     case Decl::Function:  
       return CXCursor_FunctionDecl;
     case Decl::ObjCCategory:       return CXCursor_ObjCCategoryDecl;
@@ -2978,6 +2984,11 @@ CXCursorKind clang::getCursorKindForDecl(const Decl *D) {
           case TTK_Class:  return CXCursor_ClassDecl;
           case TTK_Union:  return CXCursor_UnionDecl;
           case TTK_Enum:   return CXCursor_EnumDecl;
+
+          case TTK_UniformMesh: return CXCursor_UniformMeshDecl;
+          case TTK_StructuredMesh: return CXCursor_StructuredMeshDecl;
+          case TTK_RectilinearMesh: return CXCursor_RectilinearMeshDecl;
+          case TTK_UnstructuredMesh: return CXCursor_UnstructuredMeshDecl;
         }
       }
   }

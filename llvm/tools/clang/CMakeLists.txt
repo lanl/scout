@@ -240,7 +240,7 @@ endmacro(add_clang_library)
 macro(add_clang_executable name)
   add_llvm_executable( ${name} ${ARGN} )
   set_target_properties(${name} PROPERTIES FOLDER "Clang executables")
-  set(EXECUTABLE_OUTPUT_PATH ${Scout_BINARY_DIR}/bin)
+  set(EXECUTABLE_OUTPUT_PATH ${LLVM_BINARY_DIR}/bin)
 endmacro(add_clang_executable)
 
 include_directories(BEFORE

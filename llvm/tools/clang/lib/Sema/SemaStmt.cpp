@@ -3028,7 +3028,7 @@ namespace {
 
     void VisitCallExpr(CallExpr* E){
       FunctionDecl* fd = E->getDirectCallee();
-      if(fd){
+      if (fd) {
         std::string name = fd->getName();
         if(name == "cshift"){
           unsigned args = E->getNumArgs();
@@ -3038,23 +3038,21 @@ namespace {
           if(args != mt->dimensions().size() + 1){
             sema_.Diag(E->getRParenLoc(), diag::err_cshift_args);
             error_ = true;
-          }
-          else{
+          } else {
             Expr* fe = E->getArg(0);
             if(ImplicitCastExpr* ce = dyn_cast<ImplicitCastExpr>(fe)){
               fe = ce->getSubExpr();
             }
 
-            if(MemberExpr* me = dyn_cast<MemberExpr>(fe)){
-              if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(me->getBase())){
+            if (MemberExpr* me = dyn_cast<MemberExpr>(fe)) {
+              if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(me->getBase())) {
                 ValueDecl* bd = dr->getDecl();
-                if(!isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
+                if (!isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())) {
                   sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
                   error_ = true;
                 }
               }
-            }
-            else{
+            } else {
               sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
               error_ = true;
             }
@@ -3075,9 +3073,11 @@ namespace {
     }
 
     void VisitMemberExpr(MemberExpr* E){
-      if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(E->getBase())){
+      if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(E->getBase())) {
+        
         ValueDecl* bd = dr->getDecl();
-        if(const MeshType* MT = 
+        
+        if (const MeshType* MT = 
            dyn_cast<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
           
           ValueDecl* md = E->getMemberDecl();
@@ -3087,19 +3087,16 @@ namespace {
           if(md->getName() == "height" && ND < 2){
             sema_.Diag(E->getMemberLoc(), diag::err_invalid_height_mesh);
             error_ = true;
-          }
-          else if(md->getName() == "depth" && ND < 3){
+          } else if(md->getName() == "depth" && ND < 3) {
             sema_.Diag(E->getMemberLoc(), diag::err_invalid_depth_mesh);
             error_ = true;
           }
           
-          std::string ref = bd->getName().str() + "." +
-          md->getName().str();
+          std::string ref = bd->getName().str() + "." + md->getName().str();
 
-          if(nodeType_ == NodeLHS){
+          if(nodeType_ == NodeLHS) {
             refMap_.insert(make_pair(ref, true));
-          }
-          else if(nodeType_ == NodeRHS){
+          } else if(nodeType_ == NodeRHS) {
             RefMap_::iterator itr = refMap_.find(ref);
             if(itr != refMap_.end()){
               sema_.Diag(E->getMemberLoc(), diag::err_rhs_after_lhs_forall);

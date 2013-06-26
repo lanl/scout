@@ -760,6 +760,77 @@ CodeGenTypes::getCGRecordLayout(const RecordDecl *RD) {
   return *Layout;
 }
 
+/// ConvertMeshDeclType - Lay out a mesh decl type.
+llvm::StructType *CodeGenTypes::ConvertRecordDeclType(const MeshDecl *MD) {
+  // TagDecl's are not necessarily unique, instead use the (clang)
+  // type connected to the decl.
+  const Type *Key = Context.getTagDeclType(MD).getTypePtr();
+
+  llvm::StructType *&Entry = RecordDeclTypes[Key];
+
+  // If we don't have a StructType at all yet, create the forward declaration.
+  if (Entry == 0) {
+    Entry = llvm::StructType::create(getLLVMContext());
+    addRecordTypeName(MD, Entry, "");
+  }
+  llvm::StructType *Ty = Entry;
+
+  // If this is still a forward declaration, or the LLVM type is already
+  // complete, there's nothing more to do.
+  MD = MD->getDefinition();
+  if (MD == 0 || !MD->isCompleteDefinition() || !Ty->isOpaque())
+    return Ty;
+  
+  // If converting this type would cause us to infinitely loop, don't do it!
+  if (!isSafeToConvert(MD, *this)) {
+    DeferredRecords.push_back(MD);
+    return Ty;
+  }
+
+  // Okay, this is a definition of a type.  Compile the implementation now.
+  bool InsertResult = RecordsBeingLaidOut.insert(Key); (void)InsertResult;
+  assert(InsertResult && "Recursively compiling a mesh?");
+  
+   // Layout fields. foobar
+  CGRecordLayout *Layout = ComputeRecordLayout(RD, Ty);
+  CGRecordLayouts[Key] = Layout;
+
+  // We're done laying out this struct.
+  bool EraseResult = RecordsBeingLaidOut.erase(Key); (void)EraseResult;
+  assert(EraseResult && "struct not in RecordsBeingLaidOut set?");
+   
+  // If this struct blocked a FunctionType conversion, then recompute whatever
+  // was derived from that.
+  // FIXME: This is hugely overconservative.
+  if (SkippedLayout)
+    TypeCache.clear();
+    
+  // If we're done converting the outer-most record, then convert any deferred
+  // structs as well.
+  if (RecordsBeingLaidOut.empty())
+    while (!DeferredRecords.empty())
+      ConvertRecordDeclType(DeferredRecords.pop_back_val());
+
+  return Ty;
+}
+
+/// getCGMeshLayout - Return mesh layout info for the given mesh decl.
+const CGRecordLayout &
+CodeGenTypes::getCGMeshLayout(const MeshDecl *MD) {
+  const Type *Key = Context.getTagDeclType(MD).getTypePtr();
+
+  const CGRecordLayout *Layout = CGRecordLayouts.lookup(Key);
+  if (!Layout) {
+    // Compute the type information.
+    ConvertMeshDeclType(MD);
+    // Now try again.
+    Layout = CGRecordLayouts.lookup(Key);
+  }
+
+  assert(Layout && "Unable to find mesh layout");
+  return *Layout;
+}
+
 bool CodeGenTypes::isZeroInitializable(QualType T) {
   // No need to check for member pointers when not compiling C++.
   if (!Context.getLangOpts().CPlusPlus)

@@ -69,18 +69,141 @@ CodeGenFunction::EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND) {
   // SC_TODO -- what happens if we fall through here?  For now we'll
   // bail with an assertion.  Overall, the logic seems a bit screwy
   // to me here...
-  assert(false && "unhandled conditional in emiting forall array lval.");
+  assert(false && "missed conditional case in emiting forall array lval.");
 }
 
 LValue
-CodeGenFunction::EmitScoutMemberExpr(const MemberExpr *E,
-                                     const VarDecl *VD) {
+CodeGenFunction::EmitScoutMemberExpr(LValue base,
+                                     const MeshFieldDecl *field) {
+
+  // This follows very closely with the details used to 
+  // emit a record member from the clang code.  We have 
+  // removed details having to do with unions as we know
+  // we are struct-like in behavior. A few questions remain
+  // here:
+  // 
+  //   SC_TODO - we need to address alignment details better.
+  //   SC_TODO - we need to make sure we can ditch code for 
+  //             TBAA (type-based aliases analysis). 
+  //
+  if (field->isBitField()) {
+    const CGRecordLayout &RL =
+      CGM.getTypes().getCGMeshLayout(field->getParentMesh());
+    const CGBitFieldInfo &Info = RL.getBitFieldInfo(field);
+    llvm::Value *Addr = base.getAddress();
+    unsigned Idx = RL.getLLVMFieldNo(field);
+    if (Idx != 0)
+      // For structs, we GEP to the field that the record layout suggests.
+      Addr = Builder.CreateStructGEP(Addr, Idx, field->getName());
+    // Get the access type.
+    llvm::Type *PtrTy = llvm::Type::getIntNPtrTy(
+      getLLVMContext(), Info.StorageSize,
+      CGM.getContext().getTargetAddressSpace(base.getType()));
+    if (Addr->getType() != PtrTy)
+      Addr = Builder.CreateBitCast(Addr, PtrTy);
+
+    QualType fieldType =
+      field->getType().withCVRQualifiers(base.getVRQualifiers());
+    return LValue::MakeBitfield(Addr, Info, fieldType, base.getAlignment());
+  }
+
+  const MeshDecl *mesh = field->getParentMesh();
+  QualType type = field->getType();
+  CharUnits alignment = getContext().getDeclAlign(field);
+
+ // FIXME: It should be impossible to have an LValue without alignment for a
+  // complete type.
+  if (!base.getAlignment().isZero())
+    alignment = std::min(alignment, base.getAlignment());
+
+  bool mayAlias = rec->hasAttr<MayAliasAttr>();
+
+  llvm::Value *addr = base.getAddress();
+  unsigned cvr = base.getVRQualifiers();
+  bool TBAAPath = CGM.getCodeGenOpts().StructPathTBAA;
+  
+  // We GEP to the field that the record layout suggests.
+  unsigned idx = CGM.getTypes().getCGRecordLayout(rec).getLLVMFieldNo(field);
+  addr = Builder.CreateStructGEP(addr, idx, field->getName());
+
+  // If this is a reference field, load the reference right now.
+  if (const ReferenceType *refType = type->getAs<ReferenceType>()) {
+    llvm::LoadInst *load = Builder.CreateLoad(addr, "ref");
+    if (cvr & Qualifiers::Volatile) load->setVolatile(true);
+    load->setAlignment(alignment.getQuantity());
+
+    // Loading the reference will disable path-aware TBAA.
+    TBAAPath = false;
+    if (CGM.shouldUseTBAA()) {
+      llvm::MDNode *tbaa;
+      if (mayAlias)
+        tbaa = CGM.getTBAAInfo(getContext().CharTy);
+      else
+        tbaa = CGM.getTBAAInfo(type);
+      CGM.DecorateInstruction(load, tbaa);
+    }
+
+    addr = load;
+    mayAlias = false;
+    type = refType->getPointeeType();
+    if (type->isIncompleteType())
+      alignment = CharUnits();
+    else
+      alignment = getContext().getTypeAlignInChars(type);
+    cvr = 0; // qualifiers don't recursively apply to referencee
+  }
+
+
+  // Make sure that the address is pointing to the right type.  This is critical
+  // as a struct/mesh element will need a bitcast if the LLVM type laid out doesn't 
+  // match the desired type.
+  addr = EmitBitCastOfLValueToProperType(*this, addr,
+                                         CGM.getTypes().ConvertTypeForMem(type),
+                                         field->getName());
+
+  if (field->hasAttr<AnnotateAttr>())
+    addr = EmitFieldAnnotations(field, addr);
+
+  LValue LV = MakeAddrLValue(addr, type, alignment);
+  LV.getQuals().addCVRQualifiers(cvr);
+  if (TBAAPath) {
+    const ASTRecordLayout &Layout =
+        getContext().getASTRecordLayout(field->getParent());
+    // Set the base type to be the base type of the base LValue and
+    // update offset to be relative to the base type.
+    LV.setTBAABaseType(mayAlias ? getContext().CharTy : base.getTBAABaseType());
+    LV.setTBAAOffset(mayAlias ? 0 : base.getTBAAOffset() +
+                     Layout.getFieldOffset(field->getFieldIndex()) /
+                                           getContext().getCharWidth());
+  }
+
+  // __weak attribute on a field is ignored.
+  if (LV.getQuals().getObjCGCAttr() == Qualifiers::Weak)
+    LV.getQuals().removeObjCGCAttr();
+
+  // Fields of may_alias structs act like 'char' for TBAA purposes.
+  // FIXME: this should get propagated down through anonymous structs
+  // and unions.
+  if (mayAlias && LV.getTBAAInfo())
+    LV.setTBAAInfo(CGM.getTBAAInfo(getContext().CharTy));
+
+  return LV;
+  /*
 
   llvm::Value* baseAddr;
+  
+  assert(VD && "you passed me crap!");
+  llvm::errs() << "emit scout member expr...\n";
+  if (VD->getStorageClass() == SC_None)
+    llvm::errs() << "member expr var decl has no storage class\n";
+  else 
+    llvm::errs() << "member expr var decl has some type of storage class\n";
 
   if (VD->hasGlobalStorage()) {
+    llvm::errs() << "member has global storage...\n";
     baseAddr = Builder.CreateLoad(CGM.GetAddrOfGlobalVar(VD));
   } else {
+    llvm::errs() << "member has non-global storage...\n";    
     baseAddr = LocalDeclMap[VD];
     if (VD->getType().getTypePtr()->isReferenceType()) {
       baseAddr = Builder.CreateLoad(baseAddr);
@@ -106,6 +229,7 @@ CodeGenFunction::EmitScoutMemberExpr(const MemberExpr *E,
   }
 
   return EmitMeshMemberExpr(VD, memberName);
+  */
 }
 
 RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
@@ -136,12 +260,35 @@ RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
 }
 
 
+/*
+LValue CodeGenFunction::EmitImplicitMeshMemberExpr(const VarDecl *VD,
+                                                   llvm::StringRef fieldName) {
 
-LValue 
-CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, 
-                                    llvm::StringRef memberName,
-                                    SmallVector< llvm::Value *, 3 > vals) {
-  DEBUG_OUT("EmitMeshMemberExpr");
+}
+
+
+LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD,
+                                           llvm::StringRef memberName,
+                                           SmallVector<llvm::Value*, 3> vals) {
+
+  if (! isa<ImplicitParamDecl>(VD)) {
+    return EmitImplicitMeshMemberExpr(VD, memberName);
+  } else {
+
+    // Deal with the case of an individual mesh field member.
+
+  }
+}
+
+*/
+LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, 
+                                           llvm::StringRef memberName,
+                                           SmallVector< llvm::Value *, 3 > vals) {
+
+
+  // SC_TODO - 'vals' appears to be predicated loop bounds. ???
+  // We should really call it something else so this is clear. 
+  // If 'vals' is empty we use the global index. 
 
   const MeshType *MT = cast<MeshType>(VD->getType().getCanonicalType());
 
@@ -149,18 +296,22 @@ CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD,
   // for all mesh members of that name.  In that case, figure out the index 
   // to the member and access that.
   if (!isa<ImplicitParamDecl>(VD) )  {
+    llvm::errs() << "EmitMeshMemberExpr -- not an implicit parameter '" 
+                 << memberName << "'.\n";
 
     MeshDecl* MD = MT->getDecl();
     MeshDecl::mesh_field_iterator itr = MD->mesh_field_begin();
     MeshDecl::mesh_field_iterator itr_end = MD->mesh_field_end();
 
     for(unsigned int i = 4; itr != itr_end; ++itr, ++i) {
-      if(dyn_cast<NamedDecl>(*itr)->getName() == memberName) {
-        // SC_TODO - Does this introduce a bug?  Fix me???  -PM 
-        if ((*itr)->hasExternalFormalLinkage()) {
+      NamedDecl* ND = dyn_cast<NamedDecl>(*itr);
+      if (ND && ND->getName() == memberName) {
+        // SC_TODO - Does this introduce a bug?  Fix me???  -PM
+        if (ND->hasExternalFormalLinkage()) {
           QualType memberTy = dyn_cast< FieldDecl >(*itr)->getType();
           QualType memberPtrTy = getContext().getPointerType(memberTy);
           llvm::Value* baseAddr = LocalDeclMap[VD];
+          assert(baseAddr && "vardecl not found in map");
           llvm::Value *memberAddr = Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, i);
           return MakeAddrLValue(memberAddr, memberPtrTy);
         } else {
@@ -171,11 +322,18 @@ CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD,
     // if got here, there was no member of that name, so issue an error
   }  
 
+//  RecordDecl *RD = VD->getParent();
+//  if (RD)
+
+
+  llvm::errs() << "EmitMeshMemberExpr -- implicit parameter (or some odd fall-through)\n";
+  llvm::errs() << "\tmember name: " << memberName << "\n";
   // Now we deal with the case of an individual mesh member value
   MeshType::MeshDimensionVec exprDims = MT->dimensions();
-  llvm::Value *arg = getGlobalIdx();
+  llvm::Value *arg = getGlobalIdx(); // SC_TODO -- we never use this????
 
   if (!vals.empty()) {
+    llvm::errs() << "vals is non-empty.\n";
     SmallVector< llvm::Value *, 3 > dims;
     for(unsigned i = 0, e = exprDims.size(); i < e; ++i) {
       dims.push_back(Builder.CreateLoad(ScoutMeshSizes[i]));
@@ -206,8 +364,12 @@ CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD,
     llvm::Value *tmp1  = Builder.CreateMul(tmp, dims[0]);
     arg = Builder.CreateAdd(tmp1, rem);
   }
+
+  // getFieldIndex can be used on a mesh decl to lookup the 
+  // field's index in the mesh. 
   
   llvm::Value *var = MeshMembers[memberName].first;
+  assert(var && "unable to find mesh member in map.");
   QualType Ty = MeshMembers[memberName].second;
 
   char *IRNameStr = new char[memberName.size() + 16];

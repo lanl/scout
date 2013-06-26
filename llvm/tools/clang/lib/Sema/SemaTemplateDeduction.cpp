@@ -1190,7 +1190,7 @@ DeduceTemplateArgumentsByTypeMatch(Sema &S,
     // Currently meshes can not be used as templates
     case Type::UniformMesh:
     case Type::StructuredMesh:
-    case Type::RectlinearMesh:
+    case Type::RectilinearMesh:
     case Type::UnstructuredMesh:
     // =================================================================================      
     case Type::Enum:
@@ -4626,7 +4626,7 @@ MarkUsedTemplateParameters(ASTContext &Ctx, QualType T,
   // ===== Scout =========================================================================
   case Type::UniformMesh:
   case Type::StructuredMesh:
-  case Type::RectlinearMesh:
+  case Type::RectilinearMesh:
   case Type::UnstructuredMesh:
   // =====================================================================================      
   case Type::Enum:

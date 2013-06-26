@@ -3427,7 +3427,7 @@ bool UnnamedLocalNoLinkageFinder::VisitStructuredMeshType(const StructuredMeshTy
   return false;
 }
 
-bool UnnamedLocalNoLinkageFinder::VisitRectlinearMeshType(const RectlinearMeshType* T) {
+bool UnnamedLocalNoLinkageFinder::VisitRectilinearMeshType(const RectilinearMeshType* T) {
   return false;
 }
 

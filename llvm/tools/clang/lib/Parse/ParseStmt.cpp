@@ -184,32 +184,29 @@ Retry:
     }
     
     if (isScoutLang()) {
-      Sema::NameClassification Classification
-        = Actions.ClassifyName(getCurScope(), SS, Name, NameLoc, Next, false);
-      if(Classification.getKind() == Sema::NC_Type &&
-          Actions.isScoutSource(Tok.getLocation())){
+      
+      Sema::NameClassification 
+        Classification(Actions.ClassifyName(getCurScope(), SS, Name, NameLoc, Next, false));
+      if (Classification.getKind() == Sema::NC_Type &&
+          Actions.isScoutSource(Tok.getLocation())) {
+        
         QualType qt = Sema::GetTypeFromParser(Classification.getType());
             
-        if(qt->getAs<MeshType>() &&
-           GetLookAheadToken(1).is(tok::identifier)){
+        if (qt->getAs<MeshType>() && GetLookAheadToken(1).is(tok::identifier)){
               
-          if(GetLookAheadToken(2).is(tok::l_square)){
-
+          if (GetLookAheadToken(2).is(tok::l_square)) {
             std::string meshType = TokToStr(Tok);
             ConsumeToken();
             std::string meshName = TokToStr(Tok);
             ConsumeToken();
 
             // parse mesh dimensions, e.g: [512,512]
-
             MeshType::MeshDimensionVec dims;
-
             ConsumeBracket();
-
             ExprResult NumElements;
 
-            for(;;){
-              if(Tok.is(tok::numeric_constant)) {
+            for(;;) {
+              if (Tok.is(tok::numeric_constant)) {
                 dims.push_back(Actions.ActOnNumericConstant(Tok).get());
                 ConsumeToken();
               } else if (Tok.isNot(tok::r_square)) {
@@ -225,16 +222,16 @@ Retry:
                 dims.push_back(NumElements.get());
               }
 
-              if(Tok.is(tok::r_square)){
+              if (Tok.is(tok::r_square)) {
                 break;
               }
 
-              if(Tok.is(tok::eof)){
+              if (Tok.is(tok::eof)) {
                 Diag(Tok, diag::err_expected_lsquare);
                 return StmtError();
               }
 
-              if(Tok.isNot(tok::comma)){
+              if (Tok.isNot(tok::comma)) {
                 Diag(Tok, diag::err_expected_comma);
                 SkipUntil(tok::r_square);
                 SkipUntil(tok::semi);
@@ -268,8 +265,7 @@ Retry:
             vd->setType(QualType(mdt, 0));
                 
             return result;
-          }
-          else if(!DeclaringMesh){
+          } else if(!DeclaringMesh) {
             Diag(Tok, diag::err_expected_lsquare);
                 
             SkipUntil(tok::r_square);
@@ -2566,11 +2562,7 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
     
     if(getLangOpts().ScoutNvidiaGPU){
       args = "ScoutGPUCUDA";
-    }
-    else if(getLangOpts().ScoutAMDGPU){
-      args = "ScoutGPUOpenCL";
-    }
-    else{
+    } else{
       args = "ScoutGPUNone";
     }
     

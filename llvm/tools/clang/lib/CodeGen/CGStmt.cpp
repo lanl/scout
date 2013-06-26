@@ -134,7 +134,7 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
 
   // ===== Scout ==============================================================
   case Stmt::ForAllStmtClass:
-    EmitForAllStmtWrapper(cast<ForAllStmt>(*S));
+    EmitForallStmt(cast<ForAllStmt>(*S));
     break;
   case Stmt::ForAllArrayStmtClass:
     EmitForAllArrayStmt(cast<ForAllArrayStmt>(*S));

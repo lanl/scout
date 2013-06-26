@@ -107,7 +107,7 @@ namespace clang {
   class MeshDecl;
   class UniformMeshDecl;
   class StructuredMeshDecl;
-  class RectlinearMeshDecl;
+  class RectilinearMeshDecl;
   class UnstructuredMeshDecl;
   class MemberExpr;
   // ===================================================================================================
@@ -3409,21 +3409,21 @@ public:
   }
 };
 
-class RectlinearMeshType : public MeshType{
+class RectilinearMeshType : public MeshType{
 public:
-  RectlinearMeshType(const RectlinearMeshDecl* D, InstanceType IT=MeshInstance)
-  : MeshType(RectlinearMesh, reinterpret_cast<const MeshDecl*>(D), IT){
+  RectilinearMeshType(const RectilinearMeshDecl* D, InstanceType IT=MeshInstance)
+  : MeshType(RectilinearMesh, reinterpret_cast<const MeshDecl*>(D), IT){
     
   }
   
-  RectlinearMeshDecl* getDecl() const {
-    return reinterpret_cast<RectlinearMeshDecl*>(MeshType::getDecl());
+  RectilinearMeshDecl* getDecl() const {
+    return reinterpret_cast<RectilinearMeshDecl*>(MeshType::getDecl());
   }
   
-  static bool classof(const RectlinearMeshType* T) { return true; }
+  static bool classof(const RectilinearMeshType* T) { return true; }
   
   static bool classof(const Type *T) {
-    return T->getTypeClass() == RectlinearMesh;
+    return T->getTypeClass() == RectilinearMesh;
   }
 };
 
@@ -4069,7 +4069,17 @@ enum TagTypeKind {
   /// \brief The "class" keyword.
   TTK_Class,
   /// \brief The "enum" keyword.
-  TTK_Enum
+  TTK_Enum,
+  // ===== Scout ========================================================
+  /// \brief The "uniform mesh" 'keyword'.
+  TTK_UniformMesh, 
+  /// \brief The "structured mesh" 'keyword'.
+  TTK_StructuredMesh,
+  /// \brief The "rectilinear mesh" 'keyword'.
+  TTK_RectilinearMesh,
+  /// \brief The "unstructured mesh" 'keyword'.
+  TTK_UnstructuredMesh
+  // ===================================================================  
 };
 
 /// \brief The elaboration keyword that precedes a qualified type name or
@@ -4088,6 +4098,16 @@ enum ElaboratedTypeKeyword {
   /// \brief The "typename" keyword precedes the qualified type name, e.g.,
   /// \c typename T::type.
   ETK_Typename,
+
+  // ===== Scout ===============================================================
+  // SC_TODO -- not sure we need to implement this... 
+  /// \brief The "mesh" keyword forms introduce the elaborated-type-specifier.
+  ETK_UniformMesh,
+  ETK_StructuredMesh,
+  ETK_RectilinearMesh, 
+  ETK_UnstructuredMesh,
+  // ===========================================================================  
+
   /// \brief No keyword precedes the qualified type name.
   ETK_None
 };

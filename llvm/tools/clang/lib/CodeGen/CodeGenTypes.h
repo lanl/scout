@@ -44,6 +44,7 @@ namespace clang {
   class PointerType;
   class QualType;
   class RecordDecl;
+  class MeshDecl;
   class TagDecl;
   class TargetInfo;
   class Type;
@@ -150,6 +151,8 @@ public:
   llvm::Type *GetFunctionTypeForVTable(GlobalDecl GD);
 
   const CGRecordLayout &getCGRecordLayout(const RecordDecl*);
+
+  const CGRecordLayout &getCGMeshLayout(const RecordDecl*);  
 
   /// UpdateCompletedType - When we find the full definition for a TagDecl,
   /// replace the 'opaque' type we previously made for it if applicable.

@@ -30,15 +30,15 @@ ASTNodeImporter::VisitStructuredMeshType(const StructuredMeshType *T) {
 }
 
 QualType 
-ASTNodeImporter::VisitRectlinearMeshType(const RectlinearMeshType *T) {
+ASTNodeImporter::VisitRectilinearMeshType(const RectilinearMeshType *T) {
   assert(T != 0);
 
-  RectlinearMeshDecl *ToDecl;
-  ToDecl = dyn_cast_or_null<RectlinearMeshDecl>(Importer.Import(T->getDecl()));
+  RectilinearMeshDecl *ToDecl;
+  ToDecl = dyn_cast_or_null<RectilinearMeshDecl>(Importer.Import(T->getDecl()));
   if (!ToDecl)
     return QualType();
   
-  return Importer.getToContext().getRectlinearMeshDeclType(ToDecl);
+  return Importer.getToContext().getRectilinearMeshDeclType(ToDecl);
 }
 
 QualType 
@@ -68,7 +68,7 @@ Decl *ASTNodeImporter::VisitStructuredMeshDecl(StructuredMeshDecl *D) {
   return 0;
 }
 
-Decl *ASTNodeImporter::VisitRectlinearMeshDecl(RectlinearMeshDecl *D) {
+Decl *ASTNodeImporter::VisitRectilinearMeshDecl(RectilinearMeshDecl *D) {
   assert(D != 0);
   return 0;
 }

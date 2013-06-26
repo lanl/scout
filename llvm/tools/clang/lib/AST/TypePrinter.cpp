@@ -178,7 +178,7 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     // ===== Scout ===========================================================
     case Type::UniformMesh:
     case Type::StructuredMesh:
-    case Type::RectlinearMesh:
+    case Type::RectilinearMesh:
     case Type::UnstructuredMesh:
       CanPrefixQualifiers = true;
       break;

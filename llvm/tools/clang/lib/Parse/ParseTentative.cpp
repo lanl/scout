@@ -841,7 +841,7 @@ Parser::isExpressionOrTypeSpecifierSimple(tok::TokenKind Kind) {
 
   case tok::kw_mesh:
   case tok::kw_uniform:
-  case tok::kw_rectlinear:
+  case tok::kw_rectilinear:
   case tok::kw_structured:
   case tok::kw_unstructured:
       
@@ -1326,7 +1326,7 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
   
   case tok::kw_mesh:
   case tok::kw_uniform:
-  case tok::kw_rectlinear:
+  case tok::kw_rectilinear:
   case tok::kw_structured:
   case tok::kw_unstructured:
       

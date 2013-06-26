@@ -854,7 +854,7 @@ void CXXNameMangler::mangleUnresolvedPrefix(NestedNameSpecifier *qualifier,
     // ===== Scout ===========================================================
     case Type::UniformMesh:
     case Type::StructuredMesh:
-    case Type::RectlinearMesh:
+    case Type::RectilinearMesh:
     case Type::UnstructuredMesh:
       llvm_unreachable("type is illegal as a nested name specifier");    
     // =======================================================================
@@ -2029,7 +2029,7 @@ void CXXNameMangler::mangleType(const StructuredMeshType *T) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
 
-void CXXNameMangler::mangleType(const RectlinearMeshType *T) {
+void CXXNameMangler::mangleType(const RectilinearMeshType *T) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
 

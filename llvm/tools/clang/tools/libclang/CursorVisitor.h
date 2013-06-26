@@ -212,6 +212,7 @@ public:
   bool VisitDeclaratorDecl(DeclaratorDecl *DD);
   bool VisitFunctionDecl(FunctionDecl *ND);
   bool VisitFieldDecl(FieldDecl *D);
+  bool VisitMeshFieldDecl(MeshFieldDecl *D);
   bool VisitVarDecl(VarDecl *);
   bool VisitNonTypeTemplateParmDecl(NonTypeTemplateParmDecl *D);
   bool VisitFunctionTemplateDecl(FunctionTemplateDecl *D);

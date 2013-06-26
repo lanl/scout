@@ -22,135 +22,226 @@
 
 using namespace clang;
 
-
-
-SourceRange MeshDecl::getSourceRange() const {
-  SourceLocation E = RBraceLoc.isValid() ? RBraceLoc : getLocation();
-  return SourceRange(getOuterLocStart(), E);
+static bool isFieldOrIndirectField(Decl::Kind K) {
+  return FieldDecl::classofKind(K) || IndirectFieldDecl::classofKind(K);
 }
 
-void MeshDecl::startDefinition() {
-  IsBeingDefined = true;
+
+//===----------------------------------------------------------------------===//
+// MeshDecl Implementation
+//===----------------------------------------------------------------------===//
+// 
+//
+MeshDecl::MeshDecl(Kind DK, TagKind TK, DeclContext* DC,
+                   SourceLocation StartLoc, SourceLocation IdLoc,
+                   IdentifierInfo* Id, MeshDecl* PrevDecl)
+  : TagDecl(DK, TK, DC, IdLoc, Id, PrevDecl, StartLoc) {
+HasVolatileMember                = false;
+HasCellData                      = false;
+HasVertexData                    = false;
+HasFaceData                      = false;
+HasEdgeData                      = false;
+LoadedFieldsFromExternalStorage  = false;
+assert(static_cast<Decl*>(this) && "Invalid Kind!");
 }
 
-void MeshDecl::completeDefinition(ASTContext& C) {
+/// completeDefinition - Notes that the definition of this type is now
+/// complete.
+void MeshDecl::completeDefinition() {
+  assert(!isCompleteDefinition() && "Cannot redefine record!");
+  TagDecl::completeDefinition();
+}
 
-  assert(StructRep && "MeshDecl::completeDefinition: uninitialized StructRep");
-  
-  MeshFieldDecl* Field = MeshFieldDecl::Create(C, StructRep,
-                                               getLocation(),
-                                               getLocation(),
-                                               &C.Idents.get("mesh_flags__"),
-                                               C.UnsignedIntTy,
-                                               0,
-                                               0,
-                                               false,
-                                               ICIS_NoInit,
-                                               MeshFieldDecl::BuiltIn);
-  
-  Field->setAccess(AS_public);
-  StructRep->addDecl(Field);
-  
-  Field = MeshFieldDecl::Create(C, StructRep,
-                                getLocation(),
-                                getLocation(),
-                                &C.Idents.get("width"),
-                                C.UnsignedIntTy,
-                                0,
-                                0,
-                                false,
-                                ICIS_NoInit,
-                                MeshFieldDecl::BuiltIn);
-  Field->setAccess(AS_public);
-  StructRep->addDecl(Field);
+void MeshDecl::LoadFieldsFromExternalStorage() const {
+  ExternalASTSource *Source = getASTContext().getExternalSource();
+  assert(hasExternalLexicalStorage() && Source && "No external storage?");
 
-  Field = MeshFieldDecl::Create(C, StructRep,
-                                getLocation(),
-                                getLocation(),
-                                &C.Idents.get("height"),
-                                C.UnsignedIntTy,
-                                0,
-                                0,
-                                false,
-                                ICIS_NoInit,
-                                MeshFieldDecl::BuiltIn);
-  Field->setAccess(AS_public);
-  StructRep->addDecl(Field);
-  
-  Field = MeshFieldDecl::Create(C, StructRep,
-                                getLocation(),
-                                getLocation(),
-                                &C.Idents.get("depth"),
-                                C.UnsignedIntTy,
-                                0,
-                                0,
-                                false,
-                                ICIS_NoInit,
-                                MeshFieldDecl::BuiltIn);
-  Field->setAccess(AS_public);
-  StructRep->addDecl(Field);
-  
-  for(MeshDecl::mesh_field_iterator itr = mesh_field_begin(),
-        itrEnd = mesh_field_end();
-      itr != itrEnd; ++itr) {
+  // Notify that we have a RecordDecl doing some initialization.
+  ExternalASTSource::Deserializing TheFields(Source);
 
-    MeshFieldDecl *field = *itr;
+  SmallVector<Decl*, 64> Decls;
+  LoadedFieldsFromExternalStorage = true;  
+  switch (Source->FindExternalLexicalDecls(this, isFieldOrIndirectField,
+                                           Decls)) {
+  case ELR_Success:
+    break;
     
-    if (! field->isImplicit()) {
-      
-      Field = MeshFieldDecl::Create(C, StructRep, field->getLocation(),
-                                    field->getLocation(),
-                                    &C.Idents.get(field->getName()),
-                                    C.getPointerType(field->getType()),
-                                    0,
-                                    0,
-                                    false,
-                                    ICIS_NoInit,
-                                    field->meshLocation());
-      
-      StructRep->addDecl(Field);
-    }
-  }
-  
-  StructRep->completeDefinition();
-  
-  IsDefinition = true;
-  IsBeingDefined = false;
-}
-
-MeshDecl* MeshDecl::getDefinition() const{
-  if(isDefinition()){
-    return const_cast<MeshDecl*>(this);
-  }
-  
-  return 0;
-}
-
-MeshDecl::mesh_field_iterator MeshDecl::mesh_field_begin() const{
-  return mesh_field_iterator(decl_iterator(FirstDecl));
-}
-
-bool MeshDecl::canConvertTo(ASTContext& C, MeshDecl* MD) {
-  mesh_field_iterator fromItr = mesh_field_begin();
-  for(mesh_field_iterator itr = MD->mesh_field_begin(), itrEnd = MD->mesh_field_end();
-      itr != itrEnd; ++itr) {
-    
-    if(fromItr == mesh_field_end()) { // SC_TODO -- what???  How many mesh_field_ends do we have?
-      return false;
-    }
-
-    FieldDecl* fromField = *fromItr;
-    FieldDecl* toField = *itr;
-
-    if(!C.hasSameUnqualifiedType(fromField->getType(), toField->getType())){
-      return false;
-    }
-    ++fromItr;
+  case ELR_AlreadyLoaded:
+  case ELR_Failure:
+    return;
   }
 
-  return true;
+#ifndef NDEBUG
+  // Check that all decls we got were FieldDecls.
+  for (unsigned i=0, e=Decls.size(); i != e; ++i)
+    assert(isa<FieldDecl>(Decls[i]) || isa<IndirectFieldDecl>(Decls[i]));
+#endif
+
+  if (Decls.empty())
+    return;
+
+  llvm::tie(FirstDecl, LastDecl) = BuildDeclChain(Decls,
+                                                 /*FieldsAlreadyLoaded=*/false);
 }
 
 
 
+//===----------------------------------------------------------------------===//
+// UniformMeshDecl Implementation
+//===----------------------------------------------------------------------===//
+//
+//
+UniformMeshDecl::UniformMeshDecl(DeclContext     *DC,
+                                 SourceLocation  StartLoc,
+                                 SourceLocation  IdLoc,
+                                 IdentifierInfo  *Id, 
+                                 UniformMeshDecl *PrevDecl)
+  : MeshDecl(UniformMesh, TTK_UniformMesh, DC, StartLoc,
+             IdLoc, Id, PrevDecl) {
 
+}
+
+UniformMeshDecl *UniformMeshDecl::Create(const ASTContext &C, 
+                                         DeclContext *DC,
+                                         SourceLocation StartLoc, 
+                                         SourceLocation IdLoc,
+                                         IdentifierInfo *Id, 
+                                         UniformMeshDecl* PrevDecl) {
+
+  UniformMeshDecl* M = new (C) UniformMeshDecl(DC, 
+                                               StartLoc, 
+                                               IdLoc, Id,
+                                               PrevDecl);
+  M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
+  C.getTypeDeclType(M, PrevDecl);
+  return M;
+}
+
+UniformMeshDecl *UniformMeshDecl::CreateDeserialized(const ASTContext &C, 
+                                                     unsigned ID) {
+  void *Mem = AllocateDeserializedDecl(C, ID, sizeof(UniformMeshDecl));
+  UniformMeshDecl *M = new (Mem) UniformMeshDecl(0, SourceLocation(),
+                                                 SourceLocation(), 0, 0);
+  M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
+  return M;
+}
+
+//===----------------------------------------------------------------------===//
+// StructuredMeshDecl Implementation
+//===----------------------------------------------------------------------===//
+// 
+//
+StructuredMeshDecl::StructuredMeshDecl(DeclContext* DC,
+                                       SourceLocation StartLoc,
+                                       SourceLocation IdLoc,
+                                       IdentifierInfo* Id, 
+                                       StructuredMeshDecl* PrevDecl)
+  : MeshDecl(StructuredMesh, TTK_StructuredMesh, DC, StartLoc,
+             IdLoc, Id, PrevDecl) {
+
+}
+
+StructuredMeshDecl *StructuredMeshDecl::Create(const ASTContext &C, 
+                                               DeclContext *DC,
+                                               SourceLocation StartLoc, 
+                                               SourceLocation IdLoc,
+                                               IdentifierInfo *Id, 
+                                               StructuredMeshDecl* PrevDecl) {
+
+  StructuredMeshDecl* M = new (C) StructuredMeshDecl(DC, 
+                                                     StartLoc, 
+                                                     IdLoc, Id,
+                                                     PrevDecl);
+  M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
+  C.getTypeDeclType(M, PrevDecl);
+  return M;
+}
+
+StructuredMeshDecl *StructuredMeshDecl::CreateDeserialized(const ASTContext &C,
+                                                           unsigned ID) {
+  void *Mem = AllocateDeserializedDecl(C, ID, sizeof(StructuredMeshDecl));
+  StructuredMeshDecl *M = new (Mem) StructuredMeshDecl(0, SourceLocation(),
+                                                       SourceLocation(), 0, 0);
+  M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
+  return M;
+}
+
+//===----------------------------------------------------------------------===//
+// RectilinearMeshDecl Implementation
+//===----------------------------------------------------------------------===//
+// 
+//
+RectilinearMeshDecl::RectilinearMeshDecl(DeclContext* DC,
+                                         SourceLocation StartLoc,
+                                         SourceLocation IdLoc,
+                                         IdentifierInfo* Id, 
+                                         RectilinearMeshDecl* PrevDecl)
+  : MeshDecl(RectilinearMesh, TTK_RectilinearMesh, DC, StartLoc,
+             IdLoc, Id, PrevDecl) {
+
+}
+
+RectilinearMeshDecl *RectilinearMeshDecl::Create(const ASTContext &C, 
+                                                 DeclContext *DC,
+                                                 SourceLocation StartLoc, 
+                                                 SourceLocation IdLoc,
+                                                 IdentifierInfo *Id, 
+                                                 RectilinearMeshDecl* PrevDecl){
+ 
+  RectilinearMeshDecl* M = new (C) RectilinearMeshDecl(DC, 
+                                                       StartLoc, 
+                                                       IdLoc, Id,
+                                                       PrevDecl);
+  M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
+  C.getTypeDeclType(M, PrevDecl);
+  return M;
+}
+
+RectilinearMeshDecl *
+RectilinearMeshDecl::CreateDeserialized(const ASTContext &C, unsigned ID) {
+  void *Mem = AllocateDeserializedDecl(C, ID, sizeof(RectilinearMeshDecl));
+  RectilinearMeshDecl *M = new (Mem) RectilinearMeshDecl(0, SourceLocation(),
+                                                         SourceLocation(), 0, 0);
+  M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
+  return M;
+}
+
+//===----------------------------------------------------------------------===//
+// UnstructuredMeshDecl Implementation
+//===----------------------------------------------------------------------===//
+// 
+//
+UnstructuredMeshDecl::UnstructuredMeshDecl(DeclContext* DC,
+                                          SourceLocation StartLoc,
+                                          SourceLocation IdLoc,
+                                          IdentifierInfo* Id, 
+                                          UnstructuredMeshDecl* PrevDecl)
+  : MeshDecl(UnstructuredMesh, TTK_UnstructuredMesh, DC, StartLoc,
+             IdLoc, Id, PrevDecl) {
+
+}
+
+UnstructuredMeshDecl *UnstructuredMeshDecl::Create(const ASTContext &C, 
+                                                   DeclContext *DC,
+                                                   SourceLocation StartLoc, 
+                                                   SourceLocation IdLoc,
+                                                   IdentifierInfo *Id, 
+                                                   UnstructuredMeshDecl* PrevDecl){
+
+  UnstructuredMeshDecl* M = new (C) UnstructuredMeshDecl(DC, 
+                                                         StartLoc, 
+                                                         IdLoc, Id,
+                                                         PrevDecl);
+  M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
+  C.getTypeDeclType(M, PrevDecl);
+  return M;
+}
+
+UnstructuredMeshDecl *
+UnstructuredMeshDecl::CreateDeserialized(const ASTContext &C, unsigned ID) {
+  void *Mem = AllocateDeserializedDecl(C, ID, sizeof(UnstructuredMeshDecl));
+  UnstructuredMeshDecl *M = new (Mem) UnstructuredMeshDecl(0, SourceLocation(),
+                                                           SourceLocation(), 0, 0);
+  M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
+  return M;
+}

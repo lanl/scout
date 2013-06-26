@@ -1,4 +1,54 @@
-
+/*
+ *  
+ * ###########################################################################
+ *
+ * Copyright (c) 2013, Los Alamos National Security, LLC.
+ * All rights reserved.
+ * 
+ *  Copyright 2010. Los Alamos National Security, LLC. This software was
+ *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
+ *  Alamos National Laboratory (LANL), which is operated by Los Alamos
+ *  National Security, LLC for the U.S. Department of Energy. The
+ *  U.S. Government has rights to use, reproduce, and distribute this
+ *  software.  NEITHER THE GOVERNMENT NOR LOS ALAMOS NATIONAL SECURITY,
+ *  LLC MAKES ANY WARRANTY, EXPRESS OR IMPLIED, OR ASSUMES ANY LIABILITY
+ *  FOR THE USE OF THIS SOFTWARE.  If software is modified to produce
+ *  derivative works, such modified software should be clearly marked,
+ *  so as not to confuse it with the version available from LANL.
+ *
+ *  Additionally, redistribution and use in source and binary forms,
+ *  with or without modification, are permitted provided that the
+ *  following conditions are met:
+ *
+ *    * Redistributions of source code must retain the above copyright
+ *      notice, this list of conditions and the following disclaimer.
+ * 
+ *    * Redistributions in binary form must reproduce the above
+ *      copyright notice, this list of conditions and the following
+ *      disclaimer in the documentation and/or other materials provided 
+ *      with the distribution.
+ *
+ *    * Neither the name of Los Alamos National Security, LLC, Los
+ *      Alamos National Laboratory, LANL, the U.S. Government, nor the
+ *      names of its contributors may be used to endorse or promote
+ *      products derived from this software without specific prior
+ *      written permission.
+ * 
+ *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
+ *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ *  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ *  DISCLAIMED. IN NO EVENT SHALL LOS ALAMOS NATIONAL SECURITY, LLC OR
+ *  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ *  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ *  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ *  USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ *  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ *  SUCH DAMAGE.
+ *
+ */
 
 #include "CodeGenFunction.h"
 #include "CGDebugInfo.h"
@@ -25,12 +75,174 @@ using namespace clang;
 using namespace CodeGen;
 
 
-static const char *DimNames[] = { "width", "height", "depth" };
+static const char *DimNames[]   = { "width", "height", "depth" };
+static const char *IndexNames[] = { "x", "y", "z"};
 
-// scout - Scout Stmts
+// We use 'IRNameStr' to hold the generated names we use for 
+// various values in the IR building.  We've added a static 
+// buffer to avoid the need for a lot of fine-grained new and 
+// delete calls...  We're likely safe with 160 character long 
+// strings.
+static char IRNameStr[160];
+
+
+// ----- EmitForallStmt 
+//
+// Forall statements are transformed into a nested loop 
+// structure (with a loop per rank of the mesh) that 
+// uses a single linear address variable.  In other words,
+// a structure that looks something like this: 
+//
+//  linear_index = 0;
+//  for(z = 0; z < mesh.depth; z++)
+//    for(y = 0; y < mesh.height; y++) 
+//      for(x = 0; x < mesh.width; x++) {
+//        ... body goes here ...
+//        linear_index++;
+//      }
+// 
+// At this point in time we don't kill ourselves in trying 
+// to over optimize the loop structure (partially in hope 
+// that our restrictions at the language level will help the
+// standard optimizers do an OK job).  That said, there is 
+// likely room for improvement here...   At this point we're 
+// more interested in code readability than performance. 
+//
+// The guts of this code follow the techniques used in the 
+// EmitForStmt member function.
+//
+// SC_TODO - we need to find a way to share the loop index 
+// across code gen routines. 
+// 
+// SC_TODO - need to eventually add support for predicated
+// induction variable ranges.
+//
+// SC_TODO - need to handle cases with edge and vertex 
+// fields (the implementation below is cell centric).
+//
+void CodeGenFunction::EmitForallStmt(const ForAllStmt &S) {
+
+  llvm::StringRef MeshName = S.getMesh()->getName();
+  unsigned int rank = S.getMeshType()->dimensions().size();
+  CGDebugInfo *DI = getDebugInfo();
+
+
+  llvm::Value *LoopBounds[3] = {0, 0, 0};
+  llvm::Value *ConstantZero  = 0; 
+  llvm::Value *ConstantOne   = 0;   
+
+  llvm::errs() << "codegen rank = " << rank << "\n";
+
+  for(unsigned r = rank, i = rank-1; r > 0; --r, --i) {
+    sprintf(IRNameStr, "forall.%s.end", DimNames[i]);
+    JumpDest LoopExit = getJumpDestInCurrentScope(IRNameStr);
+    RunCleanupsScope ForallScope(*this);
+
+    if (DI) 
+      DI->EmitLexicalBlockStart(Builder, S.getSourceRange().getBegin());
+
+    if (r == rank) { 
+      llvm::errs() << "gen start of loop vars.\n";
+      // For our first pass we deal with the outermost initialization 
+      // details.   This includes our single (linear) array index value,
+      // and some helpful constants for initializing and incrementing.
+      MeshBaseAddr = GetMeshBaseAddr(S);     
+      ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
+      ConstantOne  = llvm::ConstantInt::get(Int32Ty, 1);
+      LoopIndexVar = Builder.CreateAlloca(Int32Ty, 0, "forall.indx");
+      Builder.CreateStore(ConstantZero, LoopIndexVar);
+    }
+
+
+    llvm::errs() << "gen loop bounds.\n";
+
+    // Extract the loop bounds from the mesh for this rank, this requires
+    // a GEP from the mesh and a load from returned address... 
+    sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
+    LoopBounds[i] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, i, IRNameStr);
+    sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[i]);
+    LoopBounds[i] = Builder.CreateLoad(LoopBounds[i], IRNameStr);
+
+    // Create the induction variable for this rank and zero-initialize it. 
+    sprintf(IRNameStr, "induct.%s", IndexNames[i]);
+    llvm::Value *InductionVar = Builder.CreateAlloca(Int32Ty, 0, IRNameStr);
+    Builder.CreateStore(ConstantZero, InductionVar);
+
+    llvm::errs() << "gen loop cond.\n";
+    // Next we create a block that tests the induction variables value to 
+    // the rank's dimension.
+    sprintf(IRNameStr, "forall.cond.%s", DimNames[i]);
+    JumpDest Continue = getJumpDestInCurrentScope(IRNameStr);
+    llvm::BasicBlock *CondBlock = Continue.getBlock();
+    EmitBlock(CondBlock);
+    RunCleanupsScope ConditionScope(*this);
+    sprintf(IRNameStr, "forall.done.%s", IndexNames[i]);
+    llvm::Value *CondValue = Builder.CreateICmpSLT(Builder.CreateLoad(InductionVar),
+                                                   LoopBounds[i],
+                                                   IRNameStr);
+
+    llvm::BasicBlock *ExitBlock = LoopExit.getBlock();
+
+    // If there are any cleanups between here and the loop-exit 
+    // scope, create a block to stage a loop exit along.  (We're 
+    // following Clang's lead here in generating a for loop.)
+    if (ForallScope.requiresCleanups()) {
+      sprintf(IRNameStr, "forall.cond.cleanup.%s", DimNames[i]);
+      ExitBlock = createBasicBlock(IRNameStr);
+    }    
+
+    llvm::BasicBlock *LoopBody = createBasicBlock(IRNameStr);
+    Builder.CreateCondBr(CondValue, LoopBody, ExitBlock);
+
+    if (ExitBlock != LoopExit.getBlock()) {
+      EmitBlock(ExitBlock);
+      EmitBranchThroughCleanup(LoopExit);
+    }
+    
+    EmitBlock(LoopBody);
+    sprintf(IRNameStr, "forall.incblk.%s", IndexNames[i]);
+    Continue = getJumpDestInCurrentScope(IRNameStr);
+
+    // Store the blocks to use for break and continue. 
+    BreakContinueStack.push_back(BreakContinue(LoopExit, Continue));
+
+    if (r == 1) {  // This is our innermost rank, generate the loop body.
+      EmitForallBody(S);
+
+      // Increment the loop index.
+      llvm::Value *IncLoopIndexVar = Builder.CreateAdd(LoopIndexVar,
+                                                       ConstantOne,
+                                                       "forall.indx.inc");
+      Builder.CreateStore(LoopIndexVar, IncLoopIndexVar);
+    }
+
+    EmitBlock(Continue.getBlock());
+    sprintf(IRNameStr, "forall.inc.%s", IndexNames[i]);
+    llvm::Value *IncInductionVar = Builder.CreateAdd(InductionVar, 
+                                                     ConstantOne, 
+                                                     IRNameStr);
+    Builder.CreateStore(IncInductionVar, InductionVar);
+    
+    BreakContinueStack.pop_back();
+    ConditionScope.ForceCleanup();
+    EmitBranch(CondBlock);
+    ForallScope.ForceCleanup();
+
+    if (DI)
+      DI->EmitLexicalBlockEnd(Builder, S.getSourceRange().getEnd());
+
+    EmitBlock(LoopExit.getBlock(), true);
+  }
+}
+
+// ----- EmitForallBody
+// 
+void CodeGenFunction::EmitForallBody(const ForAllStmt &S) {
+  EmitStmt(S.getBody());
+}
+
+
 void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
-  
-  DEBUG_OUT("EmitForAllStmtWrapper");
   
   MeshMembers.clear();
   ScoutMeshSizes.clear();
@@ -47,19 +259,11 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
 
   MeshBaseAddr = GetMeshBaseAddr(S);
 
-  // We use 'IRNameStr' to hold the names we emit for various items at
-  // the IR level.  It is a bit tricky to always nail down the string
-  // length for these -- should probably give this aspect some more
-  // thought (it is easy to introduce leaks here given the code
-  // structure).  The naming is key to making the IR code more
-  // readable...
-  char *IRNameStr = new char[MeshName.size() + 16];
   for(unsigned i = 0; i < rank; ++i) {
     sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[i]);
     llvm::Value* lval = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, i+1, IRNameStr);
     ScoutMeshSizes.push_back(lval);
   }
-  delete []IRNameStr;
   
   typedef MeshDecl::mesh_field_iterator MeshFieldIterator;
   MeshFieldIterator it = MD->mesh_field_begin(), it_end = MD->mesh_field_end();
@@ -73,7 +277,6 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     meshFieldMap[FieldName.str()] = true;
 
     if (! MFD->isImplicit()) {
-      IRNameStr = new char[MeshName.size() + FieldName.size() + 16];
       sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), FieldName.str().c_str());
       llvm::Value *FieldPtr = Builder.CreateStructGEP(MeshBaseAddr, i+rank+1, IRNameStr);
       
@@ -84,8 +287,6 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
       Builder.CreateStore(FieldPtr, FieldVar);
       MeshMembers[FieldName] = std::make_pair(Builder.CreateLoad(FieldVar) , Ty);
       MeshMembers[FieldName].first->setName(FieldVar->getName());
-
-      delete []IRNameStr;
     }
   }
 
@@ -219,8 +420,8 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
       if (it->getName().startswith(MeshName) && isMeshMember(it, isSigned, typeStr)) {
 
         // SC_TODO - need to fix this...  At present, I'm not sure why we
-        // even need it...  It should refect wether the current argument
-        // is a signed value or not... 
+        // even need it...  It should reflect the current argument
+        // is a signed value or not???
         isSigned = false;
         
         args.push_back(llvm::ConstantInt::get(Int32Ty, 1));
@@ -254,8 +455,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
       } else {
         args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
         signedArgs.push_back(llvm::ConstantInt::get(Int32Ty, 0));
-	gs = llvm::ConstantDataArray::getString(getLLVMContext(),
-						(*it).getName());
+        gs = llvm::ConstantDataArray::getString(getLLVMContext(), (*it).getName());
         meshArgs.push_back(gs);
 
         // SC_TODO: these are now named MeshName.[width|height|depth]
@@ -267,7 +467,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
         if (it->getName().startswith(FieldWidthStr)   ||  
             it->getName().startswith(FieldHeightStr)  ||
             it->getName().startswith(FieldDepthStr)) {
-	  gs = llvm::ConstantDataArray::getString(getLLVMContext(), "uint*");
+          gs = llvm::ConstantDataArray::getString(getLLVMContext(), "uint*");
           typeArgs.push_back(gs);
         } else {
           bool found = false;
@@ -374,9 +574,7 @@ void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
     }
     
     llvm::Value* ri = Builder.CreateAlloca(Int32Ty);
-    
     ranges.push_back(ri);
-    
     Builder.CreateStore(TranslateExprToValue(end), ri);
   }
   
@@ -471,32 +669,11 @@ void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
 
   llvm::CodeExtractor codeExtractor(region, &DT, false);
 
-  /*
-  typedef llvm::SetVector<llvm::Value *> ValueSet;
-  ValueSet ce_inputs, ce_outputs;
-  codeExtractor.findInputsOutputs(ce_inputs, ce_outputs);
-  ValueSet::iterator vsit, vsend;
-  
-  llvm::errs() << "*** forall body inputs\n";  
-  vsend = ce_inputs.end();
-  for(vsit = ce_inputs.begin(); vsit != vsend; vsit++) {
-    llvm::Value *v = *vsit;
-    llvm::errs() << "\t" << v->getName().str() << "\n";
-  }
-  
-  llvm::errs() << "*** forall body outputs\n";  
-  vsend = ce_outputs.end();
-  for(vsit = ce_outputs.begin(); vsit != vsend; vsit++) {
-    llvm::Value *v = *vsit;
-    llvm::errs() << "\t" << v->getName().str() << "\n";
-  }  
-  */
-
   llvm::Function *ForallArrayFn = codeExtractor.extractCodeRegion();
   
   ForallArrayFn->setName("forall_array");
     
-  if(isSequential() || isGPU()){
+  if (isSequential() || isGPU()) {
     llvm::BasicBlock *cbb = ret->getParent();
     ret->eraseFromParent();
     
@@ -509,7 +686,7 @@ void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
   typedef llvm::BasicBlock::iterator InstIterator;
   InstIterator I = CallBB->begin(), IE = CallBB->end();
   for( ; I != IE; ++I) {
-    if(llvm::CallInst *call = dyn_cast< llvm::CallInst >(I)) {
+    if (llvm::CallInst *call = dyn_cast< llvm::CallInst >(I)) {
       call->eraseFromParent();
       break;
     }
@@ -545,14 +722,14 @@ bool CodeGenFunction::hasCalledFn(llvm::Function *Fn, llvm::StringRef name) {
   for( ; BB != BB_end; ++BB) {
     InstIterator Inst = BB->begin(), Inst_end = BB->end();
     for( ; Inst != Inst_end; ++Inst) {
-      if(isCalledFn(Inst, name)) return true;
+      if (isCalledFn(Inst, name)) return true;
     }
   }
   return false;
 }
 
 bool CodeGenFunction::isCalledFn(llvm::Instruction *Instn, llvm::StringRef name) {
-  if(isa< llvm::CallInst >(Instn)) {
+  if (isa< llvm::CallInst >(Instn)) {
     llvm::CallInst *call = cast< llvm::CallInst >(Instn);
     llvm::Function *Fn = call->getCalledFunction();
     return Fn->getName() == name || hasCalledFn(Fn, name);
@@ -601,7 +778,6 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
       rank++;
   }
 
-  char *IRNameStr = new char[meshName.size() + 16]; 
   for(unsigned i = 0; i < rank; ++i) {
     //start.push_back(TranslateExprToValue(S.getStart(i)));
     //end.push_back(TranslateExprToValue(S.getEnd(i)));
@@ -640,8 +816,6 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
     ForallTripCount = Builder.CreateMul(ForallTripCount, msi);
   }
   
-  delete []IRNameStr;
-
   llvm::Value *indVar = Builder.CreateAlloca(Int32Ty, 0, name);
   // SC_TODO - This is likely confusing -- both sequential and
   // cpu appear to imply the same thing... 

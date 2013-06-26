@@ -4603,8 +4603,8 @@ TreeTransform<Derived>::TransformStructuredMeshType(TypeLocBuilder &TLB,
 
 template<typename Derived>
 QualType
-TreeTransform<Derived>::TransformRectlinearMeshType(TypeLocBuilder &TLB,
-                                                    RectlinearMeshTypeLoc TL) {
+TreeTransform<Derived>::TransformRectilinearMeshType(TypeLocBuilder &TLB,
+                                                     RectilinearMeshTypeLoc TL) {
   return QualType();
 }
 

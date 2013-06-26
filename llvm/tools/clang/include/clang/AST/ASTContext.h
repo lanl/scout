@@ -1058,7 +1058,7 @@ public:
   // ===== Scout =========================================================================
   QualType getUniformMeshType(const UniformMeshDecl *Decl) const;
   QualType getStructuredMeshType(const StructuredMeshDecl *Decl) const;
-  QualType getRectlinearMeshType(const RectlinearMeshDecl *Decl) const;
+  QualType getRectilinearMeshType(const RectilinearMeshDecl *Decl) const;
   QualType getUnstructuredMeshType(const UnstructuredMeshDecl *Decl) const;
   // =====================================================================================
 
@@ -1161,7 +1161,7 @@ public:
   // ===== Scout ===================================================================
   QualType getUniformMeshDeclType(const UniformMeshDecl *Decl) const;
   QualType getStructuredMeshDeclType(const StructuredMeshDecl *Decl) const;
-  QualType getRectlinearMeshDeclType(const RectlinearMeshDecl *Decl) const;
+  QualType getRectilinearMeshDeclType(const RectilinearMeshDecl *Decl) const;
   QualType getUnstructuredMeshDeclType(const UnstructuredMeshDecl *Decl) const;
   // ===============================================================================
   /// \brief Return the unique type for "size_t" (C99 7.17), defined in

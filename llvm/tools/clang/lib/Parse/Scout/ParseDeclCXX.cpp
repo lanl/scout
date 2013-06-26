@@ -234,19 +234,23 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
           switch(FieldLoc) {
 
             case MeshFieldDecl::CellLoc:
-              UM->addCellField(FDecl);
+              UM->setHasCellData(true);
+              //UM->addCellField(FDecl);
               break;
 
             case MeshFieldDecl::VertexLoc:
-              UM->addVertexField(FDecl);
+              UM->setHasVertexData(true);
+              //UM->addVertexField(FDecl);
               break;
 
             case MeshFieldDecl::FaceLoc:
-              UM->addFaceField(FDecl);
+              UM->setHasFaceData(true);
+              //UM->addFaceField(FDecl);
               break;
 
             case MeshFieldDecl::EdgeLoc:
-              UM->addEdgeField(FDecl);
+              UM->setHasEdgeData(true);
+              //UM->addEdgeField(FDecl);
               break;
 
             case MeshFieldDecl::BuiltIn:
@@ -274,13 +278,10 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
       valid = false;
     }
 
-    bool externalloc = false;
     if (Tok.getKind() == tok::kw_extern) {
-      externalloc = true;
-      ConsumeToken();
+      Diag(Tok, diag::err_extern_mesh_field);      
+      ConsumeToken();      
     }
-
-    Callback.setFieldExternAlloc(externalloc);
 
     ParseMeshDeclaration(DS, Callback, FieldLoc);
 

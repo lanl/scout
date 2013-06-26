@@ -852,6 +852,16 @@ bool CursorVisitor::VisitFieldDecl(FieldDecl *D) {
   return false;
 }
 
+bool CursorVisitor::VisitMeshFieldDecl(MeshFieldDecl *D) {
+  if (VisitDeclaratorDecl(D))
+    return true;
+
+  if (Expr *BitWidth = D->getBitWidth())
+    return Visit(MakeCXCursor(BitWidth, StmtParent, TU, RegionOfInterest));
+
+  return false;
+}
+
 bool CursorVisitor::VisitVarDecl(VarDecl *D) {
   if (VisitDeclaratorDecl(D))
     return true;
@@ -3524,6 +3534,8 @@ CXString clang_getCursorKindSpelling(enum CXCursorKind Kind) {
       return cxstring::createRef("ClassDecl");
   case CXCursor_FieldDecl:
       return cxstring::createRef("FieldDecl");
+  case CXCursor_MeshFieldDecl:
+      return cxstring::createRef("MeshFieldDecl");      
   case CXCursor_VarDecl:
       return cxstring::createRef("VarDecl");
   case CXCursor_ParmDecl:
@@ -4508,6 +4520,7 @@ CXCursor clang_getCursorDefinition(CXCursor C) {
   case Decl::TemplateTypeParm:
   case Decl::EnumConstant:
   case Decl::Field:
+  case Decl::MeshField: // ===== Scout 
   case Decl::MSProperty:
   case Decl::IndirectField:
   case Decl::ObjCIvar:

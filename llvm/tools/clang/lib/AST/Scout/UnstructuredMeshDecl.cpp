@@ -22,21 +22,3 @@
 
 using namespace clang;
 
-
-UnstructuredMeshDecl*
-UnstructuredMeshDecl::Create(ASTContext& C, Kind K, DeclContext* DC,
-                             SourceLocation StartLoc, SourceLocation IdLoc,
-                             IdentifierInfo* Id, UnstructuredMeshDecl* PrevDecl){
-  
-  UnstructuredMeshDecl* M =
-  new (C) UnstructuredMeshDecl(K, DC, StartLoc, IdLoc, Id, PrevDecl);
-  
-  RecordDecl* SR =
-  RecordDecl::Create(C, TTK_Struct, DC, IdLoc,
-                     IdLoc, &C.Idents.get(M->getName()));
-  
-  M->setStructRep(SR);
-  
-  C.getTypeDeclType(M);
-  return M;
-}

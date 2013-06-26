@@ -666,30 +666,6 @@ static bool LookupDirect(Sema &S, LookupResult &R, const DeclContext *DC) {
   for (DeclContext::lookup_const_iterator I = DR.begin(), E = DR.end(); I != E;
        ++I) {
     NamedDecl *D = *I;
-    // ===== Scout ========================================================================
-    // Convert mesh struct rep to mesh decl - used to interface with Scout LLDB debugger.
-    if(ValueDecl* vd = dyn_cast<ValueDecl>(D)){
-      if(const RecordType* rt =
-         dyn_cast<RecordType>(vd->getType().getNonReferenceType().getTypePtr())){
-        RecordDecl* rd = rt->getDecl();
-        RecordDecl::field_iterator itr = rd->field_begin();
-        if(itr != rd->field_end() && 
-           itr->getName().str() == "mesh_flags__"){
-          UniformMeshDecl* MD =
-            UniformMeshDecl::
-              CreateFromStructRep(S.Context,
-                                  clang::Decl::UniformMesh,
-                                  D->getDeclContext(),
-                                  &S.Context.Idents.get(rd->getName()),
-                                  rd);
-          
-          UniformMeshType* mt = new UniformMeshType(MD);
-          
-          vd->setType(S.Context.getLValueReferenceType(QualType(mt, 0)));
-        }
-      }
-    }
-    // ====================================================================================
     if ((D = R.getAcceptableDecl(D))) {
       R.addDecl(D);
       Found = true;
@@ -2030,7 +2006,7 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
     // ===== Scout ========================================================================
     case Type::UniformMesh:
     case Type::StructuredMesh:
-    case Type::RectlinearMesh:
+    case Type::RectilinearMesh:
     case Type::UnstructuredMesh: {
         //MeshDecl *Mesh
         //= cast<MeshDecl>(cast<MeshType>(T)->getDecl());

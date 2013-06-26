@@ -21,21 +21,3 @@
 #include <algorithm>
 
 using namespace clang;
-
-StructuredMeshDecl*
-StructuredMeshDecl::Create(ASTContext& C, Kind K, DeclContext* DC,
-                           SourceLocation StartLoc, SourceLocation IdLoc,
-                           IdentifierInfo* Id, StructuredMeshDecl* PrevDecl){
-  
-  StructuredMeshDecl* M =
-  new (C) StructuredMeshDecl(K, DC, StartLoc, IdLoc, Id, PrevDecl);
-  
-  RecordDecl* SR =
-  RecordDecl::Create(C, TTK_Struct, DC, IdLoc,
-                     IdLoc, &C.Idents.get(M->getName()));
-  
-  M->setStructRep(SR);
-  
-  C.getTypeDeclType(M);
-  return M;
-}

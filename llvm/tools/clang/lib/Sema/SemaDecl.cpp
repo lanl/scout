@@ -364,6 +364,11 @@ DeclSpec::TST Sema::isTagName(IdentifierInfo &II, Scope *S) {
       case TTK_Union:  return DeclSpec::TST_union;
       case TTK_Class:  return DeclSpec::TST_class;
       case TTK_Enum:   return DeclSpec::TST_enum;
+
+      case TTK_UniformMesh: return DeclSpec::TST_uniform_mesh;
+      case TTK_StructuredMesh: return DeclSpec::TST_structured_mesh;
+      case TTK_RectilinearMesh: return DeclSpec::TST_rectilinear_mesh;
+      case TTK_UnstructuredMesh: return DeclSpec::TST_unstructured_mesh;
       }
     }
 
@@ -548,6 +553,26 @@ static bool isTagTypeWithMissingTag(Sema &SemaRef, LookupResult &Result,
         TagName = "union";
         FixItTagName = "union ";
         break;
+
+      case TTK_UniformMesh: 
+        TagName = "uniform mesh";
+        FixItTagName = "uniform mesh ";
+        break;
+
+      case TTK_StructuredMesh:
+        TagName = "structured mesh";
+        FixItTagName = "structured mesh ";
+        break;
+
+      case TTK_RectilinearMesh: 
+        TagName = "rectilinear mesh";
+        FixItTagName = "rectilinear mesh ";
+        break;
+
+      case TTK_UnstructuredMesh:
+        TagName = "unstructured mesh";
+        FixItTagName = "unstructured mesh ";
+        break;  
     }
 
     SemaRef.Diag(NameLoc, diag::err_use_of_tag_name_without_tag)
@@ -3044,7 +3069,10 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
       DS.getTypeSpecType() == DeclSpec::TST_union ||
       DS.getTypeSpecType() == DeclSpec::TST_enum ||     
       // ===== Scout - handle mesh
-      DS.getTypeSpecType() == DeclSpec::TST_mesh) {
+      DS.getTypeSpecType() == DeclSpec::TST_uniform_mesh     || 
+      DS.getTypeSpecType() == DeclSpec::TST_structured_mesh  ||
+      DS.getTypeSpecType() == DeclSpec::TST_rectilinear_mesh ||
+      DS.getTypeSpecType() == DeclSpec::TST_unstructured_mesh) {
     TagD = DS.getRepAsDecl();
 
     if (!TagD) // We probably had an error
@@ -3192,7 +3220,10 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
     // In C, we allow this as a (popular) extension / bug. Don't bother
     // producing further diagnostics for redundant qualifiers after this.
     // ===== Scout - do not emit empty declaration warning if this is a mesh
-    if (DS.getTypeSpecType() != DeclSpec::TST_mesh) {
+    if (DS.getTypeSpecType() != DeclSpec::TST_uniform_mesh      &&
+        DS.getTypeSpecType() != DeclSpec::TST_structured_mesh   &&
+        DS.getTypeSpecType() != DeclSpec::TST_rectilinear_mesh  &&
+        DS.getTypeSpecType() != DeclSpec::TST_unstructured_mesh) {
       Diag(DS.getLocStart(), diag::ext_no_declarators) << DS.getSourceRange();
     }
     return TagD;
@@ -12098,7 +12129,7 @@ void Sema::ActOnPragmaWeakAlias(IdentifierInfo* Name,
 }
 
 // ===== Scout =================================================================================
-// Called at the begining part of a mesh definition
+// Called at the beginning part of a mesh definition
 Decl* Sema::ActOnMeshDefinition(Scope* S,
                                 tok::TokenKind MeshType,
                                 SourceLocation KWLoc,
@@ -12107,35 +12138,51 @@ Decl* Sema::ActOnMeshDefinition(Scope* S,
                                 MultiTemplateParamsArg TemplateParameterLists) {
 
   LookupResult LR(*this, Name, NameLoc, LookupTagName, Sema::NotForRedeclaration);
-  UniformMeshDecl* MD;
-  UnstructuredMeshDecl* USMD;
 
   switch(MeshType) {
     
-    case tok::kw_uniform:
-      MD = UniformMeshDecl::Create(Context, Decl::UniformMesh, CurContext,
-                                   KWLoc, NameLoc, Name, 0);
-      PushOnScopeChains(MD, S, true);
-      return MD;
+    case tok::kw_uniform: 
+      {
+        UniformMeshDecl *MD;
+        MD = UniformMeshDecl::Create(Context, CurContext,
+                                     KWLoc, NameLoc, Name, 0);
+        PushOnScopeChains(MD, S, true);
+        return MD;
+      }
       break;
 
 
     case tok::kw_unstructured:
-      USMD = UnstructuredMeshDecl::Create(Context, Decl::UnstructuredMesh, CurContext,
-                                          KWLoc, NameLoc, Name, 0);
-      PushOnScopeChains(USMD, S, true);
-      return USMD;
+      {
+        UnstructuredMeshDecl *USMD;
+        USMD = UnstructuredMeshDecl::Create(Context, CurContext,
+                                            KWLoc, NameLoc, Name, 0);
+        PushOnScopeChains(USMD, S, true);
+        return USMD;
+      }
       break;
 
 
-    case tok::kw_rectlinear:
-      Diag(NameLoc, diag::err_mesh_not_implemented);
-      return NULL;
+    case tok::kw_rectilinear:
+      {
+        RectilinearMeshDecl *RMD;
+        RMD = RectilinearMeshDecl::Create(Context, CurContext,
+                                          KWLoc, NameLoc, Name, 0);
+        PushOnScopeChains(RMD, S, true);
+        Diag(NameLoc, diag::err_mesh_not_implemented);        
+        return RMD;
+      }
       break;
 
     case tok::kw_structured:
-      Diag(NameLoc, diag::err_mesh_not_implemented);
-      return NULL;
+      {
+        StructuredMeshDecl *SMD;
+        SMD = StructuredMeshDecl::Create(Context, CurContext, 
+                                         KWLoc, NameLoc, Name, 0);
+        PushOnScopeChains(SMD, S, true);
+        Diag(NameLoc, diag::err_mesh_not_implemented);
+        return SMD;
+      }
       break;
 
     default:
@@ -12346,8 +12393,8 @@ bool Sema::IsValidDeclInMesh(Decl* D){
   // SC_TODO - why both mesh decl and record decl here?  Should we have
   // MeshFieldDecl instead of RecordDecl?
   if (MeshDecl* MD = dyn_cast<MeshDecl>(D)) {
-    for(MeshDecl::mesh_field_iterator itr = MD->mesh_field_begin(),
-        itrEnd = MD->mesh_field_end(); itr != itrEnd; ++itr){
+    for(MeshDecl::field_iterator itr = MD->field_begin(),
+        itrEnd = MD->field_end(); itr != itrEnd; ++itr){
       FieldDecl* FD = *itr;
       if (!IsValidMeshField(FD)) {
         return false;

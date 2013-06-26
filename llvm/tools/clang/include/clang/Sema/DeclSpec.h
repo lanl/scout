@@ -270,7 +270,10 @@ public:
   static const TST TST_bool = clang::TST_bool;
 
   // scout - Scout types
-  static const TST TST_mesh = clang::TST_mesh;
+  static const TST TST_uniform_mesh = clang::TST_uniform_mesh;
+  static const TST TST_structured_mesh = clang::TST_structured_mesh;
+  static const TST TST_rectilinear_mesh = clang::TST_rectilinear_mesh;  
+  static const TST TST_unstructured_mesh = clang::TST_unstructured_mesh;
   static const TST TST_bool2 = clang::TST_bool2;
   static const TST TST_bool3 = clang::TST_bool3;
   static const TST TST_bool4 = clang::TST_bool4;
@@ -426,10 +429,10 @@ private:
 public:
   static bool isDeclRep(TST T) {
     return (T == TST_enum || T == TST_struct ||
-            T == TST_union || T == TST_class
+            T == TST_union || T == TST_class ||
     // scout - added mesh TST
-            || T == TST_mesh
-            );
+            T == TST_uniform_mesh     || T == TST_structured_mesh ||
+            T == TST_rectilinear_mesh || T == TST_unstructured_mesh);
   }
 
   DeclSpec(AttributeFactory &attrFactory)

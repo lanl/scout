@@ -526,11 +526,13 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case Field:
     case ObjCAtDefsField:
     case ObjCIvar:
+    case MeshField: // ===== Scout 
       return IDNS_Member;
     // ===== Scout ============================================================
+    case Mesh:
     case UniformMesh:
     case StructuredMesh:
-    case RectlinearMesh:
+    case RectilinearMesh:
     case UnstructuredMesh:
       return IDNS_Tag | IDNS_Type;    
     // ========================================================================
@@ -890,25 +892,27 @@ DeclContext *DeclContext::getPrimaryContext() {
       }
 
       return Tag;
-    }
-
     // ===== Scout ============================================================
     //
-    if (DeclKind == Decl::UniformMesh    ||
-        DeclKind == Decl::StructuredMesh ||
-        DeclKind == Decl::RectlinearMesh ||
-        DeclKind == Decl::UnstructuredMesh) {
+    } else if (DeclKind >= Decl::firstMesh && DeclKind <= Decl::lastMesh) {
+      // If this is a mesh type that has a definition or is currently
+      // being defined, that definition is our primary context.
+      MeshDecl *M = cast<MeshDecl>(this);
+      assert(isa<MeshType>(M->TypeForDecl) ||
+             isa<InjectedClassNameType>(M->TypeForDecl));
 
-        MeshDecl *Mesh = cast<MeshDecl>(this);
-        assert(isa<MeshType>(Mesh->TypeForDecl) ||
-               isa<InjectedClassNameType>(Mesh->TypeForDecl));
-      
-      
-        if (MeshDecl *Def = Mesh->getDefinition()) {
-          return Def;
-        }
-      
-      return Mesh;
+      if (MeshDecl *Def = M->getDefinition())
+        return Def;
+
+      if (!isa<InjectedClassNameType>(M->TypeForDecl)) {
+        const MeshType *MeshTy = cast<MeshType>(M->TypeForDecl);
+        if (MeshTy->isBeingDefined())
+          // FIXME: is it necessarily being defined in the decl
+          // that owns the type?
+          return MeshTy->getDecl();
+      }
+
+      return M;
     }
     //
     // ========================================================================

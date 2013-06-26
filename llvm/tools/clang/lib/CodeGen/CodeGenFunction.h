@@ -733,6 +733,7 @@ public:
 
   // Scout forall explicit induction variable.
   llvm::Value *ForallIndVar;
+  llvm::Value *LoopIndexVar;
   // Scout forall implicit induction variables.
   Vector ScoutIdxVars;
   // Scout mesh dimension sizes.
@@ -747,7 +748,7 @@ public:
   const ForAllArrayStmt* CurrentForAllArrayStmt;
   
   inline llvm::Value *getGlobalIdx() {
-    return Builder.CreateLoad(ForallIndVar);
+    return LoopIndexVar; // Builder.CreateLoad(ForallIndVar);
   }
 
   bool isGPU() {
@@ -2354,10 +2355,14 @@ public:
   // ===== Scout ==============================================================
   // 
   llvm::Value *GetMeshBaseAddr(const ForAllStmt &S);
+
   void GetMeshDimValues(const ForAllStmt &S,
                         llvm::SmallVector<llvm::Value*, 3> &MeshDimensions,
                         llvm::Value* MeshBaseAddr);
 
+  void EmitForallStmt(const ForAllStmt &S);
+  void EmitForallBody(const ForAllStmt &S);
+  
   void EmitForAllStmtWrapper(const ForAllStmt &S);
   bool hasCalledFn(llvm::Function *Fn, llvm::StringRef name);
   bool isCalledFn(llvm::Instruction *Instn, llvm::StringRef name);
@@ -2375,7 +2380,7 @@ public:
   LValue EmitScoutColorDeclRefLValue(const NamedDecl *ND);
   LValue EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND);
   LValue EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E);
-  LValue EmitScoutMemberExpr(const MemberExpr *E, const VarDecl *VD);
+  LValue EmitScoutMemberExpr(LValue base, const MeshFieldDecl *field);
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
   LValue EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef memberName,
                             MySmallVector foo = MySmallVector());

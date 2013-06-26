@@ -20,8 +20,8 @@ TypePrinter::printStructuredMeshBefore(const StructuredMeshType *T,
 
 
 void
-TypePrinter::printRectlinearMeshBefore(const RectlinearMeshType *T,
-                                       raw_ostream &OS)
+TypePrinter::printRectilinearMeshBefore(const RectilinearMeshType *T,
+                                        raw_ostream &OS)
 {
   MeshDecl* MD = T->getDecl();
   OS << MD->getIdentifier()->getName().str();
@@ -49,7 +49,7 @@ TypePrinter::printStructuredMeshAfter(const StructuredMeshType *T,
 
 
 void
-TypePrinter::printRectlinearMeshAfter(const RectlinearMeshType *T,
+TypePrinter::printRectilinearMeshAfter(const RectilinearMeshType *T,
                                       raw_ostream &OS)
 { }
 
