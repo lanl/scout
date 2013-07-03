@@ -88,13 +88,12 @@ NON_CANONICAL_UNLESS_DEPENDENT_TYPE(UnaryTransform, Type)
 ABSTRACT_TYPE(Tag, Type)
 TYPE(Record, TagType)
 TYPE(Enum, TagType)
-
 // ===== Scout =================================================================================
-ABSTRACT_TYPE(Mesh, Type)
-TYPE(UniformMesh, MeshType)
-TYPE(StructuredMesh, MeshType)
-TYPE(RectilinearMesh, MeshType)
-TYPE(UnstructuredMesh, MeshType)
+TYPE(Mesh, TagType)
+  TYPE(UniformMesh, MeshType)
+  TYPE(StructuredMesh, MeshType)
+  TYPE(RectilinearMesh, MeshType)
+  TYPE(UnstructuredMesh, MeshType)
 // =============================================================================================
 NON_CANONICAL_TYPE(Elaborated, Type)
 NON_CANONICAL_TYPE(Attributed, Type)
@@ -127,6 +126,7 @@ LEAF_TYPE(ObjCInterface)
 LEAF_TYPE(TemplateTypeParm)
 
 // ===== Scout =================================================================================
+LEAF_TYPE(Mesh)
 LEAF_TYPE(UniformMesh)
 LEAF_TYPE(StructuredMesh)
 LEAF_TYPE(RectilinearMesh)

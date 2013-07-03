@@ -32,6 +32,11 @@ class Selector;
 class Stmt;
 class TagDecl;
 
+//===--------------------------------------------------------------------===//
+// Scout 
+class MeshFieldDecl;
+//===--------------------------------------------------------------------===//
+
 /// \brief Enumeration describing the result of loading information from
 /// an external source.
 enum ExternalLoadResult {
@@ -253,6 +258,37 @@ public:
     return false;
   }
   
+  //===--------------------------------------------------------------------===//
+  // Scout
+  //
+  /// \brief Perform layout on the given mesh.
+  ///
+  /// This routine allows the external AST source to provide an specific 
+  /// layout for a mesh, overriding the layout that would normally be
+  /// constructed. It is intended for clients who receive specific layout
+  /// details rather than source code (such as LLDB). The client is expected
+  /// to fill in the mesh field offsets, and mesh (object) size.
+  ///
+  /// \param Record The record whose layout is being requested.
+  ///
+  /// \param Size The final size of the mesh, in bits.
+  ///
+  /// \param Alignment The final alignment of the mesh, in bits.
+  ///
+  /// \param FieldOffsets The offset of each of the fields within the record,
+  /// expressed in bits. All of the fields must be provided with offsets.
+  ///
+  /// \returns true if the record layout was provided, false otherwise.
+  virtual bool 
+  layoutMeshType(const MeshDecl *MD,
+                 uint64_t &Size, uint64_t &Alignment,
+                 llvm::DenseMap<const MeshFieldDecl *, uint64_t> &FieldOffsets)
+  { 
+    return false;
+  }
+  //===--------------------------------------------------------------------===//
+
+
   //===--------------------------------------------------------------------===//
   // Queries for performance analysis.
   //===--------------------------------------------------------------------===//

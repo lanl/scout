@@ -48,6 +48,38 @@ CodeGenTypes::~CodeGenTypes() {
     delete &*I++;
 }
 
+void CodeGenTypes::addRecordTypeName(const MeshDecl *RD,
+                                     llvm::StructType *Ty,
+                                     StringRef suffix) {
+  SmallString<256> TypeName;
+  llvm::raw_svector_ostream OS(TypeName);
+  OS << RD->getKindName() << '.';
+  
+  // Name the codegen type after the typedef name
+  // if there is no tag type name available
+  if (RD->getIdentifier()) {
+    // FIXME: We should not have to check for a null decl context here.
+    // Right now we do it because the implicit Obj-C decls don't have one.
+    if (RD->getDeclContext())
+      RD->printQualifiedName(OS);
+    else
+      RD->printName(OS);
+  } else if (const TypedefNameDecl *TDD = RD->getTypedefNameForAnonDecl()) {
+    // FIXME: We should not have to check for a null decl context here.
+    // Right now we do it because the implicit Obj-C decls don't have one.
+    if (TDD->getDeclContext())
+      TDD->printQualifiedName(OS);
+    else
+      TDD->printName(OS);
+  } else
+    OS << "anon";
+
+  if (!suffix.empty())
+    OS << suffix;
+
+  Ty->setName(OS.str());
+}
+
 void CodeGenTypes::addRecordTypeName(const RecordDecl *RD,
                                      llvm::StructType *Ty,
                                      StringRef suffix) {
@@ -612,11 +644,17 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
   // SC_TODO - We have hard-coded the way we generate field data for
   // meshes. For some of our explorations (e.g. SOA vs. AOS) we will
   // need to find a more flexible approach for this...
+  case Type::Mesh:
   case Type::UniformMesh: 
   case Type::StructuredMesh: 
-  case Type::RectlinearMesh: 
+  case Type::RectilinearMesh: 
   case Type::UnstructuredMesh:
-    return ConvertScoutMeshType(OT);
+    // SC_TODO - this doesn't seem like something we should implement 
+    // as there are no comparisons for dealing with structs/records 
+    // here that we can build upon (conversion between meshes is 
+    // certainly a non-trivial operation in the complex cases).
+    ResultType = ConvertScoutMeshType(OT);
+    break;
   //
   // ==================================================================================  
   case Type::Enum: {
@@ -760,8 +798,8 @@ CodeGenTypes::getCGRecordLayout(const RecordDecl *RD) {
   return *Layout;
 }
 
-/// ConvertMeshDeclType - Lay out a mesh decl type.
-llvm::StructType *CodeGenTypes::ConvertRecordDeclType(const MeshDecl *MD) {
+/// ConvertMeshDeclType - Layout a mesh decl type.
+llvm::StructType *CodeGenTypes::ConvertMeshDeclType(const MeshDecl *MD) {
   // TagDecl's are not necessarily unique, instead use the (clang)
   // type connected to the decl.
   const Type *Key = Context.getTagDeclType(MD).getTypePtr();
@@ -783,7 +821,7 @@ llvm::StructType *CodeGenTypes::ConvertRecordDeclType(const MeshDecl *MD) {
   
   // If converting this type would cause us to infinitely loop, don't do it!
   if (!isSafeToConvert(MD, *this)) {
-    DeferredRecords.push_back(MD);
+    DeferredMeshes.push_back(MD);
     return Ty;
   }
 
@@ -792,8 +830,8 @@ llvm::StructType *CodeGenTypes::ConvertRecordDeclType(const MeshDecl *MD) {
   assert(InsertResult && "Recursively compiling a mesh?");
   
    // Layout fields. foobar
-  CGRecordLayout *Layout = ComputeRecordLayout(RD, Ty);
-  CGRecordLayouts[Key] = Layout;
+  CGMeshLayout *Layout = ComputeMeshLayout(MD, Ty);
+  CGMeshLayouts[Key] = Layout;
 
   // We're done laying out this struct.
   bool EraseResult = RecordsBeingLaidOut.erase(Key); (void)EraseResult;
@@ -809,7 +847,7 @@ llvm::StructType *CodeGenTypes::ConvertRecordDeclType(const MeshDecl *MD) {
   // structs as well.
   if (RecordsBeingLaidOut.empty())
     while (!DeferredRecords.empty())
-      ConvertRecordDeclType(DeferredRecords.pop_back_val());
+      ConvertRecordDeclType(DeferredMeshes.pop_back_val());
 
   return Ty;
 }

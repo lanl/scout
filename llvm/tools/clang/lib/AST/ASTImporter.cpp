@@ -649,7 +649,8 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
   // ===== Scout ==============================================================
   // We do not need to test the structural equivalance of meshes so simply 
   // return false.  
-  // SC_TODO - Not sure why we state this...  Why no equivalance?  
+  // SC_TODO - Not sure why we state this...  Why no equivalance?
+  case Type::Mesh:
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
@@ -2870,8 +2871,7 @@ Decl *ASTNodeImporter::VisitMeshFieldDecl(MeshFieldDecl *D) {
                                                  Importer.Import(D->getInnerLocStart()),
                                                  Loc, Name.getAsIdentifierInfo(),
                                                  T, TInfo, BitWidth, D->isMutable(),
-                                                 D->getInClassInitStyle(),
-                                                 D->meshLocation());
+                                                 D->getInClassInitStyle());
   ToField->setAccess(D->getAccess());
   ToField->setLexicalDeclContext(LexicalDC);
   if (ToField->hasInClassInitializer())

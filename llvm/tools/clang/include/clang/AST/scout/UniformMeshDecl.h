@@ -60,34 +60,54 @@
 
 namespace clang {
 
+// ----- UniformMeshDecl 
+// 
 class UniformMeshDecl : public MeshDecl {
+
+  friend void TagDecl::startDefinition();
+
 protected:
-  UniformMeshDecl(Kind DK, DeclContext* DC,
-                  SourceLocation L, SourceLocation StartL,
-                  IdentifierInfo* Id, UniformMeshDecl* PrevDecl)
-  : MeshDecl(DK, DC, L, StartL, Id, PrevDecl){
-    
-  }
-  
+  UniformMeshDecl(DeclContext* DC, 
+                  SourceLocation L, 
+                  SourceLocation StartL,
+                  IdentifierInfo* Id, 
+                  UniformMeshDecl* PrevDecl);
+
 public:
-  static UniformMeshDecl* Create(ASTContext& C, Kind DK, DeclContext* DC,
-                                 SourceLocation StartLoc, SourceLocation IdLoc,
-                                 IdentifierInfo* Id, UniformMeshDecl* PrevDecl);
-  
-  
-  static UniformMeshDecl* CreateFromStructRep(ASTContext& C,
-                                              Kind DK,
-                                              DeclContext* DC,
-                                              IdentifierInfo* Id,
-                                              RecordDecl* SR);
-  
+  static UniformMeshDecl *Create(const ASTContext &C, 
+                                 DeclContext *DC,
+                                 SourceLocation StartLoc,
+                                 SourceLocation IdLoc,
+                                 IdentifierInfo *Id, 
+                                 UniformMeshDecl* PrevDecl = 0);
+
+  static UniformMeshDecl *CreateDeserialized(const ASTContext &C, 
+                                             unsigned ID); 
+
+  const UniformMeshDecl *getPreviousDecl() const {
+    return cast_or_null<UniformMeshDecl>(TagDecl::getPreviousDecl());
+  }
+
+  UniformMeshDecl *getPreviousDecl() {
+    return cast_or_null<UniformMeshDecl>(TagDecl::getPreviousDecl());
+  }
+
+  const UniformMeshDecl *getMostRecentDecl() const {
+    return cast<UniformMeshDecl>(TagDecl::getMostRecentDecl());
+  }
+
+  UniformMeshDecl *getMostRecentDecl() {
+    return cast<UniformMeshDecl>(TagDecl::getMostRecentDecl());
+  }
+
+  //void addMember(Decl *D);
+
   static bool classof(const Decl* D) { return classofKind(D->getKind()); }
   static bool classof(const UniformMeshDecl* D) { return true; }
   static bool classofKind(Kind K) { return K == UniformMesh; }
+};
 
-  void addImplicitFields(SourceLocation Loc, const ASTContext &C);
- 
-}; 
+
   
 } // end namespace clang
 

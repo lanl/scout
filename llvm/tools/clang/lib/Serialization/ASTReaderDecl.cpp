@@ -227,6 +227,8 @@ namespace clang {
     void VisitEnumDecl(EnumDecl *ED);
     RedeclarableResult VisitRecordDeclImpl(RecordDecl *RD);
     void VisitRecordDecl(RecordDecl *RD) { VisitRecordDeclImpl(RD); }
+    RedeclarableResult VisitMeshDeclImpl(MeshDecl *MD);    
+    void VisitMeshDecl(MeshDecl *MD) { VisitMeshDeclImpl(MD); }    
     RedeclarableResult VisitCXXRecordDeclImpl(CXXRecordDecl *D);
     void VisitCXXRecordDecl(CXXRecordDecl *D) { VisitCXXRecordDeclImpl(D); }
     RedeclarableResult VisitClassTemplateSpecializationDeclImpl(
@@ -480,6 +482,12 @@ ASTDeclReader::VisitRecordDeclImpl(RecordDecl *RD) {
   RD->setAnonymousStructOrUnion(Record[Idx++]);
   RD->setHasObjectMember(Record[Idx++]);
   RD->setHasVolatileMember(Record[Idx++]);
+  return Redecl;
+}
+
+ASTDeclReader::RedeclarableResult
+ASTDeclReader::VisitMeshDeclImpl(MeshDecl *MD) {
+  RedeclarableResult Redecl = VisitTagDecl(MD);
   return Redecl;
 }
 
@@ -2169,9 +2177,8 @@ Decl *ASTReader::ReadDeclRecord(DeclID ID) {
     D = FieldDecl::CreateDeserialized(Context, ID);
     break;
   case DECL_MESHFIELD:
-    D = MeshFieldDecl::CreateDeserialized(Context, ID,
-                                          // SC_TODO - need to fix this! 
-                                          MeshFieldDecl::UnknownLoc);
+    D = MeshFieldDecl::CreateDeserialized(Context, ID);
+                                          
     break;    
   case DECL_INDIRECTFIELD:
     D = IndirectFieldDecl::CreateDeserialized(Context, ID);

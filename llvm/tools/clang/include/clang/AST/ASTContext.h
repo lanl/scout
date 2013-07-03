@@ -49,6 +49,7 @@ namespace llvm {
 namespace clang {
   class FileManager;
   class ASTRecordLayout;
+  class ASTMeshLayout;
   class BlockExpr;
   class CharUnits;
   class DiagnosticsEngine;
@@ -138,6 +139,13 @@ class ASTContext : public RefCountedBase<ASTContext> {
   /// This is lazily created.  This is intentionally not serialized.
   mutable llvm::DenseMap<const RecordDecl*, const ASTRecordLayout*>
     ASTRecordLayouts;
+
+  /// \brief A cache mapping from MeshDecls to ASTMeshLayouts.
+  ///
+  /// This is lazily created.  This is intentionally not serialized.
+  mutable llvm::DenseMap<const MeshDecl*, const ASTMeshLayout*>
+    ASTMeshLayouts;
+
   mutable llvm::DenseMap<const ObjCContainerDecl*, const ASTRecordLayout*>
     ObjCLayouts;
 
@@ -1670,12 +1678,19 @@ public:
   const ASTRecordLayout &getASTRecordLayout(const RecordDecl *D) const;
 
   /// \brief Get or compute information about the layout of the specified
+  /// mesh, which indicates its size and field position information.
+  const ASTMeshLayout &getASTMeshLayout(const MeshDecl *D) const;
+
+  /// \brief Get or compute information about the layout of the specified
   /// Objective-C interface.
   const ASTRecordLayout &getASTObjCInterfaceLayout(const ObjCInterfaceDecl *D)
     const;
 
   void DumpRecordLayout(const RecordDecl *RD, raw_ostream &OS,
                         bool Simple = false) const;
+
+  void DumpMeshLayout(const MeshDecl *RD, raw_ostream &OS,
+                      bool Simple = false) const;
 
   /// \brief Get or compute information about the layout of the specified
   /// Objective-C implementation.

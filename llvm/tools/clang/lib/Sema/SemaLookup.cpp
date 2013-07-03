@@ -2007,10 +2007,14 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
       break;
 
     // ===== Scout ========================================================================
+    case Type::Mesh:
     case Type::UniformMesh:
     case Type::StructuredMesh:
     case Type::RectilinearMesh:
     case Type::UnstructuredMesh: {
+        // SC_TODO -- what are we doing here?  Why is this commented out?  
+        // Shouldn't we be doing something like Type::Record below????
+      
         //MeshDecl *Mesh
         //= cast<MeshDecl>(cast<MeshType>(T)->getDecl());
         //addAssociatedClassesAndNamespaces(Result, Mesh);

@@ -52,15 +52,35 @@
  * ##### 
  */ 
 
-#ifndef __SC_CLANG_MESH_DECLS_H__
-#define __SC_CLANG_MESH_DECLS_H__
-
-#include "clang/AST/scout/UniformMeshDecl.h"
-#include "clang/AST/scout/UnstructuredMeshDecl.h"
-#include "clang/AST/scout/StructuredMeshDecl.h"
-#include "clang/AST/scout/RectilinearMeshDecl.h"
-
-#endif
+#include "clang/Sema/SemaInternal.h"
+#include "clang/Sema/Sema.h"
+using namespace clang;
+using namespace sema;
 
 
 
+bool Sema::isScoutSource(SourceLocation location) {
+  std::string bufferName = SourceMgr.getBufferName(location);
+
+  // LLDB uses a buffer named Parse
+  if(bufferName == "Parse"){
+    return true;
+  }
+
+  std::string ext;
+
+  bool valid = false;
+  for(int i = bufferName.length() - 1; i >= 0; --i){
+    if(bufferName[i] == '.'){
+      valid = true;
+      break;
+    }
+    ext.insert(0, 1, bufferName[i]);
+  }
+
+  if(!valid){
+    return false;
+  }
+
+  return ext == "sc" || ext == "sch";
+}

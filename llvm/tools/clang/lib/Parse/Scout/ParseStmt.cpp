@@ -335,8 +335,8 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 
     //Sema::ContextRAII contextRAII(Actions, const_cast<UniformMeshDecl*>(MD));
 
-    for(MeshDecl::mesh_field_iterator FI = MD->mesh_field_begin(),
-        FE = MD->mesh_field_end(); FI != FE; ++FI) {
+    for(MeshDecl::field_iterator FI = MD->field_begin(),
+        FE = MD->field_end(); FI != FE; ++FI) {
       MeshFieldDecl* FD = *FI;
 
       switch(FT) {
@@ -476,7 +476,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   } else { //renderall
     assert(!StmtsStack.empty());
 
-    MeshType::MeshDimensionVec dims = MT->dimensions();
+    MeshType::MeshDimensions dims = MT->dimensions();
 
     assert(dims.size() >= 1);
 #ifndef SC_USE_RT_REWRITER // for testing rewriter
@@ -523,7 +523,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     FAS = cast<ForAllStmt>(ForAllResult.get());
   }
 
-  MeshType::MeshDimensionVec dims = MT->dimensions();
+  MeshType::MeshDimensions dims = MT->dimensions();
   ASTContext &C = Actions.getASTContext();
   Expr *zero = IntegerLiteral::Create(C, llvm::APInt(32, 0),
                                       C.IntTy, ForAllLoc);
@@ -970,7 +970,7 @@ StmtResult Parser::ParseVolumeRenderAll(Scope* scope,
 
           // parse mesh dimensions, e.g: [512,512]
 
-          MeshType::MeshDimensionVec dims;
+          MeshType::MeshDimensions dims;
 
           ConsumeBracket();
 

@@ -1859,23 +1859,11 @@ public:
 
 // ===== Scout =======================================================================================
 
-class MeshTypeLoc :
-  public InheritingConcreteTypeLoc<TypeSpecTypeLoc,
-                                   MeshTypeLoc,
-                                   MeshType> {
+class MeshTypeLoc : public InheritingConcreteTypeLoc<TagTypeLoc,
+                                                     MeshTypeLoc,
+                                                     MeshType> {
   public:
     MeshDecl *getDecl() const { return getTypePtr()->getDecl(); }
-    
-    /// \brief True if the tag was defined in this type specifier.
-    // 
-    // SC_TODO -- commented out as part of refactoring... Need to 
-    // revisit... 
-    // 
-    //bool isDefinition() const {
-    //  MeshDecl *D = getDecl();
-    //  
-    //  return D->isDefinition();
-    //}
 };
   
 /// \brief Wrapper for source info for mesh types.

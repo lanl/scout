@@ -60,28 +60,50 @@
 
 namespace clang {
   
+// ----- StructuredMeshDecl 
+// 
 class StructuredMeshDecl : public MeshDecl {
- protected:
-  StructuredMeshDecl(Kind DK, DeclContext* DC,
-                     SourceLocation L, SourceLocation StartL,
-                     IdentifierInfo* Id, MeshDecl* PrevDecl)
-  : MeshDecl(DK, DC, L, StartL, Id, PrevDecl) {
-    
+
+protected:
+  StructuredMeshDecl(DeclContext* DC, 
+                     SourceLocation L, 
+                     SourceLocation StartL,
+                     IdentifierInfo* Id, 
+                     StructuredMeshDecl* PrevDecl);
+
+public:
+  static StructuredMeshDecl *Create(const ASTContext &C, 
+                                 DeclContext *DC,
+                                 SourceLocation StartLoc,
+                                 SourceLocation IdLoc,
+                                 IdentifierInfo *Id, 
+                                 StructuredMeshDecl* PrevDecl = 0);
+
+  static StructuredMeshDecl *CreateDeserialized(const ASTContext &C, 
+                                                unsigned ID); 
+
+  const StructuredMeshDecl *getPreviousDecl() const {
+    return cast_or_null<StructuredMeshDecl>(TagDecl::getPreviousDecl());
   }
 
- public:
-  static StructuredMeshDecl*
-  Create(ASTContext& C, Kind DK, DeclContext* DC,
-         SourceLocation StartLoc, SourceLocation IdLoc,
-         IdentifierInfo* Id, StructuredMeshDecl* PrevDecl);
-  
+  StructuredMeshDecl *getPreviousDecl() {
+    return cast_or_null<StructuredMeshDecl>(TagDecl::getPreviousDecl());
+  }
+
+  const StructuredMeshDecl *getMostRecentDecl() const {
+    return cast<StructuredMeshDecl>(TagDecl::getMostRecentDecl());
+  }
+
+  StructuredMeshDecl *getMostRecentDecl() {
+    return cast<StructuredMeshDecl>(TagDecl::getMostRecentDecl());
+  }
+
   static bool classof(const Decl* D) { return classofKind(D->getKind()); }
   static bool classof(const StructuredMeshDecl* D) { return true; }
   static bool classofKind(Kind K) { return K == StructuredMesh; }
-
-  void addImplicitFields(SourceLocation Loc, const ASTContext &C); 
-  
 };
+
+
 
 } // end namespace clang
 

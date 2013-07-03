@@ -98,11 +98,12 @@ TypeEvaluationKind CodeGenFunction::getEvaluationKind(QualType type) {
       llvm_unreachable("undeduced auto type in IR-generation");
 
   // ===== Scout ==============================================================
+  case Type::Mesh:
   case Type::UniformMesh:
   case Type::StructuredMesh:
-  case Type::RectlinearMesh:
+  case Type::RectilinearMesh:
   case Type::UnstructuredMesh:
-    return TEK_Aggregate; //not sure -dpx 
+    return TEK_Aggregate; 
   // ==========================================================================
     // Various scalar types.
     case Type::Builtin:
@@ -1267,9 +1268,10 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
 
     // These types are never variably-modified.
     // ===== Scout ============================================================
+    case Type::Mesh:
     case Type::UniformMesh:
     case Type::StructuredMesh:
-    case Type::RectlinearMesh:
+    case Type::RectilinearMesh:
     case Type::UnstructuredMesh:
       llvm_unreachable("type class is never variably-modified!");
     // ========================================================================      

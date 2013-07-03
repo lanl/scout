@@ -52,15 +52,30 @@
  * ##### 
  */ 
 
-#ifndef __SC_CLANG_MESH_DECLS_H__
-#define __SC_CLANG_MESH_DECLS_H__
+#include "clang/Sema/Sema.h"
+#include "clang/Sema/SemaInternal.h"
 
-#include "clang/AST/scout/UniformMeshDecl.h"
-#include "clang/AST/scout/UnstructuredMeshDecl.h"
-#include "clang/AST/scout/StructuredMeshDecl.h"
-#include "clang/AST/scout/RectilinearMeshDecl.h"
+using namespace clang;
+using namespace sema;
 
-#endif
-
-
-
+bool Sema::ScoutMeshCompareReferenceRelationship(SourceLocation &Loc,
+    QualType &UnqualT1, QualType &UnqualT2, Sema::ReferenceCompareResult &Ref) {
+  if(const MeshType* mt1 = dyn_cast<MeshType>(UnqualT1.getTypePtr())){
+    if(const MeshType* mt2 = dyn_cast<MeshType>(UnqualT2.getTypePtr())){
+      if(mt1->getDecl() == mt2->getDecl()){
+        if(mt1->dimensions().size() == mt2->dimensions().size()){
+          Ref = Ref_Compatible;
+          return true;
+        }
+        Diag(Loc, diag::err_mesh_param_dimensionality_mismatch);
+        Ref = Ref_Incompatible;
+        return true;
+      }
+      else{
+        Ref = Ref_Incompatible;
+        return true;
+      }
+    }
+  }
+  return false;
+}

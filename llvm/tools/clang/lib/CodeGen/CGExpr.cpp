@@ -3305,8 +3305,8 @@ EmitPointerToDataMemberBinaryExpr(const BinaryOperator *E) {
 //===== Scout ================================================================
 std::pair< MeshFieldDecl *, int >
 CodeGenFunction::FindFieldDecl(MeshDecl *MD, llvm::StringRef &memberName) {
-  typedef MeshDecl::mesh_field_iterator MeshFieldIterator;
-  MeshFieldIterator it = MD->mesh_field_begin(), it_end = MD->mesh_field_end();
+  typedef MeshDecl::field_iterator MeshFieldIterator;
+  MeshFieldIterator it = MD->field_begin(), it_end = MD->field_end();
   for(unsigned i = 0; it != it_end; ++it, ++i) {
     if (dyn_cast<NamedDecl>(*it)->getName() == memberName) {
       return std::make_pair(*it, i);

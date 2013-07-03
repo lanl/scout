@@ -3419,6 +3419,10 @@ bool UnnamedLocalNoLinkageFinder::VisitUnaryTransformType(
 }
 
 // ===== Scout ============================================================================
+bool UnnamedLocalNoLinkageFinder::VisitMeshType(const MeshType* T) {
+  return false;
+}
+
 bool UnnamedLocalNoLinkageFinder::VisitUniformMeshType(const UniformMeshType* T) {
   return false;
 }

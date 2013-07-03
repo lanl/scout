@@ -1399,6 +1399,11 @@ void MicrosoftCXXNameMangler::mangleType(const RecordType *T, SourceRange) {
 
 // ===== Scout ================================================================
 // SC_TODO - is this correct?
+void MicrosoftCXXNameMangler::mangleType(const MeshType *T, 
+                                         SourceRange) {
+  mangleName(static_cast<const NamedDecl*>(T->getDecl()));
+  assert(false && "we shouldn't find a need to mangle base mesh types");
+}
 void MicrosoftCXXNameMangler::mangleType(const UniformMeshType *T, 
                                          SourceRange) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));

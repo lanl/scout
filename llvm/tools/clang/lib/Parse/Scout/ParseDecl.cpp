@@ -72,166 +72,97 @@
 
 using namespace clang;
 
-// scout - Get value of LookAheadToken.  A hack just to
-//                 to get value between 2 and 4.  Needs replacement
-static int GetValueLAT(const char *v) {
-   if ((*v > '4') || (*v < '2')) return 0;
-   if ((*(v+1) >= '0') && (*(v+1) <= '9')) return 0;
-  return ((int) (*v - '0'));
-}
-
-// scout - detect float <4>, int <3>, ... iSPC constructs and
-//                 return TST_value of Scout float4, int3, ...
-//                 that should be substituted.  Return same if not iSPC
-//                 Involves lookahead and possible token consumption
-DeclSpec::TST Parser::GetIspcScoutExtension(DeclSpec::TST TagType, tok::TokenKind kw) {
-
-
-  switch (kw) {
-    default: break;
-    case tok::kw_bool:
-    case tok::kw_char:
-    case tok::kw_short:
-    case tok::kw_int:
-    case tok::kw_long:
-    case tok::kw_float:
-    case tok::kw_double:
-      if ((GetLookAheadToken(1).is(tok::less))             &&
-          (GetLookAheadToken(2).is(tok::numeric_constant)) &&
-          (GetLookAheadToken(3).is(tok::greater)))            {
-        const char *v = GetLookAheadToken(2).getLiteralData();
-        int val = GetValueLAT(v);
-
-        if (val < 2 || val > 4) break;
-        switch(kw) {
-          default: assert(0 && "GetIspc bad kw 2 logic"); break;
-          case tok:: kw_bool:
-            switch (val) {
-              case 2: TagType = TST_bool2; break;
-              case 3: TagType = TST_bool3; break;
-              case 4: TagType = TST_bool4; break;
-              default: assert(0 && "GetIspc bad bool logic"); break;
-            } // end kw_bool
-            break;
-          case tok:: kw_char:
-            switch (val) {
-              case 2: TagType = TST_char2; break;
-              case 3: TagType = TST_char3; break;
-              case 4: TagType = TST_char4; break;
-              default: assert(0 && "GetIspc bad char logic"); break;
-            } // end kw_char
-            break;
-          case tok:: kw_short:
-            switch (val) {
-              case 2: TagType = TST_short2; break;
-              case 3: TagType = TST_short3; break;
-              case 4: TagType = TST_short4; break;
-              default: assert(0 && "GetIspc bad short logic"); break;
-            } // end kw_short
-            break;
-          case tok:: kw_int:
-            switch (val) {
-              case 2: TagType = TST_int2; break;
-              case 3: TagType = TST_int3; break;
-              case 4: TagType = TST_int4; break;
-              default: assert(0 && "GetIspc bad int logic"); break;
-            } // end kw_int
-            break;
-          case tok:: kw_long:
-            switch (val) {
-              case 2: TagType = TST_long2; break;
-              case 3: TagType = TST_long3; break;
-              case 4: TagType = TST_long4; break;
-              default: assert(0 && "GetIspc bad long logic"); break;
-            } // end kw_long
-            break;
-          case tok:: kw_float:
-            switch (val) {
-              case 2: TagType = TST_float2; break;
-              case 3: TagType = TST_float3; break;
-              case 4: TagType = TST_float4; break;
-              default: assert(0 && "GetIspc bad float logic"); break;
-            } // end kw_float
-            break;
-          case tok:: kw_double:
-            switch (val) {
-              case 2: TagType = TST_double2; break;
-              case 3: TagType = TST_double3; break;
-              case 4: TagType = TST_double4; break;
-              default: assert(0 && "GetIspc bad double logic"); break;
-            } // end kw_double
-            break;
-          } // end switch(kw)
-        } // end if lookahead
-        break; // endcase of all scout kw_bool2 ... kw_double4
-  } // endswitch(kw)
-
-  return TagType;
-}
-// scout - Scout Mesh
-// this method is used to parse a mesh field declaration, e.g:
-// uniform mesh MyMesh[512,512]{
+// uniform mesh MyMesh {
 //   cells:
-//     float a; // <---- parser is here
+//     float a; <---- parser is here
 // ... }
+//
+void Parser::ParseMeshDeclaration(ParsingDeclSpec &DS,
+                                  FieldCallback &Fields) {
+  
+  if (Tok.is(tok::kw___extension__)) {
+    // __extension__ silences extension warnings in the subexpression. 
+    ExtensionRAIIObject O(Diags); // Use RAII to do this. 
+    ConsumeToken();
+    return ParseMeshDeclaration(DS, Fields);
+  }
 
-void Parser::
-ParseMeshDeclaration(ParsingDeclSpec &DS,
-                     FieldCallback &Fields,
-                     unsigned FieldType) {
+  // Parse the common specifier-qualifiers-list piece...
   ParseSpecifierQualifierList(DS);
+
+  // SC_TODO - do we want to handle a free-standing declaration 
+  // specifier???  See example in the RecordDecl parsing... 
 
   // Read mesh-declarators until we find the semicolon.
   bool FirstDeclarator = true;
+  SourceLocation CommaLoc;
+
   while (1) {
-    ParsingDeclRAIIObject PD(*this, ParsingDeclRAIIObject::NoParent);
+    // SC_TODO - Any reason to build a ParsingMeshFieldDeclarator 
+    // here vs. borrowing the struct field declarator?
     ParsingFieldDeclarator DeclaratorInfo(*this, DS);
+    DeclaratorInfo.D.setCommaLoc(CommaLoc);
 
     // Attributes are only allowed here on successive declarators.
     if (!FirstDeclarator)
       MaybeParseGNUAttributes(DeclaratorInfo.D);
 
-    ParseDeclarator(DeclaratorInfo.D);
+    /// mesh-declarator: declarator
+    /// mesh-declarator: declarator[opt] ':' constant-expression
+    if (Tok.isNot(tok::colon)) {
+      // Don't parse FOO:BAR as if it were a typo for FOO::BAR.
+      ColonProtectionRAIIObject X(*this);
+      ParseDeclarator(DeclaratorInfo.D);
+    }
+
+    if (Tok.is(tok::colon)) {
+      ConsumeToken();
+      ExprResult Res(ParseConstantExpression());
+      if (Res.isInvalid())
+        SkipUntil(tok::semi, true, true);
+      else
+        DeclaratorInfo.BitfieldSize = Res.release();
+    }
 
     // If attributes exist after the declarator, parse them.
     MaybeParseGNUAttributes(DeclaratorInfo.D);
 
-    // We're done with this declarator;  invoke the callback.
+    // We're done with this declarator; invoke the callback.
     Fields.invoke(DeclaratorInfo);
 
-    // If we don't have a comma, it is either the end of the list (a ';')
-    // or an error, bail out.
+    // If we don't have a comma, it is either the end of the list (i.e. a ';')
+    // or an error, bail out from processing this declaration.
     if (Tok.isNot(tok::comma)){
       return;
     }
 
     // Consume the comma.
-    ConsumeToken();
-
+    CommaLoc = ConsumeToken();
     FirstDeclarator = false;
   }
 }
-// scout - parse a mesh parameter declaration
+
+// parse a mesh parameter declaration
 // assumes on entry that the token stream looks like:
 // [], [:], [::], and that we have already parsed a mesh type
-void Parser::ParseMeshParameterDeclaration(DeclSpec& DS){
+//
+void Parser::ParseMeshParameterDeclaration(DeclSpec& DS) {
+
   ParsedType parsedType = DS.getRepAsType();
-  const UniformMeshType* mt = dyn_cast<UniformMeshType>(parsedType.get().getTypePtr());
+  const UniformMeshType* mt;
+  mt = dyn_cast<UniformMeshType>(parsedType.get().getTypePtr());
 
   ConsumeBracket();
   size_t numDims;
-  if(Tok.is(tok::r_square)){
+  if(Tok.is(tok::r_square)) {
     numDims = 1;
-  }
-  else if(Tok.is(tok::colon)){
+  } else if(Tok.is(tok::colon)) {
     numDims = 2;
     ConsumeToken();
-  }
-  else if(Tok.is(tok::coloncolon)){
+  } else if(Tok.is(tok::coloncolon)) {
     numDims = 3;
     ConsumeToken();
-  }
-  else{
+  } else {
     Diag(Tok, diag::err_expected_mesh_param_token);
     SkipUntil(tok::r_square);
     return;
@@ -241,17 +172,19 @@ void Parser::ParseMeshParameterDeclaration(DeclSpec& DS){
     Diag(Tok, diag::err_expected_mesh_param_token);
     SkipUntil(tok::r_square);
     return;
-  }
-  else{
+  } else {
     ConsumeBracket();
   }
 
-  MeshType::MeshDimensionVec dims;
-  for(size_t i = 0; i < numDims; ++i){
+  // SC_TODO - does this only handle integer constants?  Would be 
+  // nice to support variable sizes for mesh dimensions. 
+  MeshType::MeshDimensions dims;
+  for(size_t i = 0; i < numDims; ++i) {
     dims.push_back(Actions.ActOnIntegerConstant(Tok.getLocation(), 0).get());
   }
 
-  UniformMeshType* mdt = new UniformMeshType(mt->getDecl()); //SC_TODO: possible alignment problem?
+  // SC_TODO: possible alignment problem?
+  UniformMeshType* mdt = new UniformMeshType(mt->getDecl()); 
 
   mdt->setDimensions(dims);
   parsedType.set(QualType(mdt, 0));

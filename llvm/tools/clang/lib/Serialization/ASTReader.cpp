@@ -5054,7 +5054,7 @@ void TypeLocReader::VisitRecordTypeLoc(RecordTypeLoc TL) {
 // SC_TODO - implement these… 
 void TypeLocReader::VisitUniformMeshTypeLoc(UniformMeshTypeLoc TL) { }
 void TypeLocReader::VisitStructuredMeshTypeLoc(StructuredMeshTypeLoc TL) { }
-void TypeLocReader::VisitRectlinearMeshTypeLoc(RectlinearMeshTypeLoc TL) { }
+void TypeLocReader::VisitRectilinearMeshTypeLoc(RectilinearMeshTypeLoc TL) { }
 void TypeLocReader::VisitUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc TL) { }
 // =================================================================================
 void TypeLocReader::VisitEnumTypeLoc(EnumTypeLoc TL) {

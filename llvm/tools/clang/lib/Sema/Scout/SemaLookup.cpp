@@ -52,15 +52,35 @@
  * ##### 
  */ 
 
-#ifndef __SC_CLANG_MESH_DECLS_H__
-#define __SC_CLANG_MESH_DECLS_H__
+#include "clang/Sema/Sema.h"
+#include "clang/Sema/SemaInternal.h"
+#include "clang/AST/Decl.h"
+using namespace clang;
+using namespace sema;
 
-#include "clang/AST/scout/UniformMeshDecl.h"
-#include "clang/AST/scout/UnstructuredMeshDecl.h"
-#include "clang/AST/scout/StructuredMeshDecl.h"
-#include "clang/AST/scout/RectilinearMeshDecl.h"
+// Convert mesh struct rep to mesh decl - used to interface with Scout LLDB debugger.
+void ScoutLookupMesh( NamedDecl *D, Sema &S) {
 
-#endif
+  if(ValueDecl* vd = dyn_cast<ValueDecl>(D)){
 
-
-
+    // SC_TODO -- Refactor...  Need to revisit this... 
+    if(const RecordType* rt =
+        dyn_cast<RecordType>(vd->getType().getNonReferenceType().getTypePtr())){
+      RecordDecl* rd = rt->getDecl();
+      RecordDecl::field_iterator itr = rd->field_begin();
+      if(itr != rd->field_end() && itr->getName().str() == "mesh_flags__"){
+        //UniformMeshDecl* MD =
+        //    UniformMeshDecl::
+        //    CreateFromStructRep(S.Context,
+        //        clang::Decl::UniformMesh,
+        //        D->getDeclContext(),
+        //        &S.Context.Idents.get(rd->getName()),
+        //       rd);
+        //
+        //UniformMeshType* mt = new UniformMeshType(MD); //SC_TDOO: possible alignment issue
+        //
+        //vd->setType(S.Context.getLValueReferenceType(QualType(mt, 0)));
+      }
+    }
+  }
+}

@@ -1188,10 +1188,21 @@ DeduceTemplateArgumentsByTypeMatch(Sema &S,
       
     // ===== Scout =====================================================================
     // Currently meshes can not be used as templates
+    case Type::Mesh:
     case Type::UniformMesh:
     case Type::StructuredMesh:
     case Type::RectilinearMesh:
-    case Type::UnstructuredMesh:
+    case Type::UnstructuredMesh: {
+      if (TDF & TDF_SkipNonDependent)
+        return Sema::TDK_Success;
+
+      if (TDF & TDF_IgnoreQualifiers) {
+        Param = Param.getUnqualifiedType();
+        Arg   = Arg.getUnqualifiedType();
+      }
+
+      return Param == Arg ? Sema::TDK_Success : Sema::TDK_NonDeducedMismatch;
+    }
     // =================================================================================      
     case Type::Enum:
     case Type::ObjCObject:
@@ -4624,6 +4635,7 @@ MarkUsedTemplateParameters(ASTContext &Ctx, QualType T,
   case Type::FunctionNoProto:
   case Type::Record:
   // ===== Scout =========================================================================
+  case Type::Mesh:
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:

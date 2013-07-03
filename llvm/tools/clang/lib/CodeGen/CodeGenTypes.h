@@ -96,7 +96,12 @@ private:
   /// struct A { struct B { int x; } } when processing 'x', the 'A' and 'B'
   /// types will be in this set.
   llvm::SmallPtrSet<const Type*, 4> RecordsBeingLaidOut;
-  
+
+  /// MeshesBeingLaidOut - This set keeps track of meshes that we're currently
+  /// converting to an IR type -- mirrors the basic functionality of the 
+  /// records being laid out info... 
+  llvm::SmallPtrSet<const Type*, 4> MeshesBeingLaidOut;
+
   llvm::SmallPtrSet<const CGFunctionInfo*, 4> FunctionsBeingProcessed;
   
   /// SkippedLayout - True if we didn't layout a function due to a being inside
@@ -104,6 +109,7 @@ private:
   bool SkippedLayout;
 
   SmallVector<const RecordDecl *, 8> DeferredRecords;
+  SmallVector<const MeshDecl *, 8> DeferredMeshes;  
   
 private:
   /// TypeCache - This map keeps cache of llvm::Types
@@ -237,11 +243,19 @@ public:
   /// optional suffix and name the given LLVM type using it.
   void addRecordTypeName(const RecordDecl *RD, llvm::StructType *Ty,
                          StringRef suffix);
+
+  /// addRecordTypeName - Compute a name from the given mesh decl with an
+  /// optional suffix and name the given LLVM type using it.
+  void addRecordTypeName(const MeshDecl *RD, llvm::StructType *Ty,
+                         StringRef suffix);
   
 
 public:  // These are internal details of CGT that shouldn't be used externally.
   /// ConvertRecordDeclType - Lay out a tagged decl type like struct or union.
   llvm::StructType *ConvertRecordDeclType(const RecordDecl *TD);
+
+    /// ConvertRecordDeclType - Lay out a mesh decl type.
+  llvm::StructType *ConvertMeshDeclType(const MeshDecl *MD);
 
   /// GetExpandedTypes - Expand the type \arg Ty into the LLVM
   /// argument types it would be passed as on the provided vector \arg

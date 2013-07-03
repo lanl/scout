@@ -680,7 +680,7 @@ CodeGenFunction::GetMeshDimValues(const ForAllStmt &S,
     BaseAddr = GetMeshBaseAddr(S);
   }
   
-  MeshType::MeshDimensionVec dims = S.getMeshType()->dimensions();
+  MeshType::MeshDimensions dims = S.getMeshType()->dimensions();
   const char  *DimNames[] = { "dim_x", "dim_y", "dim_z" };  
 
   for(unsigned int i = 0; i < dims.size(); ++i) {

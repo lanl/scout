@@ -2174,6 +2174,8 @@ static CachedProperties computeCachedProperties(const Type *T) {
     return CachedProperties(ExternalLinkage, false);
 
   // ===== Scout =============================================================
+  case Type::Mesh: // SC_TODO - we shouldn't ever hit the case where we
+                   // have a "base" mesh type. 
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
@@ -2331,6 +2333,8 @@ static LinkageInfo computeLinkageInfo(const Type *T) {
     return computeLinkageInfo(cast<AtomicType>(T)->getValueType());
 
   // ===== Scout =============================================================
+  case Type::Mesh: // SC_TODO - we shouldn't ever hit a case where we 
+                   // encounter a "base" mesh type. 
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:

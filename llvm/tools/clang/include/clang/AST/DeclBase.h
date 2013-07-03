@@ -34,6 +34,7 @@ class EnumDecl;
 class FunctionDecl;
 class LinkageComputer;
 class LinkageSpecDecl;
+class MeshDecl; // Scout 
 class Module;
 class NamedDecl;
 class NamespaceDecl;

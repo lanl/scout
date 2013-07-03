@@ -18,26 +18,36 @@
 #include "clang/Basic/TargetInfo.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/type_traits.h"
-#include <algorithm>
+#include "clang/AST/scout/RectilinearMeshDecl.h"
 
 using namespace clang;
 
-RectlinearMeshDecl*
-RectlinearMeshDecl::Create(ASTContext& C, Kind K, DeclContext* DC,
-                           SourceLocation StartLoc, SourceLocation IdLoc,
-                           IdentifierInfo* Id, RectlinearMeshDecl* PrevDecl){
-  
-  RectlinearMeshDecl* M =
-  new (C) RectlinearMeshDecl(K, DC, StartLoc, IdLoc, Id, PrevDecl);
-  
-  RecordDecl* SR =
-  RecordDecl::Create(C, TTK_Struct, DC, IdLoc,
-                     IdLoc, &C.Idents.get(M->getName()));
-  
-  M->setStructRep(SR);
-  
-  C.getTypeDeclType(M);
-  return M;
+//===----------------------------------------------------------------------===//
+// RectilinearMeshDecl Implementation
+//===----------------------------------------------------------------------===//
+// 
+//
+RectilinearMeshDecl::RectilinearMeshDecl(DeclContext* DC,
+                                         SourceLocation StartLoc,
+                                         SourceLocation IdLoc,
+                                         IdentifierInfo* Id, 
+                                         RectilinearMeshDecl* PrevDecl)
+  : MeshDecl(RectilinearMesh, TTK_RectilinearMesh, DC, StartLoc,
+             IdLoc, Id, PrevDecl) {
+
 }
 
-void RectlinearMeshDecl::addImplicitFields(SourceLocation Loc, const ASTContext &Context) {}
+RectilinearMeshDecl *RectilinearMeshDecl::Create(const ASTContext &C, 
+                                                 DeclContext *DC,
+                                                 SourceLocation StartLoc, 
+                                                 SourceLocation IdLoc,
+                                                 IdentifierInfo *Id, 
+                                                 RectilinearMeshDecl* PrevDecl) {
+
+  RectilinearMeshDecl* M = new (C) RectilinearMeshDecl(DC, StartLoc, 
+                                                       IdLoc, Id,
+                                                       PrevDecl);
+  M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
+  C.getTypeDeclType(M, PrevDecl);
+  return M;
+}

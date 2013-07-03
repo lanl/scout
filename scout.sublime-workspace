@@ -1,0 +1,319 @@
+{
+	"auto_complete":
+	{
+		"selected_items":
+		[
+		]
+	},
+	"build_system": "",
+	"command_palette":
+	{
+		"height": 360.0,
+		"selected_items":
+		[
+		],
+		"width": 392.0
+	},
+	"console":
+	{
+		"height": 0.0,
+		"history":
+		[
+		]
+	},
+	"distraction_free":
+	{
+		"menu_visible": true,
+		"show_minimap": false,
+		"show_open_files": false,
+		"show_tabs": false,
+		"side_bar_visible": false,
+		"status_bar_visible": false
+	},
+	"file_history":
+	[
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/AST/Scout/ASTContext.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/Parse/Scout/ParseExpr.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/Parse/Scout/ParseDeclCXX.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/Parse/Scout/ParseDecl.cpp",
+		"/Volumes/Working/scout/llvm/tools/clang/lib/CodeGen/Scout/CGMeshLayout.h",
+		"/Volumes/Working/scout/llvm/tools/clang/lib/CodeGen/Scout/CGMeshLayoutBuilder.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/CodeGen/CGRecordLayout.h",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/CodeGen/CGRecordLayoutBuilder.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/CodeGen/CodeGenTypes.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/CodeGen/CodeGenFunction.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/CodeGen/CMakeLists.txt",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/CodeGen/CodeGenTypes.h",
+		"/Users/pat/Projects/scout/llvm/tools/clang/include/clang/AST/scout/MeshDecls.h",
+		"/Users/pat/Projects/scout/llvm/tools/clang/include/clang/AST/TypeNodes.def",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/AST/TypePrinter.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/AST/ASTContext.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/include/clang/AST/RecursiveASTVisitor.h",
+		"/Users/pat/Projects/scout/llvm/tools/clang/include/clang/Basic/DeclNodes.td",
+		"/Users/pat/Projects/scout/llvm/tools/clang/include/clang/AST/DeclVisitor.h",
+		"/Users/pat/Projects/scout/llvm/tools/clang/include/clang/AST/Decl.h",
+		"/Users/pat/Projects/scout.sublime-project",
+		"/Users/pat/Projects/scout/llvm/tools/clang/include/clang-c/Index.h",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/Sema/SemaCodeComplete.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/include/clang/Basic/Specifiers.h",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/AST/Scout/ASTImporter.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/include/clang/AST/ASTContext.h",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/AST/ASTImporter.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/AST/Scout/StructuredMeshDecl.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/include/clang/AST/Type.h",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/AST/ItaniumMangle.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/AST/MicrosoftMangle.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/AST/Type.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/AST/Scout/TypePrinter.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/AST/Decl.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/include/clang/AST/DeclBase.h",
+		"/Users/pat/Projects/scout/llvm/tools/clang/include/clang/Basic/TokenKinds.def",
+		"/Users/pat/Projects/scout/llvm/tools/clang/include/clang/Sema/DeclSpec.h",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/AST/Scout/UniformMeshDecl.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/include/clang/AST/scout/MeshTypes.h",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/AST/CMakeLists.txt",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/AST/Scout/RectlinearMeshDecl.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/AST/DeclBase.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/include/clang/AST/TypeLoc.h",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/CodeGen/CGExpr.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/CodeGen/Scout/CGStmt.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/CodeGen/Scout/CGExpr.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/CodeGen/CodeGenFunction.h",
+		"/Users/pat/Projects/scout/llvm/tools/clang/include/clang/AST/scout/UniformMeshType.h",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/AST/ASTDumper.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/Sema/SemaDecl.cpp",
+		"/Users/pat/Projects/scout/llvm/tools/clang/lib/AST/Scout/ForAllStmt.cpp",
+		"/Users/pat/Library/Application Support/Sublime Text 3/Packages/Default/Preferences.sublime-settings",
+		"/Users/pat/Library/Application Support/Sublime Text 3/Packages/User/Preferences.sublime-settings"
+	],
+	"find":
+	{
+		"height": 35.0
+	},
+	"find_in_files":
+	{
+		"height": 93.0,
+		"where_history":
+		[
+		]
+	},
+	"find_state":
+	{
+		"case_sensitive": false,
+		"find_history":
+		[
+			"MSStr",
+			"CS Unplugged",
+			"MsStruct",
+			"Union",
+			"EmptySubobjects",
+			"Builder",
+			"ASTRecord",
+			"Builder",
+			"getASTMeshLayout",
+			"getRecordLayout",
+			"getMeshLayout",
+			"getASTRecordLayout",
+			"::getASTRecordLayout",
+			"getASTRecordLayout",
+			"RecordLayout",
+			"ASTRecordLayout",
+			"RecordLayout",
+			"RecordLayoutBuilder",
+			"ASTRecordLayout",
+			"CGRecordLayout",
+			"ComputeRecordLayout",
+			"RecordsBeingLaidOut",
+			"ConvertMesh",
+			"addRecordTypeName",
+			"Rectlinear",
+			"DimensionVec",
+			"Rectlinear",
+			"mesh_field",
+			"Rectlinear",
+			"Linear",
+			"VisitMeshDecl",
+			"VisitRecordDeclImpl",
+			"RecordDecl",
+			"VisitMeshFieldDecl",
+			"VisitFieldDecl",
+			"VisitMesh",
+			"VisitMeshFieldDecl",
+			"VisitMeshField",
+			"GetValueLAT",
+			"Mesh",
+			"VisitRecord",
+			"Mesh",
+			"Unknown",
+			"UnknownLoc",
+			"MeshDimen",
+			"FieldLoc",
+			"MeshFieldDeclLoc",
+			"MeshFieldDeclLocation",
+			"MeshFieldDecl",
+			"MeshType",
+			"TraverseEnum",
+			"TypeHelper",
+			"isIndependent",
+			"isDependentType",
+			"DependentType",
+			"DependentContext",
+			"Context",
+			"class Type",
+			"isDependentContext",
+			"isDependentType",
+			"isDpendentType",
+			"After",
+			"Mesh",
+			"MeshFieldDeclLocation",
+			"Mesh",
+			"RecordType",
+			"TagType",
+			"MeshType",
+			"MeshLocation",
+			"Decl",
+			"MeshField",
+			"MeshType",
+			"RecordType",
+			"MeshType",
+			"UniformMesh",
+			"mesh",
+			"TagType",
+			"Mesh",
+			"include",
+			"mesh",
+			"Mesh",
+			"TST_mesh",
+			"rectlinear",
+			"_mesh",
+			"Rectlin",
+			"Rectlinear",
+			"mesh_field",
+			"TST_mesh",
+			"FromExternalStorage",
+			"LoadedFieldFromExternalStorage",
+			"HasVoli",
+			"Rectlinear",
+			"mesh_fi",
+			"Rect",
+			"Rectlinear",
+			"RectlinearMeshType",
+			"Rectlinear",
+			"RecordDecl",
+			"MeshDecl",
+			"LoadFieldsFromExternalStorage",
+			"Mesh",
+			"MeshDecl",
+			"rectlinear",
+			"mesh_field",
+			"Mesh",
+			"TST_mesh",
+			"Create",
+			"isField",
+			"TagDecl",
+			"DeclContext",
+			"getDeclContext",
+			"TagDecl",
+			"getDeclContext",
+			"Rectlinear",
+			"Recti",
+			"Rectlinear",
+			"Rectlin",
+			"Rectlinear",
+			"mesh_field",
+			"Rectlinear",
+			"Reci",
+			"Rectlinear",
+			"UnstructuredMeshType",
+			"Rectlinear",
+			"classOfKind",
+			"Rectilinear",
+			"UnstructuredMeshType",
+			"UniformMeshType"
+		],
+		"highlight": true,
+		"in_selection": false,
+		"preserve_case": false,
+		"regex": false,
+		"replace_history":
+		[
+		],
+		"reverse": false,
+		"show_context": true,
+		"use_buffer2": true,
+		"whole_word": false,
+		"wrap": true
+	},
+	"incremental_find":
+	{
+		"height": 23.0
+	},
+	"input":
+	{
+		"height": 31.0
+	},
+	"layout":
+	{
+		"cells":
+		[
+			[
+				0,
+				0,
+				1,
+				1
+			]
+		],
+		"cols":
+		[
+			0.0,
+			1.0
+		],
+		"rows":
+		[
+			0.0,
+			1.0
+		]
+	},
+	"menu_visible": true,
+	"replace":
+	{
+		"height": 42.0
+	},
+	"save_all_on_build": true,
+	"select_file":
+	{
+		"height": 0.0,
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"select_project":
+	{
+		"height": 0.0,
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"select_symbol":
+	{
+		"height": 0.0,
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"settings":
+	{
+	},
+	"show_minimap": true,
+	"show_open_files": false,
+	"show_tabs": true,
+	"side_bar_visible": true,
+	"side_bar_width": 244.0,
+	"status_bar_visible": true,
+	"template_settings":
+	{
+	}
+}

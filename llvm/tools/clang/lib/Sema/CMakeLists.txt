@@ -52,13 +52,13 @@ add_clang_library(clangSema
   SemaType.cpp
   TargetAttributesSema.cpp
 # ===== Scout ===========================================
-  scout/SemaDecl.cpp
-  scout/Sema.cpp
-  scout/SemaExpr.cpp
-  scout/SemaExprMember.cpp
-  scout/SemaLookup.cpp
-  scout/SemaOverload.cpp
-  scout/SemaStmt.cpp
+  Scout/SemaDecl.cpp
+  Scout/Sema.cpp
+  Scout/SemaExpr.cpp
+  Scout/SemaExprMember.cpp
+  Scout/SemaLookup.cpp
+  Scout/SemaOverload.cpp
+  Scout/SemaStmt.cpp
 # =======================================================
   )
 

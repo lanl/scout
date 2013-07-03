@@ -103,14 +103,15 @@ namespace clang {
   class ExtQuals;
   class ExtQualsTypeCommonBase;
   struct PrintingPolicy;
-  // ===== Scout =======================================================================================
+  // ===== Scout =============================================================
   class MeshDecl;
   class UniformMeshDecl;
   class StructuredMeshDecl;
   class RectilinearMeshDecl;
   class UnstructuredMeshDecl;
+  class MeshFieldDecl;
   class MemberExpr;
-  // ===================================================================================================
+  // =========================================================================
   template <typename> class CanQual;
   typedef CanQual<Type> CanQualType;
 
@@ -1176,7 +1177,7 @@ public:
 #include "clang/AST/TypeNodes.def"
     TagFirst = Record, TagLast = Enum
     // ===== Scout ========================================================
-    , MeshFirst = UniformMesh, MeshLast = UnstructuredMesh
+    , MeshFirst = Mesh, MeshLast = UnstructuredMesh
     // ====================================================================
   };
 
@@ -3302,81 +3303,121 @@ public:
   static bool classof(const Type *T) { return T->getTypeClass() == Record; }
 };
 
-// ===== Scout =====================================================================================
-// SC_TODO : Can we move this into a separate file?
-class MeshType : public Type {
+//+++===== Scout =========================================================+++//
+//+++ Definitions of the various mesh types, including a supporting base 
+//+++ class. 
+
+// MeshType - To represent our internal mesh types we use a common base class 
+// for some of the basic functionality (thus allowing us to write some code 
+// that can operate on all mesh types).  In practice we will never (or should 
+// never) see an instance of a MeshType come from the source code we are 
+// compiling.
+//
+// Due to the similarity of our mesh constructs to records/structs we borrow
+// the same basic implementation path for them.  This is a difference from 
+// how we implemented our first versions of Scout -- in addition, we now 
+// use the Decl's directly to ask questions about mesh field locations 
+// versus storing an additional/duplicate version of the information here. 
+// 
+// *** NOTE *** The details of introducing a new type are not necessarily 
+// clear from much of the source code details provided with Clang.  It takes
+// some care to hit all the use cases throughout the code base.  There is 
+// some recent documentation on the LLVM web site that can be helpful: 
+//
+//   http://clang.llvm.org/docs/UsersManual.html
+//
+// but some details are still glossed over (at least as this is being 
+// written).  In particular it is important to follow the "same" inheritance
+// paths within both the Decl and Type implementations.  For example, if 
+// the MeshDecl class inherits from TagDecl then the MeshType should also 
+// inherit from the TagType. 
+//
+// Carefully pay attention to all warnings during the build... For example,
+// if you see errors about missing cases within switch statements it is 
+// likely you have an incomplete, and potentially buggy, implementation.
+//
+class MeshType : public TagType {
+
+protected:
+  explicit MeshType(const MeshDecl *D)
+    : TagType(Mesh, reinterpret_cast<const TagDecl*>(D), QualType()) { }
+  explicit MeshType(TypeClass TC, MeshDecl *D)
+    : TagType(TC, reinterpret_cast<const TagDecl*>(D), QualType()) { }
+  friend class ASTContext; // ASTContext creates these
   
  public:
-  // dimensions, e.g: [512,512]
-  typedef llvm::SmallVector<Expr*, 3> MeshDimensionVec;
-  
-  enum InstanceType {
-    MeshInstance,
-    CellsInstance,
-    VerticesInstance,
-    FacesInstance,
-    EdgesInstance,
-    ElementsInstance
-  };
 
- private:
-  MeshDecl* decl;
-  
-  InstanceType instanceType;
-  MeshDimensionVec dims;
-  MemberExpr* elementsMember;
-
- protected:
-  MeshType(TypeClass C, const MeshDecl* D, InstanceType IT=MeshInstance)
-  : Type(C, QualType(), false, false, false, false),
-  decl(const_cast<MeshDecl*>(D)),
-  instanceType(IT){
-    
+  MeshDecl *getDecl() const {
+    return reinterpret_cast<MeshDecl*>(TagType::getDecl());
   }
 
- public:
+  // FIXME: This predicate is a helper to QualType/Type.  It needs to
+  // recursively check all fields for const-ness.  If any field is 
+  // declared const, it needs to return false. 
+  bool hasConstFields() const { return false; }
 
-  MeshDecl* getDecl() const{
-    return decl;
-  }
-  
-  InstanceType getInstanceType() const{
-    return instanceType;
-  }
-
-  const MeshDimensionVec& dimensions() const{
-    return dims;
-  }
-  
-  void setDimensions(const MeshDimensionVec& dv){
-    dims = dv;
-  }
-  
-  bool isBeingDefined() const;
+  // \brief Return true if the mesh has one or more cell fields. 
+  bool hasCellData() const;
+  // \brief Return true if the mesh has one or more vertex fields.   
+  bool hasVertexData() const;
+  // \brief Return true if the mesh has one or more edge fields.     
+  bool hasEdgeData() const;
+  // \brief Return true if the mesh has one or more face fields.       
+  bool hasFaceData() const;
 
   bool isSugared() const { return false; }
   QualType desugar() const { return QualType(this, 0); }
 
-  static bool classof(const MeshType* T) { return true; }
-  
-  static bool classof(const Type *T) {
-    return T->getTypeClass() >= MeshFirst && T->getTypeClass() <= MeshLast;
-  }
-  
-  MemberExpr* getElementsMember(){
-    return elementsMember;
-  }
-  
-  void setElementsMember(MemberExpr* me){
-    elementsMember = me;
+  static bool classof(const Type *T) { 
+    return T->getTypeClass() >= MeshFirst && 
+           T->getTypeClass() <= MeshLast;
   }
 
+  typedef llvm::SmallVector<Expr*, 3> MeshDimensions;
+  
+ private:
+  MeshDimensions dims;
+
+ public:
+
+  const MeshDimensions& dimensions() const {
+    return dims;
+  }
+  
+  void setDimensions(const MeshDimensions& dv){
+    dims = dv;
+  }
+  
+  static bool classof(const MeshType* T) { 
+    return true; 
+  }
 };
 
-class UniformMeshType : public MeshType{
+
+// UniformMeshType - This type represents an instance of a uniform mesh that
+// is either one-, two-, or three-dimensional.  These meshes are the most 
+// straightforward to define as they simple mimic arrays with an additional 
+// ability to store fields at the cell, vertex, edge, or face locations.  The
+// dimensions of the mesh are provided in terms of cell counts. 
+//
+//     +---+---+---+---+
+//     | c | c | c | c |     (cell located data)
+//     +---+---+---+---+
+//     e   e   e   e   e     (edge located data)
+//     +---+---+---+---+
+//     f   |   |   |   f     (face located data)
+//     v---v---v---v---v     (vertex located data)
+// 
+// A uniform mesh is also commonly referred to as a Cartesian mesh -- it is 
+// really a special case where the elements are unit squares or cubes.  This 
+// is not always the case with a more general concept of rectilinear and 
+// structured meshes (see below).  A uniform mesh has an implicit topology 
+// and point (vertex) data based solely on the mesh dimensions.
+//
+class UniformMeshType : public MeshType {
 public:
-  UniformMeshType(const UniformMeshDecl* D, InstanceType IT=MeshInstance)
-  : MeshType(UniformMesh, reinterpret_cast<const MeshDecl*>(D), IT){
+  UniformMeshType(const UniformMeshDecl* Decl)
+  : MeshType(reinterpret_cast<const MeshDecl*>(Decl)) {
     
   }
   
@@ -3391,28 +3432,36 @@ public:
   }
 };
 
-class StructuredMeshType : public MeshType{
+// RectilinearMesh - This type represents an instance of a rectilinear mesh
+// that is either one-, two-, or three-dimensional.  These meshes are defined
+// as a tessellation of rectangles or parallelepipeds that are not congruent 
+// to each other.   The location of field data matches that used within 
+// uniform meshes.  Note that it is expected that this be a regular topology
+// for the overall shape and a semi-regular, aligned geometry along each 
+// dimensions of the mesh. 
+//
+//     +---+---+---+---+
+//     |   |   |   |   |     
+//     | c | c | c | c |     (cell located data)
+//     |   |   |   |   |     
+//     +---+---+---+---+
+//     e   e   e   e   e     (edge located data)
+//     +---+---+---+---+
+//     |   |   |   |   |
+//     |   |   |   |   |
+//     v---v---v---v---v     (vertex located data)
+//     f   |   |   |   f     (face located data)
+//     +---+---+---+---+
+//     
+// A rectilinear mesh is defined by specifying the mesh dimensions and a list of
+// monotonically increasing coordinate values along each dimension. 
+//
+// SC_TODO - this description needs some more details... 
+//  
+class RectilinearMeshType : public MeshType {
 public:
-  StructuredMeshType(const StructuredMeshDecl* D, InstanceType IT=MeshInstance)
-  : MeshType(StructuredMesh, reinterpret_cast<const MeshDecl*>(D), IT){
-    
-  }
-
-  StructuredMeshDecl* getDecl() const {
-    return reinterpret_cast<StructuredMeshDecl*>(MeshType::getDecl());
-  }
-  
-  static bool classof(const StructuredMeshType* T) { return true; }
-  
-  static bool classof(const Type *T) {
-    return T->getTypeClass() == StructuredMesh;
-  }
-};
-
-class RectilinearMeshType : public MeshType{
-public:
-  RectilinearMeshType(const RectilinearMeshDecl* D, InstanceType IT=MeshInstance)
-  : MeshType(RectilinearMesh, reinterpret_cast<const MeshDecl*>(D), IT){
+  RectilinearMeshType(const RectilinearMeshDecl* Decl)
+  : MeshType(reinterpret_cast<const MeshDecl*>(Decl)) {
     
   }
   
@@ -3427,15 +3476,49 @@ public:
   }
 };
 
-  enum MeshFormat {
-    FACESET,
-    COUNT
-  };
 
-class UnstructuredMeshType : public MeshType{
+// StructuredMeshType - A structured grid defines its topology implicitly (via the
+// number of cells in each dimension) but its vertex locations explicitly.  In 
+// other words it has an overall regular shape but with the cells defined as 
+// quadrilaterals or convex polyhedron rather than rectangles or rectangular 
+// parallelepipeds.  Structured meshes are also often referred to as curvilinear 
+// meshes. 
+//
+// A structured mesh can be one-, two-, or three-dimensional and is defined by 
+// specifying the mesh dimensions in terms of cells and then providing a set of 
+// vertex coordinates in three-dimensional space. 
+class StructuredMeshType : public MeshType {
+
 public:
-  UnstructuredMeshType(const UnstructuredMeshDecl* D, InstanceType IT=MeshInstance)
-  : MeshType(UnstructuredMesh, reinterpret_cast<const MeshDecl*>(D), IT){
+  StructuredMeshType(const StructuredMeshDecl* Decl)
+  : MeshType(reinterpret_cast<const MeshDecl*>(Decl)){
+    
+  }
+
+  StructuredMeshDecl* getDecl() const {
+    return reinterpret_cast<StructuredMeshDecl*>(MeshType::getDecl());
+  }
+  
+  static bool classof(const StructuredMeshType* T) { return true; }
+  
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == StructuredMesh;
+  }
+};
+
+
+
+enum MeshFormat {
+  FACESET,
+  COUNT
+};
+
+// UnstructuredMeshType - 
+//
+class UnstructuredMeshType : public MeshType {
+public:
+  UnstructuredMeshType(const UnstructuredMeshDecl* Decl)
+  : MeshType(reinterpret_cast<const MeshDecl*>(Decl)) {
     
   }
 
@@ -3455,52 +3538,36 @@ public:
  private:
   MeshFormat meshFormat;
 };
-// =================================================================================================
 
-// ===== Scout =====================================================================================
-// SC_TODO - can we move this into a separate file???
-//
+// MeshFieldType - This type is used to capture the details associated 
+// with a single item of field data stored within any of the mesh 
+// types.  In this case we track the details of where the field is 
+// stored on the mesh (cell, vertex, edge, face).  In certain cases we
+// also introduce data into the mesh within our implementation -- these 
+// fields will be identified as "built-in" types. 
 class MeshFieldType: public Type {
-  public:
-    enum FieldLocation {
-      UnknownFieldLoc = 0,    
-      CellsLoc,
-      VertexLoc,
-      EdgeLoc,
-      FaceLoc
-    };
 
-   protected:
-    MeshFieldType(TypeClass tc, QualType canon, bool Dependent,
-                  bool InstantiationDependent, bool VariablyModified,
-                  bool ContainsUnexpandedParameterPack,
-                  FieldLocation Loc)
-        : Type(tc, canon, Dependent, InstantiationDependent, VariablyModified,
-               ContainsUnexpandedParameterPack)
-    { Location = Loc; }
+protected:
+  MeshFieldType(TypeClass TC, const MeshFieldDecl *D, QualType can);
 
-   public:
+public:
 
-    FieldLocation getLocation() const
-    { return Location; };
-  
-    bool LocatedAtCell() const
-    { return Location == CellsLoc; }
-    
-    bool LoatedAtVertex() const
-    { return Location == VertexLoc; }
-  
-    bool LocatedAtEdge() const
-    { return Location == EdgeLoc; }
+  MeshFieldDecl *getDecl() const {
+    return Decl;
+  }
 
-    bool LocatedAtFace() const
-    { return Location == FaceLoc; };
+  bool isCellLocated() const;
+  bool isVertexLocated() const;
+  bool isEdgeLocated() const;
+  bool isFaceLocated() const;
+  bool isBuiltInField() const;
 
-   private:
-    FieldLocation Location;
-    friend class ASTContext;   // ASTContext creates these.    
-  };
-  // =================================================================================================
+private:
+  MeshFieldDecl *Decl;
+  friend class ASTContext;   // ASTContext creates these.    
+};
+
+//+++====================================================================+++//
   
 /// EnumType - This is a helper class that allows the use of isa/cast/dyncast
 /// to detect TagType objects of enums.

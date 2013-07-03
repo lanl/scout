@@ -55,6 +55,11 @@ namespace {
     void VisitFunctionDecl(FunctionDecl *D);
     void VisitFriendDecl(FriendDecl *D);
     void VisitFieldDecl(FieldDecl *D);
+    void VisitMeshDecl(MeshDecl *D);
+    void VisitUniformMeshDecl(UniformMeshDecl *D);
+    void VisitRectilinearMeshDecl(RectilinearMeshDecl *D);    
+    void VisitStructuredMeshDecl(StructuredMeshDecl *D);
+    void VisitUnstructuredMeshDecl(UnstructuredMeshDecl *D);
     void VisitMeshFieldDecl(MeshFieldDecl *D);    
     void VisitVarDecl(VarDecl *D);
     void VisitLabelDecl(LabelDecl *D);
@@ -635,6 +640,50 @@ void DeclPrinter::VisitFieldDecl(FieldDecl *D) {
     Init->printPretty(Out, 0, Policy, Indentation);
   }
   prettyPrintAttributes(D);
+}
+
+void DeclPrinter::VisitMeshDecl(MeshDecl *D) {
+
+  if (!Policy.SuppressSpecifiers && D->isModulePrivate())
+    Out << "__module_private__ ";
+
+  Out << D->getKindName();
+  Out << " fields[ ";
+  if (D->hasCellData())
+    Out << "cells ";
+  if (D->hasVertexData())
+    Out << "vertices ";
+  if (D->hasEdgeData())
+    Out << "edges ";
+  if (D->hasFaceData())
+    Out << "faces ";
+  Out << "] ";
+
+  if (D->isCompleteDefinition()) {
+    Out << "{\n";
+    VisitDeclContext(D);
+    Indent() << "}";
+  }
+}
+
+void DeclPrinter::VisitUniformMeshDecl(UniformMeshDecl *D) {
+
+
+}
+
+void DeclPrinter::VisitRectilinearMeshDecl(RectilinearMeshDecl *D) {
+
+
+}
+
+void DeclPrinter::VisitStructuredMeshDecl(StructuredMeshDecl *D) {
+
+
+}
+
+void DeclPrinter::VisitUnstructuredMeshDecl(UnstructuredMeshDecl *D) {
+
+
 }
 
 void DeclPrinter::VisitMeshFieldDecl(MeshFieldDecl *D) {

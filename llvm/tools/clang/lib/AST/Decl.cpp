@@ -2955,20 +2955,16 @@ MeshFieldDecl *MeshFieldDecl::Create(const ASTContext &C,
                                      TypeSourceInfo *TInfo,
                                      Expr *BW,
                                      bool Mutable,
-                                     InClassInitStyle InitStyle,
-                                     MeshFieldDeclLocationType DeclLoc) {
+                                     InClassInitStyle InitStyle) {
   
   return new (C) MeshFieldDecl(Decl::MeshField, DC, StartLoc, IdLoc, Id, T, TInfo,
-                               BW, Mutable, InitStyle, DeclLoc);
+                               BW, Mutable, InitStyle);
 }
 
-MeshFieldDecl *MeshFieldDecl::CreateDeserialized(ASTContext &C, unsigned ID,
-                                                 MeshFieldDeclLocationType DeclLoc) {
-  /* SC_TODO -- need to figure out how to deal with location. */   
+MeshFieldDecl *MeshFieldDecl::CreateDeserialized(ASTContext &C, unsigned ID) {
   void *Mem = AllocateDeserializedDecl(C, ID, sizeof(MeshFieldDecl));
   return new (Mem) MeshFieldDecl(Field, 0, SourceLocation(), SourceLocation(),
-                                 0, QualType(), 0, 0, false, ICIS_NoInit,
-                                 DeclLoc);
+                                 0, QualType(), 0, 0, false, ICIS_NoInit);
 }
 
 unsigned MeshFieldDecl::getMeshFieldIndex() const {

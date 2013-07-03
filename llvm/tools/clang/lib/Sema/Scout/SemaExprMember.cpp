@@ -52,15 +52,60 @@
  * ##### 
  */ 
 
-#ifndef __SC_CLANG_MESH_DECLS_H__
-#define __SC_CLANG_MESH_DECLS_H__
+#include "clang/Sema/SemaInternal.h"
+#include "clang/Sema/Lookup.h"
 
-#include "clang/AST/scout/UniformMeshDecl.h"
-#include "clang/AST/scout/UnstructuredMeshDecl.h"
-#include "clang/AST/scout/StructuredMeshDecl.h"
-#include "clang/AST/scout/RectilinearMeshDecl.h"
+using namespace clang;
+using namespace sema;
 
-#endif
+bool Sema::LookupMemberExprInMesh(Sema &SemaRef, LookupResult &R,
+                       SourceRange BaseRange, const MeshType *MTy,
+                       SourceLocation OpLoc, CXXScopeSpec &SS){
 
+  MeshDecl *MDecl = MTy->getDecl();
 
+  DeclContext *DC = MDecl;
 
+  SemaRef.LookupQualifiedName(R, DC);
+
+  if(R.empty()){
+    SemaRef.Diag(OpLoc, diag::err_invalid_mesh_field) << R.getLookupName();
+    return true;
+  }
+
+  NamedDecl* ND = R.getFoundDecl();
+
+  assert(isa<MeshFieldDecl>(ND) && "expected a mesh field decl");
+
+  MeshFieldDecl* FD = cast<MeshFieldDecl>(ND);
+
+  if (FD->isCellLocated()) {
+    if (MTy->hasCellData()) {
+      SemaRef.Diag(OpLoc, diag::err_invalid_mesh_cells_field) <<
+      R.getLookupName();
+      return true;
+    }
+  } else if (FD->isVertexLocated()) {
+    if (MTy->hasVertexData()) {
+      SemaRef.Diag(OpLoc, diag::err_invalid_mesh_vertices_field) <<
+      R.getLookupName();
+      return true;
+    }
+  } else if (FD->isFaceLocated()) {
+    if (MTy->hasFaceData()) {
+      SemaRef.Diag(OpLoc, diag::err_invalid_mesh_faces_field) <<
+      R.getLookupName();
+      return true;
+    }
+  } else if (FD->isEdgeLocated()) {
+    if(MTy->hasEdgeData()){
+      SemaRef.Diag(OpLoc, diag::err_invalid_mesh_edges_field) <<
+      R.getLookupName();
+      return true;
+    }
+  } else {
+    assert(false && "unknown mesh field type");
+  }
+
+  return false;
+}

@@ -60,28 +60,49 @@
 
 namespace clang {
 
-class UnstructuredMeshDecl : public MeshDecl{
+// ----- UnstructuredMeshDecl 
+// 
+class UnstructuredMeshDecl : public MeshDecl {
+
 protected:
-  UnstructuredMeshDecl(Kind DK, DeclContext* DC,
-                       SourceLocation L, SourceLocation StartL,
-                       IdentifierInfo* Id, MeshDecl* PrevDecl)
-  : MeshDecl(DK, DC, L, StartL, Id, PrevDecl){
-    
-  }
-  
+  UnstructuredMeshDecl(DeclContext* DC, 
+                       SourceLocation L, 
+                       SourceLocation StartL,
+                       IdentifierInfo* Id, 
+                       UnstructuredMeshDecl* PrevDecl);
+
 public:
-  static UnstructuredMeshDecl*
-  Create(ASTContext& C, Kind DK, DeclContext* DC,
-         SourceLocation StartLoc, SourceLocation IdLoc,
-         IdentifierInfo* Id, UnstructuredMeshDecl* PrevDecl);
-  
+  static UnstructuredMeshDecl *Create(const ASTContext &C, 
+                                      DeclContext *DC,
+                                      SourceLocation StartLoc,
+                                      SourceLocation IdLoc,
+                                      IdentifierInfo *Id, 
+                                      UnstructuredMeshDecl* PrevDecl = 0);
+
+  static UnstructuredMeshDecl *CreateDeserialized(const ASTContext &C, 
+                                                  unsigned ID); 
+
+  const UnstructuredMeshDecl *getPreviousDecl() const {
+    return cast_or_null<UnstructuredMeshDecl>(TagDecl::getPreviousDecl());
+  }
+
+  UnstructuredMeshDecl *getPreviousDecl() {
+    return cast_or_null<UnstructuredMeshDecl>(TagDecl::getPreviousDecl());
+  }
+
+  const UnstructuredMeshDecl *getMostRecentDecl() const {
+    return cast<UnstructuredMeshDecl>(TagDecl::getMostRecentDecl());
+  }
+
+  UnstructuredMeshDecl *getMostRecentDecl() {
+    return cast<UnstructuredMeshDecl>(TagDecl::getMostRecentDecl());
+  }
+
   static bool classof(const Decl* D) { return classofKind(D->getKind()); }
   static bool classof(const UnstructuredMeshDecl* D) { return true; }
   static bool classofKind(Kind K) { return K == UnstructuredMesh; }
-
-  void addImplicitFields(SourceLocation Loc, const ASTContext &C); 
-  
 };
+
 } // end namespace clang
 
 #endif

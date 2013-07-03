@@ -889,7 +889,7 @@ void ASTDumper::VisitMeshFieldDecl(const MeshFieldDecl *D) {
     OS << " __edge_located__";
   else if (D->isFaceLocated())
     OS << " __face_located__";
-  else if (D->isBuiltIn())
+  else if (D->isBuiltInField())
     OS << " __sc_built_in__";
   else 
     // Normally, we'd assert here but this is good for 

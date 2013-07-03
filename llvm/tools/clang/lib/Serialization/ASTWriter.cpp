@@ -260,9 +260,10 @@ void ASTTypeWriter::VisitTagType(const TagType *T) {
 
 // ===== Scout =====================================================================
 // SC_TODO - implement these 
+void ASTTypeWriter::VisitMeshType(const MeshType *T) { }
 void ASTTypeWriter::VisitUniformMeshType(const UniformMeshType *T) { }
 void ASTTypeWriter::VisitStructuredMeshType(const StructuredMeshType *T) { }
-void ASTTypeWriter::VisitRectlinearMeshType(const RectlinearMeshType *T) { }
+void ASTTypeWriter::VisitRectilinearMeshType(const RectilinearMeshType *T) { }
 void ASTTypeWriter::VisitUnstructuredMeshType(const UnstructuredMeshType *T) { }
 // =================================================================================
 void ASTTypeWriter::VisitRecordType(const RecordType *T) {
@@ -543,9 +544,10 @@ void TypeLocWriter::VisitAutoTypeLoc(AutoTypeLoc TL) {
 
 // ===== Scout ====================================================================
 // SC_TODO - implement these 
+void TypeLocWriter::VisitMeshTypeLoc(MeshTypeLoc TL) { }
 void TypeLocWriter::VisitUniformMeshTypeLoc(UniformMeshTypeLoc TL) { }
 void TypeLocWriter::VisitStructuredMeshTypeLoc(StructuredMeshTypeLoc TL) { }
-void TypeLocWriter::VisitRectlinearMeshTypeLoc(RectlinearMeshTypeLoc TL) { }
+void TypeLocWriter::VisitRectilinearMeshTypeLoc(RectilinearMeshTypeLoc TL) { }
 void TypeLocWriter::VisitUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc TL) { }
 // ================================================================================
 void TypeLocWriter::VisitRecordTypeLoc(RecordTypeLoc TL) {

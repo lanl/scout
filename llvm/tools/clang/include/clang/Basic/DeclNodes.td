@@ -30,9 +30,9 @@ def Named : Decl<1>;
               : DDecl<ClassTemplateSpecialization>;
     // ===== Scout ===========================================================
       def Mesh : DDecl<Tag>;
-        def UniformMesh      : DDecl<Mesh>;
-        def StructuredMesh   : DDecl<Mesh>;
-        def RectilinearMesh  : DDecl<Mesh>;
+        def UniformMesh : DDecl<Mesh>;
+        def StructuredMesh : DDecl<Mesh>;
+        def RectilinearMesh : DDecl<Mesh>;
         def UnstructuredMesh : DDecl<Mesh>;
     // =======================================================================
     def TemplateTypeParm : DDecl<Type>;
@@ -44,7 +44,7 @@ def Named : Decl<1>;
       def Field : DDecl<Declarator>;
         def ObjCIvar : DDecl<Field>;
         def ObjCAtDefsField : DDecl<Field>;
-	def MeshField : DDecl<Field>;
+	      def MeshField : DDecl<Field>;
       def MSProperty : DDecl<Declarator>;
       def Function : DDecl<Declarator>, DeclContext;
         def CXXMethod : DDecl<Function>;

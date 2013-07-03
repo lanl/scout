@@ -4561,31 +4561,30 @@ QualType TreeTransform<Derived>::TransformRecordType(TypeLocBuilder &TLB,
 
 // ===== Scout ===========================================================================
 // SC_TODO - implement
-/*
 template<typename Derived>
 QualType TreeTransform<Derived>::TransformMeshType(TypeLocBuilder &TLB,
                                                    MeshTypeLoc TL) {
   const MeshType *T = TL.getTypePtr();
-  MeshDecl *Mesh
-  = cast_or_null<RecordDecl>(getDerived().TransformDecl(TL.getNameLoc(),
-                                                        T->getDecl()));
-  if (!Mesh)
+  MeshDecl *MD;
+  MD = cast_or_null<MeshDecl>(getDerived().TransformDecl(TL.getNameLoc(),
+                                                         T->getDecl()));
+  if (!MD)
     return QualType();
   
   QualType Result = TL.getType();
   if (getDerived().AlwaysRebuild() ||
-      Mesh != T->getDecl()) {
-    Result = getDerived().RebuildMeshType(Record);
+      MD != T->getDecl()) {
+    Result = getDerived().RebuildMeshType(MD);
     if (Result.isNull())
       return QualType();
   }
   
-  RecordTypeLoc NewTL = TLB.push<RecordTypeLoc>(Result);
+  MeshTypeLoc NewTL = TLB.push<MeshTypeLoc>(Result);
   NewTL.setNameLoc(TL.getNameLoc());
-  
+
   return Result;
 }
-*/
+
 
 template<typename Derived>
 QualType

@@ -52,15 +52,58 @@
  * ##### 
  */ 
 
-#ifndef __SC_CLANG_MESH_DECLS_H__
-#define __SC_CLANG_MESH_DECLS_H__
+#ifndef __SC_CLANG_RECTLINEAR_MESH_DECL_H__
+#define __SC_CLANG_RECTLINEAR_MESH_DECL_H__
 
-#include "clang/AST/scout/UniformMeshDecl.h"
-#include "clang/AST/scout/UnstructuredMeshDecl.h"
-#include "clang/AST/scout/StructuredMeshDecl.h"
-#include "clang/AST/scout/RectilinearMeshDecl.h"
+
+#include "clang/AST/scout/MeshDecl.h"
+
+namespace clang {
+
+// ----- RectilinearMeshDecl 
+// 
+class RectilinearMeshDecl : public MeshDecl {
+
+protected:
+  RectilinearMeshDecl(DeclContext* DC, 
+                      SourceLocation L, 
+                      SourceLocation StartL,
+                      IdentifierInfo* Id, 
+                      RectilinearMeshDecl* PrevDecl);
+
+public:
+  static RectilinearMeshDecl *Create(const ASTContext &C, 
+                                     DeclContext *DC,
+                                     SourceLocation StartLoc,
+                                     SourceLocation IdLoc,
+                                     IdentifierInfo *Id, 
+                                     RectilinearMeshDecl* PrevDecl = 0);
+
+  static RectilinearMeshDecl *CreateDeserialized(const ASTContext &C, 
+                                                 unsigned ID); 
+
+  const RectilinearMeshDecl *getPreviousDecl() const {
+    return cast_or_null<RectilinearMeshDecl>(TagDecl::getPreviousDecl());
+  }
+
+  RectilinearMeshDecl *getPreviousDecl() {
+    return cast_or_null<RectilinearMeshDecl>(TagDecl::getPreviousDecl());
+  }
+
+  const RectilinearMeshDecl *getMostRecentDecl() const {
+    return cast<RectilinearMeshDecl>(TagDecl::getMostRecentDecl());
+  }
+
+  RectilinearMeshDecl *getMostRecentDecl() {
+    return cast<RectilinearMeshDecl>(TagDecl::getMostRecentDecl());
+  }
+
+  static bool classof(const Decl* D) { return classofKind(D->getKind()); }
+  static bool classof(const RectilinearMeshDecl* D) { return true; }
+  static bool classofKind(Kind K) { return K == RectilinearMesh; }
+};
+
+
+} // end namespace clang
 
 #endif
-
-
-

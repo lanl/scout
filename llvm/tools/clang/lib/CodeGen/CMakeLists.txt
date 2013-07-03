@@ -65,6 +65,7 @@ add_clang_library(clangCodeGen
   Scout/CGStmt.cpp
   Scout/CodeGenFunction.cpp
   Scout/CodeGenTypes.cpp
+  Scout/CGMeshLayoutBuilder.cpp
   )
 
 add_dependencies(clangCodeGen

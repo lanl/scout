@@ -47,7 +47,10 @@
  *  SUCH DAMAGE.
  * ########################################################################### 
  * 
- * Notes
+ * Notes: See the various mesh types in AST/Types.h for some 
+ * -----  more details on Scout's mesh types.  It is important 
+ *        to keep a connection between the various Decls in this
+ *        file and those types. 
  *
  * ##### 
  */ 
@@ -71,191 +74,234 @@
 
 namespace clang {
 
-// ===== Scout =========================================================================================
-// Mesh
-// A mesh declaration is similar to a TagDecl/RecordDecl but different
-// enough that a new subclass of TypeDecl was created. It encapsulates
-// a mesh definition such as:
-//    
-//   uniform mesh MyMesh{
-//     cells:
-//          float a;
-//   }
-//
-// SC_TODO - from looking at the new LLVM IR we're generating this looks
-// to have horrible alignment details -- need to check on this… 
-class MeshDecl : public TypeDecl, public DeclContext{
-  
- public:
-  typedef std::vector<const MeshFieldDecl*> MeshFieldVec;
+  class MeshDecl;
 
- private:
-  bool IsDefinition : 1;
-  bool IsBeingDefined : 1;
-  SourceLocation RBraceLoc;
-  RecordDecl* StructRep;
-  MeshFieldVec CellFields;
-  MeshFieldVec VertexFields;
-  MeshFieldVec FaceFields;
-  MeshFieldVec EdgeFields;
+  // MeshFieldDecl - An instance of this class if create by
+  // Sema::ActOnMeshField to represent a member of a Scout 
+  // mesh.  We build directly on the features of FieldDecl's.
+  //
+  // NOTE:  Can't figure a way to extract MeshFieldDecl from 
+  // this file, since it depends on FieldDecl, but RecordDecl 
+  // depends on MeshFieldDecl being defined, so you'd get a 
+  // circular dependency between Decl.h and MeshFieldDecl.h
+  // if you did that. 
+  class MeshFieldDecl : public FieldDecl {
+    
+    // FIXME: This can be packed into the bitfields in Decl.
+    bool Mutable       : 1;
 
- protected:
-  
-  MeshDecl(Kind DK, DeclContext* DC,
-           SourceLocation L, SourceLocation StartL,
-           IdentifierInfo* Id, MeshDecl* PrevDecl)
-  : TypeDecl(DK, DC, L, Id, StartL),
-    DeclContext(DK),
-    StructRep(0){
-    IsDefinition = false;
-    IsBeingDefined = false;
-  }  
-  
- public:
-  typedef const MeshFieldDecl* const* const_mesh_field_iterator;
-  
-  void completeDefinition(ASTContext& C);
-  
-  RecordDecl* getStructRep() {
-    return StructRep;
-  }
-  
-  void setStructRep(RecordDecl* SR) {
-    StructRep = SR;
-  }
-  
-  SourceLocation getRBraceLoc() const { return RBraceLoc; }
-  void setRBraceLoc(SourceLocation L) { RBraceLoc = L; }
-  
-  SourceLocation getInnerLocStart() const { return getLocStart(); }
-  
-  SourceLocation getOuterLocStart() const { return getLocStart(); }
-  
-  virtual SourceRange getSourceRange() const;
-  
-  bool isThisDeclarationADefinition() const {
-    return isDefinition();
-  }
-  
-  bool isDefinition() const {
-    return IsDefinition;
-  }
-  
-  bool isBeingDefined() const {
-    return IsBeingDefined;
-  }
-  
-  void startDefinition();
-  
-  MeshDecl* getDefinition() const;
-  
-  typedef specific_decl_iterator<MeshFieldDecl> mesh_field_iterator;
-  
-  mesh_field_iterator mesh_field_begin() const;
-  
-  mesh_field_iterator mesh_field_end() const{
-    return mesh_field_iterator(decl_iterator());
-  }
-  
-  bool mesh_field_empty() const{
-    return mesh_field_begin() == mesh_field_end();
-  }
-  
-  NestedNameSpecifierLoc getQualifierLoc() const {
-    return NestedNameSpecifierLoc();
-  }
-  
-  static bool classof(const Decl* D) { return classofKind(D->getKind()); }
-  static bool classofKind(Kind K) { return K >= firstMesh && K <= lastMesh; }
-  
-  static DeclContext* castToDeclContext(const MeshDecl* D){
-    return static_cast<DeclContext*>(const_cast<MeshDecl*>(D));
-  }
+    // Each field can be placed at various locations within the 
+    // topology of the mesh.  We use the following bitfields to 
+    // track this location within the field's decl. 
+    bool CellLocated   : 1;
+    bool VertexLocated : 1;
+    bool EdgeLocated   : 1;
+    bool FaceLocated   : 1;
+    bool BuiltInField  : 1;
 
-  static MeshDecl *castFromDeclContext(const DeclContext *DC) {
-    return static_cast<MeshDecl *>(const_cast<DeclContext*>(DC));
-  }
-  
-  bool canConvertTo(ASTContext& C, MeshDecl* MD);
-  
-  friend class ASTDeclReader;
-  friend class ASTDeclWriter;
-  
-  void addCellField(const MeshFieldDecl *field) {
-    assert(field->meshLocation() == MeshFieldDecl::CellLoc &&
-           "expected a cell field");
-    CellFields.push_back(field);
-  }
-  
-  const_mesh_field_iterator cell_begin() const {
-    return CellFields.data();
-  }
-  
-  const_mesh_field_iterator cell_end() const {
-    return CellFields.data() + CellFields.size();
-  }
-  
-  bool cell_empty() const {
-    return CellFields.empty();
-  }
+    // The field index cache value below is borrowed from 
+    // FieldDecl -- we could have made some changes to 
+    // FieldDecl so we could inherit this but we've 
+    // opted to have a smaller impact on the base Clang 
+    // source instead.  Just be aware of this if you decide
+    // to downcast a MeshFieldDecl to a FieldDecl.  
+    mutable unsigned CachedFieldIndex : 26;
 
-  void addVertexField(const MeshFieldDecl *field) {
-    assert(field->meshLocation() == MeshFieldDecl::VertexLoc &&
-           "expected a vertex field");
-    VertexFields.push_back(field);
-  }
+  protected:
+  
+    MeshFieldDecl(Kind DK, DeclContext *DC, SourceLocation StartLoc,
+                  SourceLocation IdLoc, IdentifierInfo *Id,
+                  QualType T, TypeSourceInfo *TInfo, Expr *BW, bool Mutable,
+                  InClassInitStyle InitStyle)
+        : FieldDecl(DK, DC, StartLoc, IdLoc, Id, T, TInfo,
+                    BW, Mutable, InitStyle), CachedFieldIndex(0)
+    { }
 
-  const_mesh_field_iterator vertex_begin() const {
-    return VertexFields.data();
-  }
-  
-  const_mesh_field_iterator vertex_end() const {
-    return VertexFields.data() + VertexFields.size();
-  }
-  
-  bool vertex_empty() const {
-    return VertexFields.empty();
-  }
-  
-  void addFaceField(const MeshFieldDecl *field) {
-    assert(field->meshLocation() == MeshFieldDecl::FaceLoc &&
-           "expected a face field");
-    FaceFields.push_back(field);
-  }
+  public:
 
-  const_mesh_field_iterator face_begin() const {
-    return FaceFields.data();
-  }
+    static MeshFieldDecl *Create(const ASTContext &C, DeclContext *DC,
+                                 SourceLocation StartLoc, SourceLocation IdLoc,
+                                 IdentifierInfo *Id, QualType T,
+                                 TypeSourceInfo *TInfo, Expr *BW, bool Mutable,
+                                 InClassInitStyle InitStyle);
   
-  const_mesh_field_iterator face_end() const {
-    return FaceFields.data() + FaceFields.size();
-  }
+    static MeshFieldDecl *CreateDeserialized(ASTContext &C, unsigned ID);  
   
-  bool face_empty() const {
-    return FaceFields.empty();
-  }
-  
-  void addEdgeField(const MeshFieldDecl *field) {
-    assert(field->meshLocation() == MeshFieldDecl::EdgeLoc &&
-           "expected an edge field");
-    EdgeFields.push_back(field);
-  }
-  
-  const_mesh_field_iterator edge_begin() const {
-    return EdgeFields.data();
-  }
-  
-  const_mesh_field_iterator edge_end() const {
-    return EdgeFields.data() + EdgeFields.size();
-  }
-  
-  bool edge_empty() const {
-    return EdgeFields.empty();
-  }
+    // Return the mesh that contains this field. 
+    const MeshDecl *getParentMesh() const;
 
-  virtual void addImplicitFields(SourceLocation Loc, const ASTContext &C){}  
+    // Return the index position of this field within the parent mesh. 
+    unsigned getMeshFieldIndex() const;
 
-};
+    // \brief Determine if the field is located at the cells of the mesh.
+    bool isCellLocated() const {
+      return CellLocated;
+    }
+
+    // \brief Set the field to be located at the cells of the mesh. 
+    void setCellLocated(bool flag = true) {
+      CellLocated = flag;
+    }
+
+    // \brief Determine if the field is located at the vertices of the mesh.
+    bool isVertexLocated() const {
+      return VertexLocated;
+    }
+    // \brief Set the field to be located at the vertices of the mesh. 
+    void setVertexLocated(bool flag = true) {
+      VertexLocated = flag;
+    }
+
+    // \brief Determine if the field is located at the edges of the mesh.
+    bool isEdgeLocated() const {
+      return EdgeLocated;
+    }
+    // \brief Set the field to be located at the edges of the mesh. 
+    void setEdgeLocated(bool flag = true) {
+      EdgeLocated = flag;
+    }
+
+    // \brief Determine if the field is located at the faces of the mesh.
+    bool isFaceLocated() const {
+      return FaceLocated;
+    }
+    // \brief Set the field to be located at the faces of the mesh.
+    void setFaceLocated(bool flag = true) {
+      FaceLocated = flag;
+    }
+
+    // \brief Determine if the field represents a built-in value. 
+    bool isBuiltInField() const {
+      return BuiltInField;
+    }
+    // \brief Set the field to represent a built-in value. 
+    void setBuiltInField(bool flag = true) {
+      BuiltInField = flag;
+    }
+
+    bool isValidLocation() const {
+      return (isCellLocated()    || 
+              isVertexLocated()  ||
+              isEdgeLocated()    || 
+              isFaceLocated()    ||
+              isBuiltInField());
+    }
+
+    // FIXME - This implementation will currently keep us from 
+    // being able to support templated fields. 
+    bool isDependentType() const { return false; }
+
+    static bool classof(const Decl *D) { return classofKind(D->getKind()); }
+    static bool classofKind(Kind K) { return K == MeshField; }
+
+    friend class ASTDeclReader;
+    friend class ASTDeclWriter;
+  };
+
+
+  // Mesh - This is a base class for all of our mesh types; thus it 
+  // provides some basic functionality for all mesh decls.  Given the
+  // similarity of our mesh types to C/C++ structs we follow a similar
+  // path and implement the mesh decls on top of tag decls (this is a 
+  // change from our first implementations).  
+  //    
+  // Note: Make sure you follow similar inheritance paths with both the
+  // Decls and Types -- i.e. MeshType should inherit from TagType.  If 
+  // you don't do this it is likely you'll see some fairly opaque error
+  // messages stemming from the generated '.inc' files...
+  // 
+  // SC_TODO - from looking at the new LLVM IR we're generating this looks
+  // to have horrible alignment details.  We will likely have to implement
+  // our own alignment details like RecordDecl... 
+  class MeshDecl : public TagDecl {
+  
+   private:
+    // FIXME: This can be packed into the bitfields in Decl.
+    /// HasCellData - This is true if the mesh has at least one member 
+    /// stored at the cells of the mesh. 
+    bool HasCellData   : 1;
+    /// HasVertexData - This is true if the mesh has at least one member
+    /// stored at the vertices of the mesh.
+    bool HasVertexData : 1;
+    /// HasFaceData - This is true if the mesh has at least one member 
+    /// stored at the faces of the mesh. 
+    bool HasFaceData   : 1;
+    /// HasEdgeData - This is true if the mesh has at least one member 
+    /// stored at the edges of the mesh. 
+    bool HasEdgeData   : 1;
+
+    /// HasVolatileMember - This is true if the mesh has at least one 
+    /// member of 'volatile' type.
+    bool HasVolatileMember : 1;
+
+    friend class DeclContext;
+
+   protected:
+    MeshDecl(Kind DK, TagKind TK, DeclContext* DC,
+             SourceLocation L, SourceLocation StartL,
+             IdentifierInfo* Id, MeshDecl* PrevDecl);
+
+    mutable bool LoadedFieldsFromExternalStorage : 1;
+
+   public:
+    bool hasVolatileMember() const { return HasVolatileMember; }
+    void setHasVolatileMember (bool val) { HasVolatileMember = val; }
+
+    // Return true if the mesh has one or more fields stored at the cells.
+    bool hasCellData() const { return HasCellData; }
+    // Flag the mesh as having on or more fields stored at the cells. 
+    void setHasCellData(bool flag) { HasCellData = flag; }
+
+    // Return true if the mesh has one or more fields stored at the vertices.
+    bool hasVertexData() const { return HasVertexData; }
+    // Flag the mesh as having on or more fields stored at the vertices.     
+    void setHasVertexData(bool flag) { HasVertexData = flag; }
+    
+    // Return true if the mesh has one or more fields stored at the edges.
+    bool hasEdgeData() const { return HasEdgeData; }
+    // Flag the mesh as having on or more fields stored at the edges.     
+    void setHasEdgeData(bool flag) { HasEdgeData = flag; }    
+
+    // Return true if the mesh has one or more fields stored at the faces.
+    bool hasFaceData() const { return HasFaceData; }
+    // Flag the mesh as having on or more fields stored at the faces.     
+    void setHasFaceData(bool flag) { HasFaceData = flag; }
+
+    MeshDecl *getDefinition() const {
+      return cast_or_null<MeshDecl>(TagDecl::getDefinition());
+    }
+
+    // Iterator access to mesh field members. The field iterator only
+    // visits the non-static data members of this class, ignoring any
+    // static data members.
+    typedef specific_decl_iterator<MeshFieldDecl> field_iterator;
+
+    field_iterator field_begin() const;
+
+    field_iterator field_end() const {
+      return field_iterator(decl_iterator());
+    }
+
+    // field_empty - Whether there are any fields (non-static data
+    // members) in this record.
+    bool field_empty() const {
+      return field_begin() == field_end();
+    }
+
+    /// completeDefinition - Notes that the definition of this type is
+    /// now complete.
+    virtual void completeDefinition();
+
+    static bool classof(const Decl *D) { return classofKind(D->getKind()); }
+    static bool classofKind(Kind K) {
+      return K >= firstMesh && K <= lastMesh;
+    }
+
+   protected:
+    /// \brief Deserialize just the fields.
+    virtual void LoadFieldsFromExternalStorage() const;
+  };
+
 
 } // end namespace clang
 

@@ -2279,8 +2279,7 @@ private:
   bool ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec);
   
   void ParseMeshDeclaration(ParsingDeclSpec &DS,
-                            FieldCallback &Fields,
-                            unsigned FieldType);
+                            FieldCallback &Fields);
 
   void ParseMeshParameterDeclaration(DeclSpec& DS);
   

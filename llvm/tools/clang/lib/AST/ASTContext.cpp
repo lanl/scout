@@ -26,6 +26,7 @@
 #include "clang/AST/ExternalASTSource.h"
 #include "clang/AST/Mangle.h"
 #include "clang/AST/RecordLayout.h"
+#include "clang/AST/scout/MeshLayout.h"
 #include "clang/AST/TypeLoc.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/SourceManager.h"
@@ -753,6 +754,14 @@ ASTContext::~ASTContext() {
     if (ASTRecordLayout *R = const_cast<ASTRecordLayout*>((I++)->second))
       R->Destroy(*this);
   }
+
+  // Clean up mesh layout objects... 
+  for (llvm::DenseMap<const MeshDecl*, const ASTMeshLayout*>::iterator
+       I = ASTMeshLayouts.begin(), E = ASTMeshLayouts.end(); I != E; ) {
+    // Increment in loop to prevent using deallocated memory.
+    if (ASTMeshLayout *M = const_cast<ASTMeshLayout*>((I++)->second))
+      M->Destroy(*this);
+  }
   
   for (llvm::DenseMap<const Decl*, AttrVec*>::iterator A = DeclAttrs.begin(),
                                                     AEnd = DeclAttrs.end();
@@ -1258,21 +1267,7 @@ const llvm::fltSemantics &ASTContext::getFloatTypeSemantics(QualType T) const {
   switch (BT->getKind()) {
   default: llvm_unreachable("Not a floating point type!");
   case BuiltinType::Half:       return Target->getHalfFormat();
-  // ===== Scout ==============================================================
-  // SC_TODO - We need to replace scout's vectors with Clang's "builtin" 
-  // vectors. This has been done in the "refactor" branch but has not yet 
-  // been merged with the devel branch. 
-  case BuiltinType::Float2:
-  case BuiltinType::Float3:
-  case BuiltinType::Float4: 
-  //======================================================
   case BuiltinType::Float:      return Target->getFloatFormat();
-  //======================================================
-  // scout - double vectors
-  case BuiltinType::Double2:
-  case BuiltinType::Double3:
-  case BuiltinType::Double4: 
-  //======================================================
   case BuiltinType::Double:     return Target->getDoubleFormat();
   case BuiltinType::LongDouble: return Target->getLongDoubleFormat();
   }
@@ -1343,12 +1338,38 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool RefAsPointee) const {
       }
     }
 
-    // Fields can be subject to extra alignment constraints, like if
-    // the field is packed, the struct is packed, or the struct has a
-    // a max-field-alignment constraint (#pragma pack).  So calculate
-    // the actual alignment of the field within the struct, and then
-    // (as we're expected to) constrain that by the alignment of the type.
-    if (const FieldDecl *field = dyn_cast<FieldDecl>(VD)) {
+    // Handle mesh first -- as MeshFieldDecl is a subclass of FieldDecl it
+    // will pass the test below for field decls...
+    // 
+    // Meshes can be subject to extra alignment constraints, like if
+    // it is packed or has a max-field-alignment constraint (#pragma pack).
+    // So calculate the actual alignment of the field within the struct,
+    // and then (as we're expected to do) constrain that by the alignment
+    // of the type. 
+    if (const MeshFieldDecl *field = dyn_cast<MeshFieldDecl>(VD)) {
+      const ASTMeshLayout &layout = getASTMeshLayout(field->getParentMesh());
+
+      // Start with the mesh's overall alignment. 
+      unsigned fieldAlign = toBits(layout.getAlignment());
+
+      // Use the CGD of that and the offset within the record. 
+      uint64_t offset = layout.getFieldOffset(field->getFieldIndex());
+      if (offset > 0) {
+        // Alignment is always a power of two, so the GCD will be a 
+        // power of two, which means we get to do this crazy thing 
+        // instead of Euclid's. 
+        uint64_t lowBitOfOffset = offset & (~offset + 1);
+        if (lowBitOfOffset < fieldAlign)
+          fieldAlign = static_cast<unsigned>(lowBitOfOffset);
+      }
+      Align = std::min(Align, fieldAlign);
+    } else if (const FieldDecl *field = dyn_cast<FieldDecl>(VD)) {
+      // Fields can be subject to extra alignment constraints, like if
+      // the field is packed, the struct is packed, or the struct has a
+      // a max-field-alignment constraint (#pragma pack).  So calculate
+      // the actual alignment of the field within the struct, and then
+      // (as we're expected to) constrain that by the alignment of the type.
+    
       // So calculate the alignment of the field.
       const ASTRecordLayout &layout = getASTRecordLayout(field->getParent());
 
@@ -1380,15 +1401,20 @@ std::pair<CharUnits, CharUnits>
 ASTContext::getTypeInfoDataSizeInChars(QualType T) const {
   std::pair<CharUnits, CharUnits> sizeAndAlign = getTypeInfoInChars(T);
 
-  // In C++, objects can sometimes be allocated into the tail padding
+  // In C++ and Scout, objects can sometimes be allocated into the tail padding
   // of a base-class subobject.  We decide whether that's possible
   // during class layout, so here we can just trust the layout results.
-  if (getLangOpts().CPlusPlus) {
+  if (getLangOpts().Scout) {
+    if (const MeshType *MT = T->getAs<MeshType>()) {
+      const ASTMeshLayout &layout = getASTMeshLayout(MT->getDecl());
+      sizeAndAlign.first = layout.getDataSize();
+    }
+  } else if (getLangOpts().CPlusPlus) {
     if (const RecordType *RT = T->getAs<RecordType>()) {
       const ASTRecordLayout &layout = getASTRecordLayout(RT->getDecl());
       sizeAndAlign.first = layout.getDataSize();
     }
-  }
+  } 
 
   return sizeAndAlign;
 }
@@ -1705,6 +1731,7 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     Align = toBits(Layout.getAlignment());
     break;
   }
+
   case Type::Record:
   case Type::Enum: {
     const TagType *TT = cast<TagType>(T);
@@ -1726,23 +1753,23 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
   }
 
   // ===== Scout ==============================================================
-  // SC_TODO - we need to finish this implementation. 
-  // Do we need to have an ASTMeshLayout (i.e. like ASTRecordLayout)?
+  case Type::Mesh: 
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
   case Type::UnstructuredMesh: {
 
-    const MeshType *MT = cast<MeshType>(T);
-
-    if (MT->getDecl()->isInvalidDecl()) {
+    const TagType *TT = cast<TagType>(T);
+    if (TT->getDecl()->isInvalidDecl()) {
       Width = 8;
       Align = 8;
       break;
     }
 
-    Width = 8;
-    Align = 8;
+    const MeshType *MT = cast<MeshType>(TT);
+    const ASTMeshLayout &Layout = getASTMeshLayout(MT->getDecl());
+    Width = toBits(Layout.getSize());
+    Align = toBits(Layout.getAlignment());
     break;
   }
   // ===========================================================================
@@ -2490,6 +2517,7 @@ QualType ASTContext::getVariableArrayDecayedType(QualType type) const {
   case Type::Record:
   // ===== Scout ==============================================================
   // Meshes are not variably-modified
+  case Type::Mesh: // SC_TODO - we should never have a "base" mesh type... 
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
@@ -5646,6 +5674,7 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
 #include "clang/AST/TypeNodes.def"
     llvm_unreachable("@encode for dependent type!");
   // ===== Scout ==============================================================
+  case Type::Mesh: // SC_TODO - we should never have a  "base" mesh type. 
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
@@ -7476,6 +7505,7 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
   case Type::FunctionNoProto:
     return mergeFunctionTypes(LHS, RHS, OfBlockPointer, Unqualified);
   // ==== Scout ===============================================================
+  case Type::Mesh: // SC_TODO - we should never have a "base" mesh type... 
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:

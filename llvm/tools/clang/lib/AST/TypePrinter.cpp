@@ -176,6 +176,7 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     case Type::UnaryTransform:
 
     // ===== Scout ===========================================================
+    case Type::Mesh:
     case Type::UniformMesh:
     case Type::StructuredMesh:
     case Type::RectilinearMesh:
@@ -936,6 +937,11 @@ void TypePrinter::printEnumBefore(const EnumType *T, raw_ostream &OS) {
   printTag(T->getDecl(), OS);
 }
 void TypePrinter::printEnumAfter(const EnumType *T, raw_ostream &OS) { }
+
+void TypePrinter::printMeshBefore(const MeshType *T, raw_ostream &OS) {
+  printTag(T->getDecl(), OS);
+}
+void TypePrinter::printMeshAfter(const MeshType *T, raw_ostream &OS) { }
 
 void TypePrinter::printTemplateTypeParmBefore(const TemplateTypeParmType *T, 
                                               raw_ostream &OS) { 
