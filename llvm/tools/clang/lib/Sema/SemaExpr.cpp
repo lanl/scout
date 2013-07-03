@@ -8031,13 +8031,6 @@ QualType Sema::CheckAssignmentOperands(Expr *LHSExpr, ExprResult &RHS,
 
   QualType LHSType = LHSExpr->getType();
 
-  // ===== Scout =======================================================================================
-  // If this is a mesh member in the case of assigning it to a pointer
-  // to allocated mesh values, make it think we have a pointer
-  // type as the mesh member.
-  ScoutMeshExternAlloc(LHSExpr, LHSType);
-  // ==================================================================================================
-
   QualType RHSType = CompoundType.isNull() ? RHS.get()->getType() :
                                              CompoundType;
   AssignConvertType ConvTy;
