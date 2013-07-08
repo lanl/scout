@@ -16,12 +16,14 @@
 #include "CGCall.h"
 #include "CGOpenCLRuntime.h"
 #include "CGRecordLayout.h"
+#include "Scout/CGMeshLayout.h"
 #include "TargetInfo.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/RecordLayout.h"
+#include "clang/AST/scout/MeshLayout.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Module.h"
@@ -137,9 +139,21 @@ bool CodeGenTypes::isRecordLayoutComplete(const Type *Ty) const {
   return I != RecordDeclTypes.end() && !I->second->isOpaque();
 }
 
+/// isMeshLayoutComplete - Return true if the specified mesh is already
+/// completely laid out.
+bool CodeGenTypes::isMeshLayoutComplete(const Type *Ty) const {
+  llvm::DenseMap<const Type*, llvm::StructType *>::const_iterator I = 
+  MeshDeclTypes.find(Ty);
+  return I != MeshDeclTypes.end() && !I->second->isOpaque();
+}
+
 static bool
 isSafeToConvert(QualType T, CodeGenTypes &CGT,
                 llvm::SmallPtrSet<const RecordDecl*, 16> &AlreadyChecked);
+
+static bool
+isSafeToConvert(QualType T, CodeGenTypes &CGT,
+                llvm::SmallPtrSet<const MeshDecl*, 16> &AlreadyChecked);
 
 
 /// isSafeToConvert - Return true if it is safe to convert the specified record
@@ -184,6 +198,37 @@ isSafeToConvert(const RecordDecl *RD, CodeGenTypes &CGT,
   return true;
 }
 
+/// isSafeToConvert - Return true if it is safe to convert the specified mesh
+/// decl to IR and lay it out, false if doing so would cause us to get into a
+/// recursive compilation mess.
+static bool 
+isSafeToConvert(const MeshDecl *MD, CodeGenTypes &CGT,
+                llvm::SmallPtrSet<const MeshDecl*, 16> &AlreadyChecked) {
+  // If we have already checked this type (maybe the same type is used by-value
+  // multiple times in multiple structure fields, don't check again.
+  if (!AlreadyChecked.insert(MD)) return true;
+  
+  const Type *Key = CGT.getContext().getTagDeclType(MD).getTypePtr();
+  
+  // If this type is already laid out, converting it is a noop.
+  if (CGT.isMeshLayoutComplete(Key)) return true;
+  
+  // If this type is currently being laid out, we can't recursively compile it.
+  if (CGT.isMeshBeingLaidOut(Key))
+    return false;
+  
+   // If this type would require laying out members that are currently being laid
+  // out, don't do it.
+  for (MeshDecl::field_iterator I = MD->field_begin(),
+       E = MD->field_end(); I != E; ++I)
+    if (!isSafeToConvert(I->getType(), CGT, AlreadyChecked))
+      return false;
+  
+  // If there are no problems, lets do it.
+  return true;
+}
+
+
 /// isSafeToConvert - Return true if it is safe to convert this field type,
 /// which requires the structure elements contained by-value to all be
 /// recursively safe to convert.
@@ -206,6 +251,27 @@ isSafeToConvert(QualType T, CodeGenTypes &CGT,
   return true;
 }
 
+/// isSafeToConvert - Return true if it is safe to convert this mesh field 
+/// type, which requires the mesh elements contained by-value to all be
+/// recursively safe to convert.
+static bool
+isSafeToConvert(QualType T, CodeGenTypes &CGT,
+                llvm::SmallPtrSet<const MeshDecl*, 16> &AlreadyChecked) {
+  T = T.getCanonicalType();
+  
+  // If this is a record, check it.
+  if (const MeshType *MT = dyn_cast<MeshType>(T))
+    return isSafeToConvert(MT->getDecl(), CGT, AlreadyChecked);
+
+  // SC_TODO -- do we really want to return here or assert?
+  //assert(false && "Non-mesh type being checked for conversion.");
+
+  // Otherwise, there is no concern about transforming this.  We only care about
+  // things that are contained by-value in a structure that can have another 
+  // mesh as a member.
+  return true;
+}
+
 
 /// isSafeToConvert - Return true if it is safe to convert the specified record
 /// decl to IR and lay it out, false if doing so would cause us to get into a
@@ -217,6 +283,18 @@ static bool isSafeToConvert(const RecordDecl *RD, CodeGenTypes &CGT) {
   llvm::SmallPtrSet<const RecordDecl*, 16> AlreadyChecked;
   return isSafeToConvert(RD, CGT, AlreadyChecked);
 }
+
+/// isSafeToConvert - Return true if it is safe to convert the specified mesh
+/// decl to IR and lay it out, false if doing so would cause us to get into a
+/// recursive compilation mess.
+static bool isSafeToConvert(const MeshDecl *MD, CodeGenTypes &CGT) {
+  // If no meshes are being laid out, we can certainly do this one.
+  if (CGT.noMeshesBeingLaidOut()) return true;
+  
+  llvm::SmallPtrSet<const MeshDecl*, 16> AlreadyChecked;
+  return isSafeToConvert(MD, CGT, AlreadyChecked);
+}
+
 
 
 /// isFuncTypeArgumentConvertible - Return true if the specified type in a 
@@ -804,7 +882,7 @@ llvm::StructType *CodeGenTypes::ConvertMeshDeclType(const MeshDecl *MD) {
   // type connected to the decl.
   const Type *Key = Context.getTagDeclType(MD).getTypePtr();
 
-  llvm::StructType *&Entry = RecordDeclTypes[Key];
+  llvm::StructType *&Entry = MeshDeclTypes[Key];
 
   // If we don't have a StructType at all yet, create the forward declaration.
   if (Entry == 0) {
@@ -826,15 +904,15 @@ llvm::StructType *CodeGenTypes::ConvertMeshDeclType(const MeshDecl *MD) {
   }
 
   // Okay, this is a definition of a type.  Compile the implementation now.
-  bool InsertResult = RecordsBeingLaidOut.insert(Key); (void)InsertResult;
+  bool InsertResult = MeshesBeingLaidOut.insert(Key); (void)InsertResult;
   assert(InsertResult && "Recursively compiling a mesh?");
   
-   // Layout fields. foobar
+   // Layout fields.
   CGMeshLayout *Layout = ComputeMeshLayout(MD, Ty);
   CGMeshLayouts[Key] = Layout;
 
-  // We're done laying out this struct.
-  bool EraseResult = RecordsBeingLaidOut.erase(Key); (void)EraseResult;
+  // We're done laying out this mesh.
+  bool EraseResult = MeshesBeingLaidOut.erase(Key); (void)EraseResult;
   assert(EraseResult && "struct not in RecordsBeingLaidOut set?");
    
   // If this struct blocked a FunctionType conversion, then recompute whatever
@@ -845,24 +923,24 @@ llvm::StructType *CodeGenTypes::ConvertMeshDeclType(const MeshDecl *MD) {
     
   // If we're done converting the outer-most record, then convert any deferred
   // structs as well.
-  if (RecordsBeingLaidOut.empty())
-    while (!DeferredRecords.empty())
-      ConvertRecordDeclType(DeferredMeshes.pop_back_val());
+  if (MeshesBeingLaidOut.empty())
+    while (!DeferredMeshes.empty())
+      ConvertMeshDeclType(DeferredMeshes.pop_back_val());
 
   return Ty;
 }
 
 /// getCGMeshLayout - Return mesh layout info for the given mesh decl.
-const CGRecordLayout &
+const CGMeshLayout &
 CodeGenTypes::getCGMeshLayout(const MeshDecl *MD) {
   const Type *Key = Context.getTagDeclType(MD).getTypePtr();
 
-  const CGRecordLayout *Layout = CGRecordLayouts.lookup(Key);
+  const CGMeshLayout *Layout = CGMeshLayouts.lookup(Key);
   if (!Layout) {
     // Compute the type information.
     ConvertMeshDeclType(MD);
     // Now try again.
-    Layout = CGRecordLayouts.lookup(Key);
+    Layout = CGMeshLayouts.lookup(Key);
   }
 
   assert(Layout && "Unable to find mesh layout");
