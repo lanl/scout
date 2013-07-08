@@ -3111,7 +3111,7 @@ QualType ASTContext::getRecordType(const RecordDecl *Decl) const {
   return QualType(newType, 0);
 }
 
-QualType ASTContext::getUniformMeshType(const MeshDecl *Decl) const {
+QualType ASTContext::getUniformMeshType(const UniformMeshDecl *Decl) const {
   assert(Decl->isUniformMesh());
   if (Decl->TypeForDecl) return QualType(Decl->TypeForDecl, 0);
 
