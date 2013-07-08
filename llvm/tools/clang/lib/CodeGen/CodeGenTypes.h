@@ -53,6 +53,7 @@ namespace clang {
 namespace CodeGen {
   class CGCXXABI;
   class CGRecordLayout;
+  class CGMeshLayout;
   class CodeGenModule;
   class RequiredArgs;
 
@@ -84,9 +85,17 @@ private:
   /// record layout info.
   llvm::DenseMap<const Type*, CGRecordLayout *> CGRecordLayouts;
 
+  /// CGMeshLayouts - This maps llvm struct type with corresponding
+  /// mesh layout info.
+  llvm::DenseMap<const Type*, CGMeshLayout *> CGMeshLayouts;
+
   /// RecordDeclTypes - This contains the LLVM IR type for any converted
   /// RecordDecl.
   llvm::DenseMap<const Type*, llvm::StructType *> RecordDeclTypes;
+
+  /// MeshDeclTypes - This contains the LLVM IR type for any converted
+  /// MeshDecl.
+  llvm::DenseMap<const Type*, llvm::StructType *> MeshDeclTypes;
   
   /// FunctionInfos - Hold memoized CGFunctionInfo results.
   llvm::FoldingSet<CGFunctionInfo> FunctionInfos;
@@ -158,7 +167,7 @@ public:
 
   const CGRecordLayout &getCGRecordLayout(const RecordDecl*);
 
-  const CGRecordLayout &getCGMeshLayout(const RecordDecl*);  
+  const CGMeshLayout &getCGMeshLayout(const MeshDecl*);  
 
   /// UpdateCompletedType - When we find the full definition for a TagDecl,
   /// replace the 'opaque' type we previously made for it if applicable.
@@ -239,6 +248,10 @@ public:
   CGRecordLayout *ComputeRecordLayout(const RecordDecl *D,
                                       llvm::StructType *Ty);
 
+   /// \brief Compute a new LLVM record layout object for the given record.
+  CGMeshLayout *ComputeMeshLayout(const MeshDecl *D,
+                                  llvm::StructType *Ty);
+
   /// addRecordTypeName - Compute a name from the given record decl with an
   /// optional suffix and name the given LLVM type using it.
   void addRecordTypeName(const RecordDecl *RD, llvm::StructType *Ty,
@@ -277,6 +290,14 @@ public:  // These are internal details of CGT that shouldn't be used externally.
   }
   bool isRecordBeingLaidOut(const Type *Ty) const {
     return RecordsBeingLaidOut.count(Ty);
+  }
+
+  bool isMeshLayoutComplete(const Type *Ty) const;
+  bool noMeshesBeingLaidOut() const {
+    return MeshesBeingLaidOut.empty();
+  }
+  bool isMeshBeingLaidOut(const Type *Ty) const {
+    return MeshesBeingLaidOut.count(Ty);
   }
                             
 };

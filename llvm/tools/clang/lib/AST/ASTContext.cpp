@@ -3111,6 +3111,21 @@ QualType ASTContext::getRecordType(const RecordDecl *Decl) const {
   return QualType(newType, 0);
 }
 
+QualType ASTContext::getUniformMeshType(const MeshDecl *Decl) const {
+  assert(Decl->isUniformMesh());
+  if (Decl->TypeForDecl) return QualType(Decl->TypeForDecl, 0);
+
+  if (const MeshDecl *PrevDecl = Decl->getPreviousDecl())
+    if (PrevDecl->TypeForDecl)
+      return QualType(Decl->TypeForDecl = PrevDecl->TypeForDecl, 0); 
+
+  MeshType *newType = new (*this, TypeAlignment) MeshType(Decl);
+  Decl->TypeForDecl = newType;
+  Types.push_back(newType);
+  return QualType(newType, 0);
+}
+
+
 QualType ASTContext::getEnumType(const EnumDecl *Decl) const {
   if (Decl->TypeForDecl) return QualType(Decl->TypeForDecl, 0);
 

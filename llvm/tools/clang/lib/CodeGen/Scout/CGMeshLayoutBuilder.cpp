@@ -962,8 +962,8 @@ void CGMeshLayoutBuilder::CheckZeroInitializable(QualType T) {
   }
 }
 
-CGMeshLayout *CodeGenTypes::ComputeRecordLayout(const RecordDecl *D,
-                                                  llvm::StructType *Ty) {
+CGMeshLayout *CodeGenTypes::ComputeMeshLayout(const MeshDecl *D,
+                                              llvm::StructType *Ty) {
   CGMeshLayoutBuilder Builder(*this);
 
   Builder.Layout(D);
@@ -972,28 +972,22 @@ CGMeshLayout *CodeGenTypes::ComputeRecordLayout(const RecordDecl *D,
 
   // If we're in C++, compute the base subobject type.
   llvm::StructType *BaseTy = 0;
-  if (isa<CXXRecordDecl>(D) && !D->isUnion()) {
-    BaseTy = Builder.BaseSubobjectType;
-    if (!BaseTy) BaseTy = Ty;
-  }
 
-  CGMeshLayout *RL =
-    new CGMeshLayout(Ty, BaseTy, Builder.IsZeroInitializable,
-                       Builder.IsZeroInitializableAsBase);
+  CGMeshLayout *ML;
 
-  RL->NonVirtualBases.swap(Builder.NonVirtualBases);
-  RL->CompleteObjectVirtualBases.swap(Builder.VirtualBases);
+  ML = new CGMeshLayout(Ty, BaseTy, Builder.IsZeroInitializable,
+                        Builder.IsZeroInitializableAsBase);
 
   // Add all the field numbers.
-  RL->FieldInfo.swap(Builder.Fields);
+  ML->FieldInfo.swap(Builder.Fields);
 
   // Add bitfield info.
-  RL->BitFields.swap(Builder.BitFields);
+  ML->BitFields.swap(Builder.BitFields);
 
   // Dump the layout, if requested.
-  if (getContext().getLangOpts().DumpRecordLayouts) {
-    llvm::errs() << "\n*** Dumping IRgen Record Layout\n";
-    llvm::errs() << "Record: ";
+  if (getContext().getLangOpts().DumpMeshLayouts) {
+    llvm::errs() << "\n*** Dumping IRgen Mesh Layout\n";
+    llvm::errs() << "Mesh: ";
     D->dump();
     llvm::errs() << "\nLayout: ";
     RL->dump();
@@ -1001,37 +995,22 @@ CGMeshLayout *CodeGenTypes::ComputeRecordLayout(const RecordDecl *D,
 
 #ifndef NDEBUG
   // Verify that the computed LLVM struct size matches the AST layout size.
-  const ASTRecordLayout &Layout = getContext().getASTRecordLayout(D);
+  const ASTMeshLayout &Layout = getContext().getASTMeshLayout(D);
 
   uint64_t TypeSizeInBits = getContext().toBits(Layout.getSize());
   assert(TypeSizeInBits == getDataLayout().getTypeAllocSizeInBits(Ty) &&
          "Type size mismatch!");
 
-  if (BaseTy) {
-    CharUnits NonVirtualSize  = Layout.getNonVirtualSize();
-    CharUnits NonVirtualAlign = Layout.getNonVirtualAlign();
-    CharUnits AlignedNonVirtualTypeSize = 
-      NonVirtualSize.RoundUpToAlignment(NonVirtualAlign);
-
-    uint64_t AlignedNonVirtualTypeSizeInBits = 
-      getContext().toBits(AlignedNonVirtualTypeSize);
-
-    assert(AlignedNonVirtualTypeSizeInBits == 
-           getDataLayout().getTypeAllocSizeInBits(BaseTy) &&
-           "Type size mismatch!");
-  }
-                                     
-  // Verify that the LLVM and AST field offsets agree.
+    // Verify that the LLVM and AST field offsets agree.
   llvm::StructType *ST =
     dyn_cast<llvm::StructType>(RL->getLLVMType());
   const llvm::StructLayout *SL = getDataLayout().getStructLayout(ST);
 
-  const ASTRecordLayout &AST_RL = getContext().getASTRecordLayout(D);
-  RecordDecl::field_iterator it = D->field_begin();
-  const FieldDecl *LastFD = 0;
-  bool IsMsStruct = D->isMsStruct(getContext());
+  const ASTRecordLayout &AST_RL = getContext().getASTMeshLayout(D);
+  MeshDecl::field_iterator it = D->field_begin();
+  const MeshFieldDecl *LastFD = 0;
   for (unsigned i = 0, e = AST_RL.getFieldCount(); i != e; ++i, ++it) {
-    const FieldDecl *FD = *it;
+    const MeshFieldDecl *FD = *it;
 
     // For non-bit-fields, just check that the LLVM struct offset matches the
     // AST offset.
@@ -1043,16 +1022,6 @@ CGMeshLayout *CodeGenTypes::ComputeRecordLayout(const RecordDecl *D,
       continue;
     }
 
-    if (IsMsStruct) {
-      // Zero-length bitfields following non-bitfield members are
-      // ignored:
-      if (getContext().ZeroBitfieldFollowsNonBitfield(FD, LastFD)) {
-        --i;
-        continue;
-      }
-      LastFD = FD;
-    }
-    
     // Ignore unnamed bit-fields.
     if (!FD->getDeclName()) {
       LastFD = FD;
@@ -1066,28 +1035,9 @@ CGMeshLayout *CodeGenTypes::ComputeRecordLayout(const RecordDecl *D,
     const CGBitFieldInfo &Info = RL->getBitFieldInfo(FD);
     llvm::Type *ElementTy = ST->getTypeAtIndex(RL->getLLVMFieldNo(FD));
 
-    // Unions have overlapping elements dictating their layout, but for
-    // non-unions we can verify that this section of the layout is the exact
-    // expected size.
-    if (D->isUnion()) {
-      // For unions we verify that the start is zero and the size
-      // is in-bounds. However, on BE systems, the offset may be non-zero, but
-      // the size + offset should match the storage size in that case as it
-      // "starts" at the back.
-      if (getDataLayout().isBigEndian())
-        assert(static_cast<unsigned>(Info.Offset + Info.Size) ==
-               Info.StorageSize &&
-               "Big endian union bitfield does not end at the back");
-      else
-        assert(Info.Offset == 0 &&
-               "Little endian union bitfield with a non-zero offset");
-      assert(Info.StorageSize <= SL->getSizeInBits() &&
-             "Union not large enough for bitfield storage");
-    } else {
-      assert(Info.StorageSize ==
-             getDataLayout().getTypeAllocSizeInBits(ElementTy) &&
-             "Storage size does not match the element type size");
-    }
+    assert(Info.StorageSize ==
+           getDataLayout().getTypeAllocSizeInBits(ElementTy) &&
+           "Storage size does not match the element type size");
     assert(Info.Size > 0 && "Empty bitfield!");
     assert(static_cast<unsigned>(Info.Offset) + Info.Size <= Info.StorageSize &&
            "Bitfield outside of its allocated storage");

@@ -29,8 +29,29 @@ using namespace clang::CodeGen;
 
 llvm::DIType CGDebugInfo::CreateType(const MeshType *Ty) {
 
-  RecordDecl* rd = Ty->getDecl()->getStructRep();
-    const RecordType* rt =
-      cast<RecordType>(CGM.getContext().getRecordType(rd).getTypePtr());
-    return CreateType(rt);
+  if (MeshDecl* MD = Ty->getDecl()) {
+    if (MD->isUniformMesh()) {
+      UniformMeshType *MT;
+      MT = cast<UniformMeshType>(CGM.getContext.getUniformMeshType(MD).getTypePtr());
+      return CreateType(MT);
+    } else if (MD->isStructuredMesh()) {
+      StructuredMeshType *MT;
+      MT = cast<StructuredMeshType>(CGM.getContext.getStructuredMeshType(MD).getTypePtr());
+      return CreateType(MT);    
+    } else if (MD->isRectilinearMesh()) {
+      RectilinearMeshType *MT;
+      MT = cast<RectilinearMeshType>(CGM.getContext.getRectilinearMeshType(MD).getTypePtr());
+      return CreateType(MT);
+    } else if (MD->isUnstructuredMesh()) {
+      UniformMeshType *MT;
+      MT = cast<UnstructuredMeshType>(CGM.getContext.getUnstructuredMeshType(MD).getTypePtr());
+      return CreateType(MT);
+    } else {
+      assert(false && "unknown mesh type!");
+      return CreateType(0);
+    }
+  } else {
+    assert(false && "unable to get get mesh decl from type!");
+    return CreateType(0);
+  }
 }
