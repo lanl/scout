@@ -17,6 +17,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/Support/ConvertUTF.h"
+#include "Scout/CGMeshLayout.h"
 
 using namespace clang;
 using namespace CodeGen;
@@ -87,7 +88,7 @@ CodeGenFunction::EmitScoutMemberExpr(LValue base,
   //             TBAA (type-based aliases analysis). 
   //
   if (field->isBitField()) {
-    const CGRecordLayout &RL =
+    const CGMeshLayout &RL =
       CGM.getTypes().getCGMeshLayout(field->getParentMesh());
     const CGBitFieldInfo &Info = RL.getBitFieldInfo(field);
     llvm::Value *Addr = base.getAddress();
@@ -116,14 +117,14 @@ CodeGenFunction::EmitScoutMemberExpr(LValue base,
   if (!base.getAlignment().isZero())
     alignment = std::min(alignment, base.getAlignment());
 
-  bool mayAlias = rec->hasAttr<MayAliasAttr>();
+  bool mayAlias = mesh->hasAttr<MayAliasAttr>();
 
   llvm::Value *addr = base.getAddress();
   unsigned cvr = base.getVRQualifiers();
   bool TBAAPath = CGM.getCodeGenOpts().StructPathTBAA;
   
   // We GEP to the field that the record layout suggests.
-  unsigned idx = CGM.getTypes().getCGRecordLayout(rec).getLLVMFieldNo(field);
+  unsigned idx = CGM.getTypes().getCGMeshLayout(mesh).getLLVMFieldNo(field);
   addr = Builder.CreateStructGEP(addr, idx, field->getName());
 
   // If this is a reference field, load the reference right now.
@@ -300,8 +301,8 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD,
                  << memberName << "'.\n";
 
     MeshDecl* MD = MT->getDecl();
-    MeshDecl::mesh_field_iterator itr = MD->mesh_field_begin();
-    MeshDecl::mesh_field_iterator itr_end = MD->mesh_field_end();
+    MeshDecl::field_iterator itr = MD->field_begin();
+    MeshDecl::field_iterator itr_end = MD->field_end();
 
     for(unsigned int i = 4; itr != itr_end; ++itr, ++i) {
       NamedDecl* ND = dyn_cast<NamedDecl>(*itr);
@@ -329,7 +330,7 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD,
   llvm::errs() << "EmitMeshMemberExpr -- implicit parameter (or some odd fall-through)\n";
   llvm::errs() << "\tmember name: " << memberName << "\n";
   // Now we deal with the case of an individual mesh member value
-  MeshType::MeshDimensionVec exprDims = MT->dimensions();
+  MeshType::MeshDimensions exprDims = MT->dimensions();
   llvm::Value *arg = getGlobalIdx(); // SC_TODO -- we never use this????
 
   if (!vals.empty()) {

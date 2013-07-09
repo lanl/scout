@@ -249,7 +249,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   
   llvm::StringRef MeshName = S.getMesh()->getName();
   const MeshType *MT = S.getMeshType();
-  MeshType::MeshDimensionVec dims = MT->dimensions();
+  MeshType::MeshDimensions dims = MT->dimensions();
   MeshDecl *MD = MT->getDecl();
   
   unsigned int rank = dims.size();  // just for clarity below...
@@ -265,8 +265,8 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     ScoutMeshSizes.push_back(lval);
   }
   
-  typedef MeshDecl::mesh_field_iterator MeshFieldIterator;
-  MeshFieldIterator it = MD->mesh_field_begin(), it_end = MD->mesh_field_end();
+  typedef MeshDecl::field_iterator MeshFieldIterator;
+  MeshFieldIterator it = MD->field_begin(), it_end = MD->field_end();
   
   for(unsigned i = 0; it != it_end; ++it, ++i) {
     
@@ -763,7 +763,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
 
   // Get the number and size of the mesh's dimensions.
   const MeshType *MT = S.getMeshType();
-  MeshType::MeshDimensionVec dims = MT->dimensions();
+  MeshType::MeshDimensions dims = MT->dimensions();
 
   typedef std::vector< unsigned > Vector;
   typedef Vector::iterator VecIterator;
@@ -989,7 +989,7 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
   (void)meshName; //supress warning 
  
   const MeshType *MT = S.getMeshType();
-  MeshType::MeshDimensionVec dims = MT->dimensions();
+  MeshType::MeshDimensions dims = MT->dimensions();
   const MeshDecl *MD = MT->getDecl();  
   
   typedef std::map<std::string, bool> MeshFieldMap;
@@ -1030,8 +1030,8 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
 
   
   size_t fieldcount = 0;
-  typedef MeshDecl::mesh_field_iterator MeshFieldIterator;
-  MeshFieldIterator it = MD->mesh_field_begin(), it_end = MD->mesh_field_end();
+  typedef MeshDecl::field_iterator MeshFieldIterator;
+  MeshFieldIterator it = MD->field_begin(), it_end = MD->field_end();
   
   for(unsigned i = 0; it != it_end; ++it, ++i) {
     
