@@ -3111,7 +3111,7 @@ QualType ASTContext::getRecordType(const RecordDecl *Decl) const {
   return QualType(newType, 0);
 }
 
-QualType ASTContext::getUniformMeshType(const MeshDecl *Decl) const {
+QualType ASTContext::getUniformMeshType(const UniformMeshDecl *Decl) const {
   assert(Decl->isUniformMesh());
   if (Decl->TypeForDecl) return QualType(Decl->TypeForDecl, 0);
 
@@ -3119,7 +3119,54 @@ QualType ASTContext::getUniformMeshType(const MeshDecl *Decl) const {
     if (PrevDecl->TypeForDecl)
       return QualType(Decl->TypeForDecl = PrevDecl->TypeForDecl, 0); 
 
-  MeshType *newType = new (*this, TypeAlignment) MeshType(Decl);
+  UniformMeshType *newType;
+  newType = new (*this, TypeAlignment) UniformMeshType(Decl);
+  Decl->TypeForDecl = newType;
+  Types.push_back(newType);
+  return QualType(newType, 0);
+}
+
+QualType ASTContext::getStructuredMeshType(const StructuredMeshDecl *Decl) const {
+  assert(Decl->isStructuredMesh());
+  if (Decl->TypeForDecl) return QualType(Decl->TypeForDecl, 0);
+
+  if (const MeshDecl *PrevDecl = Decl->getPreviousDecl())
+    if (PrevDecl->TypeForDecl)
+      return QualType(Decl->TypeForDecl = PrevDecl->TypeForDecl, 0); 
+
+  StructuredMeshType *newType;
+  newType = new (*this, TypeAlignment) StructuredMeshType(Decl);
+  Decl->TypeForDecl = newType;
+  Types.push_back(newType);
+  return QualType(newType, 0);
+}
+
+
+QualType ASTContext::getRectilinearMeshType(const RectilinearMeshDecl *Decl) const {
+  assert(Decl->isRectilinearMesh());
+  if (Decl->TypeForDecl) return QualType(Decl->TypeForDecl, 0);
+
+  if (const MeshDecl *PrevDecl = Decl->getPreviousDecl())
+    if (PrevDecl->TypeForDecl)
+      return QualType(Decl->TypeForDecl = PrevDecl->TypeForDecl, 0); 
+
+  RectilinearMeshType *newType;
+  newType = new (*this, TypeAlignment) RectilinearMeshType(Decl);
+  Decl->TypeForDecl = newType;
+  Types.push_back(newType);
+  return QualType(newType, 0);
+}
+
+QualType ASTContext::getUnstructuredMeshType(const UnstructuredMeshDecl *Decl) const {
+  assert(Decl->isRectilinearMesh());
+  if (Decl->TypeForDecl) return QualType(Decl->TypeForDecl, 0);
+
+  if (const MeshDecl *PrevDecl = Decl->getPreviousDecl())
+    if (PrevDecl->TypeForDecl)
+      return QualType(Decl->TypeForDecl = PrevDecl->TypeForDecl, 0); 
+
+  UnstructuredMeshType *newType;
+  newType = new (*this, TypeAlignment) UnstructuredMeshType(Decl);
   Decl->TypeForDecl = newType;
   Types.push_back(newType);
   return QualType(newType, 0);
