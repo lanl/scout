@@ -1665,7 +1665,7 @@ bool CursorVisitor::VisitStructuredMeshTypeLoc(StructuredMeshTypeLoc TL){
   return false;
 }
 
-bool CursorVisitor::VisitRectlinearMeshTypeLoc(RectlinearMeshTypeLoc TL){
+bool CursorVisitor::VisitRectilinearMeshTypeLoc(RectilinearMeshTypeLoc TL){
   return false;
 }
 
@@ -4542,7 +4542,7 @@ CXCursor clang_getCursorDefinition(CXCursor C) {
   case Decl::ClassScopeFunctionSpecialization:
   case Decl::UniformMesh:
   case Decl::StructuredMesh:
-  case Decl::RectlinearMesh:
+  case Decl::RectilinearMesh:
   case Decl::UnstructuredMesh:
   case Decl::Import:
   case Decl::OMPThreadPrivate:

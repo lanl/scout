@@ -13,80 +13,77 @@
 #include "../CGRecordLayout.h"
 #include "clang/AST/scout/MeshDecl.h"
 
-namespace llvm {
-  class StructType;
-}
-
 namespace clang {
-namespace CodeGen {
+  namespace CodeGen {
 
-/// CGMeshLayout - This class handles mesh layout info while lowering AST types 
-/// to LLVM types.
-///
-/// These layout objects are only created on demand as IR generation requires.
-class CGMeshLayout {
-  friend class CodeGenTypes;
+    /// CGMeshLayout - This class handles mesh layout info while lowering AST 
+    /// types to LLVM types.  These layouts are created on demand as IR 
+    /// generation requires.
+    class CGMeshLayout {
 
-  CGMeshLayout(const CGMeshLayout &) LLVM_DELETED_FUNCTION;
-  void operator=(const CGMeshLayout &) LLVM_DELETED_FUNCTION;
+      friend class CodeGenTypes;
 
-private:
-  /// The LLVM type corresponding to this record layout; used when
-  /// laying it out as a complete object.
-  llvm::StructType *CompleteObjectType;
+      CGMeshLayout(const CGMeshLayout &) LLVM_DELETED_FUNCTION;
+      void operator=(const CGMeshLayout &) LLVM_DELETED_FUNCTION;
 
-  /// Map from (non-bit-field) struct field to the corresponding llvm struct
-  /// type field no. This info is populated by record builder.
-  llvm::DenseMap<const MeshFieldDecl *, unsigned> FieldInfo;
+    private:
+      /// The LLVM type corresponding to this record layout; used when
+      /// laying it out as a complete object.
+      llvm::StructType *CompleteObjectType;
 
-  /// Map from (bit-field) struct field to the corresponding llvm struct type
-  /// field no. This info is populated by record builder.
-  llvm::DenseMap<const MeshFieldDecl *, CGBitFieldInfo> BitFields;
+      /// Map from (non-bit-field) struct field to the corresponding llvm struct
+      /// type field no. This info is populated by record builder.
+      llvm::DenseMap<const MeshFieldDecl *, unsigned> MeshFieldInfo;
 
-  /// False if any direct or indirect subobject of this class, when
-  /// considered as a complete object, requires a non-zero bitpattern
-  /// when zero-initialized.
-  bool IsZeroInitializable : 1;
+      /// Map from (bit-field) struct field to the corresponding llvm struct type
+      /// field no. This info is populated by record builder.
+      llvm::DenseMap<const MeshFieldDecl *, CGBitFieldInfo> BitFields;
 
-public:
-  CGMeshLayout(llvm::StructType *CompleteObjectType,
-               bool IsZeroInitializable)
-    : CompleteObjectType(CompleteObjectType),
-      IsZeroInitializable(IsZeroInitializable) {}
+      /// False if any direct or indirect subobject of this class, when
+      /// considered as a complete object, requires a non-zero bitpattern
+      /// when zero-initialized.
+      bool IsZeroInitializable : 1;
 
-  /// \brief Return the "complete object" LLVM type associated with
-  /// this record.
-  llvm::StructType *getLLVMType() const {
-    return CompleteObjectType;
-  }
+    public:
+      CGMeshLayout(llvm::StructType *CompleteObjectType, 
+                   bool IsZeroInitializable)
+        : CompleteObjectType(CompleteObjectType),
+          IsZeroInitializable(IsZeroInitializable) 
+      { }
 
-  /// \brief Check whether this struct can be C++ zero-initialized
-  /// with a zeroinitializer.
-  bool isZeroInitializable() const {
-    return IsZeroInitializable;
-  }
+      /// \brief Return the "complete object" LLVM type associated with
+      /// this record.
+      llvm::StructType *getLLVMType() const {
+        return CompleteObjectType;
+      }
 
-  /// \brief Return llvm::StructType element number that corresponds to the
-  /// field FD.
-  unsigned getLLVMFieldNo(const MeshFieldDecl *FD) const {
-    assert(FieldInfo.count(FD) && "Invalid field for record!");
-    return FieldInfo.lookup(FD);
-  }
+      /// \brief Check whether the mesh can be zero-initialized
+      /// with a zeroinitializer.
+      bool isZeroInitializable() const {
+        return IsZeroInitializable;
+      }
 
-  /// \brief Return the BitFieldInfo that corresponds to the field FD.
-  const CGBitFieldInfo &getBitFieldInfo(const MeshFieldDecl *FD) const {
-    assert(FD->isBitField() && "Invalid call for non bit-field decl!");
-    llvm::DenseMap<const MeshFieldDecl *, CGBitFieldInfo>::const_iterator
-      it = BitFields.find(FD);
-    assert(it != BitFields.end() && "Unable to find bitfield info");
-    return it->second;
-  }
+      /// \brief Return llvm::StructType element number that corresponds 
+      /// to the mesh field FD.
+      unsigned getLLVMFieldNo(const MeshFieldDecl *FD) const {
+        assert(MeshFieldInfo.count(FD) && "Invalid field for record!");
+        return MeshFieldInfo.lookup(FD);
+      }
 
-  void print(raw_ostream &OS) const;
-  void dump() const;
-};
+      /// \brief Return the BitFieldInfo that corresponds to the field FD.
+      const CGBitFieldInfo &getBitFieldInfo(const MeshFieldDecl *FD) const {
+        assert(FD->isBitField() && "Invalid call for non bit-field decl!");
+        llvm::DenseMap<const MeshFieldDecl *, CGBitFieldInfo>::const_iterator
+        it = BitFields.find(FD);
+        assert(it != BitFields.end() && "Unable to find bitfield info");
+        return it->second;
+      }
 
-}  // end namespace CodeGen
+      void print(raw_ostream &OS) const;
+      void dump() const;
+    };
+
+  }  // end namespace CodeGen
 }  // end namespace clang
 
 #endif

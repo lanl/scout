@@ -21,6 +21,7 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/RecordLayout.h"
+#include "clang/AST/scout/MeshLayout.h"
 #include "clang/Frontend/CodeGenOptions.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -34,54 +35,22 @@ namespace {
 
 class CGMeshLayoutBuilder {
 public:
-  /// FieldTypes - Holds the LLVM types that the struct is created from.
+  /// MeshFieldTypes - Holds the LLVM types that the mesh is created from.
   /// 
-  SmallVector<llvm::Type *, 16> FieldTypes;
+  SmallVector<llvm::Type *, 16> MeshFieldTypes;
 
-  /// BaseSubobjectType - Holds the LLVM type for the non-virtual part
-  /// of the mesh. For example, consider:
-  ///
-  /// struct A { int i; };
-  /// struct B { void *v; };
-  /// struct C : virtual A, B { };
-  ///
-  /// The LLVM type of C will be
-  /// %struct.C = type { i32 (...)**, %struct.A, i32, %struct.B }
-  ///
-  /// And the LLVM type of the non-virtual base struct will be
-  /// %struct.C.base = type { i32 (...)**, %struct.A, i32 }
-  ///
-  /// This only gets initialized if the base subobject type is
-  /// different from the complete-object type.
-  llvm::StructType *BaseSubobjectType;
-
-  /// FieldInfo - Holds a field and its corresponding LLVM field number.
+   /// FieldInfo - Holds a field and its corresponding LLVM field number.
   llvm::DenseMap<const MeshFieldDecl *, unsigned> Fields;
 
   /// BitFieldInfo - Holds location and size information about a bit field.
   llvm::DenseMap<const MeshFieldDecl *, CGBitFieldInfo> BitFields;
 
-  llvm::DenseMap<const CXXRecordDecl *, unsigned> NonVirtualBases;
-  llvm::DenseMap<const CXXRecordDecl *, unsigned> VirtualBases;
-
-  /// IndirectPrimaryBases - Virtual base classes, direct or indirect, that are
-  /// primary base classes for some other direct or indirect base class.
-  CXXIndirectPrimaryBaseSet IndirectPrimaryBases;
-
-  /// LaidOutVirtualBases - A set of all laid out virtual bases, used to avoid
-  /// avoid laying out virtual bases more than once.
-  llvm::SmallPtrSet<const CXXRecordDecl *, 4> LaidOutVirtualBases;
-  
   /// IsZeroInitializable - Whether this struct can be C++
   /// zero-initialized with an LLVM zeroinitializer.
   bool IsZeroInitializable;
-  bool IsZeroInitializableAsBase;
 
   /// Packed - Whether the resulting LLVM struct will be packed or not.
   bool Packed;
-  
-  /// IsMsStruct - Whether ms_struct is in effect or not
-  bool IsMsStruct;
 
 private:
   CodeGenTypes &Types;
@@ -98,65 +67,28 @@ private:
   
   } LastLaidOutBase;
 
-  /// Alignment - Contains the alignment of the RecordDecl.
+  /// Alignment - Contains the alignment of the MeshDecl.
   CharUnits Alignment;
 
   /// NextFieldOffset - Holds the next field offset.
   CharUnits NextFieldOffset;
 
-  /// LayoutUnionField - Will layout a field in an union and return the type
-  /// that the field will have.
-  llvm::Type *LayoutUnionField(const FieldDecl *Field,
-                               const ASTRecordLayout &Layout);
-  
-  /// LayoutUnion - Will layout a union RecordDecl.
-  void LayoutUnion(const RecordDecl *D);
-
   /// Lay out a sequence of contiguous bitfields.
-  bool LayoutBitfields(const ASTRecordLayout &Layout,
+  bool LayoutBitfields(const ASTMeshLayout &Layout,
                        unsigned &FirstFieldNo,
-                       RecordDecl::field_iterator &FI,
-                       RecordDecl::field_iterator FE);
+                       MeshDecl::field_iterator &FI,
+                       MeshDecl::field_iterator FE);
 
   /// LayoutField - try to layout all fields in the record decl.
   /// Returns false if the operation failed because the struct is not packed.
-  bool LayoutFields(const RecordDecl *D);
+  bool LayoutFields(const MeshDecl *D);
 
-  /// Layout a single base, virtual or non-virtual
-  bool LayoutBase(const CXXRecordDecl *base,
-                  const CGMeshLayout &baseLayout,
-                  CharUnits baseOffset);
-
-  /// LayoutVirtualBase - layout a single virtual base.
-  bool LayoutVirtualBase(const CXXRecordDecl *base,
-                         CharUnits baseOffset);
-
-  /// LayoutVirtualBases - layout the virtual bases of a record decl.
-  bool LayoutVirtualBases(const CXXRecordDecl *RD,
-                          const ASTRecordLayout &Layout);
-
-  /// MSLayoutVirtualBases - layout the virtual bases of a record decl,
-  /// like MSVC.
-  bool MSLayoutVirtualBases(const CXXRecordDecl *RD,
-                            const ASTRecordLayout &Layout);
-  
-  /// LayoutNonVirtualBase - layout a single non-virtual base.
-  bool LayoutNonVirtualBase(const CXXRecordDecl *base,
-                            CharUnits baseOffset);
-  
-  /// LayoutNonVirtualBases - layout the virtual bases of a record decl.
-  bool LayoutNonVirtualBases(const CXXRecordDecl *RD, 
-                             const ASTRecordLayout &Layout);
-
-  /// ComputeNonVirtualBaseType - Compute the non-virtual base field types.
-  bool ComputeNonVirtualBaseType(const CXXRecordDecl *RD);
-  
   /// LayoutField - layout a single field. Returns false if the operation failed
   /// because the current struct is not packed.
-  bool LayoutField(const FieldDecl *D, uint64_t FieldOffset);
+  bool LayoutField(const MeshFieldDecl *D, uint64_t FieldOffset);
 
   /// LayoutBitField - layout a single bit field.
-  void LayoutBitField(const FieldDecl *D, uint64_t FieldOffset);
+  void LayoutBitField(const MeshFieldDecl *D, uint64_t FieldOffset);
 
   /// AppendField - Appends a field with the given offset and type.
   void AppendField(CharUnits fieldOffset, llvm::Type *FieldTy);
@@ -165,13 +97,6 @@ private:
   /// struct size is a multiple of the field alignment.
   void AppendPadding(CharUnits fieldOffset, CharUnits fieldAlignment);
 
-  /// ResizeLastBaseFieldIfNecessary - Fields and bases can be laid out in the
-  /// tail padding of a previous base. If this happens, the type of the previous
-  /// base needs to be changed to an array of i8. Returns true if the last
-  /// laid out base was resized.
-  bool ResizeLastBaseFieldIfNecessary(CharUnits offset);
-
-  /// getByteArrayType - Returns a byte array type with the given number of
   /// elements.
   llvm::Type *getByteArrayType(CharUnits NumBytes);
   
@@ -194,10 +119,7 @@ private:
 
 public:
   CGMeshLayoutBuilder(CodeGenTypes &Types)
-    : BaseSubobjectType(0),
-      IsZeroInitializable(true), IsZeroInitializableAsBase(true),
-      Packed(false), IsMsStruct(false),
-      Types(Types) { }
+    : IsZeroInitializable(true), Packed(false), Types(Types) { }
 
   /// Layout - Will layout a MeshDecl.
   void Layout(const MeshDecl *D);
@@ -209,67 +131,20 @@ void CGMeshLayoutBuilder::Layout(const MeshDecl *D) {
   Alignment = Types.getContext().getASTMeshLayout(D).getAlignment();
   Packed = D->hasAttr<PackedAttr>();
   
-  IsMsStruct = D->isMsStruct(Types.getContext());
-
-  if (D->isUnion()) {
-    LayoutUnion(D);
-    return;
-  }
-
   if (LayoutFields(D))
     return;
 
   // We weren't able to layout the struct. Try again with a packed struct
   Packed = true;
-  LastLaidOutBase.invalidate();
   NextFieldOffset = CharUnits::Zero();
-  FieldTypes.clear();
+  MeshFieldTypes.clear();
   Fields.clear();
   BitFields.clear();
-  NonVirtualBases.clear();
-  VirtualBases.clear();
-
   LayoutFields(D);
 }
 
-CGBitFieldInfo CGBitFieldInfo::MakeInfo(CodeGenTypes &Types,
-                                        const MeshFieldDecl *FD,
-                                        uint64_t Offset, uint64_t Size,
-                                        uint64_t StorageSize,
-                                        uint64_t StorageAlignment) {
-  llvm::Type *Ty = Types.ConvertTypeForMem(FD->getType());
-  CharUnits TypeSizeInBytes =
-    CharUnits::fromQuantity(Types.getDataLayout().getTypeAllocSize(Ty));
-  uint64_t TypeSizeInBits = Types.getContext().toBits(TypeSizeInBytes);
-
-  bool IsSigned = FD->getType()->isSignedIntegerOrEnumerationType();
-
-  if (Size > TypeSizeInBits) {
-    // We have a wide bit-field. The extra bits are only used for padding, so
-    // if we have a bitfield of type T, with size N:
-    //
-    // T t : N;
-    //
-    // We can just assume that it's:
-    //
-    // T t : sizeof(T);
-    //
-    Size = TypeSizeInBits;
-  }
-
-  // Reverse the bit offsets for big endian machines. Because we represent
-  // a bitfield as a single large integer load, we can imagine the bits
-  // counting from the most-significant-bit instead of the
-  // least-significant-bit.
-  if (Types.getDataLayout().isBigEndian()) {
-    Offset = StorageSize - (Offset + Size);
-  }
-
-  return CGBitFieldInfo(Offset, Size, IsSigned, StorageSize, StorageAlignment);
-}
-
 /// \brief Layout the range of bitfields from BFI to BFE as contiguous storage.
-bool CGMeshLayoutBuilder::LayoutBitfields(const ASTRecordLayout &Layout,
+bool CGMeshLayoutBuilder::LayoutBitfields(const ASTMeshLayout &Layout,
                                             unsigned &FirstFieldNo,
                                             MeshDecl::field_iterator &FI,
                                             MeshDecl::field_iterator FE) {
@@ -290,11 +165,6 @@ bool CGMeshLayoutBuilder::LayoutBitfields(const ASTRecordLayout &Layout,
   if (FirstFieldOffset < NextFieldOffsetInBits) {
     CharUnits FieldOffsetInCharUnits =
       Types.getContext().toCharUnitsFromBits(FirstFieldOffset);
-
-    // Try to resize the last base field.
-    if (!ResizeLastBaseFieldIfNecessary(FieldOffsetInCharUnits))
-      llvm_unreachable("We must be able to resize the last base if we need to "
-                       "pack bits into it.");
 
     NextFieldOffsetInBits = Types.getContext().toBits(NextFieldOffset);
     assert(FirstFieldOffset >= NextFieldOffsetInBits);
@@ -323,7 +193,7 @@ bool CGMeshLayoutBuilder::LayoutBitfields(const ASTRecordLayout &Layout,
   MeshDecl::field_iterator BFE = llvm::next(FI);
   --LastFieldNo;
   assert(LastFieldNo >= FirstFieldNo && "Empty run of contiguous bitfields");
-  FieldDecl *LastFD = *FI;
+  MeshFieldDecl *LastFD = *FI;
 
   // Find the last bitfield's offset, add its size, and round it up to the
   // character alignment to compute the storage required.
@@ -363,7 +233,7 @@ bool CGMeshLayoutBuilder::LayoutBitfields(const ASTRecordLayout &Layout,
     assert(StorageBits == (uint64_t)Types.getContext().toBits(StorageBytes));
   }
 
-  unsigned FieldIndex = FieldTypes.size();
+  unsigned FieldIndex = MeshFieldTypes.size();
   AppendBytes(StorageBytes);
 
   // Now walk the bitfields associating them with this field of storage and
@@ -422,14 +292,6 @@ bool CGMeshLayoutBuilder::LayoutField(const MeshFieldDecl *D,
     NextFieldOffset.RoundUpToAlignment(typeAlignment);
 
   if (fieldOffsetInBytes < alignedNextFieldOffsetInBytes) {
-    // Try to resize the last base field.
-    if (ResizeLastBaseFieldIfNecessary(fieldOffsetInBytes)) {
-      alignedNextFieldOffsetInBytes = 
-        NextFieldOffset.RoundUpToAlignment(typeAlignment);
-    }
-  }
-
-  if (fieldOffsetInBytes < alignedNextFieldOffsetInBytes) {
     assert(!Packed && "Could not place field even with packed struct!");
     return false;
   }
@@ -437,318 +299,8 @@ bool CGMeshLayoutBuilder::LayoutField(const MeshFieldDecl *D,
   AppendPadding(fieldOffsetInBytes, typeAlignment);
 
   // Now append the field.
-  Fields[D] = FieldTypes.size();
+  Fields[D] = MeshFieldTypes.size();
   AppendField(fieldOffsetInBytes, Ty);
-
-  LastLaidOutBase.invalidate();
-  return true;
-}
-
-llvm::Type *
-CGMeshLayoutBuilder::LayoutUnionField(const MeshFieldDecl *Field,
-                                      const ASTRecordLayout &Layout) {
-  Fields[Field] = 0;
-  if (Field->isBitField()) {
-    uint64_t FieldSize = Field->getBitWidthValue(Types.getContext());
-
-    // Ignore zero sized bit fields.
-    if (FieldSize == 0)
-      return 0;
-
-    unsigned StorageBits = llvm::RoundUpToAlignment(
-      FieldSize, Types.getTarget().getCharAlign());
-    CharUnits NumBytesToAppend
-      = Types.getContext().toCharUnitsFromBits(StorageBits);
-
-    llvm::Type *FieldTy = llvm::Type::getInt8Ty(Types.getLLVMContext());
-    if (NumBytesToAppend > CharUnits::One())
-      FieldTy = llvm::ArrayType::get(FieldTy, NumBytesToAppend.getQuantity());
-
-    // Add the bit field info.
-    BitFields[Field] = CGBitFieldInfo::MakeInfo(Types, Field, 0, FieldSize,
-                                                StorageBits,
-                                                Alignment.getQuantity());
-    return FieldTy;
-  }
-
-  // This is a regular union field.
-  return Types.ConvertTypeForMem(Field->getType());
-}
-
-void CGMeshLayoutBuilder::LayoutUnion(const MeshDecl *D) {
-  assert(D->isUnion() && "Can't call LayoutUnion on a non-union record!");
-
-  const ASTRecordLayout &layout = Types.getContext().getASTRecordLayout(D);
-
-  llvm::Type *unionType = 0;
-  CharUnits unionSize = CharUnits::Zero();
-  CharUnits unionAlign = CharUnits::Zero();
-
-  bool hasOnlyZeroSizedBitFields = true;
-  bool checkedFirstFieldZeroInit = false;
-
-  unsigned fieldNo = 0;
-  for (MeshDecl::field_iterator field = D->field_begin(),
-       fieldEnd = D->field_end(); field != fieldEnd; ++field, ++fieldNo) {
-    assert(layout.getFieldOffset(fieldNo) == 0 &&
-          "Union field offset did not start at the beginning of record!");
-    llvm::Type *fieldType = LayoutUnionField(*field, layout);
-
-    if (!fieldType)
-      continue;
-
-    if (field->getDeclName() && !checkedFirstFieldZeroInit) {
-      CheckZeroInitializable(field->getType());
-      checkedFirstFieldZeroInit = true;
-    }
-
-    hasOnlyZeroSizedBitFields = false;
-
-    CharUnits fieldAlign = CharUnits::fromQuantity(
-                          Types.getDataLayout().getABITypeAlignment(fieldType));
-    CharUnits fieldSize = CharUnits::fromQuantity(
-                             Types.getDataLayout().getTypeAllocSize(fieldType));
-
-    if (fieldAlign < unionAlign)
-      continue;
-
-    if (fieldAlign > unionAlign || fieldSize > unionSize) {
-      unionType = fieldType;
-      unionAlign = fieldAlign;
-      unionSize = fieldSize;
-    }
-  }
-
-  // Now add our field.
-  if (unionType) {
-    AppendField(CharUnits::Zero(), unionType);
-
-    if (getTypeAlignment(unionType) > layout.getAlignment()) {
-      // We need a packed struct.
-      Packed = true;
-      unionAlign = CharUnits::One();
-    }
-  }
-  if (unionAlign.isZero()) {
-    (void)hasOnlyZeroSizedBitFields;
-    assert(hasOnlyZeroSizedBitFields &&
-           "0-align record did not have all zero-sized bit-fields!");
-    unionAlign = CharUnits::One();
-  }
-
-  // Append tail padding.
-  CharUnits recordSize = layout.getSize();
-  if (recordSize > unionSize)
-    AppendPadding(recordSize, unionAlign);
-}
-
-bool CGMeshLayoutBuilder::LayoutBase(const CXXRecordDecl *base,
-                                       const CGMeshLayout &baseLayout,
-                                       CharUnits baseOffset) {
-  ResizeLastBaseFieldIfNecessary(baseOffset);
-
-  AppendPadding(baseOffset, CharUnits::One());
-
-  const ASTRecordLayout &baseASTLayout
-    = Types.getContext().getASTRecordLayout(base);
-
-  LastLaidOutBase.Offset = NextFieldOffset;
-  LastLaidOutBase.NonVirtualSize = baseASTLayout.getNonVirtualSize();
-
-  llvm::StructType *subobjectType = baseLayout.getBaseSubobjectLLVMType();
-  if (getTypeAlignment(subobjectType) > Alignment)
-    return false;
-
-  AppendField(baseOffset, subobjectType);
-  return true;
-}
-
-bool CGMeshLayoutBuilder::LayoutNonVirtualBase(const CXXRecordDecl *base,
-                                                 CharUnits baseOffset) {
-  // Ignore empty bases.
-  if (base->isEmpty()) return true;
-
-  const CGMeshLayout &baseLayout = Types.getCGMeshLayout(base);
-  if (IsZeroInitializableAsBase) {
-    assert(IsZeroInitializable &&
-           "class zero-initializable as base but not as complete object");
-
-    IsZeroInitializable = IsZeroInitializableAsBase =
-      baseLayout.isZeroInitializableAsBase();
-  }
-
-  if (!LayoutBase(base, baseLayout, baseOffset))
-    return false;
-  NonVirtualBases[base] = (FieldTypes.size() - 1);
-  return true;
-}
-
-bool
-CGMeshLayoutBuilder::LayoutVirtualBase(const CXXRecordDecl *base,
-                                         CharUnits baseOffset) {
-  // Ignore empty bases.
-  if (base->isEmpty()) return true;
-
-  const CGMeshLayout &baseLayout = Types.getCGMeshLayout(base);
-  if (IsZeroInitializable)
-    IsZeroInitializable = baseLayout.isZeroInitializableAsBase();
-
-  if (!LayoutBase(base, baseLayout, baseOffset))
-    return false;
-  VirtualBases[base] = (FieldTypes.size() - 1);
-  return true;
-}
-
-bool
-CGMeshLayoutBuilder::MSLayoutVirtualBases(const CXXRecordDecl *RD,
-                                          const ASTRecordLayout &Layout) {
-  if (!RD->getNumVBases())
-    return true;
-
-  // The vbases list is uniqued and ordered by a depth-first
-  // traversal, which is what we need here.
-  for (CXXRecordDecl::base_class_const_iterator I = RD->vbases_begin(),
-        E = RD->vbases_end(); I != E; ++I) {
-
-    const CXXRecordDecl *BaseDecl = 
-      cast<CXXRecordDecl>(I->getType()->castAs<RecordType>()->getDecl());
-
-    CharUnits vbaseOffset = Layout.getVBaseClassOffset(BaseDecl);
-    if (!LayoutVirtualBase(BaseDecl, vbaseOffset))
-      return false;
-  }
-  return true;
-}
-
-/// LayoutVirtualBases - layout the non-virtual bases of a record decl.
-bool
-CGMeshLayoutBuilder::LayoutVirtualBases(const CXXRecordDecl *RD,
-                                          const ASTRecordLayout &Layout) {
-  for (CXXRecordDecl::base_class_const_iterator I = RD->bases_begin(),
-       E = RD->bases_end(); I != E; ++I) {
-    const CXXRecordDecl *BaseDecl = 
-      cast<CXXRecordDecl>(I->getType()->getAs<RecordType>()->getDecl());
-
-    // We only want to lay out virtual bases that aren't indirect primary bases
-    // of some other base.
-    if (I->isVirtual() && !IndirectPrimaryBases.count(BaseDecl)) {
-      // Only lay out the base once.
-      if (!LaidOutVirtualBases.insert(BaseDecl))
-        continue;
-
-      CharUnits vbaseOffset = Layout.getVBaseClassOffset(BaseDecl);
-      if (!LayoutVirtualBase(BaseDecl, vbaseOffset))
-        return false;
-    }
-
-    if (!BaseDecl->getNumVBases()) {
-      // This base isn't interesting since it doesn't have any virtual bases.
-      continue;
-    }
-    
-    if (!LayoutVirtualBases(BaseDecl, Layout))
-      return false;
-  }
-  return true;
-}
-
-bool
-CGMeshLayoutBuilder::LayoutNonVirtualBases(const CXXRecordDecl *RD,
-                                             const ASTRecordLayout &Layout) {
-  const CXXRecordDecl *PrimaryBase = Layout.getPrimaryBase();
-
-  // If we have a primary base, lay it out first.
-  if (PrimaryBase) {
-    if (!Layout.isPrimaryBaseVirtual()) {
-      if (!LayoutNonVirtualBase(PrimaryBase, CharUnits::Zero()))
-        return false;
-    } else {
-      if (!LayoutVirtualBase(PrimaryBase, CharUnits::Zero()))
-        return false;
-    }
-
-  // Otherwise, add a vtable / vf-table if the layout says to do so.
-  } else if (Layout.hasOwnVFPtr()) {
-    llvm::Type *FunctionType =
-      llvm::FunctionType::get(llvm::Type::getInt32Ty(Types.getLLVMContext()),
-                              /*isVarArg=*/true);
-    llvm::Type *VTableTy = FunctionType->getPointerTo();
-
-    if (getTypeAlignment(VTableTy) > Alignment) {
-      // FIXME: Should we allow this to happen in Sema?
-      assert(!Packed && "Alignment is wrong even with packed struct!");
-      return false;
-    }
-
-    assert(NextFieldOffset.isZero() &&
-           "VTable pointer must come first!");
-    AppendField(CharUnits::Zero(), VTableTy->getPointerTo());
-  }
-
-  // Layout the non-virtual bases.
-  for (CXXRecordDecl::base_class_const_iterator I = RD->bases_begin(),
-       E = RD->bases_end(); I != E; ++I) {
-    if (I->isVirtual())
-      continue;
-
-    const CXXRecordDecl *BaseDecl = 
-      cast<CXXRecordDecl>(I->getType()->getAs<RecordType>()->getDecl());
-
-    // We've already laid out the primary base.
-    if (BaseDecl == PrimaryBase && !Layout.isPrimaryBaseVirtual())
-      continue;
-
-    if (!LayoutNonVirtualBase(BaseDecl, Layout.getBaseClassOffset(BaseDecl)))
-      return false;
-  }
-
-  // Add a vb-table pointer if the layout insists.
-  if (Layout.getVBPtrOffset() != CharUnits::fromQuantity(-1)) {
-    CharUnits VBPtrOffset = Layout.getVBPtrOffset();
-    llvm::Type *Vbptr = llvm::Type::getInt32PtrTy(Types.getLLVMContext());
-    AppendPadding(VBPtrOffset, getTypeAlignment(Vbptr));
-    AppendField(VBPtrOffset, Vbptr);
-  }
-
-  return true;
-}
-
-bool
-CGMeshLayoutBuilder::ComputeNonVirtualBaseType(const CXXRecordDecl *RD) {
-  const ASTRecordLayout &Layout = Types.getContext().getASTRecordLayout(RD);
-
-  CharUnits NonVirtualSize  = Layout.getNonVirtualSize();
-  CharUnits NonVirtualAlign = Layout.getNonVirtualAlign();
-  CharUnits AlignedNonVirtualTypeSize =
-    NonVirtualSize.RoundUpToAlignment(NonVirtualAlign);
-  
-  // First check if we can use the same fields as for the complete class.
-  CharUnits RecordSize = Layout.getSize();
-  if (AlignedNonVirtualTypeSize == RecordSize)
-    return true;
-
-  // Check if we need padding.
-  CharUnits AlignedNextFieldOffset =
-    NextFieldOffset.RoundUpToAlignment(getAlignmentAsLLVMStruct());
-
-  if (AlignedNextFieldOffset > AlignedNonVirtualTypeSize) {
-    assert(!Packed && "cannot layout even as packed struct");
-    return false; // Needs packing.
-  }
-
-  bool needsPadding = (AlignedNonVirtualTypeSize != AlignedNextFieldOffset);
-  if (needsPadding) {
-    CharUnits NumBytes = AlignedNonVirtualTypeSize - AlignedNextFieldOffset;
-    FieldTypes.push_back(getByteArrayType(NumBytes));
-  }
-  
-  BaseSubobjectType = llvm::StructType::create(Types.getLLVMContext(),
-                                               FieldTypes, "", Packed);
-  Types.addRecordTypeName(RD, BaseSubobjectType, ".base");
-
-  // Pull the padding back off.
-  if (needsPadding)
-    FieldTypes.pop_back();
 
   return true;
 }
@@ -756,28 +308,14 @@ CGMeshLayoutBuilder::ComputeNonVirtualBaseType(const CXXRecordDecl *RD) {
 bool CGMeshLayoutBuilder::LayoutFields(const MeshDecl *D) {
   assert(!Alignment.isZero() && "Did not set alignment!");
 
-  const ASTRecordLayout &Layout = Types.getContext().getASTRecordLayout(D);
-
-  const CXXRecordDecl *RD = dyn_cast<CXXRecordDecl>(D);
-  if (RD)
-    if (!LayoutNonVirtualBases(RD, Layout))
-      return false;
+  const ASTMeshLayout &Layout = Types.getContext().getASTMeshLayout(D);
 
   unsigned FieldNo = 0;
-  const FieldDecl *LastFD = 0;
+  const MeshFieldDecl *LastFD = 0;
   
-  for (RecordDecl::field_iterator FI = D->field_begin(), FE = D->field_end();
+  for (MeshDecl::field_iterator FI = D->field_begin(), FE = D->field_end();
        FI != FE; ++FI, ++FieldNo) {
-    FieldDecl *FD = *FI;
-    if (IsMsStruct) {
-      // Zero-length bitfields following non-bitfield members are
-      // ignored:
-      if (Types.getContext().ZeroBitfieldFollowsNonBitfield(FD, LastFD)) {
-        --FieldNo;
-        continue;
-      }
-      LastFD = FD;
-    }
+    MeshFieldDecl *FD = *FI;
 
     // If this field is a bitfield, layout all of the consecutive
     // non-zero-length bitfields and the last zero-length bitfield; these will
@@ -804,29 +342,6 @@ bool CGMeshLayoutBuilder::LayoutFields(const MeshDecl *D) {
     }
   }
 
-  if (RD) {
-    // We've laid out the non-virtual bases and the fields, now compute the
-    // non-virtual base field types.
-    if (!ComputeNonVirtualBaseType(RD)) {
-      assert(!Packed && "Could not layout even with a packed LLVM struct!");
-      return false;
-    }
-
-    // Lay out the virtual bases.  The MS ABI uses a different
-    // algorithm here due to the lack of primary virtual bases.
-    if (Types.getTarget().getCXXABI().hasPrimaryVBases()) {
-      RD->getIndirectPrimaryBases(IndirectPrimaryBases);
-      if (Layout.isPrimaryBaseVirtual())
-        IndirectPrimaryBases.insert(Layout.getPrimaryBase());
-
-      if (!LayoutVirtualBases(RD, Layout))
-        return false;
-    } else {
-      if (!MSLayoutVirtualBases(RD, Layout))
-        return false;
-    }
-  }
-  
   // Append tail padding if necessary.
   AppendTailPadding(Layout.getSize());
 
@@ -834,8 +349,6 @@ bool CGMeshLayoutBuilder::LayoutFields(const MeshDecl *D) {
 }
 
 void CGMeshLayoutBuilder::AppendTailPadding(CharUnits RecordSize) {
-  ResizeLastBaseFieldIfNecessary(RecordSize);
-
   assert(NextFieldOffset <= RecordSize && "Size mismatch!");
 
   CharUnits AlignedNextFieldOffset =
@@ -855,7 +368,7 @@ void CGMeshLayoutBuilder::AppendField(CharUnits fieldOffset,
   CharUnits fieldSize =
     CharUnits::fromQuantity(Types.getDataLayout().getTypeAllocSize(fieldType));
 
-  FieldTypes.push_back(fieldType);
+  MeshFieldTypes.push_back(fieldType);
 
   NextFieldOffset = fieldOffset + fieldSize;
 }
@@ -883,24 +396,6 @@ void CGMeshLayoutBuilder::AppendPadding(CharUnits fieldOffset,
   // Otherwise we need explicit padding.
   CharUnits padding = fieldOffset - NextFieldOffset;
   AppendBytes(padding);
-}
-
-bool CGMeshLayoutBuilder::ResizeLastBaseFieldIfNecessary(CharUnits offset) {
-  // Check if we have a base to resize.
-  if (!LastLaidOutBase.isValid())
-    return false;
-
-  // This offset does not overlap with the tail padding.
-  if (offset >= NextFieldOffset)
-    return false;
-
-  // Restore the field offset and append an i8 array instead.
-  FieldTypes.pop_back();
-  NextFieldOffset = LastLaidOutBase.Offset;
-  AppendBytes(LastLaidOutBase.NonVirtualSize);
-  LastLaidOutBase.invalidate();
-
-  return true;
 }
 
 llvm::Type *CGMeshLayoutBuilder::getByteArrayType(CharUnits numBytes) {
@@ -933,33 +428,10 @@ CharUnits CGMeshLayoutBuilder::getAlignmentAsLLVMStruct() const {
     return CharUnits::One();
 
   CharUnits maxAlignment = CharUnits::One();
-  for (size_t i = 0; i != FieldTypes.size(); ++i)
-    maxAlignment = std::max(maxAlignment, getTypeAlignment(FieldTypes[i]));
+  for (size_t i = 0; i != MeshFieldTypes.size(); ++i)
+    maxAlignment = std::max(maxAlignment, getTypeAlignment(MeshFieldTypes[i]));
 
   return maxAlignment;
-}
-
-/// Merge in whether a field of the given type is zero-initializable.
-void CGMeshLayoutBuilder::CheckZeroInitializable(QualType T) {
-  // This record already contains a member pointer.
-  if (!IsZeroInitializableAsBase)
-    return;
-
-  // Can only have member pointers if we're compiling C++.
-  if (!Types.getContext().getLangOpts().CPlusPlus)
-    return;
-
-  const Type *elementType = T->getBaseElementTypeUnsafe();
-
-  if (const MemberPointerType *MPT = elementType->getAs<MemberPointerType>()) {
-    if (!Types.getCXXABI().isZeroInitializable(MPT))
-      IsZeroInitializable = IsZeroInitializableAsBase = false;
-  } else if (const RecordType *RT = elementType->getAs<RecordType>()) {
-    const CXXRecordDecl *RD = cast<CXXRecordDecl>(RT->getDecl());
-    const CGMeshLayout &Layout = Types.getCGMeshLayout(RD);
-    if (!Layout.isZeroInitializable())
-      IsZeroInitializable = IsZeroInitializableAsBase = false;
-  }
 }
 
 CGMeshLayout *CodeGenTypes::ComputeMeshLayout(const MeshDecl *D,
@@ -968,19 +440,13 @@ CGMeshLayout *CodeGenTypes::ComputeMeshLayout(const MeshDecl *D,
 
   Builder.Layout(D);
 
-  Ty->setBody(Builder.FieldTypes, Builder.Packed);
-
-  // If we're in C++, compute the base subobject type.
-  llvm::StructType *BaseTy = 0;
+  Ty->setBody(Builder.MeshFieldTypes, Builder.Packed);
 
   CGMeshLayout *ML;
-
-  ML = new CGMeshLayout(Ty, BaseTy, Builder.IsZeroInitializable,
-                        Builder.IsZeroInitializableAsBase);
+  ML = new CGMeshLayout(Ty, Builder.IsZeroInitializable);
 
   // Add all the field numbers.
-  ML->FieldInfo.swap(Builder.Fields);
-
+  ML->MeshFieldInfo.swap(Builder.Fields);
   // Add bitfield info.
   ML->BitFields.swap(Builder.BitFields);
 
@@ -990,7 +456,7 @@ CGMeshLayout *CodeGenTypes::ComputeMeshLayout(const MeshDecl *D,
     llvm::errs() << "Mesh: ";
     D->dump();
     llvm::errs() << "\nLayout: ";
-    RL->dump();
+    ML->dump();
   }
 
 #ifndef NDEBUG
@@ -1003,20 +469,20 @@ CGMeshLayout *CodeGenTypes::ComputeMeshLayout(const MeshDecl *D,
 
     // Verify that the LLVM and AST field offsets agree.
   llvm::StructType *ST =
-    dyn_cast<llvm::StructType>(RL->getLLVMType());
+    dyn_cast<llvm::StructType>(ML->getLLVMType());
   const llvm::StructLayout *SL = getDataLayout().getStructLayout(ST);
 
-  const ASTRecordLayout &AST_RL = getContext().getASTMeshLayout(D);
+  const ASTMeshLayout &AST_ML = getContext().getASTMeshLayout(D);
   MeshDecl::field_iterator it = D->field_begin();
   const MeshFieldDecl *LastFD = 0;
-  for (unsigned i = 0, e = AST_RL.getFieldCount(); i != e; ++i, ++it) {
+  for (unsigned i = 0, e = AST_ML.getFieldCount(); i != e; ++i, ++it) {
     const MeshFieldDecl *FD = *it;
 
     // For non-bit-fields, just check that the LLVM struct offset matches the
     // AST offset.
     if (!FD->isBitField()) {
-      unsigned FieldNo = RL->getLLVMFieldNo(FD);
-      assert(AST_RL.getFieldOffset(i) == SL->getElementOffsetInBits(FieldNo) &&
+      unsigned FieldNo = ML->getLLVMFieldNo(FD);
+      assert(AST_ML.getFieldOffset(i) == SL->getElementOffsetInBits(FieldNo) &&
              "Invalid field offset!");
       LastFD = FD;
       continue;
@@ -1032,8 +498,8 @@ CGMeshLayout *CodeGenTypes::ComputeMeshLayout(const MeshDecl *D,
     if (FD->getBitWidthValue(getContext()) == 0)
       continue;
 
-    const CGBitFieldInfo &Info = RL->getBitFieldInfo(FD);
-    llvm::Type *ElementTy = ST->getTypeAtIndex(RL->getLLVMFieldNo(FD));
+    const CGBitFieldInfo &Info = ML->getBitFieldInfo(FD);
+    llvm::Type *ElementTy = ST->getTypeAtIndex(ML->getLLVMFieldNo(FD));
 
     assert(Info.StorageSize ==
            getDataLayout().getTypeAllocSizeInBits(ElementTy) &&
@@ -1044,26 +510,24 @@ CGMeshLayout *CodeGenTypes::ComputeMeshLayout(const MeshDecl *D,
   }
 #endif
 
-  return RL;
+  return ML;
 }
 
 void CGMeshLayout::print(raw_ostream &OS) const {
   OS << "<CGMeshLayout\n";
   OS << "  LLVMType:" << *CompleteObjectType << "\n";
-  if (BaseSubobjectType)
-    OS << "  NonVirtualBaseLLVMType:" << *BaseSubobjectType << "\n"; 
   OS << "  IsZeroInitializable:" << IsZeroInitializable << "\n";
   OS << "  BitFields:[\n";
 
   // Print bit-field infos in declaration order.
   std::vector<std::pair<unsigned, const CGBitFieldInfo*> > BFIs;
-  for (llvm::DenseMap<const FieldDecl*, CGBitFieldInfo>::const_iterator
+  for (llvm::DenseMap<const MeshFieldDecl*, CGBitFieldInfo>::const_iterator
          it = BitFields.begin(), ie = BitFields.end();
        it != ie; ++it) {
-    const RecordDecl *RD = it->first->getParent();
+    const MeshDecl *MD = it->first->getParentMesh();
     unsigned Index = 0;
-    for (RecordDecl::field_iterator
-           it2 = RD->field_begin(); *it2 != it->first; ++it2)
+    for (MeshDecl::field_iterator
+           it2 = MD->field_begin(); *it2 != it->first; ++it2)
       ++Index;
     BFIs.push_back(std::make_pair(Index, &it->second));
   }

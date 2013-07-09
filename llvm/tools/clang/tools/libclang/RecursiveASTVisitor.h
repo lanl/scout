@@ -405,6 +405,9 @@ private:
   bool TraverseFunctionHelper(FunctionDecl *D);
   bool TraverseVarHelper(VarDecl *D);
 
+
+  bool TraverseMeshHelper(MeshDecl *D);
+
   typedef SmallVector<Stmt *, 16> StmtsTy;
   typedef SmallVector<StmtsTy *, 4> QueuesTy;
   
@@ -869,6 +872,10 @@ DEF_TRAVERSE_TYPE(TemplateTypeParmType, { })
 DEF_TRAVERSE_TYPE(SubstTemplateTypeParmType, { })
 DEF_TRAVERSE_TYPE(SubstTemplateTypeParmPackType, { })
 
+// ===== Scout ==========================================
+DEF_TRAVERSE_TYPE(MeshType, { })
+// ======================================================
+
 DEF_TRAVERSE_TYPE(TemplateSpecializationType, {
     TRY_TO(TraverseTemplateName(T->getTemplateName()));
     TRY_TO(TraverseTemplateArguments(T->getArgs(), T->getNumArgs()));
@@ -1092,6 +1099,10 @@ DEF_TRAVERSE_TYPELOC(EnumType, { })
 DEF_TRAVERSE_TYPELOC(TemplateTypeParmType, { })
 DEF_TRAVERSE_TYPELOC(SubstTemplateTypeParmType, { })
 DEF_TRAVERSE_TYPELOC(SubstTemplateTypeParmPackType, { })
+
+// ===== Scout ==================================================
+DEF_TRAVERSE_TYPELOC(MeshType, { })
+// ==============================================================
 
 // FIXME: use the loc for the template name?
 DEF_TRAVERSE_TYPELOC(TemplateSpecializationType, {
@@ -1518,6 +1529,16 @@ bool RecursiveASTVisitor<Derived>::TraverseRecordHelper(
 }
 
 template<typename Derived>
+bool RecursiveASTVisitor<Derived>::TraverseMeshHelper(MeshDecl *D) {
+  // We shouldn't traverse D->getTypeForDecl(); it's a result of
+  // declaring the type, not something that was written in the 
+  // source. 
+  TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
+  return true;
+}
+
+
+template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseCXXRecordHelper(
     CXXRecordDecl *D) {
   if (!TraverseRecordHelper(D))
@@ -1536,6 +1557,10 @@ bool RecursiveASTVisitor<Derived>::TraverseCXXRecordHelper(
 
 DEF_TRAVERSE_DECL(RecordDecl, {
     TRY_TO(TraverseRecordHelper(D));
+  })
+
+DEF_TRAVERSE_DECL(MeshDecl, {
+    TRY_TO(TraverseMeshHelper(D));
   })
 
 DEF_TRAVERSE_DECL(CXXRecordDecl, {

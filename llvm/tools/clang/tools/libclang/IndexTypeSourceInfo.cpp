@@ -92,17 +92,22 @@ public:
 
   // ===== Scout ========================================================================
   // SC_TODO -- implement these.
+  bool TraverseMeshTypeLoc(MeshTypeLoc){ return true; }  
   bool TraverseUniformMeshTypeLoc(UniformMeshTypeLoc){ return true; }
   bool TraverseStructuredMeshTypeLoc(StructuredMeshTypeLoc){ return true; }
-  bool TraverseRectlinearMeshTypeLoc(RectlinearMeshTypeLoc){ return true; }
+  bool TraverseRectilinearMeshTypeLoc(RectilinearMeshTypeLoc){ return true; }
   bool TraverseUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc){ return true; }
+
+  bool TraverseMeshDecl(MeshDecl*){ return true; }
   bool TraverseUniformMeshDecl(UniformMeshDecl*){ return true; }
   bool TraverseStructuredMeshDecl(StructuredMeshDecl*){ return true; }
-  bool TraverseRectlinearMeshDecl(RectlinearMeshDecl*){ return true; }
+  bool TraverseRectilinearMeshDecl(RectilinearMeshDecl*){ return true; }
   bool TraverseUnstructuredMeshDecl(UnstructuredMeshDecl*){ return true; }
+
+  bool TraverseMeshType(MeshType*){ return true; }
   bool TraverseUniformMeshType(UniformMeshType*){ return true; }
   bool TraverseStructuredMeshType(StructuredMeshType*){ return true; }
-  bool TraverseRectlinearMeshType(RectlinearMeshType*){ return true; }
+  bool TraverseRectilinearMeshType(RectilinearMeshType*){ return true; }
   bool TraverseUnstructuredMeshType(UnstructuredMeshType*){ return true; }
   // ====================================================================================
 };

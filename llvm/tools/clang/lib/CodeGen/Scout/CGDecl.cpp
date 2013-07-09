@@ -90,7 +90,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
     //
     // SC_TODO - We are only supporting one mesh type here...
     //
-    MeshType::MeshDimensionVec dims;
+    MeshType::MeshDimensions dims;
     dims = cast<MeshType>(T.getTypePtr())->dimensions();
 
     unsigned int rank = 0;
@@ -172,8 +172,8 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
     // memory for each field
     const MeshType* MT = cast<MeshType>(T.getTypePtr());
     MeshDecl* MD = MT->getDecl();
-    MeshDecl::mesh_field_iterator itr = MD->mesh_field_begin();
-    MeshDecl::mesh_field_iterator itr_end = MD->mesh_field_end();
+    MeshDecl::field_iterator itr = MD->field_begin();
+    MeshDecl::field_iterator itr_end = MD->field_end();
 
     llvm::Type *structTy = Alloc->getType()->getContainedType(0);
     for(unsigned i = rank+1, e = structTy->getNumContainedTypes(); i < e; ++i) {

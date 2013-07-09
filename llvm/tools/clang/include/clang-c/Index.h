@@ -5353,7 +5353,14 @@ typedef enum {
   CXIdxEntity_CXXDestructor         = 23,
   CXIdxEntity_CXXConversionFunction = 24,
   CXIdxEntity_CXXTypeAlias          = 25,
-  CXIdxEntity_CXXInterface          = 26
+  CXIdxEntity_CXXInterface          = 26,
+
+  // ===== Scout ====================================
+  CXIdxEntity_UniformMesh           = 27,
+  CXIdxEntity_StructuredMesh        = 28,  
+  CXIdxEntity_RectilinearMesh       = 29,
+  CXIdxEntity_UnstructuredMesh      = 30    
+  // ================================================  
 
 } CXIdxEntityKind;
 

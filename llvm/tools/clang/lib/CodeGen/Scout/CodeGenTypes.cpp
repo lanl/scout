@@ -30,7 +30,7 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
   
   // Implemented as a struct of n-dimensional array's type.
   MeshDecl *mesh = cast<MeshType>(Ty)->getDecl();
-  MeshType::MeshDimensionVec dims;
+  MeshType::MeshDimensions dims;
   dims = cast<MeshType>(T.getCanonicalType().getTypePtr())->dimensions();
 
   unsigned int rank = 0;
@@ -41,8 +41,8 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
   
   llvm::StringRef meshName = mesh->getName();
   typedef llvm::ArrayType ArrayTy;
-  MeshDecl::mesh_field_iterator it     = mesh->mesh_field_begin();
-  MeshDecl::mesh_field_iterator it_end = mesh->mesh_field_end();
+  MeshDecl::field_iterator it     = mesh->field_begin();
+  MeshDecl::field_iterator it_end = mesh->field_end();
 
   std::vector< llvm::Type * > eltTys;
   // mesh_flags__, width, height, depth

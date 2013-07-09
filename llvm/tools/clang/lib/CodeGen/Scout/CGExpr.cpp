@@ -6,6 +6,7 @@
 #include "CGDebugInfo.h"
 #include "CGObjCRuntime.h"
 #include "CGRecordLayout.h"
+#include "CGMeshLayout.h"
 #include "CodeGenModule.h"
 #include "TargetInfo.h"
 #include "clang/AST/ASTContext.h"
@@ -72,6 +73,14 @@ CodeGenFunction::EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND) {
   assert(false && "missed conditional case in emiting forall array lval.");
 }
 
+static llvm::Value *
+EmitBitCastOfLValueToProperType(CodeGenFunction &CGF,
+                                llvm::Value *V, llvm::Type *IRType,
+                                StringRef Name = StringRef()) {
+  unsigned AS = cast<llvm::PointerType>(V->getType())->getAddressSpace();
+  return CGF.Builder.CreateBitCast(V, IRType->getPointerTo(AS), Name);
+}
+
 LValue
 CodeGenFunction::EmitScoutMemberExpr(LValue base,
                                      const MeshFieldDecl *field) {
@@ -87,11 +96,10 @@ CodeGenFunction::EmitScoutMemberExpr(LValue base,
   //             TBAA (type-based aliases analysis). 
   //
   if (field->isBitField()) {
-    const CGRecordLayout &RL =
-      CGM.getTypes().getCGMeshLayout(field->getParentMesh());
-    const CGBitFieldInfo &Info = RL.getBitFieldInfo(field);
+    const CGMeshLayout &ML = CGM.getTypes().getCGMeshLayout(field->getParentMesh());
+    const CGBitFieldInfo &Info = ML.getBitFieldInfo(field);
     llvm::Value *Addr = base.getAddress();
-    unsigned Idx = RL.getLLVMFieldNo(field);
+    unsigned Idx = ML.getLLVMFieldNo(field);
     if (Idx != 0)
       // For structs, we GEP to the field that the record layout suggests.
       Addr = Builder.CreateStructGEP(Addr, Idx, field->getName());
@@ -116,14 +124,14 @@ CodeGenFunction::EmitScoutMemberExpr(LValue base,
   if (!base.getAlignment().isZero())
     alignment = std::min(alignment, base.getAlignment());
 
-  bool mayAlias = rec->hasAttr<MayAliasAttr>();
+  bool mayAlias = mesh->hasAttr<MayAliasAttr>();
 
   llvm::Value *addr = base.getAddress();
   unsigned cvr = base.getVRQualifiers();
   bool TBAAPath = CGM.getCodeGenOpts().StructPathTBAA;
   
   // We GEP to the field that the record layout suggests.
-  unsigned idx = CGM.getTypes().getCGRecordLayout(rec).getLLVMFieldNo(field);
+  unsigned idx = CGM.getTypes().getCGMeshLayout(mesh).getLLVMFieldNo(field);
   addr = Builder.CreateStructGEP(addr, idx, field->getName());
 
   // If this is a reference field, load the reference right now.
@@ -155,7 +163,7 @@ CodeGenFunction::EmitScoutMemberExpr(LValue base,
 
 
   // Make sure that the address is pointing to the right type.  This is critical
-  // as a struct/mesh element will need a bitcast if the LLVM type laid out doesn't 
+  // as a mesh element will need a bitcast if the LLVM type laid out doesn't 
   // match the desired type.
   addr = EmitBitCastOfLValueToProperType(*this, addr,
                                          CGM.getTypes().ConvertTypeForMem(type),
@@ -300,8 +308,8 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD,
                  << memberName << "'.\n";
 
     MeshDecl* MD = MT->getDecl();
-    MeshDecl::mesh_field_iterator itr = MD->mesh_field_begin();
-    MeshDecl::mesh_field_iterator itr_end = MD->mesh_field_end();
+    MeshDecl::field_iterator itr = MD->field_begin();
+    MeshDecl::field_iterator itr_end = MD->field_end();
 
     for(unsigned int i = 4; itr != itr_end; ++itr, ++i) {
       NamedDecl* ND = dyn_cast<NamedDecl>(*itr);
@@ -329,7 +337,7 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD,
   llvm::errs() << "EmitMeshMemberExpr -- implicit parameter (or some odd fall-through)\n";
   llvm::errs() << "\tmember name: " << memberName << "\n";
   // Now we deal with the case of an individual mesh member value
-  MeshType::MeshDimensionVec exprDims = MT->dimensions();
+  MeshType::MeshDimensions exprDims = MT->dimensions();
   llvm::Value *arg = getGlobalIdx(); // SC_TODO -- we never use this????
 
   if (!vals.empty()) {
