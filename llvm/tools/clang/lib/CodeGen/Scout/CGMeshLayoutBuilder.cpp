@@ -199,8 +199,8 @@ public:
       Packed(false), IsMsStruct(false),
       Types(Types) { }
 
-  /// Layout - Will layout a RecordDecl.
-  void Layout(const RecordDecl *D);
+  /// Layout - Will layout a MeshDecl.
+  void Layout(const MeshDecl *D);
 };
 
 }

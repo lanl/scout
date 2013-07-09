@@ -187,6 +187,7 @@ namespace {
       VisitChildren(S);
     }
 
+    //SC_TODO: remove scout vectors
     void VisitScoutVectorMemberExpr(ScoutVectorMemberExpr* E){
       if(MemberExpr* ME = dyn_cast<MemberExpr>(E->getBase())){
         if(ME->getMemberDecl()->getName() == "position"){
