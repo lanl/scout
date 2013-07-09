@@ -67,6 +67,7 @@
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Type.h"
+#include "clang/AST/Type.h"
 using namespace clang;
 using namespace CodeGen;
 

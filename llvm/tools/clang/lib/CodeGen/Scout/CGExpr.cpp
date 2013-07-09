@@ -18,6 +18,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/Support/ConvertUTF.h"
+#include "Scout/CGMeshLayout.h"
 
 using namespace clang;
 using namespace CodeGen;
