@@ -92,13 +92,6 @@ MeshDecl::field_iterator MeshDecl::field_begin() const {
   return field_iterator(decl_iterator(FirstDecl));
 }
 
-MeshDecl::field_iterator MeshDecl::field_begin() const {
-  if (hasExternalLexicalStorage() && !LoadedFieldsFromExternalStorage)
-    LoadFieldsFromExternalStorage();
-
-  return field_iterator(decl_iterator(FirstDecl));
-}
-
 
 //===----------------------------------------------------------------------===//
 // UniformMeshDecl Implementation
