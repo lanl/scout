@@ -689,7 +689,7 @@ ASTContext::getASTMeshLayout(const MeshDecl *D) const {
 
 static uint64_t getMeshFieldOffset(const ASTContext &C, const MeshFieldDecl *FD) {
   const ASTMeshLayout &Layout = C.getASTMeshLayout(FD->getParentMesh());
-  return Layout.getMeshFieldOffset(FD->getFieldIndex());
+  return Layout.getFieldOffset(FD->getFieldIndex());
 }
 
 uint64_t ASTContext::getMeshFieldOffset(const ValueDecl *VD) const {
@@ -730,7 +730,7 @@ void ASTContext::DumpMeshLayout(const MeshDecl *MD,
   OS << "  FieldOffsets: [";
   for (unsigned i = 0, e = Info.getFieldCount(); i != e; ++i) {
     if (i) OS << ", ";
-    OS << Info.getMeshFieldOffset(i);
+    OS << Info.getFieldOffset(i);
   }
   OS << "]>\n";
 }
