@@ -52,6 +52,7 @@
  * ##### 
  */ 
 
+#include "clang/AST/scout/MeshDecl.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/SemaInternal.h"
 #include "clang/Sema/Lookup.h"
@@ -86,10 +87,10 @@ Decl* Sema::ActOnMeshDefinition(Scope* S,
       break;
 
 
-    case tok::kw_unstructured:
+    case tok::kw_structured:
       {
-        UnstructuredMeshDecl* USMD;
-        USMD = UnstructuredMeshDecl::Create(Context, CurContext,
+        StructuredMeshDecl* USMD;
+        USMD = StructuredMeshDecl::Create(Context, CurContext,
                                             KWLoc, NameLoc, Name, 0);
         PushOnScopeChains(USMD, S, true);
         return USMD;
@@ -102,7 +103,7 @@ Decl* Sema::ActOnMeshDefinition(Scope* S,
       return NULL;
       break;
 
-    case tok::kw_structured:
+    case tok::kw_unstructured:
       Diag(NameLoc, diag::err_mesh_not_implemented);
       return NULL;
       break;

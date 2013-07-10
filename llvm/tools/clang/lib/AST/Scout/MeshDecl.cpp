@@ -85,6 +85,12 @@ void MeshDecl::LoadFieldsFromExternalStorage() const {
                                                  /*FieldsAlreadyLoaded=*/false);
 }
 
+MeshDecl::field_iterator MeshDecl::field_begin() const {
+  if (hasExternalLexicalStorage() && !LoadedFieldsFromExternalStorage)
+    LoadFieldsFromExternalStorage();
+
+  return field_iterator(decl_iterator(FirstDecl));
+}
 
 MeshDecl::field_iterator MeshDecl::field_begin() const {
   if (hasExternalLexicalStorage() && !LoadedFieldsFromExternalStorage)
@@ -133,6 +139,8 @@ UniformMeshDecl *UniformMeshDecl::CreateDeserialized(const ASTContext &C,
   M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
   return M;
 }
+
+
 
 //===----------------------------------------------------------------------===//
 // RectilinearMeshDecl Implementation
