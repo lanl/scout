@@ -2106,7 +2106,7 @@ enum CXCursorKind {
   CXCursor_FirstExtraDecl                = CXCursor_ModuleImportDecl,
   CXCursor_LastExtraDecl                 = CXCursor_ModuleImportDecl,
 
-  // ===== Scout =============================================================
+  /* ===== Scout ============================================================= */
   CXCursor_UniformMeshDecl               = 700,
   CXCursor_StructuredMeshDecl            = 701,
   CXCursor_RectilinearMeshDecl           = 702,
@@ -2114,7 +2114,7 @@ enum CXCursorKind {
   CXCursor_MeshFieldDecl                 = 704,
   CXCursor_FirstMeshDecl                 = CXCursor_UniformMeshDecl,
   CXCursor_LastMeshDecl                  = CXCursor_UnstructuredMeshDecl
-  // =========================================================================  
+  /* ========================================================================= */
 };
 
 /**
@@ -5355,12 +5355,12 @@ typedef enum {
   CXIdxEntity_CXXTypeAlias          = 25,
   CXIdxEntity_CXXInterface          = 26,
 
-  // ===== Scout ====================================
+  /* ===== Scout ==================================== */
   CXIdxEntity_UniformMesh           = 27,
   CXIdxEntity_StructuredMesh        = 28,  
   CXIdxEntity_RectilinearMesh       = 29,
   CXIdxEntity_UnstructuredMesh      = 30    
-  // ================================================  
+  /* ================================================ */
 
 } CXIdxEntityKind;
 

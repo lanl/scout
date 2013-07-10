@@ -522,13 +522,6 @@ private:
   /// Push a tok::annot_cxxscope token onto the token stream.
   void AnnotateScopeToken(CXXScopeSpec &SS, bool IsNewAnnotation);
 
-  // scout - detect float <4>, int <3>, ... iSPC constructs and
-  //                 return TST_value of Scout float4, int3, ...
-  //                 that should be substituted.  Return same if not iSPC
-  //                 Involves lookahead.
-  // SC_TODO - remove scout vectors. 
-  DeclSpec::TST GetIspcScoutExtension(DeclSpec::TST TagType, tok::TokenKind kw);
-
   /// TryAltiVecToken - Check for context-sensitive AltiVec identifier tokens,
   /// replacing them with the non-context-sensitive keywords.  This returns
   /// true if the token was replaced.

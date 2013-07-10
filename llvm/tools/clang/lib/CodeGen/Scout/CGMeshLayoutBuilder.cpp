@@ -33,97 +33,89 @@ using namespace CodeGen;
 
 namespace {
 
-class CGMeshLayoutBuilder {
-public:
-  /// MeshFieldTypes - Holds the LLVM types that the mesh is created from.
-  /// 
-  SmallVector<llvm::Type *, 16> MeshFieldTypes;
+  class CGMeshLayoutBuilder {
+   public:
+    /// MeshFieldTypes - Holds the LLVM types that the mesh is created from.
+    /// 
+    SmallVector<llvm::Type *, 16> MeshFieldTypes;
 
-   /// FieldInfo - Holds a field and its corresponding LLVM field number.
-  llvm::DenseMap<const MeshFieldDecl *, unsigned> Fields;
+    /// FieldInfo - Holds a field and its corresponding LLVM field number.
+    llvm::DenseMap<const MeshFieldDecl *, unsigned> Fields;
 
-  /// BitFieldInfo - Holds location and size information about a bit field.
-  llvm::DenseMap<const MeshFieldDecl *, CGBitFieldInfo> BitFields;
+    /// BitFieldInfo - Holds location and size information about a bit field.
+    llvm::DenseMap<const MeshFieldDecl *, CGBitFieldInfo> BitFields;
 
-  /// IsZeroInitializable - Whether this struct can be C++
-  /// zero-initialized with an LLVM zeroinitializer.
-  bool IsZeroInitializable;
+    /// Packed - Whether the resulting LLVM struct will be packed or not.
+    bool Packed;
 
-  /// Packed - Whether the resulting LLVM struct will be packed or not.
-  bool Packed;
+   private:
+    CodeGenTypes &Types;
 
-private:
-  CodeGenTypes &Types;
+    /// LastLaidOutBaseInfo - Contains the offset and non-virtual size of the
+    /// last base laid out. Used so that we can replace the last laid out base
+    /// type with an i8 array if needed.
+    struct LastLaidOutBaseInfo {
+      CharUnits Offset;
+      CharUnits NonVirtualSize;
 
-  /// LastLaidOutBaseInfo - Contains the offset and non-virtual size of the
-  /// last base laid out. Used so that we can replace the last laid out base
-  /// type with an i8 array if needed.
-  struct LastLaidOutBaseInfo {
-    CharUnits Offset;
-    CharUnits NonVirtualSize;
-
-    bool isValid() const { return !NonVirtualSize.isZero(); }
-    void invalidate() { NonVirtualSize = CharUnits::Zero(); }
+      bool isValid() const { return !NonVirtualSize.isZero(); }
+      void invalidate() { NonVirtualSize = CharUnits::Zero(); }
   
-  } LastLaidOutBase;
+    } LastLaidOutBase;
 
-  /// Alignment - Contains the alignment of the MeshDecl.
-  CharUnits Alignment;
+    /// Alignment - Contains the alignment of the MeshDecl.
+    CharUnits Alignment;
 
-  /// NextFieldOffset - Holds the next field offset.
-  CharUnits NextFieldOffset;
+    /// NextFieldOffset - Holds the next field offset.
+    CharUnits NextFieldOffset;
 
-  /// Lay out a sequence of contiguous bitfields.
-  bool LayoutBitfields(const ASTMeshLayout &Layout,
-                       unsigned &FirstFieldNo,
-                       MeshDecl::field_iterator &FI,
-                       MeshDecl::field_iterator FE);
+    /// Lay out a sequence of contiguous bitfields.
+    bool LayoutBitfields(const ASTMeshLayout &Layout,
+                         unsigned &FirstFieldNo,
+                         MeshDecl::field_iterator &FI,
+                         MeshDecl::field_iterator FE);
 
-  /// LayoutField - try to layout all fields in the record decl.
-  /// Returns false if the operation failed because the struct is not packed.
-  bool LayoutFields(const MeshDecl *D);
+    /// LayoutField - try to layout all fields in the record decl.
+    /// Returns false if the operation failed because the struct is not packed.
+    bool LayoutFields(const MeshDecl *D);
 
-  /// LayoutField - layout a single field. Returns false if the operation failed
-  /// because the current struct is not packed.
-  bool LayoutField(const MeshFieldDecl *D, uint64_t FieldOffset);
+    /// LayoutField - layout a single field. Returns false if the operation failed
+    /// because the current struct is not packed.
+    bool LayoutField(const MeshFieldDecl *D, uint64_t FieldOffset);
 
-  /// LayoutBitField - layout a single bit field.
-  void LayoutBitField(const MeshFieldDecl *D, uint64_t FieldOffset);
+    /// LayoutBitField - layout a single bit field.
+    void LayoutBitField(const MeshFieldDecl *D, uint64_t FieldOffset);
 
-  /// AppendField - Appends a field with the given offset and type.
-  void AppendField(CharUnits fieldOffset, llvm::Type *FieldTy);
+    /// AppendField - Appends a field with the given offset and type.
+    void AppendField(CharUnits fieldOffset, llvm::Type *FieldTy);
 
-  /// AppendPadding - Appends enough padding bytes so that the total
-  /// struct size is a multiple of the field alignment.
-  void AppendPadding(CharUnits fieldOffset, CharUnits fieldAlignment);
+    /// AppendPadding - Appends enough padding bytes so that the total
+    /// struct size is a multiple of the field alignment.
+    void AppendPadding(CharUnits fieldOffset, CharUnits fieldAlignment);
 
-  /// elements.
-  llvm::Type *getByteArrayType(CharUnits NumBytes);
+    /// elements.
+    llvm::Type *getByteArrayType(CharUnits NumBytes);
   
-  /// AppendBytes - Append a given number of bytes to the record.
-  void AppendBytes(CharUnits numBytes);
+    /// AppendBytes - Append a given number of bytes to the record.
+    void AppendBytes(CharUnits numBytes);
 
-  /// AppendTailPadding - Append enough tail padding so that the type will have
-  /// the passed size.
-  void AppendTailPadding(CharUnits RecordSize);
+    /// AppendTailPadding - Append enough tail padding so that the type will have
+    /// the passed size.
+    void AppendTailPadding(CharUnits RecordSize);
 
-  CharUnits getTypeAlignment(llvm::Type *Ty) const;
+    CharUnits getTypeAlignment(llvm::Type *Ty) const;
 
-  /// getAlignmentAsLLVMStruct - Returns the maximum alignment of all the
-  /// LLVM element types.
-  CharUnits getAlignmentAsLLVMStruct() const;
+    /// getAlignmentAsLLVMStruct - Returns the maximum alignment of all the
+    /// LLVM element types.
+    CharUnits getAlignmentAsLLVMStruct() const;
 
-  /// CheckZeroInitializable - Check if the given type contains a pointer
-  /// to data member.
-  void CheckZeroInitializable(QualType T);
+   public:
+    CGMeshLayoutBuilder(CodeGenTypes &Types)
+        : Packed(false), Types(Types) { }
 
-public:
-  CGMeshLayoutBuilder(CodeGenTypes &Types)
-    : IsZeroInitializable(true), Packed(false), Types(Types) { }
-
-  /// Layout - Will layout a MeshDecl.
-  void Layout(const MeshDecl *D);
-};
+    /// Layout - Will layout a MeshDecl.
+    void Layout(const MeshDecl *D);
+  };
 
 }
 
@@ -258,8 +250,6 @@ bool CGMeshLayoutBuilder::LayoutField(const MeshFieldDecl *D,
     return false;
 
   assert(!D->isBitField() && "Bitfields should be laid out seperately.");
-
-  CheckZeroInitializable(D->getType());
 
   assert(fieldOffset % Types.getTarget().getCharWidth() == 0
          && "field offset is not on a byte boundary!");
@@ -443,7 +433,7 @@ CGMeshLayout *CodeGenTypes::ComputeMeshLayout(const MeshDecl *D,
   Ty->setBody(Builder.MeshFieldTypes, Builder.Packed);
 
   CGMeshLayout *ML;
-  ML = new CGMeshLayout(Ty, Builder.IsZeroInitializable);
+  ML = new CGMeshLayout(Ty);
 
   // Add all the field numbers.
   ML->MeshFieldInfo.swap(Builder.Fields);
@@ -516,7 +506,6 @@ CGMeshLayout *CodeGenTypes::ComputeMeshLayout(const MeshDecl *D,
 void CGMeshLayout::print(raw_ostream &OS) const {
   OS << "<CGMeshLayout\n";
   OS << "  LLVMType:" << *CompleteObjectType << "\n";
-  OS << "  IsZeroInitializable:" << IsZeroInitializable << "\n";
   OS << "  BitFields:[\n";
 
   // Print bit-field infos in declaration order.
@@ -545,15 +534,3 @@ void CGMeshLayout::dump() const {
   print(llvm::errs());
 }
 
-void CGBitFieldInfo::print(raw_ostream &OS) const {
-  OS << "<CGBitFieldInfo"
-     << " Offset:" << Offset
-     << " Size:" << Size
-     << " IsSigned:" << IsSigned
-     << " StorageSize:" << StorageSize
-     << " StorageAlignment:" << StorageAlignment << ">";
-}
-
-void CGBitFieldInfo::dump() const {
-  print(llvm::errs());
-}

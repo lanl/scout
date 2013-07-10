@@ -2892,40 +2892,10 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
 
     // type-specifier
     case tok::kw_short:
-      // scout - detect short <4>, int <3>, ... iSPC constructs and
-      //                 return TST_value of Scout short4, int3, ...
-      //                 that should be substituted.  Return same if not iSPC
-      {
-        DeclSpec::TST myTst = TST_half;
-        myTst = GetIspcScoutExtension(myTst, tok::kw_short);
-        if (myTst != TST_half) {
-          isInvalid = DS.SetTypeSpecType(myTst, Loc, PrevSpec, DiagID);
-          ConsumeToken();
-          ConsumeToken();
-          ConsumeToken();
-          break;
-        }
-      }
-
-      isInvalid = DS.SetTypeSpecWidth(DeclSpec::TSW_short, Loc, PrevSpec,
+        isInvalid = DS.SetTypeSpecWidth(DeclSpec::TSW_short, Loc, PrevSpec,
                                       DiagID);
       break;
     case tok::kw_long:
-      // scout - detect long <4>, int <3>, ... iSPC constructs and
-      //                 return TST_value of Scout long4, int3, ...
-      //                 that should be substituted.  Return same if not iSPC
-      {
-        DeclSpec::TST myTst = TST_int;  // There is no TST_long!!  hack
-        myTst = GetIspcScoutExtension(myTst, tok::kw_long);
-        if (myTst != TST_int) {
-          isInvalid = DS.SetTypeSpecType(myTst, Loc, PrevSpec, DiagID);
-          ConsumeToken();
-          ConsumeToken();
-          ConsumeToken();
-          break;
-        }
-      }
-      
       if (DS.getTypeSpecWidth() != DeclSpec::TSW_long)
         isInvalid = DS.SetTypeSpecWidth(DeclSpec::TSW_long, Loc, PrevSpec,
                                         DiagID);
@@ -2958,40 +2928,10 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
                                      DiagID);
       break;
     case tok::kw_char:
-      // scout - detect char <4>, int <3>, ... iSPC constructs and
-      //                 return TST_value of Scout char4, int3, ...
-      //                 that should be substituted.  Return same if not iSPC
-      {
-        DeclSpec::TST myTst = TST_char;
-        myTst = GetIspcScoutExtension(myTst, tok::kw_char);
-        if (myTst != TST_char) {
-          isInvalid = DS.SetTypeSpecType(myTst, Loc, PrevSpec, DiagID);
-          ConsumeToken();
-          ConsumeToken();
-          ConsumeToken();
-          break;
-        }
-      }
-      
       isInvalid = DS.SetTypeSpecType(DeclSpec::TST_char, Loc, PrevSpec,
                                      DiagID);
       break;
     case tok::kw_int:
-      // scout - detect int <4>, int <3>, ... iSPC constructs and
-      //                 return TST_value of Scout int4, int3, ...
-      //                 that should be substituted.  Return same if not iSPC
-      {
-        DeclSpec::TST myTst = TST_int;
-        myTst = GetIspcScoutExtension(myTst, tok::kw_int);
-        if (myTst != TST_int) {
-          isInvalid = DS.SetTypeSpecType(myTst, Loc, PrevSpec, DiagID);
-          ConsumeToken();
-          ConsumeToken();
-          ConsumeToken();
-          break;
-        }
-      }
-        
       isInvalid = DS.SetTypeSpecType(DeclSpec::TST_int, Loc, PrevSpec,
                                      DiagID);
       break;
@@ -3004,40 +2944,10 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
                                      DiagID);
       break;
     case tok::kw_float:
-      // scout - detect float <4>, int <3>, ... iSPC constructs and
-      //                 return TST_value of Scout float4, int3, ...
-      //                 that should be substituted.  Return same if not iSPC
-      {
-        DeclSpec::TST myTst = TST_float;
-        myTst = GetIspcScoutExtension(myTst, tok::kw_float);
-        if (myTst != TST_float) {
-          isInvalid = DS.SetTypeSpecType(myTst, Loc, PrevSpec, DiagID);
-          ConsumeToken();
-          ConsumeToken();
-          ConsumeToken();
-          break;
-        }
-      }
-		   
       isInvalid = DS.SetTypeSpecType(DeclSpec::TST_float, Loc, PrevSpec,
                                      DiagID);
       break;
     case tok::kw_double:
-      // scout - detect double <4>, int <3>, ... iSPC constructs and
-      //                 return TST_value of Scout double4, int3, ...
-      //                 that should be substituted.  Return same if not iSPC
-      {
-        DeclSpec::TST myTst = TST_double;
-        myTst = GetIspcScoutExtension(myTst, tok::kw_double);
-        if (myTst != TST_double) {
-          isInvalid = DS.SetTypeSpecType(myTst, Loc, PrevSpec, DiagID);
-          ConsumeToken();
-          ConsumeToken();
-          ConsumeToken();
-          break;
-        }
-      }
-
       isInvalid = DS.SetTypeSpecType(DeclSpec::TST_double, Loc, PrevSpec,
                                      DiagID);
       break;
@@ -3165,21 +3075,6 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
                                      DiagID);
       break;
     case tok::kw_bool:
-      // scout - detect bool <4>, int <3>, ... iSPC constructs and
-      //                 return TST_value of Scout bool4, int3, ...
-      //                 that should be substituted.  Return same if not iSPC
-      {
-        DeclSpec::TST myTst = TST_bool;
-        myTst = GetIspcScoutExtension(myTst, tok::kw_bool);
-        if (myTst != TST_bool) {
-          isInvalid = DS.SetTypeSpecType(myTst, Loc, PrevSpec, DiagID);
-          ConsumeToken();
-          ConsumeToken();
-          ConsumeToken();
-          break;
-        }
-      }
-
     case tok::kw__Bool:
       if (Tok.is(tok::kw_bool) &&
           DS.getTypeSpecType() != DeclSpec::TST_unspecified &&

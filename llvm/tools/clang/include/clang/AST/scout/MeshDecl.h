@@ -128,7 +128,9 @@ namespace clang {
     static MeshFieldDecl *CreateDeserialized(ASTContext &C, unsigned ID);  
   
     // Return the mesh that contains this field. 
-    const MeshDecl *getParentMesh() const;
+    const MeshDecl *getParentMesh() const {
+      return cast<MeshDecl>(getDeclContext());
+    }
 
     // Return the index position of this field within the parent mesh. 
     unsigned getMeshFieldIndex() const;

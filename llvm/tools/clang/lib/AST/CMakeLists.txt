@@ -68,7 +68,7 @@ add_clang_library(clangAST
   Scout/MeshDecl.cpp
   Scout/MeshType.cpp
   Scout/MeshLayout.cpp
-  Scout/MeshLayoutBuilder.cpp
+#  Scout/MeshLayoutBuilder.cpp
   Scout/RectlinearMeshDecl.cpp
   Scout/RenderAllStmt.cpp
   Scout/ScoutVectorMemberExpr.cpp

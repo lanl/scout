@@ -1724,6 +1724,9 @@ public:
   /// Get the offset of a FieldDecl or IndirectFieldDecl, in bits.
   uint64_t getFieldOffset(const ValueDecl *FD) const;
 
+  /// Get the offset of a MeshFieldDecl or IndirectFieldDecl, in bits.
+  uint64_t getMeshFieldOffset(const ValueDecl *FD) const;  
+
   bool isNearlyEmpty(const CXXRecordDecl *RD) const;
 
   MangleContext *createMangleContext();

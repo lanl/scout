@@ -1657,6 +1657,10 @@ bool CursorVisitor::VisitInjectedClassNameTypeLoc(InjectedClassNameTypeLoc TL) {
 }
 
 // ndm - TODO - implement
+bool CursorVisitor::VisitMeshTypeLoc(MeshTypeLoc TL){
+  return false;
+}
+
 bool CursorVisitor::VisitUniformMeshTypeLoc(UniformMeshTypeLoc TL){
   return false;
 }

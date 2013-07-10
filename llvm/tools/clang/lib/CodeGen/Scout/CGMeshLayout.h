@@ -39,28 +39,15 @@ namespace clang {
       /// field no. This info is populated by record builder.
       llvm::DenseMap<const MeshFieldDecl *, CGBitFieldInfo> BitFields;
 
-      /// False if any direct or indirect subobject of this class, when
-      /// considered as a complete object, requires a non-zero bitpattern
-      /// when zero-initialized.
-      bool IsZeroInitializable : 1;
-
     public:
-      CGMeshLayout(llvm::StructType *CompleteObjectType, 
-                   bool IsZeroInitializable)
-        : CompleteObjectType(CompleteObjectType),
-          IsZeroInitializable(IsZeroInitializable) 
+      CGMeshLayout(llvm::StructType *CompleteObjectType) 
+        : CompleteObjectType(CompleteObjectType)
       { }
 
       /// \brief Return the "complete object" LLVM type associated with
       /// this record.
       llvm::StructType *getLLVMType() const {
         return CompleteObjectType;
-      }
-
-      /// \brief Check whether the mesh can be zero-initialized
-      /// with a zeroinitializer.
-      bool isZeroInitializable() const {
-        return IsZeroInitializable;
       }
 
       /// \brief Return llvm::StructType element number that corresponds 

@@ -2801,3 +2801,5 @@ void ASTContext::DumpRecordLayout(const RecordDecl *RD,
   }
   OS << "]>\n";
 }
+
+#include "Scout/MeshLayoutBuilder.cpp"
