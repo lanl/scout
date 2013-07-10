@@ -77,7 +77,7 @@ using namespace clang;
 #endif
 
 // add dimensions to an argument string
-void ScoutVisitor::addDims(std::string* s, MeshType::MeshDimensionVec dims) {
+void ScoutVisitor::addDims(std::string* s, MeshType::MeshDimensions& dims) {
   for(size_t i = 0; i < 3; ++i){
     if(i > 0){
       *s += ", ";
@@ -118,7 +118,7 @@ bool ScoutVisitor::VisitStmt(Stmt* s) {
 
     // Get dimensions of the mesh and insert as arguments to the call
     const MeshType *MT = cast<MeshType>(ras->getMeshType());
-    MeshType::MeshDimensionVec dims = MT->dimensions();
+    MeshType::MeshDimensions dims = MT->dimensions();
     addDims(&begin, dims);
 
     begin += ");";
@@ -168,7 +168,7 @@ bool ScoutVisitor::VisitVolumeRenderAllStmt(VolumeRenderAllStmt* vras) {
 
   // Get dimensions of the mesh and insert as arguments to the call
   const MeshType *MT = cast<MeshType>(vras->getMeshType());
-  MeshType::MeshDimensionVec dims = MT->dimensions();
+  MeshType::MeshDimensions dims = MT->dimensions();
   addDims(&bc, dims);
 
   // window width/height arguments
@@ -193,8 +193,8 @@ bool ScoutVisitor::VisitVolumeRenderAllStmt(VolumeRenderAllStmt* vras) {
   size_t FieldCount = 0;
   const MeshDecl* MD = MT->getDecl();
   
-  for(MeshDecl::mesh_field_iterator FI = MD->mesh_field_begin(),
-      FE = MD->mesh_field_end(); FI != FE; ++FI){
+  for(MeshDecl::field_iterator FI = MD->field_begin(),
+      FE = MD->field_end(); FI != FE; ++FI){
     MeshFieldDecl* FD = *FI;
     if(! FD->isImplicit() && FD->isCellLocated()) {
       bc += FD->getType().getAsString() + " " + FD->getName().str() + ";";

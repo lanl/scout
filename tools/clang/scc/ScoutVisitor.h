@@ -70,7 +70,7 @@ class ScoutVisitor : public RecursiveASTVisitor<ScoutVisitor>
   }
 
   // add dimensions to an argument string
-  void addDims(std::string* s, MeshType::MeshDimensionVec dims); 
+  void addDims(std::string* s, MeshType::MeshDimensions& dims); 
 
   bool VisitStmt(Stmt* s);
 
