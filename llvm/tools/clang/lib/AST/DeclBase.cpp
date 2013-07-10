@@ -874,28 +874,10 @@ DeclContext *DeclContext::getPrimaryContext() {
     return this;
 
   default:
-    if (DeclKind >= Decl::firstTag && DeclKind <= Decl::lastTag) {
-      // If this is a tag type that has a definition or is currently
-      // being defined, that definition is our primary context.
-      TagDecl *Tag = cast<TagDecl>(this);
-      assert(isa<TagType>(Tag->TypeForDecl) ||
-             isa<InjectedClassNameType>(Tag->TypeForDecl));
-
-      if (TagDecl *Def = Tag->getDefinition())
-        return Def;
-
-      if (!isa<InjectedClassNameType>(Tag->TypeForDecl)) {
-        const TagType *TagTy = cast<TagType>(Tag->TypeForDecl);
-        if (TagTy->isBeingDefined())
-          // FIXME: is it necessarily being defined in the decl
-          // that owns the type?
-          return TagTy->getDecl();
-      }
-
-      return Tag;
     // ===== Scout ============================================================
-    //
-    } else if (DeclKind >= Decl::firstMesh && DeclKind <= Decl::lastMesh) {
+    // Note -- meshes are now also tags so we need to move our test for
+    // meshes prior to tags or bad things will happen...
+    if (DeclKind >= Decl::firstMesh && DeclKind <= Decl::lastMesh) {
       // If this is a mesh type that has a definition or is currently
       // being defined, that definition is our primary context.
       MeshDecl *M = cast<MeshDecl>(this);
@@ -914,6 +896,26 @@ DeclContext *DeclContext::getPrimaryContext() {
       }
 
       return M;
+
+    } else if (DeclKind >= Decl::firstTag && DeclKind <= Decl::lastTag) {
+      // If this is a tag type that has a definition or is currently
+      // being defined, that definition is our primary context.
+      TagDecl *Tag = cast<TagDecl>(this);
+      assert(isa<TagType>(Tag->TypeForDecl) ||
+             isa<InjectedClassNameType>(Tag->TypeForDecl));
+
+      if (TagDecl *Def = Tag->getDefinition())
+        return Def;
+
+      if (!isa<InjectedClassNameType>(Tag->TypeForDecl)) {
+        const TagType *TagTy = cast<TagType>(Tag->TypeForDecl);
+        if (TagTy->isBeingDefined())
+          // FIXME: is it necessarily being defined in the decl
+          // that owns the type?
+          return TagTy->getDecl();
+      }
+
+      return Tag;
     }
     //
     // ========================================================================
