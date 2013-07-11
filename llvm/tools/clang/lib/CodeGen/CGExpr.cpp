@@ -2511,9 +2511,9 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
   // Check if this is a Scout mesh member expression.
   {
     NamedDecl *ND = E->getMemberDecl();
-    LValue BaseLV;    
+    LValue BaseLV = EmitCheckedLValue(BaseExpr, TCK_MemberAccess);
     if (MeshFieldDecl *MFD = dyn_cast<MeshFieldDecl>(ND)) {
-      VarDecl *VD = dyn_cast<VarDecl>(ND);   
+      //VarDecl *VD = dyn_cast<VarDecl>(ND);
       LValue LV = EmitScoutMemberExpr(BaseLV, MFD);
       return LV;
     }
