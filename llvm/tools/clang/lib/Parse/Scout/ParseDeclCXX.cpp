@@ -119,11 +119,9 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS,
   Dec = static_cast<MeshDecl*>(Actions.ActOnMeshDefinition(getCurScope(),
                                MeshType, MeshTypeLocation,
                                Name, NameLoc, TParams));
-  
+  Dec->completeDefinition();
   bool valid = ParseMeshBody(MeshLocation, Dec);
-
   if (valid) {
-    Dec->completeDefinition(/*Actions.Context*/);
     unsigned DiagID;
     const char* PrevSpec;
     DS.SetTypeSpecType(DeclSpec::TST_uniform_mesh, MeshLocation, PrevSpec,
