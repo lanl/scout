@@ -4722,7 +4722,7 @@ static bool shouldConsiderLinkage(const VarDecl *VD) {
     return VD->hasExternalStorage();
   if (DC->isFileContext())
     return true;
-  if (DC->isRecord())
+  if (DC->isRecord() || DC->isMesh())
     return false;
   llvm_unreachable("Unexpected context");
 }
@@ -4731,7 +4731,7 @@ static bool shouldConsiderLinkage(const FunctionDecl *FD) {
   const DeclContext *DC = FD->getDeclContext()->getRedeclContext();
   if (DC->isFileContext() || DC->isFunctionOrMethod())
     return true;
-  if (DC->isRecord())
+  if (DC->isRecord() || DC->isMesh())
     return false;
   llvm_unreachable("Unexpected context");
 }

@@ -1079,6 +1079,12 @@ public:
     return DeclKind >= Decl::firstRecord && DeclKind <= Decl::lastRecord;
   }
 
+  // ====== Scout ====================================================
+  bool isMesh() const {
+    return DeclKind >= Decl::firstMesh && DeclKind <= Decl::lastMesh;
+  }
+  // =================================================================
+
   bool isNamespace() const {
     return DeclKind == Decl::Namespace;
   }
