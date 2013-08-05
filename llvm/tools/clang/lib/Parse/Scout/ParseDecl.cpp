@@ -149,8 +149,9 @@ void Parser::ParseMeshDeclaration(ParsingDeclSpec &DS,
 void Parser::ParseMeshParameterDeclaration(DeclSpec& DS) {
 
   ParsedType parsedType = DS.getRepAsType();
-  const UniformMeshType* mt;
-  mt = dyn_cast<UniformMeshType>(parsedType.get().getTypePtr());
+  const MeshType* mt;
+  mt = dyn_cast<MeshType>(parsedType.get().getTypePtr());
+  const UniformMeshType *umt = (const UniformMeshType *)(mt);
 
   ConsumeBracket();
   size_t numDims;
@@ -184,7 +185,7 @@ void Parser::ParseMeshParameterDeclaration(DeclSpec& DS) {
   }
 
   // SC_TODO: possible alignment problem?
-  UniformMeshType* mdt = new UniformMeshType(mt->getDecl()); 
+  UniformMeshType* mdt = new UniformMeshType(umt->getDecl());
 
   mdt->setDimensions(dims);
   parsedType.set(QualType(mdt, 0));

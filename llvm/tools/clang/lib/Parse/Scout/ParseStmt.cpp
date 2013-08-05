@@ -147,7 +147,8 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   Expr* ElementColor = 0;
   Expr* ElementRadius = 0;
 
-  const UniformMeshType *MT;
+  const MeshType *MT;
+  const UniformMeshType *UMT;
 
   IdentifierInfo* CameraII = 0;
   SourceLocation CameraLoc;
@@ -294,9 +295,9 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
                                              LoopVariableII,
                                              LoopVariableLoc);
 
-      MT = cast<UniformMeshType>(mt2);
+      UMT = (const UniformMeshType*)(mt2);
 
-      if (MT) {
+      if (UMT) {
         success = true;
       }
 
@@ -328,10 +329,11 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   if (!elements) {
     Op = 0;
 
-    MT = dyn_cast<UniformMeshType>(MVD->getType().getCanonicalType().
+    MT = dyn_cast<MeshType>(MVD->getType().getCanonicalType().
                                    getNonReferenceType().getTypePtr());
     size_t FieldCount = 0;
-    const UniformMeshDecl* MD = MT->getDecl();
+    const UniformMeshType *UMT = (const UniformMeshType *)(MT);
+    const UniformMeshDecl* MD = UMT->getDecl();
 
     //Sema::ContextRAII contextRAII(Actions, const_cast<UniformMeshDecl*>(MD));
 
@@ -1030,13 +1032,15 @@ StmtResult Parser::ParseVolumeRenderAll(Scope* scope,
           VarDecl* vd = dyn_cast<VarDecl>(ds->getSingleDecl());
           assert(vd);
 
-          const UniformMeshType* mt =
-            dyn_cast<UniformMeshType>(vd->getType().getCanonicalType().getTypePtr());
+          MeshType* mt = const_cast<MeshType*>
+            (dyn_cast<MeshType>(vd->getType().getCanonicalType().getTypePtr()));
           assert(mt);
 
-          UniformMeshType* mdt = const_cast<UniformMeshType*>(mt);
-          mdt->setDimensions(dims);
-          vd->setType(QualType(mdt, 0));
+          UniformMeshType* umt = (UniformMeshType*)(mt);
+          assert(umt);
+
+          umt->setDimensions(dims);
+          vd->setType(QualType(umt, 0));
 
           SR = result;
           return true;

@@ -159,6 +159,7 @@ Retry:
     // when Clang normally parses a declaration
     StmtResult SR;
     if(ParseMeshStatementOrDeclaration(Stmts, OnlyStatement, Next, SR)) return SR;
+
     //================================================================================
 
     // Look up the identifier, and typo-correct it to a keyword if it's not

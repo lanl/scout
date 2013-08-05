@@ -155,6 +155,7 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
   while(Tok.isNot(tok::r_brace) && Tok.isNot(tok::eof)) {
 
     if (Tok.is(tok::kw_cells)) {
+      llvm::errs() << "mesh has cells\n";
       ConsumeToken();
       Dec->setHasCellData(true);
       if (Tok.isNot(tok::colon)) {

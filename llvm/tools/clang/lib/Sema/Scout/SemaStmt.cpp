@@ -583,12 +583,13 @@ bool Sema::ActOnForAllLoopVariable(Scope* S,
     }
   }
 
-  UniformMeshType* MT = const_cast<UniformMeshType *>(cast<UniformMeshType>(T));
-  MT->setDimensions(cast<MeshType>(T)->dimensions());
+  MeshType* MT = const_cast<MeshType *>(cast<MeshType>(T));
+  UniformMeshType* UMT = (UniformMeshType*)(MT);
+  UMT->setDimensions(cast<MeshType>(T)->dimensions());
 
   ImplicitParamDecl* D =
   ImplicitParamDecl::Create(Context, CurContext, LoopVariableLoc,
-                            LoopVariableII, QualType(MT, 0));
+                            LoopVariableII, QualType(UMT, 0));
 
   PushOnScopeChains(D, S, true);
 
@@ -669,12 +670,13 @@ bool Sema::ActOnRenderAllLoopVariable(Scope* S,
     return false;
   }
 
-    UniformMeshType* MT = const_cast<UniformMeshType *>(cast<UniformMeshType>(T));
-  MT->setDimensions(cast<MeshType>(T)->dimensions());
+  MeshType* MT = const_cast<MeshType *>(cast<MeshType>(T));
+  UniformMeshType* UMT = (UniformMeshType *)(MT);
+  UMT->setDimensions(cast<MeshType>(T)->dimensions());
 
   ImplicitParamDecl* D =
   ImplicitParamDecl::Create(Context, CurContext, LoopVariableLoc,
-                            LoopVariableII, QualType(MT, 0));
+                            LoopVariableII, QualType(UMT, 0));
 
 
   PushOnScopeChains(D, S, true);
