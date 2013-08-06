@@ -54,7 +54,7 @@
 
 #include "clang/Parse/Parser.h"
 #include "RAIIObjectsForParser.h"
-#include "clang/AST/scout/MeshDecls.h"
+#include "clang/AST/scout/MeshDecl.h"
 #include "clang/Basic/CharInfo.h"
 #include "clang/Basic/OperatorKinds.h"
 #include "clang/Parse/ParseDiagnostic.h"
@@ -156,6 +156,7 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
 
     if (Tok.is(tok::kw_cells)) {
       llvm::errs() << "mesh has cells\n";
+      MFK = Cell;
       ConsumeToken();
       Dec->setHasCellData(true);
       if (Tok.isNot(tok::colon)) {
@@ -165,6 +166,7 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
       ConsumeToken();
 
     } else if (Tok.is(tok::kw_vertices)) {
+      MFK = Vertex;
       ConsumeToken();
       Dec->setHasVertexData(true);
       if (Tok.isNot(tok::colon)) {
@@ -173,6 +175,7 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
       }
       ConsumeToken();
     } else if (Tok.is(tok::kw_faces)) {
+      MFK = Face;
       ConsumeToken();
       Dec->setHasFaceData(true);
       if (Tok.isNot(tok::colon)) {
@@ -180,6 +183,7 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
         SkipUntil(tok::r_brace, true, true);
       }
     } else if (Tok.is(tok::kw_edges)) {
+      MFK = Edge;
       ConsumeToken();
       Dec->setHasEdgeData(true);
       if (Tok.isNot(tok::colon)) {
@@ -209,6 +213,20 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
 
         MeshFieldDecl* FDecl = cast<MeshFieldDecl>(Field);
         FDecl->setImplicit(false);
+
+        if(P.getMeshFieldKind() == Cell) {
+          llvm::errs() << "setting cell located\n";
+          FDecl->setCellLocated(true);
+        } else if (P.getMeshFieldKind() == Vertex) {
+          FDecl->setVertexLocated(true);
+        } else if (P.getMeshFieldKind() == Edge) {
+          FDecl->setEdgeLocated(true);
+        } else if (P.getMeshFieldKind() == Face) {
+          FDecl->setFaceLocated(true);
+        } else {
+
+        }
+
         // SC_TODO - is this a potential bug?  FIXME -- PM 
         //FDecl->setExternAlloc(externAlloc);
         FieldDecls.push_back(Field);

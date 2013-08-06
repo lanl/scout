@@ -79,26 +79,28 @@ bool Sema::LookupMemberExprInMesh(Sema &SemaRef, LookupResult &R,
 
   MeshFieldDecl* FD = cast<MeshFieldDecl>(ND);
 
+  llvm::errs() <<  R.getLookupName() << " is Cell located " << FD->isCellLocated() << "\n";
+  llvm::errs() << "has cell data " << MTy->hasCellData() << "\n";
   if (FD->isCellLocated()) {
-    if (MTy->hasCellData()) {
+    if (!MTy->hasCellData()) {
       SemaRef.Diag(OpLoc, diag::err_invalid_mesh_cells_field) <<
       R.getLookupName();
       return true;
     }
   } else if (FD->isVertexLocated()) {
-    if (MTy->hasVertexData()) {
+    if (!MTy->hasVertexData()) {
       SemaRef.Diag(OpLoc, diag::err_invalid_mesh_vertices_field) <<
       R.getLookupName();
       return true;
     }
   } else if (FD->isFaceLocated()) {
-    if (MTy->hasFaceData()) {
+    if (!MTy->hasFaceData()) {
       SemaRef.Diag(OpLoc, diag::err_invalid_mesh_faces_field) <<
       R.getLookupName();
       return true;
     }
   } else if (FD->isEdgeLocated()) {
-    if(MTy->hasEdgeData()){
+    if(!MTy->hasEdgeData()){
       SemaRef.Diag(OpLoc, diag::err_invalid_mesh_edges_field) <<
       R.getLookupName();
       return true;

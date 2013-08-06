@@ -46,6 +46,16 @@ namespace clang {
   class PoisonSEHIdentifiersRAIIObject;
   class VersionTuple;
 
+  // ====== Scout =============================
+  // used by the mesh parser to keep track of what field kind we are parsing
+  enum MeshFieldKind {
+    Cell,
+    Vertex,
+    Edge,
+    Face
+  };
+  // ==========================================
+
 /// Parser - This implements a parser for the C family of languages.  After
 /// parsing units of the grammar, productions are invoked to handle whatever has
 /// been read.
@@ -58,6 +68,10 @@ class Parser : public CodeCompletionHandler {
   friend class ObjCDeclContextSwitch;
   friend class ParenBraceBracketBalancer;
   friend class BalancedDelimiterTracker;
+
+  // ====== Scout ===========
+  MeshFieldKind MFK;
+  // ========================
 
   Preprocessor &PP;
 
@@ -217,6 +231,11 @@ public:
   Parser(Preprocessor &PP, Sema &Actions, bool SkipFunctionBodies);
   ~Parser();
 
+  //====== scout ======================
+  void setMeshFieldKind(MeshFieldKind M) { MFK = M; } 
+  MeshFieldKind getMeshFieldKind(void) {return MFK; }
+  //===================================
+  
   const LangOptions &getLangOpts() const { return PP.getLangOpts(); }
   const TargetInfo &getTargetInfo() const { return PP.getTargetInfo(); }
   Preprocessor &getPreprocessor() const { return PP; }
@@ -252,6 +271,7 @@ public:
   StmtResult StmtError(const DiagnosticBuilder &) { return StmtError(); }
 
   ExprResult ExprEmpty() { return ExprResult(false); }
+
 
   // Parsing methods.
 
