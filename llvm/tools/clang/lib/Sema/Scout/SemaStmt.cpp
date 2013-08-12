@@ -718,10 +718,10 @@ Sema::ActOnRenderAllElementsVariable(Scope* S,
   }
 
   VarDecl* MD = SCLStack.back();
-  const UniformMeshType* T =
-  dyn_cast<UniformMeshType>(MD->getType().getCanonicalType().getTypePtr());
+  const MeshType* T =
+  dyn_cast<MeshType>(MD->getType().getCanonicalType().getTypePtr());
 
-  UniformMeshType* MT = const_cast<UniformMeshType*>(T);
+  UniformMeshType* MT = (UniformMeshType*)(const_cast<MeshType *>(T));
   MT->setDimensions(T->dimensions());
   //MT->setElementsMember(ME);
 

@@ -299,7 +299,7 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD,
   // We should really call it something else so this is clear. 
   // If 'vals' is empty we use the global index. 
 
-  const MeshType *MT = cast<MeshType>(VD->getType().getCanonicalType().getTypePtr());
+  const MeshType *MT = cast<MeshType>(VD->getType().getCanonicalType());
 
   // If it is not a mesh member, assume we want the pointer to storage
   // for all mesh members of that name.  In that case, figure out the index 

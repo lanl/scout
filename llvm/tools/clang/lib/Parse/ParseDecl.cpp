@@ -5042,6 +5042,21 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
   if (D.hasName() && !D.getNumTypeObjects())
     MaybeParseCXX11Attributes(D);
 
+
+#ifdef MERGE_FROM_DEVEL
+  // ===== Scout ============================================================
+  if(tst == DeclSpec::TST_typename){
+      ParsedType parsedType = DS.getRepAsType();
+      const MeshType* MT = dyn_cast<MeshType>(parsedType.get().getTypePtr());
+      const UniformMeshType *uniMT = (const UniformMeshType *)(MT);
+      if(uniMT && Tok.is(tok::l_square)) {
+        ParseMeshVarBracketDeclarator(D);
+        return;
+      }
+  }
+  // ========================================================================
+#endif
+
   while (1) {
     if (Tok.is(tok::l_paren)) {
       // Enter function-declaration scope, limiting any declarators to the

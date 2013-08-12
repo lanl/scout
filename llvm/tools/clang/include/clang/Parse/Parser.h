@@ -2275,6 +2275,11 @@ private:
   
   // scout **************************** Scout parsing methods
     
+  void ParseMeshVarBracketDeclarator(Declarator &D);
+
+  bool ParseMeshStatement(StmtVector &Stmts,
+       bool OnlyStatement, Token &Next, StmtResult &SR);
+
   StmtResult ParseForAllStatement(ParsedAttributes &Attr, bool ForAll=true);
   
   StmtResult ParseForAllArrayStatement(ParsedAttributes &Attr);

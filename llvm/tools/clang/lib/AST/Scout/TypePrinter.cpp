@@ -40,7 +40,18 @@ TypePrinter::printUnstructuredMeshBefore(const UnstructuredMeshType *T,
 void
 TypePrinter::printUniformMeshAfter(const UniformMeshType *T,
                                    raw_ostream &OS)
-{ }
+{
+  OS << '[';
+  MeshType::MeshDimensions dv = T->dimensions();
+  MeshType::MeshDimensions::iterator dimiter;
+  for (dimiter = dv.begin();
+      dimiter != dv.end();
+      dimiter++){
+    (*dimiter)->printPretty(OS, 0, Policy);
+    if (dimiter+1 != dv.end()) OS << ',';
+  }
+  OS << ']';
+}
 
 void
 TypePrinter::printStructuredMeshAfter(const StructuredMeshType *T,

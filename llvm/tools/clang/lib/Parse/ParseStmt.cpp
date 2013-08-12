@@ -158,8 +158,12 @@ Retry:
     // case because the square brackets look like an array specification
     // when Clang normally parses a declaration
     StmtResult SR;
-    if(ParseMeshStatementOrDeclaration(Stmts, OnlyStatement, Next, SR)) return SR;
 
+#ifdef MERGE_FROM_DEVEL
+    if(ParseMeshStatement(Stmts, OnlyStatement, Next, SR)) return SR;
+#else
+    if(ParseMeshStatementOrDeclaration(Stmts, OnlyStatement, Next, SR)) return SR;
+#endif
     //================================================================================
 
     // Look up the identifier, and typo-correct it to a keyword if it's not

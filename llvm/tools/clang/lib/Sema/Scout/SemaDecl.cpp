@@ -237,7 +237,7 @@ bool Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
   
   // SC_TODO - Refactor work (need to figure this out)...
   //Mesh->addImplicitFields(Loc, Context);
-  //PopDeclContext();
+  PopDeclContext(); // need this or we get BlockDecl in MeshDecl
   return IsValidDeclInMesh(Mesh);
 }
 
