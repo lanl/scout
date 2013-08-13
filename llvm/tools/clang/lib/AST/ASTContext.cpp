@@ -1759,17 +1759,17 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
   case Type::RectilinearMesh:
   case Type::UnstructuredMesh: {
 
-    const TagType *TT = cast<TagType>(T);
-    if (TT->getDecl()->isInvalidDecl()) {
-      Width = 8;
-      Align = 8;
-      break;
-    }
+    const MeshType *MT = cast<MeshType>(T);
 
-    const MeshType *MT = cast<MeshType>(TT);
+    if (MT->getDecl()->isInvalidDecl()) {
+         Width = 8;
+         Align = 8;
+         break;
+       }
     const ASTMeshLayout &Layout = getASTMeshLayout(MT->getDecl());
     Width = toBits(Layout.getSize());
     Align = toBits(Layout.getAlignment());
+    llvm::errs() << "width " << Width << " align " << Align << "\n";
     break;
   }
   // ===========================================================================
