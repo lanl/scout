@@ -235,7 +235,7 @@ CollectMeshFields(const MeshDecl *mesh, llvm::DIFile tunit,
   // Field number for non-static fields.
   unsigned fieldNo = 0;
 
-  const MeshFieldDecl *LastFD = 0;
+  //const MeshFieldDecl *LastFD = 0;
 
   // Static and non-static members should appear in the same order as
   // the corresponding declarations in the source program.

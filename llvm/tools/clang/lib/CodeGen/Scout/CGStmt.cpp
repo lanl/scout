@@ -254,8 +254,6 @@ void CodeGenFunction::EmitForallStmt(const ForAllStmt &S) {
 // ----- EmitForallBody
 // 
 void CodeGenFunction::EmitForallBody(const ForAllStmt &S) {
-  //llvm::BasicBlock* body = createBasicBlock("faa.body");
-  //EmitBlock(body);
   EmitStmt(S.getBody());
 }
 

@@ -301,7 +301,7 @@ bool CGMeshLayoutBuilder::LayoutFields(const MeshDecl *D) {
   const ASTMeshLayout &Layout = Types.getContext().getASTMeshLayout(D);
 
   unsigned FieldNo = 0;
-  const MeshFieldDecl *LastFD = 0;
+  //const MeshFieldDecl *LastFD = 0;
   
   for (MeshDecl::field_iterator FI = D->field_begin(), FE = D->field_end();
        FI != FE; ++FI, ++FieldNo) {

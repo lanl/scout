@@ -71,6 +71,12 @@ enum CXCursorKind clang_getTemplateCursorKind(CXCursor C) {
       case TTK_Class: return CXCursor_ClassDecl;
       case TTK_Union: return CXCursor_UnionDecl;
       case TTK_Enum: return CXCursor_NoDeclFound;
+      // ===== Scout =================================================
+      case TTK_UniformMesh: return CXCursor_UniformMeshDecl;
+      case TTK_StructuredMesh: return CXCursor_StructuredMeshDecl;
+      case TTK_RectilinearMesh: return CXCursor_RectilinearMeshDecl;
+      case TTK_UnstructuredMesh: return CXCursor_UnstructuredMeshDecl;
+      // =============================================================
       }
     }
     break;

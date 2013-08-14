@@ -1656,6 +1656,7 @@ bool CursorVisitor::VisitInjectedClassNameTypeLoc(InjectedClassNameTypeLoc TL) {
   return Visit(MakeCursorTypeRef(TL.getDecl(), TL.getNameLoc(), TU));
 }
 
+// ====== Scout ===================================================================
 // ndm - TODO - implement
 bool CursorVisitor::VisitMeshTypeLoc(MeshTypeLoc TL){
   return false;
@@ -1676,6 +1677,7 @@ bool CursorVisitor::VisitRectilinearMeshTypeLoc(RectilinearMeshTypeLoc TL){
 bool CursorVisitor::VisitUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc TL){
   return false;
 }
+// ==============================================================================
 
 bool CursorVisitor::VisitAtomicTypeLoc(AtomicTypeLoc TL) {
   return Visit(TL.getValueLoc());
@@ -3538,8 +3540,6 @@ CXString clang_getCursorKindSpelling(enum CXCursorKind Kind) {
       return cxstring::createRef("ClassDecl");
   case CXCursor_FieldDecl:
       return cxstring::createRef("FieldDecl");
-  case CXCursor_MeshFieldDecl:
-      return cxstring::createRef("MeshFieldDecl");      
   case CXCursor_VarDecl:
       return cxstring::createRef("VarDecl");
   case CXCursor_ParmDecl:
@@ -3818,6 +3818,18 @@ CXString clang_getCursorKindSpelling(enum CXCursorKind Kind) {
     return cxstring::createRef("CXXAccessSpecifier");
   case CXCursor_ModuleImportDecl:
     return cxstring::createRef("ModuleImport");
+  // == Scout =========================================
+  case CXCursor_UniformMeshDecl:
+    return cxstring::createRef("UniformMeshDecl");
+  case CXCursor_StructuredMeshDecl:
+    return cxstring::createRef("StructuredMeshDecl");
+  case CXCursor_RectilinearMeshDecl:
+    return cxstring::createRef("RectilinearMeshDecl");
+  case CXCursor_UnstructuredMeshDecl:
+    return cxstring::createRef("UnstructuredMeshDecl");
+  case CXCursor_MeshFieldDecl:
+    return cxstring::createRef("MeshFieldDecl");
+  // ===================================================
   }
 
   llvm_unreachable("Unhandled CXCursorKind");
@@ -4544,10 +4556,13 @@ CXCursor clang_getCursorDefinition(CXCursor C) {
   case Decl::Captured:
   case Decl::Label:  // FIXME: Is this right??
   case Decl::ClassScopeFunctionSpecialization:
+  // ===== Scout ==================
+  case Decl::Mesh:
   case Decl::UniformMesh:
   case Decl::StructuredMesh:
   case Decl::RectilinearMesh:
   case Decl::UnstructuredMesh:
+  // ==============================
   case Decl::Import:
   case Decl::OMPThreadPrivate:
     return C;
