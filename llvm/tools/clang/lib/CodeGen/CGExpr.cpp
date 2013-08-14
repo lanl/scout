@@ -1888,6 +1888,8 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
                                          CapturedStmtInfo->getContextValue());
       }
 
+      llvm::errs() << "isblock " << isa<BlockDecl>(CurCodeDecl) << "\n";
+      llvm::errs() << "reflocal " << E->refersToEnclosingLocal() << "\n";
       assert(isa<BlockDecl>(CurCodeDecl) && E->refersToEnclosingLocal());
       return MakeAddrLValue(GetAddrOfBlockDecl(VD, isBlockVariable),
                             T, Alignment);

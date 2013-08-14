@@ -175,6 +175,7 @@ void CodeGenFunction::EmitForallStmt(const ForAllStmt &S) {
     JumpDest Continue = getJumpDestInCurrentScope(IRNameStr);
     llvm::BasicBlock *CondBlock = Continue.getBlock();
     EmitBlock(CondBlock);
+
     RunCleanupsScope ConditionScope(*this);
     sprintf(IRNameStr, "forall.done.%s", IndexNames[i]);
     llvm::Value *CondValue = Builder.CreateICmpSLT(Builder.CreateLoad(InductionVar),
@@ -198,33 +199,48 @@ void CodeGenFunction::EmitForallStmt(const ForAllStmt &S) {
       EmitBlock(ExitBlock);
       EmitBranchThroughCleanup(LoopExit);
     }
-    
+
     EmitBlock(LoopBody);
+
     sprintf(IRNameStr, "forall.incblk.%s", IndexNames[i]);
     Continue = getJumpDestInCurrentScope(IRNameStr);
+
 
     // Store the blocks to use for break and continue. 
     BreakContinueStack.push_back(BreakContinue(LoopExit, Continue));
 
+
     if (r == 1) {  // This is our innermost rank, generate the loop body.
+      llvm::errs() << "before EmitForallBody\n";
       EmitForallBody(S);
+      llvm::errs() << "after EmitForallBody\n";
 
       // Increment the loop index.
-      llvm::Value *IncLoopIndexVar = Builder.CreateAdd(LoopIndexVar,
+      llvm::Value* liv = Builder.CreateLoad(LoopIndexVar);
+      llvm::Value *IncLoopIndexVar = Builder.CreateAdd(liv,
                                                        ConstantOne,
                                                        "forall.indx.inc");
-      Builder.CreateStore(LoopIndexVar, IncLoopIndexVar);
+
+      Builder.CreateStore(IncLoopIndexVar, LoopIndexVar);
     }
 
     EmitBlock(Continue.getBlock());
+
+
     sprintf(IRNameStr, "forall.inc.%s", IndexNames[i]);
-    llvm::Value *IncInductionVar = Builder.CreateAdd(InductionVar, 
+
+
+    llvm::Value* iv = Builder.CreateLoad(InductionVar);
+    llvm::Value *IncInductionVar = Builder.CreateAdd(iv,
                                                      ConstantOne, 
                                                      IRNameStr);
+
+
     Builder.CreateStore(IncInductionVar, InductionVar);
     
     BreakContinueStack.pop_back();
     ConditionScope.ForceCleanup();
+
     EmitBranch(CondBlock);
     ForallScope.ForceCleanup();
 
@@ -238,6 +254,8 @@ void CodeGenFunction::EmitForallStmt(const ForAllStmt &S) {
 // ----- EmitForallBody
 // 
 void CodeGenFunction::EmitForallBody(const ForAllStmt &S) {
+  //llvm::BasicBlock* body = createBasicBlock("faa.body");
+  //EmitBlock(body);
   EmitStmt(S.getBody());
 }
 

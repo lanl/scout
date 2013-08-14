@@ -2390,7 +2390,7 @@ public:
   llvm::Value *CreateMemAllocForValue(llvm::Value* numEltsValue);
 
   void DEBUG_OUT(const char *s) {
-    //llvm::outs() << "Attempting " << s << ".\n";
+    llvm::outs() << "Attempting " << s << ".\n";
   }
 
   MeshFieldPair FindFieldDecl(MeshDecl *MD, llvm::StringRef &memberName);

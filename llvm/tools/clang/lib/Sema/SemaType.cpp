@@ -3584,7 +3584,6 @@ namespace {
     }
     // ===== Scout ===================================================================
     void VisitMeshTypeLoc(MeshTypeLoc TL) {
-         llvm::errs() << "visit mesh\n";
          TL.setNameLoc(DS.getTypeSpecTypeNameLoc());
     }
     // ===============================================================================

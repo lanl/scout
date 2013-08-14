@@ -79,8 +79,6 @@ bool Sema::LookupMemberExprInMesh(Sema &SemaRef, LookupResult &R,
 
   MeshFieldDecl* FD = cast<MeshFieldDecl>(ND);
 
-  llvm::errs() <<  R.getLookupName() << " is Cell located " << FD->isCellLocated() << "\n";
-  llvm::errs() << "has cell data " << MTy->hasCellData() << "\n";
   if (FD->isCellLocated()) {
     if (!MTy->hasCellData()) {
       SemaRef.Diag(OpLoc, diag::err_invalid_mesh_cells_field) <<

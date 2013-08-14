@@ -1769,7 +1769,6 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     const ASTMeshLayout &Layout = getASTMeshLayout(MT->getDecl());
     Width = toBits(Layout.getSize());
     Align = toBits(Layout.getAlignment());
-    llvm::errs() << "width " << Width << " align " << Align << "\n";
     break;
   }
   // ===========================================================================

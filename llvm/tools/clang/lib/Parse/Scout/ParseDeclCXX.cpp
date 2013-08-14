@@ -155,7 +155,6 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
   while(Tok.isNot(tok::r_brace) && Tok.isNot(tok::eof)) {
 
     if (Tok.is(tok::kw_cells)) {
-      llvm::errs() << "mesh has cells\n";
       MFK = Cell;
       ConsumeToken();
       Dec->setHasCellData(true);
@@ -215,7 +214,6 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
         FDecl->setImplicit(false);
 
         if(P.getMeshFieldKind() == Cell) {
-          llvm::errs() << "setting cell located\n";
           FDecl->setCellLocated(true);
         } else if (P.getMeshFieldKind() == Vertex) {
           FDecl->setVertexLocated(true);
