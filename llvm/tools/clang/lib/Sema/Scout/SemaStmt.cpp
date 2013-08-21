@@ -584,7 +584,7 @@ bool Sema::ActOnForAllLoopVariable(Scope* S,
   }
 
   MeshType* MT = const_cast<MeshType *>(cast<MeshType>(T));
-  UniformMeshType* UMT = (UniformMeshType*)(MT);
+  UniformMeshType* UMT = cast<UniformMeshType>(MT);
   UMT->setDimensions(cast<MeshType>(T)->dimensions());
 
   ImplicitParamDecl* D =
@@ -671,7 +671,7 @@ bool Sema::ActOnRenderAllLoopVariable(Scope* S,
   }
 
   MeshType* MT = const_cast<MeshType *>(cast<MeshType>(T));
-  UniformMeshType* UMT = (UniformMeshType *)(MT);
+  UniformMeshType* UMT = cast<UniformMeshType>(MT);
   UMT->setDimensions(cast<MeshType>(T)->dimensions());
 
   ImplicitParamDecl* D =
@@ -721,7 +721,7 @@ Sema::ActOnRenderAllElementsVariable(Scope* S,
   const MeshType* T =
   dyn_cast<MeshType>(MD->getType().getCanonicalType().getTypePtr());
 
-  UniformMeshType* MT = (UniformMeshType*)(const_cast<MeshType *>(T));
+  UniformMeshType* MT = cast<UniformMeshType>(const_cast<MeshType *>(T));
   MT->setDimensions(T->dimensions());
   //MT->setElementsMember(ME);
 

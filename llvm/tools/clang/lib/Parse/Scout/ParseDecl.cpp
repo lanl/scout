@@ -151,7 +151,8 @@ void Parser::ParseMeshParameterDeclaration(DeclSpec& DS) {
   ParsedType parsedType = DS.getRepAsType();
   const MeshType* mt;
   mt = dyn_cast<MeshType>(parsedType.get().getTypePtr());
-  const UniformMeshType *umt = (const UniformMeshType *)(mt);
+  assert(mt && "expected mesh type");
+  const UniformMeshType *umt = reinterpret_cast<const UniformMeshType *>(mt);
 
   ConsumeBracket();
   size_t numDims;

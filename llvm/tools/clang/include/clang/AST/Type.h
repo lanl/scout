@@ -32,6 +32,7 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/type_traits.h"
+#include "llvm/Support/Casting.h"
 
 using llvm::isa;
 using llvm::cast;
@@ -3341,7 +3342,7 @@ class MeshType : public TagType {
 protected:
   explicit MeshType(const MeshDecl *D)
     : TagType(Mesh, reinterpret_cast<const TagDecl*>(D), QualType()) { }
-  explicit MeshType(TypeClass TC, MeshDecl *D)
+  explicit MeshType(TypeClass TC, const MeshDecl *D)
     : TagType(TC, reinterpret_cast<const TagDecl*>(D), QualType()) { }
   friend class ASTContext; // ASTContext creates these
   
@@ -3389,7 +3390,7 @@ protected:
   }
   
   static bool classof(const MeshType* T) { 
-    return true; 
+   return (T->getTypeClass() == Mesh);
   }
 };
 
@@ -3417,8 +3418,8 @@ protected:
 class UniformMeshType : public MeshType {
 public:
   UniformMeshType(const UniformMeshDecl* Decl)
-  : MeshType(reinterpret_cast<const MeshDecl*>(Decl)) {
-    
+  : MeshType(UniformMesh, reinterpret_cast<const MeshDecl*>(Decl)) {
+
   }
   
   UniformMeshDecl* getDecl() const {
@@ -3461,7 +3462,7 @@ public:
 class RectilinearMeshType : public MeshType {
 public:
   RectilinearMeshType(const RectilinearMeshDecl* Decl)
-  : MeshType(reinterpret_cast<const MeshDecl*>(Decl)) {
+  : MeshType(RectilinearMesh, reinterpret_cast<const MeshDecl*>(Decl)) {
     
   }
   
@@ -3491,7 +3492,7 @@ class StructuredMeshType : public MeshType {
 
 public:
   StructuredMeshType(const StructuredMeshDecl* Decl)
-  : MeshType(reinterpret_cast<const MeshDecl*>(Decl)){
+  : MeshType(StructuredMesh, reinterpret_cast<const MeshDecl*>(Decl)){
     
   }
 
@@ -3518,7 +3519,7 @@ enum MeshFormat {
 class UnstructuredMeshType : public MeshType {
 public:
   UnstructuredMeshType(const UnstructuredMeshDecl* Decl)
-  : MeshType(reinterpret_cast<const MeshDecl*>(Decl)) {
+  : MeshType(UnstructuredMesh, reinterpret_cast<const MeshDecl*>(Decl)) {
     
   }
 

@@ -295,7 +295,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
                                              LoopVariableII,
                                              LoopVariableLoc);
 
-      UMT = (const UniformMeshType*)(mt2);
+      UMT = cast<UniformMeshType>(mt2);
 
       if (UMT) {
         success = true;
@@ -328,11 +328,12 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 
   if (!elements) {
     Op = 0;
+    size_t FieldCount = 0;
 
     MT = dyn_cast<MeshType>(MVD->getType().getCanonicalType().
                                    getNonReferenceType().getTypePtr());
-    size_t FieldCount = 0;
-    const UniformMeshType *UMT = (const UniformMeshType *)(MT);
+    assert(MT && "expected mesh type");
+    const UniformMeshType *UMT = cast<UniformMeshType>(MT);
     const UniformMeshDecl* MD = UMT->getDecl();
 
     //Sema::ContextRAII contextRAII(Actions, const_cast<UniformMeshDecl*>(MD));
@@ -1034,10 +1035,10 @@ StmtResult Parser::ParseVolumeRenderAll(Scope* scope,
 
           MeshType* mt = const_cast<MeshType*>
             (dyn_cast<MeshType>(vd->getType().getCanonicalType().getTypePtr()));
-          assert(mt);
+          assert(mt && "expected mesh type");
 
-          UniformMeshType* umt = (UniformMeshType*)(mt);
-          assert(umt);
+          UniformMeshType* umt = cast<UniformMeshType>(mt);
+
 
           umt->setDimensions(dims);
           vd->setType(QualType(umt, 0));
