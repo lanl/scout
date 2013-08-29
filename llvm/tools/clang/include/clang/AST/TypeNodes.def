@@ -89,7 +89,7 @@ ABSTRACT_TYPE(Tag, Type)
 TYPE(Record, TagType)
 TYPE(Enum, TagType)
 // ===== Scout =================================================================================
-TYPE(Mesh, TagType)
+ABSTRACT_TYPE(Mesh, TagType)
   TYPE(UniformMesh, MeshType)
   TYPE(StructuredMesh, MeshType)
   TYPE(RectilinearMesh, MeshType)

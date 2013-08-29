@@ -260,7 +260,6 @@ void ASTTypeWriter::VisitTagType(const TagType *T) {
 
 // ===== Scout =====================================================================
 // SC_TODO - implement these 
-void ASTTypeWriter::VisitMeshType(const MeshType *T) { }
 void ASTTypeWriter::VisitUniformMeshType(const UniformMeshType *T) { }
 void ASTTypeWriter::VisitStructuredMeshType(const StructuredMeshType *T) { }
 void ASTTypeWriter::VisitRectilinearMeshType(const RectilinearMeshType *T) { }
@@ -544,7 +543,6 @@ void TypeLocWriter::VisitAutoTypeLoc(AutoTypeLoc TL) {
 
 // ===== Scout ====================================================================
 // SC_TODO - implement these 
-void TypeLocWriter::VisitMeshTypeLoc(MeshTypeLoc TL) { }
 void TypeLocWriter::VisitUniformMeshTypeLoc(UniformMeshTypeLoc TL) { }
 void TypeLocWriter::VisitStructuredMeshTypeLoc(StructuredMeshTypeLoc TL) { }
 void TypeLocWriter::VisitRectilinearMeshTypeLoc(RectilinearMeshTypeLoc TL) { }

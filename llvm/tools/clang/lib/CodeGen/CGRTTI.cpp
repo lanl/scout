@@ -476,7 +476,6 @@ void RTTIBuilder::BuildVTablePointer(const Type *Ty) {
 
   // ===== Scout ==============================================================
   //
-  case Type::Mesh:
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
@@ -680,7 +679,6 @@ llvm::Constant *RTTIBuilder::BuildTypeInfo(QualType Ty, bool Force) {
   // ===== Scout ==============================================================
   // SC_TODO -- we had an original comment here, "fix"...  Not sure what 
   // this meant in any detail... 
-  case Type::Mesh:
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:

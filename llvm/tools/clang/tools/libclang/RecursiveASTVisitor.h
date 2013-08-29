@@ -873,8 +873,8 @@ DEF_TRAVERSE_TYPE(SubstTemplateTypeParmType, { })
 DEF_TRAVERSE_TYPE(SubstTemplateTypeParmPackType, { })
 
 // ===== Scout ==========================================
-DEF_TRAVERSE_TYPE(MeshType, { })
 DEF_TRAVERSE_TYPE(UniformMeshType, { })
+// SC_TODO -- need more mesh types here... 
 // ======================================================
 
 DEF_TRAVERSE_TYPE(TemplateSpecializationType, {
@@ -1102,8 +1102,8 @@ DEF_TRAVERSE_TYPELOC(SubstTemplateTypeParmType, { })
 DEF_TRAVERSE_TYPELOC(SubstTemplateTypeParmPackType, { })
 
 // ===== Scout ==================================================
-DEF_TRAVERSE_TYPELOC(MeshType, { })
 DEF_TRAVERSE_TYPELOC(UniformMeshType, { })
+// SC_TODO - need more mesh types here. 
 // ==============================================================
 
 // FIXME: use the loc for the template name?

@@ -1753,7 +1753,6 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
   }
 
   // ===== Scout ==============================================================
-  case Type::Mesh: 
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
@@ -2516,7 +2515,6 @@ QualType ASTContext::getVariableArrayDecayedType(QualType type) const {
   case Type::Record:
   // ===== Scout ==============================================================
   // Meshes are not variably-modified
-  case Type::Mesh: // SC_TODO - we should never have a "base" mesh type... 
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
@@ -5673,7 +5671,6 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
 #include "clang/AST/TypeNodes.def"
     llvm_unreachable("@encode for dependent type!");
   // ===== Scout ==============================================================
-  case Type::Mesh: // SC_TODO - we should never have a  "base" mesh type. 
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
@@ -7504,7 +7501,6 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
   case Type::FunctionNoProto:
     return mergeFunctionTypes(LHS, RHS, OfBlockPointer, Unqualified);
   // ==== Scout ===============================================================
-  case Type::Mesh: // SC_TODO - we should never have a "base" mesh type... 
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:

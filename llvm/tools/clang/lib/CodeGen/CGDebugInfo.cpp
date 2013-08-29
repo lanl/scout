@@ -2049,11 +2049,6 @@ llvm::DIType CGDebugInfo::CreateTypeNode(QualType Ty, llvm::DIFile Unit) {
     return CreateType(cast<TypedefType>(Ty), Unit);
   
   // ===== Scout ==============================================================
-  case Type::Mesh:
-    llvm_unreachable("should not have raw mesh type");
-    break;
-  //  We really should never have a MeshType -- need to decided what to do 
-  //  here... 
   case Type::UniformMesh:
     return CreateType(cast<UniformMeshType>(Ty));
   case Type::StructuredMesh:

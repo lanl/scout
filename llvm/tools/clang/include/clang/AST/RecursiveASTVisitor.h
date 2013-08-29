@@ -933,7 +933,6 @@ DEF_TRAVERSE_TYPE(AutoType, {
   })
 
 // ===== Scout ======================================================================
-DEF_TRAVERSE_TYPE(MeshType, { })
 DEF_TRAVERSE_TYPE(UniformMeshType, { })
 DEF_TRAVERSE_TYPE(StructuredMeshType, { })
 DEF_TRAVERSE_TYPE(RectilinearMeshType, { })
@@ -1164,7 +1163,6 @@ DEF_TRAVERSE_TYPELOC(AutoType, {
   })
 
 // ===== Scout =======================================================================
-DEF_TRAVERSE_TYPELOC(MeshType, { })
 DEF_TRAVERSE_TYPELOC(UniformMeshType, { })
 DEF_TRAVERSE_TYPELOC(StructuredMeshType, { })
 DEF_TRAVERSE_TYPELOC(RectilinearMeshType, { })

@@ -722,7 +722,6 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
   // SC_TODO - We have hard-coded the way we generate field data for
   // meshes. For some of our explorations (e.g. SOA vs. AOS) we will
   // need to find a more flexible approach for this...
-  case Type::Mesh:
   case Type::UniformMesh: 
   case Type::StructuredMesh: 
   case Type::RectilinearMesh: 

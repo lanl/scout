@@ -2006,7 +2006,6 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
       break;
 
     // ===== Scout ========================================================================
-    case Type::Mesh:
     case Type::UniformMesh:
     case Type::StructuredMesh:
     case Type::RectilinearMesh:

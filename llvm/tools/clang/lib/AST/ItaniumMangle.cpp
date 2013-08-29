@@ -852,7 +852,6 @@ void CXXNameMangler::mangleUnresolvedPrefix(NestedNameSpecifier *qualifier,
       llvm_unreachable("type is illegal as a nested name specifier");
           
     // ===== Scout ===========================================================
-    case Type::Mesh: // base type we shouldn't see this in practice... 
     case Type::UniformMesh:
     case Type::StructuredMesh:
     case Type::RectilinearMesh:
@@ -2021,11 +2020,6 @@ void CXXNameMangler::mangleType(const TagType *T) {
 }
 
 // ===== Scout - Mesh name mangling support ===================================
-
-void CXXNameMangler::mangleType(const MeshType *T) {
-  mangleName(static_cast<const NamedDecl*>(T->getDecl()));
-  assert(false && "we shouldn't find a need to mangle a mesh base type");
-}
 
 void CXXNameMangler::mangleType(const UniformMeshType *T) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));

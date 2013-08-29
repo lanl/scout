@@ -4560,7 +4560,8 @@ QualType TreeTransform<Derived>::TransformRecordType(TypeLocBuilder &TLB,
 }
 
 // ===== Scout ===========================================================================
-// SC_TODO - implement
+// SC_TODO - implement these correctly... 
+/*  
 template<typename Derived>
 QualType TreeTransform<Derived>::TransformMeshType(TypeLocBuilder &TLB,
                                                    MeshTypeLoc TL) {
@@ -4584,7 +4585,7 @@ QualType TreeTransform<Derived>::TransformMeshType(TypeLocBuilder &TLB,
 
   return Result;
 }
-
+*/
 
 template<typename Derived>
 QualType

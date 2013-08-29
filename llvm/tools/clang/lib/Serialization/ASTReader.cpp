@@ -5052,7 +5052,6 @@ void TypeLocReader::VisitRecordTypeLoc(RecordTypeLoc TL) {
 // ===== Scout =====================================================================
 // we are not using AST reader functionality for meshes for now. 
 // SC_TODO - implement these… 
-void TypeLocReader::VisitMeshTypeLoc(MeshTypeLoc TL) { }
 void TypeLocReader::VisitUniformMeshTypeLoc(UniformMeshTypeLoc TL) { }
 void TypeLocReader::VisitStructuredMeshTypeLoc(StructuredMeshTypeLoc TL) { }
 void TypeLocReader::VisitRectilinearMeshTypeLoc(RectilinearMeshTypeLoc TL) { }

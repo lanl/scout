@@ -1178,7 +1178,7 @@ public:
 #include "clang/AST/TypeNodes.def"
     TagFirst = Record, TagLast = Enum
     // ===== Scout ========================================================
-    , MeshFirst = Mesh, MeshLast = UnstructuredMesh
+    , MeshFirst = UniformMesh, MeshLast = UnstructuredMesh
     // ====================================================================
   };
 
@@ -3339,44 +3339,36 @@ public:
 //
 class MeshType : public TagType {
 
-protected:
-  explicit MeshType(const MeshDecl *D)
-    : TagType(Mesh, reinterpret_cast<const TagDecl*>(D), QualType()) { }
-  explicit MeshType(TypeClass TC, const MeshDecl *D)
-    : TagType(TC, reinterpret_cast<const TagDecl*>(D), QualType()) { }
-  friend class ASTContext; // ASTContext creates these
-  
+  MeshDecl *decl;
+
+  friend class ASTReader;
+
+ protected:
+  MeshType(TypeClass TC, const MeshDecl *D, QualType can);
+
  public:
+  MeshDecl *getDecl() const;
 
-  MeshDecl *getDecl() const {
-    return reinterpret_cast<MeshDecl*>(TagType::getDecl());
+  bool isBeingDefined() const;
+
+  static bool classof(const Type *T) {
+    return T->getTypeClass() >= MeshFirst && T->getTypeClass() <= MeshLast;
   }
-
-  // FIXME: This predicate is a helper to QualType/Type.  It needs to
-  // recursively check all fields for const-ness.  If any field is 
-  // declared const, it needs to return false. 
-  bool hasConstFields() const { return false; }
-
   // \brief Return true if the mesh has one or more cell fields. 
   bool hasCellData() const;
+  
   // \brief Return true if the mesh has one or more vertex fields.   
   bool hasVertexData() const;
+  
   // \brief Return true if the mesh has one or more edge fields.     
   bool hasEdgeData() const;
+
   // \brief Return true if the mesh has one or more face fields.       
   bool hasFaceData() const;
 
-  bool isSugared() const { return false; }
-  QualType desugar() const { return QualType(this, 0); }
-
-  static bool classof(const Type *T) { 
-    return T->getTypeClass() >= MeshFirst && 
-           T->getTypeClass() <= MeshLast;
-  }
-
   typedef llvm::SmallVector<Expr*, 3> MeshDimensions;
   
- private:
+ protected:
   MeshDimensions dims;
 
  public:
@@ -3387,10 +3379,6 @@ protected:
   
   void setDimensions(const MeshDimensions& dv){
     dims = dv;
-  }
-  
-  static bool classof(const MeshType* T) { 
-   return (T->getTypeClass() == Mesh);
   }
 };
 
@@ -3416,10 +3404,9 @@ protected:
 // and point (vertex) data based solely on the mesh dimensions.
 //
 class UniformMeshType : public MeshType {
-public:
+ public:
   UniformMeshType(const UniformMeshDecl* Decl)
-  : MeshType(UniformMesh, reinterpret_cast<const MeshDecl*>(Decl)) {
-
+      : MeshType(UniformMesh, reinterpret_cast<const MeshDecl*>(Decl), QualType()) {
   }
   
   UniformMeshDecl* getDecl() const {
@@ -3431,6 +3418,10 @@ public:
   static bool classof(const Type *T) {
     return T->getTypeClass() == UniformMesh;
   }
+
+  // SC_TODO -- can these move to base class?  
+  bool isSugared() const { return false; }
+  QualType desugar() const { return QualType(this, 0); }
 };
 
 // RectilinearMesh - This type represents an instance of a rectilinear mesh
@@ -3462,7 +3453,7 @@ public:
 class RectilinearMeshType : public MeshType {
 public:
   RectilinearMeshType(const RectilinearMeshDecl* Decl)
-  : MeshType(RectilinearMesh, reinterpret_cast<const MeshDecl*>(Decl)) {
+      : MeshType(RectilinearMesh, reinterpret_cast<const MeshDecl*>(Decl), QualType()) {
     
   }
   
@@ -3475,6 +3466,10 @@ public:
   static bool classof(const Type *T) {
     return T->getTypeClass() == RectilinearMesh;
   }
+
+  // SC_TODO -- can these move to base class?  
+  bool isSugared() const { return false; }
+  QualType desugar() const { return QualType(this, 0); }  
 };
 
 
@@ -3492,7 +3487,7 @@ class StructuredMeshType : public MeshType {
 
 public:
   StructuredMeshType(const StructuredMeshDecl* Decl)
-  : MeshType(StructuredMesh, reinterpret_cast<const MeshDecl*>(Decl)){
+      : MeshType(StructuredMesh, reinterpret_cast<const MeshDecl*>(Decl), QualType()){
     
   }
 
@@ -3505,6 +3500,10 @@ public:
   static bool classof(const Type *T) {
     return T->getTypeClass() == StructuredMesh;
   }
+
+  // SC_TODO -- can these move to base class?  
+  bool isSugared() const { return false; }
+  QualType desugar() const { return QualType(this, 0); }  
 };
 
 
@@ -3519,7 +3518,7 @@ enum MeshFormat {
 class UnstructuredMeshType : public MeshType {
 public:
   UnstructuredMeshType(const UnstructuredMeshDecl* Decl)
-  : MeshType(UnstructuredMesh, reinterpret_cast<const MeshDecl*>(Decl)) {
+      : MeshType(UnstructuredMesh, reinterpret_cast<const MeshDecl*>(Decl), QualType()) {
     
   }
 
@@ -3535,6 +3534,10 @@ public:
 
   MeshFormat getMeshFormat() { return meshFormat; }
   void setMeshFormat(MeshFormat mf) { meshFormat = mf;}
+
+  // SC_TODO -- can these move to base class?
+  bool isSugared() const { return false; }
+  QualType desugar() const { return QualType(this, 0); }  
    
  private:
   MeshFormat meshFormat;
@@ -5478,11 +5481,11 @@ inline const ArrayType *Type::castAsArrayTypeUnsafe() const {
   return cast<ArrayType>(getUnqualifiedDesugaredType());
 }
 
-// ===== Scout =====================================================================================
+// ===== Scout ===================================================================================
 inline bool Type::isMeshType() const {
   return isa<MeshType>(CanonicalType);
 }
-// =================================================================================================
+// ===============================================================================================
 }  // end namespace clang
 
 #endif

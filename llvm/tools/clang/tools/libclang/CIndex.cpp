@@ -1657,10 +1657,7 @@ bool CursorVisitor::VisitInjectedClassNameTypeLoc(InjectedClassNameTypeLoc TL) {
 }
 
 // ====== Scout ===================================================================
-// ndm - TODO - implement
-bool CursorVisitor::VisitMeshTypeLoc(MeshTypeLoc TL){
-  return false;
-}
+// SC_TODO - implement
 
 bool CursorVisitor::VisitUniformMeshTypeLoc(UniformMeshTypeLoc TL){
   return false;

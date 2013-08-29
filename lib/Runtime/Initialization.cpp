@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyrigh (c) 2010, Los Alamos National Security, LLC.
+ * Copyrigh (c) 2013, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -55,6 +55,21 @@
 #include "scout/Runtime/Initialization.h"
 
 namespace scout {
+
+  /** ----- scInitializeRuntime
+   * Initialize the runtime and return 'true' on success and
+   * false.
+   */
+  bool __scInitializeRuntime(...) {
+
+    // Step 1. Initialize Legion.
+
+    // Step 2. Determine if we have any local graphics capabilities
+    // (e.g. OpenGL) or if we should fall back to software rendering.
+    // Note we treat framebuffers (in hardware or software) as
+    // exclusive devices.  In other words, a set of independent tasks
+    // that all need graphics access will be serialized via a lock.
+  }
 
   
   /** ----- scInitializeRuntime

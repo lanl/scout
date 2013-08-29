@@ -650,7 +650,6 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
   // We do not need to test the structural equivalance of meshes so simply 
   // return false.  
   // SC_TODO - Not sure why we state this...  Why no equivalance?
-  case Type::Mesh:
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
