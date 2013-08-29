@@ -3339,18 +3339,20 @@ public:
 //
 class MeshType : public TagType {
 
-  MeshDecl *decl;
-
   friend class ASTReader;
 
  protected:
   MeshType(TypeClass TC, const MeshDecl *D, QualType can);
 
  public:
-  MeshDecl *getDecl() const;
+  MeshDecl *getDecl() const {
+    return reinterpret_cast<MeshDecl*>(TagType::getDecl());
+  }
 
+  /// @brief Determines whether this type is in the process of being
+  /// defined.
   bool isBeingDefined() const;
-
+  
   static bool classof(const Type *T) {
     return T->getTypeClass() >= MeshFirst && T->getTypeClass() <= MeshLast;
   }
@@ -3517,6 +3519,7 @@ enum MeshFormat {
 //
 class UnstructuredMeshType : public MeshType {
 public:
+  
   UnstructuredMeshType(const UnstructuredMeshDecl* Decl)
       : MeshType(UnstructuredMesh, reinterpret_cast<const MeshDecl*>(Decl), QualType()) {
     

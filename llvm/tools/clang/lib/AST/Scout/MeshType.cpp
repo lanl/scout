@@ -15,6 +15,13 @@
 #include <algorithm>
 using namespace clang;
 
+MeshType::MeshType(TypeClass TC, const MeshDecl *D, QualType can)
+    : TagType(TC, D, can) { }
+
+bool MeshType::isBeingDefined() const {
+  return getDecl()->isBeingDefined();
+}
+
 bool MeshType::hasCellData() const {
   return getDecl()->hasCellData();
 }
