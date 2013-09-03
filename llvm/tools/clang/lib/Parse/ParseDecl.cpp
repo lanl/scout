@@ -4894,10 +4894,10 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
   // scout - parse mesh paramters e.g: MyMesh[:]
   DeclSpec& DS = D.getMutableDeclSpec();
   DeclSpec::TST tst = DS.getTypeSpecType();
-  if(Tok.is(tok::l_square) && tst == DeclSpec::TST_typename){
+  if (Tok.is(tok::l_square) && tst == DeclSpec::TST_typename) {
     ParsedType parsedType = DS.getRepAsType();
     const MeshType* mt = dyn_cast<MeshType>(parsedType.get().getTypePtr());
-    if(mt){
+    if (mt) {
       ParseMeshParameterDeclaration(DS);
     }
   }

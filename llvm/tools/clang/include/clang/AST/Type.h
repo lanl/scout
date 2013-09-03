@@ -3325,7 +3325,7 @@ public:
 // some care to hit all the use cases throughout the code base.  There is 
 // some recent documentation on the LLVM web site that can be helpful: 
 //
-//   http://clang.llvm.org/docs/UsersManual.html
+//   http://clang.llvm.org/docs/InternalsManual.html
 //
 // but some details are still glossed over (at least as this is being 
 // written).  In particular it is important to follow the "same" inheritance

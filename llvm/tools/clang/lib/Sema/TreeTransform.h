@@ -741,8 +741,13 @@ public:
   // scout - Mesh
   // TODO implement
   QualType RebuildMeshType(MeshDecl *Mesh) {
+    std::cerr << ""
     //return SemaRef.Context.getTypeDeclType(Mesh);
     return QualType();
+  }
+
+  QualType RebuildUniformMeshType(UniformMeshDecl *UMD) {
+    return SemaRef.Context.getTypeDeclType(UMD);
   }
   
   /// \brief Build a new typeof(expr) type.
@@ -4560,38 +4565,31 @@ QualType TreeTransform<Derived>::TransformRecordType(TypeLocBuilder &TLB,
 }
 
 // ===== Scout ===========================================================================
-// SC_TODO - implement these correctly... 
-/*  
-template<typename Derived>
-QualType TreeTransform<Derived>::TransformMeshType(TypeLocBuilder &TLB,
-                                                   MeshTypeLoc TL) {
-  const MeshType *T = TL.getTypePtr();
-  MeshDecl *MD;
-  MD = cast_or_null<MeshDecl>(getDerived().TransformDecl(TL.getNameLoc(),
-                                                         T->getDecl()));
-  if (!MD)
-    return QualType();
-  
-  QualType Result = TL.getType();
-  if (getDerived().AlwaysRebuild() ||
-      MD != T->getDecl()) {
-    Result = getDerived().RebuildMeshType(MD);
-    if (Result.isNull())
-      return QualType();
-  }
-  
-  MeshTypeLoc NewTL = TLB.push<MeshTypeLoc>(Result);
-  NewTL.setNameLoc(TL.getNameLoc());
 
-  return Result;
-}
-*/
 
 template<typename Derived>
 QualType
   TreeTransform<Derived>::TransformUniformMeshType(TypeLocBuilder &TLB,
                                                    UniformMeshTypeLoc TL) {
-  return QualType();
+  const UniformMeshType *T = TL.getTypePtr();
+  UniformMeshDecl *UMD;
+  UMD = cast_or_null<UniformMeshDecl>(getDerived().TransformDecl(TL.getNameLoc(),
+                                                          T->getDecl()));
+  if (!UMD)
+    return QualType();
+
+  QualType Result = TL.getType();
+  if (getDerived().AlwaysRebuild() ||
+      UMD != T->getDecl()) {
+    Result = getDerived().RebuildUniformMeshType(UMD);
+    if (Result.isNull())
+      return QualType();
+  }
+
+  UniformMeshTypeLoc NewTL = TLB.push<UniformMeshTypeLoc>(Result);
+  NewTL.setNameLoc(TL.getNameLoc());
+
+  return Result;
 }
 
 template<typename Derived>
