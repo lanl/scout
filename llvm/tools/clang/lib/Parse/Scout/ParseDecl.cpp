@@ -170,7 +170,7 @@ void Parser::ParseMeshParameterDeclaration(DeclSpec& DS) {
     return;
   }
 
-  if(Tok.isNot(tok::r_square)){
+  if (Tok.isNot(tok::r_square)){
     Diag(Tok, diag::err_expected_mesh_param_token);
     SkipUntil(tok::r_square);
     return;

@@ -236,7 +236,6 @@ bool serialization::isRedeclarableDeclKind(unsigned Kind) {
     return false;
 
   // ===== Scout ==============================================================================
-  case Decl::Mesh:
   case Decl::UniformMesh:
   case Decl::StructuredMesh:
   case Decl::RectilinearMesh:

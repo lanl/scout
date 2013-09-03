@@ -89,7 +89,6 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
     return;
 
   // ===== Scout ==============================================================
-  case Decl::Mesh:
   case Decl::UniformMesh:
   case Decl::StructuredMesh:
   case Decl::RectilinearMesh:

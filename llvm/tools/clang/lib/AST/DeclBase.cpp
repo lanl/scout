@@ -530,7 +530,6 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case MeshField: // ===== Scout 
       return IDNS_Member;
     // ===== Scout ============================================================
-    case Mesh:
     case UniformMesh:
     case StructuredMesh:
     case RectilinearMesh:

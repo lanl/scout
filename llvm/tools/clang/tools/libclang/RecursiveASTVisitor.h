@@ -406,7 +406,10 @@ private:
   bool TraverseVarHelper(VarDecl *D);
 
 
-  bool TraverseMeshHelper(MeshDecl *D);
+  bool TraverseUniformMeshHelper(UniformMeshDecl *D);
+  bool TraverseRectilinearMeshHelper(RectilinearMeshDecl *D);
+  bool TraverseStructuredMeshHelper(StructuredMeshDecl *D);
+  bool TraverseUnstructuredMeshHelper(UnstructuredMeshDecl *D);      
 
   typedef SmallVector<Stmt *, 16> StmtsTy;
   typedef SmallVector<StmtsTy *, 4> QueuesTy;
@@ -1531,7 +1534,7 @@ bool RecursiveASTVisitor<Derived>::TraverseRecordHelper(
 }
 
 template<typename Derived>
-bool RecursiveASTVisitor<Derived>::TraverseMeshHelper(MeshDecl *D) {
+bool RecursiveASTVisitor<Derived>::TraverseUniformMeshHelper(UniformMeshDecl *D) {
   // We shouldn't traverse D->getTypeForDecl(); it's a result of
   // declaring the type, not something that was written in the 
   // source. 
@@ -1539,6 +1542,32 @@ bool RecursiveASTVisitor<Derived>::TraverseMeshHelper(MeshDecl *D) {
   return true;
 }
 
+template<typename Derived>
+bool RecursiveASTVisitor<Derived>::TraverseRectilinearMeshHelper(RectilinearMeshDecl *D) {
+  // We shouldn't traverse D->getTypeForDecl(); it's a result of
+  // declaring the type, not something that was written in the 
+  // source. 
+  TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
+  return true;
+}  
+
+template<typename Derived>
+bool RecursiveASTVisitor<Derived>::TraverseStructuredMeshHelper(StructuredMeshDecl *D) {
+  // We shouldn't traverse D->getTypeForDecl(); it's a result of
+  // declaring the type, not something that was written in the 
+  // source. 
+  TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
+  return true;
+}  
+
+template<typename Derived>
+bool RecursiveASTVisitor<Derived>::TraverseUnstructuredMeshHelper(UnstructuredMeshDecl *D) {
+  // We shouldn't traverse D->getTypeForDecl(); it's a result of
+  // declaring the type, not something that was written in the 
+  // source. 
+  TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
+  return true;
+}    
 
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseCXXRecordHelper(
@@ -1561,9 +1590,22 @@ DEF_TRAVERSE_DECL(RecordDecl, {
     TRY_TO(TraverseRecordHelper(D));
   })
 
-DEF_TRAVERSE_DECL(MeshDecl, {
-    TRY_TO(TraverseMeshHelper(D));
+DEF_TRAVERSE_DECL(UniformMeshDecl, {
+    TRY_TO(TraverseUniformMeshHelper(D));
   })
+
+DEF_TRAVERSE_DECL(RectilinearMeshDecl, {
+    TRY_TO(TraverseRectilinearMeshHelper(D));
+  })
+
+DEF_TRAVERSE_DECL(StructuredMeshDecl, {
+    TRY_TO(TraverseStructuredMeshHelper(D));
+  })
+
+DEF_TRAVERSE_DECL(UnstructuredMeshDecl, {
+    TRY_TO(TraverseUnstructuredMeshHelper(D));
+  })
+
 
 DEF_TRAVERSE_DECL(CXXRecordDecl, {
     TRY_TO(TraverseCXXRecordHelper(D));

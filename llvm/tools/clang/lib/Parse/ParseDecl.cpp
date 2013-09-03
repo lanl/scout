@@ -3174,8 +3174,8 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
     case tok::kw_structured:
     case tok::kw_unstructured: {
 
-      // for now, at least the presence of one of the above keywords is sufficient
-      // to denote the beginning of a mesh definition
+      // for now, at least the presence of one of the above keywords
+      // is sufficient to denote the beginning of a mesh definition
 
       // so we know this is the start of:
       //   uniform mesh MyMesh { ...

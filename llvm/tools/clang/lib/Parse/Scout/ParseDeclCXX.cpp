@@ -132,7 +132,6 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS,
   return false;
 }
 
-// scout - Scout Mesh
 // parse the body of a definition of a mesh, e.g:
 // uniform mesh MyMesh {
 ///     <BODY>
@@ -207,8 +206,8 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
         //llvm::outs() << "FieldLoc " << FieldLoc << "\n";
         // Install the declarator into the current MeshDecl.
         Decl* Field = P.Actions.ActOnMeshField(P.getCurScope(), MeshDecl,
-                                   FD.D.getDeclSpec().getSourceRange().getBegin(),
-                                   FD.D);
+                             FD.D.getDeclSpec().getSourceRange().getBegin(),
+                             FD.D);
 
         MeshFieldDecl* FDecl = cast<MeshFieldDecl>(Field);
         FDecl->setImplicit(false);

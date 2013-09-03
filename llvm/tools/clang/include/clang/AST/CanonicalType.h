@@ -617,6 +617,44 @@ struct CanProxyAdaptor<EnumType> : public CanProxyBase<EnumType> {
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isBeingDefined)
 };
 
+// ===== Scout =============================================================== 
+
+template <>
+struct CanProxyAdaptor<MeshType> : public CanProxyBase<MeshType> {
+  LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(MeshDecl *, getDecl)
+  LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isBeingDefined)
+};
+
+template <>
+struct CanProxyAdaptor<UniformMeshType> :
+    public CanProxyBase<UniformMeshType> {
+  LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(UniformMeshDecl *, getDecl)
+  LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isBeingDefined)
+};
+
+template <>
+struct CanProxyAdaptor<RectilinearMeshType> :
+    public CanProxyBase<RectilinearMeshType> {
+  LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(RectilinearMeshDecl *, getDecl)
+  LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isBeingDefined)
+};    
+
+template <>
+struct CanProxyAdaptor<UnstructuredMeshType> :
+    public CanProxyBase<UnstructuredMeshType> {
+  LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(UnstructuredMeshDecl *, getDecl)
+  LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isBeingDefined)
+};    
+
+template <>
+struct CanProxyAdaptor<StructuredMeshType> :
+    public CanProxyBase<StructuredMeshType> {
+  LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(StructuredMeshDecl *, getDecl)
+  LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isBeingDefined)
+};    
+  
+// ============================================================================
+  
 template<>
 struct CanProxyAdaptor<TemplateTypeParmType>
   : public CanProxyBase<TemplateTypeParmType> {

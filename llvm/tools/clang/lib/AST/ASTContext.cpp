@@ -1401,9 +1401,10 @@ std::pair<CharUnits, CharUnits>
 ASTContext::getTypeInfoDataSizeInChars(QualType T) const {
   std::pair<CharUnits, CharUnits> sizeAndAlign = getTypeInfoInChars(T);
 
-  // In C++ and Scout, objects can sometimes be allocated into the tail padding
-  // of a base-class subobject.  We decide whether that's possible
-  // during class layout, so here we can just trust the layout results.
+  // In C++ and Scout, objects can sometimes be allocated into the
+  // tail padding of a base-class subobject.  We decide whether that's
+  // possible during class layout, so here we can just trust the
+  // layout results.
   if (getLangOpts().Scout) {
     if (const MeshType *MT = T->getAs<MeshType>()) {
       const ASTMeshLayout &layout = getASTMeshLayout(MT->getDecl());
@@ -1753,11 +1754,24 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
   }
 
   // ===== Scout ==============================================================
-  case Type::UniformMesh:
+    case Type::UniformMesh: {
+      const MeshType *MT = cast<MeshType>(T);
+      if (MT->getDecl()->isInvalidDecl()) {
+        Width = 8;
+        Align = 8;
+        break;
+      }
+
+      const UniformMeshType *UMT = dyn_cast<UniformMeshType>(MT);
+      const ASTMeshLayout &Layout = getASTMeshLayout(UMT->getDecl());
+      Width = toBits(Layout.getSize());
+      Align = toBits(Layout.getAlignment());
+      break;
+  }
+    
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
   case Type::UnstructuredMesh: {
-
     const MeshType *MT = cast<MeshType>(T);
 
     if (MT->getDecl()->isInvalidDecl()) {
@@ -1770,7 +1784,7 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     Align = toBits(Layout.getAlignment());
     break;
   }
-  // ===========================================================================
+  // ==========================================================================
 
   case Type::SubstTemplateTypeParm:
     return getTypeInfo(cast<SubstTemplateTypeParmType>(T)->

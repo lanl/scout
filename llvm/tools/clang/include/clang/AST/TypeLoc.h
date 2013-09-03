@@ -1857,18 +1857,19 @@ public:
   }
 };
 
-// ===== Scout ==================================================================================
+// ===== Scout ================================================================
 
 class MeshTypeLoc : public InheritingConcreteTypeLoc<TagTypeLoc,
                                                      MeshTypeLoc,
                                                      MeshType> {
-  public:
-    MeshDecl *getDecl() const { return getTypePtr()->getDecl(); }
+ public:
+  MeshDecl *getDecl() const { return getTypePtr()->getDecl(); }
 };
+
   
 /// \brief Wrapper for source info for mesh types.
 class UniformMeshTypeLoc :
-  public InheritingConcreteTypeLoc<MeshTypeLoc,
+  public InheritingConcreteTypeLoc<TagTypeLoc,
                                    UniformMeshTypeLoc,
                                    UniformMeshType> {
   public:
@@ -1876,7 +1877,7 @@ class UniformMeshTypeLoc :
 };
 
 class StructuredMeshTypeLoc :
-  public InheritingConcreteTypeLoc<MeshTypeLoc,
+  public InheritingConcreteTypeLoc<TagTypeLoc,
                                    StructuredMeshTypeLoc,
                                    StructuredMeshType> {
   public:
@@ -1884,7 +1885,7 @@ class StructuredMeshTypeLoc :
 };
 
 class RectilinearMeshTypeLoc :
-  public InheritingConcreteTypeLoc<MeshTypeLoc,
+  public InheritingConcreteTypeLoc<TagTypeLoc,
                                    RectilinearMeshTypeLoc,
                                    RectilinearMeshType> {
   public:
@@ -1892,7 +1893,7 @@ class RectilinearMeshTypeLoc :
 };
 
 class UnstructuredMeshTypeLoc :
-  public InheritingConcreteTypeLoc<MeshTypeLoc,
+  public InheritingConcreteTypeLoc<TagTypeLoc,
                                    UnstructuredMeshTypeLoc,
                                    UnstructuredMeshType> {
   public:

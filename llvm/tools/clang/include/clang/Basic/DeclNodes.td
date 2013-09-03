@@ -29,7 +29,7 @@ def Named : Decl<1>;
             def ClassTemplatePartialSpecialization
               : DDecl<ClassTemplateSpecialization>;
     // ===== Scout ===========================================================
-      def Mesh : DDecl<Tag>;
+      def Mesh : DDecl<Tag, 1>, DeclContext;
         def UniformMesh : DDecl<Mesh>;
         def StructuredMesh : DDecl<Mesh>;
         def RectilinearMesh : DDecl<Mesh>;

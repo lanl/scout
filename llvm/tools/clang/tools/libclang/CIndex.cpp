@@ -4554,7 +4554,6 @@ CXCursor clang_getCursorDefinition(CXCursor C) {
   case Decl::Label:  // FIXME: Is this right??
   case Decl::ClassScopeFunctionSpecialization:
   // ===== Scout ==================
-  case Decl::Mesh:
   case Decl::UniformMesh:
   case Decl::StructuredMesh:
   case Decl::RectilinearMesh:
