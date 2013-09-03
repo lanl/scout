@@ -738,18 +738,23 @@ public:
     return SemaRef.Context.getTypeDeclType(Enum);
   }
 
-  // scout - Mesh
-  // TODO implement
-  QualType RebuildMeshType(MeshDecl *Mesh) {
-    std::cerr << ""
-    //return SemaRef.Context.getTypeDeclType(Mesh);
-    return QualType();
-  }
 
   QualType RebuildUniformMeshType(UniformMeshDecl *UMD) {
     return SemaRef.Context.getTypeDeclType(UMD);
   }
+
+  QualType RebuildStructuredMeshType(StructuredMeshDecl *SMD) {
+    return SemaRef.Context.getTypeDeclType(SMD);
+  }
   
+  QualType RebuildRectilinearMeshType(RectilinearMeshDecl *RMD) {
+    return SemaRef.Context.getTypeDeclType(RMD);
+  }
+
+  QualType RebuildUnstructuredMeshType(UnstructuredMeshDecl *UMD) {
+    return SemaRef.Context.getTypeDeclType(UMD);
+  }
+
   /// \brief Build a new typeof(expr) type.
   ///
   /// By default, performs semantic analysis when building the typeof type.
@@ -4596,21 +4601,75 @@ template<typename Derived>
 QualType
 TreeTransform<Derived>::TransformStructuredMeshType(TypeLocBuilder &TLB,
                                                     StructuredMeshTypeLoc TL) {
-  return QualType();
+const StructuredMeshType *T = TL.getTypePtr();
+  StructuredMeshDecl *SMD;
+  SMD = cast_or_null<StructuredMeshDecl>(getDerived().TransformDecl(TL.getNameLoc(),
+                                                          T->getDecl()));
+  if (!SMD)
+    return QualType();
+
+  QualType Result = TL.getType();
+  if (getDerived().AlwaysRebuild() ||
+      SMD != T->getDecl()) {
+    Result = getDerived().RebuildStructuredMeshType(SMD);
+    if (Result.isNull())
+      return QualType();
+  }
+
+  StructuredMeshTypeLoc NewTL = TLB.push<StructuredMeshTypeLoc>(Result);
+  NewTL.setNameLoc(TL.getNameLoc());
+
+  return Result;
 }
 
 template<typename Derived>
 QualType
 TreeTransform<Derived>::TransformRectilinearMeshType(TypeLocBuilder &TLB,
                                                      RectilinearMeshTypeLoc TL) {
-  return QualType();
+  const RectilinearMeshType *T = TL.getTypePtr();
+  RectilinearMeshDecl *RMD;
+  RMD = cast_or_null<RectilinearMeshDecl>(getDerived().TransformDecl(TL.getNameLoc(),
+                                                          T->getDecl()));
+  if (!RMD)
+    return QualType();
+
+  QualType Result = TL.getType();
+  if (getDerived().AlwaysRebuild() ||
+      RMD != T->getDecl()) {
+    Result = getDerived().RebuildRectilinearMeshType(RMD);
+    if (Result.isNull())
+      return QualType();
+  }
+
+  RectilinearMeshTypeLoc NewTL = TLB.push<RectilinearMeshTypeLoc>(Result);
+  NewTL.setNameLoc(TL.getNameLoc());
+
+  return Result;
 }
 
 template<typename Derived>
 QualType
 TreeTransform<Derived>::TransformUnstructuredMeshType(TypeLocBuilder &TLB,
                                                       UnstructuredMeshTypeLoc TL) {
-  return QualType();
+  const UnstructuredMeshType *T = TL.getTypePtr();
+  UnstructuredMeshDecl *UMD;
+  UMD = cast_or_null<UnstructuredMeshDecl>(getDerived().TransformDecl(TL.getNameLoc(),
+                                                          T->getDecl()));
+  if (!UMD)
+    return QualType();
+
+  QualType Result = TL.getType();
+  if (getDerived().AlwaysRebuild() ||
+      UMD != T->getDecl()) {
+    Result = getDerived().RebuildUnstructuredMeshType(UMD);
+    if (Result.isNull())
+      return QualType();
+  }
+
+  UnstructuredMeshTypeLoc NewTL = TLB.push<UnstructuredMeshTypeLoc>(Result);
+  NewTL.setNameLoc(TL.getNameLoc());
+
+  return Result;
 }
 // ==========================================================================================
 template<typename Derived>

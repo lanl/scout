@@ -1869,7 +1869,7 @@ class MeshTypeLoc : public InheritingConcreteTypeLoc<TagTypeLoc,
   
 /// \brief Wrapper for source info for mesh types.
 class UniformMeshTypeLoc :
-  public InheritingConcreteTypeLoc<TagTypeLoc,
+  public InheritingConcreteTypeLoc<MeshTypeLoc,
                                    UniformMeshTypeLoc,
                                    UniformMeshType> {
   public:
@@ -1877,7 +1877,7 @@ class UniformMeshTypeLoc :
 };
 
 class StructuredMeshTypeLoc :
-  public InheritingConcreteTypeLoc<TagTypeLoc,
+  public InheritingConcreteTypeLoc<MeshTypeLoc,
                                    StructuredMeshTypeLoc,
                                    StructuredMeshType> {
   public:
@@ -1885,7 +1885,7 @@ class StructuredMeshTypeLoc :
 };
 
 class RectilinearMeshTypeLoc :
-  public InheritingConcreteTypeLoc<TagTypeLoc,
+  public InheritingConcreteTypeLoc<MeshTypeLoc,
                                    RectilinearMeshTypeLoc,
                                    RectilinearMeshType> {
   public:
@@ -1893,7 +1893,7 @@ class RectilinearMeshTypeLoc :
 };
 
 class UnstructuredMeshTypeLoc :
-  public InheritingConcreteTypeLoc<TagTypeLoc,
+  public InheritingConcreteTypeLoc<MeshTypeLoc,
                                    UnstructuredMeshTypeLoc,
                                    UnstructuredMeshType> {
   public:

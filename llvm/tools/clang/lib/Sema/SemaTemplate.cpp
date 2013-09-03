@@ -3420,19 +3420,19 @@ bool UnnamedLocalNoLinkageFinder::VisitUnaryTransformType(
 
 // ===== Scout ============================================================================
 bool UnnamedLocalNoLinkageFinder::VisitUniformMeshType(const UniformMeshType* T) {
-  return false;
+  return VisitTagDecl(T->getDecl());
 }
 
 bool UnnamedLocalNoLinkageFinder::VisitStructuredMeshType(const StructuredMeshType* T) {
-  return false;
+  return VisitTagDecl(T->getDecl());
 }
 
 bool UnnamedLocalNoLinkageFinder::VisitRectilinearMeshType(const RectilinearMeshType* T) {
-  return false;
+  return VisitTagDecl(T->getDecl());
 }
 
 bool UnnamedLocalNoLinkageFinder::VisitUnstructuredMeshType(const UnstructuredMeshType* T) {
-  return false;
+  return VisitTagDecl(T->getDecl());
 }
 // ========================================================================================
 

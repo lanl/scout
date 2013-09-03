@@ -1954,6 +1954,26 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result,
   }
 }
 
+// \brief Add the associated mesh for argument-dependent lookup. 
+static void
+addAssociatedClassesAndNamespaces(AssociatedLookup &Result,
+                                  MeshDecl *Mesh) {
+
+  // Add the class of which it is a member, if any.
+  DeclContext *Ctx = Mesh->getDeclContext();
+  if (MeshDecl *EnclosingMesh = dyn_cast<MeshDecl>(Ctx)) {
+    // // SC_TODO -- we need to add mesh types to the associated lookup vector...
+    //Result.Classes.insert(EnclosingMesh);
+  }
+  // Add the associated namespace for this class.
+  CollectEnclosingNamespace(Result.Namespaces, Ctx);
+
+  // SC_TODO -- we need to add mesh types to the associated lookup vector...
+  // Add the mesh itself but avoid duplicates...
+  //if (!Result.Classes.insert(Mesh))
+  //  return;
+}
+
 // \brief Add the associated classes and namespaces for
 // argument-dependent lookup with an argument of type T
 // (C++ [basic.lookup.koenig]p2).
@@ -2006,17 +2026,30 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
       break;
 
     // ===== Scout ========================================================================
-    case Type::UniformMesh:
-    case Type::StructuredMesh:
-    case Type::RectilinearMesh:
+    case Type::UniformMesh: {
+      UniformMeshDecl *UMD;
+      UMD = cast<UniformMeshDecl>(cast<UniformMeshType>(T)->getDecl());
+      addAssociatedClassesAndNamespaces(Result, UMD);
+      break;
+    }
+
+    case Type::StructuredMesh: {
+      StructuredMeshDecl *SMD;
+      SMD = cast<StructuredMeshDecl>(cast<StructuredMeshType>(T)->getDecl());
+      addAssociatedClassesAndNamespaces(Result, SMD);
+      break;
+    }
+    case Type::RectilinearMesh: {
+      RectilinearMeshDecl *RMD;
+      RMD = cast<RectilinearMeshDecl>(cast<RectilinearMeshType>(T)->getDecl());
+      addAssociatedClassesAndNamespaces(Result, RMD);
+      break;
+    }
     case Type::UnstructuredMesh: {
-        // SC_TODO -- what are we doing here?  Why is this commented out?  
-        // Shouldn't we be doing something like Type::Record below????
-      
-        //MeshDecl *Mesh
-        //= cast<MeshDecl>(cast<MeshType>(T)->getDecl());
-        //addAssociatedClassesAndNamespaces(Result, Mesh);
-        break;
+      UnstructuredMeshDecl *UMD;
+      UMD = cast<UnstructuredMeshDecl>(cast<UnstructuredMeshType>(T)->getDecl());
+      addAssociatedClassesAndNamespaces(Result, UMD);
+      break;
     }
     // ====================================================================================
     //     -- If T is a class type (including unions), its associated

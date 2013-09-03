@@ -90,10 +90,10 @@ TYPE(Record, TagType)
 TYPE(Enum, TagType)
 // ===== Scout ================================================================
 ABSTRACT_TYPE(Mesh, TagType)
-  TYPE(UniformMesh, TagType)
-  TYPE(StructuredMesh, TagType)
-  TYPE(RectilinearMesh, TagType)
-  TYPE(UnstructuredMesh, TagType)
+  TYPE(UniformMesh, MeshType)
+  TYPE(StructuredMesh, MeshType)
+  TYPE(RectilinearMesh, MeshType)
+  TYPE(UnstructuredMesh, MeshType)
 // ============================================================================
 NON_CANONICAL_TYPE(Elaborated, Type)
 NON_CANONICAL_TYPE(Attributed, Type)
@@ -126,10 +126,11 @@ LEAF_TYPE(ObjCInterface)
 LEAF_TYPE(TemplateTypeParm)
 
 // ===== Scout ================================================================
-LEAF_TYPE(UniformMesh)
-LEAF_TYPE(StructuredMesh)
-LEAF_TYPE(RectilinearMesh)
-LEAF_TYPE(UnstructuredMesh)
+//LEAF_TYPE(Mesh)
+//LEAF_TYPE(UniformMesh)
+//LEAF_TYPE(StructuredMesh)
+//LEAF_TYPE(RectilinearMesh)
+//LEAF_TYPE(UnstructuredMesh)
 // ============================================================================
 
 #undef LEAF_TYPE
