@@ -168,7 +168,7 @@ int cc1_main(const char **ArgBegin, const char **ArgEnd,
   //build an AST consumer with rewriter
   ScoutASTConsumer consumer(rewriter, Clang.get());
 
-  if(Rewrite) { 	
+  if (Rewrite) { 	
     Clang->setScoutASTConsumer(&consumer);
     Clang->setScoutRewriter(&rewriter);
   }
