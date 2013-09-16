@@ -1859,7 +1859,7 @@ public:
 
 // ===== Scout ================================================================
 
-class MeshTypeLoc : public InheritingConcreteTypeLoc<TagTypeLoc,
+class MeshTypeLoc : public InheritingConcreteTypeLoc<TypeSpecTypeLoc,
                                                      MeshTypeLoc,
                                                      MeshType> {
  public:
