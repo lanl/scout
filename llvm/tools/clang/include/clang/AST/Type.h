@@ -3274,7 +3274,8 @@ public:
   bool isBeingDefined() const;
 
   static bool classof(const Type *T) {
-    return T->getTypeClass() >= TagFirst && T->getTypeClass() <= TagLast;
+    return (T->getTypeClass() >= TagFirst && T->getTypeClass() <= TagLast)
+        || (T->getTypeClass() >= MeshFirst && T->getTypeClass() <= MeshLast);
   }
 };
 

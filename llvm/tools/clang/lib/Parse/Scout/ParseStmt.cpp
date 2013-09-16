@@ -920,10 +920,47 @@ StmtResult Parser::ParseVolumeRenderAll(Scope* scope,
 }
 
 
-  //================================================================================
-  // scout - parse a mesh declaration -this is handled as a special
-  // case because the square brackets look like an array specification
-  // when Clang normally parses a declaration
+//================================================================================
+// scout - parse a mesh statement
+bool Parser::ParseMeshStatement(StmtVector &Stmts,
+     bool OnlyStatement, Token &Next, StmtResult &SR) {
+
+  IdentifierInfo* Name = Tok.getIdentifierInfo();
+  SourceLocation NameLoc = Tok.getLocation();
+
+  // scout - detect the forall shorthand, e.g:
+  // m.a[1..width-2][1..height-2] = MAX_TEMP;
+  if(isScoutLang()) {
+    if(Actions.isScoutSource(NameLoc)){
+      if(GetLookAheadToken(1).is(tok::period) &&
+         GetLookAheadToken(2).is(tok::identifier) &&
+         GetLookAheadToken(3).is(tok::l_square)){
+
+        LookupResult
+        Result(Actions, Name, NameLoc, Sema::LookupOrdinaryName);
+
+        Actions.LookupName(Result, getCurScope());
+
+        if(Result.getResultKind() == LookupResult::Found){
+          if(VarDecl* vd = dyn_cast<VarDecl>(Result.getFoundDecl())){
+            if(isa<MeshType>(vd->getType().getCanonicalType().getTypePtr())){
+              SR = ParseForAllShortStatement(Name, NameLoc, vd);
+              return true;
+            }
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+
+//SC_TOD0: now unused
+//================================================================================
+ // scout - parse a mesh declaration -this is handled as a special
+ // case because the square brackets look like an array specification
+ // when Clang normally parses a declaration
  bool Parser::ParseMeshStatementOrDeclaration(StmtVector &Stmts,
      bool OnlyStatement, Token &Next, StmtResult &SR) {
 

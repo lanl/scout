@@ -154,11 +154,9 @@ Retry:
     }
 
     //================================================================================
-    // scout - parse a mesh declaration -this is handled as a special
-    // case because the square brackets look like an array specification
-    // when Clang normally parses a declaration
+    // scout -  parse a mesh statement like forall shorthand
     StmtResult SR;
-    if(ParseMeshStatementOrDeclaration(Stmts, OnlyStatement, Next, SR)) return SR;
+    if(ParseMeshStatement(Stmts, OnlyStatement, Next, SR)) return SR;
     //================================================================================
 
     // Look up the identifier, and typo-correct it to a keyword if it's not

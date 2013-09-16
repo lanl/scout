@@ -975,7 +975,9 @@ namespace clang {
       /// \brief A FieldDecl record.
       DECL_FIELD,
       /// \brief A MeshFieldDecl record.
-      DECL_MESHFIELD,      
+      // ===== Scout ================================
+      DECL_MESHFIELD,
+      // ============================================
       /// \brief A MSPropertyDecl record.
       DECL_MS_PROPERTY,
       /// \brief A VarDecl record.

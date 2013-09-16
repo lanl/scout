@@ -72,11 +72,120 @@
 
 using namespace clang;
 
+void Parser::
+ParseMeshDeclaration(ParsingDeclSpec &DS,
+                     FieldCallback &Fields) {
+  ParseSpecifierQualifierList(DS);
+
+  // Read mesh-declarators until we find the semicolon.
+  bool FirstDeclarator = true;
+  while (1) {
+    ParsingDeclRAIIObject PD(*this, ParsingDeclRAIIObject::NoParent);
+    ParsingFieldDeclarator DeclaratorInfo(*this, DS);
+
+    // Attributes are only allowed here on successive declarators.
+    if (!FirstDeclarator)
+      MaybeParseGNUAttributes(DeclaratorInfo.D);
+
+    ParseDeclarator(DeclaratorInfo.D);
+
+    // If attributes exist after the declarator, parse them.
+    MaybeParseGNUAttributes(DeclaratorInfo.D);
+
+    // We're done with this declarator;  invoke the callback.
+    Fields.invoke(DeclaratorInfo);
+
+    // If we don't have a comma, it is either the end of the list (a ';')
+    // or an error, bail out.
+    if (Tok.isNot(tok::comma)){
+      return;
+    }
+
+    // Consume the comma.
+    ConsumeToken();
+
+    FirstDeclarator = false;
+  }
+}
+
+// scout - tail end of mesh variable declaration (the bracket and beyond)
+void
+Parser::ParseMeshVarBracketDeclarator(Declarator &D) {
+
+  // get type info of this object
+  DeclSpec& DS = D.getMutableDeclSpec();
+
+  ParsedType parsedType = DS.getRepAsType();
+  const UniformMeshType* umt = dyn_cast<UniformMeshType>(parsedType.get().getTypePtr());
+  if(umt){
+
+    BalancedDelimiterTracker T(*this, tok::l_square);
+    T.consumeOpen();
+
+    // for uniform type it can be a comma-separated list of dimensions
+    // parse mesh dimensions, e.g: [512,512]
+
+    MeshType::MeshDimensions dims;
+
+    ExprResult NumElements;
+
+    for(;;){
+      if(Tok.is(tok::numeric_constant)) {
+        dims.push_back(Actions.ActOnNumericConstant(Tok).get());
+        ConsumeToken();
+      } else if (Tok.isNot(tok::r_square)) {
+        NumElements = ParseConstantExpression(); // consumes it too
+
+        // If there was an error parsing the assignment-expression, recover.
+        // Maybe should print a diagnostic, tho.
+        if (NumElements.isInvalid()) {
+          // If the expression was invalid, skip it.
+          SkipUntil(tok::r_square);
+          StmtError();
+        }
+        dims.push_back(NumElements.get());
+      }
+
+      if(Tok.is(tok::r_square)){
+        break;
+      }
+
+      if(Tok.is(tok::eof)){
+        Diag(Tok, diag::err_expected_lsquare);
+        StmtError();
+      }
+
+      if(Tok.isNot(tok::comma)){
+        Diag(Tok, diag::err_expected_comma);
+        SkipUntil(tok::r_square);
+        SkipUntil(tok::semi);
+        StmtError();
+      }
+
+      ConsumeToken();
+    }
+
+    T.consumeClose();
+
+    // set dims on type
+    ParsedAttributes attrs(AttrFactory);
+
+    DeclaratorChunk DC = DeclaratorChunk::getUniformMesh(dims, T.getOpenLocation(), T.getCloseLocation());
+
+    D.AddTypeInfo(DC, attrs, T.getCloseLocation());
+
+  } // else if unstructured or any other mesh type, do something else
+}
+
+
+
+
 // uniform mesh MyMesh {
 //   cells:
 //     float a; <---- parser is here
 // ... }
 //
+#if 0
 void Parser::ParseMeshDeclaration(ParsingDeclSpec &DS,
                                   FieldCallback &Fields) {
   
@@ -141,6 +250,7 @@ void Parser::ParseMeshDeclaration(ParsingDeclSpec &DS,
     FirstDeclarator = false;
   }
 }
+#endif
 
 // parse a mesh parameter declaration
 // assumes on entry that the token stream looks like:
