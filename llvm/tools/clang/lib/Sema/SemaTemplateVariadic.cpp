@@ -789,6 +789,7 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
     case DeclaratorChunk::BlockPointer:
     // ===== Scout ========================
     case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::UnstructuredMesh:
     // ====================================
       // Syntactically, these kinds of declarator chunks all come after the
       // declarator-id (conceptually), so the parser should not invoke this

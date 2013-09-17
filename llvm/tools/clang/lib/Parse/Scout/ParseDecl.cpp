@@ -177,80 +177,53 @@ Parser::ParseMeshVarBracketDeclarator(Declarator &D) {
   } // else if unstructured or any other mesh type, do something else
 }
 
+// scout - tail end of mesh variable declaration (the parenthesis and beyond)
+void Parser::ParseMeshVarParenDeclarator(Declarator &D) {
 
+  // get type info of this object
+  DeclSpec& DS = D.getMutableDeclSpec();
 
+  ParsedType parsedType = DS.getRepAsType();
+  const UnstructuredMeshType* unsMT = dyn_cast<UnstructuredMeshType>(parsedType.get().getTypePtr());
+  if(unsMT){
 
-// uniform mesh MyMesh {
-//   cells:
-//     float a; <---- parser is here
-// ... }
-//
-#if 0
-void Parser::ParseMeshDeclaration(ParsingDeclSpec &DS,
-                                  FieldCallback &Fields) {
-  
-  if (Tok.is(tok::kw___extension__)) {
-    // __extension__ silences extension warnings in the subexpression. 
-    ExtensionRAIIObject O(Diags); // Use RAII to do this. 
-    ConsumeToken();
-    return ParseMeshDeclaration(DS, Fields);
-  }
+    BalancedDelimiterTracker T(*this, tok::l_paren);
+    T.consumeOpen();
 
-  // Parse the common specifier-qualifiers-list piece...
-  ParseSpecifierQualifierList(DS);
+    // for unstructured type it can be a string for a filename from
+    // which to read the geometry and values, e.g. MyMeshType mymesh("mesh_info.txt");
 
-  // SC_TODO - do we want to handle a free-standing declaration 
-  // specifier???  See example in the RecordDecl parsing... 
+    ExprResult unsMeshFileName;
 
-  // Read mesh-declarators until we find the semicolon.
-  bool FirstDeclarator = true;
-  SourceLocation CommaLoc;
+    if (isTokenStringLiteral()) {
+      unsMeshFileName = ParseStringLiteralExpression(); // consumes it too
 
-  while (1) {
-    // SC_TODO - Any reason to build a ParsingMeshFieldDeclarator 
-    // here vs. borrowing the struct field declarator?
-    ParsingFieldDeclarator DeclaratorInfo(*this, DS);
-    DeclaratorInfo.D.setCommaLoc(CommaLoc);
-
-    // Attributes are only allowed here on successive declarators.
-    if (!FirstDeclarator)
-      MaybeParseGNUAttributes(DeclaratorInfo.D);
-
-    /// mesh-declarator: declarator
-    /// mesh-declarator: declarator[opt] ':' constant-expression
-    if (Tok.isNot(tok::colon)) {
-      // Don't parse FOO:BAR as if it were a typo for FOO::BAR.
-      ColonProtectionRAIIObject X(*this);
-      ParseDeclarator(DeclaratorInfo.D);
+      // If there was an error parsing the assignment-expression, recover.
+      // Maybe should print a diagnostic, tho.
+      if (!unsMeshFileName.isUsable()) {
+        // If the expression was invalid, skip it.
+        SkipUntil(tok::r_paren);
+        StmtError();
+      }
+    } else {
+      Diag(Tok, diag::err_expected_string_literal);
+      StmtError();
     }
 
-    if (Tok.is(tok::colon)) {
-      ConsumeToken();
-      ExprResult Res(ParseConstantExpression());
-      if (Res.isInvalid())
-        SkipUntil(tok::semi, true, true);
-      else
-        DeclaratorInfo.BitfieldSize = Res.release();
-    }
+    T.consumeClose();
 
-    // If attributes exist after the declarator, parse them.
-    MaybeParseGNUAttributes(DeclaratorInfo.D);
+    // set mesh file info for type
+    ParsedAttributes attrs(AttrFactory);
 
-    // We're done with this declarator; invoke the callback.
-    Fields.invoke(DeclaratorInfo);
+    DeclaratorChunk DC = DeclaratorChunk::getUnstructuredMesh(unsMeshFileName.get(),
+        T.getOpenLocation(), T.getCloseLocation());
 
-    // If we don't have a comma, it is either the end of the list (i.e. a ';')
-    // or an error, bail out from processing this declaration.
-    if (Tok.isNot(tok::comma)){
-      return;
-    }
+    D.AddTypeInfo(DC, attrs, T.getCloseLocation());
 
-    // Consume the comma.
-    CommaLoc = ConsumeToken();
-    FirstDeclarator = false;
-  }
+  } // else if any other mesh type, do something else
 }
-#endif
+
+
 
 // parse a mesh parameter declaration
 // assumes on entry that the token stream looks like:

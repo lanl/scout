@@ -344,6 +344,7 @@ static DeclaratorChunk *maybeMovePastReturnType(Declarator &declarator,
     case DeclaratorChunk::MemberPointer:
     // ===== Scout =========================
     case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::UnstructuredMesh:
     // =====================================
       return result;
 
@@ -361,6 +362,7 @@ static DeclaratorChunk *maybeMovePastReturnType(Declarator &declarator,
         case DeclaratorChunk::MemberPointer:
         // ===== Scout =========================
         case DeclaratorChunk::UniformMesh:
+        case DeclaratorChunk::UnstructuredMesh:
         // =====================================
           continue;
         case DeclaratorChunk::BlockPointer:
@@ -416,6 +418,7 @@ static void distributeObjCPointerTypeAttr(TypeProcessingState &state,
     case DeclaratorChunk::Array:
     // ===== Scout =========================
     case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::UnstructuredMesh:
     // =====================================
       continue;
 
@@ -468,6 +471,7 @@ distributeObjCPointerTypeAttrFromDeclarator(TypeProcessingState &state,
     case DeclaratorChunk::Array:
     // ===== Scout =========================
     case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::UnstructuredMesh:
     // =====================================
       continue;
 
@@ -531,6 +535,7 @@ static void distributeFunctionTypeAttr(TypeProcessingState &state,
     case DeclaratorChunk::Reference:
     // ===== Scout =========================
     case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::UnstructuredMesh:
     // =====================================
     case DeclaratorChunk::MemberPointer:
       continue;
@@ -1708,6 +1713,7 @@ QualType Sema::BuildArrayType(QualType T, ArrayType::ArraySizeModifier ASM,
 }
 
 // ===== Scout ================================================================
+
 QualType Sema::BuildUniformMeshType(QualType T, const MeshType::MeshDimensions &dims,
                               SourceRange Brackets, DeclarationName Entity) {
   const UniformMeshType* mt =
@@ -1717,6 +1723,17 @@ QualType Sema::BuildUniformMeshType(QualType T, const MeshType::MeshDimensions &
   mdt->setDimensions(dims);
   return QualType(mdt,0);
 }
+
+QualType Sema::BuildUnstructuredMeshType(QualType T, Expr* filename,
+                              SourceRange Brackets, DeclarationName Entity) {
+  const UnstructuredMeshType* mt =
+        dyn_cast<UnstructuredMeshType>(T.getCanonicalType().getTypePtr());
+  assert(mt);
+  UnstructuredMeshType* mdt = const_cast<UnstructuredMeshType*>(mt);
+  mdt->setFileName(filename);
+  return QualType(mdt,0);
+}
+
 // ============================================================================
 
 /// \brief Build an ext-vector type.
@@ -1963,6 +1980,7 @@ static void inferARCWriteback(TypeProcessingState &state,
     case DeclaratorChunk::MemberPointer:
     // ===== Scout =========================
     case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::UnstructuredMesh:
     // =====================================
       return;
     }
@@ -2104,6 +2122,7 @@ static void diagnoseIgnoredFunctionQualifiers(Sema &S, QualType RetTy,
     case DeclaratorChunk::Array:
     // ===== Scout =========================
     case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::UnstructuredMesh:
     // =====================================
     case DeclaratorChunk::MemberPointer:
       // FIXME: We can't currently provide an accurate source location and a
@@ -2405,6 +2424,7 @@ static void checkQualifiedFunction(Sema &S, QualType T,
   case DeclaratorChunk::Function:
   // ===== Scout =========================
   case DeclaratorChunk::UniformMesh:
+  case DeclaratorChunk::UnstructuredMesh:
   // =====================================
     // These cases don't allow function types at all; no need to diagnose the
     // qualifiers separately.
@@ -2561,6 +2581,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
         case DeclaratorChunk::Paren:
         // ===== Scout =========================
         case DeclaratorChunk::UniformMesh:  // not sure where to put this in this switch
+        case DeclaratorChunk::UnstructuredMesh:
         // =====================================
           continue;
         case DeclaratorChunk::Function: {
@@ -2715,6 +2736,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
           case DeclaratorChunk::BlockPointer:
           // ===== Scout ==============================
           case DeclaratorChunk::UniformMesh:
+          case DeclaratorChunk::UnstructuredMesh:
           // ==========================================
             // These are invalid anyway, so just ignore.
             break;
@@ -2738,10 +2760,16 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
 
     // ===== Scout =================================================
     case DeclaratorChunk::UniformMesh: {
-        MeshType::MeshDimensions dims = DeclType.Unimsh.Dims();
-        T = S.BuildUniformMeshType(T, dims, SourceRange(DeclType.Loc, DeclType.EndLoc), Name);
-        break;
-      }
+      MeshType::MeshDimensions dims = DeclType.Unimsh.Dims();
+      T = S.BuildUniformMeshType(T, dims, SourceRange(DeclType.Loc, DeclType.EndLoc), Name);
+      break;
+    }
+    case DeclaratorChunk::UnstructuredMesh: {
+      Expr* filename = DeclType.Unsmsh.StrLitFileName;
+      T = S.BuildUnstructuredMeshType(T, filename, SourceRange(DeclType.Loc, DeclType.EndLoc), Name);
+      break;
+    }
+
     // =============================================================
 
 
@@ -3365,6 +3393,7 @@ static void transferARCOwnership(TypeProcessingState &state,
     case DeclaratorChunk::Array:
     // ===== Scout ========================
     case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::UnstructuredMesh:
     // ====================================
     case DeclaratorChunk::Reference:
     case DeclaratorChunk::Pointer:
@@ -3776,6 +3805,7 @@ namespace {
     }
 
     // ===== Scout ==========================================
+
     void VisitUniformMeshTypeLoc(UniformMeshTypeLoc TL) {
       assert(Chunk.Kind == DeclaratorChunk::UniformMesh);
       TL.setLBracketLoc(Chunk.Loc);
@@ -3783,6 +3813,14 @@ namespace {
       MeshType::MeshDimensions dims(Chunk.Unimsh.Dims());
       TL.setDims(dims);
     }
+
+    void VisitUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc TL) {
+      assert(Chunk.Kind == DeclaratorChunk::UnstructuredMesh);
+      TL.setLParenLoc(Chunk.Loc);
+      TL.setRParenLoc(Chunk.EndLoc);
+      TL.setFileName(Chunk.Unsmsh.StrLitFileName);
+    }
+
     // ======================================================
 
     void VisitTypeLoc(TypeLoc TL) {
@@ -3798,6 +3836,7 @@ static void fillAtomicQualLoc(AtomicTypeLoc ATL, const DeclaratorChunk &Chunk) {
   case DeclaratorChunk::Array:
   // ===== Scout =====================
   case DeclaratorChunk::UniformMesh:
+  case DeclaratorChunk::UnstructuredMesh:
   // =================================
   case DeclaratorChunk::Paren:
     llvm_unreachable("cannot be _Atomic qualified");

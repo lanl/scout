@@ -1911,7 +1911,7 @@ class UniformMeshTypeLoc :
       getLocalData()->RBracketLoc = Loc;
     }
 
-    SourceRange getBracketsRange() const {
+    SourceRange getParensRange() const {
       return SourceRange(getLBracketLoc(), getRBracketLoc());
     }
 
@@ -1950,12 +1950,61 @@ class RectilinearMeshTypeLoc :
     RectilinearMeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
 };
 
+struct UnstructuredMeshLocInfo {
+    SourceLocation LParenLoc, RParenLoc;
+    Expr* StrLitFileName;
+};
+
+
 class UnstructuredMeshTypeLoc :
-  public InheritingConcreteTypeLoc<MeshTypeLoc,
-                                   UnstructuredMeshTypeLoc,
-                                   UnstructuredMeshType> {
+  public ConcreteTypeLoc<MeshTypeLoc,
+                         UnstructuredMeshTypeLoc,
+                         UnstructuredMeshType,
+                         UnstructuredMeshLocInfo> {
   public:
     UnstructuredMeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
+
+    bool isDefinition() const {
+       UnstructuredMeshDecl *D = getDecl();
+       return D->isCompleteDefinition();
+     }
+
+     SourceLocation getLParenLoc() const {
+       return getLocalData()->LParenLoc;
+     }
+
+     void setLParenLoc(SourceLocation Loc) {
+       getLocalData()->LParenLoc = Loc;
+     }
+
+     SourceLocation getRParenLoc() const {
+       return getLocalData()->RParenLoc;
+     }
+
+     void setRParenLoc(SourceLocation Loc) {
+       getLocalData()->RParenLoc = Loc;
+     }
+
+     SourceRange getParensRange() const {
+       return SourceRange(getLParenLoc(), getRParenLoc());
+     }
+
+     Expr* getFileName() const {
+       return getLocalData()->StrLitFileName;
+     }
+
+     void setFileName(Expr*  strLitFileName) {
+       getLocalData()->StrLitFileName = strLitFileName;
+     }
+
+     SourceRange getLocalSourceRange() const {
+       return SourceRange(getLParenLoc(), getRParenLoc());
+     }
+
+     void initializeLocal(ASTContext &Context, SourceLocation Loc) {
+       setLParenLoc(Loc);
+       setRParenLoc(Loc);
+     }
 };
 // ===============================================================================================
 

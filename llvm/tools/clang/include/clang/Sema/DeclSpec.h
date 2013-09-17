@@ -1063,7 +1063,7 @@ struct DeclaratorChunk {
   enum {
     Pointer, Reference, Array, Function, BlockPointer, MemberPointer, Paren
     // ===== Scout =========================
-    , UniformMesh
+    , UniformMesh, UnstructuredMesh
     // =====================================
   } Kind;
 
@@ -1144,6 +1144,12 @@ struct DeclaratorChunk {
      void destroy() {}
   };
 
+  struct UnstructuredMeshTypeInfo : TypeInfoCommon {
+    // parsed string literal for filename from which to read mesh
+    Expr *StrLitFileName;
+
+    void destroy() {}
+  };
 
 
   // ===========================================================================
@@ -1391,6 +1397,7 @@ struct DeclaratorChunk {
     MemberPointerTypeInfo Mem;
     // ===== Scout =====================
     UniformMeshTypeInfo   Unimsh;
+    UnstructuredMeshTypeInfo   Unsmsh;
     // =================================
   };
 
@@ -1405,6 +1412,7 @@ struct DeclaratorChunk {
     case DeclaratorChunk::Paren:         return;
     // ===== Scout ==============================================
     case DeclaratorChunk::UniformMesh:   return Unimsh.destroy();
+    case DeclaratorChunk::UnstructuredMesh:   return Unsmsh.destroy();
     // ==========================================================
 
     }
@@ -1529,6 +1537,7 @@ struct DeclaratorChunk {
   }
 
   // ===== Scout ===================================================================
+  /// \brief Return a DeclaratorChunk for a mesh.
   static DeclaratorChunk getUniformMesh(const MeshType::MeshDimensions &dims,
                                     SourceLocation LBLoc, SourceLocation RBLoc) {
       DeclaratorChunk I;
@@ -1542,6 +1551,18 @@ struct DeclaratorChunk {
 
       return I;
   }
+
+  /// \brief Return a DeclaratorChunk for an unstructured mesh.
+  static DeclaratorChunk getUnstructuredMesh(Expr *strLit,
+      SourceLocation LBLoc, SourceLocation RBLoc) {
+    DeclaratorChunk I;
+    I.Kind          = UnstructuredMesh;
+    I.Loc           = LBLoc;
+    I.EndLoc        = RBLoc;
+    I.Unsmsh.StrLitFileName = strLit;
+    return I;
+  }
+
   // ===============================================================================
 };
 
@@ -1964,6 +1985,7 @@ public:
       case DeclaratorChunk::MemberPointer:
       // ===== Scout ======================
       case DeclaratorChunk::UniformMesh:
+      case DeclaratorChunk::UnstructuredMesh:
       // ==================================
         return false;
       }

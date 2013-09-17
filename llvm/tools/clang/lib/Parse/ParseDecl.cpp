@@ -5047,13 +5047,17 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
   // ===== Scout ========================================================
   if(tst == DeclSpec::TST_typename){
     ParsedType parsedType = DS.getRepAsType();
-    const UniformMeshType* mt = dyn_cast<UniformMeshType>(parsedType.get().getTypePtr());
-    if(mt && Tok.is(tok::l_square) && !hasMeshTypedefParameters) {
+    const UniformMeshType* uniMT = dyn_cast<UniformMeshType>(parsedType.get().getTypePtr());
+    if(uniMT && Tok.is(tok::l_square) && !hasMeshTypedefParameters) {
       ParseMeshVarBracketDeclarator(D);
       return;
     }
+    const UnstructuredMeshType* unsMT = dyn_cast<UnstructuredMeshType>(parsedType.get().getTypePtr());
+    if(unsMT && Tok.is(tok::l_paren) && !hasMeshTypedefParameters) {
+      ParseMeshVarParenDeclarator(D);
+      return;
+    }
   }
-
   // ====================================================================
 
   while (1) {

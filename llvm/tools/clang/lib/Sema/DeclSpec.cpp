@@ -256,6 +256,7 @@ bool Declarator::isDeclarationOfFunction() const {
     case DeclaratorChunk::MemberPointer:
     // ===== Scout ========================
     case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::UnstructuredMesh:
     // ====================================
       return false;
     }
