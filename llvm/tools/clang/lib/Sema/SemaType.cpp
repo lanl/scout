@@ -3775,6 +3775,16 @@ namespace {
       TL.setRParenLoc(Chunk.EndLoc);
     }
 
+    // ===== Scout ==========================================
+    void VisitUniformMeshTypeLoc(UniformMeshTypeLoc TL) {
+      assert(Chunk.Kind == DeclaratorChunk::UniformMesh);
+      TL.setLBracketLoc(Chunk.Loc);
+      TL.setRBracketLoc(Chunk.EndLoc);
+      MeshType::MeshDimensions dims(Chunk.Unimsh.Dims());
+      TL.setDims(dims);
+    }
+    // ======================================================
+
     void VisitTypeLoc(TypeLoc TL) {
       llvm_unreachable("unsupported TypeLoc kind in declarator!");
     }
@@ -3843,21 +3853,24 @@ Sema::GetTypeSourceInfoForDeclarator(Declarator &D, QualType T,
     }
 
     DeclaratorLocFiller(Context, D.getTypeObject(i)).Visit(CurrTL);
-    CurrTL = CurrTL.getNextTypeLoc().getUnqualifiedLoc();
+    // ===== Scout ============================================================
+    //CurrTL = CurrTL.getNextTypeLoc().getUnqualifiedLoc();
+    TypeLoc nextTL = CurrTL.getNextTypeLoc();
+    if (nextTL.getUnqualifiedLoc() == NULL) {
+      break; // SC_TODO Not sure what to do here.  If don't break, we get an error.
+    } else {
+      CurrTL = nextTL.getUnqualifiedLoc();
+    }
+    // =========================================================================
   }
-  //llvm::errs() << "1\n";
   // If we have different source information for the return type, use
   // that.  This really only applies to C++ conversion functions.
   if (ReturnTypeInfo) {
-    //llvm::errs() << "2\n";
     TypeLoc TL = ReturnTypeInfo->getTypeLoc();
     assert(TL.getFullDataSize() == CurrTL.getFullDataSize());
     memcpy(CurrTL.getOpaqueData(), TL.getOpaqueData(), TL.getFullDataSize());
-    //llvm::errs() << "3\n";
   } else {
-    //llvm::errs() << "4\n";
     TypeSpecLocFiller(Context, D.getDeclSpec()).Visit(CurrTL);
-    //llvm::errs() << "5\n";
   }
 
   return TInfo;

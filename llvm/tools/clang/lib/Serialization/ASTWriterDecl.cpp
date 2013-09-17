@@ -81,7 +81,9 @@ namespace clang {
     void VisitCXXDestructorDecl(CXXDestructorDecl *D);
     void VisitCXXConversionDecl(CXXConversionDecl *D);
     void VisitFieldDecl(FieldDecl *D);
-    void VisitMeshFieldDecl(MeshFieldDecl *D);    
+    // ===== Scout =====================================
+    void VisitMeshFieldDecl(MeshFieldDecl *D);
+    // =================================================
     void VisitMSPropertyDecl(MSPropertyDecl *D);
     void VisitIndirectFieldDecl(IndirectFieldDecl *D);
     void VisitVarDecl(VarDecl *D);
@@ -666,6 +668,7 @@ void ASTDeclWriter::VisitFieldDecl(FieldDecl *D) {
   Code = serialization::DECL_FIELD;
 }
 
+// ===== Scout =============================================
 void ASTDeclWriter::VisitMeshFieldDecl(MeshFieldDecl *D) {
 
   VisitDeclaratorDecl(D);
@@ -701,7 +704,7 @@ void ASTDeclWriter::VisitMeshFieldDecl(MeshFieldDecl *D) {
   Code = serialization::DECL_MESHFIELD;
 }
 
-
+// =============================================================
 
 void ASTDeclWriter::VisitMSPropertyDecl(MSPropertyDecl *D) {
   VisitDeclaratorDecl(D);

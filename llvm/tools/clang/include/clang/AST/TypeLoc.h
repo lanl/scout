@@ -1863,17 +1863,75 @@ class MeshTypeLoc : public InheritingConcreteTypeLoc<TypeSpecTypeLoc,
                                                      MeshTypeLoc,
                                                      MeshType> {
  public:
+
+  /// \brief True if the tag was defined in this type specifier.
+  bool isDefinition() const {
+    MeshDecl *D = getDecl();
+
+    return D->isCompleteDefinition();
+  }
+
   MeshDecl *getDecl() const { return getTypePtr()->getDecl(); }
+};
+
+// local data
+struct UniformMeshLocInfo {
+  SourceLocation LBracketLoc, RBracketLoc;
+  MeshType::MeshDimensions Dims;
 };
 
   
 /// \brief Wrapper for source info for mesh types.
 class UniformMeshTypeLoc :
-  public InheritingConcreteTypeLoc<MeshTypeLoc,
-                                   UniformMeshTypeLoc,
-                                   UniformMeshType> {
+  public ConcreteTypeLoc<MeshTypeLoc,
+                         UniformMeshTypeLoc,
+                         UniformMeshType,
+                         UniformMeshLocInfo> {
   public:
     UniformMeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
+
+    /// \brief True if the tag was defined in this type specifier.
+    bool isDefinition() const {
+      UniformMeshDecl *D = getDecl();
+      return D->isCompleteDefinition();
+    }
+
+    SourceLocation getLBracketLoc() const {
+      return getLocalData()->LBracketLoc;
+    }
+
+    void setLBracketLoc(SourceLocation Loc) {
+      getLocalData()->LBracketLoc = Loc;
+    }
+
+    SourceLocation getRBracketLoc() const {
+      return getLocalData()->RBracketLoc;
+    }
+    void setRBracketLoc(SourceLocation Loc) {
+      getLocalData()->RBracketLoc = Loc;
+    }
+
+    SourceRange getBracketsRange() const {
+      return SourceRange(getLBracketLoc(), getRBracketLoc());
+    }
+
+    MeshType::MeshDimensions &getDims() const {
+      return getLocalData()->Dims;
+    }
+
+    void setDims(const MeshType::MeshDimensions &Dims) {
+      new (&(getLocalData()->Dims)) MeshType::MeshDimensions(Dims);
+    }
+
+    SourceRange getLocalSourceRange() const {
+      return SourceRange(getLBracketLoc(), getRBracketLoc());
+    }
+
+    void initializeLocal(ASTContext &Context, SourceLocation Loc) {
+      setLBracketLoc(Loc);
+      setRBracketLoc(Loc);
+    }
+
 };
 
 class StructuredMeshTypeLoc :
