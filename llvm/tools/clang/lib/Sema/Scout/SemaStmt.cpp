@@ -93,39 +93,55 @@ namespace {
       if(fd){
         std::string name = fd->getName();
         if(name == "cshift"){
-          unsigned args = E->getNumArgs();
-
           const MeshType* mt = fs_->getMeshType();
 
-          if(args != mt->dimensions().size() + 1){
-            sema_.Diag(E->getRParenLoc(), diag::err_cshift_args);
-            error_ = true;
-          }
-          else{
-            Expr* fe = E->getArg(0);
-            if(ImplicitCastExpr* ce = dyn_cast<ImplicitCastExpr>(fe)){
-              fe = ce->getSubExpr();
-            }
+          const UniformMeshType* unimt = dyn_cast<UniformMeshType>(mt);
+          const StructuredMeshType* smt = dyn_cast<StructuredMeshType>(mt);
+          const RectilinearMeshType* rmt = dyn_cast<RectilinearMeshType>(mt);
 
-            if(MemberExpr* me = dyn_cast<MemberExpr>(fe)){
-              if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(me->getBase())){
-                ValueDecl* bd = dr->getDecl();
-                if(!isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
-                  sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
-                  error_ = true;
+          if (unimt || smt || rmt) {
+
+            unsigned args = E->getNumArgs();
+
+            unsigned dims;
+            if (unimt) dims = unimt->dimensions().size();
+            if (smt) dims = smt->dimensions().size();
+            if (rmt) dims = rmt->dimensions().size();
+
+            if(args != dims + 1) {
+              sema_.Diag(E->getRParenLoc(), diag::err_cshift_args);
+              error_ = true;
+            } else {
+              Expr* fe = E->getArg(0);
+              if(ImplicitCastExpr* ce = dyn_cast<ImplicitCastExpr>(fe)){
+                fe = ce->getSubExpr();
+              }
+
+              if(MemberExpr* me = dyn_cast<MemberExpr>(fe)){
+                if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(me->getBase())){
+                  ValueDecl* bd = dr->getDecl();
+                  if(!isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
+                    sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
+                    error_ = true;
+                  }
                 }
+              } else {
+                sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
+                error_ = true;
               }
             }
-            else{
-              sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
-              error_ = true;
-            }
+          } else {
+            sema_.Diag(E->getRParenLoc(), diag::err_cshift_not_allowed);
+            error_ = true;
           }
         }
       }
 
+
       VisitChildren(E);
     }
+
+
 
     void VisitChildren(Stmt* S){
       for(Stmt::child_iterator I = S->child_begin(),
@@ -140,23 +156,38 @@ namespace {
       if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(E->getBase())){
         ValueDecl* bd = dr->getDecl();
         if(const MeshType* MT =
-           dyn_cast<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
+            dyn_cast<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
 
           ValueDecl* md = E->getMemberDecl();
 
-          unsigned ND = MT->dimensions().size();
+          if((md->getName() == "height" ) || (md->getName() == "depth")) {
 
-          if(md->getName() == "height" && ND < 2){
-            sema_.Diag(E->getMemberLoc(), diag::err_invalid_height_mesh);
-            error_ = true;
-          }
-          else if(md->getName() == "depth" && ND < 3){
-            sema_.Diag(E->getMemberLoc(), diag::err_invalid_depth_mesh);
-            error_ = true;
+            const UniformMeshType* unimt = dyn_cast<UniformMeshType>(MT);
+            const StructuredMeshType* smt = dyn_cast<StructuredMeshType>(MT);
+            const RectilinearMeshType* rmt = dyn_cast<RectilinearMeshType>(MT);
+
+            if (unimt || smt || rmt) {
+
+              unsigned ND;
+              if (unimt) ND = unimt->dimensions().size();
+              if (smt) ND = smt->dimensions().size();
+              if (rmt) ND = rmt->dimensions().size();
+
+              if(md->getName() == "height" && ND < 2) {
+                sema_.Diag(E->getMemberLoc(), diag::err_invalid_height_mesh);
+                error_ = true;
+              } else if(md->getName() == "depth" && ND < 3) {
+                sema_.Diag(E->getMemberLoc(), diag::err_invalid_depth_mesh);
+                error_ = true;
+              }
+            } else {
+              sema_.Diag(E->getMemberLoc(), diag::err_height_depth_invalid_mesh);
+              error_ = true;
+            }
           }
 
           std::string ref = bd->getName().str() + "." +
-          md->getName().str();
+              md->getName().str();
 
           if(nodeType_ == NodeLHS){
             refMap_.insert(make_pair(ref, true));
@@ -171,6 +202,7 @@ namespace {
         }
       }
     }
+
 
     void VisitDeclStmt(DeclStmt* S){
       DeclGroupRef declGroup = S->getDeclGroup();
@@ -585,7 +617,6 @@ bool Sema::ActOnForAllLoopVariable(Scope* S,
 
   MeshType* MT = const_cast<MeshType *>(cast<MeshType>(T));
   UniformMeshType* UMT = cast<UniformMeshType>(MT);
-  UMT->setDimensions(cast<MeshType>(T)->dimensions());
 
   ImplicitParamDecl* D =
   ImplicitParamDecl::Create(Context, CurContext, LoopVariableLoc,
@@ -672,7 +703,6 @@ bool Sema::ActOnRenderAllLoopVariable(Scope* S,
 
   MeshType* MT = const_cast<MeshType *>(cast<MeshType>(T));
   UniformMeshType* UMT = cast<UniformMeshType>(MT);
-  UMT->setDimensions(cast<MeshType>(T)->dimensions());
 
   ImplicitParamDecl* D =
   ImplicitParamDecl::Create(Context, CurContext, LoopVariableLoc,
@@ -722,8 +752,6 @@ Sema::ActOnRenderAllElementsVariable(Scope* S,
   dyn_cast<MeshType>(MD->getType().getCanonicalType().getTypePtr());
 
   UniformMeshType* MT = cast<UniformMeshType>(const_cast<MeshType *>(T));
-  MT->setDimensions(T->dimensions());
-  //MT->setElementsMember(ME);
 
   ImplicitParamDecl* D =
   ImplicitParamDecl::Create(Context, CurContext, ElementsVariableLoc,

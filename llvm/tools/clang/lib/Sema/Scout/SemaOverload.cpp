@@ -62,20 +62,35 @@ bool Sema::ScoutMeshCompareReferenceRelationship(SourceLocation &Loc,
     QualType &UnqualT1, QualType &UnqualT2, Sema::ReferenceCompareResult &Ref) {
   if(const MeshType* mt1 = dyn_cast<MeshType>(UnqualT1.getTypePtr())){
     if(const MeshType* mt2 = dyn_cast<MeshType>(UnqualT2.getTypePtr())){
-      if(mt1->getDecl() == mt2->getDecl()){
-        if(mt1->dimensions().size() == mt2->dimensions().size()){
+      const UniformMeshType* unimt1 = dyn_cast<UniformMeshType>(mt1);
+      const UniformMeshType* unimt2 = dyn_cast<UniformMeshType>(mt2);
+      if (unimt1 && unimt2 && (unimt1->dimensions().size() == unimt2->dimensions().size())){
+        Ref = Ref_Compatible;
+        return true;
+      } else {
+        const StructuredMeshType* smt1= dyn_cast<StructuredMeshType>(mt1);
+        const StructuredMeshType* smt2= dyn_cast<StructuredMeshType>(mt2);
+        if (smt1 && smt2 && (smt1->dimensions().size() == smt2->dimensions().size())){
           Ref = Ref_Compatible;
           return true;
+        } else {
+          const RectilinearMeshType* rmt1 = dyn_cast<RectilinearMeshType>(mt1);
+          const RectilinearMeshType* rmt2 = dyn_cast<RectilinearMeshType>(mt2);
+          if (rmt1 && rmt2 && (rmt1->dimensions().size() == rmt2->dimensions().size())){
+            Ref = Ref_Compatible;
+            return true;
+          }
         }
-        Diag(Loc, diag::err_mesh_param_dimensionality_mismatch);
-        Ref = Ref_Incompatible;
-        return true;
       }
-      else{
-        Ref = Ref_Incompatible;
-        return true;
-      }
+      Diag(Loc, diag::err_mesh_param_dimensionality_mismatch);
+      Ref = Ref_Incompatible;
+      return true;
+    }
+    else{
+      Ref = Ref_Incompatible;
+      return true;
     }
   }
   return false;
 }
+
