@@ -465,10 +465,14 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 
   StmtResult ForAllResult;
 
-  InsertCPPCode("^(void* m, int* i, int* j, int* k){}", BodyLoc);
+#ifdef USE_FORALL_BLOCK
+ InsertCPPCode("^(void* m, int* i, int* j, int* k){}", BodyLoc);
   BlockExpr* Block = dyn_cast<BlockExpr>(ParseExpression().get());
   assert(Block && "expected a block expression");
   Block->getBlockDecl()->setBody(cast<class CompoundStmt>(Body));
+#else
+  BlockExpr* Block;
+#endif
 
   if(ForAll){
     ForAllResult = Actions.ActOnForAllStmt(ForAllLoc, FT, MT, MVD,
