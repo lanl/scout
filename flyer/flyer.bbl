@@ -1,0 +1,26 @@
+\begin{thebibliography}{1}
+
+\bibitem{Clang:2012}
+{Clang: A C Language Family Frontend for LLVM}.
+\newblock \url{http://clang.llvm.org}, January 2012.
+
+\bibitem{LLVM:2012}
+{The LLVM Compiler Infrastructure Project}.
+\newblock \url{http://www.llvm.org}, January 2012.
+
+\bibitem{DeVito:2011:LDS}
+Zachary DeVito, Niels Joubert, Francisco Palacios, Stephen Oakley, Montserrat
+  Medina, Mike Barrientos, Erich Elsen, Frank Ham, Alex Aiken, Karthik
+  Duraisamy, Eric Darve, Juan Alonso, and Pat Hanrahan.
+\newblock Liszt: a domain specific language for building portable mesh-based
+  {PDE} solvers.
+\newblock In {\em Proceedings of the 2011 International Conference for High
+  Performance Computing, Networking, Storage and Analysis}, SC '11, pages
+  9:1--9:12, 2011.
+
+\bibitem{Fowler:DSL:2010}
+Martin Fowler.
+\newblock {\em {Domain-Specific Languages (Addison-Wesley Signature Series)}}.
+\newblock Addison-Wesley Professional, 1st edition, October 2010.
+
+\end{thebibliography}

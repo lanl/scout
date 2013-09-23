@@ -7335,6 +7335,7 @@ public:
                                        bool IsArrow);
   void CodeCompletePostfixExpression(Scope *S, ExprResult LHS);
   void CodeCompleteTag(Scope *S, unsigned TagSpec);
+  void CodeCompleteMesh(Scope *S, unsigned MeshSpec);  
   void CodeCompleteTypeQualifiers(DeclSpec &DS);
   void CodeCompleteCase(Scope *S);
   void CodeCompleteCall(Scope *S, Expr *Fn, ArrayRef<Expr *> Args);

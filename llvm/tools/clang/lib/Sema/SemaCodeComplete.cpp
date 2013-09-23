@@ -331,6 +331,11 @@ namespace {
     bool IsEnum(const NamedDecl *ND) const;
     bool IsClassOrStruct(const NamedDecl *ND) const;
     bool IsUnion(const NamedDecl *ND) const;
+    bool IsMesh(const NamedDecl *ND) const;    
+    bool IsUniformMesh(const NamedDecl *ND) const;        
+    bool IsRectilinearMesh(const NamedDecl *ND) const;
+    bool IsStructuredMesh(const NamedDecl *ND) const;
+    bool IsUnstructuredMesh(const NamedDecl *ND) const;    
     bool IsNamespace(const NamedDecl *ND) const;
     bool IsNamespaceOrAlias(const NamedDecl *ND) const;
     bool IsType(const NamedDecl *ND) const;
@@ -475,6 +480,10 @@ getRequiredQualification(ASTContext &Context,
     }
     else if (const TagDecl *TD = dyn_cast<TagDecl>(Parent))
       Result = NestedNameSpecifier::Create(Context, Result,
+                                           false,
+                                     Context.getTypeDeclType(TD).getTypePtr());
+    else if (const MeshDecl *MD = dyn_cast<MeshDecl>(Parent))
+      Result = NestedNameSpecifier::Create(Context, Result, 
                                            false,
                                      Context.getTypeDeclType(TD).getTypePtr());
   }  
@@ -916,6 +925,9 @@ void ResultBuilder::MaybeAddResult(Result R, DeclContext *CurContext) {
     else if (const TagDecl *Tag = dyn_cast<TagDecl>(Ctx))
       R.Qualifier = NestedNameSpecifier::Create(SemaRef.Context, 0, false, 
                              SemaRef.Context.getTypeDeclType(Tag).getTypePtr());
+    else if (const MeshDecl *MD = dyn_cast<MeshDecl>(Ctx))
+      R.Qualifier = NestedNameSpecifier::Create(SemaRef.Context, 0, false,
+                             SemaRef.Context.getTypeDeclType(MD).getTypePtr());
     else
       R.QualifierIsInformative = false;
   }
@@ -981,6 +993,9 @@ void ResultBuilder::AddResult(Result R, DeclContext *CurContext,
     else if (const TagDecl *Tag = dyn_cast<TagDecl>(Ctx))
       R.Qualifier = NestedNameSpecifier::Create(SemaRef.Context, 0, false, 
                             SemaRef.Context.getTypeDeclType(Tag).getTypePtr());
+    else if (const MeshDecl *MD = dyn_cast<MeshDecl>(Ctx))
+      R.Qualifier = NestedNameSpecifier::Create(SemaRef.Context, 0, false,
+                             SemaRef.Context.getTypeDeclType(MD).getTypePtr());
     else
       R.QualifierIsInformative = false;
   }
@@ -1122,6 +1137,65 @@ bool ResultBuilder::IsClassOrStruct(const NamedDecl *ND) const {
   
   return false;
 }
+
+bool ResultBuilder::IsMesh(const NamedDecl *ND) const {
+  // Allow us to find mesh templates too (unimplemented elsewhere!).
+  if (const ClassTemplateDecl *ClassTemplate = dyn_cast<ClassTemplateDecl>(ND))
+    ND = ClassTemplate->getTemplatedDecl();
+
+  // For purposes of this check, interfaces match too.
+  if (const MeshDecl *MD = dyn_cast<MeshDecl>(ND)) 
+    return MD->getMeshKind() == TTK_UniformMesh      ||
+           MD->getMeshKind() == TTK_RectilinearMesh  || 
+           MD->getMeshKind() == TTK_StructuredMesh   ||  
+           MD->getMeshKind() == TTK_UnstructuredMesh;
+  return false;
+}
+
+bool ResultBuilder::IsUniformMesh(const NamedDecl *ND) const {
+  // Allow us to find mesh templates too (unimplemented elsewhere!).
+  if (const ClassTemplateDecl *ClassTemplate = dyn_cast<ClassTemplateDecl>(ND))
+    ND = ClassTemplate->getTemplatedDecl();
+
+  // For purposes of this check, interfaces match too.
+  if (const MeshDecl *MD = dyn_cast<MeshDecl>(ND)) 
+    return MD->getMeshKind() == TTK_UniformMesh;
+  return false;
+}
+
+bool ResultBuilder::IsRectilinearMesh(const NamedDecl *ND) const {
+  // Allow us to find mesh templates too (unimplemented elsewhere!).
+  if (const ClassTemplateDecl *ClassTemplate = dyn_cast<ClassTemplateDecl>(ND))
+    ND = ClassTemplate->getTemplatedDecl();
+
+  // For purposes of this check, interfaces match too.
+  if (const MeshDecl *MD = dyn_cast<MeshDecl>(ND)) 
+    return MD->getMeshKind() == TTK_RectilinearMesh;
+  return false;
+}
+
+bool ResultBuilder::IsStructuredMesh(const NamedDecl *ND) const {
+  // Allow us to find mesh templates too (unimplemented elsewhere!).
+  if (const ClassTemplateDecl *ClassTemplate = dyn_cast<ClassTemplateDecl>(ND))
+    ND = ClassTemplate->getTemplatedDecl();
+
+  // For purposes of this check, interfaces match too.
+  if (const MeshDecl *MD = dyn_cast<MeshDecl>(ND)) 
+    return MD->getMeshKind() == TTK_StructuredMesh;
+  return false;
+}
+
+bool ResultBuilder::IsUnstructuredMesh(const NamedDecl *ND) const {
+  // Allow us to find mesh templates too (unimplemented elsewhere!).
+  if (const ClassTemplateDecl *ClassTemplate = dyn_cast<ClassTemplateDecl>(ND))
+    ND = ClassTemplate->getTemplatedDecl();
+
+  // For purposes of this check, interfaces match too.
+  if (const MeshDecl *MD = dyn_cast<MeshDecl>(ND)) 
+    return MD->getMeshKind() == TTK_UnstructuredMesh;
+  return false;
+}
+
 
 /// \brief Determines whether the given declaration is a union.
 bool ResultBuilder::IsUnion(const NamedDecl *ND) const {
@@ -1474,8 +1548,8 @@ static const char *GetCompletionTypeString(QualType T,
       return BT->getNameAsCString(Policy);
     
     // Anonymous tag types are constant strings.
-    if (const TagType *TagT = dyn_cast<TagType>(T))
-      if (TagDecl *Tag = TagT->getDecl())
+    if (const TagType *TagT = dyn_cast<TagType>(T)) {
+      if (TagDecl *Tag = TagT->getDecl()) {
         if (!Tag->hasNameForLinkage()) {
           switch (Tag->getTagKind()) {
           case TTK_Struct: return "struct <anonymous>";
@@ -1483,13 +1557,21 @@ static const char *GetCompletionTypeString(QualType T,
           case TTK_Class:  return "class <anonymous>";
           case TTK_Union:  return "union <anonymous>";
           case TTK_Enum:   return "enum <anonymous>";
-          // SC_TODO - not sure if this is correct... 
-          case TTK_UniformMesh: return "uniform mesh <anonymous>";
-          case TTK_StructuredMesh: return "structured mesh <anonymous>";
-          case TTK_RectilinearMesh: return "rectilinear mesh <anonymous>";
-          case TTK_UnstructuredMesh: return "unstructured mesh <anonymous>";
           }
         }
+      }
+    } else if (const MeshType *MeshT = dyn_cast<MeshType>(T)) {
+      if (MeshDecl *MD = MeshT->getDecl()) {
+        if (!MD->hasNameForLinkage()) {
+          switch(MD->getMeshKind()) {
+            case TTK_UniformMesh: return "uniform mesh <anonymous>";
+            case TTK_RectilinearMesh: return "rectilinear mesh <anonymous>";
+            case TTK_StructuredMesh: return "structured mesh <anonymous>";
+            case TTK_UnstructuredMesh: return "unstructured mesh <anonymous>";
+          }
+        }
+      }
+    }
   }
   
   // Slow path: format the type as a string.
@@ -2984,10 +3066,12 @@ CXCursorKind clang::getCursorKindForDecl(const Decl *D) {
           case TTK_Class:  return CXCursor_ClassDecl;
           case TTK_Union:  return CXCursor_UnionDecl;
           case TTK_Enum:   return CXCursor_EnumDecl;
-
+        }
+      } else if (const MeshDecl *MD = dyn_cast<MeshDecl>(D)) {
+        switch(MD->getMeshKind()) {
           case TTK_UniformMesh: return CXCursor_UniformMeshDecl;
-          case TTK_StructuredMesh: return CXCursor_StructuredMeshDecl;
           case TTK_RectilinearMesh: return CXCursor_RectilinearMeshDecl;
+          case TTK_StructuredMesh: return CXCursor_StructuredMeshDecl;
           case TTK_UnstructuredMesh: return CXCursor_UnstructuredMeshDecl;
         }
       }
@@ -3726,6 +3810,59 @@ void Sema::CodeCompleteTag(Scope *S, unsigned TagSpec) {
   HandleCodeCompleteResults(this, CodeCompleter, Results.getCompletionContext(),
                             Results.data(),Results.size());
 }
+
+void Sema::CodeCompleteMesh(Scope *S, unsigned MeshSpec) {
+  if (!CodeCompleter)
+    return;
+  
+  ResultBuilder::LookupFilter Filter = 0;
+  enum CodeCompletionContext::Kind ContextKind
+    = CodeCompletionContext::CCC_Other;
+  switch ((DeclSpec::TST)MeshSpec) {
+
+  case DeclSpec::TST_uniform_mesh:
+    Filter = &ResultBuilder::IsUniformMesh;
+    ContextKind = CodeCompletionContext::CCC_UniformMeshTag;
+    break;
+
+  case DeclSpec::TST_rectilinear_mesh:
+    Filter = &ResultBuilder::IsRectilinearMesh;
+    ContextKind = CodeCompletionContext::CCC_RectilinearMeshTag;
+    break;
+
+  case DeclSpec::TST_structured_mesh:
+    Filter = &ResultBuilder::IsStructuredMesh;
+    ContextKind = CodeCompletionContext::CCC_StructuredMeshTag;
+    break;
+
+  case DeclSpec::TST_unstructured_mesh:
+    Filter = &ResultBuilder::IsUnstructuredMesh;
+    ContextKind = CodeCompletionContext::CCC_UnstructuredMeshTag;
+    break;
+    
+  default:
+    llvm_unreachable("Unknown type specifier kind in CodeCompleteMesh");
+  }
+  
+  ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(), ContextKind);
+  CodeCompletionDeclConsumer Consumer(Results, CurContext);
+
+  // First pass: look for meshes.
+  Results.setFilter(Filter);
+  LookupVisibleDecls(S, LookupMeshName, Consumer,
+                     CodeCompleter->includeGlobals());
+
+  if (CodeCompleter->includeGlobals()) {
+    // Second pass: look for nested name specifiers.
+    Results.setFilter(&ResultBuilder::IsNestedNameSpecifier);
+    LookupVisibleDecls(S, LookupNestedNameSpecifierName, Consumer);
+  }
+  
+  HandleCodeCompleteResults(this, CodeCompleter, Results.getCompletionContext(),
+                            Results.data(),Results.size());
+}
+
 
 void Sema::CodeCompleteTypeQualifiers(DeclSpec &DS) {
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),

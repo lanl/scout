@@ -2276,6 +2276,7 @@ class TypeDecl : public NamedDecl {
   friend class TagDecl;
   friend class TemplateTypeParmDecl;
   friend class TagType;
+  friend class MeshType;  // ===== Scout =============================
   friend class ASTReader;
 
 protected:
@@ -2600,28 +2601,7 @@ public:
   bool isUnion()  const { return getTagKind() == TTK_Union; }
   bool isEnum()   const { return getTagKind() == TTK_Enum; }
 
-  // ===== Scout =============================================================
-  bool isUniformMesh() const { 
-    return getTagKind() == TTK_UnstructuredMesh; 
-  }
-  bool isStructuredMesh() const { 
-    return getTagKind() == TTK_StructuredMesh; 
-  }
-  bool isRectilinearMesh() const { 
-    return getTagKind() == TTK_RectilinearMesh; 
-  }
-  bool isUnstructuredMesh() const { 
-    return getTagKind() == TTK_UnstructuredMesh; 
-  }
-  bool isMesh() const {
-    return isUniformMesh()     || 
-           isStructuredMesh()  ||    
-           isRectilinearMesh() || 
-           isUnstructuredMesh();
-  } 
-  // ========================================================================  
-
-  /// Is this tag type named, either directly or via being defined in
+    /// Is this tag type named, either directly or via being defined in
   /// a typedef of this type?
   ///
   /// C++11 [basic.link]p8:

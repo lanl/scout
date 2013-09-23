@@ -27,31 +27,103 @@ static bool isFieldOrIndirectField(Decl::Kind K) {
   return FieldDecl::classofKind(K) || IndirectFieldDecl::classofKind(K);
 }
 
+template <typename DeclT>
+static SourceLocation getTemplateOrInnerLocStart(const DeclT *decl) {
+  if (decl->getNumTemplateParameterLists() > 0)
+    return decl->getTemplateParameterList(0)->getTemplateLoc();
+  else
+    return decl->getInnerLocStart();
+}
 
 //===----------------------------------------------------------------------===//
 // MeshDecl Implementation
 //===----------------------------------------------------------------------===//
 // 
 //
-MeshDecl::MeshDecl(Kind DK, TagKind TK, DeclContext* DC,
-                   SourceLocation StartLoc, SourceLocation IdLoc,
-                   IdentifierInfo* Id, MeshDecl* PrevDecl)
-  : TagDecl(DK, TK, DC, IdLoc, Id, PrevDecl, StartLoc) {
-HasVolatileMember                = false;
-HasCellData                      = false;
-HasVertexData                    = false;
-HasFaceData                      = false;
-HasEdgeData                      = false;
-LoadedFieldsFromExternalStorage  = false;
-assert(static_cast<Decl*>(this) && "Invalid Kind!");
+
+SourceLocation MeshDecl::getOuterLocStart() const {
+  return getTemplateOrInnerLocStart(this);
+}
+
+SourceRange MeshDecl::getSourceRange() const {
+  SourceLocation E = RBraceLoc.isValid() ? RBraceLoc : getLocation();
+  return SourceRange(getOuterLocStart(), E);
+}
+
+MeshDecl* MeshDecl::getCanonicalDecl() {
+  return getFirstDeclaration();
+}
+
+void MeshDecl::startDefinition() {
+  IsBeingDefined = true;
 }
 
 /// completeDefinition - Notes that the definition of this type is now
 /// complete.
 void MeshDecl::completeDefinition() {
-  assert(!isCompleteDefinition() && "Cannot redefine record!");
-  TagDecl::completeDefinition();
+  assert(!isCompleteDefinition() && "Cannot redefine mesh!");
+
+  IsCompleteDefinition = true;
+  IsBeingDefined = false;
+
+  if (ASTMutationListener *L = getASTMutationListener())
+    L->CompletedMeshDefinition(this);
 }
+
+MeshDecl *MeshDecl::getDefinition() const {
+  if (isCompleteDefinition())
+    return const_cast<MeshDecl *>(this);
+
+  // If it's possible for us to have an out-of-date definition, check now.
+  if (MayHaveOutOfDateDef) {
+    if (IdentifierInfo *II = getIdentifier()) {
+      if (II->isOutOfDate()) {
+        updateOutOfDate(*II);
+      }
+    }
+  }
+
+  for (redecl_iterator R = redecls_begin(), REnd = redecls_end();
+       R != REnd; ++R)
+    if (R->isCompleteDefinition())
+      return *R;
+
+  return 0;
+}
+
+void MeshDecl::setQualifierInfo(NestedNameSpecifierLoc QualifierLoc) {
+  if (QualifierLoc) {
+    // Make sure the extended qualifier info is allocated.
+    if (!hasExtInfo())
+      TypedefNameDeclOrQualifier = new (getASTContext()) ExtInfo;
+    // Set qualifier info.
+    getExtInfo()->QualifierLoc = QualifierLoc;
+  } else {
+    // Here Qualifier == 0, i.e., we are removing the qualifier (if any).
+    if (hasExtInfo()) {
+      if (getExtInfo()->NumTemplParamLists == 0) {
+        getASTContext().Deallocate(getExtInfo());
+        TypedefNameDeclOrQualifier = (TypedefNameDecl*) 0;
+      }
+      else
+        getExtInfo()->QualifierLoc = QualifierLoc;
+    }
+  }
+}
+
+void MeshDecl::setTemplateParameterListsInfo(ASTContext &Context,
+                                             unsigned NumTPLists,
+                                             TemplateParameterList **TPLists) {
+  assert(NumTPLists > 0);
+  // Make sure the extended decl info is allocated.
+  if (!hasExtInfo())
+    // Allocate external info struct.
+    TypedefNameDeclOrQualifier = new (getASTContext()) ExtInfo;
+  // Set the template parameter lists info.
+  getExtInfo()->setTemplateParameterListsInfo(Context, NumTPLists, TPLists);
+}
+
+
 
 void MeshDecl::LoadFieldsFromExternalStorage() const {
   ExternalASTSource *Source = getASTContext().getExternalSource();
@@ -93,6 +165,22 @@ MeshDecl::field_iterator MeshDecl::field_begin() const {
 }
 
 
+const char *MeshDecl::getKindName() const {
+
+  if (isUniformMesh()) {
+    return "uniform mesh";
+  } else if (isRectilinearMesh()) {
+    return "rectilinear mesh";
+  } else if (isStructuredMesh()) {
+    return "structured mesh";
+  } else if (isUnstructuredMesh()) {
+    return "unstructured mesh";
+  } else {
+    llvm_unreachable("unexpected/unknown mesh type!");
+  }
+}
+
+
 //===----------------------------------------------------------------------===//
 // UniformMeshDecl Implementation
 //===----------------------------------------------------------------------===//
@@ -103,10 +191,7 @@ UniformMeshDecl::UniformMeshDecl(DeclContext     *DC,
                                  SourceLocation  IdLoc,
                                  IdentifierInfo  *Id, 
                                  UniformMeshDecl *PrevDecl)
-  : MeshDecl(UniformMesh, TTK_UniformMesh, DC, StartLoc,
-             IdLoc, Id, PrevDecl) {
-
-}
+  : MeshDecl(UniformMesh, TTK_UniformMesh, DC, IdLoc, Id, PrevDecl, StartLoc) { }
 
 UniformMeshDecl *UniformMeshDecl::Create(const ASTContext &C, 
                                          DeclContext *DC,
@@ -145,10 +230,7 @@ RectilinearMeshDecl::RectilinearMeshDecl(DeclContext     *DC,
                                          SourceLocation  IdLoc,
                                          IdentifierInfo  *Id, 
                                          RectilinearMeshDecl *PrevDecl)
-  : MeshDecl(RectilinearMesh, TTK_RectilinearMesh, DC, StartLoc,
-             IdLoc, Id, PrevDecl) {
-
-}
+  : MeshDecl(RectilinearMesh, TTK_RectilinearMesh, DC, IdLoc, Id, PrevDecl, StartLoc) { }
 
 RectilinearMeshDecl *RectilinearMeshDecl::Create(const ASTContext &C, 
                                                  DeclContext *DC,
@@ -185,10 +267,7 @@ StructuredMeshDecl::StructuredMeshDecl(DeclContext* DC,
                                        SourceLocation IdLoc,
                                        IdentifierInfo* Id, 
                                        StructuredMeshDecl* PrevDecl)
-  : MeshDecl(StructuredMesh, TTK_StructuredMesh, DC, StartLoc,
-             IdLoc, Id, PrevDecl) {
-
-}
+  : MeshDecl(StructuredMesh, TTK_StructuredMesh, DC, IdLoc, Id, PrevDecl, StartLoc) { }
 
 StructuredMeshDecl *StructuredMeshDecl::Create(const ASTContext &C, 
                                                DeclContext *DC,
@@ -226,10 +305,8 @@ UnstructuredMeshDecl::UnstructuredMeshDecl(DeclContext* DC,
                                            SourceLocation IdLoc,
                                            IdentifierInfo* Id, 
                                            UnstructuredMeshDecl* PrevDecl)
-  : MeshDecl(UnstructuredMesh, TTK_UnstructuredMesh, DC, StartLoc,
-             IdLoc, Id, PrevDecl) {
+  : MeshDecl(UnstructuredMesh, TTK_UnstructuredMesh, DC, IdLoc, Id, PrevDecl, StartLoc) { }
 
-}
 
 UnstructuredMeshDecl *UnstructuredMeshDecl::Create(const ASTContext &C, 
                                                    DeclContext *DC,

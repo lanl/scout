@@ -2177,13 +2177,6 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
       case TTK_Union:  Error = 2; /* Union member */ break;
       case TTK_Class:  Error = 3; /* Class member */ break;
       case TTK_Interface: Error = 4; /* Interface member */ break;
-
-      case TTK_UniformMesh:
-      case TTK_StructuredMesh:
-      case TTK_RectilinearMesh:
-      case TTK_UnstructuredMesh:
-        // SC_TODO - we probably need our own error value here... 
-        Error = 1;   // Mesh member
         break;
 
       }

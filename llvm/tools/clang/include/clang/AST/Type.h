@@ -3311,43 +3311,38 @@ public:
 // MeshType - To represent our internal mesh types we use a common base class 
 // for some of the basic functionality (thus allowing us to write some code 
 // that can operate on all mesh types).  In practice we will never (or should 
-// never) see an instance of a MeshType come from the source code we are 
-// compiling.
+// never) see an instance of a MeshType within the AST. 
 //
 // Due to the similarity of our mesh constructs to records/structs we borrow
-// the same basic implementation path for them.  This is a difference from 
-// how we implemented our first versions of Scout -- in addition, we now 
-// use the Decl's directly to ask questions about mesh field locations 
-// versus storing an additional/duplicate version of the information here. 
+// the same basic implementation path for them but do not inherit from them.
+// This is a difference from how we implemented our first versions of Scout; 
+// in addition, we now use the Decl's directly to ask questions about mesh 
+// field locations versus storing an additional/duplicate version of the 
+// information within the mesh types. 
 // 
 // *** NOTE *** The details of introducing a new type are not necessarily 
-// clear from much of the source code details provided with Clang.  It takes
-// some care to hit all the use cases throughout the code base.  There is 
-// some recent documentation on the LLVM web site that can be helpful: 
+// clear from the source or documentation within Clang.  It takes some 
+// care to hit all the use cases throughout the code base (and we're still
+// not certain we've weaseled out every last detail yet).  There is 
+// some more recent documentation on the LLVM web site that can be helpful: 
 //
 //   http://clang.llvm.org/docs/InternalsManual.html
 //
 // but some details are still glossed over (at least as this is being 
-// written).  In particular it is important to follow the "same" inheritance
-// paths within both the Decl and Type implementations.  For example, if 
-// the MeshDecl class inherits from TagDecl then the MeshType should also 
-// inherit from the TagType. 
+// written).  Carefully pay attention to all warnings during the build... 
+// For example, if you see errors about missing cases within switch statements 
+// it is likely you have an incomplete, and potentially buggy, implementation.
 //
-// Carefully pay attention to all warnings during the build... For example,
-// if you see errors about missing cases within switch statements it is 
-// likely you have an incomplete, and potentially buggy, implementation.
-//
-class MeshType : public TagType {
+class MeshType : public Type {
 
+  MeshDecl *decl;
   friend class ASTReader;
 
  protected:
   MeshType(TypeClass TC, const MeshDecl *D, QualType can);
 
  public:
-  MeshDecl *getDecl() const {
-    return reinterpret_cast<MeshDecl*>(TagType::getDecl());
-  }
+  MeshDecl *getDecl() const;
 
   /// @brief Determines whether this type is in the process of being
   /// defined.
@@ -3356,6 +3351,7 @@ class MeshType : public TagType {
   static bool classof(const Type *T) {
     return T->getTypeClass() >= MeshFirst && T->getTypeClass() <= MeshLast;
   }
+
   // \brief Return true if the mesh has one or more cell fields. 
   bool hasCellData() const;
   
@@ -3408,7 +3404,8 @@ class MeshType : public TagType {
 class UniformMeshType : public MeshType {
  public:
   UniformMeshType(const UniformMeshDecl* Decl)
-      : MeshType(UniformMesh, reinterpret_cast<const MeshDecl*>(Decl), QualType()) {
+      : MeshType(UniformMesh, 
+                 reinterpret_cast<const MeshDecl*>(Decl), QualType()) {
   }
   
   UniformMeshDecl* getDecl() const {
@@ -3421,7 +3418,6 @@ class UniformMeshType : public MeshType {
     return T->getTypeClass() == UniformMesh;
   }
 
-  // SC_TODO -- can these move to base class?  
   bool isSugared() const { return false; }
   QualType desugar() const { return QualType(this, 0); }
 };
@@ -4143,18 +4139,22 @@ enum TagTypeKind {
   /// \brief The "class" keyword.
   TTK_Class,
   /// \brief The "enum" keyword.
-  TTK_Enum,
-  // ===== Scout ========================================================
-  /// \brief The "uniform mesh" 'keyword'.
-  TTK_UniformMesh, 
+  TTK_Enum
+};
+
+// ===== Scout ========================================================
+/// \brief The kind of mesh type. 
+enum MeshTypeKind {
+    /// \brief The "uniform mesh" 'keyword'.
+  TTK_UniformMesh = 10, 
   /// \brief The "structured mesh" 'keyword'.
   TTK_StructuredMesh,
   /// \brief The "rectilinear mesh" 'keyword'.
   TTK_RectilinearMesh,
   /// \brief The "unstructured mesh" 'keyword'.
   TTK_UnstructuredMesh
-  // ===================================================================  
 };
+// ===================================================================  
 
 /// \brief The elaboration keyword that precedes a qualified type name or
 /// introduces an elaborated-type-specifier.
@@ -4172,17 +4172,6 @@ enum ElaboratedTypeKeyword {
   /// \brief The "typename" keyword precedes the qualified type name, e.g.,
   /// \c typename T::type.
   ETK_Typename,
-
-  // ===== Scout ===============================================================
-  // SC_TODO -- not sure we need to implement this... 
-  /// \brief The "mesh" keyword forms introduce the elaborated-type-specifier.
-  ETK_UniformMesh,
-  ETK_StructuredMesh,
-  ETK_RectilinearMesh, 
-  ETK_UnstructuredMesh,
-  // ===========================================================================  
-
-  /// \brief No keyword precedes the qualified type name.
   ETK_None
 };
 
@@ -4215,6 +4204,11 @@ public:
   /// which *isn't* a tag kind here.
   static TagTypeKind getTagTypeKindForTypeSpec(unsigned TypeSpec);
 
+  /// getMeshTypeKindForTypeSpec - Converts a type specifier (DeclSpec::TST)
+  /// into a mesh type kind.  It is an error to provide a type specifier
+  /// which *isn't* a mesh kind here.
+  static MeshTypeKind getMeshTypeKindForTypeSpec(unsigned TypeSpec);
+
   /// getKeywordForTagDeclKind - Converts a TagTypeKind into an
   /// elaborated type keyword.
   static ElaboratedTypeKeyword getKeywordForTagTypeKind(TagTypeKind Tag);
@@ -4228,7 +4222,7 @@ public:
 
   static const char *getKeywordName(ElaboratedTypeKeyword Keyword);
 
-  static const char *getTagTypeKindName(TagTypeKind Kind) {
+ static const char *getTagTypeKindName(TagTypeKind Kind) {
     return getKeywordName(getKeywordForTagTypeKind(Kind));
   }
 
@@ -4297,6 +4291,8 @@ public:
     return T->getTypeClass() == Elaborated;
   }
 };
+
+
 
 /// \brief Represents a qualified type name for which the type name is
 /// dependent.

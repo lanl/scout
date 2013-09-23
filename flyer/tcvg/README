@@ -1,0 +1,31 @@
+Created by Torsten Moeller (vis@cs.sfu.ca), April 6 2004
+
+This distribution provides a document class for formatting papers
+according to the specifications for submission to conferences sponsored
+by IEEE Technical Committee on Visualization and Graphics (TCVG). This
+includes:
+- IEEE Visualization
+- IEEE Symposium on Information Visualization
+- IEEE Symposium on Volume Visualization and Graphics
+- IEEE Symposium on Parallel and Large-DataVisualization and Graphics
+- IEEE Virtual Reality
+
+It contains six files:
+
+README       - this file
+tcvg.cls     - the TCVG class file, which should be placed,
+	       somewhere in the TeX search path
+template.bib - a small bibliography file used by the example
+template.tex - an example paper
+sample.eps   - an image used by the example paper
+template.pdf - a proper pdf output
+
+To compile the example, run
+  latex template
+  bibtex template
+  latex template
+  latex template
+
+To produce proper pdf output, please use:
+  dvips -t letter -Ppdf -G0 -o template.ps template.dvi
+  ps2pdf -sPAPERSIZE=letter -dMaxSubsetPct=100 -dCompatibilityLevel=1.2 -dSubsetFonts=true -dEmbedAllFonts=true -dAutoFilterColorImages=false -dAutoFilterGrayImages=false -dColorImageFilter=/FlateEncode -dGrayImageFilter=/FlateEncode -dModoImageFilter=/FlateEncode template.ps template.pdf

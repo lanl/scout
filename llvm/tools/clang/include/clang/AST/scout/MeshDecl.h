@@ -201,77 +201,259 @@ namespace clang {
   };
 
 
-  // Mesh - This is a base class for all of our mesh types; thus it 
-  // provides some basic functionality for all mesh decls.  Given the
-  // similarity of our mesh types to C/C++ structs we follow a similar
-  // path and implement the mesh decls on top of tag decls (this is a 
-  // change from our first implementations).  
-  //    
-  // Note: Make sure you follow similar inheritance paths with both the
-  // Decls and Types -- i.e. MeshType should inherit from TagType.  If 
-  // you don't do this it is likely you'll see some fairly opaque error
-  // messages stemming from the generated '.inc' files...
-  // 
-  // SC_TODO - from looking at the new LLVM IR we're generating this looks
-  // to have horrible alignment details.  We will likely have to implement
-  // our own alignment details like RecordDecl... 
-  class MeshDecl : public TagDecl {
-  
+  // MeshDecl - This is a base class for all of our mesh decls.  Given the 
+  // syntax similarities we have with structs in C/C++ we follow a similar 
+  // path as that used in TagDecls and RecordDecls -- however, we do not 
+  // inherit from this "family" as we want to enforce separation/uniqueness
+  // in our mesh types (the details relate to the nuances of tree walkers 
+  // layout, debugging and flexible code generation choices at points down
+  // the road).  Although the details are not yet clear, it appears to be 
+  // important (for our sanity) to follow a similar inheritance path within
+  // types, decls, typelocs, etc. within the implementation -- primarily we
+  // have found it cleans up the code and appears to support a more 
+  // full-featured path (at least based on our previous implementation 
+  // patterns...). 
+  class MeshDecl
+    : public TypeDecl, public DeclContext, public Redeclarable<MeshDecl> {
+
+   public:
+    typedef MeshTypeKind MeshKind;       // This is really ugly.
+
    private:
     // FIXME: This can be packed into the bitfields in Decl.
-    /// HasCellData - This is true if the mesh has at least one member 
-    /// stored at the cells of the mesh. 
+    /// MeshDeclKind - The MeshKind enum.
+    unsigned MeshDeclKind : 3;
+
+    /// IsCompleteDefinition - True if this is a definition ("uniform mesh foo
+    /// {};"), false if it is a declaration ("uniform mesh foo;").  It is not
+    /// a definition until the definition has been fully processed.
+    bool IsCompleteDefinition : 1;
+
+    /// HasCellData - This is true if the mesh has at least one member
+    /// stored at the cells of the mesh.
     bool HasCellData   : 1;
+
     /// HasVertexData - This is true if the mesh has at least one member
     /// stored at the vertices of the mesh.
     bool HasVertexData : 1;
+
     /// HasFaceData - This is true if the mesh has at least one member 
-    /// stored at the faces of the mesh. 
+    /// stored at the faces of the mesh.
     bool HasFaceData   : 1;
+
     /// HasEdgeData - This is true if the mesh has at least one member 
     /// stored at the edges of the mesh. 
     bool HasEdgeData   : 1;
+
+  protected:
+    /// IsBeingDefined - True if this is currently being defined.
+    bool IsBeingDefined : 1;
+
+  private:
+    /// IsEmbeddedInDeclarator - True if this mesh declaration is
+    /// "embedded" (i.e., defined or declared for the very first time)
+    /// in the syntax of a declarator.
+    bool IsEmbeddedInDeclarator : 1;
+
+    /// \brief True if this mesh is free standing, e.g. "uniform mesh foo;".
+    bool IsFreeStanding : 1;
 
     /// HasVolatileMember - This is true if the mesh has at least one 
     /// member of 'volatile' type.
     bool HasVolatileMember : 1;
 
-    friend class DeclContext;
-
-   protected:
-    MeshDecl(Kind DK, TagKind TK, DeclContext* DC,
-             SourceLocation L, SourceLocation StartL,
-             IdentifierInfo* Id, MeshDecl* PrevDecl);
+  protected:
+    /// \brief Indicates whether it is possible for declarations of this kind
+    /// to have an out-of-date definition.
+    ///
+    /// This option is only enabled when modules are enabled.
+    bool MayHaveOutOfDateDef : 1;
 
     mutable bool LoadedFieldsFromExternalStorage : 1;
 
-   public:
-    bool hasVolatileMember() const { return HasVolatileMember; }
-    void setHasVolatileMember (bool val) { HasVolatileMember = val; }
+  private:
+    SourceLocation RBraceLoc;
 
-    // Return true if the mesh has one or more fields stored at the cells.
-    bool hasCellData() const { return HasCellData; }
-    // Flag the mesh as having on or more fields stored at the cells. 
-    void setHasCellData(bool flag) { HasCellData = flag; }
+    // A mesh representing syntactic qualifier info,
+    // to be used for the (uncommon) case of out-of-line declarations.
+    typedef QualifierInfo ExtInfo;
 
-    // Return true if the mesh has one or more fields stored at the vertices.
-    bool hasVertexData() const { return HasVertexData; }
-    // Flag the mesh as having on or more fields stored at the vertices.     
-    void setHasVertexData(bool flag) { HasVertexData = flag; }
-    
-    // Return true if the mesh has one or more fields stored at the edges.
-    bool hasEdgeData() const { return HasEdgeData; }
-    // Flag the mesh as having on or more fields stored at the edges.     
-    void setHasEdgeData(bool flag) { HasEdgeData = flag; }    
+    /// TypedefNameDeclOrQualifier - If the (out-of-line) mesh declaration name
+    /// is qualified, it points to the qualifier info (nns and range);
+    /// otherwise, if the mesh declaration is anonymous and it is part of
+    /// a typedef or alias, it points to the TypedefNameDecl (used for mangling);
+    /// otherwise, it is a null (TypedefNameDecl) pointer.
+    llvm::PointerUnion<TypedefNameDecl*, ExtInfo*> TypedefNameDeclOrQualifier;
 
-    // Return true if the mesh has one or more fields stored at the faces.
-    bool hasFaceData() const { return HasFaceData; }
-    // Flag the mesh as having on or more fields stored at the faces.     
-    void setHasFaceData(bool flag) { HasFaceData = flag; }
-
-    MeshDecl *getDefinition() const {
-      return cast_or_null<MeshDecl>(TagDecl::getDefinition());
+    bool hasExtInfo() const { return TypedefNameDeclOrQualifier.is<ExtInfo*>(); }
+    ExtInfo *getExtInfo() { return TypedefNameDeclOrQualifier.get<ExtInfo*>(); }
+    const ExtInfo *getExtInfo() const {
+      return TypedefNameDeclOrQualifier.get<ExtInfo*>();
     }
+
+  protected:
+    MeshDecl(Kind            DK, 
+             MeshKind        TK, 
+             DeclContext    *DC,
+             SourceLocation  L, 
+             IdentifierInfo *Id,
+             MeshDecl       *PrevDecl, 
+             SourceLocation StartL)
+      : TypeDecl(DK, DC, L, Id, StartL), DeclContext(DK),
+        TypedefNameDeclOrQualifier((TypedefNameDecl*) 0) {
+      MeshDeclKind                    = TK;
+      IsCompleteDefinition            = false;
+      IsBeingDefined                  = false;
+      IsEmbeddedInDeclarator          = false;
+      IsFreeStanding                  = false;
+      HasVolatileMember               = false;      
+      HasCellData                     = false;
+      HasVertexData                   = false;
+      HasFaceData                     = false;
+      HasEdgeData                     = false;
+      LoadedFieldsFromExternalStorage = false;
+      setPreviousDeclaration(PrevDecl);
+    }
+
+    typedef Redeclarable<MeshDecl> redeclarable_base;
+    virtual MeshDecl *getNextRedeclaration() { return RedeclLink.getNext(); }
+    virtual MeshDecl *getPreviousDeclImpl() {
+      return getPreviousDecl();
+    }
+
+      virtual MeshDecl *getMostRecentDeclImpl() {
+        return getMostRecentDecl();
+    }
+
+    /// @brief Completes the definition of this mesh declaration.
+    ///
+    /// This is a helper function for derived classes.
+    void completeDefinition();
+  
+  public:
+    typedef redeclarable_base::redecl_iterator redecl_iterator;
+    using   redeclarable_base::redecls_begin;
+    using   redeclarable_base::redecls_end;
+    using   redeclarable_base::getPreviousDecl;
+    using   redeclarable_base::getMostRecentDecl;
+
+    SourceLocation getRBraceLoc() const { return RBraceLoc; }
+    void setRBraceLoc(SourceLocation L) { RBraceLoc = L; }
+
+    /// getInnerLocStart - Return SourceLocation representing start of source
+    /// range ignoring outer template declarations.
+    SourceLocation getInnerLocStart() const { return getLocStart(); }
+
+    /// getOuterLocStart - Return SourceLocation representing start of source
+    /// range taking into account any outer template declarations.
+    SourceLocation getOuterLocStart() const;
+    virtual SourceRange getSourceRange() const LLVM_READONLY;
+
+    virtual MeshDecl* getCanonicalDecl();
+    const MeshDecl* getCanonicalDecl() const {
+      return const_cast<MeshDecl*>(this)->getCanonicalDecl();
+    }
+
+    /// isThisDeclarationADefinition() - Return true if this declaration
+    /// is a completion definition of the type.  Provided for consistency.
+    bool isThisDeclarationADefinition() const {
+      return isCompleteDefinition();
+    }
+
+    /// isCompleteDefinition - Return true if this decl has its body
+    /// fully specified.
+    bool isCompleteDefinition() const {
+      return IsCompleteDefinition;
+    }
+
+    /// isBeingDefined - Return true if this decl is currently being defined.
+    bool isBeingDefined() const {
+      return IsBeingDefined;
+    }
+
+    bool isEmbeddedInDeclarator() const {
+      return IsEmbeddedInDeclarator;
+    }
+
+    void setEmbeddedInDeclarator(bool isInDeclarator) {
+      IsEmbeddedInDeclarator = isInDeclarator;
+    }
+
+    bool isFreeStanding() const { return IsFreeStanding; }
+    void setFreeStanding(bool isFreeStanding = true) {
+      IsFreeStanding = isFreeStanding;
+    }
+
+    bool hasVolatileMember() const { return HasVolatileMember; }
+    void setHasVolatileMember (bool hasVolatileMember = true) {
+      HasVolatileMember = hasVolatileMember; }
+
+    /// \brief Whether this declaration declares a type that is
+    /// dependent, i.e., a type that somehow depends on template
+    /// parameters.
+    bool isDependentType() const { return isDependentContext(); }
+
+    /// @brief Starts the definition of this mesh declaration.
+    ///
+    /// This method should be invoked at the beginning of the definition
+    /// of this mesh declaration. It will set the mesh type into a state
+    /// where it is in the process of being defined.
+    void startDefinition();
+
+    /// getDefinition - Returns the MeshDecl that actually defines this
+    ///  mesh.  When determining whether or not a mesh has a definition, 
+    /// one should use this method as opposed to 'isDefinition'.  
+    /// 'isDefinition' indicates whether or not a specific MeshDecl 
+    /// is defining declaration, not whether or not the mesh type is 
+    /// defined. This method returns NULL if there is no MeshDecl that 
+    /// defines the mesh.
+    MeshDecl *getDefinition() const;
+
+    void setCompleteDefinition(bool V) { IsCompleteDefinition = V; }
+
+    // FIXME: Return StringRef;
+    const char *getKindName() const;
+    
+    MeshKind getMeshKind() const {
+      return MeshKind(MeshDeclKind);
+    }
+
+    void setMeshKind(MeshKind TK) { MeshDeclKind = TK; }
+  
+    bool isUniformMesh() const { return getMeshKind() == TTK_UnstructuredMesh;  }
+    bool isStructuredMesh() const { return getMeshKind() == TTK_StructuredMesh; }
+    bool isRectilinearMesh() const{ return getMeshKind() == TTK_RectilinearMesh; }
+    bool isUnstructuredMesh() const { return getMeshKind() == TTK_UnstructuredMesh; }
+    bool isMesh() const {
+      return isUniformMesh()     || 
+             isStructuredMesh()  ||    
+             isRectilinearMesh() || 
+             isUnstructuredMesh();
+    } 
+
+    /// True if the mesh has one or more fields stored at the cells.
+    bool hasCellData() const { return HasCellData; }
+
+    /// Flag the mesh as having on or more fields stored at the cells. 
+    void setHasCellData(bool flag = true) { HasCellData = flag; }
+
+    /// True if the mesh has one or more fields stored at the vertices.
+    bool hasVertexData() const { return HasVertexData; }
+  
+    /// Flag the mesh as having on or more fields stored at the vertices.     
+    void setHasVertexData(bool flag = true) { HasVertexData = flag; }
+    
+    /// True if the mesh has one or more fields stored at the edges.
+    bool hasEdgeData() const { return HasEdgeData; }
+  
+    /// Flag the mesh as having on or more fields stored at the edges.     
+    void setHasEdgeData(bool flag = true) { HasEdgeData = flag; }    
+
+    /// True if the mesh has one or more fields stored at the faces.
+    bool hasFaceData() const { return HasFaceData; }
+
+    /// Flag the mesh as having on or more fields stored at the faces.     
+    void setHasFaceData(bool flag = true) { HasFaceData = flag; }
 
     // Iterator access to mesh field members. The field iterator only
     // visits the non-static data members of this class, ignoring any
@@ -290,21 +472,78 @@ namespace clang {
       return field_begin() == field_end();
     }
 
-    /// completeDefinition - Notes that the definition of this type is
-    /// now complete.
-    virtual void completeDefinition();
-
-    static bool classof(const Decl *D) { return classofKind(D->getKind()); }
-    static bool classofKind(Kind K) {
-      return K >= firstMesh && K <= lastMesh;
+    /// Is this mesh type named, either directly or via being defined in
+    /// a typedef of this type?
+    ///
+    /// SC_TODO - we need to define what we do in Scout's extensions below. 
+    ///
+    /// C++11 [basic.link]p8:
+    ///   A type is said to have linkage if and only if:
+    ///     - it is a class or enumeration type that is named (or has a
+    ///       name for linkage purposes) and the name has linkage; ...
+    /// C++11 [dcl.typedef]p9:
+    ///   If the typedef declaration defines an unnamed class (or enum),
+    ///   the first typedef-name declared by the declaration to be that
+    ///   class type (or enum type) is used to denote the class type (or
+    ///   enum type) for linkage purposes only.
+    ///
+    /// C does not have an analogous rule, but the same concept is
+    /// nonetheless useful in some places.
+    bool hasNameForLinkage() const {
+      return (getDeclName() || getTypedefNameForAnonDecl());
     }
 
+    TypedefNameDecl *getTypedefNameForAnonDecl() const {
+      return hasExtInfo() ? 0 :
+             TypedefNameDeclOrQualifier.get<TypedefNameDecl*>();
+    }
+
+    void setTypedefNameForAnonDecl(TypedefNameDecl *TDD);
+    /// \brief Retrieve the nested-name-specifier that qualifies the name of this
+    /// declaration, if it was present in the source.
+    NestedNameSpecifier *getQualifier() const {
+      return hasExtInfo() ? getExtInfo()->QualifierLoc.getNestedNameSpecifier() : 0;
+    }
+
+    /// \brief Retrieve the nested-name-specifier (with source-location
+    /// information) that qualifies the name of this declaration, if it was
+    /// present in the source.
+    NestedNameSpecifierLoc getQualifierLoc() const {
+      return hasExtInfo() ? getExtInfo()->QualifierLoc : NestedNameSpecifierLoc();
+    }
+
+    void setQualifierInfo(NestedNameSpecifierLoc QualifierLoc);
+
+    unsigned getNumTemplateParameterLists() const {
+      return hasExtInfo() ? getExtInfo()->NumTemplParamLists : 0;
+    }
+
+    TemplateParameterList *getTemplateParameterList(unsigned i) const {
+      assert(i < getNumTemplateParameterLists());
+      return getExtInfo()->TemplParamLists[i];
+    }
+
+    void setTemplateParameterListsInfo(ASTContext &Context, unsigned NumTPLists,
+                                       TemplateParameterList **TPLists);
+
+    // Implement isa/cast/dyncast/etc.
+    static bool classof(const Decl *D) { return classofKind(D->getKind()); }
+    static bool classofKind(Kind K) { return K >= firstMesh && K <= lastMesh; }
+
+    static DeclContext *castToDeclContext(const MeshDecl *D) {
+      return static_cast<DeclContext *>(const_cast<MeshDecl*>(D));
+    }
+    static MeshDecl *castFromDeclContext(const DeclContext *DC) {
+      return static_cast<MeshDecl *>(const_cast<DeclContext*>(DC));
+    }
+
+    friend class ASTDeclReader;
+    friend class ASTDeclWriter;
+
    protected:
-    /// \brief Deserialize just the fields.
+    /// \brief De-serialize just the fields.
     virtual void LoadFieldsFromExternalStorage() const;
   };
-
-
 } // end namespace clang
 
 #endif
