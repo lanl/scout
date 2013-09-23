@@ -465,10 +465,14 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 
   StmtResult ForAllResult;
 
-  InsertCPPCode("^(void* m, int* i, int* j, int* k){}", BodyLoc);
+#ifdef USE_FORALL_BLOCK
+ InsertCPPCode("^(void* m, int* i, int* j, int* k){}", BodyLoc);
   BlockExpr* Block = dyn_cast<BlockExpr>(ParseExpression().get());
   assert(Block && "expected a block expression");
   Block->getBlockDecl()->setBody(cast<class CompoundStmt>(Body));
+#else
+  BlockExpr* Block;
+#endif
 
   if(ForAll){
     ForAllResult = Actions.ActOnForAllStmt(ForAllLoc, FT, MT, MVD,
@@ -920,14 +924,11 @@ StmtResult Parser::ParseVolumeRenderAll(Scope* scope,
 }
 
 
-  //================================================================================
-  // scout - parse a mesh declaration -this is handled as a special
-  // case because the square brackets look like an array specification
-  // when Clang normally parses a declaration
- bool Parser::ParseMeshStatementOrDeclaration(StmtVector &Stmts,
+//================================================================================
+// scout - parse a mesh statement
+bool Parser::ParseMeshStatement(StmtVector &Stmts,
      bool OnlyStatement, Token &Next, StmtResult &SR) {
 
-  CXXScopeSpec SS;
   IdentifierInfo* Name = Tok.getIdentifierInfo();
   SourceLocation NameLoc = Tok.getLocation();
 
@@ -954,113 +955,9 @@ StmtResult Parser::ParseVolumeRenderAll(Scope* scope,
         }
       }
     }
-
-    Sema::NameClassification Classification
-      = Actions.ClassifyName(getCurScope(), SS, Name, NameLoc, Next, false);
-    if(Classification.getKind() == Sema::NC_Type &&
-        Actions.isScoutSource(Tok.getLocation())){
-      QualType qt = Sema::GetTypeFromParser(Classification.getType());
-
-      if(qt->getAs<MeshType>() &&
-         GetLookAheadToken(1).is(tok::identifier)){
-
-        if(GetLookAheadToken(2).is(tok::l_square)){
-
-          std::string meshType = TokToStr(Tok);
-          ConsumeToken();
-          std::string meshName = TokToStr(Tok);
-          ConsumeToken();
-
-          // parse mesh dimensions, e.g: [512,512]
-
-          MeshType::MeshDimensions dims;
-
-          ConsumeBracket();
-
-          ExprResult NumElements;
-
-          for(;;){
-            if(Tok.is(tok::numeric_constant)) {
-              dims.push_back(Actions.ActOnNumericConstant(Tok).get());
-              ConsumeToken();
-            } else if (Tok.isNot(tok::r_square)) {
-              NumElements = ParseConstantExpression(); // consumes it too
-
-              // If there was an error parsing the assignment-expression, recover.
-              // Maybe should print a diagnostic, tho.
-              if (NumElements.isInvalid()) {
-                // If the expression was invalid, skip it.
-                SkipUntil(tok::r_square);
-                SR = StmtError();
-                return true;
-              }
-              dims.push_back(NumElements.get());
-            }
-
-            if(Tok.is(tok::r_square)){
-              break;
-            }
-
-            if(Tok.is(tok::eof)){
-              Diag(Tok, diag::err_expected_lsquare);
-              SR = StmtError();
-              return true;
-            }
-
-            if(Tok.isNot(tok::comma)){
-              Diag(Tok, diag::err_expected_comma);
-              SkipUntil(tok::r_square);
-              SkipUntil(tok::semi);
-              SR = StmtError();
-              return true;
-            }
-
-            ConsumeToken();
-          }
-
-          ConsumeBracket();
-
-          InsertCPPCode(meshType + " " + meshName, NameLoc);
-
-          DeclaringMesh = true;
-          StmtResult result = ParseStatementOrDeclaration(Stmts, OnlyStatement);
-
-          DeclaringMesh = false;
-
-          DeclStmt* ds = dyn_cast<DeclStmt>(result.get());
-          assert(ds->isSingleDecl());
-
-          VarDecl* vd = dyn_cast<VarDecl>(ds->getSingleDecl());
-          assert(vd);
-
-          MeshType* mt = const_cast<MeshType*>
-            (dyn_cast<MeshType>(vd->getType().getCanonicalType().getTypePtr()));
-          assert(mt && "expected mesh type");
-
-          UniformMeshType* umt = cast<UniformMeshType>(mt);
-
-
-          umt->setDimensions(dims);
-          vd->setType(QualType(umt, 0));
-
-          SR = result;
-          return true;
-        }
-        else if(!DeclaringMesh){
-          Diag(Tok, diag::err_expected_lsquare);
-
-          SkipUntil(tok::r_square);
-          SkipUntil(tok::semi);
-          SR = StmtError();
-          return true;
-        }
-      }
-    }
   }
   return false;
 }
-
-
 
  // scout - insert call to __scrt_init(gpu) at the top of main
  void Parser::InsertScoutRuntimeInit(SourceLocation &LBraceLoc) {

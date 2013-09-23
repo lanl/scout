@@ -2277,6 +2277,8 @@ private:
     
   void ParseMeshVarBracketDeclarator(Declarator &D);
 
+  void ParseMeshVarParenDeclarator(Declarator &D);
+
   bool ParseMeshStatement(StmtVector &Stmts,
        bool OnlyStatement, Token &Next, StmtResult &SR);
 
@@ -2307,9 +2309,6 @@ private:
  
   StmtResult ParseCameraDeclaration(StmtVector &Stmts,
       bool OnlyStatement);
-
-  bool ParseMeshStatementOrDeclaration(StmtVector &Stmts,
-      bool OnlyStatement, Token &Next, StmtResult &SR);
 
   void InsertScoutRuntimeInit(SourceLocation &LBraceLoc);
 

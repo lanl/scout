@@ -3274,7 +3274,8 @@ public:
   bool isBeingDefined() const;
 
   static bool classof(const Type *T) {
-    return T->getTypeClass() >= TagFirst && T->getTypeClass() <= TagLast;
+    return (T->getTypeClass() >= TagFirst && T->getTypeClass() <= TagLast)
+        || (T->getTypeClass() >= MeshFirst && T->getTypeClass() <= MeshLast);
   }
 };
 
@@ -3508,7 +3509,8 @@ public:
 
 enum MeshFormat {
   FACESET,
-  COUNT
+  COUNT,
+  MESHFILE
 };
 
 // UnstructuredMeshType - 
@@ -3534,12 +3536,17 @@ public:
   MeshFormat getMeshFormat() { return meshFormat; }
   void setMeshFormat(MeshFormat mf) { meshFormat = mf;}
 
+  Expr* getFileName() { return strLitFileName; }
+  void setFileName(Expr* filename) { strLitFileName = filename; }
+
+
   // SC_TODO -- can these move to base class?
   bool isSugared() const { return false; }
   QualType desugar() const { return QualType(this, 0); }  
    
  private:
   MeshFormat meshFormat;
+  Expr* strLitFileName;
 };
 
 // MeshFieldType - This type is used to capture the details associated 

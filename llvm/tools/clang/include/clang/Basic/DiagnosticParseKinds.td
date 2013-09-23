@@ -893,6 +893,8 @@ def err_expected_mesh_param_token : Error<
 
 def err_expected_mesh_param_star_amp : Error<
 "mesh parameters must be declared as references or pointers">;
+
+def err_expected_mesh_var_decl : Error<"expected mesh variable declaration">;
 // ======================================================================================
 
 // OpenMP support.
