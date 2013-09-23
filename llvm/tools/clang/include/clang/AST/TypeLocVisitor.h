@@ -37,6 +37,7 @@ public:
   }
 
   RetTy Visit(UnqualTypeLoc TyLoc) {
+    //llvm::errs() << "V " << TyLoc.getTypeLocClass() << "\n";
     switch (TyLoc.getTypeLocClass()) {
 #define ABSTRACT_TYPELOC(CLASS, PARENT)
 #define TYPELOC(CLASS, PARENT) \

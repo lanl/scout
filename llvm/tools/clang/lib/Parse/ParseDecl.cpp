@@ -4892,12 +4892,14 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
   DeclaratorScopeObj DeclScopeObj(*this, D.getCXXScopeSpec());
  
   // scout - parse mesh paramters e.g: MyMesh[:]
+  bool hasMeshTypedefParameters = false;
   DeclSpec& DS = D.getMutableDeclSpec();
   DeclSpec::TST tst = DS.getTypeSpecType();
   if (Tok.is(tok::l_square) && tst == DeclSpec::TST_typename) {
     ParsedType parsedType = DS.getRepAsType();
     const MeshType* mt = dyn_cast<MeshType>(parsedType.get().getTypePtr());
     if (mt) {
+      hasMeshTypedefParameters = true;
       ParseMeshParameterDeclaration(DS);
     }
   }
@@ -5041,6 +5043,22 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
   // Don't parse attributes unless we have parsed an unparenthesized name.
   if (D.hasName() && !D.getNumTypeObjects())
     MaybeParseCXX11Attributes(D);
+
+  // ===== Scout ========================================================
+  if(tst == DeclSpec::TST_typename){
+    ParsedType parsedType = DS.getRepAsType();
+    const UniformMeshType* uniMT = dyn_cast<UniformMeshType>(parsedType.get().getTypePtr());
+    if(uniMT && Tok.is(tok::l_square) && !hasMeshTypedefParameters) {
+      ParseMeshVarBracketDeclarator(D);
+      return;
+    }
+    const UnstructuredMeshType* unsMT = dyn_cast<UnstructuredMeshType>(parsedType.get().getTypePtr());
+    if(unsMT && Tok.is(tok::l_paren) && !hasMeshTypedefParameters) {
+      ParseMeshVarParenDeclarator(D);
+      return;
+    }
+  }
+  // ====================================================================
 
   while (1) {
     if (Tok.is(tok::l_paren)) {
@@ -5520,7 +5538,8 @@ void Parser::ParseParameterDeclarationClause(
     
     ParseDeclarationSpecifiers(DS);
     
-    // scout - parse mesh parameters
+    // ===== Scout ========================================================
+    //  parse mesh parameters
     // e.g: "MyMesh[]", "MyMesh[:]", "MyMesh[::]" and ensure that mesh
     // parameters are declared as references or pointers
     DeclSpec::TST tst = DS.getTypeSpecType();
@@ -5540,6 +5559,7 @@ void Parser::ParseParameterDeclarationClause(
         }
       }
     }
+    // =====================================================================
     
     // Parse the declarator.  This is "PrototypeContext", because we must
     // accept either 'declarator' or 'abstract-declarator' here.

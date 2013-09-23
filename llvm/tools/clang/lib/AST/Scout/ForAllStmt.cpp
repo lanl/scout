@@ -33,7 +33,9 @@ ForAllStmt::ForAllStmt(StmtClass SC, ASTContext &C, ForAllType T,
     ZStart(0), ZEnd(0),
     ZStride(IntegerLiteral::Create(C, llvm::APInt(32, 1), C.IntTy, FL))
 {
+#ifdef USE_FORALL_BLOCK
   setBlock(Block);
+#endif
   setOp(Op);
   setBody(Body);
 }
@@ -52,7 +54,10 @@ ForAllStmt::ForAllStmt(ASTContext &C, ForAllType T, const MeshType *MT,
     ZStart(0), ZEnd(0),
     ZStride(IntegerLiteral::Create(C, llvm::APInt(32, 1), C.IntTy, FL))
 {
+
+#ifdef USE_FORALL_BLOCK
   setBlock(Block);
+#endif
   setOp(Op);
   setBody(Body);
 }

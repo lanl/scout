@@ -69,6 +69,7 @@ namespace scout {
     // Note we treat framebuffers (in hardware or software) as
     // exclusive devices.  In other words, a set of independent tasks
     // that all need graphics access will be serialized via a lock.
+    return true;
   }
 
   

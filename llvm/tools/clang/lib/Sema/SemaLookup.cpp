@@ -1964,6 +1964,7 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result,
   if (MeshDecl *EnclosingMesh = dyn_cast<MeshDecl>(Ctx)) {
     // // SC_TODO -- we need to add mesh types to the associated lookup vector...
     //Result.Classes.insert(EnclosingMesh);
+    (void)EnclosingMesh; // suppress warning
   }
   // Add the associated namespace for this class.
   CollectEnclosingNamespace(Result.Namespaces, Ctx);

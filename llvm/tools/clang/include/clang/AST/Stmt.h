@@ -2133,7 +2133,11 @@ private:
   // OP is the operation or condition: ... myMesh '(' OP ')' { ... }
   // BODY is compound stmts : '{' BODY '}'
 
+#ifdef USE_FORALL_BLOCK
   enum {OP, BODY, BLOCK, END_EXPR};
+#else
+  enum {OP, BODY, END_EXPR};
+#endif
 
   ForAllType Type;
   const MeshType *meshType;
@@ -2250,7 +2254,7 @@ public:
   void setOp(Expr* O){
     SubExprs[OP] = reinterpret_cast<Stmt*>(O);
   }
-
+#ifdef USE_FORALL_BLOCK
   BlockExpr* getBlock(){
     return reinterpret_cast<BlockExpr*>(SubExprs[BLOCK]);
   }
@@ -2262,7 +2266,7 @@ public:
   void setBlock(BlockExpr* B){
     SubExprs[BLOCK] = reinterpret_cast<Stmt*>(B);
   }
-
+#endif
   Stmt* getBody(){
     return SubExprs[BODY];
   }

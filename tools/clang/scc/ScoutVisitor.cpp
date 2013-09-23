@@ -118,7 +118,8 @@ bool ScoutVisitor::VisitStmt(Stmt* s) {
 
     // Get dimensions of the mesh and insert as arguments to the call
     const MeshType *MT = cast<MeshType>(ras->getMeshType());
-    MeshType::MeshDimensions dims = MT->dimensions();
+    MeshType::MeshDimensions dims;
+    dims = cast<UniformMeshType>(MT)->dimensions();
     addDims(&begin, dims);
 
     begin += ");";
@@ -168,7 +169,8 @@ bool ScoutVisitor::VisitVolumeRenderAllStmt(VolumeRenderAllStmt* vras) {
 
   // Get dimensions of the mesh and insert as arguments to the call
   const MeshType *MT = cast<MeshType>(vras->getMeshType());
-  MeshType::MeshDimensions dims = MT->dimensions();
+  MeshType::MeshDimensions dims;
+  dims = cast<UniformMeshType>(MT)->dimensions();
   addDims(&bc, dims);
 
   // window width/height arguments

@@ -254,6 +254,10 @@ bool Declarator::isDeclarationOfFunction() const {
     case DeclaratorChunk::Array:
     case DeclaratorChunk::BlockPointer:
     case DeclaratorChunk::MemberPointer:
+    // ===== Scout ========================
+    case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::UnstructuredMesh:
+    // ====================================
       return false;
     }
     llvm_unreachable("Invalid type chunk");

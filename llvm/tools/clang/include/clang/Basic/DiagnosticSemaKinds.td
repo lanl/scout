@@ -6492,6 +6492,9 @@ def err_no_color_assignment_renderall : Error<
 def err_rhs_after_lhs_forall : Error<
 "mesh field appears on LHS then on subsequent RHS">;
 
+def err_cshift_not_allowed : Error<	
+"cannot use cshift on unstructured mesh">;
+
 def err_cshift_args : Error<
 "number of cshift args does not correspond to mesh dimensions">;
 
@@ -6504,6 +6507,9 @@ def err_pointer_field_mesh : Error<
 def err_elements_not_in_forall_renderall : Error<
 "renderall elements must appear within a forall loop">;
 
+def err_position_not_allowed : Error<	
+"mesh position component not allowed for unstructured meshes">;
+
 def err_invalid_position_ref : Error<
 "mesh position component exceeds number of dimensions">;
 
@@ -6512,6 +6518,9 @@ def err_invalid_height_mesh : Error<
 
 def err_invalid_depth_mesh : Error<
 "invalid use of depth field: number of mesh dimensions < 3">;
+
+def err_height_depth_invalid_mesh: Error<
+"invalid use of height or depth for unstructured mesh">;
 
 def warn_lhs_outside_forall : Warning<
   "non-mesh variable '%0' from outside scope appears on LHS within parallel (forall) construct">;

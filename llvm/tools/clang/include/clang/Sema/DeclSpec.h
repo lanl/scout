@@ -34,6 +34,10 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
+// ===== Scout ===========================
+#include "clang/AST/Type.h"
+// =======================================
+
 
 namespace clang {
   class ASTContext;
@@ -1058,6 +1062,9 @@ typedef SmallVector<Token, 4> CachedTokens;
 struct DeclaratorChunk {
   enum {
     Pointer, Reference, Array, Function, BlockPointer, MemberPointer, Paren
+    // ===== Scout =========================
+    , UniformMesh, UnstructuredMesh
+    // =====================================
   } Kind;
 
   /// Loc - The place where this type was defined.
@@ -1115,6 +1122,37 @@ struct DeclaratorChunk {
 
     void destroy() {}
   };
+
+  // ===== Scout ===============================================================
+
+  struct UniformMeshTypeInfo : TypeInfoCommon {
+     // parsed constant expressions for each dim
+
+     MeshType::MeshDimensions Dims() const {
+       MeshType::MeshDimensions dims;
+       if (NumDims > 0)  dims.push_back(Expr0);
+       if (NumDims > 1)  dims.push_back(Expr1);
+       if (NumDims > 2)  dims.push_back(Expr2);
+       return dims;
+     }
+
+     unsigned NumDims;
+     Expr *Expr0;
+     Expr *Expr1;
+     Expr *Expr2;
+
+     void destroy() {}
+  };
+
+  struct UnstructuredMeshTypeInfo : TypeInfoCommon {
+    // parsed string literal for filename from which to read mesh
+    Expr *StrLitFileName;
+
+    void destroy() {}
+  };
+
+
+  // ===========================================================================
 
   /// ParamInfo - An array of paraminfo objects is allocated whenever a function
   /// declarator is parsed.  There are two interesting styles of arguments here:
@@ -1357,6 +1395,10 @@ struct DeclaratorChunk {
     FunctionTypeInfo      Fun;
     BlockPointerTypeInfo  Cls;
     MemberPointerTypeInfo Mem;
+    // ===== Scout =====================
+    UniformMeshTypeInfo   Unimsh;
+    UnstructuredMeshTypeInfo   Unsmsh;
+    // =================================
   };
 
   void destroy() {
@@ -1368,6 +1410,11 @@ struct DeclaratorChunk {
     case DeclaratorChunk::Array:         return Arr.destroy();
     case DeclaratorChunk::MemberPointer: return Mem.destroy();
     case DeclaratorChunk::Paren:         return;
+    // ===== Scout ==============================================
+    case DeclaratorChunk::UniformMesh:   return Unimsh.destroy();
+    case DeclaratorChunk::UnstructuredMesh:   return Unsmsh.destroy();
+    // ==========================================================
+
     }
   }
 
@@ -1488,6 +1535,35 @@ struct DeclaratorChunk {
   bool isParen() const {
     return Kind == Paren;
   }
+
+  // ===== Scout ===================================================================
+  /// \brief Return a DeclaratorChunk for a mesh.
+  static DeclaratorChunk getUniformMesh(const MeshType::MeshDimensions &dims,
+                                    SourceLocation LBLoc, SourceLocation RBLoc) {
+      DeclaratorChunk I;
+      I.Kind          = UniformMesh;
+      I.Loc           = LBLoc;
+      I.EndLoc        = RBLoc;
+      I.Unimsh.NumDims = dims.size();
+      if (I.Unimsh.NumDims > 0) I.Unimsh.Expr0 = dims[0];
+      if (I.Unimsh.NumDims > 1) I.Unimsh.Expr1 = dims[1];
+      if (I.Unimsh.NumDims > 2) I.Unimsh.Expr2 = dims[2];
+
+      return I;
+  }
+
+  /// \brief Return a DeclaratorChunk for an unstructured mesh.
+  static DeclaratorChunk getUnstructuredMesh(Expr *strLit,
+      SourceLocation LBLoc, SourceLocation RBLoc) {
+    DeclaratorChunk I;
+    I.Kind          = UnstructuredMesh;
+    I.Loc           = LBLoc;
+    I.EndLoc        = RBLoc;
+    I.Unsmsh.StrLitFileName = strLit;
+    return I;
+  }
+
+  // ===============================================================================
 };
 
 /// \brief Described the kind of function definition (if any) provided for
@@ -1907,6 +1983,10 @@ public:
       case DeclaratorChunk::Array:
       case DeclaratorChunk::BlockPointer:
       case DeclaratorChunk::MemberPointer:
+      // ===== Scout ======================
+      case DeclaratorChunk::UniformMesh:
+      case DeclaratorChunk::UnstructuredMesh:
+      // ==================================
         return false;
       }
       llvm_unreachable("Invalid type chunk");

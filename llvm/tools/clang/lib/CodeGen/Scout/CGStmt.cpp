@@ -566,7 +566,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   Values inputs;
 
   std::string TheName = CurFn->getName();
-
+#ifdef USE_FORALL_BLOCK
   CGBlockInfo blockInfo(S.getBlock()->getBlockDecl(), TheName.c_str());
 
   llvm::Value *BlockFn = EmitScoutBlockLiteral(S.getBlock(),
@@ -577,6 +577,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   // Generate a function call to BlockFn.
   EmitScoutBlockFnCall(BlockFn, blockInfo,
                        ScoutMeshSizes, inputs);
+#endif
 }
 
 void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
@@ -717,7 +718,7 @@ void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
   Values inputs;
   
   std::string TheName = CurFn->getName();
-  
+#ifdef USE_FORALL_BLOCK
   CGBlockInfo blockInfo(S.getBlock()->getBlockDecl(), TheName.c_str());
   
   CurrentForAllArrayStmt = &S;
@@ -729,6 +730,7 @@ void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
   
   // Generate a function call to BlockFn.
   EmitScoutBlockFnCall(BlockFn, blockInfo, ranges, inputs);
+#endif
 }
 
 bool CodeGenFunction::hasCalledFn(llvm::Function *Fn, llvm::StringRef name) {

@@ -1002,6 +1002,12 @@ public:
                           SourceRange Brackets, DeclarationName Entity);
   QualType BuildExtVectorType(QualType T, Expr *ArraySize,
                               SourceLocation AttrLoc);
+  // ===== Scout ================================================================
+  QualType BuildUniformMeshType(QualType T, const MeshType::MeshDimensions &dims,
+                            SourceRange Brackets, DeclarationName Entity);
+  QualType BuildUnstructuredMeshType(QualType T, Expr* filename,
+                            SourceRange Brackets, DeclarationName Entity);
+  // ============================================================================
 
   /// \brief Build a function type.
   ///
