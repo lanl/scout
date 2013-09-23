@@ -8235,6 +8235,24 @@ int ASTContext::getUnnamedTagManglingNumber(const TagDecl *Tag) const {
   return I != UnnamedMangleNumbers.end() ? I->second : -1;
 }
 
+// ===== Scout =============================================================
+void ASTContext::addUnnamedMesh(const MeshDecl *Mesh) {
+  // FIXME: This mangling should be applied to function local classes too
+  if (!Mesh->getName().empty()) 
+    return;
+
+  std::pair<llvm::DenseMap<const DeclContext *, unsigned>::iterator, bool> P =
+    UnnamedMeshMangleContexts.insert(std::make_pair(Mesh->getParent(), 0));
+  UnnamedMeshMangleNumbers.insert(std::make_pair(Mesh, P.first->second++));
+}
+
+int ASTContext::getUnnamedMeshManglingNumber(const MeshDecl *Mesh) const {
+  llvm::DenseMap<const MeshDecl *, unsigned>::const_iterator I =
+    UnnamedMeshMangleNumbers.find(Mesh);
+  return I != UnnamedMeshMangleNumbers.end() ? I->second : -1;
+}
+// =========================================================================
+
 unsigned ASTContext::getLambdaManglingNumber(CXXMethodDecl *CallOperator) {
   CXXRecordDecl *Lambda = CallOperator->getParent();
   return LambdaMangleContexts[Lambda->getDeclContext()]

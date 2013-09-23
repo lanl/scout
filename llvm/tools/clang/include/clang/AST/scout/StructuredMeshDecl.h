@@ -83,19 +83,19 @@ public:
                                                 unsigned ID); 
 
   const StructuredMeshDecl *getPreviousDecl() const {
-    return cast_or_null<StructuredMeshDecl>(TagDecl::getPreviousDecl());
+    return cast_or_null<StructuredMeshDecl>(MeshDecl::getPreviousDecl());
   }
 
   StructuredMeshDecl *getPreviousDecl() {
-    return cast_or_null<StructuredMeshDecl>(TagDecl::getPreviousDecl());
+    return cast_or_null<StructuredMeshDecl>(MeshDecl::getPreviousDecl());
   }
 
   const StructuredMeshDecl *getMostRecentDecl() const {
-    return cast<StructuredMeshDecl>(TagDecl::getMostRecentDecl());
+    return cast<StructuredMeshDecl>(MeshDecl::getMostRecentDecl());
   }
 
   StructuredMeshDecl *getMostRecentDecl() {
-    return cast<StructuredMeshDecl>(TagDecl::getMostRecentDecl());
+    return cast<StructuredMeshDecl>(MeshDecl::getMostRecentDecl());
   }
 
   static bool classof(const Decl* D) { return classofKind(D->getKind()); }

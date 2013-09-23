@@ -934,6 +934,43 @@ bool Type::isIncompleteType(NamedDecl **Def) const {
       *Def = Rec;
     return !Rec->isCompleteDefinition();
   }
+
+  case UniformMesh: {
+    // A uniform mesh type is incomplete if the decl is a forward declaration, 
+    // but not a full definition (borrowed from C99 6.2.5p22).
+    UniformMeshDecl *UMD = cast<UniformMeshType>(CanonicalType)->getDecl();
+    if (Def)
+      *Def = UMD;
+    return !UMD->isCompleteDefinition();
+  }
+
+  case RectilinearMesh: {
+    // A rectilinear mesh type is incomplete if the decl is a forward declaration,
+    // but not a full definition (borrowed from C99 6.2.5p22).
+    RectilinearMeshDecl *RMD = cast<RectilinearMeshType>(CanonicalType)->getDecl();
+    if (Def)
+      *Def = RMD;
+    return !RMD->isCompleteDefinition();
+  }
+
+  case StructuredMesh: {
+    // A structured mesh type is incomplete if the decl is a forward declaration,
+    // but not a full definition (borrowed from C99 6.2.5p22).
+    StructuredMeshDecl *SMD = cast<StructuredMeshType>(CanonicalType)->getDecl();
+    if (Def)
+      *Def = SMD;
+    return !SMD->isCompleteDefinition();
+  }
+
+  case UnstructuredMesh: {
+    // An unstructed mesh type is incomplete if the decl is a forward declaration,
+    // but not a full definition (borrowed from C99 6.2.5p22).
+    UnstructuredMeshDecl *USMD = cast<UnstructuredMeshType>(CanonicalType)->getDecl();
+    if (Def)
+      *Def = USMD;
+    return !USMD->isCompleteDefinition();
+  }
+
   case ConstantArray:
     // An array is incomplete if its element type is incomplete
     // (C++ [dcl.array]p1).
@@ -1386,13 +1423,21 @@ TypeWithKeyword::getTagTypeKindForTypeSpec(unsigned TypeSpec) {
   case TST_interface: return TTK_Interface;
   case TST_union: return TTK_Union;
   case TST_enum: return TTK_Enum;
-  case TST_uniform_mesh: return TTK_UniformMesh;
-  case TST_structured_mesh: return TTK_StructuredMesh;
-  case TST_rectilinear_mesh: return TTK_RectilinearMesh;
-  case TST_unstructured_mesh: return TTK_UnstructuredMesh;
+  }
+
+  llvm_unreachable("Type specifier is not a tag type kind.");
+}
+
+MeshTypeKind
+TypeWithKeyword::getMeshTypeKindForTypeSpec(unsigned TypeSpec) {
+  switch(TypeSpec) {
+    case TST_uniform_mesh: return TTK_UniformMesh;
+    case TST_structured_mesh: return TTK_StructuredMesh;
+    case TST_rectilinear_mesh: return TTK_RectilinearMesh;
+    case TST_unstructured_mesh: return TTK_UnstructuredMesh;
   }
   
-  llvm_unreachable("Type specifier is not a tag type kind.");
+  llvm_unreachable("Type specifier is not a mesh type kind.");
 }
 
 ElaboratedTypeKeyword
@@ -1403,11 +1448,6 @@ TypeWithKeyword::getKeywordForTagTypeKind(TagTypeKind Kind) {
   case TTK_Interface: return ETK_Interface;
   case TTK_Union: return ETK_Union;
   case TTK_Enum: return ETK_Enum;
-  // SC_TODO - Not sure if these are correct... 
-  case TTK_UniformMesh: return ETK_UniformMesh;
-  case TTK_StructuredMesh: return ETK_StructuredMesh;
-  case TTK_RectilinearMesh: return ETK_RectilinearMesh;
-  case TTK_UnstructuredMesh: return ETK_UnstructuredMesh;
   }
   llvm_unreachable("Unknown tag type kind.");
 }
@@ -1420,10 +1460,6 @@ TypeWithKeyword::getTagTypeKindForKeyword(ElaboratedTypeKeyword Keyword) {
   case ETK_Interface: return TTK_Interface;
   case ETK_Union: return TTK_Union;
   case ETK_Enum: return TTK_Enum;
-  case ETK_UniformMesh: return TTK_UniformMesh;
-  case ETK_StructuredMesh: return TTK_StructuredMesh;
-  case ETK_RectilinearMesh: return TTK_RectilinearMesh;
-  case ETK_UnstructuredMesh: return TTK_UnstructuredMesh;
   case ETK_None: // Fall through.
   case ETK_Typename:
     llvm_unreachable("Elaborated type keyword is not a tag type kind.");
@@ -1442,10 +1478,6 @@ TypeWithKeyword::KeywordIsTagTypeKind(ElaboratedTypeKeyword Keyword) {
   case ETK_Interface:
   case ETK_Union:
   case ETK_Enum:
-  case ETK_UniformMesh:
-  case ETK_StructuredMesh:
-  case ETK_RectilinearMesh:
-  case ETK_UnstructuredMesh:
     return true;
   }
   llvm_unreachable("Unknown elaborated type keyword.");
@@ -1461,12 +1493,7 @@ TypeWithKeyword::getKeywordName(ElaboratedTypeKeyword Keyword) {
   case ETK_Interface: return "__interface";
   case ETK_Union:  return "union";
   case ETK_Enum:   return "enum";
-  case ETK_UniformMesh: return "uniform mesh";
-  case ETK_StructuredMesh: return "structured mesh";
-  case ETK_RectilinearMesh: return "rectilinear mesh";
-  case ETK_UnstructuredMesh: return "unstructured mesh";
   }
-
   llvm_unreachable("Unknown elaborated type keyword.");
 }
 

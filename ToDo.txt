@@ -10,6 +10,27 @@ highlighted there and have not yet been transfered into this file...
 
 -----------------------------------------------------------------------
 
+[x] llvm/tools/clang/include/clang/AST/ASTMutationListener.h
+[x] llvm/tools/clang/include/clang/AST/Decl.h
+[x] llvm/tools/clang/include/clang/AST/ExternalASTSource.h
+[x] llvm/tools/clang/include/clang/AST/Type.h
+[x] llvm/tools/clang/include/clang/AST/scout/MeshDecl.h
+[x] llvm/tools/clang/include/clang/AST/scout/RectilinearMeshDecl.h
+[x] llvm/tools/clang/include/clang/AST/scout/StructuredMeshDecl.h
+[x] llvm/tools/clang/include/clang/AST/scout/UniformMeshDecl.h
+[x] llvm/tools/clang/include/clang/AST/scout/UnstructuredMeshDecl.h
+[x] llvm/tools/clang/include/clang/Basic/DeclNodes.td
+[x] llvm/tools/clang/lib/AST/MicrosoftMangle.cpp
+[x] llvm/tools/clang/lib/AST/Scout/MeshDecl.cpp
+[x] llvm/tools/clang/lib/AST/Scout/MeshType.cpp
+[x] llvm/tools/clang/lib/AST/Type.cpp
+
+[ ] llvm/tools/clang/lib/Sema/SemaCodeComplete.cpp
+[ ] llvm/tools/clang/lib/Sema/SemaDecl.cpp
+[ ] llvm/tools/clang/lib/Sema/SemaTemplate.cpp
+[ ] llvm/tools/clang/lib/Sema/SemaType.cpp
+
+
 ===== Bugs ====
 
 1. [o] There is a bug in the code introduced by changes from a the

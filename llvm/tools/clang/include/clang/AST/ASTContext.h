@@ -344,6 +344,12 @@ class ASTContext : public RefCountedBase<ASTContext> {
   llvm::DenseMap<const DeclContext *, unsigned> UnnamedMangleContexts;
   llvm::DenseMap<const TagDecl *, unsigned> UnnamedMangleNumbers;
 
+  // ===== Scout =========================================================================
+  // Not sure we need this...).
+  llvm::DenseMap<const DeclContext *, unsigned> UnnamedMeshMangleContexts;
+  llvm::DenseMap<const MeshDecl *, unsigned> UnnamedMeshMangleNumbers;  
+  // =====================================================================================  
+
   /// \brief Mapping that stores parameterIndex values for ParmVarDecls when
   /// that value exceeds the bitfield size of ParmVarDeclBits.ParameterIndex.
   typedef llvm::DenseMap<const VarDecl *, unsigned> ParameterIndexTable;
@@ -2165,6 +2171,9 @@ public:
 
   void addUnnamedTag(const TagDecl *Tag);
   int getUnnamedTagManglingNumber(const TagDecl *Tag) const;
+
+  void addUnnamedMesh(const MeshDecl *Mesh);
+  int getUnnamedMeshManglingNumber(const MeshDecl *Mesh) const;
 
   /// \brief Retrieve the lambda mangling number for a lambda expression.
   unsigned getLambdaManglingNumber(CXXMethodDecl *CallOperator);

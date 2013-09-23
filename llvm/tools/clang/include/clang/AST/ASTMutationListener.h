@@ -41,6 +41,9 @@ public:
   /// \brief A new TagDecl definition was completed.
   virtual void CompletedTagDefinition(const TagDecl *D) { }
 
+  /// \brief A new MeshDecl definition was completed.
+  virtual void CompletedMeshDefinition(const MeshDecl *D) { }
+
   /// \brief A new declaration with name has been added to a DeclContext.
   virtual void AddedVisibleDecl(const DeclContext *DC, const Decl *D) {}
 

@@ -365,13 +365,31 @@ DeclSpec::TST Sema::isTagName(IdentifierInfo &II, Scope *S) {
       case TTK_Union:  return DeclSpec::TST_union;
       case TTK_Class:  return DeclSpec::TST_class;
       case TTK_Enum:   return DeclSpec::TST_enum;
-
-      case TTK_UniformMesh: return DeclSpec::TST_uniform_mesh;
-      case TTK_StructuredMesh: return DeclSpec::TST_structured_mesh;
-      case TTK_RectilinearMesh: return DeclSpec::TST_rectilinear_mesh;
-      case TTK_UnstructuredMesh: return DeclSpec::TST_unstructured_mesh;
       }
     }
+
+  return DeclSpec::TST_unspecified;
+}
+
+/// isMeshName() - This method is called *for error recovery purposes only*
+/// to determine if the specified name is a valid mesh name.  If so, this
+/// returns TST for the mesh corresponding to it.  This is used to diagnose
+/// cases in Scout where the user forgot to specify the mesh.
+DeclSpec::TST Sema::isMeshName(IdentifierInfo &II, Scope *S) {
+  // Do a mesh name lookup in this scope. 
+  LookupResult R(*this, &II, SourceLocation(), LookupMeshName);
+  LookupName(R, S, false);
+  R.suppressDiagnostics();
+  if (R.getResultKind() == LookupResult::Found) {
+    if (const MeshDecl *MD = R.getAsSingle<MeshDec>()) {
+      switch(MD->getMeshKind()) {
+        case TTK_UniformMesh: return DeclSpec::TST_uniform_mesh;
+        case TTK_RectilinearMesh: return DeclSpec::TST_rectilinear_mesh;
+        case TTK_StructuredMesh: return DeclSpec::TST_structured_mesh;
+        case TTK_UnstructuredMesh: return DeclSpec::TST_unstructured_mesh;
+      }
+    }
+  }
 
   return DeclSpec::TST_unspecified;
 }
@@ -554,26 +572,6 @@ static bool isTagTypeWithMissingTag(Sema &SemaRef, LookupResult &Result,
         TagName = "union";
         FixItTagName = "union ";
         break;
-
-      case TTK_UniformMesh: 
-        TagName = "uniform mesh";
-        FixItTagName = "uniform mesh ";
-        break;
-
-      case TTK_StructuredMesh:
-        TagName = "structured mesh";
-        FixItTagName = "structured mesh ";
-        break;
-
-      case TTK_RectilinearMesh: 
-        TagName = "rectilinear mesh";
-        FixItTagName = "rectilinear mesh ";
-        break;
-
-      case TTK_UnstructuredMesh:
-        TagName = "unstructured mesh";
-        FixItTagName = "unstructured mesh ";
-        break;  
     }
 
     SemaRef.Diag(NameLoc, diag::err_use_of_tag_name_without_tag)
@@ -587,6 +585,55 @@ static bool isTagTypeWithMissingTag(Sema &SemaRef, LookupResult &Result,
 
     // Replace lookup results with just the tag decl.
     Result.clear(Sema::LookupTagName);
+    SemaRef.LookupParsedName(Result, S, &SS);
+    return true;
+  }
+
+  return false;
+}
+
+static bool isMeshTypeWithMissingMesh(Sema &SemaRef, LookupResult &Result,
+                                      Scope *S, CXXScopeSpec &SS,
+                                      IdentifierInfo *&Name,
+                                      SourceLocation NameLoc) {
+  LookupResult R(SemaRef, Name, NameLoc, Sema::LookupTagName);
+  SemaRef.LookupParsedName(R, S, &SS);
+  if (MeshDecl *MD = R.getAsSingle<MeshDecl>()) {
+    const char *MeshName = 0;
+    const char *FixItMeshName = 0;
+    switch (MD->getMeshKind()) {
+      case TTK_UniformMesh:
+        MeshName = "uniform mesh";
+        FixItMeshName = "uniform mesh ";
+        break;
+
+      case TTK_RectilinearMesh:
+        MeshName = "rectilinear mesh";
+        FixItMeshName = "rectilinear mesh ";
+        break;
+
+      case TTK_StructuredMesh:
+        MeshName = "structured mesh";
+        FixItMeshName = "structured mesh ";
+        break;
+
+      case TTK_UnstructuredMesh:
+        MeshName = "unstructured mesh";
+        FixItMeshName = "unstructured mesh ";
+        break;
+    }
+
+    SemaRef.Diag(NameLoc, diag::err_use_of_mesh_name_without_mesh)
+      << Name << MeshName << SemaRef.getLangOpts().CPlusPlus
+      << FixItHint::CreateInsertion(NameLoc, FixItMeshName);
+
+    for (LookupResult::iterator I = Result.begin(), IEnd = Result.end();
+         I != IEnd; ++I)
+      SemaRef.Diag((*I)->getLocation(), diag::note_decl_hiding_mesh_type)
+        << Name << MeshName;
+
+    // Replace lookup results with just the mesh decl.
+    Result.clear(Sema::LookupMeshName);
     SemaRef.LookupParsedName(Result, S, &SS);
     return true;
   }
@@ -678,6 +725,14 @@ Corrected:
         isTagTypeWithMissingTag(*this, Result, S, SS, Name, NameLoc)) {
       break;
     }
+
+    // ===== Scout =======================================================
+    // SC_TODO - should this read Scout vs. CPlusPlus????
+    if (!getLangOpts().CPlusPlus && !SecondTry &&
+        isMeshTypeWithMissingMesh(*this, Result, S, SS, Name, NameLoc)) {
+      break;
+    }
+    // ===================================================================
 
     // Perform typo correction to determine if there is another name that is
     // close to this name.
@@ -894,8 +949,17 @@ Corrected:
     if (SS.isNotEmpty())
       return buildNestedType(*this, SS, T, NameLoc);
     return ParsedType::make(T);
+  } else if ((NextToken.is(tok::identifier) ||
+             (NextIsOp && FirstDecl->isFunctionOrFunctionTemplate())) &&
+             isMeshTypeWithMissingMesh(*this, Result, S, SS, Name, NameLoc)) {
+    TypeDecl *Type = Result.getAsSingle<TypeDecl>();
+    DiagnoseUseOfDecl(Type, NameLoc);
+    QualType T = Context.getTypeDeclType(Type);
+    if (SS.isNotEmpty())
+      return buildNestedType(*this, SS, T, NameLoc);
+    return ParsedType::make(T);
   }
-  
+
   if (FirstDecl->isCXXClassMember())
     return BuildPossibleImplicitMemberExpr(SS, SourceLocation(), Result, 0);
 
@@ -1872,6 +1936,9 @@ static bool isAttributeTargetADefinition(Decl *D) {
     return VD->isThisDeclarationADefinition();
   if (TagDecl *TD = dyn_cast<TagDecl>(D))
     return TD->isCompleteDefinition() || TD->isBeingDefined();
+  else if (MeshDecl *MD = dyn_cast<MeshDecl>(D))
+    return MD->isCompleteDefinition() || MD->isBeingDefined();
+
   return true;
 }
 
@@ -2038,6 +2105,8 @@ static bool mergeDeclAttribute(Sema &S, NamedDecl *D, InheritableAttr *Attr,
 static const Decl *getDefinition(const Decl *D) {
   if (const TagDecl *TD = dyn_cast<TagDecl>(D))
     return TD->getDefinition();
+  if (const MeshDecl *MD = dyn_cast<MeshDecl>(D))
+    return MD->getDefinition();
   if (const VarDecl *VD = dyn_cast<VarDecl>(D))
     return VD->getDefinition();
   if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
@@ -3064,16 +3133,13 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
                                        bool IsExplicitInstantiation) {
   Decl *TagD = 0;
   TagDecl *Tag = 0;
+  MeshDecl *MD = 0;
   if (DS.getTypeSpecType() == DeclSpec::TST_class ||
       DS.getTypeSpecType() == DeclSpec::TST_struct ||
       DS.getTypeSpecType() == DeclSpec::TST_interface ||
       DS.getTypeSpecType() == DeclSpec::TST_union ||
-      DS.getTypeSpecType() == DeclSpec::TST_enum ||     
-      // ===== Scout - handle mesh
-      DS.getTypeSpecType() == DeclSpec::TST_uniform_mesh     || 
-      DS.getTypeSpecType() == DeclSpec::TST_structured_mesh  ||
-      DS.getTypeSpecType() == DeclSpec::TST_rectilinear_mesh ||
-      DS.getTypeSpecType() == DeclSpec::TST_unstructured_mesh) {
+      DS.getTypeSpecType() == DeclSpec::TST_enum {
+
     TagD = DS.getRepAsDecl();
 
     if (!TagD) // We probably had an error
@@ -3086,6 +3152,21 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
       Tag = cast<TagDecl>(TagD);
     else if (ClassTemplateDecl *CTD = dyn_cast<ClassTemplateDecl>(TagD))
       Tag = CTD->getTemplatedDecl();
+  } else if (DS.getTypeSpecType() == DeclSpec::TST_uniform_mesh     || 
+             DS.getTypeSpecType() == DeclSpec::TST_structured_mesh  ||
+             DS.getTypeSpecType() == DeclSpec::TST_rectilinear_mesh ||
+             DS.getTypeSpecType() == DeclSpec::TST_unstructured_mesh)) {
+
+    TagD = DS.getRepAsDecl();
+
+    if (!TagD) // We probably had an error
+      return 0;
+
+    // Note that the above type specs guarantee that the 
+    // type rep is a Decl, whereas in many of the others 
+    // it is a Type. 
+    if (isa<MeshDecl>(TagD))
+      MD = cast<MeshDecl>(TagD);
   }
 
   if (Tag) {
@@ -3093,6 +3174,13 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
     Tag->setFreeStanding();
     if (Tag->isInvalidDecl())
       return Tag;
+  }
+
+  if (MD) {
+    getASTContext().addUnnamedMesh(MD);
+    MD->setFreeStanding();
+    if (MD->isInvalidDecl())
+      return MD;
   }
 
   if (unsigned TypeQuals = DS.getTypeQualifiers()) {

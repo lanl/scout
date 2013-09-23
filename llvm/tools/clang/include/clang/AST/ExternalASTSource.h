@@ -31,11 +31,10 @@ class RecordDecl;
 class Selector;
 class Stmt;
 class TagDecl;
-
-//===--------------------------------------------------------------------===//
-// Scout 
+// ===== Scout ======================================
+class MeshDecl;  
 class MeshFieldDecl;
-//===--------------------------------------------------------------------===//
+// ==================================================
 
 /// \brief Enumeration describing the result of loading information from
 /// an external source.
@@ -183,6 +182,12 @@ public:
   /// \brief Gives the external AST source an opportunity to complete
   /// an incomplete type.
   virtual void CompleteType(TagDecl *Tag) {}
+
+  // ===== Scout =========================================================
+  /// \brief Gives the external AST source an opportunity to complete 
+  /// an incomplete mesh type.
+  virtual void CompleteType(MeshDecl *MD) {}
+  // =====================================================================  
 
   /// \brief Gives the external AST source an opportunity to complete an
   /// incomplete Objective-C class.

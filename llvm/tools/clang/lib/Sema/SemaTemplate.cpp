@@ -3310,6 +3310,7 @@ namespace {
 #include "clang/AST/TypeNodes.def"
 
     bool VisitTagDecl(const TagDecl *Tag);
+    bool VisitMeshDecl(const MeshDecl *Mesh);
     bool VisitNestedNameSpecifier(NestedNameSpecifier *NNS);
   };
 }
@@ -3420,19 +3421,19 @@ bool UnnamedLocalNoLinkageFinder::VisitUnaryTransformType(
 
 // ===== Scout ============================================================================
 bool UnnamedLocalNoLinkageFinder::VisitUniformMeshType(const UniformMeshType* T) {
-  return VisitTagDecl(T->getDecl());
+  return VisitMeshDecl(T->getDecl());
 }
 
 bool UnnamedLocalNoLinkageFinder::VisitStructuredMeshType(const StructuredMeshType* T) {
-  return VisitTagDecl(T->getDecl());
+  return VisitMeshDecl(T->getDecl());
 }
 
 bool UnnamedLocalNoLinkageFinder::VisitRectilinearMeshType(const RectilinearMeshType* T) {
-  return VisitTagDecl(T->getDecl());
+  return VisitMeshDecl(T->getDecl());
 }
 
 bool UnnamedLocalNoLinkageFinder::VisitUnstructuredMeshType(const UnstructuredMeshType* T) {
-  return VisitTagDecl(T->getDecl());
+  return VisitMeshDecl(T->getDecl());
 }
 // ========================================================================================
 
@@ -3522,6 +3523,29 @@ bool UnnamedLocalNoLinkageFinder::VisitTagDecl(const TagDecl *Tag) {
 
   return false;
 }
+
+bool UnnamedLocalNoLinkageFinder::VisitMeshDecl(const MeshDecl *Mesh) {
+  if (Mesh->getDeclContext()->isFunctionOrMethod()) {
+    S.Diag(SR.getBegin(),
+           S.getLangOpts().CPlusPlus11 ?
+             diag::warn_cxx98_compat_template_arg_local_type :
+             diag::ext_template_arg_local_type)
+      << S.Context.getTypeDeclType(Mesh) << SR;
+    return true;
+  }
+
+  if (!Mesh->hasNameForLinkage()) {
+    S.Diag(SR.getBegin(),
+           S.getLangOpts().CPlusPlus11 ?
+             diag::warn_cxx98_compat_template_arg_unnamed_type :
+             diag::ext_template_arg_unnamed_type) << SR;
+    S.Diag(Mesh->getLocation(), diag::note_template_unnamed_type_here);
+    return true;
+  }
+
+  return false;
+}
+
 
 bool UnnamedLocalNoLinkageFinder::VisitNestedNameSpecifier(
                                                     NestedNameSpecifier *NNS) {

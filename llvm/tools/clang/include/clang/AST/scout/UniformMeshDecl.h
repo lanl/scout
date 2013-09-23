@@ -64,7 +64,7 @@ namespace clang {
 // 
 class UniformMeshDecl : public MeshDecl {
 
-  friend void TagDecl::startDefinition();
+  friend void MeshDecl::startDefinition();
 
 protected:
   UniformMeshDecl(DeclContext* DC, 
@@ -85,19 +85,19 @@ public:
                                              unsigned ID); 
 
   const UniformMeshDecl *getPreviousDecl() const {
-    return cast_or_null<UniformMeshDecl>(TagDecl::getPreviousDecl());
+    return cast_or_null<UniformMeshDecl>(MeshDecl::getPreviousDecl());
   }
 
   UniformMeshDecl *getPreviousDecl() {
-    return cast_or_null<UniformMeshDecl>(TagDecl::getPreviousDecl());
+    return cast_or_null<UniformMeshDecl>(MeshDecl::getPreviousDecl());
   }
 
   const UniformMeshDecl *getMostRecentDecl() const {
-    return cast<UniformMeshDecl>(TagDecl::getMostRecentDecl());
+    return cast<UniformMeshDecl>(MeshDecl::getMostRecentDecl());
   }
 
   UniformMeshDecl *getMostRecentDecl() {
-    return cast<UniformMeshDecl>(TagDecl::getMostRecentDecl());
+    return cast<UniformMeshDecl>(MeshDecl::getMostRecentDecl());
   }
 
   //void addMember(Decl *D);
