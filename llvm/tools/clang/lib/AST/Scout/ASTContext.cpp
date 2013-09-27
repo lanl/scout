@@ -29,6 +29,16 @@ using namespace clang;
 
 // ===== Mesh Declaration Types ===============================================
 
+/// getMeshDeclType - Return the unique reference to the type for the 
+/// specified mesh decl. 
+QualType ASTContext::getMeshDeclType(const MeshDecl *Decl) const {
+  assert(Decl);
+  // FIXME: What is the design on getMeshDeclType when it requires 
+  // casting away const?  mutable?
+  return getTypeDeclType(const_cast<MeshDecl*>(Decl));
+}
+
+// SC_TODO -- not sure we need these specialized... 
 QualType 
 ASTContext::getUniformMeshDeclType(const UniformMeshDecl *Decl) const {
   assert (Decl != 0);

@@ -381,7 +381,7 @@ DeclSpec::TST Sema::isMeshName(IdentifierInfo &II, Scope *S) {
   LookupName(R, S, false);
   R.suppressDiagnostics();
   if (R.getResultKind() == LookupResult::Found) {
-    if (const MeshDecl *MD = R.getAsSingle<MeshDec>()) {
+    if (const MeshDecl *MD = R.getAsSingle<MeshDecl>()) {
       switch(MD->getMeshKind()) {
         case TTK_UniformMesh: return DeclSpec::TST_uniform_mesh;
         case TTK_RectilinearMesh: return DeclSpec::TST_rectilinear_mesh;
@@ -3138,7 +3138,7 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
       DS.getTypeSpecType() == DeclSpec::TST_struct ||
       DS.getTypeSpecType() == DeclSpec::TST_interface ||
       DS.getTypeSpecType() == DeclSpec::TST_union ||
-      DS.getTypeSpecType() == DeclSpec::TST_enum {
+      DS.getTypeSpecType() == DeclSpec::TST_enum) {
 
     TagD = DS.getRepAsDecl();
 
@@ -3155,7 +3155,7 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
   } else if (DS.getTypeSpecType() == DeclSpec::TST_uniform_mesh     || 
              DS.getTypeSpecType() == DeclSpec::TST_structured_mesh  ||
              DS.getTypeSpecType() == DeclSpec::TST_rectilinear_mesh ||
-             DS.getTypeSpecType() == DeclSpec::TST_unstructured_mesh)) {
+             DS.getTypeSpecType() == DeclSpec::TST_unstructured_mesh) {
 
     TagD = DS.getRepAsDecl();
 

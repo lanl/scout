@@ -59,41 +59,58 @@
 
   \maketitle 
 
-  \section*{Introduction}
-   Simulation and modeling play a fundamental role in the mission of
-   the Department of Energy's Office of Science.  In support of these
-   efforts, the DOE has made significant investments over the past two
-   decades in large-scale, high-performance computer systems.
-   During this time, the scientific community has relied heavily on
-   the performance growth of microprocessors within these systems to 
-   provide the building blocks for innovation and discovery across a
-   range of disciplines. As energy constraints drive a revolutionary 
-   shift towards multi-core and heterogeneous, \emph{throughput-oriented},
-   processor designs, the community faces a significant challenge in 
-   maintaining our rate of productivity across these critical scientific 
-   endeavors.  In particular, we face a dilemma in finding productive 
-   techniques for successfully programming these new architectures. 
-   Tightly coupled with the past growth in computational capabilities has 
-   been an ever-growing wealth of data with increasingly complex levels of 
-   detail.  An often under-appreciated aspect of these ongoing architecture
-   changes is the impact they will have on our ability to gather
-   observable, empirical, and measurable data essential to the formulation
-   and testing of hypotheses.  A fundamental challenge in guaranteeing the
-   future success of scientific computing within DOE is to provide 
-   scientists with an effective, yet flexible way to leverage the power 
-   of new architectures to explore and analyze the results of  
-   computational experiments.  This will require an \emph{end-to-end} solution
-   that begins with the details of the underlying hardware architectures and 
-   ends with a set of powerful abstractions that reduce the complexity of 
-   programming.
-   
+  %\section*{Introduction}
+
+   Over the past twenty years the Department of Energy (DOE) has firmly 
+   established the fundamental role that high-performance computing 
+   plays in a wide range of scientific disciplines.  Today this success
+   faces several critical challenges as rapid changes in the design of 
+   computer architectures impacts our abilities to effectively program  
+   future systems and ever-increasing amounts of data continue to 
+   overwhelm our capabilities to explore, analyze, hypothesize, and 
+   thereby successfully interpret the underlying phenomena. While the 
+   full range of topics covered by these challenges are often viewed 
+   individually, we believe it is critical that they be considered in 
+   concert with the goal of improving the rate of scientific innovation
+   and discovery.  This will require an \emph{end-to-end} solution that 
+   begins with the details of the underlying computer hardware and ends 
+   with a set of powerful abstractions that reduce the complexity of 
+   programming not only the scientific application itself but also the 
+   supporting data analysis operations. 
+
   \section*{Science-Centric Strategy}
 
-   The overarching goal of our effort is to provide computational
-   scientists with an approach to software development that promotes
-   the full integration of computation, data analysis, and
-   visualization as \emph{first-class} constructs within a programming
-   language.  This is achieved by designing and implementing a
+   The overarching goal of our effort is to provide scientists with an 
+   approach to software development that promotes the full integration of 
+   computation, data analysis, and visualization as \emph{first-class} 
+   constructs within a programming language.  This not only serves to 
+   improve productivity, but also provides a focused interface for 
+   dealing with the specific needs of the scientific community.  This 
+   methodology is commonly referred to as a \emph{domain-specific} 
+   approach to programming and it provides several attractive properties
+   for dealing with the emerging challenges of extreme-scale computing.
+   This allows us to tailor an approach geared to the needs of the 
+   community that in particular address the challenges of rapidly changing
+   computer hardware and data-centric operations. 
+
+   Increasing limitations in the infrastructure for moving data within a 
+   large-scale computer, relative to the scale of the data the system is 
+   capable of generating, will force scientists away from a model of 
+   post-processing data, stored in secondary or tertiary memory,
+   towards one based on \emph{in situ} processing.  Given that the movement of 
+   data is a significant portion of the energy consumption and directly 
+   impacts performance, this \emph{in situ} mode of operation will require 
+   a strongly coupled coordination between the science-focused and 
+   data-centric components of an application. 
+    
+   Increasing limitations 
+   in the I/O infrastructures of large-scale supercomputers, relative to the 
+   scale of the data the systems will generate, are likely to force scientists 
+   away from the post-processing of data towards a model based on in situ 
+   processing. 
+
+
+    This is achieved by designing and implementing a
    \emph{domain-specific language} (DSL~\cite{Fowler:DSL:2010}) called
    Scout that incorporates these features into a supporting
    set of high-level abstractions.  Figure~\ref{fig:spasm} presents an

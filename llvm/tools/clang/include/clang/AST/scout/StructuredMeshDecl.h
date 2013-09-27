@@ -98,6 +98,11 @@ public:
     return cast<StructuredMeshDecl>(MeshDecl::getMostRecentDecl());
   }
 
+  void completeDefinition() {
+    assert(!isCompleteDefinition() && "Cannot redefine structured mesh!");
+    MeshDecl::completeDefinition();
+  }
+
   static bool classof(const Decl* D) { return classofKind(D->getKind()); }
   static bool classof(const StructuredMeshDecl* D) { return true; }
   static bool classofKind(Kind K) { return K == StructuredMesh; }

@@ -1292,6 +1292,7 @@ public:
                          bool WantNontrivialTypeSourceInfo = false,
                          IdentifierInfo **CorrectedII = 0);
   TypeSpecifierType isTagName(IdentifierInfo &II, Scope *S);
+  TypeSpecifierType isMeshName(IdentifierInfo &II, Scope *S);  
   bool isMicrosoftMissingTypename(const CXXScopeSpec *SS, Scope *S);
   bool DiagnoseUnknownTypeName(IdentifierInfo *&II,
                                SourceLocation IILoc,
@@ -2292,6 +2293,8 @@ public:
     /// Tag name lookup, which finds the names of enums, classes,
     /// structs, and unions.
     LookupTagName,
+    /// Mesh name lookup, which finds the names of meshes.
+    LookupMeshName, 
     /// Label name lookup.
     LookupLabel,
     /// Member name lookup, which finds the names of

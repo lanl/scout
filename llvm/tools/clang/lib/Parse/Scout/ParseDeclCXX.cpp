@@ -67,12 +67,9 @@
 
 using namespace clang;
 
-
 bool Parser::ParseMeshSpecifier(DeclSpec &DS, 
-                                const ParsedTemplateInfo &TemplateInfo) {
+                                const ParsedTemplateInfo &TI) {
 
-  // the current lookahead token is tok::kw_uniform, tok::kw_rectlinear,
-  // tok::kw_structured, or tok::kw_unstructured
   tok::TokenKind MeshType = Tok.getKind();
   SourceLocation MeshTypeLocation = ConsumeToken();
 
@@ -108,28 +105,95 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS,
     return false;
   }
 
-  TemplateParameterLists* TemplateParams = TemplateInfo.TemplateParams;
+  TemplateParameterLists* TemplateParams = TI.TemplateParams;
   MultiTemplateParamsArg TParams;
   if (TemplateParams) {
     TParams = MultiTemplateParamsArg(&(*TemplateParams)[0], 
                                      TemplateParams->size());
   }
 
-  MeshDecl* Dec;
-  Dec = static_cast<MeshDecl*>(Actions.ActOnMeshDefinition(getCurScope(),
-                               MeshType, MeshTypeLocation,
-                               Name, NameLoc, TParams));
-  Dec->completeDefinition();
-  bool valid = ParseMeshBody(MeshLocation, Dec);
-  if (valid) {
-    unsigned DiagID;
-    const char* PrevSpec;
-    DS.SetTypeSpecType(DeclSpec::TST_uniform_mesh, MeshLocation, PrevSpec,
-                       DiagID, Dec, true);
-    return true;
-  }
+  const char *PrevSpec = 0;
+  unsigned DiagID;
 
-  return false;
+  switch(MeshType) {
+
+    case tok::kw_uniform: {
+      UniformMeshDecl *UMD;
+      UMD = static_cast<UniformMeshDecl*>(
+                        Actions.ActOnMeshDefinition(getCurScope(),
+                        MeshType, MeshTypeLocation,
+                        Name, NameLoc, TParams));
+      UMD->completeDefinition();
+      if (ParseMeshBody(MeshLocation, UMD)) {      
+        DS.SetTypeSpecType(DeclSpec::TST_uniform_mesh, 
+                           MeshLocation, PrevSpec,
+                           DiagID, UMD, true);
+        return true;
+      } else {
+        return false;
+      }
+    }
+    break;
+
+    case tok::kw_rectilinear: {
+      RectilinearMeshDecl *RMD;
+      RMD = static_cast<RectilinearMeshDecl*>(
+                        Actions.ActOnMeshDefinition(getCurScope(),
+                        MeshType, MeshTypeLocation,
+                        Name, NameLoc, TParams));
+      RMD->completeDefinition();
+      if (ParseMeshBody(MeshLocation, RMD)) {
+        DS.SetTypeSpecType(DeclSpec::TST_rectilinear_mesh,
+                           MeshLocation, PrevSpec,
+                           DiagID, RMD, true);
+        return true;
+      } else {
+        return false;
+      }
+    }
+    break;
+
+    case tok::kw_structured: {
+      StructuredMeshDecl *SMD;
+      SMD = static_cast<StructuredMeshDecl*>(
+                        Actions.ActOnMeshDefinition(getCurScope(),
+                        MeshType, MeshTypeLocation,
+                        Name, NameLoc, TParams));
+      SMD->completeDefinition();
+      if (ParseMeshBody(MeshLocation, SMD)) {
+        DS.SetTypeSpecType(DeclSpec::TST_structured_mesh,
+                           MeshLocation, PrevSpec,
+                           DiagID, SMD, true);
+        return true;
+      } else {
+        return false;
+      }
+    }
+    break;
+
+    case tok::kw_unstructured: {
+      UnstructuredMeshDecl *USMD;
+      USMD = static_cast<UnstructuredMeshDecl*>(
+                        Actions.ActOnMeshDefinition(getCurScope(),
+                        MeshType, MeshTypeLocation,
+                        Name, NameLoc, TParams));
+      USMD->completeDefinition();
+      if (ParseMeshBody(MeshLocation, USMD)) {
+        DS.SetTypeSpecType(DeclSpec::TST_unstructured_mesh,
+                           MeshLocation, PrevSpec, 
+                           DiagID, USMD, true);
+        return true;
+      } else {
+        return false;
+      }
+    }
+    break;
+
+    default:
+      llvm_unreachable("unrecognized mesh token kind");
+      return false;
+      break;
+  }
 }
 
 // parse the body of a definition of a mesh, e.g:

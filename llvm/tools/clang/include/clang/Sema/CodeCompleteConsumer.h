@@ -255,6 +255,13 @@ public:
     CCC_ObjCInterfaceName,
     /// \brief Code completion where an Objective-C category name is expected.
     CCC_ObjCCategoryName,
+
+    /// \brief Code completion for the various mesh types.
+    CCC_UniformMesh,
+    CCC_RectilinearMesh,
+    CCC_StructuredMesh,
+    CCC_UnstructuredMesh,
+    
     /// \brief An unknown context, in which we are recovering from a parsing
     /// error and don't know which completions we should give.
     CCC_Recovery
