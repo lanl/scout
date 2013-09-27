@@ -1,4 +1,4 @@
-//===--- CGExpr.cpp - Emit LLVM Code from Expressions ---------------------===//
+//===--- CGExpr.cpp - DeclRef LLVM Code from Expressions ---------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -1830,6 +1830,7 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
     if (ND->getName() == "color") {
       return EmitScoutColorDeclRefLValue(ND);
     } else if(CurrentForAllArrayStmt) {
+      llvm::errs() << "moose food!\n";
       return EmitScoutForAllArrayDeclRefLValue(ND);
     }
   }

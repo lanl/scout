@@ -98,6 +98,11 @@ public:
     return cast<RectilinearMeshDecl>(MeshDecl::getMostRecentDecl());
   }
 
+  void completeDefinition() {
+    assert(!isCompleteDefinition() && "Cannot redefine rectilinear mesh!");
+    MeshDecl::completeDefinition();
+  }
+
   static bool classof(const Decl* D) { return classofKind(D->getKind()); }
   static bool classof(const RectilinearMeshDecl* D) { return true; }
   static bool classofKind(Kind K) { return K == RectilinearMesh; }

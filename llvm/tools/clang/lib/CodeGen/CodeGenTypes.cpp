@@ -208,7 +208,7 @@ isSafeToConvert(const MeshDecl *MD, CodeGenTypes &CGT,
   // multiple times in multiple structure fields, don't check again.
   if (!AlreadyChecked.insert(MD)) return true;
   
-  const Type *Key = CGT.getContext().getTagDeclType(MD).getTypePtr();
+  const Type *Key = CGT.getContext().getMeshDeclType(MD).getTypePtr();
   
   // If this type is already laid out, converting it is a noop.
   if (CGT.isMeshLayoutComplete(Key)) return true;
@@ -875,11 +875,12 @@ CodeGenTypes::getCGRecordLayout(const RecordDecl *RD) {
   return *Layout;
 }
 
+
 /// ConvertMeshDeclType - Layout a mesh decl type.
 llvm::StructType *CodeGenTypes::ConvertMeshDeclType(const MeshDecl *MD) {
   // TagDecl's are not necessarily unique, instead use the (clang)
   // type connected to the decl.
-  const Type *Key = Context.getTagDeclType(MD).getTypePtr();
+  const Type *Key = Context.getMeshDeclType(MD).getTypePtr();
 
   llvm::StructType *&Entry = MeshDeclTypes[Key];
 
@@ -932,7 +933,7 @@ llvm::StructType *CodeGenTypes::ConvertMeshDeclType(const MeshDecl *MD) {
 /// getCGMeshLayout - Return mesh layout info for the given mesh decl.
 const CGMeshLayout &
 CodeGenTypes::getCGMeshLayout(const MeshDecl *MD) {
-  const Type *Key = Context.getTagDeclType(MD).getTypePtr();
+  const Type *Key = Context.getMeshDeclType(MD).getTypePtr();
 
   const CGMeshLayout *Layout = CGMeshLayouts.lookup(Key);
   if (!Layout) {

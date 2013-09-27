@@ -227,8 +227,18 @@ namespace clang {
     void VisitEnumDecl(EnumDecl *ED);
     RedeclarableResult VisitRecordDeclImpl(RecordDecl *RD);
     void VisitRecordDecl(RecordDecl *RD) { VisitRecordDeclImpl(RD); }
-    RedeclarableResult VisitMeshDeclImpl(MeshDecl *MD);    
-    void VisitMeshDecl(MeshDecl *MD) { VisitMeshDeclImpl(MD); }    
+
+    RedeclarableResult VisitMeshDecl(MeshDecl *MD);    
+    RedeclarableResult VisitUniformMeshDeclImpl(UniformMeshDecl *UMD);
+    RedeclarableResult VisitRectilinearMeshDeclImpl(RectilinearMeshDecl *RMD);        
+    RedeclarableResult VisitStructuredMeshDeclImpl(StructuredMeshDecl *SMD);            
+    RedeclarableResult VisitUnstructuredMeshDeclImpl(UnstructuredMeshDecl *USMD);                
+
+    void VisitUniformMeshDecl(UniformMeshDecl *UMD) { VisitUniformMeshDeclImpl(UMD); }
+    void VisitRectilinearMeshDecl(RectilinearMeshDecl *RMD) { VisitRectilinearMeshDeclImpl(RMD); }
+    void VisitStructuredMeshDecl(StructuredMeshDecl *SMD) { VisitStructuredMeshDeclImpl(SMD); }
+    void VisitUnstructuredMeshDecl(UnstructuredMeshDecl *USMD) { VisitUnstructuredMeshDeclImpl(USMD); }    
+
     RedeclarableResult VisitCXXRecordDeclImpl(CXXRecordDecl *D);
     void VisitCXXRecordDecl(CXXRecordDecl *D) { VisitCXXRecordDeclImpl(D); }
     RedeclarableResult VisitClassTemplateSpecializationDeclImpl(
@@ -486,8 +496,40 @@ ASTDeclReader::VisitRecordDeclImpl(RecordDecl *RD) {
 }
 
 ASTDeclReader::RedeclarableResult
-ASTDeclReader::VisitMeshDeclImpl(MeshDecl *MD) {
-  RedeclarableResult Redecl = VisitTagDecl(MD);
+ASTDeclReader::VisitMeshDecl(MeshDecl *MD) {
+  RedeclarableResult Redecl = VisitRedeclarable(MD);
+  VisitTypeDecl(MD);
+  
+  MD->IdentifierNamespace = Record[Idx++];
+  MD->setMeshKind((MeshDecl::MeshKind)Record[Idx++]);
+  MD->setCompleteDefinition(Record[Idx++]);
+  MD->setRBraceLoc(ReadSourceLocation(Record, Idx));
+  
+  mergeRedeclarable(MD, Redecl);
+  return Redecl;
+}
+
+ASTDeclReader::RedeclarableResult
+ASTDeclReader::VisitUniformMeshDeclImpl(UniformMeshDecl *UMD) {
+  RedeclarableResult Redecl = VisitMeshDecl(UMD);
+  return Redecl;
+}
+
+ASTDeclReader::RedeclarableResult
+ASTDeclReader::VisitRectilinearMeshDeclImpl(RectilinearMeshDecl *RMD) {
+  RedeclarableResult Redecl = VisitMeshDecl(RMD);
+  return Redecl;
+}
+
+ASTDeclReader::RedeclarableResult
+ASTDeclReader::VisitStructuredMeshDeclImpl(StructuredMeshDecl *SMD) {
+  RedeclarableResult Redecl = VisitMeshDecl(SMD);
+  return Redecl;
+}
+
+ASTDeclReader::RedeclarableResult
+ASTDeclReader::VisitUnstructuredMeshDeclImpl(UnstructuredMeshDecl *USMD) {
+  RedeclarableResult Redecl = VisitMeshDecl(USMD);
   return Redecl;
 }
 

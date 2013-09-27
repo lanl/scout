@@ -3822,22 +3822,22 @@ void Sema::CodeCompleteMesh(Scope *S, unsigned MeshSpec) {
 
   case DeclSpec::TST_uniform_mesh:
     Filter = &ResultBuilder::IsUniformMesh;
-    ContextKind = CodeCompletionContext::CCC_UniformMeshTag;
+    ContextKind = CodeCompletionContext::CCC_UniformMesh;
     break;
 
   case DeclSpec::TST_rectilinear_mesh:
     Filter = &ResultBuilder::IsRectilinearMesh;
-    ContextKind = CodeCompletionContext::CCC_RectilinearMeshTag;
+    ContextKind = CodeCompletionContext::CCC_RectilinearMesh;
     break;
 
   case DeclSpec::TST_structured_mesh:
     Filter = &ResultBuilder::IsStructuredMesh;
-    ContextKind = CodeCompletionContext::CCC_StructuredMeshTag;
+    ContextKind = CodeCompletionContext::CCC_StructuredMesh;
     break;
 
   case DeclSpec::TST_unstructured_mesh:
     Filter = &ResultBuilder::IsUnstructuredMesh;
-    ContextKind = CodeCompletionContext::CCC_UnstructuredMeshTag;
+    ContextKind = CodeCompletionContext::CCC_UnstructuredMesh;
     break;
     
   default:

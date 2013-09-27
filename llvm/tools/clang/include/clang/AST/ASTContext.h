@@ -1174,6 +1174,8 @@ public:
   QualType getTagDeclType(const TagDecl *Decl) const;
   
   // ===== Scout ===================================================================
+  QualType getMeshDeclType(const MeshDecl *MD) const;
+  // SC_TODO -- not sure we need to specialize on mesh types here... 
   QualType getUniformMeshDeclType(const UniformMeshDecl *Decl) const;
   QualType getStructuredMeshDeclType(const StructuredMeshDecl *Decl) const;
   QualType getRectilinearMeshDeclType(const RectilinearMeshDecl *Decl) const;

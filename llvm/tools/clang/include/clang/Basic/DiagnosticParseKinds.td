@@ -349,6 +349,8 @@ def err_unknown_typename : Error<
   "unknown type name %0">;
 def err_use_of_tag_name_without_tag : Error<
   "must use '%1' tag to refer to type %0%select{| in this scope}2">;
+def err_use_of_mesh_name_without_mesh : Error<
+  "must use '%1' mesh kind to refer to mesh %0%select{| in this scope}2">;
 def err_templated_using_directive : Error<
   "cannot template a using directive">;
 def err_templated_using_declaration : Error<

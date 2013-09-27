@@ -100,6 +100,12 @@ public:
     return cast<UniformMeshDecl>(MeshDecl::getMostRecentDecl());
   }
 
+  void completeDefinition() {
+    assert(!isCompleteDefinition() && "Cannot redefine uniform mesh!");
+    MeshDecl::completeDefinition();
+  }
+
+
   //void addMember(Decl *D);
 
   static bool classof(const Decl* D) { return classofKind(D->getKind()); }
