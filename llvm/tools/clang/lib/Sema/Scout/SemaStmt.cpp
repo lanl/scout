@@ -56,6 +56,7 @@
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/AST/StmtVisitor.h"
+#include "clang/AST/scout/ImplicitMeshParamDecl.h"
 #include <map>
 using namespace clang;
 using namespace sema;
@@ -618,9 +619,9 @@ bool Sema::ActOnForAllLoopVariable(Scope* S,
   MeshType* MT = const_cast<MeshType *>(cast<MeshType>(T));
   UniformMeshType* UMT = cast<UniformMeshType>(MT);
 
-  ImplicitParamDecl* D =
-  ImplicitParamDecl::Create(Context, CurContext, LoopVariableLoc,
-                            LoopVariableII, QualType(UMT, 0));
+  ImplicitMeshParamDecl* D =
+  ImplicitMeshParamDecl::Create(Context, CurContext, LoopVariableLoc,
+                            LoopVariableII, QualType(UMT, 0), VD);
 
   PushOnScopeChains(D, S, true);
 
