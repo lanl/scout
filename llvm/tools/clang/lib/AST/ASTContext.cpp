@@ -1298,11 +1298,11 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool RefAsPointee) const {
       UseAlignAttrOnly = true;
     }
   }
-  else if (isa<FieldDecl>(D))
+  else if (isa<FieldDecl>(D) && !isa<MeshFieldDecl>(D)) {
       UseAlignAttrOnly = 
         D->hasAttr<PackedAttr>() ||
         cast<FieldDecl>(D)->getParent()->hasAttr<PackedAttr>();
-
+  }
   // If we're using the align attribute only, just ignore everything
   // else about the declaration and its type.
   if (UseAlignAttrOnly) {
@@ -1338,6 +1338,7 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool RefAsPointee) const {
       }
     }
 
+    // ===== Scout ===============================================================
     // Handle mesh first -- as MeshFieldDecl is a subclass of FieldDecl it
     // will pass the test below for field decls...
     // 
@@ -1353,7 +1354,7 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool RefAsPointee) const {
       unsigned fieldAlign = toBits(layout.getAlignment());
 
       // Use the CGD of that and the offset within the record. 
-      uint64_t offset = layout.getFieldOffset(field->getFieldIndex());
+      uint64_t offset = layout.getFieldOffset(field->getMeshFieldIndex());
       if (offset > 0) {
         // Alignment is always a power of two, so the GCD will be a 
         // power of two, which means we get to do this crazy thing 
@@ -1363,6 +1364,7 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool RefAsPointee) const {
           fieldAlign = static_cast<unsigned>(lowBitOfOffset);
       }
       Align = std::min(Align, fieldAlign);
+    // =====================================================================
     } else if (const FieldDecl *field = dyn_cast<FieldDecl>(VD)) {
       // Fields can be subject to extra alignment constraints, like if
       // the field is packed, the struct is packed, or the struct has a
@@ -1389,7 +1391,6 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool RefAsPointee) const {
       Align = std::min(Align, fieldAlign);
     }
   }
-
   return toCharUnitsFromBits(Align);
 }
 
