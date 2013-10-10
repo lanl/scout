@@ -4153,13 +4153,13 @@ enum TagTypeKind {
 /// \brief The kind of mesh type. 
 enum MeshTypeKind {
     /// \brief The "uniform mesh" 'keyword'.
-  TTK_UniformMesh = 10, 
+  TTK_UniformMesh = TTK_Enum+1, // the mesh and Tag kinds can't over lap
   /// \brief The "structured mesh" 'keyword'.
   TTK_StructuredMesh,
   /// \brief The "rectilinear mesh" 'keyword'.
   TTK_RectilinearMesh,
   /// \brief The "unstructured mesh" 'keyword'.
-  TTK_UnstructuredMesh
+  TTK_UnstructuredMesh // can't added anymore as this get packed into a 3 bit field.
 };
 // ===================================================================  
 
