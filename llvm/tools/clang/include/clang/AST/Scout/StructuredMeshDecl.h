@@ -56,7 +56,7 @@
 #define __SC_CLANG_STRUCTURED_MESH_DECL_H__
 
 
-#include "clang/AST/scout/MeshDecl.h"
+#include "clang/AST/Scout/MeshDecl.h"
 
 namespace clang {
   

@@ -15,49 +15,126 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace clang;
 
+// ===========================================
+//  base forall statement
+//
 
 
-ForAllStmt::ForAllStmt(StmtClass SC, ASTContext &C, ForAllType T,
-                       const MeshType *MT,IdentifierInfo* LII,
-                       IdentifierInfo* MII, VarDecl* MVD, Expr *Op,
-                       Stmt *Body, BlockExpr* Block,
-                       SourceLocation FL, SourceLocation LP,
-                       SourceLocation RP)
-  : Stmt(SC), Type(T), meshType(MT),
-    ForAllLoc(FL), LParenLoc(LP), RParenLoc(RP),
-    MeshII(MII), LoopVariableII(LII), MeshVarDecl(MVD),
-    XStart(0), XEnd(0), 
-    XStride(IntegerLiteral::Create(C, llvm::APInt(32, 1), C.IntTy, FL)),
-    YStart(0), YEnd(0), 
-    YStride(IntegerLiteral::Create(C, llvm::APInt(32, 1), C.IntTy, FL)),
-    ZStart(0), ZEnd(0),
-    ZStride(IntegerLiteral::Create(C, llvm::APInt(32, 1), C.IntTy, FL))
-{
-#ifdef USE_FORALL_BLOCK
-  setBlock(Block);
-#endif
-  setOp(Op);
-  setBody(Body);
+// ----- ForallStmt 
+// 
+// Constructor for a forall statement w/out a predicate expression. 
+//
+ForallStmt::ForallStmt(StmtClass StatementClass, 
+                       IdentifierInfo* RefVarInfo, 
+                       IdentifierInfo* ContainerInfo, 
+                       VarDecl *ContainerVD,
+                       SourceLocation ForallLocation,
+                       Stmt* Body)
+  : Stmt(StatementClass),
+    LoopRefVarInfo(RefVarInfo),
+    ContainerRefVarInfo(ContainerInfo),
+    ContainerVarDecl(ContainerVD),
+    ForallKWLoc(ForallLocation) {
+
+  SubExprs[PREDICATE] = 0;      
+  SubExprs[BODY]      = Body;
 }
 
-ForAllStmt::ForAllStmt(ASTContext &C, ForAllType T, const MeshType *MT,
-                       IdentifierInfo* LII, IdentifierInfo* MII, VarDecl* MVD,
-                       Expr *Op, Stmt *Body, BlockExpr* Block, SourceLocation FL,
-                       SourceLocation LP, SourceLocation RP)
-  : Stmt(ForAllStmtClass), Type(T), meshType(MT),
-    ForAllLoc(FL), LParenLoc(LP), RParenLoc(RP),
-    MeshII(MII), LoopVariableII(LII), MeshVarDecl(MVD),
-    XStart(0), XEnd(0),
-    XStride(IntegerLiteral::Create(C, llvm::APInt(32, 1), C.IntTy, FL)),
-    YStart(0), YEnd(0), 
-    YStride(IntegerLiteral::Create(C, llvm::APInt(32, 1), C.IntTy, FL)),
-    ZStart(0), ZEnd(0),
-    ZStride(IntegerLiteral::Create(C, llvm::APInt(32, 1), C.IntTy, FL))
-{
 
-#ifdef USE_FORALL_BLOCK
-  setBlock(Block);
-#endif
-  setOp(Op);
-  setBody(Body);
+// ----- ForallStmt::ForallStmt 
+//
+// Constructor for a forall statement w/ a predicate expression. 
+//
+ForallStmt::ForallStmt(StmtClass StatementClass, 
+                       IdentifierInfo* RefVarInfo,
+                       IdentifierInfo* ContainerInfo,
+                       VarDecl *ContainerVD, 
+                       SourceLocation ForallLocation,
+                       Stmt* Body, 
+                       Expr* Predicate, 
+                       SourceLocation LeftParenLoc, SourceLocation RightParenLoc)
+  : Stmt(StatementClass), 
+    LoopRefVarInfo(RefVarInfo),
+    ContainerRefVarInfo(ContainerInfo),
+    ContainerVarDecl(ContainerVD),
+    ForallKWLoc(ForallLocation),
+    LParenLoc(LeftParenLoc), RParenLoc(RightParenLoc) { 
+
+  SubExprs[PREDICATE] = Predicate;
+  SubExprs[BODY]      = Body;
 }
+
+
+
+
+// ===========================================
+//  forall mesh statement
+//
+
+
+
+
+// ----- ForallMeshStmt 
+//
+// Constructor for a forall mesh statement w/out a predicate expression. 
+//
+ForallMeshStmt::ForallMeshStmt(MeshElementType RefElement,
+                               IdentifierInfo* RefVarInfo,
+                               IdentifierInfo* MeshInfo,
+                               VarDecl* MeshVarDecl,
+                               const MeshType* MT,
+                               SourceLocation ForallLocation,
+                               Stmt *Body) 
+  : ForallStmt(ForallMeshStmtClass, 
+               RefVarInfo,
+               MeshInfo, MeshVarDecl,
+               ForallLocation, Body) {
+
+    MeshElementRef = RefElement; 
+
+
+
+
+    MeshRefType    = MT;
+  }
+
+
+// ----- ForallMeshStmt 
+//
+// Constructor for a forall mesh statement w/ a predicate expression. 
+//
+ForallMeshStmt::ForallMeshStmt(MeshElementType RefElement,
+                               IdentifierInfo* RefVarInfo,
+                               IdentifierInfo* MeshInfo,
+                               VarDecl* MeshVarDecl,
+                               const MeshType* MT, 
+                               SourceLocation ForallLocation,
+                               Stmt *Body, 
+                               Expr* Predicate, 
+                               SourceLocation LeftParenLoc, SourceLocation RightParenLoc) 
+  : ForallStmt(ForallMeshStmtClass, 
+               RefVarInfo,
+               MeshInfo, MeshVarDecl,
+               ForallLocation, Body,
+               Predicate, LeftParenLoc, RightParenLoc) {
+
+    MeshElementRef = RefElement;
+    MeshRefType    = MT;
+  }
+
+bool ForallMeshStmt::isUniformMesh() const { 
+  return MeshRefType->getTypeClass() == Type::UniformMesh; 
+} 
+
+bool ForallMeshStmt::isRectilinearMesh() const { 
+  return MeshRefType->getTypeClass() == Type::RectilinearMesh; 
+}
+
+bool ForallMeshStmt::isStructuredMesh() const { 
+  return MeshRefType->getTypeClass() == Type::StructuredMesh; 
+}
+
+bool ForallMeshStmt::isUnstructuredMesh() const { 
+  return MeshRefType->getTypeClass() == Type::UnstructuredMesh; 
+}
+

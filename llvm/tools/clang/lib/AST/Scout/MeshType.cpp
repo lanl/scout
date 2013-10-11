@@ -38,6 +38,9 @@ MeshDecl *MeshType::getDecl() const {
   return getInterestingMeshDecl(decl);
 }
 
+StringRef MeshType::getName() const {
+  return getDecl()->getIdentifier()->getName();
+}
 
 bool MeshType::isBeingDefined() const {
   return getDecl()->isBeingDefined();
@@ -59,6 +62,21 @@ bool MeshType::hasFaceData() const {
   return getDecl()->hasFaceData();
 }
 
+bool MeshType::isUniform() const {
+  return getDecl()->isUniformMesh();
+}
+
+bool MeshType::isRectilinear() const {
+  return getDecl()->isRectilinearMesh();
+}
+
+bool MeshType::isStructured() const {
+  return getDecl()->isStructuredMesh();
+}
+
+bool MeshType::isUnstructured() const {
+  return getDecl()->isUnstructuredMesh();
+}
 
 MeshFieldType::MeshFieldType(TypeClass TC, 
                              const MeshFieldDecl *D, 

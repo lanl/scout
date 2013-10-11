@@ -2,18 +2,37 @@
 // one directory up (StmtPrinter is all contained in a single
 // file there...). 
 //  
+void StmtPrinter::VisitForallMeshStmt(ForallMeshStmt *Node) {
+  Indent() << "forall ";
 
-void StmtPrinter::VisitForAllStmt(ForAllStmt *Node) 
-{ }
+  if (Node->isOverCells())
+    OS << "cells ";
+  else if (Node->isOverEdges())
+    OS << "edges ";
+  else if (Node->isOverVertices())
+    OS << "verticies ";
+  else if (Node->isOverFaces())
+    OS << "faces ";
+  else 
+    OS << "<unknown mesh element>";
 
-void StmtPrinter::VisitForAllArrayStmt(ForAllArrayStmt *Node) 
-{ }
+  OS << Node->getRefVarInfo()->getName() << " in ";
+  OS << Node->getMeshInfo()->getName() << " ";
 
-void StmtPrinter::VisitRenderAllStmt(RenderAllStmt *Node) 
-{ }
+  if (Node->hasPredicate()) {
+    OS << "(";
+    PrintExpr(Node->getPredicate());
+    OS << ")";
+  }
 
-void StmtPrinter::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *Node) 
-{ }
+  if (CompoundStmt *CS = dyn_cast<CompoundStmt>(Node->getBody())) {
+    PrintRawCompoundStmt(CS);
+    OS << "\n";
+  } else {
+    OS << "\n";
+    PrintStmt(Node->getBody());
+  }
+}
 
 void StmtPrinter::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *Node) {
 

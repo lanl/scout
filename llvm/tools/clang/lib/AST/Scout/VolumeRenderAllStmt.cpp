@@ -15,7 +15,7 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace clang;
 
-
+/*
 VolumeRenderAllStmt::VolumeRenderAllStmt(ASTContext& C, SourceLocation VolRenLoc,
     SourceLocation LB, SourceLocation RB, 
     IdentifierInfo* MII, VarDecl* MVD, IdentifierInfo* CII,
@@ -31,3 +31,4 @@ VolumeRenderAllStmt::VolumeRenderAllStmt(ASTContext& C, SourceLocation VolRenLoc
 const MeshType* VolumeRenderAllStmt::getMeshType() const {
   return dyn_cast<MeshType>(MeshVarDecl->getType().getTypePtr());
 }
+*/

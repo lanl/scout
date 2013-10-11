@@ -251,14 +251,14 @@ Retry:
       case tok::kw_vertices:
       case tok::kw_faces:
       case tok::kw_edges:
-        return ParseForAllStatement(Attrs);
+        return ParseForallMeshStatement(Attrs);
       default:
-        return ParseForAllArrayStatement(Attrs);
+        assert(false && "unhandled forall token");
     }
   }
 
-  case tok::kw_renderall:
-    return ParseForAllStatement(Attrs, false);
+  //case tok::kw_renderall:
+  //  return ParseForAllStatement(Attrs, false);
   case tok::kw_window:
       return ParseWindowOrImageDeclaration(true, Stmts, OnlyStatement);
   case tok::kw_image:

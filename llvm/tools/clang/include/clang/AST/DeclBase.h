@@ -160,7 +160,10 @@ public:
     /// This declaration is a C++ operator declared in a non-class
     /// context.  All such operators are also in IDNS_Ordinary.
     /// C++ lexical operator lookup looks for these.
-    IDNS_NonMemberOperator   = 0x0400
+    IDNS_NonMemberOperator   = 0x0400,
+
+    // Scout -- not sure if we need this or not... 
+    IDNS_Mesh                = 0x0800
   };
 
   /// ObjCDeclQualifier - 'Qualifiers' written next to the return and

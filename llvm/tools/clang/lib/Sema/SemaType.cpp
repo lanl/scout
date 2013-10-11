@@ -3888,7 +3888,7 @@ Sema::GetTypeSourceInfoForDeclarator(Declarator &D, QualType T,
     // ===== Scout ============================================================
     //CurrTL = CurrTL.getNextTypeLoc().getUnqualifiedLoc();
     TypeLoc nextTL = CurrTL.getNextTypeLoc();
-    if (nextTL.getUnqualifiedLoc() == NULL) {
+    if (nextTL.getUnqualifiedLoc() == 0) {
       break; // SC_TODO Not sure what to do here.  If don't break, we get an error.
     } else {
       CurrTL = nextTL.getUnqualifiedLoc();

@@ -31,7 +31,7 @@
 #include "clang/AST/TemplateName.h"
 #include "clang/AST/Type.h"
 #include "clang/AST/TypeLoc.h"
-#include "clang/AST/scout/MeshDecls.h"
+#include "clang/AST/Scout/MeshDecls.h"
 
 // The following three macros are used for meta programming.  The code
 // using them is responsible for defining macro OPERATOR().
@@ -595,15 +595,18 @@ bool RecursiveASTVisitor<Derived>::TraverseType(QualType T) {
 
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseTypeLoc(TypeLoc TL) {
-  // ===== Scout ===========================================================
-  // SC_TODO: this debug code can be deleted when we get the MeshTypeloc stuff working correctly
+  // ===== Scout
+  // ===========================================================
+  // SC_TODO: this debug code can be deleted when we get the
+  // MeshTypeloc stuff working correctly
   if (TL.getTypeLocClass() == TypeLoc::UniformMesh) {
-      if (isa<TagType>(TL.getTypePtr())) llvm::errs() << "Is tag\n";
-      if (isa<MeshType>(TL.getTypePtr())) llvm::errs() << "Is mesh\n";
-      if (isa<UniformMeshType>(TL.getTypePtr())) llvm::errs() << "Is uniform mesh\n";
-      llvm::errs() << "uniform mesh ";
-      llvm::errs() << getDerived().WalkUpFromUniformMeshType(const_cast<UniformMeshType*>(cast<UniformMeshType>(TL.getTypePtr())));
-      llvm::errs() << "\n";
+      if (isa<TagType>(TL.getTypePtr()))
+        llvm::errs() << "Is tag\n";
+      if (isa<MeshType>(TL.getTypePtr()))
+        llvm::errs() << "Is mesh\n";
+      if (isa<UniformMeshType>(TL.getTypePtr()))
+        llvm::errs() << "Is uniform mesh\n";
+      
       if (TL.castAs<UniformMeshTypeLoc>().getTypeLocClass() == TypeLoc::UniformMesh) llvm::errs() << "Is uniform mesh 2\n";
       //combo of castAs<UniformMeshTypeLoc>() and getTypePtr()fails
       //if (isa<UniformMeshType>(TL.castAs<UniformMeshTypeLoc>().getTypePtr())) llvm::errs() << "Is uniform mesh 3\n";
@@ -2005,10 +2008,10 @@ DEF_TRAVERSE_STMT(DefaultStmt, { })
 DEF_TRAVERSE_STMT(DoStmt, { })
 DEF_TRAVERSE_STMT(ForStmt, { })
 // ===== Scout ==========================================================================
-DEF_TRAVERSE_STMT(ForAllStmt, { })
-DEF_TRAVERSE_STMT(ForAllArrayStmt, { })
-DEF_TRAVERSE_STMT(RenderAllStmt, { })  
-DEF_TRAVERSE_STMT(VolumeRenderAllStmt, { })
+DEF_TRAVERSE_STMT(ForallMeshStmt, { })
+//DEF_TRAVERSE_STMT(RenderAllMeshStmt, { })
+//DEF_TRAVERSE_STMT(ForallArrayStmt, { })
+//DEF_TRAVERSE_STMT(VolumeRenderAllStmt, { })
 // ======================================================================================
 DEF_TRAVERSE_STMT(GotoStmt, { })
 DEF_TRAVERSE_STMT(IfStmt, { })

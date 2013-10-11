@@ -376,6 +376,9 @@ static unsigned long long getContextsForContextKind(
                     CXCompletionContext_ClassTag |
                     CXCompletionContext_NestedNameSpecifier;
       }
+      if (S.getLangOpts().Scout) {
+        contexts |= CXCompletionContext_Scout;
+      }
       break;
     }
     case CodeCompletionContext::CCC_Statement: {
@@ -389,6 +392,9 @@ static unsigned long long getContextsForContextKind(
                     CXCompletionContext_ClassTag |
                     CXCompletionContext_NestedNameSpecifier;
       }
+      if (S.getLangOpts().Scout) {
+        contexts |= CXCompletionContext_Scout;
+      }
       break;
     }
     case CodeCompletionContext::CCC_Expression: {
@@ -401,6 +407,9 @@ static unsigned long long getContextsForContextKind(
                     CXCompletionContext_StructTag |
                     CXCompletionContext_ClassTag |
                     CXCompletionContext_NestedNameSpecifier;
+      }
+      if (S.getLangOpts().Scout) {
+        contexts |= CXCompletionContext_Scout;
       }
       break;
     }
@@ -447,10 +456,33 @@ static unsigned long long getContextsForContextKind(
                  CXCompletionContext_NestedNameSpecifier;
       break;
     }
+
+    case CodeCompletionContext::CCC_UniformMesh: {
+      contexts = CXCompletionContext_Scout;
+      break;
+    }
+
+    case CodeCompletionContext::CCC_RectilinearMesh: {
+      contexts = CXCompletionContext_Scout;
+      break;
+    }
+
+    case CodeCompletionContext::CCC_StructuredMesh: {
+      contexts = CXCompletionContext_Scout;
+      break;
+    }
+
+    case CodeCompletionContext::CCC_UnstructuredMesh: {
+      contexts = CXCompletionContext_Scout;
+      break;
+    }
+
     case CodeCompletionContext::CCC_ObjCProtocolName: {
       contexts = CXCompletionContext_ObjCProtocol;
       break;
     }
+
+
     case CodeCompletionContext::CCC_Namespace: {
       contexts = CXCompletionContext_Namespace;
       break;

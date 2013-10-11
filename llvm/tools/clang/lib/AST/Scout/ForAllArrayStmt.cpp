@@ -15,7 +15,7 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace clang;
 
-
+/*
 ForAllArrayStmt::ForAllArrayStmt(ASTContext &C,
                                  SourceLocation FAL,
                                  Stmt* Body,
@@ -29,3 +29,4 @@ ZInductionVarII(0)
 {
   setBody(Body);
 }
+*/

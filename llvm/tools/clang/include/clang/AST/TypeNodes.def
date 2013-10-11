@@ -126,7 +126,6 @@ LEAF_TYPE(ObjCInterface)
 LEAF_TYPE(TemplateTypeParm)
 
 // ===== Scout ================================================================
-//LEAF_TYPE(Mesh)
 LEAF_TYPE(UniformMesh)
 LEAF_TYPE(StructuredMesh)
 LEAF_TYPE(RectilinearMesh)

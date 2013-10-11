@@ -133,18 +133,18 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
   case Stmt::ForStmtClass:      EmitForStmt(cast<ForStmt>(*S));           break;
 
   // ===== Scout ==============================================================
-  case Stmt::ForAllStmtClass:
-    EmitForallStmt(cast<ForAllStmt>(*S));
+  case Stmt::ForallMeshStmtClass:
+    EmitForallStmt(cast<ForallMeshStmt>(*S));
     break;
-  case Stmt::ForAllArrayStmtClass:
-    EmitForAllArrayStmt(cast<ForAllArrayStmt>(*S));
-    break;
-  case Stmt::RenderAllStmtClass:
-    EmitRenderAllStmt(cast<RenderAllStmt>(*S));
-    break;
-  case Stmt::VolumeRenderAllStmtClass:
-    EmitVolumeRenderAllStmt(cast<VolumeRenderAllStmt>(*S)); 
-    break;
+  //case Stmt::ForAllArrayStmtClass:
+  // EmitForAllArrayStmt(cast<ForAllArrayStmt>(*S));
+  //  break;
+  //case Stmt::RenderAllStmtClass:
+  //  EmitRenderAllStmt(cast<RenderAllStmt>(*S));
+  //  break;
+  //case Stmt::VolumeRenderAllStmtClass:
+  //  EmitVolumeRenderAllStmt(cast<VolumeRenderAllStmt>(*S)); 
+  //  break;
   // ==========================================================================
 
   case Stmt::ReturnStmtClass:   EmitReturnStmt(cast<ReturnStmt>(*S));     break;
@@ -650,7 +650,7 @@ void CodeGenFunction::insertMeshDump(llvm::Value* baseAddr) {
 
 // ----- scGetMeshBaseAddr
 //
-llvm::Value *CodeGenFunction::GetMeshBaseAddr(const ForAllStmt &S) {
+llvm::Value *CodeGenFunction::GetMeshBaseAddr(const ForallMeshStmt &S) {
   const VarDecl *MeshVarDecl = S.getMeshVarDecl();
   llvm::Value *BaseAddr = 0;
   
@@ -669,7 +669,7 @@ llvm::Value *CodeGenFunction::GetMeshBaseAddr(const ForAllStmt &S) {
 // ----- GetMeshDimensions
 //
 void 
-CodeGenFunction::GetMeshDimValues(const ForAllStmt &S,
+CodeGenFunction::GetMeshDimValues(const ForallMeshStmt &S,
                        llvm::SmallVector<llvm::Value*, 3> &MeshDimensions,
                        llvm::Value* MeshBaseAddr) {
   

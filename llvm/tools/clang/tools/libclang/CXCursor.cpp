@@ -227,11 +227,11 @@ CXCursor cxcursor::MakeCXCursor(const Stmt *S, const Decl *Parent,
   case Stmt::ImplicitValueInitExprClass:
   case Stmt::MaterializeTemporaryExprClass:
   // ndm - Scout Stmts
-  case Stmt::ForAllStmtClass:  
-  case Stmt::RenderAllStmtClass: 
+  case Stmt::ForallMeshStmtClass:  
+  //case Stmt::RenderAllStmtClass: 
   case Stmt::ScoutVectorMemberExprClass:
-  case Stmt::ForAllArrayStmtClass:
-  case Stmt::VolumeRenderAllStmtClass:
+  //case Stmt::ForAllArrayStmtClass:
+  //case Stmt::VolumeRenderAllStmtClass:
 
   case Stmt::ObjCIndirectCopyRestoreExprClass:
   case Stmt::OffsetOfExprClass:

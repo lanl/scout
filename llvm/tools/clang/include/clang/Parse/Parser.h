@@ -2274,7 +2274,7 @@ private:
   
   
   // scout **************************** Scout parsing methods
-    
+  
   void ParseMeshVarBracketDeclarator(Declarator &D);
 
   void ParseMeshVarParenDeclarator(Declarator &D);
@@ -2282,18 +2282,20 @@ private:
   bool ParseMeshStatement(StmtVector &Stmts,
        bool OnlyStatement, Token &Next, StmtResult &SR);
 
-  StmtResult ParseForAllStatement(ParsedAttributes &Attr, bool ForAll=true);
-  
-  StmtResult ParseForAllArrayStatement(ParsedAttributes &Attr);
-  
-  StmtResult ParseForAllShortStatement(IdentifierInfo* Name, 
-                                       SourceLocation NameLoc,
-                                       VarDecl* VD);
-  StmtResult ParseVolumeRenderAll(Scope* S, SourceLocation VolRenLoc,
-      ParsedAttributes &attrs, IdentifierInfo* MeshII, VarDecl* MVD, 
-      IdentifierInfo* CameraII, SourceLocation CameraLoc, Expr* Op,
-      SourceLocation OpLParenLoc, SourceLocation OpRParenLoc);
+  StmtResult ParseForallStatement(ParsedAttributes &Attr);
 
+  StmtResult ParseForallMeshStatement(ParsedAttributes &Attr);
+
+  const MeshType* LookupMeshType(IdentifierInfo *MeshInfo,
+                                 SourceLocation MeshLoc);
+
+  const MeshType* LookupMeshType(VarDecl *VD,
+                                 IdentifierInfo *MeshInfo, 
+                                 SourceLocation MeshLoc);
+
+  VarDecl* LookupMeshVarDecl(IdentifierInfo *MeshInfo,
+                             SourceLocation MeshLoc);
+  
   bool ParseMeshSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TemplateInfo);
   
   bool ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec);
