@@ -2115,531 +2115,256 @@ public:
 
 // ===== Scout ================================================================================
 // 
-class ForAllStmt : public Stmt {
 
-public:
+// ----- ForallStmt -- base class for forall statements 
+// 
+// This class handles the basic functionality of all forall-style statements.  At this level
+// we have the following information about the loop statement:
+//
+//   (1) The information about the reference element -- the loop's implicit reference 
+//       variable that represents the active element within the loop scope.  
+// 
+//   (2) The variable declaration for the container we are looping over (e.g. a mesh, array,
+//        etc.).
+//
+//   (3) A predicate expression for the overall loop and the body (statements) within the 
+//       loop.
+//
+//   (4) The source locations of the forall keyword, the left and right parens that wrap the
+//       predicate (if any).
+// 
+class ForallStmt : public Stmt {
 
-  enum ForAllType{
-    Cells,
-    Vertices,
-    Edges,
-    Faces, 
-    ElementSpheres,  // SC_TODO - we should have a 'renderall' class to separate these. 
-    Array
+protected:
+
+
+  enum {
+    PREDICATE = 0, // Loop predicate. 
+    BODY      = 1, // Body of forall.  
+    END_EXPR  = 2
   };
 
-private:
-
-  // OP is the operation or condition: ... myMesh '(' OP ')' { ... }
-  // BODY is compound stmts : '{' BODY '}'
-
-#ifdef USE_FORALL_BLOCK
-  enum {OP, BODY, BLOCK, END_EXPR};
-#else
-  enum {OP, BODY, END_EXPR};
-#endif
-
-  ForAllType Type;
-  const MeshType *meshType;
-
+  // Store the various components (collection of statements) of the 
+  // forall...  In this case we store the predicate and the body of 
+  // the forall.
   Stmt* SubExprs[END_EXPR];
 
-  SourceLocation ForAllLoc;
-  SourceLocation LParenLoc, RParenLoc;
-  IdentifierInfo* MeshII;
-  IdentifierInfo* LoopVariableII;
-  VarDecl* MeshVarDecl;
-  
-  Expr* XStart;
-  Expr* XEnd;
-  Expr* XStride;
-  Expr* YStart;
-  Expr* YEnd;
-  Expr* YStride;
-  Expr* ZStart;
-  Expr* ZEnd;
-  Expr* ZStride;
-
 public:
-  ForAllStmt(ASTContext &C, ForAllType Type, const MeshType *MT,
-             IdentifierInfo* LII, IdentifierInfo* MII, VarDecl* MVD,
-             Expr *Op, Stmt *Body, BlockExpr* Block,
-             SourceLocation FL, SourceLocation LP,
-             SourceLocation RP);
 
-  ForAllStmt(StmtClass SC, ASTContext &C, ForAllType Type,
-             const MeshType *MT, IdentifierInfo* LII, IdentifierInfo* MII, VarDecl* MVD,
-             Expr *Op, Stmt *Body, BlockExpr* Block,
-             SourceLocation FL, SourceLocation LP,
-             SourceLocation RP);
 
-  explicit ForAllStmt(EmptyShell Empty) : Stmt(ForAllStmtClass, Empty) { }
 
-  ForAllStmt(StmtClass SC, EmptyShell Empty) : Stmt(SC, Empty) { }
+  ForallStmt(StmtClass SC, 
+             IdentifierInfo* RefVarInfo, 
+             IdentifierInfo* ContainerInfo, 
+             VarDecl *ContainerVarDecl,
+             SourceLocation ForallLoc, Stmt *Body);
 
-  const MeshType *getMeshType() const {
-    return meshType;
-  }
+  ForallStmt(StmtClass SC, 
+             IdentifierInfo* RefElementInfo,
+             IdentifierInfo* ContainerInfo, 
+             VarDecl *ContainerVarDecl,
+             SourceLocation ForallLoc, Stmt *Body,
+             Expr* Predicate, 
+             SourceLocation LeftParenLoc, SourceLocation RightParenLoc);
 
-  ForAllType getType(){
-    return Type;
-  }
-
-  void setType(ForAllType T){
-    Type = T;
+  ForallStmt(StmtClass SC, EmptyShell Empty) : Stmt(SC, Empty) {
+    SubExprs[PREDICATE] = 0;
+    SubExprs[BODY]      = 0;
+    LoopRefVarInfo      = 0;
+    ContainerRefVarInfo = 0;
+    ContainerVarDecl    = 0;
   }
 
-  bool isForAllCells() const {
-    return Type == Cells;
-  }
+  // ===--- Reference variable info ---=== 
+  IdentifierInfo* getRefVarInfo() { return LoopRefVarInfo; }
+  const IdentifierInfo* getRefElementInfo() const { return LoopRefVarInfo; }
 
-  bool isForAllVertices() const {
-    return Type == Vertices;
-  }
+// ===--- Container variable info ---=== 
+  IdentifierInfo* getContainerVarInfo() { return ContainerRefVarInfo; }
+  const IdentifierInfo* getContainerVarInfo() const { return ContainerRefVarInfo; }
 
-  bool isForAllEdges() const {
-    return Type == Edges;
-  }
+  // ===--- Container variable declaration ---===
+  VarDecl* getContainerVarDecl() { return ContainerVarDecl; }
+  const VarDecl* getContainerVarDecl() const { return ContainerVarDecl; }
 
-  bool isForAllFaces() const {
-    return Type == Faces;
-  }
+  // ===--- Predicate ---===
+  Expr* getPredicate() { return reinterpret_cast<Expr*>(SubExprs[PREDICATE]); }
+  const Expr* getPredicate() const{ return reinterpret_cast<Expr*>(SubExprs[PREDICATE]); }
+  void setPredicate(Expr* P) { SubExprs[PREDICATE] = reinterpret_cast<Stmt*>(PREDICATE); }
+  bool hasPredicate() const { return SubExprs[PREDICATE] != 0; }
 
-  bool isForAllArray() const {
-    return Type == Array;
-  }
+  // ====--- Body ----=== 
+  Stmt* getBody() { return SubExprs[BODY]; }
+  const Stmt* getBody() const { return SubExprs[BODY]; }
+  void setBody(Stmt* B) { SubExprs[BODY] = reinterpret_cast<Stmt*>(B); }
+  bool hasBodyStatements() const { return SubExprs[BODY] != 0; } 
 
-  bool isForAllElementSpehres() const {
-    return Type == ElementSpheres;
-  }
+  // ===--- Source Locations ---===
+  SourceLocation getForAllLoc() const { return ForallKWLoc; }
+  void setForAllLoc(SourceLocation L) { ForallKWLoc = L; }
 
-  IdentifierInfo* getLoopVariable(){
-    return LoopVariableII;
-  }
-
-  const IdentifierInfo* getLoopVariable() const{
-    return LoopVariableII;
-  }
-  void setLoopVariable(IdentifierInfo* II){
-    LoopVariableII = II;
-  }
-
-  IdentifierInfo* getMesh(){
-    return MeshII;
-  }
-
-  const IdentifierInfo* getMesh() const{
-    return MeshII;
-  }
-  void setMesh(IdentifierInfo* II){
-    MeshII = II;
-  }
-
-  VarDecl* getMeshVarDecl(){
-    return MeshVarDecl;
-  }
-  
-  const VarDecl* getMeshVarDecl() const{
-    return MeshVarDecl;
-  }
-  
-  Expr* getOp(){
-    return reinterpret_cast<Expr*>(SubExprs[OP]);
-  }
-
-  const Expr* getOp() const{
-    return reinterpret_cast<Expr*>(SubExprs[OP]);
-  }
-
-  void setOp(Expr* O){
-    SubExprs[OP] = reinterpret_cast<Stmt*>(O);
-  }
-#ifdef USE_FORALL_BLOCK
-  BlockExpr* getBlock(){
-    return reinterpret_cast<BlockExpr*>(SubExprs[BLOCK]);
-  }
-
-  const BlockExpr* getBlock() const{
-    return reinterpret_cast<BlockExpr*>(SubExprs[BLOCK]);
-  }
-
-  void setBlock(BlockExpr* B){
-    SubExprs[BLOCK] = reinterpret_cast<Stmt*>(B);
-  }
-#endif
-  Stmt* getBody(){
-    return SubExprs[BODY];
-  }
-
-  const Stmt* getBody() const{
-    return SubExprs[BODY];
-  }
-
-  void setBody(Stmt* B){
-    SubExprs[BODY] = reinterpret_cast<Stmt*>(B);
-  }
-
-  Expr* getXStart(){
-    return XStart;
-  }
-
-  void setXStart(Expr* XS){
-    XStart = XS;
-  }
-
-  Expr* getXEnd(){
-    return XEnd;
-  }
-
-  void setXEnd(Expr* XE){
-    XEnd = XE;
-  }
-
-  Expr* getXStride(){
-    return XStride;
-  }
-
-  void setXStride(Expr* XS){
-    XStride = XS;
-  }
-
-  Expr* getYStart(){
-    return YStart;
-  }
-
-  void setYStart(Expr* YS){
-    YStart = YS;
-  }
-
-  Expr* getYEnd(){
-    return YEnd;
-  }
-
-  void setYEnd(Expr* YE){
-    YEnd = YE;
-  }
-
-  Expr* getYStride(){
-    return YStride;
-  }
-
-  void setYStride(Expr* YS){
-    YStride = YS;
-  }
-
-  Expr* getZStart(){
-    return ZStart;
-  }
-
-  void setZStart(Expr* ZS){
-    ZStart = ZS;
-  }
-
-  Expr* getZEnd(){
-    return ZEnd;
-  }
-
-  void setZEnd(Expr* ZE){
-    ZEnd = ZE;
-  }
-
-  Expr* getZStride(){
-    return ZStride;
-  }
-
-  void setZStride(Expr* ZS){
-    ZStride = ZS;
-  }
-
-  Expr *getStart(int axis) const {
-    switch(axis) {
-      case 0: return XStart;
-      case 1: return YStart;
-      case 2: return ZStart;
-      default:
-        const char *s = "Unknown axis in getStart(int axis).\n";
-        assert(false && s);
-    }
-  }
-
-  void setStart(int axis, Expr *E) {
-    switch(axis) {
-      case 0: XStart = E; return;
-      case 1: YStart = E; return;
-      case 2: ZStart = E; return;
-      default:
-        const char *s = "Unknown axis in setStart(int axis, Expr *E).\n";
-        assert(false && s);
-    }
-  }
-
-  Expr *getEnd(int axis) const {
-    switch(axis) {
-      case 0: return XEnd;
-      case 1: return YEnd;
-      case 2: return ZEnd;
-      default:
-        const char *s = "Unknown axis in getEnd(int axis).\n";
-        assert(false && s);
-    }
-  }
-
-  void setEnd(int axis, Expr *E) {
-    switch(axis) {
-      case 0: XEnd = E; return;
-      case 1: YEnd = E; return;
-      case 2: ZEnd = E; return;
-      default:
-        const char *s = "Unknown axis in setEnd(int axis, Expr *E).\n";
-        assert(false && s);
-    }
-  }
-
-  Expr *getStride(int axis) const {
-    switch(axis) {
-      case 0: return XStride;
-      case 1: return YStride;
-      case 2: return ZStride;
-      default:
-        const char *s = "Unknown axis in getStride(int axis).\n";
-        assert(false && s);
-    }
-  }
-  
-  void setStride(int axis, Expr *E) {
-    switch(axis) {
-      case 0: XStride = E; return;
-      case 1: YStride = E; return;
-      case 2: ZStride = E; return;
-      default:
-        const char *s = "Unknown axis in setStride(int axis, Expr *E).\n";
-        assert(false && s);
-    }
-  }
-
-  SourceLocation getForAllLoc() const { return ForAllLoc; }
-  void setForAllLoc(SourceLocation L) { ForAllLoc = L; }
   SourceLocation getLParenLoc() const { return LParenLoc; }
   void setLParenLoc(SourceLocation L) { LParenLoc = L; }
+
   SourceLocation getRParenLoc() const { return RParenLoc; }
   void setRParenLoc(SourceLocation L) { RParenLoc = L; }
 
-  SourceLocation getLocStart() const LLVM_READONLY { return ForAllLoc; }
+  SourceLocation getLocStart() const LLVM_READONLY { return ForallKWLoc; }
   SourceLocation getLocEnd() const LLVM_READONLY { return SubExprs[BODY]->getLocEnd(); }
-  
-  static bool classof(const Stmt *T) {
-    return T->getStmtClass() == ForAllStmtClass ||
-    T->getStmtClass() == RenderAllStmtClass ||
-    T->getStmtClass() == ForAllArrayStmtClass;
-  }
-
-  static bool classof(const ForAllStmt *) { return true; }
 
   SourceRange getSourceRange() const {
-    return SourceRange(ForAllLoc, SubExprs[BODY]->getLocEnd());
+    return SourceRange(ForallKWLoc, SubExprs[BODY]->getLocEnd());
   }
 
   child_range children() {
     return child_range(&SubExprs[0], &SubExprs[0]+END_EXPR);
   }
 
+  // ===--- Class identification support ---===
+  // **NOTE - we should *never* have an instance that is the base class of the 
+  // forall inheritance tree.  The following classes are for completeness but 
+  // will all assert with an error condition if called.
+  static bool classof(const ForallStmt *) { 
+    assert(false && "query of base forall statement class is a no-no");    
+    return true; 
+  }
+
+protected:
+  // The loop's reference element variable is an implicitly declared 
+  // instance whose type matches that of the mesh location specified 
+  // by the forall loop construct (for example, the reference variable
+  // is a cell in the case of a 'forall cells in mesh' statement).  
+  // The  reference element is only accessible within the body of the 
+  // 'forall' -- its value may not be changed within the loop. 
+  IdentifierInfo* LoopRefVarInfo;
+
+  // The loop's reference container variable is the container that 
+  // has been specified within the forall statement. We keep track 
+  // of not only the mesh's identifier info but also the var decl.  
+  // This is primarily the data gathered at parsing and during semantic 
+  // checks -- it is useful to keep around for both analysis, optimization
+  // and codegen passes...
+  IdentifierInfo  *ContainerRefVarInfo;
+  VarDecl         *ContainerVarDecl;  
+  SourceLocation  ForallKWLoc, LParenLoc, RParenLoc;
 };
 
-class RenderAllStmt : public ForAllStmt {
+
+// ----- ForallMeshStmt -- forall mesh statement
+//
+// forall <mesh-loc-kw> <ref-element> in <ref-mesh> {
+//   ... 
+// }
+//
+// where:
+//
+//   mesh-loc-kw  - provides the mesh location (elements) to operate over. This is a keyword  
+//                  that identifies 'cells', 'edges', 'vertices', or 'faces'.
+//
+//   ref-element  - the reference variable for each field location element in the mesh 
+//                  being operated on.  This should be a valid identifier (variable 
+//                  name).  It takes on the value of each element (cell, edge, vertex,
+//                  or face) in the mesh within the body of the 'forall'.
+//
+//   ref-mesh     - the mesh instance that should be operated on (computed over).
+//
+// Predicated form: 
+//
+//   forall <mesh-loc-kw> <ref-element> in <ref-mesh> (predicated-expr) {
+//     ... 
+//   }
+// 
+class ForallMeshStmt : public ForallStmt {
+
 public:
 
-  RenderAllStmt(ASTContext &C, ForAllType Type, const MeshType *MT,
-                IdentifierInfo* LII, IdentifierInfo* MII, 
-                VarDecl* MVD, Expr *Op,
-                Stmt *Body, BlockExpr *Block,
-                SourceLocation RL, SourceLocation LP,
-                SourceLocation RP);
+  // A mesh-based forall statement operates over a specified set of 
+  // locations within the mesh.  These locations are provided in the
+  // form of a keyword that IDs cells, verticies, edges, or faces of 
+  // the mesh.  We use the following enum value to track the mesh 
+  // elements referenced by the forall statement. 
+  enum MeshElementType {
+    Undefined    = -1, 
+    Cells        =  1,
+    Vertices     =  2,
+    Edges        =  3,
+    Faces        =  4
+  };
 
-  explicit RenderAllStmt(EmptyShell Empty)
-    : ForAllStmt(RenderAllStmtClass, Empty) { }
-
-
-  SourceLocation getRenderAllLoc() const { return getForAllLoc(); }
-
-  void setRenderAllLoc(SourceLocation L) { setForAllLoc(L); }
-
-  static bool classof(const Stmt *T) {
-    return T->getStmtClass() == RenderAllStmtClass;
-  }
-
-  static bool classof(const RenderAllStmt *) { return true; }
-  
-  void setElementColor(Expr* e){
-    ElementColor = e;
-  }
-
-  Expr* getElementColor(){
-    return ElementColor;
-  }
-  
-  void setElementRadius(Expr* e){
-    ElementRadius = e;
-  }
-  
-  Expr* getElementRadius(){
-    return ElementRadius;
-  }
-  
-  void setElementMember(MemberExpr* e){
-    ElementMember = e;
-  }
-  
-  MemberExpr* getElementMember(){
-    return ElementMember;
-  }
-  
 private:
-  MemberExpr* ElementMember;
-  Expr* ElementColor;
-  Expr* ElementRadius;
-};
+  // The mesh location/element we're looping over -- this provides us 
+  // information about looping over cells, edges, faces, etc.  Is the 
+  // isOver*() member functions for helpers to determine the element 
+  // type. 
+  MeshElementType MeshElementRef;
 
-class ForAllArrayStmt : public ForAllStmt {
-  IdentifierInfo* XInductionVarII;
-  IdentifierInfo* YInductionVarII;
-  IdentifierInfo* ZInductionVarII;
-    
+  // In addition to the container information held in our parent class we also 
+  // capture the mesh type that the loop is operating over.  Note at this point
+  // we are dealing with a generic (base) mesh type and not a specific case (e.g.
+  // uniform or rectilinear).  Any operations over the forall should make sure 
+  // appropriate steps are taken for the various mesh types (and safely cast this 
+  // type as needed to the appropriate subclass). 
+  const MeshType* MeshRefType;   
+  
 public:
-  ForAllArrayStmt(ASTContext &C,
-                  SourceLocation FAL,
-                  Stmt *Body,
-                  BlockExpr* Block);
-  
-  
-  explicit ForAllArrayStmt(EmptyShell Empty) : 
-  ForAllStmt(Empty) { }
-  
-  const IdentifierInfo* getInductionVar(size_t axis) const{
-    switch(axis){
-      case 0:
-        return XInductionVarII;
-      case 1:
-        return YInductionVarII;
-      case 2:
-        return ZInductionVarII;
-    }
-    
-    assert(false && "invalid axis");
+
+  ForallMeshStmt(MeshElementType RefElement,
+                 IdentifierInfo* RefVarInfo,
+                 IdentifierInfo* MeshInfo, VarDecl* MeshVarDecl, const MeshType* MT,
+                 SourceLocation ForallLocation,
+                 Stmt *Body); 
+
+  ForallMeshStmt(MeshElementType RefElement,
+                 IdentifierInfo* RefVarInfo,
+                 IdentifierInfo* MeshInfo, VarDecl* MeshVarDecl, const MeshType* MT,
+                 SourceLocation ForallLocation,
+                 Stmt *Body, Expr* Predicate, 
+                 SourceLocation LeftParenLoc, SourceLocation RightParenLoc); 
+
+  explicit ForallMeshStmt(EmptyShell Empty) : ForallStmt(ForallMeshStmtClass, Empty) { }
+
+  ForallMeshStmt(StmtClass SC, EmptyShell Empty) : ForallStmt(SC, Empty) { }
+
+
+  // ===--- Mesh details ---=== 
+
+  MeshElementType getMeshElementRef() const {
+    return MeshElementRef;
   }
-  
-  void setInductionVar(size_t axis, IdentifierInfo *II) {
-    switch(axis) {
-      case 0: XInductionVarII = II; return;
-      case 1: YInductionVarII = II; return;
-      case 2: ZInductionVarII = II; return;
-      default:
-        assert(false && "invalid axis.");
-    }
+
+  void setMeshElementRef(MeshElementType ref) {
+    MeshElementRef = ref;
   }
-  
+
+  void setMeshElementRef(tok::TokenKind &token);
+
+  // Determine which mesh elements the statement is operating over... 
+  bool isOverCells() const    { return MeshElementRef == Cells; }
+  bool isOverEdges() const    { return MeshElementRef == Edges; }  
+  bool isOverVertices() const { return MeshElementRef == Vertices; }  
+  bool isOverFaces() const    { return MeshElementRef == Faces; } 
+
+  // Determine which mesh type the statement is operating over... 
+  bool isUniformMesh() const;
+  bool isRectilinearMesh() const;
+  bool isStructuredMesh() const;
+  bool isUnstructuredMesh() const;
+
+  IdentifierInfo* getMeshInfo() { return ForallStmt::getContainerVarInfo(); }
+  const IdentifierInfo* getMeshInfo() const { return ForallStmt::getContainerVarInfo(); }
+
+  VarDecl* getMeshVarDecl() { return ForallStmt::getContainerVarDecl(); }
+  const VarDecl* getMeshVarDecl() const { return ForallStmt::getContainerVarDecl(); }
+
+  const MeshType* getMeshType() const { return MeshRefType; }
+
   static bool classof(const Stmt *T) {
-    return T->getStmtClass() == ForAllArrayStmtClass;
+    return T->getStmtClass() == ForallMeshStmtClass;
   }
-  
-  static bool classof(const ForAllArrayStmt *) { return true; }
-    
+
+  static bool classof(const ForallMeshStmt *) { return true; }
 };
 
-/// scout 
-class VolumeRenderAllStmt : public Stmt {
-  enum {OP, BODY, END_EXPR};
-
-  IdentifierInfo* MeshII;
-  VarDecl* MeshVarDecl;
-  IdentifierInfo* CameraII;
-  VarDecl* CameraVarDecl;
-  Stmt* SubExprs[END_EXPR];
-  SourceLocation VolRenLoc, LBracLoc, RBracLoc;
-
-  public:
-  VolumeRenderAllStmt(ASTContext& C, 
-      SourceLocation VolRenLoc, SourceLocation LB, SourceLocation RB,  
-      IdentifierInfo* MII, VarDecl* MVD, IdentifierInfo* CameraII, VarDecl* CameraVD,
-      CompoundStmt* body);
-
-  explicit VolumeRenderAllStmt(EmptyShell Empty) : Stmt(VolumeRenderAllStmtClass, Empty) { }
-
-  static bool classof(const VolumeRenderAllStmt *) { return true; }
-  static bool classof(const Stmt *T) 
-  { return (T->getStmtClass() == VolumeRenderAllStmtClass);}
-
-  const MeshType *getMeshType() const;
-
-  const IdentifierInfo* getMesh() const {
-    return MeshII;
-  }
-
-  IdentifierInfo* getMesh(){
-    return MeshII;
-  }
-
-  void setMesh(IdentifierInfo* II){
-    MeshII = II;
-  }
-
-  VarDecl* getMeshVarDecl(){
-    return MeshVarDecl;
-  }
-
-  const VarDecl* getMeshVarDecl() const{
-    return MeshVarDecl;
-  }
-
-  IdentifierInfo* getCamera(){
-    return CameraII;
-  }
-
-  VarDecl* getCameraVarDecl(){
-    return CameraVarDecl;
-  }
-
-  SourceLocation getVolRenLoc() const { return VolRenLoc; }
-  void setVolRenLoc(SourceLocation L) { VolRenLoc = L; }
-
-  SourceLocation getLBracLoc() const { return LBracLoc; }
-  SourceLocation getRBracLoc() const { return RBracLoc; }
-
-  SourceLocation getLocStart() const LLVM_READONLY { return VolRenLoc; }
-  SourceLocation getLocEnd() const LLVM_READONLY { return SubExprs[BODY]->getLocEnd(); }
-  
-  Expr* getOp(){
-    return reinterpret_cast<Expr*>(SubExprs[OP]);
-  }
-
-  const Expr* getOp() const{
-    return reinterpret_cast<Expr*>(SubExprs[OP]);
-  }
-
-  void setOp(Expr* O){
-    SubExprs[OP] = reinterpret_cast<Stmt*>(O);
-  }
-
-  Stmt* getBody(){
-    return SubExprs[BODY];
-  }
-
-  const Stmt* getBody() const{
-    return SubExprs[BODY];
-  }
-
-  void setBody(Stmt* B){
-    SubExprs[BODY] = reinterpret_cast<Stmt*>(B);
-  }
-
-  SourceRange getSourceRange() const {
-    return SourceRange(VolRenLoc, SubExprs[BODY]->getLocEnd());
-  }
-
-  child_range children() {
-    return child_range(&SubExprs[0], &SubExprs[0]+END_EXPR);
-  }
-
-};
 // ============================================================================================
 }  // end namespace clang
 

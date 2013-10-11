@@ -52,7 +52,7 @@
  * ##### 
  */ 
 
-#include "clang/AST/scout/MeshDecl.h"
+#include "clang/AST/Scout/MeshDecl.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/SemaInternal.h"
 #include "clang/Sema/Lookup.h"

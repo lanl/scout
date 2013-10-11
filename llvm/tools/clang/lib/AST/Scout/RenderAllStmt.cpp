@@ -15,6 +15,7 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace clang;
 
+/*
 RenderAllStmt::RenderAllStmt(ASTContext &C, ForAllType T, 
 	                         const MeshType *MT,
                              IdentifierInfo* LII, IdentifierInfo* MII, 
@@ -28,4 +29,4 @@ RenderAllStmt::RenderAllStmt(ASTContext &C, ForAllType T,
 {
   
 }
-
+*/

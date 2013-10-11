@@ -168,7 +168,7 @@ public:
   bool TraverseRectilinearMeshType(RectilinearMeshType*){ return true; }
   bool TraverseUnstructuredMeshType(UnstructuredMeshType*){ return true; }
   bool TraverseScoutVectorMemberExpr(ScoutVectorMemberExpr*){ return true; }
-  bool TraverseForAllArrayStmt(ForAllArrayStmt*) { return true; }
+  //bool TraverseForAllArrayStmt(ForAllArrayStmt*) { return true; }
   bool TraverseUniformMeshTypeLoc(UniformMeshTypeLoc*) { return true; }
   bool TraverseStructuredMeshTypeLoc(StructuredMeshTypeLoc*){ return true; }
   bool TraverseRectilinearMeshTypeLoc(RectilinearMeshTypeLoc*){ return true; }
@@ -177,9 +177,9 @@ public:
   bool TraverseStructuredMeshDecl(StructuredMeshDecl*){ return true; }
   bool TraverseRectilinearMeshDecl(RectilinearMeshDecl*){ return true; }
   bool TraverseUnstructuredMeshDecl(UnstructuredMeshDecl*){ return true; }
-  bool TraverseForAllStmt(ForAllStmt*){ return true; }
-  bool TraverseRenderAllStmt(RenderAllStmt*){ return true; }
-  bool TraverseVolumeRenderAllStmt(VolumeRenderAllStmt*){ return true; }
+  bool TraverseForallMeshStmt(ForallMeshStmt*){ return true; }
+  //bool TraverseRenderAllStmt(RenderAllStmt*){ return true; }
+  //bool TraverseVolumeRenderAllStmt(VolumeRenderAllStmt*){ return true; }
   // =========================================================================
 };
 

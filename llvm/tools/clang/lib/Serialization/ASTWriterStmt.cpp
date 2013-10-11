@@ -1782,8 +1782,8 @@ void ASTWriter::FlushStmts() {
 
 // ===== Scout ========================================================================
 //SC_TODO: Implement these
-void ASTStmtWriter::VisitForAllStmt(ForAllStmt *S) { }
-void ASTStmtWriter::VisitForAllArrayStmt(ForAllArrayStmt *S) { }
-void ASTStmtWriter::VisitRenderAllStmt(RenderAllStmt *S) { }
-void ASTStmtWriter::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *S) { }
+void ASTStmtWriter::VisitForallMeshStmt(ForallMeshStmt *S) { }
+//void ASTStmtWriter::VisitForAllArrayStmt(ForAllArrayStmt *S) { }
+//void ASTStmtWriter::VisitRenderAllStmt(RenderAllStmt *S) { }
+//void ASTStmtWriter::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *S) { }
 // =============================================================================

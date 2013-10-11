@@ -52,62 +52,61 @@
  * ##### 
  */ 
 
-#ifndef __SC_CLANG_RECTLINEAR_MESH_DECL_H__
-#define __SC_CLANG_RECTLINEAR_MESH_DECL_H__
+#ifndef __SC_CLANG_UNSTRUCTURED_MESH_DECL_H__
+#define __SC_CLANG_UNSTRUCTURED_MESH_DECL_H__
 
 
-#include "clang/AST/scout/MeshDecl.h"
+#include "clang/AST/Scout/MeshDecl.h"
 
 namespace clang {
 
-// ----- RectilinearMeshDecl 
+// ----- UnstructuredMeshDecl 
 // 
-class RectilinearMeshDecl : public MeshDecl {
+class UnstructuredMeshDecl : public MeshDecl {
 
 protected:
-  RectilinearMeshDecl(DeclContext* DC, 
-                      SourceLocation L, 
-                      SourceLocation StartL,
-                      IdentifierInfo* Id, 
-                      RectilinearMeshDecl* PrevDecl);
+  UnstructuredMeshDecl(DeclContext* DC, 
+                       SourceLocation L, 
+                       SourceLocation StartL,
+                       IdentifierInfo* Id, 
+                       UnstructuredMeshDecl* PrevDecl);
 
 public:
-  static RectilinearMeshDecl *Create(const ASTContext &C, 
-                                     DeclContext *DC,
-                                     SourceLocation StartLoc,
-                                     SourceLocation IdLoc,
-                                     IdentifierInfo *Id, 
-                                     RectilinearMeshDecl* PrevDecl = 0);
+  static UnstructuredMeshDecl *Create(const ASTContext &C, 
+                                      DeclContext *DC,
+                                      SourceLocation StartLoc,
+                                      SourceLocation IdLoc,
+                                      IdentifierInfo *Id, 
+                                      UnstructuredMeshDecl* PrevDecl = 0);
 
-  static RectilinearMeshDecl *CreateDeserialized(const ASTContext &C, 
-                                                 unsigned ID); 
+  static UnstructuredMeshDecl *CreateDeserialized(const ASTContext &C, 
+                                                  unsigned ID); 
 
-  const RectilinearMeshDecl *getPreviousDecl() const {
-    return cast_or_null<RectilinearMeshDecl>(MeshDecl::getPreviousDecl());
+  const UnstructuredMeshDecl *getPreviousDecl() const {
+    return cast_or_null<UnstructuredMeshDecl>(MeshDecl::getPreviousDecl());
   }
 
-  RectilinearMeshDecl *getPreviousDecl() {
-    return cast_or_null<RectilinearMeshDecl>(MeshDecl::getPreviousDecl());
+  UnstructuredMeshDecl *getPreviousDecl() {
+    return cast_or_null<UnstructuredMeshDecl>(MeshDecl::getPreviousDecl());
   }
 
-  const RectilinearMeshDecl *getMostRecentDecl() const {
-    return cast<RectilinearMeshDecl>(MeshDecl::getMostRecentDecl());
+  const UnstructuredMeshDecl *getMostRecentDecl() const {
+    return cast<UnstructuredMeshDecl>(MeshDecl::getMostRecentDecl());
   }
 
-  RectilinearMeshDecl *getMostRecentDecl() {
-    return cast<RectilinearMeshDecl>(MeshDecl::getMostRecentDecl());
+  UnstructuredMeshDecl *getMostRecentDecl() {
+    return cast<UnstructuredMeshDecl>(MeshDecl::getMostRecentDecl());
   }
 
   void completeDefinition() {
-    assert(!isCompleteDefinition() && "Cannot redefine rectilinear mesh!");
+    assert(!isCompleteDefinition() && "Cannot redefine unstructured mesh!");
     MeshDecl::completeDefinition();
   }
 
   static bool classof(const Decl* D) { return classofKind(D->getKind()); }
-  static bool classof(const RectilinearMeshDecl* D) { return true; }
-  static bool classofKind(Kind K) { return K == RectilinearMesh; }
+  static bool classof(const UnstructuredMeshDecl* D) { return true; }
+  static bool classofKind(Kind K) { return K == UnstructuredMesh; }
 };
-
 
 } // end namespace clang
 

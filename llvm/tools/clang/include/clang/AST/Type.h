@@ -3274,8 +3274,7 @@ public:
   bool isBeingDefined() const;
 
   static bool classof(const Type *T) {
-    return (T->getTypeClass() >= TagFirst && T->getTypeClass() <= TagLast)
-        || (T->getTypeClass() >= MeshFirst && T->getTypeClass() <= MeshLast);
+    return (T->getTypeClass() >= TagFirst && T->getTypeClass() <= TagLast);
   }
 };
 
@@ -3345,6 +3344,8 @@ class MeshType : public Type {
  public:
   MeshDecl *getDecl() const;
 
+  StringRef getName() const;
+
   /// @brief Determines whether this type is in the process of being
   /// defined.
   bool isBeingDefined() const;
@@ -3379,6 +3380,15 @@ class MeshType : public Type {
   void setDimensions(const MeshDimensions& dv){
     dims = dv;
   }
+
+  unsigned rankOf() const {
+    return dims.size();
+  }
+
+  bool isUniform() const;
+  bool isRectilinear() const;
+  bool isStructured() const;
+  bool isUnstructured() const;
 };
 
 
@@ -4152,8 +4162,8 @@ enum TagTypeKind {
 // ===== Scout ========================================================
 /// \brief The kind of mesh type. 
 enum MeshTypeKind {
-    /// \brief The "uniform mesh" 'keyword'.
-  TTK_UniformMesh = 10, 
+  /// \brief The "uniform mesh" 'keyword'.
+  TTK_UniformMesh = TTK_Enum+1, 
   /// \brief The "structured mesh" 'keyword'.
   TTK_StructuredMesh,
   /// \brief The "rectilinear mesh" 'keyword'.

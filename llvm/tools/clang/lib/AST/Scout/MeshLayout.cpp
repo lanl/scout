@@ -12,7 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/AST/ASTContext.h"
-#include "clang/AST/scout/MeshLayout.h"
+#include "clang/AST/Scout/MeshLayout.h"
 #include "clang/Basic/TargetInfo.h"
 
 using namespace clang;

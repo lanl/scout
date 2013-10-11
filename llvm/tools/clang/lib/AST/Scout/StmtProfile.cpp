@@ -3,16 +3,10 @@
 // file there...). 
 //  
 
-void StmtProfiler::VisitForAllStmt(const ForAllStmt *S) 
+void StmtProfiler::VisitForallStmt(const ForallStmt *S) 
 { VisitStmt(S); }
 
-void StmtProfiler::VisitForAllArrayStmt(const ForAllArrayStmt *S) 
-{ VisitStmt(S); }
-
-void StmtProfiler::VisitRenderAllStmt(const RenderAllStmt *S) 
-{ VisitStmt(S); }
-
-void StmtProfiler::VisitVolumeRenderAllStmt(const VolumeRenderAllStmt *S) 
+void StmtProfiler::VisitForallMeshStmt(const ForallMeshStmt *S)
 { VisitStmt(S); }
 
 void StmtProfiler::VisitScoutVectorMemberExpr(const ScoutVectorMemberExpr *S)

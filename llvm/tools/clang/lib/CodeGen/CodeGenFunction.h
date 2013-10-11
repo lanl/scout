@@ -745,7 +745,7 @@ public:
   bool RenderAll;
   bool CallsPrintf;
   llvm::Value *Colors;
-  const ForAllArrayStmt* CurrentForAllArrayStmt;
+  //const ForAllArrayStmt* CurrentForAllArrayStmt;
   
   inline llvm::Value *getGlobalIdx() {
     return LoopIndexVar; // Builder.CreateLoad(ForallIndVar);
@@ -2354,31 +2354,31 @@ public:
 
   // ===== Scout ==============================================================
   // 
-  llvm::Value *GetMeshBaseAddr(const ForAllStmt &S);
+  llvm::Value *GetMeshBaseAddr(const ForallMeshStmt &S);
 
-  void GetMeshDimValues(const ForAllStmt &S,
+  void GetMeshDimValues(const ForallMeshStmt &S,
                         llvm::SmallVector<llvm::Value*, 3> &MeshDimensions,
                         llvm::Value* MeshBaseAddr);
 
-  void EmitForallStmt(const ForAllStmt &S);
-  void EmitForallBody(const ForAllStmt &S);
+  void EmitForallStmt(const ForallMeshStmt &S);
+  void EmitForallBody(const ForallMeshStmt &S);
   
-  void EmitForAllStmtWrapper(const ForAllStmt &S);
+  void EmitForAllStmtWrapper(const ForallMeshStmt &S);
   bool hasCalledFn(llvm::Function *Fn, llvm::StringRef name);
   bool isCalledFn(llvm::Instruction *Instn, llvm::StringRef name);
 
   llvm::Value *TranslateExprToValue(const Expr *E);
-  void EmitForAllStmt(const ForAllStmt &S);
-  void EmitForAllArrayStmt(const ForAllArrayStmt &S);
-  void EmitRenderAllStmt(const RenderAllStmt &S);
-  void EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S);
+  void EmitForallMeshStmt(const ForallMeshStmt &S);
+  //void EmitForAllArrayStmt(const ForAllArrayStmt &S);
+  //void EmitRenderAllStmt(const RenderAllStmt &S);
+  //void EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S);
 
   void insertMeshDump(llvm::Value* baseAddr);
   
   typedef llvm::SmallVector<llvm::Value*,3> MySmallVector;
 
-  LValue EmitScoutColorDeclRefLValue(const NamedDecl *ND);
-  LValue EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND);
+  //LValue EmitScoutColorDeclRefLValue(const NamedDecl *ND);
+  //LValue EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND);
   LValue EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E);
   LValue EmitScoutMemberExpr(LValue base, const MeshFieldDecl *field);
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);

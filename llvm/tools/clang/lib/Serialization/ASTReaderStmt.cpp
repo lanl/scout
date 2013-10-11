@@ -2362,10 +2362,14 @@ Done:
 }
 
 // ===== Scout ========================================================================
-//SC_TODO: Implement these
-void ASTStmtReader::VisitForAllStmt(ForAllStmt *S) { }
-void ASTStmtReader::VisitForAllArrayStmt(ForAllArrayStmt *S) { }
-void ASTStmtReader::VisitRenderAllStmt(RenderAllStmt *S) { }
+
+
+void ASTStmtReader::VisitForallMeshStmt(ForallMeshStmt *S) { 
+
+}
+
+//void ASTStmtReader::VisitForAllArrayStmt(ForAllArrayStmt *S) { }
+//void ASTStmtReader::VisitRenderAllStmt(RenderAllStmt *S) { }
 void ASTStmtReader::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *E) { }
-void ASTStmtReader::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *S) { }
+//void ASTStmtReader::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *S) { }
 // =============================================================================

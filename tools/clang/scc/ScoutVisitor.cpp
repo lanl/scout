@@ -94,8 +94,8 @@ void ScoutVisitor::addDims(std::string* s, MeshType::MeshDimensions& dims) {
 bool ScoutVisitor::VisitStmt(Stmt* s) {
 
   // add comments to 'forall' statements.
-  if(isa<ForAllStmt>(s)) {
-    ForAllStmt* fas = cast<ForAllStmt>(s);
+  if(isa<ForallMeshStmt>(s)) {
+    ForallMeshStmt* fas = cast<ForallMeshStmt>(s);
     rewriter_.InsertText(fas->getLocStart(),
                          "/*begin_forall();*/", true, true);
 
@@ -105,6 +105,7 @@ bool ScoutVisitor::VisitStmt(Stmt* s) {
 
   // renderall statement runtime code rewrite
   // this will not work correctly in the multifile case
+  #if 0
   if(isa<RenderAllStmt>(s)) {
     RenderAllStmt* ras = cast<RenderAllStmt>(s);
     std::string begin, end;
@@ -135,6 +136,7 @@ bool ScoutVisitor::VisitStmt(Stmt* s) {
     rewriter_.InsertText(ras->getLocEnd().getLocWithOffset(1),
                          end, true, true);
   }
+  #endif 
 
   return true;
 }
@@ -160,7 +162,7 @@ bool ScoutVisitor::VisitFunctionDecl(FunctionDecl* f) {
   }
   return true;
 }
-
+/*
 bool ScoutVisitor::VisitVolumeRenderAllStmt(VolumeRenderAllStmt* vras) {
 
   std::string bc;
@@ -225,4 +227,4 @@ bool ScoutVisitor::VisitVolumeRenderAllStmt(VolumeRenderAllStmt* vras) {
 
   return true;
 }
-  
+*/  

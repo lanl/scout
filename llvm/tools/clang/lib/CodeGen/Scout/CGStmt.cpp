@@ -86,7 +86,21 @@ static const char *IndexNames[] = { "x", "y", "z"};
 static char IRNameStr[160];
 
 
-// ----- EmitForallStmt 
+llvm::Value *CodeGenFunction::TranslateExprToValue(const Expr *E) {
+
+  switch(E->getStmtClass()) {
+    case Expr::IntegerLiteralClass:
+    case Expr::BinaryOperatorClass:
+      return EmitScalarExpr(E);
+    default:
+      return Builder.CreateLoad(EmitLValue(E).getAddress());
+  }
+}
+
+   
+
+
+// ----- EmitforallStmt 
 //
 // Forall statements are transformed into a nested loop 
 // structure (with a loop per rank of the mesh) that 
@@ -120,9 +134,10 @@ static char IRNameStr[160];
 // SC_TODO - need to handle cases with edge and vertex 
 // fields (the implementation below is cell centric).
 //
-void CodeGenFunction::EmitForallStmt(const ForAllStmt &S) {
+void CodeGenFunction::EmitForallStmt(const ForallMeshStmt &S) {
 
-  llvm::StringRef MeshName = S.getMesh()->getName();
+  const MeshType* Mesh = S.getMeshType();
+  llvm::StringRef MeshName = Mesh->getName();
   unsigned int rank = S.getMeshType()->dimensions().size();
   CGDebugInfo *DI = getDebugInfo();
 
@@ -253,17 +268,17 @@ void CodeGenFunction::EmitForallStmt(const ForAllStmt &S) {
 
 // ----- EmitForallBody
 // 
-void CodeGenFunction::EmitForallBody(const ForAllStmt &S) {
+void CodeGenFunction::EmitForallBody(const ForallMeshStmt &S) {
   EmitStmt(S.getBody());
 }
 
 
-void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
+void CodeGenFunction::EmitForAllStmtWrapper(const ForallMeshStmt &S) {
   
   MeshMembers.clear();
   ScoutMeshSizes.clear();
   
-  llvm::StringRef MeshName = S.getMesh()->getName();
+  llvm::StringRef MeshName = S.getMeshType()->getName();
   const MeshType *MT = S.getMeshType();
   MeshType::MeshDimensions dims = MT->dimensions();
   MeshDecl *MD = MT->getDecl();
@@ -309,6 +324,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   // Acquire a local copy of colors buffer.
   // SC_TODO -- this should go in a separate call stack (for dealing with
   // rendall specifically).  
+  /*
   if (isa< RenderAllStmt >(S)) {
     llvm::Type *fltTy = llvm::Type::getFloatTy(getLLVMContext());
     llvm::Type *flt4Ty = llvm::VectorType::get(fltTy, 4);
@@ -331,6 +347,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     Builder.CreateStore(Builder.CreateLoad(global_colors), local_colors);
     Colors = Builder.CreateLoad(local_colors, "colors");
   }
+  */
   
   llvm::BasicBlock *entry = createBasicBlock("forall_entry");
   Builder.CreateBr(entry);
@@ -350,7 +367,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   CallsPrintf = callsPrintf(&cast< Stmt >(S));
 
   // Generate body of function.
-  EmitForAllStmt(S);
+  EmitForallStmt(S);
 
   LocalDeclMap = curLocalDeclMap; // Restore LocalDeclMap.
 
@@ -398,10 +415,10 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   // pass...
   //
   // SC_TODO - we should move renderall logic into its own call path... 
-  if (isa<RenderAllStmt>(S))
-    ForallFn->setName("uniRenderallCellsFn");
-  else
-    ForallFn->setName("uniForallCellsFn");
+  //if (isa<RenderAllStmt>(S))
+  //  ForallFn->setName("uniRenderallCellsFn");
+  //else
+  ForallFn->setName("uniForallCellsFn");
 
 
   // SC_TODO - this is hard to follow in the middle of all the other details.  We
@@ -522,9 +539,11 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     args.clear();
     
     // Add dimension information.
+    llvm::Value *zero = llvm::ConstantInt::get(Int32Ty, 0);
+    MeshType::MeshDimensions dims = MT->dimensions();
     for(unsigned i = 0; i < rank; ++i) {
-      args.push_back(TranslateExprToValue(S.getStart(i)));
-      args.push_back(TranslateExprToValue(S.getEnd(i)));
+      args.push_back(zero);
+      args.push_back(TranslateExprToValue(dims[i]));
     }
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value * >(args)));
     
@@ -579,7 +598,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
                        ScoutMeshSizes, inputs);
 #endif
 }
-
+/*
 void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
   
   llvm::SmallVector< llvm::Value *, 3 > ranges;
@@ -934,7 +953,9 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
 }
 
 void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
-  /*
+
+  recomment this out... 
+  //---- *
   DEBUG_OUT("EmitRenderAllStmt");
 
   llvm::Type *fltTy = llvm::Type::getFloatTy(getLLVMContext());
@@ -975,7 +996,8 @@ void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
 
   Builder.SetInsertPoint(BB);
   ScoutColor = alloca;
-  */
+  // --- * /
+  recomment this out...   
 
   // scout - skip the above, at least for now, because we are writing to colors 
   // which is a preallocated pixel buffer that exists at the time the
@@ -1121,7 +1143,7 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
   }
 
   Builder.CreateCall(endRendFunc, Args);
-  /* 
+  recomment this out / * 
   llvm::Function *delRendFunc = CGM.getModule().getFunction("__scrt_renderall_delete");
   if(!delRendFunc) {
     std::vector<llvm::Type*> args;    
@@ -1135,9 +1157,9 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
                                            &CGM.getModule());
   }
   Builder.CreateCall(delRendFunc, Args);
-*/
+  recomment this out * /
 
   if (DI)
     DI->EmitLexicalBlockEnd(Builder, S.getRBracLoc());
 }
-
+*/

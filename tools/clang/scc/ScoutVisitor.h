@@ -76,7 +76,7 @@ class ScoutVisitor : public RecursiveASTVisitor<ScoutVisitor>
 
   bool VisitFunctionDecl(FunctionDecl* f);
 
-  bool VisitVolumeRenderAllStmt(VolumeRenderAllStmt* vras);
+  //bool VisitVolumeRenderAllStmt(VolumeRenderAllStmt* vras);
 
  private:
   Rewriter& rewriter_;

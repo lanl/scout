@@ -42,7 +42,7 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
     AutoreleaseResult(false), BlockInfo(0), BlockPointer(0),
     LambdaThisCaptureField(0), NormalCleanupDest(0), NextCleanupDestIndex(1),
     FirstBlockInfo(0), EHResumeBlock(0), ExceptionSlot(0), EHSelectorSlot(0),
-    RenderAll(0), CurrentForAllArrayStmt(0), //scout
+    // RenderAll(0), // CurrentForAllArrayStmt(0), //scout
     DebugInfo(0), DisableDebugInfo(false), CalleeWithThisReturn(0),
     DidCallStackSave(false),
     IndirectBranch(0), SwitchInsn(0), CaseRangeBlock(0), UnreachableBlock(0),

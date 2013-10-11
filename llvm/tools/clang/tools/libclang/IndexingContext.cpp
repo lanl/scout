@@ -946,20 +946,6 @@ void IndexingContext::getEntityInfo(const NamedDecl *D,
       break;
     case TTK_Enum:
       EntityInfo.kind = CXIdxEntity_Enum; break;
-    // ===== Scout ===============================================
-    case TTK_UniformMesh:
-      EntityInfo.kind = CXIdxEntity_UniformMesh;
-      break;
-    case TTK_StructuredMesh:
-      EntityInfo.kind = CXIdxEntity_StructuredMesh;
-      break;    
-    case TTK_RectilinearMesh:
-      EntityInfo.kind = CXIdxEntity_RectilinearMesh;
-      break;  
-    case TTK_UnstructuredMesh:
-      EntityInfo.kind = CXIdxEntity_UnstructuredMesh;
-      break;        
-    // ===========================================================
     }
 
     if (const CXXRecordDecl *CXXRec = dyn_cast<CXXRecordDecl>(D))
@@ -971,7 +957,18 @@ void IndexingContext::getEntityInfo(const NamedDecl *D,
     } else if (isa<ClassTemplateSpecializationDecl>(D)) {
       EntityInfo.templateKind = CXIdxEntity_TemplateSpecialization;
     }
-
+  } else if (const MeshDecl *MD = dyn_cast<MeshDecl>(D)) {
+    switch(MD->getMeshKind()) {
+      case TTK_UniformMesh:
+        EntityInfo.kind = CXIdxEntity_UniformMesh; break;
+      case TTK_RectilinearMesh:
+        EntityInfo.kind = CXIdxEntity_RectilinearMesh; break;
+      case TTK_StructuredMesh:
+        EntityInfo.kind = CXIdxEntity_StructuredMesh; break;
+      case TTK_UnstructuredMesh:
+        EntityInfo.kind = CXIdxEntity_UnstructuredMesh; break;
+        break;
+    }
   } else {
     switch (D->getKind()) {
     case Decl::Typedef:

@@ -52,69 +52,15 @@
  * ##### 
  */ 
 
-#ifndef __SC_CLANG_UNIFORM_MESH_DECL_H__
-#define __SC_CLANG_UNIFORM_MESH_DECL_H__
+#ifndef __SC_CLANG_MESH_DECLS_H__
+#define __SC_CLANG_MESH_DECLS_H__
 
-
-#include "clang/AST/scout/MeshDecl.h"
-
-namespace clang {
-
-// ----- UniformMeshDecl 
-// 
-class UniformMeshDecl : public MeshDecl {
-
-  friend void MeshDecl::startDefinition();
-
-protected:
-  UniformMeshDecl(DeclContext* DC, 
-                  SourceLocation L, 
-                  SourceLocation StartL,
-                  IdentifierInfo* Id, 
-                  UniformMeshDecl* PrevDecl);
-
-public:
-  static UniformMeshDecl *Create(const ASTContext &C, 
-                                 DeclContext *DC,
-                                 SourceLocation StartLoc,
-                                 SourceLocation IdLoc,
-                                 IdentifierInfo *Id, 
-                                 UniformMeshDecl* PrevDecl = 0);
-
-  static UniformMeshDecl *CreateDeserialized(const ASTContext &C, 
-                                             unsigned ID); 
-
-  const UniformMeshDecl *getPreviousDecl() const {
-    return cast_or_null<UniformMeshDecl>(MeshDecl::getPreviousDecl());
-  }
-
-  UniformMeshDecl *getPreviousDecl() {
-    return cast_or_null<UniformMeshDecl>(MeshDecl::getPreviousDecl());
-  }
-
-  const UniformMeshDecl *getMostRecentDecl() const {
-    return cast<UniformMeshDecl>(MeshDecl::getMostRecentDecl());
-  }
-
-  UniformMeshDecl *getMostRecentDecl() {
-    return cast<UniformMeshDecl>(MeshDecl::getMostRecentDecl());
-  }
-
-  void completeDefinition() {
-    assert(!isCompleteDefinition() && "Cannot redefine uniform mesh!");
-    MeshDecl::completeDefinition();
-  }
-
-
-  //void addMember(Decl *D);
-
-  static bool classof(const Decl* D) { return classofKind(D->getKind()); }
-  static bool classof(const UniformMeshDecl* D) { return true; }
-  static bool classofKind(Kind K) { return K == UniformMesh; }
-};
-
-
-  
-} // end namespace clang
+#include "clang/AST/Scout/UniformMeshDecl.h"
+#include "clang/AST/Scout/UnstructuredMeshDecl.h"
+#include "clang/AST/Scout/StructuredMeshDecl.h"
+#include "clang/AST/Scout/RectilinearMeshDecl.h"
 
 #endif
+
+
+

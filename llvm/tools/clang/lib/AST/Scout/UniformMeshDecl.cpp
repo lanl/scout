@@ -11,7 +11,7 @@
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/TypeLoc.h"
-#include "clang/AST/scout/UniformMeshDecl.h"
+#include "clang/AST/Scout/UniformMeshDecl.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Basic/Module.h"

@@ -401,13 +401,6 @@ void USRGenerator::VisitTagDecl(const TagDecl *D) {
       case TTK_Struct: Out << "@ST"; break;
       case TTK_Class:  Out << "@CT"; break;
       case TTK_Union:  Out << "@UT"; break;
-      // ===== Scout =========================
-      case TTK_UniformMesh:
-      case TTK_StructuredMesh:
-      case TTK_RectilinearMesh:
-      case TTK_UnstructuredMesh:
-        Out << "@MT"; break;
-      // =====================================
       case TTK_Enum: llvm_unreachable("enum template");
       }
       VisitTemplateParameterList(ClassTmpl->getTemplateParameters());
@@ -420,13 +413,6 @@ void USRGenerator::VisitTagDecl(const TagDecl *D) {
       case TTK_Struct: Out << "@SP"; break;
       case TTK_Class:  Out << "@CP"; break;
       case TTK_Union:  Out << "@UP"; break;
-      // ===== Scout =========================
-      case TTK_UniformMesh:
-      case TTK_StructuredMesh:
-      case TTK_RectilinearMesh:
-      case TTK_UnstructuredMesh:
-        Out << "@MP"; break;
-      // =====================================
       case TTK_Enum: llvm_unreachable("enum partial specialization");
       }      
       VisitTemplateParameterList(PartialSpec->getTemplateParameters());
@@ -440,13 +426,6 @@ void USRGenerator::VisitTagDecl(const TagDecl *D) {
       case TTK_Class:  Out << "@C"; break;
       case TTK_Union:  Out << "@U"; break;
       case TTK_Enum:   Out << "@E"; break;
-      // ===== Scout =========================
-      case TTK_UniformMesh:
-      case TTK_StructuredMesh:
-      case TTK_RectilinearMesh:
-      case TTK_UnstructuredMesh:
-        Out << "@M"; break;
-      // =====================================
     }
   }
   

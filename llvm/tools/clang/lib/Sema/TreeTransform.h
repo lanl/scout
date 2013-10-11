@@ -5633,13 +5633,13 @@ TreeTransform<Derived>::TransformForStmt(ForStmt *S) {
 // SC_TODO - implement
 template<typename Derived>
 StmtResult
-TreeTransform<Derived>::TransformForAllStmt(ForAllStmt *S) {
+TreeTransform<Derived>::TransformForallMeshStmt(ForallMeshStmt *S) {
   StmtResult R(false);
   R.set(S);
   return R;
 }
 
-template<typename Derived>
+/*template<typename Derived>
 StmtResult
 TreeTransform<Derived>::TransformForAllArrayStmt(ForAllArrayStmt *S) {
   StmtResult R(false);
@@ -5662,6 +5662,7 @@ TreeTransform<Derived>::TransformVolumeRenderAllStmt(VolumeRenderAllStmt *S) {
   R.set(S);
   return R;
 }
+*/
 // ==========================================================================================
   
 template<typename Derived>

@@ -1824,16 +1824,22 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
   
   // ===== Scout ==============================================================
   // Check if this is a 'color' expression.
+  llvm::errs() << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n";
+  if (isa<ImplicitParamDecl>(ND)) {
+    llvm::errs() << "This is correct for a scout mesh member...\n";
+  }
+  ND->dump();
+  llvm::errs() << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n";  
   if (ND->getDeclName().isIdentifier() && 
       isa<ImplicitParamDecl>(ND)) {
 
-    if (ND->getName() == "color") {
-      return EmitScoutColorDeclRefLValue(ND);
-    } else if(CurrentForAllArrayStmt) {
-      llvm::errs() << "moose food!\n";
-      return EmitScoutForAllArrayDeclRefLValue(ND);
-    }
+    //if (ND->getName() == "color") {
+    //  return EmitScoutColorDeclRefLValue(ND);
+    //} else if (CurrentForAllArrayStmt) {
+    //  return EmitScoutForAllArrayDeclRefLValue(ND);
+    //}
   }
+
   // ==========================================================================
 
   // A DeclRefExpr for a reference initialized by a constant expression can

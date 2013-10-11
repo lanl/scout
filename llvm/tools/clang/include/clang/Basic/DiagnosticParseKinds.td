@@ -818,84 +818,59 @@ def err_seh___finally_block : Error<
   "%0 only allowed in __finally block">;
 
 // ===== Scout ==========================================================================
-def err_expected_numeric_constant_in_mesh_def : Error<
-"expected a numeric constant in mesh definition dimensions">;
-def err_expected_faces_edges_cells: Error<"expected faces, edges, or cells keyword">;
-def err_expected_vertices_cells: Error<"expected vertices or cells keyword">;
-def err_expected_of_kw: Error<"expected 'of' keyword">;
-def err_expected_comma_or_in_kw: Error<"expected comma or 'in' keyword">;
-def err_expected_in_kw: Error<"expected 'in' keyword">;
-def err_expected_as_kw: Error<"expected 'as' keyword">;
-def err_expected_spheres_kw: Error<"expected 'spheres' keyword">;
-def err_invalid_renderall_body: Error<"Invalid renderall body">;
+
+// ----- forall mesh parsing errors
 def err_invalid_forall_op: Error<"Invalid forall op">;
 def err_invalid_forall_body: Error<"Invalid forall body">;
+def err_forall_unknown_mesh_variable: Error<"undeclared mesh instance">; 
+def err_forall_expected_mesh_element_kw: Error<"expected mesh element keyword">;
+def err_forall_expected_kw_in: Error<"forall missing (expected) keyword: 'in'">;
+def err_forall_not_a_mesh_type: Error<"instance if of a non-mesh type">; 
+def err_forall_predicate_missing_lparen: Error<"forall predicate clause missing opening paren">;
+def err_forall_predicate_missing_rparen: Error<"forall predicate clause missing closing paren">;
+//def err_expected_faces_edges_cells: Error<"expected faces, edges, or cells keyword">;
+//def err_expected_vertices_cells: Error<"expected vertices or cells keyword">;
+//def err_expected_as_kw: Error<"expected 'as' keyword">;
+//def err_expected_spheres_kw: Error<"expected 'spheres' keyword">;
+//def err_invalid_renderall_body: Error<"Invalid renderall body">;
 def err_expected_mesh_kw: Error<"expected mesh keyword">;
-def err_expected_semi_mesh_declaration : Error<
-"expected ';' at end of mesh declaration">;
-def err_no_mesh_field_specifier : Error<
-"no mesh field specifier has been specified, i.e: 'cells', 'vertices', etc.">;
+
+// ----- forall mesh parsing warnings
+def warn_forall_no_cell_fields     : Warning<"no cell fields available in selected mesh">;
+def warn_forall_no_edge_fields     : Warning<"no edge fields available in selected mesh">;
+def warn_forall_no_vertex_fields   : Warning<"no vertex fields available in selected mesh">;
+def warn_forall_no_face_fields     : Warning<"no face fields available in selected mesh">;
+
+def err_expected_numeric_constant_in_mesh_def : Error<"expected a numeric constant in mesh definition dimensions">;
+def err_expected_semi_mesh_declaration : Error<"expected ';' at end of mesh declaration">;
+def err_no_mesh_field_specifier : Error<"no mesh field specifier has been specified, i.e: 'cells', 'vertices', etc.">;
 def err_extern_mesh_field : Error<"'extern' mesh fields are not allowed">;
-def err_expected_numeric_constant_in_window_def : Error<
-"expected a numeric constant in window dimensions definition">;
+def err_expected_numeric_constant_in_window_def : Error<"expected a numeric constant in window dimensions definition">;
 def err_mesh_not_implemented : Error< "mesh type is not fully implemented yet">;
-def err_missing_field_window_decl : Error<
-"in window declaration, missing %0 field">;
-def err_expected_semi_window_arg : Error<
-"expected ';' at end window field">;
-
-def err_missing_field_image_decl : Error<
-"in image declaration, missing %0 field">;
-def err_expected_semi_image_arg : Error<
-"expected ';' at end image field">;
-
-def err_expected_semi_camera_arg : Error<
-"expected ';' at end camera field">;
-
+def err_missing_field_window_decl : Error<"in window declaration, missing %0 field">;
+def err_expected_semi_window_arg : Error<"expected ';' at end window field">;
+def err_missing_field_image_decl : Error<"in image declaration, missing %0 field">;
+def err_expected_semi_image_arg : Error<"expected ';' at end image field">;
+def err_expected_semi_camera_arg : Error<"expected ';' at end camera field">;
 def err_expected_periodperiod : Error<"expected '..'">;
 def err_expected_forall_binary_op : Error<"expected binary operator">;
-
 def warn_empty_mesh : Warning<"mesh definition with no fields">;
-def warn_no_cells_fields_forall    : Warning<"no cell fields on mesh in forall cells">;
-def warn_no_edges_fields_forall    : Warning<"no edge fields on mesh in forall edges">;
-def warn_no_vertices_fields_forall : Warning<"no vertex fields on mesh in forall vertices">;
-def warn_no_faces_fields_forall    : Warning<"no face fields on mesh in forall faces">;
 
 def err_invalid_scout_vector_init : Error<"invalid vector initialization">;
-
 def warn_vector_color_clamp : Warning<"color vector values will be clamped to [0..1]">;
-
 def err_invalid_start_forall_array : Error<"invalid start in forall">;
-
 def err_invalid_end_forall_array : Error<"invalid end in forall">;
-
 def err_invalid_stride_forall_array : Error<"invalid stride in forall">;
-
 def err_expected_mesh_field : Error<"expected a mesh field">;
-
-def err_expected_equal_after_element_default : Error<
-"expected '=' after mesh element default">;
-
+def err_expected_equal_after_element_default : Error<"expected '=' after mesh element default">;
 def err_unknown_element_field : Error<"unknown element field">;
-
 def err_duplicate_radius_default : Error<"duplicate default given for radius">;
-
 def err_duplicate_color_default : Error<"duplicate default given for color">;
-
-def err_invalid_default_element : Error<
-"invalid default element, expected 'color' or 'radius'">;
-
+def err_invalid_default_element : Error<"invalid default element, expected 'color' or 'radius'">;
 def err_not_array_renderall_elements: Error<"mesh field is not an array type">;
-
-def err_mismatch_forall_array : Error<
-"start/end/stride groups do not match number of induction variables">;
-
-def err_expected_mesh_param_token : Error<
-"expected ']' or ':' while parsing mesh parameter">;
-
-def err_expected_mesh_param_star_amp : Error<
-"mesh parameters must be declared as references or pointers">;
-
+def err_mismatch_forall_array : Error<"start/end/stride groups do not match number of induction variables">;
+def err_expected_mesh_param_token : Error<"expected ']' or ':' while parsing mesh parameter">;
+def err_expected_mesh_param_star_amp : Error<"mesh parameters must be declared as references or pointers">;
 def err_expected_mesh_var_decl : Error<"expected mesh variable declaration">;
 // ======================================================================================
 

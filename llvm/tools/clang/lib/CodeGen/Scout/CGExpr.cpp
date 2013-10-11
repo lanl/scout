@@ -44,7 +44,7 @@ CodeGenFunction::EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E) {
   }
 }
 
-
+/*
 LValue
 CodeGenFunction::EmitScoutColorDeclRefLValue(const NamedDecl *ND) {
   const ValueDecl *VD = cast<ValueDecl>(ND);
@@ -53,7 +53,9 @@ CodeGenFunction::EmitScoutColorDeclRefLValue(const NamedDecl *ND) {
   llvm::Value* ep = Builder.CreateInBoundsGEP(Colors, idx);
   return MakeAddrLValue(ep, VD->getType(), Alignment);
 }
+*/
 
+/*
 LValue
 CodeGenFunction::EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND) {
   CharUnits Alignment = getContext().getDeclAlign(ND);  
@@ -73,6 +75,7 @@ CodeGenFunction::EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND) {
   // to me here...
   assert(false && "missed conditional case in emiting forall array lval.");
 }
+*/
 
 static llvm::Value *
 EmitBitCastOfLValueToProperType(CodeGenFunction &CGF,
