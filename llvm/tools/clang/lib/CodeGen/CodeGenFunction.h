@@ -2361,6 +2361,7 @@ public:
                         llvm::Value* MeshBaseAddr);
 
   void EmitForallStmt(const ForAllStmt &S);
+  void EmitForallLoop(const ForAllStmt &S, unsigned r);
   void EmitForallBody(const ForAllStmt &S);
   
   void EmitForAllStmtWrapper(const ForAllStmt &S);

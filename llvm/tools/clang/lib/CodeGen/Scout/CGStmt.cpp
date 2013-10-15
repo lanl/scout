@@ -122,133 +122,137 @@ static char IRNameStr[160];
 //
 void CodeGenFunction::EmitForallStmt(const ForAllStmt &S) {
 
+  unsigned int rank = S.getMeshType()->dimensions().size();
+  llvm::errs() << "codegen rank = " << rank << "\n";
+  EmitForallLoop(S, rank);
+}
+
+void CodeGenFunction::EmitForallLoop(const ForAllStmt &S, unsigned r) {
+
+  llvm::errs() << "loop nesting r " << r << "\n";
+
+  MeshBaseAddr = GetMeshBaseAddr(S);
   llvm::StringRef MeshName = S.getMesh()->getName();
   unsigned int rank = S.getMeshType()->dimensions().size();
   CGDebugInfo *DI = getDebugInfo();
 
+  llvm::Value *LoopBound = 0;
+  llvm::Value *ConstantZero  = 0;
+  llvm::Value *ConstantOne   = 0;
+  ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
+  ConstantOne  = llvm::ConstantInt::get(Int32Ty, 1);
 
-  llvm::Value *LoopBounds[3] = {0, 0, 0};
-  llvm::Value *ConstantZero  = 0; 
-  llvm::Value *ConstantOne   = 0;   
+  sprintf(IRNameStr, "forall.%s.end", DimNames[r-1]);
+  JumpDest LoopExit = getJumpDestInCurrentScope(IRNameStr);
+  RunCleanupsScope ForallScope(*this);
 
-  llvm::errs() << "codegen rank = " << rank << "\n";
+  if (DI)
+    DI->EmitLexicalBlockStart(Builder, S.getSourceRange().getBegin());
 
-  for(unsigned r = rank, i = rank-1; r > 0; --r, --i) {
-    sprintf(IRNameStr, "forall.%s.end", DimNames[i]);
-    JumpDest LoopExit = getJumpDestInCurrentScope(IRNameStr);
-    RunCleanupsScope ForallScope(*this);
+  if (r == rank) {
+    llvm::errs() << "gen start of loop vars.\n";
+    // For our first pass we deal with the outermost initialization
+    // details.   This includes our single (linear) array index value,
+    LoopIndexVar = Builder.CreateAlloca(Int32Ty, 0, "forall.indx");
+    Builder.CreateStore(ConstantZero, LoopIndexVar);
+  }
 
-    if (DI) 
-      DI->EmitLexicalBlockStart(Builder, S.getSourceRange().getBegin());
+  llvm::errs() << "gen loop bounds.\n";
 
-    if (r == rank) { 
-      llvm::errs() << "gen start of loop vars.\n";
-      // For our first pass we deal with the outermost initialization 
-      // details.   This includes our single (linear) array index value,
-      // and some helpful constants for initializing and incrementing.
-      MeshBaseAddr = GetMeshBaseAddr(S);     
-      ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
-      ConstantOne  = llvm::ConstantInt::get(Int32Ty, 1);
-      LoopIndexVar = Builder.CreateAlloca(Int32Ty, 0, "forall.indx");
-      Builder.CreateStore(ConstantZero, LoopIndexVar);
-    }
+  // Extract the loop bounds from the mesh for this rank, this requires
+  // a GEP from the mesh and a load from returned address...
+  sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[r-1]);
+  LoopBound = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, r, IRNameStr);
+  sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[r-1]);
+  LoopBound  = Builder.CreateLoad(LoopBound, IRNameStr);
+
+  // Create the induction variable for this rank and zero-initialize it.
+  sprintf(IRNameStr, "induct.%s", IndexNames[r-1]);
+  llvm::Value *InductionVar = Builder.CreateAlloca(Int32Ty, 0, IRNameStr);
+  Builder.CreateStore(ConstantZero, InductionVar);
+
+  llvm::errs() << "gen loop cond.\n";
+  // Next we create a block that tests the induction variables value to
+  // the rank's dimension.
+  sprintf(IRNameStr, "forall.cond.%s", DimNames[r-1]);
+  JumpDest Continue = getJumpDestInCurrentScope(IRNameStr);
+  llvm::BasicBlock *CondBlock = Continue.getBlock();
+  EmitBlock(CondBlock);
+
+  RunCleanupsScope ConditionScope(*this);
+  sprintf(IRNameStr, "forall.done.%s", IndexNames[r-1]);
+  llvm::Value *CondValue = Builder.CreateICmpSLT(Builder.CreateLoad(InductionVar),
+                                                 LoopBound,
+                                                 IRNameStr);
+
+  llvm::BasicBlock *ExitBlock = LoopExit.getBlock();
+
+  // If there are any cleanups between here and the loop-exit
+  // scope, create a block to stage a loop exit along.  (We're
+  // following Clang's lead here in generating a for loop.)
+  if (ForallScope.requiresCleanups()) {
+    sprintf(IRNameStr, "forall.cond.cleanup.%s", DimNames[r-1]);
+    ExitBlock = createBasicBlock(IRNameStr);
+  }
+
+  llvm::BasicBlock *LoopBody = createBasicBlock(IRNameStr);
+  Builder.CreateCondBr(CondValue, LoopBody, ExitBlock);
+
+  if (ExitBlock != LoopExit.getBlock()) {
+    EmitBlock(ExitBlock);
+    EmitBranchThroughCleanup(LoopExit);
+  }
+
+  EmitBlock(LoopBody);
+
+  sprintf(IRNameStr, "forall.incblk.%s", IndexNames[r-1]);
+  Continue = getJumpDestInCurrentScope(IRNameStr);
 
 
-    llvm::errs() << "gen loop bounds.\n";
+  // Store the blocks to use for break and continue.
+  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue));
 
-    // Extract the loop bounds from the mesh for this rank, this requires
-    // a GEP from the mesh and a load from returned address... 
-    sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
-    LoopBounds[i]= Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, i+1, IRNameStr);
-    sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[i]);
-    LoopBounds[i] = Builder.CreateLoad(LoopBounds[i], IRNameStr);
 
-    // Create the induction variable for this rank and zero-initialize it. 
-    sprintf(IRNameStr, "induct.%s", IndexNames[i]);
-    llvm::Value *InductionVar = Builder.CreateAlloca(Int32Ty, 0, IRNameStr);
-    Builder.CreateStore(ConstantZero, InductionVar);
+  if (r == 1) {  // This is our innermost rank, generate the loop body.
+    llvm::errs() << "before EmitForallBody\n";
+    EmitForallBody(S);
+    llvm::errs() << "after EmitForallBody\n";
 
-    llvm::errs() << "gen loop cond.\n";
-    // Next we create a block that tests the induction variables value to 
-    // the rank's dimension.
-    sprintf(IRNameStr, "forall.cond.%s", DimNames[i]);
-    JumpDest Continue = getJumpDestInCurrentScope(IRNameStr);
-    llvm::BasicBlock *CondBlock = Continue.getBlock();
-    EmitBlock(CondBlock);
+    // Increment the loop index.
+    llvm::Value* liv = Builder.CreateLoad(LoopIndexVar);
+    llvm::Value *IncLoopIndexVar = Builder.CreateAdd(liv,
+                                                     ConstantOne,
+                                                     "forall.indx.inc");
 
-    RunCleanupsScope ConditionScope(*this);
-    sprintf(IRNameStr, "forall.done.%s", IndexNames[i]);
-    llvm::Value *CondValue = Builder.CreateICmpSLT(Builder.CreateLoad(InductionVar),
-                                                   LoopBounds[i],
+    Builder.CreateStore(IncLoopIndexVar, LoopIndexVar);
+  } else { // generate nested loop
+    EmitForallLoop(S, r-1);
+  }
+
+  EmitBlock(Continue.getBlock());
+
+
+  sprintf(IRNameStr, "forall.inc.%s", IndexNames[r-1]);
+
+
+  llvm::Value* iv = Builder.CreateLoad(InductionVar);
+  llvm::Value *IncInductionVar = Builder.CreateAdd(iv,
+                                                   ConstantOne,
                                                    IRNameStr);
 
-    llvm::BasicBlock *ExitBlock = LoopExit.getBlock();
 
-    // If there are any cleanups between here and the loop-exit 
-    // scope, create a block to stage a loop exit along.  (We're 
-    // following Clang's lead here in generating a for loop.)
-    if (ForallScope.requiresCleanups()) {
-      sprintf(IRNameStr, "forall.cond.cleanup.%s", DimNames[i]);
-      ExitBlock = createBasicBlock(IRNameStr);
-    }    
+  Builder.CreateStore(IncInductionVar, InductionVar);
 
-    llvm::BasicBlock *LoopBody = createBasicBlock(IRNameStr);
-    Builder.CreateCondBr(CondValue, LoopBody, ExitBlock);
+  BreakContinueStack.pop_back();
+  ConditionScope.ForceCleanup();
 
-    if (ExitBlock != LoopExit.getBlock()) {
-      EmitBlock(ExitBlock);
-      EmitBranchThroughCleanup(LoopExit);
-    }
+  EmitBranch(CondBlock);
+  ForallScope.ForceCleanup();
 
-    EmitBlock(LoopBody);
+  if (DI)
+    DI->EmitLexicalBlockEnd(Builder, S.getSourceRange().getEnd());
 
-    sprintf(IRNameStr, "forall.incblk.%s", IndexNames[i]);
-    Continue = getJumpDestInCurrentScope(IRNameStr);
-
-
-    // Store the blocks to use for break and continue. 
-    BreakContinueStack.push_back(BreakContinue(LoopExit, Continue));
-
-
-    if (r == 1) {  // This is our innermost rank, generate the loop body.
-      llvm::errs() << "before EmitForallBody\n";
-      EmitForallBody(S);
-      llvm::errs() << "after EmitForallBody\n";
-
-      // Increment the loop index.
-      llvm::Value* liv = Builder.CreateLoad(LoopIndexVar);
-      llvm::Value *IncLoopIndexVar = Builder.CreateAdd(liv,
-                                                       ConstantOne,
-                                                       "forall.indx.inc");
-
-      Builder.CreateStore(IncLoopIndexVar, LoopIndexVar);
-    }
-
-    EmitBlock(Continue.getBlock());
-
-
-    sprintf(IRNameStr, "forall.inc.%s", IndexNames[i]);
-
-
-    llvm::Value* iv = Builder.CreateLoad(InductionVar);
-    llvm::Value *IncInductionVar = Builder.CreateAdd(iv,
-                                                     ConstantOne, 
-                                                     IRNameStr);
-
-
-    Builder.CreateStore(IncInductionVar, InductionVar);
-    
-    BreakContinueStack.pop_back();
-    ConditionScope.ForceCleanup();
-
-    EmitBranch(CondBlock);
-    ForallScope.ForceCleanup();
-
-    if (DI)
-      DI->EmitLexicalBlockEnd(Builder, S.getSourceRange().getEnd());
-
-    EmitBlock(LoopExit.getBlock(), true);
-  }
+  EmitBlock(LoopExit.getBlock(), true);
 }
 
 // ----- EmitForallBody
