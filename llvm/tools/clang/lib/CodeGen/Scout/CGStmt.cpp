@@ -159,7 +159,7 @@ void CodeGenFunction::EmitForallStmt(const ForAllStmt &S) {
     // Extract the loop bounds from the mesh for this rank, this requires
     // a GEP from the mesh and a load from returned address... 
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
-    LoopBounds[i] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, i, IRNameStr);
+    LoopBounds[i]= Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, i+1, IRNameStr);
     sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[i]);
     LoopBounds[i] = Builder.CreateLoad(LoopBounds[i], IRNameStr);
 
