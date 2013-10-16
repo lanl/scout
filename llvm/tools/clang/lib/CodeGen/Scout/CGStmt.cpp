@@ -129,8 +129,6 @@ void CodeGenFunction::EmitForallStmt(const ForAllStmt &S) {
 
 void CodeGenFunction::EmitForallLoop(const ForAllStmt &S, unsigned r) {
 
-  llvm::errs() << "loop nesting r " << r << "\n";
-
   MeshBaseAddr = GetMeshBaseAddr(S);
   llvm::StringRef MeshName = S.getMesh()->getName();
   unsigned int rank = S.getMeshType()->dimensions().size();
@@ -214,9 +212,7 @@ void CodeGenFunction::EmitForallLoop(const ForAllStmt &S, unsigned r) {
 
 
   if (r == 1) {  // This is our innermost rank, generate the loop body.
-    llvm::errs() << "before EmitForallBody\n";
     EmitForallBody(S);
-    llvm::errs() << "after EmitForallBody\n";
 
     // Increment the loop index.
     llvm::Value* liv = Builder.CreateLoad(LoopIndexVar);
