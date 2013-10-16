@@ -84,7 +84,7 @@ EmitBitCastOfLValueToProperType(CodeGenFunction &CGF,
 
 LValue
 CodeGenFunction::EmitScoutMemberExpr(LValue base,
-                                     const MeshFieldDecl *field) {
+                                     const MeshFieldDecl *field, unsigned rank) {
 
   // This follows very closely with the details used to 
   // emit a record member from the clang code.  We have 
@@ -100,7 +100,7 @@ CodeGenFunction::EmitScoutMemberExpr(LValue base,
     const CGMeshLayout &ML = CGM.getTypes().getCGMeshLayout(field->getParentMesh());
     const CGBitFieldInfo &Info = ML.getBitFieldInfo(field);
     llvm::Value *Addr = base.getAddress();
-    unsigned Idx = ML.getLLVMFieldNo(field);
+    unsigned Idx = ML.getLLVMFieldNo(field) + rank + 1;
     if (Idx != 0)
       // For structs, we GEP to the field that the record layout suggests.
       Addr = Builder.CreateStructGEP(Addr, Idx, field->getName());
@@ -132,7 +132,7 @@ CodeGenFunction::EmitScoutMemberExpr(LValue base,
   bool TBAAPath = CGM.getCodeGenOpts().StructPathTBAA;
   
   // We GEP to the field that the record layout suggests.
-  unsigned idx = CGM.getTypes().getCGMeshLayout(mesh).getLLVMFieldNo(field);
+  unsigned idx = CGM.getTypes().getCGMeshLayout(mesh).getLLVMFieldNo(field) + rank + 1;
   addr = Builder.CreateStructGEP(addr, idx, field->getName());
 
   // If this is a reference field, load the reference right now.

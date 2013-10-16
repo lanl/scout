@@ -2520,7 +2520,7 @@ EmitExtVectorElementExpr(const ExtVectorElementExpr *E) {
 
 LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
   Expr *BaseExpr = E->getBase();
-
+  unsigned rank = 0;
   // ===== Scout ==============================================================
   NamedDecl *MND = E->getMemberDecl(); //this memberDecl is for the Implicit mesh, maybe needs to be for underlying mesh?
 
@@ -2532,12 +2532,18 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
     if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(VD)) {
       llvm::errs() << "underlying mesh is " << IMPD->getMeshVarDecl()->getName() << "\n";
 
+      const Type* T = IMPD->getMeshVarDecl()->getType().getCanonicalType().getTypePtr();
+      if(const MeshType *MT = dyn_cast<MeshType>(T)){
+         rank = MT->dimensions().size();
+         llvm::errs() << "mesh rank " << rank << "\n";
+      }
+
       //LValue BaseLV  = EmitCheckedLValue(BaseExpr, TCK_MemberAccess); //failing here for implicit mesh
       // lookup underlying mesh instead of implicit mesh
       llvm::Value *V = LocalDeclMap.lookup(IMPD->getMeshVarDecl());
       LValue BaseLV  = MakeAddrLValue(V, E->getType());
 
-      LValue LV = EmitScoutMemberExpr(BaseLV, MFD);
+      LValue LV = EmitScoutMemberExpr(BaseLV, MFD, rank);
       return LV;
     }
   }

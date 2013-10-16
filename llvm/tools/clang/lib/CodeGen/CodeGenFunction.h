@@ -2381,7 +2381,7 @@ public:
   LValue EmitScoutColorDeclRefLValue(const NamedDecl *ND);
   LValue EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND);
   LValue EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E);
-  LValue EmitScoutMemberExpr(LValue base, const MeshFieldDecl *field);
+  LValue EmitScoutMemberExpr(LValue base, const MeshFieldDecl *field, unsigned rank);
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
   LValue EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef memberName,
                             MySmallVector foo = MySmallVector());
