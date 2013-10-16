@@ -19,6 +19,7 @@
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/Support/ConvertUTF.h"
 #include "Scout/CGMeshLayout.h"
+#include "clang/AST/scout/ImplicitMeshParamDecl.h"
 
 using namespace clang;
 using namespace CodeGen;
@@ -82,8 +83,48 @@ EmitBitCastOfLValueToProperType(CodeGenFunction &CGF,
   return CGF.Builder.CreateBitCast(V, IRType->getPointerTo(AS), Name);
 }
 
+
+bool
+CodeGenFunction::EmitScoutMemberExpr(const MemberExpr *E, LValue *LV) {
+  unsigned rank = 0;
+  Expr *BaseExpr = E->getBase();
+  NamedDecl *MND = E->getMemberDecl(); //this memberDecl is for the Implicit mesh, maybe needs to be for underlying mesh?
+
+  if (MeshFieldDecl *MFD = dyn_cast<MeshFieldDecl>(MND)) {
+    DeclRefExpr *D = dyn_cast<DeclRefExpr>(BaseExpr);
+    VarDecl *VD = dyn_cast<VarDecl>(D->getDecl());
+
+    const Type* T = VD->getType().getCanonicalType().getTypePtr();
+    if(const MeshType *MT = dyn_cast<MeshType>(T)){
+      rank = MT->dimensions().size();
+      llvm::errs() << "mesh rank " << rank << "\n";
+    } else {
+      llvm_unreachable("Cannot determine mesh rank");
+    }
+
+    llvm::errs() << "mesh name " << VD->getName() << "\n";
+    llvm::errs() << "member name " << MND->getName() << "\n";
+
+    if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(VD)) {
+      llvm::errs() << "underlying mesh is " << IMPD->getMeshVarDecl()->getName() << "\n";
+
+      // lookup underlying mesh instead of implicit mesh
+      llvm::Value *V = LocalDeclMap.lookup(IMPD->getMeshVarDecl());
+      LValue BaseLV  = MakeAddrLValue(V, E->getType());
+
+      *LV = EmitMeshMemberExpr(BaseLV, MFD, rank);
+      return true;
+    } else {
+      llvm_unreachable("Cannot lookup underlying mesh");
+
+    }
+  } else {
+    return false;
+  }
+}
+
 LValue
-CodeGenFunction::EmitScoutMemberExpr(LValue base,
+CodeGenFunction::EmitMeshMemberExpr(LValue base,
                                      const MeshFieldDecl *field, unsigned rank) {
 
   // This follows very closely with the details used to 
@@ -197,48 +238,7 @@ CodeGenFunction::EmitScoutMemberExpr(LValue base,
     LV.setTBAAInfo(CGM.getTBAAInfo(getContext().CharTy));
 
   return LV;
-  /*
-
-  llvm::Value* baseAddr;
   
-  assert(VD && "you passed me crap!");
-  llvm::errs() << "emit scout member expr...\n";
-  if (VD->getStorageClass() == SC_None)
-    llvm::errs() << "member expr var decl has no storage class\n";
-  else 
-    llvm::errs() << "member expr var decl has some type of storage class\n";
-
-  if (VD->hasGlobalStorage()) {
-    llvm::errs() << "member has global storage...\n";
-    baseAddr = Builder.CreateLoad(CGM.GetAddrOfGlobalVar(VD));
-  } else {
-    llvm::errs() << "member has non-global storage...\n";    
-    baseAddr = LocalDeclMap[VD];
-    if (VD->getType().getTypePtr()->isReferenceType()) {
-      baseAddr = Builder.CreateLoad(baseAddr);
-    }
-  }
-
-  llvm::StringRef memberName = E->getMemberDecl()->getName();
-
-  if (memberName == "width")
-    return MakeAddrLValue(Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, 1),
-                          getContext().IntTy);
-  else if (memberName == "height")
-    return MakeAddrLValue(Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, 2),
-                          getContext().IntTy);
-  else if (memberName == "depth")
-    return MakeAddrLValue(Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, 3),
-                          getContext().IntTy);
-  else if (memberName == "ptr") {
-    llvm::Value* mp = Builder.CreateBitCast(baseAddr, VoidPtrTy, "mesh.ptr");
-    llvm::Value* tempAddr = CreateMemTemp(getContext().VoidPtrTy, "ref.temp");
-    Builder.CreateStore(mp, tempAddr);
-    return MakeAddrLValue(tempAddr, getContext().VoidPtrTy);
-  }
-
-  return EmitMeshMemberExpr(VD, memberName);
-  */
 }
 
 RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
@@ -268,28 +268,7 @@ RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
   assert(false && "Failed to translate Scout cshift expression to LLVM IR!");
 }
 
-
-/*
-LValue CodeGenFunction::EmitImplicitMeshMemberExpr(const VarDecl *VD,
-                                                   llvm::StringRef fieldName) {
-
-}
-
-
-LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD,
-                                           llvm::StringRef memberName,
-                                           SmallVector<llvm::Value*, 3> vals) {
-
-  if (! isa<ImplicitParamDecl>(VD)) {
-    return EmitImplicitMeshMemberExpr(VD, memberName);
-  } else {
-
-    // Deal with the case of an individual mesh field member.
-
-  }
-}
-
-*/
+//SC_TODO: remove this
 LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, 
                                            llvm::StringRef memberName,
                                            SmallVector< llvm::Value *, 3 > vals) {

@@ -28,9 +28,6 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/Support/ConvertUTF.h"
-// ===== Scout ====================================
-#include "clang/AST/scout/ImplicitMeshParamDecl.h"
-// ================================================
 
 using namespace clang;
 using namespace CodeGen;
@@ -2520,33 +2517,10 @@ EmitExtVectorElementExpr(const ExtVectorElementExpr *E) {
 
 LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
   Expr *BaseExpr = E->getBase();
-  unsigned rank = 0;
+
   // ===== Scout ==============================================================
-  NamedDecl *MND = E->getMemberDecl(); //this memberDecl is for the Implicit mesh, maybe needs to be for underlying mesh?
-
-  if (MeshFieldDecl *MFD = dyn_cast<MeshFieldDecl>(MND)) {
-    DeclRefExpr *D = dyn_cast<DeclRefExpr>(BaseExpr);
-    VarDecl *VD = dyn_cast<VarDecl>(D->getDecl());
-    llvm::errs() << "mesh name " << VD->getName() << "\n";
-    llvm::errs() << "member name " << MND->getName() << "\n";
-    if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(VD)) {
-      llvm::errs() << "underlying mesh is " << IMPD->getMeshVarDecl()->getName() << "\n";
-
-      const Type* T = IMPD->getMeshVarDecl()->getType().getCanonicalType().getTypePtr();
-      if(const MeshType *MT = dyn_cast<MeshType>(T)){
-         rank = MT->dimensions().size();
-         llvm::errs() << "mesh rank " << rank << "\n";
-      }
-
-      //LValue BaseLV  = EmitCheckedLValue(BaseExpr, TCK_MemberAccess); //failing here for implicit mesh
-      // lookup underlying mesh instead of implicit mesh
-      llvm::Value *V = LocalDeclMap.lookup(IMPD->getMeshVarDecl());
-      LValue BaseLV  = MakeAddrLValue(V, E->getType());
-
-      LValue LV = EmitScoutMemberExpr(BaseLV, MFD, rank);
-      return LV;
-    }
-  }
+  LValue LV;
+  if (EmitScoutMemberExpr(E, &LV)) return LV;
   // ==========================================================================
 
   // If this is s.x, emit s as an lvalue.  If it is s->x, emit s as a scalar.
