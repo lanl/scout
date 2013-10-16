@@ -141,7 +141,7 @@ CodeGenFunction::EmitMeshMemberExpr(LValue base,
     const CGMeshLayout &ML = CGM.getTypes().getCGMeshLayout(field->getParentMesh());
     const CGBitFieldInfo &Info = ML.getBitFieldInfo(field);
     llvm::Value *Addr = base.getAddress();
-    unsigned Idx = ML.getLLVMFieldNo(field) + rank + 1;
+    unsigned Idx = ML.getLLVMFieldNo(field) + rank + 1; //SC_TODO: is +rank+1 correct here?
     if (Idx != 0)
       // For structs, we GEP to the field that the record layout suggests.
       Addr = Builder.CreateStructGEP(Addr, Idx, field->getName());
@@ -174,7 +174,7 @@ CodeGenFunction::EmitMeshMemberExpr(LValue base,
   
   // We GEP to the field that the record layout suggests.
   unsigned idx = CGM.getTypes().getCGMeshLayout(mesh).getLLVMFieldNo(field) + rank + 1;
-  addr = Builder.CreateStructGEP(addr, idx, field->getName());
+  addr = Builder.CreateStructGEP(addr, idx, field->getName());   //GEP of the field
 
   // If this is a reference field, load the reference right now.
   if (const ReferenceType *refType = type->getAs<ReferenceType>()) {
@@ -203,16 +203,14 @@ CodeGenFunction::EmitMeshMemberExpr(LValue base,
     cvr = 0; // qualifiers don't recursively apply to referencee
   }
 
-
-  // Make sure that the address is pointing to the right type.  This is critical
-  // as a mesh element will need a bitcast if the LLVM type laid out doesn't 
-  // match the desired type.
-  addr = EmitBitCastOfLValueToProperType(*this, addr,
-                                         CGM.getTypes().ConvertTypeForMem(type),
-                                         field->getName());
+  addr = Builder.CreateLoad(addr); 
 
   if (field->hasAttr<AnnotateAttr>())
     addr = EmitFieldAnnotations(field, addr);
+
+  // get the field element for this index
+  llvm::Value *index = Builder.CreateAlignedLoad(getGlobalIdx(), 4, "idx");
+  addr = Builder.CreateInBoundsGEP(addr, index, "meshidx"); 
 
   LValue LV = MakeAddrLValue(addr, type, alignment);
   LV.getQuals().addCVRQualifiers(cvr);
