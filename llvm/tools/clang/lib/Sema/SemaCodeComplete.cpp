@@ -485,7 +485,7 @@ getRequiredQualification(ASTContext &Context,
     else if (const MeshDecl *MD = dyn_cast<MeshDecl>(Parent))
       Result = NestedNameSpecifier::Create(Context, Result, 
                                            false,
-                                     Context.getTypeDeclType(TD).getTypePtr());
+                                     Context.getTypeDeclType(MD).getTypePtr());
   }  
   return Result;
 }
