@@ -596,30 +596,10 @@ bool RecursiveASTVisitor<Derived>::TraverseType(QualType T) {
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseTypeLoc(TypeLoc TL) {
   // ===== Scout ===========================================================
-  // SC_TODO: this debug code can be deleted when we get the MeshTypeloc stuff working correctly
   if (TL.getTypeLocClass() == TypeLoc::UniformMesh) {
-      if (isa<TagType>(TL.getTypePtr())) llvm::errs() << "Is tag\n";
-      if (isa<MeshType>(TL.getTypePtr())) llvm::errs() << "Is mesh\n";
-      if (isa<UniformMeshType>(TL.getTypePtr())) llvm::errs() << "Is uniform mesh\n";
-      llvm::errs() << "uniform mesh ";
-      llvm::errs() << getDerived().WalkUpFromUniformMeshType(const_cast<UniformMeshType*>(cast<UniformMeshType>(TL.getTypePtr())));
-      llvm::errs() << "\n";
-      if (TL.castAs<UniformMeshTypeLoc>().getTypeLocClass() == TypeLoc::UniformMesh) llvm::errs() << "Is uniform mesh 2\n";
-      //combo of castAs<UniformMeshTypeLoc>() and getTypePtr()fails
-      //if (isa<UniformMeshType>(TL.castAs<UniformMeshTypeLoc>().getTypePtr())) llvm::errs() << "Is uniform mesh 3\n";
-      llvm::errs() << "TL " << TL << "\n";
-      UniformMeshTypeLoc NTL = TL.castAs<UniformMeshTypeLoc>(); //bad
-      //MeshTypeLoc NTL = TL.castAs<MeshTypeLoc>(); //bad
-      //TagTypeLoc NTL = TL.castAs<TagTypeLoc>(); // fails in isKind
-      llvm::errs() << "NTL " << NTL << "\n";
-
-      if (isa<TagType>(NTL.getTypePtr())) llvm::errs() << "Is still tag\n";
-      if (isa<MeshType>(NTL.getTypePtr())) llvm::errs() << "Is still mesh\n";
-      if (isa<UniformMeshType>(NTL.getTypePtr())) llvm::errs() << "Is still uniform mesh\n";
-      llvm::errs() << "second check done\n";
-      return getDerived().TraverseUniformMeshTypeLoc(TL.castAs<UniformMeshTypeLoc>());
-    }
-   // =======================================================================
+    return getDerived().TraverseUniformMeshTypeLoc(TL.castAs<UniformMeshTypeLoc>());
+  }
+  // =======================================================================
 
 
   if (TL.isNull())

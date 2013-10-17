@@ -123,10 +123,10 @@ static char IRNameStr[160];
 void CodeGenFunction::EmitForallStmt(const ForAllStmt &S) {
 
   unsigned int rank = S.getMeshType()->dimensions().size();
-  llvm::errs() << "codegen rank = " << rank << "\n";
   EmitForallLoop(S, rank);
 }
 
+//generate one of the nested loops
 void CodeGenFunction::EmitForallLoop(const ForAllStmt &S, unsigned r) {
 
   MeshBaseAddr = GetMeshBaseAddr(S);
@@ -148,14 +148,11 @@ void CodeGenFunction::EmitForallLoop(const ForAllStmt &S, unsigned r) {
     DI->EmitLexicalBlockStart(Builder, S.getSourceRange().getBegin());
 
   if (r == rank) {
-    llvm::errs() << "gen start of loop vars.\n";
     // For our first pass we deal with the outermost initialization
     // details.   This includes our single (linear) array index value,
     LoopIndexVar = Builder.CreateAlloca(Int32Ty, 0, "forall.indx");
     Builder.CreateStore(ConstantZero, LoopIndexVar);
   }
-
-  llvm::errs() << "gen loop bounds.\n";
 
   // Extract the loop bounds from the mesh for this rank, this requires
   // a GEP from the mesh and a load from returned address...
@@ -169,7 +166,6 @@ void CodeGenFunction::EmitForallLoop(const ForAllStmt &S, unsigned r) {
   llvm::Value *InductionVar = Builder.CreateAlloca(Int32Ty, 0, IRNameStr);
   Builder.CreateStore(ConstantZero, InductionVar);
 
-  llvm::errs() << "gen loop cond.\n";
   // Next we create a block that tests the induction variables value to
   // the rank's dimension.
   sprintf(IRNameStr, "forall.cond.%s", DimNames[r-1]);

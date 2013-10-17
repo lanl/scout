@@ -88,35 +88,30 @@ bool
 CodeGenFunction::EmitScoutMemberExpr(const MemberExpr *E, LValue *LV) {
   unsigned rank = 0;
   Expr *BaseExpr = E->getBase();
-  NamedDecl *MND = E->getMemberDecl(); //this memberDecl is for the Implicit mesh, maybe needs to be for underlying mesh?
+  NamedDecl *MND = E->getMemberDecl(); //this memberDecl is for the "Implicit" mesh
 
   if (MeshFieldDecl *MFD = dyn_cast<MeshFieldDecl>(MND)) {
     DeclRefExpr *D = dyn_cast<DeclRefExpr>(BaseExpr);
     VarDecl *VD = dyn_cast<VarDecl>(D->getDecl());
 
     const Type* T = VD->getType().getCanonicalType().getTypePtr();
-    if(const MeshType *MT = dyn_cast<MeshType>(T)){
+    if(const MeshType *MT = dyn_cast<MeshType>(T)) {
       rank = MT->dimensions().size();
-      llvm::errs() << "mesh rank " << rank << "\n";
     } else {
       llvm_unreachable("Cannot determine mesh rank");
     }
 
-    llvm::errs() << "mesh name " << VD->getName() << "\n";
-    llvm::errs() << "member name " << MND->getName() << "\n";
-
     if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(VD)) {
-      llvm::errs() << "underlying mesh is " << IMPD->getMeshVarDecl()->getName() << "\n";
 
       // lookup underlying mesh instead of implicit mesh
       llvm::Value *V = LocalDeclMap.lookup(IMPD->getMeshVarDecl());
+      // need underlying mesh to make LValue
       LValue BaseLV  = MakeAddrLValue(V, E->getType());
 
-      *LV = EmitMeshMemberExpr(BaseLV, MFD, rank);
+      *LV = EmitLValueForMeshField(BaseLV, MFD, rank);
       return true;
     } else {
       llvm_unreachable("Cannot lookup underlying mesh");
-
     }
   } else {
     return false;
@@ -124,12 +119,12 @@ CodeGenFunction::EmitScoutMemberExpr(const MemberExpr *E, LValue *LV) {
 }
 
 LValue
-CodeGenFunction::EmitMeshMemberExpr(LValue base,
+CodeGenFunction::EmitLValueForMeshField(LValue base,
                                      const MeshFieldDecl *field, unsigned rank) {
 
   // This follows very closely with the details used to 
-  // emit a record member from the clang code.  We have 
-  // removed details having to do with unions as we know
+  // emit a record member from the clang code. EmitLValueForField()
+  // We have removed details having to do with unions as we know
   // we are struct-like in behavior. A few questions remain
   // here:
   // 
@@ -141,7 +136,7 @@ CodeGenFunction::EmitMeshMemberExpr(LValue base,
     const CGMeshLayout &ML = CGM.getTypes().getCGMeshLayout(field->getParentMesh());
     const CGBitFieldInfo &Info = ML.getBitFieldInfo(field);
     llvm::Value *Addr = base.getAddress();
-    unsigned Idx = ML.getLLVMFieldNo(field) + rank + 1; //SC_TODO: is +rank+1 correct here?
+    unsigned Idx = ML.getLLVMFieldNo(field) + rank + 1; //fields start at rank+1 (width,height depth are first)
     if (Idx != 0)
       // For structs, we GEP to the field that the record layout suggests.
       Addr = Builder.CreateStructGEP(Addr, Idx, field->getName());
@@ -173,8 +168,9 @@ CodeGenFunction::EmitMeshMemberExpr(LValue base,
   bool TBAAPath = CGM.getCodeGenOpts().StructPathTBAA;
   
   // We GEP to the field that the record layout suggests.
+  // fields start at rank+1 (width,height depth are first)
   unsigned idx = CGM.getTypes().getCGMeshLayout(mesh).getLLVMFieldNo(field) + rank + 1;
-  addr = Builder.CreateStructGEP(addr, idx, field->getName());   //GEP of the field
+  addr = Builder.CreateStructGEP(addr, idx, field->getName());
 
   // If this is a reference field, load the reference right now.
   if (const ReferenceType *refType = type->getAs<ReferenceType>()) {
@@ -203,13 +199,15 @@ CodeGenFunction::EmitMeshMemberExpr(LValue base,
     cvr = 0; // qualifiers don't recursively apply to referencee
   }
 
+  // There was a bitcast here in the struct/union case, rather than a load.
   addr = Builder.CreateLoad(addr); 
 
   if (field->hasAttr<AnnotateAttr>())
     addr = EmitFieldAnnotations(field, addr);
 
-  // get the field element for this index
-  llvm::Value *index = Builder.CreateAlignedLoad(getGlobalIdx(), 4, "idx");
+  // get the correct element of the field depending on the index
+  // in getGlobalIdx()
+  llvm::Value *index = Builder.CreateLoad(getGlobalIdx(), "idx");
   addr = Builder.CreateInBoundsGEP(addr, index, "meshidx"); 
 
   LValue LV = MakeAddrLValue(addr, type, alignment);
