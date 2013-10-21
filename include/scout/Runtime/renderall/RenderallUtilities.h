@@ -4,17 +4,17 @@
  * This file is distributed under an open source license by Los Alamos
  * National Security, LCC.  See the file License.txt (located in the
  * top level of the source distribution) for details.
- * 
+ *
  *-----
- * 
+ *
  */
 
 #ifndef SCOUT_RENDERALL_UTILITIES_H_
 #define SCOUT_RENDERALL_UTILITIES_H_
 
-#include "scout/Runtime/vec_types.h"
+#include "scout/types.h"
 
-namespace scout 
+namespace scout
 {
   class framebuffer_rt;
   class viewport_rt;

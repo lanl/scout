@@ -1867,7 +1867,6 @@ class MeshTypeLoc : public InheritingConcreteTypeLoc<TypeSpecTypeLoc,
   /// \brief True if the tag was defined in this type specifier.
   bool isDefinition() const {
     MeshDecl *D = getDecl();
-
     return D->isCompleteDefinition();
   }
 

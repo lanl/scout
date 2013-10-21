@@ -16,7 +16,6 @@
 
 namespace scout 
 {
-  
   // Some shorthand for various types...
   typedef unsigned char    uchar;
   typedef unsigned char*   ucharp;  
@@ -24,20 +23,6 @@ namespace scout
   typedef unsigned short*  ushortp;
   typedef unsigned long    ulong;
   typedef unsigned long*   ulongp;
-  
-  
-  // Use these types when supporting operations on mesh types.
-  // 
-  //    * rank_t   - the dimensionality of a mesh.
-  //    * dim_t    - the size of a particular mesh dimension.
-  //    * stride_t - stride in cells/edges/etc. through the mesh.
-  //    * index_t  - index value into a specific mesh location.
-  // 
-  typedef uint16_t   rank_t;
-  typedef uint32_t   dim_t;
-  typedef uint64_t   stride_t;
-  typedef uint64_t   index_t;
-  
 }
 
 #endif 

@@ -56,6 +56,7 @@
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/AST/StmtVisitor.h"
+#include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 #include <map>
 using namespace clang;
 using namespace sema;
@@ -68,7 +69,7 @@ using namespace sema;
 namespace {
 
   class ForallVisitor : public StmtVisitor<ForallVisitor> {
-  public:
+   public:
 
     enum NodeType{
       NodeNone,
@@ -93,8 +94,17 @@ namespace {
 
       if (fd) {
         std::string name = fd->getName();
-        if (name == "cshift") {
+        llvm::errs() << "calling function '" << fd->getName() << "'\n";
 
+        if (name == "printf" || name == "fprintf") {
+          // SC_TODO -- for now we'll warn that you're calling a print
+          // function inside a parallel construct -- in the long run 
+          // we can either (1) force the loop to run sequentially or 
+          // (2) replace print function with a "special" version...
+          sema_.Diag(E->getExprLoc(), diag::warn_forall_calling_io_func);
+        } else if (name == "cshift") {
+
+          // SC_TODO -- need to check mesh types here for cshift() validity. 
 
           const MeshType* mt = fs_->getMeshType();
           unsigned args = E->getNumArgs();          
@@ -125,9 +135,6 @@ namespace {
               error_ = true;
             }
           }
-        } else {
-          sema_.Diag(E->getRParenLoc(), diag::err_cshift_not_allowed);
-          error_ = true;
         }
       }
 
@@ -145,12 +152,20 @@ namespace {
     void VisitMemberExpr(MemberExpr* E) {
 
       if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(E->getBase())) {
-
+        llvm::errs() << "member is a declrefexpr...\n";
         ValueDecl* bd = dr->getDecl();
 
         if (const MeshType* MT = dyn_cast<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
 
           ValueDecl* md = E->getMemberDecl();
+          llvm::errs() << "\tmember: " << md->getName() << "\n";
+
+          QualType QT = md->getType();
+          QT.dump();
+          const Type *tp = QT.getTypePtr();
+          if (tp != 0) {
+            llvm::errs() << "got a type...\n";
+          }
 
           // Make sure we are only accessing mesh traits that match the dimensionality 
           // of the mesh...
@@ -165,6 +180,43 @@ namespace {
               sema_.Diag(E->getMemberLoc(), diag::err_invalid_depth_mesh);
               error_ = true;
             }
+          } else {
+            /*
+            ForallMeshStmt::MeshElementType LoopElementType = fs_->getMeshElementRef();
+            const MeshFieldType* MFT;
+            MFT = dyn_cast<MeshFieldType>(md->getType().getTypePtr());
+
+            switch(LoopElementType) {
+
+              case ForallMeshStmt::Cells:
+                if (! MFT->isCellLocated()) {
+                  sema_.Diag(E->getMemberLoc(), diag::err_forall_non_cell_field);
+                }
+                break;
+
+              case ForallMeshStmt::Vertices:
+                if (! MFT->isVertexLocated()) {
+                  sema_.Diag(E->getMemberLoc(), diag::err_forall_non_vertex_field);
+                }
+                break;
+
+              case ForallMeshStmt::Edges:
+                if (! MFT->isEdgeLocated()) {
+                  sema_.Diag(E->getMemberLoc(), diag::err_forall_non_edge_field);
+                }
+
+                break;
+
+              case ForallMeshStmt::Faces:
+                if (! MFT->isFaceLocated()) {
+                  sema_.Diag(E->getMemberLoc(), diag::err_forall_non_face_field);
+                }
+                break;
+
+              default:
+                assert(false && "unknown mesh field element type");
+            }
+            */
           }
 
           std::string ref = bd->getName().str() + "." + md->getName().str();
@@ -197,25 +249,6 @@ namespace {
       }
 
       VisitChildren(S);
-    }
-
-    //SC_TODO: remove scout vectors
-    void VisitScoutVectorMemberExpr(ScoutVectorMemberExpr* E){
-      if(MemberExpr* ME = dyn_cast<MemberExpr>(E->getBase())){
-        if(ME->getMemberDecl()->getName() == "position"){
-          if(DeclRefExpr* DR = dyn_cast<DeclRefExpr>(ME->getBase())){
-            if(const MeshType* MT =
-               dyn_cast<MeshType>(DR->getDecl()->getType().getCanonicalType().getTypePtr())){
-              if(E->getIdx() >= MT->dimensions().size()){
-                sema_.Diag(E->getLocation(), diag::err_invalid_position_ref);
-                error_ = true;
-              }
-            }
-          }
-        }
-      }
-
-      VisitChildren(E);
     }
 
     void VisitBinaryOperator(BinaryOperator* S){
@@ -279,35 +312,36 @@ namespace {
 bool Sema::ActOnForallMeshRefVariable(Scope* S,
                                   IdentifierInfo* RefVarInfo,
                                   SourceLocation RefVarLoc,
-                                  const MeshType *MT) {
+                                  const MeshType *MT,
+                                  VarDecl* VD) {
 
-  ImplicitParamDecl* D;
+  ImplicitMeshParamDecl* D;
 
   if (MT->isUniform()) {
-    D = ImplicitParamDecl::Create(Context, 
-                                  CurContext,
-                                  RefVarLoc,
-                                  RefVarInfo,
-                                  QualType(cast<UniformMeshType>(MT),0 ));
+    D = ImplicitMeshParamDecl::Create(Context, 
+                                      CurContext,
+                                      RefVarLoc,
+                                      RefVarInfo,
+                                      QualType(cast<UniformMeshType>(MT),0), VD);
   } else if (MT->isStructured()) {
-    D = ImplicitParamDecl::Create(Context, 
-                                  CurContext,
-                                  RefVarLoc,
-                                  RefVarInfo,
-                                  QualType(cast<StructuredMeshType>(MT),0 ));
+    D = ImplicitMeshParamDecl::Create(Context, 
+                                      CurContext,
+                                      RefVarLoc,
+                                      RefVarInfo,
+                                      QualType(cast<StructuredMeshType>(MT),0), VD);
 
   } else if (MT->isRectilinear()) {
-    D = ImplicitParamDecl::Create(Context, 
-                                  CurContext,
-                                  RefVarLoc,
-                                  RefVarInfo,
-                                  QualType(cast<RectilinearMeshType>(MT),0 ));
+    D = ImplicitMeshParamDecl::Create(Context, 
+                                      CurContext,
+                                      RefVarLoc,
+                                      RefVarInfo,
+                                      QualType(cast<RectilinearMeshType>(MT),0), VD);
   } else if (MT->isUnstructured()) {
-    D = ImplicitParamDecl::Create(Context, 
-                                  CurContext,
-                                  RefVarLoc,
-                                  RefVarInfo,
-                                  QualType(cast<UnstructuredMeshType>(MT),0 ));
+    D = ImplicitMeshParamDecl::Create(Context, 
+                                      CurContext,
+                                      RefVarLoc,
+                                      RefVarInfo,
+                                      QualType(cast<UnstructuredMeshType>(MT),0), VD);
 
   } else {
     assert(false && "unknown mesh type");
@@ -646,9 +680,9 @@ bool Sema::ActOnForAllLoopVariable(Scope* S,
   MeshType* MT = const_cast<MeshType *>(cast<MeshType>(T));
   UniformMeshType* UMT = cast<UniformMeshType>(MT);
 
-  ImplicitParamDecl* D =
-  ImplicitParamDecl::Create(Context, CurContext, LoopVariableLoc,
-                            LoopVariableII, QualType(UMT, 0));
+  ImplicitMeshParamDecl* D =
+  ImplicitMeshParamDecl::Create(Context, CurContext, LoopVariableLoc,
+                            LoopVariableII, QualType(UMT, 0), VD);
 
   PushOnScopeChains(D, S, true);
 

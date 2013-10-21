@@ -23,27 +23,6 @@
 using namespace clang;
 using namespace CodeGen;
 
-// SC_TODO - we need to replace Scout's vector types with Clang's
-// "builtin" type.  This has been done in the "refactor" branch
-// but it still needs to be merged with "devel". 
-LValue
-CodeGenFunction::EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E) {
-
-  if (isa<MemberExpr>(E->getBase())) {
-    ValueDecl *VD = cast<MemberExpr>(E->getBase())->getMemberDecl();
-    if (VD->getName() == "position") {
-      return MakeAddrLValue(ScoutIdxVars[E->getIdx()], getContext().IntTy);
-    }
-    assert(false && "Attempt to translate Scout 'position' to LLVM IR failed");
-  } else {
-    LValue LHS = EmitLValue(E->getBase());
-    llvm::Value *Idx = llvm::ConstantInt::get(Int32Ty, E->getIdx());
-    return LValue::MakeVectorElt(LHS.getAddress(), Idx,
-                                 E->getBase()->getType(),
-                                 LHS.getAlignment());
-  }
-}
-
 /*
 LValue
 CodeGenFunction::EmitScoutColorDeclRefLValue(const NamedDecl *ND) {
@@ -100,7 +79,7 @@ CodeGenFunction::EmitScoutMemberExpr(LValue base,
   //             TBAA (type-based aliases analysis). 
   //
   if (field->isBitField()) {
-    const CGMeshLayout &ML = CGM.getTypes().getCGMeshLayout(field->getParentMesh());
+    const CGMeshLayout &ML = CGM.getTypes().getCGMeshLayout(field->getParent());
     const CGBitFieldInfo &Info = ML.getBitFieldInfo(field);
     llvm::Value *Addr = base.getAddress();
     unsigned Idx = ML.getLLVMFieldNo(field);
@@ -119,7 +98,7 @@ CodeGenFunction::EmitScoutMemberExpr(LValue base,
     return LValue::MakeBitfield(Addr, Info, fieldType, base.getAlignment());
   }
 
-  const MeshDecl *mesh = field->getParentMesh();
+  const MeshDecl *mesh = field->getParent();
   QualType type = field->getType();
   CharUnits alignment = getContext().getDeclAlign(field);
 
@@ -178,16 +157,16 @@ CodeGenFunction::EmitScoutMemberExpr(LValue base,
 
   LValue LV = MakeAddrLValue(addr, type, alignment);
   LV.getQuals().addCVRQualifiers(cvr);
-  if (TBAAPath) {
+  /*if (TBAAPath) {
     const ASTRecordLayout &Layout =
-        getContext().getASTRecordLayout(field->getParent());
+        getContext().getASTMeshLayout(field->getParent());
     // Set the base type to be the base type of the base LValue and
     // update offset to be relative to the base type.
     LV.setTBAABaseType(mayAlias ? getContext().CharTy : base.getTBAABaseType());
     LV.setTBAAOffset(mayAlias ? 0 : base.getTBAAOffset() +
                      Layout.getFieldOffset(field->getFieldIndex()) /
                                            getContext().getCharWidth());
-  }
+  }*/
 
   // __weak attribute on a field is ignored.
   if (LV.getQuals().getObjCGCAttr() == Qualifiers::Weak)

@@ -4,7 +4,7 @@
  * This file is distributed under an open source license by Los Alamos
  * National Security, LCC.  See the file License.txt (located in the
  * top level of the source distribution) for details.
- * 
+ *
  *-----
  *
  */
@@ -27,7 +27,7 @@ using namespace scout;
 // Todo: We currenty toss out the alpha channel from the frame
 // buffer to avoid strange transparent PNG images -- thus a
 // temporary 3-channel image buffer is created on each invocation.
-// In a tight loop within Scout this could be a bottleneck... 
+// In a tight loop within Scout this could be a bottleneck...
 bool save_framebuffer_as_png(const framebuffer_rt* fb, const char *filename)
 {
   assert(fb != 0);
@@ -38,11 +38,11 @@ bool save_framebuffer_as_png(const framebuffer_rt* fb, const char *filename)
 
   // See above -- this is not a good thing to do on every invocation
   // (although the png library does as well...).
-  #pragma omp for schedule (dynamic,width)  
+  #pragma omp for schedule (dynamic,width)
   for(dim_t i = 0, j = 0; i < npixels; ++i, j+=3) {
-    buf8[j]   = (uchar)(fb->pixels[i].components[0] * UCHAR_MAX);
-    buf8[j+1] = (uchar)(fb->pixels[i].components[1] * UCHAR_MAX);
-    buf8[j+2] = (uchar)(fb->pixels[i].components[2] * UCHAR_MAX);
+    buf8[j]   = (uchar)(fb->pixels[i].r * UCHAR_MAX);
+    buf8[j+1] = (uchar)(fb->pixels[i].g * UCHAR_MAX);
+    buf8[j+2] = (uchar)(fb->pixels[i].b * UCHAR_MAX);
   }
 
   FILE *fp = fopen(filename, "wb");
@@ -54,7 +54,7 @@ bool save_framebuffer_as_png(const framebuffer_rt* fb, const char *filename)
   png_structp png_ptr;
   png_infop   info_ptr;
   png_bytep   *rows;
-  
+
   png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
   if (! png_ptr) {
     fprintf(stderr, "unable to create png struct pointer!\n");
@@ -66,13 +66,13 @@ bool save_framebuffer_as_png(const framebuffer_rt* fb, const char *filename)
   if (! info_ptr) {
     fprintf(stderr, "unable to create png info structure!\n");
     png_destroy_write_struct(&png_ptr, (png_infopp)NULL);
-    
+
     fclose(fp);
     return false;
   }
 
   if (setjmp(png_jmpbuf(png_ptr))) {
-    fprintf(stderr, "png setjmp() error!\n");    
+    fprintf(stderr, "png setjmp() error!\n");
     png_destroy_write_struct(&png_ptr, &info_ptr);
     fclose(fp);
     return false;
@@ -99,22 +99,22 @@ bool save_framebuffer_as_png(const framebuffer_rt* fb, const char *filename)
     return false;
   }
 
-  png_bytep fb_start = (png_bytep)buf8;  
+  png_bytep fb_start = (png_bytep)buf8;
   int row_offset = fb->width * sizeof(uchar) * 3;
-  #pragma omp for schedule (dynamic,width)    
+  #pragma omp for schedule (dynamic,width)
   for(int i = 0; i < fb->height; ++i) {
     rows[i] = fb_start + i * row_offset;
   }
 
   png_write_image(png_ptr, rows);
   png_write_end(png_ptr, info_ptr);
-  
+
   fclose(fp);
 
   delete []rows;
-  png_destroy_write_struct(&png_ptr, &info_ptr);  
+  png_destroy_write_struct(&png_ptr, &info_ptr);
   delete []buf8;
-  
+
   return true;
 }
 

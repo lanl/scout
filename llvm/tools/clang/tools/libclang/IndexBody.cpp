@@ -167,7 +167,6 @@ public:
   bool TraverseStructuredMeshType(StructuredMeshType*){ return true; }
   bool TraverseRectilinearMeshType(RectilinearMeshType*){ return true; }
   bool TraverseUnstructuredMeshType(UnstructuredMeshType*){ return true; }
-  bool TraverseScoutVectorMemberExpr(ScoutVectorMemberExpr*){ return true; }
   //bool TraverseForAllArrayStmt(ForAllArrayStmt*) { return true; }
   bool TraverseUniformMeshTypeLoc(UniformMeshTypeLoc*) { return true; }
   bool TraverseStructuredMeshTypeLoc(StructuredMeshTypeLoc*){ return true; }

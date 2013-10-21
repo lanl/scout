@@ -1,9 +1,9 @@
 /*
- *  
+ *
  *###########################################################################
  * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
- * 
+ *
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -21,10 +21,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- * 
+ *
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided 
+ *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -32,7 +32,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -46,7 +46,7 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- */ 
+ */
 
 #ifndef SCOUT_WINDOW_H_
 #define SCOUT_WINDOW_H_
@@ -55,9 +55,8 @@
 
 #include "scout/Runtime/types.h"
 #include "scout/Runtime/viewport.h"
-#include "scout/Runtime/vec_types.h"
 
-namespace scout 
+namespace scout
 {
 
   // ----- window_rt
@@ -65,8 +64,8 @@ namespace scout
   class window_rt {
 
    public:
- 
-    // r, g, b and a are for background color 
+
+    // r, g, b and a are for background color
     window_rt(dim_t w, dim_t h, float bg_r, float bg_g, float bg_b, float bg_a,
         bool saveFrames, const char* filename)
         : width(w), height(h)
@@ -78,7 +77,7 @@ namespace scout
 
     void validate_viewport(viewport_rt_p vp);
 
-    typedef std::list<viewport_rt_p> viewport_list;  
+    typedef std::list<viewport_rt_p> viewport_list;
 
     dim_t          width, height;
     viewport_list  viewports;

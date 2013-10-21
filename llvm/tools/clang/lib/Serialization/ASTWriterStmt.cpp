@@ -559,12 +559,6 @@ void ASTStmtWriter::VisitMemberExpr(MemberExpr *E) {
   Code = serialization::EXPR_MEMBER;
 }
 
-// ===== Scout =================================================================
-// SC_TODO - remove scout vector support. 
-void ASTStmtWriter::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *E) {
-
-}
-// =============================================================================
 void ASTStmtWriter::VisitObjCIsaExpr(ObjCIsaExpr *E) {
   VisitExpr(E);
   Writer.AddStmt(E->getBase());

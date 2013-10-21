@@ -2839,7 +2839,7 @@ Decl *ASTNodeImporter::VisitMeshFieldDecl(MeshFieldDecl *D) {
   for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
     if (MeshFieldDecl *FoundField = dyn_cast<MeshFieldDecl>(FoundDecls[I])) {
       // For anonymous fields, match up by index.
-      if (!Name && D->getMeshFieldIndex() != D->getMeshFieldIndex())
+      if (!Name && D->getFieldIndex() != D->getFieldIndex())
         continue;
 
       if (Importer.IsStructurallyEquivalent(D->getType(), 

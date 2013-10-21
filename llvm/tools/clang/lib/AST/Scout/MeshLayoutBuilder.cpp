@@ -592,6 +592,18 @@ MeshLayoutBuilder::updateExternalFieldOffset(const MeshFieldDecl *Field,
   return ExternalFieldOffset;
 }
 
+static unsigned getPaddingDiagFromMeshKind(MeshTypeKind MK) {
+  switch (MK) {
+    case TTK_UniformMesh: return 0; 
+    case TTK_RectilinearMesh: return 0;
+    case TTK_StructuredMesh: return 0;
+    case TTK_UnstructuredMesh: return 0;
+    // This will give you a weird warning under clang that essentially 
+    // says "you've handled all cases default will not be used"... 
+    //default: llvm_unreachable("Invalid mesh kind for field padding diagnostic");
+  }
+}
+
 void MeshLayoutBuilder::CheckFieldPadding(uint64_t Offset,
                                           uint64_t UnpaddedOffset,
                                           uint64_t UnpackedOffset,
@@ -616,14 +628,14 @@ void MeshLayoutBuilder::CheckFieldPadding(uint64_t Offset,
     }
     if (D->getIdentifier())
       Diag(D->getLocation(), diag::warn_padded_struct_field)
-          << getPaddingDiagFromTagKind(D->getParent()->getTagKind())
+          << getPaddingDiagFromMeshKind(D->getParent()->getMeshKind())
           << Context.getTypeDeclType(D->getParent())
           << PadSize
           << (InBits ? 1 : 0) /*(byte|bit)*/ << (PadSize > 1) // plural or not
           << D->getIdentifier();
     else
       Diag(D->getLocation(), diag::warn_padded_struct_anon_field)
-          << getPaddingDiagFromTagKind(D->getParent()->getTagKind())
+          << getPaddingDiagFromMeshKind(D->getParent()->getMeshKind())
           << Context.getTypeDeclType(D->getParent())
           << PadSize
           << (InBits ? 1 : 0) /*(byte|bit)*/ << (PadSize > 1); // plural or not
@@ -688,7 +700,7 @@ ASTContext::getASTMeshLayout(const MeshDecl *D) const {
 }
 
 static uint64_t getMeshFieldOffset(const ASTContext &C, const MeshFieldDecl *FD) {
-  const ASTMeshLayout &Layout = C.getASTMeshLayout(FD->getParentMesh());
+  const ASTMeshLayout &Layout = C.getASTMeshLayout(FD->getParent());
   return Layout.getFieldOffset(FD->getFieldIndex());
 }
 

@@ -50,20 +50,13 @@
  *
  */
 
-#ifndef _SC_SCOUT_H_
-#define _SC_SCOUT_H_
+#ifndef __SCOUT_MESHES_SCH__
+#define __SCOUT_MESHES_SCH__
 
-#include <cassert>
-namespace scout
-{
-  #include "scout/types.sch"
-  #include "scout/math.sch"
-  #include "scout/meshes.sch"
-  #include "scout/color.sch"
-}
+#include <stdint.h>
 
-#endif
 
 
 
 
+#endif

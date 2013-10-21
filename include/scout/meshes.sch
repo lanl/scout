@@ -50,20 +50,40 @@
  *
  */
 
-#ifndef _SC_SCOUT_H_
-#define _SC_SCOUT_H_
+#ifndef __SCOUT_MESHES_SCH__
+#define __SCOUT_MESHES_SCH__
 
-#include <cassert>
-namespace scout
-{
-  #include "scout/types.sch"
-  #include "scout/math.sch"
-  #include "scout/meshes.sch"
-  #include "scout/color.sch"
-}
+#include <stdint.h>
+
+// +--- Types to capture sizes of various mesh attributes. -------------------+
+//
+// We use the follow terminology when it comes to mesh attributes:
+//
+//   - 'rank' is the dimensionality of the mesh (e.g. a two dimensional
+//     mesh has rank == 2).
+//
+//   - 'dimension' is the size of particular mesh along a given rank.
+//     For example a 128x256 uniform mesh has a dimension of 128 along
+//     rank 0 (the x-axis) and 256 along rank 1 (the y-axis).
+//
+//   - 'stride' is the distance taken when operating on elements of a mesh.
+//     This is typically in references to a particular set of mesh elements
+//     such as cells, vertices, or edges.
+//
+//   -  An 'index' is typically used to index into a specific mesh location.
+//      This is rarely used in user-level code but is here for completeness.
+//
+// These values are returned by various language-level intrinsics.
+typedef uint16_t rank_t;
+typedef uint32_t dim_t;
+typedef uint64_t stride_t;
+typedef uint32_t index_t;
+typedef uint64_t address_t;
+typedef index_t  position_t   __attribute__((ext_vector_type(3)));
+// +--------------------------------------------------------------------------+
+
+
+
+
 
 #endif
-
-
-
-

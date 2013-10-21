@@ -1,9 +1,13 @@
+#include <cmath>
+#include <algorithm>
+#include <stdint.h>
+
+
 #include "scout/Runtime/renderall/RenderallUtilities.h"
 #include "scout/Runtime/framebuffer.h"
 #include "scout/Runtime/viewport.h"
 
-#include <cmath>
-#include <algorithm>
+
 
 using namespace scout;
 
@@ -11,7 +15,7 @@ inline static float4 lerp(float x, const float4 &a, const float4 &b)
 {
     float4 vecx = {x, x, x, x};
     float4 res;
-    res.vec = a.vec + (vecx.vec * (b.vec - a.vec));
+    res = a + (vecx * (b - a));
     return res;
 }
 
@@ -32,9 +36,9 @@ inline float4 bilinearSample(const float4 *buffer, int wd, int ht, float x,
 
 namespace scout{
 
-void mapToFrameBuffer(const float4 *colors, int dataw, int datah, 
-                      framebuffer_rt &fb, const viewport_rt &vp, 
-                      MapFilterType filter) 
+void mapToFrameBuffer(const float4 *colors, int dataw, int datah,
+                      framebuffer_rt &fb, const viewport_rt &vp,
+                      MapFilterType filter)
 {
     float wratio = vp.width/float(dataw);
     float hratio = vp.height/float(datah);
@@ -50,27 +54,26 @@ void mapToFrameBuffer(const float4 *colors, int dataw, int datah,
         for (float dy = bboxy1; dy < bboxy2; dy += 1.0f) {
             for (float dx = bboxx1; dx < bboxx2; dx += 1.0f) {
                 float4 &dst = fb.pixels[int(dy)*fb.width + int(dx)];
-           
+
                 float wt = 1.0f/factor;
                 float sx = (dx - bboxx1) * wt;
                 float sy = (dy - bboxy1) * wt;
 
                 float4 avg;
-                avg.components[0] = avg.components[1] = avg.components[2] =
-                avg.components[3] = 0.0f;
+                avg.x = avg.y = avg.z = avg.w = 0.0f;
                 float div = 0.0f;
                 for (float y = sy; y < sy + wt; y += 1.0f) {
                     for (float x = sx; x < sx + wt; x += 1.0f, div += 1.0f) {
                         float4 samp = bilinearSample(colors, dataw, datah, x,
                                                      y);
-                        avg.vec += samp.vec;
+                        avg += samp;
                     }
                 }
 
-                avg.components[0] /= div;
-                avg.components[1] /= div;
-                avg.components[2] /= div;
-                avg.components[3] /= div;
+                avg.x /= div;
+                avg.y /= div;
+                avg.z /= div;
+                avg.w /= div;
 
                 dst = avg;
             }
@@ -82,10 +85,10 @@ void mapToFrameBuffer(const float4 *colors, int dataw, int datah,
     for (float dy = bboxy1 + 0.5f; dy < bboxy2; dy += 1.0f) {
         for (float dx = bboxx1 + 0.5f; dx < bboxx2; dx += 1.0f) {
             float4 &dst = fb.pixels[int(dy)*fb.width + int(dx)];
-           
+
             float sx = (dx - bboxx1)/factor;
             float sy = (dy - bboxy1)/factor;
-            
+
             switch (filter) {
                 case FILTER_NEAREST:
                     dst = colors[int(sy)*dataw + int(sx)];

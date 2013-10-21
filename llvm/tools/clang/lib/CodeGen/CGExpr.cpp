@@ -28,6 +28,9 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/Support/ConvertUTF.h"
+// ===== Scout ====================================
+#include "clang/AST/Scout/ImplicitMeshParamDecl.h"
+// ================================================
 
 using namespace clang;
 using namespace CodeGen;
@@ -852,6 +855,7 @@ LValue CodeGenFunction::EmitCheckedLValue(const Expr *E, TypeCheckKind TCK) {
 /// length type, this is not possible.
 ///
 LValue CodeGenFunction::EmitLValue(const Expr *E) {
+  //llvm::errs() << "EmitLValue class " << E->getStmtClass() << "\n";
   switch (E->getStmtClass()) {
   default: return EmitUnsupportedLValue(E, "l-value expression");
 
@@ -863,6 +867,7 @@ LValue CodeGenFunction::EmitLValue(const Expr *E) {
   case Expr::ObjCIsaExprClass:
     return EmitObjCIsaExpr(cast<ObjCIsaExpr>(E));
   case Expr::BinaryOperatorClass:
+    //llvm::errs() << "BinaryOperatorClass is " << Expr::BinaryOperatorClass << "\n";
     return EmitBinaryOperatorLValue(cast<BinaryOperator>(E));
   case Expr::CompoundAssignOperatorClass:
     if (!E->getType()->isAnyComplexType())
@@ -876,6 +881,7 @@ LValue CodeGenFunction::EmitLValue(const Expr *E) {
   case Expr::VAArgExprClass:
     return EmitVAArgExprLValue(cast<VAArgExpr>(E));
   case Expr::DeclRefExprClass:
+    //llvm::errs() << "DecRefExprClass is " << Expr::DeclRefExprClass << "\n";
     return EmitDeclRefLValue(cast<DeclRefExpr>(E));
   case Expr::ParenExprClass:
     return EmitLValue(cast<ParenExpr>(E)->getSubExpr());
@@ -932,6 +938,7 @@ LValue CodeGenFunction::EmitLValue(const Expr *E) {
   case Expr::ExtVectorElementExprClass:
     return EmitExtVectorElementExpr(cast<ExtVectorElementExpr>(E));
   case Expr::MemberExprClass:
+    //llvm::errs() << "MemberExprClass is " << Expr::MemberExprClass << "\n";
     return EmitMemberExpr(cast<MemberExpr>(E));
   case Expr::CompoundLiteralExprClass:
     return EmitCompoundLiteralLValue(cast<CompoundLiteralExpr>(E));
@@ -957,14 +964,6 @@ LValue CodeGenFunction::EmitLValue(const Expr *E) {
 
   case Expr::MaterializeTemporaryExprClass:
     return EmitMaterializeTemporaryExpr(cast<MaterializeTemporaryExpr>(E));
-
-  // ===== Scout ==============================================================
-  // SC_TODO - we need to remove scout's vector types in favor of Clang's 
-  // "builtin" type.  This has been done in the "refactor" branch but it still
-  // needs to be merged with "devel".
-  case Expr::ScoutVectorMemberExprClass:
-    return EmitScoutVectorMemberExpr(cast<ScoutVectorMemberExpr>(E));
-  // ==========================================================================
   }
 }
 
@@ -1832,6 +1831,7 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
   llvm::errs() << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n";  
   if (ND->getDeclName().isIdentifier() && 
       isa<ImplicitParamDecl>(ND)) {
+    llvm::errs() << "is Implicit\n";
 
     //if (ND->getName() == "color") {
     //  return EmitScoutColorDeclRefLValue(ND);
@@ -1881,7 +1881,9 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
 
     bool isBlockVariable = VD->hasAttr<BlocksAttr>();
 
-    llvm::Value *V = LocalDeclMap.lookup(VD);
+    llvm::Value *V = LocalDeclMap.lookup(VD); //failing for implicit mesh
+    //if(V) llvm::errs() << VD->getName() << " is localdeclmap\n";
+
     if (!V && VD->isStaticLocal()) 
       V = CGM.getStaticLocalDeclAddress(VD);
 
@@ -2517,11 +2519,21 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
   Expr *BaseExpr = E->getBase();
 
   // ===== Scout ==============================================================
-  // Check if this is a Scout mesh member expression.
-  {
-    NamedDecl *ND = E->getMemberDecl();
-    if (MeshFieldDecl *MFD = dyn_cast<MeshFieldDecl>(ND)) {
-      LValue BaseLV  = EmitCheckedLValue(BaseExpr, TCK_MemberAccess);
+  NamedDecl *MND = E->getMemberDecl(); //this memberDecl is for the Implicit mesh, maybe needs to be for underlying mesh?
+
+  if (MeshFieldDecl *MFD = dyn_cast<MeshFieldDecl>(MND)) {
+    DeclRefExpr *D = dyn_cast<DeclRefExpr>(BaseExpr);
+    VarDecl *VD = dyn_cast<VarDecl>(D->getDecl());
+    llvm::errs() << "mesh name " << VD->getName() << "\n";
+    llvm::errs() << "member name " << MND->getName() << "\n";
+    if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(VD)) {
+      llvm::errs() << "underlying mesh is " << IMPD->getMeshVarDecl()->getName() << "\n";
+
+      //LValue BaseLV  = EmitCheckedLValue(BaseExpr, TCK_MemberAccess); //failing here for implicit mesh
+      // lookup underlying mesh instead of implicit mesh
+      llvm::Value *V = LocalDeclMap.lookup(IMPD->getMeshVarDecl());
+      LValue BaseLV  = MakeAddrLValue(V, E->getType());
+
       LValue LV = EmitScoutMemberExpr(BaseLV, MFD);
       return LV;
     }

@@ -229,7 +229,6 @@ CXCursor cxcursor::MakeCXCursor(const Stmt *S, const Decl *Parent,
   // ndm - Scout Stmts
   case Stmt::ForallMeshStmtClass:  
   //case Stmt::RenderAllStmtClass: 
-  case Stmt::ScoutVectorMemberExprClass:
   //case Stmt::ForAllArrayStmtClass:
   //case Stmt::VolumeRenderAllStmtClass:
 

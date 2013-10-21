@@ -50,20 +50,22 @@
  *
  */
 
-#ifndef _SC_SCOUT_H_
-#define _SC_SCOUT_H_
+#ifndef __SCOUT_MATH_SCH__
+#define __SCOUT_MATH_SCH__
 
-#include <cassert>
-namespace scout
-{
-  #include "scout/types.sch"
-  #include "scout/math.sch"
-  #include "scout/meshes.sch"
-  #include "scout/color.sch"
+#include <cmath>
+#include "scout/types.sch"
+
+/// Clamp the given scalar value to the specified (inclusive) range.
+inline float clamp(float Value, float MinValue, float MaxValue) {
+  // There is an interesting C++ 11 issue here that can throw you
+  // for a loop...  C++ 11 introduces versions fmin()/fmax() that
+  // are overloaded to take the place of the fminf()/fmaxf() calls
+  // from the math library in C...
+  //
+  // We may have a train wreck here away from C++ compilers...
+  return fmin(fmax(Value, MinValue), MaxValue);
 }
 
 #endif
-
-
-
 

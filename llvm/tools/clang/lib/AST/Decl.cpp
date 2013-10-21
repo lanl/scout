@@ -2947,16 +2947,17 @@ void FieldDecl::setInClassInitializer(Expr *Init) {
 // MeshFieldDecl Implementation
 //===----------------------------------------------------------------------===//
 
-MeshFieldDecl *MeshFieldDecl::Create(const ASTContext &C,
+
+MeshFieldDecl *MeshFieldDecl::Create(const ASTContext &C, 
                                      DeclContext *DC,
                                      SourceLocation StartLoc,
                                      SourceLocation IdLoc,
-                                     IdentifierInfo *Id, QualType T,
-                                     TypeSourceInfo *TInfo,
-                                     Expr *BW,
+                                     IdentifierInfo *Id, 
+                                     QualType T,
+                                     TypeSourceInfo *TInfo, 
+                                     Expr *BW, 
                                      bool Mutable,
                                      InClassInitStyle InitStyle) {
-  
   return new (C) MeshFieldDecl(Decl::MeshField, DC, StartLoc, IdLoc, Id, T, TInfo,
                                BW, Mutable, InitStyle);
 }
@@ -2967,25 +2968,44 @@ MeshFieldDecl *MeshFieldDecl::CreateDeserialized(ASTContext &C, unsigned ID) {
                                  0, QualType(), 0, 0, false, ICIS_NoInit);
 }
 
-unsigned MeshFieldDecl::getMeshFieldIndex() const {
+unsigned MeshFieldDecl::getBitWidthValue(const ASTContext &Ctx) const {
+  assert(isBitField() && "not a bitfield");
+  Expr *BitWidth = InitializerOrBitWidth.getPointer();
+  return BitWidth->EvaluateKnownConstInt(Ctx).getZExtValue();
+}
 
-  if (CachedFieldIndex) 
-    return CachedFieldIndex - 1;
+unsigned MeshFieldDecl::getFieldIndex() const {
+
+  if (CachedFieldIndex) return CachedFieldIndex - 1;
 
   unsigned Index = 0;
-  const MeshDecl *MD = cast<MeshDecl>(getDeclContext());
+  const MeshDecl *MD = getParent();
 
-  MD->dump();
-  llvm::errs() << "filling field caches...\n";
   for (MeshDecl::field_iterator I = MD->field_begin(), E = MD->field_end();
        I != E; ++I, ++Index) {
     I->CachedFieldIndex = Index + 1;
-    llvm::errs() << "\tfield name: " << I->getName() << " (cache: " << I->CachedFieldIndex << ")\n";    
   }
-  llvm::errs() << "\n";
 
   assert(CachedFieldIndex && "failed to find field in parent");
   return CachedFieldIndex - 1;
+}
+
+SourceRange MeshFieldDecl::getSourceRange() const {
+  if (const Expr *E = InitializerOrBitWidth.getPointer())
+    return SourceRange(getInnerLocStart(), E->getLocEnd());
+  return DeclaratorDecl::getSourceRange();
+}
+
+void MeshFieldDecl::setBitWidth(Expr *Width) {
+  assert(!InitializerOrBitWidth.getPointer() && !hasInClassInitializer() &&
+         "bit width or initializer already set");
+  InitializerOrBitWidth.setPointer(Width);
+}
+
+void MeshFieldDecl::setInClassInitializer(Expr *Init) {
+  assert(!InitializerOrBitWidth.getPointer() && hasInClassInitializer() &&
+         "bit width or initializer already set");
+  InitializerOrBitWidth.setPointer(Init);
 }
 
 //

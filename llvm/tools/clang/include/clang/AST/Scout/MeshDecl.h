@@ -76,19 +76,12 @@ namespace clang {
 
   class MeshDecl;
 
-  // MeshFieldDecl - An instance of this class if create by
-  // Sema::ActOnMeshField to represent a member of a Scout 
-  // mesh.  We build directly on the features of FieldDecl's.
-  //
-  // NOTE:  Can't figure a way to extract MeshFieldDecl from 
-  // this file, since it depends on FieldDecl, but RecordDecl 
-  // depends on MeshFieldDecl being defined, so you'd get a 
-  // circular dependency between Decl.h and MeshFieldDecl.h
-  // if you did that. 
-  class MeshFieldDecl : public FieldDecl {
-    
-    // FIXME: This can be packed into the bitfields in Decl.
-    bool Mutable       : 1;
+  /// MeshFieldDecl - An instance of this class is created by Sema::ActOnField to                        
+  /// represent a member of a mesh.                                                    
+  class MeshFieldDecl : public DeclaratorDecl {
+    // FIXME: This can be packed into the bitfields in Decl.                                         
+    bool Mutable : 1;
+
 
     // Each field can be placed at various locations within the 
     // topology of the mesh.  We use the following bitfields to 
@@ -99,41 +92,127 @@ namespace clang {
     bool FaceLocated   : 1;
     bool BuiltInField  : 1;
 
-    // The field index cache value below is borrowed from 
-    // FieldDecl -- we could have made some changes to 
-    // FieldDecl so we could inherit this but we've 
-    // opted to have a smaller impact on the base Clang 
-    // source instead.  Just be aware of this if you decide
-    // to downcast a MeshFieldDecl to a FieldDecl.  
+
     mutable unsigned CachedFieldIndex : 26;
 
+    /// \brief An InClassInitStyle value, and either a bit width expression (if                      
+    /// the InClassInitStyle value is ICIS_NoInit), or a pointer to the in-class                     
+    /// initializer for this field (otherwise).                                                      
+    ///                                                                                              
+    /// We can safely combine these two because in-class initializers are not                        
+    /// permitted for bit-fields.                                                                    
+    ///                                                                                              
+    /// If the InClassInitStyle is not ICIS_NoInit and the initializer is null,                      
+    /// then this field has an in-class initializer which has not yet been parsed                    
+    /// and attached.                                                                                
+    llvm::PointerIntPair<Expr *, 2, unsigned> InitializerOrBitWidth;
   protected:
-  
     MeshFieldDecl(Kind DK, DeclContext *DC, SourceLocation StartLoc,
                   SourceLocation IdLoc, IdentifierInfo *Id,
                   QualType T, TypeSourceInfo *TInfo, Expr *BW, bool Mutable,
                   InClassInitStyle InitStyle)
-        : FieldDecl(DK, DC, StartLoc, IdLoc, Id, T, TInfo,
-                    BW, Mutable, InitStyle), CachedFieldIndex(0)
-    { }
+      : DeclaratorDecl(DK, DC, IdLoc, Id, T, TInfo, StartLoc),
+        Mutable(Mutable), CachedFieldIndex(0),
+        InitializerOrBitWidth(BW, InitStyle) {
+      assert((!BW || InitStyle == ICIS_NoInit) && "got initializer for bitfield");
+
+      CellLocated     = false;
+      VertexLocated   = false;
+      EdgeLocated     = false;
+      FaceLocated     = false;
+      BuiltInField    = false;
+    }
 
   public:
-
     static MeshFieldDecl *Create(const ASTContext &C, DeclContext *DC,
                                  SourceLocation StartLoc, SourceLocation IdLoc,
                                  IdentifierInfo *Id, QualType T,
                                  TypeSourceInfo *TInfo, Expr *BW, bool Mutable,
                                  InClassInitStyle InitStyle);
-  
-    static MeshFieldDecl *CreateDeserialized(ASTContext &C, unsigned ID);  
-  
-    // Return the mesh that contains this field. 
-    const MeshDecl *getParentMesh() const {
+
+    static MeshFieldDecl *CreateDeserialized(ASTContext &C, unsigned ID);
+
+    /// getFieldIndex - Returns the index of this field within its record,                           
+    /// as appropriate for passing to ASTRecordLayout::getFieldOffset.                               
+    unsigned getFieldIndex() const;
+
+    /// isMutable - Determines whether this field is mutable (C++ only).                             
+    bool isMutable() const { return Mutable; }
+
+    /// isBitfield - Determines whether this field is a bitfield.                                    
+    bool isBitField() const {
+      return getInClassInitStyle() == ICIS_NoInit &&
+             InitializerOrBitWidth.getPointer();
+    }
+
+    /// @brief Determines whether this is an unnamed bitfield.                                       
+    bool isUnnamedBitfield() const { return isBitField() && !getDeclName(); }
+
+    Expr *getBitWidth() const {
+      return isBitField() ? InitializerOrBitWidth.getPointer() : 0;
+    }
+    unsigned getBitWidthValue(const ASTContext &Ctx) const;
+
+    /// setBitWidth - Set the bit-field width for this member.                                       
+    // Note: used by some clients (i.e., do not remove it).                                          
+    void setBitWidth(Expr *Width);
+    /// removeBitWidth - Remove the bit-field width from this member.                                
+    // Note: used by some clients (i.e., do not remove it).                                          
+    void removeBitWidth() {
+      assert(isBitField() && "no bitfield width to remove");
+      InitializerOrBitWidth.setPointer(0);
+    }
+
+    /// getInClassInitStyle - Get the kind of (C++11) in-class initializer which                     
+    /// this field has.                                                                              
+    InClassInitStyle getInClassInitStyle() const {
+      return static_cast<InClassInitStyle>(InitializerOrBitWidth.getInt());
+    }
+
+    /// hasInClassInitializer - Determine whether this member has a C++11 in-class                   
+    /// initializer.                                                                                 
+    bool hasInClassInitializer() const {
+      return getInClassInitStyle() != ICIS_NoInit;
+    }
+
+    /// getInClassInitializer - Get the C++11 in-class initializer for this                          
+    /// member, or null if one has not been set. If a valid declaration has an                       
+    /// in-class initializer, but this returns null, then we have not parsed and                     
+    /// attached it yet.                                                                             
+    Expr *getInClassInitializer() const {
+      return hasInClassInitializer() ? InitializerOrBitWidth.getPointer() : 0;
+    }
+
+    /// setInClassInitializer - Set the C++11 in-class initializer for this                          
+    /// member.                                                                                      
+    void setInClassInitializer(Expr *Init);
+
+    /// removeInClassInitializer - Remove the C++11 in-class initializer from this                   
+    /// member.                                                                                      
+    void removeInClassInitializer() {
+      assert(hasInClassInitializer() && "no initializer to remove");
+      InitializerOrBitWidth.setPointer(0);
+      InitializerOrBitWidth.setInt(ICIS_NoInit);
+    }
+
+    /// getParent - Returns the parent of this field declaration, which                              
+    /// is the struct in which this method is defined.                                               
+    const MeshDecl *getParent() const {
       return cast<MeshDecl>(getDeclContext());
     }
 
-    // Return the index position of this field within the parent mesh. 
-    unsigned getMeshFieldIndex() const;
+    MeshDecl *getParent() {
+      return cast<MeshDecl>(getDeclContext());
+    }
+
+    SourceRange getSourceRange() const LLVM_READONLY;
+
+    // Implement isa/cast/dyncast/etc.                                                               
+    static bool classof(const Decl *D) { return classofKind(D->getKind()); }
+    static bool classofKind(Kind K) { return K == MeshField; }
+
+    friend class ASTDeclReader;
+    friend class ASTDeclWriter;
 
     // \brief Determine if the field is located at the cells of the mesh.
     bool isCellLocated() const {
@@ -172,34 +251,22 @@ namespace clang {
       FaceLocated = flag;
     }
 
-    // \brief Determine if the field represents a built-in value. 
     bool isBuiltInField() const {
       return BuiltInField;
     }
-    // \brief Set the field to represent a built-in value. 
+
     void setBuiltInField(bool flag = true) {
       BuiltInField = flag;
     }
 
     bool isValidLocation() const {
-      return (isCellLocated()    || 
-              isVertexLocated()  ||
-              isEdgeLocated()    || 
-              isFaceLocated()    ||
-              isBuiltInField());
+      return CellLocated   || 
+             VertexLocated || 
+             EdgeLocated   || 
+             FaceLocated   ||
+             BuiltInField;
     }
-
-    // FIXME - This implementation will currently keep us from 
-    // being able to support templated fields. 
-    bool isDependentType() const { return false; }
-
-    static bool classof(const Decl *D) { return classofKind(D->getKind()); }
-    static bool classofKind(Kind K) { return K == MeshField; }
-
-    friend class ASTDeclReader;
-    friend class ASTDeclWriter;
   };
-
 
   // MeshDecl - This is a base class for all of our mesh decls.  Given the 
   // syntax similarities we have with structs in C/C++ we follow a similar 
