@@ -2077,13 +2077,6 @@ DEF_TRAVERSE_STMT(MemberExpr, {
         S->getTemplateArgs(), S->getNumTemplateArgs()));
   })
 
-// ===== Scout ========================================================================
-// SC_TODO - This is not implemented -- however, we need to replace Scout's vector 
-// types with Clang's "builtin" support.  This has been done in the "refactor" repo
-// but has not been merged back into "devel". 
-DEF_TRAVERSE_STMT(ScoutVectorMemberExpr, {
-})
-// ====================================================================================
 DEF_TRAVERSE_STMT(ImplicitCastExpr, {
     // We don't traverse the cast type, as it's not written in the
     // source code.

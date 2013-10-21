@@ -2379,7 +2379,6 @@ public:
 
   //LValue EmitScoutColorDeclRefLValue(const NamedDecl *ND);
   //LValue EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND);
-  LValue EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E);
   LValue EmitScoutMemberExpr(LValue base, const MeshFieldDecl *field);
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
   LValue EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef memberName,
@@ -2951,6 +2950,10 @@ public:
   /// Emit field annotations for the given field & value. Returns the
   /// annotation result.
   llvm::Value *EmitFieldAnnotations(const FieldDecl *D, llvm::Value *V);
+
+  /// Emit field annotations for the given mesh field & value. Returns the
+  /// annotation result.
+  llvm::Value *EmitFieldAnnotations(const MeshFieldDecl *D, llvm::Value *V);  
 
   //===--------------------------------------------------------------------===//
   //                             Internal Helpers

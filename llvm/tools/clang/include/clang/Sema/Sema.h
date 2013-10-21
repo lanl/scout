@@ -3256,6 +3256,14 @@ public:
                                 const DeclarationNameInfo &NameInfo,
                                 const TemplateArgumentListInfo *TemplateArgs);
 
+  ExprResult BuildMeshMemberReferenceExpr(Expr *Base, QualType BaseType,
+                                          SourceLocation OpLoc, bool IsArrow,
+                                          CXXScopeSpec &SS,
+                                          SourceLocation TemplateKWLoc,
+                                          NamedDecl *FirstQualifierInScope,
+                                          const DeclarationNameInfo &NameInfo,
+                                         const TemplateArgumentListInfo *TemplateArgs);
+
   // This struct is for use by ActOnMemberAccess to allow
   // BuildMemberReferenceExpr to be able to reinvoke ActOnMemberAccess after
   // changing the access operator from a '.' to a '->' (to see if that is the
@@ -3274,9 +3282,20 @@ public:
                                       SourceLocation TemplateKWLoc,
                                       NamedDecl *FirstQualifierInScope,
                                       LookupResult &R,
-                                 const TemplateArgumentListInfo *TemplateArgs,
+                                      const TemplateArgumentListInfo *TemplateArgs,
                                       bool SuppressQualifierCheck = false,
-                                     ActOnMemberAccessExtraArgs *ExtraArgs = 0);
+                                      ActOnMemberAccessExtraArgs *ExtraArgs = 0);
+
+  ExprResult BuildMeshMemberReferenceExpr(Expr *Base, QualType BaseType,
+                                          SourceLocation OpLoc, bool IsArrow,
+                                          const CXXScopeSpec &SS,
+                                          SourceLocation TemplateKWLoc,
+                                          NamedDecl *FirstQualifierInScope,
+                                          LookupResult &R,
+                                          const TemplateArgumentListInfo *TemplateArgs,
+                                          bool SuppressQualifierCheck = false,
+                                          ActOnMemberAccessExtraArgs *ExtraArgs = 0);
+
 
   ExprResult PerformMemberExprBaseConversion(Expr *Base, bool IsArrow);
   ExprResult LookupMemberExpr(LookupResult &R, ExprResult &Base,
@@ -7667,7 +7686,8 @@ public:
   bool ActOnForallMeshRefVariable(Scope* S,
                                   IdentifierInfo* RefVarInfo,
                                   SourceLocation  RefVarLoc,
-                                  const MeshType *MT);
+                                  const MeshType *MT,
+                                  VarDecl *VD);
 
   /*
   bool ActOnForAllArrayInductionVariable(Scope* S,
@@ -7731,13 +7751,10 @@ public:
 //                                      MultiStmtArg elts, CompoundStmt* Body,
 //                                      bool isStmtExpr);
 
-  bool IsValidMeshField(FieldDecl* FD);
+  bool IsValidMeshField(MeshFieldDecl* FD);
+  bool IsValidMeshField(FieldDecl* FD);  
 
   bool IsValidDeclInMesh(Decl* D);
-
-  void AddInitializerToScoutVector(VarDecl *vdecl,
-                                   BuiltinType::Kind kind,
-                                   Expr *init);
 
   bool ScoutMemberReferenceExpr(DeclarationName &Name,
       SourceLocation &NameLoc,

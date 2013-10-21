@@ -2362,14 +2362,11 @@ Done:
 }
 
 // ===== Scout ========================================================================
-
-
 void ASTStmtReader::VisitForallMeshStmt(ForallMeshStmt *S) { 
 
 }
 
 //void ASTStmtReader::VisitForAllArrayStmt(ForAllArrayStmt *S) { }
 //void ASTStmtReader::VisitRenderAllStmt(RenderAllStmt *S) { }
-void ASTStmtReader::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *E) { }
 //void ASTStmtReader::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *S) { }
 // =============================================================================

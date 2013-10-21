@@ -67,8 +67,8 @@ bool Sema::ScoutMemberReferenceExpr(DeclarationName &Name,
     DeclarationNameInfo &NameInfo,
     CXXScopeSpec &SS,
     const TemplateArgumentListInfo *&TemplateArgs,
-    ExprResult &ER
-) {
+    ExprResult &ER) {
+
   for(ScoutLoopStack::iterator sitr = SCLStack.begin(),
       sitrEnd = SCLStack.end();
       sitr != sitrEnd; ++sitr) {
@@ -85,14 +85,17 @@ bool Sema::ScoutMemberReferenceExpr(DeclarationName &Name,
       MeshFieldDecl* fd = *fitr;
 
       bool valid = fd->isValidLocation();
+
       if (valid && Name.getAsString() == fd->getName()) {
         Expr* baseExpr;
         baseExpr = BuildDeclRefExpr(vd, QualType(mt, 0), 
                                     VK_LValue, NameLoc).get();
 
         ER = Owned(BuildMemberReferenceExpr(baseExpr, QualType(mt, 0),
-            NameLoc, false, SS, SourceLocation(), 0, NameInfo,
-            TemplateArgs));
+                                            NameLoc, false, SS, 
+                                            SourceLocation(), 0, 
+                                            NameInfo,
+                                            TemplateArgs));
         return true;
       }
     }

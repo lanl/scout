@@ -379,13 +379,6 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
               ? Cl::CL_LValue 
               : Cl::CL_XValue;
 
-  // ===== Scout ==============================================================
-  // SC_TODO - we need to remove our own vector support in favor of 
-  // clang's "builtin" version.  This has been done in the "refactor" 
-  // branch but has not yet been merged with the "devel" branch.               
-  case Expr::ScoutVectorMemberExprClass:
-    return Cl::CL_LValue;
-  // ==========================================================================
   case Expr::InitListExprClass:
     // An init list can be an lvalue if it is bound to a reference and
     // contains only one element. In that case, we look at that element

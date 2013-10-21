@@ -1610,6 +1610,7 @@ public:
 
   // ===== Scout ========================================================
   bool isMeshType() const;
+  bool isMeshFieldType() const;  
   // ====================================================================
 
   /// Return the implicit lifetime for this type, which must not be dependent.
@@ -3549,7 +3550,6 @@ public:
   Expr* getFileName() { return strLitFileName; }
   void setFileName(Expr* filename) { strLitFileName = filename; }
 
-
   // SC_TODO -- can these move to base class?
   bool isSugared() const { return false; }
   QualType desugar() const { return QualType(this, 0); }  
@@ -3559,6 +3559,7 @@ public:
   Expr* strLitFileName;
 };
 
+/*
 // MeshFieldType - This type is used to capture the details associated 
 // with a single item of field data stored within any of the mesh 
 // types.  In this case we track the details of where the field is 
@@ -3582,11 +3583,20 @@ public:
   bool isFaceLocated() const;
   bool isBuiltInField() const;
 
+  static bool classof(const MeshFieldType* T) { return true; }
+  
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == MeshField;
+  }
+
+  bool isSugared() const { return false; }
+  QualType desugar() const { return QualType(this, 0); }
+
 private:
   MeshFieldDecl *Decl;
   friend class ASTContext;   // ASTContext creates these.    
 };
-
+*/ 
 //+++====================================================================+++//
   
 /// EnumType - This is a helper class that allows the use of isa/cast/dyncast
@@ -4162,14 +4172,14 @@ enum TagTypeKind {
 // ===== Scout ========================================================
 /// \brief The kind of mesh type. 
 enum MeshTypeKind {
-  /// \brief The "uniform mesh" 'keyword'.
-  TTK_UniformMesh = TTK_Enum+1, 
+    /// \brief The "uniform mesh" 'keyword'.
+  TTK_UniformMesh = TTK_Enum+1, // the mesh and Tag kinds can't over lap
   /// \brief The "structured mesh" 'keyword'.
   TTK_StructuredMesh,
   /// \brief The "rectilinear mesh" 'keyword'.
   TTK_RectilinearMesh,
   /// \brief The "unstructured mesh" 'keyword'.
-  TTK_UnstructuredMesh
+  TTK_UnstructuredMesh // can't added anymore as this get packed into a 3 bit field.
 };
 // ===================================================================  
 
@@ -5501,6 +5511,13 @@ inline const ArrayType *Type::castAsArrayTypeUnsafe() const {
 inline bool Type::isMeshType() const {
   return isa<MeshType>(CanonicalType);
 }
+
+/*
+inline bool Type::isMeshFieldType() const {
+  return isa<MeshFieldType>(CanonicalType);
+}
+*/
+
 // ===============================================================================================
 }  // end namespace clang
 

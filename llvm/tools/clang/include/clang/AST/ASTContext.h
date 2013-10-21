@@ -327,6 +327,7 @@ class ASTContext : public RefCountedBase<ASTContext> {
     InstantiatedFromUsingShadowDecl;
 
   llvm::DenseMap<FieldDecl *, FieldDecl *> InstantiatedFromUnnamedFieldDecl;
+  llvm::DenseMap<MeshFieldDecl *, MeshFieldDecl *> InstantiatedFromUnnamedMeshFieldDecl;
 
   /// \brief Mapping that stores the methods overridden by a given C++
   /// member function.
@@ -651,8 +652,11 @@ public:
   UsingShadowDecl *getInstantiatedFromUsingShadowDecl(UsingShadowDecl *Inst);
 
   FieldDecl *getInstantiatedFromUnnamedFieldDecl(FieldDecl *Field);
-
   void setInstantiatedFromUnnamedFieldDecl(FieldDecl *Inst, FieldDecl *Tmpl);
+
+  MeshFieldDecl *getInstantiatedFromUnnamedFieldDecl(MeshFieldDecl *Field); 
+  void setInstantiatedFromUnnamedFieldDecl(MeshFieldDecl *Inst, MeshFieldDecl *Tmpl);
+
   
   /// \brief Return \c true if \p FD is a zero-length bitfield which follows
   /// the non-bitfield \p LastFD.

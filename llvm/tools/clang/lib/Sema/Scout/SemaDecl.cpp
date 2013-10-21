@@ -135,8 +135,9 @@ void Sema::ActOnMeshStartDefinition(Scope *S, Decl *MeshD) {
 
 // scout - Scout Mesh
 MeshFieldDecl *Sema::HandleMeshField(Scope *S, MeshDecl *Mesh,
-                                 SourceLocation DeclStart,
-                                 Declarator &D) {
+                                     SourceLocation DeclStart,
+                                     Declarator &D) {
+  
   IdentifierInfo *II = D.getIdentifier();
   SourceLocation Loc = DeclStart;
   if (II) Loc = D.getIdentifierLoc();
@@ -159,8 +160,8 @@ MeshFieldDecl *Sema::HandleMeshField(Scope *S, MeshDecl *Mesh,
     PrevDecl = 0;
 
   SourceLocation TSSL = D.getSourceRange().getBegin();
-  MeshFieldDecl *NewFD
-  = CheckMeshFieldDecl(II, T, TInfo, Mesh, Loc, TSSL, PrevDecl, &D);
+  MeshFieldDecl *NewFD;
+  NewFD = CheckMeshFieldDecl(II, T, TInfo, Mesh, Loc, TSSL, PrevDecl, &D);
 
   if (NewFD->isInvalidDecl())
     Mesh->setInvalidDecl();
@@ -183,8 +184,10 @@ MeshFieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
                                     SourceLocation TSSL,
                                     NamedDecl *PrevDecl,
                                     Declarator *D) {
+  
   IdentifierInfo *II = Name.getAsIdentifierInfo();
   bool InvalidDecl = false;
+  
   if (D) InvalidDecl = D->isInvalidType();
 
   if (T.isNull()) {
@@ -206,7 +209,7 @@ MeshFieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
 
   // add mesh members
   MeshFieldDecl *NewFD = MeshFieldDecl::Create(Context, Mesh, TSSL, Loc, II, T, TInfo,
-                                       0, true, ICIS_NoInit);
+                                               0, true, ICIS_NoInit);
   if (InvalidDecl)
     NewFD->setInvalidDecl();
 
@@ -242,20 +245,42 @@ bool Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
 }
 
 
-bool Sema::IsValidMeshField(FieldDecl* FD){
+bool Sema::IsValidMeshField(MeshFieldDecl* MFD){
 
-  if (FD->getName() == "ptr") {
-    return true;  // SC_TODO - what the heck is this?
-  }
-
-  QualType QT = FD->getType();
+  QualType QT = MFD->getType();
   const Type* T = QT.getTypePtr();
 
   // We don't allow pointers in the mesh description (this helps us
   // avoid aliasing issues in the mesh-oriented loops).
   if (T->isPointerType()) {
-    Diag(FD->getSourceRange().getBegin(),
-         diag::err_pointer_field_mesh);
+    Diag(MFD->getSourceRange().getBegin(), diag::err_pointer_field_mesh);
+    return false;
+  }
+
+  if(const MeshType* MT = dyn_cast<MeshType>(T)){
+    if (!IsValidDeclInMesh(MT->getDecl())) {
+      Diag(MFD->getSourceRange().getBegin(),
+           diag::err_pointer_field_mesh);
+      return false;
+    }
+  } else if (const RecordType* RT = dyn_cast<RecordType>(T)) {
+    if (!IsValidDeclInMesh(RT->getDecl())) {
+      Diag(MFD->getSourceRange().getBegin(),
+           diag::err_pointer_field_mesh);
+      return false;
+    }
+  }
+  return true;
+}
+
+bool Sema::IsValidMeshField(FieldDecl* FD){
+
+  QualType QT = FD->getType();
+  const Type* T = QT.getTypePtr();
+
+  // We don't allow pointers in the mesh.
+  if (T->isPointerType()) {
+    Diag(FD->getSourceRange().getBegin(), diag::err_pointer_field_mesh);
     return false;
   }
 
@@ -265,7 +290,7 @@ bool Sema::IsValidMeshField(FieldDecl* FD){
            diag::err_pointer_field_mesh);
       return false;
     }
-  } else if(const RecordType* RT = dyn_cast<RecordType>(T)) {
+  } else if (const RecordType* RT = dyn_cast<RecordType>(T)) {
     if (!IsValidDeclInMesh(RT->getDecl())) {
       Diag(FD->getSourceRange().getBegin(),
            diag::err_pointer_field_mesh);
@@ -279,11 +304,13 @@ bool Sema::IsValidDeclInMesh(Decl* D){
 
   // SC_TODO - why both mesh decl and record decl here?  Should we have
   // MeshFieldDecl instead of RecordDecl?
+
+
   if (MeshDecl* MD = dyn_cast<MeshDecl>(D)) {
     for(MeshDecl::field_iterator itr = MD->field_begin(),
         itrEnd = MD->field_end(); itr != itrEnd; ++itr){
-      FieldDecl* FD = *itr;
-      if (!IsValidMeshField(FD)) {
+      MeshFieldDecl* MFD = *itr;
+      if (!IsValidMeshField(MFD)) {
         return false;
       }
     }
@@ -304,83 +331,3 @@ bool Sema::IsValidDeclInMesh(Decl* D){
   return true;
 }
 
-void Sema::AddInitializerToScoutVector(VarDecl *vdecl, BuiltinType::Kind kind, Expr *init) {
-  if (vdecl == 0 || vdecl->isInvalidDecl())
-    return;
-
-  QualType newTy;
-  switch(kind) {
-   case BuiltinType::Bool2:
-   case BuiltinType::Bool3:
-    case BuiltinType::Bool4:
-      newTy = Context.BoolTy; break;
-    case BuiltinType::Char2:
-    case BuiltinType::Char3:
-    case BuiltinType::Char4:
-    case BuiltinType::Short2:
-    case BuiltinType::Short3:
-    case BuiltinType::Short4:
-    case BuiltinType::Int2:
-    case BuiltinType::Int3:
-    case BuiltinType::Int4:
-    case BuiltinType::Long2:
-    case BuiltinType::Long3:
-    case BuiltinType::Long4:
-      newTy = Context.IntTy; break;
-    case BuiltinType::Float2:
-    case BuiltinType::Float3:
-    case BuiltinType::Float4:
-      newTy = Context.FloatTy; break;
-    case BuiltinType::Double2:
-    case BuiltinType::Double3:
-    case BuiltinType::Double4:
-      newTy = Context.DoubleTy; break;
-    default:
-      assert(false && "Unknown Scout vector type!");
-  }
-
-  InitListExpr *ILE = dyn_cast<InitListExpr>(init);
-  for(unsigned i = 0; i < ILE->getNumInits(); ++i) {
-    QualType oldTy = ILE->getInit(i)->getType();
-    Expr *expr = ILE->getInit(i);
-    SourceLocation exprLoc = expr->getExprLoc();
-    if(newTy == Context.FloatTy || newTy == Context.DoubleTy) { // Double or Float
-      if(cast<BuiltinType>(oldTy)->isInteger()) {
-        ILE->setInit(i, ImplicitCastExpr::Create(Context,
-                                                 newTy,
-                                                 CK_IntegralToFloating,
-                                                 expr,
-                                                 0, VK_RValue));
-      }
-    } else if(newTy == Context.BoolTy) { // Bool
-      if(cast<BuiltinType>(oldTy)->isInteger()) {
-        ILE->setInit(i, ImplicitCastExpr::Create(Context,
-                                                 newTy,
-                                                 CK_IntegralToBoolean,
-                                                 expr,
-                                                 0, VK_RValue));
-        Diag(exprLoc, diag::warn_impcast_integer_precision)
-          << oldTy << newTy << expr->getSourceRange() << SourceRange(exprLoc);
-      } else if(cast<BuiltinType>(oldTy)->isFloatingPoint()) {
-        ILE->setInit(i, ImplicitCastExpr::Create(Context,
-                                                 newTy,
-                                                 CK_FloatingToBoolean,
-                                                 expr,
-                                                 0, VK_RValue));
-        Diag(exprLoc, diag::warn_impcast_float_integer)
-          << oldTy << newTy << expr->getSourceRange() << SourceRange(exprLoc);
-     }
-    } else { // Long, Int, Short, or Char
-      if(cast<BuiltinType>(oldTy)->isFloatingPoint()) {
-        ILE->setInit(i, ImplicitCastExpr::Create(Context,
-                                                 newTy,
-                                                 CK_FloatingToIntegral,
-                                                 expr,
-                                                 0, VK_RValue));
-        Diag(exprLoc, diag::warn_impcast_float_integer)
-          << oldTy << newTy << expr->getSourceRange() << SourceRange(exprLoc);
-     }
-    }
-  }
-  vdecl->setInit(init);
-}

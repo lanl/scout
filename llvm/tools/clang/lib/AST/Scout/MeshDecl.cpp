@@ -147,7 +147,7 @@ void MeshDecl::LoadFieldsFromExternalStorage() const {
 #ifndef NDEBUG
   // Check that all decls we got were FieldDecls.
   for (unsigned i=0, e=Decls.size(); i != e; ++i)
-    assert(isa<FieldDecl>(Decls[i]) || isa<IndirectFieldDecl>(Decls[i]));
+    assert(isa<MeshFieldDecl>(Decls[i]));
 #endif
 
   if (Decls.empty())

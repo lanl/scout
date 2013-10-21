@@ -662,7 +662,6 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     // ===== Scout ===================================================================
     case Stmt::ForallMeshStmtClass:
     //case Stmt::RenderAllStmtClass:
-    case Stmt::ScoutVectorMemberExprClass:
     //case Stmt::ForAllArrayStmtClass:
     //case Stmt::VolumeRenderAllStmtClass:
       llvm_unreachable("Stmt should not be in analyzer evaluation loop");

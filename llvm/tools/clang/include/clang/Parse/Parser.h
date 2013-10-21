@@ -2343,18 +2343,6 @@ private:
   bool isScoutLang() const{
     return getLangOpts().Scout;
   }
-  
-  enum ScoutVectorType{
-    ScoutVectorGeneric,
-    ScoutVectorColor
-  };
-  
-  ExprResult
-  ParseScoutVectorRHS(BuiltinType::Kind kind,
-                      ScoutVectorType vectorType=ScoutVectorGeneric);
-  
-  bool isScoutVectorValueDecl(Decl* decl, BuiltinType::Kind &kind) const;
-  
 };
 
 }  // end namespace clang

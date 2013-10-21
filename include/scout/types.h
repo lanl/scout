@@ -49,21 +49,20 @@
  *  SUCH DAMAGE.
  *
  */
+#ifndef __SCOUT_TYPES_H__
+#define __SCOUT_TYPES_H__
 
-#ifndef _SC_SCOUT_H_
-#define _SC_SCOUT_H_
-
-#include <cassert>
 namespace scout
 {
   #include "scout/types.sch"
-  #include "scout/math.sch"
-  #include "scout/meshes.sch"
-  #include "scout/color.sch"
+
+  // Some shorthand for various types...
+  typedef unsigned char    uchar;
+  typedef unsigned char*   ucharp;
+  typedef unsigned short   ushort;
+  typedef unsigned short*  ushortp;
+  typedef unsigned long    ulong;
+  typedef unsigned long*   ulongp;
 }
 
 #endif
-
-
-
-

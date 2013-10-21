@@ -2494,22 +2494,6 @@ recurse:
   case Expr::AsTypeExprClass:
   case Expr::PseudoObjectExprClass:
   case Expr::AtomicExprClass:
-  // ===== Scout ==============================================================
-  // SC_TODO - As bad as the diagnostic is below, it is better than crashing.
-  //           We need to trash Scout's vectors and replace them with Clang's 
-  //           "builtin" version (done in the refactor repo).
-  case Expr::ScoutVectorMemberExprClass:
-  {
-    // As bad as this diagnostic is, it's better than crashing.
-    DiagnosticsEngine &Diags = Context.getDiags();
-    unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
-                                     "cannot yet mangle expression type %0");
-    Diags.Report(E->getExprLoc(), DiagID)
-      << E->getStmtClassName() << E->getSourceRange();
-    break;
-  }
-  // ==========================================================================
-
   // Even gcc-4.5 doesn't mangle this.
   case Expr::BinaryConditionalOperatorClass: {
     DiagnosticsEngine &Diags = Context.getDiags();

@@ -1298,11 +1298,11 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool RefAsPointee) const {
       UseAlignAttrOnly = true;
     }
   }
-  else if (isa<FieldDecl>(D))
+  else if (isa<FieldDecl>(D) && !isa<MeshFieldDecl>(D)) {
       UseAlignAttrOnly = 
         D->hasAttr<PackedAttr>() ||
         cast<FieldDecl>(D)->getParent()->hasAttr<PackedAttr>();
-
+  }
   // If we're using the align attribute only, just ignore everything
   // else about the declaration and its type.
   if (UseAlignAttrOnly) {
@@ -1338,6 +1338,7 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool RefAsPointee) const {
       }
     }
 
+    // ===== Scout ===============================================================
     // Handle mesh first -- as MeshFieldDecl is a subclass of FieldDecl it
     // will pass the test below for field decls...
     // 
@@ -1347,7 +1348,7 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool RefAsPointee) const {
     // and then (as we're expected to do) constrain that by the alignment
     // of the type. 
     if (const MeshFieldDecl *field = dyn_cast<MeshFieldDecl>(VD)) {
-      const ASTMeshLayout &layout = getASTMeshLayout(field->getParentMesh());
+      const ASTMeshLayout &layout = getASTMeshLayout(field->getParent());
 
       // Start with the mesh's overall alignment. 
       unsigned fieldAlign = toBits(layout.getAlignment());
@@ -1363,6 +1364,7 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool RefAsPointee) const {
           fieldAlign = static_cast<unsigned>(lowBitOfOffset);
       }
       Align = std::min(Align, fieldAlign);
+    // =====================================================================
     } else if (const FieldDecl *field = dyn_cast<FieldDecl>(VD)) {
       // Fields can be subject to extra alignment constraints, like if
       // the field is packed, the struct is packed, or the struct has a
@@ -1389,7 +1391,6 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool RefAsPointee) const {
       Align = std::min(Align, fieldAlign);
     }
   }
-
   return toCharUnitsFromBits(Align);
 }
 
@@ -8212,6 +8213,7 @@ size_t ASTContext::getSideTableAllocatedMemory() const {
     + llvm::capacity_in_bytes(InstantiatedFromUsingDecl)
     + llvm::capacity_in_bytes(InstantiatedFromUsingShadowDecl)
     + llvm::capacity_in_bytes(InstantiatedFromUnnamedFieldDecl)
+    + llvm::capacity_in_bytes(InstantiatedFromUnnamedMeshFieldDecl)
     + llvm::capacity_in_bytes(OverriddenMethods)
     + llvm::capacity_in_bytes(Types)
     + llvm::capacity_in_bytes(VariableArrayTypes)

@@ -731,31 +731,6 @@ IdentifierInfo *Parser::ParseObjCSelectorPiece(SourceLocation &SelectorLoc) {
   case tok::kw_delete:
   case tok::kw_do:
   case tok::kw_double:
-
-  // ===== Scout =====================================================
-  // SC_TODO - remove scout vectors.  
-  case tok::kw_bool2:
-  case tok::kw_bool3:
-  case tok::kw_bool4: 
-  case tok::kw_char2:
-  case tok::kw_char3:
-  case tok::kw_char4: 
-  case tok::kw_short2:
-  case tok::kw_short3:
-  case tok::kw_short4: 
-  case tok::kw_int2:
-  case tok::kw_int3:
-  case tok::kw_int4: 
-  case tok::kw_long2:
-  case tok::kw_long3:
-  case tok::kw_long4: 
-  case tok::kw_float2:
-  case tok::kw_float3:
-  case tok::kw_float4: 
-  case tok::kw_double2:
-  case tok::kw_double3:
-  case tok::kw_double4: 
-  // =================================================================
   case tok::kw_dynamic_cast:
   case tok::kw_else:
   case tok::kw_enum:

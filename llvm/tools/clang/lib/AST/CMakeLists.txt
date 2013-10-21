@@ -69,7 +69,6 @@ add_clang_library(clangAST
   Scout/MeshType.cpp
   Scout/MeshLayout.cpp
   Scout/RenderAllStmt.cpp
-  Scout/ScoutVectorMemberExpr.cpp
   Scout/StructuredMeshDecl.cpp
   Scout/UniformMeshDecl.cpp
   Scout/UnstructuredMeshDecl.cpp

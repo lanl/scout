@@ -78,30 +78,4 @@ bool MeshType::isUnstructured() const {
   return getDecl()->isUnstructuredMesh();
 }
 
-MeshFieldType::MeshFieldType(TypeClass TC, 
-                             const MeshFieldDecl *D, 
-                             QualType can)
-  : Type(TC, can, D->isDependentType(), D->isDependentType(), false, false),
-    Decl(const_cast<MeshFieldDecl*>(D)) 
-{  }
-
-bool MeshFieldType::isCellLocated() const {
-  return getDecl()->isCellLocated();
-}
-
-bool MeshFieldType::isVertexLocated() const {
-  return getDecl()->isCellLocated();
-}
-
-bool MeshFieldType::isEdgeLocated() const {
-  return getDecl()->isEdgeLocated();
-}
-
-bool MeshFieldType::isFaceLocated() const {
-  return getDecl()->isFaceLocated();
-}
-
-bool MeshFieldType::isBuiltInField() const {
-  return getDecl()->isBuiltInField();
-}
 

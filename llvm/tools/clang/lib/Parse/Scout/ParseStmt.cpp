@@ -248,7 +248,8 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
   bool success = Actions.ActOnForallMeshRefVariable(getCurScope(),
                                                     ElementIdentInfo,
                                                     ElementIdentLoc,
-                                                    RefMeshType);
+                                                    RefMeshType,
+                                                    VD);
   if (! success) 
     return StmtError();
 
