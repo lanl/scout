@@ -539,6 +539,12 @@ namespace clang {
       return field_begin() == field_end();
     }
 
+    unsigned int fields() const {
+      unsigned int nfields = 0;
+      for(field_iterator itr = field_begin(); itr != field_end(); ++itr) nfields++;
+      return nfields;
+    }
+
     /// Is this mesh type named, either directly or via being defined in
     /// a typedef of this type?
     ///

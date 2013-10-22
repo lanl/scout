@@ -2,7 +2,7 @@
  * ###########################################################################
  * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
- * 
+ *
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -20,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- * 
+ *
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided 
+ *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -31,7 +31,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -45,12 +45,12 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ########################################################################### 
- * 
+ * ###########################################################################
+ *
  * Notes
  *
- * ##### 
- */ 
+ * #####
+ */
 
 #include "clang/AST/Scout/MeshDecl.h"
 #include "clang/Sema/Sema.h"
@@ -79,7 +79,7 @@ Decl* Sema::ActOnMeshDefinition(Scope* S,
 
     case tok::kw_uniform:
       {
-        UniformMeshDecl* MD;    
+        UniformMeshDecl* MD;
         MD = UniformMeshDecl::Create(Context, CurContext, KWLoc, NameLoc, Name, 0);
         PushOnScopeChains(MD, S, true);
         return MD;
@@ -118,7 +118,7 @@ Decl* Sema::ActOnMeshDefinition(Scope* S,
 }
 
 // scout - Scout Mesh field
-Decl *Sema::ActOnMeshField(Scope *S, Decl *MeshD, SourceLocation DeclStart, 
+Decl *Sema::ActOnMeshField(Scope *S, Decl *MeshD, SourceLocation DeclStart,
                            Declarator &D) {
   MeshFieldDecl *Res = HandleMeshField(S, cast_or_null<MeshDecl>(MeshD),
                                    DeclStart, D);
@@ -137,7 +137,7 @@ void Sema::ActOnMeshStartDefinition(Scope *S, Decl *MeshD) {
 MeshFieldDecl *Sema::HandleMeshField(Scope *S, MeshDecl *Mesh,
                                      SourceLocation DeclStart,
                                      Declarator &D) {
-  
+
   IdentifierInfo *II = D.getIdentifier();
   SourceLocation Loc = DeclStart;
   if (II) Loc = D.getIdentifierLoc();
@@ -184,10 +184,10 @@ MeshFieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
                                     SourceLocation TSSL,
                                     NamedDecl *PrevDecl,
                                     Declarator *D) {
-  
+
   IdentifierInfo *II = Name.getAsIdentifierInfo();
   bool InvalidDecl = false;
-  
+
   if (D) InvalidDecl = D->isInvalidType();
 
   if (T.isNull()) {
@@ -230,20 +230,9 @@ MeshFieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
 // return true on success
 
 bool Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
-
-  // SC_TODO - (1) Didn't we already do all this in the Parse stage?
-  //           (2) Do we always have to add width/height/depth or can
-  //               we do so based on mesh dimensions (is this a mesh
-  //               instance or the general/generic mesh description)?
-  //
-  // add Implicit mesh members
-  
-  // SC_TODO - Refactor work (need to figure this out)...
-  //Mesh->addImplicitFields(Loc, Context);
   PopDeclContext(); // need this or we get BlockDecl in MeshDecl
   return IsValidDeclInMesh(Mesh);
 }
-
 
 bool Sema::IsValidMeshField(MeshFieldDecl* MFD){
 
@@ -273,38 +262,8 @@ bool Sema::IsValidMeshField(MeshFieldDecl* MFD){
   return true;
 }
 
-bool Sema::IsValidMeshField(FieldDecl* FD){
-
-  QualType QT = FD->getType();
-  const Type* T = QT.getTypePtr();
-
-  // We don't allow pointers in the mesh.
-  if (T->isPointerType()) {
-    Diag(FD->getSourceRange().getBegin(), diag::err_pointer_field_mesh);
-    return false;
-  }
-
-  if(const MeshType* MT = dyn_cast<MeshType>(T)){
-    if (!IsValidDeclInMesh(MT->getDecl())) {
-      Diag(FD->getSourceRange().getBegin(),
-           diag::err_pointer_field_mesh);
-      return false;
-    }
-  } else if (const RecordType* RT = dyn_cast<RecordType>(T)) {
-    if (!IsValidDeclInMesh(RT->getDecl())) {
-      Diag(FD->getSourceRange().getBegin(),
-           diag::err_pointer_field_mesh);
-      return false;
-    }
-  }
-  return true;
-}
 
 bool Sema::IsValidDeclInMesh(Decl* D){
-
-  // SC_TODO - why both mesh decl and record decl here?  Should we have
-  // MeshFieldDecl instead of RecordDecl?
-
 
   if (MeshDecl* MD = dyn_cast<MeshDecl>(D)) {
     for(MeshDecl::field_iterator itr = MD->field_begin(),
@@ -314,20 +273,7 @@ bool Sema::IsValidDeclInMesh(Decl* D){
         return false;
       }
     }
-  // SC_TODO - trying to understand this code still...
-  // look for a struct embedded in a mesh.
-  // error_mesh_indirect_ptr.sc test gets us here
-  } else if (RecordDecl* RD = dyn_cast<RecordDecl>(D)) {
-    for(RecordDecl::field_iterator itr = RD->field_begin(),
-        itrEnd = RD->field_end(); itr != itrEnd; ++itr){
-      FieldDecl* FD = *itr;
-      // look for ptrs in struct
-      if (!IsValidMeshField(FD)){
-        return false;
-      }
-    }
   }
-
   return true;
 }
 

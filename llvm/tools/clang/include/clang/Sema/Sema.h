@@ -497,15 +497,15 @@ public:
   class SynthesizedFunctionScope {
     Sema &S;
     Sema::ContextRAII SavedContext;
-    
+
   public:
     SynthesizedFunctionScope(Sema &S, DeclContext *DC)
-      : S(S), SavedContext(S, DC) 
+      : S(S), SavedContext(S, DC)
     {
       S.PushFunctionScope();
       S.PushExpressionEvaluationContext(Sema::PotentiallyEvaluated);
     }
-    
+
     ~SynthesizedFunctionScope() {
       S.PopExpressionEvaluationContext();
       S.PopFunctionScopeInfo();
@@ -596,13 +596,13 @@ public:
 
   /// \brief will hold 'respondsToSelector:'
   Selector RespondsToSelectorSel;
-  
+
   /// A flag to remember whether the implicit forms of operator new and delete
   /// have been declared.
   bool GlobalNewDeleteDeclared;
 
   /// A flag to indicate that we're in a context that permits abstract
-  /// references to fields.  This is really a 
+  /// references to fields.  This is really a
   bool AllowAbstractFieldReference;
 
   /// \brief Describes how the expressions currently being parsed are
@@ -957,13 +957,13 @@ public:
   sema::FunctionScopeInfo *getCurFunction() const {
     return FunctionScopes.back();
   }
-  
+
   template <typename ExprT>
   void recordUseOfEvaluatedWeak(const ExprT *E, bool IsRead=true) {
     if (!isUnevaluatedContext())
       getCurFunction()->recordUseOfWeak(E, IsRead);
   }
-  
+
   void PushCompoundScope();
   void PopCompoundScope();
 
@@ -1292,7 +1292,7 @@ public:
                          bool WantNontrivialTypeSourceInfo = false,
                          IdentifierInfo **CorrectedII = 0);
   TypeSpecifierType isTagName(IdentifierInfo &II, Scope *S);
-  TypeSpecifierType isMeshName(IdentifierInfo &II, Scope *S);  
+  TypeSpecifierType isMeshName(IdentifierInfo &II, Scope *S);
   bool isMicrosoftMissingTypename(const CXXScopeSpec *SS, Scope *S);
   bool DiagnoseUnknownTypeName(IdentifierInfo *&II,
                                SourceLocation IILoc,
@@ -2119,7 +2119,7 @@ public:
                                    OverloadCandidateSet& CandidateSet,
                                    SourceRange OpRange = SourceRange());
   void AddBuiltinCandidate(QualType ResultTy, QualType *ParamTys,
-                           ArrayRef<Expr *> Args, 
+                           ArrayRef<Expr *> Args,
                            OverloadCandidateSet& CandidateSet,
                            bool IsAssignmentOperator = false,
                            unsigned NumContextualBoolArguments = 0);
@@ -2294,7 +2294,7 @@ public:
     /// structs, and unions.
     LookupTagName,
     /// Mesh name lookup, which finds the names of meshes.
-    LookupMeshName, 
+    LookupMeshName,
     /// Label name lookup.
     LookupLabel,
     /// Member name lookup, which finds the names of
@@ -2482,7 +2482,7 @@ public:
   void checkUnusedDeclAttributes(Declarator &D);
 
   bool CheckRegparmAttr(const AttributeList &attr, unsigned &value);
-  bool CheckCallingConvAttr(const AttributeList &attr, CallingConv &CC, 
+  bool CheckCallingConvAttr(const AttributeList &attr, CallingConv &CC,
                             const FunctionDecl *FD = 0);
   bool CheckNoReturnAttr(const AttributeList &attr);
   void CheckAlignasUnderalignment(Decl *D);
@@ -2550,13 +2550,13 @@ public:
   void CollectImmediateProperties(ObjCContainerDecl *CDecl,
             llvm::DenseMap<IdentifierInfo *, ObjCPropertyDecl*>& PropMap,
             llvm::DenseMap<IdentifierInfo *, ObjCPropertyDecl*>& SuperPropMap);
-  
+
   /// IvarBacksCurrentMethodAccessor - This routine returns 'true' if 'IV' is
   /// an ivar synthesized for 'Method' and 'Method' is a property accessor
   /// declared in class 'IFace'.
   bool IvarBacksCurrentMethodAccessor(ObjCInterfaceDecl *IFace,
                                       ObjCMethodDecl *Method, ObjCIvarDecl *IV);
-  
+
   /// Called by ActOnProperty to handle \@property declarations in
   /// class extensions.
   ObjCPropertyDecl *HandlePropertyInClassExtension(Scope *S,
@@ -2682,7 +2682,7 @@ public:
   /// methods in global pool and issues diagnostic on identical selectors which
   /// have mismathched types.
   void DiagnoseMismatchedMethodsInGlobalPool();
-  
+
   /// LookupImplementedMethodInGlobalPool - Returns the method which has an
   /// implementation.
   ObjCMethodDecl *LookupImplementedMethodInGlobalPool(Selector Sel);
@@ -6619,7 +6619,7 @@ public:
                                   ParsedType Type,
                                   SourceLocation RParenLoc,
                                   Expr *SubExpr);
-  
+
   bool checkInitMethod(ObjCMethodDecl *method, QualType receiverTypeIfCall);
 
   /// \brief Check whether the given new method is a valid override of the
@@ -7363,7 +7363,7 @@ public:
                                        bool IsArrow);
   void CodeCompletePostfixExpression(Scope *S, ExprResult LHS);
   void CodeCompleteTag(Scope *S, unsigned TagSpec);
-  void CodeCompleteMesh(Scope *S, unsigned MeshSpec);  
+  void CodeCompleteMesh(Scope *S, unsigned MeshSpec);
   void CodeCompleteTypeQualifiers(DeclSpec &DS);
   void CodeCompleteCase(Scope *S);
   void CodeCompleteCall(Scope *S, Expr *Fn, ArrayRef<Expr *> Args);
@@ -7655,7 +7655,7 @@ public:
 
   // scout *************************** Scout Sema methods
   bool isScoutSource(SourceLocation location);
-  
+
   // called at the beginning part of a mesh definition
   Decl* ActOnMeshDefinition(Scope* S,
                             tok::TokenKind MeshType,
@@ -7701,7 +7701,7 @@ public:
                                   IdentifierInfo* MeshII,
                                   SourceLocation MeshLoc);
 
-  const MeshType* 
+  const MeshType*
   ActOnRenderAllElementsVariable(Scope* S,
                                  MemberExpr* ME,
                                  tok::TokenKind VariableType,
@@ -7715,7 +7715,7 @@ public:
                                  IdentifierInfo* LoopVariableII,
                                  IdentifierInfo* MeshII,
                                  SourceLocation LParenLoc,
-                                 Expr* Predicate, 
+                                 Expr* Predicate,
                                  SourceLocation RParenLoc,
                                  Stmt* Body);
 
@@ -7725,7 +7725,7 @@ public:
                                  IdentifierInfo* MeshII,
                                  VarDecl* MVD,
                                  SourceLocation LParenLoc,
-                                 Expr* Predicate, 
+                                 Expr* Predicate,
                                  SourceLocation RParenLoc,
                                  Stmt* Body);
 
@@ -7745,14 +7745,13 @@ public:
 //                                BlockExpr *Block);
 
 //  StmtResult ActOnVolumeRenderAllStmt(Scope* S, SourceLocation VolRenLoc,
-//                                      SourceLocation L, SourceLocation R, 
-//                                      IdentifierInfo* MII, VarDecl* MVD, 
+//                                      SourceLocation L, SourceLocation R,
+//                                      IdentifierInfo* MII, VarDecl* MVD,
 //                                      IdentifierInfo* CII, SourceLocation CLoc,
 //                                      MultiStmtArg elts, CompoundStmt* Body,
 //                                      bool isStmtExpr);
 
   bool IsValidMeshField(MeshFieldDecl* FD);
-  bool IsValidMeshField(FieldDecl* FD);  
 
   bool IsValidDeclInMesh(Decl* D);
 
@@ -7783,7 +7782,7 @@ public:
   }
 
   AvailabilityResult getCurContextAvailability() const;
-  
+
   const DeclContext *getCurObjCLexicalContext() const {
     const DeclContext *DC = getCurLexicalContext();
     // A category implicitly has the attribute of the interface.
@@ -7811,7 +7810,7 @@ public:
                                    Sema::ReuseLambdaContextDecl_t,
                                    bool IsDecltype = false)
     : Actions(Actions) {
-    Actions.PushExpressionEvaluationContext(NewContext, 
+    Actions.PushExpressionEvaluationContext(NewContext,
                                             Sema::ReuseLambdaContextDecl,
                                             IsDecltype);
   }
