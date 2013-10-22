@@ -86,20 +86,12 @@ EmitBitCastOfLValueToProperType(CodeGenFunction &CGF,
 
 bool
 CodeGenFunction::EmitScoutMemberExpr(const MemberExpr *E, LValue *LV) {
-  unsigned rank = 0;
   Expr *BaseExpr = E->getBase();
   NamedDecl *MND = E->getMemberDecl(); //this memberDecl is for the "Implicit" mesh
 
   if (MeshFieldDecl *MFD = dyn_cast<MeshFieldDecl>(MND)) {
     DeclRefExpr *D = dyn_cast<DeclRefExpr>(BaseExpr);
     VarDecl *VD = dyn_cast<VarDecl>(D->getDecl());
-
-    const Type* T = VD->getType().getCanonicalType().getTypePtr();
-    if(const MeshType *MT = dyn_cast<MeshType>(T)) {
-      rank = MT->dimensions().size();
-    } else {
-      llvm_unreachable("Cannot determine mesh rank");
-    }
 
     if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(VD)) {
 
@@ -108,7 +100,7 @@ CodeGenFunction::EmitScoutMemberExpr(const MemberExpr *E, LValue *LV) {
       // need underlying mesh to make LValue
       LValue BaseLV  = MakeAddrLValue(V, E->getType());
 
-      *LV = EmitLValueForMeshField(BaseLV, MFD, rank);
+      *LV = EmitLValueForMeshField(BaseLV, MFD);
       return true;
     } else {
       llvm_unreachable("Cannot lookup underlying mesh");
@@ -120,7 +112,7 @@ CodeGenFunction::EmitScoutMemberExpr(const MemberExpr *E, LValue *LV) {
 
 LValue
 CodeGenFunction::EmitLValueForMeshField(LValue base,
-                                     const MeshFieldDecl *field, unsigned rank) {
+                                     const MeshFieldDecl *field) {
 
   // This follows very closely with the details used to 
   // emit a record member from the clang code. EmitLValueForField()
@@ -131,12 +123,13 @@ CodeGenFunction::EmitLValueForMeshField(LValue base,
   //   SC_TODO - we need to address alignment details better.
   //   SC_TODO - we need to make sure we can ditch code for 
   //             TBAA (type-based aliases analysis). 
-  //
+  // fields are before mesh dimensions so we can do things the same a struct
+  // this is setup in Codegentypes.h ConvertScoutMeshType()
   if (field->isBitField()) {
     const CGMeshLayout &ML = CGM.getTypes().getCGMeshLayout(field->getParentMesh());
     const CGBitFieldInfo &Info = ML.getBitFieldInfo(field);
     llvm::Value *Addr = base.getAddress();
-    unsigned Idx = ML.getLLVMFieldNo(field) + rank + 1; //fields start at rank+1 (width,height depth are first)
+    unsigned Idx = ML.getLLVMFieldNo(field);
     if (Idx != 0)
       // For structs, we GEP to the field that the record layout suggests.
       Addr = Builder.CreateStructGEP(Addr, Idx, field->getName());
@@ -168,8 +161,7 @@ CodeGenFunction::EmitLValueForMeshField(LValue base,
   bool TBAAPath = CGM.getCodeGenOpts().StructPathTBAA;
   
   // We GEP to the field that the record layout suggests.
-  // fields start at rank+1 (width,height depth are first)
-  unsigned idx = CGM.getTypes().getCGMeshLayout(mesh).getLLVMFieldNo(field) + rank + 1;
+  unsigned idx = CGM.getTypes().getCGMeshLayout(mesh).getLLVMFieldNo(field);
   addr = Builder.CreateStructGEP(addr, idx, field->getName());
 
   // If this is a reference field, load the reference right now.

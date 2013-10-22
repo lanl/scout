@@ -79,9 +79,6 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
   
   // SC_TODO - we need to handle the other mesh types here...
   // 
-  // SC_TODO - this conditional is redundant with the one preceding
-  //           the call to this function (in EmitAutoVarAlloca()).
-  //           Logic should be cleaned up...
   if (Ty.getTypeClass() == Type::UniformMesh) {
     // For mesh types each mesh field becomes a pointer to the allocated
     // field.
@@ -93,13 +90,8 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
     //
     MeshType::MeshDimensions dims;
     dims = cast<MeshType>(T.getTypePtr())->dimensions();
+    unsigned int rank = dims.size();
 
-    unsigned int rank = 0;
-    for(unsigned int i = 0; i < dims.size(); ++i) {
-      if (dims[i] != 0) 
-        rank++;
-    }
-    
     // Maybe dimensions needs to hold values???
 
     // Need to make this different for variable dims as
@@ -138,47 +130,20 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
       numElements = Builder.CreateMul(intValue, numElements);
     }
 
-    // store the mesh dimensions
-    // SC_TODO - can we save ourselves some complexity in the code gen
-    // and drop generating zero value mesh dimensions in the code?
-    for(size_t i = 0; i < rank; ++i) {
-      
-      llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i+1);      
-      llvm::Value* intValue;
-      
-      Expr* E = dims[i];
-      if (E->isGLValue()) {
-        // Emit the expression as an lvalue.
-        LValue LV = EmitLValue(E);
-        // We have to load the lvalue.
-        RValue RV = EmitLoadOfLValue(LV);
-        intValue = RV.getScalarVal();
-      } else if (E->isConstantInitializer(getContext(), false)) {
-        bool evalret;
-        llvm::APSInt dimAPValue;
-        evalret = E->EvaluateAsInt(dimAPValue, getContext());
-        // SC_TODO: check the evalret
-        intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
-      } else {
-        // it is an Rvalue
-        RValue RV = EmitAnyExpr(E);
-        intValue = RV.getScalarVal();
-      }
-      
-      Builder.CreateStore(intValue, field);
-    }
-
     // need access to these field decls so we
     // can determine if we will dynamically allocate
     // memory for each field
+    // fields are first and then mesh dimensions
+    // this is setup in Codegentypes.h ConvertScoutMeshType()
     const MeshType* MT = cast<MeshType>(T.getTypePtr());
     MeshDecl* MD = MT->getDecl();
     MeshDecl::field_iterator itr = MD->field_begin();
     MeshDecl::field_iterator itr_end = MD->field_end();
+    unsigned int nfields = MD->fields();
 
     llvm::Type *structTy = Alloc->getType()->getContainedType(0);
-    for(unsigned i = rank+1, e = structTy->getNumContainedTypes(); i < e; ++i) {
 
+    for(unsigned i = 0; i < nfields; ++i) {
       // Compute size of needed field memory in bytes
       llvm::Type *fieldTy = structTy->getContainedType(i);
       // If this is a externally allocated field, go on
@@ -205,6 +170,34 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
       llvm::Value *field;
       field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i);
       Builder.CreateStore(val, field);
+    }
+
+    // mesh dimensions after the fields
+    // this is setup in Codegentypes.h ConvertScoutMeshType()
+    for(size_t i = 0; i < rank; ++i) {
+      llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, nfields+i);
+      llvm::Value* intValue;
+
+      Expr* E = dims[i];
+      if (E->isGLValue()) {
+        // Emit the expression as an lvalue.
+        LValue LV = EmitLValue(E);
+        // We have to load the lvalue.
+        RValue RV = EmitLoadOfLValue(LV);
+        intValue = RV.getScalarVal();
+      } else if (E->isConstantInitializer(getContext(), false)) {
+        bool evalret;
+        llvm::APSInt dimAPValue;
+        evalret = E->EvaluateAsInt(dimAPValue, getContext());
+        // SC_TODO: check the evalret
+        intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
+      } else {
+        // it is an Rvalue
+        RValue RV = EmitAnyExpr(E);
+        intValue = RV.getScalarVal();
+      }
+
+      Builder.CreateStore(intValue, field);
     }
 
     // debugger support -- SC_TODO: do we want to name this to

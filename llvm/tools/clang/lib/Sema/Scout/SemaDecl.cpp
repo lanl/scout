@@ -227,27 +227,12 @@ MeshFieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
 // return true on success
 
 bool Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
-
-  // SC_TODO - (1) Didn't we already do all this in the Parse stage?
-  //           (2) Do we always have to add width/height/depth or can
-  //               we do so based on mesh dimensions (is this a mesh
-  //               instance or the general/generic mesh description)?
-  //
-  // add Implicit mesh members
-  
-  // SC_TODO - Refactor work (need to figure this out)...
-  //Mesh->addImplicitFields(Loc, Context);
   PopDeclContext(); // need this or we get BlockDecl in MeshDecl
   return IsValidDeclInMesh(Mesh);
 }
 
 
 bool Sema::IsValidMeshField(FieldDecl* FD){
-
-  if (FD->getName() == "ptr") {
-    return true;  // SC_TODO - what the heck is this?
-  }
-
   QualType QT = FD->getType();
   const Type* T = QT.getTypePtr();
 
