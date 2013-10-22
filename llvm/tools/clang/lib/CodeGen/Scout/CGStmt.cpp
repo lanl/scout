@@ -132,6 +132,11 @@ void CodeGenFunction::EmitForallLoop(const ForAllStmt &S, unsigned r) {
   MeshBaseAddr = GetMeshBaseAddr(S);
   llvm::StringRef MeshName = S.getMesh()->getName();
   unsigned int rank = S.getMeshType()->dimensions().size();
+
+  // find number of fields
+  MeshDecl* MD =  S.getMeshType()->getDecl();
+  unsigned int nfields = MD->fields();
+
   CGDebugInfo *DI = getDebugInfo();
 
   llvm::Value *LoopBound = 0;
@@ -156,8 +161,9 @@ void CodeGenFunction::EmitForallLoop(const ForAllStmt &S, unsigned r) {
 
   // Extract the loop bounds from the mesh for this rank, this requires
   // a GEP from the mesh and a load from returned address...
+  // note: width/height depth are stored after mesh fields
   sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[r-1]);
-  LoopBound = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, r, IRNameStr);
+  LoopBound = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+r-1, IRNameStr);
   sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[r-1]);
   LoopBound  = Builder.CreateLoad(LoopBound, IRNameStr);
 
