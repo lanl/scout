@@ -50,6 +50,9 @@ protected:
                                         bool (*isKindWeWant)(Decl::Kind),
                                         SmallVectorImpl<Decl*> &Result);
   virtual void CompleteType(TagDecl *Tag);
+  // ===== Scout ============================
+  virtual void CompleteType(MeshDecl *Mesh);
+  //=========================================
   virtual void CompleteType(ObjCInterfaceDecl *Class);
   virtual void StartedDeserializing();
   virtual void FinishedDeserializing();

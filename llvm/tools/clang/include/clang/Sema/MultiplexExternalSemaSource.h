@@ -128,6 +128,12 @@ public:
   /// an incomplete type.
   virtual void CompleteType(TagDecl *Tag);
 
+  // ===== Scout =========================================================
+  /// \brief Gives the external AST source an opportunity to complete
+  /// an incomplete mesh type.
+  virtual void CompleteType(MeshDecl *MD) {}
+  // =====================================================================
+
   /// \brief Gives the external AST source an opportunity to complete an
   /// incomplete Objective-C class.
   ///

@@ -1,10 +1,10 @@
 /*
- *  
+ *
  * ###########################################################################
  *
  * Copyright (c) 2013, Los Alamos National Security, LLC.
  * All rights reserved.
- * 
+ *
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -22,10 +22,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- * 
+ *
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided 
+ *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -33,7 +33,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -78,10 +78,10 @@ using namespace CodeGen;
 static const char *DimNames[]   = { "width", "height", "depth" };
 static const char *IndexNames[] = { "x", "y", "z"};
 
-// We use 'IRNameStr' to hold the generated names we use for 
-// various values in the IR building.  We've added a static 
-// buffer to avoid the need for a lot of fine-grained new and 
-// delete calls...  We're likely safe with 160 character long 
+// We use 'IRNameStr' to hold the generated names we use for
+// various values in the IR building.  We've added a static
+// buffer to avoid the need for a lot of fine-grained new and
+// delete calls...  We're likely safe with 160 character long
 // strings.
 static char IRNameStr[160];
 
@@ -97,192 +97,187 @@ llvm::Value *CodeGenFunction::TranslateExprToValue(const Expr *E) {
   }
 }
 
-   
 
 
-// ----- EmitforallStmt 
+
+// ----- EmitforallStmt
 //
-// Forall statements are transformed into a nested loop 
-// structure (with a loop per rank of the mesh) that 
+// Forall statements are transformed into a nested loop
+// structure (with a loop per rank of the mesh) that
 // uses a single linear address variable.  In other words,
-// a structure that looks something like this: 
+// a structure that looks something like this:
 //
 //  linear_index = 0;
 //  for(z = 0; z < mesh.depth; z++)
-//    for(y = 0; y < mesh.height; y++) 
+//    for(y = 0; y < mesh.height; y++)
 //      for(x = 0; x < mesh.width; x++) {
 //        ... body goes here ...
 //        linear_index++;
 //      }
-// 
-// At this point in time we don't kill ourselves in trying 
-// to over optimize the loop structure (partially in hope 
-// that our restrictions at the language level will help the
-// standard optimizers do an OK job).  That said, there is 
-// likely room for improvement here...   At this point we're 
-// more interested in code readability than performance. 
 //
-// The guts of this code follow the techniques used in the 
+// At this point in time we don't kill ourselves in trying
+// to over optimize the loop structure (partially in hope
+// that our restrictions at the language level will help the
+// standard optimizers do an OK job).  That said, there is
+// likely room for improvement here...   At this point we're
+// more interested in code readability than performance.
+//
+// The guts of this code follow the techniques used in the
 // EmitForStmt member function.
 //
-// SC_TODO - we need to find a way to share the loop index 
-// across code gen routines. 
-// 
+// SC_TODO - we need to find a way to share the loop index
+// across code gen routines.
+//
 // SC_TODO - need to eventually add support for predicated
 // induction variable ranges.
 //
-// SC_TODO - need to handle cases with edge and vertex 
+// SC_TODO - need to handle cases with edge and vertex
 // fields (the implementation below is cell centric).
 //
 void CodeGenFunction::EmitForallStmt(const ForallMeshStmt &S) {
 
-  const MeshType* Mesh = S.getMeshType();
-  llvm::StringRef MeshName = Mesh->getName();
+  unsigned int rank = S.getMeshType()->dimensions().size();
+  EmitForallLoop(S, rank);
+}
+
+//generate one of the nested loops
+void CodeGenFunction::EmitForallLoop(const ForallMeshStmt &S, unsigned r) {
+
+  MeshBaseAddr = GetMeshBaseAddr(S);
+  llvm::StringRef MeshName = S.getMeshType()->getName();
   unsigned int rank = S.getMeshType()->dimensions().size();
   CGDebugInfo *DI = getDebugInfo();
 
+  llvm::Value *LoopBound = 0;
+  llvm::Value *ConstantZero  = 0;
+  llvm::Value *ConstantOne   = 0;
+  ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
+  ConstantOne  = llvm::ConstantInt::get(Int32Ty, 1);
 
-  llvm::Value *LoopBounds[3] = {0, 0, 0};
-  llvm::Value *ConstantZero  = 0; 
-  llvm::Value *ConstantOne   = 0;   
+  sprintf(IRNameStr, "forall.%s.end", DimNames[r-1]);
+  JumpDest LoopExit = getJumpDestInCurrentScope(IRNameStr);
+  RunCleanupsScope ForallScope(*this);
 
-  llvm::errs() << "codegen rank = " << rank << "\n";
+  if (DI)
+    DI->EmitLexicalBlockStart(Builder, S.getSourceRange().getBegin());
 
-  for(unsigned r = rank, i = rank-1; r > 0; --r, --i) {
-    sprintf(IRNameStr, "forall.%s.end", DimNames[i]);
-    JumpDest LoopExit = getJumpDestInCurrentScope(IRNameStr);
-    RunCleanupsScope ForallScope(*this);
+  if (r == rank) {
+    // For our first pass we deal with the outermost initialization
+    // details.   This includes our single (linear) array index value,
+    LoopIndexVar = Builder.CreateAlloca(Int32Ty, 0, "forall.indx");
+    Builder.CreateStore(ConstantZero, LoopIndexVar);
+  }
 
-    if (DI) 
-      DI->EmitLexicalBlockStart(Builder, S.getSourceRange().getBegin());
+  // Extract the loop bounds from the mesh for this rank, this requires
+  // a GEP from the mesh and a load from returned address...
+  sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[r-1]);
+  LoopBound = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, r, IRNameStr);
+  sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[r-1]);
+  LoopBound  = Builder.CreateLoad(LoopBound, IRNameStr);
 
-    if (r == rank) { 
-      llvm::errs() << "gen start of loop vars.\n";
-      // For our first pass we deal with the outermost initialization 
-      // details.   This includes our single (linear) array index value,
-      // and some helpful constants for initializing and incrementing.
-      MeshBaseAddr = GetMeshBaseAddr(S);     
-      ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
-      ConstantOne  = llvm::ConstantInt::get(Int32Ty, 1);
-      LoopIndexVar = Builder.CreateAlloca(Int32Ty, 0, "forall.indx");
-      Builder.CreateStore(ConstantZero, LoopIndexVar);
-    }
+  // Create the induction variable for this rank and zero-initialize it.
+  sprintf(IRNameStr, "induct.%s", IndexNames[r-1]);
+  llvm::Value *InductionVar = Builder.CreateAlloca(Int32Ty, 0, IRNameStr);
+  Builder.CreateStore(ConstantZero, InductionVar);
+
+  // Next we create a block that tests the induction variables value to
+  // the rank's dimension.
+  sprintf(IRNameStr, "forall.cond.%s", DimNames[r-1]);
+  JumpDest Continue = getJumpDestInCurrentScope(IRNameStr);
+  llvm::BasicBlock *CondBlock = Continue.getBlock();
+  EmitBlock(CondBlock);
+
+  RunCleanupsScope ConditionScope(*this);
+  sprintf(IRNameStr, "forall.done.%s", IndexNames[r-1]);
+  llvm::Value *CondValue = Builder.CreateICmpSLT(Builder.CreateLoad(InductionVar),
+                                                 LoopBound,
+                                                 IRNameStr);
+
+  llvm::BasicBlock *ExitBlock = LoopExit.getBlock();
+
+  // If there are any cleanups between here and the loop-exit
+  // scope, create a block to stage a loop exit along.  (We're
+  // following Clang's lead here in generating a for loop.)
+  if (ForallScope.requiresCleanups()) {
+    sprintf(IRNameStr, "forall.cond.cleanup.%s", DimNames[r-1]);
+    ExitBlock = createBasicBlock(IRNameStr);
+  }
+
+  llvm::BasicBlock *LoopBody = createBasicBlock(IRNameStr);
+  Builder.CreateCondBr(CondValue, LoopBody, ExitBlock);
+
+  if (ExitBlock != LoopExit.getBlock()) {
+    EmitBlock(ExitBlock);
+    EmitBranchThroughCleanup(LoopExit);
+  }
+
+  EmitBlock(LoopBody);
+
+  sprintf(IRNameStr, "forall.incblk.%s", IndexNames[r-1]);
+  Continue = getJumpDestInCurrentScope(IRNameStr);
 
 
-    llvm::errs() << "gen loop bounds.\n";
+  // Store the blocks to use for break and continue.
+  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue));
 
-    // Extract the loop bounds from the mesh for this rank, this requires
-    // a GEP from the mesh and a load from returned address... 
-    sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
-    LoopBounds[i] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, i, IRNameStr);
-    sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[i]);
-    LoopBounds[i] = Builder.CreateLoad(LoopBounds[i], IRNameStr);
 
-    // Create the induction variable for this rank and zero-initialize it. 
-    sprintf(IRNameStr, "induct.%s", IndexNames[i]);
-    llvm::Value *InductionVar = Builder.CreateAlloca(Int32Ty, 0, IRNameStr);
-    Builder.CreateStore(ConstantZero, InductionVar);
+  if (r == 1) {  // This is our innermost rank, generate the loop body.
+    EmitForallBody(S);
 
-    llvm::errs() << "gen loop cond.\n";
-    // Next we create a block that tests the induction variables value to 
-    // the rank's dimension.
-    sprintf(IRNameStr, "forall.cond.%s", DimNames[i]);
-    JumpDest Continue = getJumpDestInCurrentScope(IRNameStr);
-    llvm::BasicBlock *CondBlock = Continue.getBlock();
-    EmitBlock(CondBlock);
+    // Increment the loop index.
+    llvm::Value* liv = Builder.CreateLoad(LoopIndexVar);
+    llvm::Value *IncLoopIndexVar = Builder.CreateAdd(liv,
+                                                     ConstantOne,
+                                                     "forall.indx.inc");
 
-    RunCleanupsScope ConditionScope(*this);
-    sprintf(IRNameStr, "forall.done.%s", IndexNames[i]);
-    llvm::Value *CondValue = Builder.CreateICmpSLT(Builder.CreateLoad(InductionVar),
-                                                   LoopBounds[i],
+    Builder.CreateStore(IncLoopIndexVar, LoopIndexVar);
+  } else { // generate nested loop
+    EmitForallLoop(S, r-1);
+  }
+
+  EmitBlock(Continue.getBlock());
+
+
+  sprintf(IRNameStr, "forall.inc.%s", IndexNames[r-1]);
+
+
+  llvm::Value* iv = Builder.CreateLoad(InductionVar);
+  llvm::Value *IncInductionVar = Builder.CreateAdd(iv,
+                                                   ConstantOne,
                                                    IRNameStr);
 
-    llvm::BasicBlock *ExitBlock = LoopExit.getBlock();
 
-    // If there are any cleanups between here and the loop-exit 
-    // scope, create a block to stage a loop exit along.  (We're 
-    // following Clang's lead here in generating a for loop.)
-    if (ForallScope.requiresCleanups()) {
-      sprintf(IRNameStr, "forall.cond.cleanup.%s", DimNames[i]);
-      ExitBlock = createBasicBlock(IRNameStr);
-    }    
+  Builder.CreateStore(IncInductionVar, InductionVar);
 
-    llvm::BasicBlock *LoopBody = createBasicBlock(IRNameStr);
-    Builder.CreateCondBr(CondValue, LoopBody, ExitBlock);
+  BreakContinueStack.pop_back();
+  ConditionScope.ForceCleanup();
 
-    if (ExitBlock != LoopExit.getBlock()) {
-      EmitBlock(ExitBlock);
-      EmitBranchThroughCleanup(LoopExit);
-    }
+  EmitBranch(CondBlock);
+  ForallScope.ForceCleanup();
 
-    EmitBlock(LoopBody);
+  if (DI)
+    DI->EmitLexicalBlockEnd(Builder, S.getSourceRange().getEnd());
 
-    sprintf(IRNameStr, "forall.incblk.%s", IndexNames[i]);
-    Continue = getJumpDestInCurrentScope(IRNameStr);
-
-
-    // Store the blocks to use for break and continue. 
-    BreakContinueStack.push_back(BreakContinue(LoopExit, Continue));
-
-
-    if (r == 1) {  // This is our innermost rank, generate the loop body.
-      llvm::errs() << "before EmitForallBody\n";
-      EmitForallBody(S);
-      llvm::errs() << "after EmitForallBody\n";
-
-      // Increment the loop index.
-      llvm::Value* liv = Builder.CreateLoad(LoopIndexVar);
-      llvm::Value *IncLoopIndexVar = Builder.CreateAdd(liv,
-                                                       ConstantOne,
-                                                       "forall.indx.inc");
-
-      Builder.CreateStore(IncLoopIndexVar, LoopIndexVar);
-    }
-
-    EmitBlock(Continue.getBlock());
-
-
-    sprintf(IRNameStr, "forall.inc.%s", IndexNames[i]);
-
-
-    llvm::Value* iv = Builder.CreateLoad(InductionVar);
-    llvm::Value *IncInductionVar = Builder.CreateAdd(iv,
-                                                     ConstantOne, 
-                                                     IRNameStr);
-
-
-    Builder.CreateStore(IncInductionVar, InductionVar);
-    
-    BreakContinueStack.pop_back();
-    ConditionScope.ForceCleanup();
-
-    EmitBranch(CondBlock);
-    ForallScope.ForceCleanup();
-
-    if (DI)
-      DI->EmitLexicalBlockEnd(Builder, S.getSourceRange().getEnd());
-
-    EmitBlock(LoopExit.getBlock(), true);
-  }
+  EmitBlock(LoopExit.getBlock(), true);
 }
 
 // ----- EmitForallBody
-// 
+//
 void CodeGenFunction::EmitForallBody(const ForallMeshStmt &S) {
   EmitStmt(S.getBody());
 }
 
 
 void CodeGenFunction::EmitForAllStmtWrapper(const ForallMeshStmt &S) {
-  
+
   MeshMembers.clear();
   ScoutMeshSizes.clear();
-  
+
   llvm::StringRef MeshName = S.getMeshType()->getName();
   const MeshType *MT = S.getMeshType();
   MeshType::MeshDimensions dims = MT->dimensions();
   MeshDecl *MD = MT->getDecl();
-  
+
   unsigned int rank = dims.size();  // just for clarity below...
 
   typedef std::map<std::string, bool> MeshFieldMap;
@@ -295,22 +290,22 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForallMeshStmt &S) {
     llvm::Value* lval = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, i+1, IRNameStr);
     ScoutMeshSizes.push_back(lval);
   }
-  
+
   typedef MeshDecl::field_iterator MeshFieldIterator;
   MeshFieldIterator it = MD->field_begin(), it_end = MD->field_end();
-  
+
   for(unsigned i = 0; it != it_end; ++it, ++i) {
-    
+
     MeshFieldDecl *MFD = dyn_cast<MeshFieldDecl>(*it);
     llvm::StringRef FieldName = MFD->getName();
     QualType Ty = MFD->getType();
-    
+
     meshFieldMap[FieldName.str()] = true;
 
     if (! MFD->isImplicit()) {
       sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), FieldName.str().c_str());
       llvm::Value *FieldPtr = Builder.CreateStructGEP(MeshBaseAddr, i+rank+1, IRNameStr);
-      
+
       FieldPtr = Builder.CreateLoad(FieldPtr);
       sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), FieldName.str().c_str());
       llvm::Value *FieldVar = Builder.CreateAlloca(FieldPtr->getType(), 0, IRNameStr);
@@ -323,7 +318,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForallMeshStmt &S) {
 
   // Acquire a local copy of colors buffer.
   // SC_TODO -- this should go in a separate call stack (for dealing with
-  // rendall specifically).  
+  // rendall specifically).
   /*
   if (isa< RenderAllStmt >(S)) {
     llvm::Type *fltTy = llvm::Type::getFloatTy(getLLVMContext());
@@ -341,14 +336,14 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForallMeshStmt &S) {
     }
 
     llvm::Value *local_colors  = Builder.CreateAlloca(flt4PtrTy, 0, "colors");
-    llvm::Value *global_colors = 
+    llvm::Value *global_colors =
     CGM.getModule().getNamedGlobal("__scrt_renderall_uniform_colors");
-    
+
     Builder.CreateStore(Builder.CreateLoad(global_colors), local_colors);
     Colors = Builder.CreateLoad(local_colors, "colors");
   }
   */
-  
+
   llvm::BasicBlock *entry = createBasicBlock("forall_entry");
   Builder.CreateBr(entry);
   EmitBlock(entry);
@@ -389,24 +384,24 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForallMeshStmt &S) {
   }
 
   typedef llvm::BasicBlock::iterator InstIterator;
-  
+
   for( ; BB != BB_end; ++BB) {
     region.push_back(BB);
   }
 
   llvm::DominatorTree DT;
   DT.runOnFunction(*CurFn);
-  
+
   llvm::Function *ForallFn;
 
-  llvm::CodeExtractor codeExtractor(region, &DT, false);  
+  llvm::CodeExtractor codeExtractor(region, &DT, false);
 
   typedef llvm::SetVector<llvm::Value *> ValueSet;
   ValueSet ce_inputs, ce_outputs;
   codeExtractor.findInputsOutputs(ce_inputs, ce_outputs);
   ValueSet::iterator vsit, vsend;
-  
-  ForallFn = codeExtractor.extractCodeRegion();  
+
+  ForallFn = codeExtractor.extractCodeRegion();
   assert(ForallFn != 0 && "Failed to rip forall statement into a new function.");
 
   // SC_TODO: WARNING -- these function names are once again used as a special
@@ -414,7 +409,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForallMeshStmt &S) {
   // you change the name here you will need to also make the changes to the
   // pass...
   //
-  // SC_TODO - we should move renderall logic into its own call path... 
+  // SC_TODO - we should move renderall logic into its own call path...
   //if (isa<RenderAllStmt>(S))
   //  ForallFn->setName("uniRenderallCellsFn");
   //else
@@ -431,8 +426,8 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForallMeshStmt &S) {
     // Add metadata for scout kernel function.
     llvm::NamedMDNode *ScoutMetadata;
     ScoutMetadata = CGM.getModule().getOrInsertNamedMetadata("scout.kernels");
-    
-    SmallVector<llvm::Value *, 4> KMD; // Kernel (as in GPU kernel) metadata. 
+
+    SmallVector<llvm::Value *, 4> KMD; // Kernel (as in GPU kernel) metadata.
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ForallFn));
     // For each function argument, a bit to indicate whether it is a mesh member.
     SmallVector<llvm::Value*, 3> args;
@@ -442,35 +437,35 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForallMeshStmt &S) {
     typedef llvm::Function::arg_iterator ArgIterator;
     size_t pos = 0;
     llvm::Value* gs;
-    
+
     for(ArgIterator it = ForallFn->arg_begin(), end = ForallFn->arg_end();
         it != end; ++it, ++pos) {
 
       bool isSigned = false;
       std::string typeStr;
       // All of our values from the mesh are prefixed with the
-      // mesh name (we do this as we lower). 
+      // mesh name (we do this as we lower).
       if (it->getName().startswith(MeshName) && isMeshMember(it, isSigned, typeStr)) {
 
         // SC_TODO - need to fix this...  At present, I'm not sure why we
         // even need it...  It should reflect the current argument
         // is a signed value or not???
         isSigned = false;
-        
+
         args.push_back(llvm::ConstantInt::get(Int32Ty, 1));
-        
+
         if (isSigned) {
           signedArgs.push_back(llvm::ConstantInt::get(Int32Ty, 1));
         } else {
           signedArgs.push_back(llvm::ConstantInt::get(Int32Ty, 0));
         }
-        
+
         // Convert mesh field arguments to the function which have
         // been uniqued by ExtractCodeRegion() back into mesh field
-        // names. 
+        // names.
         // SC_TODO - this code was, and still is, fundamentally flawed...
         // We can't simply strip numbers off the end of the name as the
-        // programmer could have specified 
+        // programmer could have specified
         std::string ns = (*it).getName().str();
         while(!ns.empty()) {
           if (meshFieldMap.find(ns) != meshFieldMap.end()) {
@@ -480,7 +475,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForallMeshStmt &S) {
           }
           ns.erase(ns.length() - 1, 1);
         }
-        
+
         assert(!ns.empty() && "failed to convert uniqued mesh field name");
 
         gs = llvm::ConstantDataArray::getString(getLLVMContext(), typeStr);
@@ -493,11 +488,11 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForallMeshStmt &S) {
 
         // SC_TODO: these are now named MeshName.[width|height|depth]
         // (see code above).  We probably should find something better
-        // here than string comparisons... 
+        // here than string comparisons...
         std::string FieldWidthStr(MeshName.str() + std::string(".width"));
         std::string FieldHeightStr(MeshName.str() + std::string(".height"));
         std::string FieldDepthStr(MeshName.str() + std::string(".depth"));
-        if (it->getName().startswith(FieldWidthStr)   ||  
+        if (it->getName().startswith(FieldWidthStr)   ||
             it->getName().startswith(FieldHeightStr)  ||
             it->getName().startswith(FieldDepthStr)) {
           gs = llvm::ConstantDataArray::getString(getLLVMContext(), "uint*");
@@ -507,7 +502,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForallMeshStmt &S) {
           for(llvm::DenseMap<const Decl*, llvm::Value*>::iterator
               itr = LocalDeclMap.begin(), itrEnd = LocalDeclMap.end();
               itr != itrEnd; ++itr) {
-            
+
             if (const ValueDecl* vd = dyn_cast<ValueDecl>(itr->first)) {
 
               if (vd->getName() == it->getName()) {
@@ -516,7 +511,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForallMeshStmt &S) {
                 if (pos != std::string::npos) {
                   ts = ts.substr(0, pos);
                 }
-                
+
                 if (ts.find("*") == std::string::npos) {
                   ts += "*";
                 }
@@ -527,7 +522,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForallMeshStmt &S) {
               }
             }
           }
-          
+
           if (found) {
             typeArgs.push_back(gs);
           }
@@ -535,9 +530,9 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForallMeshStmt &S) {
       }
     }
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value * >(args)));
-    
+
     args.clear();
-    
+
     // Add dimension information.
     llvm::Value *zero = llvm::ConstantInt::get(Int32Ty, 0);
     MeshType::MeshDimensions dims = MT->dimensions();
@@ -546,18 +541,18 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForallMeshStmt &S) {
       args.push_back(TranslateExprToValue(dims[i]));
     }
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value * >(args)));
-    
+
     args.clear();
     args.push_back(llvm::ConstantDataArray::getString(getLLVMContext(), MeshName));;
-    
+
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(args)));
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(meshArgs)));
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(signedArgs)));
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(typeArgs)));
-    
+
     ScoutMetadata->addOperand(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(KMD)));
   }
-     
+
   if (isSequential() || isGPU()) {
     llvm::BasicBlock *cbb = ret->getParent();
     ret->eraseFromParent();
@@ -600,25 +595,25 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForallMeshStmt &S) {
 }
 /*
 void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
-  
+
   llvm::SmallVector< llvm::Value *, 3 > ranges;
   for(size_t i = 0; i < 3; ++i) {
     Expr* end = S.getEnd(i);
-    
+
     if(!end){
       break;
     }
-    
+
     llvm::Value* ri = Builder.CreateAlloca(Int32Ty);
     ranges.push_back(ri);
     Builder.CreateStore(TranslateExprToValue(end), ri);
   }
-  
+
   llvm::BasicBlock* entry = createBasicBlock("faa.entry");
   EmitBlock(entry);
-  
+
   llvm::BasicBlock* End[4] = {0,0,0,0};
-  
+
   End[0] = createBasicBlock("faa.end");
 
   llvm::BasicBlock* body = createBasicBlock("faa.body");
@@ -627,92 +622,92 @@ void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
   llvm::Instruction* ForallArrayAllocaInsertPt =
   new llvm::BitCastInst(Undef, Int32Ty, "", Builder.GetInsertBlock());
   ForallArrayAllocaInsertPt->setName("faa.allocapt");
-  
+
   llvm::Instruction *savedAllocaInsertPt = AllocaInsertPt;
   AllocaInsertPt = ForallArrayAllocaInsertPt;
-    
+
   ScoutIdxVars.clear();
-  
+
   for(unsigned i = 0; i < 3; ++i){
     const IdentifierInfo* ii = S.getInductionVar(i);
     if(!ii){
       break;
     }
-    
+
     llvm::Value* ivar = Builder.CreateAlloca(Int32Ty, 0, ii->getName());
     Builder.CreateStore(TranslateExprToValue(S.getStart(i)), ivar);
     ScoutIdxVars.push_back(ivar);
   }
-  
+
   llvm::BasicBlock::iterator entryPt = Builder.GetInsertPoint();
-  
+
   for(unsigned i = 0; i < ScoutIdxVars.size(); ++i){
     End[i+1] = createBasicBlock("faa.loopend");
     CurFn->getBasicBlockList().push_back(End[i+1]);
     Builder.SetInsertPoint(End[i+1]);
-    
+
     if(i < ScoutIdxVars.size() - 1){
       Builder.CreateStore(TranslateExprToValue(S.getStart(i + 1)), ScoutIdxVars[i + 1]);
     }
-    
+
     llvm::Value* ivar = ScoutIdxVars[i];
-    
+
     llvm::Value* iv = Builder.CreateLoad(ivar);
     Builder.CreateStore(Builder.CreateAdd(iv, TranslateExprToValue(S.getStride(i))), ivar);
-    llvm::Value* cond = 
+    llvm::Value* cond =
     Builder.CreateICmpSLT(Builder.CreateLoad(ivar), TranslateExprToValue(S.getEnd(i)), "faa.cmp");
-    
+
     Builder.CreateCondBr(cond, body, End[i]);
   }
 
   Builder.SetInsertPoint(entry, entryPt);
-  
-  EmitBlock(body);  
-  
+
+  EmitBlock(body);
+
   DeclMapTy curLocalDeclMap = LocalDeclMap;
   CallsPrintf = callsPrintf(&cast< Stmt >(S));
 
   CurrentForAllArrayStmt = &S;
   EmitStmt(S.getBody());
   CurrentForAllArrayStmt = 0;
- 
+
   Builder.CreateBr(End[ScoutIdxVars.size()]);
 
   EmitBlock(End[0]);
-  
+
   llvm::Value *zero = llvm::ConstantInt::get(Int32Ty, 0);
   llvm::ReturnInst *ret = llvm::ReturnInst::Create(getLLVMContext(), zero,
                                                    Builder.GetInsertBlock());
-  
+
   LocalDeclMap = curLocalDeclMap;
   AllocaInsertPt = savedAllocaInsertPt;
-    
+
   std::vector< llvm::BasicBlock * > region;
-  
+
   typedef llvm::Function::iterator BBIterator;
   BBIterator BB = CurFn->begin(), BB_end = CurFn->end();
-  
+
   llvm::BasicBlock *split;
   for( ; BB->getName() != entry->getName(); ++BB)
     split = BB;
-  
+
   for( ; BB != BB_end; ++BB) {
     region.push_back(BB);
   }
-  
+
   llvm::DominatorTree DT;
   DT.runOnFunction(*CurFn);
 
   llvm::CodeExtractor codeExtractor(region, &DT, false);
 
   llvm::Function *ForallArrayFn = codeExtractor.extractCodeRegion();
-  
+
   ForallArrayFn->setName("forall_array");
-    
+
   if (isSequential() || isGPU()) {
     llvm::BasicBlock *cbb = ret->getParent();
     ret->eraseFromParent();
-    
+
     Builder.SetInsertPoint(cbb);
     return;
   }
@@ -727,26 +722,26 @@ void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
       break;
     }
   }
-  
+
   llvm::BasicBlock *continueBB = ret->getParent();
   ret->eraseFromParent();
-  
+
   Builder.SetInsertPoint(continueBB);
-  
+
   typedef llvm::SetVector< llvm::Value * > Values;
   Values inputs;
-  
+
   std::string TheName = CurFn->getName();
 #ifdef USE_FORALL_BLOCK
   CGBlockInfo blockInfo(S.getBlock()->getBlockDecl(), TheName.c_str());
-  
+
   CurrentForAllArrayStmt = &S;
-  
+
   llvm::Value *BlockFn = EmitScoutBlockLiteral(S.getBlock(), blockInfo,
                                                ranges, inputs);
-  
+
   CurrentForAllArrayStmt = 0;
-  
+
   // Generate a function call to BlockFn.
   EmitScoutBlockFnCall(BlockFn, blockInfo, ranges, inputs);
 #endif
@@ -824,21 +819,21 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
 
     llvm::Value* msi;
     sprintf(IRNameStr, "%s.%s", meshName.str().c_str(), DimNames[i]);
-    
+
     switch(i) {
-      
+
       case 0:
         msi = Builder.CreateLoad(ScoutMeshSizes[i], IRNameStr);
         break;
-        
+
       case 1:
         msi = Builder.CreateLoad(ScoutMeshSizes[i], IRNameStr);
         break;
-        
+
       case 2:
         msi = Builder.CreateLoad(ScoutMeshSizes[i], IRNameStr);
         break;
-        
+
       default:
         assert(false && "Dimension case not handled in EmitForAllStmt");
     }
@@ -847,15 +842,15 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
     // Why build a list to store all zeros?  It is also
     // not clear why we need to do this with the width, height,
     // and depth -- we already have them...  ????
-    start.push_back(zero); 
+    start.push_back(zero);
     end.push_back(msi);
     diff.push_back(msi);
     ForallTripCount = Builder.CreateMul(ForallTripCount, msi);
   }
-  
+
   llvm::Value *indVar = Builder.CreateAlloca(Int32Ty, 0, name);
   // SC_TODO - This is likely confusing -- both sequential and
-  // cpu appear to imply the same thing... 
+  // cpu appear to imply the same thing...
   if(isSequential() || isMultiCPU())
     Builder.CreateStore(zero, indVar);
 
@@ -865,21 +860,21 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   // Initialize the index variables.
   for(unsigned i = 0; i < rank; ++i) {
     llvm::Value *lval = 0;
-    
+
     switch(i) {
-      
+
       case 0:
         lval = Builder.CreateAlloca(Int32Ty, 0, "indvar.x");
         break;
-        
+
       case 1:
         lval = Builder.CreateAlloca(Int32Ty, 0, "indvar.y");
         break;
-        
+
       case 2:
         lval = Builder.CreateAlloca(Int32Ty, 0, "indvar.z");
         break;
-        
+
       default:
         assert(false && "Case not handled for ForAll indvar");
     }
@@ -895,7 +890,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   // SC_TODO - Again, this could be confusing -- both sequential and
   // cpu appear to be imply the same thing...
   if (isSequential() || isMultiCPU()) {
-    
+
     // Start the loop with a block that tests the condition.
     JumpDest Continue = getJumpDestInCurrentScope("forall.cond");
     CondBlock = Continue.getBlock();
@@ -934,7 +929,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
     }
 
     lval = Builder.CreateURem(lval, diff[i]);
-    if (start[i] != zero) 
+    if (start[i] != zero)
       lval = Builder.CreateAdd(lval, start[i]);
     Builder.CreateStore(lval, ScoutIdxVars[i]);
   }
@@ -954,7 +949,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
 
 void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
 
-  recomment this out... 
+  recomment this out...
   //---- *
   DEBUG_OUT("EmitRenderAllStmt");
 
@@ -997,9 +992,9 @@ void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
   Builder.SetInsertPoint(BB);
   ScoutColor = alloca;
   // --- * /
-  recomment this out...   
+  recomment this out...
 
-  // scout - skip the above, at least for now, because we are writing to colors 
+  // scout - skip the above, at least for now, because we are writing to colors
   // which is a preallocated pixel buffer that exists at the time the
   // renderall loop is started - we write to an offset corresponding
   // to the induction variable - done in EmitForAllStmt()
@@ -1010,148 +1005,148 @@ void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
 }
 
 void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
-{ 
+{
   DEBUG_OUT("EmitVolumeRenderallStmt");
   PrettyStackTraceLoc CrashInfo(getContext().getSourceManager(),S.getLBracLoc(),
                                 "LLVM IR generation of volume renderall statement ('{}')");
-  
+
   CGDebugInfo *DI = getDebugInfo();
   if (DI)
     DI->EmitLexicalBlockStart(Builder, S.getLBracLoc());
-  
+
   // Keep track of the current cleanup stack depth.
   RunCleanupsScope Scope(*this);
-  
+
   // Clear stale mesh elements.
   MeshMembers.clear();
   const IdentifierInfo *MeshII = S.getMesh();
   llvm::StringRef meshName = MeshII->getName();
-  (void)meshName; //supress warning 
- 
+  (void)meshName; //supress warning
+
   const MeshType *MT = S.getMeshType();
   MeshType::MeshDimensions dims = MT->dimensions();
-  const MeshDecl *MD = MT->getDecl();  
-  
+  const MeshDecl *MD = MT->getDecl();
+
   typedef std::map<std::string, bool> MeshFieldMap;
   MeshFieldMap meshFieldMap;
   const VarDecl* MVD = S.getMeshVarDecl();
-  
+
   llvm::Value* baseAddr = LocalDeclMap[MVD];
-  
+
   if(MVD->getType().getTypePtr()->isReferenceType()){
     baseAddr = Builder.CreateLoad(baseAddr);
   }
-  
+
   ScoutMeshSizes.clear();
   for(unsigned i = 0, e = dims.size(); i < e; ++i) {
     llvm::Value *lval = Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, i);
-    ScoutMeshSizes.push_back(lval);      
+    ScoutMeshSizes.push_back(lval);
   }
 
   llvm::Function *addVolFunc = CGM.getModule().getFunction("__scrt_renderall_add_volume");
-  
+
   if (!addVolFunc) {
     llvm::PointerType* p1 = llvm::PointerType::get(llvm::Type::getFloatTy(getLLVMContext()), 0);
-    llvm::Type* p2 = llvm::Type::getInt32Ty(getLLVMContext());       
-    std::vector<llvm::Type*> args;    
+    llvm::Type* p2 = llvm::Type::getInt32Ty(getLLVMContext());
+    std::vector<llvm::Type*> args;
     args.push_back(p1);
     args.push_back(p2);
- 
-    
-    llvm::FunctionType *FTy = 
-      llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()),    
+
+
+    llvm::FunctionType *FTy =
+      llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()),
                               args, false);
-    
-    addVolFunc = llvm::Function::Create(FTy, 
+
+    addVolFunc = llvm::Function::Create(FTy,
                                         llvm::Function::ExternalLinkage,
                                         "__scrt_renderall_add_volume",
                                         &CGM.getModule());
   }
 
-  
+
   size_t fieldcount = 0;
   typedef MeshDecl::field_iterator MeshFieldIterator;
   MeshFieldIterator it = MD->field_begin(), it_end = MD->field_end();
-  
+
   for(unsigned i = 0; it != it_end; ++it, ++i) {
-    
+
     MeshFieldDecl *FD = dyn_cast<MeshFieldDecl>(*it);
     llvm::StringRef name = FD->getName();
     meshFieldMap[name.str()] = true;
-    
+
     QualType Ty = FD->getType();
-    
+
     if (! FD->isImplicit()) {
-      
+
       llvm::Value *addr;
       addr = Builder.CreateStructGEP(baseAddr, i+4, name); //SC_TODO: why i+4??
       addr = Builder.CreateLoad(addr);
-      
+
       llvm::Value *var = Builder.CreateAlloca(addr->getType(), 0, name);
       Builder.CreateStore(addr, var);
       MeshMembers[name] = std::make_pair(Builder.CreateLoad(var) , Ty);
       MeshMembers[name].first->setName(var->getName());
-      
-      // the Value* var holding the addr where the mesh member is 
+
+      // the Value* var holding the addr where the mesh member is
       llvm::Value* meshField = MeshMembers[name].first;  // SC_TODO -- isn't this 'var' from above???
-      
+
       // the Value* for the volume number
       llvm::ConstantInt* volumeNum;
       volumeNum = llvm::ConstantInt::get(Int32Ty, fieldcount);
-      
+
       // emit the call
       llvm::CallInst* CI =
       Builder.CreateCall2(addVolFunc, meshField, volumeNum);
-      (void)CI; //suppress warning 
+      (void)CI; //suppress warning
       ++fieldcount;
     }
   }
-  
+
   std::vector<llvm::Value*> Args;
-  
+
   llvm::Function *beginRendFunc = CGM.getModule().getFunction("__scrt_renderall_begin");
-  
+
   if(!beginRendFunc){
-    
-    std::vector<llvm::Type*> args;    
-     
-    llvm::FunctionType *FTy = 
-    llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()),    
+
+    std::vector<llvm::Type*> args;
+
+    llvm::FunctionType *FTy =
+    llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()),
                             args, false);
-    
-    beginRendFunc = llvm::Function::Create(FTy, 
+
+    beginRendFunc = llvm::Function::Create(FTy,
                                         llvm::Function::ExternalLinkage,
                                         "__scrt_renderall_begin",
                                         &CGM.getModule());
   }
   Builder.CreateCall(beginRendFunc, Args);
-  
+
   llvm::Function *endRendFunc = CGM.getModule().getFunction("__scrt_renderall_end");
-  
+
   if(!endRendFunc){
-    
-    std::vector<llvm::Type*> args;    
-    
-    llvm::FunctionType *FTy = 
-    llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()),    
+
+    std::vector<llvm::Type*> args;
+
+    llvm::FunctionType *FTy =
+    llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()),
                             args, false);
-    
-    endRendFunc = llvm::Function::Create(FTy, 
+
+    endRendFunc = llvm::Function::Create(FTy,
                                            llvm::Function::ExternalLinkage,
                                            "__scrt_renderall_end",
                                            &CGM.getModule());
   }
 
   Builder.CreateCall(endRendFunc, Args);
-  recomment this out / * 
+  recomment this out / *
   llvm::Function *delRendFunc = CGM.getModule().getFunction("__scrt_renderall_delete");
   if(!delRendFunc) {
-    std::vector<llvm::Type*> args;    
-    llvm::FunctionType *FTy = 
-    llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()),    
+    std::vector<llvm::Type*> args;
+    llvm::FunctionType *FTy =
+    llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()),
                             args, false);
-    
-    delRendFunc = llvm::Function::Create(FTy, 
+
+    delRendFunc = llvm::Function::Create(FTy,
                                            llvm::Function::ExternalLinkage,
                                            "__scrt_renderall_delete",
                                            &CGM.getModule());

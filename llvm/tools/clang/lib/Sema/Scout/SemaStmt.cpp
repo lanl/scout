@@ -2,7 +2,7 @@
  * ###########################################################################
  * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
- * 
+ *
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -20,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- * 
+ *
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided 
+ *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -31,7 +31,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -45,12 +45,12 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ########################################################################### 
- * 
+ * ###########################################################################
+ *
  * Notes
  *
- * ##### 
- */ 
+ * #####
+ */
 
 #include "clang/Sema/SemaInternal.h"
 #include "clang/Sema/Sema.h"
@@ -94,20 +94,18 @@ namespace {
 
       if (fd) {
         std::string name = fd->getName();
-        llvm::errs() << "calling function '" << fd->getName() << "'\n";
-
         if (name == "printf" || name == "fprintf") {
           // SC_TODO -- for now we'll warn that you're calling a print
-          // function inside a parallel construct -- in the long run 
-          // we can either (1) force the loop to run sequentially or 
+          // function inside a parallel construct -- in the long run
+          // we can either (1) force the loop to run sequentially or
           // (2) replace print function with a "special" version...
           sema_.Diag(E->getExprLoc(), diag::warn_forall_calling_io_func);
         } else if (name == "cshift") {
 
-          // SC_TODO -- need to check mesh types here for cshift() validity. 
+          // SC_TODO -- need to check mesh types here for cshift() validity.
 
           const MeshType* mt = fs_->getMeshType();
-          unsigned args = E->getNumArgs();          
+          unsigned args = E->getNumArgs();
 
           unsigned dims = mt->rankOf();
 
@@ -152,22 +150,16 @@ namespace {
     void VisitMemberExpr(MemberExpr* E) {
 
       if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(E->getBase())) {
-        llvm::errs() << "member is a declrefexpr...\n";
         ValueDecl* bd = dr->getDecl();
 
         if (const MeshType* MT = dyn_cast<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
 
           ValueDecl* md = E->getMemberDecl();
-          llvm::errs() << "\tmember: " << md->getName() << "\n";
 
           QualType QT = md->getType();
-          QT.dump();
           const Type *tp = QT.getTypePtr();
-          if (tp != 0) {
-            llvm::errs() << "got a type...\n";
-          }
 
-          // Make sure we are only accessing mesh traits that match the dimensionality 
+          // Make sure we are only accessing mesh traits that match the dimensionality
           // of the mesh...
           if ((md->getName() == "height" ) || (md->getName() == "depth")) {
 
@@ -303,12 +295,12 @@ namespace {
 } // end namespace
 
 
-// ----- ActOnForallRefVariable 
-// This call assumes the reference variable details have been parsed 
+// ----- ActOnForallRefVariable
+// This call assumes the reference variable details have been parsed
 // (syntax checked) and issues, such as shadows, have been reported.
-// Given this, this member function takes steps to further determine 
+// Given this, this member function takes steps to further determine
 // the actual mesh type of the forall (passed in as a base mesh type)
-// and creates the reference variable 
+// and creates the reference variable
 bool Sema::ActOnForallMeshRefVariable(Scope* S,
                                   IdentifierInfo* RefVarInfo,
                                   SourceLocation RefVarLoc,
@@ -318,26 +310,26 @@ bool Sema::ActOnForallMeshRefVariable(Scope* S,
   ImplicitMeshParamDecl* D;
 
   if (MT->isUniform()) {
-    D = ImplicitMeshParamDecl::Create(Context, 
+    D = ImplicitMeshParamDecl::Create(Context,
                                       CurContext,
                                       RefVarLoc,
                                       RefVarInfo,
                                       QualType(cast<UniformMeshType>(MT),0), VD);
   } else if (MT->isStructured()) {
-    D = ImplicitMeshParamDecl::Create(Context, 
+    D = ImplicitMeshParamDecl::Create(Context,
                                       CurContext,
                                       RefVarLoc,
                                       RefVarInfo,
                                       QualType(cast<StructuredMeshType>(MT),0), VD);
 
   } else if (MT->isRectilinear()) {
-    D = ImplicitMeshParamDecl::Create(Context, 
+    D = ImplicitMeshParamDecl::Create(Context,
                                       CurContext,
                                       RefVarLoc,
                                       RefVarInfo,
                                       QualType(cast<RectilinearMeshType>(MT),0), VD);
   } else if (MT->isUnstructured()) {
-    D = ImplicitMeshParamDecl::Create(Context, 
+    D = ImplicitMeshParamDecl::Create(Context,
                                       CurContext,
                                       RefVarLoc,
                                       RefVarInfo,
@@ -365,10 +357,10 @@ StmtResult Sema::ActOnForallMeshStmt(SourceLocation ForallLoc,
 
   SCLStack.pop_back();
 
-  ForallMeshStmt* FS = new (Context) ForallMeshStmt(ElementType, 
-                                                    RefVarInfo, 
-                                                    MeshInfo, MVD, MT, 
-                                                    ForallLoc, 
+  ForallMeshStmt* FS = new (Context) ForallMeshStmt(ElementType,
+                                                    RefVarInfo,
+                                                    MeshInfo, MVD, MT,
+                                                    ForallLoc,
                                                     Body, Predicate, LParenLoc, RParenLoc);
 
   // check that LHS mesh field assignment

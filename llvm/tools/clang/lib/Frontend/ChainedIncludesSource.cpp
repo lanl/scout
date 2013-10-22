@@ -205,6 +205,11 @@ ChainedIncludesSource::FindExternalLexicalDecls(const DeclContext *DC,
 void ChainedIncludesSource::CompleteType(TagDecl *Tag) {
   return getFinalReader().CompleteType(Tag);
 }
+// ===== Scout =============================================
+void ChainedIncludesSource::CompleteType(MeshDecl *Mesh) {
+  return getFinalReader().CompleteType(Mesh);
+}
+// =========================================================
 void ChainedIncludesSource::CompleteType(ObjCInterfaceDecl *Class) {
   return getFinalReader().CompleteType(Class);
 }

@@ -221,7 +221,6 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
       MFK = Cell;
       ConsumeToken();
       Dec->setHasCellData(true);
-      llvm::errs() << "DDD mesh has cell data.\n";
       if (Tok.isNot(tok::colon)) {
         Diag(Tok, diag::err_expected_colon_after) << "cells";
         SkipUntil(tok::r_brace, true, true);
@@ -232,7 +231,6 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
       MFK = Vertex;
       ConsumeToken();
       Dec->setHasVertexData(true);
-      llvm::errs() << "DDD mesh has vertex data.\n";      
       if (Tok.isNot(tok::colon)) {
         Diag(Tok, diag::err_expected_colon_after) << "vertices";
         SkipUntil(tok::r_brace, true, true);
@@ -242,7 +240,6 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
       MFK = Face;
       ConsumeToken();
       Dec->setHasFaceData(true);
-      llvm::errs() << "DDD mesh has face data.\n";       
       if (Tok.isNot(tok::colon)) {
         Diag(Tok, diag::err_expected_colon_after) << " faces";
         SkipUntil(tok::r_brace, true, true);
@@ -251,7 +248,6 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
       MFK = Edge;
       ConsumeToken();
       Dec->setHasEdgeData(true);
-      llvm::errs() << "DDD mesh has edge data.\n";      
       if (Tok.isNot(tok::colon)) {
         Diag(Tok, diag::err_expected_colon_after) << " edges";
         SkipUntil(tok::r_brace, true, true);
@@ -277,9 +273,7 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
                              FD.D.getDeclSpec().getSourceRange().getBegin(),
                              FD.D);
 
-        llvm::errs() << "DDD ParseMeshBody - before cast\n";
         MeshFieldDecl* FDecl = cast<MeshFieldDecl>(Field);
-        llvm::errs() << "DDD ParseMeshBody - after cast\n";
 
         FDecl->setImplicit(false);
 
