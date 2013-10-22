@@ -245,7 +245,7 @@ public:
   ///
   /// \returns false if the visitation was terminated early, true otherwise.
   bool TraverseLambdaCapture(LambdaExpr *LE, const LambdaExpr::Capture *C);
-  
+
   // ---- Methods on Stmts ----
 
   // Declare Traverse*() for all concrete Stmt classes.
@@ -595,31 +595,9 @@ bool RecursiveASTVisitor<Derived>::TraverseType(QualType T) {
 
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseTypeLoc(TypeLoc TL) {
-  // ===== Scout
-  // ===========================================================
-  // SC_TODO: this debug code can be deleted when we get the
-  // MeshTypeloc stuff working correctly
+  // ===== Scout ===========================================================
+  // SC_TODO: this debug code can be deleted when we get the MeshTypeloc stuff working correctly
   if (TL.getTypeLocClass() == TypeLoc::UniformMesh) {
-      if (isa<TagType>(TL.getTypePtr()))
-        llvm::errs() << "Is tag\n";
-      if (isa<MeshType>(TL.getTypePtr()))
-        llvm::errs() << "Is mesh\n";
-      if (isa<UniformMeshType>(TL.getTypePtr()))
-        llvm::errs() << "Is uniform mesh\n";
-      
-      if (TL.castAs<UniformMeshTypeLoc>().getTypeLocClass() == TypeLoc::UniformMesh) llvm::errs() << "Is uniform mesh 2\n";
-      //combo of castAs<UniformMeshTypeLoc>() and getTypePtr()fails
-      //if (isa<UniformMeshType>(TL.castAs<UniformMeshTypeLoc>().getTypePtr())) llvm::errs() << "Is uniform mesh 3\n";
-      llvm::errs() << "TL " << TL << "\n";
-      UniformMeshTypeLoc NTL = TL.castAs<UniformMeshTypeLoc>(); //bad
-      //MeshTypeLoc NTL = TL.castAs<MeshTypeLoc>(); //bad
-      //TagTypeLoc NTL = TL.castAs<TagTypeLoc>(); // fails in isKind
-      llvm::errs() << "NTL " << NTL << "\n";
-
-      if (isa<TagType>(NTL.getTypePtr())) llvm::errs() << "Is still tag\n";
-      if (isa<MeshType>(NTL.getTypePtr())) llvm::errs() << "Is still mesh\n";
-      if (isa<UniformMeshType>(NTL.getTypePtr())) llvm::errs() << "Is still uniform mesh\n";
-      llvm::errs() << "second check done\n";
       return getDerived().TraverseUniformMeshTypeLoc(TL.castAs<UniformMeshTypeLoc>());
     }
    // =======================================================================
@@ -1635,7 +1613,7 @@ bool RecursiveASTVisitor<Derived>::TraverseRecordHelper(
 }
 
 // ===== Scout ==================================================================================
-  
+
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseUniformMeshHelper(UniformMeshDecl *D) {
   // We shouldn't traverse D->getTypeForDecl(); it's a result of
@@ -1671,7 +1649,7 @@ bool RecursiveASTVisitor<Derived>::TraverseRectilinearMeshHelper(RectilinearMesh
 DEF_TRAVERSE_DECL(RectilinearMeshDecl, {
   TRY_TO(TraverseRectilinearMeshHelper(D));
 })
-  
+
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseUnstructuredMeshHelper(UnstructuredMeshDecl *D) {
   // We shouldn't traverse D->getTypeForDecl(); it's a result of
@@ -1685,7 +1663,7 @@ DEF_TRAVERSE_DECL(UnstructuredMeshDecl, {
 })
 
 // ==============================================================================================
-  
+
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseCXXRecordHelper(
     CXXRecordDecl *D) {
@@ -1973,7 +1951,7 @@ DEF_TRAVERSE_STMT(GCCAsmStmt, {
     // children() iterates over inputExpr and outputExpr.
   })
 
-DEF_TRAVERSE_STMT(MSAsmStmt, { 
+DEF_TRAVERSE_STMT(MSAsmStmt, {
     // FIXME: MS Asm doesn't currently parse Constraints, Clobbers, etc.  Once
     // added this needs to be implemented.
   })
@@ -2232,7 +2210,7 @@ DEF_TRAVERSE_STMT(CXXTemporaryObjectExpr, {
     TRY_TO(TraverseTypeLoc(S->getTypeSourceInfo()->getTypeLoc()));
   })
 
-// Walk only the visible parts of lambda expressions.  
+// Walk only the visible parts of lambda expressions.
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseLambdaExpr(LambdaExpr *S) {
   for (LambdaExpr::capture_iterator C = S->explicit_capture_begin(),
@@ -2254,7 +2232,7 @@ bool RecursiveASTVisitor<Derived>::TraverseLambdaExpr(LambdaExpr *S) {
         }
       } else {
         TRY_TO(TraverseTypeLoc(Proto.getResultLoc()));
-      }        
+      }
     }
   }
 
@@ -2383,7 +2361,7 @@ DEF_TRAVERSE_STMT(ObjCStringLiteral, { })
 DEF_TRAVERSE_STMT(ObjCBoxedExpr, { })
 DEF_TRAVERSE_STMT(ObjCArrayLiteral, { })
 DEF_TRAVERSE_STMT(ObjCDictionaryLiteral, { })
-  
+
 // Traverse OpenCL: AsType, Convert.
 DEF_TRAVERSE_STMT(AsTypeExpr, { })
 
