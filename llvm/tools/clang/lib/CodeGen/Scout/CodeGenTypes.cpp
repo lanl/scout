@@ -24,6 +24,7 @@ using namespace CodeGen;
 //  Type::RectlinearMesh
 //  Type::UnstructuredMesh
 //
+// put fields first and then the mesh dimensions (if required) 
 llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
 
   const Type *Ty = T.getTypePtr();
@@ -31,7 +32,8 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
   // Implemented as a struct of n-dimensional array's type.
   MeshDecl *mesh = cast<MeshType>(Ty)->getDecl();
   MeshType::MeshDimensions dims;
-  dims = cast<MeshType>(T.getCanonicalType().getTypePtr())->dimensions();
+  const MeshType *meshType =  cast<MeshType>(T.getCanonicalType().getTypePtr());
+  dims = meshType->dimensions();
 
   unsigned int rank = 0;
   for(unsigned int i = 0; i < dims.size(); ++i) {
@@ -45,10 +47,6 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
   MeshDecl::field_iterator it_end = mesh->field_end();
 
   std::vector< llvm::Type * > eltTys;
-  // mesh_flags__, width, height, depth
-  for(size_t i = 0; i < rank+1 /* 4 */; ++i) {
-    eltTys.push_back(llvm::IntegerType::get(getLLVMContext(), 32));
-  }
 
   for( ; it != it_end; ++it) {
     // Do not generate code for implicit mesh member variables.
@@ -58,7 +56,7 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
       uint64_t numElts = 1;
 
       // Transform each member type into a pointer.
-      for(unsigned i = 0; i < rank /*dims.size()*/; ++i) {
+      for(unsigned i = 0; i < rank; ++i) {
         llvm::APSInt result;
         dims[i]->EvaluateAsInt(result, Context);
         numElts *= result.getSExtValue();
@@ -68,6 +66,12 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
     }
   }
 
+  if(isa<UniformMeshType>(meshType) || isa<RectilinearMeshType>(meshType)) {
+    // put width/height/depth after fields
+    for(size_t i = 0; i < rank; ++i) {
+      eltTys.push_back(llvm::IntegerType::get(getLLVMContext(), 32));
+    }
+  }
 
   typedef llvm::ArrayRef< llvm::Type * > Array;
   typedef llvm::StructType StructTy;
