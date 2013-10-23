@@ -746,7 +746,7 @@ public:
   QualType RebuildStructuredMeshType(StructuredMeshDecl *SMD) {
     return SemaRef.Context.getTypeDeclType(SMD);
   }
-  
+
   QualType RebuildRectilinearMeshType(RectilinearMeshDecl *RMD) {
     return SemaRef.Context.getTypeDeclType(RMD);
   }
@@ -5639,6 +5639,14 @@ TreeTransform<Derived>::TransformForallMeshStmt(ForallMeshStmt *S) {
   return R;
 }
 
+template<typename Derived>
+StmtResult
+TreeTransform<Derived>::TransformRenderallMeshStmt(RenderallMeshStmt *S) {
+  StmtResult R(false);
+  R.set(S);
+  return R;
+}
+
 /*template<typename Derived>
 StmtResult
 TreeTransform<Derived>::TransformForAllArrayStmt(ForAllArrayStmt *S) {
@@ -5646,14 +5654,7 @@ TreeTransform<Derived>::TransformForAllArrayStmt(ForAllArrayStmt *S) {
   R.set(S);
   return R;
 }
-  
-template<typename Derived>
-StmtResult
-TreeTransform<Derived>::TransformRenderAllStmt(RenderAllStmt *S) {
-  StmtResult R(false);
-  R.set(S);
-  return R;
-}
+
 
 template<typename Derived>
 StmtResult
@@ -5664,7 +5665,7 @@ TreeTransform<Derived>::TransformVolumeRenderAllStmt(VolumeRenderAllStmt *S) {
 }
 */
 // ==========================================================================================
-  
+
 template<typename Derived>
 StmtResult
 TreeTransform<Derived>::TransformGotoStmt(GotoStmt *S) {

@@ -86,7 +86,7 @@ class Parser : public CodeCompletionHandler {
   SourceLocation PrevTokLocation;
 
   unsigned short ParenCount, BracketCount, BraceCount;
-  
+
   /// Actions - These are the callbacks we invoke as we parse various constructs
   /// in the file.
   Sema &Actions;
@@ -139,7 +139,7 @@ class Parser : public CodeCompletionHandler {
 
   /// \brief Identifier for "unavailable".
   IdentifierInfo *Ident_unavailable;
-  
+
   /// \brief Identifier for "message".
   IdentifierInfo *Ident_message;
 
@@ -232,10 +232,10 @@ public:
   ~Parser();
 
   //====== scout ======================
-  void setMeshFieldKind(MeshFieldKind M) { MFK = M; } 
+  void setMeshFieldKind(MeshFieldKind M) { MFK = M; }
   MeshFieldKind getMeshFieldKind(void) {return MFK; }
   //===================================
-  
+
   const LangOptions &getLangOpts() const { return PP.getLangOpts(); }
   const TargetInfo &getTargetInfo() const { return PP.getTargetInfo(); }
   Preprocessor &getPreprocessor() const { return PP; }
@@ -919,7 +919,7 @@ private:
     /// method will be stored so that they can be reintroduced into
     /// scope at the appropriate times.
     SmallVector<LateParsedDefaultArgument, 8> DefaultArgs;
-  
+
     /// \brief The set of tokens that make up an exception-specification that
     /// has not yet been parsed.
     CachedTokens *ExceptionSpecTokens;
@@ -948,7 +948,7 @@ private:
   /// C++ class, its method declarations that contain parts that won't be
   /// parsed until after the definition is completed (C++ [class.mem]p2),
   /// the method declarations and possibly attached inline definitions
-  /// will be stored here with the tokens that will be parsed to create those 
+  /// will be stored here with the tokens that will be parsed to create those
   /// entities.
   typedef SmallVector<LateParsedDeclaration*,2> LateParsedDeclarationsContainer;
 
@@ -1322,7 +1322,7 @@ private:
   ExprResult ParseStringLiteralExpression(bool AllowUserDefinedLiteral = false);
 
   ExprResult ParseGenericSelectionExpression();
-  
+
   ExprResult ParseObjCBoolLiteral();
 
   //===--------------------------------------------------------------------===//
@@ -1475,7 +1475,7 @@ private:
       SourceLocation LBracloc, SourceLocation SuperLoc,
       ParsedType ReceiverType, ExprArg ReceiverExpr);
   bool ParseObjCXXMessageReceiver(bool &IsExpr, void *&TypeOrExpr);
-    
+
   //===--------------------------------------------------------------------===//
   // C99 6.8: Statements and Blocks.
 
@@ -1652,7 +1652,7 @@ private:
 
   bool ParseImplicitInt(DeclSpec &DS, CXXScopeSpec *SS,
                         const ParsedTemplateInfo &TemplateInfo,
-                        AccessSpecifier AS, DeclSpecContext DSC, 
+                        AccessSpecifier AS, DeclSpecContext DSC,
                         ParsedAttributesWithRange &Attrs);
   DeclSpecContext getDeclSpecContextFromDeclaratorContext(unsigned Context);
   void ParseDeclarationSpecifiers(DeclSpec &DS,
@@ -1768,7 +1768,7 @@ private:
   /// isCXXFunctionDeclarator - Disambiguates between a function declarator or
   /// a constructor-style initializer, when parsing declaration statements.
   /// Returns true for function declarator and false for constructor-style
-  /// initializer. Sets 'IsAmbiguous' to true to indicate that this declaration 
+  /// initializer. Sets 'IsAmbiguous' to true to indicate that this declaration
   /// might be a constructor-style initializer.
   /// If during the disambiguation process a parsing error is encountered,
   /// the function returns true to let the declaration parsing code handle it.
@@ -1893,8 +1893,8 @@ private:
   }
   void DiagnoseProhibitedAttributes(ParsedAttributesWithRange &attrs);
 
-  // Forbid C++11 attributes that appear on certain syntactic 
-  // locations which standard permits but we don't supported yet, 
+  // Forbid C++11 attributes that appear on certain syntactic
+  // locations which standard permits but we don't supported yet,
   // for example, attributes appertain to decl specifiers.
   void ProhibitCXX11Attributes(ParsedAttributesWithRange &attrs);
 
@@ -1964,11 +1964,11 @@ private:
                                 SourceLocation *endLoc = 0);
   void ParseMicrosoftDeclSpec(ParsedAttributes &Attrs);
   bool IsSimpleMicrosoftDeclSpec(IdentifierInfo *Ident);
-  void ParseComplexMicrosoftDeclSpec(IdentifierInfo *Ident, 
+  void ParseComplexMicrosoftDeclSpec(IdentifierInfo *Ident,
                                      SourceLocation Loc,
                                      ParsedAttributes &Attrs);
-  void ParseMicrosoftDeclSpecWithSingleArg(IdentifierInfo *AttrName, 
-                                           SourceLocation AttrNameLoc, 
+  void ParseMicrosoftDeclSpecWithSingleArg(IdentifierInfo *AttrName,
+                                           SourceLocation AttrNameLoc,
                                            ParsedAttributes &Attrs);
   void ParseMicrosoftTypeAttributes(ParsedAttributes &attrs);
   void ParseMicrosoftInheritanceClassAttributes(ParsedAttributes &attrs);
@@ -2127,7 +2127,7 @@ private:
   void ParseClassSpecifier(tok::TokenKind TagTokKind, SourceLocation TagLoc,
                            DeclSpec &DS, const ParsedTemplateInfo &TemplateInfo,
                            AccessSpecifier AS, bool EnteringContext,
-                           DeclSpecContext DSC, 
+                           DeclSpecContext DSC,
                            ParsedAttributesWithRange &Attributes);
   void ParseCXXMemberSpecification(SourceLocation StartLoc,
                                    SourceLocation AttrFixitLoc,
@@ -2255,7 +2255,7 @@ private:
   ExprResult ParseUnaryTypeTrait();
   ExprResult ParseBinaryTypeTrait();
   ExprResult ParseTypeTrait();
-  
+
   //===--------------------------------------------------------------------===//
   // Embarcadero: Arary and Expression Traits
   ExprResult ParseArrayTypeTrait();
@@ -2271,10 +2271,10 @@ private:
                                          MacroInfo *MacroInfo,
                                          unsigned ArgumentIndex);
   virtual void CodeCompleteNaturalLanguage();
-  
-  
+
+
   // scout **************************** Scout parsing methods
-  
+
   void ParseMeshVarBracketDeclarator(Declarator &D);
 
   void ParseMeshVarParenDeclarator(Declarator &D);
@@ -2285,30 +2285,31 @@ private:
   StmtResult ParseForallStatement(ParsedAttributes &Attr);
 
   StmtResult ParseForallMeshStatement(ParsedAttributes &Attr);
+  StmtResult ParseRenderallMeshStatement(ParsedAttributes &Attr);
 
   const MeshType* LookupMeshType(IdentifierInfo *MeshInfo,
                                  SourceLocation MeshLoc);
 
   const MeshType* LookupMeshType(VarDecl *VD,
-                                 IdentifierInfo *MeshInfo, 
+                                 IdentifierInfo *MeshInfo,
                                  SourceLocation MeshLoc);
 
   VarDecl* LookupMeshVarDecl(IdentifierInfo *MeshInfo,
                              SourceLocation MeshLoc);
-  
+
   bool ParseMeshSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TemplateInfo);
-  
+
   bool ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec);
-  
+
   void ParseMeshDeclaration(ParsingDeclSpec &DS,
                             FieldCallback &Fields);
 
   void ParseMeshParameterDeclaration(DeclSpec& DS);
-  
+
   StmtResult ParseWindowOrImageDeclaration(bool window,
                                            StmtVector &Stmts,
                                            bool OnlyStatement);
- 
+
   StmtResult ParseCameraDeclaration(StmtVector &Stmts,
       bool OnlyStatement);
 
@@ -2322,24 +2323,24 @@ private:
   void InsertCPPCode(const std::string& code,
                      SourceLocation location,
                      bool beforeLookAhead=true);
-  
+
   // scout
   // Debugging method for displaying the next N lookahead tokens.
   void DumpLookAheads(unsigned N);
-  
+
   // scout - convert a token into a string representation
   std::string TokToStr(const Token& tok);
-  
+
   std::string ToCPPCode(Stmt* stmt){
     return stmt->toCPPCode(Actions.Context);
   }
-  
+
   typedef std::vector<StmtVector*> StmtVectorVec;
-  
+
   StmtVectorVec StmtsStack;
-  
+
   bool DeclaringMesh;
-    
+
   bool isScoutLang() const{
     return getLangOpts().Scout;
   }

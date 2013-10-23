@@ -15,18 +15,14 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace clang;
 
-// ===========================================
-//  base forall statement
-//
 
-
-// ----- ForallStmt 
-// 
-// Constructor for a forall statement w/out a predicate expression. 
+// ----- ForallStmt
 //
-ForallStmt::ForallStmt(StmtClass StatementClass, 
-                       IdentifierInfo* RefVarInfo, 
-                       IdentifierInfo* ContainerInfo, 
+// Constructor for a forall statement w/out a predicate expression.
+//
+ForallStmt::ForallStmt(StmtClass StatementClass,
+                       IdentifierInfo* RefVarInfo,
+                       IdentifierInfo* ContainerInfo,
                        VarDecl *ContainerVD,
                        SourceLocation ForallLocation,
                        Stmt* Body)
@@ -36,29 +32,29 @@ ForallStmt::ForallStmt(StmtClass StatementClass,
     ContainerVarDecl(ContainerVD),
     ForallKWLoc(ForallLocation) {
 
-  SubExprs[PREDICATE] = 0;      
+  SubExprs[PREDICATE] = 0;
   SubExprs[BODY]      = Body;
 }
 
 
-// ----- ForallStmt::ForallStmt 
+// ----- ForallStmt::ForallStmt
 //
-// Constructor for a forall statement w/ a predicate expression. 
+// Constructor for a forall statement w/ a predicate expression.
 //
-ForallStmt::ForallStmt(StmtClass StatementClass, 
+ForallStmt::ForallStmt(StmtClass StatementClass,
                        IdentifierInfo* RefVarInfo,
                        IdentifierInfo* ContainerInfo,
-                       VarDecl *ContainerVD, 
+                       VarDecl *ContainerVD,
                        SourceLocation ForallLocation,
-                       Stmt* Body, 
-                       Expr* Predicate, 
+                       Stmt* Body,
+                       Expr* Predicate,
                        SourceLocation LeftParenLoc, SourceLocation RightParenLoc)
-  : Stmt(StatementClass), 
+  : Stmt(StatementClass),
     LoopRefVarInfo(RefVarInfo),
     ContainerRefVarInfo(ContainerInfo),
     ContainerVarDecl(ContainerVD),
     ForallKWLoc(ForallLocation),
-    LParenLoc(LeftParenLoc), RParenLoc(RightParenLoc) { 
+    LParenLoc(LeftParenLoc), RParenLoc(RightParenLoc) {
 
   SubExprs[PREDICATE] = Predicate;
   SubExprs[BODY]      = Body;
@@ -67,16 +63,10 @@ ForallStmt::ForallStmt(StmtClass StatementClass,
 
 
 
-// ===========================================
-//  forall mesh statement
+
+// ----- ForallMeshStmt
 //
-
-
-
-
-// ----- ForallMeshStmt 
-//
-// Constructor for a forall mesh statement w/out a predicate expression. 
+// Constructor for a forall mesh statement w/out a predicate expression.
 //
 ForallMeshStmt::ForallMeshStmt(MeshElementType RefElement,
                                IdentifierInfo* RefVarInfo,
@@ -84,13 +74,13 @@ ForallMeshStmt::ForallMeshStmt(MeshElementType RefElement,
                                VarDecl* MeshVarDecl,
                                const MeshType* MT,
                                SourceLocation ForallLocation,
-                               Stmt *Body) 
-  : ForallStmt(ForallMeshStmtClass, 
+                               Stmt *Body)
+  : ForallStmt(ForallMeshStmtClass,
                RefVarInfo,
                MeshInfo, MeshVarDecl,
                ForallLocation, Body) {
 
-    MeshElementRef = RefElement; 
+    MeshElementRef = RefElement;
 
 
 
@@ -99,20 +89,20 @@ ForallMeshStmt::ForallMeshStmt(MeshElementType RefElement,
   }
 
 
-// ----- ForallMeshStmt 
+// ----- ForallMeshStmt
 //
-// Constructor for a forall mesh statement w/ a predicate expression. 
+// Constructor for a forall mesh statement w/ a predicate expression.
 //
 ForallMeshStmt::ForallMeshStmt(MeshElementType RefElement,
                                IdentifierInfo* RefVarInfo,
                                IdentifierInfo* MeshInfo,
                                VarDecl* MeshVarDecl,
-                               const MeshType* MT, 
+                               const MeshType* MT,
                                SourceLocation ForallLocation,
-                               Stmt *Body, 
-                               Expr* Predicate, 
-                               SourceLocation LeftParenLoc, SourceLocation RightParenLoc) 
-  : ForallStmt(ForallMeshStmtClass, 
+                               Stmt *Body,
+                               Expr* Predicate,
+                               SourceLocation LeftParenLoc, SourceLocation RightParenLoc)
+  : ForallStmt(ForallMeshStmtClass,
                RefVarInfo,
                MeshInfo, MeshVarDecl,
                ForallLocation, Body,
@@ -122,19 +112,19 @@ ForallMeshStmt::ForallMeshStmt(MeshElementType RefElement,
     MeshRefType    = MT;
   }
 
-bool ForallMeshStmt::isUniformMesh() const { 
-  return MeshRefType->getTypeClass() == Type::UniformMesh; 
-} 
-
-bool ForallMeshStmt::isRectilinearMesh() const { 
-  return MeshRefType->getTypeClass() == Type::RectilinearMesh; 
+bool ForallMeshStmt::isUniformMesh() const {
+  return MeshRefType->getTypeClass() == Type::UniformMesh;
 }
 
-bool ForallMeshStmt::isStructuredMesh() const { 
-  return MeshRefType->getTypeClass() == Type::StructuredMesh; 
+bool ForallMeshStmt::isRectilinearMesh() const {
+  return MeshRefType->getTypeClass() == Type::RectilinearMesh;
 }
 
-bool ForallMeshStmt::isUnstructuredMesh() const { 
-  return MeshRefType->getTypeClass() == Type::UnstructuredMesh; 
+bool ForallMeshStmt::isStructuredMesh() const {
+  return MeshRefType->getTypeClass() == Type::StructuredMesh;
+}
+
+bool ForallMeshStmt::isUnstructuredMesh() const {
+  return MeshRefType->getTypeClass() == Type::UnstructuredMesh;
 }
 

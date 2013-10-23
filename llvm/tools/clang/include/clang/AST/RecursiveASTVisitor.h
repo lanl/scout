@@ -1987,9 +1987,7 @@ DEF_TRAVERSE_STMT(DoStmt, { })
 DEF_TRAVERSE_STMT(ForStmt, { })
 // ===== Scout ==========================================================================
 DEF_TRAVERSE_STMT(ForallMeshStmt, { })
-//DEF_TRAVERSE_STMT(RenderAllMeshStmt, { })
-//DEF_TRAVERSE_STMT(ForallArrayStmt, { })
-//DEF_TRAVERSE_STMT(VolumeRenderAllStmt, { })
+DEF_TRAVERSE_STMT(RenderallMeshStmt, { })
 // ======================================================================================
 DEF_TRAVERSE_STMT(GotoStmt, { })
 DEF_TRAVERSE_STMT(IfStmt, { })

@@ -25,7 +25,7 @@ public:
   BodyIndexer(IndexingContext &indexCtx,
               const NamedDecl *Parent, const DeclContext *DC)
     : IndexCtx(indexCtx), Parent(Parent), ParentDC(DC) { }
-  
+
   bool shouldWalkTypesOfTypeLocs() const { return false; }
 
   bool TraverseTypeLoc(TypeLoc TL) {
@@ -104,7 +104,7 @@ public:
                                Parent, ParentDC, E, CXIdxEntityRef_Implicit);
     return true;
   }
-  
+
   bool VisitObjCDictionaryLiteral(ObjCDictionaryLiteral *E) {
     if (ObjCMethodDecl *MD = E->getDictWithObjectsMethod())
       IndexCtx.handleReference(MD, E->getLocStart(),
@@ -162,7 +162,7 @@ public:
   }
 
   // ===== Scout ==============================================================
-  // SC_TODO - implement these… 
+  // SC_TODO - implement these…
   bool TraverseUniformMeshType(UniformMeshType*){ return true; }
   bool TraverseStructuredMeshType(StructuredMeshType*){ return true; }
   bool TraverseRectilinearMeshType(RectilinearMeshType*){ return true; }
@@ -177,6 +177,7 @@ public:
   bool TraverseRectilinearMeshDecl(RectilinearMeshDecl*){ return true; }
   bool TraverseUnstructuredMeshDecl(UnstructuredMeshDecl*){ return true; }
   bool TraverseForallMeshStmt(ForallMeshStmt*){ return true; }
+  bool TraverseRenderallMeshStmt(RenderallMeshStmt*){ return true; }
   //bool TraverseRenderAllStmt(RenderAllStmt*){ return true; }
   //bool TraverseVolumeRenderAllStmt(VolumeRenderAllStmt*){ return true; }
   // =========================================================================

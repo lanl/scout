@@ -19,10 +19,12 @@ def WhileStmt : Stmt;
 def DoStmt : Stmt;
 def ForStmt : Stmt;
 // ===== Scout =========================================
+
 def ForallStmt : Stmt<1>;
 def ForallMeshStmt : DStmt<ForallStmt>;
-//def RenderAllStmt : DStmt<ForAllStmt>;
-//def VolumeRenderAllStmt : Stmt;
+
+def RenderallStmt : Stmt<1>;
+def RenderallMeshStmt : DStmt<RenderallStmt>;
 // =====================================================
 def GotoStmt : Stmt;
 def IndirectGotoStmt : Stmt;
@@ -172,7 +174,7 @@ def OpaqueValueExpr : DStmt<Expr>;
 
 // Microsoft Extensions.
 def MSPropertyRefExpr : DStmt<Expr>;
-def CXXUuidofExpr : DStmt<Expr>; 
+def CXXUuidofExpr : DStmt<Expr>;
 def SEHTryStmt : Stmt;
 def SEHExceptStmt : Stmt;
 def SEHFinallyStmt : Stmt;
