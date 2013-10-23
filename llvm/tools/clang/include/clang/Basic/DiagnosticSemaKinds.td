@@ -6452,110 +6452,86 @@ def warn_not_a_doxygen_trailing_member_comment : Warning<
   "not a Doxygen trailing comment">, InGroup<Documentation>, DefaultIgnore;
 } // end of documentation issue category
 
-// ===== Scout ==============================================================================
+// ===== Scout ===============================================================
 let CategoryName = "Scout Issue" in {
 
-def warn_forall_calling_io_func:
-    Warning<"I/O function called within forall body">;
-
-def warn_renderall_calling_io_func:
-    Warning<"I/O function called within forall body">;
-
-def err_forall_non_cell_field   : Error<"Mesh field is not cell located.">;
-def err_forall_non_edge_field   : Error<"Mesh field is not edge located.">;
-def err_forall_non_vertex_field : Error<"Mesh field is not field located.">;
-def err_forall_non_face_field   : Error<"Mesh field is not face located.">;
-
+def warn_forall_calling_io_func:Warning<
+    "I/O function called within forall body">;
+def warn_renderall_calling_io_func:Warning<
+    "I/O function called within forall body">;
+def err_forall_non_cell_field:Error<
+    "Mesh field is not cell located.">;
+def err_forall_non_edge_field:Error<
+    "Mesh field is not edge located.">;
+def err_forall_non_vertex_field:Error<
+    "Mesh field is not field located.">;
+def err_forall_non_face_field:Error<
+    "Mesh field is not face located.">;
 def err_illegal_mesh_element_access : Error<
-"illegal mesh element access -- outside of a supporting mesh construct.">;
-
+    "illegal mesh element access -- outside of a supporting mesh construct.">;
 def err_loop_variable_shadows_forall : Error<
-"forall loop variable %0 shadows an existing identifier">;
+    "forall loop variable %0 shadows an existing identifier">;
 def err_loop_variable_shadows_renderall : Error<
-"renderall loop variable %0 shadows an existing identifier">;
+    "renderall loop variable %0 shadows an existing identifier">;
 def err_elements_variable_shadows_renderall : Error<
-"renderall elements variable %0 shadows an existing identifier">;
+    "renderall elements variable %0 shadows an existing identifier">;
 
 def err_unknown_mesh_variable_renderall : Error<
-"unknown mesh variable %0 while parsing renderall statement">;
+    "unknown mesh variable %0 while parsing renderall statement">;
 def err_unknown_mesh_variable_forall : Error<
-"unknown mesh variable %0 while parsing forall statement">;
+    "unknown mesh variable %0 while parsing forall statement">;
 
 def err_not_mesh_variable_forall : Error<
-"not a mesh variable %0 while parsing forall statement">;
+    "not a mesh variable %0 while parsing forall statement">;
 def err_not_mesh_variable_renderall : Error<
-"not a mesh variable %0 while parsing renderall statement">;
-
+    "not a mesh variable %0 while parsing renderall statement">;
 def err_invalid_mesh_field : Error<
-"%0 is not a valid mesh field">;
-
+    "%0 is not a valid mesh field">;
 def err_invalid_mesh_cells_field : Error<
-"%0 is not a cells field on the mesh">;
-
+    "%0 is not a cells field on the mesh">;
 def err_invalid_mesh_vertices_field : Error<
-"%0 is not a vertices field on the mesh">;
-
+    "%0 is not a vertices field on the mesh">;
 def err_invalid_mesh_faces_field : Error<
-"%0 is not a faces field on the mesh">;
-
+    "%0 is not a faces field on the mesh">;
 def err_invalid_mesh_edges_field : Error<
-"%0 is not an edges field on the mesh">;
-
+    "%0 is not an edges field on the mesh">;
 def err_no_color_assignment_renderall : Error<
-"color or color components {r,g,b,a} were not assigned in all branches of renderall">;
-
+    "color components {r,g,b,a} were not assigned in renderall">;
 def err_rhs_after_lhs_forall : Error<
-"mesh field appears on LHS then on subsequent RHS">;
-
+    "mesh field appears on LHS then on subsequent RHS">;
 def err_cshift_not_allowed : Error<
-"cannot use cshift on unstructured mesh">;
-
+    "cannot use cshift on unstructured mesh">;
 def err_cshift_args : Error<
-"number of cshift args does not correspond to mesh dimensions">;
-
+    "number of cshift args does not correspond to mesh dimensions">;
 def err_cshift_field : Error<
-"first argument to cshift must be a mesh field">;
-
+    "first argument to cshift must be a mesh field">;
 def err_pointer_field_mesh : Error<
-"mesh field element must be non-pointer type">;
-
+    "mesh field element must be non-pointer type">;
 def err_elements_not_in_forall_renderall : Error<
-"renderall elements must appear within a forall loop">;
-
+    "renderall elements must appear within a forall loop">;
 def err_position_not_allowed : Error<
-"mesh position component not allowed for unstructured meshes">;
-
+    "mesh position component not allowed for unstructured meshes">;
 def err_invalid_position_ref : Error<
-"mesh position component exceeds number of dimensions">;
-
+    "mesh position component exceeds number of dimensions">;
 def err_invalid_height_mesh : Error<
-"invalid use of height field: number of mesh dimensions < 2">;
-
+    "invalid use of height field: number of mesh dimensions < 2">;
 def err_invalid_depth_mesh : Error<
-"invalid use of depth field: number of mesh dimensions < 3">;
-
+    "invalid use of depth field: number of mesh dimensions < 3">;
 def err_height_depth_invalid_mesh: Error<
-"invalid use of height or depth for unstructured mesh">;
-
+    "invalid use of height or depth for unstructured mesh">;
 def warn_lhs_outside_forall : Warning<
-  "non-mesh variable '%0' from outside scope appears on LHS within parallel (forall) construct">;
-
+    "non-mesh variable '%0' from outer scope on LHS of parallel construct">;
 def err_invalid_scout_vector_component : Error<
-"invalid vector component, expected [x,y,z,w]">;
-
+    "invalid vector component, expected [x,y,z,w]">;
 def err_invalid_scout_color_component : Error<
-"invalid color vector component, expected {x,y,z,w} or {r,g,b,a}">;
-
+    "invalid color vector component, expected {x,y,z,w} or {r,g,b,a}">;
 def err_mesh_param_dimensionality_mismatch : Error<
-"dimensionality mismatch when passing mesh as parameter">;
-
+    "dimensionality mismatch when passing mesh as parameter">;
 def err_not_camera_variable_renderall : Error<
-"not a camera variable %0 while parsing renderall statement">;
-
+    "not a camera variable %0 while parsing renderall statement">;
 def err_unknown_camera_variable_renderall : Error<
-"unknown camera variable %0 while parsing renderall statement">;
-
+    "unknown camera variable %0 while parsing renderall statement">;
 } // end Scout issue category
-// ============================================================================================
+// ===========================================================================
 
 } // end of sema component.

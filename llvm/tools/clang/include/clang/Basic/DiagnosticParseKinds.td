@@ -818,130 +818,6 @@ def err_seh___finally_block : Error<
   "%0 only allowed in __finally block">;
 
 
-// === Scout ==================================================================
-//
-def err_expected_mesh_kw:
-    Error<"expected mesh keyword">;
-def warn_empty_mesh:
-    Warning<"mesh definition with no fields">;
-def err_expected_semi_mesh_decl:
-    Error<"expected closing semicolon at end of mesh declaration">;
-def err_unknown_mesh_variable:
-    Error<"unknown or invalid mesh instance">;
-def err_expected_a_mesh_type:
-    Error<"expected a mesh type">;
-
-// +----- mesh warnings -----------------------------------------------------+
-def warn_mesh_has_no_cell_fields:
-    Warning<"no cell fields available in selected mesh">;
-def warn_mesh_has_no_edge_fields:
-    Warning<"no edge fields available in selected mesh">;
-def warn_mesh_has_no_vertex_fields:
-    Warning<"no vertex fields available in selected mesh">;
-def warn_mesh_has_no_face_fields:
-    Warning<"no face fields available in selected mesh">;
-
-// +----- forall errors -----------------------------------------------------+
-def err_forall_invalid_op:
-    Error<"invalid operation within forall construct">;
-def err_forall_invalid_body:
-    Error<"Invalid forall body">;
-def err_forall_expected_mesh_element_kw:
-    Error<"expected mesh element keyword">;
-def err_forall_expected_kw_in:
-    Error<"forall missing (expected) keyword: 'in'">;
-def err_forall_predicate_missing_lparen:
-    Error<"forall predicate clause missing opening paren">;
-def err_forall_predicate_missing_rparen:
-    Error<"forall predicate clause missing closing paren">;
-def err_forall_unknown_mesh_component:
-    Error<"unrecognized mesh element">;
-
-//def err_expected_vertices_cells: Error<"expected vertices or cells keyword">;
-//def err_expected_spheres_kw: Error<"expected 'spheres' keyword">;
-//def err_invalid_renderall_body: Error<"Invalid renderall body">;
-
-// +----- renderall errors -------------------------------------+
-def err_renderall_invalid_op:
-    Error<"Invalid operation within renderall construct">;
-def err_invalid_forall_body:
-    Error<"Invalid forall body">;
-
-def err_renderall_expected_mesh_element_kw:
-    Error<"expected mesh element keyword">;
-def err_renderall_expected_kw_in:
-    Error<"renderall missing (expected) keyword: 'in'">;
-def err_renderall_not_a_mesh_type:
-    Error<"instance if of a non-mesh type">;
-def err_renderall_predicate_missing_lparen:
-    Error<"renderall predicate clause missing opening paren">;
-def err_renderall_predicate_missing_rparen:
-    Error<"renderall predicate clause missing closing paren">;
-def err_renderall_unknown_mesh_component:
-    Error<"unrecognized mesh element">;
-
-
-def err_renderall_invalid_body:
-    Error<"invalid renderall body">;
-
-def err_expected_numeric_constant_in_mesh_def : Error<"expected a numeric constant in mesh definition dimensions">;
-
-def err_no_mesh_field_specifier:
-    Error<"no mesh element/field has been specified, (e.g.: 'cells', ...)">;
-def err_extern_mesh_field :
-    Error<"'extern' mesh fields are not allowed">;
-def err_expected_numeric_constant_in_window_def:
-    Error<"expected a numeric constant in window dimensions definition">;
-def err_mesh_not_implemented:
-    Error< "mesh type is not fully implemented yet">;
-def err_missing_field_window_decl:
-    Error<"in window declaration, missing %0 field">;
-def err_expected_semi_window_arg:
-    Error<"expected ';' at end window field">;
-def err_missing_field_image_decl:
-    Error<"in image declaration, missing %0 field">;
-def err_expected_semi_image_arg:
-    Error<"expected ';' at end image field">;
-def err_expected_semi_camera_arg:
-    Error<"expected ';' at end camera field">;
-def err_expected_periodperiod:
-    Error<"expected '..'">;
-
-def err_expected_forall_binary_op:
-    Error<"expected binary operator">;
-def warn_vector_color_clamp:
-    Warning<"color vector values will be clamped to [0..1]">;
-
-def err_invalid_start_forall_array:
-    Error<"invalid start in forall">;
-def err_invalid_end_forall_array:
-    Error<"invalid end in forall">;
-def err_invalid_stride_forall_array:
-    Error<"invalid stride in forall">;
-def err_expected_mesh_field:
-    Error<"expected a mesh field">;
-def err_expected_equal_after_element_default:
-    Error<"expected '=' after mesh element default">;
-def err_unknown_element_field:
-    Error<"unknown element field">;
-def err_duplicate_radius_default:
-    Error<"duplicate default given for radius">;
-def err_duplicate_color_default:
-    Error<"duplicate default given for color">;
-def err_invalid_default_element:
-    Error<"invalid default element, expected 'color' or 'radius'">;
-def err_not_array_renderall_elements:
-    Error<"mesh field is not an array type">;
-def err_mismatch_forall_array:
-    Error<"start/end/stride groups do not match count of induction variables">;
-def err_expected_mesh_param_token:
-    Error<"expected ']' or ':' while parsing mesh parameter">;
-def err_expected_mesh_param_star_amp:
-    Error<"mesh parameters must be declared as references or pointers">;
-def err_expected_mesh_var_decl:
-    Error<"expected mesh variable declaration">;
-// ============================================================================
-
 // OpenMP support.
 def warn_pragma_omp_ignored : Warning <
   "unexpected '#pragma omp ...' in program">, InGroup<SourceUsesOpenMP>, DefaultIgnore;
@@ -952,6 +828,122 @@ def err_omp_unknown_directive : Error <
   "expected an OpenMP directive">;
 def err_omp_unexpected_directive : Error <
   "unexpected OpenMP directive '#pragma omp %0'">;
+
+// === Scout ==================================================================
+//
+def warn_empty_mesh:Warning<
+    "mesh definition with no fields">;
+def err_expected_mesh_kw:Error<
+    "expected mesh keyword">;
+def err_expected_semi_mesh_decl:Error<
+    "expected closing semicolon at end of mesh declaration">;
+def err_unknown_mesh_variable:Error<
+    "unknown or invalid mesh instance">;
+def err_expected_a_mesh_type:Error<
+    "expected a mesh type">;
+
+// +----- mesh warnings -----------------------------------------------------+
+def warn_mesh_has_no_cell_fields:Warning<
+    "no cell fields available in selected mesh">;
+def warn_mesh_has_no_edge_fields:Warning<
+    "no edge fields available in selected mesh">;
+def warn_mesh_has_no_vertex_fields:Warning<
+    "no vertex fields available in selected mesh">;
+def warn_mesh_has_no_face_fields:Warning<
+    "no face fields available in selected mesh">;
+
+// +----- forall errors -----------------------------------------------------+
+def err_forall_invalid_op:Error<
+    "invalid operation within forall construct">;
+def err_forall_invalid_body:Error<
+    "Invalid forall body">;
+def err_forall_expected_mesh_element_kw:Error<
+    "expected mesh element keyword">;
+def err_forall_expected_kw_in:Error<
+    "forall missing (expected) keyword: 'in'">;
+def err_forall_predicate_missing_lparen:Error<
+    "forall predicate clause missing opening paren">;
+def err_forall_predicate_missing_rparen:Error<
+    "forall predicate clause missing closing paren">;
+def err_forall_unknown_mesh_component:Error<
+    "unrecognized mesh element">;
+
+// +----- renderall errors -------------------------------------+
+def err_renderall_invalid_op:Error<
+    "Invalid operation within renderall construct">;
+def err_invalid_forall_body:Error<
+    "Invalid forall body">;
+def err_renderall_expected_mesh_element_kw:Error<
+    "expected mesh element keyword">;
+def err_renderall_expected_kw_in:Error<
+    "renderall missing (expected) keyword: 'in'">;
+def err_renderall_not_a_mesh_type:Error<
+    "instance if of a non-mesh type">;
+def err_renderall_predicate_missing_lparen:Error<
+    "renderall predicate clause missing opening paren">;
+def err_renderall_predicate_missing_rparen:Error<
+    "renderall predicate clause missing closing paren">;
+def err_renderall_unknown_mesh_component:Error<
+    "unrecognized mesh element">;
+def err_renderall_invalid_body:Error<
+    "invalid renderall body">;
+def err_expected_numeric_constant_in_mesh_def: Error<
+    "expected a numeric constant in mesh definition dimensions">;
+def err_no_mesh_field_specifier:Error<
+    "no mesh element/field has been specified, (e.g.: 'cells', ...)">;
+def err_extern_mesh_field:Error<
+    "'extern' mesh fields are not allowed">;
+def err_expected_numeric_constant_in_window_def:Error<
+    "expected a numeric constant in window dimensions definition">;
+def err_mesh_not_implemented:Error<
+    "mesh type is not fully implemented yet">;
+def err_missing_field_window_decl:Error<
+    "in window declaration, missing %0 field">;
+def err_expected_semi_window_arg:Error<
+    "expected ';' at end window field">;
+def err_missing_field_image_decl:Error<
+    "in image declaration, missing %0 field">;
+def err_expected_semi_image_arg:Error<
+    "expected ';' at end image field">;
+def err_expected_semi_camera_arg:Error<
+    "expected ';' at end camera field">;
+def err_expected_periodperiod:Error<
+    "expected '..'">;
+def err_expected_forall_binary_op:Error<
+    "expected binary operator">;
+def warn_vector_color_clamp:Warning<
+    "color vector values will be clamped to [0..1]">;
+def err_invalid_start_forall_array:Error<
+    "invalid start in forall">;
+def err_invalid_end_forall_array:Error<
+    "invalid end in forall">;
+def err_invalid_stride_forall_array:Error<
+    "invalid stride in forall">;
+def err_expected_mesh_field:Error<
+    "expected a mesh field">;
+def err_expected_equal_after_element_default:Error<
+    "expected '=' after mesh element default">;
+def err_unknown_element_field:Error<
+    "unknown element field">;
+def err_duplicate_radius_default:Error<
+    "duplicate default given for radius">;
+def err_duplicate_color_default:Error<
+    "duplicate default given for color">;
+def err_invalid_default_element:Error<
+    "invalid default element, expected 'color' or 'radius'">;
+def err_not_array_renderall_elements:Error<
+    "mesh field is not an array type">;
+def err_mismatch_forall_array:Error<
+    "start/end/stride groups do not match count of induction variables">;
+def err_expected_mesh_param_token:Error<
+    "expected ']' or ':' while parsing mesh parameter">;
+def err_expected_mesh_param_star_amp:Error<
+    "mesh parameters must be declared as references or pointers">;
+def err_expected_mesh_var_decl:Error<
+    "expected mesh variable declaration">;
+// ============================================================================
+
+
 } // end of Parse Issue category.
 
 let CategoryName = "Modules Issue" in {
