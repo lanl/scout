@@ -136,6 +136,9 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
   case Stmt::ForallMeshStmtClass:
     EmitForallStmt(cast<ForallMeshStmt>(*S));
     break;
+  case Stmt::RenderallMeshStmtClass:
+    assert(false && "need to implement renderall codegen");
+    break;
   //case Stmt::ForAllArrayStmtClass:
   // EmitForAllArrayStmt(cast<ForAllArrayStmt>(*S));
   //  break;
@@ -143,7 +146,7 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
   //  EmitRenderAllStmt(cast<RenderAllStmt>(*S));
   //  break;
   //case Stmt::VolumeRenderAllStmtClass:
-  //  EmitVolumeRenderAllStmt(cast<VolumeRenderAllStmt>(*S)); 
+  //  EmitVolumeRenderAllStmt(cast<VolumeRenderAllStmt>(*S));
   //  break;
   // ==========================================================================
 
@@ -467,7 +470,7 @@ void CodeGenFunction::EmitIfStmt(const IfStmt &S) {
   EmitBranchOnBoolExpr(S.getCond(), ThenBlock, ElseBlock);
 
   // Emit the 'then' code.
-  EmitBlock(ThenBlock); 
+  EmitBlock(ThenBlock);
   {
     RunCleanupsScope ThenScope(*this);
     EmitStmt(S.getThen());
@@ -622,26 +625,26 @@ void CodeGenFunction::EmitDoStmt(const DoStmt &S) {
 void CodeGenFunction::insertMeshDump(llvm::Value* baseAddr) {
   // comment out to enable mesh dumping
   return;
-  
+
   llvm::Function* dumpBlockFunc =
   CGM.getModule().getFunction("__sc_dump_mesh");
-  
+
   if(!dumpBlockFunc){
     std::vector<llvm::Type*> types;
-    
+
     types.push_back(VoidPtrTy);
-    
+
     llvm::FunctionType* ft =
     llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()),
                             types, false);
-    
+
     dumpBlockFunc =
     llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
                            "__sc_dump_mesh", &CGM.getModule());
   }
-  
+
   llvm::Value* bp = Builder.CreateBitCast(baseAddr, VoidPtrTy);
-  
+
   std::vector<llvm::Value*> dumpArgs;
   dumpArgs.push_back(bp);
   Builder.CreateCall(dumpBlockFunc, dumpArgs);
@@ -653,7 +656,7 @@ void CodeGenFunction::insertMeshDump(llvm::Value* baseAddr) {
 llvm::Value *CodeGenFunction::GetMeshBaseAddr(const ForallMeshStmt &S) {
   const VarDecl *MeshVarDecl = S.getMeshVarDecl();
   llvm::Value *BaseAddr = 0;
-  
+
   if (MeshVarDecl->hasGlobalStorage()) {
     BaseAddr = Builder.CreateLoad(CGM.GetAddrOfGlobalVar(MeshVarDecl));
   } else {
@@ -668,20 +671,20 @@ llvm::Value *CodeGenFunction::GetMeshBaseAddr(const ForallMeshStmt &S) {
 
 // ----- GetMeshDimensions
 //
-void 
+void
 CodeGenFunction::GetMeshDimValues(const ForallMeshStmt &S,
                        llvm::SmallVector<llvm::Value*, 3> &MeshDimensions,
                        llvm::Value* MeshBaseAddr) {
-  
+
   llvm::Value *BaseAddr;
   if (MeshBaseAddr != 0) {
     BaseAddr = MeshBaseAddr;
   } else {
     BaseAddr = GetMeshBaseAddr(S);
   }
-  
+
   MeshType::MeshDimensions dims = S.getMeshType()->dimensions();
-  const char  *DimNames[] = { "dim_x", "dim_y", "dim_z" };  
+  const char  *DimNames[] = { "dim_x", "dim_y", "dim_z" };
 
   for(unsigned int i = 0; i < dims.size(); ++i) {
     llvm::Value *LVal = Builder.CreateConstInBoundsGEP2_32(BaseAddr, 0, i+1, DimNames[i]);
@@ -1038,7 +1041,7 @@ void CodeGenFunction::EmitCaseStmt(const CaseStmt &S) {
   // If there is no enclosing switch instance that we're aware of, then this
   // case statement and its block can be elided.  This situation only happens
   // when we've constant-folded the switch, are emitting the constant case,
-  // and part of the constant case includes another case statement.  For 
+  // and part of the constant case includes another case statement.  For
   // instance: switch (4) { case 4: do { case 5: } while (1); }
   if (!SwitchInsn) {
     EmitStmt(S.getSubStmt());
@@ -1093,7 +1096,7 @@ void CodeGenFunction::EmitCaseStmt(const CaseStmt &S) {
   // Otherwise, iteratively add consecutive cases to this switch stmt.
   while (NextCase && NextCase->getRHS() == 0) {
     CurCase = NextCase;
-    llvm::ConstantInt *CaseVal = 
+    llvm::ConstantInt *CaseVal =
       Builder.getInt(CurCase->getLHS()->EvaluateKnownConstInt(getContext()));
     SwitchInsn->addCase(CaseVal, CaseDest);
     NextCase = dyn_cast<CaseStmt>(CurCase->getSubStmt());
@@ -1570,7 +1573,7 @@ void CodeGenFunction::EmitAsmStmt(const AsmStmt &S) {
       Name = GAS->getOutputName(i);
     TargetInfo::ConstraintInfo Info(S.getOutputConstraint(i), Name);
     bool IsValid = getTarget().validateOutputConstraint(Info); (void)IsValid;
-    assert(IsValid && "Failed to parse output constraint"); 
+    assert(IsValid && "Failed to parse output constraint");
     OutputConstraintInfos.push_back(Info);
   }
 
@@ -1648,7 +1651,7 @@ void CodeGenFunction::EmitAsmStmt(const AsmStmt &S) {
           ResultRegTypes.back() = ConvertType(InputTy);
         }
       }
-      if (llvm::Type* AdjTy = 
+      if (llvm::Type* AdjTy =
             getTargetHooks().adjustInlineAsmType(*this, OutputConstraint,
                                                  ResultRegTypes.back()))
         ResultRegTypes.back() = AdjTy;
