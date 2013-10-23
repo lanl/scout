@@ -20,6 +20,7 @@
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/ScopeInfo.h"
+#include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 
 using namespace clang;
 using namespace sema;
@@ -1426,9 +1427,17 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
     return Owned((Expr*) 0);
   }
 
-  // ===== Scout ========================================================================
-  // SC_TODO -- drop scout vector support, move this to a separate file/function?
   if (const MeshType *MTy = BaseType->getAs<MeshType>()) {
+    // Scout's mesh element access operations are all through
+    // implicit constructs (for now) -- as such we treat all
+    // explicit accesses as an error...
+    DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(BaseExpr.take());
+    VarDecl     *VD  = dyn_cast<VarDecl>(DRE->getDecl());
+    if (! isa<ImplicitMeshParamDecl>(VD)) {
+      Diag(MemberLoc, diag::err_illegal_mesh_element_access);
+      return ExprError();
+    }
+
     if (LookupMemberExprInMesh(*this, R, BaseExpr.get()->getSourceRange(),
                                MTy, OpLoc, SS))
       return ExprError();
@@ -1436,55 +1445,6 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
     // Returning valid-but-null is how we indicate to the caller that
     // the lookup result was filled in.
     return Owned((Expr*) 0);
-  }
-
-  if (const BuiltinType *BTy = BaseType->getAs<BuiltinType>()) {
-    switch(BTy->getKind()){
-      case BuiltinType::Bool2:
-      case BuiltinType::Char2:
-      case BuiltinType::Short2:
-      case BuiltinType::Int2:
-      case BuiltinType::Long2:
-      case BuiltinType::Float2:
-      case BuiltinType::Double2: {
-        std::string ms = MemberName.getAsString();
-        if(ms == "x" || ms == "y")
-          return Owned((Expr*) 0);
-        break;
-      }
-
-      case BuiltinType::Bool3:
-      case BuiltinType::Char3:
-      case BuiltinType::Short3:
-      case BuiltinType::Int3:
-      case BuiltinType::Long3:
-      case BuiltinType::Float3:
-      case BuiltinType::Double3: {
-        std::string ms = MemberName.getAsString();
-        if(ms == "x" || ms == "y" || ms == "z" ||
-           ms == "r" || ms == "g" || ms == "b"){
-          return Owned((Expr*) 0);
-        }
-        break;
-      }
-
-      case BuiltinType::Bool4:
-      case BuiltinType::Char4:
-      case BuiltinType::Short4:
-      case BuiltinType::Int4:
-      case BuiltinType::Long4:
-      case BuiltinType::Float4:
-      case BuiltinType::Double4: {
-        std::string ms = MemberName.getAsString();
-        if(ms == "x" || ms == "y" || ms == "z" || ms == "w" ||
-           ms == "r" || ms == "g" || ms == "b" || ms == "a"){
-          return Owned((Expr*) 0);
-        }
-        break;
-      }
-      default:
-        break;
-    }
   }
   // ====================================================================================
 
