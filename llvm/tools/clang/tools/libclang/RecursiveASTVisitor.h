@@ -237,7 +237,7 @@ public:
   ///
   /// \returns false if the visitation was terminated early, true otherwise.
   bool TraverseLambdaCapture(LambdaExpr::Capture C);
-  
+
   // ---- Methods on Stmts ----
 
   // Declare Traverse*() for all concrete Stmt classes.
@@ -409,11 +409,11 @@ private:
   bool TraverseUniformMeshHelper(UniformMeshDecl *D);
   bool TraverseRectilinearMeshHelper(RectilinearMeshDecl *D);
   bool TraverseStructuredMeshHelper(StructuredMeshDecl *D);
-  bool TraverseUnstructuredMeshHelper(UnstructuredMeshDecl *D);      
+  bool TraverseUnstructuredMeshHelper(UnstructuredMeshDecl *D);
 
   typedef SmallVector<Stmt *, 16> StmtsTy;
   typedef SmallVector<StmtsTy *, 4> QueuesTy;
-  
+
   QueuesTy Queues;
 
   class NewQueueRAII {
@@ -474,15 +474,15 @@ bool RecursiveASTVisitor<Derived>::TraverseStmt(Stmt *S) {
       switch (BinOp->getOpcode()) {
 #define OPERATOR(NAME) \
       case BO_##NAME: DISPATCH_STMT(Bin##NAME, BinaryOperator, S);
-  
+
       BINOP_LIST()
 #undef OPERATOR
 #undef BINOP_LIST
-  
+
 #define OPERATOR(NAME)                                          \
       case BO_##NAME##Assign:                          \
         DISPATCH_STMT(Bin##NAME##Assign, CompoundAssignOperator, S);
-  
+
       CAO_LIST()
 #undef OPERATOR
 #undef CAO_LIST
@@ -491,13 +491,13 @@ bool RecursiveASTVisitor<Derived>::TraverseStmt(Stmt *S) {
       switch (UnOp->getOpcode()) {
 #define OPERATOR(NAME)                                                  \
       case UO_##NAME: DISPATCH_STMT(Unary##NAME, UnaryOperator, S);
-  
+
       UNARYOP_LIST()
 #undef OPERATOR
 #undef UNARYOP_LIST
       }
     } else {
-  
+
       // Top switch stmt: dispatch to TraverseFooStmt for each concrete FooStmt.
       switch (S->getStmtClass()) {
       case Stmt::NoStmtClass: break;
@@ -877,7 +877,9 @@ DEF_TRAVERSE_TYPE(SubstTemplateTypeParmPackType, { })
 
 // ===== Scout ==========================================
 DEF_TRAVERSE_TYPE(UniformMeshType, { })
-// SC_TODO -- need more mesh types here... 
+DEF_TRAVERSE_TYPE(RectilinearMeshType, { })
+DEF_TRAVERSE_TYPE(StructuredMeshType, { })
+DEF_TRAVERSE_TYPE(UnstructuredMeshType, { })
 // ======================================================
 
 DEF_TRAVERSE_TYPE(TemplateSpecializationType, {
@@ -1106,7 +1108,7 @@ DEF_TRAVERSE_TYPELOC(SubstTemplateTypeParmPackType, { })
 
 // ===== Scout ==================================================
 DEF_TRAVERSE_TYPELOC(UniformMeshType, { })
-// SC_TODO - need more mesh types here. 
+// SC_TODO - need more mesh types here.
 // ==============================================================
 
 // FIXME: use the loc for the template name?
@@ -1536,8 +1538,8 @@ bool RecursiveASTVisitor<Derived>::TraverseRecordHelper(
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseUniformMeshHelper(UniformMeshDecl *D) {
   // We shouldn't traverse D->getTypeForDecl(); it's a result of
-  // declaring the type, not something that was written in the 
-  // source. 
+  // declaring the type, not something that was written in the
+  // source.
   TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
   return true;
 }
@@ -1545,29 +1547,29 @@ bool RecursiveASTVisitor<Derived>::TraverseUniformMeshHelper(UniformMeshDecl *D)
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseRectilinearMeshHelper(RectilinearMeshDecl *D) {
   // We shouldn't traverse D->getTypeForDecl(); it's a result of
-  // declaring the type, not something that was written in the 
-  // source. 
+  // declaring the type, not something that was written in the
+  // source.
   TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
   return true;
-}  
+}
 
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseStructuredMeshHelper(StructuredMeshDecl *D) {
   // We shouldn't traverse D->getTypeForDecl(); it's a result of
-  // declaring the type, not something that was written in the 
-  // source. 
+  // declaring the type, not something that was written in the
+  // source.
   TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
   return true;
-}  
+}
 
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseUnstructuredMeshHelper(UnstructuredMeshDecl *D) {
   // We shouldn't traverse D->getTypeForDecl(); it's a result of
-  // declaring the type, not something that was written in the 
-  // source. 
+  // declaring the type, not something that was written in the
+  // source.
   TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
   return true;
-}    
+}
 
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseCXXRecordHelper(
@@ -2113,7 +2115,7 @@ DEF_TRAVERSE_STMT(CXXTemporaryObjectExpr, {
     TRY_TO(TraverseTypeLoc(S->getTypeSourceInfo()->getTypeLoc()));
   })
 
-// Walk only the visible parts of lambda expressions.  
+// Walk only the visible parts of lambda expressions.
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseLambdaExpr(LambdaExpr *S) {
   for (LambdaExpr::capture_iterator C = S->explicit_capture_begin(),
@@ -2135,7 +2137,7 @@ bool RecursiveASTVisitor<Derived>::TraverseLambdaExpr(LambdaExpr *S) {
         }
       } else {
         TRY_TO(TraverseTypeLoc(Proto.getResultLoc()));
-      }        
+      }
     }
   }
 
@@ -2264,7 +2266,7 @@ DEF_TRAVERSE_STMT(ObjCStringLiteral, { })
 DEF_TRAVERSE_STMT(ObjCBoxedExpr, { })
 DEF_TRAVERSE_STMT(ObjCArrayLiteral, { })
 DEF_TRAVERSE_STMT(ObjCDictionaryLiteral, { })
-  
+
 // Traverse OpenCL: AsType, Convert.
 DEF_TRAVERSE_STMT(AsTypeExpr, { })
 

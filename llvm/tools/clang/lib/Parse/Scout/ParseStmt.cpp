@@ -68,8 +68,8 @@
 
 using namespace clang;
 
-// ----- LookupMeshVarDecl 
-// 
+// ----- LookupMeshVarDecl
+//
 VarDecl* Parser::LookupMeshVarDecl(IdentifierInfo *MeshInfo,
                                    SourceLocation MeshLoc) {
 
@@ -77,13 +77,13 @@ VarDecl* Parser::LookupMeshVarDecl(IdentifierInfo *MeshInfo,
   Actions.LookupName(MeshLookup, getCurScope());
 
   if (MeshLookup.getResultKind() != LookupResult::Found) {
-    Diag(MeshLoc, diag::err_forall_unknown_mesh_variable) << MeshInfo;
+    Diag(MeshLoc, diag::err_unknown_mesh_variable) << MeshInfo;
     return 0;
   }
 
   NamedDecl* ND = MeshLookup.getFoundDecl();
   if (!isa<VarDecl>(ND)) {
-    Diag(MeshLoc, diag::err_forall_not_a_mesh_type) << MeshInfo;
+    Diag(MeshLoc, diag::err_expected_a_mesh_type) << MeshInfo;
     return 0;
   }
 
@@ -91,7 +91,7 @@ VarDecl* Parser::LookupMeshVarDecl(IdentifierInfo *MeshInfo,
 }
 
 
-// ----- LookupMeshType 
+// ----- LookupMeshType
 //
 const MeshType* Parser::LookupMeshType(IdentifierInfo *MeshInfo,
                                        SourceLocation MeshLoc) {
@@ -104,7 +104,8 @@ const MeshType* Parser::LookupMeshType(IdentifierInfo *MeshInfo,
     if (!isa<MeshType>(T)) {
       T = VD->getType().getCanonicalType().getNonReferenceType().getTypePtr();
       if(!isa<MeshType>(T)) {
-        Diag(MeshLoc, diag::err_forall_not_a_mesh_type) << MeshInfo;
+        // Should this diag go in sema instead?
+        //Diag(MeshLoc, diag::err_forall_not_a_mesh_type) << MeshInfo;
         return 0;
       }
     }
@@ -114,21 +115,22 @@ const MeshType* Parser::LookupMeshType(IdentifierInfo *MeshInfo,
 }
 
 
-// ---- LookupMeshType 
-// 
-const MeshType* Parser::LookupMeshType(VarDecl *VD, 
+// ---- LookupMeshType
+//
+const MeshType* Parser::LookupMeshType(VarDecl *VD,
                                        IdentifierInfo *MeshInfo,
                                        SourceLocation MeshLoc) {
   assert(VD != 0 && "null var decl passed for mesh type lookup");
   if (VD) {
     const Type* T = VD->getType().getCanonicalType().getTypePtr();
     if (! isa<MeshType>(T)) {
-      Diag(MeshLoc, diag::err_forall_not_a_mesh_type) << MeshInfo;
+      //Should this diag go in sema instead?
+      //Diag(MeshLoc, diag::err_forall_not_a_mesh_type) << MeshInfo;
       return 0;
     } else {
       return const_cast<MeshType *>(cast<MeshType>(T));
     }
-  } 
+  }
 
   return 0;
 }
@@ -155,58 +157,58 @@ static ForallMeshStmt::MeshElementType setMeshElementType(tok::TokenKind tkind) 
   }
 }
 
-// ----- ParseForallMeshStatement 
+// +---- Parse a forall statement operating on a mesh ------------------------+
 //
 //  forall [cells|edges|vertices|faces] element-id in mesh-instance {
 //         ^
-//          'Tok' should point here upon entering. 
-//    ... 
+//          'Tok' should point here upon entering.
+//    ...
 //  }
 //
-//  where the identifier 'element-id' represents each instance of the 
+//  where the identifier 'element-id' represents each instance of the
 //  cell|edge|vertex|face in the mesh 'mesh-instance'.
 //
 // **Note - 'element-id' can become implicit within the loop body in
-// terms of accessing mesh fields (stored at the given element 
+// terms of accessing mesh fields (stored at the given element
 // location).
 //
 // Upon entering the current token should be on the mesh element kind
-// (cells, vertices, edges, faces).  
+// (cells, vertices, edges, faces).
 //
 StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
 
-  // Upon entry we expect the input token to be on the 'forall' 
-  // keyword -- we'll throw an assertion in just to make sure 
+  // Upon entry we expect the input token to be on the 'forall'
+  // keyword -- we'll throw an assertion in just to make sure
   // we help maintain consistency from the caller(s).
   assert(Tok.getKind() == tok::kw_forall && "epxected input token to be 'forall'");
 
-  // Swallow the forall token... 
+  // Swallow the forall token...
   SourceLocation ForallKWLoc = ConsumeToken();
 
-  // At this point we should be sitting at the mesh element keyword 
-  // that identifies the locations on the mesh that are to be computed 
+  // At this point we should be sitting at the mesh element keyword
+  // that identifies the locations on the mesh that are to be computed
   // over.  Keep track of the element token and its location (for later
-  // use).  Also set the mesh element type we're processing so we can 
-  // refer to it later w/out having to query/translate token types... 
+  // use).  Also set the mesh element type we're processing so we can
+  // refer to it later w/out having to query/translate token types...
   tok::TokenKind ElementToken = Tok.getKind();
   ConsumeToken();
 
   ForallMeshStmt::MeshElementType MeshElementType = setMeshElementType(ElementToken);
   if (MeshElementType == ForallMeshStmt::Undefined) {
     Diag(Tok, diag::err_forall_expected_mesh_element_kw);
-    SkipUntil(tok::semi);      
-    return StmtError();       
+    SkipUntil(tok::semi);
+    return StmtError();
   }
 
   unsigned ScopeFlags = Scope::BreakScope    |
                         Scope::ContinueScope |
                         Scope::DeclScope     |
                         Scope::ControlScope;
-  
+
   ParseScope ForallScope(this, ScopeFlags);
 
   // We consumed the element token above and should now be
-  // at the element identifier portion of the forall; make 
+  // at the element identifier portion of the forall; make
   // sure we have a valid identifier and bail if not...
   if (Tok.isNot(tok::identifier)) {
     Diag(Tok, diag::err_expected_ident);
@@ -227,7 +229,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
   ConsumeToken();
 
   // Finally, we are at the identifier that specifies the mesh
-  // that we are computing over. 
+  // that we are computing over.
   if (Tok.isNot(tok::identifier)) {
     Diag(Tok, diag::err_expected_ident);
     SkipUntil(tok::semi);
@@ -250,35 +252,35 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
                                                     ElementIdentLoc,
                                                     RefMeshType,
                                                     VD);
-  if (! success) 
+  if (! success)
     return StmtError();
 
   ConsumeToken();
 
 
-  // SC_TODO - we might want to lift this block of code out into a 
+  // SC_TODO - we might want to lift this block of code out into a
   // function where we can reuse it.  Probably want to rename warning
   // values as well -- e.g. 'diag::warn_mesh_has_no_cell_fields'...
   switch(MeshElementType) {
 
     case ForallMeshStmt::Cells:
       if (! RefMeshType->hasCellData())
-        Diag(MeshIdentLoc, diag::warn_forall_no_cell_fields);
+        Diag(MeshIdentLoc, diag::warn_mesh_has_no_cell_fields);
       break;
 
     case ForallMeshStmt::Vertices:
       if (! RefMeshType->hasVertexData())
-        Diag(MeshIdentLoc, diag::warn_forall_no_vertex_fields);
+        Diag(MeshIdentLoc, diag::warn_mesh_has_no_vertex_fields);
       break;
 
     case ForallMeshStmt::Edges:
       if (! RefMeshType->hasEdgeData())
-        Diag(MeshIdentLoc, diag::warn_forall_no_edge_fields);
+        Diag(MeshIdentLoc, diag::warn_mesh_has_no_edge_fields);
       break;
 
     case ForallMeshStmt::Faces:
       if (! RefMeshType->hasFaceData())
-        Diag(MeshIdentLoc, diag::warn_forall_no_face_fields);
+        Diag(MeshIdentLoc, diag::warn_mesh_has_no_face_fields);
       break;
 
     default:
@@ -287,8 +289,8 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
   }
 
   // Now check to see if we have a predicate/conditional expression...
-  // 
-  // SC_TODO - do we need to validate the predicate is really a 
+  //
+  // SC_TODO - do we need to validate the predicate is really a
   //           conditional expression?
   Expr *Predicate = 0;
   SourceLocation LParenLoc, RParenLoc;
@@ -298,8 +300,8 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
 
     if (Tok.isNot(tok::l_paren)) {
       Diag(Tok, diag::err_forall_predicate_missing_lparen);
-      // Multi-line skip, don't consume brace      
-      SkipUntil(tok::r_brace, false, true); 
+      // Multi-line skip, don't consume brace
+      SkipUntil(tok::r_brace, false, true);
       return StmtError();
     }
 
@@ -307,7 +309,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
 
     ExprResult PredicateResult = ParseExpression();
     if (PredicateResult.isInvalid()) {
-      Diag(Tok, diag::err_invalid_forall_op);
+      Diag(Tok, diag::err_forall_invalid_op);
       SkipUntil(tok::r_brace, false, true);
       return StmtError();
     }
@@ -336,17 +338,243 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
   StmtResult ForallResult = Actions.ActOnForallMeshStmt(ForallKWLoc,
                                                         MeshElementType,
                                                         RefMeshType, VD,
-                                                        ElementIdentInfo, 
-                                                        MeshIdentInfo, 
+                                                        ElementIdentInfo,
+                                                        MeshIdentInfo,
                                                         LParenLoc,
-                                                        Predicate, 
-                                                        RParenLoc, 
+                                                        Predicate,
+                                                        RParenLoc,
                                                         Body);
   if (! ForallResult.isUsable())
     return StmtError();
-  
+
   return ForallResult;
 }
+
+static RenderallMeshStmt::MeshElementType
+setRenderallMeshElementType(tok::TokenKind tkind) {
+
+  switch (tkind) {
+
+    case tok::kw_cells:
+      return RenderallMeshStmt::Cells;
+
+    case tok::kw_vertices:
+      return RenderallMeshStmt::Vertices;
+
+    case tok::kw_edges:
+      return RenderallMeshStmt::Edges;
+
+    case tok::kw_faces:
+      return RenderallMeshStmt::Faces;
+      break;
+
+    default:
+      return RenderallMeshStmt::Undefined;
+  }
+}
+
+// +---- Parse a renderall statement operating on a mesh ---------------------+
+//
+//  renderall [cells|edges|vertices|faces] element-id in mesh-instance {
+//            ^
+//             'Tok' should point here upon entering.
+//    ...
+//  }
+//
+//  where the identifier 'element-id' represents each instance of the
+//  cell|edge|vertex|face in the mesh 'mesh-instance'.
+//
+// **Note - 'element-id' can become implicit within the loop body in
+// terms of accessing mesh fields (stored at the given element
+// location).
+//
+// Upon entering the current token should be on the mesh element kind
+// (cells, vertices, edges, faces).
+//
+StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
+
+  // Upon entry we expect the input token to be on the 'renderall'
+  // keyword -- we'll throw an assertion in just to make sure
+  // we help maintain consistency from the caller(s).
+  assert(Tok.getKind() == tok::kw_renderall &&
+         "epxected input token to be 'renderall'");
+
+  // Swallow the renderall token...
+  SourceLocation RenderallKWLoc = ConsumeToken();
+
+  // At this point we should be sitting at the mesh element keyword
+  // that identifies the locations on the mesh that are to be computed
+  // over.  Keep track of the element token and its location (for later
+  // use).  Also set the mesh element type we're processing so we can
+  // refer to it later w/out having to query/translate token types...
+  tok::TokenKind ElementToken = Tok.getKind();
+  ConsumeToken();
+
+  RenderallMeshStmt::MeshElementType MeshElementType;
+  MeshElementType = setRenderallMeshElementType(ElementToken);
+  if (MeshElementType == RenderallMeshStmt::Undefined) {
+    Diag(Tok, diag::err_renderall_expected_mesh_element_kw);
+    SkipUntil(tok::semi);
+    return StmtError();
+  }
+
+  unsigned ScopeFlags = Scope::BreakScope    |
+                        Scope::ContinueScope |
+                        Scope::DeclScope     |
+                        Scope::ControlScope;
+
+  ParseScope ForallScope(this, ScopeFlags);
+
+  // We consumed the element token above and should now be
+  // at the element identifier portion of the forall; make
+  // sure we have a valid identifier and bail if not...
+  if (Tok.isNot(tok::identifier)) {
+    Diag(Tok, diag::err_expected_ident);
+    SkipUntil(tok::semi);
+    return StmtError();
+  }
+
+  IdentifierInfo *ElementIdentInfo = Tok.getIdentifierInfo();
+  SourceLocation  ElementIdentLoc  = Tok.getLocation();
+  ConsumeToken();
+
+  // Next we should encounter the 'in' keyword...
+  if (Tok.isNot(tok::kw_in)) {
+    Diag(Tok, diag::err_forall_expected_kw_in);
+    SkipUntil(tok::semi);
+    return StmtError();
+  }
+  ConsumeToken();
+
+  // Finally, we are at the identifier that specifies the mesh
+  // that we are computing over.
+  if (Tok.isNot(tok::identifier)) {
+    Diag(Tok, diag::err_expected_ident);
+    SkipUntil(tok::semi);
+    return StmtError();
+  }
+
+  IdentifierInfo  *MeshIdentInfo = Tok.getIdentifierInfo();
+  SourceLocation   MeshIdentLoc  = Tok.getLocation();
+
+  VarDecl *VD = LookupMeshVarDecl(MeshIdentInfo, MeshIdentLoc);
+  if (VD == 0)
+    return StmtError();
+
+  const MeshType *RefMeshType = LookupMeshType(VD, MeshIdentInfo, MeshIdentLoc);
+  if (RefMeshType == 0)
+    return StmtError();
+
+  bool success = Actions.ActOnForallMeshRefVariable(getCurScope(),
+                                                    ElementIdentInfo,
+                                                    ElementIdentLoc,
+                                                    RefMeshType,
+                                                    VD);
+  if (! success)
+    return StmtError();
+
+  ConsumeToken();
+
+
+  // SC_TODO - we might want to lift this block of code out into a
+  // function where we can reuse it.  Probably want to rename warning
+  // values as well -- e.g. 'diag::warn_mesh_has_no_cell_fields'...
+  switch(MeshElementType) {
+
+    case ForallMeshStmt::Cells:
+      if (! RefMeshType->hasCellData())
+        Diag(MeshIdentLoc, diag::warn_mesh_has_no_cell_fields);
+      break;
+
+    case ForallMeshStmt::Vertices:
+      if (! RefMeshType->hasVertexData())
+        Diag(MeshIdentLoc, diag::warn_mesh_has_no_vertex_fields);
+      break;
+
+    case ForallMeshStmt::Edges:
+      if (! RefMeshType->hasEdgeData())
+        Diag(MeshIdentLoc, diag::warn_mesh_has_no_edge_fields);
+      break;
+
+    case ForallMeshStmt::Faces:
+      if (! RefMeshType->hasFaceData())
+        Diag(MeshIdentLoc, diag::warn_mesh_has_no_face_fields);
+      break;
+
+    default:
+      llvm_unreachable("unhandled/unrecognized mesh element type in case");
+      break;
+  }
+
+  // Now check to see if we have a predicate expression...
+  //
+  // SC_TODO - we need to validate/specialize the predicate...
+  Expr *Predicate = 0;
+  SourceLocation LParenLoc, RParenLoc;
+
+  if (Tok.is(tok::kw_where)) {
+    ConsumeToken();
+
+    if (Tok.isNot(tok::l_paren)) {
+      Diag(Tok, diag::err_forall_predicate_missing_lparen);
+      // Multi-line skip, don't consume brace
+      SkipUntil(tok::r_brace, false, true);
+      return StmtError();
+    }
+
+    LParenLoc = ConsumeParen();
+
+    ExprResult PredicateResult = ParseExpression();
+    if (PredicateResult.isInvalid()) {
+      Diag(Tok, diag::err_forall_invalid_op);
+      SkipUntil(tok::r_brace, false, true);
+      return StmtError();
+    }
+
+    Predicate = PredicateResult.get();
+
+    if (Tok.isNot(tok::r_paren)) {
+      Diag(Tok, diag::err_forall_predicate_missing_rparen);
+      SkipUntil(tok::r_brace, false, true);
+      return StmtError();
+    }
+    RParenLoc = ConsumeParen();
+  }
+
+  //SourceLocation BodyLoc = Tok.getLocation();
+  StmtResult BodyResult(ParseStatement());
+
+  if (BodyResult.isInvalid()) {
+    // SC_TODO -- is this a useful diagnostic?
+    Diag(Tok, diag::err_invalid_forall_body);
+    SkipUntil(tok::semi);
+    return StmtError();
+  }
+
+  Stmt* Body = BodyResult.get();
+  StmtResult RenderallResult = Actions.ActOnRenderallMeshStmt(RenderallKWLoc,
+                                                              MeshElementType,
+                                                              RefMeshType, VD,
+                                                              ElementIdentInfo,
+                                                              MeshIdentInfo,
+                                                              LParenLoc,
+                                                              Predicate,
+                                                              RParenLoc,
+                                                              Body);
+  if (! RenderallResult.isUsable())
+    return StmtError();
+
+  return RenderallResult;
+}
+
+
+
+
+
+
+
+
+
 
 
 bool Parser::ParseMeshStatement(StmtVector &Stmts,
@@ -354,8 +582,8 @@ bool Parser::ParseMeshStatement(StmtVector &Stmts,
                                 Token &Next,
                                 StmtResult &SR) {
 
-  IdentifierInfo* Name = Tok.getIdentifierInfo();
-  SourceLocation NameLoc = Tok.getLocation();
+  //IdentifierInfo* Name = Tok.getIdentifierInfo();
+  //SourceLocation NameLoc = Tok.getLocation();
 
   /*
   // scout - detect the forall shorthand, e.g:

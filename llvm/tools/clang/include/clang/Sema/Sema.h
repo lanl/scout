@@ -7689,17 +7689,16 @@ public:
                                   const MeshType *MT,
                                   VarDecl *VD);
 
+  bool ActOnRenderallMeshRefVariable(Scope* S,
+                                     IdentifierInfo* RefVarInfo,
+                                     SourceLocation  RefVarLoc,
+                                     const MeshType *MT,
+                                     VarDecl *VD);
+
   /*
   bool ActOnForAllArrayInductionVariable(Scope* S,
                                          IdentifierInfo* InductionVariableII,
                                          SourceLocation InductionVariableLoc);
-
-  bool ActOnRenderAllLoopVariable(Scope* S,
-                                  tok::TokenKind VariableType,
-                                  IdentifierInfo* LoopVariableII,
-                                  SourceLocation LoopVariableLoc,
-                                  IdentifierInfo* MeshII,
-                                  SourceLocation MeshLoc);
 
   const MeshType*
   ActOnRenderAllElementsVariable(Scope* S,
@@ -7719,8 +7718,8 @@ public:
                                  SourceLocation RParenLoc,
                                  Stmt* Body);
 
-
-  StmtResult ActOnForallMeshStmt(SourceLocation ForAllLoc,
+/*
+  StmtResult ActOnForallMeshStmt(SourceLocation RenderallallLoc,
                                  IdentifierInfo* LoopVariableII,
                                  IdentifierInfo* MeshII,
                                  VarDecl* MVD,
@@ -7728,6 +7727,28 @@ public:
                                  Expr* Predicate,
                                  SourceLocation RParenLoc,
                                  Stmt* Body);
+*/
+  StmtResult ActOnRenderallMeshStmt(SourceLocation RenderallLoc,
+                                    RenderallMeshStmt::MeshElementType Type,
+                                    const MeshType *MT,
+                                    VarDecl* MVD,
+                                    IdentifierInfo* LoopVariableII,
+                                    IdentifierInfo* MeshII,
+                                    SourceLocation LParenLoc,
+                                    Expr* Predicate,
+                                    SourceLocation RParenLoc,
+                                    Stmt* Body);
+
+/*
+  StmtResult ActOnRenderallMeshStmt(SourceLocation ForAllLoc,
+                                    IdentifierInfo* LoopVariableII,
+                                    IdentifierInfo* MeshII,
+                                    VarDecl* MVD,
+                                    SourceLocation LParenLoc,
+                                    Expr* Predicate,
+                                    SourceLocation RParenLoc,
+                                    Stmt* Body);
+*/
 
 //  StmtResult ActOnForAllArrayStmt(SourceLocation ForAllLoc,
 //                                  Stmt* Body,

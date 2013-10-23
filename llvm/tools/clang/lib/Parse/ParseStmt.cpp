@@ -188,7 +188,7 @@ Retry:
         return StmtError();
       }
     }
-    
+
     // If the identifier was typo-corrected, try again.
     if (Tok.isNot(tok::identifier))
       goto Retry;
@@ -243,29 +243,43 @@ Retry:
   case tok::kw_for:                 // C99 6.8.5.3: for-statement
     return ParseForStatement(TrailingElseLoc);
 
-  // scout - Stmts
+  // +----- Scout statements -------------------------------------------------+
+  //
   case tok::kw_forall: {
     const Token& t = GetLookAheadToken(1);
-    switch(t.getKind()){
+    switch(t.getKind()) {
       case tok::kw_cells:
       case tok::kw_vertices:
       case tok::kw_faces:
       case tok::kw_edges:
         return ParseForallMeshStatement(Attrs);
       default:
-        assert(false && "unhandled forall token");
+        Diag(Tok, diag::err_forall_unknown_mesh_component);
+        assert(false && "unhandled forall token");        return StmtError();
     }
   }
 
-  //case tok::kw_renderall:
-  //  return ParseForAllStatement(Attrs, false);
+  case tok::kw_renderall: {
+    const Token& t = GetLookAheadToken(1);
+    switch(t.getKind()) {
+      case tok::kw_cells:
+      case tok::kw_vertices:
+      case tok::kw_faces:
+      case tok::kw_edges:
+        return ParseRenderallMeshStatement(Attrs);
+      default:
+        Diag(Tok, diag::err_forall_unknown_mesh_component);
+        return StmtError();
+    }
+  }
+
   case tok::kw_window:
       return ParseWindowOrImageDeclaration(true, Stmts, OnlyStatement);
   case tok::kw_image:
     return ParseWindowOrImageDeclaration(false, Stmts, OnlyStatement);
   case tok::kw_camera:
     return ParseCameraDeclaration(Stmts, OnlyStatement);
-    
+
   case tok::kw_goto:                // C99 6.8.6.1: goto-statement
     Res = ParseGotoStatement();
     SemiError = "goto";
@@ -935,7 +949,7 @@ StmtResult Parser::ParseCompoundStatementBody(bool isStmtExpr) {
   }
 
   SourceLocation CloseLoc = Tok.getLocation();
-  
+
   // We broke out of the while loop because we found a '}' or EOF.
   if (!T.consumeClose())
     // Recover by creating a compound statement with what we parsed so far,
@@ -1923,7 +1937,7 @@ ExprResult Parser::ParseMSAsmIdentifier(llvm::SmallVectorImpl<Token> &LineToks,
 
     NumLineToksConsumed = LineIndex;
   }
-      
+
   // Finally, restore the old parsing state by consuming all the
   // tokens we staged before, implicitly killing off the
   // token-lexer we pushed.
@@ -2120,7 +2134,7 @@ StmtResult Parser::ParseMicrosoftAsmStatement(SourceLocation AsmLoc) {
                           ArchTy != llvm::Triple::x86_64);
   if (UnsupportedArch)
     Diag(AsmLoc, diag::err_msasm_unsupported_arch) << TheTriple.getArchName();
-    
+
   // If we don't support assembly, or the assembly is empty, we don't
   // need to instantiate the AsmParser, etc.
   if (UnsupportedArch || AsmToks.empty()) {
@@ -2161,7 +2175,7 @@ StmtResult Parser::ParseMicrosoftAsmStatement(SourceLocation AsmLoc) {
     TargetParser(TheTarget->createMCAsmParser(*STI, *Parser));
 
   // Get the instruction descriptor.
-  const llvm::MCInstrInfo *MII = TheTarget->createMCInstrInfo(); 
+  const llvm::MCInstrInfo *MII = TheTarget->createMCInstrInfo();
   llvm::MCInstPrinter *IP =
     TheTarget->createMCInstPrinter(1, *MAI, *MII, *MRI, *STI);
 

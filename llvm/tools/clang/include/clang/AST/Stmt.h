@@ -283,12 +283,12 @@ protected:
     friend class TypeTraitExpr;
     friend class ASTStmtReader;
     friend class ASTStmtWriter;
-    
+
     unsigned : NumExprBits;
-    
+
     /// \brief The kind of type trait, which is a value of a TypeTrait enumerator.
     unsigned Kind : 8;
-    
+
     /// \brief If this expression is not value-dependent, this indicates whether
     /// the trait evaluated true or false.
     unsigned Value : 1;
@@ -296,7 +296,7 @@ protected:
     /// \brief The number of arguments to this type trait.
     unsigned NumArgs : 32 - 8 - 1 - NumExprBits;
   };
-  
+
   union {
     // FIXME: this is wasteful on 64-bit platforms.
     void *Aligner;
@@ -1456,7 +1456,7 @@ public:
   /// getInputConstraint - Return the specified input constraint.  Unlike output
   /// constraints, these can be empty.
   StringRef getInputConstraint(unsigned i) const;
-  
+
   const Expr *getInputExpr(unsigned i) const;
 
   //===--- Other ---===//
@@ -1991,7 +1991,7 @@ private:
   /// \brief The number of variable captured, including 'this'.
   unsigned NumCaptures;
 
-  /// \brief The pointer part is the implicit the outlined function and the 
+  /// \brief The pointer part is the implicit the outlined function and the
   /// int part is the captured region kind, 'CR_Default' etc.
   llvm::PointerIntPair<CapturedDecl *, 1, CapturedRegionKind> CapDeclAndKind;
 
@@ -2114,38 +2114,38 @@ public:
 };
 
 // ===== Scout ================================================================================
-// 
+//
 
-// ----- ForallStmt -- base class for forall statements 
-// 
+// ----- ForallStmt -- base class for forall statements
+//
 // This class handles the basic functionality of all forall-style statements.  At this level
 // we have the following information about the loop statement:
 //
-//   (1) The information about the reference element -- the loop's implicit reference 
-//       variable that represents the active element within the loop scope.  
-// 
+//   (1) The information about the reference element -- the loop's implicit reference
+//       variable that represents the active element within the loop scope.
+//
 //   (2) The variable declaration for the container we are looping over (e.g. a mesh, array,
 //        etc.).
 //
-//   (3) A predicate expression for the overall loop and the body (statements) within the 
+//   (3) A predicate expression for the overall loop and the body (statements) within the
 //       loop.
 //
 //   (4) The source locations of the forall keyword, the left and right parens that wrap the
 //       predicate (if any).
-// 
+//
 class ForallStmt : public Stmt {
 
 protected:
 
 
   enum {
-    PREDICATE = 0, // Loop predicate. 
-    BODY      = 1, // Body of forall.  
+    PREDICATE = 0, // Loop predicate.
+    BODY      = 1, // Body of forall.
     END_EXPR  = 2
   };
 
-  // Store the various components (collection of statements) of the 
-  // forall...  In this case we store the predicate and the body of 
+  // Store the various components (collection of statements) of the
+  // forall...  In this case we store the predicate and the body of
   // the forall.
   Stmt* SubExprs[END_EXPR];
 
@@ -2153,18 +2153,18 @@ public:
 
 
 
-  ForallStmt(StmtClass SC, 
-             IdentifierInfo* RefVarInfo, 
-             IdentifierInfo* ContainerInfo, 
+  ForallStmt(StmtClass SC,
+             IdentifierInfo* RefVarInfo,
+             IdentifierInfo* ContainerInfo,
              VarDecl *ContainerVarDecl,
              SourceLocation ForallLoc, Stmt *Body);
 
-  ForallStmt(StmtClass SC, 
+  ForallStmt(StmtClass SC,
              IdentifierInfo* RefElementInfo,
-             IdentifierInfo* ContainerInfo, 
+             IdentifierInfo* ContainerInfo,
              VarDecl *ContainerVarDecl,
              SourceLocation ForallLoc, Stmt *Body,
-             Expr* Predicate, 
+             Expr* Predicate,
              SourceLocation LeftParenLoc, SourceLocation RightParenLoc);
 
   ForallStmt(StmtClass SC, EmptyShell Empty) : Stmt(SC, Empty) {
@@ -2175,11 +2175,11 @@ public:
     ContainerVarDecl    = 0;
   }
 
-  // ===--- Reference variable info ---=== 
+  // ===--- Reference variable info ---===
   IdentifierInfo* getRefVarInfo() { return LoopRefVarInfo; }
   const IdentifierInfo* getRefElementInfo() const { return LoopRefVarInfo; }
 
-// ===--- Container variable info ---=== 
+// ===--- Container variable info ---===
   IdentifierInfo* getContainerVarInfo() { return ContainerRefVarInfo; }
   const IdentifierInfo* getContainerVarInfo() const { return ContainerRefVarInfo; }
 
@@ -2193,11 +2193,11 @@ public:
   void setPredicate(Expr* P) { SubExprs[PREDICATE] = reinterpret_cast<Stmt*>(PREDICATE); }
   bool hasPredicate() const { return SubExprs[PREDICATE] != 0; }
 
-  // ====--- Body ----=== 
+  // ====--- Body ----===
   Stmt* getBody() { return SubExprs[BODY]; }
   const Stmt* getBody() const { return SubExprs[BODY]; }
   void setBody(Stmt* B) { SubExprs[BODY] = reinterpret_cast<Stmt*>(B); }
-  bool hasBodyStatements() const { return SubExprs[BODY] != 0; } 
+  bool hasBodyStatements() const { return SubExprs[BODY] != 0; }
 
   // ===--- Source Locations ---===
   SourceLocation getForAllLoc() const { return ForallKWLoc; }
@@ -2221,70 +2221,74 @@ public:
   }
 
   // ===--- Class identification support ---===
-  // **NOTE - we should *never* have an instance that is the base class of the 
-  // forall inheritance tree.  The following classes are for completeness but 
+  // **NOTE - we should *never* have an instance that is the base class of the
+  // forall inheritance tree.  The following classes are for completeness but
   // will all assert with an error condition if called.
-  static bool classof(const ForallStmt *) { 
-    assert(false && "query of base forall statement class is a no-no");    
-    return true; 
+  static bool classof(const ForallStmt *) {
+    assert(false && "query of base forall statement class is a no-no");
+    return true;
   }
 
 protected:
-  // The loop's reference element variable is an implicitly declared 
-  // instance whose type matches that of the mesh location specified 
+  // The loop's reference element variable is an implicitly declared
+  // instance whose type matches that of the mesh location specified
   // by the forall loop construct (for example, the reference variable
-  // is a cell in the case of a 'forall cells in mesh' statement).  
-  // The  reference element is only accessible within the body of the 
-  // 'forall' -- its value may not be changed within the loop. 
+  // is a cell in the case of a 'forall cells in mesh' statement).
+  // The  reference element is only accessible within the body of the
+  // 'forall' -- its value may not be changed within the loop.
   IdentifierInfo* LoopRefVarInfo;
 
-  // The loop's reference container variable is the container that 
-  // has been specified within the forall statement. We keep track 
-  // of not only the mesh's identifier info but also the var decl.  
-  // This is primarily the data gathered at parsing and during semantic 
+  // The loop's reference container variable is the container that
+  // has been specified within the forall statement. We keep track
+  // of not only the mesh's identifier info but also the var decl.
+  // This is primarily the data gathered at parsing and during semantic
   // checks -- it is useful to keep around for both analysis, optimization
   // and codegen passes...
   IdentifierInfo  *ContainerRefVarInfo;
-  VarDecl         *ContainerVarDecl;  
+  VarDecl         *ContainerVarDecl;
   SourceLocation  ForallKWLoc, LParenLoc, RParenLoc;
 };
+
+
 
 
 // ----- ForallMeshStmt -- forall mesh statement
 //
 // forall <mesh-loc-kw> <ref-element> in <ref-mesh> {
-//   ... 
+//   ...
 // }
 //
 // where:
 //
-//   mesh-loc-kw  - provides the mesh location (elements) to operate over. This is a keyword  
-//                  that identifies 'cells', 'edges', 'vertices', or 'faces'.
+//   mesh-loc-kw  - provides the mesh location (elements) to operate over.
+//                  This is a keyword that identifies 'cells', 'edges',
+//                  'vertices', or 'faces'.
 //
-//   ref-element  - the reference variable for each field location element in the mesh 
-//                  being operated on.  This should be a valid identifier (variable 
-//                  name).  It takes on the value of each element (cell, edge, vertex,
-//                  or face) in the mesh within the body of the 'forall'.
+//   ref-element  - the reference variable for each field location element in
+//                  the mesh being operated on.  This should be a valid
+//                  identifier (variable name).  It takes on the value of each
+//                  element (cell, edge, vertex, or face) in the mesh within
+//                  the body of the 'forall'.
 //
-//   ref-mesh     - the mesh instance that should be operated on (computed over).
+//   ref-mesh     - the mesh instance that should be computed over.
 //
-// Predicated form: 
+// Predicated form:
 //
 //   forall <mesh-loc-kw> <ref-element> in <ref-mesh> (predicated-expr) {
-//     ... 
+//     ...
 //   }
-// 
+//
 class ForallMeshStmt : public ForallStmt {
 
 public:
 
-  // A mesh-based forall statement operates over a specified set of 
+  // A mesh-based forall statement operates over a specified set of
   // locations within the mesh.  These locations are provided in the
-  // form of a keyword that IDs cells, verticies, edges, or faces of 
-  // the mesh.  We use the following enum value to track the mesh 
-  // elements referenced by the forall statement. 
+  // form of a keyword that IDs cells, verticies, edges, or faces of
+  // the mesh.  We use the following enum value to track the mesh
+  // elements referenced by the forall statement.
   enum MeshElementType {
-    Undefined    = -1, 
+    Undefined    = -1,
     Cells        =  1,
     Vertices     =  2,
     Edges        =  3,
@@ -2292,41 +2296,47 @@ public:
   };
 
 private:
-  // The mesh location/element we're looping over -- this provides us 
-  // information about looping over cells, edges, faces, etc.  Is the 
-  // isOver*() member functions for helpers to determine the element 
-  // type. 
+  // The mesh location/element we're looping over -- this provides us
+  // information about looping over cells, edges, faces, etc.  Is the
+  // isOver*() member functions for helpers to determine the element
+  // type.
   MeshElementType MeshElementRef;
 
-  // In addition to the container information held in our parent class we also 
+  // In addition to the container information held in our parent class we also
   // capture the mesh type that the loop is operating over.  Note at this point
-  // we are dealing with a generic (base) mesh type and not a specific case (e.g.
-  // uniform or rectilinear).  Any operations over the forall should make sure 
-  // appropriate steps are taken for the various mesh types (and safely cast this 
-  // type as needed to the appropriate subclass). 
-  const MeshType* MeshRefType;   
-  
+  // we are dealing with a generic (base) mesh type and not a specific case
+  // (e.g. uniform or rectilinear).  Any operations over the forall should make
+  // sure appropriate steps are taken for the various mesh types (and safely
+  // cast this type as needed to the appropriate subclass).
+  const MeshType* MeshRefType;
+
 public:
 
   ForallMeshStmt(MeshElementType RefElement,
                  IdentifierInfo* RefVarInfo,
-                 IdentifierInfo* MeshInfo, VarDecl* MeshVarDecl, const MeshType* MT,
+                 IdentifierInfo* MeshInfo,
+                 VarDecl* MeshVarDecl,
+                 const MeshType* MT,
                  SourceLocation ForallLocation,
-                 Stmt *Body); 
+                 Stmt *Body);
 
   ForallMeshStmt(MeshElementType RefElement,
                  IdentifierInfo* RefVarInfo,
-                 IdentifierInfo* MeshInfo, VarDecl* MeshVarDecl, const MeshType* MT,
+                 IdentifierInfo* MeshInfo,
+                 VarDecl* MeshVarDecl,
+                 const MeshType* MT,
                  SourceLocation ForallLocation,
-                 Stmt *Body, Expr* Predicate, 
-                 SourceLocation LeftParenLoc, SourceLocation RightParenLoc); 
+                 Stmt *Body, Expr* Predicate,
+                 SourceLocation LeftParenLoc,
+                 SourceLocation RightParenLoc);
 
-  explicit ForallMeshStmt(EmptyShell Empty) : ForallStmt(ForallMeshStmtClass, Empty) { }
+  explicit ForallMeshStmt(EmptyShell Empty)
+    : ForallStmt(ForallMeshStmtClass, Empty) { }
 
   ForallMeshStmt(StmtClass SC, EmptyShell Empty) : ForallStmt(SC, Empty) { }
 
 
-  // ===--- Mesh details ---=== 
+  // ===--- Mesh details ---===
 
   MeshElementType getMeshElementRef() const {
     return MeshElementRef;
@@ -2338,23 +2348,33 @@ public:
 
   void setMeshElementRef(tok::TokenKind &token);
 
-  // Determine which mesh elements the statement is operating over... 
+  // Determine which mesh elements the statement is operating over...
   bool isOverCells() const    { return MeshElementRef == Cells; }
-  bool isOverEdges() const    { return MeshElementRef == Edges; }  
-  bool isOverVertices() const { return MeshElementRef == Vertices; }  
-  bool isOverFaces() const    { return MeshElementRef == Faces; } 
+  bool isOverEdges() const    { return MeshElementRef == Edges; }
+  bool isOverVertices() const { return MeshElementRef == Vertices; }
+  bool isOverFaces() const    { return MeshElementRef == Faces; }
 
-  // Determine which mesh type the statement is operating over... 
+  // Determine which mesh type the statement is operating over...
   bool isUniformMesh() const;
   bool isRectilinearMesh() const;
   bool isStructuredMesh() const;
   bool isUnstructuredMesh() const;
 
-  IdentifierInfo* getMeshInfo() { return ForallStmt::getContainerVarInfo(); }
-  const IdentifierInfo* getMeshInfo() const { return ForallStmt::getContainerVarInfo(); }
+  IdentifierInfo* getMeshInfo() {
+    return ForallStmt::getContainerVarInfo();
+  }
 
-  VarDecl* getMeshVarDecl() { return ForallStmt::getContainerVarDecl(); }
-  const VarDecl* getMeshVarDecl() const { return ForallStmt::getContainerVarDecl(); }
+  const IdentifierInfo* getMeshInfo() const {
+    return ForallStmt::getContainerVarInfo();
+  }
+
+  VarDecl* getMeshVarDecl() {
+    return ForallStmt::getContainerVarDecl();
+  }
+
+  const VarDecl* getMeshVarDecl() const {
+    return ForallStmt::getContainerVarDecl();
+  }
 
   const MeshType* getMeshType() const { return MeshRefType; }
 
@@ -2365,7 +2385,291 @@ public:
   static bool classof(const ForallMeshStmt *) { return true; }
 };
 
-// ============================================================================================
+
+// ----- RenderallStmt -- base class for renderall statements
+//
+// This class handles the basic functionality of all renderall-style
+// statements.  At this level we have the following information about the
+// construct:
+//
+//   (1) The information about the reference element -- the loop's implicit
+//       reference variable that represents the active element within the
+//       loop scope.
+//
+//   (2) The variable declaration for the container we are looping over
+//       (i.e. a mesh).
+//
+//   (3) A predicate expression for the overall loop and the body (statements)
+//       within the loop.
+//
+//   (4) The source locations of the renderall keyword, the left and right
+//       parens that wrap the predicate (if any).
+//
+class RenderallStmt : public Stmt {
+
+protected:
+
+  enum {
+    PREDICATE = 0, // Loop predicate.
+    BODY      = 1, // Body of forall.
+    END_EXPR  = 2
+  };
+
+  // Store the various components (collection of statements) of the
+  // forall...  In this case we store the predicate and the body of
+  // the forall.
+  Stmt* SubExprs[END_EXPR];
+
+public:
+
+
+
+  RenderallStmt(StmtClass SC,
+                IdentifierInfo* RefVarInfo,
+                IdentifierInfo* ContainerInfo,
+                VarDecl *ContainerVarDecl,
+                SourceLocation ForallLoc, Stmt *Body);
+
+  RenderallStmt(StmtClass SC,
+             IdentifierInfo* RefElementInfo,
+             IdentifierInfo* ContainerInfo,
+             VarDecl *ContainerVarDecl,
+             SourceLocation ForallLoc, Stmt *Body,
+             Expr* Predicate,
+             SourceLocation LeftParenLoc, SourceLocation RightParenLoc);
+
+  RenderallStmt(StmtClass SC, EmptyShell Empty) : Stmt(SC, Empty) {
+    SubExprs[PREDICATE] = 0;
+    SubExprs[BODY]      = 0;
+    LoopRefVarInfo      = 0;
+    ContainerRefVarInfo = 0;
+    ContainerVarDecl    = 0;
+  }
+
+  // ===--- Reference variable info ---===
+  IdentifierInfo* getRefVarInfo() { return LoopRefVarInfo; }
+  const IdentifierInfo* getRefElementInfo() const
+  { return LoopRefVarInfo; }
+
+  // ===--- Container variable info ---===
+  IdentifierInfo* getContainerVarInfo() { return ContainerRefVarInfo; }
+  const IdentifierInfo* getContainerVarInfo() const
+  { return ContainerRefVarInfo; }
+
+  // ===--- Container variable declaration ---===
+  VarDecl* getContainerVarDecl() { return ContainerVarDecl; }
+  const VarDecl* getContainerVarDecl() const { return ContainerVarDecl; }
+
+  // ===--- Predicate ---===
+  Expr* getPredicate() {
+    return reinterpret_cast<Expr*>(SubExprs[PREDICATE]);
+  }
+
+  const Expr* getPredicate() const {
+    return reinterpret_cast<Expr*>(SubExprs[PREDICATE]);
+  }
+
+  void setPredicate(Expr* P) {
+    SubExprs[PREDICATE] = reinterpret_cast<Stmt*>(PREDICATE);
+  }
+
+  bool hasPredicate() const {
+    return SubExprs[PREDICATE] != 0;
+  }
+
+  // ====--- Body ----===
+  Stmt* getBody() { return SubExprs[BODY]; }
+  const Stmt* getBody() const { return SubExprs[BODY]; }
+  void setBody(Stmt* B) { SubExprs[BODY] = reinterpret_cast<Stmt*>(B); }
+  bool hasBodyStatements() const { return SubExprs[BODY] != 0; }
+
+  // ===--- Source Locations ---===
+  SourceLocation getRenderallAllLoc() const { return RenderallKWLoc; }
+  void setRenderAllLoc(SourceLocation L) { RenderallKWLoc = L; }
+
+  SourceLocation getLParenLoc() const { return LParenLoc; }
+  void setLParenLoc(SourceLocation L) { LParenLoc = L; }
+
+  SourceLocation getRParenLoc() const { return RParenLoc; }
+  void setRParenLoc(SourceLocation L) { RParenLoc = L; }
+
+  SourceLocation getLocStart() const LLVM_READONLY { return RenderallKWLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY {
+    return SubExprs[BODY]->getLocEnd();
+  }
+
+  SourceRange getSourceRange() const {
+    return SourceRange(RenderallKWLoc, SubExprs[BODY]->getLocEnd());
+  }
+
+  child_range children() {
+    return child_range(&SubExprs[0], &SubExprs[0]+END_EXPR);
+  }
+
+  // ===--- Class identification support ---===
+  // **NOTE - we should *never* have an instance that is the base class of the
+  // forall inheritance tree.  The following classes are for completeness but
+  // will all assert with an error condition if called.
+  static bool classof(const RenderallStmt *) {
+    assert(false && "query of base forall statement class is a no-no");
+    return true;
+  }
+
+protected:
+  // The loop's reference element variable is an implicitly declared
+  // instance whose type matches that of the mesh location specified
+  // by the forall loop construct (for example, the reference variable
+  // is a cell in the case of a 'forall cells in mesh' statement).
+  // The  reference element is only accessible within the body of the
+  // 'forall' -- its value may not be changed within the loop.
+  IdentifierInfo* LoopRefVarInfo;
+
+  // The loop's reference container variable is the container that
+  // has been specified within the forall statement. We keep track
+  // of not only the mesh's identifier info but also the var decl.
+  // This is primarily the data gathered at parsing and during semantic
+  // checks -- it is useful to keep around for both analysis, optimization
+  // and codegen passes...
+  IdentifierInfo  *ContainerRefVarInfo;
+  VarDecl         *ContainerVarDecl;
+  SourceLocation  RenderallKWLoc, LParenLoc, RParenLoc;
+};
+
+// ----- RenderallMeshStmt -- renderall mesh statement
+//
+// renderall <mesh-loc-kw> <ref-element> in <ref-mesh> {
+//   ...
+// }
+//
+// where:
+//
+//   mesh-loc-kw  - provides the mesh location (elements) to operate over.
+//                  This is a keyword that identifies 'cells', 'edges',
+//                  'vertices', or 'faces'.
+//
+//   ref-element  - the reference variable for each field location element in
+//                  the mesh being operated on.  This should be a valid
+//                  identifier (variable name).  It takes on the value of each
+//                  element (cell, edge, vertex, or face) in the mesh within
+//                  the body of the 'renderall'.
+//
+//   ref-mesh     - the mesh instance that should be computed over.
+//
+// Predicated form:
+//
+//   renderall <mesh-loc-kw> <ref-element> in <ref-mesh> (predicated-expr) {
+//     ...
+//   }
+//
+class RenderallMeshStmt : public RenderallStmt {
+
+public:
+
+  // A mesh-based renderall statement operates over a specified set of
+  // locations within the mesh.  These locations are provided in the
+  // form of a keyword that IDs cells, verticies, edges, or faces of
+  // the mesh.  We use the following enum value to track the mesh
+  // elements referenced by the renderall statement.
+  enum MeshElementType {
+    Undefined    = -1,
+    Cells        =  1,
+    Vertices     =  2,
+    Edges        =  3,
+    Faces        =  4
+  };
+
+private:
+  // The mesh location/element we're looping over -- this provides us
+  // information about looping over cells, edges, faces, etc.  Is the
+  // isOver*() member functions for helpers to determine the element
+  // type.
+  MeshElementType MeshElementRef;
+
+  // In addition to the container information held in our parent class we also
+  // capture the mesh type that the loop is operating over.  Note at this point
+  // we are dealing with a generic (base) mesh type and not a specific case
+  // (e.g. uniform or rectilinear).  Any operations over the renderall should
+  // make sure appropriate steps are taken for the various mesh types (and
+  // safely cast this type as needed to the appropriate subclass).
+  const MeshType* MeshRefType;
+
+public:
+
+  RenderallMeshStmt(MeshElementType RefElement,
+                    IdentifierInfo* RefVarInfo,
+                    IdentifierInfo* MeshInfo,
+                    VarDecl* MeshVarDecl,
+                    const MeshType* MT,
+                    SourceLocation  RenderallLocation,
+                    Stmt *Body);
+
+  RenderallMeshStmt(MeshElementType RefElement,
+                    IdentifierInfo* RefVarInfo,
+                    IdentifierInfo* MeshInfo,
+                    VarDecl* MeshVarDecl,
+                    const MeshType* MT,
+                    SourceLocation  RenderallLocation,
+                    Stmt *Body, Expr* Predicate,
+                    SourceLocation LeftParenLoc,
+                    SourceLocation RightParenLoc);
+
+  explicit RenderallMeshStmt(EmptyShell Empty)
+    : RenderallStmt(ForallMeshStmtClass, Empty) { }
+
+  RenderallMeshStmt(StmtClass SC, EmptyShell Empty)
+    : RenderallStmt(SC, Empty) { }
+
+
+  // ===--- Mesh details ---===
+
+  MeshElementType getMeshElementRef() const {
+    return MeshElementRef;
+  }
+
+  void setMeshElementRef(MeshElementType ref) {
+    MeshElementRef = ref;
+  }
+
+  void setMeshElementRef(tok::TokenKind &token);
+
+  // Determine which mesh elements the statement is operating over...
+  bool isOverCells() const    { return MeshElementRef == Cells; }
+  bool isOverEdges() const    { return MeshElementRef == Edges; }
+  bool isOverVertices() const { return MeshElementRef == Vertices; }
+  bool isOverFaces() const    { return MeshElementRef == Faces; }
+
+  // Determine which mesh type the statement is operating over...
+  bool isUniformMesh() const;
+  bool isRectilinearMesh() const;
+  bool isStructuredMesh() const;
+  bool isUnstructuredMesh() const;
+
+  IdentifierInfo* getMeshInfo() {
+    return RenderallStmt::getContainerVarInfo();
+  }
+
+  const IdentifierInfo* getMeshInfo() const {
+    return RenderallStmt::getContainerVarInfo();
+  }
+
+  VarDecl* getMeshVarDecl() {
+    return RenderallStmt::getContainerVarDecl();
+  }
+
+  const VarDecl* getMeshVarDecl() const {
+    return RenderallStmt::getContainerVarDecl();
+  }
+
+  const MeshType* getMeshType() const { return MeshRefType; }
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == RenderallMeshStmtClass;
+  }
+
+  static bool classof(const RenderallMeshStmt *) { return true; }
+};
+
+
 }  // end namespace clang
 
 #endif
