@@ -1,5 +1,4 @@
 /*
- *
  * ###########################################################################
  *
  * Copyright (c) 2013, Los Alamos National Security, LLC.
@@ -77,11 +76,11 @@
 // that a 64-bit value is needed per channel (as most displays can't
 // handle that precision).  Thus our default behavior is to use 32-bit
 // values for each channel.
-#ifndef SC_USE_16BIT_COLORS // 'color' is 64-bit (double) in this mode.
+#ifdef SC_USE_64BIT_COLORS // 'color' is 64-bit (double) in this mode.
 typedef double4 color_t;
 typedef double  color_channel_t;
 #else
-typedef float4 color_t; // 'color' is 32-bit (single) in this mode.
+typedef float4 color_t;    // 'color' is 32-bit (single) in this mode.
 typedef float  color_channel_t;
 #endif
 
@@ -128,6 +127,15 @@ extern color_channel_t mix(color_channel_t ch0,
                            color_channel_t ch1,
                            color_channel_t alpha);
 
+/// Linear blend of the two colors with a single alpha weighting.
+/// The blend is straightforward and is implemented as a vector
+/// operation: c0 + (c1 - c0) * alpha.  As with other color
+/// operations, all values are assumed to lie in the range
+/// [ 0.0 ... 1.0] (inclusive).
+extern color_t mix(const color_t         &c0,
+                   const color_t         &c1,
+                   const color_channel_t  alpha);
+
 /// Linear blend of the two colors with an associated set of
 /// alpha values stored in the 'alpha' vector parameter.  The
 /// blend is straightforward and is implemented as a vector
@@ -137,7 +145,6 @@ extern color_channel_t mix(color_channel_t ch0,
 extern color_t mix(const color_t &c0,
                    const color_t &c1,
                    const color_t &alpha);
-
 // +--------------------------------------------------------------------------+
 
 #endif

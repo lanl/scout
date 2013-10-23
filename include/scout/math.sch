@@ -54,18 +54,93 @@
 #define __SCOUT_MATH_SCH__
 
 #include <cmath>
+#include <algorithm>
 #include "scout/types.sch"
 
-/// Clamp the given scalar value to the specified (inclusive) range.
-inline float clamp(float Value, float MinValue, float MaxValue) {
-  // There is an interesting C++ 11 issue here that can throw you
-  // for a loop...  C++ 11 introduces versions fmin()/fmax() that
-  // are overloaded to take the place of the fminf()/fmaxf() calls
-  // from the math library in C...
-  //
-  // We may have a train wreck here away from C++ compilers...
-  return fmin(fmax(Value, MinValue), MaxValue);
-}
+// Apologies in advance...  This is a messy set of macros for building
+// type-centric versions of the clamp functions.  You would think there
+// would be a decent way to do this in C++ via templates and
+// specialization -- however, there are some issues in this approach
+// with overloading (see http://www.gotw.ca/publications/mill17.htm).
+
+// +--- Scalar value clamping ------------------------------------------------+
+#define SC_SCALAR_CLAMP_FUNC(ValueType)                            \
+  template <typename Type>                                         \
+  ValueType clamp(ValueType Value, Type MinValue, Type MaxValue) { \
+    return std::min(std::max(Value, ValueType(MinValue)),          \
+                    ValueType(MaxValue));                          \
+  }
+
+SC_SCALAR_CLAMP_FUNC(short);
+SC_SCALAR_CLAMP_FUNC(int);
+SC_SCALAR_CLAMP_FUNC(long);
+//SC_SCALAR_CLAMP_FUNC(unsigned short);
+//SC_SCALAR_CLAMP_FUNC(unsigned int);
+//SC_SCALAR_CLAMP_FUNC(unsigned long);
+
+// +--- floating point clamp
+#define SC_SCALAR_FLT_CLAMP_FUNC(ValueType)                        \
+  template <typename Type>                                         \
+  ValueType clamp(ValueType Value, Type MinValue, Type MaxValue) { \
+    return fmin(fmax(Value, ValueType(MinValue)),                  \
+                ValueType(MaxValue));                              \
+  }
+
+SC_SCALAR_FLT_CLAMP_FUNC(float);
+SC_SCALAR_FLT_CLAMP_FUNC(double);
+// +--------------------------------------------------------------------------+
+
+
+// +--- Vector value clamping ------------------------------------------------+
+#define SC_VECTOR2_CLAMP_FUNC(VecType, ValueType)                       \
+  template <typename Type>                                              \
+  VecType clamp(const VecType &Vec, Type MinValue, Type MaxValue) {     \
+    VecType Result;                                                     \
+    Result.x = clamp(Vec.x, ValueType(MinValue), ValueType(MaxValue));  \
+    Result.y = clamp(Vec.y, ValueType(MinValue), ValueType(MaxValue));  \
+    return Result;                                                      \
+  }
+
+SC_VECTOR2_CLAMP_FUNC(short2,  short);
+SC_VECTOR2_CLAMP_FUNC(int2,    int);
+SC_VECTOR2_CLAMP_FUNC(long2,   long);
+SC_VECTOR2_CLAMP_FUNC(float2,  float);
+SC_VECTOR2_CLAMP_FUNC(double2, double);
+
+#define SC_VECTOR3_CLAMP_FUNC(VecType, ValueType)                       \
+  template <typename Type>                                              \
+  VecType clamp(const VecType &Vec, Type MinValue, Type MaxValue) {     \
+    VecType Result;                                                     \
+    Result.x = clamp(Vec.x, ValueType(MinValue), ValueType(MaxValue));  \
+    Result.y = clamp(Vec.y, ValueType(MinValue), ValueType(MaxValue));  \
+    Result.z = clamp(Vec.z, ValueType(MinValue), ValueType(MaxValue));  \
+    return Result;                                                      \
+  }
+
+SC_VECTOR3_CLAMP_FUNC(short3,  short);
+SC_VECTOR3_CLAMP_FUNC(int3,    int);
+SC_VECTOR3_CLAMP_FUNC(long3,   long);
+SC_VECTOR3_CLAMP_FUNC(float3,  float);
+SC_VECTOR3_CLAMP_FUNC(double3, double);
+
+#define SC_VECTOR4_CLAMP_FUNC(VecType, ValueType)                       \
+  template <typename Type>                                              \
+  VecType clamp(const VecType &Vec, Type MinValue, Type MaxValue) {     \
+    VecType Result;                                                     \
+    Result.x = clamp(Vec.x, ValueType(MinValue), ValueType(MaxValue));  \
+    Result.y = clamp(Vec.y, ValueType(MinValue), ValueType(MaxValue));  \
+    Result.z = clamp(Vec.z, ValueType(MinValue), ValueType(MaxValue));  \
+    Result.w = clamp(Vec.w, ValueType(MinValue), ValueType(MaxValue));  \
+    return Result;                                                      \
+  }
+
+SC_VECTOR4_CLAMP_FUNC(short4,  short);
+SC_VECTOR4_CLAMP_FUNC(int4,    int);
+SC_VECTOR4_CLAMP_FUNC(long4,   long);
+SC_VECTOR4_CLAMP_FUNC(float4,  float);
+SC_VECTOR4_CLAMP_FUNC(double4, double);
+// +--------------------------------------------------------------------------+
+
 
 #endif
 

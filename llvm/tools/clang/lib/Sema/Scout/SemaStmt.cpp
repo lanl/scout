@@ -156,9 +156,6 @@ namespace {
 
           ValueDecl* md = E->getMemberDecl();
 
-          QualType QT = md->getType();
-          const Type *tp = QT.getTypePtr();
-
           // Make sure we are only accessing mesh traits that match the dimensionality
           // of the mesh...
           if ((md->getName() == "height" ) || (md->getName() == "depth")) {
