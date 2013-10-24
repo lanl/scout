@@ -731,15 +731,18 @@ public:
   typedef std::pair< MeshFieldDecl *, int > MeshFieldPair;
   typedef std::map< llvm::StringRef, std::pair< llvm::Value *, QualType > > MemberMap;
 
-  // Scout forall explicit induction variable.
+  //forall mesh induction variables
+  llvm::Value *LoopIndexVar; // overall
+  llvm::SmallVector< llvm::Value *, 3 > InductionVar; //for each rank
+
+  // old style Scout forall explicit induction variable.
   llvm::Value *ForallIndVar;
-  llvm::Value *LoopIndexVar;
-  // Scout forall implicit induction variables.
+  // old style Scout forall implicit induction variables.
   Vector ScoutIdxVars;
   // Scout mesh dimension sizes.
   llvm::SmallVector< llvm::Value *, 3 > ScoutMeshSizes;
   llvm::Value *MeshBaseAddr;
-  llvm::Value *ImplicitMeshVar;
+  //llvm::Value *ImplicitMeshVar;
   llvm::Value *ForallTripCount;
   MemberMap MeshMembers;
   bool RenderAll;
@@ -2361,6 +2364,7 @@ public:
                         llvm::Value* MeshBaseAddr);
 
   void EmitForallStmt(const ForAllStmt &S);
+  //void EmitPositionFn(); //Work in progress
   void EmitForallLoop(const ForAllStmt &S, unsigned r);
   void EmitForallBody(const ForAllStmt &S);
   
