@@ -2364,7 +2364,7 @@ public:
                         llvm::Value* MeshBaseAddr);
 
 
-  //void EmitPositionFn(); //Work in progress
+  void EmitPositionFn(); //Work in progress
   void EmitForallStmt(const ForallMeshStmt &S);
   void EmitForallLoop(const ForallMeshStmt &S, unsigned r);
   void EmitForallBody(const ForallMeshStmt &S);

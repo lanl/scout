@@ -935,5 +935,13 @@ BUILTIN(__builtin_subc, "UiUiCUiCUiCUi*", "n")
 BUILTIN(__builtin_subcl, "ULiULiCULiCULiCULi*", "n")
 BUILTIN(__builtin_subcll, "ULLiULLiCULLiCULLiCULLi*", "n")
 
+
+// ===== Scout ===============================================
+BUILTIN(positionx, "i", "nc")
+BUILTIN(positiony, "i", "nc")
+BUILTIN(positionz, "i", "nc")
+BUILTIN(positionl, "i", "nc")
+// ===========================================================
+
 #undef BUILTIN
 #undef LIBBUILTIN

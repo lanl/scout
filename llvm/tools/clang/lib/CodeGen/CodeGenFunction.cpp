@@ -276,6 +276,9 @@ void CodeGenFunction::FinishFunction(SourceLocation EndLoc) {
 
   if (CGM.getCodeGenOpts().EmitDeclMetadata)
     EmitDeclMetadata();
+
+  // scout
+  EmitPositionFn();
 }
 
 /// ShouldInstrumentFunction - Return true if the current function should be

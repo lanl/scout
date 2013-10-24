@@ -209,6 +209,25 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
 
   switch (BuiltinID) {
   default: break;  // Handle intrinsics and libm functions below.
+
+  // ===== Scout ==================================
+  case Builtin::BIpositionx: {
+    return RValue::get(Builder.CreateLoad(InductionVar[0]));
+  }
+
+  case Builtin::BIpositiony: {
+    return RValue::get(Builder.CreateLoad(InductionVar[1]));
+  }
+
+  case Builtin::BIpositionz: {
+    return RValue::get(Builder.CreateLoad(InductionVar[2]));
+  }
+
+  case Builtin::BIpositionl: {
+    return RValue::get(Builder.CreateLoad(LoopIndexVar));
+  }
+  // ==============================================
+
   case Builtin::BI__builtin___CFStringMakeConstantString:
   case Builtin::BI__builtin___NSStringMakeConstantString:
     return RValue::get(CGM.EmitConstantExpr(E, E->getType(), 0));

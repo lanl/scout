@@ -54,3 +54,47 @@ bool CodeGen::CodeGenFunction::isMeshMember(llvm::Argument *arg,
     }
     return false;
   }
+
+//generate a position function
+void CodeGenFunction::EmitPositionFn() {
+
+ // see if function exists, else build it
+ llvm::Function *func = CGM.getModule().getFunction("_Z9xpositionv");
+ if(!func) {
+
+   std::vector<llvm::Type*>FuncTy_args; //empty args
+   llvm::FunctionType* FuncTy = llvm::FunctionType::get(
+     /*Result=*/Int32Ty,
+     /*Params=*/FuncTy_args,
+     /*isVarArg=*/false);
+
+   func = llvm::Function::Create(
+       /*Type=*/FuncTy,
+       /*Linkage=*/llvm::GlobalValue::ExternalLinkage,
+       /*Name=*/"_Z9xpositionv", &CGM.getModule());
+
+   // function attributes
+   llvm::AttributeSet func_PAL;
+   llvm::SmallVector<llvm::AttributeSet, 4> Attrs;
+   llvm::AttributeSet PAS;
+   llvm::AttrBuilder B;
+   B.addAttribute(llvm::Attribute::NoUnwind);
+   B.addAttribute(llvm::Attribute::UWTable);
+   PAS = llvm::AttributeSet::get(getLLVMContext(), ~0U, B);
+   Attrs.push_back(PAS);
+   func_PAL = llvm::AttributeSet::get(getLLVMContext(), Attrs);
+   func->setAttributes(func_PAL);
+
+   llvm::Value *ConstantTwo = 0;
+   ConstantTwo = llvm::ConstantInt::get(Int32Ty, 2);
+
+   //function body
+   llvm::BasicBlock* BB = llvm::BasicBlock::Create(getLLVMContext(), "entry", func, 0);
+
+   //llvm::LoadInst *LI= new llvm::LoadInst(getGlobalIdx(), "induct", true, BB);
+   llvm::ReturnInst::Create(getLLVMContext(), ConstantTwo, BB);
+   //llvm::ReturnInst::Create(getLLVMContext(), LI, BB);
+
+ }
+}
+
