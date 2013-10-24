@@ -2,9 +2,9 @@
 
 using namespace std;
 
-int main(int argc, char** argv){
+int main(int argc, char** argv) {
 
-  uniform mesh MyMesh{
+  uniform mesh MyMesh {
   cells:
     float a;
     float b;
@@ -13,7 +13,7 @@ int main(int argc, char** argv){
 
   MyMesh m[512,512];
   
-  forall cells c of m{
+  forall cells c in m {
     a = 2;
     b = a;
   }

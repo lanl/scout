@@ -6467,6 +6467,8 @@ def err_forall_non_vertex_field:Error<
     "Mesh field is not field located.">;
 def err_forall_non_face_field:Error<
     "Mesh field is not face located.">;
+def err_mesh_has_no_elements:Error<
+    "Mesh has no elements, or is missing field location keyword.">;
 def err_illegal_mesh_element_access : Error<
     "illegal mesh element access -- outside of a supporting mesh construct.">;
 def err_loop_variable_shadows_forall : Error<
