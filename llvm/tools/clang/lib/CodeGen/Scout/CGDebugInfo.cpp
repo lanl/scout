@@ -9,7 +9,7 @@
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/RecordLayout.h"
-#include "clang/AST/scout/MeshLayout.h"
+#include "clang/AST/Scout/MeshLayout.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/Version.h"

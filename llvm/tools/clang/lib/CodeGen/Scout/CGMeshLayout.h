@@ -11,7 +11,7 @@
 #define CLANG_CODEGEN_CGMESHLAYOUT_H
 
 #include "../CGRecordLayout.h"
-#include "clang/AST/scout/MeshDecl.h"
+#include "clang/AST/Scout/MeshDecl.h"
 
 namespace clang {
   namespace CodeGen {

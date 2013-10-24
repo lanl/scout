@@ -21,7 +21,7 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/RecordLayout.h"
-#include "clang/AST/scout/MeshLayout.h"
+#include "clang/AST/Scout/MeshLayout.h"
 #include "clang/Frontend/CodeGenOptions.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -513,7 +513,7 @@ void CGMeshLayout::print(raw_ostream &OS) const {
   for (llvm::DenseMap<const MeshFieldDecl*, CGBitFieldInfo>::const_iterator
          it = BitFields.begin(), ie = BitFields.end();
        it != ie; ++it) {
-    const MeshDecl *MD = it->first->getParentMesh();
+    const MeshDecl *MD = it->first->getParent();
     unsigned Index = 0;
     for (MeshDecl::field_iterator
            it2 = MD->field_begin(); *it2 != it->first; ++it2)
@@ -534,3 +534,38 @@ void CGMeshLayout::dump() const {
   print(llvm::errs());
 }
 
+CGBitFieldInfo CGBitFieldInfo::MakeInfo(CodeGenTypes &Types,
+                                        const MeshFieldDecl *MFD,
+                                        uint64_t Offset, uint64_t Size,
+                                        uint64_t StorageSize,
+                                        uint64_t StorageAlignment) {
+  llvm::Type *Ty = Types.ConvertTypeForMem(MFD->getType());
+  CharUnits TypeSizeInBytes =
+    CharUnits::fromQuantity(Types.getDataLayout().getTypeAllocSize(Ty));
+  uint64_t TypeSizeInBits = Types.getContext().toBits(TypeSizeInBytes);
+
+  bool IsSigned = MFD->getType()->isSignedIntegerOrEnumerationType();
+
+  if (Size > TypeSizeInBits) {
+    // We have a wide bit-field. The extra bits are only used for padding, so
+    // if we have a bitfield of type T, with size N:
+    //
+    // T t : N;
+    //
+    // We can just assume that it's:
+    //
+    // T t : sizeof(T);
+    //
+    Size = TypeSizeInBits;
+  }
+
+  // Reverse the bit offsets for big endian machines. Because we represent
+  // a bitfield as a single large integer load, we can imagine the bits
+  // counting from the most-significant-bit instead of the
+  // least-significant-bit.
+  if (Types.getDataLayout().isBigEndian()) {
+    Offset = StorageSize - (Offset + Size);
+  }
+
+  return CGBitFieldInfo(Offset, Size, IsSigned, StorageSize, StorageAlignment);
+}

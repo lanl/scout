@@ -1446,6 +1446,9 @@ public:
   static bool FindTagMember(const CXXBaseSpecifier *Specifier,
                             CXXBasePath &Path, void *Name);
 
+  static bool FindMeshMember(const CXXBaseSpecifier *Specifier,
+                             CXXBasePath &Path, void *Name);
+
   /// \brief Base-class lookup callback that determines whether there exists
   /// a member with the given name.
   ///

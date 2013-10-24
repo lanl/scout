@@ -19,10 +19,12 @@ def WhileStmt : Stmt;
 def DoStmt : Stmt;
 def ForStmt : Stmt;
 // ===== Scout =========================================
-def ForAllStmt : Stmt;
-def ForAllArrayStmt : DStmt<ForAllStmt>;
-def RenderAllStmt : DStmt<ForAllStmt>;
-def VolumeRenderAllStmt : Stmt;
+
+def ForallStmt : Stmt<1>;
+def ForallMeshStmt : DStmt<ForallStmt>;
+
+def RenderallStmt : Stmt<1>;
+def RenderallMeshStmt : DStmt<RenderallStmt>;
 // =====================================================
 def GotoStmt : Stmt;
 def IndirectGotoStmt : Stmt;
@@ -70,10 +72,6 @@ def UnaryExprOrTypeTraitExpr : DStmt<Expr>;
 def ArraySubscriptExpr : DStmt<Expr>;
 def CallExpr : DStmt<Expr>;
 def MemberExpr : DStmt<Expr>;
-// ===== Scout =============================================
-// SC_TODO - remove scout vector types
-def ScoutVectorMemberExpr : DStmt<Expr>;
-// =========================================================
 def CastExpr : DStmt<Expr, 1>;
 def BinaryOperator : DStmt<Expr>;
 def CompoundAssignOperator : DStmt<BinaryOperator>;
@@ -176,7 +174,7 @@ def OpaqueValueExpr : DStmt<Expr>;
 
 // Microsoft Extensions.
 def MSPropertyRefExpr : DStmt<Expr>;
-def CXXUuidofExpr : DStmt<Expr>; 
+def CXXUuidofExpr : DStmt<Expr>;
 def SEHTryStmt : Stmt;
 def SEHExceptStmt : Stmt;
 def SEHFinallyStmt : Stmt;

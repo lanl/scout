@@ -31,7 +31,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -46,7 +46,7 @@
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
  * ###########################################################################
- * 
+ *
  * Notes
  *
  * #####
@@ -55,15 +55,14 @@
 #ifndef SCOUT_RENDERALL_VOLUME_H_
 #define SCOUT_RENDERALL_VOLUME_H_
 
-#include "scout/Runtime/base_types.h"
-#include "scout/Runtime/vec_types.h"
+#include "scout/types.h"
 #include "scout/Runtime/renderall/RenderallBase.h"
 #include "scout/Runtime/volren/hpgv/hpgv_render.h"
 #include "scout/Runtime/opengl/glCamera.h"
 #include "scout/Runtime/opengl/glSDL.h"
 #include <mpi.h>
 
-namespace scout 
+namespace scout
 {
   class glCamera;
   class glVolumeRenderable;
@@ -78,7 +77,7 @@ namespace scout
 
       ~RenderallVolume();
       void genGrid();
-      void addVolume(void* dataptr, unsigned volumenum); 
+      void addVolume(void* dataptr, unsigned volumenum);
       void begin();
       void end();
     private:
@@ -105,7 +104,7 @@ extern void  __scrt_renderall_volume_init (
     size_t win_width, size_t win_height,
     glCamera* camera, trans_func_ab_t trans_func);
 
-extern "C" 
+extern "C"
 void __scrt_renderall_add_volume(float* dataptr, unsigned volumenum);
 
-#endif 
+#endif

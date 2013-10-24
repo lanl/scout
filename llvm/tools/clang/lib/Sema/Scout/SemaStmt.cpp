@@ -2,7 +2,7 @@
  * ###########################################################################
  * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
- * 
+ *
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -20,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- * 
+ *
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided 
+ *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -31,7 +31,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -45,31 +45,31 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ########################################################################### 
- * 
+ * ###########################################################################
+ *
  * Notes
  *
- * ##### 
- */ 
+ * #####
+ */
 
 #include "clang/Sema/SemaInternal.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/AST/StmtVisitor.h"
-#include "clang/AST/scout/ImplicitMeshParamDecl.h"
+#include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 #include <map>
 using namespace clang;
 using namespace sema;
 
-// ===== Scout ==========================================================================
+// ===== Scout ================================================================
 // ForAllVisitor class to check that LHS mesh field assignment
 // operators do not appear as subsequent RHS values, and various other
 // semantic checks
 
 namespace {
 
-  class ForAllVisitor : public StmtVisitor<ForAllVisitor> {
-  public:
+  class ForallVisitor : public StmtVisitor<ForallVisitor> {
+   public:
 
     enum NodeType{
       NodeNone,
@@ -77,125 +77,144 @@ namespace {
       NodeRHS
     };
 
-    ForAllVisitor(Sema& sema, ForAllStmt* fs)
-    : sema_(sema),
-    fs_(fs),
-    error_(false),
-    nodeType_(NodeNone){
-
+    ForallVisitor(Sema& sema, ForallMeshStmt* fs)
+      : sema_(sema),
+        fs_(fs),
+        error_(false),
+        nodeType_(NodeNone) {
     }
 
-    void VisitStmt(Stmt* S){
+    void VisitStmt(Stmt* S) {
       VisitChildren(S);
     }
 
-    void VisitCallExpr(CallExpr* E){
+    void VisitCallExpr(CallExpr* E) {
+
       FunctionDecl* fd = E->getDirectCallee();
-      if(fd){
+
+      if (fd) {
         std::string name = fd->getName();
-        if(name == "cshift"){
+        if (name == "printf" || name == "fprintf") {
+          // SC_TODO -- for now we'll warn that you're calling a print
+          // function inside a parallel construct -- in the long run
+          // we can either (1) force the loop to run sequentially or
+          // (2) replace print function with a "special" version...
+          sema_.Diag(E->getExprLoc(), diag::warn_forall_calling_io_func);
+        } else if (name == "cshift") {
+
+          // SC_TODO -- need to check mesh types here for cshift() validity.
+
           const MeshType* mt = fs_->getMeshType();
+          unsigned args = E->getNumArgs();
 
-          const UniformMeshType* unimt = dyn_cast<UniformMeshType>(mt);
-          const StructuredMeshType* smt = dyn_cast<StructuredMeshType>(mt);
-          const RectilinearMeshType* rmt = dyn_cast<RectilinearMeshType>(mt);
+          unsigned dims = mt->rankOf();
 
-          if (unimt || smt || rmt) {
-
-            unsigned args = E->getNumArgs();
-
-            unsigned dims;
-            if (unimt) dims = unimt->dimensions().size();
-            if (smt) dims = smt->dimensions().size();
-            if (rmt) dims = rmt->dimensions().size();
-
-            if(args != dims + 1) {
-              sema_.Diag(E->getRParenLoc(), diag::err_cshift_args);
-              error_ = true;
-            } else {
-              Expr* fe = E->getArg(0);
-              if(ImplicitCastExpr* ce = dyn_cast<ImplicitCastExpr>(fe)){
-                fe = ce->getSubExpr();
-              }
-
-              if(MemberExpr* me = dyn_cast<MemberExpr>(fe)){
-                if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(me->getBase())){
-                  ValueDecl* bd = dr->getDecl();
-                  if(!isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
-                    sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
-                    error_ = true;
-                  }
-                }
-              } else {
-                sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
-                error_ = true;
-              }
-            }
-          } else {
-            sema_.Diag(E->getRParenLoc(), diag::err_cshift_not_allowed);
+          if (args != dims + 1) {
+            sema_.Diag(E->getRParenLoc(), diag::err_cshift_args);
             error_ = true;
+          } else {
+            Expr* fe = E->getArg(0);
+
+            if (ImplicitCastExpr* ce = dyn_cast<ImplicitCastExpr>(fe)) {
+              fe = ce->getSubExpr();
+            }
+
+            if (MemberExpr* me = dyn_cast<MemberExpr>(fe)) {
+              if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(me->getBase())) {
+                ValueDecl* bd = dr->getDecl();
+
+                if (!isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
+                  sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
+                  error_ = true;
+                }
+              }
+            } else {
+              sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
+              error_ = true;
+            }
           }
         }
       }
 
-
       VisitChildren(E);
     }
 
-
-
-    void VisitChildren(Stmt* S){
-      for(Stmt::child_iterator I = S->child_begin(),
-          E = S->child_end(); I != E; ++I){
-        if(Stmt* child = *I){
+    void VisitChildren(Stmt* S) {
+      for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
+        if (Stmt* child = *I) {
           Visit(child);
         }
       }
     }
 
-    void VisitMemberExpr(MemberExpr* E){
-      if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(E->getBase())){
+    void VisitMemberExpr(MemberExpr* E) {
+
+      if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(E->getBase())) {
         ValueDecl* bd = dr->getDecl();
-        if(const MeshType* MT =
-            dyn_cast<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
+
+        if (const MeshType* MT = dyn_cast<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
 
           ValueDecl* md = E->getMemberDecl();
 
-          if((md->getName() == "height" ) || (md->getName() == "depth")) {
+          // Make sure we are only accessing mesh traits that match the dimensionality
+          // of the mesh...
+          if ((md->getName() == "height" ) || (md->getName() == "depth")) {
 
-            const UniformMeshType* unimt = dyn_cast<UniformMeshType>(MT);
-            const StructuredMeshType* smt = dyn_cast<StructuredMeshType>(MT);
-            const RectilinearMeshType* rmt = dyn_cast<RectilinearMeshType>(MT);
+            unsigned ND = MT->rankOf();
 
-            if (unimt || smt || rmt) {
-
-              unsigned ND;
-              if (unimt) ND = unimt->dimensions().size();
-              if (smt) ND = smt->dimensions().size();
-              if (rmt) ND = rmt->dimensions().size();
-
-              if(md->getName() == "height" && ND < 2) {
-                sema_.Diag(E->getMemberLoc(), diag::err_invalid_height_mesh);
-                error_ = true;
-              } else if(md->getName() == "depth" && ND < 3) {
-                sema_.Diag(E->getMemberLoc(), diag::err_invalid_depth_mesh);
-                error_ = true;
-              }
-            } else {
-              sema_.Diag(E->getMemberLoc(), diag::err_height_depth_invalid_mesh);
+            if (md->getName() == "height" && ND < 2) {
+              sema_.Diag(E->getMemberLoc(), diag::err_invalid_height_mesh);
+              error_ = true;
+            } else if (md->getName() == "depth" && ND < 3) {
+              sema_.Diag(E->getMemberLoc(), diag::err_invalid_depth_mesh);
               error_ = true;
             }
+          } else {
+            /*
+            ForallMeshStmt::MeshElementType LoopElementType = fs_->getMeshElementRef();
+            const MeshFieldType* MFT;
+            MFT = dyn_cast<MeshFieldType>(md->getType().getTypePtr());
+
+            switch(LoopElementType) {
+
+              case ForallMeshStmt::Cells:
+                if (! MFT->isCellLocated()) {
+                  sema_.Diag(E->getMemberLoc(), diag::err_forall_non_cell_field);
+                }
+                break;
+
+              case ForallMeshStmt::Vertices:
+                if (! MFT->isVertexLocated()) {
+                  sema_.Diag(E->getMemberLoc(), diag::err_forall_non_vertex_field);
+                }
+                break;
+
+              case ForallMeshStmt::Edges:
+                if (! MFT->isEdgeLocated()) {
+                  sema_.Diag(E->getMemberLoc(), diag::err_forall_non_edge_field);
+                }
+
+                break;
+
+              case ForallMeshStmt::Faces:
+                if (! MFT->isFaceLocated()) {
+                  sema_.Diag(E->getMemberLoc(), diag::err_forall_non_face_field);
+                }
+                break;
+
+              default:
+                assert(false && "unknown mesh field element type");
+            }
+            */
           }
 
-          std::string ref = bd->getName().str() + "." +
-              md->getName().str();
+          std::string ref = bd->getName().str() + "." + md->getName().str();
 
-          if(nodeType_ == NodeLHS){
+          if (nodeType_ == NodeLHS) {
             refMap_.insert(make_pair(ref, true));
-          }
-          else if(nodeType_ == NodeRHS){
+          } else if (nodeType_ == NodeRHS) {
             RefMap_::iterator itr = refMap_.find(ref);
-            if(itr != refMap_.end()){
+            if (itr != refMap_.end()) {
               sema_.Diag(E->getMemberLoc(), diag::err_rhs_after_lhs_forall);
               error_ = true;
             }
@@ -205,38 +224,20 @@ namespace {
     }
 
 
-    void VisitDeclStmt(DeclStmt* S){
+    void VisitDeclStmt(DeclStmt* S) {
+
       DeclGroupRef declGroup = S->getDeclGroup();
 
       for(DeclGroupRef::iterator itr = declGroup.begin(),
           itrEnd = declGroup.end(); itr != itrEnd; ++itr){
         Decl* decl = *itr;
 
-        if(NamedDecl* nd = dyn_cast<NamedDecl>(decl)){
+        if (NamedDecl* nd = dyn_cast<NamedDecl>(decl)) {
           localMap_.insert(make_pair(nd->getName().str(), true));
         }
       }
 
       VisitChildren(S);
-    }
-
-    //SC_TODO: remove scout vectors
-    void VisitScoutVectorMemberExpr(ScoutVectorMemberExpr* E){
-      if(MemberExpr* ME = dyn_cast<MemberExpr>(E->getBase())){
-        if(ME->getMemberDecl()->getName() == "position"){
-          if(DeclRefExpr* DR = dyn_cast<DeclRefExpr>(ME->getBase())){
-            if(const MeshType* MT =
-               dyn_cast<MeshType>(DR->getDecl()->getType().getCanonicalType().getTypePtr())){
-              if(E->getIdx() >= MT->dimensions().size()){
-                sema_.Diag(E->getLocation(), diag::err_invalid_position_ref);
-                error_ = true;
-              }
-            }
-          }
-        }
-      }
-
-      VisitChildren(E);
     }
 
     void VisitBinaryOperator(BinaryOperator* S){
@@ -280,7 +281,7 @@ namespace {
 
   private:
     Sema& sema_;
-    ForAllStmt* fs_;
+    ForallMeshStmt *fs_;
     typedef std::map<std::string, bool> RefMap_;
     RefMap_ refMap_;
     RefMap_ localMap_;
@@ -288,42 +289,97 @@ namespace {
     NodeType nodeType_;
   };
 
+
+
+
 } // end namespace
 
-// scout - Scout Stmts
-StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
-                                 ForAllStmt::ForAllType Type,
-                                 const MeshType *MT,
-                                 VarDecl* MVD,
-                                 IdentifierInfo* LoopVariableII,
-                                 IdentifierInfo* MeshII,
-                                 SourceLocation LParenLoc,
-                                 Expr* Op, SourceLocation RParenLoc,
-                                 Stmt* Body,
-                                 BlockExpr* Block){
+
+// ----- ActOnForallRefVariable
+// This call assumes the reference variable details have been parsed
+// (syntax checked) and issues, such as shadows, have been reported.
+// Given this, this member function takes steps to further determine
+// the actual mesh type of the forall (passed in as a base mesh type)
+// and creates the reference variable
+bool Sema::ActOnForallMeshRefVariable(Scope* S,
+                                  IdentifierInfo* RefVarInfo,
+                                  SourceLocation RefVarLoc,
+                                  const MeshType *MT,
+                                  VarDecl* VD) {
+
+  ImplicitMeshParamDecl* D;
+
+  if (MT->isUniform()) {
+    D = ImplicitMeshParamDecl::Create(Context,
+                                      CurContext,
+                                      RefVarLoc,
+                                      RefVarInfo,
+                                      QualType(cast<UniformMeshType>(MT),0), VD);
+  } else if (MT->isStructured()) {
+    D = ImplicitMeshParamDecl::Create(Context,
+                                      CurContext,
+                                      RefVarLoc,
+                                      RefVarInfo,
+                                      QualType(cast<StructuredMeshType>(MT),0), VD);
+
+  } else if (MT->isRectilinear()) {
+    D = ImplicitMeshParamDecl::Create(Context,
+                                      CurContext,
+                                      RefVarLoc,
+                                      RefVarInfo,
+                                      QualType(cast<RectilinearMeshType>(MT),0), VD);
+  } else if (MT->isUnstructured()) {
+    D = ImplicitMeshParamDecl::Create(Context,
+                                      CurContext,
+                                      RefVarLoc,
+                                      RefVarInfo,
+                                      QualType(cast<UnstructuredMeshType>(MT),0), VD);
+
+  } else {
+    assert(false && "unknown mesh type");
+    return false;
+  }
+
+  PushOnScopeChains(D, S, true);
+  SCLStack.push_back(D);
+  return true;
+}
+
+StmtResult Sema::ActOnForallMeshStmt(SourceLocation ForallLoc,
+                                     ForallMeshStmt::MeshElementType ElementType,
+                                     const MeshType *MT,
+                                     VarDecl* MVD,
+                                     IdentifierInfo* RefVarInfo,
+                                     IdentifierInfo* MeshInfo,
+                                     SourceLocation LParenLoc,
+                                     Expr* Predicate, SourceLocation RParenLoc,
+                                     Stmt* Body) {
 
   SCLStack.pop_back();
 
-  ForAllStmt* FS = new (Context) ForAllStmt(Context, Type, MT,
-                                            LoopVariableII, MeshII, MVD,
-                                            Op, Body, Block,
-                                            ForAllLoc, LParenLoc,
-                                            RParenLoc);
+  ForallMeshStmt* FS = new (Context) ForallMeshStmt(ElementType,
+                                                    RefVarInfo,
+                                                    MeshInfo, MVD, MT,
+                                                    ForallLoc,
+                                                    Body, Predicate,
+                                                    LParenLoc, RParenLoc);
 
   // check that LHS mesh field assignment
   // operators do not appear as subsequent RHS values, and
   // perform other semantic checks
-  ForAllVisitor v(*this, FS);
+  ForallVisitor v(*this, FS);
   v.Visit(Body);
 
-  if(v.error()){
+  if (v.error()){
     return StmtError();
   }
 
   return Owned(FS);
 }
 
-StmtResult Sema::ActOnForAllArrayStmt(SourceLocation ForAllLoc,
+
+/*
+StmtResult Sema::ActOnForallArrayStmt(SourceLocation ForAllLoc,
                                       Stmt* Body,
                                       BlockExpr* Block){
 
@@ -577,7 +633,6 @@ bool Sema::ActOnForAllLoopVariable(Scope* S,
                                    SourceLocation MeshLoc){
 
   // lookup result below
-
   LookupResult LResult(*this, LoopVariableII, LoopVariableLoc,
                        LookupOrdinaryName);
 
@@ -813,4 +868,313 @@ Sema::ActOnVolumeRenderAllStmt(
 
   return Owned(vrs);
 }
-// ======================================================================================
+*/
+
+
+namespace {
+  class RenderallVisitor : public StmtVisitor<RenderallVisitor> {
+   public:
+
+    enum NodeType{
+      NodeNone,
+      NodeLHS,
+      NodeRHS
+    };
+
+    RenderallVisitor(Sema& sema, RenderallMeshStmt* fs)
+      : sema_(sema),
+        fs_(fs),
+        error_(false),
+        nodeType_(NodeNone) {
+    }
+
+    void VisitStmt(Stmt* S) {
+      VisitChildren(S);
+    }
+
+    void VisitCallExpr(CallExpr* E) {
+
+      FunctionDecl* fd = E->getDirectCallee();
+
+      if (fd) {
+        std::string name = fd->getName();
+        if (name == "printf" || name == "fprintf") {
+          // SC_TODO -- for now we'll warn that you're calling a print
+          // function inside a parallel construct -- in the long run
+          // we can either (1) force the loop to run sequentially or
+          // (2) replace print function with a "special" version...
+          sema_.Diag(E->getExprLoc(), diag::warn_renderall_calling_io_func);
+        } else if (name == "cshift") {
+
+          // SC_TODO -- need to check mesh types here for cshift() validity.
+
+          const MeshType* mt = fs_->getMeshType();
+          unsigned args = E->getNumArgs();
+
+          unsigned dims = mt->rankOf();
+
+          if (args != dims + 1) {
+            sema_.Diag(E->getRParenLoc(), diag::err_cshift_args);
+            error_ = true;
+          } else {
+            Expr* fe = E->getArg(0);
+
+            if (ImplicitCastExpr* ce = dyn_cast<ImplicitCastExpr>(fe)) {
+              fe = ce->getSubExpr();
+            }
+
+            if (MemberExpr* me = dyn_cast<MemberExpr>(fe)) {
+              if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(me->getBase())) {
+                ValueDecl* bd = dr->getDecl();
+
+                if (!isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
+                  sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
+                  error_ = true;
+                }
+              }
+            } else {
+              sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
+              error_ = true;
+            }
+          }
+        }
+      }
+
+      VisitChildren(E);
+    }
+
+    void VisitChildren(Stmt* S) {
+      for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
+        if (Stmt* child = *I) {
+          Visit(child);
+        }
+      }
+    }
+
+    void VisitMemberExpr(MemberExpr* E) {
+
+      if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(E->getBase())) {
+        ValueDecl* bd = dr->getDecl();
+
+        if (const MeshType* MT = dyn_cast<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
+
+          ValueDecl* md = E->getMemberDecl();
+
+          // Make sure we are only accessing mesh traits that match the dimensionality
+          // of the mesh...
+          if ((md->getName() == "height" ) || (md->getName() == "depth")) {
+
+            unsigned ND = MT->rankOf();
+
+            if (md->getName() == "height" && ND < 2) {
+              sema_.Diag(E->getMemberLoc(), diag::err_invalid_height_mesh);
+              error_ = true;
+            } else if (md->getName() == "depth" && ND < 3) {
+              sema_.Diag(E->getMemberLoc(), diag::err_invalid_depth_mesh);
+              error_ = true;
+            }
+          } else {
+            /*
+            ForallMeshStmt::MeshElementType LoopElementType = fs_->getMeshElementRef();
+            const MeshFieldType* MFT;
+            MFT = dyn_cast<MeshFieldType>(md->getType().getTypePtr());
+
+            switch(LoopElementType) {
+
+              case ForallMeshStmt::Cells:
+                if (! MFT->isCellLocated()) {
+                  sema_.Diag(E->getMemberLoc(), diag::err_forall_non_cell_field);
+                }
+                break;
+
+              case ForallMeshStmt::Vertices:
+                if (! MFT->isVertexLocated()) {
+                  sema_.Diag(E->getMemberLoc(), diag::err_forall_non_vertex_field);
+                }
+                break;
+
+              case ForallMeshStmt::Edges:
+                if (! MFT->isEdgeLocated()) {
+                  sema_.Diag(E->getMemberLoc(), diag::err_forall_non_edge_field);
+                }
+
+                break;
+
+              case ForallMeshStmt::Faces:
+                if (! MFT->isFaceLocated()) {
+                  sema_.Diag(E->getMemberLoc(), diag::err_forall_non_face_field);
+                }
+                break;
+
+              default:
+                assert(false && "unknown mesh field element type");
+            }
+            */
+          }
+
+          std::string ref = bd->getName().str() + "." + md->getName().str();
+
+          if (nodeType_ == NodeLHS) {
+            refMap_.insert(make_pair(ref, true));
+          } else if (nodeType_ == NodeRHS) {
+            RefMap_::iterator itr = refMap_.find(ref);
+            if (itr != refMap_.end()) {
+              sema_.Diag(E->getMemberLoc(), diag::err_rhs_after_lhs_forall);
+              error_ = true;
+            }
+          }
+        }
+      }
+    }
+
+
+    void VisitDeclStmt(DeclStmt* S) {
+
+      DeclGroupRef declGroup = S->getDeclGroup();
+
+      for(DeclGroupRef::iterator itr = declGroup.begin(),
+          itrEnd = declGroup.end(); itr != itrEnd; ++itr){
+        Decl* decl = *itr;
+
+        if (NamedDecl* nd = dyn_cast<NamedDecl>(decl)) {
+          localMap_.insert(make_pair(nd->getName().str(), true));
+        }
+      }
+
+      VisitChildren(S);
+    }
+
+    void VisitBinaryOperator(BinaryOperator* S){
+
+      switch(S->getOpcode()){
+        case BO_Assign:
+        case BO_MulAssign:
+        case BO_DivAssign:
+        case BO_RemAssign:
+        case BO_AddAssign:
+        case BO_SubAssign:
+        case BO_ShlAssign:
+        case BO_ShrAssign:
+        case BO_AndAssign:
+        case BO_XorAssign:
+        case BO_OrAssign:
+          if(DeclRefExpr* DR = dyn_cast<DeclRefExpr>(S->getLHS())){
+            RefMap_::iterator itr = localMap_.find(DR->getDecl()->getName().str());
+            if(itr == localMap_.end()){
+
+              sema_.Diag(DR->getLocation(),
+                         diag::warn_lhs_outside_forall) << DR->getDecl()->getName();
+            }
+          }
+
+          nodeType_ = NodeLHS;
+          break;
+        default:
+          break;
+      }
+
+      Visit(S->getLHS());
+      nodeType_ = NodeRHS;
+      Visit(S->getRHS());
+      nodeType_ = NodeNone;
+    }
+
+    bool error(){
+      return error_;
+    }
+
+  private:
+    Sema& sema_;
+    RenderallMeshStmt *fs_;
+    typedef std::map<std::string, bool> RefMap_;
+    RefMap_ refMap_;
+    RefMap_ localMap_;
+    bool error_;
+    NodeType nodeType_;
+  };
+} // end namespace
+
+
+// ----- ActOnForallRefVariable
+// This call assumes the reference variable details have been parsed
+// (syntax checked) and issues, such as shadows, have been reported.
+// Given this, this member function takes steps to further determine
+// the actual mesh type of the renderall (passed in as a base mesh type)
+// and creates the reference variable
+bool Sema::ActOnRenderallMeshRefVariable(Scope* S,
+                                         IdentifierInfo* RefVarInfo,
+                                         SourceLocation RefVarLoc,
+                                         const MeshType *MT,
+                                         VarDecl* VD) {
+
+  ImplicitMeshParamDecl* D;
+
+  if (MT->isUniform()) {
+    D = ImplicitMeshParamDecl::Create(Context,
+                                      CurContext,
+                                      RefVarLoc,
+                                      RefVarInfo,
+                                      QualType(cast<UniformMeshType>(MT),0), VD);
+  } else if (MT->isStructured()) {
+    D = ImplicitMeshParamDecl::Create(Context,
+                                      CurContext,
+                                      RefVarLoc,
+                                      RefVarInfo,
+                                      QualType(cast<StructuredMeshType>(MT),0), VD);
+
+  } else if (MT->isRectilinear()) {
+    D = ImplicitMeshParamDecl::Create(Context,
+                                      CurContext,
+                                      RefVarLoc,
+                                      RefVarInfo,
+                                      QualType(cast<RectilinearMeshType>(MT),0), VD);
+  } else if (MT->isUnstructured()) {
+    D = ImplicitMeshParamDecl::Create(Context,
+                                      CurContext,
+                                      RefVarLoc,
+                                      RefVarInfo,
+                                      QualType(cast<UnstructuredMeshType>(MT),0), VD);
+
+  } else {
+    assert(false && "unknown mesh type");
+    return false;
+  }
+
+  PushOnScopeChains(D, S, true);
+  SCLStack.push_back(D);
+  return true;
+}
+
+
+StmtResult Sema::ActOnRenderallMeshStmt(SourceLocation ForallLoc,
+                                        RenderallMeshStmt::MeshElementType ElementType,
+                                        const MeshType *MT,
+                                        VarDecl* MVD,
+                                        IdentifierInfo* RefVarInfo,
+                                        IdentifierInfo* MeshInfo,
+                                        SourceLocation LParenLoc,
+                                        Expr* Predicate, SourceLocation RParenLoc,
+                                        Stmt* Body) {
+
+  SCLStack.pop_back();
+
+  RenderallMeshStmt* RS = new (Context) RenderallMeshStmt(ElementType,
+                                                          RefVarInfo,
+                                                          MeshInfo, MVD, MT,
+                                                          ForallLoc,
+                                                          Body, Predicate,
+                                                          LParenLoc, RParenLoc);
+
+  // check that LHS mesh field assignment
+  // operators do not appear as subsequent RHS values, and
+  // perform other semantic checks
+  RenderallVisitor v(*this, RS);
+  v.Visit(Body);
+
+  if (v.error()){
+    return StmtError();
+  }
+
+  return Owned(RS);
+}
+

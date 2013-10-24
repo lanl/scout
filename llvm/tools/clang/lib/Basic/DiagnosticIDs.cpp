@@ -20,10 +20,11 @@
 #include <map>
 using namespace clang;
 
+#include <iostream>
+
 //===----------------------------------------------------------------------===//
 // Builtin Diagnostic information
 //===----------------------------------------------------------------------===//
-
 namespace {
 
 // Diagnostic classes.
@@ -99,9 +100,8 @@ static const StaticDiagInfoRec *GetDiagInfo(unsigned DiagID) {
       assert(StaticDiagInfo[i-1].DiagID != StaticDiagInfo[i].DiagID &&
              "Diag ID conflict, the enums at the start of clang::diag (in "
              "DiagnosticIDs.h) probably need to be increased");
-
       assert(StaticDiagInfo[i-1] < StaticDiagInfo[i] &&
-             "Improperly sorted diag info");
+             "Improperly sorted diag info (check diagnostic ranges)");
     }
     IsFirst = false;
   }
@@ -238,22 +238,22 @@ StringRef DiagnosticIDs::getCategoryNameFromID(unsigned CategoryID) {
 
 
 
-DiagnosticIDs::SFINAEResponse 
+DiagnosticIDs::SFINAEResponse
 DiagnosticIDs::getDiagnosticSFINAEResponse(unsigned DiagID) {
   if (const StaticDiagInfoRec *Info = GetDiagInfo(DiagID)) {
     if (Info->AccessControl)
       return SFINAE_AccessControl;
-    
+
     if (!Info->SFINAE)
       return SFINAE_Report;
 
     if (Info->Class == CLASS_ERROR)
       return SFINAE_SubstitutionFailure;
-    
+
     // Suppress notes, warnings, and extensions;
     return SFINAE_Suppress;
   }
-  
+
   return SFINAE_Report;
 }
 
@@ -360,7 +360,7 @@ bool DiagnosticIDs::isBuiltinExtensionDiag(unsigned DiagID,
   if (DiagID >= diag::DIAG_UPPER_LIMIT ||
       getBuiltinDiagClass(DiagID) != CLASS_EXTENSION)
     return false;
-  
+
   EnabledByDefault =
     GetDefaultDiagMappingInfo(DiagID).getMapping() != diag::MAP_IGNORE;
   return true;
@@ -451,7 +451,7 @@ DiagnosticIDs::getDiagnosticLevel(unsigned DiagID, unsigned DiagClass,
   if (IsExtensionDiag && !MappingInfo.isUser()) {
     switch (Diag.ExtBehavior) {
     case DiagnosticsEngine::Ext_Ignore:
-      break; 
+      break;
     case DiagnosticsEngine::Ext_Warn:
       // Upgrade ignored diagnostics to warnings.
       if (Result == DiagnosticIDs::Ignored)
@@ -670,7 +670,7 @@ bool DiagnosticIDs::ProcessDiag(DiagnosticsEngine &Diag) const {
       ++Diag.NumErrors;
     }
 
-    // If we've emitted a lot of errors, emit a fatal error instead of it to 
+    // If we've emitted a lot of errors, emit a fatal error instead of it to
     // stop a flood of bogus errors.
     if (Diag.ErrorLimit && Diag.NumErrors > Diag.ErrorLimit &&
         DiagLevel == DiagnosticIDs::Error) {

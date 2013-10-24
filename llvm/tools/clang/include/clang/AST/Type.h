@@ -125,7 +125,7 @@ namespace clang {
 /// * C99: const, volatile, and restrict
 /// * Embedded C (TR18037): address spaces
 /// * Objective C: the GC attributes (none, weak, or strong)
-/// * Scout-centric mesh field identification. 
+/// * Scout-centric mesh field identification.
 class Qualifiers {
 public:
   enum TQ { // NOTE: These flags must be kept in sync with DeclSpec::TQ.
@@ -727,7 +727,7 @@ public:
   QualType withVolatile() const {
     return withFastQualifiers(Qualifiers::Volatile);
   }
-  
+
   /// Add the restrict qualifier to this QualType.
   void addRestrict() {
     addFastQualifiers(Qualifiers::Restrict);
@@ -1610,6 +1610,7 @@ public:
 
   // ===== Scout ========================================================
   bool isMeshType() const;
+  bool isMeshFieldType() const;
   // ====================================================================
 
   /// Return the implicit lifetime for this type, which must not be dependent.
@@ -2558,7 +2559,7 @@ public:
     case 'r': return 0;
     case 'g': return 1;
     case 'b': return 2;
-    case 'a': return 3;      
+    case 'a': return 3;
     // =====================================================================================
     }
   }
@@ -3049,7 +3050,7 @@ public:
   bool isSugared() const { return false; }
   QualType desugar() const { return QualType(this, 0); }
 
-  void printExceptionSpecification(raw_ostream &OS, 
+  void printExceptionSpecification(raw_ostream &OS,
                                    const PrintingPolicy &Policy) const;
 
   static bool classof(const Type *T) {
@@ -3262,7 +3263,7 @@ class TagType : public Type {
   TagDecl * decl;
 
   friend class ASTReader;
-  
+
 protected:
   TagType(TypeClass TC, const TagDecl *D, QualType can);
 
@@ -3274,8 +3275,7 @@ public:
   bool isBeingDefined() const;
 
   static bool classof(const Type *T) {
-    return (T->getTypeClass() >= TagFirst && T->getTypeClass() <= TagLast)
-        || (T->getTypeClass() >= MeshFirst && T->getTypeClass() <= MeshLast);
+    return (T->getTypeClass() >= TagFirst && T->getTypeClass() <= TagLast);
   }
 };
 
@@ -3306,32 +3306,32 @@ public:
 };
 
 //+++===== Scout =========================================================+++//
-//+++ Definitions of the various mesh types, including a supporting base 
-//+++ class. 
+//+++ Definitions of the various mesh types, including a supporting base
+//+++ class.
 
-// MeshType - To represent our internal mesh types we use a common base class 
-// for some of the basic functionality (thus allowing us to write some code 
-// that can operate on all mesh types).  In practice we will never (or should 
-// never) see an instance of a MeshType within the AST. 
+// MeshType - To represent our internal mesh types we use a common base class
+// for some of the basic functionality (thus allowing us to write some code
+// that can operate on all mesh types).  In practice we will never (or should
+// never) see an instance of a MeshType within the AST.
 //
 // Due to the similarity of our mesh constructs to records/structs we borrow
 // the same basic implementation path for them but do not inherit from them.
-// This is a difference from how we implemented our first versions of Scout; 
-// in addition, we now use the Decl's directly to ask questions about mesh 
-// field locations versus storing an additional/duplicate version of the 
-// information within the mesh types. 
-// 
-// *** NOTE *** The details of introducing a new type are not necessarily 
-// clear from the source or documentation within Clang.  It takes some 
+// This is a difference from how we implemented our first versions of Scout;
+// in addition, we now use the Decl's directly to ask questions about mesh
+// field locations versus storing an additional/duplicate version of the
+// information within the mesh types.
+//
+// *** NOTE *** The details of introducing a new type are not necessarily
+// clear from the source or documentation within Clang.  It takes some
 // care to hit all the use cases throughout the code base (and we're still
-// not certain we've weaseled out every last detail yet).  There is 
-// some more recent documentation on the LLVM web site that can be helpful: 
+// not certain we've weaseled out every last detail yet).  There is
+// some more recent documentation on the LLVM web site that can be helpful:
 //
 //   http://clang.llvm.org/docs/InternalsManual.html
 //
-// but some details are still glossed over (at least as this is being 
-// written).  Carefully pay attention to all warnings during the build... 
-// For example, if you see errors about missing cases within switch statements 
+// but some details are still glossed over (at least as this is being
+// written).  Carefully pay attention to all warnings during the build...
+// For example, if you see errors about missing cases within switch statements
 // it is likely you have an incomplete, and potentially buggy, implementation.
 //
 class MeshType : public Type {
@@ -3345,28 +3345,30 @@ class MeshType : public Type {
  public:
   MeshDecl *getDecl() const;
 
+  StringRef getName() const;
+
   /// @brief Determines whether this type is in the process of being
   /// defined.
   bool isBeingDefined() const;
-  
+
   static bool classof(const Type *T) {
     return T->getTypeClass() >= MeshFirst && T->getTypeClass() <= MeshLast;
   }
 
-  // \brief Return true if the mesh has one or more cell fields. 
+  // \brief Return true if the mesh has one or more cell fields.
   bool hasCellData() const;
-  
-  // \brief Return true if the mesh has one or more vertex fields.   
+
+  // \brief Return true if the mesh has one or more vertex fields.
   bool hasVertexData() const;
-  
-  // \brief Return true if the mesh has one or more edge fields.     
+
+  // \brief Return true if the mesh has one or more edge fields.
   bool hasEdgeData() const;
 
-  // \brief Return true if the mesh has one or more face fields.       
+  // \brief Return true if the mesh has one or more face fields.
   bool hasFaceData() const;
 
   typedef llvm::SmallVector<Expr*, 3> MeshDimensions;
-  
+
  protected:
   MeshDimensions dims;
 
@@ -3375,18 +3377,27 @@ class MeshType : public Type {
   const MeshDimensions& dimensions() const {
     return dims;
   }
-  
+
   void setDimensions(const MeshDimensions& dv){
     dims = dv;
   }
+
+  unsigned rankOf() const {
+    return dims.size();
+  }
+
+  bool isUniform() const;
+  bool isRectilinear() const;
+  bool isStructured() const;
+  bool isUnstructured() const;
 };
 
 
 // UniformMeshType - This type represents an instance of a uniform mesh that
-// is either one-, two-, or three-dimensional.  These meshes are the most 
-// straightforward to define as they simple mimic arrays with an additional 
+// is either one-, two-, or three-dimensional.  These meshes are the most
+// straightforward to define as they simple mimic arrays with an additional
 // ability to store fields at the cell, vertex, edge, or face locations.  The
-// dimensions of the mesh are provided in terms of cell counts. 
+// dimensions of the mesh are provided in terms of cell counts.
 //
 //     +---+---+---+---+
 //     | c | c | c | c |     (cell located data)
@@ -3395,26 +3406,26 @@ class MeshType : public Type {
 //     +---+---+---+---+
 //     f   |   |   |   f     (face located data)
 //     v---v---v---v---v     (vertex located data)
-// 
-// A uniform mesh is also commonly referred to as a Cartesian mesh -- it is 
-// really a special case where the elements are unit squares or cubes.  This 
-// is not always the case with a more general concept of rectilinear and 
-// structured meshes (see below).  A uniform mesh has an implicit topology 
+//
+// A uniform mesh is also commonly referred to as a Cartesian mesh -- it is
+// really a special case where the elements are unit squares or cubes.  This
+// is not always the case with a more general concept of rectilinear and
+// structured meshes (see below).  A uniform mesh has an implicit topology
 // and point (vertex) data based solely on the mesh dimensions.
 //
 class UniformMeshType : public MeshType {
  public:
   UniformMeshType(const UniformMeshDecl* Decl)
-      : MeshType(UniformMesh, 
+      : MeshType(UniformMesh,
                  reinterpret_cast<const MeshDecl*>(Decl), QualType()) {
   }
-  
+
   UniformMeshDecl* getDecl() const {
     return reinterpret_cast<UniformMeshDecl*>(MeshType::getDecl());
   }
-  
+
   static bool classof(const UniformMeshType* T) { return true; }
-  
+
   static bool classof(const Type *T) {
     return T->getTypeClass() == UniformMesh;
   }
@@ -3425,16 +3436,16 @@ class UniformMeshType : public MeshType {
 
 // RectilinearMesh - This type represents an instance of a rectilinear mesh
 // that is either one-, two-, or three-dimensional.  These meshes are defined
-// as a tessellation of rectangles or parallelepipeds that are not congruent 
-// to each other.   The location of field data matches that used within 
+// as a tessellation of rectangles or parallelepipeds that are not congruent
+// to each other.   The location of field data matches that used within
 // uniform meshes.  Note that it is expected that this be a regular topology
-// for the overall shape and a semi-regular, aligned geometry along each 
-// dimensions of the mesh. 
+// for the overall shape and a semi-regular, aligned geometry along each
+// dimensions of the mesh.
 //
 //     +---+---+---+---+
-//     |   |   |   |   |     
+//     |   |   |   |   |
 //     | c | c | c | c |     (cell located data)
-//     |   |   |   |   |     
+//     |   |   |   |   |
 //     +---+---+---+---+
 //     e   e   e   e   e     (edge located data)
 //     +---+---+---+---+
@@ -3443,66 +3454,66 @@ class UniformMeshType : public MeshType {
 //     v---v---v---v---v     (vertex located data)
 //     f   |   |   |   f     (face located data)
 //     +---+---+---+---+
-//     
-// A rectilinear mesh is defined by specifying the mesh dimensions and a list of
-// monotonically increasing coordinate values along each dimension. 
 //
-// SC_TODO - this description needs some more details... 
-//  
+// A rectilinear mesh is defined by specifying the mesh dimensions and a list of
+// monotonically increasing coordinate values along each dimension.
+//
+// SC_TODO - this description needs some more details...
+//
 class RectilinearMeshType : public MeshType {
 public:
   RectilinearMeshType(const RectilinearMeshDecl* Decl)
       : MeshType(RectilinearMesh, reinterpret_cast<const MeshDecl*>(Decl), QualType()) {
-    
+
   }
-  
+
   RectilinearMeshDecl* getDecl() const {
     return reinterpret_cast<RectilinearMeshDecl*>(MeshType::getDecl());
   }
-  
+
   static bool classof(const RectilinearMeshType* T) { return true; }
-  
+
   static bool classof(const Type *T) {
     return T->getTypeClass() == RectilinearMesh;
   }
 
-  // SC_TODO -- can these move to base class?  
+  // SC_TODO -- can these move to base class?
   bool isSugared() const { return false; }
-  QualType desugar() const { return QualType(this, 0); }  
+  QualType desugar() const { return QualType(this, 0); }
 };
 
 
 // StructuredMeshType - A structured grid defines its topology implicitly (via the
-// number of cells in each dimension) but its vertex locations explicitly.  In 
-// other words it has an overall regular shape but with the cells defined as 
-// quadrilaterals or convex polyhedron rather than rectangles or rectangular 
-// parallelepipeds.  Structured meshes are also often referred to as curvilinear 
-// meshes. 
+// number of cells in each dimension) but its vertex locations explicitly.  In
+// other words it has an overall regular shape but with the cells defined as
+// quadrilaterals or convex polyhedron rather than rectangles or rectangular
+// parallelepipeds.  Structured meshes are also often referred to as curvilinear
+// meshes.
 //
-// A structured mesh can be one-, two-, or three-dimensional and is defined by 
-// specifying the mesh dimensions in terms of cells and then providing a set of 
-// vertex coordinates in three-dimensional space. 
+// A structured mesh can be one-, two-, or three-dimensional and is defined by
+// specifying the mesh dimensions in terms of cells and then providing a set of
+// vertex coordinates in three-dimensional space.
 class StructuredMeshType : public MeshType {
 
 public:
   StructuredMeshType(const StructuredMeshDecl* Decl)
       : MeshType(StructuredMesh, reinterpret_cast<const MeshDecl*>(Decl), QualType()){
-    
+
   }
 
   StructuredMeshDecl* getDecl() const {
     return reinterpret_cast<StructuredMeshDecl*>(MeshType::getDecl());
   }
-  
+
   static bool classof(const StructuredMeshType* T) { return true; }
-  
+
   static bool classof(const Type *T) {
     return T->getTypeClass() == StructuredMesh;
   }
 
-  // SC_TODO -- can these move to base class?  
+  // SC_TODO -- can these move to base class?
   bool isSugared() const { return false; }
-  QualType desugar() const { return QualType(this, 0); }  
+  QualType desugar() const { return QualType(this, 0); }
 };
 
 
@@ -3513,22 +3524,22 @@ enum MeshFormat {
   MESHFILE
 };
 
-// UnstructuredMeshType - 
+// UnstructuredMeshType -
 //
 class UnstructuredMeshType : public MeshType {
 public:
-  
+
   UnstructuredMeshType(const UnstructuredMeshDecl* Decl)
       : MeshType(UnstructuredMesh, reinterpret_cast<const MeshDecl*>(Decl), QualType()) {
-    
+
   }
 
   UnstructuredMeshDecl* getDecl() const {
     return reinterpret_cast<UnstructuredMeshDecl*>(MeshType::getDecl());
   }
-  
+
   static bool classof(const UnstructuredMeshType* T) { return true; }
-  
+
   static bool classof(const Type *T) {
     return T->getTypeClass() == UnstructuredMesh;
   }
@@ -3539,46 +3550,18 @@ public:
   Expr* getFileName() { return strLitFileName; }
   void setFileName(Expr* filename) { strLitFileName = filename; }
 
-
   // SC_TODO -- can these move to base class?
   bool isSugared() const { return false; }
-  QualType desugar() const { return QualType(this, 0); }  
-   
+  QualType desugar() const { return QualType(this, 0); }
+
  private:
   MeshFormat meshFormat;
   Expr* strLitFileName;
 };
 
-// MeshFieldType - This type is used to capture the details associated 
-// with a single item of field data stored within any of the mesh 
-// types.  In this case we track the details of where the field is 
-// stored on the mesh (cell, vertex, edge, face).  In certain cases we
-// also introduce data into the mesh within our implementation -- these 
-// fields will be identified as "built-in" types. 
-class MeshFieldType: public Type {
-
-protected:
-  MeshFieldType(TypeClass TC, const MeshFieldDecl *D, QualType can);
-
-public:
-
-  MeshFieldDecl *getDecl() const {
-    return Decl;
-  }
-
-  bool isCellLocated() const;
-  bool isVertexLocated() const;
-  bool isEdgeLocated() const;
-  bool isFaceLocated() const;
-  bool isBuiltInField() const;
-
-private:
-  MeshFieldDecl *Decl;
-  friend class ASTContext;   // ASTContext creates these.    
-};
 
 //+++====================================================================+++//
-  
+
 /// EnumType - This is a helper class that allows the use of isa/cast/dyncast
 /// to detect TagType objects of enums.
 class EnumType : public TagType {
@@ -3963,7 +3946,7 @@ class TemplateSpecializationType
   /// \brief Whether this template specialization type is a substituted
   /// type alias.
   bool TypeAlias : 1;
-    
+
   TemplateSpecializationType(TemplateName T,
                              const TemplateArgument *Args,
                              unsigned NumArgs, QualType Canon,
@@ -4024,7 +4007,7 @@ public:
   /// };
   /// \endcode
   bool isTypeAlias() const { return TypeAlias; }
-    
+
   /// Get the aliased type, if this is a specialization of a type alias
   /// template.
   QualType getAliasedType() const {
@@ -4150,7 +4133,7 @@ enum TagTypeKind {
 };
 
 // ===== Scout ========================================================
-/// \brief The kind of mesh type. 
+/// \brief The kind of mesh type.
 enum MeshTypeKind {
     /// \brief The "uniform mesh" 'keyword'.
   TTK_UniformMesh = TTK_Enum+1, // the mesh and Tag kinds can't over lap
@@ -4161,7 +4144,7 @@ enum MeshTypeKind {
   /// \brief The "unstructured mesh" 'keyword'.
   TTK_UnstructuredMesh // can't added anymore as this get packed into a 3 bit field.
 };
-// ===================================================================  
+// ===================================================================
 
 /// \brief The elaboration keyword that precedes a qualified type name or
 /// introduces an elaborated-type-specifier.
@@ -4987,7 +4970,7 @@ inline QualType QualType::getUnqualifiedType() const {
 
   return QualType(getSplitUnqualifiedTypeImpl(*this).Ty, 0);
 }
-  
+
 inline SplitQualType QualType::getSplitUnqualifiedType() const {
   if (!getTypePtr()->getCanonicalTypeInternal().hasLocalQualifiers())
     return split();
@@ -5019,7 +5002,7 @@ inline void QualType::removeLocalCVRQualifiers(unsigned Mask) {
 inline unsigned QualType::getAddressSpace() const {
   return getQualifiers().getAddressSpace();
 }
-  
+
 /// getObjCGCAttr - Return the gc attribute of this type.
 inline Qualifiers::GC QualType::getObjCGCAttr() const {
   return getQualifiers().getObjCGCAttr();
@@ -5371,7 +5354,7 @@ inline bool Type::isIntegralOrEnumerationType() const {
   if (const EnumType *ET = dyn_cast<EnumType>(CanonicalType))
     return IsEnumDeclComplete(ET->getDecl());
 
-  return false;  
+  return false;
 }
 
 inline bool Type::isBooleanType() const {
@@ -5491,6 +5474,7 @@ inline const ArrayType *Type::castAsArrayTypeUnsafe() const {
 inline bool Type::isMeshType() const {
   return isa<MeshType>(CanonicalType);
 }
+
 // ===============================================================================================
 }  // end namespace clang
 

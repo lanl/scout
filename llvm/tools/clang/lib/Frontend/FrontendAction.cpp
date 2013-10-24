@@ -239,8 +239,8 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
   // ===== Scout ==============================================================================================
   // Implicity include the Scout headers file if this is a Scout file
   if(CI.getLangOpts().Scout){
-    CI.getPreprocessorOpts().Includes.push_back("scout/Runtime/scout.h");
-    CI.getPreprocessorOpts().Includes.push_back("scout/Standard/scout.sch");
+    CI.getPreprocessorOpts().Includes.push_back("scout/scout.sch");
+    CI.getPreprocessorOpts().Includes.push_back("scout/Runtime/scout.h");    
   }
   // =========================================================================================================
   // If the implicit PCH include is actually a directory, rather than

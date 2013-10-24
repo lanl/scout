@@ -16,7 +16,7 @@
 
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/DeclCXX.h"
-#include "clang/AST/scout/MeshDecl.h"
+#include "clang/AST/Scout/MeshDecl.h"
 #include "llvm/ADT/DenseMap.h"
 
 namespace clang {

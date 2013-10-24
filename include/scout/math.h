@@ -1,9 +1,11 @@
 /*
+ *
  * ###########################################################################
- * Copyright (c) 2010, Los Alamos National Security, LLC.
+ *
+ * Copyright (c) 2013, Los Alamos National Security, LLC.
  * All rights reserved.
- * 
- *  Copyright 2010. Los Alamos National Security, LLC. This software was
+ *
+ *  Copyright 2013. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
  *  National Security, LLC for the U.S. Department of Energy. The
@@ -20,10 +22,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- * 
+ *
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided 
+ *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -31,7 +33,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -45,76 +47,17 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ########################################################################### 
- * 
- * Notes
  *
- * ##### 
- */ 
+ */
 
-#ifndef __SC_CLANG_UNIFORM_MESH_DECL_H__
-#define __SC_CLANG_UNIFORM_MESH_DECL_H__
+ #ifndef __SCOUT_MATH_H__
+ #define __SCOUT_MATH_H__
 
+#include <cmath>
 
-#include "clang/AST/scout/MeshDecl.h"
+namespace scout
+{
+  #include "scout/math.sch"
+}
 
-namespace clang {
-
-// ----- UniformMeshDecl 
-// 
-class UniformMeshDecl : public MeshDecl {
-
-  friend void MeshDecl::startDefinition();
-
-protected:
-  UniformMeshDecl(DeclContext* DC, 
-                  SourceLocation L, 
-                  SourceLocation StartL,
-                  IdentifierInfo* Id, 
-                  UniformMeshDecl* PrevDecl);
-
-public:
-  static UniformMeshDecl *Create(const ASTContext &C, 
-                                 DeclContext *DC,
-                                 SourceLocation StartLoc,
-                                 SourceLocation IdLoc,
-                                 IdentifierInfo *Id, 
-                                 UniformMeshDecl* PrevDecl = 0);
-
-  static UniformMeshDecl *CreateDeserialized(const ASTContext &C, 
-                                             unsigned ID); 
-
-  const UniformMeshDecl *getPreviousDecl() const {
-    return cast_or_null<UniformMeshDecl>(MeshDecl::getPreviousDecl());
-  }
-
-  UniformMeshDecl *getPreviousDecl() {
-    return cast_or_null<UniformMeshDecl>(MeshDecl::getPreviousDecl());
-  }
-
-  const UniformMeshDecl *getMostRecentDecl() const {
-    return cast<UniformMeshDecl>(MeshDecl::getMostRecentDecl());
-  }
-
-  UniformMeshDecl *getMostRecentDecl() {
-    return cast<UniformMeshDecl>(MeshDecl::getMostRecentDecl());
-  }
-
-  void completeDefinition() {
-    assert(!isCompleteDefinition() && "Cannot redefine uniform mesh!");
-    MeshDecl::completeDefinition();
-  }
-
-
-  //void addMember(Decl *D);
-
-  static bool classof(const Decl* D) { return classofKind(D->getKind()); }
-  static bool classof(const UniformMeshDecl* D) { return true; }
-  static bool classofKind(Kind K) { return K == UniformMesh; }
-};
-
-
-  
-} // end namespace clang
-
-#endif
+ #endif

@@ -13,7 +13,7 @@
 #include "clang/AST/ExternalASTSource.h"
 #include "clang/AST/Mangle.h"
 #include "clang/AST/RecordLayout.h"
-#include "clang/AST/scout/MeshLayout.h"
+#include "clang/AST/Scout/MeshLayout.h"
 #include "clang/AST/TypeLoc.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/SourceManager.h"
@@ -116,8 +116,27 @@ ASTContext::getUnstructuredMeshType(const UnstructuredMeshDecl *Decl) const {
   	return QualType(Decl->TypeForDecl, 0);
   
   UnstructuredMeshType *newType;
-newType = new (*this, TypeAlignment) UnstructuredMeshType(Decl);
+  newType = new (*this, TypeAlignment) UnstructuredMeshType(Decl);
   Decl->TypeForDecl = newType;
   Types.push_back(newType);
   return QualType(newType, 0);
+}
+
+MeshFieldDecl *ASTContext::getInstantiatedFromUnnamedFieldDecl(MeshFieldDecl *Field) {
+  llvm::DenseMap<MeshFieldDecl *, MeshFieldDecl *>::iterator Pos;
+  Pos = InstantiatedFromUnnamedMeshFieldDecl.find(Field);
+  if (Pos == InstantiatedFromUnnamedMeshFieldDecl.end())
+    return 0;
+
+  return Pos->second;
+}
+
+void ASTContext::setInstantiatedFromUnnamedFieldDecl(MeshFieldDecl *Inst,
+                                                     MeshFieldDecl *Tmpl) {
+  assert(!Inst->getDeclName() && "Instantiated mesh field decl is not unnamed");
+  assert(!Tmpl->getDeclName() && "Template mesh field decl is not unnamed");
+  assert(!InstantiatedFromUnnamedMeshFieldDecl[Inst] &&
+         "Already noted what unnamed field was instantiated from");
+
+  InstantiatedFromUnnamedMeshFieldDecl[Inst] = Tmpl;
 }

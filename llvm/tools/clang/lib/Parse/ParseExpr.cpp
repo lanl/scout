@@ -324,50 +324,19 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
     // braced-init-list on the RHS of an assignment. For better diagnostics,
     // parse as if we were allowed braced-init-lists everywhere, and check that
     // they only appear on the RHS of assignments later.
-
-    // scout - vector binary operator rhs
-    bool rhsSet = false;
-
     ExprResult RHS;
-    
-    if(!LHS.isInvalid()){
-      if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(LHS.get())){
-        ValueDecl* vd = dr->getDecl();
-        
-        BuiltinType::Kind kind;
-        if(isScoutVectorValueDecl(vd, kind)){
-          
-          ScoutVectorType vectorType;
-          
-          if(vd->getName().str() == "color"){
-            vectorType = ScoutVectorColor;
-          }
-          else{
-            vectorType = ScoutVectorGeneric;
-          }
-          
-          RHS = ParseScoutVectorRHS(kind, vectorType);
-          rhsSet = true;
-        }
-      }
-    }
-
     bool RHSIsInitList = false;
-    
-    if(!rhsSet){
+    if (getLangOpts().CPlusPlus11 && Tok.is(tok::l_brace)) {
+      RHS = ParseBraceInitializer();
+      RHSIsInitList = true;
+    } else if (getLangOpts().CPlusPlus && NextTokPrec <= prec::Conditional)
+      RHS = ParseAssignmentExpression();
+    else
+      RHS = ParseCastExpression(false);
 
-      if (getLangOpts().CPlusPlus11 && Tok.is(tok::l_brace)) {
-        RHS = ParseBraceInitializer();
-        RHSIsInitList = true;
-      } else if (getLangOpts().CPlusPlus && NextTokPrec <= prec::Conditional)
-        RHS = ParseAssignmentExpression();
-      else
-        RHS = ParseCastExpression(false);
-    }
-     
     if (RHS.isInvalid())
       LHS = ExprError();
-    
+
     // Remember the precedence of this operator and get the precedence of the
     // operator immediately to the right of the RHS.
     prec::Level ThisPrec = NextTokPrec;
@@ -1056,30 +1025,6 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
   case tok::kw_float:
   case tok::kw_double:
 
-  // ===== Scout ================================================
-  // SC_TODO - remove scout vectors
-  case tok::kw_bool2:
-  case tok::kw_bool3:
-  case tok::kw_bool4: 
-  case tok::kw_char2:
-  case tok::kw_char3:
-  case tok::kw_char4: 
-  case tok::kw_short2:
-  case tok::kw_short3:
-  case tok::kw_short4: 
-  case tok::kw_int2:
-  case tok::kw_int3:
-  case tok::kw_int4: 
-  case tok::kw_long2:
-  case tok::kw_long3:
-  case tok::kw_long4: 
-  case tok::kw_float2:
-  case tok::kw_float3:
-  case tok::kw_float4: 
-  case tok::kw_double2:
-  case tok::kw_double3:
-  case tok::kw_double4: 
-  // ===========================================================
   case tok::kw_void:
   case tok::kw_typename:
   case tok::kw_typeof:

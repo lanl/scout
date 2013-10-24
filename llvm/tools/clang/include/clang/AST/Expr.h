@@ -2551,59 +2551,6 @@ public:
   friend class ASTStmtWriter;
 };
 
-// ===== Scout =============================================================================================
-// SC_TODO - we need to replace Scout's vector types with the "builtin" support 
-// provided by Clang.  This has been done in the "refactor" branch but needs to 
-// merged into "devel". 
-class ScoutVectorMemberExpr : public Expr {
-  Stmt* Base;
-
-  SourceLocation Loc;
-
-  // index is a value [0..3]
-  unsigned index;
-
-public:
-  ScoutVectorMemberExpr(Expr* base, SourceLocation loc,
-                        unsigned index, QualType ty)
-  : Expr(ScoutVectorMemberExprClass, ty, VK_LValue,
-         OK_Ordinary, false, false, false, false),
-    Base(base), Loc(loc), index(index){
-
-  }
-
-  static ScoutVectorMemberExpr *Create(ASTContext &C, Expr* base,
-                                       SourceLocation loc,
-                                       unsigned index, QualType ty);
-
-  void setBase(Expr *E) { Base = E; }
-  Expr *getBase() const { return cast<Expr>(Base); }
-
-  unsigned getIdx() const { return index; }
-
-  static bool classof(const Stmt *T) {
-    return T->getStmtClass() == ScoutVectorMemberExprClass;
-  }
-  static bool classof(const ScoutVectorMemberExpr *) { return true; }
-
-  // Iterators
-  child_range children() { return child_range(&Base, &Base+1); }
-
-  SourceRange getSourceRange() const{
-    return SourceRange(Loc, Loc);
-  }
-
-  SourceLocation getLocation(){
-    return Loc;
-  }
-
-  SourceLocation getLocStart() const LLVM_READONLY { return Loc; }
-  SourceLocation getLocEnd() const LLVM_READONLY{ return Loc; }
-  
-  friend class ASTReader;
-  friend class ASTStmtWriter;
-};
-// =========================================================================================================
 /// CompoundLiteralExpr - [C99 6.5.2.5]
 ///
 class CompoundLiteralExpr : public Expr {

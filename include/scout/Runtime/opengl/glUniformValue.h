@@ -4,9 +4,9 @@
  * This file is distributed under an open source license by Los Alamos
  * National Security, LCC.  See the file License.txt (located in the
  * top level of the source distribution) for details.
- * 
+ *
  *-----
- * 
+ *
  */
 
 #ifndef SCOUT_GL_UNIFORM_VALUE_H_
@@ -15,22 +15,22 @@
 #include <iostream>
 
 #include "scout/Runtime/opengl/opengl.h"
-#include "scout/Runtime/vec_types.h"
+#include "scout/types.h"
 
 namespace scout
 {
-  
+
   // ..... glUniformValue
-  //  
+  //
   class glUniformValue {
-    
+
    public:
     glUniformValue()
     { m_id = 0; }
-    
+
     glUniformValue(GLint id)
     { m_id = id; }
-    
+
     virtual ~glUniformValue()
     { /* no-op */ }
 
@@ -44,20 +44,20 @@ namespace scout
   };
 
 
-  
+
   inline void glUniform(GLint location, const int* iptr)
   {
     glUniform1iv(location, 1, iptr);
-    oglErrorCheck();        
+    oglErrorCheck();
   }
 
-  
+
   inline void glUniform(GLint location, const int4* iptr)
   {
-    glUniform4iv(location, 4, &(iptr->components[0]));
-    oglErrorCheck();    
+    glUniform4iv(location, 4, (const int*)iptr);
+    oglErrorCheck();
   }
-  
+
   inline void glUniform(GLint location, const float* fptr)
   {
     glUniform1fv(location, 1, fptr);
@@ -66,8 +66,8 @@ namespace scout
 
   inline void glUniform(GLint location, const float4* fptr)
   {
-    glUniform4fv(location, 4, &(fptr->components[0]));
-    oglErrorCheck();    
+    glUniform4fv(location, 4, (const float*)fptr);
+    oglErrorCheck();
   }
 
   // ..... glTypedUniformValue
@@ -79,7 +79,7 @@ namespace scout
     glTypedUniformValue(GLint id, const ElementType* value)
         : glUniformValue(id)
     { m_value = value; }
-    
+
     glTypedUniformValue(GLint id, ElementType& value)
         : glUniformValue(id)
     { m_value = &value; }
@@ -87,12 +87,12 @@ namespace scout
     ~glTypedUniformValue()
     { /* no-op */  }
 
-    void bind() 
+    void bind()
     {
       glUniform(id(), m_value);
       oglErrorCheck();
     }
-    
+
    private:
     const ElementType*      m_value;
   };
@@ -100,5 +100,3 @@ namespace scout
 }
 
 #endif
-
-

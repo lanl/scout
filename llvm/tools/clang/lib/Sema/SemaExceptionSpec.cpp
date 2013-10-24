@@ -1116,11 +1116,6 @@ CanThrowResult Sema::canThrow(const Expr *E) {
     // These expressions can never throw.
     return CT_Cannot;
 
-  // ===== Scout - cannot throw on scout vector member expr
-  // SC_TODO - remove scout vectors 
-  case Expr::ScoutVectorMemberExprClass:
-    return CT_Cannot;
-
   case Expr::MSPropertyRefExprClass:
     llvm_unreachable("Invalid class for expression");
 
