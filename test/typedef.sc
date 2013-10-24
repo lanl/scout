@@ -64,7 +64,7 @@ uniform mesh MyMesh{
 typedef MyMesh[:] MyMesh2D; 
 
 void initMesh(MyMesh2D& m){
-  forall cells c of m{
+  forall cells c in m{
     a = 1;
   }
 }
@@ -74,11 +74,11 @@ int main(int argc, char** argv){
 
   initMesh(m);
 
-  forall cells c of m{
+  forall cells c in m{
     a += 9;
   }
 
-  forall cells c of m{
+  forall cells c in m{
     if ((a-10)*(a-10) > 1e-10) {
       printf("bad val %f\n", a);
       kill(getpid(), SIGTERM);

@@ -70,22 +70,22 @@ int main(int argc, char *argv[])
 
   MeshType mesh2d[Nx, Ny];
 
-  forall cells c of mesh2d {
+  forall cells c in mesh2d {
     a = 0;
     b = 0;
   }
   
   // Time steps loop.
   for(unsigned int t = 0; t < Nt; ++t) {
-    forall cells c of mesh2d {
+    forall cells c in mesh2d {
       b++; 
     }
-    forall cells c of mesh2d {
+    forall cells c in mesh2d {
       a = b;
     }
   }
 
-  forall cells c of mesh2d {
+  forall cells c in mesh2d {
     if (a != Nt) {
       printf("bad val %d\n",a);
       kill(getpid(), SIGTERM);  

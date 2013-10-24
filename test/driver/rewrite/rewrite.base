@@ -61,7 +61,7 @@ uniform mesh MyMesh{
 int main(int argc, char** argv){/*__scrt_init(ScoutGPUNone);*/
   MyMesh m[512];
   
-  /*begin_forall();*/forall cells c of m{
+  /*begin_forall();*/forall cells c in m{
     a += b;
   }/*end_forall();*/
   

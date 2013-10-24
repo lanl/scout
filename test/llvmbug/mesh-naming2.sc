@@ -68,20 +68,20 @@ int main(int argc, char** argv){
 
   MyMesh m[8];
   
-  forall cells c of m {
+  forall cells c in m {
     aaa = 8;
     aa  = 6;
     a   = 2;
     printf("++aaa = %d, aa = %d, a = %d\n", aaa, aa, a);    
   }
 
-  forall cells c of m{
+  forall cells c in m{
     printf("<<a = %d, aa = %d, aaa = %d\n", a, aa, aaa);
     aaa =  aa/a;
     printf(">>a = %d, aa = %d, aaa = %d\n", a, aa, aaa);
   }
 
-  forall cells c of m{
+  forall cells c in m{
     if (a != 2) {
       printf("a[X] == %d\n", a);
     } else {

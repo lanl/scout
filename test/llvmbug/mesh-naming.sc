@@ -68,17 +68,17 @@ int main(int argc, char** argv){
 
   MyMesh m[512];
   
-  forall cells c of m{
+  forall cells c in m{
     a13 = 8;
     a12 = 6;
     a11 = 2;
   }
 
-  forall cells c of m{
+  forall cells c in m{
     a13 = a12/a11;
   }
 
-  forall cells c of m{
+  forall cells c in m{
     if (a11 != 2) {
       printf("bad a11 val %d\n", a11);
       kill(getpid(), SIGTERM);
