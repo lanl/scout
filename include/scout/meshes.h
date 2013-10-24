@@ -1,10 +1,11 @@
 /*
- *  
+ *
  * ###########################################################################
- * Copyright (c) 2010, Los Alamos National Security, LLC.
+ *
+ * Copyright (c) 2013, Los Alamos National Security, LLC.
  * All rights reserved.
- * 
- *  Copyright 2010. Los Alamos National Security, LLC. This software was
+ *
+ *  Copyright 2013. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
  *  National Security, LLC for the U.S. Department of Energy. The
@@ -21,10 +22,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- * 
+ *
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided 
+ *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -32,7 +33,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -47,14 +48,15 @@
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
  *
- * ###########################################################################
- *
- * Notes
- *
- *  The routines in this file allow for the manipulation of colors in
- *  the HSV color space.  In particular there are routines for mapping
- *  the HSV color space into the RGB(A) space required by the
- *  underlying graphics/rendering systems in Scout.
- * 
- */ 
+ */
 
+#ifndef __SCOUT_MESHES_SCH__
+#define __SCOUT_MESHES_SCH__
+
+#include <stdint.h>
+
+
+
+
+
+#endif

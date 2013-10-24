@@ -2187,6 +2187,7 @@ static void CalculateHiddenNames(const CodeCompletionContext &Context,
                                  ASTContext &Ctx,
                           llvm::StringSet<llvm::BumpPtrAllocator> &HiddenNames){
   bool OnlyTagNames = false;
+  bool OnlyMeshNames = false;
   switch (Context.getKind()) {
   case CodeCompletionContext::CCC_Recovery:
   case CodeCompletionContext::CCC_TopLevel:
@@ -2212,6 +2213,13 @@ static void CalculateHiddenNames(const CodeCompletionContext &Context,
   case CodeCompletionContext::CCC_UnionTag:
   case CodeCompletionContext::CCC_ClassOrStructTag:
     OnlyTagNames = true;
+    break;
+
+  case CodeCompletionContext::CCC_UniformMesh:
+  case CodeCompletionContext::CCC_RectilinearMesh:
+  case CodeCompletionContext::CCC_StructuredMesh:
+  case CodeCompletionContext::CCC_UnstructuredMesh:
+    OnlyMeshNames = true;
     break;
     
   case CodeCompletionContext::CCC_ObjCProtocolName:
@@ -2243,7 +2251,9 @@ static void CalculateHiddenNames(const CodeCompletionContext &Context,
     bool Hiding = false;
     if (OnlyTagNames)
       Hiding = (IDNS & Decl::IDNS_Tag);
-    else {
+    else if (OnlyMeshNames) {
+      Hiding = (IDNS & Decl::IDNS_Mesh);
+    } else {
       unsigned HiddenIDNS = (Decl::IDNS_Type | Decl::IDNS_Member | 
                              Decl::IDNS_Namespace | Decl::IDNS_Ordinary |
                              Decl::IDNS_NonMemberOperator);

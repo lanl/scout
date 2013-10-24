@@ -86,6 +86,7 @@ class EmptySubobjectMap {
                                   const CXXRecordDecl *Class,
                                   CharUnits Offset);
   void UpdateEmptyFieldSubobjects(const FieldDecl *FD, CharUnits Offset);
+  void UpdateEmptyFieldSubobjects(const MeshFieldDecl *FD, CharUnits Offset);  
   
   /// AnyEmptySubobjectsBeyondOffset - Returns whether there are any empty
   /// subobjects beyond the given offset.
@@ -114,6 +115,8 @@ protected:
                                       CharUnits Offset) const;
   bool CanPlaceFieldSubobjectAtOffset(const FieldDecl *FD,
                                       CharUnits Offset) const;
+  bool CanPlaceFieldSubobjectAtOffset(const MeshFieldDecl *MFD,
+                                      CharUnits Offset) const;  
 
 public:
   /// This holds the size of the largest empty subobject (either a base
@@ -136,6 +139,7 @@ public:
   /// CanPlaceFieldAtOffset - Return whether a field can be placed at the given
   /// offset.
   bool CanPlaceFieldAtOffset(const FieldDecl *FD, CharUnits Offset);
+  bool CanPlaceFieldAtOffset(const MeshFieldDecl *MFD, CharUnits Offset);  
 };
 
 void EmptySubobjectMap::ComputeEmptySubobjectSizes() {
@@ -390,6 +394,51 @@ EmptySubobjectMap::CanPlaceFieldSubobjectAtOffset(const CXXRecordDecl *RD,
   return true;
 }
 
+
+bool
+EmptySubobjectMap::CanPlaceFieldSubobjectAtOffset(const MeshFieldDecl *MFD,
+                                                  CharUnits Offset) const {
+
+  // We don't have to keep looking past the maximum offset that is known to
+  // contain an empty class.
+  if (!AnyEmptySubobjectsBeyondOffset(Offset))  
+    return true;
+
+  QualType T = MFD->getType();
+  if (const RecordType *RT = T->getAs<RecordType>()) {
+    const CXXRecordDecl *RD = cast<CXXRecordDecl>(RT->getDecl());
+    return CanPlaceFieldSubobjectAtOffset(RD, RD, Offset);
+  }
+
+  // If we have an array type we need to look at every element.
+  if (const ConstantArrayType *AT = Context.getAsConstantArrayType(T)) {
+    QualType ElemTy = Context.getBaseElementType(AT);
+    const RecordType *RT = ElemTy->getAs<RecordType>();
+    if (!RT)
+      return true;
+
+    const CXXRecordDecl *RD = cast<CXXRecordDecl>(RT->getDecl());
+    const ASTRecordLayout &Layout = Context.getASTRecordLayout(RD);
+
+    uint64_t NumElements = Context.getConstantArrayElementCount(AT);
+    CharUnits ElementOffset = Offset;
+
+    for (uint64_t I = 0; I != NumElements; ++I) {
+      // We don't have to keep looking past the maximum offset that's known to
+      // contain an empty class.
+      if (!AnyEmptySubobjectsBeyondOffset(ElementOffset))
+        return true;
+
+      if (!CanPlaceFieldSubobjectAtOffset(RD, RD, ElementOffset))
+        return false;
+      
+      ElementOffset += Layout.getSize();
+    }
+  }
+
+  return true;
+}
+
 bool
 EmptySubobjectMap::CanPlaceFieldSubobjectAtOffset(const FieldDecl *FD,
                                                   CharUnits Offset) const {
@@ -444,6 +493,18 @@ EmptySubobjectMap::CanPlaceFieldAtOffset(const FieldDecl *FD,
   return true;
 }
 
+bool
+EmptySubobjectMap::CanPlaceFieldAtOffset(const MeshFieldDecl *MFD,
+                                         CharUnits Offset) {
+  if (!CanPlaceFieldSubobjectAtOffset(MFD, Offset))
+    return false;
+
+  // We are able to place the mesh field variable at this offset.
+  // Make sure to update the empty base subobject map.
+  UpdateEmptyFieldSubobjects(MFD, Offset);
+  return true;
+}
+
 void EmptySubobjectMap::UpdateEmptyFieldSubobjects(const CXXRecordDecl *RD, 
                                                    const CXXRecordDecl *Class,
                                                    CharUnits Offset) {
@@ -494,6 +555,44 @@ void EmptySubobjectMap::UpdateEmptyFieldSubobjects(const CXXRecordDecl *RD,
     CharUnits FieldOffset = Offset + getFieldOffset(Layout, FieldNo);
 
     UpdateEmptyFieldSubobjects(*I, FieldOffset);
+  }
+}
+
+void EmptySubobjectMap::UpdateEmptyFieldSubobjects(const MeshFieldDecl *MFD,
+                                                   CharUnits Offset) {
+
+  QualType T = MFD->getType();
+  if (const RecordType *RT = T->getAs<RecordType>()) {
+    const CXXRecordDecl *RD = cast<CXXRecordDecl>(RT->getDecl());
+    UpdateEmptyFieldSubobjects(RD, RD, Offset);
+    return;
+  }
+
+  // If we have an array type we need to update every element.
+  if (const ConstantArrayType *AT = Context.getAsConstantArrayType(T)) {
+    QualType ElemTy = Context.getBaseElementType(AT);
+    const RecordType *RT = ElemTy->getAs<RecordType>();
+    if (!RT)
+      return;
+
+    const CXXRecordDecl *RD = cast<CXXRecordDecl>(RT->getDecl());
+    const ASTRecordLayout &Layout = Context.getASTRecordLayout(RD);
+
+    uint64_t NumElements = Context.getConstantArrayElementCount(AT);
+    CharUnits ElementOffset = Offset;
+
+    for (uint64_t I = 0; I != NumElements; ++I) {
+      // We know that the only empty subobjects that can conflict with empty
+      // field subobjects are subobjects of empty bases that can be placed at
+      // offset zero. Because of this, we only need to keep track of empty field
+      // subobjects with offsets less than the size of the largest empty
+      // subobject for our class.
+      if (ElementOffset >= SizeOfLargestEmptySubobject)
+        return;
+
+      UpdateEmptyFieldSubobjects(RD, RD, ElementOffset);
+      ElementOffset += Layout.getSize();
+    }
   }
 }
   
@@ -2803,3 +2902,4 @@ void ASTContext::DumpRecordLayout(const RecordDecl *RD,
 }
 
 #include "Scout/MeshLayoutBuilder.cpp"
+

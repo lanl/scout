@@ -31,7 +31,7 @@
 #include "clang/AST/TemplateName.h"
 #include "clang/AST/Type.h"
 #include "clang/AST/TypeLoc.h"
-#include "clang/AST/scout/MeshDecls.h"
+#include "clang/AST/Scout/MeshDecls.h"
 
 // The following three macros are used for meta programming.  The code
 // using them is responsible for defining macro OPERATOR().
@@ -245,7 +245,7 @@ public:
   ///
   /// \returns false if the visitation was terminated early, true otherwise.
   bool TraverseLambdaCapture(LambdaExpr *LE, const LambdaExpr::Capture *C);
-  
+
   // ---- Methods on Stmts ----
 
   // Declare Traverse*() for all concrete Stmt classes.
@@ -596,10 +596,11 @@ bool RecursiveASTVisitor<Derived>::TraverseType(QualType T) {
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseTypeLoc(TypeLoc TL) {
   // ===== Scout ===========================================================
+  // SC_TODO: this debug code can be deleted when we get the MeshTypeloc stuff working correctly
   if (TL.getTypeLocClass() == TypeLoc::UniformMesh) {
-    return getDerived().TraverseUniformMeshTypeLoc(TL.castAs<UniformMeshTypeLoc>());
-  }
-  // =======================================================================
+      return getDerived().TraverseUniformMeshTypeLoc(TL.castAs<UniformMeshTypeLoc>());
+    }
+   // =======================================================================
 
 
   if (TL.isNull())
@@ -1612,7 +1613,7 @@ bool RecursiveASTVisitor<Derived>::TraverseRecordHelper(
 }
 
 // ===== Scout ==================================================================================
-  
+
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseUniformMeshHelper(UniformMeshDecl *D) {
   // We shouldn't traverse D->getTypeForDecl(); it's a result of
@@ -1648,7 +1649,7 @@ bool RecursiveASTVisitor<Derived>::TraverseRectilinearMeshHelper(RectilinearMesh
 DEF_TRAVERSE_DECL(RectilinearMeshDecl, {
   TRY_TO(TraverseRectilinearMeshHelper(D));
 })
-  
+
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseUnstructuredMeshHelper(UnstructuredMeshDecl *D) {
   // We shouldn't traverse D->getTypeForDecl(); it's a result of
@@ -1662,7 +1663,7 @@ DEF_TRAVERSE_DECL(UnstructuredMeshDecl, {
 })
 
 // ==============================================================================================
-  
+
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseCXXRecordHelper(
     CXXRecordDecl *D) {
@@ -1950,7 +1951,7 @@ DEF_TRAVERSE_STMT(GCCAsmStmt, {
     // children() iterates over inputExpr and outputExpr.
   })
 
-DEF_TRAVERSE_STMT(MSAsmStmt, { 
+DEF_TRAVERSE_STMT(MSAsmStmt, {
     // FIXME: MS Asm doesn't currently parse Constraints, Clobbers, etc.  Once
     // added this needs to be implemented.
   })
@@ -1985,10 +1986,8 @@ DEF_TRAVERSE_STMT(DefaultStmt, { })
 DEF_TRAVERSE_STMT(DoStmt, { })
 DEF_TRAVERSE_STMT(ForStmt, { })
 // ===== Scout ==========================================================================
-DEF_TRAVERSE_STMT(ForAllStmt, { })
-DEF_TRAVERSE_STMT(ForAllArrayStmt, { })
-DEF_TRAVERSE_STMT(RenderAllStmt, { })  
-DEF_TRAVERSE_STMT(VolumeRenderAllStmt, { })
+DEF_TRAVERSE_STMT(ForallMeshStmt, { })
+DEF_TRAVERSE_STMT(RenderallMeshStmt, { })
 // ======================================================================================
 DEF_TRAVERSE_STMT(GotoStmt, { })
 DEF_TRAVERSE_STMT(IfStmt, { })
@@ -2054,13 +2053,6 @@ DEF_TRAVERSE_STMT(MemberExpr, {
         S->getTemplateArgs(), S->getNumTemplateArgs()));
   })
 
-// ===== Scout ========================================================================
-// SC_TODO - This is not implemented -- however, we need to replace Scout's vector 
-// types with Clang's "builtin" support.  This has been done in the "refactor" repo
-// but has not been merged back into "devel". 
-DEF_TRAVERSE_STMT(ScoutVectorMemberExpr, {
-})
-// ====================================================================================
 DEF_TRAVERSE_STMT(ImplicitCastExpr, {
     // We don't traverse the cast type, as it's not written in the
     // source code.
@@ -2216,7 +2208,7 @@ DEF_TRAVERSE_STMT(CXXTemporaryObjectExpr, {
     TRY_TO(TraverseTypeLoc(S->getTypeSourceInfo()->getTypeLoc()));
   })
 
-// Walk only the visible parts of lambda expressions.  
+// Walk only the visible parts of lambda expressions.
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseLambdaExpr(LambdaExpr *S) {
   for (LambdaExpr::capture_iterator C = S->explicit_capture_begin(),
@@ -2238,7 +2230,7 @@ bool RecursiveASTVisitor<Derived>::TraverseLambdaExpr(LambdaExpr *S) {
         }
       } else {
         TRY_TO(TraverseTypeLoc(Proto.getResultLoc()));
-      }        
+      }
     }
   }
 
@@ -2367,7 +2359,7 @@ DEF_TRAVERSE_STMT(ObjCStringLiteral, { })
 DEF_TRAVERSE_STMT(ObjCBoxedExpr, { })
 DEF_TRAVERSE_STMT(ObjCArrayLiteral, { })
 DEF_TRAVERSE_STMT(ObjCDictionaryLiteral, { })
-  
+
 // Traverse OpenCL: AsType, Convert.
 DEF_TRAVERSE_STMT(AsTypeExpr, { })
 

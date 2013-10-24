@@ -8023,10 +8023,6 @@ static ICEDiag CheckICE(const Expr* E, ASTContext &Ctx) {
   case Expr::ChooseExprClass: {
     return CheckICE(cast<ChooseExpr>(E)->getChosenSubExpr(Ctx), Ctx);
   }
-  // ===== Scout ==========================================================
-  case Expr::ScoutVectorMemberExprClass:
-    return ICEDiag(IK_NotICE, E->getLocStart());
-  // ======================================================================  
   }
 
   llvm_unreachable("Invalid StmtClass!");

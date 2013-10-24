@@ -6,9 +6,9 @@
  * Contact:
  * Hongfeng Yu
  * hfstudio@gmail.com
- * 
- * 
- * All rights reserved.  May not be used, modified, or copied 
+ *
+ *
+ * All rights reserved.  May not be used, modified, or copied
  * without permission.
  *
  */
@@ -17,17 +17,17 @@
 #ifndef HPGV_RENDER_H
 #define HPGV_RENDER_H
 
-#include <mpi.h>    
+#include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "scout/Runtime/volren/hpgv/hpgv_gl.h"    
+#include "scout/Runtime/volren/hpgv/hpgv_gl.h"
 #include "scout/Runtime/volren/hpgv/hpgv_block.h"
 #include "scout/Runtime/volren/hpgv/hpgv_utilmath.h"
 #include "scout/Runtime/volren/hpgv/hpgv_util.h"
 #include "scout/Runtime/volren/hpgv/hpgv_composite.h"
 #include "scout/Runtime/volren/hpgv/hpgv_parameter.h"
-#include "scout/Runtime/vec_types.h"
+#include "scout/types.h"
 
 
 namespace scout {

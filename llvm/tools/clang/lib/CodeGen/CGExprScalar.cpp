@@ -302,12 +302,6 @@ public:
     return EmitScalarPrePostIncDec(E, LV, true, true);
   }
 
-  // ===== Scout ==============================================================
-  // Scout vector support -- we need to replace our types with Clang's 
-  // "builtin" versions.  This has been done in the "refactor" branch 
-  // but needs to be merged with "devel".
-  Value *VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *E);
-  // ==========================================================================
   llvm::Value *EmitAddConsiderOverflowBehavior(const UnaryOperator *E,
                                                llvm::Value *InVal,
                                                llvm::Value *NextVal,
@@ -3189,26 +3183,6 @@ Value *ScalarExprEmitter::VisitAsTypeExpr(AsTypeExpr *E) {
   
   return Builder.CreateBitCast(Src, DstTy, "astype");
 }
-
-
-// ===== Scout ================================================================
-Value *
-ScalarExprEmitter::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *E) {
-  TestAndClearIgnoreResultAssign();
-
-  if(isa<MemberExpr>(E->getBase())) {
-    ValueDecl *VD = cast<MemberExpr>(E->getBase())->getMemberDecl();
-    if(VD->getName() == "position") {
-      return Builder.CreateLoad(CGF.ScoutIdxVars[E->getIdx()]);
-    }
-    assert(false && "Attempt to translate Scout 'position' to LLVM IR failed");
-  } else {
-    Value *Base = Visit(E->getBase());
-    Value *Idx = llvm::ConstantInt::get(CGF.Int32Ty, E->getIdx());
-    return Builder.CreateExtractElement(Base, Idx, "scvecext");
-  }
-}
-// ============================================================================
 
 Value *ScalarExprEmitter::VisitAtomicExpr(AtomicExpr *E) {
   return CGF.EmitAtomicExpr(E).getScalarVal();

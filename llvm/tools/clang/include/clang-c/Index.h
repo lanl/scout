@@ -4858,11 +4858,16 @@ enum CXCompletionContext {
    * \brief Natural language completions should be included in the results.
    */
   CXCompletionContext_NaturalLanguage = 1 << 21,
+
+  /** 
+   * \brief Completions for mesh names should be included in the results.
+   */
+   CXCompletionContext_Scout = 1 << 22,
   
   /**
    * \brief The current context is unknown, so set all contexts.
    */
-  CXCompletionContext_Unknown = ((1 << 22) - 1)
+  CXCompletionContext_Unknown = ((1 << 23) - 1)
 };
   
 /**

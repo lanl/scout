@@ -19,7 +19,7 @@
 #include "clang/AST/DeclVisitor.h"
 #include "clang/AST/StmtVisitor.h"
 #include "clang/AST/TypeVisitor.h"
-#include "clang/AST/scout/MeshDecls.h"
+#include "clang/AST/Scout/MeshDecls.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/SourceManager.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -2839,7 +2839,7 @@ Decl *ASTNodeImporter::VisitMeshFieldDecl(MeshFieldDecl *D) {
   for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
     if (MeshFieldDecl *FoundField = dyn_cast<MeshFieldDecl>(FoundDecls[I])) {
       // For anonymous fields, match up by index.
-      if (!Name && D->getMeshFieldIndex() != D->getMeshFieldIndex())
+      if (!Name && D->getFieldIndex() != D->getFieldIndex())
         continue;
 
       if (Importer.IsStructurallyEquivalent(D->getType(), 

@@ -250,6 +250,11 @@ static inline unsigned getIDNS(Sema::LookupNameKind NameKind,
       IDNS = Decl::IDNS_Tag;
     }
     break;
+
+  case Sema::LookupMeshName:
+    IDNS = Decl::IDNS_Mesh;
+    break;
+
   case Sema::LookupLabel:
     IDNS = Decl::IDNS_Label;
     break;
@@ -1517,6 +1522,10 @@ bool Sema::LookupQualifiedName(LookupResult &R, DeclContext *LookupCtx,
 
     case LookupTagName:
       BaseCallback = &CXXRecordDecl::FindTagMember;
+      break;
+
+    case LookupMeshName:
+      BaseCallback = &CXXRecordDecl::FindMeshMember;
       break;
 
     case LookupAnyName:

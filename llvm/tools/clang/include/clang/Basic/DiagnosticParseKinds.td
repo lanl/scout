@@ -91,7 +91,7 @@ def err_enumerator_list_missing_comma : Error<
 def err_enumerator_unnamed_no_def : Error<
   "unnamed enumeration must be a definition">;
 def ext_cxx11_enum_fixed_underlying_type : Extension<
-  "enumeration types with a fixed underlying type are a C++11 extension">, 
+  "enumeration types with a fixed underlying type are a C++11 extension">,
   InGroup<CXX11>;
 def ext_c_enum_fixed_underlying_type : Extension<
   "enumeration types with a fixed underlying type are a Microsoft extension">,
@@ -106,7 +106,7 @@ def ext_alignof_expr : ExtWarn<
   "%0 applied to an expression is a GNU extension">, InGroup<GNU>;
 
 def warn_microsoft_dependent_exists : Warning<
-  "dependent %select{__if_not_exists|__if_exists}0 declarations are ignored">, 
+  "dependent %select{__if_not_exists|__if_exists}0 declarations are ignored">,
   InGroup<DiagGroup<"microsoft-exists">>;
 
 def ext_c11_generic_selection : Extension<
@@ -134,14 +134,14 @@ def ext_gnu_conditional_expr : Extension<
   "use of GNU ?: expression extension, eliding middle term">, InGroup<GNU>;
 def ext_gnu_empty_initializer : Extension<
   "use of GNU empty initializer extension">, InGroup<GNU>;
-def ext_gnu_array_range : Extension<"use of GNU array range extension">, 
+def ext_gnu_array_range : Extension<"use of GNU array range extension">,
   InGroup<GNUDesignator>;
 def ext_gnu_missing_equal_designator : ExtWarn<
-  "use of GNU 'missing =' extension in designator">, 
+  "use of GNU 'missing =' extension in designator">,
   InGroup<GNUDesignator>;
 def err_expected_equal_designator : Error<"expected '=' or another designator">;
 def ext_gnu_old_style_field_designator : ExtWarn<
-  "use of GNU old-style field designator extension">, 
+  "use of GNU old-style field designator extension">,
   InGroup<GNUDesignator>;
 def ext_gnu_case_range : Extension<"use of GNU case range extension">,
   InGroup<GNU>;
@@ -183,10 +183,10 @@ def err_at_in_class : Error<"unexpected '@' in member specification">;
 def err_expected_fn_body : Error<
   "expected function body after function declarator">;
 def warn_attribute_on_function_definition : Warning<
-  "GCC does not allow %0 attribute in this position on a function definition">, 
+  "GCC does not allow %0 attribute in this position on a function definition">,
   InGroup<GccCompat>;
 def warn_attribute_no_decl : Warning<
-  "attribute %0 ignored, because it is not attached to a declaration">, 
+  "attribute %0 ignored, because it is not attached to a declaration">,
   InGroup<IgnoredAttributes>;
 def err_expected_method_body : Error<"expected method body">;
 def err_invalid_token_after_toplevel_declarator : Error<
@@ -309,7 +309,7 @@ def warn_cxx98_compat_decltype : Warning<
 def err_unexpected_scope_on_base_decltype : Error<
   "unexpected namespace scope prior to decltype">;
 def err_expected_class_name : Error<"expected class name">;
-def err_expected_class_name_not_template : 
+def err_expected_class_name_not_template :
   Error<"'typename' is redundant; base classes are implicitly types">;
 def err_unspecified_vla_size_with_static : Error<
   "'static' may not be used with an unspecified variable length array size">;
@@ -397,7 +397,7 @@ def warn_arc_bridge_cast_nonarc : Warning<
   "'%0' casts have no effect when not using ARC">,
   InGroup<DiagGroup<"arc-bridge-casts-disallowed-in-nonarc">>;
 }
-  
+
 def err_objc_illegal_visibility_spec : Error<
   "illegal visibility specification">;
 def err_objc_illegal_interface_qual : Error<"illegal interface qualifier">;
@@ -612,7 +612,7 @@ def warn_cxx98_compat_extern_template : Warning<
 def warn_static_inline_explicit_inst_ignored : Warning<
   "ignoring '%select{static|inline}0' keyword on explicit template "
   "instantiation">;
-  
+
 // Constructor template diagnostics.
 def err_out_of_line_constructor_template_id : Error<
   "out-of-line constructor for %0 cannot have template arguments">;
@@ -637,11 +637,11 @@ def err_expected_type_name_after_typename : Error<
 def err_explicit_spec_non_template : Error<
   "explicit %select{specialization|instantiation}0 of non-template "
   "%select{class|struct|union|interface}1 %2">;
-  
+
 def err_default_template_template_parameter_not_template : Error<
   "default template argument for a template template parameter must be a class "
   "template">;
-  
+
 def err_ctor_init_missing_comma : Error<
   "missing ',' between base or member initializers">;
 
@@ -686,7 +686,7 @@ def err_alias_declaration_not_identifier : Error<
   "name defined in alias declaration must be an identifier">;
 def err_alias_declaration_specialization : Error<
   "%select{partial specialization|explicit specialization|explicit instantiation}0 of alias templates is not permitted">;
-    
+
 // C++11 override control
 def ext_override_control_keyword : ExtWarn<
   "'%0' keyword is a C++11 extension">, InGroup<CXX11>;
@@ -761,11 +761,11 @@ def warn_pragma_expected_lparen : Warning<
 def warn_pragma_expected_rparen : Warning<
   "missing ')' after '#pragma %0' - ignoring">;
 def warn_pragma_expected_identifier : Warning<
-  "expected identifier in '#pragma %0' - ignored">;  
+  "expected identifier in '#pragma %0' - ignored">;
 def warn_pragma_ms_struct : Warning<
-  "incorrect use of '#pragma ms_struct on|off' - ignored">;  
+  "incorrect use of '#pragma ms_struct on|off' - ignored">;
 def warn_pragma_extra_tokens_at_eol : Warning<
-  "extra tokens at end of '#pragma %0' - ignored">; 
+  "extra tokens at end of '#pragma %0' - ignored">;
 // - #pragma options
 def warn_pragma_options_expected_align : Warning<
   "expected 'align' following '#pragma options' - ignored">;
@@ -786,7 +786,7 @@ def warn_pragma_unused_expected_punc : Warning<
 // - #pragma fp_contract
 def err_pragma_fp_contract_scope : Error<
   "'#pragma fp_contract' should only appear at file scope or at the start of a "
-  "compound expression">; 
+  "compound expression">;
 // - #pragma comment
 def err_pragma_comment_malformed : Error<
   "pragma comment requires parenthesized identifier and optional string">;
@@ -817,87 +817,6 @@ def err_seh___except_filter : Error<
 def err_seh___finally_block : Error<
   "%0 only allowed in __finally block">;
 
-// ===== Scout ==========================================================================
-def err_expected_numeric_constant_in_mesh_def : Error<
-"expected a numeric constant in mesh definition dimensions">;
-def err_expected_faces_edges_cells: Error<"expected faces, edges, or cells keyword">;
-def err_expected_vertices_cells: Error<"expected vertices or cells keyword">;
-def err_expected_of_kw: Error<"expected 'of' keyword">;
-def err_expected_comma_or_in_kw: Error<"expected comma or 'in' keyword">;
-def err_expected_in_kw: Error<"expected 'in' keyword">;
-def err_expected_as_kw: Error<"expected 'as' keyword">;
-def err_expected_spheres_kw: Error<"expected 'spheres' keyword">;
-def err_invalid_renderall_body: Error<"Invalid renderall body">;
-def err_invalid_forall_op: Error<"Invalid forall op">;
-def err_invalid_forall_body: Error<"Invalid forall body">;
-def err_expected_mesh_kw: Error<"expected mesh keyword">;
-def err_expected_semi_mesh_declaration : Error<
-"expected ';' at end of mesh declaration">;
-def err_no_mesh_field_specifier : Error<
-"no mesh field specifier has been specified, i.e: 'cells', 'vertices', etc.">;
-def err_extern_mesh_field : Error<"'extern' mesh fields are not allowed">;
-def err_expected_numeric_constant_in_window_def : Error<
-"expected a numeric constant in window dimensions definition">;
-def err_mesh_not_implemented : Error< "mesh type is not fully implemented yet">;
-def err_missing_field_window_decl : Error<
-"in window declaration, missing %0 field">;
-def err_expected_semi_window_arg : Error<
-"expected ';' at end window field">;
-
-def err_missing_field_image_decl : Error<
-"in image declaration, missing %0 field">;
-def err_expected_semi_image_arg : Error<
-"expected ';' at end image field">;
-
-def err_expected_semi_camera_arg : Error<
-"expected ';' at end camera field">;
-
-def err_expected_periodperiod : Error<"expected '..'">;
-def err_expected_forall_binary_op : Error<"expected binary operator">;
-
-def warn_empty_mesh : Warning<"mesh definition with no fields">;
-def warn_no_cells_fields_forall    : Warning<"no cell fields on mesh in forall cells">;
-def warn_no_edges_fields_forall    : Warning<"no edge fields on mesh in forall edges">;
-def warn_no_vertices_fields_forall : Warning<"no vertex fields on mesh in forall vertices">;
-def warn_no_faces_fields_forall    : Warning<"no face fields on mesh in forall faces">;
-
-def err_invalid_scout_vector_init : Error<"invalid vector initialization">;
-
-def warn_vector_color_clamp : Warning<"color vector values will be clamped to [0..1]">;
-
-def err_invalid_start_forall_array : Error<"invalid start in forall">;
-
-def err_invalid_end_forall_array : Error<"invalid end in forall">;
-
-def err_invalid_stride_forall_array : Error<"invalid stride in forall">;
-
-def err_expected_mesh_field : Error<"expected a mesh field">;
-
-def err_expected_equal_after_element_default : Error<
-"expected '=' after mesh element default">;
-
-def err_unknown_element_field : Error<"unknown element field">;
-
-def err_duplicate_radius_default : Error<"duplicate default given for radius">;
-
-def err_duplicate_color_default : Error<"duplicate default given for color">;
-
-def err_invalid_default_element : Error<
-"invalid default element, expected 'color' or 'radius'">;
-
-def err_not_array_renderall_elements: Error<"mesh field is not an array type">;
-
-def err_mismatch_forall_array : Error<
-"start/end/stride groups do not match number of induction variables">;
-
-def err_expected_mesh_param_token : Error<
-"expected ']' or ':' while parsing mesh parameter">;
-
-def err_expected_mesh_param_star_amp : Error<
-"mesh parameters must be declared as references or pointers">;
-
-def err_expected_mesh_var_decl : Error<"expected mesh variable declaration">;
-// ======================================================================================
 
 // OpenMP support.
 def warn_pragma_omp_ignored : Warning <
@@ -909,6 +828,122 @@ def err_omp_unknown_directive : Error <
   "expected an OpenMP directive">;
 def err_omp_unexpected_directive : Error <
   "unexpected OpenMP directive '#pragma omp %0'">;
+
+// === Scout ==================================================================
+//
+def warn_empty_mesh:Warning<
+    "mesh definition with no fields">;
+def err_expected_mesh_kw:Error<
+    "expected mesh keyword">;
+def err_expected_semi_mesh_decl:Error<
+    "expected closing semicolon at end of mesh declaration">;
+def err_unknown_mesh_variable:Error<
+    "unknown or invalid mesh instance">;
+def err_expected_a_mesh_type:Error<
+    "expected a mesh type">;
+
+// +----- mesh warnings -----------------------------------------------------+
+def warn_mesh_has_no_cell_fields:Warning<
+    "no cell fields available in selected mesh">;
+def warn_mesh_has_no_edge_fields:Warning<
+    "no edge fields available in selected mesh">;
+def warn_mesh_has_no_vertex_fields:Warning<
+    "no vertex fields available in selected mesh">;
+def warn_mesh_has_no_face_fields:Warning<
+    "no face fields available in selected mesh">;
+
+// +----- forall errors -----------------------------------------------------+
+def err_forall_invalid_op:Error<
+    "invalid operation within forall construct">;
+def err_forall_invalid_body:Error<
+    "Invalid forall body">;
+def err_forall_expected_mesh_element_kw:Error<
+    "expected mesh element keyword">;
+def err_forall_expected_kw_in:Error<
+    "forall missing (expected) keyword: 'in'">;
+def err_forall_predicate_missing_lparen:Error<
+    "forall predicate clause missing opening paren">;
+def err_forall_predicate_missing_rparen:Error<
+    "forall predicate clause missing closing paren">;
+def err_forall_unknown_mesh_component:Error<
+    "unrecognized mesh element">;
+
+// +----- renderall errors -------------------------------------+
+def err_renderall_invalid_op:Error<
+    "Invalid operation within renderall construct">;
+def err_invalid_forall_body:Error<
+    "Invalid forall body">;
+def err_renderall_expected_mesh_element_kw:Error<
+    "expected mesh element keyword">;
+def err_renderall_expected_kw_in:Error<
+    "renderall missing (expected) keyword: 'in'">;
+def err_renderall_not_a_mesh_type:Error<
+    "instance if of a non-mesh type">;
+def err_renderall_predicate_missing_lparen:Error<
+    "renderall predicate clause missing opening paren">;
+def err_renderall_predicate_missing_rparen:Error<
+    "renderall predicate clause missing closing paren">;
+def err_renderall_unknown_mesh_component:Error<
+    "unrecognized mesh element">;
+def err_renderall_invalid_body:Error<
+    "invalid renderall body">;
+def err_expected_numeric_constant_in_mesh_def: Error<
+    "expected a numeric constant in mesh definition dimensions">;
+def err_no_mesh_field_specifier:Error<
+    "no mesh element/field has been specified, (e.g.: 'cells', ...)">;
+def err_extern_mesh_field:Error<
+    "'extern' mesh fields are not allowed">;
+def err_expected_numeric_constant_in_window_def:Error<
+    "expected a numeric constant in window dimensions definition">;
+def err_mesh_not_implemented:Error<
+    "mesh type is not fully implemented yet">;
+def err_missing_field_window_decl:Error<
+    "in window declaration, missing %0 field">;
+def err_expected_semi_window_arg:Error<
+    "expected ';' at end window field">;
+def err_missing_field_image_decl:Error<
+    "in image declaration, missing %0 field">;
+def err_expected_semi_image_arg:Error<
+    "expected ';' at end image field">;
+def err_expected_semi_camera_arg:Error<
+    "expected ';' at end camera field">;
+def err_expected_periodperiod:Error<
+    "expected '..'">;
+def err_expected_forall_binary_op:Error<
+    "expected binary operator">;
+def warn_vector_color_clamp:Warning<
+    "color vector values will be clamped to [0..1]">;
+def err_invalid_start_forall_array:Error<
+    "invalid start in forall">;
+def err_invalid_end_forall_array:Error<
+    "invalid end in forall">;
+def err_invalid_stride_forall_array:Error<
+    "invalid stride in forall">;
+def err_expected_mesh_field:Error<
+    "expected a mesh field">;
+def err_expected_equal_after_element_default:Error<
+    "expected '=' after mesh element default">;
+def err_unknown_element_field:Error<
+    "unknown element field">;
+def err_duplicate_radius_default:Error<
+    "duplicate default given for radius">;
+def err_duplicate_color_default:Error<
+    "duplicate default given for color">;
+def err_invalid_default_element:Error<
+    "invalid default element, expected 'color' or 'radius'">;
+def err_not_array_renderall_elements:Error<
+    "mesh field is not an array type">;
+def err_mismatch_forall_array:Error<
+    "start/end/stride groups do not match count of induction variables">;
+def err_expected_mesh_param_token:Error<
+    "expected ']' or ':' while parsing mesh parameter">;
+def err_expected_mesh_param_star_amp:Error<
+    "mesh parameters must be declared as references or pointers">;
+def err_expected_mesh_var_decl:Error<
+    "expected mesh variable declaration">;
+// ============================================================================
+
+
 } // end of Parse Issue category.
 
 let CategoryName = "Modules Issue" in {
