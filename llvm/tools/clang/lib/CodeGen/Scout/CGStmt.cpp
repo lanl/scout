@@ -63,8 +63,10 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Attributes.h"
+#include "llvm/IR/IRBuilder.h"
 
-// scout - includes
 #include <stdio.h>
 #include "llvm/Transforms/Utils/CodeExtractor.h"
 #include "clang/AST/Decl.h"
@@ -122,11 +124,22 @@ static char IRNameStr[160];
 //
 void CodeGenFunction::EmitForallStmt(const ForAllStmt &S) {
 
+  llvm::Value *ConstantZero  = 0;
+  ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
+
   unsigned int rank = S.getMeshType()->dimensions().size();
+  InductionVar.clear();
+  for(unsigned int i = 0; i < rank; i++) {
+    InductionVar.push_back(0);
+    // Create the induction variable for this rank and zero-initialize it.
+    sprintf(IRNameStr, "induct.%s", IndexNames[i]);
+    InductionVar[i] = Builder.CreateAlloca(Int32Ty, 0, IRNameStr);
+    Builder.CreateStore(ConstantZero, InductionVar[i]);
+  }
   EmitForallLoop(S, rank);
 }
 
-//generate one of the nested loops
+// generate one of the nested loops
 void CodeGenFunction::EmitForallLoop(const ForAllStmt &S, unsigned r) {
 
   MeshBaseAddr = GetMeshBaseAddr(S);
@@ -167,11 +180,6 @@ void CodeGenFunction::EmitForallLoop(const ForAllStmt &S, unsigned r) {
   sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[r-1]);
   LoopBound  = Builder.CreateLoad(LoopBound, IRNameStr);
 
-  // Create the induction variable for this rank and zero-initialize it.
-  sprintf(IRNameStr, "induct.%s", IndexNames[r-1]);
-  llvm::Value *InductionVar = Builder.CreateAlloca(Int32Ty, 0, IRNameStr);
-  Builder.CreateStore(ConstantZero, InductionVar);
-
   // Next we create a block that tests the induction variables value to
   // the rank's dimension.
   sprintf(IRNameStr, "forall.cond.%s", DimNames[r-1]);
@@ -181,7 +189,7 @@ void CodeGenFunction::EmitForallLoop(const ForAllStmt &S, unsigned r) {
 
   RunCleanupsScope ConditionScope(*this);
   sprintf(IRNameStr, "forall.done.%s", IndexNames[r-1]);
-  llvm::Value *CondValue = Builder.CreateICmpSLT(Builder.CreateLoad(InductionVar),
+  llvm::Value *CondValue = Builder.CreateICmpSLT(Builder.CreateLoad(InductionVar[r-1]),
                                                  LoopBound,
                                                  IRNameStr);
 
@@ -208,10 +216,8 @@ void CodeGenFunction::EmitForallLoop(const ForAllStmt &S, unsigned r) {
   sprintf(IRNameStr, "forall.incblk.%s", IndexNames[r-1]);
   Continue = getJumpDestInCurrentScope(IRNameStr);
 
-
   // Store the blocks to use for break and continue.
   BreakContinueStack.push_back(BreakContinue(LoopExit, Continue));
-
 
   if (r == 1) {  // This is our innermost rank, generate the loop body.
     EmitForallBody(S);
@@ -233,13 +239,13 @@ void CodeGenFunction::EmitForallLoop(const ForAllStmt &S, unsigned r) {
   sprintf(IRNameStr, "forall.inc.%s", IndexNames[r-1]);
 
 
-  llvm::Value* iv = Builder.CreateLoad(InductionVar);
+  llvm::Value* iv = Builder.CreateLoad(InductionVar[r-1]);
   llvm::Value *IncInductionVar = Builder.CreateAdd(iv,
                                                    ConstantOne,
                                                    IRNameStr);
 
 
-  Builder.CreateStore(IncInductionVar, InductionVar);
+  Builder.CreateStore(IncInductionVar, InductionVar[r-1]);
 
   BreakContinueStack.pop_back();
   ConditionScope.ForceCleanup();
