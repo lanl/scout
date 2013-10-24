@@ -73,7 +73,7 @@ int main(int argc, char *argv[])
   }
 
   // init cells at z dim 2 be 0, then dim 0 and 1 to be 0
-  forall cells c of amesh {
+  forall cells c in amesh {
     int val;
     if (c.position.z == 2) {
       val = 1;
@@ -87,7 +87,7 @@ int main(int argc, char *argv[])
   }
 
   // vals should remain unchanged, because there are zeros at z dim 1
-  forall cells c of amesh {
+  forall cells c in amesh {
     int val;
     if (c.position.z == 0) val = cshift(c.field2, 0, 0, 1); else val = field2;
     field1 = val;

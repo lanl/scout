@@ -61,7 +61,7 @@ uniform mesh MyMesh{
 int main(int argc, char** argv){
   MyMesh m[512];
   
-  forall cells c of m{
+  forall cells c in m{
     a += b;
   }
   

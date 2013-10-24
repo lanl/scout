@@ -75,7 +75,7 @@ int main(int argc, char** argv){
 
   m.b = myb;
  
-  forall cells c of m {
+  forall cells c in m {
     if ((c.position.x-b)*(c.position.x-b) > 1e-10) {
       printf("bad val %f\n",b);
       kill(getpid(), SIGTERM);

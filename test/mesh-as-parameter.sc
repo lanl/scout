@@ -64,7 +64,7 @@ uniform mesh MyMesh {
 
 void initialize_myMesh(MyMesh[:]& m)
 {
-  forall cells c of m {
+  forall cells c in m {
     c.val = 1.0;
   }
 }
@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
   MyMesh m[512, 512];
   initialize_myMesh(m);
 
-  forall cells c of m{
+  forall cells c in m{
     if ((val-1.0)*(val-1.0) > 1e-10) {
       printf("bad val %f\n", val);
       kill(getpid(), SIGTERM);
