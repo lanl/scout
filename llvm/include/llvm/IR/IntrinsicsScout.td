@@ -48,3 +48,24 @@ def int_memfree    : Intrinsic< [],
                                 [llvm_anyptr_ty],
                                 [NoCapture<0>] >;
 
+
+def int_position    : Intrinsic< [llvm_v4i32_ty],
+                                 [],
+                                 [] >; 
+
+def int_positionx    : Intrinsic< [llvm_i32_ty],
+                                 [],
+                                 [] >; 
+                                 
+def int_positiony    : Intrinsic< [llvm_i32_ty],
+                                 [],
+                                 [] >; 
+                                 
+def int_positionz    : Intrinsic< [llvm_i32_ty],
+                                 [],
+                                 [] >; 
+
+def int_positionl    : Intrinsic< [llvm_i32_ty],
+                                 [],
+                                 [] >;
+                                                                   

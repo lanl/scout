@@ -141,9 +141,12 @@ void CodeGenFunction::EmitForallStmt(const ForallMeshStmt &S) {
   llvm::Value *ConstantZero  = 0;
   ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
 
+  LoopIndexVar = Builder.CreateAlloca(Int32Ty, 0, "forall.indx");
+  Builder.CreateStore(ConstantZero, LoopIndexVar);
+
   unsigned int rank = S.getMeshType()->dimensions().size();
   InductionVar.clear();
-  for(unsigned int i = 0; i < rank; i++) {
+  for(unsigned int i = 0; i < 3; i++) {
     InductionVar.push_back(0);
     // Create the induction variable for this rank and zero-initialize it.
     sprintf(IRNameStr, "induct.%s", IndexNames[i]);
@@ -157,7 +160,6 @@ void CodeGenFunction::EmitForallStmt(const ForallMeshStmt &S) {
 void CodeGenFunction::EmitForallLoop(const ForallMeshStmt &S, unsigned r) {
   MeshBaseAddr = GetMeshBaseAddr(S);
   llvm::StringRef MeshName = S.getMeshType()->getName();
-  unsigned int rank = S.getMeshType()->dimensions().size();
 
   // find number of fields
   MeshDecl* MD =  S.getMeshType()->getDecl();
@@ -177,13 +179,6 @@ void CodeGenFunction::EmitForallLoop(const ForallMeshStmt &S, unsigned r) {
 
   if (DI)
     DI->EmitLexicalBlockStart(Builder, S.getSourceRange().getBegin());
-
-  if (r == rank) {
-    // For our first pass we deal with the outermost initialization
-    // details.   This includes our single (linear) array index value,
-    LoopIndexVar = Builder.CreateAlloca(Int32Ty, 0, "forall.indx");
-    Builder.CreateStore(ConstantZero, LoopIndexVar);
-  }
 
   // Extract the loop bounds from the mesh for this rank, this requires
   // a GEP from the mesh and a load from returned address...
@@ -248,15 +243,12 @@ void CodeGenFunction::EmitForallLoop(const ForallMeshStmt &S, unsigned r) {
 
   EmitBlock(Continue.getBlock());
 
-
   sprintf(IRNameStr, "forall.inc.%s", IndexNames[r-1]);
-
 
   llvm::Value* iv = Builder.CreateLoad(InductionVar[r-1]);
   llvm::Value *IncInductionVar = Builder.CreateAdd(iv,
                                                    ConstantOne,
                                                    IRNameStr);
-
 
   Builder.CreateStore(IncInductionVar, InductionVar[r-1]);
 
