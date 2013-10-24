@@ -54,6 +54,7 @@
  #define __SCOUT_MATH_H__
 
 #include <cmath>
+#include <algorithm>
 
 namespace scout
 {

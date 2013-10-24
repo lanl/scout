@@ -242,6 +242,9 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
     CI.getPreprocessorOpts().Includes.push_back("scout/scout.sch");
     CI.getPreprocessorOpts().Includes.push_back("scout/Runtime/scout.h");    
   }
+  // make blocks work on linux
+  // need this fix in clang as well as scout as we build the runtime w/ clang
+  CI.getPreprocessorOpts().Includes.push_back("scout/unistd.h");    
   // =========================================================================================================
   // If the implicit PCH include is actually a directory, rather than
   // a single file, search for a suitable PCH file in that directory.

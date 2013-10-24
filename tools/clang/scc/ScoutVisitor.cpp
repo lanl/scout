@@ -63,7 +63,8 @@
 #include "clang/Parse/Parser.h"
 #include "llvm/Support/Host.h"
 #include "ScoutVisitor.h"
-#include "scout/Runtime/opengl/glSDL.h" // for window height/width
+// SC_TODO: this include will not work w/ gcc (clang attribute for vectors)
+//#include "scout/Runtime/opengl/glSDL.h" // for window height/width
 
 using namespace clang;
 
