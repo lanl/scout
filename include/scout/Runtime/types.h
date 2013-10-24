@@ -12,6 +12,7 @@
 #ifndef __SCOUT_TYPES_H__
 #define __SCOUT_TYPES_H__
 
+#include <stdint.h>
 
 namespace scout
 {
