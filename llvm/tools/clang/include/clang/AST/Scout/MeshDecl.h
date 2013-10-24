@@ -2,7 +2,7 @@
  * ###########################################################################
  * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
- * 
+ *
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -20,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- * 
+ *
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided 
+ *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -31,7 +31,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -45,15 +45,15 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ########################################################################### 
- * 
- * Notes: See the various mesh types in AST/Types.h for some 
- * -----  more details on Scout's mesh types.  It is important 
- *        to keep a connection between the various Decls in this
- *        file and those types. 
+ * ###########################################################################
  *
- * ##### 
- */ 
+ * Notes: See the various mesh types in AST/Types.h for some
+ * -----  more details on Scout's mesh types.  It is important
+ *        to keep a connection between the various Decls in this
+ *        file and those types.
+ *
+ * #####
+ */
 
 #ifndef __SC_CLANG_MESH_DECL_H__
 #define __SC_CLANG_MESH_DECL_H__
@@ -76,16 +76,16 @@ namespace clang {
 
   class MeshDecl;
 
-  /// MeshFieldDecl - An instance of this class is created by Sema::ActOnField to                        
-  /// represent a member of a mesh.                                                    
+  /// MeshFieldDecl - An instance of this class is created by Sema::ActOnField to
+  /// represent a member of a mesh.
   class MeshFieldDecl : public DeclaratorDecl {
-    // FIXME: This can be packed into the bitfields in Decl.                                         
+    // FIXME: This can be packed into the bitfields in Decl.
     bool Mutable : 1;
 
 
-    // Each field can be placed at various locations within the 
-    // topology of the mesh.  We use the following bitfields to 
-    // track this location within the field's decl. 
+    // Each field can be placed at various locations within the
+    // topology of the mesh.  We use the following bitfields to
+    // track this location within the field's decl.
     bool CellLocated   : 1;
     bool VertexLocated : 1;
     bool EdgeLocated   : 1;
@@ -95,16 +95,16 @@ namespace clang {
 
     mutable unsigned CachedFieldIndex : 26;
 
-    /// \brief An InClassInitStyle value, and either a bit width expression (if                      
-    /// the InClassInitStyle value is ICIS_NoInit), or a pointer to the in-class                     
-    /// initializer for this field (otherwise).                                                      
-    ///                                                                                              
-    /// We can safely combine these two because in-class initializers are not                        
-    /// permitted for bit-fields.                                                                    
-    ///                                                                                              
-    /// If the InClassInitStyle is not ICIS_NoInit and the initializer is null,                      
-    /// then this field has an in-class initializer which has not yet been parsed                    
-    /// and attached.                                                                                
+    /// \brief An InClassInitStyle value, and either a bit width expression (if
+    /// the InClassInitStyle value is ICIS_NoInit), or a pointer to the in-class
+    /// initializer for this field (otherwise).
+    ///
+    /// We can safely combine these two because in-class initializers are not
+    /// permitted for bit-fields.
+    ///
+    /// If the InClassInitStyle is not ICIS_NoInit and the initializer is null,
+    /// then this field has an in-class initializer which has not yet been parsed
+    /// and attached.
     llvm::PointerIntPair<Expr *, 2, unsigned> InitializerOrBitWidth;
   protected:
     MeshFieldDecl(Kind DK, DeclContext *DC, SourceLocation StartLoc,
@@ -132,20 +132,20 @@ namespace clang {
 
     static MeshFieldDecl *CreateDeserialized(ASTContext &C, unsigned ID);
 
-    /// getFieldIndex - Returns the index of this field within its record,                           
-    /// as appropriate for passing to ASTRecordLayout::getFieldOffset.                               
+    /// getFieldIndex - Returns the index of this field within its record,
+    /// as appropriate for passing to ASTRecordLayout::getFieldOffset.
     unsigned getFieldIndex() const;
 
-    /// isMutable - Determines whether this field is mutable (C++ only).                             
+    /// isMutable - Determines whether this field is mutable (C++ only).
     bool isMutable() const { return Mutable; }
 
-    /// isBitfield - Determines whether this field is a bitfield.                                    
+    /// isBitfield - Determines whether this field is a bitfield.
     bool isBitField() const {
       return getInClassInitStyle() == ICIS_NoInit &&
              InitializerOrBitWidth.getPointer();
     }
 
-    /// @brief Determines whether this is an unnamed bitfield.                                       
+    /// @brief Determines whether this is an unnamed bitfield.
     bool isUnnamedBitfield() const { return isBitField() && !getDeclName(); }
 
     Expr *getBitWidth() const {
@@ -153,50 +153,50 @@ namespace clang {
     }
     unsigned getBitWidthValue(const ASTContext &Ctx) const;
 
-    /// setBitWidth - Set the bit-field width for this member.                                       
-    // Note: used by some clients (i.e., do not remove it).                                          
+    /// setBitWidth - Set the bit-field width for this member.
+    // Note: used by some clients (i.e., do not remove it).
     void setBitWidth(Expr *Width);
-    /// removeBitWidth - Remove the bit-field width from this member.                                
-    // Note: used by some clients (i.e., do not remove it).                                          
+    /// removeBitWidth - Remove the bit-field width from this member.
+    // Note: used by some clients (i.e., do not remove it).
     void removeBitWidth() {
       assert(isBitField() && "no bitfield width to remove");
       InitializerOrBitWidth.setPointer(0);
     }
 
-    /// getInClassInitStyle - Get the kind of (C++11) in-class initializer which                     
-    /// this field has.                                                                              
+    /// getInClassInitStyle - Get the kind of (C++11) in-class initializer which
+    /// this field has.
     InClassInitStyle getInClassInitStyle() const {
       return static_cast<InClassInitStyle>(InitializerOrBitWidth.getInt());
     }
 
-    /// hasInClassInitializer - Determine whether this member has a C++11 in-class                   
-    /// initializer.                                                                                 
+    /// hasInClassInitializer - Determine whether this member has a C++11 in-class
+    /// initializer.
     bool hasInClassInitializer() const {
       return getInClassInitStyle() != ICIS_NoInit;
     }
 
-    /// getInClassInitializer - Get the C++11 in-class initializer for this                          
-    /// member, or null if one has not been set. If a valid declaration has an                       
-    /// in-class initializer, but this returns null, then we have not parsed and                     
-    /// attached it yet.                                                                             
+    /// getInClassInitializer - Get the C++11 in-class initializer for this
+    /// member, or null if one has not been set. If a valid declaration has an
+    /// in-class initializer, but this returns null, then we have not parsed and
+    /// attached it yet.
     Expr *getInClassInitializer() const {
       return hasInClassInitializer() ? InitializerOrBitWidth.getPointer() : 0;
     }
 
-    /// setInClassInitializer - Set the C++11 in-class initializer for this                          
-    /// member.                                                                                      
+    /// setInClassInitializer - Set the C++11 in-class initializer for this
+    /// member.
     void setInClassInitializer(Expr *Init);
 
-    /// removeInClassInitializer - Remove the C++11 in-class initializer from this                   
-    /// member.                                                                                      
+    /// removeInClassInitializer - Remove the C++11 in-class initializer from this
+    /// member.
     void removeInClassInitializer() {
       assert(hasInClassInitializer() && "no initializer to remove");
       InitializerOrBitWidth.setPointer(0);
       InitializerOrBitWidth.setInt(ICIS_NoInit);
     }
 
-    /// getParent - Returns the parent of this field declaration, which                              
-    /// is the struct in which this method is defined.                                               
+    /// getParent - Returns the parent of this field declaration, which
+    /// is the struct in which this method is defined.
     const MeshDecl *getParent() const {
       return cast<MeshDecl>(getDeclContext());
     }
@@ -207,7 +207,7 @@ namespace clang {
 
     SourceRange getSourceRange() const LLVM_READONLY;
 
-    // Implement isa/cast/dyncast/etc.                                                               
+    // Implement isa/cast/dyncast/etc.
     static bool classof(const Decl *D) { return classofKind(D->getKind()); }
     static bool classofKind(Kind K) { return K == MeshField; }
 
@@ -219,7 +219,7 @@ namespace clang {
       return CellLocated;
     }
 
-    // \brief Set the field to be located at the cells of the mesh. 
+    // \brief Set the field to be located at the cells of the mesh.
     void setCellLocated(bool flag = true) {
       CellLocated = flag;
     }
@@ -228,7 +228,7 @@ namespace clang {
     bool isVertexLocated() const {
       return VertexLocated;
     }
-    // \brief Set the field to be located at the vertices of the mesh. 
+    // \brief Set the field to be located at the vertices of the mesh.
     void setVertexLocated(bool flag = true) {
       VertexLocated = flag;
     }
@@ -237,7 +237,7 @@ namespace clang {
     bool isEdgeLocated() const {
       return EdgeLocated;
     }
-    // \brief Set the field to be located at the edges of the mesh. 
+    // \brief Set the field to be located at the edges of the mesh.
     void setEdgeLocated(bool flag = true) {
       EdgeLocated = flag;
     }
@@ -260,26 +260,26 @@ namespace clang {
     }
 
     bool isValidLocation() const {
-      return CellLocated   || 
-             VertexLocated || 
-             EdgeLocated   || 
+      return CellLocated   ||
+             VertexLocated ||
+             EdgeLocated   ||
              FaceLocated   ||
              BuiltInField;
     }
   };
 
-  // MeshDecl - This is a base class for all of our mesh decls.  Given the 
-  // syntax similarities we have with structs in C/C++ we follow a similar 
-  // path as that used in TagDecls and RecordDecls -- however, we do not 
+  // MeshDecl - This is a base class for all of our mesh decls.  Given the
+  // syntax similarities we have with structs in C/C++ we follow a similar
+  // path as that used in TagDecls and RecordDecls -- however, we do not
   // inherit from this "family" as we want to enforce separation/uniqueness
-  // in our mesh types (the details relate to the nuances of tree walkers 
+  // in our mesh types (the details relate to the nuances of tree walkers
   // layout, debugging and flexible code generation choices at points down
-  // the road).  Although the details are not yet clear, it appears to be 
+  // the road).  Although the details are not yet clear, it appears to be
   // important (for our sanity) to follow a similar inheritance path within
   // types, decls, typelocs, etc. within the implementation -- primarily we
-  // have found it cleans up the code and appears to support a more 
-  // full-featured path (at least based on our previous implementation 
-  // patterns...). 
+  // have found it cleans up the code and appears to support a more
+  // full-featured path (at least based on our previous implementation
+  // patterns...).
   class MeshDecl
     : public TypeDecl, public DeclContext, public Redeclarable<MeshDecl> {
 
@@ -304,12 +304,12 @@ namespace clang {
     /// stored at the vertices of the mesh.
     bool HasVertexData : 1;
 
-    /// HasFaceData - This is true if the mesh has at least one member 
+    /// HasFaceData - This is true if the mesh has at least one member
     /// stored at the faces of the mesh.
     bool HasFaceData   : 1;
 
-    /// HasEdgeData - This is true if the mesh has at least one member 
-    /// stored at the edges of the mesh. 
+    /// HasEdgeData - This is true if the mesh has at least one member
+    /// stored at the edges of the mesh.
     bool HasEdgeData   : 1;
 
   protected:
@@ -325,7 +325,7 @@ namespace clang {
     /// \brief True if this mesh is free standing, e.g. "uniform mesh foo;".
     bool IsFreeStanding : 1;
 
-    /// HasVolatileMember - This is true if the mesh has at least one 
+    /// HasVolatileMember - This is true if the mesh has at least one
     /// member of 'volatile' type.
     bool HasVolatileMember : 1;
 
@@ -359,12 +359,12 @@ namespace clang {
     }
 
   protected:
-    MeshDecl(Kind            DK, 
-             MeshKind        TK, 
+    MeshDecl(Kind            DK,
+             MeshKind        TK,
              DeclContext    *DC,
-             SourceLocation  L, 
+             SourceLocation  L,
              IdentifierInfo *Id,
-             MeshDecl       *PrevDecl, 
+             MeshDecl       *PrevDecl,
              SourceLocation StartL)
       : TypeDecl(DK, DC, L, Id, StartL), DeclContext(DK),
         TypedefNameDeclOrQualifier((TypedefNameDecl*) 0) {
@@ -373,7 +373,7 @@ namespace clang {
       IsBeingDefined                  = false;
       IsEmbeddedInDeclarator          = false;
       IsFreeStanding                  = false;
-      HasVolatileMember               = false;      
+      HasVolatileMember               = false;
       HasCellData                     = false;
       HasVertexData                   = false;
       HasFaceData                     = false;
@@ -396,7 +396,7 @@ namespace clang {
     ///
     /// This is a helper function for derived classes.
     void completeDefinition();
-  
+
   public:
     typedef redeclarable_base::redecl_iterator redecl_iterator;
     using   redeclarable_base::redecls_begin;
@@ -468,11 +468,11 @@ namespace clang {
     void startDefinition();
 
     /// getDefinition - Returns the MeshDecl that actually defines this
-    ///  mesh.  When determining whether or not a mesh has a definition, 
-    /// one should use this method as opposed to 'isDefinition'.  
-    /// 'isDefinition' indicates whether or not a specific MeshDecl 
-    /// is defining declaration, not whether or not the mesh type is 
-    /// defined. This method returns NULL if there is no MeshDecl that 
+    ///  mesh.  When determining whether or not a mesh has a definition,
+    /// one should use this method as opposed to 'isDefinition'.
+    /// 'isDefinition' indicates whether or not a specific MeshDecl
+    /// is defining declaration, not whether or not the mesh type is
+    /// defined. This method returns NULL if there is no MeshDecl that
     /// defines the mesh.
     MeshDecl *getDefinition() const;
 
@@ -480,47 +480,62 @@ namespace clang {
 
     // FIXME: Return StringRef;
     const char *getKindName() const;
-    
+
     MeshKind getMeshKind() const {
       return MeshKind(MeshDeclKind);
     }
 
     void setMeshKind(MeshKind TK) { MeshDeclKind = TK; }
-  
+
     bool isUniformMesh() const { return getMeshKind() == TTK_UniformMesh;  }
     bool isStructuredMesh() const { return getMeshKind() == TTK_StructuredMesh; }
     bool isRectilinearMesh() const{ return getMeshKind() == TTK_RectilinearMesh; }
     bool isUnstructuredMesh() const { return getMeshKind() == TTK_UnstructuredMesh; }
     bool isMesh() const {
-      return isUniformMesh()     || 
-             isStructuredMesh()  ||    
-             isRectilinearMesh() || 
+      return isUniformMesh()     ||
+             isStructuredMesh()  ||
+             isRectilinearMesh() ||
              isUnstructuredMesh();
-    } 
+    }
 
     /// True if the mesh has one or more fields stored at the cells.
     bool hasCellData() const { return HasCellData; }
 
-    /// Flag the mesh as having on or more fields stored at the cells. 
+    /// Flag the mesh as having on or more fields stored at the cells.
     void setHasCellData(bool flag = true) { HasCellData = flag; }
 
     /// True if the mesh has one or more fields stored at the vertices.
     bool hasVertexData() const { return HasVertexData; }
-  
-    /// Flag the mesh as having on or more fields stored at the vertices.     
+
+    /// Flag the mesh as having on or more fields stored at the vertices.
     void setHasVertexData(bool flag = true) { HasVertexData = flag; }
-    
+
     /// True if the mesh has one or more fields stored at the edges.
     bool hasEdgeData() const { return HasEdgeData; }
-  
-    /// Flag the mesh as having on or more fields stored at the edges.     
-    void setHasEdgeData(bool flag = true) { HasEdgeData = flag; }    
+
+    /// Flag the mesh as having on or more fields stored at the edges.
+    void setHasEdgeData(bool flag = true) { HasEdgeData = flag; }
 
     /// True if the mesh has one or more fields stored at the faces.
     bool hasFaceData() const { return HasFaceData; }
 
-    /// Flag the mesh as having on or more fields stored at the faces.     
+    /// Flag the mesh as having on or more fields stored at the faces.
     void setHasFaceData(bool flag = true) { HasFaceData = flag; }
+
+    bool hasValidFieldData() const {
+      if (fields() > 0) {
+        if (hasCellData()   ||
+            hasVertexData() ||
+            hasEdgeData()   ||
+            hasFaceData()) {
+          return true;
+        } else {
+          return false;
+        }
+      } else {
+        return false;
+      }
+    }
 
     // Iterator access to mesh field members. The field iterator only
     // visits the non-static data members of this class, ignoring any
@@ -534,7 +549,7 @@ namespace clang {
     }
 
     // field_empty - Whether there are any fields (non-static data
-    // members) in this record.
+    // members) in this mesh.
     bool field_empty() const {
       return field_begin() == field_end();
     }
@@ -548,7 +563,7 @@ namespace clang {
     /// Is this mesh type named, either directly or via being defined in
     /// a typedef of this type?
     ///
-    /// SC_TODO - we need to define what we do in Scout's extensions below. 
+    /// SC_TODO - we need to define what we do in Scout's extensions below.
     ///
     /// C++11 [basic.link]p8:
     ///   A type is said to have linkage if and only if:

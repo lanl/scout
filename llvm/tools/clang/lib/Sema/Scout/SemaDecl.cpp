@@ -77,26 +77,21 @@ Decl* Sema::ActOnMeshDefinition(Scope* S,
 
   switch(MeshType) {
 
-    case tok::kw_uniform:
-      {
-        UniformMeshDecl* MD;
-        MD = UniformMeshDecl::Create(Context, CurContext, KWLoc, NameLoc, Name, 0);
-        PushOnScopeChains(MD, S, true);
-        return MD;
-      }
-      break;
+    case tok::kw_uniform: {
+      UniformMeshDecl* MD;
+      MD = UniformMeshDecl::Create(Context, CurContext,
+                                   KWLoc, NameLoc, Name, 0);
+      PushOnScopeChains(MD, S, true);
+      return MD;
+    }
 
-
-    case tok::kw_structured:
-      {
-        StructuredMeshDecl* USMD;
-        USMD = StructuredMeshDecl::Create(Context, CurContext,
-                                            KWLoc, NameLoc, Name, 0);
-        PushOnScopeChains(USMD, S, true);
-        return USMD;
-      }
-      break;
-
+    case tok::kw_structured: {
+      StructuredMeshDecl* USMD;
+      USMD = StructuredMeshDecl::Create(Context, CurContext,
+                                        KWLoc, NameLoc, Name, 0);
+      PushOnScopeChains(USMD, S, true);
+      return USMD;
+    }
 
     case tok::kw_rectilinear:
       Diag(NameLoc, diag::err_mesh_not_implemented);
@@ -179,11 +174,11 @@ MeshFieldDecl *Sema::HandleMeshField(Scope *S, MeshDecl *Mesh,
 
 // scout - Scout Mesh
 MeshFieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
-                                    TypeSourceInfo *TInfo,
-                                    MeshDecl *Mesh, SourceLocation Loc,
-                                    SourceLocation TSSL,
-                                    NamedDecl *PrevDecl,
-                                    Declarator *D) {
+                                        TypeSourceInfo *TInfo,
+                                        MeshDecl *Mesh, SourceLocation Loc,
+                                        SourceLocation TSSL,
+                                        NamedDecl *PrevDecl,
+                                        Declarator *D) {
 
   IdentifierInfo *II = Name.getAsIdentifierInfo();
   bool InvalidDecl = false;
@@ -210,6 +205,7 @@ MeshFieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
   // add mesh members
   MeshFieldDecl *NewFD = MeshFieldDecl::Create(Context, Mesh, TSSL, Loc, II, T, TInfo,
                                                0, true, ICIS_NoInit);
+
   if (InvalidDecl)
     NewFD->setInvalidDecl();
 
@@ -266,6 +262,12 @@ bool Sema::IsValidMeshField(MeshFieldDecl* MFD){
 bool Sema::IsValidDeclInMesh(Decl* D){
 
   if (MeshDecl* MD = dyn_cast<MeshDecl>(D)) {
+
+    if (! MD->hasValidFieldData()) {
+      Diag(MD->getSourceRange().getBegin(),
+           diag::err_mesh_has_no_elements);
+    }
+
     for(MeshDecl::field_iterator itr = MD->field_begin(),
         itrEnd = MD->field_end(); itr != itrEnd; ++itr){
       MeshFieldDecl* MFD = *itr;
@@ -273,7 +275,9 @@ bool Sema::IsValidDeclInMesh(Decl* D){
         return false;
       }
     }
+    return true;
+  } else {
+    assert(false && "passed non-mesh decl for validation");
   }
-  return true;
-}
 
+}
