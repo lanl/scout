@@ -82,11 +82,7 @@ int main(int argc, char *argv[])
   int r2cyl = MESH_DIM / 4;
   float u = 0.001;
 
-<<<<<<< HEAD
-  forall cells c of heat_mesh {
-=======
   forall cells c in heat_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     h = 0.0f;
     h_next = 0.0f;
     mask = 1.0;
@@ -130,11 +126,7 @@ int main(int argc, char *argv[])
   // Time steps loop.
   for(unsigned int t = 0; t < NTIME_STEPS; ++t) {
     
-<<<<<<< HEAD
-    forall cells c of heat_mesh {
-=======
     forall cells c in heat_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
       float ddx = 0.5*(cshift(c.h, 1, 0) - cshift(c.h, -1, 0))/dx;
       float d2dx2 = cshift(c.h, 1, 0) - 2.0f * c.h + cshift(c.h, -1,  0);
       d2dx2 /= dx * dx;
@@ -146,19 +138,11 @@ int main(int argc, char *argv[])
     }
 
 
-<<<<<<< HEAD
-    forall cells c of heat_mesh {
-      h = h_next;
-    }
-
-    renderall cells c of heat_mesh {
-=======
     forall cells c in heat_mesh {
       h = h_next;
     }
 
     renderall cells c in heat_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
       float norm_h = h / MAX_TEMP;
       float hue = 240.0f - 240.0f * norm_h;
 #if (SHOW_SOLID)

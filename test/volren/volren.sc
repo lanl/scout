@@ -1,18 +1,3 @@
-<<<<<<< HEAD
-
-/*
- * -----  Scout Programming Language -----
- *
- * This file is distributed under an open source license by Los Alamos
- * National Security, LCC.  See the file License.txt (located in the
- * top level of the source distribution) for details.
- *
- *-----
- *
- * Simplistic volume rendering...
- *
- */
-=======
 /*
  * ###########################################################################
  * Copyright (c) 2013, Los Alamos National Security, LLC.
@@ -69,7 +54,6 @@
  * ##### 
  */ 
 
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 #include <unistd.h>
 #include <iostream>
 #include <stdio.h>
@@ -113,11 +97,7 @@ int main(int argc, char *argv[])
 
   // generate data in mesh
 
-<<<<<<< HEAD
-  forall cells c of amesh {
-=======
   forall cells c in amesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     float p[3];
     p[2] = (float)c.position.x;
     p[1] = (float)c.position.y;
@@ -147,11 +127,7 @@ int main(int argc, char *argv[])
     up = myup;
   };
 
-<<<<<<< HEAD
-  renderall cells c of amesh with cam {
-=======
   renderall cells c in amesh with cam {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     float val;
     val = data;
     val = (MYCOLORMAP_SIZE-1)*val;

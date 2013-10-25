@@ -1,19 +1,3 @@
-<<<<<<< HEAD
-
-
-/*
- * -----  Scout Programming Language -----
- *
- * This file is distributed under an open source license by Los Alamos
- * National Security, LCC.  See the file License.txt (located in the
- * top level of the source distribution) for details.
- *
- *-----
- *
- * Simplistic volume rendering...
- *
- */
-=======
 /*
  * ###########################################################################
  * Copyright (c) 2013, Los Alamos National Security, LLC.
@@ -70,7 +54,6 @@
  * ##### 
  */ 
 
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 #include <stdio.h>
 
 #define COMB_DATA_DIM_X 507
@@ -106,11 +89,7 @@ int main(int argc, char *argv[])
   AMeshType amesh[COMB_DATA_DIM_X, COMB_DATA_DIM_Y, COMB_DATA_DIM_Z];
 
   // copy data into mesh  -- really we need an efficient reader for meshes
-<<<<<<< HEAD
-  forall cells c of amesh {
-=======
   forall cells c in amesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     // datafile is in col-major order for array A[depth_size][col_size][row_size]
     // ((rowindex*col_size+colindex) * depth_size + depthindex)
     lifted_Y_OH = data[((c.position.z * COMB_DATA_DIM_Y + c.position.y) * 
@@ -134,12 +113,7 @@ int main(int argc, char *argv[])
   };
 
   // volume render data
-<<<<<<< HEAD
-  renderall cells c of amesh with cam {
-=======
   renderall cells c in amesh with cam {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
-
     // choose partial color
     if (lifted_Y_OH > .0005) {
       color.r    =  1.0;

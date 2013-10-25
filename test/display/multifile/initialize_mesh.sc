@@ -1,9 +1,3 @@
-<<<<<<< HEAD
-//
-// The routines in this file handle setting the initial conditions of
-// the mesh.
-//
-=======
 /*
  * ###########################################################################
  * Copyright (c) 2013, Los Alamos National Security, LLC.
@@ -60,7 +54,6 @@
  *
  * ##### 
  */ 
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 
 #include "mesh.sch"
 
@@ -70,11 +63,7 @@ static const float MAX_TEMPERATURE = 100.0f;
 //
 void initialize_mesh(UniMesh2D& hmesh)
 {
-<<<<<<< HEAD
-  forall cells c of hmesh {
-=======
   forall cells c in hmesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     t1 = MAX_TEMPERATURE;
     t2 = MAX_TEMPERATURE;
 

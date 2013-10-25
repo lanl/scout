@@ -1,14 +1,3 @@
-<<<<<<< HEAD
-
-/*
- * -----  Scout Programming Language -----
- *
- * This file is distributed under an open source license by Los Alamos
- * National Security, LCC.  See the file License.txt (located in the
- * top level of the source distribution) for details.
- *
- *-----
-=======
 /*
  * ###########################################################################
  * Copyright (c) 2013, Los Alamos National Security, LLC.
@@ -59,18 +48,11 @@
  * ########################################################################### 
  * 
  * Notes
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
  *
  * Simplistic volume rendering...
  * This version allows user to specify multiple nodes to mpi.
  *
-<<<<<<< HEAD
  */
-=======
- * ##### 
- */ 
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
-
 #include <iostream>
 #include <stdio.h>
 #include "mycolormap.h"
@@ -161,11 +143,7 @@ int main(int argc, char *argv[])
 
   // generate data in mesh
 
-<<<<<<< HEAD
-  forall cells c of amesh {
-=======
   forall cells c in amesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     float p[3];
     p[2] = (float)c.position.x + start[0];
     p[1] = (float)c.position.y + start[1];
@@ -194,11 +172,7 @@ int main(int argc, char *argv[])
     up = myup;
   };
 
-<<<<<<< HEAD
-  renderall cells c of amesh with cam {
-=======
   renderall cells c in amesh with cam {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     float val;
     val = data;
     val = (MYCOLORMAP_SIZE-1)*val;

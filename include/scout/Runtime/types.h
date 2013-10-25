@@ -12,10 +12,8 @@
 #ifndef __SCOUT_TYPES_H__
 #define __SCOUT_TYPES_H__
 
-<<<<<<< HEAD
-=======
+
 #include <stdint.h>
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 
 namespace scout
 {

@@ -1,8 +1,3 @@
-<<<<<<< HEAD
-//
-// The actual heat transfer computations... 
-//
-=======
 /*
  * ###########################################################################
  * Copyright (c) 2013, Los Alamos National Security, LLC.
@@ -59,7 +54,6 @@
  * ##### 
  */ 
 
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 #include "mesh.sch"
 #include "heat.h"
 
@@ -76,11 +70,8 @@ void heat_transfer(UniMesh2D& heat_mesh)
 
   for(unsigned int t = 0; t < N_TIME_STEPS; ++t) {
 
-<<<<<<< HEAD
-    forall cells c of heat_mesh {
-=======
+
     forall cells c in heat_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
         
       if (c.position.x > 0 && c.position.x < (heat_mesh.width-1) &&
           c.position.y > 0 && c.position.y < (heat_mesh.height-1)) {
@@ -95,19 +86,11 @@ void heat_transfer(UniMesh2D& heat_mesh)
       }
     }
 
-<<<<<<< HEAD
-    forall cells c of heat_mesh {
-      t1 = t2;
-    }
-
-    renderall cells c of heat_mesh {
-=======
     forall cells c in heat_mesh {
       t1 = t2;
     }
 
     renderall cells c in heat_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
       float norm_t1 = t1 / MAX_TEMPERATURE;
       float hue     = 240.0 - 240.0 * norm_t1;
       color         = hsv(hue, 1.0, 1.0);

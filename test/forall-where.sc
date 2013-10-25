@@ -1,5 +1,3 @@
-<<<<<<< HEAD
-=======
 /*
  * ###########################################################################
  * Copyright (c) 2013, Los Alamos National Security, LLC.
@@ -54,7 +52,6 @@
  * ##### 
  */ 
 
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 #include <iostream>
 
 using namespace std;
@@ -72,11 +69,7 @@ int main(int argc, char** argv){
 
   MyMesh m[512,512];
   
-<<<<<<< HEAD
-  forall cells c of m where(c.b > 2){
-=======
   forall cells c in m where(c.b > 2){
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     c.a = 100;
   }
 

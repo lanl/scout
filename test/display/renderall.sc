@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-#include <iostream>
-=======
 /*
  * ###########################################################################
  * Copyright (c) 2013, Los Alamos National Security, LLC.
@@ -55,8 +52,6 @@
  * ##### 
  */ 
 
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
-
 using namespace std;
 
 int main(int argc, char** argv){
@@ -68,28 +63,16 @@ int main(int argc, char** argv){
 
   MyMesh m[512,512];
 
-<<<<<<< HEAD
-  forall cells c of m{
-=======
   forall cells c in m{
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     i = position.x;
   } 
 
   for(float k = 0.0; k < 1.0; k += 0.01){  
-<<<<<<< HEAD
-    renderall cells c of m{
-      color = hsva(i/512.0*360.0, i/512.0, k, 1.0);
-    }
-
-    renderall cells c of m{
-=======
     renderall cells c in m{
       color = hsva(i/512.0*360.0, i/512.0, k, 1.0);
     }
 
     renderall cells c in m{
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
       color = hsva(i/512.0*360.0, i/512.0, k, 1.0);
     }
   }

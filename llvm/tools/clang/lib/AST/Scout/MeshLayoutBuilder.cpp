@@ -592,11 +592,7 @@ MeshLayoutBuilder::updateExternalFieldOffset(const MeshFieldDecl *Field,
   return ExternalFieldOffset;
 }
 
-<<<<<<< HEAD
-static unsigned getPaddingDiagFromMeshKind(MeshTypeKind MK) {
-=======
 static int getPaddingDiagFromMeshKind(MeshTypeKind MK) {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
   switch (MK) {
     case TTK_UniformMesh: return 0; 
     case TTK_RectilinearMesh: return 0;
@@ -606,10 +602,7 @@ static int getPaddingDiagFromMeshKind(MeshTypeKind MK) {
     // says "you've handled all cases default will not be used"... 
     //default: llvm_unreachable("Invalid mesh kind for field padding diagnostic");
   }
-<<<<<<< HEAD
-=======
   return -1;
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 }
 
 void MeshLayoutBuilder::CheckFieldPadding(uint64_t Offset,
