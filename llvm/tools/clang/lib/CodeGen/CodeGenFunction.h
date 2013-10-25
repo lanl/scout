@@ -731,15 +731,18 @@ public:
   typedef std::pair< MeshFieldDecl *, int > MeshFieldPair;
   typedef std::map< llvm::StringRef, std::pair< llvm::Value *, QualType > > MemberMap;
 
-  // Scout forall explicit induction variable.
+  //forall mesh induction variables
+  llvm::Value *LoopIndexVar; // overall
+  llvm::SmallVector< llvm::Value *, 3 > InductionVar; //for each rank
+
+  // old style Scout forall explicit induction variable.
   llvm::Value *ForallIndVar;
-  llvm::Value *LoopIndexVar;
-  // Scout forall implicit induction variables.
+  // old style Scout forall implicit induction variables.
   Vector ScoutIdxVars;
   // Scout mesh dimension sizes.
   llvm::SmallVector< llvm::Value *, 3 > ScoutMeshSizes;
   llvm::Value *MeshBaseAddr;
-  llvm::Value *ImplicitMeshVar;
+  //llvm::Value *ImplicitMeshVar;
   llvm::Value *ForallTripCount;
   MemberMap MeshMembers;
   bool RenderAll;
@@ -2360,11 +2363,13 @@ public:
                         llvm::SmallVector<llvm::Value*, 3> &MeshDimensions,
                         llvm::Value* MeshBaseAddr);
 
+
+  //void EmitPositionFn(); //Work in progress
   void EmitForallStmt(const ForallMeshStmt &S);
   void EmitForallLoop(const ForallMeshStmt &S, unsigned r);
   void EmitForallBody(const ForallMeshStmt &S);
-
   void EmitForAllStmtWrapper(const ForallMeshStmt &S);
+
   bool hasCalledFn(llvm::Function *Fn, llvm::StringRef name);
   bool isCalledFn(llvm::Instruction *Instn, llvm::StringRef name);
 

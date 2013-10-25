@@ -1,6 +1,10 @@
 #ifndef SCOUT_H_
 #define SCOUT_H_
 
+<<<<<<< HEAD
+=======
+#include "scout/unistd.h"
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 #include "scout/Runtime/renderall/RenderallUniform.h"
 #include "scout/Runtime/window.h"
 #include "scout/Runtime/image.h"

@@ -1,4 +1,5 @@
 /*
+<<<<<<< HEAD
  * -----  Scout Programming Language -----
  *
  * This file is distributed under an open source license by Los Alamos
@@ -11,6 +12,63 @@
  * Jamal Mohd-Yusof 2011
  * 
  */
+=======
+ * ###########################################################################
+ * Copyright (c) 2013, Los Alamos National Security, LLC.
+ * All rights reserved.
+ * 
+ *  Copyright 2010. Los Alamos National Security, LLC. This software was
+ *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
+ *  Alamos National Laboratory (LANL), which is operated by Los Alamos
+ *  National Security, LLC for the U.S. Department of Energy. The
+ *  U.S. Government has rights to use, reproduce, and distribute this
+ *  software.  NEITHER THE GOVERNMENT NOR LOS ALAMOS NATIONAL SECURITY,
+ *  LLC MAKES ANY WARRANTY, EXPRESS OR IMPLIED, OR ASSUMES ANY LIABILITY
+ *  FOR THE USE OF THIS SOFTWARE.  If software is modified to produce
+ *  derivative works, such modified software should be clearly marked,
+ *  so as not to confuse it with the version available from LANL.
+ *
+ *  Additionally, redistribution and use in source and binary forms,
+ *  with or without modification, are permitted provided that the
+ *  following conditions are met:
+ *
+ *    * Redistributions of source code must retain the above copyright
+ *      notice, this list of conditions and the following disclaimer.
+ * 
+ *    * Redistributions in binary form must reproduce the above
+ *      copyright notice, this list of conditions and the following
+ *      disclaimer in the documentation and/or other materials provided 
+ *      with the distribution.
+ *
+ *    * Neither the name of Los Alamos National Security, LLC, Los
+ *      Alamos National Laboratory, LANL, the U.S. Government, nor the
+ *      names of its contributors may be used to endorse or promote
+ *      products derived from this software without specific prior
+ *      written permission.
+ * 
+ *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
+ *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ *  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ *  DISCLAIMED. IN NO EVENT SHALL LOS ALAMOS NATIONAL SECURITY, LLC OR
+ *  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ *  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ *  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ *  USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ *  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ *  SUCH DAMAGE.
+ * ########################################################################### 
+ * 
+ * Notes
+ *
+ * Simple collocated shallow water code based on ocean5.src from 'old Scout'
+ * Jamal Mohd-Yusof 2011
+ * ##### 
+ */ 
+ 
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 #include <stdio.h>
 
 #define PRINT_DIAGS 0
@@ -98,59 +156,95 @@ int main(int argc, char *argv[])
     ReadFloat(in_buf, &dx_min, &dx_max, "data/xfile.raw", "dx");
 
 
+<<<<<<< HEAD
     forall cells c of ocean_mesh {
+=======
+    forall cells c in ocean_mesh {
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
         dx = in_buf[c.position.x + M_W*c.position.y];
     }
 
     // read u
     ReadFloat(in_buf, &u_min, &u_max, "data/ufile.raw", "u");
 
+<<<<<<< HEAD
     forall cells c of ocean_mesh {
+=======
+    forall cells c in ocean_mesh {
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
         u = vel_mult*in_buf[c.position.x + M_W*c.position.y];
     }
 
     // read v
     ReadFloat(in_buf, &v_min, &v_max, "data/vfile.raw", "v");
 
+<<<<<<< HEAD
     forall cells c of ocean_mesh {
+=======
+    forall cells c in ocean_mesh {
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
         v = vel_mult*in_buf[c.position.x + M_W*c.position.y];
     }
 
     // read h
     ReadFloat(in_buf, &h_min, &h_max, "data/hfile.raw", "h");
 
+<<<<<<< HEAD
     forall cells c of ocean_mesh {
+=======
+    forall cells c in ocean_mesh {
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
         h = in_buf[c.position.x + M_W*c.position.y];
     }
 
     // read wind
     ReadFloat(in_buf, &wind_min, &wind_max, "data/wfile.raw", "wind");
 
+<<<<<<< HEAD
     forall cells c of ocean_mesh {
+=======
+    forall cells c in ocean_mesh {
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
         wind = in_buf[c.position.x + M_W*c.position.y];
     }
 
     // read f
     ReadFloat(in_buf, &f_min, &f_max, "data/ffile.raw", "f");
 
+<<<<<<< HEAD
     forall cells c of ocean_mesh {
+=======
+    forall cells c in ocean_mesh {
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
         f = in_buf[c.position.x + M_W*c.position.y];
     }
 
     // read psi
     ReadFloat(in_buf, &psi_min, &psi_max, "data/pfile.raw", "psi");
 
+<<<<<<< HEAD
     forall cells c of ocean_mesh {
+=======
+    forall cells c in ocean_mesh {
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
         psi = in_buf[c.position.x + M_W*c.position.y];
     }
 
     // set default mask value to 1.0 (fluid)
+<<<<<<< HEAD
     forall cells c of ocean_mesh {
+=======
+    forall cells c in ocean_mesh {
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 
         mask = 1.0;
     }
     // now we do BC'c here if we want to
+<<<<<<< HEAD
     forall cells c of ocean_mesh {
+=======
+    forall cells c in ocean_mesh {
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 
         /*
         // L, R boundaries
@@ -204,7 +298,11 @@ int main(int argc, char *argv[])
     mask_max = field_max;
     mask_min = field_min;
 
+<<<<<<< HEAD
     forall cells c of ocean_mesh {
+=======
+    forall cells c in ocean_mesh {
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
         mask = (255.0-(float)in_uch[c.position.x + M_W*c.position.y])/255.0;
     }
 
@@ -223,7 +321,11 @@ int main(int argc, char *argv[])
     // Time steps loop. 
     for(unsigned int n = 0; n < NTIME_STEPS; ++n) {
 
+<<<<<<< HEAD
         forall cells c of ocean_mesh {
+=======
+        forall cells c in ocean_mesh {
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 
             float hn = cshift(c.h,  0, 1);
             float hs = cshift(c.h,  0,-1);
@@ -305,14 +407,22 @@ int main(int argc, char *argv[])
         }
 
 
+<<<<<<< HEAD
         forall cells c of ocean_mesh {
+=======
+        forall cells c in ocean_mesh {
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
             h = h_next;
             u = u_next;
             v = v_next;
             psi = psi_next;
         }
 
+<<<<<<< HEAD
         renderall cells c of ocean_mesh {
+=======
+        renderall cells c in ocean_mesh {
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 
             //float norm_h = 0.5*(psi - psi_min)/(psi_max-psi_min);
             //float norm_h = 0.5*(u - u_min)/(u_max-u_min);

@@ -104,7 +104,6 @@ define <32 x i8> @vshift12(<32 x i8> %a) nounwind readnone {
 ;;; Support variable shifts
 ; CHECK: _vshift08
 ; CHECK: vpslld $23
-; CHECK: vextractf128 $1
 ; CHECK: vpslld $23
 ; CHECK: ret
 define <8 x i32> @vshift08(<8 x i32> %a) nounwind {

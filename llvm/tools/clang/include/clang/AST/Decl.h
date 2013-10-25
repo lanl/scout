@@ -2913,6 +2913,10 @@ class RecordDecl : public TagDecl {
   /// HasObjectMember - This is true if this struct has at least one member
   /// containing an Objective-C object pointer type.
   bool HasObjectMember : 1;
+  
+  /// HasVolatileMember - This is true if struct has at least one member of
+  /// 'volatile' type.
+  bool HasVolatileMember : 1;
 
   /// HasVolatileMember - This is true if struct has at least one member of
   /// 'volatile' type.

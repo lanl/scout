@@ -52,8 +52,6 @@
  * #####
  */
 
-// +===== Scout ==============================================================+
-
 #ifndef __SC_CLANG_STRUCTURED_MESH_DECL_H__
 #define __SC_CLANG_STRUCTURED_MESH_DECL_H__
 
@@ -61,28 +59,28 @@
 #include "clang/AST/Scout/MeshDecl.h"
 
 namespace clang {
-
-// ----- StructuredMeshDecl
-//
+  
+// ----- StructuredMeshDecl 
+// 
 class StructuredMeshDecl : public MeshDecl {
 
 protected:
-  StructuredMeshDecl(DeclContext* DC,
-                     SourceLocation L,
+  StructuredMeshDecl(DeclContext* DC, 
+                     SourceLocation L, 
                      SourceLocation StartL,
-                     IdentifierInfo* Id,
+                     IdentifierInfo* Id, 
                      StructuredMeshDecl* PrevDecl);
 
 public:
-  static StructuredMeshDecl *Create(const ASTContext &C,
+  static StructuredMeshDecl *Create(const ASTContext &C, 
                                  DeclContext *DC,
                                  SourceLocation StartLoc,
                                  SourceLocation IdLoc,
-                                 IdentifierInfo *Id,
+                                 IdentifierInfo *Id, 
                                  StructuredMeshDecl* PrevDecl = 0);
 
-  static StructuredMeshDecl *CreateDeserialized(const ASTContext &C,
-                                                unsigned ID);
+  static StructuredMeshDecl *CreateDeserialized(const ASTContext &C, 
+                                                unsigned ID); 
 
   const StructuredMeshDecl *getPreviousDecl() const {
     return cast_or_null<StructuredMeshDecl>(MeshDecl::getPreviousDecl());

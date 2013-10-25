@@ -55,8 +55,6 @@
  * #####
  */
 
-// +===== Scout ==============================================================+
-
 #ifndef __SC_CLANG_MESH_DECL_H__
 #define __SC_CLANG_MESH_DECL_H__
 

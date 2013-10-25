@@ -534,6 +534,7 @@ def AtomModel : SchedMachineModel {
   let MicroOpBufferSize = 0; // In-order execution, always hide latency.
   let LoadLatency = 3; // Expected cycles, may be overriden by OperandCycles.
   let HighLatency = 30;// Expected, may be overriden by OperandCycles.
+  let ILPWindow = 0; // Always try to hide expected latency.
 
   let Itineraries = AtomItineraries;
 }

@@ -502,18 +502,16 @@ const internal::VariadicDynCastAllOfMatcher<Decl, VarDecl> varDecl;
 ///   matches 'm'.
 const internal::VariadicDynCastAllOfMatcher<Decl, FieldDecl> fieldDecl;
 
-// +===== Scout ==============================================================+
 /// \brief Matches mesh field declarations.
 ///
 /// Given
 /// \code
-///   mesh { cells: int m; };
+///   mesh { int m; };
 /// \endcode
 /// meshFieldDecl()
 ///   matches 'm'.
 const internal::VariadicDynCastAllOfMatcher<Decl, MeshFieldDecl> meshFieldDecl;
-// +==========================================================================+
-
+  
 /// \brief Matches function declarations.
 ///
 /// Example matches f
