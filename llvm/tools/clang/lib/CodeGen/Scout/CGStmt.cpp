@@ -63,15 +63,11 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Intrinsics.h"
-<<<<<<< HEAD
 
-// scout - includes
-=======
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/IRBuilder.h"
 
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 #include <stdio.h>
 #include "llvm/Transforms/Utils/CodeExtractor.h"
 #include "clang/AST/Decl.h"
@@ -143,34 +139,33 @@ llvm::Value *CodeGenFunction::TranslateExprToValue(const Expr *E) {
 //
 void CodeGenFunction::EmitForallStmt(const ForallMeshStmt &S) {
 
-<<<<<<< HEAD
+  llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
   unsigned int rank = S.getMeshType()->dimensions().size();
-=======
-  llvm::Value *ConstantZero  = 0;
-  ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
 
-  unsigned int rank = S.getMeshType()->dimensions().size();
+  LoopBounds.clear();
   InductionVar.clear();
-  for(unsigned int i = 0; i < rank; i++) {
+
+  // Create the induction variables for eack rank and zero-initialize.
+  for(unsigned int i = 0; i < 3; i++) {
+    LoopBounds.push_back(0);
     InductionVar.push_back(0);
-    // Create the induction variable for this rank and zero-initialize it.
     sprintf(IRNameStr, "induct.%s", IndexNames[i]);
     InductionVar[i] = Builder.CreateAlloca(Int32Ty, 0, IRNameStr);
     Builder.CreateStore(ConstantZero, InductionVar[i]);
   }
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
+  // create overall loop index as 4th element
+  InductionVar.push_back(0);
+  InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "forall.indx");
+  Builder.CreateStore(ConstantZero, InductionVar[3]);
+
   EmitForallLoop(S, rank);
 }
 
 //generate one of the nested loops
 void CodeGenFunction::EmitForallLoop(const ForallMeshStmt &S, unsigned r) {
-<<<<<<< HEAD
 
-=======
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
   MeshBaseAddr = GetMeshBaseAddr(S);
   llvm::StringRef MeshName = S.getMeshType()->getName();
-  unsigned int rank = S.getMeshType()->dimensions().size();
 
   // find number of fields
   MeshDecl* MD =  S.getMeshType()->getDecl();
@@ -178,7 +173,6 @@ void CodeGenFunction::EmitForallLoop(const ForallMeshStmt &S, unsigned r) {
 
   CGDebugInfo *DI = getDebugInfo();
 
-  llvm::Value *LoopBound = 0;
   llvm::Value *ConstantZero  = 0;
   llvm::Value *ConstantOne   = 0;
   ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
@@ -191,29 +185,14 @@ void CodeGenFunction::EmitForallLoop(const ForallMeshStmt &S, unsigned r) {
   if (DI)
     DI->EmitLexicalBlockStart(Builder, S.getSourceRange().getBegin());
 
-  if (r == rank) {
-    // For our first pass we deal with the outermost initialization
-    // details.   This includes our single (linear) array index value,
-    LoopIndexVar = Builder.CreateAlloca(Int32Ty, 0, "forall.indx");
-    Builder.CreateStore(ConstantZero, LoopIndexVar);
-  }
-
   // Extract the loop bounds from the mesh for this rank, this requires
   // a GEP from the mesh and a load from returned address...
   // note: width/height depth are stored after mesh fields
   sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[r-1]);
-  LoopBound = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+r-1, IRNameStr);
+  LoopBounds[r-1] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+r-1, IRNameStr);
   sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[r-1]);
-  LoopBound  = Builder.CreateLoad(LoopBound, IRNameStr);
+  llvm::Value *LoopBound  = Builder.CreateLoad(LoopBounds[r-1], IRNameStr);
 
-<<<<<<< HEAD
-  // Create the induction variable for this rank and zero-initialize it.
-  sprintf(IRNameStr, "induct.%s", IndexNames[r-1]);
-  llvm::Value *InductionVar = Builder.CreateAlloca(Int32Ty, 0, IRNameStr);
-  Builder.CreateStore(ConstantZero, InductionVar);
-
-=======
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
   // Next we create a block that tests the induction variables value to
   // the rank's dimension.
   sprintf(IRNameStr, "forall.cond.%s", DimNames[r-1]);
@@ -223,11 +202,7 @@ void CodeGenFunction::EmitForallLoop(const ForallMeshStmt &S, unsigned r) {
 
   RunCleanupsScope ConditionScope(*this);
   sprintf(IRNameStr, "forall.done.%s", IndexNames[r-1]);
-<<<<<<< HEAD
-  llvm::Value *CondValue = Builder.CreateICmpSLT(Builder.CreateLoad(InductionVar),
-=======
   llvm::Value *CondValue = Builder.CreateICmpSLT(Builder.CreateLoad(InductionVar[r-1]),
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
                                                  LoopBound,
                                                  IRNameStr);
 
@@ -254,52 +229,33 @@ void CodeGenFunction::EmitForallLoop(const ForallMeshStmt &S, unsigned r) {
   sprintf(IRNameStr, "forall.incblk.%s", IndexNames[r-1]);
   Continue = getJumpDestInCurrentScope(IRNameStr);
 
-<<<<<<< HEAD
-
   // Store the blocks to use for break and continue.
+
   BreakContinueStack.push_back(BreakContinue(LoopExit, Continue));
-
-
-=======
-  // Store the blocks to use for break and continue.
-  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue));
-
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
   if (r == 1) {  // This is our innermost rank, generate the loop body.
     EmitForallBody(S);
 
-    // Increment the loop index.
-    llvm::Value* liv = Builder.CreateLoad(LoopIndexVar);
+    // Increment the loop index stored as last element of InductionVar
+    llvm::Value* liv = Builder.CreateLoad(InductionVar[3]);
     llvm::Value *IncLoopIndexVar = Builder.CreateAdd(liv,
                                                      ConstantOne,
                                                      "forall.indx.inc");
 
-    Builder.CreateStore(IncLoopIndexVar, LoopIndexVar);
+    Builder.CreateStore(IncLoopIndexVar, InductionVar[3]);
   } else { // generate nested loop
     EmitForallLoop(S, r-1);
   }
 
   EmitBlock(Continue.getBlock());
 
-
   sprintf(IRNameStr, "forall.inc.%s", IndexNames[r-1]);
 
-
-<<<<<<< HEAD
-  llvm::Value* iv = Builder.CreateLoad(InductionVar);
-=======
   llvm::Value* iv = Builder.CreateLoad(InductionVar[r-1]);
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
   llvm::Value *IncInductionVar = Builder.CreateAdd(iv,
                                                    ConstantOne,
                                                    IRNameStr);
 
-
-<<<<<<< HEAD
-  Builder.CreateStore(IncInductionVar, InductionVar);
-=======
   Builder.CreateStore(IncInductionVar, InductionVar[r-1]);
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 
   BreakContinueStack.pop_back();
   ConditionScope.ForceCleanup();
