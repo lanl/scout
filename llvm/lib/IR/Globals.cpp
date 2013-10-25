@@ -99,6 +99,7 @@ GlobalVariable::GlobalVariable(Type *Ty, bool constant, LinkageTypes Link,
   }
 
   LeakDetector::addGarbageObject(this);
+  setAddressMaybeTaken(true);
 }
 
 GlobalVariable::GlobalVariable(Module &M, Type *Ty, bool constant,
@@ -125,6 +126,7 @@ GlobalVariable::GlobalVariable(Module &M, Type *Ty, bool constant,
     Before->getParent()->getGlobalList().insert(Before, this);
   else
     M.getGlobalList().push_back(this);
+  setAddressMaybeTaken(true);
 }
 
 void GlobalVariable::setParent(Module *parent) {
@@ -185,6 +187,7 @@ void GlobalVariable::copyAttributesFrom(const GlobalValue *Src) {
   GlobalValue::copyAttributesFrom(Src);
   const GlobalVariable *SrcVar = cast<GlobalVariable>(Src);
   setThreadLocal(SrcVar->isThreadLocal());
+  setAddressMaybeTaken(SrcVar->AddressMaybeTaken());
 }
 
 
@@ -229,14 +232,14 @@ void GlobalAlias::setAliasee(Constant *Aliasee) {
   setOperand(0, Aliasee);
 }
 
-const GlobalValue *GlobalAlias::getAliasedGlobal() const {
-  const Constant *C = getAliasee();
+GlobalValue *GlobalAlias::getAliasedGlobal() {
+  Constant *C = getAliasee();
   if (C == 0) return 0;
   
-  if (const GlobalValue *GV = dyn_cast<GlobalValue>(C))
+  if (GlobalValue *GV = dyn_cast<GlobalValue>(C))
     return GV;
 
-  const ConstantExpr *CE = cast<ConstantExpr>(C);
+  ConstantExpr *CE = cast<ConstantExpr>(C);
   assert((CE->getOpcode() == Instruction::BitCast || 
           CE->getOpcode() == Instruction::GetElementPtr) &&
          "Unsupported aliasee");
@@ -244,18 +247,18 @@ const GlobalValue *GlobalAlias::getAliasedGlobal() const {
   return cast<GlobalValue>(CE->getOperand(0));
 }
 
-const GlobalValue *GlobalAlias::resolveAliasedGlobal(bool stopOnWeak) const {
-  SmallPtrSet<const GlobalValue*, 3> Visited;
+GlobalValue *GlobalAlias::resolveAliasedGlobal(bool stopOnWeak) {
+  SmallPtrSet<GlobalValue*, 3> Visited;
 
   // Check if we need to stop early.
   if (stopOnWeak && mayBeOverridden())
     return this;
 
-  const GlobalValue *GV = getAliasedGlobal();
+  GlobalValue *GV = getAliasedGlobal();
   Visited.insert(GV);
 
   // Iterate over aliasing chain, stopping on weak alias if necessary.
-  while (const GlobalAlias *GA = dyn_cast<GlobalAlias>(GV)) {
+  while (GlobalAlias *GA = dyn_cast<GlobalAlias>(GV)) {
     if (stopOnWeak && GA->mayBeOverridden())
       break;
 

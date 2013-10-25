@@ -66,6 +66,12 @@ static DecodeStatus DecodeGR32BitRegisterClass(MCInst &Inst, uint64_t RegNo,
   return decodeRegisterClass(Inst, RegNo, SystemZMC::GR32Regs);
 }
 
+static DecodeStatus DecodeGRH32BitRegisterClass(MCInst &Inst, uint64_t RegNo,
+                                                uint64_t Address,
+                                                const void *Decoder) {
+  return decodeRegisterClass(Inst, RegNo, SystemZMC::GRH32Regs);
+}
+
 static DecodeStatus DecodeGR64BitRegisterClass(MCInst &Inst, uint64_t RegNo,
                                                uint64_t Address,
                                                const void *Decoder) {
@@ -226,6 +232,18 @@ static DecodeStatus decodeBDXAddr20Operand(MCInst &Inst, uint64_t Field,
   return MCDisassembler::Success;
 }
 
+static DecodeStatus decodeBDLAddr12Len8Operand(MCInst &Inst, uint64_t Field,
+                                               const unsigned *Regs) {
+  uint64_t Length = Field >> 16;
+  uint64_t Base = (Field >> 12) & 0xf;
+  uint64_t Disp = Field & 0xfff;
+  assert(Length < 256 && "Invalid BDLAddr12Len8");
+  Inst.addOperand(MCOperand::CreateReg(Base == 0 ? 0 : Regs[Base]));
+  Inst.addOperand(MCOperand::CreateImm(Disp));
+  Inst.addOperand(MCOperand::CreateImm(Length + 1));
+  return MCDisassembler::Success;
+}
+
 static DecodeStatus decodeBDAddr32Disp12Operand(MCInst &Inst, uint64_t Field,
                                                 uint64_t Address,
                                                 const void *Decoder) {
@@ -260,6 +278,13 @@ static DecodeStatus decodeBDXAddr64Disp20Operand(MCInst &Inst, uint64_t Field,
                                                  uint64_t Address,
                                                  const void *Decoder) {
   return decodeBDXAddr20Operand(Inst, Field, SystemZMC::GR64Regs);
+}
+
+static DecodeStatus decodeBDLAddr64Disp12Len8Operand(MCInst &Inst,
+                                                     uint64_t Field,
+                                                     uint64_t Address,
+                                                     const void *Decoder) {
+  return decodeBDLAddr12Len8Operand(Inst, Field, SystemZMC::GR64Regs);
 }
 
 #include "SystemZGenDisassemblerTables.inc"

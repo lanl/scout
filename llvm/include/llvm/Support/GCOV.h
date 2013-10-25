@@ -15,6 +15,7 @@
 #ifndef LLVM_SUPPORT_GCOV_H
 #define LLVM_SUPPORT_GCOV_H
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -145,7 +146,7 @@ public:
     uint32_t Len = readInt() * 4;
     StringRef Str = Buffer->getBuffer().slice(Cursor, Cursor+Len);
     Cursor += Len;
-    return Str;
+    return Str.split('\0').first;
   }
 
   uint64_t getCursor() const { return Cursor; }
@@ -190,7 +191,8 @@ public:
   ~GCOVBlock();
   void addEdge(uint32_t N) { Edges.push_back(N); }
   void addLine(StringRef Filename, uint32_t LineNo);
-  void addCount(uint64_t N) { Counter = N; }
+  void addCount(uint64_t N) { Counter += N; }
+  size_t getNumEdges() { return Edges.size(); }
   void dump();
   void collectLineCounts(FileInfo &FI);
 private:
@@ -205,18 +207,20 @@ class GCOVLines {
 public:
   ~GCOVLines() { Lines.clear(); }
   void add(uint32_t N) { Lines.push_back(N); }
-  void collectLineCounts(FileInfo &FI, StringRef Filename, uint32_t Count);
+  void collectLineCounts(FileInfo &FI, StringRef Filename, uint64_t Count);
   void dump();
 
 private:
   SmallVector<uint32_t, 4> Lines;
 };
 
-typedef SmallVector<uint32_t, 16> LineCounts;
+typedef DenseMap<uint32_t, uint64_t> LineCounts;
 class FileInfo {
 public:
-  void addLineCount(StringRef Filename, uint32_t Line, uint32_t Count);
-  void print();
+  void addLineCount(StringRef Filename, uint32_t Line, uint64_t Count) {
+    LineInfo[Filename][Line-1] += Count;
+  }
+  void print(StringRef gcnoFile, StringRef gcdaFile);
 private:
   StringMap<LineCounts> LineInfo;
 };

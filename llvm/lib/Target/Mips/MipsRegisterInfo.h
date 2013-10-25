@@ -42,6 +42,9 @@ public:
   void adjustMipsStackFrame(MachineFunction &MF) const;
 
   /// Code Generation virtual methods...
+  const TargetRegisterClass *getPointerRegClass(const MachineFunction &MF,
+                                                unsigned Kind) const;
+
   unsigned getRegPressureLimit(const TargetRegisterClass *RC,
                                MachineFunction &MF) const;
   const uint16_t *getCalleeSavedRegs(const MachineFunction *MF = 0) const;
@@ -64,10 +67,6 @@ public:
 
   /// Debug information queries.
   unsigned getFrameRegister(const MachineFunction &MF) const;
-
-  /// Exception handling queries.
-  unsigned getEHExceptionRegister() const;
-  unsigned getEHHandlerRegister() const;
 
   /// \brief Return GPR register class.
   virtual const TargetRegisterClass *intRegClass(unsigned Size) const = 0;

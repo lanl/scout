@@ -38,6 +38,45 @@ class TargetLowering;
 class TargetSelectionDAGInfo;
 class TargetTransformInfo;
 
+class SDVTListNode : public FoldingSetNode {
+  friend struct FoldingSetTrait<SDVTListNode>;
+  /// FastID - A reference to an Interned FoldingSetNodeID for this node.
+  /// The Allocator in SelectionDAG holds the data.
+  /// SDVTList contains all types which are frequently accessed in SelectionDAG.
+  /// The size of this list is not expected big so it won't introduce memory penalty.
+  FoldingSetNodeIDRef FastID;
+  const EVT *VTs;
+  unsigned int NumVTs;
+  /// The hash value for SDVTList is fixed so cache it to avoid hash calculation
+  unsigned HashValue;
+public:
+  SDVTListNode(const FoldingSetNodeIDRef ID, const EVT *VT, unsigned int Num) :
+      FastID(ID), VTs(VT), NumVTs(Num) {
+    HashValue = ID.ComputeHash();
+  }
+  SDVTList getSDVTList() {
+    SDVTList result = {VTs, NumVTs};
+    return result;
+  }
+};
+
+// Specialize FoldingSetTrait for SDVTListNode
+// To avoid computing temp FoldingSetNodeID and hash value.
+template<> struct FoldingSetTrait<SDVTListNode> : DefaultFoldingSetTrait<SDVTListNode> {
+  static void Profile(const SDVTListNode &X, FoldingSetNodeID& ID) {
+    ID = X.FastID;
+  }
+  static bool Equals(const SDVTListNode &X, const FoldingSetNodeID &ID,
+                     unsigned IDHash, FoldingSetNodeID &TempID) {
+    if (X.HashValue != IDHash)
+      return false;
+    return ID == X.FastID;
+  }
+  static unsigned ComputeHash(const SDVTListNode &X, FoldingSetNodeID &TempID) {
+    return X.HashValue;
+  }
+};
+
 template<> struct ilist_traits<SDNode> : public ilist_default_traits<SDNode> {
 private:
   mutable ilist_half_node<SDNode> Sentinel;
@@ -72,7 +111,8 @@ private:
 class SDDbgInfo {
   SmallVector<SDDbgValue*, 32> DbgValues;
   SmallVector<SDDbgValue*, 32> ByvalParmDbgValues;
-  DenseMap<const SDNode*, SmallVector<SDDbgValue*, 2> > DbgValMap;
+  typedef DenseMap<const SDNode*, SmallVector<SDDbgValue*, 2> > DbgValMapType;
+  DbgValMapType DbgValMap;
 
   void operator=(const SDDbgInfo&) LLVM_DELETED_FUNCTION;
   SDDbgInfo(const SDDbgInfo&) LLVM_DELETED_FUNCTION;
@@ -98,14 +138,13 @@ public:
   }
 
   ArrayRef<SDDbgValue*> getSDDbgValues(const SDNode *Node) {
-    DenseMap<const SDNode*, SmallVector<SDDbgValue*, 2> >::iterator I =
-      DbgValMap.find(Node);
+    DbgValMapType::iterator I = DbgValMap.find(Node);
     if (I != DbgValMap.end())
       return I->second;
     return ArrayRef<SDDbgValue*>();
   }
 
-  typedef SmallVector<SDDbgValue*,32>::iterator DbgIterator;
+  typedef SmallVectorImpl<SDDbgValue*>::iterator DbgIterator;
   DbgIterator DbgBegin() { return DbgValues.begin(); }
   DbgIterator DbgEnd()   { return DbgValues.end(); }
   DbgIterator ByvalParmDbgBegin() { return ByvalParmDbgValues.begin(); }
@@ -129,7 +168,6 @@ void checkForCycles(const SelectionDAG *DAG);
 ///
 class SelectionDAG {
   const TargetMachine &TM;
-  const TargetLowering &TLI;
   const TargetSelectionDAGInfo &TSI;
   const TargetTransformInfo *TTI;
   MachineFunction *MF;
@@ -232,7 +270,9 @@ public:
 
   MachineFunction &getMachineFunction() const { return *MF; }
   const TargetMachine &getTarget() const { return TM; }
-  const TargetLowering &getTargetLoweringInfo() const { return TLI; }
+  const TargetLowering &getTargetLoweringInfo() const {
+    return *TM.getTargetLowering();
+  }
   const TargetSelectionDAGInfo &getSelectionDAGInfo() const { return TSI; }
   const TargetTransformInfo *getTargetTransformInfo() const { return TTI; }
   LLVMContext *getContext() const {return Context; }
@@ -609,7 +649,21 @@ public:
       "Cannot compare scalars to vectors");
     assert(LHS.getValueType().isVector() == VT.isVector() &&
       "Cannot compare scalars to vectors");
+    assert(Cond != ISD::SETCC_INVALID &&
+        "Cannot create a setCC of an invalid node.");
     return getNode(ISD::SETCC, DL, VT, LHS, RHS, getCondCode(Cond));
+  }
+
+  // getSelect - Helper function to make it easier to build Select's if you just
+  // have operands and don't want to check for vector.
+  SDValue getSelect(SDLoc DL, EVT VT, SDValue Cond,
+                    SDValue LHS, SDValue RHS) {
+    assert(LHS.getValueType() == RHS.getValueType() &&
+           "Cannot use select on differing types");
+    assert(VT.isVector() == LHS.getValueType().isVector() &&
+           "Cannot mix vectors and scalars");
+    return getNode(Cond.getValueType().isVector() ? ISD::VSELECT : ISD::SELECT, DL, VT,
+                   Cond, LHS, RHS);
   }
 
   /// getSelectCC - Helper function to make it easier to build SelectCC's if you
@@ -659,6 +713,13 @@ public:
                     SynchronizationScope SynchScope);
   SDValue getAtomic(unsigned Opcode, SDLoc dl, EVT MemVT, EVT VT,
                     SDValue Chain, SDValue Ptr, MachineMemOperand *MMO,
+                    AtomicOrdering Ordering,
+                    SynchronizationScope SynchScope);
+
+  /// getAtomic - Gets a node for an atomic op, produces result and chain and
+  /// takes N operands.
+  SDValue getAtomic(unsigned Opcode, SDLoc dl, EVT MemVT, SDVTList VTList,
+                    SDValue* Ops, unsigned NumOps, MachineMemOperand *MMO,
                     AtomicOrdering Ordering,
                     SynchronizationScope SynchScope);
 
@@ -1071,7 +1132,7 @@ private:
   void allnodes_clear();
 
   /// VTList - List of non-single value types.
-  std::vector<SDVTList> VTList;
+  FoldingSet<SDVTListNode> VTListMap;
 
   /// CondCodeNodes - Maps to auto-CSE operations.
   std::vector<CondCodeSDNode*> CondCodeNodes;

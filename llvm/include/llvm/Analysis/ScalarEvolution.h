@@ -545,6 +545,10 @@ namespace llvm {
     /// forgetMemoizedResults - Drop memoized information computed for S.
     void forgetMemoizedResults(const SCEV *S);
 
+    /// Return false iff given SCEV contains a SCEVUnknown with NULL value-
+    /// pointer.
+    bool checkValidity(const SCEV *S) const;
+
   public:
     static char ID; // Pass identification, replacement for typeid
     ScalarEvolution();
@@ -632,21 +636,15 @@ namespace llvm {
     const SCEV *getUnknown(Value *V);
     const SCEV *getCouldNotCompute();
 
-    /// getSizeOfExpr - Return an expression for sizeof on the given type.
+    /// getSizeOfExpr - Return an expression for sizeof AllocTy that is type
+    /// IntTy
     ///
-    const SCEV *getSizeOfExpr(Type *AllocTy);
+    const SCEV *getSizeOfExpr(Type *IntTy, Type *AllocTy);
 
-    /// getAlignOfExpr - Return an expression for alignof on the given type.
+    /// getOffsetOfExpr - Return an expression for offsetof on the given field
+    /// with type IntTy
     ///
-    const SCEV *getAlignOfExpr(Type *AllocTy);
-
-    /// getOffsetOfExpr - Return an expression for offsetof on the given field.
-    ///
-    const SCEV *getOffsetOfExpr(StructType *STy, unsigned FieldNo);
-
-    /// getOffsetOfExpr - Return an expression for offsetof on the given field.
-    ///
-    const SCEV *getOffsetOfExpr(Type *CTy, Constant *FieldNo);
+    const SCEV *getOffsetOfExpr(Type *IntTy, StructType *STy, unsigned FieldNo);
 
     /// getNegativeSCEV - Return the SCEV object corresponding to -V.
     ///

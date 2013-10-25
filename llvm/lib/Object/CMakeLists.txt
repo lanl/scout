@@ -3,9 +3,13 @@ add_llvm_library(LLVMObject
   Binary.cpp
   COFFObjectFile.cpp
   COFFYAML.cpp
+  ELF.cpp
   ELFObjectFile.cpp
+  ELFYAML.cpp
   Error.cpp
   MachOObjectFile.cpp
+  MachOUniversal.cpp
   Object.cpp
   ObjectFile.cpp
+  YAML.cpp
   )

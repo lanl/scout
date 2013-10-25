@@ -65,8 +65,7 @@ class MipsCodeEmitter : public MachineFunctionPass {
 
 public:
   MipsCodeEmitter(TargetMachine &tm, JITCodeEmitter &mce)
-    : MachineFunctionPass(ID), JTI(0),
-      II((const MipsInstrInfo *) tm.getInstrInfo()), TD(tm.getDataLayout()),
+    : MachineFunctionPass(ID), JTI(0), II(0), TD(0),
       TM(tm), MCE(mce), MCPEs(0), MJTEs(0),
       IsPIC(TM.getRelocationModel() == Reloc::PIC_) {}
 
@@ -109,6 +108,7 @@ private:
 
   unsigned getBranchTargetOpValue(const MachineInstr &MI, unsigned OpNo) const;
   unsigned getMemEncoding(const MachineInstr &MI, unsigned OpNo) const;
+  unsigned getMemEncodingMMImm12(const MachineInstr &MI, unsigned OpNo) const;
   unsigned getSizeExtEncoding(const MachineInstr &MI, unsigned OpNo) const;
   unsigned getSizeInsEncoding(const MachineInstr &MI, unsigned OpNo) const;
 
@@ -200,6 +200,12 @@ unsigned MipsCodeEmitter::getMemEncoding(const MachineInstr &MI,
   assert(MI.getOperand(OpNo).isReg());
   unsigned RegBits = getMachineOpValue(MI, MI.getOperand(OpNo)) << 16;
   return (getMachineOpValue(MI, MI.getOperand(OpNo+1)) & 0xFFFF) | RegBits;
+}
+
+unsigned MipsCodeEmitter::getMemEncodingMMImm12(const MachineInstr &MI,
+                                                unsigned OpNo) const {
+  llvm_unreachable("Unimplemented function.");
+  return 0;
 }
 
 unsigned MipsCodeEmitter::getSizeExtEncoding(const MachineInstr &MI,
@@ -316,6 +322,14 @@ bool MipsCodeEmitter::expandPseudos(MachineBasicBlock::instr_iterator &MI,
   case Mips::NOP:
     BuildMI(MBB, &*MI, MI->getDebugLoc(), II->get(Mips::SLL), Mips::ZERO)
       .addReg(Mips::ZERO).addImm(0);
+    break;
+  case Mips::B:
+    BuildMI(MBB, &*MI, MI->getDebugLoc(), II->get(Mips::BEQ)).addReg(Mips::ZERO)
+      .addReg(Mips::ZERO).addOperand(MI->getOperand(0));
+    break;
+  case Mips::TRAP:
+    BuildMI(MBB, &*MI, MI->getDebugLoc(), II->get(Mips::BREAK)).addImm(0)
+      .addImm(0);
     break;
   case Mips::JALRPseudo:
     BuildMI(MBB, &*MI, MI->getDebugLoc(), II->get(Mips::JALR), Mips::RA)

@@ -165,8 +165,9 @@ typedef enum {
        a temporary measure until the API/ABI impact to the C API is understood
        and the path forward agreed upon.
     LLVMAddressSafety = 1ULL << 32,
-    LLVMStackProtectStrongAttribute = 1ULL<<33
-    LLVMCold = 1ULL << 34
+    LLVMStackProtectStrongAttribute = 1ULL<<33,
+    LLVMCold = 1ULL << 34,
+    LLVMOptimizeNone = 1ULL << 35
     */
 } LLVMAttribute;
 
@@ -353,26 +354,26 @@ typedef enum {
   LLVMAtomicOrderingNotAtomic = 0, /**< A load or store which is not atomic */
   LLVMAtomicOrderingUnordered = 1, /**< Lowest level of atomicity, guarantees
                                      somewhat sane results, lock free. */
-  LLVMAtomicOrderingMonotonic = 2, /**< guarantees that if you take all the 
-                                     operations affecting a specific address, 
+  LLVMAtomicOrderingMonotonic = 2, /**< guarantees that if you take all the
+                                     operations affecting a specific address,
                                      a consistent ordering exists */
-  LLVMAtomicOrderingAcquire = 4, /**< Acquire provides a barrier of the sort 
-                                   necessary to acquire a lock to access other 
+  LLVMAtomicOrderingAcquire = 4, /**< Acquire provides a barrier of the sort
+                                   necessary to acquire a lock to access other
                                    memory with normal loads and stores. */
-  LLVMAtomicOrderingRelease = 5, /**< Release is similar to Acquire, but with 
-                                   a barrier of the sort necessary to release 
+  LLVMAtomicOrderingRelease = 5, /**< Release is similar to Acquire, but with
+                                   a barrier of the sort necessary to release
                                    a lock. */
-  LLVMAtomicOrderingAcquireRelease = 6, /**< provides both an Acquire and a 
-                                          Release barrier (for fences and 
+  LLVMAtomicOrderingAcquireRelease = 6, /**< provides both an Acquire and a
+                                          Release barrier (for fences and
                                           operations which both read and write
                                            memory). */
-  LLVMAtomicOrderingSequentiallyConsistent = 7 /**< provides Acquire semantics 
-                                                 for loads and Release 
-                                                 semantics for stores. 
-                                                 Additionally, it guarantees 
-                                                 that a total ordering exists 
-                                                 between all 
-                                                 SequentiallyConsistent 
+  LLVMAtomicOrderingSequentiallyConsistent = 7 /**< provides Acquire semantics
+                                                 for loads and Release
+                                                 semantics for stores.
+                                                 Additionally, it guarantees
+                                                 that a total ordering exists
+                                                 between all
+                                                 SequentiallyConsistent
                                                  operations. */
 } LLVMAtomicOrdering;
 
@@ -385,16 +386,16 @@ typedef enum {
     LLVMAtomicRMWBinOpOr, /**< OR a value and return the old one */
     LLVMAtomicRMWBinOpXor, /**< Xor a value and return the old one */
     LLVMAtomicRMWBinOpMax, /**< Sets the value if it's greater than the
-                             original using a signed comparison and return 
+                             original using a signed comparison and return
                              the old one */
     LLVMAtomicRMWBinOpMin, /**< Sets the value if it's Smaller than the
-                             original using a signed comparison and return 
+                             original using a signed comparison and return
                              the old one */
     LLVMAtomicRMWBinOpUMax, /**< Sets the value if it's greater than the
-                             original using an unsigned comparison and return 
+                             original using an unsigned comparison and return
                              the old one */
     LLVMAtomicRMWBinOpUMin /**< Sets the value if it's greater than the
-                             original using an unsigned comparison  and return 
+                             original using an unsigned comparison  and return
                              the old one */
 } LLVMAtomicRMWBinOp;
 
@@ -407,7 +408,7 @@ void LLVMInitializeCore(LLVMPassRegistryRef R);
 /** Deallocate and destroy all ManagedStatic variables.
     @see llvm::llvm_shutdown
     @see ManagedStatic */
-void LLVMShutdown();
+void LLVMShutdown(void);
 
 
 /*===-- Error handling ----------------------------------------------------===*/
@@ -415,6 +416,22 @@ void LLVMShutdown();
 char *LLVMCreateMessage(const char *Message);
 void LLVMDisposeMessage(char *Message);
 
+typedef void (*LLVMFatalErrorHandler)(const char *Reason);
+
+/**
+ * Install a fatal error handler. By default, if LLVM detects a fatal error, it
+ * will call exit(1). This may not be appropriate in many contexts. For example,
+ * doing exit(1) will bypass many crash reporting/tracing system tools. This
+ * function allows you to install a callback that will be invoked prior to the
+ * call to exit(1).
+ */
+void LLVMInstallFatalErrorHandler(LLVMFatalErrorHandler Handler);
+
+/**
+ * Reset the fatal error handler. This resets LLVM's fatal error handling
+ * behavior to the default.
+ */
+void LLVMResetFatalErrorHandler(void);
 
 /**
  * @defgroup LLVMCCoreContext Contexts
@@ -460,7 +477,7 @@ unsigned LLVMGetMDKindID(const char* Name, unsigned SLen);
 /**
  * @defgroup LLVMCCoreModule Modules
  *
- * Modules represent the top-level structure in a LLVM program. An LLVM
+ * Modules represent the top-level structure in an LLVM program. An LLVM
  * module is effectively a translation unit or a collection of
  * translation units merged together.
  *
@@ -538,6 +555,14 @@ void LLVMDumpModule(LLVMModuleRef M);
  */
 LLVMBool LLVMPrintModuleToFile(LLVMModuleRef M, const char *Filename,
                                char **ErrorMessage);
+
+/**
+ * Return a string representation of the module. Use
+ * LLVMDisposeMessage to free the string.
+ *
+ * @see Module::print()
+ */
+char *LLVMPrintModuleToString(LLVMModuleRef M);
 
 /**
  * Set inline assembly for a module.
@@ -689,6 +714,21 @@ LLVMBool LLVMTypeIsSized(LLVMTypeRef Ty);
  * @see llvm::Type::getContext()
  */
 LLVMContextRef LLVMGetTypeContext(LLVMTypeRef Ty);
+
+/**
+ * Dump a representation of a type to stderr.
+ *
+ * @see llvm::Type::dump()
+ */
+void LLVMDumpType(LLVMTypeRef Val);
+
+/**
+ * Return a string representation of the type. Use
+ * LLVMDisposeMessage to free the string.
+ *
+ * @see llvm::Type::print()
+ */
+char *LLVMPrintTypeToString(LLVMTypeRef Val);
 
 /**
  * @defgroup LLVMCCoreTypeInt Integer Types
@@ -1041,7 +1081,7 @@ LLVMTypeRef LLVMX86MMXType(void);
  * hierarchy of classes within this type. Depending on the instance
  * obtained, not all APIs are available.
  *
- * Callers can determine the type of a LLVMValueRef by calling the
+ * Callers can determine the type of an LLVMValueRef by calling the
  * LLVMIsA* family of functions (e.g. LLVMIsAArgument()). These
  * functions are defined by a macro, so it isn't obvious which are
  * available by looking at the Doxygen source code. Instead, look at the
@@ -1181,7 +1221,7 @@ LLVMBool LLVMIsUndef(LLVMValueRef Val);
 /**
  * Convert value instances between types.
  *
- * Internally, a LLVMValueRef is "pinned" to a specific type. This
+ * Internally, an LLVMValueRef is "pinned" to a specific type. This
  * series of functions allows you to cast an instance to a specific
  * type.
  *
@@ -1203,7 +1243,7 @@ LLVM_FOR_EACH_VALUE_SUBCLASS(LLVM_DECLARE_VALUE_CAST)
  * This module defines functions that allow you to inspect the uses of a
  * LLVMValueRef.
  *
- * It is possible to obtain a LLVMUseRef for any LLVMValueRef instance.
+ * It is possible to obtain an LLVMUseRef for any LLVMValueRef instance.
  * Each LLVMUseRef (which corresponds to a llvm::Use instance) holds a
  * llvm::User and llvm::Value.
  *
@@ -1806,7 +1846,7 @@ LLVMValueRef LLVMGetParam(LLVMValueRef Fn, unsigned Index);
 /**
  * Obtain the function to which this argument belongs.
  *
- * Unlike other functions in this group, this one takes a LLVMValueRef
+ * Unlike other functions in this group, this one takes an LLVMValueRef
  * that corresponds to a llvm::Attribute.
  *
  * The returned LLVMValueRef is the llvm::Function to which this
@@ -1831,7 +1871,7 @@ LLVMValueRef LLVMGetLastParam(LLVMValueRef Fn);
 /**
  * Obtain the next parameter to a function.
  *
- * This takes a LLVMValueRef obtained from LLVMGetFirstParam() (which is
+ * This takes an LLVMValueRef obtained from LLVMGetFirstParam() (which is
  * actually a wrapped iterator) and obtains the next parameter from the
  * underlying iterator.
  */
@@ -1980,12 +2020,12 @@ void LLVMGetMDNodeOperands(LLVMValueRef V, LLVMValueRef *Dest);
 LLVMValueRef LLVMBasicBlockAsValue(LLVMBasicBlockRef BB);
 
 /**
- * Determine whether a LLVMValueRef is itself a basic block.
+ * Determine whether an LLVMValueRef is itself a basic block.
  */
 LLVMBool LLVMValueIsBasicBlock(LLVMValueRef Val);
 
 /**
- * Convert a LLVMValueRef to a LLVMBasicBlockRef instance.
+ * Convert an LLVMValueRef to an LLVMBasicBlockRef instance.
  */
 LLVMBasicBlockRef LLVMValueAsBasicBlock(LLVMValueRef Val);
 
@@ -2142,7 +2182,7 @@ LLVMValueRef LLVMGetFirstInstruction(LLVMBasicBlockRef BB);
 /**
  * Obtain the last instruction in a basic block.
  *
- * The returned LLVMValueRef corresponds to a LLVM:Instruction.
+ * The returned LLVMValueRef corresponds to an LLVM:Instruction.
  */
 LLVMValueRef LLVMGetLastInstruction(LLVMBasicBlockRef BB);
 
@@ -2324,12 +2364,12 @@ void LLVMAddIncoming(LLVMValueRef PhiNode, LLVMValueRef *IncomingValues,
 unsigned LLVMCountIncoming(LLVMValueRef PhiNode);
 
 /**
- * Obtain an incoming value to a PHI node as a LLVMValueRef.
+ * Obtain an incoming value to a PHI node as an LLVMValueRef.
  */
 LLVMValueRef LLVMGetIncomingValue(LLVMValueRef PhiNode, unsigned Index);
 
 /**
- * Obtain an incoming value to a PHI node as a LLVMBasicBlockRef.
+ * Obtain an incoming value to a PHI node as an LLVMBasicBlockRef.
  */
 LLVMBasicBlockRef LLVMGetIncomingBlock(LLVMValueRef PhiNode, unsigned Index);
 
@@ -2573,9 +2613,9 @@ LLVMValueRef LLVMBuildIsNotNull(LLVMBuilderRef, LLVMValueRef Val,
                                 const char *Name);
 LLVMValueRef LLVMBuildPtrDiff(LLVMBuilderRef, LLVMValueRef LHS,
                               LLVMValueRef RHS, const char *Name);
-LLVMValueRef LLVMBuildAtomicRMW(LLVMBuilderRef B,LLVMAtomicRMWBinOp op,  
-                                LLVMValueRef PTR, LLVMValueRef Val, 
-                                LLVMAtomicOrdering ordering, 
+LLVMValueRef LLVMBuildAtomicRMW(LLVMBuilderRef B,LLVMAtomicRMWBinOp op,
+                                LLVMValueRef PTR, LLVMValueRef Val,
+                                LLVMAtomicOrdering ordering,
                                 LLVMBool singleThread);
 
 /**
@@ -2708,16 +2748,16 @@ void LLVMDisposePassManager(LLVMPassManagerRef PM);
     initialization succeeded. Must be executed in isolation from all
     other LLVM api calls.
     @see llvm::llvm_start_multithreaded */
-LLVMBool LLVMStartMultithreaded();
+LLVMBool LLVMStartMultithreaded(void);
 
 /** Deallocate structures necessary to make LLVM safe for multithreading.
     Must be executed in isolation from all other LLVM api calls.
     @see llvm::llvm_stop_multithreaded */
-void LLVMStopMultithreaded();
+void LLVMStopMultithreaded(void);
 
 /** Check whether LLVM is executing in thread-safe mode or not.
     @see llvm::llvm_is_multithreaded */
-LLVMBool LLVMIsMultithreaded();
+LLVMBool LLVMIsMultithreaded(void);
 
 /**
  * @}

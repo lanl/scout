@@ -84,6 +84,8 @@ static void PrintCallingConv(unsigned cc, raw_ostream &Out) {
   case CallingConv::MSP430_INTR:   Out << "msp430_intrcc"; break;
   case CallingConv::PTX_Kernel:    Out << "ptx_kernel"; break;
   case CallingConv::PTX_Device:    Out << "ptx_device"; break;
+  case CallingConv::X86_64_SysV:   Out << "x86_64_sysvcc"; break;
+  case CallingConv::X86_64_Win64:  Out << "x86_64_win64cc"; break;
   }
 }
 
@@ -1457,6 +1459,7 @@ void AssemblyWriter::printGlobal(const GlobalVariable *GV) {
   if (GV->hasUnnamedAddr()) Out << "unnamed_addr ";
   if (GV->isExternallyInitialized()) Out << "externally_initialized ";
   Out << (GV->isConstant() ? "constant " : "global ");
+  if (!GV->AddressMaybeTaken()) Out << "notaddrtaken ";
   TypePrinter.print(GV->getType()->getElementType(), Out);
 
   if (GV->hasInitializer()) {
@@ -1645,6 +1648,10 @@ void AssemblyWriter::printFunction(const Function *F) {
     Out << " align " << F->getAlignment();
   if (F->hasGC())
     Out << " gc \"" << F->getGC() << '"';
+  if (F->hasPrefixData()) {
+    Out << " prefix ";
+    writeOperand(F->getPrefixData(), true);
+  }
   if (F->isDeclaration()) {
     Out << '\n';
   } else {

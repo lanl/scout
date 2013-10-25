@@ -14,6 +14,7 @@
 
 #define DEBUG_TYPE "delay-slot-filler"
 #include "Sparc.h"
+#include "SparcSubtarget.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
@@ -39,11 +40,13 @@ namespace {
     /// layout, etc.
     ///
     TargetMachine &TM;
-    const TargetInstrInfo *TII;
+    const SparcSubtarget *Subtarget;
 
     static char ID;
     Filler(TargetMachine &tm)
-      : MachineFunctionPass(ID), TM(tm), TII(tm.getInstrInfo()) { }
+      : MachineFunctionPass(ID), TM(tm),
+        Subtarget(&TM.getSubtarget<SparcSubtarget>()) {
+    }
 
     virtual const char *getPassName() const {
       return "SPARC Delay Slot Filler";
@@ -103,6 +106,8 @@ FunctionPass *llvm::createSparcDelaySlotFillerPass(TargetMachine &tm) {
 bool Filler::runOnMachineBasicBlock(MachineBasicBlock &MBB) {
   bool Changed = false;
 
+  const TargetInstrInfo *TII = TM.getInstrInfo();
+
   for (MachineBasicBlock::iterator I = MBB.begin(); I != MBB.end(); ) {
     MachineBasicBlock::iterator MI = I;
     ++I;
@@ -112,6 +117,14 @@ bool Filler::runOnMachineBasicBlock(MachineBasicBlock &MBB) {
         (MI->getOpcode() == SP::RESTORErr
          || MI->getOpcode() == SP::RESTOREri)) {
       Changed |= tryCombineRestoreWithPrevInst(MBB, MI);
+      continue;
+    }
+
+    if (!Subtarget->isV9() &&
+        (MI->getOpcode() == SP::FCMPS || MI->getOpcode() == SP::FCMPD
+         || MI->getOpcode() == SP::FCMPQ)) {
+      BuildMI(MBB, I, MI->getDebugLoc(), TII->get(SP::NOP));
+      Changed = true;
       continue;
     }
 
@@ -137,7 +150,7 @@ bool Filler::runOnMachineBasicBlock(MachineBasicBlock &MBB) {
       MachineBasicBlock::iterator J = MI;
       ++J; // skip the delay filler.
       assert (J != MBB.end() && "MI needs a delay instruction.");
-      BuildMI(MBB, ++J, I->getDebugLoc(),
+      BuildMI(MBB, ++J, MI->getDebugLoc(),
               TII->get(SP::UNIMP)).addImm(structSize);
     }
   }
@@ -156,7 +169,7 @@ Filler::findDelayInstr(MachineBasicBlock &MBB,
   if (slot == MBB.begin())
     return MBB.end();
 
-  if (slot->getOpcode() == SP::RET)
+  if (slot->getOpcode() == SP::RET || slot->getOpcode() == SP::TLS_CALL)
     return MBB.end();
 
   if (slot->getOpcode() == SP::RETL) {
@@ -166,7 +179,7 @@ Filler::findDelayInstr(MachineBasicBlock &MBB,
     if (J->getOpcode() == SP::RESTORErr
         || J->getOpcode() == SP::RESTOREri) {
       // change retl to ret.
-      slot->setDesc(TII->get(SP::RET));
+      slot->setDesc(TM.getInstrInfo()->get(SP::RET));
       return J;
     }
   }
@@ -342,6 +355,7 @@ bool Filler::needsUnimp(MachineBasicBlock::iterator I, unsigned &StructSize)
   case SP::CALL: structSizeOpNum = 1; break;
   case SP::JMPLrr:
   case SP::JMPLri: structSizeOpNum = 2; break;
+  case SP::TLS_CALL: return false;
   }
 
   const MachineOperand &MO = I->getOperand(structSizeOpNum);
@@ -475,6 +489,8 @@ bool Filler::tryCombineRestoreWithPrevInst(MachineBasicBlock &MBB,
   // It cannot combine with a delay filler.
   if (isDelayFiller(MBB, PrevInst))
     return false;
+
+  const TargetInstrInfo *TII = TM.getInstrInfo();
 
   switch (PrevInst->getOpcode()) {
   default: break;

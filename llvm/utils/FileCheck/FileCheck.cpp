@@ -29,6 +29,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/system_error.h"
 #include <algorithm>
+#include <cctype>
 #include <map>
 #include <string>
 #include <vector>
@@ -53,18 +54,25 @@ NoCanonicalizeWhiteSpace("strict-whitespace",
 // Pattern Handling Code.
 //===----------------------------------------------------------------------===//
 
+namespace Check {
+  enum CheckType {
+    CheckNone = 0,
+    CheckPlain,
+    CheckNext,
+    CheckNot,
+    CheckDAG,
+    CheckLabel,
+
+    /// MatchEOF - When set, this pattern only matches the end of file. This is
+    /// used for trailing CHECK-NOTs.
+    CheckEOF
+  };
+}
+
 class Pattern {
   SMLoc PatternLoc;
 
-  /// MatchEOF - When set, this pattern only matches the end of file. This is
-  /// used for trailing CHECK-NOTs.
-  bool MatchEOF;
-
-  /// MatchNot
-  bool MatchNot;
-
-  /// MatchDag
-  bool MatchDag;
+  Check::CheckType CheckTy;
 
   /// FixedStr - If non-empty, this pattern is a fixed string match with the
   /// specified fixed string.
@@ -89,8 +97,8 @@ class Pattern {
 
 public:
 
-  Pattern(bool matchEOF = false)
-    : MatchEOF(matchEOF), MatchNot(false), MatchDag(false) { }
+  Pattern(Check::CheckType Ty)
+    : CheckTy(Ty) { }
 
   /// getLoc - Return the location in source code.
   SMLoc getLoc() const { return PatternLoc; }
@@ -115,11 +123,10 @@ public:
   void PrintFailureInfo(const SourceMgr &SM, StringRef Buffer,
                         const StringMap<StringRef> &VariableTable) const;
 
-  void setMatchNot(bool Not) { MatchNot = Not; }
-  bool getMatchNot() const { return MatchNot; }
+  bool hasVariable() const { return !(VariableUses.empty() &&
+                                      VariableDefs.empty()); }
 
-  void setMatchDag(bool Dag) { MatchDag = Dag; }
-  bool getMatchDag() const { return MatchDag; }
+  Check::CheckType getCheckTy() const { return CheckTy; }
 
 private:
   static void AddFixedStringToRegEx(StringRef FixedStr, std::string &TheStr);
@@ -378,7 +385,7 @@ bool Pattern::EvaluateExpression(StringRef Expr, std::string &Value) const {
 size_t Pattern::Match(StringRef Buffer, size_t &MatchLen,
                       StringMap<StringRef> &VariableTable) const {
   // If this is the EOF pattern, match it immediately.
-  if (MatchEOF) {
+  if (CheckTy == Check::CheckEOF) {
     MatchLen = 0;
     return Buffer.size();
   }
@@ -590,21 +597,21 @@ struct CheckString {
   /// Loc - The location in the match file that the check string was specified.
   SMLoc Loc;
 
-  /// IsCheckNext - This is true if this is a CHECK-NEXT: directive (as opposed
-  /// to a CHECK: directive.
-  bool IsCheckNext;
+  /// CheckTy - Specify what kind of check this is. e.g. CHECK-NEXT: directive,
+  /// as opposed to a CHECK: directive.
+  Check::CheckType CheckTy;
 
   /// DagNotStrings - These are all of the strings that are disallowed from
   /// occurring between this match string and the previous one (or start of
   /// file).
   std::vector<Pattern> DagNotStrings;
 
-  CheckString(const Pattern &P, SMLoc L, bool isCheckNext)
-    : Pat(P), Loc(L), IsCheckNext(isCheckNext) {}
+  CheckString(const Pattern &P, SMLoc L, Check::CheckType Ty)
+    : Pat(P), Loc(L), CheckTy(Ty) {}
 
   /// Check - Match check string and its "not strings" and/or "dag strings".
-  size_t Check(const SourceMgr &SM, StringRef Buffer, size_t &MatchLen,
-               StringMap<StringRef> &VariableTable) const;
+  size_t Check(const SourceMgr &SM, StringRef Buffer, bool IsLabelScanMode,
+               size_t &MatchLen, StringMap<StringRef> &VariableTable) const;
 
   /// CheckNext - Verify there is a single line in the given buffer.
   bool CheckNext(const SourceMgr &SM, StringRef Buffer) const;
@@ -659,6 +666,48 @@ static MemoryBuffer *CanonicalizeInputFile(MemoryBuffer *MB,
   return MB2;
 }
 
+static bool IsPartOfWord(char c) {
+  return (isalnum(c) || c == '-' || c == '_');
+}
+
+static Check::CheckType FindCheckType(StringRef &Buffer, StringRef Prefix) {
+  char NextChar = Buffer[Prefix.size()];
+
+  // Verify that the : is present after the prefix.
+  if (NextChar == ':') {
+    Buffer = Buffer.substr(Prefix.size() + 1);
+    return Check::CheckPlain;
+  }
+
+  if (NextChar != '-') {
+    Buffer = Buffer.drop_front(1);
+    return Check::CheckNone;
+  }
+
+  StringRef Rest = Buffer.drop_front(Prefix.size() + 1);
+  if (Rest.startswith("NEXT:")) {
+    Buffer = Rest.drop_front(sizeof("NEXT:") - 1);
+    return Check::CheckNext;
+  }
+
+  if (Rest.startswith("NOT:")) {
+    Buffer = Rest.drop_front(sizeof("NOT:") - 1);
+    return Check::CheckNot;
+  }
+
+  if (Rest.startswith("DAG:")) {
+    Buffer = Rest.drop_front(sizeof("DAG:") - 1);
+    return Check::CheckDAG;
+  }
+
+  if (Rest.startswith("LABEL:")) {
+    Buffer = Rest.drop_front(sizeof("LABEL:") - 1);
+    return Check::CheckLabel;
+  }
+
+  Buffer = Buffer.drop_front(1);
+  return Check::CheckNone;
+}
 
 /// ReadCheckFile - Read the check file, which specifies the sequence of
 /// expected strings.  The strings are added to the CheckStrings vector.
@@ -667,7 +716,7 @@ static bool ReadCheckFile(SourceMgr &SM,
                           std::vector<CheckString> &CheckStrings) {
   OwningPtr<MemoryBuffer> File;
   if (error_code ec =
-        MemoryBuffer::getFileOrSTDIN(CheckFilename.c_str(), File)) {
+        MemoryBuffer::getFileOrSTDIN(CheckFilename, File)) {
     errs() << "Could not open check file '" << CheckFilename << "': "
            << ec.message() << '\n';
     return true;
@@ -697,36 +746,27 @@ static bool ReadCheckFile(SourceMgr &SM,
 
     LineNumber += Buffer.substr(0, PrefixLoc).count('\n');
 
-    Buffer = Buffer.substr(PrefixLoc);
+    // Keep the charcter before our prefix so we can validate that we have
+    // found our prefix, and account for cases when PrefixLoc is 0.
+    Buffer = Buffer.substr(std::min(PrefixLoc-1, PrefixLoc));
 
-    const char *CheckPrefixStart = Buffer.data();
+    const char *CheckPrefixStart = Buffer.data() + (PrefixLoc == 0 ? 0 : 1);
 
-    // When we find a check prefix, keep track of whether we find CHECK: or
-    // CHECK-NEXT:
-    bool IsCheckNext = false, IsCheckNot = false, IsCheckDag = false;
-
-    // Verify that the : is present after the prefix.
-    if (Buffer[CheckPrefix.size()] == ':') {
-      Buffer = Buffer.substr(CheckPrefix.size()+1);
-    } else if (Buffer.size() > CheckPrefix.size()+6 &&
-               memcmp(Buffer.data()+CheckPrefix.size(), "-NEXT:", 6) == 0) {
-      Buffer = Buffer.substr(CheckPrefix.size()+6);
-      IsCheckNext = true;
-    } else if (Buffer.size() > CheckPrefix.size()+5 &&
-               memcmp(Buffer.data()+CheckPrefix.size(), "-NOT:", 5) == 0) {
-      Buffer = Buffer.substr(CheckPrefix.size()+5);
-      IsCheckNot = true;
-    } else if (Buffer.size() > CheckPrefix.size()+5 &&
-               memcmp(Buffer.data()+CheckPrefix.size(), "-DAG:", 5) == 0) {
-      Buffer = Buffer.substr(CheckPrefix.size()+5);
-      IsCheckDag = true;
-    } else {
-      Buffer = Buffer.substr(1);
+    // Make sure we have actually found our prefix, and not a word containing
+    // our prefix.
+    if (PrefixLoc != 0 && IsPartOfWord(Buffer[0])) {
+      Buffer = Buffer.substr(CheckPrefix.size());
       continue;
     }
 
-    // Okay, we found the prefix, yay.  Remember the rest of the line, but
-    // ignore leading and trailing whitespace.
+    // When we find a check prefix, keep track of what kind of type of CHECK we
+    // have.
+    Check::CheckType CheckTy = FindCheckType(Buffer, CheckPrefix);
+    if (CheckTy == Check::CheckNone)
+      continue;
+
+    // Okay, we found the prefix, yay. Remember the rest of the line, but ignore
+    // leading and trailing whitespace.
     Buffer = Buffer.substr(Buffer.find_first_not_of(" \t"));
 
     // Scan ahead to the end of line.
@@ -736,17 +776,23 @@ static bool ReadCheckFile(SourceMgr &SM,
     SMLoc PatternLoc = SMLoc::getFromPointer(Buffer.data());
 
     // Parse the pattern.
-    Pattern P;
+    Pattern P(CheckTy);
     if (P.ParsePattern(Buffer.substr(0, EOL), SM, LineNumber))
       return true;
 
-    P.setMatchNot(IsCheckNot);
-    P.setMatchDag(IsCheckDag);
+    // Verify that CHECK-LABEL lines do not define or use variables
+    if ((CheckTy == Check::CheckLabel) && P.hasVariable()) {
+      SM.PrintMessage(SMLoc::getFromPointer(CheckPrefixStart),
+                      SourceMgr::DK_Error,
+                      "found '"+CheckPrefix+"-LABEL:' with variable definition"
+                      " or use");
+      return true;
+    }
 
     Buffer = Buffer.substr(EOL);
 
     // Verify that CHECK-NEXT lines have at least one CHECK line before them.
-    if (IsCheckNext && CheckStrings.empty()) {
+    if ((CheckTy == Check::CheckNext) && CheckStrings.empty()) {
       SM.PrintMessage(SMLoc::getFromPointer(CheckPrefixStart),
                       SourceMgr::DK_Error,
                       "found '"+CheckPrefix+"-NEXT:' without previous '"+
@@ -755,7 +801,7 @@ static bool ReadCheckFile(SourceMgr &SM,
     }
 
     // Handle CHECK-DAG/-NOT.
-    if (IsCheckDag || IsCheckNot) {
+    if (CheckTy == Check::CheckDAG || CheckTy == Check::CheckNot) {
       DagNotMatches.push_back(P);
       continue;
     }
@@ -763,15 +809,15 @@ static bool ReadCheckFile(SourceMgr &SM,
     // Okay, add the string we captured to the output vector and move on.
     CheckStrings.push_back(CheckString(P,
                                        PatternLoc,
-                                       IsCheckNext));
+                                       CheckTy));
     std::swap(DagNotMatches, CheckStrings.back().DagNotStrings);
   }
 
   // Add an EOF pattern for any trailing CHECK-DAG/-NOTs.
   if (!DagNotMatches.empty()) {
-    CheckStrings.push_back(CheckString(Pattern(true),
+    CheckStrings.push_back(CheckString(Pattern(Check::CheckEOF),
                                        SMLoc::getFromPointer(Buffer.data()),
-                                       false));
+                                       Check::CheckEOF));
     std::swap(DagNotMatches, CheckStrings.back().DagNotStrings);
   }
 
@@ -829,15 +875,21 @@ static unsigned CountNumNewlinesBetween(StringRef Range) {
 }
 
 size_t CheckString::Check(const SourceMgr &SM, StringRef Buffer,
-                          size_t &MatchLen,
+                          bool IsLabelScanMode, size_t &MatchLen,
                           StringMap<StringRef> &VariableTable) const {
   size_t LastPos = 0;
   std::vector<const Pattern *> NotStrings;
 
-  // Match "dag strings" (with mixed "not strings" if any).
-  LastPos = CheckDag(SM, Buffer, NotStrings, VariableTable);
-  if (LastPos == StringRef::npos)
-    return StringRef::npos;
+  // IsLabelScanMode is true when we are scanning forward to find CHECK-LABEL
+  // bounds; we have not processed variable definitions within the bounded block
+  // yet so cannot handle any final CHECK-DAG yet; this is handled when going
+  // over the block again (including the last CHECK-LABEL) in normal mode.
+  if (!IsLabelScanMode) {
+    // Match "dag strings" (with mixed "not strings" if any).
+    LastPos = CheckDag(SM, Buffer, NotStrings, VariableTable);
+    if (LastPos == StringRef::npos)
+      return StringRef::npos;
+  }
 
   // Match itself from the last position after matching CHECK-DAG.
   StringRef MatchBuffer = Buffer.substr(LastPos);
@@ -848,23 +900,27 @@ size_t CheckString::Check(const SourceMgr &SM, StringRef Buffer,
   }
   MatchPos += LastPos;
 
-  StringRef SkippedRegion = Buffer.substr(LastPos, MatchPos);
+  // Similar to the above, in "label-scan mode" we can't yet handle CHECK-NEXT
+  // or CHECK-NOT
+  if (!IsLabelScanMode) {
+    StringRef SkippedRegion = Buffer.substr(LastPos, MatchPos);
 
-  // If this check is a "CHECK-NEXT", verify that the previous match was on
-  // the previous line (i.e. that there is one newline between them).
-  if (CheckNext(SM, SkippedRegion))
-    return StringRef::npos;
+    // If this check is a "CHECK-NEXT", verify that the previous match was on
+    // the previous line (i.e. that there is one newline between them).
+    if (CheckNext(SM, SkippedRegion))
+      return StringRef::npos;
 
-  // If this match had "not strings", verify that they don't exist in the
-  // skipped region.
-  if (CheckNot(SM, SkippedRegion, NotStrings, VariableTable))
-    return StringRef::npos;
+    // If this match had "not strings", verify that they don't exist in the
+    // skipped region.
+    if (CheckNot(SM, SkippedRegion, NotStrings, VariableTable))
+      return StringRef::npos;
+  }
 
   return MatchPos;
 }
 
 bool CheckString::CheckNext(const SourceMgr &SM, StringRef Buffer) const {
-  if (!IsCheckNext)
+  if (CheckTy != Check::CheckNext)
     return false;
 
   // Count the number of newlines between the previous match and this one.
@@ -905,7 +961,7 @@ bool CheckString::CheckNot(const SourceMgr &SM, StringRef Buffer,
   for (unsigned ChunkNo = 0, e = NotStrings.size();
        ChunkNo != e; ++ChunkNo) {
     const Pattern *Pat = NotStrings[ChunkNo];
-    assert(Pat->getMatchNot() && "Expect CHECK-NOT!");
+    assert((Pat->getCheckTy() == Check::CheckNot) && "Expect CHECK-NOT!");
 
     size_t MatchLen = 0;
     size_t Pos = Pat->Match(Buffer, MatchLen, VariableTable);
@@ -936,15 +992,16 @@ size_t CheckString::CheckDag(const SourceMgr &SM, StringRef Buffer,
        ChunkNo != e; ++ChunkNo) {
     const Pattern &Pat = DagNotStrings[ChunkNo];
 
-    assert((Pat.getMatchDag() ^ Pat.getMatchNot()) &&
+    assert((Pat.getCheckTy() == Check::CheckDAG ||
+            Pat.getCheckTy() == Check::CheckNot) &&
            "Invalid CHECK-DAG or CHECK-NOT!");
 
-    if (Pat.getMatchNot()) {
+    if (Pat.getCheckTy() == Check::CheckNot) {
       NotStrings.push_back(&Pat);
       continue;
     }
 
-    assert(Pat.getMatchDag() && "Expect CHECK-DAG!");
+    assert((Pat.getCheckTy() == Check::CheckDAG) && "Expect CHECK-DAG!");
 
     size_t MatchLen = 0, MatchPos;
 
@@ -986,8 +1043,7 @@ size_t CheckString::CheckDag(const SourceMgr &SM, StringRef Buffer,
       // CHECK-DAG, verify that there's no 'not' strings occurred in that
       // region.
       StringRef SkippedRegion = Buffer.substr(LastPos, MatchPos);
-      size_t Pos = CheckNot(SM, SkippedRegion, NotStrings, VariableTable);
-      if (Pos != StringRef::npos)
+      if (CheckNot(SM, SkippedRegion, NotStrings, VariableTable))
         return StringRef::npos;
       // Clear "not strings".
       NotStrings.clear();
@@ -1000,10 +1056,23 @@ size_t CheckString::CheckDag(const SourceMgr &SM, StringRef Buffer,
   return LastPos;
 }
 
+bool ValidateCheckPrefix() {
+  // The check prefix must contain only alphanumeric, hyphens and underscores.
+  Regex prefixValidator("^[a-zA-Z0-9_-]*$");
+  return prefixValidator.match(CheckPrefix);
+}
+
 int main(int argc, char **argv) {
   sys::PrintStackTraceOnErrorSignal();
   PrettyStackTraceProgram X(argc, argv);
   cl::ParseCommandLineOptions(argc, argv);
+
+  if (!ValidateCheckPrefix()) {
+    errs() << "Supplied check-prefix is invalid! Prefixes must start with a "
+              "letter and contain only alphanumeric characters, hyphens and "
+              "underscores\n";
+    return 2;
+  }
 
   SourceMgr SM;
 
@@ -1015,7 +1084,7 @@ int main(int argc, char **argv) {
   // Open the file to check and add it to SourceMgr.
   OwningPtr<MemoryBuffer> File;
   if (error_code ec =
-        MemoryBuffer::getFileOrSTDIN(InputFilename.c_str(), File)) {
+        MemoryBuffer::getFileOrSTDIN(InputFilename, File)) {
     errs() << "Could not open input file '" << InputFilename << "': "
            << ec.message() << '\n';
     return 2;
@@ -1040,18 +1109,56 @@ int main(int argc, char **argv) {
   // file.
   StringRef Buffer = F->getBuffer();
 
-  for (unsigned StrNo = 0, e = CheckStrings.size(); StrNo != e; ++StrNo) {
-    const CheckString &CheckStr = CheckStrings[StrNo];
+  bool hasError = false;
 
-    // Find StrNo in the file.
-    size_t MatchLen = 0;
-    size_t MatchPos = CheckStr.Check(SM, Buffer, MatchLen, VariableTable);
+  unsigned i = 0, j = 0, e = CheckStrings.size();
 
-    if (MatchPos == StringRef::npos)
-      return 1;
+  while (true) {
+    StringRef CheckRegion;
+    if (j == e) {
+      CheckRegion = Buffer;
+    } else {
+      const CheckString &CheckLabelStr = CheckStrings[j];
+      if (CheckLabelStr.CheckTy != Check::CheckLabel) {
+        ++j;
+        continue;
+      }
 
-    Buffer = Buffer.substr(MatchPos + MatchLen);
+      // Scan to next CHECK-LABEL match, ignoring CHECK-NOT and CHECK-DAG
+      size_t MatchLabelLen = 0;
+      size_t MatchLabelPos = CheckLabelStr.Check(SM, Buffer, true,
+                                                 MatchLabelLen, VariableTable);
+      if (MatchLabelPos == StringRef::npos) {
+        hasError = true;
+        break;
+      }
+
+      CheckRegion = Buffer.substr(0, MatchLabelPos + MatchLabelLen);
+      Buffer = Buffer.substr(MatchLabelPos + MatchLabelLen);
+      ++j;
+    }
+
+    for ( ; i != j; ++i) {
+      const CheckString &CheckStr = CheckStrings[i];
+
+      // Check each string within the scanned region, including a second check
+      // of any final CHECK-LABEL (to verify CHECK-NOT and CHECK-DAG)
+      size_t MatchLen = 0;
+      size_t MatchPos = CheckStr.Check(SM, CheckRegion, false, MatchLen,
+                                       VariableTable);
+
+      if (MatchPos == StringRef::npos) {
+        hasError = true;
+        i = j;
+        break;
+      }
+
+      CheckRegion = CheckRegion.substr(MatchPos + MatchLen);
+    }
+
+    if (j == e)
+      break;
   }
 
-  return 0;
+  return hasError ? 1 : 0;
 }

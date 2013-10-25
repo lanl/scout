@@ -11,6 +11,17 @@
 //
 //===----------------------------------------------------------------------===//
 
+//===----------------------------------------------------------------------===//
+// ARM Instruction Predicate Definitions.
+//
+def HasNEON          : Predicate<"Subtarget->hasNEON()">,
+                                 AssemblerPredicate<"FeatureNEON", "neon">;
+def HasCrypto        : Predicate<"Subtarget->hasCrypto()">,
+                                 AssemblerPredicate<"FeatureCrypto","crypto">;
+
+// Use fused MAC if more precision in FP computation is allowed.
+def UseFusedMAC      : Predicate<"(TM.Options.AllowFPOpFusion =="
+                                 " FPOpFusion::Fast)">;
 include "AArch64InstrFormats.td"
 
 //===----------------------------------------------------------------------===//
@@ -113,6 +124,8 @@ def SDTA64BFX : SDTypeProfile<1, 3, [SDTCisVT<2, i64>, SDTCisVT<3, i64>]>;
 def A64Sbfx : SDNode<"AArch64ISD::SBFX", SDTA64BFX>;
 
 def A64Ubfx : SDNode<"AArch64ISD::UBFX", SDTA64BFX>;
+
+class BinOpFrag<dag res> : PatFrag<(ops node:$LHS, node:$RHS), res>;
 
 //===----------------------------------------------------------------------===//
 // Call sequence pseudo-instructions
@@ -2173,6 +2186,29 @@ def FMSUBdddd  : A64I_fpdp3Impl<"fmsub",  FPR64, f64, 0b01, 0b0, 0b1, fmsub>;
 def FNMADDdddd : A64I_fpdp3Impl<"fnmadd", FPR64, f64, 0b01, 0b1, 0b0, fnmadd>;
 def FNMSUBdddd : A64I_fpdp3Impl<"fnmsub", FPR64, f64, 0b01, 0b1, 0b1, fnmsub>;
 
+// Extra patterns for when we're allowed to optimise separate multiplication and
+// addition.
+let Predicates = [UseFusedMAC] in {
+def : Pat<(f32 (fadd FPR32:$Ra, (f32 (fmul FPR32:$Rn, FPR32:$Rm)))),
+          (FMADDssss FPR32:$Rn, FPR32:$Rm, FPR32:$Ra)>;
+def : Pat<(f32 (fsub FPR32:$Ra, (f32 (fmul FPR32:$Rn, FPR32:$Rm)))),
+          (FMSUBssss FPR32:$Rn, FPR32:$Rm, FPR32:$Ra)>;
+def : Pat<(f32 (fsub (f32 (fmul FPR32:$Rn, FPR32:$Rm)), FPR32:$Ra)),
+          (FNMADDssss FPR32:$Rn, FPR32:$Rm, FPR32:$Ra)>;
+def : Pat<(f32 (fsub (f32 (fneg FPR32:$Ra)), (f32 (fmul FPR32:$Rn, FPR32:$Rm)))),
+          (FNMSUBssss FPR32:$Rn, FPR32:$Rm, FPR32:$Ra)>;
+
+def : Pat<(f64 (fadd FPR64:$Ra, (f64 (fmul FPR64:$Rn, FPR64:$Rm)))),
+          (FMADDdddd FPR64:$Rn, FPR64:$Rm, FPR64:$Ra)>;
+def : Pat<(f64 (fsub FPR64:$Ra, (f64 (fmul FPR64:$Rn, FPR64:$Rm)))),
+          (FMSUBdddd FPR64:$Rn, FPR64:$Rm, FPR64:$Ra)>;
+def : Pat<(f64 (fsub (f64 (fmul FPR64:$Rn, FPR64:$Rm)), FPR64:$Ra)),
+          (FNMADDdddd FPR64:$Rn, FPR64:$Rm, FPR64:$Ra)>;
+def : Pat<(f64 (fsub (f64 (fneg FPR64:$Ra)), (f64 (fmul FPR64:$Rn, FPR64:$Rm)))),
+          (FNMSUBdddd FPR64:$Rn, FPR64:$Rm, FPR64:$Ra)>;
+}
+
+
 //===----------------------------------------------------------------------===//
 // Floating-point <-> fixed-point conversion instructions
 //===----------------------------------------------------------------------===//
@@ -3974,14 +4010,17 @@ def : movalias<MOVZxii, GPR64, movz64_movimm>;
 def : movalias<MOVNwii, GPR32, movn32_movimm>;
 def : movalias<MOVNxii, GPR64, movn64_movimm>;
 
-def movw_addressref : ComplexPattern<i64, 2, "SelectMOVWAddressRef">;
+def movw_addressref_g0 : ComplexPattern<i64, 2, "SelectMOVWAddressRef<0>">;
+def movw_addressref_g1 : ComplexPattern<i64, 2, "SelectMOVWAddressRef<1>">;
+def movw_addressref_g2 : ComplexPattern<i64, 2, "SelectMOVWAddressRef<2>">;
+def movw_addressref_g3 : ComplexPattern<i64, 2, "SelectMOVWAddressRef<3>">;
 
-def : Pat<(A64WrapperLarge movw_addressref:$G3, movw_addressref:$G2,
-                           movw_addressref:$G1, movw_addressref:$G0),
-          (MOVKxii (MOVKxii (MOVKxii (MOVZxii movw_addressref:$G3),
-                                     movw_addressref:$G2),
-                            movw_addressref:$G1),
-                   movw_addressref:$G0)>;
+def : Pat<(A64WrapperLarge movw_addressref_g3:$G3, movw_addressref_g2:$G2,
+                           movw_addressref_g1:$G1, movw_addressref_g0:$G0),
+          (MOVKxii (MOVKxii (MOVKxii (MOVZxii movw_addressref_g3:$G3),
+                                     movw_addressref_g2:$G2),
+                            movw_addressref_g1:$G1),
+                   movw_addressref_g0:$G0)>;
 
 //===----------------------------------------------------------------------===//
 // PC-relative addressing instructions
@@ -5120,3 +5159,9 @@ defm : regoff_pats<"Xm", (add i64:$Rn, i64:$Rm),
 
 defm : regoff_pats<"Xm", (add i64:$Rn, (shl i64:$Rm, SHIFT)),
                    (i64 i64:$Rn), (i64 i64:$Rm), (i64 3)>;
+
+//===----------------------------------------------------------------------===//
+// Advanced SIMD (NEON) Support
+//
+
+include "AArch64InstrNEON.td"

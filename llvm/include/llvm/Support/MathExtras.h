@@ -46,6 +46,8 @@ template <typename T>
 typename enable_if_c<std::numeric_limits<T>::is_integer &&
                      !std::numeric_limits<T>::is_signed, std::size_t>::type
 countTrailingZeros(T Val, ZeroBehavior ZB = ZB_Width) {
+  (void)ZB;
+
   if (!Val)
     return std::numeric_limits<T>::digits;
   if (Val & 0x1)
@@ -78,7 +80,7 @@ inline std::size_t countTrailingZeros<uint32_t>(uint32_t Val, ZeroBehavior ZB) {
   if (ZB != ZB_Undefined && Val == 0)
     return 32;
 
-#if __GNUC__ >= 4
+#if __has_builtin(__builtin_ctz) || __GNUC_PREREQ(4, 0)
   return __builtin_ctz(Val);
 #elif _MSC_VER
   unsigned long Index;
@@ -93,7 +95,7 @@ inline std::size_t countTrailingZeros<uint64_t>(uint64_t Val, ZeroBehavior ZB) {
   if (ZB != ZB_Undefined && Val == 0)
     return 64;
 
-#if __GNUC__ >= 4
+#if __has_builtin(__builtin_ctzll) || __GNUC_PREREQ(4, 0)
   return __builtin_ctzll(Val);
 #elif _MSC_VER
   unsigned long Index;
@@ -115,6 +117,8 @@ template <typename T>
 typename enable_if_c<std::numeric_limits<T>::is_integer &&
                      !std::numeric_limits<T>::is_signed, std::size_t>::type
 countLeadingZeros(T Val, ZeroBehavior ZB = ZB_Width) {
+  (void)ZB;
+
   if (!Val)
     return std::numeric_limits<T>::digits;
 
@@ -142,7 +146,7 @@ inline std::size_t countLeadingZeros<uint32_t>(uint32_t Val, ZeroBehavior ZB) {
   if (ZB != ZB_Undefined && Val == 0)
     return 32;
 
-#if __GNUC__ >= 4
+#if __has_builtin(__builtin_clz) || __GNUC_PREREQ(4, 0)
   return __builtin_clz(Val);
 #elif _MSC_VER
   unsigned long Index;
@@ -157,7 +161,7 @@ inline std::size_t countLeadingZeros<uint64_t>(uint64_t Val, ZeroBehavior ZB) {
   if (ZB != ZB_Undefined && Val == 0)
     return 64;
 
-#if __GNUC__ >= 4
+#if __has_builtin(__builtin_clzll) || __GNUC_PREREQ(4, 0)
   return __builtin_clzll(Val);
 #elif _MSC_VER
   unsigned long Index;

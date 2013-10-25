@@ -102,15 +102,23 @@ class HexagonPassConfig : public TargetPassConfig {
 public:
   HexagonPassConfig(HexagonTargetMachine *TM, PassManagerBase &PM)
     : TargetPassConfig(TM, PM) {
-    // Enable MI scheduler.
-    if (!DisableHexagonMISched) {
+    // FIXME: Rather than calling enablePass(&MachineSchedulerID) below, define
+    // HexagonSubtarget::enableMachineScheduler() { return true; }.
+    // That will bypass the SelectionDAG VLIW scheduler, which is probably just
+    // hurting compile time and will be removed eventually anyway.
+    if (DisableHexagonMISched)
+      disablePass(&MachineSchedulerID);
+    else
       enablePass(&MachineSchedulerID);
-      MachineSchedRegistry::setDefault(createVLIWMachineSched);
-    }
   }
 
   HexagonTargetMachine &getHexagonTargetMachine() const {
     return getTM<HexagonTargetMachine>();
+  }
+
+  virtual ScheduleDAGInstrs *
+  createMachineScheduler(MachineSchedContext *C) const {
+    return createVLIWMachineSched(C);
   }
 
   virtual bool addInstSelector();
@@ -126,7 +134,7 @@ TargetPassConfig *HexagonTargetMachine::createPassConfig(PassManagerBase &PM) {
 }
 
 bool HexagonPassConfig::addInstSelector() {
-  const HexagonTargetMachine &TM = getHexagonTargetMachine();
+  HexagonTargetMachine &TM = getHexagonTargetMachine();
   bool NoOpt = (getOptLevel() == CodeGenOpt::None);
 
   if (!NoOpt)

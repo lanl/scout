@@ -80,10 +80,11 @@ void Mips16DAGToDAGISel::initGlobalBaseReg(MachineFunction &MF) {
   V1 = RegInfo.createVirtualRegister(RC);
   V2 = RegInfo.createVirtualRegister(RC);
 
-  BuildMI(MBB, I, DL, TII.get(Mips::LiRxImmX16), V0)
-    .addExternalSymbol("_gp_disp", MipsII::MO_ABS_HI);
-  BuildMI(MBB, I, DL, TII.get(Mips::AddiuRxPcImmX16), V1)
-    .addExternalSymbol("_gp_disp", MipsII::MO_ABS_LO);
+  BuildMI(MBB, I, DL, TII.get(Mips::GotPrologue16), V0).
+    addReg(V1, RegState::Define).
+    addExternalSymbol("_gp_disp", MipsII::MO_ABS_HI).
+    addExternalSymbol("_gp_disp", MipsII::MO_ABS_LO);
+
   BuildMI(MBB, I, DL, TII.get(Mips::SllX16), V2).addReg(V0).addImm(16);
   BuildMI(MBB, I, DL, TII.get(Mips::AdduRxRyRz16), GlobalBaseReg)
     .addReg(V1).addReg(V2);
@@ -118,11 +119,13 @@ void Mips16DAGToDAGISel::processFunctionAfterISel(MachineFunction &MF) {
 SDValue Mips16DAGToDAGISel::getMips16SPAliasReg() {
   unsigned Mips16SPAliasReg =
     MF->getInfo<MipsFunctionInfo>()->getMips16SPAliasReg();
-  return CurDAG->getRegister(Mips16SPAliasReg, TLI.getPointerTy());
+  return CurDAG->getRegister(Mips16SPAliasReg,
+                             getTargetLowering()->getPointerTy());
 }
 
 void Mips16DAGToDAGISel::getMips16SPRefReg(SDNode *Parent, SDValue &AliasReg) {
-  SDValue AliasFPReg = CurDAG->getRegister(Mips::S0, TLI.getPointerTy());
+  SDValue AliasFPReg = CurDAG->getRegister(Mips::S0,
+                                           getTargetLowering()->getPointerTy());
   if (Parent) {
     switch (Parent->getOpcode()) {
       case ISD::LOAD: {
@@ -149,7 +152,7 @@ void Mips16DAGToDAGISel::getMips16SPRefReg(SDNode *Parent, SDValue &AliasReg) {
       }
     }
   }
-  AliasReg = CurDAG->getRegister(Mips::SP, TLI.getPointerTy());
+  AliasReg = CurDAG->getRegister(Mips::SP, getTargetLowering()->getPointerTy());
   return;
 
 }

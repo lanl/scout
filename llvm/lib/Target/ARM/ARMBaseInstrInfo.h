@@ -46,7 +46,7 @@ public:
                                               MachineBasicBlock::iterator &MBBI,
                                               LiveVariables *LV) const;
 
-  virtual const ARMBaseRegisterInfo &getRegisterInfo() const =0;
+  virtual const ARMBaseRegisterInfo &getRegisterInfo() const = 0;
   const ARMSubtarget &getSubtarget() const { return Subtarget; }
 
   ScheduleHazardRecognizer *
@@ -124,12 +124,6 @@ public:
                                     const TargetRegisterInfo *TRI) const;
 
   virtual bool expandPostRAPseudo(MachineBasicBlock::iterator MI) const;
-
-  virtual MachineInstr *emitFrameIndexDebugValue(MachineFunction &MF,
-                                                 int FrameIx,
-                                                 uint64_t Offset,
-                                                 const MDNode *MDPtr,
-                                                 DebugLoc DL) const;
 
   virtual void reMaterialize(MachineBasicBlock &MBB,
                              MachineBasicBlock::iterator MI,
@@ -269,6 +263,8 @@ private:
                         unsigned DefIdx, unsigned DefAlign,
                         const MCInstrDesc &UseMCID,
                         unsigned UseIdx, unsigned UseAlign) const;
+
+  unsigned getPredicationCost(const MachineInstr *MI) const;
 
   unsigned getInstrLatency(const InstrItineraryData *ItinData,
                            const MachineInstr *MI,

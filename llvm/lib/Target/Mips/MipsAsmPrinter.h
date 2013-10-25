@@ -25,10 +25,12 @@ namespace llvm {
 class MCStreamer;
 class MachineInstr;
 class MachineBasicBlock;
+class MipsTargetStreamer;
 class Module;
 class raw_ostream;
 
 class LLVM_LIBRARY_VISIBILITY MipsAsmPrinter : public AsmPrinter {
+  MipsTargetStreamer &getTargetStreamer();
 
   void EmitInstrWithMacroNoAT(const MachineInstr *MI);
 
@@ -81,7 +83,6 @@ public:
                        const char *Modifier = 0);
   void EmitStartOfAsmFile(Module &M);
   void EmitEndOfAsmFile(Module &M);
-  virtual MachineLocation getDebugValueLocation(const MachineInstr *MI) const;
   void PrintDebugValueComment(const MachineInstr *MI, raw_ostream &OS);
 };
 }
