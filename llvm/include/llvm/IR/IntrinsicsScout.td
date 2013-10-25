@@ -49,23 +49,35 @@ def int_memfree    : Intrinsic< [],
                                 [NoCapture<0>] >;
 
 
-def int_position    : Intrinsic< [llvm_v4i32_ty],
+def int_Position    : Intrinsic< [llvm_v4i32_ty],
                                  [],
                                  [] >; 
 
-def int_positionx    : Intrinsic< [llvm_i32_ty],
+def int_PositionX    : Intrinsic< [llvm_i32_ty],
                                  [],
                                  [] >; 
                                  
-def int_positiony    : Intrinsic< [llvm_i32_ty],
+def int_PositionY    : Intrinsic< [llvm_i32_ty],
                                  [],
                                  [] >; 
                                  
-def int_positionz    : Intrinsic< [llvm_i32_ty],
+def int_PositionZ    : Intrinsic< [llvm_i32_ty],
                                  [],
                                  [] >; 
 
-def int_positionl    : Intrinsic< [llvm_i32_ty],
+def int_PositionW    : Intrinsic< [llvm_i32_ty],
                                  [],
                                  [] >;
-                                                                   
+                                            
+def int_Width    : Intrinsic< [llvm_i32_ty],
+                                 [],
+                                 [] >;
+                                                                             
+def int_Height    : Intrinsic< [llvm_i32_ty],
+                                 [],
+                                 [] >;      
+
+def int_Depth    : Intrinsic< [llvm_i32_ty],
+                                 [],
+                                 [] >;
+                                                                                                                                                                         

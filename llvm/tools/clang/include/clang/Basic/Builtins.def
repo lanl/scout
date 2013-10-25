@@ -937,10 +937,14 @@ BUILTIN(__builtin_subcll, "ULLiULLiCULLiCULLiCULLi*", "n")
 
 
 // ===== Scout ===============================================
-BUILTIN(positionx, "i", "nc")
-BUILTIN(positiony, "i", "nc")
-BUILTIN(positionz, "i", "nc")
-BUILTIN(positionl, "i", "nc")
+BUILTIN(Position, "E4i", "nc")
+BUILTIN(PositionX, "i", "nc")
+BUILTIN(PositionY, "i", "nc")
+BUILTIN(PositionZ, "i", "nc")
+BUILTIN(PositionW, "i", "nc")
+BUILTIN(Width, "i", "nc")
+BUILTIN(Height, "i", "nc")
+BUILTIN(Depth, "i", "nc")
 // ===========================================================
 
 #undef BUILTIN

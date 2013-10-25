@@ -138,21 +138,25 @@ llvm::Value *CodeGenFunction::TranslateExprToValue(const Expr *E) {
 //
 void CodeGenFunction::EmitForallStmt(const ForallMeshStmt &S) {
 
-  llvm::Value *ConstantZero  = 0;
-  ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
-
-  LoopIndexVar = Builder.CreateAlloca(Int32Ty, 0, "forall.indx");
-  Builder.CreateStore(ConstantZero, LoopIndexVar);
-
+  llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
   unsigned int rank = S.getMeshType()->dimensions().size();
+
+  LoopBounds.clear();
   InductionVar.clear();
+
+  // Create the induction variables for eack rank and zero-initialize.
   for(unsigned int i = 0; i < 3; i++) {
+    LoopBounds.push_back(0);
     InductionVar.push_back(0);
-    // Create the induction variable for this rank and zero-initialize it.
     sprintf(IRNameStr, "induct.%s", IndexNames[i]);
     InductionVar[i] = Builder.CreateAlloca(Int32Ty, 0, IRNameStr);
     Builder.CreateStore(ConstantZero, InductionVar[i]);
   }
+  // create overall loop index as 4th element
+  InductionVar.push_back(0);
+  InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "forall.indx");
+  Builder.CreateStore(ConstantZero, InductionVar[3]);
+
   EmitForallLoop(S, rank);
 }
 
@@ -167,7 +171,6 @@ void CodeGenFunction::EmitForallLoop(const ForallMeshStmt &S, unsigned r) {
 
   CGDebugInfo *DI = getDebugInfo();
 
-  llvm::Value *LoopBound = 0;
   llvm::Value *ConstantZero  = 0;
   llvm::Value *ConstantOne   = 0;
   ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
@@ -184,9 +187,9 @@ void CodeGenFunction::EmitForallLoop(const ForallMeshStmt &S, unsigned r) {
   // a GEP from the mesh and a load from returned address...
   // note: width/height depth are stored after mesh fields
   sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[r-1]);
-  LoopBound = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+r-1, IRNameStr);
+  LoopBounds[r-1] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+r-1, IRNameStr);
   sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[r-1]);
-  LoopBound  = Builder.CreateLoad(LoopBound, IRNameStr);
+  llvm::Value *LoopBound  = Builder.CreateLoad(LoopBounds[r-1], IRNameStr);
 
   // Next we create a block that tests the induction variables value to
   // the rank's dimension.
@@ -230,13 +233,13 @@ void CodeGenFunction::EmitForallLoop(const ForallMeshStmt &S, unsigned r) {
   if (r == 1) {  // This is our innermost rank, generate the loop body.
     EmitForallBody(S);
 
-    // Increment the loop index.
-    llvm::Value* liv = Builder.CreateLoad(LoopIndexVar);
+    // Increment the loop index stored as last element of InductionVar
+    llvm::Value* liv = Builder.CreateLoad(InductionVar[3]);
     llvm::Value *IncLoopIndexVar = Builder.CreateAdd(liv,
                                                      ConstantOne,
                                                      "forall.indx.inc");
 
-    Builder.CreateStore(IncLoopIndexVar, LoopIndexVar);
+    Builder.CreateStore(IncLoopIndexVar, InductionVar[3]);
   } else { // generate nested loop
     EmitForallLoop(S, r-1);
   }

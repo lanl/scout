@@ -732,15 +732,18 @@ public:
   typedef std::map< llvm::StringRef, std::pair< llvm::Value *, QualType > > MemberMap;
 
   //forall mesh induction variables
-  llvm::Value *LoopIndexVar; // overall
-  llvm::SmallVector< llvm::Value *, 3 > InductionVar; //for each rank
+  // overall induction variable stored as 4th element
+  // needed to make this size 4 to deal with llvm Intrinsics;
+  llvm::SmallVector< llvm::Value *, 4 > InductionVar;
+  llvm::SmallVector< llvm::Value *, 3 > LoopBounds;
 
   // old style Scout forall explicit induction variable.
   llvm::Value *ForallIndVar;
   // old style Scout forall implicit induction variables.
   Vector ScoutIdxVars;
-  // Scout mesh dimension sizes.
+  // Scout mesh dimension sizes
   llvm::SmallVector< llvm::Value *, 3 > ScoutMeshSizes;
+
   llvm::Value *MeshBaseAddr;
   //llvm::Value *ImplicitMeshVar;
   llvm::Value *ForallTripCount;
@@ -751,7 +754,7 @@ public:
   //const ForAllArrayStmt* CurrentForAllArrayStmt;
 
   inline llvm::Value *getGlobalIdx() {
-    return LoopIndexVar; // Builder.CreateLoad(ForallIndVar);
+    return InductionVar[3];
   }
 
   bool isGPU() {
@@ -2363,8 +2366,6 @@ public:
                         llvm::SmallVector<llvm::Value*, 3> &MeshDimensions,
                         llvm::Value* MeshBaseAddr);
 
-
-  void EmitPositionFn(); //Work in progress
   void EmitForallStmt(const ForallMeshStmt &S);
   void EmitForallLoop(const ForallMeshStmt &S, unsigned r);
   void EmitForallBody(const ForallMeshStmt &S);
