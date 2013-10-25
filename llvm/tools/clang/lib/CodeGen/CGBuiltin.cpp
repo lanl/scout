@@ -211,20 +211,45 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
   default: break;  // Handle intrinsics and libm functions below.
 
   // ===== Scout ==================================
-  case Builtin::BIpositionx: {
+  case Builtin::BIPosition: {
+    Value *Result =
+       llvm::UndefValue::get(llvm::VectorType::get(Int32Ty, 4));
+
+     for (unsigned i = 0; i < 4; ++i) {
+       Result = Builder.CreateInsertElement(Result, Builder.CreateLoad(InductionVar[i]), Builder.getInt32(i));
+     }
+     return  RValue::get(Result);
+  }
+
+  case Builtin::BIPositionX: {
     return RValue::get(Builder.CreateLoad(InductionVar[0]));
   }
 
-  case Builtin::BIpositiony: {
+  case Builtin::BIPositionY: {
     return RValue::get(Builder.CreateLoad(InductionVar[1]));
   }
 
-  case Builtin::BIpositionz: {
+  case Builtin::BIPositionZ: {
     return RValue::get(Builder.CreateLoad(InductionVar[2]));
   }
 
-  case Builtin::BIpositionl: {
-    return RValue::get(Builder.CreateLoad(LoopIndexVar));
+  case Builtin::BIPositionW: {
+    return RValue::get(Builder.CreateLoad(InductionVar[3]));
+  }
+
+  case Builtin::BIWidth: {
+    if (LoopBounds[0]) return RValue::get(Builder.CreateLoad(LoopBounds[0]));
+    else return RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+  }
+
+  case Builtin::BIHeight: {
+    if (LoopBounds[1]) return RValue::get(Builder.CreateLoad(LoopBounds[1]));
+    else return RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+  }
+
+  case Builtin::BIDepth: {
+    if (LoopBounds[2]) return RValue::get(Builder.CreateLoad(LoopBounds[2]));
+    else return RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
   }
   // ==============================================
 
