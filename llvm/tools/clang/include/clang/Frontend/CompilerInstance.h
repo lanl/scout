@@ -24,10 +24,11 @@
 #include <string>
 #include <utility>
 
-// ===== Scout =================================================================
+// +==== Scout ===============================================================+
 #include "clang/Rewrite/Core/Rewriter.h"
 #include "clang/Rewrite/Frontend/Rewriters.h"
-// =============================================================================
+// +==========================================================================+
+
 namespace llvm {
 class raw_fd_ostream;
 class Timer;
@@ -108,11 +109,11 @@ class CompilerInstance : public ModuleLoader {
   /// \brief The set of top-level modules that has already been loaded,
   /// along with the module map
   llvm::DenseMap<const IdentifierInfo *, Module *> KnownModules;
-  
+
   /// \brief The location of the module-import keyword for the last module
-  /// import. 
+  /// import.
   SourceLocation LastModuleImportLoc;
-  
+
   /// \brief The result of the last module import.
   ///
   ModuleLoadResult LastModuleImportResult;
@@ -124,13 +125,13 @@ class CompilerInstance : public ModuleLoader {
   /// \brief One or more modules failed to build.
   bool ModuleBuildFailed;
 
-  // ===== Scout ========================================================================
-  // The following are in used by the rewriter and are set in 
-  // /tools/clang/scc/cc1_main.cpp and used by FrontendAction.cpp 
+  // +==== Scout =============================================================+
+  // The following are in used by the rewriter and are set in
+  // /tools/clang/scc/cc1_main.cpp and used by FrontendAction.cpp
   // which calls ParseAST.
   ASTConsumer* ScoutASTConsumer;  // See tools/clang/scc/ScoutASTConsumer.h
   Rewriter* ScoutRewriter;
-  // ====================================================================================
+  // +========================================================================+
 
   /// \brief Holds information about the output file.
   ///
@@ -202,7 +203,7 @@ public:
     return *Invocation;
   }
 
-  // ===== Scout ========================================================================
+  // +==== Scout =============================================================+
   // Access functions for AST consumer/rewriter
   // these are used by the scout driver: tools/clang/scc/cc1_main.cpp
   // and FrontendAction.cpp that calls ParseAST
@@ -211,7 +212,7 @@ public:
   void setScoutASTConsumer(ASTConsumer* astConsumer) {
     ScoutASTConsumer = astConsumer;
   }
-  
+
   // get the AST Consumer
   ASTConsumer* getScoutASTConsumer() {
     return ScoutASTConsumer;
@@ -221,19 +222,19 @@ public:
   void setScoutRewriter(Rewriter* rewriter) {
     ScoutRewriter = rewriter;
   }
-  
+
   // get the AST rewriter
   Rewriter* getScoutRewriter() {
     return ScoutRewriter;
   }
-  // ===================================================================================
-  
+  // +========================================================================+
+
   /// setInvocation - Replace the current invocation.
   void setInvocation(CompilerInvocation *Value);
 
   /// \brief Indicates whether we should (re)build the global module index.
   bool shouldBuildGlobalModuleIndex() const;
-  
+
   /// \brief Set the flag indicating whether we should (re)build the global
   /// module index.
   void setBuildGlobalModuleIndex(bool Build) {
@@ -331,7 +332,7 @@ public:
   void setDiagnostics(DiagnosticsEngine *Value);
 
   DiagnosticConsumer &getDiagnosticClient() const {
-    assert(Diagnostics && Diagnostics->getClient() && 
+    assert(Diagnostics && Diagnostics->getClient() &&
            "Compiler instance has no diagnostic client!");
     return *Diagnostics->getClient();
   }
@@ -361,7 +362,7 @@ public:
     assert(FileMgr && "Compiler instance has no file manager!");
     return *FileMgr;
   }
-  
+
   void resetAndLeakFileManager() {
     FileMgr.resetWithoutRelease();
   }
@@ -380,7 +381,7 @@ public:
     assert(SourceMgr && "Compiler instance has no source manager!");
     return *SourceMgr;
   }
-  
+
   void resetAndLeakSourceManager() {
     SourceMgr.resetWithoutRelease();
   }
@@ -417,7 +418,7 @@ public:
     assert(Context && "Compiler instance has no AST context!");
     return *Context;
   }
-  
+
   void resetAndLeakASTContext() {
     Context.resetWithoutRelease();
   }
@@ -428,7 +429,7 @@ public:
   /// \brief Replace the current Sema; the compiler instance takes ownership
   /// of S.
   void setSema(Sema *S);
-  
+
   /// }
   /// @name ASTConsumer
   /// {
@@ -452,14 +453,14 @@ public:
   /// @name Semantic analysis
   /// {
   bool hasSema() const { return TheSema.isValid(); }
-  
-  Sema &getSema() const { 
+
+  Sema &getSema() const {
     assert(TheSema && "Compiler instance has no Sema object!");
     return *TheSema;
   }
-  
+
   Sema *takeSema() { return TheSema.take(); }
-  
+
   /// }
   /// @name Module Management
   /// {
@@ -531,7 +532,7 @@ public:
   /// attached to (and, then, owned by) the DiagnosticsEngine inside this AST
   /// unit.
   ///
-  /// \param ShouldOwnClient If Client is non-NULL, specifies whether 
+  /// \param ShouldOwnClient If Client is non-NULL, specifies whether
   /// the diagnostic object should take ownership of the client.
   void createDiagnostics(DiagnosticConsumer *Client = 0,
                          bool ShouldOwnClient = true);
@@ -607,7 +608,7 @@ public:
   /// \brief Create the Sema object to be used for parsing.
   void createSema(TranslationUnitKind TUKind,
                   CodeCompleteConsumer *CompletionConsumer);
-  
+
   /// Create the frontend timer and replace any existing one with it.
   void createFrontendTimer();
 
@@ -691,7 +692,7 @@ public:
                 const FrontendOptions &Opts);
 
   /// }
-  
+
   virtual ModuleLoadResult loadModule(SourceLocation ImportLoc,
                                       ModuleIdPath Path,
                                       Module::NameVisibilityKind Visibility,

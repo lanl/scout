@@ -31,7 +31,10 @@
 #include "clang/AST/TemplateName.h"
 #include "clang/AST/Type.h"
 #include "clang/AST/TypeLoc.h"
+
+// +===== Scout ==============================================================+
 #include "clang/AST/Scout/MeshDecls.h"
+// +==========================================================================+
 
 // The following three macros are used for meta programming.  The code
 // using them is responsible for defining macro OPERATOR().
@@ -406,16 +409,17 @@ private:
   bool TraverseArrayTypeLocHelper(ArrayTypeLoc TL);
   bool TraverseRecordHelper(RecordDecl *D);
   bool TraverseCXXRecordHelper(CXXRecordDecl *D);
-  // ===== Scout ==============================================================
-  bool TraverseUniformMeshHelper(UniformMeshDecl* D);
-  bool TraverseStructuredMeshHelper(StructuredMeshDecl* D);
-  bool TraverseRectilinearMeshHelper(RectilinearMeshDecl* D);
-  bool TraverseUnstructuredMeshHelper(UnstructuredMeshDecl* D);
-  // ==========================================================================
   bool TraverseDeclaratorHelper(DeclaratorDecl *D);
   bool TraverseDeclContextHelper(DeclContext *DC);
   bool TraverseFunctionHelper(FunctionDecl *D);
   bool TraverseVarHelper(VarDecl *D);
+
+  // +==== Scout =============================================================+
+  bool TraverseUniformMeshHelper(UniformMeshDecl* D);
+  bool TraverseStructuredMeshHelper(StructuredMeshDecl* D);
+  bool TraverseRectilinearMeshHelper(RectilinearMeshDecl* D);
+  bool TraverseUnstructuredMeshHelper(UnstructuredMeshDecl* D);
+  // +========================================================================+
 
   struct EnqueueJob {
     Stmt *S;
@@ -595,14 +599,6 @@ bool RecursiveASTVisitor<Derived>::TraverseType(QualType T) {
 
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseTypeLoc(TypeLoc TL) {
-  // ===== Scout ===========================================================
-  // SC_TODO: this debug code can be deleted when we get the MeshTypeloc stuff working correctly
-  if (TL.getTypeLocClass() == TypeLoc::UniformMesh) {
-      return getDerived().TraverseUniformMeshTypeLoc(TL.castAs<UniformMeshTypeLoc>());
-    }
-   // =======================================================================
-
-
   if (TL.isNull())
     return true;
 
@@ -939,17 +935,19 @@ DEF_TRAVERSE_TYPE(AutoType, {
     TRY_TO(TraverseType(T->getDeducedType()));
   })
 
-// ===== Scout ===============================================================
-DEF_TRAVERSE_TYPE(UniformMeshType, { })
-DEF_TRAVERSE_TYPE(StructuredMeshType, { })
-DEF_TRAVERSE_TYPE(RectilinearMeshType, { })
-DEF_TRAVERSE_TYPE(UnstructuredMeshType, { })
-// ===========================================================================
+
 DEF_TRAVERSE_TYPE(RecordType, { })
 DEF_TRAVERSE_TYPE(EnumType, { })
 DEF_TRAVERSE_TYPE(TemplateTypeParmType, { })
 DEF_TRAVERSE_TYPE(SubstTemplateTypeParmType, { })
 DEF_TRAVERSE_TYPE(SubstTemplateTypeParmPackType, { })
+
+// +==== Scout ===============================================================+
+DEF_TRAVERSE_TYPE(UniformMeshType, { })
+DEF_TRAVERSE_TYPE(StructuredMeshType, { })
+DEF_TRAVERSE_TYPE(RectilinearMeshType, { })
+DEF_TRAVERSE_TYPE(UnstructuredMeshType, { })
+// +==========================================================================+
 
 DEF_TRAVERSE_TYPE(TemplateSpecializationType, {
     TRY_TO(TraverseTemplateName(T->getTemplateName()));
@@ -1169,17 +1167,19 @@ DEF_TRAVERSE_TYPELOC(AutoType, {
     TRY_TO(TraverseType(TL.getTypePtr()->getDeducedType()));
   })
 
-// ===== Scout ================================================================
-DEF_TRAVERSE_TYPELOC(UniformMeshType, { })
-DEF_TRAVERSE_TYPELOC(StructuredMeshType, { })
-DEF_TRAVERSE_TYPELOC(RectilinearMeshType, { })
-DEF_TRAVERSE_TYPELOC(UnstructuredMeshType, { })
-// ============================================================================
+
 DEF_TRAVERSE_TYPELOC(RecordType, { })
 DEF_TRAVERSE_TYPELOC(EnumType, { })
 DEF_TRAVERSE_TYPELOC(TemplateTypeParmType, { })
 DEF_TRAVERSE_TYPELOC(SubstTemplateTypeParmType, { })
 DEF_TRAVERSE_TYPELOC(SubstTemplateTypeParmPackType, { })
+
+// +==== Scout ===============================================================+
+DEF_TRAVERSE_TYPELOC(UniformMeshType, { })
+DEF_TRAVERSE_TYPELOC(StructuredMeshType, { })
+DEF_TRAVERSE_TYPELOC(RectilinearMeshType, { })
+DEF_TRAVERSE_TYPELOC(UnstructuredMeshType, { })
+// ============================================================================
 
 // FIXME: use the loc for the template name?
 DEF_TRAVERSE_TYPELOC(TemplateSpecializationType, {
@@ -1612,10 +1612,11 @@ bool RecursiveASTVisitor<Derived>::TraverseRecordHelper(
   return true;
 }
 
-// ===== Scout ==================================================================================
-
+// +===== Scout ==============================================================+
+//
 template<typename Derived>
-bool RecursiveASTVisitor<Derived>::TraverseUniformMeshHelper(UniformMeshDecl *D) {
+bool
+RecursiveASTVisitor<Derived>::TraverseUniformMeshHelper(UniformMeshDecl *D) {
   // We shouldn't traverse D->getTypeForDecl(); it's a result of
   // declaring the type, not something that was written in the source.
   TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
@@ -1627,7 +1628,9 @@ DEF_TRAVERSE_DECL(UniformMeshDecl, {
 })
 
 template<typename Derived>
-bool RecursiveASTVisitor<Derived>::TraverseStructuredMeshHelper(StructuredMeshDecl *D) {
+bool
+RecursiveASTVisitor<Derived>::TraverseStructuredMeshHelper(
+                                                       StructuredMeshDecl *D) {
   // We shouldn't traverse D->getTypeForDecl(); it's a result of
   // declaring the type, not something that was written in the source.
   TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
@@ -1639,7 +1642,9 @@ DEF_TRAVERSE_DECL(StructuredMeshDecl, {
 })
 
 template<typename Derived>
-bool RecursiveASTVisitor<Derived>::TraverseRectilinearMeshHelper(RectilinearMeshDecl *D) {
+bool
+RecursiveASTVisitor<Derived>::TraverseRectilinearMeshHelper(
+                                                      RectilinearMeshDecl *D) {
   // We shouldn't traverse D->getTypeForDecl(); it's a result of
   // declaring the type, not something that was written in the source.
   TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
@@ -1651,7 +1656,9 @@ DEF_TRAVERSE_DECL(RectilinearMeshDecl, {
 })
 
 template<typename Derived>
-bool RecursiveASTVisitor<Derived>::TraverseUnstructuredMeshHelper(UnstructuredMeshDecl *D) {
+bool
+RecursiveASTVisitor<Derived>::TraverseUnstructuredMeshHelper(
+                                                     UnstructuredMeshDecl *D) {
   // We shouldn't traverse D->getTypeForDecl(); it's a result of
   // declaring the type, not something that was written in the source.
   TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
@@ -1661,8 +1668,7 @@ bool RecursiveASTVisitor<Derived>::TraverseUnstructuredMeshHelper(UnstructuredMe
 DEF_TRAVERSE_DECL(UnstructuredMeshDecl, {
   TRY_TO(TraverseUnstructuredMeshHelper(D));
 })
-
-// ==============================================================================================
+// +==========================================================================+
 
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseCXXRecordHelper(
@@ -1985,10 +1991,6 @@ DEF_TRAVERSE_STMT(ContinueStmt, { })
 DEF_TRAVERSE_STMT(DefaultStmt, { })
 DEF_TRAVERSE_STMT(DoStmt, { })
 DEF_TRAVERSE_STMT(ForStmt, { })
-// ===== Scout ==========================================================================
-DEF_TRAVERSE_STMT(ForallMeshStmt, { })
-DEF_TRAVERSE_STMT(RenderallMeshStmt, { })
-// ======================================================================================
 DEF_TRAVERSE_STMT(GotoStmt, { })
 DEF_TRAVERSE_STMT(IfStmt, { })
 DEF_TRAVERSE_STMT(IndirectGotoStmt, { })
@@ -2019,6 +2021,10 @@ DEF_TRAVERSE_STMT(ReturnStmt, { })
 DEF_TRAVERSE_STMT(SwitchStmt, { })
 DEF_TRAVERSE_STMT(WhileStmt, { })
 
+// +==== Scout ===============================================================+
+DEF_TRAVERSE_STMT(ForallMeshStmt, { })
+DEF_TRAVERSE_STMT(RenderallMeshStmt, { })
+// ===========================================================================+
 
 DEF_TRAVERSE_STMT(CXXDependentScopeMemberExpr, {
     TRY_TO(TraverseNestedNameSpecifierLoc(S->getQualifierLoc()));

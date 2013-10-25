@@ -46,15 +46,17 @@ namespace clang {
   class PoisonSEHIdentifiersRAIIObject;
   class VersionTuple;
 
-  // ====== Scout =============================
-  // used by the mesh parser to keep track of what field kind we are parsing
+  // +===== Scout ============================================================+
+  // SC_TODO -- Do we still need this?
+  //
+  // Used by the mesh parser to keep track of what field kind we are parsing.
   enum MeshFieldKind {
     Cell,
     Vertex,
     Edge,
     Face
   };
-  // ==========================================
+  // +========================================================================+
 
 /// Parser - This implements a parser for the C family of languages.  After
 /// parsing units of the grammar, productions are invoked to handle whatever has
@@ -69,9 +71,9 @@ class Parser : public CodeCompletionHandler {
   friend class ParenBraceBracketBalancer;
   friend class BalancedDelimiterTracker;
 
-  // ====== Scout ===========
+  // +===== Scout ============================================================+
   MeshFieldKind MFK;
-  // ========================
+  // +========================================================================+
 
   Preprocessor &PP;
 
@@ -231,10 +233,10 @@ public:
   Parser(Preprocessor &PP, Sema &Actions, bool SkipFunctionBodies);
   ~Parser();
 
-  //====== scout ======================
+  // +===== Scout ============================================================+
   void setMeshFieldKind(MeshFieldKind M) { MFK = M; }
   MeshFieldKind getMeshFieldKind(void) {return MFK; }
-  //===================================
+  // +========================================================================+
 
   const LangOptions &getLangOpts() const { return PP.getLangOpts(); }
   const TargetInfo &getTargetInfo() const { return PP.getTargetInfo(); }
@@ -1489,10 +1491,10 @@ private:
 
   StmtResult ParseStatement(SourceLocation *TrailingElseLoc = 0) {
     StmtVector Stmts;
-    // scout
+    // +===== Scout ==========================================================+
     StmtsStack.push_back(&Stmts);
     StmtResult R = ParseStatementOrDeclaration(Stmts, true, TrailingElseLoc);
-    // scout
+    // +======================================================================+
     StmtsStack.pop_back();
     return R;
   }
@@ -2273,8 +2275,7 @@ private:
   virtual void CodeCompleteNaturalLanguage();
 
 
-  // scout **************************** Scout parsing methods
-
+  // +===== Scout ===========================================================+
   void ParseMeshVarBracketDeclarator(Declarator &D);
 
   void ParseMeshVarParenDeclarator(Declarator &D);
@@ -2315,7 +2316,7 @@ private:
 
   void InsertScoutRuntimeInit(SourceLocation &LBraceLoc);
 
-  // scout - insert CPP code into the lexer stream for parsing.
+  // Insert CPP code into the lexer stream for parsing.
   // Inserts a stream of tokens before or after the current token Tok.
   // This is a good method for handling cases such as inserting the call
   // to initScout(argc, argv) at the beginning of main(), for other cases
@@ -2324,11 +2325,10 @@ private:
                      SourceLocation location,
                      bool beforeLookAhead=true);
 
-  // scout
   // Debugging method for displaying the next N lookahead tokens.
   void DumpLookAheads(unsigned N);
 
-  // scout - convert a token into a string representation
+  // Convert a token into a string representation
   std::string TokToStr(const Token& tok);
 
   std::string ToCPPCode(Stmt* stmt){
@@ -2344,6 +2344,7 @@ private:
   bool isScoutLang() const{
     return getLangOpts().Scout;
   }
+  // +========================================================================+
 };
 
 }  // end namespace clang

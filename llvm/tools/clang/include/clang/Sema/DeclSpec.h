@@ -34,10 +34,9 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
-// ===== Scout ===========================
+// +===== Scout ==============================================================+
 #include "clang/AST/Type.h"
-// =======================================
-
+// +==========================================================================+
 
 namespace clang {
   class ASTContext;
@@ -68,7 +67,7 @@ namespace clang {
 ///
 /// The actual scope is described by getScopeRep().
 class CXXScopeSpec {
-  SourceRange Range;  
+  SourceRange Range;
   NestedNameSpecifierLocBuilder Builder;
 
 public:
@@ -80,8 +79,8 @@ public:
   SourceLocation getEndLoc() const { return Range.getEnd(); }
 
   /// \brief Retrieve the representation of the nested-name-specifier.
-  NestedNameSpecifier *getScopeRep() const { 
-    return Builder.getRepresentation(); 
+  NestedNameSpecifier *getScopeRep() const {
+    return Builder.getRepresentation();
   }
 
   /// \brief Extend the current nested-name-specifier by another
@@ -98,7 +97,7 @@ public:
   void Extend(ASTContext &Context, SourceLocation TemplateKWLoc, TypeLoc TL,
               SourceLocation ColonColonLoc);
 
-  /// \brief Extend the current nested-name-specifier by another 
+  /// \brief Extend the current nested-name-specifier by another
   /// nested-name-specifier component of the form 'identifier::'.
   ///
   /// \param Context The AST context in which this nested-name-specifier
@@ -112,7 +111,7 @@ public:
   void Extend(ASTContext &Context, IdentifierInfo *Identifier,
               SourceLocation IdentifierLoc, SourceLocation ColonColonLoc);
 
-  /// \brief Extend the current nested-name-specifier by another 
+  /// \brief Extend the current nested-name-specifier by another
   /// nested-name-specifier component of the form 'namespace::'.
   ///
   /// \param Context The AST context in which this nested-name-specifier
@@ -126,7 +125,7 @@ public:
   void Extend(ASTContext &Context, NamespaceDecl *Namespace,
               SourceLocation NamespaceLoc, SourceLocation ColonColonLoc);
 
-  /// \brief Extend the current nested-name-specifier by another 
+  /// \brief Extend the current nested-name-specifier by another
   /// nested-name-specifier component of the form 'namespace-alias::'.
   ///
   /// \param Context The AST context in which this nested-name-specifier
@@ -134,7 +133,7 @@ public:
   ///
   /// \param Alias The namespace alias.
   ///
-  /// \param AliasLoc The location of the namespace alias 
+  /// \param AliasLoc The location of the namespace alias
   /// name.
   ///
   /// \param ColonColonLoc The location of the trailing '::'.
@@ -144,20 +143,20 @@ public:
   /// \brief Turn this (empty) nested-name-specifier into the global
   /// nested-name-specifier '::'.
   void MakeGlobal(ASTContext &Context, SourceLocation ColonColonLoc);
-  
+
   /// \brief Make a new nested-name-specifier from incomplete source-location
   /// information.
   ///
   /// FIXME: This routine should be used very, very rarely, in cases where we
   /// need to synthesize a nested-name-specifier. Most code should instead use
   /// \c Adopt() with a proper \c NestedNameSpecifierLoc.
-  void MakeTrivial(ASTContext &Context, NestedNameSpecifier *Qualifier, 
+  void MakeTrivial(ASTContext &Context, NestedNameSpecifier *Qualifier,
                    SourceRange R);
-  
-  /// \brief Adopt an existing nested-name-specifier (with source-range 
+
+  /// \brief Adopt an existing nested-name-specifier (with source-range
   /// information).
   void Adopt(NestedNameSpecifierLoc Other);
-  
+
   /// \brief Retrieve a nested-name-specifier with location information, copied
   /// into the given AST context.
   ///
@@ -187,14 +186,14 @@ public:
   bool isValid() const { return isNotEmpty() && getScopeRep() != 0; }
 
   /// \brief Indicate that this nested-name-specifier is invalid.
-  void SetInvalid(SourceRange R) { 
+  void SetInvalid(SourceRange R) {
     assert(R.isValid() && "Must have a valid source range");
     if (Range.getBegin().isInvalid())
       Range.setBegin(R.getBegin());
     Range.setEnd(R.getEnd());
     Builder.Clear();
   }
-  
+
   /// Deprecated.  Some call sites intend isNotEmpty() while others intend
   /// isValid().
   bool isSet() const { return getScopeRep() != 0; }
@@ -206,8 +205,8 @@ public:
 
   /// \brief Retrieve the data associated with the source-location information.
   char *location_data() const { return Builder.getBuffer().first; }
-  
-  /// \brief Retrieve the size of the data associated with source-location 
+
+  /// \brief Retrieve the size of the data associated with source-location
   /// information.
   unsigned location_size() const { return Builder.getBuffer().second; }
 };
@@ -245,7 +244,7 @@ public:
   static const TSW TSW_short = clang::TSW_short;
   static const TSW TSW_long = clang::TSW_long;
   static const TSW TSW_longlong = clang::TSW_longlong;
-  
+
   enum TSC {
     TSC_unspecified,
     TSC_imaginary,
@@ -273,11 +272,12 @@ public:
   static const TST TST_double = clang::TST_double;
   static const TST TST_bool = clang::TST_bool;
 
-  // scout - Scout types
+  // +===== Scout ============================================================+
   static const TST TST_uniform_mesh = clang::TST_uniform_mesh;
   static const TST TST_structured_mesh = clang::TST_structured_mesh;
-  static const TST TST_rectilinear_mesh = clang::TST_rectilinear_mesh;  
+  static const TST TST_rectilinear_mesh = clang::TST_rectilinear_mesh;
   static const TST TST_unstructured_mesh = clang::TST_unstructured_mesh;
+  // +========================================================================+
 
   static const TST TST_decimal32 = clang::TST_decimal32;
   static const TST TST_decimal64 = clang::TST_decimal64;
@@ -413,9 +413,10 @@ public:
   static bool isDeclRep(TST T) {
     return (T == TST_enum || T == TST_struct ||
             T == TST_union || T == TST_class ||
-    // scout - added mesh TST
+            // +===== Scout ==================================================+
             T == TST_uniform_mesh     || T == TST_structured_mesh ||
             T == TST_rectilinear_mesh || T == TST_unstructured_mesh);
+            // +==============================================================+
   }
 
   DeclSpec(AttributeFactory &attrFactory)
@@ -662,7 +663,7 @@ public:
 
   bool isModulePrivateSpecified() const { return ModulePrivateLoc.isValid(); }
   SourceLocation getModulePrivateSpecLoc() const { return ModulePrivateLoc; }
-  
+
   bool isConstexprSpecified() const { return Constexpr_specified; }
   SourceLocation getConstexprSpecLoc() const { return ConstexprLoc; }
 
@@ -820,7 +821,7 @@ private:
   IdentifierInfo *SetterName;    // setter name of NULL if no setter
 };
 
-/// \brief Represents a C++ unqualified-id that has been parsed. 
+/// \brief Represents a C++ unqualified-id that has been parsed.
 class UnqualifiedId {
 private:
   UnqualifiedId(const UnqualifiedId &Other) LLVM_DELETED_FUNCTION;
@@ -854,8 +855,8 @@ public:
     OverloadedOperatorKind Operator;
 
     /// \brief The source locations of the individual tokens that name
-    /// the operator, e.g., the "new", "[", and "]" tokens in 
-    /// operator new []. 
+    /// the operator, e.g., the "new", "[", and "]" tokens in
+    /// operator new [].
     ///
     /// Different operators have different numbers of tokens in their name,
     /// up to three. Any remaining source locations in this array will be
@@ -869,40 +870,40 @@ public:
     /// \brief When Kind == IK_Identifier, the parsed identifier, or when Kind
     /// == IK_UserLiteralId, the identifier suffix.
     IdentifierInfo *Identifier;
-    
+
     /// \brief When Kind == IK_OperatorFunctionId, the overloaded operator
     /// that we parsed.
     struct OFI OperatorFunctionId;
-    
-    /// \brief When Kind == IK_ConversionFunctionId, the type that the 
+
+    /// \brief When Kind == IK_ConversionFunctionId, the type that the
     /// conversion function names.
     UnionParsedType ConversionFunctionId;
 
     /// \brief When Kind == IK_ConstructorName, the class-name of the type
     /// whose constructor is being referenced.
     UnionParsedType ConstructorName;
-    
+
     /// \brief When Kind == IK_DestructorName, the type referred to by the
     /// class-name.
     UnionParsedType DestructorName;
-    
+
     /// \brief When Kind == IK_TemplateId or IK_ConstructorTemplateId,
     /// the template-id annotation that contains the template name and
     /// template arguments.
     TemplateIdAnnotation *TemplateId;
   };
-  
+
   /// \brief The location of the first token that describes this unqualified-id,
   /// which will be the location of the identifier, "operator" keyword,
   /// tilde (for a destructor), or the template name of a template-id.
   SourceLocation StartLocation;
-  
+
   /// \brief The location of the last token that describes this unqualified-id.
   SourceLocation EndLocation;
-  
+
   UnqualifiedId() : Kind(IK_Identifier), Identifier(0) { }
 
-  /// \brief Clear out this unqualified-id, setting it to default (invalid) 
+  /// \brief Clear out this unqualified-id, setting it to default (invalid)
   /// state.
   void clear() {
     Kind = IK_Identifier;
@@ -910,17 +911,17 @@ public:
     StartLocation = SourceLocation();
     EndLocation = SourceLocation();
   }
-  
+
   /// \brief Determine whether this unqualified-id refers to a valid name.
   bool isValid() const { return StartLocation.isValid(); }
 
   /// \brief Determine whether this unqualified-id refers to an invalid name.
   bool isInvalid() const { return !isValid(); }
-  
+
   /// \brief Determine what kind of name we have.
   IdKind getKind() const { return Kind; }
-  void setKind(IdKind kind) { Kind = kind; } 
-  
+  void setKind(IdKind kind) { Kind = kind; }
+
   /// \brief Specify that this unqualified-id was parsed as an identifier.
   ///
   /// \param Id the parsed identifier.
@@ -930,8 +931,8 @@ public:
     Identifier = const_cast<IdentifierInfo *>(Id);
     StartLocation = EndLocation = IdLoc;
   }
-  
-  /// \brief Specify that this unqualified-id was parsed as an 
+
+  /// \brief Specify that this unqualified-id was parsed as an
   /// operator-function-id.
   ///
   /// \param OperatorLoc the location of the 'operator' keyword.
@@ -940,11 +941,11 @@ public:
   ///
   /// \param SymbolLocations the locations of the individual operator symbols
   /// in the operator.
-  void setOperatorFunctionId(SourceLocation OperatorLoc, 
+  void setOperatorFunctionId(SourceLocation OperatorLoc,
                              OverloadedOperatorKind Op,
                              SourceLocation SymbolLocations[3]);
-  
-  /// \brief Specify that this unqualified-id was parsed as a 
+
+  /// \brief Specify that this unqualified-id was parsed as a
   /// conversion-function-id.
   ///
   /// \param OperatorLoc the location of the 'operator' keyword.
@@ -952,7 +953,7 @@ public:
   /// \param Ty the type to which this conversion function is converting.
   ///
   /// \param EndLoc the location of the last token that makes up the type name.
-  void setConversionFunctionId(SourceLocation OperatorLoc, 
+  void setConversionFunctionId(SourceLocation OperatorLoc,
                                ParsedType Ty,
                                SourceLocation EndLoc) {
     Kind = IK_ConversionFunctionId;
@@ -976,7 +977,7 @@ public:
     StartLocation = OpLoc;
     EndLocation = IdLoc;
   }
-  
+
   /// \brief Specify that this unqualified-id was parsed as a constructor name.
   ///
   /// \param ClassType the class type referred to by the constructor name.
@@ -984,7 +985,7 @@ public:
   /// \param ClassNameLoc the location of the class name.
   ///
   /// \param EndLoc the location of the last token that makes up the type name.
-  void setConstructorName(ParsedType ClassType, 
+  void setConstructorName(ParsedType ClassType,
                           SourceLocation ClassNameLoc,
                           SourceLocation EndLoc) {
     Kind = IK_ConstructorName;
@@ -1015,7 +1016,7 @@ public:
     EndLocation = EndLoc;
     DestructorName = ClassType;
   }
-  
+
   /// \brief Specify that this unqualified-id was parsed as a template-id.
   ///
   /// \param TemplateId the template-id annotation that describes the parsed
@@ -1024,8 +1025,8 @@ public:
   void setTemplateId(TemplateIdAnnotation *TemplateId);
 
   /// \brief Return the source range that covers this unqualified-id.
-  SourceRange getSourceRange() const LLVM_READONLY { 
-    return SourceRange(StartLocation, EndLocation); 
+  SourceRange getSourceRange() const LLVM_READONLY {
+    return SourceRange(StartLocation, EndLocation);
   }
   SourceLocation getLocStart() const LLVM_READONLY { return StartLocation; }
   SourceLocation getLocEnd() const LLVM_READONLY { return EndLocation; }
@@ -1040,10 +1041,10 @@ typedef SmallVector<Token, 4> CachedTokens;
 /// This is intended to be a small value object.
 struct DeclaratorChunk {
   enum {
-    Pointer, Reference, Array, Function, BlockPointer, MemberPointer, Paren
-    // ===== Scout =========================
-    , UniformMesh, UnstructuredMesh
-    // =====================================
+    Pointer, Reference, Array, Function, BlockPointer, MemberPointer, Paren,
+    // +===== Scout ==========================================================+
+    UniformMesh, UnstructuredMesh, RectilinearMesh, StructuredMesh
+    // +======================================================================+
   } Kind;
 
   /// Loc - The place where this type was defined.
@@ -1102,7 +1103,7 @@ struct DeclaratorChunk {
     void destroy() {}
   };
 
-  // ===== Scout ===============================================================
+  // +===== Scout ============================================================+
 
   struct UniformMeshTypeInfo : TypeInfoCommon {
      // parsed constant expressions for each dim
@@ -1129,9 +1130,7 @@ struct DeclaratorChunk {
 
     void destroy() {}
   };
-
-
-  // ===========================================================================
+  // +========================================================================+
 
   /// ParamInfo - An array of paraminfo objects is allocated whenever a function
   /// declarator is parsed.  There are two interesting styles of arguments here:
@@ -1316,7 +1315,7 @@ struct DeclaratorChunk {
       return SourceLocation::getFromRawEncoding(MutableLoc);
     }
 
-    /// \brief Determine whether this function declaration contains a 
+    /// \brief Determine whether this function declaration contains a
     /// ref-qualifier.
     bool hasRefQualifier() const { return getRefQualifierLoc().isValid(); }
 
@@ -1374,10 +1373,12 @@ struct DeclaratorChunk {
     FunctionTypeInfo      Fun;
     BlockPointerTypeInfo  Cls;
     MemberPointerTypeInfo Mem;
-    // ===== Scout =====================
-    UniformMeshTypeInfo   Unimsh;
+    // +===== Scout ==========================================================+
+    UniformMeshTypeInfo        Unimsh;
     UnstructuredMeshTypeInfo   Unsmsh;
-    // =================================
+    RectilinearMeshTypeInfo    Rlmsh;
+    StructuredMeshTypeInfo     Smsh;
+    // +======================================================================+
   };
 
   void destroy() {
@@ -1389,10 +1390,12 @@ struct DeclaratorChunk {
     case DeclaratorChunk::Array:         return Arr.destroy();
     case DeclaratorChunk::MemberPointer: return Mem.destroy();
     case DeclaratorChunk::Paren:         return;
-    // ===== Scout ==============================================
-    case DeclaratorChunk::UniformMesh:   return Unimsh.destroy();
+    // +==== Scout ===========================================================+
+    case DeclaratorChunk::UniformMesh:        return Unimsh.destroy();
     case DeclaratorChunk::UnstructuredMesh:   return Unsmsh.destroy();
-    // ==========================================================
+    case DeclaratorChunk::RectilinearMesh:    return Rlmsh.destroy();
+    case DeclaratorChunk::StructuredMesh:     return Smsh.destroy();
+    // +======================================================================+
 
     }
   }
@@ -1515,10 +1518,11 @@ struct DeclaratorChunk {
     return Kind == Paren;
   }
 
-  // ===== Scout ===================================================================
-  /// \brief Return a DeclaratorChunk for a mesh.
+  // +==== Scout =============================================================+
+  /// \brief Return a DeclaratorChunk for a uniform mesh.
   static DeclaratorChunk getUniformMesh(const MeshType::MeshDimensions &dims,
-                                    SourceLocation LBLoc, SourceLocation RBLoc) {
+                                        SourceLocation LBLoc,
+                                        SourceLocation RBLoc) {
       DeclaratorChunk I;
       I.Kind          = UniformMesh;
       I.Loc           = LBLoc;
@@ -1542,7 +1546,30 @@ struct DeclaratorChunk {
     return I;
   }
 
-  // ===============================================================================
+  /// \brief Return DeclaratorChunk for a rectilinear mesh.
+  static DeclaratorChunk getRectilinearMesh(Expr *strLit,
+                                            SourceLocation LBLoc,
+                                            SourceLocation RBLoc) {
+    DeclaratorChunk I;
+    I.Kind          = RectilinearMesh;
+    I.Loc           = LBLoc;
+    I.EndLoc        = RBLoc;
+    I.Rlmsh.StrLitFileName = strLit;
+    return I;
+  }
+
+  /// \brief Return DeclaratorChunk for a structured mesh.
+  static DeclaratorChunk getStructuredMesh(Expr *strLit,
+                                           SourceLocation LBLoc,
+                                           SourceLocation RBLoc) {
+    DeclaratorChunk I;
+    I.Kind          = StructuredMesh;
+    I.Loc           = LBLoc;
+    I.EndLoc        = RBLoc;
+    I.Smsh.StrLitFileName = strLit;
+    return I;
+  }
+  // +========================================================================+
 };
 
 /// \brief Described the kind of function definition (if any) provided for
@@ -1613,7 +1640,7 @@ private:
   /// GroupingParens - Set by Parser::ParseParenDeclarator().
   bool GroupingParens : 1;
 
-  /// FunctionDefinition - Is this Declarator for a function or member 
+  /// FunctionDefinition - Is this Declarator for a function or member
   /// definition and, if so, what kind?
   ///
   /// Actually a FunctionDefinitionKind.
@@ -1644,14 +1671,14 @@ private:
   /// \brief If provided, the source location of the ellipsis used to describe
   /// this declarator as a parameter pack.
   SourceLocation EllipsisLoc;
-  
+
   friend struct DeclaratorChunk;
 
 public:
   Declarator(const DeclSpec &ds, TheContext C)
     : DS(ds), Range(ds.getSourceRange()), Context(C),
       InvalidType(DS.getTypeSpecType() == DeclSpec::TST_error),
-      GroupingParens(false), FunctionDefinition(FDK_Declaration), 
+      GroupingParens(false), FunctionDefinition(FDK_Declaration),
       Redeclaration(false),
       Attrs(ds.getAttributePool().getFactory()), AsmLabel(0),
       InlineParamsUsed(false), Extension(false) {
@@ -1683,7 +1710,7 @@ public:
 
   /// \brief Retrieve the name specified by this declarator.
   UnqualifiedId &getName() { return Name; }
-  
+
   TheContext getContext() const { return Context; }
 
   bool isPrototypeContext() const {
@@ -1725,7 +1752,7 @@ public:
     SS.clear();
     Name.clear();
     Range = DS.getSourceRange();
-    
+
     for (unsigned i = 0, e = DeclTypeInfo.size(); i != e; ++i)
       DeclTypeInfo[i].destroy();
     DeclTypeInfo.clear();
@@ -1859,14 +1886,14 @@ public:
   /// hasName - Whether this declarator has a name, which might be an
   /// identifier (accessible via getIdentifier()) or some kind of
   /// special C++ name (constructor, destructor, etc.).
-  bool hasName() const { 
+  bool hasName() const {
     return Name.getKind() != UnqualifiedId::IK_Identifier || Name.Identifier;
   }
 
-  IdentifierInfo *getIdentifier() const { 
+  IdentifierInfo *getIdentifier() const {
     if (Name.getKind() == UnqualifiedId::IK_Identifier)
       return Name.Identifier;
-    
+
     return 0;
   }
   SourceLocation getIdentifierLoc() const { return Name.StartLocation; }
@@ -1875,7 +1902,7 @@ public:
   void SetIdentifier(IdentifierInfo *Id, SourceLocation IdLoc) {
     Name.setIdentifier(Id, IdLoc);
   }
-  
+
   /// AddTypeInfo - Add a chunk to this declarator. Also extend the range to
   /// EndLoc, which should be the last token of the chunk.
   void AddTypeInfo(const DeclaratorChunk &TI,
@@ -1962,10 +1989,12 @@ public:
       case DeclaratorChunk::Array:
       case DeclaratorChunk::BlockPointer:
       case DeclaratorChunk::MemberPointer:
-      // ===== Scout ======================
+      // +===== Scout ========================================================+
       case DeclaratorChunk::UniformMesh:
       case DeclaratorChunk::UnstructuredMesh:
-      // ==================================
+      case DeclaratorChunk::StructuredMesh:
+      case DeclaratorChunk::RectilinearMesh:
+      // +====================================================================+
         return false;
       }
       llvm_unreachable("Invalid type chunk");
@@ -1996,9 +2025,9 @@ public:
     return const_cast<Declarator*>(this)->getFunctionTypeInfo();
   }
 
-  /// \brief Determine whether the declaration that will be produced from 
+  /// \brief Determine whether the declaration that will be produced from
   /// this declaration will be a function.
-  /// 
+  ///
   /// A declaration can declare a function even if the declarator itself
   /// isn't a function declarator, if the type specifier refers to a function
   /// type. This routine checks for both cases.
@@ -2038,7 +2067,7 @@ public:
     }
     llvm_unreachable("unknown context kind!");
   }
-  
+
   /// \brief Return true if a function declarator at this position would be a
   /// function declaration.
   bool isFunctionDeclaratorAFunctionDeclaration() const {
@@ -2115,16 +2144,16 @@ public:
   SourceLocation getEllipsisLoc() const { return EllipsisLoc; }
   void setEllipsisLoc(SourceLocation EL) { EllipsisLoc = EL; }
 
-  void setFunctionDefinitionKind(FunctionDefinitionKind Val) { 
-    FunctionDefinition = Val; 
+  void setFunctionDefinitionKind(FunctionDefinitionKind Val) {
+    FunctionDefinition = Val;
   }
-  
+
   bool isFunctionDefinition() const {
     return getFunctionDefinitionKind() != FDK_Declaration;
   }
-  
-  FunctionDefinitionKind getFunctionDefinitionKind() const { 
-    return (FunctionDefinitionKind)FunctionDefinition; 
+
+  FunctionDefinitionKind getFunctionDefinitionKind() const {
+    return (FunctionDefinitionKind)FunctionDefinition;
   }
 
   void setRedeclaration(bool Val) { Redeclaration = Val; }
@@ -2165,7 +2194,7 @@ public:
   static const char *getSpecifierName(Specifier VS);
 
   SourceLocation getLastLocation() const { return LastLocation; }
-  
+
 private:
   unsigned Specifiers;
 

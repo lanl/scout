@@ -349,8 +349,11 @@ def err_unknown_typename : Error<
   "unknown type name %0">;
 def err_use_of_tag_name_without_tag : Error<
   "must use '%1' tag to refer to type %0%select{| in this scope}2">;
+
+// +===== Scout ===========================================================+
 def err_use_of_mesh_name_without_mesh : Error<
   "must use '%1' mesh kind to refer to mesh %0%select{| in this scope}2">;
+// +=======================================================================+
 def err_templated_using_directive : Error<
   "cannot template a using directive">;
 def err_templated_using_declaration : Error<
@@ -829,7 +832,7 @@ def err_omp_unknown_directive : Error <
 def err_omp_unexpected_directive : Error <
   "unexpected OpenMP directive '#pragma omp %0'">;
 
-// === Scout ==================================================================
+// +===== Scout =============================================================+
 //
 def warn_empty_mesh:Warning<
     "mesh definition with no fields">;
@@ -941,7 +944,7 @@ def err_expected_mesh_param_star_amp:Error<
     "mesh parameters must be declared as references or pointers">;
 def err_expected_mesh_var_decl:Error<
     "expected mesh variable declaration">;
-// ============================================================================
+// +=========================================================================+
 
 
 } // end of Parse Issue category.

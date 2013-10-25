@@ -18,14 +18,12 @@ def SwitchStmt : Stmt;
 def WhileStmt : Stmt;
 def DoStmt : Stmt;
 def ForStmt : Stmt;
-// ===== Scout =========================================
-
+// +==== Scout ==============================================================+
 def ForallStmt : Stmt<1>;
 def ForallMeshStmt : DStmt<ForallStmt>;
-
 def RenderallStmt : Stmt<1>;
 def RenderallMeshStmt : DStmt<RenderallStmt>;
-// =====================================================
+// +=========================================================================+
 def GotoStmt : Stmt;
 def IndirectGotoStmt : Stmt;
 def ContinueStmt : Stmt;

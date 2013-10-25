@@ -104,7 +104,8 @@ namespace clang {
   class ExtQuals;
   class ExtQualsTypeCommonBase;
   struct PrintingPolicy;
-  // ===== Scout =============================================================
+
+  // +==== Scout ============================================================+
   class MeshDecl;
   class UniformMeshDecl;
   class StructuredMeshDecl;
@@ -112,7 +113,8 @@ namespace clang {
   class UnstructuredMeshDecl;
   class MeshFieldDecl;
   class MemberExpr;
-  // =========================================================================
+  // +=======================================================================+
+
   template <typename> class CanQual;
   typedef CanQual<Type> CanQualType;
 
@@ -125,7 +127,7 @@ namespace clang {
 /// * C99: const, volatile, and restrict
 /// * Embedded C (TR18037): address spaces
 /// * Objective C: the GC attributes (none, weak, or strong)
-/// * Scout-centric mesh field identification.
+/// * +===== Scout-centric mesh field identification.
 class Qualifiers {
 public:
   enum TQ { // NOTE: These flags must be kept in sync with DeclSpec::TQ.
@@ -1176,10 +1178,10 @@ public:
 #define LAST_TYPE(Class) TypeLast = Class,
 #define ABSTRACT_TYPE(Class, Base)
 #include "clang/AST/TypeNodes.def"
-    TagFirst = Record, TagLast = Enum
-    // ===== Scout ========================================================
-    , MeshFirst = UniformMesh, MeshLast = UnstructuredMesh
-    // ====================================================================
+    TagFirst = Record, TagLast = Enum,
+    // +==== Scout ===========================================================+
+    MeshFirst = UniformMesh, MeshLast = UnstructuredMesh
+    // =======================================================================+
   };
 
 private:
@@ -3305,10 +3307,9 @@ public:
   static bool classof(const Type *T) { return T->getTypeClass() == Record; }
 };
 
-//+++===== Scout =========================================================+++//
-//+++ Definitions of the various mesh types, including a supporting base
-//+++ class.
-
+// +===== Scout ==============================================================+
+// Definitions of the various mesh types, including a supporting base class.
+//
 // MeshType - To represent our internal mesh types we use a common base class
 // for some of the basic functionality (thus allowing us to write some code
 // that can operate on all mesh types).  In practice we will never (or should
@@ -3497,8 +3498,9 @@ class StructuredMeshType : public MeshType {
 
 public:
   StructuredMeshType(const StructuredMeshDecl* Decl)
-      : MeshType(StructuredMesh, reinterpret_cast<const MeshDecl*>(Decl), QualType()){
-
+      : MeshType(StructuredMesh,
+                 reinterpret_cast<const MeshDecl*>(Decl),
+                 QualType()) {
   }
 
   StructuredMeshDecl* getDecl() const {
@@ -3516,8 +3518,6 @@ public:
   QualType desugar() const { return QualType(this, 0); }
 };
 
-
-
 enum MeshFormat {
   FACESET,
   COUNT,
@@ -3530,7 +3530,9 @@ class UnstructuredMeshType : public MeshType {
 public:
 
   UnstructuredMeshType(const UnstructuredMeshDecl* Decl)
-      : MeshType(UnstructuredMesh, reinterpret_cast<const MeshDecl*>(Decl), QualType()) {
+      : MeshType(UnstructuredMesh,
+                 reinterpret_cast<const MeshDecl*>(Decl),
+                 QualType()) {
 
   }
 
@@ -3558,9 +3560,7 @@ public:
   MeshFormat meshFormat;
   Expr* strLitFileName;
 };
-
-
-//+++====================================================================+++//
+// +==========================================================================+
 
 /// EnumType - This is a helper class that allows the use of isa/cast/dyncast
 /// to detect TagType objects of enums.

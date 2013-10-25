@@ -16,7 +16,7 @@ let Component = "Common" in {
 // Basic.
 
 def fatal_too_many_errors
-  : Error<"too many errors emitted, stopping now">, DefaultFatal; 
+  : Error<"too many errors emitted, stopping now">, DefaultFatal;
 
 def note_declared_at : Note<"declared here">;
 def note_previous_definition : Note<"previous definition is here">;
@@ -78,17 +78,19 @@ def err_deleted_non_function : Error<
   "only functions can have deleted definitions">;
 def err_module_not_found : Error<"module '%0' not found">, DefaultFatal;
 def err_module_not_built : Error<"could not build module '%0'">, DefaultFatal;
-def err_module_cycle : Error<"cyclic dependency in module '%0': %1">, 
+def err_module_cycle : Error<"cyclic dependency in module '%0': %1">,
   DefaultFatal;
-def note_pragma_entered_here : Note<"#pragma entered here">;  
+def note_pragma_entered_here : Note<"#pragma entered here">;
 def note_decl_hiding_tag_type : Note<
-  "%1 %0 is hidden by a non-type declaration of %0 here">;
-def note_decl_hiding_mesh_type : Note<
   "%1 %0 is hidden by a non-type declaration of %0 here">;
 def err_attribute_not_type_attr : Error<
   "%0 attribute cannot be applied to types">;
 def err_enum_template : Error<"enumeration cannot be a template">;
 
+// +===== Scout =============================================================+
+def note_decl_hiding_mesh_type : Note<
+  "%1 %0 is hidden by a non-type declaration of %0 here">;
+// +=========================================================================+
 }
 
 // Sema && Lex
@@ -129,7 +131,7 @@ def err_unable_to_rename_temp : Error<
   "unable to rename temporary '%0' to output file '%1': '%2'">;
 def err_unable_to_make_temp : Error<
   "unable to make temporary file: %0">;
-  
+
 // Modules
 def err_module_file_conflict : Error<"module '%0' found in both '%1' and '%2'">;
 
