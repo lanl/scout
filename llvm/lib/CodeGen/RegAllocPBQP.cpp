@@ -40,6 +40,7 @@
 #include "llvm/CodeGen/LiveIntervalAnalysis.h"
 #include "llvm/CodeGen/LiveRangeEdit.h"
 #include "llvm/CodeGen/LiveStackAnalysis.h"
+#include "llvm/CodeGen/MachineBlockFrequencyInfo.h"
 #include "llvm/CodeGen/MachineDominators.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineLoopInfo.h"
@@ -96,7 +97,6 @@ public:
     initializeLiveIntervalsPass(*PassRegistry::getPassRegistry());
     initializeCalculateSpillWeightsPass(*PassRegistry::getPassRegistry());
     initializeLiveStacksPass(*PassRegistry::getPassRegistry());
-    initializeMachineLoopInfoPass(*PassRegistry::getPassRegistry());
     initializeVirtRegMapPass(*PassRegistry::getPassRegistry());
   }
 
@@ -130,8 +130,8 @@ private:
   const TargetMachine *tm;
   const TargetRegisterInfo *tri;
   const TargetInstrInfo *tii;
-  const MachineLoopInfo *loopInfo;
   MachineRegisterInfo *mri;
+  const MachineBlockFrequencyInfo *mbfi;
 
   OwningPtr<Spiller> spiller;
   LiveIntervals *lis;
@@ -188,7 +188,7 @@ unsigned PBQPRAProblem::getPRegForOption(unsigned vreg, unsigned option) const {
 }
 
 PBQPRAProblem *PBQPBuilder::build(MachineFunction *mf, const LiveIntervals *lis,
-                                  const MachineLoopInfo *loopInfo,
+                                  const MachineBlockFrequencyInfo *mbfi,
                                   const RegSet &vregs) {
 
   LiveIntervals *LIS = const_cast<LiveIntervals*>(lis);
@@ -313,10 +313,10 @@ void PBQPBuilder::addInterferenceCosts(
 
 PBQPRAProblem *PBQPBuilderWithCoalescing::build(MachineFunction *mf,
                                                 const LiveIntervals *lis,
-                                                const MachineLoopInfo *loopInfo,
+                                                const MachineBlockFrequencyInfo *mbfi,
                                                 const RegSet &vregs) {
 
-  OwningPtr<PBQPRAProblem> p(PBQPBuilder::build(mf, lis, loopInfo, vregs));
+  OwningPtr<PBQPRAProblem> p(PBQPBuilder::build(mf, lis, mbfi, vregs));
   PBQP::Graph &g = p->getGraph();
 
   const TargetMachine &tm = mf->getTarget();
@@ -350,7 +350,7 @@ PBQPRAProblem *PBQPBuilderWithCoalescing::build(MachineFunction *mf,
 
       PBQP::PBQPNum cBenefit =
         copyFactor * LiveIntervals::getSpillWeight(false, true,
-                                                   loopInfo->getLoopDepth(mbb));
+                                                   mbfi->getBlockFreq(mbb));
 
       if (cp.isPhys()) {
         if (!mf->getRegInfo().isAllocatable(dst)) {
@@ -435,10 +435,12 @@ void RegAllocPBQP::getAnalysisUsage(AnalysisUsage &au) const {
   au.addRequired<CalculateSpillWeights>();
   au.addRequired<LiveStacks>();
   au.addPreserved<LiveStacks>();
-  au.addRequired<MachineDominatorTree>();
-  au.addPreserved<MachineDominatorTree>();
+  au.addRequired<MachineBlockFrequencyInfo>();
+  au.addPreserved<MachineBlockFrequencyInfo>();
   au.addRequired<MachineLoopInfo>();
   au.addPreserved<MachineLoopInfo>();
+  au.addRequired<MachineDominatorTree>();
+  au.addPreserved<MachineDominatorTree>();
   au.addRequired<VirtRegMap>();
   au.addPreserved<VirtRegMap>();
   MachineFunctionPass::getAnalysisUsage(au);
@@ -489,7 +491,7 @@ bool RegAllocPBQP::mapPBQPToRegAlloc(const PBQPRAProblem &problem,
       vrm->assignVirt2Phys(vreg, preg);
     } else if (problem.isSpillOption(vreg, alloc)) {
       vregsToAlloc.erase(vreg);
-      SmallVector<LiveInterval*, 8> newSpills;
+      SmallVector<unsigned, 8> newSpills;
       LiveRangeEdit LRE(&lis->getInterval(vreg), newSpills, *mf, *lis, vrm);
       spiller->spill(LRE);
 
@@ -500,9 +502,10 @@ bool RegAllocPBQP::mapPBQPToRegAlloc(const PBQPRAProblem &problem,
       // allocate.
       for (LiveRangeEdit::iterator itr = LRE.begin(), end = LRE.end();
            itr != end; ++itr) {
-        assert(!(*itr)->empty() && "Empty spill range.");
-        DEBUG(dbgs() << PrintReg((*itr)->reg, tri) << " ");
-        vregsToAlloc.insert((*itr)->reg);
+        LiveInterval &li = lis->getInterval(*itr);
+        assert(!li.empty() && "Empty spill range.");
+        DEBUG(dbgs() << PrintReg(li.reg, tri) << " ");
+        vregsToAlloc.insert(li.reg);
       }
 
       DEBUG(dbgs() << ")\n");
@@ -546,7 +549,7 @@ bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
 
   lis = &getAnalysis<LiveIntervals>();
   lss = &getAnalysis<LiveStacks>();
-  loopInfo = &getAnalysis<MachineLoopInfo>();
+  mbfi = &getAnalysis<MachineBlockFrequencyInfo>();
 
   vrm = &getAnalysis<VirtRegMap>();
   spiller.reset(createInlineSpiller(*this, MF, *vrm));
@@ -584,7 +587,7 @@ bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
       DEBUG(dbgs() << "  PBQP Regalloc round " << round << ":\n");
 
       OwningPtr<PBQPRAProblem> problem(
-        builder->build(mf, lis, loopInfo, vregsToAlloc));
+        builder->build(mf, lis, mbfi, vregsToAlloc));
 
 #ifndef NDEBUG
       if (pbqpDumpGraphs) {

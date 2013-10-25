@@ -188,16 +188,17 @@ private:
   void EmitFunctionEntryLabel();
   void EmitFunctionBodyStart();
   void EmitFunctionBodyEnd();
+  void emitImplicitDef(const MachineInstr *MI) const;
 
   void EmitInstruction(const MachineInstr *);
+  void lowerToMCInst(const MachineInstr *MI, MCInst &OutMI);
+  bool lowerOperand(const MachineOperand &MO, MCOperand &MCOp);
+  MCOperand GetSymbolRef(const MachineOperand &MO, const MCSymbol *Symbol);
+  unsigned encodeVirtualRegister(unsigned Reg);
 
   void EmitAlignment(unsigned NumBits, const GlobalValue *GV = 0) const {}
 
   void printGlobalVariable(const GlobalVariable *GVar);
-  void printOperand(const MachineInstr *MI, int opNum, raw_ostream &O,
-                    const char *Modifier = 0);
-  void printLdStCode(const MachineInstr *MI, int opNum, raw_ostream &O,
-                     const char *Modifier = 0);
   void printVecModifiedImmediate(const MachineOperand &MO, const char *Modifier,
                                  raw_ostream &O);
   void printMemOperand(const MachineInstr *MI, int opNum, raw_ostream &O,
@@ -213,22 +214,23 @@ private:
   void emitGlobals(const Module &M);
   void emitHeader(Module &M, raw_ostream &O);
   void emitKernelFunctionDirectives(const Function &F, raw_ostream &O) const;
-  void emitVirtualRegister(unsigned int vr, bool isVec, raw_ostream &O);
+  void emitVirtualRegister(unsigned int vr, raw_ostream &);
   void emitFunctionExternParamList(const MachineFunction &MF);
   void emitFunctionParamList(const Function *, raw_ostream &O);
   void emitFunctionParamList(const MachineFunction &MF, raw_ostream &O);
   void setAndEmitFunctionVirtualRegisters(const MachineFunction &MF);
   void emitFunctionTempData(const MachineFunction &MF, unsigned &FrameSize);
   bool isImageType(const Type *Ty);
+  void printReturnValStr(const Function *, raw_ostream &O);
+  void printReturnValStr(const MachineFunction &MF, raw_ostream &O);
   bool PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
                        unsigned AsmVariant, const char *ExtraCode,
                        raw_ostream &);
+  void printOperand(const MachineInstr *MI, int opNum, raw_ostream &O,
+                    const char *Modifier = 0);
   bool PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNo,
                              unsigned AsmVariant, const char *ExtraCode,
                              raw_ostream &);
-  void printReturnValStr(const Function *, raw_ostream &O);
-  void printReturnValStr(const MachineFunction &MF, raw_ostream &O);
-
 protected:
   bool doInitialization(Module &M);
   bool doFinalization(Module &M);
@@ -293,7 +295,7 @@ public:
 
   bool ignoreLoc(const MachineInstr &);
 
-  virtual void getVirtualRegisterName(unsigned, bool, raw_ostream &);
+  std::string getVirtualRegisterName(unsigned) const;
 
   DebugLoc prevDebugLoc;
   void emitLineNumberAsDotLoc(const MachineInstr &);

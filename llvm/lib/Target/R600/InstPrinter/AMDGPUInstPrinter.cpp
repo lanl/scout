@@ -178,13 +178,13 @@ void AMDGPUInstPrinter::printBankSwizzle(const MCInst *MI, unsigned OpNo,
   int BankSwizzle = MI->getOperand(OpNo).getImm();
   switch (BankSwizzle) {
   case 1:
-    O << "BS:VEC_021";
+    O << "BS:VEC_021/SCL_122";
     break;
   case 2:
-    O << "BS:VEC_120";
+    O << "BS:VEC_120/SCL_212";
     break;
   case 3:
-    O << "BS:VEC_102";
+    O << "BS:VEC_102/SCL_221";
     break;
   case 4:
     O << "BS:VEC_201";
@@ -253,6 +253,23 @@ void AMDGPUInstPrinter::printKCache(const MCInst *MI, unsigned OpNo,
     int LineSize = (KCacheMode == 1)?16:32;
     O << KCacheAddr * 16 << "-" << KCacheAddr * 16 + LineSize;
   }
+}
+
+void AMDGPUInstPrinter::printWaitFlag(const MCInst *MI, unsigned OpNo,
+                                      raw_ostream &O) {
+  // Note: Mask values are taken from SIInsertWaits.cpp and not from ISA docs
+  // SIInsertWaits.cpp bits usage does not match ISA docs description but it
+  // works so it might be a misprint in docs.
+  unsigned SImm16 = MI->getOperand(OpNo).getImm();
+  unsigned Vmcnt = SImm16 & 0xF;
+  unsigned Expcnt = (SImm16 >> 4) & 0xF;
+  unsigned Lgkmcnt = (SImm16 >> 8) & 0xF;
+  if (Vmcnt != 0xF)
+    O << "vmcnt(" << Vmcnt << ") ";
+  if (Expcnt != 0x7)
+    O << "expcnt(" << Expcnt << ") ";
+  if (Lgkmcnt != 0x7)
+    O << "lgkmcnt(" << Lgkmcnt << ")";
 }
 
 #include "AMDGPUGenAsmWriter.inc"

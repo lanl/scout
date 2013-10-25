@@ -46,16 +46,23 @@ class R600SchedStrategy : public MachineSchedStrategy {
     AluT_W,
     AluT_XYZW,
     AluPredX,
+    AluTrans,
     AluDiscarded, // LLVM Instructions that are going to be eliminated
     AluLast
   };
 
   std::vector<SUnit *> Available[IDLast], Pending[IDLast];
   std::vector<SUnit *> AvailableAlus[AluLast];
+  std::vector<SUnit *> UnscheduledARDefs;
+  std::vector<SUnit *> UnscheduledARUses;
+  std::vector<SUnit *> PhysicalRegCopy;
 
   InstKind CurInstKind;
   int CurEmitted;
   InstKind NextInstKind;
+
+  unsigned AluInstCount;
+  unsigned FetchInstCount;
 
   int InstKindLimit[IDLast];
 
@@ -77,15 +84,16 @@ public:
 
 private:
   std::vector<MachineInstr *> InstructionsGroupCandidate;
+  bool VLIW5;
 
   int getInstKind(SUnit *SU);
   bool regBelongsToClass(unsigned Reg, const TargetRegisterClass *RC) const;
   AluKind getAluKind(SUnit *SU) const;
   void LoadAlu();
-  bool isAvailablesAluEmpty() const;
-  SUnit *AttemptFillSlot (unsigned Slot);
+  unsigned AvailablesAluCount() const;
+  SUnit *AttemptFillSlot (unsigned Slot, bool AnyAlu);
   void PrepareNextSlot();
-  SUnit *PopInst(std::vector<SUnit*> &Q);
+  SUnit *PopInst(std::vector<SUnit*> &Q, bool AnyALU);
 
   void AssignSlot(MachineInstr *MI, unsigned Slot);
   SUnit* pickAlu();

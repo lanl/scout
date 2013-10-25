@@ -3,17 +3,17 @@
 declare void @use_addr(i8*)
 
 define void @test_simple_alloca(i64 %n) {
-; CHECK: test_simple_alloca:
+; CHECK-LABEL: test_simple_alloca:
 
   %buf = alloca i8, i64 %n
   ; Make sure we align the stack change to 16 bytes:
-; CHECK: add [[SPDELTA:x[0-9]+]], x0, #15
-; CHECK: and x0, [[SPDELTA]], #0xfffffffffffffff0
+; CHECK-DAG: add [[SPDELTA:x[0-9]+]], x0, #15
+; CHECK-DAG: and x0, [[SPDELTA]], #0xfffffffffffffff0
 
   ; Make sure we change SP. It would be surprising if anything but x0 were used
   ; for the final sp, but it could be if it was then moved into x0.
-; CHECK: mov [[TMP:x[0-9]+]], sp
-; CHECK: sub x0, [[TMP]], [[SPDELTA]]
+; CHECK-DAG: mov [[TMP:x[0-9]+]], sp
+; CHECK-DAG: sub x0, [[TMP]], [[SPDELTA]]
 ; CHECK: mov sp, x0
 
   call void @use_addr(i8* %buf)
@@ -30,20 +30,20 @@ define void @test_simple_alloca(i64 %n) {
 declare void @use_addr_loc(i8*, i64*)
 
 define i64 @test_alloca_with_local(i64 %n) {
-; CHECK: test_alloca_with_local:
+; CHECK-LABEL: test_alloca_with_local:
 ; CHECK: sub sp, sp, #32
 ; CHECK: stp x29, x30, [sp, #16]
 
   %loc = alloca i64
   %buf = alloca i8, i64 %n
   ; Make sure we align the stack change to 16 bytes:
-; CHECK: add [[SPDELTA:x[0-9]+]], x0, #15
-; CHECK: and x0, [[SPDELTA]], #0xfffffffffffffff0
+; CHECK-DAG: add [[SPDELTA:x[0-9]+]], x0, #15
+; CHECK-DAG: and x0, [[SPDELTA]], #0xfffffffffffffff0
 
   ; Make sure we change SP. It would be surprising if anything but x0 were used
   ; for the final sp, but it could be if it was then moved into x0.
-; CHECK: mov [[TMP:x[0-9]+]], sp
-; CHECK: sub x0, [[TMP]], [[SPDELTA]]
+; CHECK-DAG: mov [[TMP:x[0-9]+]], sp
+; CHECK-DAG: sub x0, [[TMP]], [[SPDELTA]]
 ; CHECK: mov sp, x0
 
   ; Obviously suboptimal code here, but it to get &local in x1
@@ -66,7 +66,7 @@ define i64 @test_alloca_with_local(i64 %n) {
 }
 
 define void @test_variadic_alloca(i64 %n, ...) {
-; CHECK: test_variadic_alloca:
+; CHECK-LABEL: test_variadic_alloca:
 
 ; CHECK: sub     sp, sp, #208
 ; CHECK: stp     x29, x30, [sp, #192]
@@ -89,7 +89,7 @@ define void @test_variadic_alloca(i64 %n, ...) {
 }
 
 define void @test_alloca_large_frame(i64 %n) {
-; CHECK: test_alloca_large_frame:
+; CHECK-LABEL: test_alloca_large_frame:
 
 ; CHECK: sub sp, sp, #496
 ; CHECK: stp x29, x30, [sp, #480]
@@ -112,16 +112,16 @@ declare i8* @llvm.stacksave()
 declare void @llvm.stackrestore(i8*)
 
 define void @test_scoped_alloca(i64 %n) {
-; CHECK: test_scoped_alloca
+; CHECK-LABEL: test_scoped_alloca:
 ; CHECK: sub sp, sp, #32
 
   %sp = call i8* @llvm.stacksave()
 ; CHECK: mov [[SAVED_SP:x[0-9]+]], sp
+; CHECK: mov [[OLDSP:x[0-9]+]], sp
 
   %addr = alloca i8, i64 %n
 ; CHECK: and [[SPDELTA:x[0-9]+]], {{x[0-9]+}}, #0xfffffffffffffff0
-; CHECK: mov [[OLDSP:x[0-9]+]], sp
-; CHECK: sub [[NEWSP:x[0-9]+]], [[OLDSP]], [[SPDELTA]]
+; CHECK-DAG: sub [[NEWSP:x[0-9]+]], [[OLDSP]], [[SPDELTA]]
 ; CHECK: mov sp, [[NEWSP]]
 
   call void @use_addr(i8* %addr)

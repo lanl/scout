@@ -5,7 +5,7 @@
 @var64 = global i64 0
 
 define void @foo() {
-; CHECK: foo:
+; CHECK-LABEL: foo:
     %val32 = load i32* @var32
     %val64 = load i64* @var64
 
@@ -60,13 +60,12 @@ define void @foo() {
 @vardouble = global double 0.0
 
 define void @floating_lits() {
-; CHECK: floating_lits:
+; CHECK-LABEL: floating_lits:
 
   %floatval = load float* @varfloat
   %newfloat = fadd float %floatval, 128.0
 ; CHECK: adrp x[[LITBASE:[0-9]+]], [[CURLIT:.LCPI1_[0-9]+]]
-; CHECK: ldr {{s[0-9]+}}, [x[[LITBASE]], #:lo12:[[CURLIT]]]
-; CHECK: fadd
+; CHECK: ldr [[LIT128:s[0-9]+]], [x[[LITBASE]], #:lo12:[[CURLIT]]]
 
 ; CHECK-LARGE: movz x[[LITADDR:[0-9]+]], #:abs_g3:[[CURLIT:.LCPI1_[0-9]+]]
 ; CHECK-LARGE: movk x[[LITADDR]], #:abs_g2_nc:[[CURLIT]]
@@ -80,8 +79,9 @@ define void @floating_lits() {
   %doubleval = load double* @vardouble
   %newdouble = fadd double %doubleval, 129.0
 ; CHECK: adrp x[[LITBASE:[0-9]+]], [[CURLIT:.LCPI1_[0-9]+]]
-; CHECK: ldr {{d[0-9]+}}, [x[[LITBASE]], #:lo12:[[CURLIT]]]
-; CHECK: fadd
+; CHECK: ldr [[LIT129:d[0-9]+]], [x[[LITBASE]], #:lo12:[[CURLIT]]]
+; CHECK: fadd {{s[0-9]+}}, {{s[0-9]+}}, [[LIT128]]
+; CHECK: fadd {{d[0-9]+}}, {{d[0-9]+}}, [[LIT129]]
 
 ; CHECK-LARGE: movz x[[LITADDR:[0-9]+]], #:abs_g3:[[CURLIT:.LCPI1_[0-9]+]]
 ; CHECK-LARGE: movk x[[LITADDR]], #:abs_g2_nc:[[CURLIT]]

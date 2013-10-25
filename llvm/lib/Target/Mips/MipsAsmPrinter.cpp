@@ -15,11 +15,11 @@
 #define DEBUG_TYPE "mips-asm-printer"
 #include "InstPrinter/MipsInstPrinter.h"
 #include "MCTargetDesc/MipsBaseInfo.h"
-#include "MCTargetDesc/MipsELFStreamer.h"
 #include "Mips.h"
 #include "MipsAsmPrinter.h"
 #include "MipsInstrInfo.h"
 #include "MipsMCInstLower.h"
+#include "MipsTargetStreamer.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
@@ -33,8 +33,8 @@
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/MC/MCAsmInfo.h"
+#include "llvm/MC/MCELFStreamer.h"
 #include "llvm/MC/MCInst.h"
-#include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/ELF.h"
 #include "llvm/Support/TargetRegistry.h"
@@ -44,6 +44,10 @@
 #include "llvm/Target/TargetOptions.h"
 
 using namespace llvm;
+
+MipsTargetStreamer &MipsAsmPrinter::getTargetStreamer() {
+  return static_cast<MipsTargetStreamer &>(OutStreamer.getTargetStreamer());
+}
 
 bool MipsAsmPrinter::runOnMachineFunction(MachineFunction &MF) {
   // Initialize TargetLoweringObjectFile.
@@ -141,7 +145,7 @@ void MipsAsmPrinter::printSavedRegsBitmask(raw_ostream &O) {
   const MachineFrameInfo *MFI = MF->getFrameInfo();
   const std::vector<CalleeSavedInfo> &CSI = MFI->getCalleeSavedInfo();
   // size of stack area to which FP callee-saved regs are saved.
-  unsigned CPURegSize = Mips::CPURegsRegClass.getSize();
+  unsigned CPURegSize = Mips::GPR32RegClass.getSize();
   unsigned FGR32RegSize = Mips::FGR32RegClass.getSize();
   unsigned AFGR64RegSize = Mips::AFGR64RegClass.getSize();
   bool HasAFGR64Reg = false;
@@ -151,7 +155,7 @@ void MipsAsmPrinter::printSavedRegsBitmask(raw_ostream &O) {
   // Set FPU Bitmask.
   for (i = 0; i != e; ++i) {
     unsigned Reg = CSI[i].getReg();
-    if (Mips::CPURegsRegClass.contains(Reg))
+    if (Mips::GPR32RegClass.contains(Reg))
       break;
 
     unsigned RegNum = TM.getRegisterInfo()->getEncodingValue(Reg);
@@ -238,9 +242,8 @@ void MipsAsmPrinter::EmitFunctionEntryLabel() {
   }
 
   if (Subtarget->inMicroMipsMode())
-    if (MipsELFStreamer *MES = dyn_cast<MipsELFStreamer>(&OutStreamer))
-      MES->emitMipsSTOCG(*Subtarget, CurrentFnSym,
-      (unsigned)ELF::STO_MIPS_MICROMIPS);
+    getTargetStreamer().emitMipsHackSTOCG(CurrentFnSym,
+                                          (unsigned)ELF::STO_MIPS_MICROMIPS);
   OutStreamer.EmitLabel(CurrentFnSym);
 }
 
@@ -557,6 +560,15 @@ printFCCOperand(const MachineInstr *MI, int opNum, raw_ostream &O,
 void MipsAsmPrinter::EmitStartOfAsmFile(Module &M) {
   // FIXME: Use SwitchSection.
 
+  // TODO: Need to add -mabicalls and -mno-abicalls flags.
+  // Currently we assume that -mabicalls is the default.
+  if (OutStreamer.hasRawTextSupport()) {
+    OutStreamer.EmitRawText(StringRef("\t.abicalls"));
+    Reloc::Model RM = Subtarget->getRelocationModel();
+    if (RM == Reloc::Static && !Subtarget->hasMips64())
+      OutStreamer.EmitRawText(StringRef("\t.option\tpic0"));
+  }
+
   // Tell the assembler which ABI we are using
   if (OutStreamer.hasRawTextSupport())
     OutStreamer.EmitRawText("\t.section .mdebug." +
@@ -578,25 +590,54 @@ void MipsAsmPrinter::EmitStartOfAsmFile(Module &M) {
 
 }
 
+static void emitELFHeaderFlagsCG(MipsTargetStreamer &TargetStreamer,
+                                 const MipsSubtarget &Subtarget) {
+  // Update e_header flags
+  unsigned EFlags = 0;
+
+  // TODO: Need to add -mabicalls and -mno-abicalls flags.
+  // Currently we assume that -mabicalls is the default.
+  EFlags |= ELF::EF_MIPS_CPIC;
+
+  if (Subtarget.inMips16Mode())
+    EFlags |= ELF::EF_MIPS_ARCH_ASE_M16;
+  else
+    EFlags |= ELF::EF_MIPS_NOREORDER;
+
+  // Architecture
+  if (Subtarget.hasMips64r2())
+    EFlags |= ELF::EF_MIPS_ARCH_64R2;
+  else if (Subtarget.hasMips64())
+    EFlags |= ELF::EF_MIPS_ARCH_64;
+  else if (Subtarget.hasMips32r2())
+    EFlags |= ELF::EF_MIPS_ARCH_32R2;
+  else
+    EFlags |= ELF::EF_MIPS_ARCH_32;
+
+  if (Subtarget.inMicroMipsMode())
+    EFlags |= ELF::EF_MIPS_MICROMIPS;
+
+  // ABI
+  if (Subtarget.isABI_O32())
+    EFlags |= ELF::EF_MIPS_ABI_O32;
+
+  // Relocation Model
+  Reloc::Model RM = Subtarget.getRelocationModel();
+  if (RM == Reloc::PIC_ || RM == Reloc::Default)
+    EFlags |= ELF::EF_MIPS_PIC;
+  else if (RM == Reloc::Static)
+    ; // Do nothing for Reloc::Static
+  else
+    llvm_unreachable("Unsupported relocation model for e_flags");
+
+  TargetStreamer.emitMipsHackELFFlags(EFlags);
+}
+
 void MipsAsmPrinter::EmitEndOfAsmFile(Module &M) {
-
-  if (OutStreamer.hasRawTextSupport()) return;
-
   // Emit Mips ELF register info
   Subtarget->getMReginfo().emitMipsReginfoSectionCG(
              OutStreamer, getObjFileLowering(), *Subtarget);
-  if (MipsELFStreamer *MES = dyn_cast<MipsELFStreamer>(&OutStreamer))
-    MES->emitELFHeaderFlagsCG(*Subtarget);
-}
-
-MachineLocation
-MipsAsmPrinter::getDebugValueLocation(const MachineInstr *MI) const {
-  // Handles frame addresses emitted in MipsInstrInfo::emitFrameIndexDebugValue.
-  assert(MI->getNumOperands() == 4 && "Invalid no. of machine operands!");
-  assert(MI->getOperand(0).isReg() && MI->getOperand(1).isImm() &&
-         "Unexpected MachineOperand types");
-  return MachineLocation(MI->getOperand(0).getReg(),
-                         MI->getOperand(1).getImm());
+  emitELFHeaderFlagsCG(getTargetStreamer(), *Subtarget);
 }
 
 void MipsAsmPrinter::PrintDebugValueComment(const MachineInstr *MI,

@@ -23,6 +23,8 @@ namespace llvm {
   class ArrayRef;
 
 namespace object {
+class ImportDirectoryEntryRef;
+typedef content_iterator<ImportDirectoryEntryRef> import_directory_iterator;
 
 /// The DOS compatible header at the front of all PE/COFF executables.
 struct dos_header {
@@ -57,10 +59,8 @@ struct coff_file_header {
   support::ulittle16_t Characteristics;
 };
 
-/// The 32-bit PE header that usually immediately follows the DOS header.
+/// The 32-bit PE header that follows the COFF header.
 struct pe32_header {
-  support::ulittle32_t Signature;
-  coff_file_header COFFHeader;
   support::ulittle16_t Magic;
   uint8_t  MajorLinkerVersion;
   uint8_t  MinorLinkerVersion;
@@ -93,10 +93,8 @@ struct pe32_header {
   support::ulittle32_t NumberOfRvaAndSize;
 };
 
-/// The 64-bit PE header that usually immediately follows the DOS header.
+/// The 64-bit PE header that follows the COFF header.
 struct pe32plus_header {
-  support::ulittle32_t Signature;
-  coff_file_header COFFHeader;
   support::ulittle16_t Magic;
   uint8_t  MajorLinkerVersion;
   uint8_t  MinorLinkerVersion;
@@ -105,7 +103,6 @@ struct pe32plus_header {
   support::ulittle32_t SizeOfUninitializedData;
   support::ulittle32_t AddressOfEntryPoint;
   support::ulittle32_t BaseOfCode;
-  support::ulittle32_t BaseOfData;
   support::ulittle64_t ImageBase;
   support::ulittle32_t SectionAlignment;
   support::ulittle32_t FileAlignment;
@@ -132,6 +129,30 @@ struct pe32plus_header {
 struct data_directory {
   support::ulittle32_t RelativeVirtualAddress;
   support::ulittle32_t Size;
+};
+
+struct import_directory_table_entry {
+  support::ulittle32_t ImportLookupTableRVA;
+  support::ulittle32_t TimeDateStamp;
+  support::ulittle32_t ForwarderChain;
+  support::ulittle32_t NameRVA;
+  support::ulittle32_t ImportAddressTableRVA;
+};
+
+struct import_lookup_table_entry32 {
+  support::ulittle32_t data;
+
+  bool isOrdinal() const { return data & 0x80000000; }
+
+  uint16_t getOrdinal() const {
+    assert(isOrdinal() && "ILT entry is not an ordinal!");
+    return data & 0xFFFF;
+  }
+
+  uint32_t getHintNameRVA() const {
+    assert(!isOrdinal() && "ILT entry is not a Hint/Name RVA!");
+    return data;
+  }
 };
 
 struct coff_symbol {
@@ -181,6 +202,12 @@ struct coff_relocation {
   support::ulittle16_t Type;
 };
 
+struct coff_aux_weak_external {
+  support::ulittle32_t TagIndex;
+  support::ulittle32_t Characteristics;
+  char Unused[10];
+};
+
 struct coff_aux_section_definition {
   support::ulittle32_t Length;
   support::ulittle16_t NumberOfRelocations;
@@ -193,17 +220,25 @@ struct coff_aux_section_definition {
 
 class COFFObjectFile : public ObjectFile {
 private:
-  const coff_file_header *Header;
+  friend class ImportDirectoryEntryRef;
+  const coff_file_header *COFFHeader;
+  const pe32_header      *PE32Header;
+  const data_directory   *DataDirectory;
   const coff_section     *SectionTable;
   const coff_symbol      *SymbolTable;
   const char             *StringTable;
         uint32_t          StringTableSize;
+  const import_directory_table_entry *ImportDirectory;
+        uint32_t          NumberOfImportDirectory;
 
         error_code        getString(uint32_t offset, StringRef &Res) const;
 
   const coff_symbol      *toSymb(DataRefImpl Symb) const;
   const coff_section     *toSec(DataRefImpl Sec) const;
   const coff_relocation  *toRel(DataRefImpl Rel) const;
+
+        error_code        initSymbolTablePtr();
+        error_code        initImportTablePtr();
 
 protected:
   virtual error_code getSymbolNext(DataRefImpl Symb, SymbolRef &Res) const;
@@ -234,8 +269,8 @@ protected:
                                                    bool &Res) const;
   virtual error_code sectionContainsSymbol(DataRefImpl Sec, DataRefImpl Symb,
                                            bool &Result) const;
-  virtual relocation_iterator getSectionRelBegin(DataRefImpl Sec) const;
-  virtual relocation_iterator getSectionRelEnd(DataRefImpl Sec) const;
+  virtual relocation_iterator section_rel_begin(DataRefImpl Sec) const;
+  virtual relocation_iterator section_rel_end(DataRefImpl Sec) const;
 
   virtual error_code getRelocationNext(DataRefImpl Rel,
                                        RelocationRef &Res) const;
@@ -243,8 +278,7 @@ protected:
                                           uint64_t &Res) const;
   virtual error_code getRelocationOffset(DataRefImpl Rel,
                                          uint64_t &Res) const;
-  virtual error_code getRelocationSymbol(DataRefImpl Rel,
-                                         SymbolRef &Res) const;
+  virtual symbol_iterator getRelocationSymbol(DataRefImpl Rel) const;
   virtual error_code getRelocationType(DataRefImpl Rel,
                                        uint64_t &Res) const;
   virtual error_code getRelocationTypeName(DataRefImpl Rel,
@@ -277,7 +311,13 @@ public:
   virtual unsigned getArch() const;
   virtual StringRef getLoadName() const;
 
+  import_directory_iterator import_directory_begin() const;
+  import_directory_iterator import_directory_end() const;
+
   error_code getHeader(const coff_file_header *&Res) const;
+  error_code getCOFFHeader(const coff_file_header *&Res) const;
+  error_code getPE32Header(const pe32_header *&Res) const;
+  error_code getDataDirectory(uint32_t index, const data_directory *&Res) const;
   error_code getSection(int32_t index, const coff_section *&Res) const;
   error_code getSymbol(uint32_t index, const coff_symbol *&Res) const;
   template <typename T>
@@ -294,12 +334,37 @@ public:
   error_code getSectionContents(const coff_section *Sec,
                                 ArrayRef<uint8_t> &Res) const;
 
+  error_code getRvaPtr(uint32_t Rva, uintptr_t &Res) const;
+  error_code getHintName(uint32_t Rva, uint16_t &Hint, StringRef &Name) const;
+
   static inline bool classof(const Binary *v) {
     return v->isCOFF();
   }
 };
 
-}
-}
+// The iterator for the import directory table.
+class ImportDirectoryEntryRef {
+public:
+  ImportDirectoryEntryRef() : OwningObject(0) {}
+  ImportDirectoryEntryRef(DataRefImpl ImportDirectory,
+                          const COFFObjectFile *Owner)
+      : ImportDirectoryPimpl(ImportDirectory), OwningObject(Owner) {}
+
+  bool operator==(const ImportDirectoryEntryRef &Other) const;
+  error_code getNext(ImportDirectoryEntryRef &Result) const;
+  error_code getName(StringRef &Result) const;
+
+  error_code
+  getImportTableEntry(const import_directory_table_entry *&Result) const;
+
+  error_code
+  getImportLookupEntry(const import_lookup_table_entry32 *&Result) const;
+
+private:
+  DataRefImpl ImportDirectoryPimpl;
+  const COFFObjectFile *OwningObject;
+};
+} // end namespace object
+} // end namespace llvm
 
 #endif

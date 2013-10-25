@@ -233,8 +233,7 @@ Function *Module::getFunction(StringRef Name) const {
 /// If AllowLocal is set to true, this function will return types that
 /// have an local. By default, these types are not returned.
 ///
-GlobalVariable *Module::getGlobalVariable(StringRef Name,
-                                          bool AllowLocal) const {
+GlobalVariable *Module::getGlobalVariable(StringRef Name, bool AllowLocal) {
   if (GlobalVariable *Result =
       dyn_cast_or_null<GlobalVariable>(getNamedValue(Name)))
     if (AllowLocal || !Result->hasLocalLinkage())
@@ -246,7 +245,7 @@ GlobalVariable *Module::getGlobalVariable(StringRef Name,
 ///   1. If it does not exist, add a declaration of the global and return it.
 ///   2. Else, the global exists but has the wrong type: return the function
 ///      with a constantexpr cast to the right type.
-///   3. Finally, if the existing global is the correct delclaration, return the
+///   3. Finally, if the existing global is the correct declaration, return the
 ///      existing global.
 Constant *Module::getOrInsertGlobal(StringRef Name, Type *Ty) {
   // See if we have a definition for the specified global already.
@@ -261,8 +260,10 @@ Constant *Module::getOrInsertGlobal(StringRef Name, Type *Ty) {
 
   // If the variable exists but has the wrong type, return a bitcast to the
   // right type.
-  if (GV->getType() != PointerType::getUnqual(Ty))
-    return ConstantExpr::getBitCast(GV, PointerType::getUnqual(Ty));
+  Type *GVTy = GV->getType();
+  PointerType *PTy = PointerType::get(Ty, GVTy->getPointerAddressSpace());
+  if (GVTy != PTy)
+    return ConstantExpr::getBitCast(GV, PTy);
 
   // Otherwise, we just found the existing function or a prototype.
   return GV;
@@ -323,6 +324,19 @@ getModuleFlagsMetadata(SmallVectorImpl<ModuleFlagEntry> &Flags) const {
     Flags.push_back(ModuleFlagEntry(ModFlagBehavior(Behavior->getZExtValue()),
                                     Key, Val));
   }
+}
+
+/// Return the corresponding value if Key appears in module flags, otherwise
+/// return null.
+Value *Module::getModuleFlag(StringRef Key) const {
+  SmallVector<Module::ModuleFlagEntry, 8> ModuleFlags;
+  getModuleFlagsMetadata(ModuleFlags);
+  for (unsigned I = 0, E = ModuleFlags.size(); I < E; ++I) {
+    const ModuleFlagEntry &MFE = ModuleFlags[I];
+    if (Key == MFE.Key->getString())
+      return MFE.Val;
+  }
+  return 0;
 }
 
 /// getModuleFlagsMetadata - Returns the NamedMDNode in the module that

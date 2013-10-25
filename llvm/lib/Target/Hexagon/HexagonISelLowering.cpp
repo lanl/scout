@@ -39,8 +39,6 @@
 
 using namespace llvm;
 
-const unsigned Hexagon_MAX_RET_SIZE = 64;
-
 static cl::opt<bool>
 EmitJumpTables("hexagon-emit-jump-tables", cl::init(true), cl::Hidden,
                cl::desc("Control jump table emission on Hexagon target"));
@@ -382,10 +380,10 @@ SDValue
 HexagonTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
                                  SmallVectorImpl<SDValue> &InVals) const {
   SelectionDAG &DAG                     = CLI.DAG;
-  SDLoc &dl                          = CLI.DL;
-  SmallVector<ISD::OutputArg, 32> &Outs = CLI.Outs;
-  SmallVector<SDValue, 32> &OutVals     = CLI.OutVals;
-  SmallVector<ISD::InputArg, 32> &Ins   = CLI.Ins;
+  SDLoc &dl                             = CLI.DL;
+  SmallVectorImpl<ISD::OutputArg> &Outs = CLI.Outs;
+  SmallVectorImpl<SDValue> &OutVals     = CLI.OutVals;
+  SmallVectorImpl<ISD::InputArg> &Ins   = CLI.Ins;
   SDValue Chain                         = CLI.Chain;
   SDValue Callee                        = CLI.Callee;
   bool &isTailCall                      = CLI.IsTailCall;
@@ -1428,11 +1426,6 @@ HexagonTargetLowering::HexagonTargetLowering(HexagonTargetMachine
     setOperationAction(ISD::SMUL_LOHI, MVT::i64, Expand);
     setOperationAction(ISD::UMUL_LOHI, MVT::i64, Expand);
 
-    setOperationAction(ISD::EXCEPTIONADDR, MVT::i64, Expand);
-    setOperationAction(ISD::EHSELECTION,   MVT::i64, Expand);
-    setOperationAction(ISD::EXCEPTIONADDR, MVT::i32, Expand);
-    setOperationAction(ISD::EHSELECTION,   MVT::i32, Expand);
-
     setOperationAction(ISD::EH_RETURN,     MVT::Other, Custom);
 
     if (TM.getSubtargetImpl()->isSubtargetV2()) {
@@ -1507,6 +1500,19 @@ bool HexagonTargetLowering::isTruncateFree(EVT VT1, EVT VT2) const {
     return false;
   }
   return ((VT1.getSimpleVT() == MVT::i64) && (VT2.getSimpleVT() == MVT::i32));
+}
+
+bool
+HexagonTargetLowering::allowTruncateForTailCall(Type *Ty1, Type *Ty2) const {
+  // Assuming the caller does not have either a signext or zeroext modifier, and
+  // only one value is accepted, any reasonable truncation is allowed.
+  if (!Ty1->isIntegerTy() || !Ty2->isIntegerTy())
+    return false;
+
+  // FIXME: in principle up to 64-bit could be made safe, but it would be very
+  // fragile at the moment: any support for multiple value returns would be
+  // liable to disallow tail calls involving i64 -> iN truncation in many cases.
+  return Ty1->getPrimitiveSizeInBits() <= 32;
 }
 
 SDValue
@@ -1590,11 +1596,11 @@ const {
 std::pair<unsigned, const TargetRegisterClass*>
 HexagonTargetLowering::getRegForInlineAsmConstraint(const
                                                     std::string &Constraint,
-                                                    EVT VT) const {
+                                                    MVT VT) const {
   if (Constraint.size() == 1) {
     switch (Constraint[0]) {
     case 'r':   // R0-R31
-       switch (VT.getSimpleVT().SimpleTy) {
+       switch (VT.SimpleTy) {
        default:
          llvm_unreachable("getRegForInlineAsmConstraint Unhandled data type");
        case MVT::i32:

@@ -171,10 +171,12 @@ def FPSCR_NZCV : ARMReg<3,  "fpscr_nzcv"> {
 def ITSTATE    : ARMReg<4, "itstate">;
 
 // Special Registers - only available in privileged mode.
-def FPSID   : ARMReg<0, "fpsid">;
-def MVFR1   : ARMReg<6, "mvfr1">;
-def MVFR0   : ARMReg<7, "mvfr0">;
-def FPEXC   : ARMReg<8, "fpexc">;
+def FPSID   : ARMReg<0,  "fpsid">;
+def MVFR1   : ARMReg<6,  "mvfr1">;
+def MVFR0   : ARMReg<7,  "mvfr0">;
+def FPEXC   : ARMReg<8,  "fpexc">;
+def FPINST  : ARMReg<9,  "fpinst">;
+def FPINST2 : ARMReg<10, "fpinst2">;
 
 // Register classes.
 //
@@ -213,7 +215,7 @@ def GPRnopc : RegisterClass<"ARM", [i32], 32, (sub GPR, PC)> {
 // GPRs without the PC but with APSR. Some instructions allow accessing the
 // APSR, while actually encoding PC in the register field. This is usefull
 // for assembly and disassembly only.
-def GPRwithAPSR : RegisterClass<"ARM", [i32], 32, (add GPR, APSR_NZCV)> {
+def GPRwithAPSR : RegisterClass<"ARM", [i32], 32, (add (sub GPR, PC), APSR_NZCV)> {
   let AltOrders = [(add LR, GPRnopc), (trunc GPRnopc, 8)];
   let AltOrderSelect = [{
       return 1 + MF.getTarget().getSubtarget<ARMSubtarget>().isThumb1Only();
@@ -249,7 +251,7 @@ def hGPR : RegisterClass<"ARM", [i32], 32, (sub GPR, tGPR)>;
 // to the saved value before the tail call, which would clobber a call address.
 // Note, getMinimalPhysRegClass(R0) returns tGPR because of the names of
 // this class and the preceding one(!)  This is what we want.
-def tcGPR : RegisterClass<"ARM", [i32], 32, (add R0, R1, R2, R3, R9, R12)> {
+def tcGPR : RegisterClass<"ARM", [i32], 32, (add R0, R1, R2, R3, R12)> {
   let AltOrders = [(and tcGPR, tGPR)];
   let AltOrderSelect = [{
       return MF.getTarget().getSubtarget<ARMSubtarget>().isThumb1Only();

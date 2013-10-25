@@ -16,6 +16,7 @@
 #ifndef LLVM_MC_MCATOM_H
 #define LLVM_MC_MCATOM_H
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/Support/DataTypes.h"
 #include <vector>
@@ -28,7 +29,7 @@ class MCAtom;
 class MCTextAtom;
 class MCDataAtom;
 
-/// MCAtom - Represents a contiguous range of either instructions (a TextAtom)
+/// \brief Represents a contiguous range of either instructions (a TextAtom)
 /// or data (a DataAtom).  Address ranges are expressed as _closed_ intervals.
 class MCAtom {
 public:
@@ -138,7 +139,7 @@ public:
 
   const MCDecodedInst &back() const { return Insts.back(); }
   const MCDecodedInst &at(size_t n) const { return Insts.at(n); }
-  uint64_t size() const { return Insts.size(); }
+  size_t size() const { return Insts.size(); }
   /// @}
 
   /// \name Atom type specific split/truncate logic.
@@ -172,6 +173,9 @@ public:
   /// Append a data entry, expanding the atom if necessary.
   void addData(const MCData &D);
 
+  /// Get a reference to the data in this atom.
+  ArrayRef<MCData> getData() const { return Data; }
+
   /// \name Atom type specific split/truncate logic.
   /// @{
   MCDataAtom *split(uint64_t SplitPt) LLVM_OVERRIDE;
@@ -184,7 +188,9 @@ private:
   friend class MCModule;
   // Private constructor - only callable by MCModule
   MCDataAtom(MCModule *P, uint64_t Begin, uint64_t End)
-    : MCAtom(DataAtom, P, Begin, End), Data(End - Begin) {}
+    : MCAtom(DataAtom, P, Begin, End) {
+    Data.reserve(End + 1 - Begin);
+  }
 };
 
 }

@@ -4,7 +4,7 @@
 @G = internal addrspace(1) global i32 0
 ; CHECK: @G
 ; CHECK: addrspace(1)
-; CHECK: global i1 false
+; CHECK: global notaddrtaken i1 false
 
 define void @set1() {
   store i32 0, i32 addrspace(1)* @G
@@ -19,7 +19,7 @@ define void @set2() {
 }
 
 define i1 @get() {
-; CHECK: @get
+; CHECK-LABEL: @get(
   %A = load i32 addrspace(1) * @G
   %C = icmp slt i32 %A, 2
   ret i1 %C

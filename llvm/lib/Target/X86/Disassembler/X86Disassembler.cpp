@@ -231,16 +231,18 @@ static void translateImmediate(MCInst &mcInst, uint64_t immediate,
     default:
       break;
     case 1:
-      type = TYPE_MOFFS8;
+      if(immediate & 0x80)
+        immediate |= ~(0xffull);
       break;
     case 2:
-      type = TYPE_MOFFS16;
+      if(immediate & 0x8000)
+        immediate |= ~(0xffffull);
       break;
     case 4:
-      type = TYPE_MOFFS32;
+      if(immediate & 0x80000000)
+        immediate |= ~(0xffffffffull);
       break;
     case 8:
-      type = TYPE_MOFFS64;
       break;
     }
   }
@@ -263,16 +265,18 @@ static void translateImmediate(MCInst &mcInst, uint64_t immediate,
           Opcode != X86::VMPSADBWrri && Opcode != X86::VDPPSYrri &&
           Opcode != X86::VDPPSYrmi && Opcode != X86::VDPPDrri &&
           Opcode != X86::VINSERTPSrr)
-        type = TYPE_MOFFS8;
+        if(immediate & 0x80)
+          immediate |= ~(0xffull);
       break;
     case ENCODING_IW:
-      type = TYPE_MOFFS16;
+      if(immediate & 0x8000)
+        immediate |= ~(0xffffull);
       break;
     case ENCODING_ID:
-      type = TYPE_MOFFS32;
+      if(immediate & 0x80000000)
+        immediate |= ~(0xffffffffull);
       break;
     case ENCODING_IO:
-      type = TYPE_MOFFS64;
       break;
     }
   }
@@ -286,33 +290,27 @@ static void translateImmediate(MCInst &mcInst, uint64_t immediate,
   case TYPE_XMM256:
     mcInst.addOperand(MCOperand::CreateReg(X86::YMM0 + (immediate >> 4)));
     return;
+  case TYPE_XMM512:
+    mcInst.addOperand(MCOperand::CreateReg(X86::ZMM0 + (immediate >> 4)));
+    return;
   case TYPE_REL8:
     isBranch = true;
     pcrel = insn.startLocation + insn.immediateOffset + insn.immediateSize;
-    // fall through to sign extend the immediate if needed.
-  case TYPE_MOFFS8:
     if(immediate & 0x80)
       immediate |= ~(0xffull);
-    break;
-  case TYPE_MOFFS16:
-    if(immediate & 0x8000)
-      immediate |= ~(0xffffull);
     break;
   case TYPE_REL32:
   case TYPE_REL64:
     isBranch = true;
     pcrel = insn.startLocation + insn.immediateOffset + insn.immediateSize;
-    // fall through to sign extend the immediate if needed.
-  case TYPE_MOFFS32:
     if(immediate & 0x80000000)
       immediate |= ~(0xffffffffull);
     break;
-  case TYPE_MOFFS64:
   default:
     // operand is 64 bits wide.  Do nothing.
     break;
   }
-    
+
   if(!tryAddingSymbolicOperand(immediate + pcrel, isBranch, insn.startLocation,
                                insn.immediateOffset, insn.immediateSize,
                                mcInst, Dis))
@@ -443,6 +441,7 @@ static bool translateRMMemory(MCInst &mcInst, InternalInstruction &insn,
       EA_BASES_64BIT
       REGS_XMM
       REGS_YMM
+      REGS_ZMM
 #undef ENTRY
       }
     } else {
@@ -565,6 +564,7 @@ static bool translateRM(MCInst &mcInst, const OperandSpecifier &operand,
   case TYPE_XMM64:
   case TYPE_XMM128:
   case TYPE_XMM256:
+  case TYPE_XMM512:
   case TYPE_DEBUGREG:
   case TYPE_CONTROLREG:
     return translateRMRegister(mcInst, insn);
@@ -683,6 +683,15 @@ static bool translateInstruction(MCInst &mcInst,
   }
   
   mcInst.setOpcode(insn.instructionID);
+  // If when reading the prefix bytes we determined the overlapping 0xf2 or 0xf3
+  // prefix bytes should be disassembled as xrelease and xacquire then set the
+  // opcode to those instead of the rep and repne opcodes.
+  if (insn.xAcquireRelease) {
+    if(mcInst.getOpcode() == X86::REP_PREFIX)
+      mcInst.setOpcode(X86::XRELEASE_PREFIX);
+    else if(mcInst.getOpcode() == X86::REPNE_PREFIX)
+      mcInst.setOpcode(X86::XACQUIRE_PREFIX);
+  }
   
   int index;
   

@@ -83,6 +83,10 @@ namespace llvm {
 
     explicit XCoreTargetLowering(XCoreTargetMachine &TM);
 
+    using TargetLowering::isZExtFree;
+    virtual bool isZExtFree(SDValue Val, EVT VT2) const;
+
+
     virtual unsigned getJumpTableEncoding() const;
     virtual MVT getScalarShiftAmountTy(EVT LHSTy) const { return MVT::i32; }
 
@@ -158,7 +162,7 @@ namespace llvm {
     // Inline asm support
     std::pair<unsigned, const TargetRegisterClass*>
     getRegForInlineAsmConstraint(const std::string &Constraint,
-                                 EVT VT) const;
+                                 MVT VT) const;
 
     // Expand specifics
     SDValue TryExpandADDWithMul(SDNode *Op, SelectionDAG &DAG) const;

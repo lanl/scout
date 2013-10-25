@@ -61,15 +61,6 @@ MachineMemOperand *MipsInstrInfo::GetMemOperand(MachineBasicBlock &MBB, int FI,
                                  MFI.getObjectSize(FI), Align);
 }
 
-MachineInstr*
-MipsInstrInfo::emitFrameIndexDebugValue(MachineFunction &MF, int FrameIx,
-                                        uint64_t Offset, const MDNode *MDPtr,
-                                        DebugLoc DL) const {
-  MachineInstrBuilder MIB = BuildMI(MF, DL, get(Mips::DBG_VALUE))
-    .addFrameIndex(FrameIx).addImm(0).addImm(Offset).addMetadata(MDPtr);
-  return &*MIB;
-}
-
 //===----------------------------------------------------------------------===//
 // Branch Analysis
 //===----------------------------------------------------------------------===//
@@ -228,7 +219,7 @@ AnalyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
 
   // If there is only one terminator instruction, process it.
   if (!SecondLastOpc) {
-    // Unconditional branch
+    // Unconditional branch.
     if (LastOpc == UncondBrOpc) {
       TBB = LastInst->getOperand(0).getMBB();
       return BT_Uncond;

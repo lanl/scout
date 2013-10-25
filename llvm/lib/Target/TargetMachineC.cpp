@@ -60,8 +60,12 @@ inline LLVMTargetRef wrap(const Target * P) {
 }
 
 LLVMTargetRef LLVMGetFirstTarget() {
-   const Target* target = &*TargetRegistry::begin();
-   return wrap(target);
+  if(TargetRegistry::begin() == TargetRegistry::end()) {
+    return NULL;
+  }
+
+  const Target* target = &*TargetRegistry::begin();
+  return wrap(target);
 }
 LLVMTargetRef LLVMGetNextTarget(LLVMTargetRef T) {
   return wrap(unwrap(T)->getNext());
@@ -200,12 +204,12 @@ static LLVMBool LLVMTargetMachineEmit(LLVMTargetMachineRef T, LLVMModuleRef M,
 LLVMBool LLVMTargetMachineEmitToFile(LLVMTargetMachineRef T, LLVMModuleRef M,
   char* Filename, LLVMCodeGenFileType codegen, char** ErrorMessage) {
   std::string error;
-  raw_fd_ostream dest(Filename, error, raw_fd_ostream::F_Binary);
-  formatted_raw_ostream destf(dest);
+  raw_fd_ostream dest(Filename, error, sys::fs::F_Binary);
   if (!error.empty()) {
     *ErrorMessage = strdup(error.c_str());
     return true;
   }
+  formatted_raw_ostream destf(dest);
   bool Result = LLVMTargetMachineEmit(T, M, destf, codegen, ErrorMessage);
   dest.flush();
   return Result;

@@ -32,6 +32,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/TargetRegistry.h"
+#include "llvm/Transforms/Scalar.h"
 using namespace llvm;
 
 
@@ -70,8 +71,8 @@ MipsTargetMachine(const Target &T, StringRef TT,
                 "E-p:32:32:32-i8:8:32-i16:16:32-i64:64:64-n32-S64")),
     InstrInfo(MipsInstrInfo::create(*this)),
     FrameLowering(MipsFrameLowering::create(*this, Subtarget)),
-    TLInfo(MipsTargetLowering::create(*this)),
-    TSInfo(*this), JITInfo() {
+    TLInfo(MipsTargetLowering::create(*this)), TSInfo(*this),
+    InstrItins(Subtarget.getInstrItineraryData()), JITInfo() {
   initAsmInfo();
 }
 
@@ -134,7 +135,13 @@ namespace {
 class MipsPassConfig : public TargetPassConfig {
 public:
   MipsPassConfig(MipsTargetMachine *TM, PassManagerBase &PM)
-    : TargetPassConfig(TM, PM) {}
+    : TargetPassConfig(TM, PM) {
+    // The current implementation of long branch pass requires a scratch
+    // register ($at) to be available before branch instructions. Tail merging
+    // can break this requirement, so disable it when long branch pass is
+    // enabled.
+    EnableTailMerge = !getMipsSubtarget().enableLongBranchPass();
+  }
 
   MipsTargetMachine &getMipsTargetMachine() const {
     return getTM<MipsTargetMachine>();
@@ -160,6 +167,7 @@ void MipsPassConfig::addIRPasses() {
     addPass(createMipsOs16(getMipsTargetMachine()));
   if (getMipsSubtarget().inMips16HardFloat())
     addPass(createMips16HardFloat(getMipsTargetMachine()));
+  addPass(createPartiallyInlineLibCallsPass());
 }
 // Install an instruction selector pass using
 // the ISelDag to gen Mips code.
@@ -195,8 +203,7 @@ bool MipsPassConfig::addPreEmitPass() {
   const MipsSubtarget &Subtarget = TM.getSubtarget<MipsSubtarget>();
   addPass(createMipsDelaySlotFillerPass(TM));
 
-  if (Subtarget.hasStandardEncoding() ||
-      Subtarget.allowMixed16_32())
+  if (Subtarget.enableLongBranchPass())
     addPass(createMipsLongBranchPass(TM));
   if (Subtarget.inMips16Mode() ||
       Subtarget.allowMixed16_32())

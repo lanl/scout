@@ -30,6 +30,7 @@ extern "C" void LLVMInitializePowerPCTarget() {
   // Register the targets
   RegisterTargetMachine<PPC32TargetMachine> A(ThePPC32Target);
   RegisterTargetMachine<PPC64TargetMachine> B(ThePPC64Target);
+  RegisterTargetMachine<PPC64TargetMachine> C(ThePPC64LETarget);
 }
 
 PPCTargetMachine::PPCTargetMachine(const Target &T, StringRef TT,
@@ -162,7 +163,7 @@ void PPCTargetMachine::addAnalysisPasses(PassManagerBase &PM) {
   // Add first the target-independent BasicTTI pass, then our PPC pass. This
   // allows the PPC pass to delegate to the target independent layer when
   // appropriate.
-  PM.add(createBasicTargetTransformInfoPass(getTargetLowering()));
+  PM.add(createBasicTargetTransformInfoPass(this));
   PM.add(createPPCTargetTransformInfoPass(this));
 }
 

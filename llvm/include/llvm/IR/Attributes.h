@@ -18,6 +18,7 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/FoldingSet.h"
+#include "llvm/Support/Compiler.h"
 #include "llvm/Support/PointerLikeTypeTraits.h"
 #include <bitset>
 #include <cassert>
@@ -67,6 +68,8 @@ public:
                            ///< stored as log2 of alignment with +1 bias
                            ///< 0 means unaligned (different from align(1))
     AlwaysInline,          ///< inline=always
+    Builtin,               ///< Callee is recognized as a builtin, despite
+                           ///< nobuiltin attribute on its declaration.
     ByVal,                 ///< Pass structure by value
     Cold,                  ///< Marks function as being in a cold path.
     InlineHint,            ///< Source said inlining was desirable
@@ -86,6 +89,7 @@ public:
     NoReturn,              ///< Mark the function as not returning
     NoUnwind,              ///< Function doesn't unwind stack
     OptimizeForSize,       ///< opt_size
+    OptimizeNone,          ///< Function must not be optimized.
     ReadNone,              ///< Function does not access memory
     ReadOnly,              ///< Function only reads from memory
     Returned,              ///< Return value is always equal to this argument
@@ -197,7 +201,7 @@ public:
 /// index `1'.
 class AttributeSet {
 public:
-  enum AttrIndex {
+  enum AttrIndex LLVM_ENUM_INT_TYPE(unsigned) {
     ReturnIndex = 0U,
     FunctionIndex = ~0U
   };
@@ -248,6 +252,8 @@ public:
   /// attribute sets are immutable, this returns a new set.
   AttributeSet addAttribute(LLVMContext &C, unsigned Index,
                             StringRef Kind) const;
+  AttributeSet addAttribute(LLVMContext &C, unsigned Index,
+                            StringRef Kind, StringRef Value) const;
 
   /// \brief Add attributes to the attribute set at the given index. Since
   /// attribute sets are immutable, this returns a new set.

@@ -115,9 +115,10 @@ namespace {
       unsigned Mask = 0;
       for (MachineBasicBlock::livein_iterator I = MBB->livein_begin(),
            E = MBB->livein_end(); I != E; ++I) {
-        unsigned Reg = *I - X86::FP0;
-        if (Reg < 8)
-          Mask |= 1 << Reg;
+        unsigned Reg = *I;
+        if (Reg < X86::FP0 || Reg > X86::FP6)
+          continue;
+        Mask |= 1 << (Reg - X86::FP0);
       }
       return Mask;
     }
@@ -1661,6 +1662,7 @@ void FPS::handleSpecialFP(MachineBasicBlock::iterator &I) {
     BuildMI(*MBB, I, MI->getDebugLoc(), TII->get(X86::CALLpcrel32))
       .addExternalSymbol("_ftol2")
       .addReg(X86::ST0, RegState::ImplicitKill)
+      .addReg(X86::ECX, RegState::ImplicitDefine)
       .addReg(X86::EAX, RegState::Define | RegState::Implicit)
       .addReg(X86::EDX, RegState::Define | RegState::Implicit)
       .addReg(X86::EFLAGS, RegState::Define | RegState::Implicit);

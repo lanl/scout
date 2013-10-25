@@ -726,14 +726,13 @@ getExplicitSectionGlobal(const GlobalValue *GV, SectionKind Kind,
   if (GV->isWeakForLinker()) {
     Selection = COFF::IMAGE_COMDAT_SELECT_ANY;
     Characteristics |= COFF::IMAGE_SCN_LNK_COMDAT;
-    MCSymbol *Sym = Mang->getSymbol(GV);
     Name.append("$");
-    Name.append(Sym->getName().begin() + 1, Sym->getName().end());
+    Mang->getNameWithPrefix(Name, GV, false, false);
   }
   return getContext().getCOFFSection(Name,
                                      Characteristics,
-                                     Selection,
-                                     Kind);
+                                     Kind,
+                                     Selection);
 }
 
 static const char *getCOFFSectionPrefixForUniqueGlobal(SectionKind Kind) {
@@ -761,24 +760,29 @@ SelectSectionForGlobal(const GlobalValue *GV, SectionKind Kind,
   if (GV->isWeakForLinker()) {
     const char *Prefix = getCOFFSectionPrefixForUniqueGlobal(Kind);
     SmallString<128> Name(Prefix, Prefix+strlen(Prefix));
-    MCSymbol *Sym = Mang->getSymbol(GV);
-    Name.append(Sym->getName().begin() + 1, Sym->getName().end());
+    Mang->getNameWithPrefix(Name, GV, false, false);
 
     unsigned Characteristics = getCOFFSectionFlags(Kind);
 
     Characteristics |= COFF::IMAGE_SCN_LNK_COMDAT;
 
     return getContext().getCOFFSection(Name.str(), Characteristics,
-                          COFF::IMAGE_COMDAT_SELECT_ANY, Kind);
+                                       Kind, COFF::IMAGE_COMDAT_SELECT_ANY);
   }
 
   if (Kind.isText())
-    return getTextSection();
+    return TextSection;
 
   if (Kind.isThreadLocal())
-    return getTLSDataSection();
+    return TLSDataSection;
 
-  return getDataSection();
+  if (Kind.isReadOnly())
+    return ReadOnlySection;
+
+  if (Kind.isBSS())
+    return BSSSection;
+
+  return DataSection;
 }
 
 void TargetLoweringObjectFileCOFF::

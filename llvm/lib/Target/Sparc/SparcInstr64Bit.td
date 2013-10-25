@@ -153,14 +153,10 @@ def : Pat<(xor i64:$a, (not i64:$b)), (XNORrr $a, $b)>;
 def : Pat<(add i64:$a, i64:$b), (ADDrr $a, $b)>;
 def : Pat<(sub i64:$a, i64:$b), (SUBrr $a, $b)>;
 
-// Add/sub with carry were renamed to addc/subc in SPARC v9.
-def : Pat<(adde i64:$a, i64:$b), (ADDXrr $a, $b)>;
-def : Pat<(sube i64:$a, i64:$b), (SUBXrr $a, $b)>;
+def : Pat<(SPcmpicc i64:$a, i64:$b), (CMPrr $a, $b)>;
 
-def : Pat<(addc i64:$a, i64:$b), (ADDCCrr $a, $b)>;
-def : Pat<(subc i64:$a, i64:$b), (SUBCCrr $a, $b)>;
-
-def : Pat<(SPcmpicc i64:$a, i64:$b), (SUBCCrr $a, $b)>;
+def : Pat<(tlsadd i64:$a, i64:$b, tglobaltlsaddr:$sym),
+          (TLS_ADDrr $a, $b, $sym)>;
 
 // Register-immediate instructions.
 
@@ -171,7 +167,7 @@ def : Pat<(xor i64:$a, (i64 simm13:$b)), (XORri $a, (as_i32imm $b))>;
 def : Pat<(add i64:$a, (i64 simm13:$b)), (ADDri $a, (as_i32imm $b))>;
 def : Pat<(sub i64:$a, (i64 simm13:$b)), (SUBri $a, (as_i32imm $b))>;
 
-def : Pat<(SPcmpicc i64:$a, (i64 simm13:$b)), (SUBCCri $a, (as_i32imm $b))>;
+def : Pat<(SPcmpicc i64:$a, (i64 simm13:$b)), (CMPri $a, (as_i32imm $b))>;
 
 } // Predicates = [Is64Bit]
 
@@ -237,8 +233,19 @@ def LDXri  : F3_2<3, 0b001011,
                   (outs I64Regs:$dst), (ins MEMri:$addr),
                   "ldx [$addr], $dst",
                   [(set i64:$dst, (load ADDRri:$addr))]>;
+let mayLoad = 1 in
+  def TLS_LDXrr : F3_1<3, 0b001011,
+                       (outs IntRegs:$dst), (ins MEMrr:$addr, TLSSym:$sym),
+                       "ldx [$addr], $dst, $sym",
+                       [(set i64:$dst,
+                           (tlsld ADDRrr:$addr, tglobaltlsaddr:$sym))]>;
 
 // Extending loads to i64.
+def : Pat<(i64 (zextloadi1 ADDRrr:$addr)), (LDUBrr ADDRrr:$addr)>;
+def : Pat<(i64 (zextloadi1 ADDRri:$addr)), (LDUBri ADDRri:$addr)>;
+def : Pat<(i64 (extloadi1 ADDRrr:$addr)), (LDUBrr ADDRrr:$addr)>;
+def : Pat<(i64 (extloadi1 ADDRri:$addr)), (LDUBri ADDRri:$addr)>;
+
 def : Pat<(i64 (zextloadi8 ADDRrr:$addr)), (LDUBrr ADDRrr:$addr)>;
 def : Pat<(i64 (zextloadi8 ADDRri:$addr)), (LDUBri ADDRri:$addr)>;
 def : Pat<(i64 (extloadi8 ADDRrr:$addr)),  (LDUBrr ADDRrr:$addr)>;
@@ -307,9 +314,9 @@ def : Pat<(store (i64 0), ADDRri:$dst), (STXri ADDRri:$dst, (i64 G0))>;
 let Predicates = [Is64Bit] in {
 
 let Uses = [ICC] in
-def BPXCC : BranchSP<0, (ins brtarget:$dst, CCOp:$cc),
-                     "bp$cc %xcc, $dst",
-                     [(SPbrxcc bb:$dst, imm:$cc)]>;
+def BPXCC : BranchSP<(ins brtarget:$imm22, CCOp:$cond),
+                     "b$cond %xcc, $imm22",
+                     [(SPbrxcc bb:$imm22, imm:$cond)]>;
 
 // Conditional moves on %xcc.
 let Uses = [ICC], Constraints = "$f = $rd" in {

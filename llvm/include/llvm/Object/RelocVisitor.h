@@ -18,7 +18,7 @@
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/ObjectFile.h"
-#include "llvm/Object/ELF.h"
+#include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ELF.h"
 #include "llvm/Support/raw_ostream.h"
@@ -81,6 +81,8 @@ public:
       switch (RelocType) {
       case llvm::ELF::R_PPC64_ADDR32:
         return visitELF_PPC64_ADDR32(R, Value);
+      case llvm::ELF::R_PPC64_ADDR64:
+        return visitELF_PPC64_ADDR64(R, Value);
       default:
         HasError = true;
         return RelocToApply();
@@ -216,6 +218,10 @@ private:
     int64_t Addend = getAddend64BE(R);
     uint32_t Res = (Value + Addend) & 0xFFFFFFFF;
     return RelocToApply(Res, 4);
+  }
+  RelocToApply visitELF_PPC64_ADDR64(RelocationRef R, uint64_t Value) {
+    int64_t Addend = getAddend64BE(R);
+    return RelocToApply(Value + Addend, 8);
   }
 
   /// PPC32 ELF

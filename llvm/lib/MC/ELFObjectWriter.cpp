@@ -1002,11 +1002,18 @@ void ELFObjectWriter::CreateRelocationSections(MCAssembler &Asm,
     else
       EntrySize = is64Bit() ? sizeof(ELF::Elf64_Rel) : sizeof(ELF::Elf32_Rel);
 
+    unsigned Flags = 0;
+    StringRef Group = "";
+    if (Section.getFlags() & ELF::SHF_GROUP) {
+      Flags = ELF::SHF_GROUP;
+      Group = Section.getGroup()->getName();
+    }
+
     const MCSectionELF *RelaSection =
       Ctx.getELFSection(RelaSectionName, hasRelocationAddend() ?
-                        ELF::SHT_RELA : ELF::SHT_REL, 0,
+                        ELF::SHT_RELA : ELF::SHT_REL, Flags,
                         SectionKind::getReadOnly(),
-                        EntrySize, "");
+                        EntrySize, Group);
     RelMap[&Section] = RelaSection;
     Asm.getOrCreateSectionData(*RelaSection);
   }
@@ -1097,11 +1104,10 @@ void ELFObjectWriter::WriteRelocationsFragment(const MCAssembler &Asm,
   }
 }
 
-static int compareBySuffix(const void *a, const void *b) {
-  const MCSectionELF *secA = *static_cast<const MCSectionELF* const *>(a);
-  const MCSectionELF *secB = *static_cast<const MCSectionELF* const *>(b);
-  const StringRef &NameA = secA->getSectionName();
-  const StringRef &NameB = secB->getSectionName();
+static int compareBySuffix(const MCSectionELF *const *a,
+                           const MCSectionELF *const *b) {
+  const StringRef &NameA = (*a)->getSectionName();
+  const StringRef &NameB = (*b)->getSectionName();
   const unsigned sizeA = NameA.size();
   const unsigned sizeB = NameB.size();
   const unsigned len = std::min(sizeA, sizeB);
@@ -1292,10 +1298,12 @@ void ELFObjectWriter::WriteSection(MCAssembler &Asm,
     // Remove ".rel" and ".rela" prefixes.
     unsigned SecNameLen = (Section.getType() == ELF::SHT_REL) ? 4 : 5;
     StringRef SectionName = Section.getSectionName().substr(SecNameLen);
+    StringRef GroupName =
+        Section.getGroup() ? Section.getGroup()->getName() : "";
 
-    InfoSection = Asm.getContext().getELFSection(SectionName,
-                                                 ELF::SHT_PROGBITS, 0,
-                                                 SectionKind::getReadOnly());
+    InfoSection = Asm.getContext().getELFSection(SectionName, ELF::SHT_PROGBITS,
+                                                 0, SectionKind::getReadOnly(),
+                                                 0, GroupName);
     sh_info = SectionIndexMap.lookup(InfoSection);
     break;
   }
@@ -1345,11 +1353,12 @@ void ELFObjectWriter::WriteSection(MCAssembler &Asm,
                                        ELF::SHF_EXECINSTR | ELF::SHF_ALLOC,
                                        SectionKind::getText()));
     } else if (SecName.startswith(".ARM.exidx")) {
-      sh_link = SectionIndexMap.lookup(
-        Asm.getContext().getELFSection(SecName.substr(sizeof(".ARM.exidx") - 1),
-                                       ELF::SHT_PROGBITS,
-                                       ELF::SHF_EXECINSTR | ELF::SHF_ALLOC,
-                                       SectionKind::getText()));
+      StringRef GroupName =
+          Section.getGroup() ? Section.getGroup()->getName() : "";
+      sh_link = SectionIndexMap.lookup(Asm.getContext().getELFSection(
+          SecName.substr(sizeof(".ARM.exidx") - 1), ELF::SHT_PROGBITS,
+          ELF::SHF_EXECINSTR | ELF::SHF_ALLOC, SectionKind::getText(), 0,
+          GroupName));
     }
   }
 

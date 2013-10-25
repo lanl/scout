@@ -24,7 +24,6 @@
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/Support/raw_ostream.h"
-#include <stdio.h>
 
 using namespace llvm;
 
@@ -99,7 +98,9 @@ void R600MCCodeEmitter::EncodeInstruction(const MCInst &MI, raw_ostream &OS,
   } else if (IS_VTX(Desc)) {
     uint64_t InstWord01 = getBinaryCodeForInstr(MI, Fixups);
     uint32_t InstWord2 = MI.getOperand(2).getImm(); // Offset
-    InstWord2 |= 1 << 19;
+    if (!(STI.getFeatureBits() & AMDGPU::FeatureCaymanISA)) {
+      InstWord2 |= 1 << 19; // Mega-Fetch bit
+    }
 
     Emit(InstWord01, OS);
     Emit(InstWord2, OS);

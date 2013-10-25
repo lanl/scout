@@ -464,11 +464,15 @@ namespace {
 
     /// allocateCodeSection - Allocate memory for a code section.
     uint8_t *allocateCodeSection(uintptr_t Size, unsigned Alignment,
-                                 unsigned SectionID) {
+                                 unsigned SectionID, StringRef SectionName) {
       // Grow the required block size to account for the block header
       Size += sizeof(*CurBlock);
 
-      // FIXME: Alignement handling.
+      // Alignment handling.
+      if (!Alignment)
+        Alignment = 16;
+      Size += Alignment - 1;
+
       FreeRangeHeader* candidateBlock = FreeMemoryList;
       FreeRangeHeader* head = FreeMemoryList;
       FreeRangeHeader* iter = head->Next;
@@ -500,12 +504,14 @@ namespace {
       FreeMemoryList = candidateBlock->AllocateBlock();
       // Release the memory at the end of this block that isn't needed.
       FreeMemoryList = CurBlock->TrimAllocationToSize(FreeMemoryList, Size);
-      return (uint8_t *)(CurBlock + 1);
+      uintptr_t unalignedAddr = (uintptr_t)CurBlock + sizeof(*CurBlock);
+      return (uint8_t*)RoundUpToAlignment((uint64_t)unalignedAddr, Alignment);
     }
 
     /// allocateDataSection - Allocate memory for a data section.
     uint8_t *allocateDataSection(uintptr_t Size, unsigned Alignment,
-                                 unsigned SectionID, bool IsReadOnly) {
+                                 unsigned SectionID, StringRef SectionName,
+                                 bool IsReadOnly) {
       return (uint8_t*)DataAllocator.Allocate(Size, Alignment);
     }
 
