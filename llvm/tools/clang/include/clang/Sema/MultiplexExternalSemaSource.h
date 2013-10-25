@@ -225,7 +225,7 @@ public:
   /// internal linkage, or used but not defined inline functions.
   virtual void ReadUndefinedButUsed(
                          llvm::DenseMap<NamedDecl*, SourceLocation> &Undefined);
-
+  
   /// \brief Do last resort, unqualified lookup on a LookupResult that
   /// Sema cannot find.
   ///

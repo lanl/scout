@@ -75,7 +75,11 @@ int main(int argc, char *argv[])
     outfield[i] = -1.0;
   }
 
+<<<<<<< HEAD
   forall cells c of heat_mesh {
+=======
+  forall cells c in heat_mesh {
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     float val = (float)c.position.x;
     t1 = val;
     int index = c.position.x;

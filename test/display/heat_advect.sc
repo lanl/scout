@@ -1,4 +1,5 @@
 /*
+<<<<<<< HEAD
  * -----  Scout Programming Language -----
  *
  * This file is distributed under an open source license by Los Alamos
@@ -6,14 +7,70 @@
  * top level of the source distribution) for details.
  *
  *-----
+=======
+ * ###########################################################################
+ * Copyright (c) 2013, Los Alamos National Security, LLC.
+ * All rights reserved.
+ * 
+ *  Copyright 2010. Los Alamos National Security, LLC. This software was
+ *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
+ *  Alamos National Laboratory (LANL), which is operated by Los Alamos
+ *  National Security, LLC for the U.S. Department of Energy. The
+ *  U.S. Government has rights to use, reproduce, and distribute this
+ *  software.  NEITHER THE GOVERNMENT NOR LOS ALAMOS NATIONAL SECURITY,
+ *  LLC MAKES ANY WARRANTY, EXPRESS OR IMPLIED, OR ASSUMES ANY LIABILITY
+ *  FOR THE USE OF THIS SOFTWARE.  If software is modified to produce
+ *  derivative works, such modified software should be clearly marked,
+ *  so as not to confuse it with the version available from LANL.
+ *
+ *  Additionally, redistribution and use in source and binary forms,
+ *  with or without modification, are permitted provided that the
+ *  following conditions are met:
+ *
+ *    * Redistributions of source code must retain the above copyright
+ *      notice, this list of conditions and the following disclaimer.
+ * 
+ *    * Redistributions in binary form must reproduce the above
+ *      copyright notice, this list of conditions and the following
+ *      disclaimer in the documentation and/or other materials provided 
+ *      with the distribution.
+ *
+ *    * Neither the name of Los Alamos National Security, LLC, Los
+ *      Alamos National Laboratory, LANL, the U.S. Government, nor the
+ *      names of its contributors may be used to endorse or promote
+ *      products derived from this software without specific prior
+ *      written permission.
+ * 
+ *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
+ *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ *  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ *  DISCLAIMED. IN NO EVENT SHALL LOS ALAMOS NATIONAL SECURITY, LLC OR
+ *  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ *  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ *  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ *  USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ *  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ *  SUCH DAMAGE.
+ * ########################################################################### 
+ * 
+ * Notes
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
  *
  * Simplistic 2D heat transfer...
  * Modified to include (quasi-)soluble bodies and constant advection term
  * Jamal Mohd-Yusof 10/20/11
  * Modified to include full u,v advection with compressible fluid (no Poisson solve)
  * Jamal Mohd-Yusof 10/21/11
+<<<<<<< HEAD
  *
  */
+=======
+ * ##### 
+ */ 
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 
 #include <stdio.h>
 
@@ -62,7 +119,11 @@ cells:
     int i;
 
     // Initial condition setup
+<<<<<<< HEAD
     forall cells c of heat_mesh {
+=======
+    forall cells c in heat_mesh {
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
         h = 0.0f;
         h_next = 0.0f;
         u = MAX_U;
@@ -102,7 +163,11 @@ cells:
         }
     }
 
+<<<<<<< HEAD
     forall cells c of heat_mesh {
+=======
+    forall cells c in heat_mesh {
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
         // simple EOS
         P = R*rho*h;
     }
@@ -110,12 +175,20 @@ cells:
     // Time steps loop.
     for(unsigned int n = 0; n < NTIME_STEPS; ++n) {
 
+<<<<<<< HEAD
         forall cells c of heat_mesh {
+=======
+        forall cells c in heat_mesh {
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
             // compute new pressure (EOS)
             P = R*rho*h;
         }
 
+<<<<<<< HEAD
         forall cells c of heat_mesh {
+=======
+        forall cells c in heat_mesh {
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
             // compute new velocities
             // u derivatives
             float dudx = 0.5*(cshift(c.u, 1, 0) - cshift(c.u, -1,  0))/dx;
@@ -162,14 +235,22 @@ cells:
 
         }
 
+<<<<<<< HEAD
         forall cells c of heat_mesh {
+=======
+        forall cells c in heat_mesh {
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
             h = h_next;
             u = u_next;
             v = v_next;
             rho = rho_next;
         }
 
+<<<<<<< HEAD
         renderall cells c of heat_mesh {
+=======
+        renderall cells c in heat_mesh {
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
             // Temperature
             float norm_h = h / MAX_TEMP;
             // Density

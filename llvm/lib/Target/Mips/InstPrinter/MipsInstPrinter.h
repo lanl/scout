@@ -87,6 +87,9 @@ public:
 
   virtual void printRegName(raw_ostream &OS, unsigned RegNo) const;
   virtual void printInst(const MCInst *MI, raw_ostream &O, StringRef Annot);
+  void printCPURegs(const MCInst *MI, unsigned OpNo, raw_ostream &O);
+
+  bool printAliasInstr(const MCInst *MI, raw_ostream &OS);
 
   bool printAliasInstr(const MCInst *MI, raw_ostream &OS);
 

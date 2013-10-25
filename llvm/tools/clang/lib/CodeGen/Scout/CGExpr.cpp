@@ -56,7 +56,11 @@ CodeGenFunction::EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND) {
   assert(false && "missed conditional case in emiting forall array lval.");
 }
 */
+<<<<<<< HEAD
 
+=======
+/*
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 static llvm::Value *
 EmitBitCastOfLValueToProperType(CodeGenFunction &CGF,
                                 llvm::Value *V, llvm::Type *IRType,
@@ -64,7 +68,11 @@ EmitBitCastOfLValueToProperType(CodeGenFunction &CGF,
   unsigned AS = cast<llvm::PointerType>(V->getType())->getAddressSpace();
   return CGF.Builder.CreateBitCast(V, IRType->getPointerTo(AS), Name);
 }
+<<<<<<< HEAD
 
+=======
+*/
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 
 bool
 CodeGenFunction::EmitScoutMemberExpr(const MemberExpr *E, LValue *LV) {

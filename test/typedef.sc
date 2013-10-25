@@ -64,7 +64,11 @@ uniform mesh MyMesh{
 typedef MyMesh[:] MyMesh2D; 
 
 void initMesh(MyMesh2D& m){
+<<<<<<< HEAD
   forall cells c of m{
+=======
+  forall cells c in m{
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     a = 1;
   }
 }
@@ -74,11 +78,19 @@ int main(int argc, char** argv){
 
   initMesh(m);
 
+<<<<<<< HEAD
   forall cells c of m{
     a += 9;
   }
 
   forall cells c of m{
+=======
+  forall cells c in m{
+    a += 9;
+  }
+
+  forall cells c in m{
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     if ((a-10)*(a-10) > 1e-10) {
       printf("bad val %f\n", a);
       kill(getpid(), SIGTERM);

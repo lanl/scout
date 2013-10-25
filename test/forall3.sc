@@ -73,7 +73,11 @@ int main(int argc, char *argv[])
     outfield[i] = -1;
   }
 
+<<<<<<< HEAD
   forall cells c of amesh {
+=======
+  forall cells c in amesh {
+>>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     int val =  c.position.x*100 + c.position.y*10 + c.position.z;
     field = val;
     int index = (c.position.z*3 + c.position.y)*2 + c.position.x;
