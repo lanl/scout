@@ -1,17 +1,4 @@
 /*
-<<<<<<< HEAD
- * -----  Scout Programming Language -----
- *
- * This file is distributed under an open source license by Los Alamos
- * National Security, LCC.  See the file License.txt (located in the
- * top level of the source distribution) for details.
- *
- *-----
- *
- * Stencil-based 2D heat transfer example.  
- *
- */
-=======
  * ###########################################################################
  * Copyright (c) 2013, Los Alamos National Security, LLC.
  * All rights reserved.
@@ -64,8 +51,6 @@
  *
  * ##### 
  */ 
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
-
 
 uniform mesh HeatMeshType{
   cells:
@@ -100,11 +85,7 @@ int main(int argc, char *argv[])
 
   HeatMeshType heat_mesh[512, 512];
 
-<<<<<<< HEAD
-  forall cells c of heat_mesh {
-=======
   forall cells c in heat_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     t1 = MAX_TEMP;
     t2 = MAX_TEMP;
     where(c.position.x == 0 || c.position.x == heat_mesh.width-1 ||
@@ -122,20 +103,12 @@ int main(int argc, char *argv[])
   // Time steps loop.
   for(unsigned int t = 0; t < NTIME_STEPS; ++t) {
 
-<<<<<<< HEAD
-    forall cells c of heat_mesh {
-=======
     forall cells c in heat_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
         // stencil invocation looks function-like...  Need to work on the LHS some more...
         temperature[;t+1] = heatxfer(temperature, dx, dy, alpha);
     }
 
-<<<<<<< HEAD
-    renderall cells c of heat_mesh {
-=======
     renderall cells c in heat_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
       float norm_t1 = temperature / MAX_TEMP;
       float hue = 240.0f - 240.0f * norm_t1;
       color = hsv(hue, 1.0f, 1.0f);

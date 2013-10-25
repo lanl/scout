@@ -68,29 +68,17 @@ int main(int argc, char** argv){
 
   MyMesh m[512];
   
-<<<<<<< HEAD
-  forall cells c of m{
-=======
   forall cells c in m{
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     a13 = 8;
     a12 = 6;
     a11 = 2;
   }
 
-<<<<<<< HEAD
-  forall cells c of m{
-    a13 = a12/a11;
-  }
-
-  forall cells c of m{
-=======
   forall cells c in m{
     a13 = a12/a11;
   }
 
   forall cells c in m{
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     if (a11 != 2) {
       printf("bad a11 val %d\n", a11);
       kill(getpid(), SIGTERM);

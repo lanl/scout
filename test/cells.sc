@@ -68,20 +68,12 @@ int main(int argc, char** argv){
   
   MyMesh myMesh[512,512];
 
-<<<<<<< HEAD
-  forall cells c of myMesh {
-=======
   forall cells c in myMesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     c.a = A;
     b = B;
   }
 
-<<<<<<< HEAD
-  forall cells c of myMesh {
-=======
   forall cells c in myMesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     if ((a-A)*(a-A) > 1e-10) {
       printf("bad val %f \n", a);
       kill(getpid(), SIGTERM);  

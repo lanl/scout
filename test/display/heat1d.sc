@@ -1,17 +1,4 @@
 /*
-<<<<<<< HEAD
- * -----  Scout Programming Language -----
- *
- * This file is distributed under an open source license by Los Alamos
- * National Security, LCC.  See the file License.txt (located in the
- * top level of the source distribution) for details.
- * 
- *-----
- *
- * Simplistic 1D heat transfer...
- * 
- */
-=======
  * ###########################################################################
  * Copyright (c) 2013, Los Alamos National Security, LLC.
  * All rights reserved.
@@ -67,7 +54,6 @@
  * ##### 
  */ 
 
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 int main(int argc, char *argv[])
 {
   const int NTIME_STEPS     = 300;
@@ -87,11 +73,7 @@ int main(int argc, char *argv[])
   // 
   //  heat_mesh::cells.t1[0:1023:1023] = 0.0f;
   //  heat_mesh::cells.t1[1:1022] = 100.0f;
-<<<<<<< HEAD
-  forall cells c of heat_mesh {
-=======
   forall cells c in heat_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     if (c.position.x > 0 && c.position.x < 1023)
       t1 = 0.0f;
     else
@@ -118,29 +100,17 @@ int main(int argc, char *argv[])
     // array duplication (which is a horrid feature in most F90 
     // runtimes -- no wonder the data-parallel features are never
     // used).
-<<<<<<< HEAD
-    forall cells c of heat_mesh {
-=======
     forall cells c in heat_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
       if (c.position.x > 0 && c.position.x < 1023) {
         t2 = t1 + mat_const * (cshift(c.t1,1) + cshift(c.t1,-1) - 2.0f * t1);
       }
     }
 
-<<<<<<< HEAD
-    forall cells c of heat_mesh {
-      t1 = t2;
-    }
-
-    renderall cells c of heat_mesh {
-=======
     forall cells c in heat_mesh {
       t1 = t2;
     }
 
     renderall cells c in heat_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
       // Normalize temperatures ranges into the 0...1.0 range and then map into
       // HSV color space with hue running from blue to red for cold to hot. 
       float norm_t1 = t1 / MAX_TEMP;

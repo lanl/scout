@@ -1,17 +1,4 @@
 /*
-<<<<<<< HEAD
- * -----  Scout Programming Language -----
- *
- * This file is distributed under an open source license by Los Alamos
- * National Security, LCC.  See the file License.txt (located in the
- * top level of the source distribution) for details.
- *
- *-----
- *
- * Simplistic 2D heat transfer...
- *
- */
-=======
  * ###########################################################################
  * Copyright (c) 2013, Los Alamos National Security, LLC.
  * All rights reserved.
@@ -66,7 +53,6 @@
  *
  * ##### 
  */ 
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 
 #define XDIM 32 
 #define YDIM 32 
@@ -151,20 +137,13 @@ int main(int argc, char *argv[])
 
   HeatMeshType heat_mesh[XDIM, YDIM, ZDIM];
 
-<<<<<<< HEAD
-  forall cells c of heat_mesh {
-=======
   forall cells c in heat_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     t1 = 0.0;
     t2 = 0.0;
   }
 
-<<<<<<< HEAD
-  forall cells c of heat_mesh {
-=======
+
   forall cells c in heat_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     t1 = MAX_TEMP;
     t2 = MAX_TEMP;
 
@@ -198,11 +177,8 @@ int main(int argc, char *argv[])
   for (int i = 0; i < XDIM*YDIM*ZDIM; i++) {
       outfield[i] = -1.0;
   }
-<<<<<<< HEAD
-  forall cells c of heat_mesh {
-=======
+
   forall cells c in heat_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
         int index = (c.position.z*YDIM + c.position.y)*XDIM + c.position.x;
         outfield[index] = t1;
   }
@@ -212,11 +188,8 @@ int main(int argc, char *argv[])
   for(unsigned int t = 0; t < NTIME_STEPS; ++t) {
 
     //printf("time: %u\n", t);
-<<<<<<< HEAD
-    forall cells c of heat_mesh {
-=======
+
     forall cells c in heat_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 
 
       if (c.position.x > 0 && c.position.x < heat_mesh.width-1 &&
@@ -249,11 +222,7 @@ int main(int argc, char *argv[])
     }
 #endif
 
-<<<<<<< HEAD
-    forall cells c of heat_mesh {
-=======
     forall cells c in heat_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
       t1 = t2;
     }
 
@@ -271,11 +240,7 @@ int main(int argc, char *argv[])
       up = myup;
     };
 
-<<<<<<< HEAD
-    renderall cells c of heat_mesh with cam 
-=======
     renderall cells c in heat_mesh with cam 
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     {
       float norm_t1;
       if (t1 > MAX_TEMP) {
@@ -295,3 +260,4 @@ int main(int argc, char *argv[])
 
   return 0;
 }
+

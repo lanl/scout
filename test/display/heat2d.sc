@@ -1,17 +1,4 @@
-/*
-<<<<<<< HEAD
- * -----  Scout Programming Language -----
- *
- * This file is distributed under an open source license by Los Alamos
- * National Security, LCC.  See the file License.txt (located in the
- * top level of the source distribution) for details.
- *
- *-----
- *
- * Simplistic 2D heat transfer...
- *
- */
-=======
+/* 
  * ###########################################################################
  * Copyright (c) 2013, Los Alamos National Security, LLC.
  * All rights reserved.
@@ -66,7 +53,6 @@
  *
  * ##### 
  */ 
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 
 int main(int argc, char *argv[])
 {
@@ -80,11 +66,7 @@ int main(int argc, char *argv[])
 
   HeatMeshType heat_mesh[512, 512];
   
-<<<<<<< HEAD
-  forall cells c of heat_mesh {
-=======
   forall cells c in heat_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
     t1 = MAX_TEMP;
     t2 = MAX_TEMP;
 
@@ -107,12 +89,7 @@ int main(int argc, char *argv[])
   // Time steps loop.
   for(unsigned int t = 0; t < NTIME_STEPS; ++t) {
 
-<<<<<<< HEAD
-    forall cells c of heat_mesh {
-=======
     forall cells c in heat_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
-
       if (c.position.x > 0 && c.position.x < heat_mesh.width-1 &&
           c.position.y > 0 && c.position.y < heat_mesh.height-1) {
 
@@ -126,19 +103,12 @@ int main(int argc, char *argv[])
       }
     }
 
-<<<<<<< HEAD
-    forall cells c of heat_mesh {
-      t1 = t2;
-    }
 
-    renderall cells c of heat_mesh {
-=======
     forall cells c in heat_mesh {
       t1 = t2;
     }
 
     renderall cells c in heat_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
       float norm_t1 = t1 / MAX_TEMP;
       float hue = 240.0f - 240.0f * norm_t1;
       color = hsv(hue, 1.0f, 1.0f);

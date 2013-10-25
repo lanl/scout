@@ -1,18 +1,4 @@
 /*
-<<<<<<< HEAD
- * -----  Scout Programming Language -----
- *
- * This file is distributed under an open source license by Los Alamos
- * National Security, LCC.  See the file License.txt (located in the
- * top level of the source distribution) for details.
- * 
- *-----
- *
- * Simple collocated shallow water code based on ocean5.src from 'old Scout'
- * Jamal Mohd-Yusof 2011
- * 
- */
-=======
  * ###########################################################################
  * Copyright (c) 2013, Los Alamos National Security, LLC.
  * All rights reserved.
@@ -68,7 +54,6 @@
  * ##### 
  */ 
  
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 #include <stdio.h>
 
 #define PRINT_DIAGS 0
@@ -156,96 +141,59 @@ int main(int argc, char *argv[])
     ReadFloat(in_buf, &dx_min, &dx_max, "data/xfile.raw", "dx");
 
 
-<<<<<<< HEAD
-    forall cells c of ocean_mesh {
-=======
     forall cells c in ocean_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
         dx = in_buf[c.position.x + M_W*c.position.y];
     }
 
     // read u
     ReadFloat(in_buf, &u_min, &u_max, "data/ufile.raw", "u");
 
-<<<<<<< HEAD
-    forall cells c of ocean_mesh {
-=======
     forall cells c in ocean_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
         u = vel_mult*in_buf[c.position.x + M_W*c.position.y];
     }
 
     // read v
     ReadFloat(in_buf, &v_min, &v_max, "data/vfile.raw", "v");
 
-<<<<<<< HEAD
-    forall cells c of ocean_mesh {
-=======
     forall cells c in ocean_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
         v = vel_mult*in_buf[c.position.x + M_W*c.position.y];
     }
 
     // read h
     ReadFloat(in_buf, &h_min, &h_max, "data/hfile.raw", "h");
 
-<<<<<<< HEAD
-    forall cells c of ocean_mesh {
-=======
     forall cells c in ocean_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
         h = in_buf[c.position.x + M_W*c.position.y];
     }
 
     // read wind
     ReadFloat(in_buf, &wind_min, &wind_max, "data/wfile.raw", "wind");
 
-<<<<<<< HEAD
-    forall cells c of ocean_mesh {
-=======
     forall cells c in ocean_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
         wind = in_buf[c.position.x + M_W*c.position.y];
     }
 
     // read f
     ReadFloat(in_buf, &f_min, &f_max, "data/ffile.raw", "f");
 
-<<<<<<< HEAD
-    forall cells c of ocean_mesh {
-=======
     forall cells c in ocean_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
         f = in_buf[c.position.x + M_W*c.position.y];
     }
 
     // read psi
     ReadFloat(in_buf, &psi_min, &psi_max, "data/pfile.raw", "psi");
 
-<<<<<<< HEAD
-    forall cells c of ocean_mesh {
-=======
     forall cells c in ocean_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
         psi = in_buf[c.position.x + M_W*c.position.y];
     }
 
     // set default mask value to 1.0 (fluid)
-<<<<<<< HEAD
-    forall cells c of ocean_mesh {
-=======
-    forall cells c in ocean_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
 
+    forall cells c in ocean_mesh {
         mask = 1.0;
     }
     // now we do BC'c here if we want to
-<<<<<<< HEAD
-    forall cells c of ocean_mesh {
-=======
     forall cells c in ocean_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
-
         /*
         // L, R boundaries
         if (c.position.x == 0 || c.position.x == (ocean_mesh.width-1)) {
@@ -298,11 +246,7 @@ int main(int argc, char *argv[])
     mask_max = field_max;
     mask_min = field_min;
 
-<<<<<<< HEAD
-    forall cells c of ocean_mesh {
-=======
     forall cells c in ocean_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
         mask = (255.0-(float)in_uch[c.position.x + M_W*c.position.y])/255.0;
     }
 
@@ -321,12 +265,7 @@ int main(int argc, char *argv[])
     // Time steps loop. 
     for(unsigned int n = 0; n < NTIME_STEPS; ++n) {
 
-<<<<<<< HEAD
-        forall cells c of ocean_mesh {
-=======
         forall cells c in ocean_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
-
             float hn = cshift(c.h,  0, 1);
             float hs = cshift(c.h,  0,-1);
             float he = cshift(c.h,  1, 0);
@@ -407,23 +346,14 @@ int main(int argc, char *argv[])
         }
 
 
-<<<<<<< HEAD
-        forall cells c of ocean_mesh {
-=======
         forall cells c in ocean_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
             h = h_next;
             u = u_next;
             v = v_next;
             psi = psi_next;
         }
-
-<<<<<<< HEAD
-        renderall cells c of ocean_mesh {
-=======
+        
         renderall cells c in ocean_mesh {
->>>>>>> 331f45ad55fb625f198d765bff49b3d4fc0a6ce5
-
             //float norm_h = 0.5*(psi - psi_min)/(psi_max-psi_min);
             //float norm_h = 0.5*(u - u_min)/(u_max-u_min);
             //float norm_h = 0.5*(v - v_min)/(v_max-v_min);
