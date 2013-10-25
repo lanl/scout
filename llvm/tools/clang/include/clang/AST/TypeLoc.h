@@ -15,11 +15,14 @@
 #define LLVM_CLANG_AST_TYPELOC_H
 
 #include "clang/AST/Decl.h"
-#include "clang/AST/Scout/MeshDecls.h"
 #include "clang/AST/TemplateBase.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/Specifiers.h"
 #include "llvm/Support/Compiler.h"
+
+// +===== Scout ==============================================================+
+#include "clang/AST/Scout/MeshDecls.h"
+// +==========================================================================+
 
 namespace clang {
   class ASTContext;
@@ -869,11 +872,11 @@ public:
   void setNameLoc(SourceLocation Loc) {
     getLocalData()->NameLoc = Loc;
   }
-                                                    
+
   SourceRange getLocalSourceRange() const {
     return SourceRange(getNameLoc(), getNameEndLoc());
   }
-  
+
   SourceLocation getNameEndLoc() const {
     return getLocalData()->NameEndLoc;
   }
@@ -1857,14 +1860,13 @@ public:
   }
 };
 
-// ===== Scout ================================================================
-
+// +==== Scout ===============================================================+
+//
 class MeshTypeLoc : public InheritingConcreteTypeLoc<TypeSpecTypeLoc,
                                                      MeshTypeLoc,
                                                      MeshType> {
  public:
-
-  /// \brief True if the tag was defined in this type specifier.
+  /// \brief True if the mesh was defined in this type specifier.
   bool isDefinition() const {
     MeshDecl *D = getDecl();
     return D->isCompleteDefinition();
@@ -1879,7 +1881,7 @@ struct UniformMeshLocInfo {
   MeshType::MeshDimensions Dims;
 };
 
-  
+
 /// \brief Wrapper for source info for mesh types.
 class UniformMeshTypeLoc :
   public ConcreteTypeLoc<MeshTypeLoc,
@@ -2005,7 +2007,7 @@ class UnstructuredMeshTypeLoc :
        setRParenLoc(Loc);
      }
 };
-// ===============================================================================================
+// +==========================================================================+
 
 }
 

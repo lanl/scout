@@ -22,8 +22,11 @@ namespace clang {
   class ASTContext;
   class CodeCompleteConsumer;
   class Sema;
+
+  // +===== Scout ============================================================+
   class ASTViewScout;
-  
+  // +========================================================================+
+
   /// \brief Parse the entire file specified, notifying the ASTConsumer as
   /// the file is parsed.
   ///
@@ -39,15 +42,15 @@ namespace clang {
                 TranslationUnitKind TUKind = TU_Complete,
                 CodeCompleteConsumer *CompletionConsumer = 0,
                 bool SkipFunctionBodies = false,
-                ASTViewScout* ASTViewer = 0);
+                ASTViewScout* ASTViewer = 0);  // +===== Scout ===============+
 
-  /// \brief Parse the main file known to the preprocessor, producing an 
+  /// \brief Parse the main file known to the preprocessor, producing an
   /// abstract syntax tree.
 
   void ParseAST(Sema &S, bool PrintStats = false,
                 bool SkipFunctionBodies = false,
-                ASTViewScout* ASTViewer = 0);
-  
+                ASTViewScout* ASTViewer = 0);  // +===== Scout ===============+
+
 }  // end namespace clang
 
 #endif

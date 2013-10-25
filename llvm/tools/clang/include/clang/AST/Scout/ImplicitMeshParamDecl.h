@@ -47,10 +47,12 @@
  *  SUCH DAMAGE.
  * ###########################################################################
  *
- * Notes: Based on ImplicitParamDecl, but with pointer to VarDecl of underlying mesh
- * so we can get to the underlying mesh from the implicit mesh
- * #####
+ * Notes: Based on ImplicitParamDecl, but with pointer to VarDecl of underlying
+ * mesh so we can get to the underlying mesh from the implicit mesh.
+ *
  */
+
+// +===== Scout ==============================================================+
 
 #ifndef __SC_CLANG_IMPLICIT_MESH_PARAM_DECL_H__
 #define __SC_CLANG_IMPLICIT_MESH_PARAM_DECL_H__

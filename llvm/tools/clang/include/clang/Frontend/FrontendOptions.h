@@ -73,12 +73,12 @@ enum InputKind {
   IK_CUDA,
   IK_AST,
   IK_LLVM_IR,
-  // scout - input kind
+  // +===== Scout ============================================================+
   IK_Scout
-
+  // +========================================================================+
 };
 
-  
+
 /// \brief An input file for the front end.
 class FrontendInputFile {
   /// \brief The file name, or "-" to read from standard input.
@@ -146,9 +146,10 @@ public:
   unsigned GenerateGlobalModuleIndex : 1;  ///< Whether we can generate the
                                            ///< global module index if needed.
 
-  // scout - View AST option
+  // +===== Scout ============================================================+
   unsigned ViewAST : 1;
-  
+  // +========================================================================+
+
   CodeCompleteOptions CodeCompleteOpts;
 
   enum {
@@ -213,7 +214,7 @@ public:
   /// \brief File name of the file that will provide record layouts
   /// (in the format produced by -fdump-record-layouts).
   std::string OverrideRecordLayoutsFile;
-  
+
 public:
   FrontendOptions() :
     DisableFree(false), RelocatablePCH(false), ShowHelp(false),
@@ -222,7 +223,7 @@ public:
     FixToTemporaries(false), ARCMTMigrateEmitARCErrors(false),
     SkipFunctionBodies(false), UseGlobalModuleIndex(true),
     GenerateGlobalModuleIndex(true),
-    ViewAST(false), //scout
+    ViewAST(false), // +===== Scout ==========================================+
     ARCMTAction(ARCMT_None), ObjCMTAction(ObjCMT_None),
     ProgramAction(frontend::ParseSyntaxOnly)
   {}

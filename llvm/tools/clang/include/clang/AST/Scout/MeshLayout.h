@@ -11,6 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+// +===== Scout ==============================================================+
+
 #ifndef LLVM_CLANG_AST_MESHLAYOUT_H
 #define LLVM_CLANG_AST_MESHLAYOUT_H
 
@@ -41,7 +43,7 @@ public:
   ~ASTMeshLayout() {}
 
   void Destroy(ASTContext &Ctx);
-  
+
   ASTMeshLayout(const ASTMeshLayout &) LLVM_DELETED_FUNCTION;
   void operator=(const ASTMeshLayout &) LLVM_DELETED_FUNCTION;
 

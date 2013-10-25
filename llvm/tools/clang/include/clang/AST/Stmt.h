@@ -48,10 +48,12 @@ namespace clang {
   class SwitchStmt;
   class Token;
   class VarDecl;
-  // ===== Scout =================================================================================
+
+  // +==== Scout =============================================================+
   class MeshType;
   class BlockExpr;
-  // =============================================================================================
+  class MemberExpr;
+  // =========================================================================+
 
   //===--------------------------------------------------------------------===//
   // ExprIterator - Iterators for iterating over Stmt* arrays that contain
@@ -61,9 +63,6 @@ namespace clang {
 
   class Stmt;
   class Expr;
-  // ===== Scout =================================================================================
-  class MemberExpr;
-  // =============================================================================================
 
   class ExprIterator {
     Stmt** I;
@@ -2113,25 +2112,25 @@ public:
   friend class ASTStmtReader;
 };
 
-// ===== Scout ================================================================================
+// +==== Scout ===============================================================+
 //
-
-// ----- ForallStmt -- base class for forall statements
+// ----- ForallStmt : base class for forall statements
 //
-// This class handles the basic functionality of all forall-style statements.  At this level
-// we have the following information about the loop statement:
+// This class handles the basic functionality of all forall-style statements.
+// At this level we have the following information about the loop statement:
 //
-//   (1) The information about the reference element -- the loop's implicit reference
-//       variable that represents the active element within the loop scope.
+//   (1) The information about the reference element -- the loop's
+//       implicit reference variable that represents the active
+//       element within the loop scope.
 //
-//   (2) The variable declaration for the container we are looping over (e.g. a mesh, array,
-//        etc.).
+//   (2) The variable declaration for the container we are looping
+//       over (e.g. a mesh, array, etc.).
 //
-//   (3) A predicate expression for the overall loop and the body (statements) within the
-//       loop.
+//   (3) A predicate expression for the overall loop and the body (statements)
+//       within the loop.
 //
-//   (4) The source locations of the forall keyword, the left and right parens that wrap the
-//       predicate (if any).
+//   (4) The source locations of the forall keyword, the left and
+//       right parens that wrap the predicate (if any).
 //
 class ForallStmt : public Stmt {
 
@@ -2150,8 +2149,6 @@ protected:
   Stmt* SubExprs[END_EXPR];
 
 public:
-
-
 
   ForallStmt(StmtClass SC,
              IdentifierInfo* RefVarInfo,
@@ -2176,41 +2173,95 @@ public:
   }
 
   // ===--- Reference variable info ---===
-  IdentifierInfo* getRefVarInfo() { return LoopRefVarInfo; }
-  const IdentifierInfo* getRefElementInfo() const { return LoopRefVarInfo; }
+  IdentifierInfo* getRefVarInfo() {
+    return LoopRefVarInfo;
+  }
+  const IdentifierInfo* getRefElementInfo() const {
+   return LoopRefVarInfo;
+ }
 
-// ===--- Container variable info ---===
-  IdentifierInfo* getContainerVarInfo() { return ContainerRefVarInfo; }
-  const IdentifierInfo* getContainerVarInfo() const { return ContainerRefVarInfo; }
+  // ===--- Container variable info ---===
+  IdentifierInfo* getContainerVarInfo() {
+    return ContainerRefVarInfo;
+  }
+
+  const IdentifierInfo* getContainerVarInfo() const {
+    return ContainerRefVarInfo;
+  }
 
   // ===--- Container variable declaration ---===
-  VarDecl* getContainerVarDecl() { return ContainerVarDecl; }
-  const VarDecl* getContainerVarDecl() const { return ContainerVarDecl; }
+  VarDecl* getContainerVarDecl() {
+    return ContainerVarDecl;
+  }
+
+  const VarDecl* getContainerVarDecl() const {
+    return ContainerVarDecl;
+  }
 
   // ===--- Predicate ---===
   Expr* getPredicate() { return reinterpret_cast<Expr*>(SubExprs[PREDICATE]); }
-  const Expr* getPredicate() const{ return reinterpret_cast<Expr*>(SubExprs[PREDICATE]); }
-  void setPredicate(Expr* P) { SubExprs[PREDICATE] = reinterpret_cast<Stmt*>(PREDICATE); }
-  bool hasPredicate() const { return SubExprs[PREDICATE] != 0; }
+
+  const Expr* getPredicate() const {
+    return reinterpret_cast<Expr*>(SubExprs[PREDICATE]);
+  }
+
+  void setPredicate(Expr* P) {
+    SubExprs[PREDICATE] = reinterpret_cast<Stmt*>(PREDICATE);
+  }
+
+  bool hasPredicate() const {
+    return SubExprs[PREDICATE] != 0;
+  }
 
   // ====--- Body ----===
-  Stmt* getBody() { return SubExprs[BODY]; }
-  const Stmt* getBody() const { return SubExprs[BODY]; }
-  void setBody(Stmt* B) { SubExprs[BODY] = reinterpret_cast<Stmt*>(B); }
-  bool hasBodyStatements() const { return SubExprs[BODY] != 0; }
+  Stmt* getBody() {
+    return SubExprs[BODY];
+  }
+
+  const Stmt* getBody() const {
+    return SubExprs[BODY];
+
+  }
+  void setBody(Stmt* B) {
+    SubExprs[BODY] = reinterpret_cast<Stmt*>(B);
+  }
+
+  bool hasBodyStatements() const {
+    return SubExprs[BODY] != 0;
+  }
 
   // ===--- Source Locations ---===
-  SourceLocation getForAllLoc() const { return ForallKWLoc; }
-  void setForAllLoc(SourceLocation L) { ForallKWLoc = L; }
+  SourceLocation getForAllLoc() const {
+    return ForallKWLoc;
+  }
 
-  SourceLocation getLParenLoc() const { return LParenLoc; }
-  void setLParenLoc(SourceLocation L) { LParenLoc = L; }
+  void setForAllLoc(SourceLocation L) {
+    ForallKWLoc = L;
+  }
 
-  SourceLocation getRParenLoc() const { return RParenLoc; }
-  void setRParenLoc(SourceLocation L) { RParenLoc = L; }
+  SourceLocation getLParenLoc() const {
+    return LParenLoc;
+  }
 
-  SourceLocation getLocStart() const LLVM_READONLY { return ForallKWLoc; }
-  SourceLocation getLocEnd() const LLVM_READONLY { return SubExprs[BODY]->getLocEnd(); }
+  void setLParenLoc(SourceLocation L) {
+    LParenLoc = L;
+  }
+
+  SourceLocation getRParenLoc() const {
+    return RParenLoc;
+  }
+
+  void setRParenLoc(SourceLocation L) {
+    RParenLoc = L;
+  }
+
+  SourceLocation getLocStart() const LLVM_READONLY {
+    return ForallKWLoc;
+  }
+
+  SourceLocation getLocEnd() const LLVM_READONLY {
+    return SubExprs[BODY]->getLocEnd();
+  }
 
   SourceRange getSourceRange() const {
     return SourceRange(ForallKWLoc, SubExprs[BODY]->getLocEnd());
@@ -2248,9 +2299,6 @@ protected:
   VarDecl         *ContainerVarDecl;
   SourceLocation  ForallKWLoc, LParenLoc, RParenLoc;
 };
-
-
-
 
 // ----- ForallMeshStmt -- forall mesh statement
 //
@@ -2535,6 +2583,7 @@ protected:
   SourceLocation  RenderallKWLoc, LParenLoc, RParenLoc;
 };
 
+
 // ----- RenderallMeshStmt -- renderall mesh statement
 //
 // renderall <mesh-loc-kw> <ref-element> in <ref-mesh> {
@@ -2668,6 +2717,7 @@ public:
 
   static bool classof(const RenderallMeshStmt *) { return true; }
 };
+// +==========================================================================+
 
 
 }  // end namespace clang

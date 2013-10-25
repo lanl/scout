@@ -6452,7 +6452,7 @@ def warn_not_a_doxygen_trailing_member_comment : Warning<
   "not a Doxygen trailing comment">, InGroup<Documentation>, DefaultIgnore;
 } // end of documentation issue category
 
-// ===== Scout ===============================================================
+// +===== Scout ============================================================+
 let CategoryName = "Scout Issue" in {
 
 def warn_forall_calling_io_func:Warning<

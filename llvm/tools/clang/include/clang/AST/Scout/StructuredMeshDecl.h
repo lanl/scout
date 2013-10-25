@@ -2,7 +2,7 @@
  * ###########################################################################
  * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
- * 
+ *
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -20,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- * 
+ *
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided 
+ *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -31,7 +31,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -45,12 +45,14 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ########################################################################### 
- * 
+ * ###########################################################################
+ *
  * Notes
  *
- * ##### 
- */ 
+ * #####
+ */
+
+// +===== Scout ==============================================================+
 
 #ifndef __SC_CLANG_STRUCTURED_MESH_DECL_H__
 #define __SC_CLANG_STRUCTURED_MESH_DECL_H__
@@ -59,28 +61,28 @@
 #include "clang/AST/Scout/MeshDecl.h"
 
 namespace clang {
-  
-// ----- StructuredMeshDecl 
-// 
+
+// ----- StructuredMeshDecl
+//
 class StructuredMeshDecl : public MeshDecl {
 
 protected:
-  StructuredMeshDecl(DeclContext* DC, 
-                     SourceLocation L, 
+  StructuredMeshDecl(DeclContext* DC,
+                     SourceLocation L,
                      SourceLocation StartL,
-                     IdentifierInfo* Id, 
+                     IdentifierInfo* Id,
                      StructuredMeshDecl* PrevDecl);
 
 public:
-  static StructuredMeshDecl *Create(const ASTContext &C, 
+  static StructuredMeshDecl *Create(const ASTContext &C,
                                  DeclContext *DC,
                                  SourceLocation StartLoc,
                                  SourceLocation IdLoc,
-                                 IdentifierInfo *Id, 
+                                 IdentifierInfo *Id,
                                  StructuredMeshDecl* PrevDecl = 0);
 
-  static StructuredMeshDecl *CreateDeserialized(const ASTContext &C, 
-                                                unsigned ID); 
+  static StructuredMeshDecl *CreateDeserialized(const ASTContext &C,
+                                                unsigned ID);
 
   const StructuredMeshDecl *getPreviousDecl() const {
     return cast_or_null<StructuredMeshDecl>(MeshDecl::getPreviousDecl());

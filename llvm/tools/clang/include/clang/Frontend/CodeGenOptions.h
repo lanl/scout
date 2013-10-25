@@ -121,10 +121,10 @@ public:
 
   /// A list of command-line options to forward to the LLVM backend.
   std::vector<std::string> BackendOptions;
-  
-  // ===== Scout ====================================================================
-  // The full path to the scc executable, so we can find the llvm-as-3.1 command.
-  // This is used for OpenCL/AMD hardware. 
+
+  // +==== Scout =============================================================+
+  // The full path to the scc executable, so we can find the llvm-as
+  // command. This is used for AMD hardware (OpenCL).
   std::string SccPath;
   // ================================================================================
 

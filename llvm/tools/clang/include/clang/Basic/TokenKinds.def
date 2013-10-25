@@ -44,11 +44,13 @@
 #ifndef ANNOTATION
 #define ANNOTATION(X) TOK(annot_ ## X)
 #endif
-// ===== Scout =================================================================
+
+// +==== Scout ===============================================================+
 #ifndef SCOUT_KEYWORD
 #define SCOUT_KEYWORD(X) KEYWORD(X, KEYSCOUT)
 #endif
-// =============================================================================
+// +==========================================================================+
+
 //===----------------------------------------------------------------------===//
 // Preprocessor keywords.
 //===----------------------------------------------------------------------===//
@@ -226,7 +228,8 @@ PUNCTUATOR(greatergreatergreater, ">>>")
 //   BOOLSUPPORT - This is a keyword if 'bool' is a built-in type
 //   WCHARSUPPORT - This is a keyword if 'wchar_t' is a built-in type
 //
-// ===== Scout ==============================================================
+
+// +===== Scout ==============================================================+
 SCOUT_KEYWORD(forall)
 SCOUT_KEYWORD(structured)
 SCOUT_KEYWORD(uniform)
@@ -251,7 +254,8 @@ SCOUT_KEYWORD(stencil)
 SCOUT_KEYWORD(camera)
 SCOUT_KEYWORD(with)
 SCOUT_KEYWORD(to)
-// ==========================================================================
+// +==========================================================================+
+
 KEYWORD(auto                        , KEYALL)
 KEYWORD(break                       , KEYALL)
 KEYWORD(case                        , KEYALL)

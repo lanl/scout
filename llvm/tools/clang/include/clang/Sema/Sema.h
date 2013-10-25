@@ -1002,12 +1002,14 @@ public:
                           SourceRange Brackets, DeclarationName Entity);
   QualType BuildExtVectorType(QualType T, Expr *ArraySize,
                               SourceLocation AttrLoc);
-  // ===== Scout ================================================================
-  QualType BuildUniformMeshType(QualType T, const MeshType::MeshDimensions &dims,
-                            SourceRange Brackets, DeclarationName Entity);
+  // +==== Scout =============================================================+
+  QualType BuildUniformMeshType(QualType T,
+                                const MeshType::MeshDimensions &dims,
+                                SourceRange Brackets, DeclarationName Entity);
   QualType BuildUnstructuredMeshType(QualType T, Expr* filename,
-                            SourceRange Brackets, DeclarationName Entity);
-  // ============================================================================
+                                     SourceRange Brackets,
+                                     DeclarationName Entity);
+  // +========================================================================+
 
   /// \brief Build a function type.
   ///
@@ -1292,13 +1294,17 @@ public:
                          bool WantNontrivialTypeSourceInfo = false,
                          IdentifierInfo **CorrectedII = 0);
   TypeSpecifierType isTagName(IdentifierInfo &II, Scope *S);
-  TypeSpecifierType isMeshName(IdentifierInfo &II, Scope *S);
   bool isMicrosoftMissingTypename(const CXXScopeSpec *SS, Scope *S);
   bool DiagnoseUnknownTypeName(IdentifierInfo *&II,
                                SourceLocation IILoc,
                                Scope *S,
                                CXXScopeSpec *SS,
                                ParsedType &SuggestedType);
+
+  // +===== Scout ============================================================+
+  TypeSpecifierType isMeshName(IdentifierInfo &II, Scope *S);
+  // +========================================================================+
+
 
   /// \brief Describes the result of the name lookup and resolution performed
   /// by \c ClassifyName().
@@ -2293,8 +2299,10 @@ public:
     /// Tag name lookup, which finds the names of enums, classes,
     /// structs, and unions.
     LookupTagName,
+    // +===== Scout ==========================================================+
     /// Mesh name lookup, which finds the names of meshes.
     LookupMeshName,
+    // +======================================================================+
     /// Label name lookup.
     LookupLabel,
     /// Member name lookup, which finds the names of
@@ -3256,13 +3264,15 @@ public:
                                 const DeclarationNameInfo &NameInfo,
                                 const TemplateArgumentListInfo *TemplateArgs);
 
+  // +===== Scout ============================================================+
   ExprResult BuildMeshMemberReferenceExpr(Expr *Base, QualType BaseType,
-                                          SourceLocation OpLoc, bool IsArrow,
-                                          CXXScopeSpec &SS,
-                                          SourceLocation TemplateKWLoc,
-                                          NamedDecl *FirstQualifierInScope,
-                                          const DeclarationNameInfo &NameInfo,
-                                         const TemplateArgumentListInfo *TemplateArgs);
+                                 SourceLocation OpLoc, bool IsArrow,
+                                 CXXScopeSpec &SS,
+                                 SourceLocation TemplateKWLoc,
+                                 NamedDecl *FirstQualifierInScope,
+                                 const DeclarationNameInfo &NameInfo,
+                                 const TemplateArgumentListInfo *TemplateArgs);
+  // +========================================================================+
 
   // This struct is for use by ActOnMemberAccess to allow
   // BuildMemberReferenceExpr to be able to reinvoke ActOnMemberAccess after
@@ -3286,15 +3296,17 @@ public:
                                       bool SuppressQualifierCheck = false,
                                       ActOnMemberAccessExtraArgs *ExtraArgs = 0);
 
+  // +===== Scout ============================================================+
   ExprResult BuildMeshMemberReferenceExpr(Expr *Base, QualType BaseType,
-                                          SourceLocation OpLoc, bool IsArrow,
-                                          const CXXScopeSpec &SS,
-                                          SourceLocation TemplateKWLoc,
-                                          NamedDecl *FirstQualifierInScope,
-                                          LookupResult &R,
-                                          const TemplateArgumentListInfo *TemplateArgs,
-                                          bool SuppressQualifierCheck = false,
-                                          ActOnMemberAccessExtraArgs *ExtraArgs = 0);
+                                  SourceLocation OpLoc, bool IsArrow,
+                                  const CXXScopeSpec &SS,
+                                  SourceLocation TemplateKWLoc,
+                                  NamedDecl *FirstQualifierInScope,
+                                  LookupResult &R,
+                                  const TemplateArgumentListInfo *TemplateArgs,
+                                  bool SuppressQualifierCheck = false,
+                                  ActOnMemberAccessExtraArgs *ExtraArgs = 0);
+  // +========================================================================+
 
 
   ExprResult PerformMemberExprBaseConversion(Expr *Base, bool IsArrow);
@@ -7363,7 +7375,6 @@ public:
                                        bool IsArrow);
   void CodeCompletePostfixExpression(Scope *S, ExprResult LHS);
   void CodeCompleteTag(Scope *S, unsigned TagSpec);
-  void CodeCompleteMesh(Scope *S, unsigned MeshSpec);
   void CodeCompleteTypeQualifiers(DeclSpec &DS);
   void CodeCompleteCase(Scope *S);
   void CodeCompleteCall(Scope *S, Expr *Fn, ArrayRef<Expr *> Args);
@@ -7371,6 +7382,11 @@ public:
   void CodeCompleteReturn(Scope *S);
   void CodeCompleteAfterIf(Scope *S);
   void CodeCompleteAssignmentRHS(Scope *S, Expr *LHS);
+
+  // +===== Scout ============================================================+
+  void CodeCompleteMesh(Scope *S, unsigned MeshSpec);
+  // +========================================================================+
+
 
   void CodeCompleteQualifiedId(Scope *S, CXXScopeSpec &SS,
                                bool EnteringContext);
@@ -7653,7 +7669,7 @@ public:
 
   Decl *getObjCDeclContext() const;
 
-  // scout *************************** Scout Sema methods
+  // +===== Scout ============================================================+
   bool isScoutSource(SourceLocation location);
 
   // called at the beginning part of a mesh definition
@@ -7797,6 +7813,8 @@ public:
   typedef llvm::SmallVector<VarDecl*, 3> ScoutLoopStack;
 
   ScoutLoopStack SCLStack;
+
+  // +========================================================================+
 
   DeclContext *getCurLexicalContext() const {
     return OriginalLexicalContext ? OriginalLexicalContext : CurContext;

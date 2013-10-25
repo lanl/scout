@@ -73,8 +73,8 @@ public:
   /// \brief Retrieve the underlying type pointer, which refers to a
   /// canonical type, or NULL.
   ///
-  const T *getTypePtrOrNull() const { 
-    return cast_or_null<T>(Stored.getTypePtrOrNull()); 
+  const T *getTypePtrOrNull() const {
+    return cast_or_null<T>(Stored.getTypePtrOrNull());
   }
 
   /// \brief Implicit conversion to a qualified type.
@@ -82,7 +82,7 @@ public:
 
   /// \brief Implicit conversion to bool.
   LLVM_EXPLICIT operator bool() const { return !isNull(); }
-  
+
   bool isNull() const {
     return Stored.isNull();
   }
@@ -617,8 +617,7 @@ struct CanProxyAdaptor<EnumType> : public CanProxyBase<EnumType> {
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isBeingDefined)
 };
 
-// ===== Scout =============================================================== 
-
+// +===== Scout ==============================================================+
 template <>
 struct CanProxyAdaptor<MeshType> : public CanProxyBase<MeshType> {
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(MeshDecl *, getDecl)
@@ -637,24 +636,23 @@ struct CanProxyAdaptor<RectilinearMeshType> :
     public CanProxyBase<RectilinearMeshType> {
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(RectilinearMeshDecl *, getDecl)
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isBeingDefined)
-};    
+};
 
 template <>
 struct CanProxyAdaptor<UnstructuredMeshType> :
     public CanProxyBase<UnstructuredMeshType> {
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(UnstructuredMeshDecl *, getDecl)
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isBeingDefined)
-};    
+};
 
 template <>
 struct CanProxyAdaptor<StructuredMeshType> :
     public CanProxyBase<StructuredMeshType> {
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(StructuredMeshDecl *, getDecl)
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isBeingDefined)
-};    
-  
-// ============================================================================
-  
+};
+// +==========================================================================+
+
 template<>
 struct CanProxyAdaptor<TemplateTypeParmType>
   : public CanProxyBase<TemplateTypeParmType> {

@@ -30,12 +30,13 @@ namespace clang {
   class QualType;
   class TagDecl;
   class VarDecl;
-
+  // +===== Scout ============================================================+
   class MeshDecl;
   class UniformMeshDecl;
   class RectilinearMeshDecl;
   class StructuredMeshDecl;
-  class UnstructuredMeshDecl;  
+  class UnstructuredMeshDecl;
+  // +========================================================================+
 
 /// \brief An abstract interface that should be implemented by listeners
 /// that want to be notified when an AST entity gets modified after its
@@ -45,22 +46,35 @@ public:
   virtual ~ASTMutationListener();
 
   /// \brief A new TagDecl definition was completed.
-  virtual void CompletedTagDefinition(const TagDecl *D) { }
+  virtual void
+  CompletedTagDefinition(const TagDecl *D) { }
 
+  // +===== Scout ============================================================+
   /// \brief A new MeshDecl definition was completed.
-  virtual void CompletedMeshDefinition(const MeshDecl *D) { }
+  virtual void
+  CompletedMeshDefinition(const MeshDecl *D)
+  { }
 
   /// \brief A new UniformMeshDecl definition was completed.
-  virtual void CompletedUniformMeshDefinition(const UniformMeshDecl *D) { }  
+  virtual void
+  CompletedUniformMeshDefinition(const UniformMeshDecl *D)
+  { }
 
   /// \brief A new RectilinearMeshDecl definition was completed.
-  virtual void CompletedRectilinearMeshDefinition(const RectilinearMeshDecl *D) { }    
+  virtual void
+  CompletedRectilinearMeshDefinition(const RectilinearMeshDecl *D)
+  { }
 
   /// \brief A new StructuredMeshDecl definition was completed.
-  virtual void CompletedStructuredMeshDefinition(const StructuredMeshDecl *D) { }      
+  virtual void
+  CompletedStructuredMeshDefinition(const StructuredMeshDecl *D)
+  { }
 
   /// \brief A new UnstructuredMeshDecl definition was completed.
-  virtual void CompletedUnstructuredMeshDefinition(const UnstructuredMeshDecl *D) { }        
+  virtual void
+  CompletedUnstructuredMeshDefinition(const UnstructuredMeshDecl *D)
+  { }
+  // +========================================================================+
 
   /// \brief A new declaration with name has been added to a DeclContext.
   virtual void AddedVisibleDecl(const DeclContext *DC, const Decl *D) {}
