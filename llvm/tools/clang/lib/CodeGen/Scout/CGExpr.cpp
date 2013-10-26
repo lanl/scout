@@ -20,9 +20,18 @@
 #include "llvm/Support/ConvertUTF.h"
 #include "Scout/CGMeshLayout.h"
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
+#include <stdio.h>
 
 using namespace clang;
 using namespace CodeGen;
+
+// We use 'IRNameStr' to hold the generated names we use for
+// various values in the IR building.  We've added a static
+// buffer to avoid the need for a lot of fine-grained new and
+// delete calls...  We're likely safe with 160 character long
+// strings.
+static char IRNameStr[160];
+
 
 /*
 LValue
@@ -107,14 +116,17 @@ CodeGenFunction::EmitLValueForMeshField(LValue base,
   //             TBAA (type-based aliases analysis).
   // fields are before mesh dimensions so we can do things the same a struct
   // this is setup in Codegentypes.h ConvertScoutMeshType()
+  const MeshDecl *mesh = field->getParent();
+
   if (field->isBitField()) {
-    const CGMeshLayout &ML = CGM.getTypes().getCGMeshLayout(field->getParent());
+    const CGMeshLayout &ML = CGM.getTypes().getCGMeshLayout(mesh);
     const CGBitFieldInfo &Info = ML.getBitFieldInfo(field);
     llvm::Value *Addr = base.getAddress();
     unsigned Idx = ML.getLLVMFieldNo(field);
     if (Idx != 0)
       // For structs, we GEP to the field that the record layout suggests.
-      Addr = Builder.CreateStructGEP(Addr, Idx, field->getName());
+      sprintf(IRNameStr, "%s.%s.ptr", mesh->getName().str().c_str(),field->getName().str().c_str());
+      Addr = Builder.CreateStructGEP(Addr, Idx, IRNameStr);
     // Get the access type.
     llvm::Type *PtrTy = llvm::Type::getIntNPtrTy(
       getLLVMContext(), Info.StorageSize,
@@ -127,7 +139,6 @@ CodeGenFunction::EmitLValueForMeshField(LValue base,
     return LValue::MakeBitfield(Addr, Info, fieldType, base.getAlignment());
   }
 
-  const MeshDecl *mesh = field->getParent();
   QualType type = field->getType();
   CharUnits alignment = getContext().getDeclAlign(field);
 
@@ -144,7 +155,8 @@ CodeGenFunction::EmitLValueForMeshField(LValue base,
 
   // We GEP to the field that the record layout suggests.
   unsigned idx = CGM.getTypes().getCGMeshLayout(mesh).getLLVMFieldNo(field);
-  addr = Builder.CreateStructGEP(addr, idx, field->getName());
+  sprintf(IRNameStr, "%s.%s.ptr", mesh->getName().str().c_str(),field->getName().str().c_str());
+  addr = Builder.CreateStructGEP(addr, idx, IRNameStr);
 
   // If this is a reference field, load the reference right now.
   if (const ReferenceType *refType = type->getAs<ReferenceType>()) {
@@ -173,16 +185,17 @@ CodeGenFunction::EmitLValueForMeshField(LValue base,
     cvr = 0; // qualifiers don't recursively apply to referencee
   }
 
-  // There was a bitcast here in the struct/union case, rather than a load.
-  addr = Builder.CreateLoad(addr);
+  sprintf(IRNameStr, "%s.%s", mesh->getName().str().c_str(),field->getName().str().c_str());
+  addr = Builder.CreateLoad(addr, IRNameStr);
 
   if (field->hasAttr<AnnotateAttr>())
     addr = EmitFieldAnnotations(field, addr);
 
   // get the correct element of the field depending on the index
   // in getGlobalIdx()
-  llvm::Value *index = Builder.CreateLoad(getGlobalIdx(), "idx");
-  addr = Builder.CreateInBoundsGEP(addr, index, "meshidx");
+  llvm::Value *index = Builder.CreateLoad(getGlobalIdx(), "forall.linearidx");
+  sprintf(IRNameStr, "%s.%s.element", mesh->getName().str().c_str(),field->getName().str().c_str());
+  addr = Builder.CreateInBoundsGEP(addr, index, IRNameStr);
 
   LValue LV = MakeAddrLValue(addr, type, alignment);
   LV.getQuals().addCVRQualifiers(cvr);
