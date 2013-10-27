@@ -79,7 +79,7 @@ IdentifierTable::IdentifierTable(const LangOptions &LangOpts,
   // Populate the identifier table with info about keywords for the current
   // language.
   AddKeywords(LangOpts);
-      
+
 
   // Add the '_experimental_modules_import' contextual keyword.
   get("import").setModulesImport(true);
@@ -104,11 +104,11 @@ namespace {
     KEYOPENCL = 0x200,
     KEYC11 = 0x400,
     KEYARC = 0x800,
-    KEYNOMS = 0x01000,    
+    KEYNOMS = 0x01000,
     WCHARSUPPORT = 0x02000,
-    // ===== Scout ============================================================
-    KEYSCOUT = 0x4000,
-    // ========================================================================
+    // +===== Scout ==========================================================+
+    KEYSCOUT = 0x04000,
+    // +======================================================================+
     KEYALL = (0xffff & ~KEYNOMS) // Because KEYNOMS is used to exclude.
   };
 }
@@ -142,10 +142,10 @@ static void AddKeyword(StringRef Keyword,
   // in non-arc mode.
   else if (LangOpts.ObjC2 && (Flags & KEYARC)) AddResult = 2;
   else if (LangOpts.CPlusPlus && (Flags & KEYCXX11)) AddResult = 3;
-  
-  // ===== Scout - keywords ===================================================
+
+  // +==== Scout - keywords ==================================================+
   else if (LangOpts.Scout && (Flags & KEYSCOUT)) AddResult = 1;
-  // ==========================================================================  
+  // +========================================================================+
 
 
 
@@ -238,7 +238,7 @@ tok::PPKeywordKind IdentifierInfo::getPPKeywordID() const {
   CASE( 6, 'i', 'n', ifndef);
   CASE( 6, 'i', 'p', import);
   CASE( 6, 'p', 'a', pragma);
-      
+
   CASE( 7, 'd', 'f', defined);
   CASE( 7, 'i', 'c', include);
   CASE( 7, 'w', 'r', warning);
@@ -247,7 +247,7 @@ tok::PPKeywordKind IdentifierInfo::getPPKeywordID() const {
   CASE(12, 'i', 'c', include_next);
 
   CASE(14, '_', 'p', __public_macro);
-      
+
   CASE(15, '_', 'p', __private_macro);
 
   CASE(16, '_', 'i', __include_macros);
@@ -431,7 +431,7 @@ ObjCMethodFamily Selector::getMethodFamilyImpl(Selector sel) {
     if (name == "retainCount") return OMF_retainCount;
     if (name == "self") return OMF_self;
   }
- 
+
   if (name == "performSelector") return OMF_performSelector;
 
   // The other method families may begin with a prefix of underscores.

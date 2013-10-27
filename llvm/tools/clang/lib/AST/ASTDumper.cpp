@@ -88,7 +88,7 @@ namespace  {
     enum IndentType { IT_Child, IT_LastChild };
 
     /// Indents[i] indicates if another child exists at level i.
-    /// Used by Indent() to print the tree structure. 
+    /// Used by Indent() to print the tree structure.
     llvm::SmallVector<IndentType, 32> Indents;
 
     /// Indicates that more children will be needed at this indent level.
@@ -197,10 +197,13 @@ namespace  {
     void VisitIndirectFieldDecl(const IndirectFieldDecl *D);
     void VisitFunctionDecl(const FunctionDecl *D);
     void VisitFieldDecl(const FieldDecl *D);
-    void VisitMeshFieldDecl(const MeshFieldDecl *D);    
     void VisitVarDecl(const VarDecl *D);
     void VisitFileScopeAsmDecl(const FileScopeAsmDecl *D);
     void VisitImportDecl(const ImportDecl *D);
+
+    // +==== Scout ===========================================================+
+    void VisitMeshFieldDecl(const MeshFieldDecl *D);
+    // +======================================================================+
 
     // C++ Decls
     void VisitNamespaceDecl(const NamespaceDecl *D);
@@ -427,7 +430,7 @@ void ASTDumper::dumpSourceRange(SourceRange R) {
 
 void ASTDumper::dumpBareType(QualType T) {
   ColorScope Color(*this, TypeColor);
-  
+
   SplitQualType T_split = T.split();
   OS << "'" << QualType::getAsString(T_split) << "'";
 
@@ -828,7 +831,7 @@ void ASTDumper::VisitFunctionDecl(const FunctionDecl *D) {
       lastChild();
     dumpDecl(*I);
   }
- 
+
   setMoreChildren(OldMoreChildren || HasDeclarationBody);
   if (HasCtorInitializers)
     for (CXXConstructorDecl::init_const_iterator I = C->init_begin(),
@@ -871,8 +874,8 @@ void ASTDumper::VisitFieldDecl(const FieldDecl *D) {
   }
 }
 
-// ===== Scout ================================================================
-// 
+// +==== Scout ===============================================================+
+//
 void ASTDumper::VisitMeshFieldDecl(const MeshFieldDecl *D) {
 
   dumpName(D);
@@ -881,7 +884,7 @@ void ASTDumper::VisitMeshFieldDecl(const MeshFieldDecl *D) {
   if (D->isMutable())
     OS << " mutable";
 
-  if (D->isCellLocated()) 
+  if (D->isCellLocated())
     OS << " __cell_located__";
   else if (D->isVertexLocated())
     OS << " __vertex_located__";
@@ -891,8 +894,8 @@ void ASTDumper::VisitMeshFieldDecl(const MeshFieldDecl *D) {
     OS << " __face_located__";
   else if (D->isBuiltInField())
     OS << " __sc_built_in__";
-  else 
-    // Normally, we'd assert here but this is good for 
+  else
+    // Normally, we'd assert here but this is good for
     // debugging so we'll let it go with a diagnostic
     // output flagging the error...
     OS << " __invalid_location__";
@@ -918,8 +921,7 @@ void ASTDumper::VisitMeshFieldDecl(const MeshFieldDecl *D) {
     dumpStmt(Init);
   }
 }
-//
-// ============================================================================
+// +==========================================================================+
 
 void ASTDumper::VisitVarDecl(const VarDecl *D) {
   dumpName(D);
@@ -1418,7 +1420,7 @@ void ASTDumper::dumpStmt(const Stmt *S) {
 }
 
 void ASTDumper::VisitStmt(const Stmt *Node) {
-  {   
+  {
     ColorScope Color(*this, StmtColor);
     OS << Node->getStmtClassName();
   }

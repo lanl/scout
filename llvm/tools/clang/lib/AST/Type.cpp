@@ -21,11 +21,16 @@
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/Type.h"
 #include "clang/AST/TypeVisitor.h"
-#include "clang/AST/Scout/MeshDecl.h"
 #include "clang/Basic/Specifiers.h"
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/raw_ostream.h"
+
+// +===== Scout ==============================================================+
+#include "clang/AST/Scout/MeshDecl.h"
+// +==========================================================================+
+
+
 #include <algorithm>
 using namespace clang;
 
@@ -104,31 +109,31 @@ unsigned ConstantArrayType::getNumAddressingBits(ASTContext &Context,
                                               SizeExtended.getBitWidth()) * 2);
 
   llvm::APSInt TotalSize(llvm::APInt(SizeExtended.getBitWidth(), ElementSize));
-  TotalSize *= SizeExtended;  
+  TotalSize *= SizeExtended;
 
   return TotalSize.getActiveBits();
 }
 
 unsigned ConstantArrayType::getMaxSizeBits(ASTContext &Context) {
   unsigned Bits = Context.getTypeSize(Context.getSizeType());
-  
+
   // GCC appears to only allow 63 bits worth of address space when compiling
   // for 64-bit, so we do the same.
   if (Bits == 64)
     --Bits;
-  
+
   return Bits;
 }
 
-DependentSizedArrayType::DependentSizedArrayType(const ASTContext &Context, 
+DependentSizedArrayType::DependentSizedArrayType(const ASTContext &Context,
                                                  QualType et, QualType can,
                                                  Expr *e, ArraySizeModifier sm,
                                                  unsigned tq,
                                                  SourceRange brackets)
-    : ArrayType(DependentSizedArray, et, can, sm, tq, 
+    : ArrayType(DependentSizedArray, et, can, sm, tq,
                 (et->containsUnexpandedParameterPack() ||
                  (e && e->containsUnexpandedParameterPack()))),
-      Context(Context), SizeExpr((Stmt*) e), Brackets(brackets) 
+      Context(Context), SizeExpr((Stmt*) e), Brackets(brackets)
 {
 }
 
@@ -147,16 +152,16 @@ void DependentSizedArrayType::Profile(llvm::FoldingSetNodeID &ID,
 DependentSizedExtVectorType::DependentSizedExtVectorType(const
                                                          ASTContext &Context,
                                                          QualType ElementType,
-                                                         QualType can, 
-                                                         Expr *SizeExpr, 
+                                                         QualType can,
+                                                         Expr *SizeExpr,
                                                          SourceLocation loc)
     : Type(DependentSizedExtVector, can, /*Dependent=*/true,
            /*InstantiationDependent=*/true,
-           ElementType->isVariablyModifiedType(), 
+           ElementType->isVariablyModifiedType(),
            (ElementType->containsUnexpandedParameterPack() ||
             (SizeExpr && SizeExpr->containsUnexpandedParameterPack()))),
       Context(Context), SizeExpr(SizeExpr), ElementType(ElementType),
-      loc(loc) 
+      loc(loc)
 {
 }
 
@@ -174,7 +179,7 @@ VectorType::VectorType(QualType vecType, unsigned nElements, QualType canonType,
          vecType->isInstantiationDependentType(),
          vecType->isVariablyModifiedType(),
          vecType->containsUnexpandedParameterPack()),
-    ElementType(vecType) 
+    ElementType(vecType)
 {
   VectorTypeBits.VecKind = vecKind;
   VectorTypeBits.NumElements = nElements;
@@ -185,8 +190,8 @@ VectorType::VectorType(TypeClass tc, QualType vecType, unsigned nElements,
   : Type(tc, canonType, vecType->isDependentType(),
          vecType->isInstantiationDependentType(),
          vecType->isVariablyModifiedType(),
-         vecType->containsUnexpandedParameterPack()), 
-    ElementType(vecType) 
+         vecType->containsUnexpandedParameterPack()),
+    ElementType(vecType)
 {
   VectorTypeBits.VecKind = vecKind;
   VectorTypeBits.NumElements = nElements;
@@ -481,7 +486,7 @@ ObjCObjectType::ObjCObjectType(QualType Canonical, QualType Base,
                                ObjCProtocolDecl * const *Protocols,
                                unsigned NumProtocols)
   : Type(ObjCObject, Canonical, false, false, false, false),
-    BaseType(Base) 
+    BaseType(Base)
 {
   ObjCObjectTypeBits.NumProtocols = NumProtocols;
   assert(getNumProtocols() == NumProtocols &&
@@ -554,7 +559,7 @@ CXXRecordDecl *Type::getAsCXXRecordDecl() const {
   else if (const InjectedClassNameType *Injected
                                   = getAs<InjectedClassNameType>())
     return Injected->getDecl();
-  
+
   return 0;
 }
 
@@ -622,10 +627,10 @@ bool Type::hasIntegerRepresentation() const {
 
 /// \brief Determine whether this type is an integral type.
 ///
-/// This routine determines whether the given type is an integral type per 
+/// This routine determines whether the given type is an integral type per
 /// C++ [basic.fundamental]p7. Although the C standard does not define the
 /// term "integral type", it has a similar term "integer type", and in C++
-/// the two terms are equivalent. However, C's "integer type" includes 
+/// the two terms are equivalent. However, C's "integer type" includes
 /// enumeration types, while C++'s "integer type" does not. The \c ASTContext
 /// parameter is used to determine whether we should be following the C or
 /// C++ rules when determining whether this type is an integral/integer type.
@@ -634,7 +639,7 @@ bool Type::hasIntegerRepresentation() const {
 /// type", use this routine.
 ///
 /// For cases where C permits "an integer type" and C++ permits "an integral
-/// or enumeration type", use \c isIntegralOrEnumerationType() instead. 
+/// or enumeration type", use \c isIntegralOrEnumerationType() instead.
 ///
 /// \param Ctx The context in which this type occurs.
 ///
@@ -643,11 +648,11 @@ bool Type::isIntegralType(ASTContext &Ctx) const {
   if (const BuiltinType *BT = dyn_cast<BuiltinType>(CanonicalType))
     return BT->getKind() >= BuiltinType::Bool &&
     BT->getKind() <= BuiltinType::Int128;
-  
+
   if (!Ctx.getLangOpts().CPlusPlus)
     if (const EnumType *ET = dyn_cast<EnumType>(CanonicalType))
       return ET->getDecl()->isComplete(); // Complete enum types are integral in C.
-  
+
   return false;
 }
 
@@ -740,12 +745,12 @@ bool Type::isSignedIntegerOrEnumerationType() const {
     return BT->getKind() >= BuiltinType::Char_S &&
     BT->getKind() <= BuiltinType::Int128;
   }
-  
+
   if (const EnumType *ET = dyn_cast<EnumType>(CanonicalType)) {
     if (ET->getDecl()->isComplete())
       return ET->getDecl()->getIntegerType()->isSignedIntegerType();
   }
-  
+
   return false;
 }
 
@@ -780,12 +785,12 @@ bool Type::isUnsignedIntegerOrEnumerationType() const {
     return BT->getKind() >= BuiltinType::Bool &&
     BT->getKind() <= BuiltinType::UInt128;
   }
-  
+
   if (const EnumType *ET = dyn_cast<EnumType>(CanonicalType)) {
     if (ET->getDecl()->isComplete())
       return ET->getDecl()->getIntegerType()->isUnsignedIntegerType();
   }
-  
+
   return false;
 }
 
@@ -908,7 +913,7 @@ bool Type::isConstantSizeType() const {
 bool Type::isIncompleteType(NamedDecl **Def) const {
   if (Def)
     *Def = 0;
-  
+
   switch (CanonicalType->getTypeClass()) {
   default: return false;
   case Builtin:
@@ -919,11 +924,11 @@ bool Type::isIncompleteType(NamedDecl **Def) const {
     EnumDecl *EnumD = cast<EnumType>(CanonicalType)->getDecl();
     if (Def)
       *Def = EnumD;
-    
+
     // An enumeration with fixed underlying type is complete (C++0x 7.2p3).
     if (EnumD->isFixed())
       return false;
-    
+
     return !EnumD->isCompleteDefinition();
   }
   case Record: {
@@ -935,8 +940,9 @@ bool Type::isIncompleteType(NamedDecl **Def) const {
     return !Rec->isCompleteDefinition();
   }
 
+  // +===== Scout ============================================================+
   case UniformMesh: {
-    // A uniform mesh type is incomplete if the decl is a forward declaration, 
+    // A uniform mesh type is incomplete if the decl is a forward declaration,
     // but not a full definition (borrowed from C99 6.2.5p22).
     UniformMeshDecl *UMD = cast<UniformMeshType>(CanonicalType)->getDecl();
     if (Def)
@@ -945,31 +951,35 @@ bool Type::isIncompleteType(NamedDecl **Def) const {
   }
 
   case RectilinearMesh: {
-    // A rectilinear mesh type is incomplete if the decl is a forward declaration,
-    // but not a full definition (borrowed from C99 6.2.5p22).
-    RectilinearMeshDecl *RMD = cast<RectilinearMeshType>(CanonicalType)->getDecl();
+    // A rectilinear mesh type is incomplete if the decl is a forward
+    // declaration, but not a full definition (borrowed from C99 6.2.5p22).
+    RectilinearMeshDecl *RMD =
+      cast<RectilinearMeshType>(CanonicalType)->getDecl();
     if (Def)
       *Def = RMD;
     return !RMD->isCompleteDefinition();
   }
 
   case StructuredMesh: {
-    // A structured mesh type is incomplete if the decl is a forward declaration,
-    // but not a full definition (borrowed from C99 6.2.5p22).
-    StructuredMeshDecl *SMD = cast<StructuredMeshType>(CanonicalType)->getDecl();
+    // A structured mesh type is incomplete if the decl is a forward
+    // declaration, but not a full definition (borrowed from C99 6.2.5p22).
+    StructuredMeshDecl *SMD =
+      cast<StructuredMeshType>(CanonicalType)->getDecl();
     if (Def)
       *Def = SMD;
     return !SMD->isCompleteDefinition();
   }
 
   case UnstructuredMesh: {
-    // An unstructed mesh type is incomplete if the decl is a forward declaration,
-    // but not a full definition (borrowed from C99 6.2.5p22).
-    UnstructuredMeshDecl *USMD = cast<UnstructuredMeshType>(CanonicalType)->getDecl();
+    // An unstructed mesh type is incomplete if the decl is a forward
+    // declaration, but not a full definition (borrowed from C99 6.2.5p22).
+    UnstructuredMeshDecl *USMD =
+      cast<UnstructuredMeshType>(CanonicalType)->getDecl();
     if (Def)
       *Def = USMD;
     return !USMD->isCompleteDefinition();
   }
+  // +========================================================================+
 
   case ConstantArray:
     // An array is incomplete if its element type is incomplete
@@ -1009,10 +1019,10 @@ bool QualType::isCXX98PODType(ASTContext &Context) const {
   // are PODs according to the standard.
   if (isNull())
     return 0;
-  
+
   if ((*this)->isIncompleteArrayType())
     return Context.getBaseElementType(*this).isCXX98PODType(Context);
-    
+
   if ((*this)->isIncompleteType())
     return false;
 
@@ -1020,7 +1030,7 @@ bool QualType::isCXX98PODType(ASTContext &Context) const {
     switch (getObjCLifetime()) {
     case Qualifiers::OCL_ExplicitNone:
       return true;
-      
+
     case Qualifiers::OCL_Strong:
     case Qualifiers::OCL_Weak:
     case Qualifiers::OCL_Autoreleasing:
@@ -1028,9 +1038,9 @@ bool QualType::isCXX98PODType(ASTContext &Context) const {
 
     case Qualifiers::OCL_None:
       break;
-    }        
+    }
   }
-  
+
   QualType CanonicalType = getTypePtr()->CanonicalType;
   switch (CanonicalType->getTypeClass()) {
     // Everything not explicitly mentioned is not POD.
@@ -1039,7 +1049,7 @@ bool QualType::isCXX98PODType(ASTContext &Context) const {
   case Type::ConstantArray:
     // IncompleteArray is handled above.
     return Context.getBaseElementType(*this).isCXX98PODType(Context);
-        
+
   case Type::ObjCObjectPointer:
   case Type::BlockPointer:
   case Type::Builtin:
@@ -1069,41 +1079,41 @@ bool QualType::isTrivialType(ASTContext &Context) const {
   // are PODs according to the standard.
   if (isNull())
     return 0;
-  
+
   if ((*this)->isArrayType())
     return Context.getBaseElementType(*this).isTrivialType(Context);
-  
+
   // Return false for incomplete types after skipping any incomplete array
   // types which are expressly allowed by the standard and thus our API.
   if ((*this)->isIncompleteType())
     return false;
-  
+
   if (Context.getLangOpts().ObjCAutoRefCount) {
     switch (getObjCLifetime()) {
     case Qualifiers::OCL_ExplicitNone:
       return true;
-      
+
     case Qualifiers::OCL_Strong:
     case Qualifiers::OCL_Weak:
     case Qualifiers::OCL_Autoreleasing:
       return false;
-      
+
     case Qualifiers::OCL_None:
       if ((*this)->isObjCLifetimeType())
         return false;
       break;
-    }        
+    }
   }
-  
+
   QualType CanonicalType = getTypePtr()->CanonicalType;
   if (CanonicalType->isDependentType())
     return false;
-  
+
   // C++0x [basic.types]p9:
   //   Scalar types, trivial class types, arrays of such types, and
   //   cv-qualified versions of these types are collectively called trivial
   //   types.
-  
+
   // As an extension, Clang treats vector types as Scalar types.
   if (CanonicalType->isScalarType() || CanonicalType->isVectorType())
     return true;
@@ -1118,10 +1128,10 @@ bool QualType::isTrivialType(ASTContext &Context) const {
              !ClassDecl->hasNonTrivialDefaultConstructor() &&
              ClassDecl->isTriviallyCopyable();
     }
-    
+
     return true;
   }
-  
+
   // No other types can match.
   return false;
 }
@@ -1134,17 +1144,17 @@ bool QualType::isTriviallyCopyableType(ASTContext &Context) const {
     switch (getObjCLifetime()) {
     case Qualifiers::OCL_ExplicitNone:
       return true;
-      
+
     case Qualifiers::OCL_Strong:
     case Qualifiers::OCL_Weak:
     case Qualifiers::OCL_Autoreleasing:
       return false;
-      
+
     case Qualifiers::OCL_None:
       if ((*this)->isObjCLifetimeType())
         return false;
       break;
-    }        
+    }
   }
 
   // C++0x [basic.types]p9
@@ -1160,7 +1170,7 @@ bool QualType::isTriviallyCopyableType(ASTContext &Context) const {
   // which are expressly allowed by the standard and thus our API.
   if (CanonicalType->isIncompleteType())
     return false;
- 
+
   // As an extension, Clang treats vector types as Scalar types.
   if (CanonicalType->isScalarType() || CanonicalType->isVectorType())
     return true;
@@ -1292,7 +1302,7 @@ bool QualType::isCXX11PODType(ASTContext &Context) const {
     switch (getObjCLifetime()) {
     case Qualifiers::OCL_ExplicitNone:
       return true;
-      
+
     case Qualifiers::OCL_Strong:
     case Qualifiers::OCL_Weak:
     case Qualifiers::OCL_Autoreleasing:
@@ -1300,7 +1310,7 @@ bool QualType::isCXX11PODType(ASTContext &Context) const {
 
     case Qualifiers::OCL_None:
       break;
-    }        
+    }
   }
 
   // C++11 [basic.types]p9:
@@ -1370,10 +1380,10 @@ bool Type::isPromotableIntegerType() const {
     if (this->isDependentType() || ET->getDecl()->getPromotionType().isNull()
         || ET->getDecl()->isScoped())
       return false;
-    
+
     return true;
   }
-  
+
   return false;
 }
 
@@ -1428,6 +1438,7 @@ TypeWithKeyword::getTagTypeKindForTypeSpec(unsigned TypeSpec) {
   llvm_unreachable("Type specifier is not a tag type kind.");
 }
 
+// +===== Scout ==============================================================+
 MeshTypeKind
 TypeWithKeyword::getMeshTypeKindForTypeSpec(unsigned TypeSpec) {
   switch(TypeSpec) {
@@ -1436,9 +1447,10 @@ TypeWithKeyword::getMeshTypeKindForTypeSpec(unsigned TypeSpec) {
     case TST_rectilinear_mesh: return TTK_RectilinearMesh;
     case TST_unstructured_mesh: return TTK_UnstructuredMesh;
   }
-  
+
   llvm_unreachable("Type specifier is not a mesh type kind.");
 }
+// +==========================================================================+
 
 ElaboratedTypeKeyword
 TypeWithKeyword::getKeywordForTagTypeKind(TagTypeKind Kind) {
@@ -1552,7 +1564,7 @@ const char *Type::getTypeClassName() const {
 #define TYPE(Derived, Base) case Derived: return #Derived;
 #include "clang/AST/TypeNodes.def"
   }
-  
+
   llvm_unreachable("Invalid type class.");
 }
 
@@ -1593,32 +1605,6 @@ StringRef BuiltinType::getName(const PrintingPolicy &Policy) const {
   case ObjCId:            return "id";
   case ObjCClass:         return "Class";
   case ObjCSel:           return "SEL";
-  // ===== Scout =============================================================
-  // SC_TODO : We need to remove Scout's vector types in favor of Clang's 
-  // "builtin" support.  This has been done within the "refactor" branch 
-  // but has yet to be merged in with "devel". 
-  case Bool2:             return "bool2";
-  case Bool3:             return "bool3";
-  case Bool4:             return "bool4";
-  case Char2:             return "char2";
-  case Char3:             return "char3";
-  case Char4:             return "char4";
-  case Short2:            return "short2";
-  case Short3:            return "short3";
-  case Short4:            return "short4";
-  case Int2:              return "int2";
-  case Int3:              return "int3";
-  case Int4:              return "int4";
-  case Long2:             return "long2";
-  case Long3:             return "long3";
-  case Long4:             return "long4";
-  case Float2:            return "float2";
-  case Float3:            return "float3";
-  case Float4:            return "float4";
-  case Double2:           return "double2";
-  case Double3:           return "double3";
-  case Double4:           return "double4";
-  // =========================================================================
   case OCLImage1d:        return "image1d_t";
   case OCLImage1dArray:   return "image1d_array_t";
   case OCLImage1dBuffer:  return "image1d_buffer_t";
@@ -1628,29 +1614,29 @@ StringRef BuiltinType::getName(const PrintingPolicy &Policy) const {
   case OCLSampler:        return "sampler_t";
   case OCLEvent:          return "event_t";
   }
-  
+
   llvm_unreachable("Invalid builtin type.");
 }
 
 QualType QualType::getNonLValueExprType(ASTContext &Context) const {
   if (const ReferenceType *RefType = getTypePtr()->getAs<ReferenceType>())
     return RefType->getPointeeType();
-  
+
   // C++0x [basic.lval]:
-  //   Class prvalues can have cv-qualified types; non-class prvalues always 
+  //   Class prvalues can have cv-qualified types; non-class prvalues always
   //   have cv-unqualified types.
   //
   // See also C99 6.3.2.1p2.
   if (!Context.getLangOpts().CPlusPlus ||
       (!getTypePtr()->isDependentType() && !getTypePtr()->isRecordType()))
     return getUnqualifiedType();
-  
+
   return *this;
 }
 
 StringRef FunctionType::getNameForCallConv(CallingConv CC) {
   switch (CC) {
-  case CC_Default: 
+  case CC_Default:
     llvm_unreachable("no name for default cc");
 
   case CC_C: return "cdecl";
@@ -1692,7 +1678,7 @@ FunctionProtoType::FunctionProtoType(QualType result, ArrayRef<QualType> args,
       setDependent();
     else if (args[i]->isInstantiationDependentType())
       setInstantiationDependent();
-    
+
     if (args[i]->containsUnexpandedParameterPack())
       setContainsUnexpandedParameterPack();
 
@@ -1707,7 +1693,7 @@ FunctionProtoType::FunctionProtoType(QualType result, ArrayRef<QualType> args,
         setDependent();
       else if (epi.Exceptions[i]->isInstantiationDependentType())
         setInstantiationDependent();
-      
+
       if (epi.Exceptions[i]->containsUnexpandedParameterPack())
         setContainsUnexpandedParameterPack();
 
@@ -1717,9 +1703,9 @@ FunctionProtoType::FunctionProtoType(QualType result, ArrayRef<QualType> args,
     // Store the noexcept expression and context.
     Expr **noexSlot = reinterpret_cast<Expr**>(argSlot + NumArgs);
     *noexSlot = epi.NoexceptExpr;
-    
+
     if (epi.NoexceptExpr) {
-      if (epi.NoexceptExpr->isValueDependent() 
+      if (epi.NoexceptExpr->isValueDependent()
           || epi.NoexceptExpr->isTypeDependent())
         setDependent();
       else if (epi.NoexceptExpr->isInstantiationDependent())
@@ -1775,7 +1761,7 @@ bool FunctionProtoType::isTemplateVariadic() const {
   for (unsigned ArgIdx = getNumArgs(); ArgIdx; --ArgIdx)
     if (isa<PackExpansionType>(getArgType(ArgIdx - 1)))
       return true;
-  
+
   return false;
 }
 
@@ -1788,7 +1774,7 @@ void FunctionProtoType::Profile(llvm::FoldingSetNodeID &ID, QualType Result,
   // Note that valid type pointers are never ambiguous with anything else.
   //
   // The encoding grammar begins:
-  //      type type* bool int bool 
+  //      type type* bool int bool
   // If that final bool is true, then there is a section for the EH spec:
   //      bool type*
   // This is followed by an optional "consumed argument" section of the
@@ -1796,7 +1782,7 @@ void FunctionProtoType::Profile(llvm::FoldingSetNodeID &ID, QualType Result,
   //      bool*
   // Finally, we have the ext info and trailing return type flag:
   //      int bool
-  // 
+  //
   // There is no ambiguity between the consumed arguments and an empty EH
   // spec because of the leading 'bool' which unambiguously indicates
   // whether the following bool is the EH spec or part of the arguments.
@@ -1844,10 +1830,10 @@ QualType TypedefType::desugar() const {
 }
 
 TypeOfExprType::TypeOfExprType(Expr *E, QualType can)
-  : Type(TypeOfExpr, can, E->isTypeDependent(), 
+  : Type(TypeOfExpr, can, E->isTypeDependent(),
          E->isInstantiationDependent(),
          E->getType()->isVariablyModifiedType(),
-         E->containsUnexpandedParameterPack()), 
+         E->containsUnexpandedParameterPack()),
     TOExpr(E) {
 }
 
@@ -1858,7 +1844,7 @@ bool TypeOfExprType::isSugared() const {
 QualType TypeOfExprType::desugar() const {
   if (isSugared())
     return getUnderlyingExpr()->getType();
-  
+
   return QualType(this, 0);
 }
 
@@ -1873,8 +1859,8 @@ DecltypeType::DecltypeType(Expr *E, QualType underlyingType, QualType can)
   // type-dependent even if its expression is only instantiation-dependent.
   : Type(Decltype, can, E->isInstantiationDependent(),
          E->isInstantiationDependent(),
-         E->getType()->isVariablyModifiedType(), 
-         E->containsUnexpandedParameterPack()), 
+         E->getType()->isVariablyModifiedType(),
+         E->containsUnexpandedParameterPack()),
     E(E),
   UnderlyingType(underlyingType) {
 }
@@ -1884,7 +1870,7 @@ bool DecltypeType::isSugared() const { return !E->isInstantiationDependent(); }
 QualType DecltypeType::desugar() const {
   if (isSugared())
     return getUnderlyingType();
-  
+
   return QualType(this, 0);
 }
 
@@ -1897,9 +1883,9 @@ void DependentDecltypeType::Profile(llvm::FoldingSetNodeID &ID,
 }
 
 TagType::TagType(TypeClass TC, const TagDecl *D, QualType can)
-  : Type(TC, can, D->isDependentType(), 
+  : Type(TC, can, D->isDependentType(),
          /*InstantiationDependent=*/D->isDependentType(),
-         /*VariablyModified=*/false, 
+         /*VariablyModified=*/false,
          /*ContainsUnexpandedParameterPack=*/false),
     decl(const_cast<TagDecl*>(D)) {}
 
@@ -1942,13 +1928,13 @@ IdentifierInfo *TemplateTypeParmType::getIdentifier() const {
 }
 
 SubstTemplateTypeParmPackType::
-SubstTemplateTypeParmPackType(const TemplateTypeParmType *Param, 
+SubstTemplateTypeParmPackType(const TemplateTypeParmType *Param,
                               QualType Canon,
                               const TemplateArgument &ArgPack)
-  : Type(SubstTemplateTypeParmPack, Canon, true, true, false, true), 
-    Replaced(Param), 
-    Arguments(ArgPack.pack_begin()), NumArguments(ArgPack.pack_size()) 
-{ 
+  : Type(SubstTemplateTypeParmPack, Canon, true, true, false, true),
+    Replaced(Param),
+    Arguments(ArgPack.pack_begin()), NumArguments(ArgPack.pack_size())
+{
 }
 
 TemplateArgument SubstTemplateTypeParmPackType::getArgumentPack() const {
@@ -1964,7 +1950,7 @@ void SubstTemplateTypeParmPackType::Profile(llvm::FoldingSetNodeID &ID,
                                             const TemplateArgument &ArgPack) {
   ID.AddPointer(Replaced);
   ID.AddInteger(ArgPack.pack_size());
-  for (TemplateArgument::pack_iterator P = ArgPack.pack_begin(), 
+  for (TemplateArgument::pack_iterator P = ArgPack.pack_begin(),
                                     PEnd = ArgPack.pack_end();
        P != PEnd; ++P)
     ID.AddPointer(P->getAsType().getAsOpaquePtr());
@@ -1985,7 +1971,7 @@ anyDependentTemplateArguments(const TemplateArgumentLoc *Args, unsigned N,
       InstantiationDependent = true;
       return true;
     }
-    
+
     if (Args[i].getArgument().isInstantiationDependent())
       InstantiationDependent = true;
   }
@@ -2000,7 +1986,7 @@ anyDependentTemplateArguments(const TemplateArgument *Args, unsigned N,
       InstantiationDependent = true;
       return true;
     }
-    
+
     if (Args[i].isInstantiationDependent())
       InstantiationDependent = true;
   }
@@ -2014,12 +2000,12 @@ TemplateSpecializationType(TemplateName T,
   : Type(TemplateSpecialization,
          Canon.isNull()? QualType(this, 0) : Canon,
          Canon.isNull()? T.isDependent() : Canon->isDependentType(),
-         Canon.isNull()? T.isDependent() 
+         Canon.isNull()? T.isDependent()
                        : Canon->isInstantiationDependentType(),
          false,
          T.containsUnexpandedParameterPack()),
     Template(T), NumArgs(NumArgs), TypeAlias(!AliasedType.isNull()) {
-  assert(!T.getAsDependentTemplateName() && 
+  assert(!T.getAsDependentTemplateName() &&
          "Use DependentTemplateSpecializationType for dependent template-name");
   assert((T.getKind() == TemplateName::Template ||
           T.getKind() == TemplateName::SubstTemplateTemplateParm ||
@@ -2028,8 +2014,8 @@ TemplateSpecializationType(TemplateName T,
   bool InstantiationDependent;
   (void)InstantiationDependent;
   assert((!Canon.isNull() ||
-          T.isDependent() || 
-          anyDependentTemplateArguments(Args, NumArgs, 
+          T.isDependent() ||
+          anyDependentTemplateArguments(Args, NumArgs,
                                         InstantiationDependent)) &&
          "No canonical type for non-dependent class template specialization");
 
@@ -2048,7 +2034,7 @@ TemplateSpecializationType(TemplateName T,
       setDependent();
     else if (Args[Arg].isInstantiationDependent())
       setInstantiationDependent();
-    
+
     if (Args[Arg].getKind() == TemplateArgument::Type &&
         Args[Arg].getAsType()->isVariablyModifiedType())
       setVariablyModified();
@@ -2206,10 +2192,10 @@ static CachedProperties computeCachedProperties(const Type *T) {
   case Type::RectilinearMesh:
   case Type::UnstructuredMesh: {
     const MeshDecl *Mesh = cast<MeshType>(T)->getDecl();
-    
+
     Linkage L = Mesh->getLinkageInternal();
     bool IsLocalOrUnnamed =
-      Mesh->getDeclContext()->isFunctionOrMethod() || 
+      Mesh->getDeclContext()->isFunctionOrMethod() ||
       !Mesh->getIdentifier();
     return CachedProperties(L, IsLocalOrUnnamed);
   }
@@ -2230,7 +2216,7 @@ static CachedProperties computeCachedProperties(const Type *T) {
   }
 
     // C++ [basic.link]p8:
-    //   - it is a compound type (3.9.2) other than a class or enumeration, 
+    //   - it is a compound type (3.9.2) other than a class or enumeration,
     //     compounded exclusively from types that have linkage; or
   case Type::Complex:
     return Cache::get(cast<ComplexType>(T)->getElementType());
@@ -2357,13 +2343,13 @@ static LinkageInfo computeLinkageInfo(const Type *T) {
   case Type::Atomic:
     return computeLinkageInfo(cast<AtomicType>(T)->getValueType());
 
-  // ===== Scout =============================================================
+  // +===== Scout ============================================================+
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
   case Type::UnstructuredMesh:
     return LinkageInfo::external();
-  // =========================================================================
+  // +========================================================================+
   }
 
   llvm_unreachable("unhandled type class");
@@ -2448,7 +2434,7 @@ bool Type::isObjCLifetimeType() const {
 }
 
 /// \brief Determine whether the given type T is a "bridgable" Objective-C type,
-/// which is either an Objective-C object pointer type or an 
+/// which is either an Objective-C object pointer type or an
 bool Type::isObjCARCBridgableType() const {
   return isObjCObjectPointerType() || isBlockPointerType();
 }
@@ -2458,7 +2444,7 @@ bool Type::isCARCBridgableType() const {
   const PointerType *Pointer = getAs<PointerType>();
   if (!Pointer)
     return false;
-  
+
   QualType Pointee = Pointer->getPointeeType();
   return Pointee->isVoidType() || Pointee->isRecordType();
 }
@@ -2471,7 +2457,7 @@ bool Type::hasSizedVLAType() const {
   if (const ReferenceType *ref = getAs<ReferenceType>())
     return ref->getPointeeType()->hasSizedVLAType();
   if (const ArrayType *arr = getAsArrayTypeUnsafe()) {
-    if (isa<VariableArrayType>(arr) && 
+    if (isa<VariableArrayType>(arr) &&
         cast<VariableArrayType>(arr)->getSizeExpr())
       return true;
 

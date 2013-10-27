@@ -79,7 +79,7 @@ TypeLoc TypeLoc::getNextTypeLocImpl(TypeLoc TL) {
 /// \brief Initializes a type location, and all of its children
 /// recursively, as if the entire tree had been written in the
 /// given location.
-void TypeLoc::initializeImpl(ASTContext &Context, TypeLoc TL, 
+void TypeLoc::initializeImpl(ASTContext &Context, TypeLoc TL,
                              SourceLocation Loc) {
   while (true) {
     switch (TL.getTypeLocClass()) {
@@ -250,36 +250,9 @@ TypeSpecifierType BuiltinTypeLoc::getWrittenTypeSpec() const {
   case BuiltinType::Float:
   case BuiltinType::Double:
   case BuiltinType::LongDouble:
-    
-  // ===== Scout ==============================================================
-  // SC_TODO - we need to replace Scout's vector types with Clang's "builtin"
-  // versions.  This has been done within the "refactor" branch but not yet 
-  // merged with "devel". 
-  case BuiltinType::Bool2:
-  case BuiltinType::Bool3:
-  case BuiltinType::Bool4:    
-  case BuiltinType::Char2:
-  case BuiltinType::Char3:
-  case BuiltinType::Char4:
-  case BuiltinType::Short2:
-  case BuiltinType::Short3:
-  case BuiltinType::Short4: 
-  case BuiltinType::Int2:
-  case BuiltinType::Int3:
-  case BuiltinType::Int4: 
-  case BuiltinType::Long2:
-  case BuiltinType::Long3:
-  case BuiltinType::Long4: 
-  case BuiltinType::Float2:
-  case BuiltinType::Float3:
-  case BuiltinType::Float4: 
-  case BuiltinType::Double2:
-  case BuiltinType::Double3:
-  case BuiltinType::Double4: 
-  // ==========================================================================
     llvm_unreachable("Builtin type needs extra local data!");
     // Fall through, if the impossible happens.
-      
+
   case BuiltinType::NullPtr:
   case BuiltinType::Overload:
   case BuiltinType::Dependent:
@@ -311,7 +284,7 @@ TypeLoc TypeLoc::IgnoreParensImpl(TypeLoc TL) {
   return TL;
 }
 
-void ElaboratedTypeLoc::initializeLocal(ASTContext &Context, 
+void ElaboratedTypeLoc::initializeLocal(ASTContext &Context,
                                         SourceLocation Loc) {
   setElaboratedKeywordLoc(Loc);
   NestedNameSpecifierLocBuilder Builder;
@@ -319,7 +292,7 @@ void ElaboratedTypeLoc::initializeLocal(ASTContext &Context,
   setQualifierLoc(Builder.getWithLocInContext(Context));
 }
 
-void DependentNameTypeLoc::initializeLocal(ASTContext &Context, 
+void DependentNameTypeLoc::initializeLocal(ASTContext &Context,
                                            SourceLocation Loc) {
   setElaboratedKeywordLoc(Loc);
   NestedNameSpecifierLocBuilder Builder;
@@ -348,14 +321,14 @@ DependentTemplateSpecializationTypeLoc::initializeLocal(ASTContext &Context,
                                                    getArgInfos(), Loc);
 }
 
-void TemplateSpecializationTypeLoc::initializeArgLocs(ASTContext &Context, 
+void TemplateSpecializationTypeLoc::initializeArgLocs(ASTContext &Context,
                                                       unsigned NumArgs,
                                                   const TemplateArgument *Args,
                                               TemplateArgumentLocInfo *ArgInfos,
                                                       SourceLocation Loc) {
   for (unsigned i = 0, e = NumArgs; i != e; ++i) {
     switch (Args[i].getKind()) {
-    case TemplateArgument::Null: 
+    case TemplateArgument::Null:
     case TemplateArgument::Declaration:
     case TemplateArgument::Integral:
     case TemplateArgument::NullPtr:
@@ -364,10 +337,10 @@ void TemplateSpecializationTypeLoc::initializeArgLocs(ASTContext &Context,
     case TemplateArgument::Expression:
       ArgInfos[i] = TemplateArgumentLocInfo(Args[i].getAsExpr());
       break;
-      
+
     case TemplateArgument::Type:
       ArgInfos[i] = TemplateArgumentLocInfo(
-                          Context.getTrivialTypeSourceInfo(Args[i].getAsType(), 
+                          Context.getTrivialTypeSourceInfo(Args[i].getAsType(),
                                                            Loc));
       break;
 
@@ -379,10 +352,10 @@ void TemplateSpecializationTypeLoc::initializeArgLocs(ASTContext &Context,
         Builder.MakeTrivial(Context, DTN->getQualifier(), Loc);
       else if (QualifiedTemplateName *QTN = Template.getAsQualifiedTemplateName())
         Builder.MakeTrivial(Context, QTN->getQualifier(), Loc);
-      
+
       ArgInfos[i] = TemplateArgumentLocInfo(
                                            Builder.getWithLocInContext(Context),
-                                            Loc, 
+                                            Loc,
                                 Args[i].getKind() == TemplateArgument::Template
                                             ? SourceLocation()
                                             : Loc);

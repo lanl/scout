@@ -89,7 +89,7 @@ namespace  {
           return;
       else StmtVisitor<StmtPrinter>::Visit(S);
     }
-    
+
     void VisitStmt(Stmt *Node) LLVM_ATTRIBUTE_UNUSED {
       Indent() << "<<unknown stmt type>>\n";
     }
@@ -339,13 +339,13 @@ void StmtPrinter::VisitMSDependentExistsStmt(MSDependentExistsStmt *Node) {
     OS << "__if_exists (";
   else
     OS << "__if_not_exists (";
-  
+
   if (NestedNameSpecifier *Qualifier
         = Node->getQualifierLoc().getNestedNameSpecifier())
     Qualifier->print(OS, Policy);
-  
+
   OS << Node->getNameInfo() << ") ";
-  
+
   PrintRawCompoundStmt(Node->getSubStmt());
 }
 
@@ -640,7 +640,7 @@ void StmtPrinter::VisitObjCPropertyRefExpr(ObjCPropertyRefExpr *Node) {
 }
 
 void StmtPrinter::VisitObjCSubscriptRefExpr(ObjCSubscriptRefExpr *Node) {
-  
+
   PrintExpr(Node->getBaseExpr());
   OS << "[";
   PrintExpr(Node->getKeyExpr());
@@ -832,12 +832,12 @@ void StmtPrinter::VisitOffsetOfExpr(OffsetOfExpr *Node) {
     IdentifierInfo *Id = ON.getFieldName();
     if (!Id)
       continue;
-    
+
     if (PrintedSomething)
       OS << ".";
     else
       PrintedSomething = true;
-    OS << Id->getName();    
+    OS << Id->getName();
   }
   OS << ")";
 }
@@ -912,7 +912,7 @@ void StmtPrinter::VisitCallExpr(CallExpr *Call) {
 }
 void StmtPrinter::VisitMemberExpr(MemberExpr *Node) {
   // FIXME: Suppress printing implicit bases (like "this")
-  // ===== Scout =============================================================
+  // +==== Scout =============================================================+
   bool isMeshType = false;
   DeclRefExpr* dr = dyn_cast<DeclRefExpr>(Node->getBase());
   if (dr) {
@@ -923,17 +923,17 @@ void StmtPrinter::VisitMemberExpr(MemberExpr *Node) {
     }
   }
   if (!isMeshType)
-  // =========================================================================
+  // +========================================================================+
     PrintExpr(Node->getBase());
 
   MemberExpr *ParentMember = dyn_cast<MemberExpr>(Node->getBase());
   FieldDecl  *ParentDecl   = ParentMember
     ? dyn_cast<FieldDecl>(ParentMember->getMemberDecl()) : NULL;
 
-  // ===== Scout =============================================================
+  // +===== Scout ============================================================+
   if (!isMeshType && (!ParentDecl || !ParentDecl->isAnonymousStructOrUnion()))
-    OS << (Node->isArrow() ? "->" : ".");  
-  // =========================================================================
+    OS << (Node->isArrow() ? "->" : ".");
+  // +========================================================================+
   if (FieldDecl *FD = dyn_cast<FieldDecl>(Node->getMemberDecl()))
     if (FD->isAnonymousStructOrUnion())
       return;
@@ -1785,7 +1785,7 @@ void StmtPrinter::VisitObjCDictionaryLiteral(ObjCDictionaryLiteral *E) {
   for (unsigned I = 0, N = E->getNumElements(); I != N; ++I) {
     if (I > 0)
       OS << ", ";
-    
+
     ObjCDictionaryElement Element = E->getKeyValueElement(I);
     Visit(Element.Key);
     OS << " : ";
@@ -1892,7 +1892,7 @@ void StmtPrinter::VisitBlockExpr(BlockExpr *Node) {
   OS << "{ }";
 }
 
-void StmtPrinter::VisitOpaqueValueExpr(OpaqueValueExpr *Node) { 
+void StmtPrinter::VisitOpaqueValueExpr(OpaqueValueExpr *Node) {
   PrintExpr(Node->getSourceExpr());
 }
 
@@ -1941,5 +1941,7 @@ std::string Stmt::toCPPCode(ASTContext& context) {
 PrinterHelper::~PrinterHelper() {}
 
 
-
+// +===== Scout ==============================================================+
 #include "Scout/StmtPrinter.cpp"
+// +==========================================================================+
+

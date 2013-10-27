@@ -35,9 +35,9 @@ class USRGenerator : public ConstDeclVisitor<USRGenerator> {
   bool IgnoreResults;
   ASTContext *Context;
   bool generatedLoc;
-  
+
   llvm::DenseMap<const Type *, unsigned> TypeSubstitutions;
-  
+
 public:
   explicit USRGenerator(ASTContext *Ctx = 0, SmallVectorImpl<char> *extBuf = 0)
   : OwnedBuf(extBuf ? 0 : new SmallString<128>()),
@@ -99,7 +99,7 @@ public:
   void VisitUnresolvedUsingTypenameDecl(const UnresolvedUsingTypenameDecl *D) {
     IgnoreResults = true;
   }
-  
+
   /// Generate the string component containing the location of the
   ///  declaration.
   bool GenLoc(const Decl *D);
@@ -129,7 +129,7 @@ public:
   void VisitTemplateParameterList(const TemplateParameterList *Params);
   void VisitTemplateName(TemplateName Name);
   void VisitTemplateArgument(const TemplateArgument &Arg);
-  
+
   /// Emit a Decl's name using NamedDecl::printName() and return true if
   ///  the decl had no name.
   bool EmitDeclName(const NamedDecl *D);
@@ -288,7 +288,7 @@ void USRGenerator::VisitClassTemplateDecl(const ClassTemplateDecl *D) {
 void USRGenerator::VisitNamespaceAliasDecl(const NamespaceAliasDecl *D) {
   VisitDeclContext(D->getDeclContext());
   if (!IgnoreResults)
-    Out << "@NA@" << D->getName();  
+    Out << "@NA@" << D->getName();
 }
 
 void USRGenerator::VisitObjCMethodDecl(const ObjCMethodDecl *D) {
@@ -395,7 +395,7 @@ void USRGenerator::VisitTagDecl(const TagDecl *D) {
   if (const CXXRecordDecl *CXXRecord = dyn_cast<CXXRecordDecl>(D)) {
     if (ClassTemplateDecl *ClassTmpl = CXXRecord->getDescribedClassTemplate()) {
       AlreadyStarted = true;
-      
+
       switch (D->getTagKind()) {
       case TTK_Interface:
       case TTK_Struct: Out << "@ST"; break;
@@ -407,18 +407,18 @@ void USRGenerator::VisitTagDecl(const TagDecl *D) {
     } else if (const ClassTemplatePartialSpecializationDecl *PartialSpec
                 = dyn_cast<ClassTemplatePartialSpecializationDecl>(CXXRecord)) {
       AlreadyStarted = true;
-      
+
       switch (D->getTagKind()) {
       case TTK_Interface:
       case TTK_Struct: Out << "@SP"; break;
       case TTK_Class:  Out << "@CP"; break;
       case TTK_Union:  Out << "@UP"; break;
       case TTK_Enum: llvm_unreachable("enum partial specialization");
-      }      
+      }
       VisitTemplateParameterList(PartialSpec->getTemplateParameters());
     }
   }
-  
+
   if (!AlreadyStarted) {
     switch (D->getTagKind()) {
       case TTK_Interface:
@@ -428,7 +428,7 @@ void USRGenerator::VisitTagDecl(const TagDecl *D) {
       case TTK_Enum:   Out << "@E"; break;
     }
   }
-  
+
   Out << '@';
   Out.flush();
   assert(Buf.size() > 0);
@@ -442,7 +442,7 @@ void USRGenerator::VisitTagDecl(const TagDecl *D) {
     else
       Buf[off] = 'a';
   }
-  
+
   // For a class template specialization, mangle the template arguments.
   if (const ClassTemplateSpecializationDecl *Spec
                               = dyn_cast<ClassTemplateSpecializationDecl>(D)) {
@@ -474,7 +474,7 @@ bool USRGenerator::GenLoc(const Decl *D) {
   if (generatedLoc)
     return IgnoreResults;
   generatedLoc = true;
-  
+
   // Guard against null declarations in invalid code.
   if (!D) {
     IgnoreResults = true;
@@ -533,7 +533,7 @@ void USRGenerator::VisitType(QualType T) {
       Out << 'P';
       T = Expansion->getPattern();
     }
-    
+
     if (const BuiltinType *BT = T->getAs<BuiltinType>()) {
       unsigned char c = '\0';
       switch (BT->getKind()) {
@@ -584,30 +584,7 @@ void USRGenerator::VisitType(QualType T) {
           c = 'D'; break;
         case BuiltinType::NullPtr:
           c = 'n'; break;
-	// ndm - Scout vector types
-	// TODO - fix
-        case BuiltinType::Bool2:
-        case BuiltinType::Bool3:
-        case BuiltinType::Bool4:
-        case BuiltinType::Char2:
-        case BuiltinType::Char3:
-        case BuiltinType::Char4:
-        case BuiltinType::Short2:
-        case BuiltinType::Short3:
-        case BuiltinType::Short4:
-        case BuiltinType::Int2:
-        case BuiltinType::Int3:
-        case BuiltinType::Int4:
-        case BuiltinType::Long2:
-        case BuiltinType::Long3:
-        case BuiltinType::Long4:
-        case BuiltinType::Float2:
-        case BuiltinType::Float3:
-        case BuiltinType::Float4:
-        case BuiltinType::Double2:
-        case BuiltinType::Double3:
-        case BuiltinType::Double4:
-	  c = 'v'; break;
+
 #define BUILTIN_TYPE(Id, SingletonId)
 #define PLACEHOLDER_TYPE(Id, SingletonId) case BuiltinType::Id:
 #include "clang/AST/BuiltinTypes.def"
@@ -645,7 +622,7 @@ void USRGenerator::VisitType(QualType T) {
       unsigned Number = TypeSubstitutions.size();
       TypeSubstitutions[T.getTypePtr()] = Number;
     }
-    
+
     if (const PointerType *PT = T->getAs<PointerType>()) {
       Out << '*';
       T = PT->getPointeeType();
@@ -695,7 +672,7 @@ void USRGenerator::VisitType(QualType T) {
         VisitTemplateArgument(Spec->getArg(I));
       return;
     }
-    
+
     // Unhandled type.
     Out << ' ';
     break;
@@ -717,7 +694,7 @@ void USRGenerator::VisitTemplateParameterList(
       Out << 'T';
       continue;
     }
-    
+
     if (NonTypeTemplateParmDecl *NTTP = dyn_cast<NonTypeTemplateParmDecl>(*P)) {
       if (NTTP->isParameterPack())
         Out << 'p';
@@ -725,7 +702,7 @@ void USRGenerator::VisitTemplateParameterList(
       VisitType(NTTP->getType());
       continue;
     }
-    
+
     TemplateTemplateParmDecl *TTP = cast<TemplateTemplateParmDecl>(*P);
     if (TTP->isParameterPack())
       Out << 'p';
@@ -741,11 +718,11 @@ void USRGenerator::VisitTemplateName(TemplateName Name) {
       Out << 't' << TTP->getDepth() << '.' << TTP->getIndex();
       return;
     }
-    
+
     Visit(Template);
     return;
   }
-  
+
   // FIXME: Visit dependent template names.
 }
 
@@ -767,22 +744,22 @@ void USRGenerator::VisitTemplateArgument(const TemplateArgument &Arg) {
   case TemplateArgument::Template:
     VisitTemplateName(Arg.getAsTemplateOrTemplatePattern());
     break;
-      
+
   case TemplateArgument::Expression:
     // FIXME: Visit expressions.
     break;
-      
+
   case TemplateArgument::Pack:
     Out << 'p' << Arg.pack_size();
     for (TemplateArgument::pack_iterator P = Arg.pack_begin(), PEnd = Arg.pack_end();
          P != PEnd; ++P)
       VisitTemplateArgument(*P);
     break;
-      
+
   case TemplateArgument::Type:
     VisitType(Arg.getAsType());
     break;
-      
+
   case TemplateArgument::Integral:
     Out << 'V';
     VisitType(Arg.getIntegralType());

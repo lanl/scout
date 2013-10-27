@@ -1447,8 +1447,6 @@ public:
                             CXXBasePath &Path, void *Name);
 
   // +===== Scout ============================================================+
-  // SC_TODO : Is this something we really need support for?
-  //
   /// \brief Base-class lookup callback that determines whether there exists
   /// a mesh with the given name.
   ///

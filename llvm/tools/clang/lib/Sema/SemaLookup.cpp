@@ -52,7 +52,10 @@ using namespace clang;
 using namespace sema;
 
 
+// +===== Scout ==============================================================+
 extern void ScoutLookupMesh( NamedDecl *D, Sema &S);
+// +==========================================================================+
+
 
 namespace {
   class UnqualUsingEntry {
@@ -251,14 +254,16 @@ static inline unsigned getIDNS(Sema::LookupNameKind NameKind,
     }
     break;
 
+  // +===== Scout ============================================================+
   case Sema::LookupMeshName:
     IDNS = Decl::IDNS_Mesh;
     break;
+  // +========================================================================+
 
   case Sema::LookupLabel:
     IDNS = Decl::IDNS_Label;
     break;
-      
+
   case Sema::LookupMemberName:
     IDNS = Decl::IDNS_Member;
     if (CPlusPlus)
@@ -1027,7 +1032,7 @@ bool Sema::CppLookupName(LookupResult &R, Scope *S) {
     UDirs.visitScopeChain(Initial, S);
     UDirs.done();
   }
-  
+
   // Lookup namespace scope, and global scope.
   // Unqualified name lookup in C++ requires looking into scopes
   // that aren't strictly lexical, and therefore we walk through the
@@ -1111,13 +1116,13 @@ bool Sema::CppLookupName(LookupResult &R, Scope *S) {
 /// This routine determines whether the declaration D is visible in the current
 /// module, with the current imports. If not, it checks whether any
 /// redeclaration of D is visible, and if so, returns that declaration.
-/// 
+///
 /// \returns D, or a visible previous declaration of D, whichever is more recent
 /// and visible. If no declaration of D is visible, returns null.
 static NamedDecl *getVisibleDecl(NamedDecl *D) {
   if (LookupResult::isVisible(D))
     return D;
-  
+
   for (Decl::redecl_iterator RD = D->redecls_begin(), RDEnd = D->redecls_end();
        RD != RDEnd; ++RD) {
     if (NamedDecl *ND = dyn_cast<NamedDecl>(*RD)) {
@@ -1125,7 +1130,7 @@ static NamedDecl *getVisibleDecl(NamedDecl *D) {
         return ND;
     }
   }
-  
+
   return 0;
 }
 
@@ -1201,13 +1206,13 @@ bool Sema::LookupName(LookupResult &R, Scope *S, bool AllowBuiltinCreation) {
         else if (NameKind == LookupObjCImplicitSelfParam &&
                  !isa<ImplicitParamDecl>(*I))
           continue;
-        
+
         // If this declaration is module-private and it came from an AST
         // file, we can't see it.
         NamedDecl *D = R.isHiddenDeclarationVisible()? *I : getVisibleDecl(*I);
         if (!D)
           continue;
-                
+
         R.addDecl(D);
 
         // Check whether there are any other declarations with the same name
@@ -1217,7 +1222,7 @@ bool Sema::LookupName(LookupResult &R, Scope *S, bool AllowBuiltinCreation) {
           // actually exists in a Scope).
           while (S && !S->isDeclScope(D))
             S = S->getParent();
-          
+
           // If the scope containing the declaration is the translation unit,
           // then we'll need to perform our checks based on the matching
           // DeclContexts rather than matching scopes.
@@ -1228,7 +1233,7 @@ bool Sema::LookupName(LookupResult &R, Scope *S, bool AllowBuiltinCreation) {
           DeclContext *DC = 0;
           if (!S)
             DC = (*I)->getDeclContext()->getRedeclContext();
-            
+
           IdentifierResolver::iterator LastI = I;
           for (++LastI; LastI != IEnd; ++LastI) {
             if (S) {
@@ -1237,16 +1242,16 @@ bool Sema::LookupName(LookupResult &R, Scope *S, bool AllowBuiltinCreation) {
                 break;
             } else {
               // Match based on DeclContext.
-              DeclContext *LastDC 
+              DeclContext *LastDC
                 = (*LastI)->getDeclContext()->getRedeclContext();
               if (!LastDC->Equals(DC))
                 break;
             }
-            
+
             // If the declaration isn't in the right namespace, skip it.
             if (!(*LastI)->isInIdentifierNamespace(IDNS))
               continue;
-                        
+
             D = R.isHiddenDeclarationVisible()? *LastI : getVisibleDecl(*LastI);
             if (D)
               R.addDecl(D);
@@ -1268,8 +1273,8 @@ bool Sema::LookupName(LookupResult &R, Scope *S, bool AllowBuiltinCreation) {
   if (AllowBuiltinCreation && LookupBuiltin(*this, R))
     return true;
 
-  // If we didn't find a use of this identifier, the ExternalSource 
-  // may be able to handle the situation. 
+  // If we didn't find a use of this identifier, the ExternalSource
+  // may be able to handle the situation.
   // Note: some lookup failures are expected!
   // See e.g. R.isForRedeclaration().
   return (ExternalSource && ExternalSource->LookupUnqualified(R, S));
@@ -1524,9 +1529,12 @@ bool Sema::LookupQualifiedName(LookupResult &R, DeclContext *LookupCtx,
       BaseCallback = &CXXRecordDecl::FindTagMember;
       break;
 
+    // +===== Scout ==========================================================+
+    // SC_TODO : This is wrong!!!  We need our own look-up now!!!
     case LookupMeshName:
       BaseCallback = &CXXRecordDecl::FindMeshMember;
       break;
+    // +======================================================================+
 
     case LookupAnyName:
       BaseCallback = &LookupAnyMember;
@@ -1963,7 +1971,8 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result,
   }
 }
 
-// \brief Add the associated mesh for argument-dependent lookup. 
+// +===== Scout ==============================================================+
+// \brief Add the associated mesh for argument-dependent lookup.
 static void
 addAssociatedClassesAndNamespaces(AssociatedLookup &Result,
                                   MeshDecl *Mesh) {
@@ -1971,7 +1980,7 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result,
   // Add the class of which it is a member, if any.
   DeclContext *Ctx = Mesh->getDeclContext();
   if (MeshDecl *EnclosingMesh = dyn_cast<MeshDecl>(Ctx)) {
-    // // SC_TODO -- we need to add mesh types to the associated lookup vector...
+    // SC_TODO -- we need to add mesh types to the associated lookup vector...
     //Result.Classes.insert(EnclosingMesh);
     (void)EnclosingMesh; // suppress warning
   }
@@ -1983,6 +1992,8 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result,
   //if (!Result.Classes.insert(Mesh))
   //  return;
 }
+// +==========================================================================+
+
 
 // \brief Add the associated classes and namespaces for
 // argument-dependent lookup with an argument of type T
@@ -2035,11 +2046,18 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
     case Type::Builtin:
       break;
 
-    // ===== Scout ========================================================================
+    // +==== Scout ===========================================================+
     case Type::UniformMesh: {
       UniformMeshDecl *UMD;
       UMD = cast<UniformMeshDecl>(cast<UniformMeshType>(T)->getDecl());
       addAssociatedClassesAndNamespaces(Result, UMD);
+      break;
+    }
+
+    case Type::RectilinearMesh: {
+      RectilinearMeshDecl *RMD;
+      RMD = cast<RectilinearMeshDecl>(cast<RectilinearMeshType>(T)->getDecl());
+      addAssociatedClassesAndNamespaces(Result, RMD);
       break;
     }
 
@@ -2049,19 +2067,15 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
       addAssociatedClassesAndNamespaces(Result, SMD);
       break;
     }
-    case Type::RectilinearMesh: {
-      RectilinearMeshDecl *RMD;
-      RMD = cast<RectilinearMeshDecl>(cast<RectilinearMeshType>(T)->getDecl());
-      addAssociatedClassesAndNamespaces(Result, RMD);
-      break;
-    }
+
     case Type::UnstructuredMesh: {
       UnstructuredMeshDecl *UMD;
       UMD = cast<UnstructuredMeshDecl>(cast<UnstructuredMeshType>(T)->getDecl());
       addAssociatedClassesAndNamespaces(Result, UMD);
       break;
     }
-    // ====================================================================================
+    // +======================================================================+
+
     //     -- If T is a class type (including unions), its associated
     //        classes are: the class itself; the class of which it is a
     //        member, if any; and its direct and indirect base
@@ -2150,7 +2164,7 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
     case Type::Auto:
       break;
 
-    // If T is an Objective-C object or interface type, or a pointer to an 
+    // If T is an Objective-C object or interface type, or a pointer to an
     // object or interface type, the associated namespace is the global
     // namespace.
     case Type::ObjCObject:
@@ -3128,7 +3142,7 @@ static void LookupVisibleDecls(Scope *S, LookupResult &Result,
                                   Result.getNameLoc(), Sema::LookupMemberName);
           if (ObjCInterfaceDecl *IFace = Method->getClassInterface()) {
             LookupVisibleDecls(IFace, IvarResult, /*QualifiedNameLookup=*/false,
-                               /*InBaseClass=*/false, Consumer, Visited);              
+                               /*InBaseClass=*/false, Consumer, Visited);
           }
         }
 
@@ -3654,7 +3668,7 @@ static void AddKeywordsToConsumer(Sema &SemaRef,
     // Add type-specifier keywords to the set of results.
     const char *CTypeSpecs[] = {
       "char", "const", "double", "enum", "float", "int", "long", "short",
-      "signed", "struct", "union", "unsigned", "void", "volatile", 
+      "signed", "struct", "union", "unsigned", "void", "volatile",
       "_Complex", "_Imaginary",
       // storage-specifiers as well
       "extern", "inline", "static", "typedef"
@@ -3670,7 +3684,7 @@ static void AddKeywordsToConsumer(Sema &SemaRef,
       Consumer.addKeywordResult("bool");
     else if (SemaRef.getLangOpts().C99)
       Consumer.addKeywordResult("_Bool");
-    
+
     if (SemaRef.getLangOpts().CPlusPlus) {
       Consumer.addKeywordResult("class");
       Consumer.addKeywordResult("typename");
@@ -3921,7 +3935,7 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
   // In a few cases we *only* want to search for corrections bases on just
   // adding or changing the nested name specifier.
   bool AllowOnlyNNSChanges = Typo->getName().size() < 3;
-  
+
   if (IsUnqualifiedLookup || SearchNamespaces) {
     // For unqualified lookup, look through all of the names that we have
     // seen in this translation unit.
@@ -3979,8 +3993,8 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
       for (unsigned I = 0, N = ExternalKnownNamespaces.size(); I != N; ++I)
         KnownNamespaces[ExternalKnownNamespaces[I]] = true;
     }
-    
-    for (llvm::MapVector<NamespaceDecl*, bool>::iterator 
+
+    for (llvm::MapVector<NamespaceDecl*, bool>::iterator
            KNI = KnownNamespaces.begin(),
            KNIEnd = KnownNamespaces.end();
          KNI != KNIEnd; ++KNI)

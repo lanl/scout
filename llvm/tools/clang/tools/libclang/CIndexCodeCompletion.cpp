@@ -136,7 +136,7 @@ CXString clang_getCompletionChunkText(CXCompletionString completion_string,
   case CodeCompletionString::CK_HorizontalSpace:
   case CodeCompletionString::CK_VerticalSpace:
     return cxstring::createRef((*CCStr)[chunk_number].Text);
-      
+
   case CodeCompletionString::CK_Optional:
     // Note: treated as an empty text block.
     return cxstring::createEmpty();
@@ -193,8 +193,8 @@ unsigned clang_getCompletionPriority(CXCompletionString completion_string) {
   CodeCompletionString *CCStr = (CodeCompletionString *)completion_string;
   return CCStr? CCStr->getPriority() : unsigned(CCP_Unlikely);
 }
-  
-enum CXAvailabilityKind 
+
+enum CXAvailabilityKind
 clang_getCompletionAvailability(CXCompletionString completion_string) {
   CodeCompletionString *CCStr = (CodeCompletionString *)completion_string;
   return CCStr? static_cast<CXAvailabilityKind>(CCStr->getAvailability())
@@ -219,11 +219,11 @@ clang_getCompletionParent(CXCompletionString completion_string,
                           CXCursorKind *kind) {
   if (kind)
     *kind = CXCursor_NotImplemented;
-  
+
   CodeCompletionString *CCStr = (CodeCompletionString *)completion_string;
   if (!CCStr)
     return cxstring::createNull();
-  
+
   return cxstring::createRef(CCStr->getParentContextName());
 }
 
@@ -249,15 +249,15 @@ namespace {
 struct AllocatedCXCodeCompleteResults : public CXCodeCompleteResults {
   AllocatedCXCodeCompleteResults(const FileSystemOptions& FileSystemOpts);
   ~AllocatedCXCodeCompleteResults();
-  
+
   /// \brief Diagnostics produced while performing code completion.
   SmallVector<StoredDiagnostic, 8> Diagnostics;
 
   IntrusiveRefCntPtr<DiagnosticOptions> DiagOpts;
-  
+
   /// \brief Diag object
   IntrusiveRefCntPtr<DiagnosticsEngine> Diag;
-  
+
   /// \brief Language options used to adjust source locations.
   LangOptions LangOpts;
 
@@ -268,7 +268,7 @@ struct AllocatedCXCodeCompleteResults : public CXCodeCompleteResults {
 
   /// \brief Source manager, used for diagnostics.
   IntrusiveRefCntPtr<SourceManager> SourceMgr;
-  
+
   /// \brief Temporary files that should be removed once we have finished
   /// with the code-completion results.
   std::vector<llvm::sys::Path> TemporaryFiles;
@@ -276,22 +276,22 @@ struct AllocatedCXCodeCompleteResults : public CXCodeCompleteResults {
   /// \brief Temporary buffers that will be deleted once we have finished with
   /// the code-completion results.
   SmallVector<const llvm::MemoryBuffer *, 1> TemporaryBuffers;
-  
+
   /// \brief Allocator used to store globally cached code-completion results.
   IntrusiveRefCntPtr<clang::GlobalCodeCompletionAllocator>
     CachedCompletionAllocator;
-  
+
   /// \brief Allocator used to store code completion results.
   IntrusiveRefCntPtr<clang::GlobalCodeCompletionAllocator>
     CodeCompletionAllocator;
-  
+
   /// \brief Context under which completion occurred.
   enum clang::CodeCompletionContext::Kind ContextKind;
-  
+
   /// \brief A bitfield representing the acceptable completions for the
   /// current context.
   unsigned long long Contexts;
-  
+
   /// \brief The kind of the container for the current context for completions.
   enum CXCursorKind ContainerKind;
 
@@ -301,7 +301,7 @@ struct AllocatedCXCodeCompleteResults : public CXCodeCompleteResults {
   /// \brief a boolean value indicating whether there is complete information
   /// about the container
   unsigned ContainerIsIncomplete;
-  
+
   /// \brief A string containing the Objective-C selector entered thus far for a
   /// message send.
   std::string Selector;
@@ -309,12 +309,12 @@ struct AllocatedCXCodeCompleteResults : public CXCodeCompleteResults {
 
 } // end anonymous namespace
 
-/// \brief Tracks the number of code-completion result objects that are 
+/// \brief Tracks the number of code-completion result objects that are
 /// currently active.
 ///
 /// Used for debugging purposes only.
 static llvm::sys::cas_flag CodeCompletionResultObjects;
-  
+
 AllocatedCXCodeCompleteResults::AllocatedCXCodeCompleteResults(
                                       const FileSystemOptions& FileSystemOpts)
   : CXCodeCompleteResults(),
@@ -329,13 +329,13 @@ AllocatedCXCodeCompleteResults::AllocatedCXCodeCompleteResults(
     Contexts(CXCompletionContext_Unknown),
     ContainerKind(CXCursor_InvalidCode),
     ContainerIsIncomplete(1)
-{ 
+{
   if (getenv("LIBCLANG_OBJTRACKING")) {
     llvm::sys::AtomicIncrement(&CodeCompletionResultObjects);
     fprintf(stderr, "+++ %d completion results\n", CodeCompletionResultObjects);
-  }    
+  }
 }
-  
+
 AllocatedCXCodeCompleteResults::~AllocatedCXCodeCompleteResults() {
   delete [] Results;
 
@@ -347,13 +347,13 @@ AllocatedCXCodeCompleteResults::~AllocatedCXCodeCompleteResults() {
   if (getenv("LIBCLANG_OBJTRACKING")) {
     llvm::sys::AtomicDecrement(&CodeCompletionResultObjects);
     fprintf(stderr, "--- %d completion results\n", CodeCompletionResultObjects);
-  }    
+  }
 }
-  
+
 } // end extern "C"
 
 static unsigned long long getContextsForContextKind(
-                                          enum CodeCompletionContext::Kind kind, 
+                                          enum CodeCompletionContext::Kind kind,
                                                     Sema &S) {
   unsigned long long contexts = 0;
   switch (kind) {
@@ -367,7 +367,7 @@ static unsigned long long getContextsForContextKind(
     case CodeCompletionContext::CCC_ObjCIvarList:
     case CodeCompletionContext::CCC_ClassStructUnion:
     case CodeCompletionContext::CCC_Type: {
-      contexts = CXCompletionContext_AnyType | 
+      contexts = CXCompletionContext_AnyType |
                  CXCompletionContext_ObjCInterface;
       if (S.getLangOpts().CPlusPlus) {
         contexts |= CXCompletionContext_EnumTag |
@@ -376,9 +376,11 @@ static unsigned long long getContextsForContextKind(
                     CXCompletionContext_ClassTag |
                     CXCompletionContext_NestedNameSpecifier;
       }
+      // +===== Scout ========================================================+
       if (S.getLangOpts().Scout) {
         contexts |= CXCompletionContext_Scout;
       }
+      // +====================================================================+
       break;
     }
     case CodeCompletionContext::CCC_Statement: {
@@ -392,9 +394,11 @@ static unsigned long long getContextsForContextKind(
                     CXCompletionContext_ClassTag |
                     CXCompletionContext_NestedNameSpecifier;
       }
+      // +===== Scout ========================================================+
       if (S.getLangOpts().Scout) {
         contexts |= CXCompletionContext_Scout;
       }
+      // +====================================================================+
       break;
     }
     case CodeCompletionContext::CCC_Expression: {
@@ -408,9 +412,11 @@ static unsigned long long getContextsForContextKind(
                     CXCompletionContext_ClassTag |
                     CXCompletionContext_NestedNameSpecifier;
       }
+      // +===== Scout ========================================================+
       if (S.getLangOpts().Scout) {
         contexts |= CXCompletionContext_Scout;
       }
+      // +====================================================================+
       break;
     }
     case CodeCompletionContext::CCC_ObjCMessageReceiver: {
@@ -457,6 +463,7 @@ static unsigned long long getContextsForContextKind(
       break;
     }
 
+    // +===== Scout ==========================================================+
     case CodeCompletionContext::CCC_UniformMesh: {
       contexts = CXCompletionContext_Scout;
       break;
@@ -476,6 +483,7 @@ static unsigned long long getContextsForContextKind(
       contexts = CXCompletionContext_Scout;
       break;
     }
+    // +======================================================================+
 
     case CodeCompletionContext::CCC_ObjCProtocolName: {
       contexts = CXCompletionContext_ObjCProtocol;
@@ -565,33 +573,33 @@ namespace {
     CaptureCompletionResults(const CodeCompleteOptions &Opts,
                              AllocatedCXCodeCompleteResults &Results,
                              CXTranslationUnit *TranslationUnit)
-      : CodeCompleteConsumer(Opts, false), 
+      : CodeCompleteConsumer(Opts, false),
         AllocatedResults(Results), CCTUInfo(Results.CodeCompletionAllocator),
         TU(TranslationUnit) { }
     ~CaptureCompletionResults() { Finish(); }
-    
-    virtual void ProcessCodeCompleteResults(Sema &S, 
+
+    virtual void ProcessCodeCompleteResults(Sema &S,
                                             CodeCompletionContext Context,
                                             CodeCompletionResult *Results,
                                             unsigned NumResults) {
       StoredResults.reserve(StoredResults.size() + NumResults);
       for (unsigned I = 0; I != NumResults; ++I) {
-        CodeCompletionString *StoredCompletion        
+        CodeCompletionString *StoredCompletion
           = Results[I].CreateCodeCompletionString(S, getAllocator(),
                                                   getCodeCompletionTUInfo(),
                                                   includeBriefComments());
-        
+
         CXCompletionResult R;
         R.CursorKind = Results[I].CursorKind;
         R.CompletionString = StoredCompletion;
         StoredResults.push_back(R);
       }
-      
+
       enum CodeCompletionContext::Kind contextKind = Context.getKind();
-      
+
       AllocatedResults.ContextKind = contextKind;
       AllocatedResults.Contexts = getContextsForContextKind(contextKind, S);
-      
+
       AllocatedResults.Selector = "";
       if (Context.getNumSelIdents() > 0) {
         for (unsigned i = 0; i < Context.getNumSelIdents(); i++) {
@@ -603,17 +611,17 @@ namespace {
           AllocatedResults.Selector += ":";
         }
       }
-      
+
       QualType baseType = Context.getBaseType();
       NamedDecl *D = NULL;
-      
+
       if (!baseType.isNull()) {
         // Get the declaration for a class/struct/union/enum type
         if (const TagType *Tag = baseType->getAs<TagType>())
           D = Tag->getDecl();
         // Get the @interface declaration for a (possibly-qualified) Objective-C
         // object pointer type, e.g., NSString*
-        else if (const ObjCObjectPointerType *ObjPtr = 
+        else if (const ObjCObjectPointerType *ObjPtr =
                  baseType->getAs<ObjCObjectPointerType>())
           D = ObjPtr->getInterfaceDecl();
         // Get the @interface declaration for an Objective-C object type
@@ -624,7 +632,7 @@ namespace {
                  baseType->getAs<InjectedClassNameType>())
           D = Injected->getDecl();
       }
-      
+
       if (D != NULL) {
         CXCursor cursor = cxcursor::MakeCXCursor(D, *TU);
 
@@ -648,7 +656,7 @@ namespace {
         AllocatedResults.ContainerIsIncomplete = 1;
       }
     }
-    
+
     virtual void ProcessOverloadCandidates(Sema &S, unsigned CurrentArg,
                                            OverloadCandidate *Candidates,
                                            unsigned NumCandidates) {
@@ -657,25 +665,25 @@ namespace {
         CodeCompletionString *StoredCompletion
           = Candidates[I].CreateSignatureString(CurrentArg, S, getAllocator(),
                                                 getCodeCompletionTUInfo());
-        
+
         CXCompletionResult R;
         R.CursorKind = CXCursor_NotImplemented;
         R.CompletionString = StoredCompletion;
         StoredResults.push_back(R);
       }
     }
-    
-    virtual CodeCompletionAllocator &getAllocator() { 
+
+    virtual CodeCompletionAllocator &getAllocator() {
       return *AllocatedResults.CodeCompletionAllocator;
     }
 
     virtual CodeCompletionTUInfo &getCodeCompletionTUInfo() { return CCTUInfo; }
-    
+
   private:
     void Finish() {
       AllocatedResults.Results = new CXCompletionResult [StoredResults.size()];
       AllocatedResults.NumResults = StoredResults.size();
-      std::memcpy(AllocatedResults.Results, StoredResults.data(), 
+      std::memcpy(AllocatedResults.Results, StoredResults.data(),
                   StoredResults.size() * sizeof(CXCompletionResult));
       StoredResults.clear();
     }
@@ -712,7 +720,7 @@ void clang_codeCompleteAt_Impl(void *UserData) {
 #endif
 
   bool EnableLogging = getenv("LIBCLANG_CODE_COMPLETION_LOGGING") != 0;
-  
+
   ASTUnit *AST = cxtu::getASTUnit(TU);
   if (!AST)
     return;
@@ -732,17 +740,17 @@ void clang_codeCompleteAt_Impl(void *UserData) {
     RemappedFiles.push_back(std::make_pair(unsaved_files[I].Filename,
                                            Buffer));
   }
-  
+
   if (EnableLogging) {
     // FIXME: Add logging.
   }
 
   // Parse the resulting source file to find code-completion results.
-  AllocatedCXCodeCompleteResults *Results = 
+  AllocatedCXCodeCompleteResults *Results =
         new AllocatedCXCodeCompleteResults(AST->getFileSystemOpts());
   Results->Results = 0;
   Results->NumResults = 0;
-  
+
   // Create a code-completion consumer to capture the results.
   CodeCompleteOptions Opts;
   Opts.IncludeBriefComments = IncludeBriefComments;
@@ -750,7 +758,7 @@ void clang_codeCompleteAt_Impl(void *UserData) {
 
   // Perform completion.
   AST->CodeComplete(complete_filename, complete_line, complete_column,
-                    RemappedFiles.data(), RemappedFiles.size(), 
+                    RemappedFiles.data(), RemappedFiles.size(),
                     (options & CXCodeComplete_IncludeMacros),
                     (options & CXCodeComplete_IncludeCodePatterns),
                     IncludeBriefComments,
@@ -758,14 +766,14 @@ void clang_codeCompleteAt_Impl(void *UserData) {
                     *Results->Diag, Results->LangOpts, *Results->SourceMgr,
                     *Results->FileMgr, Results->Diagnostics,
                     Results->TemporaryBuffers);
-  
+
   // Keep a reference to the allocator used for cached global completions, so
   // that we can be sure that the memory used by our code completion strings
   // doesn't get freed due to subsequent reparses (while the code completion
   // results are still active).
   Results->CachedCompletionAllocator = AST->getCachedCompletionAllocator();
 
-  
+
 
 #ifdef UDP_CODE_COMPLETION_LOGGER
 #ifdef UDP_CODE_COMPLETION_LOGGER_PORT
@@ -886,8 +894,8 @@ void clang_disposeCodeCompleteResults(CXCodeCompleteResults *ResultsIn) {
     = static_cast<AllocatedCXCodeCompleteResults*>(ResultsIn);
   delete Results;
 }
-  
-unsigned 
+
+unsigned
 clang_codeCompleteGetNumDiagnostics(CXCodeCompleteResults *ResultsIn) {
   AllocatedCXCodeCompleteResults *Results
     = static_cast<AllocatedCXCodeCompleteResults*>(ResultsIn);
@@ -897,7 +905,7 @@ clang_codeCompleteGetNumDiagnostics(CXCodeCompleteResults *ResultsIn) {
   return Results->Diagnostics.size();
 }
 
-CXDiagnostic 
+CXDiagnostic
 clang_codeCompleteGetDiagnostic(CXCodeCompleteResults *ResultsIn,
                                 unsigned Index) {
   AllocatedCXCodeCompleteResults *Results
@@ -914,7 +922,7 @@ clang_codeCompleteGetContexts(CXCodeCompleteResults *ResultsIn) {
     = static_cast<AllocatedCXCodeCompleteResults*>(ResultsIn);
   if (!Results)
     return 0;
-  
+
   return Results->Contexts;
 }
 
@@ -925,14 +933,14 @@ enum CXCursorKind clang_codeCompleteGetContainerKind(
     static_cast<AllocatedCXCodeCompleteResults *>(ResultsIn);
   if (!Results)
     return CXCursor_InvalidCode;
-  
+
   if (IsIncomplete != NULL) {
     *IsIncomplete = Results->ContainerIsIncomplete;
   }
-  
+
   return Results->ContainerKind;
 }
-  
+
 CXString clang_codeCompleteGetContainerUSR(CXCodeCompleteResults *ResultsIn) {
   AllocatedCXCodeCompleteResults *Results =
     static_cast<AllocatedCXCodeCompleteResults *>(ResultsIn);
@@ -942,16 +950,16 @@ CXString clang_codeCompleteGetContainerUSR(CXCodeCompleteResults *ResultsIn) {
   return cxstring::createRef(Results->ContainerUSR.c_str());
 }
 
-  
+
 CXString clang_codeCompleteGetObjCSelector(CXCodeCompleteResults *ResultsIn) {
   AllocatedCXCodeCompleteResults *Results =
     static_cast<AllocatedCXCodeCompleteResults *>(ResultsIn);
   if (!Results)
     return cxstring::createEmpty();
-  
+
   return cxstring::createDup(Results->Selector);
 }
-  
+
 } // end extern "C"
 
 /// \brief Simple utility function that appends a \p New string to the given
@@ -971,7 +979,7 @@ static void AppendToString(StringRef &Old, StringRef New,
     Old = New;
     return;
   }
-  
+
   if (Buffer.empty())
     Buffer.append(Old.begin(), Old.end());
   Buffer.append(New.begin(), New.end());
@@ -993,33 +1001,33 @@ static StringRef GetTypedName(CodeCompletionString *String,
     if (C->Kind == CodeCompletionString::CK_TypedText)
       AppendToString(Result, C->Text, Buffer);
   }
-  
+
   return Result;
 }
 
 namespace {
   struct OrderCompletionResults {
-    bool operator()(const CXCompletionResult &XR, 
+    bool operator()(const CXCompletionResult &XR,
                     const CXCompletionResult &YR) const {
       CodeCompletionString *X
         = (CodeCompletionString *)XR.CompletionString;
       CodeCompletionString *Y
         = (CodeCompletionString *)YR.CompletionString;
-      
+
       SmallString<256> XBuffer;
       StringRef XText = GetTypedName(X, XBuffer);
       SmallString<256> YBuffer;
       StringRef YText = GetTypedName(Y, YBuffer);
-      
+
       if (XText.empty() || YText.empty())
         return !XText.empty();
-            
+
       int result = XText.compare_lower(YText);
       if (result < 0)
         return true;
       if (result > 0)
         return false;
-      
+
       result = XText.compare(YText);
       return result < 0;
     }

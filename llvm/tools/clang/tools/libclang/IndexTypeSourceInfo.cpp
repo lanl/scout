@@ -24,7 +24,7 @@ public:
   TypeIndexer(IndexingContext &indexCtx, const NamedDecl *parent,
               const DeclContext *DC)
     : IndexCtx(indexCtx), Parent(parent), ParentDC(DC) { }
-  
+
   bool shouldWalkTypesOfTypeLocs() const { return false; }
 
   bool VisitTypedefTypeLoc(TypedefTypeLoc TL) {
@@ -90,25 +90,40 @@ public:
     return true;
   }
 
-  // ===== Scout ========================================================================
+  // +==== Scout =============================================================+
   // SC_TODO -- implement these.
-  bool TraverseMeshTypeLoc(MeshTypeLoc){ return true; }  
-  bool TraverseUniformMeshTypeLoc(UniformMeshTypeLoc){ return true; }
-  bool TraverseStructuredMeshTypeLoc(StructuredMeshTypeLoc){ return true; }
-  bool TraverseRectilinearMeshTypeLoc(RectilinearMeshTypeLoc){ return true; }
-  bool TraverseUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc){ return true; }
+  bool TraverseMeshTypeLoc(MeshTypeLoc)
+  { return true; }
+  bool TraverseUniformMeshTypeLoc(UniformMeshTypeLoc)
+  { return true; }
+  bool TraverseStructuredMeshTypeLoc(StructuredMeshTypeLoc)
+  { return true; }
+  bool TraverseRectilinearMeshTypeLoc(RectilinearMeshTypeLoc)
+  { return true; }
+  bool TraverseUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc)
+  { return true; }
 
-  bool TraverseMeshDecl(MeshDecl*){ return true; }
-  bool TraverseUniformMeshDecl(UniformMeshDecl*){ return true; }
-  bool TraverseStructuredMeshDecl(StructuredMeshDecl*){ return true; }
-  bool TraverseRectilinearMeshDecl(RectilinearMeshDecl*){ return true; }
-  bool TraverseUnstructuredMeshDecl(UnstructuredMeshDecl*){ return true; }
+  bool TraverseMeshDecl(MeshDecl*)
+  { return true; }
+  bool TraverseUniformMeshDecl(UniformMeshDecl*)
+  { return true; }
+  bool TraverseStructuredMeshDecl(StructuredMeshDecl*)
+  { return true; }
+  bool TraverseRectilinearMeshDecl(RectilinearMeshDecl*)
+  { return true; }
+  bool TraverseUnstructuredMeshDecl(UnstructuredMeshDecl*)
+  { return true; }
 
-  bool TraverseMeshType(MeshType*){ return true; }
-  bool TraverseUniformMeshType(UniformMeshType*){ return true; }
-  bool TraverseStructuredMeshType(StructuredMeshType*){ return true; }
-  bool TraverseRectilinearMeshType(RectilinearMeshType*){ return true; }
-  bool TraverseUnstructuredMeshType(UnstructuredMeshType*){ return true; }
+  bool TraverseMeshType(MeshType*)
+  { return true; }
+  bool TraverseUniformMeshType(UniformMeshType*)
+  { return true; }
+  bool TraverseStructuredMeshType(StructuredMeshType*)
+  { return true; }
+  bool TraverseRectilinearMeshType(RectilinearMeshType*)
+  { return true; }
+  bool TraverseUnstructuredMeshType(UnstructuredMeshType*)
+  { return true; }
   // ====================================================================================
 };
 
@@ -119,7 +134,7 @@ void IndexingContext::indexTypeSourceInfo(TypeSourceInfo *TInfo,
                                           const DeclContext *DC) {
   if (!TInfo || TInfo->getTypeLoc().isNull())
     return;
-  
+
   indexTypeLoc(TInfo->getTypeLoc(), Parent, DC);
 }
 

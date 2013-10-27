@@ -423,7 +423,7 @@ namespace {
     /// expression is a potential constant expression? If so, some diagnostics
     /// are suppressed.
     bool CheckingPotentialConstantExpression;
-    
+
     bool IntOverflowCheckMode;
 
     EvalInfo(const ASTContext &C, Expr::EvalStatus &S,
@@ -528,7 +528,7 @@ namespace {
     }
 
     bool getIntOverflowCheckMode() { return IntOverflowCheckMode; }
-    
+
     /// Diagnose that the evaluation does not produce a C++11 core constant
     /// expression.
     template<typename LocArg>
@@ -3860,11 +3860,12 @@ public:
       BaseTy = E->getBase()->getType();
     }
 
-    // ===== Scout ============================================================
+    // +===== Scout ==========================================================+
     if (BaseTy->getAs<MeshType>()) {
       return true;
     }
-    // ========================================================================
+    // +======================================================================+
+
     const ValueDecl *MD = E->getMemberDecl();
     if (const FieldDecl *FD = dyn_cast<FieldDecl>(E->getMemberDecl())) {
       assert(BaseTy->getAs<RecordType>()->getDecl()->getCanonicalDecl() ==
@@ -4251,7 +4252,7 @@ public:
   bool VisitObjCStringLiteral(const ObjCStringLiteral *E)
       { return Success(E); }
   bool VisitObjCBoxedExpr(const ObjCBoxedExpr *E)
-      { return Success(E); }    
+      { return Success(E); }
   bool VisitAddrLabelExpr(const AddrLabelExpr *E)
       { return Success(E); }
   bool VisitCallExpr(const CallExpr *E);
@@ -4935,18 +4936,18 @@ VectorExprEvaluator::VisitInitListExpr(const InitListExpr *E) {
 
   // The number of initializers can be less than the number of
   // vector elements. For OpenCL, this can be due to nested vector
-  // initialization. For GCC compatibility, missing trailing elements 
+  // initialization. For GCC compatibility, missing trailing elements
   // should be initialized with zeroes.
   unsigned CountInits = 0, CountElts = 0;
   while (CountElts < NumElements) {
     // Handle nested vector initialization.
-    if (CountInits < NumInits 
+    if (CountInits < NumInits
         && E->getInit(CountInits)->getType()->isExtVectorType()) {
       APValue v;
       if (!EvaluateVector(E->getInit(CountInits), v, Info))
         return Error(E);
       unsigned vlen = v.getVectorLength();
-      for (unsigned j = 0; j < vlen; j++) 
+      for (unsigned j = 0; j < vlen; j++)
         Elements.push_back(v.getVectorElt(j));
       CountElts += vlen;
     } else if (EltTy->isIntegerType()) {
@@ -5225,7 +5226,7 @@ public:
   }
 
   bool Success(const llvm::APInt &I, const Expr *E, APValue &Result) {
-    assert(E->getType()->isIntegralOrEnumerationType() && 
+    assert(E->getType()->isIntegralOrEnumerationType() &&
            "Invalid evaluation result.");
     assert(I.getBitWidth() == Info.Ctx.getIntWidth(E->getType()) &&
            "Invalid evaluation result.");
@@ -5239,7 +5240,7 @@ public:
   }
 
   bool Success(uint64_t Value, const Expr *E, APValue &Result) {
-    assert(E->getType()->isIntegralOrEnumerationType() && 
+    assert(E->getType()->isIntegralOrEnumerationType() &&
            "Invalid evaluation result.");
     Result = APValue(Info.Ctx.MakeIntValue(Value, E->getType()));
     return true;
@@ -5304,7 +5305,7 @@ public:
   bool VisitObjCBoolLiteralExpr(const ObjCBoolLiteralExpr *E) {
     return Success(E->getValue(), E);
   }
-    
+
   // Note, GNU defines __null as an integer, not a pointer.
   bool VisitGNUNullExpr(const GNUNullExpr *E) {
     return ZeroInitialization(E);
@@ -5624,10 +5625,10 @@ bool IntExprEvaluator::VisitCallExpr(const CallExpr *E) {
       StringRef::size_type Pos = Str.find(0);
       if (Pos != StringRef::npos)
         Str = Str.substr(0, Pos);
-      
+
       return Success(Str.size(), E);
     }
-      
+
     return Error(E);
 
   case Builtin::BI__atomic_always_lock_free:
@@ -5722,7 +5723,7 @@ class DataRecursiveIntBinOpEvaluator {
     const Expr *E;
     EvalResult LHSResult; // meaningful only for binary operator expression.
     enum { AnyExprKind, BinOpKind, BinOpVisitedLHSKind } Kind;
-    
+
     Job() : StoredInfo(0) { }
     void startSpeculativeEval(EvalInfo &Info) {
       OldEvalStatus = Info.EvalStatus;
@@ -5824,7 +5825,7 @@ bool DataRecursiveIntBinOpEvaluator::
       Info.EvalStatus.HasSideEffects = true;
     return true;
   }
-  
+
   if (E->isLogicalOp()) {
     bool lhsResult;
     if (HandleConversionToBool(LHSResult.Val, lhsResult)) {
@@ -5838,19 +5839,19 @@ bool DataRecursiveIntBinOpEvaluator::
       // Since we weren't able to evaluate the left hand side, it
       // must have had side effects.
       Info.EvalStatus.HasSideEffects = true;
-      
+
       // We can't evaluate the LHS; however, sometimes the result
       // is determined by the RHS: X && 0 -> 0, X || 1 -> 1.
       // Don't ignore RHS and suppress diagnostics from this arm.
       SuppressRHSDiags = true;
     }
-    
+
     return true;
   }
-  
+
   assert(E->getLHS()->getType()->isIntegralOrEnumerationType() &&
          E->getRHS()->getType()->isIntegralOrEnumerationType());
-  
+
   if (LHSResult.Failed && !Info.keepEvaluatingAfterFailure())
     return false; // Ignore RHS;
 
@@ -5866,12 +5867,12 @@ bool DataRecursiveIntBinOpEvaluator::
     Result = RHSResult.Val;
     return true;
   }
-  
+
   if (E->isLogicalOp()) {
     bool lhsResult, rhsResult;
     bool LHSIsOK = HandleConversionToBool(LHSResult.Val, lhsResult);
     bool RHSIsOK = HandleConversionToBool(RHSResult.Val, rhsResult);
-    
+
     if (LHSIsOK) {
       if (RHSIsOK) {
         if (E->getOpcode() == BO_LOr)
@@ -5887,19 +5888,19 @@ bool DataRecursiveIntBinOpEvaluator::
           return Success(rhsResult, E, Result);
       }
     }
-    
+
     return false;
   }
-  
+
   assert(E->getLHS()->getType()->isIntegralOrEnumerationType() &&
          E->getRHS()->getType()->isIntegralOrEnumerationType());
-  
+
   if (LHSResult.Failed || RHSResult.Failed)
     return false;
-  
+
   const APValue &LHSVal = LHSResult.Val;
   const APValue &RHSVal = RHSResult.Val;
-  
+
   // Handle cases like (unsigned long)&a + 4.
   if (E->isAdditiveOp() && LHSVal.isLValue() && RHSVal.isInt()) {
     Result = LHSVal;
@@ -5911,7 +5912,7 @@ bool DataRecursiveIntBinOpEvaluator::
       Result.getLValueOffset() -= AdditionalOffset;
     return true;
   }
-  
+
   // Handle cases like 4 + (unsigned long)&a
   if (E->getOpcode() == BO_Add &&
       RHSVal.isLValue() && LHSVal.isInt()) {
@@ -5920,7 +5921,7 @@ bool DataRecursiveIntBinOpEvaluator::
                                                         LHSVal.getInt().getZExtValue());
     return true;
   }
-  
+
   if (E->getOpcode() == BO_Sub && LHSVal.isLValue() && RHSVal.isLValue()) {
     // Handle (intptr_t)&&A - (intptr_t)&&B.
     if (!LHSVal.getLValueOffset().isZero() ||
@@ -5959,7 +5960,7 @@ bool DataRecursiveIntBinOpEvaluator::
 
 void DataRecursiveIntBinOpEvaluator::process(EvalResult &Result) {
   Job &job = Queue.back();
-  
+
   switch (job.Kind) {
     case Job::AnyExprKind: {
       if (const BinaryOperator *Bop = dyn_cast<BinaryOperator>(job.E)) {
@@ -5969,12 +5970,12 @@ void DataRecursiveIntBinOpEvaluator::process(EvalResult &Result) {
           return;
         }
       }
-      
+
       EvaluateExpr(job.E, Result);
       Queue.pop_back();
       return;
     }
-      
+
     case Job::BinOpKind: {
       const BinaryOperator *Bop = cast<BinaryOperator>(job.E);
       bool SuppressRHSDiags = false;
@@ -5989,7 +5990,7 @@ void DataRecursiveIntBinOpEvaluator::process(EvalResult &Result) {
       enqueue(Bop->getRHS());
       return;
     }
-      
+
     case Job::BinOpVisitedLHSKind: {
       const BinaryOperator *Bop = cast<BinaryOperator>(job.E);
       EvalResult RHS;
@@ -5999,7 +6000,7 @@ void DataRecursiveIntBinOpEvaluator::process(EvalResult &Result) {
       return;
     }
   }
-  
+
   llvm_unreachable("Invalid Job::Kind!");
 }
 
@@ -6360,7 +6361,7 @@ CharUnits IntExprEvaluator::GetAlignOfExpr(const Expr *E) {
   // alignof decl is always accepted, even if it doesn't make sense: we default
   // to 1 in those cases.
   if (const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(E))
-    return Info.Ctx.getDeclAlign(DRE->getDecl(), 
+    return Info.Ctx.getDeclAlign(DRE->getDecl(),
                                  /*RefAsPointee*/true);
 
   if (const MemberExpr *ME = dyn_cast<MemberExpr>(E))
@@ -6475,7 +6476,7 @@ bool IntExprEvaluator::VisitOffsetOfExpr(const OffsetOfExpr *OOE) {
       const RecordType *BaseRT = CurrentType->getAs<RecordType>();
       if (!BaseRT)
         return Error(OOE);
-      
+
       // Add the offset to the base.
       Result += RL.getBaseClassOffset(cast<CXXRecordDecl>(BaseRT->getDecl()));
       break;
@@ -6633,7 +6634,7 @@ bool IntExprEvaluator::VisitCastExpr(const CastExpr *E) {
       return true;
     }
 
-    APSInt AsInt = Info.Ctx.MakeIntValue(LV.getLValueOffset().getQuantity(), 
+    APSInt AsInt = Info.Ctx.MakeIntValue(LV.getLValueOffset().getQuantity(),
                                          SrcType);
     return Success(HandleIntToIntCast(Info, E, DestType, SrcType, AsInt), E);
   }
@@ -7483,7 +7484,7 @@ static bool FastEvaluateAsRValue(const Expr *Exp, Expr::EvalResult &Result,
     IsConst = true;
     return true;
   }
-  
+
   // FIXME: Evaluating values of large array and record types can cause
   // performance problems. Only do so in C++11 for now.
   if (Exp->isRValue() && (Exp->getType()->isArrayType() ||
@@ -7505,7 +7506,7 @@ bool Expr::EvaluateAsRValue(EvalResult &Result, const ASTContext &Ctx) const {
   bool IsConst;
   if (FastEvaluateAsRValue(this, Result, Ctx, IsConst))
     return IsConst;
-  
+
   EvalInfo Info(Ctx, Result);
   return ::EvaluateAsRValue(Info, this, Result.Val);
 }

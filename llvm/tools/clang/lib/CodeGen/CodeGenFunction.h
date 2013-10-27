@@ -31,6 +31,8 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ValueHandle.h"
+
+
 // ===== Scout =================================================================
 #include "llvm/ADT/SetVector.h"
 #include <map>
@@ -720,7 +722,7 @@ public:
 
   llvm::BasicBlock *getInvokeDestImpl();
 
-  // ===== Scout ==============================================================
+  // +===== Scout ============================================================+
   // SC_TODO - are all of these really necessary?
   // SC_TODO - A lot of this should be moved out of the header file
   //           to make our merges with the clang trunks a happier
@@ -729,7 +731,9 @@ public:
   typedef llvm::SmallVector< llvm::Value *, 4 > Vector;
   typedef CallExpr::const_arg_iterator ArgIterator;
   typedef std::pair< MeshFieldDecl *, int > MeshFieldPair;
-  typedef std::map< llvm::StringRef, std::pair< llvm::Value *, QualType > > MemberMap;
+  typedef std::map< llvm::StringRef,
+                    std::pair< llvm::Value *,
+                    QualType > > MemberMap;
 
   //forall mesh induction variables
   // overall induction variable stored as 4th element
@@ -759,7 +763,8 @@ public:
 
   bool isGPU() {
     // --- AMD gpu support disabled for now (they're off-version of us)
-    return (CGM.getCodeGenOpts().ScoutNvidiaGPU /* || CGM.getCodeGenOpts().ScoutAMDGPU */)
+    return (CGM.getCodeGenOpts().ScoutNvidiaGPU
+            /* || CGM.getCodeGenOpts().ScoutAMDGPU */)
             && !CallsPrintf;
   }
 
@@ -816,7 +821,9 @@ public:
   bool callsPrintf(const Stmt *S) {
     return hasPrintfNode(S);
   }
-  // ==========================================================================
+  // +========================================================================+
+
+
   template <class T>
   typename DominatingValue<T>::saved_type saveValueInCond(T value) {
     return DominatingValue<T>::save(*this, value);
@@ -1606,7 +1613,7 @@ public:
   //                                  Block Bits
   //===--------------------------------------------------------------------===//
 
-  // ===== Scout ===============================================================
+  // +==== Scout =============================================================+
   llvm::Value *EmitScoutBlockFnCall(llvm::Value *TheBlockFn,
                            const CGBlockInfo &blockInfo,
                            const llvm::SmallVector<llvm::Value*,3>& ranges,
@@ -1623,7 +1630,7 @@ public:
 
   // SC_TODO -- Need to make sure some of the member functions
   // below are not also for scout...
-  // ===========================================================================
+  // +========================================================================+
   llvm::Value *EmitBlockLiteral(const BlockExpr *);
   llvm::Value *EmitBlockLiteral(const CGBlockInfo &Info);
   static void destroyBlockInfos(CGBlockInfo *info);
@@ -2290,10 +2297,12 @@ public:
     }
   };
   AutoVarEmission EmitAutoVarAlloca(const VarDecl &var);
-  // ===== Scout ==============================================================
+
+  // +===== Scout ============================================================+
   void EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
                               const VarDecl &var);
-  // ==========================================================================
+  // +========================================================================+
+
   void EmitAutoVarInit(const AutoVarEmission &emission);
   void EmitAutoVarCleanups(const AutoVarEmission &emission);
   void emitAutoVarTypeCleanup(const AutoVarEmission &emission,
@@ -2358,7 +2367,7 @@ public:
   void EmitWhileStmt(const WhileStmt &S);
   void EmitDoStmt(const DoStmt &S);
 
-  // ===== Scout ==============================================================
+  // +===== Scout ============================================================+
   //
   llvm::Value *GetMeshBaseAddr(const ForallMeshStmt &S);
 
@@ -2401,7 +2410,7 @@ public:
   }
 
   MeshFieldPair FindFieldDecl(MeshDecl *MD, llvm::StringRef &memberName);
-  // ===========================================================================
+  // +========================================================================+
 
   void EmitForStmt(const ForStmt &S);
   void EmitReturnStmt(const ReturnStmt &S);
@@ -3098,7 +3107,7 @@ private:
           }
         }
 
-        // ===== Scout ========================================================
+        // +==== Scout =======================================================+
         // Special case for mesh types, because we cannot check
         // for type pointer equality because each mesh has its own type
         // pointer to hold the mesh dimensions and other instance data
@@ -3106,7 +3115,8 @@ private:
         // SC_TODO - long call chains (like those below) should be turned into
         // a convenience function to clean things up.
         const Type* argType;
-        argType = getContext().getCanonicalType(ArgType.getNonReferenceType()).getTypePtr();
+        argType =
+          getContext().getCanonicalType(ArgType.getNonReferenceType()).getTypePtr();
         const Type* actualType;
         actualType = getContext().getCanonicalType(ActualArgType).getTypePtr();
 
@@ -3115,6 +3125,7 @@ private:
         } else if (argType != actualType) {
           assert(false && "type mismatch in call argument!");
         }
+        // +==================================================================+
 #endif
         EmitCallArg(Args, *Arg, ArgType);
       }

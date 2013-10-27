@@ -833,7 +833,6 @@ def err_omp_unexpected_directive : Error <
   "unexpected OpenMP directive '#pragma omp %0'">;
 
 // +===== Scout =============================================================+
-//
 def warn_empty_mesh:Warning<
     "mesh definition with no fields">;
 def err_expected_mesh_kw:Error<
@@ -945,8 +944,6 @@ def err_expected_mesh_param_star_amp:Error<
 def err_expected_mesh_var_decl:Error<
     "expected mesh variable declaration">;
 // +=========================================================================+
-
-
 } // end of Parse Issue category.
 
 let CategoryName = "Modules Issue" in {

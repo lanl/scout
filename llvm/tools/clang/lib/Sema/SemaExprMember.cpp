@@ -20,7 +20,11 @@
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/ScopeInfo.h"
+
+
+// +===== Scout ==============================================================+
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
+// +==========================================================================+
 
 using namespace clang;
 using namespace sema;
@@ -639,15 +643,15 @@ LookupMemberExprInRecord(Sema &SemaRef, LookupResult &R,
 }
 
 
-
+// +===== Scout ==============================================================+
 ExprResult
 Sema::BuildMeshMemberReferenceExpr(Expr *Base, QualType BaseType,
-                                   SourceLocation OpLoc, bool IsArrow,
-                                   CXXScopeSpec &SS,
-                                   SourceLocation TemplateKWLoc,
-                                   NamedDecl *FirstQualifierInScope,
-                                   const DeclarationNameInfo &NameInfo,
-                                   const TemplateArgumentListInfo *TemplateArgs) {
+                               SourceLocation OpLoc, bool IsArrow,
+                               CXXScopeSpec &SS,
+                               SourceLocation TemplateKWLoc,
+                               NamedDecl *FirstQualifierInScope,
+                               const DeclarationNameInfo &NameInfo,
+                               const TemplateArgumentListInfo *TemplateArgs) {
 
   if (BaseType->isDependentType() ||
       (SS.isSet() && isDependentScopeSpecifier(SS)))
@@ -694,7 +698,7 @@ Sema::BuildMeshMemberReferenceExpr(Expr *Base, QualType BaseType,
                                   OpLoc, IsArrow, SS, TemplateKWLoc,
                                   FirstQualifierInScope, R, TemplateArgs);
 }
-
+// +==========================================================================+
 
 ExprResult
 Sema::BuildMemberReferenceExpr(Expr *Base, QualType BaseType,
@@ -755,11 +759,14 @@ BuildFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
                         const CXXScopeSpec &SS, FieldDecl *Field,
                         DeclAccessPair FoundDecl,
                         const DeclarationNameInfo &MemberNameInfo);
+
+// +===== Scout ==============================================================+
 static ExprResult
 BuildFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
                         const CXXScopeSpec &SS, MeshFieldDecl *Field,
                         DeclAccessPair FoundDecl,
                         const DeclarationNameInfo &MemberNameInfo);
+// +==========================================================================+
 
 ExprResult
 Sema::BuildAnonymousStructUnionMemberReference(const CXXScopeSpec &SS,
@@ -1040,10 +1047,12 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
     return ExprError();
   }
 
+  // +===== Scout ============================================================+
   if (MeshFieldDecl *MFD = dyn_cast<MeshFieldDecl>(MemberDecl)) {
     return BuildFieldReferenceExpr(*this, BaseExpr, IsArrow,
                                        SS, MFD, FoundDecl, MemberNameInfo);
   }
+  // +========================================================================+
 
   if (FieldDecl *FD = dyn_cast<FieldDecl>(MemberDecl))
     return BuildFieldReferenceExpr(*this, BaseExpr, IsArrow,
@@ -1107,6 +1116,7 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
 }
 
 
+// +===== Scout ==============================================================+
 ExprResult
 Sema::BuildMeshMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
                                    SourceLocation OpLoc, bool IsArrow,
@@ -1307,6 +1317,7 @@ Sema::BuildMeshMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
   R.suppressDiagnostics();
   return ExprError();
 }
+// +==========================================================================+
 
 /// Given that normal member access failed on the given expression,
 /// and given that the expression's type involves builtin-id or
@@ -1427,6 +1438,7 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
     return Owned((Expr*) 0);
   }
 
+  // +===== Scout ============================================================+
   if (const MeshType *MTy = BaseType->getAs<MeshType>()) {
     // Scout's mesh element access operations are all through
     // implicit constructs (for now) -- as such we treat all
@@ -1446,7 +1458,7 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
     // the lookup result was filled in.
     return Owned((Expr*) 0);
   }
-  // ====================================================================================
+  // +========================================================================+
 
   // Handle ivar access to Objective-C objects.
   if (const ObjCObjectType *OTy = BaseType->getAs<ObjCObjectType>()) {
@@ -1962,6 +1974,7 @@ BuildFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
                                  MemberType, VK, OK));
 }
 
+// +===== Scout ==============================================================+
 static ExprResult
 BuildFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
                             const CXXScopeSpec &SS, MeshFieldDecl *Field,
@@ -2021,6 +2034,8 @@ BuildFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
                                  Field, FoundDecl, MemberNameInfo,
                                  MemberType, VK, OK));
 }
+// +==========================================================================+
+
 
 /// Builds an implicit member access expression.  The current context
 /// is known to be an instance method, and the given unqualified lookup

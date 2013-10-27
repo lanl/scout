@@ -36,7 +36,9 @@
 #include "llvm/Transforms/Instrumentation.h"
 #include "llvm/Transforms/ObjCARC.h"
 #include "llvm/Transforms/Scalar.h"
-// ===== Scout ================================================================
+
+
+// +===== Scout ==============================================================+
 #include "scout/Config/defs.h"
 #ifdef SC_ENABLE_CUDA
 #include "llvm/Transforms/Scout/DoallToPTX/DoallToPTX.h"
@@ -45,7 +47,8 @@
 #include "llvm/Transforms/Scout/DoallToAMDIL/DoallToAMDIL.h"
 #endif
 #include "llvm/Transforms/Vectorize.h"
-// ============================================================================
+// +==========================================================================+
+
 using namespace clang;
 using namespace llvm;
 
@@ -99,7 +102,7 @@ private:
   void CreatePasses(TargetMachine *TM);
 
   // ===== Scout ==============================================================
-  // Implemented in 'scout' subdirectory. 
+  // Implemented in 'scout' subdirectory.
   void CreateScoutPasses(TargetMachine *TM);
   // ==========================================================================
 
@@ -222,17 +225,17 @@ static void addThreadSanitizerPass(const PassManagerBuilder &Builder,
 }
 
 // ===== Scout ================================================================
-// 
+//
 void EmitAssemblyHelper::CreateScoutPasses(TargetMachine *TM) {
 
 #ifdef SC_ENABLE_CUDA
-  
+
   if (CodeGenOpts.ScoutNvidiaGPU) {
     PassManager MPM;
     MPM.add(createDoallToPTXPass());
     MPM.run(*TheModule);
   }
-  
+
 #endif
 
 #ifdef SC_ENABLE_OPENCL
@@ -315,7 +318,7 @@ void EmitAssemblyHelper::CreatePasses(TargetMachine *TM) {
   PMBuilder.LibraryInfo = new TargetLibraryInfo(TargetTriple);
   if (!CodeGenOpts.SimplifyLibCalls)
     PMBuilder.LibraryInfo->disableAllFunctions();
-  
+
   switch (Inlining) {
   case CodeGenOptions::NoInlining: break;
   case CodeGenOptions::NormalInlining: {

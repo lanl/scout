@@ -1613,9 +1613,7 @@ bool RecursiveASTVisitor<Derived>::TraverseRecordHelper(
 }
 
 // +===== Scout ==============================================================+
-//
-template<typename Derived>
-bool
+template<typename Derived> bool
 RecursiveASTVisitor<Derived>::TraverseUniformMeshHelper(UniformMeshDecl *D) {
   // We shouldn't traverse D->getTypeForDecl(); it's a result of
   // declaring the type, not something that was written in the source.
@@ -1627,8 +1625,7 @@ DEF_TRAVERSE_DECL(UniformMeshDecl, {
   TRY_TO(TraverseUniformMeshHelper(D));
 })
 
-template<typename Derived>
-bool
+template<typename Derived> bool
 RecursiveASTVisitor<Derived>::TraverseStructuredMeshHelper(
                                                        StructuredMeshDecl *D) {
   // We shouldn't traverse D->getTypeForDecl(); it's a result of
@@ -1641,8 +1638,7 @@ DEF_TRAVERSE_DECL(StructuredMeshDecl, {
   TRY_TO(TraverseStructuredMeshHelper(D));
 })
 
-template<typename Derived>
-bool
+template<typename Derived> bool
 RecursiveASTVisitor<Derived>::TraverseRectilinearMeshHelper(
                                                       RectilinearMeshDecl *D) {
   // We shouldn't traverse D->getTypeForDecl(); it's a result of
@@ -1655,8 +1651,7 @@ DEF_TRAVERSE_DECL(RectilinearMeshDecl, {
   TRY_TO(TraverseRectilinearMeshHelper(D));
 })
 
-template<typename Derived>
-bool
+template<typename Derived> bool
 RecursiveASTVisitor<Derived>::TraverseUnstructuredMeshHelper(
                                                      UnstructuredMeshDecl *D) {
   // We shouldn't traverse D->getTypeForDecl(); it's a result of
@@ -1780,6 +1775,7 @@ DEF_TRAVERSE_DECL(FieldDecl, {
       TRY_TO(TraverseStmt(D->getInClassInitializer()));
   })
 
+// +===== Scout ==============================================================+
 DEF_TRAVERSE_DECL(MeshFieldDecl, {
     TRY_TO(TraverseDeclaratorHelper(D));
     if (D->isBitField())
@@ -1787,6 +1783,7 @@ DEF_TRAVERSE_DECL(MeshFieldDecl, {
     else if (D->hasInClassInitializer())
       TRY_TO(TraverseStmt(D->getInClassInitializer()));
   })
+// +==========================================================================+
 
 DEF_TRAVERSE_DECL(ObjCAtDefsFieldDecl, {
     TRY_TO(TraverseDeclaratorHelper(D));

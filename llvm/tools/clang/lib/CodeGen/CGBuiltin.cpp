@@ -210,13 +210,15 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
   switch (BuiltinID) {
   default: break;  // Handle intrinsics and libm functions below.
 
-  // ===== Scout ==================================
+  // +==== Scout =============================================================+
   case Builtin::BIPosition: {
     Value *Result =
        llvm::UndefValue::get(llvm::VectorType::get(Int32Ty, 4));
 
      for (unsigned i = 0; i < 4; ++i) {
-       Result = Builder.CreateInsertElement(Result, Builder.CreateLoad(InductionVar[i]), Builder.getInt32(i));
+       Result = Builder.CreateInsertElement(Result,
+                                            Builder.CreateLoad(InductionVar[i]),
+                                            Builder.getInt32(i));
      }
      return  RValue::get(Result);
   }
@@ -251,7 +253,7 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
     if (LoopBounds[2]) return RValue::get(Builder.CreateLoad(LoopBounds[2]));
     else return RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
   }
-  // ==============================================
+  // +========================================================================+
 
   case Builtin::BI__builtin___CFStringMakeConstantString:
   case Builtin::BI__builtin___NSStringMakeConstantString:

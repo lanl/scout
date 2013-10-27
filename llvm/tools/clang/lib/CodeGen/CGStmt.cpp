@@ -132,7 +132,7 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
   case Stmt::DoStmtClass:       EmitDoStmt(cast<DoStmt>(*S));             break;
   case Stmt::ForStmtClass:      EmitForStmt(cast<ForStmt>(*S));           break;
 
-  // ===== Scout ==============================================================
+  // +===== Scout ============================================================+
   case Stmt::ForallMeshStmtClass:
     EmitForallStmt(cast<ForallMeshStmt>(*S));
     break;
@@ -148,7 +148,7 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
   //case Stmt::VolumeRenderAllStmtClass:
   //  EmitVolumeRenderAllStmt(cast<VolumeRenderAllStmt>(*S));
   //  break;
-  // ==========================================================================
+  // +========================================================================+
 
   case Stmt::ReturnStmtClass:   EmitReturnStmt(cast<ReturnStmt>(*S));     break;
 
@@ -621,7 +621,7 @@ void CodeGenFunction::EmitDoStmt(const DoStmt &S) {
     SimplifyForwardingBlocks(LoopCond.getBlock());
 }
 
-// ===== Scout ===============================================================
+// +==== Scout ===============================================================+
 void CodeGenFunction::insertMeshDump(llvm::Value* baseAddr) {
   // comment out to enable mesh dumping
   return;
@@ -650,9 +650,6 @@ void CodeGenFunction::insertMeshDump(llvm::Value* baseAddr) {
   Builder.CreateCall(dumpBlockFunc, dumpArgs);
 }
 
-
-// ----- scGetMeshBaseAddr
-//
 llvm::Value *CodeGenFunction::GetMeshBaseAddr(const ForallMeshStmt &S) {
   const VarDecl *MeshVarDecl = S.getMeshVarDecl();
   llvm::Value *BaseAddr = 0;
@@ -669,12 +666,9 @@ llvm::Value *CodeGenFunction::GetMeshBaseAddr(const ForallMeshStmt &S) {
   return BaseAddr;
 }
 
-// ----- GetMeshDimensions
-//
-void
-CodeGenFunction::GetMeshDimValues(const ForallMeshStmt &S,
-                       llvm::SmallVector<llvm::Value*, 3> &MeshDimensions,
-                       llvm::Value* MeshBaseAddr) {
+void CodeGenFunction::GetMeshDimValues(const ForallMeshStmt &S,
+                            llvm::SmallVector<llvm::Value*, 3> &MeshDimensions,
+                            llvm::Value* MeshBaseAddr) {
 
   llvm::Value *BaseAddr;
   if (MeshBaseAddr != 0) {
@@ -687,13 +681,12 @@ CodeGenFunction::GetMeshDimValues(const ForallMeshStmt &S,
   const char  *DimNames[] = { "dim_x", "dim_y", "dim_z" };
 
   for(unsigned int i = 0; i < dims.size(); ++i) {
-    llvm::Value *LVal = Builder.CreateConstInBoundsGEP2_32(BaseAddr, 0, i+1, DimNames[i]);
+    llvm::Value *LVal = Builder.CreateConstInBoundsGEP2_32(BaseAddr, 0, i+1,
+                                                           DimNames[i]);
     MeshDimensions.push_back(LVal);
   }
 }
-
-
-// ===========================================================================
+// +==========================================================================+
 
 void CodeGenFunction::EmitForStmt(const ForStmt &S) {
   JumpDest LoopExit = getJumpDestInCurrentScope("for.end");

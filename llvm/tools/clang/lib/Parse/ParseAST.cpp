@@ -27,9 +27,9 @@
 #include "llvm/Support/CrashRecoveryContext.h"
 #include <cstdio>
 
-// scout - AST view
+// +===== Scout ==============================================================+
 #include "clang/Parse/scout/ASTViewScout.h"
-
+// +==========================================================================+
 using namespace clang;
 
 namespace {
@@ -91,22 +91,24 @@ void clang::ParseAST(Preprocessor &PP, ASTConsumer *Consumer,
                      TranslationUnitKind TUKind,
                      CodeCompleteConsumer *CompletionConsumer,
                      bool SkipFunctionBodies,
-                     // scout - added ASTViewer param
+                     // +===== Scout =========================================+
                      ASTViewScout* ASTViewer
+                     // +=====================================================+
                      )
 {
   OwningPtr<Sema> S(new Sema(PP, Ctx, *Consumer, TUKind, CompletionConsumer));
 
   // Recover resources if we crash before exiting this method.
   llvm::CrashRecoveryContextCleanupRegistrar<Sema> CleanupSema(S.get());
-  
+
   ParseAST(*S.get(), PrintStats, SkipFunctionBodies, ASTViewer);
 }
 
 void clang::ParseAST(Sema &S, bool PrintStats,
                      bool SkipFunctionBodies,
-                     // scout - added ASTViewer param
+                     // +===== Scout =========================================+
                      ASTViewScout* ASTViewer
+                     // +=====================================================+
                      ){
   // Collect global stats on Decls/Stmts (until we have a module streamer).
   if (PrintStats) {
@@ -154,13 +156,14 @@ void clang::ParseAST(Sema &S, bool PrintStats,
         if(!Consumer->HandleTopLevelDecl(ADecl.get())){
           return;
         }
-
-        // scout - AST Viewer, if the -ast-view front-end option 
-        // was passed potentially generate Graphviz output for this 
+        // +===== Scout ======================================================+
+        // AST Viewer, if the -ast-view front-end option
+        // was passed potentially generate Graphviz output for this
         // decl. group
-        if(ASTViewer){
+        if (ASTViewer) {
           ASTViewer->outputGraphviz(ADecl.get());
         }
+        // +==================================================================+
       }
     } while (!P.ParseTopLevelDecl(ADecl));
   }
@@ -170,7 +173,7 @@ void clang::ParseAST(Sema &S, bool PrintStats,
        I = S.WeakTopLevelDecls().begin(),
        E = S.WeakTopLevelDecls().end(); I != E; ++I)
     Consumer->HandleTopLevelDecl(DeclGroupRef(*I));
-  
+
   Consumer->HandleTranslationUnit(S.getASTContext());
 
   std::swap(OldCollectStats, S.CollectStats);

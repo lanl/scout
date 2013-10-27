@@ -57,10 +57,10 @@ add_clang_library(clangAST
   TypePrinter.cpp
   VTableBuilder.cpp
   VTTBuilder.cpp
-  # ===== Scout ===============================================================
-  # Note: Don't include all source files in the Scout subdir here. 
-  # Unfortunately, some files can't be separated out and instead are #included 
-  # into the source in this directory. 
+  # +===== Scout ============================================================+
+  # Note: Don't include all source files in the Scout subdir here.
+  # Unfortunately, some files can't be separated out and instead are
+  # included into the source in this directory.
   #
   Scout/ASTContext.cpp
   Scout/ForAllArrayStmt.cpp
@@ -73,7 +73,7 @@ add_clang_library(clangAST
   Scout/UniformMeshDecl.cpp
   Scout/UnstructuredMeshDecl.cpp
   Scout/VolumeRenderAllStmt.cpp
-  # ===========================================================================
+  # +==========================================================================+
   )
 
 add_dependencies(clangAST

@@ -39,6 +39,8 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/TinyPtrVector.h"
 #include "llvm/Support/Allocator.h"
+
+
 // +===== Scout ==============================================================+
 #include "clang/AST/Scout/MeshDecls.h"
 // +==========================================================================+
@@ -52,7 +54,6 @@ namespace llvm {
 namespace clang {
   class FileManager;
   class ASTRecordLayout;
-  class ASTMeshLayout; // +===== Scout =======================================+
   class BlockExpr;
   class CharUnits;
   class DiagnosticsEngine;
@@ -70,6 +71,10 @@ namespace clang {
   class UnresolvedSetIterator;
   class UsingDecl;
   class UsingShadowDecl;
+
+  // +===== Scout ===========================================================+
+  class ASTMeshLayout;
+  // +=======================================================================+
 
   namespace Builtin { class Context; }
 

@@ -596,23 +596,23 @@ static void addFPUArgs(const Driver &D, const Arg *A, const ArgList &Args,
 static void addFPMathArgs(const Driver &D, const Arg *A, const ArgList &Args,
                           ArgStringList &CmdArgs, StringRef CPU) {
   StringRef FPMath = A->getValue();
-  
+
   // Set the target features based on the FPMath.
   if (FPMath == "neon") {
     CmdArgs.push_back("-target-feature");
     CmdArgs.push_back("+neonfp");
-    
+
     if (CPU != "cortex-a5" && CPU != "cortex-a7" &&
         CPU != "cortex-a8" && CPU != "cortex-a9" &&
         CPU != "cortex-a9-mp" && CPU != "cortex-a15")
       D.Diag(diag::err_drv_invalid_feature) << "-mfpmath=neon" << CPU;
-    
+
   } else if (FPMath == "vfp" || FPMath == "vfp2" || FPMath == "vfp3" ||
              FPMath == "vfp4") {
     CmdArgs.push_back("-target-feature");
     CmdArgs.push_back("-neonfp");
 
-    // FIXME: Add warnings when disabling a feature not present for a given CPU.    
+    // FIXME: Add warnings when disabling a feature not present for a given CPU.
   } else
     D.Diag(diag::err_drv_clang_unsupported) << A->getAsString(Args);
 }
@@ -811,7 +811,7 @@ void Clang::AddARMTargetArgs(const ArgList &Args,
     CmdArgs.push_back("-arm-darwin-use-movt=0");
   }
 
-  // Setting -mno-global-merge disables the codegen global merge pass. Setting 
+  // Setting -mno-global-merge disables the codegen global merge pass. Setting
   // -mglobal-merge has no effect as the pass is enabled by default.
   if (Arg *A = Args.getLastArg(options::OPT_mglobal_merge,
                                options::OPT_mno_global_merge)) {
@@ -1902,19 +1902,20 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   std::string TripleStr = getToolChain().ComputeEffectiveClangTriple(Args);
   CmdArgs.push_back(Args.MakeArgString(TripleStr));
 
-  // ===== Scout ==============================================================
+  // +===== Scout ============================================================+
   // This flag can be helpful if you want to stop the compilation thread
-  // for debugging. 
+  // for debugging.
   if(Args.hasArg(options::OPT_debugWait)){
-    CmdArgs.push_back("-debug-wait");
+    CmdArgs.push_back("-debug");
   }
 
   // SC_TODO -- do we always want to do this?
   CmdArgs.push_back("-pthread");
-  // ==========================================================================
+  // +========================================================================+
+
   // Select the appropriate action.
   RewriteKind rewriteKind = RK_None;
-  
+
   if (isa<AnalyzeJobAction>(JA)) {
     assert(JA.getType() == types::TY_Plist && "Invalid output type.");
     CmdArgs.push_back("-analyze");
@@ -2039,17 +2040,17 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
       if (getToolChain().getTriple().getVendor() == llvm::Triple::Apple)
         CmdArgs.push_back("-analyzer-checker=osx");
-      
+
       CmdArgs.push_back("-analyzer-checker=deadcode");
-      
+
       if (types::isCXX(Inputs[0].getType()))
         CmdArgs.push_back("-analyzer-checker=cplusplus");
 
-      // Enable the following experimental checkers for testing. 
+      // Enable the following experimental checkers for testing.
       CmdArgs.push_back("-analyzer-checker=security.insecureAPI.UncheckedReturn");
       CmdArgs.push_back("-analyzer-checker=security.insecureAPI.getpw");
       CmdArgs.push_back("-analyzer-checker=security.insecureAPI.gets");
-      CmdArgs.push_back("-analyzer-checker=security.insecureAPI.mktemp");      
+      CmdArgs.push_back("-analyzer-checker=security.insecureAPI.mktemp");
       CmdArgs.push_back("-analyzer-checker=security.insecureAPI.mkstemp");
       CmdArgs.push_back("-analyzer-checker=security.insecureAPI.vfork");
     }
@@ -2205,7 +2206,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // This alias option is being used to simplify the getLastArg logic.
   OptSpecifier FastMathAliasOption = OFastEnabled ? options::OPT_Ofast :
     options::OPT_ffast_math;
-  
+
   // Handle various floating point optimization flags, mapping them to the
   // appropriate LLVM code generation flags. The pattern for all of these is to
   // default off the codegen optimizations, and if any flag enables them and no
@@ -2304,7 +2305,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back("-menable-unsafe-fp-math");
 
 
-  // Validate and pass through -fp-contract option. 
+  // Validate and pass through -fp-contract option.
   if (Arg *A = Args.getLastArg(options::OPT_ffast_math, FastMathAliasOption,
                                options::OPT_fno_fast_math,
                                options::OPT_ffp_contract)) {
@@ -2630,36 +2631,35 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   Args.AddLastArg(CmdArgs, options::OPT_pedantic_errors);
   Args.AddLastArg(CmdArgs, options::OPT_w);
 
-  // ===== Scout ==============================================================
+  // +==== Scout =============================================================+
   // SC_TODO - we should probably skip some of these flags on systems
-  // that have no support enabled (no need to add flags if the build 
+  // that have no support enabled (no need to add flags if the build
   // configuration hasn't enabled them).
 
-  // Enable cpu multithreading.  
+  // Enable cpu multithreading.
   Args.AddAllArgs(CmdArgs, options::OPT_cpuThreads);
 
   // Enable NVIDIA gpu support (if available).
   Args.AddAllArgs(CmdArgs, options::OPT_gpu);
 
-  // --- Disabled (AMD is a off-version from us at the moment). 
+  // --- Disabled (AMD is a off-version from us at the moment).
   // Enable AMD gpu support (if available).
   //Args.AddAllArgs(CmdArgs, options::OPT_gpuAMD);
-  
-  // Emit-all-definitions from compilation. 
+
+  // Emit-all-definitions from compilation.
   Args.AddAllArgs(CmdArgs, options::OPT_emitAllDefinitions);
-  
+
   // Disable automatic standard library inclusion. We use
   // this to bootstrap scc and the building of the standard
   // library.
   Args.AddAllArgs(CmdArgs, options::OPT_disableScoutStdLib);
- 
-  // Do not run the rewriter. 
+
+  // Do not run the rewriter.
   Args.AddAllArgs(CmdArgs, options::OPT_noRewrite);
 
   // Dump the output of rewriter to stdout
   Args.AddAllArgs(CmdArgs, options::OPT_dumpRewrite);
-  // 
-  // ==========================================================================
+  // +========================================================================+
 
   // Handle -{std, ansi, trigraphs} -- take the last of -{std, ansi}
   // (-ansi is equivalent to -std=c89).
@@ -2987,7 +2987,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
          !Args.hasArg(options::OPT_fno_blocks))) {
     CmdArgs.push_back("-fblocks");
 
-    if (!Args.hasArg(options::OPT_fgnu_runtime) && 
+    if (!Args.hasArg(options::OPT_fgnu_runtime) &&
         !getToolChain().hasBlocksRuntime())
       CmdArgs.push_back("-fblocks-runtime-optional");
   }
@@ -2997,8 +2997,8 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // modules implementation is solid for C++/Objective-C++ programs as well.
   bool HaveModules = false;
   if (Args.hasFlag(options::OPT_fmodules, options::OPT_fno_modules, false)) {
-    bool AllowedInCXX = Args.hasFlag(options::OPT_fcxx_modules, 
-                                     options::OPT_fno_cxx_modules, 
+    bool AllowedInCXX = Args.hasFlag(options::OPT_fcxx_modules,
+                                     options::OPT_fno_cxx_modules,
                                      false);
     if (AllowedInCXX || !types::isCXX(InputType)) {
       CmdArgs.push_back("-fmodules");
@@ -3090,10 +3090,10 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back("-fms-extensions");
 
   // -fms-compatibility=0 is default.
-  if (Args.hasFlag(options::OPT_fms_compatibility, 
+  if (Args.hasFlag(options::OPT_fms_compatibility,
                    options::OPT_fno_ms_compatibility,
                    (getToolChain().getTriple().getOS() == llvm::Triple::Win32 &&
-                    Args.hasFlag(options::OPT_fms_extensions, 
+                    Args.hasFlag(options::OPT_fms_extensions,
                                  options::OPT_fno_ms_extensions,
                                  true))))
     CmdArgs.push_back("-fms-compatibility");
@@ -3165,7 +3165,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   if (getToolChain().IsEncodeExtendedBlockSignatureDefault()) {
     CmdArgs.push_back("-fencode-extended-block-signature");
   }
-  
+
   // Allow -fno-objc-arr to trump -fobjc-arr/-fobjc-arc.
   // NOTE: This logic is duplicated in ToolChains.cpp.
   bool ARC = isObjCAutoRefCount(Args);
@@ -3459,7 +3459,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
   Args.AddLastArg(CmdArgs, options::OPT_dM);
   Args.AddLastArg(CmdArgs, options::OPT_dD);
-  
+
   // Handle serialized diagnostics.
   if (Arg *A = Args.getLastArg(options::OPT__serialize_diags)) {
     CmdArgs.push_back("-serialize-diagnostic-file");
@@ -3650,8 +3650,8 @@ ObjCRuntime Clang::AddObjCRuntimeArgs(const ArgList &args,
         << value;
   } else {
     // Otherwise, determine if we are using the non-fragile ABI.
-    bool nonFragileABIIsDefault = 
-      (rewriteKind == RK_NonFragile || 
+    bool nonFragileABIIsDefault =
+      (rewriteKind == RK_NonFragile ||
        (rewriteKind == RK_None &&
         getToolChain().IsObjCNonFragileABIDefault()));
     if (args.hasFlag(options::OPT_fobjc_nonfragile_abi,
@@ -3753,7 +3753,7 @@ void ClangAs::ConstructJob(Compilation &C, const JobAction &JA,
 
   // Add the "effective" target triple.
   CmdArgs.push_back("-triple");
-  std::string TripleStr = 
+  std::string TripleStr =
     getToolChain().ComputeEffectiveClangTriple(Args, Input.getType());
   CmdArgs.push_back(Args.MakeArgString(TripleStr));
 
@@ -4779,7 +4779,7 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back("-lgomp");
 
   AddLinkerInputs(getToolChain(), Inputs, Args, CmdArgs);
-  
+
   if (isObjCRuntimeLinked(Args) &&
       !Args.hasArg(options::OPT_nostdlib) &&
       !Args.hasArg(options::OPT_nodefaultlibs)) {
@@ -5216,7 +5216,7 @@ void openbsd::Link::ConstructJob(Compilation &C, const JobAction &JA,
   if (!Args.hasArg(options::OPT_nostdlib) &&
       !Args.hasArg(options::OPT_nostartfiles)) {
     if (!Args.hasArg(options::OPT_shared)) {
-      if (Args.hasArg(options::OPT_pg))  
+      if (Args.hasArg(options::OPT_pg))
         CmdArgs.push_back(Args.MakeArgString(
                                 getToolChain().GetFilePath("gcrt0.o")));
       else
@@ -5250,7 +5250,7 @@ void openbsd::Link::ConstructJob(Compilation &C, const JobAction &JA,
       !Args.hasArg(options::OPT_nodefaultlibs)) {
     if (D.CCCIsCXX) {
       getToolChain().AddCXXStdlibLibArgs(Args, CmdArgs);
-      if (Args.hasArg(options::OPT_pg)) 
+      if (Args.hasArg(options::OPT_pg))
         CmdArgs.push_back("-lm_p");
       else
         CmdArgs.push_back("-lm");
@@ -5515,7 +5515,7 @@ void freebsd::Link::ConstructJob(Compilation &C, const JobAction &JA,
                                  const InputInfoList &Inputs,
                                  const ArgList &Args,
                                  const char *LinkingOutput) const {
-  const toolchains::FreeBSD& ToolChain = 
+  const toolchains::FreeBSD& ToolChain =
     static_cast<const toolchains::FreeBSD&>(getToolChain());
   const Driver &D = ToolChain.getDriver();
   ArgStringList CmdArgs;

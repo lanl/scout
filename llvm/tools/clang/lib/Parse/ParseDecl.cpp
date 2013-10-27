@@ -1317,7 +1317,7 @@ void Parser::ProhibitCXX11Attributes(ParsedAttributesWithRange &attrs) {
   AttributeList *AttrList = attrs.getList();
   while (AttrList) {
     if (AttrList->isCXX11Attribute()) {
-      Diag(AttrList->getLoc(), diag::err_attribute_not_type_attr) 
+      Diag(AttrList->getLoc(), diag::err_attribute_not_type_attr)
         << AttrList->getName();
       AttrList->setInvalid();
     }
@@ -1684,7 +1684,7 @@ Parser::DeclGroupPtrTy Parser::ParseDeclGroup(ParsingDeclSpec &DS,
     DeclsInGroup.push_back(FirstDecl);
 
   bool ExpectSemi = Context != Declarator::ForContext;
-  
+
   // If we don't have a comma, it is either the end of the list (a ';') or an
   // error, bail out.
   while (Tok.is(tok::comma)) {
@@ -2033,7 +2033,7 @@ static bool isValidAfterIdentifierInDeclarator(const Token &T) {
 ///
 bool Parser::ParseImplicitInt(DeclSpec &DS, CXXScopeSpec *SS,
                               const ParsedTemplateInfo &TemplateInfo,
-                              AccessSpecifier AS, DeclSpecContext DSC, 
+                              AccessSpecifier AS, DeclSpecContext DSC,
                               ParsedAttributesWithRange &Attrs) {
   assert(Tok.is(tok::identifier) && "should have identifier");
 
@@ -2096,31 +2096,32 @@ bool Parser::ParseImplicitInt(DeclSpec &DS, CXXScopeSpec *SS,
         TagKind=tok::kw___interface;break;
       case DeclSpec::TST_class:
         TagName="class" ; FixitTagName = "class " ;TagKind=tok::kw_class ;break;
-      
-      // scout - added TST mesh
+
+      // +===== Scout ========================================================+
       case DeclSpec::TST_uniform_mesh:
-        TagName      = "uniform mesh"; 
+        TagName      = "uniform mesh";
         FixitTagName = "uniform mesh ";
         TagKind      = tok::kw_uniform;
-        break;        
+        break;
 
       case DeclSpec::TST_structured_mesh:
-        TagName      = "structured mesh"; 
+        TagName      = "structured mesh";
         FixitTagName = "structured mesh ";
         TagKind      = tok::kw_structured;
         break;
 
       case DeclSpec::TST_rectilinear_mesh:
-        TagName      = "rectilinear mesh"; 
+        TagName      = "rectilinear mesh";
         FixitTagName = "rectilinear mesh ";
         TagKind      = tok::kw_rectilinear;
         break;
 
       case DeclSpec::TST_unstructured_mesh:
-        TagName      = "unstructured mesh"; 
+        TagName      = "unstructured mesh";
         FixitTagName = "unstructured mesh ";
         TagKind      = tok::kw_unstructured;
         break;
+      // +====================================================================+
     }
 
     if (TagName) {
@@ -2208,7 +2209,7 @@ bool Parser::ParseImplicitInt(DeclSpec &DS, CXXScopeSpec *SS,
       DS.SetTypeSpecType(DeclSpec::TST_typename, Loc, PrevSpec, DiagID, T);
       DS.SetRangeEnd(Tok.getLocation());
       ConsumeToken();
-      
+
       // There may be other declaration specifiers after this.
       return true;
     } else if (II != Tok.getIdentifierInfo()) {
@@ -3036,21 +3037,18 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       continue;
     }
 
-    // scout - Mesh definition
+    // +===== Scout ==========================================================+
     case tok::kw_uniform:
     case tok::kw_rectilinear:
     case tok::kw_structured:
     case tok::kw_unstructured: {
-
       // for now, at least the presence of one of the above keywords
-      // is sufficient to denote the beginning of a mesh definition
-
-      // so we know this is the start of:
-      //   uniform mesh MyMesh { ...
+      // is sufficient to denote the beginning of a mesh definition...
       ParseMeshSpecifier(DS, TemplateInfo);
 
       continue;
     }
+    // +======================================================================+
 
     // enum-specifier:
     case tok::kw_enum:
@@ -3455,7 +3453,7 @@ void Parser::ParseEnumSpecifier(SourceLocation StartLoc, DeclSpec &DS,
     (TemplateInfo.Kind == ParsedTemplateInfo::ExplicitInstantiation ||
      TemplateInfo.Kind == ParsedTemplateInfo::ExplicitSpecialization);
   SuppressAccessChecks diagsFromTag(*this, shouldDelayDiagsInTag);
-  
+
   // Enum definitions should not be parsed in a trailing-return-type.
   bool AllowDeclaration = DSC != DSC_trailing;
 
@@ -3887,14 +3885,14 @@ bool Parser::isKnownToBeTypeSpecifier(const Token &Tok) const {
   case tok::kw_float:
   case tok::kw_double:
 
-    // ===== Scout ============================
+  // +===== Scout ============================================================+
   case tok::kw_uniform:
   case tok::kw_structured:
   case tok::kw_unstructured:
   case tok::kw_rectilinear:
   case tok::kw_mesh:
-    // ===========-============================
- 
+  // +========================================================================+
+
   case tok::kw_bool:
   case tok::kw__Bool:
   case tok::kw__Decimal32:
@@ -3978,11 +3976,13 @@ bool Parser::isTypeSpecifierQualifier() {
   case tok::kw_float:
   case tok::kw_double:
 
+  // +===== Scout ============================================================+
   case tok::kw_mesh:
   case tok::kw_uniform:
   case tok::kw_structured:
   case tok::kw_unstructured:
   case tok::kw_rectilinear:
+  // +========================================================================+
 
   case tok::kw_bool:
   case tok::kw__Bool:
@@ -4141,11 +4141,13 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   case tok::kw_float:
   case tok::kw_double:
 
+  // +===== Scout ============================================================+
   case tok::kw_mesh:
   case tok::kw_uniform:
   case tok::kw_structured:
   case tok::kw_unstructured:
   case tok::kw_rectilinear:
+  // +========================================================================+
 
   case tok::kw_bool:
   case tok::kw__Bool:
@@ -4690,8 +4692,8 @@ static void diagnoseMisplacedEllipsis(Parser &P, Declarator &D,
 /// in isConstructorDeclarator.
 void Parser::ParseDirectDeclarator(Declarator &D) {
   DeclaratorScopeObj DeclScopeObj(*this, D.getCXXScopeSpec());
- 
-  // scout - parse mesh paramters e.g: MyMesh[:]
+
+  // +===== Scout ============================================================+
   bool hasMeshTypedefParameters = false;
   DeclSpec& DS = D.getMutableDeclSpec();
   DeclSpec::TST tst = DS.getTypeSpecType();
@@ -4703,7 +4705,8 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
       ParseMeshParameterDeclaration(DS);
     }
   }
-  
+  // +========================================================================+
+
   if (getLangOpts().CPlusPlus && D.mayHaveIdentifier()) {
     // ParseDeclaratorInternal might already have parsed the scope.
     if (D.getCXXScopeSpec().isEmpty()) {
@@ -4844,21 +4847,23 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
   if (D.hasName() && !D.getNumTypeObjects())
     MaybeParseCXX11Attributes(D);
 
-  // ===== Scout ========================================================
+  // +===== Scout ============================================================+
   if(tst == DeclSpec::TST_typename){
     ParsedType parsedType = DS.getRepAsType();
-    const UniformMeshType* uniMT = dyn_cast<UniformMeshType>(parsedType.get().getTypePtr());
+    const UniformMeshType* uniMT =
+        dyn_cast<UniformMeshType>(parsedType.get().getTypePtr());
     if(uniMT && Tok.is(tok::l_square) && !hasMeshTypedefParameters) {
       ParseMeshVarBracketDeclarator(D);
       return;
     }
-    const UnstructuredMeshType* unsMT = dyn_cast<UnstructuredMeshType>(parsedType.get().getTypePtr());
+    const UnstructuredMeshType* unsMT =
+        dyn_cast<UnstructuredMeshType>(parsedType.get().getTypePtr());
     if(unsMT && Tok.is(tok::l_paren) && !hasMeshTypedefParameters) {
       ParseMeshVarParenDeclarator(D);
       return;
     }
   }
-  // ====================================================================
+  // +========================================================================+
 
   while (1) {
     if (Tok.is(tok::l_paren)) {
@@ -5064,7 +5069,7 @@ void Parser::ParseFunctionDeclarator(Declarator &D,
   SourceLocation LParenLoc, RParenLoc;
   LParenLoc = Tracker.getOpenLocation();
   StartLoc = LParenLoc;
-  
+
   if (isFunctionDeclaratorIdentifierList()) {
     if (RequiresArg)
       Diag(Tok, diag::err_argument_required_after_attribute);
@@ -5335,17 +5340,17 @@ void Parser::ParseParameterDeclarationClause(
     // get rid of a parameter (FirstArgAttrs) and this statement. It might be
     // too much hassle.
     DS.takeAttributesFrom(FirstArgAttrs);
-    
+
     ParseDeclarationSpecifiers(DS);
-    
-    // ===== Scout ========================================================
+
+    // +===== Scout ==========================================================+
     //  parse mesh parameters
     // e.g: "MyMesh[]", "MyMesh[:]", "MyMesh[::]" and ensure that mesh
     // parameters are declared as references or pointers
     DeclSpec::TST tst = DS.getTypeSpecType();
     if(tst == DeclSpec::TST_typename){
       ParsedType parsedType = DS.getRepAsType();
-      const MeshType* mt = 
+      const MeshType* mt =
       dyn_cast<MeshType>(parsedType.get().getCanonicalType().getTypePtr());
       if(mt){
         if(Tok.is(tok::l_square)){
@@ -5359,8 +5364,8 @@ void Parser::ParseParameterDeclarationClause(
         }
       }
     }
-    // =====================================================================
-    
+    // +======================================================================+
+
     // Parse the declarator.  This is "PrototypeContext", because we must
     // accept either 'declarator' or 'abstract-declarator' here.
     Declarator ParmDecl(DS, Declarator::PrototypeContext);
@@ -5489,7 +5494,7 @@ void Parser::ParseBracketDeclarator(Declarator &D) {
 
   BalancedDelimiterTracker T(*this, tok::l_square);
   T.consumeOpen();
-  
+
   // C array syntax has many features, but by-far the most common is [] and [4].
   // This code does a fast path to handle some of the most obvious cases.
   if (Tok.getKind() == tok::r_square) {

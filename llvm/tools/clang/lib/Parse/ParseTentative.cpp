@@ -77,7 +77,7 @@ bool Parser::isCXXDeclarationStatement() {
 ///
 /// (if AllowForRangeDecl specified)
 /// for ( for-range-declaration : for-range-initializer ) statement
-/// for-range-declaration: 
+/// for-range-declaration:
 ///    attribute-specifier-seqopt type-specifier-seq declarator
 bool Parser::isCXXSimpleDeclaration(bool AllowForRangeDecl) {
   // C++ 6.8p1:
@@ -147,7 +147,7 @@ bool Parser::isCXXSimpleDeclaration(bool AllowForRangeDecl) {
 ///
 /// (if AllowForRangeDecl specified)
 /// for ( for-range-declaration : for-range-initializer ) statement
-/// for-range-declaration: 
+/// for-range-declaration:
 ///    attribute-specifier-seqopt type-specifier-seq declarator
 ///
 Parser::TPResult Parser::TryParseSimpleDeclaration(bool AllowForRangeDecl) {
@@ -233,7 +233,7 @@ Parser::TPResult Parser::TryParseInitDeclaratorList() {
       // expression can never be followed directly by a braced-init-list.
       return TPResult::True();
     } else if (Tok.is(tok::equal) || isTokIdentifier_in()) {
-      // MSVC and g++ won't examine the rest of declarators if '=' is 
+      // MSVC and g++ won't examine the rest of declarators if '=' is
       // encountered; they just conclude that we have a declaration.
       // EDG parses the initializer completely, which is the proper behavior
       // for this case.
@@ -241,8 +241,8 @@ Parser::TPResult Parser::TryParseInitDeclaratorList() {
       // At present, Clang follows MSVC and g++, since the parser does not have
       // the ability to parse an expression fully without recording the
       // results of that parse.
-      // Also allow 'in' after on objective-c declaration as in: 
-      // for (int (^b)(void) in array). Ideally this should be done in the 
+      // Also allow 'in' after on objective-c declaration as in:
+      // for (int (^b)(void) in array). Ideally this should be done in the
       // context of parsing for-init-statement of a foreach statement only. But,
       // in any other context 'in' is invalid after a declaration and parser
       // issues the error regardless of outcome of this decision.
@@ -290,7 +290,7 @@ bool Parser::isCXXConditionDeclaration() {
     TryParseTypeofSpecifier();
   else {
     ConsumeToken();
-    
+
     if (getLangOpts().ObjC1 && Tok.is(tok::less))
       TryParseProtocolQualifiers();
   }
@@ -367,11 +367,11 @@ bool Parser::isCXXTypeId(TentativeCXXTypeIdContext Context, bool &isAmbiguous) {
     TryParseTypeofSpecifier();
   else {
     ConsumeToken();
-    
+
     if (getLangOpts().ObjC1 && Tok.is(tok::less))
       TryParseProtocolQualifiers();
   }
-  
+
   assert(Tok.is(tok::l_paren) && "Expected '('");
 
   // declarator
@@ -649,7 +649,7 @@ Parser::TPResult Parser::TryParseDeclarator(bool mayBeAbstract,
   // direct-abstract-declarator:
   if (Tok.is(tok::ellipsis))
     ConsumeToken();
-  
+
   if ((Tok.is(tok::identifier) ||
        (Tok.is(tok::annot_cxxscope) && NextToken().is(tok::identifier))) &&
       mayHaveIdentifier) {
@@ -728,7 +728,7 @@ Parser::TPResult Parser::TryParseDeclarator(bool mayBeAbstract,
   return TPResult::Ambiguous();
 }
 
-Parser::TPResult 
+Parser::TPResult
 Parser::isExpressionOrTypeSpecifierSimple(tok::TokenKind Kind) {
   switch (Kind) {
   // Obviously starts an expression.
@@ -809,20 +809,20 @@ Parser::isExpressionOrTypeSpecifierSimple(tok::TokenKind Kind) {
   case tok::kw___is_union:
   case tok::kw___uuidof:
     return TPResult::True();
-      
+
   // Obviously starts a type-specifier-seq:
   case tok::kw_char:
   case tok::kw_const:
   case tok::kw_double:
 
-  // ===== Scout ===========================
+  // +===== Scout ============================================================+
   case tok::kw_mesh:
   case tok::kw_uniform:
   case tok::kw_rectilinear:
   case tok::kw_structured:
   case tok::kw_unstructured:
-  // =======================================
-      
+  // +========================================================================+
+
   case tok::kw_enum:
   case tok::kw_half:
   case tok::kw_float:
@@ -875,7 +875,7 @@ Parser::isExpressionOrTypeSpecifierSimple(tok::TokenKind Kind) {
   default:
     break;
   }
-  
+
   return TPResult::Ambiguous();
 }
 
@@ -1098,7 +1098,7 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
 
     // Debugger support
   case tok::kw___unknown_anytype:
-      
+
     // type-specifier:
     //   simple-type-specifier
     //   class-specifier
@@ -1142,7 +1142,7 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
     // Borland
   case tok::kw___pascal:
     return TPResult::True();
-  
+
     // AltiVec
   case tok::kw___vector:
     return TPResult::True();
@@ -1240,28 +1240,28 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
   case_typename:
     // In Objective-C, we might have a protocol-qualified type.
     if (getLangOpts().ObjC1 && NextToken().is(tok::less)) {
-      // Tentatively parse the 
+      // Tentatively parse the
       TentativeParsingAction PA(*this);
       ConsumeToken(); // The type token
-      
+
       TPResult TPR = TryParseProtocolQualifiers();
       bool isFollowedByParen = Tok.is(tok::l_paren);
       bool isFollowedByBrace = Tok.is(tok::l_brace);
-      
+
       PA.Revert();
-      
+
       if (TPR == TPResult::Error())
         return TPResult::Error();
-      
+
       if (isFollowedByParen)
         return TPResult::Ambiguous();
 
       if (getLangOpts().CPlusPlus11 && isFollowedByBrace)
         return BracedCastResult;
-      
+
       return TPResult::True();
     }
-      
+
   case tok::kw_char:
   case tok::kw_wchar_t:
   case tok::kw_char16_t:
@@ -1278,14 +1278,14 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
   case tok::kw_float:
   case tok::kw_double:
 
-  // ===== Scout =========================
+  // +===== Scout ============================================================+
   case tok::kw_mesh:
   case tok::kw_uniform:
   case tok::kw_rectilinear:
   case tok::kw_structured:
   case tok::kw_unstructured:
-  // =====================================    
-      
+  // +========================================================================+
+
   case tok::kw_void:
   case tok::annot_decltype:
     if (NextToken().is(tok::l_paren))
@@ -1302,7 +1302,7 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
 
     if (isStartOfObjCClassMessageMissingOpenBracket())
       return TPResult::False();
-      
+
     return TPResult::True();
 
   // GNU typeof support.
@@ -1369,18 +1369,18 @@ Parser::TPResult Parser::TryParseProtocolQualifiers() {
     if (Tok.isNot(tok::identifier))
       return TPResult::Error();
     ConsumeToken();
-    
+
     if (Tok.is(tok::comma)) {
       ConsumeToken();
       continue;
     }
-    
+
     if (Tok.is(tok::greater)) {
       ConsumeToken();
       return TPResult::Ambiguous();
     }
   } while (false);
-  
+
   return TPResult::Error();
 }
 
@@ -1397,7 +1397,7 @@ Parser::TryParseDeclarationSpecifier(bool *HasMissingTypename) {
     if (Tok.is(tok::annot_cxxscope))
       ConsumeToken();
     ConsumeToken();
-    
+
     if (getLangOpts().ObjC1 && Tok.is(tok::less))
       TryParseProtocolQualifiers();
   }
@@ -1586,7 +1586,7 @@ Parser::TPResult Parser::TryParseFunctionDeclarator() {
   // ref-qualifier[opt]
   if (Tok.is(tok::amp) || Tok.is(tok::ampamp))
     ConsumeToken();
-  
+
   // exception-specification
   if (Tok.is(tok::kw_throw)) {
     ConsumeToken();

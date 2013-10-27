@@ -127,7 +127,6 @@ namespace clang {
 /// * C99: const, volatile, and restrict
 /// * Embedded C (TR18037): address spaces
 /// * Objective C: the GC attributes (none, weak, or strong)
-/// * +===== Scout-centric mesh field identification.
 class Qualifiers {
 public:
   enum TQ { // NOTE: These flags must be kept in sync with DeclSpec::TQ.
@@ -1610,10 +1609,10 @@ public:
   /// than implicitly __strong.
   bool isObjCARCImplicitlyUnretainedType() const;
 
-  // ===== Scout ========================================================
+  // +===== Scout ============================================================+
   bool isMeshType() const;
   bool isMeshFieldType() const;
-  // ====================================================================
+  // +========================================================================+
 
   /// Return the implicit lifetime for this type, which must not be dependent.
   Qualifiers::ObjCLifetime getObjCARCImplicitLifetime() const;
@@ -2556,13 +2555,13 @@ public:
     case 'y': return 1;
     case 'z': return 2;
     case 'w': return 3;
-    // ===== Scout =========================================================================
+    // +==== Scout ===========================================================+
     // Also support GLSL-like color channel access.
     case 'r': return 0;
     case 'g': return 1;
     case 'b': return 2;
     case 'a': return 3;
-    // =====================================================================================
+    // +======================================================================+
     }
   }
   static int getNumericAccessorIdx(char c) {
@@ -3308,6 +3307,7 @@ public:
 };
 
 // +===== Scout ==============================================================+
+
 // Definitions of the various mesh types, including a supporting base class.
 //
 // MeshType - To represent our internal mesh types we use a common base class
@@ -3464,7 +3464,8 @@ class UniformMeshType : public MeshType {
 class RectilinearMeshType : public MeshType {
 public:
   RectilinearMeshType(const RectilinearMeshDecl* Decl)
-      : MeshType(RectilinearMesh, reinterpret_cast<const MeshDecl*>(Decl), QualType()) {
+      : MeshType(RectilinearMesh, reinterpret_cast<const MeshDecl*>(Decl),
+                 QualType()) {
 
   }
 
@@ -4194,10 +4195,12 @@ public:
   /// which *isn't* a tag kind here.
   static TagTypeKind getTagTypeKindForTypeSpec(unsigned TypeSpec);
 
+  // +===== Scout ============================================================+
   /// getMeshTypeKindForTypeSpec - Converts a type specifier (DeclSpec::TST)
   /// into a mesh type kind.  It is an error to provide a type specifier
   /// which *isn't* a mesh kind here.
   static MeshTypeKind getMeshTypeKindForTypeSpec(unsigned TypeSpec);
+  // +========================================================================+
 
   /// getKeywordForTagDeclKind - Converts a TagTypeKind into an
   /// elaborated type keyword.
@@ -5470,12 +5473,11 @@ inline const ArrayType *Type::castAsArrayTypeUnsafe() const {
   return cast<ArrayType>(getUnqualifiedDesugaredType());
 }
 
-// ===== Scout ===================================================================================
+// +==== Scout ===============================================================+
 inline bool Type::isMeshType() const {
   return isa<MeshType>(CanonicalType);
 }
-
-// ===============================================================================================
+// +==========================================================================+
 }  // end namespace clang
 
 #endif

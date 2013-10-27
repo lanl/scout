@@ -6452,7 +6452,7 @@ def warn_not_a_doxygen_trailing_member_comment : Warning<
   "not a Doxygen trailing comment">, InGroup<Documentation>, DefaultIgnore;
 } // end of documentation issue category
 
-// +===== Scout ============================================================+
+// +===== Scout =============================================================+
 let CategoryName = "Scout Issue" in {
 
 def warn_forall_calling_io_func:Warning<
@@ -6534,6 +6534,6 @@ def err_not_camera_variable_renderall : Error<
 def err_unknown_camera_variable_renderall : Error<
     "unknown camera variable %0 while parsing renderall statement">;
 } // end Scout issue category
-// ===========================================================================
+// +=========================================================================+
 
 } // end of sema component.
