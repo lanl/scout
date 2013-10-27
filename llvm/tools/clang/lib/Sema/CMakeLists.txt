@@ -51,7 +51,7 @@ add_clang_library(clangSema
   SemaTemplateVariadic.cpp
   SemaType.cpp
   TargetAttributesSema.cpp
-# ===== Scout ===========================================
+  # +===== Scout ============================================================+
   Scout/SemaDecl.cpp
   Scout/Sema.cpp
   Scout/SemaExpr.cpp
@@ -59,7 +59,7 @@ add_clang_library(clangSema
   Scout/SemaLookup.cpp
   Scout/SemaOverload.cpp
   Scout/SemaStmt.cpp
-# =======================================================
+  # +========================================================================+
   )
 
 add_dependencies(clangSema

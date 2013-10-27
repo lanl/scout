@@ -13,14 +13,14 @@ add_clang_library(clangParse
   ParseTemplate.cpp
   ParseTentative.cpp
   Parser.cpp
-  # ===== Scout ===========================================
+  # +===== Scout ============================================================+
   Scout/ParseDecl.cpp
   Scout/ParseDeclCXX.cpp
   Scout/ParseExpr.cpp
   Scout/ParseStmt.cpp
   Scout/Parser.cpp
   Scout/ASTViewScout.cpp
-  # =======================================================
+  # +========================================================================+
   )
 
 add_dependencies(clangParse

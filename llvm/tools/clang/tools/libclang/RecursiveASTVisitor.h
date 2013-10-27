@@ -405,11 +405,12 @@ private:
   bool TraverseFunctionHelper(FunctionDecl *D);
   bool TraverseVarHelper(VarDecl *D);
 
-
+  // +===== Scout ============================================================+
   bool TraverseUniformMeshHelper(UniformMeshDecl *D);
   bool TraverseRectilinearMeshHelper(RectilinearMeshDecl *D);
   bool TraverseStructuredMeshHelper(StructuredMeshDecl *D);
   bool TraverseUnstructuredMeshHelper(UnstructuredMeshDecl *D);
+  // +========================================================================+
 
   typedef SmallVector<Stmt *, 16> StmtsTy;
   typedef SmallVector<StmtsTy *, 4> QueuesTy;
@@ -875,12 +876,12 @@ DEF_TRAVERSE_TYPE(TemplateTypeParmType, { })
 DEF_TRAVERSE_TYPE(SubstTemplateTypeParmType, { })
 DEF_TRAVERSE_TYPE(SubstTemplateTypeParmPackType, { })
 
-// ===== Scout ==========================================
+// +===== Scout ==============================================================+
 DEF_TRAVERSE_TYPE(UniformMeshType, { })
 DEF_TRAVERSE_TYPE(RectilinearMeshType, { })
 DEF_TRAVERSE_TYPE(StructuredMeshType, { })
 DEF_TRAVERSE_TYPE(UnstructuredMeshType, { })
-// ======================================================
+// +==========================================================================+
 
 DEF_TRAVERSE_TYPE(TemplateSpecializationType, {
     TRY_TO(TraverseTemplateName(T->getTemplateName()));
@@ -1106,10 +1107,12 @@ DEF_TRAVERSE_TYPELOC(TemplateTypeParmType, { })
 DEF_TRAVERSE_TYPELOC(SubstTemplateTypeParmType, { })
 DEF_TRAVERSE_TYPELOC(SubstTemplateTypeParmPackType, { })
 
-// ===== Scout ==================================================
+// +===== Scout ==============================================================+
 DEF_TRAVERSE_TYPELOC(UniformMeshType, { })
-// SC_TODO - need more mesh types here.
-// ==============================================================
+DEF_TRAVERSE_TYPELOC(RectilinearMeshType, { })
+DEF_TRAVERSE_TYPELOC(StructuredMeshType, { })
+DEF_TRAVERSE_TYPELOC(UnstructuredMeshType, { })
+// +==========================================================================+
 
 // FIXME: use the loc for the template name?
 DEF_TRAVERSE_TYPELOC(TemplateSpecializationType, {

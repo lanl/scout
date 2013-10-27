@@ -1774,11 +1774,13 @@ void ASTWriter::FlushStmts() {
   StmtsToEmit.clear();
 }
 
-// ===== Scout =================================================================
+// +==== Scout ===============================================================+
 //SC_TODO: Implement these
-void ASTStmtWriter::VisitForallMeshStmt(ForallMeshStmt *S) { }
-void ASTStmtWriter::VisitRenderallMeshStmt(RenderallMeshStmt *S) { }
+void ASTStmtWriter::VisitForallMeshStmt(ForallMeshStmt *S)
+{ }
+void ASTStmtWriter::VisitRenderallMeshStmt(RenderallMeshStmt *S)
+{ }
 //void ASTStmtWriter::VisitForAllArrayStmt(ForAllArrayStmt *S) { }
 //void ASTStmtWriter::VisitRenderAllStmt(RenderAllStmt *S) { }
 //void ASTStmtWriter::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *S) { }
-// =============================================================================
+// +==========================================================================+

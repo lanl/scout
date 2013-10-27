@@ -2913,7 +2913,7 @@ class RecordDecl : public TagDecl {
   /// HasObjectMember - This is true if this struct has at least one member
   /// containing an Objective-C object pointer type.
   bool HasObjectMember : 1;
-  
+
   /// HasVolatileMember - This is true if struct has at least one member of
   /// 'volatile' type.
   bool HasVolatileMember : 1;
@@ -3222,11 +3222,6 @@ public:
     return static_cast<BlockDecl *>(const_cast<DeclContext*>(DC));
   }
 };
-
-// ===== Scout ===============================================================
-
-
-//==============================================================================
 
 /// \brief This represents the body of a CapturedStmt, and serves as its
 /// DeclContext.

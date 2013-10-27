@@ -659,14 +659,14 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     case Expr::MSDependentExistsStmtClass:
     case Stmt::CapturedStmtClass:
       llvm_unreachable("Stmt should not be in analyzer evaluation loop");
-    // ===== Scout ===================================================================
+    // +==== Scout ===========================================================+
     case Stmt::ForallMeshStmtClass:
     case Stmt::RenderallMeshStmtClass:
     //case Stmt::RenderAllStmtClass:
     //case Stmt::ForAllArrayStmtClass:
     //case Stmt::VolumeRenderAllStmtClass:
       llvm_unreachable("Stmt should not be in analyzer evaluation loop");
-    // ===============================================================================
+    // +======================================================================+
 
     case Stmt::ObjCSubscriptRefExprClass:
     case Stmt::ObjCPropertyRefExprClass:

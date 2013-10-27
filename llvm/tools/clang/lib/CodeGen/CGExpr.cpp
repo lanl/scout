@@ -1817,7 +1817,9 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
   CharUnits Alignment = getContext().getDeclAlign(ND);
   QualType T = E->getType();
 
-  // ===== Scout ==============================================================
+  // +==== Scout =============================================================+
+  // SC_TODO -- this needs to be handled again for renderall constructs.
+  //
   // Check if this is a 'color' expression.
   //if (ND->getDeclName().isIdentifier() && isa<ImplicitParamDecl>(ND)) {
   //  llvm::errs() << "is Implicit\n";
@@ -1871,8 +1873,7 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
 
     bool isBlockVariable = VD->hasAttr<BlocksAttr>();
 
-    llvm::Value *V = LocalDeclMap.lookup(VD); //failing for implicit mesh
-    //if(V) llvm::errs() << VD->getName() << " is localdeclmap\n";
+    llvm::Value *V = LocalDeclMap.lookup(VD);
 
     if (!V && VD->isStaticLocal())
       V = CGM.getStaticLocalDeclAddress(VD);
@@ -2508,10 +2509,10 @@ EmitExtVectorElementExpr(const ExtVectorElementExpr *E) {
 LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
   Expr *BaseExpr = E->getBase();
 
-  // ===== Scout ==============================================================
+  // +===== Scout ============================================================+
   LValue LV;
   if (EmitScoutMemberExpr(E, &LV)) return LV;
-  // ==========================================================================
+  // +========================================================================+
 
   // If this is s.x, emit s as an lvalue.  If it is s->x, emit s as a scalar.
   LValue BaseLV;
@@ -2994,10 +2995,10 @@ RValue CodeGenFunction::EmitCallExpr(const CallExpr *E,
   if (const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(TargetDecl)) {
     if (unsigned builtinID = FD->getBuiltinID())
       return EmitBuiltinExpr(FD, builtinID, E);
-    // ===== Scout ===========================================================
+    // +==== Scout ===========================================================+
     else if(FD->getNameInfo().getAsString() == "cshift")
       return EmitCShiftExpr(E->arg_begin(), E->arg_end());
-    // =======================================================================
+    // +======================================================================+
   }
 
   if (const CXXOperatorCallExpr *CE = dyn_cast<CXXOperatorCallExpr>(E))
@@ -3295,7 +3296,7 @@ EmitPointerToDataMemberBinaryExpr(const BinaryOperator *E) {
   return MakeAddrLValue(AddV, MPT->getPointeeType());
 }
 
-//===== Scout ================================================================
+// +===== Scout ==============================================================+
 std::pair< MeshFieldDecl *, int >
 CodeGenFunction::FindFieldDecl(MeshDecl *MD, llvm::StringRef &memberName) {
   typedef MeshDecl::field_iterator MeshFieldIterator;
@@ -3307,7 +3308,7 @@ CodeGenFunction::FindFieldDecl(MeshDecl *MD, llvm::StringRef &memberName) {
   }
   return std::make_pair(*it, -1);
 }
-//============================================================================
+// +==========================================================================+
 
 /// Given the address of a temporary variable, produce an r-value of
 /// its type.

@@ -342,10 +342,13 @@ static DeclaratorChunk *maybeMovePastReturnType(Declarator &declarator,
     case DeclaratorChunk::Array:
     case DeclaratorChunk::Reference:
     case DeclaratorChunk::MemberPointer:
-    // ===== Scout =========================
+
+    // +===== Scout ==========================================================+
     case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::RectilinearMesh:
+    case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
-    // =====================================
+    // +======================================================================+
       return result;
 
     // If we do find a function declarator, scan inwards from that,
@@ -360,10 +363,12 @@ static DeclaratorChunk *maybeMovePastReturnType(Declarator &declarator,
         case DeclaratorChunk::Function:
         case DeclaratorChunk::Reference:
         case DeclaratorChunk::MemberPointer:
-        // ===== Scout =========================
+        // +===== Scout ======================================================+
         case DeclaratorChunk::UniformMesh:
+        case DeclaratorChunk::RectilinearMesh:
+        case DeclaratorChunk::StructuredMesh:
         case DeclaratorChunk::UnstructuredMesh:
-        // =====================================
+        // +==================================================================+
           continue;
         case DeclaratorChunk::BlockPointer:
           result = &blockChunk;
@@ -416,10 +421,12 @@ static void distributeObjCPointerTypeAttr(TypeProcessingState &state,
 
     case DeclaratorChunk::Paren:
     case DeclaratorChunk::Array:
-    // ===== Scout =========================
+    // +===== Scout ==========================================================+
     case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::RectilinearMesh:
+    case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
-    // =====================================
+    // +======================================================================+
       continue;
 
     // We may be starting at the return type of a block.
@@ -469,10 +476,12 @@ distributeObjCPointerTypeAttrFromDeclarator(TypeProcessingState &state,
     case DeclaratorChunk::MemberPointer:
     case DeclaratorChunk::Paren:
     case DeclaratorChunk::Array:
-    // ===== Scout =========================
+    // +===== Scout ==========================================================+
     case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::RectilinearMesh:
+    case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
-    // =====================================
+    // +======================================================================+
       continue;
 
     case DeclaratorChunk::Function:
@@ -533,10 +542,12 @@ static void distributeFunctionTypeAttr(TypeProcessingState &state,
     case DeclaratorChunk::BlockPointer:
     case DeclaratorChunk::Array:
     case DeclaratorChunk::Reference:
-    // ===== Scout =========================
+    // +===== Scout ==========================================================+
     case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::RectilinearMesh:
+    case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
-    // =====================================
+    // +======================================================================+
     case DeclaratorChunk::MemberPointer:
       continue;
     }
@@ -907,16 +918,16 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     }
     break;
 
-      
-  // ===== Scout ===================================================================
+
+  // +===== Scout ============================================================+
   //case DeclSpec::TST_mesh:
   case DeclSpec::TST_uniform_mesh:
-  case DeclSpec::TST_structured_mesh:
   case DeclSpec::TST_rectilinear_mesh:
+  case DeclSpec::TST_structured_mesh:
   case DeclSpec::TST_unstructured_mesh:
     assert(false && "invalid case for mesh type.");
-    break;  
-  // =================================================================================
+    break;
+  // +========================================================================+
   case DeclSpec::TST_bool: Result = Context.BoolTy; break; // _Bool or bool
   case DeclSpec::TST_decimal32:    // _Decimal32
   case DeclSpec::TST_decimal64:    // _Decimal64
@@ -1648,9 +1659,10 @@ QualType Sema::BuildArrayType(QualType T, ArrayType::ArraySizeModifier ASM,
   return T;
 }
 
-// ===== Scout ================================================================
+// +==== Scout ===============================================================+
 
-QualType Sema::BuildUniformMeshType(QualType T, const MeshType::MeshDimensions &dims,
+QualType Sema::BuildUniformMeshType(QualType T,
+                              const MeshType::MeshDimensions &dims,
                               SourceRange Brackets, DeclarationName Entity) {
   const UniformMeshType* mt =
         dyn_cast<UniformMeshType>(T.getCanonicalType().getTypePtr());
@@ -1669,8 +1681,7 @@ QualType Sema::BuildUnstructuredMeshType(QualType T, Expr* filename,
   mdt->setFileName(filename);
   return QualType(mdt,0);
 }
-
-// ============================================================================
+// +==========================================================================+
 
 /// \brief Build an ext-vector type.
 ///
@@ -1914,10 +1925,12 @@ static void inferARCWriteback(TypeProcessingState &state,
     case DeclaratorChunk::Array: // suppress if written (id[])?
     case DeclaratorChunk::Function:
     case DeclaratorChunk::MemberPointer:
-    // ===== Scout =========================
+    // +===== Scout ==========================================================+
     case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::RectilinearMesh:
+    case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
-    // =====================================
+    // +======================================================================+
       return;
     }
   }
@@ -2056,10 +2069,12 @@ static void diagnoseIgnoredFunctionQualifiers(Sema &S, QualType RetTy,
     case DeclaratorChunk::BlockPointer:
     case DeclaratorChunk::Reference:
     case DeclaratorChunk::Array:
-    // ===== Scout =========================
+    // +===== Scout ==========================================================+
     case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::RectilinearMesh:
+    case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
-    // =====================================
+    // +======================================================================+
     case DeclaratorChunk::MemberPointer:
       // FIXME: We can't currently provide an accurate source location and a
       // fix-it hint for these.
@@ -2351,10 +2366,12 @@ static void checkQualifiedFunction(Sema &S, QualType T,
     return;
   case DeclaratorChunk::Array:
   case DeclaratorChunk::Function:
-  // ===== Scout =========================
+  // +===== Scout ============================================================+
   case DeclaratorChunk::UniformMesh:
+  case DeclaratorChunk::RectilinearMesh:
+  case DeclaratorChunk::StructuredMesh:
   case DeclaratorChunk::UnstructuredMesh:
-  // =====================================
+  // +========================================================================+
     // These cases don't allow function types at all; no need to diagnose the
     // qualifiers separately.
     return;
@@ -2508,10 +2525,13 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
         unsigned DiagKind = 0;
         switch (DeclChunk.Kind) {
         case DeclaratorChunk::Paren:
-        // ===== Scout =========================
-        case DeclaratorChunk::UniformMesh:  // not sure where to put this in this switch
+        // +===== Scout ======================================================+
+        // SC_TODO : Not sure where to put this in this switch
+        case DeclaratorChunk::UniformMesh:
+        case DeclaratorChunk::RectilinearMesh:
+        case DeclaratorChunk::StructuredMesh:
         case DeclaratorChunk::UnstructuredMesh:
-        // =====================================
+        // +==================================================================+
           continue;
         case DeclaratorChunk::Function: {
           unsigned FnIndex;
@@ -2663,10 +2683,12 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
             break;
           case DeclaratorChunk::Function:
           case DeclaratorChunk::BlockPointer:
-          // ===== Scout ==============================
+          // +===== Scout ====================================================+
           case DeclaratorChunk::UniformMesh:
+          case DeclaratorChunk::RectilinearMesh:
+          case DeclaratorChunk::StructuredMesh:
           case DeclaratorChunk::UnstructuredMesh:
-          // ==========================================
+          // +================================================================+
             // These are invalid anyway, so just ignore.
             break;
           }
@@ -2687,15 +2709,32 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
       break;
     }
 
-    // ===== Scout =================================================
+    // +===== Scout ==========================================================+
     case DeclaratorChunk::UniformMesh: {
       MeshType::MeshDimensions dims = DeclType.Unimsh.Dims();
-      T = S.BuildUniformMeshType(T, dims, SourceRange(DeclType.Loc, DeclType.EndLoc), Name);
+      T = S.BuildUniformMeshType(T, dims, SourceRange(DeclType.Loc,
+                                 DeclType.EndLoc), Name);
       break;
     }
+
+    case DeclaratorChunk::RectilinearMesh: {
+      MeshType::MeshDimensions dims = DeclType.Rectmsh.Dims();
+      T = S.BuildRectilinearMeshType(T, dims, SourceRange(DeclType.Loc,
+                                     DeclType.EndLoc), Name);
+      break;
+    }
+
+    case DeclaratorChunk::StructuredMesh: {
+      Expr* filename = DeclType.Unsmsh.StrLitFileName;
+      T = S.BuildUnstructuredMeshType(T, filename, SourceRange(DeclType.Loc,
+                                      DeclType.EndLoc), Name);
+      break;
+    }
+
     case DeclaratorChunk::UnstructuredMesh: {
       Expr* filename = DeclType.Unsmsh.StrLitFileName;
-      T = S.BuildUnstructuredMeshType(T, filename, SourceRange(DeclType.Loc, DeclType.EndLoc), Name);
+      T = S.BuildUnstructuredMeshType(T, filename, SourceRange(DeclType.Loc,
+                                      DeclType.EndLoc), Name);
       break;
     }
 
@@ -2767,7 +2806,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
           if (!S.getOpenCLOptions().cl_khr_fp16) {
             S.Diag(D.getIdentifierLoc(), diag::err_opencl_half_return) << T;
             D.setInvalidType(true);
-          } 
+          }
         } else {
           S.Diag(D.getIdentifierLoc(),
             diag::err_parameters_retval_cannot_have_fp16_type) << 1;
@@ -3320,10 +3359,12 @@ static void transferARCOwnership(TypeProcessingState &state,
       break;
 
     case DeclaratorChunk::Array:
-    // ===== Scout ========================
+    // +===== Scout ==========================================================+
     case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::RectilinearMesh:
+    case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
-    // ====================================
+    // +======================================================================+
     case DeclaratorChunk::Reference:
     case DeclaratorChunk::Pointer:
       if (inner != -1)
@@ -3595,11 +3636,11 @@ namespace {
     void VisitTagTypeLoc(TagTypeLoc TL) {
       TL.setNameLoc(DS.getTypeSpecTypeNameLoc());
     }
-    // ===== Scout ===================================================================
+    // +===== Scout ==========================================================+
     void VisitMeshTypeLoc(MeshTypeLoc TL) {
          TL.setNameLoc(DS.getTypeSpecTypeNameLoc());
     }
-    // ===============================================================================
+    // +======================================================================+
     void VisitAtomicTypeLoc(AtomicTypeLoc TL) {
       // An AtomicTypeLoc can come from either an _Atomic(...) type specifier
       // or an _Atomic qualifier.
@@ -3733,7 +3774,7 @@ namespace {
       TL.setRParenLoc(Chunk.EndLoc);
     }
 
-    // ===== Scout ==========================================
+    // +===== Scout ==========================================================+
 
     void VisitUniformMeshTypeLoc(UniformMeshTypeLoc TL) {
       assert(Chunk.Kind == DeclaratorChunk::UniformMesh);
@@ -3749,8 +3790,7 @@ namespace {
       TL.setRParenLoc(Chunk.EndLoc);
       TL.setFileName(Chunk.Unsmsh.StrLitFileName);
     }
-
-    // ======================================================
+    // +======================================================================+
 
     void VisitTypeLoc(TypeLoc TL) {
       llvm_unreachable("unsupported TypeLoc kind in declarator!");
@@ -3763,10 +3803,12 @@ static void fillAtomicQualLoc(AtomicTypeLoc ATL, const DeclaratorChunk &Chunk) {
   switch (Chunk.Kind) {
   case DeclaratorChunk::Function:
   case DeclaratorChunk::Array:
-  // ===== Scout =====================
+  // +===== Scout ============================================================+
   case DeclaratorChunk::UniformMesh:
+  case DeclaratorChunk::RectilinearMesh:
+  case DeclaratorChunk::StructuredMesh:
   case DeclaratorChunk::UnstructuredMesh:
-  // =================================
+  // +========================================================================+
   case DeclaratorChunk::Paren:
     llvm_unreachable("cannot be _Atomic qualified");
 
@@ -3821,15 +3863,17 @@ Sema::GetTypeSourceInfoForDeclarator(Declarator &D, QualType T,
     }
 
     DeclaratorLocFiller(Context, D.getTypeObject(i)).Visit(CurrTL);
-    // ===== Scout ============================================================
+    // +==== Scout ===========================================================+
     //CurrTL = CurrTL.getNextTypeLoc().getUnqualifiedLoc();
     TypeLoc nextTL = CurrTL.getNextTypeLoc();
     if (nextTL.getUnqualifiedLoc() == 0) {
-      break; // SC_TODO Not sure what to do here.  If don't break, we get an error.
+      // SC_TODO Not sure what to do here.
+      // If we don't break, we get an error.
+      break;
     } else {
       CurrTL = nextTL.getUnqualifiedLoc();
     }
-    // =========================================================================
+    // +======================================================================+
   }
   // If we have different source information for the return type, use
   // that.  This really only applies to C++ conversion functions.
@@ -4367,7 +4411,7 @@ static bool handleMSPointerTypeQualifierAttr(TypeProcessingState &State,
         << "'__sptr'" << "'__uptr'";
       return true;
     }
-    
+
     Desugared = AT->getEquivalentType();
     AT = dyn_cast<AttributedType>(Desugared);
   }
@@ -5232,7 +5276,7 @@ static QualType getDecltypeForExpr(Sema &S, Expr *E) {
     if (PR->isExplicitProperty())
       return PR->getExplicitProperty()->getType();
   }
-  
+
   // C++11 [expr.lambda.prim]p18:
   //   Every occurrence of decltype((x)) where x is a possibly
   //   parenthesized id-expression that names an entity of automatic

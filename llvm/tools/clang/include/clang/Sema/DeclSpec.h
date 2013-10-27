@@ -272,11 +272,12 @@ public:
   static const TST TST_double = clang::TST_double;
   static const TST TST_bool = clang::TST_bool;
 
-  // scout - Scout types
+  // +===== Scout ============================================================+
   static const TST TST_uniform_mesh = clang::TST_uniform_mesh;
   static const TST TST_structured_mesh = clang::TST_structured_mesh;
-  static const TST TST_rectilinear_mesh = clang::TST_rectilinear_mesh;  
+  static const TST TST_rectilinear_mesh = clang::TST_rectilinear_mesh;
   static const TST TST_unstructured_mesh = clang::TST_unstructured_mesh;
+  // +========================================================================+
 
   static const TST TST_decimal32 = clang::TST_decimal32;
   static const TST TST_decimal64 = clang::TST_decimal64;
@@ -854,8 +855,8 @@ public:
     OverloadedOperatorKind Operator;
 
     /// \brief The source locations of the individual tokens that name
-    /// the operator, e.g., the "new", "[", and "]" tokens in 
-    /// operator new []. 
+    /// the operator, e.g., the "new", "[", and "]" tokens in
+    /// operator new [].
     ///
     /// Different operators have different numbers of tokens in their name,
     /// up to three. Any remaining source locations in this array will be
@@ -873,8 +874,8 @@ public:
     /// \brief When Kind == IK_OperatorFunctionId, the overloaded operator
     /// that we parsed.
     struct OFI OperatorFunctionId;
-    
-    /// \brief When Kind == IK_ConversionFunctionId, the type that the 
+
+    /// \brief When Kind == IK_ConversionFunctionId, the type that the
     /// conversion function names.
     UnionParsedType ConversionFunctionId;
 

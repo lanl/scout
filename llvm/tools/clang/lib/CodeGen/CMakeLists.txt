@@ -56,7 +56,7 @@ add_clang_library(clangCodeGen
   MicrosoftCXXABI.cpp
   ModuleBuilder.cpp
   TargetInfo.cpp
-  # ===== Scout ==============================================================
+  # +===== Scout ============================================================+
   Scout/CGBlocks.cpp
   Scout/MemAlloc.cpp
   Scout/CGDebugInfo.cpp
@@ -66,6 +66,7 @@ add_clang_library(clangCodeGen
   Scout/CodeGenFunction.cpp
   Scout/CodeGenTypes.cpp
   Scout/CGMeshLayoutBuilder.cpp
+  # +========================================================================+
   )
 
 add_dependencies(clangCodeGen

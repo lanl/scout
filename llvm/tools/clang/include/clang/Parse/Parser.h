@@ -47,8 +47,6 @@ namespace clang {
   class VersionTuple;
 
   // +===== Scout ============================================================+
-  // SC_TODO -- Do we still need this?
-  //
   // Used by the mesh parser to keep track of what field kind we are parsing.
   enum MeshFieldKind {
     Cell,
@@ -2316,10 +2314,10 @@ private:
 
   void InsertScoutRuntimeInit(SourceLocation &LBraceLoc);
 
-  // scout - insert CPP code into the lexer stream for parsing.
-  // Inserts a stream of tokens before or after the current token Tok.
-  // This is a good method for handling cases such as inserting the call
-  // to initScout(argc, argv) at the beginning of main(), for other cases
+  // Insert CPP code into the lexer stream for parsing. Inserts a stream
+  // of tokens before or after the current token Tok. This is a good
+  // method for handling cases such as inserting the call to
+  // initScout(argc, argv) at the beginning of main(), for other cases
   // it may be necessary to construct the AST manually.
   void InsertCPPCode(const std::string& code,
                      SourceLocation location,

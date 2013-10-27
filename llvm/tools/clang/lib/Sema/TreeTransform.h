@@ -739,6 +739,7 @@ public:
   }
 
 
+  // +===== Scout ============================================================+
   QualType RebuildUniformMeshType(UniformMeshDecl *UMD) {
     return SemaRef.Context.getTypeDeclType(UMD);
   }
@@ -754,6 +755,7 @@ public:
   QualType RebuildUnstructuredMeshType(UnstructuredMeshDecl *UMD) {
     return SemaRef.Context.getTypeDeclType(UMD);
   }
+  // +========================================================================+
 
   /// \brief Build a new typeof(expr) type.
   ///
@@ -4569,9 +4571,7 @@ QualType TreeTransform<Derived>::TransformRecordType(TypeLocBuilder &TLB,
   return Result;
 }
 
-// ===== Scout ===========================================================================
-
-
+// +===== Scout ==============================================================+
 template<typename Derived>
 QualType
   TreeTransform<Derived>::TransformUniformMeshType(TypeLocBuilder &TLB,
@@ -4671,7 +4671,7 @@ TreeTransform<Derived>::TransformUnstructuredMeshType(TypeLocBuilder &TLB,
 
   return Result;
 }
-// ==========================================================================================
+// +==========================================================================+
 template<typename Derived>
 QualType TreeTransform<Derived>::TransformEnumType(TypeLocBuilder &TLB,
                                                    EnumTypeLoc TL) {
@@ -5629,7 +5629,7 @@ TreeTransform<Derived>::TransformForStmt(ForStmt *S) {
                                      FullInc, S->getRParenLoc(), Body.get());
 }
 
-// ===== Scout =================================================================================
+// +==== Scout ===============================================================+
 // SC_TODO - implement
 template<typename Derived>
 StmtResult
@@ -5664,7 +5664,7 @@ TreeTransform<Derived>::TransformVolumeRenderAllStmt(VolumeRenderAllStmt *S) {
   return R;
 }
 */
-// ==========================================================================================
+// +==========================================================================+
 
 template<typename Derived>
 StmtResult

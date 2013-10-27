@@ -47,7 +47,7 @@ LANGOPT(ScoutNvidiaGPU      , 1, 0, "ScoutNvidiaGPU")
 LANGOPT(ScoutAMDGPU         , 1, 0, "ScoutAMDGPU")
 LANGOPT(ScoutVectorize      , 1, 0, "ScoutNvidiaVectorize")
 LANGOPT(ScoutCPUThreads     , 1, 0, "ScoutCPUThreads")
-BENIGN_LANGOPT(DumpMeshLayouts , 1, 0, "dumping the layout of IRgen'd meshes")
+BENIGN_LANGOPT(DumpMeshLayouts , 1, 0, "dump the layout of IRgen'd meshes")
 BENIGN_LANGOPT(DumpMeshLayoutsSimple , 1, 0, "dumping the layout of IRgen'd meshes in a simple form")
 // +=========================================================================+
 LANGOPT(C99               , 1, 0, "C99")

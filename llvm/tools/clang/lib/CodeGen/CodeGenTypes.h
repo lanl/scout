@@ -44,18 +44,25 @@ namespace clang {
   class PointerType;
   class QualType;
   class RecordDecl;
-  class MeshDecl;
   class TagDecl;
   class TargetInfo;
   class Type;
   typedef CanQual<Type> CanQualType;
 
+  // +===== Scout ============================================================+
+  class MeshDecl;
+  // +========================================================================+
+
+
 namespace CodeGen {
   class CGCXXABI;
   class CGRecordLayout;
-  class CGMeshLayout;
   class CodeGenModule;
   class RequiredArgs;
+
+  // +===== Scout ============================================================+
+  class CGMeshLayout;
+  // +========================================================================+
 
 /// CodeGenTypes - This class organizes the cross-module state that is used
 /// while lowering AST types to LLVM types.
@@ -85,18 +92,10 @@ private:
   /// record layout info.
   llvm::DenseMap<const Type*, CGRecordLayout *> CGRecordLayouts;
 
-  /// CGMeshLayouts - This maps llvm struct type with corresponding
-  /// mesh layout info.
-  llvm::DenseMap<const Type*, CGMeshLayout *> CGMeshLayouts;
-
   /// RecordDeclTypes - This contains the LLVM IR type for any converted
   /// RecordDecl.
   llvm::DenseMap<const Type*, llvm::StructType *> RecordDeclTypes;
 
-  /// MeshDeclTypes - This contains the LLVM IR type for any converted
-  /// MeshDecl.
-  llvm::DenseMap<const Type*, llvm::StructType *> MeshDeclTypes;
-  
   /// FunctionInfos - Hold memoized CGFunctionInfo results.
   llvm::FoldingSet<CGFunctionInfo> FunctionInfos;
 
@@ -106,20 +105,32 @@ private:
   /// types will be in this set.
   llvm::SmallPtrSet<const Type*, 4> RecordsBeingLaidOut;
 
-  /// MeshesBeingLaidOut - This set keeps track of meshes that we're currently
-  /// converting to an IR type -- mirrors the basic functionality of the 
-  /// records being laid out info... 
-  llvm::SmallPtrSet<const Type*, 4> MeshesBeingLaidOut;
 
   llvm::SmallPtrSet<const CGFunctionInfo*, 4> FunctionsBeingProcessed;
-  
+
   /// SkippedLayout - True if we didn't layout a function due to a being inside
   /// a recursive struct conversion, set this to true.
   bool SkippedLayout;
 
   SmallVector<const RecordDecl *, 8> DeferredRecords;
-  SmallVector<const MeshDecl *, 8> DeferredMeshes;  
-  
+
+  // +===== Scout ============================================================+
+  /// CGMeshLayouts - This maps llvm struct type with corresponding
+  /// mesh layout info.
+  llvm::DenseMap<const Type*, CGMeshLayout *> CGMeshLayouts;
+
+  /// MeshDeclTypes - This contains the LLVM IR type for any converted
+  /// MeshDecl.
+  llvm::DenseMap<const Type*, llvm::StructType *> MeshDeclTypes;
+
+  /// MeshesBeingLaidOut - This set keeps track of meshes that we're currently
+  /// converting to an IR type -- mirrors the basic functionality of the
+  /// records being laid out info...
+  llvm::SmallPtrSet<const Type*, 4> MeshesBeingLaidOut;
+
+  SmallVector<const MeshDecl *, 8> DeferredMeshes;
+  // +========================================================================+
+
 private:
   /// TypeCache - This map keeps cache of llvm::Types
   /// and maps llvm::Types to corresponding clang::Type.
@@ -140,9 +151,10 @@ public:
   /// ConvertType - Convert type T into a llvm::Type.
   llvm::Type *ConvertType(QualType T);
 
-  // ===== Scout ==============================================================
+  // +==== Scout =============================================================+
   llvm::Type *ConvertScoutMeshType(QualType T);
-  // ==========================================================================
+  // +========================================================================+
+
   /// ConvertTypeForMem - Convert type T into a llvm::Type.  This differs from
   /// ConvertType in that it is used to convert to the memory representation for
   /// a type.  For example, the scalar representation for _Bool is i1, but the
@@ -159,7 +171,7 @@ public:
   /// type).
   bool isFuncTypeConvertible(const FunctionType *FT);
   bool isFuncTypeArgumentConvertible(QualType Ty);
-  
+
   /// GetFunctionTypeForVTable - Get the LLVM function type for use in a vtable,
   /// given a CXXMethodDecl. If the method to has an incomplete return type,
   /// and/or incomplete argument types, this will return the opaque type.
@@ -167,7 +179,9 @@ public:
 
   const CGRecordLayout &getCGRecordLayout(const RecordDecl*);
 
-  const CGMeshLayout &getCGMeshLayout(const MeshDecl*);  
+  // +===== Scout ============================================================+
+  const CGMeshLayout &getCGMeshLayout(const MeshDecl*);
+  // +========================================================================+
 
   /// UpdateCompletedType - When we find the full definition for a TagDecl,
   /// replace the 'opaque' type we previously made for it if applicable.
@@ -248,27 +262,14 @@ public:
   CGRecordLayout *ComputeRecordLayout(const RecordDecl *D,
                                       llvm::StructType *Ty);
 
-   /// \brief Compute a new LLVM record layout object for the given record.
-  CGMeshLayout *ComputeMeshLayout(const MeshDecl *D,
-                                  llvm::StructType *Ty);
-
   /// addRecordTypeName - Compute a name from the given record decl with an
   /// optional suffix and name the given LLVM type using it.
   void addRecordTypeName(const RecordDecl *RD, llvm::StructType *Ty,
                          StringRef suffix);
 
-  /// addRecordTypeName - Compute a name from the given mesh decl with an
-  /// optional suffix and name the given LLVM type using it.
-  void addRecordTypeName(const MeshDecl *RD, llvm::StructType *Ty,
-                         StringRef suffix);
-  
-
 public:  // These are internal details of CGT that shouldn't be used externally.
   /// ConvertRecordDeclType - Lay out a tagged decl type like struct or union.
   llvm::StructType *ConvertRecordDeclType(const RecordDecl *TD);
-
-    /// ConvertRecordDeclType - Lay out a mesh decl type.
-  llvm::StructType *ConvertMeshDeclType(const MeshDecl *MD);
 
   /// GetExpandedTypes - Expand the type \arg Ty into the LLVM
   /// argument types it would be passed as on the provided vector \arg
@@ -283,7 +284,7 @@ public:  // These are internal details of CGT that shouldn't be used externally.
   /// IsZeroInitializable - Return whether a record type can be
   /// zero-initialized (in the C++ sense) with an LLVM zeroinitializer.
   bool isZeroInitializable(const CXXRecordDecl *RD);
-  
+
   bool isRecordLayoutComplete(const Type *Ty) const;
   bool noRecordsBeingLaidOut() const {
     return RecordsBeingLaidOut.empty();
@@ -292,14 +293,31 @@ public:  // These are internal details of CGT that shouldn't be used externally.
     return RecordsBeingLaidOut.count(Ty);
   }
 
+  // +===== Scout ============================================================+
+
+  /// \brief Compute a new LLVM record layout object for the given record.
+  CGMeshLayout *ComputeMeshLayout(const MeshDecl *D,
+                                  llvm::StructType *Ty);
+
+  /// addRecordTypeName - Compute a name from the given mesh decl with an
+  /// optional suffix and name the given LLVM type using it.
+  void addRecordTypeName(const MeshDecl *RD, llvm::StructType *Ty,
+                         StringRef suffix);
+
+  /// ConvertRecordDeclType - Lay out a mesh decl type.
+  llvm::StructType *ConvertMeshDeclType(const MeshDecl *MD);
+
   bool isMeshLayoutComplete(const Type *Ty) const;
+
   bool noMeshesBeingLaidOut() const {
     return MeshesBeingLaidOut.empty();
   }
+
   bool isMeshBeingLaidOut(const Type *Ty) const {
     return MeshesBeingLaidOut.count(Ty);
   }
-                            
+  // +========================================================================+
+
 };
 
 }  // end namespace CodeGen

@@ -120,10 +120,10 @@ private:
 #undef ABSTRACT_TYPE
 #undef NON_CANONICAL_TYPE
 #undef TYPE
-  
+
   void mangleType(const TagType*);
   // ===== Scout ===============================================
-  void mangleType(const MeshType*); 
+  void mangleType(const MeshType*);
   // ===========================================================
   void mangleFunctionType(const FunctionType *T, const FunctionDecl *D,
                           bool IsStructor, bool IsInstMethod);
@@ -260,7 +260,7 @@ void MicrosoftCXXNameMangler::mangleFunctionEncoding(const FunctionDecl *FD) {
   // Don't mangle in the type if this isn't a decl we should typically mangle.
   if (!Context.shouldMangleDeclName(FD))
     return;
-  
+
   // We should never ever see a FunctionNoProtoType at this point.
   // We don't even know how to mangle their types anyway :).
   const FunctionProtoType *FT = FD->getType()->castAs<FunctionProtoType>();
@@ -287,7 +287,7 @@ void MicrosoftCXXNameMangler::mangleVariableEncoding(const VarDecl *VD) {
   //                 ::= 2  # public static member
   //                 ::= 3  # global
   //                 ::= 4  # static local
-  
+
   // The first character in the encoding (after the name) is the storage class.
   if (VD->isStaticDataMember()) {
     // If it's a static member, it also encodes the access level.
@@ -330,7 +330,7 @@ void MicrosoftCXXNameMangler::mangleName(const NamedDecl *ND) {
   const DeclContext *DC = ND->getDeclContext();
 
   // Always start with the unqualified name.
-  mangleUnqualifiedName(ND);    
+  mangleUnqualifiedName(ND);
 
   // If this is an extern variable declared locally, the relevant DeclContext
   // is that of the containing namespace, or the translation unit.
@@ -458,17 +458,17 @@ MicrosoftCXXNameMangler::mangleUnqualifiedName(const NamedDecl *ND,
         mangleSourceName(II);
         break;
       }
-      
+
       // Otherwise, an anonymous entity.  We must have a declaration.
       assert(ND && "mangling empty name without declaration");
-      
+
       if (const NamespaceDecl *NS = dyn_cast<NamespaceDecl>(ND)) {
         if (NS->isAnonymousNamespace()) {
           Out << "?A@";
           break;
         }
       }
-      
+
       // We must have an anonymous struct.
       const TagDecl *TD = cast<TagDecl>(ND);
       if (const TypedefNameDecl *D = TD->getTypedefNameForAnonDecl()) {
@@ -485,12 +485,12 @@ MicrosoftCXXNameMangler::mangleUnqualifiedName(const NamedDecl *ND,
       Out << "<unnamed-tag>";
       break;
     }
-      
+
     case DeclarationName::ObjCZeroArgSelector:
     case DeclarationName::ObjCOneArgSelector:
     case DeclarationName::ObjCMultiArgSelector:
       llvm_unreachable("Can't mangle Objective-C selector names here!");
-      
+
     case DeclarationName::CXXConstructorName:
       if (ND == Structor) {
         assert(StructorType == Ctor_Complete &&
@@ -498,7 +498,7 @@ MicrosoftCXXNameMangler::mangleUnqualifiedName(const NamedDecl *ND,
       }
       Out << "?0";
       break;
-      
+
     case DeclarationName::CXXDestructorName:
       if (ND == Structor)
         // If the named decl is the C++ destructor we're mangling,
@@ -509,17 +509,17 @@ MicrosoftCXXNameMangler::mangleUnqualifiedName(const NamedDecl *ND,
         // class with a destructor is declared within a destructor.
         mangleCXXDtorType(Dtor_Complete);
       break;
-      
+
     case DeclarationName::CXXConversionFunctionName:
       // <operator-name> ::= ?B # (cast)
       // The target type is encoded as the return type.
       Out << "?B";
       break;
-      
+
     case DeclarationName::CXXOperatorName:
       mangleOperatorName(Name.getCXXOverloadedOperator(), ND->getLocation());
       break;
-      
+
     case DeclarationName::CXXLiteralOperatorName: {
       // FIXME: Was this added in VS2010? Does MS even know how to mangle this?
       DiagnosticsEngine Diags = Context.getDiags();
@@ -528,7 +528,7 @@ MicrosoftCXXNameMangler::mangleUnqualifiedName(const NamedDecl *ND,
       Diags.Report(ND->getLocation(), DiagID);
       break;
     }
-      
+
     case DeclarationName::CXXUsingDirective:
       llvm_unreachable("Can't mangle a using directive name!");
   }
@@ -703,7 +703,7 @@ void MicrosoftCXXNameMangler::mangleOperatorName(OverloadedOperatorKind OO,
   case OO_Array_New: Out << "?_U"; break;
   // <operator-name> ::= ?_V # delete[]
   case OO_Array_Delete: Out << "?_V"; break;
-    
+
   case OO_Conditional: {
     DiagnosticsEngine &Diags = Context.getDiags();
     unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
@@ -711,7 +711,7 @@ void MicrosoftCXXNameMangler::mangleOperatorName(OverloadedOperatorKind OO,
     Diags.Report(Loc, DiagID);
     break;
   }
-    
+
   case OO_None:
   case NUM_OVERLOADED_OPERATORS:
     llvm_unreachable("Not an overloaded operator");
@@ -1141,36 +1141,7 @@ void MicrosoftCXXNameMangler::mangleType(const BuiltinType *T,
   case BuiltinType::OCLImage3d: Out << "PAUocl_image3d@@"; break;
   case BuiltinType::OCLSampler: Out << "PAUocl_sampler@@"; break;
   case BuiltinType::OCLEvent: Out << "PAUocl_event@@"; break;
- 
   case BuiltinType::NullPtr: Out << "$$T"; break;
-
-  // ===== Scout -- don't mangle our vector types. ============================
-  // SC_TODO - drop support for our own vector types.  
-  // This work has been done in the refactor repo...  
-  // Need to merge at some point... 
-  case BuiltinType::Bool2:
-  case BuiltinType::Bool3:
-  case BuiltinType::Bool4:
-  case BuiltinType::Char2:
-  case BuiltinType::Char3:
-  case BuiltinType::Char4:
-  case BuiltinType::Short2:
-  case BuiltinType::Short3:
-  case BuiltinType::Short4:
-  case BuiltinType::Int2:
-  case BuiltinType::Int3:
-  case BuiltinType::Int4:
-  case BuiltinType::Long2:
-  case BuiltinType::Long3:
-  case BuiltinType::Long4:
-  case BuiltinType::Float2:
-  case BuiltinType::Float3:
-  case BuiltinType::Float4:
-  case BuiltinType::Double2:
-  case BuiltinType::Double3:
-  case BuiltinType::Double4:
-  // ==========================================================================
-
   case BuiltinType::Char16:
   case BuiltinType::Char32:
   case BuiltinType::Half: {
@@ -1402,22 +1373,22 @@ void MicrosoftCXXNameMangler::mangleType(const RecordType *T, SourceRange) {
 
 // ===== Scout ================================================================
 // SC_TODO - is this correct?
-void MicrosoftCXXNameMangler::mangleType(const UniformMeshType *T, 
+void MicrosoftCXXNameMangler::mangleType(const UniformMeshType *T,
                                          SourceRange) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
 
-void MicrosoftCXXNameMangler::mangleType(const StructuredMeshType *T, 
+void MicrosoftCXXNameMangler::mangleType(const StructuredMeshType *T,
                                          SourceRange) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
 
-void MicrosoftCXXNameMangler::mangleType(const RectilinearMeshType *T, 
+void MicrosoftCXXNameMangler::mangleType(const RectilinearMeshType *T,
                                          SourceRange) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
 
-void MicrosoftCXXNameMangler::mangleType(const UnstructuredMeshType *T, 
+void MicrosoftCXXNameMangler::mangleType(const UnstructuredMeshType *T,
                                          SourceRange) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }

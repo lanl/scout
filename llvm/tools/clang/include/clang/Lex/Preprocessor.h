@@ -1126,7 +1126,7 @@ public:
   IdentifierInfo *LookUpIdentifierInfo(Token &Identifier) const;
 
   // +===== Scout ============================================================+
-  IdentifierInfo* getScoutIdentifier(StringRef name){
+  IdentifierInfo* getScoutIdentifier(StringRef name) {
     return &ScoutIdentifiers.get(name);
   }
   // +========================================================================+

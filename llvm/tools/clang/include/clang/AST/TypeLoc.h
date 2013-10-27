@@ -1860,8 +1860,10 @@ public:
   }
 };
 
+
 // +==== Scout ===============================================================+
 //
+
 class MeshTypeLoc : public InheritingConcreteTypeLoc<TypeSpecTypeLoc,
                                                      MeshTypeLoc,
                                                      MeshType> {

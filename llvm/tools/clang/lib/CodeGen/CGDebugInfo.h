@@ -149,25 +149,26 @@ class CGDebugInfo {
                                              llvm::DIFile F,
                                              llvm::DIType RecordTy);
 
-  // ===== Scout ===============================================================
+  // ===== Scout =============================================================+
   llvm::DIType CreateType(const UniformMeshType *Ty);
-  llvm::DIType CreateType(const StructuredMeshType *Ty);  
-  llvm::DIType CreateType(const RectilinearMeshType *Ty);  
-  llvm::DIType CreateType(const UnstructuredMeshType *Ty);  
+  llvm::DIType CreateType(const StructuredMeshType *Ty);
+  llvm::DIType CreateType(const RectilinearMeshType *Ty);
+  llvm::DIType CreateType(const UnstructuredMeshType *Ty);
 
-  void CollectMeshFields(const MeshDecl *Decl, 
+  void CollectMeshFields(const MeshDecl *Decl,
                          llvm::DIFile F,
                          SmallVectorImpl<llvm::Value *> &E,
                          llvm::DIType RecordTy);
   void CollectMeshStaticField(const VarDecl *Var,
                               SmallVectorImpl<llvm::Value *> &E,
                               llvm::DIType MeshTy);
-  void CollectMeshNormalField(const MeshFieldDecl *Field, uint64_t OffsetInBits,
+  void CollectMeshNormalField(const MeshFieldDecl *Field,
+                              uint64_t OffsetInBits,
                               llvm::DIFile F,
                               SmallVectorImpl<llvm::Value *> &E,
                               llvm::DIType RecordTy);
-  // ===========================================================================
-  
+  // +========================================================================+
+
   void CollectCXXMemberFunctions(const CXXRecordDecl *Decl,
                                  llvm::DIFile F,
                                  SmallVectorImpl<llvm::Value *> &E,

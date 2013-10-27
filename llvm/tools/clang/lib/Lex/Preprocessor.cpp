@@ -63,12 +63,12 @@ Preprocessor::Preprocessor(IntrusiveRefCntPtr<PreprocessorOptions> PPOpts,
     : PPOpts(PPOpts), Diags(&diags), LangOpts(opts), Target(target),
       FileMgr(Headers.getFileMgr()), SourceMgr(SM), HeaderInfo(Headers),
       TheModuleLoader(TheModuleLoader), ExternalSource(0),
-      Identifiers(opts, IILookup), 
-      // ===== Scout ==========================================================
-      // LangOpts is empty because we don't want it to pick up the Scout 
-      // keywords
+      Identifiers(opts, IILookup),
+      // +===== Scout ========================================================+
+      // LangOpts is empty because we don't want it to pick up the Scout
+      // keywords.
       ScoutIdentifiers(LangOptions()),
-      // ======================================================================
+      // +====================================================================+
        IncrementalProcessing(IncrProcessing),
       CodeComplete(0), CodeCompletionFile(0), CodeCompletionOffset(0),
       CodeCompletionReached(0), SkipMainFilePreamble(0, true), CurPPLexer(0),
@@ -76,10 +76,10 @@ Preprocessor::Preprocessor(IntrusiveRefCntPtr<PreprocessorOptions> PPOpts,
       MacroArgCache(0), Record(0), MIChainHead(0), MICache(0),
       DeserialMIChainHead(0) {
   OwnsHeaderSearch = OwnsHeaders;
-  
+
   ScratchBuf = new ScratchBuffer(SourceMgr);
   CounterValue = 0; // __COUNTER__ starts at 0.
-  
+
   // Clear stats.
   NumDirectives = NumDefined = NumUndefined = NumPragma = 0;
   NumIf = NumElse = NumEndif = 0;
@@ -88,12 +88,12 @@ Preprocessor::Preprocessor(IntrusiveRefCntPtr<PreprocessorOptions> PPOpts,
   NumFastMacroExpanded = NumTokenPaste = NumFastTokenPaste = 0;
   MaxIncludeStackDepth = 0;
   NumSkipped = 0;
-  
+
   // Default to discarding comments.
   KeepComments = false;
   KeepMacroComments = false;
   SuppressIncludeNotFoundError = false;
-  
+
   // Macro expansion is enabled.
   DisableMacroExpansion = false;
   MacroExpansionInDirectivesOverride = false;
@@ -108,19 +108,19 @@ Preprocessor::Preprocessor(IntrusiveRefCntPtr<PreprocessorOptions> PPOpts,
 
   // We haven't read anything from the external source.
   ReadMacrosFromExternalSource = false;
-  
+
   // "Poison" __VA_ARGS__, which can only appear in the expansion of a macro.
   // This gets unpoisoned where it is allowed.
   (Ident__VA_ARGS__ = getIdentifierInfo("__VA_ARGS__"))->setIsPoisoned();
   SetPoisonReason(Ident__VA_ARGS__,diag::ext_pp_bad_vaargs_use);
-  
+
   // Initialize the pragma handlers.
   PragmaHandlers = new PragmaNamespace(StringRef());
   RegisterBuiltinPragmas();
-  
+
   // Initialize builtin macros like __LINE__ and friends.
   RegisterBuiltinMacros();
-  
+
   if(LangOpts.Borland) {
     Ident__exception_info        = getIdentifierInfo("_exception_info");
     Ident___exception_info       = getIdentifierInfo("__exception_info");
@@ -184,7 +184,7 @@ void Preprocessor::Initialize(const TargetInfo &Target) {
   assert((!this->Target || this->Target == &Target) &&
          "Invalid override of target information");
   this->Target = &Target;
-  
+
   // Initialize information about built-ins.
   BuiltinInfo.InitializeTarget(Target);
   HeaderInfo.setTarget(Target);
@@ -341,7 +341,7 @@ void Preprocessor::recomputeCurLexerKind() {
     CurLexerKind = CLK_PTHLexer;
   else if (CurTokenLexer)
     CurLexerKind = CLK_TokenLexer;
-  else 
+  else
     CurLexerKind = CLK_CachingLexer;
 }
 
@@ -450,7 +450,7 @@ void Preprocessor::CreateString(StringRef Str, Token &Tok,
 Module *Preprocessor::getCurrentModule() {
   if (getLangOpts().CurrentModule.empty())
     return 0;
-  
+
   return getHeaderSearchInfo().lookupModule(getLangOpts().CurrentModule);
 }
 
@@ -473,13 +473,13 @@ void Preprocessor::EnterMainSourceFile() {
   if (!SourceMgr.isLoadedFileID(MainFileID)) {
     // Enter the main file source buffer.
     EnterSourceFile(MainFileID, 0, SourceLocation());
-  
+
     // If we've been asked to skip bytes in the main file (e.g., as part of a
     // precompiled preamble), do so now.
     if (SkipMainFilePreamble.first > 0)
-      CurLexer->SkipBytes(SkipMainFilePreamble.first, 
+      CurLexer->SkipBytes(SkipMainFilePreamble.first,
                           SkipMainFilePreamble.second);
-    
+
     // Tell the header info that the main file was entered.  If the file is later
     // #imported, it won't be re-entered.
     if (const FileEntry *FE = SourceMgr.getFileEntryForID(MainFileID))
@@ -642,7 +642,7 @@ void Preprocessor::HandleIdentifier(Token &Identifier) {
     if (&II == Ident__VA_ARGS__)
       II.setIsPoisoned(CurrentIsPoisoned);
   }
-  
+
   // If this identifier was poisoned, and if it was not produced from a macro
   // expansion, emit an error.
   if (II.isPoisoned() && CurPPLexer) {
@@ -690,7 +690,7 @@ void Preprocessor::HandleIdentifier(Token &Identifier) {
   // like "#define TY typeof", "TY(1) x".
   if (II.isExtensionToken() && !DisableMacroExpansion)
     Diag(Identifier, diag::ext_token_used);
-  
+
   // If this is the 'import' contextual keyword, note
   // that the next token indicates a module name.
   //
@@ -711,15 +711,15 @@ void Preprocessor::HandleIdentifier(Token &Identifier) {
 void Preprocessor::LexAfterModuleImport(Token &Result) {
   // Figure out what kind of lexer we actually have.
   recomputeCurLexerKind();
-  
+
   // Lex the next token.
   Lex(Result);
 
-  // The token sequence 
+  // The token sequence
   //
   //   import identifier (. identifier)*
   //
-  // indicates a module import directive. We already saw the 'import' 
+  // indicates a module import directive. We already saw the 'import'
   // contextual keyword, so now we're looking for the identifiers.
   if (ModuleImportExpectsIdentifier && Result.getKind() == tok::identifier) {
     // We expected to see an identifier here, and we did; continue handling
@@ -730,7 +730,7 @@ void Preprocessor::LexAfterModuleImport(Token &Result) {
     CurLexerKind = CLK_LexAfterModuleImport;
     return;
   }
-  
+
   // If we're expecting a '.' or a ';', and we got a '.', then wait until we
   // see the next identifier.
   if (!ModuleImportExpectsIdentifier && Result.getKind() == tok::period) {
@@ -828,7 +828,7 @@ CodeCompletionHandler::~CodeCompletionHandler() { }
 void Preprocessor::createPreprocessingRecord() {
   if (Record)
     return;
-  
+
   Record = new PreprocessingRecord(getSourceManager());
   addPPCallbacks(Record);
 }

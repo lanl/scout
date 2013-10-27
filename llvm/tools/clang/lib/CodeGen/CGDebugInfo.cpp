@@ -462,37 +462,6 @@ llvm::DIType CGDebugInfo::CreateType(const BuiltinType *BT) {
   case BuiltinType::WChar_S:
   case BuiltinType::LongLong:  Encoding = llvm::dwarf::DW_ATE_signed; break;
   case BuiltinType::Bool:      Encoding = llvm::dwarf::DW_ATE_boolean; break;
-  // ===== Scout ==============================================================
-  // SC_TODO - we need to replace scout's vector types with clang's "builtin"
-  // types.  This has been done in the "refactor" branch but needs to be 
-  // merged with "devel"...
-  // 
-  // SC_TODO - even though we're pushing this towards being obsolete, the 
-  // code below seems wrong -- are these all really float encoding?
-  case BuiltinType::Bool2:
-  case BuiltinType::Bool3:
-  case BuiltinType::Bool4:
-  case BuiltinType::Char2:
-  case BuiltinType::Char3:
-  case BuiltinType::Char4:
-  case BuiltinType::Short2:
-  case BuiltinType::Short3:
-  case BuiltinType::Short4:
-  case BuiltinType::Int2:
-  case BuiltinType::Int3:
-  case BuiltinType::Int4:
-  case BuiltinType::Long2:
-  case BuiltinType::Long3:
-  case BuiltinType::Long4:
-  case BuiltinType::Float2:
-  case BuiltinType::Float3:
-  case BuiltinType::Float4:
-  case BuiltinType::Double2:
-  case BuiltinType::Double3:
-  case BuiltinType::Double4:
-    break;
-  // ==========================================================================
-
   case BuiltinType::Half:
   case BuiltinType::Float:
   case BuiltinType::LongDouble:
@@ -2047,8 +2016,7 @@ llvm::DIType CGDebugInfo::CreateTypeNode(QualType Ty, llvm::DIFile Unit) {
     return CreateType(cast<BlockPointerType>(Ty), Unit);
   case Type::Typedef:
     return CreateType(cast<TypedefType>(Ty), Unit);
-  
-  // ===== Scout ==============================================================
+  // +==== Scout =============================================================+
   case Type::UniformMesh:
     return CreateType(cast<UniformMeshType>(Ty));
   case Type::StructuredMesh:
@@ -2057,8 +2025,8 @@ llvm::DIType CGDebugInfo::CreateTypeNode(QualType Ty, llvm::DIFile Unit) {
     return CreateType(cast<RectilinearMeshType>(Ty));
   case Type::UnstructuredMesh:
     return CreateType(cast<UnstructuredMeshType>(Ty));
-  // ==========================================================================
-      
+  // +========================================================================+
+
   case Type::Record:
     return CreateType(cast<RecordType>(Ty));
   case Type::Enum:

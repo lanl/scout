@@ -26,7 +26,6 @@
 #include "clang/AST/ExternalASTSource.h"
 #include "clang/AST/Mangle.h"
 #include "clang/AST/RecordLayout.h"
-#include "clang/AST/Scout/MeshLayout.h"
 #include "clang/AST/TypeLoc.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/SourceManager.h"
@@ -37,6 +36,10 @@
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include <map>
+
+// +===== Scout ==============================================================+
+#include "clang/AST/Scout/MeshLayout.h"
+// +==========================================================================+
 
 using namespace clang;
 
@@ -755,6 +758,7 @@ ASTContext::~ASTContext() {
       R->Destroy(*this);
   }
 
+  // +===== Scout ============================================================+
   // Clean up mesh layout objects...
   for (llvm::DenseMap<const MeshDecl*, const ASTMeshLayout*>::iterator
        I = ASTMeshLayouts.begin(), E = ASTMeshLayouts.end(); I != E; ) {
@@ -762,6 +766,7 @@ ASTContext::~ASTContext() {
     if (ASTMeshLayout *M = const_cast<ASTMeshLayout*>((I++)->second))
       M->Destroy(*this);
   }
+  // +========================================================================+
 
   for (llvm::DenseMap<const Decl*, AttrVec*>::iterator A = DeclAttrs.begin(),
                                                     AEnd = DeclAttrs.end();
@@ -909,34 +914,6 @@ void ASTContext::InitBuiltinTypes(const TargetInfo &Target) {
   InitBuiltinType(FloatTy,             BuiltinType::Float);
   InitBuiltinType(DoubleTy,            BuiltinType::Double);
   InitBuiltinType(LongDoubleTy,        BuiltinType::LongDouble);
-
-  // ===== Scout ==============================================================
-  // SC_TODO - We need to replace scout's vectors with Clang's "builtin"
-  // vectors. This has been done in the "refactor" branch but has not yet
-  // been merged with the devel branch.
-  InitBuiltinType(Bool2Ty,             BuiltinType::Bool2);
-  InitBuiltinType(Bool3Ty,             BuiltinType::Bool3);
-  InitBuiltinType(Bool4Ty,             BuiltinType::Bool4);
-  InitBuiltinType(Char2Ty,             BuiltinType::Char2);
-  InitBuiltinType(Char3Ty,             BuiltinType::Char3);
-  InitBuiltinType(Char4Ty,             BuiltinType::Char4);
-  InitBuiltinType(Short2Ty,            BuiltinType::Short2);
-  InitBuiltinType(Short3Ty,            BuiltinType::Short3);
-  InitBuiltinType(Short4Ty,            BuiltinType::Short4);
-  InitBuiltinType(Int2Ty,              BuiltinType::Int2);
-  InitBuiltinType(Int3Ty,              BuiltinType::Int3);
-  InitBuiltinType(Int4Ty,              BuiltinType::Int4);
-  InitBuiltinType(Long2Ty,             BuiltinType::Long2);
-  InitBuiltinType(Long3Ty,             BuiltinType::Long3);
-  InitBuiltinType(Long4Ty,             BuiltinType::Long4);
-  InitBuiltinType(Float2Ty,            BuiltinType::Float2);
-  InitBuiltinType(Float3Ty,            BuiltinType::Float3);
-  InitBuiltinType(Float4Ty,            BuiltinType::Float4);
-  InitBuiltinType(Double2Ty,           BuiltinType::Double2);
-  InitBuiltinType(Double3Ty,           BuiltinType::Double3);
-  InitBuiltinType(Double4Ty,           BuiltinType::Double4);
-  //
-  // ==========================================================================
 
   // GNU extension, 128-bit integers.
   InitBuiltinType(Int128Ty,            BuiltinType::Int128);
@@ -1297,12 +1274,14 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool RefAsPointee) const {
     } else {
       UseAlignAttrOnly = true;
     }
+  // +===== Scout ============================================================+
+  // SC_TODO : Why are we not considering mesh fields here?
+  } else if (isa<FieldDecl>(D) && !isa<MeshFieldDecl>(D)) {
+    UseAlignAttrOnly =
+      D->hasAttr<PackedAttr>() ||
+      cast<FieldDecl>(D)->getParent()->hasAttr<PackedAttr>();
   }
-  else if (isa<FieldDecl>(D) && !isa<MeshFieldDecl>(D)) {
-      UseAlignAttrOnly =
-        D->hasAttr<PackedAttr>() ||
-        cast<FieldDecl>(D)->getParent()->hasAttr<PackedAttr>();
-  }
+  // +========================================================================+
   // If we're using the align attribute only, just ignore everything
   // else about the declaration and its type.
   if (UseAlignAttrOnly) {
@@ -1402,6 +1381,7 @@ std::pair<CharUnits, CharUnits>
 ASTContext::getTypeInfoDataSizeInChars(QualType T) const {
   std::pair<CharUnits, CharUnits> sizeAndAlign = getTypeInfoInChars(T);
 
+  // +===== Scout ============================================================+
   // In C++ and Scout, objects can sometimes be allocated into the
   // tail padding of a base-class subobject.  We decide whether that's
   // possible during class layout, so here we can just trust the
@@ -1411,6 +1391,7 @@ ASTContext::getTypeInfoDataSizeInChars(QualType T) const {
       const ASTMeshLayout &layout = getASTMeshLayout(MT->getDecl());
       sizeAndAlign.first = layout.getDataSize();
     }
+  // +========================================================================+
   } else if (getLangOpts().CPlusPlus) {
     if (const RecordType *RT = T->getAs<RecordType>()) {
       const ASTRecordLayout &layout = getASTRecordLayout(RT->getDecl());
@@ -1534,14 +1515,6 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
       Align = 8;
       break;
 
-    // ===== Scout ==============================================================
-    // SC_TODO - We need to replace scout's vectors with Clang's "builtin"
-    // vectors. This has been done in the "refactor" branch but has not yet
-    // been merged with the devel branch.
-    case BuiltinType::Bool2:
-    case BuiltinType::Bool3:
-    case BuiltinType::Bool4:
-    //===========================================================================
     case BuiltinType::Bool:
       Width = Target->getBoolWidth();
       Align = Target->getBoolAlign();
@@ -1562,52 +1535,20 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
       Width = Target->getChar16Width();
       Align = Target->getChar16Align();
       break;
-    // ===== Scout ==============================================================
-    // SC_TODO - We need to replace scout's vectors with Clang's "builtin"
-    // vectors. This has been done in the "refactor" branch but has not yet
-    // been merged with the devel branch.
-    case BuiltinType::Char2:
-    case BuiltinType::Char3:
-    case BuiltinType::Char4:
-    //===========================================================================
     case BuiltinType::Char32:
       Width = Target->getChar32Width();
       Align = Target->getChar32Align();
       break;
-    // ===== Scout ==============================================================
-    // SC_TODO - We need to replace scout's vectors with Clang's "builtin"
-    // vectors. This has been done in the "refactor" branch but has not yet
-    // been merged with the devel branch.
-    case BuiltinType::Short2:
-    case BuiltinType::Short3:
-    case BuiltinType::Short4:
-    //==========================================================================
     case BuiltinType::UShort:
     case BuiltinType::Short:
       Width = Target->getShortWidth();
       Align = Target->getShortAlign();
       break;
-    // ===== Scout ==============================================================
-    // SC_TODO - We need to replace scout's vectors with Clang's "builtin"
-    // vectors. This has been done in the "refactor" branch but has not yet
-    // been merged with the devel branch.
-    case BuiltinType::Int2:
-    case BuiltinType::Int3:
-    case BuiltinType::Int4:
-    //===========================================================================
     case BuiltinType::UInt:
     case BuiltinType::Int:
       Width = Target->getIntWidth();
       Align = Target->getIntAlign();
       break;
-    // ===== Scout ==============================================================
-    // SC_TODO - We need to replace scout's vectors with Clang's "builtin"
-    // vectors. This has been done in the "refactor" branch but has not yet
-    // been merged with the devel branch.
-    case BuiltinType::Long2:
-    case BuiltinType::Long3:
-    case BuiltinType::Long4:
-    //===========================================================================
     case BuiltinType::ULong:
     case BuiltinType::Long:
       Width = Target->getLongWidth();
@@ -1627,26 +1568,10 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
       Width = Target->getHalfWidth();
       Align = Target->getHalfAlign();
       break;
-    // ===== Scout ==============================================================
-    // SC_TODO - We need to replace scout's vectors with Clang's "builtin"
-    // vectors. This has been done in the "refactor" branch but has not yet
-    // been merged with the devel branch.
-    case BuiltinType::Float2:
-    case BuiltinType::Float3:
-    case BuiltinType::Float4:
-    //===========================================================================
     case BuiltinType::Float:
       Width = Target->getFloatWidth();
       Align = Target->getFloatAlign();
       break;
-    // ===== Scout ==============================================================
-    // SC_TODO - We need to replace scout's vectors with Clang's "builtin"
-    // vectors. This has been done in the "refactor" branch but has not yet
-    // been merged with the devel branch. .
-    case BuiltinType::Double2:
-    case BuiltinType::Double3:
-    case BuiltinType::Double4:
-    //======================================================
     case BuiltinType::Double:
       Width = Target->getDoubleWidth();
       Align = Target->getDoubleAlign();
@@ -1754,20 +1679,20 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     break;
   }
 
-  // ===== Scout ==============================================================
-    case Type::UniformMesh: {
-      const MeshType *MT = cast<MeshType>(T);
-      if (MT->getDecl()->isInvalidDecl()) {
-        Width = 8;
-        Align = 8;
-        break;
-      }
-
-      const UniformMeshType *UMT = dyn_cast<UniformMeshType>(MT);
-      const ASTMeshLayout &Layout = getASTMeshLayout(UMT->getDecl());
-      Width = toBits(Layout.getSize());
-      Align = toBits(Layout.getAlignment());
+  // +==== Scout =============================================================+
+  case Type::UniformMesh: {
+    const MeshType *MT = cast<MeshType>(T);
+    if (MT->getDecl()->isInvalidDecl()) {
+      Width = 8;
+      Align = 8;
       break;
+    }
+
+    const UniformMeshType *UMT = dyn_cast<UniformMeshType>(MT);
+    const ASTMeshLayout &Layout = getASTMeshLayout(UMT->getDecl());
+    Width = toBits(Layout.getSize());
+    Align = toBits(Layout.getAlignment());
+    break;
   }
 
   case Type::StructuredMesh:
@@ -1776,16 +1701,16 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     const MeshType *MT = cast<MeshType>(T);
 
     if (MT->getDecl()->isInvalidDecl()) {
-         Width = 8;
-         Align = 8;
-         break;
-       }
+      Width = 8;
+      Align = 8;
+      break;
+    }
     const ASTMeshLayout &Layout = getASTMeshLayout(MT->getDecl());
     Width = toBits(Layout.getSize());
     Align = toBits(Layout.getAlignment());
     break;
   }
-  // ==========================================================================
+  // +========================================================================+
 
   case Type::SubstTemplateTypeParm:
     return getTypeInfo(cast<SubstTemplateTypeParmType>(T)->
@@ -2528,13 +2453,13 @@ QualType ASTContext::getVariableArrayDecayedType(QualType type) const {
   case Type::ObjCInterface:
   case Type::ObjCObjectPointer:
   case Type::Record:
-  // ===== Scout ==============================================================
+  // +==== Scout =============================================================+
   // Meshes are not variably-modified
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
   case Type::UnstructuredMesh:
-  // ==========================================================================
+  // +========================================================================+
   case Type::Enum:
   case Type::UnresolvedUsing:
   case Type::TypeOfExpr:
@@ -3069,8 +2994,7 @@ QualType ASTContext::getTypeDeclTypeSlow(const TypeDecl *Decl) const {
     assert(!Enum->getPreviousDecl() &&
            "enum has previous declaration");
     return getEnumType(Enum);
-  // ===== Scout ==============================================================
-  //
+  // +===== Scout ============================================================+
   } else if (const UniformMeshDecl *Mesh = dyn_cast<UniformMeshDecl>(Decl)) {
     return getUniformMeshType(Mesh);
   } else if (const StructuredMeshDecl *Mesh =
@@ -3082,7 +3006,7 @@ QualType ASTContext::getTypeDeclTypeSlow(const TypeDecl *Decl) const {
   } else if (const UnstructuredMeshDecl *Mesh =
       dyn_cast<UnstructuredMeshDecl>(Decl)) {
     return getUnstructuredMeshType(Mesh);
-  // ==========================================================================
+  // +========================================================================+
   } else if (const UnresolvedUsingTypenameDecl *Using =
                dyn_cast<UnresolvedUsingTypenameDecl>(Decl)) {
     Type *newType = new (*this, TypeAlignment) UnresolvedUsingType(Using);
@@ -5250,33 +5174,6 @@ static char getObjCEncodingForPrimitiveKind(const ASTContext *C,
     case BuiltinType::KIND:
 #include "clang/AST/BuiltinTypes.def"
       llvm_unreachable("invalid builtin type for @encode");
-    // ===== Scout ==============================================================
-    // SC_TODO - we need to replace Scout's vector types with the
-    // Clang "builtin" version.  This has been done in the "refactor"
-    // branch but needs to be merged back into "devel"...
-    case BuiltinType::Bool2:
-    case BuiltinType::Bool3:
-    case BuiltinType::Bool4:
-    case BuiltinType::Char2:
-    case BuiltinType::Char3:
-    case BuiltinType::Char4:
-    case BuiltinType::Short2:
-    case BuiltinType::Short3:
-    case BuiltinType::Short4:
-    case BuiltinType::Int2:
-    case BuiltinType::Int3:
-    case BuiltinType::Int4:
-    case BuiltinType::Long2:
-    case BuiltinType::Long3:
-    case BuiltinType::Long4:
-    case BuiltinType::Float2:
-    case BuiltinType::Float3:
-    case BuiltinType::Float4:
-    case BuiltinType::Double2:
-    case BuiltinType::Double3:
-    case BuiltinType::Double4:
-      llvm_unreachable("invalid builtin type for scout type");
-    // ==========================================================================
     }
     llvm_unreachable("invalid BuiltinType::Kind value");
 }
@@ -5685,13 +5582,13 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
   case Type::KIND:
 #include "clang/AST/TypeNodes.def"
     llvm_unreachable("@encode for dependent type!");
-  // ===== Scout ==============================================================
+  // +===== Scout ============================================================+
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
   case Type::UnstructuredMesh:
     return;
-  // ==========================================================================
+  // +========================================================================+
   }
   llvm_unreachable("bad type kind!");
 }
@@ -7515,13 +7412,13 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
   }
   case Type::FunctionNoProto:
     return mergeFunctionTypes(LHS, RHS, OfBlockPointer, Unqualified);
-  // ==== Scout ===============================================================
+  // +=== Scout ==============================================================+
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
   case Type::UnstructuredMesh:
     return QualType();
-  // ==========================================================================
+  // +========================================================================+
   case Type::Record:
   case Type::Enum:
     return QualType();
@@ -8213,7 +8110,9 @@ size_t ASTContext::getSideTableAllocatedMemory() const {
     + llvm::capacity_in_bytes(InstantiatedFromUsingDecl)
     + llvm::capacity_in_bytes(InstantiatedFromUsingShadowDecl)
     + llvm::capacity_in_bytes(InstantiatedFromUnnamedFieldDecl)
+    // +===== Scout ==========================================================+
     + llvm::capacity_in_bytes(InstantiatedFromUnnamedMeshFieldDecl)
+    // +======================================================================+
     + llvm::capacity_in_bytes(OverriddenMethods)
     + llvm::capacity_in_bytes(Types)
     + llvm::capacity_in_bytes(VariableArrayTypes)

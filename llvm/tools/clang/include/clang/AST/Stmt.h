@@ -2113,7 +2113,8 @@ public:
 };
 
 // +==== Scout ===============================================================+
-//
+
+
 // ----- ForallStmt : base class for forall statements
 //
 // This class handles the basic functionality of all forall-style statements.

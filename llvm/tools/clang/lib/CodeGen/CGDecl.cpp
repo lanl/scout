@@ -45,7 +45,6 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
   case Decl::CXXDestructor:
   case Decl::CXXConversion:
   case Decl::Field:
-  case Decl::MeshField:    
   case Decl::MSProperty:
   case Decl::IndirectField:
   case Decl::ObjCIvar:
@@ -75,6 +74,13 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
   case Decl::ClassScopeFunctionSpecialization:
   case Decl::UsingShadow:
     llvm_unreachable("Declaration should not be in declstmts!");
+
+  // +===== Scout ============================================================+
+  case Decl::MeshField:
+    llvm_unreachable("Declaration should not be in declstmts!");
+  // +========================================================================+
+
+
   case Decl::Function:  // void X();
   case Decl::Record:    // struct/union/class X;
   case Decl::Enum:      // enum X;
@@ -88,13 +94,15 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
     // None of these decls require codegen support.
     return;
 
-  // ===== Scout ==============================================================
+  // +==== Scout =============================================================+
   case Decl::UniformMesh:
   case Decl::StructuredMesh:
   case Decl::RectilinearMesh:
   case Decl::UnstructuredMesh:
+    // None of these decls require codegen support.
+    // SC_TODO : Is this really true in the big picture of DSL debugging?
     return;
-  // ==========================================================================
+  // +========================================================================+
 
 
   case Decl::NamespaceAlias:
@@ -723,7 +731,7 @@ static bool canEmitInitWithFewStoresAfterMemset(llvm::Constant *Init,
     }
     return true;
   }
-  
+
   if (llvm::ConstantDataSequential *CDS =
         dyn_cast<llvm::ConstantDataSequential>(Init)) {
     for (unsigned i = 0, e = CDS->getNumElements(); i != e; ++i) {
@@ -752,8 +760,8 @@ static void emitStoresForInitAfterMemset(llvm::Constant *Init, llvm::Value *Loc,
     Builder.CreateStore(Init, Loc, isVolatile);
     return;
   }
-  
-  if (llvm::ConstantDataSequential *CDS = 
+
+  if (llvm::ConstantDataSequential *CDS =
         dyn_cast<llvm::ConstantDataSequential>(Init)) {
     for (unsigned i = 0, e = CDS->getNumElements(); i != e; ++i) {
       llvm::Constant *Elt = CDS->getElementAsConstant(i);
@@ -919,11 +927,10 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
       Alloc->setAlignment(allocaAlignment.getQuantity());
       DeclPtr = Alloc;
 
-      // ===== Scout ========================================================
+      // +===== Scout ========================================================+
       // SC_TODO - we need to make sure we handle other mesh types here.
         EmitScoutAutoVarAlloca(Alloc, D);
-      // 
-      // ====================================================================
+      // +====================================================================+
 
       // Emit a lifetime intrinsic if meaningful.  There's no point
       // in doing this if we don't have a valid insertion point (?).

@@ -37,8 +37,10 @@
 #include "llvm/ADT/SmallString.h"
 #include "clang/Sema/Lookup.h"
 
-// scout
+
+// +===== Scout ==============================================================+
 #include "clang/AST/ASTContext.h"
+// +==========================================================================+
 
 using namespace clang;
 
@@ -153,11 +155,12 @@ Retry:
       return ParseLabeledStatement(Attrs);
     }
 
-    //================================================================================
-    // scout -  parse a mesh statement like forall shorthand
+    // +===== Scout ==========================================================+
+    // Parse a mesh statement like forall shorthand
     StmtResult SR;
-    if(ParseMeshStatement(Stmts, OnlyStatement, Next, SR)) return SR;
-    //================================================================================
+    if (ParseMeshStatement(Stmts, OnlyStatement, Next, SR))
+      return SR;
+    // +======================================================================+
 
     // Look up the identifier, and typo-correct it to a keyword if it's not
     // found.
@@ -243,8 +246,7 @@ Retry:
   case tok::kw_for:                 // C99 6.8.5.3: for-statement
     return ParseForStatement(TrailingElseLoc);
 
-  // +----- Scout statements -------------------------------------------------+
-  //
+  // +===== Scout ============================================================+
   case tok::kw_forall: {
     const Token& t = GetLookAheadToken(1);
     switch(t.getKind()) {
@@ -279,6 +281,7 @@ Retry:
     return ParseWindowOrImageDeclaration(false, Stmts, OnlyStatement);
   case tok::kw_camera:
     return ParseCameraDeclaration(Stmts, OnlyStatement);
+  // +========================================================================+
 
   case tok::kw_goto:                // C99 6.8.6.1: goto-statement
     Res = ParseGotoStatement();

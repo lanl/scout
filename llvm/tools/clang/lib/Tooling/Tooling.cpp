@@ -181,10 +181,11 @@ bool ToolInvocation::run() {
   OwningPtr<clang::CompilerInvocation> Invocation(
       newInvocation(&Diagnostics, *CC1Args));
 
-  // ===== Scout ===================================================================
+  // +===== Scout ============================================================+
   // Attach the path of the scc executable
-  Invocation.get()->getCodeGenOpts().SccPath = Driver.get()->getClangProgramPath();
-  // ===============================================================================    
+  Invocation.get()->getCodeGenOpts().SccPath =
+      Driver.get()->getClangProgramPath();
+  // +========================================================================+
   return runInvocation(BinaryName, Compilation.get(), Invocation.take());
 }
 
