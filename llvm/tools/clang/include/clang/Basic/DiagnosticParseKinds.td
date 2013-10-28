@@ -54,13 +54,9 @@ def warn_duplicate_declspec : Warning<"duplicate '%0' declaration specifier">,
 def ext_plain_complex : ExtWarn<
   "plain '_Complex' requires a type specifier; assuming '_Complex double'">;
 def ext_integer_complex : Extension<
-  "complex integer types are a GNU extension">, InGroup<GNU>;
+  "complex integer types are a GNU extension">, InGroup<GNUComplexInteger>;
 def ext_thread_before : Extension<"'__thread' before '%0'">;
 
-def ext_empty_struct_union : Extension<
-  "empty %select{struct|union}0 is a GNU extension">, InGroup<GNU>;
-def warn_empty_struct_union_compat : Warning<"empty %select{struct|union}0 "
-  "has size 0 in C, size 1 in C++">, InGroup<CXXCompat>, DefaultIgnore;
 def error_empty_enum : Error<"use of empty enum">;
 def err_invalid_sign_spec : Error<"'%0' cannot be signed or unsigned">;
 def err_invalid_short_spec : Error<"'short %0' is invalid">;
@@ -91,7 +87,7 @@ def err_enumerator_list_missing_comma : Error<
 def err_enumerator_unnamed_no_def : Error<
   "unnamed enumeration must be a definition">;
 def ext_cxx11_enum_fixed_underlying_type : Extension<
-  "enumeration types with a fixed underlying type are a C++11 extension">,
+  "enumeration types with a fixed underlying type are a C++11 extension">, 
   InGroup<CXX11>;
 def ext_c_enum_fixed_underlying_type : Extension<
   "enumeration types with a fixed underlying type are a Microsoft extension">,
@@ -103,10 +99,10 @@ def warn_cxx98_compat_alignof : Warning<
   "alignof expressions are incompatible with C++98">,
   InGroup<CXX98Compat>, DefaultIgnore;
 def ext_alignof_expr : ExtWarn<
-  "%0 applied to an expression is a GNU extension">, InGroup<GNU>;
+  "%0 applied to an expression is a GNU extension">, InGroup<GNUAlignofExpression>;
 
 def warn_microsoft_dependent_exists : Warning<
-  "dependent %select{__if_not_exists|__if_exists}0 declarations are ignored">,
+  "dependent %select{__if_not_exists|__if_exists}0 declarations are ignored">, 
   InGroup<DiagGroup<"microsoft-exists">>;
 
 def ext_c11_generic_selection : Extension<
@@ -123,28 +119,26 @@ def ext_c11_noreturn : Extension<
   "_Noreturn functions are a C11-specific feature">, InGroup<C11>;
 
 def ext_gnu_indirect_goto : Extension<
-  "use of GNU indirect-goto extension">, InGroup<GNU>;
+  "use of GNU indirect-goto extension">, InGroup<GNULabelsAsValue>;
 def ext_gnu_address_of_label : Extension<
-  "use of GNU address-of-label extension">, InGroup<GNU>;
-def ext_gnu_local_label : Extension<
-  "use of GNU locally declared label extension">, InGroup<GNU>;
+  "use of GNU address-of-label extension">, InGroup<GNULabelsAsValue>;
 def ext_gnu_statement_expr : Extension<
-  "use of GNU statement expression extension">, InGroup<GNU>;
+  "use of GNU statement expression extension">, InGroup<GNUStatementExpression>;
 def ext_gnu_conditional_expr : Extension<
-  "use of GNU ?: expression extension, eliding middle term">, InGroup<GNU>;
+  "use of GNU ?: conditional expression extension, omitting middle operand">, InGroup<GNUConditionalOmittedOperand>;
 def ext_gnu_empty_initializer : Extension<
-  "use of GNU empty initializer extension">, InGroup<GNU>;
-def ext_gnu_array_range : Extension<"use of GNU array range extension">,
+  "use of GNU empty initializer extension">, InGroup<GNUEmptyInitializer>;
+def ext_gnu_array_range : Extension<"use of GNU array range extension">, 
   InGroup<GNUDesignator>;
 def ext_gnu_missing_equal_designator : ExtWarn<
-  "use of GNU 'missing =' extension in designator">,
+  "use of GNU 'missing =' extension in designator">, 
   InGroup<GNUDesignator>;
 def err_expected_equal_designator : Error<"expected '=' or another designator">;
 def ext_gnu_old_style_field_designator : ExtWarn<
-  "use of GNU old-style field designator extension">,
+  "use of GNU old-style field designator extension">, 
   InGroup<GNUDesignator>;
 def ext_gnu_case_range : Extension<"use of GNU case range extension">,
-  InGroup<GNU>;
+  InGroup<GNUCaseRange>;
 
 // Generic errors.
 def err_expected_expression : Error<"expected expression">;
@@ -156,7 +150,7 @@ def err_expected_ident_lparen : Error<"expected identifier or '('">;
 def err_expected_ident_lbrace : Error<"expected identifier or '{'">;
 def err_expected_lbrace : Error<"expected '{'">;
 def err_expected_lparen : Error<"expected '('">;
-def err_expected_lparen_or_lbrace : Error<"expected '('or '{'">;
+def err_expected_lparen_or_lbrace : Error<"expected '(' or '{'">;
 def err_expected_rparen : Error<"expected ')'">;
 def err_expected_lsquare : Error<"expected '['">;
 def err_expected_rsquare : Error<"expected ']'">;
@@ -183,10 +177,10 @@ def err_at_in_class : Error<"unexpected '@' in member specification">;
 def err_expected_fn_body : Error<
   "expected function body after function declarator">;
 def warn_attribute_on_function_definition : Warning<
-  "GCC does not allow %0 attribute in this position on a function definition">,
+  "GCC does not allow %0 attribute in this position on a function definition">, 
   InGroup<GccCompat>;
 def warn_attribute_no_decl : Warning<
-  "attribute %0 ignored, because it is not attached to a declaration">,
+  "attribute %0 ignored, because it is not attached to a declaration">, 
   InGroup<IgnoredAttributes>;
 def err_expected_method_body : Error<"expected method body">;
 def err_invalid_token_after_toplevel_declarator : Error<
@@ -309,10 +303,15 @@ def warn_cxx98_compat_decltype : Warning<
 def err_unexpected_scope_on_base_decltype : Error<
   "unexpected namespace scope prior to decltype">;
 def err_expected_class_name : Error<"expected class name">;
-def err_expected_class_name_not_template :
+def err_expected_class_name_not_template : 
   Error<"'typename' is redundant; base classes are implicitly types">;
 def err_unspecified_vla_size_with_static : Error<
   "'static' may not be used with an unspecified variable length array size">;
+def warn_deprecated_register : Warning<
+  "'register' storage class specifier is deprecated">,
+  InGroup<DeprecatedRegister>;
+def err_expected_parentheses_around_typename : Error<
+  "expected parentheses around type name in %0 expression">;
 
 def err_expected_case_before_expression: Error<
   "expected 'case' keyword before expression">;
@@ -400,7 +399,7 @@ def warn_arc_bridge_cast_nonarc : Warning<
   "'%0' casts have no effect when not using ARC">,
   InGroup<DiagGroup<"arc-bridge-casts-disallowed-in-nonarc">>;
 }
-
+  
 def err_objc_illegal_visibility_spec : Error<
   "illegal visibility specification">;
 def err_objc_illegal_interface_qual : Error<"illegal interface qualifier">;
@@ -456,6 +455,7 @@ def err_invalid_operator_on_type : Error<
   "cannot use %select{dot|arrow}0 operator on a type">;
 def err_expected_unqualified_id : Error<
   "expected %select{identifier|unqualified-id}0">;
+def err_unexpected_unqualified_id : Error<"type-id cannot have a name">;
 def err_func_def_no_params : Error<
   "function definition does not declare parameters">;
 def err_expected_lparen_after_type : Error<
@@ -487,6 +487,8 @@ def err_expected_rbrace_or_comma : Error<"expected '}' or ','">;
 def err_expected_rsquare_or_comma : Error<"expected ']' or ','">;
 def err_using_namespace_in_class : Error<
   "'using namespace' is not allowed in classes">;
+def err_constructor_bad_name : Error<
+  "missing return type for function %0; did you mean the constructor name %1?">;
 def err_destructor_tilde_identifier : Error<
   "expected a class name after '~' to name a destructor">;
 def err_destructor_template_id : Error<
@@ -503,6 +505,9 @@ def err_misplaced_ellipsis_in_declaration : Error<
 def ext_abstract_pack_declarator_parens : ExtWarn<
   "ISO C++11 requires a parenthesized pack declaration to have a name">,
   InGroup<DiagGroup<"anonymous-pack-parens">>;
+def err_function_is_not_record : Error<
+  "unexpected '%select{.|->}0' in function call; perhaps remove the "
+  "'%select{.|->}0'?">;
 
 // C++ derived classes
 def err_dup_virtual : Error<"duplicate 'virtual' in base specifier">;
@@ -584,7 +589,7 @@ def err_two_right_angle_brackets_need_space : Error<
 def err_right_angle_bracket_equal_needs_space : Error<
   "a space is required between a right angle bracket and an equals sign "
   "(use '> =')">;
-def warn_cxx0x_right_shift_in_template_arg : Warning<
+def warn_cxx11_right_shift_in_template_arg : Warning<
   "use of right-shift operator ('>>') in template argument will require "
   "parentheses in C++11">, InGroup<CXX11Compat>;
 def warn_cxx98_compat_two_right_angle_brackets : Warning<
@@ -598,6 +603,12 @@ def err_explicit_instantiation_with_definition : Error<
     "explicit template instantiation cannot have a definition; if this "
     "definition is meant to be an explicit specialization, add '<>' after the "
     "'template' keyword">;
+def err_template_defn_explicit_instantiation : Error<
+  "%select{function|class|variable}0 cannot be defined in an explicit instantiation; if this "
+  "declaration is meant to be a %select{function|class|variable}0 definition, remove the 'template' keyword">;
+def err_friend_explicit_instantiation : Error<
+  "friend cannot be declared in an explicit instantiation; if this "
+  "declaration is meant to be a friend declaration, remove the 'template' keyword">;
 def err_explicit_instantiation_enum : Error<
     "enumerations cannot be explicitly instantiated">;
 def err_expected_template_parameter : Error<"expected template parameter">;
@@ -614,8 +625,8 @@ def warn_cxx98_compat_extern_template : Warning<
   InGroup<CXX98CompatPedantic>, DefaultIgnore;
 def warn_static_inline_explicit_inst_ignored : Warning<
   "ignoring '%select{static|inline}0' keyword on explicit template "
-  "instantiation">;
-
+  "instantiation">, InGroup<DiagGroup<"static-inline-explicit-instantiation">>;
+  
 // Constructor template diagnostics.
 def err_out_of_line_constructor_template_id : Error<
   "out-of-line constructor for %0 cannot have template arguments">;
@@ -640,11 +651,11 @@ def err_expected_type_name_after_typename : Error<
 def err_explicit_spec_non_template : Error<
   "explicit %select{specialization|instantiation}0 of non-template "
   "%select{class|struct|union|interface}1 %2">;
-
+  
 def err_default_template_template_parameter_not_template : Error<
   "default template argument for a template template parameter must be a class "
   "template">;
-
+  
 def err_ctor_init_missing_comma : Error<
   "missing ',' between base or member initializers">;
 
@@ -689,7 +700,7 @@ def err_alias_declaration_not_identifier : Error<
   "name defined in alias declaration must be an identifier">;
 def err_alias_declaration_specialization : Error<
   "%select{partial specialization|explicit specialization|explicit instantiation}0 of alias templates is not permitted">;
-
+    
 // C++11 override control
 def ext_override_control_keyword : ExtWarn<
   "'%0' keyword is a C++11 extension">, InGroup<CXX11>;
@@ -698,6 +709,9 @@ def warn_cxx98_compat_override_control_keyword : Warning<
   InGroup<CXX98Compat>, DefaultIgnore;
 def err_override_control_interface : Error<
   "'%0' keyword not permitted with interface types">;
+def ext_ms_sealed_keyword : ExtWarn<
+  "'sealed' keyword is a Microsoft extension">,
+  InGroup<Microsoft>;
 
 def err_access_specifier_interface : Error<
   "interface types cannot specify '%select{private|protected}0' access">;
@@ -764,11 +778,11 @@ def warn_pragma_expected_lparen : Warning<
 def warn_pragma_expected_rparen : Warning<
   "missing ')' after '#pragma %0' - ignoring">;
 def warn_pragma_expected_identifier : Warning<
-  "expected identifier in '#pragma %0' - ignored">;
+  "expected identifier in '#pragma %0' - ignored">;  
 def warn_pragma_ms_struct : Warning<
-  "incorrect use of '#pragma ms_struct on|off' - ignored">;
+  "incorrect use of '#pragma ms_struct on|off' - ignored">;  
 def warn_pragma_extra_tokens_at_eol : Warning<
-  "extra tokens at end of '#pragma %0' - ignored">;
+  "extra tokens at end of '#pragma %0' - ignored">; 
 // - #pragma options
 def warn_pragma_options_expected_align : Warning<
   "expected 'align' following '#pragma options' - ignored">;
@@ -789,12 +803,15 @@ def warn_pragma_unused_expected_punc : Warning<
 // - #pragma fp_contract
 def err_pragma_fp_contract_scope : Error<
   "'#pragma fp_contract' should only appear at file scope or at the start of a "
-  "compound expression">;
+  "compound expression">; 
 // - #pragma comment
 def err_pragma_comment_malformed : Error<
   "pragma comment requires parenthesized identifier and optional string">;
 def err_pragma_comment_unknown_kind : Error<"unknown kind of pragma comment">;
-
+// - #pragma detect_mismatch
+def err_pragma_detect_mismatch_malformed : Error<
+  "pragma detect_mismatch is malformed; it requires two comma-separated "
+  "string literals">;
 
 // OpenCL Section 6.8.g
 def err_not_opencl_storage_class_specifier : Error<
@@ -820,7 +837,6 @@ def err_seh___except_filter : Error<
 def err_seh___finally_block : Error<
   "%0 only allowed in __finally block">;
 
-
 // OpenMP support.
 def warn_pragma_omp_ignored : Warning <
   "unexpected '#pragma omp ...' in program">, InGroup<SourceUsesOpenMP>, DefaultIgnore;
@@ -831,6 +847,12 @@ def err_omp_unknown_directive : Error <
   "expected an OpenMP directive">;
 def err_omp_unexpected_directive : Error <
   "unexpected OpenMP directive '#pragma omp %0'">;
+def err_omp_expected_punc : Error <
+  "expected ',' or ')' in %select{'#pragma omp %1'|'%1' clause}0">;
+def err_omp_unexpected_clause : Error <
+  "unexpected OpenMP clause '%0' in directive '#pragma omp %1'">;
+def err_omp_more_one_clause : Error <
+  "directive '#pragma omp %0' cannot contain more than one '%1' clause">;
 
 // +===== Scout =============================================================+
 def warn_empty_mesh:Warning<

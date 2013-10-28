@@ -24,14 +24,14 @@ namespace clang {
     TSW_long,
     TSW_longlong
   };
-
+  
   /// \brief Specifies the signedness of a type, e.g., signed or unsigned.
   enum TypeSpecifierSign {
     TSS_unspecified,
     TSS_signed,
     TSS_unsigned
   };
-
+  
   /// \brief Specifies the kind of type.
   enum TypeSpecifierType {
     TST_unspecified,
@@ -79,7 +79,7 @@ namespace clang {
     TST_event_t,          // OpenCL event_t
     TST_error         // erroneous type
   };
-
+  
   /// \brief Structure that packs information about the type specifiers that
   /// were written in a particular type specifier sequence.
   struct WrittenBuiltinSpecs {
@@ -87,7 +87,7 @@ namespace clang {
     /*DeclSpec::TSS*/ unsigned Sign  : 2;
     /*DeclSpec::TSW*/ unsigned Width : 2;
     bool ModeAttr : 1;
-  };
+  };  
 
   /// \brief A C++ access specifier (public, private, protected), plus the
   /// special value "none" which means different things in different contexts.
@@ -130,15 +130,15 @@ namespace clang {
     /// An Objective-C property is a logical field of an Objective-C
     /// object which is read and written via Objective-C method calls.
     OK_ObjCProperty,
-
+    
     /// An Objective-C array/dictionary subscripting which reads an
     /// object or writes at the subscripted array/dictionary element via
     /// Objective-C method calls.
     OK_ObjCSubscript
   };
 
-  // \brief Describes the kind of template specialization that a
-  // particular template specialization declaration represents.
+  /// \brief Describes the kind of template specialization that a
+  /// particular template specialization declaration represents.
   enum TemplateSpecializationKind {
     /// This template specialization was formed from a template-id but
     /// has not yet been declared, defined, or instantiated.
@@ -159,6 +159,13 @@ namespace clang {
     /// (C++ [temp.explicit]).
     TSK_ExplicitInstantiationDefinition
   };
+
+  /// \brief Determine whether this template specialization kind refers
+  /// to an instantiation of an entity (as opposed to a non-template or
+  /// an explicit specialization).
+  inline bool isTemplateInstantiation(TemplateSpecializationKind Kind) {
+    return Kind != TSK_Undeclared && Kind != TSK_ExplicitSpecialization;
+  }
 
   /// \brief Thread storage-class-specifier.
   enum ThreadStorageClassSpecifier {
@@ -206,18 +213,40 @@ namespace clang {
 
   /// \brief CallingConv - Specifies the calling convention that a function uses.
   enum CallingConv {
-    CC_Default,
     CC_C,           // __attribute__((cdecl))
     CC_X86StdCall,  // __attribute__((stdcall))
     CC_X86FastCall, // __attribute__((fastcall))
     CC_X86ThisCall, // __attribute__((thiscall))
     CC_X86Pascal,   // __attribute__((pascal))
+    CC_X86_64Win64, // __attribute__((ms_abi))
+    CC_X86_64SysV,  // __attribute__((sysv_abi))
     CC_AAPCS,       // __attribute__((pcs("aapcs")))
     CC_AAPCS_VFP,   // __attribute__((pcs("aapcs-vfp")))
     CC_PnaclCall,   // __attribute__((pnaclcall))
     CC_IntelOclBicc // __attribute__((intel_ocl_bicc))
   };
 
+  /// \brief Checks whether the given calling convention is callee-cleanup.
+  inline bool isCalleeCleanup(CallingConv CC) {
+    switch (CC) {
+    case CC_X86StdCall:
+    case CC_X86FastCall:
+    case CC_X86ThisCall:
+    case CC_X86Pascal:
+      return true;
+    default:
+      return false;
+    }
+  }
+
+  /// \brief The storage duration for an object (per C++ [basic.stc]).
+  enum StorageDuration {
+    SD_FullExpression, ///< Full-expression storage duration (for temporaries).
+    SD_Automatic,      ///< Automatic storage duration (most local variables).
+    SD_Thread,         ///< Thread storage duration.
+    SD_Static,         ///< Static storage duration.
+    SD_Dynamic         ///< Dynamic storage duration.
+  };
 } // end namespace clang
 
 #endif // LLVM_CLANG_BASIC_SPECIFIERS_H

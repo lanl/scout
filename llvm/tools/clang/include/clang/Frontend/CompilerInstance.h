@@ -111,9 +111,9 @@ class CompilerInstance : public ModuleLoader {
   llvm::DenseMap<const IdentifierInfo *, Module *> KnownModules;
 
   /// \brief The location of the module-import keyword for the last module
-  /// import.
+  /// import. 
   SourceLocation LastModuleImportLoc;
-
+  
   /// \brief The result of the last module import.
   ///
   ModuleLoadResult LastModuleImportResult;
@@ -332,7 +332,7 @@ public:
   void setDiagnostics(DiagnosticsEngine *Value);
 
   DiagnosticConsumer &getDiagnosticClient() const {
-    assert(Diagnostics && Diagnostics->getClient() &&
+    assert(Diagnostics && Diagnostics->getClient() && 
            "Compiler instance has no diagnostic client!");
     return *Diagnostics->getClient();
   }
@@ -454,13 +454,13 @@ public:
   /// {
   bool hasSema() const { return TheSema.isValid(); }
 
-  Sema &getSema() const {
+  Sema &getSema() const { 
     assert(TheSema && "Compiler instance has no Sema object!");
     return *TheSema;
   }
-
+  
   Sema *takeSema() { return TheSema.take(); }
-
+  
   /// }
   /// @name Module Management
   /// {
@@ -532,7 +532,7 @@ public:
   /// attached to (and, then, owned by) the DiagnosticsEngine inside this AST
   /// unit.
   ///
-  /// \param ShouldOwnClient If Client is non-NULL, specifies whether
+  /// \param ShouldOwnClient If Client is non-NULL, specifies whether 
   /// the diagnostic object should take ownership of the client.
   void createDiagnostics(DiagnosticConsumer *Client = 0,
                          bool ShouldOwnClient = true);
@@ -630,10 +630,10 @@ public:
   /// \return - Null on error.
   llvm::raw_fd_ostream *
   createOutputFile(StringRef OutputPath,
-                   bool Binary = true, bool RemoveFileOnSignal = true,
-                   StringRef BaseInput = "",
-                   StringRef Extension = "",
-                   bool UseTemporary = false,
+                   bool Binary, bool RemoveFileOnSignal,
+                   StringRef BaseInput,
+                   StringRef Extension,
+                   bool UseTemporary,
                    bool CreateMissingDirectories = false);
 
   /// Create a new output file, optionally deriving the output path name.
@@ -663,13 +663,13 @@ public:
   /// will be stored here on success.
   static llvm::raw_fd_ostream *
   createOutputFile(StringRef OutputPath, std::string &Error,
-                   bool Binary = true, bool RemoveFileOnSignal = true,
-                   StringRef BaseInput = "",
-                   StringRef Extension = "",
-                   bool UseTemporary = false,
-                   bool CreateMissingDirectories = false,
-                   std::string *ResultPathName = 0,
-                   std::string *TempPathName = 0);
+                   bool Binary, bool RemoveFileOnSignal,
+                   StringRef BaseInput,
+                   StringRef Extension,
+                   bool UseTemporary,
+                   bool CreateMissingDirectories,
+                   std::string *ResultPathName,
+                   std::string *TempPathName);
 
   /// }
   /// @name Initialization Utility Methods

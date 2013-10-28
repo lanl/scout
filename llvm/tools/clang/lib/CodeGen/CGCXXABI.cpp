@@ -1,4 +1,4 @@
-//===----- CGCXXABI.cpp - Interface to C++ ABIs -----------------*- C++ -*-===//
+//===----- CGCXXABI.cpp - Interface to C++ ABIs ---------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -212,13 +212,6 @@ llvm::Value *CGCXXABI::readArrayCookieImpl(CodeGenFunction &CGF,
   return llvm::ConstantInt::get(CGF.SizeTy, 0);
 }
 
-void CGCXXABI::EmitGuardedInit(CodeGenFunction &CGF,
-                               const VarDecl &D,
-                               llvm::GlobalVariable *GV,
-                               bool PerformInit) {
-  ErrorUnsupportedABI(CGF, "static local variable initialization");
-}
-
 void CGCXXABI::registerGlobalDtor(CodeGenFunction &CGF,
                                   const VarDecl &D,
                                   llvm::Constant *dtor,
@@ -227,7 +220,7 @@ void CGCXXABI::registerGlobalDtor(CodeGenFunction &CGF,
     CGM.ErrorUnsupported(&D, "non-trivial TLS destruction");
 
   // The default behavior is to use atexit.
-  CGF.registerGlobalDtorWithAtExit(dtor, addr);
+  CGF.registerGlobalDtorWithAtExit(D, dtor, addr);
 }
 
 /// Returns the adjustment, in bytes, required for the given
@@ -273,8 +266,9 @@ CharUnits CGCXXABI::getMemberPointerPathAdjustment(const APValue &MP) {
   return ThisAdjustment;
 }
 
-llvm::BasicBlock *CGCXXABI::EmitCtorCompleteObjectHandler(
-                                                         CodeGenFunction &CGF) {
+llvm::BasicBlock *
+CGCXXABI::EmitCtorCompleteObjectHandler(CodeGenFunction &CGF,
+                                        const CXXRecordDecl *RD) {
   if (CGM.getTarget().getCXXABI().hasConstructorVariants())
     llvm_unreachable("shouldn't be called in this ABI");
 
@@ -291,4 +285,8 @@ LValue CGCXXABI::EmitThreadLocalDeclRefExpr(CodeGenFunction &CGF,
                                           const DeclRefExpr *DRE) {
   ErrorUnsupportedABI(CGF, "odr-use of thread_local global");
   return LValue();
+}
+
+bool CGCXXABI::NeedsVTTParameter(GlobalDecl GD) {
+  return false;
 }

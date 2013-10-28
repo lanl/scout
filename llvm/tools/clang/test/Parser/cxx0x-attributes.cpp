@@ -122,6 +122,24 @@ extern "C++" [[]] { } // expected-error {{an attribute list cannot appear here}}
 [[unknown]] using namespace ns; // expected-warning {{unknown attribute 'unknown' ignored}}
 [[noreturn]] using namespace ns; // expected-error {{'noreturn' attribute only applies to functions and methods}}
 
+using [[]] alignas(4) [[]] ns::i; // expected-error {{an attribute list cannot appear here}}
+using [[]] alignas(4) [[]] foobar = int; // expected-error {{an attribute list cannot appear here}} expected-error {{'alignas' attribute only applies to}}
+
+void bad_attributes_in_do_while() {
+  do {} while (
+      [[ns::i); // expected-error {{expected ']'}} \
+                // expected-note {{to match this '['}} \
+                // expected-error {{expected expression}}
+  do {} while (
+      [[a]b ns::i); // expected-error {{expected ']'}} \
+                    // expected-note {{to match this '['}} \
+                    // expected-error {{expected expression}}
+  do {} while (
+      [[ab]ab] ns::i); // expected-error {{an attribute list cannot appear here}}
+  do {} while ( // expected-note {{to match this '('}}
+      alignas(4 ns::i; // expected-note {{to match this '('}}
+} // expected-error 2{{expected ')'}} expected-error {{expected expression}}
+
 [[]] using T = int; // expected-error {{an attribute list cannot appear here}}
 using T [[]] = int; // ok
 template<typename T> using U [[]] = T;
@@ -281,3 +299,8 @@ int v5()[[gnu::unused]]; // expected-warning {{attribute 'unused' ignored}}
 [[attribute_declaration]]; // expected-warning {{unknown attribute 'attribute_declaration' ignored}}
 [[noreturn]]; // expected-error {{'noreturn' attribute only applies to functions and methods}}
 [[carries_dependency]]; // expected-error {{'carries_dependency' attribute only applies to functions, methods, and parameters}}
+
+class A {
+  A([[gnu::unused]] int a);
+};
+A::A([[gnu::unused]] int a) {}

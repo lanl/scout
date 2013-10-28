@@ -24,7 +24,7 @@ public:
   TypeIndexer(IndexingContext &indexCtx, const NamedDecl *parent,
               const DeclContext *DC)
     : IndexCtx(indexCtx), Parent(parent), ParentDC(DC) { }
-
+  
   bool shouldWalkTypesOfTypeLocs() const { return false; }
 
   bool VisitTypedefTypeLoc(TypedefTypeLoc TL) {
@@ -134,7 +134,7 @@ void IndexingContext::indexTypeSourceInfo(TypeSourceInfo *TInfo,
                                           const DeclContext *DC) {
   if (!TInfo || TInfo->getTypeLoc().isNull())
     return;
-
+  
   indexTypeLoc(TInfo->getTypeLoc(), Parent, DC);
 }
 

@@ -1,5 +1,5 @@
 // RUN: %clang_cc1 -fsyntax-only -verify %s
- 
+
 namespace rdar8436162 {
   class ClsA {
   public:

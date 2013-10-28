@@ -131,6 +131,26 @@ TEST(ToolInvocation, TestMapVirtualFile) {
   EXPECT_TRUE(Invocation.run());
 }
 
+TEST(ToolInvocation, TestVirtualModulesCompilation) {
+  // FIXME: Currently, this only tests that we don't exit with an error if a
+  // mapped module.map is found on the include path. In the future, expand this
+  // test to run a full modules enabled compilation, so we make sure we can
+  // rerun modules compilations with a virtual file system.
+  clang::FileManager Files((clang::FileSystemOptions()));
+  std::vector<std::string> Args;
+  Args.push_back("tool-executable");
+  Args.push_back("-Idef");
+  Args.push_back("-fsyntax-only");
+  Args.push_back("test.cpp");
+  clang::tooling::ToolInvocation Invocation(Args, new SyntaxOnlyAction, &Files);
+  Invocation.mapVirtualFile("test.cpp", "#include <abc>\n");
+  Invocation.mapVirtualFile("def/abc", "\n");
+  // Add a module.map file in the include directory of our header, so we trigger
+  // the module.map header search logic.
+  Invocation.mapVirtualFile("def/module.map", "\n");
+  EXPECT_TRUE(Invocation.run());
+}
+
 struct VerifyEndCallback : public SourceFileCallbacks {
   VerifyEndCallback() : BeginCalled(0), EndCalled(0), Matched(false) {}
   virtual bool handleBeginSource(CompilerInstance &CI,
@@ -191,6 +211,47 @@ TEST(runToolOnCode, TestSkipFunctionBody) {
                             "int skipMe() { an_error_here }"));
   EXPECT_FALSE(runToolOnCode(new SkipBodyAction,
                              "int skipMeNot() { an_error_here }"));
+}
+
+struct CheckSyntaxOnlyAdjuster: public ArgumentsAdjuster {
+  bool &Found;
+  bool &Ran;
+
+  CheckSyntaxOnlyAdjuster(bool &Found, bool &Ran) : Found(Found), Ran(Ran) { }
+
+  virtual CommandLineArguments
+  Adjust(const CommandLineArguments &Args) LLVM_OVERRIDE {
+    Ran = true;
+    for (unsigned I = 0, E = Args.size(); I != E; ++I) {
+      if (Args[I] == "-fsyntax-only") {
+        Found = true;
+        break;
+      }
+    }
+    return Args;
+  }
+};
+
+TEST(ClangToolTest, ArgumentAdjusters) {
+  FixedCompilationDatabase Compilations("/", std::vector<std::string>());
+
+  ClangTool Tool(Compilations, std::vector<std::string>(1, "/a.cc"));
+  Tool.mapVirtualFile("/a.cc", "void a() {}");
+
+  bool Found = false;
+  bool Ran = false;
+  Tool.appendArgumentsAdjuster(new CheckSyntaxOnlyAdjuster(Found, Ran));
+  Tool.run(newFrontendActionFactory<SyntaxOnlyAction>());
+  EXPECT_TRUE(Ran);
+  EXPECT_TRUE(Found);
+
+  Ran = Found = false;
+  Tool.clearArgumentsAdjusters();
+  Tool.appendArgumentsAdjuster(new CheckSyntaxOnlyAdjuster(Found, Ran));
+  Tool.appendArgumentsAdjuster(new ClangSyntaxOnlyAdjuster());
+  Tool.run(newFrontendActionFactory<SyntaxOnlyAction>());
+  EXPECT_TRUE(Ran);
+  EXPECT_FALSE(Found);
 }
 
 } // end namespace tooling

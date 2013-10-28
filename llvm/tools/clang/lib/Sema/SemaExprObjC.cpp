@@ -324,7 +324,8 @@ ExprResult Sema::ActOnObjCBoolLiteral(SourceLocation AtLoc,
 /// \brief Check that the given expression is a valid element of an Objective-C
 /// collection literal.
 static ExprResult CheckObjCCollectionLiteralElement(Sema &S, Expr *Element, 
-                                                    QualType T) {  
+                                                    QualType T,
+                                                    bool ArrayLiteral = false) {
   // If the expression is type-dependent, there's nothing for us to do.
   if (Element->isTypeDependent())
     return Element;
@@ -401,14 +402,34 @@ static ExprResult CheckObjCCollectionLiteralElement(Sema &S, Expr *Element,
         Recovered = true;
       }
     }
-    
+  
     if (!Recovered) {
       S.Diag(Element->getLocStart(), diag::err_invalid_collection_element)
         << Element->getType();
       return ExprError();
     }
   }
-  
+  if (ArrayLiteral)
+    if (ObjCStringLiteral *getString =
+          dyn_cast<ObjCStringLiteral>(OrigElement)) {
+      if (StringLiteral *SL = getString->getString()) {
+        unsigned numConcat = SL->getNumConcatenated();
+        if (numConcat > 1) {
+          // Only warn if the concatenated string doesn't come from a macro.
+          bool hasMacro = false;
+          for (unsigned i = 0; i < numConcat ; ++i)
+            if (SL->getStrTokenLoc(i).isMacroID()) {
+              hasMacro = true;
+              break;
+            }
+          if (!hasMacro)
+            S.Diag(Element->getLocStart(),
+                   diag::warn_concatenated_nsarray_literal)
+              << Element->getType();
+        }
+      }
+    }
+
   // Make sure that the element has the type that the container factory 
   // function expects. 
   return S.PerformCopyInitialization(
@@ -710,7 +731,7 @@ ExprResult Sema::BuildObjCArrayLiteral(SourceRange SR, MultiExprArg Elements) {
   for (unsigned I = 0, N = Elements.size(); I != N; ++I) {
     ExprResult Converted = CheckObjCCollectionLiteralElement(*this,
                                                              ElementsBuffer[I],
-                                                             RequiredType);
+                                                             RequiredType, true);
     if (Converted.isInvalid())
       return ExprError();
     
@@ -902,14 +923,10 @@ ExprResult Sema::BuildObjCDictionaryLiteral(SourceRange SR,
   
   QualType Ty
     = Context.getObjCObjectPointerType(
-                                Context.getObjCInterfaceType(NSDictionaryDecl));  
-  return MaybeBindToTemporary(
-           ObjCDictionaryLiteral::Create(Context, 
-                                         llvm::makeArrayRef(Elements, 
-                                                            NumElements),
-                                         HasPackExpansions,
-                                         Ty, 
-                                         DictionaryWithObjectsMethod, SR));
+                                Context.getObjCInterfaceType(NSDictionaryDecl));
+  return MaybeBindToTemporary(ObjCDictionaryLiteral::Create(
+      Context, makeArrayRef(Elements, NumElements), HasPackExpansions, Ty,
+      DictionaryWithObjectsMethod, SR));
 }
 
 ExprResult Sema::BuildObjCEncodeExpression(SourceLocation AtLoc,
@@ -968,8 +985,18 @@ ExprResult Sema::ParseObjCSelectorExpression(Selector Sel,
   if (!Method)
     Method = LookupFactoryMethodInGlobalPool(Sel,
                                           SourceRange(LParenLoc, RParenLoc));
-  if (!Method)
-    Diag(SelLoc, diag::warn_undeclared_selector) << Sel;
+  if (!Method) {
+    if (const ObjCMethodDecl *OM = SelectorsForTypoCorrection(Sel)) {
+      Selector MatchedSel = OM->getSelector();
+      SourceRange SelectorRange(LParenLoc.getLocWithOffset(1),
+                                RParenLoc.getLocWithOffset(-1));
+      Diag(SelLoc, diag::warn_undeclared_selector_with_typo)
+        << Sel << MatchedSel
+        << FixItHint::CreateReplacement(SelectorRange, MatchedSel.getAsString());
+      
+    } else
+        Diag(SelLoc, diag::warn_undeclared_selector) << Sel;
+  }
   
   if (!Method ||
       Method->getImplementationControl() != ObjCMethodDecl::Optional) {
@@ -1222,8 +1249,22 @@ bool Sema::CheckMessageArgumentTypes(QualType ReceiverType,
       DiagID = isClassMessage ? diag::warn_class_method_not_found
                               : diag::warn_inst_method_not_found;
     if (!getLangOpts().DebuggerSupport) {
-      Diag(SelLoc, DiagID)
-        << Sel << isClassMessage << SourceRange(SelectorLocs.front(), 
+      const ObjCMethodDecl *OMD = SelectorsForTypoCorrection(Sel, ReceiverType);
+      if (OMD && !OMD->isInvalidDecl()) {
+        if (getLangOpts().ObjCAutoRefCount)
+          DiagID = diag::error_method_not_found_with_typo;
+        else
+          DiagID = isClassMessage ? diag::warn_class_method_not_found_with_typo
+                                  : diag::warn_instance_method_not_found_with_typo;
+        Selector MatchedSel = OMD->getSelector();
+        SourceRange SelectorRange(SelectorLocs.front(), SelectorLocs.back());
+        Diag(SelLoc, DiagID)
+          << Sel<< isClassMessage << MatchedSel
+          << FixItHint::CreateReplacement(SelectorRange, MatchedSel.getAsString());
+      }
+      else
+        Diag(SelLoc, DiagID)
+          << Sel << isClassMessage << SourceRange(SelectorLocs.front(), 
                                                 SelectorLocs.back());
       // Find the class to which we are sending this message.
       if (ReceiverType->isObjCObjectPointerType()) {
@@ -1334,8 +1375,7 @@ bool Sema::CheckMessageArgumentTypes(QualType ReceiverType,
 
   // Do additional checkings on method.
   IsError |= CheckObjCMethodCall(
-                  Method, SelLoc,
-                  llvm::makeArrayRef<const Expr *>(Args.data(), Args.size()));
+      Method, SelLoc, makeArrayRef<const Expr *>(Args.data(), Args.size()));
 
   return IsError;
 }
@@ -1542,8 +1582,8 @@ HandleExprPropertyRefExpr(const ObjCObjectPointerType *OPT,
   // If we found a getter then this may be a valid dot-reference, we
   // will look for the matching setter, in case it is needed.
   Selector SetterSel =
-    SelectorTable::constructSetterName(PP.getIdentifierTable(),
-                                       PP.getSelectorTable(), Member);
+    SelectorTable::constructSetterSelector(PP.getIdentifierTable(),
+                                           PP.getSelectorTable(), Member);
   ObjCMethodDecl *Setter = IFace->lookupInstanceMethod(SetterSel);
       
   // May be founf in property's qualified list.
@@ -1577,16 +1617,11 @@ HandleExprPropertyRefExpr(const ObjCObjectPointerType *OPT,
   // Attempt to correct for typos in property names.
   DeclFilterCCC<ObjCPropertyDecl> Validator;
   if (TypoCorrection Corrected = CorrectTypo(
-      DeclarationNameInfo(MemberName, MemberLoc), LookupOrdinaryName, NULL,
-      NULL, Validator, IFace, false, OPT)) {
-    ObjCPropertyDecl *Property =
-        Corrected.getCorrectionDeclAs<ObjCPropertyDecl>();
+          DeclarationNameInfo(MemberName, MemberLoc), LookupOrdinaryName, NULL,
+          NULL, Validator, IFace, false, OPT)) {
+    diagnoseTypo(Corrected, PDiag(diag::err_property_not_found_suggest)
+                              << MemberName << QualType(OPT, 0));
     DeclarationName TypoResult = Corrected.getCorrection();
-    Diag(MemberLoc, diag::err_property_not_found_suggest)
-      << MemberName << QualType(OPT, 0) << TypoResult
-      << FixItHint::CreateReplacement(MemberLoc, TypoResult.getAsString());
-    Diag(Property->getLocation(), diag::note_previous_decl)
-      << Property->getDeclName();
     return HandleExprPropertyRefExpr(OPT, BaseExpr, OpLoc,
                                      TypoResult, MemberLoc,
                                      SuperLoc, SuperType, Super);
@@ -1689,8 +1724,9 @@ ActOnClassPropertyRefExpr(IdentifierInfo &receiverName,
 
   // Look for the matching setter, in case it is needed.
   Selector SetterSel =
-    SelectorTable::constructSetterName(PP.getIdentifierTable(),
-                                       PP.getSelectorTable(), &propertyName);
+    SelectorTable::constructSetterSelector(PP.getIdentifierTable(),
+                                           PP.getSelectorTable(),
+                                           &propertyName);
 
   ObjCMethodDecl *Setter = IFace->lookupClassMethod(SetterSel);
   if (!Setter) {
@@ -1817,34 +1853,28 @@ Sema::ObjCMessageKind Sema::getObjCMessageKind(Scope *S,
   }
 
   ObjCInterfaceOrSuperCCC Validator(getCurMethodDecl());
-  if (TypoCorrection Corrected = CorrectTypo(Result.getLookupNameInfo(),
-                                             Result.getLookupKind(), S, NULL,
-                                             Validator)) {
+  if (TypoCorrection Corrected =
+          CorrectTypo(Result.getLookupNameInfo(), Result.getLookupKind(), S,
+                      NULL, Validator, NULL, false, NULL, false)) {
     if (Corrected.isKeyword()) {
       // If we've found the keyword "super" (the only keyword that would be
       // returned by CorrectTypo), this is a send to super.
-      Diag(NameLoc, diag::err_unknown_receiver_suggest)
-        << Name << Corrected.getCorrection()
-        << FixItHint::CreateReplacement(SourceRange(NameLoc), "super");
+      diagnoseTypo(Corrected,
+                   PDiag(diag::err_unknown_receiver_suggest) << Name);
       return ObjCSuperMessage;
     } else if (ObjCInterfaceDecl *Class =
-               Corrected.getCorrectionDeclAs<ObjCInterfaceDecl>()) {
+                   Corrected.getCorrectionDeclAs<ObjCInterfaceDecl>()) {
       // If we found a declaration, correct when it refers to an Objective-C
       // class.
-      Diag(NameLoc, diag::err_unknown_receiver_suggest)
-        << Name << Corrected.getCorrection()
-        << FixItHint::CreateReplacement(SourceRange(NameLoc),
-                                        Class->getNameAsString());
-      Diag(Class->getLocation(), diag::note_previous_decl)
-        << Corrected.getCorrection();
-
+      diagnoseTypo(Corrected,
+                   PDiag(diag::err_unknown_receiver_suggest) << Name);
       QualType T = Context.getObjCInterfaceType(Class);
       TypeSourceInfo *TSInfo = Context.getTrivialTypeSourceInfo(T, NameLoc);
       ReceiverType = CreateParsedType(T, TSInfo);
       return ObjCClassMessage;
     }
   }
-  
+
   // Fall back: let the parser try to parse it as an instance message.
   return ObjCInstanceMessage;
 }
@@ -3132,7 +3162,8 @@ diagnoseObjCARCConversion(Sema &S, SourceRange castRange,
 
 Sema::ARCConversionResult
 Sema::CheckObjCARCConversion(SourceRange castRange, QualType castType,
-                             Expr *&castExpr, CheckedConversionKind CCK) {
+                             Expr *&castExpr, CheckedConversionKind CCK,
+                             bool DiagnoseCFAudited) {
   QualType castExprType = castExpr->getType();
 
   // For the purposes of the classification, we assume reference types
@@ -3213,8 +3244,14 @@ Sema::CheckObjCARCConversion(SourceRange castRange, QualType castType,
       CCK != CCK_ImplicitConversion)
     return ACR_unbridged;
 
-  diagnoseObjCARCConversion(*this, castRange, castType, castACTC,
-                            castExpr, castExpr, exprACTC, CCK);
+  // Do not issue "bridge cast" diagnostic when implicit casting
+  // a retainable object to a CF type parameter belonging to an audited
+  // CF API function. Let caller issue a normal type mismatched diagnostic
+  // instead.
+  if (!DiagnoseCFAudited || exprACTC != ACTC_retainable ||
+      castACTC != ACTC_coreFoundation)
+    diagnoseObjCARCConversion(*this, castRange, castType, castACTC,
+                              castExpr, castExpr, exprACTC, CCK);
   return ACR_okay;
 }
 

@@ -250,6 +250,15 @@ void EmitAssemblyHelper::CreateScoutPasses(TargetMachine *TM) {
 #endif
 }
 
+static void addDataFlowSanitizerPass(const PassManagerBuilder &Builder,
+                                     PassManagerBase &PM) {
+  const PassManagerBuilderWrapper &BuilderWrapper =
+      static_cast<const PassManagerBuilderWrapper&>(Builder);
+  const CodeGenOptions &CGOpts = BuilderWrapper.getCGOpts();
+  PM.add(createDataFlowSanitizerPass(CGOpts.SanitizerBlacklistFile));
+}
+
+
 // ============================================================================
 
 
@@ -270,8 +279,10 @@ void EmitAssemblyHelper::CreatePasses(TargetMachine *TM) {
   PassManagerBuilderWrapper PMBuilder(CodeGenOpts, LangOpts);
   PMBuilder.OptLevel = OptLevel;
   PMBuilder.SizeLevel = CodeGenOpts.OptimizeSize;
+  PMBuilder.BBVectorize = CodeGenOpts.VectorizeBB;
+  PMBuilder.SLPVectorize = CodeGenOpts.VectorizeSLP;
+  PMBuilder.LoopVectorize = CodeGenOpts.VectorizeLoop;
 
-  PMBuilder.DisableSimplifyLibCalls = !CodeGenOpts.SimplifyLibCalls;
   PMBuilder.DisableUnitAtATime = !CodeGenOpts.UnitAtATime;
   PMBuilder.DisableUnrollLoops = !CodeGenOpts.UnrollLoops;
 
@@ -285,7 +296,7 @@ void EmitAssemblyHelper::CreatePasses(TargetMachine *TM) {
                            addObjCARCOptPass);
   }
 
-  if (LangOpts.Sanitize.Bounds) {
+  if (LangOpts.Sanitize.LocalBounds) {
     PMBuilder.addExtension(PassManagerBuilder::EP_ScalarOptimizerLate,
                            addBoundsCheckingPass);
     PMBuilder.addExtension(PassManagerBuilder::EP_EnabledOnOptLevel0,
@@ -313,12 +324,19 @@ void EmitAssemblyHelper::CreatePasses(TargetMachine *TM) {
                            addThreadSanitizerPass);
   }
 
+  if (LangOpts.Sanitize.DataFlow) {
+    PMBuilder.addExtension(PassManagerBuilder::EP_OptimizerLast,
+                           addDataFlowSanitizerPass);
+    PMBuilder.addExtension(PassManagerBuilder::EP_EnabledOnOptLevel0,
+                           addDataFlowSanitizerPass);
+  }
+
   // Figure out TargetLibraryInfo.
   Triple TargetTriple(TheModule->getTargetTriple());
   PMBuilder.LibraryInfo = new TargetLibraryInfo(TargetTriple);
   if (!CodeGenOpts.SimplifyLibCalls)
     PMBuilder.LibraryInfo->disableAllFunctions();
-
+  
   switch (Inlining) {
   case CodeGenOptions::NoInlining: break;
   case CodeGenOptions::NormalInlining: {
@@ -460,13 +478,10 @@ TargetMachine *EmitAssemblyHelper::CreateTargetMachine(bool MustCreateTM) {
   // Set frame pointer elimination mode.
   if (!CodeGenOpts.DisableFPElim) {
     Options.NoFramePointerElim = false;
-    Options.NoFramePointerElimNonLeaf = false;
   } else if (CodeGenOpts.OmitLeafFramePointer) {
     Options.NoFramePointerElim = false;
-    Options.NoFramePointerElimNonLeaf = true;
   } else {
     Options.NoFramePointerElim = true;
-    Options.NoFramePointerElimNonLeaf = true;
   }
 
   if (CodeGenOpts.UseInitArray)
@@ -502,11 +517,9 @@ TargetMachine *EmitAssemblyHelper::CreateTargetMachine(bool MustCreateTM) {
   Options.UnsafeFPMath = CodeGenOpts.UnsafeFPMath;
   Options.UseSoftFloat = CodeGenOpts.SoftFloat;
   Options.StackAlignmentOverride = CodeGenOpts.StackAlignment;
-  Options.RealignStack = CodeGenOpts.StackRealignment;
   Options.DisableTailCalls = CodeGenOpts.DisableTailCalls;
   Options.TrapFuncName = CodeGenOpts.TrapFuncName;
   Options.PositionIndependentExecutable = LangOpts.PIELevel != 0;
-  Options.SSPBufferSize = CodeGenOpts.SSPBufferSize;
   Options.EnableSegmentedStacks = CodeGenOpts.EnableSegmentedStacks;
 
   TargetMachine *TM = TheTarget->createTargetMachine(Triple, TargetOpts.CPU,
@@ -579,6 +592,7 @@ void EmitAssemblyHelper::EmitAssembly(BackendAction Action, raw_ostream *OS) {
                       Action != Backend_EmitLL);
   TargetMachine *TM = CreateTargetMachine(UsesCodeGen);
   if (UsesCodeGen && !TM) return;
+  llvm::OwningPtr<TargetMachine> TMOwner(CodeGenOpts.DisableFree ? 0 : TM);
   CreatePasses(TM);
 
   switch (Action) {

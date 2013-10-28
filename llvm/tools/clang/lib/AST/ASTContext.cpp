@@ -25,7 +25,9 @@
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExternalASTSource.h"
 #include "clang/AST/Mangle.h"
+#include "clang/AST/MangleNumberingContext.h"
 #include "clang/AST/RecordLayout.h"
+#include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/TypeLoc.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/SourceManager.h"
@@ -136,8 +138,14 @@ RawComment *ASTContext::getRawCommentForDeclNoCache(const Decl *D) const {
       isa<RedeclarableTemplateDecl>(D) ||
       isa<ClassTemplateSpecializationDecl>(D))
     DeclLoc = D->getLocStart();
-  else
+  else {
     DeclLoc = D->getLocation();
+    // If location of the typedef name is in a macro, it is because being
+    // declared via a macro. Try using declaration's starting location
+    // as the "declaration location".
+    if (DeclLoc.isMacroID() && isa<TypedefDecl>(D))
+      DeclLoc = D->getLocStart();
+  }
 
   // If the declaration doesn't map directly to a location in a file, we
   // can't find the comment.
@@ -179,7 +187,8 @@ RawComment *ASTContext::getRawCommentForDeclNoCache(const Decl *D) const {
   // First check whether we have a trailing comment.
   if (Comment != RawComments.end() &&
       (*Comment)->isDocumentation() && (*Comment)->isTrailingComment() &&
-      (isa<FieldDecl>(D) || isa<EnumConstantDecl>(D) || isa<VarDecl>(D))) {
+      (isa<FieldDecl>(D) || isa<EnumConstantDecl>(D) || isa<VarDecl>(D) ||
+       isa<ObjCMethodDecl>(D) || isa<ObjCPropertyDecl>(D))) {
     std::pair<FileID, unsigned> CommentBeginDecomp
       = SourceMgr.getDecomposedLoc((*Comment)->getSourceRange().getBegin());
     // Check that Doxygen trailing comment comes after the declaration, starts
@@ -224,7 +233,7 @@ RawComment *ASTContext::getRawCommentForDeclNoCache(const Decl *D) const {
 
   // There should be no other declarations or preprocessor directives between
   // comment and declaration.
-  if (Text.find_first_of(",;{}#@") != StringRef::npos)
+  if (Text.find_first_of(";{}#@") != StringRef::npos)
     return NULL;
 
   return *Comment;
@@ -407,7 +416,7 @@ comments::FullComment *ASTContext::cloneFullComment(comments::FullComment *FC,
     new (*this) comments::FullComment(FC->getBlocks(),
                                       ThisDeclInfo);
   return CFC;
-
+  
 }
 
 comments::FullComment *ASTContext::getLocalCommentForDeclUncached(const Decl *D) const {
@@ -421,11 +430,11 @@ comments::FullComment *ASTContext::getCommentForDecl(
   if (D->isInvalidDecl())
     return NULL;
   D = adjustDeclToTemplate(D);
-
+  
   const Decl *Canonical = D->getCanonicalDecl();
   llvm::DenseMap<const Decl *, comments::FullComment *>::iterator Pos =
       ParsedComments.find(Canonical);
-
+  
   if (Pos != ParsedComments.end()) {
     if (Canonical != D) {
       comments::FullComment *FC = Pos->second;
@@ -434,9 +443,9 @@ comments::FullComment *ASTContext::getCommentForDecl(
     }
     return Pos->second;
   }
-
+  
   const Decl *OriginalDecl;
-
+  
   const RawComment *RC = getRawCommentForAnyRedecl(D, &OriginalDecl);
   if (!RC) {
     if (isa<ObjCMethodDecl>(D) || isa<FunctionDecl>(D)) {
@@ -488,7 +497,7 @@ comments::FullComment *ASTContext::getCommentForDecl(
         if (const CXXRecordDecl *NonVirtualBase = Ty->getAsCXXRecordDecl()) {
           if (!(NonVirtualBase= NonVirtualBase->getDefinition()))
             continue;
-
+        
           if (comments::FullComment *FC = getCommentForDecl((NonVirtualBase), PP))
             return cloneFullComment(FC, D);
         }
@@ -511,7 +520,7 @@ comments::FullComment *ASTContext::getCommentForDecl(
     }
     return NULL;
   }
-
+  
   // If the RawComment was attached to other redeclaration of this Decl, we
   // should parse the comment in context of that other Decl.  This is important
   // because comments can contain references to parameter names which can be
@@ -524,8 +533,8 @@ comments::FullComment *ASTContext::getCommentForDecl(
   return FC;
 }
 
-void
-ASTContext::CanonicalTemplateTemplateParm::Profile(llvm::FoldingSetNodeID &ID,
+void 
+ASTContext::CanonicalTemplateTemplateParm::Profile(llvm::FoldingSetNodeID &ID, 
                                                TemplateTemplateParmDecl *Parm) {
   ID.AddInteger(Parm->getDepth());
   ID.AddInteger(Parm->getPosition());
@@ -533,7 +542,7 @@ ASTContext::CanonicalTemplateTemplateParm::Profile(llvm::FoldingSetNodeID &ID,
 
   TemplateParameterList *Params = Parm->getTemplateParameters();
   ID.AddInteger(Params->size());
-  for (TemplateParameterList::const_iterator P = Params->begin(),
+  for (TemplateParameterList::const_iterator P = Params->begin(), 
                                           PEnd = Params->end();
        P != PEnd; ++P) {
     if (TemplateTypeParmDecl *TTP = dyn_cast<TemplateTypeParmDecl>(*P)) {
@@ -541,7 +550,7 @@ ASTContext::CanonicalTemplateTemplateParm::Profile(llvm::FoldingSetNodeID &ID,
       ID.AddBoolean(TTP->isParameterPack());
       continue;
     }
-
+    
     if (NonTypeTemplateParmDecl *NTTP = dyn_cast<NonTypeTemplateParmDecl>(*P)) {
       ID.AddInteger(1);
       ID.AddBoolean(NTTP->isParameterPack());
@@ -553,11 +562,11 @@ ASTContext::CanonicalTemplateTemplateParm::Profile(llvm::FoldingSetNodeID &ID,
           QualType T = NTTP->getExpansionType(I);
           ID.AddPointer(T.getCanonicalType().getAsOpaquePtr());
         }
-      } else
+      } else 
         ID.AddBoolean(false);
       continue;
     }
-
+    
     TemplateTemplateParmDecl *TTP = cast<TemplateTemplateParmDecl>(*P);
     ID.AddInteger(2);
     Profile(ID, TTP);
@@ -575,17 +584,17 @@ ASTContext::getCanonicalTemplateTemplateParmDecl(
     = CanonTemplateTemplateParms.FindNodeOrInsertPos(ID, InsertPos);
   if (Canonical)
     return Canonical->getParam();
-
+  
   // Build a canonical template parameter list.
   TemplateParameterList *Params = TTP->getTemplateParameters();
   SmallVector<NamedDecl *, 4> CanonParams;
   CanonParams.reserve(Params->size());
-  for (TemplateParameterList::const_iterator P = Params->begin(),
+  for (TemplateParameterList::const_iterator P = Params->begin(), 
                                           PEnd = Params->end();
        P != PEnd; ++P) {
     if (TemplateTypeParmDecl *TTP = dyn_cast<TemplateTypeParmDecl>(*P))
       CanonParams.push_back(
-                  TemplateTypeParmDecl::Create(*this, getTranslationUnitDecl(),
+                  TemplateTypeParmDecl::Create(*this, getTranslationUnitDecl(), 
                                                SourceLocation(),
                                                SourceLocation(),
                                                TTP->getDepth(),
@@ -604,12 +613,12 @@ ASTContext::getCanonicalTemplateTemplateParmDecl(
           ExpandedTInfos.push_back(
                                 getTrivialTypeSourceInfo(ExpandedTypes.back()));
         }
-
+        
         Param = NonTypeTemplateParmDecl::Create(*this, getTranslationUnitDecl(),
                                                 SourceLocation(),
                                                 SourceLocation(),
                                                 NTTP->getDepth(),
-                                                NTTP->getPosition(), 0,
+                                                NTTP->getPosition(), 0, 
                                                 T,
                                                 TInfo,
                                                 ExpandedTypes.data(),
@@ -620,7 +629,7 @@ ASTContext::getCanonicalTemplateTemplateParmDecl(
                                                 SourceLocation(),
                                                 SourceLocation(),
                                                 NTTP->getDepth(),
-                                                NTTP->getPosition(), 0,
+                                                NTTP->getPosition(), 0, 
                                                 T,
                                                 NTTP->isParameterPack(),
                                                 TInfo);
@@ -633,9 +642,9 @@ ASTContext::getCanonicalTemplateTemplateParmDecl(
   }
 
   TemplateTemplateParmDecl *CanonTTP
-    = TemplateTemplateParmDecl::Create(*this, getTranslationUnitDecl(),
+    = TemplateTemplateParmDecl::Create(*this, getTranslationUnitDecl(), 
                                        SourceLocation(), TTP->getDepth(),
-                                       TTP->getPosition(),
+                                       TTP->getPosition(), 
                                        TTP->isParameterPack(),
                                        0,
                          TemplateParameterList::Create(*this, SourceLocation(),
@@ -690,29 +699,42 @@ static const LangAS::Map *getAddressSpaceMap(const TargetInfo &T,
   }
 }
 
+static bool isAddrSpaceMapManglingEnabled(const TargetInfo &TI,
+                                          const LangOptions &LangOpts) {
+  switch (LangOpts.getAddressSpaceMapMangling()) {
+  case LangOptions::ASMM_Target:
+    return TI.useAddressSpaceMapMangling();
+  case LangOptions::ASMM_On:
+    return true;
+  case LangOptions::ASMM_Off:
+    return false;
+  }
+  llvm_unreachable("getAddressSpaceMapMangling() doesn't cover anything.");
+}
+
 ASTContext::ASTContext(LangOptions& LOpts, SourceManager &SM,
                        const TargetInfo *t,
                        IdentifierTable &idents, SelectorTable &sels,
                        Builtin::Context &builtins,
                        unsigned size_reserve,
-                       bool DelayInitialization)
+                       bool DelayInitialization) 
   : FunctionProtoTypes(this_()),
     TemplateSpecializationTypes(this_()),
     DependentTemplateSpecializationTypes(this_()),
     SubstTemplateTemplateParmPacks(this_()),
-    GlobalNestedNameSpecifier(0),
-    Int128Decl(0), UInt128Decl(0),
+    GlobalNestedNameSpecifier(0), 
+    Int128Decl(0), UInt128Decl(0), Float128StubDecl(0),
     BuiltinVaListDecl(0),
     ObjCIdDecl(0), ObjCSelDecl(0), ObjCClassDecl(0), ObjCProtocolClassDecl(0),
     BOOLDecl(0),
     CFConstantStringTypeDecl(0), ObjCInstanceTypeDecl(0),
-    FILEDecl(0),
+    FILEDecl(0), 
     jmp_bufDecl(0), sigjmp_bufDecl(0), ucontext_tDecl(0),
     BlockDescriptorType(0), BlockDescriptorExtendedType(0),
     cudaConfigureCallDecl(0),
-    NullTypeSourceInfo(QualType()),
+    NullTypeSourceInfo(QualType()), 
     FirstLocalImport(), LastLocalImport(),
-    SourceMgr(SM), LangOpts(LOpts),
+    SourceMgr(SM), LangOpts(LOpts), 
     AddrSpaceMap(0), Target(t), PrintingPolicy(LOpts),
     Idents(idents), Selectors(sels),
     BuiltinInfo(builtins),
@@ -724,7 +746,7 @@ ASTContext::ASTContext(LangOptions& LOpts, SourceManager &SM,
 {
   if (size_reserve > 0) Types.reserve(size_reserve);
   TUDecl = TranslationUnitDecl::Create(*this);
-
+  
   if (!DelayInitialization) {
     assert(t && "No target supplied for ASTContext initialization");
     InitBuiltinTypes(*t);
@@ -772,6 +794,12 @@ ASTContext::~ASTContext() {
                                                     AEnd = DeclAttrs.end();
        A != AEnd; ++A)
     A->second->~AttrVec();
+
+  for (llvm::DenseMap<const DeclContext *, MangleNumberingContext *>::iterator
+           I = MangleNumberingContexts.begin(),
+           E = MangleNumberingContexts.end();
+       I != E; ++I)
+    delete I->second;
 }
 
 void ASTContext::AddDeallocation(void (*Callback)(void*), void *Data) {
@@ -845,29 +873,43 @@ void ASTContext::PrintStats() const {
 TypedefDecl *ASTContext::getInt128Decl() const {
   if (!Int128Decl) {
     TypeSourceInfo *TInfo = getTrivialTypeSourceInfo(Int128Ty);
-    Int128Decl = TypedefDecl::Create(const_cast<ASTContext &>(*this),
+    Int128Decl = TypedefDecl::Create(const_cast<ASTContext &>(*this), 
                                      getTranslationUnitDecl(),
                                      SourceLocation(),
                                      SourceLocation(),
                                      &Idents.get("__int128_t"),
                                      TInfo);
   }
-
+  
   return Int128Decl;
 }
 
 TypedefDecl *ASTContext::getUInt128Decl() const {
   if (!UInt128Decl) {
     TypeSourceInfo *TInfo = getTrivialTypeSourceInfo(UnsignedInt128Ty);
-    UInt128Decl = TypedefDecl::Create(const_cast<ASTContext &>(*this),
+    UInt128Decl = TypedefDecl::Create(const_cast<ASTContext &>(*this), 
                                      getTranslationUnitDecl(),
                                      SourceLocation(),
                                      SourceLocation(),
                                      &Idents.get("__uint128_t"),
                                      TInfo);
   }
-
+  
   return UInt128Decl;
+}
+
+TypeDecl *ASTContext::getFloat128StubType() const {
+  assert(LangOpts.CPlusPlus && "should only be called for c++");
+  if (!Float128StubDecl) {
+    Float128StubDecl = CXXRecordDecl::Create(const_cast<ASTContext &>(*this), 
+                                             TTK_Struct,
+                                             getTranslationUnitDecl(),
+                                             SourceLocation(),
+                                             SourceLocation(),
+                                             &Idents.get("__float128"));
+  }
+  
+  return Float128StubDecl;
 }
 
 void ASTContext::InitBuiltinType(CanQualType &R, BuiltinType::Kind K) {
@@ -882,10 +924,11 @@ void ASTContext::InitBuiltinTypes(const TargetInfo &Target) {
   assert(VoidTy.isNull() && "Context reinitialized?");
 
   this->Target = &Target;
-
+  
   ABI.reset(createCXXABI(Target));
   AddrSpaceMap = getAddressSpaceMap(Target, LangOpts);
-
+  AddrSpaceMapMangling = isAddrSpaceMapManglingEnabled(Target, LangOpts);
+  
   // C99 6.2.5p19.
   InitBuiltinType(VoidTy,              BuiltinType::Void);
 
@@ -978,7 +1021,7 @@ void ASTContext::InitBuiltinTypes(const TargetInfo &Target) {
   InitBuiltinType(ObjCBuiltinClassTy, BuiltinType::ObjCClass);
   InitBuiltinType(ObjCBuiltinSelTy, BuiltinType::ObjCSel);
 
-  if (LangOpts.OpenCL) {
+  if (LangOpts.OpenCL) { 
     InitBuiltinType(OCLImage1dTy, BuiltinType::OCLImage1d);
     InitBuiltinType(OCLImage1dArrayTy, BuiltinType::OCLImage1dArray);
     InitBuiltinType(OCLImage1dBufferTy, BuiltinType::OCLImage1dBuffer);
@@ -989,13 +1032,13 @@ void ASTContext::InitBuiltinTypes(const TargetInfo &Target) {
     InitBuiltinType(OCLSamplerTy, BuiltinType::OCLSampler);
     InitBuiltinType(OCLEventTy, BuiltinType::OCLEvent);
   }
-
+  
   // Builtin type for __objc_yes and __objc_no
   ObjCBuiltinBoolTy = (Target.useSignedCharForObjCBool() ?
                        SignedCharTy : BoolTy);
-
+  
   ObjCConstantStringType = QualType();
-
+  
   ObjCSuperType = QualType();
 
   // void * type
@@ -1021,12 +1064,12 @@ AttrVec& ASTContext::getDeclAttrs(const Decl *D) {
     void *Mem = Allocate(sizeof(AttrVec));
     Result = new (Mem) AttrVec;
   }
-
+    
   return *Result;
 }
 
 /// \brief Erase the attributes corresponding to the given declaration.
-void ASTContext::eraseDeclAttrs(const Decl *D) {
+void ASTContext::eraseDeclAttrs(const Decl *D) { 
   llvm::DenseMap<const Decl*, AttrVec*>::iterator Pos = DeclAttrs.find(D);
   if (Pos != DeclAttrs.end()) {
     Pos->second->~AttrVec();
@@ -1034,13 +1077,20 @@ void ASTContext::eraseDeclAttrs(const Decl *D) {
   }
 }
 
+// FIXME: Remove ?
 MemberSpecializationInfo *
 ASTContext::getInstantiatedFromStaticDataMember(const VarDecl *Var) {
   assert(Var->isStaticDataMember() && "Not a static data member");
-  llvm::DenseMap<const VarDecl *, MemberSpecializationInfo *>::iterator Pos
-    = InstantiatedFromStaticDataMember.find(Var);
-  if (Pos == InstantiatedFromStaticDataMember.end())
-    return 0;
+  return getTemplateOrSpecializationInfo(Var)
+      .dyn_cast<MemberSpecializationInfo *>();
+}
+
+ASTContext::TemplateOrSpecializationInfo
+ASTContext::getTemplateOrSpecializationInfo(const VarDecl *Var) {
+  llvm::DenseMap<const VarDecl *, TemplateOrSpecializationInfo>::iterator Pos =
+      TemplateOrInstantiation.find(Var);
+  if (Pos == TemplateOrInstantiation.end())
+    return TemplateOrSpecializationInfo();
 
   return Pos->second;
 }
@@ -1051,10 +1101,16 @@ ASTContext::setInstantiatedFromStaticDataMember(VarDecl *Inst, VarDecl *Tmpl,
                                           SourceLocation PointOfInstantiation) {
   assert(Inst->isStaticDataMember() && "Not a static data member");
   assert(Tmpl->isStaticDataMember() && "Not a static data member");
-  assert(!InstantiatedFromStaticDataMember[Inst] &&
-         "Already noted what static data member was instantiated from");
-  InstantiatedFromStaticDataMember[Inst]
-    = new (*this) MemberSpecializationInfo(Tmpl, TSK, PointOfInstantiation);
+  setTemplateOrSpecializationInfo(Inst, new (*this) MemberSpecializationInfo(
+                                            Tmpl, TSK, PointOfInstantiation));
+}
+
+void
+ASTContext::setTemplateOrSpecializationInfo(VarDecl *Inst,
+                                            TemplateOrSpecializationInfo TSI) {
+  assert(!TemplateOrInstantiation[Inst] &&
+         "Already noted what the variable was instantiated from");
+  TemplateOrInstantiation[Inst] = TSI;
 }
 
 FunctionDecl *ASTContext::getClassScopeSpecializationPattern(
@@ -1089,7 +1145,7 @@ void
 ASTContext::setInstantiatedFromUsingDecl(UsingDecl *Inst, NamedDecl *Pattern) {
   assert((isa<UsingDecl>(Pattern) ||
           isa<UnresolvedUsingValueDecl>(Pattern) ||
-          isa<UnresolvedUsingTypenameDecl>(Pattern)) &&
+          isa<UnresolvedUsingTypenameDecl>(Pattern)) && 
          "pattern decl is not a using decl");
   assert(!InstantiatedFromUsingDecl[Inst] && "pattern already exists");
   InstantiatedFromUsingDecl[Inst] = Pattern;
@@ -1131,38 +1187,6 @@ void ASTContext::setInstantiatedFromUnnamedFieldDecl(FieldDecl *Inst,
   InstantiatedFromUnnamedFieldDecl[Inst] = Tmpl;
 }
 
-bool ASTContext::ZeroBitfieldFollowsNonBitfield(const FieldDecl *FD,
-                                    const FieldDecl *LastFD) const {
-  return (FD->isBitField() && LastFD && !LastFD->isBitField() &&
-          FD->getBitWidthValue(*this) == 0);
-}
-
-bool ASTContext::ZeroBitfieldFollowsBitfield(const FieldDecl *FD,
-                                             const FieldDecl *LastFD) const {
-  return (FD->isBitField() && LastFD && LastFD->isBitField() &&
-          FD->getBitWidthValue(*this) == 0 &&
-          LastFD->getBitWidthValue(*this) != 0);
-}
-
-bool ASTContext::BitfieldFollowsBitfield(const FieldDecl *FD,
-                                         const FieldDecl *LastFD) const {
-  return (FD->isBitField() && LastFD && LastFD->isBitField() &&
-          FD->getBitWidthValue(*this) &&
-          LastFD->getBitWidthValue(*this));
-}
-
-bool ASTContext::NonBitfieldFollowsBitfield(const FieldDecl *FD,
-                                         const FieldDecl *LastFD) const {
-  return (!FD->isBitField() && LastFD && LastFD->isBitField() &&
-          LastFD->getBitWidthValue(*this));
-}
-
-bool ASTContext::BitfieldFollowsNonBitfield(const FieldDecl *FD,
-                                             const FieldDecl *LastFD) const {
-  return (FD->isBitField() && LastFD && !LastFD->isBitField() &&
-          FD->getBitWidthValue(*this));
-}
-
 ASTContext::overridden_cxx_method_iterator
 ASTContext::overridden_methods_begin(const CXXMethodDecl *Method) const {
   llvm::DenseMap<const CXXMethodDecl *, CXXMethodVector>::const_iterator Pos
@@ -1193,7 +1217,7 @@ ASTContext::overridden_methods_size(const CXXMethodDecl *Method) const {
   return Pos->second.size();
 }
 
-void ASTContext::addOverriddenMethod(const CXXMethodDecl *Method,
+void ASTContext::addOverriddenMethod(const CXXMethodDecl *Method, 
                                      const CXXMethodDecl *Overridden) {
   assert(Method->isCanonicalDecl() && Overridden->isCanonicalDecl());
   OverriddenMethods[Method].push_back(Overridden);
@@ -1227,7 +1251,7 @@ void ASTContext::addedLocalImportDecl(ImportDecl *Import) {
     LastLocalImport = Import;
     return;
   }
-
+  
   LastLocalImport->NextLocalImport = Import;
   LastLocalImport = Import;
 }
@@ -1250,12 +1274,7 @@ const llvm::fltSemantics &ASTContext::getFloatTypeSemantics(QualType T) const {
   }
 }
 
-/// getDeclAlign - Return a conservative estimate of the alignment of the
-/// specified decl.  Note that bitfields do not have a valid alignment, so
-/// this method will assert on them.
-/// If @p RefAsPointee, references are treated like their underlying type
-/// (for alignof), else they're treated like pointers (for CodeGen).
-CharUnits ASTContext::getDeclAlign(const Decl *D, bool RefAsPointee) const {
+CharUnits ASTContext::getDeclAlign(const Decl *D, bool ForAlignof) const {
   unsigned Align = Target->getCharWidth();
 
   bool UseAlignAttrOnly = false;
@@ -1282,6 +1301,11 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool RefAsPointee) const {
       cast<FieldDecl>(D)->getParent()->hasAttr<PackedAttr>();
   }
   // +========================================================================+
+  else if (isa<FieldDecl>(D))
+      UseAlignAttrOnly = 
+        D->hasAttr<PackedAttr>() ||
+        cast<FieldDecl>(D)->getParent()->hasAttr<PackedAttr>();
+
   // If we're using the align attribute only, just ignore everything
   // else about the declaration and its type.
   if (UseAlignAttrOnly) {
@@ -1290,7 +1314,7 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool RefAsPointee) const {
   } else if (const ValueDecl *VD = dyn_cast<ValueDecl>(D)) {
     QualType T = VD->getType();
     if (const ReferenceType* RT = T->getAs<ReferenceType>()) {
-      if (RefAsPointee)
+      if (ForAlignof)
         T = RT->getPointeeType();
       else
         T = getPointerType(RT->getPointeeType());
@@ -1298,14 +1322,15 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool RefAsPointee) const {
     if (!T->isIncompleteType() && !T->isFunctionType()) {
       // Adjust alignments of declarations with array type by the
       // large-array alignment on the target.
-      unsigned MinWidth = Target->getLargeArrayMinWidth();
-      const ArrayType *arrayType;
-      if (MinWidth && (arrayType = getAsArrayType(T))) {
-        if (isa<VariableArrayType>(arrayType))
-          Align = std::max(Align, Target->getLargeArrayAlign());
-        else if (isa<ConstantArrayType>(arrayType) &&
-                 MinWidth <= getTypeSize(cast<ConstantArrayType>(arrayType)))
-          Align = std::max(Align, Target->getLargeArrayAlign());
+      if (const ArrayType *arrayType = getAsArrayType(T)) {
+        unsigned MinWidth = Target->getLargeArrayMinWidth();
+        if (!ForAlignof && MinWidth) {
+          if (isa<VariableArrayType>(arrayType))
+            Align = std::max(Align, Target->getLargeArrayAlign());
+          else if (isa<ConstantArrayType>(arrayType) &&
+                   MinWidth <= getTypeSize(cast<ConstantArrayType>(arrayType)))
+            Align = std::max(Align, Target->getLargeArrayAlign());
+        }
 
         // Walk through any array types while we're at it.
         T = getBaseElementType(arrayType);
@@ -1317,7 +1342,7 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool RefAsPointee) const {
       }
     }
 
-    // ===== Scout ============================================================
+    // +===== Scout ============================================================+
     // Handle mesh first -- as MeshFieldDecl is a subclass of FieldDecl it
     // will pass the test below for field decls...
     //
@@ -1326,50 +1351,55 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool RefAsPointee) const {
     // So calculate the actual alignment of the field within the struct,
     // and then (as we're expected to do) constrain that by the alignment
     // of the type.
-    if (const MeshFieldDecl *field = dyn_cast<MeshFieldDecl>(VD)) {
+    if (const MeshFieldDecl *Field = dyn_cast<MeshFieldDecl>(VD)) {
       const ASTMeshLayout &layout = getASTMeshLayout(field->getParent());
+      const MeshDecl *Parent = Field->getParent();
+      // We can only produce a sensible answer if the record is valid.
+      if (!Parent->isInvalidDecl()) {
+        const ASTMeshLayout &Layout = getASTMeshLayout(Parent);
 
-      // Start with the mesh's overall alignment.
-      unsigned fieldAlign = toBits(layout.getAlignment());
+        // Start with the record's overall alignment.
+        unsigned FieldAlign = toBits(Layout.getAlignment());
 
-      // Use the CGD of that and the offset within the record.
-      uint64_t offset = layout.getFieldOffset(field->getFieldIndex());
-      if (offset > 0) {
-        // Alignment is always a power of two, so the GCD will be a
-        // power of two, which means we get to do this crazy thing
-        // instead of Euclid's.
-        uint64_t lowBitOfOffset = offset & (~offset + 1);
-        if (lowBitOfOffset < fieldAlign)
-          fieldAlign = static_cast<unsigned>(lowBitOfOffset);
+        // Use the GCD of that and the offset within the record.
+        uint64_t Offset = Layout.getFieldOffset(Field->getFieldIndex());
+        if (Offset > 0) {
+          // Alignment is always a power of 2, so the GCD will be a power of 2,
+          // which means we get to do this crazy thing instead of Euclid's.
+          uint64_t LowBitOfOffset = Offset & (~Offset + 1);
+          if (LowBitOfOffset < FieldAlign)
+            FieldAlign = static_cast<unsigned>(LowBitOfOffset);
       }
       Align = std::min(Align, fieldAlign);
-    // ========================================================================
+    // +========================================================================+
     } else if (const FieldDecl *field = dyn_cast<FieldDecl>(VD)) {
       // Fields can be subject to extra alignment constraints, like if
       // the field is packed, the struct is packed, or the struct has a
       // a max-field-alignment constraint (#pragma pack).  So calculate
       // the actual alignment of the field within the struct, and then
       // (as we're expected to) constrain that by the alignment of the type.
+      const RecordDecl *Parent = Field->getParent();
+      // We can only produce a sensible answer if the record is valid.
+      if (!Parent->isInvalidDecl()) {
+        const ASTRecordLayout &Layout = getASTRecordLayout(Parent);
 
-      // So calculate the alignment of the field.
-      const ASTRecordLayout &layout = getASTRecordLayout(field->getParent());
+        // Start with the record's overall alignment.
+        unsigned FieldAlign = toBits(Layout.getAlignment());
 
-      // Start with the record's overall alignment.
-      unsigned fieldAlign = toBits(layout.getAlignment());
-
-      // Use the GCD of that and the offset within the record.
-      uint64_t offset = layout.getFieldOffset(field->getFieldIndex());
-      if (offset > 0) {
-        // Alignment is always a power of 2, so the GCD will be a power of 2,
-        // which means we get to do this crazy thing instead of Euclid's.
-        uint64_t lowBitOfOffset = offset & (~offset + 1);
-        if (lowBitOfOffset < fieldAlign)
-          fieldAlign = static_cast<unsigned>(lowBitOfOffset);
+        // Use the GCD of that and the offset within the record.
+        uint64_t Offset = Layout.getFieldOffset(Field->getFieldIndex());
+        if (Offset > 0) {
+          // Alignment is always a power of 2, so the GCD will be a power of 2,
+          // which means we get to do this crazy thing instead of Euclid's.
+          uint64_t LowBitOfOffset = Offset & (~Offset + 1);
+          if (LowBitOfOffset < FieldAlign)
+            FieldAlign = static_cast<unsigned>(LowBitOfOffset);
+        }
+        Align = std::min(Align, FieldAlign);
       }
-
-      Align = std::min(Align, fieldAlign);
     }
   }
+
   return toCharUnitsFromBits(Align);
 }
 
@@ -1381,18 +1411,10 @@ std::pair<CharUnits, CharUnits>
 ASTContext::getTypeInfoDataSizeInChars(QualType T) const {
   std::pair<CharUnits, CharUnits> sizeAndAlign = getTypeInfoInChars(T);
 
-  // +===== Scout ============================================================+
-  // In C++ and Scout, objects can sometimes be allocated into the
-  // tail padding of a base-class subobject.  We decide whether that's
-  // possible during class layout, so here we can just trust the
-  // layout results.
-  if (getLangOpts().Scout) {
-    if (const MeshType *MT = T->getAs<MeshType>()) {
-      const ASTMeshLayout &layout = getASTMeshLayout(MT->getDecl());
-      sizeAndAlign.first = layout.getDataSize();
-    }
-  // +========================================================================+
-  } else if (getLangOpts().CPlusPlus) {
+  // In C++, objects can sometimes be allocated into the tail padding
+  // of a base-class subobject.  We decide whether that's possible
+  // during class layout, so here we can just trust the layout results.
+  if (getLangOpts().CPlusPlus) {
     if (const RecordType *RT = T->getAs<RecordType>()) {
       const ASTRecordLayout &layout = getASTRecordLayout(RT->getDecl());
       sizeAndAlign.first = layout.getDataSize();
@@ -1459,6 +1481,10 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
 #define ABSTRACT_TYPE(Class, Base)
 #define NON_CANONICAL_TYPE(Class, Base)
 #define DEPENDENT_TYPE(Class, Base) case Type::Class:
+#define NON_CANONICAL_UNLESS_DEPENDENT_TYPE(Class, Base)                       \
+  case Type::Class:                                                            \
+  assert(!T->isDependentType() && "should not see dependent types here");      \
+  return getTypeInfo(cast<Class##Type>(T)->desugar().getTypePtr());
 #include "clang/AST/TypeNodes.def"
     llvm_unreachable("Should not see dependent types");
 
@@ -1480,7 +1506,7 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
 
     std::pair<uint64_t, unsigned> EltInfo = getTypeInfo(CAT->getElementType());
     uint64_t Size = CAT->getSize().getZExtValue();
-    assert((Size == 0 || EltInfo.first <= (uint64_t)(-1)/Size) &&
+    assert((Size == 0 || EltInfo.first <= (uint64_t)(-1)/Size) && 
            "Overflow in array type bit size evaluation");
     Width = EltInfo.first*Size;
     Align = EltInfo.second;
@@ -1587,7 +1613,7 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     case BuiltinType::ObjCId:
     case BuiltinType::ObjCClass:
     case BuiltinType::ObjCSel:
-      Width = Target->getPointerWidth(0);
+      Width = Target->getPointerWidth(0); 
       Align = Target->getPointerAlign(0);
       break;
     case BuiltinType::OCLSampler:
@@ -1651,6 +1677,8 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
   }
   case Type::ObjCObject:
     return getTypeInfo(cast<ObjCObjectType>(T)->getBaseType().getTypePtr());
+  case Type::Decayed:
+    return getTypeInfo(cast<DecayedType>(T)->getDecayedType().getTypePtr());
   case Type::ObjCInterface: {
     const ObjCInterfaceType *ObjCI = cast<ObjCInterfaceType>(T);
     const ASTRecordLayout &Layout = getASTObjCInterfaceLayout(ObjCI->getDecl());
@@ -1658,7 +1686,6 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     Align = toBits(Layout.getAlignment());
     break;
   }
-
   case Type::Record:
   case Type::Enum: {
     const TagType *TT = cast<TagType>(T);
@@ -1741,38 +1768,12 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     break;
   }
 
-  case Type::TypeOfExpr:
-    return getTypeInfo(cast<TypeOfExprType>(T)->getUnderlyingExpr()->getType()
-                         .getTypePtr());
-
-  case Type::TypeOf:
-    return getTypeInfo(cast<TypeOfType>(T)->getUnderlyingType().getTypePtr());
-
-  case Type::Decltype:
-    return getTypeInfo(cast<DecltypeType>(T)->getUnderlyingExpr()->getType()
-                        .getTypePtr());
-
-  case Type::UnaryTransform:
-    return getTypeInfo(cast<UnaryTransformType>(T)->getUnderlyingType());
-
   case Type::Elaborated:
     return getTypeInfo(cast<ElaboratedType>(T)->getNamedType().getTypePtr());
 
   case Type::Attributed:
     return getTypeInfo(
                   cast<AttributedType>(T)->getEquivalentType().getTypePtr());
-
-  case Type::TemplateSpecialization: {
-    assert(getCanonicalType(T) != T &&
-           "Cannot request the size of a dependent type");
-    const TemplateSpecializationType *TST = cast<TemplateSpecializationType>(T);
-    // A type alias template specialization may refer to a typedef with the
-    // aligned attribute on it.
-    if (TST->isTypeAlias())
-      return getTypeInfo(TST->getAliasedType().getTypePtr());
-    else
-      return getTypeInfo(getCanonicalType(T));
-  }
 
   case Type::Atomic: {
     // Start with the base type information.
@@ -1819,7 +1820,7 @@ CharUnits ASTContext::getTypeSizeInChars(const Type *T) const {
   return getTypeInfoInChars(T).first;
 }
 
-/// getTypeAlignInChars - Return the ABI-specified alignment of a type, in
+/// getTypeAlignInChars - Return the ABI-specified alignment of a type, in 
 /// characters. This method does not work on incomplete types.
 CharUnits ASTContext::getTypeAlignInChars(QualType T) const {
   return toCharUnitsFromBits(getTypeAlign(T));
@@ -1875,7 +1876,7 @@ void ASTContext::DeepCollectObjCIvars(const ObjCInterfaceDecl *OI,
       Ivars.push_back(*I);
   } else {
     ObjCInterfaceDecl *IDecl = const_cast<ObjCInterfaceDecl *>(OI);
-    for (const ObjCIvarDecl *Iv = IDecl->all_declared_ivar_begin(); Iv;
+    for (const ObjCIvarDecl *Iv = IDecl->all_declared_ivar_begin(); Iv; 
          Iv= Iv->getNextIvar())
       Ivars.push_back(Iv);
   }
@@ -1887,7 +1888,7 @@ void ASTContext::CollectInheritedProtocols(const Decl *CDecl,
                           llvm::SmallPtrSet<ObjCProtocolDecl*, 8> &Protocols) {
   if (const ObjCInterfaceDecl *OI = dyn_cast<ObjCInterfaceDecl>(CDecl)) {
     // We can use protocol_iterator here instead of
-    // all_referenced_protocol_iterator since we are walking all categories.
+    // all_referenced_protocol_iterator since we are walking all categories.    
     for (ObjCInterfaceDecl::all_protocol_iterator P = OI->all_referenced_protocol_begin(),
          PE = OI->all_referenced_protocol_end(); P != PE; ++P) {
       ObjCProtocolDecl *Proto = (*P);
@@ -1898,7 +1899,7 @@ void ASTContext::CollectInheritedProtocols(const Decl *CDecl,
         CollectInheritedProtocols(*P, Protocols);
       }
     }
-
+    
     // Categories of this Interface.
     for (ObjCInterfaceDecl::visible_categories_iterator
            Cat = OI->visible_categories_begin(),
@@ -1934,7 +1935,7 @@ void ASTContext::CollectInheritedProtocols(const Decl *CDecl,
 }
 
 unsigned ASTContext::CountNonClassIvars(const ObjCInterfaceDecl *OI) const {
-  unsigned count = 0;
+  unsigned count = 0;  
   // Count ivars declared in class extension.
   for (ObjCInterfaceDecl::known_extensions_iterator
          Ext = OI->known_extensions_begin(),
@@ -1942,7 +1943,7 @@ unsigned ASTContext::CountNonClassIvars(const ObjCInterfaceDecl *OI) const {
        Ext != ExtEnd; ++Ext) {
     count += Ext->ivar_size();
   }
-
+  
   // Count ivar defined in this class's implementation.  This
   // includes synthesized ivars.
   if (ObjCImplementationDecl *ImplDecl = OI->getImplementation())
@@ -2014,11 +2015,11 @@ const ObjCInterfaceDecl *ASTContext::getObjContainingInterface(
   return 0;
 }
 
-/// \brief Get the copy initialization expression of VarDecl,or NULL if
+/// \brief Get the copy initialization expression of VarDecl,or NULL if 
 /// none exists.
 Expr *ASTContext::getBlockVarCopyInits(const VarDecl*VD) {
   assert(VD && "Passed null params");
-  assert(VD->hasAttr<BlocksAttr>() &&
+  assert(VD->hasAttr<BlocksAttr>() && 
          "getBlockVarCopyInits - not __block var");
   llvm::DenseMap<const VarDecl*, Expr*>::iterator
     I = BlockVarCopyInits.find(VD);
@@ -2028,7 +2029,7 @@ Expr *ASTContext::getBlockVarCopyInits(const VarDecl*VD) {
 /// \brief Set the copy inialization expression of a block var decl.
 void ASTContext::setBlockVarCopyInits(VarDecl*VD, Expr* Init) {
   assert(VD && Init && "Passed null params");
-  assert(VD->hasAttr<BlocksAttr>() &&
+  assert(VD->hasAttr<BlocksAttr>() && 
          "setBlockVarCopyInits - not __block var");
   BlockVarCopyInits[VD] = Init;
 }
@@ -2159,10 +2160,7 @@ const FunctionType *ASTContext::adjustFunctionType(const FunctionType *T,
     const FunctionProtoType *FPT = cast<FunctionProtoType>(T);
     FunctionProtoType::ExtProtoInfo EPI = FPT->getExtProtoInfo();
     EPI.ExtInfo = Info;
-    Result = getFunctionType(FPT->getResultType(),
-                             ArrayRef<QualType>(FPT->arg_type_begin(),
-                                                FPT->getNumArgs()),
-                             EPI);
+    Result = getFunctionType(FPT->getResultType(), FPT->getArgTypes(), EPI);
   }
 
   return cast<FunctionType>(Result.getTypePtr());
@@ -2240,6 +2238,45 @@ QualType ASTContext::getPointerType(QualType T) const {
   return QualType(New, 0);
 }
 
+QualType ASTContext::getDecayedType(QualType T) const {
+  assert((T->isArrayType() || T->isFunctionType()) && "T does not decay");
+
+  llvm::FoldingSetNodeID ID;
+  DecayedType::Profile(ID, T);
+  void *InsertPos = 0;
+  if (DecayedType *DT = DecayedTypes.FindNodeOrInsertPos(ID, InsertPos))
+    return QualType(DT, 0);
+
+  QualType Decayed;
+
+  // C99 6.7.5.3p7:
+  //   A declaration of a parameter as "array of type" shall be
+  //   adjusted to "qualified pointer to type", where the type
+  //   qualifiers (if any) are those specified within the [ and ] of
+  //   the array type derivation.
+  if (T->isArrayType())
+    Decayed = getArrayDecayedType(T);
+
+  // C99 6.7.5.3p8:
+  //   A declaration of a parameter as "function returning type"
+  //   shall be adjusted to "pointer to function returning type", as
+  //   in 6.3.2.1.
+  if (T->isFunctionType())
+    Decayed = getPointerType(T);
+
+  QualType Canonical = getCanonicalType(Decayed);
+
+  // Get the new insert position for the node we care about.
+  DecayedType *NewIP = DecayedTypes.FindNodeOrInsertPos(ID, InsertPos);
+  assert(NewIP == 0 && "Shouldn't be in the map!"); (void)NewIP;
+
+  DecayedType *New =
+      new (*this, TypeAlignment) DecayedType(T, Decayed, Canonical);
+  Types.push_back(New);
+  DecayedTypes.InsertNode(New, InsertPos);
+  return QualType(New, 0);
+}
+
 /// getBlockPointerType - Return the uniqued reference to the type for
 /// a pointer to the specified block.
 QualType ASTContext::getBlockPointerType(QualType T) const {
@@ -2276,9 +2313,9 @@ QualType ASTContext::getBlockPointerType(QualType T) const {
 /// lvalue reference to the specified type.
 QualType
 ASTContext::getLValueReferenceType(QualType T, bool SpelledAsLValue) const {
-  assert(getCanonicalType(T) != OverloadTy &&
+  assert(getCanonicalType(T) != OverloadTy && 
          "Unresolved overloaded function type");
-
+  
   // Unique pointers, to guarantee there is only one pointer of a particular
   // structure.
   llvm::FoldingSetNodeID ID;
@@ -2574,7 +2611,7 @@ QualType ASTContext::getVariableArrayType(QualType EltTy,
   // Since we don't unique expressions, it isn't possible to unique VLA's
   // that have an expression provided for their size.
   QualType Canon;
-
+  
   // Be sure to pull qualifiers off the element type.
   if (!EltTy.isCanonical() || EltTy.hasLocalQualifiers()) {
     SplitQualType canonSplit = getCanonicalType(EltTy).split();
@@ -2582,7 +2619,7 @@ QualType ASTContext::getVariableArrayType(QualType EltTy,
                                  IndexTypeQuals, Brackets);
     Canon = getQualifiedType(Canon, canonSplit.Quals);
   }
-
+  
   VariableArrayType *New = new(*this, TypeAlignment)
     VariableArrayType(EltTy, Canon, NumElts, ASM, IndexTypeQuals, Brackets);
 
@@ -2599,7 +2636,7 @@ QualType ASTContext::getDependentSizedArrayType(QualType elementType,
                                                 ArrayType::ArraySizeModifier ASM,
                                                 unsigned elementTypeQuals,
                                                 SourceRange brackets) const {
-  assert((!numElements || numElements->isTypeDependent() ||
+  assert((!numElements || numElements->isTypeDependent() || 
           numElements->isValueDependent()) &&
          "Size must be type- or value-dependent!");
 
@@ -2792,7 +2829,7 @@ ASTContext::getDependentSizedExtVectorType(QualType vecType,
     } else {
       QualType Canon = getDependentSizedExtVectorType(CanonVecTy, SizeExpr,
                                                       SourceLocation());
-      New = new (*this, TypeAlignment)
+      New = new (*this, TypeAlignment) 
         DependentSizedExtVectorType(*this, vecType, Canon, SizeExpr, AttrLoc);
     }
   }
@@ -2806,9 +2843,8 @@ ASTContext::getDependentSizedExtVectorType(QualType vecType,
 QualType
 ASTContext::getFunctionNoProtoType(QualType ResultTy,
                                    const FunctionType::ExtInfo &Info) const {
-  const CallingConv DefaultCC = Info.getCC();
-  const CallingConv CallConv = (LangOpts.MRTD && DefaultCC == CC_Default) ?
-                               CC_X86StdCall : DefaultCC;
+  const CallingConv CallConv = Info.getCC();
+
   // Unique functions, to guarantee there is only one function of a particular
   // structure.
   llvm::FoldingSetNodeID ID;
@@ -2820,11 +2856,8 @@ ASTContext::getFunctionNoProtoType(QualType ResultTy,
     return QualType(FT, 0);
 
   QualType Canonical;
-  if (!ResultTy.isCanonical() ||
-      getCanonicalCallConv(CallConv) != CallConv) {
-    Canonical =
-      getFunctionNoProtoType(getCanonicalType(ResultTy),
-                     Info.withCallingConv(getCanonicalCallConv(CallConv)));
+  if (!ResultTy.isCanonical()) {
+    Canonical = getFunctionNoProtoType(getCanonicalType(ResultTy), Info);
 
     // Get the new insert position for the node we care about.
     FunctionNoProtoType *NewIP =
@@ -2873,14 +2906,10 @@ ASTContext::getFunctionType(QualType ResultTy, ArrayRef<QualType> ArgArray,
     if (!ArgArray[i].isCanonicalAsParam())
       isCanonical = false;
 
-  const CallingConv DefaultCC = EPI.ExtInfo.getCC();
-  const CallingConv CallConv = (LangOpts.MRTD && DefaultCC == CC_Default) ?
-                               CC_X86StdCall : DefaultCC;
-
   // If this type isn't canonical, get the canonical version of it.
   // The exception spec is not part of the canonical type.
   QualType Canonical;
-  if (!isCanonical || getCanonicalCallConv(CallConv) != CallConv) {
+  if (!isCanonical) {
     SmallVector<QualType, 16> CanonicalArgs;
     CanonicalArgs.reserve(NumArgs);
     for (unsigned i = 0; i != NumArgs; ++i)
@@ -2890,8 +2919,6 @@ ASTContext::getFunctionType(QualType ResultTy, ArrayRef<QualType> ArgArray,
     CanonicalEPI.HasTrailingReturn = false;
     CanonicalEPI.ExceptionSpecType = EST_None;
     CanonicalEPI.NumExceptions = 0;
-    CanonicalEPI.ExtInfo
-      = CanonicalEPI.ExtInfo.withCallingConv(getCanonicalCallConv(CallConv));
 
     // Result types do not have ARC lifetime qualifiers.
     QualType CanResultTy = getCanonicalType(ResultTy);
@@ -2933,7 +2960,6 @@ ASTContext::getFunctionType(QualType ResultTy, ArrayRef<QualType> ArgArray,
 
   FunctionProtoType *FTP = (FunctionProtoType*) Allocate(Size, TypeAlignment);
   FunctionProtoType::ExtProtoInfo newEPI = EPI;
-  newEPI.ExtInfo = EPI.ExtInfo.withCallingConv(CallConv);
   new (FTP) FunctionProtoType(ResultTy, ArgArray, Canonical, newEPI);
   Types.push_back(FTP);
   FunctionProtoTypes.InsertNode(FTP, InsertPos);
@@ -2986,13 +3012,11 @@ QualType ASTContext::getTypeDeclTypeSlow(const TypeDecl *Decl) const {
          "Template type parameter types are always available.");
 
   if (const RecordDecl *Record = dyn_cast<RecordDecl>(Decl)) {
-    assert(!Record->getPreviousDecl() &&
-           "struct/union has previous declaration");
+    assert(Record->isFirstDecl() && "struct/union has previous declaration");
     assert(!NeedsInjectedClassNameType(Record));
     return getRecordType(Record);
   } else if (const EnumDecl *Enum = dyn_cast<EnumDecl>(Decl)) {
-    assert(!Enum->getPreviousDecl() &&
-           "enum has previous declaration");
+    assert(Enum->isFirstDecl() && "enum has previous declaration");
     return getEnumType(Enum);
   // +===== Scout ============================================================+
   } else if (const UniformMeshDecl *Mesh = dyn_cast<UniformMeshDecl>(Decl)) {
@@ -3039,7 +3063,7 @@ QualType ASTContext::getRecordType(const RecordDecl *Decl) const {
 
   if (const RecordDecl *PrevDecl = Decl->getPreviousDecl())
     if (PrevDecl->TypeForDecl)
-      return QualType(Decl->TypeForDecl = PrevDecl->TypeForDecl, 0);
+      return QualType(Decl->TypeForDecl = PrevDecl->TypeForDecl, 0); 
 
   RecordType *newType = new (*this, TypeAlignment) RecordType(Decl);
   Decl->TypeForDecl = newType;
@@ -3052,7 +3076,7 @@ QualType ASTContext::getEnumType(const EnumDecl *Decl) const {
 
   if (const EnumDecl *PrevDecl = Decl->getPreviousDecl())
     if (PrevDecl->TypeForDecl)
-      return QualType(Decl->TypeForDecl = PrevDecl->TypeForDecl, 0);
+      return QualType(Decl->TypeForDecl = PrevDecl->TypeForDecl, 0); 
 
   EnumType *newType = new (*this, TypeAlignment) EnumType(Decl);
   Decl->TypeForDecl = newType;
@@ -3104,26 +3128,26 @@ ASTContext::getSubstTemplateTypeParmType(const TemplateTypeParmType *Parm,
   return QualType(SubstParm, 0);
 }
 
-/// \brief Retrieve a
+/// \brief Retrieve a 
 QualType ASTContext::getSubstTemplateTypeParmPackType(
                                           const TemplateTypeParmType *Parm,
                                               const TemplateArgument &ArgPack) {
 #ifndef NDEBUG
-  for (TemplateArgument::pack_iterator P = ArgPack.pack_begin(),
+  for (TemplateArgument::pack_iterator P = ArgPack.pack_begin(), 
                                     PEnd = ArgPack.pack_end();
        P != PEnd; ++P) {
     assert(P->getKind() == TemplateArgument::Type &&"Pack contains a non-type");
     assert(P->getAsType().isCanonical() && "Pack contains non-canonical type");
   }
 #endif
-
+  
   llvm::FoldingSetNodeID ID;
   SubstTemplateTypeParmPackType::Profile(ID, Parm, ArgPack);
   void *InsertPos = 0;
   if (SubstTemplateTypeParmPackType *SubstParm
         = SubstTemplateTypeParmPackTypes.FindNodeOrInsertPos(ID, InsertPos))
     return QualType(SubstParm, 0);
-
+  
   QualType Canon;
   if (!Parm->isCanonicalUnqualified()) {
     Canon = getCanonicalType(QualType(Parm, 0));
@@ -3137,7 +3161,7 @@ QualType ASTContext::getSubstTemplateTypeParmPackType(
                                                                ArgPack);
   Types.push_back(SubstParm);
   SubstTemplateTypeParmTypes.InsertNode(SubstParm, InsertPos);
-  return QualType(SubstParm, 0);
+  return QualType(SubstParm, 0);  
 }
 
 /// \brief Retrieve the template type parameter type for a template
@@ -3159,7 +3183,7 @@ QualType ASTContext::getTemplateTypeParmType(unsigned Depth, unsigned Index,
     QualType Canon = getTemplateTypeParmType(Depth, Index, ParameterPack);
     TypeParm = new (*this, TypeAlignment) TemplateTypeParmType(TTPDecl, Canon);
 
-    TemplateTypeParmType *TypeCheck
+    TemplateTypeParmType *TypeCheck 
       = TemplateTypeParmTypes.FindNodeOrInsertPos(ID, InsertPos);
     assert(!TypeCheck && "Template type parameter canonical type broken");
     (void)TypeCheck;
@@ -3178,7 +3202,7 @@ ASTContext::getTemplateSpecializationTypeInfo(TemplateName Name,
                                               SourceLocation NameLoc,
                                         const TemplateArgumentListInfo &Args,
                                               QualType Underlying) const {
-  assert(!Name.getAsDependentTemplateName() &&
+  assert(!Name.getAsDependentTemplateName() && 
          "No dependent template names here!");
   QualType TST = getTemplateSpecializationType(Name, Args, Underlying);
 
@@ -3198,9 +3222,9 @@ QualType
 ASTContext::getTemplateSpecializationType(TemplateName Template,
                                           const TemplateArgumentListInfo &Args,
                                           QualType Underlying) const {
-  assert(!Template.getAsDependentTemplateName() &&
+  assert(!Template.getAsDependentTemplateName() && 
          "No dependent template names here!");
-
+  
   unsigned NumArgs = Args.size();
 
   SmallVector<TemplateArgument, 4> ArgVec;
@@ -3218,7 +3242,7 @@ static bool hasAnyPackExpansions(const TemplateArgument *Args,
   for (unsigned I = 0; I != NumArgs; ++I)
     if (Args[I].isPackExpansion())
       return true;
-
+  
   return true;
 }
 #endif
@@ -3228,13 +3252,13 @@ ASTContext::getTemplateSpecializationType(TemplateName Template,
                                           const TemplateArgument *Args,
                                           unsigned NumArgs,
                                           QualType Underlying) const {
-  assert(!Template.getAsDependentTemplateName() &&
+  assert(!Template.getAsDependentTemplateName() && 
          "No dependent template names here!");
   // Look through qualified template names.
   if (QualifiedTemplateName *QTN = Template.getAsQualifiedTemplateName())
     Template = TemplateName(QTN->getTemplateDecl());
-
-  bool IsTypeAlias =
+  
+  bool IsTypeAlias = 
     Template.getAsTemplateDecl() &&
     isa<TypeAliasTemplateDecl>(Template.getAsTemplateDecl());
   QualType CanonType;
@@ -3269,13 +3293,13 @@ QualType
 ASTContext::getCanonicalTemplateSpecializationType(TemplateName Template,
                                                    const TemplateArgument *Args,
                                                    unsigned NumArgs) const {
-  assert(!Template.getAsDependentTemplateName() &&
+  assert(!Template.getAsDependentTemplateName() && 
          "No dependent template names here!");
 
   // Look through qualified template names.
   if (QualifiedTemplateName *QTN = Template.getAsQualifiedTemplateName())
     Template = TemplateName(QTN->getTemplateDecl());
-
+  
   // Build the canonical template specialization type.
   TemplateName CanonTemplate = getCanonicalTemplateName(Template);
   SmallVector<TemplateArgument, 4> CanonArgs;
@@ -3371,7 +3395,7 @@ QualType ASTContext::getDependentNameType(ElaboratedTypeKeyword Keyword,
     ElaboratedTypeKeyword CanonKeyword = Keyword;
     if (Keyword == ETK_None)
       CanonKeyword = ETK_Typename;
-
+    
     if (CanonNNS != NNS || CanonKeyword != Keyword)
       Canon = getDependentNameType(CanonKeyword, CanonNNS, Name);
   }
@@ -3413,7 +3437,7 @@ ASTContext::getDependentTemplateSpecializationType(
                                  const IdentifierInfo *Name,
                                  unsigned NumArgs,
                                  const TemplateArgument *Args) const {
-  assert((!NNS || NNS->isDependent()) &&
+  assert((!NNS || NNS->isDependent()) && 
          "nested-name-specifier must be dependent");
 
   llvm::FoldingSetNodeID ID;
@@ -3490,7 +3514,7 @@ QualType ASTContext::getPackExpansionType(QualType Pattern,
   T = new (*this) PackExpansionType(Pattern, Canon, NumExpansions);
   Types.push_back(T);
   PackExpansionTypes.InsertNode(T, InsertPos);
-  return QualType(T, 0);
+  return QualType(T, 0);  
 }
 
 /// CmpProtocolNames - Comparison predicate for sorting protocols
@@ -3506,7 +3530,7 @@ static bool areSortedAndUniqued(ObjCProtocolDecl * const *Protocols,
 
   if (Protocols[0]->getCanonicalDecl() != Protocols[0])
     return false;
-
+  
   for (unsigned i = 1; i != NumProtocols; ++i)
     if (!CmpProtocolNames(Protocols[i-1], Protocols[i]) ||
         Protocols[i]->getCanonicalDecl() != Protocols[i])
@@ -3524,7 +3548,7 @@ static void SortAndUniqueProtocols(ObjCProtocolDecl **Protocols,
   // Canonicalize.
   for (unsigned I = 0, N = NumProtocols; I != N; ++I)
     Protocols[I] = Protocols[I]->getCanonicalDecl();
-
+  
   // Remove duplicates.
   ProtocolsEnd = std::unique(Protocols, ProtocolsEnd);
   NumProtocols = ProtocolsEnd-Protocols;
@@ -3624,7 +3648,7 @@ QualType ASTContext::getObjCInterfaceType(const ObjCInterfaceDecl *Decl,
   // Prefer the definition, if there is one.
   if (const ObjCInterfaceDecl *Def = Decl->getDefinition())
     Decl = Def;
-
+  
   void *Mem = Allocate(sizeof(ObjCInterfaceType), TypeAlignment);
   ObjCInterfaceType *T = new (Mem) ObjCInterfaceType(Decl);
   Decl->TypeForDecl = T;
@@ -3686,11 +3710,11 @@ QualType ASTContext::getTypeOfType(QualType tofType) const {
 /// on canonical types (which are always unique).
 QualType ASTContext::getDecltypeType(Expr *e, QualType UnderlyingType) const {
   DecltypeType *dt;
-
+  
   // C++0x [temp.type]p2:
   //   If an expression e involves a template parameter, decltype(e) denotes a
-  //   unique dependent type. Two such decltype-specifiers refer to the same
-  //   type only if their expressions are equivalent (14.5.6.1).
+  //   unique dependent type. Two such decltype-specifiers refer to the same 
+  //   type only if their expressions are equivalent (14.5.6.1). 
   if (e->isInstantiationDependent()) {
     llvm::FoldingSetNodeID ID;
     DependentDecltypeType::Profile(ID, *this, e);
@@ -3710,7 +3734,7 @@ QualType ASTContext::getDecltypeType(Expr *e, QualType UnderlyingType) const {
       dt = Canon;
     }
   } else {
-    dt = new (*this, TypeAlignment) DecltypeType(e, UnderlyingType,
+    dt = new (*this, TypeAlignment) DecltypeType(e, UnderlyingType, 
                                       getCanonicalType(UnderlyingType));
   }
   Types.push_back(dt);
@@ -3724,7 +3748,7 @@ QualType ASTContext::getUnaryTransformType(QualType BaseType,
                                            UnaryTransformType::UTTKind Kind)
     const {
   UnaryTransformType *Ty =
-    new (*this, TypeAlignment) UnaryTransformType (BaseType, UnderlyingType,
+    new (*this, TypeAlignment) UnaryTransformType (BaseType, UnderlyingType, 
                                                    Kind,
                                  UnderlyingType->isDependentType() ?
                                  QualType() : getCanonicalType(UnderlyingType));
@@ -3956,17 +3980,17 @@ bool ASTContext::UnwrapSimilarPointerTypes(QualType &T1, QualType &T2) {
     T2 = T2PtrType->getPointeeType();
     return true;
   }
-
+  
   const MemberPointerType *T1MPType = T1->getAs<MemberPointerType>(),
                           *T2MPType = T2->getAs<MemberPointerType>();
-  if (T1MPType && T2MPType &&
-      hasSameUnqualifiedType(QualType(T1MPType->getClass(), 0),
+  if (T1MPType && T2MPType && 
+      hasSameUnqualifiedType(QualType(T1MPType->getClass(), 0), 
                              QualType(T2MPType->getClass(), 0))) {
     T1 = T1MPType->getPointeeType();
     T2 = T2MPType->getPointeeType();
     return true;
   }
-
+  
   if (getLangOpts().ObjC1) {
     const ObjCObjectPointerType *T1OPType = T1->getAs<ObjCObjectPointerType>(),
                                 *T2OPType = T2->getAs<ObjCObjectPointerType>();
@@ -3976,9 +4000,9 @@ bool ASTContext::UnwrapSimilarPointerTypes(QualType &T1, QualType &T2) {
       return true;
     }
   }
-
+  
   // FIXME: Block pointers, too?
-
+  
   return false;
 }
 
@@ -4037,10 +4061,10 @@ TemplateName ASTContext::getCanonicalTemplateName(TemplateName Name) const {
   case TemplateName::QualifiedTemplate:
   case TemplateName::Template: {
     TemplateDecl *Template = Name.getAsTemplateDecl();
-    if (TemplateTemplateParmDecl *TTP
+    if (TemplateTemplateParmDecl *TTP 
           = dyn_cast<TemplateTemplateParmDecl>(Template))
       Template = getCanonicalTemplateTemplateParmDecl(TTP);
-
+  
     // The canonical template name is the canonical template declaration.
     return TemplateName(cast<TemplateDecl>(Template->getCanonicalDecl()));
   }
@@ -4115,7 +4139,7 @@ ASTContext::getCanonicalTemplateArgument(const TemplateArgument &Arg) const {
     case TemplateArgument::Pack: {
       if (Arg.pack_size() == 0)
         return Arg;
-
+      
       TemplateArgument *CanonArgs
         = new (*this) TemplateArgument[Arg.pack_size()];
       unsigned Idx = 0;
@@ -4147,20 +4171,20 @@ ASTContext::getCanonicalNestedNameSpecifier(NestedNameSpecifier *NNS) const {
   case NestedNameSpecifier::Namespace:
     // A namespace is canonical; build a nested-name-specifier with
     // this namespace and no prefix.
-    return NestedNameSpecifier::Create(*this, 0,
+    return NestedNameSpecifier::Create(*this, 0, 
                                  NNS->getAsNamespace()->getOriginalNamespace());
 
   case NestedNameSpecifier::NamespaceAlias:
     // A namespace is canonical; build a nested-name-specifier with
     // this namespace and no prefix.
-    return NestedNameSpecifier::Create(*this, 0,
+    return NestedNameSpecifier::Create(*this, 0, 
                                     NNS->getAsNamespaceAlias()->getNamespace()
                                                       ->getOriginalNamespace());
 
   case NestedNameSpecifier::TypeSpec:
   case NestedNameSpecifier::TypeSpecWithTemplate: {
     QualType T = getCanonicalType(QualType(NNS->getAsType(), 0));
-
+    
     // If we have some kind of dependent-named type (e.g., "typename T::type"),
     // break it apart into its prefix and identifier, then reconsititute those
     // as the canonical nested-name-specifier. This is required to canonicalize
@@ -4169,7 +4193,7 @@ ASTContext::getCanonicalNestedNameSpecifier(NestedNameSpecifier *NNS) const {
     //   typedef typename T::type T1;
     //   typedef typename T1::type T2;
     if (const DependentNameType *DNT = T->getAs<DependentNameType>())
-      return NestedNameSpecifier::Create(*this, DNT->getQualifier(),
+      return NestedNameSpecifier::Create(*this, DNT->getQualifier(), 
                            const_cast<IdentifierInfo *>(DNT->getIdentifier()));
 
     // Otherwise, just canonicalize the type, and force it to be a TypeSpec.
@@ -4247,21 +4271,8 @@ const ArrayType *ASTContext::getAsArrayType(QualType T) const {
 }
 
 QualType ASTContext::getAdjustedParameterType(QualType T) const {
-  // C99 6.7.5.3p7:
-  //   A declaration of a parameter as "array of type" shall be
-  //   adjusted to "qualified pointer to type", where the type
-  //   qualifiers (if any) are those specified within the [ and ] of
-  //   the array type derivation.
-  if (T->isArrayType())
-    return getArrayDecayedType(T);
-
-  // C99 6.7.5.3p8:
-  //   A declaration of a parameter as "function returning type"
-  //   shall be adjusted to "pointer to function returning type", as
-  //   in 6.3.2.1.
-  if (T->isFunctionType())
-    return getPointerType(T);
-
+  if (T->isArrayType() || T->isFunctionType())
+    return getDecayedType(T);
   return T;
 }
 
@@ -4419,7 +4430,7 @@ unsigned ASTContext::getIntegerRank(const Type *T) const {
 QualType ASTContext::isPromotableBitField(Expr *E) const {
   if (E->isTypeDependent() || E->isValueDependent())
     return QualType();
-
+  
   FieldDecl *Field = E->getSourceBitField(); // FIXME: conditional bit-fields?
   if (!Field)
     return QualType();
@@ -4507,12 +4518,27 @@ Qualifiers::ObjCLifetime ASTContext::getInnerObjCOwnership(QualType T) const {
   return Qualifiers::OCL_None;
 }
 
+static const Type *getIntegerTypeForEnum(const EnumType *ET) {
+  // Incomplete enum types are not treated as integer types.
+  // FIXME: In C++, enum types are never integer types.
+  if (ET->getDecl()->isComplete() && !ET->getDecl()->isScoped())
+    return ET->getDecl()->getIntegerType().getTypePtr();
+  return NULL;
+}
+
 /// getIntegerTypeOrder - Returns the highest ranked integer type:
 /// C99 6.3.1.8p1.  If LHS > RHS, return 1.  If LHS == RHS, return 0. If
 /// LHS < RHS, return -1.
 int ASTContext::getIntegerTypeOrder(QualType LHS, QualType RHS) const {
   const Type *LHSC = getCanonicalType(LHS).getTypePtr();
   const Type *RHSC = getCanonicalType(RHS).getTypePtr();
+
+  // Unwrap enums to their underlying type.
+  if (const EnumType *ET = dyn_cast<EnumType>(LHSC))
+    LHSC = getIntegerTypeForEnum(ET);
+  if (const EnumType *ET = dyn_cast<EnumType>(RHSC))
+    RHSC = getIntegerTypeForEnum(ET);
+
   if (LHSC == RHSC) return 0;
 
   bool LHSUnsigned = LHSC->isUnsignedIntegerType();
@@ -4621,13 +4647,13 @@ QualType ASTContext::getBlockDescriptorType() const {
   T = CreateRecordDecl(*this, TTK_Struct, TUDecl,
                        &Idents.get("__block_descriptor"));
   T->startDefinition();
-
+  
   QualType FieldTypes[] = {
     UnsignedLongTy,
     UnsignedLongTy,
   };
 
-  const char *FieldNames[] = {
+  static const char *const FieldNames[] = {
     "reserved",
     "Size"
   };
@@ -4660,7 +4686,7 @@ QualType ASTContext::getBlockDescriptorExtendedType() const {
   T = CreateRecordDecl(*this, TTK_Struct, TUDecl,
                        &Idents.get("__block_descriptor_withcopydispose"));
   T->startDefinition();
-
+  
   QualType FieldTypes[] = {
     UnsignedLongTy,
     UnsignedLongTy,
@@ -4668,7 +4694,7 @@ QualType ASTContext::getBlockDescriptorExtendedType() const {
     getPointerType(VoidPtrTy)
   };
 
-  const char *FieldNames[] = {
+  static const char *const FieldNames[] = {
     "reserved",
     "Size",
     "CopyFuncPtr",
@@ -4702,26 +4728,26 @@ bool ASTContext::BlockRequiresCopying(QualType Ty,
   if (const CXXRecordDecl *record = Ty->getAsCXXRecordDecl()) {
     const Expr *copyExpr = getBlockVarCopyInits(D);
     if (!copyExpr && record->hasTrivialDestructor()) return false;
-
+    
     return true;
   }
-
+  
   if (!Ty->isObjCRetainableType()) return false;
-
+  
   Qualifiers qs = Ty.getQualifiers();
-
+  
   // If we have lifetime, that dominates.
   if (Qualifiers::ObjCLifetime lifetime = qs.getObjCLifetime()) {
     assert(getLangOpts().ObjCAutoRefCount);
-
+    
     switch (lifetime) {
       case Qualifiers::OCL_None: llvm_unreachable("impossible");
-
+        
       // These are just bits as far as the runtime is concerned.
       case Qualifiers::OCL_ExplicitNone:
       case Qualifiers::OCL_Autoreleasing:
         return false;
-
+        
       // Tell the runtime that this is ARC __weak, called by the
       // byref routines.
       case Qualifiers::OCL_Weak:
@@ -4738,11 +4764,11 @@ bool ASTContext::BlockRequiresCopying(QualType Ty,
 bool ASTContext::getByrefLifetime(QualType Ty,
                               Qualifiers::ObjCLifetime &LifeTime,
                               bool &HasByrefExtendedLayout) const {
-
+  
   if (!getLangOpts().ObjC1 ||
       getLangOpts().getGC() != LangOptions::NonGC)
     return false;
-
+  
   HasByrefExtendedLayout = false;
   if (Ty->isRecordType()) {
     HasByrefExtendedLayout = true;
@@ -4760,11 +4786,11 @@ bool ASTContext::getByrefLifetime(QualType Ty,
 
 TypedefDecl *ASTContext::getObjCInstanceTypeDecl() {
   if (!ObjCInstanceTypeDecl)
-    ObjCInstanceTypeDecl = TypedefDecl::Create(*this,
+    ObjCInstanceTypeDecl = TypedefDecl::Create(*this, 
                                                getTranslationUnitDecl(),
+                                               SourceLocation(), 
                                                SourceLocation(),
-                                               SourceLocation(),
-                                               &Idents.get("instancetype"),
+                                               &Idents.get("instancetype"), 
                                      getTrivialTypeSourceInfo(getObjCIdType()));
   return ObjCInstanceTypeDecl;
 }
@@ -4784,7 +4810,7 @@ static bool isTypeTypedefedAsBOOL(QualType T) {
 CharUnits ASTContext::getObjCEncodingTypeSize(QualType type) const {
   if (!type->isIncompleteArrayType() && type->isIncompleteType())
     return CharUnits::Zero();
-
+  
   CharUnits sz = getTypeSizeInChars(type);
 
   // Make all integer and enum types at least as large as an int
@@ -4796,7 +4822,7 @@ CharUnits ASTContext::getObjCEncodingTypeSize(QualType type) const {
   return sz;
 }
 
-static inline
+static inline 
 std::string charUnitsToString(const CharUnits &CU) {
   return llvm::itostr(CU.getQuantity());
 }
@@ -4836,13 +4862,13 @@ std::string ASTContext::getObjCEncodingForBlock(const BlockExpr *Expr) const {
   S += charUnitsToString(ParmOffset);
   // Block pointer and offset.
   S += "@?0";
-
+  
   // Argument types.
   ParmOffset = PtrSize;
   for (BlockDecl::param_const_iterator PI = Decl->param_begin(), E =
        Decl->param_end(); PI != E; ++PI) {
     ParmVarDecl *PVDecl = *PI;
-    QualType PType = PVDecl->getOriginalType();
+    QualType PType = PVDecl->getOriginalType(); 
     if (const ArrayType *AT =
           dyn_cast<ArrayType>(PType->getCanonicalTypeInternal())) {
       // Use array's original type only if it has known number of
@@ -4875,8 +4901,8 @@ bool ASTContext::getObjCEncodingForFunctionDecl(const FunctionDecl *Decl,
     CharUnits sz = getObjCEncodingTypeSize(PType);
     if (sz.isZero())
       continue;
-
-    assert (sz.isPositive() &&
+ 
+    assert (sz.isPositive() && 
         "getObjCEncodingForFunctionDecl - Incomplete param type");
     ParmOffset += sz;
   }
@@ -4900,12 +4926,12 @@ bool ASTContext::getObjCEncodingForFunctionDecl(const FunctionDecl *Decl,
     S += charUnitsToString(ParmOffset);
     ParmOffset += getObjCEncodingTypeSize(PType);
   }
-
+  
   return false;
 }
 
 /// getObjCEncodingForMethodParameter - Return the encoded type for a single
-/// method parameter or return type. If Extended, include class names and
+/// method parameter or return type. If Extended, include class names and 
 /// block object types.
 void ASTContext::getObjCEncodingForMethodParameter(Decl::ObjCDeclQualifier QT,
                                                    QualType T, std::string& S,
@@ -4915,20 +4941,20 @@ void ASTContext::getObjCEncodingForMethodParameter(Decl::ObjCDeclQualifier QT,
   // Encode parameter type.
   getObjCEncodingForTypeImpl(T, S, true, true, 0,
                              true     /*OutermostType*/,
-                             false    /*EncodingProperty*/,
-                             false    /*StructField*/,
-                             Extended /*EncodeBlockParameters*/,
+                             false    /*EncodingProperty*/, 
+                             false    /*StructField*/, 
+                             Extended /*EncodeBlockParameters*/, 
                              Extended /*EncodeClassNames*/);
 }
 
 /// getObjCEncodingForMethodDecl - Return the encoded type for this method
 /// declaration.
 bool ASTContext::getObjCEncodingForMethodDecl(const ObjCMethodDecl *Decl,
-                                              std::string& S,
+                                              std::string& S, 
                                               bool Extended) const {
   // FIXME: This is not very efficient.
   // Encode return type.
-  getObjCEncodingForMethodParameter(Decl->getObjCDeclQualifier(),
+  getObjCEncodingForMethodParameter(Decl->getObjCDeclQualifier(), 
                                     Decl->getResultType(), S, Extended);
   // Compute size of all parameters.
   // Start with computing size of a pointer in number of bytes.
@@ -4944,8 +4970,8 @@ bool ASTContext::getObjCEncodingForMethodDecl(const ObjCMethodDecl *Decl,
     CharUnits sz = getObjCEncodingTypeSize(PType);
     if (sz.isZero())
       continue;
-
-    assert (sz.isPositive() &&
+ 
+    assert (sz.isPositive() && 
         "getObjCEncodingForMethodDecl - Incomplete param type");
     ParmOffset += sz;
   }
@@ -4967,12 +4993,12 @@ bool ASTContext::getObjCEncodingForMethodDecl(const ObjCMethodDecl *Decl,
         PType = PVDecl->getType();
     } else if (PType->isFunctionType())
       PType = PVDecl->getType();
-    getObjCEncodingForMethodParameter(PVDecl->getObjCDeclQualifier(),
+    getObjCEncodingForMethodParameter(PVDecl->getObjCDeclQualifier(), 
                                       PType, S, Extended);
     S += charUnitsToString(ParmOffset);
     ParmOffset += getObjCEncodingTypeSize(PType);
   }
-
+  
   return false;
 }
 
@@ -5180,11 +5206,11 @@ static char getObjCEncodingForPrimitiveKind(const ASTContext *C,
 
 static char ObjCEncodingForEnumType(const ASTContext *C, const EnumType *ET) {
   EnumDecl *Enum = ET->getDecl();
-
+  
   // The encoding of an non-fixed enum type is always 'i', regardless of size.
   if (!Enum->isFixed())
     return 'i';
-
+  
   // The encoding of a fixed enum type matches its fixed underlying type.
   const BuiltinType *BT = Enum->getIntegerType()->castAs<BuiltinType>();
   return getObjCEncodingForPrimitiveKind(C, BT->getKind());
@@ -5347,12 +5373,9 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
     } else {
       S += '[';
 
-      if (const ConstantArrayType *CAT = dyn_cast<ConstantArrayType>(AT)) {
-        if (getTypeSize(CAT->getElementType()) == 0)
-          S += '0';
-        else
-          S += llvm::utostr(CAT->getSize().getZExtValue());
-      } else {
+      if (const ConstantArrayType *CAT = dyn_cast<ConstantArrayType>(AT))
+        S += llvm::utostr(CAT->getSize().getZExtValue());
+      else {
         //Variable length arrays are encoded as a regular array with 0 elements.
         assert((isa<VariableArrayType>(AT) || isa<IncompleteArrayType>(AT)) &&
                "Unknown array type!");
@@ -5427,16 +5450,16 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
     S += "@?"; // Unlike a pointer-to-function, which is "^?".
     if (EncodeBlockParameters) {
       const FunctionType *FT = BT->getPointeeType()->castAs<FunctionType>();
-
+      
       S += '<';
       // Block return type
-      getObjCEncodingForTypeImpl(FT->getResultType(), S,
-                                 ExpandPointedToStructures, ExpandStructures,
-                                 FD,
-                                 false /* OutermostType */,
-                                 EncodingProperty,
-                                 false /* StructField */,
-                                 EncodeBlockParameters,
+      getObjCEncodingForTypeImpl(FT->getResultType(), S, 
+                                 ExpandPointedToStructures, ExpandStructures, 
+                                 FD, 
+                                 false /* OutermostType */, 
+                                 EncodingProperty, 
+                                 false /* StructField */, 
+                                 EncodeBlockParameters, 
                                  EncodeClassNames);
       // Block self
       S += "@?";
@@ -5444,14 +5467,14 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
       if (const FunctionProtoType *FPT = dyn_cast<FunctionProtoType>(FT)) {
         for (FunctionProtoType::arg_type_iterator I = FPT->arg_type_begin(),
                E = FPT->arg_type_end(); I && (I != E); ++I) {
-          getObjCEncodingForTypeImpl(*I, S,
-                                     ExpandPointedToStructures,
-                                     ExpandStructures,
-                                     FD,
-                                     false /* OutermostType */,
-                                     EncodingProperty,
-                                     false /* StructField */,
-                                     EncodeBlockParameters,
+          getObjCEncodingForTypeImpl(*I, S, 
+                                     ExpandPointedToStructures, 
+                                     ExpandStructures, 
+                                     FD, 
+                                     false /* OutermostType */, 
+                                     EncodingProperty, 
+                                     false /* StructField */, 
+                                     EncodeBlockParameters, 
                                      EncodeClassNames);
         }
       }
@@ -5531,6 +5554,20 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
       // We encode the underlying type which comes out as
       // {...};
       S += '^';
+      if (FD && OPT->getInterfaceDecl()) {
+        // Prevent recursive encoding of fields in some rare cases.
+        ObjCInterfaceDecl *OI = OPT->getInterfaceDecl();
+        SmallVector<const ObjCIvarDecl*, 32> Ivars;
+        DeepCollectObjCIvars(OI, true, Ivars);
+        for (unsigned i = 0, e = Ivars.size(); i != e; ++i) {
+          if (cast<FieldDecl>(Ivars[i]) == FD) {
+            S += '{';
+            S += OI->getIdentifier()->getName();
+            S += '}';
+            return;
+          }
+        }
+      }
       getObjCEncodingForTypeImpl(PointeeTy, S,
                                  false, ExpandPointedToStructures,
                                  NULL,
@@ -5540,7 +5577,7 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
     }
 
     S += '@';
-    if (OPT->getInterfaceDecl() &&
+    if (OPT->getInterfaceDecl() && 
         (FD || EncodingProperty || EncodeClassNames)) {
       S += '"';
       S += OPT->getInterfaceDecl()->getIdentifier()->getName();
@@ -5559,7 +5596,7 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
   // FIXME: we shoul do better than that.  'M' is available.
   case Type::MemberPointer:
     return;
-
+  
   case Type::Vector:
   case Type::ExtVector:
     // This matches gcc's encoding, even though technically it is
@@ -5620,7 +5657,7 @@ void ASTContext::getObjCEncodingForStructureImpl(RecordDecl *RDecl,
       }
     }
   }
-
+  
   unsigned i = 0;
   for (RecordDecl::field_iterator Field = RDecl->field_begin(),
                                FieldEnd = RDecl->field_end();
@@ -5638,7 +5675,8 @@ void ASTContext::getObjCEncodingForStructureImpl(RecordDecl *RDecl,
       if (base->isEmpty())
         continue;
       uint64_t offs = toBits(layout.getVBaseClassOffset(base));
-      if (FieldOrBaseOffsets.find(offs) == FieldOrBaseOffsets.end())
+      if (offs >= uint64_t(toBits(layout.getNonVirtualSize())) &&
+          FieldOrBaseOffsets.find(offs) == FieldOrBaseOffsets.end())
         FieldOrBaseOffsets.insert(FieldOrBaseOffsets.end(),
                                   std::make_pair(offs, base));
     }
@@ -5679,7 +5717,7 @@ void ASTContext::getObjCEncodingForStructureImpl(RecordDecl *RDecl,
     assert(CurOffs <= CurLayObj->first);
 
     if (CurOffs < CurLayObj->first) {
-      uint64_t padding = CurLayObj->first - CurOffs;
+      uint64_t padding = CurLayObj->first - CurOffs; 
       // FIXME: There doesn't seem to be a way to indicate in the encoding that
       // packing/alignment of members is different that normal, in which case
       // the encoding will be out-of-sync with the real layout.
@@ -5752,7 +5790,7 @@ TypedefDecl *ASTContext::getObjCIdDecl() const {
                                      SourceLocation(), SourceLocation(),
                                      &Idents.get("id"), IdInfo);
   }
-
+  
   return ObjCIdDecl;
 }
 
@@ -5778,20 +5816,20 @@ TypedefDecl *ASTContext::getObjCClassDecl() const {
                                         SourceLocation(), SourceLocation(),
                                         &Idents.get("Class"), ClassInfo);
   }
-
+  
   return ObjCClassDecl;
 }
 
 ObjCInterfaceDecl *ASTContext::getObjCProtocolDecl() const {
   if (!ObjCProtocolClassDecl) {
-    ObjCProtocolClassDecl
-      = ObjCInterfaceDecl::Create(*this, getTranslationUnitDecl(),
+    ObjCProtocolClassDecl 
+      = ObjCInterfaceDecl::Create(*this, getTranslationUnitDecl(), 
                                   SourceLocation(),
                                   &Idents.get("Protocol"),
                                   /*PrevDecl=*/0,
-                                  SourceLocation(), true);
+                                  SourceLocation(), true);    
   }
-
+  
   return ObjCProtocolClassDecl;
 }
 
@@ -6286,7 +6324,7 @@ ASTContext::getQualifiedTemplateName(NestedNameSpecifier *NNS,
                                      bool TemplateKeyword,
                                      TemplateDecl *Template) const {
   assert(NNS && "Missing nested-name-specifier in qualified template name");
-
+  
   // FIXME: Canonicalization?
   llvm::FoldingSetNodeID ID;
   QualifiedTemplateName::Profile(ID, NNS, TemplateKeyword, Template);
@@ -6341,22 +6379,22 @@ ASTContext::getDependentTemplateName(NestedNameSpecifier *NNS,
 
 /// \brief Retrieve the template name that represents a dependent
 /// template name such as \c MetaFun::template operator+.
-TemplateName
+TemplateName 
 ASTContext::getDependentTemplateName(NestedNameSpecifier *NNS,
                                      OverloadedOperatorKind Operator) const {
   assert((!NNS || NNS->isDependent()) &&
          "Nested name specifier must be dependent");
-
+  
   llvm::FoldingSetNodeID ID;
   DependentTemplateName::Profile(ID, NNS, Operator);
-
+  
   void *InsertPos = 0;
   DependentTemplateName *QTN
     = DependentTemplateNames.FindNodeOrInsertPos(ID, InsertPos);
-
+  
   if (QTN)
     return TemplateName(QTN);
-
+  
   NestedNameSpecifier *CanonNNS = getCanonicalNestedNameSpecifier(NNS);
   if (CanonNNS == NNS) {
     QTN = new (*this, llvm::alignOf<DependentTemplateName>())
@@ -6365,27 +6403,27 @@ ASTContext::getDependentTemplateName(NestedNameSpecifier *NNS,
     TemplateName Canon = getDependentTemplateName(CanonNNS, Operator);
     QTN = new (*this, llvm::alignOf<DependentTemplateName>())
         DependentTemplateName(NNS, Operator, Canon);
-
+    
     DependentTemplateName *CheckQTN
       = DependentTemplateNames.FindNodeOrInsertPos(ID, InsertPos);
     assert(!CheckQTN && "Dependent template name canonicalization broken");
     (void)CheckQTN;
   }
-
+  
   DependentTemplateNames.InsertNode(QTN, InsertPos);
   return TemplateName(QTN);
 }
 
-TemplateName
+TemplateName 
 ASTContext::getSubstTemplateTemplateParm(TemplateTemplateParmDecl *param,
                                          TemplateName replacement) const {
   llvm::FoldingSetNodeID ID;
   SubstTemplateTemplateParmStorage::Profile(ID, param, replacement);
-
+  
   void *insertPos = 0;
   SubstTemplateTemplateParmStorage *subst
     = SubstTemplateTemplateParms.FindNodeOrInsertPos(ID, insertPos);
-
+  
   if (!subst) {
     subst = new (*this) SubstTemplateTemplateParmStorage(param, replacement);
     SubstTemplateTemplateParms.InsertNode(subst, insertPos);
@@ -6394,19 +6432,19 @@ ASTContext::getSubstTemplateTemplateParm(TemplateTemplateParmDecl *param,
   return TemplateName(subst);
 }
 
-TemplateName
+TemplateName 
 ASTContext::getSubstTemplateTemplateParmPack(TemplateTemplateParmDecl *Param,
                                        const TemplateArgument &ArgPack) const {
   ASTContext &Self = const_cast<ASTContext &>(*this);
   llvm::FoldingSetNodeID ID;
   SubstTemplateTemplateParmPackStorage::Profile(ID, Self, Param, ArgPack);
-
+  
   void *InsertPos = 0;
   SubstTemplateTemplateParmPackStorage *Subst
     = SubstTemplateTemplateParmPacks.FindNodeOrInsertPos(ID, InsertPos);
-
+  
   if (!Subst) {
-    Subst = new (*this) SubstTemplateTemplateParmPackStorage(Param,
+    Subst = new (*this) SubstTemplateTemplateParmPackStorage(Param, 
                                                            ArgPack.pack_size(),
                                                          ArgPack.pack_begin());
     SubstTemplateTemplateParmPacks.InsertNode(Subst, InsertPos);
@@ -6421,6 +6459,8 @@ ASTContext::getSubstTemplateTemplateParmPack(TemplateTemplateParmDecl *Param,
 CanQualType ASTContext::getFromTargetType(unsigned Type) const {
   switch (Type) {
   case TargetInfo::NoInt: return CanQualType();
+  case TargetInfo::SignedChar: return SignedCharTy;
+  case TargetInfo::UnsignedChar: return UnsignedCharTy;
   case TargetInfo::SignedShort: return ShortTy;
   case TargetInfo::UnsignedShort: return UnsignedShortTy;
   case TargetInfo::SignedInt: return IntTy;
@@ -6523,23 +6563,14 @@ ASTContext::ProtocolCompatibleWithProtocol(ObjCProtocolDecl *lProto,
   return false;
 }
 
-/// QualifiedIdConformsQualifiedId - compare id<pr,...> with id<pr1,...>
-/// return true if lhs's protocols conform to rhs's protocol; false
-/// otherwise.
-bool ASTContext::QualifiedIdConformsQualifiedId(QualType lhs, QualType rhs) {
-  if (lhs->isObjCQualifiedIdType() && rhs->isObjCQualifiedIdType())
-    return ObjCQualifiedIdTypesAreCompatible(lhs, rhs, false);
-  return false;
-}
-
 /// ObjCQualifiedClassTypesAreCompatible - compare  Class<pr,...> and
 /// Class<pr1, ...>.
-bool ASTContext::ObjCQualifiedClassTypesAreCompatible(QualType lhs,
+bool ASTContext::ObjCQualifiedClassTypesAreCompatible(QualType lhs, 
                                                       QualType rhs) {
   const ObjCObjectPointerType *lhsQID = lhs->getAs<ObjCObjectPointerType>();
   const ObjCObjectPointerType *rhsOPT = rhs->getAs<ObjCObjectPointerType>();
   assert ((lhsQID && rhsOPT) && "ObjCQualifiedClassTypesAreCompatible");
-
+  
   for (ObjCObjectPointerType::qual_iterator I = lhsQID->qual_begin(),
        E = lhsQID->qual_end(); I != E; ++I) {
     bool match = false;
@@ -6658,7 +6689,7 @@ bool ASTContext::ObjCQualifiedIdTypesAreCompatible(QualType lhs, QualType rhs,
       if (!match)
         return false;
     }
-
+    
     // Static class's protocols, or its super class or category protocols
     // must be found, direct or indirect in rhs's qualifier list or it is a mismatch.
     if (ObjCInterfaceDecl *lhsID = lhsOPT->getInterfaceDecl()) {
@@ -6710,11 +6741,11 @@ bool ASTContext::canAssignObjCInterfaces(const ObjCObjectPointerType *LHSOPT,
     return ObjCQualifiedIdTypesAreCompatible(QualType(LHSOPT,0),
                                              QualType(RHSOPT,0),
                                              false);
-
+  
   if (LHS->isObjCQualifiedClass() && RHS->isObjCQualifiedClass())
     return ObjCQualifiedClassTypesAreCompatible(QualType(LHSOPT,0),
                                                 QualType(RHSOPT,0));
-
+  
   // If we have 2 user-defined types, fall into that path.
   if (LHS->getInterface() && RHS->getInterface())
     return canAssignObjCInterfaces(LHS, RHS);
@@ -6723,7 +6754,7 @@ bool ASTContext::canAssignObjCInterfaces(const ObjCObjectPointerType *LHSOPT,
 }
 
 /// canAssignObjCInterfacesInBlockPointer - This routine is specifically written
-/// for providing type-safety for objective-c pointers used to pass/return
+/// for providing type-safety for objective-c pointers used to pass/return 
 /// arguments in block literals. When passed as arguments, passing 'A*' where
 /// 'id' is expected is not OK. Passing 'Sub *" where 'Super *" is expected is
 /// not OK. For the return type, the opposite is not OK.
@@ -6733,16 +6764,16 @@ bool ASTContext::canAssignObjCInterfacesInBlockPointer(
                                          bool BlockReturnType) {
   if (RHSOPT->isObjCBuiltinType() || LHSOPT->isObjCIdType())
     return true;
-
+  
   if (LHSOPT->isObjCBuiltinType()) {
     return RHSOPT->isObjCBuiltinType() || RHSOPT->isObjCQualifiedIdType();
   }
-
+  
   if (LHSOPT->isObjCQualifiedIdType() || RHSOPT->isObjCQualifiedIdType())
     return ObjCQualifiedIdTypesAreCompatible(QualType(LHSOPT,0),
                                              QualType(RHSOPT,0),
                                              false);
-
+  
   const ObjCInterfaceType* LHS = LHSOPT->getInterfaceType();
   const ObjCInterfaceType* RHS = RHSOPT->getInterfaceType();
   if (LHS && RHS)  { // We have 2 user-defined types.
@@ -6762,17 +6793,17 @@ bool ASTContext::canAssignObjCInterfacesInBlockPointer(
 /// of protocols inherited from two distinct objective-c pointer objects.
 /// It is used to build composite qualifier list of the composite type of
 /// the conditional expression involving two objective-c pointer objects.
-static
+static 
 void getIntersectionOfProtocols(ASTContext &Context,
                                 const ObjCObjectPointerType *LHSOPT,
                                 const ObjCObjectPointerType *RHSOPT,
       SmallVectorImpl<ObjCProtocolDecl *> &IntersectionOfProtocols) {
-
+  
   const ObjCObjectType* LHS = LHSOPT->getObjectType();
   const ObjCObjectType* RHS = RHSOPT->getObjectType();
   assert(LHS->getInterface() && "LHS must have an interface base");
   assert(RHS->getInterface() && "RHS must have an interface base");
-
+  
   llvm::SmallPtrSet<ObjCProtocolDecl *, 8> InheritedProtocolSet;
   unsigned LHSNumProtocols = LHS->getNumProtocols();
   if (LHSNumProtocols > 0)
@@ -6781,10 +6812,10 @@ void getIntersectionOfProtocols(ASTContext &Context,
     llvm::SmallPtrSet<ObjCProtocolDecl *, 8> LHSInheritedProtocols;
     Context.CollectInheritedProtocols(LHS->getInterface(),
                                       LHSInheritedProtocols);
-    InheritedProtocolSet.insert(LHSInheritedProtocols.begin(),
+    InheritedProtocolSet.insert(LHSInheritedProtocols.begin(), 
                                 LHSInheritedProtocols.end());
   }
-
+  
   unsigned RHSNumProtocols = RHS->getNumProtocols();
   if (RHSNumProtocols > 0) {
     ObjCProtocolDecl **RHSProtocols =
@@ -6796,9 +6827,9 @@ void getIntersectionOfProtocols(ASTContext &Context,
     llvm::SmallPtrSet<ObjCProtocolDecl *, 8> RHSInheritedProtocols;
     Context.CollectInheritedProtocols(RHS->getInterface(),
                                       RHSInheritedProtocols);
-    for (llvm::SmallPtrSet<ObjCProtocolDecl*,8>::iterator I =
+    for (llvm::SmallPtrSet<ObjCProtocolDecl*,8>::iterator I = 
          RHSInheritedProtocols.begin(),
-         E = RHSInheritedProtocols.end(); I != E; ++I)
+         E = RHSInheritedProtocols.end(); I != E; ++I) 
       if (InheritedProtocolSet.count((*I)))
         IntersectionOfProtocols.push_back((*I));
   }
@@ -6806,7 +6837,7 @@ void getIntersectionOfProtocols(ASTContext &Context,
 
 /// areCommonBaseCompatible - Returns common base class of the two classes if
 /// one found. Note that this is O'2 algorithm. But it will be called as the
-/// last type comparison in a ?-exp of ObjC pointer types before a
+/// last type comparison in a ?-exp of ObjC pointer types before a 
 /// warning is issued. So, its invokation is extremely rare.
 QualType ASTContext::areCommonBaseCompatible(
                                           const ObjCObjectPointerType *Lptr,
@@ -6817,7 +6848,7 @@ QualType ASTContext::areCommonBaseCompatible(
   const ObjCInterfaceDecl* RDecl = RHS->getInterface();
   if (!LDecl || !RDecl || (declaresSameEntity(LDecl, RDecl)))
     return QualType();
-
+  
   do {
     LHS = cast<ObjCInterfaceType>(getObjCInterfaceType(LDecl));
     if (canAssignObjCInterfaces(LHS, RHS)) {
@@ -6831,7 +6862,7 @@ QualType ASTContext::areCommonBaseCompatible(
       return Result;
     }
   } while ((LDecl = LDecl->getSuperClass()));
-
+    
   return QualType();
 }
 
@@ -6850,13 +6881,13 @@ bool ASTContext::canAssignObjCInterfaces(const ObjCObjectType *LHS,
   if (LHS->getNumProtocols() == 0)
     return true;
 
-  // Okay, we know the LHS has protocol qualifiers.  If the RHS doesn't,
+  // Okay, we know the LHS has protocol qualifiers.  If the RHS doesn't, 
   // more detailed analysis is required.
   if (RHS->getNumProtocols() == 0) {
     // OK, if LHS is a superclass of RHS *and*
     // this superclass is assignment compatible with LHS.
     // false otherwise.
-    bool IsSuperClass =
+    bool IsSuperClass = 
       LHS->getInterface()->isSuperClassOf(RHS->getInterface());
     if (IsSuperClass) {
       // OK if conversion of LHS to SuperClass results in narrowing of types
@@ -6868,13 +6899,13 @@ bool ASTContext::canAssignObjCInterfaces(const ObjCObjectType *LHS,
       // If super class has no protocols, it is not a match.
       if (SuperClassInheritedProtocols.empty())
         return false;
-
+      
       for (ObjCObjectType::qual_iterator LHSPI = LHS->qual_begin(),
            LHSPE = LHS->qual_end();
            LHSPI != LHSPE; LHSPI++) {
         bool SuperImplementsProtocol = false;
         ObjCProtocolDecl *LHSProto = (*LHSPI);
-
+        
         for (llvm::SmallPtrSet<ObjCProtocolDecl*,8>::iterator I =
              SuperClassInheritedProtocols.begin(),
              E = SuperClassInheritedProtocols.end(); I != E; ++I) {
@@ -6941,7 +6972,7 @@ bool ASTContext::typesAreCompatible(QualType LHS, QualType RHS,
                                     bool CompareUnqualified) {
   if (getLangOpts().CPlusPlus)
     return hasSameType(LHS, RHS);
-
+  
   return !mergeTypes(LHS, RHS, false, CompareUnqualified).isNull();
 }
 
@@ -6977,7 +7008,7 @@ QualType ASTContext::mergeTransparentUnionType(QualType T, QualType SubType,
 
 /// mergeFunctionArgumentTypes - merge two types which appear as function
 /// argument types
-QualType ASTContext::mergeFunctionArgumentTypes(QualType lhs, QualType rhs,
+QualType ASTContext::mergeFunctionArgumentTypes(QualType lhs, QualType rhs, 
                                                 bool OfBlockPointer,
                                                 bool Unqualified) {
   // GNU extension: two types are compatible if they appear as a function
@@ -6996,7 +7027,7 @@ QualType ASTContext::mergeFunctionArgumentTypes(QualType lhs, QualType rhs,
   return mergeTypes(lhs, rhs, OfBlockPointer, Unqualified);
 }
 
-QualType ASTContext::mergeFunctionTypes(QualType lhs, QualType rhs,
+QualType ASTContext::mergeFunctionTypes(QualType lhs, QualType rhs, 
                                         bool OfBlockPointer,
                                         bool Unqualified) {
   const FunctionType *lbase = lhs->getAs<FunctionType>();
@@ -7020,7 +7051,7 @@ QualType ASTContext::mergeFunctionTypes(QualType lhs, QualType rhs,
     retType = mergeTypes(lbase->getResultType(), rbase->getResultType(), false,
                          Unqualified);
   if (retType.isNull()) return QualType();
-
+  
   if (Unqualified)
     retType = retType.getUnqualifiedType();
 
@@ -7030,7 +7061,7 @@ QualType ASTContext::mergeFunctionTypes(QualType lhs, QualType rhs,
     LRetType = LRetType.getUnqualifiedType();
     RRetType = RRetType.getUnqualifiedType();
   }
-
+  
   if (getCanonicalType(retType) != LRetType)
     allLTypes = false;
   if (getCanonicalType(retType) != RRetType)
@@ -7044,7 +7075,7 @@ QualType ASTContext::mergeFunctionTypes(QualType lhs, QualType rhs,
   FunctionType::ExtInfo rbaseInfo = rbase->getExtInfo();
 
   // Compatible functions must have compatible calling conventions
-  if (!isSameCallConv(lbaseInfo.getCC(), rbaseInfo.getCC()))
+  if (lbaseInfo.getCC() != rbaseInfo.getCC())
     return QualType();
 
   // Regparm is part of the calling convention.
@@ -7086,7 +7117,7 @@ QualType ASTContext::mergeFunctionTypes(QualType lhs, QualType rhs,
     if (LangOpts.ObjCAutoRefCount &&
         !FunctionTypesMatchOnNSConsumedAttrs(rproto, lproto))
       return QualType();
-
+      
     // Check argument compatibility
     SmallVector<QualType, 10> types;
     for (unsigned i = 0; i < lproto_nargs; i++) {
@@ -7096,22 +7127,22 @@ QualType ASTContext::mergeFunctionTypes(QualType lhs, QualType rhs,
                                                     OfBlockPointer,
                                                     Unqualified);
       if (argtype.isNull()) return QualType();
-
+      
       if (Unqualified)
         argtype = argtype.getUnqualifiedType();
-
+      
       types.push_back(argtype);
       if (Unqualified) {
         largtype = largtype.getUnqualifiedType();
         rargtype = rargtype.getUnqualifiedType();
       }
-
+      
       if (getCanonicalType(argtype) != getCanonicalType(largtype))
         allLTypes = false;
       if (getCanonicalType(argtype) != getCanonicalType(rargtype))
         allRTypes = false;
     }
-
+      
     if (allLTypes) return lhs;
     if (allRTypes) return rhs;
 
@@ -7135,7 +7166,7 @@ QualType ASTContext::mergeFunctionTypes(QualType lhs, QualType rhs,
     unsigned proto_nargs = proto->getNumArgs();
     for (unsigned i = 0; i < proto_nargs; ++i) {
       QualType argTy = proto->getArgType(i);
-
+      
       // Look at the converted type of enum types, since that is the type used
       // to pass enum values.
       if (const EnumType *Enum = argTy->getAs<EnumType>()) {
@@ -7143,7 +7174,7 @@ QualType ASTContext::mergeFunctionTypes(QualType lhs, QualType rhs,
         if (argTy.isNull())
           return QualType();
       }
-
+      
       if (argTy->isPromotableIntegerType() ||
           getCanonicalType(argTy).getUnqualifiedType() == FloatTy)
         return QualType();
@@ -7154,10 +7185,7 @@ QualType ASTContext::mergeFunctionTypes(QualType lhs, QualType rhs,
 
     FunctionProtoType::ExtProtoInfo EPI = proto->getExtProtoInfo();
     EPI.ExtInfo = einfo;
-    return getFunctionType(retType,
-                           ArrayRef<QualType>(proto->arg_type_begin(),
-                                              proto->getNumArgs()),
-                           EPI);
+    return getFunctionType(retType, proto->getArgTypes(), EPI);
   }
 
   if (allLTypes) return lhs;
@@ -7186,7 +7214,7 @@ static QualType mergeEnumWithInteger(ASTContext &Context, const EnumType *ET,
   return QualType();
 }
 
-QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
+QualType ASTContext::mergeTypes(QualType LHS, QualType RHS, 
                                 bool OfBlockPointer,
                                 bool Unqualified, bool BlockReturnType) {
   // C++ [expr]: If an expression initially has the type "reference to T", the
@@ -7201,7 +7229,7 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
     LHS = LHS.getUnqualifiedType();
     RHS = RHS.getUnqualifiedType();
   }
-
+  
   QualType LHSCan = getCanonicalType(LHS),
            RHSCan = getCanonicalType(RHS);
 
@@ -7282,7 +7310,7 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
       if (RHS->isObjCIdType() && LHS->isBlockPointerType())
         return RHS;
     }
-
+    
     return QualType();
   }
 
@@ -7318,7 +7346,7 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
       LHSPointee = LHSPointee.getUnqualifiedType();
       RHSPointee = RHSPointee.getUnqualifiedType();
     }
-    QualType ResultType = mergeTypes(LHSPointee, RHSPointee, false,
+    QualType ResultType = mergeTypes(LHSPointee, RHSPointee, false, 
                                      Unqualified);
     if (ResultType.isNull()) return QualType();
     if (getCanonicalType(LHSPointee) == getCanonicalType(ResultType))
@@ -7354,7 +7382,7 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
       LHSValue = LHSValue.getUnqualifiedType();
       RHSValue = RHSValue.getUnqualifiedType();
     }
-    QualType ResultType = mergeTypes(LHSValue, RHSValue, false,
+    QualType ResultType = mergeTypes(LHSValue, RHSValue, false, 
                                      Unqualified);
     if (ResultType.isNull()) return QualType();
     if (getCanonicalType(LHSValue) == getCanonicalType(ResultType))
@@ -7376,7 +7404,7 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
       LHSElem = LHSElem.getUnqualifiedType();
       RHSElem = RHSElem.getUnqualifiedType();
     }
-
+    
     QualType ResultType = mergeTypes(LHSElem, RHSElem, false, Unqualified);
     if (ResultType.isNull()) return QualType();
     if (LCAT && getCanonicalType(LHSElem) == getCanonicalType(ResultType))
@@ -7468,17 +7496,17 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
 bool ASTContext::FunctionTypesMatchOnNSConsumedAttrs(
                    const FunctionProtoType *FromFunctionType,
                    const FunctionProtoType *ToFunctionType) {
-  if (FromFunctionType->hasAnyConsumedArgs() !=
+  if (FromFunctionType->hasAnyConsumedArgs() != 
       ToFunctionType->hasAnyConsumedArgs())
     return false;
-  FunctionProtoType::ExtProtoInfo FromEPI =
+  FunctionProtoType::ExtProtoInfo FromEPI = 
     FromFunctionType->getExtProtoInfo();
-  FunctionProtoType::ExtProtoInfo ToEPI =
+  FunctionProtoType::ExtProtoInfo ToEPI = 
     ToFunctionType->getExtProtoInfo();
   if (FromEPI.ConsumedArguments && ToEPI.ConsumedArguments)
     for (unsigned ArgIdx = 0, NumArgs = FromFunctionType->getNumArgs();
          ArgIdx != NumArgs; ++ArgIdx)  {
-      if (FromEPI.ConsumedArguments[ArgIdx] !=
+      if (FromEPI.ConsumedArguments[ArgIdx] != 
           ToEPI.ConsumedArguments[ArgIdx])
         return false;
     }
@@ -7497,11 +7525,11 @@ QualType ASTContext::mergeObjCGCQualifiers(QualType LHS, QualType RHS) {
   if (RHSCan->isFunctionType()) {
     if (!LHSCan->isFunctionType())
       return QualType();
-    QualType OldReturnType =
+    QualType OldReturnType = 
       cast<FunctionType>(RHSCan.getTypePtr())->getResultType();
     QualType NewReturnType =
       cast<FunctionType>(LHSCan.getTypePtr())->getResultType();
-    QualType ResReturnType =
+    QualType ResReturnType = 
       mergeObjCGCQualifiers(NewReturnType, OldReturnType);
     if (ResReturnType.isNull())
       return QualType();
@@ -7512,17 +7540,14 @@ QualType ASTContext::mergeObjCGCQualifiers(QualType LHS, QualType RHS) {
       if (const FunctionProtoType *FPT = cast<FunctionProtoType>(F)) {
         FunctionProtoType::ExtProtoInfo EPI = FPT->getExtProtoInfo();
         EPI.ExtInfo = getFunctionExtInfo(LHS);
-        QualType ResultType
-          = getFunctionType(OldReturnType,
-                            ArrayRef<QualType>(FPT->arg_type_begin(),
-                                               FPT->getNumArgs()),
-                            EPI);
+        QualType ResultType =
+            getFunctionType(OldReturnType, FPT->getArgTypes(), EPI);
         return ResultType;
       }
     }
     return QualType();
   }
-
+  
   // If the qualifiers are different, the types can still be merged.
   Qualifiers LQuals = LHSCan.getLocalQualifiers();
   Qualifiers RQuals = RHSCan.getLocalQualifiers();
@@ -7531,7 +7556,7 @@ QualType ASTContext::mergeObjCGCQualifiers(QualType LHS, QualType RHS) {
     if (LQuals.getCVRQualifiers() != RQuals.getCVRQualifiers() ||
         LQuals.getAddressSpace() != RQuals.getAddressSpace())
       return QualType();
-
+    
     // Exactly one GC qualifier difference is allowed: __strong is
     // okay if the other type has no GC qualifier but is an Objective
     // C object pointer (i.e. implicitly strong by default).  We fix
@@ -7540,17 +7565,17 @@ QualType ASTContext::mergeObjCGCQualifiers(QualType LHS, QualType RHS) {
     Qualifiers::GC GC_L = LQuals.getObjCGCAttr();
     Qualifiers::GC GC_R = RQuals.getObjCGCAttr();
     assert((GC_L != GC_R) && "unequal qualifier sets had only equal elements");
-
+    
     if (GC_L == Qualifiers::Weak || GC_R == Qualifiers::Weak)
       return QualType();
-
+    
     if (GC_L == Qualifiers::Strong)
       return LHS;
     if (GC_R == Qualifiers::Strong)
       return RHS;
     return QualType();
   }
-
+  
   if (LHSCan->isObjCObjectPointerType() && RHSCan->isObjCObjectPointerType()) {
     QualType LHSBaseQT = LHS->getAs<ObjCObjectPointerType>()->getPointeeType();
     QualType RHSBaseQT = RHS->getAs<ObjCObjectPointerType>()->getPointeeType();
@@ -7568,7 +7593,7 @@ QualType ASTContext::mergeObjCGCQualifiers(QualType LHS, QualType RHS) {
 //===----------------------------------------------------------------------===//
 
 unsigned ASTContext::getIntWidth(QualType T) const {
-  if (const EnumType *ET = dyn_cast<EnumType>(T))
+  if (const EnumType *ET = T->getAs<EnumType>())
     T = ET->getDecl()->getIntegerType();
   if (T->isBooleanType())
     return 1;
@@ -7578,7 +7603,7 @@ unsigned ASTContext::getIntWidth(QualType T) const {
 
 QualType ASTContext::getCorrespondingUnsignedType(QualType T) const {
   assert(T->hasSignedIntegerRepresentation() && "Unexpected type");
-
+  
   // Turn <4 x signed int> -> <4 x unsigned int>
   if (const VectorType *VTy = T->getAs<VectorType>())
     return getVectorType(getCorrespondingUnsignedType(VTy->getElementType()),
@@ -7587,7 +7612,7 @@ QualType ASTContext::getCorrespondingUnsignedType(QualType T) const {
   // For enums, we return the unsigned version of the base type.
   if (const EnumType *ETy = T->getAs<EnumType>())
     T = ETy->getDecl()->getIntegerType();
-
+  
   const BuiltinType *BTy = T->getAs<BuiltinType>();
   assert(BTy && "Unexpected signed integer type");
   switch (BTy->getKind()) {
@@ -7634,7 +7659,7 @@ static QualType DecodeTypeFromStr(const char *&Str, const ASTContext &Context,
   int HowLong = 0;
   bool Signed = false, Unsigned = false;
   RequiresICE = false;
-
+  
   // Read the prefixed modifiers first.
   bool Done = false;
   while (!Done) {
@@ -7669,6 +7694,11 @@ static QualType DecodeTypeFromStr(const char *&Str, const ASTContext &Context,
     assert(HowLong == 0 && !Signed && !Unsigned &&
            "Bad modifiers used with 'v'!");
     Type = Context.VoidTy;
+    break;
+  case 'h':
+    assert(HowLong == 0 && !Signed && !Unsigned &&
+           "Bad modifiers used with 'f'!");
+    Type = Context.HalfTy;
     break;
   case 'f':
     assert(HowLong == 0 && !Signed && !Unsigned &&
@@ -7755,10 +7785,10 @@ static QualType DecodeTypeFromStr(const char *&Str, const ASTContext &Context,
     assert(End != Str && "Missing vector size");
     Str = End;
 
-    QualType ElementType = DecodeTypeFromStr(Str, Context, Error,
+    QualType ElementType = DecodeTypeFromStr(Str, Context, Error, 
                                              RequiresICE, false);
     assert(!RequiresICE && "Can't require vector ICE");
-
+    
     // TODO: No way to make AltiVec vectors in builtins yet.
     Type = Context.getVectorType(ElementType, NumElements,
                                  VectorType::GenericVector);
@@ -7766,16 +7796,16 @@ static QualType DecodeTypeFromStr(const char *&Str, const ASTContext &Context,
   }
   case 'E': {
     char *End;
-
+    
     unsigned NumElements = strtoul(Str, &End, 10);
     assert(End != Str && "Missing vector size");
-
+    
     Str = End;
-
+    
     QualType ElementType = DecodeTypeFromStr(Str, Context, Error, RequiresICE,
                                              false);
     Type = Context.getExtVectorType(ElementType, NumElements);
-    break;
+    break;    
   }
   case 'X': {
     QualType ElementType = DecodeTypeFromStr(Str, Context, Error, RequiresICE,
@@ -7783,7 +7813,7 @@ static QualType DecodeTypeFromStr(const char *&Str, const ASTContext &Context,
     assert(!RequiresICE && "Can't require complex ICE");
     Type = Context.getComplexType(ElementType);
     break;
-  }
+  }  
   case 'Y' : {
     Type = Context.getPointerDiffType();
     break;
@@ -7853,9 +7883,9 @@ static QualType DecodeTypeFromStr(const char *&Str, const ASTContext &Context,
       break;
     }
   }
-
+  
   assert((!RequiresICE || Type->isIntegralOrEnumerationType()) &&
-         "Integer constant 'I' type must be an integer");
+         "Integer constant 'I' type must be an integer"); 
 
   return Type;
 }
@@ -7874,9 +7904,9 @@ QualType ASTContext::GetBuiltinType(unsigned Id,
                                        RequiresICE, true);
   if (Error != GE_None)
     return QualType();
-
+  
   assert(!RequiresICE && "Result of intrinsic cannot be required to be an ICE");
-
+  
   while (TypeStr[0] && TypeStr[0] != '.') {
     QualType Ty = DecodeTypeFromStr(TypeStr, *this, Error, RequiresICE, true);
     if (Error != GE_None)
@@ -7886,7 +7916,7 @@ QualType ASTContext::GetBuiltinType(unsigned Id,
     // caller cares, fill in the bitmask we return.
     if (RequiresICE && IntegerConstantArgs)
       *IntegerConstantArgs |= 1 << ArgTypes.size();
-
+    
     // Do array -> pointer decay.  The builtin should use the decayed type.
     if (Ty->isArrayType())
       Ty = getArrayDecayedType(Ty);
@@ -7897,7 +7927,7 @@ QualType ASTContext::GetBuiltinType(unsigned Id,
   assert((TypeStr[0] != '.' || TypeStr[1] == 0) &&
          "'.' should only occur at end of builtin type list!");
 
-  FunctionType::ExtInfo EI;
+  FunctionType::ExtInfo EI(CC_C);
   if (BuiltinInfo.isNoReturn(Id)) EI = EI.withNoReturn(true);
 
   bool Variadic = (TypeStr[0] == '.');
@@ -7936,7 +7966,8 @@ GVALinkage ASTContext::GetGVALinkageForFunction(const FunctionDecl *FD) {
   if (!FD->isInlined())
     return External;
 
-  if (!getLangOpts().CPlusPlus || FD->hasAttr<GNUInlineAttr>()) {
+  if ((!getLangOpts().CPlusPlus && !getLangOpts().MicrosoftMode) ||
+      FD->hasAttr<GNUInlineAttr>()) {
     // GNU or C99 inline semantics. Determine whether this symbol should be
     // externally visible.
     if (FD->isInlineDefinitionExternallyVisible())
@@ -7947,12 +7978,12 @@ GVALinkage ASTContext::GetGVALinkageForFunction(const FunctionDecl *FD) {
   }
 
   // C++0x [temp.explicit]p9:
-  //   [ Note: The intent is that an inline function that is the subject of
-  //   an explicit instantiation declaration will still be implicitly
-  //   instantiated when used so that the body can be considered for
+  //   [ Note: The intent is that an inline function that is the subject of 
+  //   an explicit instantiation declaration will still be implicitly 
+  //   instantiated when used so that the body can be considered for 
   //   inlining, but that no out-of-line copy of the inline function would be
   //   generated in the translation unit. -- end note ]
-  if (FD->getTemplateSpecializationKind()
+  if (FD->getTemplateSpecializationKind() 
                                        == TSK_ExplicitInstantiationDeclaration)
     return GVA_C99Inline;
 
@@ -7963,14 +7994,7 @@ GVALinkage ASTContext::GetGVALinkageForVariable(const VarDecl *VD) {
   if (!VD->isExternallyVisible())
     return GVA_Internal;
 
-  // If this is a static data member, compute the kind of template
-  // specialization. Otherwise, this variable is not part of a
-  // template.
-  TemplateSpecializationKind TSK = TSK_Undeclared;
-  if (VD->isStaticDataMember())
-    TSK = VD->getTemplateSpecializationKind();
-
-  switch (TSK) {
+  switch (VD->getTemplateSpecializationKind()) {
   case TSK_Undeclared:
   case TSK_ExplicitSpecialization:
     return GVA_StrongExternal;
@@ -8020,7 +8044,7 @@ bool ASTContext::DeclMustBeEmitted(const Decl *D) {
     // Constructors and destructors are required.
     if (FD->hasAttr<ConstructorAttr>() || FD->hasAttr<DestructorAttr>())
       return true;
-
+    
     // The key function for a class is required.  This rule only comes
     // into play when inline functions can be key functions, though.
     if (getTargetInfo().getCXXABI().canKeyFunctionBeInline()) {
@@ -8044,7 +8068,7 @@ bool ASTContext::DeclMustBeEmitted(const Decl *D) {
       return false;
     return true;
   }
-
+  
   const VarDecl *VD = cast<VarDecl>(D);
   assert(VD->isFileVarDecl() && "Expected file scoped var");
 
@@ -8067,16 +8091,13 @@ bool ASTContext::DeclMustBeEmitted(const Decl *D) {
   return false;
 }
 
-CallingConv ASTContext::getDefaultCXXMethodCallConv(bool isVariadic) {
+CallingConv ASTContext::getDefaultCallingConvention(bool IsVariadic,
+                                                    bool IsCXXMethod) const {
   // Pass through to the C++ ABI object
-  return ABI->getDefaultMethodCallConv(isVariadic);
-}
+  if (IsCXXMethod)
+    return ABI->getDefaultMethodCallConv(IsVariadic);
 
-CallingConv ASTContext::getCanonicalCallConv(CallingConv CC) const {
-  if (CC == CC_C && !LangOpts.MRTD &&
-      getTargetInfo().getCXXABI().isMemberFunctionCCDefault())
-    return CC_Default;
-  return CC;
+  return (LangOpts.MRTD && !IsVariadic) ? CC_X86StdCall : CC_C;
 }
 
 bool ASTContext::isNearlyEmpty(const CXXRecordDecl *RD) const {
@@ -8090,9 +8111,9 @@ MangleContext *ASTContext::createMangleContext() {
   case TargetCXXABI::GenericItanium:
   case TargetCXXABI::GenericARM:
   case TargetCXXABI::iOS:
-    return createItaniumMangleContext(*this, getDiagnostics());
+    return ItaniumMangleContext::create(*this, getDiagnostics());
   case TargetCXXABI::Microsoft:
-    return createMicrosoftMangleContext(*this, getDiagnostics());
+    return MicrosoftMangleContext::create(*this, getDiagnostics());
   }
   llvm_unreachable("Unsupported ABI");
 }
@@ -8100,40 +8121,117 @@ MangleContext *ASTContext::createMangleContext() {
 CXXABI::~CXXABI() {}
 
 size_t ASTContext::getSideTableAllocatedMemory() const {
-  return ASTRecordLayouts.getMemorySize()
-    + llvm::capacity_in_bytes(ObjCLayouts)
-    + llvm::capacity_in_bytes(KeyFunctions)
-    + llvm::capacity_in_bytes(ObjCImpls)
-    + llvm::capacity_in_bytes(BlockVarCopyInits)
-    + llvm::capacity_in_bytes(DeclAttrs)
-    + llvm::capacity_in_bytes(InstantiatedFromStaticDataMember)
-    + llvm::capacity_in_bytes(InstantiatedFromUsingDecl)
-    + llvm::capacity_in_bytes(InstantiatedFromUsingShadowDecl)
-    + llvm::capacity_in_bytes(InstantiatedFromUnnamedFieldDecl)
-    // +===== Scout ==========================================================+
-    + llvm::capacity_in_bytes(InstantiatedFromUnnamedMeshFieldDecl)
-    // +======================================================================+
-    + llvm::capacity_in_bytes(OverriddenMethods)
-    + llvm::capacity_in_bytes(Types)
-    + llvm::capacity_in_bytes(VariableArrayTypes)
-    + llvm::capacity_in_bytes(ClassScopeSpecializationPattern);
+  return ASTRecordLayouts.getMemorySize() +
+         llvm::capacity_in_bytes(ObjCLayouts) +
+         llvm::capacity_in_bytes(KeyFunctions) +
+         llvm::capacity_in_bytes(ObjCImpls) +
+         llvm::capacity_in_bytes(BlockVarCopyInits) +
+         llvm::capacity_in_bytes(DeclAttrs) +
+         llvm::capacity_in_bytes(TemplateOrInstantiation) +
+         llvm::capacity_in_bytes(InstantiatedFromUsingDecl) +
+         llvm::capacity_in_bytes(InstantiatedFromUsingShadowDecl) +
+         llvm::capacity_in_bytes(InstantiatedFromUnnamedFieldDecl) +
+         // +===== Scout ==========================================================+
+         llvm::capacity_in_bytes(InstantiatedFromUnnamedMeshFieldDecl)
+         // +======================================================================+
+         llvm::capacity_in_bytes(OverriddenMethods) +
+         llvm::capacity_in_bytes(Types) +
+         llvm::capacity_in_bytes(VariableArrayTypes) +
+         llvm::capacity_in_bytes(ClassScopeSpecializationPattern);
 }
 
-void ASTContext::addUnnamedTag(const TagDecl *Tag) {
-  // FIXME: This mangling should be applied to function local classes too
-  if (!Tag->getName().empty() || Tag->getTypedefNameForAnonDecl() ||
-      !isa<CXXRecordDecl>(Tag->getParent()))
-    return;
-
-  std::pair<llvm::DenseMap<const DeclContext *, unsigned>::iterator, bool> P =
-    UnnamedMangleContexts.insert(std::make_pair(Tag->getParent(), 0));
-  UnnamedMangleNumbers.insert(std::make_pair(Tag, P.first->second++));
+/// getIntTypeForBitwidth -
+/// sets integer QualTy according to specified details:
+/// bitwidth, signed/unsigned.
+/// Returns empty type if there is no appropriate target types.
+QualType ASTContext::getIntTypeForBitwidth(unsigned DestWidth,
+                                           unsigned Signed) const {
+  TargetInfo::IntType Ty = getTargetInfo().getIntTypeByWidth(DestWidth, Signed);
+  CanQualType QualTy = getFromTargetType(Ty);
+  if (!QualTy && DestWidth == 128)
+    return Signed ? Int128Ty : UnsignedInt128Ty;
+  return QualTy;
 }
 
-int ASTContext::getUnnamedTagManglingNumber(const TagDecl *Tag) const {
-  llvm::DenseMap<const TagDecl *, unsigned>::const_iterator I =
-    UnnamedMangleNumbers.find(Tag);
-  return I != UnnamedMangleNumbers.end() ? I->second : -1;
+/// getRealTypeForBitwidth -
+/// sets floating point QualTy according to specified bitwidth.
+/// Returns empty type if there is no appropriate target types.
+QualType ASTContext::getRealTypeForBitwidth(unsigned DestWidth) const {
+  TargetInfo::RealType Ty = getTargetInfo().getRealTypeByWidth(DestWidth);
+  switch (Ty) {
+  case TargetInfo::Float:
+    return FloatTy;
+  case TargetInfo::Double:
+    return DoubleTy;
+  case TargetInfo::LongDouble:
+    return LongDoubleTy;
+  case TargetInfo::NoFloat:
+    return QualType();
+  }
+
+  llvm_unreachable("Unhandled TargetInfo::RealType value");
+}
+
+void ASTContext::setManglingNumber(const NamedDecl *ND, unsigned Number) {
+  if (Number > 1)
+    MangleNumbers[ND] = Number;
+}
+
+unsigned ASTContext::getManglingNumber(const NamedDecl *ND) const {
+  llvm::DenseMap<const NamedDecl *, unsigned>::const_iterator I =
+    MangleNumbers.find(ND);
+  return I != MangleNumbers.end() ? I->second : 1;
+}
+
+MangleNumberingContext &
+ASTContext::getManglingNumberContext(const DeclContext *DC) {
+  assert(LangOpts.CPlusPlus);  // We don't need mangling numbers for plain C.
+  MangleNumberingContext *&MCtx = MangleNumberingContexts[DC];
+  if (!MCtx)
+    MCtx = createMangleNumberingContext();
+  return *MCtx;
+}
+
+MangleNumberingContext *ASTContext::createMangleNumberingContext() const {
+  return ABI->createMangleNumberingContext();
+}
+
+void ASTContext::setParameterIndex(const ParmVarDecl *D, unsigned int index) {
+  ParamIndices[D] = index;
+}
+
+unsigned ASTContext::getParameterIndex(const ParmVarDecl *D) const {
+  ParameterIndexTable::const_iterator I = ParamIndices.find(D);
+  assert(I != ParamIndices.end() && 
+         "ParmIndices lacks entry set by ParmVarDecl");
+  return I->second;
+}
+
+APValue *
+ASTContext::getMaterializedTemporaryValue(const MaterializeTemporaryExpr *E,
+                                          bool MayCreate) {
+  assert(E && E->getStorageDuration() == SD_Static &&
+         "don't need to cache the computed value for this temporary");
+  if (MayCreate)
+    return &MaterializedTemporaryValues[E];
+
+  llvm::DenseMap<const MaterializeTemporaryExpr *, APValue>::iterator I =
+      MaterializedTemporaryValues.find(E);
+  return I == MaterializedTemporaryValues.end() ? 0 : &I->second;
+}
+
+bool ASTContext::AtomicUsesUnsupportedLibcall(const AtomicExpr *E) const {
+  const llvm::Triple &T = getTargetInfo().getTriple();
+  if (!T.isOSDarwin())
+    return false;
+
+  QualType AtomicTy = E->getPtr()->getType()->getPointeeType();
+  CharUnits sizeChars = getTypeSizeInChars(AtomicTy);
+  uint64_t Size = sizeChars.getQuantity();
+  CharUnits alignChars = getTypeAlignInChars(AtomicTy);
+  unsigned Align = alignChars.getQuantity();
+  unsigned MaxInlineWidthInBits = getTargetInfo().getMaxAtomicInlineWidth();
+  return (Size != Align || toBits(sizeChars) > MaxInlineWidthInBits);
 }
 
 // ===== Scout =============================================================
@@ -8154,34 +8252,129 @@ int ASTContext::getUnnamedMeshManglingNumber(const MeshDecl *Mesh) const {
 }
 // =========================================================================
 
-unsigned ASTContext::getLambdaManglingNumber(CXXMethodDecl *CallOperator) {
-  CXXRecordDecl *Lambda = CallOperator->getParent();
-  return LambdaMangleContexts[Lambda->getDeclContext()]
-           .getManglingNumber(CallOperator);
-}
 
+namespace {
 
-void ASTContext::setParameterIndex(const ParmVarDecl *D, unsigned int index) {
-  ParamIndices[D] = index;
-}
+  /// \brief A \c RecursiveASTVisitor that builds a map from nodes to their
+  /// parents as defined by the \c RecursiveASTVisitor.
+  ///
+  /// Note that the relationship described here is purely in terms of AST
+  /// traversal - there are other relationships (for example declaration context)
+  /// in the AST that are better modeled by special matchers.
+  ///
+  /// FIXME: Currently only builds up the map using \c Stmt and \c Decl nodes.
+  class ParentMapASTVisitor : public RecursiveASTVisitor<ParentMapASTVisitor> {
 
-unsigned ASTContext::getParameterIndex(const ParmVarDecl *D) const {
-  ParameterIndexTable::const_iterator I = ParamIndices.find(D);
-  assert(I != ParamIndices.end() &&
-         "ParmIndices lacks entry set by ParmVarDecl");
+  public:
+    /// \brief Builds and returns the translation unit's parent map.
+    ///
+    ///  The caller takes ownership of the returned \c ParentMap.
+    static ASTContext::ParentMap *buildMap(TranslationUnitDecl &TU) {
+      ParentMapASTVisitor Visitor(new ASTContext::ParentMap);
+      Visitor.TraverseDecl(&TU);
+      return Visitor.Parents;
+    }
+
+  private:
+    typedef RecursiveASTVisitor<ParentMapASTVisitor> VisitorBase;
+
+    ParentMapASTVisitor(ASTContext::ParentMap *Parents) : Parents(Parents) {
+    }
+
+    bool shouldVisitTemplateInstantiations() const {
+      return true;
+    }
+    bool shouldVisitImplicitCode() const {
+      return true;
+    }
+    // Disables data recursion. We intercept Traverse* methods in the RAV, which
+    // are not triggered during data recursion.
+    bool shouldUseDataRecursionFor(clang::Stmt *S) const {
+      return false;
+    }
+
+    template <typename T>
+    bool TraverseNode(T *Node, bool(VisitorBase:: *traverse) (T *)) {
+      if (Node == NULL)
+        return true;
+      if (ParentStack.size() > 0)
+        // FIXME: Currently we add the same parent multiple times, for example
+        // when we visit all subexpressions of template instantiations; this is
+        // suboptimal, bug benign: the only way to visit those is with
+        // hasAncestor / hasParent, and those do not create new matches.
+        // The plan is to enable DynTypedNode to be storable in a map or hash
+        // map. The main problem there is to implement hash functions /
+        // comparison operators for all types that DynTypedNode supports that
+        // do not have pointer identity.
+        (*Parents)[Node].push_back(ParentStack.back());
+      ParentStack.push_back(ast_type_traits::DynTypedNode::create(*Node));
+      bool Result = (this ->* traverse) (Node);
+      ParentStack.pop_back();
+      return Result;
+    }
+
+    bool TraverseDecl(Decl *DeclNode) {
+      return TraverseNode(DeclNode, &VisitorBase::TraverseDecl);
+    }
+
+    bool TraverseStmt(Stmt *StmtNode) {
+      return TraverseNode(StmtNode, &VisitorBase::TraverseStmt);
+    }
+
+    ASTContext::ParentMap *Parents;
+    llvm::SmallVector<ast_type_traits::DynTypedNode, 16> ParentStack;
+
+    friend class RecursiveASTVisitor<ParentMapASTVisitor>;
+  };
+
+} // end namespace
+
+ASTContext::ParentVector
+ASTContext::getParents(const ast_type_traits::DynTypedNode &Node) {
+  assert(Node.getMemoizationData() &&
+         "Invariant broken: only nodes that support memoization may be "
+         "used in the parent map.");
+  if (!AllParents) {
+    // We always need to run over the whole translation unit, as
+    // hasAncestor can escape any subtree.
+    AllParents.reset(
+        ParentMapASTVisitor::buildMap(*getTranslationUnitDecl()));
+  }
+  ParentMap::const_iterator I = AllParents->find(Node.getMemoizationData());
+  if (I == AllParents->end()) {
+    return ParentVector();
+  }
   return I->second;
 }
 
-bool ASTContext::AtomicUsesUnsupportedLibcall(const AtomicExpr *E) const {
-  const llvm::Triple &T = getTargetInfo().getTriple();
-  if (!T.isOSDarwin())
+bool
+ASTContext::ObjCMethodsAreEqual(const ObjCMethodDecl *MethodDecl,
+                                const ObjCMethodDecl *MethodImpl) {
+  // No point trying to match an unavailable/deprecated mothod.
+  if (MethodDecl->hasAttr<UnavailableAttr>()
+      || MethodDecl->hasAttr<DeprecatedAttr>())
     return false;
-
-  QualType AtomicTy = E->getPtr()->getType()->getPointeeType();
-  CharUnits sizeChars = getTypeSizeInChars(AtomicTy);
-  uint64_t Size = sizeChars.getQuantity();
-  CharUnits alignChars = getTypeAlignInChars(AtomicTy);
-  unsigned Align = alignChars.getQuantity();
-  unsigned MaxInlineWidthInBits = getTargetInfo().getMaxAtomicInlineWidth();
-  return (Size != Align || toBits(sizeChars) > MaxInlineWidthInBits);
+  if (MethodDecl->getObjCDeclQualifier() !=
+      MethodImpl->getObjCDeclQualifier())
+    return false;
+  if (!hasSameType(MethodDecl->getResultType(),
+                   MethodImpl->getResultType()))
+    return false;
+  
+  if (MethodDecl->param_size() != MethodImpl->param_size())
+    return false;
+  
+  for (ObjCMethodDecl::param_const_iterator IM = MethodImpl->param_begin(),
+       IF = MethodDecl->param_begin(), EM = MethodImpl->param_end(),
+       EF = MethodDecl->param_end();
+       IM != EM && IF != EF; ++IM, ++IF) {
+    const ParmVarDecl *DeclVar = (*IF);
+    const ParmVarDecl *ImplVar = (*IM);
+    if (ImplVar->getObjCDeclQualifier() != DeclVar->getObjCDeclQualifier())
+      return false;
+    if (!hasSameType(DeclVar->getType(), ImplVar->getType()))
+      return false;
+  }
+  return (MethodDecl->isVariadic() == MethodImpl->isVariadic());
+  
 }

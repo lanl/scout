@@ -47,7 +47,6 @@ serialization::TypeIdxFromBuiltin(const BuiltinType *BT) {
   case BuiltinType::Half:       ID = PREDEF_TYPE_HALF_ID;       break;
   case BuiltinType::Float:      ID = PREDEF_TYPE_FLOAT_ID;      break;
   case BuiltinType::Double:     ID = PREDEF_TYPE_DOUBLE_ID;     break;
-
   case BuiltinType::LongDouble: ID = PREDEF_TYPE_LONGDOUBLE_ID; break;
   case BuiltinType::NullPtr:    ID = PREDEF_TYPE_NULLPTR_ID;    break;
   case BuiltinType::Char16:     ID = PREDEF_TYPE_CHAR16_ID;     break;
@@ -139,11 +138,11 @@ serialization::getDefinitiveDeclContext(const DeclContext *DC) {
   // Sema::HandlePropertyInClassExtension for the offending code.
   case Decl::ObjCInterface:
     return 0;
-
+    
   default:
     llvm_unreachable("Unhandled DeclContext in AST reader");
   }
-
+  
   llvm_unreachable("Unhandled decl kind");
 }
 
@@ -159,14 +158,18 @@ bool serialization::isRedeclarableDeclKind(unsigned Kind) {
   case Decl::CXXRecord:
   case Decl::ClassTemplateSpecialization:
   case Decl::ClassTemplatePartialSpecialization:
+  case Decl::VarTemplateSpecialization:
+  case Decl::VarTemplatePartialSpecialization:
   case Decl::Function:
   case Decl::CXXMethod:
   case Decl::CXXConstructor:
   case Decl::CXXDestructor:
   case Decl::CXXConversion:
+  case Decl::UsingShadow:
   case Decl::Var:
   case Decl::FunctionTemplate:
   case Decl::ClassTemplate:
+  case Decl::VarTemplate:
   case Decl::TypeAliasTemplate:
   case Decl::ObjCProtocol:
   case Decl::ObjCInterface:
@@ -190,7 +193,6 @@ bool serialization::isRedeclarableDeclKind(unsigned Kind) {
   case Decl::NonTypeTemplateParm:
   case Decl::TemplateTemplateParm:
   case Decl::Using:
-  case Decl::UsingShadow:
   case Decl::ObjCMethod:
   case Decl::ObjCCategory:
   case Decl::ObjCCategoryImpl:

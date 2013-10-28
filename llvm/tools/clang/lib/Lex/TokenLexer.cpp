@@ -121,7 +121,7 @@ void TokenLexer::destroy() {
 
 /// Remove comma ahead of __VA_ARGS__, if present, according to compiler dialect
 /// settings.  Returns true if the comma is removed.
-static bool MaybeRemoveCommaBeforeVaArgs(SmallVector<Token, 128> &ResultToks,
+static bool MaybeRemoveCommaBeforeVaArgs(SmallVectorImpl<Token> &ResultToks,
                                          bool &NextTokGetsSpace,
                                          bool HasPasteOperator,
                                          MacroInfo *Macro, unsigned MacroArgNo,
@@ -278,6 +278,14 @@ void TokenLexer::ExpandFunctionArguments() {
         unsigned NumToks = MacroArgs::getArgLength(ResultArgToks);
         ResultToks.append(ResultArgToks, ResultArgToks+NumToks);
 
+        // In Microsoft-compatibility mode, we follow MSVC's preprocessing
+        // behavior by not considering single commas from nested macro
+        // expansions as argument separators. Set a flag on the token so we can
+        // test for this later when the macro expansion is processed.
+        if (PP.getLangOpts().MicrosoftMode && NumToks == 1 &&
+            ResultToks.back().is(tok::comma))
+          ResultToks.back().setFlag(Token::IgnoredComma);
+
         // If the '##' came from expanding an argument, turn it into 'unknown'
         // to avoid pasting.
         for (unsigned i = FirstResult, e = ResultToks.size(); i != e; ++i) {
@@ -321,8 +329,7 @@ void TokenLexer::ExpandFunctionArguments() {
           (unsigned)ArgNo == Macro->getNumArgs()-1 &&
           Macro->isVariadic()) {
         // Remove the paste operator, report use of the extension.
-        PP.Diag(ResultToks.back().getLocation(), diag::ext_paste_comma);
-        ResultToks.pop_back();
+        PP.Diag(ResultToks.pop_back_val().getLocation(), diag::ext_paste_comma);
       }
 
       ResultToks.append(ArgToks, ArgToks+NumToks);
@@ -378,8 +385,7 @@ void TokenLexer::ExpandFunctionArguments() {
     assert(PasteBefore);
     if (NonEmptyPasteBefore) {
       assert(ResultToks.back().is(tok::hashhash));
-      NextTokGetsSpace |= ResultToks.back().hasLeadingSpace();
-      ResultToks.pop_back();
+      NextTokGetsSpace |= ResultToks.pop_back_val().hasLeadingSpace();
     }
 
     // If this is the __VA_ARGS__ token, and if the argument wasn't provided,
@@ -410,22 +416,19 @@ void TokenLexer::ExpandFunctionArguments() {
 
 /// Lex - Lex and return a token from this macro stream.
 ///
-void TokenLexer::Lex(Token &Tok) {
+bool TokenLexer::Lex(Token &Tok) {
   // Lexing off the end of the macro, pop this macro off the expansion stack.
   if (isAtEnd()) {
     // If this is a macro (not a token stream), mark the macro enabled now
     // that it is no longer being expanded.
     if (Macro) Macro->EnableMacro();
 
-    // Pop this context off the preprocessors lexer stack and get the next
-    // token.  This will delete "this" so remember the PP instance var.
-    Preprocessor &PPCache = PP;
-    if (PP.HandleEndOfTokenLexer(Tok))
-      return;
-
-    // HandleEndOfTokenLexer may not return a token.  If it doesn't, lex
-    // whatever is next.
-    return PPCache.Lex(Tok);
+    Tok.startToken();
+    Tok.setFlagValue(Token::StartOfLine , AtStartOfLine);
+    Tok.setFlagValue(Token::LeadingSpace, HasLeadingSpace);
+    if (CurToken == 0)
+      Tok.setFlag(Token::LeadingEmptyMacro);
+    return PP.HandleEndOfTokenLexer(Tok);
   }
 
   SourceManager &SM = PP.getSourceManager();
@@ -445,7 +448,7 @@ void TokenLexer::Lex(Token &Tok) {
     // When handling the microsoft /##/ extension, the final token is
     // returned by PasteTokens, not the pasted token.
     if (PasteTokens(Tok))
-      return;
+      return true;
 
     TokenIsFromPaste = true;
   }
@@ -476,6 +479,8 @@ void TokenLexer::Lex(Token &Tok) {
   if (isFirstToken) {
     Tok.setFlagValue(Token::StartOfLine , AtStartOfLine);
     Tok.setFlagValue(Token::LeadingSpace, HasLeadingSpace);
+    AtStartOfLine = false;
+    HasLeadingSpace = false;
   }
 
   // Handle recursive expansion!
@@ -493,10 +498,11 @@ void TokenLexer::Lex(Token &Tok) {
     }
 
     if (!DisableMacroExpansion && II->isHandleIdentifierCase())
-      PP.HandleIdentifier(Tok);
+      return PP.HandleIdentifier(Tok);
   }
 
   // Otherwise, return a normal token.
+  return true;
 }
 
 /// PasteTokens - Tok is the LHS of a ## operator, and CurToken is the ##
@@ -817,4 +823,9 @@ void TokenLexer::updateLocForMacroArgTokens(SourceLocation ArgIdSpellLoc,
 
     updateConsecutiveMacroArgTokens(SM, InstLoc, begin_tokens, end_tokens);
   }
+}
+
+void TokenLexer::PropagateLineStartLeadingSpaceInfo(Token &Result) {
+  AtStartOfLine = Result.isAtStartOfLine();
+  HasLeadingSpace = Result.hasLeadingSpace();
 }

@@ -715,3 +715,175 @@ namespace deduced_return_type {
   static_assert(f() == 0, "");
   static_assert(g(true), "");
 }
+
+namespace modify_temporary_during_construction {
+  struct A { int &&temporary; int x; int y; };
+  constexpr int f(int &r) { r *= 9; return r - 12; }
+  // FIXME: The 'uninitialized' warning here is bogus.
+  constexpr A a = { 6, f(a.temporary), a.temporary }; // expected-warning {{uninitialized}} expected-note {{temporary created here}}
+  static_assert(a.x == 42, "");
+  static_assert(a.y == 54, "");
+  constexpr int k = a.temporary++; // expected-error {{constant expression}} expected-note {{outside the expression that created the temporary}}
+}
+
+namespace std {
+  typedef decltype(sizeof(int)) size_t;
+
+  template <class _E>
+  class initializer_list
+  {
+    const _E* __begin_;
+    size_t    __size_;
+
+    constexpr initializer_list(const _E* __b, size_t __s)
+      : __begin_(__b),
+        __size_(__s)
+    {}
+
+  public:
+    typedef _E        value_type;
+    typedef const _E& reference;
+    typedef const _E& const_reference;
+    typedef size_t    size_type;
+
+    typedef const _E* iterator;
+    typedef const _E* const_iterator;
+
+    constexpr initializer_list() : __begin_(nullptr), __size_(0) {}
+
+    constexpr size_t    size()  const {return __size_;}
+    constexpr const _E* begin() const {return __begin_;}
+    constexpr const _E* end()   const {return __begin_ + __size_;}
+  };
+}
+
+namespace InitializerList {
+  constexpr int sum(std::initializer_list<int> ints) {
+    int total = 0;
+    for (int n : ints) total += n;
+    return total;
+  }
+  static_assert(sum({1, 2, 3, 4, 5}) == 15, "");
+}
+
+namespace StmtExpr {
+  constexpr int f(int k) {
+    switch (k) {
+    case 0:
+      return 0;
+
+      ({
+        case 1: // expected-note {{not supported}}
+          return 1;
+      });
+    }
+  }
+  static_assert(f(1) == 1, ""); // expected-error {{constant expression}} expected-note {{in call}}
+
+  constexpr int g() { // expected-error {{never produces a constant}}
+    return ({ int n; n; }); // expected-note {{object of type 'int' is not initialized}}
+  }
+
+  // FIXME: We should handle the void statement expression case.
+  constexpr int h() { // expected-error {{never produces a constant}}
+    ({ if (true) {} }); // expected-note {{not supported}}
+    return 0;
+  }
+}
+
+namespace VirtualFromBase {
+  struct S1 {
+    virtual int f() const;
+  };
+  struct S2 {
+    virtual int f();
+  };
+  template <typename T> struct X : T {
+    constexpr X() {}
+    double d = 0.0;
+    constexpr int f() { return sizeof(T); }
+  };
+
+  // Non-virtual f(), OK.
+  constexpr X<X<S1>> xxs1;
+  constexpr X<S1> *p = const_cast<X<X<S1>>*>(&xxs1);
+  static_assert(p->f() == sizeof(S1), "");
+
+  // Virtual f(), not OK.
+  constexpr X<X<S2>> xxs2;
+  constexpr X<S2> *q = const_cast<X<X<S2>>*>(&xxs2);
+  static_assert(q->f() == sizeof(X<S2>), ""); // expected-error {{constant expression}} expected-note {{virtual function call}}
+}
+
+namespace Lifetime {
+  constexpr int &get(int &&r) { return r; }
+  constexpr int f() {
+    int &r = get(123);
+    return r; // expected-note {{read of object outside its lifetime}}
+  }
+  static_assert(f() == 123, ""); // expected-error {{constant expression}} expected-note {{in call}}
+
+  constexpr int g() {
+    int *p = 0;
+    {
+      int n = 0;
+      p = &n;
+      n = 42;
+    }
+    *p = 123; // expected-note {{assignment to object outside its lifetime}}
+    return *p;
+  }
+  static_assert(g() == 42, ""); // expected-error {{constant expression}} expected-note {{in call}}
+
+  constexpr int h(int n) {
+    int *p[4] = {};
+    int &&r = 1;
+    p[0] = &r;
+    while (int a = 1) {
+      p[1] = &a;
+      for (int b = 1; int c = 1; ) {
+        p[2] = &b, p[3] = &c;
+        break;
+      }
+      break;
+    }
+    *p[n] = 0; // expected-note 3{{assignment to object outside its lifetime}}
+    return *p[n];
+  }
+  static_assert(h(0) == 0, ""); // ok, lifetime-extended
+  static_assert(h(1) == 0, ""); // expected-error {{constant expression}} expected-note {{in call}}
+  static_assert(h(2) == 0, ""); // expected-error {{constant expression}} expected-note {{in call}}
+  static_assert(h(3) == 0, ""); // expected-error {{constant expression}} expected-note {{in call}}
+
+  // FIXME: This function should be treated as non-constant.
+  constexpr void lifetime_versus_loops() {
+    int *p = 0;
+    for (int i = 0; i != 2; ++i) {
+      int *q = p;
+      int n = 0;
+      p = &n;
+      if (i)
+        // This modifies the 'n' from the previous iteration of the loop outside
+        // its lifetime.
+        ++*q;
+    }
+  }
+  static_assert((lifetime_versus_loops(), true), "");
+}
+
+namespace Bitfields {
+  struct A {
+    bool b : 3;
+    int n : 4;
+    unsigned u : 5;
+  };
+  constexpr bool test() {
+    A a {};
+    a.b += 2;
+    --a.n;
+    --a.u;
+    a.n = -a.n * 3;
+    return a.b == false && a.n == 3 && a.u == 31;
+  }
+  static_assert(test(), "");
+}

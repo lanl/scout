@@ -20,6 +20,7 @@
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Lex/Lexer.h"
 #include "clang/Lex/MacroInfo.h"
+#include "clang/Lex/ModuleMap.h"
 #include "clang/Lex/PPCallbacks.h"
 #include "clang/Lex/PTHLexer.h"
 #include "clang/Lex/PTHManager.h"
@@ -196,7 +197,7 @@ class Preprocessor : public RefCountedBase<Preprocessor> {
   /// with this preprocessor.
   std::vector<CommentHandler *> CommentHandlers;
 
-  /// \brief True if we want to ignore EOF token and continue later on (thus
+  /// \brief True if we want to ignore EOF token and continue later on (thus 
   /// avoid tearing the Lexer and etc. down).
   bool IncrementalProcessing;
 
@@ -219,17 +220,17 @@ class Preprocessor : public RefCountedBase<Preprocessor> {
   /// for preprocessing.
   SourceLocation CodeCompletionFileLoc;
 
-  /// \brief The source location of the 'import' contextual keyword we just
+  /// \brief The source location of the 'import' contextual keyword we just 
   /// lexed, if any.
   SourceLocation ModuleImportLoc;
 
   /// \brief The module import path that we're currently processing.
   SmallVector<std::pair<IdentifierInfo *, SourceLocation>, 2> ModuleImportPath;
-
+  
   /// \brief Whether the module import expectes an identifier next. Otherwise,
   /// it expects a '.' or ';'.
   bool ModuleImportExpectsIdentifier;
-
+  
   /// \brief The source location of the currently-active
   /// #pragma clang arc_cf_code_audited begin.
   SourceLocation PragmaARCCFCodeAuditedLoc;
@@ -313,7 +314,7 @@ class Preprocessor : public RefCountedBase<Preprocessor> {
   /// the reverse order (the latest one is in the head of the list).
   llvm::DenseMap<const IdentifierInfo*, MacroDirective*> Macros;
   friend class ASTReader;
-
+  
   /// \brief Macros that we want to warn because they are not used at the end
   /// of the translation unit; we store just their SourceLocations instead
   /// something like MacroInfo*. The benefit of this is that when we are
@@ -431,7 +432,7 @@ public:
   /// \brief Retrieve the preprocessor options used to initialize this
   /// preprocessor.
   PreprocessorOptions &getPreprocessorOpts() const { return *PPOpts; }
-
+  
   DiagnosticsEngine &getDiagnostics() const { return *Diags; }
   void setDiagnostics(DiagnosticsEngine &D) { Diags = &D; }
 
@@ -466,7 +467,7 @@ public:
   }
 
   /// \brief True if we are currently preprocessing a #if or #elif directive
-  bool isParsingIfOrElifDirective() const {
+  bool isParsingIfOrElifDirective() const { 
     return ParsingIfOrElifDirective;
   }
 
@@ -719,17 +720,8 @@ public:
   /// caching of tokens is on.
   bool isBacktrackEnabled() const { return !BacktrackPositions.empty(); }
 
-  /// Lex - To lex a token from the preprocessor, just pull a token from the
-  /// current lexer or macro object.
-  void Lex(Token &Result) {
-    switch (CurLexerKind) {
-    case CLK_Lexer: CurLexer->Lex(Result); break;
-    case CLK_PTHLexer: CurPTHLexer->Lex(Result); break;
-    case CLK_TokenLexer: CurTokenLexer->Lex(Result); break;
-    case CLK_CachingLexer: CachingLex(Result); break;
-    case CLK_LexAfterModuleImport: LexAfterModuleImport(Result); break;
-    }
-  }
+  /// Lex - Lex the next token for this preprocessor.
+  void Lex(Token &Result);
 
   void LexAfterModuleImport(Token &Result);
 
@@ -876,7 +868,7 @@ public:
   void enableIncrementalProcessing(bool value = true) {
     IncrementalProcessing = value;
   }
-
+  
   /// \brief Specify the point at which code-completion will be performed.
   ///
   /// \param File the file in which code completion should occur. If
@@ -1004,8 +996,9 @@ public:
 
   /// \brief Relex the token at the specified location.
   /// \returns true if there was a failure, false on success.
-  bool getRawToken(SourceLocation Loc, Token &Result) {
-    return Lexer::getRawToken(Loc, Result, SourceMgr, LangOpts);
+  bool getRawToken(SourceLocation Loc, Token &Result,
+                   bool IgnoreWhiteSpace = false) {
+    return Lexer::getRawToken(Loc, Result, SourceMgr, LangOpts, IgnoreWhiteSpace);
   }
 
   /// getSpellingOfSingleCharacterNumericConstant - Tok is a numeric constant
@@ -1176,7 +1169,10 @@ public:
   /// identifier and has filled in the tokens IdentifierInfo member.  This
   /// callback potentially macro expands it or turns it into a named token (like
   /// 'for').
-  void HandleIdentifier(Token &Identifier);
+  ///
+  /// \returns true if we actually computed a token, false if we need to
+  /// lex again.
+  bool HandleIdentifier(Token &Identifier);
 
 
   /// HandleEndOfFile - This callback is invoked when the lexer hits the end of
@@ -1214,7 +1210,7 @@ public:
 
   /// \brief Retrieves the module that we're currently building, if any.
   Module *getCurrentModule();
-
+  
   /// \brief Allocate a new MacroInfo object with the provided SourceLocation.
   MacroInfo *AllocateMacroInfo(SourceLocation L);
 
@@ -1223,7 +1219,7 @@ public:
                                            unsigned SubModuleID);
 
   /// \brief Turn the specified lexer token into a fully checked and spelled
-  /// filename, e.g. as an operand of \#include.
+  /// filename, e.g. as an operand of \#include. 
   ///
   /// The caller is expected to provide a buffer that is large enough to hold
   /// the spelling of the filename, but is also expected to handle the case
@@ -1237,12 +1233,12 @@ public:
   ///
   /// Returns null on failure.  \p isAngled indicates whether the file
   /// reference is for system \#include's or not (i.e. using <> instead of "").
-  const FileEntry *LookupFile(StringRef Filename,
+  const FileEntry *LookupFile(SourceLocation FilenameLoc, StringRef Filename,
                               bool isAngled, const DirectoryLookup *FromDir,
                               const DirectoryLookup *&CurDir,
                               SmallVectorImpl<char> *SearchPath,
                               SmallVectorImpl<char> *RelativePath,
-                              Module **SuggestedModule,
+                              ModuleMap::KnownHeader *SuggestedModule,
                               bool SkipCache = false);
 
   /// GetCurLookup - The DirectoryLookup structure used to find the current
@@ -1293,6 +1289,8 @@ private:
     CurLexerKind = IncludeMacroStack.back().CurLexerKind;
     IncludeMacroStack.pop_back();
   }
+
+  void PropagateLineStartLeadingSpaceInfo(Token &Result);
 
   /// \brief Allocate a new MacroInfo object.
   MacroInfo *AllocateMacroInfo();
@@ -1350,7 +1348,7 @@ private:
 
   /// HandleMacroExpandedIdentifier - If an identifier token is read that is to
   /// be expanded as a macro, handle it and return the next token as 'Tok'.  If
-  /// the macro should not be expanded return true, otherwise return false.
+  /// we lexed a token, return true; otherwise the caller should lex again.
   bool HandleMacroExpandedIdentifier(Token &Tok, MacroDirective *MD);
 
   /// \brief Cache macro expanded tokens for TokenLexers.
@@ -1453,8 +1451,32 @@ private:
   void HandleImportDirective(SourceLocation HashLoc, Token &Tok);
   void HandleMicrosoftImportDirective(Token &Tok);
 
+  // Module inclusion testing.
+  /// \brief Find the module for the source or header file that \p FilenameLoc
+  /// points to.
+  Module *getModuleForLocation(SourceLocation FilenameLoc);
+
+  /// \brief Verify that a private header is included only from within its
+  /// module.
+  bool violatesPrivateInclude(Module *RequestingModule,
+                              const FileEntry *IncFileEnt,
+                              ModuleMap::ModuleHeaderRole Role,
+                              Module *RequestedModule);
+
+  /// \brief Verify that a module includes headers only from modules that it
+  /// has declared that it uses.
+  bool violatesUseDeclarations(Module *RequestingModule,
+                               Module *RequestedModule);
+
+  /// \brief Verify that it is legal for the source file that \p FilenameLoc
+  /// points to to include the file \p Filename.
+  ///
+  /// Tries to reuse \p IncFileEnt.
+  void verifyModuleInclude(SourceLocation FilenameLoc, StringRef Filename,
+                           const FileEntry *IncFileEnt);
+
   // Macro handling.
-  void HandleDefineDirective(Token &Tok);
+  void HandleDefineDirective(Token &Tok, bool ImmediatelyAfterTopLevelIfndef);
   void HandleUndefDirective(Token &Tok);
 
   // Conditional Inclusion.
@@ -1466,7 +1488,8 @@ private:
   void HandleElifDirective(Token &Tok);
 
   // Pragmas.
-  void HandlePragmaDirective(unsigned Introducer);
+  void HandlePragmaDirective(SourceLocation IntroducerLoc,
+                             PragmaIntroducerKind Introducer);
 public:
   void HandlePragmaOnce(Token &OnceTok);
   void HandlePragmaMark();

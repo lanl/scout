@@ -16,7 +16,7 @@ let Component = "Common" in {
 // Basic.
 
 def fatal_too_many_errors
-  : Error<"too many errors emitted, stopping now">, DefaultFatal;
+  : Error<"too many errors emitted, stopping now">, DefaultFatal; 
 
 def note_declared_at : Note<"declared here">;
 def note_previous_definition : Note<"previous definition is here">;
@@ -78,9 +78,9 @@ def err_deleted_non_function : Error<
   "only functions can have deleted definitions">;
 def err_module_not_found : Error<"module '%0' not found">, DefaultFatal;
 def err_module_not_built : Error<"could not build module '%0'">, DefaultFatal;
-def err_module_cycle : Error<"cyclic dependency in module '%0': %1">,
+def err_module_cycle : Error<"cyclic dependency in module '%0': %1">, 
   DefaultFatal;
-def note_pragma_entered_here : Note<"#pragma entered here">;
+def note_pragma_entered_here : Note<"#pragma entered here">;  
 def note_decl_hiding_tag_type : Note<
   "%1 %0 is hidden by a non-type declaration of %0 here">;
 def err_attribute_not_type_attr : Error<
@@ -103,10 +103,10 @@ def ext_cxx11_longlong : Extension<
 def warn_cxx98_compat_longlong : Warning<
   "'long long' is incompatible with C++98">,
   InGroup<CXX98CompatPedantic>, DefaultIgnore;
-def warn_integer_too_large : Warning<
-  "integer constant is too large for its type">;
+def err_integer_too_large : Error<
+  "integer constant is larger than the largest unsigned integer type">;
 def warn_integer_too_large_for_signed : Warning<
-  "integer constant is so large that it is unsigned">;
+  "integer constant is larger than the largest signed integer type">;
 
 // Sema && AST
 def note_invalid_subexpr_in_const_expr : Note<
@@ -119,7 +119,9 @@ def err_target_unknown_triple : Error<
 def err_target_unknown_cpu : Error<"unknown target CPU '%0'">;
 def err_target_unknown_abi : Error<"unknown target ABI '%0'">;
 def err_target_unknown_cxxabi : Error<"unknown C++ ABI '%0'">;
-def err_target_invalid_feature : Error<"invalid target feature '%0'">;
+def err_target_unknown_fpmath : Error<"unknown FP unit '%0'">;
+def err_target_unsupported_fpmath : Error<
+    "the '%0' unit is not supported with this instruction set">;
 
 // Source manager
 def err_cannot_open_file : Error<"cannot open file '%0': %1">, DefaultFatal;

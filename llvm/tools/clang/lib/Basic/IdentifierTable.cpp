@@ -13,11 +13,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Basic/IdentifierTable.h"
-#include "clang/Basic/CharInfo.h"
 #include "clang/Basic/LangOptions.h"
+#include "clang/Basic/CharInfo.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/FoldingSet.h"
-#include "llvm/ADT/SmallString.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cstdio>
@@ -79,7 +78,7 @@ IdentifierTable::IdentifierTable(const LangOptions &LangOpts,
   // Populate the identifier table with info about keywords for the current
   // language.
   AddKeywords(LangOpts);
-
+      
 
   // Add the '_experimental_modules_import' contextual keyword.
   get("import").setModulesImport(true);
@@ -146,8 +145,6 @@ static void AddKeyword(StringRef Keyword,
   // +==== Scout - keywords ==================================================+
   else if (LangOpts.Scout && (Flags & KEYSCOUT)) AddResult = 1;
   // +========================================================================+
-
-
 
   // Don't add this keyword under MicrosoftMode.
   if (LangOpts.MicrosoftMode && (Flags & KEYNOMS))
@@ -238,7 +235,7 @@ tok::PPKeywordKind IdentifierInfo::getPPKeywordID() const {
   CASE( 6, 'i', 'n', ifndef);
   CASE( 6, 'i', 'p', import);
   CASE( 6, 'p', 'a', pragma);
-
+      
   CASE( 7, 'd', 'f', defined);
   CASE( 7, 'i', 'c', include);
   CASE( 7, 'w', 'r', warning);
@@ -247,7 +244,7 @@ tok::PPKeywordKind IdentifierInfo::getPPKeywordID() const {
   CASE(12, 'i', 'c', include_next);
 
   CASE(14, '_', 'p', __public_macro);
-
+      
   CASE(15, '_', 'p', __private_macro);
 
   CASE(16, '_', 'i', __include_macros);
@@ -431,7 +428,7 @@ ObjCMethodFamily Selector::getMethodFamilyImpl(Selector sel) {
     if (name == "retainCount") return OMF_retainCount;
     if (name == "self") return OMF_self;
   }
-
+ 
   if (name == "performSelector") return OMF_performSelector;
 
   // The other method families may begin with a prefix of underscores.
@@ -462,6 +459,32 @@ ObjCMethodFamily Selector::getMethodFamilyImpl(Selector sel) {
   return OMF_None;
 }
 
+ObjCInstanceTypeFamily Selector::getInstTypeMethodFamily(Selector sel) {
+  IdentifierInfo *first = sel.getIdentifierInfoForSlot(0);
+  if (!first) return OIT_None;
+  
+  StringRef name = first->getName();
+  
+  if (name.empty()) return OIT_None;
+  switch (name.front()) {
+    case 'a':
+      if (startsWithWord(name, "array")) return OIT_Array;
+      break;
+    case 'd':
+      if (startsWithWord(name, "default")) return OIT_ReturnsSelf;
+      if (startsWithWord(name, "dictionary")) return OIT_Dictionary;
+      break;
+    case 's':
+      if (startsWithWord(name, "shared")) return OIT_ReturnsSelf;
+      if (startsWithWord(name, "standard")) return OIT_Singleton;
+    case 'i':
+      if (startsWithWord(name, "init")) return OIT_Init;
+    default:
+      break;
+  }
+  return OIT_None;
+}
+
 namespace {
   struct SelectorTableImpl {
     llvm::FoldingSet<MultiKeywordSelector> Table;
@@ -473,15 +496,20 @@ static SelectorTableImpl &getSelectorTableImpl(void *P) {
   return *static_cast<SelectorTableImpl*>(P);
 }
 
-/*static*/ Selector
-SelectorTable::constructSetterName(IdentifierTable &Idents,
-                                   SelectorTable &SelTable,
-                                   const IdentifierInfo *Name) {
-  SmallString<100> SelectorName;
-  SelectorName = "set";
-  SelectorName += Name->getName();
-  SelectorName[3] = toUppercase(SelectorName[3]);
-  IdentifierInfo *SetterName = &Idents.get(SelectorName);
+SmallString<64>
+SelectorTable::constructSetterName(StringRef Name) {
+  SmallString<64> SetterName("set");
+  SetterName += Name;
+  SetterName[3] = toUppercase(SetterName[3]);
+  return SetterName;
+}
+
+Selector
+SelectorTable::constructSetterSelector(IdentifierTable &Idents,
+                                       SelectorTable &SelTable,
+                                       const IdentifierInfo *Name) {
+  IdentifierInfo *SetterName =
+    &Idents.get(constructSetterName(Name->getName()));
   return SelTable.getUnarySelector(SetterName);
 }
 

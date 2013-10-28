@@ -55,12 +55,6 @@ namespace {
     void VisitFunctionDecl(FunctionDecl *D);
     void VisitFriendDecl(FriendDecl *D);
     void VisitFieldDecl(FieldDecl *D);
-    void VisitMeshDecl(MeshDecl *D);
-    void VisitUniformMeshDecl(UniformMeshDecl *D);
-    void VisitRectilinearMeshDecl(RectilinearMeshDecl *D);    
-    void VisitStructuredMeshDecl(StructuredMeshDecl *D);
-    void VisitUnstructuredMeshDecl(UnstructuredMeshDecl *D);
-    void VisitMeshFieldDecl(MeshFieldDecl *D);    
     void VisitVarDecl(VarDecl *D);
     void VisitLabelDecl(LabelDecl *D);
     void VisitParmVarDecl(ParmVarDecl *D);
@@ -266,6 +260,8 @@ void DeclPrinter::VisitDeclContext(DeclContext *DC, bool Indent) {
     QualType CurDeclType = getDeclType(*D);
     if (!Decls.empty() && !CurDeclType.isNull()) {
       QualType BaseType = GetBaseType(CurDeclType);
+      if (!BaseType.isNull() && isa<ElaboratedType>(BaseType))
+        BaseType = cast<ElaboratedType>(BaseType)->getNamedType();
       if (!BaseType.isNull() && isa<TagType>(BaseType) &&
           cast<TagType>(BaseType)->getDecl() == Decls[0]) {
         Decls.push_back(*D);
@@ -343,12 +339,14 @@ void DeclPrinter::VisitTypedefDecl(TypedefDecl *D) {
     if (D->isModulePrivate())
       Out << "__module_private__ ";
   }
-  D->getUnderlyingType().print(Out, Policy, D->getName());
+  D->getTypeSourceInfo()->getType().print(Out, Policy, D->getName());
   prettyPrintAttributes(D);
 }
 
 void DeclPrinter::VisitTypeAliasDecl(TypeAliasDecl *D) {
-  Out << "using " << *D << " = " << D->getUnderlyingType().getAsString(Policy);
+  Out << "using " << *D;
+  prettyPrintAttributes(D);
+  Out << " = " << D->getTypeSourceInfo()->getType().getAsString(Policy);
 }
 
 void DeclPrinter::VisitEnumDecl(EnumDecl *D) {
@@ -642,92 +640,6 @@ void DeclPrinter::VisitFieldDecl(FieldDecl *D) {
   prettyPrintAttributes(D);
 }
 
-void DeclPrinter::VisitMeshDecl(MeshDecl *D) {
-
-  if (!Policy.SuppressSpecifiers && D->isModulePrivate())
-    Out << "__module_private__ ";
-
-  Out << D->getKindName();
-  Out << " fields[ ";
-  if (D->hasCellData())
-    Out << "cells ";
-  if (D->hasVertexData())
-    Out << "vertices ";
-  if (D->hasEdgeData())
-    Out << "edges ";
-  if (D->hasFaceData())
-    Out << "faces ";
-  Out << "] ";
-
-  if (D->isCompleteDefinition()) {
-    Out << "{\n";
-    VisitDeclContext(D);
-    Indent() << "}";
-  }
-}
-
-void DeclPrinter::VisitUniformMeshDecl(UniformMeshDecl *D) {
-
-
-}
-
-void DeclPrinter::VisitRectilinearMeshDecl(RectilinearMeshDecl *D) {
-
-
-}
-
-void DeclPrinter::VisitStructuredMeshDecl(StructuredMeshDecl *D) {
-
-
-}
-
-void DeclPrinter::VisitUnstructuredMeshDecl(UnstructuredMeshDecl *D) {
-
-
-}
-
-void DeclPrinter::VisitMeshFieldDecl(MeshFieldDecl *D) {
-
-  if (!Policy.SuppressSpecifiers && D->isMutable())
-    Out << "mutable ";
-  
-  if (D->isCellLocated())
-    Out << "[cell located] ";
-  else if (D->isVertexLocated())
-    Out << "[vertex located] ";
-  else if (D->isEdgeLocated())
-    Out << "[edge located] ";
-  else if (D->isFaceLocated())
-    Out << "[face lcoated] ";
-  else
-    assert(0 && "mesh field has no location.");
-
-  if (!Policy.SuppressSpecifiers && D->isModulePrivate())
-    Out << "__module_private__ ";
-
-  Out << D->getASTContext().getUnqualifiedObjCPointerType(D->getType()).
-    stream(Policy, D->getName());
-
-  if (D->isBitField()) {
-    Out << " : ";
-    D->getBitWidth()->printPretty(Out, 0, Policy, Indentation);
-  }
-
-
-  Expr *Init = D->getInClassInitializer();
-  if (!Policy.SuppressInitializers && Init) {
-    if (D->getInClassInitStyle() == ICIS_ListInit)
-      Out << " ";
-    else
-      Out << " = ";
-
-    Init->printPretty(Out, 0, Policy, Indentation);
-  }
-  prettyPrintAttributes(D);
-}
-
-
-
 void DeclPrinter::VisitLabelDecl(LabelDecl *D) {
   Out << *D << ":";
 }
@@ -757,9 +669,9 @@ void DeclPrinter::VisitVarDecl(VarDecl *D) {
       Out << "__module_private__ ";
   }
 
-  QualType T = D->getASTContext().getUnqualifiedObjCPointerType(D->getType());
-  if (ParmVarDecl *Parm = dyn_cast<ParmVarDecl>(D))
-    T = Parm->getOriginalType();
+  QualType T = D->getTypeSourceInfo()
+    ? D->getTypeSourceInfo()->getType()
+    : D->getASTContext().getUnqualifiedObjCPointerType(D->getType());
   T.print(Out, Policy, D->getName());
   Expr *Init = D->getInit();
   if (!Policy.SuppressInitializers && Init) {
@@ -1245,7 +1157,10 @@ void DeclPrinter::VisitObjCPropertyImplDecl(ObjCPropertyImplDecl *PID) {
 }
 
 void DeclPrinter::VisitUsingDecl(UsingDecl *D) {
-  Out << "using ";
+  if (!D->isAccessDeclaration())
+    Out << "using ";
+  if (D->hasTypename())
+    Out << "typename ";
   D->getQualifier()->print(Out, Policy);
   Out << *D;
 }
@@ -1258,7 +1173,8 @@ DeclPrinter::VisitUnresolvedUsingTypenameDecl(UnresolvedUsingTypenameDecl *D) {
 }
 
 void DeclPrinter::VisitUnresolvedUsingValueDecl(UnresolvedUsingValueDecl *D) {
-  Out << "using ";
+  if (!D->isAccessDeclaration())
+    Out << "using ";
   D->getQualifier()->print(Out, Policy);
   Out << D->getName();
 }
@@ -1273,8 +1189,9 @@ void DeclPrinter::VisitOMPThreadPrivateDecl(OMPThreadPrivateDecl *D) {
     for (OMPThreadPrivateDecl::varlist_iterator I = D->varlist_begin(),
                                                 E = D->varlist_end();
                                                 I != E; ++I) {
-      Out << (I == D->varlist_begin() ? '(' : ',')
-          << *cast<NamedDecl>(cast<DeclRefExpr>(*I)->getDecl());
+      Out << (I == D->varlist_begin() ? '(' : ',');
+      NamedDecl *ND = cast<NamedDecl>(cast<DeclRefExpr>(*I)->getDecl());
+      ND->printQualifiedName(Out);
     }
     Out << ")";
   }

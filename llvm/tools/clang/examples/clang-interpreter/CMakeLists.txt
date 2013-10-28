@@ -1,4 +1,3 @@
-include(sc-llvm-link-libs)
 set(LLVM_LINK_COMPONENTS
   jit
   interpreter
@@ -37,5 +36,4 @@ target_link_libraries(clang-interpreter
   clangParse
   clangLex
   clangBasic
-  ${SC_LLVM_LINK_LIBS}
   )

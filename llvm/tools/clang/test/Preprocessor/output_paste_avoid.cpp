@@ -1,5 +1,5 @@
 // RUN: %clang_cc1 -E -std=c++11 %s -o - | FileCheck -strict-whitespace %s
-// REQUIRES: scoutdisable
+
 
 #define y(a) ..a
 A: y(.)

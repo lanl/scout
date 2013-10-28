@@ -54,6 +54,9 @@ class FrontendAction;
 namespace tooling {
 
 /// \brief Interface to generate clang::FrontendActions.
+///
+/// Having a factory interface allows, for example, a new FrontendAction to be
+/// created for each translation unit processed by ClangTool.
 class FrontendActionFactory {
 public:
   virtual ~FrontendActionFactory();
@@ -66,7 +69,7 @@ public:
 
 /// \brief Returns a new FrontendActionFactory for a given type.
 ///
-/// T must extend clang::FrontendAction.
+/// T must derive from clang::FrontendAction.
 ///
 /// Example:
 /// FrontendActionFactory *Factory =
@@ -175,8 +178,8 @@ class ToolInvocation {
 /// This class is written to be usable for command line utilities.
 /// By default the class uses ClangSyntaxOnlyAdjuster to modify
 /// command line arguments before the arguments are used to run
-/// a frontend action. One could install another command line
-/// arguments adjuster by call setArgumentsAdjuster() method.
+/// a frontend action. One could install an additional command line
+/// arguments adjuster by calling the appendArgumentsAdjuster() method.
 class ClangTool {
  public:
   /// \brief Constructs a clang tool to run over a list of files.
@@ -188,7 +191,7 @@ class ClangTool {
   ClangTool(const CompilationDatabase &Compilations,
             ArrayRef<std::string> SourcePaths);
 
-  virtual ~ClangTool() {}
+  virtual ~ClangTool() { clearArgumentsAdjusters(); }
 
   /// \brief Map a virtual file to be used while running the tool.
   ///
@@ -199,7 +202,19 @@ class ClangTool {
   /// \brief Install command line arguments adjuster.
   ///
   /// \param Adjuster Command line arguments adjuster.
+  //
+  /// FIXME: Function is deprecated. Use (clear/append)ArgumentsAdjuster instead.
+  /// Remove it once all callers are gone.
   void setArgumentsAdjuster(ArgumentsAdjuster *Adjuster);
+
+  /// \brief Append a command line arguments adjuster to the adjuster chain.
+  ///
+  /// \param Adjuster An argument adjuster, which will be run on the output of
+  ///        previous argument adjusters.
+  void appendArgumentsAdjuster(ArgumentsAdjuster *Adjuster);
+
+  /// \brief Clear the command line arguments adjuster chain.
+  void clearArgumentsAdjusters();
 
   /// Runs a frontend action over all files specified in the command line.
   ///
@@ -221,7 +236,7 @@ class ClangTool {
   // Contains a list of pairs (<file name>, <file content>).
   std::vector< std::pair<StringRef, StringRef> > MappedFileContents;
 
-  OwningPtr<ArgumentsAdjuster> ArgsAdjuster;
+  SmallVector<ArgumentsAdjuster *, 2> ArgsAdjusters;
 };
 
 template <typename T>
@@ -293,10 +308,8 @@ inline FrontendActionFactory *newFrontendActionFactory(
 /// Otherwise, the returned path will contain the literal path-concatenation of
 /// the current directory and \c File.
 ///
-/// The difference to llvm::sys::fs::make_absolute is that we prefer
-/// ::getenv("PWD") if available.
-/// FIXME: Make this functionality available from llvm::sys::fs and delete
-///        this function.
+/// The difference to llvm::sys::fs::make_absolute is the canonicalization this
+/// does by removing "./" and computing native paths.
 ///
 /// \param File Either an absolute or relative path.
 std::string getAbsolutePath(StringRef File);

@@ -301,14 +301,14 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
             }
           }
         }
-
+        
         Diag(Tok, diag::err_expected_colon)
           << FixItHint::CreateInsertion(FILoc, FIText);
         Diag(OpToken, diag::note_matching) << "?";
         ColonLoc = Tok.getLocation();
       }
     }
-
+    
     // Code completion for the right-hand side of an assignment expression
     // goes through a special hook that takes the left-hand side into account.
     if (Tok.is(tok::code_completion) && NextTokPrec == prec::Assignment) {
@@ -316,7 +316,7 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
       cutOffParsing();
       return ExprError();
     }
-
+    
     // Parse another leaf here for the RHS of the operator.
     // ParseCastExpression works here because all RHS expressions in C have it
     // as a prefix, at least. However, in C++, an assignment-expression could
@@ -339,7 +339,7 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
 
     if (RHS.isInvalid())
       LHS = ExprError();
-
+    
     // Remember the precedence of this operator and get the precedence of the
     // operator immediately to the right of the RHS.
     prec::Level ThisPrec = NextTokPrec;
@@ -364,7 +364,7 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
       // is okay, to bind exactly as tightly.  For example, compile A=B=C=D as
       // A=(B=(C=D)), where each paren is a level of recursion here.
       // The function takes ownership of the RHS.
-      RHS = ParseRHSOfBinaryExpression(RHS,
+      RHS = ParseRHSOfBinaryExpression(RHS, 
                             static_cast<prec::Level>(ThisPrec + !isRightAssoc));
       RHSIsInitList = false;
 
@@ -396,7 +396,7 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
         // parentheses so that the code remains well-formed in C++0x.
         if (!GreaterThanIsOperator && OpToken.is(tok::greatergreater))
           SuggestParentheses(OpToken.getLocation(),
-                             diag::warn_cxx0x_right_shift_in_template_arg,
+                             diag::warn_cxx11_right_shift_in_template_arg,
                          SourceRange(Actions.getExprRange(LHS.get()).getBegin(),
                                      Actions.getExprRange(RHS.get()).getEnd()));
 
@@ -535,14 +535,14 @@ class CastExpressionIdValidator : public CorrectionCandidateCallback {
 ///
 ///       id-expression: [C++ 5.1]
 ///                   unqualified-id
-///                   qualified-id
+///                   qualified-id          
 ///
 ///       unqualified-id: [C++ 5.1]
 ///                   identifier
 ///                   operator-function-id
 ///                   conversion-function-id
-///                   '~' class-name
-///                   template-id
+///                   '~' class-name        
+///                   template-id           
 ///
 ///       new-expression: [C++ 5.3.4]
 ///                   '::'[opt] 'new' new-placement[opt] new-type-id
@@ -598,6 +598,7 @@ class CastExpressionIdValidator : public CorrectionCandidateCallback {
 ///                   '__is_final'
 ///                   '__is_pod'
 ///                   '__is_polymorphic'
+///                   '__is_sealed'                           [MS]
 ///                   '__is_trivial'
 ///                   '__is_union'
 ///
@@ -605,7 +606,7 @@ class CastExpressionIdValidator : public CorrectionCandidateCallback {
 ///                   '__trivially_copyable'
 ///
 ///       binary-type-trait:
-/// [GNU]             '__is_base_of'
+/// [GNU]             '__is_base_of'       
 /// [MS]              '__is_convertible_to'
 ///                   '__is_convertible'
 ///                   '__is_same'
@@ -646,7 +647,7 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
       (isUnaryExpression && !getLangOpts().CPlusPlus)? CompoundLiteral : CastExpr;
     ParsedType CastTy;
     SourceLocation RParenLoc;
-
+    
     {
       // The inside of the parens don't need to be a colon protected scope, and
       // isn't immediately a message send.
@@ -684,7 +685,7 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
   case tok::kw_true:
   case tok::kw_false:
     return ParseCXXBoolLiteral();
-
+  
   case tok::kw___objc_yes:
   case tok::kw___objc_no:
       return ParseObjCBoolLiteral();
@@ -705,7 +706,7 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
       return ExprError();
     assert(Tok.isNot(tok::kw_decltype));
     return ParseCastExpression(isUnaryExpression, isAddressOfOperand);
-
+      
   case tok::identifier: {      // primary-expression: identifier
                                // unqualified-id: identifier
                                // constant: enumeration-constant
@@ -748,19 +749,19 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
           REVERTABLE_TYPE_TRAIT(__is_void);
 #undef REVERTABLE_TYPE_TRAIT
 #undef RTT_JOIN
-          }
-
-          // If we find that this is in fact the name of a type trait,
-          // update the token kind in place and parse again to treat it as
-          // the appropriate kind of type trait.
-          llvm::SmallDenseMap<IdentifierInfo *, tok::TokenKind>::iterator Known
-            = RevertableTypeTraits.find(II);
-          if (Known != RevertableTypeTraits.end()) {
-            Tok.setKind(Known->second);
-            return ParseCastExpression(isUnaryExpression, isAddressOfOperand,
-                                       NotCastExpr, isTypeCast);
-          }
         }
+
+        // If we find that this is in fact the name of a type trait,
+        // update the token kind in place and parse again to treat it as
+        // the appropriate kind of type trait.
+        llvm::SmallDenseMap<IdentifierInfo *, tok::TokenKind>::iterator Known
+          = RevertableTypeTraits.find(II);
+        if (Known != RevertableTypeTraits.end()) {
+          Tok.setKind(Known->second);
+          return ParseCastExpression(isUnaryExpression, isAddressOfOperand,
+                                     NotCastExpr, isTypeCast);
+        }
+      }
 
       if (Next.is(tok::coloncolon) ||
           (!ColonIsSacred && Next.is(tok::colon)) ||
@@ -786,16 +787,16 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
          // Allow the base to be 'super' if in an objc-method.
          (&II == Ident_super && getCurScope()->isInObjcMethodScope()))) {
       ConsumeToken();
-
+      
       // Allow either an identifier or the keyword 'class' (in C++).
-      if (Tok.isNot(tok::identifier) &&
+      if (Tok.isNot(tok::identifier) && 
           !(getLangOpts().CPlusPlus && Tok.is(tok::kw_class))) {
         Diag(Tok, diag::err_expected_property_name);
         return ExprError();
       }
       IdentifierInfo &PropertyName = *Tok.getIdentifierInfo();
       SourceLocation PropertyLoc = ConsumeToken();
-
+      
       Res = Actions.ActOnClassPropertyRefExpr(II, PropertyName,
                                               ILoc, PropertyLoc);
       break;
@@ -804,27 +805,27 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
     // In an Objective-C method, if we have "super" followed by an identifier,
     // the token sequence is ill-formed. However, if there's a ':' or ']' after
     // that identifier, this is probably a message send with a missing open
-    // bracket. Treat it as such.
+    // bracket. Treat it as such. 
     if (getLangOpts().ObjC1 && &II == Ident_super && !InMessageExpression &&
         getCurScope()->isInObjcMethodScope() &&
         ((Tok.is(tok::identifier) &&
          (NextToken().is(tok::colon) || NextToken().is(tok::r_square))) ||
          Tok.is(tok::code_completion))) {
-      Res = ParseObjCMessageExpressionBody(SourceLocation(), ILoc, ParsedType(),
+      Res = ParseObjCMessageExpressionBody(SourceLocation(), ILoc, ParsedType(), 
                                            0);
       break;
     }
-
+    
     // If we have an Objective-C class name followed by an identifier
     // and either ':' or ']', this is an Objective-C class message
     // send that's missing the opening '['. Recovery
     // appropriately. Also take this path if we're performing code
     // completion after an Objective-C class name.
-    if (getLangOpts().ObjC1 &&
-        ((Tok.is(tok::identifier) && !InMessageExpression) ||
+    if (getLangOpts().ObjC1 && 
+        ((Tok.is(tok::identifier) && !InMessageExpression) || 
          Tok.is(tok::code_completion))) {
       const Token& Next = NextToken();
-      if (Tok.is(tok::code_completion) ||
+      if (Tok.is(tok::code_completion) || 
           Next.is(tok::colon) || Next.is(tok::r_square))
         if (ParsedType Typ = Actions.getTypeName(II, ILoc, getCurScope()))
           if (Typ.get()->isObjCObjectOrInterfaceType()) {
@@ -835,24 +836,24 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
             const char *PrevSpec = 0;
             unsigned DiagID;
             DS.SetTypeSpecType(TST_typename, ILoc, PrevSpec, DiagID, Typ);
-
+            
             Declarator DeclaratorInfo(DS, Declarator::TypeNameContext);
-            TypeResult Ty = Actions.ActOnTypeName(getCurScope(),
+            TypeResult Ty = Actions.ActOnTypeName(getCurScope(), 
                                                   DeclaratorInfo);
             if (Ty.isInvalid())
               break;
-
-            Res = ParseObjCMessageExpressionBody(SourceLocation(),
-                                                 SourceLocation(),
+            
+            Res = ParseObjCMessageExpressionBody(SourceLocation(), 
+                                                 SourceLocation(), 
                                                  Ty.get(), 0);
             break;
           }
     }
-
+    
     // Make sure to pass down the right value for isAddressOfOperand.
     if (isAddressOfOperand && isPostfixExpressionSuffixStart())
       isAddressOfOperand = false;
-
+   
     // Function designators are allowed to be undeclared (C99 6.5.1p2), so we
     // need to know whether or not this identifier is a function designator or
     // not.
@@ -895,6 +896,7 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
   case tok::kw___builtin_offsetof:
   case tok::kw___builtin_choose_expr:
   case tok::kw___builtin_astype: // primary-expression: [OCL] as_type()
+  case tok::kw___builtin_convertvector:
     return ParseBuiltinPrimaryExpression();
   case tok::kw___null:
     return Actions.ActOnGNUNullExpr(ConsumeToken());
@@ -961,7 +963,7 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
 
     if (getCurScope()->getFnParent() == 0)
       return ExprError(Diag(Tok, diag::err_address_of_label_outside_fn));
-
+    
     Diag(AmpAmpLoc, diag::ext_gnu_address_of_label);
     LabelDecl *LD = Actions.LookupOrCreateLabel(Tok.getIdentifierInfo(),
                                                 Tok.getLocation());
@@ -1027,7 +1029,6 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
   case tok::kw_half:
   case tok::kw_float:
   case tok::kw_double:
-
   case tok::kw_void:
   case tok::kw_typename:
   case tok::kw_typeof:
@@ -1050,12 +1051,18 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
       //                     typename-specifier braced-init-list
       if (TryAnnotateTypeOrScopeToken())
         return ExprError();
+
+      if (!Actions.isSimpleTypeSpecifier(Tok.getKind()))
+        // We are trying to parse a simple-type-specifier but might not get such
+        // a token after error recovery.
+        return ExprError();
     }
 
     // postfix-expression: simple-type-specifier '(' expression-list[opt] ')'
     //                     simple-type-specifier braced-init-list
     //
     DeclSpec DS(AttrFactory);
+
     ParseCXXSimpleTypeSpecifier(DS);
     if (Tok.isNot(tok::l_paren) &&
         (!getLangOpts().CPlusPlus11 || Tok.isNot(tok::l_brace)))
@@ -1086,7 +1093,7 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
         // type, translate it into a type and continue parsing as a
         // cast expression.
         CXXScopeSpec SS;
-        ParseOptionalCXXScopeSpecifier(SS, ParsedType(),
+        ParseOptionalCXXScopeSpecifier(SS, ParsedType(), 
                                        /*EnteringContext=*/false);
         AnnotateTemplateIdTokenAsType();
         return ParseCastExpression(isUnaryExpression, isAddressOfOperand,
@@ -1160,7 +1167,7 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
     T.consumeClose();
 
     if (!Result.isInvalid())
-      Result = Actions.ActOnNoexceptExpr(KeyLoc, T.getOpenLocation(),
+      Result = Actions.ActOnNoexceptExpr(KeyLoc, T.getOpenLocation(), 
                                          Result.take(), T.getCloseLocation());
     return Result;
   }
@@ -1201,6 +1208,7 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
   case tok::kw___is_trivially_copyable:
   case tok::kw___is_union:
   case tok::kw___is_final:
+  case tok::kw___is_sealed:
   case tok::kw___has_trivial_constructor:
   case tok::kw___has_trivial_move_constructor:
   case tok::kw___has_trivial_copy:
@@ -1224,7 +1232,7 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
 
   case tok::kw___is_trivially_constructible:
     return ParseTypeTrait();
-
+      
   case tok::kw___array_rank:
   case tok::kw___array_extent:
     return ParseArrayTypeTrait();
@@ -1232,7 +1240,7 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
   case tok::kw___is_lvalue_expr:
   case tok::kw___is_rvalue_expr:
     return ParseExpressionTrait();
-
+      
   case tok::at: {
     SourceLocation AtLoc = ConsumeToken();
     return ParseObjCAtExpression(AtLoc);
@@ -1305,24 +1313,24 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
     case tok::code_completion:
       if (InMessageExpression)
         return LHS;
-
+        
       Actions.CodeCompletePostfixExpression(getCurScope(), LHS);
       cutOffParsing();
       return ExprError();
-
+        
     case tok::identifier:
       // If we see identifier: after an expression, and we're not already in a
       // message send, then this is probably a message send with a missing
       // opening bracket '['.
-      if (getLangOpts().ObjC1 && !InMessageExpression &&
+      if (getLangOpts().ObjC1 && !InMessageExpression && 
           (NextToken().is(tok::colon) || NextToken().is(tok::r_square))) {
         LHS = ParseObjCMessageExpressionBody(SourceLocation(), SourceLocation(),
                                              ParsedType(), LHS.get());
         break;
       }
-
+        
       // Fall through; this isn't a message send.
-
+                
     default:  // Not a postfix-expression suffix.
       return LHS;
     case tok::l_square: {  // postfix-expression: p-e '[' expression ']'
@@ -1369,7 +1377,7 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
                                //   '(' argument-expression-list[opt] ')'
       tok::TokenKind OpKind = Tok.getKind();
       InMessageExpressionRAIIObject InMessage(*this, false);
-
+      
       Expr *ExecConfig = 0;
 
       BalancedDelimiterTracker PT(*this, tok::l_paren);
@@ -1379,7 +1387,7 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
         CommaLocsTy ExecConfigCommaLocs;
         SourceLocation OpenLoc = ConsumeToken();
 
-        if (ParseExpressionList(ExecConfigExprs, ExecConfigCommaLocs)) {
+        if (ParseSimpleExpressionList(ExecConfigExprs, ExecConfigCommaLocs)) {
           LHS = ExprError();
         }
 
@@ -1405,8 +1413,8 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
 
         if (!LHS.isInvalid()) {
           ExprResult ECResult = Actions.ActOnCUDAExecConfigExpr(getCurScope(),
-                                    OpenLoc,
-                                    ExecConfigExprs,
+                                    OpenLoc, 
+                                    ExecConfigExprs, 
                                     CloseLoc);
           if (ECResult.isInvalid())
             LHS = ExprError();
@@ -1420,7 +1428,7 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
 
       ExprVector ArgExprs;
       CommaLocsTy CommaLocs;
-
+      
       if (Tok.is(tok::code_completion)) {
         Actions.CodeCompleteCall(getCurScope(), LHS.get(), None);
         cutOffParsing();
@@ -1443,7 +1451,7 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
         PT.consumeClose();
         LHS = ExprError();
       } else {
-        assert((ArgExprs.size() == 0 ||
+        assert((ArgExprs.size() == 0 || 
                 ArgExprs.size()-1 == CommaLocs.size())&&
                "Unexpected number of commas!");
         LHS = Actions.ActOnCallExpr(getCurScope(), LHS.take(), Loc,
@@ -1465,13 +1473,24 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
       ParsedType ObjectType;
       bool MayBePseudoDestructor = false;
       if (getLangOpts().CPlusPlus && !LHS.isInvalid()) {
-        LHS = Actions.ActOnStartCXXMemberReference(getCurScope(), LHS.take(),
+        Expr *Base = LHS.take();
+        const Type* BaseType = Base->getType().getTypePtrOrNull();
+        if (BaseType && Tok.is(tok::l_paren) &&
+            (BaseType->isFunctionType() ||
+             BaseType->isSpecificPlaceholderType(BuiltinType::BoundMember))) {
+          Diag(OpLoc, diag::err_function_is_not_record)
+            << (OpKind == tok::arrow) << Base->getSourceRange()
+            << FixItHint::CreateRemoval(OpLoc);
+          return ParsePostfixExpressionSuffix(Base);
+        }
+
+        LHS = Actions.ActOnStartCXXMemberReference(getCurScope(), Base,
                                                    OpLoc, OpKind, ObjectType,
                                                    MayBePseudoDestructor);
         if (LHS.isInvalid())
           break;
 
-        ParseOptionalCXXScopeSpecifier(SS, ObjectType,
+        ParseOptionalCXXScopeSpecifier(SS, ObjectType, 
                                        /*EnteringContext=*/false,
                                        &MayBePseudoDestructor);
         if (SS.isNotEmpty())
@@ -1482,13 +1501,13 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
         // Code completion for a member access expression.
         Actions.CodeCompleteMemberReferenceExpr(getCurScope(), LHS.get(),
                                                 OpLoc, OpKind == tok::arrow);
-
+        
         cutOffParsing();
         return ExprError();
       }
-
+      
       if (MayBePseudoDestructor && !LHS.isInvalid()) {
-        LHS = ParseCXXPseudoDestructor(LHS.take(), OpLoc, OpKind, SS,
+        LHS = ParseCXXPseudoDestructor(LHS.take(), OpLoc, OpKind, SS, 
                                        ObjectType);
         break;
       }
@@ -1508,21 +1527,21 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
         //   'class' as if it were an identifier.
         //
         // This hack allows property access to the 'class' method because it is
-        // such a common method name. For other C++ keywords that are
+        // such a common method name. For other C++ keywords that are 
         // Objective-C method names, one must use the message send syntax.
         IdentifierInfo *Id = Tok.getIdentifierInfo();
         SourceLocation Loc = ConsumeToken();
         Name.setIdentifier(Id, Loc);
-      } else if (ParseUnqualifiedId(SS,
-                                    /*EnteringContext=*/false,
+      } else if (ParseUnqualifiedId(SS, 
+                                    /*EnteringContext=*/false, 
                                     /*AllowDestructorName=*/true,
                                     /*AllowConstructorName=*/
-                                      getLangOpts().MicrosoftExt,
+                                      getLangOpts().MicrosoftExt, 
                                     ObjectType, TemplateKWLoc, Name))
         LHS = ExprError();
-
+      
       if (!LHS.isInvalid())
-        LHS = Actions.ActOnMemberAccessExpr(getCurScope(), LHS.take(), OpLoc,
+        LHS = Actions.ActOnMemberAccessExpr(getCurScope(), LHS.take(), OpLoc, 
                                             OpKind, SS, TemplateKWLoc, Name,
                                  CurParsedObjCImpl ? CurParsedObjCImpl->Dcl : 0,
                                             Tok.is(tok::l_paren));
@@ -1578,6 +1597,28 @@ Parser::ParseExprAfterUnaryExprOrTypeTrait(const Token &OpTok,
 
   // If the operand doesn't start with an '(', it must be an expression.
   if (Tok.isNot(tok::l_paren)) {
+    // If construct allows a form without parenthesis, user may forget to put
+    // pathenthesis around type name.
+    if (OpTok.is(tok::kw_sizeof)  || OpTok.is(tok::kw___alignof) ||
+        OpTok.is(tok::kw_alignof) || OpTok.is(tok::kw__Alignof)) {
+      bool isAmbiguousTypeId;
+      if (isTypeIdInParens(isAmbiguousTypeId)) {
+        DeclSpec DS(AttrFactory);
+        ParseSpecifierQualifierList(DS);
+        Declarator DeclaratorInfo(DS, Declarator::TypeNameContext);
+        ParseDeclarator(DeclaratorInfo);
+
+        SourceLocation LParenLoc = PP.getLocForEndOfToken(OpTok.getLocation());
+        SourceLocation RParenLoc = PP.getLocForEndOfToken(PrevTokLocation);
+        Diag(LParenLoc, diag::err_expected_parentheses_around_typename)
+          << OpTok.getName()
+          << FixItHint::CreateInsertion(LParenLoc, "(")
+          << FixItHint::CreateInsertion(RParenLoc, ")");
+        isCastExpr = true;
+        return ExprEmpty();
+      }
+    }
+
     isCastExpr = false;
     if (OpTok.is(tok::kw_typeof) && !getLangOpts().CPlusPlus) {
       Diag(Tok,diag::err_expected_lparen_after_id) << OpTok.getIdentifierInfo();
@@ -1593,7 +1634,7 @@ Parser::ParseExprAfterUnaryExprOrTypeTrait(const Token &OpTok,
     ParenParseOption ExprType = CastExpr;
     SourceLocation LParenLoc = Tok.getLocation(), RParenLoc;
 
-    Operand = ParseParenExpression(ExprType, true/*stopIfCastExpr*/,
+    Operand = ParseParenExpression(ExprType, true/*stopIfCastExpr*/, 
                                    false, CastTy, RParenLoc);
     CastRange = SourceRange(LParenLoc, RParenLoc);
 
@@ -1607,7 +1648,7 @@ Parser::ParseExprAfterUnaryExprOrTypeTrait(const Token &OpTok,
     if (getLangOpts().CPlusPlus || OpTok.isNot(tok::kw_typeof)) {
       // GNU typeof in C requires the expression to be parenthesized. Not so for
       // sizeof/alignof or in C++. Therefore, the parenthesized expression is
-      // the start of a unary-expression, but doesn't include any postfix
+      // the start of a unary-expression, but doesn't include any postfix 
       // pieces. Parse these now if present.
       if (!Operand.isInvalid())
         Operand = ParsePostfixExpressionSuffix(Operand.get());
@@ -1673,12 +1714,12 @@ ExprResult Parser::ParseUnaryExprOrTypeTraitExpression() {
     } else {
       Diag(Tok, diag::err_sizeof_parameter_pack);
     }
-
+    
     if (!Name)
       return ExprError();
-
+    
     return Actions.ActOnSizeofParameterPackExpr(getCurScope(),
-                                                OpTok.getLocation(),
+                                                OpTok.getLocation(), 
                                                 *Name, NameLoc,
                                                 RParenLoc);
   }
@@ -1893,25 +1934,53 @@ ExprResult Parser::ParseBuiltinPrimaryExpression() {
       SkipUntil(tok::r_paren);
       return ExprError();
     }
-
-    if (ExpectAndConsume(tok::comma, diag::err_expected_comma, "",
+    
+    if (ExpectAndConsume(tok::comma, diag::err_expected_comma, "", 
                          tok::r_paren))
       return ExprError();
-
+    
     // Second argument is the type to bitcast to.
     TypeResult DestTy = ParseTypeName();
     if (DestTy.isInvalid())
       return ExprError();
-
+    
     // Attempt to consume the r-paren.
     if (Tok.isNot(tok::r_paren)) {
       Diag(Tok, diag::err_expected_rparen);
       SkipUntil(tok::r_paren);
       return ExprError();
     }
-
-    Res = Actions.ActOnAsTypeExpr(Expr.take(), DestTy.get(), StartLoc,
+    
+    Res = Actions.ActOnAsTypeExpr(Expr.take(), DestTy.get(), StartLoc, 
                                   ConsumeParen());
+    break;
+  }
+  case tok::kw___builtin_convertvector: {
+    // The first argument is an expression to be converted, followed by a comma.
+    ExprResult Expr(ParseAssignmentExpression());
+    if (Expr.isInvalid()) {
+      SkipUntil(tok::r_paren);
+      return ExprError();
+    }
+    
+    if (ExpectAndConsume(tok::comma, diag::err_expected_comma, "", 
+                         tok::r_paren))
+      return ExprError();
+    
+    // Second argument is the type to bitcast to.
+    TypeResult DestTy = ParseTypeName();
+    if (DestTy.isInvalid())
+      return ExprError();
+    
+    // Attempt to consume the r-paren.
+    if (Tok.isNot(tok::r_paren)) {
+      Diag(Tok, diag::err_expected_rparen);
+      SkipUntil(tok::r_paren);
+      return ExprError();
+    }
+    
+    Res = Actions.ActOnConvertVectorExpr(Expr.take(), DestTy.get(), StartLoc, 
+                                         ConsumeParen());
     break;
   }
   }
@@ -1939,7 +2008,7 @@ ExprResult Parser::ParseBuiltinPrimaryExpression() {
 ///       cast-expression: [C99 6.5.4]
 ///         '(' type-name ')' cast-expression
 /// [ARC]   bridged-cast-expression
-///
+/// 
 /// [ARC] bridged-cast-expression:
 ///         (__bridge type-name) cast-expression
 ///         (__bridge_transfer type-name) cast-expression
@@ -1960,7 +2029,7 @@ Parser::ParseParenExpression(ParenParseOption &ExprType, bool stopIfCastExpr,
   CastTy = ParsedType();
 
   if (Tok.is(tok::code_completion)) {
-    Actions.CodeCompleteOrdinaryName(getCurScope(),
+    Actions.CodeCompleteOrdinaryName(getCurScope(), 
                  ExprType >= CompoundLiteral? Sema::PCC_ParenthesizedExpression
                                             : Sema::PCC_Expression);
     cutOffParsing();
@@ -1969,7 +2038,7 @@ Parser::ParseParenExpression(ParenParseOption &ExprType, bool stopIfCastExpr,
 
   // Diagnose use of bridge casts in non-arc mode.
   bool BridgeCast = (getLangOpts().ObjC2 &&
-                     (Tok.is(tok::kw___bridge) ||
+                     (Tok.is(tok::kw___bridge) || 
                       Tok.is(tok::kw___bridge_transfer) ||
                       Tok.is(tok::kw___bridge_retained) ||
                       Tok.is(tok::kw___bridge_retain)));
@@ -1986,7 +2055,7 @@ Parser::ParseParenExpression(ParenParseOption &ExprType, bool stopIfCastExpr,
       ConsumeToken(); // consume __bridge
     BridgeCast = false;
   }
-
+  
   // None of these cases should fall through with an invalid Result
   // unless they've already reported an error.
   if (ExprType >= CompoundStmt && Tok.is(tok::l_brace)) {
@@ -2024,15 +2093,15 @@ Parser::ParseParenExpression(ParenParseOption &ExprType, bool stopIfCastExpr,
           << FixItHint::CreateReplacement(BridgeKeywordLoc,
                                           "__bridge_retained");
     }
-
+             
     TypeResult Ty = ParseTypeName();
     T.consumeClose();
     RParenLoc = T.getCloseLocation();
     ExprResult SubExpr = ParseCastExpression(/*isUnaryExpression=*/false);
-
+    
     if (Ty.isInvalid() || SubExpr.isInvalid())
       return ExprError();
-
+    
     return Actions.ActOnObjCBridgedCast(getCurScope(), OpenLoc, Kind,
                                         BridgeKeywordLoc, Ty.get(),
                                         RParenLoc, SubExpr.get());
@@ -2057,8 +2126,8 @@ Parser::ParseParenExpression(ParenParseOption &ExprType, bool stopIfCastExpr,
     ParseSpecifierQualifierList(DS);
     Declarator DeclaratorInfo(DS, Declarator::TypeNameContext);
     ParseDeclarator(DeclaratorInfo);
-
-    // If our type is followed by an identifier and either ':' or ']', then
+    
+    // If our type is followed by an identifier and either ':' or ']', then 
     // this is probably an Objective-C message send where the leading '[' is
     // missing. Recover as if that were the case.
     if (!DeclaratorInfo.isInvalidType() && Tok.is(tok::identifier) &&
@@ -2069,10 +2138,10 @@ Parser::ParseParenExpression(ParenParseOption &ExprType, bool stopIfCastExpr,
         InMessageExpressionRAIIObject InMessage(*this, false);
         Ty = Actions.ActOnTypeName(getCurScope(), DeclaratorInfo);
       }
-      Result = ParseObjCMessageExpressionBody(SourceLocation(),
-                                              SourceLocation(),
+      Result = ParseObjCMessageExpressionBody(SourceLocation(), 
+                                              SourceLocation(), 
                                               Ty.get(), 0);
-    } else {
+    } else {          
       // Match the ')'.
       T.consumeClose();
       RParenLoc = T.getCloseLocation();
@@ -2103,10 +2172,10 @@ Parser::ParseParenExpression(ParenParseOption &ExprType, bool stopIfCastExpr,
           CastTy = Ty.get();
           return ExprResult();
         }
-
+        
         // Reject the cast of super idiom in ObjC.
         if (Tok.is(tok::identifier) && getLangOpts().ObjC1 &&
-            Tok.getIdentifierInfo() == Ident_super &&
+            Tok.getIdentifierInfo() == Ident_super && 
             getCurScope()->isInObjcMethodScope() &&
             GetLookAheadToken(1).isNot(tok::period)) {
           Diag(Tok.getLocation(), diag::err_illegal_super_cast)
@@ -2121,7 +2190,7 @@ Parser::ParseParenExpression(ParenParseOption &ExprType, bool stopIfCastExpr,
                                      /*isTypeCast=*/IsTypeCast);
         if (!Result.isInvalid()) {
           Result = Actions.ActOnCastExpr(getCurScope(), OpenLoc,
-                                         DeclaratorInfo, CastTy,
+                                         DeclaratorInfo, CastTy, 
                                          RParenLoc, Result.take());
         }
         return Result;
@@ -2133,18 +2202,18 @@ Parser::ParseParenExpression(ParenParseOption &ExprType, bool stopIfCastExpr,
   } else if (isTypeCast) {
     // Parse the expression-list.
     InMessageExpressionRAIIObject InMessage(*this, false);
-
+    
     ExprVector ArgExprs;
     CommaLocsTy CommaLocs;
 
-    if (!ParseExpressionList(ArgExprs, CommaLocs)) {
+    if (!ParseSimpleExpressionList(ArgExprs, CommaLocs)) {
       ExprType = SimpleExpr;
       Result = Actions.ActOnParenListExpr(OpenLoc, Tok.getLocation(),
                                           ArgExprs);
     }
   } else {
     InMessageExpressionRAIIObject InMessage(*this, false);
-
+    
     Result = ParseExpression(MaybeTypeCast);
     ExprType = SimpleExpr;
 
@@ -2301,7 +2370,7 @@ ExprResult Parser::ParseGenericSelectionExpression() {
   if (T.getCloseLocation().isInvalid())
     return ExprError();
 
-  return Actions.ActOnGenericSelectionExpr(KeyLoc, DefaultLoc,
+  return Actions.ActOnGenericSelectionExpr(KeyLoc, DefaultLoc, 
                                            T.getCloseLocation(),
                                            ControllingExpr.release(),
                                            Types, Exprs);
@@ -2353,7 +2422,7 @@ bool Parser::ParseExpressionList(SmallVectorImpl<Expr*> &Exprs,
       Expr = ParseAssignmentExpression();
 
     if (Tok.is(tok::ellipsis))
-      Expr = Actions.ActOnPackExpansion(Expr.get(), ConsumeToken());
+      Expr = Actions.ActOnPackExpansion(Expr.get(), ConsumeToken());    
     if (Expr.isInvalid())
       return true;
 
@@ -2361,6 +2430,32 @@ bool Parser::ParseExpressionList(SmallVectorImpl<Expr*> &Exprs,
 
     if (Tok.isNot(tok::comma))
       return false;
+    // Move to the next argument, remember where the comma was.
+    CommaLocs.push_back(ConsumeToken());
+  }
+}
+
+/// ParseSimpleExpressionList - A simple comma-separated list of expressions,
+/// used for misc language extensions.
+///
+/// \verbatim
+///       simple-expression-list:
+///         assignment-expression
+///         simple-expression-list , assignment-expression
+/// \endverbatim
+bool
+Parser::ParseSimpleExpressionList(SmallVectorImpl<Expr*> &Exprs,
+                                  SmallVectorImpl<SourceLocation> &CommaLocs) {
+  while (1) {
+    ExprResult Expr = ParseAssignmentExpression();
+    if (Expr.isInvalid())
+      return true;
+
+    Exprs.push_back(Expr.release());
+
+    if (Tok.isNot(tok::comma))
+      return false;
+
     // Move to the next argument, remember where the comma was.
     CommaLocs.push_back(ConsumeToken());
   }
@@ -2377,7 +2472,7 @@ void Parser::ParseBlockId(SourceLocation CaretLoc) {
     Actions.CodeCompleteOrdinaryName(getCurScope(), Sema::PCC_Type);
     return cutOffParsing();
   }
-
+  
   // Parse the specifier-qualifier-list piece.
   DeclSpec DS(AttrFactory);
   ParseSpecifierQualifierList(DS);

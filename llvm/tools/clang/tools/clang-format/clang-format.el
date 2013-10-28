@@ -28,6 +28,7 @@
 
 (defun clang-format-buffer ()
   "Use clang-format to format the current buffer."
+  (interactive)
   (clang-format (point-min) (point-max)))
 
 (defun clang-format (begin end)
@@ -35,12 +36,14 @@
   (let* ((orig-windows (get-buffer-window-list (current-buffer)))
          (orig-window-starts (mapcar #'window-start orig-windows))
          (orig-point (point))
-         (style "LLVM"))
+         (style "file"))
     (unwind-protect
-        (call-process-region (point-min) (point-max) clang-format-binary t t nil
+        (call-process-region (point-min) (point-max) clang-format-binary
+                             t (list t nil) nil
                              "-offset" (number-to-string (1- begin))
                              "-length" (number-to-string (- end begin))
                              "-cursor" (number-to-string (1- (point)))
+                             "-assume-filename" (buffer-file-name)
                              "-style" style)
       (goto-char (point-min))
       (let ((json-output (json-read-from-string

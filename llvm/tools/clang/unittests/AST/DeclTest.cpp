@@ -27,14 +27,17 @@ TEST(Decl, CleansUpAPValues) {
   // allocate memory. This test only fails if run under valgrind with full leak
   // checking enabled.
   std::vector<std::string> Args(1, "-std=c++11");
+  Args.push_back("-fno-ms-extensions");
   ASSERT_TRUE(runToolOnCodeWithArgs(
       Factory->create(),
       "struct X { int a; }; constexpr X x = { 42 };"
       "union Y { constexpr Y(int a) : a(a) {} int a; }; constexpr Y y = { 42 };"
       "constexpr int z[2] = { 42, 43 };"
       "constexpr int __attribute__((vector_size(16))) v1 = {};"
+      "\n#ifdef __SIZEOF_INT128__\n"
       "constexpr __uint128_t large_int = 0xffffffffffffffff;"
       "constexpr __uint128_t small_int = 1;"
+      "\n#endif\n"
       "constexpr double d1 = 42.42;"
       "constexpr long double d2 = 42.42;"
       "constexpr _Complex long double c1 = 42.0i;"

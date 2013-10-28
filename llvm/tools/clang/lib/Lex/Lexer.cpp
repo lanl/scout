@@ -29,6 +29,7 @@
 #include "clang/Basic/SourceManager.h"
 #include "clang/Lex/CodeCompletionHandler.h"
 #include "clang/Lex/LexDiagnostic.h"
+#include "clang/Lex/LiteralSupport.h"
 #include "clang/Lex/Preprocessor.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
@@ -93,6 +94,10 @@ void Lexer::InitLexer(const char *BufStart, const char *BufPtr,
 
   // Start of the file is a start of line.
   IsAtStartOfLine = true;
+  IsAtPhysicalStartOfLine = true;
+
+  HasLeadingSpace = false;
+  HasLeadingEmptyMacro = false;
 
   // We are not after parsing a #.
   ParsingPreprocessorDirective = false;
@@ -111,8 +116,8 @@ void Lexer::InitLexer(const char *BufStart, const char *BufPtr,
 }
 
 // +==== Scout ===============================================================+
-// Note, we've modified the following Lexer ctors to support string lexer…
-
+// NOTE: We've modified the following Lexer ctors to support string lexer…
+//
 /// Lexer constructor - Create a new lexer object for the specified buffer
 /// with the specified preprocessor managing the lexing process.  This lexer
 /// assumes that the associated file buffer and Preprocessor objects will
@@ -120,6 +125,7 @@ void Lexer::InitLexer(const char *BufStart, const char *BufPtr,
 Lexer::Lexer(FileID FID, const llvm::MemoryBuffer *InputFile, Preprocessor &PP)
   : PreprocessorLexer(&PP, FID),
     FileLoc(PP.getSourceManager().getLocForStartOfFile(FID)),
+    LangOpts(PP.getLangOpts()) {
     LangOpts(PP.getLangOpts()),
     StringLexerMemoryBuffer(0),
     StringLexerStringRef(0) {
@@ -168,8 +174,8 @@ void Lexer::resetExtendedTokenMode() {
 /// range will outlive it, so it doesn't take ownership of it.
 Lexer::Lexer(SourceLocation fileloc, const LangOptions &langOpts,
              const char *BufStart, const char *BufPtr, const char *BufEnd)
-: FileLoc(fileloc), LangOpts(langOpts),
-  StringLexerMemoryBuffer(0), StringLexerStringRef(0) {
+  : FileLoc(fileloc), LangOpts(langOpts) {
+
   InitLexer(BufStart, BufPtr, BufEnd);
 
   // We *are* in raw mode.
@@ -180,6 +186,9 @@ Lexer::Lexer(SourceLocation fileloc, const LangOptions &langOpts,
 /// suitable for calls to 'LexFromRawLexer'.  This lexer assumes that the text
 /// range will outlive it, so it doesn't take ownership of it.
 Lexer::Lexer(FileID FID, const llvm::MemoryBuffer *FromFile,
+             const SourceManager &SM, const LangOptions &langOpts)
+  : FileLoc(SM.getLocForStartOfFile(FID)), LangOpts(langOpts) {
+
              const SourceManager &SM, const LangOptions &features)
   : FileLoc(SM.getLocForStartOfFile(FID)), LangOpts(features),
 // +===== Scout - StringLexerMemoryBuffer and StringLexerStringRef ===========+
@@ -437,7 +446,7 @@ std::string Lexer::getSpelling(const Token &Tok, const SourceManager &SourceMgr,
 /// to point to a constant buffer with the data already in it (avoiding a
 /// copy).  The caller is not allowed to modify the returned buffer pointer
 /// if an internal buffer is returned.
-unsigned Lexer::getSpelling(const Token &Tok, const char *&Buffer,
+unsigned Lexer::getSpelling(const Token &Tok, const char *&Buffer, 
                             const SourceManager &SourceMgr,
                             const LangOptions &LangOpts, bool *Invalid) {
   assert((int)Tok.getLength() >= 0 && "Token character range is bogus!");
@@ -498,7 +507,8 @@ unsigned Lexer::MeasureTokenLength(SourceLocation Loc,
 /// \returns true if there was a failure, false on success.
 bool Lexer::getRawToken(SourceLocation Loc, Token &Result,
                         const SourceManager &SM,
-                        const LangOptions &LangOpts) {
+                        const LangOptions &LangOpts,
+                        bool IgnoreWhiteSpace) {
   // TODO: this could be special cased for common tokens like identifiers, ')',
   // etc to make this faster, if it mattered.  Just look at StrData[0] to handle
   // all obviously single-char tokens.  This could use
@@ -516,7 +526,7 @@ bool Lexer::getRawToken(SourceLocation Loc, Token &Result,
 
   const char *StrData = Buffer.data()+LocInfo.second;
 
-  if (isWhitespace(StrData[0]))
+  if (!IgnoreWhiteSpace && isWhitespace(StrData[0]))
     return true;
 
   // Create a lexer starting at the beginning of this token.
@@ -534,7 +544,7 @@ static SourceLocation getBeginningOfFileToken(SourceLocation Loc,
   std::pair<FileID, unsigned> LocInfo = SM.getDecomposedLoc(Loc);
   if (LocInfo.first.isInvalid())
     return Loc;
-
+  
   bool Invalid = false;
   StringRef Buffer = SM.getBufferData(LocInfo.first, &Invalid);
   if (Invalid)
@@ -545,7 +555,7 @@ static SourceLocation getBeginningOfFileToken(SourceLocation Loc,
   const char *BufStart = Buffer.data();
   if (LocInfo.second >= Buffer.size())
     return Loc;
-
+  
   const char *StrData = BufStart+LocInfo.second;
   if (StrData[0] == '\n' || StrData[0] == '\r')
     return Loc;
@@ -559,30 +569,30 @@ static SourceLocation getBeginningOfFileToken(SourceLocation Loc,
 
     --LexStart;
   }
-
+  
   // Create a lexer starting at the beginning of this token.
   SourceLocation LexerStartLoc = Loc.getLocWithOffset(-LocInfo.second);
   Lexer TheLexer(LexerStartLoc, LangOpts, BufStart, LexStart, Buffer.end());
   TheLexer.SetCommentRetentionState(true);
-
+  
   // Lex tokens until we find the token that contains the source location.
   Token TheTok;
   do {
     TheLexer.LexFromRawLexer(TheTok);
-
+    
     if (TheLexer.getBufferLocation() > StrData) {
       // Lexing this token has taken the lexer past the source location we're
       // looking for. If the current token encompasses our source location,
       // return the beginning of that token.
       if (TheLexer.getBufferLocation() - TheTok.getLength() <= StrData)
         return TheTok.getLocation();
-
+      
       // We ended up skipping over the source location entirely, which means
       // that it points into whitespace. We're done here.
       break;
     }
   } while (TheTok.getKind() != tok::eof);
-
+  
   // We've passed our source location; just return the original source location.
   return Loc;
 }
@@ -592,7 +602,7 @@ SourceLocation Lexer::GetBeginningOfToken(SourceLocation Loc,
                                           const LangOptions &LangOpts) {
  if (Loc.isFileID())
    return getBeginningOfFileToken(Loc, SM, LangOpts);
-
+ 
  if (!SM.isMacroArgExpansion(Loc))
    return Loc;
 
@@ -660,17 +670,17 @@ Lexer::ComputePreamble(const llvm::MemoryBuffer *Buffer,
       if (TheTok.getKind() == tok::eof) {
         break;
       }
-
+      
       // If we haven't hit the end of the preprocessor directive, skip this
       // token.
       if (!TheTok.isAtStartOfLine())
         continue;
-
+        
       // We've passed the end of the preprocessor directive, and will look
       // at this token again below.
       InPreprocessorDirective = false;
     }
-
+    
     // Keep track of the # of lines in the preamble.
     if (TheTok.isAtStartOfLine()) {
       unsigned TokOffset = TheTok.getLocation().getRawEncoding() - StartOffset;
@@ -687,13 +697,13 @@ Lexer::ComputePreamble(const llvm::MemoryBuffer *Buffer,
         ActiveCommentLoc = TheTok.getLocation();
       continue;
     }
-
+    
     if (TheTok.isAtStartOfLine() && TheTok.getKind() == tok::hash) {
-      // This is the start of a preprocessor directive.
+      // This is the start of a preprocessor directive. 
       Token HashTok = TheTok;
       InPreprocessorDirective = true;
       ActiveCommentLoc = SourceLocation();
-
+      
       // Figure out which directive this is. Since we're lexing raw tokens,
       // we don't have an identifier table available. Instead, just look at
       // the raw identifier to recognize and categorize preprocessor directives.
@@ -732,10 +742,10 @@ Lexer::ComputePreamble(const llvm::MemoryBuffer *Buffer,
         case PDK_StartIf:
           if (IfCount == 0)
             IfStartTok = HashTok;
-
+            
           ++IfCount;
           continue;
-
+            
         case PDK_EndIf:
           // Mismatched #endif. The preamble ends here.
           if (IfCount == 0)
@@ -743,13 +753,13 @@ Lexer::ComputePreamble(const llvm::MemoryBuffer *Buffer,
 
           --IfCount;
           continue;
-
+            
         case PDK_Unknown:
           // We don't know what this directive is; stop at the '#'.
           break;
         }
       }
-
+      
       // We only end up here if we didn't recognize the preprocessor
       // directive or it was one that can't occur in the preamble at this
       // point. Roll back the current token to the location of the '#'.
@@ -762,7 +772,7 @@ Lexer::ComputePreamble(const llvm::MemoryBuffer *Buffer,
     // the preamble.
     break;
   } while (true);
-
+  
   SourceLocation End;
   if (IfCount)
     End = IfStartTok.getLocation();
@@ -788,13 +798,13 @@ SourceLocation Lexer::AdvanceToTokenCharacter(SourceLocation TokStart,
   // trigraphs.
   bool Invalid = false;
   const char *TokPtr = SM.getCharacterData(TokStart, &Invalid);
-
+  
   // If they request the first char of the token, we're trivially done.
   if (Invalid || (CharNo == 0 && Lexer::isObviouslySimpleCharacter(*TokPtr)))
     return TokStart;
-
+  
   unsigned PhysOffset = 0;
-
+  
   // The usual case is that tokens don't contain anything interesting.  Skip
   // over the uninteresting characters.  If a token only consists of simple
   // chars, this method is extremely fast.
@@ -803,7 +813,7 @@ SourceLocation Lexer::AdvanceToTokenCharacter(SourceLocation TokStart,
       return TokStart.getLocWithOffset(PhysOffset);
     ++TokPtr, --CharNo, ++PhysOffset;
   }
-
+  
   // If we have a character that may be a trigraph or escaped newline, use a
   // lexer to parse it correctly.
   for (; CharNo; --CharNo) {
@@ -812,14 +822,14 @@ SourceLocation Lexer::AdvanceToTokenCharacter(SourceLocation TokStart,
     TokPtr += Size;
     PhysOffset += Size;
   }
-
+  
   // Final detail: if we end up on an escaped newline, we want to return the
   // location of the actual byte of the token.  For example foo\<newline>bar
   // advanced by 3 should return the location of b, not of \\.  One compounding
   // detail of this is that the escape may be made by a trigraph.
   if (!Lexer::isObviouslySimpleCharacter(*TokPtr))
     PhysOffset += Lexer::SkipEscapedNewLines(TokPtr)-TokPtr;
-
+  
   return TokStart.getLocWithOffset(PhysOffset);
 }
 
@@ -854,7 +864,7 @@ SourceLocation Lexer::getLocForEndOfToken(SourceLocation Loc, unsigned Offset,
     Len = Len - Offset;
   else
     return Loc;
-
+  
   return Loc.getLocWithOffset(Len);
 }
 
@@ -1051,7 +1061,7 @@ StringRef Lexer::getImmediateMacroName(SourceLocation Loc,
 
     // For macro arguments we need to check that the argument did not come
     // from an inner macro, e.g: "MAC1( MAC2(foo) )"
-
+    
     // Loc points to the argument id of the macro definition, move to the
     // macro expansion.
     Loc = SM.getImmediateExpansionRange(Loc).first;
@@ -1428,26 +1438,42 @@ void Lexer::SkipBytes(unsigned Bytes, bool StartOfLine) {
   BufferPtr += Bytes;
   if (BufferPtr > BufferEnd)
     BufferPtr = BufferEnd;
+  // FIXME: What exactly does the StartOfLine bit mean?  There are two
+  // possible meanings for the "start" of the line: the first token on the
+  // unexpanded line, or the first token on the expanded line.
   IsAtStartOfLine = StartOfLine;
+  IsAtPhysicalStartOfLine = StartOfLine;
 }
 
 static bool isAllowedIDChar(uint32_t C, const LangOptions &LangOpts) {
-  if (LangOpts.CPlusPlus11 || LangOpts.C11)
-    return isCharInSet(C, C11AllowedIDChars);
-  else if (LangOpts.CPlusPlus)
-    return isCharInSet(C, CXX03AllowedIDChars);
-  else
-    return isCharInSet(C, C99AllowedIDChars);
+  if (LangOpts.CPlusPlus11 || LangOpts.C11) {
+    static const llvm::sys::UnicodeCharSet C11AllowedIDChars(
+        C11AllowedIDCharRanges);
+    return C11AllowedIDChars.contains(C);
+  } else if (LangOpts.CPlusPlus) {
+    static const llvm::sys::UnicodeCharSet CXX03AllowedIDChars(
+        CXX03AllowedIDCharRanges);
+    return CXX03AllowedIDChars.contains(C);
+  } else {
+    static const llvm::sys::UnicodeCharSet C99AllowedIDChars(
+        C99AllowedIDCharRanges);
+    return C99AllowedIDChars.contains(C);
+  }
 }
 
 static bool isAllowedInitiallyIDChar(uint32_t C, const LangOptions &LangOpts) {
   assert(isAllowedIDChar(C, LangOpts));
-  if (LangOpts.CPlusPlus11 || LangOpts.C11)
-    return !isCharInSet(C, C11DisallowedInitialIDChars);
-  else if (LangOpts.CPlusPlus)
+  if (LangOpts.CPlusPlus11 || LangOpts.C11) {
+    static const llvm::sys::UnicodeCharSet C11DisallowedInitialIDChars(
+        C11DisallowedInitialIDCharRanges);
+    return !C11DisallowedInitialIDChars.contains(C);
+  } else if (LangOpts.CPlusPlus) {
     return true;
-  else
-    return !isCharInSet(C, C99DisallowedInitialIDChars);
+  } else {
+    static const llvm::sys::UnicodeCharSet C99DisallowedInitialIDChars(
+        C99DisallowedInitialIDCharRanges);
+    return !C99DisallowedInitialIDChars.contains(C);
+  }
 }
 
 static inline CharSourceRange makeCharRange(Lexer &L, const char *Begin,
@@ -1466,11 +1492,15 @@ static void maybeDiagnoseIDCharCompat(DiagnosticsEngine &Diags, uint32_t C,
       CannotStartIdentifier
     };
 
-    if (!isCharInSet(C, C99AllowedIDChars)) {
+    static const llvm::sys::UnicodeCharSet C99AllowedIDChars(
+        C99AllowedIDCharRanges);
+    static const llvm::sys::UnicodeCharSet C99DisallowedInitialIDChars(
+        C99DisallowedInitialIDCharRanges);
+    if (!C99AllowedIDChars.contains(C)) {
       Diags.Report(Range.getBegin(), diag::warn_c99_compat_unicode_id)
         << Range
         << CannotAppearInIdentifier;
-    } else if (IsFirst && isCharInSet(C, C99DisallowedInitialIDChars)) {
+    } else if (IsFirst && C99DisallowedInitialIDChars.contains(C)) {
       Diags.Report(Range.getBegin(), diag::warn_c99_compat_unicode_id)
         << Range
         << CannotStartIdentifier;
@@ -1480,14 +1510,16 @@ static void maybeDiagnoseIDCharCompat(DiagnosticsEngine &Diags, uint32_t C,
   // Check C++98 compatibility.
   if (Diags.getDiagnosticLevel(diag::warn_cxx98_compat_unicode_id,
                                Range.getBegin()) > DiagnosticsEngine::Ignored) {
-    if (!isCharInSet(C, CXX03AllowedIDChars)) {
+    static const llvm::sys::UnicodeCharSet CXX03AllowedIDChars(
+        CXX03AllowedIDCharRanges);
+    if (!CXX03AllowedIDChars.contains(C)) {
       Diags.Report(Range.getBegin(), diag::warn_cxx98_compat_unicode_id)
         << Range;
     }
   }
  }
 
-void Lexer::LexIdentifier(Token &Result, const char *CurPtr) {
+bool Lexer::LexIdentifier(Token &Result, const char *CurPtr) {
   // Match [_A-Za-z0-9]*, we have already matched [_A-Za-z$]
   unsigned Size;
   unsigned char C = *CurPtr++;
@@ -1511,7 +1543,7 @@ FinishIdentifier:
     // If we are in raw mode, return this identifier raw.  There is no need to
     // look up identifier information or attempt to macro expand it.
     if (LexingRawMode)
-      return;
+      return true;
 
     // Fill in Result.IdentifierInfo and update the token kind,
     // looking up the identifier in the identifier table.
@@ -1632,7 +1664,7 @@ bool Lexer::isHexaLiteral(const char *Start, const LangOptions &LangOpts) {
 /// LexNumericConstant - Lex the remainder of a integer or floating point
 /// constant. From[-1] is the first character lexed.  Return the end of the
 /// constant.
-void Lexer::LexNumericConstant(Token &Result, const char *CurPtr) {
+bool Lexer::LexNumericConstant(Token &Result, const char *CurPtr) {
   unsigned Size;
   char C = getCharAndSize(CurPtr, Size);
   char PrevCh = 0;
@@ -1666,15 +1698,29 @@ void Lexer::LexNumericConstant(Token &Result, const char *CurPtr) {
       return LexNumericConstant(Result, ConsumeChar(CurPtr, Size, Result));
   }
 
+  // If we have a digit separator, continue.
+  if (C == '\'' && getLangOpts().CPlusPlus1y) {
+    unsigned NextSize;
+    char Next = getCharAndSizeNoWarn(CurPtr + Size, NextSize, getLangOpts());
+    if (isIdentifierBody(Next)) {
+      if (!isLexingRawMode())
+        Diag(CurPtr, diag::warn_cxx11_compat_digit_separator);
+      CurPtr = ConsumeChar(CurPtr, Size, Result);
+      return LexNumericConstant(Result, CurPtr);
+    }
+  }
+
   // Update the location of token as well as BufferPtr.
   const char *TokStart = BufferPtr;
   FormTokenWithChars(Result, CurPtr, tok::numeric_constant);
   Result.setLiteralData(TokStart);
+  return true;
 }
 
 /// LexUDSuffix - Lex the ud-suffix production for user-defined literal suffixes
 /// in C++11, or warn on a ud-suffix in C++98.
-const char *Lexer::LexUDSuffix(Token &Result, const char *CurPtr) {
+const char *Lexer::LexUDSuffix(Token &Result, const char *CurPtr,
+                               bool IsStringLiteral) {
   assert(getLangOpts().CPlusPlus);
 
   // Maximally munch an identifier. FIXME: UCNs.
@@ -1694,7 +1740,39 @@ const char *Lexer::LexUDSuffix(Token &Result, const char *CurPtr) {
     // that does not start with an underscore is ill-formed. As a conforming
     // extension, we treat all such suffixes as if they had whitespace before
     // them.
-    if (C != '_') {
+    bool IsUDSuffix = false;
+    if (C == '_')
+      IsUDSuffix = true;
+    else if (IsStringLiteral && getLangOpts().CPlusPlus1y) {
+      // In C++1y, we need to look ahead a few characters to see if this is a
+      // valid suffix for a string literal or a numeric literal (this could be
+      // the 'operator""if' defining a numeric literal operator).
+      const unsigned MaxStandardSuffixLength = 3;
+      char Buffer[MaxStandardSuffixLength] = { C };
+      unsigned Consumed = Size;
+      unsigned Chars = 1;
+      while (true) {
+        unsigned NextSize;
+        char Next = getCharAndSizeNoWarn(CurPtr + Consumed, NextSize,
+                                         getLangOpts());
+        if (!isIdentifierBody(Next)) {
+          // End of suffix. Check whether this is on the whitelist.
+          IsUDSuffix = (Chars == 1 && Buffer[0] == 's') ||
+                       NumericLiteralParser::isValidUDSuffix(
+                           getLangOpts(), StringRef(Buffer, Chars));
+          break;
+        }
+
+        if (Chars == MaxStandardSuffixLength)
+          // Too long: can't be a standard suffix.
+          break;
+
+        Buffer[Chars++] = Next;
+        Consumed += NextSize;
+      }
+    }
+
+    if (!IsUDSuffix) {
       if (!isLexingRawMode())
         Diag(CurPtr, getLangOpts().MicrosoftMode ?
             diag::ext_ms_reserved_user_defined_literal :
@@ -1714,7 +1792,7 @@ const char *Lexer::LexUDSuffix(Token &Result, const char *CurPtr) {
 
 /// LexStringLiteral - Lex the remainder of a string literal, after having lexed
 /// either " or L" or u8" or u" or U".
-void Lexer::LexStringLiteral(Token &Result, const char *CurPtr,
+bool Lexer::LexStringLiteral(Token &Result, const char *CurPtr,
                              tok::TokenKind Kind) {
   const char *NulCharacter = 0; // Does this string contain the \0 character?
 
@@ -1732,20 +1810,21 @@ void Lexer::LexStringLiteral(Token &Result, const char *CurPtr,
     // getAndAdvanceChar.
     if (C == '\\')
       C = getAndAdvanceChar(CurPtr, Result);
-
+    
     if (C == '\n' || C == '\r' ||             // Newline.
         (C == 0 && CurPtr-1 == BufferEnd)) {  // End of file.
       if (!isLexingRawMode() && !LangOpts.AsmPreprocessor)
         Diag(BufferPtr, diag::ext_unterminated_string);
       FormTokenWithChars(Result, CurPtr-1, tok::unknown);
-      return;
+      return true;
     }
-
+    
     if (C == 0) {
       if (isCodeCompletionPoint(CurPtr-1)) {
         PP->CodeCompleteNaturalLanguage();
         FormTokenWithChars(Result, CurPtr-1, tok::unknown);
-        return cutOffLexing();
+        cutOffLexing();
+        return true;
       }
 
       NulCharacter = CurPtr-1;
@@ -1755,7 +1834,7 @@ void Lexer::LexStringLiteral(Token &Result, const char *CurPtr,
 
   // If we are in C++11, lex the optional ud-suffix.
   if (getLangOpts().CPlusPlus)
-    CurPtr = LexUDSuffix(Result, CurPtr);
+    CurPtr = LexUDSuffix(Result, CurPtr, true);
 
   // If a nul character existed in the string, warn about it.
   if (NulCharacter && !isLexingRawMode())
@@ -1765,11 +1844,12 @@ void Lexer::LexStringLiteral(Token &Result, const char *CurPtr,
   const char *TokStart = BufferPtr;
   FormTokenWithChars(Result, CurPtr, Kind);
   Result.setLiteralData(TokStart);
+  return true;
 }
 
 /// LexRawStringLiteral - Lex the remainder of a raw string literal, after
 /// having lexed R", LR", u8R", uR", or UR".
-void Lexer::LexRawStringLiteral(Token &Result, const char *CurPtr,
+bool Lexer::LexRawStringLiteral(Token &Result, const char *CurPtr,
                                 tok::TokenKind Kind) {
   // This function doesn't use getAndAdvanceChar because C++0x [lex.pptoken]p3:
   //  Between the initial and final double quote characters of the raw string,
@@ -1811,7 +1891,7 @@ void Lexer::LexRawStringLiteral(Token &Result, const char *CurPtr,
     }
 
     FormTokenWithChars(Result, CurPtr, tok::unknown);
-    return;
+    return true;
   }
 
   // Save prefix and move CurPtr past it
@@ -1832,23 +1912,24 @@ void Lexer::LexRawStringLiteral(Token &Result, const char *CurPtr,
         Diag(BufferPtr, diag::err_unterminated_raw_string)
           << StringRef(Prefix, PrefixLen);
       FormTokenWithChars(Result, CurPtr-1, tok::unknown);
-      return;
+      return true;
     }
   }
 
   // If we are in C++11, lex the optional ud-suffix.
   if (getLangOpts().CPlusPlus)
-    CurPtr = LexUDSuffix(Result, CurPtr);
+    CurPtr = LexUDSuffix(Result, CurPtr, true);
 
   // Update the location of token as well as BufferPtr.
   const char *TokStart = BufferPtr;
   FormTokenWithChars(Result, CurPtr, Kind);
   Result.setLiteralData(TokStart);
+  return true;
 }
 
 /// LexAngledStringLiteral - Lex the remainder of an angled string literal,
 /// after having lexed the '<' character.  This is used for #include filenames.
-void Lexer::LexAngledStringLiteral(Token &Result, const char *CurPtr) {
+bool Lexer::LexAngledStringLiteral(Token &Result, const char *CurPtr) {
   const char *NulCharacter = 0; // Does this string contain the \0 character?
   const char *AfterLessPos = CurPtr;
   char C = getAndAdvanceChar(CurPtr, Result);
@@ -1863,7 +1944,7 @@ void Lexer::LexAngledStringLiteral(Token &Result, const char *CurPtr) {
       // If the filename is unterminated, then it must just be a lone <
       // character.  Return this as such.
       FormTokenWithChars(Result, AfterLessPos, tok::less);
-      return;
+      return true;
     } else if (C == 0) {
       NulCharacter = CurPtr-1;
     }
@@ -1878,12 +1959,13 @@ void Lexer::LexAngledStringLiteral(Token &Result, const char *CurPtr) {
   const char *TokStart = BufferPtr;
   FormTokenWithChars(Result, CurPtr, tok::angle_string_literal);
   Result.setLiteralData(TokStart);
+  return true;
 }
 
 
 /// LexCharConstant - Lex the remainder of a character constant, after having
 /// lexed either ' or L' or u' or U'.
-void Lexer::LexCharConstant(Token &Result, const char *CurPtr,
+bool Lexer::LexCharConstant(Token &Result, const char *CurPtr,
                             tok::TokenKind Kind) {
   const char *NulCharacter = 0; // Does this character contain the \0 character?
 
@@ -1898,7 +1980,7 @@ void Lexer::LexCharConstant(Token &Result, const char *CurPtr,
     if (!isLexingRawMode() && !LangOpts.AsmPreprocessor)
       Diag(BufferPtr, diag::ext_empty_character);
     FormTokenWithChars(Result, CurPtr, tok::unknown);
-    return;
+    return true;
   }
 
   while (C != '\'') {
@@ -1911,14 +1993,15 @@ void Lexer::LexCharConstant(Token &Result, const char *CurPtr,
       if (!isLexingRawMode() && !LangOpts.AsmPreprocessor)
         Diag(BufferPtr, diag::ext_unterminated_char);
       FormTokenWithChars(Result, CurPtr-1, tok::unknown);
-      return;
+      return true;
     }
 
     if (C == 0) {
       if (isCodeCompletionPoint(CurPtr-1)) {
         PP->CodeCompleteNaturalLanguage();
         FormTokenWithChars(Result, CurPtr-1, tok::unknown);
-        return cutOffLexing();
+        cutOffLexing();
+        return true;
       }
 
       NulCharacter = CurPtr-1;
@@ -1928,7 +2011,7 @@ void Lexer::LexCharConstant(Token &Result, const char *CurPtr,
 
   // If we are in C++11, lex the optional ud-suffix.
   if (getLangOpts().CPlusPlus)
-    CurPtr = LexUDSuffix(Result, CurPtr);
+    CurPtr = LexUDSuffix(Result, CurPtr, false);
 
   // If a nul character existed in the character, warn about it.
   if (NulCharacter && !isLexingRawMode())
@@ -1938,6 +2021,7 @@ void Lexer::LexCharConstant(Token &Result, const char *CurPtr,
   const char *TokStart = BufferPtr;
   FormTokenWithChars(Result, CurPtr, Kind);
   Result.setLiteralData(TokStart);
+  return true;
 }
 
 /// SkipWhitespace - Efficiently skip over a series of whitespace characters.
@@ -1945,7 +2029,8 @@ void Lexer::LexCharConstant(Token &Result, const char *CurPtr,
 ///
 /// This method forms a token and returns true if KeepWhitespaceMode is enabled.
 ///
-bool Lexer::SkipWhitespace(Token &Result, const char *CurPtr) {
+bool Lexer::SkipWhitespace(Token &Result, const char *CurPtr,
+                           bool &TokAtPhysicalStartOfLine) {
   // Whitespace - Skip it, then return the token after the whitespace.
   bool SawNewline = isVerticalWhitespace(CurPtr[-1]);
 
@@ -1975,8 +2060,10 @@ bool Lexer::SkipWhitespace(Token &Result, const char *CurPtr) {
   // If the client wants us to return whitespace, return it now.
   if (isKeepWhitespaceMode()) {
     FormTokenWithChars(Result, CurPtr, tok::unknown);
-    if (SawNewline)
+    if (SawNewline) {
       IsAtStartOfLine = true;
+      IsAtPhysicalStartOfLine = true;
+    }
     // FIXME: The next token will not have LeadingSpace set.
     return true;
   }
@@ -1986,8 +2073,10 @@ bool Lexer::SkipWhitespace(Token &Result, const char *CurPtr) {
   bool HasLeadingSpace = !isVerticalWhitespace(PrevChar);
 
   Result.setFlagValue(Token::LeadingSpace, HasLeadingSpace);
-  if (SawNewline)
+  if (SawNewline) {
     Result.setFlag(Token::StartOfLine);
+    TokAtPhysicalStartOfLine = true;
+  }
 
   BufferPtr = CurPtr;
   return false;
@@ -1999,7 +2088,8 @@ bool Lexer::SkipWhitespace(Token &Result, const char *CurPtr) {
 ///
 /// If we're in KeepCommentMode or any CommentHandler has inserted
 /// some tokens, this will store the first token and return true.
-bool Lexer::SkipLineComment(Token &Result, const char *CurPtr) {
+bool Lexer::SkipLineComment(Token &Result, const char *CurPtr,
+                            bool &TokAtPhysicalStartOfLine) {
   // If Line comments aren't explicitly enabled for this language, emit an
   // extension warning.
   if (!LangOpts.LineComment && !isLexingRawMode()) {
@@ -2076,9 +2166,9 @@ bool Lexer::SkipLineComment(Token &Result, const char *CurPtr) {
         }
     }
 
-    if (CurPtr == BufferEnd+1) {
-      --CurPtr;
-      break;
+    if (CurPtr == BufferEnd+1) { 
+      --CurPtr; 
+      break; 
     }
 
     if (C == '\0' && isCodeCompletionPoint(CurPtr-1)) {
@@ -2118,6 +2208,7 @@ bool Lexer::SkipLineComment(Token &Result, const char *CurPtr) {
 
   // The next returned token is at the start of the line.
   Result.setFlag(Token::StartOfLine);
+  TokAtPhysicalStartOfLine = true;
   // No leading whitespace seen so far.
   Result.clearFlag(Token::LeadingSpace);
   BufferPtr = CurPtr;
@@ -2140,7 +2231,7 @@ bool Lexer::SaveLineComment(Token &Result, const char *CurPtr) {
   std::string Spelling = PP->getSpelling(Result, &Invalid);
   if (Invalid)
     return true;
-
+  
   assert(Spelling[0] == '/' && Spelling[1] == '/' && "Not line comment?");
   Spelling[1] = '*';   // Change prefix to "/*".
   Spelling += "*/";    // add suffix.
@@ -2228,7 +2319,8 @@ static bool isEndOfBlockCommentWithEscapedNewLine(const char *CurPtr,
 ///
 /// If we're in KeepCommentMode or any CommentHandler has inserted
 /// some tokens, this will store the first token and return true.
-bool Lexer::SkipBlockComment(Token &Result, const char *CurPtr) {
+bool Lexer::SkipBlockComment(Token &Result, const char *CurPtr,
+                             bool &TokAtPhysicalStartOfLine) {
   // Scan one character past where we should, looking for a '/' character.  Once
   // we find it, check to see if it was preceded by a *.  This common
   // optimization helps people who like to put a lot of * characters in their
@@ -2379,7 +2471,7 @@ bool Lexer::SkipBlockComment(Token &Result, const char *CurPtr) {
   // efficiently now.  This is safe even in KeepWhitespaceMode because we would
   // have already returned above with the comment as a token.
   if (isHorizontalWhitespace(*CurPtr)) {
-    SkipWhitespace(Result, CurPtr+1);
+    SkipWhitespace(Result, CurPtr+1, TokAtPhysicalStartOfLine);
     return false;
   }
 
@@ -2463,7 +2555,7 @@ bool Lexer::LexEndOfFile(Token &Result, const char *CurPtr) {
     resetExtendedTokenMode();
     return true;  // Have a token.
   }
-
+ 
   // If we are in raw mode, return this event as an EOF token.  Let the caller
   // that put us in raw mode handle the event.
   if (isLexingRawMode()) {
@@ -2472,7 +2564,7 @@ bool Lexer::LexEndOfFile(Token &Result, const char *CurPtr) {
     FormTokenWithChars(Result, BufferEnd, tok::eof);
     return true;
   }
-
+  
   // Issue diagnostics for unterminated #if and missing newline.
 
   // If we are in a #if directive, emit an error.
@@ -2485,10 +2577,28 @@ bool Lexer::LexEndOfFile(Token &Result, const char *CurPtr) {
 
   // C99 5.1.1.2p2: If the file is non-empty and didn't end in a newline, issue
   // a pedwarn.
-  if (CurPtr != BufferStart && (CurPtr[-1] != '\n' && CurPtr[-1] != '\r'))
-    Diag(BufferEnd, LangOpts.CPlusPlus11 ? // C++11 [lex.phases] 2.2 p2
-         diag::warn_cxx98_compat_no_newline_eof : diag::ext_no_newline_eof)
-    << FixItHint::CreateInsertion(getSourceLocation(BufferEnd), "\n");
+  if (CurPtr != BufferStart && (CurPtr[-1] != '\n' && CurPtr[-1] != '\r')) {
+    DiagnosticsEngine &Diags = PP->getDiagnostics();
+    SourceLocation EndLoc = getSourceLocation(BufferEnd);
+    unsigned DiagID;
+
+    if (LangOpts.CPlusPlus11) {
+      // C++11 [lex.phases] 2.2 p2
+      // Prefer the C++98 pedantic compatibility warning over the generic,
+      // non-extension, user-requested "missing newline at EOF" warning.
+      if (Diags.getDiagnosticLevel(diag::warn_cxx98_compat_no_newline_eof,
+                                   EndLoc) != DiagnosticsEngine::Ignored) {
+        DiagID = diag::warn_cxx98_compat_no_newline_eof;
+      } else {
+        DiagID = diag::warn_no_newline_eof;
+      }
+    } else {
+      DiagID = diag::ext_no_newline_eof;
+    }
+
+    Diag(BufferEnd, DiagID)
+      << FixItHint::CreateInsertion(EndLoc, "\n");
+  }
 
   BufferPtr = CurPtr;
 
@@ -2511,14 +2621,19 @@ unsigned Lexer::isNextPPTokenLParen() {
   // Save state that can be changed while lexing so that we can restore it.
   const char *TmpBufferPtr = BufferPtr;
   bool inPPDirectiveMode = ParsingPreprocessorDirective;
+  bool atStartOfLine = IsAtStartOfLine;
+  bool atPhysicalStartOfLine = IsAtPhysicalStartOfLine;
+  bool leadingSpace = HasLeadingSpace;
 
   Token Tok;
-  Tok.startToken();
-  LexTokenInternal(Tok);
+  Lex(Tok);
 
   // Restore state that may have changed.
   BufferPtr = TmpBufferPtr;
   ParsingPreprocessorDirective = inPPDirectiveMode;
+  HasLeadingSpace = leadingSpace;
+  IsAtStartOfLine = atStartOfLine;
+  IsAtPhysicalStartOfLine = atPhysicalStartOfLine;
 
   // Restore the lexer back to non-skipping mode.
   LexingRawMode = false;
@@ -2557,7 +2672,7 @@ bool Lexer::IsStartOfConflictMarker(const char *CurPtr) {
   if (CurPtr != BufferStart &&
       CurPtr[-1] != '\n' && CurPtr[-1] != '\r')
     return false;
-
+  
   // Check to see if we have <<<<<<< or >>>>.
   if ((BufferEnd-CurPtr < 8 || StringRef(CurPtr, 7) != "<<<<<<<") &&
       (BufferEnd-CurPtr < 6 || StringRef(CurPtr, 5) != ">>>> "))
@@ -2567,7 +2682,7 @@ bool Lexer::IsStartOfConflictMarker(const char *CurPtr) {
   // it.
   if (CurrentConflictMarkerState || isLexingRawMode())
     return false;
-
+  
   ConflictMarkerKind Kind = *CurPtr == '<' ? CMK_Normal : CMK_Perforce;
 
   // Check to see if there is an ending marker somewhere in the buffer at the
@@ -2577,7 +2692,7 @@ bool Lexer::IsStartOfConflictMarker(const char *CurPtr) {
     // Diagnose this, and ignore to the end of line.
     Diag(CurPtr, diag::err_conflict_marker);
     CurrentConflictMarkerState = Kind;
-
+    
     // Skip ahead to the end of line.  We know this exists because the
     // end-of-conflict marker starts with \r or \n.
     while (*CurPtr != '\r' && *CurPtr != '\n') {
@@ -2587,7 +2702,7 @@ bool Lexer::IsStartOfConflictMarker(const char *CurPtr) {
     BufferPtr = CurPtr;
     return true;
   }
-
+  
   // No end of conflict marker found.
   return false;
 }
@@ -2602,35 +2717,35 @@ bool Lexer::HandleEndOfConflictMarker(const char *CurPtr) {
   if (CurPtr != BufferStart &&
       CurPtr[-1] != '\n' && CurPtr[-1] != '\r')
     return false;
-
+  
   // If we have a situation where we don't care about conflict markers, ignore
   // it.
   if (!CurrentConflictMarkerState || isLexingRawMode())
     return false;
-
+  
   // Check to see if we have the marker (4 characters in a row).
   for (unsigned i = 1; i != 4; ++i)
     if (CurPtr[i] != CurPtr[0])
       return false;
-
+  
   // If we do have it, search for the end of the conflict marker.  This could
   // fail if it got skipped with a '#if 0' or something.  Note that CurPtr might
   // be the end of conflict marker.
   if (const char *End = FindConflictEnd(CurPtr, BufferEnd,
                                         CurrentConflictMarkerState)) {
     CurPtr = End;
-
+    
     // Skip ahead to the end of line.
     while (CurPtr != BufferEnd && *CurPtr != '\r' && *CurPtr != '\n')
       ++CurPtr;
-
+    
     BufferPtr = CurPtr;
-
+    
     // No longer in the conflict marker.
     CurrentConflictMarkerState = CMK_None;
     return true;
   }
-
+  
   return false;
 }
 
@@ -2707,6 +2822,10 @@ uint32_t Lexer::tryReadUCN(const char *&StartPtr, const char *SlashLoc,
     StartPtr = CurPtr;
   }
 
+  // Don't apply C family restrictions to UCNs in assembly mode
+  if (LangOpts.AsmPreprocessor)
+    return CodePoint;
+
   // C99 6.4.3p2: A universal character name shall not specify a character whose
   //   short identifier is less than 00A0 other than 0024 ($), 0040 (@), or
   //   0060 (`), nor one in the range D800 through DFFF inclusive.)
@@ -2751,19 +2870,22 @@ uint32_t Lexer::tryReadUCN(const char *&StartPtr, const char *SlashLoc,
   return CodePoint;
 }
 
-void Lexer::LexUnicode(Token &Result, uint32_t C, const char *CurPtr) {
+bool Lexer::CheckUnicodeWhitespace(Token &Result, uint32_t C,
+                                   const char *CurPtr) {
+  static const llvm::sys::UnicodeCharSet UnicodeWhitespaceChars(
+      UnicodeWhitespaceCharRanges);
   if (!isLexingRawMode() && !PP->isPreprocessedOutput() &&
-      isCharInSet(C, UnicodeWhitespaceChars)) {
+      UnicodeWhitespaceChars.contains(C)) {
     Diag(BufferPtr, diag::ext_unicode_whitespace)
       << makeCharRange(*this, BufferPtr, CurPtr);
 
     Result.setFlag(Token::LeadingSpace);
-    if (SkipWhitespace(Result, CurPtr))
-      return; // KeepWhitespaceMode
-
-    return LexTokenInternal(Result);
+    return true;
   }
+  return false;
+}
 
+bool Lexer::LexUnicode(Token &Result, uint32_t C, const char *CurPtr) {
   if (isAllowedIDChar(C, LangOpts) && isAllowedInitiallyIDChar(C, LangOpts)) {
     if (!isLexingRawMode() && !ParsingPreprocessorDirective &&
         !PP->isPreprocessedOutput()) {
@@ -2792,22 +2914,59 @@ void Lexer::LexUnicode(Token &Result, uint32_t C, const char *CurPtr) {
       << FixItHint::CreateRemoval(makeCharRange(*this, BufferPtr, CurPtr));
 
     BufferPtr = CurPtr;
-    return LexTokenInternal(Result);
+    return false;
   }
 
   // Otherwise, we have an explicit UCN or a character that's unlikely to show
   // up by accident.
   MIOpt.ReadToken();
   FormTokenWithChars(Result, CurPtr, tok::unknown);
+  return true;
 }
 
+void Lexer::PropagateLineStartLeadingSpaceInfo(Token &Result) {
+  IsAtStartOfLine = Result.isAtStartOfLine();
+  HasLeadingSpace = Result.hasLeadingSpace();
+  HasLeadingEmptyMacro = Result.hasLeadingEmptyMacro();
+  // Note that this doesn't affect IsAtPhysicalStartOfLine.
+}
+
+bool Lexer::Lex(Token &Result) {
+  // Start a new token.
+  Result.startToken();
+
+  // Set up misc whitespace flags for LexTokenInternal.
+  if (IsAtStartOfLine) {
+    Result.setFlag(Token::StartOfLine);
+    IsAtStartOfLine = false;
+  }
+
+  if (HasLeadingSpace) {
+    Result.setFlag(Token::LeadingSpace);
+    HasLeadingSpace = false;
+  }
+
+  if (HasLeadingEmptyMacro) {
+    Result.setFlag(Token::LeadingEmptyMacro);
+    HasLeadingEmptyMacro = false;
+  }
+
+  bool atPhysicalStartOfLine = IsAtPhysicalStartOfLine;
+  IsAtPhysicalStartOfLine = false;
+  bool isRawLex = isLexingRawMode();
+  (void) isRawLex;
+  bool returnedToken = LexTokenInternal(Result, atPhysicalStartOfLine);
+  // (After the LexTokenInternal call, the lexer might be destroyed.)
+  assert((returnedToken || !isRawLex) && "Raw lex must succeed");
+  return returnedToken;
+}
 
 /// LexTokenInternal - This implements a simple C family lexer.  It is an
 /// extremely performance critical piece of code.  This assumes that the buffer
 /// has a null character at the end of the file.  This returns a preprocessing
 /// token, not a normal token, as such, it is an internal interface.  It assumes
 /// that the Flags of result have been cleared before calling this.
-void Lexer::LexTokenInternal(Token &Result) {
+bool Lexer::LexTokenInternal(Token &Result, bool TokAtPhysicalStartOfLine) {
 LexNextToken:
   // New token, can't need cleaning yet.
   Result.clearFlag(Token::NeedsCleaning);
@@ -2828,7 +2987,7 @@ LexNextToken:
     if (isKeepWhitespaceMode()) {
       FormTokenWithChars(Result, CurPtr, tok::unknown);
       // FIXME: The next token will not have LeadingSpace set.
-      return;
+      return true;
     }
 
     BufferPtr = CurPtr;
@@ -2854,47 +3013,36 @@ LexNextToken:
     // +======================================================================+
 
     // Found end of file?
-    if (CurPtr-1 == BufferEnd) {
-      // Read the PP instance variable into an automatic variable, because
-      // LexEndOfFile will often delete 'this'.
-      Preprocessor *PPCache = PP;
-      if (LexEndOfFile(Result, CurPtr-1))  // Retreat back into the file.
-        return;   // Got a token to return.
-      assert(PPCache && "Raw buffer::LexEndOfFile should return a token");
-      return PPCache->Lex(Result);
-    }
+    if (CurPtr-1 == BufferEnd)
+      return LexEndOfFile(Result, CurPtr-1);
 
     // Check if we are performing code completion.
     if (isCodeCompletionPoint(CurPtr-1)) {
       // Return the code-completion token.
       Result.startToken();
       FormTokenWithChars(Result, CurPtr, tok::code_completion);
-      return;
+      return true;
     }
 
     if (!isLexingRawMode())
       Diag(CurPtr-1, diag::null_in_file);
     Result.setFlag(Token::LeadingSpace);
-    if (SkipWhitespace(Result, CurPtr))
-      return; // KeepWhitespaceMode
+    if (SkipWhitespace(Result, CurPtr, TokAtPhysicalStartOfLine))
+      return true; // KeepWhitespaceMode
 
-    goto LexNextToken;   // GCC isn't tail call eliminating.
-
+    // We know the lexer hasn't changed, so just try again with this lexer.
+    // (We manually eliminate the tail call to avoid recursion.)
+    goto LexNextToken;
+      
   case 26:  // DOS & CP/M EOF: "^Z".
     // If we're in Microsoft extensions mode, treat this as end of file.
-    if (LangOpts.MicrosoftExt) {
-      // Read the PP instance variable into an automatic variable, because
-      // LexEndOfFile will often delete 'this'.
-      Preprocessor *PPCache = PP;
-      if (LexEndOfFile(Result, CurPtr-1))  // Retreat back into the file.
-        return;   // Got a token to return.
-      assert(PPCache && "Raw buffer::LexEndOfFile should return a token");
-      return PPCache->Lex(Result);
-    }
+    if (LangOpts.MicrosoftExt)
+      return LexEndOfFile(Result, CurPtr-1);
+
     // If Microsoft extensions are disabled, this is just random garbage.
     Kind = tok::unknown;
     break;
-
+      
   case '\n':
   case '\r':
     // If we are inside a preprocessor directive and we see the end of line,
@@ -2909,6 +3057,7 @@ LexNextToken:
 
       // Since we consumed a newline, we are back at the start of a line.
       IsAtStartOfLine = true;
+      IsAtPhysicalStartOfLine = true;
 
       Kind = tok::eod;
       break;
@@ -2917,17 +3066,20 @@ LexNextToken:
     // No leading whitespace seen so far.
     Result.clearFlag(Token::LeadingSpace);
 
-    if (SkipWhitespace(Result, CurPtr))
-      return; // KeepWhitespaceMode
-    goto LexNextToken;   // GCC isn't tail call eliminating.
+    if (SkipWhitespace(Result, CurPtr, TokAtPhysicalStartOfLine))
+      return true; // KeepWhitespaceMode
+
+    // We only saw whitespace, so just try again with this lexer.
+    // (We manually eliminate the tail call to avoid recursion.)
+    goto LexNextToken;
   case ' ':
   case '\t':
   case '\f':
   case '\v':
   SkipHorizontalWhitespace:
     Result.setFlag(Token::LeadingSpace);
-    if (SkipWhitespace(Result, CurPtr))
-      return; // KeepWhitespaceMode
+    if (SkipWhitespace(Result, CurPtr, TokAtPhysicalStartOfLine))
+      return true; // KeepWhitespaceMode
 
   SkipIgnoredUnits:
     CurPtr = BufferPtr;
@@ -2935,19 +3087,22 @@ LexNextToken:
     // If the next token is obviously a // or /* */ comment, skip it efficiently
     // too (without going through the big switch stmt).
     if (CurPtr[0] == '/' && CurPtr[1] == '/' && !inKeepCommentMode() &&
-        LangOpts.LineComment && !LangOpts.TraditionalCPP) {
-      if (SkipLineComment(Result, CurPtr+2))
-        return; // There is a token to return.
+        LangOpts.LineComment &&
+        (LangOpts.CPlusPlus || !LangOpts.TraditionalCPP)) {
+      if (SkipLineComment(Result, CurPtr+2, TokAtPhysicalStartOfLine))
+        return true; // There is a token to return.
       goto SkipIgnoredUnits;
     } else if (CurPtr[0] == '/' && CurPtr[1] == '*' && !inKeepCommentMode()) {
-      if (SkipBlockComment(Result, CurPtr+2))
-        return; // There is a token to return.
+      if (SkipBlockComment(Result, CurPtr+2, TokAtPhysicalStartOfLine))
+        return true; // There is a token to return.
       goto SkipIgnoredUnits;
     } else if (isHorizontalWhitespace(*CurPtr)) {
       goto SkipHorizontalWhitespace;
     }
-    goto LexNextToken;   // GCC isn't tail call eliminating.
-
+    // We only saw whitespace, so just try again with this lexer.
+    // (We manually eliminate the tail call to avoid recursion.)
+    goto LexNextToken;
+      
   // C99 6.4.4.1: Integer Constants.
   // C99 6.4.4.2: Floating Constants.
   case '0': case '1': case '2': case '3': case '4':
@@ -3148,18 +3303,11 @@ LexNextToken:
     } else if (LangOpts.CPlusPlus && Char == '*') {
       Kind = tok::periodstar;
       CurPtr += SizeTmp;
-    } else if (Char == '.') {
-      if (getCharAndSize(CurPtr+SizeTmp, SizeTmp2) == '.') {
-        CurPtr = ConsumeChar(ConsumeChar(CurPtr, SizeTmp, Result),
-                             SizeTmp2, Result);
-        Kind = tok::ellipsis;
-      } else {
-        // +=====  Scout =====================================================+
-        // .. punctuator
-        CurPtr = ConsumeChar(CurPtr, SizeTmp, Result);
-        Kind = tok::periodperiod;
-        // +==================================================================+
-      }
+    } else if (Char == '.' &&
+               getCharAndSize(CurPtr+SizeTmp, SizeTmp2) == '.') {
+      Kind = tok::ellipsis;
+      CurPtr = ConsumeChar(ConsumeChar(CurPtr, SizeTmp, Result),
+                           SizeTmp2, Result);
     } else {
       Kind = tok::period;
     }
@@ -3239,14 +3387,16 @@ LexNextToken:
       // "foo".  Check to see if the character after the second slash is a '*'.
       // If so, we will lex that as a "/" instead of the start of a comment.
       // However, we never do this if we are just preprocessing.
-      bool TreatAsComment = LangOpts.LineComment && !LangOpts.TraditionalCPP;
+      bool TreatAsComment = LangOpts.LineComment &&
+                            (LangOpts.CPlusPlus || !LangOpts.TraditionalCPP);
       if (!TreatAsComment)
         if (!(PP && PP->isPreprocessedOutput()))
           TreatAsComment = getCharAndSize(CurPtr+SizeTmp, SizeTmp2) != '*';
 
       if (TreatAsComment) {
-        if (SkipLineComment(Result, ConsumeChar(CurPtr, SizeTmp, Result)))
-          return; // There is a token to return.
+        if (SkipLineComment(Result, ConsumeChar(CurPtr, SizeTmp, Result),
+                            TokAtPhysicalStartOfLine))
+          return true; // There is a token to return.
 
         // It is common for the tokens immediately after a // comment to be
         // whitespace (indentation for the next line).  Instead of going through
@@ -3256,9 +3406,13 @@ LexNextToken:
     }
 
     if (Char == '*') {  // /**/ comment.
-      if (SkipBlockComment(Result, ConsumeChar(CurPtr, SizeTmp, Result)))
-        return; // There is a token to return.
-      goto LexNextToken;   // GCC isn't tail call eliminating.
+      if (SkipBlockComment(Result, ConsumeChar(CurPtr, SizeTmp, Result),
+                           TokAtPhysicalStartOfLine))
+        return true; // There is a token to return.
+
+      // We only saw whitespace, so just try again with this lexer.
+      // (We manually eliminate the tail call to avoid recursion.)
+      goto LexNextToken;
     }
 
     if (Char == '=') {
@@ -3293,7 +3447,7 @@ LexNextToken:
         // it's actually the start of a preprocessing directive.  Callback to
         // the preprocessor to handle it.
         // FIXME: -fpreprocessed mode??
-        if (Result.isAtStartOfLine() && !LexingRawMode && !Is_PragmaLexer)
+        if (TokAtPhysicalStartOfLine && !LexingRawMode && !Is_PragmaLexer)
           goto HandleDirective;
 
         Kind = tok::hash;
@@ -3384,7 +3538,7 @@ LexNextToken:
         CurPtr = ConsumeChar(CurPtr, SizeTmp, Result);
         Kind = tok::greatergreater;
       }
-
+      
     } else {
       Kind = tok::greater;
     }
@@ -3434,7 +3588,7 @@ LexNextToken:
       // If this is '====' and we're in a conflict marker, ignore it.
       if (CurPtr[1] == '=' && HandleEndOfConflictMarker(CurPtr-1))
         goto LexNextToken;
-
+      
       Kind = tok::equalequal;
       CurPtr = ConsumeChar(CurPtr, SizeTmp, Result);
     } else {
@@ -3459,7 +3613,7 @@ LexNextToken:
       // it's actually the start of a preprocessing directive.  Callback to
       // the preprocessor to handle it.
       // FIXME: -fpreprocessed mode??
-      if (Result.isAtStartOfLine() && !LexingRawMode && !Is_PragmaLexer)
+      if (TokAtPhysicalStartOfLine && !LexingRawMode && !Is_PragmaLexer)
         goto HandleDirective;
 
       Kind = tok::hash;
@@ -3476,8 +3630,18 @@ LexNextToken:
 
   // UCNs (C99 6.4.3, C++11 [lex.charset]p2)
   case '\\':
-    if (uint32_t CodePoint = tryReadUCN(CurPtr, BufferPtr, &Result))
+    if (uint32_t CodePoint = tryReadUCN(CurPtr, BufferPtr, &Result)) {
+      if (CheckUnicodeWhitespace(Result, CodePoint, CurPtr)) {
+        if (SkipWhitespace(Result, CurPtr, TokAtPhysicalStartOfLine))
+          return true; // KeepWhitespaceMode
+
+        // We only saw whitespace, so just try again with this lexer.
+        // (We manually eliminate the tail call to avoid recursion.)
+        goto LexNextToken;
+      }
+
       return LexUnicode(Result, CodePoint, CurPtr);
+    }
 
     Kind = tok::unknown;
     break;
@@ -3498,9 +3662,18 @@ LexNextToken:
                                   (const UTF8 *)BufferEnd,
                                   &CodePoint,
                                   strictConversion);
-    if (Status == conversionOK)
-      return LexUnicode(Result, CodePoint, CurPtr);
+    if (Status == conversionOK) {
+      if (CheckUnicodeWhitespace(Result, CodePoint, CurPtr)) {
+        if (SkipWhitespace(Result, CurPtr, TokAtPhysicalStartOfLine))
+          return true; // KeepWhitespaceMode
 
+        // We only saw whitespace, so just try again with this lexer.
+        // (We manually eliminate the tail call to avoid recursion.)
+        goto LexNextToken;
+      }
+      return LexUnicode(Result, CodePoint, CurPtr);
+    }
+    
     if (isLexingRawMode() || ParsingPreprocessorDirective ||
         PP->isPreprocessedOutput()) {
       ++CurPtr;
@@ -3514,6 +3687,9 @@ LexNextToken:
     Diag(CurPtr, diag::err_invalid_utf8);
 
     BufferPtr = CurPtr+1;
+    // We're pretending the character didn't exist, so just try again with
+    // this lexer.
+    // (We manually eliminate the tail call to avoid recursion.)
     goto LexNextToken;
   }
   }
@@ -3523,7 +3699,7 @@ LexNextToken:
 
   // Update the location of token as well as BufferPtr.
   FormTokenWithChars(Result, CurPtr, Kind);
-  return;
+  return true;
 
 HandleDirective:
   // We parsed a # character and it's the start of a preprocessing directive.
@@ -3534,21 +3710,9 @@ HandleDirective:
   if (PP->hadModuleLoaderFatalFailure()) {
     // With a fatal failure in the module loader, we abort parsing.
     assert(Result.is(tok::eof) && "Preprocessor did not set tok:eof");
-    return;
+    return true;
   }
 
-  // As an optimization, if the preprocessor didn't switch lexers, tail
-  // recurse.
-  if (PP->isCurrentLexer(this)) {
-    // Start a new token.  If this is a #include or something, the PP may
-    // want us starting at the beginning of the line again.  If so, set
-    // the StartOfLine flag and clear LeadingSpace.
-    if (IsAtStartOfLine) {
-      Result.setFlag(Token::StartOfLine);
-      Result.clearFlag(Token::LeadingSpace);
-      IsAtStartOfLine = false;
-    }
-    goto LexNextToken;   // GCC isn't tail call eliminating.
-  }
-  return PP->Lex(Result);
+  // We parsed the directive; lex a token with the new state.
+  return false;
 }

@@ -275,9 +275,7 @@ namespace UndefinedBehavior {
 
 // - a lambda-expression (5.1.2);
 struct Lambda {
-  // FIXME: clang crashes when trying to parse this! Revisit this check once
-  // lambdas are fully implemented.
-  //int n : []{ return 1; }();
+  int n : []{ return 1; }(); // expected-error {{constant expression}} expected-error {{integral constant expression}}
 };
 
 // - an lvalue-to-rvalue conversion (4.1) unless it is applied to
@@ -322,7 +320,7 @@ namespace LValueToRValue {
   //   constant expression;
   constexpr volatile S f() { return S(); }
   static_assert(f().i, ""); // ok! there's no lvalue-to-rvalue conversion here!
-  static_assert(((volatile const S&&)(S)0).i, ""); // expected-error {{constant expression}}
+  static_assert(((volatile const S&&)(S)0).i, ""); // expected-error {{constant expression}} expected-note {{read of volatile-qualified type}}
 }
 
 // DR1312: The proposed wording for this defect has issues, so we ignore this

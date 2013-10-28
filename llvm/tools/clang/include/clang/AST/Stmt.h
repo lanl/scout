@@ -272,22 +272,18 @@ protected:
     /// Whether this initializer list originally had a GNU array-range
     /// designator in it. This is a temporary marker used by CodeGen.
     unsigned HadArrayRangeDesignator : 1;
-
-    /// Whether this initializer list initializes a std::initializer_list
-    /// object.
-    unsigned InitializesStdInitializerList : 1;
   };
 
   class TypeTraitExprBitfields {
     friend class TypeTraitExpr;
     friend class ASTStmtReader;
     friend class ASTStmtWriter;
-
+    
     unsigned : NumExprBits;
-
+    
     /// \brief The kind of type trait, which is a value of a TypeTrait enumerator.
     unsigned Kind : 8;
-
+    
     /// \brief If this expression is not value-dependent, this indicates whether
     /// the trait evaluated true or false.
     unsigned Value : 1;
@@ -322,19 +318,21 @@ protected:
 public:
   // Only allow allocation of Stmts using the allocator in ASTContext
   // or by doing a placement new.
-  void* operator new(size_t bytes, ASTContext& C,
-                     unsigned alignment = 8) throw();
+  void* operator new(size_t bytes, const ASTContext& C,
+                     unsigned alignment = 8);
 
-  void* operator new(size_t bytes, ASTContext* C,
-                     unsigned alignment = 8) throw();
+  void* operator new(size_t bytes, const ASTContext* C,
+                     unsigned alignment = 8) {
+    return operator new(bytes, *C, alignment);
+  }
 
   void* operator new(size_t bytes, void* mem) throw() {
     return mem;
   }
 
-  void operator delete(void*, ASTContext&, unsigned) throw() { }
-  void operator delete(void*, ASTContext*, unsigned) throw() { }
-  void operator delete(void*, std::size_t) throw() { }
+  void operator delete(void*, const ASTContext&, unsigned) throw() { }
+  void operator delete(void*, const ASTContext*, unsigned) throw() { }
+  void operator delete(void*, size_t) throw() { }
   void operator delete(void*, void*) throw() { }
 
 public:
@@ -388,7 +386,7 @@ public:
 
   /// dumpPretty/printPretty - These two methods do a "pretty print" of the AST
   /// back to its original source language syntax.
-  void dumpPretty(ASTContext &Context) const;
+  void dumpPretty(const ASTContext &Context) const;
   void printPretty(raw_ostream &OS, PrinterHelper *Helper,
                    const PrintingPolicy &Policy,
                    unsigned Indentation = 0) const;
@@ -409,13 +407,6 @@ public:
     return const_cast<Stmt*>(
       const_cast<const Stmt*>(this)->stripLabelLikeStatements());
   }
-
-  /// hasImplicitControlFlow - Some statements (e.g. short circuited operations)
-  ///  contain implicit control-flow in the order their subexpressions
-  ///  are evaluated.  This predicate returns true if this statement has
-  ///  such implicit control-flow.  Such statements are also specially handled
-  ///  within CFGs.
-  bool hasImplicitControlFlow() const;
 
   /// Child Iterators: All subclasses must implement 'children'
   /// to permit easy iteration over the substatements/subexpessions of an
@@ -562,11 +553,10 @@ class CompoundStmt : public Stmt {
   Stmt** Body;
   SourceLocation LBracLoc, RBracLoc;
 public:
-  CompoundStmt(ASTContext &C, ArrayRef<Stmt*> Stmts,
+  CompoundStmt(const ASTContext &C, ArrayRef<Stmt*> Stmts,
                SourceLocation LB, SourceLocation RB);
-  //             SourceLocation LB, SourceLocation RB, StmtClass SC = CompoundStmtClass);
 
-  // \brief Build an empty compound statment with a location.
+  // \brief Build an empty compound statement with a location.
   explicit CompoundStmt(SourceLocation Loc)
     : Stmt(CompoundStmtClass), Body(0), LBracLoc(Loc), RBracLoc(Loc) {
     CompoundStmtBits.NumStmts = 0;
@@ -578,7 +568,7 @@ public:
     CompoundStmtBits.NumStmts = 0;
   }
 
-  void setStmts(ASTContext &C, Stmt **Stmts, unsigned NumStmts);
+  void setStmts(const ASTContext &C, Stmt **Stmts, unsigned NumStmts);
 
   bool body_empty() const { return CompoundStmtBits.NumStmts == 0; }
   unsigned size() const { return CompoundStmtBits.NumStmts; }
@@ -837,10 +827,10 @@ class AttributedStmt : public Stmt {
   }
 
 public:
-  static AttributedStmt *Create(ASTContext &C, SourceLocation Loc,
+  static AttributedStmt *Create(const ASTContext &C, SourceLocation Loc,
                                 ArrayRef<const Attr*> Attrs, Stmt *SubStmt);
   // \brief Build an empty attributed statement.
-  static AttributedStmt *CreateEmpty(ASTContext &C, unsigned NumAttrs);
+  static AttributedStmt *CreateEmpty(const ASTContext &C, unsigned NumAttrs);
 
   SourceLocation getAttrLoc() const { return AttrLoc; }
   ArrayRef<const Attr*> getAttrs() const {
@@ -870,7 +860,7 @@ class IfStmt : public Stmt {
   SourceLocation ElseLoc;
 
 public:
-  IfStmt(ASTContext &C, SourceLocation IL, VarDecl *var, Expr *cond,
+  IfStmt(const ASTContext &C, SourceLocation IL, VarDecl *var, Expr *cond,
          Stmt *then, SourceLocation EL = SourceLocation(), Stmt *elsev = 0);
 
   /// \brief Build an empty if/then/else statement
@@ -885,7 +875,7 @@ public:
   /// }
   /// \endcode
   VarDecl *getConditionVariable() const;
-  void setConditionVariable(ASTContext &C, VarDecl *V);
+  void setConditionVariable(const ASTContext &C, VarDecl *V);
 
   /// If this IfStmt has a condition variable, return the faux DeclStmt
   /// associated with the creation of that condition variable.
@@ -943,7 +933,7 @@ class SwitchStmt : public Stmt {
   unsigned AllEnumCasesCovered : 1;
 
 public:
-  SwitchStmt(ASTContext &C, VarDecl *Var, Expr *cond);
+  SwitchStmt(const ASTContext &C, VarDecl *Var, Expr *cond);
 
   /// \brief Build a empty switch statement.
   explicit SwitchStmt(EmptyShell Empty) : Stmt(SwitchStmtClass, Empty) { }
@@ -958,7 +948,7 @@ public:
   /// }
   /// \endcode
   VarDecl *getConditionVariable() const;
-  void setConditionVariable(ASTContext &C, VarDecl *V);
+  void setConditionVariable(const ASTContext &C, VarDecl *V);
 
   /// If this SwitchStmt has a condition variable, return the faux DeclStmt
   /// associated with the creation of that condition variable.
@@ -1028,7 +1018,7 @@ class WhileStmt : public Stmt {
   Stmt* SubExprs[END_EXPR];
   SourceLocation WhileLoc;
 public:
-  WhileStmt(ASTContext &C, VarDecl *Var, Expr *cond, Stmt *body,
+  WhileStmt(const ASTContext &C, VarDecl *Var, Expr *cond, Stmt *body,
             SourceLocation WL);
 
   /// \brief Build an empty while statement.
@@ -1043,7 +1033,7 @@ public:
   /// }
   /// \endcode
   VarDecl *getConditionVariable() const;
-  void setConditionVariable(ASTContext &C, VarDecl *V);
+  void setConditionVariable(const ASTContext &C, VarDecl *V);
 
   /// If this WhileStmt has a condition variable, return the faux DeclStmt
   /// associated with the creation of that condition variable.
@@ -1136,8 +1126,9 @@ class ForStmt : public Stmt {
   SourceLocation LParenLoc, RParenLoc;
 
 public:
-  ForStmt(ASTContext &C, Stmt *Init, Expr *Cond, VarDecl *condVar, Expr *Inc,
-          Stmt *Body, SourceLocation FL, SourceLocation LP, SourceLocation RP);
+  ForStmt(const ASTContext &C, Stmt *Init, Expr *Cond, VarDecl *condVar,
+          Expr *Inc, Stmt *Body, SourceLocation FL, SourceLocation LP,
+          SourceLocation RP);
 
   /// \brief Build an empty for statement.
   explicit ForStmt(EmptyShell Empty) : Stmt(ForStmtClass, Empty) { }
@@ -1153,7 +1144,7 @@ public:
   /// }
   /// \endcode
   VarDecl *getConditionVariable() const;
-  void setConditionVariable(ASTContext &C, VarDecl *V);
+  void setConditionVariable(const ASTContext &C, VarDecl *V);
 
   /// If this ForStmt has a condition variable, return the faux DeclStmt
   /// associated with the creation of that condition variable.
@@ -1424,7 +1415,7 @@ public:
   //===--- Asm String Analysis ---===//
 
   /// Assemble final IR asm string.
-  std::string generateAsmString(ASTContext &C) const;
+  std::string generateAsmString(const ASTContext &C) const;
 
   //===--- Output operands ---===//
 
@@ -1455,7 +1446,7 @@ public:
   /// getInputConstraint - Return the specified input constraint.  Unlike output
   /// constraints, these can be empty.
   StringRef getInputConstraint(unsigned i) const;
-
+  
   const Expr *getInputExpr(unsigned i) const;
 
   //===--- Other ---===//
@@ -1527,7 +1518,7 @@ class GCCAsmStmt : public AsmStmt {
   friend class ASTStmtReader;
 
 public:
-  GCCAsmStmt(ASTContext &C, SourceLocation asmloc, bool issimple,
+  GCCAsmStmt(const ASTContext &C, SourceLocation asmloc, bool issimple,
              bool isvolatile, unsigned numoutputs, unsigned numinputs,
              IdentifierInfo **names, StringLiteral **constraints, Expr **exprs,
              StringLiteral *asmstr, unsigned numclobbers,
@@ -1593,10 +1584,10 @@ public:
   /// translation of strings from GCC syntax to LLVM IR syntax, and handles
   //// flattening of named references like %[foo] to Operand AsmStringPiece's.
   unsigned AnalyzeAsmString(SmallVectorImpl<AsmStringPiece> &Pieces,
-                            ASTContext &C, unsigned &DiagOffs) const;
+                            const ASTContext &C, unsigned &DiagOffs) const;
 
   /// Assemble final IR asm string.
-  std::string generateAsmString(ASTContext &C) const;
+  std::string generateAsmString(const ASTContext &C) const;
 
   //===--- Output operands ---===//
 
@@ -1656,7 +1647,7 @@ public:
   }
 
 private:
-  void setOutputsAndInputsAndClobbers(ASTContext &C,
+  void setOutputsAndInputsAndClobbers(const ASTContext &C,
                                       IdentifierInfo **Names,
                                       StringLiteral **Constraints,
                                       Stmt **Exprs,
@@ -1702,9 +1693,9 @@ class MSAsmStmt : public AsmStmt {
   friend class ASTStmtReader;
 
 public:
-  MSAsmStmt(ASTContext &C, SourceLocation asmloc, SourceLocation lbraceloc,
-            bool issimple, bool isvolatile, ArrayRef<Token> asmtoks,
-            unsigned numoutputs, unsigned numinputs,
+  MSAsmStmt(const ASTContext &C, SourceLocation asmloc,
+            SourceLocation lbraceloc, bool issimple, bool isvolatile,
+            ArrayRef<Token> asmtoks, unsigned numoutputs, unsigned numinputs,
             ArrayRef<StringRef> constraints,
             ArrayRef<Expr*> exprs, StringRef asmstr,
             ArrayRef<StringRef> clobbers, SourceLocation endloc);
@@ -1727,7 +1718,7 @@ public:
   StringRef getAsmString() const { return AsmStr; }
 
   /// Assemble final IR asm string.
-  std::string generateAsmString(ASTContext &C) const;
+  std::string generateAsmString(const ASTContext &C) const;
 
   //===--- Output operands ---===//
 
@@ -1772,12 +1763,9 @@ public:
   StringRef getClobber(unsigned i) const { return getClobbers()[i]; }
 
 private:
-  void initialize(ASTContext &C,
-                  StringRef AsmString,
-                  ArrayRef<Token> AsmToks,
-                  ArrayRef<StringRef> Constraints,
-                  ArrayRef<Expr*> Exprs,
-                  ArrayRef<StringRef> Clobbers);
+  void initialize(const ASTContext &C, StringRef AsmString,
+                  ArrayRef<Token> AsmToks, ArrayRef<StringRef> Constraints,
+                  ArrayRef<Expr*> Exprs, ArrayRef<StringRef> Clobbers);
 public:
 
   SourceLocation getLocStart() const LLVM_READONLY { return AsmLoc; }
@@ -1807,7 +1795,7 @@ class SEHExceptStmt : public Stmt {
   explicit SEHExceptStmt(EmptyShell E) : Stmt(SEHExceptStmtClass, E) { }
 
 public:
-  static SEHExceptStmt* Create(ASTContext &C,
+  static SEHExceptStmt* Create(const ASTContext &C,
                                SourceLocation ExceptLoc,
                                Expr *FilterExpr,
                                Stmt *Block);
@@ -1848,7 +1836,7 @@ class SEHFinallyStmt : public Stmt {
   explicit SEHFinallyStmt(EmptyShell E) : Stmt(SEHFinallyStmtClass, E) { }
 
 public:
-  static SEHFinallyStmt* Create(ASTContext &C,
+  static SEHFinallyStmt* Create(const ASTContext &C,
                                 SourceLocation FinallyLoc,
                                 Stmt *Block);
 
@@ -1887,10 +1875,8 @@ class SEHTryStmt : public Stmt {
   explicit SEHTryStmt(EmptyShell E) : Stmt(SEHTryStmtClass, E) { }
 
 public:
-  static SEHTryStmt* Create(ASTContext &C,
-                            bool isCXXTry,
-                            SourceLocation TryLoc,
-                            Stmt *TryBlock,
+  static SEHTryStmt* Create(const ASTContext &C, bool isCXXTry,
+                            SourceLocation TryLoc, Stmt *TryBlock,
                             Stmt *Handler);
 
   SourceLocation getLocStart() const LLVM_READONLY { return getTryLoc(); }
@@ -1990,7 +1976,7 @@ private:
   /// \brief The number of variable captured, including 'this'.
   unsigned NumCaptures;
 
-  /// \brief The pointer part is the implicit the outlined function and the
+  /// \brief The pointer part is the implicit the outlined function and the 
   /// int part is the captured region kind, 'CR_Default' etc.
   llvm::PointerIntPair<CapturedDecl *, 1, CapturedRegionKind> CapDeclAndKind;
 
@@ -2013,13 +1999,13 @@ private:
   void setCapturedStmt(Stmt *S) { getStoredStmts()[NumCaptures] = S; }
 
 public:
-  static CapturedStmt *Create(ASTContext &Context, Stmt *S,
+  static CapturedStmt *Create(const ASTContext &Context, Stmt *S,
                               CapturedRegionKind Kind,
                               ArrayRef<Capture> Captures,
                               ArrayRef<Expr *> CaptureInits,
                               CapturedDecl *CD, RecordDecl *RD);
 
-  static CapturedStmt *CreateDeserialized(ASTContext &Context,
+  static CapturedStmt *CreateDeserialized(const ASTContext &Context,
                                           unsigned NumCaptures);
 
   /// \brief Retrieve the statement being captured.

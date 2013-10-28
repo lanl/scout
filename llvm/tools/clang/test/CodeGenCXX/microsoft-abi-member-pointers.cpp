@@ -42,6 +42,7 @@ struct NonZeroVBPtr : POD, Virtual {
 };
 
 struct Unspecified;
+struct UnspecSingle;
 
 // Check that we can lower the LLVM types and get the null initializers right.
 int Single     ::*s_d_memptr;
@@ -50,27 +51,34 @@ int Multiple   ::*m_d_memptr;
 int Virtual    ::*v_d_memptr;
 int NonZeroVBPtr::*n_d_memptr;
 int Unspecified::*u_d_memptr;
-// CHECK: @"\01?s_d_memptr@@3PQSingle@@HA" = global i32 -1, align 4
-// CHECK: @"\01?p_d_memptr@@3PQPolymorphic@@HA" = global i32 0, align 4
-// CHECK: @"\01?m_d_memptr@@3PQMultiple@@HA" = global i32 -1, align 4
-// CHECK: @"\01?v_d_memptr@@3PQVirtual@@HA" = global { i32, i32 }
+int UnspecSingle::*us_d_memptr;
+// CHECK: @"\01?s_d_memptr@@3PQSingle@@HQ1@" = global i32 -1, align 4
+// CHECK: @"\01?p_d_memptr@@3PQPolymorphic@@HQ1@" = global i32 0, align 4
+// CHECK: @"\01?m_d_memptr@@3PQMultiple@@HQ1@" = global i32 -1, align 4
+// CHECK: @"\01?v_d_memptr@@3PQVirtual@@HQ1@" = global { i32, i32 }
 // CHECK:   { i32 0, i32 -1 }, align 4
-// CHECK: @"\01?n_d_memptr@@3PQNonZeroVBPtr@@HA" = global { i32, i32 }
+// CHECK: @"\01?n_d_memptr@@3PQNonZeroVBPtr@@HQ1@" = global { i32, i32 }
 // CHECK:   { i32 0, i32 -1 }, align 4
-// CHECK: @"\01?u_d_memptr@@3PQUnspecified@@HA" = global { i32, i32, i32 }
+// CHECK: @"\01?u_d_memptr@@3PQUnspecified@@HQ1@" = global { i32, i32, i32 }
+// CHECK:   { i32 0, i32 0, i32 -1 }, align 4
+// CHECK: @"\01?us_d_memptr@@3PQUnspecSingle@@HQ1@" = global { i32, i32, i32 }
 // CHECK:   { i32 0, i32 0, i32 -1 }, align 4
 
 void (Single  ::*s_f_memptr)();
 void (Multiple::*m_f_memptr)();
 void (Virtual ::*v_f_memptr)();
-// CHECK: @"\01?s_f_memptr@@3P8Single@@AEXXZA" = global i8* null, align 4
-// CHECK: @"\01?m_f_memptr@@3P8Multiple@@AEXXZA" = global { i8*, i32 } zeroinitializer, align 4
-// CHECK: @"\01?v_f_memptr@@3P8Virtual@@AEXXZA" = global { i8*, i32, i32 } zeroinitializer, align 4
+// CHECK: @"\01?s_f_memptr@@3P8Single@@AEXXZQ1@" = global i8* null, align 4
+// CHECK: @"\01?m_f_memptr@@3P8Multiple@@AEXXZQ1@" = global { i8*, i32 } zeroinitializer, align 4
+// CHECK: @"\01?v_f_memptr@@3P8Virtual@@AEXXZQ1@" = global { i8*, i32, i32 } zeroinitializer, align 4
 
 // We can define Unspecified after locking in the inheritance model.
-struct Unspecified : Virtual {
+struct Unspecified : Multiple, Virtual {
   void foo();
   int u;
+};
+
+struct UnspecSingle {
+  void foo();
 };
 
 // Test memptr emission in a constant expression.
@@ -79,14 +87,17 @@ void (Single     ::*s_f_mp)() = &Single::foo;
 void (Multiple   ::*m_f_mp)() = &B2::foo;
 void (Virtual    ::*v_f_mp)() = &Virtual::foo;
 void (Unspecified::*u_f_mp)() = &Unspecified::foo;
-// CHECK: @"\01?s_f_mp@Const@@3P8Single@@AEXXZA" =
+void (UnspecSingle::*us_f_mp)() = &UnspecSingle::foo;
+// CHECK: @"\01?s_f_mp@Const@@3P8Single@@AEXXZQ2@" =
 // CHECK:   global i8* bitcast ({{.*}} @"\01?foo@Single@@QAEXXZ" to i8*), align 4
-// CHECK: @"\01?m_f_mp@Const@@3P8Multiple@@AEXXZA" =
+// CHECK: @"\01?m_f_mp@Const@@3P8Multiple@@AEXXZQ2@" =
 // CHECK:   global { i8*, i32 } { i8* bitcast ({{.*}} @"\01?foo@B2@@QAEXXZ" to i8*), i32 4 }, align 4
-// CHECK: @"\01?v_f_mp@Const@@3P8Virtual@@AEXXZA" =
+// CHECK: @"\01?v_f_mp@Const@@3P8Virtual@@AEXXZQ2@" =
 // CHECK:   global { i8*, i32, i32 } { i8* bitcast ({{.*}} @"\01?foo@Virtual@@QAEXXZ" to i8*), i32 0, i32 0 }, align 4
-// CHECK: @"\01?u_f_mp@Const@@3P8Unspecified@@AEXXZA" =
-// CHECK:   global { i8*, i32, i32, i32 } { i8* bitcast ({{.*}} @"\01?foo@Unspecified@@QAEXXZ" to i8*), i32 0, i32 0, i32 0 }, align 4
+// CHECK: @"\01?u_f_mp@Const@@3P8Unspecified@@AEXXZQ2@" =
+// CHECK:   global { i8*, i32, i32, i32 } { i8* bitcast ({{.*}} @"\01?foo@Unspecified@@QAEXXZ" to i8*), i32 0, i32 12, i32 0 }, align 4
+// CHECK: @"\01?us_f_mp@Const@@3P8UnspecSingle@@AEXXZQ2@" =
+// CHECK:   global { i8*, i32, i32, i32 } { i8* bitcast ({{.*}} @"\01?foo@UnspecSingle@@QAEXXZ" to i8*), i32 0, i32 0, i32 0 }, align 4
 }
 
 namespace CastParam {
@@ -102,16 +113,16 @@ struct B { int b; };
 struct C : B, A { int c; };
 
 void (A::*ptr1)(void *) = (void (A::*)(void *)) &A::foo;
-// CHECK: @"\01?ptr1@CastParam@@3P8A@1@AEXPAX@ZA" =
+// CHECK: @"\01?ptr1@CastParam@@3P8A@1@AEXPAX@ZQ21@" =
 // CHECK:   global i8* bitcast (void ({{.*}})* @"\01?foo@A@CastParam@@QAEXPAU12@@Z" to i8*), align 4
 
 // Try a reinterpret_cast followed by a memptr conversion.
 void (C::*ptr2)(void *) = (void (C::*)(void *)) (void (A::*)(void *)) &A::foo;
-// CHECK: @"\01?ptr2@CastParam@@3P8C@1@AEXPAX@ZA" =
+// CHECK: @"\01?ptr2@CastParam@@3P8C@1@AEXPAX@ZQ21@" =
 // CHECK:   global { i8*, i32 } { i8* bitcast (void ({{.*}})* @"\01?foo@A@CastParam@@QAEXPAU12@@Z" to i8*), i32 4 }, align 4
 
 void (C::*ptr3)(void *) = (void (C::*)(void *)) (void (A::*)(void *)) (void (A::*)(A *)) 0;
-// CHECK: @"\01?ptr3@CastParam@@3P8C@1@AEXPAX@ZA" =
+// CHECK: @"\01?ptr3@CastParam@@3P8C@1@AEXPAX@ZQ21@" =
 // CHECK:   global { i8*, i32 } zeroinitializer, align 4
 
 struct D : C {
@@ -122,11 +133,11 @@ struct D : C {
 // Try a cast that changes the inheritance model.  Null for D is 0, but null for
 // C is -1.  We need the cast to long in order to hit the non-APValue path.
 int C::*ptr4 = (int C::*) (int D::*) (long D::*) 0;
-// CHECK: @"\01?ptr4@CastParam@@3PQC@1@HA" = global i32 -1, align 4
+// CHECK: @"\01?ptr4@CastParam@@3PQC@1@HQ21@" = global i32 -1, align 4
 
 // MSVC rejects this but we accept it.
 int C::*ptr5 = (int C::*) (long D::*) 0;
-// CHECK: @"\01?ptr5@CastParam@@3PQC@1@HA" = global i32 -1, align 4
+// CHECK: @"\01?ptr5@CastParam@@3PQC@1@HQ21@" = global i32 -1, align 4
 }
 
 struct UnspecWithVBPtr;
@@ -156,7 +167,7 @@ void EmitNonVirtualMemberPointers() {
 // CHECK:     { i8* bitcast (void (%{{.*}}*)* @"\01?foo@Virtual@@QAEXXZ" to i8*), i32 0, i32 0 },
 // CHECK:     { i8*, i32, i32 }* %{{.*}}, align 4
 // CHECK:   store { i8*, i32, i32, i32 }
-// CHECK:     { i8* bitcast (void (%{{.*}}*)* @"\01?foo@Unspecified@@QAEXXZ" to i8*), i32 0, i32 0, i32 0 },
+// CHECK:     { i8* bitcast (void (%{{.*}}*)* @"\01?foo@Unspecified@@QAEXXZ" to i8*), i32 0, i32 12, i32 0 },
 // CHECK:     { i8*, i32, i32, i32 }* %{{.*}}, align 4
 // CHECK:   store { i8*, i32, i32, i32 }
 // CHECK:     { i8* bitcast (void (%{{.*}}*)* @"\01?foo@UnspecWithVBPtr@@QAEXXZ" to i8*),

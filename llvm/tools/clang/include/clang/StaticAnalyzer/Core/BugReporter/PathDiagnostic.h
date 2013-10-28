@@ -38,6 +38,7 @@ class ParentMap;
 class ProgramPoint;
 class SourceManager;
 class Stmt;
+class CallExpr;
 
 namespace ento {
 
@@ -97,7 +98,6 @@ public:
   enum PathGenerationScheme { None, Minimal, Extensive, AlternateExtensive };
   virtual PathGenerationScheme getGenerationScheme() const { return Minimal; }
   virtual bool supportsLogicalOpControlFlow() const { return false; }
-  virtual bool supportsAllBlockEdges() const { return false; }
   
   /// Return true if the PathDiagnosticConsumer supports individual
   /// PathDiagnostics that span multiple files.
@@ -285,11 +285,13 @@ public:
   
   void Profile(llvm::FoldingSetNodeID &ID) const;
 
+  void dump() const;
+
   /// \brief Given an exploded node, retrieve the statement that should be used 
   /// for the diagnostic location.
   static const Stmt *getStmt(const ExplodedNode *N);
 
-  /// \brief Retrieve the statement corresponding to the sucessor node.
+  /// \brief Retrieve the statement corresponding to the successor node.
   static const Stmt *getNextStmt(const ExplodedNode *N);
 };
 
@@ -401,6 +403,8 @@ public:
   bool isLastInMainSourceFile() const {
     return LastInMainSourceFile;
   }
+
+  virtual void dump() const = 0;
 };
   
   
@@ -435,7 +439,7 @@ public:
 
   PathDiagnosticLocation getLocation() const { return Pos; }
   virtual void flattenLocations() { Pos.flatten(); }
-  
+
   virtual void Profile(llvm::FoldingSetNodeID &ID) const;
 
   static bool classof(const PathDiagnosticPiece *P) {
@@ -529,6 +533,8 @@ public:
     return "";  
   }
 
+  virtual void dump() const;
+
   static inline bool classof(const PathDiagnosticPiece *P) {
     return P->getKind() == Event;
   }
@@ -596,6 +602,8 @@ public:
   static PathDiagnosticCallPiece *construct(PathPieces &pieces,
                                             const Decl *caller);
   
+  virtual void dump() const;
+
   virtual void Profile(llvm::FoldingSetNodeID &ID) const;
 
   static inline bool classof(const PathDiagnosticPiece *P) {
@@ -663,7 +671,9 @@ public:
   static inline bool classof(const PathDiagnosticPiece *P) {
     return P->getKind() == ControlFlow;
   }
-  
+
+  virtual void dump() const;
+
   virtual void Profile(llvm::FoldingSetNodeID &ID) const;
 };
 
@@ -687,7 +697,9 @@ public:
   static inline bool classof(const PathDiagnosticPiece *P) {
     return P->getKind() == Macro;
   }
-  
+
+  virtual void dump() const;
+
   virtual void Profile(llvm::FoldingSetNodeID &ID) const;
 };
 
