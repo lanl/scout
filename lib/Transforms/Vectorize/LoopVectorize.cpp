@@ -2694,14 +2694,14 @@ bool LoopVectorizationLegality::canVectorizeWithIfConvert() {
     return false;
 
   assert(TheLoop->getNumBlocks() > 1 && "Single block loops are vectorizable");
-  std::vector<BasicBlock*> &LoopBlocks = TheLoop->getBlocksVector();
 
   // A list of pointers that we can safely read and write to.
   SmallPtrSet<Value *, 8> SafePointes;
 
   // Collect safe addresses.
-  for (unsigned i = 0, e = LoopBlocks.size(); i < e; ++i) {
-    BasicBlock *BB = LoopBlocks[i];
+  for (Loop::block_iterator BI = TheLoop->block_begin(),
+         BE = TheLoop->block_end(); BI != BE; ++BI) {
+    BasicBlock *BB = *BI;
 
     if (blockNeedsPredication(BB))
       continue;
@@ -2715,8 +2715,9 @@ bool LoopVectorizationLegality::canVectorizeWithIfConvert() {
   }
 
   // Collect the blocks that need predication.
-  for (unsigned i = 0, e = LoopBlocks.size(); i < e; ++i) {
-    BasicBlock *BB = LoopBlocks[i];
+  for (Loop::block_iterator BI = TheLoop->block_begin(),
+         BE = TheLoop->block_end(); BI != BE; ++BI) {
+    BasicBlock *BB = *BI;
 
     // We don't support switch statements inside loops.
     if (!isa<BranchInst>(BB->getTerminator()))
@@ -2965,8 +2966,9 @@ bool LoopVectorizationLegality::canVectorizeInstrs() {
       }
 
       // Check that the instruction return type is vectorizable.
-      if (!VectorType::isValidElementType(it->getType()) &&
-          !it->getType()->isVoidTy()) {
+      // Also, we can't vectorize extractelement instructions.
+      if ((!VectorType::isValidElementType(it->getType()) &&
+           !it->getType()->isVoidTy()) || isa<ExtractElementInst>(it)) {
         DEBUG(dbgs() << "LV: Found unvectorizable type.\n");
         return false;
       }

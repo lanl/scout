@@ -205,3 +205,87 @@ define <16 x i16> @test_x86_vcvtps2ph_256(<16 x float> %a0) {
   ret <16 x i16> %res
 }
 declare <16 x i16> @llvm.x86.avx512.vcvtps2ph.512(<16 x float>, i32) nounwind readonly
+
+define <16 x float> @test_x86_vbroadcast_ss_512(i8* %a0) {
+  ; CHECK: vbroadcastss
+  %res = call <16 x float> @llvm.x86.avx512.vbroadcast.ss.512(i8* %a0) ; <<16 x float>> [#uses=1]
+  ret <16 x float> %res
+}
+declare <16 x float> @llvm.x86.avx512.vbroadcast.ss.512(i8*) nounwind readonly
+
+define <8 x double> @test_x86_vbroadcast_sd_512(i8* %a0) {
+  ; CHECK: vbroadcastsd
+  %res = call <8 x double> @llvm.x86.avx512.vbroadcast.sd.512(i8* %a0) ; <<8 x double>> [#uses=1]
+  ret <8 x double> %res
+}
+declare <8 x double> @llvm.x86.avx512.vbroadcast.sd.512(i8*) nounwind readonly
+
+define <16 x float> @test_x86_vbroadcast_ss_ps_512(<4 x float> %a0) {
+  ; CHECK: vbroadcastss
+  %res = call <16 x float> @llvm.x86.avx512.vbroadcast.ss.ps.512(<4 x float> %a0) ; <<16 x float>> [#uses=1]
+  ret <16 x float> %res
+}
+declare <16 x float> @llvm.x86.avx512.vbroadcast.ss.ps.512(<4 x float>) nounwind readonly
+
+define <8 x double> @test_x86_vbroadcast_sd_pd_512(<2 x double> %a0) {
+  ; CHECK: vbroadcastsd
+  %res = call <8 x double> @llvm.x86.avx512.vbroadcast.sd.pd.512(<2 x double> %a0) ; <<8 x double>> [#uses=1]
+  ret <8 x double> %res
+}
+declare <8 x double> @llvm.x86.avx512.vbroadcast.sd.pd.512(<2 x double>) nounwind readonly
+
+define <16 x i32> @test_x86_pmaxu_d(<16 x i32> %a0, <16 x i32> %a1) {
+  ; CHECK: vpmaxud 
+  %res = call <16 x i32> @llvm.x86.avx512.pmaxu.d(<16 x i32> %a0, <16 x i32> %a1) ; <<16 x i32>> [#uses=1]
+  ret <16 x i32> %res
+}
+declare <16 x i32> @llvm.x86.avx512.pmaxu.d(<16 x i32>, <16 x i32>) nounwind readonly
+
+define <8 x i64> @test_x86_pmaxu_q(<8 x i64> %a0, <8 x i64> %a1) {
+  ; CHECK: vpmaxuq
+  %res = call <8 x i64> @llvm.x86.avx512.pmaxu.q(<8 x i64> %a0, <8 x i64> %a1) ; <<8 x i64>> [#uses=1]
+  ret <8 x i64> %res
+}
+declare <8 x i64> @llvm.x86.avx512.pmaxu.q(<8 x i64>, <8 x i64>) nounwind readonly
+
+define <16 x i32> @test_x86_pmaxs_d(<16 x i32> %a0, <16 x i32> %a1) {
+  ; CHECK: vpmaxsd
+  %res = call <16 x i32> @llvm.x86.avx512.pmaxs.d(<16 x i32> %a0, <16 x i32> %a1) ; <<16 x i32>> [#uses=1]
+  ret <16 x i32> %res
+}
+declare <16 x i32> @llvm.x86.avx512.pmaxs.d(<16 x i32>, <16 x i32>) nounwind readonly
+
+define <8 x i64> @test_x86_pmaxs_q(<8 x i64> %a0, <8 x i64> %a1) {
+  ; CHECK: vpmaxsq
+  %res = call <8 x i64> @llvm.x86.avx512.pmaxs.q(<8 x i64> %a0, <8 x i64> %a1) ; <<8 x i64>> [#uses=1]
+  ret <8 x i64> %res
+}
+declare <8 x i64> @llvm.x86.avx512.pmaxs.q(<8 x i64>, <8 x i64>) nounwind readonly
+
+define <16 x i32> @test_x86_pminu_d(<16 x i32> %a0, <16 x i32> %a1) {
+  ; CHECK: vpminud
+  %res = call <16 x i32> @llvm.x86.avx512.pminu.d(<16 x i32> %a0, <16 x i32> %a1) ; <<16 x i32>> [#uses=1]
+  ret <16 x i32> %res
+}
+declare <16 x i32> @llvm.x86.avx512.pminu.d(<16 x i32>, <16 x i32>) nounwind readonly
+
+define <8 x i64> @test_x86_pminu_q(<8 x i64> %a0, <8 x i64> %a1) {
+  ; CHECK: vpminuq
+  %res = call <8 x i64> @llvm.x86.avx512.pminu.q(<8 x i64> %a0, <8 x i64> %a1) ; <<8 x i64>> [#uses=1]
+  ret <8 x i64> %res
+}
+declare <8 x i64> @llvm.x86.avx512.pminu.q(<8 x i64>, <8 x i64>) nounwind readonly
+
+define <16 x i32> @test_x86_pmins_d(<16 x i32> %a0, <16 x i32> %a1) {
+  ; CHECK: vpminsd
+  %res = call <16 x i32> @llvm.x86.avx512.pmins.d(<16 x i32> %a0, <16 x i32> %a1) ; <<16 x i32>> [#uses=1]
+  ret <16 x i32> %res
+}
+declare <16 x i32> @llvm.x86.avx512.pmins.d(<16 x i32>, <16 x i32>) nounwind readonly
+
+define <8 x i64> @test_x86_pmins_q(<8 x i64> %a0, <8 x i64> %a1) {
+  ; CHECK: vpminsq
+  %res = call <8 x i64> @llvm.x86.avx512.pmins.q(<8 x i64> %a0, <8 x i64> %a1) ; <<8 x i64>> [#uses=1]
+  ret <8 x i64> %res
+}
+declare <8 x i64> @llvm.x86.avx512.pmins.q(<8 x i64>, <8 x i64>) nounwind readonly

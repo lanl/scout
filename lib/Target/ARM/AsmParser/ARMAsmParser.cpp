@@ -7,6 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "ARMBuildAttrs.h"
+#include "ARMFPUName.h"
 #include "ARMFeatures.h"
 #include "llvm/MC/MCTargetAsmParser.h"
 #include "MCTargetDesc/ARMAddressingModes.h"
@@ -74,6 +76,8 @@ class ARMAsmParser : public MCTargetAsmParser {
   // Map of register aliases registers via the .req directive.
   StringMap<unsigned> RegisterReqs;
 
+  bool NextSymbolIsThumb;
+
   struct {
     ARMCC::CondCodes Cond;    // Condition for IT block.
     unsigned Mask:4;          // Condition mask for instructions.
@@ -135,6 +139,8 @@ class ARMAsmParser : public MCTargetAsmParser {
   bool parseDirectiveUnreq(SMLoc L);
   bool parseDirectiveArch(SMLoc L);
   bool parseDirectiveEabiAttr(SMLoc L);
+  bool parseDirectiveCPU(SMLoc L);
+  bool parseDirectiveFPU(SMLoc L);
   bool parseDirectiveFnStart(SMLoc L);
   bool parseDirectiveFnEnd(SMLoc L);
   bool parseDirectiveCantUnwind(SMLoc L);
@@ -268,6 +274,8 @@ public:
 
     // Not in an ITBlock to start with.
     ITState.CurPosition = ~0U;
+
+    NextSymbolIsThumb = false;
   }
 
   // Implementation of the MCTargetAsmParser interface:
@@ -284,6 +292,8 @@ public:
                                SmallVectorImpl<MCParsedAsmOperand*> &Operands,
                                MCStreamer &Out, unsigned &ErrorInfo,
                                bool MatchingInlineAsm);
+  void onLabelParsed(MCSymbol *Symbol);
+
 };
 } // end anonymous namespace
 
@@ -7759,6 +7769,10 @@ bool ARMAsmParser::ParseDirective(AsmToken DirectiveID) {
     return parseDirectiveArch(DirectiveID.getLoc());
   else if (IDVal == ".eabi_attribute")
     return parseDirectiveEabiAttr(DirectiveID.getLoc());
+  else if (IDVal == ".cpu")
+    return parseDirectiveCPU(DirectiveID.getLoc());
+  else if (IDVal == ".fpu")
+    return parseDirectiveFPU(DirectiveID.getLoc());
   else if (IDVal == ".fnstart")
     return parseDirectiveFnStart(DirectiveID.getLoc());
   else if (IDVal == ".fnend")
@@ -7837,13 +7851,18 @@ bool ARMAsmParser::parseDirectiveARM(SMLoc L) {
   return false;
 }
 
+void ARMAsmParser::onLabelParsed(MCSymbol *Symbol) {
+  if (NextSymbolIsThumb) {
+    getParser().getStreamer().EmitThumbFunc(Symbol);
+    NextSymbolIsThumb = false;
+  }
+}
+
 /// parseDirectiveThumbFunc
 ///  ::= .thumbfunc symbol_name
 bool ARMAsmParser::parseDirectiveThumbFunc(SMLoc L) {
   const MCAsmInfo *MAI = getParser().getStreamer().getContext().getAsmInfo();
   bool isMachO = MAI->hasSubsectionsViaSymbols();
-  StringRef Name;
-  bool needFuncName = true;
 
   // Darwin asm has (optionally) function name after .thumb_func direction
   // ELF doesn't
@@ -7852,29 +7871,19 @@ bool ARMAsmParser::parseDirectiveThumbFunc(SMLoc L) {
     if (Tok.isNot(AsmToken::EndOfStatement)) {
       if (Tok.isNot(AsmToken::Identifier) && Tok.isNot(AsmToken::String))
         return Error(L, "unexpected token in .thumb_func directive");
-      Name = Tok.getIdentifier();
+      MCSymbol *Func =
+          getParser().getContext().GetOrCreateSymbol(Tok.getIdentifier());
+      getParser().getStreamer().EmitThumbFunc(Func);
       Parser.Lex(); // Consume the identifier token.
-      needFuncName = false;
+      return false;
     }
   }
 
   if (getLexer().isNot(AsmToken::EndOfStatement))
     return Error(L, "unexpected token in directive");
 
-  // Eat the end of statement and any blank lines that follow.
-  while (getLexer().is(AsmToken::EndOfStatement))
-    Parser.Lex();
+  NextSymbolIsThumb = true;
 
-  // FIXME: assuming function name will be the line following .thumb_func
-  // We really should be checking the next symbol definition even if there's
-  // stuff in between.
-  if (needFuncName) {
-    Name = Parser.getTok().getIdentifier();
-  }
-
-  // Mark symbol as a thumb symbol.
-  MCSymbol *Func = getParser().getContext().GetOrCreateSymbol(Name);
-  getParser().getStreamer().EmitThumbFunc(Func);
   return false;
 }
 
@@ -7986,7 +7995,48 @@ bool ARMAsmParser::parseDirectiveArch(SMLoc L) {
 /// parseDirectiveEabiAttr
 ///  ::= .eabi_attribute int, int
 bool ARMAsmParser::parseDirectiveEabiAttr(SMLoc L) {
-  return true;
+  if (Parser.getTok().isNot(AsmToken::Integer))
+    return Error(L, "integer expected");
+  int64_t Tag = Parser.getTok().getIntVal();
+  Parser.Lex(); // eat tag integer
+
+  if (Parser.getTok().isNot(AsmToken::Comma))
+    return Error(L, "comma expected");
+  Parser.Lex(); // skip comma
+
+  L = Parser.getTok().getLoc();
+  if (Parser.getTok().isNot(AsmToken::Integer))
+    return Error(L, "integer expected");
+  int64_t Value = Parser.getTok().getIntVal();
+  Parser.Lex(); // eat value integer
+
+  getTargetStreamer().emitAttribute(Tag, Value);
+  return false;
+}
+
+/// parseDirectiveCPU
+///  ::= .cpu str
+bool ARMAsmParser::parseDirectiveCPU(SMLoc L) {
+  StringRef CPU = getParser().parseStringToEndOfStatement().trim();
+  getTargetStreamer().emitTextAttribute(ARMBuildAttrs::CPU_name, CPU);
+  return false;
+}
+
+/// parseDirectiveFPU
+///  ::= .fpu str
+bool ARMAsmParser::parseDirectiveFPU(SMLoc L) {
+  StringRef FPU = getParser().parseStringToEndOfStatement().trim();
+
+  unsigned ID = StringSwitch<unsigned>(FPU)
+#define ARM_FPU_NAME(NAME, ID) .Case(NAME, ARM::ID)
+#include "ARMFPUName.def"
+    .Default(ARM::INVALID_FPU);
+
+  if (ID == ARM::INVALID_FPU)
+    return Error(L, "Unknown FPU name");
+
+  getTargetStreamer().emitFPU(ID);
+  return false;
 }
 
 /// parseDirectiveFnStart
