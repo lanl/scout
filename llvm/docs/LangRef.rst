@@ -511,9 +511,6 @@ module, including those with external linkage or appearing in
 ``@llvm.used``. This assumption may be suppressed by marking the
 variable with ``externally_initialized``.
 
-If a global variable dose not have its address taken, it will be optionally
-flagged ``notaddrtaken``.
-
 An explicit alignment may be specified for a global, which must be a
 power of 2. If not present, or if the alignment is set to zero, the
 alignment of the global is set by the target to whatever it feels
@@ -563,16 +560,15 @@ an optional ``unnamed_addr`` attribute, a return type, an optional
 name, a possibly empty list of arguments, an optional alignment, an optional
 :ref:`garbage collector name <gc>` and an optional :ref:`prefix <prefixdata>`.
 
-A function definition contains a list of basic blocks, forming the CFG
-(Control Flow Graph) for the function. Each basic block may optionally
-start with a label (giving the basic block a symbol table entry),
-contains a list of instructions, and ends with a
-:ref:`terminator <terminators>` instruction (such as a branch or function
-return). If explicit label is not provided, a block is assigned an
-implicit numbered label, using a next value from the same counter as used
-for unnamed temporaries (:ref:`see above<identifiers>`). For example, if a
-function entry block does not have explicit label, it will be assigned
-label "%0", then first unnamed temporary in that block will be "%1", etc.
+A function definition contains a list of basic blocks, forming the CFG (Control
+Flow Graph) for the function. Each basic block may optionally start with a label
+(giving the basic block a symbol table entry), contains a list of instructions,
+and ends with a :ref:`terminator <terminators>` instruction (such as a branch or
+function return). If an explicit label is not provided, a block is assigned an
+implicit numbered label, using the next value from the same counter as used for
+unnamed temporaries (:ref:`see above<identifiers>`). For example, if a function
+entry block does not have an explicit label, it will be assigned label "%0",
+then the first unnamed temporary in that block will be "%1", etc.
 
 The first basic block in a function is special in two ways: it is
 immediately executed on entrance to the function, and it is not allowed
@@ -1755,9 +1751,10 @@ Function Type
 Overview:
 """""""""
 
-The function type can be thought of as a function signature. It consists
-of a return type and a list of formal parameter types. The return type
-of a function type is a first class type or a void type.
+The function type can be thought of as a function signature. It consists of a
+return type and a list of formal parameter types. The return type of a function
+type is a void type or first class type --- except for :ref:`label <t_label>`
+and :ref:`metadata <t_metadata>` types.
 
 Syntax:
 """""""
@@ -1767,11 +1764,11 @@ Syntax:
       <returntype> (<parameter list>)
 
 ...where '``<parameter list>``' is a comma-separated list of type
-specifiers. Optionally, the parameter list may include a type ``...``,
-which indicates that the function takes a variable number of arguments.
-Variable argument functions can access their arguments with the
-:ref:`variable argument handling intrinsic <int_varargs>` functions.
-'``<returntype>``' is any type except :ref:`label <t_label>`.
+specifiers. Optionally, the parameter list may include a type ``...``, which
+indicates that the function takes a variable number of arguments.  Variable
+argument functions can access their arguments with the :ref:`variable argument
+handling intrinsic <int_varargs>` functions.  '``<returntype>``' is any type
+except :ref:`label <t_label>` and :ref:`metadata <t_metadata>`.
 
 Examples:
 """""""""
