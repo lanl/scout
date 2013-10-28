@@ -70,11 +70,6 @@ bool CodeCompletionContext::wantConstructorResults() const {
   case CCC_ObjCClassMessage:
   case CCC_ObjCInterfaceName:
   case CCC_ObjCCategoryName:
-    
-  case CCC_UniformMesh:
-  case CCC_RectilinearMesh:
-  case CCC_StructuredMesh:
-  case CCC_UnstructuredMesh:
     return false;
   }
 

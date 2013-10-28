@@ -24,7 +24,6 @@ namespace clang {
 
 /// \brief An operation on a type.
 ///
-
 /// \tparam ImplClass Class implementing the operation. Must be inherited from
 ///         TypeVisitor.
 /// \tparam RetTy %Type of result produced by the operation.

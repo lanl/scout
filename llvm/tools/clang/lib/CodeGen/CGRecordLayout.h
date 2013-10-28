@@ -100,12 +100,6 @@ struct CGBitFieldInfo {
                                  uint64_t Offset, uint64_t Size,
                                  uint64_t StorageSize,
                                  uint64_t StorageAlignment);
-
-  static CGBitFieldInfo MakeInfo(class CodeGenTypes &Types,
-                                 const MeshFieldDecl *FD,
-                                 uint64_t Offset, uint64_t Size,
-                                 uint64_t StorageSize,
-                                 uint64_t StorageAlignment);
 };
 
 /// CGRecordLayout - This class handles struct and union layout info while

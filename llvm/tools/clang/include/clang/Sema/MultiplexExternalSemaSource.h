@@ -42,7 +42,7 @@ private:
   SmallVector<ExternalSemaSource *, 2> Sources; // doesn't own them.
 
 public:
-
+  
   ///\brief Constructs a new multiplexing external sema source and appends the
   /// given element to it.
   ///
@@ -120,7 +120,7 @@ public:
 
   /// \brief Get the decls that are contained in a file in the Offset/Length
   /// range. \p Length can be 0 to indicate a point at \p Offset instead of
-  /// a range.
+  /// a range. 
   virtual void FindFileRegionDecls(FileID File, unsigned Offset,unsigned Length,
                                    SmallVectorImpl<Decl *> &Decls);
 
@@ -138,7 +138,7 @@ public:
   /// incomplete Objective-C class.
   ///
   /// This routine will only be invoked if the "externally completed" bit is
-  /// set on the ObjCInterfaceDecl via the function
+  /// set on the ObjCInterfaceDecl via the function 
   /// \c ObjCInterfaceDecl::setExternallyCompleted().
   virtual void CompleteType(ObjCInterfaceDecl *Class);
 
@@ -161,11 +161,11 @@ public:
   /// \brief Print any statistics that have been gathered regarding
   /// the external AST source.
   virtual void PrintStats();
-
-
+  
+  
   /// \brief Perform layout on the given record.
   ///
-  /// This routine allows the external AST source to provide an specific
+  /// This routine allows the external AST source to provide an specific 
   /// layout for a record, overriding the layout that would normally be
   /// constructed. It is intended for clients who receive specific layout
   /// details rather than source code (such as LLDB). The client is expected
@@ -182,15 +182,15 @@ public:
   /// expressed in bits. All of the fields must be provided with offsets.
   ///
   /// \param BaseOffsets The offset of each of the direct, non-virtual base
-  /// classes. If any bases are not given offsets, the bases will be laid
+  /// classes. If any bases are not given offsets, the bases will be laid 
   /// out according to the ABI.
   ///
   /// \param VirtualBaseOffsets The offset of each of the virtual base classes
-  /// (either direct or not). If any bases are not given offsets, the bases will
+  /// (either direct or not). If any bases are not given offsets, the bases will 
   /// be laid out according to the ABI.
-  ///
+  /// 
   /// \returns true if the record layout was provided, false otherwise.
-  virtual bool
+  virtual bool 
   layoutRecordType(const RecordDecl *Record,
                    uint64_t &Size, uint64_t &Alignment,
                    llvm::DenseMap<const FieldDecl *, uint64_t> &FieldOffsets,
@@ -244,7 +244,7 @@ public:
   /// invoked multiple times; the external source should take care not to
   /// introduce the same declarations repeatedly.
   virtual void ReadTentativeDefinitions(SmallVectorImpl<VarDecl*> &Defs);
-
+  
   /// \brief Read the set of unused file-scope declarations known to the
   /// external Sema source.
   ///
@@ -254,7 +254,7 @@ public:
   /// introduce the same declarations repeatedly.
   virtual void ReadUnusedFileScopedDecls(
                                  SmallVectorImpl<const DeclaratorDecl*> &Decls);
-
+  
   /// \brief Read the set of delegating constructors known to the
   /// external Sema source.
   ///
@@ -294,18 +294,18 @@ public:
   /// \brief Read the set of referenced selectors known to the
   /// external Sema source.
   ///
-  /// The external source should append its own referenced selectors to the
-  /// given vector of selectors. Note that this routine
-  /// may be invoked multiple times; the external source should take care not
+  /// The external source should append its own referenced selectors to the 
+  /// given vector of selectors. Note that this routine 
+  /// may be invoked multiple times; the external source should take care not 
   /// to introduce the same selectors repeatedly.
-  virtual void ReadReferencedSelectors(SmallVectorImpl<std::pair<Selector,
+  virtual void ReadReferencedSelectors(SmallVectorImpl<std::pair<Selector, 
                                                        SourceLocation> > &Sels);
 
   /// \brief Read the set of weak, undeclared identifiers known to the
   /// external Sema source.
   ///
   /// The external source should append its own weak, undeclared identifiers to
-  /// the given vector. Note that this routine may be invoked multiple times;
+  /// the given vector. Note that this routine may be invoked multiple times; 
   /// the external source should take care not to introduce the same identifiers
   /// repeatedly.
   virtual void ReadWeakUndeclaredIdentifiers(
@@ -328,10 +328,40 @@ public:
   virtual void ReadPendingInstantiations(
               SmallVectorImpl<std::pair<ValueDecl*, SourceLocation> >& Pending);
 
+  /// \brief Read the set of late parsed template functions for this source.
+  ///
+  /// The external source should insert its own late parsed template functions
+  /// into the map. Note that this routine may be invoked multiple times; the
+  /// external source should take care not to introduce the same map entries
+  /// repeatedly.
+  virtual void ReadLateParsedTemplates(
+      llvm::DenseMap<const FunctionDecl *, LateParsedTemplate *> &LPTMap);
+
+  /// \copydoc ExternalSemaSource::CorrectTypo
+  /// \note Returns the first nonempty correction.
+  virtual TypoCorrection CorrectTypo(const DeclarationNameInfo &Typo,
+                                     int LookupKind, Scope *S, CXXScopeSpec *SS,
+                                     CorrectionCandidateCallback &CCC,
+                                     DeclContext *MemberContext,
+                                     bool EnteringContext,
+                                     const ObjCObjectPointerType *OPT);
+
+  /// \brief Produces a diagnostic note if one of the attached sources
+  /// contains a complete definition for \p T. Queries the sources in list
+  /// order until the first one claims that a diagnostic was produced.
+  ///
+  /// \param Loc the location at which a complete type was required but not
+  /// provided
+  ///
+  /// \param T the \c QualType that should have been complete at \p Loc
+  ///
+  /// \return true if a diagnostic was produced, false otherwise.
+  virtual bool MaybeDiagnoseMissingCompleteType(SourceLocation Loc, QualType T);
+
   // isa/cast/dyn_cast support
   static bool classof(const MultiplexExternalSemaSource*) { return true; }
   //static bool classof(const ExternalSemaSource*) { return true; }
-};
+}; 
 
 } // end namespace clang
 

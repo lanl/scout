@@ -19,6 +19,7 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/StmtVisitor.h"
+#include "clang/Basic/Builtins.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -362,6 +363,7 @@ private:
                                       AddStmtChoice asc);
   CFGBlock *VisitCXXCatchStmt(CXXCatchStmt *S);
   CFGBlock *VisitCXXConstructExpr(CXXConstructExpr *C, AddStmtChoice asc);
+  CFGBlock *VisitCXXDeleteExpr(CXXDeleteExpr *DE, AddStmtChoice asc);
   CFGBlock *VisitCXXForRangeStmt(CXXForRangeStmt *S);
   CFGBlock *VisitCXXFunctionalCastExpr(CXXFunctionalCastExpr *E,
                                        AddStmtChoice asc);
@@ -468,6 +470,10 @@ private:
   }
   void appendAutomaticObjDtor(CFGBlock *B, VarDecl *VD, Stmt *S) {
     B->appendAutomaticObjDtor(VD, S, cfg->getBumpVectorContext());
+  }
+
+  void appendDeleteDtor(CFGBlock *B, CXXRecordDecl *RD, CXXDeleteExpr *DE) {
+    B->appendDeleteDtor(RD, DE, cfg->getBumpVectorContext());
   }
 
   void prependAutomaticObjDtorsWithTerminator(CFGBlock *Blk,
@@ -974,10 +980,23 @@ LocalScope* CFGBuilder::addLocalScopeForVarDecl(VarDecl *VD,
   // Check for const references bound to temporary. Set type to pointee.
   QualType QT = VD->getType();
   if (QT.getTypePtr()->isReferenceType()) {
-    if (!VD->extendsLifetimeOfTemporary())
+    // Attempt to determine whether this declaration lifetime-extends a
+    // temporary.
+    //
+    // FIXME: This is incorrect. Non-reference declarations can lifetime-extend
+    // temporaries, and a single declaration can extend multiple temporaries.
+    // We should look at the storage duration on each nested
+    // MaterializeTemporaryExpr instead.
+    const Expr *Init = VD->getInit();
+    if (!Init)
+      return Scope;
+    if (const ExprWithCleanups *EWC = dyn_cast<ExprWithCleanups>(Init))
+      Init = EWC->getSubExpr();
+    if (!isa<MaterializeTemporaryExpr>(Init))
       return Scope;
 
-    QT = getReferenceInitTemporaryType(*Context, VD->getInit());
+    // Lifetime-extending a temporary.
+    QT = getReferenceInitTemporaryType(*Context, Init);
   }
 
   // Check for constant size array. Set type to array element type.
@@ -1102,6 +1121,9 @@ CFGBlock *CFGBuilder::Visit(Stmt * S, AddStmtChoice asc) {
 
     case Stmt::CXXConstructExprClass:
       return VisitCXXConstructExpr(cast<CXXConstructExpr>(S), asc);
+
+    case Stmt::CXXDeleteExprClass:
+      return VisitCXXDeleteExpr(cast<CXXDeleteExpr>(S), asc);
 
     case Stmt::CXXFunctionalCastExprClass:
       return VisitCXXFunctionalCastExpr(cast<CXXFunctionalCastExpr>(S), asc);
@@ -1449,18 +1471,33 @@ CFGBlock *CFGBuilder::VisitCallExpr(CallExpr *C, AddStmtChoice asc) {
       AddEHEdge = true;
   }
 
+  // If this is a call to a builtin function, it might not actually evaluate
+  // its arguments. Don't add them to the CFG if this is the case.
+  bool OmitArguments = false;
+
   if (FunctionDecl *FD = C->getDirectCallee()) {
     if (FD->isNoReturn())
       NoReturn = true;
     if (FD->hasAttr<NoThrowAttr>())
       AddEHEdge = false;
+    if (FD->getBuiltinID() == Builtin::BI__builtin_object_size)
+      OmitArguments = true;
   }
 
   if (!CanThrow(C->getCallee(), *Context))
     AddEHEdge = false;
 
-  if (!NoReturn && !AddEHEdge)
+  if (OmitArguments) {
+    assert(!NoReturn && "noreturn calls with unevaluated args not implemented");
+    assert(!AddEHEdge && "EH calls with unevaluated args not implemented");
+    autoCreateBlock();
+    appendStmt(Block, C);
+    return Visit(C->getCallee());
+  }
+
+  if (!NoReturn && !AddEHEdge) {
     return VisitStmt(C, asc.withAlwaysAdd(true));
+  }
 
   if (Block) {
     Succ = Block;
@@ -1627,6 +1664,7 @@ CFGBlock *CFGBuilder::VisitDeclStmt(DeclStmt *DS) {
     Decl *D = *I;
     void *Mem = cfg->getAllocator().Allocate(sizeof(DeclStmt), A);
     DeclStmt *DSNew = new (Mem) DeclStmt(DG, D->getLocation(), GetEndLoc(D));
+    cfg->addSyntheticDeclStmt(DSNew, DS);
 
     // Append the fake DeclStmt to block.
     B = VisitDeclSubExpr(DSNew);
@@ -1639,19 +1677,11 @@ CFGBlock *CFGBuilder::VisitDeclStmt(DeclStmt *DS) {
 /// DeclStmts and initializers in them.
 CFGBlock *CFGBuilder::VisitDeclSubExpr(DeclStmt *DS) {
   assert(DS->isSingleDecl() && "Can handle single declarations only.");
-  Decl *D = DS->getSingleDecl();
- 
-  if (isa<StaticAssertDecl>(D)) {
-    // static_asserts aren't added to the CFG because they do not impact
-    // runtime semantics.
-    return Block;
-  }
-  
   VarDecl *VD = dyn_cast<VarDecl>(DS->getSingleDecl());
 
   if (!VD) {
-    autoCreateBlock();
-    appendStmt(Block, DS);
+    // Of everything that can be declared in a DeclStmt, only VarDecls impact
+    // runtime semantics.
     return Block;
   }
 
@@ -1869,9 +1899,12 @@ CFGBlock *CFGBuilder::VisitReturnStmt(ReturnStmt *R) {
   // Create the new block.
   Block = createBlock(false);
 
-  // The Exit block is the only successor.
   addAutomaticObjDtors(ScopePos, LocalScope::const_iterator(), R);
-  addSuccessor(Block, &cfg->getExit());
+
+  // If the one of the destructors does not return, we already have the Exit
+  // block as a successor.
+  if (!Block->hasNoReturnElement())
+    addSuccessor(Block, &cfg->getExit());
 
   // Add the return statement to the block.  This may create new blocks if R
   // contains control-flow (short-circuit operations).
@@ -2190,17 +2223,24 @@ CFGBlock *CFGBuilder::VisitObjCForCollectionStmt(ObjCForCollectionStmt *S) {
   // Now create the true branch.
   {
     // Save the current values for Succ, continue and break targets.
-    SaveAndRestore<CFGBlock*> save_Succ(Succ);
+    SaveAndRestore<CFGBlock*> save_Block(Block), save_Succ(Succ);
     SaveAndRestore<JumpTarget> save_continue(ContinueJumpTarget),
-        save_break(BreakJumpTarget);
+                               save_break(BreakJumpTarget);
 
+    // Add an intermediate block between the BodyBlock and the
+    // EntryConditionBlock to represent the "loop back" transition, for looping
+    // back to the head of the loop.
+    CFGBlock *LoopBackBlock = 0;
+    Succ = LoopBackBlock = createBlock();
+    LoopBackBlock->setLoopTarget(S);
+    
     BreakJumpTarget = JumpTarget(LoopSuccessor, ScopePos);
-    ContinueJumpTarget = JumpTarget(EntryConditionBlock, ScopePos);
+    ContinueJumpTarget = JumpTarget(Succ, ScopePos);
 
     CFGBlock *BodyBlock = addStmt(S->getBody());
 
     if (!BodyBlock)
-      BodyBlock = EntryConditionBlock; // can happen for "for (X in Y) ;"
+      BodyBlock = ContinueJumpTarget.block; // can happen for "for (X in Y) ;"
     else if (Block) {
       if (badCFG)
         return 0;
@@ -2679,9 +2719,15 @@ CFGBlock *CFGBuilder::VisitSwitchStmt(SwitchStmt *Terminator) {
   // If we have no "default:" case, the default transition is to the code
   // following the switch body.  Moreover, take into account if all the
   // cases of a switch are covered (e.g., switching on an enum value).
+  //
+  // Note: We add a successor to a switch that is considered covered yet has no
+  //       case statements if the enumeration has no enumerators.
+  bool SwitchAlwaysHasSuccessor = false;
+  SwitchAlwaysHasSuccessor |= switchExclusivelyCovered;
+  SwitchAlwaysHasSuccessor |= Terminator->isAllEnumCasesCovered() &&
+                              Terminator->getSwitchCaseList();
   addSuccessor(SwitchTerminatedBlock,
-               switchExclusivelyCovered || Terminator->isAllEnumCasesCovered()
-               ? 0 : DefaultCaseBlock);
+               SwitchAlwaysHasSuccessor ? 0 : DefaultCaseBlock);
 
   // Add the terminator and condition in the switch block.
   SwitchTerminatedBlock->setTerminator(Terminator);
@@ -3078,6 +3124,22 @@ CFGBlock *CFGBuilder::VisitCXXConstructExpr(CXXConstructExpr *C,
   return VisitChildren(C);
 }
 
+
+CFGBlock *CFGBuilder::VisitCXXDeleteExpr(CXXDeleteExpr *DE,
+                                         AddStmtChoice asc) {
+  autoCreateBlock();
+  appendStmt(Block, DE);
+  QualType DTy = DE->getDestroyedType();
+  DTy = DTy.getNonReferenceType();
+  CXXRecordDecl *RD = Context->getBaseElementType(DTy)->getAsCXXRecordDecl();
+  if (RD) {
+    if (RD->isCompleteDefinition() && !RD->hasTrivialDestructor())
+      appendDeleteDtor(Block, RD, DE);
+  }
+
+  return VisitChildren(DE);
+}
+
 CFGBlock *CFGBuilder::VisitCXXFunctionalCastExpr(CXXFunctionalCastExpr *E,
                                                  AddStmtChoice asc) {
   if (asc.alwaysAdd(*this, E)) {
@@ -3377,6 +3439,14 @@ CFGImplicitDtor::getDestructorDecl(ASTContext &astContext) const {
       const CXXRecordDecl *classDecl =
       cast<CXXRecordDecl>(recordType->getDecl());
       return classDecl->getDestructor();      
+    }
+    case CFGElement::DeleteDtor: {
+      const CXXDeleteExpr *DE = castAs<CFGDeleteDtor>().getDeleteExpr();
+      QualType DTy = DE->getDestroyedType();
+      DTy = DTy.getNonReferenceType();
+      const CXXRecordDecl *classDecl =
+          astContext.getBaseElementType(DTy)->getAsCXXRecordDecl();
+      return classDecl->getDestructor();
     }
     case CFGElement::TemporaryDtor: {
       const CXXBindTemporaryExpr *bindExpr =
@@ -3692,6 +3762,8 @@ static void print_elem(raw_ostream &OS, StmtPrinterHelper* Helper,
     const CXXCtorInitializer *I = IE->getInitializer();
     if (I->isBaseInitializer())
       OS << I->getBaseClass()->getAsCXXRecordDecl()->getName();
+    else if (I->isDelegatingInitializer())
+      OS << I->getTypeSourceInfo()->getType()->getAsCXXRecordDecl()->getName();
     else OS << I->getAnyMember()->getName();
 
     OS << "(";
@@ -3701,6 +3773,8 @@ static void print_elem(raw_ostream &OS, StmtPrinterHelper* Helper,
 
     if (I->isBaseInitializer())
       OS << " (Base initializer)\n";
+    else if (I->isDelegatingInitializer())
+      OS << " (Delegating initializer)\n";
     else OS << " (Member initializer)\n";
 
   } else if (Optional<CFGAutomaticObjDtor> DE =
@@ -3716,6 +3790,15 @@ static void print_elem(raw_ostream &OS, StmtPrinterHelper* Helper,
     OS << ".~" << T->getAsCXXRecordDecl()->getName().str() << "()";
     OS << " (Implicit destructor)\n";
 
+  } else if (Optional<CFGDeleteDtor> DE = E.getAs<CFGDeleteDtor>()) {
+    const CXXRecordDecl *RD = DE->getCXXRecordDecl();
+    if (!RD)
+      return;
+    CXXDeleteExpr *DelExpr =
+        const_cast<CXXDeleteExpr*>(DE->getDeleteExpr());
+    Helper->handledStmt(cast<Stmt>(DelExpr->getArgument()), OS);
+    OS << "->~" << RD->getName().str() << "()";
+    OS << " (Implicit destructor)\n";
   } else if (Optional<CFGBaseDtor> BE = E.getAs<CFGBaseDtor>()) {
     const CXXBaseSpecifier *BS = BE->getBaseSpecifier();
     OS << "~" << BS->getType()->getAsCXXRecordDecl()->getName() << "()";
@@ -3730,8 +3813,9 @@ static void print_elem(raw_ostream &OS, StmtPrinterHelper* Helper,
 
   } else if (Optional<CFGTemporaryDtor> TE = E.getAs<CFGTemporaryDtor>()) {
     const CXXBindTemporaryExpr *BT = TE->getBindTemporaryExpr();
-    OS << "~" << BT->getType()->getAsCXXRecordDecl()->getName() << "()";
-    OS << " (Temporary object destructor)\n";
+    OS << "~";
+    BT->getType().print(OS, PrintingPolicy(Helper->getLangOpts()));
+    OS << "() (Temporary object destructor)\n";
   }
 }
 
@@ -3953,6 +4037,10 @@ Stmt *CFGBlock::getTerminatorCondition() {
 
   switch (Terminator->getStmtClass()) {
     default:
+      break;
+
+    case Stmt::CXXForRangeStmtClass:
+      E = cast<CXXForRangeStmt>(Terminator)->getCond();
       break;
 
     case Stmt::ForStmtClass:

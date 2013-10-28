@@ -1,4 +1,8 @@
 // RUN: %clang_cc1 -fsyntax-only -verify -Wno-c++11-extensions %s
+//
+// WARNING: Do not add more typo correction test cases to this file lest you run
+// afoul the hard-coded limit (escape hatch) of 20 different typos whose
+// correction was attempted by Sema::CorrectTypo
 
 struct errc {
   int v_;
@@ -213,10 +217,14 @@ namespace PR13051 {
     operator bool() const;
   };
 
-  void f() {
-    f(&S<int>::tempalte f<int>); // expected-error{{did you mean 'template'?}}
-    f(&S<int>::opeartor bool); // expected-error{{did you mean 'operator'?}}
-    f(&S<int>::foo); // expected-error-re{{no member named 'foo' in 'PR13051::S<int>'$}}
+  void foo(); // expected-note{{'foo' declared here}}
+  void g(void(*)());
+  void g(bool(S<int>::*)() const);
+
+  void test() {
+    g(&S<int>::tempalte f<int>); // expected-error{{did you mean 'template'?}}
+    g(&S<int>::opeartor bool); // expected-error{{did you mean 'operator'?}}
+    g(&S<int>::foo); // expected-error{{no member named 'foo' in 'PR13051::S<int>'; did you mean simply 'foo'?}}
   }
 }
 
@@ -230,35 +238,16 @@ class foo { }; // expected-note{{'foo' declared here}}
 class bar : boo { }; // expected-error{{unknown class name 'boo'; did you mean 'foo'?}}
 }
 
-namespace bogus_keyword_suggestion {
-void test() {
-   status = "OK"; // expected-error-re{{use of undeclared identifier 'status'$}}
-   return status; // expected-error-re{{use of undeclared identifier 'status'$}}
- }
-}
+namespace outer {
+  void somefunc();  // expected-note{{'::outer::somefunc' declared here}}
+  void somefunc(int, int);  // expected-note{{'::outer::somefunc' declared here}}
 
-namespace PR13387 {
-struct A {
-  void CreateFoo(float, float);
-  void CreateBar(float, float);
-};
-struct B : A {
-  using A::CreateFoo;
-  void CreateFoo(int, int);
-};
-void f(B &x) {
-  x.Createfoo(0,0); // expected-error {{no member named 'Createfoo' in 'PR13387::B'; did you mean 'CreateFoo'?}}
-}
-}
-
-struct DataStruct {void foo();};
-struct T {
- DataStruct data_struct;
- void f();
-};
-// should be void T::f();
-void f() {
- data_struct->foo(); // expected-error-re{{use of undeclared identifier 'data_struct'$}}
+  namespace inner {
+    void somefunc(int) {
+      someFunc();  // expected-error{{use of undeclared identifier 'someFunc'; did you mean '::outer::somefunc'?}}
+      someFunc(1, 2);  // expected-error{{use of undeclared identifier 'someFunc'; did you mean '::outer::somefunc'?}}
+    }
+  }
 }
 
 namespace b6956809_test1 {
@@ -301,4 +290,15 @@ namespace b6956809_test2 {
     S s;
     int k = s.methodd((void*)0);  // expected-error{{no member named 'methodd' in 'b6956809_test2::S'; did you mean 'method'?}}
   }
+}
+
+// This test should have one correction, followed by an error without a
+// suggestion due to exceeding the maximum number of typos for which correction
+// is attempted.
+namespace CorrectTypo_has_reached_its_limit {
+int flibberdy();  // expected-note{{'flibberdy' declared here}}
+int no_correction() {
+  return hibberdy() +  // expected-error{{use of undeclared identifier 'hibberdy'; did you mean 'flibberdy'?}}
+         gibberdy();  // expected-error-re{{use of undeclared identifier 'gibberdy'$}}
+};
 }

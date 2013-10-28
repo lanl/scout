@@ -165,6 +165,10 @@ public:
     /// C++ lexical operator lookup looks for these.
     IDNS_NonMemberOperator   = 0x0400,
 
+    /// This declaration is a function-local extern declaration of a
+    /// variable or function. This may also be IDNS_Ordinary if it
+    /// has been declared outside any function.
+    IDNS_LocalExtern         = 0x0800,
     // +===== Scout ==========================================================+
     // SC_TODO : It is not entirely clear if we need this -- do we need an
     // identifier name space?
@@ -203,12 +207,12 @@ protected:
     /// global variable, etc.) that is lexically inside an objc container
     /// definition.
     TopLevelDeclInObjCContainerFlag = 0x01,
-
+    
     /// \brief Whether this declaration is private to the module in which it was
     /// defined.
     ModulePrivateFlag = 0x02
   };
-
+  
   /// \brief The next declaration within the same lexical
   /// DeclContext. These pointers form the linked list that is
   /// traversed via DeclContext's decls_begin()/decls_end().
@@ -292,7 +296,7 @@ protected:
   /// because it is was loaded from an AST file is either module-private or
   /// because its submodule has not been made visible.
   unsigned Hidden : 1;
-
+  
   /// IdentifierNamespace - This specifies what IDNS_* namespace this lives in.
   unsigned IdentifierNamespace : 12;
 
@@ -304,6 +308,8 @@ protected:
   friend class ASTDeclReader;
   friend class ASTReader;
   friend class LinkageComputer;
+
+  template<typename decl_type> friend class Redeclarable;
 
 private:
   void CheckAccessDeclContext() const;
@@ -438,7 +444,6 @@ public:
     return const_cast<AttrVec&>(const_cast<const Decl*>(this)->getAttrs());
   }
   const AttrVec &getAttrs() const;
-  void swapAttrs(Decl *D);
   void dropAttrs();
 
   void addAttr(Attr *A) {
@@ -509,7 +514,16 @@ public:
   /// whether the function is used.
   bool isUsed(bool CheckUsedAttr = true) const;
 
-  void setUsed(bool U = true) { Used = U; }
+  /// \brief Set whether the declaration is used, in the sense of odr-use.
+  ///
+  /// This should only be used immediately after creating a declaration.
+  void setIsUsed() { Used = true; }
+
+  /// \brief Mark the declaration used, in the sense of odr-use.
+  ///
+  /// This notifies any mutation listeners in addition to setting a bit
+  /// indicating the declaration is used.
+  void markUsed(ASTContext &C);
 
   /// \brief Whether this declaration was referenced.
   bool isReferenced() const;
@@ -532,13 +546,13 @@ public:
     NextInContextAndBits.setInt(Bits);
   }
 
-protected:
   /// \brief Whether this declaration was marked as being private to the
   /// module in which it was defined.
   bool isModulePrivate() const {
     return NextInContextAndBits.getInt() & ModulePrivateFlag;
   }
 
+protected:
   /// \brief Specify whether this declaration was marked as being private
   /// to the module in which it was defined.
   void setModulePrivate(bool MP = true) {
@@ -555,9 +569,9 @@ protected:
     assert(isFromASTFile() && "Only works on a deserialized declaration");
     *((unsigned*)this - 2) = ID;
   }
-
+  
 public:
-
+  
   /// \brief Determine the availability of the given declaration.
   ///
   /// This routine will determine the most restrictive availability of
@@ -608,20 +622,20 @@ public:
   /// a precompiled header or module) rather than having been parsed.
   bool isFromASTFile() const { return FromASTFile; }
 
-  /// \brief Retrieve the global declaration ID associated with this
-  /// declaration, which specifies where in the
-  unsigned getGlobalID() const {
+  /// \brief Retrieve the global declaration ID associated with this 
+  /// declaration, which specifies where in the 
+  unsigned getGlobalID() const { 
     if (isFromASTFile())
       return *((const unsigned*)this - 1);
     return 0;
   }
-
+  
   /// \brief Retrieve the global ID of the module that owns this particular
   /// declaration.
   unsigned getOwningModuleID() const {
     if (isFromASTFile())
       return *((const unsigned*)this - 2);
-
+    
     return 0;
   }
 
@@ -705,7 +719,7 @@ public:
 
   /// \brief Whether this particular Decl is a canonical one.
   bool isCanonicalDecl() const { return getCanonicalDecl() == this; }
-
+  
 protected:
   /// \brief Returns the next redeclaration or itself if this is the only decl.
   ///
@@ -716,11 +730,11 @@ protected:
   /// \brief Implementation of getPreviousDecl(), to be overridden by any
   /// subclass that has a redeclaration chain.
   virtual Decl *getPreviousDeclImpl() { return 0; }
-
+  
   /// \brief Implementation of getMostRecentDecl(), to be overridden by any
-  /// subclass that has a redeclaration chain.
+  /// subclass that has a redeclaration chain.  
   virtual Decl *getMostRecentDeclImpl() { return this; }
-
+  
 public:
   /// \brief Iterates through all the redeclarations of the same decl.
   class redecl_iterator {
@@ -774,11 +788,16 @@ public:
   /// \brief Retrieve the previous declaration that declares the same entity
   /// as this declaration, or NULL if there is no previous declaration.
   Decl *getPreviousDecl() { return getPreviousDeclImpl(); }
-
+  
   /// \brief Retrieve the most recent declaration that declares the same entity
   /// as this declaration, or NULL if there is no previous declaration.
-  const Decl *getPreviousDecl() const {
+  const Decl *getPreviousDecl() const { 
     return const_cast<Decl *>(this)->getPreviousDeclImpl();
+  }
+
+  /// \brief True if this is the first declaration in its redeclaration chain.
+  bool isFirstDecl() const {
+    return getPreviousDecl() == 0;
   }
 
   /// \brief Retrieve the most recent declaration that declares the same entity
@@ -787,7 +806,7 @@ public:
 
   /// \brief Retrieve the most recent declaration that declares the same entity
   /// as this declaration (which may be this declaration).
-  const Decl *getMostRecentDecl() const {
+  const Decl *getMostRecentDecl() const { 
     return const_cast<Decl *>(this)->getMostRecentDeclImpl();
   }
 
@@ -796,8 +815,10 @@ public:
   ///  top-level Stmt* of that body.  Otherwise this method returns null.
   virtual Stmt* getBody() const { return 0; }
 
-  /// \brief Returns true if this Decl represents a declaration for a body of
+  /// \brief Returns true if this \c Decl represents a declaration for a body of
   /// code, such as a function or method definition.
+  /// Note that \c hasBody can also return true if any redeclaration of this
+  /// \c Decl represents a declaration for a body of code.
   virtual bool hasBody() const { return getBody() != 0; }
 
   /// getBodyRBrace - Gets the right brace of the body, if a body exists.
@@ -827,37 +848,71 @@ public:
   bool isFunctionOrFunctionTemplate() const;
 
   /// \brief Changes the namespace of this declaration to reflect that it's
+  /// a function-local extern declaration.
+  ///
+  /// These declarations appear in the lexical context of the extern
+  /// declaration, but in the semantic context of the enclosing namespace
+  /// scope.
+  void setLocalExternDecl() {
+    assert((IdentifierNamespace == IDNS_Ordinary ||
+            IdentifierNamespace == IDNS_OrdinaryFriend) &&
+           "namespace is not ordinary");
+
+    Decl *Prev = getPreviousDecl();
+    IdentifierNamespace &= ~IDNS_Ordinary;
+
+    IdentifierNamespace |= IDNS_LocalExtern;
+    if (Prev && Prev->getIdentifierNamespace() & IDNS_Ordinary)
+      IdentifierNamespace |= IDNS_Ordinary;
+  }
+
+  /// \brief Determine whether this is a block-scope declaration with linkage.
+  /// This will either be a local variable declaration declared 'extern', or a
+  /// local function declaration.
+  bool isLocalExternDecl() {
+    return IdentifierNamespace & IDNS_LocalExtern;
+  }
+
+  /// \brief Changes the namespace of this declaration to reflect that it's
   /// the object of a friend declaration.
   ///
   /// These declarations appear in the lexical context of the friending
   /// class, but in the semantic context of the actual entity.  This property
   /// applies only to a specific decl object;  other redeclarations of the
   /// same entity may not (and probably don't) share this property.
-  void setObjectOfFriendDecl(bool PreviouslyDeclared) {
+  void setObjectOfFriendDecl(bool PerformFriendInjection = false) {
     unsigned OldNS = IdentifierNamespace;
     assert((OldNS & (IDNS_Tag | IDNS_Ordinary |
-                     IDNS_TagFriend | IDNS_OrdinaryFriend)) &&
+                     IDNS_TagFriend | IDNS_OrdinaryFriend |
+                     IDNS_LocalExtern)) &&
            "namespace includes neither ordinary nor tag");
     assert(!(OldNS & ~(IDNS_Tag | IDNS_Ordinary | IDNS_Type |
-                       IDNS_TagFriend | IDNS_OrdinaryFriend)) &&
+                       IDNS_TagFriend | IDNS_OrdinaryFriend |
+                       IDNS_LocalExtern)) &&
            "namespace includes other than ordinary or tag");
 
-    IdentifierNamespace = 0;
+    Decl *Prev = getPreviousDecl();
+    IdentifierNamespace &= ~(IDNS_Ordinary | IDNS_Tag | IDNS_Type);
+
     if (OldNS & (IDNS_Tag | IDNS_TagFriend)) {
       IdentifierNamespace |= IDNS_TagFriend;
-      if (PreviouslyDeclared) IdentifierNamespace |= IDNS_Tag | IDNS_Type;
+      if (PerformFriendInjection ||
+          (Prev && Prev->getIdentifierNamespace() & IDNS_Tag))
+        IdentifierNamespace |= IDNS_Tag | IDNS_Type;
     }
 
-    if (OldNS & (IDNS_Ordinary | IDNS_OrdinaryFriend)) {
+    if (OldNS & (IDNS_Ordinary | IDNS_OrdinaryFriend | IDNS_LocalExtern)) {
       IdentifierNamespace |= IDNS_OrdinaryFriend;
-      if (PreviouslyDeclared) IdentifierNamespace |= IDNS_Ordinary;
+      if (PerformFriendInjection ||
+          (Prev && Prev->getIdentifierNamespace() & IDNS_Ordinary))
+        IdentifierNamespace |= IDNS_Ordinary;
     }
   }
 
   enum FriendObjectKind {
-    FOK_None, // not a friend object
-    FOK_Declared, // a friend of a previously-declared entity
-    FOK_Undeclared // a friend of a previously-undeclared entity
+    FOK_None,      ///< Not a friend object.
+    FOK_Declared,  ///< A friend of a previously-declared entity.
+    FOK_Undeclared ///< A friend of a previously-undeclared entity.
   };
 
   /// \brief Determines whether this declaration is the object of a
@@ -865,11 +920,11 @@ public:
   ///
   /// There is currently no direct way to find the associated FriendDecl.
   FriendObjectKind getFriendObjectKind() const {
-    unsigned mask
-      = (IdentifierNamespace & (IDNS_TagFriend | IDNS_OrdinaryFriend));
+    unsigned mask =
+        (IdentifierNamespace & (IDNS_TagFriend | IDNS_OrdinaryFriend));
     if (!mask) return FOK_None;
-    return (IdentifierNamespace & (IDNS_Tag | IDNS_Ordinary) ?
-              FOK_Declared : FOK_Undeclared);
+    return (IdentifierNamespace & (IDNS_Tag | IDNS_Ordinary) ? FOK_Declared
+                                                             : FOK_Undeclared);
   }
 
   /// Specifies that this declaration is a C++ overloaded non-member.
@@ -896,9 +951,6 @@ public:
   // Same as dump(), but forces color printing.
   LLVM_ATTRIBUTE_USED void dumpColor() const;
   void dump(raw_ostream &Out) const;
-  // Debuggers don't usually respect default arguments.
-  LLVM_ATTRIBUTE_USED void dumpXML() const;
-  void dumpXML(raw_ostream &OS) const;
 
 private:
   void setAttrsImpl(const AttrVec& Attrs, ASTContext &Ctx);
@@ -913,13 +965,13 @@ protected:
 inline bool declaresSameEntity(const Decl *D1, const Decl *D2) {
   if (!D1 || !D2)
     return false;
-
+  
   if (D1 == D2)
     return true;
-
+  
   return D1->getCanonicalDecl() == D2->getCanonicalDecl();
 }
-
+  
 /// PrettyStackTraceDecl - If a crash occurs, indicate that it happened when
 /// doing something to a specific decl.
 class PrettyStackTraceDecl : public llvm::PrettyStackTraceEntry {
@@ -993,6 +1045,7 @@ protected:
   mutable Decl *LastDecl;
 
   friend class ExternalASTSource;
+  friend class ASTDeclReader;
   friend class ASTWriter;
 
   /// \brief Build up a chain of declarations.
@@ -1176,7 +1229,7 @@ public:
   /// connected to this declaration context.
   ///
   /// For declaration contexts that have multiple semantically connected but
-  /// syntactically distinct contexts, such as C++ namespaces, this routine
+  /// syntactically distinct contexts, such as C++ namespaces, this routine 
   /// retrieves the complete set of such declaration contexts in source order.
   /// For example, given:
   ///
@@ -1429,7 +1482,7 @@ public:
 
   /// @brief Removes a declaration from this context.
   void removeDecl(Decl *D);
-
+    
   /// @brief Checks whether a declaration is in this context.
   bool containsDecl(Decl *D) const;
 
@@ -1454,12 +1507,20 @@ public:
     return const_cast<DeclContext*>(this)->lookup(Name);
   }
 
+  /// \brief Find the declarations with the given name that are visible
+  /// within this context; don't attempt to retrieve anything from an
+  /// external source.
+  lookup_result noload_lookup(DeclarationName Name);
+
   /// \brief A simplistic name lookup mechanism that performs name lookup
   /// into this declaration context without consulting the external source.
   ///
   /// This function should almost never be used, because it subverts the
   /// usual relationship between a DeclContext and the external source.
   /// See the ASTImporter for the (few, but important) use cases.
+  ///
+  /// FIXME: This is very inefficient; replace uses of it with uses of
+  /// noload_lookup.
   void localUncachedLookup(DeclarationName Name,
                            SmallVectorImpl<NamedDecl *> &Results);
 
@@ -1483,9 +1544,15 @@ public:
   /// of looking up every possible name.
   class all_lookups_iterator;
 
+  /// \brief Iterators over all possible lookups within this context.
   all_lookups_iterator lookups_begin() const;
-
   all_lookups_iterator lookups_end() const;
+
+  /// \brief Iterators over all possible lookups within this context that are
+  /// currently loaded; don't attempt to retrieve anything from an external
+  /// source.
+  all_lookups_iterator noload_lookups_begin() const;
+  all_lookups_iterator noload_lookups_end() const;
 
   /// udir_iterator - Iterates through the using-directives stored
   /// within this context.
@@ -1509,7 +1576,7 @@ public:
   inline ddiag_iterator ddiag_end() const;
 
   // Low-level accessors
-
+    
   /// \brief Mark the lookup table as needing to be built.  This should be
   /// used only if setHasExternalLexicalStorage() has been called on any
   /// decl context for which this is the primary context.
@@ -1549,7 +1616,7 @@ public:
   /// \brief Determine whether the given declaration is stored in the list of
   /// declarations lexically within this context.
   bool isDeclInLexicalTraversal(const Decl *D) const {
-    return D && (D->NextInContextAndBits.getPointer() || D == FirstDecl ||
+    return D && (D->NextInContextAndBits.getPointer() || D == FirstDecl || 
                  D == LastDecl);
   }
 
@@ -1557,6 +1624,8 @@ public:
   static bool classof(const DeclContext *D) { return true; }
 
   LLVM_ATTRIBUTE_USED void dumpDeclContext() const;
+  LLVM_ATTRIBUTE_USED void dumpLookups() const;
+  LLVM_ATTRIBUTE_USED void dumpLookups(llvm::raw_ostream &OS) const;
 
 private:
   void reconcileExternalVisibleStorage();
@@ -1573,6 +1642,8 @@ private:
   friend class DependentDiagnostic;
   StoredDeclsMap *CreateStoredDeclsMap(ASTContext &C) const;
 
+  template<decl_iterator (DeclContext::*Begin)() const,
+           decl_iterator (DeclContext::*End)() const>
   void buildLookupImpl(DeclContext *DCtx);
   void makeDeclVisibleInContextWithFlags(NamedDecl *D, bool Internal,
                                          bool Rediscoverable);

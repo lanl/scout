@@ -162,3 +162,79 @@ void foo_volatile(volatile Vector) {}
 void foo(Vector*, const Vector, const double) {}
 // CHECK: "\01?foo@@YAXPAY02NQBNN@Z"
 // X64: "\01?foo@@YAXPEAY02NQEBNN@Z"
+
+typedef void (*ConstFunPtr)(int *const d);
+void foo_fnptrconst(ConstFunPtr f) {  }
+// CHECK: "\01?foo_fnptrconst@@YAXP6AXQAH@Z@Z"
+// X64:   "\01?foo_fnptrconst@@YAXP6AXQEAH@Z@Z"
+
+typedef void (*ArrayFunPtr)(int d[1]);
+void foo_fnptrarray(ArrayFunPtr f) {  }
+// CHECK: "\01?foo_fnptrarray@@YAXP6AXQAH@Z@Z"
+// X64:   "\01?foo_fnptrarray@@YAXP6AXQEAH@Z@Z"
+
+void foo_fnptrbackref1(ArrayFunPtr f1, ArrayFunPtr f2) {  }
+// CHECK: "\01?foo_fnptrbackref1@@YAXP6AXQAH@Z1@Z"
+// X64:   "\01?foo_fnptrbackref1@@YAXP6AXQEAH@Z1@Z"
+
+void foo_fnptrbackref2(ArrayFunPtr f1, ConstFunPtr f2) {  }
+// CHECK: "\01?foo_fnptrbackref2@@YAXP6AXQAH@Z1@Z"
+// X64:   "\01?foo_fnptrbackref2@@YAXP6AXQEAH@Z1@Z"
+
+typedef void (*NormalFunPtr)(int *d);
+void foo_fnptrbackref3(ArrayFunPtr f1, NormalFunPtr f2) {  }
+// CHECK: "\01?foo_fnptrbackref3@@YAXP6AXQAH@Z1@Z"
+// X64:   "\01?foo_fnptrbackref3@@YAXP6AXQEAH@Z1@Z"
+
+void foo_fnptrbackref4(NormalFunPtr f1, ArrayFunPtr f2) {  }
+// CHECK: "\01?foo_fnptrbackref4@@YAXP6AXPAH@Z1@Z"
+// X64:   "\01?foo_fnptrbackref4@@YAXP6AXPEAH@Z1@Z"
+
+ArrayFunPtr ret_fnptrarray() { return 0; }
+// CHECK: "\01?ret_fnptrarray@@YAP6AXQAH@ZXZ"
+// X64:   "\01?ret_fnptrarray@@YAP6AXQEAH@ZXZ"
+
+// Test that we mangle the forward decl when we have a redeclaration with a
+// slightly different type.
+void mangle_fwd(char * const x);
+void mangle_fwd(char * x) {}
+// CHECK: "\01?mangle_fwd@@YAXQAD@Z"
+// X64:   "\01?mangle_fwd@@YAXQEAD@Z"
+
+void mangle_no_fwd(char * x) {}
+// CHECK: "\01?mangle_no_fwd@@YAXPAD@Z"
+// X64:   "\01?mangle_no_fwd@@YAXPEAD@Z"
+
+// The first argument gets mangled as-if it were written "int *const"
+// The second arg should not form a backref because it isn't qualified
+void mangle_no_backref0(int[], int *) {}
+// CHECK: "\01?mangle_no_backref0@@YAXQAHPAH@Z"
+// X64:   "\01?mangle_no_backref0@@YAXQEAHPEAH@Z"
+
+void mangle_no_backref1(int[], int *const) {}
+// CHECK: "\01?mangle_no_backref1@@YAXQAHQAH@Z"
+// X64:   "\01?mangle_no_backref1@@YAXQEAHQEAH@Z"
+
+typedef void fun_type(void);
+typedef void (*ptr_to_fun_type)(void);
+
+// Pointer to function types don't backref with function types
+void mangle_no_backref2(fun_type, ptr_to_fun_type) {}
+// CHECK: "\01?mangle_no_backref2@@YAXP6AXXZP6AXXZ@Z"
+// X64:   "\01?mangle_no_backref2@@YAXP6AXXZP6AXXZ@Z"
+
+void mangle_yes_backref0(int[], int []) {}
+// CHECK: "\01?mangle_yes_backref0@@YAXQAH0@Z"
+// X64:   "\01?mangle_yes_backref0@@YAXQEAH0@Z"
+
+void mangle_yes_backref1(int *const, int *const) {}
+// CHECK: "\01?mangle_yes_backref1@@YAXQAH0@Z"
+// X64:   "\01?mangle_yes_backref1@@YAXQEAH0@Z"
+
+void mangle_yes_backref2(fun_type *const[], ptr_to_fun_type const[]) {}
+// CHECK: "\01?mangle_yes_backref2@@YAXQBQ6AXXZ0@Z"
+// X64:   "\01?mangle_yes_backref2@@YAXQEBQ6AXXZ0@Z"
+
+void mangle_yes_backref3(ptr_to_fun_type *const, void (**const)(void)) {}
+// CHECK: "\01?mangle_yes_backref3@@YAXQAP6AXXZ0@Z"
+// X64:   "\01?mangle_yes_backref3@@YAXQEAP6AXXZ0@Z"

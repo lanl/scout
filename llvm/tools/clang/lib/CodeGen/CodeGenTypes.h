@@ -67,21 +67,18 @@ namespace CodeGen {
 /// CodeGenTypes - This class organizes the cross-module state that is used
 /// while lowering AST types to LLVM types.
 class CodeGenTypes {
-public:
-  // Some of this stuff should probably be left on the CGM.
   CodeGenModule &CGM;
+  // Some of this stuff should probably be left on the CGM.
   ASTContext &Context;
   llvm::Module &TheModule;
   const llvm::DataLayout &TheDataLayout;
   const TargetInfo &Target;
   CGCXXABI &TheCXXABI;
-  const CodeGenOptions &CodeGenOpts;
 
   // This should not be moved earlier, since its initialization depends on some
   // of the previous reference members being already initialized
   const ABIInfo &TheABIInfo;
 
-private:
   /// The opaque type map for Objective-C interfaces. All direct
   /// manipulation is done by the runtime interfaces, which are
   /// responsible for coercing to the appropriate type; these opaque
@@ -95,7 +92,7 @@ private:
   /// RecordDeclTypes - This contains the LLVM IR type for any converted
   /// RecordDecl.
   llvm::DenseMap<const Type*, llvm::StructType *> RecordDeclTypes;
-
+  
   /// FunctionInfos - Hold memoized CGFunctionInfo results.
   llvm::FoldingSet<CGFunctionInfo> FunctionInfos;
 
@@ -104,10 +101,9 @@ private:
   /// struct A { struct B { int x; } } when processing 'x', the 'A' and 'B'
   /// types will be in this set.
   llvm::SmallPtrSet<const Type*, 4> RecordsBeingLaidOut;
-
-
+  
   llvm::SmallPtrSet<const CGFunctionInfo*, 4> FunctionsBeingProcessed;
-
+  
   /// SkippedLayout - True if we didn't layout a function due to a being inside
   /// a recursive struct conversion, set this to true.
   bool SkippedLayout;
@@ -143,7 +139,6 @@ public:
   const llvm::DataLayout &getDataLayout() const { return TheDataLayout; }
   ASTContext &getContext() const { return Context; }
   const ABIInfo &getABIInfo() const { return TheABIInfo; }
-  const CodeGenOptions &getCodeGenOpts() const { return CodeGenOpts; }
   const TargetInfo &getTarget() const { return Target; }
   CGCXXABI &getCXXABI() const { return TheCXXABI; }
   llvm::LLVMContext &getLLVMContext() { return TheModule.getContext(); }
@@ -171,7 +166,7 @@ public:
   /// type).
   bool isFuncTypeConvertible(const FunctionType *FT);
   bool isFuncTypeArgumentConvertible(QualType Ty);
-
+  
   /// GetFunctionTypeForVTable - Get the LLVM function type for use in a vtable,
   /// given a CXXMethodDecl. If the method to has an incomplete return type,
   /// and/or incomplete argument types, this will return the opaque type.
@@ -266,6 +261,7 @@ public:
   /// optional suffix and name the given LLVM type using it.
   void addRecordTypeName(const RecordDecl *RD, llvm::StructType *Ty,
                          StringRef suffix);
+  
 
 public:  // These are internal details of CGT that shouldn't be used externally.
   /// ConvertRecordDeclType - Lay out a tagged decl type like struct or union.
@@ -284,7 +280,7 @@ public:  // These are internal details of CGT that shouldn't be used externally.
   /// IsZeroInitializable - Return whether a record type can be
   /// zero-initialized (in the C++ sense) with an LLVM zeroinitializer.
   bool isZeroInitializable(const CXXRecordDecl *RD);
-
+  
   bool isRecordLayoutComplete(const Type *Ty) const;
   bool noRecordsBeingLaidOut() const {
     return RecordsBeingLaidOut.empty();

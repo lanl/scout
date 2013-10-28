@@ -10,6 +10,7 @@
 #include "IndexingContext.h"
 #include "CIndexDiagnostic.h"
 #include "CXTranslationUnit.h"
+#include "clang/AST/Attr.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/Frontend/ASTUnit.h"
@@ -380,14 +381,14 @@ bool IndexingContext::handleFunction(const FunctionDecl *D) {
     isContainer = false;
   }
 
-  DeclInfo DInfo(!D->isFirstDeclaration(), isDef, isContainer);
+  DeclInfo DInfo(!D->isFirstDecl(), isDef, isContainer);
   if (isSkipped)
     DInfo.flags |= CXIdxDeclFlag_Skipped;
   return handleDecl(D, D->getLocation(), getCursor(D), DInfo);
 }
 
 bool IndexingContext::handleVar(const VarDecl *D) {
-  DeclInfo DInfo(!D->isFirstDeclaration(), D->isThisDeclarationADefinition(),
+  DeclInfo DInfo(!D->isFirstDecl(), D->isThisDeclarationADefinition(),
                  /*isContainer=*/false);
   return handleDecl(D, D->getLocation(), getCursor(D), DInfo);
 }
@@ -414,13 +415,13 @@ bool IndexingContext::handleTagDecl(const TagDecl *D) {
   if (const CXXRecordDecl *CXXRD = dyn_cast<CXXRecordDecl>(D))
     return handleCXXRecordDecl(CXXRD, D);
 
-  DeclInfo DInfo(!D->isFirstDeclaration(), D->isThisDeclarationADefinition(),
+  DeclInfo DInfo(!D->isFirstDecl(), D->isThisDeclarationADefinition(),
                  D->isThisDeclarationADefinition());
   return handleDecl(D, D->getLocation(), getCursor(D), DInfo);
 }
 
 bool IndexingContext::handleTypedefName(const TypedefNameDecl *D) {
-  DeclInfo DInfo(!D->isFirstDeclaration(), /*isDefinition=*/true,
+  DeclInfo DInfo(!D->isFirstDecl(), /*isDefinition=*/true,
                  /*isContainer=*/false);
   return handleDecl(D, D->getLocation(), getCursor(D), DInfo);
 }
@@ -957,18 +958,7 @@ void IndexingContext::getEntityInfo(const NamedDecl *D,
     } else if (isa<ClassTemplateSpecializationDecl>(D)) {
       EntityInfo.templateKind = CXIdxEntity_TemplateSpecialization;
     }
-  } else if (const MeshDecl *MD = dyn_cast<MeshDecl>(D)) {
-    switch(MD->getMeshKind()) {
-      case TTK_UniformMesh:
-        EntityInfo.kind = CXIdxEntity_UniformMesh; break;
-      case TTK_RectilinearMesh:
-        EntityInfo.kind = CXIdxEntity_RectilinearMesh; break;
-      case TTK_StructuredMesh:
-        EntityInfo.kind = CXIdxEntity_StructuredMesh; break;
-      case TTK_UnstructuredMesh:
-        EntityInfo.kind = CXIdxEntity_UnstructuredMesh; break;
-        break;
-    }
+
   } else {
     switch (D->getKind()) {
     case Decl::Typedef:

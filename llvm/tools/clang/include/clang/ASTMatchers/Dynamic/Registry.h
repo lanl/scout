@@ -43,14 +43,26 @@ public:
   ///   values must be valid for the matcher requested. Otherwise, the function
   ///   will return an error.
   ///
-  /// \return The matcher if no error was found. NULL if the matcher is not
-  //    found, or if the number of arguments or argument types do not
-  ///   match the signature. In that case \c Error will contain the description
-  ///   of the error.
-  static DynTypedMatcher *constructMatcher(StringRef MatcherName,
-                                           const SourceRange &NameRange,
-                                           ArrayRef<ParserValue> Args,
-                                           Diagnostics *Error);
+  /// \return The matcher object constructed if no error was found.
+  ///   A null matcher if the matcher is not found, or if the number of
+  ///   arguments or argument types do not match the signature.
+  ///   In that case \c Error will contain the description of the error.
+  static VariantMatcher constructMatcher(StringRef MatcherName,
+                                         const SourceRange &NameRange,
+                                         ArrayRef<ParserValue> Args,
+                                         Diagnostics *Error);
+
+  /// \brief Construct a matcher from the registry and bind it.
+  ///
+  /// Similar the \c constructMatcher() above, but it then tries to bind the
+  /// matcher to the specified \c BindID.
+  /// If the matcher is not bindable, it sets an error in \c Error and returns
+  /// a null matcher.
+  static VariantMatcher constructBoundMatcher(StringRef MatcherName,
+                                              const SourceRange &NameRange,
+                                              StringRef BindID,
+                                              ArrayRef<ParserValue> Args,
+                                              Diagnostics *Error);
 
 private:
   Registry() LLVM_DELETED_FUNCTION;

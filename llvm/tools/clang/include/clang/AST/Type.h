@@ -32,13 +32,6 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/type_traits.h"
-#include "llvm/Support/Casting.h"
-
-using llvm::isa;
-using llvm::cast;
-using llvm::cast_or_null;
-using llvm::dyn_cast;
-using llvm::dyn_cast_or_null;
 
 namespace clang {
   enum {
@@ -728,7 +721,7 @@ public:
   QualType withVolatile() const {
     return withFastQualifiers(Qualifiers::Volatile);
   }
-
+  
   /// Add the restrict qualifier to this QualType.
   void addRestrict() {
     addFastQualifiers(Qualifiers::Restrict);
@@ -835,7 +828,7 @@ public:
   /// an lvalue. It removes a top-level reference (since there are no
   /// expressions of reference type) and deletes top-level cvr-qualifiers
   /// from non-class types (in C++) or all types (in C).
-  QualType getNonLValueExprType(ASTContext &Context) const;
+  QualType getNonLValueExprType(const ASTContext &Context) const;
 
   /// getDesugaredType - Return the specified type with any "sugar" removed from
   /// the type.  This takes off typedefs, typeof's etc.  If the outer level of
@@ -1177,10 +1170,7 @@ public:
 #define LAST_TYPE(Class) TypeLast = Class,
 #define ABSTRACT_TYPE(Class, Base)
 #include "clang/AST/TypeNodes.def"
-    TagFirst = Record, TagLast = Enum,
-    // +==== Scout ===========================================================+
-    MeshFirst = UniformMesh, MeshLast = UnstructuredMesh
-    // =======================================================================+
+    TagFirst = Record, TagLast = Enum
   };
 
 private:
@@ -1234,7 +1224,7 @@ private:
       return CachedLocalOrUnnamed;
     }
   };
-  enum { NumTypeBits = 19 };
+  enum { NumTypeBits = 18 };
 
 protected:
   // These classes allow subclasses to somewhat cleanly pack bitfields
@@ -1335,6 +1325,8 @@ protected:
 
     /// NumElements - The number of elements in the vector.
     unsigned NumElements : 29 - NumTypeBits;
+
+    enum { MaxNumElements = (1 << (29 - NumTypeBits)) - 1 };
   };
 
   class AttributedTypeBitfields {
@@ -1474,7 +1466,7 @@ public:
 
   /// isLiteralType - Return true if this is a literal type
   /// (C++11 [basic.types]p10)
-  bool isLiteralType(ASTContext &Ctx) const;
+  bool isLiteralType(const ASTContext &Ctx) const;
 
   /// \brief Test if this type is a standard-layout type.
   /// (C++0x [basic.type]p9)
@@ -1532,7 +1524,6 @@ public:
   bool isRealType() const;         // C99 6.2.5p17 (real floating + integer)
   bool isArithmeticType() const;   // C99 6.2.5p18 (integer + floating)
   bool isVoidType() const;         // C99 6.2.5p19
-  bool isDerivedType() const;      // C99 6.2.5p20
   bool isScalarType() const;       // C99 6.2.5p21 (arithmetic + pointers)
   bool isAggregateType() const;
   bool isFundamentalType() const;
@@ -1608,11 +1599,6 @@ public:
   /// isObjCLifetimeType(), is implicitly __unsafe_unretained rather
   /// than implicitly __strong.
   bool isObjCARCImplicitlyUnretainedType() const;
-
-  // +===== Scout ============================================================+
-  bool isMeshType() const;
-  bool isMeshFieldType() const;
-  // +========================================================================+
 
   /// Return the implicit lifetime for this type, which must not be dependent.
   Qualifiers::ObjCLifetime getObjCARCImplicitLifetime() const;
@@ -1836,6 +1822,10 @@ template <> const TypedefType *Type::getAs() const;
 /// non-sugared type.
 template <> const TemplateSpecializationType *Type::getAs() const;
 
+/// \brief This will check for an AttributedType by removing any existing sugar
+/// until it reaches an AttributedType or a non-sugared type.
+template <> const AttributedType *Type::getAs() const;
+
 // We can do canonical leaf types faster, because we don't have to
 // worry about preserving child type decoration.
 #define TYPE(Class, Base)
@@ -2014,6 +2004,44 @@ public:
   }
 
   static bool classof(const Type *T) { return T->getTypeClass() == Pointer; }
+};
+
+/// \brief Represents a pointer type decayed from an array or function type.
+class DecayedType : public Type, public llvm::FoldingSetNode {
+  QualType OriginalType;
+  QualType DecayedPointer;
+
+  DecayedType(QualType OriginalType, QualType DecayedPointer,
+              QualType CanonicalPtr)
+      : Type(Decayed, CanonicalPtr, OriginalType->isDependentType(),
+             OriginalType->isInstantiationDependentType(),
+             OriginalType->isVariablyModifiedType(),
+             OriginalType->containsUnexpandedParameterPack()),
+        OriginalType(OriginalType), DecayedPointer(DecayedPointer) {
+    assert(isa<PointerType>(DecayedPointer));
+  }
+
+  friend class ASTContext;  // ASTContext creates these.
+
+public:
+  QualType getDecayedType() const { return DecayedPointer; }
+  QualType getOriginalType() const { return OriginalType; }
+
+  QualType getPointeeType() const {
+    return cast<PointerType>(DecayedPointer)->getPointeeType();
+  }
+
+  bool isSugared() const { return true; }
+  QualType desugar() const { return DecayedPointer; }
+
+  void Profile(llvm::FoldingSetNodeID &ID) {
+    Profile(ID, OriginalType);
+  }
+  static void Profile(llvm::FoldingSetNodeID &ID, QualType OriginalType) {
+    ID.AddPointer(OriginalType.getAsOpaquePtr());
+  }
+
+  static bool classof(const Type *T) { return T->getTypeClass() == Decayed; }
 };
 
 /// BlockPointerType - pointer to a block type.
@@ -2512,6 +2540,9 @@ public:
 
   QualType getElementType() const { return ElementType; }
   unsigned getNumElements() const { return VectorTypeBits.NumElements; }
+  static bool isVectorSizeTooLarge(unsigned NumElements) {
+    return NumElements > VectorTypeBitfields::MaxNumElements;
+  }
 
   bool isSugared() const { return false; }
   QualType desugar() const { return QualType(this, 0); }
@@ -2555,13 +2586,6 @@ public:
     case 'y': return 1;
     case 'z': return 2;
     case 'w': return 3;
-    // +==== Scout ===========================================================+
-    // Also support GLSL-like color channel access.
-    case 'r': return 0;
-    case 'g': return 1;
-    case 'b': return 2;
-    case 'a': return 3;
-    // +======================================================================+
     }
   }
   static int getNumericAccessorIdx(char c) {
@@ -2673,7 +2697,11 @@ class FunctionType : public Type {
 
     // Constructor with all defaults. Use when for example creating a
     // function know to use defaults.
-    ExtInfo() : Bits(0) {}
+    ExtInfo() : Bits(CC_C) { }
+
+    // Constructor with just the calling convention, which is an important part
+    // of the canonical type.
+    ExtInfo(CallingConv CC) : Bits(CC) { }
 
     bool getNoReturn() const { return Bits & NoReturnMask; }
     bool getProducesResult() const { return Bits & ProducesResultMask; }
@@ -2815,6 +2843,12 @@ public:
       NumExceptions(0), Exceptions(0), NoexceptExpr(0),
       ExceptionSpecDecl(0), ExceptionSpecTemplate(0),
       ConsumedArguments(0) {}
+
+    ExtProtoInfo(CallingConv CC)
+        : ExtInfo(CC), Variadic(false), HasTrailingReturn(false), TypeQuals(0),
+          ExceptionSpecType(EST_None), RefQualifier(RQ_None), NumExceptions(0),
+          Exceptions(0), NoexceptExpr(0), ExceptionSpecDecl(0),
+          ExceptionSpecTemplate(0), ConsumedArguments(0) {}
 
     FunctionType::ExtInfo ExtInfo;
     bool Variadic : 1;
@@ -2960,7 +2994,7 @@ public:
     NR_Nothrow      ///< The noexcept specifier evaluates to true.
   };
   /// \brief Get the meaning of the noexcept spec on this function, if any.
-  NoexceptResult getNoexceptSpec(ASTContext &Ctx) const;
+  NoexceptResult getNoexceptSpec(const ASTContext &Ctx) const;
   unsigned getNumExceptions() const { return NumExceptions; }
   QualType getExceptionType(unsigned i) const {
     assert(i < NumExceptions && "Invalid exception number!");
@@ -2991,7 +3025,7 @@ public:
       return 0;
     return reinterpret_cast<FunctionDecl * const *>(arg_type_end())[1];
   }
-  bool isNothrow(ASTContext &Ctx) const {
+  bool isNothrow(const ASTContext &Ctx) const {
     ExceptionSpecificationType EST = getExceptionSpecType();
     assert(EST != EST_Unevaluated && EST != EST_Uninstantiated);
     if (EST == EST_DynamicNone || EST == EST_BasicNoexcept)
@@ -3051,7 +3085,7 @@ public:
   bool isSugared() const { return false; }
   QualType desugar() const { return QualType(this, 0); }
 
-  void printExceptionSpecification(raw_ostream &OS,
+  void printExceptionSpecification(raw_ostream &OS, 
                                    const PrintingPolicy &Policy) const;
 
   static bool classof(const Type *T) {
@@ -3264,7 +3298,7 @@ class TagType : public Type {
   TagDecl * decl;
 
   friend class ASTReader;
-
+  
 protected:
   TagType(TypeClass TC, const TagDecl *D, QualType can);
 
@@ -3276,7 +3310,7 @@ public:
   bool isBeingDefined() const;
 
   static bool classof(const Type *T) {
-    return (T->getTypeClass() >= TagFirst && T->getTypeClass() <= TagLast);
+    return T->getTypeClass() >= TagFirst && T->getTypeClass() <= TagLast;
   }
 };
 
@@ -3612,9 +3646,10 @@ public:
     attr_objc_gc,
     attr_objc_ownership,
     attr_pcs,
+    attr_pcs_vfp,
 
     FirstEnumOperandKind = attr_objc_gc,
-    LastEnumOperandKind = attr_pcs,
+    LastEnumOperandKind = attr_pcs_vfp,
 
     // No operand.
     attr_noreturn,
@@ -3625,6 +3660,8 @@ public:
     attr_pascal,
     attr_pnaclcall,
     attr_inteloclbicc,
+    attr_ms_abi,
+    attr_sysv_abi,
     attr_ptr32,
     attr_ptr64,
     attr_sptr,
@@ -3658,16 +3695,9 @@ public:
   bool isSugared() const { return true; }
   QualType desugar() const { return getEquivalentType(); }
 
-  bool isMSTypeSpec() const {
-    switch (getAttrKind()) {
-    default:  return false;
-    case attr_ptr32:
-    case attr_ptr64:
-    case attr_sptr:
-    case attr_uptr:
-      return true;
-    }
-  }
+  bool isMSTypeSpec() const;
+
+  bool isCallingConv() const;
 
   void Profile(llvm::FoldingSetNodeID &ID) {
     Profile(ID, getAttrKind(), ModifiedType, EquivalentType);
@@ -3867,10 +3897,13 @@ public:
 /// is no deduced type and an auto type is canonical. In the latter case, it is
 /// also a dependent type.
 class AutoType : public Type, public llvm::FoldingSetNode {
-  AutoType(QualType DeducedType, bool IsDecltypeAuto, bool IsDependent)
+  AutoType(QualType DeducedType, bool IsDecltypeAuto, 
+           bool IsDependent)
     : Type(Auto, DeducedType.isNull() ? QualType(this, 0) : DeducedType,
            /*Dependent=*/IsDependent, /*InstantiationDependent=*/IsDependent,
-           /*VariablyModified=*/false, /*ContainsParameterPack=*/false) {
+           /*VariablyModified=*/false, 
+           /*ContainsParameterPack=*/DeducedType.isNull() 
+               ? false : DeducedType->containsUnexpandedParameterPack()) {
     assert((DeducedType.isNull() || !IsDependent) &&
            "auto deduced to dependent type");
     AutoTypeBits.IsDecltypeAuto = IsDecltypeAuto;
@@ -3894,7 +3927,8 @@ public:
   }
 
   void Profile(llvm::FoldingSetNodeID &ID) {
-    Profile(ID, getDeducedType(), isDecltypeAuto(), isDependentType());
+    Profile(ID, getDeducedType(), isDecltypeAuto(), 
+		    isDependentType());
   }
 
   static void Profile(llvm::FoldingSetNodeID &ID, QualType Deduced,
@@ -3947,7 +3981,7 @@ class TemplateSpecializationType
   /// \brief Whether this template specialization type is a substituted
   /// type alias.
   bool TypeAlias : 1;
-
+    
   TemplateSpecializationType(TemplateName T,
                              const TemplateArgument *Args,
                              unsigned NumArgs, QualType Canon,
@@ -3958,10 +3992,6 @@ class TemplateSpecializationType
 public:
   /// \brief Determine whether any of the given template arguments are
   /// dependent.
-  static bool anyDependentTemplateArguments(const TemplateArgument *Args,
-                                            unsigned NumArgs,
-                                            bool &InstantiationDependent);
-
   static bool anyDependentTemplateArguments(const TemplateArgumentLoc *Args,
                                             unsigned NumArgs,
                                             bool &InstantiationDependent);
@@ -4008,7 +4038,7 @@ public:
   /// };
   /// \endcode
   bool isTypeAlias() const { return TypeAlias; }
-
+    
   /// Get the aliased type, if this is a specialization of a type alias
   /// template.
   QualType getAliasedType() const {
@@ -4163,6 +4193,7 @@ enum ElaboratedTypeKeyword {
   /// \brief The "typename" keyword precedes the qualified type name, e.g.,
   /// \c typename T::type.
   ETK_Typename,
+  /// \brief No keyword precedes the qualified type name.
   ETK_None
 };
 
@@ -4195,13 +4226,6 @@ public:
   /// which *isn't* a tag kind here.
   static TagTypeKind getTagTypeKindForTypeSpec(unsigned TypeSpec);
 
-  // +===== Scout ============================================================+
-  /// getMeshTypeKindForTypeSpec - Converts a type specifier (DeclSpec::TST)
-  /// into a mesh type kind.  It is an error to provide a type specifier
-  /// which *isn't* a mesh kind here.
-  static MeshTypeKind getMeshTypeKindForTypeSpec(unsigned TypeSpec);
-  // +========================================================================+
-
   /// getKeywordForTagDeclKind - Converts a TagTypeKind into an
   /// elaborated type keyword.
   static ElaboratedTypeKeyword getKeywordForTagTypeKind(TagTypeKind Tag);
@@ -4215,7 +4239,7 @@ public:
 
   static const char *getKeywordName(ElaboratedTypeKeyword Keyword);
 
- static const char *getTagTypeKindName(TagTypeKind Kind) {
+  static const char *getTagTypeKindName(TagTypeKind Kind) {
     return getKeywordName(getKeywordForTagTypeKind(Kind));
   }
 
@@ -4284,8 +4308,6 @@ public:
     return T->getTypeClass() == Elaborated;
   }
 };
-
-
 
 /// \brief Represents a qualified type name for which the type name is
 /// dependent.
@@ -4480,8 +4502,8 @@ public:
     return None;
   }
 
-  bool isSugared() const { return false; }
-  QualType desugar() const { return QualType(this, 0); }
+  bool isSugared() const { return !Pattern->isDependentType(); }
+  QualType desugar() const { return isSugared() ? Pattern : QualType(this, 0); }
 
   void Profile(llvm::FoldingSetNodeID &ID) {
     Profile(ID, getPattern(), getNumExpansions());
@@ -4515,11 +4537,11 @@ public:
 ///
 /// 'C<P>' is an ObjCObjectType with base C and protocol list [P].
 ///
-/// 'id' is a TypedefType which is sugar for an ObjCPointerType whose
+/// 'id' is a TypedefType which is sugar for an ObjCObjectPointerType whose
 /// pointee is an ObjCObjectType with base BuiltinType::ObjCIdType
 /// and no protocols.
 ///
-/// 'id<P>' is an ObjCPointerType whose pointee is an ObjCObjecType
+/// 'id<P>' is an ObjCObjectPointerType whose pointee is an ObjCObjectType
 /// with base BuiltinType::ObjCIdType and protocol list [P].  Eventually
 /// this should get its own sugar class to better represent the source.
 class ObjCObjectType : public Type {
@@ -4557,7 +4579,7 @@ public:
   /// getBaseType - Gets the base type of this object type.  This is
   /// always (possibly sugar for) one of:
   ///  - the 'id' builtin type (as opposed to the 'id' type visible to the
-  ///    user, which is a typedef for an ObjCPointerType)
+  ///    user, which is a typedef for an ObjCObjectPointerType)
   ///  - the 'Class' builtin type (same caveat)
   ///  - an ObjCObjectType (currently always an ObjCInterfaceType)
   QualType getBaseType() const { return BaseType; }
@@ -4973,7 +4995,7 @@ inline QualType QualType::getUnqualifiedType() const {
 
   return QualType(getSplitUnqualifiedTypeImpl(*this).Ty, 0);
 }
-
+  
 inline SplitQualType QualType::getSplitUnqualifiedType() const {
   if (!getTypePtr()->getCanonicalTypeInternal().hasLocalQualifiers())
     return split();
@@ -5005,7 +5027,7 @@ inline void QualType::removeLocalCVRQualifiers(unsigned Mask) {
 inline unsigned QualType::getAddressSpace() const {
   return getQualifiers().getAddressSpace();
 }
-
+  
 /// getObjCGCAttr - Return the gc attribute of this type.
 inline Qualifiers::GC QualType::getObjCGCAttr() const {
   return getQualifiers().getObjCGCAttr();
@@ -5357,7 +5379,7 @@ inline bool Type::isIntegralOrEnumerationType() const {
   if (const EnumType *ET = dyn_cast<EnumType>(CanonicalType))
     return IsEnumDeclComplete(ET->getDecl());
 
-  return false;
+  return false;  
 }
 
 inline bool Type::isBooleanType() const {
@@ -5473,11 +5495,6 @@ inline const ArrayType *Type::castAsArrayTypeUnsafe() const {
   return cast<ArrayType>(getUnqualifiedDesugaredType());
 }
 
-// +==== Scout ===============================================================+
-inline bool Type::isMeshType() const {
-  return isa<MeshType>(CanonicalType);
-}
-// +==========================================================================+
 }  // end namespace clang
 
 #endif

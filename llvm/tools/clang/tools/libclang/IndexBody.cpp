@@ -25,7 +25,7 @@ public:
   BodyIndexer(IndexingContext &indexCtx,
               const NamedDecl *Parent, const DeclContext *DC)
     : IndexCtx(indexCtx), Parent(Parent), ParentDC(DC) { }
-
+  
   bool shouldWalkTypesOfTypeLocs() const { return false; }
 
   bool TraverseTypeLoc(TypeLoc TL) {
@@ -104,7 +104,7 @@ public:
                                Parent, ParentDC, E, CXIdxEntityRef_Implicit);
     return true;
   }
-
+  
   bool VisitObjCDictionaryLiteral(ObjCDictionaryLiteral *E) {
     if (ObjCMethodDecl *MD = E->getDictWithObjectsMethod())
       IndexCtx.handleReference(MD, E->getLocStart(),

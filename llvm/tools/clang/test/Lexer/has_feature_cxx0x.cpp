@@ -356,3 +356,43 @@ int no_return_type_deduction();
 // CHECK-1Y: has_return_type_deduction
 // CHECK-11: no_return_type_deduction
 // CHECK-NO-11: no_return_type_deduction
+
+#if __has_feature(cxx_contextual_conversions)
+int has_contextual_conversions();
+#else
+int no_contextual_conversions();
+#endif
+
+// CHECK-1Y: has_contextual_conversions
+// CHECK-11: no_contextual_conversions
+// CHECK-NO-11: no_contextual_conversions
+
+#if __has_feature(cxx_relaxed_constexpr)
+int has_relaxed_constexpr();
+#else
+int no_relaxed_constexpr();
+#endif
+
+// CHECK-1Y: has_relaxed_constexpr
+// CHECK-11: no_relaxed_constexpr
+// CHECK-NO-11: no_relaxed_constexpr
+
+#if __has_feature(cxx_variable_templates)
+int has_variable_templates();
+#else
+int no_variable_templates();
+#endif
+
+// CHECK-1Y: has_variable_templates
+// CHECK-11: no_variable_templates
+// CHECK-NO-11: no_variable_templates
+
+#if __has_feature(cxx_init_captures)
+int has_init_captures();
+#else
+int no_init_captures();
+#endif
+
+// CHECK-1Y: has_init_captures
+// CHECK-11: no_init_captures
+// CHECK-NO-11: no_init_captures

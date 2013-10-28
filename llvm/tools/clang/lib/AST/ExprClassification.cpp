@@ -155,6 +155,7 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
   case Expr::OffsetOfExprClass:
   case Expr::CXXThrowExprClass:
   case Expr::ShuffleVectorExprClass:
+  case Expr::ConvertVectorExprClass:
   case Expr::IntegerLiteralClass:
   case Expr::CharacterLiteralClass:
   case Expr::AddrLabelExprClass:
@@ -286,13 +287,16 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
 
     // __builtin_choose_expr is equivalent to the chosen expression.
   case Expr::ChooseExprClass:
-    return ClassifyInternal(Ctx, cast<ChooseExpr>(E)->getChosenSubExpr(Ctx));
+    return ClassifyInternal(Ctx, cast<ChooseExpr>(E)->getChosenSubExpr());
 
     // Extended vector element access is an lvalue unless there are duplicates
     // in the shuffle expression.
   case Expr::ExtVectorElementExprClass:
-    return cast<ExtVectorElementExpr>(E)->containsDuplicateElements() ?
-      Cl::CL_DuplicateVectorComponents : Cl::CL_LValue;
+    if (cast<ExtVectorElementExpr>(E)->containsDuplicateElements())
+      return Cl::CL_DuplicateVectorComponents;
+    if (cast<ExtVectorElementExpr>(E)->isArrow())
+      return Cl::CL_LValue;
+    return ClassifyInternal(Ctx, cast<ExtVectorElementExpr>(E)->getBase());
 
     // Simply look at the actual default argument.
   case Expr::CXXDefaultArgExprClass:
@@ -323,9 +327,9 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
     return ClassifyUnnamed(Ctx, cast<ExplicitCastExpr>(E)->getTypeAsWritten());
 
   case Expr::CXXUnresolvedConstructExprClass:
-    return ClassifyUnnamed(Ctx,
+    return ClassifyUnnamed(Ctx, 
                       cast<CXXUnresolvedConstructExpr>(E)->getTypeAsWritten());
-
+      
   case Expr::BinaryConditionalOperatorClass: {
     if (!Lang.CPlusPlus) return Cl::CL_PRValue;
     const BinaryConditionalOperator *co = cast<BinaryConditionalOperator>(E);
@@ -348,11 +352,12 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
       return (kind == Cl::CL_PRValue) ? Cl::CL_ObjCMessageRValue : kind;
     }
     return Cl::CL_PRValue;
-
+      
     // Some C++ expressions are always class temporaries.
   case Expr::CXXConstructExprClass:
   case Expr::CXXTemporaryObjectExprClass:
   case Expr::LambdaExprClass:
+  case Expr::CXXStdInitializerListExprClass:
     return Cl::CL_ClassTemporary;
 
   case Expr::VAArgExprClass:
@@ -376,7 +381,7 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
 
   case Expr::MaterializeTemporaryExprClass:
     return cast<MaterializeTemporaryExpr>(E)->isBoundToLvalueReference()
-              ? Cl::CL_LValue
+              ? Cl::CL_LValue 
               : Cl::CL_XValue;
 
   case Expr::InitListExprClass:
@@ -485,17 +490,6 @@ static Cl::Kinds ClassifyMemberExpr(ASTContext &Ctx, const MemberExpr *E) {
     return ClassifyInternal(Ctx, E->getBase());
   }
 
- if (isa<MeshFieldDecl>(Member)) {
-    // *E1 is an lvalue
-    if (E->isArrow())
-      return Cl::CL_LValue;
-    Expr *Base = E->getBase()->IgnoreParenImpCasts();
-    if (isa<ObjCPropertyRefExpr>(Base))
-      return Cl::CL_SubObjCPropertySetting;
-    return ClassifyInternal(Ctx, E->getBase());
-  }
-
-
   //   -- If E2 is a [...] member function, [...]
   //      -- If it refers to a static member function [...], then E1.E2 is an
   //         lvalue; [...]
@@ -528,7 +522,7 @@ static Cl::Kinds ClassifyBinaryOp(ASTContext &Ctx, const BinaryOperator *E) {
   if (E->getOpcode() == BO_PtrMemD)
     return (E->getType()->isFunctionType() ||
             E->hasPlaceholderType(BuiltinType::BoundMember))
-             ? Cl::CL_MemberFunction
+             ? Cl::CL_MemberFunction 
              : ClassifyInternal(Ctx, E->getLHS());
 
   // C++ [expr.mptr.oper]p6: The result of an ->* expression is an lvalue if its
@@ -536,7 +530,7 @@ static Cl::Kinds ClassifyBinaryOp(ASTContext &Ctx, const BinaryOperator *E) {
   if (E->getOpcode() == BO_PtrMemI)
     return (E->getType()->isFunctionType() ||
             E->hasPlaceholderType(BuiltinType::BoundMember))
-             ? Cl::CL_MemberFunction
+             ? Cl::CL_MemberFunction 
              : Cl::CL_LValue;
 
   // All other binary operations are prvalues.

@@ -26,9 +26,9 @@
 using namespace clang;
 
 static ASTReader *createASTReader(CompilerInstance &CI,
-                                  StringRef pchFile,
-                                  SmallVector<llvm::MemoryBuffer *, 4> &memBufs,
-                                  SmallVector<std::string, 4> &bufNames,
+                             StringRef pchFile,
+                             SmallVectorImpl<llvm::MemoryBuffer *> &memBufs,
+                             SmallVectorImpl<std::string> &bufNames,
                              ASTDeserializationListener *deserialListener = 0) {
   Preprocessor &PP = CI.getPreprocessor();
   OwningPtr<ASTReader> Reader;
@@ -77,7 +77,7 @@ ChainedIncludesSource *ChainedIncludesSource::create(CompilerInstance &CI) {
     bool firstInclude = (i == 0);
     OwningPtr<CompilerInvocation> CInvok;
     CInvok.reset(new CompilerInvocation(CI.getInvocation()));
-
+    
     CInvok->getPreprocessorOpts().ChainedIncludes.clear();
     CInvok->getPreprocessorOpts().ImplicitPCHInclude.clear();
     CInvok->getPreprocessorOpts().ImplicitPTHInclude.clear();
@@ -85,7 +85,7 @@ ChainedIncludesSource *ChainedIncludesSource::create(CompilerInstance &CI) {
     CInvok->getPreprocessorOpts().Includes.clear();
     CInvok->getPreprocessorOpts().MacroIncludes.clear();
     CInvok->getPreprocessorOpts().Macros.clear();
-
+    
     CInvok->getFrontendOpts().Inputs.clear();
     FrontendInputFile InputFile(includes[i], IK);
     CInvok->getFrontendOpts().Inputs.push_back(InputFile);
@@ -134,19 +134,19 @@ ChainedIncludesSource *ChainedIncludesSource::create(CompilerInstance &CI) {
       llvm::raw_string_ostream os(pchName);
       os << ".pch" << i-1;
       os.flush();
-
+      
       serialBufNames.push_back(pchName);
 
       OwningPtr<ExternalASTSource> Reader;
 
-      Reader.reset(createASTReader(*Clang, pchName, bufs, serialBufNames,
+      Reader.reset(createASTReader(*Clang, pchName, bufs, serialBufNames, 
         Clang->getASTConsumer().GetASTDeserializationListener()));
       if (!Reader)
         return 0;
       Clang->setModuleManager(static_cast<ASTReader*>(Reader.get()));
       Clang->getASTContext().setExternalSource(Reader);
     }
-
+    
     if (!Clang->InitializeSourceManager(InputFile))
       return 0;
 
@@ -196,7 +196,7 @@ ChainedIncludesSource::FindExternalVisibleDeclsByName(const DeclContext *DC,
                                                       DeclarationName Name) {
   return getFinalReader().FindExternalVisibleDeclsByName(DC, Name);
 }
-ExternalLoadResult
+ExternalLoadResult 
 ChainedIncludesSource::FindExternalLexicalDecls(const DeclContext *DC,
                                       bool (*isKindWeWant)(Decl::Kind),
                                       SmallVectorImpl<Decl*> &Result) {

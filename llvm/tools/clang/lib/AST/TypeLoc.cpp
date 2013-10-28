@@ -41,12 +41,30 @@ SourceRange TypeLoc::getLocalSourceRangeImpl(TypeLoc TL) {
 }
 
 namespace {
+  class TypeAligner : public TypeLocVisitor<TypeAligner, unsigned> {
+  public:
+#define ABSTRACT_TYPELOC(CLASS, PARENT)
+#define TYPELOC(CLASS, PARENT) \
+    unsigned Visit##CLASS##TypeLoc(CLASS##TypeLoc TyLoc) { \
+      return TyLoc.getLocalDataAlignment(); \
+    }
+#include "clang/AST/TypeLocNodes.def"
+  };
+}
+
+/// \brief Returns the alignment of the type source info data block.
+unsigned TypeLoc::getLocalAlignmentForType(QualType Ty) {
+  if (Ty.isNull()) return 1;
+  return TypeAligner().Visit(TypeLoc(Ty, 0));
+}
+
+namespace {
   class TypeSizer : public TypeLocVisitor<TypeSizer, unsigned> {
   public:
 #define ABSTRACT_TYPELOC(CLASS, PARENT)
 #define TYPELOC(CLASS, PARENT) \
     unsigned Visit##CLASS##TypeLoc(CLASS##TypeLoc TyLoc) { \
-      return TyLoc.getFullDataSize(); \
+      return TyLoc.getLocalDataSize(); \
     }
 #include "clang/AST/TypeLocNodes.def"
   };
@@ -54,8 +72,18 @@ namespace {
 
 /// \brief Returns the size of the type source info data block.
 unsigned TypeLoc::getFullDataSizeForType(QualType Ty) {
-  if (Ty.isNull()) return 0;
-  return TypeSizer().Visit(TypeLoc(Ty, 0));
+  unsigned Total = 0;
+  TypeLoc TyLoc(Ty, 0);
+  unsigned MaxAlign = 1;
+  while (!TyLoc.isNull()) {
+    unsigned Align = getLocalAlignmentForType(TyLoc.getType());
+    MaxAlign = std::max(Align, MaxAlign);
+    Total = llvm::RoundUpToAlignment(Total, Align);
+    Total += TypeSizer().Visit(TyLoc);
+    TyLoc = TyLoc.getNextTypeLoc();
+  }
+  Total = llvm::RoundUpToAlignment(Total, MaxAlign);
+  return Total;
 }
 
 namespace {
@@ -79,7 +107,7 @@ TypeLoc TypeLoc::getNextTypeLocImpl(TypeLoc TL) {
 /// \brief Initializes a type location, and all of its children
 /// recursively, as if the entire tree had been written in the
 /// given location.
-void TypeLoc::initializeImpl(ASTContext &Context, TypeLoc TL,
+void TypeLoc::initializeImpl(ASTContext &Context, TypeLoc TL, 
                              SourceLocation Loc) {
   while (true) {
     switch (TL.getTypeLocClass()) {
@@ -252,7 +280,7 @@ TypeSpecifierType BuiltinTypeLoc::getWrittenTypeSpec() const {
   case BuiltinType::LongDouble:
     llvm_unreachable("Builtin type needs extra local data!");
     // Fall through, if the impossible happens.
-
+      
   case BuiltinType::NullPtr:
   case BuiltinType::Overload:
   case BuiltinType::Dependent:
@@ -284,7 +312,7 @@ TypeLoc TypeLoc::IgnoreParensImpl(TypeLoc TL) {
   return TL;
 }
 
-void ElaboratedTypeLoc::initializeLocal(ASTContext &Context,
+void ElaboratedTypeLoc::initializeLocal(ASTContext &Context, 
                                         SourceLocation Loc) {
   setElaboratedKeywordLoc(Loc);
   NestedNameSpecifierLocBuilder Builder;
@@ -292,7 +320,7 @@ void ElaboratedTypeLoc::initializeLocal(ASTContext &Context,
   setQualifierLoc(Builder.getWithLocInContext(Context));
 }
 
-void DependentNameTypeLoc::initializeLocal(ASTContext &Context,
+void DependentNameTypeLoc::initializeLocal(ASTContext &Context, 
                                            SourceLocation Loc) {
   setElaboratedKeywordLoc(Loc);
   NestedNameSpecifierLocBuilder Builder;
@@ -321,44 +349,45 @@ DependentTemplateSpecializationTypeLoc::initializeLocal(ASTContext &Context,
                                                    getArgInfos(), Loc);
 }
 
-void TemplateSpecializationTypeLoc::initializeArgLocs(ASTContext &Context,
+void TemplateSpecializationTypeLoc::initializeArgLocs(ASTContext &Context, 
                                                       unsigned NumArgs,
                                                   const TemplateArgument *Args,
                                               TemplateArgumentLocInfo *ArgInfos,
                                                       SourceLocation Loc) {
   for (unsigned i = 0, e = NumArgs; i != e; ++i) {
     switch (Args[i].getKind()) {
-    case TemplateArgument::Null:
-    case TemplateArgument::Declaration:
-    case TemplateArgument::Integral:
-    case TemplateArgument::NullPtr:
+    case TemplateArgument::Null: 
       llvm_unreachable("Impossible TemplateArgument");
+
+    case TemplateArgument::Integral:
+    case TemplateArgument::Declaration:
+    case TemplateArgument::NullPtr:
+      ArgInfos[i] = TemplateArgumentLocInfo();
+      break;
 
     case TemplateArgument::Expression:
       ArgInfos[i] = TemplateArgumentLocInfo(Args[i].getAsExpr());
       break;
-
+      
     case TemplateArgument::Type:
       ArgInfos[i] = TemplateArgumentLocInfo(
-                          Context.getTrivialTypeSourceInfo(Args[i].getAsType(),
+                          Context.getTrivialTypeSourceInfo(Args[i].getAsType(), 
                                                            Loc));
       break;
 
     case TemplateArgument::Template:
     case TemplateArgument::TemplateExpansion: {
       NestedNameSpecifierLocBuilder Builder;
-      TemplateName Template = Args[i].getAsTemplate();
+      TemplateName Template = Args[i].getAsTemplateOrTemplatePattern();
       if (DependentTemplateName *DTN = Template.getAsDependentTemplateName())
         Builder.MakeTrivial(Context, DTN->getQualifier(), Loc);
       else if (QualifiedTemplateName *QTN = Template.getAsQualifiedTemplateName())
         Builder.MakeTrivial(Context, QTN->getQualifier(), Loc);
 
       ArgInfos[i] = TemplateArgumentLocInfo(
-                                           Builder.getWithLocInContext(Context),
-                                            Loc,
-                                Args[i].getKind() == TemplateArgument::Template
-                                            ? SourceLocation()
-                                            : Loc);
+          Builder.getWithLocInContext(Context), Loc,
+          Args[i].getKind() == TemplateArgument::Template ? SourceLocation()
+                                                          : Loc);
       break;
     }
 

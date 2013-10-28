@@ -331,7 +331,7 @@ NSAPI::getNSNumberFactoryMethodKind(QualType T) const {
     return NSAPI::NSNumberWithDouble;
   case BuiltinType::Bool:
     return NSAPI::NSNumberWithBool;
-
+    
   case BuiltinType::Void:
   case BuiltinType::WChar_U:
   case BuiltinType::WChar_S:
@@ -362,7 +362,7 @@ NSAPI::getNSNumberFactoryMethodKind(QualType T) const {
   case BuiltinType::BuiltinFn:
     break;
   }
-
+  
   return None;
 }
 

@@ -54,6 +54,7 @@ add_clang_library(clangCodeGen
   CodeGenTypes.cpp
   ItaniumCXXABI.cpp
   MicrosoftCXXABI.cpp
+  MicrosoftVBTables.cpp
   ModuleBuilder.cpp
   TargetInfo.cpp
   # +===== Scout ============================================================+

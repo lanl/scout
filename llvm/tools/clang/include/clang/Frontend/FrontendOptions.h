@@ -26,7 +26,6 @@ namespace frontend {
   enum ActionKind {
     ASTDeclList,            ///< Parse ASTs and list Decl nodes.
     ASTDump,                ///< Parse ASTs and dump them.
-    ASTDumpXML,             ///< Parse ASTs and dump them in XML.
     ASTPrint,               ///< Parse ASTs and print them.
     ASTView,                ///< Parse ASTs and view them in Graphviz.
     DumpRawTokens,          ///< Dump out raw tokens.
@@ -72,13 +71,10 @@ enum InputKind {
   IK_OpenCL,
   IK_CUDA,
   IK_AST,
-  IK_LLVM_IR,
-  // +===== Scout ============================================================+
-  IK_Scout
-  // +========================================================================+
+  IK_LLVM_IR
 };
 
-
+  
 /// \brief An input file for the front end.
 class FrontendInputFile {
   /// \brief The file name, or "-" to read from standard input.
@@ -145,10 +141,8 @@ public:
                                            ///< global module index if available.
   unsigned GenerateGlobalModuleIndex : 1;  ///< Whether we can generate the
                                            ///< global module index if needed.
-
-  // +===== Scout ============================================================+
-  unsigned ViewAST : 1;
-  // +========================================================================+
+  unsigned ASTDumpLookups : 1;             ///< Whether we include lookup table
+                                           ///< dumps in AST dumps.
 
   CodeCompleteOptions CodeCompleteOpts;
 
@@ -164,7 +158,30 @@ public:
     /// \brief Enable migration to modern ObjC literals.
     ObjCMT_Literals = 0x1,
     /// \brief Enable migration to modern ObjC subscripting.
-    ObjCMT_Subscripting = 0x2
+    ObjCMT_Subscripting = 0x2,
+    /// \brief Enable migration to modern ObjC readonly property.
+    ObjCMT_ReadonlyProperty = 0x4,
+    /// \brief Enable migration to modern ObjC readwrite property.
+    ObjCMT_ReadwriteProperty = 0x8,
+    /// \brief Enable migration to modern ObjC property.
+    ObjCMT_Property = (ObjCMT_ReadonlyProperty | ObjCMT_ReadwriteProperty),
+    /// \brief Enable annotation of ObjCMethods of all kinds.
+    ObjCMT_Annotation = 0x10,
+    /// \brief Enable migration of ObjC methods to 'instancetype'.
+    ObjCMT_Instancetype = 0x20,
+    /// \brief Enable migration to NS_ENUM/NS_OPTIONS macros.
+    ObjCMT_NsMacros = 0x40,
+    /// \brief Enable migration to add conforming protocols.
+    ObjCMT_ProtocolConformance = 0x80,
+    /// \brief prefer 'atomic' property over 'nonatomic'.
+    ObjCMT_AtomicProperty = 0x100,
+    ObjCMT_MigrateDecls = (ObjCMT_ReadonlyProperty | ObjCMT_ReadwriteProperty |
+                           ObjCMT_Annotation | ObjCMT_Instancetype |
+                           ObjCMT_NsMacros | ObjCMT_ProtocolConformance),
+    ObjCMT_MigrateAll = (ObjCMT_Literals | ObjCMT_Subscripting |
+                         ObjCMT_ReadonlyProperty | ObjCMT_ReadwriteProperty |
+                         ObjCMT_Annotation | ObjCMT_Instancetype |
+                         ObjCMT_NsMacros | ObjCMT_ProtocolConformance)
   };
   unsigned ObjCMTAction;
 
@@ -214,7 +231,7 @@ public:
   /// \brief File name of the file that will provide record layouts
   /// (in the format produced by -fdump-record-layouts).
   std::string OverrideRecordLayoutsFile;
-
+  
 public:
   FrontendOptions() :
     DisableFree(false), RelocatablePCH(false), ShowHelp(false),
@@ -222,8 +239,7 @@ public:
     FixWhatYouCan(false), FixOnlyWarnings(false), FixAndRecompile(false),
     FixToTemporaries(false), ARCMTMigrateEmitARCErrors(false),
     SkipFunctionBodies(false), UseGlobalModuleIndex(true),
-    GenerateGlobalModuleIndex(true),
-    ViewAST(false), // +===== Scout ==========================================+
+    GenerateGlobalModuleIndex(true), ASTDumpLookups(false),
     ARCMTAction(ARCMT_None), ObjCMTAction(ObjCMT_None),
     ProgramAction(frontend::ParseSyntaxOnly)
   {}

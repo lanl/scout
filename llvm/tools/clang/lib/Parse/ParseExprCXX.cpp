@@ -10,7 +10,7 @@
 // This file implements the Expression parsing implementation for C++.
 //
 //===----------------------------------------------------------------------===//
-
+#include "clang/AST/DeclTemplate.h"
 #include "clang/Parse/Parser.h"
 #include "RAIIObjectsForParser.h"
 #include "clang/Basic/PrettyStackTrace.h"
@@ -20,6 +20,7 @@
 #include "clang/Sema/ParsedTemplate.h"
 #include "clang/Sema/Scope.h"
 #include "llvm/Support/ErrorHandling.h"
+
 
 using namespace clang;
 
@@ -193,6 +194,13 @@ bool Parser::ParseOptionalCXXScopeSpecifier(CXXScopeSpec &SS,
                                                  SS);
     ConsumeToken();
     return false;
+  }
+
+  if (Tok.is(tok::annot_template_id)) {
+    // If the current token is an annotated template id, it may already have
+    // a scope specifier. Restore it.
+    TemplateIdAnnotation *TemplateId = takeTemplateIdAnnotation(Tok);
+    SS = TemplateId->SS;
   }
 
   if (LastII)
@@ -465,8 +473,8 @@ bool Parser::ParseOptionalCXXScopeSpecifier(CXXScopeSpec &SS,
                                     TemplateName, false))
           return true;
         continue;
-      } 
-      
+      }
+
       if (MemberOfUnknownSpecialization && (ObjectType || SS.isSet()) && 
           (IsTypename || IsTemplateArgumentList(1))) {
         // We have something like t::getAs<T>, where getAs is a 
@@ -901,12 +909,16 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
   PrettyStackTraceLoc CrashInfo(PP.getSourceManager(), LambdaBeginLoc,
                                 "lambda expression parsing");
 
+ 
+
   // FIXME: Call into Actions to add any init-capture declarations to the
   // scope while parsing the lambda-declarator and compound-statement.
 
   // Parse lambda-declarator[opt].
   DeclSpec DS(AttrFactory);
   Declarator D(DS, Declarator::LambdaExprContext);
+  TemplateParameterDepthRAII CurTemplateDepthTracker(TemplateParameterDepth);
+  Actions.PushLambdaScope();    
 
   if (Tok.is(tok::l_paren)) {
     ParseScope PrototypeScope(this,
@@ -924,9 +936,15 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
     SmallVector<DeclaratorChunk::ParamInfo, 16> ParamInfo;
     SourceLocation EllipsisLoc;
 
-    if (Tok.isNot(tok::r_paren))
+    
+    if (Tok.isNot(tok::r_paren)) {
+      Actions.RecordParsingTemplateParameterDepth(TemplateParameterDepth);
       ParseParameterDeclarationClause(D, Attr, ParamInfo, EllipsisLoc);
-
+      // For a generic lambda, each 'auto' within the parameter declaration 
+      // clause creates a template type parameter, so increment the depth.
+      if (Actions.getCurGenericLambda()) 
+        ++CurTemplateDepthTracker;
+    }
     T.consumeClose();
     SourceLocation RParenLoc = T.getCloseLocation();
     DeclEndLoc = RParenLoc;
@@ -2651,6 +2669,7 @@ static UnaryTypeTrait UnaryTypeTraitFromTokKind(tok::TokenKind kind) {
   case tok::kw___is_reference:               return UTT_IsReference;
   case tok::kw___is_rvalue_reference:        return UTT_IsRvalueReference;
   case tok::kw___is_scalar:                  return UTT_IsScalar;
+  case tok::kw___is_sealed:                  return UTT_IsSealed;
   case tok::kw___is_signed:                  return UTT_IsSigned;
   case tok::kw___is_standard_layout:         return UTT_IsStandardLayout;
   case tok::kw___is_trivial:                 return UTT_IsTrivial;

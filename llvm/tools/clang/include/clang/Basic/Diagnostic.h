@@ -21,7 +21,6 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/Support/type_traits.h"
 #include <list>
 #include <vector>
@@ -490,7 +489,14 @@ public:
       FatalErrorOccurred = true;
     LastDiagLevel = DiagnosticIDs::Ignored;
   }
-  
+
+  /// \brief Determine whether the previous diagnostic was ignored. This can
+  /// be used by clients that want to determine whether notes attached to a
+  /// diagnostic will be suppressed.
+  bool isLastDiagnosticIgnored() const {
+    return LastDiagLevel == DiagnosticIDs::Ignored;
+  }
+
   /// \brief Controls whether otherwise-unmapped extension diagnostics are
   /// mapped onto ignore/warning/error. 
   ///
@@ -982,6 +988,10 @@ public:
 
   bool hasMaxRanges() const {
     return NumRanges == DiagnosticsEngine::MaxRanges;
+  }
+
+  bool hasMaxFixItHints() const {
+    return NumFixits == DiagnosticsEngine::MaxFixItHints;
   }
 };
 
