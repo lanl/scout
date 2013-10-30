@@ -76,12 +76,15 @@ namespace clang {
 
   class MeshDecl;
 
-  /// MeshFieldDecl - An instance of this class is created by Sema::ActOnField to
-  /// represent a member of a mesh.
+
+  // ----- MeshFieldDecl
+  /// An instance of this class is created by Sema::ActOnField to represent
+  // a single member of a scout mesh.  Similar to records in C/C++ but
+  // we use our own type for flexibility from a DSL point of view...
   class MeshFieldDecl : public DeclaratorDecl {
+
     // FIXME: This can be packed into the bitfields in Decl.
     bool Mutable : 1;
-
 
     // Each field can be placed at various locations within the
     // topology of the mesh.  We use the following bitfields to
@@ -91,7 +94,6 @@ namespace clang {
     bool EdgeLocated   : 1;
     bool FaceLocated   : 1;
     bool BuiltInField  : 1;
-
 
     mutable unsigned CachedFieldIndex : 26;
 
@@ -268,18 +270,20 @@ namespace clang {
     }
   };
 
-  // MeshDecl - This is a base class for all of our mesh decls.  Given the
-  // syntax similarities we have with structs in C/C++ we follow a similar
+  // ----- MeshDecl
+  // This is the base class for all of our mesh decls.  Given the syntax
+  // similarities we have with structs in C/C++ we follow a similar
   // path as that used in TagDecls and RecordDecls -- however, we do not
   // inherit from this "family" as we want to enforce separation/uniqueness
   // in our mesh types (the details relate to the nuances of tree walkers
   // layout, debugging and flexible code generation choices at points down
-  // the road).  Although the details are not yet clear, it appears to be
-  // important (for our sanity) to follow a similar inheritance path within
-  // types, decls, typelocs, etc. within the implementation -- primarily we
-  // have found it cleans up the code and appears to support a more
-  // full-featured path (at least based on our previous implementation
-  // patterns...).
+  // the road -- and also match our push for domain-specific customizations
+  // that differ from the "generic" handling in C/C++).
+  //
+  // Based on past experience, it is important (for our sanity) to follow a
+  // similar path within types, decls, typelocs, etc. within the scout
+  // implementation -- primarily we have found it cleans up the code and
+  // appears to support a more flexible path...
   class MeshDecl
     : public TypeDecl, public DeclContext, public Redeclarable<MeshDecl> {
 
@@ -336,6 +340,10 @@ namespace clang {
     /// This option is only enabled when modules are enabled.
     bool MayHaveOutOfDateDef : 1;
 
+    /// Has the full definition of this type been required by a use somewhere in
+    /// the TU.
+    bool IsCompleteDefinitionRequired : 1;
+
     mutable bool LoadedFieldsFromExternalStorage : 1;
 
   private:
@@ -370,6 +378,7 @@ namespace clang {
         TypedefNameDeclOrQualifier((TypedefNameDecl*) 0) {
       MeshDeclKind                    = TK;
       IsCompleteDefinition            = false;
+      IsCompleteDefinitionRequired    = false;
       IsBeingDefined                  = false;
       IsEmbeddedInDeclarator          = false;
       IsFreeStanding                  = false;
@@ -379,7 +388,7 @@ namespace clang {
       HasFaceData                     = false;
       HasEdgeData                     = false;
       LoadedFieldsFromExternalStorage = false;
-      setPreviousDeclaration(PrevDecl);
+      setPreviousDecl(PrevDecl);
     }
 
     typedef Redeclarable<MeshDecl> redeclarable_base;
@@ -403,6 +412,7 @@ namespace clang {
     using   redeclarable_base::redecls_end;
     using   redeclarable_base::getPreviousDecl;
     using   redeclarable_base::getMostRecentDecl;
+    using   redeclarable_base::isFirstDecl;
 
     SourceLocation getRBraceLoc() const { return RBraceLoc; }
     void setRBraceLoc(SourceLocation L) { RBraceLoc = L; }
@@ -431,6 +441,12 @@ namespace clang {
     /// fully specified.
     bool isCompleteDefinition() const {
       return IsCompleteDefinition;
+    }
+
+    /// \brief Return true if this complete decl is
+    /// required to be complete for some existing use.
+    bool isCompleteDefinitionRequired() const {
+      return IsCompleteDefinitionRequired;
     }
 
     /// isBeingDefined - Return true if this decl is currently being defined.

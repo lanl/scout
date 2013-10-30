@@ -70,7 +70,7 @@ public:
     if (Previous)
       Previous->SelectorRead(ID, Sel);
   }
-  virtual void MacroDefinitionRead(serialization::PreprocessedEntityID PPID, 
+  virtual void MacroDefinitionRead(serialization::PreprocessedEntityID PPID,
                                    MacroDefinition *MD) {
     if (Previous)
       Previous->MacroDefinitionRead(PPID, MD);
@@ -146,7 +146,7 @@ ASTConsumer* FrontendAction::CreateWrappedASTConsumer(CompilerInstance &CI,
   std::vector<ASTConsumer*> Consumers(1, Consumer);
 
   for (size_t i = 0, e = CI.getFrontendOpts().AddPluginActions.size();
-       i != e; ++i) { 
+       i != e; ++i) {
     // This is O(|plugins| * |add_plugins|), but since both numbers are
     // way below 50 in practice, that's ok.
     for (FrontendPluginRegistry::iterator
@@ -241,7 +241,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
   }
   // +===== Scout ============================================================+
   // Implicity include the Scout headers
-  if(CI.getLangOpts().Scout){
+  if (CI.getLangOpts().Scout) {
     CI.getPreprocessorOpts().Includes.push_back("scout/scout.sch");
     CI.getPreprocessorOpts().Includes.push_back("scout/Runtime/scout.h");
   }
@@ -304,7 +304,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
       goto failure;
 
     CI.getASTContext().setASTMutationListener(Consumer->GetASTMutationListener());
-    
+
     if (!CI.getPreprocessorOpts().ChainedIncludes.empty()) {
       // Convert headers to PCH and chain them.
       OwningPtr<ExternalASTSource> source;
@@ -350,14 +350,14 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
 
   // If there is a layout overrides file, attach an external AST source that
   // provides the layouts from that file.
-  if (!CI.getFrontendOpts().OverrideRecordLayoutsFile.empty() && 
+  if (!CI.getFrontendOpts().OverrideRecordLayoutsFile.empty() &&
       CI.hasASTContext() && !CI.getASTContext().getExternalSource()) {
-    OwningPtr<ExternalASTSource> 
+    OwningPtr<ExternalASTSource>
       Override(new LayoutOverrideSource(
                      CI.getFrontendOpts().OverrideRecordLayoutsFile));
     CI.getASTContext().setExternalSource(Override);
   }
-  
+
   return true;
 
   // If we failed, reset state since the client will not end up calling the
@@ -504,18 +504,10 @@ void ASTFrontendAction::ExecuteAction() {
     // Parse the file to AST, registering this consumer as the AST consumer.
     ParseAST(CI.getPreprocessor(), Consumer,
              CI.getASTContext());
-  } else if(CI.getFrontendOpts().ViewAST) {
-    // Use AST viewer if the front-end options -no-rewrite -Xclang -view-ast
-    // were passed
-    ASTViewScout ASTViewer(CI.getSema());
-
-    ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
-             false, &ASTViewer);
   } else {
     // original clang call to ParseAST
     ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
              CI.getFrontendOpts().SkipFunctionBodies);
-
   }
   // +========================================================================+
 }

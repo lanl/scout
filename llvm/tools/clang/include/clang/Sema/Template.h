@@ -23,7 +23,7 @@ namespace clang {
   /// \brief Data structure that captures multiple levels of template argument
   /// lists for use in template instantiation.
   ///
-  /// Multiple levels of template arguments occur when instantiating the 
+  /// Multiple levels of template arguments occur when instantiating the
   /// definitions of member templates. For example:
   ///
   /// \code
@@ -40,47 +40,47 @@ namespace clang {
   /// list will contain a template argument list (int) at depth 0 and a
   /// template argument list (17) at depth 1.
   class MultiLevelTemplateArgumentList {
-    /// \brief The template argument list at a certain template depth 
+    /// \brief The template argument list at a certain template depth
     typedef ArrayRef<TemplateArgument> ArgList;
 
     /// \brief The template argument lists, stored from the innermost template
     /// argument list (first) to the outermost template argument list (last).
     SmallVector<ArgList, 4> TemplateArgumentLists;
-    
+
   public:
     /// \brief Construct an empty set of template argument lists.
     MultiLevelTemplateArgumentList() { }
-    
+
     /// \brief Construct a single-level template argument list.
-    explicit 
+    explicit
     MultiLevelTemplateArgumentList(const TemplateArgumentList &TemplateArgs) {
       addOuterTemplateArguments(&TemplateArgs);
     }
-    
+
     /// \brief Determine the number of levels in this template argument
     /// list.
     unsigned getNumLevels() const { return TemplateArgumentLists.size(); }
-    
+
     /// \brief Retrieve the template argument at a given depth and index.
     const TemplateArgument &operator()(unsigned Depth, unsigned Index) const {
       assert(Depth < TemplateArgumentLists.size());
       assert(Index < TemplateArgumentLists[getNumLevels() - Depth - 1].size());
       return TemplateArgumentLists[getNumLevels() - Depth - 1][Index];
     }
-    
+
     /// \brief Determine whether there is a non-NULL template argument at the
     /// given depth and index.
     ///
     /// There must exist a template argument list at the given depth.
     bool hasTemplateArgument(unsigned Depth, unsigned Index) const {
       assert(Depth < TemplateArgumentLists.size());
-      
+
       if (Index >= TemplateArgumentLists[getNumLevels() - Depth - 1].size())
         return false;
-      
+
       return !(*this)(Depth, Index).isNull();
     }
-    
+
     /// \brief Clear out a specific template argument.
     void setArgument(unsigned Depth, unsigned Index,
                      TemplateArgument Arg) {
@@ -90,8 +90,8 @@ namespace clang {
                 TemplateArgumentLists[getNumLevels() - Depth - 1][Index])
         = Arg;
     }
-    
-    /// \brief Add a new outermost level to the multi-level template argument 
+
+    /// \brief Add a new outermost level to the multi-level template argument
     /// list.
     void addOuterTemplateArguments(const TemplateArgumentList *TemplateArgs) {
       addOuterTemplateArguments(ArgList(TemplateArgs->data(),
@@ -105,20 +105,20 @@ namespace clang {
     }
 
     /// \brief Retrieve the innermost template argument list.
-    const ArgList &getInnermost() const { 
-      return TemplateArgumentLists.front(); 
+    const ArgList &getInnermost() const {
+      return TemplateArgumentLists.front();
     }
   };
-  
+
   /// \brief The context in which partial ordering of function templates occurs.
   enum TPOC {
     /// \brief Partial ordering of function templates for a function call.
     TPOC_Call,
-    /// \brief Partial ordering of function templates for a call to a 
+    /// \brief Partial ordering of function templates for a call to a
     /// conversion function.
     TPOC_Conversion,
     /// \brief Partial ordering of function templates in other contexts, e.g.,
-    /// taking the address of a function template or matching a function 
+    /// taking the address of a function template or matching a function
     /// template specialization to a function template.
     TPOC_Other
   };
@@ -179,7 +179,7 @@ namespace clang {
   public:
     /// \brief A set of declarations.
     typedef SmallVector<Decl *, 4> DeclArgumentPack;
-    
+
   private:
     /// \brief Reference to the semantic analysis that is performing
     /// this template instantiation.
@@ -211,7 +211,7 @@ namespace clang {
 
     /// \brief The set of argument packs we've allocated.
     SmallVector<DeclArgumentPack *, 1> ArgumentPacks;
-    
+
     /// \brief The outer scope, which contains local variable
     /// definitions from some other instantiation (that may not be
     /// relevant to this particular scope).
@@ -223,17 +223,17 @@ namespace clang {
     /// \brief Whether to combine this scope with the outer scope, such that
     /// lookup will search our outer scope.
     bool CombineWithOuterScope;
-    
+
     /// \brief If non-NULL, the template parameter pack that has been
     /// partially substituted per C++0x [temp.arg.explicit]p9.
     NamedDecl *PartiallySubstitutedPack;
-    
+
     /// \brief If \c PartiallySubstitutedPack is non-null, the set of
     /// explicitly-specified template arguments in that pack.
-    const TemplateArgument *ArgsInPartiallySubstitutedPack;    
-    
-    /// \brief If \c PartiallySubstitutedPack, the number of 
-    /// explicitly-specified template arguments in 
+    const TemplateArgument *ArgsInPartiallySubstitutedPack;
+
+    /// \brief If \c PartiallySubstitutedPack, the number of
+    /// explicitly-specified template arguments in
     /// ArgsInPartiallySubstitutedPack.
     unsigned NumArgsInPartiallySubstitutedPack;
 
@@ -254,17 +254,17 @@ namespace clang {
     ~LocalInstantiationScope() {
       Exit();
     }
-    
+
     const Sema &getSema() const { return SemaRef; }
 
     /// \brief Exit this local instantiation scope early.
     void Exit() {
       if (Exited)
         return;
-      
+
       for (unsigned I = 0, N = ArgumentPacks.size(); I != N; ++I)
         delete ArgumentPacks[I];
-        
+
       SemaRef.CurrentInstantiationScope = Outer;
       Exited = true;
     }
@@ -327,9 +327,9 @@ namespace clang {
     void InstantiatedLocal(const Decl *D, Decl *Inst);
     void InstantiatedLocalPackArg(const Decl *D, Decl *Inst);
     void MakeInstantiatedLocalArgPack(const Decl *D);
-    
+
     /// \brief Note that the given parameter pack has been partially substituted
-    /// via explicit specification of template arguments 
+    /// via explicit specification of template arguments
     /// (C++0x [temp.arg.explicit]p9).
     ///
     /// \param Pack The parameter pack, which will always be a template
@@ -340,7 +340,7 @@ namespace clang {
     ///
     /// \param NumExplicitArgs The number of explicitly-specified template
     /// arguments provided for this parameter pack.
-    void SetPartiallySubstitutedPack(NamedDecl *Pack, 
+    void SetPartiallySubstitutedPack(NamedDecl *Pack,
                                      const TemplateArgument *ExplicitArgs,
                                      unsigned NumExplicitArgs);
 
@@ -362,7 +362,7 @@ namespace clang {
   };
 
   class TemplateDeclInstantiator
-    : public DeclVisitor<TemplateDeclInstantiator, Decl *> 
+    : public DeclVisitor<TemplateDeclInstantiator, Decl *>
   {
     Sema &SemaRef;
     Sema::ArgumentPackSubstitutionIndexRAII SubstIndex;
@@ -442,7 +442,7 @@ namespace clang {
 
     LocalInstantiationScope *getStartingScope() const { return StartingScope; }
 
-    typedef 
+    typedef
       SmallVectorImpl<std::pair<ClassTemplateDecl *,
                                      ClassTemplatePartialSpecializationDecl *> >
         ::iterator
@@ -490,6 +490,17 @@ namespace clang {
     bool SubstQualifier(const TagDecl *OldDecl,
                         TagDecl *NewDecl);
 
+    // +===== Scout ==========================================================+
+    bool SubstQualifier(const UniformMeshDecl *OldDecl,
+                        UniformMeshDecl *NewDecl);
+    bool SubstQualifier(const RectilinearMeshDecl *OldDecl,
+                        RectilinearMeshDecl *NewDecl);
+    bool SubstQualifier(const StructuredMeshDecl *OldDecl,
+                        StructuredMeshDecl *NewDecl);
+    bool SubstQualifier(const UnstructuredMeshDecl *OldDecl,
+                        UnstructuredMeshDecl *NewDecl);
+    // +======================================================================+
+
     Decl *VisitVarTemplateSpecializationDecl(
         VarTemplateDecl *VarTemplate, VarDecl *FromVar, void *InsertPos,
         const TemplateArgumentListInfo &TemplateArgsInfo,
@@ -505,7 +516,7 @@ namespace clang {
         VarTemplateDecl *VarTemplate,
         VarTemplatePartialSpecializationDecl *PartialSpec);
     void InstantiateEnumDefinition(EnumDecl *Enum, EnumDecl *Pattern);
-  };  
+  };
 }
 
 #endif // LLVM_CLANG_SEMA_TEMPLATE_H

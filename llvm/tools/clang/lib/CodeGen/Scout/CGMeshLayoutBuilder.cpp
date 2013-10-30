@@ -36,7 +36,7 @@ namespace {
   class CGMeshLayoutBuilder {
    public:
     /// MeshFieldTypes - Holds the LLVM types that the mesh is created from.
-    /// 
+    ///
     SmallVector<llvm::Type *, 16> MeshFieldTypes;
 
     /// FieldInfo - Holds a field and its corresponding LLVM field number.
@@ -60,7 +60,7 @@ namespace {
 
       bool isValid() const { return !NonVirtualSize.isZero(); }
       void invalidate() { NonVirtualSize = CharUnits::Zero(); }
-  
+
     } LastLaidOutBase;
 
     /// Alignment - Contains the alignment of the MeshDecl.
@@ -95,7 +95,7 @@ namespace {
 
     /// elements.
     llvm::Type *getByteArrayType(CharUnits NumBytes);
-  
+
     /// AppendBytes - Append a given number of bytes to the record.
     void AppendBytes(CharUnits numBytes);
 
@@ -122,7 +122,7 @@ namespace {
 void CGMeshLayoutBuilder::Layout(const MeshDecl *D) {
   Alignment = Types.getContext().getASTMeshLayout(D).getAlignment();
   Packed = D->hasAttr<PackedAttr>();
-  
+
   if (LayoutFields(D))
     return;
 
@@ -302,7 +302,7 @@ bool CGMeshLayoutBuilder::LayoutFields(const MeshDecl *D) {
 
   unsigned FieldNo = 0;
   //const MeshFieldDecl *LastFD = 0;
-  
+
   for (MeshDecl::field_iterator FI = D->field_begin(), FE = D->field_end();
        FI != FE; ++FI, ++FieldNo) {
     MeshFieldDecl *FD = *FI;

@@ -1,3 +1,55 @@
+/*
+ *
+ * ###########################################################################
+ *
+ * Copyright (c) 2013, Los Alamos National Security, LLC.
+ * All rights reserved.
+ *
+ *  Copyright 2013. Los Alamos National Security, LLC. This software was
+ *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
+ *  Alamos National Laboratory (LANL), which is operated by Los Alamos
+ *  National Security, LLC for the U.S. Department of Energy. The
+ *  U.S. Government has rights to use, reproduce, and distribute this
+ *  software.  NEITHER THE GOVERNMENT NOR LOS ALAMOS NATIONAL SECURITY,
+ *  LLC MAKES ANY WARRANTY, EXPRESS OR IMPLIED, OR ASSUMES ANY LIABILITY
+ *  FOR THE USE OF THIS SOFTWARE.  If software is modified to produce
+ *  derivative works, such modified software should be clearly marked,
+ *  so as not to confuse it with the version available from LANL.
+ *
+ *  Additionally, redistribution and use in source and binary forms,
+ *  with or without modification, are permitted provided that the
+ *  following conditions are met:
+ *
+ *    * Redistributions of source code must retain the above copyright
+ *      notice, this list of conditions and the following disclaimer.
+ *
+ *    * Redistributions in binary form must reproduce the above
+ *      copyright notice, this list of conditions and the following
+ *      disclaimer in the documentation and/or other materials provided
+ *      with the distribution.
+ *
+ *    * Neither the name of Los Alamos National Security, LLC, Los
+ *      Alamos National Laboratory, LANL, the U.S. Government, nor the
+ *      names of its contributors may be used to endorse or promote
+ *      products derived from this software without specific prior
+ *      written permission.
+ *
+ *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
+ *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ *  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ *  DISCLAIMED. IN NO EVENT SHALL LOS ALAMOS NATIONAL SECURITY, LLC OR
+ *  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ *  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ *  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ *  USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ *  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ *  SUCH DAMAGE.
+ *
+ */
+
 #include "clang/AST/ASTContext.h"
 #include "CXXABI.h"
 #include "clang/AST/ASTMutationListener.h"
@@ -29,35 +81,35 @@ using namespace clang;
 
 // ===== Mesh Declaration Types ===============================================
 
-/// getMeshDeclType - Return the unique reference to the type for the 
-/// specified mesh decl. 
+/// getMeshDeclType - Return the unique reference to the type for the
+/// specified mesh decl.
 QualType ASTContext::getMeshDeclType(const MeshDecl *Decl) const {
   assert(Decl);
-  // FIXME: What is the design on getMeshDeclType when it requires 
+  // FIXME: What is the design on getMeshDeclType when it requires
   // casting away const?  mutable?
   return getTypeDeclType(const_cast<MeshDecl*>(Decl));
 }
 
-// SC_TODO -- not sure we need these specialized... 
-QualType 
+// SC_TODO -- not sure we need these specialized...
+QualType
 ASTContext::getUniformMeshDeclType(const UniformMeshDecl *Decl) const {
   assert (Decl != 0);
   return getTypeDeclType(const_cast<UniformMeshDecl*>(Decl));
 }
 
-QualType 
+QualType
 ASTContext::getStructuredMeshDeclType(const StructuredMeshDecl *Decl) const {
   assert (Decl != 0);
   return getTypeDeclType(const_cast<StructuredMeshDecl*>(Decl));
 }
 
-QualType 
+QualType
 ASTContext::getRectilinearMeshDeclType(const RectilinearMeshDecl *Decl) const {
   assert (Decl != 0);
   return getTypeDeclType(const_cast<RectilinearMeshDecl*>(Decl));
 }
 
-QualType 
+QualType
 ASTContext::getUnstructuredMeshDeclType(const UnstructuredMeshDecl *Decl) const {
   assert (Decl != 0);
   return getTypeDeclType(const_cast<UnstructuredMeshDecl*>(Decl));
@@ -66,11 +118,11 @@ ASTContext::getUnstructuredMeshDeclType(const UnstructuredMeshDecl *Decl) const 
 
 // ===== Mesh Types ===========================================================
 
-QualType 
+QualType
 ASTContext::getUniformMeshType(const UniformMeshDecl *Decl) const {
   assert(Decl != 0);
 
-  if (Decl->TypeForDecl) 
+  if (Decl->TypeForDecl)
     return QualType(Decl->TypeForDecl, 0);
 
   UniformMeshType *newType;
@@ -80,13 +132,13 @@ ASTContext::getUniformMeshType(const UniformMeshDecl *Decl) const {
   return QualType(newType, 0);
 }
 
-QualType 
+QualType
 ASTContext::getStructuredMeshType(const StructuredMeshDecl *Decl) const {
   assert(Decl != 0);
 
-  if (Decl->TypeForDecl) 
+  if (Decl->TypeForDecl)
   	return QualType(Decl->TypeForDecl, 0);
-  
+
   StructuredMeshType *newType;
   newType = new (*this, TypeAlignment) StructuredMeshType(Decl);
   Decl->TypeForDecl = newType;
@@ -94,13 +146,13 @@ ASTContext::getStructuredMeshType(const StructuredMeshDecl *Decl) const {
   return QualType(newType, 0);
 }
 
-QualType 
+QualType
 ASTContext::getRectilinearMeshType(const RectilinearMeshDecl *Decl) const {
   assert(Decl != 0);
 
-  if (Decl->TypeForDecl) 
+  if (Decl->TypeForDecl)
     return QualType(Decl->TypeForDecl, 0);
-  
+
   RectilinearMeshType *newType;
   newType = new (*this, TypeAlignment) RectilinearMeshType(Decl);
   Decl->TypeForDecl = newType;
@@ -108,13 +160,13 @@ ASTContext::getRectilinearMeshType(const RectilinearMeshDecl *Decl) const {
   return QualType(newType, 0);
 }
 
-QualType 
+QualType
 ASTContext::getUnstructuredMeshType(const UnstructuredMeshDecl *Decl) const {
   assert(Decl != 0);
 
-  if (Decl->TypeForDecl) 
+  if (Decl->TypeForDecl)
   	return QualType(Decl->TypeForDecl, 0);
-  
+
   UnstructuredMeshType *newType;
   newType = new (*this, TypeAlignment) UnstructuredMeshType(Decl);
   Decl->TypeForDecl = newType;

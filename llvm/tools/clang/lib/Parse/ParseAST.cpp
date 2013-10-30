@@ -27,11 +27,6 @@
 #include "llvm/Support/CrashRecoveryContext.h"
 #include <cstdio>
 
-// +===== Scout ==============================================================+
-#include "clang/Parse/scout/ASTViewScout.h"
-// +==========================================================================+
-
-
 using namespace clang;
 
 namespace {
@@ -91,25 +86,16 @@ void clang::ParseAST(Preprocessor &PP, ASTConsumer *Consumer,
                      ASTContext &Ctx, bool PrintStats,
                      TranslationUnitKind TUKind,
                      CodeCompleteConsumer *CompletionConsumer,
-                     bool SkipFunctionBodies,
-                     // +===== Scout =========================================+
-                     ASTViewScout* ASTViewer
-                     // +=====================================================+
-                     )
-{
+                     bool SkipFunctionBodies) {
   OwningPtr<Sema> S(new Sema(PP, Ctx, *Consumer, TUKind, CompletionConsumer));
 
   // Recover resources if we crash before exiting this method.
   llvm::CrashRecoveryContextCleanupRegistrar<Sema> CleanupSema(S.get());
-  
+
   ParseAST(*S.get(), PrintStats, SkipFunctionBodies);
 }
 
-void clang::ParseAST(Sema &S, bool PrintStats, bool SkipFunctionBodies,
-                     // +===== Scout =========================================+
-                     ASTViewScout* ASTViewer
-                     // +=====================================================+
-                     ){
+void clang::ParseAST(Sema &S, bool PrintStats, bool SkipFunctionBodies) {
   // Collect global stats on Decls/Stmts (until we have a module streamer).
   if (PrintStats) {
     Decl::EnableStatistics();
@@ -152,18 +138,8 @@ void clang::ParseAST(Sema &S, bool PrintStats, bool SkipFunctionBodies,
       // If we got a null return and something *was* parsed, ignore it.  This
       // is due to a top-level semicolon, an action override, or a parse error
       // skipping something.
-      if (ADecl)
-        if(!Consumer->HandleTopLevelDecl(ADecl.get())){
+      if (ADecl && !Consumer->HandleTopLevelDecl(ADecl.get()))
           return;
-        // +===== Scout ======================================================+
-        // AST Viewer, if the -ast-view front-end option
-        // was passed potentially generate Graphviz output for this
-        // decl. group
-        if (ASTViewer) {
-          ASTViewer->outputGraphviz(ADecl.get());
-        }
-        // +==================================================================+
-      }
     } while (!P.ParseTopLevelDecl(ADecl));
   }
 
@@ -172,7 +148,7 @@ void clang::ParseAST(Sema &S, bool PrintStats, bool SkipFunctionBodies,
        I = S.WeakTopLevelDecls().begin(),
        E = S.WeakTopLevelDecls().end(); I != E; ++I)
     Consumer->HandleTopLevelDecl(DeclGroupRef(*I));
-  
+
   Consumer->HandleTranslationUnit(S.getASTContext());
 
   std::swap(OldCollectStats, S.CollectStats);

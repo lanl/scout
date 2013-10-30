@@ -70,12 +70,8 @@
 #include <iostream>
 using namespace std;
 
-#include "llvm/ADT/StringRef.h"
-#include "clang/Basic/SourceManager.h"
-#include "clang/Driver/Arg.h"
-#include "clang/Driver/ArgList.h"
+#include "llvm/Option/Arg.h"
 #include "clang/Driver/DriverDiagnostic.h"
-#include "clang/Driver/OptTable.h"
 #include "clang/Driver/Options.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/CompilerInvocation.h"
@@ -85,12 +81,18 @@ using namespace std;
 #include "clang/FrontendTool/Utils.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/LinkAllPasses.h"
+#include "llvm/Option/ArgList.h"
+#include "llvm/Option/OptTable.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
+
+using namespace clang;
+using namespace llvm::opt;
+
 #include "ScoutASTConsumer.h"
 
 
@@ -118,7 +120,8 @@ static void LLVMErrorHandler(void *UserData, const std::string &Message,
 
 int cc1_main(const char **ArgBegin, const char **ArgEnd,
              const char *Argv0, void *MainAddr,
-             const std::string& path, bool Rewrite, bool DumpRewrite) {
+             bool Rewrite, bool DumpRewrite) {
+
   OwningPtr<CompilerInstance> Clang(new CompilerInstance());
   IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
 
@@ -135,10 +138,7 @@ int cc1_main(const char **ArgBegin, const char **ArgEnd,
   DiagnosticsEngine Diags(DiagID, &*DiagOpts, DiagsBuffer);
   bool Success;
   Success = CompilerInvocation::CreateFromArgs(Clang->getInvocation(),
-      ArgBegin, ArgEnd, Diags);
-
-  // scout - attach the path of the scc executable
-  Clang->getInvocation().getCodeGenOpts().SccPath = path;
+                                               ArgBegin, ArgEnd, Diags);
 
   // Infer the builtin include path if unspecified.
   if (Clang->getHeaderSearchOpts().UseBuiltinIncludes &&
@@ -154,68 +154,60 @@ int cc1_main(const char **ArgBegin, const char **ArgEnd,
   // Set an error handler, so that any LLVM backend diagnostics go through our
   // error handler.
   llvm::install_fatal_error_handler(LLVMErrorHandler,
-                                  static_cast<void*>(&Clang->getDiagnostics()));
+                                    static_cast<void*>(&Clang->getDiagnostics()));
 
   DiagsBuffer->FlushDiagnostics(Clang->getDiagnostics());
   if (!Success)
     return 1;
 
-  //======================================================
-  // scout - hook into the Compiler instance to pass the AST consumer
-  // and rewriter
+  // Hook into the compiler instance to pass the AST consumer and rewriter.
   Rewriter rewriter;
-  
-  //build an AST consumer with rewriter
   ScoutASTConsumer consumer(rewriter, Clang.get());
-
-  if (Rewrite) { 	
+  if (Rewrite) {
     Clang->setScoutASTConsumer(&consumer);
     Clang->setScoutRewriter(&rewriter);
   }
-  //======================================================
-
 
   // Execute the frontend actions.
   Success = ExecuteCompilerInvocation(Clang.get());
 
-  //======================================================
-  // scout - get the modified code and output or recompile
+  // Get the modified code and output or recompile
   if(Success && Rewrite) {
+
     SourceManager &sourceMgr = Clang->getSourceManager();
-
     const RewriteBuffer* rewriteBuffer =
-        rewriter.getRewriteBufferFor(sourceMgr.getMainFileID()); 
-
+      rewriter.getRewriteBufferFor(sourceMgr.getMainFileID());
+    
     // Dump rewrite text to stdout
     if (DumpRewrite) {
       llvm::outs() << std::string(rewriteBuffer->begin(), rewriteBuffer->end());
-    } 
+    }
 
     // Replace original code with rewriter output if the rewriter ran
     if (rewriteBuffer != NULL) {
-      StringRef rwString("rewrite.sc"); //name needs to end in .sc
+      StringRef rwString("rewrite.sc");
+      //name needs to end in .sc
       std::string tmp = std::string(rewriteBuffer->begin(), rewriteBuffer->end());
       StringRef rwBufferString(tmp);
-      llvm::MemoryBuffer *rwBuffer = llvm::MemoryBuffer::getMemBufferCopy(rwBufferString, rwString);
+      llvm::MemoryBuffer *rwBuffer = llvm::MemoryBuffer::getMemBufferCopy(rwBufferString,
+                                                                          rwString);
       const FileEntry *fileEntry = sourceMgr.getFileEntryForID(sourceMgr.getMainFileID());
       sourceMgr.overrideFileContents(fileEntry, rwBuffer);
     }
-   
-     // Disable Rewriter and associated ASTConsumer 
-     Clang->setScoutASTConsumer(NULL);
-     Clang->setScoutRewriter(NULL);
+    
+    // Disable Rewriter and associated ASTConsumer
+    Clang->setScoutASTConsumer(NULL);
+    Clang->setScoutRewriter(NULL);
 
     // Disable warnings as we have already output them with the first call
-    // to ExecuteCompilerInvocation() 
+    // to ExecuteCompilerInvocation()
     DiagnosticsEngine& DiagsNoWarnings = Clang->getDiagnostics();
     DiagsNoWarnings.setIgnoreAllWarnings(true);
     Clang->setDiagnostics(&DiagsNoWarnings);
-
     // Execute the frontend actions on rewritten code
     Success = ExecuteCompilerInvocation(Clang.get());
-  } // end if(Rewrite)
-  //====================================================
-
+  }
+  
   // If any timers were active but haven't been destroyed yet, print their
   // results now.  This happens in -disable-free mode.
   llvm::TimerGroup::printAll(llvm::errs());
@@ -236,6 +228,5 @@ int cc1_main(const char **ArgBegin, const char **ArgEnd,
   // Managed static deconstruction. Useful for making things like
   // -time-passes usable.
   llvm::llvm_shutdown();
-
   return !Success;
 }

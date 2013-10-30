@@ -49,6 +49,7 @@
  *  SUCH DAMAGE.
  *
  */
+
 #include "clang/AST/Decl.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTMutationListener.h"
@@ -61,7 +62,7 @@
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/TypeLoc.h"
-#include "clang/AST/Scout/UniformMeshDecl.h"
+#include "clang/AST/Scout/MeshDecl.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Basic/Module.h"
@@ -73,40 +74,42 @@
 
 using namespace clang;
 
+
 //===----------------------------------------------------------------------===//
-// UniformMeshDecl Implementation
+// RectilinearMeshDecl Implementation
 //===----------------------------------------------------------------------===//
 //
 //
-UniformMeshDecl::UniformMeshDecl(DeclContext     *DC,
-                                 SourceLocation  StartLoc,
-                                 SourceLocation  IdLoc,
-                                 IdentifierInfo  *Id,
-                                 UniformMeshDecl *PrevDecl)
-  : MeshDecl(UniformMesh, TTK_UniformMesh, DC, IdLoc, Id, PrevDecl, StartLoc) { }
+RectilinearMeshDecl::RectilinearMeshDecl(DeclContext     *DC,
+                                         SourceLocation  StartLoc,
+                                         SourceLocation  IdLoc,
+                                         IdentifierInfo  *Id,
+                                         RectilinearMeshDecl *PrevDecl)
+  : MeshDecl(RectilinearMesh, TTK_RectilinearMesh, DC, IdLoc, Id, PrevDecl, StartLoc) { }
 
-UniformMeshDecl *UniformMeshDecl::Create(const ASTContext &C,
-                                         DeclContext *DC,
-                                         SourceLocation StartLoc,
-                                         SourceLocation IdLoc,
-                                         IdentifierInfo *Id,
-                                         UniformMeshDecl* PrevDecl) {
+RectilinearMeshDecl *RectilinearMeshDecl::Create(const ASTContext &C,
+                                                 DeclContext *DC,
+                                                 SourceLocation StartLoc,
+                                                 SourceLocation IdLoc,
+                                                 IdentifierInfo *Id,
+                                                 RectilinearMeshDecl* PrevDecl) {
 
-  UniformMeshDecl* M = new (C) UniformMeshDecl(DC,
-                                               StartLoc,
-                                               IdLoc, Id,
-                                               PrevDecl);
+  RectilinearMeshDecl* M = new (C) RectilinearMeshDecl(DC,
+                                                       StartLoc,
+                                                       IdLoc, Id,
+                                                       PrevDecl);
   M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
   C.getTypeDeclType(M, PrevDecl);
   return M;
 }
 
-UniformMeshDecl *UniformMeshDecl::CreateDeserialized(const ASTContext &C,
-                                                     unsigned ID) {
-  void *Mem = AllocateDeserializedDecl(C, ID, sizeof(UniformMeshDecl));
-  UniformMeshDecl *M = new (Mem) UniformMeshDecl(0, SourceLocation(),
-                                                 SourceLocation(), 0, 0);
+RectilinearMeshDecl
+*RectilinearMeshDecl::CreateDeserialized(const ASTContext &C, unsigned ID) {
+  void *Mem = AllocateDeserializedDecl(C, ID, sizeof(RectilinearMeshDecl));
+  RectilinearMeshDecl *M;
+
+  M = new (Mem) RectilinearMeshDecl(0, SourceLocation(),
+                                    SourceLocation(), 0, 0);
   M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
   return M;
 }
-

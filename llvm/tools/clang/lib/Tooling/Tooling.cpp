@@ -178,8 +178,11 @@ bool ToolInvocation::run() {
 
   // +===== Scout ============================================================+
   // Attach the path of the scc executable
-  Invocation.get()->getCodeGenOpts().SccPath =
-      Driver.get()->getClangProgramPath();
+  //
+  // Only used for AMD code gen...  Disabled for now...
+  //
+  //Invocation.get()->getCodeGenOpts().SccPath =
+  //    Driver.get()->getClangProgramPath();
   // +========================================================================+
 
   return runInvocation(BinaryName, Compilation.get(), Invocation.take());

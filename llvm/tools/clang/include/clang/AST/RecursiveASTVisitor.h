@@ -1813,6 +1813,14 @@ DEF_TRAVERSE_DECL(FieldDecl, {
       TRY_TO(TraverseStmt(D->getInClassInitializer()));
   })
 
+// +===== Scout =========================================================+
+DEF_TRAVERSE_DECL(MeshFieldDecl, {
+    TRY_TO(TraverseDeclaratorHelper(D));    
+    if (D->isBitField())
+      TRY_TO(TraverseStmt(D->getBitWidth()));
+  })
+// +==============---====================================================+
+
 DEF_TRAVERSE_DECL(ObjCAtDefsFieldDecl, {
     TRY_TO(TraverseDeclaratorHelper(D));
     if (D->isBitField())

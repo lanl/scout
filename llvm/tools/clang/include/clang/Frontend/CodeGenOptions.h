@@ -131,6 +131,13 @@ public:
   /// A list of dependent libraries.
   std::vector<std::string> DependentLibraries;
 
+  // +==== Scout =============================================================+
+  // The full path to the scc executable (so we can find llvm-as-3.1).
+  // This is used for OpenCL/AMD targets...
+  //std::string SccPath;
+  // +========================================================================+
+
+
 public:
   // Define accessors/mutators for code generation options of enumeration type.
 #define CODEGENOPT(Name, Bits, Default)

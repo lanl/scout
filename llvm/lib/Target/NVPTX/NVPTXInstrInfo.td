@@ -157,9 +157,6 @@ def do_DIVF32_FULL : Predicate<"getDivF32Level()==1">;
 def do_SQRTF32_APPROX : Predicate<"!usePrecSqrtF32()">;
 def do_SQRTF32_RN : Predicate<"usePrecSqrtF32()">;
 
-def do_SQRTF32_APPROX : Predicate<"do_SQRTF32_PREC==0">;
-def do_SQRTF32_RN : Predicate<"do_SQRTF32_PREC==1">;
-
 def hasHWROT32 : Predicate<"Subtarget.hasHWROT32()">;
 
 def true : Predicate<"1">;

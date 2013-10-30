@@ -40,7 +40,7 @@ bool CodeCompletionContext::wantConstructorResults() const {
   case CCC_ObjCMessageReceiver:
   case CCC_ParenthesizedExpression:
     return true;
-    
+
   case CCC_TopLevel:
   case CCC_ObjCInterface:
   case CCC_ObjCImplementation:
@@ -71,6 +71,14 @@ bool CodeCompletionContext::wantConstructorResults() const {
   case CCC_ObjCInterfaceName:
   case CCC_ObjCCategoryName:
     return false;
+
+  // +===== Scout ============================================================+
+    case CCC_UniformMesh:
+    case CCC_RectilinearMesh:
+    case CCC_StructuredMesh:
+    case CCC_UnstructuredMesh:
+      return false;
+  // +========================================================================+
   }
 
   llvm_unreachable("Invalid CodeCompletionContext::Kind!");
@@ -79,7 +87,7 @@ bool CodeCompletionContext::wantConstructorResults() const {
 //===----------------------------------------------------------------------===//
 // Code completion string implementation
 //===----------------------------------------------------------------------===//
-CodeCompletionString::Chunk::Chunk(ChunkKind Kind, const char *Text) 
+CodeCompletionString::Chunk::Chunk(ChunkKind Kind, const char *Text)
   : Kind(Kind), Text("")
 {
   switch (Kind) {
@@ -94,7 +102,7 @@ CodeCompletionString::Chunk::Chunk(ChunkKind Kind, const char *Text)
 
   case CK_Optional:
     llvm_unreachable("Optional strings cannot be created from text");
-      
+
   case CK_LeftParen:
     this->Text = "(";
     break;
@@ -106,11 +114,11 @@ CodeCompletionString::Chunk::Chunk(ChunkKind Kind, const char *Text)
   case CK_LeftBracket:
     this->Text = "[";
     break;
-    
+
   case CK_RightBracket:
     this->Text = "]";
     break;
-    
+
   case CK_LeftBrace:
     this->Text = "{";
     break;
@@ -122,11 +130,11 @@ CodeCompletionString::Chunk::Chunk(ChunkKind Kind, const char *Text)
   case CK_LeftAngle:
     this->Text = "<";
     break;
-    
+
   case CK_RightAngle:
     this->Text = ">";
     break;
-      
+
   case CK_Comma:
     this->Text = ", ";
     break;
@@ -158,7 +166,7 @@ CodeCompletionString::Chunk::CreateText(const char *Text) {
   return Chunk(CK_Text, Text);
 }
 
-CodeCompletionString::Chunk 
+CodeCompletionString::Chunk
 CodeCompletionString::Chunk::CreateOptional(CodeCompletionString *Optional) {
   Chunk Result;
   Result.Kind = CK_Optional;
@@ -166,30 +174,30 @@ CodeCompletionString::Chunk::CreateOptional(CodeCompletionString *Optional) {
   return Result;
 }
 
-CodeCompletionString::Chunk 
+CodeCompletionString::Chunk
 CodeCompletionString::Chunk::CreatePlaceholder(const char *Placeholder) {
   return Chunk(CK_Placeholder, Placeholder);
 }
 
-CodeCompletionString::Chunk 
+CodeCompletionString::Chunk
 CodeCompletionString::Chunk::CreateInformative(const char *Informative) {
   return Chunk(CK_Informative, Informative);
 }
 
-CodeCompletionString::Chunk 
+CodeCompletionString::Chunk
 CodeCompletionString::Chunk::CreateResultType(const char *ResultType) {
   return Chunk(CK_ResultType, ResultType);
 }
 
-CodeCompletionString::Chunk 
+CodeCompletionString::Chunk
 CodeCompletionString::Chunk::CreateCurrentParameter(
                                                 const char *CurrentParameter) {
   return Chunk(CK_CurrentParameter, CurrentParameter);
 }
 
-CodeCompletionString::CodeCompletionString(const Chunk *Chunks, 
+CodeCompletionString::CodeCompletionString(const Chunk *Chunks,
                                            unsigned NumChunks,
-                                           unsigned Priority, 
+                                           unsigned Priority,
                                            CXAvailabilityKind Availability,
                                            const char **Annotations,
                                            unsigned NumAnnotations,
@@ -198,7 +206,7 @@ CodeCompletionString::CodeCompletionString(const Chunk *Chunks,
   : NumChunks(NumChunks), NumAnnotations(NumAnnotations),
     Priority(Priority), Availability(Availability),
     ParentName(ParentName), BriefComment(BriefComment)
-{ 
+{
   assert(NumChunks <= 0xffff);
   assert(NumAnnotations <= 0xffff);
 
@@ -226,17 +234,17 @@ const char *CodeCompletionString::getAnnotation(unsigned AnnotationNr) const {
 std::string CodeCompletionString::getAsString() const {
   std::string Result;
   llvm::raw_string_ostream OS(Result);
-                          
+
   for (iterator C = begin(), CEnd = end(); C != CEnd; ++C) {
     switch (C->Kind) {
     case CK_Optional: OS << "{#" << C->Optional->getAsString() << "#}"; break;
     case CK_Placeholder: OS << "<#" << C->Text << "#>"; break;
-        
-    case CK_Informative: 
+
+    case CK_Informative:
     case CK_ResultType:
-      OS << "[#" << C->Text << "#]"; 
+      OS << "[#" << C->Text << "#]";
       break;
-        
+
     case CK_CurrentParameter: OS << "<#" << C->Text << "#>"; break;
     default: OS << C->Text; break;
     }
@@ -248,7 +256,7 @@ const char *CodeCompletionString::getTypedText() const {
   for (iterator C = begin(), CEnd = end(); C != CEnd; ++C)
     if (C->Kind == CK_TypedText)
       return C->Text;
-  
+
   return 0;
 }
 
@@ -271,7 +279,7 @@ StringRef CodeCompletionTUInfo::getParentName(const DeclContext *DC) {
   const NamedDecl *ND = dyn_cast<NamedDecl>(DC);
   if (!ND)
     return StringRef();
-  
+
   // Check whether we've already cached the parent name.
   StringRef &CachedParentName = ParentNames[DC];
   if (!CachedParentName.empty())
@@ -289,7 +297,7 @@ StringRef CodeCompletionTUInfo::getParentName(const DeclContext *DC) {
       if (ND->getIdentifier())
         Contexts.push_back(DC);
     }
-    
+
     DC = DC->getParent();
   }
 
@@ -303,11 +311,11 @@ StringRef CodeCompletionTUInfo::getParentName(const DeclContext *DC) {
       else {
         OS << "::";
       }
-      
+
       const DeclContext *CurDC = Contexts[I-1];
       if (const ObjCCategoryImplDecl *CatImpl = dyn_cast<ObjCCategoryImplDecl>(CurDC))
         CurDC = CatImpl->getCategoryDecl();
-      
+
       if (const ObjCCategoryDecl *Cat = dyn_cast<ObjCCategoryDecl>(CurDC)) {
         const ObjCInterfaceDecl *Interface = Cat->getClassInterface();
         if (!Interface) {
@@ -316,13 +324,13 @@ StringRef CodeCompletionTUInfo::getParentName(const DeclContext *DC) {
           CachedParentName = StringRef((const char *)~0U, 0);
           return StringRef();
         }
-        
+
         OS << Interface->getName() << '(' << Cat->getName() << ')';
       } else {
         OS << cast<NamedDecl>(CurDC)->getName();
       }
     }
-    
+
     CachedParentName = AllocatorRef->CopyString(OS.str());
   }
 
@@ -334,7 +342,7 @@ CodeCompletionString *CodeCompletionBuilder::TakeString() {
                   sizeof(CodeCompletionString) + sizeof(Chunk) * Chunks.size()
                                     + sizeof(const char *) * Annotations.size(),
                                  llvm::alignOf<CodeCompletionString>());
-  CodeCompletionString *Result 
+  CodeCompletionString *Result
     = new (Mem) CodeCompletionString(Chunks.data(), Chunks.size(),
                                      Priority, Availability,
                                      Annotations.data(), Annotations.size(),
@@ -381,14 +389,14 @@ void CodeCompletionBuilder::addParentContext(const DeclContext *DC) {
   if (DC->isTranslationUnit()) {
     return;
   }
-  
+
   if (DC->isFunctionOrMethod())
     return;
-  
+
   const NamedDecl *ND = dyn_cast<NamedDecl>(DC);
   if (!ND)
     return;
-  
+
   ParentName = getCodeCompletionTUInfo().getParentName(DC);
 }
 
@@ -414,11 +422,11 @@ CodeCompleteConsumer::OverloadCandidate::getFunctionType() const {
   switch (Kind) {
   case CK_Function:
     return Function->getType()->getAs<FunctionType>();
-      
+
   case CK_FunctionTemplate:
     return FunctionTemplate->getTemplatedDecl()->getType()
              ->getAs<FunctionType>();
-      
+
   case CK_FunctionType:
     return Type;
   }
@@ -432,13 +440,13 @@ CodeCompleteConsumer::OverloadCandidate::getFunctionType() const {
 
 CodeCompleteConsumer::~CodeCompleteConsumer() { }
 
-void 
+void
 PrintingCodeCompleteConsumer::ProcessCodeCompleteResults(Sema &SemaRef,
                                                  CodeCompletionContext Context,
                                                  CodeCompletionResult *Results,
                                                          unsigned NumResults) {
   std::stable_sort(Results, Results + NumResults);
-  
+
   // Print the results.
   for (unsigned I = 0; I != NumResults; ++I) {
     OS << "COMPLETION: ";
@@ -447,7 +455,7 @@ PrintingCodeCompleteConsumer::ProcessCodeCompleteResults(Sema &SemaRef,
       OS << *Results[I].Declaration;
       if (Results[I].Hidden)
         OS << " (Hidden)";
-      if (CodeCompletionString *CCS 
+      if (CodeCompletionString *CCS
             = Results[I].CreateCodeCompletionString(SemaRef, getAllocator(),
                                                     CCTUInfo,
                                                     includeBriefComments())) {
@@ -455,17 +463,17 @@ PrintingCodeCompleteConsumer::ProcessCodeCompleteResults(Sema &SemaRef,
         if (const char *BriefComment = CCS->getBriefComment())
           OS << " : " << BriefComment;
       }
-        
+
       OS << '\n';
       break;
-      
+
     case CodeCompletionResult::RK_Keyword:
       OS << Results[I].Keyword << '\n';
       break;
-        
+
     case CodeCompletionResult::RK_Macro: {
       OS << Results[I].Macro->getName();
-      if (CodeCompletionString *CCS 
+      if (CodeCompletionString *CCS
             = Results[I].CreateCodeCompletionString(SemaRef, getAllocator(),
                                                     CCTUInfo,
                                                     includeBriefComments())) {
@@ -474,9 +482,9 @@ PrintingCodeCompleteConsumer::ProcessCodeCompleteResults(Sema &SemaRef,
       OS << '\n';
       break;
     }
-        
+
     case CodeCompletionResult::RK_Pattern: {
-      OS << "Pattern : " 
+      OS << "Pattern : "
          << Results[I].Pattern->getAsString() << '\n';
       break;
     }
@@ -484,7 +492,7 @@ PrintingCodeCompleteConsumer::ProcessCodeCompleteResults(Sema &SemaRef,
   }
 }
 
-void 
+void
 PrintingCodeCompleteConsumer::ProcessOverloadCandidates(Sema &SemaRef,
                                                         unsigned CurrentArg,
                                               OverloadCandidate *Candidates,
@@ -514,19 +522,19 @@ void CodeCompletionResult::computeCursorKindAndAvailability(bool Accessible) {
       break;
     }
     // Fall through
-      
+
   case RK_Declaration: {
     // Set the availability based on attributes.
     switch (getDeclAvailability(Declaration)) {
     case AR_Available:
     case AR_NotYetIntroduced:
-      Availability = CXAvailability_Available;      
+      Availability = CXAvailability_Available;
       break;
-      
+
     case AR_Deprecated:
       Availability = CXAvailability_Deprecated;
       break;
-      
+
     case AR_Unavailable:
       Availability = CXAvailability_NotAvailable;
       break;
@@ -535,11 +543,11 @@ void CodeCompletionResult::computeCursorKindAndAvailability(bool Accessible) {
     if (const FunctionDecl *Function = dyn_cast<FunctionDecl>(Declaration))
       if (Function->isDeleted())
         Availability = CXAvailability_NotAvailable;
-      
+
     CursorKind = getCursorKindForDecl(Declaration);
     if (CursorKind == CXCursor_UnexposedDecl) {
-      // FIXME: Forward declarations of Objective-C classes and protocols 
-      // are not directly exposed, but we want code completion to treat them 
+      // FIXME: Forward declarations of Objective-C classes and protocols
+      // are not directly exposed, but we want code completion to treat them
       // like a definition.
       if (isa<ObjCInterfaceDecl>(Declaration))
         CursorKind = CXCursor_ObjCInterfaceDecl;
@@ -569,20 +577,20 @@ static StringRef getOrderedName(const CodeCompletionResult &R,
   switch (R.Kind) {
     case CodeCompletionResult::RK_Keyword:
       return R.Keyword;
-      
+
     case CodeCompletionResult::RK_Pattern:
       return R.Pattern->getTypedText();
-      
+
     case CodeCompletionResult::RK_Macro:
       return R.Macro->getName();
-      
+
     case CodeCompletionResult::RK_Declaration:
       // Handle declarations below.
       break;
   }
-  
+
   DeclarationName Name = R.Declaration->getDeclName();
-  
+
   // If the name is a simple identifier (by far the common case), or a
   // zero-argument selector, just return a reference to that identifier.
   if (IdentifierInfo *Id = Name.getAsIdentifierInfo())
@@ -591,12 +599,12 @@ static StringRef getOrderedName(const CodeCompletionResult &R,
     if (IdentifierInfo *Id
         = Name.getObjCSelector().getIdentifierInfoForSlot(0))
       return Id->getName();
-  
+
   Saved = Name.getAsString();
   return Saved;
 }
-    
-bool clang::operator<(const CodeCompletionResult &X, 
+
+bool clang::operator<(const CodeCompletionResult &X,
                       const CodeCompletionResult &Y) {
   std::string XSaved, YSaved;
   StringRef XStr = getOrderedName(X, XSaved);
@@ -604,11 +612,11 @@ bool clang::operator<(const CodeCompletionResult &X,
   int cmp = XStr.compare_lower(YStr);
   if (cmp)
     return cmp < 0;
-  
+
   // If case-insensitive comparison fails, try case-sensitive comparison.
   cmp = XStr.compare(YStr);
   if (cmp)
     return cmp < 0;
-  
+
   return false;
 }

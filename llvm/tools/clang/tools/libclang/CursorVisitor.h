@@ -47,7 +47,7 @@ public:
   Kind getKind() const { return K; }
   const CXCursor &getParent() const { return parent; }
 };
-  
+
 typedef SmallVector<VisitorJob, 10> VisitorWorkList;
 
 // Cursor visitor.
@@ -80,14 +80,14 @@ private:
   /// \brief The opaque client data, to be passed along to the visitor.
   CXClientData ClientData;
 
-  /// \brief Whether we should visit the preprocessing record entries last, 
+  /// \brief Whether we should visit the preprocessing record entries last,
   /// after visiting other declarations.
   bool VisitPreprocessorLast;
 
   /// \brief Whether we should visit declarations or preprocessing record
   /// entries that are #included inside the \arg RegionOfInterest.
   bool VisitIncludedEntities;
-  
+
   /// \brief When valid, a source range to which the cursor should restrict
   /// its search.
   SourceRange RegionOfInterest;
@@ -180,7 +180,7 @@ public:
   /// \brief Visit declarations and preprocessed entities for the file region
   /// designated by \see RegionOfInterest.
   bool visitFileRegion();
-  
+
   bool visitPreprocessedEntitiesInRegion();
 
   bool shouldVisitIncludedEntities() const {
@@ -212,6 +212,9 @@ public:
   bool VisitDeclaratorDecl(DeclaratorDecl *DD);
   bool VisitFunctionDecl(FunctionDecl *ND);
   bool VisitFieldDecl(FieldDecl *D);
+  // +===== Scout ============================================================+
+  bool VisitMeshFieldDecl(MeshFieldDecl *D);
+  // +========================================================================+
   bool VisitVarDecl(VarDecl *);
   bool VisitNonTypeTemplateParmDecl(NonTypeTemplateParmDecl *D);
   bool VisitFunctionTemplateDecl(FunctionTemplateDecl *D);
@@ -235,17 +238,17 @@ public:
   bool VisitUsingDecl(UsingDecl *D);
   bool VisitUnresolvedUsingValueDecl(UnresolvedUsingValueDecl *D);
   bool VisitUnresolvedUsingTypenameDecl(UnresolvedUsingTypenameDecl *D);
-  
+
   // Name visitor
   bool VisitDeclarationNameInfo(DeclarationNameInfo Name);
   bool VisitNestedNameSpecifier(NestedNameSpecifier *NNS, SourceRange Range);
   bool VisitNestedNameSpecifierLoc(NestedNameSpecifierLoc NNS);
-  
+
   // Template visitors
   bool VisitTemplateParameters(const TemplateParameterList *Params);
   bool VisitTemplateName(TemplateName Name, SourceLocation Loc);
   bool VisitTemplateArgumentLoc(const TemplateArgumentLoc &TAL);
-  
+
   // Type visitors
 #define ABSTRACT_TYPELOC(CLASS, PARENT)
 #define TYPELOC(CLASS, PARENT) \

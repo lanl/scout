@@ -92,8 +92,8 @@ TYPE(Enum, TagType)
 // +==== Scout ===============================================================+
 ABSTRACT_TYPE(Mesh, Type)
   TYPE(UniformMesh, MeshType)
-  TYPE(StructuredMesh, MeshType)
   TYPE(RectilinearMesh, MeshType)
+  TYPE(StructuredMesh, MeshType)
   TYPE(UnstructuredMesh, MeshType)
 // +==========================================================================+
 NON_CANONICAL_TYPE(Elaborated, Type)

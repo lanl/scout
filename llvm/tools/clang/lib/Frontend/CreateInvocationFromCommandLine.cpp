@@ -86,8 +86,8 @@ clang::createInvocationFromCommandLine(ArrayRef<const char *> ArgList,
                                      *Diags))
     return 0;
   // +==== Scout =============================================================+
-  // Attach the path of the scc executable
-  CI.get()->getCodeGenOpts().SccPath = TheDriver.getClangProgramPath();
+  // Attach the path of the scc executable -- for amd gpu targets.
+  //CI.get()->getCodeGenOpts().SccPath = TheDriver.getClangProgramPath();
   // +==========[=============================================================+
   return CI.take();
 }

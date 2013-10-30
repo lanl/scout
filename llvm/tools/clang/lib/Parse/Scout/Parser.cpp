@@ -78,26 +78,26 @@ void Parser::InsertCPPCode(const std::string& code,
 
   TokenStream tokenStream;
 
-  for(;;){
+  for(;;) {
     Token tok;
-    lexer.Lex(tok);
+    lexer.LexFromRawLexer(tok);
     tok.setLocation(location);
-    if(tok.is(tok::eof)){
+    if (tok.is(tok::eof)) {
       break;
     }
     tokenStream.push_back(tok);
   }
 
-  if(beforeLookAhead){
+  if (beforeLookAhead) {
     tokenStream.push_back(Tok);
   }
 
   for(TokenStream::reverse_iterator itr = tokenStream.rbegin(),
-      itrEnd = tokenStream.rend(); itr != itrEnd; ++itr){
+      itrEnd = tokenStream.rend(); itr != itrEnd; ++itr) {
     PP.EnterToken(*itr);
   }
 
-  if(beforeLookAhead){
+  if (beforeLookAhead) {
     ConsumeAnyToken();
   }
 }
