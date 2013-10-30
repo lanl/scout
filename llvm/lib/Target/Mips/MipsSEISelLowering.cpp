@@ -10,6 +10,7 @@
 // Subclass of MipsTargetLowering specialized for mips32/64.
 //
 //===----------------------------------------------------------------------===//
+#define DEBUG_TYPE "mips-isel"
 #include "MipsSEISelLowering.h"
 #include "MipsRegisterInfo.h"
 #include "MipsTargetMachine.h"
@@ -17,6 +18,8 @@
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetInstrInfo.h"
 
 using namespace llvm;
@@ -91,6 +94,7 @@ MipsSETargetLowering::MipsSETargetLowering(MipsTargetMachine &TM)
     addMSAFloatType(MVT::v2f64, &Mips::MSA128DRegClass);
 
     setTargetDAGCombine(ISD::AND);
+    setTargetDAGCombine(ISD::OR);
     setTargetDAGCombine(ISD::SRA);
     setTargetDAGCombine(ISD::VSELECT);
     setTargetDAGCombine(ISD::XOR);
@@ -485,6 +489,194 @@ static SDValue performANDCombine(SDNode *N, SelectionDAG &DAG,
   return SDValue();
 }
 
+// Determine if the specified node is a constant vector splat.
+//
+// Returns true and sets Imm if:
+// * N is a ISD::BUILD_VECTOR representing a constant splat
+//
+// This function is quite similar to MipsSEDAGToDAGISel::selectVSplat. The
+// differences are that it assumes the MSA has already been checked and the
+// arbitrary requirement for a maximum of 32-bit integers isn't applied (and
+// must not be in order for binsri.d to be selectable).
+static bool isVSplat(SDValue N, APInt &Imm, bool IsLittleEndian) {
+  BuildVectorSDNode *Node = dyn_cast<BuildVectorSDNode>(N.getNode());
+
+  if (Node == NULL)
+    return false;
+
+  APInt SplatValue, SplatUndef;
+  unsigned SplatBitSize;
+  bool HasAnyUndefs;
+
+  if (!Node->isConstantSplat(SplatValue, SplatUndef, SplatBitSize, HasAnyUndefs,
+                             8, !IsLittleEndian))
+    return false;
+
+  Imm = SplatValue;
+
+  return true;
+}
+
+// Test whether the given node is an all-ones build_vector.
+static bool isVectorAllOnes(SDValue N) {
+  // Look through bitcasts. Endianness doesn't matter because we are looking
+  // for an all-ones value.
+  if (N->getOpcode() == ISD::BITCAST)
+    N = N->getOperand(0);
+
+  BuildVectorSDNode *BVN = dyn_cast<BuildVectorSDNode>(N);
+
+  if (!BVN)
+    return false;
+
+  APInt SplatValue, SplatUndef;
+  unsigned SplatBitSize;
+  bool HasAnyUndefs;
+
+  // Endianness doesn't matter in this context because we are looking for
+  // an all-ones value.
+  if (BVN->isConstantSplat(SplatValue, SplatUndef, SplatBitSize, HasAnyUndefs))
+    return SplatValue.isAllOnesValue();
+
+  return false;
+}
+
+// Test whether N is the bitwise inverse of OfNode.
+static bool isBitwiseInverse(SDValue N, SDValue OfNode) {
+  if (N->getOpcode() != ISD::XOR)
+    return false;
+
+  if (isVectorAllOnes(N->getOperand(0)))
+    return N->getOperand(1) == OfNode;
+
+  if (isVectorAllOnes(N->getOperand(1)))
+    return N->getOperand(0) == OfNode;
+
+  return false;
+}
+
+// Perform combines where ISD::OR is the root node.
+//
+// Performs the following transformations:
+// - (or (and $a, $mask), (and $b, $inv_mask)) => (vselect $mask, $a, $b)
+//   where $inv_mask is the bitwise inverse of $mask and the 'or' has a 128-bit
+//   vector type.
+static SDValue performORCombine(SDNode *N, SelectionDAG &DAG,
+                                TargetLowering::DAGCombinerInfo &DCI,
+                                const MipsSubtarget *Subtarget) {
+  if (!Subtarget->hasMSA())
+    return SDValue();
+
+  EVT Ty = N->getValueType(0);
+
+  if (!Ty.is128BitVector())
+    return SDValue();
+
+  SDValue Op0 = N->getOperand(0);
+  SDValue Op1 = N->getOperand(1);
+
+  if (Op0->getOpcode() == ISD::AND && Op1->getOpcode() == ISD::AND) {
+    SDValue Op0Op0 = Op0->getOperand(0);
+    SDValue Op0Op1 = Op0->getOperand(1);
+    SDValue Op1Op0 = Op1->getOperand(0);
+    SDValue Op1Op1 = Op1->getOperand(1);
+    bool IsLittleEndian = !Subtarget->isLittle();
+
+    SDValue IfSet, IfClr, Cond;
+    bool IsConstantMask = false;
+    APInt Mask, InvMask;
+
+    // If Op0Op0 is an appropriate mask, try to find it's inverse in either
+    // Op1Op0, or Op1Op1. Keep track of the Cond, IfSet, and IfClr nodes, while
+    // looking.
+    // IfClr will be set if we find a valid match.
+    if (isVSplat(Op0Op0, Mask, IsLittleEndian)) {
+      Cond = Op0Op0;
+      IfSet = Op0Op1;
+
+      if (isVSplat(Op1Op0, InvMask, IsLittleEndian) && Mask == ~InvMask)
+        IfClr = Op1Op1;
+      else if (isVSplat(Op1Op1, InvMask, IsLittleEndian) && Mask == ~InvMask)
+        IfClr = Op1Op0;
+
+      IsConstantMask = true;
+    }
+
+    // If IfClr is not yet set, and Op0Op1 is an appropriate mask, try the same
+    // thing again using this mask.
+    // IfClr will be set if we find a valid match.
+    if (!IfClr.getNode() && isVSplat(Op0Op1, Mask, IsLittleEndian)) {
+      Cond = Op0Op1;
+      IfSet = Op0Op0;
+
+      if (isVSplat(Op1Op0, InvMask, IsLittleEndian) && Mask == ~InvMask)
+        IfClr = Op1Op1;
+      else if (isVSplat(Op1Op1, InvMask, IsLittleEndian) && Mask == ~InvMask)
+        IfClr = Op1Op0;
+
+      IsConstantMask = true;
+    }
+
+    // If IfClr is not yet set, try looking for a non-constant match.
+    // IfClr will be set if we find a valid match amongst the eight
+    // possibilities.
+    if (!IfClr.getNode()) {
+      if (isBitwiseInverse(Op0Op0, Op1Op0)) {
+        Cond = Op1Op0;
+        IfSet = Op1Op1;
+        IfClr = Op0Op1;
+      } else if (isBitwiseInverse(Op0Op1, Op1Op0)) {
+        Cond = Op1Op0;
+        IfSet = Op1Op1;
+        IfClr = Op0Op0;
+      } else if (isBitwiseInverse(Op0Op0, Op1Op1)) {
+        Cond = Op1Op1;
+        IfSet = Op1Op0;
+        IfClr = Op0Op1;
+      } else if (isBitwiseInverse(Op0Op1, Op1Op1)) {
+        Cond = Op1Op1;
+        IfSet = Op1Op0;
+        IfClr = Op0Op0;
+      } else if (isBitwiseInverse(Op1Op0, Op0Op0)) {
+        Cond = Op0Op0;
+        IfSet = Op0Op1;
+        IfClr = Op1Op1;
+      } else if (isBitwiseInverse(Op1Op1, Op0Op0)) {
+        Cond = Op0Op0;
+        IfSet = Op0Op1;
+        IfClr = Op1Op0;
+      } else if (isBitwiseInverse(Op1Op0, Op0Op1)) {
+        Cond = Op0Op1;
+        IfSet = Op0Op0;
+        IfClr = Op1Op1;
+      } else if (isBitwiseInverse(Op1Op1, Op0Op1)) {
+        Cond = Op0Op1;
+        IfSet = Op0Op0;
+        IfClr = Op1Op0;
+      }
+    }
+
+    // At this point, IfClr will be set if we have a valid match.
+    if (!IfClr.getNode())
+      return SDValue();
+
+    assert(Cond.getNode() && IfSet.getNode());
+
+    // Fold degenerate cases.
+    if (IsConstantMask) {
+      if (Mask.isAllOnesValue())
+        return IfSet;
+      else if (Mask == 0)
+        return IfClr;
+    }
+
+    // Transform the DAG into an equivalent VSELECT.
+    return DAG.getNode(ISD::VSELECT, SDLoc(N), Ty, Cond, IfClr, IfSet);
+  }
+
+  return SDValue();
+}
+
 static SDValue performSUBECombine(SDNode *N, SelectionDAG &DAG,
                                   TargetLowering::DAGCombinerInfo &DCI,
                                   const MipsSubtarget *Subtarget) {
@@ -775,6 +967,9 @@ MipsSETargetLowering::PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const {
   case ISD::AND:
     Val = performANDCombine(N, DAG, DCI, Subtarget);
     break;
+  case ISD::OR:
+    Val = performORCombine(N, DAG, DCI, Subtarget);
+    break;
   case ISD::SUBE:
     return performSUBECombine(N, DAG, DCI, Subtarget);
   case ISD::MUL:
@@ -795,8 +990,14 @@ MipsSETargetLowering::PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const {
     break;
   }
 
-  if (Val.getNode())
+  if (Val.getNode()) {
+    DEBUG(dbgs() << "\nMipsSE DAG Combine:\n";
+          N->printrWithDepth(dbgs(), &DAG);
+          dbgs() << "\n=> \n";
+          Val.getNode()->printrWithDepth(dbgs(), &DAG);
+          dbgs() << "\n");
     return Val;
+  }
 
   return MipsTargetLowering::PerformDAGCombine(N, DCI);
 }
@@ -1144,6 +1345,44 @@ SDValue MipsSETargetLowering::lowerINTRINSIC_WO_CHAIN(SDValue Op,
   case Intrinsic::mips_andi_b:
     return DAG.getNode(ISD::AND, DL, Op->getValueType(0), Op->getOperand(1),
                        lowerMSASplatImm(Op, 2, DAG));
+  case Intrinsic::mips_binsli_b:
+  case Intrinsic::mips_binsli_h:
+  case Intrinsic::mips_binsli_w:
+  case Intrinsic::mips_binsli_d: {
+    EVT VecTy = Op->getValueType(0);
+    EVT EltTy = VecTy.getVectorElementType();
+    APInt Mask = APInt::getHighBitsSet(EltTy.getSizeInBits(),
+                                       Op->getConstantOperandVal(3));
+    return DAG.getNode(ISD::VSELECT, DL, VecTy,
+                       DAG.getConstant(Mask, VecTy, true), Op->getOperand(1),
+                       Op->getOperand(2));
+  }
+  case Intrinsic::mips_binsri_b:
+  case Intrinsic::mips_binsri_h:
+  case Intrinsic::mips_binsri_w:
+  case Intrinsic::mips_binsri_d: {
+    EVT VecTy = Op->getValueType(0);
+    EVT EltTy = VecTy.getVectorElementType();
+    APInt Mask = APInt::getLowBitsSet(EltTy.getSizeInBits(),
+                                      Op->getConstantOperandVal(3));
+    return DAG.getNode(ISD::VSELECT, DL, VecTy,
+                       DAG.getConstant(Mask, VecTy, true), Op->getOperand(1),
+                       Op->getOperand(2));
+  }
+  case Intrinsic::mips_bmnz_v:
+    return DAG.getNode(ISD::VSELECT, DL, Op->getValueType(0), Op->getOperand(3),
+                       Op->getOperand(2), Op->getOperand(1));
+  case Intrinsic::mips_bmnzi_b:
+    return DAG.getNode(ISD::VSELECT, DL, Op->getValueType(0),
+                       lowerMSASplatImm(Op, 3, DAG), Op->getOperand(2),
+                       Op->getOperand(1));
+  case Intrinsic::mips_bmz_v:
+    return DAG.getNode(ISD::VSELECT, DL, Op->getValueType(0), Op->getOperand(3),
+                       Op->getOperand(1), Op->getOperand(2));
+  case Intrinsic::mips_bmzi_b:
+    return DAG.getNode(ISD::VSELECT, DL, Op->getValueType(0),
+                       lowerMSASplatImm(Op, 3, DAG), Op->getOperand(1),
+                       Op->getOperand(2));
   case Intrinsic::mips_bnz_b:
   case Intrinsic::mips_bnz_h:
   case Intrinsic::mips_bnz_w:
@@ -1561,6 +1800,17 @@ SDValue MipsSETargetLowering::lowerINTRINSIC_WO_CHAIN(SDValue Op,
   case Intrinsic::mips_slli_d:
     return DAG.getNode(ISD::SHL, DL, Op->getValueType(0),
                        Op->getOperand(1), lowerMSASplatImm(Op, 2, DAG));
+  case Intrinsic::mips_splat_b:
+  case Intrinsic::mips_splat_h:
+  case Intrinsic::mips_splat_w:
+  case Intrinsic::mips_splat_d:
+    // We can't lower via VECTOR_SHUFFLE because it requires constant shuffle
+    // masks, nor can we lower via BUILD_VECTOR & EXTRACT_VECTOR_ELT because
+    // EXTRACT_VECTOR_ELT can't extract i64's on MIPS32.
+    // Instead we lower to MipsISD::VSHF and match from there.
+    return DAG.getNode(MipsISD::VSHF, DL, Op->getValueType(0),
+                       lowerMSASplatImm(Op, 2, DAG), Op->getOperand(1),
+                       Op->getOperand(1));
   case Intrinsic::mips_splati_b:
   case Intrinsic::mips_splati_h:
   case Intrinsic::mips_splati_w:
@@ -1721,7 +1971,7 @@ SDValue MipsSETargetLowering::lowerINTRINSIC_VOID(SDValue Op,
 /// true.
 static bool isSplatVector(const BuildVectorSDNode *N) {
   unsigned int nOps = N->getNumOperands();
-  assert(nOps > 1 && "isSplat has 0 or 1 sized build vector");
+  assert(nOps > 1 && "isSplatVector has 0 or 1 sized build vector");
 
   SDValue Operand0 = N->getOperand(0);
 
