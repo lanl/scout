@@ -378,9 +378,8 @@ DIE *DwarfDebug::updateSubprogramScopeDIE(CompileUnit *SPCU,
   // concrete DIE twice.
   if (DIE *AbsSPDIE = AbstractSPDies.lookup(SPNode)) {
     // Pick up abstract subprogram DIE.
-    SPDie = new DIE(dwarf::DW_TAG_subprogram);
+    SPDie = SPCU->createAndAddDIE(dwarf::DW_TAG_subprogram, *SPCU->getCUDie());
     SPCU->addDIEEntry(SPDie, dwarf::DW_AT_abstract_origin, AbsSPDIE);
-    SPCU->addDie(SPDie);
   } else {
     DISubprogram SPDecl = SP.getFunctionDeclaration();
     if (!SPDecl.isSubprogram()) {
@@ -401,19 +400,19 @@ DIE *DwarfDebug::updateSubprogramScopeDIE(CompileUnit *SPCU,
         uint16_t SPTag = SPTy.getTag();
         if (SPTag == dwarf::DW_TAG_subroutine_type)
           for (unsigned i = 1, N = Args.getNumElements(); i < N; ++i) {
-            DIE *Arg = new DIE(dwarf::DW_TAG_formal_parameter);
+            DIE *Arg =
+                SPCU->createAndAddDIE(dwarf::DW_TAG_formal_parameter, *SPDie);
             DIType ATy = DIType(Args.getElement(i));
             SPCU->addType(Arg, ATy);
             if (ATy.isArtificial())
               SPCU->addFlag(Arg, dwarf::DW_AT_artificial);
             if (ATy.isObjectPointer())
               SPCU->addDIEEntry(SPDie, dwarf::DW_AT_object_pointer, Arg);
-            SPDie->addChild(Arg);
           }
         DIE *SPDeclDie = SPDie;
-        SPDie = new DIE(dwarf::DW_TAG_subprogram);
+        SPDie =
+            SPCU->createAndAddDIE(dwarf::DW_TAG_subprogram, *SPCU->getCUDie());
         SPCU->addDIEEntry(SPDie, dwarf::DW_AT_specification, SPDeclDie);
-        SPCU->addDie(SPDie);
       }
     }
   }
@@ -822,6 +821,7 @@ CompileUnit *DwarfDebug::constructCompileUnit(const MDNode *N) {
   InfoHolder.addUnit(NewCU);
 
   CUMap.insert(std::make_pair(N, NewCU));
+  CUDieMap.insert(std::make_pair(Die, NewCU));
   return NewCU;
 }
 
@@ -1916,7 +1916,8 @@ void DwarfDebug::recordSourceLine(unsigned Line, unsigned Col, const MDNode *S,
 // Emit Methods
 //===----------------------------------------------------------------------===//
 
-// Compute the size and offset of a DIE.
+// Compute the size and offset of a DIE. The offset is relative to start of the
+// CU. It returns the offset after laying out the DIE.
 unsigned
 DwarfUnits::computeSizeAndOffset(DIE *Die, unsigned Offset) {
   // Get the children.
@@ -1961,16 +1962,26 @@ DwarfUnits::computeSizeAndOffset(DIE *Die, unsigned Offset) {
 
 // Compute the size and offset for each DIE.
 void DwarfUnits::computeSizeAndOffsets() {
+  // Offset from the first CU in the debug info section is 0 initially.
+  unsigned SecOffset = 0;
+
   // Iterate over each compile unit and set the size and offsets for each
   // DIE within each compile unit. All offsets are CU relative.
   for (SmallVectorImpl<CompileUnit *>::iterator I = CUs.begin(),
          E = CUs.end(); I != E; ++I) {
+    (*I)->setDebugInfoOffset(SecOffset);
+
+    // CU-relative offset is reset to 0 here.
     unsigned Offset =
       sizeof(int32_t) + // Length of Compilation Unit Info
       sizeof(int16_t) + // DWARF version number
       sizeof(int32_t) + // Offset Into Abbrev. Section
       sizeof(int8_t);   // Pointer Size (in bytes)
-    computeSizeAndOffset((*I)->getCUDie(), Offset);
+
+    // EndOffset here is CU-relative, after laying out
+    // all of the CU DIE.
+    unsigned EndOffset = computeSizeAndOffset((*I)->getCUDie(), Offset);
+    SecOffset += EndOffset;
   }
 }
 
@@ -2050,6 +2061,35 @@ void DwarfDebug::emitDIE(DIE *Die, std::vector<DIEAbbrev *> *Abbrevs) {
       Asm->OutStreamer.AddComment(dwarf::AttributeString(Attr));
 
     switch (Attr) {
+    case dwarf::DW_AT_abstract_origin:
+    case dwarf::DW_AT_type:
+    case dwarf::DW_AT_friend:
+    case dwarf::DW_AT_specification:
+    case dwarf::DW_AT_import:
+    case dwarf::DW_AT_containing_type: {
+      DIEEntry *E = cast<DIEEntry>(Values[i]);
+      DIE *Origin = E->getEntry();
+      unsigned Addr = Origin->getOffset();
+      if (Form == dwarf::DW_FORM_ref_addr) {
+        assert(!useSplitDwarf() && "TODO: dwo files can't have relocations.");
+        // For DW_FORM_ref_addr, output the offset from beginning of debug info
+        // section. Origin->getOffset() returns the offset from start of the
+        // compile unit.
+        CompileUnit *CU = CUDieMap.lookup(Origin->getCompileUnit());
+        assert(CU && "CUDie should belong to a CU.");
+        Addr += CU->getDebugInfoOffset();
+        if (Asm->MAI->doesDwarfUseRelocationsAcrossSections())
+          Asm->EmitLabelPlusOffset(DwarfInfoSectionSym, Addr,
+                                   DIEEntry::getRefAddrSize(Asm));
+        else
+          Asm->EmitLabelOffsetDifference(DwarfInfoSectionSym, Addr,
+                                         DwarfInfoSectionSym,
+                                         DIEEntry::getRefAddrSize(Asm));
+      } else {
+        Asm->EmitInt32(Addr);
+      }
+      break;
+    }
     case dwarf::DW_AT_ranges: {
       // DW_AT_range Value encodes offset in debug_range section.
       DIEInteger *V = cast<DIEInteger>(Values[i]);
