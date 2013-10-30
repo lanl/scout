@@ -45,17 +45,10 @@ public:
   void dumpAttribute(raw_ostream &OS, const DWARFUnit *u, uint32_t *offset_ptr,
                      uint16_t attr, uint16_t form, unsigned indent = 0) const;
 
-  /// Extracts a debug info entry, which is a child of a given compile unit,
+  /// Extracts a debug info entry, which is a child of a given unit,
   /// starting at a given offset. If DIE can't be extracted, returns false and
   /// doesn't change OffsetPtr.
-  bool extractFast(const DWARFUnit *U, const uint8_t *FixedFormSizes,
-                   uint32_t *OffsetPtr);
-
-  /// Extract a debug info entry for a given compile unit from the
-  /// .debug_info and .debug_abbrev data starting at the given offset.
-  /// If compile unit can't be parsed, returns false and doesn't change
-  /// OffsetPtr.
-  bool extract(const DWARFUnit *U, uint32_t *OffsetPtr);
+  bool extractFast(const DWARFUnit *U, uint32_t *OffsetPtr);
 
   uint32_t getTag() const { return AbbrevDecl ? AbbrevDecl->getTag() : 0; }
   bool isNULL() const { return AbbrevDecl == 0; }
@@ -129,11 +122,16 @@ public:
   uint64_t getAttributeValueAsAddress(const DWARFUnit *U, const uint16_t Attr,
                                       uint64_t FailValue) const;
 
-  uint64_t getAttributeValueAsUnsigned(const DWARFUnit *U, const uint16_t Attr,
-                                       uint64_t FailValue) const;
+  uint64_t getAttributeValueAsUnsignedConstant(const DWARFUnit *U,
+                                               const uint16_t Attr,
+                                               uint64_t FailValue) const;
 
   uint64_t getAttributeValueAsReference(const DWARFUnit *U, const uint16_t Attr,
                                         uint64_t FailValue) const;
+
+  uint64_t getAttributeValueAsSectionOffset(const DWARFUnit *U,
+                                            const uint16_t Attr,
+                                            uint64_t FailValue) const;
 
   /// Retrieves DW_AT_low_pc and DW_AT_high_pc from CU.
   /// Returns true if both attributes are present.

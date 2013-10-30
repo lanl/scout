@@ -48,9 +48,6 @@
 ; CHECK: DW_AT_GNU_pubnames [DW_FORM_sec_offset]   (0x00000000)
 ; CHECK: DW_AT_GNU_pubtypes [DW_FORM_sec_offset]   (0x00000000)
 
-; CHECK: [[INT:[0-9a-f]+]]: DW_TAG_base_type
-; CHECK-NEXT: DW_AT_name {{.*}} "int"
-
 ; CHECK: [[C:[0-9a-f]+]]: DW_TAG_structure_type
 ; CHECK-NEXT: DW_AT_name {{.*}} "C"
 
@@ -65,6 +62,9 @@
 ; CHECK-NEXT: DW_AT_MIPS_linkage_name
 ; CHECK-NEXT: DW_AT_name {{.*}} "static_member_function"
 
+; CHECK: [[INT:[0-9a-f]+]]: DW_TAG_base_type
+; CHECK-NEXT: DW_AT_name {{.*}} "int"
+
 ; CHECK: [[STATIC_MEM_VAR:[0-9a-f]+]]: DW_TAG_variable
 ; CHECK-NEXT: DW_AT_specification {{.*}}[[STATIC_MEM_DECL]]
 
@@ -77,11 +77,11 @@
 ; CHECK: [[GLOB_NS_VAR_DECL:[0-9a-f]+]]: DW_TAG_variable
 ; CHECK-NEXT: DW_AT_name {{.*}} "global_namespace_variable"
 
-; CHECK: [[D:[0-9a-f]+]]: DW_TAG_structure_type
-; CHECK-NEXT: DW_AT_name {{.*}} "D"
-
 ; CHECK: [[D_VAR_DECL:[0-9a-f]+]]: DW_TAG_variable
 ; CHECK-NEXT: DW_AT_name {{.*}} "d"
+
+; CHECK: [[D:[0-9a-f]+]]: DW_TAG_structure_type
+; CHECK-NEXT: DW_AT_name {{.*}} "D"
 
 ; CHECK: [[GLOB_NS_FUNC:[0-9a-f]+]]: DW_TAG_subprogram
 ; CHECK-NEXT: DW_AT_MIPS_linkage_name
