@@ -80,6 +80,9 @@ namespace CodeGen {
   class CodeGenTBAA;
   class CGCXXABI;
   class CGDebugInfo;
+  // ===== Scout ============
+  class CGScoutRuntime;
+  // ========================
   class CGObjCRuntime;
   class CGOpenCLRuntime;
   class CGCUDARuntime;
@@ -252,6 +255,9 @@ class CodeGenModule : public CodeGenTypeCache {
   CodeGenVTables VTables;
   friend class CodeGenVTables;
 
+  // ===== Scout ======================
+  CGScoutRuntime* ScoutRuntime;
+  // ==================================
   CGObjCRuntime* ObjCRuntime;
   CGOpenCLRuntime* OpenCLRuntime;
   CGCUDARuntime* CUDARuntime;
@@ -380,7 +386,9 @@ class CodeGenModule : public CodeGenTypeCache {
 
   /// Lazily create the Objective-C runtime
   void createObjCRuntime();
-
+  // ===== Scout ==========================
+  void createScoutRuntime();
+  // ======================================
   void createOpenCLRuntime();
   void createCUDARuntime();
 

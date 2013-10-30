@@ -614,30 +614,3 @@ bool Parser::ParseMeshStatement(StmtVector &Stmts,
   return false;
 }
 
- // scout - insert call to __scrt_init(gpu) at the top of main
- void Parser::InsertScoutRuntimeInit(SourceLocation &LBraceLoc) {
-#ifndef SC_USE_RT_REWRITER
-  if(getLangOpts().Scout){
-   FunctionDecl* fd = Actions.getCurFunctionDecl();
-
-   std::string args;
-
-   if(getLangOpts().ScoutNvidiaGPU){
-     args = "ScoutGPUCUDA";
-   }
-   else if(getLangOpts().ScoutAMDGPU){
-     args = "ScoutGPUOpenCL";
-   }
-   else{
-     args = "ScoutGPUNone";
-   }
-
-   if(fd->isMain()){
-     assert(Tok.is(tok::l_brace) &&
-            "expected lbrace when inserting __scrt_init()");
-
-     InsertCPPCode("__scrt_init(" + args + "); atexit(__scrt_end);", LBraceLoc, false);
-   }
-  }
-#endif
-}

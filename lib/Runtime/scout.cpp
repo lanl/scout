@@ -247,42 +247,31 @@ void __sc_debugger_dump_mesh_field(size_t width,
   cerr << endl;
 }
 
-
-void __scrt_init(ScoutDeviceType devType){
+void __scrt_init_cpu() {
   DeviceList *devicelist = DeviceList::Instance();
-  switch(devType){
-    case ScoutGPUCUDA:
-    {
-#ifdef SC_ENABLE_CUDA
-      glSDL *glsdl = glSDL::Instance();
-      cuda::scInitialize(*devicelist);
-#else
-      cerr << "Error: Attempt to use CUDA GPU mode when Scout was "
-        "compiled without CUDA." << endl;
-      exit(1);
-#endif // SC_ENABLE_CUDA
-      break;
-    }
-    case ScoutGPUOpenCL:
-    {
-#ifdef SC_ENABLE_OPENCL
-      __sc_init_opencl();
-#else
-      cerr << "Error: Attempt to use OpenCL GPU mode when Scout was "
-        "compiled without OpenCL." << endl;
-      exit(1);
-#endif // SC_ENABLE_OPENCL
-      break;
-    }
-    case ScoutGPUNone:
-    {
-        cpu::scInitialize(*devicelist);
-    }
-  }
+  cpu::scInitialize(*devicelist);
 }
 
+void __scrt_init_cuda() {
+#ifdef SC_ENABLE_CUDA
+  DeviceList *devicelist = DeviceList::Instance();
+  glSDL *glsdl = glSDL::Instance();
+  cuda::scInitialize(*devicelist);
+#else
+  cerr << "Error: Attempt to use CUDA GPU mode when Scout was "
+        "compiled without CUDA." << endl;
+  exit(1);
+#endif 
+}
 
-void __scrt_end(){
+void __scrt_init_opencl() {
+#ifdef SC_ENABLE_OPENCL
+  __sc_init_opencl();
+#else
+  cerr << "Error: Attempt to use OpenCL GPU mode when Scout was "
+        "compiled without OpenCL." << endl;
+  exit(1);
+#endif // SC_ENABLE_OPENCL
 }
 
 double cshift(double a, int dx, int axis){
