@@ -175,7 +175,7 @@ class Preprocessor : public RefCountedBase<Preprocessor> {
 
   // +===== Scout ============================================================+
   mutable IdentifierTable ScoutIdentifiers;
-  // +========================================================================+
+  // +========================================================================+  
 
   /// Selectors - This table contains all the selectors in the program. Unlike
   /// IdentifierTable above, this table *isn't* populated by the preprocessor.
@@ -1122,7 +1122,7 @@ public:
   IdentifierInfo* getScoutIdentifier(StringRef name) {
     return &ScoutIdentifiers.get(name);
   }
-  // +========================================================================+
+  // +========================================================================+        
 
 private:
   llvm::DenseMap<IdentifierInfo*,unsigned> PoisonReasons;

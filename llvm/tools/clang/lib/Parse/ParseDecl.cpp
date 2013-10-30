@@ -2148,16 +2148,16 @@ bool Parser::ParseImplicitInt(DeclSpec &DS, CXXScopeSpec *SS,
         TagKind      = tok::kw_uniform;
         break;
 
-      case DeclSpec::TST_structured_mesh:
-        TagName      = "structured mesh";
-        FixitTagName = "structured mesh ";
-        TagKind      = tok::kw_structured;
-        break;
-
       case DeclSpec::TST_rectilinear_mesh:
         TagName      = "rectilinear mesh";
         FixitTagName = "rectilinear mesh ";
         TagKind      = tok::kw_rectilinear;
+        break;
+
+      case DeclSpec::TST_structured_mesh:
+        TagName      = "structured mesh";
+        FixitTagName = "structured mesh ";
+        TagKind      = tok::kw_structured;
         break;
 
       case DeclSpec::TST_unstructured_mesh:
@@ -3936,11 +3936,11 @@ bool Parser::isKnownToBeTypeSpecifier(const Token &Tok) const {
   case tok::kw_double:
 
   // +===== Scout ============================================================+
+  case tok::kw_mesh:    
   case tok::kw_uniform:
+  case tok::kw_rectilinear:    
   case tok::kw_structured:
   case tok::kw_unstructured:
-  case tok::kw_rectilinear:
-  case tok::kw_mesh:
   // +========================================================================+
 
   case tok::kw_bool:
@@ -4194,9 +4194,9 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   // +===== Scout ============================================================+
   case tok::kw_mesh:
   case tok::kw_uniform:
+  case tok::kw_rectilinear:    
   case tok::kw_structured:
   case tok::kw_unstructured:
-  case tok::kw_rectilinear:
   // +========================================================================+
 
   case tok::kw_bool:
@@ -4753,15 +4753,17 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
   DeclaratorScopeObj DeclScopeObj(*this, D.getCXXScopeSpec());
 
   // +===== Scout ============================================================+
-  bool hasMeshTypedefParameters = false;
-  DeclSpec& DS = D.getMutableDeclSpec();
-  DeclSpec::TST tst = DS.getTypeSpecType();
-  if (Tok.is(tok::l_square) && tst == DeclSpec::TST_typename) {
-    ParsedType parsedType = DS.getRepAsType();
-    const MeshType* mt = dyn_cast<MeshType>(parsedType.get().getTypePtr());
-    if (mt) {
-      hasMeshTypedefParameters = true;
-      ParseMeshParameterDeclaration(DS);
+  bool hasMeshTypedefParameters = false;  
+  if (getLangOpts().Scout) {
+    DeclSpec& DS = D.getMutableDeclSpec();
+    DeclSpec::TST tst = DS.getTypeSpecType();
+    if (Tok.is(tok::l_square) && tst == DeclSpec::TST_typename) {
+      ParsedType parsedType = DS.getRepAsType();
+      const MeshType* MT = dyn_cast<MeshType>(parsedType.get().getTypePtr());
+      if (MT) {
+        hasMeshTypedefParameters = true;
+        ParseMeshParameterDeclaration(DS);
+      }
     }
   }
   // +========================================================================+
@@ -4927,19 +4929,24 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
     MaybeParseCXX11Attributes(D);
 
   // +===== Scout ============================================================+
-  if(tst == DeclSpec::TST_typename){
-    ParsedType parsedType = DS.getRepAsType();
-    const UniformMeshType* uniMT =
+  if (getLangOpts().Scout) {
+    DeclSpec& DS = D.getMutableDeclSpec();
+    DeclSpec::TST tst = DS.getTypeSpecType();
+    
+    if(tst == DeclSpec::TST_typename){
+      ParsedType parsedType = DS.getRepAsType();
+      const UniformMeshType* uniMT =
         dyn_cast<UniformMeshType>(parsedType.get().getTypePtr());
-    if(uniMT && Tok.is(tok::l_square) && !hasMeshTypedefParameters) {
-      ParseMeshVarBracketDeclarator(D);
-      return;
-    }
-    const UnstructuredMeshType* unsMT =
+      if(uniMT && Tok.is(tok::l_square) && !hasMeshTypedefParameters) {
+        ParseMeshVarBracketDeclarator(D);
+        return;
+      }
+      const UnstructuredMeshType* unsMT =
         dyn_cast<UnstructuredMeshType>(parsedType.get().getTypePtr());
-    if(unsMT && Tok.is(tok::l_paren) && !hasMeshTypedefParameters) {
-      ParseMeshVarParenDeclarator(D);
-      return;
+      if(unsMT && Tok.is(tok::l_paren) && !hasMeshTypedefParameters) {
+        ParseMeshVarParenDeclarator(D);
+        return;
+      }
     }
   }
   // +========================================================================+

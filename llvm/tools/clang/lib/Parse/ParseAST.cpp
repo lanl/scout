@@ -87,11 +87,12 @@ void clang::ParseAST(Preprocessor &PP, ASTConsumer *Consumer,
                      TranslationUnitKind TUKind,
                      CodeCompleteConsumer *CompletionConsumer,
                      bool SkipFunctionBodies) {
+
   OwningPtr<Sema> S(new Sema(PP, Ctx, *Consumer, TUKind, CompletionConsumer));
 
   // Recover resources if we crash before exiting this method.
   llvm::CrashRecoveryContextCleanupRegistrar<Sema> CleanupSema(S.get());
-
+  
   ParseAST(*S.get(), PrintStats, SkipFunctionBodies);
 }
 
@@ -139,7 +140,7 @@ void clang::ParseAST(Sema &S, bool PrintStats, bool SkipFunctionBodies) {
       // is due to a top-level semicolon, an action override, or a parse error
       // skipping something.
       if (ADecl && !Consumer->HandleTopLevelDecl(ADecl.get()))
-          return;
+        return;
     } while (!P.ParseTopLevelDecl(ADecl));
   }
 
@@ -148,7 +149,7 @@ void clang::ParseAST(Sema &S, bool PrintStats, bool SkipFunctionBodies) {
        I = S.WeakTopLevelDecls().begin(),
        E = S.WeakTopLevelDecls().end(); I != E; ++I)
     Consumer->HandleTopLevelDecl(DeclGroupRef(*I));
-
+  
   Consumer->HandleTranslationUnit(S.getASTContext());
 
   std::swap(OldCollectStats, S.CollectStats);

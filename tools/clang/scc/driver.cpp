@@ -56,6 +56,8 @@ using namespace llvm::opt;
 #include <sstream>
 #include <cctype>
 
+#include <unistd.h>
+
 #include "scout/Config/Configuration.h"
 
 
@@ -451,6 +453,16 @@ int main(int argc_, const char **argv_) {
   if (argv.size() > 1 && StringRef(argv[1]).startswith("-cc1")) {
     StringRef Tool = argv[1] + 4;
 
+    for(int i = 2, size = argv.size(); i < size; ++i) {
+      if (StringRef(argv[i]) == "-debug") {
+        size_t pid = getpid();
+        std::cerr << "scc process id: " << pid << std::endl;
+        std::cerr << "attach debugger and then press return to continue...";
+        std::string str;
+        std::getline(std::cin, str);
+      }
+    }
+
     if (Tool == "")
       return cc1_main(argv.data()+2, argv.data()+argv.size(), argv[0],
                       (void*) (intptr_t) GetExecutablePath,
@@ -458,7 +470,6 @@ int main(int argc_, const char **argv_) {
     if (Tool == "as")
       return cc1as_main(argv.data()+2, argv.data()+argv.size(), argv[0],
                       (void*) (intptr_t) GetExecutablePath);
-
     // Reject unknown tools.
     llvm::errs() << "error: unknown integrated tool '" << Tool << "'\n";
     return 1;
@@ -511,9 +522,9 @@ int main(int argc_, const char **argv_) {
   ProcessWarningOptions(Diags, *DiagOpts, /*ReportDiags=*/false);
 
   Driver TheDriver(Path, llvm::sys::getDefaultTargetTriple(), "a.out", Diags);
-  
-  // Patch the default driver name to match 'scc' (scout) vs. clang. 
-  TheDriver.setTitle("scc (scout) \"clang & gcc-compatible\" driver");  
+
+  // Patch the default driver name to match 'scc' (scout) vs. clang.
+  TheDriver.setTitle("scc (scout) \"clang & gcc-compatible\" driver");
 
   // Attempt to find the original path used to invoke the driver, to determine
   // the installed path. We do this manually, because we want to support that
@@ -587,7 +598,7 @@ int main(int argc_, const char **argv_) {
   // If any timers were active but haven't been destroyed yet, print their
   // results now.  This happens in -disable-free mode.
   llvm::TimerGroup::printAll(llvm::errs());
-  
+
   llvm::llvm_shutdown();
 
 #ifdef _WIN32

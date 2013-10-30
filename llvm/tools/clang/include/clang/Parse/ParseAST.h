@@ -23,10 +23,6 @@ namespace clang {
   class CodeCompleteConsumer;
   class Sema;
 
-  // +===== Scout ============================================================+
-  class ASTViewScout;
-  // +========================================================================+
-
   /// \brief Parse the entire file specified, notifying the ASTConsumer as
   /// the file is parsed.
   ///
