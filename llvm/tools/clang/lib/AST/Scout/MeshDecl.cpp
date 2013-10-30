@@ -38,7 +38,7 @@ static SourceLocation getTemplateOrInnerLocStart(const DeclT *decl) {
 //===----------------------------------------------------------------------===//
 // MeshDecl Implementation
 //===----------------------------------------------------------------------===//
-// 
+//
 //
 
 SourceLocation MeshDecl::getOuterLocStart() const {
@@ -51,7 +51,7 @@ SourceRange MeshDecl::getSourceRange() const {
 }
 
 MeshDecl* MeshDecl::getCanonicalDecl() {
-  return getFirstDeclaration();
+  return getFirstDecl();
 }
 
 void MeshDecl::startDefinition() {
@@ -133,12 +133,12 @@ void MeshDecl::LoadFieldsFromExternalStorage() const {
   ExternalASTSource::Deserializing TheFields(Source);
 
   SmallVector<Decl*, 64> Decls;
-  LoadedFieldsFromExternalStorage = true;  
+  LoadedFieldsFromExternalStorage = true;
   switch (Source->FindExternalLexicalDecls(this, isFieldOrIndirectField,
                                            Decls)) {
   case ELR_Success:
     break;
-    
+
   case ELR_AlreadyLoaded:
   case ELR_Failure:
     return;
@@ -189,19 +189,19 @@ const char *MeshDecl::getKindName() const {
 UniformMeshDecl::UniformMeshDecl(DeclContext     *DC,
                                  SourceLocation  StartLoc,
                                  SourceLocation  IdLoc,
-                                 IdentifierInfo  *Id, 
+                                 IdentifierInfo  *Id,
                                  UniformMeshDecl *PrevDecl)
   : MeshDecl(UniformMesh, TTK_UniformMesh, DC, IdLoc, Id, PrevDecl, StartLoc) { }
 
-UniformMeshDecl *UniformMeshDecl::Create(const ASTContext &C, 
+UniformMeshDecl *UniformMeshDecl::Create(const ASTContext &C,
                                          DeclContext *DC,
-                                         SourceLocation StartLoc, 
+                                         SourceLocation StartLoc,
                                          SourceLocation IdLoc,
-                                         IdentifierInfo *Id, 
+                                         IdentifierInfo *Id,
                                          UniformMeshDecl* PrevDecl) {
 
-  UniformMeshDecl* M = new (C) UniformMeshDecl(DC, 
-                                               StartLoc, 
+  UniformMeshDecl* M = new (C) UniformMeshDecl(DC,
+                                               StartLoc,
                                                IdLoc, Id,
                                                PrevDecl);
   M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
@@ -209,7 +209,7 @@ UniformMeshDecl *UniformMeshDecl::Create(const ASTContext &C,
   return M;
 }
 
-UniformMeshDecl *UniformMeshDecl::CreateDeserialized(const ASTContext &C, 
+UniformMeshDecl *UniformMeshDecl::CreateDeserialized(const ASTContext &C,
                                                      unsigned ID) {
   void *Mem = AllocateDeserializedDecl(C, ID, sizeof(UniformMeshDecl));
   UniformMeshDecl *M = new (Mem) UniformMeshDecl(0, SourceLocation(),
@@ -228,19 +228,19 @@ UniformMeshDecl *UniformMeshDecl::CreateDeserialized(const ASTContext &C,
 RectilinearMeshDecl::RectilinearMeshDecl(DeclContext     *DC,
                                          SourceLocation  StartLoc,
                                          SourceLocation  IdLoc,
-                                         IdentifierInfo  *Id, 
+                                         IdentifierInfo  *Id,
                                          RectilinearMeshDecl *PrevDecl)
   : MeshDecl(RectilinearMesh, TTK_RectilinearMesh, DC, IdLoc, Id, PrevDecl, StartLoc) { }
 
-RectilinearMeshDecl *RectilinearMeshDecl::Create(const ASTContext &C, 
+RectilinearMeshDecl *RectilinearMeshDecl::Create(const ASTContext &C,
                                                  DeclContext *DC,
-                                                 SourceLocation StartLoc, 
+                                                 SourceLocation StartLoc,
                                                  SourceLocation IdLoc,
-                                                 IdentifierInfo *Id, 
+                                                 IdentifierInfo *Id,
                                                  RectilinearMeshDecl* PrevDecl) {
 
-  RectilinearMeshDecl* M = new (C) RectilinearMeshDecl(DC, 
-                                                       StartLoc, 
+  RectilinearMeshDecl* M = new (C) RectilinearMeshDecl(DC,
+                                                       StartLoc,
                                                        IdLoc, Id,
                                                        PrevDecl);
   M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
@@ -248,7 +248,7 @@ RectilinearMeshDecl *RectilinearMeshDecl::Create(const ASTContext &C,
   return M;
 }
 
-RectilinearMeshDecl *RectilinearMeshDecl::CreateDeserialized(const ASTContext &C, 
+RectilinearMeshDecl *RectilinearMeshDecl::CreateDeserialized(const ASTContext &C,
                                                              unsigned ID) {
   void *Mem = AllocateDeserializedDecl(C, ID, sizeof(RectilinearMeshDecl));
   RectilinearMeshDecl *M = new (Mem) RectilinearMeshDecl(0, SourceLocation(),
@@ -260,24 +260,24 @@ RectilinearMeshDecl *RectilinearMeshDecl::CreateDeserialized(const ASTContext &C
 //===----------------------------------------------------------------------===//
 // StructuredMeshDecl Implementation
 //===----------------------------------------------------------------------===//
-// 
+//
 //
 StructuredMeshDecl::StructuredMeshDecl(DeclContext* DC,
                                        SourceLocation StartLoc,
                                        SourceLocation IdLoc,
-                                       IdentifierInfo* Id, 
+                                       IdentifierInfo* Id,
                                        StructuredMeshDecl* PrevDecl)
   : MeshDecl(StructuredMesh, TTK_StructuredMesh, DC, IdLoc, Id, PrevDecl, StartLoc) { }
 
-StructuredMeshDecl *StructuredMeshDecl::Create(const ASTContext &C, 
+StructuredMeshDecl *StructuredMeshDecl::Create(const ASTContext &C,
                                                DeclContext *DC,
-                                               SourceLocation StartLoc, 
+                                               SourceLocation StartLoc,
                                                SourceLocation IdLoc,
-                                               IdentifierInfo *Id, 
+                                               IdentifierInfo *Id,
                                                StructuredMeshDecl* PrevDecl) {
 
-  StructuredMeshDecl* M = new (C) StructuredMeshDecl(DC, 
-                                                     StartLoc, 
+  StructuredMeshDecl* M = new (C) StructuredMeshDecl(DC,
+                                                     StartLoc,
                                                      IdLoc, Id,
                                                      PrevDecl);
   M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
@@ -285,7 +285,7 @@ StructuredMeshDecl *StructuredMeshDecl::Create(const ASTContext &C,
   return M;
 }
 
-StructuredMeshDecl *StructuredMeshDecl::CreateDeserialized(const ASTContext &C, 
+StructuredMeshDecl *StructuredMeshDecl::CreateDeserialized(const ASTContext &C,
                                                            unsigned ID) {
   void *Mem = AllocateDeserializedDecl(C, ID, sizeof(StructuredMeshDecl));
   StructuredMeshDecl *M = new (Mem) StructuredMeshDecl(0, SourceLocation(),
@@ -298,25 +298,25 @@ StructuredMeshDecl *StructuredMeshDecl::CreateDeserialized(const ASTContext &C,
 //===----------------------------------------------------------------------===//
 // UnstructuredMeshDecl Implementation
 //===----------------------------------------------------------------------===//
-// 
+//
 //
 UnstructuredMeshDecl::UnstructuredMeshDecl(DeclContext* DC,
                                            SourceLocation StartLoc,
                                            SourceLocation IdLoc,
-                                           IdentifierInfo* Id, 
+                                           IdentifierInfo* Id,
                                            UnstructuredMeshDecl* PrevDecl)
   : MeshDecl(UnstructuredMesh, TTK_UnstructuredMesh, DC, IdLoc, Id, PrevDecl, StartLoc) { }
 
 
-UnstructuredMeshDecl *UnstructuredMeshDecl::Create(const ASTContext &C, 
+UnstructuredMeshDecl *UnstructuredMeshDecl::Create(const ASTContext &C,
                                                    DeclContext *DC,
-                                                   SourceLocation StartLoc, 
+                                                   SourceLocation StartLoc,
                                                    SourceLocation IdLoc,
-                                                   IdentifierInfo *Id, 
+                                                   IdentifierInfo *Id,
                                                    UnstructuredMeshDecl* PrevDecl) {
 
-  UnstructuredMeshDecl* M = new (C) UnstructuredMeshDecl(DC, 
-                                                         StartLoc, 
+  UnstructuredMeshDecl* M = new (C) UnstructuredMeshDecl(DC,
+                                                         StartLoc,
                                                          IdLoc, Id,
                                                          PrevDecl);
   M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
@@ -324,7 +324,7 @@ UnstructuredMeshDecl *UnstructuredMeshDecl::Create(const ASTContext &C,
   return M;
 }
 
-UnstructuredMeshDecl *UnstructuredMeshDecl::CreateDeserialized(const ASTContext &C, 
+UnstructuredMeshDecl *UnstructuredMeshDecl::CreateDeserialized(const ASTContext &C,
                                                                unsigned ID) {
   void *Mem = AllocateDeserializedDecl(C, ID, sizeof(UnstructuredMeshDecl));
   UnstructuredMeshDecl *M = new (Mem) UnstructuredMeshDecl(0, SourceLocation(),

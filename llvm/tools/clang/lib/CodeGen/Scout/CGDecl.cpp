@@ -76,9 +76,9 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
 
   QualType T = D.getType();
   const clang::Type &Ty = *getContext().getCanonicalType(T).getTypePtr();
-  
+
   // SC_TODO - we need to handle the other mesh types here...
-  // 
+  //
   if (Ty.getTypeClass() == Type::UniformMesh) {
     // For mesh types each mesh field becomes a pointer to the allocated
     // field.
@@ -102,13 +102,13 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
     for(unsigned i = 0; i < rank; ++i) {
       llvm::Value* intValue;
       Expr* E = dims[i];
-      
+
       if (E->isGLValue()) {
         // Emit the expression as an lvalue.
         LValue LV = EmitLValue(E);
 
         // We have to load the lvalue.
-        RValue RV = EmitLoadOfLValue(LV);
+        RValue RV = EmitLoadOfLValue(LV, E->getExprLoc() );
         intValue  = RV.getScalarVal();
 
       } else if (E->isConstantInitializer(getContext(), false)) {
@@ -148,11 +148,11 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
       llvm::Type *fieldTy = structTy->getContainedType(i);
       // If this is a externally allocated field, go on
       MeshFieldDecl* FD = *itr;
-    
+
       if (itr != itr_end)
         ++itr;
 
-      // SC_TODO - does this introduce a bug?  Fix me???  -PM 
+      // SC_TODO - does this introduce a bug?  Fix me???  -PM
       if (FD->hasExternalFormalLinkage())
         continue;
 
@@ -183,7 +183,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
         // Emit the expression as an lvalue.
         LValue LV = EmitLValue(E);
         // We have to load the lvalue.
-        RValue RV = EmitLoadOfLValue(LV);
+        RValue RV = EmitLoadOfLValue(LV, E->getExprLoc());
         intValue = RV.getScalarVal();
       } else if (E->isConstantInitializer(getContext(), false)) {
         bool evalret;

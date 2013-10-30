@@ -1,11 +1,54 @@
-//=== MeshLayoutBuilder.cpp - Helper class for building record layouts ---==//
-//
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
-//
-//===----------------------------------------------------------------------===//
+/*
+ *
+ * ###########################################################################
+ *
+ * Copyright (c) 2013, Los Alamos National Security, LLC.
+ * All rights reserved.
+ *
+ *  Copyright 2013. Los Alamos National Security, LLC. This software was
+ *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
+ *  Alamos National Laboratory (LANL), which is operated by Los Alamos
+ *  National Security, LLC for the U.S. Department of Energy. The
+ *  U.S. Government has rights to use, reproduce, and distribute this
+ *  software.  NEITHER THE GOVERNMENT NOR LOS ALAMOS NATIONAL SECURITY,
+ *  LLC MAKES ANY WARRANTY, EXPRESS OR IMPLIED, OR ASSUMES ANY LIABILITY
+ *  FOR THE USE OF THIS SOFTWARE.  If software is modified to produce
+ *  derivative works, such modified software should be clearly marked,
+ *  so as not to confuse it with the version available from LANL.
+ *
+ *  Additionally, redistribution and use in source and binary forms,
+ *  with or without modification, are permitted provided that the
+ *  following conditions are met:
+ *
+ *    * Redistributions of source code must retain the above copyright
+ *      notice, this list of conditions and the following disclaimer.
+ *
+ *    * Redistributions in binary form must reproduce the above
+ *      copyright notice, this list of conditions and the following
+ *      disclaimer in the documentation and/or other materials provided
+ *      with the distribution.
+ *
+ *    * Neither the name of Los Alamos National Security, LLC, Los
+ *      Alamos National Laboratory, LANL, the U.S. Government, nor the
+ *      names of its contributors may be used to endorse or promote
+ *      products derived from this software without specific prior
+ *      written permission.
+ *
+ *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
+ *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ *  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ *  DISCLAIMED. IN NO EVENT SHALL LOS ALAMOS NATIONAL SECURITY, LLC OR
+ *  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ *  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ *  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ *  USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ *  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ *  SUCH DAMAGE.
+ *
+ */
 
 #include "clang/AST/Scout/MeshLayout.h"
 
@@ -35,15 +78,15 @@ protected:
   /// record.
   unsigned ExternalLayout : 1;
 
-  /// \brief Whether we need to infer alignment, even when we have an 
+  /// \brief Whether we need to infer alignment, even when we have an
   /// externally-provided layout.
   unsigned InferAlignment : 1;
-  
+
   /// Packed - Whether the record is packed or not.
   unsigned Packed : 1;
 
   unsigned IsMac68kAlign : 1;
-  
+
   /// UnfilledBitsInLastByte - If the last field laid out was a bitfield,
   /// this contains the number of bits in the last byte that can be used for
   /// an adjacent bitfield if necessary.
@@ -60,21 +103,21 @@ protected:
 
   /// \brief Externally-provided size.
   uint64_t ExternalSize;
-  
+
   /// \brief Externally-provided alignment.
   uint64_t ExternalAlign;
-  
+
   /// \brief Externally-provided field offsets.
   llvm::DenseMap<const MeshFieldDecl *, uint64_t> ExternalFieldOffsets;
 
   MeshLayoutBuilder(const ASTContext &Context,
                       EmptySubobjectMap *EmptySubobjects)
-    : Context(Context), EmptySubobjects(EmptySubobjects), Size(0), 
+    : Context(Context), EmptySubobjects(EmptySubobjects), Size(0),
       Alignment(CharUnits::One()), UnpackedAlignment(CharUnits::One()),
-      ExternalLayout(false), InferAlignment(false), 
+      ExternalLayout(false), InferAlignment(false),
       Packed(false), IsMac68kAlign(false),
-      UnfilledBitsInLastByte(0), MaxFieldAlignment(CharUnits::Zero()), 
-      DataSize(0),  
+      UnfilledBitsInLastByte(0), MaxFieldAlignment(CharUnits::Zero()),
+      DataSize(0),
       ZeroLengthBitfield(0) { }
 
   /// Reset this MeshLayoutBuilder to a fresh state, using the given
@@ -112,18 +155,18 @@ protected:
   ///
   /// \param Field The field whose offset is being queried.
   /// \param ComputedOffset The offset that we've computed for this field.
-  uint64_t updateExternalFieldOffset(const MeshFieldDecl *Field, 
+  uint64_t updateExternalFieldOffset(const MeshFieldDecl *Field,
                                      uint64_t ComputedOffset);
-  
+
   void CheckFieldPadding(uint64_t Offset, uint64_t UnpaddedOffset,
                          uint64_t UnpackedOffset, unsigned UnpackedAlign,
                          bool isPacked, const MeshFieldDecl *D);
 
   DiagnosticBuilder Diag(SourceLocation Loc, unsigned DiagID);
 
-  CharUnits getSize() const { 
+  CharUnits getSize() const {
     assert(Size % Context.getCharWidth() == 0);
-    return Context.toCharUnitsFromBits(Size); 
+    return Context.toCharUnitsFromBits(Size);
   }
   uint64_t getSizeInBits() const { return Size; }
 
@@ -132,9 +175,9 @@ protected:
 
   CharUnits getAligment() const { return Alignment; }
 
-  CharUnits getDataSize() const { 
+  CharUnits getDataSize() const {
     assert(DataSize % Context.getCharWidth() == 0);
-    return Context.toCharUnitsFromBits(DataSize); 
+    return Context.toCharUnitsFromBits(DataSize);
   }
   uint64_t getDataSizeInBits() const { return DataSize; }
 
@@ -149,7 +192,7 @@ protected:
 
 
 void MeshLayoutBuilder::InitializeLayout(const Decl *D) {
-  Packed = D->hasAttr<PackedAttr>();  
+  Packed = D->hasAttr<PackedAttr>();
 
   // Honor the default struct packing maximum alignment flag.
   if (unsigned DefaultMaxFieldAlignment = Context.getLangOpts().PackStruct) {
@@ -171,15 +214,15 @@ void MeshLayoutBuilder::InitializeLayout(const Decl *D) {
     if (unsigned MaxAlign = D->getMaxAlignment())
       UpdateAlignment(Context.toCharUnitsFromBits(MaxAlign));
   }
-  
+
   // If there is an external AST source, ask it for the various offsets.
   if (const MeshDecl *MD = dyn_cast<MeshDecl>(D))
     if (ExternalASTSource *External = Context.getExternalSource()) {
-      ExternalLayout = External->layoutMeshType(MD, 
+      ExternalLayout = External->layoutMeshType(MD,
                                                 ExternalSize,
                                                 ExternalAlign,
                                                 ExternalFieldOffsets);
-      
+
       // Update based on external alignment.
       if (ExternalLayout) {
         if (ExternalAlign > 0) {
@@ -207,9 +250,9 @@ void MeshLayoutBuilder::LayoutFields(const MeshDecl *D) {
   ZeroLengthBitfield = 0;
   for (MeshDecl::field_iterator Field = D->field_begin(),
        FieldEnd = D->field_end(); Field != FieldEnd; ++Field) {
-   
+
     if (!Context.getTargetInfo().useBitFieldTypeAlignment() &&
-         Context.getTargetInfo().useZeroLengthBitfieldAlignment()) {             
+         Context.getTargetInfo().useZeroLengthBitfieldAlignment()) {
       if (Field->isBitField() && Field->getBitWidthValue(Context) == 0)
         ZeroLengthBitfield = *Field;
     }
@@ -253,13 +296,13 @@ void MeshLayoutBuilder::LayoutWideBitField(uint64_t FieldSize,
   uint64_t FieldOffset;
   uint64_t UnpaddedFieldOffset = getDataSizeInBits() - UnfilledBitsInLastByte;
 
-  // The bitfield is allocated starting at the next offset aligned 
+  // The bitfield is allocated starting at the next offset aligned
   // appropriately for T', with length n bits.
-  FieldOffset = llvm::RoundUpToAlignment(getDataSizeInBits(), 
+  FieldOffset = llvm::RoundUpToAlignment(getDataSizeInBits(),
                                          Context.toBits(TypeAlign));
 
   uint64_t NewSizeInBits = FieldOffset + FieldSize;
-  setDataSize(llvm::RoundUpToAlignment(NewSizeInBits, 
+  setDataSize(llvm::RoundUpToAlignment(NewSizeInBits,
                                        Context.getTargetInfo().getCharAlign()));
   UnfilledBitsInLastByte = getDataSizeInBits() - NewSizeInBits;
 
@@ -285,12 +328,12 @@ void MeshLayoutBuilder::LayoutBitField(const MeshFieldDecl *D) {
   std::pair<uint64_t, unsigned> FieldInfo = Context.getTypeInfo(D->getType());
   uint64_t TypeSize = FieldInfo.first;
   unsigned FieldAlign = FieldInfo.second;
-  
+
   // This check is needed for 'long long' in -m32 mode.
   if (ZeroLengthBitfield) {
     std::pair<uint64_t, unsigned> FieldInfo;
     // The alignment of a zero-length bitfield affects the alignment
-    // of the next member.  The alignment is the max of the zero 
+    // of the next member.  The alignment is the max of the zero
     // length bitfield's alignment and a target specific fixed value.
     unsigned ZeroLengthBitfieldBoundary =
       Context.getTargetInfo().getZeroLengthBitfieldBoundary();
@@ -310,7 +353,7 @@ void MeshLayoutBuilder::LayoutBitField(const MeshFieldDecl *D) {
   if (!Context.getTargetInfo().useBitFieldTypeAlignment() && !ZeroLengthBitfield)
     UnpackedFieldAlign = 1;
 
-  if (FieldPacked || 
+  if (FieldPacked ||
       (!Context.getTargetInfo().useBitFieldTypeAlignment() && !ZeroLengthBitfield))
     FieldAlign = 1;
   FieldAlign = std::max(FieldAlign, D->getMaxAlignment());
@@ -324,7 +367,7 @@ void MeshLayoutBuilder::LayoutBitField(const MeshFieldDecl *D) {
   }
 
   // Check if we need to add padding to give the field the correct alignment.
-  if (FieldSize == 0 || 
+  if (FieldSize == 0 ||
       (MaxFieldAlignment.isZero() &&
        (FieldOffset & (FieldAlign-1)) + FieldSize > TypeSize))
     FieldOffset = llvm::RoundUpToAlignment(FieldOffset, FieldAlign);
@@ -355,19 +398,19 @@ void MeshLayoutBuilder::LayoutBitField(const MeshFieldDecl *D) {
   // Update DataSize to include the last byte containing (part of) the bitfield.
   uint64_t NewSizeInBits = FieldOffset + FieldSize;
 
-  setDataSize(llvm::RoundUpToAlignment(NewSizeInBits, 
+  setDataSize(llvm::RoundUpToAlignment(NewSizeInBits,
                                        Context.getTargetInfo().getCharAlign()));
   UnfilledBitsInLastByte = getDataSizeInBits() - NewSizeInBits;
-  
+
   // Update the size.
   setSize(std::max(getSizeInBits(), getDataSizeInBits()));
 
   // Remember max struct/class alignment.
-  UpdateAlignment(Context.toCharUnitsFromBits(FieldAlign), 
+  UpdateAlignment(Context.toCharUnitsFromBits(FieldAlign),
                   Context.toCharUnitsFromBits(UnpackedFieldAlign));
 }
 
-void MeshLayoutBuilder::LayoutField(const MeshFieldDecl *D) {  
+void MeshLayoutBuilder::LayoutField(const MeshFieldDecl *D) {
   if (D->isBitField()) {
     LayoutBitField(D);
     return;
@@ -393,28 +436,28 @@ void MeshLayoutBuilder::LayoutField(const MeshFieldDecl *D) {
     FieldAlign = Context.getTypeAlignInChars(ATy->getElementType());
   } else if (const ReferenceType *RT = D->getType()->getAs<ReferenceType>()) {
     unsigned AS = RT->getPointeeType().getAddressSpace();
-    FieldSize = 
+    FieldSize =
       Context.toCharUnitsFromBits(Context.getTargetInfo().getPointerWidth(AS));
-    FieldAlign = 
+    FieldAlign =
       Context.toCharUnitsFromBits(Context.getTargetInfo().getPointerAlign(AS));
   } else {
-    std::pair<CharUnits, CharUnits> FieldInfo = 
+    std::pair<CharUnits, CharUnits> FieldInfo =
       Context.getTypeInfoInChars(D->getType());
     FieldSize = FieldInfo.first;
     FieldAlign = FieldInfo.second;
 
     if (ZeroLengthBitfield) {
-      CharUnits ZeroLengthBitfieldBoundary = 
+      CharUnits ZeroLengthBitfieldBoundary =
         Context.toCharUnitsFromBits(
           Context.getTargetInfo().getZeroLengthBitfieldBoundary());
       if (ZeroLengthBitfieldBoundary == CharUnits::Zero()) {
         // If a zero-length bitfield is inserted after a bitfield,
         // and the alignment of the zero-length bitfield is
-        // greater than the member that follows it, `bar', `bar' 
+        // greater than the member that follows it, `bar', `bar'
         // will be aligned as the type of the zero-length bitfield.
-        std::pair<CharUnits, CharUnits> FieldInfo = 
+        std::pair<CharUnits, CharUnits> FieldInfo =
           Context.getTypeInfoInChars(ZeroLengthBitfield->getType());
-        CharUnits ZeroLengthBitfieldAlignment = FieldInfo.second;        
+        CharUnits ZeroLengthBitfieldAlignment = FieldInfo.second;
         if (ZeroLengthBitfieldAlignment > FieldAlign)
           FieldAlign = ZeroLengthBitfieldAlignment;
       } else if (ZeroLengthBitfieldBoundary > FieldAlign) {
@@ -435,7 +478,7 @@ void MeshLayoutBuilder::LayoutField(const MeshFieldDecl *D) {
 
   if (FieldPacked)
     FieldAlign = CharUnits::One();
-  CharUnits MaxAlignmentInChars = 
+  CharUnits MaxAlignmentInChars =
     Context.toCharUnitsFromBits(D->getMaxAlignment());
   FieldAlign = std::max(FieldAlign, MaxAlignmentInChars);
   UnpackedFieldAlign = std::max(UnpackedFieldAlign, MaxAlignmentInChars);
@@ -448,18 +491,18 @@ void MeshLayoutBuilder::LayoutField(const MeshFieldDecl *D) {
 
   // Round up the current record size to the field's alignment boundary.
   FieldOffset = FieldOffset.RoundUpToAlignment(FieldAlign);
-  UnpackedFieldOffset = 
+  UnpackedFieldOffset =
     UnpackedFieldOffset.RoundUpToAlignment(UnpackedFieldAlign);
 
   if (ExternalLayout) {
     FieldOffset = Context.toCharUnitsFromBits(
                     updateExternalFieldOffset(D, Context.toBits(FieldOffset)));
-    
+
     if (EmptySubobjects) {
       // Record the fact that we're placing a field at this offset.
       bool Allowed = EmptySubobjects->CanPlaceFieldAtOffset(D, FieldOffset);
       (void)Allowed;
-      assert(Allowed && "Externally-placed field cannot be placed here");      
+      assert(Allowed && "Externally-placed field cannot be placed here");
     }
   } else {
     if (EmptySubobjects) {
@@ -470,12 +513,12 @@ void MeshLayoutBuilder::LayoutField(const MeshFieldDecl *D) {
       }
     }
   }
-  
+
   // Place this field at the current location.
   FieldOffsets.push_back(Context.toBits(FieldOffset));
 
   if (!ExternalLayout)
-    CheckFieldPadding(Context.toBits(FieldOffset), UnpaddedFieldOffset, 
+    CheckFieldPadding(Context.toBits(FieldOffset), UnpaddedFieldOffset,
                       Context.toBits(UnpackedFieldOffset),
                       Context.toBits(UnpackedFieldAlign), FieldPacked, D);
 
@@ -546,7 +589,7 @@ void MeshLayoutBuilder::FinishLayout(const NamedDecl *D) {
 
     // Warn if we packed it unnecessarily. If the alignment is 1 byte don't
     // bother since there won't be alignment issues.
-    if (Packed && UnpackedAlignment > CharUnits::One() && 
+    if (Packed && UnpackedAlignment > CharUnits::One() &&
         getSize() == UnpackedSize)
       Diag(D->getLocation(), diag::warn_unnecessary_packed)
           << Context.getTypeDeclType(RD);
@@ -561,7 +604,7 @@ void MeshLayoutBuilder::UpdateAlignment(CharUnits NewAlignment,
     return;
 
   if (NewAlignment > Alignment) {
-    assert(llvm::isPowerOf2_32(NewAlignment.getQuantity() && 
+    assert(llvm::isPowerOf2_32(NewAlignment.getQuantity() &&
            "Alignment not a power of 2"));
     Alignment = NewAlignment;
   }
@@ -574,32 +617,32 @@ void MeshLayoutBuilder::UpdateAlignment(CharUnits NewAlignment,
 }
 
 uint64_t
-MeshLayoutBuilder::updateExternalFieldOffset(const MeshFieldDecl *Field, 
+MeshLayoutBuilder::updateExternalFieldOffset(const MeshFieldDecl *Field,
                                              uint64_t ComputedOffset) {
   assert(ExternalFieldOffsets.find(Field) != ExternalFieldOffsets.end() &&
          "Field does not have an external offset");
-  
+
   uint64_t ExternalFieldOffset = ExternalFieldOffsets[Field];
-  
+
   if (InferAlignment && ExternalFieldOffset < ComputedOffset) {
     // The externally-supplied field offset is before the field offset we
     // computed. Assume that the structure is packed.
     Alignment = CharUnits::One();
     InferAlignment = false;
   }
-  
+
   // Use the externally-supplied field offset.
   return ExternalFieldOffset;
 }
 
 static int getPaddingDiagFromMeshKind(MeshTypeKind MK) {
   switch (MK) {
-    case TTK_UniformMesh: return 0; 
+    case TTK_UniformMesh: return 0;
     case TTK_RectilinearMesh: return 0;
     case TTK_StructuredMesh: return 0;
     case TTK_UnstructuredMesh: return 0;
-    // This will give you a weird warning under clang that essentially 
-    // says "you've handled all cases default will not be used"... 
+    // This will give you a weird warning under clang that essentially
+    // says "you've handled all cases default will not be used"...
     //default: llvm_unreachable("Invalid mesh kind for field padding diagnostic");
   }
   return -1;
@@ -611,12 +654,12 @@ void MeshLayoutBuilder::CheckFieldPadding(uint64_t Offset,
                                           unsigned UnpackedAlign,
                                           bool isPacked,
                                           const MeshFieldDecl *D) {
-  
+
   // Don't warn about structs created without a SourceLocation.  This can
   // be done by clients of the AST, such as codegen.
   if (D->getLocation().isInvalid())
     return;
-  
+
   unsigned CharBitNum = Context.getTargetInfo().getCharWidth();
 
   // Warn if padding was introduced to the mesh.
@@ -668,7 +711,7 @@ ASTContext::getASTMeshLayout(const MeshDecl *D) const {
 
   if (D->hasExternalLexicalStorage() && !D->getDefinition())
     getExternalSource()->CompleteType(const_cast<MeshDecl*>(D));
-    
+
   D = D->getDefinition();
   assert(D && "Cannot get layout of forward declarations!");
   assert(D->isCompleteDefinition() && "Cannot layout type before complete!");
@@ -681,11 +724,11 @@ ASTContext::getASTMeshLayout(const MeshDecl *D) const {
 
   const ASTMeshLayout *NewEntry;
 
-  
+
   MeshLayoutBuilder Builder(*this, /*EmptySubobjects=*/0);
   Builder.Layout(D);
 
-  NewEntry = new (*this) ASTMeshLayout(*this, Builder.getSize(), 
+  NewEntry = new (*this) ASTMeshLayout(*this, Builder.getSize(),
                                        Builder.Alignment,
                                        Builder.getSize(),
                                        Builder.FieldOffsets.data(),

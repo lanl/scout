@@ -57,6 +57,75 @@ bool TemplateDeclInstantiator::SubstQualifier(const TagDecl *OldDecl,
   return false;
 }
 
+// +===== Scout ==============================================================+
+bool TemplateDeclInstantiator::SubstQualifier(const UniformMeshDecl *OldDecl,
+                                              UniformMeshDecl *NewDecl) {
+  if (!OldDecl->getQualifierLoc())
+    return false;
+
+  NestedNameSpecifierLoc NewQualifierLoc
+  = SemaRef.SubstNestedNameSpecifierLoc(OldDecl->getQualifierLoc(),
+                                        TemplateArgs);
+
+  if (!NewQualifierLoc)
+    return true;
+
+  NewDecl->setQualifierInfo(NewQualifierLoc);
+  return false;
+}
+
+bool TemplateDeclInstantiator::SubstQualifier(const RectilinearMeshDecl *OldDecl,
+                                              RectilinearMeshDecl *NewDecl) {
+  if (!OldDecl->getQualifierLoc())
+    return false;
+
+  NestedNameSpecifierLoc NewQualifierLoc
+  = SemaRef.SubstNestedNameSpecifierLoc(OldDecl->getQualifierLoc(),
+                                        TemplateArgs);
+
+  if (!NewQualifierLoc)
+    return true;
+
+  NewDecl->setQualifierInfo(NewQualifierLoc);
+  return false;
+}
+
+bool TemplateDeclInstantiator::SubstQualifier(const StructuredMeshDecl *OldDecl,
+                                              StructuredMeshDecl *NewDecl) {
+  if (!OldDecl->getQualifierLoc())
+    return false;
+
+  NestedNameSpecifierLoc NewQualifierLoc
+  = SemaRef.SubstNestedNameSpecifierLoc(OldDecl->getQualifierLoc(),
+                                        TemplateArgs);
+
+  if (!NewQualifierLoc)
+    return true;
+
+  NewDecl->setQualifierInfo(NewQualifierLoc);
+  return false;
+}
+
+bool
+TemplateDeclInstantiator::SubstQualifier(const UnstructuredMeshDecl *OldDecl,
+                                         UnstructuredMeshDecl *NewDecl) {
+  if (!OldDecl->getQualifierLoc())
+    return false;
+
+  NestedNameSpecifierLoc NewQualifierLoc
+  = SemaRef.SubstNestedNameSpecifierLoc(OldDecl->getQualifierLoc(),
+                                        TemplateArgs);
+
+  if (!NewQualifierLoc)
+    return true;
+
+  NewDecl->setQualifierInfo(NewQualifierLoc);
+  return false;
+}
+
+// +==========================================================================+
+
+
 // Include attribute instantiation code.
 #include "clang/Sema/AttrTemplateInstantiate.inc"
 
@@ -356,7 +425,7 @@ Decl *TemplateDeclInstantiator::VisitVarDecl(VarDecl *D,
                                  DI->getType(), DI, D->getStorageClass());
 
   // In ARC, infer 'retaining' for variables of retainable type.
-  if (SemaRef.getLangOpts().ObjCAutoRefCount && 
+  if (SemaRef.getLangOpts().ObjCAutoRefCount &&
       SemaRef.inferObjCARCLifetime(Var))
     Var->setInvalidDecl();
 
@@ -458,6 +527,85 @@ Decl *TemplateDeclInstantiator::VisitFieldDecl(FieldDecl *D) {
 
   return Field;
 }
+
+// +===== Scout ==============================================================+
+
+Decl *TemplateDeclInstantiator::VisitMeshFieldDecl(MeshFieldDecl *D) {
+  bool Invalid = false;
+  TypeSourceInfo *DI = D->getTypeSourceInfo();
+  if (DI->getType()->isInstantiationDependentType() ||
+      DI->getType()->isVariablyModifiedType())  {
+    DI = SemaRef.SubstType(DI, TemplateArgs,
+                           D->getLocation(), D->getDeclName());
+    if (!DI) {
+      DI = D->getTypeSourceInfo();
+      Invalid = true;
+    } else if (DI->getType()->isFunctionType()) {
+      // C++ [temp.arg.type]p3:
+      //   If a declaration acquires a function type through a type
+      //   dependent on a template-parameter and this causes a
+      //   declaration that does not use the syntactic form of a
+      //   function declarator to have function type, the program is
+      //   ill-formed.
+      SemaRef.Diag(D->getLocation(), diag::err_field_instantiates_to_function)
+        << DI->getType();
+      Invalid = true;
+    }
+  } else {
+    SemaRef.MarkDeclarationsReferencedInType(D->getLocation(), DI->getType());
+  }
+
+  Expr *BitWidth = D->getBitWidth();
+  if (Invalid)
+    BitWidth = 0;
+  else if (BitWidth) {
+    // The bit-width expression is a constant expression.
+    EnterExpressionEvaluationContext Unevaluated(SemaRef,
+                                                 Sema::ConstantEvaluated);
+
+    ExprResult InstantiatedBitWidth
+      = SemaRef.SubstExpr(BitWidth, TemplateArgs);
+    if (InstantiatedBitWidth.isInvalid()) {
+      Invalid = true;
+      BitWidth = 0;
+    } else
+      BitWidth = InstantiatedBitWidth.takeAs<Expr>();
+  }
+
+  MeshFieldDecl *Field = SemaRef.CheckMeshFieldDecl(D->getDeclName(),
+                                                    DI->getType(), DI,
+                                                    cast<MeshDecl>(Owner),
+                                                    D->getLocation(),
+                                                    D->getInnerLocStart(),
+                                                    0,
+                                                    0);
+  if (!Field) {
+    cast<Decl>(Owner)->setInvalidDecl();
+    return 0;
+  }
+
+  SemaRef.InstantiateAttrs(TemplateArgs, D, Field, LateAttrs, StartingScope);
+
+  if (Field->hasAttrs())
+    SemaRef.CheckAlignasUnderalignment(Field);
+
+  if (Invalid)
+    Field->setInvalidDecl();
+
+  if (!Field->getDeclName()) {
+    // Keep track of where this decl came from.
+    SemaRef.Context.setInstantiatedFromUnnamedFieldDecl(Field, D);
+  }
+  Field->setImplicit(D->isImplicit());
+  Field->setAccess(D->getAccess());
+  Owner->addDecl(Field);
+
+  return Field;
+}
+
+
+
+// +==========================================================================+
 
 Decl *TemplateDeclInstantiator::VisitMSPropertyDecl(MSPropertyDecl *D) {
   bool Invalid = false;
@@ -1130,6 +1278,154 @@ Decl *TemplateDeclInstantiator::VisitCXXRecordDecl(CXXRecordDecl *D) {
   return Record;
 }
 
+// +===== Scout ==============================================================+
+
+Decl *TemplateDeclInstantiator::VisitUniformMeshDecl(UniformMeshDecl *D) {
+  UniformMeshDecl *PrevDecl = 0;
+  if (D->getPreviousDecl()) {
+    NamedDecl *Prev = SemaRef.FindInstantiatedDecl(D->getLocation(),
+                                                   D->getPreviousDecl(),
+                                                   TemplateArgs);
+    if (!Prev) return 0;
+    PrevDecl = cast<UniformMeshDecl>(Prev);
+  }
+
+  UniformMeshDecl *UMD
+    = UniformMeshDecl::Create(SemaRef.Context, Owner,
+                              D->getLocStart(), D->getLocation(),
+                              D->getIdentifier(), PrevDecl);
+
+  // Substitute the nested name specifier, if any.
+  if (SubstQualifier(D, UMD))
+    return 0;
+
+  UMD->setImplicit(D->isImplicit());
+  // FIXME: Check against AS_none is an ugly hack to work around the issue that
+  // the tag decls introduced by friend class declarations don't have an access
+  // specifier. Remove once this area of the code gets sorted out.
+  if (D->getAccess() != AS_none)
+    UMD->setAccess(D->getAccess());
+
+  // If the original function was part of a friend declaration,
+  // inherit its namespace state.
+  if (D->getFriendObjectKind())
+    UMD->setObjectOfFriendDecl();
+
+  Owner->addDecl(UMD);
+  return UMD;
+}
+
+
+Decl *
+TemplateDeclInstantiator::VisitRectilinearMeshDecl(RectilinearMeshDecl *D) {
+  RectilinearMeshDecl *PrevDecl = 0;
+  if (D->getPreviousDecl()) {
+    NamedDecl *Prev = SemaRef.FindInstantiatedDecl(D->getLocation(),
+                                                   D->getPreviousDecl(),
+                                                   TemplateArgs);
+    if (!Prev) return 0;
+    PrevDecl = cast<RectilinearMeshDecl>(Prev);
+  }
+
+  RectilinearMeshDecl *RMD
+    = RectilinearMeshDecl::Create(SemaRef.Context, Owner,
+                                  D->getLocStart(), D->getLocation(),
+                                  D->getIdentifier(), PrevDecl);
+
+  // Substitute the nested name specifier, if any.
+  if (SubstQualifier(D, RMD))
+    return 0;
+
+  RMD->setImplicit(D->isImplicit());
+  // FIXME: Check against AS_none is an ugly hack to work around the issue that
+  // the tag decls introduced by friend class declarations don't have an access
+  // specifier. Remove once this area of the code gets sorted out.
+  if (D->getAccess() != AS_none)
+    RMD->setAccess(D->getAccess());
+
+  // If the original function was part of a friend declaration,
+  // inherit its namespace state.
+  if (D->getFriendObjectKind())
+    RMD->setObjectOfFriendDecl();
+
+  Owner->addDecl(RMD);
+  return RMD;
+}
+
+Decl *
+TemplateDeclInstantiator::VisitStructuredMeshDecl(StructuredMeshDecl *D) {
+  StructuredMeshDecl *PrevDecl = 0;
+  if (D->getPreviousDecl()) {
+    NamedDecl *Prev = SemaRef.FindInstantiatedDecl(D->getLocation(),
+                                                   D->getPreviousDecl(),
+                                                   TemplateArgs);
+    if (!Prev) return 0;
+    PrevDecl = cast<StructuredMeshDecl>(Prev);
+  }
+
+  StructuredMeshDecl *SMD
+    = StructuredMeshDecl::Create(SemaRef.Context, Owner,
+                                 D->getLocStart(), D->getLocation(),
+                                 D->getIdentifier(), PrevDecl);
+
+  // Substitute the nested name specifier, if any.
+  if (SubstQualifier(D, SMD))
+    return 0;
+
+  SMD->setImplicit(D->isImplicit());
+  // FIXME: Check against AS_none is an ugly hack to work around the issue that
+  // the tag decls introduced by friend class declarations don't have an access
+  // specifier. Remove once this area of the code gets sorted out.
+  if (D->getAccess() != AS_none)
+    SMD->setAccess(D->getAccess());
+
+  // If the original function was part of a friend declaration,
+  // inherit its namespace state.
+  if (D->getFriendObjectKind())
+    SMD->setObjectOfFriendDecl();
+
+  Owner->addDecl(SMD);
+  return SMD;
+}
+
+Decl *
+TemplateDeclInstantiator::VisitUnstructuredMeshDecl(UnstructuredMeshDecl *D) {
+  UnstructuredMeshDecl *PrevDecl = 0;
+  if (D->getPreviousDecl()) {
+    NamedDecl *Prev = SemaRef.FindInstantiatedDecl(D->getLocation(),
+                                                   D->getPreviousDecl(),
+                                                   TemplateArgs);
+    if (!Prev) return 0;
+    PrevDecl = cast<UnstructuredMeshDecl>(Prev);
+  }
+
+  UnstructuredMeshDecl *USMD
+    = UnstructuredMeshDecl::Create(SemaRef.Context, Owner,
+                                   D->getLocStart(), D->getLocation(),
+                                   D->getIdentifier(), PrevDecl);
+
+  // Substitute the nested name specifier, if any.
+  if (SubstQualifier(D, USMD))
+    return 0;
+
+  USMD->setImplicit(D->isImplicit());
+  // FIXME: Check against AS_none is an ugly hack to work around the issue that
+  // the tag decls introduced by friend class declarations don't have an access
+  // specifier. Remove once this area of the code gets sorted out.
+  if (D->getAccess() != AS_none)
+    USMD->setAccess(D->getAccess());
+
+  // If the original function was part of a friend declaration,
+  // inherit its namespace state.
+  if (D->getFriendObjectKind())
+    USMD->setObjectOfFriendDecl();
+
+  Owner->addDecl(USMD);
+  return USMD;
+}
+
+// +==========================================================================+
+
 /// \brief Adjust the given function type for an instantiation of the
 /// given declaration, to cope with modifications to the function's type that
 /// aren't reflected in the type-source information.
@@ -1462,7 +1758,7 @@ TemplateDeclInstantiator::VisitCXXMethodDecl(CXXMethodDecl *D,
 
     void *InsertPos = 0;
     FunctionDecl *SpecFunc
-      = FunctionTemplate->findSpecialization(Innermost.begin(), 
+      = FunctionTemplate->findSpecialization(Innermost.begin(),
                                              Innermost.size(),
                                              InsertPos);
 
@@ -1680,7 +1976,7 @@ TemplateDeclInstantiator::VisitCXXMethodDecl(CXXMethodDecl *D,
   // previous declaration we just found.
   if (isFriend && Method->getPreviousDecl())
     Method->setAccess(Method->getPreviousDecl()->getAccess());
-  else 
+  else
     Method->setAccess(D->getAccess());
   if (FunctionTemplate)
     FunctionTemplate->setAccess(Method->getAccess());
@@ -2706,14 +3002,14 @@ TemplateDeclInstantiator::SubstFunctionType(FunctionDecl *D,
   TypeSourceInfo *OldTInfo = D->getTypeSourceInfo();
   assert(OldTInfo && "substituting function without type source info");
   assert(Params.empty() && "parameter vector is non-empty at start");
-  
+
   CXXRecordDecl *ThisContext = 0;
   unsigned ThisTypeQuals = 0;
   if (CXXMethodDecl *Method = dyn_cast<CXXMethodDecl>(D)) {
     ThisContext = cast<CXXRecordDecl>(Owner);
     ThisTypeQuals = Method->getTypeQualifiers();
   }
-  
+
   TypeSourceInfo *NewTInfo
     = SemaRef.SubstFunctionDeclType(OldTInfo, TemplateArgs,
                                     D->getTypeSpecStartLoc(),
@@ -2838,11 +3134,11 @@ static void InstantiateExceptionSpec(Sema &SemaRef, FunctionDecl *New,
   assert(Proto->getExceptionSpecType() != EST_Uninstantiated);
 
   // C++11 [expr.prim.general]p3:
-  //   If a declaration declares a member function or member function 
-  //   template of a class X, the expression this is a prvalue of type 
+  //   If a declaration declares a member function or member function
+  //   template of a class X, the expression this is a prvalue of type
   //   "pointer to cv-qualifier-seq X" between the optional cv-qualifer-seq
-  //   and the end of the function-definition, member-declarator, or 
-  //   declarator.    
+  //   and the end of the function-definition, member-declarator, or
+  //   declarator.
   CXXRecordDecl *ThisContext = 0;
   unsigned ThisTypeQuals = 0;
   if (CXXMethodDecl *Method = dyn_cast<CXXMethodDecl>(New)) {
@@ -3202,7 +3498,7 @@ void Sema::InstantiateFunctionDefinition(SourceLocation PointOfInstantiation,
   // while we're still within our own instantiation context.
   SmallVector<VTableUse, 16> SavedVTableUses;
   std::deque<PendingImplicitInstantiation> SavedPendingInstantiations;
-  std::deque<PendingImplicitInstantiation> 
+  std::deque<PendingImplicitInstantiation>
                               SavedPendingLocalImplicitInstantiations;
   SavedPendingLocalImplicitInstantiations.swap(
                                   PendingLocalImplicitInstantiations);
@@ -3765,7 +4061,7 @@ void Sema::InstantiateVariableDefinition(SourceLocation PointOfInstantiation,
   PerformPendingInstantiations(/*LocalOnly=*/true);
 
   Local.Exit();
-  
+
   if (Recursive) {
     // Define any newly required vtables.
     DefineUsedVTables();
@@ -4175,14 +4471,14 @@ DeclContext *Sema::FindInstantiatedContext(SourceLocation Loc, DeclContext* DC,
 NamedDecl *Sema::FindInstantiatedDecl(SourceLocation Loc, NamedDecl *D,
                           const MultiLevelTemplateArgumentList &TemplateArgs) {
   DeclContext *ParentDC = D->getDeclContext();
-  // FIXME: Parmeters of pointer to functions (y below) that are themselves 
+  // FIXME: Parmeters of pointer to functions (y below) that are themselves
   // parameters (p below) can have their ParentDC set to the translation-unit
-  // - thus we can not consistently check if the ParentDC of such a parameter 
+  // - thus we can not consistently check if the ParentDC of such a parameter
   // is Dependent or/and a FunctionOrMethod.
-  // For e.g. this code, during Template argument deduction tries to 
+  // For e.g. this code, during Template argument deduction tries to
   // find an instantiated decl for (T y) when the ParentDC for y is
-  // the translation unit.  
-  //   e.g. template <class T> void Foo(auto (*p)(T y) -> decltype(y())) {} 
+  // the translation unit.
+  //   e.g. template <class T> void Foo(auto (*p)(T y) -> decltype(y())) {}
   //   float baz(float(*)()) { return 0.0; }
   //   Foo(baz);
   // The better fix here is perhaps to ensure that a ParmVarDecl, by the time

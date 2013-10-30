@@ -501,15 +501,15 @@ public:
   class SynthesizedFunctionScope {
     Sema &S;
     Sema::ContextRAII SavedContext;
-    
+
   public:
     SynthesizedFunctionScope(Sema &S, DeclContext *DC)
-      : S(S), SavedContext(S, DC) 
+      : S(S), SavedContext(S, DC)
     {
       S.PushFunctionScope();
       S.PushExpressionEvaluationContext(Sema::PotentiallyEvaluated);
     }
-    
+
     ~SynthesizedFunctionScope() {
       S.PopExpressionEvaluationContext();
       S.PopFunctionScopeInfo();
@@ -600,13 +600,13 @@ public:
 
   /// \brief will hold 'respondsToSelector:'
   Selector RespondsToSelectorSel;
-  
+
   /// A flag to remember whether the implicit forms of operator new and delete
   /// have been declared.
   bool GlobalNewDeleteDeclared;
 
   /// A flag to indicate that we're in a context that permits abstract
-  /// references to fields.  This is really a 
+  /// references to fields.  This is really a
   bool AllowAbstractFieldReference;
 
   /// \brief Describes how the expressions currently being parsed are
@@ -961,12 +961,12 @@ public:
   void PushFunctionScope();
   void PushBlockScope(Scope *BlockScope, BlockDecl *Block);
   void PushLambdaScope();
-  
+
   /// \brief This is used to inform Sema what the current TemplateParameterDepth
   /// is during Parsing.  Currently it is used to pass on the depth
   /// when parsing generic lambda 'auto' parameters.
   void RecordParsingTemplateParameterDepth(unsigned Depth);
-  
+
   void PushCapturedRegionScope(Scope *RegionScope, CapturedDecl *CD,
                                RecordDecl *RD,
                                CapturedRegionKind K);
@@ -976,13 +976,13 @@ public:
   sema::FunctionScopeInfo *getCurFunction() const {
     return FunctionScopes.back();
   }
-  
+
   template <typename ExprT>
   void recordUseOfEvaluatedWeak(const ExprT *E, bool IsRead=true) {
     if (!isUnevaluatedContext())
       getCurFunction()->recordUseOfWeak(E, IsRead);
   }
-  
+
   void PushCompoundScope();
   void PopCompoundScope();
 
@@ -1030,6 +1030,12 @@ public:
   QualType BuildUniformMeshType(QualType T,
                                 const MeshType::MeshDimensions &dims,
                                 SourceRange Brackets, DeclarationName Entity);
+  QualType BuildRectilinearMeshType(QualType T,
+                                const MeshType::MeshDimensions &dims,
+                                SourceRange Brackets, DeclarationName Entity);
+  QualType BuildStructuredMeshType(QualType T, Expr* filename,
+                                   SourceRange Brackets,
+                                   DeclarationName Entity);
   QualType BuildUnstructuredMeshType(QualType T, Expr* filename,
                                      SourceRange Brackets,
                                      DeclarationName Entity);
@@ -2179,7 +2185,7 @@ public:
                                    OverloadCandidateSet& CandidateSet,
                                    SourceRange OpRange = SourceRange());
   void AddBuiltinCandidate(QualType ResultTy, QualType *ParamTys,
-                           ArrayRef<Expr *> Args, 
+                           ArrayRef<Expr *> Args,
                            OverloadCandidateSet& CandidateSet,
                            bool IsAssignmentOperator = false,
                            unsigned NumContextualBoolArguments = 0);
@@ -2561,7 +2567,7 @@ public:
   void checkUnusedDeclAttributes(Declarator &D);
 
   bool CheckRegparmAttr(const AttributeList &attr, unsigned &value);
-  bool CheckCallingConvAttr(const AttributeList &attr, CallingConv &CC, 
+  bool CheckCallingConvAttr(const AttributeList &attr, CallingConv &CC,
                             const FunctionDecl *FD = 0);
   bool CheckNoReturnAttr(const AttributeList &attr);
   bool checkStringLiteralArgumentAttr(const AttributeList &Attr,
@@ -2639,23 +2645,23 @@ public:
   void CollectImmediateProperties(ObjCContainerDecl *CDecl,
             llvm::DenseMap<IdentifierInfo *, ObjCPropertyDecl*>& PropMap,
             llvm::DenseMap<IdentifierInfo *, ObjCPropertyDecl*>& SuperPropMap);
-  
+
   /// IvarBacksCurrentMethodAccessor - This routine returns 'true' if 'IV' is
   /// an ivar synthesized for 'Method' and 'Method' is a property accessor
   /// declared in class 'IFace'.
   bool IvarBacksCurrentMethodAccessor(ObjCInterfaceDecl *IFace,
                                       ObjCMethodDecl *Method, ObjCIvarDecl *IV);
-  
+
   /// DiagnoseUnusedBackingIvarInAccessor - Issue an 'unused' warning if ivar which
   /// backs the property is not used in the property's accessor.
   void DiagnoseUnusedBackingIvarInAccessor(Scope *S);
-  
+
   /// GetIvarBackingPropertyAccessor - If method is a property setter/getter and
   /// it property has a backing ivar, returns this ivar; otherwise, returns NULL.
   /// It also returns ivar's property on success.
   ObjCIvarDecl *GetIvarBackingPropertyAccessor(const ObjCMethodDecl *Method,
                                                const ObjCPropertyDecl *&PDecl) const;
-  
+
   /// Called by ActOnProperty to handle \@property declarations in
   /// class extensions.
   ObjCPropertyDecl *HandlePropertyInClassExtension(Scope *S,
@@ -2790,12 +2796,12 @@ public:
 
   const ObjCMethodDecl *SelectorsForTypoCorrection(Selector Sel,
                               QualType ObjectType=QualType());
-  
+
   /// DiagnoseMismatchedMethodsInGlobalPool - This routine goes through list of
   /// methods in global pool and issues diagnostic on identical selectors which
   /// have mismathched types.
   void DiagnoseMismatchedMethodsInGlobalPool();
-  
+
   /// LookupImplementedMethodInGlobalPool - Returns the method which has an
   /// implementation.
   ObjCMethodDecl *LookupImplementedMethodInGlobalPool(Selector Sel);
@@ -4503,7 +4509,7 @@ public:
   /// \brief Create a new lambda closure type.
   CXXRecordDecl *createLambdaClosureType(SourceRange IntroducerRange,
                                          TypeSourceInfo *Info,
-                                         bool KnownDependent, 
+                                         bool KnownDependent,
                                          LambdaCaptureDefault CaptureDefault);
 
   /// \brief Start the definition of a lambda expression.
@@ -4514,7 +4520,7 @@ public:
                                        ArrayRef<ParmVarDecl *> Params);
 
   /// \brief Endow the lambda scope info with the relevant properties.
-  void buildLambdaScope(sema::LambdaScopeInfo *LSI, 
+  void buildLambdaScope(sema::LambdaScopeInfo *LSI,
                         CXXMethodDecl *CallOperator,
                         SourceRange IntroducerRange,
                         LambdaCaptureDefault CaptureDefault,
@@ -5913,7 +5919,7 @@ public:
   /// \brief Substitute Replacement for \p auto in \p TypeWithAuto
   QualType SubstAutoType(QualType TypeWithAuto, QualType Replacement);
   /// \brief Substitute Replacement for auto in TypeWithAuto
-  TypeSourceInfo* SubstAutoTypeSourceInfo(TypeSourceInfo *TypeWithAuto, 
+  TypeSourceInfo* SubstAutoTypeSourceInfo(TypeSourceInfo *TypeWithAuto,
                                           QualType Replacement);
 
   /// \brief Result type of DeduceAutoType.
@@ -6617,7 +6623,7 @@ public:
                                  const SourceLocation *ProtoLocs,
                                  SourceLocation EndProtoLoc,
                                  AttributeList *AttrList);
-  
+
   void ActOnTypedefedProtocols(SmallVectorImpl<Decl *> &ProtocolRefs,
                                IdentifierInfo *SuperName,
                                SourceLocation SuperLoc);
@@ -6881,7 +6887,7 @@ public:
                                   ParsedType Type,
                                   SourceLocation RParenLoc,
                                   Expr *SubExpr);
-  
+
   bool checkInitMethod(ObjCMethodDecl *method, QualType receiverTypeIfCall);
 
   /// \brief Check whether the given new method is a valid override of the
@@ -7986,7 +7992,7 @@ public:
   }
 
   AvailabilityResult getCurContextAvailability() const;
-  
+
   const DeclContext *getCurObjCLexicalContext() const {
     const DeclContext *DC = getCurLexicalContext();
     // A category implicitly has the attribute of the interface.
@@ -7994,6 +8000,135 @@ public:
       DC = CatD->getClassInterface();
     return DC;
   }
+
+  // +===== Scout ============================================================+
+  bool isScoutSource(SourceLocation location);
+// called at the beginning part of a mesh definition
+  Decl* ActOnMeshDefinition(Scope* S,
+                            tok::TokenKind MeshType,
+                            SourceLocation KWLoc,
+                            IdentifierInfo* Name,
+                            SourceLocation NameLoc,
+                            MultiTemplateParamsArg TemplateParameterLists);
+
+  Decl* ActOnMeshField(Scope *S, Decl *MeshD,
+                       SourceLocation DeclStart, Declarator &D);
+
+  void ActOnMeshStartDefinition(Scope *S, Decl *TagD);
+
+  bool ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh);
+
+  MeshFieldDecl* HandleMeshField(Scope *S, MeshDecl *MeshD,
+                             SourceLocation DeclStart, Declarator &D);
+
+
+  MeshFieldDecl* CheckMeshFieldDecl(DeclarationName Name, QualType T,
+                                TypeSourceInfo *TInfo,
+                                MeshDecl *Mesh, SourceLocation Loc,
+                                SourceLocation TSSL,
+                                NamedDecl *PrevDecl,
+                                Declarator *D);
+
+
+  bool ActOnForallMeshRefVariable(Scope* S,
+                                  IdentifierInfo* RefVarInfo,
+                                  SourceLocation  RefVarLoc,
+                                  const MeshType *MT,
+                                  VarDecl *VD);
+
+  bool ActOnRenderallMeshRefVariable(Scope *S,
+                                     IdentifierInfo* RefVarInfo,
+                                     SourceLocation RefVarLoc,
+                                     const MeshType *MT,
+                                     VarDecl *VD);
+
+  /*
+  bool ActOnForAllArrayInductionVariable(Scope* S,
+                                         IdentifierInfo* InductionVariableII,
+                                         SourceLocation InductionVariableLoc);
+
+  bool ActOnRenderAllLoopVariable(Scope* S,
+                                  tok::TokenKind VariableType,
+                                  IdentifierInfo* LoopVariableII,
+                                  SourceLocation LoopVariableLoc,
+                                  IdentifierInfo* MeshII,
+                                  SourceLocation MeshLoc);
+
+  const MeshType*
+  ActOnRenderAllElementsVariable(Scope* S,
+                                 MemberExpr* ME,
+                                 tok::TokenKind VariableType,
+                                 IdentifierInfo* ElementsVariableII,
+                                 SourceLocation ElementsVariableLoc);
+  */
+
+  StmtResult ActOnForallMeshStmt(SourceLocation ForAllLoc,
+                                 ForallMeshStmt::MeshElementType Type,
+                                 const MeshType *MT,
+                                 VarDecl* MVD,
+                                 IdentifierInfo* LoopVariableII,
+                                 IdentifierInfo* MeshII,
+                                 SourceLocation LParenLoc,
+                                 Expr* Predicate,
+                                 SourceLocation RParenLoc,
+                                 Stmt* Body);
+
+
+  StmtResult ActOnForallMeshStmt(SourceLocation ForAllLoc,
+                                 IdentifierInfo* LoopVariableII,
+                                 IdentifierInfo* MeshII,
+                                 VarDecl* MVD,
+                                 SourceLocation LParenLoc,
+                                 Expr* Predicate,
+                                 SourceLocation RParenLoc,
+                                 Stmt* Body);
+
+  //  StmtResult ActOnForAllArrayStmt(SourceLocation ForAllLoc,
+  //                                  Stmt* Body,
+  //                                  BlockExpr* Block);
+
+  StmtResult ActOnRenderallMeshStmt(SourceLocation ForallLoc,
+                                RenderallMeshStmt::MeshElementType ElementType,
+                                const MeshType *MT,
+                                VarDecl* MVD,
+                                IdentifierInfo* RefVarInfo,
+                                IdentifierInfo* MeshInfo,
+                                SourceLocation LParenLoc,
+                                Expr* Predicate, SourceLocation RParenLoc,
+                                Stmt* Body);
+
+  //  StmtResult ActOnVolumeRenderAllStmt(Scope* S, SourceLocation VolRenLoc,
+  //                                      SourceLocation L, SourceLocation R,
+  //                                      IdentifierInfo* MII, VarDecl* MVD,
+  //                                      IdentifierInfo* CII, SourceLocation CLoc,
+  //                                      MultiStmtArg elts, CompoundStmt* Body,
+  //                                      bool isStmtExpr);
+
+  bool IsValidMeshField(MeshFieldDecl* FD);
+
+  bool IsValidDeclInMesh(Decl* D);
+
+  bool ScoutMemberReferenceExpr(DeclarationName &Name,
+      SourceLocation &NameLoc,
+      DeclarationNameInfo &NameInfo,
+      CXXScopeSpec &SS,
+      const TemplateArgumentListInfo *&TemplateArgs,
+      ExprResult &ER);
+
+  void ScoutMeshExternAlloc(Expr *LHSExpr, QualType &LHSType);
+
+  bool LookupMemberExprInMesh(Sema &SemaRef, LookupResult &R,
+                         SourceRange BaseRange, const MeshType *MTy,
+                         SourceLocation OpLoc, CXXScopeSpec &SS);
+
+  bool ScoutMeshCompareReferenceRelationship(SourceLocation &Loc,
+      QualType &UnqualT1, QualType &UnqualT2, ReferenceCompareResult &Ref);
+
+  // support for unqualified variables within a forall / renderall loop
+  typedef llvm::SmallVector<VarDecl*, 3> ScoutLoopStack;
+
+  ScoutLoopStack SCLStack;
+  // +========================================================================+
 };
 
 /// \brief RAII object that enters a new expression evaluation context.
@@ -8014,7 +8149,7 @@ public:
                                    Sema::ReuseLambdaContextDecl_t,
                                    bool IsDecltype = false)
     : Actions(Actions) {
-    Actions.PushExpressionEvaluationContext(NewContext, 
+    Actions.PushExpressionEvaluationContext(NewContext,
                                             Sema::ReuseLambdaContextDecl,
                                             IsDecltype);
   }

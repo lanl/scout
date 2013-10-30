@@ -91,8 +91,6 @@ public:
 
   bool printAliasInstr(const MCInst *MI, raw_ostream &OS);
 
-  bool printAliasInstr(const MCInst *MI, raw_ostream &OS);
-
 private:
   void printOperand(const MCInst *MI, unsigned OpNo, raw_ostream &O);
   void printUnsignedImm(const MCInst *MI, int opNum, raw_ostream &O);

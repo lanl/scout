@@ -27,13 +27,17 @@ class IdentifierInfo;
 class TagDecl;
 class Type;
 class VarDecl;
+// +===== Scout ==============================================================+
+class MeshDecl;
+// +==========================================================================+
 
 /// \brief Keeps track of the mangled names of lambda expressions and block
 /// literals within a particular context.
-class MangleNumberingContext 
+class MangleNumberingContext
     : public RefCountedBase<MangleNumberingContext> {
   llvm::DenseMap<const Type *, unsigned> ManglingNumbers;
   llvm::DenseMap<IdentifierInfo*, unsigned> TagManglingNumbers;
+  llvm::DenseMap<IdentifierInfo*, unsigned> MeshManglingNumbers;
 
 public:
   virtual ~MangleNumberingContext() {}
@@ -53,7 +57,13 @@ public:
   /// \brief Retrieve the mangling number of a static local variable within
   /// this context.
   unsigned getManglingNumber(const TagDecl *TD);
+
+  // +===== Scout ============================================================+
+  // \brief Retrieve the mangling number of a static local variable within
+  // this context.
+  unsigned getManglingNumber(const MeshDecl *MD);
+  // +========================================================================+
 };
-  
+
 } // end namespace clang
 #endif

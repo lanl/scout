@@ -150,11 +150,24 @@ class CGDebugInfo {
                                              llvm::DIFile F,
                                              llvm::DIType RecordTy);
 
-  // ===== Scout =============================================================+
+  // +===== Scout ============================================================+
   llvm::DIType CreateType(const UniformMeshType *Ty);
-  llvm::DIType CreateType(const StructuredMeshType *Ty);
+  llvm::DIType CreateTypeDefinition(const UniformMeshType *Ty);
+  llvm::DICompositeType CreateLimitedType(const UniformMeshType *Ty);
+
   llvm::DIType CreateType(const RectilinearMeshType *Ty);
+  llvm::DIType CreateTypeDefinition(const RectilinearMeshType *Ty);
+  llvm::DICompositeType CreateLimitedType(const RectilinearMeshType *Ty);
+
+  llvm::DIType CreateType(const StructuredMeshType *Ty);
+  llvm::DIType CreateTypeDefinition(const StructuredMeshType *Ty);
+  llvm::DICompositeType CreateLimitedType(const StructuredMeshType *Ty);
+
+
   llvm::DIType CreateType(const UnstructuredMeshType *Ty);
+  llvm::DIType CreateTypeDefinition(const UnstructuredMeshType *Ty);
+  llvm::DICompositeType CreateLimitedType(const UnstructuredMeshType *Ty);
+
 
   void CollectMeshFields(const MeshDecl *Decl,
                          llvm::DIFile F,
@@ -299,6 +312,11 @@ public:
   /// getOrCreateRecordType - Emit record type's standalone debug info.
   llvm::DIType getOrCreateRecordType(QualType Ty, SourceLocation L);
 
+  // +===== Scout ============================================================+
+  /// getOrCreateMeshType - Emit mesh type's standalone debug info.
+  llvm::DIType getOrCreateMeshType(QualType Ty, SourceLocation L);
+  // +========================================================================+
+
   /// getOrCreateInterfaceType - Emit an objective c interface type standalone
   /// debug info.
   llvm::DIType getOrCreateInterfaceType(QualType Ty,
@@ -327,6 +345,30 @@ private:
   llvm::DICompositeType getOrCreateRecordFwdDecl(const RecordType *,
                                                  llvm::DIDescriptor);
 
+  // +===== Scout ============================================================+
+  //
+
+  // SC_TODO : Not sure but perhaps we can do all this with the base MeshType
+  // to avoid a version per mesh type???
+
+  /// \brief Create a forward decl for a uniform mesh in a given context.
+  llvm::DICompositeType getOrCreateMeshFwdDecl(const UniformMeshType *,
+                                               llvm::DIDescriptor);
+
+  /// \brief Create a forward decl for a rectilinear mesh in a given context.
+  llvm::DICompositeType getOrCreateMeshFwdDecl(const RectilinearMeshType *,
+                                               llvm::DIDescriptor);
+
+  /// \brief Create a forward decl for a structured mesh in a given context.
+  llvm::DICompositeType getOrCreateMeshFwdDecl(const StructuredMeshType *,
+                                               llvm::DIDescriptor);
+
+  /// \brief Create a forward decl for a unstructured mesh in a given context.
+  llvm::DICompositeType getOrCreateMeshFwdDecl(const UnstructuredMeshType *,
+                                               llvm::DIDescriptor);
+
+  // +========================================================================+
+
   /// createContextChain - Create a set of decls for the context chain.
   llvm::DIDescriptor createContextChain(const Decl *Decl);
 
@@ -350,6 +392,15 @@ private:
   /// getOrCreateLimitedType - Get the type from the cache or create a new
   /// partial type if necessary.
   llvm::DIType getOrCreateLimitedType(const RecordType *Ty, llvm::DIFile F);
+
+  // +===== Scout ============================================================+
+  /// getOrCreateLimitedType - Get the type from the cache or create a new
+  /// partial type if necessary.
+  llvm::DIType getOrCreateLimitedType(const UniformMeshType *, llvm::DIFile);
+  llvm::DIType getOrCreateLimitedType(const RectilinearMeshType *, llvm::DIFile);
+  llvm::DIType getOrCreateLimitedType(const StructuredMeshType *, llvm::DIFile);
+  llvm::DIType getOrCreateLimitedType(const UnstructuredMeshType *, llvm::DIFile);
+  // +========================================================================+
 
   /// CreateTypeNode - Create type metadata for a source language type.
   llvm::DIType CreateTypeNode(QualType Ty, llvm::DIFile Fg);

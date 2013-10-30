@@ -1036,9 +1036,9 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
 
   case DeclSpec::TST_auto:
     // TypeQuals handled by caller.
-    // If auto is mentioned in a lambda parameter context, convert it to a 
-    // template parameter type immediately, with the appropriate depth and 
-    // index, and update sema's state (LambdaScopeInfo) for the current lambda 
+    // If auto is mentioned in a lambda parameter context, convert it to a
+    // template parameter type immediately, with the appropriate depth and
+    // index, and update sema's state (LambdaScopeInfo) for the current lambda
     // being analyzed (which tracks the invented type template parameter).
     if (declarator.getContext() == Declarator::LambdaExprParameterContext) {
       sema::LambdaScopeInfo *LSI = S.getCurLambda();
@@ -1046,43 +1046,43 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
       const unsigned TemplateParameterDepth = LSI->AutoTemplateParameterDepth;
       const unsigned AutoParameterPosition = LSI->AutoTemplateParams.size();
       const bool IsParameterPack = declarator.hasEllipsis();
-      
+
       // Create a name for the invented template parameter type.
       std::string InventedTemplateParamName = "$auto-";
       llvm::raw_string_ostream ss(InventedTemplateParamName);
-      ss << TemplateParameterDepth; 
+      ss << TemplateParameterDepth;
       ss << "-" << AutoParameterPosition;
       ss.flush();
 
       IdentifierInfo& TemplateParamII = Context.Idents.get(
                                         InventedTemplateParamName.c_str());
-      // Turns out we must create the TemplateTypeParmDecl here to 
-      // retrieve the corresponding template parameter type. 
+      // Turns out we must create the TemplateTypeParmDecl here to
+      // retrieve the corresponding template parameter type.
       TemplateTypeParmDecl *CorrespondingTemplateParam =
-        TemplateTypeParmDecl::Create(Context, 
-        // Temporarily add to the TranslationUnit DeclContext.  When the 
+        TemplateTypeParmDecl::Create(Context,
+        // Temporarily add to the TranslationUnit DeclContext.  When the
         // associated TemplateParameterList is attached to a template
-        // declaration (such as FunctionTemplateDecl), the DeclContext 
+        // declaration (such as FunctionTemplateDecl), the DeclContext
         // for each template parameter gets updated appropriately via
-        // a call to AdoptTemplateParameterList. 
-        Context.getTranslationUnitDecl(), 
-        /*KeyLoc*/ SourceLocation(), 
-        /*NameLoc*/ declarator.getLocStart(),  
-        TemplateParameterDepth, 
-        AutoParameterPosition,  // our template param index 
+        // a call to AdoptTemplateParameterList.
+        Context.getTranslationUnitDecl(),
+        /*KeyLoc*/ SourceLocation(),
+        /*NameLoc*/ declarator.getLocStart(),
+        TemplateParameterDepth,
+        AutoParameterPosition,  // our template param index
         /* Identifier*/ &TemplateParamII, false, IsParameterPack);
       LSI->AutoTemplateParams.push_back(CorrespondingTemplateParam);
-      // Replace the 'auto' in the function parameter with this invented 
+      // Replace the 'auto' in the function parameter with this invented
       // template type parameter.
-      Result = QualType(CorrespondingTemplateParam->getTypeForDecl(), 0);  
+      Result = QualType(CorrespondingTemplateParam->getTypeForDecl(), 0);
     } else {
       Result = Context.getAutoType(QualType(), /*decltype(auto)*/false, false);
     }
     break;
 
   case DeclSpec::TST_decltype_auto:
-    Result = Context.getAutoType(QualType(), 
-                                 /*decltype(auto)*/true, 
+    Result = Context.getAutoType(QualType(),
+                                 /*decltype(auto)*/true,
                                  /*IsDependent*/   false);
     break;
 
@@ -1697,6 +1697,27 @@ QualType Sema::BuildUniformMeshType(QualType T,
   return QualType(mdt,0);
 }
 
+QualType Sema::BuildRectilinearMeshType(QualType T,
+                               const MeshType::MeshDimensions &dims,
+                               SourceRange Brackets, DeclarationName Entity) {
+  const RectilinearMeshType *mt =
+  dyn_cast<RectilinearMeshType>(T.getCanonicalType().getTypePtr());
+  assert(mt);
+  RectilinearMeshType *mdt = const_cast<RectilinearMeshType*>(mt);
+  mdt->setDimensions(dims);
+  return QualType(mdt, 0);
+}
+
+QualType Sema::BuildStructuredMeshType(QualType T, Expr* filename,
+                               SourceRange Brackets, DeclarationName Entity) {
+  const StructuredMeshType* mt =
+      dyn_cast<StructuredMeshType>(T.getCanonicalType().getTypePtr());
+  assert(mt);
+  StructuredMeshType *mdt = const_cast<StructuredMeshType*>(mt);
+  mdt->setFileName(filename);
+  return QualType(mdt, 0);
+}
+
 QualType Sema::BuildUnstructuredMeshType(QualType T, Expr* filename,
                               SourceRange Brackets, DeclarationName Entity) {
   const UnstructuredMeshType* mt =
@@ -1706,6 +1727,7 @@ QualType Sema::BuildUnstructuredMeshType(QualType T, Expr* filename,
   mdt->setFileName(filename);
   return QualType(mdt,0);
 }
+
 // +==========================================================================+
 
 /// \brief Build an ext-vector type.
@@ -2218,10 +2240,10 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
     case Declarator::ObjCParameterContext:
     case Declarator::ObjCResultContext:
     case Declarator::PrototypeContext:
-      Error = 0;  
+      Error = 0;
       break;
     case Declarator::LambdaExprParameterContext:
-      if (!(SemaRef.getLangOpts().CPlusPlus1y 
+      if (!(SemaRef.getLangOpts().CPlusPlus1y
               && D.getDeclSpec().getTypeSpecType() == DeclSpec::TST_auto))
         Error = 14;
       break;
@@ -2303,7 +2325,7 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
       AutoRange = D.getName().getSourceRange();
 
     if (Error != -1) {
-      const bool IsDeclTypeAuto = 
+      const bool IsDeclTypeAuto =
           D.getDeclSpec().getTypeSpecType() == DeclSpec::TST_decltype_auto;
       SemaRef.Diag(AutoRange.getBegin(), diag::err_auto_not_allowed)
         << IsDeclTypeAuto << Error << AutoRange;
@@ -2829,7 +2851,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
     }
 
     case DeclaratorChunk::StructuredMesh: {
-      Expr* filename = DeclType.Unsmsh.StrLitFileName;
+      Expr* filename = DeclType.Strmsh.StrLitFileName;
       T = S.BuildUnstructuredMeshType(T, filename, SourceRange(DeclType.Loc,
                                       DeclType.EndLoc), Name);
       break;
@@ -2910,7 +2932,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
           if (!S.getOpenCLOptions().cl_khr_fp16) {
             S.Diag(D.getIdentifierLoc(), diag::err_opencl_half_return) << T;
             D.setInvalidType(true);
-          } 
+          }
         } else {
           S.Diag(D.getIdentifierLoc(),
             diag::err_parameters_retval_cannot_have_fp16_type) << 1;
@@ -3698,7 +3720,7 @@ namespace {
         TL.copy(OldTL.castAs<TemplateSpecializationTypeLoc>());
         assert(TL.getRAngleLoc() == OldTL.castAs<TemplateSpecializationTypeLoc>().getRAngleLoc());
       }
-        
+
     }
     void VisitTypeOfExprTypeLoc(TypeOfExprTypeLoc TL) {
       assert(DS.getTypeSpecType() == DeclSpec::TST_typeofExpr);
@@ -4354,7 +4376,7 @@ static bool handleObjCGCTypeAttr(TypeProcessingState &state,
     attr.setInvalid();
     return true;
   }
-  
+
   // Check the attribute arguments.
   if (!attr.isArgIdent(0)) {
     S.Diag(attr.getLoc(), diag::err_attribute_argument_type)
@@ -4559,7 +4581,7 @@ static bool handleMSPointerTypeQualifierAttr(TypeProcessingState &State,
         << "'__sptr'" << "'__uptr'";
       return true;
     }
-    
+
     Desugared = AT->getEquivalentType();
     AT = dyn_cast<AttributedType>(Desugared);
   }
@@ -5593,7 +5615,7 @@ static QualType getDecltypeForExpr(Sema &S, Expr *E) {
     if (PR->isExplicitProperty())
       return PR->getExplicitProperty()->getType();
   }
-  
+
   // C++11 [expr.lambda.prim]p18:
   //   Every occurrence of decltype((x)) where x is a possibly
   //   parenthesized id-expression that names an entity of automatic

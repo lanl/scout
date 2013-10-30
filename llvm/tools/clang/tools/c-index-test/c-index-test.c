@@ -2516,12 +2516,12 @@ static const char *getEntityKindString(CXIdxEntityKind kind) {
   case CXIdxEntity_CXXConversionFunction: return "conversion-func";
   case CXIdxEntity_CXXTypeAlias: return "type-alias";
   case CXIdxEntity_CXXInterface: return "c++-__interface";
-  // +===== Scout ============================================================+
+  /* +===== Scout =========================================================+ */
   case CXIdxEntity_UniformMesh: return "uniform-mesh";
   case CXIdxEntity_RectilinearMesh: return "rectilinear-mesh";
   case CXIdxEntity_StructuredMesh:  return "structured-mesh";
   case CXIdxEntity_UnstructuredMesh:  return "unstructured-mesh";
-  // +========================================================================+
+  /* +=====================================================================+ */
   }
   assert(0 && "Garbage entity kind");
   return 0;

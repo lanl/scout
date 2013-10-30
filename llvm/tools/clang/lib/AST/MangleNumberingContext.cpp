@@ -41,3 +41,10 @@ unsigned
 MangleNumberingContext::getManglingNumber(const TagDecl *TD) {
   return ++TagManglingNumbers[TD->getIdentifier()];
 }
+
+// +===== Scout ==============================================================+
+unsigned
+MangleNumberingContext::getManglingNumber(const MeshDecl *MD) {
+  return ++MeshManglingNumbers[MD->getIdentifier()];
+}
+// +==========================================================================+

@@ -71,10 +71,13 @@ enum InputKind {
   IK_OpenCL,
   IK_CUDA,
   IK_AST,
-  IK_LLVM_IR
+  IK_LLVM_IR,
+  // +===== Scout ============================================================+
+  IK_Scout
+  // +========================================================================+
 };
 
-  
+
 /// \brief An input file for the front end.
 class FrontendInputFile {
   /// \brief The file name, or "-" to read from standard input.
@@ -231,7 +234,7 @@ public:
   /// \brief File name of the file that will provide record layouts
   /// (in the format produced by -fdump-record-layouts).
   std::string OverrideRecordLayoutsFile;
-  
+
 public:
   FrontendOptions() :
     DisableFree(false), RelocatablePCH(false), ShowHelp(false),

@@ -721,7 +721,7 @@ public:
   QualType withVolatile() const {
     return withFastQualifiers(Qualifiers::Volatile);
   }
-  
+
   /// Add the restrict qualifier to this QualType.
   void addRestrict() {
     addFastQualifiers(Qualifiers::Restrict);
@@ -1170,7 +1170,10 @@ public:
 #define LAST_TYPE(Class) TypeLast = Class,
 #define ABSTRACT_TYPE(Class, Base)
 #include "clang/AST/TypeNodes.def"
-    TagFirst = Record, TagLast = Enum
+    TagFirst = Record, TagLast = Enum,
+    // +===== Scout =========================================================+
+    MeshFirst = UniformMesh, MeshLast = UnstructuredMesh
+    // +=====================================================================+
   };
 
 private:
@@ -3085,7 +3088,7 @@ public:
   bool isSugared() const { return false; }
   QualType desugar() const { return QualType(this, 0); }
 
-  void printExceptionSpecification(raw_ostream &OS, 
+  void printExceptionSpecification(raw_ostream &OS,
                                    const PrintingPolicy &Policy) const;
 
   static bool classof(const Type *T) {
@@ -3298,7 +3301,7 @@ class TagType : public Type {
   TagDecl * decl;
 
   friend class ASTReader;
-  
+
 protected:
   TagType(TypeClass TC, const TagDecl *D, QualType can);
 
@@ -3548,9 +3551,15 @@ public:
     return T->getTypeClass() == StructuredMesh;
   }
 
+  Expr* getFileName() { return strLitFileName; }
+  void setFileName(Expr* filename) { strLitFileName = filename; }
+
   // SC_TODO -- can these move to base class?
   bool isSugared() const { return false; }
   QualType desugar() const { return QualType(this, 0); }
+
+private:
+  Expr* strLitFileName;
 };
 
 enum MeshFormat {
@@ -3897,12 +3906,12 @@ public:
 /// is no deduced type and an auto type is canonical. In the latter case, it is
 /// also a dependent type.
 class AutoType : public Type, public llvm::FoldingSetNode {
-  AutoType(QualType DeducedType, bool IsDecltypeAuto, 
+  AutoType(QualType DeducedType, bool IsDecltypeAuto,
            bool IsDependent)
     : Type(Auto, DeducedType.isNull() ? QualType(this, 0) : DeducedType,
            /*Dependent=*/IsDependent, /*InstantiationDependent=*/IsDependent,
-           /*VariablyModified=*/false, 
-           /*ContainsParameterPack=*/DeducedType.isNull() 
+           /*VariablyModified=*/false,
+           /*ContainsParameterPack=*/DeducedType.isNull()
                ? false : DeducedType->containsUnexpandedParameterPack()) {
     assert((DeducedType.isNull() || !IsDependent) &&
            "auto deduced to dependent type");
@@ -3927,7 +3936,7 @@ public:
   }
 
   void Profile(llvm::FoldingSetNodeID &ID) {
-    Profile(ID, getDeducedType(), isDecltypeAuto(), 
+    Profile(ID, getDeducedType(), isDecltypeAuto(),
 		    isDependentType());
   }
 
@@ -3981,7 +3990,7 @@ class TemplateSpecializationType
   /// \brief Whether this template specialization type is a substituted
   /// type alias.
   bool TypeAlias : 1;
-    
+
   TemplateSpecializationType(TemplateName T,
                              const TemplateArgument *Args,
                              unsigned NumArgs, QualType Canon,
@@ -4038,7 +4047,7 @@ public:
   /// };
   /// \endcode
   bool isTypeAlias() const { return TypeAlias; }
-    
+
   /// Get the aliased type, if this is a specialization of a type alias
   /// template.
   QualType getAliasedType() const {
@@ -4229,6 +4238,10 @@ public:
   /// getKeywordForTagDeclKind - Converts a TagTypeKind into an
   /// elaborated type keyword.
   static ElaboratedTypeKeyword getKeywordForTagTypeKind(TagTypeKind Tag);
+
+  // +===== Scout ============================================================+
+  static MeshTypeKind getMeshTypeKindForTypeSpec(unsigned TypeSpec);
+  // +========================================================================+
 
   /// getTagTypeKindForKeyword - Converts an elaborated type keyword into
   // a TagTypeKind. It is an error to provide an elaborated type keyword
@@ -4995,7 +5008,7 @@ inline QualType QualType::getUnqualifiedType() const {
 
   return QualType(getSplitUnqualifiedTypeImpl(*this).Ty, 0);
 }
-  
+
 inline SplitQualType QualType::getSplitUnqualifiedType() const {
   if (!getTypePtr()->getCanonicalTypeInternal().hasLocalQualifiers())
     return split();
@@ -5027,7 +5040,7 @@ inline void QualType::removeLocalCVRQualifiers(unsigned Mask) {
 inline unsigned QualType::getAddressSpace() const {
   return getQualifiers().getAddressSpace();
 }
-  
+
 /// getObjCGCAttr - Return the gc attribute of this type.
 inline Qualifiers::GC QualType::getObjCGCAttr() const {
   return getQualifiers().getObjCGCAttr();
@@ -5379,7 +5392,7 @@ inline bool Type::isIntegralOrEnumerationType() const {
   if (const EnumType *ET = dyn_cast<EnumType>(CanonicalType))
     return IsEnumDeclComplete(ET->getDecl());
 
-  return false;  
+  return false;
 }
 
 inline bool Type::isBooleanType() const {

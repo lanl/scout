@@ -1532,8 +1532,8 @@ void MicrosoftCXXNameMangler::mangleType(const MeshType *T) {
 // ============================================================================
 
 
-void MicrosoftCXXNameMangler::mangleType(const TagType *TD) {
-  switch (TD->getDecl()->getTagKind()) {
+void MicrosoftCXXNameMangler::mangleType(const TagDecl *TD) {
+  switch (TD->getTagKind()) {
     case TTK_Union:
       Out << 'T';
       break;

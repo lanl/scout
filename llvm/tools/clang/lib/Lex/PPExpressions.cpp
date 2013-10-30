@@ -462,6 +462,7 @@ static bool EvaluateDirectiveSubExpr(PPValue &LHS, unsigned MinPrec,
   if (PeekPrec == ~0U) {
     PP.Diag(PeekTok.getLocation(), diag::err_pp_expr_bad_token_binop)
       << LHS.getRange();
+    assert(false && "bad things here!");
     return true;
   }
 
