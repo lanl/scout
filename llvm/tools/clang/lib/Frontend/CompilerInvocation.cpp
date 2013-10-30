@@ -1178,7 +1178,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
       case IK_Scout:
         if (! Std.isCPlusPlus())
           Diags.Report(diag::err_drv_argument_not_allowed_with)
-            << A->getAsString(Args) << "C++/ObjC++";
+            << A->getAsString(Args) << "Scout";
         break;
       // +====================================================================+
       case IK_CXX:

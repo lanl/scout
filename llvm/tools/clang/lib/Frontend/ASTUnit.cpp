@@ -2208,6 +2208,7 @@ static void CalculateHiddenNames(const CodeCompletionContext &Context,
                                  ASTContext &Ctx,
                           llvm::StringSet<llvm::BumpPtrAllocator> &HiddenNames){
   bool OnlyTagNames = false;
+  bool OnlyMeshNames = false;  // +===== Scout ================================+
   switch (Context.getKind()) {
   case CodeCompletionContext::CCC_Recovery:
   case CodeCompletionContext::CCC_TopLevel:
@@ -2236,12 +2237,13 @@ static void CalculateHiddenNames(const CodeCompletionContext &Context,
     break;
 
   // +===== Scout ============================================================+
+  // SC_TODO : For now we're bailing on dealing with meshes, ideally
+  // they will be handled similar to tags...
   case CodeCompletionContext::CCC_UniformMesh:
   case CodeCompletionContext::CCC_RectilinearMesh:
   case CodeCompletionContext::CCC_StructuredMesh:
   case CodeCompletionContext::CCC_UnstructuredMesh:
-    // SC_TODO : For now we're bailing on dealing with meshes, ideally
-    // they will be handled similar to tags...
+    OnlyMeshNames = true;
     return;
   // +========================================================================+
 

@@ -19,7 +19,6 @@ add_clang_library(clangParse
   Scout/ParseExpr.cpp
   Scout/ParseStmt.cpp
   Scout/Parser.cpp
-  Scout/ASTViewScout.cpp
   # +========================================================================+
   )
 

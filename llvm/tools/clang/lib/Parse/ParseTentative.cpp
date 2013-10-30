@@ -975,7 +975,6 @@ Parser::isExpressionOrTypeSpecifierSimple(tok::TokenKind Kind) {
   case tok::kw_char:
   case tok::kw_const:
   case tok::kw_double:
-
   // +===== Scout ============================================================+
   case tok::kw_mesh:
   case tok::kw_uniform:
@@ -983,7 +982,6 @@ Parser::isExpressionOrTypeSpecifierSimple(tok::TokenKind Kind) {
   case tok::kw_structured:
   case tok::kw_unstructured:
   // +========================================================================+
-
   case tok::kw_enum:
   case tok::kw_half:
   case tok::kw_float:
@@ -1440,7 +1438,6 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
   case tok::kw_half:
   case tok::kw_float:
   case tok::kw_double:
-
   // +===== Scout ============================================================+
   case tok::kw_mesh:
   case tok::kw_uniform:
@@ -1448,7 +1445,6 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
   case tok::kw_structured:
   case tok::kw_unstructured:
   // +========================================================================+
-
   case tok::kw_void:
   case tok::annot_decltype:
     if (NextToken().is(tok::l_paren))

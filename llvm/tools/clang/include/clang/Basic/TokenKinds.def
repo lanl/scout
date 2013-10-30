@@ -703,6 +703,9 @@ ANNOTATION(pragma_opencl_extension)
 ANNOTATION(pragma_openmp)
 ANNOTATION(pragma_openmp_end)
 
+// +===== Scout ==========================================================+
+#undef SCOUT_KEYWORD
+// +======================================================================+
 #undef ANNOTATION
 #undef TESTING_KEYWORD
 #undef OBJC2_AT_KEYWORD

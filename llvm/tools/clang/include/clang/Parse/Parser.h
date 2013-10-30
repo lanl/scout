@@ -1488,15 +1488,7 @@ private:
   /// A SmallVector of types.
   typedef SmallVector<ParsedType, 12> TypeVector;
 
-  StmtResult ParseStatement(SourceLocation *TrailingElseLoc = 0) {
-    StmtVector Stmts;
-    // +===== Scout ==========================================================+
-    StmtsStack.push_back(&Stmts);
-    StmtResult R = ParseStatementOrDeclaration(Stmts, true, TrailingElseLoc);
-    // +======================================================================+
-    StmtsStack.pop_back();
-    return R;
-  }
+  StmtResult ParseStatement(SourceLocation *TrailingElseLoc = 0);
   StmtResult ParseStatementOrDeclaration(StmtVector &Stmts,
                                          bool OnlyStatement,
                                          SourceLocation *TrailingElseLoc = 0);
@@ -2374,8 +2366,7 @@ private:
 
   typedef std::vector<StmtVector*> StmtVectorVec;
 
-  StmtVectorVec StmtsStack;
-
+  //StmtVectorVec StmtsStack;
   bool DeclaringMesh;
 
   bool isScoutLang() const{

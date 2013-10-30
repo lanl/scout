@@ -31,12 +31,6 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/system_error.h"
 
-
-// +===== Scout ==============================================================+
-#include "clang/Parse/scout/ASTViewScout.h"
-// +==========================================================================+
-
-
 using namespace clang;
 
 namespace {
@@ -240,14 +234,14 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
     return true;
   }
   // +===== Scout ============================================================+
-  // Implicity include the Scout headers
+  // Implicitly include the Scout headers
   if (CI.getLangOpts().Scout) {
     CI.getPreprocessorOpts().Includes.push_back("scout/scout.sch");
     CI.getPreprocessorOpts().Includes.push_back("scout/Runtime/scout.h");
   }
   // make blocks work on linux
   // need this fix in clang as well as scout as we build the runtime w/ clang
-  CI.getPreprocessorOpts().Includes.push_back("scout/unistd.h");
+  //CI.getPreprocessorOpts().Includes.push_back("scout/unistd.h");
   // +========================================================================+
 
   // If the implicit PCH include is actually a directory, rather than
@@ -491,23 +485,22 @@ void ASTFrontendAction::ExecuteAction() {
 
   // +===== Scout ============================================================+
   // Parse the AST
-
-  // see if we are using the rewriter or not.
-  Rewriter* scoutRewriter = CI.getScoutRewriter();
-  if(scoutRewriter) {
-    // get the AST consumer instance which is going to get called by ParseAST.
-    ASTConsumer* Consumer = CI.getScoutASTConsumer();
-
-    scoutRewriter->setSourceMgr(CI.getSourceManager(),
-                                CI.getLangOpts());
-
-    // Parse the file to AST, registering this consumer as the AST consumer.
-    ParseAST(CI.getPreprocessor(), Consumer,
-             CI.getASTContext());
-  } else {
-    // original clang call to ParseAST
-    ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
-             CI.getFrontendOpts().SkipFunctionBodies);
+  if (CI.getLangOpts().Scout) {    
+    // see if we are using the rewriter or not.
+    Rewriter* scoutRewriter = CI.getScoutRewriter();
+    if (scoutRewriter) {
+      // get the AST consumer instance which is going to get called by ParseAST.
+      ASTConsumer* Consumer = CI.getScoutASTConsumer();
+      scoutRewriter->setSourceMgr(CI.getSourceManager(),
+                                  CI.getLangOpts());
+      // Parse the file to AST, registering this consumer as the AST consumer.
+      ParseAST(CI.getPreprocessor(), Consumer,
+               CI.getASTContext());
+    } else {
+      // original clang call to ParseAST
+      ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
+               CI.getFrontendOpts().SkipFunctionBodies);
+    }
   }
   // +========================================================================+
 }

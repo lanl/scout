@@ -138,12 +138,13 @@ Lexer::Lexer(FileID FID, const llvm::MemoryBuffer *InputFile, Preprocessor &PP)
   // ".sch" file -- this extra check is necessary because we might be including
   // a C++ header from a .sc file which would otherwise pick up the Scout
   // keyword extensions, potentially causing conflicts
+  /*
   std::string bufferName = PP.getSourceManager().getBufferName(FileLoc);
   std::string ext;
 
   bool valid = false;
-  for(int i = bufferName.length() - 1; i >= 0; --i){
-    if(bufferName[i] == '.'){
+  for(int i = bufferName.length() - 1; i >= 0; --i) {
+    if (bufferName[i] == '.') {
       valid = true;
       break;
     }
@@ -155,6 +156,7 @@ Lexer::Lexer(FileID FID, const llvm::MemoryBuffer *InputFile, Preprocessor &PP)
   if (bufferName != "Parse" && (!valid || (ext != "sc" && ext != "sch"))) {
     LangOpts.Scout = false;
   }
+  */
 // +==========================================================================+
 
   resetExtendedTokenMode();
@@ -189,7 +191,7 @@ Lexer::Lexer(SourceLocation fileloc, const LangOptions &langOpts,
 Lexer::Lexer(FileID FID, const llvm::MemoryBuffer *FromFile,
              const SourceManager &SM, const LangOptions &features)
   : FileLoc(SM.getLocForStartOfFile(FID)), LangOpts(features),
-// +===== Scout - StringLexerMemoryBuffer and StringLexerStringRef ===========+
+// +===== Scout ==============================================================+
     StringLexerMemoryBuffer(0), StringLexerStringRef(0) {
 // +==========================================================================+
   InitLexer(FromFile->getBufferStart(), FromFile->getBufferStart(),
@@ -224,12 +226,13 @@ Lexer::Lexer(const std::string& str, Preprocessor& PP)
 Lexer::~Lexer(){
   // if this is a string lexer, clean up after it
 
-  if (StringLexerMemoryBuffer) {
-    delete StringLexerMemoryBuffer;
-  }
-
-  if (StringLexerStringRef) {
-    delete StringLexerStringRef;
+  if (LangOpts.Scout) {
+    if (StringLexerMemoryBuffer) {
+      delete StringLexerMemoryBuffer;
+    }
+    if (StringLexerStringRef) {
+      delete StringLexerStringRef;
+    }
   }
 }
 // +==========================================================================+
@@ -3005,7 +3008,7 @@ LexNextToken:
     // +===== Scout ==========================================================+
     // Special handling for string lexer, as EOF code below interferes
     // with the state of the preprocessor
-    if (StringLexerMemoryBuffer) {
+    if (LangOpts.Scout && StringLexerMemoryBuffer) {
       Kind = tok::eof;
       break;
     }

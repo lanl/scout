@@ -12,6 +12,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <unistd.h>
+#include <iostream>
+#include <sstream>
+
 #include "clang/Basic/CharInfo.h"
 #include "clang/Basic/DiagnosticOptions.h"
 #include "clang/Driver/Compilation.h"
@@ -310,6 +314,17 @@ int main(int argc_, const char **argv_) {
   if (argv.size() > 1 && StringRef(argv[1]).startswith("-cc1")) {
     StringRef Tool = argv[1] + 4;
 
+    for(int i = 2, size = argv.size(); i < size; ++i) {
+      if (StringRef(argv[i]) == "-debug") {
+        size_t pid = getpid();
+        std::cerr << "scc process id: " << pid << std::endl;
+        std::cerr << "attach debugger and then press return to continue...";
+        std::string str;
+        std::getline(std::cin, str);
+      }
+    }
+
+
     if (Tool == "")
       return cc1_main(argv.data()+2, argv.data()+argv.size(), argv[0],
                       (void*) (intptr_t) GetExecutablePath);
@@ -440,7 +455,7 @@ int main(int argc_, const char **argv_) {
   // If any timers were active but haven't been destroyed yet, print their
   // results now.  This happens in -disable-free mode.
   llvm::TimerGroup::printAll(llvm::errs());
-  
+
   llvm::llvm_shutdown();
 
 #ifdef _WIN32

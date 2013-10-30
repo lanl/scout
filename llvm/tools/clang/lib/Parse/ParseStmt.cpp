@@ -35,18 +35,29 @@
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/ADT/SmallString.h"
-#include "clang/Sema/Lookup.h"
-
-
 // +===== Scout ==============================================================+
 #include "clang/AST/ASTContext.h"
 // +==========================================================================+
-
 using namespace clang;
 
 //===----------------------------------------------------------------------===//
 // C99 6.8: Statements and Blocks.
 //===----------------------------------------------------------------------===//
+
+/// \brief Parse a standalone statement (for instance, as the body of an 'if',
+/// 'while', or 'for').
+StmtResult Parser::ParseStatement(SourceLocation *TrailingElseLoc) {
+  StmtResult Res;
+
+  // We may get back a null statement if we found a #pragma. Keep going until
+  // we get an actual statement.
+  do {
+    StmtVector Stmts;
+    Res = ParseStatementOrDeclaration(Stmts, true, TrailingElseLoc);
+  } while (!Res.isInvalid() && !Res.get());
+
+  return Res;
+}
 
 /// ParseStatementOrDeclaration - Read 'statement' or 'declaration'.
 ///       StatementOrDeclaration:
@@ -100,12 +111,6 @@ using namespace clang;
 StmtResult
 Parser::ParseStatementOrDeclaration(StmtVector &Stmts, bool OnlyStatement,
                                     SourceLocation *TrailingElseLoc) {
-  // +===== Scout ==============================================================+
-  // if (Actions.SourceMgr.isInMainFile(Tok.getLocation())) {
-  //   DumpLookAheads(20);
-  // }
-  // +==========================================================================+
-
   ParenBraceBracketBalancer BalancerRAIIObj(*this);
 
   ParsedAttributesWithRange Attrs(AttrFactory);
@@ -189,10 +194,12 @@ Retry:
     }
 
     // +===== Scout ==========================================================+
-    // Parse a mesh statement like forall shorthand
-    StmtResult SR;
-    if (ParseMeshStatement(Stmts, OnlyStatement, Next, SR))
-      return SR;
+    if (getLangOpts().Scout) {
+      // Parse a mesh statement like forall shorthand
+      StmtResult SR;
+      if (ParseMeshStatement(Stmts, OnlyStatement, Next, SR))
+        return SR;
+    }
     // +======================================================================+
 
     // Look up the identifier, and typo-correct it to a keyword if it's not
@@ -224,12 +231,6 @@ Retry:
       SourceLocation DeclStart = Tok.getLocation(), DeclEnd;
       DeclGroupPtrTy Decl = ParseDeclaration(Stmts, Declarator::BlockContext,
                                              DeclEnd, Attrs);
-	  // +===== Scout ==============================================================+
-      // TEST
-      //StmtResult r = Actions.ActOnDeclStmt(Decl, DeclStart, DeclEnd);
-      //r.get()->dump();
-      //return r;
-	  // +==========================================================================+
       return Actions.ActOnDeclStmt(Decl, DeclStart, DeclEnd);
     }
 
@@ -269,6 +270,7 @@ Retry:
 
   // +===== Scout ============================================================+
   case tok::kw_forall: {
+
     const Token& t = GetLookAheadToken(1);
     switch(t.getKind()) {
       case tok::kw_cells:
@@ -924,15 +926,12 @@ StmtResult Parser::ParseCompoundStatementBody(bool isStmtExpr) {
       // +===== Scout ==============================================================+
       // Store the stmt vec so we can insert statements into it
       // when Stmts is not available as a parameter
-      StmtsStack.push_back(&Stmts);
+      //StmtsStack.push_back(&Stmts);
       // +==========================================================================+
-
       R = ParseStatementOrDeclaration(Stmts, false);
-
-
       // +===== Scout ==============================================================+
-      StmtsStack.pop_back();
-	  // +==========================================================================+
+      //StmtsStack.pop_back();
+      // +==========================================================================+
     } else {
       // __extension__ can start declarations and it can also be a unary
       // operator for expressions.  Consume multiple __extension__ markers here

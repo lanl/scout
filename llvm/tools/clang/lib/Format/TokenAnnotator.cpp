@@ -1221,6 +1221,9 @@ bool TokenAnnotator::spaceRequiredBetween(const AnnotatedLine &Line,
             (Left.MatchingParen && Left.MatchingParen->Type == TT_CastRParen))
                ? Style.SpacesInCStyleCastParentheses
                : Style.SpacesInParentheses;
+  if (Style.SpacesInAngles &&
+      ((Left.Type == TT_TemplateOpener) != (Right.Type == TT_TemplateCloser)))
+    return true;
   if (Right.isOneOf(tok::semi, tok::comma))
     return false;
   if (Right.is(tok::less) &&
@@ -1337,7 +1340,7 @@ bool TokenAnnotator::spaceRequiredBefore(const AnnotatedLine &Line,
   if (Tok.Type == TT_CtorInitializerColon || Tok.Type == TT_ObjCBlockLParen)
     return true;
   if (Tok.Previous->Tok.is(tok::kw_operator))
-    return false;
+    return Tok.is(tok::coloncolon);
   if (Tok.Type == TT_OverloadedOperatorLParen)
     return false;
   if (Tok.is(tok::colon))
@@ -1350,7 +1353,7 @@ bool TokenAnnotator::spaceRequiredBefore(const AnnotatedLine &Line,
   if (Tok.Previous->is(tok::greater) && Tok.is(tok::greater)) {
     return Tok.Type == TT_TemplateCloser &&
            Tok.Previous->Type == TT_TemplateCloser &&
-           Style.Standard != FormatStyle::LS_Cpp11;
+           (Style.Standard != FormatStyle::LS_Cpp11 || Style.SpacesInAngles);
   }
   if (Tok.isOneOf(tok::arrowstar, tok::periodstar) ||
       Tok.Previous->isOneOf(tok::arrowstar, tok::periodstar))

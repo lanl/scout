@@ -80,16 +80,16 @@ def analyzer_viz_egraph_ubigraph : Flag<["-"], "analyzer-viz-egraph-ubigraph">,
 
 def analyzer_inline_max_stack_depth : Separate<["-"], "analyzer-inline-max-stack-depth">,
   HelpText<"Bound on stack depth while inlining (4 by default)">;
-def analyzer_inline_max_stack_depth_EQ : Joined<["-"], "analyzer-inline-max-stack-depth=">, 
+def analyzer_inline_max_stack_depth_EQ : Joined<["-"], "analyzer-inline-max-stack-depth=">,
   Alias<analyzer_inline_max_stack_depth>;
-  
+
 def analyzer_inlining_mode : Separate<["-"], "analyzer-inlining-mode">,
   HelpText<"Specify the function selection heuristic used during inlining">;
 def analyzer_inlining_mode_EQ : Joined<["-"], "analyzer-inlining-mode=">, Alias<analyzer_inlining_mode>;
 
 def analyzer_disable_retry_exhausted : Flag<["-"], "analyzer-disable-retry-exhausted">,
   HelpText<"Do not re-analyze paths leading to exhausted nodes with a different strategy (may decrease code coverage)">;
-  
+
 def analyzer_max_loop : Separate<["-"], "analyzer-max-loop">,
   HelpText<"The maximum number of times the analyzer will go through a loop">;
 def analyzer_stats : Flag<["-"], "analyzer-stats">,
@@ -388,7 +388,7 @@ def fixit_to_temp : Flag<["-"], "fixit-to-temporary">,
 
 def foverride_record_layout_EQ : Joined<["-"], "foverride-record-layout=">,
   HelpText<"Override record layouts with those in the given file">;
-  
+
 //===----------------------------------------------------------------------===//
 // Language Options
 //===----------------------------------------------------------------------===//
@@ -560,8 +560,8 @@ def cpuThreads : Flag<["-"], "mt">,
   HelpText<"Enable CPU multithreading support.">;
 def disableScoutStdLib : Flag<["-"], "disable-sc-stdlib">,
   HelpText<"Disable automatic inclusion/use of the Scout standard library.">;
-def debugWait : Flag<["-"], "debug-wait">,
-  HelpText<"Used to allow debugger to attach to the scc driver.">;
+def debugWait : Flag<["-"], "debug">,
+  HelpText<"Used to allow debugger to attach to the driver.">;
 def noRewrite : Flag<["-"], "no-rewrite">,
   HelpText<"do not run the rewriter">;
 def dumpRewrite : Flag<["-"], "dump-rewrite">,

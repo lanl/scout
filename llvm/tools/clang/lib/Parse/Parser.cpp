@@ -563,13 +563,6 @@ namespace {
 /// ParseTopLevelDecl - Parse one top-level declaration, return whatever the
 /// action tells us to.  This returns true if the EOF was encountered.
 bool Parser::ParseTopLevelDecl(DeclGroupPtrTy &Result) {
-  // +========================================================================+
-  // scout - test hook into parsing top-level decls from main file
-  // if (Actions.SourceMgr.isInMainFile(Tok.getLocation())) {
-  //   DumpLookAheads(20);
-  // }
-  // +========================================================================+
-
   DestroyTemplateIdAnnotationsRAIIObj CleanupRAII(TemplateIds);
 
   // Skip over the EOF token, flagging end of previous input for incremental
