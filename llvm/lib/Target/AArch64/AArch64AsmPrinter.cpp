@@ -84,7 +84,7 @@ bool AArch64AsmPrinter::printSymbolicAddress(const MachineOperand &MO,
   default:
     llvm_unreachable("Unexpected operand for symbolic address constraint");
   case MachineOperand::MO_GlobalAddress:
-    Name = Mang->getSymbol(MO.getGlobal())->getName();
+    Name = getSymbol(MO.getGlobal())->getName();
 
     // Global variables may be accessed either via a GOT or in various fun and
     // interesting TLS-model specific ways. Set the prefix modifier as
@@ -230,6 +230,8 @@ bool AArch64AsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNum,
     // Output bits 23:12 of symbolic address with appropriate :hi12: relocation
     // modifier (currently only for TLS local exec).
     return printSymbolicAddress(MI->getOperand(OpNum), true, "hi12", O);
+  case 'a':
+    return PrintAsmMemoryOperand(MI, OpNum, AsmVariant, ExtraCode, O);
   }
 
 
