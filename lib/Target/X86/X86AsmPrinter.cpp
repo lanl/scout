@@ -333,21 +333,21 @@ void X86AsmPrinter::printIntelMemReference(const MachineInstr *MI, unsigned Op,
   const MachineOperand &IndexReg = MI->getOperand(Op+2);
   const MachineOperand &DispSpec = MI->getOperand(Op+3);
   const MachineOperand &SegReg   = MI->getOperand(Op+4);
-  
+
   // If this has a segment register, print it.
   if (SegReg.getReg()) {
     printOperand(MI, Op+4, O, Modifier, AsmVariant);
     O << ':';
   }
-  
+
   O << '[';
-  
+
   bool NeedPlus = false;
   if (BaseReg.getReg()) {
     printOperand(MI, Op, O, Modifier, AsmVariant);
     NeedPlus = true;
   }
-  
+
   if (IndexReg.getReg()) {
     if (NeedPlus) O << " + ";
     if (ScaleVal != 1)
@@ -625,6 +625,8 @@ void X86AsmPrinter::EmitEndOfAsmFile(Module &M) {
       Stubs.clear();
       OutStreamer.AddBlankLine();
     }
+
+    SM.serializeToStackMapSection();
 
     // Funny Darwin hack: This flag tells the linker that no global symbols
     // contain code that falls through to other global symbols (e.g. the obvious

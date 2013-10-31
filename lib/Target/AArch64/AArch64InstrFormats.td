@@ -383,6 +383,8 @@ class A64I_extract<bit sf, bits<3> op, bit n,
   // Inherits Rd in 4-0
 }
 
+let Predicates = [HasFPARMv8] in {
+
 // Format for floating-point compare instructions.
 class A64I_fpcmp<bit m, bit s, bits<2> type, bits<2> op, bits<5> opcode2,
                 dag outs, dag ins, string asmstr,
@@ -560,6 +562,8 @@ class A64I_fpimm<bit m, bit s, bits<2> type, bits<5> imm5,
   let Inst{12-10} = 0b100;
   let Inst{9-5} = imm5;
   // Inherit Rd in 4-0
+}
+
 }
 
 // Format for load-register (literal) instructions.
@@ -1226,6 +1230,25 @@ class NeonI_Scalar3Diff<bit u, bits<2> size, bits<4> opcode,
   // Inherit Rm in 20-16
   let Inst{15-12} = opcode;
   let Inst{11-10} = 0b00;
+  // Inherit Rn in 9-5
+  // Inherit Rd in 4-0
+}
+
+// Format AdvSIMD scalar shift by immediate
+
+class NeonI_ScalarShiftImm<bit u, bits<5> opcode,
+                           dag outs, dag ins, string asmstr,
+                           list<dag> patterns, InstrItinClass itin>
+  : A64InstRdn<outs, ins, asmstr, patterns, itin> {
+  bits<4> Imm4;
+  bits<3> Imm3;
+  let Inst{31-30} = 0b01;
+  let Inst{29} = u;
+  let Inst{28-23} = 0b111110;
+  let Inst{22-19} = Imm4;
+  let Inst{18-16} = Imm3;
+  let Inst{15-11} = opcode;
+  let Inst{10} = 0b1;
   // Inherit Rn in 9-5
   // Inherit Rd in 4-0
 }
