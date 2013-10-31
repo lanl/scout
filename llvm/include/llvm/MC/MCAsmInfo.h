@@ -244,11 +244,6 @@ namespace llvm {
     ///
     const char *GlobalDirective;             // Defaults to NULL.
 
-    /// ExternDirective - This is the directive used to declare external
-    /// globals.
-    ///
-    const char *ExternDirective;             // Defaults to NULL.
-
     /// HasSetDirective - True if the assembler supports the .set directive.
     bool HasSetDirective;                    // Defaults to true.
 
@@ -282,10 +277,6 @@ namespace llvm {
     /// HasNoDeadStrip - True if this target supports the MachO .no_dead_strip
     /// directive.
     bool HasNoDeadStrip;                     // Defaults to false.
-
-    /// HasSymbolResolver - True if this target supports the MachO
-    /// .symbol_resolver directive.
-    bool HasSymbolResolver;                     // Defaults to false.
 
     /// WeakRefDirective - This directive, if non-null, is used to declare a
     /// global as being a weak undefined symbol.
@@ -519,9 +510,6 @@ namespace llvm {
     const char *getGlobalDirective() const {
       return GlobalDirective;
     }
-    const char *getExternDirective() const {
-      return ExternDirective;
-    }
     bool hasSetDirective() const { return HasSetDirective; }
     bool hasAggressiveSymbolFolding() const {
       return HasAggressiveSymbolFolding;
@@ -536,7 +524,6 @@ namespace llvm {
     bool hasSingleParameterDotFile() const { return HasSingleParameterDotFile; }
     bool hasIdentDirective() const { return HasIdentDirective; }
     bool hasNoDeadStrip() const { return HasNoDeadStrip; }
-    bool hasSymbolResolver() const { return HasSymbolResolver; }
     const char *getWeakRefDirective() const { return WeakRefDirective; }
     const char *getWeakDefDirective() const { return WeakDefDirective; }
     const char *getLinkOnceDirective() const { return LinkOnceDirective; }
