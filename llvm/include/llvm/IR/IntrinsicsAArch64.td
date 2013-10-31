@@ -220,4 +220,55 @@ def int_aarch64_neon_vqdmlsl : Neon_3Arg_Long_Intrinsic;
 
 // Signed Saturating Doubling Multiply Long
 def int_aarch64_neon_vqdmull : Neon_2Arg_Long_Intrinsic;
+
+class Neon_2Arg_ShiftImm_Intrinsic
+  : Intrinsic<[llvm_v1i64_ty], [llvm_v1i64_ty, llvm_i32_ty], [IntrNoMem]>;
+
+class Neon_3Arg_ShiftImm_Intrinsic
+  : Intrinsic<[llvm_v1i64_ty], [llvm_v1i64_ty, llvm_v1i64_ty, llvm_i32_ty],
+              [IntrNoMem]>;
+
+// Scalar Shift Right (Immediate)
+def int_aarch64_neon_vshrds_n : Neon_2Arg_ShiftImm_Intrinsic;
+def int_aarch64_neon_vshrdu_n : Neon_2Arg_ShiftImm_Intrinsic;
+
+// Scalar Rounding Shift Right (Immediate)
+def int_aarch64_neon_vrshrds_n : Neon_2Arg_ShiftImm_Intrinsic;
+def int_aarch64_neon_vrshrdu_n : Neon_2Arg_ShiftImm_Intrinsic;
+
+// Scalar Shift Right and Accumulate (Immediate)
+def int_aarch64_neon_vsrads_n : Neon_3Arg_ShiftImm_Intrinsic;
+def int_aarch64_neon_vsradu_n : Neon_3Arg_ShiftImm_Intrinsic;
+
+// Scalar Rounding Shift Right and Accumulate (Immediate)
+def int_aarch64_neon_vrsrads_n : Neon_3Arg_ShiftImm_Intrinsic;
+def int_aarch64_neon_vrsradu_n : Neon_3Arg_ShiftImm_Intrinsic;
+
+// Scalar Shift Left (Immediate)
+def int_aarch64_neon_vshld_n : Neon_2Arg_ShiftImm_Intrinsic;
+
+// Scalar Saturating Shift Left (Immediate)
+def int_aarch64_neon_vqshls_n : Neon_N2V_Intrinsic;
+def int_aarch64_neon_vqshlu_n : Neon_N2V_Intrinsic;
+
+// Scalar Signed Saturating Shift Left Unsigned (Immediate)
+def int_aarch64_neon_vqshlus_n : Neon_N2V_Intrinsic;
+
+// Shift Right And Insert (Immediate)
+def int_aarch64_neon_vsrid_n : Neon_2Arg_ShiftImm_Intrinsic;
+
+// Shift Left And Insert (Immediate)
+def int_aarch64_neon_vslid_n : Neon_2Arg_ShiftImm_Intrinsic;
+
+// Scalar Signed Fixed-point Convert To Floating-Point (Immediate)
+def int_aarch64_neon_vcvtf32_n_s32 :
+  Intrinsic<[llvm_v1f32_ty], [llvm_v1i32_ty, llvm_i32_ty], [IntrNoMem]>;
+def int_aarch64_neon_vcvtf64_n_s64 :
+  Intrinsic<[llvm_v1f64_ty], [llvm_v1i64_ty, llvm_i32_ty], [IntrNoMem]>;
+
+// Scalar Unsigned Fixed-point Convert To Floating-Point (Immediate)
+def int_aarch64_neon_vcvtf32_n_u32 :
+  Intrinsic<[llvm_v1f32_ty], [llvm_v1i32_ty, llvm_i32_ty], [IntrNoMem]>;
+def int_aarch64_neon_vcvtf64_n_u64 :
+  Intrinsic<[llvm_v1f64_ty], [llvm_v1i64_ty, llvm_i32_ty], [IntrNoMem]>;
 }
