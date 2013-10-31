@@ -82,11 +82,7 @@ project(scStandard SCC)
   file(GLOB std_hdrs ${SCOUT_INCLUDE_DIR}/scout/*.sch)
   file(GLOB std_srcs *.sc)
 
-  add_library(scStandard 
-    STATIC 
-    ${std_srcs}
-    )
+  add_library(scStandard STATIC ${std_srcs})
 
   install(TARGETS scStandard
     DESTINATION lib)
-
