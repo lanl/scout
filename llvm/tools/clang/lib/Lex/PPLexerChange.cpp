@@ -12,8 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <iostream>
-
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/SourceManager.h"

@@ -1553,7 +1553,6 @@ bool Lexer::LexIdentifier(Token &Result, const char *CurPtr) {
 
     // Finally, now that we know we have an identifier, pass this off to the
     // preprocessor, which may macro expand it or something.
-    bool retval;
     if (II->isHandleIdentifierCase())
       return PP->HandleIdentifier(Result);
 

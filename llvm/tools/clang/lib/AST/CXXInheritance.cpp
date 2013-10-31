@@ -407,6 +407,9 @@ bool CXXRecordDecl::FindTagMember(const CXXBaseSpecifier *Specifier,
   return false;
 }
 
+// +===== Scout ==============================================================+
+// SC_TODO : I'm not sure this belongs here -- we don't support inheritance
+// in meshes and that appears to be the primary driver for much of this...
 bool CXXRecordDecl::FindMeshMember(const CXXBaseSpecifier *Specifier,
                                   CXXBasePath &Path,
                                   void *Name) {
@@ -424,6 +427,7 @@ MeshDecl *BaseMesh =
 
   return false;
 }
+// +==========================================================================+
 
 bool CXXRecordDecl::FindOrdinaryMember(const CXXBaseSpecifier *Specifier,
                                        CXXBasePath &Path,

@@ -781,7 +781,7 @@ ASTContext::~ASTContext() {
   }
 
   // +===== Scout ============================================================+
-  // Clean up mesh layout objects...
+  // Clean up mesh any layout objects...
   for (llvm::DenseMap<const MeshDecl*, const ASTMeshLayout*>::iterator
        I = ASTMeshLayouts.begin(), E = ASTMeshLayouts.end(); I != E; ) {
     // Increment in loop to prevent using deallocated memory.
@@ -1294,8 +1294,7 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool ForAlignof) const {
       UseAlignAttrOnly = true;
     }
   // +===== Scout ============================================================+
-  // SC_TODO : Why are we not considering mesh fields here?
-  } else if (isa<FieldDecl>(D) && !isa<MeshFieldDecl>(D)) {
+  } else if (getLangOpts().Scout && isa<MeshFieldDecl>(D)) {
     UseAlignAttrOnly =
       D->hasAttr<PackedAttr>() ||
       cast<FieldDecl>(D)->getParent()->hasAttr<PackedAttr>();
@@ -1342,42 +1341,43 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool ForAlignof) const {
       }
     }
 
-    // +===== Scout ============================================================+
-    // Handle mesh first -- as MeshFieldDecl is a subclass of FieldDecl it
-    // will pass the test below for field decls...
-    //
+    // +===== Scout ==========================================================+
     // Meshes can be subject to extra alignment constraints, like if
     // it is packed or has a max-field-alignment constraint (#pragma pack).
-    // So calculate the actual alignment of the field within the struct,
+    // So calculate the actual alignment of the field within the mesh/struct,
     // and then (as we're expected to do) constrain that by the alignment
     // of the type.
-    if (const MeshFieldDecl *Field = dyn_cast<MeshFieldDecl>(VD)) {
-      const MeshDecl *Parent = Field->getParent();
-      // We can only produce a sensible answer if the record is valid.
-      if (!Parent->isInvalidDecl()) {
-        const ASTMeshLayout &Layout = getASTMeshLayout(Parent);
+    if (getLangOpts().Scout) {
+      if (const MeshFieldDecl *Field = dyn_cast<MeshFieldDecl>(VD)) {
+        const MeshDecl *Parent = Field->getParent();
+        // We can only produce a sensible answer if the record is valid.
+        if (!Parent->isInvalidDecl()) {
+          const ASTMeshLayout &Layout = getASTMeshLayout(Parent);
 
-        // Start with the record's overall alignment.
-        unsigned FieldAlign = toBits(Layout.getAlignment());
+          // Start with the record's overall alignment.
+          unsigned FieldAlign = toBits(Layout.getAlignment());
 
-        // Use the GCD of that and the offset within the record.
-        uint64_t Offset = Layout.getFieldOffset(Field->getFieldIndex());
-        if (Offset > 0) {
-          // Alignment is always a power of 2, so the GCD will be a power of 2,
-          // which means we get to do this crazy thing instead of Euclid's.
-          uint64_t LowBitOfOffset = Offset & (~Offset + 1);
-          if (LowBitOfOffset < FieldAlign)
-            FieldAlign = static_cast<unsigned>(LowBitOfOffset);
+          // Use the GCD of that and the offset within the record.
+          uint64_t Offset = Layout.getFieldOffset(Field->getFieldIndex());
+          if (Offset > 0) {
+            // Alignment is always a power of 2, so the GCD will be a power of
+            // 2, which means we get to do this crazy thing instead of Euclid's.
+            uint64_t LowBitOfOffset = Offset & (~Offset + 1);
+            if (LowBitOfOffset < FieldAlign)
+              FieldAlign = static_cast<unsigned>(LowBitOfOffset);
+          }
+          Align = std::min(Align, FieldAlign);
         }
-        Align = std::min(Align, FieldAlign);
       }
-    // +========================================================================+
-    } else if (const FieldDecl *Field = dyn_cast<FieldDecl>(VD)) {
-      // Fields can be subject to extra alignment constraints, like if
-      // the field is packed, the struct is packed, or the struct has a
-      // a max-field-alignment constraint (#pragma pack).  So calculate
-      // the actual alignment of the field within the struct, and then
-      // (as we're expected to) constrain that by the alignment of the type.
+    }
+    // +======================================================================+
+
+    // Fields can be subject to extra alignment constraints, like if
+    // the field is packed, the struct is packed, or the struct has a
+    // a max-field-alignment constraint (#pragma pack).  So calculate
+    // the actual alignment of the field within the struct, and then
+    // (as we're expected to) constrain that by the alignment of the type.
+    if (const FieldDecl *Field = dyn_cast<FieldDecl>(VD)) {
       const RecordDecl *Parent = Field->getParent();
       // We can only produce a sensible answer if the record is valid.
       if (!Parent->isInvalidDecl()) {
@@ -1722,8 +1722,8 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     break;
   }
 
-  case Type::StructuredMesh:
   case Type::RectilinearMesh:
+  case Type::StructuredMesh:
   case Type::UnstructuredMesh: {
     const MeshType *MT = cast<MeshType>(T);
 
@@ -2493,8 +2493,8 @@ QualType ASTContext::getVariableArrayDecayedType(QualType type) const {
   // +==== Scout =============================================================+
   // Meshes are not variably-modified
   case Type::UniformMesh:
-  case Type::StructuredMesh:
   case Type::RectilinearMesh:
+  case Type::StructuredMesh:
   case Type::UnstructuredMesh:
   // +========================================================================+
   case Type::Enum:
@@ -3021,14 +3021,11 @@ QualType ASTContext::getTypeDeclTypeSlow(const TypeDecl *Decl) const {
   // +===== Scout ============================================================+
   } else if (const UniformMeshDecl *Mesh = dyn_cast<UniformMeshDecl>(Decl)) {
     return getUniformMeshType(Mesh);
-  } else if (const StructuredMeshDecl *Mesh =
-    dyn_cast<StructuredMeshDecl>(Decl)) {
-    return getStructuredMeshType(Mesh);
-  } else if (const RectilinearMeshDecl *Mesh =
-      dyn_cast<RectilinearMeshDecl>(Decl)) {
+  } else if (const RectilinearMeshDecl *Mesh = dyn_cast<RectilinearMeshDecl>(Decl)) {
     return getRectilinearMeshType(Mesh);
-  } else if (const UnstructuredMeshDecl *Mesh =
-      dyn_cast<UnstructuredMeshDecl>(Decl)) {
+  } else if (const StructuredMeshDecl *Mesh = dyn_cast<StructuredMeshDecl>(Decl)) {
+    return getStructuredMeshType(Mesh);
+  } else if (const UnstructuredMeshDecl *Mesh = dyn_cast<UnstructuredMeshDecl>(Decl)) {
     return getUnstructuredMeshType(Mesh);
   // +========================================================================+
   } else if (const UnresolvedUsingTypenameDecl *Using =
@@ -5621,8 +5618,8 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
     llvm_unreachable("@encode for dependent type!");
   // +===== Scout ============================================================+
   case Type::UniformMesh:
-  case Type::StructuredMesh:
   case Type::RectilinearMesh:
+  case Type::StructuredMesh:
   case Type::UnstructuredMesh:
     return;
   // +========================================================================+
@@ -7442,8 +7439,8 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
     return mergeFunctionTypes(LHS, RHS, OfBlockPointer, Unqualified);
   // +=== Scout ==============================================================+
   case Type::UniformMesh:
-  case Type::StructuredMesh:
   case Type::RectilinearMesh:
+  case Type::StructuredMesh:
   case Type::UnstructuredMesh:
     return QualType();
   // +========================================================================+
@@ -8131,9 +8128,9 @@ size_t ASTContext::getSideTableAllocatedMemory() const {
          llvm::capacity_in_bytes(InstantiatedFromUsingDecl) +
          llvm::capacity_in_bytes(InstantiatedFromUsingShadowDecl) +
          llvm::capacity_in_bytes(InstantiatedFromUnnamedFieldDecl) +
-         // +===== Scout ==========================================================+
+         // +===== Scout =====================================================+
          llvm::capacity_in_bytes(InstantiatedFromUnnamedMeshFieldDecl) +
-         // +======================================================================+
+         // +=================================================================+
          llvm::capacity_in_bytes(OverriddenMethods) +
          llvm::capacity_in_bytes(Types) +
          llvm::capacity_in_bytes(VariableArrayTypes) +
@@ -8233,30 +8230,6 @@ bool ASTContext::AtomicUsesUnsupportedLibcall(const AtomicExpr *E) const {
   unsigned MaxInlineWidthInBits = getTargetInfo().getMaxAtomicInlineWidth();
   return (Size != Align || toBits(sizeChars) > MaxInlineWidthInBits);
 }
-
-// +===== Scout =============================================================+
-// SC_TODO PATCH -- this appears to have been removed from clang for tag
-// types...  What's next???
-#ifdef _SC_TODO
-void ASTContext::addUnnamedMesh(const MeshDecl *Mesh) {
-  // FIXME: This mangling should be applied to function local classes too
-  if (!Mesh->getName().empty())
-    return;
-
-  std::pair<llvm::DenseMap<const DeclContext *, unsigned>::iterator, bool> P =
-    UnnamedMeshMangleContexts.insert(std::make_pair(Mesh->getParent(), 0));
-  UnnamedMeshMangleNumbers.insert(std::make_pair(Mesh, P.first->second++));
-}
-
-
-int ASTContext::getUnnamedMeshManglingNumber(const MeshDecl *Mesh) const {
-  llvm::DenseMap<const MeshDecl *, unsigned>::const_iterator I =
-    UnnamedMeshMangleNumbers.find(Mesh);
-  return I != UnnamedMeshMangleNumbers.end() ? I->second : -1;
-}
-#endif
-// +=========================================================================+
-
 
 namespace {
 

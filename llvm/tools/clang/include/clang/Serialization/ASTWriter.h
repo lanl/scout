@@ -111,7 +111,7 @@ private:
 
   /// \brief The module we're currently writing, if any.
   Module *WritingModule;
-                    
+
   /// \brief Indicates when the AST writing is actively performing
   /// serialization, rather than just queueing updates.
   bool WritingAST;
@@ -261,7 +261,7 @@ private:
 
   /// \brief The first ID number we can use for our own submodules.
   serialization::SubmoduleID FirstSubmoduleID;
-  
+
   /// \brief The submodule ID that will be assigned to the next new submodule.
   serialization::SubmoduleID NextSubmoduleID;
 
@@ -328,7 +328,7 @@ private:
   /// \brief The set of Objective-C class that have categories we
   /// should serialize.
   llvm::SetVector<ObjCInterfaceDecl *> ObjCClassesWithCategories;
-                    
+
   struct ReplacedDeclInfo {
     serialization::DeclID ID;
     uint64_t Offset;
@@ -347,12 +347,12 @@ private:
   /// serialized again. In this case, it is registered here, so that the reader
   /// knows to read the updated version.
   SmallVector<ReplacedDeclInfo, 16> ReplacedDecls;
-                 
+
   /// \brief The set of declarations that may have redeclaration chains that
   /// need to be serialized.
   llvm::SetVector<Decl *, SmallVector<Decl *, 4>,
                   llvm::SmallPtrSet<Decl *, 4> > Redeclarations;
-                                      
+
   /// \brief Statements that we've encountered while serializing a
   /// declaration or type.
   SmallVector<Stmt *, 16> StmtsToEmit;
@@ -410,10 +410,10 @@ private:
   /// \brief A mapping from each known submodule to its ID number, which will
   /// be a positive integer.
   llvm::DenseMap<Module *, unsigned> SubmoduleIDs;
-                    
+
   /// \brief Retrieve or create a submodule ID for this module.
   unsigned getSubmoduleID(Module *Mod);
-                    
+
   /// \brief Write the given subexpression to the bitstream.
   void WriteSubStmt(Stmt *S,
                     llvm::DenseMap<Stmt *, uint64_t> &SubStmtEntries,
@@ -433,7 +433,7 @@ private:
   void WriteHeaderSearch(const HeaderSearch &HS, StringRef isysroot);
   void WritePreprocessorDetail(PreprocessingRecord &PPRec);
   void WriteSubmodules(Module *WritingModule);
-                                        
+
   void WritePragmaDiagnosticMappings(const DiagnosticsEngine &Diag,
                                      bool isModule);
   void WriteCXXBaseSpecifiersOffsets();
@@ -470,6 +470,9 @@ private:
   unsigned DeclTypedefAbbrev;
   unsigned DeclVarAbbrev;
   unsigned DeclFieldAbbrev;
+  // +===== Scout ===========================================================+
+  unsigned DeclMeshFieldAbbrev;
+  // +=======================================================================+
   unsigned DeclEnumAbbrev;
   unsigned DeclObjCIvarAbbrev;
 
