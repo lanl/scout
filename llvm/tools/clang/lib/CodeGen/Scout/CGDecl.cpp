@@ -68,8 +68,19 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Type.h"
 #include "clang/AST/Type.h"
+#include <stdio.h>
+
 using namespace clang;
 using namespace CodeGen;
+
+static const char *DimNames[]   = { "width", "height", "depth" };
+
+// We use 'IRNameStr' to hold the generated names we use for
+// various values in the IR building.  We've added a static
+// buffer to avoid the need for a lot of fine-grained new and
+// delete calls...  We're likely safe with 160 character long
+// strings.
+static char IRNameStr[160];
 
 void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
                                              const VarDecl &D) {
@@ -136,6 +147,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
     // fields are first and then mesh dimensions
     // this is setup in Codegentypes.h ConvertScoutMeshType()
     const MeshType* MT = cast<MeshType>(T.getTypePtr());
+    llvm::StringRef MeshName  = MT->getName();
     MeshDecl* MD = MT->getDecl();
     MeshDecl::field_iterator itr = MD->field_begin();
     MeshDecl::field_iterator itr_end = MD->field_end();
@@ -144,8 +156,10 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
     llvm::Type *structTy = Alloc->getType()->getContainedType(0);
 
     for(unsigned i = 0; i < nfields; ++i) {
+
       // Compute size of needed field memory in bytes
       llvm::Type *fieldTy = structTy->getContainedType(i);
+
       // If this is a externally allocated field, go on
       MeshFieldDecl* FD = *itr;
 
@@ -156,6 +170,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
       if (FD->hasExternalFormalLinkage())
         continue;
 
+      llvm::StringRef MeshFieldName = FD->getName();
       uint64_t fieldTyBytes;
       fieldTyBytes = CGM.getDataLayout().getTypeAllocSize(fieldTy);
 
@@ -167,15 +182,16 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
       llvm::Value *val = CreateMemAllocForValue(fieldTotalBytes);
       val = Builder.CreateBitCast(val, structTy->getContainedType(i));
 
-      llvm::Value *field;
-      field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i);
+      sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), MeshFieldName.str().c_str());
+      llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i, IRNameStr);
       Builder.CreateStore(val, field);
     }
 
     // mesh dimensions after the fields
     // this is setup in Codegentypes.h ConvertScoutMeshType()
     for(size_t i = 0; i < rank; ++i) {
-      llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, nfields+i);
+      sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
+      llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, nfields+i, IRNameStr);
       llvm::Value* intValue;
 
       Expr* E = dims[i];
@@ -200,10 +216,8 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
       Builder.CreateStore(intValue, field);
     }
 
-    // debugger support -- SC_TODO: do we want to name this to
-    // more closely match the mesh name (vs. mesh.tmp)???
     llvm::Value *ScoutDeclDebugPtr = 0;
-    ScoutDeclDebugPtr = CreateMemTemp(getContext().VoidPtrTy, "mesh.temp");
+    ScoutDeclDebugPtr = CreateMemTemp(getContext().VoidPtrTy, "meshdecl.dbg");
     llvm::Value* AllocVP = Builder.CreateBitCast(Alloc, VoidPtrTy);
     Builder.CreateStore(AllocVP, ScoutDeclDebugPtr);
   }

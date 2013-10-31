@@ -22,10 +22,17 @@
 #include "clang/CodeGen/CGFunctionInfo.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Intrinsics.h"
-
+// ====== Scout ======================================
+#include <stdio.h>
+// ===================================================
 using namespace clang;
 using namespace CodeGen;
 using namespace llvm;
+
+// ===== Scout =======================================
+static char IRNameStr[160];
+// ===================================================
+
 
 /// getBuiltinLibFunction - Given a builtin id for a function like
 /// "__builtin_fabsf", return a Function* for "fabsf".
@@ -213,45 +220,46 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
 
   // +==== Scout =============================================================+
   case Builtin::BIPosition: {
+    static const char *IndexNames[] = { "x", "y", "z"};
     Value *Result =
        llvm::UndefValue::get(llvm::VectorType::get(Int32Ty, 4));
 
-     for (unsigned i = 0; i < 4; ++i) {
-       Result = Builder.CreateInsertElement(Result,
-                                            Builder.CreateLoad(InductionVar[i]),
-                                            Builder.getInt32(i));
+     for (unsigned i = 0; i < 3; ++i) {
+       sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
+       Result = Builder.CreateInsertElement(Result, Builder.CreateLoad(InductionVar[i],IRNameStr), Builder.getInt32(i));
      }
+     Result = Builder.CreateInsertElement(Result, Builder.CreateLoad(InductionVar[3],"forall.linearidx"), Builder.getInt32(3));
      return  RValue::get(Result);
   }
 
   case Builtin::BIPositionX: {
-    return RValue::get(Builder.CreateLoad(InductionVar[0]));
+    return RValue::get(Builder.CreateLoad(InductionVar[0], "forall.induct.x"));
   }
 
   case Builtin::BIPositionY: {
-    return RValue::get(Builder.CreateLoad(InductionVar[1]));
+    return RValue::get(Builder.CreateLoad(InductionVar[1], "forall.induct.y"));
   }
 
   case Builtin::BIPositionZ: {
-    return RValue::get(Builder.CreateLoad(InductionVar[2]));
+    return RValue::get(Builder.CreateLoad(InductionVar[2], "forall.induct.z"));
   }
 
   case Builtin::BIPositionW: {
-    return RValue::get(Builder.CreateLoad(InductionVar[3]));
+    return RValue::get(Builder.CreateLoad(InductionVar[3], "forall.linearidx"));
   }
 
   case Builtin::BIWidth: {
-    if (LoopBounds[0]) return RValue::get(Builder.CreateLoad(LoopBounds[0]));
+    if (LoopBounds[0]) return RValue::get(Builder.CreateLoad(LoopBounds[0], "width"));
     else return RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
   }
 
   case Builtin::BIHeight: {
-    if (LoopBounds[1]) return RValue::get(Builder.CreateLoad(LoopBounds[1]));
+    if (LoopBounds[1]) return RValue::get(Builder.CreateLoad(LoopBounds[1], "height"));
     else return RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
   }
 
   case Builtin::BIDepth: {
-    if (LoopBounds[2]) return RValue::get(Builder.CreateLoad(LoopBounds[2]));
+    if (LoopBounds[2]) return RValue::get(Builder.CreateLoad(LoopBounds[2], "depth"));
     else return RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
   }
   // +========================================================================+

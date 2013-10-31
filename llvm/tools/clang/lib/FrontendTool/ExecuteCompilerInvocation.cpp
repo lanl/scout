@@ -11,8 +11,6 @@
 // minimize the impact of pulling in essentially everything else in Clang.
 //
 //===----------------------------------------------------------------------===//
-#include <stdio.h>
-
 #include "clang/FrontendTool/Utils.h"
 #include "clang/ARCMigrate/ARCMTActions.h"
 #include "clang/CodeGen/CodeGenAction.h"
@@ -53,10 +51,9 @@ static FrontendAction *CreateFrontendBaseAction(CompilerInstance &CI) {
   case EmitLLVMOnly:           return new EmitLLVMOnlyAction();
   case EmitCodeGenOnly:        return new EmitCodeGenOnlyAction();
   case EmitObj:
-    fprintf(stderr, "emitobj action...\n");
     return new EmitObjAction();
     break;
-    
+
 #ifdef CLANG_ENABLE_REWRITER
   case FixIt:                  return new FixItAction();
 #else
@@ -144,7 +141,7 @@ static FrontendAction *CreateFrontendAction(CompilerInstance &CI) {
     Act = new FixItRecompile(Act);
   }
 #endif
-  
+
 #ifdef CLANG_ENABLE_ARCMT
   // Potentially wrap the base FE action in an ARC Migrate Tool action.
   switch (FEOpts.ARCMTAction) {
@@ -236,7 +233,6 @@ bool clang::ExecuteCompilerInvocation(CompilerInstance *Clang) {
   OwningPtr<FrontendAction> Act(CreateFrontendAction(*Clang));
   if (!Act)
     return false;
-  fprintf(stderr, "clang->executeAction -- FrontendAction...\n");
   bool Success = Clang->ExecuteAction(*Act);
   if (Clang->getFrontendOpts().DisableFree)
     Act.take();

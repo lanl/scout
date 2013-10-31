@@ -93,6 +93,12 @@ namespace {
     /// struct size is a multiple of the field alignment.
     void AppendPadding(CharUnits fieldOffset, CharUnits fieldAlignment);
 
+    /// ResizeLastBaseFieldIfNecessary - Fields and bases can be laid out in the
+    /// tail padding of a previous base.  If this happens, the type of the previous
+    /// base needs to be changed to an array of i8.  Returns true if the last
+    /// laid out base was resized.
+    bool ResizeLastBaseFieldIfNecessary(CharUnits offset);
+
     /// elements.
     llvm::Type *getByteArrayType(CharUnits NumBytes);
 
@@ -158,6 +164,9 @@ bool CGMeshLayoutBuilder::LayoutBitfields(const ASTMeshLayout &Layout,
     CharUnits FieldOffsetInCharUnits =
       Types.getContext().toCharUnitsFromBits(FirstFieldOffset);
 
+    if (!ResizeLastBaseFieldIfNecessary(FieldOffsetInCharUnits))
+      llvm_unreachable("We must be able to resize the last base if we need to "
+                       "pack bits into it.");
     NextFieldOffsetInBits = Types.getContext().toBits(NextFieldOffset);
     assert(FirstFieldOffset >= NextFieldOffsetInBits);
   }
@@ -386,6 +395,25 @@ void CGMeshLayoutBuilder::AppendPadding(CharUnits fieldOffset,
   // Otherwise we need explicit padding.
   CharUnits padding = fieldOffset - NextFieldOffset;
   AppendBytes(padding);
+}
+
+bool CGMeshLayoutBuilder::ResizeLastBaseFieldIfNecessary(CharUnits offset) {
+
+  // Check if we have a base to resize.
+  if (!LastLaidOutBase.isValid())
+    return false;
+
+  // This offset does not overlap with the tail padding.
+  if (offset >= NextFieldOffset)
+    return false;
+
+  // Restore the field offset and append an i8 array instead.
+  MeshFieldTypes.pop_back();
+  NextFieldOffset = LastLaidOutBase.Offset;
+  AppendBytes(LastLaidOutBase.NonVirtualSize);
+  LastLaidOutBase.invalidate();
+  
+  return true;
 }
 
 llvm::Type *CGMeshLayoutBuilder::getByteArrayType(CharUnits numBytes) {
