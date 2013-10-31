@@ -11,6 +11,7 @@
 // interface.
 //
 //===----------------------------------------------------------------------===//
+#include <stdio.h>
 
 #include "clang/Parse/Parser.h"
 #include "RAIIObjectsForParser.h"
@@ -112,6 +113,8 @@ StmtResult
 Parser::ParseStatementOrDeclaration(StmtVector &Stmts, bool OnlyStatement,
                                     SourceLocation *TrailingElseLoc) {
 
+  fprintf(stderr, "parse stmt or decl\n");
+    
   ParenBraceBracketBalancer BalancerRAIIObj(*this);
 
   ParsedAttributesWithRange Attrs(AttrFactory);
@@ -188,6 +191,7 @@ Retry:
     return StmtError();
 
   case tok::identifier: {
+    fprintf(stderr, "parse stmt - identifier - after attributes.\n");
     Token Next = NextToken();
     if (Next.is(tok::colon)) { // C99 6.8.1: labeled-statement
       // identifier ':' statement
@@ -196,7 +200,7 @@ Retry:
 
     // +===== Scout ==========================================================+
     if (getLangOpts().Scout) {
-      // Parse a mesh statement like forall shorthand
+      // Parse a mesh statement like forall shorthand... 
       StmtResult SR;
       if (ParseMeshStatement(Stmts, OnlyStatement, Next, SR))
         return SR;
@@ -924,15 +928,7 @@ StmtResult Parser::ParseCompoundStatementBody(bool isStmtExpr) {
 
     StmtResult R;
     if (Tok.isNot(tok::kw___extension__)) {
-      // +===== Scout ==============================================================+
-      // Store the stmt vec so we can insert statements into it
-      // when Stmts is not available as a parameter
-      //StmtsStack.push_back(&Stmts);
-      // +==========================================================================+
       R = ParseStatementOrDeclaration(Stmts, false);
-      // +===== Scout ==============================================================+
-      //StmtsStack.pop_back();
-      // +==========================================================================+
     } else {
       // __extension__ can start declarations and it can also be a unary
       // operator for expressions.  Consume multiple __extension__ markers here

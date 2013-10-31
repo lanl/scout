@@ -485,7 +485,12 @@ void ASTFrontendAction::ExecuteAction() {
 
   // +===== Scout ============================================================+
   // Parse the AST
-  if (CI.getLangOpts().Scout) {    
+  //
+  // SC_TODO -- is there any way we can ditch the rewriter????
+  // 
+  llvm::errs() << "before front end action - scout cond...\n";
+  if (CI.getLangOpts().Scout) {
+    llvm::errs() << "scout is true...\n";    
     // see if we are using the rewriter or not.
     Rewriter* scoutRewriter = CI.getScoutRewriter();
     if (scoutRewriter) {
@@ -496,11 +501,11 @@ void ASTFrontendAction::ExecuteAction() {
       // Parse the file to AST, registering this consumer as the AST consumer.
       ParseAST(CI.getPreprocessor(), Consumer,
                CI.getASTContext());
-    } else {
-      // original clang call to ParseAST
-      ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
-               CI.getFrontendOpts().SkipFunctionBodies);
     }
+  } else {
+    llvm::errs() << "front end action - calling parse ast...\n"; 
+    ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
+             CI.getFrontendOpts().SkipFunctionBodies);
   }
   // +========================================================================+
 }

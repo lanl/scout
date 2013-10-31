@@ -325,9 +325,11 @@ int main(int argc_, const char **argv_) {
     }
 
 
-    if (Tool == "")
+    if (Tool == "") {
+      std::cerr << "calling cc1_main...\n";
       return cc1_main(argv.data()+2, argv.data()+argv.size(), argv[0],
                       (void*) (intptr_t) GetExecutablePath);
+    }
     if (Tool == "as")
       return cc1as_main(argv.data()+2, argv.data()+argv.size(), argv[0],
                       (void*) (intptr_t) GetExecutablePath);

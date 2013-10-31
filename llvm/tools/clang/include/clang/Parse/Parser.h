@@ -45,7 +45,7 @@ namespace clang {
   class InMessageExpressionRAIIObject;
   class PoisonSEHIdentifiersRAIIObject;
   class VersionTuple;
-
+  class OMPClause;
   // +===== Scout ============================================================+
   // Used by the mesh parser to keep track of what field kind we are parsing.
   enum MeshFieldKind {
@@ -1997,6 +1997,11 @@ private:
                                         SourceLocation AttrNameLoc,
                                         ParsedAttributes &Attrs,
                                         SourceLocation *EndLoc);
+
+  void ParseAttributeWithTypeArg(IdentifierInfo &AttrName,
+                                 SourceLocation AttrNameLoc,
+                                 ParsedAttributes &Attrs,
+                                 SourceLocation *EndLoc);
 
   void ParseTypeofSpecifier(DeclSpec &DS);
   SourceLocation ParseDecltypeSpecifier(DeclSpec &DS);

@@ -12,6 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <iostream>
+
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/SourceManager.h"
@@ -110,11 +112,17 @@ void Preprocessor::EnterSourceFile(FileID FID, const DirectoryLookup *CurDir,
 void Preprocessor::EnterSourceFileWithLexer(Lexer *TheLexer,
                                             const DirectoryLookup *CurDir) {
 
+  std::cerr << "preprocessor entering file with lexer...\n";
+  
   // Add the current lexer to the include stack.
   if (CurPPLexer || CurTokenLexer)
     PushIncludeMacroStack();
 
   CurLexer.reset(TheLexer);
+  
+  CurLexer->getFileLoc().dump(SourceMgr);
+  std::cerr << "\n";
+  
   CurPPLexer = TheLexer;
   CurDirLookup = CurDir;
   if (CurLexerKind != CLK_LexAfterModuleImport)
@@ -122,6 +130,8 @@ void Preprocessor::EnterSourceFileWithLexer(Lexer *TheLexer,
   
   // Notify the client, if desired, that we are in a new source file.
   if (Callbacks && !CurLexer->Is_PragmaLexer) {
+    std::cerr << "callbacks and we're not a pragma lexer...\n";
+    
     SrcMgr::CharacteristicKind FileType =
        SourceMgr.getFileCharacteristic(CurLexer->getFileLoc());
 
