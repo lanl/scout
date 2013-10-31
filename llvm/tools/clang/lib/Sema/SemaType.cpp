@@ -4027,7 +4027,9 @@ Sema::GetTypeSourceInfoForDeclarator(Declarator &D, QualType T,
 
     DeclaratorLocFiller(Context, D.getTypeObject(i)).Visit(CurrTL);
     // +==== Scout ===========================================================+
-    //CurrTL = CurrTL.getNextTypeLoc().getUnqualifiedLoc();
+    CurrTL = CurrTL.getNextTypeLoc().getUnqualifiedLoc();
+
+    /* -- commented out for debugging....
     TypeLoc nextTL = CurrTL.getNextTypeLoc();
     if (nextTL.getUnqualifiedLoc() == 0) {
       // SC_TODO Not sure what to do here.
@@ -4036,6 +4038,7 @@ Sema::GetTypeSourceInfoForDeclarator(Declarator &D, QualType T,
     } else {
       CurrTL = nextTL.getUnqualifiedLoc();
     }
+    */
     // +======================================================================+
   }
 

@@ -37,7 +37,9 @@ class MangleNumberingContext
     : public RefCountedBase<MangleNumberingContext> {
   llvm::DenseMap<const Type *, unsigned> ManglingNumbers;
   llvm::DenseMap<IdentifierInfo*, unsigned> TagManglingNumbers;
+  // +===== Scout ============================================================+
   llvm::DenseMap<IdentifierInfo*, unsigned> MeshManglingNumbers;
+  // +========================================================================+
 
 public:
   virtual ~MangleNumberingContext() {}

@@ -436,7 +436,6 @@ def IBOutlet : InheritableAttr {
 def IBOutletCollection : InheritableAttr {
   let Spellings = [GNU<"iboutletcollection">];
   let Args = [TypeArgument<"Interface", 1>, SourceLocArgument<"InterfaceLoc">];
-  let HasCustomParsing = 1;
 }
 
 def Malloc : InheritableAttr {

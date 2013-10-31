@@ -412,7 +412,8 @@ private:
 public:
   static bool isDeclRep(TST T) {
     return (T == TST_enum || T == TST_struct ||
-            T == TST_union || T == TST_class ||
+            T == TST_interface || T == TST_union ||
+            T == TST_class ||
             // +===== Scout ==================================================+
             T == TST_uniform_mesh     || T == TST_structured_mesh ||
             T == TST_rectilinear_mesh || T == TST_unstructured_mesh);

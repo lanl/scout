@@ -5403,6 +5403,7 @@ void Parser::ParseParameterDeclarationClause(
       }
     }
     // +======================================================================+
+
     // Parse the declarator.  This is "PrototypeContext" or
     // "LambdaExprParameterContext", because we must accept either
     // 'declarator' or 'abstract-declarator' here.

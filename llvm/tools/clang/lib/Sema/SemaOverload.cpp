@@ -6631,9 +6631,8 @@ class BuiltinOperatorOverloadBuilder {
                         LastPromotedIntegralType = 11;
   static const unsigned FirstPromotedArithmeticType = 0,
                         LastPromotedArithmeticType = 11;
-  // +===== Scout - updated count from 20 to 41 ==============================+
-  static const unsigned NumArithmeticTypes = 41;
-  // +========================================================================+
+  static const unsigned NumArithmeticTypes = 20;
+  
   /// \brief Get the canonical type for a given arithmetic type index.
   CanQualType getArithmeticType(unsigned index) {
     assert(index < NumArithmeticTypes);

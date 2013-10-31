@@ -1501,7 +1501,7 @@ bool RecursiveASTVisitor<Derived>::TraverseTemplateInstantiations(           \
       TRY_TO(TraverseDecl(SD));                                              \
       break;                                                                 \
                                                                              \
-    /* We don't need to do anything on an explicit instantiation             
+    /* We don't need to do anything on an explicit instantiation
        or explicit specialization because there will be an explicit
        node for it elsewhere. */                                             \
     case TSK_ExplicitInstantiationDeclaration:                               \
@@ -1513,7 +1513,7 @@ bool RecursiveASTVisitor<Derived>::TraverseTemplateInstantiations(           \
                                                                              \
   return true;                                                               \
 }
-   
+
 DEF_TRAVERSE_TMPL_INST(Class)
 DEF_TRAVERSE_TMPL_INST(Var)
 
@@ -1558,7 +1558,7 @@ DEF_TRAVERSE_DECL(TMPLDECLKIND##TemplateDecl, {                              \
     /* By default, we do not traverse the instantiations of
        class templates since they do not appear in the user code. The
        following code optionally traverses them.
-       
+
        We only traverse the class instantiations when we see the canonical
        declaration of the template, to ensure we only visit them once. */    \
     if (getDerived().shouldVisitTemplateInstantiations() &&                  \
@@ -1813,13 +1813,13 @@ DEF_TRAVERSE_DECL(FieldDecl, {
       TRY_TO(TraverseStmt(D->getInClassInitializer()));
   })
 
-// +===== Scout =========================================================+
+// +===== Scout ==============================================================+
 DEF_TRAVERSE_DECL(MeshFieldDecl, {
-    TRY_TO(TraverseDeclaratorHelper(D));    
+    TRY_TO(TraverseDeclaratorHelper(D));
     if (D->isBitField())
       TRY_TO(TraverseStmt(D->getBitWidth()));
   })
-// +==============---====================================================+
+// +=================-----====================================================+
 
 DEF_TRAVERSE_DECL(ObjCAtDefsFieldDecl, {
     TRY_TO(TraverseDeclaratorHelper(D));
@@ -1998,7 +1998,7 @@ DEF_TRAVERSE_STMT(GCCAsmStmt, {
     // children() iterates over inputExpr and outputExpr.
   })
 
-DEF_TRAVERSE_STMT(MSAsmStmt, { 
+DEF_TRAVERSE_STMT(MSAsmStmt, {
     // FIXME: MS Asm doesn't currently parse Constraints, Clobbers, etc.  Once
     // added this needs to be implemented.
   })
@@ -2255,7 +2255,7 @@ DEF_TRAVERSE_STMT(CXXTemporaryObjectExpr, {
     TRY_TO(TraverseTypeLoc(S->getTypeSourceInfo()->getTypeLoc()));
   })
 
-// Walk only the visible parts of lambda expressions.  
+// Walk only the visible parts of lambda expressions.
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseLambdaExpr(LambdaExpr *S) {
   TRY_TO(WalkUpFromLambdaExpr(S));
@@ -2279,7 +2279,7 @@ bool RecursiveASTVisitor<Derived>::TraverseLambdaExpr(LambdaExpr *S) {
         }
       } else {
         TRY_TO(TraverseTypeLoc(Proto.getResultLoc()));
-      }        
+      }
     }
   }
 
@@ -2410,7 +2410,7 @@ DEF_TRAVERSE_STMT(ObjCStringLiteral, { })
 DEF_TRAVERSE_STMT(ObjCBoxedExpr, { })
 DEF_TRAVERSE_STMT(ObjCArrayLiteral, { })
 DEF_TRAVERSE_STMT(ObjCDictionaryLiteral, { })
-  
+
 // Traverse OpenCL: AsType, Convert.
 DEF_TRAVERSE_STMT(AsTypeExpr, { })
 
