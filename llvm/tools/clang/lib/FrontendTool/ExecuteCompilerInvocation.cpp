@@ -11,6 +11,7 @@
 // minimize the impact of pulling in essentially everything else in Clang.
 //
 //===----------------------------------------------------------------------===//
+#include <stdio.h>
 
 #include "clang/FrontendTool/Utils.h"
 #include "clang/ARCMigrate/ARCMTActions.h"
@@ -51,7 +52,11 @@ static FrontendAction *CreateFrontendBaseAction(CompilerInstance &CI) {
   case EmitLLVM:               return new EmitLLVMAction();
   case EmitLLVMOnly:           return new EmitLLVMOnlyAction();
   case EmitCodeGenOnly:        return new EmitCodeGenOnlyAction();
-  case EmitObj:                return new EmitObjAction();
+  case EmitObj:
+    fprintf(stderr, "emitobj action...\n");
+    return new EmitObjAction();
+    break;
+    
 #ifdef CLANG_ENABLE_REWRITER
   case FixIt:                  return new FixItAction();
 #else
@@ -231,6 +236,7 @@ bool clang::ExecuteCompilerInvocation(CompilerInstance *Clang) {
   OwningPtr<FrontendAction> Act(CreateFrontendAction(*Clang));
   if (!Act)
     return false;
+  fprintf(stderr, "clang->executeAction -- FrontendAction...\n");
   bool Success = Clang->ExecuteAction(*Act);
   if (Clang->getFrontendOpts().DisableFree)
     Act.take();

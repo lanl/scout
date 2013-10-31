@@ -12,6 +12,7 @@
 /// which turns a stream of tokens into UnwrappedLines.
 ///
 //===----------------------------------------------------------------------===//
+#include <iostream>
 
 #define DEBUG_TYPE "format-parser"
 
@@ -444,6 +445,9 @@ void UnwrappedLineParser::pushPPConditional() {
 }
 
 void UnwrappedLineParser::parsePPIf(bool IfDef) {
+
+  std::cerr << "parsing a pre-proc if statement.\n";
+  
   ++PPBranchLevel;
   assert(PPBranchLevel >= 0 && PPBranchLevel <= (int)PPLevelBranchIndex.size());
   if (PPBranchLevel == (int)PPLevelBranchIndex.size()) {
