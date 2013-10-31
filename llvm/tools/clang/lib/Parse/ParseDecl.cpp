@@ -1288,7 +1288,7 @@ void Parser::ProhibitCXX11Attributes(ParsedAttributesWithRange &attrs) {
   AttributeList *AttrList = attrs.getList();
   while (AttrList) {
     if (AttrList->isCXX11Attribute()) {
-      Diag(AttrList->getLoc(), diag::err_attribute_not_type_attr) 
+      Diag(AttrList->getLoc(), diag::err_attribute_not_type_attr)
         << AttrList->getName();
       AttrList->setInvalid();
     }
@@ -1652,7 +1652,7 @@ Parser::DeclGroupPtrTy Parser::ParseDeclGroup(ParsingDeclSpec &DS,
     DeclsInGroup.push_back(FirstDecl);
 
   bool ExpectSemi = Context != Declarator::ForContext;
-  
+
   // If we don't have a comma, it is either the end of the list (a ';') or an
   // error, bail out.
   while (Tok.is(tok::comma)) {
@@ -2028,7 +2028,7 @@ static bool isValidAfterIdentifierInDeclarator(const Token &T) {
 ///
 bool Parser::ParseImplicitInt(DeclSpec &DS, CXXScopeSpec *SS,
                               const ParsedTemplateInfo &TemplateInfo,
-                              AccessSpecifier AS, DeclSpecContext DSC, 
+                              AccessSpecifier AS, DeclSpecContext DSC,
                               ParsedAttributesWithRange &Attrs) {
   assert(Tok.is(tok::identifier) && "should have identifier");
 
@@ -2367,8 +2367,6 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
     DS.SetRangeEnd(Tok.getLocation());
   }
 
-  llvm::errs() << "--- parse declarationspecifiers\n";
-  
   bool EnteringContext = (DSContext == DSC_class || DSContext == DSC_top_level);
   bool AttrsLastTime = false;
   ParsedAttributesWithRange attrs(AttrFactory);
@@ -3891,9 +3889,9 @@ bool Parser::isKnownToBeTypeSpecifier(const Token &Tok) const {
   case tok::kw_double:
 
   // +===== Scout ============================================================+
-  case tok::kw_mesh:    
+  case tok::kw_mesh:
   case tok::kw_uniform:
-  case tok::kw_rectilinear:    
+  case tok::kw_rectilinear:
   case tok::kw_structured:
   case tok::kw_unstructured:
   // +========================================================================+
@@ -4149,7 +4147,7 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   // +===== Scout ============================================================+
   case tok::kw_mesh:
   case tok::kw_uniform:
-  case tok::kw_rectilinear:    
+  case tok::kw_rectilinear:
   case tok::kw_structured:
   case tok::kw_unstructured:
   // +========================================================================+
@@ -4708,7 +4706,7 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
   DeclaratorScopeObj DeclScopeObj(*this, D.getCXXScopeSpec());
 
   // +===== Scout ============================================================+
-  bool hasMeshTypedefParameters = false;  
+  bool hasMeshTypedefParameters = false;
   if (getLangOpts().Scout) {
     DeclSpec& DS = D.getMutableDeclSpec();
     DeclSpec::TST tst = DS.getTypeSpecType();
@@ -4887,7 +4885,7 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
   if (getLangOpts().Scout) {
     DeclSpec& DS = D.getMutableDeclSpec();
     DeclSpec::TST tst = DS.getTypeSpecType();
-    
+
     if(tst == DeclSpec::TST_typename){
       ParsedType parsedType = DS.getRepAsType();
       const UniformMeshType* uniMT =
@@ -5122,7 +5120,7 @@ void Parser::ParseFunctionDeclarator(Declarator &D,
     EndLoc = RParenLoc;
   } else {
     if (Tok.isNot(tok::r_paren))
-      ParseParameterDeclarationClause(D, FirstArgAttrs, ParamInfo, 
+      ParseParameterDeclarationClause(D, FirstArgAttrs, ParamInfo,
                                       EllipsisLoc);
     else if (RequiresArg)
       Diag(Tok, diag::err_argument_required_after_attribute);
@@ -5405,12 +5403,12 @@ void Parser::ParseParameterDeclarationClause(
       }
     }
     // +======================================================================+
-    // Parse the declarator.  This is "PrototypeContext" or 
-    // "LambdaExprParameterContext", because we must accept either 
+    // Parse the declarator.  This is "PrototypeContext" or
+    // "LambdaExprParameterContext", because we must accept either
     // 'declarator' or 'abstract-declarator' here.
-    Declarator ParmDeclarator(DS, 
+    Declarator ParmDeclarator(DS,
               D.getContext() == Declarator::LambdaExprContext ?
-                                  Declarator::LambdaExprParameterContext : 
+                                  Declarator::LambdaExprParameterContext :
                                                 Declarator::PrototypeContext);
     ParseDeclarator(ParmDeclarator);
 
@@ -5436,7 +5434,7 @@ void Parser::ParseParameterDeclarationClause(
 
       // Inform the actions module about the parameter declarator, so it gets
       // added to the current scope.
-      Decl *Param = Actions.ActOnParamDeclarator(getCurScope(), 
+      Decl *Param = Actions.ActOnParamDeclarator(getCurScope(),
                                                        ParmDeclarator);
       // Parse the default argument, if any. We parse the default
       // arguments in all dialects; the semantic analysis in
@@ -5496,7 +5494,7 @@ void Parser::ParseParameterDeclarationClause(
       }
 
       ParamInfo.push_back(DeclaratorChunk::ParamInfo(ParmII,
-                                          ParmDeclarator.getIdentifierLoc(), 
+                                          ParmDeclarator.getIdentifierLoc(),
                                           Param, DefArgToks));
     }
 

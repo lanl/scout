@@ -145,17 +145,17 @@ void CodeGenFunction::EmitForallStmt(const ForallMeshStmt &S) {
   LoopBounds.clear();
   InductionVar.clear();
 
-  // Create the induction variables for eack rank and zero-initialize.
+  // Create the induction variables for eack rank.
   for(unsigned int i = 0; i < 3; i++) {
     LoopBounds.push_back(0);
     InductionVar.push_back(0);
-    sprintf(IRNameStr, "induct.%s", IndexNames[i]);
+    sprintf(IRNameStr, "forall.induct.%s.ptr", IndexNames[i]);
     InductionVar[i] = Builder.CreateAlloca(Int32Ty, 0, IRNameStr);
-    Builder.CreateStore(ConstantZero, InductionVar[i]);
+
   }
-  // create overall loop index as 4th element
+  // create linear loop index as 4th element and zero-initialize.
   InductionVar.push_back(0);
-  InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "forall.indx");
+  InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "forall.linearidx.ptr");
   Builder.CreateStore(ConstantZero, InductionVar[3]);
 
   EmitForallLoop(S, rank);
@@ -178,6 +178,9 @@ void CodeGenFunction::EmitForallLoop(const ForallMeshStmt &S, unsigned r) {
   ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
   ConstantOne  = llvm::ConstantInt::get(Int32Ty, 1);
 
+  //zero-initialize induction var
+  Builder.CreateStore(ConstantZero, InductionVar[r-1]);
+
   sprintf(IRNameStr, "forall.%s.end", DimNames[r-1]);
   JumpDest LoopExit = getJumpDestInCurrentScope(IRNameStr);
   RunCleanupsScope ForallScope(*this);
@@ -191,7 +194,7 @@ void CodeGenFunction::EmitForallLoop(const ForallMeshStmt &S, unsigned r) {
   sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[r-1]);
   LoopBounds[r-1] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+r-1, IRNameStr);
   sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[r-1]);
-  llvm::Value *LoopBound  = Builder.CreateLoad(LoopBounds[r-1], IRNameStr);
+  llvm::LoadInst *LoopBound  = Builder.CreateLoad(LoopBounds[r-1], IRNameStr);
 
   // Next we create a block that tests the induction variables value to
   // the rank's dimension.
@@ -201,8 +204,12 @@ void CodeGenFunction::EmitForallLoop(const ForallMeshStmt &S, unsigned r) {
   EmitBlock(CondBlock);
 
   RunCleanupsScope ConditionScope(*this);
+
+  sprintf(IRNameStr, "forall.induct.%s", IndexNames[r-1]);
+  llvm::LoadInst *IVar = Builder.CreateLoad(InductionVar[r-1], IRNameStr);
+
   sprintf(IRNameStr, "forall.done.%s", IndexNames[r-1]);
-  llvm::Value *CondValue = Builder.CreateICmpSLT(Builder.CreateLoad(InductionVar[r-1]),
+  llvm::Value *CondValue = Builder.CreateICmpSLT(IVar,
                                                  LoopBound,
                                                  IRNameStr);
 
@@ -236,10 +243,10 @@ void CodeGenFunction::EmitForallLoop(const ForallMeshStmt &S, unsigned r) {
     EmitForallBody(S);
 
     // Increment the loop index stored as last element of InductionVar
-    llvm::Value* liv = Builder.CreateLoad(InductionVar[3]);
+    llvm::LoadInst* liv = Builder.CreateLoad(InductionVar[3], "forall.linearidx");
     llvm::Value *IncLoopIndexVar = Builder.CreateAdd(liv,
                                                      ConstantOne,
-                                                     "forall.indx.inc");
+                                                     "forall.linearidx.inc");
 
     Builder.CreateStore(IncLoopIndexVar, InductionVar[3]);
   } else { // generate nested loop
@@ -248,9 +255,10 @@ void CodeGenFunction::EmitForallLoop(const ForallMeshStmt &S, unsigned r) {
 
   EmitBlock(Continue.getBlock());
 
-  sprintf(IRNameStr, "forall.inc.%s", IndexNames[r-1]);
+  sprintf(IRNameStr, "forall.induct.%s", IndexNames[r-1]);
+  llvm::LoadInst* iv = Builder.CreateLoad(InductionVar[r-1], IRNameStr);
 
-  llvm::Value* iv = Builder.CreateLoad(InductionVar[r-1]);
+  sprintf(IRNameStr, "forall.inc.%s", IndexNames[r-1]);
   llvm::Value *IncInductionVar = Builder.CreateAdd(iv,
                                                    ConstantOne,
                                                    IRNameStr);

@@ -946,11 +946,10 @@ Corrected:
     if (SS.isNotEmpty())
       return buildNestedType(*this, SS, T, NameLoc);
     return ParsedType::make(T);
+  // +===== Scout ============================================================+
   } else if ((NextToken.is(tok::identifier) ||
              (NextIsOp && FirstDecl->isFunctionOrFunctionTemplate())) &&
-  // +===== Scout ============================================================+
              isMeshTypeWithMissingMesh(*this, Result, S, SS, Name, NameLoc)) {
-  // +========================================================================+
     TypeDecl *Type = Result.getAsSingle<TypeDecl>();
     DiagnoseUseOfDecl(Type, NameLoc);
     QualType T = Context.getTypeDeclType(Type);
@@ -958,6 +957,8 @@ Corrected:
       return buildNestedType(*this, SS, T, NameLoc);
     return ParsedType::make(T);
   }
+  // +========================================================================+
+
 
   if (FirstDecl->isCXXClassMember())
     return BuildPossibleImplicitMemberExpr(SS, SourceLocation(), Result, 0);
@@ -3283,6 +3284,7 @@ static void HandleTagNumbering(Sema &S, const TagDecl *Tag) {
   }
 }
 
+// +===== Scout ==============================================================+
 static void HandleMeshNumbering(Sema &S, const MeshDecl *MD) {
   if (! S.Context.getLangOpts().CPlusPlus)
     return;
@@ -3295,6 +3297,7 @@ static void HandleMeshNumbering(Sema &S, const MeshDecl *MD) {
     S.Context.setManglingNumber(MD, MCtx->getManglingNumber(MD));
   }
 }
+// +==========================================================================+
 
 /// ParsedFreeStandingDeclSpec - This method is invoked when a declspec with
 /// no declarator (e.g. "struct foo;") is parsed. It also accepts template
@@ -3341,6 +3344,13 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
     // it is a Type.
     if (isa<MeshDecl>(TagD))
       MD = cast<MeshDecl>(TagD);
+
+    if (MD) {
+      HandleMeshNumbering(*this, MD);
+      MD->setFreeStanding();
+      if (MD->isInvalidDecl())
+        return MD;
+    }
   }
   // +========================================================================+
 
@@ -3351,15 +3361,6 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
     if (Tag->isInvalidDecl())
       return Tag;
   }
-
-  // +===== Scout ============================================================+
-  if (MD) {
-    HandleMeshNumbering(*this, MD);
-    MD->setFreeStanding();
-    if (MD->isInvalidDecl())
-      return MD;
-  }
-  // +========================================================================+
 
   if (unsigned TypeQuals = DS.getTypeQualifiers()) {
     // Enforce C99 6.7.3p2: "Types other than pointer types derived from object

@@ -49,6 +49,9 @@
 #include "llvm/Support/ConvertUTF.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Target/Mangler.h"
+// ====== Scout =========================
+#include "Scout/CGScoutRuntime.h"
+// ======================================
 
 using namespace clang;
 using namespace CodeGen;
@@ -72,20 +75,25 @@ static CGCXXABI &createCXXABI(CodeGenModule &CGM) {
 CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
                              llvm::Module &M, const llvm::DataLayout &TD,
                              DiagnosticsEngine &diags)
-    : Context(C), LangOpts(C.getLangOpts()), CodeGenOpts(CGO), TheModule(M),
-      Diags(diags), TheDataLayout(TD), Target(C.getTargetInfo()),
-      ABI(createCXXABI(*this)), VMContext(M.getContext()), TBAA(0),
-      TheTargetCodeGenInfo(0), Types(*this), VTables(*this), ObjCRuntime(0),
-      OpenCLRuntime(0), CUDARuntime(0), DebugInfo(0), ARCData(0),
-      NoObjCARCExceptionsMetadata(0), RRData(0), CFConstantStringClassRef(0),
-      ConstantStringClassRef(0), NSConstantStringType(0),
-      NSConcreteGlobalBlock(0), NSConcreteStackBlock(0), BlockObjectAssign(0),
-      BlockObjectDispose(0), BlockDescriptorType(0), GenericBlockLiteralType(0),
-      LifetimeStartFn(0), LifetimeEndFn(0),
-      SanitizerBlacklist(
-          llvm::SpecialCaseList::createOrDie(CGO.SanitizerBlacklistFile)),
-      SanOpts(SanitizerBlacklist->isIn(M) ? SanitizerOptions::Disabled
-                                          : LangOpts.Sanitize) {
+  : Context(C), LangOpts(C.getLangOpts()), CodeGenOpts(CGO), TheModule(M),
+    Diags(diags), TheDataLayout(TD), Target(C.getTargetInfo()),
+    ABI(createCXXABI(*this)), VMContext(M.getContext()), TBAA(0),
+    TheTargetCodeGenInfo(0), Types(*this), VTables(*this),
+    // ===== Scout =========================================
+    ScoutRuntime(0),
+    // =====================================================
+    ObjCRuntime(0), OpenCLRuntime(0), CUDARuntime(0),
+    DebugInfo(0), ARCData(0), NoObjCARCExceptionsMetadata(0),
+    RRData(0), CFConstantStringClassRef(0),
+    ConstantStringClassRef(0), NSConstantStringType(0),
+    NSConcreteGlobalBlock(0), NSConcreteStackBlock(0),
+    BlockObjectAssign(0), BlockObjectDispose(0),
+    BlockDescriptorType(0), GenericBlockLiteralType(0),
+    LifetimeStartFn(0), LifetimeEndFn(0),
+    SanitizerBlacklist(
+      llvm::SpecialCaseList::createOrDie(CGO.SanitizerBlacklistFile)),
+    SanOpts(SanitizerBlacklist->isIn(M) ?
+            SanitizerOptions::Disabled : LangOpts.Sanitize) {
 
   // Initialize the type cache.
   llvm::LLVMContext &LLVMContext = M.getContext();
@@ -112,6 +120,10 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
     createOpenCLRuntime();
   if (LangOpts.CUDA)
     createCUDARuntime();
+  // ===== Scout ===============
+  if(LangOpts.Scout)
+    createScoutRuntime();
+  // ===========================
 
   // Enable TBAA unless it's suppressed. ThreadSanitizer needs TBAA even at O0.
   if (SanOpts.Thread ||
@@ -134,6 +146,9 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
 }
 
 CodeGenModule::~CodeGenModule() {
+  // ===== Scout =================
+  delete ScoutRuntime;
+  // =============================
   delete ObjCRuntime;
   delete OpenCLRuntime;
   delete CUDARuntime;
@@ -144,6 +159,12 @@ CodeGenModule::~CodeGenModule() {
   delete ARCData;
   delete RRData;
 }
+
+// ===== Scout ==============================
+void CodeGenModule::createScoutRuntime() {
+  ScoutRuntime = new CGScoutRuntime(*this);
+}
+// ==========================================
 
 void CodeGenModule::createObjCRuntime() {
   // This is just isGNUFamily(), but we want to force implementors of
@@ -163,6 +184,7 @@ void CodeGenModule::createObjCRuntime() {
   }
   llvm_unreachable("bad runtime kind");
 }
+
 
 void CodeGenModule::createOpenCLRuntime() {
   OpenCLRuntime = new CGOpenCLRuntime(*this);
@@ -211,6 +233,11 @@ void CodeGenModule::Release() {
   EmitCXXGlobalInitFunc();
   EmitCXXGlobalDtorFunc();
   EmitCXXThreadLocalInitFunc();
+  // ===== Scout ===============================================================
+  if(ScoutRuntime)
+    if (llvm::Function *ScoutInitFunction = ScoutRuntime->ModuleInitFunction())
+      AddGlobalCtor(ScoutInitFunction);
+  // ===========================================================================
   if (ObjCRuntime)
     if (llvm::Function *ObjCInitFunction = ObjCRuntime->ModuleInitFunction())
       AddGlobalCtor(ObjCInitFunction);

@@ -138,25 +138,24 @@ Lexer::Lexer(FileID FID, const llvm::MemoryBuffer *InputFile, Preprocessor &PP)
   // ".sch" file -- this extra check is necessary because we might be including
   // a C++ header from a .sc file which would otherwise pick up the Scout
   // keyword extensions, potentially causing conflicts
-  /*
-  std::string bufferName = PP.getSourceManager().getBufferName(FileLoc);
-  std::string ext;
+  if (LangOpts.Scout) {
+    std::string bufferName = PP.getSourceManager().getBufferName(FileLoc);
+    std::string ext;
 
-  bool valid = false;
-  for(int i = bufferName.length() - 1; i >= 0; --i) {
-    if (bufferName[i] == '.') {
-      valid = true;
-      break;
+    bool valid = false;
+    for(int i = bufferName.length() - 1; i >= 0; --i) {
+      if (bufferName[i] == '.') {
+        valid = true;
+        break;
+      }
+      ext.insert(0, 1, bufferName[i]);
     }
-    ext.insert(0, 1, bufferName[i]);
+    // LLDB uses a buffer named Parse
+    // SC_TODO : Why do we need this but Clang doesn't?
+    if (bufferName != "Parse" && (!valid || (ext != "sc" && ext != "sch"))) {
+      LangOpts.Scout = false;
+    }
   }
-
-  // LLDB uses a buffer named Parse
-  // SC_TODO : Why do we need this but Clang doesn't?
-  if (bufferName != "Parse" && (!valid || (ext != "sc" && ext != "sch"))) {
-    LangOpts.Scout = false;
-  }
-  */
 // +==========================================================================+
 
   resetExtendedTokenMode();
@@ -208,6 +207,8 @@ Lexer::Lexer(const std::string& str, Preprocessor& PP)
 	: PreprocessorLexer(&PP, FileID()),
     FileLoc(PP.getSourceManager().getLocForStartOfFile(FileID())),
     LangOpts(PP.getLangOpts()) {
+
+  assert(LangOpts.Scout && "calling scout lexer ctor in non-scout lang mode.");
 
   StringLexerStringRef = new llvm::StringRef(str);
 
@@ -1552,13 +1553,15 @@ bool Lexer::LexIdentifier(Token &Result, const char *CurPtr) {
 
     // Finally, now that we know we have an identifier, pass this off to the
     // preprocessor, which may macro expand it or something.
+    bool retval;
     if (II->isHandleIdentifierCase())
-      PP->HandleIdentifier(Result);
+      return PP->HandleIdentifier(Result);
 
     // +==== Scout ===========================================================+
     // If we are lexing from a non-Scout file, then we need to treat Scout
     // keywords as ordinary identifiers…
     if (! LangOpts.Scout) {
+      /*
       IdentifierInfo* NII = 0;
       switch(Result.getKind()){
       #undef SCOUT_KEYWORD
@@ -1573,6 +1576,7 @@ bool Lexer::LexIdentifier(Token &Result, const char *CurPtr) {
         Result.setIdentifierInfo(NII);
         Result.setKind(tok::identifier);
       }
+      */
     }
     // =================================================================================
 

@@ -487,10 +487,8 @@ void ASTFrontendAction::ExecuteAction() {
   // Parse the AST
   //
   // SC_TODO -- is there any way we can ditch the rewriter????
-  // 
-  llvm::errs() << "before front end action - scout cond...\n";
+  //
   if (CI.getLangOpts().Scout) {
-    llvm::errs() << "scout is true...\n";    
     // see if we are using the rewriter or not.
     Rewriter* scoutRewriter = CI.getScoutRewriter();
     if (scoutRewriter) {
@@ -503,7 +501,6 @@ void ASTFrontendAction::ExecuteAction() {
                CI.getASTContext());
     }
   } else {
-    llvm::errs() << "front end action - calling parse ast...\n"; 
     ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
              CI.getFrontendOpts().SkipFunctionBodies);
   }
