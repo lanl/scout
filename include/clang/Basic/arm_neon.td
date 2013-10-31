@@ -106,6 +106,7 @@ class Inst <string n, string p, string t, Op o> {
   string Types = t;
   Op Operand = o;
   bit isShift = 0;
+  bit isScalarShift = 0;
   bit isVCVT_N = 0;
   bit isA64 = 0;
 
@@ -783,6 +784,53 @@ def SCALAR_QSHL: SInst<"vqshl", "sss", "ScSsSiSlSUcSUsSUiSUl">;
 def SCALAR_QRSHL: SInst<"vqrshl", "sss", "ScSsSiSlSUcSUsSUiSUl">;
 // Scalar Shift Rouding Left
 def SCALAR_RSHL: SInst<"vrshl", "sss", "SlSUl">;
+
+////////////////////////////////////////////////////////////////////////////////
+// Scalar Shift (Immediate)
+let isScalarShift = 1 in {
+// Signed/Unsigned Shift Right (Immediate)
+def SCALAR_SSHR_N: SInst<"vshr_n", "ssi", "SlSUl">;
+// Signed/Unsigned Rounding Shift Right (Immediate)
+def SCALAR_SRSHR_N: SInst<"vrshr_n", "ssi", "SlSUl">;
+
+// Signed/Unsigned Shift Right and Accumulate (Immediate)
+def SCALAR_SSRA_N: SInst<"vsra_n", "sssi", "SlSUl">;
+// Signed/Unsigned Rounding Shift Right and Accumulate (Immediate)
+def SCALAR_SRSRA_N: SInst<"vrsra_n", "sssi", "SlSUl">;
+
+// Shift Left (Immediate)
+def SCALAR_SHL_N: SInst<"vshl_n", "ssi", "SlSUl">;
+// Signed/Unsigned Saturating Shift Left (Immediate)
+def SCALAR_SQSHL_N: SInst<"vqshl_n", "ssi", "ScSsSiSlSUcSUsSUiSUl">;
+// Signed Saturating Shift Left Unsigned (Immediate)
+def SCALAR_SQSHLU_N: SInst<"vqshlu_n", "ssi", "ScSsSiSl">;
+
+// Shift Right And Insert (Immediate)
+def SCALAR_SRI_N: SInst<"vsri_n", "ssi", "SlSUl">;
+// Shift Left And Insert (Immediate)
+def SCALAR_SLI_N: SInst<"vsli_n", "ssi", "SlSUl">;
+
+// Signed/Unsigned Saturating Shift Right Narrow (Immediate)
+def SCALAR_SQSHRN_N: SInst<"vqshrn_n", "zsi", "SsSiSlSUsSUiSUl">;
+// Signed/Unsigned Saturating Rounded Shift Right Narrow (Immediate)
+def SCALAR_SQRSHRN_N: SInst<"vqrshrn_n", "zsi", "SsSiSlSUsSUiSUl">;
+// Signed Saturating Shift Right Unsigned Narrow (Immediate)
+def SCALAR_SQSHRUN_N: SInst<"vqshrun_n", "zsi", "SsSiSl">;
+// Signed Saturating Rounded Shift Right Unsigned Narrow (Immediate)
+def SCALAR_SQRSHRUN_N: SInst<"vqrshrun_n", "zsi", "SsSiSl">;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Scalar Signed/Unsigned Fixed-point Convert To Floating-Point (Immediate)
+def SCALAR_SCVTF_N_F32: SInst<"vcvt_n_f32", "ysi", "SiSUi">;
+def SCALAR_SCVTF_N_F64: SInst<"vcvt_n_f64", "osi", "SlSUl">;
+
+////////////////////////////////////////////////////////////////////////////////
+// Scalar Floating-point Convert To Signed/Unsigned Fixed-point (Immediate)
+def SCALAR_FCVTZS_N_S32 : SInst<"vcvt_n_s32", "xsi", "Sf">;
+def SCALAR_FCVTZU_N_U32 : SInst<"vcvt_n_u32", "usi", "Sf">;
+def SCALAR_FCVTZS_N_S64 : SInst<"vcvt_n_s64", "xsi", "Sd">;
+def SCALAR_FCVTZU_N_U64 : SInst<"vcvt_n_u64", "usi", "Sd">;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Scalar Reduce Pairwise Addition (Scalar and Floating Point)
