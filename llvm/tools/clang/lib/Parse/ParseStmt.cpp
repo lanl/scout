@@ -114,7 +114,7 @@ Parser::ParseStatementOrDeclaration(StmtVector &Stmts, bool OnlyStatement,
                                     SourceLocation *TrailingElseLoc) {
 
   fprintf(stderr, "parse stmt or decl\n");
-    
+
   ParenBraceBracketBalancer BalancerRAIIObj(*this);
 
   ParsedAttributesWithRange Attrs(AttrFactory);
@@ -200,7 +200,7 @@ Retry:
 
     // +===== Scout ==========================================================+
     if (getLangOpts().Scout) {
-      // Parse a mesh statement like forall shorthand... 
+      fprintf(stderr, "parse stmt - before parsing mesh statement...\n");
       StmtResult SR;
       if (ParseMeshStatement(Stmts, OnlyStatement, Next, SR))
         return SR;
@@ -1960,7 +1960,7 @@ ExprResult Parser::ParseMSAsmIdentifier(llvm::SmallVectorImpl<Token> &LineToks,
 
     NumLineToksConsumed = LineIndex;
   }
-      
+
   // Finally, restore the old parsing state by consuming all the
   // tokens we staged before, implicitly killing off the
   // token-lexer we pushed.
@@ -2183,7 +2183,7 @@ StmtResult Parser::ParseMicrosoftAsmStatement(SourceLocation AsmLoc) {
   OwningPtr<llvm::MCRegisterInfo> MRI(TheTarget->createMCRegInfo(TT));
   OwningPtr<llvm::MCAsmInfo> MAI(TheTarget->createMCAsmInfo(*MRI, TT));
   // Get the instruction descriptor.
-  const llvm::MCInstrInfo *MII = TheTarget->createMCInstrInfo(); 
+  const llvm::MCInstrInfo *MII = TheTarget->createMCInstrInfo();
   OwningPtr<llvm::MCObjectFileInfo> MOFI(new llvm::MCObjectFileInfo());
   OwningPtr<llvm::MCSubtargetInfo>
     STI(TheTarget->createMCSubtargetInfo(TT, "", ""));
