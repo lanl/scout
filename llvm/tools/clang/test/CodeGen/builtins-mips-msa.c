@@ -150,39 +150,39 @@ void test(void) {
   v4i32_r = __builtin_msa_bclri_w(v4i32_a, 25); // CHECK: call <4  x i32> @llvm.mips.bclri.w(
   v2i64_r = __builtin_msa_bclri_d(v2i64_a, 25); // CHECK: call <2  x i64> @llvm.mips.bclri.d(
 
-  v16i8_r = __builtin_msa_binsl_b(v16i8_a, v16i8_b); // CHECK: call <16 x i8>  @llvm.mips.binsl.b(
-  v8i16_r = __builtin_msa_binsl_h(v8i16_a, v8i16_b); // CHECK: call <8  x i16> @llvm.mips.binsl.h(
-  v4i32_r = __builtin_msa_binsl_w(v4i32_a, v4i32_b); // CHECK: call <4  x i32> @llvm.mips.binsl.w(
-  v2i64_r = __builtin_msa_binsl_d(v2i64_a, v2i64_b); // CHECK: call <2  x i64> @llvm.mips.binsl.d(
+  v16i8_r = __builtin_msa_binsl_b(v16i8_r, v16i8_a, v16i8_b); // CHECK: call <16 x i8>  @llvm.mips.binsl.b(
+  v8i16_r = __builtin_msa_binsl_h(v8i16_r, v8i16_a, v8i16_b); // CHECK: call <8  x i16> @llvm.mips.binsl.h(
+  v4i32_r = __builtin_msa_binsl_w(v4i32_r, v4i32_a, v4i32_b); // CHECK: call <4  x i32> @llvm.mips.binsl.w(
+  v2i64_r = __builtin_msa_binsl_d(v2i64_r, v2i64_a, v2i64_b); // CHECK: call <2  x i64> @llvm.mips.binsl.d(
 
-  v16i8_r = __builtin_msa_binsli_b(v16i8_a, 25); // CHECK: call <16 x i8>  @llvm.mips.binsli.b(
-  v8i16_r = __builtin_msa_binsli_h(v8i16_a, 25); // CHECK: call <8  x i16> @llvm.mips.binsli.h(
-  v4i32_r = __builtin_msa_binsli_w(v4i32_a, 25); // CHECK: call <4  x i32> @llvm.mips.binsli.w(
-  v2i64_r = __builtin_msa_binsli_d(v2i64_a, 25); // CHECK: call <2  x i64> @llvm.mips.binsli.d(
+  v16i8_r = __builtin_msa_binsli_b(v16i8_r, v16i8_a, 25); // CHECK: call <16 x i8>  @llvm.mips.binsli.b(
+  v8i16_r = __builtin_msa_binsli_h(v8i16_r, v8i16_a, 25); // CHECK: call <8  x i16> @llvm.mips.binsli.h(
+  v4i32_r = __builtin_msa_binsli_w(v4i32_r, v4i32_a, 25); // CHECK: call <4  x i32> @llvm.mips.binsli.w(
+  v2i64_r = __builtin_msa_binsli_d(v2i64_r, v2i64_a, 25); // CHECK: call <2  x i64> @llvm.mips.binsli.d(
 
-  v16i8_r = __builtin_msa_binsr_b(v16i8_a, v16i8_b); // CHECK: call <16 x i8>  @llvm.mips.binsr.b(
-  v8i16_r = __builtin_msa_binsr_h(v8i16_a, v8i16_b); // CHECK: call <8  x i16> @llvm.mips.binsr.h(
-  v4i32_r = __builtin_msa_binsr_w(v4i32_a, v4i32_b); // CHECK: call <4  x i32> @llvm.mips.binsr.w(
-  v2i64_r = __builtin_msa_binsr_d(v2i64_a, v2i64_b); // CHECK: call <2  x i64> @llvm.mips.binsr.d(
+  v16i8_r = __builtin_msa_binsr_b(v16i8_r, v16i8_a, v16i8_b); // CHECK: call <16 x i8>  @llvm.mips.binsr.b(
+  v8i16_r = __builtin_msa_binsr_h(v8i16_r, v8i16_a, v8i16_b); // CHECK: call <8  x i16> @llvm.mips.binsr.h(
+  v4i32_r = __builtin_msa_binsr_w(v4i32_r, v4i32_a, v4i32_b); // CHECK: call <4  x i32> @llvm.mips.binsr.w(
+  v2i64_r = __builtin_msa_binsr_d(v2i64_r, v2i64_a, v2i64_b); // CHECK: call <2  x i64> @llvm.mips.binsr.d(
 
-  v16i8_r = __builtin_msa_binsri_b(v16i8_a, 25); // CHECK: call <16 x i8>  @llvm.mips.binsri.b(
-  v8i16_r = __builtin_msa_binsri_h(v8i16_a, 25); // CHECK: call <8  x i16> @llvm.mips.binsri.h(
-  v4i32_r = __builtin_msa_binsri_w(v4i32_a, 25); // CHECK: call <4  x i32> @llvm.mips.binsri.w(
-  v2i64_r = __builtin_msa_binsri_d(v2i64_a, 25); // CHECK: call <2  x i64> @llvm.mips.binsri.d(
+  v16i8_r = __builtin_msa_binsri_b(v16i8_r, v16i8_a, 25); // CHECK: call <16 x i8>  @llvm.mips.binsri.b(
+  v8i16_r = __builtin_msa_binsri_h(v8i16_r, v8i16_a, 25); // CHECK: call <8  x i16> @llvm.mips.binsri.h(
+  v4i32_r = __builtin_msa_binsri_w(v4i32_r, v4i32_a, 25); // CHECK: call <4  x i32> @llvm.mips.binsri.w(
+  v2i64_r = __builtin_msa_binsri_d(v2i64_r, v2i64_a, 25); // CHECK: call <2  x i64> @llvm.mips.binsri.d(
 
-  v16i8_r = __builtin_msa_bmnz_v(v16i8_a, v16i8_b); // CHECK: call <16 x i8> @llvm.mips.bmnz.v(
-  v8i16_r = __builtin_msa_bmnz_v(v8i16_a, v8i16_b); // CHECK: call <16 x i8> @llvm.mips.bmnz.v(
-  v4i32_r = __builtin_msa_bmnz_v(v4i32_a, v4i32_b); // CHECK: call <16 x i8> @llvm.mips.bmnz.v(
-  v2i64_r = __builtin_msa_bmnz_v(v2i64_a, v2i64_b); // CHECK: call <16 x i8> @llvm.mips.bmnz.v(
+  v16i8_r = __builtin_msa_bmnz_v(v16i8_r, v16i8_a, v16i8_b); // CHECK: call <16 x i8> @llvm.mips.bmnz.v(
+  v8i16_r = __builtin_msa_bmnz_v(v8i16_r, v8i16_a, v8i16_b); // CHECK: call <16 x i8> @llvm.mips.bmnz.v(
+  v4i32_r = __builtin_msa_bmnz_v(v4i32_r, v4i32_a, v4i32_b); // CHECK: call <16 x i8> @llvm.mips.bmnz.v(
+  v2i64_r = __builtin_msa_bmnz_v(v2i64_r, v2i64_a, v2i64_b); // CHECK: call <16 x i8> @llvm.mips.bmnz.v(
 
-  v16i8_r = __builtin_msa_bmnzi_b(v16i8_a, 25); // CHECK: call <16 x i8>  @llvm.mips.bmnzi.b(
+  v16i8_r = __builtin_msa_bmnzi_b(v16i8_r, v16i8_a, 25); // CHECK: call <16 x i8>  @llvm.mips.bmnzi.b(
 
-  v16i8_r = __builtin_msa_bmz_v(v16i8_a, v16i8_b); // CHECK: call <16 x i8> @llvm.mips.bmz.v(
-  v8i16_r = __builtin_msa_bmz_v(v8i16_a, v8i16_b); // CHECK: call <16 x i8> @llvm.mips.bmz.v(
-  v4i32_r = __builtin_msa_bmz_v(v4i32_a, v4i32_b); // CHECK: call <16 x i8> @llvm.mips.bmz.v(
-  v2i64_r = __builtin_msa_bmz_v(v2i64_a, v2i64_b); // CHECK: call <16 x i8> @llvm.mips.bmz.v(
+  v16i8_r = __builtin_msa_bmz_v(v16i8_r, v16i8_a, v16i8_b); // CHECK: call <16 x i8> @llvm.mips.bmz.v(
+  v8i16_r = __builtin_msa_bmz_v(v8i16_r, v8i16_a, v8i16_b); // CHECK: call <16 x i8> @llvm.mips.bmz.v(
+  v4i32_r = __builtin_msa_bmz_v(v4i32_r, v4i32_a, v4i32_b); // CHECK: call <16 x i8> @llvm.mips.bmz.v(
+  v2i64_r = __builtin_msa_bmz_v(v2i64_r, v2i64_a, v2i64_b); // CHECK: call <16 x i8> @llvm.mips.bmz.v(
 
-  v16i8_r = __builtin_msa_bmzi_b(v16i8_a, 25); // CHECK: call <16 x i8>  @llvm.mips.bmzi.b(
+  v16i8_r = __builtin_msa_bmzi_b(v16i8_r, v16i8_a, 25); // CHECK: call <16 x i8>  @llvm.mips.bmzi.b(
 
   v16i8_r = __builtin_msa_bneg_b(v16i8_a, v16i8_b); // CHECK: call <16 x i8>  @llvm.mips.bneg.b(
   v8i16_r = __builtin_msa_bneg_h(v8i16_a, v8i16_b); // CHECK: call <8  x i16> @llvm.mips.bneg.h(
@@ -200,6 +200,13 @@ void test(void) {
   int_r = __builtin_msa_bnz_d(v16i8_a); // CHECK: call i32 @llvm.mips.bnz.d(
 
   int_r = __builtin_msa_bnz_v(v16i8_a); // CHECK: call i32 @llvm.mips.bnz.v(
+
+  v16i8_r = __builtin_msa_bsel_v(v16i8_r, v16i8_a, v16i8_b); // CHECK: call <16 x i8> @llvm.mips.bsel.v(
+  v8i16_r = __builtin_msa_bsel_v(v8i16_r, v8i16_a, v8i16_b); // CHECK: call <16 x i8> @llvm.mips.bsel.v(
+  v4i32_r = __builtin_msa_bsel_v(v4i32_r, v4i32_a, v4i32_b); // CHECK: call <16 x i8> @llvm.mips.bsel.v(
+  v2i64_r = __builtin_msa_bsel_v(v2i64_r, v2i64_a, v2i64_b); // CHECK: call <16 x i8> @llvm.mips.bsel.v(
+
+  v16i8_r = __builtin_msa_bseli_b(v16i8_r, v16i8_a, 25); // CHECK: call <16 x i8>  @llvm.mips.bseli.b(
 
   v16i8_r = __builtin_msa_bset_b(v16i8_a, v16i8_b); // CHECK: call <16 x i8>  @llvm.mips.bset.b(
   v8i16_r = __builtin_msa_bset_h(v8i16_a, v8i16_b); // CHECK: call <8  x i16> @llvm.mips.bset.h(
