@@ -131,4 +131,10 @@ LANGSTANDARD(cuda, "cuda",
              "NVIDIA CUDA(tm)",
              LineComment | CPlusPlus | Digraphs)
 
+// +===== Scout =============================================================+
+LANGSTANDARD(scout, "scout",
+             "Scout 1.0",
+             LineComment | CPlusPlus | Digraphs | HexFloat)
+// +=========================================================================+
+
 #undef LANGSTANDARD

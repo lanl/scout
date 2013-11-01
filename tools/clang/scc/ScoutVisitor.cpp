@@ -153,8 +153,8 @@ bool ScoutVisitor::VisitFunctionDecl(FunctionDecl* f) {
 
     if(Clang_->getLangOpts().ScoutNvidiaGPU) {
       scinit += "__scrt_init(ScoutGPUCUDA);";
-    } else if(Clang_->getLangOpts().ScoutAMDGPU){
-      scinit += "__scrt_init(ScoutGPUOpenCL);";
+//    } else if(Clang_->getLangOpts().ScoutAMDGPU){
+//      scinit += "__scrt_init(ScoutGPUOpenCL);";
     } else {
       scinit += "__scrt_init(ScoutGPUNone);";
     }

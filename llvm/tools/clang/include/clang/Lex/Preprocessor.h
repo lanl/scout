@@ -174,7 +174,7 @@ class Preprocessor : public RefCountedBase<Preprocessor> {
   mutable IdentifierTable Identifiers;
 
   // +===== Scout ============================================================+
-  //mutable IdentifierTable ScoutIdentifiers;
+  mutable IdentifierTable ScoutIdentifiers;
   // +========================================================================+
 
   /// Selectors - This table contains all the selectors in the program. Unlike
@@ -1119,9 +1119,9 @@ public:
   IdentifierInfo *LookUpIdentifierInfo(Token &Identifier) const;
 
   // +===== Scout ============================================================+
-  //IdentifierInfo* getScoutIdentifier(StringRef name) {
-  //  return &ScoutIdentifiers.get(name);
-  //}
+  IdentifierInfo* getScoutIdentifier(StringRef name) {
+    return &ScoutIdentifiers.get(name);
+  }
   // +========================================================================+
 
 private:

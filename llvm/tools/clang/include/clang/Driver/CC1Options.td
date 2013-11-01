@@ -545,8 +545,6 @@ def cl_std_EQ : Joined<["-"], "cl-std=">,
   HelpText<"OpenCL language standard to compile for">;
 
 // +===== Scout =============================================================+
-def view_ast : Flag<["-"], "view-ast">,
-  HelpText<"View the AST of a parsed file with GraphViz">;
 def gpu : Flag<["-"], "gpu">,
   HelpText<"Enable NVIDIA GPU support.">;
 // --- Disabled for now (AMD is off-version of us at present).
@@ -554,16 +552,14 @@ def gpu : Flag<["-"], "gpu">,
 //  HelpText<"Enable AMD GPU support.">;
 def emitAllDefinitions : Flag<["-"], "emit-all-definitions">,
   HelpText<"Emit all definitions regardless of it that definition was used.">;
-def vectorize : Flag<["-"], "vectorize">,
-  HelpText<"Enable autovectorize pass.">;
 def cpuThreads : Flag<["-"], "mt">,
   HelpText<"Enable CPU multithreading support.">;
 def disableScoutStdLib : Flag<["-"], "disable-sc-stdlib">,
   HelpText<"Disable automatic inclusion/use of the Scout standard library.">;
 def debugWait : Flag<["-"], "debug">,
   HelpText<"Used to allow debugger to attach to the driver.">;
-def noRewrite : Flag<["-"], "no-rewrite">,
-  HelpText<"do not run the rewriter">;
+def noRewrite : Flag<["-"], "rewrite">,
+  HelpText<"run the rewriter">;
 def dumpRewrite : Flag<["-"], "dump-rewrite">,
   HelpText<"dump rewritten code to stdout">;
 // +=========================================================================+

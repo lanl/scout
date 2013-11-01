@@ -6,6 +6,7 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
+#include <iostream>  // Scout debug
 
 #include "clang/Frontend/CompilerInvocation.h"
 #include "clang/Basic/Diagnostic.h"
@@ -1115,8 +1116,21 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
   if (LangStd == LangStandard::lang_cuda)
     Opts.CUDA = 1;
 
+  // +===== Scout ================================================+
+  if (LangStd == LangStandard::lang_scout) {
+    std::cerr << "using lang standard to set scout = 1.\n";
+    Opts.Scout = 1;
+  }
+
+  if (IK == IK_Scout) {
+    std::cerr << "using IK to set scout = 1.\n";    
+    Opts.Scout = 1;
+  }
+  
+  // +=========== ================================================+  
+  
   // OpenCL and C++ both have bool, true, false keywords.
-  Opts.Bool = Opts.OpenCL || Opts.CPlusPlus;
+  Opts.Bool = Opts.OpenCL || Opts.CPlusPlus || Opts.Scout;
 
   // C++ has wchar_t keyword.
   Opts.WChar = Opts.CPlusPlus;

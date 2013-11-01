@@ -156,7 +156,7 @@ Lexer::Lexer(FileID FID, const llvm::MemoryBuffer *InputFile, Preprocessor &PP)
       LangOpts.Scout = false;
     }
   }
-// +==========================================================================+
+  // +==========================================================================+
 
   resetExtendedTokenMode();
 }
@@ -1553,20 +1553,40 @@ bool Lexer::LexIdentifier(Token &Result, const char *CurPtr) {
 
     // Finally, now that we know we have an identifier, pass this off to the
     // preprocessor, which may macro expand it or something.
-    if (II->isHandleIdentifierCase())
-      return PP->HandleIdentifier(Result);
+    if (II->isHandleIdentifierCase()) {
+      bool retval = PP->HandleIdentifier(Result);
+      // +==== Scout ===========================================================+
+      // If we are lexing from a non-Scout file, then we need to treat Scout
+      // keywords as ordinary identifiers…
+      //
+      // SC_TODO -- need to look at refactoring this code (it is replicated
+      // below as well... 
+      if (! LangOpts.Scout) {
+        IdentifierInfo* NII = 0;
+        switch(Result.getKind()) {
+        #define SCOUT_KEYWORD(X) case tok::kw_##X: NII = PP->getScoutIdentifier(#X);break;
+        #include "clang/Basic/TokenKinds.def"
+          default:
+            break;
+        }
+
+        if (NII) {
+          Result.setIdentifierInfo(NII);
+          Result.setKind(tok::identifier);
+        }
+      }
+      // +===============================================================================+
+      return retval;
+    }
 
     // +==== Scout ===========================================================+
     // If we are lexing from a non-Scout file, then we need to treat Scout
     // keywords as ordinary identifiers…
     if (! LangOpts.Scout) {
-      /*
       IdentifierInfo* NII = 0;
-      switch(Result.getKind()){
-      #undef SCOUT_KEYWORD
-      #define SCOUT_KEYWORD(X) \
-        case tok::kw_##X: NII = PP->getScoutIdentifier(#X); break;
-      #include "clang/Basic/TokenKinds.def"
+      switch(Result.getKind()) {
+        #define SCOUT_KEYWORD(X) case tok::kw_##X: NII = PP->getScoutIdentifier(#X); break;
+        #include "clang/Basic/TokenKinds.def"
         default:
           break;
       }
@@ -1575,9 +1595,8 @@ bool Lexer::LexIdentifier(Token &Result, const char *CurPtr) {
         Result.setIdentifierInfo(NII);
         Result.setKind(tok::identifier);
       }
-      */
     }
-    // =================================================================================
+    // +===============================================================================+
 
     return true;
   }
@@ -1623,10 +1642,10 @@ bool Lexer::LexIdentifier(Token &Result, const char *CurPtr) {
       const char *UnicodePtr = CurPtr;
       UTF32 CodePoint;
       ConversionResult Result =
-          llvm::convertUTF8Sequence((const UTF8 **)&UnicodePtr,
-                                    (const UTF8 *)BufferEnd,
-                                    &CodePoint,
-                                    strictConversion);
+        llvm::convertUTF8Sequence((const UTF8 **)&UnicodePtr,
+                                  (const UTF8 *)BufferEnd,
+                                  &CodePoint,
+                                  strictConversion);
       if (Result != conversionOK ||
           !isAllowedIDChar(static_cast<uint32_t>(CodePoint), LangOpts))
         goto FinishIdentifier;
