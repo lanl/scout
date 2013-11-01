@@ -232,7 +232,8 @@ ENDFOREACH(type)
 # and you can set these flags in the cmake cache
 
 IF(CMAKE_SCC_BOOTSTRAP) 
-  SET(CMAKE_SCC_FLAGS_INIT "-disable-sc-stdlib -no-rewrite")
+  SET(CMAKE_SCC_FLAGS_INIT "-disable-sc-stdlib")
+#  SET(CMAKE_SCC_FLAGS_INIT "-disable-sc-stdlib -no-rewrite")
 ENDIF()
 SET(CMAKE_SCC_FLAGS_INIT "$ENV{SCCFLAGS} ${CMAKE_SCC_FLAGS_INIT}")
 

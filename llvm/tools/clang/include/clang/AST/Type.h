@@ -2589,6 +2589,12 @@ public:
     case 'y': return 1;
     case 'z': return 2;
     case 'w': return 3;
+    // +===== Scout =======================================================+
+    case 'r': return 0;
+    case 'g': return 1;
+    case 'b': return 2;
+    case 'a': return 3;
+    // +===================================================================+      
     }
   }
   static int getNumericAccessorIdx(char c) {
