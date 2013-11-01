@@ -66,8 +66,8 @@ llvm::Function *CGScoutRuntime::ModuleInitFunction() {
 
   if(CGM.getLangOpts().ScoutNvidiaGPU){
    mangledName = "_Z15__scrt_init_cudav";
-  } else if(CGM.getLangOpts().ScoutAMDGPU){
-   mangledName = "_Z15__scrt_init_openglv";
+//  } else if(CGM.getLangOpts().ScoutAMDGPU){
+//   mangledName = "_Z15__scrt_init_openglv";
   } else {
    mangledName = "_Z15__scrt_init_cpuv";
   }

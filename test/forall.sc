@@ -51,31 +51,28 @@
  *
  * ##### 
  */ 
-#include <sys/types.h>
-#include <unistd.h>
-#include <signal.h>
 #include <stdio.h>
 
-uniform mesh MyMesh{
+uniform mesh MyMesh {
  cells:
   float a;
   float b;
 };
 
-int main(int argc, char** argv){
+int main(int argc, char** argv) {
 
   MyMesh m[512];
   
-  forall cells c in m{
+  forall cells c in m {
     a = 0;
     b = 1;
   }
 
-  forall cells c in m{
+  forall cells c in m {
     a += b;
   }
 
-  forall cells c in m{
+  forall cells c in m {
     if ((a-b)*(a-b) > 1e-10) {
       printf("bad val %f\n", a);
       kill(getpid(), SIGTERM);

@@ -194,6 +194,8 @@ Retry:
     }
 
     // +===== Scout ==========================================================+
+    // SC_TODO -- why are we doing this separately from the standard path
+    // below???
     if (getLangOpts().Scout) {
       StmtResult SR;
       if (ParseMeshStatement(Stmts, OnlyStatement, Next, SR))
