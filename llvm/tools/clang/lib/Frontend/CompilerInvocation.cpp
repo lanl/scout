@@ -323,23 +323,20 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   // SC_TODO - we could move this into our own function call to avoid
   // more lines of merging when sync'ing with the trunk…
   //
-  // Enable NVIDIA GPU support if OPT_gpu is present.
-  Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
-
-  // --- Disabled for now (AMD is behind us in version support)
+  // GPU support disabled for now...
+  // Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
   //Opts.ScoutAMDGPU = Args.hasArg(OPT_gpuAMD);
 
   // Enable scout CPU multithreading support if OPT_cpuThreads is present.
   Opts.ScoutCPUThreads = Args.hasArg(OPT_cpuThreads);
 
   // Enable scout CPU multithreading support if OPT_cpuThreads is present.
-  Opts.ScoutEmitAllDefinitions = Args.hasArg(OPT_emitAllDefinitions);
+  //Opts.ScoutEmitAllDefinitions = Args.hasArg(OPT_emitAllDefinitions);
 
   // OPT_gpu and OPT_cpuThreads operate exclusively.
   // if((Opts.ScoutNvidiaGPU || Opts.ScoutAMDGPU) && Opts.ScoutCPUThreads)
-  if(Opts.ScoutNvidiaGPU && Opts.ScoutCPUThreads)
-    Diags.Report(diag::err_scout_cpu_gpu_combo);
-
+  //if(Opts.ScoutNvidiaGPU && Opts.ScoutCPUThreads)
+  //  Diags.Report(diag::err_scout_cpu_gpu_combo);
   //if(Opts.ScoutNvidiaGPU && Opts.ScoutAMDGPU)
   //  Diags.Report(diag::err_scout_gpu_nvidia_amd_combo);
   // +========================================================================+
@@ -874,7 +871,10 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
       .Cases("ast", "pcm", IK_AST)
       .Case("ir", IK_LLVM_IR)
       // +==== Scout =========================================================+
-      .Case("scout", IK_Scout)
+      // It is not obvious but the language strings below must match those
+      // provided in Driver/Types.def
+      .Case("scout", IK_Scout_C)
+      .Case("scout++", IK_Scout_CXX)
       // +====================================================================+
       .Default(IK_None);
     if (DashX == IK_None)
@@ -1060,20 +1060,16 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
     case IK_PreprocessedC:
     case IK_ObjC:
     case IK_PreprocessedObjC:
+    case IK_Scout_C: // +===== Scout =========================================+
       LangStd = LangStandard::lang_gnu99;
       break;
     case IK_CXX:
     case IK_PreprocessedCXX:
     case IK_ObjCXX:
     case IK_PreprocessedObjCXX:
+    case IK_Scout_CXX: // +===== Scout =======================================+
       LangStd = LangStandard::lang_gnucxx98;
       break;
-    // +==== Scout ===========================================================+
-    // SC_TODO : Is there a newer C++ standard now???
-    case IK_Scout:
-      LangStd = LangStandard::lang_gnucxx98;
-      break;
-    // +======================================================================+
     }
   }
 
@@ -1116,27 +1112,24 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
   if (LangStd == LangStandard::lang_cuda)
     Opts.CUDA = 1;
 
-  // +===== Scout ================================================+
-  if (LangStd == LangStandard::lang_scout) {
-    std::cerr << "using lang standard to set scout = 1.\n";
-    Opts.Scout = 1;
+  // +===== Scout ============================================================+
+  if (IK == IK_Scout_C) {
+    Opts.ScoutC = 1;
   }
+  if (IK == IK_Scout_CXX) {
+    Opts.ScoutCPlusPlus = 1;
+  }
+  // +========================================================================+
 
-  if (IK == IK_Scout) {
-    std::cerr << "using IK to set scout = 1.\n";    
-    Opts.Scout = 1;
-  }
-  
-  // +=========== ================================================+  
-  
   // OpenCL and C++ both have bool, true, false keywords.
-  Opts.Bool = Opts.OpenCL || Opts.CPlusPlus || Opts.Scout;
+  Opts.Bool = Opts.OpenCL || Opts.CPlusPlus ||
+              Opts.ScoutC || Opts.ScoutCPlusPlus;
 
   // C++ has wchar_t keyword.
-  Opts.WChar = Opts.CPlusPlus;
+  Opts.WChar = Opts.CPlusPlus || Opts.ScoutCPlusPlus;
 
   Opts.GNUKeywords = Opts.GNUMode;
-  Opts.CXXOperatorNames = Opts.CPlusPlus;
+  Opts.CXXOperatorNames = Opts.CPlusPlus || Opts.ScoutCPlusPlus;
 
   // Mimicing gcc's behavior, trigraphs are only enabled if -trigraphs
   // is specified, or -std is set to a conforming mode.
@@ -1181,6 +1174,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
       const LangStandard &Std = LangStandard::getLangStandardForKind(LangStd);
       switch (IK) {
       case IK_C:
+      case IK_Scout_C: // +===== Scout =======================================+
       case IK_ObjC:
       case IK_PreprocessedC:
       case IK_PreprocessedObjC:
@@ -1188,17 +1182,11 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
           Diags.Report(diag::err_drv_argument_not_allowed_with)
             << A->getAsString(Args) << "C/ObjC";
         break;
-      // +===== Scout ========================================================+
-      case IK_Scout:
-        if (! Std.isCPlusPlus())
-          Diags.Report(diag::err_drv_argument_not_allowed_with)
-            << A->getAsString(Args) << "Scout";
-        break;
-      // +====================================================================+
       case IK_CXX:
       case IK_ObjCXX:
       case IK_PreprocessedCXX:
       case IK_PreprocessedObjCXX:
+      case IK_Scout_CXX: // +===== Scout =====================================+
         if (!Std.isCPlusPlus())
           Diags.Report(diag::err_drv_argument_not_allowed_with)
             << A->getAsString(Args) << "C++/ObjC++";
@@ -1440,7 +1428,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
 
   // +==== Scout =============================================================+
   // Detect -gpu flag
-  Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
+  //Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
   // --- Disabled for now (AMD is behind us in version support)
   //Opts.ScoutAMDGPU = Args.hasArg(OPT_gpuAMD);
   // +========================================================================+

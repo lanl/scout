@@ -53,9 +53,14 @@
 #ifndef __SCOUT_MATH_SCH__
 #define __SCOUT_MATH_SCH__
 
-#include <cmath>
-#include <algorithm>
 #include "scout/types.sch"
+
+#if defined(__scout_cxx__)
+ #include <cmath>
+ #include <algorithm>
+#else
+ #include <math.h>
+#endif
 
 // Apologies in advance...  This is a messy set of macros for building
 // type-centric versions of the clamp functions.  You would think there
@@ -64,11 +69,11 @@
 // with overloading (see http://www.gotw.ca/publications/mill17.htm).
 
 // +--- Scalar value clamping ------------------------------------------------+
-#define SC_SCALAR_CLAMP_FUNC(ValueType)                            \
-  template <typename Type>                                         \
-  ValueType clamp(ValueType Value, Type MinValue, Type MaxValue) { \
-    return std::min(std::max(Value, ValueType(MinValue)),          \
-                    ValueType(MaxValue));                          \
+#define SC_SCALAR_CLAMP_FUNC(ValueType)                                   \
+  template <typename Type>                                                \
+  ValueType clamp(const ValueType &Value, Type MinValue, Type MaxValue) { \
+    return std::min(std::max(Value, ValueType(MinValue)),                 \
+                    ValueType(MaxValue));                                 \
   }
 
 SC_SCALAR_CLAMP_FUNC(short);
@@ -79,11 +84,11 @@ SC_SCALAR_CLAMP_FUNC(long);
 //SC_SCALAR_CLAMP_FUNC(unsigned long);
 
 // +--- floating point clamp
-#define SC_SCALAR_FLT_CLAMP_FUNC(ValueType)                        \
-  template <typename Type>                                         \
-  ValueType clamp(ValueType Value, Type MinValue, Type MaxValue) { \
-    return fmin(fmax(Value, ValueType(MinValue)),                  \
-                ValueType(MaxValue));                              \
+#define SC_SCALAR_FLT_CLAMP_FUNC(ValueType)                               \
+  template <typename Type>                                                \
+  ValueType clamp(const ValueType &Value, Type MinValue, Type MaxValue) { \
+    return fmin(fmax(Value, ValueType(MinValue)),                         \
+                ValueType(MaxValue));                                     \
   }
 
 SC_SCALAR_FLT_CLAMP_FUNC(float);
@@ -139,6 +144,27 @@ SC_VECTOR4_CLAMP_FUNC(int4,    int);
 SC_VECTOR4_CLAMP_FUNC(long4,   long);
 SC_VECTOR4_CLAMP_FUNC(float4,  float);
 SC_VECTOR4_CLAMP_FUNC(double4, double);
+
+#define SC_VECTORN_CLAMP_FUNC(VecType, ValueType, NComponents)             \
+  template <typename Type, unsigned N=NComponents>                         \
+  VecType clamp(const VecType &Vec, Type MinValue, Type MaxValue) {        \
+    VecType Result;                                                        \
+    for(unsigned i = 0; i < N; ++i) {                                      \
+      Result[i] = clamp(Vec[i], ValueType(MinValue), ValueType(MaxValue)); \
+    }                                                                      \
+    return Result;                                                         \
+  }
+
+ SC_VECTORN_CLAMP_FUNC(short8,    short,  8);
+ SC_VECTORN_CLAMP_FUNC(short16,   short, 16);
+ SC_VECTORN_CLAMP_FUNC(int8,        int,  8);
+ SC_VECTORN_CLAMP_FUNC(int16,       int, 16);
+ SC_VECTORN_CLAMP_FUNC(long8,      long,  8);
+ SC_VECTORN_CLAMP_FUNC(long16,     long, 16);
+ SC_VECTORN_CLAMP_FUNC(float8,    float,  8);
+ SC_VECTORN_CLAMP_FUNC(float16,   float, 16);
+ SC_VECTORN_CLAMP_FUNC(double8,  double,  8);
+ SC_VECTORN_CLAMP_FUNC(double16, double, 16);
 // +--------------------------------------------------------------------------+
 
 

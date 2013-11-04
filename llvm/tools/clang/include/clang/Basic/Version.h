@@ -74,6 +74,40 @@ namespace clang {
   /// for use in the CPP __VERSION__ macro, which includes the clang version
   /// number, the repository version, and the vendor tag.
   std::string getClangFullCPPVersion();
+
+  // +===== Scout =============================================================+
+
+  /// \brief Helper macro for SCOUT_VERSION_STRING.
+  #define SCOUT_MAKE_VERSION_STRING2(X) #X
+
+  #ifdef SCOUT_VERSION_PATCHLEVEL
+    /// \brief Helper macro for SCOUT_VERSION_STRING.
+    #define SCOUT_MAKE_VERSION_STRING(X,Y,Z) SCOUT_MAKE_VERSION_STRING2(X.Y.Z)
+
+    /// \brief A string that describes the Scout version number, e.g., "1.0".
+    #define SCOUT_VERSION_STRING \
+    SCOUT_MAKE_VERSION_STRING(SCOUT_VERSION_MAJOR,SCOUT_VERSION_MINOR, \
+                              SCOUT_VERSION_PATCHLEVEL)
+  #else
+    /// \brief Helper macro for SCOUT_VERSION_STRING.
+    #define SCOUT_MAKE_VERSION_STRING(X,Y) SCOUT_MAKE_VERSION_STRING2(X.Y)
+
+    /// \brief A string that describes the scout version number, e.g., "1.0".
+    #define SCOUT_VERSION_STRING \
+    SCOUT_MAKE_VERSION_STRING(SCOUT_VERSION_MAJOR,SCOUT_VERSION_MINOR)
+  #endif
+
+  // \brief Retrieves a string representing the complete scout version,
+  // which includes the scout version number, the repository version,
+  // and the vendor tag.
+  std::string getScoutFullVersion();
+
+  /// \brief Retrieves a string representing the complete scout version suitable
+  /// for use in the CPP __VERSION__ macro, which includes the scout version
+  /// number, the repository version and the vendor tag.
+  std::string getScoutFullCPPVersion();
+  // +=========================================================================+
+
 }
 
 #endif // LLVM_CLANG_BASIC_VERSION_H

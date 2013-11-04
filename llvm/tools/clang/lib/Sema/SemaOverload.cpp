@@ -3934,7 +3934,7 @@ Sema::CompareReferenceRelationship(SourceLocation Loc,
 
   // +==== Scout =============================================================+
   Sema::ReferenceCompareResult Ref;
-  if (getLangOpts().Scout &&
+  if (isScoutLang(getLangOpts()) &&
     ScoutMeshCompareReferenceRelationship(Loc, UnqualT1, UnqualT2, Ref)) {
     return Ref;
   }
@@ -6632,7 +6632,7 @@ class BuiltinOperatorOverloadBuilder {
   static const unsigned FirstPromotedArithmeticType = 0,
                         LastPromotedArithmeticType = 11;
   static const unsigned NumArithmeticTypes = 20;
-  
+
   /// \brief Get the canonical type for a given arithmetic type index.
   CanQualType getArithmeticType(unsigned index) {
     assert(index < NumArithmeticTypes);

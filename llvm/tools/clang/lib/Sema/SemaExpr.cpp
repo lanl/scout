@@ -2020,7 +2020,7 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
     if (R.empty()) {
       // +==== Scout =========================================================+
       ExprResult ER;
-      if (getLangOpts().Scout &&
+      if (isScoutLang(getLangOpts()) &&
         ScoutMemberReferenceExpr(Name, NameLoc, NameInfo,
                                  SS, TemplateArgs, ER)) {
         return ER;
@@ -2701,7 +2701,7 @@ ExprResult Sema::BuildDeclarationNameExpr(
 
     // +===== Scout ==========================================================+
     case Decl::MeshField:
-      assert(getLangOpts().Scout &&
+      assert(isScoutLang(getLangOpts()) &&
              "building reference to field in C?");
       // These can't have reference type in well-formed programs, but
       // for internal consistency we do this anyway.

@@ -2,7 +2,7 @@
  * ###########################################################################
  * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
- * 
+ *
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -20,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- * 
+ *
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided 
+ *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -31,7 +31,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -45,12 +45,12 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ########################################################################### 
- * 
+ * ###########################################################################
+ *
  * Notes
  *
- * ##### 
- */ 
+ * #####
+ */
 #include <sstream>
 #include "clang/AST/ASTConsumer.h"
 #include "clang/Basic/Diagnostic.h"
@@ -138,7 +138,7 @@ bool ScoutVisitor::VisitStmt(Stmt* s) {
     rewriter_.InsertText(ras->getLocEnd().getLocWithOffset(1),
                          end, true, true);
   }
-  #endif 
+  #endif
 
   return true;
 }
@@ -151,13 +151,13 @@ bool ScoutVisitor::VisitFunctionDecl(FunctionDecl* f) {
 
     if (!USE_RT_REWRITER) scinit = "/*";
 
-    if(Clang_->getLangOpts().ScoutNvidiaGPU) {
-      scinit += "__scrt_init(ScoutGPUCUDA);";
+//    if(Clang_->getLangOpts().ScoutNvidiaGPU) {
+//      scinit += "__scrt_init(ScoutGPUCUDA);";
 //    } else if(Clang_->getLangOpts().ScoutAMDGPU){
 //      scinit += "__scrt_init(ScoutGPUOpenCL);";
-    } else {
+//    } else {
       scinit += "__scrt_init(ScoutGPUNone);";
-    }
+//    }
     if (!USE_RT_REWRITER) scinit += "*/";
     rewriter_.InsertText(s->getLocStart().getLocWithOffset(1),
                          scinit, true, true);
@@ -191,14 +191,14 @@ bool ScoutVisitor::VisitVolumeRenderAllStmt(VolumeRenderAllStmt* vras) {
   }
 
   bc += cameraName + ", ";
-  
+
   // One argument to the call is an apple block to hold body of renderall (transfer function closure)
   bc += "^int(scout::block_t* block, scout::point_3d_t* pos, scout::rgba_t& color){";
 
   // Insert code to get values of data fields for transfer function closure
   size_t FieldCount = 0;
   const MeshDecl* MD = MT->getDecl();
-  
+
   for(MeshDecl::field_iterator FI = MD->field_begin(),
       FE = MD->field_end(); FI != FE; ++FI){
     MeshFieldDecl* FD = *FI;
@@ -229,4 +229,4 @@ bool ScoutVisitor::VisitVolumeRenderAllStmt(VolumeRenderAllStmt* vras) {
 
   return true;
 }
-*/  
+*/

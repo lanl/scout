@@ -98,7 +98,8 @@ bool types::isAcceptedByClang(ID Id) {
   case TY_LLVM_IR: case TY_LLVM_BC:
     return true;
   // +==== Scout =============================================================+
-  case TY_Scout:
+  case TY_SC:
+  case TY_SCXX:
     return true;
   // +========================================================================+
   }
@@ -110,7 +111,8 @@ bool types::isObjC(ID Id) {
     return false;
 
   // +==== Scout =============================================================+
-  case TY_Scout:
+  case TY_SC:
+  case TY_SCXX:
     return false;
   // +========================================================================+
 
@@ -128,7 +130,7 @@ bool types::isCXX(ID Id) {
     return false;
 
   // +===== Scout ============================================================+
-  case TY_Scout:
+  case TY_SCXX:
     return true;
   // +========================================================================+
   case TY_CXX: case TY_PP_CXX:
@@ -188,8 +190,12 @@ types::ID types::lookupTypeForExtension(const char *Ext) {
            .Case("mii", TY_PP_ObjCXX)
            .Case("pcm", TY_ModuleFile)
            // +==== Scout ====================================================+
-           .Case("sc", TY_Scout)
-           .Case("sch", TY_Scout)
+           .Case("sc",    TY_SC)
+           .Case("sch",   TY_SCHeader)
+           .Case("scpp",  TY_SCXX)
+           .Case("sc++",  TY_SCXX)
+           .Case("sch++", TY_SCXXHeader)
+           .Case("schh",  TY_SCXXHeader)
            // +===============================================================+
            .Default(TY_INVALID);
 }

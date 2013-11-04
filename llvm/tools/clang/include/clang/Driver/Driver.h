@@ -57,7 +57,9 @@ class Driver {
     GCCMode,
     GXXMode,
     CPPMode,
-    CLMode
+    CLMode,
+    ScoutCMode, // +====== Scout =============================================+
+    ScoutCXXMode // +====== Scout ============================================+
   } Mode;
 
 public:
@@ -134,6 +136,11 @@ public:
   /// Whether the driver should follow cl.exe like behavior.
   bool IsCLMode() const { return Mode == CLMode; }
 
+  // +===== Scout ============================================================+
+  bool CCCIsScoutC() const { return Mode == ScoutCMode; }
+  bool CCCIsScoutCXX() const { return Mode == ScoutCXXMode; }
+  // +========================================================================+
+
   /// Only print tool bindings, don't build any jobs.
   unsigned CCCPrintBindings : 1;
 
@@ -188,7 +195,7 @@ private:
   llvm::opt::DerivedArgList *
   TranslateInputArgs(const llvm::opt::InputArgList &Args) const;
 
-  // getFinalPhase - Determine which compilation mode we are in and record 
+  // getFinalPhase - Determine which compilation mode we are in and record
   // which option we used to determine the final phase.
   phases::ID getFinalPhase(const llvm::opt::DerivedArgList &DAL,
                            llvm::opt::Arg **FinalPhaseArg = 0) const;
@@ -255,12 +262,12 @@ public:
   /// ArgList.
   llvm::opt::InputArgList *ParseArgStrings(ArrayRef<const char *> Args);
 
-  /// BuildInputs - Construct the list of inputs and their types from 
+  /// BuildInputs - Construct the list of inputs and their types from
   /// the given arguments.
   ///
   /// \param TC - The default host tool chain.
   /// \param Args - The input arguments.
-  /// \param Inputs - The list to store the resulting compilation 
+  /// \param Inputs - The list to store the resulting compilation
   /// inputs onto.
   void BuildInputs(const ToolChain &TC, const llvm::opt::DerivedArgList &Args,
                    InputList &Inputs) const;
@@ -299,10 +306,10 @@ public:
   /// temporary files, etc.
   int ExecuteCompilation(const Compilation &C,
      SmallVectorImpl< std::pair<int, const Command *> > &FailingCommands) const;
-  
-  /// generateCompilationDiagnostics - Generate diagnostics information 
+
+  /// generateCompilationDiagnostics - Generate diagnostics information
   /// including preprocessed source file(s).
-  /// 
+  ///
   void generateCompilationDiagnostics(Compilation &C,
                                       const Command *FailingCommand);
 
@@ -369,7 +376,7 @@ public:
   /// \param JA - The action of interest.
   /// \param BaseInput - The original input file that this action was
   /// triggered by.
-  /// \param BoundArch - The bound architecture. 
+  /// \param BoundArch - The bound architecture.
   /// \param AtTopLevel - Whether this is a "top-level" action.
   /// \param MultipleArchs - Whether multiple -arch options were supplied.
   const char *GetNamedOutputPath(Compilation &C,
@@ -379,7 +386,7 @@ public:
                                  bool AtTopLevel,
                                  bool MultipleArchs) const;
 
-  /// GetTemporaryPath - Return the pathname of a temporary file to use 
+  /// GetTemporaryPath - Return the pathname of a temporary file to use
   /// as part of compilation; the file will have the given prefix and suffix.
   ///
   /// GCC goes to extra lengths here to be a bit more robust.

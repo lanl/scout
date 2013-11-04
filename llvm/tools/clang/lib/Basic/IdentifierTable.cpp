@@ -20,6 +20,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cstdio>
+#include <iostream>
 
 using namespace clang;
 
@@ -78,7 +79,7 @@ IdentifierTable::IdentifierTable(const LangOptions &LangOpts,
   // Populate the identifier table with info about keywords for the current
   // language.
   AddKeywords(LangOpts);
-      
+
 
   // Add the '_experimental_modules_import' contextual keyword.
   get("import").setModulesImport(true);
@@ -106,7 +107,7 @@ namespace {
     KEYNOMS = 0x01000,
     WCHARSUPPORT = 0x02000,
     // +===== Scout ==========================================================+
-    KEYSCOUT = 0x04000,
+    KEYSCOUT   = 0x04000,
     // +======================================================================+
     KEYALL = (0xffff & ~KEYNOMS) // Because KEYNOMS is used to exclude.
   };
@@ -143,7 +144,14 @@ static void AddKeyword(StringRef Keyword,
   else if (LangOpts.CPlusPlus && (Flags & KEYCXX11)) AddResult = 3;
 
   // +==== Scout - keywords ==================================================+
-  else if (LangOpts.Scout && (Flags & KEYSCOUT)) AddResult = 1;
+  else if (LangOpts.ScoutC && (Flags & KEYSCOUT)) {
+    std::cerr << "scout-c add keyword '" << Keyword.str() << "'\n";
+    AddResult = 1;
+  }
+  else if (LangOpts.ScoutCPlusPlus && (Flags & KEYSCOUT)) {
+    std::cerr << "scout-c++ add keyword '" << Keyword.str() << "'\n";
+    AddResult = 1;
+  }
   // +========================================================================+
 
   // Don't add this keyword under MicrosoftMode.
@@ -235,7 +243,7 @@ tok::PPKeywordKind IdentifierInfo::getPPKeywordID() const {
   CASE( 6, 'i', 'n', ifndef);
   CASE( 6, 'i', 'p', import);
   CASE( 6, 'p', 'a', pragma);
-      
+
   CASE( 7, 'd', 'f', defined);
   CASE( 7, 'i', 'c', include);
   CASE( 7, 'w', 'r', warning);
@@ -244,7 +252,7 @@ tok::PPKeywordKind IdentifierInfo::getPPKeywordID() const {
   CASE(12, 'i', 'c', include_next);
 
   CASE(14, '_', 'p', __public_macro);
-      
+
   CASE(15, '_', 'p', __private_macro);
 
   CASE(16, '_', 'i', __include_macros);
@@ -428,7 +436,7 @@ ObjCMethodFamily Selector::getMethodFamilyImpl(Selector sel) {
     if (name == "retainCount") return OMF_retainCount;
     if (name == "self") return OMF_self;
   }
- 
+
   if (name == "performSelector") return OMF_performSelector;
 
   // The other method families may begin with a prefix of underscores.
@@ -462,9 +470,9 @@ ObjCMethodFamily Selector::getMethodFamilyImpl(Selector sel) {
 ObjCInstanceTypeFamily Selector::getInstTypeMethodFamily(Selector sel) {
   IdentifierInfo *first = sel.getIdentifierInfoForSlot(0);
   if (!first) return OIT_None;
-  
+
   StringRef name = first->getName();
-  
+
   if (name.empty()) return OIT_None;
   switch (name.front()) {
     case 'a':

@@ -192,7 +192,7 @@ static void DefineTypeSize(StringRef MacroName, unsigned TypeWidth,
 /// the width, suffix, and signedness of the given type
 static void DefineTypeSize(StringRef MacroName, TargetInfo::IntType Ty,
                            const TargetInfo &TI, MacroBuilder &Builder) {
-  DefineTypeSize(MacroName, TI.getTypeWidth(Ty), TI.getTypeConstantSuffix(Ty), 
+  DefineTypeSize(MacroName, TI.getTypeWidth(Ty), TI.getTypeConstantSuffix(Ty),
                  TI.isTypeSigned(Ty), Builder);
 }
 
@@ -212,7 +212,7 @@ static void DefineTypeSizeof(StringRef MacroName, unsigned BitWidth,
                       Twine(BitWidth / TI.getCharWidth()));
 }
 
-static void DefineExactWidthIntType(TargetInfo::IntType Ty, 
+static void DefineExactWidthIntType(TargetInfo::IntType Ty,
                                const TargetInfo &TI, MacroBuilder &Builder) {
   int TypeWidth = TI.getTypeWidth(Ty);
 
@@ -245,35 +245,35 @@ static const char *getLockFreeValue(unsigned TypeWidth, unsigned TypeAlign,
 
 /// \brief Add definitions required for a smooth interaction between
 /// Objective-C++ automated reference counting and libstdc++ (4.2).
-static void AddObjCXXARCLibstdcxxDefines(const LangOptions &LangOpts, 
+static void AddObjCXXARCLibstdcxxDefines(const LangOptions &LangOpts,
                                          MacroBuilder &Builder) {
   Builder.defineMacro("_GLIBCXX_PREDEFINED_OBJC_ARC_IS_SCALAR");
-  
+
   std::string Result;
   {
-    // Provide specializations for the __is_scalar type trait so that 
+    // Provide specializations for the __is_scalar type trait so that
     // lifetime-qualified objects are not considered "scalar" types, which
     // libstdc++ uses as an indicator of the presence of trivial copy, assign,
     // default-construct, and destruct semantics (none of which hold for
     // lifetime-qualified objects in ARC).
     llvm::raw_string_ostream Out(Result);
-    
+
     Out << "namespace std {\n"
         << "\n"
         << "struct __true_type;\n"
         << "struct __false_type;\n"
         << "\n";
-    
+
     Out << "template<typename _Tp> struct __is_scalar;\n"
         << "\n";
-      
+
     Out << "template<typename _Tp>\n"
         << "struct __is_scalar<__attribute__((objc_ownership(strong))) _Tp> {\n"
         << "  enum { __value = 0 };\n"
         << "  typedef __false_type __type;\n"
         << "};\n"
         << "\n";
-      
+
     if (LangOpts.ObjCARCWeak) {
       Out << "template<typename _Tp>\n"
           << "struct __is_scalar<__attribute__((objc_ownership(weak))) _Tp> {\n"
@@ -282,7 +282,7 @@ static void AddObjCXXARCLibstdcxxDefines(const LangOptions &LangOpts,
           << "};\n"
           << "\n";
     }
-    
+
     Out << "template<typename _Tp>\n"
         << "struct __is_scalar<__attribute__((objc_ownership(autoreleasing)))"
         << " _Tp> {\n"
@@ -290,7 +290,7 @@ static void AddObjCXXARCLibstdcxxDefines(const LangOptions &LangOpts,
         << "  typedef __false_type __type;\n"
         << "};\n"
         << "\n";
-      
+
     Out << "}\n";
   }
   Builder.append(Result);
@@ -353,6 +353,7 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
   // Compiler version introspection macros.
   Builder.defineMacro("__llvm__");  // LLVM Backend
   Builder.defineMacro("__clang__"); // Clang Frontend
+
 #define TOSTR2(X) #X
 #define TOSTR(X) TOSTR2(X)
   Builder.defineMacro("__clang_major__", TOSTR(CLANG_VERSION_MAJOR));
@@ -362,9 +363,31 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
 #else
   Builder.defineMacro("__clang_patchlevel__", "0");
 #endif
-  Builder.defineMacro("__clang_version__", 
+  Builder.defineMacro("__clang_version__",
                       "\"" CLANG_VERSION_STRING " "
                       + getClangFullRepositoryVersion() + "\"");
+
+  // +===== Scout ===========================================================+
+  if (isScoutLang(LangOpts)) {
+    Builder.defineMacro("__scout__");
+    Builder.defineMacro("__scout_major__", TOSTR(SCOUT_VERSION_MAJOR));
+    Builder.defineMacro("__scout_minor__", TOSTR(SCOUT_VERSION_MINOR));
+   #ifdef SCOUT_VERSION_PATCHLEVEL
+    Builder.defineMacro("__scout_patchlevel__",
+                        TOSTR(SCOUT_VERSION_PATCHLEVEL));
+   #else
+    Builder.defineMacro("__scout_patchlevel__", "0");
+   #endif
+    Builder.defineMacro("__scout_version__",
+                        "\"" SCOUT_VERSION_STRING " "
+                        + getScoutFullCPPVersion() + "\"");
+
+    if (LangOpts.ScoutCPlusPlus) {
+      Builder.defineMacro("__scout_cxx__");
+    }
+  }
+  // +=======================================================================+
+
 #undef TOSTR
 #undef TOSTR2
   if (!LangOpts.MicrosoftMode) {
@@ -390,7 +413,7 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
   // As sad as it is, enough software depends on the __VERSION__ for version
   // checks that it is necessary to report 4.2.1 (the base GCC version we claim
   // compatibility with) first.
-  Builder.defineMacro("__VERSION__", "\"4.2.1 Compatible " + 
+  Builder.defineMacro("__VERSION__", "\"4.2.1 Compatible " +
                       Twine(getClangFullCPPVersion()) + "\"");
 
   // Initialize language-specific preprocessor defines.
@@ -405,7 +428,7 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
   if (LangOpts.ObjC1) {
     if (LangOpts.ObjCRuntime.isNonFragile()) {
       Builder.defineMacro("__OBJC2__");
-      
+
       if (LangOpts.ObjCExceptions)
         Builder.defineMacro("OBJC_ZEROCOST_EXCEPTIONS");
     }
@@ -682,7 +705,7 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
 
   // OpenMP definition
   if (LangOpts.OpenMP) {
-    // OpenMP 2.2: 
+    // OpenMP 2.2:
     //   In implementations that support a preprocessor, the _OPENMP
     //   macro name is defined to have the decimal value yyyymm where
     //   yyyy and mm are the year and the month designations of the
@@ -737,7 +760,7 @@ static void InitializeFileRemapping(DiagnosticsEngine &Diags,
       << Remap->first << Remap->second;
       continue;
     }
-    
+
     // Create the file entry for the file that we're mapping from.
     const FileEntry *FromFile = FileMgr.getVirtualFile(Remap->first,
                                                        ToFile->getSize(), 0);
@@ -746,7 +769,7 @@ static void InitializeFileRemapping(DiagnosticsEngine &Diags,
       << Remap->first;
       continue;
     }
-    
+
     // Override the contents of the "from" file with the contents of
     // the "to" file.
     SourceMgr.overrideFileContents(FromFile, ToFile);
@@ -796,7 +819,7 @@ void clang::InitializePreprocessor(Preprocessor &PP,
       }
     }
   }
-  
+
   // Even with predefines off, some macros are still predefined.
   // These should all be defined in the preprocessor according to the
   // current language configuration.
@@ -842,10 +865,10 @@ void clang::InitializePreprocessor(Preprocessor &PP,
   // Instruct the preprocessor to skip the preamble.
   PP.setSkipMainFilePreamble(InitOpts.PrecompiledPreambleBytes.first,
                              InitOpts.PrecompiledPreambleBytes.second);
-                          
+
   // Copy PredefinedBuffer into the Preprocessor.
   PP.setPredefines(Predefines.str());
-  
+
   // Initialize the header search object.
   ApplyHeaderSearchOptions(PP.getHeaderSearchInfo(), HSOpts,
                            PP.getLangOpts(),

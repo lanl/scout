@@ -237,7 +237,7 @@ static void ParseProgName(SmallVectorImpl<const char *> &ArgVector,
     { "cpp",       "--driver-mode=cpp" },
     { "cl" ,       "--driver-mode=cl"  },
     { "++",        "--driver-mode=g++" },
-    { "scc",       "--driver-mode=scout" },    
+    { "scc",       "--driver-mode=g++" },
   };
   std::string ProgName(llvm::sys::path::stem(ArgVector[0]));
   std::transform(ProgName.begin(), ProgName.end(), ProgName.begin(),
@@ -259,7 +259,7 @@ static void ParseProgName(SmallVectorImpl<const char *> &ArgVector,
           ArgVector.insert(it, suffixes[i].ModeFlag);
           std::cerr << "driver option: " << suffixes[i].ModeFlag << "\n";
         }
-        
+
         break;
       }
     }

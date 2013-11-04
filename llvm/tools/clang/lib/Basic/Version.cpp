@@ -102,11 +102,11 @@ std::string getClangFullRepositoryVersion() {
       OS << Revision;
     }
     OS << ')';
-  }  
+  }
   // Support LLVM in a separate repository.
   std::string LLVMRev = getLLVMRevision();
   if (!LLVMRev.empty() && LLVMRev != Revision) {
-    OS << " (";    
+    OS << " (";
     std::string LLVMRepo = getLLVMRepositoryPath();
     if (!LLVMRepo.empty())
       OS << LLVMRepo << ' ';
@@ -141,6 +141,30 @@ std::string getClangFullCPPVersion() {
   OS << CLANG_VENDOR;
 #endif
   OS << "Clang " CLANG_VERSION_STRING " " << getClangFullRepositoryVersion();
+  return OS.str();
+}
+
+// +===== Scout ==============================================================+
+std::string getScoutFullVersion() {
+  std::string buf;
+  llvm::raw_string_ostream OS(buf);
+#ifdef SCOUT_VENDOR
+  OS << SCOUT_VENDOR;
+#endif
+  OS << "scout version " SCOUT_VERSION_STRING " "
+     << "(based on " << getClangFullVersion() << ")";
+  return OS.str();
+}
+
+std::string getScoutFullCPPVersion() {
+  // The version string we report in __VERSION__ is just a compacted version of
+  // the one reported on the command line.
+  std::string buf;
+  llvm::raw_string_ostream OS(buf);
+  #ifdef SCOUT_VENDOR
+    OS << SCOUT_VENDOR;
+  #endif
+  OS << getScoutFullVersion();
   return OS.str();
 }
 
