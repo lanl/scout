@@ -35,6 +35,7 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/ADT/SmallString.h"
 // +===== Scout ==============================================================+
+#include <iostream>
 #include "clang/AST/ASTContext.h"
 // +==========================================================================+
 using namespace clang;
@@ -196,11 +197,11 @@ Retry:
     // +===== Scout ==========================================================+
     // SC_TODO -- why are we doing this separately from the standard path
     // below???
-    if (getLangOpts().Scout) {
-      StmtResult SR;
-      if (ParseMeshStatement(Stmts, OnlyStatement, Next, SR))
-        return SR;
-    }
+    //if (isScoutLang()) {
+    //  StmtResult SR;
+    //  if (ParseMeshStatement(Stmts, OnlyStatement, Next, SR))
+    //    return SR;
+    //}
     // +======================================================================+
 
     // Look up the identifier, and typo-correct it to a keyword if it's not

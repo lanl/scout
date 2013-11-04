@@ -11,6 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <iostream>
+
 #include "clang/Parse/Parser.h"
 #include "RAIIObjectsForParser.h"
 #include "clang/AST/DeclTemplate.h"
@@ -26,6 +28,8 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringSwitch.h"
 using namespace clang;
+
+
 
 //===----------------------------------------------------------------------===//
 // C99 6.7: Declarations.
@@ -3052,7 +3056,8 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
     case tok::kw_rectilinear:
     case tok::kw_structured:
     case tok::kw_unstructured: {
-      // for now, at least the presence of one of the above keywords
+      std::cerr << "found mesh keyword...\n";
+      // For now, at least the presence of one of the above keywords
       // is sufficient to denote the beginning of a mesh definition...
       ParseMeshSpecifier(DS, TemplateInfo);
 
@@ -4707,7 +4712,7 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
 
   // +===== Scout ============================================================+
   bool hasMeshTypedefParameters = false;
-  if (getLangOpts().Scout) {
+  if (isScoutLang()) {
     DeclSpec& DS = D.getMutableDeclSpec();
     DeclSpec::TST tst = DS.getTypeSpecType();
     if (Tok.is(tok::l_square) && tst == DeclSpec::TST_typename) {
@@ -4882,7 +4887,7 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
     MaybeParseCXX11Attributes(D);
 
   // +===== Scout ============================================================+
-  if (getLangOpts().Scout) {
+  if (isScoutLang()) {
     DeclSpec& DS = D.getMutableDeclSpec();
     DeclSpec::TST tst = DS.getTypeSpecType();
 

@@ -324,10 +324,11 @@ public:
   }
 
   bool isGPU() {
-    // --- AMD gpu support disabled for now (they're off-version of us)
-    return (CGM.getCodeGenOpts().ScoutNvidiaGPU
-            /* || CGM.getCodeGenOpts().ScoutAMDGPU */)
-            && !CallsPrintf;
+    return false;
+    // --- all gpu support disabled for now.
+    //return (CGM.getCodeGenOpts().ScoutNvidiaGPU
+    //        || CGM.getCodeGenOpts().ScoutAMDGPU
+    //        && !CallsPrintf);
   }
 
   // --- AMD gpu support disabled for now (they're off-version of us)

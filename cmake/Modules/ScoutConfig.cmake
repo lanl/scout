@@ -2,7 +2,7 @@
 ###########################################################################
 # Copyright (c) 2010, Los Alamos National Security, LLC.
 # All rights reserved.
-# 
+#
 #  Copyright 2010. Los Alamos National Security, LLC. This software was
 #  produced under U.S. Government contract DE-AC52-06NA25396 for Los
 #  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -23,8 +23,8 @@
 #
 #    * Redistributions in binary form must reproduce the above
 #      copyright notice, this list of conditions and the following
-#      disclaimer in the documentation and/or other materials provided 
-#      with the distribution.  
+#      disclaimer in the documentation and/or other materials provided
+#      with the distribution.
 #
 #    * Neither the name of Los Alamos National Security, LLC, Los
 #      Alamos National Laboratory, LANL, the U.S. Government, nor the
@@ -48,7 +48,7 @@
 #
 ###########################################################################
 #
-# Notes 
+# Notes
 #
 #####
 
@@ -73,7 +73,7 @@ endif()
 
   set(SC_CLANG_SRC_DIR ${SC_LLVM_SRC_DIR}/tools/clang)
   set(SC_CLANG_BUILD_DIR ${SC_LLVM_BUILD_DIR}/tools/clang)
-  set(SC_CLANG_INC_PATH ${SC_CLANG_SRC_DIR}/include 
+  set(SC_CLANG_INC_PATH ${SC_CLANG_SRC_DIR}/include
     ${SC_CLANG_BUILD_DIR}/include)
 #
 #####
@@ -89,13 +89,13 @@ endif()
 #####
 
 
-##### SCOUT VERSION INFORMATION 
-# The following variables are used to help us track Scout 
-# version information. 
+##### SCOUT VERSION INFORMATION
+# The following variables are used to help us track Scout
+# version information.
 #
-  set(SC_VERSION_MAJOR 0)
-  set(SC_VERSION_MINOR 1)
-  set(SC_VERSION_PATCH 0)
+  set(SC_VERSION_MAJOR 1)
+  set(SC_VERSION_MINOR 0)
+  set(SC_VERSION_PATCHLEVEL 0)
 
   set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "The Scout Programming Language")
   set(CPACK_PACKAGE_VENDOR scout)
@@ -105,12 +105,12 @@ endif()
   set(CPACK_PACKAGE_VERSION_MINOR "${SC_VERSION_MINOR}")
   set(CPACK_PACKAGE_VERSION_PATCH "${SC_VERSION_PATCH}")
 #
-#####  
+#####
 
 
 ##### CMAKE MODULE PATHS
-# Overhaul the path to CMake moudles so we can find some of our 
-# own (and LLVM's) configuration details. 
+# Overhaul the path to CMake moudles so we can find some of our
+# own (and LLVM's) configuration details.
 #
   set(CMAKE_MODULE_PATH
     "${SC_SRC_DIR}/cmake/Modules"
@@ -124,12 +124,12 @@ endif()
 #####
 
 
-##### PACKAGE DEPENDENCIES & CONFIGURATION 
+##### PACKAGE DEPENDENCIES & CONFIGURATION
 # We search for the various external software packages we require, or
-# can leverage, in this section. The results of these searches also 
+# can leverage, in this section. The results of these searches also
 # drives Scout's feature set.
 
-  # --- OpenGL support. 
+  # --- OpenGL support.
   find_package(OpenGL)
   if (OPENGL_FOUND)
     message(STATUS "scout: OpenGL found, enabling support.")
@@ -139,15 +139,15 @@ endif()
     set(SC_HAVE_OPENGL 0)
   endif()
 
-  # --- CUDA support. 
+  # --- CUDA support.
   find_package(CUDA)
-  if (CUDA_FOUND) 
+  if (CUDA_FOUND)
     message(STATUS "scout: CUDA found, enabling PTX codegen support.")
     message(STATUS "scout: CUDA include path: ${CUDA_INCLUDE_DIRS}")
-    set(SC_ENABLE_CUDA ON CACHE BOOL 
+    set(SC_ENABLE_CUDA ON CACHE BOOL
       "Enable CUDA/PTX code generation and runtime support.")
 
-    set(SC_ENABLE_LIB_NVVM OFF CACHE BOOL 
+    set(SC_ENABLE_LIB_NVVM OFF CACHE BOOL
       "Enable NVIDIA's compiler SDK vs. LLVM's PTX backend.")
 
     if (SC_ENABLE_LIB_NVVM)
@@ -156,36 +156,36 @@ endif()
 
   else()
     message(STATUS "scout: CUDA not found disabling support.")
-    set(SC_ENABLE_CUDA OFF CACHE BOOL 
+    set(SC_ENABLE_CUDA OFF CACHE BOOL
       "Enable CUDA/PTX code generation and runtime support.")
-  endif()  
+  endif()
 
-  # --- OpenCL support.  
+  # --- OpenCL support.
   #only look for OpenCL if we can't find Cuda
-  if(NOT CUDA_FOUND) 
+  if(NOT CUDA_FOUND)
     #OpenCL support not currently working on Apple
     if(NOT APPLE)
       find_package(OpenCL)
     endif()
   endif()
   if (OPENCL_FOUND)
-    # TODO - should these separated or wrapped into one?  
-    message(STATUS "scout: OpenCL found, enabling AMDIL codegen support.")    
+    # TODO - should these separated or wrapped into one?
+    message(STATUS "scout: OpenCL found, enabling AMDIL codegen support.")
     set(SC_ENABLE_OPENCL ON CACHE BOOL "Enable OpenCL code generation and runtime support.")
     set(SC_ENABLE_AMDIL ON CACHE BOOL "Enable AMD IL code generation and runtime support.")
     #add_definitions(-DSC_ENABLE_OPENCL -DSC_ENABLE_AMDIL)
   else()
-    message(STATUS "scout: OpenCL not found, disabling support")    
+    message(STATUS "scout: OpenCL not found, disabling support")
     set(SC_ENABLE_OPENCL OFF CACHE BOOL "Enable OpenCL code generation and runtime support.")
     set(SC_ENABLE_AMDIL OFF CACHE BOOL "Enable AMD IL code generation and runtime support.")
    endif()
 
-  # --- NUMA support. 
+  # --- NUMA support.
   find_package(HWLOC)
   if (HWLOC_FOUND)
     message(STATUS "scout: Found hwloc -- enabling NUMA support.")
     set(SC_ENABLE_NUMA ON CACHE BOOL "Enable NUMA (via libhwloc) runtime support.")
-    if (APPLE) 
+    if (APPLE)
       message(STATUS "scout: Note NUMA support under Mac OS X has limited features.")
     endif()
   else()
@@ -193,47 +193,47 @@ endif()
     set(SC_ENABLE_NUMA OFF CACHE BOOL "Enable NUMA (via libhwloc) runtime support.")
   endif()
 
-  # --- Thread support. 
+  # --- Thread support.
   find_package(Threads)
-  if (Threads_FOUND) 
+  if (Threads_FOUND)
     message(STATUS "scout: Found Threads -- enabling support.")
-    set(SC_ENABLE_THREADS ON CACHE BOOL "Enable Threads support.") 
+    set(SC_ENABLE_THREADS ON CACHE BOOL "Enable Threads support.")
   else()
-    set(SC_ENABLE_THREADS OFF CACHE BOOL "Enable Threads support.") 
+    set(SC_ENABLE_THREADS OFF CACHE BOOL "Enable Threads support.")
   endif()
 
-  # --- MPI support. 
+  # --- MPI support.
   find_package(MPI)
-  if (MPI_FOUND) 
+  if (MPI_FOUND)
     message(STATUS "scout: Found MPI -- enabling support.")
-    set(SC_ENABLE_MPI ON CACHE BOOL "Enable MPI runtime support.") 
+    set(SC_ENABLE_MPI ON CACHE BOOL "Enable MPI runtime support.")
   else()
-    set(SC_ENABLE_MPI OFF CACHE BOOL "Enable MPI runtime support.") 
+    set(SC_ENABLE_MPI OFF CACHE BOOL "Enable MPI runtime support.")
   endif()
 
 
-  # --- GLFW support. 
+  # --- GLFW support.
   find_package(GLFW)
-  if (GLFW_FOUND) 
+  if (GLFW_FOUND)
     message(STATUS "scout: GLFW found, enabling runtime support.")
     message(STATUS "scout: GLFW include path: ${GLFW_INCLUDE_DIR}")
-    set(SC_ENABLE_GLFW ON CACHE BOOL 
+    set(SC_ENABLE_GLFW ON CACHE BOOL
       "Enable GLFW runtime support.")
   else()
     message(STATUS "scout: GLFW not found, disabling support.")
-    set(SC_ENABLE_GLFW OFF CACHE BOOL 
+    set(SC_ENABLE_GLFW OFF CACHE BOOL
       "Enable GLFW runtime support.")
-  endif()  
+  endif()
 
 
-  # --- SDL support. 
+  # --- SDL support.
   find_package(SDL REQUIRED)
-  if (SDL_FOUND) 
+  if (SDL_FOUND)
     message(STATUS "scout: Found SDL -- enabling support.")
     set(SC_ENABLE_SDL ON CACHE BOOL "Enable SDL support (required).")
   endif()
 
-  # Disable PNG for now -- some Linux systems are having a hard time 
+  # Disable PNG for now -- some Linux systems are having a hard time
   # with matching the API we've used an we haven't had time to fully
   # investigate.  Putting it on the backburner for now...
   find_package(PNG)

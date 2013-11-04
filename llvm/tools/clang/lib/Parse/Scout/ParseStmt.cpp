@@ -568,15 +568,6 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
 }
 
 
-
-
-
-
-
-
-
-
-
 bool Parser::ParseMeshStatement(StmtVector &Stmts,
                                 bool OnlyStatement,
                                 Token &Next,

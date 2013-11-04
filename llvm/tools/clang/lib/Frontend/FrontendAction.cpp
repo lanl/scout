@@ -235,7 +235,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
   }
   // +===== Scout ============================================================+
   // Implicitly include the Scout headers
-  if (CI.getLangOpts().Scout) {
+  if (isScoutLang(CI.getLangOpts())) {
     CI.getPreprocessorOpts().Includes.push_back("scout/scout.sch");
     CI.getPreprocessorOpts().Includes.push_back("scout/Runtime/scout.h");
   }

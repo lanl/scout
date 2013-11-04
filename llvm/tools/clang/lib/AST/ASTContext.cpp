@@ -1294,7 +1294,7 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool ForAlignof) const {
       UseAlignAttrOnly = true;
     }
   // +===== Scout ============================================================+
-  } else if (getLangOpts().Scout && isa<MeshFieldDecl>(D)) {
+  } else if (isScoutLang(getLangOpts()) && isa<MeshFieldDecl>(D)) {
     UseAlignAttrOnly =
       D->hasAttr<PackedAttr>() ||
       cast<FieldDecl>(D)->getParent()->hasAttr<PackedAttr>();
@@ -1347,7 +1347,7 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool ForAlignof) const {
     // So calculate the actual alignment of the field within the mesh/struct,
     // and then (as we're expected to do) constrain that by the alignment
     // of the type.
-    if (getLangOpts().Scout) {
+    if (isScoutLang(getLangOpts())) {
       if (const MeshFieldDecl *Field = dyn_cast<MeshFieldDecl>(VD)) {
         const MeshDecl *Parent = Field->getParent();
         // We can only produce a sensible answer if the record is valid.

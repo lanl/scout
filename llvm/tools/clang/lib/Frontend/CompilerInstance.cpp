@@ -152,11 +152,11 @@ static void SetupSerializedDiagnostics(DiagnosticOptions *DiagOpts,
       << OutputFile << ErrorInfo;
     return;
   }
-  
+
   DiagnosticConsumer *SerializedConsumer =
     clang::serialized_diags::create(OS.take(), DiagOpts);
 
-  
+
   Diags.setClient(new ChainedDiagnosticConsumer(Diags.takeClient(),
                                                 SerializedConsumer));
 }
@@ -194,7 +194,7 @@ CompilerInstance::createDiagnostics(DiagnosticOptions *Opts,
   if (!Opts->DiagnosticSerializationFile.empty())
     SetupSerializedDiagnostics(Opts, *Diags,
                                Opts->DiagnosticSerializationFile);
-  
+
   // Configure our handling of diagnostics.
   ProcessWarningOptions(*Diags, *Opts);
 
@@ -602,7 +602,7 @@ CompilerInstance::createOutputFile(StringRef OutputPath,
 
 bool CompilerInstance::InitializeSourceManager(const FrontendInputFile &Input){
   return InitializeSourceManager(Input, getDiagnostics(),
-                                 getFileManager(), getSourceManager(), 
+                                 getFileManager(), getSourceManager(),
                                  getFrontendOpts());
 }
 
@@ -689,7 +689,7 @@ bool CompilerInstance::ExecuteAction(FrontendAction &Act) {
   // created. This complexity should be lifted elsewhere.
   getTarget().setForcedLangOptions(getLangOpts());
 
-  // rewriter project will change target built-in bool type from its default. 
+  // rewriter project will change target built-in bool type from its default.
   if (getFrontendOpts().ProgramAction == frontend::RewriteObjC)
     getTarget().noSignedCharForObjCBool();
 
@@ -752,6 +752,10 @@ static InputKind getSourceInputKindFromOptions(const LangOptions &LangOpts) {
     return IK_CUDA;
   if (LangOpts.ObjC1)
     return LangOpts.CPlusPlus? IK_ObjCXX : IK_ObjC;
+  if (LangOpts.ScoutC)
+    return IK_Scout_C;
+  if (LangOpts.ScoutCPlusPlus)
+    return IK_Scout_CXX;
   return LangOpts.CPlusPlus? IK_CXX : IK_C;
 }
 
@@ -787,7 +791,7 @@ namespace {
   };
 }
 
-/// \brief Compile a module file for the given module, using the options 
+/// \brief Compile a module file for the given module, using the options
 /// provided by the importing compiler instance.
 static void compileModule(CompilerInstance &ImportingInstance,
                           SourceLocation ImportLoc,
@@ -814,15 +818,15 @@ static void compileModule(CompilerInstance &ImportingInstance,
     return;
   }
 
-  ModuleMap &ModMap 
+  ModuleMap &ModMap
     = ImportingInstance.getPreprocessor().getHeaderSearchInfo().getModuleMap();
-    
+
   // Construct a compiler invocation for creating this module.
   IntrusiveRefCntPtr<CompilerInvocation> Invocation
     (new CompilerInvocation(ImportingInstance.getInvocation()));
 
   PreprocessorOptions &PPOpts = Invocation->getPreprocessorOpts();
-  
+
   // For any options that aren't intended to affect how a module is built,
   // reset them to their default values.
   Invocation->getLangOpts()->resetNonModularOptions();
@@ -860,11 +864,11 @@ static void compileModule(CompilerInstance &ImportingInstance,
 
   // Don't free the remapped file buffers; they are owned by our caller.
   PPOpts.RetainRemappedFileBuffers = true;
-    
+
   Invocation->getDiagnosticOpts().VerifyDiagnostics = 0;
   assert(ImportingInstance.getInvocation().getModuleHash() ==
          Invocation->getModuleHash() && "Module hash mismatch!");
-  
+
   // Construct a compiler instance that will be used to actually create the
   // module.
   CompilerInstance Instance;
@@ -907,7 +911,7 @@ static void compileModule(CompilerInstance &ImportingInstance,
 
   // Construct a module-generating action.
   GenerateModuleAction CreateModuleAction(Module->IsSystem);
-  
+
   // Execute the action to actually build the module in-place. Use a separate
   // thread so that we get a stack large enough.
   const unsigned ThreadStackSize = 8 << 20;
@@ -915,7 +919,7 @@ static void compileModule(CompilerInstance &ImportingInstance,
   CompileModuleMapData Data = { Instance, CreateModuleAction };
   CRC.RunSafelyOnThread(&doCompileMapModule, &Data, ThreadStackSize);
 
-  
+
   // Delete the temporary module map file.
   // FIXME: Even though we're executing under crash protection, it would still
   // be nice to do this with RemoveFileOnSignal when we can. However, that
@@ -935,7 +939,7 @@ static void checkConfigMacro(Preprocessor &PP, StringRef ConfigMacro,
                              Module *Mod, SourceLocation ImportLoc) {
   IdentifierInfo *Id = PP.getIdentifierInfo(ConfigMacro);
   SourceManager &SourceMgr = PP.getSourceManager();
-  
+
   // If this identifier has never had a macro definition, then it could
   // not have changed.
   if (!Id->hadMacroDefinition())
@@ -1132,9 +1136,9 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
     = KnownModules.find(Path[0].first);
   if (Known != KnownModules.end()) {
     // Retrieve the cached top-level module.
-    Module = Known->second;    
+    Module = Known->second;
   } else if (ModuleName == getLangOpts().CurrentModule) {
-    // This is the module we're building. 
+    // This is the module we're building.
     Module = PP->getHeaderSearchInfo().getModuleMap().findModule(ModuleName);
     Known = KnownModules.insert(std::make_pair(Path[0].first, Module)).first;
   } else {
@@ -1278,7 +1282,7 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
       ModuleBuildFailed = true;
       return ModuleLoadResult();
     }
-    
+
     if (!Module) {
       // If we loaded the module directly, without finding a module map first,
       // we'll have loaded the module's information from the module itself.
@@ -1289,24 +1293,24 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
     // Cache the result of this top-level module lookup for later.
     Known = KnownModules.insert(std::make_pair(Path[0].first, Module)).first;
   }
-  
+
   // If we never found the module, fail.
   if (!Module)
     return ModuleLoadResult();
-  
+
   // Verify that the rest of the module path actually corresponds to
   // a submodule.
   if (Path.size() > 1) {
     for (unsigned I = 1, N = Path.size(); I != N; ++I) {
       StringRef Name = Path[I].first->getName();
       clang::Module *Sub = Module->findSubmodule(Name);
-      
+
       if (!Sub) {
         // Attempt to perform typo correction to find a module name that works.
         SmallVector<StringRef, 2> Best;
         unsigned BestEditDistance = (std::numeric_limits<unsigned>::max)();
-        
-        for (clang::Module::submodule_iterator J = Module->submodule_begin(), 
+
+        for (clang::Module::submodule_iterator J = Module->submodule_begin(),
                                             JEnd = Module->submodule_end();
              J != JEnd; ++J) {
           unsigned ED = Name.edit_distance((*J)->Name,
@@ -1317,24 +1321,24 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
               Best.clear();
               BestEditDistance = ED;
             }
-            
+
             Best.push_back((*J)->Name);
           }
         }
-        
+
         // If there was a clear winner, user it.
         if (Best.size() == 1) {
-          getDiagnostics().Report(Path[I].second, 
+          getDiagnostics().Report(Path[I].second,
                                   diag::err_no_submodule_suggest)
             << Path[I].first << Module->getFullModuleName() << Best[0]
             << SourceRange(Path[0].second, Path[I-1].second)
             << FixItHint::CreateReplacement(SourceRange(Path[I].second),
                                             Best[0]);
-          
+
           Sub = Module->findSubmodule(Best[0]);
         }
       }
-      
+
       if (!Sub) {
         // No submodule by this name. Complain, and don't look for further
         // submodules.
@@ -1343,11 +1347,11 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
           << SourceRange(Path[0].second, Path[I-1].second);
         break;
       }
-      
+
       Module = Sub;
     }
   }
-  
+
   // Make the named module visible, if it's not already part of the module
   // we are parsing.
   if (ModuleName != getLangOpts().CurrentModule) {
@@ -1361,7 +1365,7 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
       getDiagnostics().Report(ImportLoc, diag::warn_missing_submodule)
         << Module->getFullModuleName()
         << SourceRange(Path.front().second, Path.back().second);
-      
+
       return ModuleLoadResult(0, true);
     }
 
@@ -1388,7 +1392,7 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
                      Module, ImportLoc);
   }
 
-  // If this module import was due to an inclusion directive, create an 
+  // If this module import was due to an inclusion directive, create an
   // implicit import declaration to capture it in the AST.
   if (IsInclusionDirective && hasASTContext()) {
     TranslationUnitDecl *TU = getASTContext().getTranslationUnitDecl();
@@ -1399,7 +1403,7 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
     if (Consumer)
       Consumer->HandleImplicitImportDecl(ImportD);
   }
-  
+
   LastModuleImportLoc = ImportLoc;
   LastModuleImportResult = ModuleLoadResult(Module, false);
   return LastModuleImportResult;

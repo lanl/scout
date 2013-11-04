@@ -48,9 +48,6 @@ TYPE("objc-cpp-output",          PP_ObjC_Alias, INVALID,        "mi",    "u")
 TYPE("objective-c",              ObjC,         PP_ObjC,         "m",     "u")
 TYPE("c++-cpp-output",           PP_CXX,       INVALID,         "ii",    "u")
 TYPE("c++",                      CXX,          PP_CXX,          "cpp",   "u")
-// +==== Scout ==============================================================+
-TYPE("scout",                    Scout,        PP_CXX,          "sc",    "u")
-// +=========================================================================+
 TYPE("objective-c++-cpp-output", PP_ObjCXX,    INVALID,         "mii",   "u")
 TYPE("objc++-cpp-output",        PP_ObjCXX_Alias, INVALID,      "mii",   "u")
 TYPE("objective-c++",            ObjCXX,       PP_ObjCXX,       "mm",    "u")
@@ -73,6 +70,13 @@ TYPE("assembler-with-cpp",       Asm,          PP_Asm,          "S",     "au")
 TYPE("f95",                      PP_Fortran,   INVALID,         0,       "u")
 TYPE("f95-cpp-input",            Fortran,      PP_Fortran,      0,       "u")
 TYPE("java",                     Java,         INVALID,         0,       "u")
+
+// +==== Scout ==============================================================+
+TYPE("scout",                    SC,           PP_C,            "sc",    "u")
+TYPE("scout++",                  SCXX,         PP_CXX,          "scpp",  "u")
+TYPE("scout-header",             SCHeader,     PP_CHeader,      0,      "pu")
+TYPE("scout++-header",           SCXXHeader,   PP_CXXHeader,    0,      "pu")
+// +=========================================================================+
 
 // LLVM IR/LTO types. We define separate types for IR and LTO because LTO
 // outputs should use the standard suffixes.
