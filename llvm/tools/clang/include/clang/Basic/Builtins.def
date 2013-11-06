@@ -1177,14 +1177,7 @@ BUILTIN(__builtin_smulll_overflow, "bSLLiCSLLiCSLLi*", "n")
 BUILTIN(__builtin_addressof, "v*v&", "nct")
 
 // ===== Scout ===============================================
-BUILTIN(Position, "E4i", "nc")
-BUILTIN(PositionX, "i", "nc")
-BUILTIN(PositionY, "i", "nc")
-BUILTIN(PositionZ, "i", "nc")
-BUILTIN(PositionW, "i", "nc")
-BUILTIN(Width, "i", "nc")
-BUILTIN(Height, "i", "nc")
-BUILTIN(Depth, "i", "nc")
+#include "BuiltinsScout.def"
 // ===========================================================
 
 #undef BUILTIN
