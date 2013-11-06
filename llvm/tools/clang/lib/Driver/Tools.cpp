@@ -2762,6 +2762,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // that have no support enabled (no need to add flags if the build
   // configuration hasn't enabled them).
 
+ //Enable include of unistd fix
+  Args.AddAllArgs(CmdArgs, options::OPT_unistdFix);
+ 
   // Enable cpu multithreading.
   Args.AddAllArgs(CmdArgs, options::OPT_cpuThreads);
 

@@ -1435,6 +1435,8 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
                                  Opts.Deprecated);
 
   // +==== Scout =============================================================+
+  // Detect -unistd-fix flag
+  Opts.unistdFix = Args.hasArg(OPT_unistdFix);
   // Detect -gpu flag
   //Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
   // --- Disabled for now (AMD is behind us in version support)
