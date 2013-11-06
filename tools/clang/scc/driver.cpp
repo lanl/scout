@@ -236,8 +236,9 @@ static void ParseProgName(SmallVectorImpl<const char *> &ArgVector,
     { "cc",        0 },
     { "cpp",       "--driver-mode=cpp" },
     { "cl" ,       "--driver-mode=cl"  },
-    { "++",        "--driver-mode=g++" },
-    { "scc",       "--driver-mode=g++" },
+    //{ "++",        "--driver-mode=g++" },
+    { "scc",       "--driver-mode=scout" },
+    { "sc++",       "--driver-mode=scout++" },    
   };
   std::string ProgName(llvm::sys::path::stem(ArgVector[0]));
   std::transform(ProgName.begin(), ProgName.end(), ProgName.begin(),
@@ -248,7 +249,7 @@ static void ParseProgName(SmallVectorImpl<const char *> &ArgVector,
   for (int Components = 2; Components; --Components) {
     bool FoundMatch = false;
     size_t i;
-
+    
     for (i = 0; i < sizeof(suffixes) / sizeof(suffixes[0]); ++i) {
       if (ProgNameRef.endswith(suffixes[i].Suffix)) {
         FoundMatch = true;
@@ -257,9 +258,7 @@ static void ParseProgName(SmallVectorImpl<const char *> &ArgVector,
           ++it;
         if (suffixes[i].ModeFlag) {
           ArgVector.insert(it, suffixes[i].ModeFlag);
-          std::cerr << "driver option: " << suffixes[i].ModeFlag << "\n";
         }
-
         break;
       }
     }
@@ -355,8 +354,9 @@ static void scAddFlagSet(std::string& args,
 
     while(it != tokens.end()) {
       if (disable_stdlib) {
-        if (*it != stdlib_str)
+        if (*it != stdlib_str) {
           scAddStringIfUnique(args, std::string("+") + *it);
+        }
       } else {
         scAddStringIfUnique(args, std::string("+") + *it);
       }
@@ -389,6 +389,7 @@ static void scAddFlags(Driver &driver,
   // library...
   bool disable_stdlib = false;
   if (Args->hasArg(options::OPT_disableScoutStdLib)) {
+    std::cerr << "disable scout standard library.\n";
     disable_stdlib = true;
   }
 

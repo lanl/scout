@@ -145,11 +145,9 @@ static void AddKeyword(StringRef Keyword,
 
   // +==== Scout - keywords ==================================================+
   else if (LangOpts.ScoutC && (Flags & KEYSCOUT)) {
-    std::cerr << "scout-c add keyword '" << Keyword.str() << "'\n";
     AddResult = 1;
   }
   else if (LangOpts.ScoutCPlusPlus && (Flags & KEYSCOUT)) {
-    std::cerr << "scout-c++ add keyword '" << Keyword.str() << "'\n";
     AddResult = 1;
   }
   // +========================================================================+

@@ -99,8 +99,8 @@ void Driver::ParseDriverMode(ArrayRef<const char *> Args) {
         .Case("g++", GXXMode)
         .Case("cpp", CPPMode)
         .Case("cl",  CLMode)
-        .Case("scoutc", ScoutCMode)      // +===== Scout =====================+
-        .Case("scoutcxx", ScoutCXXMode)  // +===== Scout =====================+
+        .Case("scout", ScoutCMode)      // +===== Scout ======================+
+        .Case("scout++", ScoutCXXMode)  // +===== Scout ======================+
         .Default(~0U);
 
     if (M != ~0U)

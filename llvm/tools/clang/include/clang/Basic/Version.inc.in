@@ -4,3 +4,12 @@
 #if @CLANG_HAS_VERSION_PATCHLEVEL@
 #define CLANG_VERSION_PATCHLEVEL @CLANG_VERSION_PATCHLEVEL@
 #endif
+
+// +===== Scout =============================================================+
+#define SCOUT_VERSION        @SCOUT_VERSION@
+#define SCOUT_VERSION_MAJOR  @SCOUT_VERSION_MAJOR@
+#define SCOUT_VERSION_MINOR  @SCOUT_VERSION_MINOR@
+#if @SCOUT_HAS_VERSION_PATCHLEVEL@
+#define SCOUT_PATCHLEVEL @SCOUT_PATCHLEVEL@
+#endif
+// +=========================================================================+

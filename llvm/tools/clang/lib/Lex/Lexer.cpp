@@ -23,6 +23,7 @@
 //    -fexec-charset,-fwide-exec-charset
 //
 //===----------------------------------------------------------------------===//
+#include <iostream>
 
 #include "clang/Lex/Lexer.h"
 #include "clang/Basic/CharInfo.h"
@@ -137,7 +138,7 @@ Lexer::Lexer(FileID FID, const llvm::MemoryBuffer *InputFile, Preprocessor &PP)
   // Enable our keywords only when the file being lexed from is a ".sc", or
   // ".sch" file -- this extra check is necessary because we might be including
   // a C++ header from a .sc file which would otherwise pick up the Scout
-  // keyword extensions, potentially causing conflicts
+  // keyword extensions, potentially causing conflicts...
   if (isScoutLang(LangOpts)) {
     std::string bufferName = PP.getSourceManager().getBufferName(FileLoc);
     std::string ext;
@@ -151,9 +152,13 @@ Lexer::Lexer(FileID FID, const llvm::MemoryBuffer *InputFile, Preprocessor &PP)
       ext.insert(0, 1, bufferName[i]);
     }
     // SC_TODO : Why do we need this but Clang doesn't?
-    if (ext != "sc" && ext != "sch" && ext != "scp") {
+    if (ext != "sc" && ext != "sch" &&
+        ext != "scpp" && "schpp") {
       LangOpts.ScoutC = false;
       LangOpts.ScoutCPlusPlus = false;
+    } else {
+      LangOpts.ScoutC         = true;
+      LangOpts.ScoutCPlusPlus = true;
     }
   }
   // +==========================================================================+
@@ -273,7 +278,7 @@ Lexer *Lexer::Create_PragmaLexer(SourceLocation SpellingLoc,
 
   L->BufferPtr = StrData;
   L->BufferEnd = StrData+TokLen;
-  assert(L->BufferEnd[0] == 0 && "Buffer is not nul terminated!");
+  assert(L->BufferEnd[0] == 0 && "Buffer is not null terminated!");
 
   // Set the SourceLocation with the remapping information.  This ensures that
   // GetMappedTokenLoc will remap the tokens as they are lexed.
@@ -1562,10 +1567,12 @@ bool Lexer::LexIdentifier(Token &Result, const char *CurPtr) {
       //
       // SC_TODO -- need to look at refactoring this code (it is replicated
       // below as well...
-      /*if (! isScoutLang(LangOpts)) {
+      if (! isScoutLang(LangOpts)) {
         IdentifierInfo* NII = 0;
         switch(Result.getKind()) {
-        #define SCOUT_KEYWORD(X) case tok::kw_##X: NII = PP->getScoutIdentifier(#X);break;
+        #define SCOUT_KEYWORD(X) case tok::kw_##X: \
+          NII = PP->getScoutIdentifier(#X);        \
+          break;
         #include "clang/Basic/TokenKinds.def"
           default:
             break;
@@ -1575,18 +1582,19 @@ bool Lexer::LexIdentifier(Token &Result, const char *CurPtr) {
           Result.setKind(tok::identifier);
         }
       }
-      */
       // +===============================================================================+
       return retval;
     }
 
     // +==== Scout ===========================================================+
     // If we are lexing from a non-Scout file, then we need to treat Scout
-    // keywords as ordinary identifiers…
-    /*if (! isScoutLang(LangOpts)) {
+    // keywords as ordinary identifiers.
+    if (! isScoutLang(LangOpts)) {
       IdentifierInfo* NII = 0;
       switch(Result.getKind()) {
-        #define SCOUT_KEYWORD(X) case tok::kw_##X: NII = PP->getScoutIdentifier(#X); break;
+       #define SCOUT_KEYWORD(X) case tok::kw_##X: \
+          NII = PP->getScoutIdentifier(#X);       \
+          break;
         #include "clang/Basic/TokenKinds.def"
         default:
           break;
@@ -1596,7 +1604,7 @@ bool Lexer::LexIdentifier(Token &Result, const char *CurPtr) {
         Result.setIdentifierInfo(NII);
         Result.setKind(tok::identifier);
       }
-    }*/
+    }
     // +===============================================================================+
 
     return true;

@@ -11,8 +11,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <iostream>
-
 #include "clang/Parse/Parser.h"
 #include "RAIIObjectsForParser.h"
 #include "clang/AST/DeclTemplate.h"
@@ -3056,7 +3054,6 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
     case tok::kw_rectilinear:
     case tok::kw_structured:
     case tok::kw_unstructured: {
-      std::cerr << "found mesh keyword...\n";
       // For now, at least the presence of one of the above keywords
       // is sufficient to denote the beginning of a mesh definition...
       ParseMeshSpecifier(DS, TemplateInfo);

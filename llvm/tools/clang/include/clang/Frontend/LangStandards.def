@@ -132,11 +132,11 @@ LANGSTANDARD(cuda, "cuda",
              LineComment | CPlusPlus | Digraphs)
 
 // +===== Scout =============================================================+
-LANGSTANDARD(scoutc, "scoutc",
+LANGSTANDARD(scoutc, "scout c",
              "Scout 1.X",
              LineComment | C99 | C11 | Digraphs | HexFloat)
-LANGSTANDARD(scoutcxx, "scoutcxx",
-             "Scout++ 1.X",
+LANGSTANDARD(scoutcxx, "scout c++",
+             "Scout 1.X",
              LineComment | CPlusPlus | Digraphs | HexFloat)
 // +=========================================================================+
 

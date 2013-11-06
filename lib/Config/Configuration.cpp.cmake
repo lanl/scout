@@ -75,7 +75,7 @@ namespace scout {
       ${CUDA_VERSION_MAJOR}, 
       ${CUDA_VERSION_MINOR}
     }; 
-  
+
     const char* Configuration::IncludePaths[] = {
 
       "-I${CMAKE_INSTALL_PREFIX}/include",

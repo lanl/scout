@@ -67,12 +67,10 @@ set(CMAKE_MODULE_PATH
   "${CMAKE_MODULE_PATH}"
   )
 
-project(scStandard SCC)
-
+project(scStandard SCXX)
   cmake_minimum_required(VERSION 2.8.9)
-  message(STATUS "standard library: scc compile flags: '${CMAKE_SCC_FLAGS}'")
-  message(STATUS "standard library: scc linker flags  : '${CMAKE_SCC_LINK_FLAGS}'")
-
+  message(STATUS "standard library: scxx compile flags: '${CMAKE_SCXX_FLAGS}'")
+  message(STATUS "standard library: scxx linker flags  : '${CMAKE_SCXX_LINK_FLAGS}'")
   set(CMAKE_INSTALL_PREFIX ${SCOUT_INSTALL_DIR})
 
   include_directories(
@@ -80,7 +78,7 @@ project(scStandard SCC)
     )
 
   file(GLOB std_hdrs ${SCOUT_INCLUDE_DIR}/scout/*.sch)
-  file(GLOB std_srcs *.sc)
+  file(GLOB std_srcs *.scpp)
 
   add_library(scStandard STATIC ${std_srcs})
 
