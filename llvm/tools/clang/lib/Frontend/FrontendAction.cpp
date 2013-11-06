@@ -241,7 +241,9 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
   }
   // make blocks work on linux
   // need this fix in clang as well as scout as we build the runtime w/ clang
-  //CI.getPreprocessorOpts().Includes.push_back("scout/unistd.h");
+  if(CI.getLangOpts().unistdFix) {
+    CI.getPreprocessorOpts().Includes.push_back("scout/unistd.h");
+  }
   // +========================================================================+
 
   // If the implicit PCH include is actually a directory, rather than

@@ -55,7 +55,7 @@ project(scRuntime)
 
 # Build w/ clang as volren uses blocks
 set(CMAKE_CXX_COMPILER ${SC_BUILD_DIR}/llvm/bin/clang)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fblocks")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -unistd-fix -fblocks")
 
 include_directories(
   ${SC_INCLUDE_DIR}       
