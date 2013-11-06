@@ -2435,7 +2435,7 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
 
   // +===== Scout ============================================================+
   LValue LV;
-  if (EmitScoutMemberExpr(E, &LV)) return LV;
+  if (EmitScoutMemberExpr(E, getLinearIdx(), &LV)) return LV;
   // +========================================================================+
 
   // If this is s.x, emit s as an lvalue.  If it is s->x, emit s as a scalar.
@@ -2891,12 +2891,13 @@ RValue CodeGenFunction::EmitCallExpr(const CallExpr *E,
 
   const Decl *TargetDecl = E->getCalleeDecl();
   if (const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(TargetDecl)) {
-    if (unsigned builtinID = FD->getBuiltinID())
-      return EmitBuiltinExpr(FD, builtinID, E);
-    // +==== Scout ===========================================================+
-    else if(FD->getNameInfo().getAsString() == "CShift")
+// +==== Scout ===========================================================+
+    std::string name =  FD->getNameInfo().getAsString();
+    if (name == "CShift" || name == "CShiftI" || name == "CShiftF" || name == "CShiftD") 
       return EmitCShiftExpr(E->arg_begin(), E->arg_end());
-    // +======================================================================+
+// +======================================================================+
+    else if (unsigned builtinID = FD->getBuiltinID())
+      return EmitBuiltinExpr(FD, builtinID, E);
   }
 
   if (const CXXOperatorCallExpr *CE = dyn_cast<CXXOperatorCallExpr>(E))
