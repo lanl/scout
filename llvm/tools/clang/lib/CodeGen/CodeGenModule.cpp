@@ -234,6 +234,7 @@ void CodeGenModule::Release() {
   EmitCXXGlobalDtorFunc();
   EmitCXXThreadLocalInitFunc();
   // ===== Scout ===============================================================
+  // add call to scout runtime initializer
   if(ScoutRuntime)
     if (llvm::Function *ScoutInitFunction = ScoutRuntime->ModuleInitFunction())
       AddGlobalCtor(ScoutInitFunction);
