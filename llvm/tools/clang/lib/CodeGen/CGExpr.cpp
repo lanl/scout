@@ -2434,8 +2434,10 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
   Expr *BaseExpr = E->getBase();
 
   // +===== Scout ============================================================+
-  LValue LV;
-  if (EmitScoutMemberExpr(E, getLinearIdx(), &LV)) return LV;
+  if(isa<MeshFieldDecl>(E->getMemberDecl())) {
+    LValue LV;
+    if (EmitScoutMemberExpr(E, getLinearIdx(), &LV)) return LV;
+  }
   // +========================================================================+
 
   // If this is s.x, emit s as an lvalue.  If it is s->x, emit s as a scalar.
