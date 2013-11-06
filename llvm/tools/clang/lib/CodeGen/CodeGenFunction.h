@@ -301,6 +301,7 @@ public:
   // overall induction variable stored as 4th element
   // needed to make this size 4 to deal with llvm Intrinsics;
   llvm::SmallVector< llvm::Value *, 4 > InductionVar;
+  // mesh dimension sizes
   llvm::SmallVector< llvm::Value *, 3 > LoopBounds;
 
   // old style Scout forall explicit induction variable.
@@ -1980,7 +1981,7 @@ public:
   //LValue EmitScoutColorDeclRefLValue(const NamedDecl *ND);
   //LValue EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND);
   bool EmitScoutMemberExpr(const MemberExpr *E, LValue *LV);
-  LValue EmitLValueForMeshField(LValue base, const MeshFieldDecl *field);
+  LValue EmitLValueForMeshField(LValue base, const MeshFieldDecl *field, llvm::Value *Index);
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
   LValue EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef memberName,
                             MySmallVector foo = MySmallVector());
