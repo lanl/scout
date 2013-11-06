@@ -248,46 +248,10 @@ CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
   llvm::Value *HyWz   = Builder.CreateMul(dims[2], yWz, "HxypWidthxZ");
   return Builder.CreateAdd(indices[0], HyWz, "cshift.linearidx");
 
-
-#if 0
-  llvm::Value *idx   = Builder.CreateLoad(getLinearIdx());
-  // idx + x
-  llvm::Value *add   = Builder.CreateAdd(idx, args[0]);
-  // (idx + x) % W
-  llvm::Value *rem   = Builder.CreateURem(add, dims[0]);
-  // idx/Width
-  llvm::Value *div   = Builder.CreateUDiv(idx, dims[0]);
-  // (idx/Width) % Height
-  llvm::Value *rem2  = Builder.CreateURem(div, dims[1]);
-  // ((idx/Width) % Height) + y
-  llvm::Value *add2  = Builder.CreateAdd(rem2, args[1]);
-  // (((idx/Width) % Height) + y) % Height
-  llvm::Value *rem3  = Builder.CreateURem(add2, dims[1]);
-  // Width*Height
-  llvm::Value *mul   = Builder.CreateMul(dims[0], dims[1]);
-  // idx/(Width*Height)
-  llvm::Value *div2  = Builder.CreateUDiv(idx, mul);
-  // (idx/(Width*Height)) % Depth
-  llvm::Value *rem4  = Builder.CreateURem(div2, dims[2]);
-  // z + (idx/(Width*Height)) % Depth
-  llvm::Value *add3  = Builder.CreateAdd(args[2], rem4);
-  // (z + (idx/(Width*Height)) % Depth) % Depth
-  llvm::Value *rem5  = Builder.CreateURem(add3, dims[2]);
-  // ((z + (idx/(Width*Height)) % Depth) % Depth) * Height
-  llvm::Value *mul2 = Builder.CreateMul(rem5, dims[1]);
-  // ((z + (idx/(Width*Height)) % Depth) % Depth) * Height + (((idx/Width) % Height) + y) % Height
-  llvm::Value *add4   = Builder.CreateAdd(mul2, rem3);
-  // (((z + (idx/(Width*Height)) % Depth) % Depth) * Height + (((idx/Width) % Height) + y) % Height) * Width
-  llvm::Value *mul3  = Builder.CreateMul(add4, dims[0]);
-  //  ((((z + (idx/(Width*Height)) % Depth) % Depth) * Height + (((idx/Width) % Height) + y) % Height) * Width) + (idx + x) % W
-  return Builder.CreateAdd(mul3, rem);
-#endif
-
 }
 
-
+//SC_TODO: there is a lot of shared code w/ EmitScoutMemberExpr here that need cleanup.
 RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
-  DEBUG_OUT("EmitCShiftExpr");
 
   if(const ImplicitCastExpr *CE = dyn_cast<ImplicitCastExpr>(*(ArgBeg))) {
     if(const MemberExpr *E = dyn_cast<MemberExpr>(CE->getSubExpr())) {
