@@ -91,15 +91,15 @@ int main(int argc, char *argv[]) {
     h_next = 0.0f;
     mask = 1.0;
 
-    if (c.position.y == 0 || c.position.y == (heat_mesh.height - 1)) {
+    if (Position().y == 0 || Position().y == Width()-1) {
       h = MAX_TEMP;
       h_next = MAX_TEMP;
       mask = 0.0;
-    }
+    } 
 
     for (int i = 0; i < N_BODIES; i++) {
-      float r2 = (c.position.x - c_x[i]) * (c.position.x - c_x[i])
-          + (c.position.y - c_y[i]) * (c.position.y - c_y[i]);
+      float r2 = (Position().x - c_x[i]) * (Position().x - c_x[i])
+          + (Position().y - c_y[i]) * (Position().y - c_y[i]);
       if (r2 < r2cyl) {
         if (SOLUBLE) {
           mask = r2 / r2cyl;
@@ -112,8 +112,8 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  const float dx = 10.0f / heat_mesh.width;
-  const float dy = 10.0f / heat_mesh.height;
+  const float dx = 10.0f / MESH_DIM;
+  const float dy = 10.0f / MESH_DIM;
   const float alpha = 0.00001f;
   const float dt = 0.5f * (dx * dx + dy * dy) / 4.0f / alpha;
 
@@ -121,17 +121,17 @@ int main(int argc, char *argv[]) {
   for (unsigned int t = 0; t < NTIME_STEPS; ++t) {
 
     forall cells c in heat_mesh {
-      float ddx = 0.5 * (cshift(c.h, 1, 0) - cshift(c.h, -1, 0)) / dx;
-      float d2dx2 = cshift(c.h, 1, 0) - 2.0f * c.h + cshift(c.h, -1, 0);
+      float ddx = 0.5 * (CShift(c.h, 1, 0) - CShift(c.h, -1, 0)) / dx;
+      float d2dx2 = CShift(c.h, 1, 0) - 2.0f * c.h + CShift(c.h, -1, 0);
       d2dx2 /= dx * dx;
 
-      float d2dy2 = cshift(c.h, 0, 1) - 2.0f * c.h + cshift(c.h, 0, -1);
+      float d2dy2 = CShift(c.h, 0, 1) - 2.0f * c.h + CShift(c.h, 0, -1);
       d2dy2 /= dy * dy;
 
       h_next = mask * dt * (alpha * (d2dx2 + d2dy2) - mask * u * ddx)
           + c.h;
 
-      if (c.position.x == 260 && c.position.y == 260 && t == NTIME_STEPS-1) {
+      if (Position().x == 260 && Position().y == 260 && t == NTIME_STEPS-1) {
          // if value does not match exit w/ error.
          if ((c.h - VALUE)*(c.h - VALUE) > 1e-10) kill(getpid(), SIGTERM);  
       }

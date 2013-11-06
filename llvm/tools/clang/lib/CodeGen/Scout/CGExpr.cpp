@@ -70,7 +70,7 @@ CodeGenFunction::EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND) {
 */
 
 bool
-CodeGenFunction::EmitScoutMemberExpr(const MemberExpr *E, LValue *LV) {
+CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index, LValue *LV) {
   Expr *BaseExpr = E->getBase();
   NamedDecl *MND = E->getMemberDecl(); //this memberDecl is for the "Implicit" mesh
 
@@ -85,7 +85,7 @@ CodeGenFunction::EmitScoutMemberExpr(const MemberExpr *E, LValue *LV) {
       // need underlying mesh to make LValue
       LValue BaseLV  = MakeAddrLValue(V, E->getType());
 
-      *LV = EmitLValueForMeshField(BaseLV, MFD, Builder.CreateLoad(getLinearIdx(), "forall.linearidx"));
+      *LV = EmitLValueForMeshField(BaseLV, MFD, Index);
       return true;
     } else {
       llvm_unreachable("Cannot lookup underlying mesh");
@@ -217,6 +217,7 @@ CodeGenFunction::EmitLValueForMeshField(LValue base,
 }
 
 // compute the linear index based on cshift parameters
+// with circular boundary conditions
 llvm::Value *
 CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
 
@@ -245,50 +246,39 @@ CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
   // linearIdx = x + Height * (y + Width * z)
   llvm::Value *Wz     = Builder.CreateMul(dims[0], indices[2], "WidthxZ");
   llvm::Value *yWz    = Builder.CreateAdd(indices[1], Wz, "ypWidthxZ");
-  llvm::Value *HyWz   = Builder.CreateMul(dims[2], yWz, "HxypWidthxZ");
+  llvm::Value *HyWz   = Builder.CreateMul(dims[1], yWz, "HxypWidthxZ");
   return Builder.CreateAdd(indices[0], HyWz, "cshift.linearidx");
 
 }
 
-//SC_TODO: there is a lot of shared code w/ EmitScoutMemberExpr here that need cleanup.
+
 RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
 
+  //turn first arg into Expr
   if(const ImplicitCastExpr *CE = dyn_cast<ImplicitCastExpr>(*(ArgBeg))) {
-    if(const MemberExpr *E = dyn_cast<MemberExpr>(CE->getSubExpr())) {
-      Expr *BaseExpr = E->getBase();
-      NamedDecl *MND = E->getMemberDecl(); //this memberDecl is for the "Implicit" mesh
 
-     if (MeshFieldDecl *MFD = dyn_cast<MeshFieldDecl>(MND)) {
-       DeclRefExpr *D = dyn_cast<DeclRefExpr>(BaseExpr);
-       VarDecl *VD = dyn_cast<VarDecl>(D->getDecl());
-
-        if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(VD)) {
-
-          // lookup underlying mesh instead of implicit mesh
-          llvm::Value *V = LocalDeclMap.lookup(IMPD->getMeshVarDecl());
-          // need underlying mesh to make LValue
-          LValue BaseLV  = MakeAddrLValue(V, E->getType());
-
-          // extract the cshift args
-          SmallVector< llvm::Value *, 3 > args;
-          while(++ArgBeg != ArgEnd) {
-            RValue RV = EmitAnyExpr(*(ArgBeg));
-            if(RV.isAggregate()) {
-              args.push_back(RV.getAggregateAddr());
-            } else {
-              args.push_back(RV.getScalarVal());
-            }
-          }
-
-          // zero out remaining args
-          for(unsigned i = args.size(); i < 3; ++i) {
-             args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
-          }
-
-          LValue LV = EmitLValueForMeshField(BaseLV, MFD, getCShiftLinearIdx(args));
-          return RValue::get(Builder.CreateLoad(LV.getAddress()));
-        }
+    // extract the cshift args
+    SmallVector< llvm::Value *, 3 > args;
+    while(++ArgBeg != ArgEnd) {
+      RValue RV = EmitAnyExpr(*(ArgBeg));
+      if(RV.isAggregate()) {
+        args.push_back(RV.getAggregateAddr());
+      } else {
+        args.push_back(RV.getScalarVal());
       }
+    }
+
+    // zero out remaining args
+    for(unsigned i = args.size(); i < 3; ++i) {
+      args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
+    }
+
+    // get the member expr for first arg.
+    if(const MemberExpr *E = dyn_cast<MemberExpr>(CE->getSubExpr())) {
+      LValue LV;
+      // get the correct mesh member
+      EmitMeshMemberExpr(E, getCShiftLinearIdx(args), &LV);
+      return RValue::get(Builder.CreateLoad(LV.getAddress()));
     }
   }
   assert(false && "Failed to translate Scout cshift expression to LLVM IR!");

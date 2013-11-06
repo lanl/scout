@@ -321,7 +321,7 @@ public:
   //const ForAllArrayStmt* CurrentForAllArrayStmt;
 
   inline llvm::Value *getLinearIdx() {
-    return InductionVar[3];
+    return Builder.CreateLoad(InductionVar[3], "forall.linearidx");
   }
 
   bool isGPU() {
@@ -1980,12 +1980,12 @@ public:
 
   //LValue EmitScoutColorDeclRefLValue(const NamedDecl *ND);
   //LValue EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND);
-  bool EmitScoutMemberExpr(const MemberExpr *E, LValue *LV);
+  bool EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index, LValue *LV);
   LValue EmitLValueForMeshField(LValue base, const MeshFieldDecl *field, llvm::Value *Index);
   llvm::Value *getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args);
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
-  LValue EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef memberName,
-                            MySmallVector foo = MySmallVector());
+  //LValue EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef memberName,
+  //                          MySmallVector foo = MySmallVector());
 
 
   llvm::Value *CreateMemAlloc(uint64_t numElts);
