@@ -84,6 +84,7 @@
     install(FILES 
       ${scc_modules}
       Scout/Compiler/SCC.cmake
+      Scout/Compiler/SCXX.cmake
       DESTINATION 
       share/scout/cmake
       )

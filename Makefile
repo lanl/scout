@@ -107,7 +107,7 @@ endif
 stdlib_dir := lib/Standard
 stdlib_build_dir := $(build_dir)/$(stdlib_dir)
 stdlib_src_dir := $(src_dir)/$(stdlib_dir)
-stdlib_flags := -DCMAKE_SCC_BOOTSTRAP=ON
+stdlib_flags := -DCMAKE_SCXX_BOOTSTRAP=ON
 
 runtime_dir := lib/Runtime
 runtime_build_dir := $(build_dir)/$(runtime_dir)

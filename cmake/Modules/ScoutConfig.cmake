@@ -93,9 +93,20 @@ endif()
 # The following variables are used to help us track Scout
 # version information.
 #
-  set(SC_VERSION_MAJOR 1)
-  set(SC_VERSION_MINOR 0)
-  set(SC_VERSION_PATCHLEVEL 0)
+  set(SCOUT_VERSION_MAJOR      1)
+  set(SCOUT_VERSION_MINOR      0)
+  set(SCOUT_PATCHLEVEL         0)
+  set(SCOUT_VERSION
+       "${SCOUT_VERSION_MAJOR}.${SCOUT_VERSION_MINOR}.${SCOUT_PATCHLEVEL}")
+
+  if (${SCOUT_VERSION} MATCHES "[0-9]+\\.[0-9]+\\.[1-9]+")
+    set(SCOUT_HAS_VERSION_PATCHLEVEL 1)
+    string(REGEX REPLACE "[0-9]+\\.[0-9]+\\.([1-9]+)" "\\1"
+           SCOUT_PATCHLEVEL ${SCOUT_VERSION})
+  else()
+    set(SCOUT_HAS_VERSION_PATCHLEVEL 0)
+  endif()
+
 
   set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "The Scout Programming Language")
   set(CPACK_PACKAGE_VENDOR scout)
@@ -140,25 +151,26 @@ endif()
   endif()
 
   # --- CUDA support.
-  find_package(CUDA)
-  if (CUDA_FOUND)
-    message(STATUS "scout: CUDA found, enabling PTX codegen support.")
-    message(STATUS "scout: CUDA include path: ${CUDA_INCLUDE_DIRS}")
-    set(SC_ENABLE_CUDA ON CACHE BOOL
-      "Enable CUDA/PTX code generation and runtime support.")
-
-    set(SC_ENABLE_LIB_NVVM OFF CACHE BOOL
-      "Enable NVIDIA's compiler SDK vs. LLVM's PTX backend.")
-
-    if (SC_ENABLE_LIB_NVVM)
-      message(STATUS "scout: Enabling NVIDIA libnvvm support.")
-    endif()
-
-  else()
+  #find_package(CUDA)
+  #if (CUDA_FOUND)
+  #  message(STATUS "scout: CUDA found, enabling PTX codegen support.")
+  #  message(STATUS "scout: CUDA include path: ${CUDA_INCLUDE_DIRS}")
+  #    set(SC_ENABLE_CUDA ON CACHE BOOL
+  #    "Enable CUDA/PTX code generation and runtime support.")
+  #
+  #  set(SC_ENABLE_LIB_NVVM OFF CACHE BOOL
+  #    "Enable NVIDIA's compiler SDK vs. LLVM's PTX backend.")
+  #
+  #  if (SC_ENABLE_LIB_NVVM)
+  #   message(STATUS "scout: Enabling NVIDIA libnvvm support.")
+  # endif()
+  #else()
     message(STATUS "scout: CUDA not found disabling support.")
     set(SC_ENABLE_CUDA OFF CACHE BOOL
       "Enable CUDA/PTX code generation and runtime support.")
-  endif()
+    set(CUDA_VERSION_MAJOR 0)
+    set(CUDA_VERSION_MINOR 0)
+  #endif()
 
   # --- OpenCL support.
   #only look for OpenCL if we can't find Cuda
@@ -203,27 +215,27 @@ endif()
   endif()
 
   # --- MPI support.
-  find_package(MPI)
-  if (MPI_FOUND)
-    message(STATUS "scout: Found MPI -- enabling support.")
-    set(SC_ENABLE_MPI ON CACHE BOOL "Enable MPI runtime support.")
-  else()
-    set(SC_ENABLE_MPI OFF CACHE BOOL "Enable MPI runtime support.")
-  endif()
+  #find_package(MPI)
+  #if (MPI_FOUND)
+  #  message(STATUS "scout: Found MPI -- enabling support.")
+  #  set(SC_ENABLE_MPI ON CACHE BOOL "Enable MPI runtime support.")
+  #else()
+  set(SC_ENABLE_MPI OFF CACHE BOOL "Enable MPI runtime support.")
+  #endif()
 
 
   # --- GLFW support.
-  find_package(GLFW)
-  if (GLFW_FOUND)
-    message(STATUS "scout: GLFW found, enabling runtime support.")
-    message(STATUS "scout: GLFW include path: ${GLFW_INCLUDE_DIR}")
-    set(SC_ENABLE_GLFW ON CACHE BOOL
-      "Enable GLFW runtime support.")
-  else()
-    message(STATUS "scout: GLFW not found, disabling support.")
+  #find_package(GLFW)
+  #if (GLFW_FOUND)
+  #  message(STATUS "scout: GLFW found, enabling runtime support.")
+  #  message(STATUS "scout: GLFW include path: ${GLFW_INCLUDE_DIR}")
+  #  set(SC_ENABLE_GLFW ON CACHE BOOL
+  #    "Enable GLFW runtime support.")
+  #else()
+  #  message(STATUS "scout: GLFW not found, disabling support.")
     set(SC_ENABLE_GLFW OFF CACHE BOOL
       "Enable GLFW runtime support.")
-  endif()
+  #endif()
 
 
   # --- SDL support.
@@ -247,37 +259,33 @@ endif()
   endif()
 
 # --- THRUST support.
-  find_package(THRUST)
+  #find_package(THRUST)
 
-  if (THRUST_FOUND)
-    set (THRUST_DIR ${THRUST_INCLUDE_DIR}/thrust  CACHE PATH "Thrust directory")
-    message(STATUS "scout: THRUST found")
+  #if (THRUST_FOUND)
+  # set (THRUST_DIR ${THRUST_INCLUDE_DIR}/thrust  CACHE PATH "Thrust directory")
+  #  message(STATUS "scout: THRUST found")
+  #
+  #else ()
+  #  message(STATUS "scout: THRUST not found -- disabling support.")
+  #  set(SC_ENABLE_CUDA_THRUST OFF CACHE BOOL "Enable THRUST support via CUDA in scout's runtime libraries.")
+  #  set(SC_ENABLE_TBB_THRUST OFF CACHE BOOL "Enable THRUST support via TBB in scout's runtime libraries.")
+  #  set(SC_ENABLE_CPP_THRUST OFF CACHE BOOL "Enable THRUST support via CPP in scout's runtime libraries.")
+  #endif ()
 
-  else ()
-    message(STATUS "scout: THRUST not found -- disabling support.")
-    set(SC_ENABLE_CUDA_THRUST OFF CACHE BOOL "Enable THRUST support via CUDA in scout's runtime libraries.")
-    set(SC_ENABLE_TBB_THRUST OFF CACHE BOOL "Enable THRUST support via TBB in scout's runtime libraries.")
-    set(SC_ENABLE_CPP_THRUST OFF CACHE BOOL "Enable THRUST support via CPP in scout's runtime libraries.")
+  #if (THRUST_FOUND)
+  #  set(SC_ENABLE_CPP_THRUST ON CACHE BOOL "Enable THRUST support via CPP in scout's runtime libraries.")
+  #  find_package(CUDA)
+  #  if (CUDA_FOUND)
+  #    message(STATUS "scout: CUDA found.")
+  #  #set(SC_ENABLE_CUDA_THRUST ON CACHE BOOL "Enable THRUST support via CUDA in scout's runtime libraries.")
+  #  endif ()
 
-  endif ()
-
-  if (THRUST_FOUND)
-
-    set(SC_ENABLE_CPP_THRUST ON CACHE BOOL "Enable THRUST support via CPP in scout's runtime libraries.")
-
-    find_package(CUDA)
-    if (CUDA_FOUND)
-      message(STATUS "scout: CUDA found.")
-#set(SC_ENABLE_CUDA_THRUST ON CACHE BOOL "Enable THRUST support via CUDA in scout's runtime libraries.")
-    endif ()
-
-    find_package(TBB)
-    if (TBB_FOUND)
-      message(STATUS "scout: TBB found.")
-#      set(SC_ENABLE_TBB_THRUST ON CACHE BOOL "Enable THRUST support via TBB in scout's runtime libraries.")
-    endif ()
-
-  endif ()
+  #  find_package(TBB)
+  # if (TBB_FOUND)
+  #    message(STATUS "scout: TBB found.")
+  #      set(SC_ENABLE_TBB_THRUST ON CACHE BOOL "Enable THRUST support via TBB in scout's runtime libraries.")
+  #  endif ()
+  #endif ()
 
 #
 #####

@@ -159,7 +159,7 @@
 #elif defined(__hpux) || defined(__hpua)
 # define COMPILER_ID "HP"
 
-#elif defined(__scout__) 
+#elif defined(__scout_cxx__) 
 # define COMPILER_ID "Scout"
 # define COMPILER_VERSION_MAJOR DEC(__scout_major__)
 # define COMPILER_VERSION_MINOR DEC(__scout_minor__)

@@ -144,6 +144,10 @@ SC_VECTOR4_CLAMP_FUNC(int4,    int);
 SC_VECTOR4_CLAMP_FUNC(long4,   long);
 SC_VECTOR4_CLAMP_FUNC(float4,  float);
 SC_VECTOR4_CLAMP_FUNC(double4, double);
+/*
+ * This has C++ 11 features -- disabled for now...
+ *
+ *
 
 #define SC_VECTORN_CLAMP_FUNC(VecType, ValueType, NComponents)             \
   template <typename Type, unsigned N=NComponents>                         \
@@ -165,6 +169,7 @@ SC_VECTOR4_CLAMP_FUNC(double4, double);
  SC_VECTORN_CLAMP_FUNC(float16,   float, 16);
  SC_VECTORN_CLAMP_FUNC(double8,  double,  8);
  SC_VECTORN_CLAMP_FUNC(double16, double, 16);
+ */
 // +--------------------------------------------------------------------------+
 
 

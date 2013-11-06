@@ -72,6 +72,9 @@ TYPE("f95-cpp-input",            Fortran,      PP_Fortran,      0,       "u")
 TYPE("java",                     Java,         INVALID,         0,       "u")
 
 // +==== Scout ==============================================================+
+// Note that the source file options ("scout" & "scout++") need to match
+// the strings used in FrontEnd/CompilerInvocation.cpp.  Without this you
+// may find the correct modes are not being set...
 TYPE("scout",                    SC,           PP_C,            "sc",    "u")
 TYPE("scout++",                  SCXX,         PP_CXX,          "scpp",  "u")
 TYPE("scout-header",             SCHeader,     PP_CHeader,      0,      "pu")

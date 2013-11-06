@@ -151,8 +151,8 @@ std::string getScoutFullVersion() {
 #ifdef SCOUT_VENDOR
   OS << SCOUT_VENDOR;
 #endif
-  OS << "scout version " SCOUT_VERSION_STRING " "
-     << "(based on " << getClangFullVersion() << ")";
+  OS << "scout version: " SCOUT_VERSION_STRING ", "
+     << "based on " << getClangFullVersion();
   return OS.str();
 }
 

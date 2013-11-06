@@ -1060,16 +1060,23 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
     case IK_PreprocessedC:
     case IK_ObjC:
     case IK_PreprocessedObjC:
-    case IK_Scout_C: // +===== Scout =========================================+
       LangStd = LangStandard::lang_gnu99;
       break;
+
     case IK_CXX:
     case IK_PreprocessedCXX:
     case IK_ObjCXX:
     case IK_PreprocessedObjCXX:
-    case IK_Scout_CXX: // +===== Scout =======================================+
       LangStd = LangStandard::lang_gnucxx98;
       break;
+    // +===== Scout ==========================================================+
+    case IK_Scout_C:
+      LangStd = LangStandard::lang_scoutc;
+      break;
+    case IK_Scout_CXX:
+      LangStd = LangStandard::lang_scoutcxx;
+      break;
+    // +======================================================================+
     }
   }
 
@@ -1166,9 +1173,10 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
       .Case(name, LangStandard::lang_##id)
 #include "clang/Frontend/LangStandards.def"
       .Default(LangStandard::lang_unspecified);
-    if (LangStd == LangStandard::lang_unspecified)
+    if (LangStd == LangStandard::lang_unspecified) {
       Diags.Report(diag::err_drv_invalid_value)
         << A->getAsString(Args) << A->getValue();
+      }
     else {
       // Valid standard, check to make sure language and standard are compatable.
       const LangStandard &Std = LangStandard::getLangStandardForKind(LangStd);

@@ -73,7 +73,7 @@ project(Scout)
 
   enable_testing()
 
-  set(CMAKE_VERBOSE_MAKEFILE ON)
+  set(CMAKE_VERBOSE_MAKEFILE OFF)
 
   ##### INSTALL DETAILS
   #

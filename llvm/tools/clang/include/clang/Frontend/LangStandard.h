@@ -28,7 +28,11 @@ enum LangFeatures {
   Digraphs = (1 << 7),
   GNUMode = (1 << 8),
   HexFloat = (1 << 9),
-  ImplicitInt = (1 << 10)
+  ImplicitInt = (1 << 10),
+  // +===== Scout ============================================================+
+  ScoutC = (1 << 11),
+  ScoutCPlusPlus = (1 << 12)
+  // +========================================================================+
 };
 
 }
@@ -86,6 +90,12 @@ public:
 
   /// hasImplicitInt - Language allows variables to be typed as int implicitly.
   bool hasImplicitInt() const { return Flags & frontend::ImplicitInt; }
+
+  // +===== Scout ============================================================+
+  bool isScoutC() const { return Flags && frontend::ScoutC; }
+  bool isScoutCPlusPlus() const { return Flags && frontend::ScoutCPlusPlus; }
+  bool isScout() const { return isScoutC() || isScoutCPlusPlus(); }
+  // +========================================================================+
 
   static const LangStandard &getLangStandardForKind(Kind K);
   static const LangStandard *getLangStandardForName(StringRef Name);
