@@ -63,14 +63,15 @@ CGScoutRuntime::~CGScoutRuntime() {}
 llvm::Function *CGScoutRuntime::ModuleInitFunction() {
 
   std::string funcName;
-
+#if 0 //CUDA/OPENCL disabled for now
   if(CGM.getLangOpts().ScoutNvidiaGPU){
    funcName = "__scrt_init_cuda";
   } else if(CGM.getLangOpts().ScoutAMDGPU){
    funcName = "__scrt_init_opengl";
   } else {
+#endif
    funcName = "__scrt_init_cpu";
-  }
+  //}
 
   llvm::Function *scrtInit = CGM.getModule().getFunction(funcName);
   if(!scrtInit) {

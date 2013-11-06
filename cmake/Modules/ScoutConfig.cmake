@@ -177,7 +177,8 @@ endif()
   if(NOT CUDA_FOUND)
     #OpenCL support not currently working on Apple
     if(NOT APPLE)
-      find_package(OpenCL)
+# disable OpenCL for now
+#     find_package(OpenCL)
     endif()
   endif()
   if (OPENCL_FOUND)

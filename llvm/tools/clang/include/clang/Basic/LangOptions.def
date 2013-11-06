@@ -44,8 +44,7 @@
 // +==== Scout ==============================================================+
 LANGOPT(ScoutC,                       1, 0, "Scout C")
 LANGOPT(ScoutCPlusPlus,               1, 0, "Scout C++")
-LANGOPT(unistdFix           , 1, 0, "unistdFix")
-BENIGN_LANGOPT(DumpMeshLayouts ,      1, 0, "dumping the layout of IRgen'd meshes")
+BENIGN_LANGOPT(DumpMeshLayouts,       1, 0, "dumping the layout of IRgen'd meshes")
 BENIGN_LANGOPT(DumpMeshLayoutsSimple, 1, 0, "dumping the layout of IRgen'd meshes in a simple form")
 // +=========================================================================+
 

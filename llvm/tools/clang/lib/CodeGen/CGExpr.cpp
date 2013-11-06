@@ -2437,7 +2437,7 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
   // check if we are dealing w/ a mesh
   if(isa<MeshFieldDecl>(E->getMemberDecl())) {
     LValue LV;
-    return EmitScoutMemberExpr(E, getLinearIdx());
+    return EmitMeshMemberExpr(E, getLinearIdx());
   }
   // +========================================================================+
 
