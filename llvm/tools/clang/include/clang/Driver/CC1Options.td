@@ -545,8 +545,6 @@ def cl_std_EQ : Joined<["-"], "cl-std=">,
   HelpText<"OpenCL language standard to compile for">;
 
 // +===== Scout =============================================================+
-def unistdFix : Flag<["-"], "unistd-fix">,
-  HelpText<"include fixed unistd.h">;
 def gpu : Flag<["-"], "gpu">,
   HelpText<"Enable NVIDIA GPU support.">;
 // --- Disabled for now (AMD is off-version of us at present).

@@ -60,6 +60,7 @@ using namespace std;
 #include "scout/Runtime/opengl/opengl.h"
 #include "scout/Runtime/opengl/glyph_vertex.h"
 #include "scout/Runtime/opengl/glSDL.h"
+#include "scout/types.h"
 #include "scout/Runtime/gpu.h"
 #include "scout/Runtime/cpu/CpuInitialization.h"
 #include "scout/Runtime/init_mac.h"
