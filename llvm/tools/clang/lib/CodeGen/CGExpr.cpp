@@ -2894,12 +2894,12 @@ RValue CodeGenFunction::EmitCallExpr(const CallExpr *E,
 
   const Decl *TargetDecl = E->getCalleeDecl();
   if (const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(TargetDecl)) {
-// +==== Scout ===========================================================+
-    std::string name =  FD->getNameInfo().getAsString();
-    if (name == "CShift" || name == "CShiftI" || name == "CShiftF" || name == "CShiftD") 
-      return EmitCShiftExpr(E->arg_begin(), E->arg_end());
-// +======================================================================+
-    else if (unsigned builtinID = FD->getBuiltinID())
+    // +==== Scout ===========================================================+
+    // handle generic builtins like CShift
+    RValue RV;
+    if (EmitGenericBuiltinExpr(FD, E, &RV)) return RV;
+    // +======================================================================+
+    if (unsigned builtinID = FD->getBuiltinID())
       return EmitBuiltinExpr(FD, builtinID, E);
   }
 

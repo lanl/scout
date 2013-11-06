@@ -247,35 +247,42 @@ CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
 
 RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
 
+  // SC_TODO: we could remove the whole section if we don't need CShift{I,F,D} anymore
+  const Expr *A1E;
   //turn first arg into Expr
   if(const ImplicitCastExpr *CE = dyn_cast<ImplicitCastExpr>(*(ArgBeg))) {
+    // CShiftI, CShiftF, CshiftD get you here.
+    A1E = CE->getSubExpr();
+  } else if (const Expr *EE = dyn_cast<Expr>(*(ArgBeg))) {
+    // "generic" CShift gets you here
+    A1E = EE;
+  } else {
+    assert(false && "cshift first arg not expr");
+  }
 
-    // extract the cshift args
-    SmallVector< llvm::Value *, 3 > args;
-    while(++ArgBeg != ArgEnd) {
-      RValue RV = EmitAnyExpr(*(ArgBeg));
-      if(RV.isAggregate()) {
-        args.push_back(RV.getAggregateAddr());
-      } else {
-        args.push_back(RV.getScalarVal());
-      }
-    }
-
-    // zero out remaining args
-    for(unsigned i = args.size(); i < 3; ++i) {
-      args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
-    }
-
-    // get the member expr for first arg.
-    if(const MemberExpr *E = dyn_cast<MemberExpr>(CE->getSubExpr())) {
-      // make sure this is a mesh
-      if(isa<MeshFieldDecl>(E->getMemberDecl())) {
-        // get the correct mesh member
-        LValue LV = EmitMeshMemberExpr(E, getCShiftLinearIdx(args));
-        return RValue::get(Builder.CreateLoad(LV.getAddress()));
-      }
+  // extract the cshift args
+  SmallVector< llvm::Value *, 3 > args;
+  while(++ArgBeg != ArgEnd) {
+    RValue RV = EmitAnyExpr(*(ArgBeg));
+    if(RV.isAggregate()) {
+      args.push_back(RV.getAggregateAddr());
     } else {
-      // SC_TODO: should cshift also work on forall array?
+      args.push_back(RV.getScalarVal());
+    }
+  }
+
+  // zero out remaining args
+  for(unsigned i = args.size(); i < 3; ++i) {
+    args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
+  }
+
+  // get the member expr for first arg.
+  if(const MemberExpr *E = dyn_cast<MemberExpr>(A1E)) {
+    // make sure this is a mesh
+    if(isa<MeshFieldDecl>(E->getMemberDecl())) {
+      // get the correct mesh member
+      LValue LV = EmitMeshMemberExpr(E, getCShiftLinearIdx(args));
+      return RValue::get(Builder.CreateLoad(LV.getAddress()));
     }
   }
   assert(false && "Failed to translate Scout cshift expression to LLVM IR!");

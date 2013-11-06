@@ -1984,9 +1984,11 @@ public:
   LValue EmitLValueForMeshField(LValue base, const MeshFieldDecl *field, llvm::Value *Index);
   llvm::Value *getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args);
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
-  //LValue EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef memberName,
-  //                          MySmallVector foo = MySmallVector());
 
+  bool EmitScoutBuiltinExpr(const FunctionDecl *FD,
+                         unsigned BuiltinID, const CallExpr *E, RValue *Rv);
+
+  bool EmitGenericBuiltinExpr(const FunctionDecl *FD, const CallExpr *E, RValue *RV);
 
   llvm::Value *CreateMemAlloc(uint64_t numElts);
   llvm::Value *CreateMemAllocForValue(llvm::Value* numEltsValue);
