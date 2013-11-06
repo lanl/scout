@@ -247,12 +247,12 @@ void __sc_debugger_dump_mesh_field(size_t width,
   cerr << endl;
 }
 
-void __scrt_init_cpu() {
+extern "C" void __scrt_init_cpu() {
   DeviceList *devicelist = DeviceList::Instance();
   cpu::scInitialize(*devicelist);
 }
 
-void __scrt_init_cuda() {
+extern "C" void __scrt_init_cuda() {
 #ifdef SC_ENABLE_CUDA
   DeviceList *devicelist = DeviceList::Instance();
   glSDL *glsdl = glSDL::Instance();
@@ -264,7 +264,7 @@ void __scrt_init_cuda() {
 #endif 
 }
 
-void __scrt_init_opencl() {
+extern "C" void __scrt_init_opencl() {
 #ifdef SC_ENABLE_OPENCL
   __sc_init_opencl();
 #else
@@ -285,3 +285,4 @@ float cshift(float a, int dx, int axis){
 int cshift(int a, int dx, int axis){
   return 0.0;
 }
+
