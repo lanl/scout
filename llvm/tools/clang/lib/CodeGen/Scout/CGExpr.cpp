@@ -69,29 +69,22 @@ CodeGenFunction::EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND) {
 }
 */
 
-bool
-CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index, LValue *LV) {
-  Expr *BaseExpr = E->getBase();
-  NamedDecl *MND = E->getMemberDecl(); //this memberDecl is for the "Implicit" mesh
+LValue
+CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index) {
 
-  if (MeshFieldDecl *MFD = dyn_cast<MeshFieldDecl>(MND)) {
-    DeclRefExpr *D = dyn_cast<DeclRefExpr>(BaseExpr);
-    VarDecl *VD = dyn_cast<VarDecl>(D->getDecl());
+  DeclRefExpr *D = dyn_cast<DeclRefExpr>(E->getBase());
 
-    if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(VD)) {
+  // inside forall we are referencing the implicit mesh e.g. 'c' in forall cells c in mesh
+  if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(D->getDecl())) {
 
-      // lookup underlying mesh instead of implicit mesh
-      llvm::Value *V = LocalDeclMap.lookup(IMPD->getMeshVarDecl());
-      // need underlying mesh to make LValue
-      LValue BaseLV  = MakeAddrLValue(V, E->getType());
-
-      *LV = EmitLValueForMeshField(BaseLV, MFD, Index);
-      return true;
-    } else {
-      llvm_unreachable("Cannot lookup underlying mesh");
-    }
+    // lookup underlying mesh instead of implicit mesh
+    llvm::Value *V = LocalDeclMap.lookup(IMPD->getMeshVarDecl());
+    // need underlying mesh to make LValue
+    LValue BaseLV  = MakeAddrLValue(V, E->getType());
+    // assume we have already checked that we are working w/ a mesh and cast to MeshField Decl
+    return EmitLValueForMeshField(BaseLV, cast<MeshFieldDecl>(E->getMemberDecl()), Index);
   } else {
-    return false;
+    llvm_unreachable("Cannot lookup underlying mesh");
   }
 }
 
@@ -275,10 +268,14 @@ RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
 
     // get the member expr for first arg.
     if(const MemberExpr *E = dyn_cast<MemberExpr>(CE->getSubExpr())) {
-      LValue LV;
-      // get the correct mesh member
-      EmitMeshMemberExpr(E, getCShiftLinearIdx(args), &LV);
-      return RValue::get(Builder.CreateLoad(LV.getAddress()));
+      // make sure this is a mesh
+      if(isa<MeshFieldDecl>(E->getMemberDecl())) {
+        // get the correct mesh member
+        LValue LV = EmitMeshMemberExpr(E, getCShiftLinearIdx(args));
+        return RValue::get(Builder.CreateLoad(LV.getAddress()));
+      }
+    } else {
+      // SC_TODO: should cshift also work on forall array?
     }
   }
   assert(false && "Failed to translate Scout cshift expression to LLVM IR!");

@@ -1980,7 +1980,7 @@ public:
 
   //LValue EmitScoutColorDeclRefLValue(const NamedDecl *ND);
   //LValue EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND);
-  bool EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index, LValue *LV);
+  LValue EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index);
   LValue EmitLValueForMeshField(LValue base, const MeshFieldDecl *field, llvm::Value *Index);
   llvm::Value *getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args);
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
