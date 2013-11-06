@@ -461,6 +461,14 @@ public:
     return *CUDARuntime;
   }
 
+  // ===== Scout ============================================================
+  /// getScoutRuntime() - Return a reference to the configured scout runtime.
+  CGScoutRuntime &getScoutRuntime() {
+    assert(ScoutRuntime != 0);
+    return *ScoutRuntime;
+  }
+  // ========================================================================
+
   ARCEntrypoints &getARCEntrypoints() const {
     assert(getLangOpts().ObjCAutoRefCount && ARCData != 0);
     return *ARCData;
