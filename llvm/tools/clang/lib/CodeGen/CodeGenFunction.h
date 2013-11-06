@@ -320,7 +320,7 @@ public:
   llvm::Value *Colors;
   //const ForAllArrayStmt* CurrentForAllArrayStmt;
 
-  inline llvm::Value *getGlobalIdx() {
+  inline llvm::Value *getLinearIdx() {
     return InductionVar[3];
   }
 
@@ -1982,6 +1982,7 @@ public:
   //LValue EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND);
   bool EmitScoutMemberExpr(const MemberExpr *E, LValue *LV);
   LValue EmitLValueForMeshField(LValue base, const MeshFieldDecl *field, llvm::Value *Index);
+  llvm::Value *getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args);
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
   LValue EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef memberName,
                             MySmallVector foo = MySmallVector());

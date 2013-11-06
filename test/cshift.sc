@@ -51,54 +51,37 @@
  * test for 2d mesh indexing ...
  *
  * ##### 
- */ 
+ */
+#include <unistd.h>
+#include <signal.h>
+#include <stdio.h> 
 
 uniform mesh AMeshType{
 cells:
-  int field1;
-  int field2;
+  int a;
+  int b;
 };
 
 
 int main(int argc, char *argv[])
 {
 
-  // declare a 2d mesh
-  AMeshType amesh[3, 3];
+  AMeshType m[10];
 
-  int outfield[3*3];
-  int outfield2[3*3];
-
-  for (int i = 0; i < 3*3; i++) {
-    outfield[i] = -1;
+  forall cells c in m {
+    c.a = Position().x;
   }
 
-  // init cells at z dim 2 be 1, then dim 0 and 1 to be 0
-  forall cells c in amesh {
-    int val;
-    if (Position().y == 2) {
-      val = 1;
-    } else {
-      val = 0;
+  forall cells c in m {
+    c.b = CShift(c.a,1);
+    printf("%d %d\n", c.a, c.b);
+  }
+
+  forall cells c in m {
+    if(c.b != (c.a+1)%10) {
+      printf("bad val %d\n", c.b);
+      kill(getpid(), SIGTERM);
     }
-    field1 = val;
-    int index = Position().y*3 + Position().x;
-    outfield[index] = val;
-    field2 = val;
   }
-
-  // vals should remain unchanged, because there are zeros at z dim 1
-  forall cells c in amesh {
-    int val;
-    if (Position().y == 0) val = CShift(c.field2, 0, 1); else val = field2;
-    field1 = val;
-    int index = Position().y*3 + Position().x;
-    outfield2[index] = val;
-  }
-
-  for (int i = 0; i < 3*3; i++) {
-    if (outfield[i] != outfield2[i]) return -1;
-  }
-
   return 0;
 }

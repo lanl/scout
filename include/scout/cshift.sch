@@ -1,9 +1,11 @@
 /*
+ *
  * ###########################################################################
- * Copyright (c) 2010, Los Alamos National Security, LLC.
+ *
+ * Copyright (c) 2013, Los Alamos National Security, LLC.
  * All rights reserved.
- * 
- *  Copyright 2010. Los Alamos National Security, LLC. This software was
+ *
+ *  Copyright 2013. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
  *  National Security, LLC for the U.S. Department of Energy. The
@@ -20,10 +22,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- * 
+ *
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided 
+ *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -31,7 +33,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -45,60 +47,17 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ########################################################################### 
- * 
- * Notes
- * test for 2d mesh indexing ...
  *
- * ##### 
- */ 
+ */
 
-uniform mesh AMeshType{
-cells:
-  int field1;
-  int field2;
-};
+#ifndef __SCOUT_CSHIFT_SCH__
+#define __SCOUT_CSHIFT_SCH__
 
+// this is a hack as Cshift is not really a function call
+// Codegen just turns it into the correct element.
+template<class T> T CShift(T,int);
+template<class T> T CShift(T,int,int);
+template<class T> T CShift(T,int,int,int);
 
-int main(int argc, char *argv[])
-{
+#endif
 
-  // declare a 2d mesh
-  AMeshType amesh[3, 3];
-
-  int outfield[3*3];
-  int outfield2[3*3];
-
-  for (int i = 0; i < 3*3; i++) {
-    outfield[i] = -1;
-  }
-
-  // init cells at z dim 2 be 1, then dim 0 and 1 to be 0
-  forall cells c in amesh {
-    int val;
-    if (Position().y == 2) {
-      val = 1;
-    } else {
-      val = 0;
-    }
-    field1 = val;
-    int index = Position().y*3 + Position().x;
-    outfield[index] = val;
-    field2 = val;
-  }
-
-  // vals should remain unchanged, because there are zeros at z dim 1
-  forall cells c in amesh {
-    int val;
-    if (Position().y == 0) val = CShift(c.field2, 0, 1); else val = field2;
-    field1 = val;
-    int index = Position().y*3 + Position().x;
-    outfield2[index] = val;
-  }
-
-  for (int i = 0; i < 3*3; i++) {
-    if (outfield[i] != outfield2[i]) return -1;
-  }
-
-  return 0;
-}

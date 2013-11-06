@@ -25,6 +25,9 @@
 using namespace clang;
 using namespace CodeGen;
 
+static const char *DimNames[]   = { "width", "height", "depth" };
+static const char *IndexNames[] = { "x", "y", "z"};
+
 // We use 'IRNameStr' to hold the generated names we use for
 // various values in the IR building.  We've added a static
 // buffer to avoid the need for a lot of fine-grained new and
@@ -82,7 +85,7 @@ CodeGenFunction::EmitScoutMemberExpr(const MemberExpr *E, LValue *LV) {
       // need underlying mesh to make LValue
       LValue BaseLV  = MakeAddrLValue(V, E->getType());
 
-      *LV = EmitLValueForMeshField(BaseLV, MFD, Builder.CreateLoad(getGlobalIdx(), "forall.linearidx"));
+      *LV = EmitLValueForMeshField(BaseLV, MFD, Builder.CreateLoad(getLinearIdx(), "forall.linearidx"));
       return true;
     } else {
       llvm_unreachable("Cannot lookup underlying mesh");
@@ -183,7 +186,6 @@ CodeGenFunction::EmitLValueForMeshField(LValue base,
     addr = EmitFieldAnnotations(field, addr);
 
   // get the correct element of the field depending on the index
-  //llvm::Value *index = Builder.CreateLoad(Index, "forall.linearidx");
   sprintf(IRNameStr, "%s.%s.element", mesh->getName().str().c_str(),field->getName().str().c_str());
   addr = Builder.CreateInBoundsGEP(addr, Index, IRNameStr);
 
@@ -214,6 +216,76 @@ CodeGenFunction::EmitLValueForMeshField(LValue base,
 
 }
 
+// compute the linear index based on cshift parameters
+llvm::Value *
+CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
+
+  //get the dimensions (Width, Height, Depth)
+  SmallVector< llvm::Value *, 3 > dims;
+  for(unsigned i = 0; i < 3; ++i) {
+    sprintf(IRNameStr, "%s", DimNames[i]);
+    if (LoopBounds[i]) dims.push_back(Builder.CreateLoad(LoopBounds[i], IRNameStr));
+    else dims.push_back(llvm::ConstantInt::get(Int32Ty, 1)); // missing dims are size 1
+  }
+
+  SmallVector< llvm::Value *, 3 > indices;
+  for(unsigned i = 0; i < 3; ++i) {
+    sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
+    llvm::Value *iv   = Builder.CreateLoad(InductionVar[i], IRNameStr);
+
+    // take index and add offset from cshift
+    sprintf(IRNameStr, "cshift.rawindex.%s", IndexNames[i]);
+    llvm::Value *rawIndex = Builder.CreateAdd(iv, args[i], IRNameStr);
+
+    // make sure it is in range or wrap
+    sprintf(IRNameStr, "cshift.index.%s", IndexNames[i]);
+    indices.push_back(Builder.CreateURem(rawIndex, dims[i], IRNameStr));
+  }
+
+  // linearIdx = x + Height * (y + Width * z)
+  llvm::Value *Wz     = Builder.CreateMul(dims[0], indices[2], "WidthxZ");
+  llvm::Value *yWz    = Builder.CreateAdd(indices[1], Wz, "ypWidthxZ");
+  llvm::Value *HyWz   = Builder.CreateMul(dims[2], yWz, "HxypWidthxZ");
+  return Builder.CreateAdd(indices[0], HyWz, "cshift.linearidx");
+
+
+#if 0
+  llvm::Value *idx   = Builder.CreateLoad(getLinearIdx());
+  // idx + x
+  llvm::Value *add   = Builder.CreateAdd(idx, args[0]);
+  // (idx + x) % W
+  llvm::Value *rem   = Builder.CreateURem(add, dims[0]);
+  // idx/Width
+  llvm::Value *div   = Builder.CreateUDiv(idx, dims[0]);
+  // (idx/Width) % Height
+  llvm::Value *rem2  = Builder.CreateURem(div, dims[1]);
+  // ((idx/Width) % Height) + y
+  llvm::Value *add2  = Builder.CreateAdd(rem2, args[1]);
+  // (((idx/Width) % Height) + y) % Height
+  llvm::Value *rem3  = Builder.CreateURem(add2, dims[1]);
+  // Width*Height
+  llvm::Value *mul   = Builder.CreateMul(dims[0], dims[1]);
+  // idx/(Width*Height)
+  llvm::Value *div2  = Builder.CreateUDiv(idx, mul);
+  // (idx/(Width*Height)) % Depth
+  llvm::Value *rem4  = Builder.CreateURem(div2, dims[2]);
+  // z + (idx/(Width*Height)) % Depth
+  llvm::Value *add3  = Builder.CreateAdd(args[2], rem4);
+  // (z + (idx/(Width*Height)) % Depth) % Depth
+  llvm::Value *rem5  = Builder.CreateURem(add3, dims[2]);
+  // ((z + (idx/(Width*Height)) % Depth) % Depth) * Height
+  llvm::Value *mul2 = Builder.CreateMul(rem5, dims[1]);
+  // ((z + (idx/(Width*Height)) % Depth) % Depth) * Height + (((idx/Width) % Height) + y) % Height
+  llvm::Value *add4   = Builder.CreateAdd(mul2, rem3);
+  // (((z + (idx/(Width*Height)) % Depth) % Depth) * Height + (((idx/Width) % Height) + y) % Height) * Width
+  llvm::Value *mul3  = Builder.CreateMul(add4, dims[0]);
+  //  ((((z + (idx/(Width*Height)) % Depth) % Depth) * Height + (((idx/Width) % Height) + y) % Height) * Width) + (idx + x) % W
+  return Builder.CreateAdd(mul3, rem);
+#endif
+
+}
+
+
 RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
   DEBUG_OUT("EmitCShiftExpr");
 
@@ -233,6 +305,7 @@ RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
           // need underlying mesh to make LValue
           LValue BaseLV  = MakeAddrLValue(V, E->getType());
 
+          // extract the cshift args
           SmallVector< llvm::Value *, 3 > args;
           while(++ArgBeg != ArgEnd) {
             RValue RV = EmitAnyExpr(*(ArgBeg));
@@ -242,32 +315,13 @@ RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
               args.push_back(RV.getScalarVal());
             }
           }
-          llvm::errs() << "nargs " << args.size() << "\n";
-          for(unsigned i = 0; i < args.size(); i++) {
-            llvm::errs() << "arg " << i << " " << *args[i] << "\n";
-          }
-
-          SmallVector< llvm::Value *, 3 > dims;
-          llvm::errs() << "ndims " << LoopBounds.size() << "\n";
-          for(unsigned i = 0; i < LoopBounds.size(); ++i) {
-            if (LoopBounds[i]) dims.push_back(Builder.CreateLoad(LoopBounds[i])); //SC_TODO IR naming
-            else dims.push_back(llvm::ConstantInt::get(Int32Ty, 1));
-            llvm::errs() << "dims " << *dims[i] << "\n";
-          }
 
           // zero out remaining args
           for(unsigned i = args.size(); i < 3; ++i) {
              args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
           }
 
-          // offset = x + Height * (y + Width * z)
-          llvm::Value *Wz     = Builder.CreateMul(dims[0], args[2], "WidthxZ");
-          llvm::Value *yWz    = Builder.CreateAdd(args[1], Wz, "ypWidthxZ");
-          llvm::Value *HyWz   = Builder.CreateMul(dims[2], yWz, "HxypWidthxZ");
-          llvm::Value *offset = Builder.CreateAdd(args[0], HyWz, "offset");
-          llvm::Value *index  = Builder.CreateAdd(Builder.CreateLoad(getGlobalIdx(),
-              "forall.linearidx"), offset, "cshift.linearidx");
-          LValue LV = EmitLValueForMeshField(BaseLV, MFD,  index);
+          LValue LV = EmitLValueForMeshField(BaseLV, MFD, getCShiftLinearIdx(args));
           return RValue::get(Builder.CreateLoad(LV.getAddress()));
         }
       }
@@ -372,21 +426,21 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD,
     }
 
     llvm::Value *idx   = getGlobalIdx();
-    llvm::Value *add   = Builder.CreateAdd(idx, vals[0]);
-    llvm::Value *rem   = Builder.CreateURem(add, dims[0]);
-    llvm::Value *div   = Builder.CreateUDiv(idx, dims[0]);
-    llvm::Value *rem1  = Builder.CreateURem(div, dims[1]);
-    llvm::Value *add2  = Builder.CreateAdd(rem1, vals[1]);
-    llvm::Value *rem3  = Builder.CreateURem(add2, dims[1]);
-    llvm::Value *mul   = Builder.CreateMul(dims[0], dims[1]);
-    llvm::Value *div4  = Builder.CreateUDiv(idx, mul);
-    llvm::Value *rem5  = Builder.CreateURem(div4, dims[2]);
-    llvm::Value *add7  = Builder.CreateAdd(vals[2], rem5);
-    llvm::Value *rem8  = Builder.CreateURem(add7, dims[2]);
-    llvm::Value *mul12 = Builder.CreateMul(rem8, dims[1]);
-    llvm::Value *tmp   = Builder.CreateAdd(mul12, rem3);
-    llvm::Value *tmp1  = Builder.CreateMul(tmp, dims[0]);
-    arg = Builder.CreateAdd(tmp1, rem);
+    llvm::Value *add   = Builder.CreateAdd(idx, vals[0]);    // idx + x
+    llvm::Value *rem   = Builder.CreateURem(add, dims[0]);   // (idx + x) % W
+    llvm::Value *div   = Builder.CreateUDiv(idx, dims[0]);   // idx/Width
+    llvm::Value *rem1  = Builder.CreateURem(div, dims[1]);   // (idx/Width) % Height
+    llvm::Value *add2  = Builder.CreateAdd(rem1, vals[1]);   // ((idx/Width) % Height) + y
+    llvm::Value *rem3  = Builder.CreateURem(add2, dims[1]);  // (((idx/Width) % Height) + y) % Height
+    llvm::Value *mul   = Builder.CreateMul(dims[0], dims[1]);// Width*Height
+    llvm::Value *div4  = Builder.CreateUDiv(idx, mul);       // idx/(Width*Height)
+    llvm::Value *rem5  = Builder.CreateURem(div4, dims[2]);  // (idx/(Width*Height)) % Depth
+    llvm::Value *add7  = Builder.CreateAdd(vals[2], rem5);   // z + (idx/(Width*Height)) % Depth
+    llvm::Value *rem8  = Builder.CreateURem(add7, dims[2]);  // (z + (idx/(Width*Height)) % Depth) % Depth
+    llvm::Value *mul12 = Builder.CreateMul(rem8, dims[1]);   // ((z + (idx/(Width*Height)) % Depth) % Depth) * Height
+    llvm::Value *tmp   = Builder.CreateAdd(mul12, rem3);     // ((z + (idx/(Width*Height)) % Depth) % Depth) * Height + (((idx/Width) % Height) + y) % Height
+    llvm::Value *tmp1  = Builder.CreateMul(tmp, dims[0]);    // (((z + (idx/(Width*Height)) % Depth) % Depth) * Height + (((idx/Width) % Height) + y) % Height) * Width
+    arg = Builder.CreateAdd(tmp1, rem); //  ((((z + (idx/(Width*Height)) % Depth) % Depth) * Height + (((idx/Width) % Height) + y) % Height) * Width) + (idx + x) % W
   }
 
   // getFieldIndex can be used on a mesh decl to lookup the
