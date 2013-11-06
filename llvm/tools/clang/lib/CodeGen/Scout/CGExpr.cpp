@@ -82,7 +82,7 @@ CodeGenFunction::EmitScoutMemberExpr(const MemberExpr *E, LValue *LV) {
       // need underlying mesh to make LValue
       LValue BaseLV  = MakeAddrLValue(V, E->getType());
 
-      *LV = EmitLValueForMeshField(BaseLV, MFD);
+      *LV = EmitLValueForMeshField(BaseLV, MFD, Builder.CreateLoad(getGlobalIdx(), "forall.linearidx"));
       return true;
     } else {
       llvm_unreachable("Cannot lookup underlying mesh");
@@ -94,7 +94,7 @@ CodeGenFunction::EmitScoutMemberExpr(const MemberExpr *E, LValue *LV) {
 
 LValue
 CodeGenFunction::EmitLValueForMeshField(LValue base,
-                                     const MeshFieldDecl *field) {
+                                     const MeshFieldDecl *field, llvm::Value *Index) {
 
   // This follows very closely with the details used to
   // emit a record member from the clang code. EmitLValueForField()
@@ -183,10 +183,9 @@ CodeGenFunction::EmitLValueForMeshField(LValue base,
     addr = EmitFieldAnnotations(field, addr);
 
   // get the correct element of the field depending on the index
-  // in getGlobalIdx()
-  llvm::Value *index = Builder.CreateLoad(getGlobalIdx(), "forall.linearidx");
+  //llvm::Value *index = Builder.CreateLoad(Index, "forall.linearidx");
   sprintf(IRNameStr, "%s.%s.element", mesh->getName().str().c_str(),field->getName().str().c_str());
-  addr = Builder.CreateInBoundsGEP(addr, index, IRNameStr);
+  addr = Builder.CreateInBoundsGEP(addr, Index, IRNameStr);
 
   LValue LV = MakeAddrLValue(addr, type, alignment);
   LV.getQuals().addCVRQualifiers(cvr);
@@ -215,6 +214,69 @@ CodeGenFunction::EmitLValueForMeshField(LValue base,
 
 }
 
+RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
+  DEBUG_OUT("EmitCShiftExpr");
+
+  if(const ImplicitCastExpr *CE = dyn_cast<ImplicitCastExpr>(*(ArgBeg))) {
+    if(const MemberExpr *E = dyn_cast<MemberExpr>(CE->getSubExpr())) {
+      Expr *BaseExpr = E->getBase();
+      NamedDecl *MND = E->getMemberDecl(); //this memberDecl is for the "Implicit" mesh
+
+     if (MeshFieldDecl *MFD = dyn_cast<MeshFieldDecl>(MND)) {
+       DeclRefExpr *D = dyn_cast<DeclRefExpr>(BaseExpr);
+       VarDecl *VD = dyn_cast<VarDecl>(D->getDecl());
+
+        if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(VD)) {
+
+          // lookup underlying mesh instead of implicit mesh
+          llvm::Value *V = LocalDeclMap.lookup(IMPD->getMeshVarDecl());
+          // need underlying mesh to make LValue
+          LValue BaseLV  = MakeAddrLValue(V, E->getType());
+
+          SmallVector< llvm::Value *, 3 > args;
+          while(++ArgBeg != ArgEnd) {
+            RValue RV = EmitAnyExpr(*(ArgBeg));
+            if(RV.isAggregate()) {
+              args.push_back(RV.getAggregateAddr());
+            } else {
+              args.push_back(RV.getScalarVal());
+            }
+          }
+          llvm::errs() << "nargs " << args.size() << "\n";
+          for(unsigned i = 0; i < args.size(); i++) {
+            llvm::errs() << "arg " << i << " " << *args[i] << "\n";
+          }
+
+          SmallVector< llvm::Value *, 3 > dims;
+          llvm::errs() << "ndims " << LoopBounds.size() << "\n";
+          for(unsigned i = 0; i < LoopBounds.size(); ++i) {
+            if (LoopBounds[i]) dims.push_back(Builder.CreateLoad(LoopBounds[i])); //SC_TODO IR naming
+            else dims.push_back(llvm::ConstantInt::get(Int32Ty, 1));
+            llvm::errs() << "dims " << *dims[i] << "\n";
+          }
+
+          // zero out remaining args
+          for(unsigned i = args.size(); i < 3; ++i) {
+             args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
+          }
+
+          // offset = x + Height * (y + Width * z)
+          llvm::Value *Wz     = Builder.CreateMul(dims[0], args[2], "WidthxZ");
+          llvm::Value *yWz    = Builder.CreateAdd(args[1], Wz, "ypWidthxZ");
+          llvm::Value *HyWz   = Builder.CreateMul(dims[2], yWz, "HxypWidthxZ");
+          llvm::Value *offset = Builder.CreateAdd(args[0], HyWz, "offset");
+          llvm::Value *index  = Builder.CreateAdd(Builder.CreateLoad(getGlobalIdx(),
+              "forall.linearidx"), offset, "cshift.linearidx");
+          LValue LV = EmitLValueForMeshField(BaseLV, MFD,  index);
+          return RValue::get(Builder.CreateLoad(LV.getAddress()));
+        }
+      }
+    }
+  }
+  assert(false && "Failed to translate Scout cshift expression to LLVM IR!");
+}
+
+#if 0
 RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
   DEBUG_OUT("EmitCShiftExpr");
 
@@ -341,4 +403,5 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD,
                       // creating the GEP instruction...
   return MakeAddrLValue(addr, Ty);
 }
+#endif
 
