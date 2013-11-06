@@ -2894,7 +2894,7 @@ RValue CodeGenFunction::EmitCallExpr(const CallExpr *E,
     if (unsigned builtinID = FD->getBuiltinID())
       return EmitBuiltinExpr(FD, builtinID, E);
     // +==== Scout ===========================================================+
-    else if(FD->getNameInfo().getAsString() == "cshift")
+    else if(FD->getNameInfo().getAsString() == "CShift")
       return EmitCShiftExpr(E->arg_begin(), E->arg_end());
     // +======================================================================+
   }

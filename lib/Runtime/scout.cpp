@@ -273,7 +273,7 @@ extern "C" void __scrt_init_opencl() {
   exit(1);
 #endif // SC_ENABLE_OPENCL
 }
-
+#if 0
 double cshift(double a, int dx, int axis){
   return 0.0;
 }
@@ -285,4 +285,4 @@ float cshift(float a, int dx, int axis){
 int cshift(int a, int dx, int axis){
   return 0.0;
 }
-
+#endif

@@ -75,13 +75,13 @@ int main(int argc, char *argv[])
   // init cells at z dim 2 be 0, then dim 0 and 1 to be 0
   forall cells c in amesh {
     int val;
-    if (c.position.z == 2) {
+    if (Position().z == 2) {
       val = 1;
     } else {
       val = 0;
     }
     field1 = val;
-    int index = (c.position.z*3 + c.position.y)*3 + c.position.x;
+    int index = (Position().z*3 + Position().y)*3 + Position().x;
     outfield[index] = val;
     field2 = val;
   }
@@ -89,9 +89,9 @@ int main(int argc, char *argv[])
   // vals should remain unchanged, because there are zeros at z dim 1
   forall cells c in amesh {
     int val;
-    if (c.position.z == 0) val = cshift(c.field2, 0, 0, 1); else val = field2;
+    if (Position().z == 0) val = CShift(c.field2, 0, 0, 1); else val = field2;
     field1 = val;
-    int index = (c.position.z*3 + c.position.y)*3 + c.position.x;
+    int index = (Position().z*3 + Position().y)*3 + Position().x;
     outfield2[index] = val;
   }
 
