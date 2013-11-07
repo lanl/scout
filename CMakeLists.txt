@@ -70,8 +70,7 @@ project(Scout)
 
   include(cmake/Modules/ScoutConfig.cmake)
   include(cmake/Modules/ScoutLLVMConfig.cmake)
-
-  enable_testing()
+  include(CTest)
 
   set(CMAKE_VERBOSE_MAKEFILE OFF)
 
