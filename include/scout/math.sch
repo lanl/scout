@@ -55,13 +55,14 @@
 
 #include "scout/types.sch"
 
-#if defined(__scout_cxx__)
+#if defined(__scout_cxx__) || defined(__cplusplus)
  #include <cmath>
  #include <algorithm>
 #else
  #include <math.h>
 #endif
 
+#if defined(__scout_cxx__) || defined(__cplusplus)
 // Apologies in advance...  This is a messy set of macros for building
 // type-centric versions of the clamp functions.  You would think there
 // would be a decent way to do this in C++ via templates and
@@ -171,7 +172,7 @@ SC_VECTOR4_CLAMP_FUNC(double4, double);
  SC_VECTORN_CLAMP_FUNC(double16, double, 16);
  */
 // +--------------------------------------------------------------------------+
-
+#endif
 
 #endif
 

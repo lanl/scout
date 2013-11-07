@@ -127,6 +127,7 @@ extern color_channel_t mix(color_channel_t ch0,
                            color_channel_t ch1,
                            color_channel_t alpha);
 
+#if defined(__scout_cxx__)
 /// Linear blend of the two colors with a single alpha weighting.
 /// The blend is straightforward and is implemented as a vector
 /// operation: c0 + (c1 - c0) * alpha.  As with other color
@@ -145,6 +146,7 @@ extern color_t mix(const color_t         &c0,
 extern color_t mix(const color_t &c0,
                    const color_t &c1,
                    const color_t &alpha);
+#endif
 // +--------------------------------------------------------------------------+
 
 #endif
