@@ -58,8 +58,8 @@ INCLUDE(CMakeTestCompilerCommon)
 IF(NOT CMAKE_SCC_COMPILER_WORKS)
   PrintTestCompilerStatus("SCC" "")
   FILE(WRITE ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/testSCCCompiler.sc 
-    "#ifndef __cplusplus\n"
-    "# error \"The CMAKE_SCC_COMPILER is set to a C compiler\"\n"
+    "#ifdef __cplusplus\n"
+    "# error \"The CMAKE_SCC_COMPILER is set to a CPP compiler\"\n"
     "#endif\n"
     "int main(){return 0;}\n")
   TRY_COMPILE(CMAKE_SCC_COMPILER_WORKS ${CMAKE_CURRENT_BINARY_DIR} 

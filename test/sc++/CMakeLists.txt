@@ -48,6 +48,7 @@
 #
 ###########################################################################
 #
+
 include(${CMAKE_BINARY_DIR}/CMake/Modules/Configuration.cmake)
 
 set(CMAKE_MODULE_PATH
@@ -55,27 +56,27 @@ set(CMAKE_MODULE_PATH
   ${CMAKE_MODULE_PATH}
 )
 
-
-project(scout_test_scc SCC SCXX C CXX)
-
+#C and CXX are here as we need to find them for findMPI to work
+project(scout_test_scxx)
+    
   cmake_minimum_required(VERSION 2.8.9)
 
-  include(CTest)
+  # Note: By default we pull in all the .scpp source files in this
+  # directory for inclusion into the regression checks.  If you want do
+  # build more complex tests we suggest creating a subdirectory for the
+  # source.
+  #
+  file(GLOB SC_SRCS *.scpp) 
 
-  include(${SCOUT_CMAKE_DIR}/ScoutConfig.cmake)
-
-  set(SCOUT_REGRESSION_DIR ${CMAKE_CURRENT_BINARY_DIR}/../../test)
-  set(SCOUT_BINARY_REGRESSION_DIR ${CMAKE_CURRENT_BINARY_DIR})
-
-  add_definitions(-DSC_REG_DATA_PATH=${SCOUT_REGRESSION_DIR}/data)
-  add_definitions(-DSC_REG_BIN_PATH=${SCOUT_BINARY_REGRESSION_DIR})
-
-  set(CMAKE_VERBOSE_MAKEFILE OFF)
-
-  if(DEFINED ENV{SDLDIR})
-    set(CMAKE_SCC_LINK_FLAGS -L$ENV{SDLDIR}/lib)
-  endif()
-
-  add_subdirectory(scc)
-  add_subdirectory(sc++)
+  # Add an executable and test entry for each source file...
+  foreach (test ${SC_SRCS})
+    get_filename_component(tname ${test} NAME_WE) 
+    if (NOT tname) 
+      message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
+    else (NOT tname)
+      add_executable(${tname} ${test})
+      add_test(${tname} ${CMAKE_CURRENT_BINARY_DIR}/${tname})
+      message(" + added runtime regression test entry: ${tname}")
+    endif(NOT tname)
+  endforeach(test)
 
