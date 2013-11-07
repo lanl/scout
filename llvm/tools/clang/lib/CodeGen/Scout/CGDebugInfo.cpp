@@ -55,6 +55,39 @@ getUniqueMeshTypeName(const MeshType *Ty, CodeGenModule &CGM,
   return FullName;
 }
 
+void CGDebugInfo::completeType(const MeshDecl *MD) {
+  if (DebugKind > CodeGenOptions::LimitedDebugInfo ||
+      !CGM.getLangOpts().CPlusPlus)
+    if(const UniformMeshDecl *UMD = dyn_cast<UniformMeshDecl>(MD))
+      completeRequiredType(UMD);
+    //SC_TODO: other meth types
+}
+
+void CGDebugInfo::completeRequiredType(const UniformMeshDecl *MD) {
+  if (const CXXRecordDecl *CXXDecl = dyn_cast<CXXRecordDecl>(MD))
+    if (CXXDecl->isDynamicClass())
+      return;
+
+  QualType Ty = CGM.getContext().getUniformMeshType(MD);
+  llvm::DIType T = getTypeOrNull(Ty);
+  if (T && T.isForwardDecl())
+    completeClassData(MD);
+}
+
+void CGDebugInfo::completeClassData(const UniformMeshDecl *MD) {
+  if (DebugKind <= CodeGenOptions::DebugLineTablesOnly)
+    return;
+  QualType Ty = CGM.getContext().getUniformMeshType(MD);
+  void* TyPtr = Ty.getAsOpaquePtr();
+  if (CompletedTypeCache.count(TyPtr))
+    return;
+  llvm::DIType Res = CreateTypeDefinition(Ty->castAs<UniformMeshType>());
+  assert(!Res.isForwardDecl());
+  CompletedTypeCache[TyPtr] = Res;
+  TypeCache[TyPtr] = Res;
+}
+
+
 
 //===----------------------------------------------------------------------===//
 // Uniform Mesh debug support

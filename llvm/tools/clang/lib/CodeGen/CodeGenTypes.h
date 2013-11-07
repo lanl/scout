@@ -183,6 +183,10 @@ public:
   /// replace the 'opaque' type we previously made for it if applicable.
   void UpdateCompletedType(const TagDecl *TD);
 
+  // +===== Scout ============================================================+
+  void UpdateCompletedType(const MeshDecl *MD);
+  // +========================================================================+`
+
   /// getNullaryFunctionInfo - Get the function info for a void()
   /// function with standard CC.
   const CGFunctionInfo &arrangeNullaryFunction();
@@ -296,9 +300,9 @@ public:  // These are internal details of CGT that shouldn't be used externally.
   CGMeshLayout *ComputeMeshLayout(const MeshDecl *D,
                                   llvm::StructType *Ty);
 
-  /// addRecordTypeName - Compute a name from the given mesh decl with an
+  /// addMeshTypeName - Compute a name from the given mesh decl with an
   /// optional suffix and name the given LLVM type using it.
-  void addRecordTypeName(const MeshDecl *RD, llvm::StructType *Ty,
+  void addMeshTypeName(const MeshDecl *RD, llvm::StructType *Ty,
                          StringRef suffix);
 
   /// ConvertRecordDeclType - Lay out a mesh decl type.
