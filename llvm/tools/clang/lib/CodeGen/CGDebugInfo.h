@@ -326,6 +326,12 @@ public:
   void completeRequiredType(const RecordDecl *RD);
   void completeClassData(const RecordDecl *RD);
 
+  // +===== Scout ============================================================+
+  void completeType(const MeshDecl *MD);
+  void completeRequiredType(const UniformMeshDecl *MD);
+  void completeClassData(const UniformMeshDecl *MD);
+  // +========================================================================+
+
 private:
   /// EmitDeclare - Emit call to llvm.dbg.declare for a variable declaration.
   void EmitDeclare(const VarDecl *decl, unsigned Tag, llvm::Value *AI,
