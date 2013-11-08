@@ -224,7 +224,7 @@ MeshFieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
 
 // scout - Mesh
 // return true on success
-
+//SC_TODO: this should be based on ActOnTagFinishDefinition();
 bool Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
   PopDeclContext(); // need this or we get BlockDecl in MeshDecl
   return IsValidDeclInMesh(Mesh);

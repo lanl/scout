@@ -15,6 +15,9 @@
 #define LLVM_CLANG_AST_ASTCONSUMER_H
 
 #include "llvm/ADT/StringRef.h"
+// +===== Scout ============================================================+
+#include "clang/AST/Scout/MeshDecl.h"
+// +========================================================================+
 
 namespace clang {
   class ASTContext;
@@ -75,6 +78,18 @@ public:
   /// \brief This callback is invoked the first time each TagDecl is required to
   /// be complete.
   virtual void HandleTagDeclRequiredDefinition(const TagDecl *D) {}
+
+  // +===== Scout ============================================================+
+  /// HandleTagDeclDefinition - This callback is invoked each time a MeshDecl
+  /// is completed.  This allows the client to
+  /// hack on the type, which can occur at any point in the file (because these
+  /// can be defined in declspecs).
+  virtual void HandleMeshDeclDefinition(MeshDecl *D) {}
+
+  /// \brief This callback is invoked the first time each MeshDecl is required to
+  /// be complete.
+  virtual void HandleMeshDeclRequiredDefinition(const MeshDecl *D) {}
+  // +========================================================================+
 
   /// \brief Invoked when a function is implicitly instantiated.
   /// Note that at this point point it does not have a body, its body is

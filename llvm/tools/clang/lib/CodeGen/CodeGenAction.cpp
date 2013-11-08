@@ -175,6 +175,19 @@ namespace clang {
       Gen->HandleTagDeclRequiredDefinition(D);
     }
 
+    // +===== Scout ============================================================+
+    virtual void HandleMeshDeclDefinition(MeshDecl *D) {
+      PrettyStackTraceDecl CrashInfo(D, SourceLocation(),
+          Context->getSourceManager(),
+          "LLVM IR generation of declaration");
+      Gen->HandleMeshDeclDefinition(D);
+    }
+
+    virtual void HandleMeshDeclRequiredDefinition(const MeshDecl *D) {
+      Gen->HandleMeshDeclRequiredDefinition(D);
+    }
+    // +=======================================================================+
+
     virtual void CompleteTentativeDefinition(VarDecl *D) {
       Gen->CompleteTentativeDefinition(D);
     }
