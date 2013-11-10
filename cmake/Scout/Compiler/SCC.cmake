@@ -8,6 +8,6 @@ if(CMAKE_SCC_BOOTSTRAP)
     -disable-sc-stdlib)
 
   set(CMAKE_SCC_LINK_FLAGS ${CMAKE_SCC_LINK_FLAGS} 
-    ${CMAKE_CXX_LINK_FLAGS} -disable-sc-stdlib)
+    ${CMAKE_CXX_LINK_FLAGS} -noscstdlib)
 
 endif()

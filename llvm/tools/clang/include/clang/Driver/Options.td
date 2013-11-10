@@ -1161,6 +1161,9 @@ def nostdlibinc : Flag<["-"], "nostdlibinc">;
 def nostdincxx : Flag<["-"], "nostdinc++">, Flags<[CC1Option]>,
   HelpText<"Disable standard #include directories for the C++ standard library">;
 def nostdlib : Flag<["-"], "nostdlib">;
+// +===== Scout ========================================================================+
+def noscstdlib : Flag<["-"], "noscstdlib">;
+// +====================================================================================+
 def object : Flag<["-"], "object">;
 def o : JoinedOrSeparate<["-"], "o">, Flags<[DriverOption, RenderAsInput, CC1Option]>,
   HelpText<"Write output to <file>">, MetaVarName<"<file>">;

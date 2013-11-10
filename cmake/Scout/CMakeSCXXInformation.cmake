@@ -232,7 +232,7 @@ ENDFOREACH(type)
 # and you can set these flags in the cmake cache
 
 IF(CMAKE_SCXX_BOOTSTRAP) 
-  SET(CMAKE_SCXX_FLAGS_INIT "-disable-sc-stdlib")
+  SET(CMAKE_SCXX_FLAGS_INIT "-noscstdlib")
 ENDIF()
 SET(CMAKE_SCXX_FLAGS_INIT "$ENV{SCXXFLAGS} ${CMAKE_SCXX_FLAGS_INIT}")
 # avoid just having a space as the initial value for the cache 
