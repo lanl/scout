@@ -335,9 +335,7 @@ static bool scCheckForFlag(const char *flag,
 // ---- scAddFlagSet
 //
 static void scAddFlagSet(std::string& args,
-                         const char *args_to_add[],
-                         bool disable_stdlib) {
-
+                         const char *args_to_add[]) {
   int i = 0;
   while(args_to_add[i] != 0) {
     // split space-delimited string into words.
@@ -350,16 +348,9 @@ static void scAddFlagSet(std::string& args,
          std::back_inserter<std::vector<std::string> >(tokens));
 
     std::vector<std::string>::iterator it = tokens.begin();
-    const std::string stdlib_str("-lscStandard");
 
     while(it != tokens.end()) {
-      if (disable_stdlib) {
-        if (*it != stdlib_str) {
-          scAddStringIfUnique(args, std::string("+") + *it);
-        }
-      } else {
-        scAddStringIfUnique(args, std::string("+") + *it);
-      }
+      scAddStringIfUnique(args, std::string("+") + *it);
       ++it;
     }
     ++i;
@@ -380,19 +371,6 @@ static void scAddFlags(Driver &driver,
   OwningPtr<InputArgList> Args(CC1Opts->ParseArgs(argv.begin()+1, argv.end(),
                                                   MissingArgIndex, MissingArgCount));
 
-
-  // Note that we ignore missing args as they're handled later.
-  // Our goal here is to check to see if we're only compiling and
-  // not linking (i.e. -c flag is present).  In addition, we check
-  // to see if we should disable inclusion of the Scout standard
-  // library -- we do this to bootstrap the building of the standard
-  // library...
-  bool disable_stdlib = false;
-  if (Args->hasArg(options::OPT_disableScoutStdLib)) {
-    std::cerr << "disable scout standard library.\n";
-    disable_stdlib = true;
-  }
-
   // Build up a string of edits to make to the command line options
   // and use the Arg override mechanism above to weasel scout-centric
   // options into place...
@@ -409,9 +387,7 @@ static void scAddFlags(Driver &driver,
   // changes when we run 'scc'.
   sc_args += "^-I" + sc_install_prefix + "/include ";
 
-  scAddFlagSet(sc_args,
-               scout::config::Configuration::IncludePaths,
-               disable_stdlib);
+  scAddFlagSet(sc_args, scout::config::Configuration::IncludePaths);
 
   // Check to see if we are linking -- avoid adding link flags if we
   // don't need them (otherwise, we get a lot of potentially confusing
@@ -420,11 +396,9 @@ static void scAddFlags(Driver &driver,
         Args->hasArg(options::OPT_S) ||
         Args->hasArg(options::OPT_fsyntax_only))) {
     scAddFlagSet(sc_args,
-                 scout::config::Configuration::LibraryPaths,
-                 disable_stdlib);
+                 scout::config::Configuration::LibraryPaths);
     scAddFlagSet(sc_args,
-                 scout::config::Configuration::Libraries,
-                 disable_stdlib);
+                 scout::config::Configuration::Libraries);
   }
 
   ApplyQAOverride(argv, sc_args.c_str(), SavedStrings);
