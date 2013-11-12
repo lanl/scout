@@ -329,7 +329,14 @@ public:
   // +===== Scout ============================================================+
   void completeType(const MeshDecl *MD);
   void completeRequiredType(const UniformMeshDecl *MD);
+  void completeRequiredType(const RectilinearMeshDecl *MD);
+  void completeRequiredType(const StructuredMeshDecl *MD);
+  void completeRequiredType(const UnstructuredMeshDecl *MD);
   void completeClassData(const UniformMeshDecl *MD);
+  void completeClassData(const  RectilinearMeshDecl *MD);
+  void completeClassData(const  StructuredMeshDecl *MD);
+  void completeClassData(const  UnstructuredMeshDecl *MD);
+
   // +========================================================================+
 
 private:

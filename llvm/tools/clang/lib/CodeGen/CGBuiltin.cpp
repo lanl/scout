@@ -29,11 +29,6 @@ using namespace clang;
 using namespace CodeGen;
 using namespace llvm;
 
-// ===== Scout =======================================
-static char IRNameStr[160];
-// ===================================================
-
-
 /// getBuiltinLibFunction - Given a builtin id for a function like
 /// "__builtin_fabsf", return a Function* for "fabsf".
 llvm::Value *CodeGenModule::getBuiltinLibFunction(const FunctionDecl *FD,

@@ -115,6 +115,44 @@ namespace {
           DI->completeRequiredType(RD);
     }
 
+    // +===== Scout ============================================================+
+    virtual void HandleMeshDeclDefinition(MeshDecl *D) {
+      if (Diags.hasErrorOccurred())
+        return;
+
+      Builder->UpdateCompletedType(D);
+
+      // In C++, we may have member functions that need to be emitted at this
+      // point.
+      if (Ctx->getLangOpts().CPlusPlus && !D->isDependentContext()) {
+        for (DeclContext::decl_iterator M = D->decls_begin(),
+            MEnd = D->decls_end();
+            M != MEnd; ++M)
+          if (CXXMethodDecl *Method = dyn_cast<CXXMethodDecl>(*M))
+            if (Method->doesThisDeclarationHaveABody() &&
+                (Method->hasAttr<UsedAttr>() ||
+                    Method->hasAttr<ConstructorAttr>()))
+              Builder->EmitTopLevelDecl(Method);
+      }
+    }
+
+    virtual void HandleMeshDeclRequiredDefinition(const MeshDecl *D) LLVM_OVERRIDE {
+      if (Diags.hasErrorOccurred())
+        return;
+
+      if (CodeGen::CGDebugInfo *DI = Builder->getModuleDebugInfo()) {
+        if (const UniformMeshDecl *UMD = dyn_cast<UniformMeshDecl>(D))
+          DI->completeRequiredType(UMD);
+        if (const RectilinearMeshDecl *RMD = dyn_cast<RectilinearMeshDecl>(D))
+          DI->completeRequiredType(RMD);
+        if (const StructuredMeshDecl *SMD = dyn_cast<StructuredMeshDecl>(D))
+           DI->completeRequiredType(SMD);
+        if (const UnstructuredMeshDecl *USMD = dyn_cast<UnstructuredMeshDecl>(D))
+           DI->completeRequiredType(USMD);
+      }
+    }
+    // +========================================================================+
+
     virtual void HandleTranslationUnit(ASTContext &Ctx) {
       if (Diags.hasErrorOccurred()) {
         M.reset();
