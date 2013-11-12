@@ -8016,7 +8016,8 @@ public:
 
   void ActOnMeshStartDefinition(Scope *S, Decl *TagD);
 
-  bool ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh);
+  bool ActOnMeshFinishDefinition(Scope *S, Decl *MeshD,
+                                      SourceLocation RBraceLoc);
 
   MeshFieldDecl* HandleMeshField(Scope *S, MeshDecl *MeshD,
                              SourceLocation DeclStart, Declarator &D);

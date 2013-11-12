@@ -52,6 +52,7 @@
  * #####
  */
 
+#include "clang/AST/ASTConsumer.h"
 #include "clang/AST/Scout/MeshDecl.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/SemaInternal.h"
@@ -222,11 +223,23 @@ MeshFieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
   return NewFD;
 }
 
-// scout - Mesh
-// return true on success
-//SC_TODO: this should be based on ActOnTagFinishDefinition();
-bool Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
-  PopDeclContext(); // need this or we get BlockDecl in MeshDecl
+bool Sema::ActOnMeshFinishDefinition(Scope *S, Decl *MeshD,
+                                    SourceLocation RBraceLoc) {
+  MeshDecl *Mesh = cast<MeshDecl>(MeshD);
+  Mesh->setRBraceLoc(RBraceLoc);
+
+  // Make sure we "complete" the definition even it is invalid.
+  if (Mesh->isBeingDefined()) {
+    assert(Mesh->isInvalidDecl() && "We should already have completed it");
+    if (UniformMeshDecl *UMD = dyn_cast<UniformMeshDecl>(Mesh))
+      UMD->completeDefinition();
+  }
+  // Exit this scope of this mesh's definition.
+  PopDeclContext();
+
+  if (!Mesh->isInvalidDecl())
+    Consumer.HandleMeshDeclDefinition(Mesh);
+
   return IsValidDeclInMesh(Mesh);
 }
 
