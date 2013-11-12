@@ -57,18 +57,42 @@ getUniqueMeshTypeName(const MeshType *Ty, CodeGenModule &CGM,
 
 void CGDebugInfo::completeType(const MeshDecl *MD) {
   if (DebugKind > CodeGenOptions::LimitedDebugInfo ||
-      !CGM.getLangOpts().CPlusPlus)
+      !CGM.getLangOpts().CPlusPlus) {
     if(const UniformMeshDecl *UMD = dyn_cast<UniformMeshDecl>(MD))
       completeRequiredType(UMD);
-    //SC_TODO: other meth types
+    if (const RectilinearMeshDecl *RMD = dyn_cast<RectilinearMeshDecl>(MD))
+      completeRequiredType(RMD);
+    if (const StructuredMeshDecl *SMD = dyn_cast<StructuredMeshDecl>(MD))
+      completeRequiredType(SMD);
+    if (const UnstructuredMeshDecl *USMD = dyn_cast<UnstructuredMeshDecl>(MD))
+      completeRequiredType(USMD);
+  }
 }
 
 void CGDebugInfo::completeRequiredType(const UniformMeshDecl *MD) {
-  if (const CXXRecordDecl *CXXDecl = dyn_cast<CXXRecordDecl>(MD))
-    if (CXXDecl->isDynamicClass())
-      return;
-
   QualType Ty = CGM.getContext().getUniformMeshType(MD);
+  llvm::DIType T = getTypeOrNull(Ty);
+  if (T && T.isForwardDecl())
+    completeClassData(MD);
+}
+
+void CGDebugInfo::completeRequiredType(const RectilinearMeshDecl *MD) {
+  QualType Ty = CGM.getContext().getRectilinearMeshType(MD);
+  llvm::DIType T = getTypeOrNull(Ty);
+  if (T && T.isForwardDecl())
+    completeClassData(MD);
+}
+
+void CGDebugInfo::completeRequiredType(const StructuredMeshDecl *MD) {
+  QualType Ty = CGM.getContext().getStructuredMeshType(MD);
+  llvm::DIType T = getTypeOrNull(Ty);
+  if (T && T.isForwardDecl())
+    completeClassData(MD);
+}
+
+
+void CGDebugInfo::completeRequiredType(const UnstructuredMeshDecl *MD) {
+  QualType Ty = CGM.getContext().getUnstructuredMeshType(MD);
   llvm::DIType T = getTypeOrNull(Ty);
   if (T && T.isForwardDecl())
     completeClassData(MD);
@@ -82,6 +106,45 @@ void CGDebugInfo::completeClassData(const UniformMeshDecl *MD) {
   if (CompletedTypeCache.count(TyPtr))
     return;
   llvm::DIType Res = CreateTypeDefinition(Ty->castAs<UniformMeshType>());
+  assert(!Res.isForwardDecl());
+  CompletedTypeCache[TyPtr] = Res;
+  TypeCache[TyPtr] = Res;
+}
+
+void CGDebugInfo::completeClassData(const RectilinearMeshDecl *MD) {
+  if (DebugKind <= CodeGenOptions::DebugLineTablesOnly)
+    return;
+  QualType Ty = CGM.getContext().getRectilinearMeshType(MD);
+  void* TyPtr = Ty.getAsOpaquePtr();
+  if (CompletedTypeCache.count(TyPtr))
+    return;
+  llvm::DIType Res = CreateTypeDefinition(Ty->castAs<RectilinearMeshType>());
+  assert(!Res.isForwardDecl());
+  CompletedTypeCache[TyPtr] = Res;
+  TypeCache[TyPtr] = Res;
+}
+
+void CGDebugInfo::completeClassData(const StructuredMeshDecl *MD) {
+  if (DebugKind <= CodeGenOptions::DebugLineTablesOnly)
+    return;
+  QualType Ty = CGM.getContext().getStructuredMeshType(MD);
+  void* TyPtr = Ty.getAsOpaquePtr();
+  if (CompletedTypeCache.count(TyPtr))
+    return;
+  llvm::DIType Res = CreateTypeDefinition(Ty->castAs<StructuredMeshType>());
+  assert(!Res.isForwardDecl());
+  CompletedTypeCache[TyPtr] = Res;
+  TypeCache[TyPtr] = Res;
+}
+
+void CGDebugInfo::completeClassData(const UnstructuredMeshDecl *MD) {
+  if (DebugKind <= CodeGenOptions::DebugLineTablesOnly)
+    return;
+  QualType Ty = CGM.getContext().getUnstructuredMeshType(MD);
+  void* TyPtr = Ty.getAsOpaquePtr();
+  if (CompletedTypeCache.count(TyPtr))
+    return;
+  llvm::DIType Res = CreateTypeDefinition(Ty->castAs<UnstructuredMeshType>());
   assert(!Res.isForwardDecl());
   CompletedTypeCache[TyPtr] = Res;
   TypeCache[TyPtr] = Res;
