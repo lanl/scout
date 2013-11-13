@@ -839,6 +839,10 @@ public:
   // UpdateCompleteType - Make sure that this type is translated.
   void UpdateCompletedType(const TagDecl *TD);
 
+  // +===== Scout ============================================================+
+  void UpdateCompletedType(const MeshDecl *TD);
+  // +========================================================================+
+
   llvm::Constant *getMemberPointerConstant(const UnaryOperator *e);
 
   /// EmitConstantInit - Try to emit the initializer for the given declaration

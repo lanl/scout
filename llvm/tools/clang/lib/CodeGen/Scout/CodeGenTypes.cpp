@@ -147,7 +147,6 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
 
 //based on the way record works but untested.
 void CodeGenTypes::UpdateCompletedType(const MeshDecl *MD) {
-  assert(false && "in UpdateCompletedType");
 
    if (MD->isDependentType()) return;
 
