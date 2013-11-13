@@ -50,15 +50,9 @@
  *
  */
 
- #ifndef __SCOUT_MATH_H__
- #define __SCOUT_MATH_H__
+#ifndef __SCOUT_MATH_H__
+#define __SCOUT_MATH_H__
 
-#include <cmath>
-#include <algorithm>
+#include_next "math.h"
 
-namespace scout
-{
-  #include "scout/math.sch"
-}
-
- #endif
+#endif

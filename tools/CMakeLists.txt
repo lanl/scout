@@ -2,7 +2,7 @@
 ###########################################################################
 # Copyright (c) 2010, Los Alamos National Security, LLC.
 # All rights reserved.
-# 
+#
 #  Copyright 2010. Los Alamos National Security, LLC. This software was
 #  produced under U.S. Government contract DE-AC52-06NA25396 for Los
 #  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -23,8 +23,8 @@
 #
 #    * Redistributions in binary form must reproduce the above
 #      copyright notice, this list of conditions and the following
-#      disclaimer in the documentation and/or other materials provided 
-#      with the distribution.  
+#      disclaimer in the documentation and/or other materials provided
+#      with the distribution.
 #
 #    * Neither the name of Los Alamos National Security, LLC, Los
 #      Alamos National Laboratory, LANL, the U.S. Government, nor the
@@ -50,15 +50,15 @@
 #
 # Notes
 #
-#   - The 'clang' and 'llvm' tools subdirectories are included by the 
-#     toplevel CMakeLists.txt file (this is due to their dependence 
-#     upon the build of llvm+clang).  
+#   - The 'clang' and 'llvm' tools subdirectories are included by the
+#     toplevel CMakeLists.txt file (this is due to their dependence
+#     upon the build of llvm+clang).
 #
 project(sc_tools)
 
-  # Add the OpenGL shader tools if supported in current build 
-  # configuration. 
-  if (SC_ENABLE_OPENGL) 
+  # Add the OpenGL shader tools if supported in current build
+  # configuration.
+  if (SCOUT_ENABLE_OPENGL)
     add_subdirectory(glsl-to-str)
     add_subdirectory(glsl-cc)
   endif()
@@ -67,4 +67,4 @@ project(sc_tools)
   add_subdirectory(clang)
 
   # Do not add the 'clang' and 'llvm' subdirs here -- see note above...
-  set(EXECUTABLE_OUTPUT_PATH ${SC_BUILD_DIR}/bin)
+  set(EXECUTABLE_OUTPUT_PATH ${SCOUT_PROJECT_BINARY_DIR}/bin)

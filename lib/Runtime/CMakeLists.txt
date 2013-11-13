@@ -2,7 +2,7 @@
 ###########################################################################
 # Copyright (c) 2010, Los Alamos National Security, LLC.
 # All rights reserved.
-# 
+#
 #  Copyright 2010. Los Alamos National Security, LLC. This software was
 #  produced under U.S. Government contract DE-AC52-06NA25396 for Los
 #  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -23,8 +23,8 @@
 #
 #    * Redistributions in binary form must reproduce the above
 #      copyright notice, this list of conditions and the following
-#      disclaimer in the documentation and/or other materials provided 
-#      with the distribution.  
+#      disclaimer in the documentation and/or other materials provided
+#      with the distribution.
 #
 #    * Neither the name of Los Alamos National Security, LLC, Los
 #      Alamos National Laboratory, LANL, the U.S. Government, nor the
@@ -54,29 +54,29 @@ project(scRuntime)
 #find_library(GLFW glfw)
 
 # Build w/ clang as volren uses blocks
-set(CMAKE_CXX_COMPILER ${SC_BUILD_DIR}/llvm/bin/clang)
+set(CMAKE_CXX_COMPILER ${SCOUT_BUILD_DIR}/bin/clang)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fblocks")
 
 include_directories(
-  ${SC_INCLUDE_DIR}       
-  ${SC_BUILD_DIR}/scout-config/include
-  ${SDL_INCLUDE_DIR} 
+  ${SCOUT_INCLUDE_DIR}
+  ${SCOUT_BUILD_DIR}/config/include
+  ${SDL_INCLUDE_DIR}
   ${PNG_INCLUDE_DIR}
-  ${SC_INCLUDE_DIR}/scout/linux #find our unistd.h wrapper to deal with __block in linux unistd.h
+  ${SCOUT_INCLUDE_DIR}/scout/linux #find our unistd.h wrapper to deal with __block in linux unistd.h
 )
 
-file(GLOB rt_hdrs 
-  ${SC_INCLUDE_DIR}/runtime/*.h
-  ${SC_BUILD_DIR}/scout-config/include/*.h
+file(GLOB rt_hdrs
+  ${SCOUT_INCLUDE_DIR}/runtime/*.h
+  ${SCOUT_BUILD_DIR}/config/include/*.h
   )
 
 if (APPLE)
-  file(GLOB rt_srcs 
-    *.cpp 
+  file(GLOB rt_srcs
+    *.cpp
     *.mm
     )
 else()
-  file(GLOB rt_srcs 
+  file(GLOB rt_srcs
     *.cpp
     )
 endif()
@@ -84,10 +84,10 @@ endif()
 #renderall
 file(GLOB rt_srcs_renderall renderall/*.cpp)
 list(APPEND rt_srcs ${rt_srcs_renderall})
-if (SC_ENABLE_CUDA)
+if (SCOUT_ENABLE_CUDA)
   file(GLOB rt_srcs_renderall_cuda renderall/cuda/*.cpp)
   list(APPEND rt_srcs ${rt_srcs_renderall_cuda})
-elseif (SC_ENABLE_OPENCL)
+elseif (SCOUT_ENABLE_OPENCL)
   file(GLOB rt_srcs_renderall_opencl renderall/opencl/*.cpp)
   list(APPEND rt_srcs ${rt_srcs_renderall_opencl})
 else()
@@ -98,7 +98,7 @@ endif()
 #cpu/numa
 file(GLOB rt_srcs_cpu cpu/*.cpp)
 list(APPEND rt_srcs ${rt_srcs_cpu})
-if (SC_ENABLE_NUMA)
+if (SCOUT_ENABLE_NUMA)
   include_directories(${HWLOC_INCLUDE_DIR})
   file(GLOB rt_srcs_cpu_numa cpu/numa/*.cpp)
 else()
@@ -106,19 +106,19 @@ else()
 endif()
 list(APPEND rt_srcs ${rt_srcs_cpu_numa})
 
-if (SC_ENABLE_MPI)
+if (SCOUT_ENABLE_MPI)
   include_directories(${MPI_INCLUDE_PATH})
   file(GLOB rt_srcs_mpi renderall/mpi/*.cpp)
   list(APPEND rt_srcs ${rt_srcs_mpi})
 endif()
 
-if (SC_ENABLE_CUDA)
+if (SCOUT_ENABLE_CUDA)
   include_directories(${CUDA_INCLUDE_DIRS})
   file(GLOB rt_srcs_cuda cuda/*.cpp)
   list(APPEND rt_srcs ${rt_srcs_cuda})
 endif()
 
-if (SC_ENABLE_OPENCL)
+if (SCOUT_ENABLE_OPENCL)
   include_directories(${OPENCL_INCLUDE_DIRS})
   file(GLOB rt_srcs_opencl opencl/*.cpp)
   list(APPEND rt_srcs ${rt_srcs_opencl})
@@ -129,29 +129,29 @@ if (SC_ENABLE_OPENCL)
 endif()
 
 # CPP backend
-if (SC_ENABLE_CPP_THRUST)
+if (SCOUT_ENABLE_CPP_THRUST)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP")
   include_directories(${THRUST_INCLUDE_DIR})
   file(GLOB rt_srcs_isosurface_cpp isosurf/*_cpp.cpp)
   list(APPEND rt_srcs ${rt_srcs_isosurface_cpp})
 endif()
 
-if (SC_ENABLE_OPENGL) 
+if (SCOUT_ENABLE_OPENGL)
 
   # Add OpenGL source files to the build...
-  file(GLOB gl_hdrs ${SC_INCLUDE_DIR}/Runtime/opengl/*.h)
+  file(GLOB gl_hdrs ${SCOUT_INCLUDE_DIR}/Runtime/opengl/*.h)
   file(GLOB gl_srcs opengl/*.cpp)
 
-  if (APPLE) 
+  if (APPLE)
     #find CoreGraphics headers if they are inside of ApplicationServices
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -F/System/Library/Frameworks/ApplicationServices.framework/Frameworks/")
-    file(GLOB apple_gl_hdrs ${SC_INCLUDE_DIR}/Runtime/opengl/macosx/*.h)
+    file(GLOB apple_gl_hdrs ${SCOUT_INCLUDE_DIR}/Runtime/opengl/macosx/*.h)
     file(GLOB apple_gl_srcs opengl/macosx/*.cpp opengl/macosx/*.mm)
     list(APPEND gl_hdrs ${apple_gl_hdrs})
     list(APPEND gl_srcs ${apple_gl_srcs})
   else()
     #disable glx stuff on linux for now
-    #file(GLOB glx_hdrs ${SC_INCLUDE_DIR}/Runtime/opengl/glx/*.h)
+    #file(GLOB glx_hdrs ${SCOUT_INCLUDE_DIR}/Runtime/opengl/glx/*.h)
     #file(GLOB glx_srcs opengl/macosx/*.cpp opengl/glx/*.cpp)
     list(APPEND gl_hdrs ${glx_hdrs})
     list(APPEND gl_srcs ${glx_srcs})
@@ -163,27 +163,27 @@ if (SC_ENABLE_OPENGL)
   # into the build process...  See the toplevel tools/glsl-to-str for
   # details.
 
-  # We need a directory to output the generated/wrapped shaders. 
-  if (NOT EXISTS ${SC_BUILD_DIR}/include)
-    file(MAKE_DIRECTORY ${SC_BUILD_DIR}/include)
+  # We need a directory to output the generated/wrapped shaders.
+  if (NOT EXISTS ${SCOUT_BUILD_DIR}/include)
+    file(MAKE_DIRECTORY ${SCOUT_BUILD_DIR}/include)
   endif()
 
   # Make sure the shaders actually compile before we pack
-  # them into the runtime library for use.  We do this 
+  # them into the runtime library for use.  We do this
   # using the 'glsl-cc' utility (in the toplevel level tools
-  # directory). 
-  file(GLOB gl_vert_shaders opengl/glsl/*_vs.glsl) 
-  set(GLSLCC    ${SC_BUILD_DIR}/tools/glsl-cc/glsl-cc)
-  foreach(v_shader ${gl_vert_shaders}) 
+  # directory).
+  file(GLOB gl_vert_shaders opengl/glsl/*_vs.glsl)
+  set(GLSLCC    ${SCOUT_BUILD_DIR}/bin/glsl-cc)
+  foreach(v_shader ${gl_vert_shaders})
 
     # file name w/out extension
     get_filename_component(name ${v_shader} NAME_WE)
 
     # only compile shaders if $DISPLAY is set
-    if(DEFINED ENV{DISPLAY}) 
+    if(DEFINED ENV{DISPLAY})
       add_custom_command(
         OUTPUT ${scRuntime_BINARY_DIR}/${name}_pass.dep
-        COMMAND ${GLSLCC} --vertex ${v_shader} 
+        COMMAND ${GLSLCC} --vertex ${v_shader}
         COMMAND touch ${scRuntime_BINARY_DIR}/${name}_pass.dep
         DEPENDS ${GLSLCC} ${v_shader}
         )
@@ -200,17 +200,17 @@ if (SC_ENABLE_OPENGL)
       )
   endforeach()
 
-  file(GLOB gl_frag_shaders opengl/glsl/*_fs.glsl) 
-  foreach(f_shader ${gl_frag_shaders}) 
+  file(GLOB gl_frag_shaders opengl/glsl/*_fs.glsl)
+  foreach(f_shader ${gl_frag_shaders})
 
     # file name w/out extension
-    get_filename_component(name ${f_shader} NAME_WE) 
+    get_filename_component(name ${f_shader} NAME_WE)
 
     # only compile shaders if $DISPLAY is set
-    if(DEFINED ENV{DISPLAY}) 
+    if(DEFINED ENV{DISPLAY})
       add_custom_command(
         OUTPUT ${scRuntime_BINARY_DIR}/${name}_pass.dep
-        COMMAND ${GLSLCC} --fragment ${f_shader} 
+        COMMAND ${GLSLCC} --fragment ${f_shader}
         COMMAND touch ${scRuntime_BINARY_DIR}/${name}_pass.dep
         DEPENDS ${GLSLCC} ${f_shader}
         )
@@ -231,46 +231,46 @@ if (SC_ENABLE_OPENGL)
   # convert them into C character string format so they may be
   # embedded within the runtime library.
   file(GLOB gl_shaders opengl/glsl/*.glsl)
-  set(GLSL2STR ${SC_BUILD_DIR}/tools/glsl-to-str/glsl-to-str)
-  foreach(shader ${gl_shaders}) 
+  set(GLSL2STR ${SCOUT_BUILD_DIR}/bin/glsl-to-str)
+  foreach(shader ${gl_shaders})
 
     # file name w/out extension
-    get_filename_component(name ${shader} NAME_WE) 
+    get_filename_component(name ${shader} NAME_WE)
 
     add_custom_command(
-      OUTPUT ${SC_BUILD_DIR}/include/${name}.h
-      COMMAND ${GLSL2STR} 
-        --in      ${shader} 
-        --out     ${SC_BUILD_DIR}/include/${name}.h 
+      OUTPUT ${SCOUT_BUILD_DIR}/include/${name}.h
+      COMMAND ${GLSL2STR}
+        --in      ${shader}
+        --out     ${SCOUT_BUILD_DIR}/include/${name}.h
         --varname ${name}
       DEPENDS ${GLSL2STR} ${shader}
       )
 
     add_custom_target(generate_${name}
       ALL
-      DEPENDS ${SC_BUILD_DIR}/include/${name}.h ${GLSL2STR} 
+      DEPENDS ${SCOUT_BUILD_DIR}/include/${name}.h ${GLSL2STR}
       )
   endforeach()
 
   # Update the include path to include the generated include files that
-  # hold the individual shaders... 
-  include_directories(${SC_BUILD_DIR}/include)
+  # hold the individual shaders...
+  include_directories(${SCOUT_BUILD_DIR}/include)
 
-  if (SC_ENABLE_GLFW) 
-    file(GLOB glfw_hdrs ${SC_INCLUDE_DIR}/runtime/opengl/glfw/*.h)
+  if (SCOUT_ENABLE_GLFW)
+    file(GLOB glfw_hdrs ${SCOUT_INCLUDE_DIR}/runtime/opengl/glfw/*.h)
     file(GLOB glfw_srcs opengl/glfw/*.cpp)
   endif()
 
 endif()
 
-if (SC_ENABLE_MPI)
+if (SCOUT_ENABLE_MPI)
   file(GLOB gl_srcs_mpi opengl/mpi/*.cpp)
   list(APPEND gl_srcs ${gl_srcs_mpi})
   file(GLOB volren_srcs volren/hpgv/*.cpp)
 endif()
 
-# Check to see if we should add PNG support... 
-if (SC_ENABLE_PNG) 
+# Check to see if we should add PNG support...
+if (SCOUT_ENABLE_PNG)
   file(GLOB png_srcs png/*.cpp)
 endif()
 
@@ -280,7 +280,7 @@ endif()
 # to deal with the cruft of handling multiple configurations of
 # the runtime...
 add_library(scRuntime STATIC ${rt_srcs} ${gl_srcs} ${png_srcs} ${volren_srcs})
-add_dependencies(scRuntime 
+add_dependencies(scRuntime
   scc
   glsl2cstr
   )

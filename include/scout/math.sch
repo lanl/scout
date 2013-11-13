@@ -53,14 +53,14 @@
 #ifndef __SCOUT_MATH_SCH__
 #define __SCOUT_MATH_SCH__
 
-#include "scout/types.sch"
-
-#if defined(__scout_cxx__) || defined(__cplusplus)
+#if defined(__cplusplus)
  #include <cmath>
  #include <algorithm>
-#else
+#else 
  #include <math.h>
 #endif
+
+#include "scout/types.sch"
 
 #if defined(__scout_cxx__) || defined(__cplusplus)
 // Apologies in advance...  This is a messy set of macros for building

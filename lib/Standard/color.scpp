@@ -51,9 +51,6 @@
  *
  */
 
-#include "scout/color.sch"
-#include "scout/math.sch"
-
 const color_channel_t SC_MIN_CHANNEL_VALUE =   0.0;
 const color_channel_t SC_MAX_CHANNEL_VALUE =   1.0;
 

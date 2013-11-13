@@ -1,5 +1,4 @@
 project(scc)
-
 include(sc-llvm-link-libs)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility-inlines-hidden -fno-rtti")
@@ -9,13 +8,12 @@ add_llvm_definitions( -D__STDC_FORMAT_MACROS )
 add_llvm_definitions( -D__STDC_LIMIT_MACROS )
 
 include_directories(
-  ${SC_INC_PATH}
-  ${SC_LLVM_INC_PATH}
-  ${SC_CLANG_INC_PATH}
-  ${CMAKE_INSTALL_PREFIX}/include
+  ${SCOUT_INCLUDE_PATH}
+  ${SCOUT_LLVM_INCLUDE_PATH}
+  ${SCOUT_CLANG_INCLUDE_PATH}
   )
 
-set( LLVM_LINK_COMPONENTS
+set(LLVM_LINK_COMPONENTS
   ${LLVM_TARGETS_TO_BUILD}
   asmparser
   bitreader
@@ -55,7 +53,7 @@ target_link_libraries(scc
   clangStaticAnalyzerFrontend
   clangStaticAnalyzerCheckers
   clangStaticAnalyzerCore
-  ${SC_LLVM_LINK_LIBS}
+  ${SCOUT_LLVM_LINK_LIBS}
   scConfig
   )
 
@@ -71,8 +69,14 @@ add_dependencies(scc
 install(TARGETS scc
   RUNTIME DESTINATION bin)
 
-# Create scc++ symlink at installation time.
-install(SCRIPT scc_symlink.cmake -DCMAKE_INSTALL_PREFIX=\"${CMAKE_INSTALL_PREFIX}\")
+set(SCXX_LINK_OR_COPY create_symlink)
+set(scc_binary  "${SCOUT_BUILD_DIR}/bin/scc")
+set(scpp_binary "${SCOUT_BUILD_DIR}/bin/sc++")
+
+# Create the sc++ symlink in the build directory.
+
+add_custom_command(TARGET scc POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E ${SCXX_LINK_OR_COPY} "${scc_binary}" "${scpp_binary}")
 
 # Configure plist creation for OS X.
 set (TOOL_INFO_PLIST "Info.plist" CACHE STRING "Plist name")

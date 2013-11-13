@@ -1881,6 +1881,7 @@ Tool *Bitrig::buildLinker() const {
 
 void Bitrig::AddClangCXXStdlibIncludeArgs(const ArgList &DriverArgs,
                                           ArgStringList &CC1Args) const {
+
   if (DriverArgs.hasArg(options::OPT_nostdlibinc) ||
       DriverArgs.hasArg(options::OPT_nostdincxx))
     return;
@@ -2520,6 +2521,34 @@ void Linux::AddClangSystemIncludeArgs(const ArgList &DriverArgs,
                                       ArgStringList &CC1Args) const {
   const Driver &D = getDriver();
   std::string SysRoot = computeSysRoot();
+
+  // +===== Scout ============================================================+
+  
+  if (getDriver().CCCIsScoutC()) {
+    // Careful with logic here -- we still want to honnor the C/C++-centric 
+    // flags.  No return for us, simple handle scout details and the the
+    // code below do the rest.
+    //
+    // Note this also allows us to sneak scout-centric directories into the
+    // search path prior to the base language... 
+    if (! DriverArgs.hasArg(options::OPT_noscstdinc)) {
+      StringRef SCCIncludeDirs(SCOUT_RESOURCE_DIR);
+      if (SCCIncludeDirs != "") {
+        SmallVector<StringRef, 5> dirs;
+        SCCIncludeDirs.split(dirs, ":");
+        for (SmallVectorImpl<StringRef>::iterator I = dirs.begin(), E = dirs.end();
+             I != E; ++I) {
+          StringRef Prefix = llvm::sys::path::is_absolute(*I) ? SysRoot : "";
+          addExternCSystemInclude(DriverArgs, CC1Args, Prefix + *I);
+        }
+        return;
+      } else {
+        SmallString<128> P(D.ScoutResourceDir);
+        addSystemInclude(DriverArgs, CC1Args, P.str());
+      }
+    }
+  }
+  // +========================================================================+
 
   if (DriverArgs.hasArg(options::OPT_nostdinc))
     return;

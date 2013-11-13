@@ -2,7 +2,7 @@
 ###########################################################################
 # Copyright (c) 2010, Los Alamos National Security, LLC.
 # All rights reserved.
-# 
+#
 #  Copyright 2010. Los Alamos National Security, LLC. This software was
 #  produced under U.S. Government contract DE-AC52-06NA25396 for Los
 #  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -23,8 +23,8 @@
 #
 #    * Redistributions in binary form must reproduce the above
 #      copyright notice, this list of conditions and the following
-#      disclaimer in the documentation and/or other materials provided 
-#      with the distribution.  
+#      disclaimer in the documentation and/or other materials provided
+#      with the distribution.
 #
 #    * Neither the name of Los Alamos National Security, LLC, Los
 #      Alamos National Laboratory, LANL, the U.S. Government, nor the
@@ -52,7 +52,7 @@
 #
 #  We use CMake's configure_file() feature to auto-generate build-time
 #  configuration settings for inclusion into the Scout build.  This
-#  incldues details like search paths and link-time libraries. 
+#  incldues details like search paths and link-time libraries.
 #
 #####
 
@@ -60,34 +60,34 @@ project(scConfig)
 
   ##### CONFIGURATION FILE GENERATION
   #
-  set(SC_CONFIGURE_INC_DIR ${SC_BUILD_DIR}/scout-config/include/)
-  set(SC_CONFIGURE_SRC_DIR ${SC_BUILD_DIR}/scout-config/src)
+  set(SCOUT_CONFIGURE_INC_DIR ${SCOUT_BUILD_DIR}/config/include/)
+  set(SCOUT_CONFIGURE_SRC_DIR ${SCOUT_BUILD_DIR}/config/src)
 
   message(STATUS "scout: generating Configuration.cpp for build-time configuration settings.")
-  message(STATUS "       location: ${SC_CONFIGURE_SRC_DIR}/Configuration.cpp")
+  message(STATUS "       location: ${SCOUT_CONFIGURE_SRC_DIR}/Configuration.cpp")
 
   configure_file(
-    Configuration.cpp.cmake 
-    ${SC_CONFIGURE_SRC_DIR}/Configuration.cpp)
+    Configuration.cpp.cmake
+    ${SCOUT_CONFIGURE_SRC_DIR}/Configuration.cpp)
   #
   #####
 
 
-  ##### LIBRARY GENERATION 
+  ##### LIBRARY GENERATION
   #
   include_directories(
-    ${SC_SRC_DIR}/include
-    ${SC_CONFIGURE_INC_DIR}
+    ${SCOUT_SRC_DIR}/include
+    ${SCOUT_CONFIGURE_INC_DIR}
   )
 
   file(GLOB config_hdrs
-    ${SC_SRC_DIR}/include/scout/Config/*.h
-    ${SC_CONFIGURE_INC_DIR}/scout/Config/*.h
+    ${SCOUT_SRC_DIR}/include/scout/Config/*.h
+    ${SCOUT_CONFIGURE_INC_DIR}/scout/Config/*.h
     )
 
-  file(GLOB config_srcs 
+  file(GLOB config_srcs
     *.cpp
-    ${SC_CONFIGURE_SRC_DIR}/*.cpp    
+    ${SCOUT_CONFIGURE_SRC_DIR}/*.cpp
     )
 
   add_library(scConfig STATIC ${config_srcs})
@@ -96,7 +96,7 @@ project(scConfig)
   #####
 
   ##### INSTALL TARGETS
-  # 
+  #
   install(TARGETS scConfig
     DESTINATION lib)
   #

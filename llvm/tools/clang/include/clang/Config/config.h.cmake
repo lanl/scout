@@ -7,6 +7,11 @@
 /* Directories clang will search for headers */
 #define C_INCLUDE_DIRS "${C_INCLUDE_DIRS}"
 
+// +===== Scout =====================================================+
+/* Directories clang will search for scout headers */ 
+#define SCOUT_RESOURCE_DIR "${SCOUT_RESOURCE_DIR}"
+// +=================================================================+
+
 /* Default <path> to all compiler invocations for --sysroot=<path>. */
 #define DEFAULT_SYSROOT "${DEFAULT_SYSROOT}"
 

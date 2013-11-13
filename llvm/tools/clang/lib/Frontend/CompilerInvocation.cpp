@@ -917,6 +917,21 @@ std::string CompilerInvocation::GetResourcesPath(const char *Argv0,
   return P.str();
 }
 
+
+// +===== Scout ===============================================================+
+std::string CompilerInvocation::GetScoutResourcesPath(const char *Argv0,
+                                                      void *MainAddr) {
+  SmallString<128> P(llvm::sys::fs::getMainExecutable(Argv0, MainAddr));
+
+  if (!P.empty()) {
+    llvm::sys::path::remove_filename(P); // remove /scc (or /scxx) from path.
+    llvm::sys::path::remove_filename(P); // remove /bin from /path/bin
+    llvm::sys::path::append(P, "include", "scout");
+  }
+  return P.str();
+}
+// +===========================================================================+
+
 static void ParseHeaderSearchArgs(HeaderSearchOptions &Opts, ArgList &Args) {
   using namespace options;
   Opts.Sysroot = Args.getLastArgValue(OPT_isysroot, "/");
@@ -927,6 +942,9 @@ static void ParseHeaderSearchArgs(HeaderSearchOptions &Opts, ArgList &Args) {
   if (const Arg *A = Args.getLastArg(OPT_stdlib_EQ))
     Opts.UseLibcxx = (strcmp(A->getValue(), "libc++") == 0);
   Opts.ResourceDir = Args.getLastArgValue(OPT_resource_dir);
+  // +===== Scout ===========================================================+
+  Opts.ScoutResourceDir = Args.getLastArgValue(OPT_scout_resource_dir);
+  // +=======================================================================+  
   Opts.ModuleCachePath = Args.getLastArgValue(OPT_fmodules_cache_path);
   Opts.DisableModuleHash = Args.hasArg(OPT_fdisable_module_hash);
   // -fmodules implies -fmodule-maps
@@ -1504,6 +1522,13 @@ static void ParsePreprocessorArgs(PreprocessorOptions &Opts, ArgList &Args,
                                   FileManager &FileMgr,
                                   DiagnosticsEngine &Diags) {
   using namespace options;
+
+  // +===== Scout ============================================================+
+  // Implicitly include the Scout headers
+  Opts.Includes.push_back("scout/scout.sch");
+  Opts.Includes.push_back("scout/Runtime/scout.h");
+  // +========================================================================+
+  
   Opts.ImplicitPCHInclude = Args.getLastArgValue(OPT_include_pch);
   Opts.ImplicitPTHInclude = Args.getLastArgValue(OPT_include_pth);
   if (const Arg *A = Args.getLastArg(OPT_token_cache))

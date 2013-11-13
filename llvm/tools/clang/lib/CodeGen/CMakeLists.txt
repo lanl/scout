@@ -1,6 +1,6 @@
 # ===== Scout =================================================================
 include_directories(
- ${CMAKE_BINARY_DIR}/scout-config/include
+ ${CMAKE_BINARY_DIR}/config/include
 )
 # =============================================================================
 

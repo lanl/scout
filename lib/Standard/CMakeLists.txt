@@ -60,18 +60,21 @@
 #   associated headers and library file.
 #   
 
+
 include(${CMAKE_BINARY_DIR}/CMake/Modules/Configuration.cmake)
 
 set(CMAKE_MODULE_PATH
-  "${SCOUT_CMAKE_DIR}"
-  "${CMAKE_MODULE_PATH}"
+  ${SCOUT_CMAKE_PATH}
+  ${CMAKE_MODULE_PATH}
   )
 
 project(scStandard SCXX)
+
+  set(CMAKE_VERBOSE_MAKEFILE ON)
   cmake_minimum_required(VERSION 2.8.9)
-  message(STATUS "standard library: scxx compile flags: '${CMAKE_SCXX_FLAGS}'")
-  message(STATUS "standard library: scxx linker flags  : '${CMAKE_SCXX_LINK_FLAGS}'")
+  set(LINK_FLAGS "-noscstdlib")
   set(CMAKE_INSTALL_PREFIX ${SCOUT_INSTALL_DIR})
+  set(LIBRARY_OUTPUT_PATH ${SCOUT_BUILD_DIR}/lib)
 
   include_directories(
     ${SCOUT_INCLUDE_PATH}

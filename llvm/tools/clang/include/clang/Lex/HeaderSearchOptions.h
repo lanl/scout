@@ -86,6 +86,11 @@ public:
   /// etc.).
   std::string ResourceDir;
 
+  // +===== Scout ================================================================+
+  /// The directory which holds the scout compiler's resource files.
+  std::string ScoutResourceDir;
+  // +============================================================================+  
+
   /// \brief The directory used for the module cache.
   std::string ModuleCachePath;
 

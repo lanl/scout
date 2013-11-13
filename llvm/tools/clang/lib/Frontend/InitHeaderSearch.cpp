@@ -14,7 +14,7 @@
 #include "clang/Frontend/Utils.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/LangOptions.h"
-#include "clang/Config/config.h" // C_INCLUDE_DIRS
+#include "clang/Config/config.h" // C_INCLUDE_DIRS, SCC_INCLUDE_DIRS, SCXX_INCLUDE_DIRS
 #include "clang/Lex/HeaderSearch.h"
 #include "clang/Lex/HeaderSearchOptions.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -88,12 +88,14 @@ public:
                           StringRef Version);
 
   // AddDefaultCIncludePaths - Add paths that should always be searched.
-  void AddDefaultCIncludePaths(const llvm::Triple &triple,
+  void AddDefaultCIncludePaths(const LangOptions &Lang, // +===== Scout =====+
+                               const llvm::Triple &triple,
                                const HeaderSearchOptions &HSOpts);
 
   // AddDefaultCPlusPlusIncludePaths -  Add paths that should be searched when
   //  compiling c++.
-  void AddDefaultCPlusPlusIncludePaths(const llvm::Triple &triple,
+  void AddDefaultCPlusPlusIncludePaths(const LangOptions &Lang, // +===== Scout =====+
+                                       const llvm::Triple &triple,
                                        const HeaderSearchOptions &HSOpts);
 
   /// AddDefaultSystemIncludePaths - Adds the default system include paths so
@@ -221,8 +223,9 @@ void InitHeaderSearch::AddMinGW64CXXPaths(StringRef Base,
           CXXSystem, false);
 }
 
-void InitHeaderSearch::AddDefaultCIncludePaths(const llvm::Triple &triple,
-                                            const HeaderSearchOptions &HSOpts) {
+void InitHeaderSearch::AddDefaultCIncludePaths(const LangOptions &Lang,
+                                           const llvm::Triple &triple,
+                                           const HeaderSearchOptions &HSOpts) {
   llvm::Triple::OSType os = triple.getOS();
 
   if (HSOpts.UseStandardSystemIncludes) {
@@ -242,6 +245,84 @@ void InitHeaderSearch::AddDefaultCIncludePaths(const llvm::Triple &triple,
   // Builtin includes use #include_next directives and should be positioned
   // just prior C include dirs.
   if (HSOpts.UseBuiltinIncludes) {
+
+    // +===== Scout ======================================================+
+    // We treat scout's headers like builtins -- we quietly sneak them in
+    // front of the standard includes so we can muck with details if need
+    // be... 
+    if (Lang.ScoutC || Lang.ScoutCPlusPlus) {
+      SmallString<128> P = StringRef(HSOpts.ScoutResourceDir);
+      llvm::errs() << "scout base resource dir: " << P.str() << "\n";
+      AddUnmappedPath(P.str(), ExternCSystem, false);
+      
+      switch(os) {
+        
+        case llvm::Triple::Linux: {
+
+          P = StringRef(HSOpts.ScoutResourceDir);
+          llvm::sys::path::append(P, "sys/linux");
+          AddUnmappedPath(P.str(), ExternCSystem, false);
+          
+          switch(triple.getArch()) {
+            
+            case llvm::Triple::x86:
+              P = StringRef(HSOpts.ScoutResourceDir);
+              llvm::sys::path::append(P, "sys/linux/x86");
+              AddUnmappedPath(P.str(), ExternCSystem, false);
+              break;
+              
+            case llvm::Triple::x86_64:
+              P = StringRef(HSOpts.ScoutResourceDir);
+              llvm::sys::path::append(P, "sys/linux/x86_64");
+              AddUnmappedPath(P.str(), ExternCSystem, false);
+              break;
+
+            case llvm::Triple::arm:
+              P = StringRef(HSOpts.ScoutResourceDir);              
+              llvm::sys::path::append(P, "sys/linux/arm");
+              AddUnmappedPath(P.str(), ExternCSystem, false);              
+              break;
+
+            default:
+              break;
+          }
+        }
+          
+        case llvm::Triple::Darwin: {
+
+          P = StringRef(HSOpts.ScoutResourceDir);
+          llvm::sys::path::append(P, "sys/darwin");
+          AddUnmappedPath(P.str(), ExternCSystem, false);
+          
+          switch(triple.getArch()) {
+            
+            case llvm::Triple::x86:
+              P = StringRef(HSOpts.ScoutResourceDir);
+              llvm::sys::path::append(P, "sys/darwin/x86_64");
+              AddUnmappedPath(P.str(), ExternCSystem, false);
+              break;
+
+            case llvm::Triple::x86_64:
+              P = StringRef(HSOpts.ScoutResourceDir);              
+              llvm::sys::path::append(P, "sys/darwin/x86_64");
+              AddUnmappedPath(P.str(), ExternCSystem, false);              
+              break;
+
+            default:
+              break;
+          }
+        }
+
+        case llvm::Triple::Cygwin:
+        case llvm::Triple::AuroraUX:
+        case llvm::Triple::UnknownOS:
+        default:
+          break;
+      }
+    }
+    // +==================================================================+
+    
+        
     // Ignore the sys root, we *always* look for clang headers relative to
     // supplied path.
     SmallString<128> P = StringRef(HSOpts.ResourceDir);
@@ -249,6 +330,19 @@ void InitHeaderSearch::AddDefaultCIncludePaths(const llvm::Triple &triple,
     AddUnmappedPath(P.str(), ExternCSystem, false);
   }
 
+  // Treat scout's includes like builtins -- positioned just print to
+  // C include dirs.
+  StringRef SCIncludeDirs(SCOUT_RESOURCE_DIR);
+  if (SCIncludeDirs != "") {
+    SmallVector<StringRef, 5> dirs;
+    SCIncludeDirs.split(dirs, ":");
+    for (SmallVectorImpl<StringRef>::iterator i = dirs.begin();
+         i != dirs.end();
+         ++i)
+      AddPath(*i, ExternCSystem, false);
+    return;
+  }
+  
   // All remaining additions are for system include directories, early exit if
   // we aren't using them.
   if (!HSOpts.UseStandardSystemIncludes)
@@ -343,9 +437,23 @@ void InitHeaderSearch::AddDefaultCIncludePaths(const llvm::Triple &triple,
 }
 
 void InitHeaderSearch::
-AddDefaultCPlusPlusIncludePaths(const llvm::Triple &triple, const HeaderSearchOptions &HSOpts) {
+AddDefaultCPlusPlusIncludePaths(const LangOptions &Lang, // +===== Scout =====+
+                                const llvm::Triple &triple,
+                                const HeaderSearchOptions &HSOpts) {
   llvm::Triple::OSType os = triple.getOS();
   // FIXME: temporary hack: hard-coded paths.
+
+  // +===== Scout ======================================================+
+  // We treat scout's headers like builtins -- we quietly sneak them in
+  // front of the standard includes so we can muck with details if need
+  // be... 
+  if (Lang.ScoutCPlusPlus) {
+    SmallString<128> P = StringRef(HSOpts.ScoutResourceDir);
+    llvm::sys::path::append(P, "sc++");
+    AddPath(P.str(), CXXSystem, false);
+    llvm::errs() << "appending scout c++ include directory: " << P.str() << "\n";
+  }
+  // +==================================================================+  
 
   if (triple.isOSDarwin()) {
     switch (triple.getArch()) {
@@ -494,11 +602,11 @@ void InitHeaderSearch::AddDefaultIncludePaths(const LangOptions &Lang,
       
       AddPath("/usr/include/c++/v1", CXXSystem, false);
     } else {
-      AddDefaultCPlusPlusIncludePaths(triple, HSOpts);
+      AddDefaultCPlusPlusIncludePaths(Lang, triple, HSOpts);
     }
   }
 
-  AddDefaultCIncludePaths(triple, HSOpts);
+  AddDefaultCIncludePaths(Lang, triple, HSOpts);
 
   // Add the default framework include paths on Darwin.
   if (HSOpts.UseStandardSystemIncludes) {

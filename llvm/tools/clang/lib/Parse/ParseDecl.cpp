@@ -4712,7 +4712,8 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
   if (isScoutLang()) {
     DeclSpec& DS = D.getMutableDeclSpec();
     DeclSpec::TST tst = DS.getTypeSpecType();
-    if (Tok.is(tok::l_square) && tst == DeclSpec::TST_typename) {
+    // OVERHAUL/DEBUG: replaced TST_typename with TST_uniform mesh... 
+    if (Tok.is(tok::l_square) && tst == DeclSpec::TST_uniform_mesh) {
       ParsedType parsedType = DS.getRepAsType();
       const MeshType* MT = dyn_cast<MeshType>(parsedType.get().getTypePtr());
       if (MT) {

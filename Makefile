@@ -84,7 +84,7 @@ endif
 ifdef SC_BUILD_TYPE
   build_type  := $(SC_BUILD_TYPE)
 else
-  build_type  := DEBUG
+  build_type  := RELWITHDEBINFO
 endif
 
 #
@@ -104,10 +104,10 @@ else
   build_dir := $(CURDIR)/build
 endif
 
-stdlib_dir := lib/Standard
+stdlib_dir       := lib/Standard
 stdlib_build_dir := $(build_dir)/$(stdlib_dir)
-stdlib_src_dir := $(src_dir)/$(stdlib_dir)
-stdlib_flags := -DCMAKE_SCXX_BOOTSTRAP=ON
+stdlib_src_dir   := $(src_dir)/$(stdlib_dir)
+stdlib_flags     :=
 
 runtime_dir := lib/Runtime
 runtime_build_dir := $(build_dir)/$(runtime_dir)
@@ -118,17 +118,20 @@ test_build_dir := $(build_dir)/$(test_dir)
 test_src_dir := $(src_dir)/$(test_dir)
 
 docs_build_dir := docs/_build
-
 #
 #####
-cmake_flags := -DCMAKE_BUILD_TYPE=$(build_type) -DCMAKE_INSTALL_PREFIX=$(build_dir) -DCMAKE_SOURCE_DIR=$(src_dir) $(SC_BUILD_CMAKE_FLAGS)
+
+cmake_flags := -DCMAKE_BUILD_TYPE=$(build_type) \
+               -DCMAKE_INSTALL_PREFIX=$(build_dir) \
+               -DCMAKE_SOURCE_DIR=$(src_dir) \
+               $(SC_BUILD_CMAKE_FLAGS)
 
 ### cmake options required to build scout for LLDB on the Mac
 ifdef SC_USE_LIBCPP
   cmake_flags += -DCMAKE_CXX_FLAGS="-stdlib=libc++" -DCMAKE_SHARED_LINKER_FLAGS="-stdlib=libc++"
 endif
 
-all: $(build_dir)/Makefile compile 
+all: $(build_dir)/Makefile toolchain stdlib
 .PHONY: all 
 
 $(build_dir)/Makefile: CMakeLists.txt
@@ -136,20 +139,23 @@ $(build_dir)/Makefile: CMakeLists.txt
 	@((test -d $(build_dir)) || (mkdir $(build_dir)))
 	@echo "*** Creating Scout build directory: $(build_dir)"
 	@(cd $(build_dir); cmake $(cmake_flags) $(src_dir))
-	@echo "*** Creating standard library build directory: $(stdlib_build_dir)"
-	@((test -d $(stdlib_build_dir)) || (mkdir $(stdlib_build_dir)))
 
-.PHONY: compile
-compile: $(build_dir)/Makefile 
-	@(cd $(build_dir); make $(make_flags) install)
-	@(cd $(stdlib_build_dir); cmake $(cmake_flags) $(stdlib_flags) $(stdlib_src_dir))
-	@(cd $(stdlib_build_dir); make $(make_flags) install)
+toolchain: $(build_dir) $(build_dir)/Makefile
+	@(cd $(build_dir); make $(make_flags))
 
-.PHONY: scc-only
-scc-only: $(build_dir)/Makefile
+.PHONY: scc
+scc: $(build_dir)/Makefile toolchain 
 	@(cd $(build_dir); make $(make_flags))
 	cp $(build_dir)/tools/clang/scc/scc $(build_dir)/scout/bin/scc
 	cp $(build_dir)/tools/clang/scc-rewrite/scc-rewrite $(build_dir)/scout/bin/scc-rewrite
+
+
+.PHONY: stdlib
+stdlib: $(build_dir)/Makefile 
+	@echo "*** Creating standard library build directory: $(stdlib_build_dir)"
+	@((test -d $(stdlib_build_dir)) || (mkdir $(stdlib_build_dir)))
+	@(cd $(stdlib_build_dir); cmake $(cmake_flags) --debug-trycompile $(stdlib_flags) $(stdlib_src_dir))
+	@(cd $(stdlib_build_dir); make $(make_flags))
 
 .PHONY: test
 test: 

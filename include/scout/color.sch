@@ -58,9 +58,6 @@
 #ifndef __SCOUT_COLOR_SCH__
 #define __SCOUT_COLOR_SCH__
 
-#include "scout/math.sch"
-#include "scout/types.sch"
-
 // The language has a built-in (implicit) color vector within rendering
 // constructs.  This color represents a 4-channel color containing red,
 // green, blue channels and a fourth channel for alpha (representing

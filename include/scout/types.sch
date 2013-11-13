@@ -132,7 +132,7 @@ typedef double double2               __attribute__((ext_vector_type(2)));
 // +-------------------------------------------------------------------------+
 
 
-// +--- Types to capture sizes of various mesh attributes. -------------------+
+// +--- Types to capture sizes of various mesh attributes. ------------------+
 //
 // We use the follow terminology when it comes to mesh attributes:
 //
@@ -157,6 +157,6 @@ typedef uint64_t stride_t;
 typedef uint32_t index_t;
 typedef uint64_t address_t;
 typedef index_t  position_t          __attribute__((ext_vector_type(3)));
-// +--------------------------------------------------------------------------+
+// +-------------------------------------------------------------------------+
 
 #endif

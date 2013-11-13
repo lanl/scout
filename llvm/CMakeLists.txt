@@ -91,8 +91,10 @@ string(TOUPPER "${CMAKE_BUILD_TYPE}" uppercase_CMAKE_BUILD_TYPE)
 
 set(LLVM_MAIN_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(LLVM_MAIN_INCLUDE_DIR ${LLVM_MAIN_SRC_DIR}/include)
-set(LLVM_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
+# +===== Scout ===========================================================================+
+set(LLVM_BINARY_DIR ${SCOUT_BUILD_DIR})
 set(LLVM_TOOLS_BINARY_DIR ${LLVM_BINARY_DIR}/bin)
+# +=======================================================================================+
 set(LLVM_EXAMPLES_BINARY_DIR ${LLVM_BINARY_DIR}/examples)
 set(LLVM_LIBDIR_SUFFIX "" CACHE STRING "Define suffix of library directory name (32/64)" )
 
@@ -115,8 +117,12 @@ set(LLVM_ALL_TARGETS
 # List of targets with JIT support:
 set(LLVM_TARGETS_WITH_JIT X86 PowerPC AArch64 ARM Mips SystemZ)
 
-set(LLVM_TARGETS_TO_BUILD "all"
+# +===== Scout ========================================================================+
+if (NOT LLVM_TARGETS_TO_BUILD) 
+  set(LLVM_TARGETS_TO_BUILD "all"
     CACHE STRING "Semicolon-separated list of targets to build, or \"all\".")
+endif()
+# +=-==================================================================================+
 
 set(LLVM_EXPERIMENTAL_TARGETS_TO_BUILD ""
   CACHE STRING "Semicolon-separated list of experimental targets to build.")
@@ -165,8 +171,6 @@ set(LLVM_TARGETS_TO_BUILD
    ${LLVM_TARGETS_TO_BUILD}
    ${LLVM_EXPERIMENTAL_TARGETS_TO_BUILD})
 list(REMOVE_DUPLICATES LLVM_TARGETS_TO_BUILD)
-
-set(llvm_builded_incs_dir ${LLVM_BINARY_DIR}/include/llvm)
 
 include(AddLLVMDefinitions)
 
@@ -297,7 +301,7 @@ endif()
 
 set(LLVMBUILDTOOL "${LLVM_MAIN_SRC_DIR}/utils/llvm-build/llvm-build")
 set(LLVMCONFIGLIBRARYDEPENDENCIESINC
-  "${LLVM_BINARY_DIR}/tools/llvm-config/LibraryDependencies.inc")
+  "${LLVM_BINARY_DIR}/llvm/tools/llvm-config/LibraryDependencies.inc")
 set(LLVMBUILDCMAKEFRAG
   "${LLVM_BINARY_DIR}/LLVMBuild.cmake")
 
@@ -410,7 +414,12 @@ set( CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${LLVM_BINARY_DIR}/lib )
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
-include_directories( ${LLVM_BINARY_DIR}/include ${LLVM_MAIN_INCLUDE_DIR})
+# +===== Scout ========================================================+
+include_directories( 
+  ${LLVM_BINARY_DIR}/include 
+  ${LLVM_BINARY_DIR}/llvm/include 
+  ${LLVM_MAIN_INCLUDE_DIR}
+  )
 
 if( ${CMAKE_SYSTEM_NAME} MATCHES FreeBSD )
   # On FreeBSD, /usr/local/* is not used by default. In order to build LLVM

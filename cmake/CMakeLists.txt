@@ -58,10 +58,10 @@
     message(STATUS "scout: generating Scout.cmake configuration...")
     configure_file(
       Config/Scout.cmake.in 
-      ${SC_BUILD_DIR}/scout-config/cmake/Scout.cmake)
+      ${SCOUT_BUILD_DIR}/share/scout/cmake/Scout.cmake)
 
     install(FILES 
-      ${SC_BUILD_DIR}/scout-config/cmake/Scout.cmake
+      ${SCOUT_BUILD_DIR}/share/scout/cmake/Scout.cmake
       DESTINATION 
       share/scout/cmake
       )
@@ -78,7 +78,6 @@
       DESTINATION 
       share/scout/cmake
       )
-
 
     file(GLOB scc_modules Scout/*.*)
     install(FILES 

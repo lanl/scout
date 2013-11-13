@@ -2,7 +2,7 @@
 ###########################################################################
 # Copyright (c) 2010, Los Alamos National Security, LLC.
 # All rights reserved.
-# 
+#
 #  Copyright 2010. Los Alamos National Security, LLC. This software was
 #  produced under U.S. Government contract DE-AC52-06NA25396 for Los
 #  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -23,8 +23,8 @@
 #
 #    * Redistributions in binary form must reproduce the above
 #      copyright notice, this list of conditions and the following
-#      disclaimer in the documentation and/or other materials provided 
-#      with the distribution.  
+#      disclaimer in the documentation and/or other materials provided
+#      with the distribution.
 #
 #    * Neither the name of Los Alamos National Security, LLC, Los
 #      Alamos National Laboratory, LANL, the U.S. Government, nor the
@@ -57,9 +57,9 @@
 #####
 
 project(Scout)
-  ##### CMAKE REQUIREMENTS 
-  # There are a few gremlins in cmake we've stumbled into -- we force the 
-  # version here to avoid chasing our tails again...  If your system doesn't 
+  ##### CMAKE REQUIREMENTS
+  # There are a few gremlins in cmake we've stumbled into -- we force the
+  # version here to avoid chasing our tails again...  If your system doesn't
   # have at least the version number below download it from:
   #
   #   http://www.cmake.org/cmake/resources/software.html
@@ -67,39 +67,38 @@ project(Scout)
     cmake_minimum_required(VERSION 2.8.9)
   #
   #####
-
   include(cmake/Modules/ScoutConfig.cmake)
   include(cmake/Modules/ScoutLLVMConfig.cmake)
   include(CTest)
 
-  set(CMAKE_VERBOSE_MAKEFILE OFF)
+  set(CMAKE_VERBOSE_MAKEFILE ON)
 
   ##### INSTALL DETAILS
   #
   # Note: There are additional install configuration details
-  # within LLVM and we need to make sure we are compatible 
-  # with them as well... 
+  # within LLVM and we need to make sure we are compatible
+  # with them as well...
   #
-  set(CMAKE_INSTALL_PREFIX ${SC_BUILD_DIR}/scout)
-  set(SC_INSTALL_PREFIX ${CMAKE_INSTALL_PREFIX})
+  set(CMAKE_INSTALL_PREFIX ${SCOUT_BUILD_DIR})
+  set(SCOUT_INSTALL_PREFIX ${CMAKE_INSTALL_PREFIX})
 
   # Install details...
   if (CMAKE_BUILD_TYPE STREQUAL "DEBUG")
-    message(STATUS 
+    message(STATUS
       "scout: Debug build, install prefix '${CMAKE_INSTALL_PREFIX}'.")
   endif()
 
-  install(DIRECTORY ${SC_INCLUDE_DIR}/
+  install(DIRECTORY ${SCOUT_INCLUDE_DIR}/
     DESTINATION include
-    FILES_MATCHING 
+    FILES_MATCHING
       PATTERN  "*.h"
       PATTERN  "*.sch"
       PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
       )
 
-  install(DIRECTORY ${SC_CONFIG_DIR}/include/
+  install(DIRECTORY ${SCOUT_CONFIG_DIR}/include/
     DESTINATION include
-    FILES_MATCHING 
+    FILES_MATCHING
       PATTERN  "*.h"
       PATTERN  "*.sch"
       PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
@@ -121,18 +120,18 @@ project(Scout)
   # Summary of subprojects:
   #
   #    - llvm    : modified/extended versions of llvm, clang for scout.
-  #    - include : auto-generation of configuration headers. 
+  #    - include : auto-generation of configuration headers.
   #    - config  : library of scout's build-time configuration details.
   #    - tools   : various tools that support scout development.
-  #    - runtime : scout's runtime library. 
+  #    - runtime : scout's runtime library.
   #
-    if(CMAKE_SCC_RUNTIME_ONLY STREQUAL "ON") 
+    if(CMAKE_SCC_RUNTIME_ONLY STREQUAL "ON")
       message(STATUS "scout: build runtime only")
       add_subdirectory(lib/Runtime)
     else()
       message(STATUS "scout: build all")
       add_subdirectory(llvm)
-      add_subdirectory(include)   
+      add_subdirectory(include)
       add_subdirectory(lib/Config)
       add_subdirectory(cmake)
       add_subdirectory(tools)
@@ -141,10 +140,10 @@ project(Scout)
     endif()
 
     #-----
-    # Note: we have to build the standard library and test directory 
-    # separately because the 'scc' driver needs to be bootstrapped.  
-    # We therefore treat those directories as entirely separate projects.  
-    # The configuration file generation below helps out with the bootstrap 
+    # Note: we have to build the standard library and test directory
+    # separately because the 'scc' driver needs to be bootstrapped.
+    # We therefore treat those directories as entirely separate projects.
+    # The configuration file generation below helps out with the bootstrap
     # process between these separate projects...
     #-----
     message(STATUS "scout: generating pre-configuration for std library bootstrap build.")
@@ -159,14 +158,14 @@ project(Scout)
       )
 
     #-----
-    # Some optional parts of the build... 
+    # Some optional parts of the build...
     #
     set(sandbox scout-local/sandbox)
-    if(EXISTS ${sandbox} AND IS_DIRECTORY ${sandbox}) 
+    if(EXISTS ${sandbox} AND IS_DIRECTORY ${sandbox})
       message(STATUS "scout: generating configuration file for sandbox.")
       configure_file(
         ${sandbox}/SandboxConfig.cmake.in
-        ${CMAKE_SOURCE_DIR}/${sandbox}/SandboxConfig.cmake 
+        ${CMAKE_SOURCE_DIR}/${sandbox}/SandboxConfig.cmake
         )
     endif()
     #

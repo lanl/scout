@@ -4,7 +4,7 @@
 # This file is distributed under an open source license by Los Alamos
 # National Security, LCC.  See the file License.txt (located in the
 # top level of the source distribution) for details.
-# 
+#
 #-----
 #
 #
@@ -40,10 +40,10 @@ ADD_DEFINITIONS(-D__STDC_CONSTANT_MACROS=1)
 
 # We use the llvm-config utility to get a list of the LLVM libraries.
 # This will likely produce a list of too many libraries for some of
-# our needs but it is simple approach.  If compile times get long 
+# our needs but it is simple approach.  If compile times get long
 # we might want to specialize a bit...
 find_program(LLVM_CONFIG_BIN
-  llvm-config 
+  llvm-config
   PATHS
   ${LLVM_TOOLS_DIR}
   NO_DEFAULT_PATH
@@ -55,12 +55,12 @@ find_program(LLVM_CONFIG_BIN
 # different approach (as CMake runs before building is complete).
 set(LLVM_LIBS )
 
-if (${SC_ENABLE_CUDA}) 
-  set(SC_LLVM_LINK_LIBS LLVMdoallToPTX)
+if (${SCOUT_ENABLE_CUDA})
+  set(SCOUT_LLVM_LINK_LIBS LLVMdoallToPTX)
 endif()
 
-if (${SC_ENABLE_OPENCL}) 
-  set(SC_LLVM_LINK_LIBS ${SC_LLVM_LINK_LIBS} ${SC_LLVMdoallToAMDIL)
+if (${SCOUT_ENABLE_OPENCL})
+  set(SCOUT_LLVM_LINK_LIBS ${SCOUT_LLVM_LINK_LIBS} ${SCOUT_LLVMdoallToAMDIL)
 endif()
 
-set(SC_LLVM_LINK_LIBS ${SC_LLVM_LINK_LIBS} scDriver)
+set(SCOUT_LLVM_LINK_LIBS ${SCOUT_LLVM_LINK_LIBS} scDriver)

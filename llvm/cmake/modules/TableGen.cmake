@@ -12,6 +12,7 @@ macro(tablegen project ofn)
     set(LLVM_TARGET_DEFINITIONS_ABSOLUTE 
       ${CMAKE_CURRENT_SOURCE_DIR}/${LLVM_TARGET_DEFINITIONS})
   endif()
+
   add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${ofn}.tmp
     # Generate tablegen output in a temporary file.
     COMMAND ${${project}_TABLEGEN_EXE} ${ARGN} -I ${CMAKE_CURRENT_SOURCE_DIR}
@@ -25,6 +26,7 @@ macro(tablegen project ofn)
     ${LLVM_TARGET_DEFINITIONS_ABSOLUTE}
     COMMENT "Building ${ofn}..."
     )
+
   add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${ofn}
     # Only update the real output file if there are any differences.
     # This prevents recompilation of all the files depending on it if there
