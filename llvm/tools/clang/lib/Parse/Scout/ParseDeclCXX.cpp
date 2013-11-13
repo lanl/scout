@@ -339,6 +339,7 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
     return false;
   }
 
-  return Actions.ActOnMeshFinish(StartLoc, Dec);
+  return Actions.ActOnMeshFinishDefinition(getCurScope(), Dec, StartLoc);
+
 }
 
