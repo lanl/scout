@@ -2095,34 +2095,8 @@ bool Parser::ParseImplicitInt(DeclSpec &DS, CXXScopeSpec *SS,
         TagKind=tok::kw___interface;break;
       case DeclSpec::TST_class:
         TagName="class" ; FixitTagName = "class " ;TagKind=tok::kw_class ;break;
-
-      // +===== Scout ========================================================+
-      case DeclSpec::TST_uniform_mesh:
-        TagName      = "uniform mesh";
-        FixitTagName = "uniform mesh ";
-        TagKind      = tok::kw_uniform;
-        break;
-
-      case DeclSpec::TST_rectilinear_mesh:
-        TagName      = "rectilinear mesh";
-        FixitTagName = "rectilinear mesh ";
-        TagKind      = tok::kw_rectilinear;
-        break;
-
-      case DeclSpec::TST_structured_mesh:
-        TagName      = "structured mesh";
-        FixitTagName = "structured mesh ";
-        TagKind      = tok::kw_structured;
-        break;
-
-      case DeclSpec::TST_unstructured_mesh:
-        TagName      = "unstructured mesh";
-        FixitTagName = "unstructured mesh ";
-        TagKind      = tok::kw_unstructured;
-        break;
-      // +====================================================================+
     }
-
+    
     if (TagName) {
       IdentifierInfo *TokenName = Tok.getIdentifierInfo();
       LookupResult R(Actions, TokenName, SourceLocation(),
@@ -4712,8 +4686,11 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
   if (isScoutLang()) {
     DeclSpec& DS = D.getMutableDeclSpec();
     DeclSpec::TST tst = DS.getTypeSpecType();
+    llvm::errs() << "before: tst is uniform_mesh & at left square bracket token\n";
+    llvm::errs() << "\ttst = " << int(tst) << "\n";
     // OVERHAUL/DEBUG: replaced TST_typename with TST_uniform mesh... 
     if (Tok.is(tok::l_square) && tst == DeclSpec::TST_uniform_mesh) {
+      llvm::errs() << "tst is uniform_mesh & at left square bracket token\n";      
       ParsedType parsedType = DS.getRepAsType();
       const MeshType* MT = dyn_cast<MeshType>(parsedType.get().getTypePtr());
       if (MT) {
@@ -4889,7 +4866,11 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
     DeclSpec& DS = D.getMutableDeclSpec();
     DeclSpec::TST tst = DS.getTypeSpecType();
 
-    if(tst == DeclSpec::TST_typename){
+    llvm::errs() << "before declspec::uniform_mesh ("
+                 << int(tst) << ", umesh:" << DeclSpec::TST_uniform_mesh << ")\n";    
+    // OVERHAUL/DEBUG -- replaced TST_typename with TST_uniform_mesh... 
+    if (tst == DeclSpec::TST_uniform_mesh) {
+      llvm::errs() << "declspec::uniform_mesh\n";
       ParsedType parsedType = DS.getRepAsType();
       const UniformMeshType* uniMT =
         dyn_cast<UniformMeshType>(parsedType.get().getTypePtr());
