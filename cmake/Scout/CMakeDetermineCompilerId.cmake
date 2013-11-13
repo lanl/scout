@@ -77,7 +77,7 @@ ENDFUNCTION(CMAKE_DETERMINE_COMPILER_ID)
 #-----------------------------------------------------------------------------
 # Function to write the compiler id source file.
 FUNCTION(CMAKE_DETERMINE_COMPILER_ID_WRITE lang src)
-  FILE(READ ${SCOUT_CMAKE_DIR}/${src}.in ID_CONTENT_IN)
+  FILE(READ ${SCOUT_CMAKE_DIR}/Scout/${src}.in ID_CONTENT_IN)
   STRING(CONFIGURE "${ID_CONTENT_IN}" ID_CONTENT_OUT @ONLY)
   FILE(WRITE ${CMAKE_${lang}_COMPILER_ID_DIR}/${src} "${ID_CONTENT_OUT}")
 ENDFUNCTION(CMAKE_DETERMINE_COMPILER_ID_WRITE)

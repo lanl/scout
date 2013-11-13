@@ -86,6 +86,11 @@ public:
   /// The path to the compiler resource directory.
   std::string ResourceDir;
 
+  // +===== Scout ============================================================+
+  /// The path to scout's resource directory.
+  std::string ScoutResourceDir;
+  // +========================================================================+
+
   /// A prefix directory used to emulated a limited subset of GCC's '-Bprefix'
   /// functionality.
   /// FIXME: This type of customization should be removed in favor of the

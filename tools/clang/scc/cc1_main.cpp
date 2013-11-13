@@ -146,6 +146,11 @@ int cc1_main(const char **ArgBegin, const char **ArgEnd,
     Clang->getHeaderSearchOpts().ResourceDir =
       CompilerInvocation::GetResourcesPath(Argv0, MainAddr);
 
+  if (Clang->getHeaderSearchOpts().UseBuiltinIncludes &&
+      Clang->getHeaderSearchOpts().ScoutResourceDir.empty())
+    Clang->getHeaderSearchOpts().ScoutResourceDir =
+      CompilerInvocation::GetScoutResourcesPath(Argv0, MainAddr);
+  
   // Create the actual diagnostics engine.
   Clang->createDiagnostics();
   if (!Clang->hasDiagnostics())

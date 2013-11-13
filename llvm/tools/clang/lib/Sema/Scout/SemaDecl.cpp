@@ -266,18 +266,19 @@ bool Sema::IsValidDeclInMesh(Decl* D){
     if (! MD->hasValidFieldData()) {
       Diag(MD->getSourceRange().getBegin(),
            diag::err_mesh_has_no_elements);
+      return false;
     }
 
     for(MeshDecl::field_iterator itr = MD->field_begin(),
         itrEnd = MD->field_end(); itr != itrEnd; ++itr){
       MeshFieldDecl* MFD = *itr;
-      if (!IsValidMeshField(MFD)) {
+      if (! IsValidMeshField(MFD)) {
         return false;
       }
     }
     return true;
   } else {
     assert(false && "passed non-mesh decl for validation");
+    return false;
   }
-
 }

@@ -2,7 +2,7 @@
 ###########################################################################
 # Copyright (c) 2010, Los Alamos National Security, LLC.
 # All rights reserved.
-# 
+#
 #  Copyright 2010. Los Alamos National Security, LLC. This software was
 #  produced under U.S. Government contract DE-AC52-06NA25396 for Los
 #  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -23,8 +23,8 @@
 #
 #    * Redistributions in binary form must reproduce the above
 #      copyright notice, this list of conditions and the following
-#      disclaimer in the documentation and/or other materials provided 
-#      with the distribution.  
+#      disclaimer in the documentation and/or other materials provided
+#      with the distribution.
 #
 #    * Neither the name of Los Alamos National Security, LLC, Los
 #      Alamos National Laboratory, LANL, the U.S. Government, nor the
@@ -58,45 +58,58 @@ else()
 endif()
 
 
-##### SCOUT RUNTIME CONFIGURATION 
+##### SCOUT RUNTIME CONFIGURATION
 #
-# 
-  set(SCOUT_ENABLE_OPENGL  @SC_ENABLE_OPENGL@)
-  set(SCOUT_ENABLE_CUDA    @SC_ENABLE_CUDA@)
-  set(SCOUT_ENABLE_NUMA    @SC_ENABLE_NUMA@)
-  set(SCOUT_ENABLE_THREADS @SC_ENABLE_THREADS@)
-  set(SC_ENABLE_OPENCL     @SC_ENABLE_OPENCL@)
-  set(SCOUT_ENABLE_MPI     @SC_ENABLE_MPI@)
-  set(SCOUT_ENABLE_PNG     @SC_ENABLE_PNG@)
+  set(SCOUT_ENABLE_OPENGL  @SCOUT_ENABLE_OPENGL@)
+  set(SCOUT_ENABLE_CUDA    @SCOUT_ENABLE_CUDA@)
+  set(SCOUT_ENABLE_NUMA    @SCOUT_ENABLE_NUMA@)
+  set(SCOUT_ENABLE_THREADS @SCOUT_ENABLE_THREADS@)
+  set(SCOUT_ENABLE_OPENCL  @SCOUT_ENABLE_OPENCL@)
+  set(SCOUT_ENABLE_MPI     @SCOUT_ENABLE_MPI@)
+  set(SCOUT_ENABLE_PNG     @SCOUT_ENABLE_PNG@)
 #
 #####
 
 ##### need to pass mpi libs for use by try_compile
-if (SCOUT_ENABLE_MPI MATCHES "ON") 
+if (SCOUT_ENABLE_MPI MATCHES "ON")
   set(SCOUT_MPI_LIBRARIES  @MPI_CXX_LIBRARIES@)
 endif()
 
 ##### SCOUT SOURCE & BUILD PATHS
 #
-#
-  set(SCOUT_INSTALL_DIR @SC_INSTALL_PREFIX@)
-  set(SCOUT_INCLUDE_DIR @SC_INSTALL_PREFIX@/include)
-  set(SCOUT_LIB_DIR     @SC_INSTALL_PREFIX@/lib)
-  set(SCOUT_CMAKE_DIR   @SC_INSTALL_PREFIX@/share/scout/cmake)
+  set(SCOUT_SRC_DIR            @SCOUT_SRC_DIR@)
+  set(SCOUT_INCLUDE_DIR        @SCOUT_INCLUDE_DIR@)
+  set(SCOUT_BUILD_DIR          @SCOUT_BUILD_DIR@)
+  set(SCOUT_CONFIG_DIR         @SCOUT_CONFIG_DIR@)
+  set(SCOUT_LLVM_SRC_DIR       @SCOUT_LLVM_SRC_DIR@)
+  set(SCOUT_LLVM_INCLUDE_DIR   @SCOUT_LLVM_INCLUDE_DIR@)
+  set(SCOUT_LLVM_BUILD_DIR     @SCOUT_LLVM_BUILD_DIR@)
+  set(SCOUT_CLANG_SRC_DIR      @SCOUT_CLANG_SRC_DIR@)
+  set(SCOUT_CLANG_INCLUDE_DIR  @SCOUT_CLANG_INCLUDE_DIR@)
+  set(SCOUT_CLANG_BUILD_DIR    @SCOUT_CLANG_BUILD_DIR@)
+  set(SCOUT_CMAKE_DIR          @SCOUT_CMAKE_DIR@)
+
+  set(SCOUT_INSTALL_PREFIX     @SCOUT_INSTALL_PREFIX@)
+
+  set(SCOUT_CMAKE_PATH 
+    ${SCOUT_CMAKE_DIR}/Modules
+    ${SCOUT_CMAKE_DIR}/Scout
+    ${SCOUT_LLVM_SRC_DIR}/cmake/modules
+    )
 #
 #####
 
 
 ##### SCOUT COMMANDS
 #
-  set(CMAKE_SCC_COMPILER @SC_INSTALL_PREFIX@/bin/scc)
-  set(CMAKE_SCXX_COMPILER @SC_INSTALL_PREFIX@/bin/sc++)
+  set(CMAKE_SCC_COMPILER @SCOUT_INSTALL_PREFIX@/bin/scc)
+  set(CMAKE_SCXX_COMPILER @SCOUT_INSTALL_PREFIX@/bin/sc++)
 #
 #####
 
 
-##### LLVM_CONFIGURATION 
+##### LLVM_CONFIGURATION
 #
-  include(@SC_INSTALL_PREFIX@/share/llvm/cmake/LLVMConfig.cmake)
+  include(@SCOUT_INSTALL_PREFIX@/share/llvm/cmake/LLVMConfig.cmake)
 #
 #####

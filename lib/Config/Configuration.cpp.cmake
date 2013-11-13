@@ -63,13 +63,13 @@ namespace scout {
   
   namespace config {
   
-    bool Configuration::OpenGLSupport = ${SC_ENABLE_OPENGL};
-    bool Configuration::CUDASupport   = ${SC_ENABLE_CUDA};
-    bool Configuration::NUMASupport   = ${SC_ENABLE_NUMA};
-    bool Configuration::MPISupport    = ${SC_ENABLE_MPI};
-    bool Configuration::GLFWSupport   = ${SC_ENABLE_GLFW};
-    bool Configuration::PNGSupport   = ${SC_ENABLE_PNG};
-    bool Configuration::OpenCLSupport = ${SC_ENABLE_OPENCL};
+    bool Configuration::OpenGLSupport = ${SCOUT_ENABLE_OPENGL};
+    bool Configuration::CUDASupport   = ${SCOUT_ENABLE_CUDA};
+    bool Configuration::NUMASupport   = ${SCOUT_ENABLE_NUMA};
+    bool Configuration::MPISupport    = ${SCOUT_ENABLE_MPI};
+    bool Configuration::GLFWSupport   = ${SCOUT_ENABLE_GLFW};
+    bool Configuration::PNGSupport   = ${SCOUT_ENABLE_PNG};
+    bool Configuration::OpenCLSupport = ${SCOUT_ENABLE_OPENCL};
 
     int Configuration::CudaVersion[2] = {
       ${CUDA_VERSION_MAJOR}, 
@@ -80,7 +80,7 @@ namespace scout {
 
       "-I${CMAKE_INSTALL_PREFIX}/include",
 
-      #ifdef SC_ENABLE_OPENGL
+      #ifdef SCOUT_ENABLE_OPENGL
       
       "-I${SDL_INCLUDE_DIR}",
     
@@ -90,22 +90,22 @@ namespace scout {
       
       #endif // OPENGL
     
-      #ifdef SC_ENABLE_CUDA
+      #ifdef SCOUT_ENABLE_CUDA
       "-I${CUDA_INCLUDE_DIRS}",
       #endif
       
-      #ifdef SC_ENABLE_OPENCL
+      #ifdef SCOUT_ENABLE_OPENCL
       "-I${OPENCL_INCLUDE_DIRS}",
       #endif
 
-      #ifdef SC_ENABLE_NUMA 
+      #ifdef SCOUT_ENABLE_NUMA 
       "-I${HWLOC_INCLUDE_DIR}",
       #endif
 
-      #ifdef SC_ENABLE_MPI 
+      #ifdef SCOUT_ENABLE_MPI 
       "-I${MPI_CXX_INCLUDE_PATH}",
       #endif
-      #ifdef SC_ENABLE_PNG
+      #ifdef SCOUT_ENABLE_PNG
       "-I${PNG_INCLUDE_DIR}",
       #endif
 
@@ -117,7 +117,7 @@ namespace scout {
       "-L${CMAKE_INSTALL_PREFIX}/lib",
       "-L${SDL_LIBRARY_DIR}",    
 
-      #ifdef SC_ENABLE_OPENGL
+      #ifdef SCOUT_ENABLE_OPENGL
     
       #ifdef APPLE
       "-framework OpenGL",
@@ -128,15 +128,15 @@ namespace scout {
 
       #endif  // OpenGL 
     
-      #ifdef SC_ENABLE_CUDA    
+      #ifdef SCOUT_ENABLE_CUDA    
       "-L${CUDA_LIBRARY_DIR}", 
       #endif
 
-      #ifdef SC_ENABLE_NUMA 
+      #ifdef SCOUT_ENABLE_NUMA 
       "-L${HWLOC_LIBRARY_DIR}",
       #endif
 
-      #ifdef SC_ENABLE_MPI
+      #ifdef SCOUT_ENABLE_MPI
       // Note MPI includes compiler flags in dirs string.       
       "${MPI_CXX_LINK_DIRS}",
       #endif
@@ -147,7 +147,7 @@ namespace scout {
     const char* Configuration::Libraries[] = {
 
       "-lBlocksRuntime",
-      #ifdef SC_ENABLE_CUDA
+      #ifdef SCOUT_ENABLE_CUDA
       "-lscCudaError",
       #endif
 
@@ -158,7 +158,7 @@ namespace scout {
       "-framework Foundation", 
       #endif
 
-      #ifdef SC_ENABLE_OPENGL
+      #ifdef SCOUT_ENABLE_OPENGL
 
       // Frameworks handle MacOS X details for us so we skip details here.
       #ifndef APPLE
@@ -167,11 +167,11 @@ namespace scout {
 
       #endif // OPENGL 
     
-      #ifdef SC_ENABLE_CUDA
+      #ifdef SCOUT_ENABLE_CUDA
       "${CUDA_LIBRARIES} -lscCudaError",
       #endif
 
-      #ifdef SC_ENABLE_OPENCL
+      #ifdef SCOUT_ENABLE_OPENCL
         #ifdef APPLE 
         "-framework OpenCL", 
         #else
@@ -179,19 +179,19 @@ namespace scout {
         #endif
       #endif
 
-      #ifdef SC_ENABLE_NUMA
+      #ifdef SCOUT_ENABLE_NUMA
       "${HWLOC_LIBRARIES}",
       #endif
 
-      #ifdef SC_ENABLE_THREADS
+      #ifdef SCOUT_ENABLE_THREADS
       "${CMAKE_THREAD_LIBS_INIT}", 
       #endif
 
-      #ifdef SC_ENABLE_MPI
+      #ifdef SCOUT_ENABLE_MPI
       "${MPI_CXX_LINK_LIBS}",
       #endif
     
-      #ifdef SC_ENABLE_PNG
+      #ifdef SCOUT_ENABLE_PNG
       "${PNG_LINK_LIBS}",
       #endif
 

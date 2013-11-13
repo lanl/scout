@@ -65,6 +65,21 @@ Driver::Driver(StringRef ClangExecutable,
   Name = llvm::sys::path::stem(ClangExecutable);
   Dir  = llvm::sys::path::parent_path(ClangExecutable);
 
+  // +===== Scout ===============================================+
+  // Compute the path to the scout resource directory.  This is
+  // relative to the location of the 'scc/sc++' binary.
+  {
+    StringRef ScResourceDir(SCOUT_RESOURCE_DIR);
+    SmallString<128> P(Dir);
+    if (ScResourceDir != "")
+      llvm::sys::path::append(P, ScResourceDir);
+    else
+      llvm::sys::path::append(P, "..", "include", "scout");
+    ScoutResourceDir = P.str();
+    llvm::errs() << "Scout resource directory: " << ScoutResourceDir << "\n";
+  }
+  // +===========================================================+
+
   // Compute the path to the resource directory.
   StringRef ClangResourceDir(CLANG_RESOURCE_DIR);
   SmallString<128> P(Dir);
@@ -363,6 +378,11 @@ Compilation *Driver::BuildCompilation(ArrayRef<const char *> ArgList) {
 
   if (const Arg *A = Args->getLastArg(options::OPT_resource_dir))
     ResourceDir = A->getValue();
+
+  // +===== Scout ============================================================+
+  if (const Arg *A = Args->getLastArg(options::OPT_scout_resource_dir))
+    ScoutResourceDir = A->getValue();
+  // +========================================================================+  
 
   // Perform the default argument translations.
   DerivedArgList *TranslatedArgs = TranslateInputArgs(*Args);
@@ -721,6 +741,7 @@ bool Driver::HandleImmediateArgs(const Compilation &C) {
     }
     llvm::outs() << "\n";
     llvm::outs() << "libraries: =" << ResourceDir;
+    llvm::outs() << "scout libraries: =" << ScoutResourceDir;
 
     StringRef sysroot = C.getSysRoot();
 

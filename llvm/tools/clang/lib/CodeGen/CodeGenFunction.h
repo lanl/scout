@@ -355,6 +355,7 @@ public:
     case 2: return "depth";
     default:
       assert(false && "Unknown dimension in toString()!\n");
+      return "error";
     }
   }
 

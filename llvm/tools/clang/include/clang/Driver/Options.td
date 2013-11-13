@@ -1162,7 +1162,14 @@ def nostdincxx : Flag<["-"], "nostdinc++">, Flags<[CC1Option]>,
   HelpText<"Disable standard #include directories for the C++ standard library">;
 def nostdlib : Flag<["-"], "nostdlib">;
 // +===== Scout ========================================================================+
-def noscstdlib : Flag<["-"], "noscstdlib">;
+def noscstdinc : Flag<["-"], "noscstdinc">, Flags<[CC1Option]>,
+    HelpText<"Disable scout's default standard include directory.">;
+def noscstdlib : Flag<["-"], "noscstdlib">,
+    HelpText<"Disable scout's automatic link-time inclusion of libraries.">;
+def _no_scout_standard_includes : Flag<["--"], "no-scout-standard-includes">, 
+    Alias<noscstdinc>;
+def _no_scout_standard_libraries : Flag<["--"], "no-scout-standard-libraries">, 
+    Alias<noscstdlib>;
 // +====================================================================================+
 def object : Flag<["-"], "object">;
 def o : JoinedOrSeparate<["-"], "o">, Flags<[DriverOption, RenderAsInput, CC1Option]>,
@@ -1206,6 +1213,9 @@ def rdynamic : Flag<["-"], "rdynamic">;
 def resource_dir : Separate<["-"], "resource-dir">,
   Flags<[DriverOption, CC1Option, HelpHidden]>,
   HelpText<"The directory which holds the compiler resource files">;
+def scout_resource_dir : Separate<["-"], "scout-resource-dir">,
+  Flags<[DriverOption, CC1Option, HelpHidden]>,
+  HelpText<"The directory which holds the scout-centric resource files">;
 def resource_dir_EQ : Joined<["-"], "resource-dir=">, Flags<[DriverOption]>,
   Alias<resource_dir>;
 def rpath : Separate<["-"], "rpath">, Flags<[LinkerInput]>;

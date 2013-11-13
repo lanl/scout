@@ -233,13 +233,6 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
 
     return true;
   }
-  // +===== Scout ============================================================+
-  // Implicitly include the Scout headers
-  if (isScoutLang(CI.getLangOpts())) {
-    CI.getPreprocessorOpts().Includes.push_back("scout/scout.sch");
-    CI.getPreprocessorOpts().Includes.push_back("scout/Runtime/scout.h");
-  }
-  // +========================================================================+
 
   // If the implicit PCH include is actually a directory, rather than
   // a single file, search for a suitable PCH file in that directory.

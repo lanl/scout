@@ -80,6 +80,11 @@ set(CLANG_RESOURCE_DIR "" CACHE STRING
 set(C_INCLUDE_DIRS "" CACHE STRING
   "Colon separated list of directories clang will search for headers.")
 
+# +===== Scout ==================================================================+
+set(SCOUT_RESOURCE_DIR "" CACHE STRING
+  "Colon separated list of directories clang will search for scout headers.")
+# +==============================================================================+
+
 set(GCC_INSTALL_PREFIX "" CACHE PATH "Directory where gcc is installed." )
 set(DEFAULT_SYSROOT "" CACHE PATH
   "Default <path> to all compiler invocations for --sysroot=<path>." )
@@ -253,7 +258,9 @@ endmacro(add_clang_library)
 macro(add_clang_executable name)
   add_llvm_executable( ${name} ${ARGN} )
   set_target_properties(${name} PROPERTIES FOLDER "Clang executables")
-  set(EXECUTABLE_OUTPUT_PATH ${LLVM_BINARY_DIR}/bin)
+  # +===== Scout ===========================================================+
+  set(EXECUTABLE_OUTPUT_PATH ${SCOUT_BUILD_DIR}/bin)
+  # +=======================================================================+
 endmacro(add_clang_executable)
 
 include_directories(BEFORE

@@ -64,14 +64,14 @@ project(sc_config_headers)
 
   ##### CONFIGURATION FILE GENERATION
   #
-  set(SC_CONFIGURE_INC_DIR ${SC_BUILD_DIR}/scout-config/include/scout/Config)
+  set(SCOUT_CONFIGURE_INC_DIR ${SCOUT_BUILD_DIR}/config/include/scout/Config)
 
   message(STATUS "scout: generating defs.h for build-time configuration settings.")
-  message(STATUS "       location: ${SC_CONFIGURE_INC_DIR}/defs.h")
+  message(STATUS "       location: ${SCOUT_CONFIGURE_INC_DIR}/defs.h")
 
   configure_file (
     defs.h.cmake 
-    ${SC_CONFIGURE_INC_DIR}/defs.h)
+    ${SCOUT_CONFIGURE_INC_DIR}/defs.h)
 
   #
   #####

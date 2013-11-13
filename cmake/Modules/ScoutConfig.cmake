@@ -50,31 +50,54 @@
 #
 # Notes
 #
+#  This file should only be included at the top-level of the build
+#  configuration, we guard against multiple inclusions from the wrong
+#  spot in the hierarchy.
+#
 #####
 
-if (NOT __SC_CONFIG_CMAKE)
-  set(__SC_CONFIG_CMAKE)
+if (NOT __SCOUT_CONFIG_CMAKE)
+  set(__SCOUT_CONFIG_CMAKE)
 else()
   return()
 endif()
 
 ##### SCOUT SOURCE & BUILD PATHS
-# These variables are used throughout the configuration.
 #
-  set(SC_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-  set(SC_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR})
-  set(SC_INCLUDE_DIR ${SC_SRC_DIR}/include)
-  set(SC_CONFIG_DIR ${SC_BUILD_DIR}/scout-config)
-  set(SC_INC_PATH ${SC_INCLUDE_DIR} ${SC_CONFIG_DIR}/include)
+  set(SCOUT_SRC_DIR            ${PROJECT_SOURCE_DIR})
+  set(SCOUT_INCLUDE_DIR        ${PROJECT_SOURCE_DIR}/include)
+  set(SCOUT_BUILD_DIR          ${PROJECT_BINARY_DIR})
+  set(SCOUT_CONFIG_DIR         ${SCOUT_BUILD_DIR}/config)
+  set(SCOUT_LLVM_SRC_DIR       ${SCOUT_SRC_DIR}/llvm)
+  set(SCOUT_LLVM_INCLUDE_DIR   ${SCOUT_LLVM_SRC_DIR}/include)
+  set(SCOUT_LLVM_BUILD_DIR     ${SCOUT_BUILD_DIR}/llvm)
+  set(SCOUT_CLANG_SRC_DIR      ${SCOUT_LLVM_SRC_DIR}/tools/clang)
+  set(SCOUT_CLANG_INCLUDE_DIR  ${SCOUT_CLANG_SRC_DIR}/include)
+  set(SCOUT_CLANG_BUILD_DIR    ${SCOUT_LLVM_BUILD_DIR}/tools/clang)
+  set(SCOUT_CMAKE_DIR          ${PROJECT_SOURCE_DIR}/cmake)
 
-  set(SC_LLVM_SRC_DIR ${SC_SRC_DIR}/llvm)
-  set(SC_LLVM_BUILD_DIR ${SC_BUILD_DIR}/llvm)
-  set(SC_LLVM_INC_PATH ${SC_LLVM_SRC_DIR}/include ${SC_LLVM_BUILD_DIR}/include)
+  set(SCOUT_INCLUDE_PATH  
+    ${SCOUT_INCLUDE_DIR}
+    ${SCOUT_BUILD_DIR}/include
+    ${SCOUT_CONFIG_DIR}/include 
+    )
 
-  set(SC_CLANG_SRC_DIR ${SC_LLVM_SRC_DIR}/tools/clang)
-  set(SC_CLANG_BUILD_DIR ${SC_LLVM_BUILD_DIR}/tools/clang)
-  set(SC_CLANG_INC_PATH ${SC_CLANG_SRC_DIR}/include
-    ${SC_CLANG_BUILD_DIR}/include)
+  set(SCOUT_LLVM_INCLUDE_PATH
+    ${SCOUT_LLVM_INCLUDE_DIR}
+    ${SCOUT_LLVM_BUILD_DIR}/include
+    )
+
+  set(SCOUT_CLANG_INCLUDE_PATH
+    ${SCOUT_CLANG_INCLUDE_DIR}
+    ${SCOUT_CLANG_BUILD_DIR}/include
+    )
+
+  # Try and coalesce all of our output (built) files into single
+  # location -- this gives us a set of tools at build time that we can
+  # use w/out the need to do a full-blown install (which can be a bane
+  # during active development).
+  set(EXECUTABLE_OUTPUT_PATH ${SCOUT_BUILD_DIR}/bin)
+  set(LIBRARY_OUTPUT_PATH    ${SCOUT_BUILD_DIR}/lib)
 #
 #####
 
@@ -82,12 +105,11 @@ endif()
 # Check to see if we have a build-type set -- if not, default to a
 # debugging build...
   if (NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE DEBUG)
-    message(STATUS "scout: Defaulting to debug build configuration...")
+    set(CMAKE_BUILD_TYPE RELWITHDEBINFO)
+    message(STATUS "scout: Defaulting to release w/ debug configuration...")
   endif()
 #
 #####
-
 
 ##### SCOUT VERSION INFORMATION
 # The following variables are used to help us track Scout
@@ -109,12 +131,12 @@ endif()
 
 
   set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "The Scout Programming Language")
-  set(CPACK_PACKAGE_VENDOR scout)
+  set(CPACK_PACKAGE_VENDOR LANL)
   set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/ReadMe.txt")
   set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/License.txt")
-  set(CPACK_PACKAGE_VERSION_MAJOR "${SC_VERSION_MAJOR}")
-  set(CPACK_PACKAGE_VERSION_MINOR "${SC_VERSION_MINOR}")
-  set(CPACK_PACKAGE_VERSION_PATCH "${SC_VERSION_PATCH}")
+  set(CPACK_PACKAGE_VERSION_MAJOR "${SCOUT_VERSION_MAJOR}")
+  set(CPACK_PACKAGE_VERSION_MINOR "${SCOUT_VERSION_MINOR}")
+  set(CPACK_PACKAGE_VERSION_PATCH "${SCOUT_PATCHLEVEL}")
 #
 #####
 
@@ -124,9 +146,9 @@ endif()
 # own (and LLVM's) configuration details.
 #
   set(CMAKE_MODULE_PATH
-    "${SC_SRC_DIR}/cmake/Modules"
-    "${SC_BUILD_DIR}/cmake/Modules"
-    "${SC_LLVM_SRC_DIR}/cmake/modules"
+    "${SCOUT_SRC_DIR}/cmake/Modules"
+    "${SCOUT_BUILD_DIR}/cmake/Modules"
+    "${SCOUT_LLVM_SRC_DIR}/cmake/modules"
      ${CMAKE_MODULE_PATH}
     )
 
@@ -144,10 +166,10 @@ endif()
   find_package(OpenGL)
   if (OPENGL_FOUND)
     message(STATUS "scout: OpenGL found, enabling support.")
-    set(SC_ENABLE_OPENGL ON  CACHE BOOL "Enable OpenGL support.")
-    set(SC_HAVE_OPENGL 1)
+    set(SCOUT_ENABLE_OPENGL ON  CACHE BOOL "Enable OpenGL support.")
+    set(SCOUT_HAVE_OPENGL 1)
   else()
-    set(SC_HAVE_OPENGL 0)
+    set(SCOUT_HAVE_OPENGL 0)
   endif()
 
   # --- CUDA support.
@@ -155,18 +177,18 @@ endif()
   #if (CUDA_FOUND)
   #  message(STATUS "scout: CUDA found, enabling PTX codegen support.")
   #  message(STATUS "scout: CUDA include path: ${CUDA_INCLUDE_DIRS}")
-  #    set(SC_ENABLE_CUDA ON CACHE BOOL
+  #    set(SCOUT_ENABLE_CUDA ON CACHE BOOL
   #    "Enable CUDA/PTX code generation and runtime support.")
   #
-  #  set(SC_ENABLE_LIB_NVVM OFF CACHE BOOL
+  #  set(SCOUT_ENABLE_LIB_NVVM OFF CACHE BOOL
   #    "Enable NVIDIA's compiler SDK vs. LLVM's PTX backend.")
   #
-  #  if (SC_ENABLE_LIB_NVVM)
+  #  if (SCOUT_ENABLE_LIB_NVVM)
   #   message(STATUS "scout: Enabling NVIDIA libnvvm support.")
   # endif()
   #else()
     message(STATUS "scout: CUDA not found disabling support.")
-    set(SC_ENABLE_CUDA OFF CACHE BOOL
+    set(SCOUT_ENABLE_CUDA OFF CACHE BOOL
       "Enable CUDA/PTX code generation and runtime support.")
     set(CUDA_VERSION_MAJOR 0)
     set(CUDA_VERSION_MINOR 0)
@@ -184,44 +206,44 @@ endif()
   if (OPENCL_FOUND)
     # TODO - should these separated or wrapped into one?
     message(STATUS "scout: OpenCL found, enabling AMDIL codegen support.")
-    set(SC_ENABLE_OPENCL ON CACHE BOOL "Enable OpenCL code generation and runtime support.")
-    set(SC_ENABLE_AMDIL ON CACHE BOOL "Enable AMD IL code generation and runtime support.")
-    #add_definitions(-DSC_ENABLE_OPENCL -DSC_ENABLE_AMDIL)
+    set(SCOUT_ENABLE_OPENCL ON CACHE BOOL "Enable OpenCL code generation and runtime support.")
+    set(SCOUT_ENABLE_AMDIL ON CACHE BOOL "Enable AMD IL code generation and runtime support.")
+    #add_definitions(-DSCOUT_ENABLE_OPENCL -DSCOUT_ENABLE_AMDIL)
   else()
     message(STATUS "scout: OpenCL not found, disabling support")
-    set(SC_ENABLE_OPENCL OFF CACHE BOOL "Enable OpenCL code generation and runtime support.")
-    set(SC_ENABLE_AMDIL OFF CACHE BOOL "Enable AMD IL code generation and runtime support.")
+    set(SCOUT_ENABLE_OPENCL OFF CACHE BOOL "Enable OpenCL code generation and runtime support.")
+    set(SCOUT_ENABLE_AMDIL OFF CACHE BOOL "Enable AMD IL code generation and runtime support.")
    endif()
 
   # --- NUMA support.
-  find_package(HWLOC)
-  if (HWLOC_FOUND)
-    message(STATUS "scout: Found hwloc -- enabling NUMA support.")
-    set(SC_ENABLE_NUMA ON CACHE BOOL "Enable NUMA (via libhwloc) runtime support.")
-    if (APPLE)
-      message(STATUS "scout: Note NUMA support under Mac OS X has limited features.")
-    endif()
-  else()
-    message(STATUS "scout: NUMA support not found -- disabling support.")
-    set(SC_ENABLE_NUMA OFF CACHE BOOL "Enable NUMA (via libhwloc) runtime support.")
-  endif()
+  #find_package(HWLOC)
+  #if (HWLOC_FOUND)
+  #    message(STATUS "scout: Found hwloc -- enabling NUMA support.")
+  #  set(SCOUT_ENABLE_NUMA ON CACHE BOOL "Enable NUMA (via libhwloc) runtime support.")
+  #  if (APPLE)
+  #    message(STATUS "scout: Note NUMA support under Mac OS X has limited features.")
+  #  endif()
+  #else()
+  #  message(STATUS "scout: NUMA support not found -- disabling support.")
+    set(SCOUT_ENABLE_NUMA OFF CACHE BOOL "Enable NUMA (via libhwloc) runtime support.")
+  #endif()
 
   # --- Thread support.
   find_package(Threads)
   if (Threads_FOUND)
     message(STATUS "scout: Found Threads -- enabling support.")
-    set(SC_ENABLE_THREADS ON CACHE BOOL "Enable Threads support.")
+    set(SCOUT_ENABLE_THREADS ON CACHE BOOL "Enable Threads support.")
   else()
-    set(SC_ENABLE_THREADS OFF CACHE BOOL "Enable Threads support.")
+    set(SCOUT_ENABLE_THREADS OFF CACHE BOOL "Enable Threads support.")
   endif()
 
   # --- MPI support.
   #find_package(MPI)
   #if (MPI_FOUND)
   #  message(STATUS "scout: Found MPI -- enabling support.")
-  #  set(SC_ENABLE_MPI ON CACHE BOOL "Enable MPI runtime support.")
+  #  set(SCOUT_ENABLE_MPI ON CACHE BOOL "Enable MPI runtime support.")
   #else()
-  set(SC_ENABLE_MPI OFF CACHE BOOL "Enable MPI runtime support.")
+  set(SCOUT_ENABLE_MPI OFF CACHE BOOL "Enable MPI runtime support.")
   #endif()
 
 
@@ -230,11 +252,11 @@ endif()
   #if (GLFW_FOUND)
   #  message(STATUS "scout: GLFW found, enabling runtime support.")
   #  message(STATUS "scout: GLFW include path: ${GLFW_INCLUDE_DIR}")
-  #  set(SC_ENABLE_GLFW ON CACHE BOOL
+  #  set(SCOUT_ENABLE_GLFW ON CACHE BOOL
   #    "Enable GLFW runtime support.")
   #else()
   #  message(STATUS "scout: GLFW not found, disabling support.")
-    set(SC_ENABLE_GLFW OFF CACHE BOOL
+    set(SCOUT_ENABLE_GLFW OFF CACHE BOOL
       "Enable GLFW runtime support.")
   #endif()
 
@@ -243,7 +265,7 @@ endif()
   find_package(SDL REQUIRED)
   if (SDL_FOUND)
     message(STATUS "scout: Found SDL -- enabling support.")
-    set(SC_ENABLE_SDL ON CACHE BOOL "Enable SDL support (required).")
+    set(SCOUT_ENABLE_SDL ON CACHE BOOL "Enable SDL support (required).")
   endif()
 
   # Disable PNG for now -- some Linux systems are having a hard time
@@ -253,10 +275,10 @@ endif()
 
   if (PNG_FOUND)
     message(STATUS "scout: Found PNG -- enabling support.")
-    set(SC_ENABLE_PNG ON CACHE BOOL "Enable PNG support in scout's runtime libraries.")
+    set(SCOUT_ENABLE_PNG ON CACHE BOOL "Enable PNG support in scout's runtime libraries.")
     add_definitions(${PNG_DEFINITIONS})
   else()
-    set(SC_ENABLE_PNG OFF CACHE BOOL "Enable PNG support in scout's runtime libraries.")
+    set(SCOUT_ENABLE_PNG OFF CACHE BOOL "Enable PNG support in scout's runtime libraries.")
   endif()
 
 # --- THRUST support.
@@ -268,23 +290,23 @@ endif()
   #
   #else ()
   #  message(STATUS "scout: THRUST not found -- disabling support.")
-  #  set(SC_ENABLE_CUDA_THRUST OFF CACHE BOOL "Enable THRUST support via CUDA in scout's runtime libraries.")
-  #  set(SC_ENABLE_TBB_THRUST OFF CACHE BOOL "Enable THRUST support via TBB in scout's runtime libraries.")
-  #  set(SC_ENABLE_CPP_THRUST OFF CACHE BOOL "Enable THRUST support via CPP in scout's runtime libraries.")
+  #  set(SCOUT_ENABLE_CUDA_THRUST OFF CACHE BOOL "Enable THRUST support via CUDA in scout's runtime libraries.")
+  #  set(SCOUT_ENABLE_TBB_THRUST OFF CACHE BOOL "Enable THRUST support via TBB in scout's runtime libraries.")
+  #  set(SCOUT_ENABLE_CPP_THRUST OFF CACHE BOOL "Enable THRUST support via CPP in scout's runtime libraries.")
   #endif ()
 
   #if (THRUST_FOUND)
-  #  set(SC_ENABLE_CPP_THRUST ON CACHE BOOL "Enable THRUST support via CPP in scout's runtime libraries.")
+  #  set(SCOUT_ENABLE_CPP_THRUST ON CACHE BOOL "Enable THRUST support via CPP in scout's runtime libraries.")
   #  find_package(CUDA)
   #  if (CUDA_FOUND)
   #    message(STATUS "scout: CUDA found.")
-  #  #set(SC_ENABLE_CUDA_THRUST ON CACHE BOOL "Enable THRUST support via CUDA in scout's runtime libraries.")
+  #  #set(SCOUT_ENABLE_CUDA_THRUST ON CACHE BOOL "Enable THRUST support via CUDA in scout's runtime libraries.")
   #  endif ()
 
   #  find_package(TBB)
   # if (TBB_FOUND)
   #    message(STATUS "scout: TBB found.")
-  #      set(SC_ENABLE_TBB_THRUST ON CACHE BOOL "Enable THRUST support via TBB in scout's runtime libraries.")
+  #      set(SCOUT_ENABLE_TBB_THRUST ON CACHE BOOL "Enable THRUST support via TBB in scout's runtime libraries.")
   #  endif ()
   #endif ()
 
