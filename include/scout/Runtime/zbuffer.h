@@ -13,7 +13,7 @@
 #define SCOUT_ZBUFFER_H_
 
 #include <float.h>
-#include "scout/Runtime/types.h"
+#include "scout/types.h"
 
 namespace scout  
 {

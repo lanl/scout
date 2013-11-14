@@ -52,7 +52,7 @@
 #define SCOUT_IMAGE_H_
 
 #include <list>
-#include "scout/Runtime/types.h"
+#include "scout/types.h"
 
 namespace scout 
 {

@@ -53,13 +53,6 @@
 #ifndef __SCOUT_SCH__
 #define __SCOUT_SCH__
 
-/*
-#if defined(__cplusplus)
-#include <cmath>
-#else 
-#include <math.h>
-#endif 
-*/
 #include "scout/types.sch"
 #include "scout/math.sch"
 #include "scout/color.sch"

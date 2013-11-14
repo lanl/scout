@@ -55,7 +55,7 @@
 namespace scout
 {
   #include "scout/types.sch"
-
+  
   // Some shorthand for various types...
   typedef unsigned char    uchar;
   typedef unsigned char*   ucharp;

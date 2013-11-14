@@ -4686,9 +4686,9 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
   if (isScoutLang()) {
     DeclSpec& DS = D.getMutableDeclSpec();
     DeclSpec::TST tst = DS.getTypeSpecType();
-    llvm::errs() << "before: tst is uniform_mesh & at left square bracket token\n";
-    llvm::errs() << "\ttst = " << int(tst) << "\n";
-    // OVERHAUL/DEBUG: replaced TST_typename with TST_uniform mesh... 
+    // OVERHAUL/DEBUG: replaced TST_typename with TST_uniform mesh...     
+    //llvm::errs() << "before: tst is uniform_mesh & at left square bracket token\n";
+    //llvm::errs() << "\ttst = " << int(tst) << "\n";
     if (Tok.is(tok::l_square) && tst == DeclSpec::TST_uniform_mesh) {
       llvm::errs() << "tst is uniform_mesh & at left square bracket token\n";      
       ParsedType parsedType = DS.getRepAsType();
@@ -4866,9 +4866,9 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
     DeclSpec& DS = D.getMutableDeclSpec();
     DeclSpec::TST tst = DS.getTypeSpecType();
 
-    llvm::errs() << "before declspec::uniform_mesh ("
-                 << int(tst) << ", umesh:" << DeclSpec::TST_uniform_mesh << ")\n";    
-    // OVERHAUL/DEBUG -- replaced TST_typename with TST_uniform_mesh... 
+    // OVERHAUL/DEBUG -- replaced TST_typename with TST_uniform_mesh...     
+    //llvm::errs() << "before declspec::uniform_mesh ("
+    //             << int(tst) << ", umesh:" << DeclSpec::TST_uniform_mesh << ")\n";    
     if (tst == DeclSpec::TST_uniform_mesh) {
       llvm::errs() << "declspec::uniform_mesh\n";
       ParsedType parsedType = DS.getRepAsType();

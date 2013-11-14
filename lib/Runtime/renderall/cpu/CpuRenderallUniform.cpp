@@ -52,7 +52,7 @@
  * ##### 
  */ 
 
-#include "scout/Runtime/types.h"
+#include "scout/types.h"
 #include "scout/Runtime/renderall/RenderallUniformImpl.h"
 
 namespace scout{

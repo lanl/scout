@@ -99,7 +99,7 @@ ELSE(NOT CMAKE_SCC_COMPILER_WORKS)
     INCLUDE(${CMAKE_ROOT}/Modules/CMakeDetermineCompilerABI.cmake)
     CMAKE_DETERMINE_COMPILER_ABI(SCC ${SCOUT_CMAKE_DIR}/CMakeSCCCompilerABI.sc)
     CONFIGURE_FILE(
-      ${SCOUT_CMAKE_DIR}/CMakeSCCCompiler.cmake.in
+      ${SCOUT_CMAKE_DIR}/Scout/CMakeSCCCompiler.cmake.in
       ${CMAKE_BINARY_DIR}/CMakeFiles/CMakeSCCCompiler.cmake
       @ONLY IMMEDIATE # IMMEDIATE must be here for compatibility mode <= 2.0
       )

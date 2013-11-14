@@ -55,7 +55,7 @@
 #include <iostream>
 #include <stdlib.h>
 
-#include "scout/Runtime/types.h"
+#include "scout/types.h"
 #include "scout/Runtime/opengl/opengl.h"
 #include "scout/Runtime/opengl/glSDL.h"
 #include "scout/Runtime/renderall/RenderallGlyph.h"
