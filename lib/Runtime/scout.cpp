@@ -54,13 +54,13 @@
 
 using namespace std;
 
+#include "scout/types.h"
 #include "scout/Config/defs.h"
 #include "scout/Runtime/Device.h"
 #include "scout/Runtime/DeviceList.h"
 #include "scout/Runtime/opengl/opengl.h"
 #include "scout/Runtime/opengl/glyph_vertex.h"
 #include "scout/Runtime/opengl/glSDL.h"
-#include "scout/types.h"
 #include "scout/Runtime/gpu.h"
 #include "scout/Runtime/cpu/CpuInitialization.h"
 #include "scout/Runtime/init_mac.h"
@@ -79,7 +79,7 @@ using namespace std;
 using namespace scout;
 
 //globals accessed by llvm/tools/clang/lib/CodeGen/CGStmt.cpp
-scout::float4* __scrt_renderall_uniform_colors;
+float4*       __scrt_renderall_uniform_colors;
 glyph_vertex* __scrt_renderall_glyph_vertex_data;
 // -------------
 

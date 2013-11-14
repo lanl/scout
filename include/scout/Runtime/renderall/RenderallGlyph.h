@@ -55,7 +55,7 @@
 #ifndef SCOUT_RENDERALL_GLYPH_H_
 #define SCOUT_RENDERALL_GLYPH_H_
 
-#include "scout/Runtime/types.h"
+#include "scout/types.h"
 #include "scout/Runtime/opengl/opengl.h"
 #include "scout/Runtime/opengl/glyph_vertex.h"
 #include "scout/Runtime/renderall/RenderallBase.h"

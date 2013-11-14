@@ -53,7 +53,7 @@
 
 #include <list>
 
-#include "scout/Runtime/types.h"
+#include "scout/types.h"
 #include "scout/Runtime/viewport.h"
 
 namespace scout

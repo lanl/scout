@@ -62,7 +62,6 @@
 //
 //   http://clang.llvm.org/docs/LanguageExtensions.html
 //
-
 // +--- Support for 2,4,8,16 width vector types -----------------------------+
 typedef bool bool16                  __attribute__((ext_vector_type(16)));
 typedef bool bool8                   __attribute__((ext_vector_type(8)));
@@ -94,11 +93,13 @@ typedef int int8                     __attribute__((ext_vector_type(8)));
 typedef int int4                     __attribute__((ext_vector_type(4)));
 typedef int int3                     __attribute__((ext_vector_type(3)));
 typedef int int2                     __attribute__((ext_vector_type(2)));
-typedef unsigned int uint16          __attribute__((ext_vector_type(16)));
-typedef unsigned int uint8           __attribute__((ext_vector_type(8)));
-typedef unsigned int uint4           __attribute__((ext_vector_type(4)));
-typedef unsigned int uint3           __attribute__((ext_vector_type(3)));
-typedef unsigned int uint2           __attribute__((ext_vector_type(2)));
+// There are some collisions on MacOS X here -- comment them out for
+// now... 
+//typedef unsigned int uint16          __attribute__((ext_vector_type(16)));
+//typedef unsigned int uint8           __attribute__((ext_vector_type(8)));
+//typedef unsigned int uint4           __attribute__((ext_vector_type(4)));
+//typedef unsigned int uint3           __attribute__((ext_vector_type(3)));
+//typedef unsigned int uint2           __attribute__((ext_vector_type(2)));
 typedef long long16                  __attribute__((ext_vector_type(16)));
 typedef long long8                   __attribute__((ext_vector_type(8)));
 typedef long long4                   __attribute__((ext_vector_type(4)));

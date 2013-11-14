@@ -53,8 +53,8 @@
 
 #include <cstdlib>
 
+#include "scout/types.h"
 #include "scout/Runtime/renderall/RenderallBase.h"
-#include "scout/Runtime/types.h"
 
 namespace scout{
 

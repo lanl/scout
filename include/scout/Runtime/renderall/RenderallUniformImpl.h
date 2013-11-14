@@ -54,17 +54,17 @@
 
 #ifndef SCOUT_RENDERALL_UNIFORM_IMPL_H_
 #define SCOUT_RENDERALL_UNIFORM_IMPL_H_
-
-#include "scout/Runtime/renderall/RenderallUniform.h"
 #include "scout/Runtime/opengl/glSDL.h"
 #include "scout/Runtime/opengl/glQuadRenderableVA.h"
+#include "scout/Runtime/renderall/RenderallUniform.h"
 
-// globals defined in lib/Runtime/scout.cpp
-extern scout::float4* __scrt_renderall_uniform_colors;
-extern unsigned long long __scrt_renderall_uniform_cuda_device;
 
 namespace scout{
 
+  // globals defined in lib/Runtime/scout.cpp
+  extern float4* __scrt_renderall_uniform_colors;
+  extern unsigned long long __scrt_renderall_uniform_cuda_device;
+  
   class RenderallUniformImpl{
     public:
       RenderallUniformImpl(RenderallUniform* o);
