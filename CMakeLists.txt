@@ -135,18 +135,30 @@ project(Scout)
       add_subdirectory(lib/Config)
       add_subdirectory(cmake)
       add_subdirectory(tools)
-      #add this last as it is built w/ clang
+      # add this last as it is built w/ clang
       add_subdirectory(lib/Runtime)
     endif()
+
+    file(GLOB scout_incs ${SCOUT_INCLUDE_DIR}/scout/*)
+    file(MAKE_DIRECTORY ${SCOUT_BUILD_DIR}/include/scout)
+
+    foreach(entry ${scout_incs})
+      get_filename_component(name ${entry} NAME)
+      set(dest ${SCOUT_BUILD_DIR}/include/scout)
+      if (NOT ${name} STREQUAL "Config") 
+	message("${entry} --> ${dest}")
+        file(COPY ${entry} DESTINATION ${dest})
+      endif()
+    endforeach()
 
     #-----
     # Note: we have to build the standard library and test directory
     # separately because the 'scc' driver needs to be bootstrapped.
     # We therefore treat those directories as entirely separate projects.
     # The configuration file generation below helps out with the bootstrap
-    # process between these separate projects...
+    # process...
     #-----
-    message(STATUS "scout: generating pre-configuration for std library bootstrap build.")
+    message(STATUS "scout: generating pre-configuration for stdlib build.")
     configure_file(
       lib/Standard/cmake/Modules/Configuration.cmake.in
       ${CMAKE_BINARY_DIR}/lib/Standard/CMake/Modules/Configuration.cmake

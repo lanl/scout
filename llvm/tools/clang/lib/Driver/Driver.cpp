@@ -74,7 +74,7 @@ Driver::Driver(StringRef ClangExecutable,
     if (ScResourceDir != "")
       llvm::sys::path::append(P, ScResourceDir);
     else
-      llvm::sys::path::append(P, "..", "include", "scout");
+      llvm::sys::path::append(P, "..", "include");
     ScoutResourceDir = P.str();
     llvm::errs() << "Scout resource directory: " << ScoutResourceDir << "\n";
   }

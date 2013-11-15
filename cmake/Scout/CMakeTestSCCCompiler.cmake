@@ -105,7 +105,7 @@ ELSE(NOT CMAKE_SCC_COMPILER_WORKS)
       )
     #for cmake 2.8.10
     CONFIGURE_FILE(
-      ${SCOUT_CMAKE_DIR}/CMakeSCCCompiler.cmake.in
+      ${SCOUT_CMAKE_DIR}/Scout/CMakeSCCCompiler.cmake.in
       ${CMAKE_BINARY_DIR}/CMakeFiles/${CMAKE_VERSION}/CMakeSCCCompiler.cmake
       @ONLY IMMEDIATE # IMMEDIATE must be here for compatibility mode <= 2.0
       )
