@@ -77,7 +77,7 @@ project(scStandard SCXX)
   set(LIBRARY_OUTPUT_PATH ${SCOUT_BUILD_DIR}/lib)
 
   include_directories(
-    ${SCOUT_INCLUDE_PATH}
+    ${SCOUT_INCLUDE_DIR}
     )
 
   file(GLOB std_hdrs ${SCOUT_INCLUDE_DIR}/scout/*.sch)

@@ -100,16 +100,16 @@ ELSE(NOT CMAKE_SCXX_COMPILER_WORKS)
     CMAKE_DETERMINE_COMPILER_ABI(SCXX ${SCOUT_CMAKE_DIR}/Scout/CMakeSCXXCompilerABI.scpp)
     CONFIGURE_FILE(
       ${SCOUT_CMAKE_DIR}/Scout/CMakeSCXXCompiler.cmake.in
-      ${CMAKE_BINARY_DIR}/CMakeFiles/CMakeSCXXCompiler.cmake
+      ${SCOUT_BUILD_DIR}/cmake/CMakeFiles/CMakeSCXXCompiler.cmake
       @ONLY IMMEDIATE # IMMEDIATE must be here for compatibility mode <= 2.0
       )
     #for cmake 2.8.10
     CONFIGURE_FILE(
-      ${SCOUT_CMAKE_DIR}/CMakeSCXXCompiler.cmake.in
+      ${SCOUT_CMAKE_DIR}/Scout/CMakeSCXXCompiler.cmake.in
       ${CMAKE_BINARY_DIR}/CMakeFiles/${CMAKE_VERSION}/CMakeSCXXCompiler.cmake
       @ONLY IMMEDIATE # IMMEDIATE must be here for compatibility mode <= 2.0
       )
-    INCLUDE(${CMAKE_BINARY_DIR}/CMakeFiles/CMakeSCXXCompiler.cmake)
+    INCLUDE(${SCOUT_BUILD_DIR}/cmake/CMakeFiles/CMakeSCXXCompiler.cmake)
   ENDIF(CMAKE_SCXX_COMPILER_FORCED)
   IF(CMAKE_SCXX_SIZEOF_DATA_PTR)
     FOREACH(f ${CMAKE_SCXX_ABI_FILES})
