@@ -1297,7 +1297,7 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool ForAlignof) const {
   } else if (isScoutLang(getLangOpts()) && isa<MeshFieldDecl>(D)) {
     UseAlignAttrOnly =
       D->hasAttr<PackedAttr>() ||
-      cast<FieldDecl>(D)->getParent()->hasAttr<PackedAttr>();
+      cast<MeshFieldDecl>(D)->getParent()->hasAttr<PackedAttr>();
   }
   // +========================================================================+
   else if (isa<FieldDecl>(D))
