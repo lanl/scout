@@ -2837,7 +2837,6 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
     // +===== Scout ==========================================================+
     case DeclaratorChunk::UniformMesh: {
       MeshType::MeshDimensions dims = DeclType.Unimsh.Dims();
-      llvm::errs() << "build uniform mesh\n";
       T = S.BuildUniformMeshType(T, dims, SourceRange(DeclType.Loc,
                                  DeclType.EndLoc), Name);
       break;
