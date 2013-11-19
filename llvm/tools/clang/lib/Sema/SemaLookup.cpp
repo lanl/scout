@@ -53,7 +53,7 @@ using namespace sema;
 
 
 // +===== Scout ==============================================================+
-extern void ScoutLookupMesh( NamedDecl *D, Sema &S);
+//extern void ScoutLookupMesh( NamedDecl *D, Sema &S); not used?
 // +==========================================================================+
 
 
@@ -257,7 +257,7 @@ static inline unsigned getIDNS(Sema::LookupNameKind NameKind,
 
   // +===== Scout ============================================================+
   case Sema::LookupMeshName:
-    IDNS = Decl::IDNS_Mesh;
+    IDNS = Decl::IDNS_Mesh; 
     break;
   // +========================================================================+
 
@@ -1086,11 +1086,14 @@ bool Sema::CppLookupName(LookupResult &R, Scope *S) {
 
   // Stop if we ran out of scopes.
   // FIXME:  This really, really shouldn't be happening.
-  if (!S) return false;
+  if (!S) {
+   return false;
+  }
 
   // If we are looking for members, no need to look into global/namespace scope.
-  if (NameKind == LookupMemberName)
+  if (NameKind == LookupMemberName) {
     return false;
+  }
 
   // Collect UsingDirectiveDecls in all scopes, and recursively all
   // nominated namespaces by those using-directives.
@@ -1181,7 +1184,6 @@ bool Sema::CppLookupName(LookupResult &R, Scope *S) {
     if (R.isForRedeclaration() && Ctx && !Ctx->isTransparentContext())
       return false;
   }
-
   return !R.empty();
 }
 
@@ -1336,6 +1338,8 @@ NamedDecl *LookupResult::getAcceptableDeclSlow(NamedDecl *D) const {
 /// @returns \c true if lookup succeeded and false otherwise.
 bool Sema::LookupName(LookupResult &R, Scope *S, bool AllowBuiltinCreation) {
   DeclarationName Name = R.getLookupName();
+  //if (Name) llvm::errs() << "looking up name " << Name.getAsString() << "\n";  
+
   if (!Name) return false;
 
   LookupNameKind NameKind = R.getLookupKind();

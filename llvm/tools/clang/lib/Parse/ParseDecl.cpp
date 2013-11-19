@@ -2096,31 +2096,6 @@ bool Parser::ParseImplicitInt(DeclSpec &DS, CXXScopeSpec *SS,
       case DeclSpec::TST_class:
         TagName="class" ; FixitTagName = "class " ;TagKind=tok::kw_class ;break;
 
-      // +===== Scout ========================================================+
-      case DeclSpec::TST_uniform_mesh:
-        TagName      = "uniform mesh";
-        FixitTagName = "uniform mesh ";
-        TagKind      = tok::kw_uniform;
-        break;
-
-      case DeclSpec::TST_rectilinear_mesh:
-        TagName      = "rectilinear mesh";
-        FixitTagName = "rectilinear mesh ";
-        TagKind      = tok::kw_rectilinear;
-        break;
-
-      case DeclSpec::TST_structured_mesh:
-        TagName      = "structured mesh";
-        FixitTagName = "structured mesh ";
-        TagKind      = tok::kw_structured;
-        break;
-
-      case DeclSpec::TST_unstructured_mesh:
-        TagName      = "unstructured mesh";
-        FixitTagName = "unstructured mesh ";
-        TagKind      = tok::kw_unstructured;
-        break;
-      // +====================================================================+
     }
 
     if (TagName) {
