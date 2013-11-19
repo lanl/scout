@@ -171,7 +171,9 @@ public:
     IDNS_LocalExtern         = 0x0800,
     // +===== Scout ==========================================================+
     // SC_TODO : It is not entirely clear if we need this -- do we need an
-    // identifier name space?
+    // identifier name space? 
+    // if we add this we need to bump up bitfield below from 12 to 13
+    // comment above about 15bits fir IDNS appears wrong
     IDNS_Mesh                = 0x1000
     // +======================================================================+
   };
@@ -298,7 +300,10 @@ protected:
   unsigned Hidden : 1;
   
   /// IdentifierNamespace - This specifies what IDNS_* namespace this lives in.
-  unsigned IdentifierNamespace : 12;
+  // ===== Scout =============================================================
+  // need to increase this from 12 to 13 for mesh namespace
+  unsigned IdentifierNamespace : 13; 
+  // =========================================================================
 
   /// \brief If 0, we have not computed the linkage of this declaration.
   /// Otherwise, it is the linkage + 1.
