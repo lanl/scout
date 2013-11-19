@@ -141,6 +141,7 @@ ParsedType Sema::getTypeName(const IdentifierInfo &II, SourceLocation NameLoc,
                              bool IsCtorOrDtorName,
                              bool WantNontrivialTypeSourceInfo,
                              IdentifierInfo **CorrectedII) {
+  //llvm::errs() << "in getTypeName\n";
   // Determine where we will perform name lookup.
   DeclContext *LookupCtx = 0;
   if (ObjectTypePtr) {
@@ -591,9 +592,11 @@ static bool isMeshTypeWithMissingMesh(Sema &SemaRef, LookupResult &Result,
                                       Scope *S, CXXScopeSpec &SS,
                                       IdentifierInfo *&Name,
                                       SourceLocation NameLoc) {
-  LookupResult R(SemaRef, Name, NameLoc, Sema::LookupTagName);
+  //llvm::errs() << "in missing mesh\n";
+  LookupResult R(SemaRef, Name, NameLoc, Sema::LookupMeshName); 
   SemaRef.LookupParsedName(R, S, &SS);
   if (MeshDecl *MD = R.getAsSingle<MeshDecl>()) {
+    //llvm::errs() << "got meshdecl\n";
     const char *MeshName = 0;
     const char *FixItMeshName = 0;
     switch (MD->getMeshKind()) {
@@ -724,8 +727,10 @@ Corrected:
 
     // +===== Scout ==========================================================+
     // SC_TODO - should this read Scout vs. CPlusPlus????
-    if (!getLangOpts().CPlusPlus && !SecondTry &&
+    //if (!getLangOpts().CPlusPlus && !SecondTry &&
+    if (isScoutLang(getLangOpts()) && !SecondTry &&
         isMeshTypeWithMissingMesh(*this, Result, S, SS, Name, NameLoc)) {
+        //llvm::errs() << "after missing mesh\n";
       break;
     }
     // +======================================================================+
@@ -947,6 +952,7 @@ Corrected:
   } else if ((NextToken.is(tok::identifier) ||
              (NextIsOp && FirstDecl->isFunctionOrFunctionTemplate())) &&
              isMeshTypeWithMissingMesh(*this, Result, S, SS, Name, NameLoc)) {
+    //llvm::errs() << "after missingmesh2\n";     
     TypeDecl *Type = Result.getAsSingle<TypeDecl>();
     DiagnoseUseOfDecl(Type, NameLoc);
     QualType T = Context.getTypeDeclType(Type);
