@@ -2615,7 +2615,6 @@ getCCForDeclaratorChunk(Sema &S, Declarator &D,
 static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
                                                 QualType declSpecType,
                                                 TypeSourceInfo *TInfo) {
-
   QualType T = declSpecType;
   Declarator &D = state.getDeclarator();
   Sema &S = state.getSema();
@@ -2838,6 +2837,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
     // +===== Scout ==========================================================+
     case DeclaratorChunk::UniformMesh: {
       MeshType::MeshDimensions dims = DeclType.Unimsh.Dims();
+      llvm::errs() << "build uniform mesh\n";
       T = S.BuildUniformMeshType(T, dims, SourceRange(DeclType.Loc,
                                  DeclType.EndLoc), Name);
       break;
@@ -4027,9 +4027,7 @@ Sema::GetTypeSourceInfoForDeclarator(Declarator &D, QualType T,
 
     DeclaratorLocFiller(Context, D.getTypeObject(i)).Visit(CurrTL);
     // +==== Scout ===========================================================+
-    CurrTL = CurrTL.getNextTypeLoc().getUnqualifiedLoc();
-
-    /* -- commented out for debugging....
+    //CurrTL = CurrTL.getNextTypeLoc().getUnqualifiedLoc();
     TypeLoc nextTL = CurrTL.getNextTypeLoc();
     if (nextTL.getUnqualifiedLoc() == 0) {
       // SC_TODO Not sure what to do here.
@@ -4038,7 +4036,6 @@ Sema::GetTypeSourceInfoForDeclarator(Declarator &D, QualType T,
     } else {
       CurrTL = nextTL.getUnqualifiedLoc();
     }
-    */
     // +======================================================================+
   }
 
