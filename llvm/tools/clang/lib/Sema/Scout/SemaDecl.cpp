@@ -73,12 +73,13 @@ Decl* Sema::ActOnMeshDefinition(Scope* S,
                                 SourceLocation NameLoc,
                                 MultiTemplateParamsArg TemplateParameterLists) {
 
-  LookupResult LR(*this, Name, NameLoc, LookupTagName, Sema::NotForRedeclaration);
+  LookupResult LR(*this, Name, NameLoc, LookupMeshName, Sema::NotForRedeclaration);
 
 
   switch(MeshType) {
 
     case tok::kw_uniform: {
+      //llvm::errs() << "create uniform mesh " << Name->getName() << "\n";
       UniformMeshDecl* MD;
       MD = UniformMeshDecl::Create(Context, CurContext,
                                    KWLoc, NameLoc, Name, 0);
