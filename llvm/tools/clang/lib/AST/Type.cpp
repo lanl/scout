@@ -1407,6 +1407,13 @@ ElaboratedTypeKeyword
 TypeWithKeyword::getKeywordForTypeSpec(unsigned TypeSpec) {
   switch (TypeSpec) {
   default: return ETK_None;
+// +===== Scout ==============================================================+
+// treat mesh like typename?
+  case TST_uniform_mesh:
+  case TST_structured_mesh:
+  case TST_rectilinear_mesh:
+  case TST_unstructured_mesh:
+// +==========================================================================+
   case TST_typename: return ETK_Typename;
   case TST_class: return ETK_Class;
   case TST_struct: return ETK_Struct;
