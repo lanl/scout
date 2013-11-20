@@ -374,8 +374,10 @@ DeclSpec::TST Sema::isTagName(IdentifierInfo &II, Scope *S) {
 /// cases in Scout where the user forgot to specify the mesh.
 DeclSpec::TST Sema::isMeshName(IdentifierInfo &II, Scope *S) {
   // Do a mesh name lookup in this scope.
+  llvm::errs() << "in isMeshName\n";
   LookupResult R(*this, &II, SourceLocation(), LookupMeshName);
-  LookupName(R, S, false);
+  bool result = LookupName(R, S, false);
+  llvm::errs() << "LookupName " << result << "\n";
   R.suppressDiagnostics();
   if (R.getResultKind() == LookupResult::Found) {
     if (const MeshDecl *MD = R.getAsSingle<MeshDecl>()) {
@@ -591,48 +593,16 @@ static bool isMeshTypeWithMissingMesh(Sema &SemaRef, LookupResult &Result,
                                       Scope *S, CXXScopeSpec &SS,
                                       IdentifierInfo *&Name,
                                       SourceLocation NameLoc) {
-  LookupResult R(SemaRef, Name, NameLoc, Sema::LookupTagName);
-  SemaRef.LookupParsedName(R, S, &SS);
-  if (MeshDecl *MD = R.getAsSingle<MeshDecl>()) {
-    const char *MeshName = 0;
-    const char *FixItMeshName = 0;
-    switch (MD->getMeshKind()) {
-      case TTK_UniformMesh:
-        MeshName = "uniform mesh";
-        FixItMeshName = "uniform mesh ";
-        break;
-
-      case TTK_RectilinearMesh:
-        MeshName = "rectilinear mesh";
-        FixItMeshName = "rectilinear mesh ";
-        break;
-
-      case TTK_StructuredMesh:
-        MeshName = "structured mesh";
-        FixItMeshName = "structured mesh ";
-        break;
-
-      case TTK_UnstructuredMesh:
-        MeshName = "unstructured mesh";
-        FixItMeshName = "unstructured mesh ";
-        break;
+  LookupResult R(SemaRef, Name, NameLoc, Sema::LookupMeshName); 
+  if(SemaRef.LookupParsedName(R, S, &SS)) {
+    if (MeshDecl *MD = R.getAsSingle<MeshDecl>()) {
+      (void)MD; //suppress warning 
+      // unlike for a tag, we don't need a qualifer.
+      Result.clear(Sema::LookupMeshName); //change result to LookupMeshName type
+      Result.addAllDecls(R); // add results of lookup
+      return true;
     }
-
-    SemaRef.Diag(NameLoc, diag::err_use_of_mesh_name_without_mesh)
-      << Name << MeshName << SemaRef.getLangOpts().CPlusPlus
-      << FixItHint::CreateInsertion(NameLoc, FixItMeshName);
-
-    for (LookupResult::iterator I = Result.begin(), IEnd = Result.end();
-         I != IEnd; ++I)
-      SemaRef.Diag((*I)->getLocation(), diag::note_decl_hiding_mesh_type)
-        << Name << MeshName;
-
-    // Replace lookup results with just the mesh decl.
-    Result.clear(Sema::LookupMeshName);
-    SemaRef.LookupParsedName(Result, S, &SS);
-    return true;
   }
-
   return false;
 }
 // +==========================================================================+
@@ -723,8 +693,8 @@ Corrected:
     }
 
     // +===== Scout ==========================================================+
-    // SC_TODO - should this read Scout vs. CPlusPlus????
-    if (!getLangOpts().CPlusPlus && !SecondTry &&
+    // for a mesh it is normal to not have a qualifier like "uniform mesh" 
+    if (isScoutLang(getLangOpts()) && !SecondTry &&
         isMeshTypeWithMissingMesh(*this, Result, S, SS, Name, NameLoc)) {
       break;
     }

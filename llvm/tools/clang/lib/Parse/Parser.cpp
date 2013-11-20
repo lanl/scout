@@ -115,7 +115,7 @@ Parser::Parser(Preprocessor &pp, Sema &actions, bool skipFunctionBodies)
   PP.setCodeCompletionHandler(*this);
 
   // +===== Scout ============================================================+
-  DeclaringMesh = false;
+  DeclaringMesh = false; //SC_TODO: is this even used?
   // +========================================================================+
 }
 
