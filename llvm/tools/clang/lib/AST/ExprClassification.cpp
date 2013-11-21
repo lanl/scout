@@ -490,6 +490,32 @@ static Cl::Kinds ClassifyMemberExpr(ASTContext &Ctx, const MemberExpr *E) {
     return ClassifyInternal(Ctx, E->getBase());
   }
 
+
+// +===== Scout ============================================================+
+  if(isScoutLang(Ctx.getLangOpts())) {
+
+    //   Otherwise, one of the following rules applies.
+    //   -- If E2 is a static member [...] then E1.E2 is an lvalue.
+    if (isa<VarDecl>(Member) && Member->getDeclContext()->isMesh()) {
+      return Cl::CL_LValue;
+    }
+
+    //   -- If E2 is a non-static data member [...]. If E1 is an lvalue, then
+    //      E1.E2 is an lvalue; if E1 is an xvalue, then E1.E2 is an xvalue;
+    //      otherwise, it is a prvalue.
+    if (isa<MeshFieldDecl>(Member)) {
+      // *E1 is an lvalue
+      if (E->isArrow())
+        return Cl::CL_LValue;
+      Expr *Base = E->getBase()->IgnoreParenImpCasts();
+      if (isa<ObjCPropertyRefExpr>(Base))
+        return Cl::CL_SubObjCPropertySetting;
+      return ClassifyInternal(Ctx, E->getBase());
+    }
+  }
+// +========================================================================+
+
+
   //   -- If E2 is a [...] member function, [...]
   //      -- If it refers to a static member function [...], then E1.E2 is an
   //         lvalue; [...]
