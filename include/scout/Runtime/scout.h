@@ -1,8 +1,8 @@
 #ifndef SCOUT_H_
 #define SCOUT_H_
 
+#include "scout/linux/unistd.h" // fix blocks on linux
 
-#include "scout/linux/unistd.h"
 #if defined(__scout_cxx__) || defined(__cplusplus)
 #include "scout/Runtime/renderall/RenderallUniform.h"
 #include "scout/Runtime/window.h"
