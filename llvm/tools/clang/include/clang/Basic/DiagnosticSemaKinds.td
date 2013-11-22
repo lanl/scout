@@ -6747,9 +6747,11 @@ def warn_not_a_doxygen_trailing_member_comment : Warning<
 let CategoryName = "Scout Issue" in {
 
 def warn_forall_calling_io_func:Warning<
-    "I/O function called within forall body">;
+    "I/O function called within forall body">,
+     InGroup<CallingIOFunction>;
 def warn_renderall_calling_io_func:Warning<
-    "I/O function called within forall body">;
+    "I/O function called within forall body">,
+     InGroup<CallingIOFunction>;
 def err_forall_non_cell_field:Error<
     "Mesh field is not cell located.">;
 def err_forall_non_edge_field:Error<
