@@ -7,6 +7,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+
+// +===== Scout ============================================================+
+def CallingIOFunction : DiagGroup<"calling-io-function">;
+// +========================================================================+
+
 def ImplicitFunctionDeclare : DiagGroup<"implicit-function-declaration">;
 def ImplicitInt : DiagGroup<"implicit-int">;
 
