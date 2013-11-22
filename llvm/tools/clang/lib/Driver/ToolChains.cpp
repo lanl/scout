@@ -1912,6 +1912,17 @@ void Bitrig::AddClangCXXStdlibIncludeArgs(const ArgList &DriverArgs,
 
 void Bitrig::AddCXXStdlibLibArgs(const ArgList &Args,
                                  ArgStringList &CmdArgs) const {
+
+  // +===== Scout ============================================================+
+  // Add the scout standard libraries -- in this case the runtime and
+  // the standard library...
+  if (getDriver().CCCIsScoutC() || getDriver().CCCIsScoutCXX()) {
+    CmdArgs.push_back("-lscRuntime");
+    if (! Args.hasArg(options::OPT_noscstdlib)) {
+      CmdArgs.push_back("-lscStandard");
+    }
+  }
+  // +========================================================================+  
   switch (GetCXXStdlibType(Args)) {
   case ToolChain::CST_Libcxx:
     CmdArgs.push_back("-lc++");
