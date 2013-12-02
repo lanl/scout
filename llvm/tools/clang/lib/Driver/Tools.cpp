@@ -2011,12 +2011,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back(Args.MakeArgString(TripleStr));
 
   // +===== Scout ============================================================+
-  // This flag can be helpful if you want to stop the compilation thread
-  // for debugging.
-  if (Args.hasArg(options::OPT_debugWait)) {
-    CmdArgs.push_back("-debug");
-  }
-
   // SC_TODO -- do we always want to do this?
   CmdArgs.push_back("-pthread");
   // +========================================================================+
