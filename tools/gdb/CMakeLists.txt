@@ -48,24 +48,7 @@
 #
 ###########################################################################
 #
-# Notes
-#
-#   - The 'clang' and 'llvm' tools subdirectories are included by the 
-#     toplevel CMakeLists.txt file (this is due to their dependence 
-#     upon the build of llvm+clang).  
-#
-project(sc_tools)
+project(gdb)
 
-  # Add the OpenGL shader tools if supported in current build 
-  # configuration. 
-  if (SC_ENABLE_OPENGL) 
-    add_subdirectory(glsl-to-str)
-    add_subdirectory(glsl-cc)
-  endif()
-
-  add_subdirectory(gdb)
-  add_subdirectory(sc-config)
-  add_subdirectory(clang)
-
-  # Do not add the 'clang' and 'llvm' subdirs here -- see note above...
-  set(EXECUTABLE_OUTPUT_PATH ${SC_BUILD_DIR}/bin)
+configure_file(gdb-scc.in ${CMAKE_INSTALL_PREFIX}/bin/gdb-scc)
+configure_file(gdb-sc++.in ${CMAKE_INSTALL_PREFIX}/bin/gdb-sc++)

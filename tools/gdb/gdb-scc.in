@@ -1,0 +1,4 @@
+#!/bin/sh
+# wrapper to run gdb on scc
+gdb --args `@CMAKE_INSTALL_PREFIX@/bin/scc -### $@ 2>&1 | tail -2 | head -1 | sed 's/"//g'`
+#
