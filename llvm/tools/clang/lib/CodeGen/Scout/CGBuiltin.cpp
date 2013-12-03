@@ -132,7 +132,7 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     return true;
   }
 
-  //case Builtin::BICShift: //Work in Progress
+  case Builtin::BICShift: //Work in Progress
   case Builtin::BICShiftI:
   case Builtin::BICShiftF:
   case Builtin::BICShiftD:
@@ -142,15 +142,4 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
   }
   default: return false;
   }
-}
-
-// if you add a "generic" builtin here you also must add a template
-// to scout/genericBuiltins.sch
-bool CodeGenFunction::EmitGenericBuiltinExpr(const FunctionDecl *FD, const CallExpr *E, RValue *RV )  {
-  std::string name = FD->getNameInfo().getAsString();
-  if (name == "CShift")  {
-    *RV = EmitCShiftExpr(E->arg_begin(), E->arg_end());
-    return true;
-  }
-  return false;
 }

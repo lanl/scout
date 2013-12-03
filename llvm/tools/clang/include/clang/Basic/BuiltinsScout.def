@@ -63,7 +63,7 @@ BUILTIN(Depth, "i", "n")
 
 // "template like" CShift that works for all types
 // "t" is the magic to make this work
-//BUILTIN(CShift, "v.", "t") // Work in progess
+BUILTIN(CShift, "vvi.", "t") // generic 
 BUILTIN(CShiftI, "iii.", "n") // just for int
 BUILTIN(CShiftF, "ffi.", "n") // just for float
 BUILTIN(CShiftD, "ddi.", "n") // just for double

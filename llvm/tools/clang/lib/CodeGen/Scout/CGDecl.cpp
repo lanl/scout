@@ -215,10 +215,11 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
 
       Builder.CreateStore(intValue, field);
     }
-
+#if 0
     llvm::Value *ScoutDeclDebugPtr = 0;
     ScoutDeclDebugPtr = CreateMemTemp(getContext().VoidPtrTy, "meshdecl.dbg");
     llvm::Value* AllocVP = Builder.CreateBitCast(Alloc, VoidPtrTy);
     Builder.CreateStore(AllocVP, ScoutDeclDebugPtr);
+#endif
   }
 }
