@@ -556,8 +556,6 @@ def cpuThreads : Flag<["-"], "mt">,
   HelpText<"Enable CPU multithreading support.">;
 def disableScoutStdLib : Flag<["-"], "disable-sc-stdlib">,
   HelpText<"Disable automatic inclusion/use of the Scout standard library.">;
-def debugWait : Flag<["-"], "debug">,
-  HelpText<"Used to allow debugger to attach to the driver.">;
 def noRewrite : Flag<["-"], "rewrite">,
   HelpText<"run the rewriter">;
 def dumpRewrite : Flag<["-"], "dump-rewrite">,
