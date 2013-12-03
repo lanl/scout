@@ -215,6 +215,7 @@ static void diagnoseInstanceReference(Sema &SemaRef,
 
   bool InStaticMethod = Method && Method->isStatic();
   bool IsField = isa<FieldDecl>(Rep) || isa<IndirectFieldDecl>(Rep);
+  bool IsMeshField = isa<MeshFieldDecl>(Rep);
 
   if (IsField && InStaticMethod)
     // "invalid use of member 'x' in static member function"
@@ -226,10 +227,11 @@ static void diagnoseInstanceReference(Sema &SemaRef,
     // enclosing class.
     SemaRef.Diag(Loc, diag::err_nested_non_static_member_use)
       << IsField << RepClass << nameInfo.getName() << ContextClass << Range;
-  else if (IsField)
+  else if (IsField) {
+    abort();
     SemaRef.Diag(Loc, diag::err_invalid_non_static_member_use)
       << nameInfo.getName() << Range;
-  else
+  } else
     SemaRef.Diag(Loc, diag::err_member_call_without_object)
       << Range;
 }

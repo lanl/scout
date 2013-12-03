@@ -2016,7 +2016,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   if (Args.hasArg(options::OPT_debugWait)) {
     CmdArgs.push_back("-debug");
   }
-
   // SC_TODO -- do we always want to do this?
   CmdArgs.push_back("-pthread");
   // +========================================================================+
@@ -2762,29 +2761,32 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // that have no support enabled (no need to add flags if the build
   // configuration hasn't enabled them).
 
-  // Enable cpu multithreading.
-  Args.AddAllArgs(CmdArgs, options::OPT_cpuThreads);
+  if (getToolChain().getDriver().CCCIsScoutC() ||
+      getToolChain().getDriver().CCCIsScoutCXX()) {
+    // Enable cpu multithreading.
+    Args.AddAllArgs(CmdArgs, options::OPT_cpuThreads);
 
-  // Enable NVIDIA gpu support (if available).
-  Args.AddAllArgs(CmdArgs, options::OPT_gpu);
+    // Enable NVIDIA gpu support (if available).
+    Args.AddAllArgs(CmdArgs, options::OPT_gpu);
 
-  // --- Disabled (AMD is a off-version from us at the moment).
-  // Enable AMD gpu support (if available).
-  //Args.AddAllArgs(CmdArgs, options::OPT_gpuAMD);
+    // --- Disabled (AMD is a off-version from us at the moment).
+    // Enable AMD gpu support (if available).
+    //Args.AddAllArgs(CmdArgs, options::OPT_gpuAMD);
 
-  // Emit-all-definitions from compilation.
-  Args.AddAllArgs(CmdArgs, options::OPT_emitAllDefinitions);
+    // Emit-all-definitions from compilation.
+    Args.AddAllArgs(CmdArgs, options::OPT_emitAllDefinitions);
 
-  // Disable automatic standard library inclusion. We use
-  // this to bootstrap scc and the building of the standard
-  // library.
-  Args.AddAllArgs(CmdArgs, options::OPT_disableScoutStdLib);
+    // Disable automatic standard library inclusion. We use
+    // this to bootstrap scc and the building of the standard
+    // library.
+    Args.AddAllArgs(CmdArgs, options::OPT_disableScoutStdLib);
 
-  // Do not run the rewriter.
-  Args.AddAllArgs(CmdArgs, options::OPT_noRewrite);
+    // Do not run the rewriter.
+    Args.AddAllArgs(CmdArgs, options::OPT_noRewrite);
 
-  // Dump the output of rewriter to stdout
-  Args.AddAllArgs(CmdArgs, options::OPT_dumpRewrite);
+    // Dump the output of rewriter to stdout
+    Args.AddAllArgs(CmdArgs, options::OPT_dumpRewrite);
+  }
   // +========================================================================+
 
   // Handle -{std, ansi, trigraphs} -- take the last of -{std, ansi}
@@ -5005,6 +5007,10 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
 
   if (Args.hasArg(options::OPT_fnested_functions))
     CmdArgs.push_back("-allow_stack_execute");
+
+  if (getToolChain().getDriver().CCCIsScoutC()) {
+    llvm::errs() << "we are in scout  mode...\n";
+  }
 
   if (!Args.hasArg(options::OPT_nostdlib) &&
       !Args.hasArg(options::OPT_nodefaultlibs)) {

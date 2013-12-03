@@ -81,7 +81,7 @@ namespace clang {
   /// An instance of this class is created by Sema::ActOnField to represent
   // a single member of a scout mesh.  Similar to records in C/C++ but
   // we use our own type for flexibility from a DSL point of view...
-  class MeshFieldDecl : public DeclaratorDecl {
+  class MeshFieldDecl : public DeclaratorDecl, public Mergeable<MeshFieldDecl> {
 
     // FIXME: This can be packed into the bitfields in Decl.
     bool Mutable : 1;

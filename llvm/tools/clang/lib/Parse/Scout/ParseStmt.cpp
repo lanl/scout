@@ -259,8 +259,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
 
 
   // SC_TODO - we might want to lift this block of code out into a
-  // function where we can reuse it.  Probably want to rename warning
-  // values as well -- e.g. 'diag::warn_mesh_has_no_cell_fields'...
+  // function where we can reuse it. 
   switch(MeshElementType) {
 
     case ForallMeshStmt::Cells:

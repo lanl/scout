@@ -66,15 +66,11 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringSwitch.h"
 
-// SC_TODO : would be nice to make sure we document the details of why we
-// are using a map here... (PM)
-#include <map>
-
 using namespace clang;
 
-void Parser::
-ParseMeshDeclaration(ParsingDeclSpec &DS,
-                     FieldCallback &Fields) {
+void Parser::ParseMeshDeclaration(ParsingDeclSpec &DS,
+                                  FieldCallback &Fields) {
+  
   ParseSpecifierQualifierList(DS);
 
   // Read mesh-declarators until we find the semicolon.
@@ -108,17 +104,15 @@ ParseMeshDeclaration(ParsingDeclSpec &DS,
   }
 }
 
-// scout - tail end of mesh variable declaration (the bracket and beyond)
-void
-Parser::ParseMeshVarBracketDeclarator(Declarator &D) {
+// Tail end of mesh variable declaration (the bracket and beyond)
+void Parser::ParseMeshVarBracketDeclarator(Declarator &D) {
 
   // get type info of this object
   DeclSpec& DS = D.getMutableDeclSpec();
 
   ParsedType parsedType = DS.getRepAsType();
   const UniformMeshType* umt = dyn_cast<UniformMeshType>(parsedType.get().getTypePtr());
-  if(umt){
-
+  if (umt) {
     BalancedDelimiterTracker T(*this, tok::l_square);
     T.consumeOpen();
 
@@ -129,8 +123,8 @@ Parser::ParseMeshVarBracketDeclarator(Declarator &D) {
 
     ExprResult NumElements;
 
-    for(;;){
-      if(Tok.is(tok::numeric_constant)) {
+    for(;;) {
+      if (Tok.is(tok::numeric_constant)) {
         dims.push_back(Actions.ActOnNumericConstant(Tok).get());
         ConsumeToken();
       } else if (Tok.isNot(tok::r_square)) {
@@ -146,16 +140,16 @@ Parser::ParseMeshVarBracketDeclarator(Declarator &D) {
         dims.push_back(NumElements.get());
       }
 
-      if(Tok.is(tok::r_square)){
+      if (Tok.is(tok::r_square)) {
         break;
       }
 
-      if(Tok.is(tok::eof)){
+      if (Tok.is(tok::eof)) {
         Diag(Tok, diag::err_expected_lsquare);
         StmtError();
       }
 
-      if(Tok.isNot(tok::comma)){
+      if (Tok.isNot(tok::comma)) {
         Diag(Tok, diag::err_expected_comma);
         SkipUntil(tok::r_square);
         SkipUntil(tok::semi);
@@ -170,7 +164,8 @@ Parser::ParseMeshVarBracketDeclarator(Declarator &D) {
     // set dims on type
     ParsedAttributes attrs(AttrFactory);
 
-    DeclaratorChunk DC = DeclaratorChunk::getUniformMesh(dims, T.getOpenLocation(), T.getCloseLocation());
+    DeclaratorChunk DC =
+      DeclaratorChunk::getUniformMesh(dims, T.getOpenLocation(), T.getCloseLocation());
 
     D.AddTypeInfo(DC, attrs, T.getCloseLocation());
 

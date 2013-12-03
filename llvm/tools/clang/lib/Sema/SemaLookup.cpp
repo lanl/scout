@@ -1631,8 +1631,11 @@ bool Sema::LookupQualifiedName(LookupResult &R, DeclContext *LookupCtx,
   if (!R.getLookupName())
     return false;
 
+  //llvm::errs() << "LookupQualifiedName '" << R.getLookupName() << "'.\n";
+
   // Make sure that the declaration context is complete.
   assert((!isa<TagDecl>(LookupCtx) ||
+          !isa<MeshDecl>(LookupCtx) ||   // +===== Scout =====================+
           LookupCtx->isDependentContext() ||
           cast<TagDecl>(LookupCtx)->isCompleteDefinition() ||
           cast<TagDecl>(LookupCtx)->isBeingDefined()) &&

@@ -42,6 +42,16 @@ using namespace clang::driver::toolchains;
 using namespace clang;
 using namespace llvm::opt;
 
+// +===== Scout ============================================================+
+static void AddScoutLibArgs(const ArgList &Args,
+                            ArgStringList &CmdArgs) {
+  CmdArgs.push_back("-lscRuntime");
+  if (! Args.hasArg(options::OPT_noscstdlib)) {
+    CmdArgs.push_back("-lscStandard");
+  }
+}
+// +========================================================================+
+
 /// Darwin - Darwin tool chain for i386 and x86_64.
 
 Darwin::Darwin(const Driver &D, const llvm::Triple& Triple, const ArgList &Args)
@@ -261,6 +271,14 @@ void DarwinClang::AddLinkRuntimeLib(const ArgList &Args,
 
 void DarwinClang::AddLinkRuntimeLibArgs(const ArgList &Args,
                                         ArgStringList &CmdArgs) const {
+
+  // +===== Scout ============================================================+  
+  if (getDriver().CCCIsScoutC()) {
+    llvm::errs() << "adding runtime & stdlib args.\n";
+    AddScoutLibArgs(Args, CmdArgs);    
+  }
+  // +========================================================================+    
+
   // Darwin only supports the compiler-rt based runtime libraries.
   switch (GetRuntimeLibType(Args)) {
   case ToolChain::RLT_CompilerRT:
@@ -530,16 +548,10 @@ void DarwinClang::AddCXXStdlibLibArgs(const ArgList &Args,
   CXXStdlibType Type = GetCXXStdlibType(Args);
 
   // +===== Scout ============================================================+
-  // Add the scout standard libraries -- in this case the runtime and
-  // the standard library...
-  if (getDriver().CCCIsScoutC() || getDriver().CCCIsScoutCXX()) {
-    CmdArgs.push_back("-lscRuntime");
-    if (! Args.hasArg(options::OPT_noscstdlib)) {
-      CmdArgs.push_back("-lscStandard");
-    }
+  if (getDriver().CCCIsScoutCXX()) {
+    AddScoutLibArgs(Args, CmdArgs);
   }
-  // +========================================================================+  
-          
+  // +========================================================================+
 
   switch (Type) {
   case ToolChain::CST_Libcxx:
@@ -1916,13 +1928,11 @@ void Bitrig::AddCXXStdlibLibArgs(const ArgList &Args,
   // +===== Scout ============================================================+
   // Add the scout standard libraries -- in this case the runtime and
   // the standard library...
-  if (getDriver().CCCIsScoutC() || getDriver().CCCIsScoutCXX()) {
-    CmdArgs.push_back("-lscRuntime");
-    if (! Args.hasArg(options::OPT_noscstdlib)) {
-      CmdArgs.push_back("-lscStandard");
-    }
+  if (getDriver().CCCIsScoutCXX()) {
+    AddScoutLibArgs(Args, CmdArgs);    
   }
-  // +========================================================================+  
+  // +========================================================================+
+  
   switch (GetCXXStdlibType(Args)) {
   case ToolChain::CST_Libcxx:
     CmdArgs.push_back("-lc++");

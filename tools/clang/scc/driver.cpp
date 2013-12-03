@@ -226,6 +226,9 @@ static void ParseProgName(SmallVectorImpl<const char *> &ArgVector,
     const char *ModeFlag;
   } suffixes [] = {
     { "clang",     0 },
+    // Scout has to go high-up or we'll miss it...
+    { "scc",       "--driver-mode=scout" },
+    { "sc++",      "--driver-mode=scout++" },
     { "clang++",   "--driver-mode=g++" },
     { "clang-c++", "--driver-mode=g++" },
     { "clang-cc",  0 },
@@ -236,9 +239,7 @@ static void ParseProgName(SmallVectorImpl<const char *> &ArgVector,
     { "cc",        0 },
     { "cpp",       "--driver-mode=cpp" },
     { "cl" ,       "--driver-mode=cl"  },
-    //{ "++",        "--driver-mode=g++" },
-    { "scc",       "--driver-mode=scout" },
-    { "sc++",       "--driver-mode=scout++" },    
+    { "++",        "--driver-mode=g++" },    
   };
   std::string ProgName(llvm::sys::path::stem(ArgVector[0]));
   std::transform(ProgName.begin(), ProgName.end(), ProgName.begin(),

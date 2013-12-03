@@ -76,7 +76,6 @@ Driver::Driver(StringRef ClangExecutable,
     else
       llvm::sys::path::append(P, "..", "include");
     ScoutResourceDir = P.str();
-    llvm::errs() << "Scout resource directory: " << ScoutResourceDir << "\n";
   }
   // +===========================================================+
 
@@ -100,6 +99,7 @@ Driver::~Driver() {
 }
 
 void Driver::ParseDriverMode(ArrayRef<const char *> Args) {
+  
   const std::string OptName =
     getOpts().getOption(options::OPT_driver_mode).getPrefixedName();
 
@@ -114,14 +114,15 @@ void Driver::ParseDriverMode(ArrayRef<const char *> Args) {
         .Case("g++", GXXMode)
         .Case("cpp", CPPMode)
         .Case("cl",  CLMode)
+        .Case("scout++", ScoutCXXMode)  // +===== Scout ======================+      
         .Case("scout", ScoutCMode)      // +===== Scout ======================+
-        .Case("scout++", ScoutCXXMode)  // +===== Scout ======================+
         .Default(~0U);
 
-    if (M != ~0U)
+    if (M != ~0U) {
       Mode = static_cast<DriverMode>(M);
-    else
+    } else {
       Diag(diag::err_drv_unsupported_option_argument) << OptName << Value;
+    }
   }
 }
 

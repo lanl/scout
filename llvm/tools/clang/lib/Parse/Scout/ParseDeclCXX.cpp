@@ -256,18 +256,17 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
 
     ParsingDeclSpec DS(*this);
 
-    struct ScoutFieldCallback : FieldCallback {
+    struct MeshFieldCallback : FieldCallback {
       Parser& P;
       Decl* MeshDecl;
       llvm::SmallVectorImpl<Decl*>& FieldDecls;
       bool externAlloc;
 
-      ScoutFieldCallback(Parser& P, Decl* MeshDecl,
+      MeshFieldCallback(Parser& P, Decl* MeshDecl,
                          llvm::SmallVectorImpl<Decl*>& FieldDecls) :
           P(P), MeshDecl(MeshDecl), FieldDecls(FieldDecls) {}
 
       void invoke(ParsingFieldDeclarator& FD) {
-        //llvm::outs() << "FieldLoc " << FieldLoc << "\n";
         // Install the declarator into the current MeshDecl.
         Decl* Field = P.Actions.ActOnMeshField(P.getCurScope(), MeshDecl,
                              FD.D.getDeclSpec().getSourceRange().getBegin(),
@@ -277,7 +276,7 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
 
         FDecl->setImplicit(false);
 
-        if(P.getMeshFieldKind() == Cell) {
+        if (P.getMeshFieldKind() == Cell) {
           FDecl->setCellLocated(true);
         } else if (P.getMeshFieldKind() == Vertex) {
           FDecl->setVertexLocated(true);
@@ -291,7 +290,6 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
           FDecl->setEdgeLocated(false);
           FDecl->setFaceLocated(false);
         }
-
         // SC_TODO - is this a potential bug?  FIXME -- PM 
         //FDecl->setExternAlloc(externAlloc);
         FieldDecls.push_back(Field);

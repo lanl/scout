@@ -58,19 +58,17 @@
 using namespace clang;
 using namespace sema;
 
-// Check for undeclared identifiers to see if they can be qualified
-// as member reference expr's by enclosing forall / renderall
-// loop variables.
-// ER is modified by this call
+// Check for undeclared identifiers to see if they can be qualified as
+// member reference expr's by enclosing forall / renderall loop
+// variables.  ER is modified by this call
 bool Sema::ScoutMemberReferenceExpr(DeclarationName &Name,
-    SourceLocation &NameLoc,
-    DeclarationNameInfo &NameInfo,
-    CXXScopeSpec &SS,
-    const TemplateArgumentListInfo *&TemplateArgs,
-    ExprResult &ER) {
+                                    SourceLocation &NameLoc,
+                                    DeclarationNameInfo &NameInfo,
+                                    CXXScopeSpec &SS,
+                                    const TemplateArgumentListInfo *&TemplateArgs,
+                                    ExprResult &ER) {
 
-  for(ScoutLoopStack::iterator sitr = SCLStack.begin(),
-      sitrEnd = SCLStack.end();
+  for(ScoutLoopStack::iterator sitr = SCLStack.begin(), sitrEnd = SCLStack.end();
       sitr != sitrEnd; ++sitr) {
 
     VarDecl* vd = *sitr;

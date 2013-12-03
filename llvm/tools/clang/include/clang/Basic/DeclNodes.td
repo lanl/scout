@@ -28,13 +28,13 @@ def Named : Decl<1>;
           def ClassTemplateSpecialization : DDecl<CXXRecord>;
             def ClassTemplatePartialSpecialization
               : DDecl<ClassTemplateSpecialization>;
-      // +==== Scout ========================================================+
-      def Mesh : DDecl<Type, 1>, DeclContext;
-        def UniformMesh : DDecl<Mesh>;
-        def StructuredMesh : DDecl<Mesh>;
-        def RectilinearMesh : DDecl<Mesh>;
-        def UnstructuredMesh : DDecl<Mesh>;
-      // +===================================================================+
+    // +==== Scout ========================================================+
+    def Mesh : DDecl<Type, 1>, DeclContext;
+      def UniformMesh : DDecl<Mesh>;
+      def StructuredMesh : DDecl<Mesh>;
+      def RectilinearMesh : DDecl<Mesh>;
+      def UnstructuredMesh : DDecl<Mesh>;
+    // +===================================================================+
     def TemplateTypeParm : DDecl<Type>;
   def Value : DDecl<Named, 1>;
     def EnumConstant : DDecl<Value>;
