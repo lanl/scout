@@ -244,6 +244,13 @@ CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
 
 }
 
+static llvm::Value *
+EmitBitCastOfLValueToProperType(CodeGenFunction &CGF,
+                                llvm::Value *V, llvm::Type *IRType,
+                                StringRef Name = StringRef()) {
+  unsigned AS = cast<llvm::PointerType>(V->getType())->getAddressSpace();
+  return CGF.Builder.CreateBitCast(V, IRType->getPointerTo(AS), Name);
+}
 
 RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
 
@@ -282,7 +289,8 @@ RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
     if(isa<MeshFieldDecl>(E->getMemberDecl())) {
       // get the correct mesh member
       LValue LV = EmitMeshMemberExpr(E, getCShiftLinearIdx(args));
-      return RValue::get(Builder.CreateLoad(LV.getAddress()));
+
+      return RValue::get(Builder.CreateLoad(LV.getAddress(), "cshift.element"));
     }
   }
   assert(false && "Failed to translate Scout cshift expression to LLVM IR!");
