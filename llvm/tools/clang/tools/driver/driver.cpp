@@ -314,17 +314,6 @@ int main(int argc_, const char **argv_) {
   if (argv.size() > 1 && StringRef(argv[1]).startswith("-cc1")) {
     StringRef Tool = argv[1] + 4;
 
-    for(int i = 2, size = argv.size(); i < size; ++i) {
-      if (StringRef(argv[i]) == "-debug") {
-        size_t pid = getpid();
-        std::cerr << "scc process id: " << pid << std::endl;
-        std::cerr << "attach debugger and then press return to continue...";
-        std::string str;
-        std::getline(std::cin, str);
-      }
-    }
-
-
     if (Tool == "") {
       return cc1_main(argv.data()+2, argv.data()+argv.size(), argv[0],
                       (void*) (intptr_t) GetExecutablePath);
