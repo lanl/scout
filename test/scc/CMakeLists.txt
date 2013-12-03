@@ -56,6 +56,9 @@ set(CMAKE_MODULE_PATH
   ${CMAKE_MODULE_PATH}
 )
 
+#ignore warnings about i/o in forall
+set(CMAKE_SCC_FLAGS "${CMAKE_SCC_FLAGS} -Wno-calling-io-function")
+
 #C and CXX are here as we need to find them for findMPI to work
 project(scout_test_scc)
     

@@ -57,9 +57,9 @@
 static const size_t WIDTH = 10;
 static const size_t HEIGHT = 10;
 
-struct data{
+typedef struct {
   float a[WIDTH][HEIGHT];
-};
+} data;
 
 void perform(data* m, void (^data_op)(data*,size_t,size_t)){
   for(size_t i = 0; i < WIDTH; ++i){
