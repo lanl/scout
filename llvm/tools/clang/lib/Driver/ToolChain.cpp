@@ -24,6 +24,17 @@ using namespace clang::driver;
 using namespace clang;
 using namespace llvm::opt;
 
+// +===== Scout ============================================================+
+static void AddScoutLibArgs(const ArgList &Args,
+                            ArgStringList &CmdArgs) {
+  CmdArgs.push_back("-lscRuntime");
+  if (! Args.hasArg(options::OPT_noscstdlib)) {
+    CmdArgs.push_back("-lscStandard");
+  }
+}
+// +========================================================================+
+
+
 ToolChain::ToolChain(const Driver &D, const llvm::Triple &T,
                      const ArgList &A)
   : D(D), Triple(T), Args(A) {
@@ -390,6 +401,12 @@ void ToolChain::AddCXXStdlibLibArgs(const ArgList &Args,
                                     ArgStringList &CmdArgs) const {
   CXXStdlibType Type = GetCXXStdlibType(Args);
 
+  // +===== Scout ============================================================+  
+  if (getDriver().CCCIsScoutCXX()) {
+    AddScoutLibArgs(Args, CmdArgs);
+  }
+  // +========================================================================+  
+  
   switch (Type) {
   case ToolChain::CST_Libcxx:
     CmdArgs.push_back("-lc++");

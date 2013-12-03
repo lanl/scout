@@ -693,7 +693,7 @@ Corrected:
     }
 
     // +===== Scout ==========================================================+
-    // for a mesh it is normal to not have a qualifier like "uniform mesh" 
+    // For a mesh it is normal to not have a qualifier like "uniform mesh" 
     if (isScoutLang(getLangOpts()) && !SecondTry &&
         isMeshTypeWithMissingMesh(*this, Result, S, SS, Name, NameLoc)) {
       break;
@@ -727,6 +727,8 @@ Corrected:
 
         if (SS.isEmpty()) {
           diagnoseTypo(Corrected, PDiag(UnqualifiedDiag) << Name);
+          if (UnqualifiedDiag == diag::err_undeclared_var_use_suggest)
+            abort();
         } else {// FIXME: is this even reachable? Test it.
           std::string CorrectedStr(Corrected.getAsString(getLangOpts()));
           bool DroppedSpecifier = Corrected.WillReplaceSpecifier() &&
@@ -926,9 +928,9 @@ Corrected:
   }
   // +========================================================================+
 
-
-  if (FirstDecl->isCXXClassMember())
+  if (FirstDecl->isCXXClassMember()) {
     return BuildPossibleImplicitMemberExpr(SS, SourceLocation(), Result, 0);
+  }
 
   bool ADL = UseArgumentDependentLookup(SS, Result, NextToken.is(tok::l_paren));
   return BuildDeclarationNameExpr(SS, Result, ADL);
@@ -3456,8 +3458,6 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
     // producing further diagnostics for redundant qualifiers after this.
     // +===== Scout ==========================================================+
     // Do not emit empty declaration warning if this is a mesh.
-    //
-    // SC_TODO : Are we returning a tag decl below -- that is a mistake???
     //
     if (DS.getTypeSpecType() != DeclSpec::TST_uniform_mesh      &&
         DS.getTypeSpecType() != DeclSpec::TST_structured_mesh   &&

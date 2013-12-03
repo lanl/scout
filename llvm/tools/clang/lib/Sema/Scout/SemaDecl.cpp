@@ -115,10 +115,11 @@ Decl* Sema::ActOnMeshDefinition(Scope* S,
 }
 
 // scout - Scout Mesh field
-Decl *Sema::ActOnMeshField(Scope *S, Decl *MeshD, SourceLocation DeclStart,
+Decl *Sema::ActOnMeshField(Scope *S, Decl *MeshD,
+                           SourceLocation DeclStart,
                            Declarator &D) {
   MeshFieldDecl *Res = HandleMeshField(S, cast_or_null<MeshDecl>(MeshD),
-                                   DeclStart, D);
+                                       DeclStart, D);
   return Res;
 }
 
@@ -130,7 +131,6 @@ void Sema::ActOnMeshStartDefinition(Scope *S, Decl *MeshD) {
   PushDeclContext(S, Mesh);
 }
 
-// scout - Scout Mesh
 MeshFieldDecl *Sema::HandleMeshField(Scope *S, MeshDecl *Mesh,
                                      SourceLocation DeclStart,
                                      Declarator &D) {
@@ -174,7 +174,6 @@ MeshFieldDecl *Sema::HandleMeshField(Scope *S, MeshDecl *Mesh,
   return NewFD;
 }
 
-// scout - Scout Mesh
 MeshFieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
                                         TypeSourceInfo *TInfo,
                                         MeshDecl *Mesh, SourceLocation Loc,
@@ -205,8 +204,10 @@ MeshFieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
     InvalidDecl = true;
 
   // add mesh members
-  MeshFieldDecl *NewFD = MeshFieldDecl::Create(Context, Mesh, TSSL, Loc, II, T, TInfo,
-                                               0, true, ICIS_NoInit);
+  MeshFieldDecl *NewFD = MeshFieldDecl::Create(Context, Mesh,
+                                               TSSL, Loc, II, T,
+                                               TInfo, 0, true,
+                                               ICIS_NoInit);
 
   if (InvalidDecl)
     NewFD->setInvalidDecl();

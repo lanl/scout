@@ -1917,9 +1917,10 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
                                    bool IsInlineAsmIdentifier) {
   assert(!(IsAddressOfOperand && HasTrailingLParen) &&
          "cannot be direct & operand and have a trailing lparen");
+
   if (SS.isInvalid())
     return ExprError();
-
+  
   TemplateArgumentListInfo TemplateArgsBuffer;
 
   // Decompose the UnqualifiedId into the following data.
@@ -1999,7 +2000,7 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
     }
   }
 
-  if (R.isAmbiguous())
+  if (R.isAmbiguous()) 
     return ExprError();
 
   // Determine whether this name might be a candidate for
@@ -2007,7 +2008,6 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
   bool ADL = UseArgumentDependentLookup(SS, R, HasTrailingLParen);
 
   if (R.empty() && !ADL) {
-
     // Otherwise, this could be an implicitly declared function reference (legal
     // in C90, extension in C99, forbidden in C++).
     if (HasTrailingLParen && II && !getLangOpts().CPlusPlus) {
@@ -2119,7 +2119,7 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
                               isa<IndirectFieldDecl>(R.getFoundDecl()) ||
                               isa<MSPropertyDecl>(R.getFoundDecl());
 
-    if (MightBeImplicitMember)
+    if (MightBeImplicitMember) 
       return BuildPossibleImplicitMemberExpr(SS, TemplateKWLoc,
                                              R, TemplateArgs);
   }
@@ -2177,7 +2177,7 @@ Sema::BuildQualifiedDeclarationNameExpr(CXXScopeSpec &SS,
   // won't get here if this might be a legitimate a class member (we end up in
   // BuildMemberReferenceExpr instead), but this can be valid if we're forming
   // a pointer-to-member or in an unevaluated context in C++11.
-  if (!R.empty() && (*R.begin())->isCXXClassMember() && !IsAddressOfOperand)
+  if (!R.empty() && (*R.begin())->isCXXClassMember() && !IsAddressOfOperand) 
     return BuildPossibleImplicitMemberExpr(SS,
                                            /*TemplateKWLoc=*/SourceLocation(),
                                            R, /*TemplateArgs=*/0);

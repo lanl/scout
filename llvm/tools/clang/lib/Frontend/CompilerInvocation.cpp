@@ -1204,6 +1204,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
       case IK_ObjC:
       case IK_PreprocessedC:
       case IK_PreprocessedObjC:
+        llvm::errs() << "IK is scout\n";
         if (!(Std.isC89() || Std.isC99()))
           Diags.Report(diag::err_drv_argument_not_allowed_with)
             << A->getAsString(Args) << "C/ObjC";

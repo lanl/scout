@@ -252,7 +252,6 @@ void InitHeaderSearch::AddDefaultCIncludePaths(const LangOptions &Lang,
     // be... 
     if (Lang.ScoutC || Lang.ScoutCPlusPlus) {
       SmallString<128> P = StringRef(HSOpts.ScoutResourceDir);
-      llvm::errs() << "scout base resource dir: " << P.str() << "\n";
       AddUnmappedPath(P.str(), ExternCSystem, false);
       
       switch(os) {
@@ -451,7 +450,6 @@ AddDefaultCPlusPlusIncludePaths(const LangOptions &Lang, // +===== Scout =====+
     SmallString<128> P = StringRef(HSOpts.ScoutResourceDir);
     llvm::sys::path::append(P, "sc++");
     AddPath(P.str(), CXXSystem, false);
-    llvm::errs() << "appending scout c++ include directory: " << P.str() << "\n";
   }
   // +==================================================================+  
 

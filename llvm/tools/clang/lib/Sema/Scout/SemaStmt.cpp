@@ -295,7 +295,7 @@ namespace {
 } // end namespace
 
 
-// ----- ActOnForallRefVariable
+// ----- ActOnForallMeshRefVariable
 // This call assumes the reference variable details have been parsed
 // (syntax checked) and issues, such as shadows, have been reported.
 // Given this, this member function takes steps to further determine
