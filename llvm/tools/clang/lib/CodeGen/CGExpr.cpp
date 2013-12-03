@@ -2894,11 +2894,6 @@ RValue CodeGenFunction::EmitCallExpr(const CallExpr *E,
 
   const Decl *TargetDecl = E->getCalleeDecl();
   if (const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(TargetDecl)) {
-    // +==== Scout ===========================================================+
-    // handle generic builtins like CShift
-    RValue RV;
-    if (EmitGenericBuiltinExpr(FD, E, &RV)) return RV;
-    // +======================================================================+
     if (unsigned builtinID = FD->getBuiltinID())
       return EmitBuiltinExpr(FD, builtinID, E);
   }

@@ -56,7 +56,6 @@
 #include "scout/types.sch"
 #include "scout/math.sch"
 #include "scout/color.sch"
-#include "scout/cshift.sch"
 
 #endif
 
