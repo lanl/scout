@@ -225,6 +225,9 @@ static void ParseProgName(SmallVectorImpl<const char *> &ArgVector,
     const char *Suffix;
     const char *ModeFlag;
   } suffixes [] = {
+    // look for scout first otherwise scc will match cc, and sc++ will match ++
+    { "scc",       "--driver-mode=scout" },
+    { "sc++",       "--driver-mode=scout++" },    
     { "clang",     0 },
     { "clang++",   "--driver-mode=g++" },
     { "clang-c++", "--driver-mode=g++" },
@@ -236,9 +239,7 @@ static void ParseProgName(SmallVectorImpl<const char *> &ArgVector,
     { "cc",        0 },
     { "cpp",       "--driver-mode=cpp" },
     { "cl" ,       "--driver-mode=cl"  },
-    //{ "++",        "--driver-mode=g++" },
-    { "scc",       "--driver-mode=scout" },
-    { "sc++",       "--driver-mode=scout++" },    
+    { "++",        "--driver-mode=g++" },
   };
   std::string ProgName(llvm::sys::path::stem(ArgVector[0]));
   std::transform(ProgName.begin(), ProgName.end(), ProgName.begin(),
@@ -457,16 +458,6 @@ int main(int argc_, const char **argv_) {
   // Handle -cc1 integrated tools.
   if (argv.size() > 1 && StringRef(argv[1]).startswith("-cc1")) {
     StringRef Tool = argv[1] + 4;
-
-    for(int i = 2, size = argv.size(); i < size; ++i) {
-      if (StringRef(argv[i]) == "-debug") {
-        size_t pid = getpid();
-        std::cerr << "scc process id: " << pid << std::endl;
-        std::cerr << "attach debugger and then press return to continue...";
-        std::string str;
-        std::getline(std::cin, str);
-      }
-    }
 
     if (Tool == "")
       return cc1_main(argv.data()+2, argv.data()+argv.size(), argv[0],
