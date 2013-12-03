@@ -1989,8 +1989,6 @@ public:
   bool EmitScoutBuiltinExpr(const FunctionDecl *FD,
                          unsigned BuiltinID, const CallExpr *E, RValue *Rv);
 
-  bool EmitGenericBuiltinExpr(const FunctionDecl *FD, const CallExpr *E, RValue *RV);
-
   llvm::Value *CreateMemAlloc(uint64_t numElts);
   llvm::Value *CreateMemAllocForValue(llvm::Value* numEltsValue);
 
