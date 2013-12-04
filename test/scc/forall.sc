@@ -50,7 +50,9 @@
  * Notes
  *
  * ##### 
- */ 
+ */
+#include <unistd.h>
+#include <signal.h> 
 #include <stdio.h>
 
 uniform mesh MyMesh {

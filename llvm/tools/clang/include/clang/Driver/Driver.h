@@ -142,6 +142,7 @@ public:
   bool IsCLMode() const { return Mode == CLMode; }
 
   // +===== Scout ============================================================+
+  bool CCCIsScout() const { return (Mode == ScoutCMode) || (Mode == ScoutCXXMode); }
   bool CCCIsScoutC() const { return Mode == ScoutCMode; }
   bool CCCIsScoutCXX() const { return Mode == ScoutCXXMode; }
   // +========================================================================+
