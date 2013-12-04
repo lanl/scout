@@ -43,6 +43,16 @@ using namespace clang::driver::tools;
 using namespace clang;
 using namespace llvm::opt;
 
+// +===== Scout ============================================================+
+static void AddScoutLibArgs(const ArgList &Args,
+                            ArgStringList &CmdArgs) {
+  CmdArgs.push_back("-lscRuntime");
+  if (! Args.hasArg(options::OPT_noscstdlib)) {
+    CmdArgs.push_back("-lscStandard");
+  }
+}
+// +========================================================================+
+
 /// CheckPreprocessingOptions - Perform some validation of preprocessing
 /// arguments that is shared with gcc.
 static void CheckPreprocessingOptions(const Driver &D, const ArgList &Args) {
@@ -6412,6 +6422,10 @@ void gnutools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   // The profile runtime also needs access to system libraries.
   addProfileRTLinux(getToolChain(), Args, CmdArgs);
 
+  // +===== Scout ============================================================+
+  if (D.CCCIsScout()) AddScoutLibArgs(Args, CmdArgs);
+  // +========================================================================+
+  
   if ((D.CCCIsCXX() || D.CCCIsScout()) &&  // +===== Scout =============+
       !Args.hasArg(options::OPT_nostdlib) &&
       !Args.hasArg(options::OPT_nodefaultlibs)) {
@@ -6526,6 +6540,10 @@ void minix::Link::ConstructJob(Compilation &C, const JobAction &JA,
 
   addProfileRT(getToolChain(), Args, CmdArgs, getToolChain().getTriple());
 
+  // +===== Scout ============================================================+
+  if (D.CCCIsScout())  AddScoutLibArgs(Args, CmdArgs);
+  // +========================================================================+
+
   if (!Args.hasArg(options::OPT_nostdlib) &&
       !Args.hasArg(options::OPT_nodefaultlibs)) {
     if (D.CCCIsCXX() || D.CCCIsScout()) {  // +===== Scout ====================+
@@ -6626,6 +6644,10 @@ void dragonfly::Link::ConstructJob(Compilation &C, const JobAction &JA,
     assert(Output.isNothing() && "Invalid output.");
   }
 
+  // +===== Scout ============================================================+
+  if (D.CCCIsScout()) AddScoutLibArgs(Args, CmdArgs);
+  // +========================================================================+
+  
   if (!Args.hasArg(options::OPT_nostdlib) &&
       !Args.hasArg(options::OPT_nostartfiles)) {
     if (!Args.hasArg(options::OPT_shared)) {
@@ -6657,6 +6679,10 @@ void dragonfly::Link::ConstructJob(Compilation &C, const JobAction &JA,
 
   AddLinkerInputs(getToolChain(), Inputs, Args, CmdArgs);
 
+  // +===== Scout ============================================================+
+  if (D.CCCIsScout()) AddScoutLibArgs(Args, CmdArgs);
+  // +========================================================================+
+  
   if (!Args.hasArg(options::OPT_nostdlib) &&
       !Args.hasArg(options::OPT_nodefaultlibs)) {
     // FIXME: GCC passes on -lgcc, -lgcc_pic and a whole lot of
