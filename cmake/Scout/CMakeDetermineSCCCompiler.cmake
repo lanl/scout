@@ -175,7 +175,7 @@ IF(NOT CMAKE_SCC_COMPILER_ID_RUN)
   SET(CMAKE_SCC_COMPILER_ID)
   FILE(READ ${CMAKE_ROOT}/Modules/CMakePlatformId.h.in
     CMAKE_SCC_COMPILER_ID_PLATFORM_CONTENT)
-  INCLUDE(${SCOUT_CMAKE_DIR}/CMakeDetermineCompilerId.cmake)
+  INCLUDE(${SCOUT_CMAKE_DIR}/Scout/CMakeDetermineCompilerId.cmake)
   CMAKE_DETERMINE_COMPILER_ID(SCC SCCFLAGS CMakeSCCCompilerId.sc)
 
 ENDIF(NOT CMAKE_SCC_COMPILER_ID_RUN)
@@ -184,12 +184,12 @@ INCLUDE(${CMAKE_ROOT}/Modules/CMakeClDeps.cmake)
 INCLUDE(CMakeFindBinUtils)
 
 # configure all variables set in this file
-CONFIGURE_FILE(${SCOUT_CMAKE_DIR}/CMakeSCCCompiler.cmake.in
+CONFIGURE_FILE(${SCOUT_CMAKE_DIR}/Scout/CMakeSCCCompiler.cmake.in
   ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/CMakeSCCCompiler.cmake
   @ONLY IMMEDIATE # IMMEDIATE must be here for compatibility mode <= 2.0
   )
 #for cmake 2.8.10
-CONFIGURE_FILE(${SCOUT_CMAKE_DIR}/CMakeSCCCompiler.cmake.in
+CONFIGURE_FILE(${SCOUT_CMAKE_DIR}/Scout/CMakeSCCCompiler.cmake.in
   ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${CMAKE_VERSION}/CMakeSCCCompiler.cmake
   @ONLY IMMEDIATE # IMMEDIATE must be here for compatibility mode <= 2.0
   )

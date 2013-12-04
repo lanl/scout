@@ -52,14 +52,13 @@
 include(${CMAKE_BINARY_DIR}/CMake/Modules/Configuration.cmake)
 
 set(CMAKE_MODULE_PATH
-  ${SCOUT_CMAKE_DIR}
+  ${SCOUT_CMAKE_PATH}
   ${CMAKE_MODULE_PATH}
 )
 
 #ignore warnings about i/o in forall
 set(CMAKE_SCC_FLAGS "${CMAKE_SCC_FLAGS} -Wno-calling-io-function")
 
-#C and CXX are here as we need to find them for findMPI to work
 project(scout_test_scc)
     
   cmake_minimum_required(VERSION 2.8.9)
@@ -77,9 +76,9 @@ project(scout_test_scc)
     if (NOT tname) 
       message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
     else (NOT tname)
-      add_executable(${tname} ${test})
-      add_test(${tname} ${CMAKE_CURRENT_BINARY_DIR}/${tname})
-      message(" + added runtime regression test entry: ${tname}")
+      add_executable(scc_${tname} ${test})
+      add_test("scc_${tname}" "${TEST_BINARY_DIR}/scc_${tname}")
+      message(" + added runtime regression test entry: scc_{tname}")
     endif(NOT tname)
   endforeach(test)
 

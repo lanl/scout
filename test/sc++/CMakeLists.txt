@@ -52,11 +52,10 @@
 include(${CMAKE_BINARY_DIR}/CMake/Modules/Configuration.cmake)
 
 set(CMAKE_MODULE_PATH
-  ${SCOUT_CMAKE_DIR}
+  ${SCOUT_CMAKE_PATH}
   ${CMAKE_MODULE_PATH}
 )
 
-#C and CXX are here as we need to find them for findMPI to work
 project(scout_test_scxx)
     
   cmake_minimum_required(VERSION 2.8.9)
@@ -74,9 +73,9 @@ project(scout_test_scxx)
     if (NOT tname) 
       message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
     else (NOT tname)
-      add_executable(${tname} ${test})
-      add_test(${tname} ${CMAKE_CURRENT_BINARY_DIR}/${tname})
-      message(" + added runtime regression test entry: ${tname}")
+      add_executable("sc++_${tname}" ${test})
+      add_test("sc++_${tname}" "${TEST_BINARY_DIR}/sc++_${tname}")
+      message(" + added runtime regression test entry: sc++_${tname}")
     endif(NOT tname)
   endforeach(test)
 

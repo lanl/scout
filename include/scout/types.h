@@ -65,4 +65,6 @@ namespace scout
   typedef unsigned long*   ulongp;
 }
 
+using namespace scout;
+
 #endif

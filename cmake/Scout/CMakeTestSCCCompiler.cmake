@@ -97,7 +97,7 @@ ELSE(NOT CMAKE_SCC_COMPILER_WORKS)
   ELSE(CMAKE_SCC_COMPILER_FORCED)
     # Try to identify the ABI and configure it into CMakeSCCCompiler.cmake
     INCLUDE(${CMAKE_ROOT}/Modules/CMakeDetermineCompilerABI.cmake)
-    CMAKE_DETERMINE_COMPILER_ABI(SCC ${SCOUT_CMAKE_DIR}/CMakeSCCCompilerABI.sc)
+    CMAKE_DETERMINE_COMPILER_ABI(SCC ${SCOUT_CMAKE_DIR}/Scout/CMakeSCCCompilerABI.sc)
     CONFIGURE_FILE(
       ${SCOUT_CMAKE_DIR}/Scout/CMakeSCCCompiler.cmake.in
       ${CMAKE_BINARY_DIR}/CMakeFiles/CMakeSCCCompiler.cmake

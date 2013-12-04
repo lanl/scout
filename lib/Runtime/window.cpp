@@ -11,6 +11,7 @@
 #include <cassert>
 #include <iostream>
 
+#include "scout/scout.sch"
 #include "scout/Runtime/window.h"
 #include "scout/math.h"
 

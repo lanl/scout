@@ -63,15 +63,12 @@
  #error "scout not identified by preprocessor!!!" 
 #endif
 
-#if (!__scout_cxx__)
- #error "scout c++ mode not set by preprocessor!!!"
-#endif
 
 int main(int argc, char *argv[]) {
-  printf("%s\n", __scout_version);
+  printf("%s\n", __scout_version__);
   printf("scout major version: %d\n", __scout_major__);
   printf("scout minor version: %d\n", __scout_minor__);
-  printf("scout patchlevel   : %d\n", __scout_patch_level__);
+  printf("scout patchlevel   : %d\n", __scout_patchlevel__);
   printf("clang information:\n%s\n",  __clang_version__);
   return 0;
 }
