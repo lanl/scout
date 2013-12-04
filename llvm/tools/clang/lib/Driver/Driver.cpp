@@ -660,7 +660,7 @@ void Driver::PrintVersion(const Compilation &C, raw_ostream &OS) const {
   // FIXME: The following handlers should use a callback mechanism, we don't
   // know what the client would like to do.
   // +==== Scout =============================================================+
-  if (CCCIsScoutC() || CCCIsScoutCXX()) {
+  if (CCCIsScout()) {
     OS << getScoutFullVersion() << '\n';
   } else {
     OS << getClangFullVersion() << '\n';

@@ -4441,7 +4441,7 @@ void hexagon::Link::ConstructJob(Compilation &C, const JobAction &JA,
   // Libraries
   //----------------------------------------------------------------------------
   if (incStdLib && incDefLibs) {
-    if (D.CCCIsCXX() || D.CCCIsScoutCXX()) { // +===== Scout ==================+
+    if (D.CCCIsCXX() || D.CCCIsScout()) { // +===== Scout ==================+
       ToolChain.AddCXXStdlibLibArgs(Args, CmdArgs);
       CmdArgs.push_back("-lm");
     }
@@ -5010,7 +5010,7 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   if (!Args.hasArg(options::OPT_nostdlib) &&
       !Args.hasArg(options::OPT_nodefaultlibs)) {
     if (getToolChain().getDriver().CCCIsCXX() ||
-        getToolChain().getDriver().CCCIsScoutCXX()) // +===== Scout ==============+
+        getToolChain().getDriver().CCCIsScout()) // +===== Scout ==============+
       getToolChain().AddCXXStdlibLibArgs(Args, CmdArgs);
 
     // link_ssp spec is empty.
@@ -5207,7 +5207,7 @@ void solaris::Link::ConstructJob(Compilation &C, const JobAction &JA,
   if (!Args.hasArg(options::OPT_nostdlib) &&
       !Args.hasArg(options::OPT_nodefaultlibs)) {
     if (getToolChain().getDriver().CCCIsCXX() ||
-        getToolChain().getDriver().CCCIsScoutCXX()) // +===== Scout ===========+
+        getToolChain().getDriver().CCCIsScout()) // +===== Scout ===========+
       getToolChain().AddCXXStdlibLibArgs(Args, CmdArgs);
     CmdArgs.push_back("-lgcc_s");
     if (!Args.hasArg(options::OPT_shared)) {
@@ -5448,7 +5448,7 @@ void openbsd::Link::ConstructJob(Compilation &C, const JobAction &JA,
 
   if (!Args.hasArg(options::OPT_nostdlib) &&
       !Args.hasArg(options::OPT_nodefaultlibs)) {
-    if (D.CCCIsCXX() || D.CCCIsScoutCXX()) { // +===== Scout ==============+
+    if (D.CCCIsCXX() || D.CCCIsScout()) { // +===== Scout ==============+
       getToolChain().AddCXXStdlibLibArgs(Args, CmdArgs);
       if (Args.hasArg(options::OPT_pg))
         CmdArgs.push_back("-lm_p");
@@ -5578,7 +5578,7 @@ void bitrig::Link::ConstructJob(Compilation &C, const JobAction &JA,
 
   if (!Args.hasArg(options::OPT_nostdlib) &&
       !Args.hasArg(options::OPT_nodefaultlibs)) {
-    if (D.CCCIsCXX() || D.CCCIsScoutCXX()) { // +===== Scout ============+
+    if (D.CCCIsCXX() || D.CCCIsScout()) { // +===== Scout ============+
       getToolChain().AddCXXStdlibLibArgs(Args, CmdArgs);
       if (Args.hasArg(options::OPT_pg))
         CmdArgs.push_back("-lm_p");
@@ -5816,7 +5816,7 @@ void freebsd::Link::ConstructJob(Compilation &C, const JobAction &JA,
 
   if (!Args.hasArg(options::OPT_nostdlib) &&
       !Args.hasArg(options::OPT_nodefaultlibs)) {
-    if (D.CCCIsCXX() || D.CCCIsScoutCXX()) { // +===== Scout ==================+
+    if (D.CCCIsCXX() || D.CCCIsScout()) { // +===== Scout ==================+
       ToolChain.AddCXXStdlibLibArgs(Args, CmdArgs);
       if (Args.hasArg(options::OPT_pg))
         CmdArgs.push_back("-lm_p");
@@ -5995,7 +5995,7 @@ void netbsd::Link::ConstructJob(Compilation &C, const JobAction &JA,
 
   if (!Args.hasArg(options::OPT_nostdlib) &&
       !Args.hasArg(options::OPT_nodefaultlibs)) {
-    if (D.CCCIsCXX() || D.CCCIsScoutCXX()) { // +===== Scout =================+
+    if (D.CCCIsCXX() || D.CCCIsScout()) { // +===== Scout =================+
       getToolChain().AddCXXStdlibLibArgs(Args, CmdArgs);
       CmdArgs.push_back("-lm");
     }
@@ -6412,7 +6412,7 @@ void gnutools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   // The profile runtime also needs access to system libraries.
   addProfileRTLinux(getToolChain(), Args, CmdArgs);
 
-  if ((D.CCCIsCXX() || D.CCCIsScoutCXX()) &&  // +===== Scout =============+
+  if ((D.CCCIsCXX() || D.CCCIsScout()) &&  // +===== Scout =============+
       !Args.hasArg(options::OPT_nostdlib) &&
       !Args.hasArg(options::OPT_nodefaultlibs)) {
     bool OnlyLibstdcxxStatic = Args.hasArg(options::OPT_static_libstdcxx) &&
@@ -6528,7 +6528,7 @@ void minix::Link::ConstructJob(Compilation &C, const JobAction &JA,
 
   if (!Args.hasArg(options::OPT_nostdlib) &&
       !Args.hasArg(options::OPT_nodefaultlibs)) {
-    if (D.CCCIsCXX() || D.CCCIsScoutCXX()) {  // +===== Scout ====================+
+    if (D.CCCIsCXX() || D.CCCIsScout()) {  // +===== Scout ====================+
       getToolChain().AddCXXStdlibLibArgs(Args, CmdArgs);
       CmdArgs.push_back("-lm");
     }
@@ -6676,7 +6676,7 @@ void dragonfly::Link::ConstructJob(Compilation &C, const JobAction &JA,
       }
     }
 
-    if (D.CCCIsCXX() || D.CCCIsScoutCXX()) { // +===== Scout ========+
+    if (D.CCCIsCXX() || D.CCCIsScout()) { // +===== Scout ========+
       getToolChain().AddCXXStdlibLibArgs(Args, CmdArgs);
       CmdArgs.push_back("-lm");
     }
