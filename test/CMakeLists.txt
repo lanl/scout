@@ -51,21 +51,22 @@
 include(${CMAKE_BINARY_DIR}/CMake/Modules/Configuration.cmake)
 
 set(CMAKE_MODULE_PATH
-  ${SCOUT_CMAKE_DIR}
+  ${SCOUT_CMAKE_PATH}
   ${CMAKE_MODULE_PATH}
 )
 
 
-project(scout_test_scc SCC SCXX C CXX)
+project(scout_test_scc SCC SCXX )#  C CXX)
 
   cmake_minimum_required(VERSION 2.8.9)
 
   include(CTest)
 
-  include(${SCOUT_CMAKE_DIR}/ScoutConfig.cmake)
+  include(../cmake/Modules/ScoutConfig.cmake)
 
   set(SCOUT_REGRESSION_DIR ${CMAKE_CURRENT_BINARY_DIR}/../../test)
   set(SCOUT_BINARY_REGRESSION_DIR ${CMAKE_CURRENT_BINARY_DIR})
+  set(TEST_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/bin)
 
   add_definitions(-DSC_REG_DATA_PATH=${SCOUT_REGRESSION_DIR}/data)
   add_definitions(-DSC_REG_BIN_PATH=${SCOUT_BINARY_REGRESSION_DIR})

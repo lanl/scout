@@ -1524,12 +1524,6 @@ static void ParsePreprocessorArgs(PreprocessorOptions &Opts, ArgList &Args,
                                   DiagnosticsEngine &Diags) {
   using namespace options;
 
-  // +===== Scout ============================================================+
-  // Implicitly include the Scout headers
-  Opts.Includes.push_back("scout/scout.sch");
-  Opts.Includes.push_back("scout/Runtime/scout.h");
-  // +========================================================================+
-  
   Opts.ImplicitPCHInclude = Args.getLastArgValue(OPT_include_pch);
   Opts.ImplicitPTHInclude = Args.getLastArgValue(OPT_include_pth);
   if (const Arg *A = Args.getLastArg(OPT_token_cache))
@@ -1736,6 +1730,15 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
   // ParsePreprocessorArgs and remove the FileManager
   // parameters from the function and the "FileManager.h" #include.
   FileManager FileMgr(Res.getFileSystemOpts());
+
+  // +===== Scout ============================================================+
+  if (DashX == IK_Scout_C || DashX == IK_Scout_CXX) {
+    // Implicitly include the Scout headers
+    Res.getPreprocessorOpts().Includes.push_back("scout/scout.sch");
+    Res.getPreprocessorOpts().Includes.push_back("scout/Runtime/scout.h");
+  }
+  // +========================================================================+
+
   ParsePreprocessorArgs(Res.getPreprocessorOpts(), *Args, FileMgr, Diags);
   ParsePreprocessorOutputArgs(Res.getPreprocessorOutputOpts(), *Args,
                               Res.getFrontendOpts().ProgramAction);
