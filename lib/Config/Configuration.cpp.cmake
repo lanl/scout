@@ -146,6 +146,11 @@ namespace scout {
   
     const char* Configuration::Libraries[] = {
 
+      #ifndef APPLE
+      // for apple this is done in lib/Driver/Toolchain{,s}.cpp for some reason
+      "-lscRuntime -lscStandard",
+      #endif
+
       "-lBlocksRuntime",
       #ifdef SCOUT_ENABLE_CUDA
       "-lscCudaError",
