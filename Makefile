@@ -84,7 +84,7 @@ endif
 ifdef SC_BUILD_TYPE
   build_type  := $(SC_BUILD_TYPE)
 else
-  build_type  := RELWITHDEBINFO
+  build_type  := DEBUG
 endif
 
 #

@@ -48,13 +48,11 @@
  * ########################################################################### 
  * 
  * Notes:
- *  test if our names collide w/ SSA names
+ *  test for bug in llvm than occurs at -O0
  *
  * ##### 
  */ 
-#include <sys/types.h>
-#include <unistd.h>
-#include <signal.h>
+#include <assert.h>
 #include <stdio.h>
 
 
@@ -82,6 +80,7 @@ int main(int argc, char** argv) {
   forall cells c in m {
     if (b != 3) {
       printf("Error: b = %d\n", b);
+      assert(false);
     } else {
       printf("OK: b = %d\n", b);
     }     
