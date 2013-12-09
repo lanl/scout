@@ -178,8 +178,10 @@ CodeGenFunction::EmitLValueForMeshField(LValue base,
   if (field->hasAttr<AnnotateAttr>())
     addr = EmitFieldAnnotations(field, addr);
 
-  // work around bug in llvm, this is what C appears to do
-  llvm::Value *Idx = Builder.CreateSExt(Index, Int64Ty, "forall.linearIdx");
+  // work around bug in llvm, this is similar to what a for loop appears to do
+  // see EmitArraySubscriptExpr()
+  llvm::Value *Idx = Builder.CreateSExt(Index, IntPtrTy, "forall.linearIdx");
+
   // get the correct element of the field depending on the index
   sprintf(IRNameStr, "%s.%s.element.ptr", mesh->getName().str().c_str(),field->getName().str().c_str());
   addr = Builder.CreateInBoundsGEP(addr, Idx, IRNameStr);
