@@ -554,8 +554,6 @@ def emitAllDefinitions : Flag<["-"], "emit-all-definitions">,
   HelpText<"Emit all definitions regardless of it that definition was used.">;
 def cpuThreads : Flag<["-"], "mt">,
   HelpText<"Enable CPU multithreading support.">;
-def disableScoutStdLib : Flag<["-"], "disable-sc-stdlib">,
-  HelpText<"Disable automatic inclusion/use of the Scout standard library.">;
 def noRewrite : Flag<["-"], "rewrite">,
   HelpText<"run the rewriter">;
 def dumpRewrite : Flag<["-"], "dump-rewrite">,
