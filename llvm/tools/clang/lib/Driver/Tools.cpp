@@ -2781,11 +2781,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     // Emit-all-definitions from compilation.
     Args.AddAllArgs(CmdArgs, options::OPT_emitAllDefinitions);
 
-    // Disable automatic standard library inclusion. We use
-    // this to bootstrap scc and the building of the standard
-    // library.
-    Args.AddAllArgs(CmdArgs, options::OPT_disableScoutStdLib);
-
     // Do not run the rewriter.
     Args.AddAllArgs(CmdArgs, options::OPT_noRewrite);
 
