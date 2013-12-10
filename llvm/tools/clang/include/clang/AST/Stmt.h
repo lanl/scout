@@ -2421,96 +2421,51 @@ public:
   static bool classof(const ForallMeshStmt *) { return true; }
 };
 
-
+// An array-based forall statement
 class ForallArrayStmt : public ForallStmt {
-  //SC_TODO: use arrays?
-  IdentifierInfo* XInductionVarII;
-  IdentifierInfo* YInductionVarII;
-  IdentifierInfo* ZInductionVarII;
-  Expr* XStart;
-  Expr* XEnd;
-  Expr* XStride;
-  Expr* YStart;
-  Expr* YEnd;
-  Expr* YStride;
-  Expr* ZStart;
-  Expr* ZEnd;
-  Expr* ZStride;
+  IdentifierInfo* InductionVarII[3];
+  Expr* Start[3];
+  Expr* End[3];
+  Expr* Stride[3];
 
  public:
-   ForallArrayStmt(SourceLocation FAL,
-                   Stmt *Body);
 
+   ForallArrayStmt(IdentifierInfo* InductionVarII[],
+       SourceLocation InductionVarLoc[],
+       Expr* Start[], Expr* End[], Expr* Stride[],
+       SourceLocation ForallLoc, Stmt* Body);
 
    explicit ForallArrayStmt(EmptyShell Empty) :
    ForallStmt(ForallArrayStmtClass, Empty) { }
 
 
-   const IdentifierInfo* getInductionVar(size_t axis) const{
-     switch(axis){
-       case 0:
-         return XInductionVarII;
-       case 1:
-         return YInductionVarII;
-       case 2:
-         return ZInductionVarII;
-     }
-
-     assert(false && "invalid axis");
+   const IdentifierInfo* getInductionVar(size_t axis) const {
+     return InductionVarII[axis];
    }
 
    void setInductionVar(size_t axis, IdentifierInfo *II) {
-     switch(axis) {
-       case 0: XInductionVarII = II; return;
-       case 1: YInductionVarII = II; return;
-       case 2: ZInductionVarII = II; return;
-       default:
-         assert(false && "invalid axis.");
-     }
+     InductionVarII[axis] = II;
    }
 
    void setStart(int axis, Expr *E) {
-       switch(axis) {
-         case 0: XStart = E; return;
-         case 1: YStart = E; return;
-         case 2: ZStart = E; return;
-         default:
-           const char *s = "Unknown axis in setStart(int axis, Expr *E).\n";
-           assert(false && s);
-       }
-     }
+     Start[axis] = E;
+   }
 
    void setEnd(int axis, Expr *E) {
-       switch(axis) {
-         case 0: XEnd = E; return;
-         case 1: YEnd = E; return;
-         case 2: ZEnd = E; return;
-         default:
-           const char *s = "Unknown axis in setEnd(int axis, Expr *E).\n";
-           assert(false && s);
-       }
-     }
+     End[axis] = E;
+    }
 
    void setStride(int axis, Expr *E) {
-       switch(axis) {
-         case 0: XStride = E; return;
-         case 1: YStride = E; return;
-         case 2: ZStride = E; return;
-         default:
-           const char *s = "Unknown axis in setStride(int axis, Expr *E).\n";
-           assert(false && s);
-       }
-     }
-
-
+     Stride[axis] = E;
+   }
 
    static bool classof(const Stmt *T) {
      return T->getStmtClass() == ForallArrayStmtClass;
    }
 
    static bool classof(const ForallArrayStmt *) { return true; }
-
 };
+
 
 // ----- RenderallStmt -- base class for renderall statements
 //

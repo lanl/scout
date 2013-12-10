@@ -605,10 +605,10 @@ bool Parser::ParseMeshStatement(StmtVector &Stmts,
 }
 
 
-StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs){
+StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
   assert(Tok.is(tok::kw_forall) && "Not a forall stmt!");
 
-  SourceLocation ForAllLoc = ConsumeToken();
+  SourceLocation ForallLoc = ConsumeToken();
 
   IdentifierInfo* InductionVarII[3] = {0,0,0};
   SourceLocation InductionVarLoc[3];
@@ -669,7 +669,7 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs){
       // parse start
       if(Tok.is(tok::colon)) {
         Start[i] = IntegerLiteral::Create(Actions.Context, llvm::APInt(32, 0),
-                    Actions.Context.IntTy, ForAllLoc);
+                    Actions.Context.IntTy, ForallLoc);
       } else {
         ExprResult StartResult = ParseAssignmentExpression();
         if(StartResult.isInvalid()){
@@ -704,7 +704,7 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs){
       // note: non-zero stride is used to denote this dimension exists
       Stride[i] =
       IntegerLiteral::Create(Actions.Context, llvm::APInt(32, 1),
-                             Actions.Context.IntTy, ForAllLoc);
+                             Actions.Context.IntTy, ForallLoc);
     } else {
       ExprResult StrideResult = ParseAssignmentExpression();
       if(StrideResult.isInvalid()){
@@ -761,24 +761,9 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs){
   Stmt* Body = BodyResult.get();
 
   StmtResult ForallArrayResult =
-  Actions.ActOnForallArrayStmt(ForAllLoc, Body);
-
-  Stmt* stmt = ForallArrayResult.get();
-
-  ForallArrayStmt* FA = dyn_cast<ForallArrayStmt>(stmt);
-
-  // SC_TODO: all this should be in ActOnForallArrayStmt
-  for(size_t i = 0; i < 3; ++i){
-    // non-zero stride is used to denote this dimension exists
-    if(!Stride[i]){
-      break;
-    }
-
-    FA->setStart(i, Start[i]);
-    FA->setEnd(i, End[i]);
-    FA->setStride(i, Stride[i]);
-    FA->setInductionVar(i, InductionVarII[i]);
-  }
+  Actions.ActOnForallArrayStmt(InductionVarII, InductionVarLoc,
+      Start, End, Stride,
+      ForallLoc, Body);
 
   return ForallArrayResult;
 }

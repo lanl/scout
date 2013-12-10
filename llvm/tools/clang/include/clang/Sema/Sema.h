@@ -8084,8 +8084,10 @@ public:
                                  SourceLocation RParenLoc,
                                  Stmt* Body);
 
-  StmtResult ActOnForallArrayStmt(SourceLocation ForAllLoc,
-                                    Stmt* Body);
+  StmtResult ActOnForallArrayStmt(IdentifierInfo* InductionVarII[],
+            SourceLocation InductionVarLoc[],
+            Expr* Start[], Expr* End[], Expr* Stride[],
+            SourceLocation ForallLoc, Stmt* Body);
 
   StmtResult ActOnRenderallMeshStmt(SourceLocation ForallLoc,
                                 RenderallMeshStmt::MeshElementType ElementType,
