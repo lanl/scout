@@ -13,6 +13,9 @@ add_clang_library(clangDriver
   WindowsToolChain.cpp
   Tools.cpp
   Types.cpp
+  # +===== Scout ============================================================+
+  Scout/Tools.cpp
+  # +========================================================================+
   )
 
 add_dependencies(clangDriver
