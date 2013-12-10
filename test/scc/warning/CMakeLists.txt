@@ -49,38 +49,19 @@
 ###########################################################################
 #
 
-include(${CMAKE_BINARY_DIR}/CMake/Modules/Configuration.cmake)
+project(scout_test_scc_warning)
 
-set(CMAKE_MODULE_PATH
-  ${SCOUT_CMAKE_PATH}
-  ${CMAKE_MODULE_PATH}
-)
+set(SRC_PATH ${CMAKE_SOURCE_DIR}/scc/warning)
 
-#ignore warnings about i/o in forall
-set(CMAKE_SCC_FLAGS "${CMAKE_SCC_FLAGS} -Wno-calling-io-function")
+set(name empty-mesh)
+set(tname scc_warning_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "warning: mesh definition with no fields")
+set_property(TEST ${tname} PROPERTY WILL_FAIL) 
 
-project(scout_test_scc)
-    
-  cmake_minimum_required(VERSION 2.8.9)
+set(name dup)
+set(tname scc_warning_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY FAIL_REGULAR_EXPRESSION "2 warnings generated")
 
-  # Note: By default we pull in all the .sc source files in this
-  # directory for inclusion into the regression checks.  If you want do
-  # build more complex tests we suggest creating a subdirectory for the
-  # source.
-  #
-  file(GLOB SC_SRCS *.sc) 
-
-  # Add an executable and test entry for each source file...
-  foreach (test ${SC_SRCS})
-    get_filename_component(tname ${test} NAME_WE) 
-    if (NOT tname) 
-      message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
-    else (NOT tname)
-      add_executable(scc_${tname} ${test})
-      add_test("scc_${tname}" "${TEST_BINARY_DIR}/scc_${tname}")
-      message(" + added runtime regression test entry: scc_{tname}")
-    endif(NOT tname)
-  endforeach(test)
- 
-  add_subdirectory(error) 
-  add_subdirectory(warning) 
