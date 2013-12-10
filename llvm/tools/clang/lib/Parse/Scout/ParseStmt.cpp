@@ -682,7 +682,13 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
         }
         Start[i] = StartResult.get();
       } // end if is :
-      ConsumeToken();
+      if (Tok.is(tok::colon) || isTokenStringLiteral() || isTokenParen() || isTokenBracket()) {
+        ConsumeToken();
+      } else {
+        Diag(Tok, diag:: err_forall_array_misformat);
+        SkipUntil(tok::r_brace, false, true);
+        return StmtError();
+      }
 
       // parse end
       if(Tok.is(tok::colon)) {
@@ -698,7 +704,13 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
         }
         End[i] = EndResult.get();
       }
-      ConsumeToken();
+      if (Tok.is(tok::colon) || isTokenStringLiteral() || isTokenParen() || isTokenBracket()) {
+        ConsumeToken();
+      } else {
+        Diag(Tok, diag:: err_forall_array_misformat);
+        SkipUntil(tok::r_brace, false, true);
+        return StmtError();
+      }
 
     }
 
