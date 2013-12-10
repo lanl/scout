@@ -128,10 +128,6 @@ ForallMeshStmt::ForallMeshStmt(MeshElementType RefElement,
                ForallLocation, Body) {
 
     MeshElementRef = RefElement;
-
-
-
-
     MeshRefType    = MT;
   }
 

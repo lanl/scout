@@ -282,6 +282,8 @@ Retry:
         return ParseForallMeshStatement(Attrs);
       default:
         return ParseForallArrayStatement(Attrs);
+        // SC_TODO: do we want a keyword for the array case?
+        // maybe kw_elements?
         //Diag(Tok, diag::err_forall_unknown_mesh_component);
         //assert(false && "unhandled forall token");        return StmtError();
     }

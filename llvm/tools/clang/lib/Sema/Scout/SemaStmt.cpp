@@ -382,7 +382,7 @@ bool Sema::ActOnForallArrayInductionVariable(Scope* S,
                                              SourceLocation InductionVarLoc) {
 
   //SC_TODO: do we want to check shadowing here or elsewhere?
-  // we don't seem to me checking for shadowing in mesh case.
+  // we don't seem to be checking for shadowing in mesh case.
   LookupResult LResult(*this, InductionVarII, InductionVarLoc,
                        LookupOrdinaryName);
 
@@ -406,11 +406,14 @@ bool Sema::ActOnForallArrayInductionVariable(Scope* S,
 
 
 
-StmtResult Sema::ActOnForallArrayStmt(SourceLocation ForAllLoc,
-                                      Stmt* Body){
+StmtResult Sema::ActOnForallArrayStmt(IdentifierInfo* InductionVarII[],
+          SourceLocation InductionVarLoc[],
+          Expr* Start[], Expr* End[], Expr* Stride[],
+          SourceLocation ForallLoc, Stmt* Body) {
 
   ForallArrayStmt* FS =
-  new (Context) ForallArrayStmt(ForAllLoc, Body);
+  new (Context) ForallArrayStmt(InductionVarII, InductionVarLoc,
+      Start, End, Stride, ForallLoc, Body);
 
   return Owned(FS);
 }

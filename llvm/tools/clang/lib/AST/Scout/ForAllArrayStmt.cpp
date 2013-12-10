@@ -67,18 +67,33 @@
 using namespace clang;
 
 
-ForallArrayStmt::ForallArrayStmt(SourceLocation ForallLoc,
-                                 Stmt* Body)
+ForallArrayStmt::ForallArrayStmt(IdentifierInfo* InductionVarII[],
+    SourceLocation InductionVarLoc[],
+    Expr* Start[], Expr* End[], Expr* Stride[],
+    SourceLocation ForallLoc, Stmt* Body)
 : ForallStmt(ForallArrayStmtClass,
+             //SC_TODO: these are really mesh specific so we don't need them
+             // in this case, maybe they should move to ForallMeshStmt
              /*  IdentifierInfo* RefVarInfo */ 0,
              /*  IdentifierInfo* ContainerInfo */ 0,
              /*  VarDecl* ContainerVarDecl */ 0,
              ForallLoc,
-             Body),
+             Body) {
 
-XInductionVarII(0),
-YInductionVarII(0),
-ZInductionVarII(0)
-{
+  for(int i = 0; i < 3; i++) {
+     InductionVarII[i] = 0;
+  }
+
+  for(size_t i = 0; i < 3; ++i){
+    // non-zero stride is used to denote this dimension exists
+    if(!Stride[i]){
+      break;
+    }
+
+    setStart(i, Start[i]);
+    setEnd(i, End[i]);
+    setStride(i, Stride[i]);
+    setInductionVar(i, InductionVarII[i]);
+  }
   setBody(Body);
 }
