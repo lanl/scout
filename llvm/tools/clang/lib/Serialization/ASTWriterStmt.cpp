@@ -1881,7 +1881,7 @@ void ASTStmtWriter::VisitForallMeshStmt(ForallMeshStmt *S)
 { }
 void ASTStmtWriter::VisitRenderallMeshStmt(RenderallMeshStmt *S)
 { }
-//void ASTStmtWriter::VisitForAllArrayStmt(ForAllArrayStmt *S) { }
+void ASTStmtWriter::VisitForallArrayStmt(ForallArrayStmt *S) { }
 //void ASTStmtWriter::VisitRenderAllStmt(RenderAllStmt *S) { }
 //void ASTStmtWriter::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *S) { }
 // +==========================================================================+

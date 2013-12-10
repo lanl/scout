@@ -111,10 +111,6 @@ ForallStmt::ForallStmt(StmtClass StatementClass,
   SubExprs[BODY]      = Body;
 }
 
-
-
-
-
 // ----- ForallMeshStmt
 //
 // Constructor for a forall mesh statement w/out a predicate expression.

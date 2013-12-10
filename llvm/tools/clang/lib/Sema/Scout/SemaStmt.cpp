@@ -377,18 +377,45 @@ StmtResult Sema::ActOnForallMeshStmt(SourceLocation ForallLoc,
   return Owned(FS);
 }
 
+bool Sema::ActOnForallArrayInductionVariable(Scope* S,
+                                             IdentifierInfo* InductionVarII,
+                                             SourceLocation InductionVarLoc) {
 
-/*
+  //SC_TODO: do we want to check shadowing here or elsewhere?
+  // we don't seem to me checking for shadowing in mesh case.
+  LookupResult LResult(*this, InductionVarII, InductionVarLoc,
+                       LookupOrdinaryName);
+
+  LookupName(LResult, S);
+
+  if(LResult.getResultKind() != LookupResult::NotFound){
+    Diag(InductionVarLoc, diag::err_loop_variable_shadows_forall) <<
+    InductionVarII;
+    return false;
+  }
+
+  ImplicitParamDecl* IV =
+  ImplicitParamDecl::Create(Context, CurContext,
+                            InductionVarLoc, InductionVarII,
+                            Context.IntTy);
+
+  PushOnScopeChains(IV, S, true);
+
+  return true;
+}
+
+
+
 StmtResult Sema::ActOnForallArrayStmt(SourceLocation ForAllLoc,
-                                      Stmt* Body,
-                                      BlockExpr* Block){
+                                      Stmt* Body){
 
-  ForAllArrayStmt* FS =
-  new (Context) ForAllArrayStmt(Context, ForAllLoc, Body, Block);
+  ForallArrayStmt* FS =
+  new (Context) ForallArrayStmt(ForAllLoc, Body);
 
   return Owned(FS);
 }
 
+/*
 namespace{
 
   class RenderAllVisitor : public StmtVisitor<RenderAllVisitor> {

@@ -2317,7 +2317,7 @@ private:
   bool ParseMeshStatement(StmtVector &Stmts,
        bool OnlyStatement, Token &Next, StmtResult &SR);
 
-  StmtResult ParseForallStatement(ParsedAttributes &Attr);
+  StmtResult ParseForallArrayStatement(ParsedAttributes &Attr);
 
   StmtResult ParseForallMeshStatement(ParsedAttributes &Attr);
   StmtResult ParseRenderallMeshStatement(ParsedAttributes &Attr);

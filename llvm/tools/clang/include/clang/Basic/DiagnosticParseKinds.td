@@ -889,6 +889,18 @@ def err_forall_predicate_missing_rparen:Error<
     "forall predicate clause missing closing paren">;
 def err_forall_unknown_mesh_component:Error<
     "unrecognized mesh element">;
+    
+// +----- forall arary errors -----------------------------------------------+    
+def err_forall_expected_comma_or_kw_in:Error<
+    "forall missing (expected) comma or keyword: 'in'">;    
+def err_forall_array_invalid_start: Error<
+	"invalid start in forall">;
+def err_forall_array_invalid_end: Error<
+	"invalid end in forall">;
+def err_forall_array_invalid_stride: Error<
+	"invalid stride in forall">; 
+def err_forall_array_mismatch:Error<
+    "start/end/stride groups do not match count of induction variables">;   	  
 
 // +----- renderall errors -------------------------------------+
 def err_renderall_invalid_op:Error<
@@ -935,12 +947,6 @@ def err_expected_forall_binary_op:Error<
     "expected binary operator">;
 def warn_vector_color_clamp:Warning<
     "color vector values will be clamped to [0..1]">;
-def err_invalid_start_forall_array:Error<
-    "invalid start in forall">;
-def err_invalid_end_forall_array:Error<
-    "invalid end in forall">;
-def err_invalid_stride_forall_array:Error<
-    "invalid stride in forall">;
 def err_expected_mesh_field:Error<
     "expected a mesh field">;
 def err_expected_equal_after_element_default:Error<
@@ -955,8 +961,6 @@ def err_invalid_default_element:Error<
     "invalid default element, expected 'color' or 'radius'">;
 def err_not_array_renderall_elements:Error<
     "mesh field is not an array type">;
-def err_mismatch_forall_array:Error<
-    "start/end/stride groups do not match count of induction variables">;
 def err_expected_mesh_param_token:Error<
     "expected ']' or ':' while parsing mesh parameter">;
 def err_expected_mesh_param_star_amp:Error<

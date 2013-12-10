@@ -120,6 +120,10 @@ void StmtPrinter::VisitRenderallMeshStmt(RenderallMeshStmt *Node) {
   }
 }
 
+void StmtPrinter::VisitForallArrayStmt(ForallArrayStmt *Node) {
+  //SC_TODO
+}
+
 std::string Stmt::toCPPCode(ASTContext& context) {
   std::string str;
   llvm::raw_string_ostream ostr(str);
