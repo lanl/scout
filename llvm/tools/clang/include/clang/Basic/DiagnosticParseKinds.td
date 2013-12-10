@@ -900,7 +900,9 @@ def err_forall_array_invalid_end: Error<
 def err_forall_array_invalid_stride: Error<
 	"invalid stride in forall">; 
 def err_forall_array_mismatch:Error<
-    "start/end/stride groups do not match count of induction variables">;   	  
+    "start/end/stride groups do not match count of induction variables">; 
+ def err_forall_array_misformat:Error<
+    "start/end/stride groups misformated">;      	  
 
 // +----- renderall errors -------------------------------------+
 def err_renderall_invalid_op:Error<
