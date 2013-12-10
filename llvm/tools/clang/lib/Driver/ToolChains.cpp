@@ -30,6 +30,9 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/system_error.h"
 #include "llvm/Support/Program.h"
+// +===== Scout ============================================================+
+#include "Scout/Tools.h"
+// +========================================================================+
 
 // FIXME: This needs to be listed last until we fix the broken include guards
 // in these files and the LLVM config.h files.
@@ -41,16 +44,6 @@ using namespace clang::driver;
 using namespace clang::driver::toolchains;
 using namespace clang;
 using namespace llvm::opt;
-
-// +===== Scout ============================================================+
-static void AddScoutLibArgs(const ArgList &Args,
-                            ArgStringList &CmdArgs) {
-  CmdArgs.push_back("-lscRuntime");
-  if (! Args.hasArg(options::OPT_noscstdlib)) {
-    CmdArgs.push_back("-lscStandard");
-  }
-}
-// +========================================================================+
 
 /// Darwin - Darwin tool chain for i386 and x86_64.
 

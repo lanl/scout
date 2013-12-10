@@ -20,20 +20,12 @@
 #include "llvm/Option/Option.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
+// +===== Scout ============================================================+
+#include "Scout/Tools.h"
+// +========================================================================+
 using namespace clang::driver;
 using namespace clang;
 using namespace llvm::opt;
-
-// +===== Scout ============================================================+
-static void AddScoutLibArgs(const ArgList &Args,
-                            ArgStringList &CmdArgs) {
-  CmdArgs.push_back("-lscRuntime");
-  if (! Args.hasArg(options::OPT_noscstdlib)) {
-    CmdArgs.push_back("-lscStandard");
-  }
-}
-// +========================================================================+
-
 
 ToolChain::ToolChain(const Driver &D, const llvm::Triple &T,
                      const ArgList &A)

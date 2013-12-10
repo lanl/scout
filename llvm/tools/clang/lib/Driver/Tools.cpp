@@ -37,21 +37,14 @@
 #include "llvm/Support/Process.h"
 #include "llvm/Support/raw_ostream.h"
 #include <sys/stat.h>
+// +===== Scout ============================================================+
+#include "Scout/Tools.h"
+// +========================================================================+
 
 using namespace clang::driver;
 using namespace clang::driver::tools;
 using namespace clang;
 using namespace llvm::opt;
-
-// +===== Scout ============================================================+
-static void AddScoutLibArgs(const ArgList &Args,
-                            ArgStringList &CmdArgs) {
-  CmdArgs.push_back("-lscRuntime");
-  if (! Args.hasArg(options::OPT_noscstdlib)) {
-    CmdArgs.push_back("-lscStandard");
-  }
-}
-// +========================================================================+
 
 /// CheckPreprocessingOptions - Perform some validation of preprocessing
 /// arguments that is shared with gcc.
