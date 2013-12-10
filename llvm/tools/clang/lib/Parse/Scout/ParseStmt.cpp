@@ -604,3 +604,183 @@ bool Parser::ParseMeshStatement(StmtVector &Stmts,
   return false;
 }
 
+
+StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs){
+  assert(Tok.is(tok::kw_forall) && "Not a forall stmt!");
+
+  SourceLocation ForAllLoc = ConsumeToken();
+
+  IdentifierInfo* InductionVarII[3] = {0,0,0};
+  SourceLocation InductionVarLoc[3];
+
+  size_t count;
+  // parse up to 3 identifiers
+  for(size_t i = 0; i < 3; ++i) {
+    if(Tok.isNot(tok::identifier)){
+      Diag(Tok, diag::err_expected_ident);
+      SkipUntil(tok::r_brace, false, true); //multiline skip, don't consume brace
+      return StmtError();
+    }
+
+    InductionVarII[i] = Tok.getIdentifierInfo();
+    InductionVarLoc[i] = ConsumeToken();
+
+    count = i + 1;
+
+    if(Tok.is(tok::kw_in)){
+      break;
+    }
+    else if(Tok.isNot(tok::comma)){
+      Diag(Tok, diag::err_forall_expected_comma_or_kw_in);
+      SkipUntil(tok::r_brace, false, true);
+      return StmtError();
+    }
+    ConsumeToken();
+  } //end for i (identifiers)
+
+  if(Tok.isNot(tok::kw_in)){
+    Diag(Tok, diag::err_forall_expected_kw_in);
+    SkipUntil(tok::r_brace, false, true);
+    return StmtError();
+  }
+
+  ConsumeToken();
+
+  if(Tok.isNot(tok::l_square)){
+    Diag(Tok, diag::err_expected_lsquare);
+    SkipUntil(tok::r_brace, false, true);
+    return StmtError();
+  }
+
+  ConsumeBracket();
+
+  Expr* Start[3] = {0,0,0};
+  Expr* End[3] = {0,0,0};
+  Expr* Stride[3] = {0,0,0};
+
+  // parse up to 3 (start:end:stride) ranges
+  for(size_t i = 0; i < 3; ++i) {
+    if(Tok.is(tok::coloncolon)) { // don't allow ::
+      Diag(Tok, diag::err_forall_array_invalid_end);
+      SkipUntil(tok::r_brace, false, true);
+      return StmtError();
+    } else {
+
+      // parse start
+      if(Tok.is(tok::colon)) {
+        Start[i] = IntegerLiteral::Create(Actions.Context, llvm::APInt(32, 0),
+                    Actions.Context.IntTy, ForAllLoc);
+      } else {
+        ExprResult StartResult = ParseAssignmentExpression();
+        if(StartResult.isInvalid()){
+          Diag(Tok, diag::err_forall_array_invalid_start);
+          SkipUntil(tok::r_brace, false, true);
+          return StmtError();
+        }
+        Start[i] = StartResult.get();
+      } // end if is :
+      ConsumeToken();
+
+      // parse end
+      if(Tok.is(tok::colon)) {
+        Diag(Tok, diag::err_forall_array_invalid_end);
+        SkipUntil(tok::r_brace, false, true);
+        return StmtError();
+      } else {
+        ExprResult EndResult = ParseAssignmentExpression();
+        if(EndResult.isInvalid()){
+          Diag(Tok, diag::err_forall_array_invalid_end);
+          SkipUntil(tok::r_brace, false, true);
+          return StmtError();
+        }
+        End[i] = EndResult.get();
+      }
+      ConsumeToken();
+
+    }
+
+    // parse stride
+    if(Tok.is(tok::comma) || Tok.is(tok::r_square)){
+      // note: non-zero stride is used to denote this dimension exists
+      Stride[i] =
+      IntegerLiteral::Create(Actions.Context, llvm::APInt(32, 1),
+                             Actions.Context.IntTy, ForAllLoc);
+    } else {
+      ExprResult StrideResult = ParseAssignmentExpression();
+      if(StrideResult.isInvalid()){
+        Diag(Tok, diag::err_forall_array_invalid_stride);
+        SkipUntil(tok::r_brace, false, true);
+        return StmtError();
+      }
+      Stride[i] = StrideResult.get();
+    }
+
+    if(Tok.isNot(tok::comma)){
+      if(i != count - 1){
+        Diag(Tok, diag::err_forall_array_mismatch);
+        SkipUntil(tok::r_brace, false, true);
+        return StmtError();
+      }
+      break;
+    }
+    ConsumeToken();
+
+  } // end for i (ranges)
+
+  if(Tok.isNot(tok::r_square)){
+    Diag(Tok, diag::err_expected_rsquare);
+    SkipUntil(tok::r_brace, false, true);
+    return StmtError();
+  }
+
+  ConsumeBracket();
+
+  unsigned ScopeFlags = Scope::BreakScope | Scope::ContinueScope |
+  Scope::DeclScope | Scope::ControlScope;
+
+  ParseScope ForAllScope(this, ScopeFlags);
+
+  for(size_t i = 0; i < count; ++i){
+    if(!InductionVarII[i]){
+      break;
+    }
+
+    if(!Actions.ActOnForallArrayInductionVariable(getCurScope(),
+        InductionVarII[i],
+        InductionVarLoc[i])){
+      return StmtError();
+    }
+  }
+
+  StmtResult BodyResult(ParseStatement());
+  if(BodyResult.isInvalid()){
+    Diag(Tok, diag::err_invalid_forall_body);
+    return StmtError();
+  }
+
+  Stmt* Body = BodyResult.get();
+
+  StmtResult ForallArrayResult =
+  Actions.ActOnForallArrayStmt(ForAllLoc, Body);
+
+  Stmt* stmt = ForallArrayResult.get();
+
+  ForallArrayStmt* FA = dyn_cast<ForallArrayStmt>(stmt);
+
+  // SC_TODO: all this should be in ActOnForallArrayStmt
+  for(size_t i = 0; i < 3; ++i){
+    // non-zero stride is used to denote this dimension exists
+    if(!Stride[i]){
+      break;
+    }
+
+    FA->setStart(i, Start[i]);
+    FA->setEnd(i, End[i]);
+    FA->setStride(i, Stride[i]);
+    FA->setInductionVar(i, InductionVarII[i]);
+  }
+
+  return ForallArrayResult;
+}
+
+

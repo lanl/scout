@@ -8043,11 +8043,11 @@ public:
                                      const MeshType *MT,
                                      VarDecl *VD);
 
-  /*
-  bool ActOnForAllArrayInductionVariable(Scope* S,
+
+  bool ActOnForallArrayInductionVariable(Scope* S,
                                          IdentifierInfo* InductionVariableII,
                                          SourceLocation InductionVariableLoc);
-
+/*
   bool ActOnRenderAllLoopVariable(Scope* S,
                                   tok::TokenKind VariableType,
                                   IdentifierInfo* LoopVariableII,
@@ -8084,9 +8084,8 @@ public:
                                  SourceLocation RParenLoc,
                                  Stmt* Body);
 
-  //  StmtResult ActOnForAllArrayStmt(SourceLocation ForAllLoc,
-  //                                  Stmt* Body,
-  //                                  BlockExpr* Block);
+  StmtResult ActOnForallArrayStmt(SourceLocation ForAllLoc,
+                                    Stmt* Body);
 
   StmtResult ActOnRenderallMeshStmt(SourceLocation ForallLoc,
                                 RenderallMeshStmt::MeshElementType ElementType,

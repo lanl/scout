@@ -281,8 +281,9 @@ Retry:
       case tok::kw_edges:
         return ParseForallMeshStatement(Attrs);
       default:
-        Diag(Tok, diag::err_forall_unknown_mesh_component);
-        assert(false && "unhandled forall token");        return StmtError();
+        return ParseForallArrayStatement(Attrs);
+        //Diag(Tok, diag::err_forall_unknown_mesh_component);
+        //assert(false && "unhandled forall token");        return StmtError();
     }
   }
 

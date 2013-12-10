@@ -233,7 +233,7 @@ CXCursor cxcursor::MakeCXCursor(const Stmt *S, const Decl *Parent,
   // +===== Scout ============================================================+
   case Stmt::ForallMeshStmtClass:
   case Stmt::RenderallMeshStmtClass:
-  //case Stmt::ForAllArrayStmtClass:
+  case Stmt::ForallArrayStmtClass:
   //case Stmt::VolumeRenderAllStmtClass:
   // +========================================================================+
 

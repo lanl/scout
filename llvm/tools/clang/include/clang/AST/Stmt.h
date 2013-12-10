@@ -2422,6 +2422,96 @@ public:
 };
 
 
+class ForallArrayStmt : public ForallStmt {
+  //SC_TODO: use arrays?
+  IdentifierInfo* XInductionVarII;
+  IdentifierInfo* YInductionVarII;
+  IdentifierInfo* ZInductionVarII;
+  Expr* XStart;
+  Expr* XEnd;
+  Expr* XStride;
+  Expr* YStart;
+  Expr* YEnd;
+  Expr* YStride;
+  Expr* ZStart;
+  Expr* ZEnd;
+  Expr* ZStride;
+
+ public:
+   ForallArrayStmt(SourceLocation FAL,
+                   Stmt *Body);
+
+
+   explicit ForallArrayStmt(EmptyShell Empty) :
+   ForallStmt(ForallArrayStmtClass, Empty) { }
+
+
+   const IdentifierInfo* getInductionVar(size_t axis) const{
+     switch(axis){
+       case 0:
+         return XInductionVarII;
+       case 1:
+         return YInductionVarII;
+       case 2:
+         return ZInductionVarII;
+     }
+
+     assert(false && "invalid axis");
+   }
+
+   void setInductionVar(size_t axis, IdentifierInfo *II) {
+     switch(axis) {
+       case 0: XInductionVarII = II; return;
+       case 1: YInductionVarII = II; return;
+       case 2: ZInductionVarII = II; return;
+       default:
+         assert(false && "invalid axis.");
+     }
+   }
+
+   void setStart(int axis, Expr *E) {
+       switch(axis) {
+         case 0: XStart = E; return;
+         case 1: YStart = E; return;
+         case 2: ZStart = E; return;
+         default:
+           const char *s = "Unknown axis in setStart(int axis, Expr *E).\n";
+           assert(false && s);
+       }
+     }
+
+   void setEnd(int axis, Expr *E) {
+       switch(axis) {
+         case 0: XEnd = E; return;
+         case 1: YEnd = E; return;
+         case 2: ZEnd = E; return;
+         default:
+           const char *s = "Unknown axis in setEnd(int axis, Expr *E).\n";
+           assert(false && s);
+       }
+     }
+
+   void setStride(int axis, Expr *E) {
+       switch(axis) {
+         case 0: XStride = E; return;
+         case 1: YStride = E; return;
+         case 2: ZStride = E; return;
+         default:
+           const char *s = "Unknown axis in setStride(int axis, Expr *E).\n";
+           assert(false && s);
+       }
+     }
+
+
+
+   static bool classof(const Stmt *T) {
+     return T->getStmtClass() == ForallArrayStmtClass;
+   }
+
+   static bool classof(const ForallArrayStmt *) { return true; }
+
+};
+
 // ----- RenderallStmt -- base class for renderall statements
 //
 // This class handles the basic functionality of all renderall-style

@@ -5704,15 +5704,15 @@ TreeTransform<Derived>::TransformRenderallMeshStmt(RenderallMeshStmt *S) {
   return R;
 }
 
-/*template<typename Derived>
+template<typename Derived>
 StmtResult
-TreeTransform<Derived>::TransformForAllArrayStmt(ForAllArrayStmt *S) {
+TreeTransform<Derived>::TransformForallArrayStmt(ForallArrayStmt *S) {
   StmtResult R(false);
   R.set(S);
   return R;
 }
 
-
+/*
 template<typename Derived>
 StmtResult
 TreeTransform<Derived>::TransformVolumeRenderAllStmt(VolumeRenderAllStmt *S) {

@@ -173,8 +173,6 @@ public:
   bool TraverseUnstructuredMeshType(UnstructuredMeshType*)
   { return true; }
 
-  //bool TraverseForAllArrayStmt(ForAllArrayStmt*) { return true; }
-
   bool TraverseUniformMeshTypeLoc(UniformMeshTypeLoc*)
   { return true; }
   bool TraverseStructuredMeshTypeLoc(StructuredMeshTypeLoc*)
@@ -195,7 +193,8 @@ public:
   { return true; }
   bool TraverseRenderallMeshStmt(RenderallMeshStmt*)
   { return true; }
-
+  bool TraverseForallArrayStmt(ForallArrayStmt*)
+   { return true; }
   //bool TraverseRenderAllStmt(RenderAllStmt*){ return true; }
 
   //bool TraverseVolumeRenderAllStmt(VolumeRenderAllStmt*){ return true; }

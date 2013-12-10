@@ -66,18 +66,19 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace clang;
 
-/*
-ForAllArrayStmt::ForAllArrayStmt(ASTContext &C,
-                                 SourceLocation FAL,
-                                 Stmt* Body,
-                                 BlockExpr* Block)
-: ForAllStmt(ForAllArrayStmtClass, C,
-             ForAllStmt::Array, 0, 0, 0, 0, 0, Body,
-             Block, FAL, SourceLocation(), SourceLocation()),
+
+ForallArrayStmt::ForallArrayStmt(SourceLocation ForallLoc,
+                                 Stmt* Body)
+: ForallStmt(ForallArrayStmtClass,
+             /*  IdentifierInfo* RefVarInfo */ 0,
+             /*  IdentifierInfo* ContainerInfo */ 0,
+             /*  VarDecl* ContainerVarDecl */ 0,
+             ForallLoc,
+             Body),
+
 XInductionVarII(0),
 YInductionVarII(0),
 ZInductionVarII(0)
 {
   setBody(Body);
 }
-*/

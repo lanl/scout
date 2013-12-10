@@ -62,6 +62,8 @@ void StmtProfiler::VisitForallStmt(const ForallStmt *S)
 void StmtProfiler::VisitForallMeshStmt(const ForallMeshStmt *S)
 { VisitStmt(S); }
 
+void StmtProfiler::VisitForallArrayStmt(const ForallArrayStmt *S)
+{ VisitStmt(S); }
 
 
 void StmtProfiler::VisitRenderallStmt(const RenderallStmt *S)

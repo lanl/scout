@@ -2502,7 +2502,7 @@ void ASTStmtReader::VisitForallMeshStmt(ForallMeshStmt *S)
 { }
 void ASTStmtReader::VisitRenderallMeshStmt(RenderallMeshStmt *S)
 { }
-//void ASTStmtReader::VisitForAllArrayStmt(ForAllArrayStmt *S) { }
+void ASTStmtReader::VisitForallArrayStmt(ForallArrayStmt *S) { }
 //void ASTStmtReader::VisitRenderAllStmt(RenderAllStmt *S) { }
 //void ASTStmtReader::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *S) { }
 // =============================================================================
