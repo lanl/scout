@@ -248,6 +248,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
     return StmtError();
 
   bool success = Actions.ActOnForallMeshRefVariable(getCurScope(),
+                                                    MeshIdentInfo, MeshIdentLoc,
                                                     ElementIdentInfo,
                                                     ElementIdentLoc,
                                                     RefMeshType,
@@ -465,6 +466,8 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
     return StmtError();
 
   bool success = Actions.ActOnForallMeshRefVariable(getCurScope(),
+                                                    MeshIdentInfo,
+                                                    MeshIdentLoc,
                                                     ElementIdentInfo,
                                                     ElementIdentLoc,
                                                     RefMeshType,
