@@ -8030,8 +8030,15 @@ public:
                                 NamedDecl *PrevDecl,
                                 Declarator *D);
 
+  bool CheckForallMesh(Scope* S,
+                        IdentifierInfo* MeshVarInfo,
+                        SourceLocation MeshVarLoc,
+                        IdentifierInfo* RefVarInfo,
+                        SourceLocation RefVarLoc);
 
   bool ActOnForallMeshRefVariable(Scope* S,
+                                  IdentifierInfo* MeshVarInfo,
+                                  SourceLocation  MeshVarLoc,
                                   IdentifierInfo* RefVarInfo,
                                   SourceLocation  RefVarLoc,
                                   const MeshType *MT,
@@ -8043,10 +8050,13 @@ public:
                                      const MeshType *MT,
                                      VarDecl *VD);
 
+  bool CheckForallArray(Scope* S,
+                        IdentifierInfo* InductionVarInfo,
+                        SourceLocation InductionVarLoc);
 
   bool ActOnForallArrayInductionVariable(Scope* S,
-                                         IdentifierInfo* InductionVariableII,
-                                         SourceLocation InductionVariableLoc);
+                                         IdentifierInfo* InductionVarInfo,
+                                         SourceLocation InductionVarLoc);
 /*
   bool ActOnRenderAllLoopVariable(Scope* S,
                                   tok::TokenKind VariableType,

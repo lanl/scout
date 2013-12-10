@@ -295,6 +295,37 @@ namespace {
 } // end namespace
 
 
+bool Sema::CheckForallMesh(Scope* S,
+                                IdentifierInfo* MeshVarInfo,
+                                SourceLocation MeshVarLoc,
+                                IdentifierInfo* RefVarInfo,
+                                SourceLocation RefVarLoc) {
+  LookupResult LResult(*this, RefVarInfo, RefVarLoc,
+      LookupOrdinaryName);
+
+  LookupName(LResult, S);
+
+  if(LResult.getResultKind() != LookupResult::NotFound){
+    Diag(RefVarLoc, diag::err_loop_variable_shadows_forall) << RefVarInfo;
+    return false;
+  }
+
+  //SC_TODO: need to check if RefVar is a mesh member.
+  //see test/scc/error/forall-mesh-shadow2.sc
+
+  LookupResult MResult(*this, MeshVarInfo, MeshVarLoc, LookupOrdinaryName);
+
+  LookupName(MResult, S);
+
+  if(MResult.getResultKind() != LookupResult::Found){
+    Diag(MeshVarLoc, diag::err_unknown_mesh_variable_forall) << MeshVarInfo;
+    return false;
+  }
+
+  return true;
+}
+
+
 // ----- ActOnForallMeshRefVariable
 // This call assumes the reference variable details have been parsed
 // (syntax checked) and issues, such as shadows, have been reported.
@@ -302,12 +333,18 @@ namespace {
 // the actual mesh type of the forall (passed in as a base mesh type)
 // and creates the reference variable
 bool Sema::ActOnForallMeshRefVariable(Scope* S,
+                                  IdentifierInfo* MeshVarInfo,
+                                  SourceLocation MeshVarLoc,
                                   IdentifierInfo* RefVarInfo,
                                   SourceLocation RefVarLoc,
                                   const MeshType *MT,
                                   VarDecl* VD) {
 
   ImplicitMeshParamDecl* D;
+
+  if(!CheckForallMesh(S, MeshVarInfo, MeshVarLoc, RefVarInfo, RefVarLoc)) {
+      return false;
+    }
 
   if (MT->isUniform()) {
     D = ImplicitMeshParamDecl::Create(Context,
@@ -377,26 +414,38 @@ StmtResult Sema::ActOnForallMeshStmt(SourceLocation ForallLoc,
   return Owned(FS);
 }
 
-bool Sema::ActOnForallArrayInductionVariable(Scope* S,
-                                             IdentifierInfo* InductionVarII,
-                                             SourceLocation InductionVarLoc) {
 
-  //SC_TODO: do we want to check shadowing here or elsewhere?
-  // we don't seem to be checking for shadowing in mesh case.
-  LookupResult LResult(*this, InductionVarII, InductionVarLoc,
-                       LookupOrdinaryName);
+bool Sema::CheckForallArray(Scope* S,
+                                  IdentifierInfo* InductionVarInfo,
+                                  SourceLocation InductionVarLoc) {
+//SC_TODO: not sure this should be an error
+#if 0
+  LookupResult LResult(*this, InductionVarInfo, InductionVarLoc,
+      LookupOrdinaryName);
 
   LookupName(LResult, S);
 
   if(LResult.getResultKind() != LookupResult::NotFound){
     Diag(InductionVarLoc, diag::err_loop_variable_shadows_forall) <<
-    InductionVarII;
+        InductionVarInfo;
+    return false;
+  }
+#endif
+  return true;
+}
+
+bool Sema::ActOnForallArrayInductionVariable(Scope* S,
+                                             IdentifierInfo* InductionVarInfo,
+                                             SourceLocation InductionVarLoc) {
+
+  if(!CheckForallArray(S,InductionVarInfo, InductionVarLoc)) {
     return false;
   }
 
+
   ImplicitParamDecl* IV =
   ImplicitParamDecl::Create(Context, CurContext,
-                            InductionVarLoc, InductionVarII,
+                            InductionVarLoc, InductionVarInfo,
                             Context.IntTy);
 
   PushOnScopeChains(IV, S, true);
@@ -406,13 +455,13 @@ bool Sema::ActOnForallArrayInductionVariable(Scope* S,
 
 
 
-StmtResult Sema::ActOnForallArrayStmt(IdentifierInfo* InductionVarII[],
+StmtResult Sema::ActOnForallArrayStmt(IdentifierInfo* InductionVarInfo[],
           SourceLocation InductionVarLoc[],
           Expr* Start[], Expr* End[], Expr* Stride[],
           SourceLocation ForallLoc, Stmt* Body) {
 
   ForallArrayStmt* FS =
-  new (Context) ForallArrayStmt(InductionVarII, InductionVarLoc,
+  new (Context) ForallArrayStmt(InductionVarInfo, InductionVarLoc,
       Start, End, Stride, ForallLoc, Body);
 
   return Owned(FS);
