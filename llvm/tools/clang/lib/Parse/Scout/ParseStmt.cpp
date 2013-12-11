@@ -607,16 +607,23 @@ bool Parser::ParseMeshStatement(StmtVector &Stmts,
   return false;
 }
 
-
+// +---- Parse a forall statement operating on an array --------------------+
+//
+// one of the following forms depending on array dimensions
+// forall  i in [xstart:xend:xstride]
+// forall  i,j in [xstart:xend:xstride,ystart:yend:ystride]
+// forall  i,j,k in [xstart:xend:xstride,ystart:yend:ystride,zstart:zend:zstride]
+// start and stride are optional and default to 0 and 1 respectfully
+//
 StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
   assert(Tok.is(tok::kw_forall) && "Not a forall stmt!");
 
   SourceLocation ForallLoc = ConsumeToken();
 
-  IdentifierInfo* InductionVarII[3] = {0,0,0};
+  IdentifierInfo* InductionVarInfo[3] = {0,0,0};
   SourceLocation InductionVarLoc[3];
+  size_t dims;
 
-  size_t count;
   // parse up to 3 identifiers
   for(size_t i = 0; i < 3; ++i) {
     if(Tok.isNot(tok::identifier)){
@@ -625,10 +632,10 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
       return StmtError();
     }
 
-    InductionVarII[i] = Tok.getIdentifierInfo();
+    InductionVarInfo[i] = Tok.getIdentifierInfo();
     InductionVarLoc[i] = ConsumeToken();
 
-    count = i + 1;
+    dims = i + 1;
 
     if(Tok.is(tok::kw_in)){
       break;
@@ -663,60 +670,60 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
 
   // parse up to 3 (start:end:stride) ranges
   for(size_t i = 0; i < 3; ++i) {
-    if(Tok.is(tok::coloncolon)) { // don't allow ::
+
+    // don't allow :: as default end does not make sense
+    // unless we look at what arrays are in the body.
+    if(Tok.is(tok::coloncolon)) {
+      Diag(Tok, diag::err_forall_array_invalid_end);
+      SkipUntil(tok::r_brace, false, true);
+      return StmtError();
+    }
+
+    // parse start
+    if(Tok.is(tok::colon)) {
+      Start[i] = IntegerLiteral::Create(Actions.Context, llvm::APInt(32, 0),
+                  Actions.Context.IntTy, ForallLoc);
+    } else {
+      ExprResult StartResult = ParseAssignmentExpression();
+      if(StartResult.isInvalid()){
+        Diag(Tok, diag::err_forall_array_invalid_start);
+        SkipUntil(tok::r_brace, false, true);
+        return StmtError();
+      }
+      Start[i] = StartResult.get();
+    } // end if is :
+    if (Tok.is(tok::colon) || isTokenStringLiteral() || isTokenParen() || isTokenBracket()) {
+      ConsumeToken();
+    } else {
+      Diag(Tok, diag:: err_forall_array_misformat);
+      SkipUntil(tok::r_brace, false, true);
+      return StmtError();
+    }
+
+    // parse end
+    if(Tok.is(tok::colon)) {
       Diag(Tok, diag::err_forall_array_invalid_end);
       SkipUntil(tok::r_brace, false, true);
       return StmtError();
     } else {
-
-      // parse start
-      if(Tok.is(tok::colon)) {
-        Start[i] = IntegerLiteral::Create(Actions.Context, llvm::APInt(32, 0),
-                    Actions.Context.IntTy, ForallLoc);
-      } else {
-        ExprResult StartResult = ParseAssignmentExpression();
-        if(StartResult.isInvalid()){
-          Diag(Tok, diag::err_forall_array_invalid_start);
-          SkipUntil(tok::r_brace, false, true);
-          return StmtError();
-        }
-        Start[i] = StartResult.get();
-      } // end if is :
-      if (Tok.is(tok::colon) || isTokenStringLiteral() || isTokenParen() || isTokenBracket()) {
-        ConsumeToken();
-      } else {
-        Diag(Tok, diag:: err_forall_array_misformat);
-        SkipUntil(tok::r_brace, false, true);
-        return StmtError();
-      }
-
-      // parse end
-      if(Tok.is(tok::colon)) {
+      ExprResult EndResult = ParseAssignmentExpression();
+      if(EndResult.isInvalid()){
         Diag(Tok, diag::err_forall_array_invalid_end);
         SkipUntil(tok::r_brace, false, true);
         return StmtError();
-      } else {
-        ExprResult EndResult = ParseAssignmentExpression();
-        if(EndResult.isInvalid()){
-          Diag(Tok, diag::err_forall_array_invalid_end);
-          SkipUntil(tok::r_brace, false, true);
-          return StmtError();
-        }
-        End[i] = EndResult.get();
       }
-      if (Tok.is(tok::colon) || isTokenStringLiteral() || isTokenParen() || isTokenBracket()) {
-        ConsumeToken();
-      } else {
-        Diag(Tok, diag:: err_forall_array_misformat);
-        SkipUntil(tok::r_brace, false, true);
-        return StmtError();
-      }
-
+      End[i] = EndResult.get();
+    }
+    if (Tok.is(tok::colon) || isTokenStringLiteral() || isTokenParen() || isTokenBracket()) {
+      ConsumeToken();
+    } else {
+      Diag(Tok, diag:: err_forall_array_misformat);
+      SkipUntil(tok::r_brace, false, true);
+      return StmtError();
     }
 
     // parse stride
     if(Tok.is(tok::comma) || Tok.is(tok::r_square)){
-      // note: non-zero stride is used to denote this dimension exists
       Stride[i] =
       IntegerLiteral::Create(Actions.Context, llvm::APInt(32, 1),
                              Actions.Context.IntTy, ForallLoc);
@@ -731,7 +738,7 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
     }
 
     if(Tok.isNot(tok::comma)){
-      if(i != count - 1){
+      if(i != dims - 1){
         Diag(Tok, diag::err_forall_array_mismatch);
         SkipUntil(tok::r_brace, false, true);
         return StmtError();
@@ -755,13 +762,13 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
 
   ParseScope ForAllScope(this, ScopeFlags);
 
-  for(size_t i = 0; i < count; ++i){
-    if(!InductionVarII[i]){
+  for(size_t i = 0; i < dims; ++i){
+    if(!InductionVarInfo[i]){
       break;
     }
 
     if(!Actions.ActOnForallArrayInductionVariable(getCurScope(),
-        InductionVarII[i],
+        InductionVarInfo[i],
         InductionVarLoc[i])){
       return StmtError();
     }
@@ -776,8 +783,8 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
   Stmt* Body = BodyResult.get();
 
   StmtResult ForallArrayResult =
-  Actions.ActOnForallArrayStmt(InductionVarII, InductionVarLoc,
-      Start, End, Stride,
+  Actions.ActOnForallArrayStmt(InductionVarInfo, InductionVarLoc,
+      Start, End, Stride, dims,
       ForallLoc, Body);
 
   return ForallArrayResult;

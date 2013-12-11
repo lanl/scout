@@ -2432,7 +2432,7 @@ class ForallArrayStmt : public ForallStmt {
 
    ForallArrayStmt(IdentifierInfo* InductionVarII[],
        SourceLocation InductionVarLoc[],
-       Expr* Start[], Expr* End[], Expr* Stride[],
+       Expr* Start[], Expr* End[], Expr* Stride[], size_t dims,
        SourceLocation ForallLoc, Stmt* Body);
 
    explicit ForallArrayStmt(EmptyShell Empty) :

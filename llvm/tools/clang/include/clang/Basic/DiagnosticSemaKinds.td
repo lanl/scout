@@ -6765,7 +6765,9 @@ def err_mesh_has_no_elements:Error<
 def err_illegal_mesh_element_access : Error<
     "illegal mesh element access -- outside of a supporting mesh construct.">;
 def err_loop_variable_shadows_forall : Error<
-    "forall loop variable %0 shadows an existing identifier">;
+    "forall loop variable %0 shadows mesh member">;
+def warn_loop_variable_shadows_forall : Warning<
+    "forall loop variable %0 shadows an existing identifier">;  
 def err_loop_variable_shadows_renderall : Error<
     "renderall loop variable %0 shadows an existing identifier">;
 def err_elements_variable_shadows_renderall : Error<

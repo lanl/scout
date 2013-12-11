@@ -1,11 +1,9 @@
 /*
- *
  * ###########################################################################
- *
  * Copyright (c) 2013, Los Alamos National Security, LLC.
  * All rights reserved.
- *
- *  Copyright 2013. Los Alamos National Security, LLC. This software was
+ * 
+ *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
  *  National Security, LLC for the U.S. Department of Energy. The
@@ -22,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- *
+ * 
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided
+ *      disclaimer in the documentation and/or other materials provided 
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -33,7 +31,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- *
+ * 
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -47,53 +45,20 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
+ * ########################################################################### 
+ * 
+ * Notes
  *
- */
+ * ##### 
+ */ 
 
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/ASTDiagnostic.h"
-#include "clang/AST/Expr.h"
-#include "clang/AST/ExprCXX.h"
-#include "clang/AST/ExprObjC.h"
-#include "clang/AST/Stmt.h"
-#include "clang/AST/StmtCXX.h"
-#include "clang/AST/StmtObjC.h"
-#include "clang/AST/Type.h"
-#include "clang/Basic/CharInfo.h"
-#include "clang/Basic/TargetInfo.h"
-#include "clang/Lex/Token.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/raw_ostream.h"
-using namespace clang;
+int main(int argc, char *argv[])
+{
+  float i = 7;
+  int a[10];
 
-
-ForallArrayStmt::ForallArrayStmt(IdentifierInfo* InductionVarInfo[],
-    SourceLocation InductionVarLoc[],
-    Expr* Start[], Expr* End[], Expr* Stride[], size_t dims,
-    SourceLocation ForallLoc, Stmt* Body)
-: ForallStmt(ForallArrayStmtClass,
-             //SC_TODO: these are really mesh specific so we don't need them
-             // in this case, maybe they should move to ForallMeshStmt
-             /*  IdentifierInfo* RefVarInfo */ 0,
-             /*  IdentifierInfo* ContainerInfo */ 0,
-             /*  VarDecl* ContainerVarDecl */ 0,
-             ForallLoc,
-             Body) {
-
-
-  for(size_t i = 0; i < 3; ++i) {
-    if (i < dims) {
-      setStart(i, Start[i]);
-      setEnd(i, End[i]);
-      setStride(i, Stride[i]);
-      setInductionVar(i, InductionVarInfo[i]);
-    } else {
-      setStart(i, 0);
-      setEnd(i, 0);
-      setStride(i, 0);
-      setInductionVar(i, 0);
-    }
+  forall i in [:10:] {
+    a[i] = i;
   }
-
-  setBody(Body);
+  return 0;
 }
