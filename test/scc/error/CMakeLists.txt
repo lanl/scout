@@ -60,19 +60,12 @@ set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION
     "error: unknown or invalid mesh instance")
 set_property(TEST ${tname} PROPERTY WILL_FAIL) 
 
-set(name forall-mesh-shadow1)
-set(tname scc_error_${name})
-add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
-set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
-    "error: forall loop variable 'c' shadows an existing identifier")
-set_property(TEST ${tname} PROPERTY WILL_FAIL) 
-
 #not working yet
-#set(name forall-mesh-shadow2)
+#set(name forall-mesh-shadow)
 #set(tname scc_error_${name})
 #add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
 #set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
-#    "error: forall loop variable 'c' shadows an existing identifier")
+#    "error: forall loop variable 'c' shadows mesh member")
 #set_property(TEST ${tname} PROPERTY WILL_FAIL) 
 
 set(name lhs-rhs)

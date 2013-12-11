@@ -289,9 +289,6 @@ namespace {
     NodeType nodeType_;
   };
 
-
-
-
 } // end namespace
 
 
@@ -300,19 +297,11 @@ bool Sema::CheckForallMesh(Scope* S,
                                 SourceLocation MeshVarLoc,
                                 IdentifierInfo* RefVarInfo,
                                 SourceLocation RefVarLoc) {
-  LookupResult LResult(*this, RefVarInfo, RefVarLoc,
-      LookupOrdinaryName);
 
-  LookupName(LResult, S);
+  // SC_TODO: need check if RefVar is a mesh member.
+  // see test/scc/error/forall-mesh-shadow.sc
 
-  if(LResult.getResultKind() != LookupResult::NotFound){
-    Diag(RefVarLoc, diag::err_loop_variable_shadows_forall) << RefVarInfo;
-    return false;
-  }
-
-  //SC_TODO: need to check if RefVar is a mesh member.
-  //see test/scc/error/forall-mesh-shadow2.sc
-
+  // error if not a mesh test/scc/error/forall-mesh-unknown.sc
   LookupResult MResult(*this, MeshVarInfo, MeshVarLoc, LookupOrdinaryName);
 
   LookupName(MResult, S);
@@ -321,6 +310,27 @@ bool Sema::CheckForallMesh(Scope* S,
     Diag(MeshVarLoc, diag::err_unknown_mesh_variable_forall) << MeshVarInfo;
     return false;
   }
+
+  // SC_TODO: need check if RefVar is a mesh member.
+  // see test/scc/error/forall-mesh-shadow.sc
+  NamedDecl *MDecl = MResult.getFoundDecl();
+  MDecl->dump();
+
+
+  // warn about shadowing see test/scc/warning/forall-mesh-shadow.sc
+  LookupResult LResult(*this, RefVarInfo, RefVarLoc,
+      LookupOrdinaryName);
+
+  LookupName(LResult, S);
+
+  llvm::errs() << "kind " << LResult.getResultKind() << "\n";
+  //LResult.getFoundDecl()->dump();
+
+  if(LResult.getResultKind() != LookupResult::NotFound){
+    Diag(RefVarLoc, diag::warn_loop_variable_shadows_forall) << RefVarInfo;
+  }
+
+
 
   return true;
 }
@@ -340,11 +350,12 @@ bool Sema::ActOnForallMeshRefVariable(Scope* S,
                                   const MeshType *MT,
                                   VarDecl* VD) {
 
+  if(!CheckForallMesh(S, MeshVarInfo, MeshVarLoc, RefVarInfo, RefVarLoc)) {
+    return false;
+  }
+
   ImplicitMeshParamDecl* D;
 
-  if(!CheckForallMesh(S, MeshVarInfo, MeshVarLoc, RefVarInfo, RefVarLoc)) {
-      return false;
-    }
 
   if (MT->isUniform()) {
     D = ImplicitMeshParamDecl::Create(Context,
@@ -379,6 +390,7 @@ bool Sema::ActOnForallMeshRefVariable(Scope* S,
 
   PushOnScopeChains(D, S, true);
   SCLStack.push_back(D);
+
   return true;
 }
 
@@ -418,19 +430,17 @@ StmtResult Sema::ActOnForallMeshStmt(SourceLocation ForallLoc,
 bool Sema::CheckForallArray(Scope* S,
                                   IdentifierInfo* InductionVarInfo,
                                   SourceLocation InductionVarLoc) {
-//SC_TODO: not sure this should be an error
-#if 0
+
   LookupResult LResult(*this, InductionVarInfo, InductionVarLoc,
       LookupOrdinaryName);
 
   LookupName(LResult, S);
 
   if(LResult.getResultKind() != LookupResult::NotFound){
-    Diag(InductionVarLoc, diag::err_loop_variable_shadows_forall) <<
+    Diag(InductionVarLoc, diag::warn_loop_variable_shadows_forall) <<
         InductionVarInfo;
-    return false;
+
   }
-#endif
   return true;
 }
 
@@ -457,12 +467,12 @@ bool Sema::ActOnForallArrayInductionVariable(Scope* S,
 
 StmtResult Sema::ActOnForallArrayStmt(IdentifierInfo* InductionVarInfo[],
           SourceLocation InductionVarLoc[],
-          Expr* Start[], Expr* End[], Expr* Stride[],
+          Expr* Start[], Expr* End[], Expr* Stride[], size_t dims,
           SourceLocation ForallLoc, Stmt* Body) {
 
   ForallArrayStmt* FS =
   new (Context) ForallArrayStmt(InductionVarInfo, InductionVarLoc,
-      Start, End, Stride, ForallLoc, Body);
+      Start, End, Stride, dims, ForallLoc, Body);
 
   return Owned(FS);
 }

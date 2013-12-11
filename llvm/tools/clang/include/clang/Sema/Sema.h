@@ -8031,10 +8031,10 @@ public:
                                 Declarator *D);
 
   bool CheckForallMesh(Scope* S,
-                        IdentifierInfo* MeshVarInfo,
-                        SourceLocation MeshVarLoc,
-                        IdentifierInfo* RefVarInfo,
-                        SourceLocation RefVarLoc);
+                          IdentifierInfo* MeshVarInfo,
+                          SourceLocation MeshVarLoc,
+                          IdentifierInfo* RefVarInfo,
+                          SourceLocation RefVarLoc);
 
   bool ActOnForallMeshRefVariable(Scope* S,
                                   IdentifierInfo* MeshVarInfo,
@@ -8096,7 +8096,7 @@ public:
 
   StmtResult ActOnForallArrayStmt(IdentifierInfo* InductionVarII[],
             SourceLocation InductionVarLoc[],
-            Expr* Start[], Expr* End[], Expr* Stride[],
+            Expr* Start[], Expr* End[], Expr* Stride[], size_t dims,
             SourceLocation ForallLoc, Stmt* Body);
 
   StmtResult ActOnRenderallMeshStmt(SourceLocation ForallLoc,

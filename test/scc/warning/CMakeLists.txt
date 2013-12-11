@@ -60,6 +60,18 @@ set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION
     "warning: mesh definition with no fields")
 set_property(TEST ${tname} PROPERTY WILL_FAIL) 
 
+set(name forall-mesh-shadow)
+set(tname scc_warning_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "warning: forall loop variable 'c' shadows an existing identifier")
+
+set(name forall-array-shadow)
+set(tname scc_warning_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "warning: forall loop variable 'i' shadows an existing identifier")
+
 set(name dup)
 set(tname scc_warning_${name})
 add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
