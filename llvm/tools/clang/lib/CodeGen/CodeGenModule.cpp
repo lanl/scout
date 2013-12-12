@@ -3015,9 +3015,9 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
     // +==== Scout ===========================================================+
     // If the -emit-all-definitions flag is set, then emit definitions
     // in the module regardless of if they were used
+    /*
     TypeDecl* TD = dyn_cast<TypeDecl>(D);
     const Type* TFD = TD->getTypeForDecl();
-    /*
     if (TFD && CodeGenOpts.ScoutEmitAllDefinitions) {
       llvm::Type* GT = getTypes().ConvertTypeForMem(QualType(TFD, 0));
 
