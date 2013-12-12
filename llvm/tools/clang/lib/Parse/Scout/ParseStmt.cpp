@@ -570,7 +570,7 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
 }
 
 
-bool Parser::ParseMeshStatement(StmtVector &Stmts,
+bool Parser::ParseForallMeshShortcutStatement(StmtVector &Stmts,
                                 bool OnlyStatement,
                                 Token &Next,
                                 StmtResult &SR) {
@@ -624,7 +624,7 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
   SourceLocation InductionVarLoc[3];
   size_t dims;
 
-  // parse up to 3 identifiers
+  // parse up to 3 induction variables
   for(size_t i = 0; i < 3; ++i) {
     if(Tok.isNot(tok::identifier)){
       Diag(Tok, diag::err_expected_ident);
@@ -646,7 +646,7 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
       return StmtError();
     }
     ConsumeToken();
-  } //end for i (identifiers)
+  } //end for i (induction vars)
 
   if(Tok.isNot(tok::kw_in)){
     Diag(Tok, diag::err_forall_expected_kw_in);

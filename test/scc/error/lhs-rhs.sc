@@ -58,7 +58,6 @@ int main(int argc, char** argv) {
   cells:
     float a;
     float b;
-    float c;
   };
 
   MyMesh m[512,512];

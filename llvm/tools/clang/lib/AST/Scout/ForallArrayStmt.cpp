@@ -66,7 +66,11 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace clang;
 
-
+// ----- ForallArrayStmt
+//
+// Constructor for a forall array statement w/out a predicate expression.
+//
+//
 ForallArrayStmt::ForallArrayStmt(IdentifierInfo* InductionVarInfo[],
     SourceLocation InductionVarLoc[],
     Expr* Start[], Expr* End[], Expr* Stride[], size_t dims,
@@ -97,3 +101,4 @@ ForallArrayStmt::ForallArrayStmt(IdentifierInfo* InductionVarInfo[],
 
   setBody(Body);
 }
+

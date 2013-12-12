@@ -298,38 +298,56 @@ bool Sema::CheckForallMesh(Scope* S,
                                 IdentifierInfo* RefVarInfo,
                                 SourceLocation RefVarLoc) {
 
-  // SC_TODO: need check if RefVar is a mesh member.
-  // see test/scc/error/forall-mesh-shadow.sc
+  // lookup mesh variable
+  LookupResult MeshResult(*this, MeshVarInfo, MeshVarLoc,
+      LookupOrdinaryName);
+  LookupName(MeshResult, S);
 
   // error if not a mesh test/scc/error/forall-mesh-unknown.sc
-  LookupResult MResult(*this, MeshVarInfo, MeshVarLoc, LookupOrdinaryName);
-
-  LookupName(MResult, S);
-
-  if(MResult.getResultKind() != LookupResult::Found){
+  if(MeshResult.getResultKind() != LookupResult::Found){
     Diag(MeshVarLoc, diag::err_unknown_mesh_variable_forall) << MeshVarInfo;
     return false;
   }
 
-  // SC_TODO: need check if RefVar is a mesh member.
+  // check if RefVar is a mesh member.
   // see test/scc/error/forall-mesh-shadow.sc
-  NamedDecl *MDecl = MResult.getFoundDecl();
-  MDecl->dump();
+  //
+  // We have to go in circles a bit here. First turn NamedDecl
+  // into VarDecl so we can get the QualType, then check if
+  // this is a MeshType and if so we can get the MeshDecl
+  // then we can do the lookup
+  if (VarDecl *VD = dyn_cast<VarDecl>(MeshResult.getFoundDecl())) {
+    //llvm::errs() << "is VarDecl\n";
 
+    QualType QT = VD->getType();
 
-  // warn about shadowing see test/scc/warning/forall-mesh-shadow.sc
-  LookupResult LResult(*this, RefVarInfo, RefVarLoc,
-      LookupOrdinaryName);
+    if (const MeshType *MT = QT->getAs<MeshType>()) {
+      //llvm::errs() << "is MeshType\n";
+      MeshDecl *MD = MT->getDecl();
+      //MD->dump();
 
-  LookupName(LResult, S);
-
-  llvm::errs() << "kind " << LResult.getResultKind() << "\n";
-  //LResult.getFoundDecl()->dump();
-
-  if(LResult.getResultKind() != LookupResult::NotFound){
-    Diag(RefVarLoc, diag::warn_loop_variable_shadows_forall) << RefVarInfo;
+      // lookup RefVar name as a member. If we did an Ordinary
+      // lookup we would be in the wrong IDNS. we need IDNS_Member
+      // here not IDNS_Ordinary
+      LookupResult MemberResult(*this, RefVarInfo, RefVarLoc,
+              LookupMemberName);
+      //lookup this in the MeshDecl
+      LookupQualifiedName(MemberResult, MD);
+      if(MemberResult.getResultKind() != LookupResult::NotFound) {
+        Diag(RefVarLoc, diag::err_loop_variable_shadows_forall) << RefVarInfo;
+        return false;
+      }
+    }
   }
 
+  // warn about shadowing see test/scc/warning/forall-mesh-shadow.sc
+  //look up implicit mesh Ref variable
+  LookupResult RefResult(*this, RefVarInfo, RefVarLoc,
+          LookupOrdinaryName);
+  LookupName(RefResult, S);
+  if(RefResult.getResultKind() != LookupResult::NotFound) {
+    Diag(RefVarLoc, diag::warn_loop_variable_shadows_forall) << RefVarInfo;
+  }
 
 
   return true;

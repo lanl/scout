@@ -57,7 +57,7 @@
 int main(int argc, char** argv) {
   int x;
   uniform mesh MyMesh {
-    cells: int a, b, c, d;
+    cells: int a, b;
   };
   
   MyMesh m[10];

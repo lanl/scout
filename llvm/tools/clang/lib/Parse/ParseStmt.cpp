@@ -199,7 +199,7 @@ Retry:
     // below???
     //if (isScoutLang()) {
     //  StmtResult SR;
-    //  if (ParseMeshStatement(Stmts, OnlyStatement, Next, SR))
+    //  if (ParseForallMeshShortcutStatement(Stmts, OnlyStatement, Next, SR))
     //    return SR;
     //}
     // +======================================================================+

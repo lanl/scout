@@ -78,7 +78,7 @@ project(scout_test_scc)
     else (NOT tname)
       add_executable(scc_${tname} ${test})
       add_test("scc_${tname}" "${TEST_BINARY_DIR}/scc_${tname}")
-      message(" + added runtime regression test entry: scc_{tname}")
+      message(" + added runtime regression test entry: scc_${tname}")
     endif(NOT tname)
   endforeach(test)
  
