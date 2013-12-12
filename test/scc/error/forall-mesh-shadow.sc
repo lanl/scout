@@ -66,7 +66,6 @@ uniform mesh MyMesh {
   forall cells c in myMesh {
     a = 1;
     b = 2;
-    //c = 3;
   }
 
   return 0;

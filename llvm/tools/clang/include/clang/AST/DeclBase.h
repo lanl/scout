@@ -173,7 +173,7 @@ public:
     // SC_TODO : It is not entirely clear if we need this -- do we need an
     // identifier name space? 
     // if we add this we need to bump up bitfield below from 12 to 13
-    // comment above about 15bits fir IDNS appears wrong
+    // comment above about 15bits for IDNS appears wrong
     IDNS_Mesh                = 0x1000
     // +======================================================================+
   };
@@ -1004,6 +1004,7 @@ typedef ArrayRef<NamedDecl *> DeclContextLookupConstResult;
 ///   NamespaceDecl
 ///   FunctionDecl
 ///   TagDecl
+///   MeshDecl //Scout
 ///   ObjCMethodDecl
 ///   ObjCContainerDecl
 ///   LinkageSpecDecl

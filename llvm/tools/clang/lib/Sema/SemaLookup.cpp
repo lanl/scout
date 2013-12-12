@@ -51,12 +51,6 @@
 using namespace clang;
 using namespace sema;
 
-
-// +===== Scout ==============================================================+
-//extern void ScoutLookupMesh( NamedDecl *D, Sema &S); not used?
-// +==========================================================================+
-
-
 namespace {
   class UnqualUsingEntry {
     const DeclContext *Nominated;
@@ -688,6 +682,21 @@ static void DeclareImplicitMemberFunctionsWithName(Sema &S,
 static bool LookupDirect(Sema &S, LookupResult &R, const DeclContext *DC) {
   bool Found = false;
 
+  // +===== Scout ==========================================================+
+#if 0
+  bool IsMesh = false;
+  //llvm::errs() << "LookupDirect\n";
+  if(isa<MeshDecl>(DC)) {
+   llvm::errs() << "LookupDirect on Mesh "
+       << R.getLookupName() << "\n";
+   llvm::errs() << "Lookups\n";
+   DC->dumpLookups();
+
+   IsMesh = true;
+  }
+#endif
+ // +======================================================================+
+
   // Lazily declare C++ special member functions.
   if (S.getLangOpts().CPlusPlus)
     DeclareImplicitMemberFunctionsWithName(S, R.getLookupName(), DC);
@@ -696,10 +705,22 @@ static bool LookupDirect(Sema &S, LookupResult &R, const DeclContext *DC) {
   DeclContext::lookup_const_result DR = DC->lookup(R.getLookupName());
   for (DeclContext::lookup_const_iterator I = DR.begin(), E = DR.end(); I != E;
        ++I) {
+
     NamedDecl *D = *I;
+    // +===== Scout ==========================================================+
+#if 0
+    if(IsMesh) {
+      llvm::errs() << "try\n";
+      D->dump();
+      llvm::errs() << "prop " << D->isHidden() << " " << D->isInvalidDecl() << "\n";
+      llvm::errs() << "IDNS " << D->getIdentifierNamespace() << "\n";
+    }
+#endif
+    // +======================================================================+
     if ((D = R.getAcceptableDecl(D))) {
       R.addDecl(D);
       Found = true;
+      //if (IsMesh) llvm::errs() << "Found mesh direct\n";
     }
   }
 
@@ -1338,7 +1359,7 @@ NamedDecl *LookupResult::getAcceptableDeclSlow(NamedDecl *D) const {
 /// @returns \c true if lookup succeeded and false otherwise.
 bool Sema::LookupName(LookupResult &R, Scope *S, bool AllowBuiltinCreation) {
   DeclarationName Name = R.getLookupName();
-  //if (Name) llvm::errs() << "looking up name " << Name.getAsString() << "\n";  
+  //if (Name) llvm::errs() << "looking up name " << Name.getAsString() << "\n";
 
   if (!Name) return false;
 
@@ -1628,10 +1649,10 @@ bool Sema::LookupQualifiedName(LookupResult &R, DeclContext *LookupCtx,
                                bool InUnqualifiedLookup) {
   assert(LookupCtx && "Sema::LookupQualifiedName requires a lookup context");
 
+  //llvm::errs() << "LookupQualifiedName\n";
+
   if (!R.getLookupName())
     return false;
-
-  //llvm::errs() << "LookupQualifiedName '" << R.getLookupName() << "'.\n";
 
   // Make sure that the declaration context is complete.
   assert((!isa<TagDecl>(LookupCtx) ||
@@ -1641,9 +1662,25 @@ bool Sema::LookupQualifiedName(LookupResult &R, DeclContext *LookupCtx,
           cast<TagDecl>(LookupCtx)->isBeingDefined()) &&
          "Declaration context must already be complete!");
 
+  // +===== Scout ==========================================================+
+#if 0
+  if(isa<MeshDecl>(LookupCtx)) {
+    llvm::errs() << "LookupQualifiedName on Mesh "
+        << R.getLookupName() << "\n";
+  }
+#endif
+  // +======================================================================+
+
   // Perform qualified name lookup into the LookupCtx.
   if (LookupDirect(*this, R, LookupCtx)) {
     R.resolveKind();
+    // +===== Scout ==========================================================+
+#if 0
+    if(isa<MeshDecl>(LookupCtx)) {
+      llvm::errs() << "LookupDirect found mesh " << R.getLookupName() << "\n";
+    }
+#endif
+    // +======================================================================+
     if (isa<CXXRecordDecl>(LookupCtx))
       R.setNamingClass(cast<CXXRecordDecl>(LookupCtx));
     return true;

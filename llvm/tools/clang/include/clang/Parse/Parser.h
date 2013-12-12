@@ -2314,7 +2314,7 @@ private:
 
   void ParseMeshVarParenDeclarator(Declarator &D);
 
-  bool ParseMeshStatement(StmtVector &Stmts,
+  bool ParseForallMeshShortcutStatement(StmtVector &Stmts,
        bool OnlyStatement, Token &Next, StmtResult &SR);
 
   StmtResult ParseForallArrayStatement(ParsedAttributes &Attr);

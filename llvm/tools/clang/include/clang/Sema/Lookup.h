@@ -302,8 +302,10 @@ public:
   /// \brief Retrieve the accepted (re)declaration of the given declaration,
   /// if there is one.
   NamedDecl *getAcceptableDecl(NamedDecl *D) const {
-    if (!D->isInIdentifierNamespace(IDNS))
+    if (!D->isInIdentifierNamespace(IDNS)) {
+      //llvm::errs() << "bad IDNS " << IDNS << "\n";
       return 0;
+    }
 
     if (isHiddenDeclarationVisible() || isVisible(SemaRef, D))
       return D;
