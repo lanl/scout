@@ -712,6 +712,7 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
       llvm_unreachable("Stmt should not be in analyzer evaluation loop");
     // +==== Scout ===========================================================+
     case Stmt::ForallMeshStmtClass:
+    case Stmt::ForallArrayStmtClass:
     case Stmt::RenderallMeshStmtClass:
     //case Stmt::RenderAllStmtClass:
     //case Stmt::ForAllArrayStmtClass:

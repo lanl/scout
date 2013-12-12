@@ -215,7 +215,6 @@ static void diagnoseInstanceReference(Sema &SemaRef,
 
   bool InStaticMethod = Method && Method->isStatic();
   bool IsField = isa<FieldDecl>(Rep) || isa<IndirectFieldDecl>(Rep);
-  bool IsMeshField = isa<MeshFieldDecl>(Rep);
 
   if (IsField && InStaticMethod)
     // "invalid use of member 'x' in static member function"

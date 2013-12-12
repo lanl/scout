@@ -317,14 +317,11 @@ bool Sema::CheckForallMesh(Scope* S,
   // this is a MeshType and if so we can get the MeshDecl
   // then we can do the lookup
   if (VarDecl *VD = dyn_cast<VarDecl>(MeshResult.getFoundDecl())) {
-    //llvm::errs() << "is VarDecl\n";
 
     QualType QT = VD->getType();
 
     if (const MeshType *MT = QT->getAs<MeshType>()) {
-      //llvm::errs() << "is MeshType\n";
       MeshDecl *MD = MT->getDecl();
-      //MD->dump();
 
       // lookup RefVar name as a member. If we did an Ordinary
       // lookup we would be in the wrong IDNS. we need IDNS_Member
@@ -348,7 +345,6 @@ bool Sema::CheckForallMesh(Scope* S,
   if(RefResult.getResultKind() != LookupResult::NotFound) {
     Diag(RefVarLoc, diag::warn_loop_variable_shadows_forall) << RefVarInfo;
   }
-
 
   return true;
 }
