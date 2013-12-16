@@ -305,7 +305,6 @@ bool Sema::CheckForallMesh(Scope* S,
   // We have to go in circles a bit here. First get the QualType
   // from the VarDecl, then check if this is a MeshType and if so
   // we can get the MeshDecl and then we can do the lookup
-
   QualType QT = VD->getType();
 
   if (const MeshType *MT = QT->getAs<MeshType>()) {

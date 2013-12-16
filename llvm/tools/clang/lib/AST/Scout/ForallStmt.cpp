@@ -72,15 +72,9 @@ using namespace clang;
 // Constructor for a forall statement w/out a predicate expression.
 //
 ForallStmt::ForallStmt(StmtClass StatementClass,
-                       IdentifierInfo* RefVarInfo,
-                       IdentifierInfo* ContainerInfo,
-                       VarDecl *ContainerVD,
                        SourceLocation ForallLocation,
                        Stmt* Body)
   : Stmt(StatementClass),
-    LoopRefVarInfo(RefVarInfo),
-    ContainerRefVarInfo(ContainerInfo),
-    ContainerVarDecl(ContainerVD),
     ForallKWLoc(ForallLocation) {
 
   SubExprs[PREDICATE] = 0;
@@ -93,17 +87,11 @@ ForallStmt::ForallStmt(StmtClass StatementClass,
 // Constructor for a forall statement w/ a predicate expression.
 //
 ForallStmt::ForallStmt(StmtClass StatementClass,
-                       IdentifierInfo* RefVarInfo,
-                       IdentifierInfo* ContainerInfo,
-                       VarDecl *ContainerVD,
                        SourceLocation ForallLocation,
                        Stmt* Body,
                        Expr* Predicate,
                        SourceLocation LeftParenLoc, SourceLocation RightParenLoc)
   : Stmt(StatementClass),
-    LoopRefVarInfo(RefVarInfo),
-    ContainerRefVarInfo(ContainerInfo),
-    ContainerVarDecl(ContainerVD),
     ForallKWLoc(ForallLocation),
     LParenLoc(LeftParenLoc), RParenLoc(RightParenLoc) {
 
@@ -118,15 +106,16 @@ ForallStmt::ForallStmt(StmtClass StatementClass,
 ForallMeshStmt::ForallMeshStmt(MeshElementType RefElement,
                                IdentifierInfo* RefVarInfo,
                                IdentifierInfo* MeshInfo,
-                               VarDecl* MeshVarDecl,
+                               VarDecl* MVD,
                                const MeshType* MT,
                                SourceLocation ForallLocation,
                                Stmt *Body)
   : ForallStmt(ForallMeshStmtClass,
-               RefVarInfo,
-               MeshInfo, MeshVarDecl,
                ForallLocation, Body) {
 
+    LoopRefVarInfo = RefVarInfo;
+    MeshRefVarInfo = MeshInfo;
+    MeshVarDecl = MVD;
     MeshElementRef = RefElement;
     MeshRefType    = MT;
   }
@@ -139,18 +128,19 @@ ForallMeshStmt::ForallMeshStmt(MeshElementType RefElement,
 ForallMeshStmt::ForallMeshStmt(MeshElementType RefElement,
                                IdentifierInfo* RefVarInfo,
                                IdentifierInfo* MeshInfo,
-                               VarDecl* MeshVarDecl,
+                               VarDecl* MVD,
                                const MeshType* MT,
                                SourceLocation ForallLocation,
                                Stmt *Body,
                                Expr* Predicate,
                                SourceLocation LeftParenLoc, SourceLocation RightParenLoc)
   : ForallStmt(ForallMeshStmtClass,
-               RefVarInfo,
-               MeshInfo, MeshVarDecl,
                ForallLocation, Body,
                Predicate, LeftParenLoc, RightParenLoc) {
 
+    LoopRefVarInfo = RefVarInfo;
+    MeshRefVarInfo = MeshInfo;
+    MeshVarDecl = MVD;
     MeshElementRef = RefElement;
     MeshRefType    = MT;
   }
@@ -171,3 +161,33 @@ bool ForallMeshStmt::isUnstructuredMesh() const {
   return MeshRefType->getTypeClass() == Type::UnstructuredMesh;
 }
 
+// ----- ForallArrayStmt
+//
+// Constructor for a forall array statement w/out a predicate expression.
+//
+//
+ForallArrayStmt::ForallArrayStmt(IdentifierInfo* InductionVarInfo[],
+    SourceLocation InductionVarLoc[],
+    Expr* Start[], Expr* End[], Expr* Stride[], size_t dims,
+    SourceLocation ForallLoc, Stmt* Body)
+: ForallStmt(ForallArrayStmtClass,
+             ForallLoc,
+             Body) {
+
+
+  for(size_t i = 0; i < 3; ++i) {
+    if (i < dims) {
+      setStart(i, Start[i]);
+      setEnd(i, End[i]);
+      setStride(i, Stride[i]);
+      setInductionVar(i, InductionVarInfo[i]);
+    } else {
+      setStart(i, 0);
+      setEnd(i, 0);
+      setStride(i, 0);
+      setInductionVar(i, 0);
+    }
+  }
+
+  setBody(Body);
+}
