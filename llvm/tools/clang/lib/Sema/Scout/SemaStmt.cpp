@@ -208,6 +208,7 @@ namespace {
             */
           }
 
+          //SC_TODO: is there a cleaner way to do this w/o an map?
           std::string ref = bd->getName().str() + "." + md->getName().str();
 
           if (nodeType_ == NodeLHS) {
@@ -292,48 +293,34 @@ namespace {
 } // end namespace
 
 
+// Check forall mesh for shadowing
 bool Sema::CheckForallMesh(Scope* S,
-                                IdentifierInfo* MeshVarInfo,
-                                SourceLocation MeshVarLoc,
                                 IdentifierInfo* RefVarInfo,
-                                SourceLocation RefVarLoc) {
-
-  // lookup mesh variable
-  LookupResult MeshResult(*this, MeshVarInfo, MeshVarLoc,
-      LookupOrdinaryName);
-  LookupName(MeshResult, S);
-
-  // error if not a mesh test/scc/error/forall-mesh-unknown.sc
-  if(MeshResult.getResultKind() != LookupResult::Found){
-    Diag(MeshVarLoc, diag::err_unknown_mesh_variable_forall) << MeshVarInfo;
-    return false;
-  }
+                                SourceLocation RefVarLoc,
+                                VarDecl *VD) {
 
   // check if RefVar is a mesh member.
   // see test/scc/error/forall-mesh-shadow.sc
   //
-  // We have to go in circles a bit here. First turn NamedDecl
-  // into VarDecl so we can get the QualType, then check if
-  // this is a MeshType and if so we can get the MeshDecl
-  // then we can do the lookup
-  if (VarDecl *VD = dyn_cast<VarDecl>(MeshResult.getFoundDecl())) {
+  // We have to go in circles a bit here. First get the QualType
+  // from the VarDecl, then check if this is a MeshType and if so
+  // we can get the MeshDecl and then we can do the lookup
 
-    QualType QT = VD->getType();
+  QualType QT = VD->getType();
 
-    if (const MeshType *MT = QT->getAs<MeshType>()) {
-      MeshDecl *MD = MT->getDecl();
+  if (const MeshType *MT = QT->getAs<MeshType>()) {
+    MeshDecl *MD = MT->getDecl();
 
-      // lookup RefVar name as a member. If we did an Ordinary
-      // lookup we would be in the wrong IDNS. we need IDNS_Member
-      // here not IDNS_Ordinary
-      LookupResult MemberResult(*this, RefVarInfo, RefVarLoc,
-              LookupMemberName);
-      //lookup this in the MeshDecl
-      LookupQualifiedName(MemberResult, MD);
-      if(MemberResult.getResultKind() != LookupResult::NotFound) {
-        Diag(RefVarLoc, diag::err_loop_variable_shadows_forall) << RefVarInfo;
-        return false;
-      }
+    // lookup RefVar name as a member. If we did an Ordinary
+    // lookup we would be in the wrong IDNS. we need IDNS_Member
+    // here not IDNS_Ordinary
+    LookupResult MemberResult(*this, RefVarInfo, RefVarLoc,
+            LookupMemberName);
+    //lookup this in the MeshDecl
+    LookupQualifiedName(MemberResult, MD);
+    if(MemberResult.getResultKind() != LookupResult::NotFound) {
+      Diag(RefVarLoc, diag::err_loop_variable_shadows_forall) << RefVarInfo;
+      return false;
     }
   }
 
@@ -352,7 +339,6 @@ bool Sema::CheckForallMesh(Scope* S,
 
 // ----- ActOnForallMeshRefVariable
 // This call assumes the reference variable details have been parsed
-// (syntax checked) and issues, such as shadows, have been reported.
 // Given this, this member function takes steps to further determine
 // the actual mesh type of the forall (passed in as a base mesh type)
 // and creates the reference variable
@@ -364,7 +350,7 @@ bool Sema::ActOnForallMeshRefVariable(Scope* S,
                                   const MeshType *MT,
                                   VarDecl* VD) {
 
-  if(!CheckForallMesh(S, MeshVarInfo, MeshVarLoc, RefVarInfo, RefVarLoc)) {
+  if(!CheckForallMesh(S, RefVarInfo, RefVarLoc, VD)) {
     return false;
   }
 
@@ -441,6 +427,7 @@ StmtResult Sema::ActOnForallMeshStmt(SourceLocation ForallLoc,
 }
 
 
+// Check forall array for shadowing
 bool Sema::CheckForallArray(Scope* S,
                                   IdentifierInfo* InductionVarInfo,
                                   SourceLocation InductionVarLoc) {
