@@ -2107,17 +2107,10 @@ public:
 // This class handles the basic functionality of all forall-style statements.
 // At this level we have the following information about the loop statement:
 //
-//   (1) The information about the reference element -- the loop's
-//       implicit reference variable that represents the active
-//       element within the loop scope.
-//
-//   (2) The variable declaration for the container we are looping
-//       over (e.g. a mesh, array, etc.).
-//
-//   (3) A predicate expression for the overall loop and the body (statements)
+//   (1) A predicate expression for the overall loop and the body (statements)
 //       within the loop.
 //
-//   (4) The source locations of the forall keyword, the left and
+//   (2) The source locations of the forall keyword, the left and
 //       right parens that wrap the predicate (if any).
 //
 class ForallStmt : public Stmt {
@@ -2139,15 +2132,9 @@ protected:
 public:
 
   ForallStmt(StmtClass SC,
-             IdentifierInfo* RefVarInfo,
-             IdentifierInfo* ContainerInfo,
-             VarDecl *ContainerVarDecl,
              SourceLocation ForallLoc, Stmt *Body);
 
   ForallStmt(StmtClass SC,
-             IdentifierInfo* RefElementInfo,
-             IdentifierInfo* ContainerInfo,
-             VarDecl *ContainerVarDecl,
              SourceLocation ForallLoc, Stmt *Body,
              Expr* Predicate,
              SourceLocation LeftParenLoc, SourceLocation RightParenLoc);
@@ -2155,35 +2142,6 @@ public:
   ForallStmt(StmtClass SC, EmptyShell Empty) : Stmt(SC, Empty) {
     SubExprs[PREDICATE] = 0;
     SubExprs[BODY]      = 0;
-    LoopRefVarInfo      = 0;
-    ContainerRefVarInfo = 0;
-    ContainerVarDecl    = 0;
-  }
-
-  // ===--- Reference variable info ---===
-  IdentifierInfo* getRefVarInfo() {
-    return LoopRefVarInfo;
-  }
-  const IdentifierInfo* getRefElementInfo() const {
-   return LoopRefVarInfo;
- }
-
-  // ===--- Container variable info ---===
-  IdentifierInfo* getContainerVarInfo() {
-    return ContainerRefVarInfo;
-  }
-
-  const IdentifierInfo* getContainerVarInfo() const {
-    return ContainerRefVarInfo;
-  }
-
-  // ===--- Container variable declaration ---===
-  VarDecl* getContainerVarDecl() {
-    return ContainerVarDecl;
-  }
-
-  const VarDecl* getContainerVarDecl() const {
-    return ContainerVarDecl;
   }
 
   // ===--- Predicate ---===
@@ -2269,22 +2227,6 @@ public:
   }
 
 protected:
-  // The loop's reference element variable is an implicitly declared
-  // instance whose type matches that of the mesh location specified
-  // by the forall loop construct (for example, the reference variable
-  // is a cell in the case of a 'forall cells in mesh' statement).
-  // The  reference element is only accessible within the body of the
-  // 'forall' -- its value may not be changed within the loop.
-  IdentifierInfo* LoopRefVarInfo;
-
-  // The loop's reference container variable is the container that
-  // has been specified within the forall statement. We keep track
-  // of not only the mesh's identifier info but also the var decl.
-  // This is primarily the data gathered at parsing and during semantic
-  // checks -- it is useful to keep around for both analysis, optimization
-  // and codegen passes...
-  IdentifierInfo  *ContainerRefVarInfo;
-  VarDecl         *ContainerVarDecl;
   SourceLocation  ForallKWLoc, LParenLoc, RParenLoc;
 };
 
@@ -2320,7 +2262,7 @@ public:
 
   // A mesh-based forall statement operates over a specified set of
   // locations within the mesh.  These locations are provided in the
-  // form of a keyword that IDs cells, verticies, edges, or faces of
+  // form of a keyword that IDs cells, vertices, edges, or faces of
   // the mesh.  We use the following enum value to track the mesh
   // elements referenced by the forall statement.
   enum MeshElementType {
@@ -2332,6 +2274,24 @@ public:
   };
 
 private:
+  // The loop's reference element variable is an implicitly declared
+   // instance whose type matches that of the mesh location specified
+   // by the forall loop construct (for example, the reference variable
+   // is a cell in the case of a 'forall cells in mesh' statement).
+   // The  reference element is only accessible within the body of the
+   // 'forall' -- its value may not be changed within the loop.
+   IdentifierInfo* LoopRefVarInfo;
+
+   // The loop's reference mesh variable is the mes that
+   // has been specified within the forall statement. We keep track
+   // of not only the mesh's identifier info but also the var decl.
+   // This is primarily the data gathered at parsing and during semantic
+   // checks -- it is useful to keep around for both analysis, optimization
+   // and codegen passes...
+   IdentifierInfo  *MeshRefVarInfo;
+   VarDecl         *MeshVarDecl;
+
+
   // The mesh location/element we're looping over -- this provides us
   // information about looping over cells, edges, faces, etc.  Is the
   // isOver*() member functions for helpers to determine the element
@@ -2351,7 +2311,7 @@ public:
   ForallMeshStmt(MeshElementType RefElement,
                  IdentifierInfo* RefVarInfo,
                  IdentifierInfo* MeshInfo,
-                 VarDecl* MeshVarDecl,
+                 VarDecl* MVD,
                  const MeshType* MT,
                  SourceLocation ForallLocation,
                  Stmt *Body);
@@ -2359,7 +2319,7 @@ public:
   ForallMeshStmt(MeshElementType RefElement,
                  IdentifierInfo* RefVarInfo,
                  IdentifierInfo* MeshInfo,
-                 VarDecl* MeshVarDecl,
+                 VarDecl* MVD,
                  const MeshType* MT,
                  SourceLocation ForallLocation,
                  Stmt *Body, Expr* Predicate,
@@ -2373,6 +2333,15 @@ public:
 
 
   // ===--- Mesh details ---===
+
+  // ===--- Reference variable info ---===
+   IdentifierInfo* getRefVarInfo() {
+     return LoopRefVarInfo;
+   }
+   const IdentifierInfo* getRefElementInfo() const {
+    return LoopRefVarInfo;
+  }
+
 
   MeshElementType getMeshElementRef() const {
     return MeshElementRef;
@@ -2397,19 +2366,19 @@ public:
   bool isUnstructuredMesh() const;
 
   IdentifierInfo* getMeshInfo() {
-    return ForallStmt::getContainerVarInfo();
+    return  MeshRefVarInfo;
   }
 
   const IdentifierInfo* getMeshInfo() const {
-    return ForallStmt::getContainerVarInfo();
+    return MeshRefVarInfo;
   }
 
   VarDecl* getMeshVarDecl() {
-    return ForallStmt::getContainerVarDecl();
+    return MeshVarDecl;
   }
 
   const VarDecl* getMeshVarDecl() const {
-    return ForallStmt::getContainerVarDecl();
+    return MeshVarDecl;
   }
 
   const MeshType* getMeshType() const { return MeshRefType; }

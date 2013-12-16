@@ -63,7 +63,6 @@ add_clang_library(clangAST
   # included into the source in this directory.
   #
   Scout/ASTContext.cpp
-  Scout/ForallArrayStmt.cpp
   Scout/ForallStmt.cpp
   Scout/MeshDecl.cpp
   Scout/MeshType.cpp
