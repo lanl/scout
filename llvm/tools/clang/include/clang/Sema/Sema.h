@@ -8031,10 +8031,9 @@ public:
                                 Declarator *D);
 
   bool CheckForallMesh(Scope* S,
-                          IdentifierInfo* MeshVarInfo,
-                          SourceLocation MeshVarLoc,
                           IdentifierInfo* RefVarInfo,
-                          SourceLocation RefVarLoc);
+                          SourceLocation RefVarLoc,
+                          VarDecl *VD);
 
   bool ActOnForallMeshRefVariable(Scope* S,
                                   IdentifierInfo* MeshVarInfo,
