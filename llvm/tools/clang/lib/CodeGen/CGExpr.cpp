@@ -1753,7 +1753,7 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
   // A DeclRefExpr for a reference initialized by a constant expression can
   // appear without being odr-used. Directly emit the constant initializer.
   if (const VarDecl *VD = dyn_cast<VarDecl>(ND)) {
-    const Expr *Init = VD->getAnyInitializer(VD);
+     const Expr *Init = VD->getAnyInitializer(VD);
     if (Init && !isa<ParmVarDecl>(VD) && VD->getType()->isReferenceType() &&
         VD->isUsableInConstantExpressions(getContext()) &&
         VD->checkInitIsICE()) {
@@ -1790,6 +1790,11 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
     bool isBlockVariable = VD->hasAttr<BlocksAttr>();
 
     llvm::Value *V = LocalDeclMap.lookup(VD);
+    if(!V) {
+      llvm::errs() << "lookup fail for " << VD->getName() << "\n";
+      VD->dump();
+    }
+
     if (!V && VD->isStaticLocal())
       V = CGM.getStaticLocalDeclAddress(VD);
 

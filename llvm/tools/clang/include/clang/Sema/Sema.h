@@ -8041,7 +8041,8 @@ public:
                                   IdentifierInfo* RefVarInfo,
                                   SourceLocation  RefVarLoc,
                                   const MeshType *MT,
-                                  VarDecl *VD);
+                                  VarDecl *VD,
+                                  DeclStmt **Init);
 
   bool ActOnRenderallMeshRefVariable(Scope *S,
                                      IdentifierInfo* RefVarInfo,
@@ -8055,7 +8056,8 @@ public:
 
   bool ActOnForallArrayInductionVariable(Scope* S,
                                          IdentifierInfo* InductionVarInfo,
-                                         SourceLocation InductionVarLoc);
+                                         SourceLocation InductionVarLoc,
+                                         VarDecl** IV, DeclStmt** Init);
 /*
   bool ActOnRenderAllLoopVariable(Scope* S,
                                   tok::TokenKind VariableType,
@@ -8081,7 +8083,7 @@ public:
                                  SourceLocation LParenLoc,
                                  Expr* Predicate,
                                  SourceLocation RParenLoc,
-                                 Stmt* Body);
+                                 DeclStmt *Init, Stmt* Body);
 
 
   StmtResult ActOnForallMeshStmt(SourceLocation ForAllLoc,
@@ -8096,7 +8098,7 @@ public:
   StmtResult ActOnForallArrayStmt(IdentifierInfo* InductionVarII[],
             SourceLocation InductionVarLoc[],
             Expr* Start[], Expr* End[], Expr* Stride[], size_t dims,
-            SourceLocation ForallLoc, Stmt* Body);
+            SourceLocation ForallLoc, VarDecl *IV[], DeclStmt *Init[], Stmt* Body);
 
   StmtResult ActOnRenderallMeshStmt(SourceLocation ForallLoc,
                                 RenderallMeshStmt::MeshElementType ElementType,

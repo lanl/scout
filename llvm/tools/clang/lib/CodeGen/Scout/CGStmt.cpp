@@ -137,7 +137,7 @@ llvm::Value *CodeGenFunction::TranslateExprToValue(const Expr *E) {
 // SC_TODO - need to handle cases with edge and vertex
 // fields (the implementation below is cell centric).
 //
-void CodeGenFunction::EmitForallStmt(const ForallMeshStmt &S) {
+void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
   unsigned int rank = S.getMeshType()->dimensions().size();
@@ -158,11 +158,11 @@ void CodeGenFunction::EmitForallStmt(const ForallMeshStmt &S) {
   InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "forall.linearidx.ptr");
   Builder.CreateStore(ConstantZero, InductionVar[3]);
 
-  EmitForallLoop(S, rank);
+  EmitForallMeshLoop(S, rank);
 }
 
 //generate one of the nested loops
-void CodeGenFunction::EmitForallLoop(const ForallMeshStmt &S, unsigned r) {
+void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
 
   MeshBaseAddr = GetMeshBaseAddr(S);
   llvm::StringRef MeshName = S.getMeshType()->getName();
@@ -250,7 +250,7 @@ void CodeGenFunction::EmitForallLoop(const ForallMeshStmt &S, unsigned r) {
 
     Builder.CreateStore(IncLoopIndexVar, InductionVar[3]);
   } else { // generate nested loop
-    EmitForallLoop(S, r-1);
+    EmitForallMeshLoop(S, r-1);
   }
 
   EmitBlock(Continue.getBlock());
@@ -279,8 +279,102 @@ void CodeGenFunction::EmitForallLoop(const ForallMeshStmt &S, unsigned r) {
 
 // ----- EmitForallBody
 //
-void CodeGenFunction::EmitForallBody(const ForallMeshStmt &S) {
+void CodeGenFunction::EmitForallBody(const ForallStmt &S) {
   EmitStmt(S.getBody());
+}
+
+
+void CodeGenFunction::EmitForallArrayStmt(const ForallArrayStmt &S) {
+  EmitForallArrayLoop(S, S.getDims());
+}
+
+void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) {
+  CGDebugInfo *DI = getDebugInfo();
+
+  llvm::Value *Start = EmitScalarExpr(S.getStart(r-1));
+  llvm::Value *End = EmitScalarExpr(S.getEnd(r-1));
+  llvm::Value *Stride = EmitScalarExpr(S.getStride(r-1));
+
+  //initialize induction var
+  const VarDecl *VD = S.getInductionVarDecl(r-1);
+  EmitAutoVarDecl(*VD); //add induction var to LocalDeclmap.
+  llvm::Value* InductVar = LocalDeclMap[VD];
+  Builder.CreateStore(Start, InductVar);
+
+  sprintf(IRNameStr, "forall.%s.end", DimNames[r-1]);
+  JumpDest LoopExit = getJumpDestInCurrentScope(IRNameStr);
+  RunCleanupsScope ForallScope(*this);
+
+  if (DI)
+    DI->EmitLexicalBlockStart(Builder, S.getSourceRange().getBegin());
+
+  // Next we create a block that tests the induction variables value to
+  // the rank's dimension.
+  sprintf(IRNameStr, "forall.cond.%s", DimNames[r-1]);
+  JumpDest Continue = getJumpDestInCurrentScope(IRNameStr);
+  llvm::BasicBlock *CondBlock = Continue.getBlock();
+  EmitBlock(CondBlock);
+
+  RunCleanupsScope ConditionScope(*this);
+
+  llvm::LoadInst *IVar = Builder.CreateLoad(InductVar, VD->getName().str().c_str());
+
+  sprintf(IRNameStr, "forall.done.%s", IndexNames[r-1]);
+  llvm::Value *CondValue = Builder.CreateICmpSLT(IVar,
+      End,
+      IRNameStr);
+
+  llvm::BasicBlock *ExitBlock = LoopExit.getBlock();
+
+  // If there are any cleanups between here and the loop-exit
+  if (ForallScope.requiresCleanups()) {
+    sprintf(IRNameStr, "forall.cond.cleanup.%s", DimNames[r-1]);
+    ExitBlock = createBasicBlock(IRNameStr);
+  }
+
+  llvm::BasicBlock *LoopBody = createBasicBlock(IRNameStr);
+  Builder.CreateCondBr(CondValue, LoopBody, ExitBlock);
+
+  if (ExitBlock != LoopExit.getBlock()) {
+    EmitBlock(ExitBlock);
+    EmitBranchThroughCleanup(LoopExit);
+  }
+
+  EmitBlock(LoopBody);
+
+  sprintf(IRNameStr, "forall.incblk.%s", IndexNames[r-1]);
+  Continue = getJumpDestInCurrentScope(IRNameStr);
+
+  // Store the blocks to use for break and continue.
+  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue));
+
+  if (r == 1) {  // This is our innermost rank, generate the loop body.
+    EmitForallBody(S);
+  } else { // generate nested loop
+    EmitForallArrayLoop(S, r-1);
+  }
+
+  EmitBlock(Continue.getBlock());
+
+  llvm::LoadInst* iv = Builder.CreateLoad(InductVar, VD->getName().str().c_str());
+
+  sprintf(IRNameStr, "%s.inc", VD->getName().str().c_str());
+  llvm::Value *IncInductionVar = Builder.CreateAdd(iv,
+      Stride,
+      IRNameStr);
+
+  Builder.CreateStore(IncInductionVar, InductVar);
+
+  BreakContinueStack.pop_back();
+  ConditionScope.ForceCleanup();
+
+  EmitBranch(CondBlock);
+  ForallScope.ForceCleanup();
+
+  if (DI)
+    DI->EmitLexicalBlockEnd(Builder, S.getSourceRange().getEnd());
+
+  EmitBlock(LoopExit.getBlock(), true);
 }
 
 
@@ -378,7 +472,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForallMeshStmt &S) {
   CallsPrintf = callsPrintf(&cast< Stmt >(S));
 
   // Generate body of function.
-  EmitForallStmt(S);
+  EmitForallMeshStmt(S);
 
   LocalDeclMap = curLocalDeclMap; // Restore LocalDeclMap.
 

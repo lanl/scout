@@ -247,12 +247,13 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
   if (RefMeshType == 0)
     return StmtError();
 
+  DeclStmt* Init; //declstmt for forall implicit variable
   bool success = Actions.ActOnForallMeshRefVariable(getCurScope(),
                                                     MeshIdentInfo, MeshIdentLoc,
                                                     ElementIdentInfo,
                                                     ElementIdentLoc,
                                                     RefMeshType,
-                                                    VD);
+                                                    VD, &Init);
   if (! success)
     return StmtError();
 
@@ -343,7 +344,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
                                                         LParenLoc,
                                                         Predicate,
                                                         RParenLoc,
-                                                        Body);
+                                                        Init, Body);
   if (! ForallResult.isUsable())
     return StmtError();
 
@@ -465,11 +466,9 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
   if (RefMeshType == 0)
     return StmtError();
 
-  bool success = Actions.ActOnForallMeshRefVariable(getCurScope(),
+  bool success = Actions.ActOnRenderallMeshRefVariable(getCurScope(),
                                                     MeshIdentInfo,
                                                     MeshIdentLoc,
-                                                    ElementIdentInfo,
-                                                    ElementIdentLoc,
                                                     RefMeshType,
                                                     VD);
   if (! success)
@@ -762,6 +761,8 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
 
   ParseScope ForAllScope(this, ScopeFlags);
 
+  DeclStmt* Init[3] = {0,0,0};
+  VarDecl* IVDecl[3] = {0,0,0};
   for(size_t i = 0; i < dims; ++i){
     if(!InductionVarInfo[i]){
       break;
@@ -769,7 +770,7 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
 
     if(!Actions.ActOnForallArrayInductionVariable(getCurScope(),
         InductionVarInfo[i],
-        InductionVarLoc[i])){
+        InductionVarLoc[i], &IVDecl[i], &Init[i])) {
       return StmtError();
     }
   }
@@ -785,7 +786,7 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
   StmtResult ForallArrayResult =
   Actions.ActOnForallArrayStmt(InductionVarInfo, InductionVarLoc,
       Start, End, Stride, dims,
-      ForallLoc, Body);
+      ForallLoc, IVDecl, Init, Body);
 
   return ForallArrayResult;
 }
