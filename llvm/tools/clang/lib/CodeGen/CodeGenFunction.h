@@ -33,12 +33,6 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ValueHandle.h"
 
-
-// ===== Scout =================================================================
-#include "llvm/ADT/SetVector.h"
-#include <map>
-// =============================================================================
-
 namespace llvm {
   class BasicBlock;
   class LLVMContext;
@@ -285,40 +279,17 @@ public:
   llvm::BasicBlock *getInvokeDestImpl();
 
   // +===== Scout ============================================================+
-  // SC_TODO - are all of these really necessary?
-  // SC_TODO - A lot of this should be moved out of the header file
-  //           to make our merges with the clang trunks a happier
-  //           activity...
 
-  typedef llvm::SmallVector< llvm::Value *, 4 > Vector;
+  // used by EmitCShiftExpr
   typedef CallExpr::const_arg_iterator ArgIterator;
-  typedef std::pair< MeshFieldDecl *, int > MeshFieldPair;
-  typedef std::map< llvm::StringRef,
-                    std::pair< llvm::Value *,
-                    QualType > > MemberMap;
 
-  //forall mesh induction variables
-  // overall induction variable stored as 4th element
-  // needed to make this size 4 to deal with llvm Intrinsics;
+  // Variables used in Builtins
+  // forall mesh induction variables
+  // overall induction variable is stored as 4th element
   llvm::SmallVector< llvm::Value *, 4 > InductionVar;
   // mesh dimension sizes
   llvm::SmallVector< llvm::Value *, 3 > LoopBounds;
 
-  // old style Scout forall explicit induction variable.
-  llvm::Value *ForallIndVar;
-  // old style Scout forall implicit induction variables.
-  Vector ScoutIdxVars;
-  // Scout mesh dimension sizes
-  llvm::SmallVector< llvm::Value *, 3 > ScoutMeshSizes;
-
-  llvm::Value *MeshBaseAddr;
-  //llvm::Value *ImplicitMeshVar;
-  llvm::Value *ForallTripCount;
-  MemberMap MeshMembers;
-  bool RenderAll;
-  bool CallsPrintf;
-  llvm::Value *Colors;
-  //const ForAllArrayStmt* CurrentForAllArrayStmt;
 
   inline llvm::Value *getLinearIdx() {
     return Builder.CreateLoad(InductionVar[3], "forall.linearidx");
@@ -348,6 +319,7 @@ public:
 
   bool isMeshMember(llvm::Argument *arg, bool& isSigned, std::string& typeStr);
 
+#if 0
   llvm::StringRef toString(int i) {
     switch(i) {
     case 0: return "width";
@@ -358,6 +330,7 @@ public:
       return "error";
     }
   }
+#endif
 
   bool hasPrintfEdge(const Stmt *S) {
     typedef Stmt::const_child_iterator ChildIterator;
@@ -1197,24 +1170,6 @@ public:
   //                                  Block Bits
   //===--------------------------------------------------------------------===//
 
-  // +==== Scout =============================================================+
-  llvm::Value *EmitScoutBlockFnCall(llvm::Value *TheBlockFn,
-                           const CGBlockInfo &blockInfo,
-                           const llvm::SmallVector<llvm::Value*,3>& ranges,
-                           llvm::SetVector< llvm::Value * > &inputs);
-
-  llvm::Value *EmitScoutBlockLiteral(const BlockExpr *,
-                           CGBlockInfo &blockInfo,
-                           const llvm::SmallVector< llvm::Value *, 3 >& ranges,
-                           llvm::SetVector< llvm::Value * > &inputs);
-
-  llvm::Value *EmitScoutQueueBlock(llvm::Value *genericBlk,
-                                   size_t numDimensions,
-                                   size_t numInputs);
-
-  // SC_TODO -- Need to make sure some of the member functions
-  // below are not also for scout...
-  // +========================================================================+
   llvm::Value *EmitBlockLiteral(const BlockExpr *);
   llvm::Value *EmitBlockLiteral(const CGBlockInfo &Info);
   static void destroyBlockInfos(CGBlockInfo *info);
@@ -1998,7 +1953,7 @@ public:
     llvm::outs() << "Attempting " << s << ".\n";
   }
 
-  MeshFieldPair FindFieldDecl(MeshDecl *MD, llvm::StringRef &memberName);
+  //MeshFieldPair FindFieldDecl(MeshDecl *MD, llvm::StringRef &memberName);
   // +========================================================================+
 
   void EmitForStmt(const ForStmt &S);
