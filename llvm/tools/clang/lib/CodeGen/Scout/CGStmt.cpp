@@ -166,11 +166,14 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
     InductionVar.push_back(0);
     sprintf(IRNameStr, "forall.induct.%s.ptr", IndexNames[i]);
     InductionVar[i] = Builder.CreateAlloca(Int32Ty, 0, IRNameStr);
+    //zero-initialize induction var
+    Builder.CreateStore(ConstantZero, InductionVar[i]);
 
   }
   // create linear loop index as 4th element and zero-initialize.
   InductionVar.push_back(0);
   InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "forall.linearidx.ptr");
+  //zero-initialize induction var
   Builder.CreateStore(ConstantZero, InductionVar[3]);
 
   EmitForallMeshLoop(S, rank);
