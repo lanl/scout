@@ -293,6 +293,18 @@ namespace {
 } // end namespace
 
 
+// We have to go in circles a bit here. First get the QualType
+// from the VarDecl, then check if this is a MeshType and if so
+// we can get the MeshDecl
+MeshDecl *VarDecl2MeshDecl(VarDecl *VD) {
+  QualType QT = VD->getType();
+
+   if (const MeshType *MT = QT->getAs<MeshType>()) {
+      return MT->getDecl();
+   }
+   return 0;
+}
+
 // Check forall mesh for shadowing
 bool Sema::CheckForallMesh(Scope* S,
                                 IdentifierInfo* RefVarInfo,
@@ -301,20 +313,14 @@ bool Sema::CheckForallMesh(Scope* S,
 
   // check if RefVar is a mesh member.
   // see test/scc/error/forall-mesh-shadow.sc
-  //
-  // We have to go in circles a bit here. First get the QualType
-  // from the VarDecl, then check if this is a MeshType and if so
-  // we can get the MeshDecl and then we can do the lookup
-  QualType QT = VD->getType();
-
-  if (const MeshType *MT = QT->getAs<MeshType>()) {
-    MeshDecl *MD = MT->getDecl();
+  if(MeshDecl *MD = VarDecl2MeshDecl(VD)) {
 
     // lookup RefVar name as a member. If we did an Ordinary
     // lookup we would be in the wrong IDNS. we need IDNS_Member
     // here not IDNS_Ordinary
     LookupResult MemberResult(*this, RefVarInfo, RefVarLoc,
             LookupMemberName);
+
     //lookup this in the MeshDecl
     LookupQualifiedName(MemberResult, MD);
     if(MemberResult.getResultKind() != LookupResult::NotFound) {
@@ -324,7 +330,7 @@ bool Sema::CheckForallMesh(Scope* S,
   }
 
   // warn about shadowing see test/scc/warning/forall-mesh-shadow.sc
-  //look up implicit mesh Ref variable
+  // look up implicit mesh Ref variable
   LookupResult RefResult(*this, RefVarInfo, RefVarLoc,
           LookupOrdinaryName);
   LookupName(RefResult, S);
@@ -340,7 +346,7 @@ bool Sema::CheckForallMesh(Scope* S,
 // This call assumes the reference variable details have been parsed
 // Given this, this member function takes steps to further determine
 // the actual mesh type of the forall (passed in as a base mesh type)
-// and creates the reference variable
+// and creates the reference variable and its DeclStmt
 bool Sema::ActOnForallMeshRefVariable(Scope* S,
                                   IdentifierInfo* MeshVarInfo,
                                   SourceLocation MeshVarLoc,
@@ -387,7 +393,7 @@ bool Sema::ActOnForallMeshRefVariable(Scope* S,
     return false;
   }
 
-  // build a DeclStmt for the ImplicitMeshParamDecl and return via parameter list
+  // build a DeclStmt for the ImplicitMeshParamDecl and return it via parameter list
   *Init = new (Context) DeclStmt(DeclGroupRef(D), RefVarLoc, RefVarLoc);
 
   PushOnScopeChains(D, S, true);
@@ -412,10 +418,8 @@ StmtResult Sema::ActOnForallMeshStmt(SourceLocation ForallLoc,
                                                     RefVarInfo,
                                                     MeshInfo, MVD, MT,
                                                     ForallLoc,
-                                                    Body, Predicate,
+                                                    Init, Body, Predicate,
                                                     LParenLoc, RParenLoc);
-  // add the Implicit ref variable DeclStmt to the ForallMeshStmt
-  FS->setInit(Init);
 
   // check that LHS mesh field assignment
   // operators do not appear as subsequent RHS values, and
@@ -449,33 +453,33 @@ bool Sema::CheckForallArray(Scope* S,
   return true;
 }
 
+
+// ----- ActOnForallArrayInductionVariable
+// This call  creates the Induction variable and its DeclStmt
 bool Sema::ActOnForallArrayInductionVariable(Scope* S,
                                              IdentifierInfo* InductionVarInfo,
                                              SourceLocation InductionVarLoc,
-                                             VarDecl **IV, DeclStmt **Init) {
+                                             VarDecl **InductionVarDecl,
+                                             DeclStmt **Init) {
 
   if(!CheckForallArray(S,InductionVarInfo, InductionVarLoc)) {
     return false;
   }
-#if 0
-  ImplicitParamDecl* IV =
-      ImplicitParamDecl::Create(Context, CurContext,
-          InductionVarLoc, InductionVarInfo,
-          Context.IntTy);
-#else
-  *IV = VarDecl::Create(Context, CurContext, InductionVarLoc, InductionVarLoc,
+
+  // build the Induction Var. VarDecl and DeclStmt this is
+  // similar to what is done in buildSingleCopyAssignRecursively()
+  *InductionVarDecl = VarDecl::Create(Context, CurContext, InductionVarLoc, InductionVarLoc,
       InductionVarInfo, Context.IntTy, 0, SC_None);
-#endif
 
   // zero initialize the induction var
-  (*IV)->setInit(IntegerLiteral::Create(Context, llvm::APInt(32, 0),
+  (*InductionVarDecl)->setInit(IntegerLiteral::Create(Context, llvm::APInt(32, 0),
       Context.IntTy, InductionVarLoc));
 
-  // build a DeclStmt for the ImplicitParamDecl and return via parameter list
-  *Init = new (Context) DeclStmt(DeclGroupRef(*IV), InductionVarLoc, InductionVarLoc);
+  // build a DeclStmt for the VarDecl and return both via parameter list
+  *Init = new (Context) DeclStmt(DeclGroupRef(*InductionVarDecl),
+      InductionVarLoc, InductionVarLoc);
 
-  PushOnScopeChains(*IV, S, true);
-  SCLStack.push_back(*IV); //SC_TODO: this seems like an ugly hack
+  PushOnScopeChains(*InductionVarDecl, S, true);
 
   return true;
 }
@@ -483,20 +487,14 @@ bool Sema::ActOnForallArrayInductionVariable(Scope* S,
 
 
 StmtResult Sema::ActOnForallArrayStmt(IdentifierInfo* InductionVarInfo[],
-          SourceLocation InductionVarLoc[],
-          Expr* Start[], Expr* End[], Expr* Stride[], size_t dims,
-          SourceLocation ForallLoc, VarDecl *IV[], DeclStmt* Init[], Stmt* Body) {
+          VarDecl* InductionVarDecl[],
+          Expr* Start[], Expr* End[], Expr* Stride[], size_t Dims,
+          SourceLocation ForallLoc, DeclStmt* Init[], Stmt* Body) {
 
 
   ForallArrayStmt* FS =
-  new (Context) ForallArrayStmt(InductionVarInfo, InductionVarLoc,
-      Start, End, Stride, dims, ForallLoc, Body);
-
-  // add the induction var DeclStmts to the ForallArrayStmt
-  for(size_t i=0; i < dims; i++) {
-    FS->setInit(i, Init[i]);
-    FS->setInductionVarDecl(i, IV[i]);
-  }
+  new (Context) ForallArrayStmt(InductionVarInfo, InductionVarDecl,
+      Start, End, Stride, Dims, ForallLoc, Init, Body);
 
   return Owned(FS);
 }

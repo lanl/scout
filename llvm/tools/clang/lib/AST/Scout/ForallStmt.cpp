@@ -115,7 +115,7 @@ ForallMeshStmt::ForallMeshStmt(MeshElementType RefElement,
                                VarDecl* MVD,
                                const MeshType* MT,
                                SourceLocation ForallLocation,
-                               Stmt *Body)
+                               DeclStmt* Init, Stmt *Body)
   : ForallStmt(ForallMeshStmtClass,
                ForallLocation, Body) {
 
@@ -124,6 +124,7 @@ ForallMeshStmt::ForallMeshStmt(MeshElementType RefElement,
     MeshVarDecl = MVD;
     MeshElementRef = RefElement;
     MeshRefType    = MT;
+    setInit(Init);
   }
 
 
@@ -137,7 +138,7 @@ ForallMeshStmt::ForallMeshStmt(MeshElementType RefElement,
                                VarDecl* MVD,
                                const MeshType* MT,
                                SourceLocation ForallLocation,
-                               Stmt *Body,
+                               DeclStmt* Init, Stmt *Body,
                                Expr* Predicate,
                                SourceLocation LeftParenLoc, SourceLocation RightParenLoc)
   : ForallStmt(ForallMeshStmtClass,
@@ -149,6 +150,7 @@ ForallMeshStmt::ForallMeshStmt(MeshElementType RefElement,
     MeshVarDecl = MVD;
     MeshElementRef = RefElement;
     MeshRefType    = MT;
+    setInit(Init);
   }
 
 bool ForallMeshStmt::isUniformMesh() const {
@@ -173,9 +175,10 @@ bool ForallMeshStmt::isUnstructuredMesh() const {
 //
 //
 ForallArrayStmt::ForallArrayStmt(IdentifierInfo* InductionVarInfo[],
-    SourceLocation InductionVarLoc[],
+    VarDecl* InductionVarDecl[],
     Expr* Start[], Expr* End[], Expr* Stride[], size_t dims,
-    SourceLocation ForallLoc, Stmt* Body)
+    SourceLocation ForallLoc,
+    DeclStmt* Init[], Stmt* Body)
 : ForallStmt(ForallArrayStmtClass,
              ForallLoc,
              Body) {
@@ -187,11 +190,15 @@ ForallArrayStmt::ForallArrayStmt(IdentifierInfo* InductionVarInfo[],
       setEnd(i, End[i]);
       setStride(i, Stride[i]);
       setInductionVarInfo(i, InductionVarInfo[i]);
+      setInductionVarDecl(i, InductionVarDecl[i]);
+      setInit(i, Init[i]);
     } else {
       setStart(i, 0);
       setEnd(i, 0);
       setStride(i, 0);
       setInductionVarInfo(i, 0);
+      setInductionVarDecl(i, 0);
+      setInit(i,0);
     }
   }
 
