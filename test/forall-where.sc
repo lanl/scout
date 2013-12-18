@@ -51,27 +51,29 @@
  *
  * ##### 
  */ 
-
-#include <iostream>
-
-using namespace std;
+#include <stdio.h>
 
 int main(int argc, char** argv){
 
   uniform mesh MyMesh{
   cells:
-    float a;
-    float b;
-  vertices:
-    float c;
-    float d;
+    int a;
+    int b;
   };
 
-  MyMesh m[512,512];
+  MyMesh m[10];
   
-  forall cells c in m where(c.b > 2){
-    c.a = 100;
+  forall cells c in m {
+    c.a = 1;
+    c.b = Position().x;
   }
 
+  forall cells c in m where(c.b > 5) {
+    c.a = 10;
+  }
+
+  forall cells c in m {
+    printf("%d %d\n", a, b);
+  }
   return 0;
 }

@@ -51,35 +51,86 @@
  *
  * ##### 
  */ 
-#include <sys/types.h>
-#include <unistd.h>
-#include <signal.h>
+#include <assert.h>
 #include <stdio.h>
 
-uniform mesh MyMesh{
+#define W 3
+#define H 4
+#define D 5
+
+uniform mesh MyMesh3 {
  cells:
-  float a;
-  float b;
+  float a,b;
+  int px, py, pz, pw;
+  int w,h,d;
+};
+
+uniform mesh MyMesh2 {
+ cells:
+  float a,b;
+  int px, py, pz, pw;
+  int w,h,d;
 };
 
 int main(int argc, char** argv){
 
-  MyMesh m[10];
+  MyMesh3 m[W,H,D];
+  MyMesh2 n[W,H]; 
  
- 
-  forall cells c in m{
+  forall cells c in m {
     a = 1.0f;
     b = 2.0f;
-    printf("val %f %f %d %d\n", c.a, c.b, PositionW(), Width());
+    px = PositionX();
+    py = PositionY();
+    pz = PositionZ();
+    pw = PositionW();
+    w = Width();
+    h = Height();
+    d = Depth();    
   }
 
-  forall cells c in m{
+  forall cells c in m {
     c.a += c.b;
-    printf("val2 %f %f %d %d\n", c.a, c.b, PositionX(), Height());
+    assert(px == Position().x && "bad PositionX");
+    assert(py == Position().y && "bad PositionY");
+    assert(pz == Position().z && "bad PositionZ");
+    assert(pw == Position().w && "bad PositionW");
+    assert(w == W && "bad Width");
+    assert(h == H && "bad Height");
+    assert(d == D && "bad Depth");
+    assert(w == Width() && "bad Width");
+    assert(h == Height() && "bad Height");
+    assert(d == Depth() && "bad Depth");
   }
 
-  forall cells c in m{
-      printf("val3  %f %f %d %d\n", a, b, Position().x, Position().w);
+  forall cells c in n {
+    a = 1.0f;
+    b = 2.0f;
+    px = PositionX();
+    py = PositionY();
+    pz = PositionZ();
+    pw = PositionW();
+    w = Width();
+    h = Height();
+    d = Depth();
   }
+
+  forall cells c in n {
+    c.a += c.b;
+    assert(px == Position().x && "bad PositionX");
+    assert(py == Position().y && "bad PositionY");
+    assert(pz == Position().z && "bad PositionZ");
+    assert(Position().z == 0 && "bad PositionZ");
+    assert(PositionZ() == 0 && "bad PositionZ");
+    assert(pz == 0 && "bad PositionZ");
+    assert(pw == Position().w && "bad PositionW");
+    assert(w == W && "bad Width");
+    assert(h == H && "bad Height");
+    assert(d == 0 && "bad Depth");
+    assert(w == Width() && "bad Width");
+    assert(h == Height() && "bad Height");
+    assert(d == Depth() && "bad Depth");
+  }
+
   return 0;
 }
