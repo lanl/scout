@@ -3253,6 +3253,7 @@ EmitPointerToDataMemberBinaryExpr(const BinaryOperator *E) {
 }
 
 // +===== Scout ==============================================================+
+#if 0
 std::pair< MeshFieldDecl *, int >
 CodeGenFunction::FindFieldDecl(MeshDecl *MD, llvm::StringRef &memberName) {
   typedef MeshDecl::field_iterator MeshFieldIterator;
@@ -3264,6 +3265,7 @@ CodeGenFunction::FindFieldDecl(MeshDecl *MD, llvm::StringRef &memberName) {
   }
   return std::make_pair(*it, -1);
 }
+#endif
 // +==========================================================================+
 
 /// Given the address of a temporary variable, produce an r-value of

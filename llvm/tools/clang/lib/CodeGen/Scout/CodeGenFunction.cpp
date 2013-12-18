@@ -21,7 +21,7 @@
 using namespace clang;
 using namespace clang::CodeGen;
 
-
+#if 0
 bool CodeGen::CodeGenFunction::isMeshMember(llvm::Argument *arg, 
 	                                        bool& isSigned, 
 	                                        std::string& typeStr) {
@@ -54,3 +54,4 @@ bool CodeGen::CodeGenFunction::isMeshMember(llvm::Argument *arg,
     }
     return false;
   }
+#endif

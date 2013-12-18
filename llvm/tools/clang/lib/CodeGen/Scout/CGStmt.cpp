@@ -100,6 +100,21 @@ llvm::Value *CodeGenFunction::TranslateExprToValue(const Expr *E) {
   }
 }
 
+llvm::Value *CodeGenFunction::GetMeshBaseAddr(const ForallMeshStmt &S) {
+  const VarDecl *MeshVarDecl = S.getMeshVarDecl();
+  llvm::Value *BaseAddr = 0;
+
+  if (MeshVarDecl->hasGlobalStorage()) {
+    BaseAddr = Builder.CreateLoad(CGM.GetAddrOfGlobalVar(MeshVarDecl));
+  } else {
+    BaseAddr = LocalDeclMap[MeshVarDecl];
+    if (MeshVarDecl->getType().getTypePtr()->isReferenceType()) {
+      BaseAddr = Builder.CreateLoad(BaseAddr);
+    }
+  }
+
+  return BaseAddr;
+}
 
 
 
@@ -164,7 +179,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 //generate one of the nested loops
 void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
 
-  MeshBaseAddr = GetMeshBaseAddr(S);
+  llvm::Value *MeshBaseAddr = GetMeshBaseAddr(S);
   llvm::StringRef MeshName = S.getMeshType()->getName();
 
   // find number of fields
@@ -377,7 +392,7 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
   EmitBlock(LoopExit.getBlock(), true);
 }
 
-
+#if 0
 void CodeGenFunction::EmitForAllStmtWrapper(const ForallMeshStmt &S) {
 
   MeshMembers.clear();
@@ -703,7 +718,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForallMeshStmt &S) {
                        ScoutMeshSizes, inputs);
 #endif
 }
-/*
+
 void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
 
   llvm::SmallVector< llvm::Value *, 3 > ranges;
@@ -1267,4 +1282,4 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
   if (DI)
     DI->EmitLexicalBlockEnd(Builder, S.getRBracLoc());
 }
-*/
+#endif
