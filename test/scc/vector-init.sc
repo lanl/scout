@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyright (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2013, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -48,39 +48,20 @@
  * ########################################################################### 
  * 
  * Notes
- * test for 2d mesh indexing ...
  *
  * ##### 
- */
-#include <assert.h>
-#include <stdio.h> 
+ */ 
 
-uniform mesh AMeshType{
-cells:
-  int a;
-  int b;
-};
+#include <stdio.h>
 
+int main(int argc, char** argv){
+  double4 x = (double4){0.0, 1.0, 2.0, 3.0};
+ 
+  if(x.x*x.x > 1.e-10) return -1; 
+  if((x.y-1)*(x.y-1) > 1e-10) return -2; 
+  if((x.z-2)*(x.y-2) > 1e-10) return -3; 
+  if((x.w-3)*(x.w-3) > 1e-10) return -4; 
 
-int main(int argc, char *argv[])
-{
-
-  AMeshType m[10];
-
-  forall cells c in m {
-    c.a = Position().x;
-  }
-
-  forall cells c in m {
-    c.b = CShift(c.a,1);
-    printf("%d %d\n", c.a, c.b);
-  }
-
-  forall cells c in m {
-    if(c.b != (c.a+1)%10) {
-      printf("bad val %d\n", c.b);
-      assert(false);
-    }
-  }
   return 0;
 }
+
