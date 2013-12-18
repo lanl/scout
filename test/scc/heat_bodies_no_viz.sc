@@ -57,9 +57,7 @@
  *
  * ##### 
  */
-#include <sys/types.h>
-#include <unistd.h>
-#include <signal.h>
+#include <assert.h>
 #include <stdio.h>
 
 #define N_BODIES   5
@@ -133,7 +131,7 @@ int main(int argc, char *argv[]) {
 
       if (Position().x == 260 && Position().y == 260 && t == NTIME_STEPS-1) {
          // if value does not match exit w/ error.
-         if ((c.h - VALUE)*(c.h - VALUE) > 1e-10) kill(getpid(), SIGTERM);  
+         if ((c.h - VALUE)*(c.h - VALUE) > 1e-10) assert(false);  
       }
     }
 

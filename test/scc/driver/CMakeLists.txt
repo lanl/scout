@@ -48,40 +48,9 @@
 #
 ###########################################################################
 #
+#  Notes: 
 
-include(${CMAKE_BINARY_DIR}/CMake/Modules/Configuration.cmake)
+project(scout_test_scc_driver)
 
-set(CMAKE_MODULE_PATH
-  ${SCOUT_CMAKE_PATH}
-  ${CMAKE_MODULE_PATH}
-)
+add_subdirectory(multifile)
 
-#ignore warnings about i/o in forall
-set(CMAKE_SCC_FLAGS "${CMAKE_SCC_FLAGS} -Wno-calling-io-function")
-
-project(scout_test_scc)
-    
-  cmake_minimum_required(VERSION 2.8.9)
-
-  # Note: By default we pull in all the .sc source files in this
-  # directory for inclusion into the regression checks.  If you want do
-  # build more complex tests we suggest creating a subdirectory for the
-  # source.
-  #
-  file(GLOB SC_SRCS *.sc) 
-
-  # Add an executable and test entry for each source file...
-  foreach (test ${SC_SRCS})
-    get_filename_component(tname ${test} NAME_WE) 
-    if (NOT tname) 
-      message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
-    else (NOT tname)
-      add_executable(scc_${tname} ${test})
-      add_test("scc_${tname}" "${TEST_BINARY_DIR}/scc_${tname}")
-      message(" + added runtime regression test entry: scc_${tname}")
-    endif(NOT tname)
-  endforeach(test)
- 
-  add_subdirectory(driver) 
-  add_subdirectory(error) 
-  add_subdirectory(warning) 

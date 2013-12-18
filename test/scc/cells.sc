@@ -51,9 +51,7 @@
  *
  * ##### 
  */ 
-#include <sys/types.h>
-#include <unistd.h>
-#include <signal.h>
+#include <assert.h>
 #include <stdio.h>
 
 static const int A = 1;
@@ -76,11 +74,11 @@ int main(int argc, char** argv){
   forall cells c in myMesh {
     if ((a-A)*(a-A) > 1e-10) {
       printf("bad val %f \n", a);
-      kill(getpid(), SIGTERM);  
+      assert(false);
     }
     if ((b-B)*(b-B) > 1e-10) {
       printf("bad val %f\n", b);
-      kill(getpid(), SIGTERM);  
+      assert(false);
     }
   }
   

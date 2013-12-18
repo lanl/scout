@@ -48,39 +48,14 @@
  * ########################################################################### 
  * 
  * Notes
- * test for 2d mesh indexing ...
  *
  * ##### 
- */
-#include <assert.h>
-#include <stdio.h> 
+ */ 
 
-uniform mesh AMeshType{
-cells:
-  int a;
-  int b;
-};
-
-
-int main(int argc, char *argv[])
-{
-
-  AMeshType m[10];
-
-  forall cells c in m {
-    c.a = Position().x;
+void update(int* a){
+  
+  forall i in [0:100:1]{
+    a[i] = i * 2;
   }
-
-  forall cells c in m {
-    c.b = CShift(c.a,1);
-    printf("%d %d\n", c.a, c.b);
-  }
-
-  forall cells c in m {
-    if(c.b != (c.a+1)%10) {
-      printf("bad val %d\n", c.b);
-      assert(false);
-    }
-  }
-  return 0;
 }
+

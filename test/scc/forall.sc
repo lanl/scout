@@ -51,8 +51,7 @@
  *
  * ##### 
  */
-#include <unistd.h>
-#include <signal.h> 
+#include <assert.h> 
 #include <stdio.h>
 
 uniform mesh MyMesh {
@@ -77,7 +76,7 @@ int main(int argc, char** argv) {
   forall cells c in m {
     if ((a-b)*(a-b) > 1e-10) {
       printf("bad val %f\n", a);
-      kill(getpid(), SIGTERM);
+      assert(false);
     }
   }
   return 0;

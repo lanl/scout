@@ -48,39 +48,28 @@
  * ########################################################################### 
  * 
  * Notes
- * test for 2d mesh indexing ...
+ * test driver when using multiple files
+ * to build: scc main.sc update.sc 
  *
  * ##### 
- */
-#include <assert.h>
-#include <stdio.h> 
+ */ 
 
-uniform mesh AMeshType{
-cells:
-  int a;
-  int b;
-};
+void update(int *a);
 
+int main(int argc, char** argv){
+  
+  int a[100];
 
-int main(int argc, char *argv[])
-{
+  forall i in [0:100:1]{
+    a[i] = 0;
+  }  
 
-  AMeshType m[10];
+  update(a);
 
-  forall cells c in m {
-    c.a = Position().x;
+  for(size_t i = 0; i < 100; ++i){
+    if (a[i] != 2*i) return -1;
   }
-
-  forall cells c in m {
-    c.b = CShift(c.a,1);
-    printf("%d %d\n", c.a, c.b);
-  }
-
-  forall cells c in m {
-    if(c.b != (c.a+1)%10) {
-      printf("bad val %d\n", c.b);
-      assert(false);
-    }
-  }
+  
   return 0;
 }
+
