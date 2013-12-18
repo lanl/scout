@@ -2336,7 +2336,7 @@ public:
                  VarDecl* MVD,
                  const MeshType* MT,
                  SourceLocation ForallLocation,
-                 Stmt *Body);
+                 DeclStmt* Init, Stmt *Body);
 
   ForallMeshStmt(MeshElementType RefElement,
                  IdentifierInfo* RefVarInfo,
@@ -2344,7 +2344,8 @@ public:
                  VarDecl* MVD,
                  const MeshType* MT,
                  SourceLocation ForallLocation,
-                 Stmt *Body, Expr* Predicate,
+                 DeclStmt *Init, Stmt *Body,
+                 Expr* Predicate,
                  SourceLocation LeftParenLoc,
                  SourceLocation RightParenLoc);
 
@@ -2424,9 +2425,10 @@ class ForallArrayStmt : public ForallStmt {
  public:
 
    ForallArrayStmt(IdentifierInfo* InductionVarInfo[],
-       SourceLocation InductionVarLoc[],
-       Expr* Start[], Expr* End[], Expr* Stride[], size_t dims,
-       SourceLocation ForallLoc, Stmt* Body);
+       VarDecl* InductionVarDecl[],
+       Expr* Start[], Expr* End[], Expr* Stride[], size_t Dims,
+       SourceLocation ForallLoc,
+       DeclStmt* Init[], Stmt* Body);
 
    explicit ForallArrayStmt(EmptyShell Empty) :
    ForallStmt(ForallArrayStmtClass, Empty) { }

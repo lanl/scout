@@ -8096,9 +8096,9 @@ public:
                                  Stmt* Body);
 
   StmtResult ActOnForallArrayStmt(IdentifierInfo* InductionVarII[],
-            SourceLocation InductionVarLoc[],
-            Expr* Start[], Expr* End[], Expr* Stride[], size_t dims,
-            SourceLocation ForallLoc, VarDecl *IV[], DeclStmt *Init[], Stmt* Body);
+            VarDecl* InductionVarDecl[],
+            Expr* Start[], Expr* End[], Expr* Stride[], size_t Dims,
+            SourceLocation ForallLoc, DeclStmt *Init[], Stmt* Body);
 
   StmtResult ActOnRenderallMeshStmt(SourceLocation ForallLoc,
                                 RenderallMeshStmt::MeshElementType ElementType,
@@ -8137,7 +8137,7 @@ public:
   bool ScoutMeshCompareReferenceRelationship(SourceLocation &Loc,
       QualType &UnqualT1, QualType &UnqualT2, ReferenceCompareResult &Ref);
 
-  // support for unqualified variables within a forall / renderall loop
+  // support for unqualified variables within a forall / renderall mesh loop
   typedef llvm::SmallVector<VarDecl*, 3> ScoutLoopStack;
 
   ScoutLoopStack SCLStack;

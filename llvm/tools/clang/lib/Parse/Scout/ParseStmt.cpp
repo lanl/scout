@@ -761,16 +761,18 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
 
   ParseScope ForAllScope(this, ScopeFlags);
 
+  //DeclStmts to Init the Induction Vars.
   DeclStmt* Init[3] = {0,0,0};
-  VarDecl* IVDecl[3] = {0,0,0};
+  VarDecl* InductionVarDecl[3] = {0,0,0};
   for(size_t i = 0; i < dims; ++i){
     if(!InductionVarInfo[i]){
       break;
     }
 
+    // returns InductionVarDecl[i] and Init[i]
     if(!Actions.ActOnForallArrayInductionVariable(getCurScope(),
-        InductionVarInfo[i],
-        InductionVarLoc[i], &IVDecl[i], &Init[i])) {
+        InductionVarInfo[i], InductionVarLoc[i],
+        &InductionVarDecl[i], &Init[i])) {
       return StmtError();
     }
   }
@@ -784,9 +786,9 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
   Stmt* Body = BodyResult.get();
 
   StmtResult ForallArrayResult =
-  Actions.ActOnForallArrayStmt(InductionVarInfo, InductionVarLoc,
+  Actions.ActOnForallArrayStmt(InductionVarInfo, InductionVarDecl,
       Start, End, Stride, dims,
-      ForallLoc, IVDecl, Init, Body);
+      ForallLoc, Init, Body);
 
   return ForallArrayResult;
 }
