@@ -347,14 +347,14 @@ bool Sema::ActOnForallMeshRefVariable(Scope* S,
                                   IdentifierInfo* RefVarInfo,
                                   SourceLocation RefVarLoc,
                                   const MeshType *MT,
-                                  VarDecl* VD) {
+                                  VarDecl* VD,
+                                  DeclStmt **Init) {
 
   if(!CheckForallMesh(S, RefVarInfo, RefVarLoc, VD)) {
     return false;
   }
 
   ImplicitMeshParamDecl* D;
-
 
   if (MT->isUniform()) {
     D = ImplicitMeshParamDecl::Create(Context,
@@ -387,8 +387,11 @@ bool Sema::ActOnForallMeshRefVariable(Scope* S,
     return false;
   }
 
+  // build a DeclStmt for the ImplicitMeshParamDecl and return via parameter list
+  *Init = new (Context) DeclStmt(DeclGroupRef(D), RefVarLoc, RefVarLoc);
+
   PushOnScopeChains(D, S, true);
-  SCLStack.push_back(D);
+  SCLStack.push_back(D);  //SC_TODO: this seems like an ugly hack
 
   return true;
 }
@@ -401,7 +404,7 @@ StmtResult Sema::ActOnForallMeshStmt(SourceLocation ForallLoc,
                                      IdentifierInfo* MeshInfo,
                                      SourceLocation LParenLoc,
                                      Expr* Predicate, SourceLocation RParenLoc,
-                                     Stmt* Body) {
+                                     DeclStmt* Init, Stmt* Body) {
 
   SCLStack.pop_back();
 
@@ -411,6 +414,8 @@ StmtResult Sema::ActOnForallMeshStmt(SourceLocation ForallLoc,
                                                     ForallLoc,
                                                     Body, Predicate,
                                                     LParenLoc, RParenLoc);
+  // add the Implicit ref variable DeclStmt to the ForallMeshStmt
+  FS->setInit(Init);
 
   // check that LHS mesh field assignment
   // operators do not appear as subsequent RHS values, and
@@ -446,19 +451,31 @@ bool Sema::CheckForallArray(Scope* S,
 
 bool Sema::ActOnForallArrayInductionVariable(Scope* S,
                                              IdentifierInfo* InductionVarInfo,
-                                             SourceLocation InductionVarLoc) {
+                                             SourceLocation InductionVarLoc,
+                                             VarDecl **IV, DeclStmt **Init) {
 
   if(!CheckForallArray(S,InductionVarInfo, InductionVarLoc)) {
     return false;
   }
-
-
+#if 0
   ImplicitParamDecl* IV =
-  ImplicitParamDecl::Create(Context, CurContext,
-                            InductionVarLoc, InductionVarInfo,
-                            Context.IntTy);
+      ImplicitParamDecl::Create(Context, CurContext,
+          InductionVarLoc, InductionVarInfo,
+          Context.IntTy);
+#else
+  *IV = VarDecl::Create(Context, CurContext, InductionVarLoc, InductionVarLoc,
+      InductionVarInfo, Context.IntTy, 0, SC_None);
+#endif
 
-  PushOnScopeChains(IV, S, true);
+  // zero initialize the induction var
+  (*IV)->setInit(IntegerLiteral::Create(Context, llvm::APInt(32, 0),
+      Context.IntTy, InductionVarLoc));
+
+  // build a DeclStmt for the ImplicitParamDecl and return via parameter list
+  *Init = new (Context) DeclStmt(DeclGroupRef(*IV), InductionVarLoc, InductionVarLoc);
+
+  PushOnScopeChains(*IV, S, true);
+  SCLStack.push_back(*IV); //SC_TODO: this seems like an ugly hack
 
   return true;
 }
@@ -468,11 +485,18 @@ bool Sema::ActOnForallArrayInductionVariable(Scope* S,
 StmtResult Sema::ActOnForallArrayStmt(IdentifierInfo* InductionVarInfo[],
           SourceLocation InductionVarLoc[],
           Expr* Start[], Expr* End[], Expr* Stride[], size_t dims,
-          SourceLocation ForallLoc, Stmt* Body) {
+          SourceLocation ForallLoc, VarDecl *IV[], DeclStmt* Init[], Stmt* Body) {
+
 
   ForallArrayStmt* FS =
   new (Context) ForallArrayStmt(InductionVarInfo, InductionVarLoc,
       Start, End, Stride, dims, ForallLoc, Body);
+
+  // add the induction var DeclStmts to the ForallArrayStmt
+  for(size_t i=0; i < dims; i++) {
+    FS->setInit(i, Init[i]);
+    FS->setInductionVarDecl(i, IV[i]);
+  }
 
   return Owned(FS);
 }
@@ -1184,7 +1208,7 @@ namespace {
 } // end namespace
 
 
-// ----- ActOnForallRefVariable
+// ----- ActOnRenderallRefVariable
 // This call assumes the reference variable details have been parsed
 // (syntax checked) and issues, such as shadows, have been reported.
 // Given this, this member function takes steps to further determine

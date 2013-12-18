@@ -133,13 +133,13 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
 
   // +===== Scout ============================================================+
   case Stmt::ForallMeshStmtClass:
-    EmitForallStmt(cast<ForallMeshStmt>(*S));
+    EmitForallMeshStmt(cast<ForallMeshStmt>(*S));
     break;
   case Stmt::RenderallMeshStmtClass:
     assert(false && "need to implement renderall codegen");
     break;
   case Stmt::ForallArrayStmtClass:
-  // EmitForallArrayStmt(cast<ForallArrayStmt>(*S));
+    EmitForallArrayStmt(cast<ForallArrayStmt>(*S));
     break;
   //case Stmt::RenderAllStmtClass:
   //  EmitRenderAllStmt(cast<RenderAllStmt>(*S));

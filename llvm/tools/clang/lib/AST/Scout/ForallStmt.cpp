@@ -78,6 +78,9 @@ ForallStmt::ForallStmt(StmtClass StatementClass,
     ForallKWLoc(ForallLocation) {
 
   SubExprs[PREDICATE] = 0;
+  SubExprs[INIT]      = 0;
+  SubExprs[INITY]     = 0;
+  SubExprs[INITZ]     = 0;
   SubExprs[BODY]      = Body;
 }
 
@@ -96,6 +99,9 @@ ForallStmt::ForallStmt(StmtClass StatementClass,
     LParenLoc(LeftParenLoc), RParenLoc(RightParenLoc) {
 
   SubExprs[PREDICATE] = Predicate;
+  SubExprs[INIT]      = 0;
+  SubExprs[INITY]     = 0;
+  SubExprs[INITZ]     = 0;
   SubExprs[BODY]      = Body;
 }
 
@@ -174,18 +180,18 @@ ForallArrayStmt::ForallArrayStmt(IdentifierInfo* InductionVarInfo[],
              ForallLoc,
              Body) {
 
-
+  setDims(dims);
   for(size_t i = 0; i < 3; ++i) {
     if (i < dims) {
       setStart(i, Start[i]);
       setEnd(i, End[i]);
       setStride(i, Stride[i]);
-      setInductionVar(i, InductionVarInfo[i]);
+      setInductionVarInfo(i, InductionVarInfo[i]);
     } else {
       setStart(i, 0);
       setEnd(i, 0);
       setStride(i, 0);
-      setInductionVar(i, 0);
+      setInductionVarInfo(i, 0);
     }
   }
 

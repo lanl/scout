@@ -2102,7 +2102,7 @@ public:
 // +==== Scout ===============================================================+
 
 
-// ----- ForallStmt : base class for forall statements
+// -----  Stmt : base class for forall statements
 //
 // This class handles the basic functionality of all forall-style statements.
 // At this level we have the following information about the loop statement:
@@ -2120,8 +2120,15 @@ protected:
 
   enum {
     PREDICATE = 0, // Loop predicate.
-    BODY      = 1, // Body of forall.
-    END_EXPR  = 2
+    // the following are used to add implicit variables
+    // into the AST much like what is done in a ForStmt
+    // INIT is used for mesh case
+    // all 3 may be used in the array case.
+    INIT      = 1,
+    INITY     = 2,
+    INITZ     = 3,
+    BODY      = 4, // Body of forall.
+    END_EXPR  = 5
   };
 
   // Store the various components (collection of statements) of the
@@ -2141,8 +2148,23 @@ public:
 
   ForallStmt(StmtClass SC, EmptyShell Empty) : Stmt(SC, Empty) {
     SubExprs[PREDICATE] = 0;
+    SubExprs[INIT]      = 0;
+    SubExprs[INITY]     = 0;
+    SubExprs[INITZ]     = 0;
     SubExprs[BODY]      = 0;
   }
+
+  // ===--- Init ---===
+  //forall mesh case
+  const Stmt *getInit() const { return SubExprs[INIT]; }
+
+  void setInit(Stmt *S) { SubExprs[INIT] = S; }
+
+  //forall array case
+  const Stmt *getInit(size_t axis) const { return SubExprs[INIT+axis]; }
+
+  void setInit(size_t axis, Stmt *S) { SubExprs[INIT+axis] = S; }
+
 
   // ===--- Predicate ---===
   Expr* getPredicate() { return reinterpret_cast<Expr*>(SubExprs[PREDICATE]); }
@@ -2392,14 +2414,16 @@ public:
 
 // An array-based forall statement
 class ForallArrayStmt : public ForallStmt {
-  IdentifierInfo* InductionVarII[3];
+  IdentifierInfo* InductionVarInfo[3];
+  VarDecl* InductionVarDecl[3];
   Expr* Start[3];
   Expr* End[3];
   Expr* Stride[3];
+  size_t Dims;
 
  public:
 
-   ForallArrayStmt(IdentifierInfo* InductionVarII[],
+   ForallArrayStmt(IdentifierInfo* InductionVarInfo[],
        SourceLocation InductionVarLoc[],
        Expr* Start[], Expr* End[], Expr* Stride[], size_t dims,
        SourceLocation ForallLoc, Stmt* Body);
@@ -2408,24 +2432,53 @@ class ForallArrayStmt : public ForallStmt {
    ForallStmt(ForallArrayStmtClass, Empty) { }
 
 
-   const IdentifierInfo* getInductionVar(size_t axis) const {
-     return InductionVarII[axis];
+   const IdentifierInfo* getInductionVarInfo(size_t axis) const {
+     return InductionVarInfo[axis];
    }
 
-   void setInductionVar(size_t axis, IdentifierInfo *II) {
-     InductionVarII[axis] = II;
+   void setInductionVarInfo(size_t axis, IdentifierInfo *Info) {
+     InductionVarInfo[axis] = Info;
+   }
+
+
+   const VarDecl* getInductionVarDecl(size_t axis) const {
+     return InductionVarDecl[axis];
+   }
+
+   void setInductionVarDecl(size_t axis, VarDecl *VD) {
+     InductionVarDecl[axis] = VD;
+   }
+
+   void setDims(size_t dims) {
+     Dims = dims;
+   }
+
+   size_t getDims(void) const {
+     return Dims;
    }
 
    void setStart(int axis, Expr *E) {
      Start[axis] = E;
    }
 
+   const Expr *getStart(int axis) const {
+     return Start[axis];
+   }
+
    void setEnd(int axis, Expr *E) {
      End[axis] = E;
     }
 
+   const Expr *getEnd(int axis) const {
+     return End[axis];
+   }
+
    void setStride(int axis, Expr *E) {
      Stride[axis] = E;
+   }
+
+   const Expr *getStride(int axis) const {
+    return Stride[axis];
    }
 
    static bool classof(const Stmt *T) {

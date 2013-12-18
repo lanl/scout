@@ -1961,17 +1961,19 @@ public:
                         llvm::SmallVector<llvm::Value*, 3> &MeshDimensions,
                         llvm::Value* MeshBaseAddr);
 
-  void EmitForallStmt(const ForallMeshStmt &S);
-  void EmitForallLoop(const ForallMeshStmt &S, unsigned r);
-  void EmitForallBody(const ForallMeshStmt &S);
+  void EmitForallBody(const ForallStmt &S);
+  void EmitForallMeshStmt(const ForallMeshStmt &S);
+  void EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r);
+
   void EmitForAllStmtWrapper(const ForallMeshStmt &S);
 
   bool hasCalledFn(llvm::Function *Fn, llvm::StringRef name);
   bool isCalledFn(llvm::Instruction *Instn, llvm::StringRef name);
 
   llvm::Value *TranslateExprToValue(const Expr *E);
-  void EmitForallMeshStmt(const ForallMeshStmt &S);
-  //void EmitForAllArrayStmt(const ForAllArrayStmt &S);
+  void EmitForallArrayStmt(const ForallArrayStmt &S);
+  void EmitForallArrayLoop(const ForallArrayStmt &S,  unsigned r);
+
   //void EmitRenderAllStmt(const RenderAllStmt &S);
   //void EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S);
 
