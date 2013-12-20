@@ -1097,6 +1097,9 @@ public:
 
   // +===== Scout ============================================================+
   QualType getUniformMeshType(const UniformMeshDecl *Decl) const;
+  QualType getUniformMeshType(const UniformMeshDecl *Decl,
+                              const MeshType::MeshDimensions &dims) const;
+  
   QualType getStructuredMeshType(const StructuredMeshDecl *Decl) const;
   QualType getRectilinearMeshType(const RectilinearMeshDecl *Decl) const;
   QualType getUnstructuredMeshType(const UnstructuredMeshDecl *Decl) const;

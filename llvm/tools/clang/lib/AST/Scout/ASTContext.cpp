@@ -133,6 +133,28 @@ ASTContext::getUniformMeshType(const UniformMeshDecl *Decl) const {
 }
 
 QualType
+ASTContext::getUniformMeshType(const UniformMeshDecl *Decl,
+                               const MeshType::MeshDimensions &dims) const {
+  assert(Decl != 0);
+
+  // --- OVERHAUL --- 
+  // If we have a previous type stored with the decl we can 
+  // only reuse it if the dimensions match... 
+  if (Decl->TypeForDecl) {
+    return QualType(Decl->TypeForDecl, 0);
+  }
+
+  UniformMeshType *newType;
+  newType = new (*this, TypeAlignment) UniformMeshType(Decl);
+  newType->setDimensions(dims);    
+  Decl->TypeForDecl = newType;
+  Types.push_back(newType);
+  return QualType(newType, 0);
+}
+
+
+
+QualType
 ASTContext::getStructuredMeshType(const StructuredMeshDecl *Decl) const {
   assert(Decl != 0);
 

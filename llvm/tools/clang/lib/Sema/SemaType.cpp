@@ -1687,15 +1687,19 @@ QualType Sema::BuildArrayType(QualType T, ArrayType::ArraySizeModifier ASM,
 // +==== Scout ===============================================================+
 
 QualType Sema::BuildUniformMeshType(QualType T,
-                              const MeshType::MeshDimensions &dims,
-                              SourceRange Brackets, DeclarationName Entity) {
-  const UniformMeshType* mt =
-        dyn_cast<UniformMeshType>(T.getCanonicalType().getTypePtr());
-  assert(mt);
-  UniformMeshType* mdt = const_cast<UniformMeshType*>(mt);
-  mdt->setDimensions(dims);
-  return QualType(mdt,0);
+                                    const MeshType::MeshDimensions &dims,
+                                    SourceRange Brackets,
+                                    DeclarationName Entity) {
+  assert(dims.size() > 0);
+  const UniformMeshType* cUMT;
+  cUMT = dyn_cast<UniformMeshType>(T.getCanonicalType().getTypePtr());
+  if (cUMT) {
+    UniformMeshType *UMT;
+    return Context.getUniformMeshType(cUMT->getDecl(), dims);
+  }
+  return QualType();  
 }
+
 
 QualType Sema::BuildRectilinearMeshType(QualType T,
                                const MeshType::MeshDimensions &dims,
@@ -2836,7 +2840,9 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
 
     // +===== Scout ==========================================================+
     case DeclaratorChunk::UniformMesh: {
+      llvm::errs() << "building uniform mesh type based on declchunk.\n";
       MeshType::MeshDimensions dims = DeclType.Unimsh.Dims();
+      llvm::errs() << "\tdims rank = " << dims.size() << "\n";
       T = S.BuildUniformMeshType(T, dims, SourceRange(DeclType.Loc,
                                  DeclType.EndLoc), Name);
       break;
