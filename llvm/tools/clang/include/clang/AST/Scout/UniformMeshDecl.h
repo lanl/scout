@@ -62,58 +62,56 @@ namespace clang {
 
 // ----- UniformMeshDecl
 //
-class UniformMeshDecl : public MeshDecl {
+  class UniformMeshDecl : public MeshDecl {
 
-  friend void MeshDecl::startDefinition();
+    friend void MeshDecl::startDefinition();
 
-protected:
-  UniformMeshDecl(DeclContext* DC,
-                  SourceLocation L,
-                  SourceLocation StartL,
-                  IdentifierInfo* Id,
-                  UniformMeshDecl* PrevDecl);
+   protected:
+    UniformMeshDecl(DeclContext* DC,
+                    SourceLocation L,
+                    SourceLocation StartL,
+                    IdentifierInfo* Id,
+                    UniformMeshDecl* PrevDecl);
 
-public:
-  static UniformMeshDecl *Create(const ASTContext &C,
-                                 DeclContext *DC,
-                                 SourceLocation StartLoc,
-                                 SourceLocation IdLoc,
-                                 IdentifierInfo *Id,
-                                 UniformMeshDecl* PrevDecl = 0);
+   public:
+    static UniformMeshDecl *Create(const ASTContext &C,
+                                   DeclContext *DC,
+                                   SourceLocation StartLoc,
+                                   SourceLocation IdLoc,
+                                   IdentifierInfo *Id,
+                                   UniformMeshDecl* PrevDecl = 0);
 
-  static UniformMeshDecl *CreateDeserialized(const ASTContext &C,
-                                             unsigned ID);
+    static UniformMeshDecl *CreateDeserialized(const ASTContext &C,
+                                               unsigned ID);
 
-  const UniformMeshDecl *getPreviousDecl() const {
-    return cast_or_null<UniformMeshDecl>(MeshDecl::getPreviousDecl());
-  }
+    const UniformMeshDecl *getPreviousDecl() const {
+      return cast_or_null<UniformMeshDecl>(MeshDecl::getPreviousDecl());
+    }
 
-  UniformMeshDecl *getPreviousDecl() {
-    return cast_or_null<UniformMeshDecl>(MeshDecl::getPreviousDecl());
-  }
+    UniformMeshDecl *getPreviousDecl() {
+      return cast_or_null<UniformMeshDecl>(MeshDecl::getPreviousDecl());
+    }
 
-  const UniformMeshDecl *getMostRecentDecl() const {
-    return cast<UniformMeshDecl>(MeshDecl::getMostRecentDecl());
-  }
+    const UniformMeshDecl *getMostRecentDecl() const {
+      return cast<UniformMeshDecl>(MeshDecl::getMostRecentDecl());
+    }
 
-  UniformMeshDecl *getMostRecentDecl() {
-    return cast<UniformMeshDecl>(MeshDecl::getMostRecentDecl());
-  }
+    UniformMeshDecl *getMostRecentDecl() {
+      return cast<UniformMeshDecl>(MeshDecl::getMostRecentDecl());
+    }
 
-  void completeDefinition() {
-    assert(!isCompleteDefinition() && "Cannot redefine uniform mesh!");
-    MeshDecl::completeDefinition();
-  }
-
-
-  //void addMember(Decl *D);
-
-  static bool classof(const Decl* D) { return classofKind(D->getKind()); }
-  static bool classof(const UniformMeshDecl* D) { return true; }
-  static bool classofKind(Kind K) { return K == UniformMesh; }
-};
+    void completeDefinition() {
+      assert(!isCompleteDefinition() && "Cannot redefine uniform mesh!");
+      MeshDecl::completeDefinition();
+    }
 
 
+    //void addMember(Decl *D);
+
+    static bool classof(const Decl* D) { return classofKind(D->getKind()); }
+    static bool classof(const UniformMeshDecl* D) { return true; }
+    static bool classofKind(Kind K) { return K == UniformMesh; }
+  };
 
 } // end namespace clang
 
