@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyright (c) 2013, Los Alamos National Security, LLC.
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -48,25 +48,44 @@
  * ########################################################################### 
  * 
  * Notes
- * See Builtins.def for documentation of BUILTIN macro
+ *
  * ##### 
- */ 
+ */
+#include <assert.h> 
+#include <stdio.h>
 
-BUILTIN(Position, "E4i", "n")
-BUILTIN(PositionX, "i", "n")
-BUILTIN(PositionY, "i", "n")
-BUILTIN(PositionZ, "i", "n")
-BUILTIN(PositionW, "i", "n")
+uniform mesh MyMesh {
+ cells:
+  float a;
+  float b;
+};
 
-BUILTIN(rank, "i", "n")
-BUILTIN(width, "i", "n")
-BUILTIN(height, "i", "n")
-BUILTIN(depth, "i", "n")
+int main(int argc, char** argv) {
 
-// "template like" CShift that works for all types
-// "t" is the magic to make this work
-BUILTIN(CShift, "vvi.", "t") // generic 
-BUILTIN(CShiftI, "iii.", "n") // just for int
-BUILTIN(CShiftF, "ffi.", "n") // just for float
-BUILTIN(CShiftD, "ddi.", "n") // just for double
+  MyMesh m1[4];
+  MyMesh m2[2,4];
+  MyMesh m3[2,4,8];  
+  
+  forall cells c in m1 {
+    assert(rank() == 1);
+    a = width();
+    b = height();
+    printf("m2. rank = %d, a = %f, b = %f\n", rank(), a, b);    
+  }
 
+  forall cells c in m2 {
+    assert(rank() == 2);
+    a = width();
+    b = height();
+    printf("m2. rank = %d, a = %f, b = %f\n", rank(), a, b);    
+  }
+
+  forall cells c in m3 {
+    assert(rank() == 3);
+    a = width();
+    b = height();
+    printf("m2. rank = %d, a = %f, b = %f\n", rank(), a, b);
+  }  
+  
+  return 0;
+}

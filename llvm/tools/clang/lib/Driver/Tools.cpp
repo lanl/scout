@@ -5001,10 +5001,6 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   if (Args.hasArg(options::OPT_fnested_functions))
     CmdArgs.push_back("-allow_stack_execute");
 
-  if (getToolChain().getDriver().CCCIsScoutC()) {
-    llvm::errs() << "we are in scout  mode...\n";
-  }
-
   if (!Args.hasArg(options::OPT_nostdlib) &&
       !Args.hasArg(options::OPT_nodefaultlibs)) {
     if (getToolChain().getDriver().CCCIsCXX() ||

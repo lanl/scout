@@ -155,7 +155,7 @@ llvm::Value *CodeGenFunction::GetMeshBaseAddr(const ForallMeshStmt &S) {
 void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
-  unsigned int rank = S.getMeshType()->dimensions().size();
+  unsigned int rank = S.getMeshType()->rankOf();
 
   LoopBounds.clear();
   InductionVar.clear();
