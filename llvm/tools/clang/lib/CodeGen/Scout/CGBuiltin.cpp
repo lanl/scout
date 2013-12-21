@@ -58,6 +58,7 @@
 #include "clang/AST/Decl.h"
 #include "clang/Basic/TargetBuiltins.h"
 #include "clang/Basic/TargetInfo.h"
+#include "clang/Sema/SemaDiagnostic.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Intrinsics.h"
  #include <stdio.h>
@@ -70,7 +71,9 @@ static char IRNameStr[160];
 
 // deal w/ scout builtins
 bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
-                                        unsigned BuiltinID, const CallExpr *E , RValue *RV) {
+                                           unsigned BuiltinID,
+                                           const CallExpr *E ,
+                                           RValue *RV) {
 
   switch (BuiltinID) {
 
@@ -114,24 +117,42 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     return true;
   }
 
-  case Builtin::BIWidth: {
+  case Builtin::BIwidth: {
     if (LoopBounds[0]) *RV = RValue::get(Builder.CreateLoad(LoopBounds[0], "width"));
     else *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
     return true;
   }
 
-  case Builtin::BIHeight: {
+  case Builtin::BIheight: {
     if (LoopBounds[1]) *RV = RValue::get(Builder.CreateLoad(LoopBounds[1], "height"));
-    else *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+    else {
+      CGM.getDiags().Report(E->getExprLoc(), diag::warn_height_mesh_rank_mismatch);
+      *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+    }
     return true;
   }
 
-  case Builtin::BIDepth: {
+  case Builtin::BIdepth: {
     if (LoopBounds[2]) *RV = RValue::get(Builder.CreateLoad(LoopBounds[2], "depth"));
-    else *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+    else {
+      CGM.getDiags().Report(E->getExprLoc(), diag::warn_depth_mesh_rank_mismatch);      
+      *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+    }
     return true;
   }
 
+  case Builtin::BIrank: {
+    if (LoopBounds[2]) 
+      *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 3));
+    else if (LoopBounds[1])
+      *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 2));
+    else if (LoopBounds[0]) 
+      *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 1));
+    else
+      assert(false && "no loop bounds! are we outside of looping construct?");
+    return true;
+  }
+    
   case Builtin::BICShift: //Work in Progress
   case Builtin::BICShiftI:
   case Builtin::BICShiftF:

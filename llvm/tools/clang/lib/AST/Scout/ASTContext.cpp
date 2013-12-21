@@ -118,11 +118,10 @@ ASTContext::getUnstructuredMeshDeclType(const UnstructuredMeshDecl *Decl) const 
 
 // ===== Mesh Types ===========================================================
 
-QualType
-ASTContext::getUniformMeshType(const UniformMeshDecl *Decl) const {
+QualType ASTContext::getUniformMeshType(const UniformMeshDecl *Decl) const {
   assert(Decl != 0);
 
-  if (Decl->TypeForDecl)
+  if (Decl->TypeForDecl) 
     return QualType(Decl->TypeForDecl, 0);
 
   UniformMeshType *newType;
@@ -132,16 +131,23 @@ ASTContext::getUniformMeshType(const UniformMeshDecl *Decl) const {
   return QualType(newType, 0);
 }
 
-QualType
-ASTContext::getUniformMeshType(const UniformMeshDecl *Decl,
-                               const MeshType::MeshDimensions &dims) const {
+QualType ASTContext::getUniformMeshType(const UniformMeshDecl *Decl,
+                        const MeshType::MeshDimensions &dims) const {
   assert(Decl != 0);
 
-  // --- OVERHAUL --- 
-  // If we have a previous type stored with the decl we can 
-  // only reuse it if the dimensions match... 
   if (Decl->TypeForDecl) {
-    return QualType(Decl->TypeForDecl, 0);
+    // There is a previous type stored -- however, we're not sure
+    // that it represents an exact type match until we check the
+    // dimensions of the mesh (note we are checking for duplicates
+    // here but don't go all the way down to checking equivalence
+    // of the expressions).
+    //
+    // SC_TODO - is it worth the effort of checking expressions for
+    // equivalence here?
+    const UniformMeshType *UMT = dyn_cast<UniformMeshType>(Decl->TypeForDecl);
+    if (UMT->dimensions() == dims) {
+      return QualType(Decl->TypeForDecl, 0);
+    }
   }
 
   UniformMeshType *newType;
@@ -151,8 +157,6 @@ ASTContext::getUniformMeshType(const UniformMeshDecl *Decl,
   Types.push_back(newType);
   return QualType(newType, 0);
 }
-
-
 
 QualType
 ASTContext::getStructuredMeshType(const StructuredMeshDecl *Decl) const {

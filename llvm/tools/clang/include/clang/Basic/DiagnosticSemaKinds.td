@@ -6828,6 +6828,11 @@ def err_not_camera_variable_renderall : Error<
     "not a camera variable %0 while parsing renderall statement">;
 def err_unknown_camera_variable_renderall : Error<
     "unknown camera variable %0 while parsing renderall statement">;
+
+def warn_height_mesh_rank_mismatch : Warning<
+    "rank mismatch -- height() called when rank < 2, will return zero...">;
+def warn_depth_mesh_rank_mismatch : Warning<
+    "rank mismatch -- height() called when rank < 3, will return zero...">;
 } // end Scout issue category
 // +=========================================================================+
 

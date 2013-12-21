@@ -267,7 +267,6 @@ void DarwinClang::AddLinkRuntimeLibArgs(const ArgList &Args,
 
   // +===== Scout ============================================================+  
   if (getDriver().CCCIsScoutC()) {
-    llvm::errs() << "adding runtime & stdlib args.\n";
     AddScoutLibArgs(Args, CmdArgs);    
   }
   // +========================================================================+    

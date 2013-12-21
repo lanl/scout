@@ -1694,7 +1694,6 @@ QualType Sema::BuildUniformMeshType(QualType T,
   const UniformMeshType* cUMT;
   cUMT = dyn_cast<UniformMeshType>(T.getCanonicalType().getTypePtr());
   if (cUMT) {
-    UniformMeshType *UMT;
     return Context.getUniformMeshType(cUMT->getDecl(), dims);
   }
   return QualType();  
@@ -2840,9 +2839,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
 
     // +===== Scout ==========================================================+
     case DeclaratorChunk::UniformMesh: {
-      llvm::errs() << "building uniform mesh type based on declchunk.\n";
       MeshType::MeshDimensions dims = DeclType.Unimsh.Dims();
-      llvm::errs() << "\tdims rank = " << dims.size() << "\n";
       T = S.BuildUniformMeshType(T, dims, SourceRange(DeclType.Loc,
                                  DeclType.EndLoc), Name);
       break;
