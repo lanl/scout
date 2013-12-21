@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyright (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2013, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -51,35 +51,31 @@
  *
  * ##### 
  */
+#include <assert.h> 
 #include <stdio.h>
-#include <stdlib.h>
 
 uniform mesh MyMesh {
- cells:
-  float a;
-  float b;
+ cells: float a, b;
 };
 
 int main(int argc, char** argv) {
 
-  MyMesh m1[4];
-  MyMesh m2[2,4];
-  MyMesh m3[2,4,8];  
+  MyMesh m[4*2, 3*2];
   
-  forall cells c in m1 {
-    if (rank() != 1)
-      abort();
+  forall cells c in m {
+    a = 0;
+    b = 1;
   }
 
-  forall cells c in m2 {
-    if (rank() != 2) 
-      abort();
+  forall cells c in m {
+    a += b;
   }
 
-  forall cells c in m3 {
-    if (rank() != 3)
-      abort();
-  }  
-  
+  forall cells c in m {
+    if ((a-b)*(a-b) > 1e-10) {
+      printf("bad val %f\n", a);
+      assert(false);
+    }
+  }
   return 0;
 }

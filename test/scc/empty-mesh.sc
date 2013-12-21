@@ -51,35 +51,20 @@
  *
  * ##### 
  */
+#include <assert.h> 
 #include <stdio.h>
-#include <stdlib.h>
 
 uniform mesh MyMesh {
- cells:
-  float a;
-  float b;
 };
 
 int main(int argc, char** argv) {
 
-  MyMesh m1[4];
-  MyMesh m2[2,4];
-  MyMesh m3[2,4,8];  
-  
-  forall cells c in m1 {
-    if (rank() != 1)
-      abort();
+  MyMesh m[512];
+
+  int race = 0;
+  forall cells c in m {
+    race++;
   }
 
-  forall cells c in m2 {
-    if (rank() != 2) 
-      abort();
-  }
-
-  forall cells c in m3 {
-    if (rank() != 3)
-      abort();
-  }  
-  
   return 0;
 }

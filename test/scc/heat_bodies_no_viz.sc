@@ -89,7 +89,7 @@ int main(int argc, char *argv[]) {
     h_next = 0.0f;
     mask = 1.0;
 
-    if (Position().y == 0 || Position().y == Width()-1) {
+    if (Position().y == 0 || Position().y == width()-1) {
       h = MAX_TEMP;
       h_next = MAX_TEMP;
       mask = 0.0;

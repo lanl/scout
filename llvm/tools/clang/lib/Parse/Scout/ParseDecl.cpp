@@ -124,22 +124,16 @@ void Parser::ParseMeshVarBracketDeclarator(Declarator &D) {
     ExprResult NumElements;
 
     for(;;) {
-      if (Tok.is(tok::numeric_constant)) {
-        dims.push_back(Actions.ActOnNumericConstant(Tok).get());
-        ConsumeToken();
-      } else if (Tok.isNot(tok::r_square)) {
-        NumElements = ParseConstantExpression(); // consumes it too
-
-        // If there was an error parsing the assignment-expression, recover.
-        // Maybe should print a diagnostic, tho.
-        if (NumElements.isInvalid()) {
-          // If the expression was invalid, skip it.
-          SkipUntil(tok::r_square);
-          StmtError();
-        }
-        dims.push_back(NumElements.get());
+      NumElements = ParseConstantExpression(); // consumes it too
+      // If there was an error parsing the assignment-expression, recover.
+      // Maybe should print a diagnostic, tho.
+      if (NumElements.isInvalid()) {
+        // If the expression was invalid, skip it.
+        SkipUntil(tok::r_square);
+        StmtError();
       }
-
+      dims.push_back(NumElements.get());
+      
       if (Tok.is(tok::r_square)) {
         break;
       }

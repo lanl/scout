@@ -84,9 +84,9 @@ int main(int argc, char** argv){
     py = PositionY();
     pz = PositionZ();
     pw = PositionW();
-    w = Width();
-    h = Height();
-    d = Depth();    
+    w = width();
+    h = height();
+    d = depth();    
   }
 
   forall cells c in m {
@@ -95,12 +95,12 @@ int main(int argc, char** argv){
     assert(py == Position().y && "bad PositionY");
     assert(pz == Position().z && "bad PositionZ");
     assert(pw == Position().w && "bad PositionW");
-    assert(w == W && "bad Width");
-    assert(h == H && "bad Height");
-    assert(d == D && "bad Depth");
-    assert(w == Width() && "bad Width");
-    assert(h == Height() && "bad Height");
-    assert(d == Depth() && "bad Depth");
+    assert(w == W && "bad width");
+    assert(h == H && "bad height");
+    assert(d == D && "bad depth");
+    assert(w == width() && "bad eidth");
+    assert(h == height() && "bad height");
+    assert(d == depth() && "bad depth");
   }
 
   forall cells c in n {
@@ -110,9 +110,9 @@ int main(int argc, char** argv){
     py = PositionY();
     pz = PositionZ();
     pw = PositionW();
-    w = Width();
-    h = Height();
-    d = Depth();
+    w = width();
+    h = height();
+    d = depth();
   }
 
   forall cells c in n {
@@ -124,12 +124,12 @@ int main(int argc, char** argv){
     assert(PositionZ() == 0 && "bad PositionZ");
     assert(pz == 0 && "bad PositionZ");
     assert(pw == Position().w && "bad PositionW");
-    assert(w == W && "bad Width");
-    assert(h == H && "bad Height");
-    assert(d == 0 && "bad Depth");
-    assert(w == Width() && "bad Width");
-    assert(h == Height() && "bad Height");
-    assert(d == Depth() && "bad Depth");
+    assert(w == W && "bad width");
+    assert(h == H && "bad height");
+    assert(d == 0 && "bad depth");
+    assert(w == width() && "bad width");
+    assert(h == height() && "bad height");
+    assert(d == depth() && "bad depth");
   }
 
   return 0;
