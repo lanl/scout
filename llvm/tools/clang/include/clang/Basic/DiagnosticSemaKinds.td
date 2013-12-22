@@ -6833,6 +6833,8 @@ def warn_height_mesh_rank_mismatch : Warning<
     "rank mismatch -- height() called when rank < 2, will return zero...">;
 def warn_depth_mesh_rank_mismatch : Warning<
     "rank mismatch -- height() called when rank < 3, will return zero...">;
+def warn_mesh_intrinsic_outside_scope : Warning<
+    "builtin mesh intrinsics called outside of mesh construct.">;
 } // end Scout issue category
 // +=========================================================================+
 

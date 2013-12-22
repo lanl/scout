@@ -119,14 +119,21 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
 
   case Builtin::BIwidth: {
     if (LoopBounds[0]) *RV = RValue::get(Builder.CreateLoad(LoopBounds[0], "width"));
-    else *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+    else {
+      CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);    
+      *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+    }
+    
     return true;
   }
 
   case Builtin::BIheight: {
     if (LoopBounds[1]) *RV = RValue::get(Builder.CreateLoad(LoopBounds[1], "height"));
     else {
-      CGM.getDiags().Report(E->getExprLoc(), diag::warn_height_mesh_rank_mismatch);
+      if (LoopBounds[0]) 
+        CGM.getDiags().Report(E->getExprLoc(), diag::warn_height_mesh_rank_mismatch);
+      else
+        CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
       *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
     }
     return true;
@@ -135,7 +142,10 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
   case Builtin::BIdepth: {
     if (LoopBounds[2]) *RV = RValue::get(Builder.CreateLoad(LoopBounds[2], "depth"));
     else {
-      CGM.getDiags().Report(E->getExprLoc(), diag::warn_depth_mesh_rank_mismatch);      
+      if (LoopBounds[0]) 
+        CGM.getDiags().Report(E->getExprLoc(), diag::warn_depth_mesh_rank_mismatch);
+      else
+        CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);        
       *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
     }
     return true;

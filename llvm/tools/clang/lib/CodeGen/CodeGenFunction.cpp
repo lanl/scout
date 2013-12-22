@@ -63,6 +63,16 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
     FMF.setNoInfs();
   }
   Builder.SetFastMathFlags(FMF);
+
+  // +===== Scout =========================================+
+  for(unsigned i = 0; i < 3; ++i) {
+    // We use LoopBounds[0] == 0 as a test for being in a
+    // valid mesh/forall state where instrinsics are safe
+    // to call -- may not be a rock solid plan but working
+    // for now... 
+    LoopBounds.push_back(0);
+  }
+  // +=====================================================+ 
 }
 
 CodeGenFunction::~CodeGenFunction() {

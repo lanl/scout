@@ -290,7 +290,6 @@ public:
   // mesh dimension sizes
   llvm::SmallVector< llvm::Value *, 3 > LoopBounds;
 
-
   inline llvm::Value *getLinearIdx() {
     return Builder.CreateLoad(InductionVar[3], "forall.linearidx");
   }
