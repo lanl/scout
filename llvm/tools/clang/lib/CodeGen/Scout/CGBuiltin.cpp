@@ -123,7 +123,6 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
       CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);    
       *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
     }
-    
     return true;
   }
 
