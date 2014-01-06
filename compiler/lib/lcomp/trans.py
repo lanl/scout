@@ -21,12 +21,18 @@
 ### This pass transforms the AST into C++ source code.
 ###
 
+# Backport of singledispatch to Python 2.x.
+try:
+    from functools import singledispatch
+except ImportError:
+    from singledispatch import singledispatch
+
 # Work around for OrderedDict missing in Python 2.6.
 try:
     from collections import OrderedDict
 except ImportError:
     from ordereddict import OrderedDict
-import copy
+import copy, os
 from cStringIO import StringIO
 from . import ast, parse, region_analysis, symbol_table, types
 
@@ -39,6 +45,16 @@ reduction_op_table = {
     '^': {'name': 'bitwise_xor',  'identity': '0',  'fold': '^'},
     '|': {'name': 'bitwise_or',   'identity': '0',  'fold': '|'},
 }
+
+def mangle_header_def(filename):
+    return '_%s' % filename.upper().replace('.', '_')
+
+def mangle_init_function(filename):
+    return 'init_%s' % os.path.splitext(filename)[0].lower().replace('.', '_')
+
+def mangle_field_enum(field_path):
+    return ('field_%s' % '_'.join(field_path)).upper()
+
 def mangle_reduction_op(op, element_type, cx):
     assert op in reduction_op_table
     op_name = reduction_op_table[op]['name']
@@ -57,10 +73,10 @@ def mangle_task_name(name):
     return 'task_%s' % name
 
 def mangle_task_enum(name):
-    return mangle_task_name(name).upper()
+    return name.upper()
 
 def mangle_task_params_struct(name):
-    return '%s_params' % mangle_task_name(name)
+    return 'params_%s' % name
 
 def mangle_task_param(name):
     return 'param_%s' % name
@@ -114,10 +130,10 @@ def mangle_unpack(node, cx):
 
 def mangle(node, cx):
     if isinstance(node, ast.Struct):
-        return mangle_struct_name(node.name)
+        return mangle_struct_name(node.name.name)
     if isinstance(node, ast.Function):
-        return mangle_task_name(node.name)
-    if isinstance(node, ast.Param):
+        return mangle_task_name(node.name.name)
+    if isinstance(node, ast.FunctionParam):
         return mangle_task_param(node.name)
     if isinstance(node, ast.StatementFor):
         return mangle_for(node, cx)
@@ -138,6 +154,8 @@ def mangle(node, cx):
     raise Exception('Unable to mangle node %s' % node)
 
 def mangle_type(t, cx):
+    if types.is_pointer(t) and len(t.regions) > 1:
+        return mangle_anonymous_struct_name(t, cx)
     if types.is_struct(t):
         if t.name is None:
             return mangle_anonymous_struct_name(t, cx)
@@ -195,7 +213,7 @@ class Function(Value):
         Value.__init__(self, node, expr, type)
         self.params = params
 
-class Builtin(Value):
+class ForeignFunction(Value):
     def __init__(self, expr, type):
         Value.__init__(self, None, expr, type)
 
@@ -239,33 +257,36 @@ class StackReference(Value):
         value = self.expr.value
         for field_name in self.field_path:
             value = '(%s.%s)' % (value, field_name)
-        value = '(%s = %s)' % (value, update_expr.value)
-        return Expr(value, self.expr.actions + update_expr.actions)
+        actions = ['%s = %s;' % (value, update_expr.value)]
+        return Expr(value, self.expr.actions + update_expr.actions + actions)
     def reduce(self, op, update_value, cx):
         update_expr = update_value.read(cx)
         value = self.expr.value
         for field_name in self.field_path:
             value = '(%s.%s)' % (value, field_name)
-        value = '(%s %s= %s)' % (value, op, update_expr.value)
-        return Expr(value, self.expr.actions + update_expr.actions)
+        actions = ['%s %s= %s;' % (value, op, update_expr.value)]
+        return Expr(value, self.expr.actions + update_expr.actions + actions)
     def get_field(self, node, field_name):
         type = self.type.get_field(field_name)
         return StackReference(node, self.expr, type, self.field_path + (field_name,))
 
 class Region(Value):
-    def __init__(self, node, expr, type, region_root, region_requirement,
-                 physical_region, ispace, fspace, field_map, field_type_map,
-                 allocator, accessor_map):
+    def __init__(self, node, expr, type, region_root, physical_regions,
+                 physical_region_accessors, physical_region_privileges,
+                 ispace, fspace, field_map, field_type_map,
+                 allocator, accessor_map, privilege_map):
         Value.__init__(self, node, expr, type)
         self.region_root = region_root
-        self.region_requirement = region_requirement
-        self.physical_region = physical_region
+        self.physical_regions = physical_regions
+        self.physical_region_accessors = physical_region_accessors
+        self.physical_region_privileges = physical_region_privileges
         self.ispace = ispace
         self.fspace = fspace
         self.field_map = field_map
         self.field_type_map = field_type_map
         self.allocator = allocator
         self.accessor_map = accessor_map
+        self.privilege_map = privilege_map
 
 class Partition(Value):
     def __init__(self, node, expr, type, region):
@@ -282,33 +303,49 @@ class FieldID:
 def is_fieldid(t):
     return isinstance(t, FieldID)
 
+# For pointer types that have been fissioned into a pointer plus
+# bitfield struct, RawPointer represents the type of the inner
+# pointer.
+class RawPointer:
+    def __init__(self, pointer_type):
+        self.pointer_type = pointer_type
+    def key(self):
+        return 'raw_pointer'
+
+def is_raw_pointer(t):
+    return isinstance(t, RawPointer)
+
 class Context:
-    def __init__(self, type_set, type_map, constraints, region_usage):
-        self.env = None
-        self.alpha_map = None
-        self.regions = None
-        self.mapped_regions = None
-        self.ll_type_map = None
-        self.ll_field_map = None
-        self.reduction_ops = None
+    def __init__(self, opts, type_set, type_map, constraints, foreign_types, region_usage, leaf_tasks):
+        self.opts = opts
         self.type_set = type_set
         self.type_map = type_map
         self.constraints = constraints
+        self.foreign_types = foreign_types
         self.region_usage = region_usage
-    def increase_indent(self):
-        cx = copy.copy(self)
-        return cx
+        self.leaf_tasks = leaf_tasks
+        self.nodes = None
+        self.env = None
+        self.alpha_map = None
+        self.regions = None
+        self.created_regions = None
+        self.created_ispaces = None
+        self.ll_type_map = None
+        self.ll_field_map = None
+        self.reduction_ops = None
     def new_block_scope(self):
         cx = copy.copy(self)
         cx.env = cx.env.new_scope()
         cx.regions = copy.copy(cx.regions)
-        cx.mapped_regions = cx.mapped_regions + (set(),)
+        cx.created_regions = cx.created_regions + ([],)
+        cx.created_ispaces = cx.created_ispaces + ([],)
         return cx
     def new_function_scope(self):
         cx = copy.copy(self)
         cx.env = cx.env.new_scope()
         cx.regions = {}
-        cx.mapped_regions = (set(),)
+        cx.created_regions = ([],)
+        cx.created_ispaces = ([],)
         return cx
     def new_struct_scope(self):
         cx = copy.copy(self)
@@ -316,6 +353,7 @@ class Context:
         return cx
     def new_global_scope(self):
         cx = copy.copy(self)
+        cx.nodes = []
         cx.env = symbol_table.SymbolTable()
         cx.alpha_map = {}
         cx.ll_type_map = {}
@@ -323,57 +361,239 @@ class Context:
         cx.reduction_ops = {}
         return cx
 
-def trans_program(program, cx):
+def trans_program(node, cx):
     cx = cx.new_global_scope()
-    type_list = [d for d in program.defs if types.is_kind(cx.type_map[d])]
-    other_list = [d for d in program.defs if not types.is_kind(cx.type_map[d])]
+    defs = node.definitions.definitions
+    type_list = [
+        d for d in defs if types.is_kind(cx.type_map[d])]
+    import_list = [
+        d for d in defs
+        if not types.is_kind(cx.type_map[d]) and isinstance(d, ast.Import)]
+    other_list = [
+        d for d in defs
+        if not types.is_kind(cx.type_map[d]) and not isinstance(d, ast.Import)]
+    task_list = [d for d in defs if isinstance(d, ast.Function)]
 
     type_defs = trans_type_defs(type_list, cx)
-    reduction_op_defs = trans_reduction_ops(cx)
+    reduction_op_defs = trans_reduction_ops(task_list, cx)
+    import_defs = [trans_node(definition, cx) for definition in import_list]
     other_defs = [trans_node(definition, cx) for definition in other_list]
 
-    task_list = [d for d in program.defs if isinstance(d, ast.Function)]
     top_level_task = check_top_level_task(task_list, cx)
 
+    task_prototypes = [trans_function_prototype(task, cx) for task in task_list]
+
+    # Produce a C++ header file for the program.
     sep = '\n'
-    buffer = StringIO()
-    buffer.write(trans_header())
-    buffer.write(sep)
-    buffer.write(trans_reduction_op_list(reduction_op_defs, cx))
-    buffer.write(sep)
-    buffer.write(sep)
-    buffer.write(trans_task_list(task_list))
-    buffer.write(sep)
-    buffer.write(sep)
-    buffer.write(sep.join(line for d in type_defs for line in d.read(cx).render() + ['']))
-    buffer.write(sep)
-    buffer.write(sep.join(line for d in reduction_op_defs for line in d.read(cx).render() + ['']))
-    buffer.write(sep)
-    buffer.write(sep.join(line for d in other_defs for line in d.read(cx).render()))
-    buffer.write(sep)
-    buffer.write(trans_main(reduction_op_defs, task_list, top_level_task, cx))
-    return buffer.getvalue()
+    cpp_header = StringIO()
+    cpp_header.write(trans_header_prologue(cx))
+    cpp_header.write(sep)
+    cpp_header.write(sep.join(line for d in import_defs for line in d.read(cx).render()))
+    cpp_header.write(sep)
+    cpp_header.write(sep)
+    cpp_header.write(trans_field_list(cx))
+    cpp_header.write(sep)
+    cpp_header.write(sep)
+    cpp_header.write(trans_reduction_op_list(reduction_op_defs, cx))
+    cpp_header.write(sep)
+    cpp_header.write(sep)
+    cpp_header.write(trans_task_list(task_list, cx))
+    cpp_header.write(sep)
+    cpp_header.write(sep)
+    cpp_header.write(sep.join(line for d in type_defs for line in d.read(cx).render() + ['']))
+    cpp_header.write(sep)
+    cpp_header.write(sep.join(trans_reduction_op_classes(reduction_op_defs, cx)))
+    cpp_header.write(sep)
+    cpp_header.write(sep)
+    cpp_header.write(sep.join(line for d in task_prototypes for line in d.render() + ['']))
+    cpp_header.write(sep)
+    cpp_header.write(trans_init_function_prototype(cx))
+    cpp_header.write(sep)
+    cpp_header.write(trans_header_epilogue(cx))
+
+    # Produce a C++ source file for the program.
+    cpp_source = StringIO()
+    cpp_source.write(trans_source_prologue(cx))
+    cpp_source.write(sep)
+    cpp_source.write(sep.join(line for d in reduction_op_defs for line in d.read(cx).render() + ['']))
+    cpp_source.write(sep)
+    cpp_source.write(sep.join(line for d in other_defs for line in d.read(cx).render()))
+    cpp_source.write(sep)
+    cpp_source.write(trans_init_function_def(reduction_op_defs, task_list, cx))
+    if top_level_task is not None:
+        cpp_source.write(sep)
+        cpp_source.write(trans_main(top_level_task, cx))
+    return (cpp_header.getvalue(), cpp_source.getvalue())
 
 def check_top_level_task(task_list, cx):
-    top_level_tasks = [task for task in task_list if task.name == 'main']
+    top_level_tasks = [task for task in task_list if task.name.name == 'main']
+    if len(top_level_tasks) == 0:
+        return
     assert len(top_level_tasks) == 1
     top_level_task = top_level_tasks[0]
     task_type = cx.type_map[top_level_task]
     assert task_type == types.Function([], set(), types.Void())
     return top_level_task
 
-def trans_header():
+def trans_header_prologue(cx):
+    header_name = os.path.basename(cx.opts.output_filename[0])
+    header_def = mangle_header_def(header_name)
     return '''
-#include <cassert>
+#ifndef %s
+#define %s
+
 #include <cstdint>
 
 #include "legion.h"
 
 using namespace LegionRuntime::HighLevel;
 using namespace LegionRuntime::Accessor;
+''' % (
+        header_def, header_def)
+
+def trans_header_epilogue(cx):
+    return '''
+#endif
+'''
+
+def trans_source_prologue(cx):
+    header_name = os.path.basename(cx.opts.output_filename[0])
+    return '''
+#include <cassert>
+#include <cstdint>
+#include <cstdio>
+#include <atomic>
+
+#include "%s"
 
 LegionRuntime::Logger::Category log_app("app");
-'''
+''' % (
+        header_name)
+
+def trans_task_list(task_list, cx):
+    return 'enum {\n%s\n};' % (
+        '\n'.join('  %s = %s,' % (mangle_task_enum(mangle(task, cx)), index)
+                  for task, index in zip(task_list, xrange(1, len(task_list) + 1))))
+
+def trans_init_function_prototype(cx):
+    header_name = os.path.basename(cx.opts.output_filename[0])
+    name = mangle_init_function(header_name)
+
+    return 'extern void %s();' % name
+
+def trans_init_function_def(reduction_op_defs, task_list, cx):
+    header_name = os.path.basename(cx.opts.output_filename[0])
+    name = mangle_init_function(header_name)
+
+    reduction_op_registrations = '\n  '.join(
+        'HighLevelRuntime::register_reduction_op<%s>(%s);' % (
+            mangle_reduction_op(redop.op, redop.element_type, cx),
+            mangle_reduction_op_enum(redop.op, redop.element_type, cx))
+        for redop in reduction_op_defs)
+    task_registrations = '\n  '.join(
+        'HighLevelRuntime::register_single_task<%s%s>(%s, Processor::LOC_PROC, %s, "%s");' % (
+            ('%s,' % trans_return_type(cx.type_map[task].return_type, cx)
+             if not types.is_void(cx.type_map[task].return_type) else ''),
+            mangle(task, cx),
+            mangle_task_enum(mangle(task, cx)),
+            ('true' if cx.leaf_tasks[task] else 'false'),
+            task.name.name)
+        for task in task_list)
+    return '''
+void %s() {
+  %s
+  %s
+}
+''' % (name, reduction_op_registrations, task_registrations)
+
+def trans_main(top_level_task, cx):
+    header_name = os.path.basename(cx.opts.output_filename[0])
+    init_function = mangle_init_function(header_name)
+
+    set_top_level_task = 'HighLevelRuntime::set_top_level_task_id(%s);' % mangle_task_enum(mangle(top_level_task, cx))
+    return '''
+void create_mappers(Machine *machine, HighLevelRuntime *runtime, const std::set<Processor> &local_procs) {}
+
+int main(int argc, char **argv) {
+  HighLevelRuntime::set_registration_callback(create_mappers);
+  %s();
+  %s
+
+  return HighLevelRuntime::start(argc, argv);
+}
+''' % (init_function, set_top_level_task)
+
+class TypeTranslationFailedException(Exception):
+    pass
+
+def trans_field_list(cx):
+    field_paths = set()
+    for t in types.unwrap_iter(cx.type_set):
+        if types.is_struct(t):
+            field_paths.update(trans_fields(t, cx).iterkeys())
+        else:
+            field_paths.add(())
+    return 'enum {\n%s\n};' % (
+        '\n'.join('  %s = %s,' % (mangle_field_enum(field_path), index)
+                  for field_path, index in zip(field_paths, xrange(1, len(field_paths) + 1))))
+
+def trans_type_defs(kind_defs, cx):
+    remaining = cx.type_set
+
+    type_defs = []
+    while len(remaining) > 0:
+        succeeded = types.wrap([])
+        for t in types.unwrap_iter(remaining):
+            try:
+                type_def = trans_type_def(t, cx)
+                if type_def is not None:
+                    cx.ll_type_map[t.key()] = type_def.expr.value
+                    type_defs.append(type_def)
+                types.add_key(succeeded, t)
+            except TypeTranslationFailedException:
+                pass
+        remaining = types.difference(remaining, succeeded)
+        if len(succeeded) == 0:
+            raise Exception('Unable to translate all types')
+    return type_defs
+
+def trans_type_def(t, cx):
+    if types.is_pointer(t):
+        if len(t.regions) == 1:
+            return None
+        if len(t.regions) <= 32:
+            struct_definition = (
+                ['// type def for multi-region pointers',
+                 'struct %s {' % mangle_type(t, cx),
+                 Block(['ptr_t pointer;',
+                        'uint32_t region;']),
+                 '};'])
+            return Value(
+                t,
+                Expr(mangle_type(t, cx), struct_definition),
+                types.Kind(t))
+        assert False
+    if types.is_struct_instance(t):
+        return None
+    if types.is_struct(t):
+        # For types defined in foreign modules, define nothing and return
+        # the foreign type.
+        if types.contains_key(cx.foreign_types, t):
+            t = types.find_key(cx.foreign_types, t)
+            return Value(t, Expr(t.name, []), types.Kind(t))
+        struct_definition = (
+            ['// type def for %s' % t.pretty(),
+             'struct %s {' % mangle_type(t, cx),
+             Block(['%s %s;' % (trans_type(region, cx), region.name)
+                    for region in t.regions] +
+                   ['%s %s;' % (trans_type(field_type, cx), field_name)
+                    for field_name, field_type in t.field_map.iteritems()]),
+             '};'])
+        return Value(
+            t,
+            Expr(mangle_type(t, cx), struct_definition),
+            types.Kind(t))
+    return None
 
 def trans_reduction_op_list(reduction_op_defs, cx):
     return 'enum {\n%s\n};' % (
@@ -384,94 +604,20 @@ def trans_reduction_op_list(reduction_op_defs, cx):
             for redop, index in zip(reduction_op_defs,
                                     xrange(1, len(reduction_op_defs)+1))))
 
-def trans_task_list(task_list):
-    return 'enum {\n%s\n};' % (
-        '\n'.join('  %s,' % mangle_task_enum(task.name)
-                  for task in task_list))
+def trans_reduction_op_classes(reduction_op_defs, cx):
+    classes = [line
+               for redop in reduction_op_defs
+               for line in trans_reduction_op_class(redop, cx)]
+    return Statement(classes).render()
 
-def trans_main(reduction_op_defs, task_list, top_level_task, cx):
-    reduction_op_registrations = '\n  '.join(
-        'HighLevelRuntime::register_reduction_op<%s>(%s);' % (
-            mangle_reduction_op(redop.op, redop.element_type, cx),
-            mangle_reduction_op_enum(redop.op, redop.element_type, cx))
-        for redop in reduction_op_defs)
-    task_registrations = '\n  '.join(
-        'HighLevelRuntime::register_single_task<%s%s>(%s, Processor::LOC_PROC, false, "%s");' % (
-            ('%s,' % trans_return_type(cx.type_map[task].return_type, cx)
-             if not types.is_void(cx.type_map[task].return_type) else ''),
-            mangle(task, cx), mangle_task_enum(task.name), task.name)
-        for task in task_list)
-    set_top_level_task = 'HighLevelRuntime::set_top_level_task_id(%s);' % mangle_task_enum(top_level_task.name)
-    return '''
-void create_mappers(Machine *machine, HighLevelRuntime *runtime,
-                    const std::set<Processor> &local_procs) {
-}
-
-int main(int argc, char **argv) {
-  HighLevelRuntime::set_registration_callback(create_mappers);
-  %s
-  %s
-  %s
-
-  return HighLevelRuntime::start(argc, argv);
-}
-''' % (reduction_op_registrations, task_registrations, set_top_level_task)
-
-class TypeTranslationFailedException(Exception):
-    pass
-
-def trans_type_defs(kind_defs, cx):
-    remaining = cx.type_set
-
-    type_defs = []
-    while len(remaining) > 0:
-        succeeded = set()
-        for t in remaining:
-            try:
-                type_def = trans_type_def(t, cx)
-                if type_def is not None:
-                    cx.ll_type_map[t.key()] = type_def.expr.value
-                    type_defs.append(type_def)
-                types.add_key(succeeded, t)
-            except TypeTranslationFailedException:
-                pass
-        remaining = types.unwrap(types.wrap(remaining) - succeeded)
-        if len(succeeded) == 0:
-            raise Exception('Unable to translate all types')
-    return type_defs
-
-def trans_type_def(t, cx):
-    if types.is_simple(t):
-        return None
-    if types.is_region(t):
-        return None
-    if types.is_coloring(t):
-        return None
-    if types.is_pointer(t):
-        return None
-    if types.is_function(t):
-        return None
-    if types.is_struct_instance(t):
-        return None
-    if types.is_struct(t):
-        struct_definition = (
-            ['// type def for %s' % t.pretty(),
-             'struct %s {' % (
-                    mangle_type(t, cx)),
-             Block(['%s %s;' % (trans_type(region, cx), region.name)
-                    for region in t.regions] +
-                   ['%s %s;' % (trans_type(field_type, cx), field_name)
-                    for field_name, field_type in t.field_map.iteritems()]),
-             '};'])
-        return Value(
-            t,
-            Expr(mangle_type(t, cx), struct_definition),
-            types.Kind(t))
-
-def trans_reduction_ops(cx):
+def trans_reduction_ops(task_list, cx):
     # Produce a list of reduction ops that need to be defined, and for
     # each reduction op, what types it will be applied to.
+
     reduction_ops = {}
+
+    # Look through list of region analysis results to get all
+    # reductions that are used in the program.
     for region, region_usage in cx.region_usage.iteritems():
         field_types = trans_fields(region.kind.contains_type, cx)
         for field_path, modes in region_usage.iteritems():
@@ -480,12 +626,26 @@ def trans_reduction_ops(cx):
                     if mode.op not in reduction_ops:
                         reduction_ops[mode.op] = types.wrap([])
                     types.add_key(reduction_ops[mode.op], field_types[field_path])
+
+    # Look through list of declared tasks to get any reductions
+    # declared but not actually used in the program.
+    for node in task_list:
+        for privilege in cx.type_map[node].privileges:
+            if privilege.privilege == types.Privilege.REDUCE:
+                region = privilege.region
+                field_types = trans_fields(region.kind.contains_type, cx)
+                for field_path, field_type in field_types.iteritems():
+                    if is_prefix(privilege.field_path, field_path):
+                        if privilege.op not in reduction_ops:
+                            reduction_ops[privilege.op] = types.wrap([])
+                        types.add_key(reduction_ops[privilege.op], field_type)
+
     reduction_ops = dict((k, types.unwrap(v)) for k, v in reduction_ops.iteritems())
 
     reduction_classes = []
     for op, element_types in reduction_ops.iteritems():
         for element_type in element_types:
-            reduction_class = trans_reduction_op(op, element_type, cx)
+            reduction_class = trans_reduction_op_impl(op, element_type, cx)
             reduction_classes.append(reduction_class)
             cx.reduction_ops[(op, element_type.key())] = Value(
                 None,
@@ -493,15 +653,9 @@ def trans_reduction_ops(cx):
                 None)
     return reduction_classes
 
-def trans_reduction_op(op, element_type, cx):
-    ll_name = mangle_reduction_op(op, element_type, cx)
-
-    ll_element_type = trans_type(element_type, cx)
-
-    assert op in reduction_op_table
-    identity = reduction_op_table[op]['identity']
-    apply_op = op
-    fold_op = reduction_op_table[op]['fold']
+def trans_reduction_op_class(redop, cx):
+    ll_name = redop.read(cx).value
+    ll_element_type = trans_type(redop.element_type, cx)
 
     reduction_class = [
         'class %s {' % ll_name,
@@ -509,23 +663,87 @@ def trans_reduction_op(op, element_type, cx):
         Block(['typedef %s LHS;' % ll_element_type,
                'typedef %s RHS;' % ll_element_type,
                'static const RHS identity;',
-               'template <bool EXCLUSIVE> static void apply(LHS &lhs, RHS rhs) { lhs %s= rhs; }' % apply_op,
-               'template <bool EXCLUSIVE> static void fold(RHS &rhs1, RHS rhs2) { rhs1 %s= rhs2; }' % fold_op]),
-        '};',
+               'template <bool EXCLUSIVE> static void apply(LHS &lhs, RHS rhs);',
+               'template <bool EXCLUSIVE> static void fold(RHS &rhs1, RHS rhs2);']),
+        '};']
+
+    return reduction_class
+
+def trans_reduction_op_impl(op, element_type, cx):
+    ll_name = mangle_reduction_op(op, element_type, cx)
+    ll_element_type = trans_type(element_type, cx)
+
+    assert op in reduction_op_table
+    identity = reduction_op_table[op]['identity']
+    apply_op = op
+    fold_op = reduction_op_table[op]['fold']
+
+    reduction_class_impl = [
+        'const %s::RHS %s::identity = %s;' % (ll_name, ll_name, identity),
         '',
-        'const %s::RHS %s::identity = %s;' % (ll_name, ll_name, identity)]
+        'template <> void %s::apply<true>(LHS &lhs, RHS rhs) { lhs %s= rhs; }' % (
+            ll_name, apply_op),
+        'template <> void %s::apply<false>(LHS &lhs, RHS rhs) {' % ll_name,
+        Block(trans_reduction_op_atomic(op, element_type, 'LHS', 'RHS', 'lhs', 'rhs', apply_op, cx)),
+        '}',
+        '',
+        'template <> void %s::fold<true>(RHS &rhs1, RHS rhs2) { rhs1 %s= rhs2; }' % (
+            ll_name, fold_op),
+        'template <> void %s::fold<false>(RHS &rhs1, RHS rhs2) {' % ll_name,
+        Block(trans_reduction_op_atomic(op, element_type, 'RHS', 'RHS', 'rhs1', 'rhs2', fold_op, cx)),
+        '}']
+
     return ReductionOp(
         node = None,
-        expr = Expr(ll_name, reduction_class),
+        expr = Expr(ll_name, reduction_class_impl),
         type = None,
         op = op,
         element_type = element_type)
+
+def trans_reduction_op_atomic(op, element_type, ll_lhs_type, ll_rhs_type, ll_lhs, ll_rhs, ll_op, cx): 
+    # Atomic reduction ops are implemented using C++11 atomics. Not
+    # all C++11 compilers support atomic ops on floating point types,
+    # so integers must be used instead for compatibility with those
+    # compilers.
+    if types.is_floating_point(element_type):
+        if types.is_float(element_type):
+            ll_int_type = 'uint32_t'
+        elif types.is_double(element_type):
+            ll_int_type = 'uint64_t'
+        else:
+            assert False
+
+        actions = [
+            'std::atomic<%s> &atom = reinterpret_cast<std::atomic<%s> &>(%s);' % (
+                ll_int_type, ll_int_type, ll_lhs),
+            '%s intval, res;' % (
+                ll_int_type),
+            '%s val;' % (
+                ll_lhs_type),
+            'do {',
+            Block(['intval = atom.load();',
+                   'val = reinterpret_cast<%s &>(intval) %s %s;' % (
+                        ll_lhs_type, ll_op, ll_rhs),
+                   'res = reinterpret_cast<%s &>(val);' % (
+                        ll_int_type)]),
+            '} while (!atom.compare_exchange_weak(intval, res));']
+    else:
+        actions = [
+            'std::atomic<LHS> &atom = reinterpret_cast<std::atomic<LHS> &>(%s);' % (
+                ll_lhs),
+            '%s val;' % (
+                ll_lhs_type),
+            'do {',
+            Block(['val = atom.load();']),
+            '} while (!atom.compare_exchange_weak(val, val %s %s));' % (
+                ll_op, ll_rhs)]
+    return actions
 
 def trans_import(node, cx):
     module_type = cx.type_map[node]
     for def_name, def_type in module_type.def_types.iteritems():
         if types.is_function(def_type):
-            cx.env.insert(def_name, Builtin(Expr(def_name, []), def_type))
+            cx.env.insert(def_name, ForeignFunction(Expr(def_name, []), def_type))
     return Value(
         node,
         Expr(None, ['#include "%s"' % node.filename]),
@@ -573,8 +791,9 @@ def trans_param_type_deserialize(task, buffer, param, param_type, cx):
         'ptr += sizeof(%s);' % trans_type(param_type, cx)]
 
 def trans_params_size(task, params, cx):
+    struct_name = mangle_task_params_struct(mangle(task, cx))
     return [
-        'size_t legion_buffer_size() const {',
+        'size_t %s::legion_buffer_size() const {' % struct_name,
         Block(
             ['size_t result = 0;'] +
             [line
@@ -584,25 +803,29 @@ def trans_params_size(task, params, cx):
         '}']
 
 def trans_params_serialize(task, params, cx):
+    struct_name = mangle_task_params_struct(mangle(task, cx))
     return [
-        'void legion_serialize(void *buffer) const {',
-        Block(['char *ptr = (char *)buffer;'] +
+        'void %s::legion_serialize(void *buffer) const {' % struct_name,
+        Block(['char *ptr = reinterpret_cast<char *>(buffer);'] +
               [line
                for param_type, param in params
                for line in trans_param_type_serialize(task, 'ptr', param, param_type, cx)]),
         '}']
 
 def trans_params_deserialize(task, params, cx):
+    struct_name = mangle_task_params_struct(mangle(task, cx))
     return [
-        'size_t legion_deserialize(const void *buffer) {',
-        Block(['const char *ptr = (const char *)buffer;'] +
+        'size_t %s::legion_deserialize(const void *buffer) {' % struct_name,
+        Block(['const char *start = reinterpret_cast<const char *>(buffer);'] +
+              ['const char *ptr = start;'] +
               [line
                for param_type, param in params
-               for line in trans_param_type_deserialize(task, 'ptr', param, param_type, cx)]),
+               for line in trans_param_type_deserialize(task, 'ptr', param, param_type, cx)] +
+              ['return static_cast<size_t>(ptr - start);']),
         '}']
 
-def trans_params(task, params, cx):
-    struct_name = mangle_task_params_struct(task.name)
+def trans_params_prototype(task, params, cx):
+    struct_name = mangle_task_params_struct(mangle(task, cx))
     struct_def = (
         ['struct %s' % struct_name,
          '{',
@@ -610,20 +833,75 @@ def trans_params(task, params, cx):
                         trans_type(param_type, cx),
                         param)
                 for param_type, param in params] +
-               trans_params_size(task, params, cx) +
-               trans_params_serialize(task, params, cx) +
-               trans_params_deserialize(task, params, cx)),
+               ['size_t legion_buffer_size() const;',
+                'void legion_serialize(void *buffer) const;',
+                'size_t legion_deserialize(const void *buffer);']),
          '};'])
     return Expr(struct_name, struct_def)
 
-def trans_cleanup(index, cx):
-    cleanup = []
-    for scope in cx.mapped_regions[index:]:
-        for region in scope:
-            assert region.physical_region is not None
-            cleanup.append('runtime->unmap_region(ctx, %s);' % (
-                    region.physical_region))
-    return cleanup
+def trans_params(task, params, cx):
+    struct_name = mangle_task_params_struct(mangle(task, cx))
+    struct_def = (
+        trans_params_size(task, params, cx) +
+        trans_params_serialize(task, params, cx) +
+        trans_params_deserialize(task, params, cx))
+    return Expr(struct_name, struct_def)
+
+def trans_function_prototype(task, cx):
+    task_type = cx.type_map[task]
+
+    param_nodes = [
+        param for param, param_type in zip(task.params.params, task_type.param_types)
+        if not types.is_region(param_type)]
+    param_types = [
+        param_type.as_read() for param_type in task_type.param_types
+        if not types.is_region(param_type)]
+    params = [mangle(param, cx) for param in param_nodes]
+
+    all_region_nodes = [
+        param for param, param_type in zip(task.params.params, task_type.param_types)
+        if types.is_region(param_type)]
+    all_region_types = [
+        param_type for param_type in task_type.param_types
+        if types.is_region(param_type)]
+    all_regions = [mangle_region(region, cx) for region in all_region_nodes]
+
+    privileges_requested = [
+        trans_privilege_mode(region_type, task_type.privileges, cx)
+        for region_type in all_region_types]
+
+    field_privileges = [
+        OrderedDict(
+            (field, privilege)
+            for privilege, fields in privileges.iteritems()
+            for field in fields)
+        for privileges in privileges_requested]
+
+    field_types = [
+        OrderedDict(
+            (field, field_type)
+            for field, field_type in trans_fields(region_type.kind.contains_type, cx).iteritems()
+            if field in region_field_privileges)
+        for region_type, region_field_privileges in zip(all_region_types, field_privileges)]
+
+    fields = [
+        OrderedDict(
+            (field, 'field_%s' % ('_'.join((region,) + field)))
+            for field in region_field_types.iterkeys())
+        for region, region_field_types in zip(all_regions, field_types)]
+
+    region_params = [
+        (region_type, region)
+        for region, region_type in zip(all_regions, all_region_types)]
+
+    task_params_struct = trans_params_prototype(
+        task,
+        region_params +
+        [(param_type, param)
+         for param, param_type in zip(params, param_types)],
+        cx)
+
+    return Statement(task_params_struct.actions)
 
 def trans_function(task, cx):
     original_cx = cx
@@ -659,27 +937,50 @@ def trans_function(task, cx):
         if types.is_region(param_type)]
     all_regions = [mangle_region(region, cx) for region in all_region_nodes]
 
-    # For regions with no privileges requested, do not pass a
-    # RegionRequirement.
+    # Each task has zero or more regions.
+    # Each region has zero or more physical regions.
+    # Each physical region has one or more accessors.
+    # Each accessor has exactly one field.
+    #
+    # Consider a region r on a struct a with fields x, y, z, w.
+    #
+    #     task f(r: region<a>)
+    #       , reads(r.{x, y, z}), writes(r.{z, w})
+    #
+    # In this example, three physical regions will be created:
+    #
+    # 1. on the read-only fields of r, with two accessors (x and y)
+    # 2. on the read-write fields of r, with one acessor (z)
+    # 3. on the write-only fields of r, with one accessor (w)
+
     privileges_requested = [
         trans_privilege_mode(region_type, task_type.privileges, cx)
         for region_type in all_region_types]
 
-    region_needs_physical = [
-        len(privileges) > 0
+    field_privileges = [
+        OrderedDict(
+            (field, privilege)
+            for privilege, fields in privileges.iteritems()
+            for field in fields)
         for privileges in privileges_requested]
 
-    physical_regions = [mangle_temp() for region in all_regions]
-    index = iter(xrange(len(all_regions)))
-    physical_indexes = [next(index) if needs_physical else None
-                        for needs_physical in region_needs_physical]
+    physical_regions = [
+        [mangle_temp() for privilege in privileges]
+        for privileges in privileges_requested]
+    index = iter(xrange(sum(len(privileges) for privileges in privileges_requested)))
+    physical_indexes = [
+        [next(index) for privilege in privileges]
+        for privileges in privileges_requested]
 
     ispaces = [mangle_temp() for region in all_regions]
     fspaces = [mangle_temp() for region in all_regions]
-    allocators = [mangle_temp() for region in all_regions]
 
-    field_types = [trans_fields(region_type.kind.contains_type, cx)
-                   for region_type in all_region_types]
+    field_types = [
+        OrderedDict(
+            (field, field_type)
+            for field, field_type in trans_fields(region_type.kind.contains_type, cx).iteritems()
+            if field in region_field_privileges)
+        for region_type, region_field_privileges in zip(all_region_types, field_privileges)]
 
     ll_field_types = [
         OrderedDict(
@@ -688,52 +989,71 @@ def trans_function(task, cx):
         for region_field_types in field_types]
     fields = [
         OrderedDict(
-            (field, 'field_%s' % ('_'.join((region,) + field)))
+            (field, mangle_field_enum(field))
             for field in region_field_types.iterkeys())
         for region, region_field_types in zip(all_regions, field_types)]
-    region_params = (
-        [(region_type, region) for region, region_type in zip(all_regions, all_region_types)] +
-        [(FieldID(), field) for region_fields in fields for field in region_fields.itervalues()])
+    region_params = [
+        (region_type, region)
+        for region, region_type in zip(all_regions, all_region_types)]
 
-    # For regions that need read, write, or allocate access, create
-    # the appropriate accessors and/or allocators.
-    region_access_modes = [
+    # Use the results of region analysis to determine whether physical
+    # regions can be unmapped entirely within the function, and
+    # whether allocators need be constructed.
+    access_modes = [
         region_analysis.summarize_modes(cx.constraints, cx.region_usage, region_type)
         for region_type in all_region_types]
-    region_needs_allocator = [
+
+    needs_mapping = [
+        [any((is_prefix(field, access_field) or is_prefix(access_field, field))
+             and (region_analysis.READ in modes or
+                  region_analysis.WRITE in modes or
+                  region_analysis.REDUCE in modes or
+                  region_analysis.FFI in modes)
+             for field in privilege_fields
+             for access_field, modes in region_access_modes.iteritems())
+            for privilege, privilege_fields in region_privileges.iteritems()]
+        for region_privileges, region_access_modes in zip(privileges_requested, access_modes)]
+
+    needs_accessor = [
+        [any((is_prefix(field, access_field) or is_prefix(access_field, field))
+             and (region_analysis.READ in modes or
+                  region_analysis.WRITE in modes or
+                  region_analysis.REDUCE in modes)
+             for field in privilege_fields
+             for access_field, modes in region_access_modes.iteritems())
+            for privilege, privilege_fields in region_privileges.iteritems()]
+        for region_privileges, region_access_modes in zip(privileges_requested, access_modes)]
+
+    needs_allocator = [
         any(region_analysis.ALLOC in modes
-            for modes in field_modes.itervalues())
-        for field_modes in region_access_modes]
-    accessor_fields_inner = [
-        [field for field, modes in field_modes.iteritems()
-         if region_analysis.READ in modes or
-         region_analysis.WRITE in modes or
-         region_analysis.REDUCE in modes]
-        for field_modes in region_access_modes]
+            for modes in region_access_modes.itervalues())
+        for region_access_modes in access_modes]
+    allocators = [
+        mangle_temp() if region_needs_allocator else None
+        for region, region_needs_allocator in zip(all_regions, needs_allocator)]
+
     accessor_fields = [
-        OrderedDict(
-            (field_leaf, ())
-            for field in region_fields
-            for field_leaf in region_field_types.iterkeys()
-            if is_prefix(field_leaf, field)).keys()
-        for region_fields, region_field_types in zip(accessor_fields_inner, field_types)]
+        [list(privilege_fields)
+         for privilege_fields in region_privileges.itervalues()]
+        for region_privileges in privileges_requested]
 
-    privilege_fields = [
-        OrderedDict(
-            (field, privilege)
-            for privilege, fields in privileges.iteritems()
-            for field in fields)
-        for privileges in privileges_requested]
-
-    region_needs_field_accessor = [
-        [region_privilege_fields[field] in ('READ_WRITE', 'READ_ONLY', 'WRITE_ONLY')
-         for field in region_accessor_fields]
-        for region_privilege_fields, region_accessor_fields in zip(
-            privilege_fields, accessor_fields)]
+    needs_field_accessor = [
+        [[region_field_privileges[field] in ('READ_WRITE', 'READ_ONLY', 'WRITE_ONLY')
+          for field in physical_region_fields]
+         for physical_region_fields in region_accessor_fields]
+        for region_field_privileges, region_accessor_fields in zip(
+            field_privileges, accessor_fields)]
 
     accessors = [
-        OrderedDict((field, mangle_temp()) for field in region_fields)
-        for region_fields in accessor_fields]
+        [OrderedDict((field, mangle_temp()) for field in physical_region_fields)
+         if physical_region_needs_accessor else
+         OrderedDict()
+         for physical_region_needs_accessor, physical_region_fields in zip(
+                region_needs_accessor, region_fields)]
+        for region_needs_accessor, region_fields in zip(
+            needs_accessor, accessor_fields)]
+
+    accessor_type = trans_accessor_type(cx)
 
     # Build a struct to hold the task's parameters.
     task_params_struct = trans_params(
@@ -744,7 +1064,7 @@ def trans_function(task, cx):
         cx)
 
     task_header = (
-        ['log_app.info("In %s...");' % task.name] +
+        ['log_app.spew("In %s...");' % task.name.name] +
         (['%s params;' % (task_params_struct.value),
           'params.legion_deserialize(input);']
          if len(task.params.params) > 0 else []) +
@@ -757,26 +1077,36 @@ def trans_function(task, cx):
                 param,
                 param)
          for param, param_type in zip(params, param_types)] +
-        ['PhysicalRegion %s = regions[%s];' % (region, index)
-         for region, index in zip(physical_regions, physical_indexes)
-         if index is not None] +
+        ['PhysicalRegion %s = regions[%s];' % (physical_region, index)
+         for region_physical_regions, region_physical_indexes in zip(physical_regions, physical_indexes)
+         for physical_region, index in zip(region_physical_regions, region_physical_indexes)] +
         ['IndexSpace %s = %s.get_index_space();' % (ispace , region)
          for region, ispace in zip(all_regions, ispaces)] +
         ['FieldSpace %s = %s.get_field_space();' % (fspace , region)
          for region, fspace in zip(all_regions, fspaces)] +
         ['IndexAllocator %s = runtime->create_index_allocator(ctx, %s);' % (
                 ispace_alloc, ispace)
-         for needs_allocator, ispace_alloc, ispace in zip(
-                region_needs_allocator, allocators, ispaces)
-         if needs_allocator] +
-        ['RegionAccessor<AccessorType::Generic, %s> %s = %s.get_%saccessor(%s).typeify<%s>();' % (
+         for region_needs_allocator, ispace_alloc, ispace in zip(
+                needs_allocator, allocators, ispaces)
+         if region_needs_allocator] +
+        ['runtime->unmap_region(ctx, %s);' % physical_region
+         for region_physical_regions, region_needs_mapping in zip(
+                physical_regions, needs_mapping)
+         for physical_region, physical_region_needs_mapping in zip(
+                region_physical_regions, region_needs_mapping)
+         if not (physical_region_needs_mapping or cx.leaf_tasks[task])] +
+        ['RegionAccessor<%s, %s> %s = %s.get_%saccessor(%s).typeify<%s>().convert<%s >();' % (
+                accessor_type,
                 ll_field_type[field], accessor, physical_region,
                 ('field_' if field_accessor else ''),
                 (region_fields[field] if field_accessor else ''),
-                ll_field_type[field])
-         for ll_field_type, region_fields, region_accessors, physical_region, needs_field_accessor in zip(
-                ll_field_types, fields, accessors, physical_regions, region_needs_field_accessor)
-         for (field, accessor), field_accessor in zip(region_accessors.iteritems(), needs_field_accessor)])
+                ll_field_type[field],
+                accessor_type)
+         for ll_field_type, region_fields, region_accessors, region_physical_regions, region_needs_field_accessor in zip(
+                ll_field_types, fields, accessors, physical_regions, needs_field_accessor)
+         for physical_region, physical_region_accessors, physical_needs_field_accessor in zip(
+                region_physical_regions, region_accessors, region_needs_field_accessor)
+         for (field, accessor), field_accessor in zip(physical_region_accessors.iteritems(), physical_needs_field_accessor)])
 
     # insert function name into global scope
     task_value = Function(
@@ -784,37 +1114,47 @@ def trans_function(task, cx):
         expr = Expr(mangle(task, cx), []),
         type = task_type,
         params = task_params_struct.value)
-    original_cx.env.insert(task.name, task_value)
+    original_cx.env.insert(task.name.name, task_value)
     cx = cx.new_function_scope()
     # insert function regions and params into local scope
     for region_node, region, region_type, ispace, fspace, \
-            region_fields, region_field_types, physical_region, \
-            physical_index, needs_allocator, allocator, \
-            region_accessors in \
-            zip(all_region_nodes, all_regions, all_region_types, ispaces,
-                fspaces, fields, field_types, physical_regions,
-                physical_indexes, region_needs_allocator, allocators,
-                accessors):
+        region_fields, region_field_types, region_needs_mapping, \
+        region_physical_regions, region_privileges, \
+        region_physical_indexes, region_needs_allocator, allocator, \
+        region_accessors in \
+        zip(all_region_nodes, all_regions, all_region_types, ispaces,
+            fspaces, fields, field_types, needs_mapping, physical_regions,
+            privileges_requested, physical_indexes, needs_allocator, allocators,
+            accessors):
+
+            accessor_map = dict(
+                (field, accessor)
+                for physical_region_accessors in region_accessors
+                for field, accessor in physical_region_accessors.iteritems())
+
+            privilege_map = dict(
+                (field, privilege)
+                for privilege, fields in region_privileges.iteritems()
+                for field in fields)
 
             region_value = Region(
                 node = region_node,
                 expr = Expr(region, []),
                 type = region_type,
                 region_root = region_type,
-                region_requirement = physical_index,
-                physical_region = physical_region if physical_index is not None else None,
+                physical_regions = region_physical_regions,
+                physical_region_accessors = region_accessors,
+                physical_region_privileges = region_privileges.keys(),
                 ispace = ispace,
                 fspace = fspace,
                 field_map = region_fields,
                 field_type_map = region_field_types,
                 allocator = allocator if needs_allocator else None,
-                accessor_map = region_accessors)
+                accessor_map = accessor_map,
+                privilege_map = privilege_map)
 
             cx.env.insert(region_node.name, region_value)
             cx.regions[region_type] = region_value
-
-            if physical_index is not None:
-                cx.mapped_regions[-1].add(region_value)
 
     for param_node, param, param_type in zip(param_nodes, params, param_types):
         value = Value(param_node, Expr(param, []), param_type)
@@ -842,6 +1182,20 @@ def trans_function(task, cx):
         type = task_type,
         params = task_params_struct.value)
     return task_definition
+
+def trans_cleanup(index, cx):
+    cleanup = []
+    for scope in cx.created_regions[index:]:
+        for region in reversed(scope):
+            cleanup.append('runtime->destroy_logical_region(ctx, %s);' % (
+                    region.read(cx).value))
+            cleanup.append('runtime->destroy_field_space(ctx, %s);' % (
+                    region.fspace))
+    for scope in cx.created_ispaces[index:]:
+        for ispace in reversed(scope):
+            cleanup.append('runtime->destroy_index_space(ctx, %s);' % (
+                    ispace.read(cx).value))
+    return cleanup
 
 def trans_for(node, cx):
     cx = cx.new_block_scope()
@@ -874,7 +1228,7 @@ def trans_for(node, cx):
                         temp_iterator),
                 trans_node(node.block, cx)]),
          '}'])
-    return Block(block)
+    return Statement(block)
 
 def trans_copy_helper(node, name, cx):
     copy_value = trans_node(node.expr, cx)
@@ -889,14 +1243,16 @@ def trans_copy_helper(node, name, cx):
             expr = Expr(name, []),
             type = region_type,
             region_root = copy_value.region_root,
-            region_requirement = None,
-            physical_region = None,
+            physical_regions = [],
+            physical_region_accessors = [],
+            physical_region_privileges = [],
             ispace = copy_value.ispace,
             fspace = copy_value.fspace,
             field_map = copy_value.field_map,
             field_type_map = copy_value.field_type_map,
             allocator = copy_value.allocator,
-            accessor_map = copy_value.accessor_map)
+            accessor_map = copy_value.accessor_map,
+            privilege_map = copy_value.privilege_map)
         cx.env.insert(node.name, region_value)
         cx.regions[region_type] = region_value
         return Statement(
@@ -930,14 +1286,16 @@ def trans_region(node, cx):
     ispace_alloc = mangle_temp()
     fspace = mangle_temp()
     fspace_alloc = mangle_temp()
-    fields = OrderedDict((field, mangle_temp()) for field in field_types.iterkeys())
+    fields = OrderedDict((field, mangle_field_enum(field)) for field in field_types.iterkeys())
     ispaces = mangle_temp()
     fspaces = mangle_temp()
     field_set = mangle_temp()
     region_requirement = mangle_temp()
     privilege = 'READ_WRITE'
+    privileges = OrderedDict((field, privilege) for field in field_types.iterkeys())
     physical_region = mangle_temp()
     accessors = OrderedDict((field, mangle_temp()) for field in field_types.iterkeys())
+    accessor_type = trans_accessor_type(cx)
     create_region = (
         ll_size_expr.actions +
         ['IndexSpace %s = runtime->create_index_space(ctx, %s);' % (
@@ -946,8 +1304,8 @@ def trans_region(node, cx):
                 ispace_alloc, ispace),
          'FieldSpace %s = runtime->create_field_space(ctx);' % fspace,
          'FieldAllocator %s = runtime->create_field_allocator(ctx, %s);' % (fspace_alloc, fspace)] +
-        ['FieldID %s = %s.allocate_field(sizeof(%s));' % (
-                field, fspace_alloc, ll_field_type)
+        ['%s.allocate_field(sizeof(%s), %s);' % (
+                fspace_alloc, ll_field_type, field)
          for field, ll_field_type in zip(fields.itervalues(), ll_field_types)] +
         ['LogicalRegion %s = runtime->create_logical_region(ctx, %s, %s);' % (
                 ll_region, ispace, fspace),
@@ -963,8 +1321,8 @@ def trans_region(node, cx):
          'PhysicalRegion %s = runtime->map_region(ctx, %s);' % (
                 physical_region, region_requirement),
          '%s.wait_until_valid();' % physical_region] +
-        ['RegionAccessor<AccessorType::Generic, %s> %s = %s.get_field_accessor(%s).typeify<%s>();' % (
-                ll_field_type, accessor, physical_region, field, ll_field_type)
+        ['RegionAccessor<%s, %s> %s = %s.get_field_accessor(%s).typeify<%s>().convert<%s >();' % (
+                accessor_type, ll_field_type, accessor, physical_region, field, ll_field_type, accessor_type)
          for accessor, field, ll_field_type in zip(
                 accessors.itervalues(), fields.itervalues(), ll_field_types)])
 
@@ -973,18 +1331,21 @@ def trans_region(node, cx):
         expr = Expr(ll_region, []),
         type = region_type,
         region_root = region_type,
-        region_requirement = region_requirement,
-        physical_region = physical_region,
+        physical_regions = [physical_region],
+        physical_region_accessors = [accessors],
+        physical_region_privileges = [privilege],
         ispace = ispace,
         fspace = fspace,
         field_map = fields,
         field_type_map = field_types,
         allocator = ispace_alloc,
-        accessor_map = accessors)
+        accessor_map = accessors,
+        privilege_map = privileges)
 
     cx.env.insert(node.name, region_value)
     cx.regions[region_type] = region_value
-    cx.mapped_regions[-1].add(region_value)
+    cx.created_regions[-1].append(region_value)
+    cx.created_ispaces[-1].append(Value(node, Expr(ispace, []), None))
 
     return Statement(create_region)
 
@@ -999,22 +1360,24 @@ def trans_array(node, cx):
     ispace = mangle_temp()
     fspace = mangle_temp()
     fspace_alloc = mangle_temp()
-    fields = OrderedDict((field, mangle_temp()) for field in field_types.iterkeys())
+    fields = OrderedDict((field, mangle_field_enum(field)) for field in field_types.iterkeys())
     ispaces = mangle_temp()
     fspaces = mangle_temp()
     field_set = mangle_temp()
     region_requirement = mangle_temp()
     privilege = 'READ_WRITE'
+    privileges = OrderedDict((field, privilege) for field in field_types.iterkeys())
     physical_region = mangle_temp()
     accessors = OrderedDict((field, mangle_temp()) for field in field_types.iterkeys())
+    accessor_type = trans_accessor_type(cx)
     create_region = (
         ispace_expr.actions +
         ['IndexSpace %s = %s;' % (
                 ispace, ispace_expr.value),
          'FieldSpace %s = runtime->create_field_space(ctx);' % fspace,
          'FieldAllocator %s = runtime->create_field_allocator(ctx, %s);' % (fspace_alloc, fspace)] +
-        ['FieldID %s = %s.allocate_field(sizeof(%s));' % (
-                field, fspace_alloc, ll_field_type)
+        ['%s.allocate_field(sizeof(%s), %s);' % (
+                fspace_alloc, ll_field_type, field)
          for field, ll_field_type in zip(fields.itervalues(), ll_field_types)] +
         ['LogicalRegion %s = runtime->create_logical_region(ctx, %s, %s);' % (
                 ll_region, ispace, fspace),
@@ -1030,8 +1393,8 @@ def trans_array(node, cx):
          'PhysicalRegion %s = runtime->map_region(ctx, %s);' % (
                 physical_region, region_requirement),
          '%s.wait_until_valid();' % physical_region] +
-        ['RegionAccessor<AccessorType::Generic, %s> %s = %s.get_field_accessor(%s).typeify<%s>();' % (
-                ll_field_type, accessor, physical_region, field, ll_field_type)
+        ['RegionAccessor<%s, %s> %s = %s.get_field_accessor(%s).typeify<%s>().convert<%s >();' % (
+                accessor_type, ll_field_type, accessor, physical_region, field, ll_field_type, accessor_type)
          for accessor, field, ll_field_type in zip(
                 accessors.itervalues(), fields.itervalues(), ll_field_types)])
 
@@ -1040,23 +1403,26 @@ def trans_array(node, cx):
         expr = Expr(ll_region, []),
         type = region_type,
         region_root = region_type,
-        region_requirement = region_requirement,
-        physical_region = physical_region,
+        physical_regions = [physical_region],
+        physical_region_accessors = [accessors],
+        physical_region_privileges = [privilege],
         ispace = ispace,
         fspace = fspace,
         field_map = fields,
         field_type_map = field_types,
         allocator = None,
-        accessor_map = accessors)
+        accessor_map = accessors,
+        privilege_map = privileges)
 
     cx.env.insert(node.name, region_value)
     cx.regions[region_type] = region_value
-    cx.mapped_regions[-1].add(region_value)
+    cx.created_regions[-1].append(region_value)
 
     return Statement(create_region)
 
 def trans_ispace(node, cx):
     ll_ispace = mangle(node, cx)
+    ispace = Value(node, Expr(ll_ispace, []), cx.type_map[node])
     cx.env.insert(node.name, Value(node, Expr(ll_ispace, []), cx.type_map[node]))
     ll_size_expr = trans_node(node.size_expr, cx).read(cx)
 
@@ -1067,8 +1433,12 @@ def trans_ispace(node, cx):
                 ll_ispace, ll_size_expr.value),
          'IndexAllocator %s = runtime->create_index_allocator(ctx, %s);' % (
                 ispace_alloc, ll_ispace),
-         '%s.alloc(%s);' % (
-                ispace_alloc, ll_size_expr.value)])
+         'if (%s > 0) {' % ll_size_expr.value,
+         Block(['%s.alloc(%s);' % (
+                        ispace_alloc, ll_size_expr.value)]),
+         '}'])
+
+    cx.created_ispaces[-1].append(ispace)
 
     return Statement(create_ispace)
 
@@ -1178,14 +1548,16 @@ def trans_partition(node, cx):
             expr = Expr(ll_region, []),
             type = region_type,
             region_root = parent_region.region_root,
-            region_requirement = None,
-            physical_region = None,
+            physical_regions = [],
+            physical_region_accessors = [],
+            physical_region_privileges = [],
             ispace = ispace,
             fspace = parent_region.fspace,
             field_map = parent_region.field_map,
             field_type_map = parent_region.field_type_map,
             allocator = allocator,
-            accessor_map = parent_region.accessor_map)
+            accessor_map = parent_region.accessor_map,
+            privilege_map = parent_region.privilege_map)
 
         cx.regions[region_type] = region_value
 
@@ -1240,14 +1612,16 @@ def trans_unpack(node, cx):
             expr = Expr(ll_region, []),
             type = region_arg,
             region_root = region_root.type,
-            region_requirement = None,
-            physical_region = None,
+            physical_regions = [],
+            physical_region_accessors = [],
+            physical_region_privileges = [],
             ispace = ispace,
             fspace = region_root.fspace,
             field_map = region_root.field_map,
             field_type_map = region_root.field_type_map,
             allocator = None,
-            accessor_map = region_root.accessor_map)
+            accessor_map = region_root.accessor_map,
+            privilege_map = region_root.privilege_map)
 
         cx.env.insert(region_node.name, region_value)
         cx.regions[region_arg] = region_value
@@ -1291,115 +1665,129 @@ def trans_new(node, cx):
 def is_prefix(seq, fragment):
     return seq[:len(fragment)] == fragment
 
-def safe_read(ll_pointer, ll_result, field_path, cx):
-    def helper(otherwise, region_type):
-        ll_temp = mangle_temp()
+def unsafe_read(ll_pointer, ll_result, region_type, field_path, cx):
+    region = cx.regions[region_type]
+    region_expr = region.read(cx)
 
-        region = cx.regions[region_type]
-        region_expr = region.read(cx)
+    accessors = OrderedDict(
+        (field, accessor)
+        for field, accessor in region.accessor_map.iteritems()
+        if is_prefix(field, field_path))
+    assert len(accessors) > 0
 
-        accessors = OrderedDict(
-            (field, accessor)
-            for field, accessor in region.accessor_map.iteritems()
-            if is_prefix(field, field_path))
-        assert len(accessors) > 0
+    actions = []
+    actions.extend(region_expr.actions)
+    actions.extend(
+        ['%s = %s.read(%s);' % (
+                '.'.join((ll_result,) + field[len(field_path):]), accessor, ll_pointer)
+         for field, accessor in accessors.iteritems()])
+    return actions
 
-        actions = []
-        actions.extend(region_expr.actions)
-        actions.extend(
-            ['ptr_t %s = runtime->safe_cast(ctx, %s, %s);' % (
-                    ll_temp, ll_pointer, region_expr.value),
-             'if (!%s.is_null()) {' % ll_temp,
-             Block(['%s = %s.read(%s);' % (
-                            '.'.join((ll_result,) + field[len(field_path):]), accessor, ll_temp)
-                    for field, accessor in accessors.iteritems()]),
-             '} else {',
-             Block(otherwise),
-             '}'])
-        return actions
-    return helper
+def unsafe_write(ll_pointer, ll_update, region_type, field_path, cx):
+    region = cx.regions[region_type]
+    region_expr = region.read(cx)
 
-def safe_write(ll_pointer, ll_update, field_path, cx):
-    def helper(otherwise, region_type):
-        ll_temp = mangle_temp()
+    accessors = OrderedDict(
+        (field, accessor)
+        for field, accessor in region.accessor_map.iteritems()
+        if is_prefix(field, field_path))
+    assert len(accessors) > 0
 
-        region = cx.regions[region_type]
-        region_expr = region.read(cx)
+    actions = []
+    actions.extend(region_expr.actions)
+    actions.extend(
+        ['%s.write(%s, %s);' % (
+                accessor, ll_pointer, '.'.join((ll_update,) + field[len(field_path):]))
+         for field, accessor in accessors.iteritems()])
+    return actions
 
-        accessors = OrderedDict(
-            (field, accessor)
-            for field, accessor in region.accessor_map.iteritems()
-            if is_prefix(field, field_path))
-        assert len(accessors) > 0
+def unsafe_reduce_helper(accessor, op, reduction_op, ll_pointer, ll_update, field_path, privilege):
+    # Hack: There appears to be a performance difference between
+    # calling reduce versus write/read (reduce is slower), so when we
+    # have privileges to read and write, use that version.
 
-        actions = []
-        actions.extend(region_expr.actions)
-        actions.extend(
-            ['ptr_t %s = runtime->safe_cast(ctx, %s, %s);' % (
-                    ll_temp, ll_pointer, region_expr.value),
-             'if (!%s.is_null()) {' % ll_temp,
-             Block(['%s.write(%s, %s);' % (
-                            accessor, ll_temp, '.'.join((ll_update,) + field[len(field_path):]))
-                    for field, accessor in accessors.iteritems()]),
-             '} else {',
-             Block(otherwise),
-             '}'])
-        return actions
-    return helper
+    if privilege == 'READ_WRITE':
+        return '%s.write(%s, %s.read(%s) %s %s);' % (
+            accessor,
+            ll_pointer,
+            accessor,
+            ll_pointer,
+            op,
+            '.'.join((ll_update,) + field_path))
+    return '%s.reduce<%s>(%s, %s);' % (
+        accessor,
+        reduction_op,
+        ll_pointer,
+        '.'.join((ll_update,) + field_path))
 
-def safe_reduce(ll_pointer, ll_update, op, field_path, cx):
-    def helper(otherwise, region_type):
-        ll_temp = mangle_temp()
+def unsafe_reduce(ll_pointer, ll_update, op, region_type, field_path, cx):
+    region = cx.regions[region_type]
+    region_expr = region.read(cx)
 
-        region = cx.regions[region_type]
-        region_expr = region.read(cx)
+    field_types = trans_fields(region.type.kind.contains_type, cx)
 
-        field_types = trans_fields(region.type.kind.contains_type, cx)
+    def lookup_reduction_op(op, field, cx):
+        field_type = field_types[field]
+        return cx.reduction_ops[(op, field_type.key())].read(cx).value
+
+    accessors = OrderedDict(
+        (field, (accessor, lookup_reduction_op(op, field, cx)))
+        for field, accessor in region.accessor_map.iteritems()
+        if is_prefix(field, field_path))
+    assert len(accessors) > 0
+
+    privileges = OrderedDict(
+        (field, privilege)
+        for field, privilege in region.privilege_map.iteritems()
+        if is_prefix(field, field_path))
+    assert len(privileges) == len(accessors)
 
 
-        def lookup_reduction_op(op, field, cx):
-            field_type = field_types[field]
-            return cx.reduction_ops[(op, field_type.key())].read(cx).value
-
-        accessors = OrderedDict(
-            (field, (accessor, lookup_reduction_op(op, field, cx)))
-            for field, accessor in region.accessor_map.iteritems()
-            if is_prefix(field, field_path))
-        assert len(accessors) > 0
-
-        actions = []
-        actions.extend(region_expr.actions)
-        actions.extend(
-            ['ptr_t %s = runtime->safe_cast(ctx, %s, %s);' % (
-                    ll_temp, ll_pointer, region_expr.value),
-             'if (!%s.is_null()) {' % ll_temp,
-             Block(['%s.reduce<%s>(%s, %s);' % (
-                            accessor,
-                            reduction_op,
-                            ll_temp,
-                            '.'.join((ll_update,) + field[len(field_path):]))
-                    for field, (accessor, reduction_op) in accessors.iteritems()]),
-             '} else {',
-             Block(otherwise),
-             '}'])
-        return actions
-    return helper
+    actions = []
+    actions.extend(region_expr.actions)
+    actions.extend(
+        [unsafe_reduce_helper(
+            accessor, op, reduction_op,
+            ll_pointer, ll_update, field[len(field_path):],
+            region.privilege_map[field])
+         for field, (accessor, reduction_op) in accessors.iteritems()])
+    return actions
 
 def trans_read_helper(node, pointer_value, field_path, cx):
     pointer_expr = pointer_value.read(cx)
     pointer_type = pointer_value.type.as_read()
+    region_types = pointer_type.regions
 
-    actions = []
-    actions.extend(pointer_expr.actions)
+    if len(region_types) == 1:
+        ll_pointer = pointer_expr.value
+    else:
+        ll_pointer = '%s.pointer' % pointer_expr.value
+        ll_bitmask = '%s.region' % pointer_expr.value
 
     ll_result = mangle_temp()
     ll_result_type = trans_type(cx.type_map[node].as_read(), cx)
 
+    actions = []
+    actions.extend(pointer_expr.actions)
     actions.append('%s %s;' % (ll_result_type, ll_result))
-    actions.extend(
-        reduce(safe_read(pointer_expr.value, ll_result, field_path, cx),
-               reversed(pointer_type.regions),
-               ['assert(0);']))
+
+    if cx.opts.pointer_checks:
+        actions.append(r'if (%s.is_null()) { fprintf(stderr, "\nRuntimeError:\n%s:\nNull pointer read\n\n"); assert(0); }' % (
+                ll_pointer,
+                node.span))
+
+    if len(region_types) == 1:
+        actions.extend(
+            unsafe_read(ll_pointer, ll_result, region_types[0], field_path, cx))
+    else:
+        actions.append('switch (%s) {' % ll_bitmask)
+        for index, region_type in zip(xrange(len(region_types)), region_types):
+            actions.append('case %s:' % (1 << index))
+            actions.append(Block(
+                    unsafe_read(ll_pointer, ll_result, region_type, field_path, cx) +
+                    ['break;']))
+        actions.append('}')
+
     return Value(node, Expr(ll_result, actions), cx.type_map[node])
 
 def trans_read(node, cx):
@@ -1409,19 +1797,39 @@ def trans_read(node, cx):
 def trans_write_helper(node, pointer_value, field_path, update_value, cx):
     pointer_expr = pointer_value.read(cx)
     pointer_type = pointer_value.type.as_read()
+    region_types = pointer_type.regions
 
     update_expr = update_value.read(cx)
     update_type = update_value.type.as_read()
     ll_update_type = trans_type(update_type, cx)
 
+    if len(region_types) == 1:
+        ll_pointer = pointer_expr.value
+    else:
+        ll_pointer = '%s.pointer' % pointer_expr.value
+        ll_bitmask = '%s.region' % pointer_expr.value
+
     actions = []
     actions.extend(pointer_expr.actions)
     actions.extend(update_expr.actions)
-    actions.extend(
-        reduce(
-            safe_write(pointer_expr.value, update_expr.value, field_path, cx),
-            reversed(pointer_type.regions),
-            ['assert(0);']))
+
+    if cx.opts.pointer_checks:
+        actions.append(r'if (%s.is_null()) { fprintf(stderr, "\nRuntimeError:\n%s:\nNull pointer write\n\n"); assert(0); }' % (
+                ll_pointer,
+                node.span))
+
+    if len(region_types) == 1:
+        actions.extend(
+            unsafe_write(ll_pointer, update_expr.value, region_types[0], field_path, cx))
+    else:
+        actions.append('switch (%s) {' % ll_bitmask)
+        for index, region_type in zip(xrange(len(region_types)), region_types):
+            actions.append('case %s:' % (1 << index))
+            actions.append(Block(
+                    unsafe_write(ll_pointer, update_expr.value, region_type, field_path, cx) +
+                    ['break;']))
+        actions.append('}')
+
     return Value(node, Expr(update_expr.value, actions), cx.type_map[node])
 
 def trans_write(node, cx):
@@ -1432,20 +1840,39 @@ def trans_write(node, cx):
 def trans_reduce_helper(node, pointer_value, field_path, op, update_value, cx):
     pointer_expr = pointer_value.read(cx)
     pointer_type = pointer_value.type.as_read()
+    region_types = pointer_type.regions
 
     update_expr = update_value.read(cx)
     update_type = update_value.type.as_read()
     ll_update_type = trans_type(update_type, cx)
 
+    if len(region_types) == 1:
+        ll_pointer = pointer_expr.value
+    else:
+        ll_pointer = '%s.pointer' % pointer_expr.value
+        ll_bitmask = '%s.region' % pointer_expr.value
+
     actions = []
     actions.extend(pointer_expr.actions)
     actions.extend(update_expr.actions)
 
-    actions.extend(
-        reduce(
-            safe_reduce(pointer_expr.value, update_expr.value, op, field_path, cx),
-            reversed(pointer_type.regions),
-            ['assert(0);']))
+    if cx.opts.pointer_checks:
+        actions.append(r'if (%s.is_null()) { fprintf(stderr, "\nRuntimeError:\n%s:\nNull pointer reduce\n\n"); assert(0); }' % (
+                ll_pointer,
+                node.span))
+
+    if len(region_types) == 1:
+        actions.extend(
+            unsafe_reduce(ll_pointer, update_expr.value, op, region_types[0], field_path, cx))
+    else:
+        actions.append('switch (%s) {' % ll_bitmask)
+        for index, region_type in zip(xrange(len(region_types)), region_types):
+            actions.append('case %s:' % (1 << index))
+            actions.append(Block(
+                    unsafe_reduce(ll_pointer, update_expr.value, op, region_type, field_path, cx) +
+                    ['break;']))
+        actions.append('}')
+
     return Value(node, Expr(update_expr.value, actions), cx.type_map[node])
 
 def trans_reduce(node, cx):
@@ -1523,14 +1950,16 @@ def trans_array_access(node, cx):
             expr = Expr(ll_region, []),
             type = region_type,
             region_root = parent_region.region_root,
-            region_requirement = None,
-            physical_region = None,
+            physical_regions = [],
+            physical_region_accessors = [],
+            physical_region_privileges = [],
             ispace = ispace,
             fspace = parent_region.fspace,
             field_map = parent_region.field_map,
             field_type_map = parent_region.field_type_map,
             allocator = allocator,
-            accessor_map = parent_region.accessor_map)
+            accessor_map = parent_region.accessor_map,
+            privilege_map = parent_region.privilege_map)
 
         cx.regions[region_type] = region_value
 
@@ -1571,14 +2000,16 @@ def trans_array_access(node, cx):
             expr = Expr(ll_region, []),
             type = region_type,
             region_root = array_value.region_root,
-            region_requirement = None,
-            physical_region = None,
+            physical_regions = [],
+            physical_region_accessors = [],
+            physical_region_privileges = [],
             ispace = ispace,
             fspace = array_value.fspace,
             field_map = array_value.field_map,
             field_type_map = array_value.field_type_map,
             allocator = allocator,
-            accessor_map = array_value.accessor_map)
+            accessor_map = array_value.accessor_map,
+            privilege_map = array_value.privilege_map)
 
         cx.regions[region_type] = region_value
 
@@ -1599,23 +2030,118 @@ def trans_dereference_field(node, cx):
     pointer_type = pointer.type.as_read()
     return Reference(node, ll_pointer, pointer_type, (node.field_name,))
 
+def trans_color(node, cx):
+    coloring_value = trans_node(node.coloring_expr, cx)
+    coloring_expr = coloring_value.read(cx)
+    pointer_value = trans_node(node.pointer_expr, cx)
+    pointer_expr = pointer_value.read(cx)
+    if types.is_ispace(coloring_value.type.as_read().region):
+        pointer_expr = Expr('ptr_t(%s)' % pointer_expr.value, pointer_expr.actions)
+    color_value = trans_node(node.color_expr, cx)
+    color_expr = color_value.read(cx)
+
+    ll_coloring_type = trans_type(coloring_value.type.as_read(), cx)
+    ll_color_type = trans_type(color_value.type.as_read(), cx)
+
+    # Hack: This is awful, but needed for reducing copying in the case
+    # where the coloring is being immediately reassigned to the same
+    # variable again. This works only because every other operation on
+    # colorings makes a copy before storing it. Hopefully this will go
+    # away when either (a) this pass is rewritten to use proper
+    # optimization passes, or (b) colorings are removed from the
+    # language entirely.
+    parent_node = cx.nodes[-2]
+    needs_copy = True
+    if (isinstance(parent_node, ast.ExprAssignment) and
+        isinstance(parent_node.lval, ast.ExprID) and
+        isinstance(node.coloring_expr, ast.ExprID) and
+        parent_node.lval.name == node.coloring_expr.name):
+        needs_copy = False
+
+    if needs_copy:
+        ll_temp_coloring_name = mangle_temp()
+    else:
+        ll_temp_coloring_name = coloring_expr.value
+
+    actions = []
+    actions.extend(coloring_expr.actions)
+    actions.extend(color_expr.actions)
+    actions.extend(pointer_expr.actions)
+    if needs_copy:
+        actions.append(
+            '%s %s = %s;' % (
+                ll_coloring_type,
+                ll_temp_coloring_name,
+                coloring_expr.value))
+    actions.append(
+         '%s[%s].points.insert(%s);' % (
+            ll_temp_coloring_name,
+            color_expr.value,
+            pointer_expr.value))
+
+    return Value(
+        node,
+        Expr(
+            ll_temp_coloring_name,
+            actions),
+        cx.type_map[node])
+
+def trans_foreign_call(node, task, all_args, return_type, cx):
+    task_expr = task.read(cx)
+
+    args = iter(all_args)
+    foreign_args = []
+    for param_type in task.type.foreign_param_types:
+        if types.is_foreign_context(param_type):
+            foreign_args.append(Expr('ctx', []))
+        elif types.is_foreign_runtime(param_type):
+            foreign_args.append(Expr('runtime', []))
+        elif types.is_foreign_region(param_type):
+            region = next(args)
+            physical_regions = mangle_temp()
+            arg_actions = []
+            arg_actions.append(
+                'PhysicalRegion %s[%s];' % (
+                    physical_regions,
+                    len(region.physical_regions)))
+            for physical_region, index in zip(region.physical_regions, xrange(len(region.physical_regions))):
+                arg_actions.append(
+                    '%s[%s] = %s;' % (
+                        physical_regions,
+                        index,
+                        physical_region))
+            foreign_args.append(Expr(physical_regions, arg_actions))
+        else:
+            foreign_args.append(next(args).read(cx))
+
+    ll_return_type = trans_type(return_type, cx)
+    if types.is_void(return_type):
+        ll_result = '((void)0)'
+    else:
+        ll_result = mangle_temp()
+
+    actions = []
+    actions.extend(task_expr.actions)
+    for arg in foreign_args:
+        actions.extend(arg.actions)
+    actions.append(
+        '%s%s(%s);' % (
+            ('%s %s = ' % (
+                    ll_return_type,
+                    ll_result)
+             if not types.is_void(return_type) else ''),
+            task_expr.value,
+            ', '.join(arg.value for arg in foreign_args)))
+    return Value(node, Expr(ll_result, actions), return_type)
+
 def trans_call(node, cx):
     task = trans_node(node.function, cx)
     all_args = trans_node(node.args, cx)
     return_type = cx.type_map[node]
 
-    # Hack: Call builtin functions directly.
-    if isinstance(task, Builtin):
-        function = task.read(cx)
-        args = [arg.read(cx) for arg in all_args]
-        return Value(
-            node,
-            Expr(
-                '%s(%s)' % (
-                    function.value,
-                    ', '.join(arg.value for arg in args)),
-                function.actions + [action for arg in args for action in arg.actions]),
-            return_type)
+    # Handle the foreign function interface separately.
+    if types.is_foreign_function(task.type):
+        return trans_foreign_call(node, task, all_args, return_type, cx)
 
     # FIXME: This code is too brittle to handle dynamic task calls.
     assert isinstance(task, Function)
@@ -1658,15 +2184,22 @@ def trans_call(node, cx):
     assert len(region_arg_types) == len(region_args)
     assert len(region_params) == len(region_args)
 
+    region_roots = [
+        cx.regions[cx.regions[region_type].region_root]
+        for region_type in region_arg_types]
+
     # For regions with no privileges requested, do not pass a
     # RegionRequirement.
     privileges_requested = [
         trans_privilege_mode(region_type, task.type.privileges, cx)
         for region_type in region_param_types]
 
-    region_roots = [
-        cx.regions[cx.regions[region_type].region_root]
-        for region_type in region_arg_types]
+    field_privileges = [
+        OrderedDict(
+            (field, privilege)
+            for privilege, fields in privileges.iteritems()
+            for field in fields)
+        for privileges in privileges_requested]
 
     task_params_struct_name = task.params
     task_result = mangle_temp()
@@ -1677,24 +2210,24 @@ def trans_call(node, cx):
     field_sets = [
         [mangle_temp() for privilege in privileges]
         for privileges in privileges_requested]
+
     fields = [
         [[region_arg.field_map[field_path] for field_path in field_paths]
          for field_paths in privileges.itervalues()]
         for region_arg, privileges in zip(region_args, privileges_requested)]
+
     region_meta = (
         [(region_param, region_arg.read(cx).value)
-         for region_param, region_arg in zip(region_params, region_args)] +
-        [('field_%s' % ('_'.join((region_param,) + field_path)), field)
-         for region_param, region_arg in zip(region_params, region_args)
-         for field_path, field in region_arg.field_map.iteritems()])
+         for region_param, region_arg in zip(region_params, region_args)])
 
     actions.append('Future %s;' % task_result)
 
     # Calculate the set of regions currently in use that are needed
     # for the child task call and unmap them.
-    unmap_regions = OrderedDict((cx.regions[cx.regions[region_type].region_root], ())
-                                for region_type, privileges in zip(region_arg_types, privileges_requested)
-                                if len(privileges) > 0).keys()
+    unmap_regions = OrderedDict(
+        (cx.regions[cx.regions[region_type].region_root], ())
+        for region_type, privileges in zip(region_arg_types, privileges_requested)
+        if len(privileges) > 0).keys()
 
     task_call_body = (
         ['std::vector<IndexSpaceRequirement> ispaces;'] +
@@ -1722,15 +2255,24 @@ def trans_call(node, cx):
          'void *buffer = malloc(buffer_size);',
          'assert(buffer);',
          'args.legion_serialize(buffer);'] +
-        ['runtime->unmap_region(ctx, %s);' % (region.physical_region)
-         for region in unmap_regions] +
+        ['runtime->unmap_region(ctx, %s);' % physical_region
+         for region in unmap_regions
+         for physical_region, physical_region_accessors in zip(
+                region.physical_regions, region.physical_region_accessors)
+         if len(physical_region_accessors) > 0] +
         [('%s = runtime->execute_task(ctx, %s, ispaces, fspaces, regions,' +
           'TaskArgument(buffer, buffer_size), Predicate::TRUE_PRED, false);') %
-         (task_result, mangle_task_enum(task.node.name))] +
-        ['%s = runtime->map_region(ctx, %s);' % (region.physical_region, region.region_requirement)
-         for region in unmap_regions] +
-        ['%s.wait_until_valid();' % (region.physical_region)
-         for region in unmap_regions])
+         (task_result, mangle_task_enum(mangle(task.node, cx)))] +
+        ['runtime->remap_region(ctx, %s);' % physical_region
+         for region in unmap_regions
+         for physical_region, physical_region_accessors in zip(
+                region.physical_regions, region.physical_region_accessors)
+         if len(physical_region_accessors) > 0] +
+        ['%s.wait_until_valid();' % physical_region
+         for region in unmap_regions
+         for physical_region, physical_region_accessors in zip(
+                region.physical_regions, region.physical_region_accessors)
+         if len(physical_region_accessors) > 0])
     # FIXME: Re-establish accessors when re-mapping.
     actions.extend(['{', Block(task_call_body), '}'])
 
@@ -1745,32 +2287,52 @@ def trans_call(node, cx):
     return Value(node, Expr(task_return_expr, actions), return_type)
 
 def trans_type(t, cx):
-    # For simple types, translate them directly:
-    if types.is_simple(t):
+    # Translate simple types:
+    if types.is_POD(t):
         return types.type_name(t)
-    if types.is_integral(t):
-        return t.cname
+    if types.is_void(t):
+        return types.type_name(t)
     if types.is_ispace(t):
         return 'IndexSpace'
     if types.is_region(t):
         return 'LogicalRegion'
     if types.is_coloring(t):
         return 'Coloring'
-    if types.is_pointer(t):
+    if types.is_pointer(t) and len(t.regions) == 1:
+        return 'ptr_t'
+
+    # Translate foreign types:
+    if types.is_foreign_coloring(t):
+        return 'Coloring'
+    if types.is_foreign_context(t):
+        return 'Context'
+    if types.is_foreign_pointer(t):
+        return 'ptr_t'
+    if types.is_foreign_region(t):
+        return 'PhysicalRegion'
+    if types.is_foreign_runtime(t):
+        return 'HighLevelRuntime *'
+
+    # Translate code-gen internal types:
+    if is_raw_pointer(t):
         return 'ptr_t'
     if is_fieldid(t):
         return 'FieldID'
 
-    # For complex types, lookup a translation:
+    # Translate composite types:
     k = t.key()
     if k in cx.ll_type_map:
-        return cx.ll_type_map[k]
+        ll_type = cx.ll_type_map[k]
+        assert ll_type is not None
+        return ll_type
     raise TypeTranslationFailedException('Code generation failed at %s' % t)
 
 def trans_return_type(t, cx):
     # Some types need to be passed via wrapper objects. These types
     # are listed below.
     if types.is_coloring(t):
+        return 'ColoringSerializer'
+    if types.is_foreign_coloring(t):
         return 'ColoringSerializer'
 
     return trans_type(t, cx)
@@ -1779,6 +2341,17 @@ def trans_fields(t, cx):
     if t in cx.ll_field_map:
         return cx.ll_field_map[t]
 
+    if types.is_pointer(t):
+        if len(t.regions) == 1:
+            pass
+        elif len(t.regions) <= 32:
+            field_map = OrderedDict(
+                [(('pointer',), RawPointer(t)),
+                 (('region',), types.Int32())])
+            cx.ll_field_map[t] = field_map
+            return field_map
+        else:
+            assert False
     if types.is_struct(t):
         field_map = OrderedDict()
         for field_type in t.regions:
@@ -1850,7 +2423,9 @@ def trans_privilege_mode(region, requested_privileges, cx):
         elif writes:
             ll_privilege = 'WRITE_ONLY'
         elif reduce_op is not None:
-            ll_privilege = mangle_reduction_op_enum(reduce_op, element_type, cx)
+            ll_privilege = '%s /* field %s */' % (
+                mangle_reduction_op_enum(reduce_op, element_type, cx),
+                '.'.join(nested_field_path))
         else:
             assert False
 
@@ -1859,433 +2434,646 @@ def trans_privilege_mode(region, requested_privileges, cx):
 
     return image_map(ll_nested_field_privileges)
 
+def trans_accessor_type(cx):
+    # For the moment, accessor type is a global setting.
+    return 'AccessorType::AOS<0>'
+
+# A method combination around wrapper a la Common Lisp.
+class DispatchAround:
+    def __init__(self, inner_fn, outer_fn):
+        self.inner_fn = inner_fn
+        self.outer_fn = outer_fn
+    def __call__(self, *args, **kwargs):
+        return self.outer_fn(self.inner_fn, *args, **kwargs)
+    def __getattr__(self, name):
+        return getattr(self.inner_fn, name)
+
+def with_node_path_tracking(fn):
+    def helper(fn, node, cx):
+        if cx.nodes is not None:
+            cx.nodes.append(node)
+        try:
+            return fn(node, cx)
+        finally:
+            if cx.nodes is not None:
+                cx.nodes.pop()
+    return DispatchAround(fn, helper)
+
+@with_node_path_tracking
+@singledispatch
 def trans_node(node, cx):
-    if isinstance(node, ast.Program):
-        return trans_program(node, cx)
-    if isinstance(node, ast.Import):
-        return trans_import(node, cx)
-    if isinstance(node, ast.Struct):
-        return trans_struct(node, cx)
-    if isinstance(node, ast.Function):
-        return trans_function(node, cx)
-    if isinstance(node, ast.Params):
-        return ', '.join(trans_node(param, cx) for param in node.params)
-    if isinstance(node, ast.Param):
-        return '%s %s' % (trans_node(node.declared_type, cx), node.name)
-    if isinstance(node, ast.TypeVoid):
-        return trans_type(cx.type_map[node].type, cx)
-    if isinstance(node, ast.TypeBool):
-        return trans_type(cx.type_map[node].type, cx)
-    if isinstance(node, ast.TypeDouble):
-        return trans_type(cx.type_map[node].type, cx)
-    if isinstance(node, ast.TypeFloat):
-        return trans_type(cx.type_map[node].type, cx)
-    if isinstance(node, ast.TypeInt):
-        return trans_type(cx.type_map[node].type, cx)
-    if isinstance(node, ast.TypeUInt):
-        return trans_type(cx.type_map[node].type, cx)
-    if isinstance(node, ast.TypeInt8):
-        return trans_type(cx.type_map[node].type, cx)
-    if isinstance(node, ast.TypeInt16):
-        return trans_type(cx.type_map[node].type, cx)
-    if isinstance(node, ast.TypeInt32):
-        return trans_type(cx.type_map[node].type, cx)
-    if isinstance(node, ast.TypeInt64):
-        return trans_type(cx.type_map[node].type, cx)
-    if isinstance(node, ast.TypeUInt8):
-        return trans_type(cx.type_map[node].type, cx)
-    if isinstance(node, ast.TypeUInt16):
-        return trans_type(cx.type_map[node].type, cx)
-    if isinstance(node, ast.TypeUInt32):
-        return trans_type(cx.type_map[node].type, cx)
-    if isinstance(node, ast.TypeUInt64):
-        return trans_type(cx.type_map[node].type, cx)
-    if isinstance(node, ast.TypeColoring):
-        return trans_type(cx.type_map[node].type, cx)
-    if isinstance(node, ast.TypeID):
-        return trans_type(cx.type_map[node].type, cx)
-    if isinstance(node, ast.TypePointer):
-        return trans_type(cx.type_map[node].type, cx)
-    if isinstance(node, ast.Block):
-        cx = cx.new_block_scope()
-        block = [trans_node(statement, cx) for statement in node.block]
-        cleanup = trans_cleanup(-1, cx)
-        return Statement(['{', Block(block + cleanup), '}'])
-    if isinstance(node, ast.StatementAssert):
-        ll_expr = trans_node(node.expr, cx).read(cx)
-        return Statement(
-            ll_expr.actions +
-            ['assert(%s);' % ll_expr.value])
-    if isinstance(node, ast.StatementExpr):
-        ll_expr = trans_node(node.expr, cx).read(cx)
-        return Statement(
-            ll_expr.actions +
-            ['%s;' % ll_expr.value])
-    if isinstance(node, ast.StatementIf):
-        ll_condition = trans_node(node.condition, cx).read(cx)
-        if node.else_block is None:
-            return Statement(
-                ll_condition.actions +
-                ['if (%s)' % ll_condition.value,
-                 trans_node(node.then_block, cx)])
+    raise Exception('Code generation failed at %s' % node)
+
+@trans_node.register(ast.Program)
+def _(node, cx):
+    return trans_program(node, cx)
+
+@trans_node.register(ast.Import)
+def _(node, cx):
+    return trans_import(node, cx)
+
+@trans_node.register(ast.Struct)
+def _(node, cx):
+    return trans_struct(node, cx)
+
+@trans_node.register(ast.Function)
+def _(node, cx):
+    return trans_function(node, cx)
+
+@trans_node.register(ast.FunctionParams)
+def _(node, cx):
+    return ', '.join(trans_node(param, cx) for param in node.params)
+
+@trans_node.register(ast.FunctionParam)
+def _(node, cx):
+    return '%s %s' % (trans_node(node.declared_type, cx), node.name)
+
+@trans_node.register(ast.TypeVoid)
+def _(node, cx):
+    return trans_type(cx.type_map[node].type, cx)
+
+@trans_node.register(ast.TypeBool)
+def _(node, cx):
+    return trans_type(cx.type_map[node].type, cx)
+
+@trans_node.register(ast.TypeDouble)
+def _(node, cx):
+    return trans_type(cx.type_map[node].type, cx)
+
+@trans_node.register(ast.TypeFloat)
+def _(node, cx):
+    return trans_type(cx.type_map[node].type, cx)
+
+@trans_node.register(ast.TypeInt)
+def _(node, cx):
+    return trans_type(cx.type_map[node].type, cx)
+
+@trans_node.register(ast.TypeUInt)
+def _(node, cx):
+    return trans_type(cx.type_map[node].type, cx)
+
+@trans_node.register(ast.TypeInt8)
+def _(node, cx):
+    return trans_type(cx.type_map[node].type, cx)
+
+@trans_node.register(ast.TypeInt16)
+def _(node, cx):
+    return trans_type(cx.type_map[node].type, cx)
+
+@trans_node.register(ast.TypeInt32)
+def _(node, cx):
+    return trans_type(cx.type_map[node].type, cx)
+
+@trans_node.register(ast.TypeInt64)
+def _(node, cx):
+    return trans_type(cx.type_map[node].type, cx)
+
+@trans_node.register(ast.TypeUInt8)
+def _(node, cx):
+    return trans_type(cx.type_map[node].type, cx)
+
+@trans_node.register(ast.TypeUInt16)
+def _(node, cx):
+    return trans_type(cx.type_map[node].type, cx)
+
+@trans_node.register(ast.TypeUInt32)
+def _(node, cx):
+    return trans_type(cx.type_map[node].type, cx)
+
+@trans_node.register(ast.TypeUInt64)
+def _(node, cx):
+    return trans_type(cx.type_map[node].type, cx)
+
+@trans_node.register(ast.TypeColoring)
+def _(node, cx):
+    return trans_type(cx.type_map[node].type, cx)
+
+@trans_node.register(ast.TypeID)
+def _(node, cx):
+    return trans_type(cx.type_map[node].type, cx)
+
+@trans_node.register(ast.TypePointer)
+def _(node, cx):
+    return trans_type(cx.type_map[node].type, cx)
+
+@trans_node.register(ast.Block)
+def _(node, cx):
+    cx = cx.new_block_scope()
+    block = [trans_node(statement, cx) for statement in node.block]
+    cleanup = trans_cleanup(-1, cx)
+    return Statement(['{', Block(block + cleanup), '}'])
+
+@trans_node.register(ast.StatementAssert)
+def _(node, cx):
+    ll_expr = trans_node(node.expr, cx).read(cx)
+    return Statement(
+        ll_expr.actions +
+        ['assert(%s);' % ll_expr.value])
+
+@trans_node.register(ast.StatementExpr)
+def _(node, cx):
+    ll_expr = trans_node(node.expr, cx).read(cx)
+    return Statement(ll_expr.actions)
+
+@trans_node.register(ast.StatementIf)
+def _(node, cx):
+    ll_condition = trans_node(node.condition, cx).read(cx)
+    if node.else_block is None:
         return Statement(
             ll_condition.actions +
             ['if (%s)' % ll_condition.value,
-             trans_node(node.then_block, cx),
-             'else',
-             trans_node(node.else_block, cx)])
-    if isinstance(node, ast.StatementFor):
-        return trans_for(node, cx)
-    if isinstance(node, ast.StatementLet):
-        return trans_let(node, cx)
-    if isinstance(node, ast.StatementLetRegion):
-        return trans_region(node, cx)
-    if isinstance(node, ast.StatementLetArray):
-        return trans_array(node, cx)
-    if isinstance(node, ast.StatementLetIspace):
-        return trans_ispace(node, cx)
-    if isinstance(node, ast.StatementLetPartition):
-        return trans_partition(node, cx)
-    if isinstance(node, ast.StatementReturn):
-        return trans_return(node, cx)
-    if isinstance(node, ast.StatementUnpack):
-        return trans_unpack(node, cx)
-    if isinstance(node, ast.StatementVar):
-        expr = trans_node(node.expr, cx)
-        ll_expr = expr.read(cx)
-        ll_expr_type = trans_type(expr.type.as_read(), cx)
-        ll_name = mangle(node, cx)
-        cx.env.insert(
-            node.name,
-            StackReference(
-                node,
-                Expr(ll_name, []),
-                types.StackReference(expr.type.as_read())),
-            shadow = True)
-        return Statement(
-            ll_expr.actions +
-            ['%s %s = %s;' % (ll_expr_type, ll_name, ll_expr.value)])
-    if isinstance(node, ast.StatementWhile):
-        condition_top = trans_node(node.condition, cx)
-        ll_condition_type = trans_type(condition_top.type, cx)
-        ll_condition_top = condition_top.read(cx)
-        ll_condition_bot = trans_node(node.condition, cx).read(cx)
-        ll_condition_name = mangle_temp()
-        block = trans_node(node.block, cx)
-        return Statement(
-            ll_condition_top.actions +
-            ['%s %s = %s;' % (
-                    ll_condition_type,
-                    ll_condition_name,
-                    ll_condition_top.value),
-             'while (%s) {' % ll_condition_name,
-             Block([block] +
-                    ll_condition_bot.actions +
-                    ['%s = %s;' % (
-                            ll_condition_name,
-                            ll_condition_bot.value)]),
-             '}'])
-    if isinstance(node, ast.ExprID):
-        value = cx.env.lookup(node.name)
-        assert value is not None
-        return value
-    if isinstance(node, ast.ExprAssignment):
-        lval = trans_node(node.lval, cx)
-        rval = trans_node(node.rval, cx)
-        return Value(
-            node,
-            lval.write(rval, cx),
-            cx.type_map[node])
-    if isinstance(node, ast.ExprUnaryOp):
-        arg = trans_node(node.arg, cx).read(cx)
-        return Value(
-            node,
-            Expr(
-                '(%s%s)' % (
-                    node.op,
-                    arg.value),
-                arg.actions),
-            cx.type_map[node])
-    if isinstance(node, ast.ExprBinaryOp):
-        lhs = trans_node(node.lhs, cx).read(cx)
-        rhs = trans_node(node.rhs, cx).read(cx)
-        return Value(
-            node,
-            Expr(
-                '(%s %s %s)' % (
-                    lhs.value,
-                    node.op,
-                    rhs.value),
-                lhs.actions + rhs.actions),
-            cx.type_map[node])
-    if isinstance(node, ast.ExprReduceOp):
-        lval = trans_node(node.lhs, cx)
-        rval = trans_node(node.rhs, cx)
-        return Value(
-            node,
-            lval.reduce(node.op, rval, cx),
-            cx.type_map[node])
-    if isinstance(node, ast.ExprCast):
-        expr = trans_node(node.expr, cx).read(cx)
-        return Value(
-            node,
-            Expr(
-                '((%s)%s)' % (
-                    trans_type(cx.type_map[node], cx),
-                    expr.value),
-                expr.actions),
-            cx.type_map[node])
-    if isinstance(node, ast.ExprNull):
-        return Value(
-            node,
-            Expr('(ptr_t::nil())', []),
-            cx.type_map[node])
-    if isinstance(node, ast.ExprIsnull):
-        ll_pointer_expr = trans_node(node.pointer_expr, cx).read(cx)
-        return Value(
-            node,
-            Expr('(!%s)' % ll_pointer_expr.value, ll_pointer_expr.actions),
-            cx.type_map[node])
-    if isinstance(node, ast.ExprNew):
-        return trans_new(node, cx)
-    if isinstance(node, ast.ExprRead):
-        return trans_read(node, cx)
-    if isinstance(node, ast.ExprWrite):
-        return trans_write(node, cx)
-    if isinstance(node, ast.ExprReduce):
-        return trans_reduce(node, cx)
-    if isinstance(node, ast.ExprDereference):
-        return trans_dereference(node, cx)
-    if isinstance(node, ast.ExprArrayAccess):
-        return trans_array_access(node, cx)
-    if isinstance(node, ast.ExprFieldAccess):
-        struct = trans_node(node.struct_expr, cx)
-        if types.is_reference(struct.type):
-            return struct.get_field(node, node.field_name)
-        ll_struct = struct.read(cx)
-        return Value(
-            node,
-            Expr('(%s.%s)' % (ll_struct.value, node.field_name),
-                 ll_struct.actions),
-            cx.type_map[node])
-    if isinstance(node, ast.ExprFieldDereference):
-        return trans_dereference_field(node, cx)
-    if isinstance(node, ast.ExprFieldValues):
-        cx = cx.increase_indent()
-        ll_result_type = trans_type(cx.type_map[node], cx)
-        ll_result = mangle_temp()
+             trans_node(node.then_block, cx)])
+    return Statement(
+        ll_condition.actions +
+        ['if (%s)' % ll_condition.value,
+         trans_node(node.then_block, cx),
+         'else',
+         trans_node(node.else_block, cx)])
 
-        actions = []
-        actions.append('%s %s;' % (ll_result_type, ll_result))
-        actions.extend(
-            action
-            for field_value in trans_node(node.field_values, cx)
-            for action in field_value.actions + [field_value.value % ll_result])
-        return Value(
+@trans_node.register(ast.StatementFor)
+def _(node, cx):
+    return trans_for(node, cx)
+
+@trans_node.register(ast.StatementLet)
+def _(node, cx):
+    return trans_let(node, cx)
+
+@trans_node.register(ast.StatementLetRegion)
+def _(node, cx):
+    return trans_region(node, cx)
+
+@trans_node.register(ast.StatementLetArray)
+def _(node, cx):
+    return trans_array(node, cx)
+
+@trans_node.register(ast.StatementLetIspace)
+def _(node, cx):
+    return trans_ispace(node, cx)
+
+@trans_node.register(ast.StatementLetPartition)
+def _(node, cx):
+    return trans_partition(node, cx)
+
+@trans_node.register(ast.StatementReturn)
+def _(node, cx):
+    return trans_return(node, cx)
+
+@trans_node.register(ast.StatementUnpack)
+def _(node, cx):
+    return trans_unpack(node, cx)
+
+@trans_node.register(ast.StatementVar)
+def _(node, cx):
+    expr = trans_node(node.expr, cx)
+    ll_expr = expr.read(cx)
+    ll_expr_type = trans_type(expr.type.as_read(), cx)
+    ll_name = mangle(node, cx)
+    cx.env.insert(
+        node.name,
+        StackReference(
             node,
-            Expr(ll_result, actions),
-            cx.type_map[node])
-    if isinstance(node, ast.FieldValues):
-        return [trans_node(field_value, cx)
-                for field_value in node.field_values]
-    if isinstance(node, ast.FieldValue):
-        field_value = trans_node(node.value_expr, cx).read(cx)
-        return Expr(
-            '%%s.%s = %s;' % (
-                node.field_name.replace('%', '%%'),
-                field_value.value.replace('%', '%%')),
-            field_value.actions)
-    if isinstance(node, ast.ExprFieldUpdates):
-        cx = cx.increase_indent()
+            Expr(ll_name, []),
+            types.StackReference(expr.type.as_read())),
+        shadow = True)
+    return Statement(
+        ll_expr.actions +
+        ['%s %s = %s;' % (ll_expr_type, ll_name, ll_expr.value)])
 
-        struct = trans_node(node.struct_expr, cx)
-        ll_struct = struct.read(cx)
+@trans_node.register(ast.StatementWhile)
+def _(node, cx):
+    condition_top = trans_node(node.condition, cx)
+    ll_condition_type = trans_type(condition_top.type, cx)
+    ll_condition_top = condition_top.read(cx)
+    ll_condition_bot = trans_node(node.condition, cx).read(cx)
+    ll_condition_name = mangle_temp()
+    block = trans_node(node.block, cx)
+    return Statement(
+        ll_condition_top.actions +
+        ['%s %s = %s;' % (
+                ll_condition_type,
+                ll_condition_name,
+                ll_condition_top.value),
+         'while (%s) {' % ll_condition_name,
+         Block([block] +
+                ll_condition_bot.actions +
+                ['%s = %s;' % (
+                        ll_condition_name,
+                        ll_condition_bot.value)]),
+         '}'])
 
-        ll_result_type = trans_type(cx.type_map[node], cx)
-        ll_result = mangle_temp()
+@trans_node.register(ast.ExprID)
+def _(node, cx):
+    value = cx.env.lookup(node.name)
+    assert value is not None
+    return value
 
-        actions = []
-        actions.extend(ll_struct.actions)
+@trans_node.register(ast.ExprAssignment)
+def _(node, cx):
+    lval = trans_node(node.lval, cx)
+    rval = trans_node(node.rval, cx)
 
-        actions.append('%s %s;' % (ll_result_type, ll_result))
+    # Hack: This is the second part of the copy-reduction hack in
+    # trans_color. In some cases trans_color will modify the value
+    # directly rather than copying and returning a new value. In
+    # that case, there is no need to do the assignment.
+    if (isinstance(node.lval, ast.ExprID) and
+        isinstance(node.rval, ast.ExprColor) and
+        isinstance(node.rval.coloring_expr, ast.ExprID) and
+        node.lval.name == node.rval.coloring_expr.name):
+        return Value(node, rval.read(cx), cx.type_map[node])
 
-        actions.extend(
-            '%s.%s = %s.%s;' % (ll_result, field_name, ll_struct.value, field_name)
-            for field_name in struct.type.as_read().field_map.iterkeys())
-        actions.extend(
-            action
-            for field_update in trans_node(node.field_updates, cx)
-            for action in field_update.actions + [field_update.value % ll_result])
+    return Value(
+        node,
+        lval.write(rval, cx),
+        cx.type_map[node])
 
-        return Value(
-            node,
-            Expr(ll_result, actions),
-            cx.type_map[node])
-    if isinstance(node, ast.FieldUpdates):
-        return [trans_node(field_update, cx)
-                for field_update in node.field_updates]
-    if isinstance(node, ast.FieldUpdate):
-        field_update = trans_node(node.update_expr, cx).read(cx)
-        return Expr(
-            '%%s.%s = %s;' % (
-                node.field_name.replace('%', '%%'),
-                field_update.value.replace('%', '%%')),
-            field_update.actions)
-    if isinstance(node, ast.ExprColoring):
-        ll_coloring_type = trans_type(cx.type_map[node], cx)
+@trans_node.register(ast.ExprUnaryOp)
+def _(node, cx):
+    arg = trans_node(node.arg, cx).read(cx)
+    return Value(
+        node,
+        Expr(
+            '(%s%s)' % (
+                node.op,
+                arg.value),
+            arg.actions),
+        cx.type_map[node])
+
+@trans_node.register(ast.ExprBinaryOp)
+def _(node, cx):
+    lhs = trans_node(node.lhs, cx).read(cx)
+    rhs = trans_node(node.rhs, cx).read(cx)
+    return Value(
+        node,
+        Expr(
+            '(%s %s %s)' % (
+                lhs.value,
+                node.op,
+                rhs.value),
+            lhs.actions + rhs.actions),
+        cx.type_map[node])
+
+@trans_node.register(ast.ExprReduceOp)
+def _(node, cx):
+    lval = trans_node(node.lhs, cx)
+    rval = trans_node(node.rhs, cx)
+    return Value(
+        node,
+        lval.reduce(node.op, rval, cx),
+        cx.type_map[node])
+
+@trans_node.register(ast.ExprCast)
+def _(node, cx):
+    expr = trans_node(node.expr, cx).read(cx)
+    return Value(
+        node,
+        Expr(
+            '(static_cast<%s>(%s))' % (
+                trans_type(cx.type_map[node], cx),
+                expr.value),
+            expr.actions),
+        cx.type_map[node])
+
+@trans_node.register(ast.ExprNull)
+def _(node, cx):
+    return Value(
+        node,
+        Expr('(ptr_t::nil())', []),
+        cx.type_map[node])
+
+@trans_node.register(ast.ExprIsnull)
+def _(node, cx):
+    pointer_value = trans_node(node.pointer_expr, cx)
+    pointer_expr = pointer_value.read(cx)
+    pointer_type = pointer_value.type.as_read()
+
+    if len(pointer_type.regions) == 1:
+        ll_pointer = pointer_expr.value
+    else:
+        ll_pointer = '%s.pointer' % pointer_expr.value
+
+    return Value(
+        node,
+        Expr('(!%s)' % ll_pointer, pointer_expr.actions),
+        cx.type_map[node])
+
+@trans_node.register(ast.ExprNew)
+def _(node, cx):
+    return trans_new(node, cx)
+
+@trans_node.register(ast.ExprRead)
+def _(node, cx):
+    return trans_read(node, cx)
+
+@trans_node.register(ast.ExprWrite)
+def _(node, cx):
+    return trans_write(node, cx)
+
+@trans_node.register(ast.ExprReduce)
+def _(node, cx):
+    return trans_reduce(node, cx)
+
+@trans_node.register(ast.ExprDereference)
+def _(node, cx):
+    return trans_dereference(node, cx)
+
+@trans_node.register(ast.ExprArrayAccess)
+def _(node, cx):
+    return trans_array_access(node, cx)
+
+@trans_node.register(ast.ExprFieldAccess)
+def _(node, cx):
+    struct = trans_node(node.struct_expr, cx)
+    if types.is_reference(struct.type):
+        return struct.get_field(node, node.field_name)
+    ll_struct = struct.read(cx)
+    return Value(
+        node,
+        Expr('(%s.%s)' % (ll_struct.value, node.field_name),
+             ll_struct.actions),
+        cx.type_map[node])
+
+@trans_node.register(ast.ExprFieldDereference)
+def _(node, cx):
+    return trans_dereference_field(node, cx)
+
+@trans_node.register(ast.ExprFieldValues)
+def _(node, cx):
+    ll_result_type = trans_type(cx.type_map[node], cx)
+    ll_result = mangle_temp()
+
+    actions = []
+    actions.append('%s %s;' % (ll_result_type, ll_result))
+    actions.extend(
+        action
+        for field_value in trans_node(node.field_values, cx)
+        for action in field_value.actions + [field_value.value % ll_result])
+    return Value(
+        node,
+        Expr(ll_result, actions),
+        cx.type_map[node])
+
+@trans_node.register(ast.FieldValues)
+def _(node, cx):
+    return [trans_node(field_value, cx)
+            for field_value in node.field_values]
+
+@trans_node.register(ast.FieldValue)
+def _(node, cx):
+    field_value = trans_node(node.value_expr, cx).read(cx)
+    return Expr(
+        '%%s.%s = %s;' % (
+            node.field_name.replace('%', '%%'),
+            field_value.value.replace('%', '%%')),
+        field_value.actions)
+
+@trans_node.register(ast.ExprFieldUpdates)
+def _(node, cx):
+    struct = trans_node(node.struct_expr, cx)
+    ll_struct = struct.read(cx)
+
+    ll_result_type = trans_type(cx.type_map[node], cx)
+    ll_result = mangle_temp()
+
+    actions = []
+    actions.extend(ll_struct.actions)
+
+    actions.append('%s %s;' % (ll_result_type, ll_result))
+
+    actions.extend(
+        '%s.%s = %s.%s;' % (ll_result, field_name, ll_struct.value, field_name)
+        for field_name in struct.type.as_read().field_map.iterkeys())
+    actions.extend(
+        action
+        for field_update in trans_node(node.field_updates, cx)
+        for action in field_update.actions + [field_update.value % ll_result])
+
+    return Value(
+        node,
+        Expr(ll_result, actions),
+        cx.type_map[node])
+
+@trans_node.register(ast.FieldUpdates)
+def _(node, cx):
+    return [trans_node(field_update, cx)
+            for field_update in node.field_updates]
+
+@trans_node.register(ast.FieldUpdate)
+def _(node, cx):
+    field_update = trans_node(node.update_expr, cx).read(cx)
+    return Expr(
+        '%%s.%s = %s;' % (
+            node.field_name.replace('%', '%%'),
+            field_update.value.replace('%', '%%')),
+        field_update.actions)
+
+@trans_node.register(ast.ExprColoring)
+def _(node, cx):
+    ll_coloring_type = trans_type(cx.type_map[node], cx)
+    ll_temp = mangle_temp()
+    actions = ['%s %s;' % (ll_coloring_type, ll_temp)]
+    return Value(node, Expr(ll_temp, actions), cx.type_map[node])
+
+@trans_node.register(ast.ExprColor)
+def _(node, cx):
+    return trans_color(node, cx)
+
+@trans_node.register(ast.ExprUpregion)
+def _(node, cx):
+    regions = trans_node(node.regions, cx)
+    result_type = cx.type_map[node]
+    ll_result_type = trans_type(result_type, cx)
+
+    pointer_value = trans_node(node.expr, cx)
+    pointer_expr = pointer_value.read(cx)
+    pointer_type = pointer_value.type.as_read()
+
+    if len(pointer_type.regions) == 1:
+        ll_pointer = pointer_expr.value
+    else:
+        ll_pointer = '%s.pointer' % pointer_expr.value
+
+    actions = []
+    actions.extend(pointer_expr.actions)
+
+    ll_result = mangle_temp()
+    actions.append('%s %s;' % (ll_result_type, ll_result))
+
+    if len(regions) == 1:
+        ll_result_pointer = ll_result
+    else:
+        ll_result_pointer = '%s.pointer' % ll_result
+        ll_result_bitmask = '%s.region' % ll_result
+
+    actions.append('%s = %s;' % (ll_result_pointer, ll_pointer))
+
+    if len(regions) > 1:
+        # FIXME: Not the correct behavior. Will probably cause
+        # crashes if used.
+        actions.append('%s = %s;' % (ll_result_bitmask, 0))
+
+    return Value(
+        node,
+        Expr(ll_result, actions),
+        cx.type_map[node])
+
+@trans_node.register(ast.UpregionRegions)
+def _(node, cx):
+    return [trans_node(region, cx).read(cx)
+            for region in node.regions]
+
+@trans_node.register(ast.UpregionRegion)
+def _(node, cx):
+    return cx.env.lookup(node.name)
+
+@trans_node.register(ast.ExprDownregion)
+def _(node, cx):
+    regions = trans_node(node.regions, cx)
+    result_type = cx.type_map[node]
+    ll_result_type = trans_type(result_type, cx)
+
+    pointer_value = trans_node(node.expr, cx)
+    pointer_expr = pointer_value.read(cx)
+    pointer_type = pointer_value.type.as_read()
+
+    if len(pointer_type.regions) == 1:
+        ll_pointer = pointer_expr.value
+    else:
+        ll_pointer = '%s.pointer' % pointer_expr.value
+
+    actions = []
+    actions.extend(pointer_expr.actions)
+
+    ll_result = mangle_temp()
+    actions.append('%s %s;' % (ll_result_type, ll_result))
+
+    if len(regions) == 1:
+        ll_result_pointer = ll_result
+    else:
+        ll_result_pointer = '%s.pointer' % ll_result
+        ll_result_bitmask = '%s.region' % ll_result
+
+    def safe_cast(otherwise, (index, region)):
+        _actions = []
         ll_temp = mangle_temp()
-        actions = ['%s %s;' % (ll_coloring_type, ll_temp)]
-        return Value(node, Expr(ll_temp, actions), cx.type_map[node])
-    if isinstance(node, ast.ExprColor):
-        cx = cx.increase_indent()
+        _actions.extend(
+            ['ptr_t %s = runtime->safe_cast(ctx, %s, %s);' % (
+                    ll_temp, ll_pointer, region.value),
+             'if (!%s.is_null()) {' % ll_temp,
+             Block(['%s = %s;' % (ll_result_pointer, ll_temp)] +
+                   (['%s = %s;' % (ll_result_bitmask, 1 << index)]
+                    if len(regions) > 1 else [])),
+             '} else {',
+             Block(otherwise),
+             '}'])
+        return _actions
 
-        coloring = trans_node(node.coloring_expr, cx)
-        ll_coloring = coloring.read(cx)
-        pointer = trans_node(node.pointer_expr, cx)
-        ll_pointer = pointer.read(cx)
-        if types.is_ispace(coloring.type.as_read().region):
-            ll_pointer = Expr('ptr_t(%s)' % ll_pointer.value, ll_pointer.actions)
-        color = trans_node(node.color_expr, cx)
-        ll_color = color.read(cx)
+    otherwise = ['%s = ptr_t::nil();' % ll_result_pointer]
+    actions.extend(reduce(safe_cast, reversed(zip(xrange(len(regions)), regions)), otherwise))
+    return Value(
+        node,
+        Expr(ll_result, actions),
+        cx.type_map[node])
 
-        ll_coloring_type = trans_type(coloring.type.as_read(), cx)
-        ll_color_type = trans_type(color.type.as_read(), cx)
+@trans_node.register(ast.DownregionRegions)
+def _(node, cx):
+    return [trans_node(region, cx).read(cx)
+            for region in node.regions]
 
-        ll_temp_coloring_name = mangle_temp()
-        ll_temp_color_name = mangle_temp()
-        ll_temp_points_name = mangle_temp()
+@trans_node.register(ast.DownregionRegion)
+def _(node, cx):
+    return cx.env.lookup(node.name)
 
-        actions = []
-        actions.append('%s %s;' % (
-                ll_coloring_type,
-                ll_temp_coloring_name))
+@trans_node.register(ast.ExprPack)
+def _(node, cx):
+    struct_value = trans_node(node.expr, cx)
+    struct_expr = struct_value.read(cx)
+    ll_struct_type = trans_type(struct_value.type.as_read(), cx)
 
-        actions.extend(
-            ll_coloring.actions +
-            ll_color.actions +
-            ll_pointer.actions +
-            ['%s = %s;' % (ll_temp_coloring_name, ll_coloring.value),
-             '%s %s = %s;' % (ll_color_type, ll_temp_color_name, ll_color.value),
-             'std::set<ptr_t> %s = %s[%s].points;' % (
-                    ll_temp_points_name,
-                    ll_temp_coloring_name,
-                    ll_temp_color_name),
-             '%s.insert(%s);' % (ll_temp_points_name, ll_pointer.value),
-             '%s[%s].points = %s;' % (
-                    ll_temp_coloring_name,
-                    ll_temp_color_name,
-                    ll_temp_points_name)])
+    regions = trans_node(node.regions, cx)
 
-        return Value(
-            node,
-            Expr(
-                ll_temp_coloring_name,
-                actions),
-            cx.type_map[node])
-    if isinstance(node, ast.ExprUpregion):
-        return trans_node(node.expr, cx)
-    if isinstance(node, ast.ExprDownregion):
-        regions = trans_node(node.regions, cx)
-        ll_pointer = trans_node(node.expr, cx).read(cx)
+    result_type = cx.type_map[node]
+    ll_result_type = trans_type(result_type, cx)
 
-        actions = []
-        actions.extend(ll_pointer.actions)
+    ll_temp_in = mangle_temp()
+    ll_temp_out = mangle_temp()
 
-        ll_result = mangle_temp()
-        actions.append('ptr_t %s = ptr_t::nil();' % ll_result)
+    actions = []
 
-        def safe_cast(otherwise, region):
-            _actions = []
-            ll_temp = mangle_temp()
-            _actions.extend(
-                ['ptr_t %s = runtime->safe_cast(ctx, %s, %s);' % (
-                        ll_temp, ll_pointer.value, region.value),
-                 'if (!%s.is_null()) {' % ll_temp,
-                 Block(['%s = %s;' % (ll_result, ll_temp)]),
-                 '} else {',
-                 Block(otherwise),
-                 '}'])
-            return _actions
+    actions.extend(struct_expr.actions)
+    for region in regions:
+        actions.extend(region.actions)
 
-        actions.extend(reduce(safe_cast, reversed(regions), []))
-        return Value(
-            node,
-            Expr(ll_result, actions),
-            cx.type_map[node])
-    if isinstance(node, ast.DownregionRegions):
-        return [trans_node(region, cx).read(cx)
-                for region in node.regions]
-    if isinstance(node, ast.DownregionRegion):
-        return cx.env.lookup(node.name)
-    if isinstance(node, ast.ExprPack):
-        cx = cx.increase_indent()
+    actions.append('%s %s;' % (ll_struct_type, ll_temp_in))
+    actions.append('%s %s;' % (ll_result_type, ll_temp_out))
 
-        struct_value = trans_node(node.expr, cx)
-        struct_expr = struct_value.read(cx)
-        ll_struct_type = trans_type(struct_value.type.as_read(), cx)
+    actions.append('%s = %s;' % (ll_temp_in, struct_expr.value))
+    actions.extend(
+        '%s.%s = %s.%s;' % (ll_temp_out, field_name, ll_temp_in, field_name)
+        for field_name in result_type.as_read().field_map.iterkeys())
+    actions.extend(
+        '%s.%s = %s;' % (ll_temp_out, region_type.name, region.value)
+        for region_type, region in zip(result_type.regions, regions))
 
-        regions = trans_node(node.regions, cx)
+    return Value(
+        node,
+        Expr(ll_temp_out, actions),
+        result_type)
 
-        result_type = cx.type_map[node]
-        ll_result_type = trans_type(result_type, cx)
+@trans_node.register(ast.PackRegions)
+def _(node, cx):
+    return [trans_node(region, cx)
+            for region in node.regions]
 
-        ll_temp_in = mangle_temp()
-        ll_temp_out = mangle_temp()
+@trans_node.register(ast.PackRegion)
+def _(node, cx):
+    return cx.env.lookup(node.name).read(cx)
 
-        actions = []
+@trans_node.register(ast.ExprCall)
+def _(node, cx):
+    return trans_call(node, cx)
 
-        actions.extend(struct_expr.actions)
-        for region in regions:
-            actions.extend(region.actions)
+@trans_node.register(ast.Args)
+def _(node, cx):
+    return [trans_node(arg, cx) for arg in node.args]
 
-        actions.append('%s %s;' % (ll_struct_type, ll_temp_in))
-        actions.append('%s %s;' % (ll_result_type, ll_temp_out))
+@trans_node.register(ast.ExprConstBool)
+def _(node, cx):
+    return Value(node, Expr(str(node.value).lower(), []), cx.type_map[node])
 
-        actions.append('%s = %s;' % (ll_temp_in, struct_expr.value))
-        actions.extend(
-            '%s.%s = %s.%s;' % (ll_temp_out, field_name, ll_temp_in, field_name)
-            for field_name in result_type.as_read().field_map.iterkeys())
-        actions.extend(
-            '%s.%s = %s;' % (ll_temp_out, region_type.name, region.value)
-            for region_type, region in zip(result_type.regions, regions))
+@trans_node.register(ast.ExprConstDouble)
+def _(node, cx):
+    return Value(node, Expr(node.value, []), cx.type_map[node])
 
-        return Value(
-            node,
-            Expr(ll_temp_out, actions),
-            result_type)
-    if isinstance(node, ast.PackRegions):
-        return [trans_node(region, cx)
-                for region in node.regions]
-    if isinstance(node, ast.PackRegion):
-        return cx.env.lookup(node.name).read(cx)
-    if isinstance(node, ast.ExprCall):
-        return trans_call(node, cx)
-    if isinstance(node, ast.Args):
-        return [trans_node(arg, cx) for arg in node.args]
-    if isinstance(node, ast.ExprConstBool):
-        return Value(node, Expr(str(node.value).lower(), []), cx.type_map[node])
-    if isinstance(node, ast.ExprConstDouble):
-        return Value(node, Expr(node.value, []), cx.type_map[node])
-    if isinstance(node, ast.ExprConstFloat):
-        return Value(
-            node,
-            Expr('%sf' % node.value, []),
-            cx.type_map[node])
-    if isinstance(node, ast.ExprConstInt):
-        return Value(
-            node,
-            Expr('((intptr_t)INTMAX_C(%s))' % str(node.value), []),
-            cx.type_map[node])
-    if isinstance(node, ast.ExprConstUInt):
-        return Value(
-            node,
-            Expr('((uintptr_t)UINTMAX_C(%s))' % str(node.value), []),
-            cx.type_map[node])
-    raise Exception('Code generation failed at %s' % node)
+@trans_node.register(ast.ExprConstFloat)
+def _(node, cx):
+    return Value(
+        node,
+        Expr('%sf' % node.value, []),
+        cx.type_map[node])
 
-def trans(program, type_map, constraints, region_usage):
-    type_set = types.unwrap(types.union(t.component_types()
-                                        for t in type_map.itervalues()
-                                        if types.is_type(t)))
-    cx = Context(type_set, type_map, constraints, region_usage)
+@trans_node.register(ast.ExprConstInt)
+def _(node, cx):
+    return Value(
+        node,
+        Expr('((intptr_t)INTMAX_C(%s))' % str(node.value), []),
+        cx.type_map[node])
+
+@trans_node.register(ast.ExprConstUInt)
+def _(node, cx):
+    return Value(
+        node,
+        Expr('((uintptr_t)UINTMAX_C(%s))' % str(node.value), []),
+        cx.type_map[node])
+
+def trans(program, opts, type_map, constraints, foreign_types, region_usage, leaf_tasks):
+    type_set = types.union(
+        t.component_types()
+        for t in type_map.itervalues()
+        if types.is_type(t))
+    foreign_types = types.union(
+        t.component_types()
+        for t in foreign_types
+        if types.is_type(t))
+    cx = Context(opts, type_set, type_map, constraints, foreign_types, region_usage, leaf_tasks)
     return trans_node(program, cx)

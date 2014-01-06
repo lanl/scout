@@ -20,9 +20,8 @@ _root_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.append(_root_dir)
 sys.path.append(os.path.join(_root_dir, 'lib'))
 
-from lcomp import passes, pretty
+from lcomp import passes, style_check
 
 if __name__ == '__main__':
     program = passes.parse(sys.stdin)
-    program = passes.lower(program, (os.getcwd(),))
-    print pretty.pretty_print(program)
+    style_check.style_check(program)
