@@ -36,7 +36,7 @@ namespace LegionRuntime {
     // forward class declarations because these things all refer to each other
     class Event;
     class UserEvent;
-    class Lock;
+    class Reservation;
     class Memory;
     class Processor;
 
@@ -95,7 +95,7 @@ namespace LegionRuntime {
     class UserEvent : public Event {
     public:
       static UserEvent create_user_event(void);
-      void trigger(void) const;
+      void trigger(Event wait_on = Event::NO_EVENT) const;
     };
 
     // a Barrier is similar to a UserEvent, except that it has a count of how
@@ -103,38 +103,45 @@ namespace LegionRuntime {
     //  occurs
     class Barrier : public Event {
     public:
+      typedef unsigned long long timestamp_t; // used to avoid race conditions with arrival adjustments
+
+      timestamp_t timestamp;
+
       static Barrier create_barrier(unsigned expected_arrivals);
+      void destroy_barrier(void);
 
-      void alter_arrival_count(int delta) const;
+      Barrier advance_barrier(void) const;
+      Barrier alter_arrival_count(int delta) const;
+      Event get_previous_phase(void) const;
 
-      void arrive(unsigned count = 1) const;
+      void arrive(unsigned count = 1, Event wait_on = Event::NO_EVENT) const;
     };
 
-    class Lock {
+    class Reservation {
     public:
       typedef unsigned id_t;
       id_t id;
-      bool operator<(const Lock& rhs) const { return id < rhs.id; }
-      bool operator==(const Lock& rhs) const { return id == rhs.id; }
-      bool operator!=(const Lock& rhs) const { return id != rhs.id; }
+      bool operator<(const Reservation& rhs) const { return id < rhs.id; }
+      bool operator==(const Reservation& rhs) const { return id == rhs.id; }
+      bool operator!=(const Reservation& rhs) const { return id != rhs.id; }
 
       class Impl;
       Impl *impl(void) const;
 
-      static const Lock NO_LOCK;
+      static const Reservation NO_RESERVATION;
 
       bool exists(void) const { return id != 0; }
 
-      // requests ownership (either exclusive or shared) of the lock with a 
-      //   specified mode - returns an event that will trigger when the lock
+      // requests ownership (either exclusive or shared) of the reservation with a 
+      //   specified mode - returns an event that will trigger when the reservation 
       //   is granted
-      Event lock(unsigned mode = 0, bool exclusive = true, Event wait_on = Event::NO_EVENT) const;
-      // releases a held lock - release can be deferred until an event triggers
-      void unlock(Event wait_on = Event::NO_EVENT) const;
+      Event acquire(unsigned mode = 0, bool exclusive = true, Event wait_on = Event::NO_EVENT) const;
+      // releases a held reservation - release can be deferred until an event triggers
+      void release(Event wait_on = Event::NO_EVENT) const;
 
-      // Create a new lock, destroy an existing lock
-      static Lock create_lock(size_t _data_size = 0);
-      void destroy_lock();
+      // Create a new reservation, destroy an existing reservation 
+      static Reservation create_reservation(size_t _data_size = 0);
+      void destroy_reservation();
 
       size_t data_size(void) const;
       void *data_ptr(void) const;
@@ -182,7 +189,7 @@ namespace LegionRuntime {
       };
 
       Event spawn(TaskFuncID func_id, const void *args, size_t arglen,
-		  Event wait_on = Event::NO_EVENT) const;
+		  Event wait_on = Event::NO_EVENT, int priority = 0) const;
     };
 
     class Memory {
@@ -784,6 +791,33 @@ namespace LegionRuntime {
       }
 
       int get_dim(void) const { return dim; }
+
+      int get_volume(void) const
+      {
+        switch (dim)
+        {
+          case 0:
+            return get_index_space().get_valid_mask().get_num_elmts();
+          case 1:
+            {
+              Arrays::Rect<1> r1 = get_rect<1>();
+              return r1.volume();
+            }
+          case 2:
+            {
+              Arrays::Rect<2> r2 = get_rect<2>();
+              return r2.volume();
+            }
+          case 3:
+            {
+              Arrays::Rect<3> r3 = get_rect<3>();
+              return r3.volume();
+            }
+          default:
+            assert(false);
+        }
+        return 0;
+      }
 
       template <int DIM>
       Arrays::Rect<DIM> get_rect(void) const { assert(dim == DIM); return Arrays::Rect<DIM>(rect_data); }

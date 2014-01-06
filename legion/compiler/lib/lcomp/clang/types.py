@@ -24,29 +24,36 @@ try:
     from collections import OrderedDict
 except ImportError:
     from ordereddict import OrderedDict
+import sys
 from . import ast
 from .. import types
 
 class UnknownForeignTypeException(Exception):
     pass
 
-def foreign_type(node):
+def foreign_type(node, opts):
     if isinstance(node, ast.Program):
         def_types = []
         for definition in node.definitions:
             try:
-                def_types.append(foreign_type(definition))
+                def_types.append(foreign_type(definition, opts))
             except UnknownForeignTypeException:
-                # skip any definitions that cannot be translated
-                print 'WARNING: Skipping import of %s' % definition
+                # Skip any definitions that cannot be translated.
+                name = definition.name
+                if opts.allow_warning() and len(name) > 0 and not name.startswith('_'):
+                    sys.stderr.write('WARNING: Skipping import of %s\n' % name)
+                    sys.stderr.flush()
         return types.Module(OrderedDict(def_types))
     if isinstance(node, ast.Function):
-        return (node.name, foreign_type(node.type))
-    if isinstance(node, ast.TypeFunction):
-        param_types = [foreign_type(param) for param in node.param_types]
-        return_type = foreign_type(node.return_type)
-        function_type = types.Function(param_types, [], return_type)
-        return function_type
+        return (node.name, foreign_type(node.type, opts))
+    if isinstance(node, ast.Typedef):
+        return (node.name, types.Kind(foreign_type(node.type, opts)))
+    if isinstance(node, ast.Struct):
+        return (node.name, types.Kind(foreign_type(node.type, opts)))
+
+    # boolean
+    if isinstance(node, ast.TypeBool):
+        return types.Bool()
 
     # floating-point
     if isinstance(node, ast.TypeDouble):
@@ -81,6 +88,44 @@ def foreign_type(node):
         return types.UInt32()
     if isinstance(node, ast.TypeUInt64):
         return types.UInt64()
+
+    # special Legion constructs
+    if isinstance(node, ast.TypeLegionColoring):
+        return types.ForeignColoring()
+    if isinstance(node, ast.TypeLegionContext):
+        return types.ForeignContext()
+    if isinstance(node, ast.TypeLegionPointer):
+        return types.ForeignPointer()
+
+    # functions
+    if isinstance(node, ast.TypeFunction):
+        foreign_param_types = [foreign_type(param, opts) for param in node.param_types]
+        param_types = [param for param in foreign_param_types
+                       if not (types.is_foreign_context(param) or
+                               types.is_foreign_runtime(param))]
+        return_type = foreign_type(node.return_type, opts)
+        function_type = types.ForeignFunction(foreign_param_types, param_types, [], return_type)
+        return function_type
+
+    # pointers
+    if isinstance(node, ast.TypePointer):
+        # special Legion constructs
+        if isinstance(node.points_to_type, ast.TypeLegionRegion):
+            return types.ForeignRegion()
+        if isinstance(node.points_to_type, ast.TypeLegionRuntime):
+            return types.ForeignRuntime()
+
+    # structs
+    if isinstance(node, ast.TypeStruct):
+        name = node.name
+        fields = []
+        for field, field_type in node.fields:
+            # Skip importing methods of the struct.
+            if isinstance(field_type, ast.TypeFunction):
+                continue
+            fields.append((field, foreign_type(field_type, opts)))
+        field_map = OrderedDict(fields)
+        return types.Struct(name, [], [], set(), field_map)
 
     if isinstance(node, ast.TypeVoid):
         return types.Void()

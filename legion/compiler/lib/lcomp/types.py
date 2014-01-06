@@ -31,13 +31,15 @@ def is_same_class(a, b):
     return type(a) is type(b) and a.__class__ is b.__class__
 
 class Context:
-    def __init__(self):
+    def __init__(self, opts):
+        self.opts = opts
         self.type_env = None
         self.type_map = {}
         self.privileges = None
         self.constraints = set()
         self.region_forest = None
         self.return_type = None
+        self.foreign_types = []
     def new_block_scope(self):
         cx = copy.copy(self)
         cx.type_env = cx.type_env.new_scope()
@@ -77,36 +79,40 @@ class TypeError (Exception):
         Exception.__init__(self, '\n%s:\n%s' % (
                 node.span, message))
 
-# Special set wrapper always compares based on a key, ignores
-# equality.
-class EqByKey:
-    def __init__(self, elt, key):
-        self.elt = elt
-        self.key = key
-    def __eq__(self, other):
-        return self.key == other.key
-    def __ne__(self, other):
-        return not self.__eq__(other)
-    def __hash__(self):
-        return hash(self.key)
-
+# Special set wrapper for key-based equality.
 def default_key(elt):
     return elt.key()
 
 def wrap(elts, keyfn = default_key):
-    return set([EqByKey(elt, keyfn(elt)) for elt in elts])
+    return dict((keyfn(elt), elt) for elt in elts)
 
 def unwrap(set_by_key):
-    return [wrapper.elt for wrapper in set_by_key]
+    return set_by_key.values()
+
+def unwrap_iter(set_by_key):
+    return set_by_key.itervalues()
 
 def add_key(set_by_key, elt, keyfn = default_key):
-    set_by_key.add(EqByKey(elt, keyfn(elt)))
+    set_by_key[keyfn(elt)] = elt
 
 def contains_key(set_by_key, elt, keyfn = default_key):
-    return EqByKey(elt, keyfn(elt)) in set_by_key
+    return keyfn(elt) in set_by_key
+
+def find_key(set_by_key, elt, keyfn = default_key):
+    return set_by_key[keyfn(elt)]
 
 def union(sets):
-    return reduce((lambda x, y: x | y), sets, set())
+    sets = iter(sets)
+    result = copy.copy(next(sets, dict()))
+    for s in sets:
+        result.update(s)
+    return result
+
+def difference(a, b):
+    result = copy.copy(a)
+    for k in b:
+        del result[k]
+    return result
 
 # Limit recursion depth for algorithms that might recurse infinitely
 # (like computing hash values).
@@ -164,10 +170,10 @@ class Type:
         return self
     # Returns a list of types that the type contains, for code gen.
     def component_types(self):
-        return self.component_types_helper(set())
+        return self.component_types_helper(wrap([]))
     def component_types_helper(self, visited):
         if contains_key(visited, self):
-            return set()
+            return wrap([])
         add_key(visited, self)
         return wrap([self])
 
@@ -176,6 +182,9 @@ class SingletonType(Type):
         return is_same_class(self, other)
     def hash_helper(self, depth):
         return self.__class__.__name__
+    @property
+    def cname(self):
+        return self.pretty()
 
 class Void(SingletonType): pass
 class Bool(SingletonType): pass
@@ -287,7 +296,7 @@ class Region(Type):
         self.name = name
         self.kind = kind
     def __eq__(self, other):
-        return id(self) == id(other) or is_region_wild(other)
+        return id(self) == id(other) or is_region_wild(other) or is_foreign_region(other)
     def hash_helper(self, depth):
         return id(self)
     def key(self):
@@ -304,7 +313,7 @@ class Region(Type):
 
 class RegionWild(Type):
     def __eq__(self, other):
-        return is_same_class(self, other) or is_region(other)
+        return is_same_class(self, other) or is_region(other) or is_foreign_region(other)
     def hash_helper(self, depth):
         return 'region_wild'
     def key(self):
@@ -366,7 +375,7 @@ class Coloring(Type):
     def __init__(self, region):
         self.region = region
     def __eq__(self, other):
-        return is_same_class(self, other) and self.region == other.region
+        return (is_same_class(self, other) and self.region == other.region) or is_foreign_coloring(other)
     def hash_helper(self, depth):
         if depth > MAX_HASH_DEPTH:
             return 'coloring'
@@ -386,9 +395,9 @@ class Coloring(Type):
         return Coloring(region_map[self.region])
     def component_types_helper(self, visited):
         if contains_key(visited, self):
-            return set()
+            return wrap([])
         add_key(visited, self)
-        return wrap([self]) | self.region.component_types_helper(visited)
+        return union([wrap([self]), self.region.component_types_helper(visited)])
 
 class Partition(Type):
     DISJOINT = 'disjoint'
@@ -487,9 +496,10 @@ class Pointer(Type):
         self.points_to_type = points_to_type
         self.regions = regions
     def __eq__(self, other):
-        return is_same_class(self, other) and \
-            self.points_to_type == other.points_to_type and \
-            self.regions == other.regions
+        return ((is_same_class(self, other) and
+                 self.points_to_type == other.points_to_type and
+                 self.regions == other.regions) or
+                is_foreign_pointer(other))
     def hash_helper(self, depth):
         if depth > MAX_HASH_DEPTH:
             return 'pointer'
@@ -497,7 +507,7 @@ class Pointer(Type):
                 self.points_to_type.hash_helper(depth + 1),
                 tuple(region.hash_helper(depth + 1) for region in self.regions))
     def key(self):
-        return 'pointer'
+        return ('pointer', len(self.regions) > 1)
     def pretty(self):
         if len(self.regions) == 1:
             return '%s@%s' % (
@@ -528,10 +538,12 @@ class Pointer(Type):
              for region in self.regions])
     def component_types_helper(self, visited):
         if contains_key(visited, self):
-            return set()
+            return wrap([])
         add_key(visited, self)
-        return wrap([self]) | self.points_to_type.component_types_helper(visited) | \
-            union(region.component_types_helper(visited) for region in self.regions)
+        return union(
+            [wrap([self]),
+             self.points_to_type.component_types_helper(visited)] +
+            [region.component_types_helper(visited) for region in self.regions])
 
 # A reference to a element or a field of an element living in a
 # region, which can potentially be used as an lval.
@@ -595,10 +607,12 @@ class Reference(Type):
         raise TypeError(node, 'unreachable')
     def component_types_helper(self, visited):
         if contains_key(visited, self):
-            return set()
+            return wrap([])
         add_key(visited, self)
-        return wrap([self]) | self.refers_to_type.component_types_helper(visited) | \
-            union(region.component_types_helper(visited) for region in self.regions)
+        return union(
+            [wrap([self]),
+             self.refers_to_type.component_types_helper(visited)] +
+            [region.component_types_helper(visited) for region in self.regions])
     def get_field(self, field_name):
         return Reference(self.refers_to_type, self.regions, self.field_path + (field_name,))
 
@@ -644,9 +658,11 @@ class StackReference(Type):
         raise Exception('unreachable')
     def component_types_helper(self, visited):
         if contains_key(visited, self):
-            return set()
+            return wrap([])
         add_key(visited, self)
-        return wrap([self]) | self.refers_to_type.component_types_helper(visited)
+        return union(
+            [wrap([self]),
+             self.refers_to_type.component_types_helper(visited)])
     def get_field(self, field_name):
         return StackReference(self.refers_to_type, self.field_path + (field_name,))
 
@@ -699,7 +715,7 @@ class Struct(Type):
     def pretty(self):
         if self.name is None:
             return '{%s}' % (', '.join(
-                    '%s => %s' % (field_name, field_type.pretty())
+                    '%s: %s' % (field_name, field_type.pretty())
                     for field_name, field_type in self.field_map.iteritems()))
         return self.name
     def is_concrete(self):
@@ -719,9 +735,11 @@ class Struct(Type):
         return self
     def component_types_helper(self, visited):
         if contains_key(visited, self):
-            return set()
+            return wrap([])
         add_key(visited, self)
-        return wrap([self]) | union(t.component_types_helper(visited) for t in self.field_map.itervalues())
+        return union(
+            [wrap([self])] +
+            [t.component_types_helper(visited) for t in self.field_map.itervalues()])
     def get_field(self, field_name):
         assert field_name in self.field_map
         return self.field_map[field_name]
@@ -875,9 +893,11 @@ class Kind(Type):
         return Kind(self.type.substitute_regions(region_map))
     def component_types_helper(self, visited):
         if contains_key(visited, self):
-            return set()
+            return wrap([])
         add_key(visited, self)
-        return wrap([self]) | self.type.component_types_helper(visited)
+        return union(
+            [wrap([self]),
+             self.type.component_types_helper(visited)])
 
 class Function(Type):
     def __init__(self, param_types, privileges, return_type):
@@ -912,11 +932,39 @@ class Function(Type):
             )
     def component_types_helper(self, visited):
         if contains_key(visited, self):
-            return set()
+            return wrap([])
         add_key(visited, self)
-        return wrap([self]) | \
-            union(t.component_types_helper(visited) for t in self.param_types) | \
-            self.return_type.component_types_helper(visited)
+        return union(
+            [wrap([self]),
+             self.return_type.component_types_helper(visited)] +
+            [t.component_types_helper(visited) for t in self.param_types])
+
+###
+### Foreign types are used in the FFI between Legion and
+### C++. Generally, they exist implicitly in all Legion tasks, but are
+### managed by the compiler and are not directly accessible to Legion
+### code. However, in order to do useful work in C++, it is frequently
+### necessary to pass them along to C++ code.
+###
+
+class ForeignColoring(Type):
+    def __eq__(self, other):
+        return is_same_class(self, other) or is_coloring(other)
+class ForeignContext(Type): pass
+class ForeignPointer(Type):
+    def __eq__(self, other):
+        return is_same_class(self, other) or is_pointer(other)
+class ForeignRegion(Type):
+    def __eq__(self, other):
+        return is_same_class(self, other) or is_region(other) or is_region_wild(other)
+class ForeignRuntime(Type): pass
+
+class ForeignFunction(Function):
+    def __init__(self, foreign_param_types, param_types, privileges, return_type):
+        Function.__init__(self, param_types, privileges, return_type)
+
+        assert len(foreign_param_types) >= len(param_types)
+        self.foreign_param_types = foreign_param_types
 
 class Module(Type):
     def __init__(self, def_types):
@@ -940,10 +988,11 @@ class Module(Type):
         return '\n\n'.join('%s: %s' % (n, t.pretty()) for n, t in self.def_types.iteritems())
     def component_types_helper(self, visited):
         if contains_key(visited, self):
-            return set()
+            return wrap([])
         add_key(visited, self)
-        return wrap([self]) | \
-            union(t.component_types_helper(visited) for t in self.def_types.itervalues())
+        return union(
+            [wrap([self])] +
+            [t.component_types_helper(visited) for t in self.def_types.itervalues()])
 
 class Program(Type):
     def __init__(self, def_types):
@@ -966,10 +1015,11 @@ class Program(Type):
         return '\n\n'.join(t.pretty() for t in self.def_types)
     def component_types_helper(self, visited):
         if contains_key(visited, self):
-            return set()
+            return wrap([])
         add_key(visited, self)
-        return wrap([self]) | \
-            union(t.component_types_helper(visited) for t in self.def_types)
+        return union(
+            [wrap([self])] +
+            [t.component_types_helper(visited) for t in self.def_types])
 
 def is_type(t):
     return isinstance(t, Type)
@@ -1001,9 +1051,6 @@ def is_bool(t):
 def is_POD(t):
     return is_numeric(t) or is_bool(t)
 
-def is_simple(t):
-    return isinstance(t, SingletonType)
-
 def is_pointer(t):
     return isinstance(t, Pointer)
 
@@ -1018,6 +1065,24 @@ def is_struct_instance(t):
 
 def is_function(t):
     return isinstance(t, Function)
+
+def is_foreign_coloring(t):
+    return isinstance(t, ForeignColoring)
+
+def is_foreign_context(t):
+    return isinstance(t, ForeignContext)
+
+def is_foreign_pointer(t):
+    return isinstance(t, ForeignPointer)
+
+def is_foreign_runtime(t):
+    return isinstance(t, ForeignRuntime)
+
+def is_foreign_region(t):
+    return isinstance(t, ForeignRegion)
+
+def is_foreign_function(t):
+    return isinstance(t, ForeignFunction)
 
 def is_ispace(t):
     return isinstance(t, Ispace)
@@ -1043,6 +1108,9 @@ def is_partition(t):
 def is_partition_kind(t):
     return isinstance(t, PartitionKind)
 
+def is_module(t):
+    return isinstance(t, Module)
+
 def is_program(t):
     return isinstance(t, Program)
 
@@ -1056,7 +1124,7 @@ def allows_var_binding(t):
     return not (is_region(t) or is_ispace(t))
 
 def type_name(t):
-    return t.pretty()
+    return t.cname
 
 ###
 ### Constraints
