@@ -77,3 +77,22 @@ set(tname scc_warning_${name})
 add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
 set_property(TEST ${tname} PROPERTY FAIL_REGULAR_EXPRESSION "2 warnings generated")
 
+set(name intrinsics-scope)
+set(tname scc_warning_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "warning: builtin mesh intrinsics called outside of mesh construct")
+
+set(name rank-mismatch-depth)
+set(tname scc_warning_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "warning: rank mismatch -- depth.* called when rank < 3, will return zero")
+
+set(name rank-mismatch-height)
+set(tname scc_warning_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "warning: rank mismatch -- height.* called when rank < 2, will return zero")
+
+
