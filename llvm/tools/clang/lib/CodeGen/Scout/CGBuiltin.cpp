@@ -61,7 +61,7 @@
 #include "clang/Sema/SemaDiagnostic.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Intrinsics.h"
-
+#include <stdio.h>
 using namespace clang;
 using namespace CodeGen;
 using namespace llvm;
