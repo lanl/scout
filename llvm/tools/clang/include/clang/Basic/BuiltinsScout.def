@@ -52,11 +52,11 @@
  * ##### 
  */ 
 
-BUILTIN(Position, "E4i", "n")
-BUILTIN(PositionX, "i", "n")
-BUILTIN(PositionY, "i", "n")
-BUILTIN(PositionZ, "i", "n")
-BUILTIN(PositionW, "i", "n")
+BUILTIN(position, "E4i", "n")
+BUILTIN(positionx, "i", "n")
+BUILTIN(positiony, "i", "n")
+BUILTIN(positionz, "i", "n")
+BUILTIN(positionw, "i", "n")
 
 BUILTIN(rank, "i", "n")
 BUILTIN(width, "i", "n")
@@ -65,8 +65,8 @@ BUILTIN(depth, "i", "n")
 
 // "template like" CShift that works for all types
 // "t" is the magic to make this work
-BUILTIN(CShift, "vvi.", "t") // generic 
-BUILTIN(CShiftI, "iii.", "n") // just for int
-BUILTIN(CShiftF, "ffi.", "n") // just for float
-BUILTIN(CShiftD, "ddi.", "n") // just for double
+BUILTIN(cshift, "vvi.", "t") // generic 
+BUILTIN(cshifti, "iii.", "n") // just for int
+BUILTIN(cshiftf, "ffi.", "n") // just for float
+BUILTIN(cshiftd, "ddi.", "n") // just for double
 

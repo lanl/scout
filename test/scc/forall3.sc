@@ -74,9 +74,9 @@ int main(int argc, char *argv[])
   }
 
   forall cells c in amesh {
-    int val =  Position().x*100 + Position().y*10 + Position().z;
+    int val =  position().x*100 + position().y*10 + position().z;
     field = val;
-    int index = (Position().z*3 + Position().y)*2 + Position().x;
+    int index = (position().z*3 + position().y)*2 + position().x;
     outfield[index] = val;
   }
 

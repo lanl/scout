@@ -61,7 +61,7 @@
 #include "clang/Sema/SemaDiagnostic.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Intrinsics.h"
- #include <stdio.h>
+
 using namespace clang;
 using namespace CodeGen;
 using namespace llvm;
@@ -78,7 +78,7 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
   switch (BuiltinID) {
 
   //vector position
-  case Builtin::BIPosition: {
+  case Builtin::BIposition: {
     static const char *IndexNames[] = { "x", "y", "z", "w"};
     Value *Result =
        llvm::UndefValue::get(llvm::VectorType::get(Int32Ty, 4));
@@ -97,22 +97,22 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
      return true;
   }
 
-  case Builtin::BIPositionX: {
+  case Builtin::BIpositionx: {
     *RV = RValue::get(Builder.CreateLoad(InductionVar[0], "forall.induct.x"));
     return true;
   }
 
-  case Builtin::BIPositionY: {
+  case Builtin::BIpositiony: {
     *RV = RValue::get(Builder.CreateLoad(InductionVar[1], "forall.induct.y"));
     return true;
   }
 
-  case Builtin::BIPositionZ: {
+  case Builtin::BIpositionz: {
     *RV = RValue::get(Builder.CreateLoad(InductionVar[2], "forall.induct.z"));
     return true;
   }
 
-  case Builtin::BIPositionW: {
+  case Builtin::BIpositionw: {
     *RV = RValue::get(Builder.CreateLoad(InductionVar[3], "forall.linearidx"));
     return true;
   }
@@ -162,10 +162,10 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     return true;
   }
     
-  case Builtin::BICShift: //Work in Progress
-  case Builtin::BICShiftI:
-  case Builtin::BICShiftF:
-  case Builtin::BICShiftD:
+  case Builtin::BIcshift:
+  case Builtin::BIcshifti:
+  case Builtin::BIcshiftf:
+  case Builtin::BIcshiftd:
   {
     *RV = EmitCShiftExpr(E->arg_begin(), E->arg_end());
     return true;

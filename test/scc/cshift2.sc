@@ -71,13 +71,13 @@ int main(int argc, char *argv[])
   int expected[] = {2,3,1,3,4,2,1,2,0};
 
   forall cells c in m {
-    c.a = Position().x + Position().y;
+    c.a = position().x + position().y;
   }
 
   forall cells c in m {
-    int val = CShift(c.a, 1, 1);
+    int val = cshift(c.a, 1, 1);
     c.b = val;
-    outfield[Position().y*3 + Position().x] = val;
+    outfield[position().y*3 + position().x] = val;
   }
 
   for(int i =0; i< 3*3; i++) {

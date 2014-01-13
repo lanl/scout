@@ -137,7 +137,7 @@ Sema::CheckBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
   // +===== Scout ============================================================+
   // for generic CsShift we need to set the type based on the type of the
   // 1st arg otherwise it will end up getting cast to an int
-  case Builtin::BICShift:
+  case Builtin::BIcshift:
     TheCall->setType(TheCall->getArg(0)->getType());
     break;
   // +========================================================================+

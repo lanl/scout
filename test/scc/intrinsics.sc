@@ -80,10 +80,10 @@ int main(int argc, char** argv){
   forall cells c in m {
     a = 1.0f;
     b = 2.0f;
-    px = PositionX();
-    py = PositionY();
-    pz = PositionZ();
-    pw = PositionW();
+    px = positionx();
+    py = positiony();
+    pz = positionz();
+    pw = positionw();
     w = width();
     h = height();
     d = depth();    
@@ -91,14 +91,14 @@ int main(int argc, char** argv){
 
   forall cells c in m {
     c.a += c.b;
-    assert(px == Position().x && "bad PositionX");
-    assert(py == Position().y && "bad PositionY");
-    assert(pz == Position().z && "bad PositionZ");
-    assert(pw == Position().w && "bad PositionW");
+    assert(px == position().x && "bad PositionX");
+    assert(py == position().y && "bad PositionY");
+    assert(pz == position().z && "bad PositionZ");
+    assert(pw == position().w && "bad PositionW");
     assert(w == W && "bad width");
     assert(h == H && "bad height");
     assert(d == D && "bad depth");
-    assert(w == width() && "bad eidth");
+    assert(w == width() && "bad width");
     assert(h == height() && "bad height");
     assert(d == depth() && "bad depth");
   }
@@ -106,10 +106,10 @@ int main(int argc, char** argv){
   forall cells c in n {
     a = 1.0f;
     b = 2.0f;
-    px = PositionX();
-    py = PositionY();
-    pz = PositionZ();
-    pw = PositionW();
+    px = positionx();
+    py = positiony();
+    pz = positionz();
+    pw = positionw();
     w = width();
     h = height();
     d = depth();
@@ -117,13 +117,13 @@ int main(int argc, char** argv){
 
   forall cells c in n {
     c.a += c.b;
-    assert(px == Position().x && "bad PositionX");
-    assert(py == Position().y && "bad PositionY");
-    assert(pz == Position().z && "bad PositionZ");
-    assert(Position().z == 0 && "bad PositionZ");
-    assert(PositionZ() == 0 && "bad PositionZ");
+    assert(px == position().x && "bad PositionX");
+    assert(py == position().y && "bad PositionY");
+    assert(pz == position().z && "bad PositionZ");
+    assert(position().z == 0 && "bad PositionZ");
+    assert(positionz() == 0 && "bad PositionZ");
     assert(pz == 0 && "bad PositionZ");
-    assert(pw == Position().w && "bad PositionW");
+    assert(pw == position().w && "bad PositionW");
     assert(w == W && "bad width");
     assert(h == H && "bad height");
     assert(d == 0 && "bad depth");

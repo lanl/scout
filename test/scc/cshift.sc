@@ -68,11 +68,11 @@ int main(int argc, char *argv[])
   AMeshType m[10];
 
   forall cells c in m {
-    c.a = Position().x;
+    c.a = position().x;
   }
 
   forall cells c in m {
-    c.b = CShift(c.a,1);
+    c.b = cshift(c.a,1);
     printf("%d %d\n", c.a, c.b);
   }
 
