@@ -87,7 +87,7 @@
   #
     find_path(SDL_LIBRARY_DIR
       NAMES libSDL.a libSDL.so
-      PATH_SUFFIXES lib64 sdl/lib64 lib sdl/lib 
+      PATH_SUFFIXES lib64 sdl/lib64 lib sdl/lib lib/x86_64-linux-gnu 
       HINTS $ENV{SDL_DIR}
       /usr
       /usr/local
