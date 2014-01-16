@@ -1941,6 +1941,7 @@ public:
   LValue EmitLValueForMeshField(LValue base, const MeshFieldDecl *field, llvm::Value *Index);
   llvm::Value *getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args);
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
+  RValue EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
 
   bool EmitScoutBuiltinExpr(const FunctionDecl *FD,
                          unsigned BuiltinID, const CallExpr *E, RValue *Rv);

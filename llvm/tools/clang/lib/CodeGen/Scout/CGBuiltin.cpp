@@ -170,6 +170,16 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     *RV = EmitCShiftExpr(E->arg_begin(), E->arg_end());
     return true;
   }
+
+  case Builtin::BIeoshift:
+  case Builtin::BIeoshifti:
+  case Builtin::BIeoshiftf:
+  case Builtin::BIeoshiftd:
+  {
+    *RV = EmitEOShiftExpr(E->arg_begin(), E->arg_end());
+    return true;
+  }
+
   default: return false;
   }
 }

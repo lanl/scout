@@ -100,6 +100,8 @@ namespace {
           // we can either (1) force the loop to run sequentially or
           // (2) replace print function with a "special" version...
           sema_.Diag(E->getExprLoc(), diag::warn_forall_calling_io_func);
+        } else if (name == "eoshift" || name == "eoshifti" || name == "eoshiftf" || name == "eoshiftd") {
+          //SC_TODO -- need to check mesh types here for eoshift() validity.
         } else if (name == "cshift" || name == "cshifti" || name == "cshiftf" || name == "cshiftd") {
 
           // SC_TODO -- need to check mesh types here for cshift() validity.
@@ -1015,7 +1017,9 @@ namespace {
           // we can either (1) force the loop to run sequentially or
           // (2) replace print function with a "special" version...
           sema_.Diag(E->getExprLoc(), diag::warn_renderall_calling_io_func);
-        } else if (name == "CShift") {
+        } else if (name == "eoshift" || name == "eoshifti" || name == "eoshiftf" || name == "eoshiftd") {
+          //SC_TODO -- need to check mesh types here for eoshift() validity.
+        } else if (name == "cshift" || name == "cshifti" || name == "cshiftf" || name == "cshiftd") {
 
           // SC_TODO -- need to check mesh types here for cshift() validity.
 
