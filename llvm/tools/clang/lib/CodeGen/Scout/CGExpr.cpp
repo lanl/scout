@@ -312,6 +312,10 @@ RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
 // end-off shift
 RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
 
+
+	llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
+	llvm::Value *ConstantOne  = llvm::ConstantInt::get(Int32Ty, 1);
+
   const Expr *A1E;
   //turn first arg into Expr
   if(const ImplicitCastExpr *CE = dyn_cast<ImplicitCastExpr>(*(ArgBeg))) {
@@ -328,7 +332,7 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
   ++ArgBeg;
   RValue Boundary = EmitAnyExpr(*(ArgBeg));
 
-  // extract the eoshift args
+  // extract the remaining eoshift args
   SmallVector< llvm::Value *, 3 > args;
   while(++ArgBeg != ArgEnd) {
     RValue RV = EmitAnyExpr(*(ArgBeg));
@@ -351,20 +355,33 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
          dims.push_back(Builder.CreateLoad(LoopBounds[i], IRNameStr));
        }
 
-       llvm::Value *idx, *index;
-       llvm::Function *TheFunction;
-       SmallVector< llvm::BasicBlock *, 3 > Start, Then, Else;
-       llvm::BasicBlock *Done = createBasicBlock("done");
-       SmallVector< llvm::Value *, 3 > indices;
+       //get the eoshift indices
+       SmallVector< llvm::Value *, 3 > rawindices, indices;
+       for(unsigned i = 0; i < args.size(); ++i) {
+				 sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
+				 llvm::Value *iv  = Builder.CreateLoad(InductionVar[i], IRNameStr);
 
-       llvm::Value *flag;
-       llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
-       llvm::Value *ConstantOne  = llvm::ConstantInt::get(Int32Ty, 1);
-       flag = Builder.CreateAlloca(Int32Ty, 0, "flag");
-       Builder.CreateStore(ConstantZero, flag);
+				 // take index and add offset from eoshift
+				 sprintf(IRNameStr, "eoshift.rawindex.%s", IndexNames[i]);
+				 rawindices.push_back(Builder.CreateAdd(iv, args[i], IRNameStr));
+
+				 // module to find if index will wrap
+				 sprintf(IRNameStr, "eoshift.index.%s", IndexNames[i]);
+				 indices.push_back(Builder.CreateURem(rawindices[i], dims[i], IRNameStr));
+       }
+
+       // get function
+       llvm::Function *TheFunction;
        TheFunction = Builder.GetInsertBlock()->getParent();
 
-       // setup blocks
+       // setup flag
+       llvm::Value *flag;
+       flag = Builder.CreateAlloca(Int32Ty, 0, "flag");
+       Builder.CreateStore(ConstantZero, flag);
+
+       // setup basic blocks
+       SmallVector< llvm::BasicBlock *, 3 > Start, Then, Else;
+       llvm::BasicBlock *Done = createBasicBlock("done");
        for(unsigned i = 0; i < args.size(); ++i) {
     	   sprintf(IRNameStr, "start.%s", DimNames[i]);
     	   Start.push_back(createBasicBlock(IRNameStr));
@@ -373,32 +390,23 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
            sprintf(IRNameStr, "else.%s", DimNames[i]);
            Else.push_back(createBasicBlock(IRNameStr));
        }
-       // enter first block
-       Builder.CreateBr(Start[0]);
 
+       // enter Start block
+       Builder.CreateBr(Start[0]);
 
        // check to see if any of the indices are out of range
        // and if so set flag
        for(unsigned i = 0; i < args.size(); ++i) {
 
-    	 TheFunction->getBasicBlockList().push_back(Start[i]);
-    	 Builder.SetInsertPoint(Start[i]);
-
-         sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
-         llvm::Value *iv  = Builder.CreateLoad(InductionVar[i], IRNameStr);
-
-         // take index and add offset from eoshift
-         sprintf(IRNameStr, "eoshift.rawindex.%s", IndexNames[i]);
-         llvm::Value *rawIndex = Builder.CreateAdd(iv, args[i], IRNameStr);
-
-         // make sure it is in range
-         sprintf(IRNameStr, "eoshift.index.%s", IndexNames[i]);
-         index = Builder.CreateURem(rawIndex, dims[i], IRNameStr);
-         llvm::Value *Check = Builder.CreateICmpEQ(rawIndex, index);
-
+      	 // Start Block
+				 TheFunction->getBasicBlockList().push_back(Start[i]);
+				 Builder.SetInsertPoint(Start[i]);
+         // check if index is in range
+         llvm::Value *Check = Builder.CreateICmpEQ(rawindices[i], indices[i]);
          Builder.CreateCondBr(Check, Then[i], Else[i]);
          Start[i] = Builder.GetInsertBlock();
 
+         // Then Block
          TheFunction->getBasicBlockList().push_back(Then[i]);
          Builder.SetInsertPoint(Then[i]);
          //index is in range do nothing
@@ -409,6 +417,7 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
          }
          Then[i] = Builder.GetInsertBlock();
 
+         // Else Block
          TheFunction->getBasicBlockList().push_back(Else[i]);
          Builder.SetInsertPoint(Else[i]);
          //index is not in range increment flag and break
@@ -420,76 +429,63 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
          Else[i] = Builder.GetInsertBlock();
        }
 
+       //setup basic blocks
+       llvm::BasicBlock *FlagThen = createBasicBlock("FlagThen");
+       llvm::BasicBlock *FlagElse = createBasicBlock("FlagElse");
+       llvm::BasicBlock *Merge = createBasicBlock("Merge");
+
+       // Done Block
        TheFunction->getBasicBlockList().push_back(Done);
        Builder.SetInsertPoint(Done);
-
-       llvm::BasicBlock *FlagThen, *FlagElse, *Merge;
-       llvm::Value *V1, *V2;
-       llvm::Value *Hy, *Wz, *yWz, *HyWz;
-       LValue LV;
-
-       FlagThen = createBasicBlock("FlagThen");
-       FlagElse = createBasicBlock("FlagElse");
-       Merge = createBasicBlock("Merge");
-
+       //check if flag is set
        llvm::Value *FlagCheck = Builder.CreateICmpNE(Builder.CreateLoad(flag, "flag"), ConstantZero);
        Builder.CreateCondBr(FlagCheck, FlagThen, FlagElse);
        Done = Builder.GetInsertBlock();
 
+       // Then Block
        TheFunction->getBasicBlockList().push_back(FlagThen);
        Builder.SetInsertPoint(FlagThen);
        //index is not in range
-       V1 = Boundary.getScalarVal();
+       llvm::Value *V1 = Boundary.getScalarVal();
        Builder.CreateBr(Merge);
        FlagThen = Builder.GetInsertBlock();
 
+       // Else Block
        TheFunction->getBasicBlockList().push_back(FlagElse);
        Builder.SetInsertPoint(FlagElse);
-       //index is in range
-       for(unsigned i = 0; i < args.size(); ++i) {
-    	   sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
-    	   llvm::Value *iv  = Builder.CreateLoad(InductionVar[i], IRNameStr);
 
-    	   // take index and add offset from eoshift
-    	   sprintf(IRNameStr, "eoshift.rawindex.%s", IndexNames[i]);
-    	   llvm::Value *rawIndex = Builder.CreateAdd(iv, args[i], IRNameStr);
-
-    	   // make sure it is in range
-    	   sprintf(IRNameStr, "eoshift.index.%s", IndexNames[i]);
-    	   indices.push_back(Builder.CreateURem(rawIndex, dims[i], IRNameStr));
-       }
-
+       //all indices are in range, compute the linear index
+       llvm::Value *idx;
        switch(args.size()) {
-       case 1:
-    	   idx = indices[0];
-    	   break;
-       case 2: {
-    	   // linearIdx = x + Height * y;
-    	   Hy = Builder.CreateMul(dims[1], indices[1], "HeightxY");
-    	   idx = Builder.CreateAdd(indices[0], Hy, "eoshift.linearidx");
-    	   break;
+				 case 1:
+					 idx = indices[0];
+					 break;
+				 case 2: {
+					 // linearIdx = x + Height * y;
+					 llvm::Value *Hy = Builder.CreateMul(dims[1], indices[1], "HeightxY");
+					 idx = Builder.CreateAdd(indices[0], Hy, "eoshift.linearidx");
+					 break;
+				 }
+				 case 3: {
+					 // linearIdx = x + Height * (y + Width * z)
+					 llvm::Value *Wz = Builder.CreateMul(dims[0], indices[2], "WidthxZ");
+					 llvm::Value *yWz = Builder.CreateAdd(indices[1], Wz, "ypWidthxZ");
+					 llvm::Value *HyWz = Builder.CreateMul(dims[1], yWz, "HxypWidthxZ");
+					 idx = Builder.CreateAdd(indices[0], HyWz, "eoshift.linearidx");
+					 break;
+				 }
        }
-       case 3: {
-    	   // linearIdx = x + Height * (y + Width * z)
-    	   Wz = Builder.CreateMul(dims[0], indices[2], "WidthxZ");
-    	   yWz = Builder.CreateAdd(indices[1], Wz, "ypWidthxZ");
-    	   HyWz = Builder.CreateMul(dims[1], yWz, "HxypWidthxZ");
-    	   idx = Builder.CreateAdd(indices[0], HyWz, "eoshift.linearidx");
-    	   break;
-       }
-       }
-       LV = EmitMeshMemberExpr(E, idx);
-       V2 = Builder.CreateLoad(LV.getAddress(), "eoshift.element");
+       LValue LV = EmitMeshMemberExpr(E, idx);
+       llvm::Value *V2 = Builder.CreateLoad(LV.getAddress(), "eoshift.element");
        Builder.CreateBr(Merge);
        FlagElse = Builder.GetInsertBlock();
 
+       //Merge Block
        TheFunction->getBasicBlockList().push_back(Merge);
        Builder.SetInsertPoint(Merge);
        llvm::PHINode *PN = Builder.CreatePHI(Boundary.getScalarVal()->getType(), 2, "iftmp");
-
        PN->addIncoming(V1, FlagThen);
        PN->addIncoming(V2, FlagElse);
-       //TheFunction->dump();
        return RValue::get(PN);
 
     }
@@ -498,134 +494,6 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
 }
 
 
-#if 0
-RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
-
-  const Expr *A1E;
-  //turn first arg into Expr
-  if(const ImplicitCastExpr *CE = dyn_cast<ImplicitCastExpr>(*(ArgBeg))) {
-    // eoshifti, eoshiftf, eoshiftd get you here.
-    A1E = CE->getSubExpr();
-  } else if (const Expr *EE = dyn_cast<Expr>(*(ArgBeg))) {
-    // "generic" eoshift gets you here
-    A1E = EE;
-  } else {
-    assert(false && "eoshift first arg not expr");
-  }
-
-  // extract 2nd arg which is the boundary value
-  ++ArgBeg;
-  RValue Boundary = EmitAnyExpr(*(ArgBeg));
-
-  // extract the eoshift args
-  SmallVector< llvm::Value *, 3 > args;
-  while(++ArgBeg != ArgEnd) {
-    RValue RV = EmitAnyExpr(*(ArgBeg));
-    if(RV.isAggregate()) {
-      args.push_back(RV.getAggregateAddr());
-    } else {
-      args.push_back(RV.getScalarVal());
-    }
-  }
-  //llvm::errs() << "args " << args.size() << "\n";
-
-  // get the member expr for first arg.
-  if(const MemberExpr *E = dyn_cast<MemberExpr>(A1E)) {
-    // make sure this is a mesh
-    if(isa<MeshFieldDecl>(E->getMemberDecl())) {
-      // a bunch of stuff to get the correct mesh member
-
-      //get the dimensions (Width, Height, Depth)
-       SmallVector< llvm::Value *, 3 > dims;
-       for(unsigned i = 0; i < args.size(); ++i) {
-         sprintf(IRNameStr, "%s", DimNames[i]);
-         dims.push_back(Builder.CreateLoad(LoopBounds[i], IRNameStr));
-       }
-
-       llvm::Value *idx, *V1, *V2;
-       LValue LV;
-       llvm::Function *TheFunction;
-       SmallVector< llvm::BasicBlock *, 3 >Then;
-       llvm::BasicBlock *Else, *Merge;
-       llvm::Value *Hy, *Wz, *yWz, *HyWz;
-       SmallVector< llvm::Value *, 3 > indices;
-
-       TheFunction = Builder.GetInsertBlock()->getParent();
-       Else = createBasicBlock("else");
-       Merge = createBasicBlock("ifcont");
-
-       for(unsigned i = 0; i < args.size(); ++i) {
-         sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
-         llvm::Value *iv  = Builder.CreateLoad(InductionVar[i], IRNameStr);
-
-         // take index and add offset from eoshift
-         sprintf(IRNameStr, "eoshift.rawindex.%s", IndexNames[i]);
-         llvm::Value *rawIndex = Builder.CreateAdd(iv, args[i], IRNameStr);
-
-         // make sure it is in range
-         sprintf(IRNameStr, "eoshift.index.%s", IndexNames[i]);
-         indices.push_back(Builder.CreateURem(rawIndex, dims[i], IRNameStr));
-         llvm::Value *Check = Builder.CreateICmpEQ(rawIndex, indices[i]);
-
-         //TheFunction = Builder.GetInsertBlock()->getParent();
-         sprintf(IRNameStr, "then.%s", DimNames[i]);
-         Then.push_back(createBasicBlock(IRNameStr));
-         TheFunction->getBasicBlockList().push_back(Then[i]);
-         //Else = createBasicBlock("else");
-         //Merge = createBasicBlock("ifcont");
-
-         Builder.CreateCondBr(Check, Then[i], Else);
-         Builder.SetInsertPoint(Then[i]);
-         //index is in range
-         if (i == args.size()-1) { // done
-           switch(args.size()) {
-               case 1:
-                 idx = indices[0];
-                 break;
-               case 2: {
-                 // linearIdx = x + Height * y;
-                 Hy = Builder.CreateMul(dims[1], indices[1], "HeightxY");
-                 idx = Builder.CreateAdd(indices[0], Hy, "cshift.linearidx");
-                 break;
-               }
-               case 3: {
-                 // linearIdx = x + Height * (y + Width * z)
-                 Wz = Builder.CreateMul(dims[0], indices[2], "WidthxZ");
-                 yWz = Builder.CreateAdd(indices[1], Wz, "ypWidthxZ");
-                 HyWz = Builder.CreateMul(dims[1], yWz, "HxypWidthxZ");
-                 idx = Builder.CreateAdd(indices[0], HyWz, "cshift.linearidx");
-                 break;
-               }
-             }
-           LV = EmitMeshMemberExpr(E, idx);
-           V1 = Builder.CreateLoad(LV.getAddress(), "eoshift.element");
-         } // end if
-         Builder.CreateBr(Merge);
-         Then[i] = Builder.GetInsertBlock();
-       }
-         TheFunction->getBasicBlockList().push_back(Else);
-         Builder.SetInsertPoint(Else);
-         //index is not in range
-         V2 = Boundary.getScalarVal();
-         Builder.CreateBr(Merge);
-         Else = Builder.GetInsertBlock();
-
-         TheFunction->getBasicBlockList().push_back(Merge);
-         Builder.SetInsertPoint(Merge);
-         llvm::PHINode *PN = Builder.CreatePHI(Boundary.getScalarVal()->getType(), 2, "iftmp");
-
-         PN->addIncoming(V1, Then[args.size()-1]);
-         PN->addIncoming(V2, Else);
-         return RValue::get(PN); // hack that will only work in 1d
-
-       //} // end for
-
-      //return RValue::get(PN);
-    }
-  }
-  assert(false && "Failed to translate Scout eoshift expression to LLVM IR!");
-}
-#endif
 #if 0
 RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
   DEBUG_OUT("EmitCShiftExpr");
