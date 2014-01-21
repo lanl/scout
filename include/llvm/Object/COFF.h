@@ -24,7 +24,9 @@ namespace llvm {
 
 namespace object {
 class ImportDirectoryEntryRef;
+class ExportDirectoryEntryRef;
 typedef content_iterator<ImportDirectoryEntryRef> import_directory_iterator;
+typedef content_iterator<ExportDirectoryEntryRef> export_directory_iterator;
 
 /// The DOS compatible header at the front of all PE/COFF executables.
 struct dos_header {
@@ -57,6 +59,8 @@ struct coff_file_header {
   support::ulittle32_t NumberOfSymbols;
   support::ulittle16_t SizeOfOptionalHeader;
   support::ulittle16_t Characteristics;
+
+  bool isImportLibrary() const { return NumberOfSections == 0xffff; }
 };
 
 /// The 32-bit PE header that follows the COFF header.
@@ -155,6 +159,28 @@ struct import_lookup_table_entry32 {
   }
 };
 
+struct export_directory_table_entry {
+  support::ulittle32_t ExportFlags;
+  support::ulittle32_t TimeDateStamp;
+  support::ulittle16_t MajorVersion;
+  support::ulittle16_t MinorVersion;
+  support::ulittle32_t NameRVA;
+  support::ulittle32_t OrdinalBase;
+  support::ulittle32_t AddressTableEntries;
+  support::ulittle32_t NumberOfNamePointers;
+  support::ulittle32_t ExportAddressTableRVA;
+  support::ulittle32_t NamePointerRVA;
+  support::ulittle32_t OrdinalTableRVA;
+};
+
+union export_address_table_entry {
+  support::ulittle32_t ExportRVA;
+  support::ulittle32_t ForwarderRVA;
+};
+
+typedef support::ulittle32_t export_name_pointer_table_entry;
+typedef support::ulittle16_t export_ordinal_table_entry;
+
 struct coff_symbol {
   struct StringTableOffset {
     support::ulittle32_t Zeroes;
@@ -221,6 +247,7 @@ struct coff_aux_section_definition {
 class COFFObjectFile : public ObjectFile {
 private:
   friend class ImportDirectoryEntryRef;
+  friend class ExportDirectoryEntryRef;
   const coff_file_header *COFFHeader;
   const pe32_header      *PE32Header;
   const data_directory   *DataDirectory;
@@ -230,6 +257,7 @@ private:
         uint32_t          StringTableSize;
   const import_directory_table_entry *ImportDirectory;
         uint32_t          NumberOfImportDirectory;
+  const export_directory_table_entry *ExportDirectory;
 
         error_code        getString(uint32_t offset, StringRef &Res) const;
 
@@ -239,6 +267,7 @@ private:
 
         error_code        initSymbolTablePtr();
         error_code        initImportTablePtr();
+        error_code        initExportTablePtr();
 
 protected:
   virtual error_code getSymbolNext(DataRefImpl Symb, SymbolRef &Res) const;
@@ -246,7 +275,6 @@ protected:
   virtual error_code getSymbolFileOffset(DataRefImpl Symb, uint64_t &Res) const;
   virtual error_code getSymbolAddress(DataRefImpl Symb, uint64_t &Res) const;
   virtual error_code getSymbolSize(DataRefImpl Symb, uint64_t &Res) const;
-  virtual error_code getSymbolNMTypeChar(DataRefImpl Symb, char &Res) const;
   virtual error_code getSymbolFlags(DataRefImpl Symb, uint32_t &Res) const;
   virtual error_code getSymbolType(DataRefImpl Symb, SymbolRef::Type &Res) const;
   virtual error_code getSymbolSection(DataRefImpl Symb,
@@ -313,6 +341,8 @@ public:
 
   import_directory_iterator import_directory_begin() const;
   import_directory_iterator import_directory_end() const;
+  export_directory_iterator export_directory_begin() const;
+  export_directory_iterator export_directory_end() const;
 
   error_code getHeader(const coff_file_header *&Res) const;
   error_code getCOFFHeader(const coff_file_header *&Res) const;
@@ -346,9 +376,9 @@ public:
 class ImportDirectoryEntryRef {
 public:
   ImportDirectoryEntryRef() : OwningObject(0) {}
-  ImportDirectoryEntryRef(DataRefImpl ImportDirectory,
+  ImportDirectoryEntryRef(const import_directory_table_entry *Table, uint32_t I,
                           const COFFObjectFile *Owner)
-      : ImportDirectoryPimpl(ImportDirectory), OwningObject(Owner) {}
+      : ImportTable(Table), Index(I), OwningObject(Owner) {}
 
   bool operator==(const ImportDirectoryEntryRef &Other) const;
   error_code getNext(ImportDirectoryEntryRef &Result) const;
@@ -361,7 +391,31 @@ public:
   getImportLookupEntry(const import_lookup_table_entry32 *&Result) const;
 
 private:
-  DataRefImpl ImportDirectoryPimpl;
+  const import_directory_table_entry *ImportTable;
+  uint32_t Index;
+  const COFFObjectFile *OwningObject;
+};
+
+// The iterator for the export directory table entry.
+class ExportDirectoryEntryRef {
+public:
+  ExportDirectoryEntryRef() : OwningObject(0) {}
+  ExportDirectoryEntryRef(const export_directory_table_entry *Table, uint32_t I,
+                          const COFFObjectFile *Owner)
+      : ExportTable(Table), Index(I), OwningObject(Owner) {}
+
+  bool operator==(const ExportDirectoryEntryRef &Other) const;
+  error_code getNext(ExportDirectoryEntryRef &Result) const;
+
+  error_code getDllName(StringRef &Result) const;
+  error_code getOrdinalBase(uint32_t &Result) const;
+  error_code getOrdinal(uint32_t &Result) const;
+  error_code getExportRVA(uint32_t &Result) const;
+  error_code getSymbolName(StringRef &Result) const;
+
+private:
+  const export_directory_table_entry *ExportTable;
+  uint32_t Index;
   const COFFObjectFile *OwningObject;
 };
 } // end namespace object

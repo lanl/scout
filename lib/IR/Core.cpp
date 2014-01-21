@@ -19,9 +19,9 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalAlias.h"
 #include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/IntrinsicInst.h"
-#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/PassManager.h"
@@ -30,9 +30,9 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/system_error.h"
-#include "llvm/Support/Threading.h"
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
@@ -40,12 +40,11 @@
 using namespace llvm;
 
 void llvm::initializeCore(PassRegistry &Registry) {
-  initializeDominatorTreePass(Registry);
-  initializePrintModulePassPass(Registry);
-  initializePrintFunctionPassPass(Registry);
+  initializeDominatorTreeWrapperPassPass(Registry);
+  initializePrintModulePassWrapperPass(Registry);
+  initializePrintFunctionPassWrapperPass(Registry);
   initializePrintBasicBlockPassPass(Registry);
-  initializeVerifierPass(Registry);
-  initializePreVerifierPass(Registry);
+  initializeVerifierLegacyPassPass(Registry);
 }
 
 void LLVMInitializeCore(LLVMPassRegistryRef R) {
@@ -175,7 +174,6 @@ LLVMContextRef LLVMGetModuleContext(LLVMModuleRef M) {
 
 LLVMTypeKind LLVMGetTypeKind(LLVMTypeRef Ty) {
   switch (unwrap(Ty)->getTypeID()) {
-  default: llvm_unreachable("Unhandled TypeID.");
   case Type::VoidTyID:
     return LLVMVoidTypeKind;
   case Type::HalfTyID:
@@ -209,6 +207,7 @@ LLVMTypeKind LLVMGetTypeKind(LLVMTypeRef Ty) {
   case Type::X86_MMXTyID:
     return LLVMX86_MMXTypeKind;
   }
+  llvm_unreachable("Unhandled TypeID.");
 }
 
 LLVMBool LLVMTypeIsSized(LLVMTypeRef Ty)
@@ -472,6 +471,16 @@ void LLVMSetValueName(LLVMValueRef Val, const char *Name) {
 
 void LLVMDumpValue(LLVMValueRef Val) {
   unwrap(Val)->dump();
+}
+
+char* LLVMPrintValueToString(LLVMValueRef Val) {
+  std::string buf;
+  raw_string_ostream os(buf);
+
+  unwrap(Val)->print(os);
+  os.flush();
+
+  return strdup(buf.c_str());
 }
 
 void LLVMReplaceAllUsesWith(LLVMValueRef OldVal, LLVMValueRef NewVal) {
@@ -1023,6 +1032,12 @@ LLVMValueRef LLVMConstBitCast(LLVMValueRef ConstantVal, LLVMTypeRef ToType) {
                                        unwrap(ToType)));
 }
 
+LLVMValueRef LLVMConstAddrSpaceCast(LLVMValueRef ConstantVal,
+                                    LLVMTypeRef ToType) {
+  return wrap(ConstantExpr::getAddrSpaceCast(unwrap<Constant>(ConstantVal),
+                                             unwrap(ToType)));
+}
+
 LLVMValueRef LLVMConstZExtOrBitCast(LLVMValueRef ConstantVal,
                                     LLVMTypeRef ToType) {
   return wrap(ConstantExpr::getZExtOrBitCast(unwrap<Constant>(ConstantVal),
@@ -1134,8 +1149,6 @@ LLVMLinkage LLVMGetLinkage(LLVMValueRef Global) {
     return LLVMLinkOnceAnyLinkage;
   case GlobalValue::LinkOnceODRLinkage:
     return LLVMLinkOnceODRLinkage;
-  case GlobalValue::LinkOnceODRAutoHideLinkage:
-    return LLVMLinkOnceODRAutoHideLinkage;
   case GlobalValue::WeakAnyLinkage:
     return LLVMWeakAnyLinkage;
   case GlobalValue::WeakODRLinkage:
@@ -1150,10 +1163,6 @@ LLVMLinkage LLVMGetLinkage(LLVMValueRef Global) {
     return LLVMLinkerPrivateLinkage;
   case GlobalValue::LinkerPrivateWeakLinkage:
     return LLVMLinkerPrivateWeakLinkage;
-  case GlobalValue::DLLImportLinkage:
-    return LLVMDLLImportLinkage;
-  case GlobalValue::DLLExportLinkage:
-    return LLVMDLLExportLinkage;
   case GlobalValue::ExternalWeakLinkage:
     return LLVMExternalWeakLinkage;
   case GlobalValue::CommonLinkage:
@@ -1180,7 +1189,8 @@ void LLVMSetLinkage(LLVMValueRef Global, LLVMLinkage Linkage) {
     GV->setLinkage(GlobalValue::LinkOnceODRLinkage);
     break;
   case LLVMLinkOnceODRAutoHideLinkage:
-    GV->setLinkage(GlobalValue::LinkOnceODRAutoHideLinkage);
+    DEBUG(errs() << "LLVMSetLinkage(): LLVMLinkOnceODRAutoHideLinkage is no "
+                    "longer supported.");
     break;
   case LLVMWeakAnyLinkage:
     GV->setLinkage(GlobalValue::WeakAnyLinkage);
@@ -1204,10 +1214,12 @@ void LLVMSetLinkage(LLVMValueRef Global, LLVMLinkage Linkage) {
     GV->setLinkage(GlobalValue::LinkerPrivateWeakLinkage);
     break;
   case LLVMDLLImportLinkage:
-    GV->setLinkage(GlobalValue::DLLImportLinkage);
+    DEBUG(errs()
+          << "LLVMSetLinkage(): LLVMDLLImportLinkage is no longer supported.");
     break;
   case LLVMDLLExportLinkage:
-    GV->setLinkage(GlobalValue::DLLExportLinkage);
+    DEBUG(errs()
+          << "LLVMSetLinkage(): LLVMDLLExportLinkage is no longer supported.");
     break;
   case LLVMExternalWeakLinkage:
     GV->setLinkage(GlobalValue::ExternalWeakLinkage);
@@ -2204,6 +2216,29 @@ LLVMValueRef LLVMBuildStore(LLVMBuilderRef B, LLVMValueRef Val,
   return wrap(unwrap(B)->CreateStore(unwrap(Val), unwrap(PointerVal)));
 }
 
+static AtomicOrdering mapFromLLVMOrdering(LLVMAtomicOrdering Ordering) {
+  switch (Ordering) {
+    case LLVMAtomicOrderingNotAtomic: return NotAtomic;
+    case LLVMAtomicOrderingUnordered: return Unordered;
+    case LLVMAtomicOrderingMonotonic: return Monotonic;
+    case LLVMAtomicOrderingAcquire: return Acquire;
+    case LLVMAtomicOrderingRelease: return Release;
+    case LLVMAtomicOrderingAcquireRelease: return AcquireRelease;
+    case LLVMAtomicOrderingSequentiallyConsistent:
+      return SequentiallyConsistent;
+  }
+  
+  llvm_unreachable("Invalid LLVMAtomicOrdering value!");
+}
+
+LLVMValueRef LLVMBuildFence(LLVMBuilderRef B, LLVMAtomicOrdering Ordering,
+                            LLVMBool isSingleThread, const char *Name) {
+  return wrap(
+    unwrap(B)->CreateFence(mapFromLLVMOrdering(Ordering),
+                           isSingleThread ? SingleThread : CrossThread,
+                           Name));
+}
+
 LLVMValueRef LLVMBuildGEP(LLVMBuilderRef B, LLVMValueRef Pointer,
                           LLVMValueRef *Indices, unsigned NumIndices,
                           const char *Name) {
@@ -2307,6 +2342,11 @@ LLVMValueRef LLVMBuildIntToPtr(LLVMBuilderRef B, LLVMValueRef Val,
 LLVMValueRef LLVMBuildBitCast(LLVMBuilderRef B, LLVMValueRef Val,
                               LLVMTypeRef DestTy, const char *Name) {
   return wrap(unwrap(B)->CreateBitCast(unwrap(Val), unwrap(DestTy), Name));
+}
+
+LLVMValueRef LLVMBuildAddrSpaceCast(LLVMBuilderRef B, LLVMValueRef Val,
+                                    LLVMTypeRef DestTy, const char *Name) {
+  return wrap(unwrap(B)->CreateAddrSpaceCast(unwrap(Val), unwrap(DestTy), Name));
 }
 
 LLVMValueRef LLVMBuildZExtOrBitCast(LLVMBuilderRef B, LLVMValueRef Val,
@@ -2456,22 +2496,8 @@ LLVMValueRef LLVMBuildAtomicRMW(LLVMBuilderRef B,LLVMAtomicRMWBinOp op,
     case LLVMAtomicRMWBinOpUMax: intop = AtomicRMWInst::UMax; break;
     case LLVMAtomicRMWBinOpUMin: intop = AtomicRMWInst::UMin; break;
   }
-  AtomicOrdering intordering;
-  switch (ordering) {
-    case LLVMAtomicOrderingNotAtomic: intordering = NotAtomic; break;
-    case LLVMAtomicOrderingUnordered: intordering = Unordered; break;
-    case LLVMAtomicOrderingMonotonic: intordering = Monotonic; break;
-    case LLVMAtomicOrderingAcquire: intordering = Acquire; break;
-    case LLVMAtomicOrderingRelease: intordering = Release; break;
-    case LLVMAtomicOrderingAcquireRelease:
-      intordering = AcquireRelease;
-      break;
-    case LLVMAtomicOrderingSequentiallyConsistent:
-      intordering = SequentiallyConsistent;
-      break;
-  }
   return wrap(unwrap(B)->CreateAtomicRMW(intop, unwrap(PTR), unwrap(Val),
-    intordering, singleThread ? SingleThread : CrossThread));
+    mapFromLLVMOrdering(ordering), singleThread ? SingleThread : CrossThread));
 }
 
 

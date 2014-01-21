@@ -140,6 +140,9 @@ namespace Mips {
     // resulting in - R_MICROMIPS_GOT16
     fixup_MICROMIPS_GOT16,
 
+    // resulting in - R_MICROMIPS_PC16_S1
+    fixup_MICROMIPS_PC16_S1,
+
     // resulting in - R_MICROMIPS_CALL16
     fixup_MICROMIPS_CALL16,
 
@@ -151,6 +154,12 @@ namespace Mips {
 
     // resulting in - R_MICROMIPS_GOT_OFST
     fixup_MICROMIPS_GOT_OFST,
+
+    // resulting in - R_MICROMIPS_TLS_GD
+    fixup_MICROMIPS_TLS_GD,
+
+    // resulting in - R_MICROMIPS_TLS_LDM
+    fixup_MICROMIPS_TLS_LDM,
 
     // resulting in - R_MICROMIPS_TLS_DTPREL_HI16
     fixup_MICROMIPS_TLS_DTPREL_HI16,

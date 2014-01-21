@@ -22,6 +22,7 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Mangler.h"
 #include "llvm/IR/Module.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
@@ -34,7 +35,6 @@
 #include "llvm/Support/ELF.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Target/Mangler.h"
 #include "llvm/Target/TargetMachine.h"
 using namespace llvm;
 using namespace dwarf;
@@ -95,13 +95,10 @@ getTTypeGlobalReference(const GlobalValue *GV, Mangler *Mang,
   if (Encoding & dwarf::DW_EH_PE_indirect) {
     MachineModuleInfoELF &ELFMMI = MMI->getObjFileInfo<MachineModuleInfoELF>();
 
-    SmallString<128> Name;
-    Mang->getNameWithPrefix(Name, GV, true);
-    Name += ".DW.stub";
+    MCSymbol *SSym = getSymbolWithGlobalValueBase(*Mang, GV, ".DW.stub");
 
     // Add information about the stub reference to ELFMMI so that the stub
     // gets emitted by the asmprinter.
-    MCSymbol *SSym = getContext().GetOrCreateSymbol(Name.str());
     MachineModuleInfoImpl::StubValueTy &StubSym = ELFMMI.getGVStubEntry(SSym);
     if (StubSym.getPointer() == 0) {
       MCSymbol *Sym = getSymbol(*Mang, GV);
@@ -405,6 +402,16 @@ TargetLoweringObjectFileELF::InitializeELF(bool UseInitArray_) {
 //                                 MachO
 //===----------------------------------------------------------------------===//
 
+/// getDepLibFromLinkerOpt - Extract the dependent library name from a linker
+/// option string. Returns StringRef() if the option does not specify a library.
+StringRef TargetLoweringObjectFileMachO::
+getDepLibFromLinkerOpt(StringRef LinkerOption) const {
+  const char *LibCmd = "-l";
+  if (LinkerOption.startswith(LibCmd))
+    return LinkerOption.substr(strlen(LibCmd));
+  return StringRef();
+}
+
 /// emitModuleFlags - Perform code emission for module flags.
 void TargetLoweringObjectFileMachO::
 emitModuleFlags(MCStreamer &Streamer,
@@ -523,6 +530,11 @@ getExplicitSectionGlobal(const GlobalValue *GV, SectionKind Kind,
 const MCSection *TargetLoweringObjectFileMachO::
 SelectSectionForGlobal(const GlobalValue *GV, SectionKind Kind,
                        Mangler *Mang, const TargetMachine &TM) const {
+
+  // Handle thread local data.
+  if (Kind.isThreadBSS()) return TLSBSSSection;
+  if (Kind.isThreadData()) return TLSDataSection;
+
   if (Kind.isText())
     return GV->isWeakForLinker() ? TextCoalSection : TextSection;
 
@@ -574,10 +586,6 @@ SelectSectionForGlobal(const GlobalValue *GV, SectionKind Kind,
   // with the .zerofill directive (aka .lcomm).
   if (Kind.isBSSLocal())
     return DataBSSSection;
-
-  // Handle thread local data.
-  if (Kind.isThreadBSS()) return TLSBSSSection;
-  if (Kind.isThreadData()) return TLSDataSection;
 
   // Otherwise, just drop the variable in the normal data section.
   return DataSection;
@@ -631,13 +639,10 @@ getTTypeGlobalReference(const GlobalValue *GV, Mangler *Mang,
     MachineModuleInfoMachO &MachOMMI =
       MMI->getObjFileInfo<MachineModuleInfoMachO>();
 
-    SmallString<128> Name;
-    Mang->getNameWithPrefix(Name, GV, true);
-    Name += "$non_lazy_ptr";
+    MCSymbol *SSym = getSymbolWithGlobalValueBase(*Mang, GV, "$non_lazy_ptr");
 
     // Add information about the stub reference to MachOMMI so that the stub
     // gets emitted by the asmprinter.
-    MCSymbol *SSym = getContext().GetOrCreateSymbol(Name.str());
     MachineModuleInfoImpl::StubValueTy &StubSym =
       GV->hasHiddenVisibility() ? MachOMMI.getHiddenGVStubEntry(SSym) :
                                   MachOMMI.getGVStubEntry(SSym);
@@ -662,13 +667,10 @@ getCFIPersonalitySymbol(const GlobalValue *GV, Mangler *Mang,
   MachineModuleInfoMachO &MachOMMI =
     MMI->getObjFileInfo<MachineModuleInfoMachO>();
 
-  SmallString<128> Name;
-  Mang->getNameWithPrefix(Name, GV, true);
-  Name += "$non_lazy_ptr";
+  MCSymbol *SSym = getSymbolWithGlobalValueBase(*Mang, GV, "$non_lazy_ptr");
 
   // Add information about the stub reference to MachOMMI so that the stub
   // gets emitted by the asmprinter.
-  MCSymbol *SSym = getContext().GetOrCreateSymbol(Name.str());
   MachineModuleInfoImpl::StubValueTy &StubSym = MachOMMI.getGVStubEntry(SSym);
   if (StubSym.getPointer() == 0) {
     MCSymbol *Sym = getSymbol(*Mang, GV);
@@ -722,32 +724,31 @@ getExplicitSectionGlobal(const GlobalValue *GV, SectionKind Kind,
                          Mangler *Mang, const TargetMachine &TM) const {
   int Selection = 0;
   unsigned Characteristics = getCOFFSectionFlags(Kind);
-  SmallString<128> Name(GV->getSection().c_str());
+  StringRef Name = GV->getSection();
+  StringRef COMDATSymName = "";
   if (GV->isWeakForLinker()) {
     Selection = COFF::IMAGE_COMDAT_SELECT_ANY;
     Characteristics |= COFF::IMAGE_SCN_LNK_COMDAT;
-    Name.append("$");
-    Mang->getNameWithPrefix(Name, GV, false, false);
+    MCSymbol *Sym = getSymbol(*Mang, GV);
+    COMDATSymName = Sym->getName();
   }
   return getContext().getCOFFSection(Name,
                                      Characteristics,
                                      Kind,
+                                     COMDATSymName,
                                      Selection);
 }
 
-static const char *getCOFFSectionPrefixForUniqueGlobal(SectionKind Kind) {
+static const char *getCOFFSectionNameForUniqueGlobal(SectionKind Kind) {
   if (Kind.isText())
-    return ".text$";
+    return ".text";
   if (Kind.isBSS ())
-    return ".bss$";
-  if (Kind.isThreadLocal()) {
-    // 'LLVM' is just an arbitary string to ensure that the section name gets
-    // sorted in between '.tls$AAA' and '.tls$ZZZ' by the linker.
-    return ".tls$LLVM";
-  }
+    return ".bss";
+  if (Kind.isThreadLocal())
+    return ".tls$";
   if (Kind.isWriteable())
-    return ".data$";
-  return ".rdata$";
+    return ".data";
+  return ".rdata";
 }
 
 
@@ -758,16 +759,14 @@ SelectSectionForGlobal(const GlobalValue *GV, SectionKind Kind,
   // If this global is linkonce/weak and the target handles this by emitting it
   // into a 'uniqued' section name, create and return the section now.
   if (GV->isWeakForLinker()) {
-    const char *Prefix = getCOFFSectionPrefixForUniqueGlobal(Kind);
-    SmallString<128> Name(Prefix, Prefix+strlen(Prefix));
-    Mang->getNameWithPrefix(Name, GV, false, false);
-
+    const char *Name = getCOFFSectionNameForUniqueGlobal(Kind);
     unsigned Characteristics = getCOFFSectionFlags(Kind);
 
     Characteristics |= COFF::IMAGE_SCN_LNK_COMDAT;
-
-    return getContext().getCOFFSection(Name.str(), Characteristics,
-                                       Kind, COFF::IMAGE_COMDAT_SELECT_ANY);
+    MCSymbol *Sym = getSymbol(*Mang, GV);
+    return getContext().getCOFFSection(Name, Characteristics,
+                                       Kind, Sym->getName(),
+                                       COFF::IMAGE_COMDAT_SELECT_ANY);
   }
 
   if (Kind.isText())
@@ -783,6 +782,14 @@ SelectSectionForGlobal(const GlobalValue *GV, SectionKind Kind,
     return BSSSection;
 
   return DataSection;
+}
+
+StringRef TargetLoweringObjectFileCOFF::
+getDepLibFromLinkerOpt(StringRef LinkerOption) const {
+  const char *LibCmd = "/DEFAULTLIB:";
+  if (LinkerOption.startswith(LibCmd))
+    return LinkerOption.substr(strlen(LibCmd));
+  return StringRef();
 }
 
 void TargetLoweringObjectFileCOFF::

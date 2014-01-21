@@ -48,6 +48,11 @@ class RTDyldMemoryManager;
 class Triple;
 class Type;
 
+namespace object {
+  class Archive;
+  class ObjectFile;
+}
+
 /// \brief Helper class for helping synchronize access to the global address map
 /// table.
 class ExecutionEngineState {
@@ -204,6 +209,33 @@ public:
     Modules.push_back(M);
   }
 
+  /// addObjectFile - Add an ObjectFile to the execution engine.
+  ///
+  /// This method is only supported by MCJIT.  MCJIT will immediately load the
+  /// object into memory and adds its symbols to the list used to resolve
+  /// external symbols while preparing other objects for execution.
+  ///
+  /// Objects added using this function will not be made executable until
+  /// needed by another object.
+  ///
+  /// MCJIT will take ownership of the ObjectFile.
+  virtual void addObjectFile(object::ObjectFile *O) {
+    llvm_unreachable(
+      "ExecutionEngine subclass doesn't implement addObjectFile.");
+  }
+
+  /// addArchive - Add an Archive to the execution engine.
+  ///
+  /// This method is only supported by MCJIT.  MCJIT will use the archive to
+  /// resolve external symbols in objects it is loading.  If a symbol is found
+  /// in the Archive the contained object file will be extracted (in memory)
+  /// and loaded for possible execution.
+  ///
+  /// MCJIT will take ownership of the Archive.
+  virtual void addArchive(object::Archive *A) {
+    llvm_unreachable("ExecutionEngine subclass doesn't implement addArchive.");
+  }
+
   //===--------------------------------------------------------------------===//
 
   const DataLayout *getDataLayout() const { return TD; }
@@ -232,7 +264,7 @@ public:
   ///
   /// This function is deprecated for the MCJIT execution engine.
   ///
-  /// FIXME: the JIT and MCJIT interfaces should be disentangled or united 
+  /// FIXME: the JIT and MCJIT interfaces should be disentangled or united
   /// again, if possible.
   ///
   virtual void *getPointerToNamedFunction(const std::string &Name,
@@ -550,7 +582,7 @@ public:
     WhichEngine = w;
     return *this;
   }
-  
+
   /// setMCJITMemoryManager - Sets the MCJIT memory manager to use. This allows
   /// clients to customize their memory allocation policies for the MCJIT. This
   /// is only appropriate for the MCJIT; setting this and configuring the builder

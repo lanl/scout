@@ -13,20 +13,26 @@
 
 #define DEBUG_TYPE "dyld"
 #include "llvm/ExecutionEngine/RuntimeDyld.h"
+#include "JITRegistrar.h"
 #include "ObjectImageCommon.h"
 #include "RuntimeDyldELF.h"
 #include "RuntimeDyldImpl.h"
 #include "RuntimeDyldMachO.h"
+#include "llvm/Object/ELF.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/MutexGuard.h"
-#include "llvm/Object/ELF.h"
 
 using namespace llvm;
 using namespace llvm::object;
 
 // Empty out-of-line virtual destructor as the key function.
 RuntimeDyldImpl::~RuntimeDyldImpl() {}
+
+// Pin the JITRegistrar's and ObjectImage*'s vtables to this file.
+void JITRegistrar::anchor() {}
+void ObjectImage::anchor() {}
+void ObjectImageCommon::anchor() {}
 
 namespace llvm {
 
@@ -76,12 +82,24 @@ ObjectImage *RuntimeDyldImpl::createObjectImage(ObjectBuffer *InputBuffer) {
   return new ObjectImageCommon(InputBuffer);
 }
 
+ObjectImage *RuntimeDyldImpl::createObjectImageFromFile(ObjectFile *InputObject) {
+  return new ObjectImageCommon(InputObject);
+}
+
+ObjectImage *RuntimeDyldImpl::loadObject(ObjectFile *InputObject) {
+  return loadObject(createObjectImageFromFile(InputObject));
+}
+
 ObjectImage *RuntimeDyldImpl::loadObject(ObjectBuffer *InputBuffer) {
+  return loadObject(createObjectImage(InputBuffer));
+} 
+
+ObjectImage *RuntimeDyldImpl::loadObject(ObjectImage *InputObject) {
   MutexGuard locked(lock);
 
-  OwningPtr<ObjectImage> obj(createObjectImage(InputBuffer));
+  OwningPtr<ObjectImage> obj(InputObject);
   if (!obj)
-    report_fatal_error("Unable to create object image from memory buffer!");
+    return NULL;
 
   // Save information about our target
   Arch = (Triple::ArchType)obj->getArch();
@@ -133,7 +151,7 @@ ObjectImage *RuntimeDyldImpl::loadObject(ObjectBuffer *InputBuffer) {
         if (si == obj->end_sections()) continue;
         Check(si->getContents(SectionData));
         Check(si->isText(IsCode));
-        const uint8_t* SymPtr = (const uint8_t*)InputBuffer->getBufferStart() +
+        const uint8_t* SymPtr = (const uint8_t*)InputObject->getData().data() +
                                 (uintptr_t)FileOffset;
         uintptr_t SectOffset = (uintptr_t)(SymPtr -
                                            (const uint8_t*)SectionData.begin());
@@ -176,7 +194,7 @@ ObjectImage *RuntimeDyldImpl::loadObject(ObjectBuffer *InputBuffer) {
       }
 
       processRelocationRef(SectionID, *i, *obj, LocalSections, LocalSymbols,
-			   Stubs);
+                           Stubs);
     }
   }
 
@@ -494,10 +512,10 @@ void RuntimeDyldImpl::resolveExternalSymbols() {
     StringMap<RelocationList>::iterator i = ExternalSymbolRelocations.begin();
 
     StringRef Name = i->first();
-    RelocationList &Relocs = i->second;
     if (Name.size() == 0) {
       // This is an absolute symbol, use an address of zero.
       DEBUG(dbgs() << "Resolving absolute relocations." << "\n");
+      RelocationList &Relocs = i->second;
       resolveRelocationList(Relocs, 0);
     } else {
       uint64_t Addr = 0;
@@ -506,6 +524,13 @@ void RuntimeDyldImpl::resolveExternalSymbols() {
           // This is an external symbol, try to get its address from
           // MemoryManager.
           Addr = MemMgr->getSymbolAddress(Name.data());
+          // The call to getSymbolAddress may have caused additional modules to
+          // be loaded, which may have added new entries to the
+          // ExternalSymbolRelocations map.  Consquently, we need to update our
+          // iterator.  This is also why retrieval of the relocation list
+          // associated with this symbol is deferred until below this point.
+          // New entries may have been added to the relocation list.
+          i = ExternalSymbolRelocations.find(Name);
       } else {
         // We found the symbol in our global table.  It was probably in a
         // Module that we loaded previously.
@@ -522,10 +547,13 @@ void RuntimeDyldImpl::resolveExternalSymbols() {
       DEBUG(dbgs() << "Resolving relocations Name: " << Name
               << "\t" << format("0x%lx", Addr)
               << "\n");
+      // This list may have been updated when we called getSymbolAddress, so
+      // don't change this code to get the list earlier.
+      RelocationList &Relocs = i->second;
       resolveRelocationList(Relocs, Addr);
     }
 
-    ExternalSymbolRelocations.erase(i->first());
+    ExternalSymbolRelocations.erase(i);
   }
 }
 
@@ -545,6 +573,22 @@ RuntimeDyld::RuntimeDyld(RTDyldMemoryManager *mm) {
 
 RuntimeDyld::~RuntimeDyld() {
   delete Dyld;
+}
+
+ObjectImage *RuntimeDyld::loadObject(ObjectFile *InputObject) {
+  if (!Dyld) {
+    if (InputObject->isELF())
+      Dyld = new RuntimeDyldELF(MM);
+    else if (InputObject->isMachO())
+      Dyld = new RuntimeDyldMachO(MM);
+    else
+      report_fatal_error("Incompatible object format!");
+  } else {
+    if (!Dyld->isCompatibleFile(InputObject))
+      report_fatal_error("Incompatible object format!");
+  }
+
+  return Dyld->loadObject(InputObject);
 }
 
 ObjectImage *RuntimeDyld::loadObject(ObjectBuffer *InputBuffer) {
@@ -574,6 +618,7 @@ ObjectImage *RuntimeDyld::loadObject(ObjectBuffer *InputBuffer) {
     case sys::fs::file_magic::bitcode:
     case sys::fs::file_magic::archive:
     case sys::fs::file_magic::coff_object:
+    case sys::fs::file_magic::coff_import_library:
     case sys::fs::file_magic::pecoff_executable:
     case sys::fs::file_magic::macho_universal_binary:
     case sys::fs::file_magic::windows_resource:

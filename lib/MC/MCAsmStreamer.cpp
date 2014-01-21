@@ -115,6 +115,8 @@ public:
     return CommentStream;
   }
 
+  void emitRawComment(const Twine &T, bool TabPrefix = true) LLVM_OVERRIDE;
+
   /// AddBlankLine - Emit a blank line to a .s file to pretty it up.
   virtual void AddBlankLine() {
     EmitEOL();
@@ -160,6 +162,7 @@ public:
   virtual void EmitCOFFSymbolStorageClass(int StorageClass);
   virtual void EmitCOFFSymbolType(int Type);
   virtual void EndCOFFSymbolDef();
+  virtual void EmitCOFFSectionIndex(MCSymbol const *Symbol);
   virtual void EmitCOFFSecRel32(MCSymbol const *Symbol);
   virtual void EmitELFSize(MCSymbol *Symbol, const MCExpr *Value);
   virtual void EmitCommonSymbol(MCSymbol *Symbol, uint64_t Size,
@@ -308,6 +311,13 @@ void MCAsmStreamer::EmitCommentsAndEOL() {
 static inline int64_t truncateToSize(int64_t Value, unsigned Bytes) {
   assert(Bytes && "Invalid size!");
   return Value & ((uint64_t) (int64_t) -1 >> (64 - Bytes * 8));
+}
+
+void MCAsmStreamer::emitRawComment(const Twine &T, bool TabPrefix) {
+  if (TabPrefix)
+    OS << '\t';
+  OS << MAI->getCommentString() << T;
+  EmitEOL();
 }
 
 void MCAsmStreamer::ChangeSection(const MCSection *Section,
@@ -505,8 +515,13 @@ void MCAsmStreamer::EndCOFFSymbolDef() {
   EmitEOL();
 }
 
+void MCAsmStreamer::EmitCOFFSectionIndex(MCSymbol const *Symbol) {
+  OS << "\t.secidx\t" << *Symbol;
+  EmitEOL();
+}
+
 void MCAsmStreamer::EmitCOFFSecRel32(MCSymbol const *Symbol) {
-  OS << "\t.secrel32\t" << *Symbol << '\n';
+  OS << "\t.secrel32\t" << *Symbol;
   EmitEOL();
 }
 

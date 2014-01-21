@@ -2,8 +2,10 @@
 #
 # CHECK:  .text
 # CHECK:  $BB0_2:
+# CHECK:  .abicalls
 $BB0_2:
   .ent directives_test
+     .abicalls
     .frame    $sp,0,$ra
     .mask     0x00000000,0
     .fmask    0x00000000,0
@@ -19,9 +21,11 @@ $BB0_2:
     .set    noat
 $JTI0_0:
     .gpword    ($BB0_2)
+
     .word 0x77fffffc
 # CHECK: $JTI0_0:
-# CHECK-NEXT:     .4byte    2013265916
+# CHECK: .gpword ($BB0_2)
+# CHECK:     .4byte    2013265916
     .set  at=$12
     .set macro
 # CHECK:   b 1332               # encoding: [0x10,0x00,0x01,0x4d]
@@ -31,15 +35,17 @@ $JTI0_0:
 # CHECK:   jal 1328             # encoding: [0x0c,0x00,0x01,0x4c]
 # CHECK:   nop                  # encoding: [0x00,0x00,0x00,0x00]
     .set reorder
+$BB0_4:
     b 1332
     j 1328
     jal 1328
     .set  at=$a0
     .set STORE_MASK,$t7
     .set FPU_MASK,$f7
-    .set r3,$3
+    .set  $tmp7, $BB0_4-$BB0_2
     .set f6,$f6
 # CHECK:    abs.s   $f6, $f7           # encoding: [0x46,0x00,0x39,0x85]
-# CHECK:    and     $3, $15, $15       # encoding: [0x01,0xef,0x18,0x24]
+# CHECK:    lui     $1, %hi($tmp7)     # encoding: [0x3c'A',0x01'A',0x00,0x00]
+# CHECK:                               #   fixup A - offset: 0, value: ($tmp7)@ABS_HI, kind: fixup_Mips_HI16
     abs.s  f6,FPU_MASK
-    and    r3,$t7,STORE_MASK
+    lui $1, %hi($tmp7)

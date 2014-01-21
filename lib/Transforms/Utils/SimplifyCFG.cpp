@@ -19,6 +19,7 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Analysis/ValueTracking.h"
@@ -2089,14 +2090,19 @@ bool llvm::FoldBranchToCommonDest(BranchInst *BI) {
     // Ensure that any values used in the bonus instruction are also used
     // by the terminator of the predecessor.  This means that those values
     // must already have been resolved, so we won't be inhibiting the
-    // out-of-order core by speculating them earlier.
-    if (BonusInst) {
+    // out-of-order core by speculating them earlier. We also allow
+    // instructions that are used by the terminator's condition because it
+    // exposes more merging opportunities.
+    bool UsedByBranch = (BonusInst && BonusInst->hasOneUse() &&
+                         *BonusInst->use_begin() == Cond);
+
+    if (BonusInst && !UsedByBranch) {
       // Collect the values used by the bonus inst
       SmallPtrSet<Value*, 4> UsedValues;
       for (Instruction::op_iterator OI = BonusInst->op_begin(),
            OE = BonusInst->op_end(); OI != OE; ++OI) {
         Value *V = *OI;
-        if (!isa<Constant>(V))
+        if (!isa<Constant>(V) && !isa<Argument>(V))
           UsedValues.insert(V);
       }
 
@@ -3216,7 +3222,7 @@ static bool EliminateDeadSwitchCases(SwitchInst *SI) {
     Case.getCaseSuccessor()->removePredecessor(SI->getParent());
     SI->removeCase(Case);
   }
-  if (HasWeight) {
+  if (HasWeight && Weights.size() >= 2) {
     SmallVector<uint32_t, 8> MDWeights(Weights.begin(), Weights.end());
     SI->setMetadata(LLVMContext::MD_prof,
                     MDBuilder(SI->getParent()->getContext()).
@@ -3323,28 +3329,10 @@ static Constant *LookupConstant(Value *V,
 /// simple instructions such as binary operations where both operands are
 /// constant or can be replaced by constants from the ConstantPool. Returns the
 /// resulting constant on success, 0 otherwise.
-static Constant *ConstantFold(Instruction *I,
-                         const SmallDenseMap<Value*, Constant*>& ConstantPool) {
-  if (BinaryOperator *BO = dyn_cast<BinaryOperator>(I)) {
-    Constant *A = LookupConstant(BO->getOperand(0), ConstantPool);
-    if (!A)
-      return 0;
-    Constant *B = LookupConstant(BO->getOperand(1), ConstantPool);
-    if (!B)
-      return 0;
-    return ConstantExpr::get(BO->getOpcode(), A, B);
-  }
-
-  if (CmpInst *Cmp = dyn_cast<CmpInst>(I)) {
-    Constant *A = LookupConstant(I->getOperand(0), ConstantPool);
-    if (!A)
-      return 0;
-    Constant *B = LookupConstant(I->getOperand(1), ConstantPool);
-    if (!B)
-      return 0;
-    return ConstantExpr::getCompare(Cmp->getPredicate(), A, B);
-  }
-
+static Constant *
+ConstantFold(Instruction *I,
+             const SmallDenseMap<Value *, Constant *> &ConstantPool,
+             const DataLayout *DL) {
   if (SelectInst *Select = dyn_cast<SelectInst>(I)) {
     Constant *A = LookupConstant(Select->getCondition(), ConstantPool);
     if (!A)
@@ -3356,14 +3344,19 @@ static Constant *ConstantFold(Instruction *I,
     return 0;
   }
 
-  if (CastInst *Cast = dyn_cast<CastInst>(I)) {
-    Constant *A = LookupConstant(I->getOperand(0), ConstantPool);
-    if (!A)
+  SmallVector<Constant *, 4> COps;
+  for (unsigned N = 0, E = I->getNumOperands(); N != E; ++N) {
+    if (Constant *A = LookupConstant(I->getOperand(N), ConstantPool))
+      COps.push_back(A);
+    else
       return 0;
-    return ConstantExpr::getCast(Cast->getOpcode(), A, Cast->getDestTy());
   }
 
-  return 0;
+  if (CmpInst *Cmp = dyn_cast<CmpInst>(I))
+    return ConstantFoldCompareInstOperands(Cmp->getPredicate(), COps[0],
+                                           COps[1], DL);
+
+  return ConstantFoldInstOperands(I->getOpcode(), I->getType(), COps, DL);
 }
 
 /// GetCaseResults - Try to determine the resulting constant values in phi nodes
@@ -3375,7 +3368,8 @@ GetCaseResults(SwitchInst *SI,
                ConstantInt *CaseVal,
                BasicBlock *CaseDest,
                BasicBlock **CommonDest,
-               SmallVectorImpl<std::pair<PHINode*,Constant*> > &Res) {
+               SmallVectorImpl<std::pair<PHINode *, Constant *> > &Res,
+               const DataLayout *DL) {
   // The block from which we enter the common destination.
   BasicBlock *Pred = SI->getParent();
 
@@ -3394,7 +3388,7 @@ GetCaseResults(SwitchInst *SI,
     } else if (isa<DbgInfoIntrinsic>(I)) {
       // Skip debug intrinsic.
       continue;
-    } else if (Constant *C = ConstantFold(I, ConstantPool)) {
+    } else if (Constant *C = ConstantFold(I, ConstantPool, DL)) {
       // Instruction is side-effect free and constant.
       ConstantPool.insert(std::make_pair(I, C));
     } else {
@@ -3434,7 +3428,7 @@ GetCaseResults(SwitchInst *SI,
     Res.push_back(std::make_pair(PHI, ConstVal));
   }
 
-  return true;
+  return Res.size() > 0;
 }
 
 namespace {
@@ -3505,12 +3499,14 @@ SwitchLookupTable::SwitchLookupTable(Module &M,
   // If all values in the table are equal, this is that value.
   SingleValue = Values.begin()->second;
 
+  Type *ValueType = Values.begin()->second->getType();
+
   // Build up the table contents.
   SmallVector<Constant*, 64> TableContents(TableSize);
   for (size_t I = 0, E = Values.size(); I != E; ++I) {
     ConstantInt *CaseVal = Values[I].first;
     Constant *CaseRes = Values[I].second;
-    assert(CaseRes->getType() == DefaultValue->getType());
+    assert(CaseRes->getType() == ValueType);
 
     uint64_t Idx = (CaseVal->getValue() - Offset->getValue())
                    .getLimitedValue();
@@ -3522,6 +3518,8 @@ SwitchLookupTable::SwitchLookupTable(Module &M,
 
   // Fill in any holes in the table with the default result.
   if (Values.size() < TableSize) {
+    assert(DefaultValue && "Need a default value to fill the lookup table holes.");
+    assert(DefaultValue->getType() == ValueType);
     for (uint64_t I = 0; I < TableSize; ++I) {
       if (!TableContents[I])
         TableContents[I] = DefaultValue;
@@ -3539,8 +3537,8 @@ SwitchLookupTable::SwitchLookupTable(Module &M,
   }
 
   // If the type is integer and the table fits in a register, build a bitmap.
-  if (WouldFitInRegister(TD, TableSize, DefaultValue->getType())) {
-    IntegerType *IT = cast<IntegerType>(DefaultValue->getType());
+  if (WouldFitInRegister(TD, TableSize, ValueType)) {
+    IntegerType *IT = cast<IntegerType>(ValueType);
     APInt TableInt(TableSize * IT->getBitWidth(), 0);
     for (uint64_t I = TableSize; I > 0; --I) {
       TableInt <<= IT->getBitWidth();
@@ -3558,7 +3556,7 @@ SwitchLookupTable::SwitchLookupTable(Module &M,
   }
 
   // Store the table in an array.
-  ArrayType *ArrayTy = ArrayType::get(DefaultValue->getType(), TableSize);
+  ArrayType *ArrayTy = ArrayType::get(ValueType, TableSize);
   Constant *Initializer = ConstantArray::get(ArrayTy, TableContents);
 
   Array = new GlobalVariable(M, ArrayTy, /*constant=*/ true,
@@ -3686,11 +3684,9 @@ static bool SwitchToLookupTable(SwitchInst *SI,
   // GEP needs a runtime relocation in PIC code. We should just build one big
   // string and lookup indices into that.
 
-  // Ignore the switch if the number of cases is too small.
-  // This is similar to the check when building jump tables in
-  // SelectionDAGBuilder::handleJTSwitchCase.
-  // FIXME: Determine the best cut-off.
-  if (SI->getNumCases() < 4)
+  // Ignore switches with less than three cases. Lookup tables will not make them
+  // faster, so we don't analyze them.
+  if (SI->getNumCases() < 3)
     return false;
 
   // Figure out the corresponding result for each case value and phi node in the
@@ -3718,7 +3714,7 @@ static bool SwitchToLookupTable(SwitchInst *SI,
     typedef SmallVector<std::pair<PHINode*, Constant*>, 4> ResultsTy;
     ResultsTy Results;
     if (!GetCaseResults(SI, CaseVal, CI.getCaseSuccessor(), &CommonDest,
-                        Results))
+                        Results, TD))
       return false;
 
     // Append the result from this case to the list for each phi.
@@ -3729,20 +3725,29 @@ static bool SwitchToLookupTable(SwitchInst *SI,
     }
   }
 
-  // Get the resulting values for the default case.
+  // Keep track of the result types.
+  for (size_t I = 0, E = PHIs.size(); I != E; ++I) {
+    PHINode *PHI = PHIs[I];
+    ResultTypes[PHI] = ResultLists[PHI][0].second->getType();
+  }
+
+  uint64_t NumResults = ResultLists[PHIs[0]].size();
+  APInt RangeSpread = MaxCaseVal->getValue() - MinCaseVal->getValue();
+  uint64_t TableSize = RangeSpread.getLimitedValue() + 1;
+  bool TableHasHoles = (NumResults < TableSize);
+
+  // If the table has holes, we need a constant result for the default case.
   SmallVector<std::pair<PHINode*, Constant*>, 4> DefaultResultsList;
-  if (!GetCaseResults(SI, 0, SI->getDefaultDest(), &CommonDest,
-                      DefaultResultsList))
+  if (TableHasHoles && !GetCaseResults(SI, 0, SI->getDefaultDest(), &CommonDest,
+                                       DefaultResultsList, TD))
     return false;
+
   for (size_t I = 0, E = DefaultResultsList.size(); I != E; ++I) {
     PHINode *PHI = DefaultResultsList[I].first;
     Constant *Result = DefaultResultsList[I].second;
     DefaultResults[PHI] = Result;
-    ResultTypes[PHI] = Result->getType();
   }
 
-  APInt RangeSpread = MaxCaseVal->getValue() - MinCaseVal->getValue();
-  uint64_t TableSize = RangeSpread.getLimitedValue() + 1;
   if (!ShouldBuildLookupTable(SI, TableSize, TTI, TD, ResultTypes))
     return false;
 
@@ -3761,7 +3766,7 @@ static bool SwitchToLookupTable(SwitchInst *SI,
   // Compute the maximum table size representable by the integer type we are
   // switching upon.
   unsigned CaseSize = MinCaseVal->getType()->getPrimitiveSizeInBits();
-  uint64_t MaxTableSize = CaseSize > 63? UINT64_MAX : 1ULL << CaseSize;
+  uint64_t MaxTableSize = CaseSize > 63 ? UINT64_MAX : 1ULL << CaseSize;
   assert(MaxTableSize >= TableSize &&
          "It is impossible for a switch to have more entries than the max "
          "representable value of its input integer type's size.");

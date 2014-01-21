@@ -37,6 +37,8 @@ namespace llvm {
 
       FTOI,        // FP to Int within a FP register.
       ITOF,        // Int to FP within a FP register.
+      FTOX,        // FP to Int64 within a FP register.
+      XTOF,        // Int64 to FP within a FP register.
 
       CALL,        // A call instruction.
       RET_FLAG,    // Return with a flag operand.
@@ -76,6 +78,9 @@ namespace llvm {
 
     virtual bool isOffsetFoldingLegal(const GlobalAddressSDNode *GA) const;
     virtual MVT getScalarShiftAmountTy(EVT LHSTy) const { return MVT::i32; }
+
+    /// getSetCCResultType - Return the ISD::SETCC ValueType
+    virtual EVT getSetCCResultType(LLVMContext &Context, EVT VT) const;
 
     virtual SDValue
       LowerFormalArguments(SDValue Chain,
@@ -149,6 +154,10 @@ namespace llvm {
       // (ldd, call _Q_fdtoq) is more expensive than two ldds.
       return VT != MVT::f128;
     }
+
+    virtual void ReplaceNodeResults(SDNode *N,
+                                    SmallVectorImpl<SDValue>& Results,
+                                    SelectionDAG &DAG) const;
   };
 } // end namespace llvm
 

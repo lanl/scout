@@ -238,6 +238,7 @@ struct file_magic {
     macho_dsym_companion,     ///< Mach-O dSYM companion file
     macho_universal_binary,   ///< Mach-O universal binary
     coff_object,              ///< COFF object file
+    coff_import_library,      ///< COFF import library
     pecoff_executable,        ///< PECOFF executable file
     windows_resource          ///< Windows compiled resource file (.rc)
   };
@@ -338,22 +339,6 @@ error_code remove(const Twine &path, bool &existed);
 inline error_code remove(const Twine &Path) {
   bool Existed;
   return remove(Path, Existed);
-}
-
-/// @brief Recursively remove all files below \a path, then \a path. Files are
-///        removed as if by POSIX remove().
-///
-/// @param path Input path.
-/// @param num_removed Number of files removed.
-/// @returns errc::success if path has been removed and num_removed has been
-///          successfully set, otherwise a platform specific error_code.
-error_code remove_all(const Twine &path, uint32_t &num_removed);
-
-/// @brief Convenience function for clients that don't need to know how many
-///        files were removed.
-inline error_code remove_all(const Twine &Path) {
-  uint32_t Removed;
-  return remove_all(Path, Removed);
 }
 
 /// @brief Rename \a from to \a to. Files are renamed as if by POSIX rename().
@@ -544,6 +529,11 @@ inline error_code file_size(const Twine &Path, uint64_t &Result) {
   return error_code::success();
 }
 
+/// @brief Set the file modification and access time.
+///
+/// @returns errc::success if the file times were successfully set, otherwise a
+///          platform specific error_code or errc::not_supported on platforms
+///          where the functionality isn't available.
 error_code setLastModificationAndAccessTime(int FD, TimeValue Time);
 
 /// @brief Is status available?

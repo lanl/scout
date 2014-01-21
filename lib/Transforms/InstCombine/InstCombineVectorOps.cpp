@@ -282,6 +282,38 @@ Instruction *InstCombiner::visitExtractElementInst(ExtractElementInst &EI) {
         Worklist.AddValue(EE);
         return CastInst::Create(CI->getOpcode(), EE, EI.getType());
       }
+    } else if (SelectInst *SI = dyn_cast<SelectInst>(I)) {
+      if (SI->hasOneUse()) {
+        // TODO: For a select on vectors, it might be useful to do this if it
+        // has multiple extractelement uses. For vector select, that seems to
+        // fight the vectorizer.
+
+        // If we are extracting an element from a vector select or a select on
+        // vectors, a select on the scalars extracted from the vector arguments.
+        Value *TrueVal = SI->getTrueValue();
+        Value *FalseVal = SI->getFalseValue();
+
+        Value *Cond = SI->getCondition();
+        if (Cond->getType()->isVectorTy()) {
+          Cond = Builder->CreateExtractElement(Cond,
+                                               EI.getIndexOperand(),
+                                               Cond->getName() + ".elt");
+        }
+
+        Value *V1Elem
+          = Builder->CreateExtractElement(TrueVal,
+                                          EI.getIndexOperand(),
+                                          TrueVal->getName() + ".elt");
+
+        Value *V2Elem
+          = Builder->CreateExtractElement(FalseVal,
+                                          EI.getIndexOperand(),
+                                          FalseVal->getName() + ".elt");
+        return SelectInst::Create(Cond,
+                                  V1Elem,
+                                  V2Elem,
+                                  SI->getName() + ".elt");
+      }
     }
   }
   return 0;
@@ -606,6 +638,8 @@ static Value *BuildNew(Instruction *I, ArrayRef<Value*> NewOps) {
       if (isa<PossiblyExactOperator>(BO)) {
         New->setIsExact(BO->isExact());
       }
+      if (isa<FPMathOperator>(BO))
+        New->copyFastMathFlags(I);
       return New;
     }
     case Instruction::ICmp:
@@ -731,9 +765,10 @@ InstCombiner::EvaluateInDifferentElementOrder(Value *V, ArrayRef<int> Mask) {
         }
       }
 
+      // If element is not in Mask, no need to handle the operand 1 (element to
+      // be inserted). Just evaluate values in operand 0 according to Mask.
       if (!Found)
-        return UndefValue::get(
-            VectorType::get(V->getType()->getScalarType(), Mask.size()));
+        return EvaluateInDifferentElementOrder(I->getOperand(0), Mask);
 
       Value *V = EvaluateInDifferentElementOrder(I->getOperand(0), Mask);
       return InsertElementInst::Create(V, I->getOperand(1),

@@ -21,8 +21,8 @@
 #define LLVM_SUPPORT_COMMANDLINE_H
 
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/Twine.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/type_traits.h"
 #include <cassert>
@@ -350,6 +350,9 @@ struct cat {
 struct GenericOptionValue {
   virtual ~GenericOptionValue() {}
   virtual bool compare(const GenericOptionValue &V) const = 0;
+
+private:
+  virtual void anchor();
 };
 
 template<class DataType> struct OptionValue;
@@ -1752,6 +1755,7 @@ void getRegisteredOptions(StringMap<Option*> &Map);
 /// \brief Saves strings in the inheritor's stable storage and returns a stable
 /// raw character pointer.
 class StringSaver {
+  virtual void anchor();
 public:
   virtual const char *SaveString(const char *Str) = 0;
   virtual ~StringSaver() {};  // Pacify -Wnon-virtual-dtor.

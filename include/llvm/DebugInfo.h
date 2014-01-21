@@ -17,12 +17,12 @@
 #ifndef LLVM_DEBUGINFO_H
 #define LLVM_DEBUGINFO_H
 
-#include "llvm/Support/Casting.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/Metadata.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Dwarf.h"
 
 namespace llvm {
@@ -64,20 +64,22 @@ class DIDescriptor {
 
 public:
   enum {
-    FlagPrivate = 1 << 0,
-    FlagProtected = 1 << 1,
-    FlagFwdDecl = 1 << 2,
-    FlagAppleBlock = 1 << 3,
-    FlagBlockByrefStruct = 1 << 4,
-    FlagVirtual = 1 << 5,
-    FlagArtificial = 1 << 6,
-    FlagExplicit = 1 << 7,
-    FlagPrototyped = 1 << 8,
+    FlagPrivate           = 1 << 0,
+    FlagProtected         = 1 << 1,
+    FlagFwdDecl           = 1 << 2,
+    FlagAppleBlock        = 1 << 3,
+    FlagBlockByrefStruct  = 1 << 4,
+    FlagVirtual           = 1 << 5,
+    FlagArtificial        = 1 << 6,
+    FlagExplicit          = 1 << 7,
+    FlagPrototyped        = 1 << 8,
     FlagObjcClassComplete = 1 << 9,
-    FlagObjectPointer = 1 << 10,
-    FlagVector = 1 << 11,
-    FlagStaticMember = 1 << 12,
-    FlagIndirectVariable = 1 << 13
+    FlagObjectPointer     = 1 << 10,
+    FlagVector            = 1 << 11,
+    FlagStaticMember      = 1 << 12,
+    FlagIndirectVariable  = 1 << 13,
+    FlagLValueReference   = 1 << 14,
+    FlagRValueReference   = 1 << 15
   };
 
 protected:
@@ -281,7 +283,7 @@ protected:
   void printInternal(raw_ostream &OS) const;
 
 public:
-  DIType(const MDNode *N = 0) : DIScope(N) {}
+  explicit DIType(const MDNode *N = 0) : DIScope(N) {}
 
   /// Verify - Verify that a type descriptor is well formed.
   bool Verify() const;
@@ -313,6 +315,12 @@ public:
   }
   bool isVector() const { return (getFlags() & FlagVector) != 0; }
   bool isStaticMember() const { return (getFlags() & FlagStaticMember) != 0; }
+  bool isLValueReference() const {
+    return (getFlags() & FlagLValueReference) != 0;
+  }
+  bool isRValueReference() const {
+    return (getFlags() & FlagRValueReference) != 0;
+  }
   bool isValid() const { return DbgNode && isType(); }
 
   /// replaceAllUsesWith - Replace all uses of debug info referenced by
@@ -377,7 +385,6 @@ public:
 
   DIArray getTypeArray() const { return getFieldAs<DIArray>(10); }
   void setTypeArray(DIArray Elements, DIArray TParams = DIArray());
-  void addMember(DIDescriptor D);
   unsigned getRunTimeLang() const { return getUnsignedField(11); }
   DITypeRef getContainingType() const { return getFieldAs<DITypeRef>(12); }
   void setContainingType(DICompositeType ContainingType);
@@ -468,6 +475,19 @@ public:
   /// isPrototyped - Return true if this subprogram is prototyped.
   bool isPrototyped() const {
     return (getUnsignedField(13) & FlagPrototyped) != 0;
+  }
+
+  /// Return true if this subprogram is a C++11 reference-qualified
+  /// non-static member function (void foo() &).
+  unsigned isLValueReference() const {
+    return (getUnsignedField(13) & FlagLValueReference) != 0;
+  }
+
+  /// Return true if this subprogram is a C++11
+  /// rvalue-reference-qualified non-static member function
+  /// (void foo() &&).
+  unsigned isRValueReference() const {
+    return (getUnsignedField(13) & FlagRValueReference) != 0;
   }
 
   unsigned isOptimized() const;
@@ -753,6 +773,15 @@ DIVariable cleanseInlinedVariable(MDNode *DV, LLVMContext &VMContext);
 /// Construct DITypeIdentifierMap by going through retained types of each CU.
 DITypeIdentifierMap generateDITypeIdentifierMap(const NamedMDNode *CU_Nodes);
 
+/// Strip debug info in the module if it exists.
+/// To do this, we remove all calls to the debugger intrinsics and any named
+/// metadata for debugging. We also remove debug locations for instructions.
+/// Return true if module is modified.
+bool StripDebugInfo(Module &M);
+
+/// Return Debug Info Metadata Version by checking module flags.
+unsigned getDebugMetadataVersionFromModule(const Module &M);
+
 /// DebugInfoFinder tries to list all debug info MDNodes used in a module. To
 /// list debug info MDNodes used by an instruction, DebugInfoFinder uses
 /// processDeclare, processValue and processLocation to handle DbgDeclareInst,
@@ -761,21 +790,26 @@ DITypeIdentifierMap generateDITypeIdentifierMap(const NamedMDNode *CU_Nodes);
 /// used by the CUs.
 class DebugInfoFinder {
 public:
+  DebugInfoFinder() : TypeMapInitialized(false) {}
+
   /// processModule - Process entire module and collect debug info
   /// anchors.
   void processModule(const Module &M);
 
   /// processDeclare - Process DbgDeclareInst.
-  void processDeclare(const DbgDeclareInst *DDI);
+  void processDeclare(const Module &M, const DbgDeclareInst *DDI);
   /// Process DbgValueInst.
-  void processValue(const DbgValueInst *DVI);
+  void processValue(const Module &M, const DbgValueInst *DVI);
   /// processLocation - Process DILocation.
-  void processLocation(DILocation Loc);
+  void processLocation(const Module &M, DILocation Loc);
 
   /// Clear all lists.
   void reset();
 
 private:
+  /// Initialize TypeIdentifierMap.
+  void InitializeTypeMap(const Module &M);
+
   /// processType - Process DIType.
   void processType(DIType DT);
 
@@ -828,6 +862,8 @@ private:
   SmallVector<MDNode *, 8> Scopes; // Scopes
   SmallPtrSet<MDNode *, 64> NodesSeen;
   DITypeIdentifierMap TypeIdentifierMap;
+  /// Specify if TypeIdentifierMap is initialized.
+  bool TypeMapInitialized;
 };
 } // end namespace llvm
 

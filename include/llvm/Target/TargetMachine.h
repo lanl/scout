@@ -29,7 +29,6 @@ class GlobalValue;
 class MCAsmInfo;
 class MCCodeGenInfo;
 class MCContext;
-class PassManagerBase;
 class Target;
 class DataLayout;
 class TargetLibraryInfo;
@@ -46,6 +45,12 @@ class ScalarTargetTransformInfo;
 class VectorTargetTransformInfo;
 class formatted_raw_ostream;
 class raw_ostream;
+
+// The old pass manager infrastructure is hidden in a legacy namespace now.
+namespace legacy {
+class PassManagerBase;
+}
+using legacy::PassManagerBase;
 
 //===----------------------------------------------------------------------===//
 ///
@@ -70,7 +75,8 @@ protected: // Can only create subclasses.
   std::string TargetFS;
 
   /// CodeGenInfo - Low level target information such as relocation model.
-  const MCCodeGenInfo *CodeGenInfo;
+  /// Non-const to allow resetting optimization level per-function.
+  MCCodeGenInfo *CodeGenInfo;
 
   /// AsmInfo - Contains target specific asm information.
   ///
@@ -82,6 +88,7 @@ protected: // Can only create subclasses.
   unsigned MCUseLoc : 1;
   unsigned MCUseCFI : 1;
   unsigned MCUseDwarfDirectory : 1;
+  unsigned RequireStructuredCFG : 1;
 
 public:
   virtual ~TargetMachine();
@@ -102,7 +109,7 @@ public:
   void resetTargetOptions(const MachineFunction *MF) const;
 
   // Interfaces to the major aspects of target machine information:
-  // 
+  //
   // -- Instruction opcode and operand information
   // -- Pipelines and scheduling information
   // -- Stack frame information
@@ -149,6 +156,9 @@ public:
   virtual const InstrItineraryData *getInstrItineraryData() const {
     return 0;
   }
+
+  bool requiresStructuredCFG() const { return RequireStructuredCFG; }
+  void setRequiresStructuredCFG(bool Value) { RequireStructuredCFG = Value; }
 
   /// hasMCRelaxAll - Check whether all machine code instructions should be
   /// relaxed.
@@ -207,6 +217,9 @@ public:
   /// getOptLevel - Returns the optimization level: None, Less,
   /// Default, or Aggressive.
   CodeGenOpt::Level getOptLevel() const;
+
+  /// \brief Overrides the optimization level.
+  void setOptLevel(CodeGenOpt::Level Level) const;
 
   void setFastISel(bool Enable) { Options.EnableFastISel = Enable; }
 

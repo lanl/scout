@@ -801,8 +801,8 @@ static void DumpObject(const ObjectFile *o) {
 
 /// @brief Dump each object file in \a a;
 static void DumpArchive(const Archive *a) {
-  for (Archive::child_iterator i = a->begin_children(),
-                               e = a->end_children(); i != e; ++i) {
+  for (Archive::child_iterator i = a->child_begin(),
+                               e = a->child_end(); i != e; ++i) {
     OwningPtr<Binary> child;
     if (error_code ec = i->getAsBinary(child)) {
       // Ignore non-object files.
@@ -833,11 +833,12 @@ static void DumpInput(StringRef file) {
   }
 
   // Attempt to open the binary.
-  OwningPtr<Binary> binary;
-  if (error_code ec = createBinary(file, binary)) {
-    errs() << ToolName << ": '" << file << "': " << ec.message() << ".\n";
+  ErrorOr<Binary *> BinaryOrErr = createBinary(file);
+  if (error_code EC = BinaryOrErr.getError()) {
+    errs() << ToolName << ": '" << file << "': " << EC.message() << ".\n";
     return;
   }
+  OwningPtr<Binary> binary(BinaryOrErr.get());
 
   if (Archive *a = dyn_cast<Archive>(binary.get()))
     DumpArchive(a);

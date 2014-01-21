@@ -1181,7 +1181,6 @@ entry:
   store i1 %x, i1* %b.i1, align 8
   %b.i8 = bitcast <{ i1 }>* %b to i8*
   %foo = load i8* %b.i8, align 1
-; CHECK-NEXT: {{.*}} = zext i1 %x to i8
 ; CHECK-NEXT: %[[ext:.*]] = zext i1 %x to i8
 ; CHECK-NEXT: store i8 %[[ext]], i8* %[[a]], align 8
 ; CHECK-NEXT: {{.*}} = load i8* %[[a]], align 8
@@ -1355,5 +1354,20 @@ entry:
   %1 = getelementptr inbounds { <2 x float>, <2 x float> }* %tv1, i64 0, i32 1, i64 0
   %cond105.in.i.i = select i1 undef, float* null, float* %1
   %cond105.i.i = load float* %cond105.in.i.i, align 8
+  ret void
+}
+
+define void @test23(i32 %x) {
+; CHECK-LABEL: @test23(
+; CHECK-NOT: alloca
+; CHECK: ret void
+entry:
+  %a = alloca i32, align 4
+  store i32 %x, i32* %a, align 4
+  %gep1 = getelementptr inbounds i32* %a, i32 1
+  %gep0 = getelementptr inbounds i32* %a, i32 0
+  %cast1 = bitcast i32* %gep1 to i8*
+  %cast0 = bitcast i32* %gep0 to i8*
+  call void @llvm.memcpy.p0i8.p0i8.i32(i8* %cast1, i8* %cast0, i32 4, i32 1, i1 false)
   ret void
 }
