@@ -247,10 +247,17 @@ bool GenerateModuleAction::BeginSourceFileAction(CompilerInstance &CI,
 
   // Check whether we can build this module at all.
   clang::Module::Requirement Requirement;
-  if (!Module->isAvailable(CI.getLangOpts(), CI.getTarget(), Requirement)) {
-    CI.getDiagnostics().Report(diag::err_module_unavailable)
-      << Module->getFullModuleName()
-      << Requirement.second << Requirement.first;
+  clang::Module::HeaderDirective MissingHeader;
+  if (!Module->isAvailable(CI.getLangOpts(), CI.getTarget(), Requirement,
+                           MissingHeader)) {
+    if (MissingHeader.FileNameLoc.isValid()) {
+      CI.getDiagnostics().Report(diag::err_module_header_missing)
+        << MissingHeader.IsUmbrella << MissingHeader.FileName;
+    } else {
+      CI.getDiagnostics().Report(diag::err_module_unavailable)
+        << Module->getFullModuleName()
+        << Requirement.second << Requirement.first;
+    }
 
     return false;
   }
@@ -268,7 +275,7 @@ bool GenerateModuleAction::BeginSourceFileAction(CompilerInstance &CI,
   llvm::MemoryBuffer *InputBuffer =
       llvm::MemoryBuffer::getMemBufferCopy(HeaderContents,
                                            Module::getModuleInputBufferName());
-  // Ownership of InputBuffer will be transfered to the SourceManager.
+  // Ownership of InputBuffer will be transferred to the SourceManager.
   setCurrentInput(FrontendInputFile(InputBuffer, getCurrentFileKind(),
                                     Module->IsSystem));
   return true;
@@ -356,7 +363,6 @@ namespace {
       Out.indent(4) << "  Triple: " << TargetOpts.Triple << "\n";
       Out.indent(4) << "  CPU: " << TargetOpts.CPU << "\n";
       Out.indent(4) << "  ABI: " << TargetOpts.ABI << "\n";
-      Out.indent(4) << "  C++ ABI: " << TargetOpts.CXXABI << "\n";
       Out.indent(4) << "  Linker version: " << TargetOpts.LinkerVersion << "\n";
 
       if (!TargetOpts.FeaturesAsWritten.empty()) {

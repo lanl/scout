@@ -17,6 +17,7 @@
 #define LLVM_CLANG_AST_DECLCXX_H
 
 #include "clang/AST/ASTUnresolvedSet.h"
+#include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
@@ -129,7 +130,7 @@ public:
   static AccessSpecDecl *Create(ASTContext &C, AccessSpecifier AS,
                                 DeclContext *DC, SourceLocation ASLoc,
                                 SourceLocation ColonLoc) {
-    return new (C) AccessSpecDecl(AS, DC, ASLoc, ColonLoc);
+    return new (C, DC) AccessSpecDecl(AS, DC, ASLoc, ColonLoc);
   }
   static AccessSpecDecl *CreateDeserialized(ASTContext &C, unsigned ID);
 
@@ -258,16 +259,6 @@ public:
   TypeSourceInfo *getTypeSourceInfo() const { return BaseTypeInfo; }
 };
 
-/// The inheritance model to use for member pointers of a given CXXRecordDecl.
-enum MSInheritanceModel {
-  MSIM_Single,
-  MSIM_SinglePolymorphic,
-  MSIM_Multiple,
-  MSIM_MultiplePolymorphic,
-  MSIM_Virtual,
-  MSIM_Unspecified
-};
-
 /// \brief Represents a C++ struct/union/class.
 ///
 /// FIXME: This class will disappear once we've properly taught RecordDecl
@@ -350,10 +341,15 @@ class CXXRecordDecl : public RecordDecl {
     /// \brief True if this class (or any subobject) has mutable fields.
     bool HasMutableFields : 1;
 
+    /// \brief True if this class (or any nested anonymous struct or union)
+    /// has variant members.
+    bool HasVariantMembers : 1;
+
     /// \brief True if there no non-field members declared by the user.
     bool HasOnlyCMembers : 1;
 
-    /// \brief True if any field has an in-class initializer.
+    /// \brief True if any field has an in-class initializer, including those
+    /// within anonymous unions or structs.
     bool HasInClassInitializer : 1;
 
     /// \brief True if any field is of reference type, and does not have an
@@ -443,14 +439,6 @@ class CXXRecordDecl : public RecordDecl {
     /// \brief Whether any declared copy assignment operator has either a
     /// const-qualified reference parameter or a non-reference parameter.
     bool HasDeclaredCopyAssignmentWithConstParam : 1;
-
-    /// \brief Whether an implicit move constructor was attempted to be declared
-    /// but would have been deleted.
-    bool FailedImplicitMoveConstructor : 1;
-
-    /// \brief Whether an implicit move assignment operator was attempted to be
-    /// declared but would have been deleted.
-    bool FailedImplicitMoveAssignment : 1;
 
     /// \brief Whether this class describes a C++ lambda.
     bool IsLambda : 1;
@@ -647,14 +635,16 @@ public:
   }
 
   CXXRecordDecl *getPreviousDecl() {
-    return cast_or_null<CXXRecordDecl>(RecordDecl::getPreviousDecl());
+    return cast_or_null<CXXRecordDecl>(
+            static_cast<RecordDecl *>(this)->getPreviousDecl());
   }
   const CXXRecordDecl *getPreviousDecl() const {
     return const_cast<CXXRecordDecl*>(this)->getPreviousDecl();
   }
 
   CXXRecordDecl *getMostRecentDecl() {
-    return cast<CXXRecordDecl>(RecordDecl::getMostRecentDecl());
+    return cast<CXXRecordDecl>(
+            static_cast<RecordDecl *>(this)->getMostRecentDecl());
   }
 
   const CXXRecordDecl *getMostRecentDecl() const {
@@ -773,12 +763,14 @@ public:
   /// \brief \c true if we know for sure that this class has a single,
   /// accessible, unambiguous move constructor that is not deleted.
   bool hasSimpleMoveConstructor() const {
-    return !hasUserDeclaredMoveConstructor() && hasMoveConstructor();
+    return !hasUserDeclaredMoveConstructor() && hasMoveConstructor() &&
+           !data().DefaultedMoveConstructorIsDeleted;
   }
   /// \brief \c true if we know for sure that this class has a single,
   /// accessible, unambiguous move assignment operator that is not deleted.
   bool hasSimpleMoveAssignment() const {
-    return !hasUserDeclaredMoveAssignment() && hasMoveAssignment();
+    return !hasUserDeclaredMoveAssignment() && hasMoveAssignment() &&
+           !data().DefaultedMoveAssignmentIsDeleted;
   }
   /// \brief \c true if we know for sure that this class has an accessible
   /// destructor that is not deleted.
@@ -870,28 +862,23 @@ public:
            needsImplicitMoveConstructor();
   }
 
-  /// \brief Determine whether implicit move constructor generation for this
-  /// class has failed before.
-  bool hasFailedImplicitMoveConstructor() const {
-    return data().FailedImplicitMoveConstructor;
-  }
-
-  /// \brief Set whether implicit move constructor generation for this class
-  /// has failed before.
-  void setFailedImplicitMoveConstructor(bool Failed = true) {
-    data().FailedImplicitMoveConstructor = Failed;
+  /// \brief Set that we attempted to declare an implicitly move
+  /// constructor, but overload resolution failed so we deleted it.
+  void setImplicitMoveConstructorIsDeleted() {
+    assert((data().DefaultedMoveConstructorIsDeleted ||
+            needsOverloadResolutionForMoveConstructor()) &&
+           "move constructor should not be deleted");
+    data().DefaultedMoveConstructorIsDeleted = true;
   }
 
   /// \brief Determine whether this class should get an implicit move
   /// constructor or if any existing special member function inhibits this.
   bool needsImplicitMoveConstructor() const {
-    return !hasFailedImplicitMoveConstructor() &&
-           !(data().DeclaredSpecialMembers & SMF_MoveConstructor) &&
+    return !(data().DeclaredSpecialMembers & SMF_MoveConstructor) &&
            !hasUserDeclaredCopyConstructor() &&
            !hasUserDeclaredCopyAssignment() &&
            !hasUserDeclaredMoveAssignment() &&
-           !hasUserDeclaredDestructor() &&
-           !data().DefaultedMoveConstructorIsDeleted;
+           !hasUserDeclaredDestructor();
   }
 
   /// \brief Determine whether we need to eagerly declare a defaulted move
@@ -947,29 +934,24 @@ public:
            needsImplicitMoveAssignment();
   }
 
-  /// \brief Determine whether implicit move assignment generation for this
-  /// class has failed before.
-  bool hasFailedImplicitMoveAssignment() const {
-    return data().FailedImplicitMoveAssignment;
-  }
-
-  /// \brief Set whether implicit move assignment generation for this class
-  /// has failed before.
-  void setFailedImplicitMoveAssignment(bool Failed = true) {
-    data().FailedImplicitMoveAssignment = Failed;
+  /// \brief Set that we attempted to declare an implicit move assignment
+  /// operator, but overload resolution failed so we deleted it.
+  void setImplicitMoveAssignmentIsDeleted() {
+    assert((data().DefaultedMoveAssignmentIsDeleted ||
+            needsOverloadResolutionForMoveAssignment()) &&
+           "move assignment should not be deleted");
+    data().DefaultedMoveAssignmentIsDeleted = true;
   }
 
   /// \brief Determine whether this class should get an implicit move
   /// assignment operator or if any existing special member function inhibits
   /// this.
   bool needsImplicitMoveAssignment() const {
-    return !hasFailedImplicitMoveAssignment() &&
-           !(data().DeclaredSpecialMembers & SMF_MoveAssignment) &&
+    return !(data().DeclaredSpecialMembers & SMF_MoveAssignment) &&
            !hasUserDeclaredCopyConstructor() &&
            !hasUserDeclaredCopyAssignment() &&
            !hasUserDeclaredMoveConstructor() &&
-           !hasUserDeclaredDestructor() &&
-           !data().DefaultedMoveAssignmentIsDeleted;
+           !hasUserDeclaredDestructor();
   }
 
   /// \brief Determine whether we need to eagerly declare a move assignment
@@ -1072,7 +1054,8 @@ public:
   bool isAggregate() const { return data().Aggregate; }
 
   /// \brief Whether this class has any in-class initializers
-  /// for non-static data members.
+  /// for non-static data members (including those in anonymous unions or
+  /// structs).
   bool hasInClassInitializer() const { return data().HasInClassInitializer; }
 
   /// \brief Whether this class or any of its subobjects has any members of
@@ -1131,6 +1114,9 @@ public:
   /// contains a mutable field.
   bool hasMutableFields() const { return data().HasMutableFields; }
 
+  /// \brief Determine whether this class has any variant members.
+  bool hasVariantMembers() const { return data().HasVariantMembers; }
+
   /// \brief Determine whether this class has a trivial default constructor
   /// (C++11 [class.ctor]p5).
   bool hasTrivialDefaultConstructor() const {
@@ -1158,7 +1144,7 @@ public:
   /// would be constexpr.
   bool defaultedDefaultConstructorIsConstexpr() const {
     return data().DefaultedDefaultConstructorIsConstexpr &&
-           (!isUnion() || hasInClassInitializer());
+           (!isUnion() || hasInClassInitializer() || !hasVariantMembers());
   }
 
   /// \brief Determine whether this class has a constexpr default constructor.
@@ -1613,7 +1599,9 @@ public:
   }
 
   /// \brief Returns the inheritance model used for this record.
-  MSInheritanceModel getMSInheritanceModel() const;
+  MSInheritanceAttr::Spelling getMSInheritanceModel() const;
+  /// \brief Locks-in the inheritance model for this class.
+  void setMSInheritanceModel();
 
   /// \brief Determine whether this lambda expression was known to be dependent
   /// at the time it was created, even if its context does not appear to be
@@ -1697,9 +1685,9 @@ public:
     CXXMethodDecl *CD =
       cast<CXXMethodDecl>(const_cast<CXXMethodDecl*>(this)->getCanonicalDecl());
 
-    // Methods declared in interfaces are automatically (pure) virtual.
-    if (CD->isVirtualAsWritten() ||
-          (CD->getParent()->isInterface() && CD->isUserProvided()))
+    // Member function is virtual if it is marked explicitly so, or if it is
+    // declared in __interface -- then it is automatically pure virtual.
+    if (CD->isVirtualAsWritten() || CD->isPure())
       return true;
 
     return (CD->begin_overridden_methods() != CD->end_overridden_methods());
@@ -1725,7 +1713,8 @@ public:
   }
 
   CXXMethodDecl *getMostRecentDecl() {
-    return cast<CXXMethodDecl>(FunctionDecl::getMostRecentDecl());
+    return cast<CXXMethodDecl>(
+            static_cast<FunctionDecl *>(this)->getMostRecentDecl());
   }
   const CXXMethodDecl *getMostRecentDecl() const {
     return const_cast<CXXMethodDecl*>(this)->getMostRecentDecl();
@@ -2714,7 +2703,7 @@ public:
   static UsingShadowDecl *Create(ASTContext &C, DeclContext *DC,
                                  SourceLocation Loc, UsingDecl *Using,
                                  NamedDecl *Target) {
-    return new (C) UsingShadowDecl(DC, Loc, Using, Target);
+    return new (C, DC) UsingShadowDecl(DC, Loc, Using, Target);
   }
 
   static UsingShadowDecl *CreateDeserialized(ASTContext &C, unsigned ID);
@@ -3096,14 +3085,17 @@ public:
 class MSPropertyDecl : public DeclaratorDecl {
   IdentifierInfo *GetterId, *SetterId;
 
-public:
-  MSPropertyDecl(DeclContext *DC, SourceLocation L,
-                 DeclarationName N, QualType T, TypeSourceInfo *TInfo,
-                 SourceLocation StartL, IdentifierInfo *Getter,
-                 IdentifierInfo *Setter):
-  DeclaratorDecl(MSProperty, DC, L, N, T, TInfo, StartL), GetterId(Getter),
-  SetterId(Setter) {}
+  MSPropertyDecl(DeclContext *DC, SourceLocation L, DeclarationName N,
+                 QualType T, TypeSourceInfo *TInfo, SourceLocation StartL,
+                 IdentifierInfo *Getter, IdentifierInfo *Setter)
+      : DeclaratorDecl(MSProperty, DC, L, N, T, TInfo, StartL),
+        GetterId(Getter), SetterId(Setter) {}
 
+public:
+  static MSPropertyDecl *Create(ASTContext &C, DeclContext *DC,
+                                SourceLocation L, DeclarationName N, QualType T,
+                                TypeSourceInfo *TInfo, SourceLocation StartL,
+                                IdentifierInfo *Getter, IdentifierInfo *Setter);
   static MSPropertyDecl *CreateDeserialized(ASTContext &C, unsigned ID);
 
   static bool classof(const Decl *D) { return D->getKind() == MSProperty; }

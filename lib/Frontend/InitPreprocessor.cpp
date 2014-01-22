@@ -300,7 +300,7 @@ static void InitializeStandardPredefinedMacros(const TargetInfo &TI,
                                                const LangOptions &LangOpts,
                                                const FrontendOptions &FEOpts,
                                                MacroBuilder &Builder) {
-  if (!LangOpts.MicrosoftMode && !LangOpts.TraditionalCPP)
+  if (!LangOpts.MSVCCompat && !LangOpts.TraditionalCPP)
     Builder.defineMacro("__STDC__");
   if (LangOpts.Freestanding)
     Builder.defineMacro("__STDC_HOSTED__", "0");
@@ -346,6 +346,38 @@ static void InitializeStandardPredefinedMacros(const TargetInfo &TI,
     Builder.defineMacro("__ASSEMBLER__");
 }
 
+/// Initialize the predefined C++ language feature test macros defined in
+/// ISO/IEC JTC1/SC22/WG21 (C++) SD-6: "SG10 Feature Test Recommendations".
+static void InitializeCPlusPlusFeatureTestMacros(const LangOptions &LangOpts,
+                                                 MacroBuilder &Builder) {
+  // C++11 features.
+  if (LangOpts.CPlusPlus11) {
+    Builder.defineMacro("__cpp_unicode_characters", "200704");
+    Builder.defineMacro("__cpp_raw_strings", "200710");
+    Builder.defineMacro("__cpp_unicode_literals", "200710");
+    Builder.defineMacro("__cpp_user_defined_literals", "200809");
+    Builder.defineMacro("__cpp_lambdas", "200907");
+    Builder.defineMacro("__cpp_constexpr",
+                        LangOpts.CPlusPlus1y ? "201304" : "200704");
+    Builder.defineMacro("__cpp_static_assert", "200410");
+    Builder.defineMacro("__cpp_decltype", "200707");
+    Builder.defineMacro("__cpp_attributes", "200809");
+    Builder.defineMacro("__cpp_rvalue_references", "200610");
+    Builder.defineMacro("__cpp_variadic_templates", "200704");
+  }
+
+  // C++14 features.
+  if (LangOpts.CPlusPlus1y) {
+    Builder.defineMacro("__cpp_binary_literals", "201304");
+    Builder.defineMacro("__cpp_init_captures", "201304");
+    Builder.defineMacro("__cpp_generic_lambdas", "201304");
+    Builder.defineMacro("__cpp_decltype_auto", "201304");
+    Builder.defineMacro("__cpp_return_type_deduction", "201304");
+    Builder.defineMacro("__cpp_aggregate_nsdmi", "201304");
+    Builder.defineMacro("__cpp_variable_templates", "201304");
+  }
+}
+
 static void InitializePredefinedMacros(const TargetInfo &TI,
                                        const LangOptions &LangOpts,
                                        const FrontendOptions &FEOpts,
@@ -367,7 +399,7 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
                       + getClangFullRepositoryVersion() + "\"");
 #undef TOSTR
 #undef TOSTR2
-  if (!LangOpts.MicrosoftMode) {
+  if (!LangOpts.MSVCCompat) {
     // Currently claim to be compatible with GCC 4.2.1-5621, but only if we're
     // not compiling for MSVC compatibility
     Builder.defineMacro("__GNUC_MINOR__", "2");
@@ -438,6 +470,9 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
     Builder.defineMacro("IBAction", "void)__attribute__((ibaction)");
   }
 
+  if (LangOpts.CPlusPlus)
+    InitializeCPlusPlusFeatureTestMacros(LangOpts, Builder);
+
   // darwin_constant_cfstrings controls this. This is also dependent
   // on other things like the runtime I believe.  This is set even for C code.
   if (!LangOpts.NoConstantCFStrings)
@@ -483,7 +518,6 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
     if (LangOpts.CPlusPlus) {
       // FIXME: Support Microsoft's __identifier extension in the lexer.
       Builder.append("#define __identifier(x) x");
-      Builder.append("class type_info;");
     }
   }
 

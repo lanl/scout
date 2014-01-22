@@ -21,6 +21,7 @@
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Frontend/FrontendDiagnostic.h"
 #include "clang/Frontend/FrontendPluginRegistry.h"
+#include "clang/Frontend/Utils.h"
 #include "clang/Rewrite/Frontend/FrontendActions.h"
 #include "clang/StaticAnalyzer/Frontend/FrontendActions.h"
 #include "llvm/Option/OptTable.h"
@@ -33,6 +34,7 @@ using namespace llvm::opt;
 static FrontendAction *CreateFrontendBaseAction(CompilerInstance &CI) {
   using namespace clang::frontend;
   StringRef Action("unknown");
+  (void)Action;
 
   switch (CI.getFrontendOpts().ProgramAction) {
   case ASTDeclList:            return new ASTDeclListAction();
@@ -141,27 +143,29 @@ static FrontendAction *CreateFrontendAction(CompilerInstance &CI) {
 #endif
   
 #ifdef CLANG_ENABLE_ARCMT
-  // Potentially wrap the base FE action in an ARC Migrate Tool action.
-  switch (FEOpts.ARCMTAction) {
-  case FrontendOptions::ARCMT_None:
-    break;
-  case FrontendOptions::ARCMT_Check:
-    Act = new arcmt::CheckAction(Act);
-    break;
-  case FrontendOptions::ARCMT_Modify:
-    Act = new arcmt::ModifyAction(Act);
-    break;
-  case FrontendOptions::ARCMT_Migrate:
-    Act = new arcmt::MigrateAction(Act,
-                                   FEOpts.MTMigrateDir,
-                                   FEOpts.ARCMTMigrateReportOut,
-                                   FEOpts.ARCMTMigrateEmitARCErrors);
-    break;
-  }
+  if (CI.getFrontendOpts().ProgramAction != frontend::MigrateSource) {
+    // Potentially wrap the base FE action in an ARC Migrate Tool action.
+    switch (FEOpts.ARCMTAction) {
+    case FrontendOptions::ARCMT_None:
+      break;
+    case FrontendOptions::ARCMT_Check:
+      Act = new arcmt::CheckAction(Act);
+      break;
+    case FrontendOptions::ARCMT_Modify:
+      Act = new arcmt::ModifyAction(Act);
+      break;
+    case FrontendOptions::ARCMT_Migrate:
+      Act = new arcmt::MigrateAction(Act,
+                                     FEOpts.MTMigrateDir,
+                                     FEOpts.ARCMTMigrateReportOut,
+                                     FEOpts.ARCMTMigrateEmitARCErrors);
+      break;
+    }
 
-  if (FEOpts.ObjCMTAction != FrontendOptions::ObjCMT_None) {
-    Act = new arcmt::ObjCMigrateAction(Act, FEOpts.MTMigrateDir,
-                                       FEOpts.ObjCMTAction);
+    if (FEOpts.ObjCMTAction != FrontendOptions::ObjCMT_None) {
+      Act = new arcmt::ObjCMigrateAction(Act, FEOpts.MTMigrateDir,
+                                         FEOpts.ObjCMTAction);
+    }
   }
 #endif
 
@@ -233,6 +237,6 @@ bool clang::ExecuteCompilerInvocation(CompilerInstance *Clang) {
     return false;
   bool Success = Clang->ExecuteAction(*Act);
   if (Clang->getFrontendOpts().DisableFree)
-    Act.take();
+    BuryPointer(Act.take());
   return Success;
 }

@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -fno-rtti -emit-llvm -fdump-vtable-layouts %s -o - -cxx-abi microsoft -triple=i386-pc-win32 >%t 2>&1
+// RUN: %clang_cc1 -fno-rtti -emit-llvm -o %t.ll -fdump-vtable-layouts %s -triple=i386-pc-win32 >%t
 
 // RUN: FileCheck --check-prefix=VTABLE-C %s < %t
 // RUN: FileCheck --check-prefix=VTABLE-D %s < %t
@@ -24,7 +24,7 @@
 // RUN: FileCheck --check-prefix=RET-T %s < %t
 // RUN: FileCheck --check-prefix=RET-V %s < %t
 
-// RUN: FileCheck --check-prefix=MANGLING %s < %t
+// RUN: FileCheck --check-prefix=MANGLING %s < %t.ll
 
 struct Empty { };
 
@@ -428,6 +428,26 @@ struct X : virtual C, virtual A {
 
 void X::f() {}
 X x;
+}
+
+namespace Test11 {
+struct X : virtual A {};
+struct Y { virtual void g(); };
+
+struct Z : virtual X, Y {
+  // MANGLING-DAG: @"\01??_7Z@Test11@@6BY@1@@"
+
+  // FIXME this one is wrong:
+  // MANGLING-DAG-SHOULD-BE: @"\01??_7Z@Test11@@6BX@1@@"
+  // INCORRECT MANGLING-DAG: @"\01??_7Z@Test11@@6BA@@@"
+};
+
+Z z;
+
+struct W : virtual X, A {};
+
+// PR17748 FIXME this one hits UNREACHABLE:
+// W w;
 }
 
 namespace vdtors {

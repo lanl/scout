@@ -21,6 +21,12 @@ void test()
 }
 
 
+namespace ms_predefined_types {
+  // ::type_info is a built-in forward class declaration.
+  void f(const type_info &a);
+  void f(size_t);
+}
+
 
 namespace ms_protected_scope {
   struct C { C(); };
@@ -114,6 +120,27 @@ private:
 
 }
 
+namespace using_tag_redeclaration
+{
+  struct S;
+  namespace N {
+    using ::using_tag_redeclaration::S;
+    struct S {}; // expected-note {{previous definition is here}}
+  }
+  void f() {
+    N::S s1;
+    S s2;
+  }
+  void g() {
+    struct S; // expected-note {{forward declaration of 'S'}}
+    S s3; // expected-error {{variable has incomplete type 'S'}}
+  }
+  void h() {
+    using ::using_tag_redeclaration::S;
+    struct S {}; // expected-error {{redefinition of 'S'}}
+  }
+}
+
 
 namespace MissingTypename {
 
@@ -177,4 +204,20 @@ namespace PR11791 {
     int* a = 0;
     del((void*)a);  // expected-note {{in instantiation of function template specialization}}
   }
+}
+
+namespace IntToNullPtrConv {
+  struct Foo {
+    static const int ZERO = 0;
+    typedef void (Foo::*MemberFcnPtr)();
+  };
+
+  struct Bar {
+    const Foo::MemberFcnPtr pB;
+  };
+
+  Bar g_bar = { (Foo::MemberFcnPtr)Foo::ZERO };
+
+  template<int N> int *get_n() { return N; }   // expected-warning {{expression which evaluates to zero treated as a null pointer constant}}
+  int *g_nullptr = get_n<0>();  // expected-note {{in instantiation of function template specialization}}
 }

@@ -713,6 +713,7 @@ void AggExprEmitter::VisitCastExpr(CastExpr *E) {
   case CK_CopyAndAutoreleaseBlockObject:
   case CK_BuiltinFnToFnPtr:
   case CK_ZeroToOCLEvent:
+  case CK_AddressSpaceConversion:
     llvm_unreachable("cast kind invalid for aggregate types");
   }
 }
@@ -891,15 +892,18 @@ VisitAbstractConditionalOperator(const AbstractConditionalOperator *E) {
   // Bind the common expression if necessary.
   CodeGenFunction::OpaqueValueMapping binding(CGF, E);
 
+  RegionCounter Cnt = CGF.getPGORegionCounter(E);
   CodeGenFunction::ConditionalEvaluation eval(CGF);
-  CGF.EmitBranchOnBoolExpr(E->getCond(), LHSBlock, RHSBlock);
+  CGF.EmitBranchOnBoolExpr(E->getCond(), LHSBlock, RHSBlock, Cnt.getCount());
 
   // Save whether the destination's lifetime is externally managed.
   bool isExternallyDestructed = Dest.isExternallyDestructed();
 
   eval.begin(CGF);
   CGF.EmitBlock(LHSBlock);
+  Cnt.beginRegion(Builder);
   Visit(E->getTrueExpr());
+  Cnt.adjustForControlFlow();
   eval.end(CGF);
 
   assert(CGF.HaveInsertPoint() && "expression evaluation ended with no IP!");
@@ -913,10 +917,13 @@ VisitAbstractConditionalOperator(const AbstractConditionalOperator *E) {
 
   eval.begin(CGF);
   CGF.EmitBlock(RHSBlock);
+  Cnt.beginElseRegion();
   Visit(E->getFalseExpr());
+  Cnt.adjustForControlFlow();
   eval.end(CGF);
 
   CGF.EmitBlock(ContBlock);
+  Cnt.applyAdjustmentsToRegion();
 }
 
 void AggExprEmitter::VisitChooseExpr(const ChooseExpr *CE) {

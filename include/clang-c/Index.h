@@ -30,7 +30,7 @@
  * compatible, thus CINDEX_VERSION_MAJOR is expected to remain stable.
  */
 #define CINDEX_VERSION_MAJOR 0
-#define CINDEX_VERSION_MINOR 20
+#define CINDEX_VERSION_MINOR 21
 
 #define CINDEX_VERSION_ENCODE(major, minor) ( \
       ((major) * 10000)                       \
@@ -599,6 +599,32 @@ CINDEX_LINKAGE CXSourceLocation clang_getRangeStart(CXSourceRange range);
 CINDEX_LINKAGE CXSourceLocation clang_getRangeEnd(CXSourceRange range);
 
 /**
+ * \brief Identifies an array of ranges.
+ */
+typedef struct {
+  /** \brief The number of ranges in the \c ranges array. */
+  unsigned count;
+  /**
+   * \brief An array of \c CXSourceRanges.
+   */
+  CXSourceRange *ranges;
+} CXSourceRangeList;
+
+/**
+ * \brief Retrieve all ranges that were skipped by the preprocessor.
+ *
+ * The preprocessor will skip lines when they are surrounded by an
+ * if/ifdef/ifndef directive whose condition does not evaluate to true.
+ */
+CINDEX_LINKAGE CXSourceRangeList *clang_getSkippedRanges(CXTranslationUnit tu,
+                                                         CXFile file);
+
+/**
+ * \brief Destroy the given \c CXSourceRangeList.
+ */
+CINDEX_LINKAGE void clang_disposeSourceRangeList(CXSourceRangeList *ranges);
+
+/**
  * @}
  */
 
@@ -727,7 +753,7 @@ CINDEX_LINKAGE void clang_disposeDiagnosticSet(CXDiagnosticSet Diags);
  * \brief Retrieve the child diagnostics of a CXDiagnostic. 
  *
  * This CXDiagnosticSet does not need to be released by
- * clang_diposeDiagnosticSet.
+ * clang_disposeDiagnosticSet.
  */
 CINDEX_LINKAGE CXDiagnosticSet clang_getChildDiagnostics(CXDiagnostic D);
 
@@ -767,7 +793,7 @@ CINDEX_LINKAGE void clang_disposeDiagnostic(CXDiagnostic Diagnostic);
  * \brief Options to control the display of diagnostics.
  *
  * The values in this enum are meant to be combined to customize the
- * behavior of \c clang_displayDiagnostic().
+ * behavior of \c clang_formatDiagnostic().
  */
 enum CXDiagnosticDisplayOptions {
   /**
@@ -854,7 +880,7 @@ CINDEX_LINKAGE CXString clang_formatDiagnostic(CXDiagnostic Diagnostic,
  * default behavior of the clang compiler.
  *
  * \returns A set of display options suitable for use with \c
- * clang_displayDiagnostic().
+ * clang_formatDiagnostic().
  */
 CINDEX_LINKAGE unsigned clang_defaultDiagnosticDisplayOptions(void);
 
@@ -2369,7 +2395,7 @@ clang_disposeCXPlatformAvailability(CXPlatformAvailability *availability);
 /**
  * \brief Describe the "language" of the entity referred to by a cursor.
  */
-CINDEX_LINKAGE enum CXLanguageKind {
+enum CXLanguageKind {
   CXLanguage_Invalid = 0,
   CXLanguage_C,
   CXLanguage_ObjC,
@@ -2861,7 +2887,7 @@ CINDEX_LINKAGE enum CXCallingConv clang_getFunctionTypeCallingConv(CXType T);
 CINDEX_LINKAGE CXType clang_getResultType(CXType T);
 
 /**
- * \brief Retrieve the number of non-variadic arguments associated with a
+ * \brief Retrieve the number of non-variadic parameters associated with a
  * function type.
  *
  * If a non-function type is passed in, -1 is returned.
@@ -2869,7 +2895,7 @@ CINDEX_LINKAGE CXType clang_getResultType(CXType T);
 CINDEX_LINKAGE int clang_getNumArgTypes(CXType T);
 
 /**
- * \brief Retrieve the type of an argument of a function type.
+ * \brief Retrieve the type of a parameter of a function type.
  *
  * If a non-function type is passed in or the function does not have enough
  * parameters, an invalid type is returned.

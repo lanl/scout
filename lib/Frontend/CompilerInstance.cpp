@@ -432,8 +432,7 @@ void CompilerInstance::clearOutputFiles(bool EraseFiles) {
     delete it->OS;
     if (!it->TempFilename.empty()) {
       if (EraseFiles) {
-        bool existed;
-        llvm::sys::fs::remove(it->TempFilename, existed);
+        llvm::sys::fs::remove(it->TempFilename);
       } else {
         SmallString<128> NewOutFile(it->Filename);
 
@@ -445,8 +444,7 @@ void CompilerInstance::clearOutputFiles(bool EraseFiles) {
           getDiagnostics().Report(diag::err_unable_to_rename_temp)
             << it->TempFilename << it->Filename << ec.message();
 
-          bool existed;
-          llvm::sys::fs::remove(it->TempFilename, existed);
+          llvm::sys::fs::remove(it->TempFilename);
         }
       }
     } else if (!it->Filename.empty() && EraseFiles)
@@ -1091,10 +1089,8 @@ static void pruneModuleCache(const HeaderSearchOptions &HSOpts) {
 
     // If we removed all of the files in the directory, remove the directory
     // itself.
-    if (RemovedAllFiles) {
-      bool Existed;
-      llvm::sys::fs::remove(Dir->path(), Existed);
-    }
+    if (RemovedAllFiles)
+      llvm::sys::fs::remove(Dir->path());
   }
 }
 
@@ -1360,11 +1356,19 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
 
     // Check whether this module is available.
     clang::Module::Requirement Requirement;
-    if (!Module->isAvailable(getLangOpts(), getTarget(), Requirement)) {
-      getDiagnostics().Report(ImportLoc, diag::err_module_unavailable)
-        << Module->getFullModuleName()
-        << Requirement.second << Requirement.first
-        << SourceRange(Path.front().second, Path.back().second);
+    clang::Module::HeaderDirective MissingHeader;
+    if (!Module->isAvailable(getLangOpts(), getTarget(), Requirement,
+                             MissingHeader)) {
+      if (MissingHeader.FileNameLoc.isValid()) {
+        getDiagnostics().Report(MissingHeader.FileNameLoc,
+                                diag::err_module_header_missing)
+          << MissingHeader.IsUmbrella << MissingHeader.FileName;
+      } else {
+        getDiagnostics().Report(ImportLoc, diag::err_module_unavailable)
+          << Module->getFullModuleName()
+          << Requirement.second << Requirement.first
+          << SourceRange(Path.front().second, Path.back().second);
+      }
       LastModuleImportLoc = ImportLoc;
       LastModuleImportResult = ModuleLoadResult();
       return ModuleLoadResult();

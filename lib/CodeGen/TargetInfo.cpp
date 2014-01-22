@@ -395,7 +395,7 @@ llvm::Value *DefaultABIInfo::EmitVAArg(llvm::Value *VAListAddr, QualType Ty,
 
 ABIArgInfo DefaultABIInfo::classifyArgumentType(QualType Ty) const {
   if (isAggregateTypeForABI(Ty)) {
-    // Records with non trivial destructors/constructors should not be passed
+    // Records with non-trivial destructors/constructors should not be passed
     // by value.
     if (isRecordReturnIndirect(Ty, getCXXABI()))
       return ABIArgInfo::getIndirect(0, /*ByVal=*/false);
@@ -526,6 +526,14 @@ static llvm::Type* X86AdjustInlineAsmType(CodeGen::CodeGenFunction &CGF,
 // X86-32 ABI Implementation
 //===----------------------------------------------------------------------===//
 
+/// \brief Similar to llvm::CCState, but for Clang.
+struct CCState {
+  CCState(unsigned CC) : CC(CC), FreeRegs(0) {}
+
+  unsigned CC;
+  unsigned FreeRegs;
+};
+
 /// X86_32ABIInfo - The X86-32 ABI information.
 class X86_32ABIInfo : public ABIInfo {
   enum Class {
@@ -549,19 +557,17 @@ class X86_32ABIInfo : public ABIInfo {
 
   /// getIndirectResult - Give a source type \arg Ty, return a suitable result
   /// such that the argument will be passed in memory.
-  ABIArgInfo getIndirectResult(QualType Ty, bool ByVal,
-                               unsigned &FreeRegs) const;
+  ABIArgInfo getIndirectResult(QualType Ty, bool ByVal, CCState &State) const;
+
+  ABIArgInfo getIndirectReturnResult(CCState &State) const;
 
   /// \brief Return the alignment to use for the given type on the stack.
   unsigned getTypeStackAlignInBytes(QualType Ty, unsigned Align) const;
 
   Class classify(QualType Ty) const;
-  ABIArgInfo classifyReturnType(QualType RetTy,
-                                unsigned callingConvention) const;
-  ABIArgInfo classifyArgumentType(QualType RetTy, unsigned &FreeRegs,
-                                  bool IsFastCall) const;
-  bool shouldUseInReg(QualType Ty, unsigned &FreeRegs,
-                      bool IsFastCall, bool &NeedsPadding) const;
+  ABIArgInfo classifyReturnType(QualType RetTy, CCState &State) const;
+  ABIArgInfo classifyArgumentType(QualType RetTy, CCState &State) const;
+  bool shouldUseInReg(QualType Ty, CCState &State, bool &NeedsPadding) const;
 
 public:
 
@@ -677,8 +683,18 @@ bool X86_32ABIInfo::shouldReturnTypeInRegister(QualType Ty,
   return true;
 }
 
-ABIArgInfo X86_32ABIInfo::classifyReturnType(QualType RetTy, 
-                                            unsigned callingConvention) const {
+ABIArgInfo X86_32ABIInfo::getIndirectReturnResult(CCState &State) const {
+  // If the return value is indirect, then the hidden argument is consuming one
+  // integer register.
+  if (State.FreeRegs) {
+    --State.FreeRegs;
+    return ABIArgInfo::getIndirectInReg(/*Align=*/0, /*ByVal=*/false);
+  }
+  return ABIArgInfo::getIndirect(/*Align=*/0, /*ByVal=*/false);
+}
+
+ABIArgInfo X86_32ABIInfo::classifyReturnType(QualType RetTy,
+                                             CCState &State) const {
   if (RetTy->isVoidType())
     return ABIArgInfo::getIgnore();
 
@@ -701,7 +717,7 @@ ABIArgInfo X86_32ABIInfo::classifyReturnType(QualType RetTy,
         return ABIArgInfo::getDirect(llvm::IntegerType::get(getVMContext(),
                                                             Size));
 
-      return ABIArgInfo::getIndirect(0);
+      return getIndirectReturnResult(State);
     }
 
     return ABIArgInfo::getDirect();
@@ -710,21 +726,21 @@ ABIArgInfo X86_32ABIInfo::classifyReturnType(QualType RetTy,
   if (isAggregateTypeForABI(RetTy)) {
     if (const RecordType *RT = RetTy->getAs<RecordType>()) {
       if (isRecordReturnIndirect(RT, getCXXABI()))
-        return ABIArgInfo::getIndirect(0, /*ByVal=*/false);
+        return getIndirectReturnResult(State);
 
       // Structures with flexible arrays are always indirect.
       if (RT->getDecl()->hasFlexibleArrayMember())
-        return ABIArgInfo::getIndirect(0);
+        return getIndirectReturnResult(State);
     }
 
     // If specified, structs and unions are always indirect.
     if (!IsSmallStructInRegABI && !RetTy->isAnyComplexType())
-      return ABIArgInfo::getIndirect(0);
+      return getIndirectReturnResult(State);
 
     // Small structures which are register sized are generally returned
     // in a register.
-    if (X86_32ABIInfo::shouldReturnTypeInRegister(RetTy, getContext(), 
-                                                  callingConvention)) {
+    if (X86_32ABIInfo::shouldReturnTypeInRegister(RetTy, getContext(),
+                                                  State.CC)) {
       uint64_t Size = getContext().getTypeSize(RetTy);
 
       // As a special-case, if the struct is a "single-element" struct, and
@@ -742,7 +758,7 @@ ABIArgInfo X86_32ABIInfo::classifyReturnType(QualType RetTy,
       return ABIArgInfo::getDirect(llvm::IntegerType::get(getVMContext(),Size));
     }
 
-    return ABIArgInfo::getIndirect(0);
+    return getIndirectReturnResult(State);
   }
 
   // Treat an enum type as its underlying type.
@@ -806,10 +822,10 @@ unsigned X86_32ABIInfo::getTypeStackAlignInBytes(QualType Ty,
 }
 
 ABIArgInfo X86_32ABIInfo::getIndirectResult(QualType Ty, bool ByVal,
-                                            unsigned &FreeRegs) const {
+                                            CCState &State) const {
   if (!ByVal) {
-    if (FreeRegs) {
-      --FreeRegs; // Non byval indirects just use one pointer.
+    if (State.FreeRegs) {
+      --State.FreeRegs; // Non-byval indirects just use one pointer.
       return ABIArgInfo::getIndirectInReg(0, false);
     }
     return ABIArgInfo::getIndirect(0, false);
@@ -843,8 +859,8 @@ X86_32ABIInfo::Class X86_32ABIInfo::classify(QualType Ty) const {
   return Integer;
 }
 
-bool X86_32ABIInfo::shouldUseInReg(QualType Ty, unsigned &FreeRegs,
-                                   bool IsFastCall, bool &NeedsPadding) const {
+bool X86_32ABIInfo::shouldUseInReg(QualType Ty, CCState &State,
+                                   bool &NeedsPadding) const {
   NeedsPadding = false;
   Class C = classify(Ty);
   if (C == Float)
@@ -856,14 +872,14 @@ bool X86_32ABIInfo::shouldUseInReg(QualType Ty, unsigned &FreeRegs,
   if (SizeInRegs == 0)
     return false;
 
-  if (SizeInRegs > FreeRegs) {
-    FreeRegs = 0;
+  if (SizeInRegs > State.FreeRegs) {
+    State.FreeRegs = 0;
     return false;
   }
 
-  FreeRegs -= SizeInRegs;
+  State.FreeRegs -= SizeInRegs;
 
-  if (IsFastCall) {
+  if (State.CC == llvm::CallingConv::X86_FastCall) {
     if (Size > 32)
       return false;
 
@@ -876,7 +892,7 @@ bool X86_32ABIInfo::shouldUseInReg(QualType Ty, unsigned &FreeRegs,
     if (Ty->isReferenceType())
       return true;
 
-    if (FreeRegs)
+    if (State.FreeRegs)
       NeedsPadding = true;
 
     return false;
@@ -885,21 +901,20 @@ bool X86_32ABIInfo::shouldUseInReg(QualType Ty, unsigned &FreeRegs,
   return true;
 }
 
-ABIArgInfo X86_32ABIInfo::classifyArgumentType(QualType Ty,
-                                               unsigned &FreeRegs,
-                                               bool IsFastCall) const {
+ABIArgInfo X86_32ABIInfo::classifyArgumentType(QualType Ty, CCState &State) const {
   // FIXME: Set alignment on indirect arguments.
   if (isAggregateTypeForABI(Ty)) {
     if (const RecordType *RT = Ty->getAs<RecordType>()) {
       if (IsWin32StructABI)
-        return getIndirectResult(Ty, true, FreeRegs);
+        return getIndirectResult(Ty, true, State);
 
       if (CGCXXABI::RecordArgABI RAA = getRecordArgABI(RT, getCXXABI()))
-        return getIndirectResult(Ty, RAA == CGCXXABI::RAA_DirectInMemory, FreeRegs);
+        return getIndirectResult(Ty, RAA == CGCXXABI::RAA_DirectInMemory,
+                                 State);
 
       // Structures with flexible arrays are always indirect.
       if (RT->getDecl()->hasFlexibleArrayMember())
-        return getIndirectResult(Ty, true, FreeRegs);
+        return getIndirectResult(Ty, true, State);
     }
 
     // Ignore empty structs/unions.
@@ -909,7 +924,7 @@ ABIArgInfo X86_32ABIInfo::classifyArgumentType(QualType Ty,
     llvm::LLVMContext &LLVMContext = getVMContext();
     llvm::IntegerType *Int32 = llvm::Type::getInt32Ty(LLVMContext);
     bool NeedsPadding;
-    if (shouldUseInReg(Ty, FreeRegs, IsFastCall, NeedsPadding)) {
+    if (shouldUseInReg(Ty, State, NeedsPadding)) {
       unsigned SizeInRegs = (getContext().getTypeSize(Ty) + 31) / 32;
       SmallVector<llvm::Type*, 3> Elements(SizeInRegs, Int32);
       llvm::Type *Result = llvm::StructType::get(LLVMContext, Elements);
@@ -923,9 +938,10 @@ ABIArgInfo X86_32ABIInfo::classifyArgumentType(QualType Ty,
     // optimizations.
     if (getContext().getTypeSize(Ty) <= 4*32 &&
         canExpandIndirectArgument(Ty, getContext()))
-      return ABIArgInfo::getExpandWithPadding(IsFastCall, PaddingType);
+      return ABIArgInfo::getExpandWithPadding(
+          State.CC == llvm::CallingConv::X86_FastCall, PaddingType);
 
-    return getIndirectResult(Ty, true, FreeRegs);
+    return getIndirectResult(Ty, true, State);
   }
 
   if (const VectorType *VT = Ty->getAs<VectorType>()) {
@@ -950,7 +966,7 @@ ABIArgInfo X86_32ABIInfo::classifyArgumentType(QualType Ty,
     Ty = EnumTy->getDecl()->getIntegerType();
 
   bool NeedsPadding;
-  bool InReg = shouldUseInReg(Ty, FreeRegs, IsFastCall, NeedsPadding);
+  bool InReg = shouldUseInReg(Ty, State, NeedsPadding);
 
   if (Ty->isPromotableIntegerType()) {
     if (InReg)
@@ -963,32 +979,19 @@ ABIArgInfo X86_32ABIInfo::classifyArgumentType(QualType Ty,
 }
 
 void X86_32ABIInfo::computeInfo(CGFunctionInfo &FI) const {
-  FI.getReturnInfo() = classifyReturnType(FI.getReturnType(),
-                                          FI.getCallingConvention());
-
-  unsigned CC = FI.getCallingConvention();
-  bool IsFastCall = CC == llvm::CallingConv::X86_FastCall;
-  unsigned FreeRegs;
-  if (IsFastCall)
-    FreeRegs = 2;
+  CCState State(FI.getCallingConvention());
+  if (State.CC == llvm::CallingConv::X86_FastCall)
+    State.FreeRegs = 2;
   else if (FI.getHasRegParm())
-    FreeRegs = FI.getRegParm();
+    State.FreeRegs = FI.getRegParm();
   else
-    FreeRegs = DefaultNumRegisterParameters;
+    State.FreeRegs = DefaultNumRegisterParameters;
 
-  // If the return value is indirect, then the hidden argument is consuming one
-  // integer register.
-  if (FI.getReturnInfo().isIndirect() && FreeRegs) {
-    --FreeRegs;
-    ABIArgInfo &Old = FI.getReturnInfo();
-    Old = ABIArgInfo::getIndirectInReg(Old.getIndirectAlign(),
-                                       Old.getIndirectByVal(),
-                                       Old.getIndirectRealign());
-  }
+  FI.getReturnInfo() = classifyReturnType(FI.getReturnType(), State);
 
   for (CGFunctionInfo::arg_iterator it = FI.arg_begin(), ie = FI.arg_end();
        it != ie; ++it)
-    it->info = classifyArgumentType(it->type, FreeRegs, IsFastCall);
+    it->info = classifyArgumentType(it->type, State);
 }
 
 llvm::Value *X86_32ABIInfo::EmitVAArg(llvm::Value *VAListAddr, QualType Ty,
@@ -3071,9 +3074,26 @@ public:
   }
 
   bool isEABI() const {
-    StringRef Env = getTarget().getTriple().getEnvironmentName();
-    return (Env == "gnueabi" || Env == "eabi" ||
-            Env == "android" || Env == "androideabi");
+    switch (getTarget().getTriple().getEnvironment()) {
+    case llvm::Triple::Android:
+    case llvm::Triple::EABI:
+    case llvm::Triple::EABIHF:
+    case llvm::Triple::GNUEABI:
+    case llvm::Triple::GNUEABIHF:
+      return true;
+    default:
+      return false;
+    }
+  }
+
+  bool isEABIHF() const {
+    switch (getTarget().getTriple().getEnvironment()) {
+    case llvm::Triple::EABIHF:
+    case llvm::Triple::GNUEABIHF:
+      return true;
+    default:
+      return false;
+    }
   }
 
   ABIKind getABIKind() const { return Kind; }
@@ -3209,7 +3229,7 @@ void ARMABIInfo::computeInfo(CGFunctionInfo &FI) const {
 /// Return the default calling convention that LLVM will use.
 llvm::CallingConv::ID ARMABIInfo::getLLVMDefaultCC() const {
   // The default calling convention that LLVM will infer.
-  if (getTarget().getTriple().getEnvironmentName()=="gnueabihf")
+  if (isEABIHF())
     return llvm::CallingConv::ARM_AAPCS_VFP;
   else if (isEABI())
     return llvm::CallingConv::ARM_AAPCS;
@@ -4197,16 +4217,26 @@ private:
 ABIArgInfo NVPTXABIInfo::classifyReturnType(QualType RetTy) const {
   if (RetTy->isVoidType())
     return ABIArgInfo::getIgnore();
-  if (isAggregateTypeForABI(RetTy))
-    return ABIArgInfo::getIndirect(0);
-  return ABIArgInfo::getDirect();
+
+  // note: this is different from default ABI
+  if (!RetTy->isScalarType())
+    return ABIArgInfo::getDirect();
+
+  // Treat an enum type as its underlying type.
+  if (const EnumType *EnumTy = RetTy->getAs<EnumType>())
+    RetTy = EnumTy->getDecl()->getIntegerType();
+
+  return (RetTy->isPromotableIntegerType() ?
+          ABIArgInfo::getExtend() : ABIArgInfo::getDirect());
 }
 
 ABIArgInfo NVPTXABIInfo::classifyArgumentType(QualType Ty) const {
-  if (isAggregateTypeForABI(Ty))
-    return ABIArgInfo::getIndirect(0);
+  // Treat an enum type as its underlying type.
+  if (const EnumType *EnumTy = Ty->getAs<EnumType>())
+    Ty = EnumTy->getDecl()->getIntegerType();
 
-  return ABIArgInfo::getDirect();
+  return (Ty->isPromotableIntegerType() ?
+          ABIArgInfo::getExtend() : ABIArgInfo::getDirect());
 }
 
 void NVPTXABIInfo::computeInfo(CGFunctionInfo &FI) const {
@@ -4252,7 +4282,7 @@ SetTargetAttributes(const Decl *D, llvm::GlobalValue *GV,
     // CUDA __global__ functions get a kernel metadata entry.  Since
     // __global__ functions cannot be called from the device, we do not
     // need to set the noinline attribute.
-    if (FD->getAttr<CUDAGlobalAttr>())
+    if (FD->hasAttr<CUDAGlobalAttr>())
       addKernelMetadata(F);
   }
 }
@@ -4563,7 +4593,7 @@ ABIArgInfo SystemZABIInfo::classifyArgumentType(QualType Ty) const {
   // Values that are not 1, 2, 4 or 8 bytes in size are passed indirectly.
   uint64_t Size = getContext().getTypeSize(Ty);
   if (Size != 8 && Size != 16 && Size != 32 && Size != 64)
-    return ABIArgInfo::getIndirect(0);
+    return ABIArgInfo::getIndirect(0, /*ByVal=*/false);
 
   // Handle small structures.
   if (const RecordType *RT = Ty->getAs<RecordType>()) {
@@ -4571,7 +4601,7 @@ ABIArgInfo SystemZABIInfo::classifyArgumentType(QualType Ty) const {
     // fail the size test above.
     const RecordDecl *RD = RT->getDecl();
     if (RD->hasFlexibleArrayMember())
-      return ABIArgInfo::getIndirect(0);
+      return ABIArgInfo::getIndirect(0, /*ByVal=*/false);
 
     // The structure is passed as an unextended integer, a float, or a double.
     llvm::Type *PassTy;
@@ -4588,7 +4618,7 @@ ABIArgInfo SystemZABIInfo::classifyArgumentType(QualType Ty) const {
 
   // Non-structure compounds are passed indirectly.
   if (isCompoundType(Ty))
-    return ABIArgInfo::getIndirect(0);
+    return ABIArgInfo::getIndirect(0, /*ByVal=*/false);
 
   return ABIArgInfo::getDirect(0);
 }
@@ -4647,9 +4677,9 @@ class MipsABIInfo : public ABIInfo {
   llvm::Type* returnAggregateInRegs(QualType RetTy, uint64_t Size) const;
   llvm::Type* getPaddingType(uint64_t Align, uint64_t Offset) const;
 public:
-  MipsABIInfo(CodeGenTypes &CGT, bool _IsO32, bool HasFP64) :
+  MipsABIInfo(CodeGenTypes &CGT, bool _IsO32) :
     ABIInfo(CGT), IsO32(_IsO32), MinABIStackAlignInBytes(IsO32 ? 4 : 8),
-    StackAlignInBytes(IsO32 && !HasFP64 ? 8 : 16) {}
+    StackAlignInBytes(IsO32 ? 8 : 16) {}
 
   ABIArgInfo classifyReturnType(QualType RetTy) const;
   ABIArgInfo classifyArgumentType(QualType RetTy, uint64_t &Offset) const;
@@ -4661,8 +4691,8 @@ public:
 class MIPSTargetCodeGenInfo : public TargetCodeGenInfo {
   unsigned SizeOfUnwindException;
 public:
-  MIPSTargetCodeGenInfo(CodeGenTypes &CGT, bool IsO32, const TargetInfo &Info)
-    : TargetCodeGenInfo(new MipsABIInfo(CGT, IsO32, Info.hasFeature("fp64"))),
+  MIPSTargetCodeGenInfo(CodeGenTypes &CGT, bool IsO32)
+    : TargetCodeGenInfo(new MipsABIInfo(CGT, IsO32)),
       SizeOfUnwindException(IsO32 ? 24 : 32) {}
 
   int getDwarfEHStackPointer(CodeGen::CodeGenModule &CGM) const {
@@ -4993,9 +5023,8 @@ void TCETargetCodeGenInfo::SetTargetAttributes(const Decl *D,
     if (FD->hasAttr<OpenCLKernelAttr>()) {
       // OpenCL C Kernel functions are not subject to inlining
       F->addFnAttr(llvm::Attribute::NoInline);
-          
-      if (FD->hasAttr<ReqdWorkGroupSizeAttr>()) {
-
+      const ReqdWorkGroupSizeAttr *Attr = FD->getAttr<ReqdWorkGroupSizeAttr>();
+      if (Attr) {
         // Convert the reqd_work_group_size() attributes to metadata.
         llvm::LLVMContext &Context = F->getContext();
         llvm::NamedMDNode *OpenCLMetadata = 
@@ -5005,14 +5034,11 @@ void TCETargetCodeGenInfo::SetTargetAttributes(const Decl *D,
         Operands.push_back(F);
 
         Operands.push_back(llvm::Constant::getIntegerValue(M.Int32Ty, 
-                             llvm::APInt(32, 
-                             FD->getAttr<ReqdWorkGroupSizeAttr>()->getXDim())));
+                             llvm::APInt(32, Attr->getXDim())));
         Operands.push_back(llvm::Constant::getIntegerValue(M.Int32Ty,
-                             llvm::APInt(32,
-                               FD->getAttr<ReqdWorkGroupSizeAttr>()->getYDim())));
+                             llvm::APInt(32, Attr->getYDim())));
         Operands.push_back(llvm::Constant::getIntegerValue(M.Int32Ty, 
-                             llvm::APInt(32, 
-                               FD->getAttr<ReqdWorkGroupSizeAttr>()->getZDim())));
+                             llvm::APInt(32, Attr->getZDim())));
 
         // Add a boolean constant operand for "required" (true) or "hint" (false)
         // for implementing the work_group_size_hint attr later. Currently 
@@ -5339,6 +5365,11 @@ SparcV9ABIInfo::classifyType(QualType Ty, unsigned SizeLimit) const {
   if (!isAggregateTypeForABI(Ty))
     return ABIArgInfo::getDirect();
 
+  // If a C++ object has either a non-trivial copy constructor or a non-trivial
+  // destructor, it is passed with an explicit indirect pointer / sret pointer.
+  if (CGCXXABI::RecordArgABI RAA = getRecordArgABI(Ty, getCXXABI()))
+    return ABIArgInfo::getIndirect(0, RAA == CGCXXABI::RAA_DirectInMemory);
+
   // This is a small aggregate type that should be passed in registers.
   // Build a coercion type from the LLVM struct type.
   llvm::StructType *StrTy = dyn_cast<llvm::StructType>(CGT.ConvertType(Ty));
@@ -5507,12 +5538,12 @@ const TargetCodeGenInfo &CodeGenModule::getTargetCodeGenInfo() {
     return *(TheTargetCodeGenInfo = new PNaClTargetCodeGenInfo(Types));
   case llvm::Triple::mips:
   case llvm::Triple::mipsel:
-    return *(TheTargetCodeGenInfo = new MIPSTargetCodeGenInfo(Types, true,
-                                                              getTarget()));
+    return *(TheTargetCodeGenInfo = new MIPSTargetCodeGenInfo(Types, true));
+
   case llvm::Triple::mips64:
   case llvm::Triple::mips64el:
-    return *(TheTargetCodeGenInfo = new MIPSTargetCodeGenInfo(Types, false,
-                                                              getTarget()));
+    return *(TheTargetCodeGenInfo = new MIPSTargetCodeGenInfo(Types, false));
+
   case llvm::Triple::aarch64:
     return *(TheTargetCodeGenInfo = new AArch64TargetCodeGenInfo(Types));
 

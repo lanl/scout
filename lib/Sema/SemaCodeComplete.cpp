@@ -660,13 +660,10 @@ QualType clang::getDeclUsageType(ASTContext &C, const NamedDecl *ND) {
     return C.getObjCInterfaceType(Iface);
   
   QualType T;
-  if (const FunctionDecl *Function = dyn_cast<FunctionDecl>(ND))
+  if (const FunctionDecl *Function = ND->getAsFunction())
     T = Function->getCallResultType();
   else if (const ObjCMethodDecl *Method = dyn_cast<ObjCMethodDecl>(ND))
     T = Method->getSendResultType();
-  else if (const FunctionTemplateDecl *FunTmpl =
-               dyn_cast<FunctionTemplateDecl>(ND))
-    T = FunTmpl->getTemplatedDecl()->getCallResultType();
   else if (const EnumConstantDecl *Enumerator = dyn_cast<EnumConstantDecl>(ND))
     T = C.getTypeDeclType(cast<EnumDecl>(Enumerator->getDeclContext()));
   else if (const ObjCPropertyDecl *Property = dyn_cast<ObjCPropertyDecl>(ND))
@@ -2066,14 +2063,11 @@ static void AddResultTypeChunk(ASTContext &Context,
     return;
 
   // Determine the type of the declaration (if it has a type).
-  QualType T;  
-  if (const FunctionDecl *Function = dyn_cast<FunctionDecl>(ND))
+  QualType T;
+  if (const FunctionDecl *Function = ND->getAsFunction())
     T = Function->getResultType();
   else if (const ObjCMethodDecl *Method = dyn_cast<ObjCMethodDecl>(ND))
     T = Method->getResultType();
-  else if (const FunctionTemplateDecl *FunTmpl =
-               dyn_cast<FunctionTemplateDecl>(ND))
-    T = FunTmpl->getTemplatedDecl()->getResultType();
   else if (const EnumConstantDecl *Enumerator = dyn_cast<EnumConstantDecl>(ND))
     T = Context.getTypeDeclType(cast<TypeDecl>(Enumerator->getDeclContext()));
   else if (isa<UnresolvedUsingValueDecl>(ND)) {
@@ -2212,20 +2206,20 @@ static std::string FormatFunctionParameter(ASTContext &Context,
 
   // Format the parameter list.
   std::string Params;
-  if (!BlockProto || Block.getNumArgs() == 0) {
+  if (!BlockProto || Block.getNumParams() == 0) {
     if (BlockProto && BlockProto.getTypePtr()->isVariadic())
       Params = "(...)";
     else
       Params = "(void)";
   } else {
     Params += "(";
-    for (unsigned I = 0, N = Block.getNumArgs(); I != N; ++I) {
+    for (unsigned I = 0, N = Block.getNumParams(); I != N; ++I) {
       if (I)
         Params += ", ";
-      Params += FormatFunctionParameter(Context, Policy, Block.getArg(I),
-                                        /*SuppressName=*/false, 
+      Params += FormatFunctionParameter(Context, Policy, Block.getParam(I),
+                                        /*SuppressName=*/false,
                                         /*SuppressBlock=*/true);
-      
+
       if (I == N - 1 && BlockProto.getTypePtr()->isVariadic())
         Params += ", ...";
     }
@@ -2297,7 +2291,7 @@ static void AddFunctionParameterChunks(ASTContext &Context,
   if (const FunctionProtoType *Proto 
         = Function->getType()->getAs<FunctionProtoType>())
     if (Proto->isVariadic()) {
-      if (Proto->getNumArgs() == 0)
+      if (Proto->getNumParams() == 0)
         Result.AddPlaceholderChunk("...");
 
       MaybeAddSentinel(Context, Function, Result);
@@ -2854,7 +2848,7 @@ CodeCompleteConsumer::OverloadCandidate::CreateSignatureString(
                                   Proto->getResultType().getAsString(Policy)));
   
   Result.AddChunk(CodeCompletionString::CK_LeftParen);
-  unsigned NumParams = FDecl? FDecl->getNumParams() : Proto->getNumArgs();
+  unsigned NumParams = FDecl ? FDecl->getNumParams() : Proto->getNumParams();
   for (unsigned I = 0; I != NumParams; ++I) {
     if (I)
       Result.AddChunk(CodeCompletionString::CK_Comma);
@@ -2866,7 +2860,7 @@ CodeCompleteConsumer::OverloadCandidate::CreateSignatureString(
       ArgString = FDecl->getParamDecl(I)->getNameAsString();
       ArgType = FDecl->getParamDecl(I)->getOriginalType();
     } else {
-      ArgType = Proto->getArgType(I);
+      ArgType = Proto->getParamType(I);
     }
     
     ArgType.getAsStringInternal(ArgString, Policy);
@@ -3925,12 +3919,13 @@ void Sema::CodeCompleteCall(Scope *S, Expr *FnIn, ArrayRef<Expr *> Args) {
     for (unsigned I = 0, N = Results.size(); I != N; ++I) {
       if (const FunctionType *FType = Results[I].getFunctionType())
         if (const FunctionProtoType *Proto = dyn_cast<FunctionProtoType>(FType))
-          if (Args.size() < Proto->getNumArgs()) {
+          if (Args.size() < Proto->getNumParams()) {
             if (ParamType.isNull())
-              ParamType = Proto->getArgType(Args.size());
+              ParamType = Proto->getParamType(Args.size());
             else if (!Context.hasSameUnqualifiedType(
-                                            ParamType.getNonReferenceType(),
-                       Proto->getArgType(Args.size()).getNonReferenceType())) {
+                          ParamType.getNonReferenceType(),
+                          Proto->getParamType(Args.size())
+                              .getNonReferenceType())) {
               ParamType = QualType();
               break;
             }
@@ -3951,8 +3946,8 @@ void Sema::CodeCompleteCall(Scope *S, Expr *FnIn, ArrayRef<Expr *> Args) {
     
     if (const FunctionProtoType *Proto
                                   = FunctionType->getAs<FunctionProtoType>()) {
-      if (Args.size() < Proto->getNumArgs())
-        ParamType = Proto->getArgType(Args.size());
+      if (Args.size() < Proto->getNumParams())
+        ParamType = Proto->getParamType(Args.size());
     }
   }
 
@@ -4080,7 +4075,7 @@ void Sema::CodeCompleteQualifiedId(Scope *S, CXXScopeSpec &SS,
   
   // The "template" keyword can follow "::" in the grammar, but only
   // put it into the grammar if the nested-name-specifier is dependent.
-  NestedNameSpecifier *NNS = (NestedNameSpecifier *)SS.getScopeRep();
+  NestedNameSpecifier *NNS = SS.getScopeRep();
   if (!Results.empty() && NNS->isDependent())
     Results.AddResult("template");
 

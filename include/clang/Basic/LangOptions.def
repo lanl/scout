@@ -43,12 +43,12 @@
 
 LANGOPT(C99               , 1, 0, "C99")
 LANGOPT(C11               , 1, 0, "C11")
-LANGOPT(MicrosoftExt      , 1, 0, "Microsoft extensions")
-LANGOPT(MicrosoftMode     , 1, 0, "Microsoft compatibility mode")
+LANGOPT(MSVCCompat        , 1, 0, "Microsoft Visual C++ full compatibility mode")
+LANGOPT(MicrosoftExt      , 1, 0, "Microsoft C++ extensions")
 LANGOPT(AsmBlocks         , 1, 0, "Microsoft inline asm blocks")
 LANGOPT(Borland           , 1, 0, "Borland extensions")
 LANGOPT(CPlusPlus         , 1, 0, "C++")
-LANGOPT(CPlusPlus11       , 1, 0, "C++0x")
+LANGOPT(CPlusPlus11       , 1, 0, "C++11")
 LANGOPT(CPlusPlus1y       , 1, 0, "C++1y")
 LANGOPT(ObjC1             , 1, 0, "Objective-C 1")
 LANGOPT(ObjC2             , 1, 0, "Objective-C 2")
@@ -143,6 +143,7 @@ LANGOPT(NoBitFieldTypeAlign , 1, 0, "bit-field type alignment")
 LANGOPT(HexagonQdsp6Compat , 1, 0, "hexagon-qdsp6 backward compatibility")
 LANGOPT(ObjCAutoRefCount , 1, 0, "Objective-C automated reference counting")
 LANGOPT(ObjCARCWeak         , 1, 0, "__weak support in the ARC runtime")
+LANGOPT(ObjCSubscriptingLegacyRuntime         , 1, 0, "Subscripting support in legacy ObjectiveC runtime")
 LANGOPT(FakeAddressSpaceMap , 1, 0, "OpenCL fake address space map")
 ENUM_LANGOPT(AddressSpaceMapMangling , AddrSpaceMapMangling, 2, ASMM_Target, "OpenCL address space map mangling mode")
 
@@ -160,6 +161,8 @@ ENUM_LANGOPT(StackProtector, StackProtectorMode, 2, SSPOff,
 ENUM_LANGOPT(SignedOverflowBehavior, SignedOverflowBehaviorTy, 2, SOB_Undefined,
              "signed integer overflow handling")
 
+BENIGN_LANGOPT(ArrowDepth, 32, 256,
+               "maximum number of operator->s to follow")
 BENIGN_LANGOPT(InstantiationDepth, 32, 256,
                "maximum template instantiation depth")
 BENIGN_LANGOPT(ConstexprCallDepth, 32, 512,
@@ -175,7 +178,7 @@ VALUE_LANGOPT(MSCVersion, 32, 0,
 
 LANGOPT(ApplePragmaPack, 1, 0, "Apple gcc-compatible #pragma pack handling")
 
-BENIGN_LANGOPT(RetainCommentsFromSystemHeaders, 1, 0, "retain documentation comments from system headers in the AST")
+LANGOPT(RetainCommentsFromSystemHeaders, 1, 0, "retain documentation comments from system headers in the AST")
 
 #undef LANGOPT
 #undef VALUE_LANGOPT

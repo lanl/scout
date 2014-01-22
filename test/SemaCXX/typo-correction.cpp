@@ -282,13 +282,13 @@ namespace b6956809_test1 {
 namespace b6956809_test2 {
   template<typename T> struct Err { typename T::error n; };  // expected-error{{type 'void *' cannot be used prior to '::' because it has no members}}
   struct S {
-    template<typename T> typename Err<T>::type method(T);  // expected-note{{in instantiation of template class 'b6956809_test2::Err<void *>' requested here}}  expected-note{{while substituting deduced template arguments into function template 'method' [with T = void *]}}
+    template<typename T> typename Err<T>::type method(T);  // expected-note{{in instantiation of template class 'b6956809_test2::Err<void *>' requested here}}
     template<typename T> int method(T *);
   };
 
   void test() {
     S s;
-    int k = s.methodd((void*)0);  // expected-error{{no member named 'methodd' in 'b6956809_test2::S'; did you mean 'method'?}}
+    int k = s.methodd((void*)0);  // expected-error{{no member named 'methodd' in 'b6956809_test2::S'; did you mean 'method'?}} expected-note{{while substituting deduced template arguments into function template 'method' [with T = void *]}}
   }
 }
 
@@ -299,6 +299,6 @@ namespace CorrectTypo_has_reached_its_limit {
 int flibberdy();  // expected-note{{'flibberdy' declared here}}
 int no_correction() {
   return hibberdy() +  // expected-error{{use of undeclared identifier 'hibberdy'; did you mean 'flibberdy'?}}
-         gibberdy();  // expected-error-re{{use of undeclared identifier 'gibberdy'$}}
+         gibberdy();  // expected-error-re{{use of undeclared identifier 'gibberdy'{{$}}}}
 };
 }
