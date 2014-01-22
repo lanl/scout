@@ -20,6 +20,9 @@
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Object/Archive.h"
+#include "llvm/Object/COFF.h"
+#include "llvm/Object/ELFObjectFile.h"
+#include "llvm/Object/MachO.h"
 #include "llvm/Object/MachOUniversal.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/CommandLine.h"
@@ -303,6 +306,226 @@ static void DumpSymbolNamesFromModule(Module *M) {
   SortAndPrintSymbolList();
 }
 
+template <class ELFT>
+error_code getSymbolNMTypeChar(ELFObjectFile<ELFT> &Obj, symbol_iterator I,
+                               char &Result) {
+  typedef typename ELFObjectFile<ELFT>::Elf_Sym Elf_Sym;
+  typedef typename ELFObjectFile<ELFT>::Elf_Shdr Elf_Shdr;
+
+  DataRefImpl Symb = I->getRawDataRefImpl();
+  const Elf_Sym *ESym = Obj.getSymbol(Symb);
+  const ELFFile<ELFT> &EF = *Obj.getELFFile();
+  const Elf_Shdr *ESec = EF.getSection(ESym);
+
+  char ret = '?';
+
+  if (ESec) {
+    switch (ESec->sh_type) {
+    case ELF::SHT_PROGBITS:
+    case ELF::SHT_DYNAMIC:
+      switch (ESec->sh_flags) {
+      case(ELF::SHF_ALLOC | ELF::SHF_EXECINSTR) :
+        ret = 't';
+        break;
+      case(ELF::SHF_ALLOC | ELF::SHF_WRITE) :
+        ret = 'd';
+        break;
+      case ELF::SHF_ALLOC:
+      case(ELF::SHF_ALLOC | ELF::SHF_MERGE) :
+      case(ELF::SHF_ALLOC | ELF::SHF_MERGE | ELF::SHF_STRINGS) :
+        ret = 'r';
+        break;
+      }
+      break;
+    case ELF::SHT_NOBITS:
+      ret = 'b';
+    }
+  }
+
+  switch (EF.getSymbolTableIndex(ESym)) {
+  case ELF::SHN_UNDEF:
+    if (ret == '?')
+      ret = 'U';
+    break;
+  case ELF::SHN_ABS:
+    ret = 'a';
+    break;
+  case ELF::SHN_COMMON:
+    ret = 'c';
+    break;
+  }
+
+  switch (ESym->getBinding()) {
+  case ELF::STB_GLOBAL:
+    ret = ::toupper(ret);
+    break;
+  case ELF::STB_WEAK:
+    if (EF.getSymbolTableIndex(ESym) == ELF::SHN_UNDEF)
+      ret = 'w';
+    else if (ESym->getType() == ELF::STT_OBJECT)
+      ret = 'V';
+    else
+      ret = 'W';
+  }
+
+  if (ret == '?' && ESym->getType() == ELF::STT_SECTION) {
+    StringRef Name;
+    error_code EC = I->getName(Name);
+    if (EC)
+      return EC;
+    Result = StringSwitch<char>(Name)
+                 .StartsWith(".debug", 'N')
+                 .StartsWith(".note", 'n')
+                 .Default('?');
+    return object_error::success;
+  }
+
+  Result = ret;
+  return object_error::success;
+}
+
+static error_code getSymbolNMTypeChar(COFFObjectFile &Obj, symbol_iterator I,
+                                      char &Result) {
+  const coff_symbol *symb = Obj.getCOFFSymbol(I);
+  StringRef name;
+  if (error_code ec = I->getName(name))
+    return ec;
+  char ret = StringSwitch<char>(name)
+                 .StartsWith(".debug", 'N')
+                 .StartsWith(".sxdata", 'N')
+                 .Default('?');
+
+  if (ret != '?') {
+    Result = ret;
+    return object_error::success;
+  }
+
+  uint32_t Characteristics = 0;
+  if (symb->SectionNumber > 0) {
+    section_iterator SecI = Obj.end_sections();
+    if (error_code ec = I->getSection(SecI))
+      return ec;
+    const coff_section *Section = Obj.getCOFFSection(SecI);
+    Characteristics = Section->Characteristics;
+  }
+
+  switch (symb->SectionNumber) {
+  case COFF::IMAGE_SYM_UNDEFINED:
+    // Check storage classes.
+    if (symb->StorageClass == COFF::IMAGE_SYM_CLASS_WEAK_EXTERNAL) {
+      Result = 'w';
+      return object_error::success; // Don't do ::toupper.
+    } else if (symb->Value != 0)    // Check for common symbols.
+      ret = 'c';
+    else
+      ret = 'u';
+    break;
+  case COFF::IMAGE_SYM_ABSOLUTE:
+    ret = 'a';
+    break;
+  case COFF::IMAGE_SYM_DEBUG:
+    ret = 'n';
+    break;
+  default:
+    // Check section type.
+    if (Characteristics & COFF::IMAGE_SCN_CNT_CODE)
+      ret = 't';
+    else if (Characteristics & COFF::IMAGE_SCN_MEM_READ &&
+             ~Characteristics & COFF::IMAGE_SCN_MEM_WRITE) // Read only.
+      ret = 'r';
+    else if (Characteristics & COFF::IMAGE_SCN_CNT_INITIALIZED_DATA)
+      ret = 'd';
+    else if (Characteristics & COFF::IMAGE_SCN_CNT_UNINITIALIZED_DATA)
+      ret = 'b';
+    else if (Characteristics & COFF::IMAGE_SCN_LNK_INFO)
+      ret = 'i';
+
+    // Check for section symbol.
+    else if (symb->StorageClass == COFF::IMAGE_SYM_CLASS_STATIC &&
+             symb->Value == 0)
+      ret = 's';
+  }
+
+  if (symb->StorageClass == COFF::IMAGE_SYM_CLASS_EXTERNAL)
+    ret = ::toupper(static_cast<unsigned char>(ret));
+
+  Result = ret;
+  return object_error::success;
+}
+
+static uint8_t getNType(MachOObjectFile &Obj, DataRefImpl Symb) {
+  if (Obj.is64Bit()) {
+    MachO::nlist_64 STE = Obj.getSymbol64TableEntry(Symb);
+    return STE.n_type;
+  }
+  MachO::nlist STE = Obj.getSymbolTableEntry(Symb);
+  return STE.n_type;
+}
+
+static error_code getSymbolNMTypeChar(MachOObjectFile &Obj, symbol_iterator I,
+                                      char &Res) {
+  DataRefImpl Symb = I->getRawDataRefImpl();
+  uint8_t NType = getNType(Obj, Symb);
+
+  char Char;
+  switch (NType & MachO::N_TYPE) {
+  case MachO::N_UNDF:
+    Char = 'u';
+    break;
+  case MachO::N_ABS:
+    Char = 's';
+    break;
+  case MachO::N_SECT: {
+    section_iterator Sec = Obj.end_sections();
+    Obj.getSymbolSection(Symb, Sec);
+    DataRefImpl Ref = Sec->getRawDataRefImpl();
+    StringRef SectionName;
+    Obj.getSectionName(Ref, SectionName);
+    StringRef SegmentName = Obj.getSectionFinalSegmentName(Ref);
+    if (SegmentName == "__TEXT" && SectionName == "__text")
+      Char = 't';
+    else
+      Char = 's';
+  } break;
+  default:
+    Char = '?';
+    break;
+  }
+
+  if (NType & (MachO::N_EXT | MachO::N_PEXT))
+    Char = toupper(static_cast<unsigned char>(Char));
+  Res = Char;
+  return object_error::success;
+}
+
+static char getNMTypeChar(ObjectFile *Obj, symbol_iterator I) {
+  char Res = '?';
+  if (COFFObjectFile *COFF = dyn_cast<COFFObjectFile>(Obj)) {
+    error(getSymbolNMTypeChar(*COFF, I, Res));
+    return Res;
+  }
+  if (MachOObjectFile *MachO = dyn_cast<MachOObjectFile>(Obj)) {
+    error(getSymbolNMTypeChar(*MachO, I, Res));
+    return Res;
+  }
+
+  if (ELF32LEObjectFile *ELF = dyn_cast<ELF32LEObjectFile>(Obj)) {
+    error(getSymbolNMTypeChar(*ELF, I, Res));
+    return Res;
+  }
+  if (ELF64LEObjectFile *ELF = dyn_cast<ELF64LEObjectFile>(Obj)) {
+    error(getSymbolNMTypeChar(*ELF, I, Res));
+    return Res;
+  }
+  if (ELF32BEObjectFile *ELF = dyn_cast<ELF32BEObjectFile>(Obj)) {
+    error(getSymbolNMTypeChar(*ELF, I, Res));
+    return Res;
+  }
+  ELF64BEObjectFile *ELF = cast<ELF64BEObjectFile>(Obj);
+  error(getSymbolNMTypeChar(*ELF, I, Res));
+  return Res;
+}
+
 static void DumpSymbolNamesFromObject(ObjectFile *obj) {
   error_code ec;
   symbol_iterator ibegin = obj->begin_symbols();
@@ -325,7 +548,7 @@ static void DumpSymbolNamesFromObject(ObjectFile *obj) {
     }
     if (PrintAddress)
       if (error(i->getAddress(s.Address))) break;
-    if (error(i->getNMTypeChar(s.TypeChar))) break;
+    s.TypeChar = getNMTypeChar(obj, i);
     if (error(i->getName(s.Name))) break;
     SymbolList.push_back(s);
   }
@@ -347,26 +570,25 @@ static void DumpSymbolNamesFromFile(std::string &Filename) {
   sys::fs::file_magic magic = sys::fs::identify_magic(Buffer->getBuffer());
 
   LLVMContext &Context = getGlobalContext();
-  std::string ErrorMessage;
   if (magic == sys::fs::file_magic::bitcode) {
-    Module *Result = 0;
-    Result = ParseBitcodeFile(Buffer.get(), Context, &ErrorMessage);
-    if (Result) {
+    ErrorOr<Module *> ModuleOrErr = parseBitcodeFile(Buffer.get(), Context);
+    if (error(ModuleOrErr.getError(), Filename)) {
+      return;
+    } else {
+      Module *Result = ModuleOrErr.get();
       DumpSymbolNamesFromModule(Result);
       delete Result;
-    } else {
-      error(ErrorMessage, Filename);
-      return;
     }
   } else if (magic == sys::fs::file_magic::archive) {
-    OwningPtr<Binary> arch;
-    if (error(object::createBinary(Buffer.take(), arch), Filename))
+    ErrorOr<Binary *> BinaryOrErr = object::createBinary(Buffer.take());
+    if (error(BinaryOrErr.getError(), Filename))
       return;
+    OwningPtr<Binary> arch(BinaryOrErr.get());
 
     if (object::Archive *a = dyn_cast<object::Archive>(arch.get())) {
       if (ArchiveMap) {
-        object::Archive::symbol_iterator I = a->begin_symbols();
-        object::Archive::symbol_iterator E = a->end_symbols();
+        object::Archive::symbol_iterator I = a->symbol_begin();
+        object::Archive::symbol_iterator E = a->symbol_end();
         if (I !=E) {
           outs() << "Archive map" << "\n";
           for (; I != E; ++I) {
@@ -385,19 +607,18 @@ static void DumpSymbolNamesFromFile(std::string &Filename) {
         }
       }
 
-      for (object::Archive::child_iterator i = a->begin_children(),
-                                           e = a->end_children(); i != e; ++i) {
+      for (object::Archive::child_iterator i = a->child_begin(),
+                                           e = a->child_end(); i != e; ++i) {
         OwningPtr<Binary> child;
         if (i->getAsBinary(child)) {
           // Try opening it as a bitcode file.
           OwningPtr<MemoryBuffer> buff;
           if (error(i->getMemoryBuffer(buff)))
             return;
-          Module *Result = 0;
-          if (buff)
-            Result = ParseBitcodeFile(buff.get(), Context, &ErrorMessage);
 
-          if (Result) {
+          ErrorOr<Module *> ModuleOrErr = parseBitcodeFile(buff.get(), Context);
+          if (ModuleOrErr) {
+            Module *Result = ModuleOrErr.get();
             DumpSymbolNamesFromModule(Result);
             delete Result;
           }
@@ -410,9 +631,10 @@ static void DumpSymbolNamesFromFile(std::string &Filename) {
       }
     }
   } else if (magic == sys::fs::file_magic::macho_universal_binary) {
-    OwningPtr<Binary> Bin;
-    if (error(object::createBinary(Buffer.take(), Bin), Filename))
+    ErrorOr<Binary *> BinaryOrErr = object::createBinary(Buffer.take());
+    if (error(BinaryOrErr.getError(), Filename))
       return;
+    OwningPtr<Binary> Bin(BinaryOrErr.get());
 
     object::MachOUniversalBinary *UB =
         cast<object::MachOUniversalBinary>(Bin.get());
@@ -427,9 +649,10 @@ static void DumpSymbolNamesFromFile(std::string &Filename) {
       }
     }
   } else if (magic.is_object()) {
-    OwningPtr<Binary> obj;
-    if (error(object::createBinary(Buffer.take(), obj), Filename))
+    ErrorOr<Binary *> BinaryOrErr = object::createBinary(Buffer.take());
+    if (error(BinaryOrErr.getError(), Filename))
       return;
+    OwningPtr<Binary> obj(BinaryOrErr.get());
     if (object::ObjectFile *o = dyn_cast<ObjectFile>(obj.get()))
       DumpSymbolNamesFromObject(o);
   } else {

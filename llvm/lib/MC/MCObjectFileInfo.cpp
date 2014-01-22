@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/MC/MCObjectFileInfo.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCSection.h"
@@ -233,6 +234,9 @@ void MCObjectFileInfo::InitMachOMCObjectFileInfo(Triple T) {
   DwarfDebugInlineSection =
     Ctx->getMachOSection("__DWARF", "__debug_inlined",
                          MCSectionMachO::S_ATTR_DEBUG,
+                         SectionKind::getMetadata());
+  StackMapSection =
+    Ctx->getMachOSection("__LLVM_STACKMAPS", "__llvm_stackmaps", 0,
                          SectionKind::getMetadata());
 
   TLSExtraDataSection = TLSTLVSection;
@@ -713,6 +717,18 @@ void MCObjectFileInfo::InitMCObjectFileInfo(StringRef TT, Reloc::Model relocm,
     Env = IsELF;
     InitELFMCObjectFileInfo(T);
   }
+}
+
+const MCSection *MCObjectFileInfo::getDwarfTypesSection(uint64_t Hash) const {
+  return Ctx->getELFSection(".debug_types", ELF::SHT_PROGBITS, ELF::SHF_GROUP,
+                            SectionKind::getMetadata(), 0, utostr(Hash));
+}
+
+const MCSection *
+MCObjectFileInfo::getDwarfTypesDWOSection(uint64_t Hash) const {
+  return Ctx->getELFSection(".debug_types.dwo", ELF::SHT_PROGBITS,
+                            ELF::SHF_GROUP, SectionKind::getMetadata(), 0,
+                            utostr(Hash));
 }
 
 void MCObjectFileInfo::InitEHFrameSection() {

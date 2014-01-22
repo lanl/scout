@@ -35,8 +35,6 @@ namespace llvm {
 
       Wrapper,      // Wrapper - A wrapper node for TargetConstantPool,
                     // TargetExternalSymbol, and TargetGlobalAddress.
-      WrapperDYN,   // WrapperDYN - A wrapper node for TargetGlobalAddress in
-                    // DYN mode.
       WrapperPIC,   // WrapperPIC - A wrapper node for TargetGlobalAddress in
                     // PIC mode.
       WrapperJT,    // WrapperJT - A wrapper node for TargetJumpTable
@@ -363,6 +361,12 @@ namespace llvm {
     /// be used for loads / stores from the global.
     virtual unsigned getMaximalGlobalOffset() const;
 
+    /// Returns true if a cast between SrcAS and DestAS is a noop.
+    virtual bool isNoopAddrSpaceCast(unsigned SrcAS, unsigned DestAS) const {
+      // Addrspacecasts are always noops.
+      return true;
+    }
+
     /// createFastISel - This method returns a target specific FastISel object,
     /// or null if the target does not support "fast" ISel.
     virtual FastISel *createFastISel(FunctionLoweringInfo &funcInfo,
@@ -448,6 +452,7 @@ namespace llvm {
                             const ARMSubtarget *ST) const;
     SDValue LowerBUILD_VECTOR(SDValue Op, SelectionDAG &DAG,
                               const ARMSubtarget *ST) const;
+    SDValue LowerFSINCOS(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerDivRem(SDValue Op, SelectionDAG &DAG) const;
 
     /// isFMAFasterThanFMulAndFAdd - Return true if an FMA operation is faster

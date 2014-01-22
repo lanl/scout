@@ -21,7 +21,6 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
-
 #include <sstream>
 #include <stdlib.h>
 
@@ -196,7 +195,7 @@ std::string LLVMSymbolizer::symbolizeData(const std::string &ModuleName,
   if (Opts.UseSymbolTable) {
     if (ModuleInfo *Info = getOrCreateModuleInfo(ModuleName)) {
       if (Info->symbolizeData(ModuleOffset, Name, Start, Size) && Opts.Demangle)
-        Name = DemangleGlobalName(Name);
+        Name = DemangleName(Name);
     }
   }
   std::stringstream ss;
@@ -302,9 +301,9 @@ LLVMSymbolizer::getOrCreateBinary(const std::string &Path) {
     return I->second;
   Binary *Bin = 0;
   Binary *DbgBin = 0;
-  OwningPtr<Binary> ParsedBinary;
-  OwningPtr<Binary> ParsedDbgBinary;
-  if (!error(createBinary(Path, ParsedBinary))) {
+  ErrorOr<Binary *> BinaryOrErr = createBinary(Path);
+  if (!error(BinaryOrErr.getError())) {
+    OwningPtr<Binary> ParsedBinary(BinaryOrErr.get());
     // Check if it's a universal binary.
     Bin = ParsedBinary.take();
     ParsedBinariesAndObjects.push_back(Bin);
@@ -313,11 +312,10 @@ LLVMSymbolizer::getOrCreateBinary(const std::string &Path) {
       // resource directory.
       const std::string &ResourcePath =
           getDarwinDWARFResourceForPath(Path);
-      bool ResourceFileExists = false;
-      if (!sys::fs::exists(ResourcePath, ResourceFileExists) &&
-          ResourceFileExists &&
-          !error(createBinary(ResourcePath, ParsedDbgBinary))) {
-        DbgBin = ParsedDbgBinary.take();
+      BinaryOrErr = createBinary(ResourcePath);
+      error_code EC = BinaryOrErr.getError();
+      if (EC != errc::no_such_file_or_directory && !error(EC)) {
+        DbgBin = BinaryOrErr.get();
         ParsedBinariesAndObjects.push_back(DbgBin);
       }
     }
@@ -327,10 +325,12 @@ LLVMSymbolizer::getOrCreateBinary(const std::string &Path) {
       uint32_t CRCHash;
       std::string DebugBinaryPath;
       if (getGNUDebuglinkContents(Bin, DebuglinkName, CRCHash) &&
-          findDebugBinary(Path, DebuglinkName, CRCHash, DebugBinaryPath) &&
-          !error(createBinary(DebugBinaryPath, ParsedDbgBinary))) {
-        DbgBin = ParsedDbgBinary.take();
-        ParsedBinariesAndObjects.push_back(DbgBin);
+          findDebugBinary(Path, DebuglinkName, CRCHash, DebugBinaryPath)) {
+        BinaryOrErr = createBinary(DebugBinaryPath);
+        if (!error(BinaryOrErr.getError())) {
+          DbgBin = BinaryOrErr.get();
+          ParsedBinariesAndObjects.push_back(DbgBin);
+        }
       }
     }
   }
@@ -424,6 +424,10 @@ extern "C" char *__cxa_demangle(const char *mangled_name, char *output_buffer,
 
 std::string LLVMSymbolizer::DemangleName(const std::string &Name) {
 #if !defined(_MSC_VER)
+  // We can spoil names of symbols with C linkage, so use an heuristic
+  // approach to check if the name should be demangled.
+  if (Name.substr(0, 2) != "_Z")
+    return Name;
   int status = 0;
   char *DemangledName = __cxa_demangle(Name.c_str(), 0, 0, &status);
   if (status != 0)
@@ -434,12 +438,6 @@ std::string LLVMSymbolizer::DemangleName(const std::string &Name) {
 #else
   return Name;
 #endif
-}
-
-std::string LLVMSymbolizer::DemangleGlobalName(const std::string &Name) {
-  // We can spoil names of globals with C linkage, so use an heuristic
-  // approach to check if the name should be demangled.
-  return (Name.substr(0, 2) == "_Z") ? DemangleName(Name) : Name;
 }
 
 } // namespace symbolize

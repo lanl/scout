@@ -72,7 +72,7 @@ class RuntimeDyldMachO : public RuntimeDyldImpl {
     EHFrameRelatedSections() : EHFrameSID(RTDYLD_INVALID_SECTION_ID),
                                TextSID(RTDYLD_INVALID_SECTION_ID),
                                ExceptTabSID(RTDYLD_INVALID_SECTION_ID) {}
-    EHFrameRelatedSections(SID EH, SID T, SID Ex) 
+    EHFrameRelatedSections(SID EH, SID T, SID Ex)
       : EHFrameSID(EH), TextSID(T), ExceptTabSID(Ex) {}
     SID EHFrameSID;
     SID TextSID;
@@ -94,6 +94,7 @@ public:
                                     const SymbolTableMap &Symbols,
                                     StubMap &Stubs);
   virtual bool isCompatibleFormat(const ObjectBuffer *Buffer) const;
+  virtual bool isCompatibleFile(const object::ObjectFile *Obj) const;
   virtual void registerEHFrames();
   virtual void finalizeLoad(ObjSectionToIDMap &SectionMap);
 };

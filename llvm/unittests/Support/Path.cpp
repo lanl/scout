@@ -225,8 +225,7 @@ protected:
   }
 
   virtual void TearDown() {
-    uint32_t removed;
-    ASSERT_NO_ERROR(fs::remove_all(TestDirectory.str(), removed));
+    ASSERT_NO_ERROR(fs::remove(TestDirectory.str()));
   }
 };
 
@@ -414,9 +413,39 @@ TEST_F(FileSystemTest, DirectoryIteration) {
   ASSERT_LT(a0, aa1);
   ASSERT_LT(a0, ab1);
   ASSERT_LT(z0, za1);
+
+  ASSERT_NO_ERROR(fs::remove(Twine(TestDirectory) + "/recursive/a0/aa1"));
+  ASSERT_NO_ERROR(fs::remove(Twine(TestDirectory) + "/recursive/a0/ab1"));
+  ASSERT_NO_ERROR(fs::remove(Twine(TestDirectory) + "/recursive/a0"));
+  ASSERT_NO_ERROR(
+      fs::remove(Twine(TestDirectory) + "/recursive/dontlookhere/da1"));
+  ASSERT_NO_ERROR(fs::remove(Twine(TestDirectory) + "/recursive/dontlookhere"));
+  ASSERT_NO_ERROR(fs::remove(Twine(TestDirectory) + "/recursive/pop/p1"));
+  ASSERT_NO_ERROR(fs::remove(Twine(TestDirectory) + "/recursive/pop"));
+  ASSERT_NO_ERROR(fs::remove(Twine(TestDirectory) + "/recursive/z0/za1"));
+  ASSERT_NO_ERROR(fs::remove(Twine(TestDirectory) + "/recursive/z0"));
+  ASSERT_NO_ERROR(fs::remove(Twine(TestDirectory) + "/recursive"));
 }
 
-const char elf[] = {0x7f, 'E', 'L', 'F', 1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
+const char archive[] = "!<arch>\x0A";
+const char bitcode[] = "\xde\xc0\x17\x0b";
+const char coff_object[] = "\x00\x00......";
+const char coff_import_library[] = "\x00\x00\xff\xff....";
+const char elf_relocatable[] = { 0x7f, 'E', 'L', 'F', 1, 2, 1, 0, 0,
+                                 0,    0,   0,   0,   0, 0, 0, 0, 1 };
+const char macho_universal_binary[] = "\xca\xfe\xba\xbe...\0x00";
+const char macho_object[] = "\xfe\xed\xfa\xce..........\x00\x01";
+const char macho_executable[] = "\xfe\xed\xfa\xce..........\x00\x02";
+const char macho_fixed_virtual_memory_shared_lib[] =
+    "\xfe\xed\xfa\xce..........\x00\x03";
+const char macho_core[] = "\xfe\xed\xfa\xce..........\x00\x04";
+const char macho_preload_executable[] = "\xfe\xed\xfa\xce..........\x00\x05";
+const char macho_dynamically_linked_shared_lib[] =
+    "\xfe\xed\xfa\xce..........\x00\x06";
+const char macho_dynamic_linker[] = "\xfe\xed\xfa\xce..........\x00\x07";
+const char macho_bundle[] = "\xfe\xed\xfa\xce..........\x00\x08";
+const char macho_dsym_companion[] = "\xfe\xed\xfa\xce..........\x00\x0a";
+const char windows_resource[] = "\x00\x00\x00\x00\x020\x00\x00\x00\xff";
 
 TEST_F(FileSystemTest, Magic) {
   struct type {
@@ -424,11 +453,27 @@ TEST_F(FileSystemTest, Magic) {
     const char *magic_str;
     size_t magic_str_len;
     fs::file_magic magic;
-  } types [] = {
-    {"magic.archive", "!<arch>\x0A", 8, fs::file_magic::archive},
-    {"magic.elf", elf, sizeof(elf),
-     fs::file_magic::elf_relocatable}
-  };
+  } types[] = {
+#define DEFINE(magic)                                           \
+    { #magic, magic, sizeof(magic), fs::file_magic::magic }
+    DEFINE(archive),
+    DEFINE(bitcode),
+    DEFINE(coff_object),
+    DEFINE(coff_import_library),
+    DEFINE(elf_relocatable),
+    DEFINE(macho_universal_binary),
+    DEFINE(macho_object),
+    DEFINE(macho_executable),
+    DEFINE(macho_fixed_virtual_memory_shared_lib),
+    DEFINE(macho_core),
+    DEFINE(macho_preload_executable),
+    DEFINE(macho_dynamically_linked_shared_lib),
+    DEFINE(macho_dynamic_linker),
+    DEFINE(macho_bundle),
+    DEFINE(macho_dsym_companion),
+    DEFINE(windows_resource)
+#undef DEFINE
+    };
 
   // Create some files filled with magic.
   for (type *i = types, *e = types + (sizeof(types) / sizeof(type)); i != e;
@@ -445,6 +490,7 @@ TEST_F(FileSystemTest, Magic) {
     ASSERT_NO_ERROR(fs::has_magic(file_pathname.c_str(), magic, res));
     EXPECT_TRUE(res);
     EXPECT_EQ(i->magic, fs::identify_magic(magic));
+    ASSERT_NO_ERROR(fs::remove(Twine(file_pathname)));
   }
 }
 
@@ -475,6 +521,7 @@ TEST_F(FileSystemTest, CarriageReturn) {
     MemoryBuffer::getFile(FilePathname.c_str(), Buf);
     EXPECT_EQ(Buf->getBuffer(), "\n");
   }
+  ASSERT_NO_ERROR(fs::remove(Twine(FilePathname)));
 }
 #endif
 
@@ -500,7 +547,7 @@ TEST_F(FileSystemTest, FileMapping) {
     mfr.data()[Val.size()] = 0;
     // Unmap temp file
   }
-  
+
   // Map it back in read-only
   fs::mapped_file_region mfr(Twine(TempPath),
                              fs::mapped_file_region::readonly,
@@ -508,10 +555,10 @@ TEST_F(FileSystemTest, FileMapping) {
                              0,
                              EC);
   ASSERT_NO_ERROR(EC);
-  
+
   // Verify content
   EXPECT_EQ(StringRef(mfr.const_data()), Val);
-  
+
   // Unmap temp file
 
 #if LLVM_HAS_RVALUE_REFERENCES

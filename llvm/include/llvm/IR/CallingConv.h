@@ -54,6 +54,18 @@ namespace CallingConv {
     // WebKit JS - Calling convention for stack based JavaScript calls
     WebKit_JS = 12,
 
+    // AnyReg - Calling convention for dynamic register based calls (e.g.
+    // stackmap and patchpoint intrinsics).
+    AnyReg = 13,
+
+    // PreserveMost - Calling convention for runtime calls that preserves most
+    // registers.
+    PreserveMost = 14,
+
+    // PreserveAll - Calling convention for runtime calls that preserves
+    // (almost) all registers.
+    PreserveAll = 15,
+
     // Target - This is the start of the target-specific calling conventions,
     // e.g. fastcall and thiscall on X86.
     FirstTargetCC = 64,

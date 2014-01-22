@@ -25,6 +25,8 @@
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/ELF.h"
+#include "llvm/Support/MemoryBuffer.h"
+
 using namespace llvm;
 using namespace llvm::object;
 
@@ -176,6 +178,39 @@ void RuntimeDyldELF::deregisterEHFrames() {
     MemMgr->deregisterEHFrames(EHFrameAddr, EHFrameLoadAddr, EHFrameSize);
   }
   RegisteredEHFrameSections.clear();
+}
+
+ObjectImage *RuntimeDyldELF::createObjectImageFromFile(object::ObjectFile *ObjFile) {
+  if (!ObjFile)
+    return NULL;
+
+  error_code ec;
+  MemoryBuffer* Buffer = MemoryBuffer::getMemBuffer(ObjFile->getData(), 
+                                                    "", 
+                                                    false);
+
+  if (ObjFile->getBytesInAddress() == 4 && ObjFile->isLittleEndian()) {
+    DyldELFObject<ELFType<support::little, 2, false> > *Obj =
+      new DyldELFObject<ELFType<support::little, 2, false> >(Buffer, ec);
+    return new ELFObjectImage<ELFType<support::little, 2, false> >(NULL, Obj);
+  }
+  else if (ObjFile->getBytesInAddress() == 4 && !ObjFile->isLittleEndian()) {
+    DyldELFObject<ELFType<support::big, 2, false> > *Obj =
+      new DyldELFObject<ELFType<support::big, 2, false> >(Buffer, ec);
+    return new ELFObjectImage<ELFType<support::big, 2, false> >(NULL, Obj);
+  }
+  else if (ObjFile->getBytesInAddress() == 8 && !ObjFile->isLittleEndian()) {
+    DyldELFObject<ELFType<support::big, 2, true> > *Obj =
+      new DyldELFObject<ELFType<support::big, 2, true> >(Buffer, ec);
+    return new ELFObjectImage<ELFType<support::big, 2, true> >(NULL, Obj);
+  }
+  else if (ObjFile->getBytesInAddress() == 8 && ObjFile->isLittleEndian()) {
+    DyldELFObject<ELFType<support::little, 2, true> > *Obj =
+      new DyldELFObject<ELFType<support::little, 2, true> >(Buffer, ec);
+    return new ELFObjectImage<ELFType<support::little, 2, true> >(NULL, Obj);
+  }
+  else
+    llvm_unreachable("Unexpected ELF format");
 }
 
 ObjectImage *RuntimeDyldELF::createObjectImage(ObjectBuffer *Buffer) {
@@ -1031,8 +1066,8 @@ void RuntimeDyldELF::processRelocationRef(unsigned SectionID,
     //  Look up for existing stub.
     StubMap::const_iterator i = Stubs.find(Value);
     if (i != Stubs.end()) {
-      resolveRelocation(Section, Offset,
-                        (uint64_t)Section.Address + i->second, RelType, 0);
+      RelocationEntry RE(SectionID, Offset, RelType, i->second);
+      addRelocationForSection(RE, SectionID);
       DEBUG(dbgs() << " Stub function found\n");
     } else {
       // Create a new stub function.
@@ -1057,9 +1092,8 @@ void RuntimeDyldELF::processRelocationRef(unsigned SectionID,
         addRelocationForSection(RELo, Value.SectionID);
       }
 
-      resolveRelocation(Section, Offset,
-                        (uint64_t)Section.Address + Section.StubOffset,
-                        RelType, 0);
+      RelocationEntry RE(SectionID, Offset, RelType, Section.StubOffset);
+      addRelocationForSection(RE, SectionID);
       Section.StubOffset += getMaxStubSize();
     }
   } else if (Arch == Triple::ppc64 || Arch == Triple::ppc64le) {
@@ -1404,4 +1438,9 @@ bool RuntimeDyldELF::isCompatibleFormat(const ObjectBuffer *Buffer) const {
     return false;
   return (memcmp(Buffer->getBufferStart(), ELF::ElfMagic, strlen(ELF::ElfMagic))) == 0;
 }
+
+bool RuntimeDyldELF::isCompatibleFile(const object::ObjectFile *Obj) const {
+  return Obj->isELF();
+}
+
 } // namespace llvm

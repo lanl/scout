@@ -29,11 +29,13 @@ namespace llvm {
   class MCSymbol;
   class MCSymbolRefExpr;
   class MCStreamer;
+  class ConstantExpr;
   class GlobalValue;
   class TargetMachine;
   
 class TargetLoweringObjectFile : public MCObjectFileInfo {
   MCContext *Ctx;
+  const DataLayout *DL;
 
   TargetLoweringObjectFile(
     const TargetLoweringObjectFile&) LLVM_DELETED_FUNCTION;
@@ -42,7 +44,7 @@ class TargetLoweringObjectFile : public MCObjectFileInfo {
 public:
   MCContext &getContext() const { return *Ctx; }
 
-  TargetLoweringObjectFile() : MCObjectFileInfo(), Ctx(0) {}
+  TargetLoweringObjectFile() : MCObjectFileInfo(), Ctx(0), DL(0) {}
   
   virtual ~TargetLoweringObjectFile();
   
@@ -54,6 +56,12 @@ public:
   virtual void emitPersonalityValue(MCStreamer &Streamer,
                                     const TargetMachine &TM,
                                     const MCSymbol *Sym) const;
+
+  /// getDepLibFromLinkerOpt - Extract the dependent library name from a linker
+  /// option string. Returns StringRef() if the option does not specify a library.
+  virtual StringRef getDepLibFromLinkerOpt(StringRef LinkerOption) const {
+    return StringRef();
+  }
 
   /// emitModuleFlags - Emit the module flags that the platform cares about.
   virtual void emitModuleFlags(MCStreamer &,
@@ -121,6 +129,11 @@ public:
   /// main label that is the address of the global
   MCSymbol *getSymbol(Mangler &M, const GlobalValue *GV) const;
 
+  /// Return the MCSymbol for a private symbol with global value name as its
+  /// base, with the specified suffix.
+  MCSymbol *getSymbolWithGlobalValueBase(Mangler &M, const GlobalValue *GV,
+                                         StringRef Suffix) const;
+
   // getCFIPersonalitySymbol - The symbol that gets passed to .cfi_personality.
   virtual MCSymbol *
   getCFIPersonalitySymbol(const GlobalValue *GV, Mangler *Mang,
@@ -145,6 +158,11 @@ public:
   /// \brief Create a symbol reference to describe the given TLS variable when
   /// emitting the address in debug info.
   virtual const MCExpr *getDebugThreadLocalSymbol(const MCSymbol *Sym) const;
+
+  virtual const MCExpr *
+  getExecutableRelativeSymbol(const ConstantExpr *CE, Mangler *Mang) const {
+    return 0;
+  }
 
 protected:
   virtual const MCSection *

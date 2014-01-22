@@ -17,7 +17,6 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/Statistic.h"
-#include "llvm/Analysis/Dominators.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Analysis/ValueTracking.h"
@@ -26,6 +25,7 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Dominators.h"
 #include "llvm/IR/GlobalAlias.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
@@ -127,8 +127,10 @@ bool llvm::ConstantFoldTerminator(BasicBlock *BB, bool DeleteDeadConditions,
       // dest.  If so, eliminate it as an explicit compare.
       if (i.getCaseSuccessor() == DefaultDest) {
         MDNode* MD = SI->getMetadata(LLVMContext::MD_prof);
-        // MD should have 2 + NumCases operands.
-        if (MD && MD->getNumOperands() == 2 + SI->getNumCases()) {
+        unsigned NCases = SI->getNumCases();
+        // Fold the case metadata into the default if there will be any branches
+        // left, unless the metadata doesn't match the switch.
+        if (NCases > 1 && MD && MD->getNumOperands() == 2 + NCases) {
           // Collect branch weights into a vector.
           SmallVector<uint32_t, 8> Weights;
           for (unsigned MD_i = 1, MD_e = MD->getNumOperands(); MD_i < MD_e;
@@ -506,11 +508,12 @@ void llvm::MergeBasicBlockIntoOnlyPred(BasicBlock *DestBB, Pass *P) {
   DestBB->getInstList().splice(DestBB->begin(), PredBB->getInstList());
 
   if (P) {
-    DominatorTree *DT = P->getAnalysisIfAvailable<DominatorTree>();
-    if (DT) {
-      BasicBlock *PredBBIDom = DT->getNode(PredBB)->getIDom()->getBlock();
-      DT->changeImmediateDominator(DestBB, PredBBIDom);
-      DT->eraseNode(PredBB);
+    if (DominatorTreeWrapperPass *DTWP =
+            P->getAnalysisIfAvailable<DominatorTreeWrapperPass>()) {
+      DominatorTree &DT = DTWP->getDomTree();
+      BasicBlock *PredBBIDom = DT.getNode(PredBB)->getIDom()->getBlock();
+      DT.changeImmediateDominator(DestBB, PredBBIDom);
+      DT.eraseNode(PredBB);
     }
   }
   // Nuke BB.
@@ -1045,7 +1048,11 @@ bool llvm::LowerDbgDeclare(Function &F) {
   for (SmallVectorImpl<DbgDeclareInst *>::iterator I = Dbgs.begin(),
          E = Dbgs.end(); I != E; ++I) {
     DbgDeclareInst *DDI = *I;
-    if (AllocaInst *AI = dyn_cast_or_null<AllocaInst>(DDI->getAddress())) {
+    AllocaInst *AI = dyn_cast_or_null<AllocaInst>(DDI->getAddress());
+    // If this is an alloca for a scalar variable, insert a dbg.value
+    // at each load and store to the alloca and erase the dbg.declare.
+    if (AI && !AI->isArrayAllocation()) {
+
       // We only remove the dbg.declare intrinsic if all uses are
       // converted to dbg.value intrinsics.
       bool RemoveDDI = true;

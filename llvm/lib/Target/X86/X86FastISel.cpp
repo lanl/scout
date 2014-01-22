@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "X86.h"
+#include "X86CallingConv.h"
 #include "X86ISelLowering.h"
 #include "X86InstrBuilder.h"
 #include "X86RegisterInfo.h"
@@ -560,13 +561,8 @@ redo_gep:
           Disp += CI->getSExtValue() * S;
           break;
         }
-        if (isa<AddOperator>(Op) &&
-            (!isa<Instruction>(Op) ||
-             FuncInfo.MBBMap[cast<Instruction>(Op)->getParent()]
-               == FuncInfo.MBB) &&
-            isa<ConstantInt>(cast<AddOperator>(Op)->getOperand(1))) {
-          // An add (in the same block) with a constant operand. Fold the
-          // constant.
+        if (canFoldAddIntoGEP(U, Op)) {
+          // A compatible add with a constant operand. Fold the constant.
           ConstantInt *CI =
             cast<ConstantInt>(cast<AddOperator>(Op)->getOperand(1));
           Disp += CI->getSExtValue() * S;
@@ -701,7 +697,7 @@ bool X86FastISel::X86SelectCallAddress(const Value *V, X86AddressMode &AM) {
       return false;
 
     // Can't handle DLLImport.
-    if (GV->hasDLLImportLinkage())
+    if (GV->hasDLLImportStorageClass())
       return false;
 
     // Can't handle TLS.
@@ -892,7 +888,7 @@ bool X86FastISel::X86SelectRet(const Instruction *I) {
 
   // Now emit the RET.
   MachineInstrBuilder MIB =
-    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(X86::RET));
+    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(Subtarget->is64Bit() ? X86::RETQ : X86::RETL));
   for (unsigned i = 0, e = RetRegs.size(); i != e; ++i)
     MIB.addReg(RetRegs[i], RegState::Implicit);
   return true;
@@ -1512,8 +1508,13 @@ bool X86FastISel::X86SelectSelect(const Instruction *I) {
   unsigned Op2Reg = getRegForValue(I->getOperand(2));
   if (Op2Reg == 0) return false;
 
-  BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(X86::TEST8rr))
-    .addReg(Op0Reg).addReg(Op0Reg);
+  // Selects operate on i1, however, Op0Reg is 8 bits width and may contain
+  // garbage. Indeed, only the less significant bit is supposed to be accurate.
+  // If we read more than the lsb, we may see non-zero values whereas lsb
+  // is zero. Therefore, we have to truncate Op0Reg to i1 for the select.
+  // This is acheived by performing TEST against 1.
+  BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(X86::TEST8ri))
+    .addReg(Op0Reg).addImm(1);
   unsigned ResultReg = createResultReg(RC);
   BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(Opc), ResultReg)
     .addReg(Op1Reg).addReg(Op2Reg);
@@ -1700,6 +1701,8 @@ bool X86FastISel::X86VisitIntrinsicCall(const IntrinsicInst &I) {
     const Value *Op1 = I.getArgOperand(0); // The guard's value.
     const AllocaInst *Slot = cast<AllocaInst>(I.getArgOperand(1));
 
+    MFI.setStackProtectorIndex(FuncInfo.StaticAllocaMap[Slot]);
+
     // Grab the frame index.
     X86AddressMode AM;
     if (!X86SelectAddress(Slot, AM)) return false;
@@ -1867,7 +1870,7 @@ static unsigned computeBytesPoppedByCallee(const X86Subtarget &Subtarget,
                                            const ImmutableCallSite &CS) {
   if (Subtarget.is64Bit())
     return 0;
-  if (Subtarget.isTargetWindows())
+  if (Subtarget.getTargetTriple().isOSMSVCRT())
     return 0;
   CallingConv::ID CC = CS.getCallingConv();
   if (CC == CallingConv::Fast || CC == CallingConv::GHC)
@@ -2108,6 +2111,8 @@ bool X86FastISel::DoSelectCall(const Instruction *I, const char *MemIntName) {
       // FIXME: Indirect doesn't need extending, but fast-isel doesn't fully
       // support this.
       return false;
+    case CCValAssign::FPExt:
+      llvm_unreachable("Unexpected loc info!");
     }
 
     if (VA.isRegLoc()) {

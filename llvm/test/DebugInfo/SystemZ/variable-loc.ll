@@ -2,7 +2,7 @@
 ;
 ; This is a regression test making sure the location of variables is correct in
 ; debugging information, even if they're addressed via the frame pointer.
-; A copy of the AArch64 test, commandeered for SystemZ.
+; Originally a copy of the AArch64 test, commandeered for SystemZ.
 ;
 ; First make sure main_arr is where we expect it: %r11 + 164
 ;
@@ -39,7 +39,7 @@ entry:
   %retval = alloca i32, align 4
   %main_arr = alloca [100 x i32], align 4
   %val = alloca i32, align 4
-  store i32 0, i32* %retval
+  store volatile i32 0, i32* %retval
   call void @llvm.dbg.declare(metadata !{[100 x i32]* %main_arr}, metadata !17), !dbg !22
   call void @llvm.dbg.declare(metadata !{i32* %val}, metadata !23), !dbg !24
   %arraydecay = getelementptr inbounds [100 x i32]* %main_arr, i32 0, i32 0, !dbg !25
@@ -55,6 +55,7 @@ entry:
 declare i32 @printf(i8*, ...)
 
 !llvm.dbg.cu = !{!0}
+!llvm.module.flags = !{!30}
 
 !0 = metadata !{i32 786449, metadata !29, i32 12, metadata !"clang version 3.2 ", i1 false, metadata !"", i32 0, metadata !1, metadata !1, metadata !3, metadata !1,  metadata !1, metadata !""} ; [ DW_TAG_compile_unit ] [/home/timnor01/a64-trunk/build/simple.c] [DW_LANG_C99]
 !1 = metadata !{i32 0}
@@ -83,3 +84,4 @@ declare i32 @printf(i8*, ...)
 !27 = metadata !{i32 24, i32 3, metadata !18, null}
 !28 = metadata !{i32 26, i32 3, metadata !18, null}
 !29 = metadata !{metadata !"simple.c", metadata !"/home/timnor01/a64-trunk/build"}
+!30 = metadata !{i32 1, metadata !"Debug Info Version", i32 1}

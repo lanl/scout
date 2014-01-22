@@ -148,9 +148,10 @@ public:
 
   bool isBigEndian() const { return !IsLittleEndian; }
   bool isLittleEndian() const { return IsLittleEndian; }
-  // Return the pointer type for the given address space, defaults to
-  // the pointer type from the data layout.
-  // FIXME: The default needs to be removed once all the code is updated.
+
+  /// Return the pointer type for the given address space, defaults to
+  /// the pointer type from the data layout.
+  /// FIXME: The default needs to be removed once all the code is updated.
   virtual MVT getPointerTy(uint32_t /*AS*/ = 0) const;
   unsigned getPointerSizeInBits(uint32_t AS = 0) const;
   unsigned getPointerTypeSizeInBits(Type *Ty) const;
@@ -170,6 +171,11 @@ public:
 
   virtual bool isSelectSupported(SelectSupportKind /*kind*/) const {
     return true;
+  }
+
+  /// Return true if multiple condition registers are available.
+  bool hasMultipleConditionRegisters() const {
+    return HasMultipleConditionRegisters;
   }
 
   /// Return true if a vector of the given type should be split
@@ -201,6 +207,17 @@ public:
   /// unlikely to be predicted right.
   bool isPredictableSelectExpensive() const {
     return PredictableSelectIsExpensive;
+  }
+
+  /// isLoadBitCastBeneficial() - Return true if the following transform
+  /// is beneficial.
+  /// fold (conv (load x)) -> (load (conv*)x)
+  /// On architectures that don't natively support some vector loads efficiently,
+  /// casting the load to a smaller vector of larger types and loading
+  /// is more efficient, however, this can be undone by optimizations in
+  /// dag combiner.
+  virtual bool isLoadBitCastBeneficial(EVT /* Load */, EVT /* Bitcast */) const {
+    return true;
   }
 
   /// Return the ValueType of the result of SETCC operations.  Also used to
@@ -826,6 +843,11 @@ public:
     return 0;
   }
 
+  /// Returns true if a cast between SrcAS and DestAS is a noop.
+  virtual bool isNoopAddrSpaceCast(unsigned SrcAS, unsigned DestAS) const {
+    return false;
+  }
+
   //===--------------------------------------------------------------------===//
   /// \name Helpers for TargetTransformInfo implementations
   /// @{
@@ -863,13 +885,13 @@ protected:
   }
 
   /// Indicate whether this target prefers to use _setjmp to implement
-  /// llvm.setjmp or the non _ version.  Defaults to false.
+  /// llvm.setjmp or the version without _.  Defaults to false.
   void setUseUnderscoreSetJmp(bool Val) {
     UseUnderscoreSetJmp = Val;
   }
 
   /// Indicate whether this target prefers to use _longjmp to implement
-  /// llvm.longjmp or the non _ version.  Defaults to false.
+  /// llvm.longjmp or the version without _.  Defaults to false.
   void setUseUnderscoreLongJmp(bool Val) {
     UseUnderscoreLongJmp = Val;
   }
@@ -907,6 +929,15 @@ protected:
   /// the select operations if possible.
   void setSelectIsExpensive(bool isExpensive = true) {
     SelectIsExpensive = isExpensive;
+  }
+
+  /// Tells the code generator that the target has multiple (allocatable)
+  /// condition registers that can be used to store the results of comparisons
+  /// for use by selects and conditional branches. With multiple condition
+  /// registers, the code generator will not aggressively sink comparisons into
+  /// the blocks of their users.
+  void setHasMultipleConditionRegisters(bool hasManyRegs = true) {
+    HasMultipleConditionRegisters = hasManyRegs;
   }
 
   /// Tells the code generator not to expand sequence of operations into a
@@ -1304,6 +1335,13 @@ private:
   /// the select operations if possible.
   bool SelectIsExpensive;
 
+  /// Tells the code generator that the target has multiple (allocatable)
+  /// condition registers that can be used to store the results of comparisons
+  /// for use by selects and conditional branches. With multiple condition
+  /// registers, the code generator will not aggressively sink comparisons into
+  /// the blocks of their users.
+  bool HasMultipleConditionRegisters;
+
   /// Tells the code generator not to expand integer divides by constants into a
   /// sequence of muls, adds, and shifts.  This is a hack until a real cost
   /// model is in place.  If we ever optimize for size, this will be set to true
@@ -1668,6 +1706,10 @@ protected:
   /// Return true if the value types that can be represented by the specified
   /// register class are all legal.
   bool isLegalRC(const TargetRegisterClass *RC) const;
+
+  /// Replace/modify any TargetFrameIndex operands with a targte-dependent
+  /// sequence of memory operands that is recognized by PrologEpilogInserter.
+  MachineBasicBlock *emitPatchPoint(MachineInstr *MI, MachineBasicBlock *MBB) const;
 };
 
 /// This class defines information used to lower LLVM code to legal SelectionDAG
@@ -2055,6 +2097,24 @@ public:
     return VT.bitsLT(MinVT) ? MinVT : VT;
   }
 
+  /// Returns a 0 terminated array of registers that can be safely used as
+  /// scratch registers.
+  virtual const uint16_t *getScratchRegisters(CallingConv::ID CC) const {
+    return NULL;
+  }
+
+  /// This callback is used to prepare for a volatile or atomic load.
+  /// It takes a chain node as input and returns the chain for the load itself.
+  ///
+  /// Having a callback like this is necessary for targets like SystemZ,
+  /// which allows a CPU to reuse the result of a previous load indefinitely,
+  /// even if a cache-coherent store is performed by another CPU.  The default
+  /// implementation does nothing.
+  virtual SDValue prepareVolatileOrAtomicLoad(SDValue Chain, SDLoc DL,
+                                              SelectionDAG &DAG) const {
+    return Chain;
+  }
+
   /// This callback is invoked by the type legalizer to legalize nodes with an
   /// illegal operand type but legal result types.  It replaces the
   /// LowerOperation callback in the type Legalizer.  The reason we can not do
@@ -2103,6 +2163,10 @@ public:
                                    const TargetLibraryInfo *) const {
     return 0;
   }
+
+
+  bool verifyReturnAddressArgumentIsConstant(SDValue Op,
+                                             SelectionDAG &DAG) const;
 
   //===--------------------------------------------------------------------===//
   // Inline Asm Support hooks
@@ -2251,12 +2315,12 @@ public:
   // Instruction Emitting Hooks
   //
 
-  // This method should be implemented by targets that mark instructions with
-  // the 'usesCustomInserter' flag.  These instructions are special in various
-  // ways, which require special support to insert.  The specified MachineInstr
-  // is created but not inserted into any basic blocks, and this method is
-  // called to expand it into a sequence of instructions, potentially also
-  // creating new basic blocks and control flow.
+  /// This method should be implemented by targets that mark instructions with
+  /// the 'usesCustomInserter' flag.  These instructions are special in various
+  /// ways, which require special support to insert.  The specified MachineInstr
+  /// is created but not inserted into any basic blocks, and this method is
+  /// called to expand it into a sequence of instructions, potentially also
+  /// creating new basic blocks and control flow.
   virtual MachineBasicBlock *
     EmitInstrWithCustomInserter(MachineInstr *MI, MachineBasicBlock *MBB) const;
 
