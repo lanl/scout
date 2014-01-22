@@ -6796,12 +6796,12 @@ def err_no_color_assignment_renderall : Error<
     "color components {r,g,b,a} were not assigned in renderall">;
 def err_rhs_after_lhs_forall : Error<
     "mesh field appears on LHS then on subsequent RHS">;
-def err_cshift_not_allowed : Error<
-    "cannot use cshift on unstructured mesh">;
-def err_cshift_args : Error<
-    "number of cshift args does not correspond to mesh dimensions">;
-def err_cshift_field : Error<
-    "first argument to cshift must be a mesh field">;
+def err_shift_not_allowed : Error<
+    "cannot use cshift/eoshift on unstructured mesh">;
+def err_shift_args : Error<
+    "number of cshift/eoshift args does not correspond to mesh dimensions">;
+def err_shift_field : Error<
+    "first argument to cshift/eoshift must be a mesh field">;
 def err_pointer_field_mesh : Error<
     "mesh field element must be non-pointer type">;
 def err_elements_not_in_forall_renderall : Error<

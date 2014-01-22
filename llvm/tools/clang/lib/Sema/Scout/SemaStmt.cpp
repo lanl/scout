@@ -100,19 +100,23 @@ namespace {
           // we can either (1) force the loop to run sequentially or
           // (2) replace print function with a "special" version...
           sema_.Diag(E->getExprLoc(), diag::warn_forall_calling_io_func);
-        } else if (name == "eoshift" || name == "eoshifti" || name == "eoshiftf" || name == "eoshiftd") {
-          //SC_TODO -- need to check mesh types here for eoshift() validity.
-        } else if (name == "cshift" || name == "cshifti" || name == "cshiftf" || name == "cshiftd") {
+        } else if (name == "cshift" || name == "cshifti" || name == "cshiftf" || name == "cshiftd" ||
+        		name == "eoshift" || name == "eoshifti" || name == "eoshiftf" || name == "eoshiftd") {
 
           // SC_TODO -- need to check mesh types here for cshift() validity.
+
+        	unsigned extra = 1; //cshift
+        	if (name == "eoshift" || name == "eoshifti" || name == "eoshiftf" || name == "eoshiftd") {
+        		extra = 2;
+        	}
 
           const MeshType* mt = fs_->getMeshType();
           unsigned args = E->getNumArgs();
 
           unsigned dims = mt->rankOf();
 
-          if (args != dims + 1) {
-            sema_.Diag(E->getRParenLoc(), diag::err_cshift_args);
+          if (args != dims + extra) {
+            sema_.Diag(E->getRParenLoc(), diag::err_shift_args);
             error_ = true;
           } else {
             Expr* fe = E->getArg(0);
@@ -126,12 +130,12 @@ namespace {
                 ValueDecl* bd = dr->getDecl();
 
                 if (!isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
-                  sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
+                  sema_.Diag(E->getRParenLoc(), diag::err_shift_field);
                   error_ = true;
                 }
               }
             } else {
-              sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
+              sema_.Diag(E->getRParenLoc(), diag::err_shift_field);
               error_ = true;
             }
           }
@@ -1017,19 +1021,23 @@ namespace {
           // we can either (1) force the loop to run sequentially or
           // (2) replace print function with a "special" version...
           sema_.Diag(E->getExprLoc(), diag::warn_renderall_calling_io_func);
-        } else if (name == "eoshift" || name == "eoshifti" || name == "eoshiftf" || name == "eoshiftd") {
-          //SC_TODO -- need to check mesh types here for eoshift() validity.
-        } else if (name == "cshift" || name == "cshifti" || name == "cshiftf" || name == "cshiftd") {
+        } else if (name == "cshift" || name == "cshifti" || name == "cshiftf" || name == "cshiftd" ||
+        		name == "eoshift" || name == "eoshifti" || name == "eoshiftf" || name == "eoshiftd") {
 
           // SC_TODO -- need to check mesh types here for cshift() validity.
+
+        	unsigned extra = 1; //cshift
+        	if (name == "eoshift" || name == "eoshifti" || name == "eoshiftf" || name == "eoshiftd") {
+        		extra = 2;
+        	}
 
           const MeshType* mt = fs_->getMeshType();
           unsigned args = E->getNumArgs();
 
           unsigned dims = mt->rankOf();
 
-          if (args != dims + 1) {
-            sema_.Diag(E->getRParenLoc(), diag::err_cshift_args);
+          if (args != dims + extra) {
+            sema_.Diag(E->getRParenLoc(), diag::err_shift_args);
             error_ = true;
           } else {
             Expr* fe = E->getArg(0);
@@ -1043,12 +1051,12 @@ namespace {
                 ValueDecl* bd = dr->getDecl();
 
                 if (!isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
-                  sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
+                  sema_.Diag(E->getRParenLoc(), diag::err_shift_field);
                   error_ = true;
                 }
               }
             } else {
-              sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
+              sema_.Diag(E->getRParenLoc(), diag::err_shift_field);
               error_ = true;
             }
           }
