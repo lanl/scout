@@ -118,7 +118,7 @@ llvm::Value *CodeGenFunction::GetMeshBaseAddr(const ForallMeshStmt &S) {
 
 
 
-// ----- EmitforallStmt
+// ----- EmitforallMeshStmt
 //
 // Forall statements are transformed into a nested loop
 // structure (with a loop per rank of the mesh) that
@@ -160,6 +160,9 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   LoopBounds.clear();
   InductionVar.clear();
 
+  //need a marker for start of Forall for CodeExtraction
+  llvm::BasicBlock *entry = EmitForallMarkerBlock("forall.entry");
+
   // Create the induction variables for eack rank.
   for(unsigned int i = 0; i < 3; i++) {
     LoopBounds.push_back(0);
@@ -177,7 +180,15 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   Builder.CreateStore(ConstantZero, InductionVar[3]);
 
   EmitForallMeshLoop(S, rank);
+
+  //need a marker for end of Forall for CodeExtraction
+  llvm::BasicBlock *exit = EmitForallMarkerBlock("forall.exit");
+
+  // Extract Blocks to function and replace w/ call to function
+  ExtractForall(entry, exit, "ForallMeshFunction");
+
 }
+
 
 //generate one of the nested loops
 void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
@@ -299,6 +310,38 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
 //
 void CodeGenFunction::EmitForallBody(const ForallStmt &S) {
   EmitStmt(S.getBody());
+}
+
+//emit a branch and block used a markers for code extraction
+llvm::BasicBlock *CodeGenFunction::EmitForallMarkerBlock(const std::string name) {
+	 llvm::BasicBlock *entry = createBasicBlock(name);
+	  Builder.CreateBr(entry);
+	  EmitBlock(entry);
+	  return entry;
+}
+
+// Extract blocks to function and replace w/ call to function
+void CodeGenFunction:: ExtractForall(llvm::BasicBlock *entry, llvm::BasicBlock *exit, const std::string name) {
+  std::vector< llvm::BasicBlock * > Blocks;
+
+  llvm::Function::iterator BB = CurFn->begin();
+  // find start marker
+  for( ; BB->getName() != entry->getName(); ++BB) { }
+
+  // collect forall basic blocks up to exit
+  for( ; BB->getName() != exit->getName(); ++BB) {
+  	//(*BB).dump();
+  	Blocks.push_back(BB);
+  }
+
+  llvm::DominatorTree DT;
+  DT.runOnFunction(*CurFn);
+
+  llvm::CodeExtractor codeExtractor(Blocks, &DT, false);
+
+  llvm::Function *ForallFn = codeExtractor.extractCodeRegion();
+
+  ForallFn->setName(name);
 }
 
 

@@ -1918,6 +1918,8 @@ public:
   void EmitForallBody(const ForallStmt &S);
   void EmitForallMeshStmt(const ForallMeshStmt &S);
   void EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r);
+  llvm::BasicBlock *EmitForallMarkerBlock(const std::string name);
+  void ExtractForall(llvm::BasicBlock *entry, llvm::BasicBlock *exit, const std::string name);
 
   void EmitForAllStmtWrapper(const ForallMeshStmt &S);
 
