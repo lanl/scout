@@ -330,7 +330,6 @@ void CodeGenFunction:: ExtractForall(llvm::BasicBlock *entry, llvm::BasicBlock *
 
   // collect forall basic blocks up to exit
   for( ; BB->getName() != exit->getName(); ++BB) {
-  	//(*BB).dump();
   	Blocks.push_back(BB);
   }
 
@@ -346,7 +345,17 @@ void CodeGenFunction:: ExtractForall(llvm::BasicBlock *entry, llvm::BasicBlock *
 
 
 void CodeGenFunction::EmitForallArrayStmt(const ForallArrayStmt &S) {
+
+	//need a marker for start of Forall for CodeExtraction
+	llvm::BasicBlock *entry = EmitForallMarkerBlock("forall.entry");
+
   EmitForallArrayLoop(S, S.getDims());
+
+  //need a marker for end of Forall for CodeExtraction
+  llvm::BasicBlock *exit = EmitForallMarkerBlock("forall.exit");
+
+  // Extract Blocks to function and replace w/ call to function
+  ExtractForall(entry, exit, "ForallArrayFunction");
 }
 
 void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) {
