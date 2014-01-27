@@ -78,6 +78,7 @@ using namespace std;
 #include "clang/Frontend/FrontendDiagnostic.h"
 #include "clang/Frontend/TextDiagnosticBuffer.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
+#include "clang/Frontend/Utils.h"
 #include "clang/FrontendTool/Utils.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/LinkAllPasses.h"
@@ -89,7 +90,7 @@ using namespace std;
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
-
+#include <cstdio>
 using namespace clang;
 using namespace llvm::opt;
 
@@ -226,12 +227,13 @@ int cc1_main(const char **ArgBegin, const char **ArgEnd,
   if (Clang->getFrontendOpts().DisableFree) {
     if (llvm::AreStatisticsEnabled() || Clang->getFrontendOpts().ShowStats)
       llvm::PrintStatistics();
-    Clang.take();
+    BuryPointer(Clang.take());
     return !Success;
   }
 
   // Managed static deconstruction. Useful for making things like
   // -time-passes usable.
   llvm::llvm_shutdown();
+
   return !Success;
 }

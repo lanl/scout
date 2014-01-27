@@ -126,8 +126,9 @@ cmake_flags := -DCMAKE_BUILD_TYPE=$(build_type) \
                -DCMAKE_SOURCE_DIR=$(src_dir) \
                $(SC_BUILD_CMAKE_FLAGS)
 
-### cmake options required to build scout for LLDB on the Mac
-ifdef SC_USE_LIBCPP
+uname := $(shell uname)
+
+ifeq ($(uname), Darwin)
   cmake_flags += -DCMAKE_CXX_FLAGS="-stdlib=libc++" -DCMAKE_SHARED_LINKER_FLAGS="-stdlib=libc++"
 endif
 

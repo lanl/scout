@@ -110,6 +110,6 @@ endif()
 
 ##### LLVM_CONFIGURATION
 #
-  include(@SCOUT_INSTALL_PREFIX@/share/llvm/cmake/LLVMConfig.cmake)
+  include(@SCOUT_INSTALL_PREFIX@/llvm/share/llvm/cmake/LLVMConfig.cmake)
 #
 #####
