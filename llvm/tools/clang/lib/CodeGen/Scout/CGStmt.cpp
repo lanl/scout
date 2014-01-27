@@ -67,12 +67,12 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Dominators.h"
 
 #include <stdio.h>
 #include "llvm/Transforms/Utils/CodeExtractor.h"
 #include "clang/AST/Decl.h"
 #include "CGBlocks.h"
-#include "clang/Analysis/Analyses/Dominators.h"
 
 #include "Scout/CGScoutRuntime.h"
 
@@ -353,10 +353,7 @@ void CodeGenFunction:: ExtractForall(llvm::BasicBlock *entry, llvm::BasicBlock *
   	Blocks.push_back(BB);
   }
 
-  llvm::DominatorTree DT;
-  DT.runOnFunction(*CurFn);
-
-  llvm::CodeExtractor codeExtractor(Blocks, &DT, false);
+  llvm::CodeExtractor codeExtractor(Blocks, 0, false);
 
   llvm::Function *ForallFn = codeExtractor.extractCodeRegion();
 
