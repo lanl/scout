@@ -1910,6 +1910,7 @@ public:
   // +===== Scout ============================================================+
   //
   llvm::Value *GetMeshBaseAddr(const ForallMeshStmt &S);
+  llvm::Value *GetMeshBaseAddr(const RenderallMeshStmt &S);
 
   void GetMeshDimValues(const ForallMeshStmt &S,
                         llvm::SmallVector<llvm::Value*, 3> &MeshDimensions,
@@ -1930,7 +1931,7 @@ public:
   void EmitForallArrayStmt(const ForallArrayStmt &S);
   void EmitForallArrayLoop(const ForallArrayStmt &S,  unsigned r);
 
-  void EmitRenderallStmt(const RenderallStmt &S);
+  void EmitRenderallStmt(const RenderallMeshStmt &S);
   //void EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S);
 
   void insertMeshDump(llvm::Value* baseAddr);

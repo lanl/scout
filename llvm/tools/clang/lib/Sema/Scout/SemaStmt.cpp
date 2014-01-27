@@ -505,7 +505,7 @@ StmtResult Sema::ActOnForallArrayStmt(IdentifierInfo* InductionVarInfo[],
   return Owned(FS);
 }
 
-/*
+#if 0
 namespace{
 
   class RenderAllVisitor : public StmtVisitor<RenderAllVisitor> {
@@ -985,7 +985,7 @@ Sema::ActOnVolumeRenderAllStmt(
 
   return Owned(vrs);
 }
-*/
+#endif
 
 
 namespace {
@@ -1269,7 +1269,7 @@ bool Sema::ActOnRenderallMeshRefVariable(Scope* S,
 }
 
 
-StmtResult Sema::ActOnRenderallMeshStmt(SourceLocation ForallLoc,
+StmtResult Sema::ActOnRenderallMeshStmt(SourceLocation RenderallLoc,
                                 RenderallMeshStmt::MeshElementType ElementType,
                                 const MeshType *MT,
                                 VarDecl* MVD,
@@ -1284,7 +1284,7 @@ StmtResult Sema::ActOnRenderallMeshStmt(SourceLocation ForallLoc,
   RenderallMeshStmt* RS = new (Context) RenderallMeshStmt(ElementType,
                                                           RefVarInfo,
                                                           MeshInfo, MVD, MT,
-                                                          ForallLoc,
+                                                          RenderallLoc,
                                                           Body, Predicate,
                                                           LParenLoc, RParenLoc);
 

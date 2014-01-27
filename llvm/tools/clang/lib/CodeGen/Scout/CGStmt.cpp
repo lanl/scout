@@ -118,6 +118,23 @@ llvm::Value *CodeGenFunction::GetMeshBaseAddr(const ForallMeshStmt &S) {
   return BaseAddr;
 }
 
+//SC_TODO: remove Renderall/Forall duplication here.
+llvm::Value *CodeGenFunction::GetMeshBaseAddr(const RenderallMeshStmt &S) {
+  const VarDecl *MeshVarDecl = S.getMeshVarDecl();
+  llvm::Value *BaseAddr = 0;
+
+  if (MeshVarDecl->hasGlobalStorage()) {
+    BaseAddr = Builder.CreateLoad(CGM.GetAddrOfGlobalVar(MeshVarDecl));
+  } else {
+    BaseAddr = LocalDeclMap[MeshVarDecl];
+    if (MeshVarDecl->getType().getTypePtr()->isReferenceType()) {
+      BaseAddr = Builder.CreateLoad(BaseAddr);
+    }
+  }
+
+  return BaseAddr;
+}
+
 
 
 // ----- EmitforallMeshStmt
@@ -450,7 +467,21 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
 }
 
 
-void CodeGenFunction::EmitRenderallStmt(const RenderallStmt &S) {
+void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
+
+	llvm::Value *MeshBaseAddr = GetMeshBaseAddr(S);
+	llvm::StringRef MeshName = S.getMeshType()->getName();
+
+	// find number of fields
+	MeshDecl* MD =  S.getMeshType()->getDecl();
+	unsigned int nfields = MD->fields();
+
+	LoopBounds.clear();
+	for(unsigned int i = 0; i < 3; i++) {
+	    LoopBounds.push_back(0);
+	    sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
+	    LoopBounds[i] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
+	}
 
 	llvm::Function *BeginFunc = CGM.getScoutRuntime().RenderallUniformBeginFunction();
 	Builder.CreateCall(BeginFunc, LoopBounds);
