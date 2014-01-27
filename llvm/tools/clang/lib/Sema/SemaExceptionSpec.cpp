@@ -204,7 +204,7 @@ bool Sema::CheckEquivalentExceptionSpec(FunctionDecl *Old, FunctionDecl *New) {
     FunctionProtoType::ExtProtoInfo EPI = NewProto->getExtProtoInfo();
     EPI.ExceptionSpecType = EST_DynamicNone;
     QualType NewType = Context.getFunctionType(NewProto->getResultType(),
-                                               NewProto->getArgTypes(), EPI);
+                                               NewProto->getParamTypes(), EPI);
     New->setType(NewType);
     return false;
   }
@@ -225,7 +225,7 @@ bool Sema::CheckEquivalentExceptionSpec(FunctionDecl *Old, FunctionDecl *New) {
   // Update the type of the function with the appropriate exception
   // specification.
   QualType NewType = Context.getFunctionType(NewProto->getResultType(),
-                                             NewProto->getArgTypes(), EPI);
+                                             NewProto->getParamTypes(), EPI);
   New->setType(NewType);
 
   // Warn about the lack of exception specification.
@@ -720,14 +720,13 @@ bool Sema::CheckParamExceptionSpec(const PartialDiagnostic & NoteID,
 
   // We shouldn't even be testing this unless the arguments are otherwise
   // compatible.
-  assert(Target->getNumArgs() == Source->getNumArgs() &&
+  assert(Target->getNumParams() == Source->getNumParams() &&
          "Functions have different argument counts.");
-  for (unsigned i = 0, E = Target->getNumArgs(); i != E; ++i) {
-    if (CheckSpecForTypesEquivalent(*this,
-                           PDiag(diag::err_deep_exception_specs_differ) << 1, 
-                                    PDiag(),
-                                    Target->getArgType(i), TargetLoc,
-                                    Source->getArgType(i), SourceLoc))
+  for (unsigned i = 0, E = Target->getNumParams(); i != E; ++i) {
+    if (CheckSpecForTypesEquivalent(
+            *this, PDiag(diag::err_deep_exception_specs_differ) << 1, PDiag(),
+            Target->getParamType(i), TargetLoc, Source->getParamType(i),
+            SourceLoc))
       return true;
   }
   return false;
@@ -1063,7 +1062,6 @@ CanThrowResult Sema::canThrow(const Expr *E) {
   case Expr::AddrLabelExprClass:
   case Expr::ArrayTypeTraitExprClass:
   case Expr::AtomicExprClass:
-  case Expr::BinaryTypeTraitExprClass:
   case Expr::TypeTraitExprClass:
   case Expr::CXXBoolLiteralExprClass:
   case Expr::CXXNoexceptExprClass:
@@ -1086,7 +1084,6 @@ CanThrowResult Sema::canThrow(const Expr *E) {
   case Expr::PredefinedExprClass:
   case Expr::SizeOfPackExprClass:
   case Expr::StringLiteralClass:
-  case Expr::UnaryTypeTraitExprClass:
     // These expressions can never throw.
     return CT_Cannot;
 

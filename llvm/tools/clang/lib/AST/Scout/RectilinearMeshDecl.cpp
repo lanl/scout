@@ -94,7 +94,7 @@ RectilinearMeshDecl *RectilinearMeshDecl::Create(const ASTContext &C,
                                                  IdentifierInfo *Id,
                                                  RectilinearMeshDecl* PrevDecl) {
 
-  RectilinearMeshDecl* M = new (C) RectilinearMeshDecl(DC,
+  RectilinearMeshDecl* M = new (C, DC) RectilinearMeshDecl(DC,
                                                        StartLoc,
                                                        IdLoc, Id,
                                                        PrevDecl);
@@ -105,10 +105,9 @@ RectilinearMeshDecl *RectilinearMeshDecl::Create(const ASTContext &C,
 
 RectilinearMeshDecl
 *RectilinearMeshDecl::CreateDeserialized(const ASTContext &C, unsigned ID) {
-  void *Mem = AllocateDeserializedDecl(C, ID, sizeof(RectilinearMeshDecl));
   RectilinearMeshDecl *M;
 
-  M = new (Mem) RectilinearMeshDecl(0, SourceLocation(),
+  M = new (C, ID) RectilinearMeshDecl(0, SourceLocation(),
                                     SourceLocation(), 0, 0);
   M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
   return M;

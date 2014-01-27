@@ -1,8 +1,8 @@
-// RUN: %clang_cc1 -fno-rtti -emit-llvm %s -o - -cxx-abi microsoft -triple=i386-pc-win32 >%t 2>&1
+// RUN: %clang_cc1 -fno-rtti -emit-llvm %s -o - -triple=i386-pc-win32 >%t 2>&1
 // RUN: FileCheck --check-prefix=MANGLING %s < %t
 // RUN: FileCheck --check-prefix=XMANGLING %s < %t
 // RUN: FileCheck --check-prefix=CODEGEN %s < %t
-// RUN: %clang_cc1 -fno-rtti -emit-llvm %s -o - -cxx-abi microsoft -triple=x86_64-pc-win32 2>&1 | FileCheck --check-prefix=MANGLING-X64 %s
+// RUN: %clang_cc1 -fno-rtti -emit-llvm %s -o - -triple=x86_64-pc-win32 2>&1 | FileCheck --check-prefix=MANGLING-X64 %s
 
 void foo(void *);
 
@@ -137,8 +137,6 @@ I::I() {}  // Emits vftable and forces thunk generation.
 // CODEGEN: %[[RES:.*]] = bitcast i8* %[[RES_i8]] to %struct.F*
 // CODEGEN: phi %struct.F* {{.*}} %[[RES]]
 // CODEGEN: ret %struct.{{[BF]}}*
-
-// FIXME: Write vtordisp adjusting thunk tests
 
 namespace CrashOnThunksForAttributedType {
 // We used to crash on this because the type of foo is an AttributedType, not

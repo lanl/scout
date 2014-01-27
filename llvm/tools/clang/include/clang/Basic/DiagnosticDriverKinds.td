@@ -35,8 +35,8 @@ def err_drv_output_argument_with_multiple_files : Error<
   "cannot specify -o when generating multiple output files">;
 def err_drv_out_file_argument_with_multiple_sources : Error<
   "cannot specify '%0%1' when compiling multiple source files">;
-def err_no_external_windows_assembler : Error<
-  "there is no external assembler we can use on windows">;
+def err_no_external_assembler : Error<
+  "there is no external assembler that can be used on this platform">;
 def err_drv_unable_to_remove_file : Error<
   "unable to remove file: %0">;
 def err_drv_command_failure : Error<
@@ -109,10 +109,10 @@ def err_drv_unknown_objc_runtime : Error<
   "unknown or ill-formed Objective-C runtime '%0'">;
 def err_drv_emit_llvm_link : Error<
    "-emit-llvm cannot be used when linking">;
-def err_drv_unknown_toolchain : Error<
-  "cannot recognize the type of the toolchain">;
 
 def warn_O4_is_O3 : Warning<"-O4 is equivalent to -O3">, InGroup<Deprecated>;
+def warn_drv_optimization_value : Warning<"optimization level '%0' is unsupported; using '%1%2' instead">,
+  InGroup<InvalidCommandLineArgument>;
 def warn_c_kext : Warning<
   "ignoring -fapple-kext which is valid for C++ and Objective-C++ only">;
 def warn_drv_input_file_unused : Warning<
@@ -152,6 +152,8 @@ def warn_drv_pch_not_first_include : Warning<
   "precompiled header '%0' was ignored because '%1' is not first '-include'">;
 def warn_missing_sysroot : Warning<"no such sysroot directory: '%0'">,
   InGroup<DiagGroup<"missing-sysroot">>;
+def warn_missing_debug_compression : Warning<"DWARF compression is not implemented">,
+  InGroup<DiagGroup<"missing-debug-compression">>;
 
 def note_drv_command_failed_diag_msg : Note<
   "diagnostic msg: %0">;

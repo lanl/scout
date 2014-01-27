@@ -64,6 +64,7 @@
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/SemaDiagnostic.h"
 #include "llvm/ADT/SmallString.h"
+#include "clang/AST/ASTContext.h"
 
 using namespace clang;
 
@@ -115,6 +116,9 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS,
   const char *PrevSpec = 0;
   unsigned DiagID;
 
+  const clang::PrintingPolicy &Policy =
+  Actions.getASTContext().getPrintingPolicy();
+  
   switch(MeshType) {
 
     case tok::kw_uniform: {
@@ -127,7 +131,7 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS,
       if (ParseMeshBody(MeshLocation, UMD)) {      
         DS.SetTypeSpecType(DeclSpec::TST_uniform_mesh, 
                            MeshLocation, PrevSpec,
-                           DiagID, UMD, true);
+                           DiagID, UMD, true, Policy);
         return true;
       } else {
         return false;
@@ -145,7 +149,7 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS,
       if (ParseMeshBody(MeshLocation, RMD)) {
         DS.SetTypeSpecType(DeclSpec::TST_rectilinear_mesh,
                            MeshLocation, PrevSpec,
-                           DiagID, RMD, true);
+                           DiagID, RMD, true, Policy);
         return true;
       } else {
         return false;
@@ -163,7 +167,7 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS,
       if (ParseMeshBody(MeshLocation, SMD)) {
         DS.SetTypeSpecType(DeclSpec::TST_structured_mesh,
                            MeshLocation, PrevSpec,
-                           DiagID, SMD, true);
+                           DiagID, SMD, true, Policy);
         return true;
       } else {
         return false;
@@ -181,7 +185,7 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS,
       if (ParseMeshBody(MeshLocation, USMD)) {
         DS.SetTypeSpecType(DeclSpec::TST_unstructured_mesh,
                            MeshLocation, PrevSpec, 
-                           DiagID, USMD, true);
+                           DiagID, USMD, true, Policy);
         return true;
       } else {
         return false;
@@ -223,7 +227,7 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
       Dec->setHasCellData(true);
       if (Tok.isNot(tok::colon)) {
         Diag(Tok, diag::err_expected_colon_after) << "cells";
-        SkipUntil(tok::r_brace, true, true);
+        SkipUntil(tok::r_brace, StopAtSemi|StopBeforeMatch);
       }
       ConsumeToken();
 
@@ -233,7 +237,7 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
       Dec->setHasVertexData(true);
       if (Tok.isNot(tok::colon)) {
         Diag(Tok, diag::err_expected_colon_after) << "vertices";
-        SkipUntil(tok::r_brace, true, true);
+        SkipUntil(tok::r_brace, StopAtSemi|StopBeforeMatch);
       }
       ConsumeToken();
     } else if (Tok.is(tok::kw_faces)) {
@@ -242,7 +246,7 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
       Dec->setHasFaceData(true);
       if (Tok.isNot(tok::colon)) {
         Diag(Tok, diag::err_expected_colon_after) << " faces";
-        SkipUntil(tok::r_brace, true, true);
+        SkipUntil(tok::r_brace, StopAtSemi|StopBeforeMatch);
       }
     } else if (Tok.is(tok::kw_edges)) {
       MFK = Edge;
@@ -250,7 +254,7 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
       Dec->setHasEdgeData(true);
       if (Tok.isNot(tok::colon)) {
         Diag(Tok, diag::err_expected_colon_after) << " edges";
-        SkipUntil(tok::r_brace, true, true);
+        SkipUntil(tok::r_brace, StopAtSemi|StopBeforeMatch);
       }
     }
 
@@ -315,7 +319,7 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
       ExpectAndConsume(tok::semi, diag::ext_expected_semi_decl_list);
     } else {
       ExpectAndConsume(tok::semi, diag::err_expected_semi_decl_list);
-      SkipUntil(tok::r_brace, true, true);
+      SkipUntil(tok::r_brace, StopAtSemi|StopBeforeMatch);
       if (Tok.is(tok::semi)) {
         ConsumeToken();
       }

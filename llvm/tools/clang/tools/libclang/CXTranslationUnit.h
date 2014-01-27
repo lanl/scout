@@ -14,13 +14,15 @@
 #ifndef LLVM_CLANG_CXTRANSLATIONUNIT_H
 #define LLVM_CLANG_CXTRANSLATIONUNIT_H
 
-#include "clang-c/Index.h"
 #include "CXString.h"
+#include "clang-c/Index.h"
 
 namespace clang {
   class ASTUnit;
   class CIndexer;
-  class SimpleFormatContext;
+namespace index {
+class CommentToXMLConverter;
+} // namespace index
 } // namespace clang
 
 struct CXTranslationUnitImpl {
@@ -29,8 +31,7 @@ struct CXTranslationUnitImpl {
   clang::cxstring::CXStringPool *StringPool;
   void *Diagnostics;
   void *OverridenCursorsPool;
-  clang::SimpleFormatContext *FormatContext;
-  unsigned FormatInMemoryUniqueId;
+  clang::index::CommentToXMLConverter *CommentToXML;
 };
 
 namespace clang {

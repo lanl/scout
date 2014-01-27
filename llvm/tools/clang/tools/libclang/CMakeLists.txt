@@ -1,9 +1,6 @@
 set(LLVM_LINK_COMPONENTS
-  ${LLVM_TARGETS_TO_BUILD}
-  asmparser
-  support
-  bitreader
-  mc
+  BitReader
+  Support
   )
 
 set(SOURCES
@@ -12,52 +9,47 @@ set(SOURCES
   CIndexCXX.cpp
   CIndexCodeCompletion.cpp
   CIndexDiagnostic.cpp
-  CIndexDiagnostic.h
   CIndexHigh.cpp
   CIndexInclusionStack.cpp
   CIndexUSRs.cpp
   CIndexer.cpp
-  CIndexer.h
   CXComment.cpp
   CXCursor.cpp
-  CXCursor.h
   CXCompilationDatabase.cpp
   CXLoadedDiagnostic.cpp
-  CXLoadedDiagnostic.h
   CXSourceLocation.cpp
-  CXSourceLocation.h
   CXStoredDiagnostic.cpp
   CXString.cpp
-  CXString.h
-  CXTranslationUnit.h
   CXType.cpp
-  CXType.h
   IndexBody.cpp
   IndexDecl.cpp
   IndexTypeSourceInfo.cpp
-  Index_Internal.h
   Indexing.cpp
   IndexingContext.cpp
+
+  ADDITIONAL_HEADERS
+  CIndexDiagnostic.h
+  CIndexer.h
+  CXCursor.h
+  CXLoadedDiagnostic.h
+  CXSourceLocation.h
+  CXString.h
+  CXTranslationUnit.h
+  CXType.h
+  Index_Internal.h
   IndexingContext.h
-  SimpleFormatContext.h
   ../../include/clang-c/Index.h
   )
 
 set(LIBRARIES
-  clangIndex
   clangARCMigrate
-  clangRewriteCore
-  clangRewriteFrontend
-  clangFrontend
-  clangDriver
-  clangSerialization
-  clangSema
-  clangEdit
   clangAST
-  clangLex
-  clangTooling
   clangBasic
-  clangFormat
+  clangFrontend
+  clangIndex
+  clangLex
+  clangSema
+  clangTooling
   )
 
 set(GENERATED_HEADERS
@@ -70,6 +62,15 @@ set(GENERATED_HEADERS
   ClangDeclNodes
   ClangStmtNodes
   )
+
+set(LLVM_EXPORTED_SYMBOL_FILE ${CMAKE_CURRENT_SOURCE_DIR}/libclang.exports)
+
+if(MSVC)
+  # Avoid LNK4197 not to spceify libclang.def here.
+  # Each functions is exported as "dllexport" in include/clang-c.
+  # KB835326
+  set(LLVM_EXPORTED_SYMBOL_FILE)
+endif()
 
 if( LLVM_ENABLE_PIC )
   set(SHARED_LIBRARY TRUE)
@@ -92,12 +93,17 @@ if( LLVM_ENABLE_PIC )
   endif()
 
   if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    set(LIBCLANG_LINK_FLAGS
-      "-Wl,-compatibility_version -Wl,1 -Wl,-dead_strip")
+    set(LIBCLANG_LINK_FLAGS " -Wl,-compatibility_version -Wl,1")
+    if (DEFINED ${LLVM_SUBMIT_VERSION})
+      set(LIBCLANG_LINK_FLAGS
+        "${LIBCLANG_LINK_FLAGS} -Wl,-current_version -Wl,${LLVM_SUBMIT_VERSION}.${LLVM_SUBMIT_SUBVERSION}")
+    endif()
+
+    set_property(TARGET libclang APPEND_STRING PROPERTY
+                 LINK_FLAGS ${LIBCLANG_LINK_FLAGS})
     set_target_properties(libclang
       PROPERTIES
-      LINK_FLAGS "${LIBCLANG_LINK_FLAGS}"
-      INSTALL_NAME_DIR "@executable_path/../lib")
+      INSTALL_NAME_DIR "@rpath")
   endif()
 
 

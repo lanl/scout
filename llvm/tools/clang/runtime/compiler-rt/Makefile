@@ -27,6 +27,10 @@ ResourceIncludeDir := $(ResourceDir)/include
 PROJ_resources_lib := $(PROJ_resources)/lib
 PROJ_resources_include := $(PROJ_resources)/include
 
+# Initialize a variable to use for extra flags to pass to the
+# compiler-rt make process.
+COMPILERRT_MAKE_FLAGS :=
+
 # Expect compiler-rt to be in llvm/projects/compiler-rt
 COMPILERRT_SRC_ROOT := $(LLVM_SRC_ROOT)/projects/compiler-rt
 
@@ -62,7 +66,7 @@ COMPILERRT_SRC_ROOT := $(LLVM_SRC_ROOT)/projects/compiler-rt
 #  3. Come up with an alternate mechanism to define all the toolchain
 #     information that compiler-rt would need to build libraries for all the
 #     requested targets. This might be a simple short term solution, but is
-#     likely to be unwieldly and irritating to maintain in the long term.
+#     likely to be unwieldy and irritating to maintain in the long term.
 ifneq ($(LLVM_CROSS_COMPILING),1)
 ifneq ($(CLANG_NO_RUNTIME),1)
 ifeq ($(shell test -d $(COMPILERRT_SRC_ROOT) && echo OK),OK)
@@ -74,12 +78,34 @@ ifeq ($(shell test -d $(COMPILERRT_SRC_ROOT) && echo OK),OK)
 # support.
 RuntimeDirs :=
 ifeq ($(OS),Darwin)
-RuntimeDirs += darwin
+RuntimeDirs += darwin macho_embedded
 RuntimeLibrary.darwin.Configs := \
 	eprintf.a 10.4.a osx.a ios.a cc_kext.a cc_kext_ios5.a \
 	asan_osx_dynamic.dylib \
 	profile_osx.a profile_ios.a \
 	ubsan_osx.a
+
+RuntimeLibrary.macho_embedded.Configs := \
+	hard_static.a hard_pic.a
+ifneq (,$(findstring ARM,$(TARGETS_TO_BUILD)))
+RuntimeLibrary.macho_embedded.Configs += \
+	soft_static.a soft_pic.a
+endif
+
+# Support building compiler-rt with relocatable SDKs.
+#
+# This will cause make to put SDKROOT in the environment, and since we
+# are using the built Clang to build compiler-rt, it to pick up that
+# location as the default value for the include system root.
+ACTIVE_SDK_PATH := $(shell xcrun --show-sdk-path 2> /dev/null)
+ifneq ($(ACTIVE_SDK_PATH),)
+COMPILERRT_MAKE_FLAGS := SDKROOT=$(ACTIVE_SDK_PATH)
+endif
+IOSSIM_SDK_PATH := $(shell xcrun --show-sdk-path -sdk iphonesimulator 2> /dev/null)
+ifneq ($(IOSSIM_SDK_PATH),)
+RuntimeLibrary.darwin.Configs += asan_iossim_dynamic.dylib
+endif
+
 endif
 
 # On Linux, include a library which has all the runtime functions.
@@ -144,12 +170,14 @@ BuildRuntimeLibraries:
 	  ProjObjRoot=$(PROJ_OBJ_DIR) \
 	  CC="$(ToolDir)/clang" \
 	  LLVM_ANDROID_TOOLCHAIN_DIR="$(LLVM_ANDROID_TOOLCHAIN_DIR)" \
+	  $(COMPILERRT_MAKE_FLAGS) \
 	  $(RuntimeDirs:%=clang_%)
 .PHONY: BuildRuntimeLibraries
 CleanRuntimeLibraries:
 	$(Verb) $(MAKE) -C $(COMPILERRT_SRC_ROOT) \
 	  ProjSrcRoot=$(COMPILERRT_SRC_ROOT) \
 	  ProjObjRoot=$(PROJ_OBJ_DIR) \
+	  $(COMPILERRT_MAKE_FLAGS) \
 	  clean
 .PHONY: CleanRuntimeLibraries
 RuntimeHeader: $(ResourceIncludeDir)/sanitizer

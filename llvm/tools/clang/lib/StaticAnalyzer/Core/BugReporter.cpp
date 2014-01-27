@@ -20,8 +20,8 @@
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ParentMap.h"
-#include "clang/AST/StmtObjC.h"
 #include "clang/AST/StmtCXX.h"
+#include "clang/AST/StmtObjC.h"
 #include "clang/Analysis/CFG.h"
 #include "clang/Analysis/ProgramPoint.h"
 #include "clang/Basic/SourceManager.h"
@@ -1629,6 +1629,10 @@ static const Stmt *getTerminatorCondition(const CFGBlock *B) {
 
 static const char StrEnteringLoop[] = "Entering loop body";
 static const char StrLoopBodyZero[] = "Loop body executed 0 times";
+static const char StrLoopRangeEmpty[] =
+  "Loop body skipped when range is empty";
+static const char StrLoopCollectionEmpty[] =
+  "Loop body skipped when collection is empty";
 
 static bool
 GenerateAlternateExtensivePathDiagnostic(PathDiagnostic& PD,
@@ -1827,7 +1831,13 @@ GenerateAlternateExtensivePathDiagnostic(PathDiagnostic& PD,
 
             if (isJumpToFalseBranch(&*BE)) {
               if (!IsInLoopBody) {
-                str = StrLoopBodyZero;
+                if (isa<ObjCForCollectionStmt>(Term)) {
+                  str = StrLoopCollectionEmpty;
+                } else if (isa<CXXForRangeStmt>(Term)) {
+                  str = StrLoopRangeEmpty;
+                } else {
+                  str = StrLoopBodyZero;
+                }
               }
             } else {
               str = StrEnteringLoop;
@@ -2072,7 +2082,8 @@ static void simplifySimpleBranches(PathPieces &pieces) {
       PathDiagnosticEventPiece *EV = dyn_cast<PathDiagnosticEventPiece>(*NextI);
       if (EV) {
         StringRef S = EV->getString();
-        if (S == StrEnteringLoop || S == StrLoopBodyZero) {
+        if (S == StrEnteringLoop || S == StrLoopBodyZero ||
+            S == StrLoopCollectionEmpty || S == StrLoopRangeEmpty) {
           ++NextI;
           continue;
         }
@@ -3490,8 +3501,7 @@ BugType *BugReporter::getBugTypeForName(StringRef name,
   return BT;
 }
 
-
-void PathPieces::dump() const {
+LLVM_DUMP_METHOD void PathPieces::dump() const {
   unsigned index = 0;
   for (PathPieces::const_iterator I = begin(), E = end(); I != E; ++I) {
     llvm::errs() << "[" << index++ << "]  ";

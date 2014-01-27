@@ -22,9 +22,9 @@
 #include "clang/Basic/Diagnostic.h"
 #include "clang/CodeGen/CGFunctionInfo.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/CallSite.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/InlineAsm.h"
+#include "llvm/Support/CallSite.h"
 using namespace clang;
 using namespace CodeGen;
 
@@ -506,7 +506,8 @@ static llvm::Value *emitARCRetainLoadOfScalar(CodeGenFunction &CGF,
 /// its pointer, name, and types registered in the class struture.
 void CodeGenFunction::GenerateObjCMethod(const ObjCMethodDecl *OMD) {
   StartObjCMethod(OMD, OMD->getClassInterface(), OMD->getLocStart());
-  EmitStmt(OMD->getBody());
+  assert(isa<CompoundStmt>(OMD->getBody()));
+  EmitCompoundStmtWithoutScope(*cast<CompoundStmt>(OMD->getBody()));
   FinishFunction(OMD->getBodyRBrace());
 }
 
@@ -1356,7 +1357,6 @@ void CodeGenFunction::GenerateObjCCtorDtorMethod(ObjCImplementationDecl *IMP,
     // Suppress the final autorelease in ARC.
     AutoreleaseResult = false;
 
-    SmallVector<CXXCtorInitializer *, 8> IvarInitializers;
     for (ObjCImplementationDecl::init_const_iterator B = IMP->init_begin(),
            E = IMP->init_end(); B != E; ++B) {
       CXXCtorInitializer *IvarInit = (*B);
@@ -1524,10 +1524,13 @@ void CodeGenFunction::EmitObjCForCollectionStmt(const ObjCForCollectionStmt &S){
   llvm::Value *initialMutations =
     Builder.CreateLoad(StateMutationsPtr, "forcoll.initial-mutations");
 
+  RegionCounter Cnt = getPGORegionCounter(&S);
+
   // Start looping.  This is the point we return to whenever we have a
   // fresh, non-empty batch of objects.
   llvm::BasicBlock *LoopBodyBB = createBasicBlock("forcoll.loopbody");
   EmitBlock(LoopBodyBB);
+  Cnt.beginRegion(Builder);
 
   // The current index into the buffer.
   llvm::PHINode *index = Builder.CreatePHI(UnsignedLongLTy, 3, "forcoll.index");
@@ -1624,7 +1627,7 @@ void CodeGenFunction::EmitObjCForCollectionStmt(const ObjCForCollectionStmt &S){
     EmitAutoVarCleanups(variable);
 
   // Perform the loop body, setting up break and continue labels.
-  BreakContinueStack.push_back(BreakContinue(LoopEnd, AfterBody));
+  BreakContinueStack.push_back(BreakContinue(LoopEnd, AfterBody, &Cnt));
   {
     RunCleanupsScope Scope(*this);
     EmitStmt(S.getBody());
@@ -1643,6 +1646,7 @@ void CodeGenFunction::EmitObjCForCollectionStmt(const ObjCForCollectionStmt &S){
   llvm::Value *indexPlusOne
     = Builder.CreateAdd(index, llvm::ConstantInt::get(UnsignedLongLTy, 1));
 
+  // TODO: We should probably model this as a "continue" for PGO
   // If we haven't overrun the buffer yet, we can continue.
   Builder.CreateCondBr(Builder.CreateICmpULT(indexPlusOne, count),
                        LoopBodyBB, FetchMoreBB);
@@ -1666,6 +1670,8 @@ void CodeGenFunction::EmitObjCForCollectionStmt(const ObjCForCollectionStmt &S){
   index->addIncoming(zero, Builder.GetInsertBlock());
   count->addIncoming(refetchCount, Builder.GetInsertBlock());
 
+  // TODO: We should be applying PGO weights here, but this needs to handle the
+  // branch before FetchMoreBB or we risk getting the numbers wrong.
   Builder.CreateCondBr(Builder.CreateICmpEQ(refetchCount, zero),
                        EmptyBB, LoopBodyBB);
 
@@ -1688,6 +1694,7 @@ void CodeGenFunction::EmitObjCForCollectionStmt(const ObjCForCollectionStmt &S){
     PopCleanupBlock();
 
   EmitBlock(LoopEnd.getBlock());
+  // TODO: Once we calculate PGO weights above, set the region count here
 }
 
 void CodeGenFunction::EmitObjCAtTryStmt(const ObjCAtTryStmt &S) {

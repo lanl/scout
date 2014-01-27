@@ -31,12 +31,15 @@ void EmitClangASTNodes(RecordKeeper &RK, raw_ostream &OS,
 
 void EmitClangAttrClass(RecordKeeper &Records, raw_ostream &OS);
 void EmitClangAttrIdentifierArgList(RecordKeeper &Records, raw_ostream &OS);
+void EmitClangAttrArgContextList(RecordKeeper &Records, raw_ostream &OS);
+void EmitClangAttrTypeArgList(RecordKeeper &Records, raw_ostream &OS);
 void EmitClangAttrImpl(RecordKeeper &Records, raw_ostream &OS);
 void EmitClangAttrList(RecordKeeper &Records, raw_ostream &OS);
 void EmitClangAttrPCHRead(RecordKeeper &Records, raw_ostream &OS);
 void EmitClangAttrPCHWrite(RecordKeeper &Records, raw_ostream &OS);
 void EmitClangAttrSpellingList(RecordKeeper &Records, raw_ostream &OS);
 void EmitClangAttrSpellingListIndex(RecordKeeper &Records, raw_ostream &OS);
+void EmitClangAttrASTVisitor(RecordKeeper &Records, raw_ostream &OS);
 void EmitClangAttrLateParsedList(RecordKeeper &Records, raw_ostream &OS);
 void EmitClangAttrTemplateInstantiate(RecordKeeper &Records, raw_ostream &OS);
 void EmitClangAttrParsedAttrList(RecordKeeper &Records, raw_ostream &OS);

@@ -1553,6 +1553,12 @@ void CodeGenFunction::EmitStoreThroughExtVectorComponentLValue(RValue Src,
       for (unsigned i = 0; i != NumDstElts; ++i)
         Mask.push_back(Builder.getInt32(i));
 
+      // When the vector size is odd and .odd or .hi is used, the last element
+      // of the Elts constant array will be one past the size of the vector.
+      // Ignore the last element here, if it is greater than the mask size.
+      if (getAccessedFieldNo(NumSrcElts - 1, Elts) == Mask.size())
+        NumSrcElts--;
+
       // modify when what gets shuffled in
       for (unsigned i = 0; i != NumSrcElts; ++i)
         Mask[getAccessedFieldNo(i, Elts)] = Builder.getInt32(i+NumDstElts);
@@ -1846,8 +1852,8 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
     return LV;
   }
 
-  if (const FunctionDecl *fn = dyn_cast<FunctionDecl>(ND))
-    return EmitFunctionDeclLValue(*this, E, fn);
+  if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(ND))
+    return EmitFunctionDeclLValue(*this, E, FD);
 
   llvm_unreachable("Unhandled DeclRefExpr");
 }
@@ -1966,6 +1972,7 @@ LValue CodeGenFunction::EmitPredefinedLValue(const PredefinedExpr *E) {
   case PredefinedExpr::Func:
   case PredefinedExpr::Function:
   case PredefinedExpr::LFunction:
+  case PredefinedExpr::FuncDName:
   case PredefinedExpr::PrettyFunction: {
     PredefinedExpr::IdentType IdentType = E->getIdentType();
     std::string GlobalVarName;
@@ -1977,6 +1984,9 @@ LValue CodeGenFunction::EmitPredefinedLValue(const PredefinedExpr *E) {
       break;
     case PredefinedExpr::Function:
       GlobalVarName = "__FUNCTION__.";
+      break;
+    case PredefinedExpr::FuncDName:
+      GlobalVarName = "__FUNCDNAME__.";
       break;
     case PredefinedExpr::LFunction:
       GlobalVarName = "L__FUNCTION__.";
@@ -2045,7 +2055,10 @@ LValue CodeGenFunction::EmitPredefinedLValue(const PredefinedExpr *E) {
 /// followed by an array of i8 containing the type name. TypeKind is 0 for an
 /// integer, 1 for a floating point value, and -1 for anything else.
 llvm::Constant *CodeGenFunction::EmitCheckTypeDescriptor(QualType T) {
-  // FIXME: Only emit each type's descriptor once.
+  // Only emit each type's descriptor once.
+  if (llvm::Constant *C = CGM.getTypeDescriptor(T))
+    return C;
+
   uint16_t TypeKind = -1;
   uint16_t TypeInfo = 0;
 
@@ -2078,6 +2091,10 @@ llvm::Constant *CodeGenFunction::EmitCheckTypeDescriptor(QualType T) {
                              llvm::GlobalVariable::PrivateLinkage,
                              Descriptor);
   GV->setUnnamedAddr(true);
+
+  // Remember the descriptor for this type.
+  CGM.setTypeDescriptor(T, GV);
+
   return GV;
 }
 
@@ -2120,9 +2137,7 @@ llvm::Constant *CodeGenFunction::EmitCheckSourceLocation(SourceLocation Loc) {
   PresumedLoc PLoc = getContext().getSourceManager().getPresumedLoc(Loc);
 
   llvm::Constant *Data[] = {
-    // FIXME: Only emit each file name once.
-    PLoc.isValid() ? cast<llvm::Constant>(
-                       Builder.CreateGlobalStringPtr(PLoc.getFilename()))
+    PLoc.isValid() ? CGM.GetAddrOfConstantCString(PLoc.getFilename(), ".src")
                    : llvm::Constant::getNullValue(Int8PtrTy),
     Builder.getInt32(PLoc.isValid() ? PLoc.getLine() : 0),
     Builder.getInt32(PLoc.isValid() ? PLoc.getColumn() : 0)
@@ -2666,6 +2681,7 @@ EmitConditionalOperatorLValue(const AbstractConditionalOperator *expr) {
   }
 
   OpaqueValueMapping binding(*this, expr);
+  RegionCounter Cnt = getPGORegionCounter(expr);
 
   const Expr *condExpr = expr->getCond();
   bool CondExprBool;
@@ -2673,8 +2689,12 @@ EmitConditionalOperatorLValue(const AbstractConditionalOperator *expr) {
     const Expr *live = expr->getTrueExpr(), *dead = expr->getFalseExpr();
     if (!CondExprBool) std::swap(live, dead);
 
-    if (!ContainsLabel(dead))
+    if (!ContainsLabel(dead)) {
+      // If the true case is live, we need to track its region.
+      if (CondExprBool)
+        Cnt.beginRegion(Builder);
       return EmitLValue(live);
+    }
   }
 
   llvm::BasicBlock *lhsBlock = createBasicBlock("cond.true");
@@ -2682,13 +2702,15 @@ EmitConditionalOperatorLValue(const AbstractConditionalOperator *expr) {
   llvm::BasicBlock *contBlock = createBasicBlock("cond.end");
 
   ConditionalEvaluation eval(*this);
-  EmitBranchOnBoolExpr(condExpr, lhsBlock, rhsBlock);
+  EmitBranchOnBoolExpr(condExpr, lhsBlock, rhsBlock, Cnt.getCount());
 
   // Any temporaries created here are conditional.
   EmitBlock(lhsBlock);
+  Cnt.beginRegion(Builder);
   eval.begin(*this);
   LValue lhs = EmitLValue(expr->getTrueExpr());
   eval.end(*this);
+  Cnt.adjustForControlFlow();
 
   if (!lhs.isSimple())
     return EmitUnsupportedLValue(expr, "conditional operator");
@@ -2698,14 +2720,17 @@ EmitConditionalOperatorLValue(const AbstractConditionalOperator *expr) {
 
   // Any temporaries created here are conditional.
   EmitBlock(rhsBlock);
+  Cnt.beginElseRegion();
   eval.begin(*this);
   LValue rhs = EmitLValue(expr->getFalseExpr());
   eval.end(*this);
+  Cnt.adjustForControlFlow();
   if (!rhs.isSimple())
     return EmitUnsupportedLValue(expr, "conditional operator");
   rhsBlock = Builder.GetInsertBlock();
 
   EmitBlock(contBlock);
+  Cnt.applyAdjustmentsToRegion();
 
   llvm::PHINode *phi = Builder.CreatePHI(lhs.getAddress()->getType(), 2,
                                          "cond-lvalue");
@@ -2759,6 +2784,7 @@ LValue CodeGenFunction::EmitCastLValue(const CastExpr *E) {
   case CK_ARCReclaimReturnedObject:
   case CK_ARCExtendBlockObject:
   case CK_CopyAndAutoreleaseBlockObject:
+  case CK_AddressSpaceConversion:
     return EmitUnsupportedLValue(E, "unexpected cast lvalue");
 
   case CK_Dependent:

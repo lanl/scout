@@ -367,11 +367,8 @@ public:
     CGF.EmitCXXDeleteExpr(E);
     return 0;
   }
-  Value *VisitUnaryTypeTraitExpr(const UnaryTypeTraitExpr *E) {
-    return Builder.getInt1(E->getValue());
-  }
 
-  Value *VisitBinaryTypeTraitExpr(const BinaryTypeTraitExpr *E) {
+  Value *VisitTypeTraitExpr(const TypeTraitExpr *E) {
     return llvm::ConstantInt::get(ConvertType(E->getType()), E->getValue());
   }
 
@@ -1299,7 +1296,18 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
   case CK_AnyPointerToBlockPointerCast:
   case CK_BitCast: {
     Value *Src = Visit(const_cast<Expr*>(E));
-    return Builder.CreateBitCast(Src, ConvertType(DestTy));
+    llvm::Type *SrcTy = Src->getType();
+    llvm::Type *DstTy = ConvertType(DestTy);
+    if (SrcTy->isPtrOrPtrVectorTy() && DstTy->isPtrOrPtrVectorTy() && 
+        SrcTy->getPointerAddressSpace() != DstTy->getPointerAddressSpace()) {
+      llvm::Type *MidTy = CGF.CGM.getDataLayout().getIntPtrType(SrcTy);
+      return Builder.CreateIntToPtr(Builder.CreatePtrToInt(Src, MidTy), DstTy);
+    }
+    return Builder.CreateBitCast(Src, DstTy);
+  }
+  case CK_AddressSpaceConversion: {
+    Value *Src = Visit(const_cast<Expr*>(E));
+    return Builder.CreateAddrSpaceCast(Src, ConvertType(DestTy));
   }
   case CK_AtomicToNonAtomic:
   case CK_NonAtomicToAtomic:
@@ -1360,7 +1368,7 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
 
     // Make sure the array decay ends up being the right type.  This matters if
     // the array type was of an incomplete type.
-    return CGF.Builder.CreateBitCast(V, ConvertType(CE->getType()));
+    return CGF.Builder.CreatePointerCast(V, ConvertType(CE->getType()));
   }
   case CK_FunctionToPointerDecay:
     return EmitLValue(E).getAddress();
@@ -1485,7 +1493,7 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
   }
 
   case CK_ZeroToOCLEvent: {
-    assert(DestTy->isEventT() && "CK_ZeroToOCLEvent cast on non event type");
+    assert(DestTy->isEventT() && "CK_ZeroToOCLEvent cast on non-event type");
     return llvm::Constant::getNullValue(ConvertType(DestTy));
   }
 
@@ -2866,8 +2874,12 @@ Value *ScalarExprEmitter::VisitBinAssign(const BinaryOperator *E) {
 }
 
 Value *ScalarExprEmitter::VisitBinLAnd(const BinaryOperator *E) {
+  RegionCounter Cnt = CGF.getPGORegionCounter(E);
+
   // Perform vector logical and on comparisons with zero vectors.
   if (E->getType()->isVectorType()) {
+    Cnt.beginRegion(Builder);
+
     Value *LHS = Visit(E->getLHS());
     Value *RHS = Visit(E->getRHS());
     Value *Zero = llvm::ConstantAggregateZero::get(LHS->getType());
@@ -2889,6 +2901,8 @@ Value *ScalarExprEmitter::VisitBinLAnd(const BinaryOperator *E) {
   bool LHSCondVal;
   if (CGF.ConstantFoldsToSimpleInteger(E->getLHS(), LHSCondVal)) {
     if (LHSCondVal) { // If we have 1 && X, just emit X.
+      Cnt.beginRegion(Builder);
+
       Value *RHSCond = CGF.EvaluateExprAsBool(E->getRHS());
       // ZExt result to int or bool.
       return Builder.CreateZExtOrBitCast(RHSCond, ResTy, "land.ext");
@@ -2905,7 +2919,7 @@ Value *ScalarExprEmitter::VisitBinLAnd(const BinaryOperator *E) {
   CodeGenFunction::ConditionalEvaluation eval(CGF);
 
   // Branch on the LHS first.  If it is false, go to the failure (cont) block.
-  CGF.EmitBranchOnBoolExpr(E->getLHS(), RHSBlock, ContBlock);
+  CGF.EmitBranchOnBoolExpr(E->getLHS(), RHSBlock, ContBlock, Cnt.getCount());
 
   // Any edges into the ContBlock are now from an (indeterminate number of)
   // edges from this first condition.  All of these values will be false.  Start
@@ -2918,7 +2932,9 @@ Value *ScalarExprEmitter::VisitBinLAnd(const BinaryOperator *E) {
 
   eval.begin(CGF);
   CGF.EmitBlock(RHSBlock);
+  Cnt.beginRegion(Builder);
   Value *RHSCond = CGF.EvaluateExprAsBool(E->getRHS());
+  Cnt.adjustForControlFlow();
   eval.end(CGF);
 
   // Reaquire the RHS block, as there may be subblocks inserted.
@@ -2931,14 +2947,19 @@ Value *ScalarExprEmitter::VisitBinLAnd(const BinaryOperator *E) {
     Builder.SetCurrentDebugLocation(llvm::DebugLoc());
   CGF.EmitBlock(ContBlock);
   PN->addIncoming(RHSCond, RHSBlock);
+  Cnt.applyAdjustmentsToRegion();
 
   // ZExt result to int.
   return Builder.CreateZExtOrBitCast(PN, ResTy, "land.ext");
 }
 
 Value *ScalarExprEmitter::VisitBinLOr(const BinaryOperator *E) {
+  RegionCounter Cnt = CGF.getPGORegionCounter(E);
+
   // Perform vector logical or on comparisons with zero vectors.
   if (E->getType()->isVectorType()) {
+    Cnt.beginRegion(Builder);
+
     Value *LHS = Visit(E->getLHS());
     Value *RHS = Visit(E->getRHS());
     Value *Zero = llvm::ConstantAggregateZero::get(LHS->getType());
@@ -2960,6 +2981,8 @@ Value *ScalarExprEmitter::VisitBinLOr(const BinaryOperator *E) {
   bool LHSCondVal;
   if (CGF.ConstantFoldsToSimpleInteger(E->getLHS(), LHSCondVal)) {
     if (!LHSCondVal) { // If we have 0 || X, just emit X.
+      Cnt.beginRegion(Builder);
+
       Value *RHSCond = CGF.EvaluateExprAsBool(E->getRHS());
       // ZExt result to int or bool.
       return Builder.CreateZExtOrBitCast(RHSCond, ResTy, "lor.ext");
@@ -2976,7 +2999,8 @@ Value *ScalarExprEmitter::VisitBinLOr(const BinaryOperator *E) {
   CodeGenFunction::ConditionalEvaluation eval(CGF);
 
   // Branch on the LHS first.  If it is true, go to the success (cont) block.
-  CGF.EmitBranchOnBoolExpr(E->getLHS(), ContBlock, RHSBlock);
+  CGF.EmitBranchOnBoolExpr(E->getLHS(), ContBlock, RHSBlock,
+                           Cnt.getParentCount() - Cnt.getCount());
 
   // Any edges into the ContBlock are now from an (indeterminate number of)
   // edges from this first condition.  All of these values will be true.  Start
@@ -2991,7 +3015,9 @@ Value *ScalarExprEmitter::VisitBinLOr(const BinaryOperator *E) {
 
   // Emit the RHS condition as a bool value.
   CGF.EmitBlock(RHSBlock);
+  Cnt.beginRegion(Builder);
   Value *RHSCond = CGF.EvaluateExprAsBool(E->getRHS());
+  Cnt.adjustForControlFlow();
 
   eval.end(CGF);
 
@@ -3002,6 +3028,7 @@ Value *ScalarExprEmitter::VisitBinLOr(const BinaryOperator *E) {
   // into the phi node for the edge with the value of RHSCond.
   CGF.EmitBlock(ContBlock);
   PN->addIncoming(RHSCond, RHSBlock);
+  Cnt.applyAdjustmentsToRegion();
 
   // ZExt result to int.
   return Builder.CreateZExtOrBitCast(PN, ResTy, "lor.ext");
@@ -3023,22 +3050,15 @@ Value *ScalarExprEmitter::VisitBinComma(const BinaryOperator *E) {
 /// flow into selects in some cases.
 static bool isCheapEnoughToEvaluateUnconditionally(const Expr *E,
                                                    CodeGenFunction &CGF) {
-  E = E->IgnoreParens();
-
   // Anything that is an integer or floating point constant is fine.
-  if (E->isEvaluatable(CGF.getContext()))
-    return true;
+  return E->IgnoreParens()->isEvaluatable(CGF.getContext());
 
-  // Non-volatile automatic variables too, to get "cond ? X : Y" where
-  // X and Y are local variables.
-  if (const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(E))
-    if (const VarDecl *VD = dyn_cast<VarDecl>(DRE->getDecl()))
-      if (VD->hasLocalStorage() && !(CGF.getContext()
-                                     .getCanonicalType(VD->getType())
-                                     .isVolatileQualified()))
-        return true;
-
-  return false;
+  // Even non-volatile automatic variables can't be evaluated unconditionally.
+  // Referencing a thread_local may cause non-trivial initialization work to
+  // occur. If we're inside a lambda and one of the variables is from the scope
+  // outside the lambda, that function may have returned already. Reading its
+  // locals is a bad idea. Also, these reads may introduce races there didn't
+  // exist in the source-level program.
 }
 
 
@@ -3048,6 +3068,7 @@ VisitAbstractConditionalOperator(const AbstractConditionalOperator *E) {
 
   // Bind the common expression if necessary.
   CodeGenFunction::OpaqueValueMapping binding(CGF, E);
+  RegionCounter Cnt = CGF.getPGORegionCounter(E);
 
   Expr *condExpr = E->getCond();
   Expr *lhsExpr = E->getTrueExpr();
@@ -3062,6 +3083,8 @@ VisitAbstractConditionalOperator(const AbstractConditionalOperator *E) {
 
     // If the dead side doesn't have labels we need, just emit the Live part.
     if (!CGF.ContainsLabel(dead)) {
+      if (CondExprBool)
+        Cnt.beginRegion(Builder);
       Value *Result = Visit(live);
 
       // If the live part is a throw expression, it acts like it has a void
@@ -3078,6 +3101,8 @@ VisitAbstractConditionalOperator(const AbstractConditionalOperator *E) {
   // the select function.
   if (CGF.getLangOpts().OpenCL
       && condExpr->getType()->isVectorType()) {
+    Cnt.beginRegion(Builder);
+
     llvm::Value *CondV = CGF.EmitScalarExpr(condExpr);
     llvm::Value *LHS = Visit(lhsExpr);
     llvm::Value *RHS = Visit(rhsExpr);
@@ -3121,6 +3146,8 @@ VisitAbstractConditionalOperator(const AbstractConditionalOperator *E) {
   // safe to evaluate the LHS and RHS unconditionally.
   if (isCheapEnoughToEvaluateUnconditionally(lhsExpr, CGF) &&
       isCheapEnoughToEvaluateUnconditionally(rhsExpr, CGF)) {
+    Cnt.beginRegion(Builder);
+
     llvm::Value *CondV = CGF.EvaluateExprAsBool(condExpr);
     llvm::Value *LHS = Visit(lhsExpr);
     llvm::Value *RHS = Visit(rhsExpr);
@@ -3137,23 +3164,28 @@ VisitAbstractConditionalOperator(const AbstractConditionalOperator *E) {
   llvm::BasicBlock *ContBlock = CGF.createBasicBlock("cond.end");
 
   CodeGenFunction::ConditionalEvaluation eval(CGF);
-  CGF.EmitBranchOnBoolExpr(condExpr, LHSBlock, RHSBlock);
+  CGF.EmitBranchOnBoolExpr(condExpr, LHSBlock, RHSBlock, Cnt.getCount());
 
   CGF.EmitBlock(LHSBlock);
+  Cnt.beginRegion(Builder);
   eval.begin(CGF);
   Value *LHS = Visit(lhsExpr);
   eval.end(CGF);
+  Cnt.adjustForControlFlow();
 
   LHSBlock = Builder.GetInsertBlock();
   Builder.CreateBr(ContBlock);
 
   CGF.EmitBlock(RHSBlock);
+  Cnt.beginElseRegion();
   eval.begin(CGF);
   Value *RHS = Visit(rhsExpr);
   eval.end(CGF);
+  Cnt.adjustForControlFlow();
 
   RHSBlock = Builder.GetInsertBlock();
   CGF.EmitBlock(ContBlock);
+  Cnt.applyAdjustmentsToRegion();
 
   // If the LHS or RHS is a throw expression, it will be legitimately null.
   if (!LHS)

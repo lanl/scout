@@ -615,8 +615,9 @@ void RewriteModernObjC::RewriteBlocksInFunctionProtoType(QualType funcType,
                                                    NamedDecl *D) {
   if (const FunctionProtoType *fproto
       = dyn_cast<FunctionProtoType>(funcType.IgnoreParens())) {
-    for (FunctionProtoType::arg_type_iterator I = fproto->arg_type_begin(),
-         E = fproto->arg_type_end(); I && (I != E); ++I)
+    for (FunctionProtoType::param_type_iterator I = fproto->param_type_begin(),
+                                                E = fproto->param_type_end();
+         I && (I != E); ++I)
       if (isTopLevelBlockPointerType(*I)) {
         // All the args are checked/rewritten. Don't call twice!
         RewriteBlockPointerDecl(D);
@@ -984,14 +985,15 @@ void RewriteModernObjC::RewritePropertyImplDecl(ObjCPropertyImplDecl *PID,
         // Now, emit the argument types (if any).
         if (const FunctionProtoType *FT = dyn_cast<FunctionProtoType>(FPRetType)){
           Getr += "(";
-          for (unsigned i = 0, e = FT->getNumArgs(); i != e; ++i) {
+          for (unsigned i = 0, e = FT->getNumParams(); i != e; ++i) {
             if (i) Getr += ", ";
-            std::string ParamStr = FT->getArgType(i).getAsString(
-                                                          Context->getPrintingPolicy());
+            std::string ParamStr =
+                FT->getParamType(i).getAsString(Context->getPrintingPolicy());
             Getr += ParamStr;
           }
           if (FT->isVariadic()) {
-            if (FT->getNumArgs()) Getr += ", ";
+            if (FT->getNumParams())
+              Getr += ", ";
             Getr += "...";
           }
           Getr += ")";
@@ -1353,14 +1355,15 @@ void RewriteModernObjC::RewriteObjCMethodDecl(const ObjCInterfaceDecl *IDecl,
     // Now, emit the argument types (if any).
     if (const FunctionProtoType *FT = dyn_cast<FunctionProtoType>(FPRetType)) {
       ResultStr += "(";
-      for (unsigned i = 0, e = FT->getNumArgs(); i != e; ++i) {
+      for (unsigned i = 0, e = FT->getNumParams(); i != e; ++i) {
         if (i) ResultStr += ", ";
-        std::string ParamStr = FT->getArgType(i).getAsString(
-          Context->getPrintingPolicy());
+        std::string ParamStr =
+            FT->getParamType(i).getAsString(Context->getPrintingPolicy());
         ResultStr += ParamStr;
       }
       if (FT->isVariadic()) {
-        if (FT->getNumArgs()) ResultStr += ", ";
+        if (FT->getNumParams())
+          ResultStr += ", ";
         ResultStr += "...";
       }
       ResultStr += ")";
@@ -2304,8 +2307,8 @@ void RewriteModernObjC::RewriteObjCQualifiedInterfaceTypes(Decl *Dcl) {
   // Now check arguments.
   const char *startBuf = SM->getCharacterData(Loc);
   const char *startFuncBuf = startBuf;
-  for (unsigned i = 0; i < proto->getNumArgs(); i++) {
-    if (needToScanForQualifiers(proto->getArgType(i))) {
+  for (unsigned i = 0; i < proto->getNumParams(); i++) {
+    if (needToScanForQualifiers(proto->getParamType(i))) {
       // Since types are unique, we need to scan the buffer.
 
       const char *endBuf = startBuf;
@@ -2448,9 +2451,9 @@ void RewriteModernObjC::RewriteBlockLiteralFunctionDecl(FunctionDecl *FD) {
   FdStr += " ";
   FdStr += FD->getName();
   FdStr +=  "(";
-  unsigned numArgs = proto->getNumArgs();
+  unsigned numArgs = proto->getNumParams();
   for (unsigned i = 0; i < numArgs; i++) {
-  QualType ArgType = proto->getArgType(i);
+    QualType ArgType = proto->getParamType(i);
   RewriteBlockPointerType(FdStr, ArgType);
   if (i+1 < numArgs)
     FdStr += ", ";
@@ -2623,7 +2626,7 @@ Stmt *RewriteModernObjC::RewriteObjCStringLiteral(ObjCStringLiteral *Exp) {
   unsigned i;
   for (i=0; i < tmpName.length(); i++) {
     char c = tmpName.at(i);
-    // replace any non alphanumeric characters with '_'.
+    // replace any non-alphanumeric characters with '_'.
     if (!isAlphanumeric(c))
       tmpName[i] = '_';
   }
@@ -3733,12 +3736,9 @@ Stmt *RewriteModernObjC::RewriteObjCProtocolExpr(ObjCProtocolExpr *Exp) {
                                 SC_Extern);
   DeclRefExpr *DRE = new (Context) DeclRefExpr(VD, false, getProtocolType(),
                                                VK_LValue, SourceLocation());
-  Expr *DerefExpr = new (Context) UnaryOperator(DRE, UO_AddrOf,
-                             Context->getPointerType(DRE->getType()),
-                             VK_RValue, OK_Ordinary, SourceLocation());
-  CastExpr *castExpr = NoTypeInfoCStyleCastExpr(Context, DerefExpr->getType(),
-                                                CK_BitCast,
-                                                DerefExpr);
+  CastExpr *castExpr =
+    NoTypeInfoCStyleCastExpr(
+      Context, Context->getPointerType(DRE->getType()), CK_BitCast, DRE);
   ReplaceStmt(Exp, castExpr);
   ProtocolExprDecls.insert(Exp->getProtocol()->getCanonicalDecl());
   // delete Exp; leak for now, see RewritePropertyOrImplicitSetter() usage for more info.
@@ -4735,8 +4735,9 @@ QualType RewriteModernObjC::convertFunctionTypeOfBlocks(const FunctionType *FT) 
   bool modified = convertObjCTypeToCStyleType(Res);
   
   if (FTP) {
-    for (FunctionProtoType::arg_type_iterator I = FTP->arg_type_begin(),
-         E = FTP->arg_type_end(); I && (I != E); ++I) {
+    for (FunctionProtoType::param_type_iterator I = FTP->param_type_begin(),
+                                                E = FTP->param_type_end();
+         I && (I != E); ++I) {
       QualType t = *I;
       // Make sure we convert "t (^)(...)" to "t (*)(...)".
       if (convertObjCTypeToCStyleType(t))
@@ -4803,8 +4804,9 @@ Stmt *RewriteModernObjC::SynthesizeBlockCall(CallExpr *Exp, const Expr *BlockExp
   // Push the block argument type.
   ArgTypes.push_back(PtrBlock);
   if (FTP) {
-    for (FunctionProtoType::arg_type_iterator I = FTP->arg_type_begin(),
-         E = FTP->arg_type_end(); I && (I != E); ++I) {
+    for (FunctionProtoType::param_type_iterator I = FTP->param_type_begin(),
+                                                E = FTP->param_type_end();
+         I && (I != E); ++I) {
       QualType t = *I;
       // Make sure we convert "t (^)(...)" to "t (*)(...)".
       if (!convertBlockPointerToFunctionPointer(t))
@@ -5023,8 +5025,9 @@ bool RewriteModernObjC::PointerTypeTakesAnyBlockArguments(QualType QT) {
     FTP = BPT->getPointeeType()->getAs<FunctionProtoType>();
   }
   if (FTP) {
-    for (FunctionProtoType::arg_type_iterator I = FTP->arg_type_begin(),
-         E = FTP->arg_type_end(); I != E; ++I)
+    for (FunctionProtoType::param_type_iterator I = FTP->param_type_begin(),
+                                                E = FTP->param_type_end();
+         I != E; ++I)
       if (isTopLevelBlockPointerType(*I))
         return true;
   }
@@ -5042,8 +5045,9 @@ bool RewriteModernObjC::PointerTypeTakesAnyObjCQualifiedType(QualType QT) {
     FTP = BPT->getPointeeType()->getAs<FunctionProtoType>();
   }
   if (FTP) {
-    for (FunctionProtoType::arg_type_iterator I = FTP->arg_type_begin(),
-         E = FTP->arg_type_end(); I != E; ++I) {
+    for (FunctionProtoType::param_type_iterator I = FTP->param_type_begin(),
+                                                E = FTP->param_type_end();
+         I != E; ++I) {
       if ((*I)->isObjCQualifiedIdType())
         return true;
       if ((*I)->isObjCObjectPointerType() &&
@@ -6049,9 +6053,9 @@ void RewriteModernObjC::HandleTranslationUnit(ASTContext &C) {
   RewriteInclude();
 
   for (unsigned i = 0, e = FunctionDefinitionsSeen.size(); i < e; i++) {
-    // translation of function bodies were postponed untill all class and
+    // translation of function bodies were postponed until all class and
     // their extensions and implementations are seen. This is because, we
-    // cannot build grouping structs for bitfields untill they are all seen.
+    // cannot build grouping structs for bitfields until they are all seen.
     FunctionDecl *FDecl = FunctionDefinitionsSeen[i];
     HandleTopLevelSingleDecl(FDecl);
   }

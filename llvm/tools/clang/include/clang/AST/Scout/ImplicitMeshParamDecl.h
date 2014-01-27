@@ -64,7 +64,7 @@ namespace clang {
     static ImplicitMeshParamDecl *Create(ASTContext &C, DeclContext *DC,
         SourceLocation IdLoc, IdentifierInfo *Id,
         QualType Type, VarDecl *VD) {
-      return new (C) ImplicitMeshParamDecl(DC, IdLoc, Id, Type, VD);
+      return new (C, DC) ImplicitMeshParamDecl(DC, IdLoc, Id, Type, VD);
     }
 
     ImplicitMeshParamDecl(DeclContext *DC, SourceLocation IdLoc,
