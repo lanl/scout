@@ -88,3 +88,42 @@ llvm::Function *CGScoutRuntime::ModuleInitFunction() {
   }
   return scrtInit;
 }
+
+  //SC_TODO: could we use CreateRuntimeFunction? or GetOrCreateLLVMFunction?
+llvm::Function *CGScoutRuntime::ScoutRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params ) {
+
+	llvm::Function *Func = CGM.getModule().getFunction(funcName);
+	if(!Func){
+		llvm::FunctionType *FTy =
+				llvm::FunctionType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()),
+						Params, false);
+
+		Func = llvm::Function::Create(FTy,
+				llvm::Function::ExternalLinkage,
+				funcName,
+				&CGM.getModule());
+	}
+	return Func;
+}
+
+llvm::Function *CGScoutRuntime::RenderallUniformBeginFunction() {
+	std::string funcName = "__scrt_renderall_uniform_begin";
+	std::vector<llvm::Type*> Params;
+
+	for(int i=0; i < 3; i++) {
+		Params.push_back(llvm::Type::getInt32Ty(CGM.getLLVMContext()));
+	}
+	return ScoutRuntimeFunction(funcName, Params);
+}
+
+llvm::Function *CGScoutRuntime::RenderallEndFunction() {
+	std::string funcName = "__scrt_renderall_end";
+
+	std::vector<llvm::Type*> Params;
+	return ScoutRuntimeFunction(funcName, Params);
+}
+
+
+
+
+

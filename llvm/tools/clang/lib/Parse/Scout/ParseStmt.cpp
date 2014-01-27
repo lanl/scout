@@ -398,7 +398,7 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
   // keyword -- we'll throw an assertion in just to make sure
   // we help maintain consistency from the caller(s).
   assert(Tok.getKind() == tok::kw_renderall &&
-         "epxected input token to be 'renderall'");
+         "expected input token to be 'renderall'");
 
   // Swallow the renderall token...
   SourceLocation RenderallKWLoc = ConsumeToken();
@@ -424,10 +424,10 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
                         Scope::DeclScope     |
                         Scope::ControlScope;
 
-  ParseScope ForallScope(this, ScopeFlags);
+  ParseScope RenderallScope(this, ScopeFlags);
 
   // We consumed the element token above and should now be
-  // at the element identifier portion of the forall; make
+  // at the element identifier portion of the renderall; make
   // sure we have a valid identifier and bail if not...
   if (Tok.isNot(tok::identifier)) {
     Diag(Tok, diag::err_expected_ident);

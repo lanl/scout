@@ -67,12 +67,14 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Dominators.h"
 
 #include <stdio.h>
 #include "llvm/Transforms/Utils/CodeExtractor.h"
 #include "clang/AST/Decl.h"
 #include "CGBlocks.h"
-#include "clang/Analysis/Analyses/Dominators.h"
+
+#include "Scout/CGScoutRuntime.h"
 
 using namespace clang;
 using namespace CodeGen;
@@ -116,9 +118,26 @@ llvm::Value *CodeGenFunction::GetMeshBaseAddr(const ForallMeshStmt &S) {
   return BaseAddr;
 }
 
+//SC_TODO: remove Renderall/Forall duplication here.
+llvm::Value *CodeGenFunction::GetMeshBaseAddr(const RenderallMeshStmt &S) {
+  const VarDecl *MeshVarDecl = S.getMeshVarDecl();
+  llvm::Value *BaseAddr = 0;
+
+  if (MeshVarDecl->hasGlobalStorage()) {
+    BaseAddr = Builder.CreateLoad(CGM.GetAddrOfGlobalVar(MeshVarDecl));
+  } else {
+    BaseAddr = LocalDeclMap[MeshVarDecl];
+    if (MeshVarDecl->getType().getTypePtr()->isReferenceType()) {
+      BaseAddr = Builder.CreateLoad(BaseAddr);
+    }
+  }
+
+  return BaseAddr;
+}
 
 
-// ----- EmitforallStmt
+
+// ----- EmitforallMeshStmt
 //
 // Forall statements are transformed into a nested loop
 // structure (with a loop per rank of the mesh) that
@@ -160,6 +179,9 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   LoopBounds.clear();
   InductionVar.clear();
 
+  //need a marker for start of Forall for CodeExtraction
+  llvm::BasicBlock *entry = EmitForallMarkerBlock("forall.entry");
+
   // Create the induction variables for eack rank.
   for(unsigned int i = 0; i < 3; i++) {
     LoopBounds.push_back(0);
@@ -177,7 +199,15 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   Builder.CreateStore(ConstantZero, InductionVar[3]);
 
   EmitForallMeshLoop(S, rank);
+
+  //need a marker for end of Forall for CodeExtraction
+  llvm::BasicBlock *exit = EmitForallMarkerBlock("forall.exit");
+
+  // Extract Blocks to function and replace w/ call to function
+  ExtractForall(entry, exit, "ForallMeshFunction");
+
 }
+
 
 //generate one of the nested loops
 void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
@@ -302,9 +332,47 @@ void CodeGenFunction::EmitForallBody(const ForallStmt &S) {
   EmitStmt(S.getBody());
 }
 
+// Emit a branch and block. used as markers for code extraction
+llvm::BasicBlock *CodeGenFunction::EmitForallMarkerBlock(const std::string name) {
+	 llvm::BasicBlock *entry = createBasicBlock(name);
+	  Builder.CreateBr(entry);
+	  EmitBlock(entry);
+	  return entry;
+}
+
+// Extract blocks to function and replace w/ call to function
+void CodeGenFunction:: ExtractForall(llvm::BasicBlock *entry, llvm::BasicBlock *exit, const std::string name) {
+  std::vector< llvm::BasicBlock * > Blocks;
+
+  llvm::Function::iterator BB = CurFn->begin();
+  // find start marker
+  for( ; BB->getName() != entry->getName(); ++BB) { }
+
+  // collect forall basic blocks up to exit
+  for( ; BB->getName() != exit->getName(); ++BB) {
+  	Blocks.push_back(BB);
+  }
+
+  llvm::CodeExtractor codeExtractor(Blocks, 0, false);
+
+  llvm::Function *ForallFn = codeExtractor.extractCodeRegion();
+
+  ForallFn->setName(name);
+}
+
 
 void CodeGenFunction::EmitForallArrayStmt(const ForallArrayStmt &S) {
+
+	//need a marker for start of Forall for CodeExtraction
+	llvm::BasicBlock *entry = EmitForallMarkerBlock("forall.entry");
+
   EmitForallArrayLoop(S, S.getDims());
+
+  //need a marker for end of Forall for CodeExtraction
+  llvm::BasicBlock *exit = EmitForallMarkerBlock("forall.exit");
+
+  // Extract Blocks to function and replace w/ call to function
+  ExtractForall(entry, exit, "ForallArrayFunction");
 }
 
 void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) {
@@ -396,6 +464,34 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
     DI->EmitLexicalBlockEnd(Builder, S.getSourceRange().getEnd());
 
   EmitBlock(LoopExit.getBlock(), true);
+}
+
+
+void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
+
+	llvm::Value *MeshBaseAddr = GetMeshBaseAddr(S);
+	llvm::StringRef MeshName = S.getMeshType()->getName();
+
+	// find number of fields
+	MeshDecl* MD =  S.getMeshType()->getDecl();
+	unsigned int nfields = MD->fields();
+
+	LoopBounds.clear();
+	for(unsigned int i = 0; i < 3; i++) {
+	    LoopBounds.push_back(0);
+	    sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
+	    LoopBounds[i] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
+	}
+
+	llvm::Function *BeginFunc = CGM.getScoutRuntime().RenderallUniformBeginFunction();
+	Builder.CreateCall(BeginFunc, LoopBounds);
+
+	//SC_TODO: renderall body
+
+	llvm::Function *EndFunc = CGM.getScoutRuntime().RenderallEndFunction();
+	std::vector<llvm::Value*> Args;
+	Builder.CreateCall(EndFunc, Args);
+
 }
 
 #if 0

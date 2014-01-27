@@ -69,7 +69,7 @@ using namespace clang;
 
 // ----- RenderallStmt
 //
-// Constructor for a forall statement w/out a predicate expression.
+// Constructor for a Renderall statement w/out a predicate expression.
 //
 RenderallStmt::RenderallStmt(StmtClass StatementClass,
                        IdentifierInfo* RefVarInfo,
@@ -90,7 +90,7 @@ RenderallStmt::RenderallStmt(StmtClass StatementClass,
 
 // ----- RenderallStmt::RenderallStmt
 //
-// Constructor for a forall statement w/ a predicate expression.
+// Constructor for a Renderall statement w/ a predicate expression.
 //
 RenderallStmt::RenderallStmt(StmtClass StatementClass,
                        IdentifierInfo* RefVarInfo,
@@ -146,15 +146,15 @@ RenderallMeshStmt::RenderallMeshStmt(MeshElementType RefElement,
                                      IdentifierInfo* MeshInfo,
                                      VarDecl* MeshVarDecl,
                                      const MeshType* MT,
-                                     SourceLocation ForallLocation,
+                                     SourceLocation RenderallLocation,
                                      Stmt *Body,
                                      Expr* Predicate,
                                      SourceLocation LeftParenLoc,
                                      SourceLocation RightParenLoc)
-  : RenderallStmt(ForallMeshStmtClass,
+  : RenderallStmt(RenderallMeshStmtClass,
                   RefVarInfo,
                   MeshInfo, MeshVarDecl,
-                  ForallLocation, Body,
+                  RenderallLocation, Body,
                   Predicate, LeftParenLoc, RightParenLoc) {
 
     MeshElementRef = RefElement;
