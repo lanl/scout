@@ -1,4 +1,4 @@
-//===- tools/llvm-cov/llvm-cov.cpp - LLVM coverage tool -------------------===//
+//===- llvm-cov.cpp - LLVM coverage tool ----------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -30,6 +30,22 @@ InputGCNO("gcno", cl::desc("<input gcno file>"), cl::init(""));
 static cl::opt<std::string>
 InputGCDA("gcda", cl::desc("<input gcda file>"), cl::init(""));
 
+static cl::opt<bool>
+AllBlocks("a", cl::init(false), cl::desc("display all block info"));
+
+static cl::opt<bool>
+BranchInfo("b", cl::init(false), cl::desc("display branch info"));
+
+static cl::opt<bool>
+BranchCount("c", cl::init(false), cl::desc("display branch counts instead of \
+                                            probabilities (requires -b)"));
+
+static cl::opt<bool>
+FuncCoverage("f", cl::init(false), cl::desc("output function coverage"));
+
+static cl::opt<bool>
+UncondBranch("u", cl::init(false), cl::desc("display unconditional branch info \
+                                             (requires -b)"));
 
 //===----------------------------------------------------------------------===//
 int main(int argc, char **argv) {
@@ -49,8 +65,8 @@ int main(int argc, char **argv) {
     errs() << InputGCNO << ": " << ec.message() << "\n";
     return 1;
   }
-  GCOVBuffer GCNO_GB(GCNO_Buff.take());
-  if (!GF.read(GCNO_GB)) {
+  GCOVBuffer GCNO_GB(GCNO_Buff.get());
+  if (!GF.readGCNO(GCNO_GB)) {
     errs() << "Invalid .gcno File!\n";
     return 1;
   }
@@ -61,18 +77,19 @@ int main(int argc, char **argv) {
       errs() << InputGCDA << ": " << ec.message() << "\n";
       return 1;
     }
-    GCOVBuffer GCDA_GB(GCDA_Buff.take());
-    if (!GF.read(GCDA_GB)) {
+    GCOVBuffer GCDA_GB(GCDA_Buff.get());
+    if (!GF.readGCDA(GCDA_GB)) {
       errs() << "Invalid .gcda File!\n";
       return 1;
     }
   }
 
-
   if (DumpGCOV)
     GF.dump();
 
-  FileInfo FI;
+  GCOVOptions Options(AllBlocks, BranchInfo, BranchCount, FuncCoverage,
+                      UncondBranch);
+  FileInfo FI(Options);
   GF.collectLineCounts(FI);
   FI.print(InputGCNO, InputGCDA);
   return 0;

@@ -73,7 +73,9 @@ namespace scout {
       static bool   GLFWSupport;
       static bool   PNGSupport;
 
+      static const char* CompileOptions[];
       static const char* IncludePaths[];
+      static const char* LinkOptions[];
       static const char* LibraryPaths[];
       static const char* Libraries[];
 

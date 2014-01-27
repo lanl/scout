@@ -76,8 +76,15 @@ namespace scout {
       ${CUDA_VERSION_MINOR}
     }; 
 
-    const char* Configuration::IncludePaths[] = {
+    const char* Configuration::CompileOptions[] = {
+      #ifdef APPLE
+      "-stdlib=libc++",
+      #endif // APPLE
 
+      0 // end of include paths. 
+    };
+
+    const char* Configuration::IncludePaths[] = {
       "-I${CMAKE_INSTALL_PREFIX}/include",
 
       #ifdef SCOUT_ENABLE_OPENGL
@@ -112,8 +119,15 @@ namespace scout {
       0 // end of include paths. 
     };
 
-    const char* Configuration::LibraryPaths[] = {
+    const char* Configuration::LinkOptions[] = {
+      #ifdef APPLE
+      "-stdlib=libc++",
+      #endif // APPLE
 
+      0 // end of include paths. 
+    };
+
+    const char* Configuration::LibraryPaths[] = {
       "-L${CMAKE_INSTALL_PREFIX}/lib",
       "-L${SDL_LIBRARY_DIR}",    
 
@@ -146,7 +160,7 @@ namespace scout {
   
     const char* Configuration::Libraries[] = {
 
-      "-lBlocksRuntime",
+//      "-lBlocksRuntime",
       #ifdef SCOUT_ENABLE_CUDA
       "-lscCudaError",
       #endif

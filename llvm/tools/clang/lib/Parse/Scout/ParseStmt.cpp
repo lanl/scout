@@ -302,7 +302,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
     if (Tok.isNot(tok::l_paren)) {
       Diag(Tok, diag::err_forall_predicate_missing_lparen);
       // Multi-line skip, don't consume brace
-      SkipUntil(tok::r_brace, false, true);
+      SkipUntil(tok::r_brace, StopBeforeMatch);
       return StmtError();
     }
 
@@ -311,7 +311,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
     ExprResult PredicateResult = ParseExpression();
     if (PredicateResult.isInvalid()) {
       Diag(Tok, diag::err_forall_invalid_op);
-      SkipUntil(tok::r_brace, false, true);
+      SkipUntil(tok::r_brace, StopBeforeMatch);
       return StmtError();
     }
 
@@ -319,7 +319,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
 
     if (Tok.isNot(tok::r_paren)) {
       Diag(Tok, diag::err_forall_predicate_missing_rparen);
-      SkipUntil(tok::r_brace, false, true);
+      SkipUntil(tok::r_brace, StopBeforeMatch);
       return StmtError();
     }
     RParenLoc = ConsumeParen();
@@ -519,7 +519,7 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
     if (Tok.isNot(tok::l_paren)) {
       Diag(Tok, diag::err_forall_predicate_missing_lparen);
       // Multi-line skip, don't consume brace
-      SkipUntil(tok::r_brace, false, true);
+      SkipUntil(tok::r_brace, StopBeforeMatch);
       return StmtError();
     }
 
@@ -528,7 +528,7 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
     ExprResult PredicateResult = ParseExpression();
     if (PredicateResult.isInvalid()) {
       Diag(Tok, diag::err_forall_invalid_op);
-      SkipUntil(tok::r_brace, false, true);
+      SkipUntil(tok::r_brace, StopBeforeMatch);
       return StmtError();
     }
 
@@ -536,7 +536,7 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
 
     if (Tok.isNot(tok::r_paren)) {
       Diag(Tok, diag::err_forall_predicate_missing_rparen);
-      SkipUntil(tok::r_brace, false, true);
+      SkipUntil(tok::r_brace, StopBeforeMatch);
       return StmtError();
     }
     RParenLoc = ConsumeParen();
@@ -627,7 +627,7 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
   for(size_t i = 0; i < 3; ++i) {
     if(Tok.isNot(tok::identifier)){
       Diag(Tok, diag::err_expected_ident);
-      SkipUntil(tok::r_brace, false, true); //multiline skip, don't consume brace
+      SkipUntil(tok::r_brace, StopBeforeMatch); //multiline skip, don't consume brace
       return StmtError();
     }
 
@@ -641,7 +641,7 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
     }
     else if(Tok.isNot(tok::comma)){
       Diag(Tok, diag::err_forall_expected_comma_or_kw_in);
-      SkipUntil(tok::r_brace, false, true);
+      SkipUntil(tok::r_brace, StopBeforeMatch);
       return StmtError();
     }
     ConsumeToken();
@@ -649,7 +649,7 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
 
   if(Tok.isNot(tok::kw_in)){
     Diag(Tok, diag::err_forall_expected_kw_in);
-    SkipUntil(tok::r_brace, false, true);
+    SkipUntil(tok::r_brace, StopBeforeMatch);
     return StmtError();
   }
 
@@ -657,7 +657,7 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
 
   if(Tok.isNot(tok::l_square)){
     Diag(Tok, diag::err_expected_lsquare);
-    SkipUntil(tok::r_brace, false, true);
+    SkipUntil(tok::r_brace, StopBeforeMatch);
     return StmtError();
   }
 
@@ -674,7 +674,7 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
     // unless we look at what arrays are in the body.
     if(Tok.is(tok::coloncolon)) {
       Diag(Tok, diag::err_forall_array_invalid_end);
-      SkipUntil(tok::r_brace, false, true);
+      SkipUntil(tok::r_brace, StopBeforeMatch);
       return StmtError();
     }
 
@@ -686,7 +686,7 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
       ExprResult StartResult = ParseAssignmentExpression();
       if(StartResult.isInvalid()){
         Diag(Tok, diag::err_forall_array_invalid_start);
-        SkipUntil(tok::r_brace, false, true);
+        SkipUntil(tok::r_brace, StopBeforeMatch);
         return StmtError();
       }
       Start[i] = StartResult.get();
@@ -695,20 +695,20 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
       ConsumeToken();
     } else {
       Diag(Tok, diag:: err_forall_array_misformat);
-      SkipUntil(tok::r_brace, false, true);
+      SkipUntil(tok::r_brace, StopBeforeMatch);
       return StmtError();
     }
 
     // parse end
     if(Tok.is(tok::colon)) {
       Diag(Tok, diag::err_forall_array_invalid_end);
-      SkipUntil(tok::r_brace, false, true);
+      SkipUntil(tok::r_brace, StopBeforeMatch);
       return StmtError();
     } else {
       ExprResult EndResult = ParseAssignmentExpression();
       if(EndResult.isInvalid()){
         Diag(Tok, diag::err_forall_array_invalid_end);
-        SkipUntil(tok::r_brace, false, true);
+        SkipUntil(tok::r_brace, StopBeforeMatch);
         return StmtError();
       }
       End[i] = EndResult.get();
@@ -717,7 +717,7 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
       ConsumeToken();
     } else {
       Diag(Tok, diag:: err_forall_array_misformat);
-      SkipUntil(tok::r_brace, false, true);
+      SkipUntil(tok::r_brace, StopBeforeMatch);
       return StmtError();
     }
 
@@ -730,7 +730,7 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
       ExprResult StrideResult = ParseAssignmentExpression();
       if(StrideResult.isInvalid()){
         Diag(Tok, diag::err_forall_array_invalid_stride);
-        SkipUntil(tok::r_brace, false, true);
+        SkipUntil(tok::r_brace, StopBeforeMatch);
         return StmtError();
       }
       Stride[i] = StrideResult.get();
@@ -739,7 +739,7 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
     if(Tok.isNot(tok::comma)){
       if(i != dims - 1){
         Diag(Tok, diag::err_forall_array_mismatch);
-        SkipUntil(tok::r_brace, false, true);
+        SkipUntil(tok::r_brace, StopBeforeMatch);
         return StmtError();
       }
       break;
@@ -750,7 +750,7 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
 
   if(Tok.isNot(tok::r_square)){
     Diag(Tok, diag::err_expected_rsquare);
-    SkipUntil(tok::r_brace, false, true);
+    SkipUntil(tok::r_brace, StopBeforeMatch);
     return StmtError();
   }
 

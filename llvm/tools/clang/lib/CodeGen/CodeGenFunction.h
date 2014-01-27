@@ -17,8 +17,9 @@
 #include "CGBuilder.h"
 #include "CGDebugInfo.h"
 #include "CGValue.h"
-#include "EHScopeStack.h"
 #include "CodeGenModule.h"
+#include "CodeGenPGO.h"
+#include "EHScopeStack.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
@@ -900,19 +901,36 @@ private:
   llvm::DenseMap<const LabelDecl*, JumpDest> LabelMap;
 
   // BreakContinueStack - This keeps track of where break and continue
-  // statements should jump to.
+  // statements should jump to and the associated base counter for
+  // instrumentation.
   struct BreakContinue {
-    BreakContinue(JumpDest Break, JumpDest Continue)
-      : BreakBlock(Break), ContinueBlock(Continue) {}
+    BreakContinue(JumpDest Break, JumpDest Continue, RegionCounter *LoopCnt,
+                  bool CountBreak = true)
+      : BreakBlock(Break), ContinueBlock(Continue), LoopCnt(LoopCnt),
+        CountBreak(CountBreak) {}
 
     JumpDest BreakBlock;
     JumpDest ContinueBlock;
+    RegionCounter *LoopCnt;
+    bool CountBreak;
   };
   SmallVector<BreakContinue, 8> BreakContinueStack;
+
+  CodeGenPGO PGO;
+
+public:
+  /// Get a counter for instrumentation of the region associated with the given
+  /// statement.
+  RegionCounter getPGORegionCounter(const Stmt *S) {
+    return RegionCounter(PGO, S);
+  }
+private:
 
   /// SwitchInsn - This is nearest current switch instruction. It is null if
   /// current context is not in a switch.
   llvm::SwitchInst *SwitchInsn;
+  /// The branch weights of SwitchInsn when doing instrumentation based PGO.
+  SmallVector<uint64_t, 16> *SwitchWeights;
 
   /// CaseRangeBlock - This block holds if condition check for last case
   /// statement range in current switch instruction.
@@ -1219,7 +1237,7 @@ public:
   void EmitConstructorBody(FunctionArgList &Args);
   void EmitDestructorBody(FunctionArgList &Args);
   void emitImplicitAssignmentOperatorBody(FunctionArgList &Args);
-  void EmitFunctionBody(FunctionArgList &Args);
+  void EmitFunctionBody(FunctionArgList &Args, const Stmt *Body);
 
   void EmitForwardingCallToLambda(const CXXMethodDecl *LambdaCallOperator,
                                   CallArgList &CallArgs);
@@ -1235,6 +1253,11 @@ public:
   /// FinishFunction - Complete IR generation of the current function. It is
   /// legal to call this function even if there is no current insertion point.
   void FinishFunction(SourceLocation EndLoc=SourceLocation());
+
+  void StartThunk(llvm::Function *Fn, GlobalDecl GD, const CGFunctionInfo &FnInfo);
+
+  void EmitCallAndReturnForThunk(GlobalDecl GD, llvm::Value *Callee,
+                                 const ThunkInfo *Thunk);
 
   /// GenerateThunk - Generate a thunk for the given method.
   void GenerateThunk(llvm::Function *Fn, const CGFunctionInfo &FnInfo,
@@ -2289,6 +2312,11 @@ public:
   /// is unhandled by the current target.
   llvm::Value *EmitTargetBuiltinExpr(unsigned BuiltinID, const CallExpr *E);
 
+  llvm::Value *EmitAArch64CompareBuiltinExpr(llvm::Value *Op, llvm::Type *Ty,
+                                             const llvm::CmpInst::Predicate Fp,
+                                             const llvm::CmpInst::Predicate Ip,
+                                             const llvm::Twine &Name = "");
+  llvm::Value *EmitAArch64CompareBuiltinExpr(llvm::Value *Op, llvm::Type *Ty);
   llvm::Value *EmitAArch64BuiltinExpr(unsigned BuiltinID, const CallExpr *E);
   llvm::Value *EmitARMBuiltinExpr(unsigned BuiltinID, const CallExpr *E);
   llvm::Value *EmitNeonCall(llvm::Function *F,
@@ -2551,8 +2579,10 @@ public:
   /// EmitBranchOnBoolExpr - Emit a branch on a boolean condition (e.g. for an
   /// if statement) to the specified blocks.  Based on the condition, this might
   /// try to simplify the codegen of the conditional based on the branch.
+  /// TrueCount should be the number of times we expect the condition to
+  /// evaluate to true based on PGO data.
   void EmitBranchOnBoolExpr(const Expr *Cond, llvm::BasicBlock *TrueBlock,
-                            llvm::BasicBlock *FalseBlock);
+                            llvm::BasicBlock *FalseBlock, uint64_t TrueCount);
 
   /// \brief Emit a description of a type in a format suitable for passing to
   /// a runtime sanitizer handler.
@@ -2630,39 +2660,53 @@ private:
                                   std::string &ConstraintStr,
                                   SourceLocation Loc);
 
+public:
   /// EmitCallArgs - Emit call arguments for a function.
-  /// The CallArgTypeInfo parameter is used for iterating over the known
-  /// argument types of the function being called.
-  template<typename T>
-  void EmitCallArgs(CallArgList& Args, const T* CallArgTypeInfo,
+  template <typename T>
+  void EmitCallArgs(CallArgList &Args, const T *CallArgTypeInfo,
                     CallExpr::const_arg_iterator ArgBeg,
                     CallExpr::const_arg_iterator ArgEnd,
                     bool ForceColumnInfo = false) {
-    CGDebugInfo *DI = getDebugInfo();
-    SourceLocation CallLoc;
-    if (DI) CallLoc = DI->getLocation();
+    if (CallArgTypeInfo) {
+      EmitCallArgs(Args, CallArgTypeInfo->isVariadic(),
+                   CallArgTypeInfo->param_type_begin(),
+                   CallArgTypeInfo->param_type_end(), ArgBeg, ArgEnd,
+                   ForceColumnInfo);
+    } else {
+      // T::param_type_iterator might not have a default ctor.
+      const QualType *NoIter = 0;
+      EmitCallArgs(Args, /*AllowExtraArguments=*/true, NoIter, NoIter, ArgBeg,
+                   ArgEnd, ForceColumnInfo);
+    }
+  }
 
+  template<typename ArgTypeIterator>
+  void EmitCallArgs(CallArgList& Args,
+                    bool AllowExtraArguments,
+                    ArgTypeIterator ArgTypeBeg,
+                    ArgTypeIterator ArgTypeEnd,
+                    CallExpr::const_arg_iterator ArgBeg,
+                    CallExpr::const_arg_iterator ArgEnd,
+                    bool ForceColumnInfo = false) {
+    SmallVector<QualType, 16> ArgTypes;
     CallExpr::const_arg_iterator Arg = ArgBeg;
 
     // First, use the argument types that the type info knows about
-    if (CallArgTypeInfo) {
-      for (typename T::arg_type_iterator I = CallArgTypeInfo->arg_type_begin(),
-           E = CallArgTypeInfo->arg_type_end(); I != E; ++I, ++Arg) {
-        assert(Arg != ArgEnd && "Running over edge of argument list!");
-        QualType ArgType = *I;
+    for (ArgTypeIterator I = ArgTypeBeg, E = ArgTypeEnd; I != E; ++I, ++Arg) {
+      assert(Arg != ArgEnd && "Running over edge of argument list!");
 #ifndef NDEBUG
-        QualType ActualArgType = Arg->getType();
-        if (ArgType->isPointerType() && ActualArgType->isPointerType()) {
-          QualType ActualBaseType =
+      QualType ArgType = *I;
+      QualType ActualArgType = Arg->getType();
+      if (ArgType->isPointerType() && ActualArgType->isPointerType()) {
+        QualType ActualBaseType =
             ActualArgType->getAs<PointerType>()->getPointeeType();
-          QualType ArgBaseType =
+        QualType ArgBaseType =
             ArgType->getAs<PointerType>()->getPointeeType();
-          if (ArgBaseType->isVariableArrayType()) {
-            if (const VariableArrayType *VAT =
-                getContext().getAsVariableArrayType(ActualBaseType)) {
-              if (!VAT->getSizeExpr())
-                ActualArgType = ArgType;
-            }
+        if (ArgBaseType->isVariableArrayType()) {
+          if (const VariableArrayType *VAT =
+              getContext().getAsVariableArrayType(ActualBaseType)) {
+            if (!VAT->getSizeExpr())
+              ActualArgType = ArgType;
           }
         }
 
@@ -2685,35 +2729,32 @@ private:
           assert(false && "type mismatch in call argument!");
         }
         // +==================================================================+
-#endif
-		assert(getContext().getCanonicalType(ArgType.getNonReferenceType()).
-               getTypePtr() ==
-               getContext().getCanonicalType(ActualArgType).getTypePtr() &&
-               "type mismatch in call argument!");
-
-        EmitCallArg(Args, *Arg, ArgType);
-
-        // Each argument expression could modify the debug
-        // location. Restore it.
-        if (DI) DI->EmitLocation(Builder, CallLoc, ForceColumnInfo);
       }
-
-      // Either we've emitted all the call args, or we have a call to a
-      // variadic function.
-      assert((Arg == ArgEnd || CallArgTypeInfo->isVariadic()) &&
-             "Extra arguments in non-variadic function!");
-
+      assert(getContext().getCanonicalType(ArgType.getNonReferenceType()).
+             getTypePtr() ==
+             getContext().getCanonicalType(ActualArgType).getTypePtr() &&
+             "type mismatch in call argument!");
+#endif
+      ArgTypes.push_back(*I);
     }
+
+    // Either we've emitted all the call args, or we have a call to variadic
+    // function or some other call that allows extra arguments.
+    assert((Arg == ArgEnd || AllowExtraArguments) &&
+           "Extra arguments in non-variadic function!");
 
     // If we still have any arguments, emit them using the type of the argument.
-    for (; Arg != ArgEnd; ++Arg) {
-      EmitCallArg(Args, *Arg, Arg->getType());
+    for (; Arg != ArgEnd; ++Arg)
+      ArgTypes.push_back(Arg->getType());
 
-      // Restore the debug location.
-      if (DI) DI->EmitLocation(Builder, CallLoc, ForceColumnInfo);
-    }
+    EmitCallArgs(Args, ArgTypes, ArgBeg, ArgEnd, ForceColumnInfo);
   }
 
+  void EmitCallArgs(CallArgList &Args, ArrayRef<QualType> ArgTypes,
+                    CallExpr::const_arg_iterator ArgBeg,
+                    CallExpr::const_arg_iterator ArgEnd, bool ForceColumnInfo);
+
+private:
   const TargetCodeGenInfo &getTargetHooks() const {
     return CGM.getTargetCodeGenInfo();
   }

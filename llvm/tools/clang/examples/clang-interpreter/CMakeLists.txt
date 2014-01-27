@@ -2,17 +2,11 @@ include(sc-llvm-link-libs)
 
 
 set(LLVM_LINK_COMPONENTS
-  jit
-  interpreter
+  Core
+  ExecutionEngine
+  JIT
+  Support
   nativecodegen
-  asmparser
-  bitreader
-  bitwriter
-  irreader
-  codegen
-  ipo
-  linker
-  selectiondag
   )
 
 add_clang_executable(clang-interpreter
@@ -24,20 +18,9 @@ add_dependencies(clang-interpreter
   )
 
 target_link_libraries(clang-interpreter
-  clangFrontend
-  clangSerialization
-  clangDriver
-  clangCodeGen
-  clangSema
-  clangStaticAnalyzerFrontend
-  clangStaticAnalyzerCheckers
-  clangStaticAnalyzerCore
-  clangAnalysis
-  clangRewriteCore
-  clangRewriteFrontend
-  clangAST
-  clangParse
-  clangLex
   clangBasic
   ${SC_LLVM_LINK_LIBS}
+  clangCodeGen
+  clangDriver
+  clangFrontend
   )

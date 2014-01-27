@@ -211,7 +211,8 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
 //generate one of the nested loops
 void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
-
+  RegionCounter Cnt = getPGORegionCounter(&S);
+  
   llvm::Value *MeshBaseAddr = GetMeshBaseAddr(S);
   llvm::StringRef MeshName = S.getMeshType()->getName();
 
@@ -286,7 +287,7 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
 
   // Store the blocks to use for break and continue.
 
-  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue));
+  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue, &Cnt));
   if (r == 1) {  // This is our innermost rank, generate the loop body.
     EmitForallBody(S);
 
@@ -378,6 +379,8 @@ void CodeGenFunction::EmitForallArrayStmt(const ForallArrayStmt &S) {
 }
 
 void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) {
+  RegionCounter Cnt = getPGORegionCounter(&S);
+  
   CGDebugInfo *DI = getDebugInfo();
 
   llvm::Value *Start = EmitScalarExpr(S.getStart(r-1));
@@ -435,7 +438,7 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
   Continue = getJumpDestInCurrentScope(IRNameStr);
 
   // Store the blocks to use for break and continue.
-  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue));
+  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue, &Cnt));
 
   if (r == 1) {  // This is our innermost rank, generate the loop body.
     EmitForallBody(S);

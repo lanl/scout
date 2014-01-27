@@ -26,6 +26,7 @@
 #include <iostream>
 
 #include "clang/Lex/Lexer.h"
+#include "UnicodeCharSets.h"
 #include "clang/Basic/CharInfo.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Lex/CodeCompletionHandler.h"
@@ -38,7 +39,6 @@
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ConvertUTF.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "UnicodeCharSets.h"
 #include <cstring>
 using namespace clang;
 
@@ -1807,10 +1807,10 @@ const char *Lexer::LexUDSuffix(Token &Result, const char *CurPtr,
 
     if (!IsUDSuffix) {
       if (!isLexingRawMode())
-        Diag(CurPtr, getLangOpts().MicrosoftMode ?
-            diag::ext_ms_reserved_user_defined_literal :
-            diag::ext_reserved_user_defined_literal)
-          << FixItHint::CreateInsertion(getSourceLocation(CurPtr), " ");
+        Diag(CurPtr, getLangOpts().MSVCCompat
+                         ? diag::ext_ms_reserved_user_defined_literal
+                         : diag::ext_reserved_user_defined_literal)
+            << FixItHint::CreateInsertion(getSourceLocation(CurPtr), " ");
       return CurPtr;
     }
 
@@ -2148,8 +2148,11 @@ bool Lexer::SkipLineComment(Token &Result, const char *CurPtr,
     if (C != 0) {
       // We found a newline, see if it's escaped.
       const char *EscapePtr = CurPtr-1;
-      while (isHorizontalWhitespace(*EscapePtr)) // Skip whitespace.
+      bool HasSpace = false;
+      while (isHorizontalWhitespace(*EscapePtr)) { // Skip whitespace.
         --EscapePtr;
+        HasSpace = true;
+      }
 
       if (*EscapePtr == '\\') // Escaped newline.
         CurPtr = EscapePtr;
@@ -2158,6 +2161,10 @@ bool Lexer::SkipLineComment(Token &Result, const char *CurPtr,
         CurPtr = EscapePtr-2;
       else
         break; // This is a newline, we're done.
+
+      // If there was space between the backslash and newline, warn about it.
+      if (HasSpace && !isLexingRawMode())
+        Diag(EscapePtr, diag::backslash_newline_space);
     }
 
     // Otherwise, this is a hard case.  Fall back on getAndAdvanceChar to
@@ -2585,7 +2592,8 @@ bool Lexer::LexEndOfFile(Token &Result, const char *CurPtr) {
     FormTokenWithChars(Result, CurPtr, tok::eod);
 
     // Restore comment saving mode, in case it was disabled for directive.
-    resetExtendedTokenMode();
+    if (PP)
+      resetExtendedTokenMode();
     return true;  // Have a token.
   }
 

@@ -94,7 +94,7 @@ StructuredMeshDecl *StructuredMeshDecl::Create(const ASTContext &C,
                                                IdentifierInfo *Id,
                                                StructuredMeshDecl* PrevDecl) {
 
-  StructuredMeshDecl* M = new (C) StructuredMeshDecl(DC,
+  StructuredMeshDecl* M = new (C, DC) StructuredMeshDecl(DC,
                                                      StartLoc,
                                                      IdLoc, Id,
                                                      PrevDecl);
@@ -105,8 +105,7 @@ StructuredMeshDecl *StructuredMeshDecl::Create(const ASTContext &C,
 
 StructuredMeshDecl *StructuredMeshDecl::CreateDeserialized(const ASTContext &C,
                                                            unsigned ID) {
-  void *Mem = AllocateDeserializedDecl(C, ID, sizeof(StructuredMeshDecl));
-  StructuredMeshDecl *M = new (Mem) StructuredMeshDecl(0, SourceLocation(),
+  StructuredMeshDecl *M = new (C, ID) StructuredMeshDecl(0, SourceLocation(),
                                                        SourceLocation(), 0, 0);
   M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
   return M;

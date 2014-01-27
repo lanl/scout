@@ -46,9 +46,9 @@
 #include <deque>
 #include <map>
 #include <string>
+#include <sys/stat.h>
 #include <utility>
 #include <vector>
-#include <sys/stat.h>
 
 namespace llvm {
   class MemoryBuffer;
@@ -1832,7 +1832,7 @@ public:
            "Should be called only during statement reading!");
     // Subexpressions are stored from last to first, so the next Stmt we need
     // is at the back of the stack.
-    assert(!StmtStack.empty() && "Read too many sub statements!");
+    assert(!StmtStack.empty() && "Read too many sub-statements!");
     return StmtStack.pop_back_val();
   }
 

@@ -148,7 +148,7 @@ void RuntimeDyldMachO::resolveRelocation(const SectionEntry &Section,
   unsigned MachoType = Type;
   unsigned Size = 1 << LogSize;
 
-  DEBUG(dbgs() << "resolveRelocation LocalAddress: " 
+  DEBUG(dbgs() << "resolveRelocation LocalAddress: "
         << format("%p", LocalAddress)
         << " FinalAddress: " << format("%p", FinalAddress)
         << " Value: " << format("%p", Value)
@@ -453,6 +453,11 @@ bool RuntimeDyldMachO::isCompatibleFormat(
   if (Magic == "\xFE\xED\xFA\xCF") return true;
   if (Magic == "\xCF\xFA\xED\xFE") return true;
   return false;
+}
+
+bool RuntimeDyldMachO::isCompatibleFile(
+        const object::ObjectFile *Obj) const {
+  return Obj->isMachO();
 }
 
 } // end namespace llvm

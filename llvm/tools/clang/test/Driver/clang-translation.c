@@ -19,6 +19,10 @@
 // RUN: FileCheck -check-prefix=CORE2 %s
 // CORE2: "-target-cpu"
 // CORE2: "core2"
+// RUN: %clang -target x86_64h-apple-darwin -### -S %s -o %t.s 2>&1 | \
+// RUN: FileCheck -check-prefix=AVX2 %s
+// AVX2: "-target-cpu"
+// AVX2: "core-avx2"
 
 // RUN: %clang -target x86_64-apple-darwin10 -### -S %s -arch armv7 2>&1 | \
 // RUN: FileCheck -check-prefix=ARMV7_DEFAULT %s
@@ -202,7 +206,7 @@
 // AMD64-MINGW: "amd64--mingw32"
 // AMD64-MINGW: "-munwind-tables"
 
-// RUN: %clang -target i386-linux-android -### -S %s 2>&1 \
+// RUN: %clang -target i686-linux-android -### -S %s 2>&1 \
 // RUN:        --sysroot=%S/Inputs/basic_android_tree/sysroot \
 // RUN:   | FileCheck --check-prefix=ANDROID-X86 %s
 // ANDROID-X86: clang

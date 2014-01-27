@@ -136,18 +136,19 @@ public:
 
   void EmitCXXDestructors(const CXXDestructorDecl *D);
 
-  void BuildInstanceFunctionParams(CodeGenFunction &CGF,
-                                   QualType &ResTy,
-                                   FunctionArgList &Params);
+  void addImplicitStructorParams(CodeGenFunction &CGF, QualType &ResTy,
+                                 FunctionArgList &Params);
 
   void EmitInstanceFunctionProlog(CodeGenFunction &CGF);
 
-  void EmitConstructorCall(CodeGenFunction &CGF,
-                           const CXXConstructorDecl *D, CXXCtorType Type,
-                           bool ForVirtualBase, bool Delegating,
-                           llvm::Value *This,
-                           CallExpr::const_arg_iterator ArgBeg,
-                           CallExpr::const_arg_iterator ArgEnd);
+  unsigned addImplicitConstructorArgs(CodeGenFunction &CGF,
+                                      const CXXConstructorDecl *D,
+                                      CXXCtorType Type, bool ForVirtualBase,
+                                      bool Delegating, CallArgList &Args);
+
+  void EmitDestructorCall(CodeGenFunction &CGF, const CXXDestructorDecl *DD,
+                          CXXDtorType Type, bool ForVirtualBase,
+                          bool Delegating, llvm::Value *This);
 
   void emitVTableDefinitions(CodeGenVTables &CGVT, const CXXRecordDecl *RD);
 
@@ -570,7 +571,7 @@ llvm::Constant *ItaniumCXXABI::BuildMemberPointer(const CXXMethodDecl *MD,
   // Get the function pointer (or index if this is a virtual function).
   llvm::Constant *MemPtr[2];
   if (MD->isVirtual()) {
-    uint64_t Index = CGM.getVTableContext().getMethodVTableIndex(MD);
+    uint64_t Index = CGM.getItaniumVTableContext().getMethodVTableIndex(MD);
 
     const ASTContext &Context = getContext();
     CharUnits PointerWidth =
@@ -780,7 +781,8 @@ ItaniumCXXABI::GetVirtualBaseClassOffset(CodeGenFunction &CGF,
                                          const CXXRecordDecl *BaseClassDecl) {
   llvm::Value *VTablePtr = CGF.GetVTablePtr(This, CGM.Int8PtrTy);
   CharUnits VBaseOffsetOffset =
-    CGM.getVTableContext().getVirtualBaseOffsetOffset(ClassDecl, BaseClassDecl);
+      CGM.getItaniumVTableContext().getVirtualBaseOffsetOffset(ClassDecl,
+                                                               BaseClassDecl);
 
   llvm::Value *VBaseOffsetPtr =
     CGF.Builder.CreateConstGEP1_64(VTablePtr, VBaseOffsetOffset.getQuantity(),
@@ -796,23 +798,28 @@ ItaniumCXXABI::GetVirtualBaseClassOffset(CodeGenFunction &CGF,
 
 /// The generic ABI passes 'this', plus a VTT if it's initializing a
 /// base subobject.
-void ItaniumCXXABI::BuildConstructorSignature(const CXXConstructorDecl *Ctor,
-                                              CXXCtorType Type,
-                                              CanQualType &ResTy,
-                                SmallVectorImpl<CanQualType> &ArgTys) {
+void
+ItaniumCXXABI::BuildConstructorSignature(const CXXConstructorDecl *Ctor,
+                                         CXXCtorType Type, CanQualType &ResTy,
+                                         SmallVectorImpl<CanQualType> &ArgTys) {
   ASTContext &Context = getContext();
 
-  // 'this' parameter is already there, as well as 'this' return if
-  // HasThisReturn(GlobalDecl(Ctor, Type)) is true
+  // All parameters are already in place except VTT, which goes after 'this'.
+  // These are Clang types, so we don't need to worry about sret yet.
 
   // Check if we need to add a VTT parameter (which has type void **).
   if (Type == Ctor_Base && Ctor->getParent()->getNumVBases() != 0)
-    ArgTys.push_back(Context.getPointerType(Context.VoidPtrTy));
+    ArgTys.insert(ArgTys.begin() + 1,
+                  Context.getPointerType(Context.VoidPtrTy));
 }
 
 void ItaniumCXXABI::EmitCXXConstructors(const CXXConstructorDecl *D) {
   // Just make sure we're in sync with TargetCXXABI.
   assert(CGM.getTarget().getCXXABI().hasConstructorVariants());
+
+  // The constructor used for constructing this as a base class;
+  // ignores virtual bases.
+  CGM.EmitGlobal(GlobalDecl(D, Ctor_Base));
 
   // The constructor used for constructing this as a complete class;
   // constucts the virtual bases, then calls the base constructor.
@@ -820,10 +827,6 @@ void ItaniumCXXABI::EmitCXXConstructors(const CXXConstructorDecl *D) {
     // We don't need to emit the complete ctor if the class is abstract.
     CGM.EmitGlobal(GlobalDecl(D, Ctor_Complete));
   }
-
-  // The constructor used for constructing this as a base class;
-  // ignores virtual bases.
-  CGM.EmitGlobal(GlobalDecl(D, Ctor_Base));
 }
 
 /// The generic ABI passes 'this', plus a VTT if it's destroying a
@@ -843,29 +846,26 @@ void ItaniumCXXABI::BuildDestructorSignature(const CXXDestructorDecl *Dtor,
 }
 
 void ItaniumCXXABI::EmitCXXDestructors(const CXXDestructorDecl *D) {
-  // The destructor in a virtual table is always a 'deleting'
-  // destructor, which calls the complete destructor and then uses the
-  // appropriate operator delete.
-  if (D->isVirtual())
-    CGM.EmitGlobal(GlobalDecl(D, Dtor_Deleting));
+  // The destructor used for destructing this as a base class; ignores
+  // virtual bases.
+  CGM.EmitGlobal(GlobalDecl(D, Dtor_Base));
 
   // The destructor used for destructing this as a most-derived class;
   // call the base destructor and then destructs any virtual bases.
   CGM.EmitGlobal(GlobalDecl(D, Dtor_Complete));
 
-  // The destructor used for destructing this as a base class; ignores
-  // virtual bases.
-  CGM.EmitGlobal(GlobalDecl(D, Dtor_Base));
+  // The destructor in a virtual table is always a 'deleting'
+  // destructor, which calls the complete destructor and then uses the
+  // appropriate operator delete.
+  if (D->isVirtual())
+    CGM.EmitGlobal(GlobalDecl(D, Dtor_Deleting));
 }
 
-void ItaniumCXXABI::BuildInstanceFunctionParams(CodeGenFunction &CGF,
-                                                QualType &ResTy,
-                                                FunctionArgList &Params) {
-  /// Create the 'this' variable.
-  BuildThisParam(CGF, Params);
-
+void ItaniumCXXABI::addImplicitStructorParams(CodeGenFunction &CGF,
+                                              QualType &ResTy,
+                                              FunctionArgList &Params) {
   const CXXMethodDecl *MD = cast<CXXMethodDecl>(CGF.CurGD.getDecl());
-  assert(MD->isInstance());
+  assert(isa<CXXConstructorDecl>(MD) || isa<CXXDestructorDecl>(MD));
 
   // Check if we need a VTT parameter as well.
   if (NeedsVTTParameter(CGF.CurGD)) {
@@ -876,8 +876,8 @@ void ItaniumCXXABI::BuildInstanceFunctionParams(CodeGenFunction &CGF,
     ImplicitParamDecl *VTTDecl
       = ImplicitParamDecl::Create(Context, 0, MD->getLocation(),
                                   &Context.Idents.get("vtt"), T);
-    Params.push_back(VTTDecl);
-    getVTTDecl(CGF) = VTTDecl;
+    Params.insert(Params.begin() + 1, VTTDecl);
+    getStructorImplicitParamDecl(CGF) = VTTDecl;
   }
 }
 
@@ -886,10 +886,9 @@ void ItaniumCXXABI::EmitInstanceFunctionProlog(CodeGenFunction &CGF) {
   EmitThisParam(CGF);
 
   /// Initialize the 'vtt' slot if needed.
-  if (getVTTDecl(CGF)) {
-    getVTTValue(CGF)
-      = CGF.Builder.CreateLoad(CGF.GetAddrOfLocalVar(getVTTDecl(CGF)),
-                               "vtt");
+  if (getStructorImplicitParamDecl(CGF)) {
+    getStructorImplicitParamValue(CGF) = CGF.Builder.CreateLoad(
+        CGF.GetAddrOfLocalVar(getStructorImplicitParamDecl(CGF)), "vtt");
   }
 
   /// If this is a function that the ABI specifies returns 'this', initialize
@@ -904,21 +903,42 @@ void ItaniumCXXABI::EmitInstanceFunctionProlog(CodeGenFunction &CGF) {
     CGF.Builder.CreateStore(getThisValue(CGF), CGF.ReturnValue);
 }
 
-void ItaniumCXXABI::EmitConstructorCall(CodeGenFunction &CGF,
-                                        const CXXConstructorDecl *D,
-                                        CXXCtorType Type,
-                                        bool ForVirtualBase, bool Delegating,
-                                        llvm::Value *This,
-                                        CallExpr::const_arg_iterator ArgBeg,
-                                        CallExpr::const_arg_iterator ArgEnd) {
-  llvm::Value *VTT = CGF.GetVTTParameter(GlobalDecl(D, Type), ForVirtualBase,
-                                         Delegating);
+unsigned ItaniumCXXABI::addImplicitConstructorArgs(
+    CodeGenFunction &CGF, const CXXConstructorDecl *D, CXXCtorType Type,
+    bool ForVirtualBase, bool Delegating, CallArgList &Args) {
+  if (!NeedsVTTParameter(GlobalDecl(D, Type)))
+    return 0;
+
+  // Insert the implicit 'vtt' argument as the second argument.
+  llvm::Value *VTT =
+      CGF.GetVTTParameter(GlobalDecl(D, Type), ForVirtualBase, Delegating);
   QualType VTTTy = getContext().getPointerType(getContext().VoidPtrTy);
-  llvm::Value *Callee = CGM.GetAddrOfCXXConstructor(D, Type);
+  Args.insert(Args.begin() + 1,
+              CallArg(RValue::get(VTT), VTTTy, /*needscopy=*/false));
+  return 1;  // Added one arg.
+}
+
+void ItaniumCXXABI::EmitDestructorCall(CodeGenFunction &CGF,
+                                       const CXXDestructorDecl *DD,
+                                       CXXDtorType Type, bool ForVirtualBase,
+                                       bool Delegating, llvm::Value *This) {
+  GlobalDecl GD(DD, Type);
+  llvm::Value *VTT = CGF.GetVTTParameter(GD, ForVirtualBase, Delegating);
+  QualType VTTTy = getContext().getPointerType(getContext().VoidPtrTy);
+
+  llvm::Value *Callee = 0;
+  if (getContext().getLangOpts().AppleKext)
+    Callee = CGF.BuildAppleKextVirtualDestructorCall(DD, Type, DD->getParent());
+
+  if (!Callee)
+    Callee = CGM.GetAddrOfCXXDestructor(DD, Type);
+
+  if (DD->isVirtual())
+    This = adjustThisArgumentForVirtualCall(CGF, GD, This);
 
   // FIXME: Provide a source location here.
-  CGF.EmitCXXMemberCall(D, SourceLocation(), Callee, ReturnValueSlot(),
-                        This, VTT, VTTTy, ArgBeg, ArgEnd);
+  CGF.EmitCXXMemberCall(DD, SourceLocation(), Callee, ReturnValueSlot(), This,
+                        VTT, VTTTy, 0, 0);
 }
 
 void ItaniumCXXABI::emitVTableDefinitions(CodeGenVTables &CGVT,
@@ -927,7 +947,7 @@ void ItaniumCXXABI::emitVTableDefinitions(CodeGenVTables &CGVT,
   if (VTable->hasInitializer())
     return;
 
-  ItaniumVTableContext &VTContext = CGM.getVTableContext();
+  ItaniumVTableContext &VTContext = CGM.getItaniumVTableContext();
   const VTableLayout &VTLayout = VTContext.getVTableLayout(RD);
   llvm::GlobalVariable::LinkageTypes Linkage = CGM.getVTableLinkage(RD);
 
@@ -977,8 +997,9 @@ llvm::Value *ItaniumCXXABI::getVTableAddressPointInStructor(
   } else {
     llvm::Constant *VTable =
         CGM.getCXXABI().getAddrOfVTable(VTableClass, CharUnits());
-    uint64_t AddressPoint = CGM.getVTableContext().getVTableLayout(VTableClass)
-        .getAddressPoint(Base);
+    uint64_t AddressPoint = CGM.getItaniumVTableContext()
+                                .getVTableLayout(VTableClass)
+                                .getAddressPoint(Base);
     VTableAddressPoint =
         CGF.Builder.CreateConstInBoundsGEP2_64(VTable, 0, AddressPoint);
   }
@@ -991,8 +1012,9 @@ llvm::Constant *ItaniumCXXABI::getVTableAddressPointForConstExpr(
   llvm::Constant *VTable = getAddrOfVTable(VTableClass, CharUnits());
 
   // Find the appropriate vtable within the vtable group.
-  uint64_t AddressPoint =
-    CGM.getVTableContext().getVTableLayout(VTableClass).getAddressPoint(Base);
+  uint64_t AddressPoint = CGM.getItaniumVTableContext()
+                              .getVTableLayout(VTableClass)
+                              .getAddressPoint(Base);
   llvm::Value *Indices[] = {
     llvm::ConstantInt::get(CGM.Int64Ty, 0),
     llvm::ConstantInt::get(CGM.Int64Ty, AddressPoint)
@@ -1018,7 +1040,7 @@ llvm::GlobalVariable *ItaniumCXXABI::getAddrOfVTable(const CXXRecordDecl *RD,
   Out.flush();
   StringRef Name = OutName.str();
 
-  ItaniumVTableContext &VTContext = CGM.getVTableContext();
+  ItaniumVTableContext &VTContext = CGM.getItaniumVTableContext();
   llvm::ArrayType *ArrayType = llvm::ArrayType::get(
       CGM.Int8PtrTy, VTContext.getVTableLayout(RD).getNumVTableComponents());
 
@@ -1036,7 +1058,7 @@ llvm::Value *ItaniumCXXABI::getVirtualFunctionPointer(CodeGenFunction &CGF,
   Ty = Ty->getPointerTo()->getPointerTo();
   llvm::Value *VTable = CGF.GetVTablePtr(This, Ty);
 
-  uint64_t VTableIndex = CGM.getVTableContext().getMethodVTableIndex(GD);
+  uint64_t VTableIndex = CGM.getItaniumVTableContext().getMethodVTableIndex(GD);
   llvm::Value *VFuncPtr =
       CGF.Builder.CreateConstInBoundsGEP1_64(VTable, VTableIndex, "vfn");
   return CGF.Builder.CreateLoad(VFuncPtr);
@@ -1115,7 +1137,8 @@ static llvm::Value *performTypeAdjustment(CodeGenFunction &CGF,
 llvm::Value *ItaniumCXXABI::performThisAdjustment(CodeGenFunction &CGF,
                                                   llvm::Value *This,
                                                   const ThisAdjustment &TA) {
-  return performTypeAdjustment(CGF, This, TA.NonVirtual, TA.VCallOffsetOffset,
+  return performTypeAdjustment(CGF, This, TA.NonVirtual,
+                               TA.Virtual.Itanium.VCallOffsetOffset,
                                /*IsReturnAdjustment=*/false);
 }
 

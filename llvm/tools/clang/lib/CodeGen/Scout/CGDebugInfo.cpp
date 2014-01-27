@@ -275,7 +275,8 @@ CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
 
   RealDecl = DBuilder.createStructType(MDContext, MDName, DefUnit, Line,
                                        Size, Align, 0, llvm::DIType(),
-                                       llvm::DIArray(), 0, 0, FullName);
+                                       llvm::DIArray(), 0,
+                                       llvm::DIType(), FullName);
 
   RegionMap[Ty->getDecl()] = llvm::WeakVH(RealDecl);
   TypeCache[QualType(Ty, 0).getAsOpaquePtr()] = RealDecl;
@@ -457,7 +458,8 @@ CGDebugInfo::CreateLimitedType(const RectilinearMeshType *Ty) {
 
   RealDecl = DBuilder.createStructType(MDContext, MDName, DefUnit, Line,
                                        Size, Align, 0, llvm::DIType(),
-                                       llvm::DIArray(), 0, 0, FullName);
+                                       llvm::DIArray(), 0,
+                                       llvm::DIType(), FullName);
 
   RegionMap[Ty->getDecl()] = llvm::WeakVH(RealDecl);
   TypeCache[QualType(Ty, 0).getAsOpaquePtr()] = RealDecl;
@@ -641,7 +643,8 @@ CGDebugInfo::CreateLimitedType(const StructuredMeshType *Ty) {
 
   RealDecl = DBuilder.createStructType(MDContext, MDName, DefUnit, Line,
                                        Size, Align, 0, llvm::DIType(),
-                                       llvm::DIArray(), 0, 0, FullName);
+                                       llvm::DIArray(), 0,
+                                       llvm::DIType(), FullName);
 
   RegionMap[Ty->getDecl()] = llvm::WeakVH(RealDecl);
   TypeCache[QualType(Ty, 0).getAsOpaquePtr()] = RealDecl;
@@ -776,7 +779,8 @@ CGDebugInfo::CreateLimitedType(const UnstructuredMeshType *Ty) {
 
   RealDecl = DBuilder.createStructType(MDContext, MDName, DefUnit, Line,
                                        Size, Align, 0, llvm::DIType(),
-                                       llvm::DIArray(), 0, 0, FullName);
+                                       llvm::DIArray(), 0,
+                                       llvm::DIType(), FullName);
 
   RegionMap[Ty->getDecl()] = llvm::WeakVH(RealDecl);
   TypeCache[QualType(Ty, 0).getAsOpaquePtr()] = RealDecl;

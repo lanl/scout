@@ -244,16 +244,17 @@ static void PrintFileSectionSizes(StringRef file) {
   }
 
   // Attempt to open the binary.
-  OwningPtr<Binary> binary;
-  if (error_code ec = createBinary(file, binary)) {
-    errs() << ToolName << ": " << file << ": " << ec.message() << ".\n";
+  ErrorOr<Binary *> BinaryOrErr = createBinary(file);
+  if (error_code EC = BinaryOrErr.getError()) {
+    errs() << ToolName << ": " << file << ": " << EC.message() << ".\n";
     return;
   }
+  OwningPtr<Binary> binary(BinaryOrErr.get());
 
   if (Archive *a = dyn_cast<Archive>(binary.get())) {
     // This is an archive. Iterate over each member and display its sizes.
-    for (object::Archive::child_iterator i = a->begin_children(),
-                                         e = a->end_children(); i != e; ++i) {
+    for (object::Archive::child_iterator i = a->child_begin(),
+                                         e = a->child_end(); i != e; ++i) {
       OwningPtr<Binary> child;
       if (error_code ec = i->getAsBinary(child)) {
         errs() << ToolName << ": " << file << ": " << ec.message() << ".\n";

@@ -19,7 +19,6 @@
 #include "clang/AST/CanonicalType.h"
 #include "clang/AST/Type.h"
 #include "llvm/ADT/FoldingSet.h"
-
 #include <cassert>
 
 namespace llvm {
@@ -195,7 +194,7 @@ public:
   static RequiredArgs forPrototypePlus(const FunctionProtoType *prototype,
                                        unsigned additional) {
     if (!prototype->isVariadic()) return All;
-    return RequiredArgs(prototype->getNumArgs() + additional);
+    return RequiredArgs(prototype->getNumParams() + additional);
   }
 
   static RequiredArgs forPrototype(const FunctionProtoType *prototype) {

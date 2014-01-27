@@ -13,18 +13,22 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/LTO/LTOCodeGenerator.h"
-#include "llvm/LTO/LTOModule.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Analysis/Passes.h"
-#include "llvm/Analysis/Verifier.h"
 #include "llvm/Bitcode/ReaderWriter.h"
+#include "llvm/CodeGen/RuntimeLibcalls.h"
 #include "llvm/Config/config.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/DiagnosticInfo.h"
+#include "llvm/IR/DiagnosticPrinter.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Mangler.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/InitializePasses.h"
+#include "llvm/LTO/LTOModule.h"
 #include "llvm/Linker.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
@@ -35,14 +39,16 @@
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/system_error.h"
+#include "llvm/Target/TargetLibraryInfo.h"
+#include "llvm/Target/TargetLowering.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Target/TargetRegisterInfo.h"
-#include "llvm/Target/Mangler.h"
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/ObjCARC.h"
@@ -59,7 +65,9 @@ const char* LTOCodeGenerator::getVersionString() {
 LTOCodeGenerator::LTOCodeGenerator()
     : Context(getGlobalContext()), Linker(new Module("ld-temp.o", Context)),
       TargetMach(NULL), EmitDwarfDebugInfo(false), ScopeRestrictionsDone(false),
-      CodeModel(LTO_CODEGEN_PIC_MODEL_DYNAMIC), NativeObjectFile(NULL) {
+      CodeModel(LTO_CODEGEN_PIC_MODEL_DYNAMIC),
+      InternalizeStrategy(LTO_INTERNALIZE_FULL), NativeObjectFile(NULL),
+      DiagHandler(NULL), DiagContext(NULL) {
   initializeLTOPasses();
 }
 
@@ -79,8 +87,7 @@ LTOCodeGenerator::~LTOCodeGenerator() {
 
 // Initialize LTO passes. Please keep this funciton in sync with
 // PassManagerBuilder::populateLTOPassManager(), and make sure all LTO
-// passes are initialized. 
-//
+// passes are initialized.
 void LTOCodeGenerator::initializeLTOPasses() {
   PassRegistry &R = *PassRegistry::getPassRegistry();
 
@@ -162,6 +169,18 @@ void LTOCodeGenerator::setCodePICModel(lto_codegen_model model) {
   llvm_unreachable("Unknown PIC model!");
 }
 
+void
+LTOCodeGenerator::setInternalizeStrategy(lto_internalize_strategy Strategy) {
+  switch (Strategy) {
+  case LTO_INTERNALIZE_FULL:
+  case LTO_INTERNALIZE_NONE:
+  case LTO_INTERNALIZE_HIDDEN:
+    InternalizeStrategy = Strategy;
+    return;
+  }
+  llvm_unreachable("Unknown internalize strategy!");
+}
+
 bool LTOCodeGenerator::writeMergedModules(const char *path,
                                           std::string &errMsg) {
   if (!determineTarget(errMsg))
@@ -194,7 +213,7 @@ bool LTOCodeGenerator::writeMergedModules(const char *path,
   return true;
 }
 
-bool LTOCodeGenerator::compile_to_file(const char** name, 
+bool LTOCodeGenerator::compile_to_file(const char** name,
                                        bool disableOpt,
                                        bool disableInline,
                                        bool disableGVNLoadPRE,
@@ -312,17 +331,27 @@ bool LTOCodeGenerator::determineTarget(std::string &errMsg) {
 
 void LTOCodeGenerator::
 applyRestriction(GlobalValue &GV,
+                 const ArrayRef<StringRef> &Libcalls,
                  std::vector<const char*> &MustPreserveList,
                  SmallPtrSet<GlobalValue*, 8> &AsmUsed,
                  Mangler &Mangler) {
   SmallString<64> Buffer;
-  Mangler.getNameWithPrefix(Buffer, &GV, false);
+  Mangler.getNameWithPrefix(Buffer, &GV);
 
   if (GV.isDeclaration())
     return;
   if (MustPreserveSymbols.count(Buffer))
     MustPreserveList.push_back(GV.getName().data());
   if (AsmUndefinedRefs.count(Buffer))
+    AsmUsed.insert(&GV);
+
+  // Conservatively append user-supplied runtime library functions to
+  // llvm.compiler.used.  These could be internalized and deleted by
+  // optimizations like -globalopt, causing problems when later optimizations
+  // add new library calls (e.g., llvm.memset => memset and printf => puts).
+  // Leave it to the linker to remove any dead code (e.g. with -dead_strip).
+  if (isa<Function>(GV) &&
+      std::binary_search(Libcalls.begin(), Libcalls.end(), GV.getName()))
     AsmUsed.insert(&GV);
 }
 
@@ -337,8 +366,35 @@ static void findUsedValues(GlobalVariable *LLVMUsed,
       UsedValues.insert(GV);
 }
 
+static void accumulateAndSortLibcalls(std::vector<StringRef> &Libcalls,
+                                      const TargetLibraryInfo& TLI,
+                                      const TargetLowering *Lowering)
+{
+  // TargetLibraryInfo has info on C runtime library calls on the current
+  // target.
+  for (unsigned I = 0, E = static_cast<unsigned>(LibFunc::NumLibFuncs);
+       I != E; ++I) {
+    LibFunc::Func F = static_cast<LibFunc::Func>(I);
+    if (TLI.has(F))
+      Libcalls.push_back(TLI.getName(F));
+  }
+
+  // TargetLowering has info on library calls that CodeGen expects to be
+  // available, both from the C runtime and compiler-rt.
+  if (Lowering)
+    for (unsigned I = 0, E = static_cast<unsigned>(RTLIB::UNKNOWN_LIBCALL);
+         I != E; ++I)
+      if (const char *Name
+          = Lowering->getLibcallName(static_cast<RTLIB::Libcall>(I)))
+        Libcalls.push_back(Name);
+
+  array_pod_sort(Libcalls.begin(), Libcalls.end());
+  Libcalls.erase(std::unique(Libcalls.begin(), Libcalls.end()),
+                 Libcalls.end());
+}
+
 void LTOCodeGenerator::applyScopeRestrictions() {
-  if (ScopeRestrictionsDone)
+  if (ScopeRestrictionsDone || !shouldInternalize())
     return;
   Module *mergedModule = Linker.getModule();
 
@@ -347,19 +403,22 @@ void LTOCodeGenerator::applyScopeRestrictions() {
   passes.add(createVerifierPass());
 
   // mark which symbols can not be internalized
-  Mangler Mangler(TargetMach);
+  Mangler Mangler(TargetMach->getDataLayout());
   std::vector<const char*> MustPreserveList;
   SmallPtrSet<GlobalValue*, 8> AsmUsed;
+  std::vector<StringRef> Libcalls;
+  TargetLibraryInfo TLI(Triple(TargetMach->getTargetTriple()));
+  accumulateAndSortLibcalls(Libcalls, TLI, TargetMach->getTargetLowering());
 
   for (Module::iterator f = mergedModule->begin(),
          e = mergedModule->end(); f != e; ++f)
-    applyRestriction(*f, MustPreserveList, AsmUsed, Mangler);
+    applyRestriction(*f, Libcalls, MustPreserveList, AsmUsed, Mangler);
   for (Module::global_iterator v = mergedModule->global_begin(),
          e = mergedModule->global_end(); v !=  e; ++v)
-    applyRestriction(*v, MustPreserveList, AsmUsed, Mangler);
+    applyRestriction(*v, Libcalls, MustPreserveList, AsmUsed, Mangler);
   for (Module::alias_iterator a = mergedModule->alias_begin(),
          e = mergedModule->alias_end(); a != e; ++a)
-    applyRestriction(*a, MustPreserveList, AsmUsed, Mangler);
+    applyRestriction(*a, Libcalls, MustPreserveList, AsmUsed, Mangler);
 
   GlobalVariable *LLVMCompilerUsed =
     mergedModule->getGlobalVariable("llvm.compiler.used");
@@ -387,7 +446,8 @@ void LTOCodeGenerator::applyScopeRestrictions() {
     LLVMCompilerUsed->setSection("llvm.metadata");
   }
 
-  passes.add(createInternalizePass(MustPreserveList));
+  passes.add(
+      createInternalizePass(MustPreserveList, shouldOnlyInternalizeHidden()));
 
   // apply scope restrictions
   passes.run(*mergedModule);
@@ -417,6 +477,10 @@ bool LTOCodeGenerator::generateObjectFile(raw_ostream &out,
 
   // Add an appropriate DataLayout instance for this module...
   passes.add(new DataLayout(*TargetMach->getDataLayout()));
+
+  // Add appropriate TargetLibraryInfo for this module.
+  passes.add(new TargetLibraryInfo(Triple(TargetMach->getTargetTriple())));
+
   TargetMach->addAnalysisPasses(passes);
 
   // Enabling internalize here would use its AllButMain variant. It
@@ -475,4 +539,48 @@ void LTOCodeGenerator::parseCodeGenDebugOptions() {
   if (!CodegenOptions.empty())
     cl::ParseCommandLineOptions(CodegenOptions.size(),
                                 const_cast<char **>(&CodegenOptions[0]));
+}
+
+void LTOCodeGenerator::DiagnosticHandler(const DiagnosticInfo &DI,
+                                         void *Context) {
+  ((LTOCodeGenerator *)Context)->DiagnosticHandler2(DI);
+}
+
+void LTOCodeGenerator::DiagnosticHandler2(const DiagnosticInfo &DI) {
+  // Map the LLVM internal diagnostic severity to the LTO diagnostic severity.
+  lto_codegen_diagnostic_severity_t Severity;
+  switch (DI.getSeverity()) {
+  case DS_Error:
+    Severity = LTO_DS_ERROR;
+    break;
+  case DS_Warning:
+    Severity = LTO_DS_WARNING;
+    break;
+  case DS_Note:
+    Severity = LTO_DS_NOTE;
+    break;
+  }
+  // Create the string that will be reported to the external diagnostic handler.
+  std::string MsgStorage;
+  raw_string_ostream Stream(MsgStorage);
+  DiagnosticPrinterRawOStream DP(Stream);
+  DI.print(DP);
+  Stream.flush();
+
+  // If this method has been called it means someone has set up an external
+  // diagnostic handler. Assert on that.
+  assert(DiagHandler && "Invalid diagnostic handler");
+  (*DiagHandler)(Severity, MsgStorage.c_str(), DiagContext);
+}
+
+void
+LTOCodeGenerator::setDiagnosticHandler(lto_diagnostic_handler_t DiagHandler,
+                                       void *Ctxt) {
+  this->DiagHandler = DiagHandler;
+  this->DiagContext = Ctxt;
+  if (!DiagHandler)
+    return Context.setDiagnosticHandler(NULL, NULL);
+  // Register the LTOCodeGenerator stub in the LLVMContext to forward the
+  // diagnostic to the external DiagHandler.
+  Context.setDiagnosticHandler(LTOCodeGenerator::DiagnosticHandler, this);
 }

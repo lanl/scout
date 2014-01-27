@@ -7,10 +7,7 @@
 ; CHECK-NEXT: .byte 8 # Address Size (in bytes)
 ; CHECK-NEXT: .byte 0 # Segment Size (in bytes)
 ; -- alignment --
-; CHECK-NEXT: .byte
-; CHECK-NEXT: .byte
-; CHECK-NEXT: .byte
-; CHECK-NEXT: .byte
+; CHECK-NEXT: .zero 4,255
 
 ; <common symbols> - it should have made one span for each symbol.
 ; CHECK-NEXT: .quad some_bss
@@ -66,7 +63,7 @@ entry:
 }
 
 !llvm.dbg.cu = !{!0}
-!llvm.module.flags = !{!13}
+!llvm.module.flags = !{!13, !16}
 
 !0 = metadata !{i32 786449, metadata !1, i32 12, metadata !"clang version 3.4 ", i1 false, metadata !"", i32 0, metadata !2, metadata !2, metadata !3, metadata !8, metadata !2, metadata !""} ; [ DW_TAG_compile_unit ] [/home/kayamon/test.c] [DW_LANG_C99]
 !1 = metadata !{metadata !"test.c", metadata !"/home/kayamon"}
@@ -84,3 +81,4 @@ entry:
 !13 = metadata !{i32 2, metadata !"Dwarf Version", i32 4}
 !14 = metadata !{i32 7, i32 0, metadata !4, null}
 !15 = metadata !{i32 8, i32 0, metadata !4, null} ; [ DW_TAG_imported_declaration ]
+!16 = metadata !{i32 1, metadata !"Debug Info Version", i32 1}

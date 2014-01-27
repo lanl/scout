@@ -88,10 +88,25 @@ __attribute__((type_tag_for_datatype(ident1,int)));
 // CHECK:      VarDecl{{.*}}TestType
 // CHECK-NEXT:   TypeTagForDatatypeAttr{{.*}} int
 
-void *TestVariadicUnsigned1(int) __attribute__((alloc_size(1)));
-// CHECK: FunctionDecl{{.*}}TestVariadicUnsigned1
-// CHECK:   AllocSizeAttr{{.*}} 0
+void TestLabel() {
+L: __attribute__((unused)) int i;
+// CHECK: LabelStmt{{.*}}'L'
+// CHECK: VarDecl{{.*}}i 'int'
+// CHECK-NEXT: UnusedAttr{{.*}}
 
-void *TestVariadicUnsigned2(int, int) __attribute__((alloc_size(1,2)));
-// CHECK: FunctionDecl{{.*}}TestVariadicUnsigned2
-// CHECK:   AllocSizeAttr{{.*}} 0 1
+M: __attribute(()) int j;
+// CHECK: LabelStmt {{.*}} 'M'
+// CHECK-NEXT: DeclStmt
+// CHECK-NEXT: VarDecl {{.*}} j 'int'
+
+N: __attribute(()) ;
+// CHECK: LabelStmt {{.*}} 'N'
+// CHECK-NEXT: NullStmt
+}
+
+namespace Test {
+extern "C" int printf(const char *format, ...);
+// CHECK: FunctionDecl{{.*}}printf
+// CHECK-NEXT: ParmVarDecl{{.*}}format{{.*}}'const char *'
+// CHECK-NEXT: FormatAttr{{.*}}printf 1 2 Implicit
+}

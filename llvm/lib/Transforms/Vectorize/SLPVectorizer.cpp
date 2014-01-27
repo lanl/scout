@@ -23,19 +23,20 @@
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Analysis/ValueTracking.h"
-#include "llvm/Analysis/Verifier.h"
-#include "llvm/Analysis/LoopInfo.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Dominators.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
-#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -163,6 +164,37 @@ static unsigned getSameOpcode(ArrayRef<Value *> VL) {
   return Opcode;
 }
 
+/// \returns \p I after propagating metadata from \p VL.
+static Instruction *propagateMetadata(Instruction *I, ArrayRef<Value *> VL) {
+  Instruction *I0 = cast<Instruction>(VL[0]);
+  SmallVector<std::pair<unsigned, MDNode *>, 4> Metadata;
+  I0->getAllMetadataOtherThanDebugLoc(Metadata);
+
+  for (unsigned i = 0, n = Metadata.size(); i != n; ++i) {
+    unsigned Kind = Metadata[i].first;
+    MDNode *MD = Metadata[i].second;
+
+    for (int i = 1, e = VL.size(); MD && i != e; i++) {
+      Instruction *I = cast<Instruction>(VL[i]);
+      MDNode *IMD = I->getMetadata(Kind);
+
+      switch (Kind) {
+      default:
+        MD = 0; // Remove unknown metadata
+        break;
+      case LLVMContext::MD_tbaa:
+        MD = MDNode::getMostGenericTBAA(MD, IMD);
+        break;
+      case LLVMContext::MD_fpmath:
+        MD = MDNode::getMostGenericFPMath(MD, IMD);
+        break;
+      }
+    }
+    I->setMetadata(Kind, MD);
+  }
+  return I;
+}
+
 /// \returns The type that all of the values in \p VL have or null if there
 /// are different types.
 static Type* getSameType(ArrayRef<Value *> VL) {
@@ -203,14 +235,6 @@ static bool CanReuseExtract(ArrayRef<Value *> VL) {
       return false;
   }
 
-  return true;
-}
-
-static bool all_equal(SmallVectorImpl<Value *> &V) {
-  Value *First = V[0];
-  for (int i = 1, e = V.size(); i != e; ++i)
-    if (V[i] != First)
-      return false;
   return true;
 }
 
@@ -301,8 +325,8 @@ static void reorderInputsAccordingToOpcode(ArrayRef<Value *> VL,
     Right.push_back(V1);
   }
 
-  bool LeftBroadcast = all_equal(Left);
-  bool RightBroadcast = all_equal(Right);
+  bool LeftBroadcast = isSplat(Left);
+  bool RightBroadcast = isSplat(Right);
 
   // Don't reorder if the operands where good to begin with.
   if (!(LeftBroadcast || RightBroadcast) &&
@@ -419,7 +443,7 @@ private:
 
   /// \returns whether the VectorizableTree is fully vectoriable and will
   /// be beneficial even the tree height is tiny.
-  bool isFullyVectorizableTinyTree(); 
+  bool isFullyVectorizableTinyTree();
 
   struct TreeEntry {
     TreeEntry() : Scalars(), VectorizedValue(0), LastScalarIndex(0),
@@ -497,6 +521,8 @@ private:
 
   /// Holds all of the instructions that we gathered.
   SetVector<Instruction *> GatherSeq;
+  /// A list of blocks that we are going to CSE.
+  SetVector<BasicBlock *> CSEBlocks;
 
   /// Numbers instructions in different blocks.
   DenseMap<BasicBlock *, BlockNumbering> BlocksNumbers;
@@ -539,10 +565,8 @@ void BoUpSLP::buildTree(ArrayRef<Value *> Roots, ValueSet *Rdx) {
            UE = Scalar->use_end(); User != UE; ++User) {
         DEBUG(dbgs() << "SLP: Checking user:" << **User << ".\n");
 
-        bool Gathered = MustGather.count(*User);
-
         // Skip in-tree scalars that become vectors.
-        if (ScalarToTreeEntry.count(*User) && !Gathered) {
+        if (ScalarToTreeEntry.count(*User)) {
           DEBUG(dbgs() << "SLP: \tInternal user will be removed:" <<
                 **User << ".\n");
           int Idx = ScalarToTreeEntry[*User]; (void) Idx;
@@ -907,7 +931,7 @@ void BoUpSLP::buildTree_rec(ArrayRef<Value *> VL, unsigned Depth) {
       for (unsigned i = 0, e = VL.size() - 1; i < e; ++i)
         if (!isConsecutiveAccess(VL[i], VL[i + 1])) {
           newTreeEntry(VL, false);
-          DEBUG(dbgs() << "SLP: Non consecutive store.\n");
+          DEBUG(dbgs() << "SLP: Non-consecutive store.\n");
           return;
         }
 
@@ -1090,15 +1114,18 @@ int BoUpSLP::getTreeCost() {
     Cost += C;
   }
 
+  SmallSet<Value *, 16> ExtractCostCalculated;
   int ExtractCost = 0;
   for (UserList::iterator I = ExternalUses.begin(), E = ExternalUses.end();
        I != E; ++I) {
+    // We only add extract cost once for the same scalar.
+    if (!ExtractCostCalculated.insert(I->Scalar))
+      continue;
 
     VectorType *VecTy = VectorType::get(I->Scalar->getType(), BundleWidth);
     ExtractCost += TTI->getVectorInstrCost(Instruction::ExtractElement, VecTy,
                                            I->Lane);
   }
-
 
   DEBUG(dbgs() << "SLP: Total Cost " << Cost + ExtractCost<< ".\n");
   return  Cost + ExtractCost;
@@ -1251,6 +1278,7 @@ Value *BoUpSLP::Gather(ArrayRef<Value *> VL, VectorType *Ty) {
     Vec = Builder.CreateInsertElement(Vec, VL[i], Builder.getInt32(i));
     if (Instruction *Insrt = dyn_cast<Instruction>(Vec)) {
       GatherSeq.insert(Insrt);
+      CSEBlocks.insert(Insrt->getParent());
 
       // Add to our 'need-to-extract' list.
       if (ScalarToTreeEntry.count(VL[i])) {
@@ -1486,6 +1514,10 @@ Value *BoUpSLP::vectorizeTree(TreeEntry *E) {
       BinaryOperator *BinOp = cast<BinaryOperator>(VL0);
       Value *V = Builder.CreateBinOp(BinOp->getOpcode(), LHS, RHS);
       E->VectorizedValue = V;
+
+      if (Instruction *I = dyn_cast<Instruction>(V))
+        return propagateMetadata(I, E->Scalars);
+
       return V;
     }
     case Instruction::Load: {
@@ -1502,7 +1534,7 @@ Value *BoUpSLP::vectorizeTree(TreeEntry *E) {
       LI = Builder.CreateLoad(VecPtr);
       LI->setAlignment(Alignment);
       E->VectorizedValue = LI;
-      return LI;
+      return propagateMetadata(LI, E->Scalars);
     }
     case Instruction::Store: {
       StoreInst *SI = cast<StoreInst>(VL0);
@@ -1521,7 +1553,7 @@ Value *BoUpSLP::vectorizeTree(TreeEntry *E) {
       StoreInst *S = Builder.CreateStore(VecValue, VecPtr);
       S->setAlignment(Alignment);
       E->VectorizedValue = S;
-      return S;
+      return propagateMetadata(S, E->Scalars);
     }
     default:
     llvm_unreachable("unknown inst");
@@ -1561,6 +1593,7 @@ Value *BoUpSLP::vectorizeTree() {
     if (PHINode *PN = dyn_cast<PHINode>(Vec)) {
       Builder.SetInsertPoint(PN->getParent()->getFirstInsertionPt());
       Value *Ex = Builder.CreateExtractElement(Vec, Lane);
+      CSEBlocks.insert(PN->getParent());
       User->replaceUsesOfWith(Scalar, Ex);
     } else if (isa<Instruction>(Vec)){
       if (PHINode *PH = dyn_cast<PHINode>(User)) {
@@ -1568,17 +1601,20 @@ Value *BoUpSLP::vectorizeTree() {
           if (PH->getIncomingValue(i) == Scalar) {
             Builder.SetInsertPoint(PH->getIncomingBlock(i)->getTerminator());
             Value *Ex = Builder.CreateExtractElement(Vec, Lane);
+            CSEBlocks.insert(PH->getIncomingBlock(i));
             PH->setOperand(i, Ex);
           }
         }
       } else {
         Builder.SetInsertPoint(cast<Instruction>(User));
         Value *Ex = Builder.CreateExtractElement(Vec, Lane);
+        CSEBlocks.insert(cast<Instruction>(User)->getParent());
         User->replaceUsesOfWith(Scalar, Ex);
      }
     } else {
       Builder.SetInsertPoint(F->getEntryBlock().begin());
       Value *Ex = Builder.CreateExtractElement(Vec, Lane);
+      CSEBlocks.insert(&F->getEntryBlock());
       User->replaceUsesOfWith(Scalar, Ex);
     }
 
@@ -1604,8 +1640,6 @@ Value *BoUpSLP::vectorizeTree() {
         for (Value::use_iterator User = Scalar->use_begin(),
              UE = Scalar->use_end(); User != UE; ++User) {
           DEBUG(dbgs() << "SLP: \tvalidating user:" << **User << ".\n");
-          assert(!MustGather.count(*User) &&
-                 "Replacing gathered value with undef");
 
           assert((ScalarToTreeEntry.count(*User) ||
                   // It is legal to replace the reduction users by undef.
@@ -1627,6 +1661,16 @@ Value *BoUpSLP::vectorizeTree() {
 
   return VectorizableTree[0].VectorizedValue;
 }
+
+class DTCmp {
+  const DominatorTree *DT;
+
+public:
+  DTCmp(const DominatorTree *DT) : DT(DT) {}
+  bool operator()(const BasicBlock *A, const BasicBlock *B) const {
+    return DT->properlyDominates(A, B);
+  }
+};
 
 void BoUpSLP::optimizeGatherSequence() {
   DEBUG(dbgs() << "SLP: Optimizing " << GatherSeq.size()
@@ -1663,45 +1707,48 @@ void BoUpSLP::optimizeGatherSequence() {
     Insert->moveBefore(PreHeader->getTerminator());
   }
 
+  // Sort blocks by domination. This ensures we visit a block after all blocks
+  // dominating it are visited.
+  SmallVector<BasicBlock *, 8> CSEWorkList(CSEBlocks.begin(), CSEBlocks.end());
+  std::stable_sort(CSEWorkList.begin(), CSEWorkList.end(), DTCmp(DT));
+
   // Perform O(N^2) search over the gather sequences and merge identical
   // instructions. TODO: We can further optimize this scan if we split the
   // instructions into different buckets based on the insert lane.
-  SmallPtrSet<Instruction*, 16> Visited;
-  SmallVector<Instruction*, 16> ToRemove;
-  ReversePostOrderTraversal<Function*> RPOT(F);
-  for (ReversePostOrderTraversal<Function*>::rpo_iterator I = RPOT.begin(),
-       E = RPOT.end(); I != E; ++I) {
+  SmallVector<Instruction *, 16> Visited;
+  for (SmallVectorImpl<BasicBlock *>::iterator I = CSEWorkList.begin(),
+                                               E = CSEWorkList.end();
+       I != E; ++I) {
+    assert((I == CSEWorkList.begin() || !DT->dominates(*I, *llvm::prior(I))) &&
+           "Worklist not sorted properly!");
     BasicBlock *BB = *I;
-    // For all instructions in the function:
-    for (BasicBlock::iterator it = BB->begin(), e = BB->end(); it != e; ++it) {
-      Instruction *In = it;
-      if ((!isa<InsertElementInst>(In) && !isa<ExtractElementInst>(In)) ||
-          !GatherSeq.count(In))
+    // For all instructions in blocks containing gather sequences:
+    for (BasicBlock::iterator it = BB->begin(), e = BB->end(); it != e;) {
+      Instruction *In = it++;
+      if (!isa<InsertElementInst>(In) && !isa<ExtractElementInst>(In))
         continue;
 
       // Check if we can replace this instruction with any of the
       // visited instructions.
-      for (SmallPtrSet<Instruction*, 16>::iterator v = Visited.begin(),
-           ve = Visited.end(); v != ve; ++v) {
+      for (SmallVectorImpl<Instruction *>::iterator v = Visited.begin(),
+                                                    ve = Visited.end();
+           v != ve; ++v) {
         if (In->isIdenticalTo(*v) &&
             DT->dominates((*v)->getParent(), In->getParent())) {
           In->replaceAllUsesWith(*v);
-          ToRemove.push_back(In);
+          In->eraseFromParent();
           In = 0;
           break;
         }
       }
-      if (In)
-        Visited.insert(In);
+      if (In) {
+        assert(std::find(Visited.begin(), Visited.end(), In) == Visited.end());
+        Visited.push_back(In);
+      }
     }
   }
-
-  // Erase all of the instructions that we RAUWed.
-  for (SmallVectorImpl<Instruction *>::iterator v = ToRemove.begin(),
-       ve = ToRemove.end(); v != ve; ++v) {
-    assert((*v)->getNumUses() == 0 && "Can't remove instructions with uses");
-    (*v)->eraseFromParent();
-  }
+  CSEBlocks.clear();
+  GatherSeq.clear();
 }
 
 /// The SLPVectorizer Pass.
@@ -1729,7 +1776,7 @@ struct SLPVectorizer : public FunctionPass {
     TTI = &getAnalysis<TargetTransformInfo>();
     AA = &getAnalysis<AliasAnalysis>();
     LI = &getAnalysis<LoopInfo>();
-    DT = &getAnalysis<DominatorTree>();
+    DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
 
     StoreRefs.clear();
     bool Changed = false;
@@ -1784,9 +1831,9 @@ struct SLPVectorizer : public FunctionPass {
     AU.addRequired<AliasAnalysis>();
     AU.addRequired<TargetTransformInfo>();
     AU.addRequired<LoopInfo>();
-    AU.addRequired<DominatorTree>();
+    AU.addRequired<DominatorTreeWrapperPass>();
     AU.addPreserved<LoopInfo>();
-    AU.addPreserved<DominatorTree>();
+    AU.addPreserved<DominatorTreeWrapperPass>();
     AU.setPreservesCFG();
   }
 
@@ -1824,6 +1871,21 @@ private:
   StoreListMap StoreRefs;
 };
 
+/// \brief Check that the Values in the slice in VL array are still existant in
+/// the WeakVH array.
+/// Vectorization of part of the VL array may cause later values in the VL array
+/// to become invalid. We track when this has happened in the WeakVH array.
+static bool hasValueBeenRAUWed(ArrayRef<Value *> &VL,
+                               SmallVectorImpl<WeakVH> &VH,
+                               unsigned SliceBegin,
+                               unsigned SliceSize) {
+  for (unsigned i = SliceBegin; i < SliceBegin + SliceSize; ++i)
+    if (VH[i] != VL[i])
+      return true;
+
+  return false;
+}
+
 bool SLPVectorizer::vectorizeStoreChain(ArrayRef<Value *> Chain,
                                           int CostThreshold, BoUpSLP &R) {
   unsigned ChainLen = Chain.size();
@@ -1836,11 +1898,19 @@ bool SLPVectorizer::vectorizeStoreChain(ArrayRef<Value *> Chain,
   if (!isPowerOf2_32(Sz) || VF < 2)
     return false;
 
+  // Keep track of values that were delete by vectorizing in the loop below.
+  SmallVector<WeakVH, 8> TrackValues(Chain.begin(), Chain.end());
+
   bool Changed = false;
   // Look for profitable vectorizable trees at all offsets, starting at zero.
   for (unsigned i = 0, e = ChainLen; i < e; ++i) {
     if (i + VF > e)
       break;
+
+    // Check that a previous iteration of this loop did not delete the Value.
+    if (hasValueBeenRAUWed(Chain, TrackValues, i, VF))
+      continue;
+
     DEBUG(dbgs() << "SLP: Analyzing " << VF << " stores at offset " << i
           << "\n");
     ArrayRef<Value *> Operands = Chain.slice(i, VF);
@@ -1860,7 +1930,7 @@ bool SLPVectorizer::vectorizeStoreChain(ArrayRef<Value *> Chain,
     }
   }
 
-    return Changed;
+  return Changed;
 }
 
 bool SLPVectorizer::vectorizeStores(ArrayRef<StoreInst *> Stores,
@@ -1965,7 +2035,7 @@ bool SLPVectorizer::tryToVectorizeList(ArrayRef<Value *> VL, BoUpSLP &R) {
     return false;
 
   unsigned Opcode0 = I0->getOpcode();
-  
+
   Type *Ty0 = I0->getType();
   unsigned Sz = DL->getTypeSizeInBits(Ty0);
   unsigned VF = MinVecRegSize / Sz;
@@ -1980,11 +2050,14 @@ bool SLPVectorizer::tryToVectorizeList(ArrayRef<Value *> VL, BoUpSLP &R) {
   }
 
   bool Changed = false;
-    
+
+  // Keep track of values that were delete by vectorizing in the loop below.
+  SmallVector<WeakVH, 8> TrackValues(VL.begin(), VL.end());
+
   for (unsigned i = 0, e = VL.size(); i < e; ++i) {
     unsigned OpsWidth = 0;
-      
-    if (i + VF > e) 
+
+    if (i + VF > e)
       OpsWidth = e - i;
     else
       OpsWidth = VF;
@@ -1992,23 +2065,28 @@ bool SLPVectorizer::tryToVectorizeList(ArrayRef<Value *> VL, BoUpSLP &R) {
     if (!isPowerOf2_32(OpsWidth) || OpsWidth < 2)
       break;
 
-    DEBUG(dbgs() << "SLP: Analyzing " << OpsWidth << " operations " << "\n");
+    // Check that a previous iteration of this loop did not delete the Value.
+    if (hasValueBeenRAUWed(VL, TrackValues, i, OpsWidth))
+      continue;
+
+    DEBUG(dbgs() << "SLP: Analyzing " << OpsWidth << " operations "
+                 << "\n");
     ArrayRef<Value *> Ops = VL.slice(i, OpsWidth);
-      
+
     R.buildTree(Ops);
     int Cost = R.getTreeCost();
-       
+
     if (Cost < -SLPCostThreshold) {
       DEBUG(dbgs() << "SLP: Vectorizing pair at cost:" << Cost << ".\n");
       R.vectorizeTree();
-        
+
       // Move to the next bundle.
       i += VF - 1;
       Changed = true;
     }
   }
-    
-  return Changed; 
+
+  return Changed;
 }
 
 bool SLPVectorizer::tryToVectorize(BinaryOperator *V, BoUpSLP &R) {

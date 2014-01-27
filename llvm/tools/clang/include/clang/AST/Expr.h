@@ -508,6 +508,16 @@ public:
                                       SmallVectorImpl<
                                         PartialDiagnosticAt> &Diags);
 
+  /// isPotentialConstantExprUnevaluted - Return true if this expression might
+  /// be usable in a constant expression in C++11 in an unevaluated context, if
+  /// it were in function FD marked constexpr. Return false if the function can
+  /// never produce a constant expression, along with diagnostics describing
+  /// why not.
+  static bool isPotentialConstantExprUnevaluated(Expr *E,
+                                                 const FunctionDecl *FD,
+                                                 SmallVectorImpl<
+                                                   PartialDiagnosticAt> &Diags);
+
   /// isConstantInitializer - Returns true if this expression can be emitted to
   /// IR as a constant, and thus can be used as a constant initializer in C.
   bool isConstantInitializer(ASTContext &Ctx, bool ForRef) const;
@@ -579,15 +589,14 @@ public:
   /// \brief Determine whether this expression involves a call to any function
   /// that is not trivial.
   bool hasNonTrivialCall(ASTContext &Ctx);
-  
+
   /// EvaluateKnownConstInt - Call EvaluateAsRValue and return the folded
   /// integer. This must be called on an expression that constant folds to an
   /// integer.
   llvm::APSInt EvaluateKnownConstInt(const ASTContext &Ctx,
                           SmallVectorImpl<PartialDiagnosticAt> *Diag=0) const;
-  
-  void EvaluateForOverflow(const ASTContext &Ctx,
-                           SmallVectorImpl<PartialDiagnosticAt> *Diag) const;
+
+  void EvaluateForOverflow(const ASTContext &Ctx) const;
 
   /// EvaluateAsLValue - Evaluate an expression to see if we can fold it to an
   /// lvalue with link time known address, with no side-effects.
@@ -600,6 +609,14 @@ public:
   bool EvaluateAsInitializer(APValue &Result, const ASTContext &Ctx,
                              const VarDecl *VD,
                              SmallVectorImpl<PartialDiagnosticAt> &Notes) const;
+
+  /// EvaluateWithSubstitution - Evaluate an expression as if from the context
+  /// of a call to the given function with the given arguments, inside an
+  /// unevaluated context. Returns true if the expression could be folded to a
+  /// constant.
+  bool EvaluateWithSubstitution(APValue &Value, ASTContext &Ctx,
+                                const FunctionDecl *Callee,
+                                llvm::ArrayRef<const Expr*> Args) const;
 
   /// \brief Enumeration used to describe the kind of Null pointer constant
   /// returned from \c isNullPointerConstant().
@@ -764,11 +781,6 @@ public:
   const Expr *skipRValueSubobjectAdjustments(
       SmallVectorImpl<const Expr *> &CommaLHS,
       SmallVectorImpl<SubobjectAdjustment> &Adjustments) const;
-
-  /// Skip irrelevant expressions to find what should be materialize for
-  /// binding with a reference.
-  const Expr *
-  findMaterializedTemporary(const MaterializeTemporaryExpr *&MTE) const;
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() >= firstExprConstant &&
@@ -1151,6 +1163,7 @@ public:
     Func,
     Function,
     LFunction,  // Same as Function, but as wide string.
+    FuncDName,
     PrettyFunction,
     /// PrettyFunctionNoVirtual - The same as PrettyFunction, except that the
     /// 'virtual' keyword is omitted for virtual member functions.
@@ -2238,9 +2251,9 @@ public:
   /// this function call.
   unsigned getNumCommas() const { return NumArgs ? NumArgs - 1 : 0; }
 
-  /// isBuiltinCall - If this is a call to a builtin, return the builtin ID.  If
-  /// not, return 0.
-  unsigned isBuiltinCall() const;
+  /// getBuiltinCallee - If this is a call to a builtin, return the builtin ID
+  /// of the callee. If not, return 0.
+  unsigned getBuiltinCallee() const;
 
   /// \brief Returns \c true if this is a call to a builtin which does not
   /// evaluate side-effects within its arguments.
@@ -2633,7 +2646,7 @@ public:
 private:
   Stmt *Op;
 
-  void CheckCastConsistency() const;
+  bool CastConsistency() const;
 
   const CXXBaseSpecifier * const *path_buffer() const {
     return const_cast<CastExpr*>(this)->path_buffer();
@@ -2664,9 +2677,7 @@ protected:
     assert(kind != CK_Invalid && "creating cast with invalid cast kind");
     CastExprBits.Kind = kind;
     setBasePathSize(BasePathSize);
-#ifndef NDEBUG
-    CheckCastConsistency();
-#endif
+    assert(CastConsistency());
   }
 
   /// \brief Construct an empty cast.
@@ -3774,6 +3785,14 @@ public:
   void setInit(unsigned Init, Expr *expr) {
     assert(Init < getNumInits() && "Initializer access out of range!");
     InitExprs[Init] = expr;
+
+    if (expr) {
+      ExprBits.TypeDependent |= expr->isTypeDependent();
+      ExprBits.ValueDependent |= expr->isValueDependent();
+      ExprBits.InstantiationDependent |= expr->isInstantiationDependent();
+      ExprBits.ContainsUnexpandedParameterPack |=
+          expr->containsUnexpandedParameterPack();
+    }
   }
 
   /// \brief Reserve space for some number of initializers.

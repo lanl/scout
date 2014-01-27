@@ -149,7 +149,7 @@ protected:
   SectionList Sections;
 
   typedef unsigned SID; // Type for SectionIDs
-  #define RTDYLD_INVALID_SECTION_ID ((SID)(-1)) 
+  #define RTDYLD_INVALID_SECTION_ID ((SID)(-1))
 
   // Keep a map of sections from object file to the SectionID which
   // references it.
@@ -311,12 +311,18 @@ protected:
   virtual void updateGOTEntries(StringRef Name, uint64_t Addr) {}
 
   virtual ObjectImage *createObjectImage(ObjectBuffer *InputBuffer);
+  virtual ObjectImage *createObjectImageFromFile(object::ObjectFile *InputObject);
+
+  // This is the implementation for the two public overloads
+  ObjectImage *loadObject(ObjectImage *InputObject);
+
 public:
   RuntimeDyldImpl(RTDyldMemoryManager *mm) : MemMgr(mm), HasError(false) {}
 
   virtual ~RuntimeDyldImpl();
 
   ObjectImage *loadObject(ObjectBuffer *InputBuffer);
+  ObjectImage *loadObject(object::ObjectFile *InputObject);
 
   void *getSymbolAddress(StringRef Name) {
     // FIXME: Just look up as a function for now. Overly simple of course.
@@ -354,6 +360,7 @@ public:
   StringRef getErrorString() { return ErrorStr; }
 
   virtual bool isCompatibleFormat(const ObjectBuffer *Buffer) const = 0;
+  virtual bool isCompatibleFile(const ObjectFile *Obj) const = 0;
 
   virtual void registerEHFrames();
 
@@ -363,6 +370,5 @@ public:
 };
 
 } // end namespace llvm
-
 
 #endif

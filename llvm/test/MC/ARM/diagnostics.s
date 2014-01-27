@@ -151,6 +151,11 @@
 @ CHECK-ERRORS: error: immediate operand must be in the range [0,15]
 @ CHECK-ERRORS: error: immediate operand must be in the range [0,15]
 
+        @ p10 and p11 are reserved for NEON
+        mcr p10, #2, r5, c1, c1, #4
+        mcrr p11, #8, r5, r4, c1
+@ CHECK-ERRORS: error: invalid operand for instruction
+@ CHECK-ERRORS: error: invalid operand for instruction
 
         @ Out of range immediate for MOV
         movw r9, 0x10000
@@ -455,3 +460,8 @@
 @ CHECK-ERRORS: error: instruction requires: FPARMv8
 @ CHECK-ERRORS: error: instruction requires: FPARMv8
 @ CHECK-ERRORS: error: instruction requires: FPARMv8
+
+        stm sp!, {r0, pc}^
+        ldm sp!, {r0}^
+@ CHECK-ERRORS: error: system STM cannot have writeback register
+@ CHECK-ERRORS: error: writeback register only allowed on system LDM if PC in register-list

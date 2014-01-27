@@ -26,6 +26,7 @@
 
 namespace llvm {
 
+class AddrSpaceCastInst;
 class AliasAnalysis;
 class AllocaInst;
 class BasicBlock;
@@ -487,6 +488,10 @@ private:
 private:
   const TargetMachine &TM;
 public:
+  /// Lowest valid SDNodeOrder. The special case 0 is reserved for scheduling
+  /// nodes without a corresponding SDNode.
+  static const unsigned LowestSDNodeOrder = 1;
+
   SelectionDAG &DAG;
   const DataLayout *TD;
   AliasAnalysis *AA;
@@ -533,7 +538,7 @@ public:
 
   SelectionDAGBuilder(SelectionDAG &dag, FunctionLoweringInfo &funcinfo,
                       CodeGenOpt::Level ol)
-    : CurInst(NULL), SDNodeOrder(0), TM(dag.getTarget()),
+    : CurInst(NULL), SDNodeOrder(LowestSDNodeOrder), TM(dag.getTarget()),
       DAG(dag), FuncInfo(funcinfo), OptLevel(ol),
       HasTailCall(false) {
   }
@@ -622,10 +627,11 @@ public:
   std::pair<SDValue, SDValue> LowerCallOperands(const CallInst &CI,
                                                 unsigned ArgIdx,
                                                 unsigned NumArgs,
-                                                SDValue Callee);
+                                                SDValue Callee,
+                                                bool useVoidTy = false);
 
   /// UpdateSplitBlock - When an MBB was split during scheduling, update the
-  /// references that ned to refer to the last resulting block.
+  /// references that need to refer to the last resulting block.
   void UpdateSplitBlock(MachineBasicBlock *First, MachineBasicBlock *Last);
 
 private:
@@ -719,6 +725,7 @@ private:
   void visitPtrToInt(const User &I);
   void visitIntToPtr(const User &I);
   void visitBitCast(const User &I);
+  void visitAddrSpaceCast(const User &I);
 
   void visitExtractElement(const User &I);
   void visitInsertElement(const User &I);

@@ -167,7 +167,8 @@ typedef enum {
     LLVMAddressSafety = 1ULL << 32,
     LLVMStackProtectStrongAttribute = 1ULL<<33,
     LLVMCold = 1ULL << 34,
-    LLVMOptimizeNone = 1ULL << 35
+    LLVMOptimizeNone = 1ULL << 35,
+    LLVMInAllocaAttribute = 1ULL << 36
     */
 } LLVMAttribute;
 
@@ -222,6 +223,7 @@ typedef enum {
   LLVMPtrToInt       = 39,
   LLVMIntToPtr       = 40,
   LLVMBitCast        = 41,
+  LLVMAddrSpaceCast  = 60,
 
   /* Other Operators */
   LLVMICmp           = 42,
@@ -274,7 +276,7 @@ typedef enum {
   LLVMLinkOnceAnyLinkage, /**< Keep one copy of function when linking (inline)*/
   LLVMLinkOnceODRLinkage, /**< Same, but only replaced by something
                             equivalent. */
-  LLVMLinkOnceODRAutoHideLinkage, /**< Like LinkOnceODR, but possibly hidden. */
+  LLVMLinkOnceODRAutoHideLinkage, /**< Obsolete */
   LLVMWeakAnyLinkage,     /**< Keep one copy of function when linking (weak) */
   LLVMWeakODRLinkage,     /**< Same, but only replaced by something
                             equivalent. */
@@ -282,8 +284,8 @@ typedef enum {
   LLVMInternalLinkage,    /**< Rename collisions when linking (static
                                functions) */
   LLVMPrivateLinkage,     /**< Like Internal, but omit from symbol table */
-  LLVMDLLImportLinkage,   /**< Function to be imported from DLL */
-  LLVMDLLExportLinkage,   /**< Function to be accessible from DLL */
+  LLVMDLLImportLinkage,   /**< Obsolete */
+  LLVMDLLExportLinkage,   /**< Obsolete */
   LLVMExternalWeakLinkage,/**< ExternalWeak linkage description */
   LLVMGhostLinkage,       /**< Obsolete */
   LLVMCommonLinkage,      /**< Tentative definitions */
@@ -301,6 +303,8 @@ typedef enum {
   LLVMCCallConv           = 0,
   LLVMFastCallConv        = 8,
   LLVMColdCallConv        = 9,
+  LLVMWebKitJSCallConv    = 12,
+  LLVMAnyRegCallConv      = 13,
   LLVMX86StdcallCallConv  = 64,
   LLVMX86FastcallCallConv = 65
 } LLVMCallConv;
@@ -432,6 +436,13 @@ void LLVMInstallFatalErrorHandler(LLVMFatalErrorHandler Handler);
  * behavior to the default.
  */
 void LLVMResetFatalErrorHandler(void);
+
+/**
+ * Enable LLVM's built-in stack trace code. This intercepts the OS's crash
+ * signals and prints which component of LLVM you were in at the time if the
+ * crash.
+ */
+void LLVMEnablePrettyStackTrace(void);
 
 /**
  * @defgroup LLVMCCoreContext Contexts
@@ -1103,6 +1114,9 @@ LLVMTypeRef LLVMX86MMXType(void);
       macro(BlockAddress)                   \
       macro(ConstantAggregateZero)          \
       macro(ConstantArray)                  \
+      macro(ConstantDataSequential)         \
+        macro(ConstantDataArray)            \
+        macro(ConstantDataVector)           \
       macro(ConstantExpr)                   \
       macro(ConstantFP)                     \
       macro(ConstantInt)                    \
@@ -1147,6 +1161,7 @@ LLVMTypeRef LLVMX86MMXType(void);
       macro(UnaryInstruction)               \
         macro(AllocaInst)                   \
         macro(CastInst)                     \
+          macro(AddrSpaceCastInst)          \
           macro(BitCastInst)                \
           macro(FPExtInst)                  \
           macro(FPToSIInst)                 \
@@ -1200,6 +1215,14 @@ void LLVMSetValueName(LLVMValueRef Val, const char *Name);
  * @see llvm::Value::dump()
  */
 void LLVMDumpValue(LLVMValueRef Val);
+
+/**
+ * Return a string representation of the value. Use
+ * LLVMDisposeMessage to free the string.
+ *
+ * @see llvm::Value::print()
+ */
+char *LLVMPrintValueToString(LLVMValueRef Val);
 
 /**
  * Replace all uses of a value with another one.
@@ -1610,6 +1633,7 @@ LLVMValueRef LLVMConstFPToSI(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
 LLVMValueRef LLVMConstPtrToInt(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
 LLVMValueRef LLVMConstIntToPtr(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
 LLVMValueRef LLVMConstBitCast(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
+LLVMValueRef LLVMConstAddrSpaceCast(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
 LLVMValueRef LLVMConstZExtOrBitCast(LLVMValueRef ConstantVal,
                                     LLVMTypeRef ToType);
 LLVMValueRef LLVMConstSExtOrBitCast(LLVMValueRef ConstantVal,
@@ -2585,6 +2609,8 @@ LLVMValueRef LLVMBuildIntToPtr(LLVMBuilderRef, LLVMValueRef Val,
                                LLVMTypeRef DestTy, const char *Name);
 LLVMValueRef LLVMBuildBitCast(LLVMBuilderRef, LLVMValueRef Val,
                               LLVMTypeRef DestTy, const char *Name);
+LLVMValueRef LLVMBuildAddrSpaceCast(LLVMBuilderRef, LLVMValueRef Val,
+                                    LLVMTypeRef DestTy, const char *Name);
 LLVMValueRef LLVMBuildZExtOrBitCast(LLVMBuilderRef, LLVMValueRef Val,
                                     LLVMTypeRef DestTy, const char *Name);
 LLVMValueRef LLVMBuildSExtOrBitCast(LLVMBuilderRef, LLVMValueRef Val,
@@ -2638,7 +2664,9 @@ LLVMValueRef LLVMBuildIsNotNull(LLVMBuilderRef, LLVMValueRef Val,
                                 const char *Name);
 LLVMValueRef LLVMBuildPtrDiff(LLVMBuilderRef, LLVMValueRef LHS,
                               LLVMValueRef RHS, const char *Name);
-LLVMValueRef LLVMBuildAtomicRMW(LLVMBuilderRef B,LLVMAtomicRMWBinOp op,
+LLVMValueRef LLVMBuildFence(LLVMBuilderRef B, LLVMAtomicOrdering ordering,
+                            LLVMBool singleThread, const char *Name);
+LLVMValueRef LLVMBuildAtomicRMW(LLVMBuilderRef B, LLVMAtomicRMWBinOp op,
                                 LLVMValueRef PTR, LLVMValueRef Val,
                                 LLVMAtomicOrdering ordering,
                                 LLVMBool singleThread);

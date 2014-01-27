@@ -40,9 +40,9 @@ bool save_framebuffer_as_png(const framebuffer_rt* fb, const char *filename)
   // (although the png library does as well...).
   #pragma omp for schedule (dynamic,width)
   for(dim_t i = 0, j = 0; i < npixels; ++i, j+=3) {
-    buf8[j]   = (uchar)(fb->pixels[i].r * UCHAR_MAX);
-    buf8[j+1] = (uchar)(fb->pixels[i].g * UCHAR_MAX);
-    buf8[j+2] = (uchar)(fb->pixels[i].b * UCHAR_MAX);
+    buf8[j]   = (uchar)(fb->pixels[i].x * UCHAR_MAX);
+    buf8[j+1] = (uchar)(fb->pixels[i].y * UCHAR_MAX);
+    buf8[j+2] = (uchar)(fb->pixels[i].z * UCHAR_MAX);
   }
 
   FILE *fp = fopen(filename, "wb");

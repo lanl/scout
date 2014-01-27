@@ -92,7 +92,7 @@ UniformMeshDecl *UniformMeshDecl::Create(const ASTContext &C,
                                          IdentifierInfo *Id,
                                          UniformMeshDecl* PrevDecl) {
 
-  UniformMeshDecl* M = new (C) UniformMeshDecl(DC,
+  UniformMeshDecl* M = new (C, DC) UniformMeshDecl(DC,
                                                StartLoc,
                                                IdLoc, Id,
                                                PrevDecl);
@@ -103,8 +103,7 @@ UniformMeshDecl *UniformMeshDecl::Create(const ASTContext &C,
 
 UniformMeshDecl *UniformMeshDecl::CreateDeserialized(const ASTContext &C,
                                                      unsigned ID) {
-  void *Mem = AllocateDeserializedDecl(C, ID, sizeof(UniformMeshDecl));
-  UniformMeshDecl *M = new (Mem) UniformMeshDecl(0, SourceLocation(),
+  UniformMeshDecl *M = new (C, ID) UniformMeshDecl(0, SourceLocation(),
                                                  SourceLocation(), 0, 0);
   M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
   return M;

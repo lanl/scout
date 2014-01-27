@@ -19,6 +19,7 @@
 #include "llvm/PassManager.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/FormattedStream.h"
+#include "llvm/Support/Host.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
@@ -71,6 +72,33 @@ LLVMTargetRef LLVMGetNextTarget(LLVMTargetRef T) {
   return wrap(unwrap(T)->getNext());
 }
 
+LLVMTargetRef LLVMGetTargetFromName(const char *Name) {
+  StringRef NameRef = Name;
+  for (TargetRegistry::iterator IT = TargetRegistry::begin(),
+                                IE = TargetRegistry::end(); IT != IE; ++IT) {
+    if (IT->getName() == NameRef)
+      return wrap(&*IT);
+  }
+  
+  return NULL;
+}
+
+LLVMBool LLVMGetTargetFromTriple(const char* TripleStr, LLVMTargetRef *T,
+                                 char **ErrorMessage) {
+  std::string Error;
+  
+  *T = wrap(TargetRegistry::lookupTarget(TripleStr, Error));
+  
+  if (!*T) {
+    if (ErrorMessage)
+      *ErrorMessage = strdup(Error.c_str());
+
+    return 1;
+  }
+  
+  return 0;
+}
+
 const char * LLVMGetTargetName(LLVMTargetRef T) {
   return unwrap(T)->getName();
 }
@@ -91,9 +119,10 @@ LLVMBool LLVMTargetHasAsmBackend(LLVMTargetRef T) {
   return unwrap(T)->hasMCAsmBackend();
 }
 
-LLVMTargetMachineRef LLVMCreateTargetMachine(LLVMTargetRef T, char* Triple,
-  char* CPU, char* Features, LLVMCodeGenOptLevel Level, LLVMRelocMode Reloc,
-  LLVMCodeModel CodeModel) {
+LLVMTargetMachineRef LLVMCreateTargetMachine(LLVMTargetRef T,
+        const char* Triple, const char* CPU, const char* Features,
+        LLVMCodeGenOptLevel Level, LLVMRelocMode Reloc,
+        LLVMCodeModel CodeModel) {
   Reloc::Model RM;
   switch (Reloc){
     case LLVMRelocStatic:
@@ -162,6 +191,11 @@ LLVMTargetDataRef LLVMGetTargetMachineData(LLVMTargetMachineRef T) {
   return wrap(unwrap(T)->getDataLayout());
 }
 
+void LLVMSetTargetMachineAsmVerbosity(LLVMTargetMachineRef T,
+                                      LLVMBool VerboseAsm) {
+  unwrap(T)->setAsmVerbosityDefault(VerboseAsm);
+}
+
 static LLVMBool LLVMTargetMachineEmit(LLVMTargetMachineRef T, LLVMModuleRef M,
   formatted_raw_ostream &OS, LLVMCodeGenFileType codegen, char **ErrorMessage) {
   TargetMachine* TM = unwrap(T);
@@ -228,4 +262,8 @@ LLVMBool LLVMTargetMachineEmitToMemoryBuffer(LLVMTargetMachineRef T,
   *OutMemBuf = LLVMCreateMemoryBufferWithMemoryRangeCopy(Data.c_str(),
                                                      Data.length(), "");
   return Result;
+}
+
+char *LLVMGetDefaultTargetTriple(void) {
+  return strdup(sys::getDefaultTargetTriple().c_str());
 }

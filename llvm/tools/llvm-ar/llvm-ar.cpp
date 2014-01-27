@@ -365,8 +365,8 @@ static bool shouldCreateArchive(ArchiveOperation Op) {
 
 static void performReadOperation(ArchiveOperation Operation,
                                  object::Archive *OldArchive) {
-  for (object::Archive::child_iterator I = OldArchive->begin_children(),
-                                       E = OldArchive->end_children();
+  for (object::Archive::child_iterator I = OldArchive->child_begin(),
+                                       E = OldArchive->child_end();
        I != E; ++I) {
     StringRef Name;
     failIfError(I->getName(Name));
@@ -516,8 +516,8 @@ computeNewArchiveMembers(ArchiveOperation Operation,
   int InsertPos = -1;
   StringRef PosName = sys::path::filename(RelPos);
   if (OldArchive) {
-    for (object::Archive::child_iterator I = OldArchive->begin_children(),
-                                         E = OldArchive->end_children();
+    for (object::Archive::child_iterator I = OldArchive->child_begin(),
+                                         E = OldArchive->child_end();
          I != E; ++I) {
       int Pos = Ret.size();
       StringRef Name;
@@ -578,14 +578,21 @@ computeNewArchiveMembers(ArchiveOperation Operation,
 }
 
 template <typename T>
-static void printWithSpacePadding(raw_ostream &OS, T Data, unsigned Size) {
+static void printWithSpacePadding(raw_fd_ostream &OS, T Data, unsigned Size,
+				  bool MayTruncate = false) {
   uint64_t OldPos = OS.tell();
   OS << Data;
   unsigned SizeSoFar = OS.tell() - OldPos;
-  assert(Size >= SizeSoFar && "Data doesn't fit in Size");
-  unsigned Remaining = Size - SizeSoFar;
-  for (unsigned I = 0; I < Remaining; ++I)
-    OS << ' ';
+  if (Size > SizeSoFar) {
+    unsigned Remaining = Size - SizeSoFar;
+    for (unsigned I = 0; I < Remaining; ++I)
+      OS << ' ';
+  } else if (Size < SizeSoFar) {
+    assert(MayTruncate && "Data doesn't fit in Size");
+    // Some of the data this is used for (like UID) can be larger than the
+    // space available in the archive format. Truncate in that case.
+    OS.seek(OldPos + Size);
+  }
 }
 
 static void print32BE(raw_fd_ostream &Out, unsigned Val) {
@@ -600,8 +607,8 @@ static void printRestOfMemberHeader(raw_fd_ostream &Out,
                                     unsigned GID, unsigned Perms,
                                     unsigned Size) {
   printWithSpacePadding(Out, ModTime.toEpochTime(), 12);
-  printWithSpacePadding(Out, UID, 6);
-  printWithSpacePadding(Out, GID, 6);
+  printWithSpacePadding(Out, UID, 6, true);
+  printWithSpacePadding(Out, GID, 6, true);
   printWithSpacePadding(Out, format("%o", Perms), 8);
   printWithSpacePadding(Out, Size, 10);
   Out << "`\n";
@@ -781,6 +788,13 @@ static void performWriteOperation(ArchiveOperation Operation,
 
       sys::fs::file_status Status;
       failIfError(sys::fs::status(FD, Status), FileName);
+
+      // Opening a directory doesn't make sense. Let it failed.
+      // Linux cannot open directories with open(2), although
+      // cygwin and *bsd can.
+      if (Status.type() == sys::fs::file_type::directory_file)
+        failIfError(error_code(errc::is_a_directory, posix_category()),
+                    FileName);
 
       OwningPtr<MemoryBuffer> File;
       failIfError(MemoryBuffer::getOpenFile(FD, FileName, File,

@@ -94,7 +94,7 @@ UnstructuredMeshDecl *UnstructuredMeshDecl::Create(const ASTContext &C,
                                                    IdentifierInfo *Id,
                                                    UnstructuredMeshDecl* PrevDecl) {
 
-  UnstructuredMeshDecl* M = new (C) UnstructuredMeshDecl(DC,
+  UnstructuredMeshDecl* M = new (C, DC) UnstructuredMeshDecl(DC,
                                                          StartLoc,
                                                          IdLoc, Id,
                                                          PrevDecl);
@@ -105,8 +105,7 @@ UnstructuredMeshDecl *UnstructuredMeshDecl::Create(const ASTContext &C,
 
 UnstructuredMeshDecl *UnstructuredMeshDecl::CreateDeserialized(const ASTContext &C,
                                                                unsigned ID) {
-  void *Mem = AllocateDeserializedDecl(C, ID, sizeof(UnstructuredMeshDecl));
-  UnstructuredMeshDecl *M = new (Mem) UnstructuredMeshDecl(0, SourceLocation(),
+  UnstructuredMeshDecl *M = new (C, ID) UnstructuredMeshDecl(0, SourceLocation(),
                                                            SourceLocation(), 0, 0);
   M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
   return M;

@@ -375,11 +375,14 @@ void ASTDeclReader::Visit(Decl *D) {
 }
 
 void ASTDeclReader::VisitDecl(Decl *D) {
-  if (D->isTemplateParameter()) {
+  if (D->isTemplateParameter() || D->isTemplateParameterPack() ||
+      isa<ParmVarDecl>(D)) {
     // We don't want to deserialize the DeclContext of a template
-    // parameter immediately, because the template parameter might be
-    // used in the formulation of its DeclContext. Use the translation
-    // unit DeclContext as a placeholder.
+    // parameter or of a parameter of a function template immediately.   These
+    // entities might be used in the formulation of its DeclContext (for
+    // example, a function parameter can be used in decltype() in trailing
+    // return type of the function).  Use the translation unit DeclContext as a
+    // placeholder.
     GlobalDeclID SemaDCIDForTemplateParmDecl = ReadDeclID(Record, Idx);
     GlobalDeclID LexicalDCIDForTemplateParmDecl = ReadDeclID(Record, Idx);
     Reader.addPendingDeclContextInfo(D,
@@ -814,6 +817,7 @@ void ASTDeclReader::VisitObjCInterfaceDecl(ObjCInterfaceDecl *ID) {
     Data.SuperClassLoc = ReadSourceLocation(Record, Idx);
 
     Data.EndLoc = ReadSourceLocation(Record, Idx);
+    Data.HasDesignatedInitializers = Record[Idx++];
     
     // Read the directly referenced protocols and their SourceLocations.
     unsigned NumProtocols = Record[Idx++];
@@ -857,8 +861,6 @@ void ASTDeclReader::VisitObjCIvarDecl(ObjCIvarDecl *IVD) {
   IVD->setNextIvar(0);
   bool synth = Record[Idx++];
   IVD->setSynthesize(synth);
-  bool backingIvarReferencedInAccessor = Record[Idx++];
-  IVD->setBackingIvarReferencedInAccessor(backingIvarReferencedInAccessor);
 }
 
 void ASTDeclReader::VisitObjCProtocolDecl(ObjCProtocolDecl *PD) {
@@ -1245,6 +1247,7 @@ void ASTDeclReader::ReadCXXDefinitionData(
   Data.HasProtectedFields = Record[Idx++];
   Data.HasPublicFields = Record[Idx++];
   Data.HasMutableFields = Record[Idx++];
+  Data.HasVariantMembers = Record[Idx++];
   Data.HasOnlyCMembers = Record[Idx++];
   Data.HasInClassInitializer = Record[Idx++];
   Data.HasUninitializedReferenceMember = Record[Idx++];
@@ -1267,8 +1270,6 @@ void ASTDeclReader::ReadCXXDefinitionData(
   Data.ImplicitCopyAssignmentHasConstParam = Record[Idx++];
   Data.HasDeclaredCopyConstructorWithConstParam = Record[Idx++];
   Data.HasDeclaredCopyAssignmentWithConstParam = Record[Idx++];
-  Data.FailedImplicitMoveConstructor = Record[Idx++];
-  Data.FailedImplicitMoveAssignment = Record[Idx++];
 
   Data.NumBases = Record[Idx++];
   if (Data.NumBases)

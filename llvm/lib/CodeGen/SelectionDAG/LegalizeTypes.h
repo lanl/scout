@@ -670,13 +670,13 @@ private:
                                  LoadSDNode *LD, ISD::LoadExtType ExtType);
 
   /// Helper genWidenVectorStores - Helper function to generate a set of
-  /// stores to store a widen vector into non widen memory
+  /// stores to store a widen vector into non-widen memory
   ///   StChain: list of chains for the stores we have generated
   ///   ST:      store of a widen value
   void GenWidenVectorStores(SmallVectorImpl<SDValue> &StChain, StoreSDNode *ST);
 
   /// Helper genWidenVectorTruncStores - Helper function to generate a set of
-  /// stores to store a truncate widen vector into non widen memory
+  /// stores to store a truncate widen vector into non-widen memory
   ///   StChain: list of chains for the stores we have generated
   ///   ST:      store of a widen value
   void GenWidenVectorTruncStores(SmallVectorImpl<SDValue> &StChain,
@@ -704,10 +704,6 @@ private:
       GetExpandedFloat(Op, Lo, Hi);
   }
 
-  /// GetSplitDestVTs - Compute the VTs needed for the low/hi parts of a type
-  /// which is split (or expanded) into two not necessarily identical pieces.
-  void GetSplitDestVTs(EVT InVT, EVT &LoVT, EVT &HiVT);
-
   /// GetPairElements - Use ISD::EXTRACT_ELEMENT nodes to extract the low and
   /// high parts of the given value.
   void GetPairElements(SDValue Pair, SDValue &Lo, SDValue &Hi);
@@ -734,6 +730,12 @@ private:
     else
       GetExpandedFloat(Op, Lo, Hi);
   }
+
+
+  /// This function will split the integer \p Op into \p NumElements
+  /// operations of type \p EltVT and store them in \p Ops.
+  void IntegerToVector(SDValue Op, unsigned NumElements,
+                       SmallVectorImpl<SDValue> &Ops, EVT EltVT);
 
   // Generic Result Expansion.
   void ExpandRes_MERGE_VALUES      (SDNode *N, unsigned ResNo,

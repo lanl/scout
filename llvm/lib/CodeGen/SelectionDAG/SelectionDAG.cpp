@@ -20,7 +20,6 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Analysis/ValueTracking.h"
-#include "llvm/Assembly/Writer.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineConstantPool.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
@@ -176,6 +175,22 @@ bool ISD::isBuildVectorAllZeros(const SDNode *N) {
     if (N->getOperand(i) != Zero &&
         N->getOperand(i).getOpcode() != ISD::UNDEF)
       return false;
+  return true;
+}
+
+/// \brief Return true if the specified node is a BUILD_VECTOR node of
+/// all ConstantSDNode or undef.
+bool ISD::isBuildVectorOfConstantSDNodes(const SDNode *N) {
+  if (N->getOpcode() != ISD::BUILD_VECTOR)
+    return false;
+
+  for (unsigned i = 0, e = N->getNumOperands(); i != e; ++i) {
+    SDValue Op = N->getOperand(i);
+    if (Op.getOpcode() == ISD::UNDEF)
+      continue;
+    if (!isa<ConstantSDNode>(Op))
+      return false;
+  }
   return true;
 }
 
@@ -869,16 +884,19 @@ unsigned SelectionDAG::getEVTAlignment(EVT VT) const {
 
 // EntryNode could meaningfully have debug info if we can find it...
 SelectionDAG::SelectionDAG(const TargetMachine &tm, CodeGenOpt::Level OL)
-  : TM(tm), TSI(*tm.getSelectionDAGInfo()), TTI(0), OptLevel(OL),
+  : TM(tm), TSI(*tm.getSelectionDAGInfo()), TTI(0), TLI(0), OptLevel(OL),
     EntryNode(ISD::EntryToken, 0, DebugLoc(), getVTList(MVT::Other)),
-    Root(getEntryNode()), UpdateListeners(0) {
+    Root(getEntryNode()), NewNodesMustHaveLegalTypes(false),
+    UpdateListeners(0) {
   AllNodes.push_back(&EntryNode);
   DbgInfo = new SDDbgInfo();
 }
 
-void SelectionDAG::init(MachineFunction &mf, const TargetTransformInfo *tti) {
+void SelectionDAG::init(MachineFunction &mf, const TargetTransformInfo *tti,
+                        const TargetLowering *tli) {
   MF = &mf;
   TTI = tti;
+  TLI = tli;
   Context = &mf.getFunction()->getContext();
 }
 
@@ -983,6 +1001,54 @@ SDValue SelectionDAG::getConstant(const ConstantInt &Val, EVT VT, bool isT) {
    APInt NewVal = Elt->getValue().zext(EltVT.getSizeInBits());
    Elt = ConstantInt::get(*getContext(), NewVal);
   }
+  // In other cases the element type is illegal and needs to be expanded, for
+  // example v2i64 on MIPS32. In this case, find the nearest legal type, split
+  // the value into n parts and use a vector type with n-times the elements.
+  // Then bitcast to the type requested.
+  // Legalizing constants too early makes the DAGCombiner's job harder so we
+  // only legalize if the DAG tells us we must produce legal types.
+  else if (NewNodesMustHaveLegalTypes && VT.isVector() &&
+           TLI->getTypeAction(*getContext(), EltVT) ==
+           TargetLowering::TypeExpandInteger) {
+    APInt NewVal = Elt->getValue();
+    EVT ViaEltVT = TLI->getTypeToTransformTo(*getContext(), EltVT);
+    unsigned ViaEltSizeInBits = ViaEltVT.getSizeInBits();
+    unsigned ViaVecNumElts = VT.getSizeInBits() / ViaEltSizeInBits;
+    EVT ViaVecVT = EVT::getVectorVT(*getContext(), ViaEltVT, ViaVecNumElts);
+
+    // Check the temporary vector is the correct size. If this fails then
+    // getTypeToTransformTo() probably returned a type whose size (in bits)
+    // isn't a power-of-2 factor of the requested type size.
+    assert(ViaVecVT.getSizeInBits() == VT.getSizeInBits());
+
+    SmallVector<SDValue, 2> EltParts;
+    for (unsigned i = 0; i < ViaVecNumElts / VT.getVectorNumElements(); ++i) {
+      EltParts.push_back(getConstant(NewVal.lshr(i * ViaEltSizeInBits)
+                                           .trunc(ViaEltSizeInBits),
+                                     ViaEltVT, isT));
+    }
+
+    // EltParts is currently in little endian order. If we actually want
+    // big-endian order then reverse it now.
+    if (TLI->isBigEndian())
+      std::reverse(EltParts.begin(), EltParts.end());
+
+    // The elements must be reversed when the element order is different
+    // to the endianness of the elements (because the BITCAST is itself a
+    // vector shuffle in this situation). However, we do not need any code to
+    // perform this reversal because getConstant() is producing a vector
+    // splat.
+    // This situation occurs in MIPS MSA.
+
+    SmallVector<SDValue, 8> Ops;
+    for (unsigned i = 0; i < VT.getVectorNumElements(); ++i)
+      Ops.insert(Ops.end(), EltParts.begin(), EltParts.end());
+
+    SDValue Result = getNode(ISD::BITCAST, SDLoc(), VT,
+                             getNode(ISD::BUILD_VECTOR, SDLoc(), ViaVecVT,
+                                     &Ops[0], Ops.size()));
+    return Result;
+  }
 
   assert(Elt->getBitWidth() == EltVT.getSizeInBits() &&
          "APInt size does not match type size!");
@@ -1077,9 +1143,10 @@ SDValue SelectionDAG::getGlobalAddress(const GlobalValue *GV, SDLoc DL,
                                        unsigned char TargetFlags) {
   assert((TargetFlags == 0 || isTargetGA) &&
          "Cannot set target flags on target-independent globals");
+  const TargetLowering *TLI = TM.getTargetLowering();
 
   // Truncate (with sign-extension) the offset value to the pointer size.
-  unsigned BitWidth = TM.getTargetLowering()->getPointerTy().getSizeInBits();
+  unsigned BitWidth = TLI->getPointerTypeSizeInBits(GV->getType());
   if (BitWidth < 64)
     Offset = SignExtend64(Offset, BitWidth);
 
@@ -1507,6 +1574,26 @@ SDValue SelectionDAG::getMDNode(const MDNode *MD) {
   return SDValue(N, 0);
 }
 
+/// getAddrSpaceCast - Return an AddrSpaceCastSDNode.
+SDValue SelectionDAG::getAddrSpaceCast(SDLoc dl, EVT VT, SDValue Ptr,
+                                       unsigned SrcAS, unsigned DestAS) {
+  SDValue Ops[] = {Ptr};
+  FoldingSetNodeID ID;
+  AddNodeIDNode(ID, ISD::ADDRSPACECAST, getVTList(VT), &Ops[0], 1);
+  ID.AddInteger(SrcAS);
+  ID.AddInteger(DestAS);
+
+  void *IP = 0;
+  if (SDNode *E = CSEMap.FindNodeOrInsertPos(ID, IP))
+    return SDValue(E, 0);
+
+  SDNode *N = new (NodeAllocator) AddrSpaceCastSDNode(dl.getIROrder(),
+                                                      dl.getDebugLoc(),
+                                                      VT, Ptr, SrcAS, DestAS);
+  CSEMap.InsertNode(N, IP);
+  AllNodes.push_back(N);
+  return SDValue(N, 0);
+}
 
 /// getShiftAmountOperand - Return the specified value casted to
 /// the target's desired shift amount type.
@@ -5978,6 +6065,12 @@ GlobalAddressSDNode::GlobalAddressSDNode(unsigned Opc, unsigned Order,
   TheGlobal = GA;
 }
 
+AddrSpaceCastSDNode::AddrSpaceCastSDNode(unsigned Order, DebugLoc dl, EVT VT,
+                                         SDValue X, unsigned SrcAS,
+                                         unsigned DestAS)
+ : UnarySDNode(ISD::ADDRSPACECAST, Order, dl, getSDVTList(VT), X),
+   SrcAddrSpace(SrcAS), DestAddrSpace(DestAS) {}
+
 MemSDNode::MemSDNode(unsigned Opc, unsigned Order, DebugLoc dl, SDVTList VTs,
                      EVT memvt, MachineMemOperand *mmo)
  : SDNode(Opc, Order, dl, VTs), MemoryVT(memvt), MMO(mmo) {
@@ -6297,7 +6390,7 @@ unsigned SelectionDAG::InferPtrAlignment(SDValue Ptr) const {
   int64_t GVOffset = 0;
   const TargetLowering *TLI = TM.getTargetLowering();
   if (TLI->isGAPlusOffset(Ptr.getNode(), GV, GVOffset)) {
-    unsigned PtrWidth = TLI->getPointerTy().getSizeInBits();
+    unsigned PtrWidth = TLI->getPointerTypeSizeInBits(GV->getType());
     APInt KnownZero(PtrWidth, 0), KnownOne(PtrWidth, 0);
     llvm::ComputeMaskedBits(const_cast<GlobalValue*>(GV), KnownZero, KnownOne,
                             TLI->getDataLayout());
@@ -6328,6 +6421,38 @@ unsigned SelectionDAG::InferPtrAlignment(SDValue Ptr) const {
   }
 
   return 0;
+}
+
+/// GetSplitDestVTs - Compute the VTs needed for the low/hi parts of a type
+/// which is split (or expanded) into two not necessarily identical pieces.
+std::pair<EVT, EVT> SelectionDAG::GetSplitDestVTs(const EVT &VT) const {
+  // Currently all types are split in half.
+  EVT LoVT, HiVT;
+  if (!VT.isVector()) {
+    LoVT = HiVT = TLI->getTypeToTransformTo(*getContext(), VT);
+  } else {
+    unsigned NumElements = VT.getVectorNumElements();
+    assert(!(NumElements & 1) && "Splitting vector, but not in half!");
+    LoVT = HiVT = EVT::getVectorVT(*getContext(), VT.getVectorElementType(),
+                                   NumElements/2);
+  }
+  return std::make_pair(LoVT, HiVT);
+}
+
+/// SplitVector - Split the vector with EXTRACT_SUBVECTOR and return the
+/// low/high part.
+std::pair<SDValue, SDValue>
+SelectionDAG::SplitVector(const SDValue &N, const SDLoc &DL, const EVT &LoVT,
+                          const EVT &HiVT) {
+  assert(LoVT.getVectorNumElements() + HiVT.getVectorNumElements() <=
+         N.getValueType().getVectorNumElements() &&
+         "More vector elements requested than available!");
+  SDValue Lo, Hi;
+  Lo = getNode(ISD::EXTRACT_SUBVECTOR, DL, LoVT, N,
+               getConstant(0, TLI->getVectorIdxTy()));
+  Hi = getNode(ISD::EXTRACT_SUBVECTOR, DL, HiVT, N,
+               getConstant(LoVT.getVectorNumElements(), TLI->getVectorIdxTy()));
+  return std::make_pair(Lo, Hi);
 }
 
 // getAddressSpace - Return the address space this GlobalAddress belongs to.
@@ -6405,6 +6530,15 @@ bool BuildVectorSDNode::isConstantSplat(APInt &SplatValue,
   }
 
   SplatBitSize = sz;
+  return true;
+}
+
+bool BuildVectorSDNode::isConstant() const {
+  for (unsigned i = 0, e = getNumOperands(); i != e; ++i) {
+    unsigned Opc = getOperand(i).getOpcode();
+    if (Opc != ISD::UNDEF && Opc != ISD::Constant && Opc != ISD::ConstantFP)
+      return false;
+  }
   return true;
 }
 

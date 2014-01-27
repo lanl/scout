@@ -15,16 +15,24 @@ include_directories(
 
 set(LLVM_LINK_COMPONENTS
   ${LLVM_TARGETS_TO_BUILD}
-  asmparser
-  bitreader
-  bitwriter
-  irreader
-  codegen
-  instrumentation
-  ipo
-  linker
-  selectiondag
+  Analysis
+  Core
+  IPA
+  IPO
+  InstCombine
+  Instrumentation
+  MC
+  MCParser
+  ObjCARCOpts
+  Option
+  ScalarOpts
+  Support
+  TransformUtils
+  Vectorize
   )
+
+set(LLVM_RUNTIME_OUTPUT_INTDIR ${SCOUT_BUILD_DIR}/bin)
+set(LLVM_LIBRARY_OUTPUT_INTDIR ${SCOUT_BUILD_DIR}/lib)
 
 add_clang_executable(scc
   driver.cpp
@@ -34,25 +42,10 @@ add_clang_executable(scc
   )
 
 target_link_libraries(scc
-  clangFrontendTool
-  clangAST
-  clangAnalysis
   clangBasic
-  clangCodeGen
   clangDriver
-  clangEdit
   clangFrontend
-  clangLex
-  clangParse
-  clangEdit
-  clangARCMigrate
-  clangRewriteCore
-  clangRewriteFrontend
-  clangSema
-  clangSerialization
-  clangStaticAnalyzerFrontend
-  clangStaticAnalyzerCheckers
-  clangStaticAnalyzerCore
+  clangFrontendTool
   ${SCOUT_LLVM_LINK_LIBS}
   scConfig
   )

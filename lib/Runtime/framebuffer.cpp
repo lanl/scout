@@ -26,10 +26,10 @@ framebuffer_rt::framebuffer_rt(dim_t w, dim_t h, float r, float g, float b, floa
 
   pixels = new float4[width * height];
 
-  bg_color.r = r;
-  bg_color.g = g;
-  bg_color.b = b;
-  bg_color.a = a;
+  bg_color.x = r;
+  bg_color.y = g;
+  bg_color.z = b;
+  bg_color.w = a;
 
   this->clear();
 }

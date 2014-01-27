@@ -88,7 +88,19 @@ public:
   SmallVector<const FileEntry *, 2> ExcludedHeaders;
 
   /// \brief The headers that are private to this module.
-  llvm::SmallVector<const FileEntry *, 2> PrivateHeaders;
+  SmallVector<const FileEntry *, 2> PrivateHeaders;
+
+  /// \brief Information about a header directive as found in the module map
+  /// file.
+  struct HeaderDirective {
+    SourceLocation FileNameLoc;
+    std::string FileName;
+    bool IsUmbrella;
+  };
+
+  /// \brief Headers that are mentioned in the module map file but could not be
+  /// found on the file system.
+  SmallVector<HeaderDirective, 1> MissingHeaders;
 
   /// \brief An individual requirement: a feature name and a flag indicating
   /// the required state of that feature.
@@ -276,7 +288,8 @@ public:
   /// this module.
   bool isAvailable(const LangOptions &LangOpts, 
                    const TargetInfo &Target,
-                   Requirement &Req) const;
+                   Requirement &Req,
+                   HeaderDirective &MissingHeader) const;
 
   /// \brief Determine whether this module is a submodule.
   bool isSubModule() const { return Parent != 0; }
@@ -403,10 +416,10 @@ public:
   submodule_iterator submodule_end()   { return SubModules.end(); }
   submodule_const_iterator submodule_end() const { return SubModules.end(); }
 
-  /// \brief Returns the exported modules based on the wildcard restrictions.
+  /// \brief Appends this module's list of exported modules to \p Exported.
   ///
-  /// This returns a subset of immediately imported modules (the ones that are
-  /// exported), not the complete set of exported modules.
+  /// This provides a subset of immediately imported modules (the ones that are
+  /// directly exported), not the complete set of exported modules.
   void getExportedModules(SmallVectorImpl<Module *> &Exported) const;
 
   static StringRef getModuleInputBufferName() {
