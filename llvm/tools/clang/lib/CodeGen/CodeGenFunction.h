@@ -1930,7 +1930,7 @@ public:
   void EmitForallArrayStmt(const ForallArrayStmt &S);
   void EmitForallArrayLoop(const ForallArrayStmt &S,  unsigned r);
 
-  //void EmitRenderAllStmt(const RenderAllStmt &S);
+  void EmitRenderallStmt(const RenderallStmt &S);
   //void EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S);
 
   void insertMeshDump(llvm::Value* baseAddr);

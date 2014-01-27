@@ -136,14 +136,11 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
     EmitForallMeshStmt(cast<ForallMeshStmt>(*S));
     break;
   case Stmt::RenderallMeshStmtClass:
-    assert(false && "need to implement renderall codegen");
+  	EmitRenderallStmt(cast<RenderallMeshStmt>(*S));
     break;
   case Stmt::ForallArrayStmtClass:
     EmitForallArrayStmt(cast<ForallArrayStmt>(*S));
     break;
-  //case Stmt::RenderAllStmtClass:
-  //  EmitRenderAllStmt(cast<RenderAllStmt>(*S));
-  //  break;
   //case Stmt::VolumeRenderAllStmtClass:
   //  EmitVolumeRenderAllStmt(cast<VolumeRenderAllStmt>(*S));
   //  break;

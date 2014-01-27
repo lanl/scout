@@ -74,6 +74,8 @@
 #include "CGBlocks.h"
 #include "clang/Analysis/Analyses/Dominators.h"
 
+#include "Scout/CGScoutRuntime.h"
+
 using namespace clang;
 using namespace CodeGen;
 
@@ -312,7 +314,7 @@ void CodeGenFunction::EmitForallBody(const ForallStmt &S) {
   EmitStmt(S.getBody());
 }
 
-//emit a branch and block used a markers for code extraction
+// Emit a branch and block. used as markers for code extraction
 llvm::BasicBlock *CodeGenFunction::EmitForallMarkerBlock(const std::string name) {
 	 llvm::BasicBlock *entry = createBasicBlock(name);
 	  Builder.CreateBr(entry);
@@ -445,6 +447,20 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
     DI->EmitLexicalBlockEnd(Builder, S.getSourceRange().getEnd());
 
   EmitBlock(LoopExit.getBlock(), true);
+}
+
+
+void CodeGenFunction::EmitRenderallStmt(const RenderallStmt &S) {
+
+	llvm::Function *BeginFunc = CGM.getScoutRuntime().RenderallUniformBeginFunction();
+	Builder.CreateCall(BeginFunc, LoopBounds);
+
+	//SC_TODO: renderall body
+
+	llvm::Function *EndFunc = CGM.getScoutRuntime().RenderallEndFunction();
+	std::vector<llvm::Value*> Args;
+	Builder.CreateCall(EndFunc, Args);
+
 }
 
 #if 0
