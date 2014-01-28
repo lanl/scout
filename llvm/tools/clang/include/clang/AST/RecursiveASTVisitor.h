@@ -2309,13 +2309,8 @@ bool RecursiveASTVisitor<Derived>::TraverseLambdaExpr(LambdaExpr *S) {
           TRY_TO(TraverseDecl(Proto.getParam(I)));
         }
       } else {
-<<<<<<< HEAD
-        TRY_TO(TraverseTypeLoc(Proto.getResultLoc()));
-      }
-=======
         TRY_TO(TraverseTypeLoc(Proto.getReturnLoc()));
       }        
->>>>>>> d0d5f662c1ba9191562a51dbabf3e1e39772d164
     }
   }
 

@@ -7569,11 +7569,8 @@ static bool hasIsEqualMethod(Sema &S, const Expr *LHS, const Expr *RHS) {
   if (!T->isObjCObjectPointerType())
     return false;
 
-<<<<<<< HEAD
-  QualType R = Method->getResultType();
-=======
   QualType R = Method->getReturnType();
->>>>>>> d0d5f662c1ba9191562a51dbabf3e1e39772d164
+
   if (!R->isScalarType())
     return false;
 

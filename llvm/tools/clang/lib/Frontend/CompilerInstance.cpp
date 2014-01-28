@@ -1272,16 +1272,6 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
       ModuleBuildFailed = true;
       return ModuleLoadResult();
     }
-<<<<<<< HEAD
-
-    if (!Module) {
-      // If we loaded the module directly, without finding a module map first,
-      // we'll have loaded the module's information from the module itself.
-      Module = PP->getHeaderSearchInfo().getModuleMap()
-                 .findModule((Path[0].first->getName()));
-    }
-=======
->>>>>>> d0d5f662c1ba9191562a51dbabf3e1e39772d164
 
     // Cache the result of this top-level module lookup for later.
     Known = KnownModules.insert(std::make_pair(Path[0].first, Module)).first;

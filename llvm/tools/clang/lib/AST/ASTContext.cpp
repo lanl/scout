@@ -5014,11 +5014,8 @@ bool ASTContext::getObjCEncodingForMethodDecl(const ObjCMethodDecl *Decl,
   // FIXME: This is not very efficient.
   // Encode return type.
   getObjCEncodingForMethodParameter(Decl->getObjCDeclQualifier(),
-<<<<<<< HEAD
-                                    Decl->getResultType(), S, Extended);
-=======
                                     Decl->getReturnType(), S, Extended);
->>>>>>> d0d5f662c1ba9191562a51dbabf3e1e39772d164
+
   // Compute size of all parameters.
   // Start with computing size of a pointer in number of bytes.
   // FIXME: There might(should) be a better way of doing this computation!
@@ -5519,21 +5516,11 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
 
       S += '<';
       // Block return type
-<<<<<<< HEAD
-      getObjCEncodingForTypeImpl(FT->getResultType(), S,
-                                 ExpandPointedToStructures, ExpandStructures,
-                                 FD,
-                                 false /* OutermostType */,
-                                 EncodingProperty,
-                                 false /* StructField */,
-                                 EncodeBlockParameters,
-                                 EncodeClassNames);
-=======
       getObjCEncodingForTypeImpl(
           FT->getReturnType(), S, ExpandPointedToStructures, ExpandStructures,
           FD, false /* OutermostType */, EncodingProperty,
           false /* StructField */, EncodeBlockParameters, EncodeClassNames);
->>>>>>> d0d5f662c1ba9191562a51dbabf3e1e39772d164
+
       // Block self
       S += "@?";
       // Block parameters
@@ -7495,17 +7482,10 @@ QualType ASTContext::mergeObjCGCQualifiers(QualType LHS, QualType RHS) {
     if (!LHSCan->isFunctionType())
       return QualType();
     QualType OldReturnType =
-<<<<<<< HEAD
-      cast<FunctionType>(RHSCan.getTypePtr())->getResultType();
-    QualType NewReturnType =
-      cast<FunctionType>(LHSCan.getTypePtr())->getResultType();
-    QualType ResReturnType =
-=======
         cast<FunctionType>(RHSCan.getTypePtr())->getReturnType();
     QualType NewReturnType =
         cast<FunctionType>(LHSCan.getTypePtr())->getReturnType();
     QualType ResReturnType = 
->>>>>>> d0d5f662c1ba9191562a51dbabf3e1e39772d164
       mergeObjCGCQualifiers(NewReturnType, OldReturnType);
     if (ResReturnType.isNull())
       return QualType();

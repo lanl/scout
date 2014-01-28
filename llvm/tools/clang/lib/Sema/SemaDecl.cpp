@@ -7496,13 +7496,8 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
 bool Sema::CheckFunctionDeclaration(Scope *S, FunctionDecl *NewFD,
                                     LookupResult &Previous,
                                     bool IsExplicitSpecialization) {
-<<<<<<< HEAD
-  assert(!NewFD->getResultType()->isVariablyModifiedType()
-         && "Variably modified return types are not handled here");
-=======
   assert(!NewFD->getReturnType()->isVariablyModifiedType() &&
          "Variably modified return types are not handled here");
->>>>>>> d0d5f662c1ba9191562a51dbabf3e1e39772d164
 
   // Determine whether the type of this function should be merged with
   // a previous visible declaration. This never happens for functions in C++,
@@ -9903,11 +9898,7 @@ Decl *Sema::ActOnFinishFunctionBody(Decl *dcl, Stmt *Body,
     if (!FD->isInvalidDecl()) {
       DiagnoseUnusedParameters(FD->param_begin(), FD->param_end());
       DiagnoseSizeOfParametersAndReturnValue(FD->param_begin(), FD->param_end(),
-<<<<<<< HEAD
-                                             FD->getResultType(), FD);
-=======
                                              FD->getReturnType(), FD);
->>>>>>> d0d5f662c1ba9191562a51dbabf3e1e39772d164
 
       // If this is a constructor, we need a vtable.
       if (CXXConstructorDecl *Constructor = dyn_cast<CXXConstructorDecl>(FD))
@@ -9929,11 +9920,7 @@ Decl *Sema::ActOnFinishFunctionBody(Decl *dcl, Stmt *Body,
     if (!MD->isInvalidDecl()) {
       DiagnoseUnusedParameters(MD->param_begin(), MD->param_end());
       DiagnoseSizeOfParametersAndReturnValue(MD->param_begin(), MD->param_end(),
-<<<<<<< HEAD
-                                             MD->getResultType(), MD);
-=======
                                              MD->getReturnType(), MD);
->>>>>>> d0d5f662c1ba9191562a51dbabf3e1e39772d164
 
       if (Body)
         computeNRVO(Body, getCurFunction());

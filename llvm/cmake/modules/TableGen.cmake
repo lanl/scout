@@ -20,13 +20,11 @@ function(tablegen project ofn)
     set(LLVM_TARGET_DEFINITIONS_ABSOLUTE 
       ${CMAKE_CURRENT_SOURCE_DIR}/${LLVM_TARGET_DEFINITIONS})
   endif()
-<<<<<<< HEAD
 
-=======
   foreach(inc ${include_dirs})
     list(APPEND TABLEGEN_INCLUDE_DIRECTORIES -I ${inc})
   endforeach()
->>>>>>> 8c9dc08465cfb4084c7f94abc4b3adf39e1f8ac5
+
   add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${ofn}.tmp
     # Generate tablegen output in a temporary file.
     COMMAND ${${project}_TABLEGEN_EXE} ${ARGN}

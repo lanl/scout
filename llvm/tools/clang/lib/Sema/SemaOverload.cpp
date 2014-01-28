@@ -2455,13 +2455,8 @@ bool Sema::IsBlockPointerConversion(QualType FromType, QualType ToType,
     return false;
 
   bool IncompatibleObjC = false;
-<<<<<<< HEAD
-  if (Context.hasSameType(FromFunctionType->getResultType(),
-                          ToFunctionType->getResultType())) {
-=======
   if (Context.hasSameType(FromFunctionType->getReturnType(),
                           ToFunctionType->getReturnType())) {
->>>>>>> d0d5f662c1ba9191562a51dbabf3e1e39772d164
     // Okay, the types match exactly. Nothing to do.
   } else {
     QualType RHS = FromFunctionType->getReturnType();
@@ -4462,11 +4457,8 @@ TryReferenceInit(Sema &S, Expr *Init, QualType DeclType,
         }
       }
     }
-<<<<<<< HEAD
 
-=======
     ICS.UserDefined.Before.setAsIdentityConversion();
->>>>>>> d0d5f662c1ba9191562a51dbabf3e1e39772d164
     ICS.UserDefined.After.ReferenceBinding = true;
     ICS.UserDefined.After.IsLvalueReference = !isRValRef;
     ICS.UserDefined.After.BindsToFunctionLvalue = T2->isFunctionType();
