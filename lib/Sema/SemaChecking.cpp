@@ -730,10 +730,9 @@ static bool CheckNonNullExpr(Sema &S,
   }
 
   bool Result;
-  if (Expr->EvaluateAsBooleanCondition(Result, S.Context) && !Result)
-    return true;
-
-  return false;
+  return (!Expr->isValueDependent() &&
+          Expr->EvaluateAsBooleanCondition(Result, S.Context) &&
+          !Result);
 }
 
 static void CheckNonNullArgument(Sema &S,
@@ -2947,7 +2946,7 @@ bool CheckPrintfHandler::checkForCStrMembers(
        MI != ME; ++MI) {
     const CXXMethodDecl *Method = *MI;
     if (Method->getNumParams() == 0 &&
-          AT.matchesType(S.Context, Method->getResultType())) {
+        AT.matchesType(S.Context, Method->getReturnType())) {
       // FIXME: Suggest parens if the expression needs them.
       SourceLocation EndLoc =
           S.getPreprocessor().getLocForEndOfToken(E->getLocEnd());
@@ -4186,20 +4185,21 @@ static Expr *EvalAddr(Expr *E, SmallVectorImpl<DeclRefExpr *> &refVars,
     ConditionalOperator *C = cast<ConditionalOperator>(E);
 
     // Handle the GNU extension for missing LHS.
-    if (Expr *lhsExpr = C->getLHS()) {
-    // In C++, we can have a throw-expression, which has 'void' type.
-      if (!lhsExpr->getType()->isVoidType())
-        if (Expr* LHS = EvalAddr(lhsExpr, refVars, ParentDecl))
+    // FIXME: That isn't a ConditionalOperator, so doesn't get here.
+    if (Expr *LHSExpr = C->getLHS()) {
+      // In C++, we can have a throw-expression, which has 'void' type.
+      if (!LHSExpr->getType()->isVoidType())
+        if (Expr *LHS = EvalAddr(LHSExpr, refVars, ParentDecl))
           return LHS;
     }
 
     // In C++, we can have a throw-expression, which has 'void' type.
     if (C->getRHS()->getType()->isVoidType())
-      return NULL;
+      return 0;
 
     return EvalAddr(C->getRHS(), refVars, ParentDecl);
   }
-  
+
   case Stmt::BlockExprClass:
     if (cast<BlockExpr>(E)->getBlockDecl()->hasCaptures())
       return E; // local block.
@@ -4339,9 +4339,16 @@ do {
     ConditionalOperator *C = cast<ConditionalOperator>(E);
 
     // Handle the GNU extension for missing LHS.
-    if (Expr *lhsExpr = C->getLHS())
-      if (Expr *LHS = EvalVal(lhsExpr, refVars, ParentDecl))
-        return LHS;
+    if (Expr *LHSExpr = C->getLHS()) {
+      // In C++, we can have a throw-expression, which has 'void' type.
+      if (!LHSExpr->getType()->isVoidType())
+        if (Expr *LHS = EvalVal(LHSExpr, refVars, ParentDecl))
+          return LHS;
+    }
+
+    // In C++, we can have a throw-expression, which has 'void' type.
+    if (C->getRHS()->getType()->isVoidType())
+      return 0;
 
     return EvalVal(C->getRHS(), refVars, ParentDecl);
   }
@@ -4386,7 +4393,8 @@ void
 Sema::CheckReturnValExpr(Expr *RetValExp, QualType lhsType,
                          SourceLocation ReturnLoc,
                          bool isObjCMethod,
-                         const AttrVec *Attrs) {
+                         const AttrVec *Attrs,
+                         const FunctionDecl *FD) {
   CheckReturnStackAddr(*this, RetValExp, lhsType, ReturnLoc);
 
   // Check if the return value is null but should not be.
@@ -4400,6 +4408,23 @@ Sema::CheckReturnValExpr(Expr *RetValExp, QualType lhsType,
           << (isObjCMethod ? 1 : 0) << RetValExp->getSourceRange();
       break;
     }
+
+  // C++11 [basic.stc.dynamic.allocation]p4:
+  //   If an allocation function declared with a non-throwing
+  //   exception-specification fails to allocate storage, it shall return
+  //   a null pointer. Any other allocation function that fails to allocate
+  //   storage shall indicate failure only by throwing an exception [...]
+  if (FD) {
+    OverloadedOperatorKind Op = FD->getOverloadedOperator();
+    if (Op == OO_New || Op == OO_Array_New) {
+      const FunctionProtoType *Proto
+        = FD->getType()->castAs<FunctionProtoType>();
+      if (!Proto->isNothrow(Context, /*ResultIfDependent*/true) &&
+          CheckNonNullExpr(*this, RetValExp))
+        Diag(ReturnLoc, diag::warn_operator_new_returns_null)
+          << FD << getLangOpts().CPlusPlus11;
+    }
+  }
 }
 
 //===--- CHECK: Floating-Point comparisons (-Wfloat-equal) ---------------===//
@@ -5329,8 +5354,8 @@ void CheckImplicitConversion(Sema &S, Expr *E, QualType T,
   if (Target->isSpecificBuiltinType(BuiltinType::Bool)) {
     if (isa<StringLiteral>(E))
       // Warn on string literal to bool.  Checks for string literals in logical
-      // expressions, for instances, assert(0 && "error here"), are prevented
-      // by a check in AnalyzeImplicitConversions().
+      // and expressions, for instance, assert(0 && "error here"), are
+      // prevented by a check in AnalyzeImplicitConversions().
       return DiagnoseImpCast(S, E, T, CC,
                              diag::warn_impcast_string_literal_to_bool);
     if (Source->isFunctionType()) {
@@ -5681,15 +5706,16 @@ void AnalyzeImplicitConversions(Sema &S, Expr *OrigE, SourceLocation CC) {
   // Now just recurse over the expression's children.
   CC = E->getExprLoc();
   BinaryOperator *BO = dyn_cast<BinaryOperator>(E);
-  bool IsLogicalOperator = BO && BO->isLogicalOp();
+  bool IsLogicalAndOperator = BO && BO->getOpcode() == BO_LAnd;
   for (Stmt::child_range I = E->children(); I; ++I) {
     Expr *ChildExpr = dyn_cast_or_null<Expr>(*I);
     if (!ChildExpr)
       continue;
 
-    if (IsLogicalOperator &&
+    if (IsLogicalAndOperator &&
         isa<StringLiteral>(ChildExpr->IgnoreParenImpCasts()))
-      // Ignore checking string literals that are in logical operators.
+      // Ignore checking string literals that are in logical and operators.
+      // This is a common pattern for asserts.
       continue;
     AnalyzeImplicitConversions(S, ChildExpr, CC);
   }

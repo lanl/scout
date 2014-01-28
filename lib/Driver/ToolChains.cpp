@@ -1292,7 +1292,8 @@ void Generic_GCC::GCCInstallationDetector::print(raw_ostream &OS) const {
   static const char *const X86_64Triples[] = {
     "x86_64-linux-gnu", "x86_64-unknown-linux-gnu", "x86_64-pc-linux-gnu",
     "x86_64-redhat-linux6E", "x86_64-redhat-linux", "x86_64-suse-linux",
-    "x86_64-manbo-linux-gnu", "x86_64-linux-gnu", "x86_64-slackware-linux"
+    "x86_64-manbo-linux-gnu", "x86_64-linux-gnu", "x86_64-slackware-linux",
+    "x86_64-linux-android"
   };
   static const char *const X86LibDirs[] = { "/lib32", "/lib" };
   static const char *const X86Triples[] = {
@@ -1314,7 +1315,8 @@ void Generic_GCC::GCCInstallationDetector::print(raw_ostream &OS) const {
                                                "mips-mti-linux-gnu" };
   static const char *const MIPS64ELLibDirs[] = { "/lib64", "/lib" };
   static const char *const MIPS64ELTriples[] = { "mips64el-linux-gnu",
-                                                 "mips-mti-linux-gnu" };
+                                                 "mips-mti-linux-gnu",
+                                                 "mips64el-linux-android" };
 
   static const char *const PPCLibDirs[] = { "/lib32", "/lib" };
   static const char *const PPCTriples[] = {

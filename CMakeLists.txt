@@ -70,10 +70,11 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
   set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/bin)
   set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/lib)
 
-  option(LLVM_INSTALL_TOOLCHAIN_ONLY "Only include toolchain files in the 'install' target." OFF)
+  option(LLVM_INSTALL_TOOLCHAIN_ONLY
+    "Only include toolchain files in the 'install' target." OFF)
 
   option(LLVM_FORCE_USE_OLD_HOST_TOOLCHAIN
-         "Set to ON to force using an old, unsupported host toolchain." OFF)
+    "Set to ON to force using an old, unsupported host toolchain." OFF)
 
   include(AddLLVM)
   include(TableGen)
@@ -85,7 +86,6 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     set(LLVM_INCLUDE_TESTS ON)
   endif()
 
-  set(CMAKE_INCLUDE_CURRENT_DIR ON)
   include_directories("${LLVM_BINARY_DIR}/include" "${LLVM_MAIN_INCLUDE_DIR}")
   link_directories("${LLVM_LIBRARY_DIR}")
 
@@ -243,7 +243,7 @@ configure_file(
   ${CLANG_SOURCE_DIR}/include/clang/Config/config.h.cmake
   ${CLANG_BINARY_DIR}/include/clang/Config/config.h)
 
-include(LLVMParseArguments)
+include(CMakeParseArguments)
 
 function(clang_tablegen)
   # Syntax:
@@ -258,16 +258,16 @@ function(clang_tablegen)
   # executing the custom command depending on output-file. It is
   # possible to list more files to depend after DEPENDS.
 
-  parse_arguments( CTG "SOURCE;TARGET;DEPENDS" "" ${ARGN} )
+  cmake_parse_arguments(CTG "" "SOURCE;TARGET" "DEPENDS" ${ARGN})
 
   if( NOT CTG_SOURCE )
     message(FATAL_ERROR "SOURCE source-file required by clang_tablegen")
   endif()
 
   set( LLVM_TARGET_DEFINITIONS ${CTG_SOURCE} )
-  tablegen( CLANG ${CTG_DEFAULT_ARGS} )
+  tablegen(CLANG ${CTG_UNPARSED_ARGUMENTS})
 
-  list( GET CTG_DEFAULT_ARGS 0 output_file )
+  list(GET CTG_UNPARSED_ARGUMENTS 0 output_file)
   if( CTG_TARGET )
     add_custom_target( ${CTG_TARGET} DEPENDS ${output_file} ${CTG_DEPENDS} )
     set_target_properties( ${CTG_TARGET} PROPERTIES FOLDER "Clang tablegenning")
@@ -275,7 +275,8 @@ function(clang_tablegen)
 endfunction(clang_tablegen)
 
 macro(add_clang_library name)
-  llvm_process_sources(srcs ${ARGN})
+  cmake_parse_arguments(ARG "MODULE;SHARED;STATIC" "" "" ${ARGN})
+  llvm_process_sources(srcs ${ARG_UNPARSED_ARGUMENTS})
   if(MSVC_IDE OR XCODE)
     # Add public headers
     file(RELATIVE_PATH lib_path
@@ -298,14 +299,15 @@ macro(add_clang_library name)
       set(srcs ${srcs} ${headers} ${tds})
     endif()
   endif(MSVC_IDE OR XCODE)
-  if (MODULE)
+  if (ARG_MODULE)
     set(libkind MODULE)
-  elseif (SHARED_LIBRARY)
+  elseif (ARG_SHARED)
     set(libkind SHARED)
   else()
     set(libkind)
   endif()
   add_library( ${name} ${libkind} ${srcs} )
+  llvm_update_compile_flags(${name} ${ALL_FILES})
   add_dead_strip( ${name} )
   set_output_directory(${name} ${LLVM_RUNTIME_OUTPUT_INTDIR} ${LLVM_LIBRARY_OUTPUT_INTDIR})
   if( LLVM_COMMON_DEPENDS )
@@ -316,7 +318,7 @@ macro(add_clang_library name)
   target_link_libraries( ${name} ${LLVM_COMMON_LIBS} )
   link_system_libs( ${name} )
   
-  if ((SHARED_LIBRARY OR MODULE) AND LLVM_EXPORTED_SYMBOL_FILE)
+  if ((ARG_SHARED OR ARG_MODULE) AND LLVM_EXPORTED_SYMBOL_FILE)
     add_llvm_symbol_exports( ${name} ${LLVM_EXPORTED_SYMBOL_FILE} )
   endif()
 
@@ -338,6 +340,8 @@ macro(add_clang_executable name)
   add_llvm_executable( ${name} ${ARGN} )
   set_target_properties(${name} PROPERTIES FOLDER "Clang executables")
 endmacro(add_clang_executable)
+
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 include_directories(BEFORE
   ${CMAKE_CURRENT_BINARY_DIR}/include
@@ -434,6 +438,22 @@ if( CLANG_INCLUDE_TESTS )
       )
   endif()
   add_subdirectory(test)
+
+  if(CLANG_BUILT_STANDALONE)
+    # Add a global check rule now that all subdirectories have been traversed
+    # and we know the total set of lit testsuites.
+    get_property(LLVM_LIT_TESTSUITES GLOBAL PROPERTY LLVM_LIT_TESTSUITES)
+    get_property(LLVM_LIT_PARAMS GLOBAL PROPERTY LLVM_LIT_PARAMS)
+    get_property(LLVM_LIT_DEPENDS GLOBAL PROPERTY LLVM_LIT_DEPENDS)
+    get_property(LLVM_LIT_EXTRA_ARGS GLOBAL PROPERTY LLVM_LIT_EXTRA_ARGS)
+    add_lit_target(check-all
+      "Running all regression tests"
+      ${LLVM_LIT_TESTSUITES}
+      PARAMS ${LLVM_LIT_PARAMS}
+      DEPENDS ${LLVM_LIT_DEPENDS}
+      ARGS ${LLVM_LIT_EXTRA_ARGS}
+      )
+  endif()
 endif()
 
 option(CLANG_INCLUDE_DOCS "Generate build targets for the Clang docs."

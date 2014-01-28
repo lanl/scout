@@ -1224,7 +1224,7 @@ public:
   ParmVarDecl *getParam(unsigned i) const { return getParmArray()[i]; }
   void setParam(unsigned i, ParmVarDecl *VD) { getParmArray()[i] = VD; }
 
-  TypeLoc getResultLoc() const {
+  TypeLoc getReturnLoc() const {
     return getInnerTypeLoc();
   }
 
@@ -1251,7 +1251,7 @@ public:
     return llvm::alignOf<ParmVarDecl*>();
   }
 
-  QualType getInnerType() const { return getTypePtr()->getResultType(); }
+  QualType getInnerType() const { return getTypePtr()->getReturnType(); }
 };
 
 class FunctionProtoTypeLoc :
