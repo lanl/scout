@@ -339,6 +339,7 @@ namespace llvm {
       VPERMILP,
       VPERMV,
       VPERMV3,
+      VPERMIV3,
       VPERMI,
       VPERM2X128,
       VBROADCAST,
@@ -763,6 +764,11 @@ namespace llvm {
       return isTargetFTOL() && VT == MVT::i64;
     }
 
+    /// \brief Returns true if it is beneficial to convert a load of a constant
+    /// to just the constant itself.
+    virtual bool shouldConvertConstantLoadToIntImm(const APInt &Imm,
+                                                   Type *Ty) const;
+
     /// createFastISel - This method returns a target specific FastISel object,
     /// or null if the target does not support "fast" ISel.
     virtual FastISel *createFastISel(FunctionLoweringInfo &funcInfo,
@@ -970,6 +976,9 @@ namespace llvm {
 
     MachineBasicBlock *emitEHSjLjLongJmp(MachineInstr *MI,
                                          MachineBasicBlock *MBB) const;
+
+    MachineBasicBlock *emitFMA3Instr(MachineInstr *MI,
+                                     MachineBasicBlock *MBB) const;
 
     /// Emit nodes that will be selected as "test Op0,Op0", or something
     /// equivalent, for use with the given x86 condition code.

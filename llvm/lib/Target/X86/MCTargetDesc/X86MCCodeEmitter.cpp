@@ -1317,6 +1317,46 @@ EncodeInstruction(const MCInst &MI, raw_ostream &OS,
     llvm_unreachable("Unknown FormMask value in X86MCCodeEmitter!");
   case X86II::Pseudo:
     llvm_unreachable("Pseudo instruction shouldn't be emitted");
+  case X86II::RawFrmDstSrc: {
+    unsigned siReg = MI.getOperand(1).getReg();
+    assert(((siReg == X86::SI && MI.getOperand(0).getReg() == X86::DI) ||
+            (siReg == X86::ESI && MI.getOperand(0).getReg() == X86::EDI) ||
+            (siReg == X86::RSI && MI.getOperand(0).getReg() == X86::RDI)) &&
+           "SI and DI register sizes do not match");
+    // Emit segment override opcode prefix as needed (not for %ds).
+    if (MI.getOperand(2).getReg() != X86::DS)
+      EmitSegmentOverridePrefix(CurByte, 2, MI, OS);
+    // Emit OpSize prefix as needed.
+    if ((!is32BitMode() && siReg == X86::ESI) ||
+        (is32BitMode() && siReg == X86::SI))
+      EmitByte(0x67, CurByte, OS);
+    CurOp += 3; // Consume operands.
+    EmitByte(BaseOpcode, CurByte, OS);
+    break;
+  }
+  case X86II::RawFrmSrc: {
+    unsigned siReg = MI.getOperand(0).getReg();
+    // Emit segment override opcode prefix as needed (not for %ds).
+    if (MI.getOperand(1).getReg() != X86::DS)
+      EmitSegmentOverridePrefix(CurByte, 1, MI, OS);
+    // Emit OpSize prefix as needed.
+    if ((!is32BitMode() && siReg == X86::ESI) ||
+        (is32BitMode() && siReg == X86::SI))
+      EmitByte(0x67, CurByte, OS);
+    CurOp += 2; // Consume operands.
+    EmitByte(BaseOpcode, CurByte, OS);
+    break;
+  }
+  case X86II::RawFrmDst: {
+    unsigned siReg = MI.getOperand(0).getReg();
+    // Emit OpSize prefix as needed.
+    if ((!is32BitMode() && siReg == X86::EDI) ||
+        (is32BitMode() && siReg == X86::DI))
+      EmitByte(0x67, CurByte, OS);
+    ++CurOp; // Consume operand.
+    EmitByte(BaseOpcode, CurByte, OS);
+    break;
+  }
   case X86II::RawFrm:
     EmitByte(BaseOpcode, CurByte, OS);
     break;

@@ -135,9 +135,9 @@ void AArch64InstrInfo::copyPhysReg(MachineBasicBlock &MBB,
   } else if (AArch64::FPR16RegClass.contains(DestReg, SrcReg)) {
     // The copy of two FPR16 registers is implemented by the copy of two FPR32
     const TargetRegisterInfo *TRI = &getRegisterInfo();
-    unsigned Dst = TRI->getMatchingSuperReg(SrcReg, AArch64::sub_16,
+    unsigned Dst = TRI->getMatchingSuperReg(DestReg, AArch64::sub_16,
                                             &AArch64::FPR32RegClass);
-    unsigned Src = TRI->getMatchingSuperReg(DestReg, AArch64::sub_16,
+    unsigned Src = TRI->getMatchingSuperReg(SrcReg, AArch64::sub_16,
                                             &AArch64::FPR32RegClass);
     BuildMI(MBB, I, DL, get(AArch64::FMOVss), Dst)
       .addReg(Src);
@@ -611,7 +611,8 @@ void AArch64InstrInfo::getAddressConstraints(const MachineInstr &MI,
                                              int &AccessScale, int &MinOffset,
                                              int &MaxOffset) const {
   switch (MI.getOpcode()) {
-  default: llvm_unreachable("Unkown load/store kind");
+  default:
+    llvm_unreachable("Unknown load/store kind");
   case TargetOpcode::DBG_VALUE:
     AccessScale = 1;
     MinOffset = INT_MIN;

@@ -11,9 +11,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "InstPrinter/MipsInstPrinter.h"
 #include "MipsTargetStreamer.h"
+#include "MipsMCTargetDesc.h"
 #include "llvm/MC/MCELF.h"
 #include "llvm/MC/MCSymbol.h"
+#include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ELF.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -21,23 +24,14 @@
 
 using namespace llvm;
 
-static cl::opt<bool> PrintHackDirectives("print-hack-directives",
-                                         cl::init(false), cl::Hidden);
-
 // Pin vtable to this file.
 void MipsTargetStreamer::anchor() {}
 
-MipsTargetAsmStreamer::MipsTargetAsmStreamer(formatted_raw_ostream &OS)
-    : OS(OS) {}
+MipsTargetStreamer::MipsTargetStreamer(MCStreamer &S) : MCTargetStreamer(S) {}
 
-void MipsTargetAsmStreamer::emitMipsHackELFFlags(unsigned Flags) {
-  if (!PrintHackDirectives)
-    return;
-
-  OS << "\t.mips_hack_elf_flags 0x";
-  OS.write_hex(Flags);
-  OS << '\n';
-}
+MipsTargetAsmStreamer::MipsTargetAsmStreamer(MCStreamer &S,
+                                             formatted_raw_ostream &OS)
+    : MipsTargetStreamer(S), OS(OS) {}
 
 void MipsTargetAsmStreamer::emitDirectiveSetMicroMips() {
   OS << "\t.set\tmicromips\n";
@@ -55,6 +49,34 @@ void MipsTargetAsmStreamer::emitDirectiveSetNoMips16() {
   OS << "\t.set\tnomips16\n";
 }
 
+void MipsTargetAsmStreamer::emitDirectiveSetReorder() {
+  OS << "\t.set\treorder\n";
+}
+
+void MipsTargetAsmStreamer::emitDirectiveSetNoReorder() {
+  OS << "\t.set\tnoreorder\n";
+}
+
+void MipsTargetAsmStreamer::emitDirectiveSetMacro() {
+  OS << "\t.set\tmacro\n";
+}
+
+void MipsTargetAsmStreamer::emitDirectiveSetNoMacro() {
+  OS << "\t.set\tnomacro\n";
+}
+
+void MipsTargetAsmStreamer::emitDirectiveSetAt() {
+  OS << "\t.set\tat\n";
+}
+
+void MipsTargetAsmStreamer::emitDirectiveSetNoAt() {
+  OS << "\t.set\tnoat\n";
+}
+
+void MipsTargetAsmStreamer::emitDirectiveEnd(StringRef Name) {
+  OS << "\t.end\t" << Name << '\n';
+}
+
 void MipsTargetAsmStreamer::emitDirectiveEnt(const MCSymbol &Symbol) {
   OS << "\t.ent\t" << Symbol.getName() << '\n';
 }
@@ -64,8 +86,68 @@ void MipsTargetAsmStreamer::emitDirectiveOptionPic0() {
   OS << "\t.option\tpic0\n";
 }
 
+void MipsTargetAsmStreamer::emitFrame(unsigned StackReg, unsigned StackSize,
+                                      unsigned ReturnReg) {
+  OS << "\t.frame\t$"
+     << StringRef(MipsInstPrinter::getRegisterName(StackReg)).lower() << ","
+     << StackSize << ",$"
+     << StringRef(MipsInstPrinter::getRegisterName(ReturnReg)).lower() << '\n';
+}
+
+// Print a 32 bit hex number with all numbers.
+static void printHex32(unsigned Value, raw_ostream &OS) {
+  OS << "0x";
+  for (int i = 7; i >= 0; i--)
+    OS.write_hex((Value & (0xF << (i*4))) >> (i*4));
+}
+
+void MipsTargetAsmStreamer::emitMask(unsigned CPUBitmask,
+                                     int CPUTopSavedRegOff) {
+  OS << "\t.mask \t";
+  printHex32(CPUBitmask, OS);
+  OS << ',' << CPUTopSavedRegOff << '\n';
+}
+
+void MipsTargetAsmStreamer::emitFMask(unsigned FPUBitmask,
+                                      int FPUTopSavedRegOff) {
+  OS << "\t.fmask\t";
+  printHex32(FPUBitmask, OS);
+  OS << "," << FPUTopSavedRegOff << '\n';
+}
+
 // This part is for ELF object output.
-MipsTargetELFStreamer::MipsTargetELFStreamer() : MicroMipsEnabled(false) {}
+MipsTargetELFStreamer::MipsTargetELFStreamer(MCStreamer &S,
+                                             const MCSubtargetInfo &STI)
+    : MipsTargetStreamer(S), MicroMipsEnabled(false) {
+  MCAssembler &MCA = getStreamer().getAssembler();
+  uint64_t Features = STI.getFeatureBits();
+  Triple T(STI.getTargetTriple());
+
+  // Update e_header flags
+  unsigned EFlags = 0;
+
+  // Architecture
+  if (Features & Mips::FeatureMips64r2)
+    EFlags |= ELF::EF_MIPS_ARCH_64R2;
+  else if (Features & Mips::FeatureMips64)
+    EFlags |= ELF::EF_MIPS_ARCH_64;
+  else if (Features & Mips::FeatureMips32r2)
+    EFlags |= ELF::EF_MIPS_ARCH_32R2;
+  else if (Features & Mips::FeatureMips32)
+    EFlags |= ELF::EF_MIPS_ARCH_32;
+
+  if (T.isArch64Bit()) {
+    EFlags |= ELF::EF_MIPS_ABI2;
+  } else {
+    if (Features & Mips::FeatureMips64r2 || Features & Mips::FeatureMips64)
+      EFlags |= ELF::EF_MIPS_32BITMODE;
+
+    // ABI
+    EFlags |= ELF::EF_MIPS_ABI_O32;
+  }
+
+  MCA.setELFHeaderEFlags(EFlags);
+}
 
 void MipsTargetELFStreamer::emitLabel(MCSymbol *Symbol) {
   if (!isMicroMipsEnabled())
@@ -82,16 +164,16 @@ void MipsTargetELFStreamer::emitLabel(MCSymbol *Symbol) {
 }
 
 MCELFStreamer &MipsTargetELFStreamer::getStreamer() {
-  return static_cast<MCELFStreamer &>(*Streamer);
-}
-
-void MipsTargetELFStreamer::emitMipsHackELFFlags(unsigned Flags) {
-  MCAssembler &MCA = getStreamer().getAssembler();
-  MCA.setELFHeaderEFlags(Flags);
+  return static_cast<MCELFStreamer &>(Streamer);
 }
 
 void MipsTargetELFStreamer::emitDirectiveSetMicroMips() {
   MicroMipsEnabled = true;
+
+  MCAssembler &MCA = getStreamer().getAssembler();
+  unsigned Flags = MCA.getELFHeaderEFlags();
+  Flags |= ELF::EF_MIPS_MICROMIPS;
+  MCA.setELFHeaderEFlags(Flags);
 }
 
 void MipsTargetELFStreamer::emitDirectiveSetNoMicroMips() {
@@ -99,10 +181,44 @@ void MipsTargetELFStreamer::emitDirectiveSetNoMicroMips() {
 }
 
 void MipsTargetELFStreamer::emitDirectiveSetMips16() {
-  // FIXME: implement.
+  MCAssembler &MCA = getStreamer().getAssembler();
+  unsigned Flags = MCA.getELFHeaderEFlags();
+  Flags |= ELF::EF_MIPS_ARCH_ASE_M16;
+  MCA.setELFHeaderEFlags(Flags);
 }
 
 void MipsTargetELFStreamer::emitDirectiveSetNoMips16() {
+  // FIXME: implement.
+}
+
+void MipsTargetELFStreamer::emitDirectiveSetReorder() {
+  // FIXME: implement.
+}
+
+void MipsTargetELFStreamer::emitDirectiveSetNoReorder() {
+  MCAssembler &MCA = getStreamer().getAssembler();
+  unsigned Flags = MCA.getELFHeaderEFlags();
+  Flags |= ELF::EF_MIPS_NOREORDER;
+  MCA.setELFHeaderEFlags(Flags);
+}
+
+void MipsTargetELFStreamer::emitDirectiveSetMacro() {
+  // FIXME: implement.
+}
+
+void MipsTargetELFStreamer::emitDirectiveSetNoMacro() {
+  // FIXME: implement.
+}
+
+void MipsTargetELFStreamer::emitDirectiveSetAt() {
+  // FIXME: implement.
+}
+
+void MipsTargetELFStreamer::emitDirectiveSetNoAt() {
+  // FIXME: implement.
+}
+
+void MipsTargetELFStreamer::emitDirectiveEnd(StringRef Name) {
   // FIXME: implement.
 }
 
@@ -113,7 +229,7 @@ void MipsTargetELFStreamer::emitDirectiveEnt(const MCSymbol &Symbol) {
 void MipsTargetELFStreamer::emitDirectiveAbiCalls() {
   MCAssembler &MCA = getStreamer().getAssembler();
   unsigned Flags = MCA.getELFHeaderEFlags();
-  Flags |= ELF::EF_MIPS_CPIC;
+  Flags |= ELF::EF_MIPS_CPIC | ELF::EF_MIPS_PIC;
   MCA.setELFHeaderEFlags(Flags);
 }
 void MipsTargetELFStreamer::emitDirectiveOptionPic0() {
@@ -121,4 +237,19 @@ void MipsTargetELFStreamer::emitDirectiveOptionPic0() {
   unsigned Flags = MCA.getELFHeaderEFlags();
   Flags &= ~ELF::EF_MIPS_PIC;
   MCA.setELFHeaderEFlags(Flags);
+}
+
+void MipsTargetELFStreamer::emitFrame(unsigned StackReg, unsigned StackSize,
+                                      unsigned ReturnReg) {
+  // FIXME: implement.
+}
+
+void MipsTargetELFStreamer::emitMask(unsigned CPUBitmask,
+                                     int CPUTopSavedRegOff) {
+  // FIXME: implement.
+}
+
+void MipsTargetELFStreamer::emitFMask(unsigned FPUBitmask,
+                                      int FPUTopSavedRegOff) {
+  // FIXME: implement.
 }

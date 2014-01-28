@@ -24,6 +24,7 @@
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCParser/MCAsmParser.h"
+#include "llvm/MC/MCSection.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCSymbol.h"
@@ -532,6 +533,7 @@ LTOModule::addPotentialUndefinedSymbol(const GlobalValue *decl, bool isFunc) {
 }
 
 namespace {
+
   class RecordStreamer : public MCStreamer {
   public:
     enum State { NeverSeen, Global, Defined, DefinedGlobal, Used };
@@ -621,7 +623,7 @@ namespace {
       return Symbols.end();
     }
 
-    RecordStreamer(MCContext &Context) : MCStreamer(Context, 0) {}
+    RecordStreamer(MCContext &Context) : MCStreamer(Context) {}
 
     virtual void EmitInstruction(const MCInst &Inst) {
       // Scan for values.
@@ -661,8 +663,6 @@ namespace {
     // Noop calls.
     virtual void ChangeSection(const MCSection *Section,
                                const MCExpr *Subsection) {}
-    virtual void InitToTextSection() {}
-    virtual void InitSections() {}
     virtual void EmitAssemblerFlag(MCAssemblerFlag Flag) {}
     virtual void EmitThumbFunc(MCSymbol *Func) {}
     virtual void EmitSymbolDesc(MCSymbol *Symbol, unsigned DescValue) {}

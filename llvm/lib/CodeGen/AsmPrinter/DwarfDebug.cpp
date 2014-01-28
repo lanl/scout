@@ -68,11 +68,7 @@ GenerateGnuPubSections("generate-gnu-dwarf-pub-sections", cl::Hidden,
                        cl::init(false));
 
 namespace {
-enum DefaultOnOff {
-  Default,
-  Enable,
-  Disable
-};
+enum DefaultOnOff { Default, Enable, Disable };
 }
 
 static cl::opt<DefaultOnOff>
@@ -179,7 +175,8 @@ static unsigned getDwarfVersionFromModule(const Module *M) {
 DwarfDebug::DwarfDebug(AsmPrinter *A, Module *M)
     : Asm(A), MMI(Asm->MMI), FirstCU(0), SourceIdMap(DIEValueAllocator),
       PrevLabel(NULL), GlobalRangeCount(0),
-      InfoHolder(A, "info_string", DIEValueAllocator),
+      InfoHolder(A, "info_string", DIEValueAllocator), HasCURanges(false),
+      UsedNonDefaultText(false),
       SkeletonHolder(A, "skel_string", DIEValueAllocator) {
 
   DwarfInfoSectionSym = DwarfAbbrevSectionSym = DwarfStrSectionSym = 0;
@@ -208,10 +205,6 @@ DwarfDebug::DwarfDebug(AsmPrinter *A, Module *M)
     HasDwarfPubSections = !IsDarwin;
   else
     HasDwarfPubSections = DwarfPubSections == Enable;
-
-  // For now only turn on CU ranges if we've explicitly asked for it
-  // or we have -ffunction-sections enabled.
-  HasCURanges = DwarfCURanges || TargetMachine::getFunctionSections();
 
   DwarfVersion = DwarfVersionNumber
                      ? DwarfVersionNumber
@@ -1126,6 +1119,13 @@ void DwarfDebug::endSections() {
     // Insert a final terminator.
     SectionMap[Section].push_back(SymbolCU(NULL, Sym));
   }
+
+  // For now only turn on CU ranges if we've explicitly asked for it,
+  // we have -ffunction-sections enabled, or we've emitted a function
+  // into a unique section. At this point all sections should be finalized
+  // except for dwarf sections.
+  HasCURanges = DwarfCURanges || UsedNonDefaultText ||
+                TargetMachine::getFunctionSections();
 }
 
 // Emit all Dwarf sections that should come after the content.
@@ -1580,6 +1580,12 @@ void DwarfDebug::beginFunction(const MachineFunction *MF) {
     Asm->OutStreamer.getContext().setDwarfCompileUnitID(0);
   else
     Asm->OutStreamer.getContext().setDwarfCompileUnitID(TheCU->getUniqueID());
+
+  // Check the current section against the standard text section. If different
+  // keep track so that we will know when we're emitting functions into multiple
+  // sections.
+  if (Asm->getObjFileLowering().getTextSection() != Asm->getCurrentSection())
+    UsedNonDefaultText = true;
 
   // Emit a label for the function so that we have a beginning address.
   FunctionBeginSym = Asm->GetTempSymbol("func_begin", Asm->getFunctionNumber());

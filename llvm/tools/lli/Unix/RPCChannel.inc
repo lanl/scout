@@ -1,4 +1,4 @@
-//=- RemoteTargetExternal.inc - LLVM out-of-process JIT execution for Unix --=//
+//=- RPCChannel.inc - LLVM out-of-process JIT execution for Unix --=//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,10 +7,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implementation of the Unix-specific parts of the RemoteTargetExternal class
+// Implementation of the Unix-specific parts of the RPCChannel class
 // which executes JITed code in a separate process from where it was built.
 //
 //===----------------------------------------------------------------------===//
+
+#include "llvm/Support/Errno.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,7 +33,7 @@ struct ConnectionData_t {
 
 namespace llvm {
 
-bool RemoteTargetExternal::create() {
+bool RPCChannel::createServer() {
   int PipeFD[2][2];
   pid_t ChildPID;
 
@@ -62,8 +65,7 @@ bool RemoteTargetExternal::create() {
     int rc = execv(ChildName.c_str(), args);
     if (rc != 0)
       perror("Error executing child process: ");
-  }
-  else {
+  } else {
     // In the parent...
 
     // Close the child ends of the pipes
@@ -71,27 +73,26 @@ bool RemoteTargetExternal::create() {
     close(PipeFD[1][1]);
 
     // Store the parent ends of the pipes
-    ConnectionData = (void*)new ConnectionData_t(PipeFD[1][0], PipeFD[0][1]);
-
-    // We must get Ack from the client (blocking read)
-    if (!Receive(LLI_ChildActive)) {
-      ErrorMsg += ", (RemoteTargetExternal::create) - Stopping process!";
-      stop();
-      return false;
-    }
+    ConnectionData = (void *)new ConnectionData_t(PipeFD[1][0], PipeFD[0][1]);
+    return true;
   }
+  return false;
+}
+
+bool RPCChannel::createClient() {
+  // Store the parent ends of the pipes
+  ConnectionData = (void *)new ConnectionData_t(STDIN_FILENO, STDOUT_FILENO);
   return true;
 }
 
-static void ReportError(int rc, size_t Size, std::string &ErrorMsg) {
-  if (rc == -1) {
-    if (errno == EPIPE)
-      ErrorMsg += "pipe closed";
-    else if (errno == EINTR)
-      ErrorMsg += "interrupted";
-    else
-      ErrorMsg += "file descriptor error";
-  } else {
+void RPCChannel::Wait() { wait(NULL); }
+
+static bool CheckError(int rc, size_t Size, const char *Desc) {
+  if (rc < 0) {
+    llvm::errs() << "IO Error: " << Desc << ": " << sys::StrError() << '\n';
+    return false;
+  } else if ((size_t)rc != Size) {
+    std::string ErrorMsg;
     char Number[10] = { 0 };
     ErrorMsg += "Expecting ";
     sprintf(Number, "%d", (uint32_t)Size);
@@ -99,34 +100,23 @@ static void ReportError(int rc, size_t Size, std::string &ErrorMsg) {
     ErrorMsg += " bytes, Got ";
     sprintf(Number, "%d", rc);
     ErrorMsg += Number;
+    llvm::errs() << "RPC Error: " << Desc << ": " << ErrorMsg << '\n';
+    return false;
   }
+  return true;
 }
 
-bool RemoteTargetExternal::WriteBytes(const void *Data, size_t Size) {
-  int rc = write(((ConnectionData_t*)ConnectionData)->OutputPipe, Data, Size);
-  if (rc != -1 && (size_t)rc == Size)
-    return true;
-
-  ErrorMsg = "WriteBytes: ";
-  ReportError(rc, Size, ErrorMsg);
-  return false;
+bool RPCChannel::WriteBytes(const void *Data, size_t Size) {
+  int rc = write(((ConnectionData_t *)ConnectionData)->OutputPipe, Data, Size);
+  return CheckError(rc, Size, "WriteBytes");
 }
 
-bool RemoteTargetExternal::ReadBytes(void *Data, size_t Size) {
-  int rc = read(((ConnectionData_t*)ConnectionData)->InputPipe, Data, Size);
-  if (rc != -1 && (size_t)rc == Size)
-    return true;
-
-  ErrorMsg = "ReadBytes: ";
-  ReportError(rc, Size, ErrorMsg);
-  return false;
+bool RPCChannel::ReadBytes(void *Data, size_t Size) {
+  int rc = read(((ConnectionData_t *)ConnectionData)->InputPipe, Data, Size);
+  return CheckError(rc, Size, "ReadBytes");
 }
 
-void RemoteTargetExternal::Wait() {
-  wait(NULL);
-}
-
-RemoteTargetExternal::~RemoteTargetExternal() {
+RPCChannel::~RPCChannel() {
   delete static_cast<ConnectionData_t *>(ConnectionData);
 }
 

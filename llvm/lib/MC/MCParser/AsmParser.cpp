@@ -698,7 +698,7 @@ bool AsmParser::Run(bool NoInitialTextSection, bool NoFinalize) {
 void AsmParser::checkForValidSection() {
   if (!ParsingInlineAsm && !getStreamer().getCurrentSection().first) {
     TokError("expected section directive before assembly directive");
-    Out.InitToTextSection();
+    Out.InitSections();
   }
 }
 
@@ -836,7 +836,8 @@ bool AsmParser::parsePrimaryExpr(const MCExpr *&Res, SMLoc &EndLoc) {
         Variant = MCSymbolRefExpr::VK_None;
       } else {
         Variant = MCSymbolRefExpr::VK_None;
-        return TokError("invalid variant '" + Split.second + "'");
+        return Error(SMLoc::getFromPointer(Split.second.begin()),
+                     "invalid variant '" + Split.second + "'");
       }
     }
 
@@ -1341,7 +1342,7 @@ bool AsmParser::parseStatement(ParseStatementInfo &Info) {
     if (!getTargetParser().ParseDirective(ID))
       return false;
 
-    // Next, check the extention directive map to see if any extension has
+    // Next, check the extension directive map to see if any extension has
     // registered itself to parse this directive.
     std::pair<MCAsmParserExtension *, DirectiveHandler> Handler =
         ExtensionDirectiveMap.lookup(IDVal);
@@ -2795,9 +2796,14 @@ bool AsmParser::parseDirectiveCFISections() {
 }
 
 /// parseDirectiveCFIStartProc
-/// ::= .cfi_startproc
+/// ::= .cfi_startproc [simple]
 bool AsmParser::parseDirectiveCFIStartProc() {
-  getStreamer().EmitCFIStartProc();
+  StringRef Simple;
+  if (getLexer().isNot(AsmToken::EndOfStatement))
+    if (parseIdentifier(Simple) || Simple != "simple")
+      return TokError("unexpected token in .cfi_startproc directive");
+
+  getStreamer().EmitCFIStartProc(!Simple.empty());
   return false;
 }
 
@@ -3164,13 +3170,13 @@ bool AsmParser::parseDirectiveMacro(SMLoc DirectiveLoc) {
 ///
 /// With the support added for named parameters there may be code out there that
 /// is transitioning from positional parameters.  In versions of gas that did
-/// not support named parameters they would be ignored on the macro defintion.
+/// not support named parameters they would be ignored on the macro definition.
 /// But to support both styles of parameters this is not possible so if a macro
-/// defintion has named parameters but does not use them and has what appears
+/// definition has named parameters but does not use them and has what appears
 /// to be positional parameters, strings like $1, $2, ... and $n, then issue a
 /// warning that the positional parameter found in body which have no effect.
 /// Hoping the developer will either remove the named parameters from the macro
-/// definiton so the positional parameters get used if that was what was
+/// definition so the positional parameters get used if that was what was
 /// intended or change the macro to use the named parameters.  It is possible
 /// this warning will trigger when the none of the named parameters are used
 /// and the strings like $1 are infact to simply to be passed trough unchanged.
