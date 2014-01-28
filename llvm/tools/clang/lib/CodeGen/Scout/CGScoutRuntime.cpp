@@ -123,7 +123,26 @@ llvm::Function *CGScoutRuntime::RenderallEndFunction() {
 	return ScoutRuntimeFunction(funcName, Params);
 }
 
+llvm::Value *CGScoutRuntime::RenderallUniformColorsGlobal() {
+	std::string varName = "__scrt_renderall_uniform_colors";
+	llvm::Type *fltTy = llvm::Type::getFloatTy(CGM.getLLVMContext());
+	llvm::Type *flt4Ty = llvm::VectorType::get(fltTy, 4);
+	llvm::Type *flt4PtrTy = llvm::PointerType::get(flt4Ty, 0);
 
+	if (!CGM.getModule().getNamedGlobal(varName)) {
+
+		new llvm::GlobalVariable(CGM.getModule(),
+				flt4PtrTy,
+				false,
+				llvm::GlobalValue::ExternalLinkage,
+				0,
+				varName);
+	}
+
+	llvm::Value *colors = CGM.getModule().getNamedGlobal(varName);
+
+	return colors;
+}
 
 
 

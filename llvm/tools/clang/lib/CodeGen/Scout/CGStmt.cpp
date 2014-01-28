@@ -475,22 +475,41 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 	// find number of fields
 	MeshDecl* MD =  S.getMeshType()->getDecl();
 	unsigned int nfields = MD->fields();
+	llvm::errs() << "nfields " << nfields << "\n";
 
+	unsigned int rank = S.getMeshType()->rankOf();
+	llvm::errs() << "rank " << rank << "\n";
+
+	llvm::SmallVector< llvm::Value *, 3 > Args;
 	LoopBounds.clear();
-	for(unsigned int i = 0; i < 3; i++) {
-	    LoopBounds.push_back(0);
-	    sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
-	    LoopBounds[i] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
+	Args.clear();
+	for(unsigned int i = 0; i < rank; i++) {
+		 LoopBounds.push_back(0);
+		 Args.push_back(0);
+		 sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
+		 LoopBounds[i] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
+		 Args[i] = Builder.CreateLoad(LoopBounds[i]);
+	}
+	for(unsigned int i = rank; i < 3; i++) {
+		LoopBounds.push_back(llvm::ConstantInt::get(Int32Ty, 0));
+		Args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
 	}
 
+	// call renderall colors setup
+	// SC_TODO: should we has get()/set() rather than using the global directly?
+	llvm::Value *ColorsPtr = CGM.getScoutRuntime().RenderallUniformColorsGlobal();
+	llvm::Value *Colors = Builder.CreateLoad(ColorsPtr, "colors");
+
+	// call renderall setup runtime function
 	llvm::Function *BeginFunc = CGM.getScoutRuntime().RenderallUniformBeginFunction();
-	Builder.CreateCall(BeginFunc, LoopBounds);
+	Builder.CreateCall(BeginFunc, ArrayRef<llvm::Value *>(Args));
 
 	//SC_TODO: renderall body
 
+	// call renderall cleanup runtime function
 	llvm::Function *EndFunc = CGM.getScoutRuntime().RenderallEndFunction();
-	std::vector<llvm::Value*> Args;
-	Builder.CreateCall(EndFunc, Args);
+	std::vector<llvm::Value*> EmptyArgs;
+	Builder.CreateCall(EndFunc, ArrayRef<llvm::Value *>(EmptyArgs));
 
 }
 

@@ -66,15 +66,15 @@ RenderallBase::RenderallBase(size_t width,
 RenderallBase::~RenderallBase(){
 }
 
-void __scrt_renderall_begin(){
+extern "C" void __scrt_renderall_begin(){
   __scrt_renderall->begin();
 }
 
-void __scrt_renderall_end(){
+extern "C" void __scrt_renderall_end(){
   __scrt_renderall->end();
 }
 
-void __scrt_renderall_delete(){
+extern "C" void __scrt_renderall_delete(){
   if (__scrt_renderall != NULL) {
     delete __scrt_renderall;
     __scrt_renderall = NULL;

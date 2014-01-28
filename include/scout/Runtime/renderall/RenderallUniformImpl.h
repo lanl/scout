@@ -62,7 +62,7 @@
 namespace scout{
 
   // globals defined in lib/Runtime/scout.cpp
-  extern float4* __scrt_renderall_uniform_colors;
+  extern "C" float4* __scrt_renderall_uniform_colors;
   extern unsigned long long __scrt_renderall_uniform_cuda_device;
   
   class RenderallUniformImpl{

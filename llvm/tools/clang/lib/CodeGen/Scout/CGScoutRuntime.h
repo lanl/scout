@@ -75,6 +75,7 @@ namespace CodeGen {
     llvm::Function *ModuleInitFunction();
     llvm::Function *RenderallUniformBeginFunction();
     llvm::Function *RenderallEndFunction();
+    llvm::Value *RenderallUniformColorsGlobal();
   };
 }
 }

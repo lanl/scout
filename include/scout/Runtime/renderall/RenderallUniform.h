@@ -76,7 +76,7 @@ namespace scout{
 
 } // end namespace scout
 
-extern void __scrt_renderall_uniform_begin(size_t width,
+extern "C" void __scrt_renderall_uniform_begin(size_t width,
            size_t height,
            size_t depth);
 
