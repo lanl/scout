@@ -116,9 +116,12 @@ let Uses = [EAX] in
 def OUT32ir : Ii8<0xE7, RawFrm, (outs), (ins i8imm:$port),
                   "out{l}\t{%eax, $port|$port, eax}", [], IIC_OUT_IR>, OpSize16;
 
-def IN8  : I<0x6C, RawFrm, (outs), (ins), "ins{b}", [], IIC_INS>;
-def IN16 : I<0x6D, RawFrm, (outs), (ins), "ins{w}", [], IIC_INS>,  OpSize;
-def IN32 : I<0x6D, RawFrm, (outs), (ins), "ins{l}", [], IIC_INS>, OpSize16;
+def IN8  : I<0x6C, RawFrmDst, (outs dstidx8:$dst), (ins),
+             "insb\t{%dx, $dst|$dst, dx}", [], IIC_INS>;
+def IN16 : I<0x6D, RawFrmDst, (outs dstidx16:$dst), (ins),
+             "insw\t{%dx, $dst|$dst, dx}", [], IIC_INS>,  OpSize;
+def IN32 : I<0x6D, RawFrmDst, (outs dstidx32:$dst), (ins),
+             "ins{l|d}\t{%dx, $dst|$dst, dx}", [], IIC_INS>, OpSize16;
 } // SchedRW
 
 //===----------------------------------------------------------------------===//
@@ -452,8 +455,13 @@ def LMSW16r : I<0x01, MRM6r, (outs), (ins GR16:$src),
                 "lmsw{w}\t$src", [], IIC_LMSW_MEM>, TB;
 def LMSW16m : I<0x01, MRM6m, (outs), (ins i16mem:$src),
                 "lmsw{w}\t$src", [], IIC_LMSW_REG>, TB;
-                
-def CPUID : I<0xA2, RawFrm, (outs), (ins), "cpuid", [], IIC_CPUID>, TB;
+
+let Defs = [EAX, EBX, ECX, EDX], Uses = [EAX, ECX] in
+  def CPUID32 : I<0xA2, RawFrm, (outs), (ins), "cpuid", [], IIC_CPUID>, TB,
+  Requires<[Not64BitMode]>;
+let Defs = [RAX, RBX, RCX, RDX], Uses = [RAX, RCX] in
+  def CPUID64 : I<0xA2, RawFrm, (outs), (ins), "cpuid", [], IIC_CPUID>, TB,
+  Requires<[In64BitMode]>;
 } // SchedRW
 
 //===----------------------------------------------------------------------===//

@@ -629,8 +629,6 @@ void CodeGenFunction::EmitDoStmt(const DoStmt &S) {
   }
   Cnt.adjustForControlFlow();
 
-  BreakContinueStack.pop_back();
-
   EmitBlock(LoopCond.getBlock());
 
   // C99 6.8.5.2: "The evaluation of the controlling expression takes place
@@ -640,6 +638,8 @@ void CodeGenFunction::EmitDoStmt(const DoStmt &S) {
   // C99 6.8.5p2/p4: The first substatement is executed if the expression
   // compares unequal to 0.  The condition must be a scalar type.
   llvm::Value *BoolCondVal = EvaluateExprAsBool(S.getCond());
+
+  BreakContinueStack.pop_back();
 
   // "do {} while (0)" is common in macros, avoid extra blocks.  Be sure
   // to correctly handle break/continue though.
@@ -688,6 +688,16 @@ void CodeGenFunction::EmitForStmt(const ForStmt &S) {
   llvm::BasicBlock *CondBlock = Continue.getBlock();
   EmitBlock(CondBlock);
 
+  // If the for loop doesn't have an increment we can just use the
+  // condition as the continue block.  Otherwise we'll need to create
+  // a block for it (in the current scope, i.e. in the scope of the
+  // condition), and that we will become our continue block.
+  if (S.getInc())
+    Continue = getJumpDestInCurrentScope("for.inc");
+
+  // Store the blocks to use for break and continue.
+  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue, &Cnt));
+
   // Create a cleanup scope for the condition variable cleanups.
   RunCleanupsScope ConditionScope(*this);
 
@@ -724,16 +734,6 @@ void CodeGenFunction::EmitForStmt(const ForStmt &S) {
     // body, just fall into it.
   }
   Cnt.beginRegion(Builder);
-
-  // If the for loop doesn't have an increment we can just use the
-  // condition as the continue block.  Otherwise we'll need to create
-  // a block for it (in the current scope, i.e. in the scope of the
-  // condition), and that we will become our continue block.
-  if (S.getInc())
-    Continue = getJumpDestInCurrentScope("for.inc");
-
-  // Store the blocks to use for break and continue.
-  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue, &Cnt));
 
   {
     // Create a separate cleanup scope for the body, in case it is not

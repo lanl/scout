@@ -2293,6 +2293,8 @@ public:
   bool SetSpecifier(Specifier VS, SourceLocation Loc,
                     const char *&PrevSpec);
 
+  bool isUnset() const { return Specifiers == 0; }
+
   bool isOverrideSpecified() const { return Specifiers & VS_Override; }
   SourceLocation getOverrideLoc() const { return VS_overrideLoc; }
 

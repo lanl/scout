@@ -3570,6 +3570,18 @@ bool X86TargetLowering::isFPImmLegal(const APFloat &Imm, EVT VT) const {
   return false;
 }
 
+/// \brief Returns true if it is beneficial to convert a load of a constant
+/// to just the constant itself.
+bool X86TargetLowering::shouldConvertConstantLoadToIntImm(const APInt &Imm,
+                                                          Type *Ty) const {
+  assert(Ty->isIntegerTy());
+
+  unsigned BitSize = Ty->getPrimitiveSizeInBits();
+  if (BitSize == 0 || BitSize > 64)
+    return false;
+  return true;
+}
+
 /// isUndefOrInRange - Return true if Val is undef or if its value falls within
 /// the specified range (L, H].
 static bool isUndefOrInRange(int Val, int Low, int Hi) {
@@ -7588,8 +7600,8 @@ X86TargetLowering::LowerVECTOR_SHUFFLE(SDValue Op, SelectionDAG &DAG) const {
       // Bitcast is for VPERMPS since mask is v8i32 but node takes v8f32
       return DAG.getNode(X86ISD::VPERMV, dl, VT,
                           DAG.getNode(ISD::BITCAST, dl, VT, Mask), V1);
-    return DAG.getNode(X86ISD::VPERMV3, dl, VT,
-                       DAG.getNode(ISD::BITCAST, dl, VT, Mask), V1, V2);
+    return DAG.getNode(X86ISD::VPERMV3, dl, VT, V1,
+                       DAG.getNode(ISD::BITCAST, dl, VT, Mask), V2);
   }
 
   //===--------------------------------------------------------------------===//
@@ -10715,11 +10727,26 @@ SDValue X86TargetLowering::LowerBRCOND(SDValue Op, SelectionDAG &DAG) const {
     unsigned X86Opcode;
     unsigned X86Cond;
     SDVTList VTs;
+    // Keep this in sync with LowerXALUO, otherwise we might create redundant
+    // instructions that can't be removed afterwards (i.e. X86ISD::ADD and
+    // X86ISD::INC).
     switch (CondOpcode) {
     case ISD::UADDO: X86Opcode = X86ISD::ADD; X86Cond = X86::COND_B; break;
-    case ISD::SADDO: X86Opcode = X86ISD::ADD; X86Cond = X86::COND_O; break;
+    case ISD::SADDO:
+      if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(RHS))
+        if (C->isOne()) {
+          X86Opcode = X86ISD::INC; X86Cond = X86::COND_O;
+          break;
+        }
+      X86Opcode = X86ISD::ADD; X86Cond = X86::COND_O; break;
     case ISD::USUBO: X86Opcode = X86ISD::SUB; X86Cond = X86::COND_B; break;
-    case ISD::SSUBO: X86Opcode = X86ISD::SUB; X86Cond = X86::COND_O; break;
+    case ISD::SSUBO:
+      if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(RHS))
+        if (C->isOne()) {
+          X86Opcode = X86ISD::DEC; X86Cond = X86::COND_O;
+          break;
+        }
+      X86Opcode = X86ISD::SUB; X86Cond = X86::COND_O; break;
     case ISD::UMULO: X86Opcode = X86ISD::UMUL; X86Cond = X86::COND_O; break;
     case ISD::SMULO: X86Opcode = X86ISD::SMUL; X86Cond = X86::COND_O; break;
     default: llvm_unreachable("unexpected overflowing operator");
@@ -14023,6 +14050,7 @@ const char *X86TargetLowering::getTargetNodeName(unsigned Opcode) const {
   case X86ISD::VPERM2X128:         return "X86ISD::VPERM2X128";
   case X86ISD::VPERMV:             return "X86ISD::VPERMV";
   case X86ISD::VPERMV3:            return "X86ISD::VPERMV3";
+  case X86ISD::VPERMIV3:           return "X86ISD::VPERMIV3";
   case X86ISD::VPERMI:             return "X86ISD::VPERMI";
   case X86ISD::PMULUDQ:            return "X86ISD::PMULUDQ";
   case X86ISD::VASTART_SAVE_XMM_REGS: return "X86ISD::VASTART_SAVE_XMM_REGS";
@@ -15962,6 +15990,89 @@ X86TargetLowering::emitEHSjLjLongJmp(MachineInstr *MI,
   return MBB;
 }
 
+// Replace 213-type (isel default) FMA3 instructions with 231-type for
+// accumulator loops. Writing back to the accumulator allows the coalescer
+// to remove extra copies in the loop.   
+MachineBasicBlock *
+X86TargetLowering::emitFMA3Instr(MachineInstr *MI,
+                                 MachineBasicBlock *MBB) const {
+  MachineOperand &AddendOp = MI->getOperand(3);
+
+  // Bail out early if the addend isn't a register - we can't switch these.
+  if (!AddendOp.isReg())
+    return MBB;
+
+  MachineFunction &MF = *MBB->getParent();
+  MachineRegisterInfo &MRI = MF.getRegInfo();
+
+  // Check whether the addend is defined by a PHI:
+  assert(MRI.hasOneDef(AddendOp.getReg()) && "Multiple defs in SSA?");
+  MachineInstr &AddendDef = *MRI.def_begin(AddendOp.getReg());
+  if (!AddendDef.isPHI())
+    return MBB;
+
+  // Look for the following pattern:
+  // loop:
+  //   %addend = phi [%entry, 0], [%loop, %result]
+  //   ...
+  //   %result<tied1> = FMA213 %m2<tied0>, %m1, %addend
+
+  // Replace with:
+  //   loop:
+  //   %addend = phi [%entry, 0], [%loop, %result]
+  //   ...
+  //   %result<tied1> = FMA231 %addend<tied0>, %m1, %m2
+
+  for (unsigned i = 1, e = AddendDef.getNumOperands(); i < e; i += 2) {
+    assert(AddendDef.getOperand(i).isReg());
+    MachineOperand PHISrcOp = AddendDef.getOperand(i);
+    MachineInstr &PHISrcInst = *MRI.def_begin(PHISrcOp.getReg());
+    if (&PHISrcInst == MI) {
+      // Found a matching instruction.
+      unsigned NewFMAOpc = 0;
+      switch (MI->getOpcode()) {
+        case X86::VFMADDPDr213r: NewFMAOpc = X86::VFMADDPDr231r; break;
+        case X86::VFMADDPSr213r: NewFMAOpc = X86::VFMADDPSr231r; break;
+        case X86::VFMADDSDr213r: NewFMAOpc = X86::VFMADDSDr231r; break;
+        case X86::VFMADDSSr213r: NewFMAOpc = X86::VFMADDSSr231r; break;
+        case X86::VFMSUBPDr213r: NewFMAOpc = X86::VFMSUBPDr231r; break;
+        case X86::VFMSUBPSr213r: NewFMAOpc = X86::VFMSUBPSr231r; break;
+        case X86::VFMSUBSDr213r: NewFMAOpc = X86::VFMSUBSDr231r; break;
+        case X86::VFMSUBSSr213r: NewFMAOpc = X86::VFMSUBSSr231r; break;
+        case X86::VFNMADDPDr213r: NewFMAOpc = X86::VFNMADDPDr231r; break;
+        case X86::VFNMADDPSr213r: NewFMAOpc = X86::VFNMADDPSr231r; break;
+        case X86::VFNMADDSDr213r: NewFMAOpc = X86::VFNMADDSDr231r; break;
+        case X86::VFNMADDSSr213r: NewFMAOpc = X86::VFNMADDSSr231r; break;
+        case X86::VFNMSUBPDr213r: NewFMAOpc = X86::VFNMSUBPDr231r; break;
+        case X86::VFNMSUBPSr213r: NewFMAOpc = X86::VFNMSUBPSr231r; break;
+        case X86::VFNMSUBSDr213r: NewFMAOpc = X86::VFNMSUBSDr231r; break;
+        case X86::VFNMSUBSSr213r: NewFMAOpc = X86::VFNMSUBSSr231r; break;
+        case X86::VFMADDPDr213rY: NewFMAOpc = X86::VFMADDPDr231rY; break;
+        case X86::VFMADDPSr213rY: NewFMAOpc = X86::VFMADDPSr231rY; break;
+        case X86::VFMSUBPDr213rY: NewFMAOpc = X86::VFMSUBPDr231rY; break;
+        case X86::VFMSUBPSr213rY: NewFMAOpc = X86::VFMSUBPSr231rY; break;
+        case X86::VFNMADDPDr213rY: NewFMAOpc = X86::VFNMADDPDr231rY; break;
+        case X86::VFNMADDPSr213rY: NewFMAOpc = X86::VFNMADDPSr231rY; break;
+        case X86::VFNMSUBPDr213rY: NewFMAOpc = X86::VFNMSUBPDr231rY; break;
+        case X86::VFNMSUBPSr213rY: NewFMAOpc = X86::VFNMSUBPSr231rY; break;
+        default: llvm_unreachable("Unrecognized FMA variant.");
+      }
+
+      const TargetInstrInfo &TII = *MF.getTarget().getInstrInfo();
+      MachineInstrBuilder MIB =
+        BuildMI(MF, MI->getDebugLoc(), TII.get(NewFMAOpc))
+        .addOperand(MI->getOperand(0))
+        .addOperand(MI->getOperand(3))
+        .addOperand(MI->getOperand(2))
+        .addOperand(MI->getOperand(1));
+      MBB->insert(MachineBasicBlock::iterator(MI), MIB);
+      MI->eraseFromParent();
+    }
+  }
+
+  return MBB;
+}
+
 MachineBasicBlock *
 X86TargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
                                                MachineBasicBlock *BB) const {
@@ -16193,6 +16304,32 @@ X86TargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
   case TargetOpcode::STACKMAP:
   case TargetOpcode::PATCHPOINT:
     return emitPatchPoint(MI, BB);
+
+  case X86::VFMADDPDr213r:
+  case X86::VFMADDPSr213r:
+  case X86::VFMADDSDr213r:
+  case X86::VFMADDSSr213r:
+  case X86::VFMSUBPDr213r:
+  case X86::VFMSUBPSr213r:
+  case X86::VFMSUBSDr213r:
+  case X86::VFMSUBSSr213r:
+  case X86::VFNMADDPDr213r:
+  case X86::VFNMADDPSr213r:
+  case X86::VFNMADDSDr213r:
+  case X86::VFNMADDSSr213r:
+  case X86::VFNMSUBPDr213r:
+  case X86::VFNMSUBPSr213r:
+  case X86::VFNMSUBSDr213r:
+  case X86::VFNMSUBSSr213r:
+  case X86::VFMADDPDr213rY:
+  case X86::VFMADDPSr213rY:
+  case X86::VFMSUBPDr213rY:
+  case X86::VFMSUBPSr213rY:
+  case X86::VFNMADDPDr213rY:
+  case X86::VFNMADDPSr213rY:
+  case X86::VFNMSUBPDr213rY:
+  case X86::VFNMSUBPSr213rY:
+    return emitFMA3Instr(MI, BB);
   }
 }
 

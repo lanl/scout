@@ -321,7 +321,7 @@ const SCEV *ScalarEvolution::getConstant(ConstantInt *V) {
   return S;
 }
 
-const SCEV *ScalarEvolution::getConstant(const APInt& Val) {
+const SCEV *ScalarEvolution::getConstant(const APInt &Val) {
   return getConstant(ConstantInt::get(getContext(), Val));
 }
 
@@ -2239,6 +2239,77 @@ const SCEV *ScalarEvolution::getUDivExpr(const SCEV *LHS,
   return S;
 }
 
+static const APInt gcd(const SCEVConstant *C1, const SCEVConstant *C2) {
+  APInt A = C1->getValue()->getValue().abs();
+  APInt B = C2->getValue()->getValue().abs();
+  uint32_t ABW = A.getBitWidth();
+  uint32_t BBW = B.getBitWidth();
+
+  if (ABW > BBW)
+    B = B.zext(ABW);
+  else if (ABW < BBW)
+    A = A.zext(BBW);
+
+  return APIntOps::GreatestCommonDivisor(A, B);
+}
+
+/// getUDivExactExpr - Get a canonical unsigned division expression, or
+/// something simpler if possible. There is no representation for an exact udiv
+/// in SCEV IR, but we can attempt to remove factors from the LHS and RHS.
+/// We can't do this when it's not exact because the udiv may be clearing bits.
+const SCEV *ScalarEvolution::getUDivExactExpr(const SCEV *LHS,
+                                              const SCEV *RHS) {
+  // TODO: we could try to find factors in all sorts of things, but for now we
+  // just deal with u/exact (multiply, constant). See SCEVDivision towards the
+  // end of this file for inspiration.
+
+  const SCEVMulExpr *Mul = dyn_cast<SCEVMulExpr>(LHS);
+  if (!Mul)
+    return getUDivExpr(LHS, RHS);
+
+  if (const SCEVConstant *RHSCst = dyn_cast<SCEVConstant>(RHS)) {
+    // If the mulexpr multiplies by a constant, then that constant must be the
+    // first element of the mulexpr.
+    if (const SCEVConstant *LHSCst =
+            dyn_cast<SCEVConstant>(Mul->getOperand(0))) {
+      if (LHSCst == RHSCst) {
+        SmallVector<const SCEV *, 2> Operands;
+        Operands.append(Mul->op_begin() + 1, Mul->op_end());
+        return getMulExpr(Operands);
+      }
+
+      // We can't just assume that LHSCst divides RHSCst cleanly, it could be
+      // that there's a factor provided by one of the other terms. We need to
+      // check.
+      APInt Factor = gcd(LHSCst, RHSCst);
+      if (!Factor.isIntN(1)) {
+        LHSCst = cast<SCEVConstant>(
+            getConstant(LHSCst->getValue()->getValue().udiv(Factor)));
+        RHSCst = cast<SCEVConstant>(
+            getConstant(RHSCst->getValue()->getValue().udiv(Factor)));
+        SmallVector<const SCEV *, 2> Operands;
+        Operands.push_back(LHSCst);
+        Operands.append(Mul->op_begin() + 1, Mul->op_end());
+        LHS = getMulExpr(Operands);
+        RHS = RHSCst;
+        Mul = dyn_cast<SCEVMulExpr>(LHS);
+        if (!Mul)
+          return getUDivExactExpr(LHS, RHS);
+      }
+    }
+  }
+
+  for (int i = 0, e = Mul->getNumOperands(); i != e; ++i) {
+    if (Mul->getOperand(i) == RHS) {
+      SmallVector<const SCEV *, 2> Operands;
+      Operands.append(Mul->op_begin(), Mul->op_begin() + i);
+      Operands.append(Mul->op_begin() + i + 1, Mul->op_end());
+      return getMulExpr(Operands);
+    }
+  }
+
+  return getUDivExpr(LHS, RHS);
+}
 
 /// getAddRecExpr - Get an add recurrence expression for the specified loop.
 /// Simplify the expression as much as possible.
@@ -3689,17 +3760,24 @@ const SCEV *ScalarEvolution::createSCEV(Value *V) {
       // Use ComputeMaskedBits to compute what ShrinkDemandedConstant
       // knew about to reconstruct a low-bits mask value.
       unsigned LZ = A.countLeadingZeros();
+      unsigned TZ = A.countTrailingZeros();
       unsigned BitWidth = A.getBitWidth();
       APInt KnownZero(BitWidth, 0), KnownOne(BitWidth, 0);
       ComputeMaskedBits(U->getOperand(0), KnownZero, KnownOne, TD);
 
-      APInt EffectiveMask = APInt::getLowBitsSet(BitWidth, BitWidth - LZ);
-
-      if (LZ != 0 && !((~A & ~KnownZero) & EffectiveMask))
-        return
-          getZeroExtendExpr(getTruncateExpr(getSCEV(U->getOperand(0)),
-                                IntegerType::get(getContext(), BitWidth - LZ)),
-                            U->getType());
+      APInt EffectiveMask =
+          APInt::getLowBitsSet(BitWidth, BitWidth - LZ - TZ).shl(TZ);
+      if ((LZ != 0 || TZ != 0) && !((~A & ~KnownZero) & EffectiveMask)) {
+        const SCEV *MulCount = getConstant(
+            ConstantInt::get(getContext(), APInt::getOneBitSet(BitWidth, TZ)));
+        return getMulExpr(
+            getZeroExtendExpr(
+                getTruncateExpr(
+                    getUDivExactExpr(getSCEV(U->getOperand(0)), MulCount),
+                    IntegerType::get(getContext(), BitWidth - LZ - TZ)),
+                U->getType()),
+            MulCount);
+      }
     }
     break;
 
@@ -6692,20 +6770,6 @@ const SCEV *SCEVAddRecExpr::getNumIterationsInRange(ConstantRange Range,
   return SE.getCouldNotCompute();
 }
 
-static const APInt gcd(const SCEVConstant *C1, const SCEVConstant *C2) {
-  APInt A = C1->getValue()->getValue().abs();
-  APInt B = C2->getValue()->getValue().abs();
-  uint32_t ABW = A.getBitWidth();
-  uint32_t BBW = B.getBitWidth();
-
-  if (ABW > BBW)
-    B = B.zext(ABW);
-  else if (ABW < BBW)
-    A = A.zext(BBW);
-
-  return APIntOps::GreatestCommonDivisor(A, B);
-}
-
 static const APInt srem(const SCEVConstant *C1, const SCEVConstant *C2) {
   APInt A = C1->getValue()->getValue();
   APInt B = C2->getValue()->getValue();
@@ -7143,7 +7207,7 @@ SCEVAddRecExpr::delinearize(ScalarEvolution &SE,
   const SCEV *Start = this->getStart();
   const SCEV *Step = this->getStepRecurrence(SE);
 
-  // Build the SCEV representation of the cannonical induction variable in the
+  // Build the SCEV representation of the canonical induction variable in the
   // loop of this SCEV.
   const SCEV *Zero = SE.getConstant(this->getType(), 0);
   const SCEV *One = SE.getConstant(this->getType(), 1);
@@ -7189,13 +7253,13 @@ SCEVAddRecExpr::delinearize(ScalarEvolution &SE,
   else
     Rem = Quotient;
 
-  // Scale up the cannonical induction variable IV by whatever remains from the
+  // Scale up the canonical induction variable IV by whatever remains from the
   // Step after division by the GCD: the GCD is the size of all the sub-array.
   if (Step != GCD) {
     Step = SCEVDivision::divide(SE, Step, GCD);
     IV = SE.getMulExpr(IV, Step);
   }
-  // The access function in the current subscript is computed as the cannonical
+  // The access function in the current subscript is computed as the canonical
   // induction variable IV (potentially scaled up by the step) and offset by
   // Rem, the offset of delinearization in the sub-array.
   const SCEV *Index = SE.getAddExpr(IV, Rem);
@@ -7652,7 +7716,7 @@ void ScalarEvolution::forgetMemoizedResults(const SCEV *S) {
 
 typedef DenseMap<const Loop *, std::string> VerifyMap;
 
-/// replaceSubString - Replaces all occurences of From in Str with To.
+/// replaceSubString - Replaces all occurrences of From in Str with To.
 static void replaceSubString(std::string &Str, StringRef From, StringRef To) {
   size_t Pos = 0;
   while ((Pos = Str.find(From, Pos)) != std::string::npos) {

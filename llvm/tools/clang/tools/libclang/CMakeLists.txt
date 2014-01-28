@@ -56,12 +56,17 @@ set(GENERATED_HEADERS
   ClangAttrClasses
   ClangAttrList
   ClangAttrParsedAttrList
+  ClangAttrVisitor
+  ClangCommentCommandList
   ClangCommentNodes
   ClangDiagnosticCommon
   ClangDiagnosticFrontend
   ClangDeclNodes
   ClangStmtNodes
   )
+
+option(LIBCLANG_BUILD_STATIC
+  "Build libclang as a static library (in addition to a shared one)" OFF)
 
 set(LLVM_EXPORTED_SYMBOL_FILE ${CMAKE_CURRENT_SOURCE_DIR}/libclang.exports)
 
@@ -73,8 +78,7 @@ if(MSVC)
 endif()
 
 if( LLVM_ENABLE_PIC )
-  set(SHARED_LIBRARY TRUE)
-  add_clang_library(libclang ${SOURCES})
+  add_clang_library(libclang SHARED ${SOURCES})
   target_link_libraries(libclang ${LIBRARIES})
   add_dependencies(libclang ${GENERATED_HEADERS} clang-headers)
 
@@ -111,9 +115,6 @@ if( LLVM_ENABLE_PIC )
 else()
   set(LIBCLANG_STATIC_TARGET_NAME libclang)
 endif()
-
-option(LIBCLANG_BUILD_STATIC
-  "Build libclang as a static library (in addition to a shared one)" OFF)
 
 if( (NOT LLVM_ENABLE_PIC OR LIBCLANG_BUILD_STATIC) AND NOT WIN32 )
   add_clang_library(${LIBCLANG_STATIC_TARGET_NAME} STATIC ${SOURCES})

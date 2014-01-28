@@ -2167,12 +2167,12 @@ const FunctionType *ASTContext::adjustFunctionType(const FunctionType *T,
 
   QualType Result;
   if (const FunctionNoProtoType *FNPT = dyn_cast<FunctionNoProtoType>(T)) {
-    Result = getFunctionNoProtoType(FNPT->getResultType(), Info);
+    Result = getFunctionNoProtoType(FNPT->getReturnType(), Info);
   } else {
     const FunctionProtoType *FPT = cast<FunctionProtoType>(T);
     FunctionProtoType::ExtProtoInfo EPI = FPT->getExtProtoInfo();
     EPI.ExtInfo = Info;
-    Result = getFunctionType(FPT->getResultType(), FPT->getParamTypes(), EPI);
+    Result = getFunctionType(FPT->getReturnType(), FPT->getParamTypes(), EPI);
   }
 
   return cast<FunctionType>(Result.getTypePtr());
@@ -4897,12 +4897,11 @@ std::string ASTContext::getObjCEncodingForBlock(const BlockExpr *Expr) const {
       Expr->getType()->getAs<BlockPointerType>()->getPointeeType();
   // Encode result type.
   if (getLangOpts().EncodeExtendedBlockSig)
-    getObjCEncodingForMethodParameter(Decl::OBJC_TQ_None,
-                            BlockTy->getAs<FunctionType>()->getResultType(),
-                            S, true /*Extended*/);
+    getObjCEncodingForMethodParameter(
+        Decl::OBJC_TQ_None, BlockTy->getAs<FunctionType>()->getReturnType(), S,
+        true /*Extended*/);
   else
-    getObjCEncodingForType(BlockTy->getAs<FunctionType>()->getResultType(),
-                           S);
+    getObjCEncodingForType(BlockTy->getAs<FunctionType>()->getReturnType(), S);
   // Compute size of all parameters.
   // Start with computing size of a pointer in number of bytes.
   // FIXME: There might(should) be a better way of doing this computation!
@@ -4952,7 +4951,7 @@ std::string ASTContext::getObjCEncodingForBlock(const BlockExpr *Expr) const {
 bool ASTContext::getObjCEncodingForFunctionDecl(const FunctionDecl *Decl,
                                                 std::string& S) {
   // Encode result type.
-  getObjCEncodingForType(Decl->getResultType(), S);
+  getObjCEncodingForType(Decl->getReturnType(), S);
   CharUnits ParmOffset;
   // Compute size of all parameters.
   for (FunctionDecl::param_const_iterator PI = Decl->param_begin(),
@@ -5015,7 +5014,8 @@ bool ASTContext::getObjCEncodingForMethodDecl(const ObjCMethodDecl *Decl,
   // FIXME: This is not very efficient.
   // Encode return type.
   getObjCEncodingForMethodParameter(Decl->getObjCDeclQualifier(),
-                                    Decl->getResultType(), S, Extended);
+                                    Decl->getReturnType(), S, Extended);
+
   // Compute size of all parameters.
   // Start with computing size of a pointer in number of bytes.
   // FIXME: There might(should) be a better way of doing this computation!
@@ -5062,6 +5062,34 @@ bool ASTContext::getObjCEncodingForMethodDecl(const ObjCMethodDecl *Decl,
   return false;
 }
 
+ObjCPropertyImplDecl *
+ASTContext::getObjCPropertyImplDeclForPropertyDecl(
+                                      const ObjCPropertyDecl *PD,
+                                      const Decl *Container) const {
+  if (!Container)
+    return 0;
+  if (const ObjCCategoryImplDecl *CID =
+      dyn_cast<ObjCCategoryImplDecl>(Container)) {
+    for (ObjCCategoryImplDecl::propimpl_iterator
+         i = CID->propimpl_begin(), e = CID->propimpl_end();
+         i != e; ++i) {
+      ObjCPropertyImplDecl *PID = *i;
+        if (PID->getPropertyDecl() == PD)
+          return PID;
+      }
+    } else {
+      const ObjCImplementationDecl *OID=cast<ObjCImplementationDecl>(Container);
+      for (ObjCCategoryImplDecl::propimpl_iterator
+           i = OID->propimpl_begin(), e = OID->propimpl_end();
+           i != e; ++i) {
+        ObjCPropertyImplDecl *PID = *i;
+        if (PID->getPropertyDecl() == PD)
+          return PID;
+      }
+    }
+  return 0;
+}
+
 /// getObjCEncodingForPropertyDecl - Return the encoded type for this
 /// property declaration. If non-NULL, Container must be either an
 /// ObjCCategoryImplDecl or ObjCImplementationDecl; it should only be
@@ -5094,37 +5122,12 @@ void ASTContext::getObjCEncodingForPropertyDecl(const ObjCPropertyDecl *PD,
   bool Dynamic = false;
   ObjCPropertyImplDecl *SynthesizePID = 0;
 
-  // FIXME: Duplicated code due to poor abstraction.
-  if (Container) {
-    if (const ObjCCategoryImplDecl *CID =
-        dyn_cast<ObjCCategoryImplDecl>(Container)) {
-      for (ObjCCategoryImplDecl::propimpl_iterator
-             i = CID->propimpl_begin(), e = CID->propimpl_end();
-           i != e; ++i) {
-        ObjCPropertyImplDecl *PID = *i;
-        if (PID->getPropertyDecl() == PD) {
-          if (PID->getPropertyImplementation()==ObjCPropertyImplDecl::Dynamic) {
-            Dynamic = true;
-          } else {
-            SynthesizePID = PID;
-          }
-        }
-      }
-    } else {
-      const ObjCImplementationDecl *OID=cast<ObjCImplementationDecl>(Container);
-      for (ObjCCategoryImplDecl::propimpl_iterator
-             i = OID->propimpl_begin(), e = OID->propimpl_end();
-           i != e; ++i) {
-        ObjCPropertyImplDecl *PID = *i;
-        if (PID->getPropertyDecl() == PD) {
-          if (PID->getPropertyImplementation()==ObjCPropertyImplDecl::Dynamic) {
-            Dynamic = true;
-          } else {
-            SynthesizePID = PID;
-          }
-        }
-      }
-    }
+  if (ObjCPropertyImplDecl *PropertyImpDecl =
+      getObjCPropertyImplDeclForPropertyDecl(PD, Container)) {
+    if (PropertyImpDecl->getPropertyImplementation() == ObjCPropertyImplDecl::Dynamic)
+      Dynamic = true;
+    else
+      SynthesizePID = PropertyImpDecl;
   }
 
   // FIXME: This is not very efficient.
@@ -5513,14 +5516,11 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
 
       S += '<';
       // Block return type
-      getObjCEncodingForTypeImpl(FT->getResultType(), S,
-                                 ExpandPointedToStructures, ExpandStructures,
-                                 FD,
-                                 false /* OutermostType */,
-                                 EncodingProperty,
-                                 false /* StructField */,
-                                 EncodeBlockParameters,
-                                 EncodeClassNames);
+      getObjCEncodingForTypeImpl(
+          FT->getReturnType(), S, ExpandPointedToStructures, ExpandStructures,
+          FD, false /* OutermostType */, EncodingProperty,
+          false /* StructField */, EncodeBlockParameters, EncodeClassNames);
+
       // Block self
       S += "@?";
       // Block parameters
@@ -7001,23 +7001,23 @@ QualType ASTContext::mergeFunctionTypes(QualType lhs, QualType rhs,
   // Check return type
   QualType retType;
   if (OfBlockPointer) {
-    QualType RHS = rbase->getResultType();
-    QualType LHS = lbase->getResultType();
+    QualType RHS = rbase->getReturnType();
+    QualType LHS = lbase->getReturnType();
     bool UnqualifiedResult = Unqualified;
     if (!UnqualifiedResult)
       UnqualifiedResult = (!RHS.hasQualifiers() && LHS.hasQualifiers());
     retType = mergeTypes(LHS, RHS, true, UnqualifiedResult, true);
   }
   else
-    retType = mergeTypes(lbase->getResultType(), rbase->getResultType(), false,
+    retType = mergeTypes(lbase->getReturnType(), rbase->getReturnType(), false,
                          Unqualified);
   if (retType.isNull()) return QualType();
 
   if (Unqualified)
     retType = retType.getUnqualifiedType();
 
-  CanQualType LRetType = getCanonicalType(lbase->getResultType());
-  CanQualType RRetType = getCanonicalType(rbase->getResultType());
+  CanQualType LRetType = getCanonicalType(lbase->getReturnType());
+  CanQualType RRetType = getCanonicalType(rbase->getReturnType());
   if (Unqualified) {
     LRetType = LRetType.getUnqualifiedType();
     RRetType = RRetType.getUnqualifiedType();
@@ -7482,10 +7482,10 @@ QualType ASTContext::mergeObjCGCQualifiers(QualType LHS, QualType RHS) {
     if (!LHSCan->isFunctionType())
       return QualType();
     QualType OldReturnType =
-      cast<FunctionType>(RHSCan.getTypePtr())->getResultType();
+        cast<FunctionType>(RHSCan.getTypePtr())->getReturnType();
     QualType NewReturnType =
-      cast<FunctionType>(LHSCan.getTypePtr())->getResultType();
-    QualType ResReturnType =
+        cast<FunctionType>(LHSCan.getTypePtr())->getReturnType();
+    QualType ResReturnType = 
       mergeObjCGCQualifiers(NewReturnType, OldReturnType);
     if (ResReturnType.isNull())
       return QualType();
@@ -8298,8 +8298,7 @@ ASTContext::ObjCMethodsAreEqual(const ObjCMethodDecl *MethodDecl,
   if (MethodDecl->getObjCDeclQualifier() !=
       MethodImpl->getObjCDeclQualifier())
     return false;
-  if (!hasSameType(MethodDecl->getResultType(),
-                   MethodImpl->getResultType()))
+  if (!hasSameType(MethodDecl->getReturnType(), MethodImpl->getReturnType()))
     return false;
 
   if (MethodDecl->param_size() != MethodImpl->param_size())

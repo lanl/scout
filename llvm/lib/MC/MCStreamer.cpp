@@ -14,6 +14,7 @@
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
+#include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/MCObjectWriter.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -24,16 +25,17 @@ using namespace llvm;
 
 // Pin the vtables to this file.
 MCTargetStreamer::~MCTargetStreamer() {}
-void MCTargetStreamer::emitLabel(MCSymbol *Symbol) {}
-void ARMTargetStreamer::anchor() {}
 
-MCStreamer::MCStreamer(MCContext &Ctx, MCTargetStreamer *TargetStreamer)
-    : Context(Ctx), TargetStreamer(TargetStreamer), EmitEHFrame(true),
-      EmitDebugFrame(false), CurrentW64UnwindInfo(0), LastSymbol(0),
-      AutoInitSections(false) {
+MCTargetStreamer::MCTargetStreamer(MCStreamer &S) : Streamer(S) {
+  S.setTargetStreamer(this);
+}
+
+void MCTargetStreamer::emitLabel(MCSymbol *Symbol) {}
+
+MCStreamer::MCStreamer(MCContext &Ctx)
+    : Context(Ctx), EmitEHFrame(true), EmitDebugFrame(false),
+      CurrentW64UnwindInfo(0), LastSymbol(0) {
   SectionStack.push_back(std::pair<MCSectionSubPair, MCSectionSubPair>());
-  if (TargetStreamer)
-    TargetStreamer->setStreamer(this);
 }
 
 MCStreamer::~MCStreamer() {
@@ -201,6 +203,10 @@ void MCStreamer::EmitEHSymAttributes(const MCSymbol *Symbol,
                                      MCSymbol *EHSymbol) {
 }
 
+void MCStreamer::InitSections(bool Force) {
+  SwitchSection(getContext().getObjectFileInfo()->getTextSection());
+}
+
 void MCStreamer::AssignSection(MCSymbol *Symbol, const MCSection *Section) {
   if (Section)
     Symbol->setSection(*Section);
@@ -242,12 +248,13 @@ void MCStreamer::EmitCFISections(bool EH, bool Debug) {
   EmitDebugFrame = Debug;
 }
 
-void MCStreamer::EmitCFIStartProc() {
+void MCStreamer::EmitCFIStartProc(bool IsSimple) {
   MCDwarfFrameInfo *CurFrame = getCurrentFrameInfo();
   if (CurFrame && !CurFrame->End)
     report_fatal_error("Starting a frame before finishing the previous one!");
 
   MCDwarfFrameInfo Frame;
+  Frame.IsSimple = IsSimple;
   EmitCFIStartProcImpl(Frame);
 
   FrameInfos.push_back(Frame);

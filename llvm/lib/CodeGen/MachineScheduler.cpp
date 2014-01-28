@@ -1976,7 +1976,7 @@ void SchedBoundary::bumpNode(SUnit *SU) {
   }
   else {
     // After updating ZoneCritResIdx and ExpectedLatency, check if we're
-    // resource limited. If a stall occured, bumpCycle does this.
+    // resource limited. If a stall occurred, bumpCycle does this.
     unsigned LFactor = SchedModel->getLatencyFactor();
     IsResourceLimited =
       (int)(getCriticalCount() - (getScheduledLatency() * LFactor))
@@ -2527,17 +2527,17 @@ void GenericScheduler::initPolicy(MachineBasicBlock::iterator Begin,
                                   MachineBasicBlock::iterator End,
                                   unsigned NumRegionInstrs) {
   const TargetMachine &TM = Context->MF->getTarget();
+  const TargetLowering *TLI = TM.getTargetLowering();
 
   // Avoid setting up the register pressure tracker for small regions to save
   // compile time. As a rough heuristic, only track pressure when the number of
   // schedulable instructions exceeds half the integer register file.
   RegionPolicy.ShouldTrackPressure = true;
-  unsigned LegalIntVT = MVT::i32;
-  for (; LegalIntVT > (unsigned)MVT::i1; --LegalIntVT) {
-    if (TM.getTargetLowering()->isTypeLegal((MVT::SimpleValueType)LegalIntVT)) {
+  for (unsigned VT = MVT::i32; VT > (unsigned)MVT::i1; --VT) {
+    MVT::SimpleValueType LegalIntVT = (MVT::SimpleValueType)VT;
+    if (TLI->isTypeLegal(LegalIntVT)) {
       unsigned NIntRegs = Context->RegClassInfo->getNumAllocatableRegs(
-        TM.getTargetLowering()->getRegClassFor(
-          (MVT::SimpleValueType)LegalIntVT));
+        TLI->getRegClassFor(LegalIntVT));
       RegionPolicy.ShouldTrackPressure = NumRegionInstrs > (NIntRegs / 2);
     }
   }

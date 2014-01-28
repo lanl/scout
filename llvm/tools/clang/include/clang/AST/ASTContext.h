@@ -1461,6 +1461,10 @@ public:
 
   bool ProtocolCompatibleWithProtocol(ObjCProtocolDecl *lProto,
                                       ObjCProtocolDecl *rProto) const;
+  
+  ObjCPropertyImplDecl *getObjCPropertyImplDeclForPropertyDecl(
+                                                  const ObjCPropertyDecl *PD,
+                                                  const Decl *Container) const;
 
   /// \brief Return the size of type \p T for Objective-C encoding purpose,
   /// in characters.
