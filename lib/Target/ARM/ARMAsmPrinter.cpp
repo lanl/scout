@@ -438,6 +438,22 @@ bool ARMAsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI,
   return false;
 }
 
+static bool isThumb(const MCSubtargetInfo& STI) {
+  return (STI.getFeatureBits() & ARM::ModeThumb) != 0;
+}
+
+void ARMAsmPrinter::emitInlineAsmEnd(const MCSubtargetInfo &StartInfo,
+                                     MCSubtargetInfo *EndInfo) const {
+  // If either end mode is unknown (EndInfo == NULL) or different than
+  // the start mode, then restore the start mode.
+  const bool WasThumb = isThumb(StartInfo);
+  if (EndInfo == NULL || WasThumb != isThumb(*EndInfo)) {
+    OutStreamer.EmitAssemblerFlag(WasThumb ? MCAF_Code16 : MCAF_Code32);
+    if (EndInfo)
+      EndInfo->ToggleFeature(ARM::ModeThumb);
+  }
+}
+
 void ARMAsmPrinter::EmitStartOfAsmFile(Module &M) {
   if (Subtarget->isTargetMachO()) {
     Reloc::Model RelocM = TM.getRelocationModel();
@@ -733,28 +749,6 @@ void ARMAsmPrinter::emitAttributes() {
                         ARMBuildAttrs::AllowVirtualization);
 
   ATS.finishAttributeSection();
-}
-
-void ARMAsmPrinter::emitARMAttributeSection() {
-  // <format-version>
-  // [ <section-length> "vendor-name"
-  // [ <file-tag> <size> <attribute>*
-  //   | <section-tag> <size> <section-number>* 0 <attribute>*
-  //   | <symbol-tag> <size> <symbol-number>* 0 <attribute>*
-  //   ]+
-  // ]*
-
-  if (OutStreamer.hasRawTextSupport())
-    return;
-
-  const ARMElfTargetObjectFile &TLOFELF =
-    static_cast<const ARMElfTargetObjectFile &>
-    (getObjFileLowering());
-
-  OutStreamer.SwitchSection(TLOFELF.getAttributesSection());
-
-  // Format version
-  OutStreamer.EmitIntValue(0x41, 1);
 }
 
 //===----------------------------------------------------------------------===//

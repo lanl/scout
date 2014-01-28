@@ -117,7 +117,7 @@ public:
   static unsigned QuadFPRegs[32] = {
     Sparc::Q0,  Sparc::Q1,  Sparc::Q2,  Sparc::Q3,
     Sparc::Q4,  Sparc::Q5,  Sparc::Q6,  Sparc::Q7,
-    Sparc::Q8,  Sparc::Q7,  Sparc::Q8,  Sparc::Q9,
+    Sparc::Q8,  Sparc::Q9,  Sparc::Q10, Sparc::Q11,
     Sparc::Q12, Sparc::Q13, Sparc::Q14, Sparc::Q15 };
 
 
@@ -734,7 +734,7 @@ bool SparcAsmParser::matchRegisterName(const AsmToken &Tok,
         && !name.substr(1, 2).getAsInteger(10, intVal)
         && intVal >= 32 && intVal <= 62 && (intVal % 2 == 0)) {
       // FIXME: Check V9
-      RegNo = DoubleRegs[16 + intVal/2];
+      RegNo = DoubleRegs[intVal/2];
       RegKind = SparcOperand::rk_DoubleReg;
       return true;
     }

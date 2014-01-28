@@ -50,11 +50,28 @@ STATISTIC(SlicedLoads, "Number of load sliced");
 namespace {
   static cl::opt<bool>
     CombinerAA("combiner-alias-analysis", cl::Hidden,
-               cl::desc("Turn on alias analysis during testing"));
+               cl::desc("Enable DAG combiner alias-analysis heuristics"));
 
   static cl::opt<bool>
     CombinerGlobalAA("combiner-global-alias-analysis", cl::Hidden,
-               cl::desc("Include global information in alias analysis"));
+               cl::desc("Enable DAG combiner's use of IR alias analysis"));
+
+// FIXME: Enable the use of TBAA. There are two known issues preventing this:
+//   1. Stack coloring does not update TBAA when merging allocas
+//   2. CGP inserts ptrtoint/inttoptr pairs when sinking address computations.
+//      Because BasicAA does not handle inttoptr, we'll often miss basic type
+//      punning idioms that we need to catch so we don't miscompile real-world
+//      code.
+  static cl::opt<bool>
+    UseTBAA("combiner-use-tbaa", cl::Hidden, cl::init(false),
+               cl::desc("Enable DAG combiner's use of TBAA"));
+
+#ifndef NDEBUG
+  static cl::opt<std::string>
+    CombinerAAOnlyFunc("combiner-aa-only-func", cl::Hidden,
+               cl::desc("Only use DAG-combiner alias analysis in this"
+                        " function"));
+#endif
 
   /// Hidden option to stress test load slicing, i.e., when this option
   /// is enabled, load slicing bypasses most of its profitability guards.
@@ -3212,11 +3229,14 @@ SDValue DAGCombiner::visitOR(SDNode *N) {
   if (N1C && N0.getOpcode() == ISD::AND && N0.getNode()->hasOneUse() &&
              isa<ConstantSDNode>(N0.getOperand(1))) {
     ConstantSDNode *C1 = cast<ConstantSDNode>(N0.getOperand(1));
-    if ((C1->getAPIntValue() & N1C->getAPIntValue()) != 0)
+    if ((C1->getAPIntValue() & N1C->getAPIntValue()) != 0) {
+      SDValue COR = DAG.FoldConstantArithmetic(ISD::OR, VT, N1C, C1);
+      if (!COR.getNode())
+        return SDValue();
       return DAG.getNode(ISD::AND, SDLoc(N), VT,
                          DAG.getNode(ISD::OR, SDLoc(N0), VT,
-                                     N0.getOperand(0), N1),
-                         DAG.FoldConstantArithmetic(ISD::OR, VT, N1C, C1));
+                                     N0.getOperand(0), N1), COR);
+    }
   }
   // fold (or (setcc x), (setcc y)) -> (setcc (or x, y))
   if (isSetCCEquivalent(N0, LL, LR, CC0) && isSetCCEquivalent(N1, RL, RR, CC1)){
@@ -4557,6 +4577,65 @@ SDValue DAGCombiner::visitSETCC(SDNode *N) {
                        SDLoc(N));
 }
 
+// tryToFoldExtendOfConstant - Try to fold a sext/zext/aext
+// dag node into a ConstantSDNode or a build_vector of constants.
+// This function is called by the DAGCombiner when visiting sext/zext/aext
+// dag nodes (see for example method DAGCombiner::visitSIGN_EXTEND). 
+// Vector extends are not folded if operations are legal; this is to
+// avoid introducing illegal build_vector dag nodes.
+static SDNode *tryToFoldExtendOfConstant(SDNode *N, const TargetLowering &TLI,
+                                         SelectionDAG &DAG, bool LegalTypes,
+                                         bool LegalOperations) {
+  unsigned Opcode = N->getOpcode();
+  SDValue N0 = N->getOperand(0);
+  EVT VT = N->getValueType(0);
+
+  assert((Opcode == ISD::SIGN_EXTEND || Opcode == ISD::ZERO_EXTEND ||
+         Opcode == ISD::ANY_EXTEND) && "Expected EXTEND dag node in input!");
+
+  // fold (sext c1) -> c1
+  // fold (zext c1) -> c1
+  // fold (aext c1) -> c1
+  if (isa<ConstantSDNode>(N0))
+    return DAG.getNode(Opcode, SDLoc(N), VT, N0).getNode();
+
+  // fold (sext (build_vector AllConstants) -> (build_vector AllConstants)
+  // fold (zext (build_vector AllConstants) -> (build_vector AllConstants)
+  // fold (aext (build_vector AllConstants) -> (build_vector AllConstants)
+  EVT SVT = VT.getScalarType();
+  if (!(VT.isVector() &&
+      (!LegalTypes || (!LegalOperations && TLI.isTypeLegal(SVT))) &&
+      ISD::isBuildVectorOfConstantSDNodes(N0.getNode())))
+    return 0;
+  
+  // We can fold this node into a build_vector.
+  unsigned VTBits = SVT.getSizeInBits();
+  unsigned EVTBits = N0->getValueType(0).getScalarType().getSizeInBits();
+  unsigned ShAmt = VTBits - EVTBits;
+  SmallVector<SDValue, 8> Elts;
+  unsigned NumElts = N0->getNumOperands();
+  SDLoc DL(N);
+
+  for (unsigned i=0; i != NumElts; ++i) {
+    SDValue Op = N0->getOperand(i);
+    if (Op->getOpcode() == ISD::UNDEF) {
+      Elts.push_back(DAG.getUNDEF(SVT));
+      continue;
+    }
+
+    ConstantSDNode *CurrentND = cast<ConstantSDNode>(Op);
+    const APInt &C = APInt(VTBits, CurrentND->getAPIntValue().getZExtValue());
+    if (Opcode == ISD::SIGN_EXTEND)
+      Elts.push_back(DAG.getConstant(C.shl(ShAmt).ashr(ShAmt).getZExtValue(),
+                                     SVT));
+    else
+      Elts.push_back(DAG.getConstant(C.shl(ShAmt).lshr(ShAmt).getZExtValue(),
+                                     SVT));
+  }
+
+  return DAG.getNode(ISD::BUILD_VECTOR, DL, VT, &Elts[0], NumElts).getNode();
+}
+
 // ExtendUsesToFormExtLoad - Trying to extend uses of a load to enable this:
 // "fold ({s|z|a}ext (load x)) -> ({s|z|a}ext (truncate ({s|z|a}extload x)))"
 // transformation. Returns true if extension are possible and the above
@@ -4647,9 +4726,9 @@ SDValue DAGCombiner::visitSIGN_EXTEND(SDNode *N) {
   SDValue N0 = N->getOperand(0);
   EVT VT = N->getValueType(0);
 
-  // fold (sext c1) -> c1
-  if (isa<ConstantSDNode>(N0))
-    return DAG.getNode(ISD::SIGN_EXTEND, SDLoc(N), VT, N0);
+  if (SDNode *Res = tryToFoldExtendOfConstant(N, TLI, DAG, LegalTypes,
+                                              LegalOperations))
+    return SDValue(Res, 0);
 
   // fold (sext (sext x)) -> (sext x)
   // fold (sext (aext x)) -> (sext x)
@@ -4826,7 +4905,7 @@ SDValue DAGCombiner::visitSIGN_EXTEND(SDNode *N) {
       }
     }
 
-    // sext(setcc x, y, cc) -> (select_cc x, y, -1, 0, cc)
+    // sext(setcc x, y, cc) -> (select (setcc x, y, cc), -1, 0)
     unsigned ElementWidth = VT.getScalarType().getSizeInBits();
     SDValue NegOne =
       DAG.getConstant(APInt::getAllOnesValue(ElementWidth), VT);
@@ -4835,15 +4914,21 @@ SDValue DAGCombiner::visitSIGN_EXTEND(SDNode *N) {
                        NegOne, DAG.getConstant(0, VT),
                        cast<CondCodeSDNode>(N0.getOperand(2))->get(), true);
     if (SCC.getNode()) return SCC;
-    if (!VT.isVector() &&
-        (!LegalOperations ||
-         TLI.isOperationLegal(ISD::SETCC, getSetCCResultType(VT)))) {
-      return DAG.getSelect(SDLoc(N), VT,
-                           DAG.getSetCC(SDLoc(N),
-                           getSetCCResultType(VT),
-                           N0.getOperand(0), N0.getOperand(1),
-                           cast<CondCodeSDNode>(N0.getOperand(2))->get()),
-                           NegOne, DAG.getConstant(0, VT));
+
+    if (!VT.isVector()) {
+      EVT SetCCVT = getSetCCResultType(N0.getOperand(0).getValueType());
+      if (!LegalOperations || TLI.isOperationLegal(ISD::SETCC, SetCCVT)) {
+        SDLoc DL(N);
+        ISD::CondCode CC = cast<CondCodeSDNode>(N0.getOperand(2))->get();
+        SDValue SetCC = DAG.getSetCC(DL,
+                                     SetCCVT,
+                                     N0.getOperand(0), N0.getOperand(1), CC);
+        EVT SelectVT = getSetCCResultType(VT);
+        return DAG.getSelect(DL, VT,
+                             DAG.getSExtOrTrunc(SetCC, DL, SelectVT),
+                             NegOne, DAG.getConstant(0, VT));
+
+      }
     }
   }
 
@@ -4897,9 +4982,10 @@ SDValue DAGCombiner::visitZERO_EXTEND(SDNode *N) {
   SDValue N0 = N->getOperand(0);
   EVT VT = N->getValueType(0);
 
-  // fold (zext c1) -> c1
-  if (isa<ConstantSDNode>(N0))
-    return DAG.getNode(ISD::ZERO_EXTEND, SDLoc(N), VT, N0);
+  if (SDNode *Res = tryToFoldExtendOfConstant(N, TLI, DAG, LegalTypes,
+                                              LegalOperations))
+    return SDValue(Res, 0);
+
   // fold (zext (zext x)) -> (zext x)
   // fold (zext (aext x)) -> (zext x)
   if (N0.getOpcode() == ISD::ZERO_EXTEND || N0.getOpcode() == ISD::ANY_EXTEND)
@@ -5082,9 +5168,12 @@ SDValue DAGCombiner::visitZERO_EXTEND(SDNode *N) {
   if (N0.getOpcode() == ISD::SETCC) {
     if (!LegalOperations && VT.isVector() &&
         N0.getValueType().getVectorElementType() == MVT::i1) {
+      EVT N0VT = N0.getOperand(0).getValueType();
+      if (getSetCCResultType(N0VT) == N0.getValueType())
+        return SDValue();
+
       // zext(setcc) -> (and (vsetcc), (1, 1, ...) for vectors.
       // Only do this before legalize for now.
-      EVT N0VT = N0.getOperand(0).getValueType();
       EVT EltVT = VT.getVectorElementType();
       SmallVector<SDValue,8> OneOps(VT.getVectorNumElements(),
                                     DAG.getConstant(1, EltVT));
@@ -5163,9 +5252,10 @@ SDValue DAGCombiner::visitANY_EXTEND(SDNode *N) {
   SDValue N0 = N->getOperand(0);
   EVT VT = N->getValueType(0);
 
-  // fold (aext c1) -> c1
-  if (isa<ConstantSDNode>(N0))
-    return DAG.getNode(ISD::ANY_EXTEND, SDLoc(N), VT, N0);
+  if (SDNode *Res = tryToFoldExtendOfConstant(N, TLI, DAG, LegalTypes,
+                                              LegalOperations))
+    return SDValue(Res, 0);
+
   // fold (aext (aext x)) -> (aext x)
   // fold (aext (zext x)) -> (zext x)
   // fold (aext (sext x)) -> (sext x)
@@ -6737,7 +6827,7 @@ SDValue DAGCombiner::visitSINT_TO_FP(SDNode *N) {
       return DAG.getNode(ISD::UINT_TO_FP, SDLoc(N), VT, N0);
   }
 
-  // The next optimizations are desireable only if SELECT_CC can be lowered.
+  // The next optimizations are desirable only if SELECT_CC can be lowered.
   // Check against MVT::Other for SELECT_CC, which is a workaround for targets
   // having to say they don't support SELECT_CC on every type the DAG knows
   // about, since there is no way to mark an opcode illegal at all value types
@@ -6794,7 +6884,7 @@ SDValue DAGCombiner::visitUINT_TO_FP(SDNode *N) {
       return DAG.getNode(ISD::SINT_TO_FP, SDLoc(N), VT, N0);
   }
 
-  // The next optimizations are desireable only if SELECT_CC can be lowered.
+  // The next optimizations are desirable only if SELECT_CC can be lowered.
   // Check against MVT::Other for SELECT_CC, which is a workaround for targets
   // having to say they don't support SELECT_CC on every type the DAG knows
   // about, since there is no way to mark an opcode illegal at all value types
@@ -7723,7 +7813,12 @@ SDValue DAGCombiner::visitLOAD(SDNode *N) {
 
   bool UseAA = CombinerAA.getNumOccurrences() > 0 ? CombinerAA :
     TLI.getTargetMachine().getSubtarget<TargetSubtargetInfo>().useAA();
-  if (UseAA) {
+#ifndef NDEBUG
+  if (CombinerAAOnlyFunc.getNumOccurrences() &&
+      CombinerAAOnlyFunc != DAG.getMachineFunction().getName())
+    UseAA = false;
+#endif
+  if (UseAA && LD->isUnindexed()) {
     // Walk up chain skipping non-aliasing memory nodes.
     SDValue BetterChain = FindBetterChain(N, Chain);
 
@@ -8262,7 +8357,7 @@ bool DAGCombiner::SliceUpLoad(SDNode *N) {
     // The width of the type must be a power of 2 and greater than 8-bits.
     // Otherwise the load cannot be represented in LLVM IR.
     // Moreover, if we shifted with a non-8-bits multiple, the slice
-    // will be accross several bytes. We do not support that.
+    // will be across several bytes. We do not support that.
     unsigned Width = User->getValueSizeInBits(0);
     if (Width < 8 || !isPowerOf2_32(Width) || (Shift & 0x7))
       return 0;
@@ -8733,7 +8828,10 @@ struct MemOpLink {
 // base ptr.
 struct ConsecutiveMemoryChainSorter {
   bool operator()(MemOpLink LHS, MemOpLink RHS) {
-    return LHS.OffsetFromBase < RHS.OffsetFromBase;
+    return
+        LHS.OffsetFromBase < RHS.OffsetFromBase ||
+        (LHS.OffsetFromBase == RHS.OffsetFromBase &&
+         LHS.SequenceNum > RHS.SequenceNum);
   }
 };
 
@@ -9311,7 +9409,12 @@ SDValue DAGCombiner::visitSTORE(SDNode *N) {
 
   bool UseAA = CombinerAA.getNumOccurrences() > 0 ? CombinerAA :
     TLI.getTargetMachine().getSubtarget<TargetSubtargetInfo>().useAA();
-  if (UseAA) {
+#ifndef NDEBUG
+  if (CombinerAAOnlyFunc.getNumOccurrences() &&
+      CombinerAAOnlyFunc != DAG.getMachineFunction().getName())
+    UseAA = false;
+#endif
+  if (UseAA && ST->isUnindexed()) {
     // Walk up chain skipping non-aliasing memory nodes.
     SDValue BetterChain = FindBetterChain(N, Chain);
 
@@ -11045,14 +11148,21 @@ bool DAGCombiner::isAlias(SDValue Ptr1, int64_t Size1, bool IsVolatile1,
 
   bool UseAA = CombinerGlobalAA.getNumOccurrences() > 0 ? CombinerGlobalAA :
     TLI.getTargetMachine().getSubtarget<TargetSubtargetInfo>().useAA();
+#ifndef NDEBUG
+  if (CombinerAAOnlyFunc.getNumOccurrences() &&
+      CombinerAAOnlyFunc != DAG.getMachineFunction().getName())
+    UseAA = false;
+#endif
   if (UseAA && SrcValue1 && SrcValue2) {
     // Use alias analysis information.
     int64_t MinOffset = std::min(SrcValueOffset1, SrcValueOffset2);
     int64_t Overlap1 = Size1 + SrcValueOffset1 - MinOffset;
     int64_t Overlap2 = Size2 + SrcValueOffset2 - MinOffset;
     AliasAnalysis::AliasResult AAResult =
-      AA.alias(AliasAnalysis::Location(SrcValue1, Overlap1, TBAAInfo1),
-               AliasAnalysis::Location(SrcValue2, Overlap2, TBAAInfo2));
+      AA.alias(AliasAnalysis::Location(SrcValue1, Overlap1,
+                                       UseTBAA ? TBAAInfo1 : 0),
+               AliasAnalysis::Location(SrcValue2, Overlap2,
+                                       UseTBAA ? TBAAInfo2 : 0));
     if (AAResult == AliasAnalysis::NoAlias)
       return false;
   }
@@ -11139,7 +11249,7 @@ void DAGCombiner::GatherAllAliases(SDNode *N, SDValue OriginalChain,
     if (Depth > 6 || Aliases.size() == 2) {
       Aliases.clear();
       Aliases.push_back(OriginalChain);
-      break;
+      return;
     }
 
     // Don't bother if we've been before.
@@ -11200,6 +11310,63 @@ void DAGCombiner::GatherAllAliases(SDNode *N, SDValue OriginalChain,
       Aliases.push_back(Chain);
       break;
     }
+  }
+
+  // We need to be careful here to also search for aliases through the
+  // value operand of a store, etc. Consider the following situation:
+  //   Token1 = ...
+  //   L1 = load Token1, %52
+  //   S1 = store Token1, L1, %51
+  //   L2 = load Token1, %52+8
+  //   S2 = store Token1, L2, %51+8
+  //   Token2 = Token(S1, S2)
+  //   L3 = load Token2, %53
+  //   S3 = store Token2, L3, %52
+  //   L4 = load Token2, %53+8
+  //   S4 = store Token2, L4, %52+8
+  // If we search for aliases of S3 (which loads address %52), and we look
+  // only through the chain, then we'll miss the trivial dependence on L1
+  // (which also loads from %52). We then might change all loads and
+  // stores to use Token1 as their chain operand, which could result in
+  // copying %53 into %52 before copying %52 into %51 (which should
+  // happen first).
+  //
+  // The problem is, however, that searching for such data dependencies
+  // can become expensive, and the cost is not directly related to the
+  // chain depth. Instead, we'll rule out such configurations here by
+  // insisting that we've visited all chain users (except for users
+  // of the original chain, which is not necessary). When doing this,
+  // we need to look through nodes we don't care about (otherwise, things
+  // like register copies will interfere with trivial cases).
+
+  SmallVector<const SDNode *, 16> Worklist;
+  for (SmallPtrSet<SDNode *, 16>::iterator I = Visited.begin(),
+       IE = Visited.end(); I != IE; ++I)
+    if (*I != OriginalChain.getNode())
+      Worklist.push_back(*I);
+
+  while (!Worklist.empty()) {
+    const SDNode *M = Worklist.pop_back_val();
+
+    // We have already visited M, and want to make sure we've visited any uses
+    // of M that we care about. For uses that we've not visisted, and don't
+    // care about, queue them to the worklist.
+
+    for (SDNode::use_iterator UI = M->use_begin(),
+         UIE = M->use_end(); UI != UIE; ++UI)
+      if (UI.getUse().getValueType() == MVT::Other && Visited.insert(*UI)) {
+        if (isa<MemIntrinsicSDNode>(*UI) || isa<MemSDNode>(*UI)) {
+          // We've not visited this use, and we care about it (it could have an
+          // ordering dependency with the original node).
+          Aliases.clear();
+          Aliases.push_back(OriginalChain);
+          return;
+        }
+
+        // We've not visited this use, but we don't care about it. Mark it as
+        // visited and enqueue it to the worklist.
+        Worklist.push_back(*UI);
+      }
   }
 }
 

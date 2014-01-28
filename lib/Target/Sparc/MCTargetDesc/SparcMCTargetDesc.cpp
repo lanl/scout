@@ -68,9 +68,13 @@ static MCCodeGenInfo *createSparcMCCodeGenInfo(StringRef TT, Reloc::Model RM,
                                                CodeGenOpt::Level OL) {
   MCCodeGenInfo *X = new MCCodeGenInfo();
 
-  // The default 32-bit code model is abs32/pic32.
-  if (CM == CodeModel::Default)
-    CM = RM == Reloc::PIC_ ? CodeModel::Medium : CodeModel::Small;
+  // The default 32-bit code model is abs32/pic32 and the default 32-bit
+  // code model for JIT is abs32.
+  switch (CM) {
+  default: break;
+  case CodeModel::Default:
+  case CodeModel::JITDefault: CM = CodeModel::Small; break;
+  }
 
   X->InitMCCodeGenInfo(RM, CM, OL);
   return X;
@@ -81,9 +85,17 @@ static MCCodeGenInfo *createSparcV9MCCodeGenInfo(StringRef TT, Reloc::Model RM,
                                                  CodeGenOpt::Level OL) {
   MCCodeGenInfo *X = new MCCodeGenInfo();
 
-  // The default 64-bit code model is abs44/pic32.
-  if (CM == CodeModel::Default)
-    CM = CodeModel::Medium;
+  // The default 64-bit code model is abs44/pic32 and the default 64-bit
+  // code model for JIT is abs64.
+  switch (CM) {
+  default:  break;
+  case CodeModel::Default:
+    CM = RM == Reloc::PIC_ ? CodeModel::Small : CodeModel::Medium;
+    break;
+  case CodeModel::JITDefault:
+    CM = CodeModel::Large;
+    break;
+  }
 
   X->InitMCCodeGenInfo(RM, CM, OL);
   return X;
@@ -92,9 +104,12 @@ static MCCodeGenInfo *createSparcV9MCCodeGenInfo(StringRef TT, Reloc::Model RM,
 static MCStreamer *createMCStreamer(const Target &T, StringRef TT,
                                     MCContext &Context, MCAsmBackend &MAB,
                                     raw_ostream &OS, MCCodeEmitter *Emitter,
-                                    bool RelaxAll, bool NoExecStack) {
-  SparcTargetELFStreamer *S = new SparcTargetELFStreamer();
-  return createELFStreamer(Context, S, MAB, OS, Emitter, RelaxAll, NoExecStack);
+                                    const MCSubtargetInfo &STI, bool RelaxAll,
+                                    bool NoExecStack) {
+  MCStreamer *S =
+      createELFStreamer(Context, MAB, OS, Emitter, RelaxAll, NoExecStack);
+  new SparcTargetELFStreamer(*S);
+  return S;
 }
 
 static MCStreamer *
@@ -102,11 +117,12 @@ createMCAsmStreamer(MCContext &Ctx, formatted_raw_ostream &OS,
                     bool isVerboseAsm, bool useLoc, bool useCFI,
                     bool useDwarfDirectory, MCInstPrinter *InstPrint,
                     MCCodeEmitter *CE, MCAsmBackend *TAB, bool ShowInst) {
-  SparcTargetAsmStreamer *S = new SparcTargetAsmStreamer(OS);
 
-  return llvm::createAsmStreamer(Ctx, S, OS, isVerboseAsm, useLoc, useCFI,
-                                 useDwarfDirectory, InstPrint, CE, TAB,
-                                 ShowInst);
+  MCStreamer *S =
+      llvm::createAsmStreamer(Ctx, OS, isVerboseAsm, useLoc, useCFI,
+                              useDwarfDirectory, InstPrint, CE, TAB, ShowInst);
+  new SparcTargetAsmStreamer(*S, OS);
+  return S;
 }
 
 static MCInstPrinter *createSparcMCInstPrinter(const Target &T,

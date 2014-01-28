@@ -697,13 +697,6 @@ void PPCAsmPrinter::EmitInstruction(const MachineInstr *MI) {
       return;
     }
     break;
-  case PPC::SYNC:
-    // In Book E sync is called msync, handle this special case here...
-    if (Subtarget.isBookE()) {
-      OutStreamer.EmitRawText(StringRef("\tmsync"));
-      return;
-    }
-    break;
   case PPC::LD:
   case PPC::STD:
   case PPC::LWA_32:
@@ -857,13 +850,12 @@ void PPCDarwinAsmPrinter::EmitStartOfAsmFile(Module &M) {
   if (Subtarget.isPPC64() && Directive < PPC::DIR_64)
     Directive = PPC::DIR_64;
   assert(Directive <= PPC::DIR_64 && "Directive out of range.");
-  
-  // FIXME: This is a total hack, finish mc'izing the PPC backend.
-  if (OutStreamer.hasRawTextSupport()) {
-    assert(Directive < array_lengthof(CPUDirectives) &&
-           "CPUDirectives[] might not be up-to-date!");
-    OutStreamer.EmitRawText("\t.machine " + Twine(CPUDirectives[Directive]));
-  }
+
+  assert(Directive < array_lengthof(CPUDirectives) &&
+         "CPUDirectives[] might not be up-to-date!");
+  PPCTargetStreamer &TStreamer =
+      *static_cast<PPCTargetStreamer *>(OutStreamer.getTargetStreamer());
+  TStreamer.emitMachine(CPUDirectives[Directive]);
 
   // Prime text sections so they are adjacent.  This reduces the likelihood a
   // large data or debug section causes a branch to exceed 16M limit.

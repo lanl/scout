@@ -16,6 +16,7 @@
 
 #include "llvm/Object/Error.h"
 #include "llvm/Support/ErrorOr.h"
+#include "llvm/Support/FileSystem.h"
 
 namespace llvm {
 
@@ -30,11 +31,12 @@ private:
   Binary(const Binary &other) LLVM_DELETED_FUNCTION;
 
   unsigned int TypeID;
+  bool BufferOwned;
 
 protected:
   MemoryBuffer *Data;
 
-  Binary(unsigned int Type, MemoryBuffer *Source);
+  Binary(unsigned int Type, MemoryBuffer *Source, bool BufferOwned = true);
 
   enum {
     ID_Archive,
@@ -115,7 +117,9 @@ public:
 /// @param Source The data to create the Binary from. Ownership is transferred
 ///        to the Binary if successful. If an error is returned,
 ///        Source is destroyed by createBinary before returning.
-ErrorOr<Binary *> createBinary(MemoryBuffer *Source);
+ErrorOr<Binary *> createBinary(MemoryBuffer *Source,
+                               sys::fs::file_magic Type =
+                                   sys::fs::file_magic::unknown);
 
 ErrorOr<Binary *> createBinary(StringRef Path);
 }

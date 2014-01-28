@@ -445,6 +445,46 @@ def brtarget8 : Operand<OtherVT>;
 
 }
 
+def X86SrcIdx8Operand : AsmOperandClass {
+  let Name = "SrcIdx8";
+  let RenderMethod = "addSrcIdxOperands";
+  let SuperClasses = [X86Mem8AsmOperand];
+}
+def X86SrcIdx16Operand : AsmOperandClass {
+  let Name = "SrcIdx16";
+  let RenderMethod = "addSrcIdxOperands";
+  let SuperClasses = [X86Mem16AsmOperand];
+}
+def X86SrcIdx32Operand : AsmOperandClass {
+  let Name = "SrcIdx32";
+  let RenderMethod = "addSrcIdxOperands";
+  let SuperClasses = [X86Mem32AsmOperand];
+}
+def X86SrcIdx64Operand : AsmOperandClass {
+  let Name = "SrcIdx64";
+  let RenderMethod = "addSrcIdxOperands";
+  let SuperClasses = [X86Mem64AsmOperand];
+}
+def X86DstIdx8Operand : AsmOperandClass {
+  let Name = "DstIdx8";
+  let RenderMethod = "addDstIdxOperands";
+  let SuperClasses = [X86Mem8AsmOperand];
+}
+def X86DstIdx16Operand : AsmOperandClass {
+  let Name = "DstIdx16";
+  let RenderMethod = "addDstIdxOperands";
+  let SuperClasses = [X86Mem16AsmOperand];
+}
+def X86DstIdx32Operand : AsmOperandClass {
+  let Name = "DstIdx32";
+  let RenderMethod = "addDstIdxOperands";
+  let SuperClasses = [X86Mem32AsmOperand];
+}
+def X86DstIdx64Operand : AsmOperandClass {
+  let Name = "DstIdx64";
+  let RenderMethod = "addDstIdxOperands";
+  let SuperClasses = [X86Mem64AsmOperand];
+}
 def X86MemOffs8AsmOperand : AsmOperandClass {
   let Name = "MemOffs8";
   let RenderMethod = "addMemOffsOperands";
@@ -465,8 +505,39 @@ def X86MemOffs64AsmOperand : AsmOperandClass {
   let RenderMethod = "addMemOffsOperands";
   let SuperClasses = [X86Mem64AsmOperand];
 }
-
 let OperandType = "OPERAND_MEMORY" in {
+def srcidx8 : Operand<iPTR> {
+  let ParserMatchClass = X86SrcIdx8Operand;
+  let MIOperandInfo = (ops ptr_rc, i8imm);
+  let PrintMethod = "printSrcIdx8"; }
+def srcidx16 : Operand<iPTR> {
+  let ParserMatchClass = X86SrcIdx16Operand;
+  let MIOperandInfo = (ops ptr_rc, i8imm);
+  let PrintMethod = "printSrcIdx16"; }
+def srcidx32 : Operand<iPTR> {
+  let ParserMatchClass = X86SrcIdx32Operand;
+  let MIOperandInfo = (ops ptr_rc, i8imm);
+  let PrintMethod = "printSrcIdx32"; }
+def srcidx64 : Operand<iPTR> {
+  let ParserMatchClass = X86SrcIdx64Operand;
+  let MIOperandInfo = (ops ptr_rc, i8imm);
+  let PrintMethod = "printSrcIdx64"; }
+def dstidx8 : Operand<iPTR> {
+  let ParserMatchClass = X86DstIdx8Operand;
+  let MIOperandInfo = (ops ptr_rc);
+  let PrintMethod = "printDstIdx8"; }
+def dstidx16 : Operand<iPTR> {
+  let ParserMatchClass = X86DstIdx16Operand;
+  let MIOperandInfo = (ops ptr_rc);
+  let PrintMethod = "printDstIdx16"; }
+def dstidx32 : Operand<iPTR> {
+  let ParserMatchClass = X86DstIdx32Operand;
+  let MIOperandInfo = (ops ptr_rc);
+  let PrintMethod = "printDstIdx32"; }
+def dstidx64 : Operand<iPTR> {
+  let ParserMatchClass = X86DstIdx64Operand;
+  let MIOperandInfo = (ops ptr_rc);
+  let PrintMethod = "printDstIdx64"; }
 def offset8 : Operand<iPTR> {
   let ParserMatchClass = X86MemOffs8AsmOperand;
   let MIOperandInfo = (ops i64imm, i8imm);
@@ -1066,33 +1137,47 @@ def BSR64rm  : RI<0xBD, MRMSrcMem, (outs GR64:$dst), (ins i64mem:$src),
 let SchedRW = [WriteMicrocoded] in {
 // These uses the DF flag in the EFLAGS register to inc or dec EDI and ESI
 let Defs = [EDI,ESI], Uses = [EDI,ESI,EFLAGS] in {
-def MOVSB : I<0xA4, RawFrm, (outs), (ins), "movsb", [], IIC_MOVS>;
-def MOVSW : I<0xA5, RawFrm, (outs), (ins), "movsw", [], IIC_MOVS>, OpSize;
-def MOVSL : I<0xA5, RawFrm, (outs), (ins), "movs{l|d}", [], IIC_MOVS>, OpSize16;
-def MOVSQ : RI<0xA5, RawFrm, (outs), (ins), "movsq", [], IIC_MOVS>;
+def MOVSB : I<0xA4, RawFrmDstSrc, (outs dstidx8:$dst), (ins srcidx8:$src),
+              "movsb\t{$src, $dst|$dst, $src}", [], IIC_MOVS>;
+def MOVSW : I<0xA5, RawFrmDstSrc, (outs dstidx16:$dst), (ins srcidx16:$src),
+              "movsw\t{$src, $dst|$dst, $src}", [], IIC_MOVS>, OpSize;
+def MOVSL : I<0xA5, RawFrmDstSrc, (outs dstidx32:$dst), (ins srcidx32:$src),
+              "movs{l|d}\t{$src, $dst|$dst, $src}", [], IIC_MOVS>, OpSize16;
+def MOVSQ : RI<0xA5, RawFrmDstSrc, (outs dstidx64:$dst), (ins srcidx64:$src),
+               "movsq\t{$src, $dst|$dst, $src}", [], IIC_MOVS>;
 }
 
 // These uses the DF flag in the EFLAGS register to inc or dec EDI and ESI
 let Defs = [EDI], Uses = [AL,EDI,EFLAGS] in
-def STOSB : I<0xAA, RawFrm, (outs), (ins), "stosb", [], IIC_STOS>;
+def STOSB : I<0xAA, RawFrmDst, (outs dstidx8:$dst), (ins),
+              "stosb\t{%al, $dst|$dst, al}", [], IIC_STOS>;
 let Defs = [EDI], Uses = [AX,EDI,EFLAGS] in
-def STOSW : I<0xAB, RawFrm, (outs), (ins), "stosw", [], IIC_STOS>, OpSize;
+def STOSW : I<0xAB, RawFrmDst, (outs dstidx16:$dst), (ins),
+              "stosw\t{%ax, $dst|$dst, ax}", [], IIC_STOS>, OpSize;
 let Defs = [EDI], Uses = [EAX,EDI,EFLAGS] in
-def STOSL : I<0xAB, RawFrm, (outs), (ins), "stos{l|d}", [], IIC_STOS>, OpSize16;
+def STOSL : I<0xAB, RawFrmDst, (outs dstidx32:$dst), (ins),
+              "stos{l|d}\t{%eax, $dst|$dst, eax}", [], IIC_STOS>, OpSize16;
 let Defs = [RCX,RDI], Uses = [RAX,RCX,RDI,EFLAGS] in
-def STOSQ : RI<0xAB, RawFrm, (outs), (ins), "stosq", [], IIC_STOS>;
+def STOSQ : RI<0xAB, RawFrmDst, (outs dstidx64:$dst), (ins),
+               "stosq\t{%rax, $dst|$dst, rax}", [], IIC_STOS>;
 
-def SCAS8 : I<0xAE, RawFrm, (outs), (ins), "scasb", [], IIC_SCAS>;
-def SCAS16 : I<0xAF, RawFrm, (outs), (ins), "scasw", [], IIC_SCAS>, OpSize;
-def SCAS32 : I<0xAF, RawFrm, (outs), (ins), "scas{l|d}", [], IIC_SCAS>,
-               OpSize16;
-def SCAS64 : RI<0xAF, RawFrm, (outs), (ins), "scasq", [], IIC_SCAS>;
+def SCAS8 : I<0xAE, RawFrmDst, (outs), (ins dstidx8:$dst),
+              "scasb\t{$dst, %al|al, $dst}", [], IIC_SCAS>;
+def SCAS16 : I<0xAF, RawFrmDst, (outs), (ins dstidx16:$dst),
+               "scasw\t{$dst, %ax|ax, $dst}", [], IIC_SCAS>, OpSize;
+def SCAS32 : I<0xAF, RawFrmDst, (outs), (ins dstidx32:$dst),
+               "scas{l|d}\t{$dst, %eax|eax, $dst}", [], IIC_SCAS>, OpSize16;
+def SCAS64 : RI<0xAF, RawFrmDst, (outs), (ins dstidx64:$dst),
+                "scasq\t{$dst, %rax|rax, $dst}", [], IIC_SCAS>;
 
-def CMPS8 : I<0xA6, RawFrm, (outs), (ins), "cmpsb", [], IIC_CMPS>;
-def CMPS16 : I<0xA7, RawFrm, (outs), (ins), "cmpsw", [], IIC_CMPS>, OpSize;
-def CMPS32 : I<0xA7, RawFrm, (outs), (ins), "cmps{l|d}", [], IIC_CMPS>,
-               OpSize16;
-def CMPS64 : RI<0xA7, RawFrm, (outs), (ins), "cmpsq", [], IIC_CMPS>;
+def CMPS8 : I<0xA6, RawFrmDstSrc, (outs), (ins dstidx8:$dst, srcidx8:$src),
+              "cmpsb\t{$dst, $src|$src, $dst}", [], IIC_CMPS>;
+def CMPS16 : I<0xA7, RawFrmDstSrc, (outs), (ins dstidx16:$dst, srcidx16:$src),
+               "cmpsw\t{$dst, $src|$src, $dst}", [], IIC_CMPS>, OpSize;
+def CMPS32 : I<0xA7, RawFrmDstSrc, (outs), (ins dstidx32:$dst, srcidx32:$src),
+               "cmps{l|d}\t{$dst, $src|$src, $dst}", [], IIC_CMPS>, OpSize16;
+def CMPS64 : RI<0xA7, RawFrmDstSrc, (outs), (ins dstidx64:$dst, srcidx64:$src),
+                "cmpsq\t{$dst, $src|$src, $dst}", [], IIC_CMPS>;
 } // SchedRW
 
 //===----------------------------------------------------------------------===//
@@ -1676,16 +1761,23 @@ def REPNE_PREFIX : I<0xF2, RawFrm, (outs),  (ins), "repne", []>;
 
 // String manipulation instructions
 let SchedRW = [WriteMicrocoded] in {
-def LODSB : I<0xAC, RawFrm, (outs), (ins), "lodsb", [], IIC_LODS>;
-def LODSW : I<0xAD, RawFrm, (outs), (ins), "lodsw", [], IIC_LODS>, OpSize;
-def LODSL : I<0xAD, RawFrm, (outs), (ins), "lods{l|d}", [], IIC_LODS>, OpSize16;
-def LODSQ : RI<0xAD, RawFrm, (outs), (ins), "lodsq", [], IIC_LODS>;
+def LODSB : I<0xAC, RawFrmSrc, (outs), (ins srcidx8:$src),
+              "lodsb\t{$src, %al|al, $src}", [], IIC_LODS>;
+def LODSW : I<0xAD, RawFrmSrc, (outs), (ins srcidx16:$src),
+              "lodsw\t{$src, %ax|ax, $src}", [], IIC_LODS>, OpSize;
+def LODSL : I<0xAD, RawFrmSrc, (outs), (ins srcidx32:$src),
+              "lods{l|d}\t{$src, %eax|eax, $src}", [], IIC_LODS>, OpSize16;
+def LODSQ : RI<0xAD, RawFrmSrc, (outs), (ins srcidx64:$src),
+               "lodsq\t{$src, %rax|rax, $src}", [], IIC_LODS>;
 }
 
 let SchedRW = [WriteSystem] in {
-def OUTSB : I<0x6E, RawFrm, (outs), (ins), "outsb", [], IIC_OUTS>;
-def OUTSW : I<0x6F, RawFrm, (outs), (ins), "outsw", [], IIC_OUTS>, OpSize;
-def OUTSL : I<0x6F, RawFrm, (outs), (ins), "outs{l|d}", [], IIC_OUTS>, OpSize16;
+def OUTSB : I<0x6E, RawFrmSrc, (outs), (ins srcidx8:$src),
+             "outsb\t{$src, %dx|dx, $src}", [], IIC_OUTS>;
+def OUTSW : I<0x6F, RawFrmSrc, (outs), (ins srcidx16:$src),
+              "outsw\t{$src, %dx|dx, $src}", [], IIC_OUTS>, OpSize;
+def OUTSL : I<0x6F, RawFrmSrc, (outs), (ins srcidx32:$src),
+              "outs{l|d}\t{$src, %dx|dx, $src}", [], IIC_OUTS>, OpSize16;
 }
 
 // Flag instructions
@@ -2329,6 +2421,42 @@ def : InstAlias<"clrw $reg", (XOR16rr GR16:$reg, GR16:$reg), 0>;
 def : InstAlias<"clrl $reg", (XOR32rr GR32:$reg, GR32:$reg), 0>;
 def : InstAlias<"clrq $reg", (XOR64rr GR64:$reg, GR64:$reg), 0>;
 
+// lods aliases. Accept the destination being omitted because it's implicit
+// in the mnemonic, or the mnemonic suffix being omitted because it's implicit
+// in the destination.
+def : InstAlias<"lodsb $src", (LODSB srcidx8:$src),  0>;
+def : InstAlias<"lodsw $src", (LODSW srcidx16:$src), 0>;
+def : InstAlias<"lods{l|d} $src", (LODSL srcidx32:$src), 0>;
+def : InstAlias<"lodsq $src", (LODSQ srcidx64:$src), 0>, Requires<[In64BitMode]>;
+def : InstAlias<"lods {$src, %al|al, $src}", (LODSB srcidx8:$src),  0>;
+def : InstAlias<"lods {$src, %ax|ax, $src}", (LODSW srcidx16:$src), 0>;
+def : InstAlias<"lods {$src, %eax|eax, $src}", (LODSL srcidx32:$src), 0>;
+def : InstAlias<"lods {$src, %rax|rax, $src}", (LODSQ srcidx64:$src), 0>, Requires<[In64BitMode]>;
+
+// stos aliases. Accept the source being omitted because it's implicit in
+// the mnemonic, or the mnemonic suffix being omitted because it's implicit
+// in the source.
+def : InstAlias<"stosb $dst", (STOSB dstidx8:$dst),  0>;
+def : InstAlias<"stosw $dst", (STOSW dstidx16:$dst), 0>;
+def : InstAlias<"stos{l|d} $dst", (STOSL dstidx32:$dst), 0>;
+def : InstAlias<"stosq $dst", (STOSQ dstidx64:$dst), 0>, Requires<[In64BitMode]>;
+def : InstAlias<"stos {%al, $dst|$dst, al}", (STOSB dstidx8:$dst),  0>;
+def : InstAlias<"stos {%ax, $dst|$dst, ax}", (STOSW dstidx16:$dst), 0>;
+def : InstAlias<"stos {%eax, $dst|$dst, eax}", (STOSL dstidx32:$dst), 0>;
+def : InstAlias<"stos {%rax, $dst|$dst, rax}", (STOSQ dstidx64:$dst), 0>, Requires<[In64BitMode]>;
+
+// scas aliases. Accept the destination being omitted because it's implicit
+// in the mnemonic, or the mnemonic suffix being omitted because it's implicit
+// in the destination.
+def : InstAlias<"scasb $dst", (SCAS8 dstidx8:$dst),  0>;
+def : InstAlias<"scasw $dst", (SCAS16 dstidx16:$dst), 0>;
+def : InstAlias<"scas{l|d} $dst", (SCAS32 dstidx32:$dst), 0>;
+def : InstAlias<"scasq $dst", (SCAS64 dstidx64:$dst), 0>, Requires<[In64BitMode]>;
+def : InstAlias<"scas {$dst, %al|al, $dst}", (SCAS8 dstidx8:$dst),  0>;
+def : InstAlias<"scas {$dst, %ax|ax, $dst}", (SCAS16 dstidx16:$dst), 0>;
+def : InstAlias<"scas {$dst, %eax|eax, $dst}", (SCAS32 dstidx32:$dst), 0>;
+def : InstAlias<"scas {$dst, %rax|rax, $dst}", (SCAS64 dstidx64:$dst), 0>, Requires<[In64BitMode]>;
+
 // div and idiv aliases for explicit A register.
 def : InstAlias<"div{b}\t{$src, %al|al, $src}", (DIV8r  GR8 :$src)>;
 def : InstAlias<"div{w}\t{$src, %ax|ax, $src}", (DIV16r GR16:$src)>;
@@ -2471,10 +2599,6 @@ def : InstAlias<"movq $src, $dst",
                 (MMX_MOVD64to64rr VR64:$dst, GR64:$src), 0>;
 def : InstAlias<"movq $src, $dst",
                 (MMX_MOVD64from64rr GR64:$dst, VR64:$src), 0>;
-
-// movsd with no operands (as opposed to the SSE scalar move of a double) is an
-// alias for movsl. (as in rep; movsd)
-def : InstAlias<"movsd", (MOVSL), 0>;
 
 // movsx aliases
 def : InstAlias<"movsx $src, $dst", (MOVSX16rr8 GR16:$dst, GR8:$src), 0>;
