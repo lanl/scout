@@ -790,7 +790,7 @@ bool Sema::CheckConstexprFunctionDecl(const FunctionDecl *NewFD) {
     }
 
     // - its return type shall be a literal type;
-    QualType RT = NewFD->getResultType();
+    QualType RT = NewFD->getReturnType();
     if (!RT->isDependentType() &&
         RequireLiteralType(NewFD->getLocation(), RT,
                            diag::err_constexpr_non_literal_return))
@@ -1180,7 +1180,7 @@ bool Sema::CheckConstexprFunctionBody(const FunctionDecl *Dcl, Stmt *Body) {
       // statement. We still do, unless the return type is void, because
       // otherwise if there's no return statement, the function cannot
       // be used in a core constant expression.
-      bool OK = getLangOpts().CPlusPlus1y && Dcl->getResultType()->isVoidType();
+      bool OK = getLangOpts().CPlusPlus1y && Dcl->getReturnType()->isVoidType();
       Diag(Dcl->getLocation(),
            OK ? diag::warn_cxx11_compat_constexpr_body_no_return
               : diag::err_constexpr_body_no_return);
@@ -4246,7 +4246,7 @@ struct CheckAbstractUsage {
   }
 
   void Check(FunctionProtoTypeLoc TL, Sema::AbstractDiagSelID Sel) {
-    Visit(TL.getResultLoc(), Sema::AbstractReturnType);
+    Visit(TL.getReturnLoc(), Sema::AbstractReturnType);
     for (unsigned I = 0, E = TL.getNumParams(); I != E; ++I) {
       if (!TL.getParam(I))
         continue;
@@ -4717,7 +4717,7 @@ updateExceptionSpec(Sema &S, FunctionDecl *FD, const FunctionProtoType *FPT,
                     const Sema::ImplicitExceptionSpecification &ExceptSpec) {
   FunctionProtoType::ExtProtoInfo EPI = FPT->getExtProtoInfo();
   ExceptSpec.getEPI(EPI);
-  FD->setType(S.Context.getFunctionType(FPT->getResultType(),
+  FD->setType(S.Context.getFunctionType(FPT->getReturnType(),
                                         FPT->getParamTypes(), EPI));
 }
 
@@ -4805,7 +4805,7 @@ void Sema::CheckExplicitlyDefaultedSpecialMember(CXXMethodDecl *MD) {
   QualType ReturnType = Context.VoidTy;
   if (CSM == CXXCopyAssignment || CSM == CXXMoveAssignment) {
     // Check for return type matching.
-    ReturnType = Type->getResultType();
+    ReturnType = Type->getReturnType();
     QualType ExpectedReturnType =
         Context.getLValueReferenceType(Context.getTypeDeclType(RD));
     if (!Context.hasSameType(ReturnType, ExpectedReturnType)) {
@@ -4917,6 +4917,7 @@ void Sema::CheckExplicitlyDefaultedSpecialMember(CXXMethodDecl *MD) {
       //   [For a] user-provided explicitly-defaulted function [...] if such a
       //   function is implicitly defined as deleted, the program is ill-formed.
       Diag(MD->getLocation(), diag::err_out_of_line_default_deletes) << CSM;
+      ShouldDeleteSpecialMember(MD, CSM, /*Diagnose*/true);
       HadError = true;
     }
   }
@@ -6220,7 +6221,7 @@ QualType Sema::CheckConstructorDeclarator(Declarator &D, QualType R,
   // case any of the errors above fired) and with "void" as the
   // return type, since constructors don't have return types.
   const FunctionProtoType *Proto = R->getAs<FunctionProtoType>();
-  if (Proto->getResultType() == Context.VoidTy && !D.isInvalidType())
+  if (Proto->getReturnType() == Context.VoidTy && !D.isInvalidType())
     return R;
 
   FunctionProtoType::ExtProtoInfo EPI = Proto->getExtProtoInfo();
@@ -6468,11 +6469,11 @@ void Sema::CheckConversionDeclarator(Declarator &D, QualType &R,
 
   // Diagnose "&operator bool()" and other such nonsense.  This
   // is actually a gcc extension which we don't support.
-  if (Proto->getResultType() != ConvType) {
+  if (Proto->getReturnType() != ConvType) {
     Diag(D.getIdentifierLoc(), diag::err_conv_function_with_complex_decl)
-      << Proto->getResultType();
+        << Proto->getReturnType();
     D.setInvalidType();
-    ConvType = Proto->getResultType();
+    ConvType = Proto->getReturnType();
   }
 
   // C++ [class.conv.fct]p4:
@@ -8411,7 +8412,7 @@ private:
       do
         declareCtor(UsingLoc, Ctor,
                     SemaRef.Context.getFunctionType(
-                        Ctor->getResultType(), ArgTypes.slice(0, Params), EPI));
+                        Ctor->getReturnType(), ArgTypes.slice(0, Params), EPI));
       while (Params > MinParams &&
              Ctor->getParamDecl(--Params)->hasDefaultArg());
     }
@@ -8525,7 +8526,7 @@ private:
     FunctionProtoType::ExtProtoInfo EPI = FPT->getExtProtoInfo();
     EPI.ExceptionSpecType = EST_Unevaluated;
     EPI.ExceptionSpecDecl = DerivedCtor;
-    DerivedCtor->setType(Context.getFunctionType(FPT->getResultType(),
+    DerivedCtor->setType(Context.getFunctionType(FPT->getReturnType(),
                                                  FPT->getParamTypes(), EPI));
 
     // Build the parameter declarations.
@@ -10686,8 +10687,8 @@ CheckOperatorNewDeleteTypes(Sema &SemaRef, const FunctionDecl *FnDecl,
                             CanQualType ExpectedFirstParamType,
                             unsigned DependentParamTypeDiag,
                             unsigned InvalidParamTypeDiag) {
-  QualType ResultType = 
-    FnDecl->getType()->getAs<FunctionType>()->getResultType();
+  QualType ResultType =
+      FnDecl->getType()->getAs<FunctionType>()->getReturnType();
 
   // Check that the result type is not dependent.
   if (ResultType->isDependentType())
@@ -12105,8 +12106,8 @@ bool Sema::CheckOverridingFunctionAttributes(const CXXMethodDecl *New,
 
 bool Sema::CheckOverridingFunctionReturnType(const CXXMethodDecl *New,
                                              const CXXMethodDecl *Old) {
-  QualType NewTy = New->getType()->getAs<FunctionType>()->getResultType();
-  QualType OldTy = Old->getType()->getAs<FunctionType>()->getResultType();
+  QualType NewTy = New->getType()->getAs<FunctionType>()->getReturnType();
+  QualType OldTy = Old->getType()->getAs<FunctionType>()->getReturnType();
 
   if (Context.hasSameType(NewTy, OldTy) ||
       NewTy->isDependentType() || OldTy->isDependentType())
@@ -12655,7 +12656,7 @@ bool Sema::checkThisInStaticMemberFunctionType(CXXMethodDecl *Method) {
   
   // If the return type came after the cv-qualifier-seq, check it now.
   if (Proto->hasTrailingReturn() &&
-      !Finder.TraverseTypeLoc(ProtoTL.getResultLoc()))
+      !Finder.TraverseTypeLoc(ProtoTL.getReturnLoc()))
     return true;
 
   // Check the exception specification.

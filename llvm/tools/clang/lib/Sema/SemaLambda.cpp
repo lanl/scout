@@ -364,7 +364,7 @@ CXXMethodDecl *Sema::startLambdaDefinition(CXXRecordDecl *Class,
   // dependent type.
   if (Class->isDependentContext() || TemplateParams) {
     const FunctionProtoType *FPT = MethodType->castAs<FunctionProtoType>();
-    QualType Result = FPT->getResultType();
+    QualType Result = FPT->getReturnType();
     if (Result->isUndeducedType()) {
       Result = SubstAutoType(Result, Context.DependentTy);
       MethodType = Context.getFunctionType(Result, FPT->getParamTypes(),
@@ -456,8 +456,8 @@ void Sema::buildLambdaScope(LambdaScopeInfo *LSI,
   LSI->Mutable = Mutable;
 
   if (ExplicitResultType) {
-    LSI->ReturnType = CallOperator->getResultType();
-    
+    LSI->ReturnType = CallOperator->getReturnType();
+
     if (!LSI->ReturnType->isDependentType() &&
         !LSI->ReturnType->isVoidType()) {
       if (RequireCompleteType(CallOperator->getLocStart(), LSI->ReturnType,
@@ -1165,7 +1165,7 @@ static void addFunctionPointerConversion(Sema &S,
     assert(InvokerExtInfo.RefQualifier == RQ_None && 
         "Lambda's call operator should not have a reference qualifier");
     InvokerFunctionTy =
-        S.Context.getFunctionType(CallOpProto->getResultType(),
+        S.Context.getFunctionType(CallOpProto->getReturnType(),
                                   CallOpProto->getParamTypes(), InvokerExtInfo);
     PtrToFunctionTy = S.Context.getPointerType(InvokerFunctionTy);
   }
@@ -1210,7 +1210,7 @@ static void addFunctionPointerConversion(Sema &S,
       ConvTSI->getTypeLoc().getAs<FunctionProtoTypeLoc>();
   // Get the result of the conversion function which is a pointer-to-function.
   PointerTypeLoc PtrToFunctionTL = 
-      ConvTL.getResultLoc().getAs<PointerTypeLoc>();
+      ConvTL.getReturnLoc().getAs<PointerTypeLoc>();
   // Do the same for the TypeSourceInfo that is used to name the conversion
   // operator.
   PointerTypeLoc ConvNamePtrToFunctionTL = 
@@ -1332,7 +1332,7 @@ static void addBlockPointerConversion(Sema &S,
     FunctionProtoType::ExtProtoInfo ExtInfo = Proto->getExtProtoInfo();
     ExtInfo.TypeQuals = 0;
     QualType FunctionTy = S.Context.getFunctionType(
-        Proto->getResultType(), Proto->getParamTypes(), ExtInfo);
+        Proto->getReturnType(), Proto->getParamTypes(), ExtInfo);
     BlockPtrTy = S.Context.getBlockPointerType(FunctionTy);
   }
 

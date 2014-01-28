@@ -1145,7 +1145,7 @@ void Parser::ParseLexedAttribute(LateParsedAttribute &LA,
 
   const AttributeList *AL = Attrs.getList();
   if (OnDefinition && AL && !AL->isCXX11Attribute() &&
-      !AL->canAppearOnFunctionDefinition())
+      AL->isKnownToGCC())
     Diag(Tok, diag::warn_attribute_on_function_definition)
       << &LA.AttrName;
 

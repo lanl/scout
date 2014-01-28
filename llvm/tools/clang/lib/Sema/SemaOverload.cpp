@@ -1027,7 +1027,7 @@ bool Sema::IsOverload(FunctionDecl *New, FunctionDecl *Old,
       (!TemplateParameterListsAreEqual(NewTemplate->getTemplateParameters(),
                                        OldTemplate->getTemplateParameters(),
                                        false, TPL_TemplateMatch) ||
-       OldType->getResultType() != NewType->getResultType()))
+       OldType->getReturnType() != NewType->getReturnType()))
     return true;
 
   // If the function is a class member, its signature includes the
@@ -1134,6 +1134,7 @@ TryUserDefinedConversion(Sema &S, Expr *From, QualType ToType,
 
   if (UserDefResult == OR_Success) {
     ICS.setUserDefined();
+    ICS.UserDefined.Before.setAsIdentityConversion();
     // C++ [over.ics.user]p4:
     //   A conversion of an expression of class type to the same class
     //   type is given Exact Match rank, and a conversion of an
@@ -2302,11 +2303,11 @@ bool Sema::isObjCPointerConversion(QualType FromType, QualType ToType,
       return false;
 
     bool HasObjCConversion = false;
-    if (Context.getCanonicalType(FromFunctionType->getResultType())
-          == Context.getCanonicalType(ToFunctionType->getResultType())) {
+    if (Context.getCanonicalType(FromFunctionType->getReturnType()) ==
+        Context.getCanonicalType(ToFunctionType->getReturnType())) {
       // Okay, the types match exactly. Nothing to do.
-    } else if (isObjCPointerConversion(FromFunctionType->getResultType(),
-                                       ToFunctionType->getResultType(),
+    } else if (isObjCPointerConversion(FromFunctionType->getReturnType(),
+                                       ToFunctionType->getReturnType(),
                                        ConvertedType, IncompatibleObjC)) {
       // Okay, we have an Objective-C pointer conversion.
       HasObjCConversion = true;
@@ -2454,12 +2455,17 @@ bool Sema::IsBlockPointerConversion(QualType FromType, QualType ToType,
     return false;
 
   bool IncompatibleObjC = false;
+<<<<<<< HEAD
   if (Context.hasSameType(FromFunctionType->getResultType(),
                           ToFunctionType->getResultType())) {
+=======
+  if (Context.hasSameType(FromFunctionType->getReturnType(),
+                          ToFunctionType->getReturnType())) {
+>>>>>>> d0d5f662c1ba9191562a51dbabf3e1e39772d164
     // Okay, the types match exactly. Nothing to do.
   } else {
-    QualType RHS = FromFunctionType->getResultType();
-    QualType LHS = ToFunctionType->getResultType();
+    QualType RHS = FromFunctionType->getReturnType();
+    QualType LHS = ToFunctionType->getReturnType();
     if ((!getLangOpts().CPlusPlus || !RHS->isRecordType()) &&
         !RHS.hasQualifiers() && LHS.hasQualifiers())
        LHS = LHS.getUnqualifiedType();
@@ -2582,10 +2588,10 @@ void Sema::HandleFunctionTypeMismatch(PartialDiagnostic &PDiag,
   }
 
   // Handle different return type.
-  if (!Context.hasSameType(FromFunction->getResultType(),
-                           ToFunction->getResultType())) {
-    PDiag << ft_return_type << ToFunction->getResultType()
-          << FromFunction->getResultType();
+  if (!Context.hasSameType(FromFunction->getReturnType(),
+                           ToFunction->getReturnType())) {
+    PDiag << ft_return_type << ToFunction->getReturnType()
+          << FromFunction->getReturnType();
     return;
   }
 
@@ -4446,9 +4452,9 @@ TryReferenceInit(Sema &S, Expr *Init, QualType DeclType,
   } else if (ICS.isUserDefined()) {
     // Don't allow rvalue references to bind to lvalues.
     if (DeclType->isRValueReferenceType()) {
-      if (const ReferenceType *RefType
-            = ICS.UserDefined.ConversionFunction->getResultType()
-                ->getAs<LValueReferenceType>()) {
+      if (const ReferenceType *RefType =
+              ICS.UserDefined.ConversionFunction->getReturnType()
+                  ->getAs<LValueReferenceType>()) {
         if (!RefType->getPointeeType()->isFunctionType()) {
           ICS.setBad(BadConversionSequence::lvalue_ref_to_rvalue, Init,
                      DeclType);
@@ -4456,7 +4462,11 @@ TryReferenceInit(Sema &S, Expr *Init, QualType DeclType,
         }
       }
     }
+<<<<<<< HEAD
 
+=======
+    ICS.UserDefined.Before.setAsIdentityConversion();
+>>>>>>> d0d5f662c1ba9191562a51dbabf3e1e39772d164
     ICS.UserDefined.After.ReferenceBinding = true;
     ICS.UserDefined.After.IsLvalueReference = !isRValRef;
     ICS.UserDefined.After.BindsToFunctionLvalue = T2->isFunctionType();
@@ -9725,7 +9735,7 @@ private:
       // If any candidate has a placeholder return type, trigger its deduction
       // now.
       if (S.getLangOpts().CPlusPlus1y &&
-          FunDecl->getResultType()->isUndeducedType() &&
+          FunDecl->getReturnType()->isUndeducedType() &&
           S.DeduceReturnType(FunDecl, SourceExpr->getLocStart(), Complain))
         return false;
 
@@ -10030,7 +10040,7 @@ Sema::ResolveSingleFunctionTemplateSpecialization(OverloadExpr *ovl,
   }
 
   if (Matched && getLangOpts().CPlusPlus1y &&
-      Matched->getResultType()->isUndeducedType() &&
+      Matched->getReturnType()->isUndeducedType() &&
       DeduceReturnType(Matched, ovl->getExprLoc(), Complain))
     return 0;
 
@@ -10724,7 +10734,7 @@ Sema::CreateOverloadedUnaryOp(SourceLocation OpLoc, unsigned OpcIn,
         return ExprError();
 
       // Determine the result type.
-      QualType ResultTy = FnDecl->getResultType();
+      QualType ResultTy = FnDecl->getReturnType();
       ExprValueKind VK = Expr::getValueKindForType(ResultTy);
       ResultTy = ResultTy.getNonLValueExprType(Context);
 
@@ -10733,8 +10743,7 @@ Sema::CreateOverloadedUnaryOp(SourceLocation OpLoc, unsigned OpcIn,
         new (Context) CXXOperatorCallExpr(Context, Op, FnExpr.take(), ArgsArray,
                                           ResultTy, VK, OpLoc, false);
 
-      if (CheckCallReturnType(FnDecl->getResultType(), OpLoc, TheCall,
-                              FnDecl))
+      if (CheckCallReturnType(FnDecl->getReturnType(), OpLoc, TheCall, FnDecl))
         return ExprError();
 
       return MaybeBindToTemporary(TheCall);
@@ -10959,7 +10968,7 @@ Sema::CreateOverloadedBinOp(SourceLocation OpLoc,
           return ExprError();
 
         // Determine the result type.
-        QualType ResultTy = FnDecl->getResultType();
+        QualType ResultTy = FnDecl->getReturnType();
         ExprValueKind VK = Expr::getValueKindForType(ResultTy);
         ResultTy = ResultTy.getNonLValueExprType(Context);
 
@@ -10968,7 +10977,7 @@ Sema::CreateOverloadedBinOp(SourceLocation OpLoc,
                                             Args, ResultTy, VK, OpLoc,
                                             FPFeatures.fp_contract);
 
-        if (CheckCallReturnType(FnDecl->getResultType(), OpLoc, TheCall,
+        if (CheckCallReturnType(FnDecl->getReturnType(), OpLoc, TheCall,
                                 FnDecl))
           return ExprError();
 
@@ -11175,7 +11184,7 @@ Sema::CreateOverloadedArraySubscriptExpr(SourceLocation LLoc,
           return ExprError();
 
         // Determine the result type
-        QualType ResultTy = FnDecl->getResultType();
+        QualType ResultTy = FnDecl->getReturnType();
         ExprValueKind VK = Expr::getValueKindForType(ResultTy);
         ResultTy = ResultTy.getNonLValueExprType(Context);
 
@@ -11185,8 +11194,7 @@ Sema::CreateOverloadedArraySubscriptExpr(SourceLocation LLoc,
                                             ResultTy, VK, RLoc,
                                             false);
 
-        if (CheckCallReturnType(FnDecl->getResultType(), LLoc, TheCall,
-                                FnDecl))
+        if (CheckCallReturnType(FnDecl->getReturnType(), LLoc, TheCall, FnDecl))
           return ExprError();
 
         return MaybeBindToTemporary(TheCall);
@@ -11278,7 +11286,7 @@ Sema::BuildCallToMemberFunction(Scope *S, Expr *MemExprE,
 
     const FunctionProtoType *proto = fnType->castAs<FunctionProtoType>();
     QualType resultType = proto->getCallResultType(Context);
-    ExprValueKind valueKind = Expr::getValueKindForType(proto->getResultType());
+    ExprValueKind valueKind = Expr::getValueKindForType(proto->getReturnType());
 
     // Check that the object type isn't more qualified than the
     // member function we're calling.
@@ -11304,8 +11312,7 @@ Sema::BuildCallToMemberFunction(Scope *S, Expr *MemExprE,
       = new (Context) CXXMemberCallExpr(Context, MemExprE, Args,
                                         resultType, valueKind, RParenLoc);
 
-    if (CheckCallReturnType(proto->getResultType(),
-                            op->getRHS()->getLocStart(),
+    if (CheckCallReturnType(proto->getReturnType(), op->getRHS()->getLocStart(),
                             call, 0))
       return ExprError();
 
@@ -11444,7 +11451,7 @@ Sema::BuildCallToMemberFunction(Scope *S, Expr *MemExprE,
     MemExpr = cast<MemberExpr>(MemExprE->IgnoreParens());
   }
 
-  QualType ResultType = Method->getResultType();
+  QualType ResultType = Method->getReturnType();
   ExprValueKind VK = Expr::getValueKindForType(ResultType);
   ResultType = ResultType.getNonLValueExprType(Context);
 
@@ -11454,7 +11461,7 @@ Sema::BuildCallToMemberFunction(Scope *S, Expr *MemExprE,
                                     ResultType, VK, RParenLoc);
 
   // Check for a valid return type.
-  if (CheckCallReturnType(Method->getResultType(), MemExpr->getMemberLoc(),
+  if (CheckCallReturnType(Method->getReturnType(), MemExpr->getMemberLoc(),
                           TheCall, Method))
     return ExprError();
 
@@ -11703,7 +11710,7 @@ Sema::BuildCallToObjectOfClassType(Scope *S, Expr *Obj,
 
   // Once we've built TheCall, all of the expressions are properly
   // owned.
-  QualType ResultTy = Method->getResultType();
+  QualType ResultTy = Method->getReturnType();
   ExprValueKind VK = Expr::getValueKindForType(ResultTy);
   ResultTy = ResultTy.getNonLValueExprType(Context);
 
@@ -11713,8 +11720,7 @@ Sema::BuildCallToObjectOfClassType(Scope *S, Expr *Obj,
                           ResultTy, VK, RParenLoc, false);
   MethodArgs.reset();
 
-  if (CheckCallReturnType(Method->getResultType(), LParenLoc, TheCall,
-                          Method))
+  if (CheckCallReturnType(Method->getReturnType(), LParenLoc, TheCall, Method))
     return true;
 
   // We may have default arguments. If so, we need to allocate more
@@ -11886,15 +11892,14 @@ Sema::BuildOverloadedArrowExpr(Scope *S, Expr *Base, SourceLocation OpLoc,
   if (FnExpr.isInvalid())
     return ExprError();
 
-  QualType ResultTy = Method->getResultType();
+  QualType ResultTy = Method->getReturnType();
   ExprValueKind VK = Expr::getValueKindForType(ResultTy);
   ResultTy = ResultTy.getNonLValueExprType(Context);
   CXXOperatorCallExpr *TheCall =
     new (Context) CXXOperatorCallExpr(Context, OO_Arrow, FnExpr.take(),
                                       Base, ResultTy, VK, OpLoc, false);
 
-  if (CheckCallReturnType(Method->getResultType(), OpLoc, TheCall,
-                          Method))
+  if (CheckCallReturnType(Method->getReturnType(), OpLoc, TheCall, Method))
           return ExprError();
 
   return MaybeBindToTemporary(TheCall);
@@ -11955,7 +11960,7 @@ ExprResult Sema::BuildLiteralOperatorCall(LookupResult &R,
     ConvArgs[ArgIdx] = InputInit.take();
   }
 
-  QualType ResultTy = FD->getResultType();
+  QualType ResultTy = FD->getReturnType();
   ExprValueKind VK = Expr::getValueKindForType(ResultTy);
   ResultTy = ResultTy.getNonLValueExprType(Context);
 
@@ -11964,7 +11969,7 @@ ExprResult Sema::BuildLiteralOperatorCall(LookupResult &R,
                                      llvm::makeArrayRef(ConvArgs, Args.size()),
                                      ResultTy, VK, LitEndLoc, UDSuffixLoc);
 
-  if (CheckCallReturnType(FD->getResultType(), UDSuffixLoc, UDL, FD))
+  if (CheckCallReturnType(FD->getReturnType(), UDSuffixLoc, UDL, FD))
     return ExprError();
 
   if (CheckFunctionCall(FD, UDL, NULL))

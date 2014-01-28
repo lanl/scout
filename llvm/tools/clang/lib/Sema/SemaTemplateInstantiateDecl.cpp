@@ -1513,7 +1513,7 @@ static QualType adjustFunctionTypeForInstantiation(ASTContext &Context,
 
   FunctionProtoType::ExtProtoInfo NewEPI = NewFunc->getExtProtoInfo();
   NewEPI.ExtInfo = OrigFunc->getExtInfo();
-  return Context.getFunctionType(NewFunc->getResultType(),
+  return Context.getFunctionType(NewFunc->getReturnType(),
                                  NewFunc->getParamTypes(), NewEPI);
 }
 
@@ -3456,7 +3456,7 @@ static void InstantiateExceptionSpec(Sema &SemaRef, FunctionDecl *New,
   EPI.Exceptions = Exceptions.data();
   EPI.NoexceptExpr = NoexceptExpr;
 
-  New->setType(SemaRef.Context.getFunctionType(NewProto->getResultType(),
+  New->setType(SemaRef.Context.getFunctionType(NewProto->getReturnType(),
                                                NewProto->getParamTypes(), EPI));
 }
 
@@ -3473,7 +3473,7 @@ void Sema::InstantiateExceptionSpec(SourceLocation PointOfInstantiation,
     // so that our callers don't have to cope with EST_Uninstantiated.
     FunctionProtoType::ExtProtoInfo EPI = Proto->getExtProtoInfo();
     EPI.ExceptionSpecType = EST_None;
-    Decl->setType(Context.getFunctionType(Proto->getResultType(),
+    Decl->setType(Context.getFunctionType(Proto->getReturnType(),
                                           Proto->getParamTypes(), EPI));
     return;
   }
@@ -3558,7 +3558,7 @@ TemplateDeclInstantiator::InitFunctionInstantiation(FunctionDecl *New,
       EPI.ExceptionSpecDecl = New;
       EPI.ExceptionSpecTemplate = ExceptionSpecTemplate;
       New->setType(SemaRef.Context.getFunctionType(
-          NewProto->getResultType(), NewProto->getParamTypes(), EPI));
+          NewProto->getReturnType(), NewProto->getParamTypes(), EPI));
     } else {
       ::InstantiateExceptionSpec(SemaRef, New, Proto, TemplateArgs);
     }
@@ -3686,10 +3686,10 @@ void Sema::InstantiateFunctionDefinition(SourceLocation PointOfInstantiation,
   //   initializer or return value, and class template specializations, other
   //   explicit instantiation declarations have the effect of suppressing the
   //   implicit instantiation of the entity to which they refer.
-  if (Function->getTemplateSpecializationKind()
-        == TSK_ExplicitInstantiationDeclaration &&
+  if (Function->getTemplateSpecializationKind() ==
+          TSK_ExplicitInstantiationDeclaration &&
       !PatternDecl->isInlined() &&
-      !PatternDecl->getResultType()->getContainedAutoType())
+      !PatternDecl->getReturnType()->getContainedAutoType())
     return;
 
   if (PatternDecl->isInlined())
