@@ -89,59 +89,63 @@ llvm::Function *CGScoutRuntime::ModuleInitFunction() {
   return scrtInit;
 }
 
-  //SC_TODO: could we use CreateRuntimeFunction? or GetOrCreateLLVMFunction?
+// build a function call to a scout runtime function t
+// SC_TODO: could we use CreateRuntimeFunction? or GetOrCreateLLVMFunction?
 llvm::Function *CGScoutRuntime::ScoutRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params ) {
 
-	llvm::Function *Func = CGM.getModule().getFunction(funcName);
-	if(!Func){
-		llvm::FunctionType *FTy =
-				llvm::FunctionType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()),
-						Params, false);
+  llvm::Function *Func = CGM.getModule().getFunction(funcName);
+  if(!Func){
+    llvm::FunctionType *FTy =
+        llvm::FunctionType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()),
+            Params, false);
 
-		Func = llvm::Function::Create(FTy,
-				llvm::Function::ExternalLinkage,
-				funcName,
-				&CGM.getModule());
-	}
-	return Func;
+    Func = llvm::Function::Create(FTy,
+        llvm::Function::ExternalLinkage,
+        funcName,
+        &CGM.getModule());
+  }
+  return Func;
 }
 
+// build function call to __scrt_renderall_uniform_begin()
 llvm::Function *CGScoutRuntime::RenderallUniformBeginFunction() {
-	std::string funcName = "__scrt_renderall_uniform_begin";
-	std::vector<llvm::Type*> Params;
+  std::string funcName = "__scrt_renderall_uniform_begin";
+  std::vector<llvm::Type*> Params;
 
-	for(int i=0; i < 3; i++) {
-		Params.push_back(llvm::Type::getInt32Ty(CGM.getLLVMContext()));
-	}
-	return ScoutRuntimeFunction(funcName, Params);
+  for(int i=0; i < 3; i++) {
+    Params.push_back(llvm::Type::getInt32Ty(CGM.getLLVMContext()));
+  }
+  return ScoutRuntimeFunction(funcName, Params);
 }
 
+// build function call to __scrt_renderall_end()
 llvm::Function *CGScoutRuntime::RenderallEndFunction() {
-	std::string funcName = "__scrt_renderall_end";
+  std::string funcName = "__scrt_renderall_end";
 
-	std::vector<llvm::Type*> Params;
-	return ScoutRuntimeFunction(funcName, Params);
+  std::vector<llvm::Type*> Params;
+  return ScoutRuntimeFunction(funcName, Params);
 }
 
+// get Value for global runtime variable __scrt_renderall_uniform_colors
 llvm::Value *CGScoutRuntime::RenderallUniformColorsGlobal() {
-	std::string varName = "__scrt_renderall_uniform_colors";
-	llvm::Type *fltTy = llvm::Type::getFloatTy(CGM.getLLVMContext());
-	llvm::Type *flt4Ty = llvm::VectorType::get(fltTy, 4);
-	llvm::Type *flt4PtrTy = llvm::PointerType::get(flt4Ty, 0);
+  std::string varName = "__scrt_renderall_uniform_colors";
+  llvm::Type *fltTy = llvm::Type::getFloatTy(CGM.getLLVMContext());
+  llvm::Type *flt4Ty = llvm::VectorType::get(fltTy, 4);
+  llvm::Type *flt4PtrTy = llvm::PointerType::get(flt4Ty, 0);
 
-	if (!CGM.getModule().getNamedGlobal(varName)) {
+  if (!CGM.getModule().getNamedGlobal(varName)) {
 
-		new llvm::GlobalVariable(CGM.getModule(),
-				flt4PtrTy,
-				false,
-				llvm::GlobalValue::ExternalLinkage,
-				0,
-				varName);
-	}
+    new llvm::GlobalVariable(CGM.getModule(),
+        flt4PtrTy,
+        false,
+        llvm::GlobalValue::ExternalLinkage,
+        0,
+        varName);
+  }
 
-	llvm::Value *colors = CGM.getModule().getNamedGlobal(varName);
+  llvm::Value *colors = CGM.getModule().getNamedGlobal(varName);
 
-	return colors;
+  return colors;
 }
 
 

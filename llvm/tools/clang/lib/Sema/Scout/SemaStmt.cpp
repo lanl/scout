@@ -101,14 +101,14 @@ namespace {
           // (2) replace print function with a "special" version...
           sema_.Diag(E->getExprLoc(), diag::warn_forall_calling_io_func);
         } else if (name == "cshift" || name == "cshifti" || name == "cshiftf" || name == "cshiftd" ||
-        		name == "eoshift" || name == "eoshifti" || name == "eoshiftf" || name == "eoshiftd") {
+            name == "eoshift" || name == "eoshifti" || name == "eoshiftf" || name == "eoshiftd") {
 
           // SC_TODO -- need to check mesh types here for cshift() validity.
 
-        	unsigned extra = 1; //cshift
-        	if (name == "eoshift" || name == "eoshifti" || name == "eoshiftf" || name == "eoshiftd") {
-        		extra = 2;
-        	}
+          unsigned extra = 1; //cshift
+          if (name == "eoshift" || name == "eoshifti" || name == "eoshiftf" || name == "eoshiftd") {
+            extra = 2;
+          }
 
           const MeshType* mt = fs_->getMeshType();
           unsigned args = E->getNumArgs();
@@ -158,61 +158,9 @@ namespace {
       if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(E->getBase())) {
         ValueDecl* bd = dr->getDecl();
 
-        if (const MeshType* MT = dyn_cast<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
+        if (isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
 
           ValueDecl* md = E->getMemberDecl();
-
-          // Make sure we are only accessing mesh traits that match the dimensionality
-          // of the mesh...
-          if ((md->getName() == "height" ) || (md->getName() == "depth")) {
-
-            unsigned ND = MT->rankOf();
-
-            if (md->getName() == "height" && ND < 2) {
-              sema_.Diag(E->getMemberLoc(), diag::err_invalid_height_mesh);
-              error_ = true;
-            } else if (md->getName() == "depth" && ND < 3) {
-              sema_.Diag(E->getMemberLoc(), diag::err_invalid_depth_mesh);
-              error_ = true;
-            }
-          } else {
-            /*
-            ForallMeshStmt::MeshElementType LoopElementType = fs_->getMeshElementRef();
-            const MeshFieldType* MFT;
-            MFT = dyn_cast<MeshFieldType>(md->getType().getTypePtr());
-
-            switch(LoopElementType) {
-
-              case ForallMeshStmt::Cells:
-                if (! MFT->isCellLocated()) {
-                  sema_.Diag(E->getMemberLoc(), diag::err_forall_non_cell_field);
-                }
-                break;
-
-              case ForallMeshStmt::Vertices:
-                if (! MFT->isVertexLocated()) {
-                  sema_.Diag(E->getMemberLoc(), diag::err_forall_non_vertex_field);
-                }
-                break;
-
-              case ForallMeshStmt::Edges:
-                if (! MFT->isEdgeLocated()) {
-                  sema_.Diag(E->getMemberLoc(), diag::err_forall_non_edge_field);
-                }
-
-                break;
-
-              case ForallMeshStmt::Faces:
-                if (! MFT->isFaceLocated()) {
-                  sema_.Diag(E->getMemberLoc(), diag::err_forall_non_face_field);
-                }
-                break;
-
-              default:
-                assert(false && "unknown mesh field element type");
-            }
-            */
-          }
 
           //SC_TODO: is there a cleaner way to do this w/o an map?
           std::string ref = bd->getName().str() + "." + md->getName().str();
@@ -1002,7 +950,12 @@ namespace {
       : sema_(sema),
         fs_(fs),
         error_(false),
-        nodeType_(NodeNone) {
+        nodeType_(NodeNone),
+        foundColorAssign_(false) {
+      for(size_t i = 0; i < 4; ++i) {
+        foundComponentAssign_[i] = false;
+      }
+
     }
 
     void VisitStmt(Stmt* S) {
@@ -1022,14 +975,14 @@ namespace {
           // (2) replace print function with a "special" version...
           sema_.Diag(E->getExprLoc(), diag::warn_renderall_calling_io_func);
         } else if (name == "cshift" || name == "cshifti" || name == "cshiftf" || name == "cshiftd" ||
-        		name == "eoshift" || name == "eoshifti" || name == "eoshiftf" || name == "eoshiftd") {
+            name == "eoshift" || name == "eoshifti" || name == "eoshiftf" || name == "eoshiftd") {
 
           // SC_TODO -- need to check mesh types here for cshift() validity.
 
-        	unsigned extra = 1; //cshift
-        	if (name == "eoshift" || name == "eoshifti" || name == "eoshiftf" || name == "eoshiftd") {
-        		extra = 2;
-        	}
+          unsigned extra = 1; //cshift
+          if (name == "eoshift" || name == "eoshifti" || name == "eoshiftf" || name == "eoshiftd") {
+            extra = 2;
+          }
 
           const MeshType* mt = fs_->getMeshType();
           unsigned args = E->getNumArgs();
@@ -1079,61 +1032,9 @@ namespace {
       if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(E->getBase())) {
         ValueDecl* bd = dr->getDecl();
 
-        if (const MeshType* MT = dyn_cast<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
+        if (isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
 
           ValueDecl* md = E->getMemberDecl();
-
-          // Make sure we are only accessing mesh traits that match the dimensionality
-          // of the mesh...
-          if ((md->getName() == "height" ) || (md->getName() == "depth")) {
-
-            unsigned ND = MT->rankOf();
-
-            if (md->getName() == "height" && ND < 2) {
-              sema_.Diag(E->getMemberLoc(), diag::err_invalid_height_mesh);
-              error_ = true;
-            } else if (md->getName() == "depth" && ND < 3) {
-              sema_.Diag(E->getMemberLoc(), diag::err_invalid_depth_mesh);
-              error_ = true;
-            }
-          } else {
-            /*
-            ForallMeshStmt::MeshElementType LoopElementType = fs_->getMeshElementRef();
-            const MeshFieldType* MFT;
-            MFT = dyn_cast<MeshFieldType>(md->getType().getTypePtr());
-
-            switch(LoopElementType) {
-
-              case ForallMeshStmt::Cells:
-                if (! MFT->isCellLocated()) {
-                  sema_.Diag(E->getMemberLoc(), diag::err_forall_non_cell_field);
-                }
-                break;
-
-              case ForallMeshStmt::Vertices:
-                if (! MFT->isVertexLocated()) {
-                  sema_.Diag(E->getMemberLoc(), diag::err_forall_non_vertex_field);
-                }
-                break;
-
-              case ForallMeshStmt::Edges:
-                if (! MFT->isEdgeLocated()) {
-                  sema_.Diag(E->getMemberLoc(), diag::err_forall_non_edge_field);
-                }
-
-                break;
-
-              case ForallMeshStmt::Faces:
-                if (! MFT->isFaceLocated()) {
-                  sema_.Diag(E->getMemberLoc(), diag::err_forall_non_face_field);
-                }
-                break;
-
-              default:
-                assert(false && "unknown mesh field element type");
-            }
-            */
-          }
 
           std::string ref = bd->getName().str() + "." + md->getName().str();
 
@@ -1171,6 +1072,26 @@ namespace {
 
       switch(S->getOpcode()){
         case BO_Assign:
+          if(S->getOpcode() == BO_Assign){
+            if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(S->getLHS())) {
+              if(dr->getDecl()->getName().str() == "color") {
+                foundColorAssign_ = true;
+              }
+            }
+            /* convert to new vectors
+            else if(ScoutVectorMemberExpr* vm =
+                dyn_cast<ScoutVectorMemberExpr>(S->getLHS())) {
+              if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(vm->getBase())){
+                if(dr->getDecl()->getName().str() == "color") {
+                  foundComponentAssign_[vm->getIdx()] = true;
+                }
+              }
+            }
+            */
+          } else {
+            VisitChildren(S);
+          }
+          break;
         case BO_MulAssign:
         case BO_DivAssign:
         case BO_RemAssign:
@@ -1202,6 +1123,46 @@ namespace {
       nodeType_ = NodeNone;
     }
 
+    void VisitIfStmt(IfStmt* S) {
+      size_t ic = 0;
+      for(Stmt::child_iterator I = S->child_begin(),
+          E = S->child_end(); I != E; ++I){
+
+        if(Stmt* child = *I) {
+          if(isa<CompoundStmt>(child) || isa<IfStmt>(child)) {
+            RenderallVisitor v(sema_,fs_);
+            v.Visit(child);
+            if(v.foundColorAssign()) {
+              foundColorAssign_ = true;
+            } else {
+              foundColorAssign_ = false;
+              break;
+            }
+          } else {
+            Visit(child);
+          }
+          ++ic;
+        }
+      }
+      if(ic == 2) {
+        foundColorAssign_ = false;
+      }
+    }
+
+    bool foundColorAssign() {
+      if(foundColorAssign_) {
+        return true;
+      }
+
+      for(size_t i = 0; i < 4; ++i) {
+        if(!foundComponentAssign_[i]) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+
     bool error(){
       return error_;
     }
@@ -1214,6 +1175,8 @@ namespace {
     RefMap_ localMap_;
     bool error_;
     NodeType nodeType_;
+    bool foundColorAssign_;
+    bool foundComponentAssign_[4];
   };
 } // end namespace
 
@@ -1265,6 +1228,15 @@ bool Sema::ActOnRenderallMeshRefVariable(Scope* S,
 
   PushOnScopeChains(D, S, true);
   SCLStack.push_back(D);
+
+  // add the implicit "color" parameter
+  ImplicitParamDecl* CD =
+      ImplicitParamDecl::Create(Context, CurContext, RefVarLoc,
+          &Context.Idents.get("color"),
+          Context.getExtVectorType(Context.FloatTy, 4));
+
+  PushOnScopeChains(CD, S, true);
+
   return true;
 }
 

@@ -496,7 +496,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 	}
 
 	// call renderall colors setup
-	// SC_TODO: should we has get()/set() rather than using the global directly?
+	// SC_TODO: should we use get()/set() rather than using the global directly?
 	llvm::Value *ColorsPtr = CGM.getScoutRuntime().RenderallUniformColorsGlobal();
 	llvm::Value *Colors = Builder.CreateLoad(ColorsPtr, "colors");
 
