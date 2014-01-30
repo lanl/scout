@@ -54,8 +54,35 @@
 
 #include "CommandObjectMesh.h"
 
+#include <iostream>
+
 using namespace lldb;
 using namespace lldb_private;
+
+class CommandObjectMeshTest : public CommandObjectParsed{
+public:
+  CommandObjectMeshTest(CommandInterpreter& interpreter)
+  : CommandObjectParsed(interpreter,
+                        "mesh test",
+                        "mesh test method",
+                        "mesh test",
+                        eFlagRequiresProcess |
+                        eFlagTryTargetAPILock |
+                        eFlagProcessMustBeLaunched |
+                        eFlagProcessMustBePaused){
+    
+  }
+
+  ~CommandObjectMeshTest(){
+
+  }
+
+  bool DoExecute(Args& command, CommandReturnObject& result){
+    std::cout << "executed mesh test" << std::endl;
+
+    return true;
+  }
+};
 
 CommandObjectMultiwordMesh::CommandObjectMultiwordMesh(CommandInterpreter& 
                                                        interpreter) :
@@ -63,8 +90,8 @@ CommandObjectMultiwordMesh::CommandObjectMultiwordMesh(CommandInterpreter&
                          "mesh",
                          "A command for manipulating Scout meshes.",
                          "mesh <subcommand> [<subcommand-options>]"){
-  //LoadSubCommand("test",
-  //               CommandObjectSP(new CommandObjectMeshTest(interpreter)));
+  LoadSubCommand("test",
+                 CommandObjectSP(new CommandObjectMeshTest(interpreter)));
 }
 
 CommandObjectMultiwordMesh::~CommandObjectMultiwordMesh(){
