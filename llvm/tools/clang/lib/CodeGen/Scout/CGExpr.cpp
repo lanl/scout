@@ -36,16 +36,17 @@ static const char *IndexNames[] = { "x", "y", "z"};
 static char IRNameStr[160];
 
 
-/*
+
 LValue
 CodeGenFunction::EmitScoutColorDeclRefLValue(const NamedDecl *ND) {
+  llvm::errs() << "in EmitScoutColorDeclRefLValue\n";
   const ValueDecl *VD = cast<ValueDecl>(ND);
   CharUnits Alignment = getContext().getDeclAlign(ND);
-  llvm::Value *idx = getGlobalIdx();
-  llvm::Value* ep = Builder.CreateInBoundsGEP(Colors, idx);
+  llvm::Value *idx = getLinearIdx();
+  llvm::Value* ep = Builder.CreateInBoundsGEP(Color, idx);
   return MakeAddrLValue(ep, VD->getType(), Alignment);
 }
-*/
+
 
 /*
 LValue
@@ -180,7 +181,7 @@ CodeGenFunction::EmitLValueForMeshField(LValue base,
 
   // work around bug in llvm, this is similar to what a for loop appears to do
   // see EmitArraySubscriptExpr()
-  llvm::Value *Idx = Builder.CreateSExt(Index, IntPtrTy, "forall.linearIdx");
+  llvm::Value *Idx = Builder.CreateSExt(Index, IntPtrTy, "Xall.linearidx"); //forall or renderall
 
   // get the correct element of the field depending on the index
   sprintf(IRNameStr, "%s.%s.element.ptr", mesh->getName().str().c_str(),field->getName().str().c_str());

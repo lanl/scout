@@ -291,8 +291,11 @@ public:
   // mesh dimension sizes
   llvm::SmallVector< llvm::Value *, 3 > LoopBounds;
 
+  //renderall color buffer
+  llvm::Value *Color;
+
   inline llvm::Value *getLinearIdx() {
-    return Builder.CreateLoad(InductionVar[3], "forall.linearidx");
+    return Builder.CreateLoad(InductionVar[3], "Xall.linearidx"); //could be forall or renderall
   }
 
   bool isGPU() {
@@ -1943,7 +1946,7 @@ public:
   void EmitForallMeshStmt(const ForallMeshStmt &S);
   void EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r);
   llvm::BasicBlock *EmitForallMarkerBlock(const std::string name);
-  void ExtractForall(llvm::BasicBlock *entry, llvm::BasicBlock *exit, const std::string name);
+  void ExtractRegion(llvm::BasicBlock *entry, llvm::BasicBlock *exit, const std::string name);
 
   void EmitForAllStmtWrapper(const ForallMeshStmt &S);
 
@@ -1955,13 +1958,14 @@ public:
   void EmitForallArrayLoop(const ForallArrayStmt &S,  unsigned r);
 
   void EmitRenderallStmt(const RenderallMeshStmt &S);
+  void EmitRenderallMeshLoop(const RenderallMeshStmt &S, llvm::Value *LoopBound);
   //void EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S);
 
   void insertMeshDump(llvm::Value* baseAddr);
 
   typedef llvm::SmallVector<llvm::Value*,3> MySmallVector;
 
-  //LValue EmitScoutColorDeclRefLValue(const NamedDecl *ND);
+  LValue EmitScoutColorDeclRefLValue(const NamedDecl *ND);
   //LValue EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND);
   LValue EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index);
   LValue EmitLValueForMeshField(LValue base, const MeshFieldDecl *field, llvm::Value *Index);

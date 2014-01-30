@@ -204,7 +204,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   llvm::BasicBlock *exit = EmitForallMarkerBlock("forall.exit");
 
   // Extract Blocks to function and replace w/ call to function
-  ExtractForall(entry, exit, "ForallMeshFunction");
+  ExtractRegion(entry, exit, "ForallMeshFunction");
 
 }
 
@@ -334,14 +334,14 @@ void CodeGenFunction::EmitForallBody(const ForallStmt &S) {
 
 // Emit a branch and block. used as markers for code extraction
 llvm::BasicBlock *CodeGenFunction::EmitForallMarkerBlock(const std::string name) {
-	 llvm::BasicBlock *entry = createBasicBlock(name);
-	  Builder.CreateBr(entry);
-	  EmitBlock(entry);
-	  return entry;
+  llvm::BasicBlock *entry = createBasicBlock(name);
+  Builder.CreateBr(entry);
+  EmitBlock(entry);
+  return entry;
 }
 
 // Extract blocks to function and replace w/ call to function
-void CodeGenFunction:: ExtractForall(llvm::BasicBlock *entry, llvm::BasicBlock *exit, const std::string name) {
+void CodeGenFunction:: ExtractRegion(llvm::BasicBlock *entry, llvm::BasicBlock *exit, const std::string name) {
   std::vector< llvm::BasicBlock * > Blocks;
 
   llvm::Function::iterator BB = CurFn->begin();
@@ -363,8 +363,8 @@ void CodeGenFunction:: ExtractForall(llvm::BasicBlock *entry, llvm::BasicBlock *
 
 void CodeGenFunction::EmitForallArrayStmt(const ForallArrayStmt &S) {
 
-	//need a marker for start of Forall for CodeExtraction
-	llvm::BasicBlock *entry = EmitForallMarkerBlock("forall.entry");
+  //need a marker for start of Forall for CodeExtraction
+  llvm::BasicBlock *entry = EmitForallMarkerBlock("forall.entry");
 
   EmitForallArrayLoop(S, S.getDims());
 
@@ -372,7 +372,7 @@ void CodeGenFunction::EmitForallArrayStmt(const ForallArrayStmt &S) {
   llvm::BasicBlock *exit = EmitForallMarkerBlock("forall.exit");
 
   // Extract Blocks to function and replace w/ call to function
-  ExtractForall(entry, exit, "ForallArrayFunction");
+  ExtractRegion(entry, exit, "ForallArrayFunction");
 }
 
 void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) {
@@ -466,7 +466,6 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
   EmitBlock(LoopExit.getBlock(), true);
 }
 
-
 void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 
 	llvm::Value *MeshBaseAddr = GetMeshBaseAddr(S);
@@ -480,38 +479,148 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 	unsigned int rank = S.getMeshType()->rankOf();
 	llvm::errs() << "rank " << rank << "\n";
 
-	llvm::SmallVector< llvm::Value *, 3 > Args;
 	LoopBounds.clear();
+	InductionVar.clear();
+	llvm::SmallVector< llvm::Value *, 3 > Args;
 	Args.clear();
+
+	//need a marker for start of Renderall for CodeExtraction
+	llvm::BasicBlock *entry = EmitForallMarkerBlock("renderall.entry");
+
+	llvm::Value *LoopBound = llvm::ConstantInt::get(Int32Ty, 1);
 	for(unsigned int i = 0; i < rank; i++) {
 		 LoopBounds.push_back(0);
+		 InductionVar.push_back(0); //unused in renderall
 		 Args.push_back(0);
 		 sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
 		 LoopBounds[i] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
 		 Args[i] = Builder.CreateLoad(LoopBounds[i]);
+		 LoopBound = Builder.CreateMul(LoopBound, Args[i], "renderall.elements"); //total number of elements
 	}
 	for(unsigned int i = rank; i < 3; i++) {
 		LoopBounds.push_back(llvm::ConstantInt::get(Int32Ty, 0));
+		InductionVar.push_back(0); // unused in renderall
 		Args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
 	}
 
-	// call renderall colors setup
-	// SC_TODO: should we has get()/set() rather than using the global directly?
-	llvm::Value *ColorsPtr = CGM.getScoutRuntime().RenderallUniformColorsGlobal();
-	llvm::Value *Colors = Builder.CreateLoad(ColorsPtr, "colors");
+	// create linear loop index as 4th element and zero-initialize.
+	llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
+	InductionVar.push_back(0);
+	InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "renderall.linearidx.ptr");
+	//zero-initialize induction var
+	Builder.CreateStore(ConstantZero, InductionVar[3]);
+
+	// call renderall color buffer setup
+	// SC_TODO: move more to RenderallUniformColorsGlobal()
+	llvm::Value *RuntimeColorPtr = CGM.getScoutRuntime().RenderallUniformColorsGlobal();
+	llvm::Type *flt4PtrTy = llvm::PointerType::get(
+	      llvm::VectorType::get(llvm::Type::getFloatTy(CGM.getLLVMContext()), 4), 0);
+	llvm::Value *ColorPtr  = Builder.CreateAlloca(flt4PtrTy, 0, "color.ptr");
+	Builder.CreateStore(Builder.CreateLoad(RuntimeColorPtr, "runtime.color"), ColorPtr);
+	Color = Builder.CreateLoad(ColorPtr, "color");
+
 
 	// call renderall setup runtime function
 	llvm::Function *BeginFunc = CGM.getScoutRuntime().RenderallUniformBeginFunction();
 	Builder.CreateCall(BeginFunc, ArrayRef<llvm::Value *>(Args));
 
-	//SC_TODO: renderall body
+
+	// renderall loop + body
+	EmitRenderallMeshLoop(S, LoopBound);
 
 	// call renderall cleanup runtime function
 	llvm::Function *EndFunc = CGM.getScoutRuntime().RenderallEndFunction();
 	std::vector<llvm::Value*> EmptyArgs;
 	Builder.CreateCall(EndFunc, ArrayRef<llvm::Value *>(EmptyArgs));
 
+	//need a marker for end of Forall for CodeExtraction
+	llvm::BasicBlock *exit = EmitForallMarkerBlock("renderall.exit");
+
+	ExtractRegion(entry, exit, "RenderallFunction");
 }
+
+void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, llvm::Value *LoopBound) {
+  RegionCounter Cnt = getPGORegionCounter(&S);
+  CGDebugInfo *DI = getDebugInfo();
+
+  llvm::Value *ConstantZero  = 0;
+  llvm::Value *ConstantOne   = 0;
+  ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
+  ConstantOne  = llvm::ConstantInt::get(Int32Ty, 1);
+
+  //zero-initialize induction var
+  Builder.CreateStore(ConstantZero, InductionVar[3]);
+
+  JumpDest LoopExit = getJumpDestInCurrentScope("renderall.end");
+  RunCleanupsScope RenderallScope(*this);
+
+  if (DI)
+    DI->EmitLexicalBlockStart(Builder, S.getSourceRange().getBegin());
+
+
+  // Next we create a block that tests the induction variables value to
+  // the rank's dimension.
+  JumpDest Continue = getJumpDestInCurrentScope("renderall.cond");
+  llvm::BasicBlock *CondBlock = Continue.getBlock();
+  EmitBlock(CondBlock);
+
+  RunCleanupsScope ConditionScope(*this);
+
+  llvm::LoadInst *IVar = Builder.CreateLoad(InductionVar[3], "renderall.induct");
+  llvm::Value *CondValue = Builder.CreateICmpSLT(IVar,
+      LoopBound, "renderall.done");
+
+  llvm::BasicBlock *ExitBlock = LoopExit.getBlock();
+
+  // If there are any cleanups between here and the loop-exit
+  // scope, create a block to stage a loop exit along.  (We're
+  // following Clang's lead here in generating a for loop.)
+  if (RenderallScope.requiresCleanups()) {
+    ExitBlock = createBasicBlock("renderall.cond.cleanup");
+  }
+
+  llvm::BasicBlock *LoopBody = createBasicBlock("renderall.done");
+  Builder.CreateCondBr(CondValue, LoopBody, ExitBlock);
+
+  if (ExitBlock != LoopExit.getBlock()) {
+    EmitBlock(ExitBlock);
+    EmitBranchThroughCleanup(LoopExit);
+  }
+
+  EmitBlock(LoopBody);
+
+  Continue = getJumpDestInCurrentScope("renderall.incblk");
+
+  // Store the blocks to use for break and continue.
+
+  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue, &Cnt));
+
+  //Emit Body
+  EmitStmt(S.getBody());
+
+  EmitBlock(Continue.getBlock());
+
+  // Increment the loop index stored as last element of InductionVar
+  llvm::LoadInst* liv = Builder.CreateLoad(InductionVar[3], "renderall.induct");
+  llvm::Value *IncLoopIndexVar = Builder.CreateAdd(liv,
+      ConstantOne,
+      "renderall.induct.inc");
+  Builder.CreateStore(IncLoopIndexVar, InductionVar[3]);
+
+
+  BreakContinueStack.pop_back();
+  ConditionScope.ForceCleanup();
+
+  EmitBranch(CondBlock);
+  RenderallScope.ForceCleanup();
+
+  if (DI)
+    DI->EmitLexicalBlockEnd(Builder, S.getSourceRange().getEnd());
+
+  EmitBlock(LoopExit.getBlock(), true);
+}
+
+
 
 #if 0
 void CodeGenFunction::EmitForAllStmtWrapper(const ForallMeshStmt &S) {
