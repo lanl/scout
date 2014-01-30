@@ -90,7 +90,10 @@ extern const color_channel_t SC_MIN_CHANNEL_VALUE;
 extern const color_channel_t SC_MAX_CHANNEL_VALUE;
 // +--------------------------------------------------------------------------+
 
-
+// We want C linkage
+#if defined(__scout_cxx__)
+extern "C" {
+#endif
 
 // +--------------------------------------------------------------------------+
 // Color-related functions for use in rendering constructs.  These
@@ -102,7 +105,8 @@ extern const color_channel_t SC_MAX_CHANNEL_VALUE;
 /// color -- alpha value remains constant.  The hue value is clamped
 /// between 0.0 and 360.0 degrees (inclusive) -- all other values are
 /// clamped to the range [ 0.0 ... 1.0 ] (inclusive).
-extern color_t hsva(color_channel_t hue,
+
+color_t hsva(color_channel_t hue,
                     color_channel_t saturation,
                     color_channel_t value,
                     color_channel_t alpha);
@@ -115,6 +119,7 @@ extern color_t hsv(color_channel_t hue,
                    color_channel_t saturation,
                    color_channel_t value);
 
+
 /// Linear blend of two color channels values with an associated
 /// alpha weight.  The blend is straightforward and is implemented
 /// as: c0 + (c1 - c0) * alpha.  As with other color functions,
@@ -123,6 +128,10 @@ extern color_t hsv(color_channel_t hue,
 extern color_channel_t mix(color_channel_t ch0,
                            color_channel_t ch1,
                            color_channel_t alpha);
+
+#if defined(__scout_cxx__)
+}
+#endif
 
 #if defined(__scout_cxx__)
 /// Linear blend of the two colors with a single alpha weighting.
@@ -144,6 +153,7 @@ extern color_t mix(const color_t &c0,
                    const color_t &c1,
                    const color_t &alpha);
 #endif
+
 // +--------------------------------------------------------------------------+
 
 #endif
