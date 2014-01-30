@@ -41,6 +41,9 @@
 #include "../Commands/CommandObjectVersion.h"
 #include "../Commands/CommandObjectWatchpoint.h"
 
+// +===== Scout =========================
+#include "../Commands/CommandObjectMesh.h"
+// +=====================================
 
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/Log.h"
@@ -397,6 +400,11 @@ CommandInterpreter::LoadCommandDictionary ()
     m_command_dict["type"]      = CommandObjectSP (new CommandObjectType (*this));
     m_command_dict["version"]   = CommandObjectSP (new CommandObjectVersion (*this));
     m_command_dict["watchpoint"]= CommandObjectSP (new CommandObjectMultiwordWatchpoint (*this));
+
+    // +===== Scout ===================================================
+    m_command_dict["mesh"] = 
+      CommandObjectSP (new CommandObjectMultiwordMesh(*this));
+    // +===============================================================
 
     const char *break_regexes[][2] = {{"^(.*[^[:space:]])[[:space:]]*:[[:space:]]*([[:digit:]]+)[[:space:]]*$", "breakpoint set --file '%1' --line %2"},
                                       {"^([[:digit:]]+)[[:space:]]*$", "breakpoint set --line %1"},
