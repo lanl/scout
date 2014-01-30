@@ -1743,17 +1743,17 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
   // SC_TODO -- this needs to be handled again for renderall constructs.
   //
   // Check if this is a 'color' expression.
-  //if (ND->getDeclName().isIdentifier() && isa<ImplicitParamDecl>(ND)) {
+  if (ND->getDeclName().isIdentifier() && isa<ImplicitParamDecl>(ND)) {
   //  llvm::errs() << "is Implicit\n";
   //
-  //  if (ND->getName() == "color") {  // Check if this is a 'color' expression.
-  //    return EmitScoutColorDeclRefLValue(ND);
+    if (ND->getName() == "color") {  // Check if this is a 'color' expression.
+      return EmitScoutColorDeclRefLValue(ND);
   //  } else if (CurrentForAllArrayStmt) {
   //    return EmitScoutForAllArrayDeclRefLValue(ND);
   //  } else {
   //
-  //  }
-  //}
+    }
+  }
   // ==========================================================================
 
   // A DeclRefExpr for a reference initialized by a constant expression can

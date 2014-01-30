@@ -129,9 +129,8 @@ llvm::Function *CGScoutRuntime::RenderallEndFunction() {
 // get Value for global runtime variable __scrt_renderall_uniform_colors
 llvm::Value *CGScoutRuntime::RenderallUniformColorsGlobal() {
   std::string varName = "__scrt_renderall_uniform_colors";
-  llvm::Type *fltTy = llvm::Type::getFloatTy(CGM.getLLVMContext());
-  llvm::Type *flt4Ty = llvm::VectorType::get(fltTy, 4);
-  llvm::Type *flt4PtrTy = llvm::PointerType::get(flt4Ty, 0);
+  llvm::Type *flt4PtrTy = llvm::PointerType::get(
+      llvm::VectorType::get(llvm::Type::getFloatTy(CGM.getLLVMContext()), 4), 0);
 
   if (!CGM.getModule().getNamedGlobal(varName)) {
 
