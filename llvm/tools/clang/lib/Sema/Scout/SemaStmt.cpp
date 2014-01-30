@@ -57,7 +57,10 @@
 #include "clang/Sema/Lookup.h"
 #include "clang/AST/StmtVisitor.h"
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
+#include "clang/AST/Scout/ImplicitColorParamDecl.h"
+#include "clang/Basic/Builtins.h"
 #include <map>
+
 using namespace clang;
 using namespace sema;
 
@@ -88,27 +91,38 @@ namespace {
       VisitChildren(S);
     }
 
+    //check if builtin id is a cshift
+    bool isCShift(unsigned id) {
+         if (id == Builtin::BIcshift || id == Builtin::BIcshifti
+             || id == Builtin::BIcshiftf || id == Builtin::BIcshiftd ) return true;
+         return false;
+       }
+
+    //check if builtin id is an eoshift
+    bool isEOShift(unsigned id) {
+      if (id == Builtin::BIeoshift || id == Builtin::BIeoshifti
+          || id == Builtin::BIeoshiftf || id == Builtin::BIeoshiftd ) return true;
+      return false;
+    }
+
     void VisitCallExpr(CallExpr* E) {
 
       FunctionDecl* fd = E->getDirectCallee();
 
       if (fd) {
         std::string name = fd->getName();
+        unsigned id = fd->getBuiltinID();
         if (name == "printf" || name == "fprintf") {
           // SC_TODO -- for now we'll warn that you're calling a print
           // function inside a parallel construct -- in the long run
           // we can either (1) force the loop to run sequentially or
           // (2) replace print function with a "special" version...
           sema_.Diag(E->getExprLoc(), diag::warn_forall_calling_io_func);
-        } else if (name == "cshift" || name == "cshifti" || name == "cshiftf" || name == "cshiftd" ||
-            name == "eoshift" || name == "eoshifti" || name == "eoshiftf" || name == "eoshiftd") {
-
+        } else if (isCShift(id) || isEOShift(id)) {
           // SC_TODO -- need to check mesh types here for cshift() validity.
 
-          unsigned extra = 1; //cshift
-          if (name == "eoshift" || name == "eoshifti" || name == "eoshiftf" || name == "eoshiftd") {
-            extra = 2;
-          }
+          unsigned extra = 1; // cshift has 1 extra arg: mesh
+           if (isEOShift(id)) extra = 2; // EOshift has 2 extra args: mesh and value
 
           const MeshType* mt = fs_->getMeshType();
           unsigned args = E->getNumArgs();
@@ -962,27 +976,39 @@ namespace {
       VisitChildren(S);
     }
 
+    //check if builtin id is a cshift
+    bool isCShift(unsigned id) {
+      if (id == Builtin::BIcshift || id == Builtin::BIcshifti
+          || id == Builtin::BIcshiftf || id == Builtin::BIcshiftd ) return true;
+      return false;
+    }
+
+    //check if builtin id is an eoshift
+    bool isEOShift(unsigned id) {
+      if (id == Builtin::BIeoshift || id == Builtin::BIeoshifti
+          || id == Builtin::BIeoshiftf || id == Builtin::BIeoshiftd ) return true;
+      return false;
+    }
+
     void VisitCallExpr(CallExpr* E) {
 
       FunctionDecl* fd = E->getDirectCallee();
 
       if (fd) {
         std::string name = fd->getName();
+        unsigned id = fd->getBuiltinID();
         if (name == "printf" || name == "fprintf") {
           // SC_TODO -- for now we'll warn that you're calling a print
           // function inside a parallel construct -- in the long run
           // we can either (1) force the loop to run sequentially or
           // (2) replace print function with a "special" version...
           sema_.Diag(E->getExprLoc(), diag::warn_renderall_calling_io_func);
-        } else if (name == "cshift" || name == "cshifti" || name == "cshiftf" || name == "cshiftd" ||
-            name == "eoshift" || name == "eoshifti" || name == "eoshiftf" || name == "eoshiftd") {
+        } else if (isCShift(id) || isEOShift(id)) {
 
           // SC_TODO -- need to check mesh types here for cshift() validity.
 
-          unsigned extra = 1; //cshift
-          if (name == "eoshift" || name == "eoshifti" || name == "eoshiftf" || name == "eoshiftd") {
-            extra = 2;
-          }
+          unsigned extra = 1; // cshift has 1 extra arg: mesh
+          if (isEOShift(id)) extra = 2; // EOshift has 2 extra args: mesh and value
 
           const MeshType* mt = fs_->getMeshType();
           unsigned args = E->getNumArgs();
@@ -1074,15 +1100,16 @@ namespace {
         case BO_Assign:
           if(S->getOpcode() == BO_Assign){
             if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(S->getLHS())) {
-              if(dr->getDecl()->getName().str() == "color") {
+              if(isa<ImplicitColorParamDecl>(dr->getDecl())) {
                 foundColorAssign_ = true;
+                llvm::errs() << "found color\n";
               }
             }
-            /* convert to new vectors
+            /* SC_TODO: convert to new vectors
             else if(ScoutVectorMemberExpr* vm =
                 dyn_cast<ScoutVectorMemberExpr>(S->getLHS())) {
               if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(vm->getBase())){
-                if(dr->getDecl()->getName().str() == "color") {
+                if(isa<ImplicitColorParamDecl>(dr->getDecl())) {
                   foundComponentAssign_[vm->getIdx()] = true;
                 }
               }
@@ -1230,10 +1257,8 @@ bool Sema::ActOnRenderallMeshRefVariable(Scope* S,
   SCLStack.push_back(D);
 
   // add the implicit "color" parameter
-  ImplicitParamDecl* CD =
-      ImplicitParamDecl::Create(Context, CurContext, RefVarLoc,
-          &Context.Idents.get("color"),
-          Context.getExtVectorType(Context.FloatTy, 4));
+  ImplicitColorParamDecl* CD =
+      ImplicitColorParamDecl::Create(Context, CurContext, RefVarLoc);
 
   PushOnScopeChains(CD, S, true);
 
