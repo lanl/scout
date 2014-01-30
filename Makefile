@@ -121,6 +121,9 @@ docs_build_dir := docs/_build
 #
 #####
 
+# These flags must be enabled in order to build LLDB.
+# cmake_flags += -DLLVM_ENABLE_CXX11=ON -DLLVM_REQUIRES_RTTI=1
+
 cmake_flags := -DCMAKE_BUILD_TYPE=$(build_type) \
                -DCMAKE_INSTALL_PREFIX=$(build_dir) \
                -DCMAKE_SOURCE_DIR=$(src_dir) \
