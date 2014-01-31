@@ -50,6 +50,7 @@
  * +--------------------------------------------------------------------------+
  *
  */
+#include <stdio.h>
 
 const color_channel_t SC_MIN_CHANNEL_VALUE =   0.0;
 const color_channel_t SC_MAX_CHANNEL_VALUE =   1.0;
@@ -133,6 +134,7 @@ color_t hsva(color_channel_t hue,
              color_channel_t saturation,
              color_channel_t value,
              color_channel_t alpha) {
+  printf("hsva %f %f %f %f\n", hue, saturation, value, alpha); 
   color_t rgbaColor = hsv(hue, saturation, value);
   rgbaColor.a = clamp(alpha, SC_MIN_CHANNEL_VALUE, SC_MAX_CHANNEL_VALUE);
   return rgbaColor;

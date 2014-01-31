@@ -56,6 +56,5 @@
 
 #include "scout/types.sch"
 #include "scout/math.sch"
-#include "scout/Standard/hsv.sch"
 
 #endif
