@@ -1745,7 +1745,7 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
 
   // +==== Scout =============================================================+
   // Check if this is a 'color' expression.
-  if (ND->getDeclName().isIdentifier() && isa<ImplicitColorParamDecl>(ND)) {
+  if (isScoutLang(getLangOpts()) && ND->getDeclName().isIdentifier() && isa<ImplicitColorParamDecl>(ND)) {
     llvm::errs() << "is Implicit color\n";
       return EmitColorDeclRefLValue(ND);
   }
