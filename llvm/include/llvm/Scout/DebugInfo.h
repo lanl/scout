@@ -59,7 +59,7 @@
 
 namespace llvm {
 
-  // Note: they layout of the metadata must be kept in sync. with the
+  // Note: the layout of the metadata must be kept in sync. with the
   // layout of DIDerivedType as there may be new fields which are added
   // to the DIDerivedType, and we need to maintain the ability that
   // DIScoutDerivedType is a proper subclass of DIDerivedType
@@ -74,6 +74,24 @@ namespace llvm {
     };
 
     explicit DIScoutDerivedType(const MDNode* N = 0) : DIDerivedType(N) {}
+
+    unsigned getScoutFlags() const { return getUnsignedField(9); }
+
+    bool isCellLocated() const { 
+      return (getScoutFlags() & FlagMeshFieldCellLocated) != 0;
+    }
+
+    bool isVertexLocated() const { 
+      return (getScoutFlags() & FlagMeshFieldVertexLocated) != 0;
+    }
+
+    bool isEdgeLocated() const { 
+      return (getScoutFlags() & FlagMeshFieldEdgeLocated) != 0;
+    }
+
+    bool isFaceLocated() const { 
+      return (getScoutFlags() & FlagMeshFieldFaceLocated) != 0;
+    }
   };
 
 } // end namespace llvm

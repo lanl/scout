@@ -64,10 +64,10 @@
 using namespace llvm;
 using namespace llvm::dwarf;
 
-/// createMemberType - Create debugging information entry for a scout
+/// createMeshMemberType - Create debugging information entry for a scout
 /// mesh member field member.
 
-// Note: they layout of the metadata must be kept in sync. with the
+// Note: the layout of the metadata must be kept in sync. with the
 // layout of DIDerivedType as there may be new fields which are added
 // to the DIDerivedType, and we need to maintain the ability that
 // DIScoutDerivedType is a proper subclass of DIDerivedType
