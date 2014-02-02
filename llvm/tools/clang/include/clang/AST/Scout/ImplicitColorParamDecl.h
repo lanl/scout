@@ -1,5 +1,4 @@
 /*
- *
  * ###########################################################################
  * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
@@ -47,79 +46,31 @@
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
  * ###########################################################################
+ *
+ * Notes: Based on ImplicitParamDecl 
+ * #####
  */
 
-#ifndef __SC_STD_HSV_SCH__
-#define __SC_STD_HSV_SCH__
+#ifndef __SC_CLANG_IMPLICIT_COLOR_PARAM_DECL_H__
+#define __SC_CLANG_IMPLICIT_COLOR_PARAM_DECL_H__
 
-#include "scout/types.sch"
+#include "clang/AST/Decl.h"
 
-static float4 hsva(float h, float s, float v, float a)
-{
-  float4 r;
+namespace clang {
 
-  r.w = a;
+  class ImplicitColorParamDecl : public ImplicitParamDecl {
+  public:
+    static ImplicitColorParamDecl *Create(ASTContext &C, DeclContext *DC,
+        SourceLocation IdLoc) {
+      return new (C, DC) ImplicitColorParamDecl(DC, IdLoc, 
+        &C.Idents.get("color"),
+        C.getExtVectorType(C.FloatTy, 4));
+    }
 
-  int i;
-  float f, p, q, t;
-  if (s == 0.0f) {
-    r.x = v;
-    r.y = v;
-    r.z = v;
-    return r;
-  }
-
-  h /= 60.0f;
-  i = int(h);
-  f = h - float(i);
-  p = v * (1.0 - s);
-  q = v * (1.0 - s * f);
-  t = v * (1.0 - s * (1.0 - f));
-
-  switch(i) {
-
-    case 0:
-      r.x = v;
-      r.y = t;
-      r.z = p;
-      break;
-
-    case 1:
-      r.x = q;
-      r.y = v;
-      r.z = p;
-      break;
-
-    case 2:
-      r.x = p;
-      r.y = v;
-      r.z = t;
-      break;
-
-    case 3:
-      r.x = p;
-      r.y = q;
-      r.z = v;
-      break;
-
-    case 4:
-      r.x = t;
-      r.y = p;
-      r.z = v;
-      break;
-
-    default:
-      r.x = v;
-      r.y = p;
-      r.z = q;
-      break;
-  }
-
-  return r;
+    ImplicitColorParamDecl(DeclContext *DC, SourceLocation IdLoc,
+                          IdentifierInfo *Id, QualType Type)
+          : ImplicitParamDecl(DC,IdLoc, Id, Type) {
+    }
+  };
 }
-
-static float4 hsv(float h, float s, float v){
-  return hsva(h, s, v, 1.0f);
-}
-
 #endif

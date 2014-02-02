@@ -1965,7 +1965,7 @@ public:
 
   typedef llvm::SmallVector<llvm::Value*,3> MySmallVector;
 
-  LValue EmitScoutColorDeclRefLValue(const NamedDecl *ND);
+  LValue EmitColorDeclRefLValue(const NamedDecl *ND);
   //LValue EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND);
   LValue EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index);
   LValue EmitLValueForMeshField(LValue base, const MeshFieldDecl *field, llvm::Value *Index);

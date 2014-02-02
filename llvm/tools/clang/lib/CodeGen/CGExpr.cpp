@@ -29,6 +29,10 @@
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/Support/ConvertUTF.h"
 
+// +==== Scout =============================================================+
+#include "clang/AST/Scout/ImplicitColorParamDecl.h"
+// +========================================================================+
+
 using namespace clang;
 using namespace CodeGen;
 
@@ -1740,19 +1744,10 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
   QualType T = E->getType();
 
   // +==== Scout =============================================================+
-  // SC_TODO -- this needs to be handled again for renderall constructs.
-  //
   // Check if this is a 'color' expression.
-  if (ND->getDeclName().isIdentifier() && isa<ImplicitParamDecl>(ND)) {
-  //  llvm::errs() << "is Implicit\n";
-  //
-    if (ND->getName() == "color") {  // Check if this is a 'color' expression.
-      return EmitScoutColorDeclRefLValue(ND);
-  //  } else if (CurrentForAllArrayStmt) {
-  //    return EmitScoutForAllArrayDeclRefLValue(ND);
-  //  } else {
-  //
-    }
+  if (isScoutLang(getLangOpts()) && ND->getDeclName().isIdentifier() && isa<ImplicitColorParamDecl>(ND)) {
+    llvm::errs() << "is Implicit color\n";
+      return EmitColorDeclRefLValue(ND);
   }
   // ==========================================================================
 

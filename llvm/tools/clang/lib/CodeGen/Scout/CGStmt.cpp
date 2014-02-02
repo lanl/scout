@@ -494,7 +494,8 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 		 Args.push_back(0);
 		 sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
 		 LoopBounds[i] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
-		 Args[i] = Builder.CreateLoad(LoopBounds[i]);
+		 sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[i]);
+		 Args[i] = Builder.CreateLoad(LoopBounds[i], IRNameStr);
 		 LoopBound = Builder.CreateMul(LoopBound, Args[i], "renderall.elements"); //total number of elements
 	}
 	for(unsigned int i = rank; i < 3; i++) {
