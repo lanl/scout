@@ -27,6 +27,9 @@
 
 #include "clang/AST/Scout/MeshLayout.h"
 
+// ndm - temp
+#include <iostream>
+
 using namespace clang;
 using namespace clang::CodeGen;
 
@@ -160,7 +163,8 @@ void CGDebugInfo::completeClassData(const UnstructuredMeshDecl *MD) {
 // ----- CreateType
 //
 llvm::DIType CGDebugInfo::CreateType(const UniformMeshType *Ty) {
-
+  std::cout << "di1" << std::endl;
+  
   UniformMeshDecl *MD = Ty->getDecl();
 
   // Always emit declarations for types that aren't required to be
@@ -191,6 +195,8 @@ llvm::DIType CGDebugInfo::CreateType(const UniformMeshType *Ty) {
 // ----- CreateTypeDefinition
 //
 llvm::DIType CGDebugInfo::CreateTypeDefinition(const UniformMeshType *Ty) {
+  std::cout << "di2" << std::endl;
+
   UniformMeshDecl *MD = Ty->getDecl();
 
   // Get overall information about the mesh type for the debug info.
@@ -238,6 +244,8 @@ llvm::DIType CGDebugInfo::CreateTypeDefinition(const UniformMeshType *Ty) {
 // TODO: Currently used for context chains when limiting debug info.
 llvm::DICompositeType
 CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
+  std::cout << "di3" << std::endl;
+
   UniformMeshDecl *MD = Ty->getDecl();
 
   // Get overall information about the mesh type for the debug info.
@@ -288,6 +296,8 @@ CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
 llvm::DICompositeType
 CGDebugInfo::getOrCreateMeshFwdDecl(const UniformMeshType *Ty,
                                     llvm::DIDescriptor Ctx) {
+  std::cout << "di4" << std::endl;
+
   const UniformMeshDecl *MD = Ty->getDecl();
   if (llvm::DIType T = getTypeOrNull(CGM.getContext().getUniformMeshType(MD)))
     return llvm::DICompositeType(T);
@@ -308,6 +318,8 @@ CGDebugInfo::getOrCreateMeshFwdDecl(const UniformMeshType *Ty,
 /// limited type if necessary.
 llvm::DIType CGDebugInfo::getOrCreateLimitedType(const UniformMeshType *Ty,
                                                  llvm::DIFile Unit) {
+  std::cout << "di6" << std::endl;
+
   QualType QTy(Ty, 0);
 
   llvm::DICompositeType T(getTypeOrNull(QTy));
