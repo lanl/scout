@@ -112,8 +112,8 @@ DIBuilder::createMeshMemberType(DIDescriptor Scope, StringRef Name,
     ConstantInt::get(Type::getInt64Ty(VMContext), AlignInBits),
     ConstantInt::get(Type::getInt64Ty(VMContext), OffsetInBits),
     ConstantInt::get(Type::getInt32Ty(VMContext), Flags),
-    ConstantInt::get(Type::getInt32Ty(VMContext), ScoutFlags),
-    Ty.getRef()
+    Ty.getRef(),
+    ConstantInt::get(Type::getInt32Ty(VMContext), ScoutFlags)
   };
   return DIScoutDerivedType(MDNode::get(VMContext, Elts));
 }
