@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyrigh (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2013, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -51,30 +51,33 @@
  *
  * ##### 
  */ 
+#include <stdio.h>
 
-#ifndef __SC_CUDA_H__
-#define __SC_CUDA_H__
+int main(int argc, char** argv){
 
-#include <cuda.h>
-#include <cuda_runtime_api.h>
-#include "scout/Config/defs.h"
-#ifdef SCOUT_ENABLE_OPENGL
-#include <cuda_gl_interop.h>
-#endif
+  uniform mesh MyMesh{
+  cells:
+    float i;
+  };
 
+  MyMesh m[512,512];
 
-namespace scout {
-  extern void cuda_error_check(cudaError_t err, const char* file, int line);
-  extern void cuReportError(CUresult status, const char *filename, const int line);
-  extern bool cuCheckForError(CUresult status, const char *filename, const int line);
+  forall cells c in m{
+    i = position().x;
+  } 
+
+  for(float k = 0.0; k < 1.0; k += 0.01){  
+    renderall cells c in m{
+      color = hsva(i/512.0*360.0, i/512.0, k, 1.0);
+    }
+/*
+    renderall cells c in m {
+      color = hsva(i/512.0*360.0, i/512.0, k, 1.0);
+    }
+*/
+  }
+  
+
+  return 0;
 }
-
-// Todo: It would probably be nice to have an option of turning on or
-// off these checks in the build configuration. --psm
-#define CUDAErrorCheck(func)  scout::cuda_error_check((func), __FILE__, __LINE__)
-#define cuError(status)  scout::cuReportError(status, __FILE__, __LINE__)
-#define cuErrorCheck(status) scout::cuCheckForError(status, __FILE__, __LINE__)
-
-
-#endif
 

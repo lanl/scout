@@ -1746,8 +1746,11 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
   // +==== Scout =============================================================+
   // Check if this is a 'color' expression.
   if (isScoutLang(getLangOpts()) && ND->getDeclName().isIdentifier() && isa<ImplicitColorParamDecl>(ND)) {
-    llvm::errs() << "is Implicit color\n";
+    //SC_TODO: could remove string matching if rtti worked on ImplicitColorParamDecl
+    if (ND->getName() == "color") {
+      llvm::errs() << "is Implicit color\n";
       return EmitColorDeclRefLValue(ND);
+    }
   }
   // ==========================================================================
 
