@@ -21,6 +21,10 @@
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/ValueHandle.h"
 
+// +===== Scout =======================
+#include "llvm/Scout/DebugInfo.h"
+// +===================================
+
 namespace llvm {
   class BasicBlock;
   class Instruction;
@@ -194,6 +198,14 @@ namespace llvm {
     createMemberType(DIDescriptor Scope, StringRef Name, DIFile File,
                      unsigned LineNo, uint64_t SizeInBits, uint64_t AlignInBits,
                      uint64_t OffsetInBits, unsigned Flags, DIType Ty);
+
+    // +===== Scout ==============================
+    DIScoutDerivedType
+    createMeshMemberType(DIDescriptor Scope, StringRef Name, DIFile File,
+                         unsigned LineNo, uint64_t SizeInBits, 
+                         uint64_t AlignInBits, uint64_t OffsetInBits, 
+                         unsigned Flags, unsigned ScoutFlags, DIType Ty);
+    // +==========================================
 
     /// createStaticMemberType - Create debugging information entry for a
     /// C++ static data member.

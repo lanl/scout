@@ -181,6 +181,14 @@ class CGDebugInfo {
                               llvm::DIFile F,
                               SmallVectorImpl<llvm::Value *> &E,
                               llvm::DIType RecordTy);
+
+  llvm::DIType 
+  createMeshFieldType(const MeshFieldDecl *field,
+                      StringRef name, QualType type,
+                      uint64_t sizeInBitsOverride, SourceLocation loc,
+                      AccessSpecifier AS, uint64_t offsetInBits,
+                      llvm::DIFile tunit,
+                      llvm::DIScope scope);
   // +========================================================================+
 
   void CollectCXXMemberFunctions(const CXXRecordDecl *Decl,

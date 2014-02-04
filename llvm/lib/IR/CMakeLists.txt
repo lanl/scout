@@ -41,6 +41,9 @@ add_llvm_library(LLVMCore
   ValueSymbolTable.cpp
   ValueTypes.cpp
   Verifier.cpp
+# +===== Scout ====================
+  Scout/DIBuilder.cpp
+# +================================
   )
 
 # Workaround: It takes over 20 minutes to compile with msvc10.

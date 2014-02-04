@@ -27,6 +27,9 @@
 
 #include "clang/AST/Scout/MeshLayout.h"
 
+// ndm - temp
+#include <iostream>
+
 using namespace clang;
 using namespace clang::CodeGen;
 
@@ -160,7 +163,8 @@ void CGDebugInfo::completeClassData(const UnstructuredMeshDecl *MD) {
 // ----- CreateType
 //
 llvm::DIType CGDebugInfo::CreateType(const UniformMeshType *Ty) {
-
+  std::cout << "di1" << std::endl;
+  
   UniformMeshDecl *MD = Ty->getDecl();
 
   // Always emit declarations for types that aren't required to be
@@ -191,6 +195,8 @@ llvm::DIType CGDebugInfo::CreateType(const UniformMeshType *Ty) {
 // ----- CreateTypeDefinition
 //
 llvm::DIType CGDebugInfo::CreateTypeDefinition(const UniformMeshType *Ty) {
+  std::cout << "di2" << std::endl;
+
   UniformMeshDecl *MD = Ty->getDecl();
 
   // Get overall information about the mesh type for the debug info.
@@ -238,6 +244,8 @@ llvm::DIType CGDebugInfo::CreateTypeDefinition(const UniformMeshType *Ty) {
 // TODO: Currently used for context chains when limiting debug info.
 llvm::DICompositeType
 CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
+  std::cout << "di3" << std::endl;
+
   UniformMeshDecl *MD = Ty->getDecl();
 
   // Get overall information about the mesh type for the debug info.
@@ -288,6 +296,8 @@ CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
 llvm::DICompositeType
 CGDebugInfo::getOrCreateMeshFwdDecl(const UniformMeshType *Ty,
                                     llvm::DIDescriptor Ctx) {
+  std::cout << "di4" << std::endl;
+
   const UniformMeshDecl *MD = Ty->getDecl();
   if (llvm::DIType T = getTypeOrNull(CGM.getContext().getUniformMeshType(MD)))
     return llvm::DICompositeType(T);
@@ -308,6 +318,8 @@ CGDebugInfo::getOrCreateMeshFwdDecl(const UniformMeshType *Ty,
 /// limited type if necessary.
 llvm::DIType CGDebugInfo::getOrCreateLimitedType(const UniformMeshType *Ty,
                                                  llvm::DIFile Unit) {
+  std::cout << "di6" << std::endl;
+
   QualType QTy(Ty, 0);
 
   llvm::DICompositeType T(getTypeOrNull(QTy));
@@ -945,9 +957,9 @@ CollectMeshNormalField(const MeshFieldDecl *field, uint64_t OffsetInBits,
   }
 
   llvm::DIType fieldType;
-  fieldType = createFieldType(name, type, SizeInBitsOverride,
-                              field->getLocation(), field->getAccess(),
-                              OffsetInBits, tunit, MeshTy);
+  fieldType = createMeshFieldType(field, name, type, SizeInBitsOverride,
+                                  field->getLocation(), field->getAccess(),
+                                  OffsetInBits, tunit, MeshTy);
 
   elements.push_back(fieldType);
 }
@@ -984,4 +996,55 @@ CollectMeshStaticField(const VarDecl *Var,
                                                     LineNumber, VTy, Flags, C);
   elements.push_back(GV);
   StaticDataMemberCache[Var->getCanonicalDecl()] = llvm::WeakVH(GV);
+}
+
+llvm::DIType
+CGDebugInfo::createMeshFieldType(const MeshFieldDecl *field,
+                                 StringRef name,
+                                 QualType type,
+                                 uint64_t sizeInBitsOverride,
+                                 SourceLocation loc,
+                                 AccessSpecifier AS,
+                                 uint64_t offsetInBits,
+                                 llvm::DIFile tunit,
+                                 llvm::DIScope scope) {
+  llvm::DIType debugType = getOrCreateType(type, tunit);
+
+  // Get the location for the field.
+  llvm::DIFile file = getOrCreateFile(loc);
+  unsigned line = getLineNumber(loc);
+
+  uint64_t sizeInBits = 0;
+  unsigned alignInBits = 0;
+  if (!type->isIncompleteArrayType()) {
+    llvm::tie(sizeInBits, alignInBits) = CGM.getContext().getTypeInfo(type);
+
+    if (sizeInBitsOverride)
+      sizeInBits = sizeInBitsOverride;
+  }
+
+  unsigned flags = 0;
+  if (AS == clang::AS_private)
+    flags |= llvm::DIDescriptor::FlagPrivate;
+  else if (AS == clang::AS_protected)
+    flags |= llvm::DIDescriptor::FlagProtected;
+
+  unsigned scoutFlags = 0;
+  if(field->isCellLocated()){
+    scoutFlags |= llvm::DIScoutDerivedType::FlagMeshFieldCellLocated;
+  }
+  else if(field->isVertexLocated()){
+    scoutFlags |= llvm::DIScoutDerivedType::FlagMeshFieldVertexLocated;
+  }
+  else if(field->isEdgeLocated()){
+    scoutFlags |= llvm::DIScoutDerivedType::FlagMeshFieldEdgeLocated;
+  }
+  else if(field->isFaceLocated()){
+    scoutFlags |= llvm::DIScoutDerivedType::FlagMeshFieldFaceLocated;
+  }
+
+  return 
+    DBuilder.createMeshMemberType(scope, name, file, line, sizeInBits,
+                                  alignInBits, offsetInBits, 
+                                  flags, scoutFlags, debugType);
 }
