@@ -1100,7 +1100,10 @@ namespace {
         case BO_Assign:
           if(S->getOpcode() == BO_Assign){
             if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(S->getLHS())) {
-              if(isa<ImplicitColorParamDecl>(dr->getDecl())) {
+              //SC_TODO: could replace string matching if rtti worked on ImplicitColorParamDecl
+              //if(isa<ImplicitColorParamDecl>(dr->getDecl())) {
+              if(dr->getDecl()->getName().str() == "color") {
+
                 foundColorAssign_ = true;
                 llvm::errs() << "found color\n";
               }

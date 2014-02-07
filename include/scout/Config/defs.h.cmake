@@ -54,16 +54,16 @@
 #cmakedefine APPLE
 #cmakedefine UNIX
 
-#cmakedefine SC_ENABLE_OPENGL     // Provide OpenGL support.
-#cmakedefine SC_ENABLE_CUDA       // Provide CUDA support. 
-#cmakedefine SC_ENABLE_LIB_NVVM   // Use NVIDIA's compiler SDK.
-#cmakedefine SC_ENABLE_OPENCL     // Provide OpenCL support.
-#cmakedefine SC_ENABLE_AMDIL      // Provide OpenCL+AMD IL support.
-#cmakedefine SC_ENABLE_NUMA       // Provide NUMA (hwloc) support.
-#cmakedefine SC_ENABLE_THREADS    // Provide Thread support.
-#cmakedefine SC_ENABLE_MPI        // Provide MPI support.
-#cmakedefine SC_ENABLE_GLFW       // Provide GLFW support.
-#cmakedefine SC_ENABLE_PNG        // Provide PNG image support.
+#cmakedefine SCOUT_ENABLE_OPENGL     // Provide OpenGL support.
+#cmakedefine SCOUT_ENABLE_CUDA       // Provide CUDA support. 
+#cmakedefine SCOUT_ENABLE_LIB_NVVM   // Use NVIDIA's compiler SDK.
+#cmakedefine SCOUT_ENABLE_OPENCL     // Provide OpenCL support.
+#cmakedefine SCOUT_ENABLE_AMDIL      // Provide OpenCL+AMD IL support.
+#cmakedefine SCOUT_ENABLE_NUMA       // Provide NUMA (hwloc) support.
+#cmakedefine SCOUT_ENABLE_THREADS    // Provide Thread support.
+#cmakedefine SCOUT_ENABLE_MPI        // Provide MPI support.
+#cmakedefine SCOUT_ENABLE_GLFW       // Provide GLFW support.
+#cmakedefine SCOUT_ENABLE_PNG        // Provide PNG image support.
 
 #ifdef SC_ENABLE_CUDA
 #define CUDA_MAJOR_VERSION   ${CUDA_VERSION_MAJOR} // Major version number for CUDA.

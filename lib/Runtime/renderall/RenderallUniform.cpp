@@ -139,7 +139,7 @@ void RenderallUniform::end(){
 extern "C" void __scrt_renderall_uniform_begin(size_t width,
     size_t height,
     size_t depth){
-  std::cout << "width " << width << " height " << height << " depth " << depth << "\n";
+  //std::cout << "width " << width << " height " << height << " depth " << depth << "\n";
   if(!__scrt_renderall){
     __scrt_renderall = new RenderallUniform(width, height, depth);
   }
