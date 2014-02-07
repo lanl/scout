@@ -92,6 +92,42 @@ static Constant *GetTagConstant(LLVMContext &VMContext, unsigned Tag) {
 
 // ----------------------------------------------------
 
+DICompositeType DIBuilder::createMeshType(DIDescriptor Context,
+    StringRef Name, DIFile File,
+    unsigned LineNumber,
+    uint64_t SizeInBits,
+    uint64_t AlignInBits,
+    unsigned Flags, DIType DerivedFrom,
+    DIArray Elements,
+    unsigned RunTimeLang,
+    DIType VTableHolder,
+    StringRef UniqueIdentifier) {
+ // TAG_structure_type is encoded in DICompositeType format.
+  Value *Elts[] = {
+    GetTagConstant(VMContext, dwarf::DW_TAG_SCOUT_mesh_type),
+    File.getFileNode(),
+    DIScope(getNonCompileUnitScope(Context)).getRef(),
+    MDString::get(VMContext, Name),
+    ConstantInt::get(Type::getInt32Ty(VMContext), LineNumber),
+    ConstantInt::get(Type::getInt64Ty(VMContext), SizeInBits),
+    ConstantInt::get(Type::getInt64Ty(VMContext), AlignInBits),
+    ConstantInt::get(Type::getInt32Ty(VMContext), 0),
+    ConstantInt::get(Type::getInt32Ty(VMContext), Flags),
+    DerivedFrom.getRef(),
+    Elements,
+    ConstantInt::get(Type::getInt32Ty(VMContext), RunTimeLang),
+    VTableHolder.getRef(),
+    NULL,
+    UniqueIdentifier.empty() ? NULL : MDString::get(VMContext, UniqueIdentifier)
+  };
+  DICompositeType R(MDNode::get(VMContext, Elts));
+  assert(R.isCompositeType() &&
+         "createMeshType should return a DICompositeType");
+  if (!UniqueIdentifier.empty())
+    retainType(R);
+  return R;
+}
+
 DIScoutDerivedType 
 DIBuilder::createMeshMemberType(DIDescriptor Scope, StringRef Name,
                                 DIFile File, unsigned LineNumber,
@@ -101,7 +137,7 @@ DIBuilder::createMeshMemberType(DIDescriptor Scope, StringRef Name,
                                 unsigned Flags,
                                 unsigned ScoutFlags,
                                 DIType Ty) {
-  // TAG_member is encoded in DIDerivedType format.
+  // TAG_member is encoded in DIScoutDerivedType format.
   Value *Elts[] = {
     GetTagConstant(VMContext, dwarf::DW_TAG_member),
     File.getFileNode(),

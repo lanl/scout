@@ -27,9 +27,6 @@
 
 #include "clang/AST/Scout/MeshLayout.h"
 
-// ndm - temp
-#include <iostream>
-
 using namespace clang;
 using namespace clang::CodeGen;
 
@@ -281,10 +278,10 @@ CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
 
   SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
 
-  RealDecl = DBuilder.createStructType(MDContext, MDName, DefUnit, Line,
-                                       Size, Align, 0, llvm::DIType(),
-                                       llvm::DIArray(), 0,
-                                       llvm::DIType(), FullName);
+  RealDecl = DBuilder.createMeshType(MDContext, MDName, DefUnit, Line,
+                                     Size, Align, 0, llvm::DIType(),
+                                     llvm::DIArray(), 0,
+                                     llvm::DIType(), FullName);
 
   RegionMap[Ty->getDecl()] = llvm::WeakVH(RealDecl);
   TypeCache[QualType(Ty, 0).getAsOpaquePtr()] = RealDecl;

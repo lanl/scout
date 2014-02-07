@@ -324,6 +324,32 @@ namespace llvm {
                                      DIType VTableHolder = DIType(),
                                      StringRef UniqueIdentifier = StringRef());
 
+    // +===== Scout ===========================================================
+
+    // Create debug info for a Scout mesh type. This is modeled after the
+    // createStructType() method which is very similar.
+
+    /// createMeshType - Create debugging information entry for a Scout mesh.
+    /// @param Scope        Scope in which this struct is defined.
+    /// @param Name         Struct name.
+    /// @param File         File where this member is defined.
+    /// @param LineNumber   Line number.
+    /// @param SizeInBits   Member size.
+    /// @param AlignInBits  Member alignment.
+    /// @param Flags        Flags to encode member attribute, e.g. private
+    /// @param Elements     Struct elements.
+    /// @param RunTimeLang  Optional parameter, Objective-C runtime version.
+    /// @param UniqueIdentifier A unique identifier for the struct.
+    DICompositeType createMeshType(DIDescriptor Scope, StringRef Name,
+                                   DIFile File, unsigned LineNumber,
+                                   uint64_t SizeInBits, uint64_t AlignInBits,
+                                   unsigned Flags, DIType DerivedFrom,
+                                   DIArray Elements, unsigned RunTimeLang = 0,
+                                   DIType VTableHolder = DIType(),
+                                   StringRef UniqueIdentifier = StringRef());
+
+    // +========================================================================
+
     /// createUnionType - Create debugging information entry for an union.
     /// @param Scope        Scope in which this union is defined.
     /// @param Name         Union name.

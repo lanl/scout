@@ -144,7 +144,11 @@ enum Tag LLVM_ENUM_INT_TYPE(uint16_t) {
   DW_TAG_GNU_formal_parameter_pack = 0x4108,
   DW_TAG_lo_user = 0x4080,
   DW_TAG_APPLE_property = 0x4200,
-  DW_TAG_hi_user = 0xffff
+  DW_TAG_hi_user = 0xffff,
+
+  // +===== Scout ===================
+  DW_TAG_SCOUT_mesh_type = 0x9000
+  // +===============================
 };
 
 inline bool isType(Tag T) {
