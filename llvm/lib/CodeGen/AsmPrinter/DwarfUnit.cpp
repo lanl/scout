@@ -1189,11 +1189,8 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, DICompositeType CTy) {
     DIArray Elements = CTy.getTypeArray();
     for (unsigned i = 0, N = Elements.getNumElements(); i < N; ++i) {
       DIDescriptor Element = Elements.getElement(i);
-      DIE *ElemDie = NULL;
       DIScoutDerivedType DSDTy(Element);
-      constructMemberDIE(Buffer, DSDTy);
-
-      //addUInt(ElemDie, dwarf::DW_AT_SCOUT_mesh_field_flags, None, DSDTy.getScoutFlags());
+      constructMeshMemberDIE(Buffer, DSDTy);
     }
     break;
   }

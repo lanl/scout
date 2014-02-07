@@ -24,6 +24,10 @@
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCSection.h"
 
+// +===== Scout ======================
+#include "llvm/Scout/DebugInfo.h"
+// +==================================
+
 namespace llvm {
 
 class MachineLocation;
@@ -485,6 +489,11 @@ private:
 
   /// constructMemberDIE - Construct member DIE from DIDerivedType.
   void constructMemberDIE(DIE &Buffer, DIDerivedType DT);
+
+  // +===== Scout ==========================
+  /// constructMeshMemberDIE - Construct member DIE from DIDerivedType.
+  void constructMeshMemberDIE(DIE &Buffer, DIScoutDerivedType DT);
+  // +======================================
 
   /// constructTemplateTypeParameterDIE - Construct new DIE for the given
   /// DITemplateTypeParameter.
