@@ -73,6 +73,7 @@ add_clang_library(clangAST
   Scout/UniformMeshDecl.cpp
   Scout/UnstructuredMeshDecl.cpp
   Scout/VolumeRenderAllStmt.cpp
+  Scout/Type.cpp
   # +==========================================================================+
   )
 

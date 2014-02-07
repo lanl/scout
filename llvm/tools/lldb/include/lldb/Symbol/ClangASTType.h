@@ -546,6 +546,14 @@ public:
     
     bool
     CompleteTagDeclarationDefinition ();
+
+    // +===== Scout ===========================
+    bool
+    StartMeshDeclarationDefinition ();
+
+    bool
+    CompleteMeshDeclarationDefinition ();
+    // +========================================
     
     //----------------------------------------------------------------------
     // Modifying Enumeration types

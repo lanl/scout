@@ -30,5 +30,6 @@ add_lldb_library(lldbSymbol
   VerifyDecl.cpp
 # +===== Scout ======================
   Scout/ClangASTContext.cpp
+  Scout/ClangASTType.cpp
 # +==================================
   )
