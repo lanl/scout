@@ -99,6 +99,12 @@ const char *llvm::dwarf::TagString(unsigned Tag) {
   case DW_TAG_GNU_formal_parameter_pack:
     return "DW_TAG_GNU_formal_parameter_pack";
   case DW_TAG_APPLE_property:            return "DW_TAG_APPLE_property";
+  // +===== Scout ======================================================
+  case DW_TAG_SCOUT_uniform_mesh_type:       return "DW_TAG_SCOUT_uniform_mesh_type";
+  case DW_TAG_SCOUT_structured_mesh_type:    return "DW_TAG_SCOUT_structured_mesh_type";
+  case DW_TAG_SCOUT_rectilinear_mesh_type:   return "DW_TAG_SCOUT_rectilinear_mesh_type";
+  case DW_TAG_SCOUT_unstructured_mesh_type:  return "DW_TAG_SCOUT_unstructured_mesh_type";
+  // +==================================================================
   }
   return 0;
 }

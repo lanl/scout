@@ -1184,7 +1184,10 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, DICompositeType CTy) {
       addFlag(&Buffer, dwarf::DW_AT_rvalue_reference);
   } break;
   // +===== Scout ==============================
-  case dwarf::DW_TAG_SCOUT_mesh_type: {
+  case dwarf::DW_TAG_SCOUT_uniform_mesh_type:
+  case dwarf::DW_TAG_SCOUT_structured_mesh_type:
+  case dwarf::DW_TAG_SCOUT_rectilinear_mesh_type:
+  case dwarf::DW_TAG_SCOUT_unstructured_mesh_type: {
     // Add elements to mesh type.
     DIArray Elements = CTy.getTypeArray();
     for (unsigned i = 0, N = Elements.getNumElements(); i < N; ++i) {

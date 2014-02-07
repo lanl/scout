@@ -147,7 +147,10 @@ enum Tag LLVM_ENUM_INT_TYPE(uint16_t) {
   DW_TAG_hi_user = 0xffff,
 
   // +===== Scout ===================
-  DW_TAG_SCOUT_mesh_type = 0x9000
+  DW_TAG_SCOUT_uniform_mesh_type = 0x9000,
+  DW_TAG_SCOUT_structured_mesh_type = 0x9001,
+  DW_TAG_SCOUT_rectilinear_mesh_type = 0x9002,
+  DW_TAG_SCOUT_unstructured_mesh_type = 0x9003
   // +===============================
 };
 

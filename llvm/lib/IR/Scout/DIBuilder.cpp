@@ -92,7 +92,7 @@ static Constant *GetTagConstant(LLVMContext &VMContext, unsigned Tag) {
 
 // ----------------------------------------------------
 
-DICompositeType DIBuilder::createMeshType(DIDescriptor Context,
+DICompositeType DIBuilder::createUniformMeshType(DIDescriptor Context,
     StringRef Name, DIFile File,
     unsigned LineNumber,
     uint64_t SizeInBits,
@@ -104,7 +104,7 @@ DICompositeType DIBuilder::createMeshType(DIDescriptor Context,
     StringRef UniqueIdentifier) {
  // TAG_structure_type is encoded in DICompositeType format.
   Value *Elts[] = {
-    GetTagConstant(VMContext, dwarf::DW_TAG_SCOUT_mesh_type),
+    GetTagConstant(VMContext, dwarf::DW_TAG_SCOUT_uniform_mesh_type),
     File.getFileNode(),
     DIScope(getNonCompileUnitScope(Context)).getRef(),
     MDString::get(VMContext, Name),
@@ -122,7 +122,115 @@ DICompositeType DIBuilder::createMeshType(DIDescriptor Context,
   };
   DICompositeType R(MDNode::get(VMContext, Elts));
   assert(R.isCompositeType() &&
-         "createMeshType should return a DICompositeType");
+         "createUniformMeshType should return a DICompositeType");
+  if (!UniqueIdentifier.empty())
+    retainType(R);
+  return R;
+}
+
+DICompositeType DIBuilder::createStructuredMeshType(DIDescriptor Context,
+    StringRef Name, DIFile File,
+    unsigned LineNumber,
+    uint64_t SizeInBits,
+    uint64_t AlignInBits,
+    unsigned Flags, DIType DerivedFrom,
+    DIArray Elements,
+    unsigned RunTimeLang,
+    DIType VTableHolder,
+    StringRef UniqueIdentifier) {
+ // TAG_structure_type is encoded in DICompositeType format.
+  Value *Elts[] = {
+    GetTagConstant(VMContext, dwarf::DW_TAG_SCOUT_structured_mesh_type),
+    File.getFileNode(),
+    DIScope(getNonCompileUnitScope(Context)).getRef(),
+    MDString::get(VMContext, Name),
+    ConstantInt::get(Type::getInt32Ty(VMContext), LineNumber),
+    ConstantInt::get(Type::getInt64Ty(VMContext), SizeInBits),
+    ConstantInt::get(Type::getInt64Ty(VMContext), AlignInBits),
+    ConstantInt::get(Type::getInt32Ty(VMContext), 0),
+    ConstantInt::get(Type::getInt32Ty(VMContext), Flags),
+    DerivedFrom.getRef(),
+    Elements,
+    ConstantInt::get(Type::getInt32Ty(VMContext), RunTimeLang),
+    VTableHolder.getRef(),
+    NULL,
+    UniqueIdentifier.empty() ? NULL : MDString::get(VMContext, UniqueIdentifier)
+  };
+  DICompositeType R(MDNode::get(VMContext, Elts));
+  assert(R.isCompositeType() &&
+         "createStructuredMeshType should return a DICompositeType");
+  if (!UniqueIdentifier.empty())
+    retainType(R);
+  return R;
+}
+
+DICompositeType DIBuilder::createRectilinearMeshType(DIDescriptor Context,
+    StringRef Name, DIFile File,
+    unsigned LineNumber,
+    uint64_t SizeInBits,
+    uint64_t AlignInBits,
+    unsigned Flags, DIType DerivedFrom,
+    DIArray Elements,
+    unsigned RunTimeLang,
+    DIType VTableHolder,
+    StringRef UniqueIdentifier) {
+ // TAG_structure_type is encoded in DICompositeType format.
+  Value *Elts[] = {
+    GetTagConstant(VMContext, dwarf::DW_TAG_SCOUT_rectilinear_mesh_type),
+    File.getFileNode(),
+    DIScope(getNonCompileUnitScope(Context)).getRef(),
+    MDString::get(VMContext, Name),
+    ConstantInt::get(Type::getInt32Ty(VMContext), LineNumber),
+    ConstantInt::get(Type::getInt64Ty(VMContext), SizeInBits),
+    ConstantInt::get(Type::getInt64Ty(VMContext), AlignInBits),
+    ConstantInt::get(Type::getInt32Ty(VMContext), 0),
+    ConstantInt::get(Type::getInt32Ty(VMContext), Flags),
+    DerivedFrom.getRef(),
+    Elements,
+    ConstantInt::get(Type::getInt32Ty(VMContext), RunTimeLang),
+    VTableHolder.getRef(),
+    NULL,
+    UniqueIdentifier.empty() ? NULL : MDString::get(VMContext, UniqueIdentifier)
+  };
+  DICompositeType R(MDNode::get(VMContext, Elts));
+  assert(R.isCompositeType() &&
+         "createRectilinearMeshType should return a DICompositeType");
+  if (!UniqueIdentifier.empty())
+    retainType(R);
+  return R;
+}
+
+DICompositeType DIBuilder::createUnstructuredMeshType(DIDescriptor Context,
+    StringRef Name, DIFile File,
+    unsigned LineNumber,
+    uint64_t SizeInBits,
+    uint64_t AlignInBits,
+    unsigned Flags, DIType DerivedFrom,
+    DIArray Elements,
+    unsigned RunTimeLang,
+    DIType VTableHolder,
+    StringRef UniqueIdentifier) {
+ // TAG_structure_type is encoded in DICompositeType format.
+  Value *Elts[] = {
+    GetTagConstant(VMContext, dwarf::DW_TAG_SCOUT_unstructured_mesh_type),
+    File.getFileNode(),
+    DIScope(getNonCompileUnitScope(Context)).getRef(),
+    MDString::get(VMContext, Name),
+    ConstantInt::get(Type::getInt32Ty(VMContext), LineNumber),
+    ConstantInt::get(Type::getInt64Ty(VMContext), SizeInBits),
+    ConstantInt::get(Type::getInt64Ty(VMContext), AlignInBits),
+    ConstantInt::get(Type::getInt32Ty(VMContext), 0),
+    ConstantInt::get(Type::getInt32Ty(VMContext), Flags),
+    DerivedFrom.getRef(),
+    Elements,
+    ConstantInt::get(Type::getInt32Ty(VMContext), RunTimeLang),
+    VTableHolder.getRef(),
+    NULL,
+    UniqueIdentifier.empty() ? NULL : MDString::get(VMContext, UniqueIdentifier)
+  };
+  DICompositeType R(MDNode::get(VMContext, Elts));
+  assert(R.isCompositeType() &&
+         "createUnstructuredMeshType should return a DICompositeType");
   if (!UniqueIdentifier.empty())
     retainType(R);
   return R;

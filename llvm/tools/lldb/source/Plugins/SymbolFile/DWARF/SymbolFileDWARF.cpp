@@ -5922,7 +5922,12 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
 //                  }
                 }
                 break;
-
+            // +===== Scout =============
+            case DW_TAG_SCOUT_uniform_mesh_type:
+            case DW_TAG_SCOUT_structured_mesh_type:
+            case DW_TAG_SCOUT_rectilinear_mesh_type:
+            case DW_TAG_SCOUT_unstructured_mesh_type:
+            // +=========================
             case DW_TAG_structure_type:
             case DW_TAG_union_type:
             case DW_TAG_class_type:
@@ -6050,6 +6055,13 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                         tag_decl_kind = clang::TTK_Class;
                         default_accessibility = eAccessPrivate;
                     }
+                    // +===== Scout ======================
+                    //else if (tag == DW_TAG_SCOUT_mesh_type)
+                    //{
+                    //    tag_decl_kind = clang::TTK_Mesh;
+                    //    default_accessibility = eAccessPublic;
+                    //}
+                    // +==================================
                     
                     if (byte_size_valid && byte_size == 0 && type_name_cstr &&
                         die->HasChildren() == false && 

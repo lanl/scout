@@ -326,10 +326,10 @@ CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
 
   SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
 
-  RealDecl = DBuilder.createMeshType(MDContext, MDName, DefUnit, Line,
-                                     Size, Align, 0, llvm::DIType(),
-                                     llvm::DIArray(), 0,
-                                     llvm::DIType(), FullName);
+  RealDecl = DBuilder.createUniformMeshType(MDContext, MDName, DefUnit, Line,
+                                            Size, Align, 0, llvm::DIType(),
+                                            llvm::DIArray(), 0,
+                                            llvm::DIType(), FullName);
 
   RegionMap[Ty->getDecl()] = llvm::WeakVH(RealDecl);
   TypeCache[QualType(Ty, 0).getAsOpaquePtr()] = RealDecl;
@@ -509,10 +509,10 @@ CGDebugInfo::CreateLimitedType(const RectilinearMeshType *Ty) {
 
   SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
 
-  RealDecl = DBuilder.createStructType(MDContext, MDName, DefUnit, Line,
-                                       Size, Align, 0, llvm::DIType(),
-                                       llvm::DIArray(), 0,
-                                       llvm::DIType(), FullName);
+  RealDecl = DBuilder.createRectilinearMeshType(MDContext, MDName, DefUnit, Line,
+                                                Size, Align, 0, llvm::DIType(),
+                                                llvm::DIArray(), 0,
+                                                llvm::DIType(), FullName);
 
   RegionMap[Ty->getDecl()] = llvm::WeakVH(RealDecl);
   TypeCache[QualType(Ty, 0).getAsOpaquePtr()] = RealDecl;
@@ -694,10 +694,10 @@ CGDebugInfo::CreateLimitedType(const StructuredMeshType *Ty) {
 
   SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
 
-  RealDecl = DBuilder.createStructType(MDContext, MDName, DefUnit, Line,
-                                       Size, Align, 0, llvm::DIType(),
-                                       llvm::DIArray(), 0,
-                                       llvm::DIType(), FullName);
+  RealDecl = DBuilder.createStructuredMeshType(MDContext, MDName, DefUnit, Line,
+                                               Size, Align, 0, llvm::DIType(),
+                                               llvm::DIArray(), 0,
+                                               llvm::DIType(), FullName);
 
   RegionMap[Ty->getDecl()] = llvm::WeakVH(RealDecl);
   TypeCache[QualType(Ty, 0).getAsOpaquePtr()] = RealDecl;
@@ -830,10 +830,10 @@ CGDebugInfo::CreateLimitedType(const UnstructuredMeshType *Ty) {
 
   SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
 
-  RealDecl = DBuilder.createStructType(MDContext, MDName, DefUnit, Line,
-                                       Size, Align, 0, llvm::DIType(),
-                                       llvm::DIArray(), 0,
-                                       llvm::DIType(), FullName);
+  RealDecl = DBuilder.createUnstructuredMeshType(MDContext, MDName, DefUnit, Line,
+                                                 Size, Align, 0, llvm::DIType(),
+                                                 llvm::DIArray(), 0,
+                                                 llvm::DIType(), FullName);
 
   RegionMap[Ty->getDecl()] = llvm::WeakVH(RealDecl);
   TypeCache[QualType(Ty, 0).getAsOpaquePtr()] = RealDecl;
