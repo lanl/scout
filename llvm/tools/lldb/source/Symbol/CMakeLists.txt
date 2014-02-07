@@ -28,4 +28,7 @@ add_lldb_library(lldbSymbol
   Variable.cpp
   VariableList.cpp
   VerifyDecl.cpp
+# +===== Scout ======================
+  Scout/ClangASTContext.cpp
+# +==================================
   )
