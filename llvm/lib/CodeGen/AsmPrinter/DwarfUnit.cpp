@@ -1193,7 +1193,7 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, DICompositeType CTy) {
       DIScoutDerivedType DSDTy(Element);
       constructMemberDIE(Buffer, DSDTy);
 
-      addUInt(ElemDie, dwarf::DW_AT_SCOUT_mesh_field_flags, None, DSDTy.getScoutFlags());
+      //addUInt(ElemDie, dwarf::DW_AT_SCOUT_mesh_field_flags, None, DSDTy.getScoutFlags());
     }
     break;
   }
