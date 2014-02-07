@@ -342,7 +342,11 @@ enum Attribute LLVM_ENUM_INT_TYPE(uint16_t) {
   DW_AT_APPLE_property_setter = 0x3fea,
   DW_AT_APPLE_property_attribute = 0x3feb,
   DW_AT_APPLE_objc_complete_type = 0x3fec,
-  DW_AT_APPLE_property = 0x3fed
+  DW_AT_APPLE_property = 0x3fed,
+
+  // +===== Scout =====================
+  DW_AT_SCOUT_mesh_field_flags = 0x9000
+  // +=================================
 };
 
 enum Form LLVM_ENUM_INT_TYPE(uint16_t) {

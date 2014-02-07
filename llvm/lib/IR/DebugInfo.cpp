@@ -196,6 +196,9 @@ bool DIDescriptor::isCompositeType() const {
   case dwarf::DW_TAG_enumeration_type:
   case dwarf::DW_TAG_subroutine_type:
   case dwarf::DW_TAG_class_type:
+  // +===== Scout ============================
+  case dwarf::DW_TAG_SCOUT_mesh_type:
+  // +========================================
     return true;
   default:
     return false;
