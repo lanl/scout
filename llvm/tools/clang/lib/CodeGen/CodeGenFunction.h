@@ -1942,7 +1942,7 @@ public:
                         llvm::SmallVector<llvm::Value*, 3> &MeshDimensions,
                         llvm::Value* MeshBaseAddr);
 
-  void EmitForallBody(const ForallStmt &S);
+  void ResetVars(void);
   void EmitForallMeshStmt(const ForallMeshStmt &S);
   void EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r);
   llvm::BasicBlock *EmitMarkerBlock(const std::string name);

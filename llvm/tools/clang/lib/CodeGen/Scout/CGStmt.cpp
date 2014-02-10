@@ -176,16 +176,13 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
   unsigned int rank = S.getMeshType()->rankOf();
 
-  LoopBounds.clear();
-  InductionVar.clear();
+  ResetVars();
 
   //need a marker for start of Forall for CodeExtraction
   llvm::BasicBlock *entry = EmitMarkerBlock("forall.entry");
 
   // Create the induction variables for eack rank.
   for(unsigned int i = 0; i < 3; i++) {
-    LoopBounds.push_back(0);
-    InductionVar.push_back(0);
     sprintf(IRNameStr, "forall.induct.%s.ptr", IndexNames[i]);
     InductionVar[i] = Builder.CreateAlloca(Int32Ty, 0, IRNameStr);
     //zero-initialize induction var
@@ -199,6 +196,10 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   Builder.CreateStore(ConstantZero, InductionVar[3]);
 
   EmitForallMeshLoop(S, rank);
+
+  // reset Loopbounds and induction var
+  // so width/height etc can't be called after forall
+  ResetVars();
 
   //need a marker for end of Forall for CodeExtraction
   llvm::BasicBlock *exit = EmitMarkerBlock("forall.exit");
@@ -289,7 +290,7 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
 
   BreakContinueStack.push_back(BreakContinue(LoopExit, Continue, &Cnt));
   if (r == 1) {  // This is our innermost rank, generate the loop body.
-    EmitForallBody(S);
+    EmitStmt(S.getBody());
 
     // Increment the loop index stored as last element of InductionVar
     llvm::LoadInst* liv = Builder.CreateLoad(InductionVar[3], "forall.linearidx");
@@ -326,10 +327,15 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
   EmitBlock(LoopExit.getBlock(), true);
 }
 
-// ----- EmitForallBody
-//
-void CodeGenFunction::EmitForallBody(const ForallStmt &S) {
-  EmitStmt(S.getBody());
+
+// reset Loopbounds and induction var
+void CodeGenFunction::ResetVars(void) {
+    LoopBounds.clear();
+    InductionVar.clear();
+    for(unsigned int i = 0; i < 3; i++) {
+       LoopBounds.push_back(0);
+       InductionVar.push_back(0);
+    }
 }
 
 // Emit a branch and block. used as markers for code extraction
@@ -438,7 +444,7 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
   BreakContinueStack.push_back(BreakContinue(LoopExit, Continue, &Cnt));
 
   if (r == 1) {  // This is our innermost rank, generate the loop body.
-    EmitForallBody(S);
+    EmitStmt(S.getBody());
   } else { // generate nested loop
     EmitForallArrayLoop(S, r-1);
   }
@@ -478,8 +484,8 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 
 	unsigned int rank = S.getMeshType()->rankOf();
 
-	LoopBounds.clear();
-	InductionVar.clear();
+	ResetVars();
+
 	llvm::SmallVector< llvm::Value *, 3 > Args;
 	Args.clear();
 
@@ -488,8 +494,6 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 
 	// Create the induction variables for eack rank.
 	for(unsigned int i = 0; i < 3; i++) {
-	  LoopBounds.push_back(0);
-	  InductionVar.push_back(0);
 	  sprintf(IRNameStr, "renderall.induct.%s.ptr", IndexNames[i]);
 	  InductionVar[i] = Builder.CreateAlloca(Int32Ty, 0, IRNameStr);
 	  //zero-initialize induction var
@@ -534,6 +538,10 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 	llvm::Function *EndFunc = CGM.getScoutRuntime().RenderallEndFunction();
 	std::vector<llvm::Value*> EmptyArgs;
 	Builder.CreateCall(EndFunc, ArrayRef<llvm::Value *>(EmptyArgs));
+
+	// reset Loopbounds and induction var
+	// so width/height etc can't be called after renderall
+	ResetVars();
 
 	//need a marker for end of Renderall for CodeExtraction
 	llvm::BasicBlock *exit = EmitMarkerBlock("renderall.exit");
