@@ -1183,6 +1183,21 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, DICompositeType CTy) {
     if (CTy.isRValueReference())
       addFlag(&Buffer, dwarf::DW_AT_rvalue_reference);
   } break;
+  // +===== Scout ==============================
+  case dwarf::DW_TAG_SCOUT_uniform_mesh_type:
+  case dwarf::DW_TAG_SCOUT_structured_mesh_type:
+  case dwarf::DW_TAG_SCOUT_rectilinear_mesh_type:
+  case dwarf::DW_TAG_SCOUT_unstructured_mesh_type: {
+    // Add elements to mesh type.
+    DIArray Elements = CTy.getTypeArray();
+    for (unsigned i = 0, N = Elements.getNumElements(); i < N; ++i) {
+      DIDescriptor Element = Elements.getElement(i);
+      DIScoutDerivedType DSDTy(Element);
+      constructMeshMemberDIE(Buffer, DSDTy);
+    }
+    break;
+  }
+  // +==========================================
   case dwarf::DW_TAG_structure_type:
   case dwarf::DW_TAG_union_type:
   case dwarf::DW_TAG_class_type: {

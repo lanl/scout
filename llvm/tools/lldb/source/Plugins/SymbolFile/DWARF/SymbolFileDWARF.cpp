@@ -5922,7 +5922,12 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
 //                  }
                 }
                 break;
-
+            // +===== Scout =============
+            case DW_TAG_SCOUT_uniform_mesh_type:
+            case DW_TAG_SCOUT_structured_mesh_type:
+            case DW_TAG_SCOUT_rectilinear_mesh_type:
+            case DW_TAG_SCOUT_unstructured_mesh_type:
+            // +=========================
             case DW_TAG_structure_type:
             case DW_TAG_union_type:
             case DW_TAG_class_type:
@@ -6034,6 +6039,11 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                     DEBUG_PRINTF ("0x%8.8" PRIx64 ": %s (\"%s\")\n", MakeUserID(die->GetOffset()), DW_TAG_value_to_name(tag), type_name_cstr);
 
                     int tag_decl_kind = -1;
+
+                    // +===== Scout ======================
+                    bool isScoutMesh = false;
+                    // +==================================
+
                     AccessType default_accessibility = eAccessNone;
                     if (tag == DW_TAG_structure_type)
                     {
@@ -6050,6 +6060,15 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                         tag_decl_kind = clang::TTK_Class;
                         default_accessibility = eAccessPrivate;
                     }
+                    // +===== Scout ======================
+                    else if (tag == DW_TAG_SCOUT_uniform_mesh_type ||
+                             tag == DW_TAG_SCOUT_structured_mesh_type ||
+                             tag == DW_TAG_SCOUT_rectilinear_mesh_type ||
+                             tag == DW_TAG_SCOUT_unstructured_mesh_type){
+                      isScoutMesh = true;
+                      default_accessibility = eAccessPublic;
+                    }
+                    // +==================================
                     
                     if (byte_size_valid && byte_size == 0 && type_name_cstr &&
                         die->HasChildren() == false && 
@@ -6163,7 +6182,7 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                             return type_sp;
                         }
                     }
-                    assert (tag_decl_kind != -1);
+                    assert (/* +===== Scout ======= */ isScoutMesh || /* +============ */ tag_decl_kind != -1);
                     bool clang_type_was_created = false;
                     clang_type.SetClangType(ast.getASTContext(), m_forward_decl_die_to_clang_type.lookup (die));
                     if (!clang_type)
@@ -6209,13 +6228,53 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
 
                         if (!clang_type_was_created)
                         {
-                            clang_type_was_created = true;
-                            clang_type = ast.CreateRecordType (decl_ctx, 
-                                                               accessibility, 
-                                                               type_name_cstr, 
-                                                               tag_decl_kind, 
-                                                               class_language,
-                                                               &metadata);
+                            // +===== Scout =================
+                            if(isScoutMesh){
+                              switch(tag){
+                              case DW_TAG_SCOUT_uniform_mesh_type:
+                                clang_type = ast.CreateUniformMeshType (decl_ctx,
+                                                                        accessibility,
+                                                                        type_name_cstr,
+                                                                        class_language,
+                                                                        &metadata);
+                                break;
+                              case DW_TAG_SCOUT_structured_mesh_type:
+                                clang_type = ast.CreateStructuredMeshType (decl_ctx,
+                                                                           accessibility,
+                                                                           type_name_cstr,
+                                                                           class_language,
+                                                                           &metadata);
+                                break;
+                              case DW_TAG_SCOUT_rectilinear_mesh_type:
+                                clang_type = ast.CreateRectilinearMeshType (decl_ctx,
+                                                                            accessibility,
+                                                                            type_name_cstr,
+                                                                            class_language,
+                                                                            &metadata);
+                                break;
+                              case DW_TAG_SCOUT_unstructured_mesh_type:
+                                clang_type = ast.CreateUnstructuredMeshType (decl_ctx,
+                                                                             accessibility,
+                                                                             type_name_cstr,
+                                                                             class_language,
+                                                                            &metadata);
+                                break;
+                              default:
+                                assert(false && "Invalid mesh type");
+                              }
+
+                              clang_type_was_created = true;
+                            }
+                            else{
+                            // +=============================
+                              clang_type_was_created = true;
+                              clang_type = ast.CreateRecordType (decl_ctx,
+                                                                 accessibility,
+                                                                 type_name_cstr,
+                                                                 tag_decl_kind,
+                                                                 class_language,
+                                                                 &metadata);
+                            }
                         }
                     }
 

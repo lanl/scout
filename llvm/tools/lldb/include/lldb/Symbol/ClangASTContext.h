@@ -239,6 +239,36 @@ public:
                       int kind,
                       lldb::LanguageType language,
                       ClangASTMetadata *metadata = NULL);
+
+    // +===== Scout ======================================
+    ClangASTType
+    CreateUniformMeshType (clang::DeclContext *decl_ctx,
+                           lldb::AccessType access_type,
+                           const char *name,
+                           lldb::LanguageType language,
+                           ClangASTMetadata *metadata = NULL);
+
+    ClangASTType
+    CreateStructuredMeshType (clang::DeclContext *decl_ctx,
+                              lldb::AccessType access_type,
+                              const char *name,
+                              lldb::LanguageType language,
+                              ClangASTMetadata *metadata = NULL);
+
+    ClangASTType
+    CreateRectilinearMeshType (clang::DeclContext *decl_ctx,
+                               lldb::AccessType access_type,
+                               const char *name,
+                               lldb::LanguageType language,
+                               ClangASTMetadata *metadata = NULL);
+
+    ClangASTType
+    CreateUnstructuredMeshType (clang::DeclContext *decl_ctx,
+                                lldb::AccessType access_type,
+                                const char *name,
+                                lldb::LanguageType language,
+                                ClangASTMetadata *metadata = NULL);
+    // +=================================================
     
     class TemplateParameterInfos
     {

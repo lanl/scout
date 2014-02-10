@@ -144,7 +144,14 @@ enum Tag LLVM_ENUM_INT_TYPE(uint16_t) {
   DW_TAG_GNU_formal_parameter_pack = 0x4108,
   DW_TAG_lo_user = 0x4080,
   DW_TAG_APPLE_property = 0x4200,
-  DW_TAG_hi_user = 0xffff
+  DW_TAG_hi_user = 0xffff,
+
+  // +===== Scout ===================
+  DW_TAG_SCOUT_uniform_mesh_type = 0x9000,
+  DW_TAG_SCOUT_structured_mesh_type = 0x9001,
+  DW_TAG_SCOUT_rectilinear_mesh_type = 0x9002,
+  DW_TAG_SCOUT_unstructured_mesh_type = 0x9003
+  // +===============================
 };
 
 inline bool isType(Tag T) {
@@ -338,7 +345,11 @@ enum Attribute LLVM_ENUM_INT_TYPE(uint16_t) {
   DW_AT_APPLE_property_setter = 0x3fea,
   DW_AT_APPLE_property_attribute = 0x3feb,
   DW_AT_APPLE_objc_complete_type = 0x3fec,
-  DW_AT_APPLE_property = 0x3fed
+  DW_AT_APPLE_property = 0x3fed,
+
+  // +===== Scout =====================
+  DW_AT_SCOUT_mesh_field_flags = 0x9000
+  // +=================================
 };
 
 enum Form LLVM_ENUM_INT_TYPE(uint16_t) {

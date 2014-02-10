@@ -1699,6 +1699,16 @@ public:
   /// type of a class template or class template partial specialization.
   CXXRecordDecl *getAsCXXRecordDecl() const;
 
+  // +===== Scout ===========================
+  UniformMeshDecl* getAsUniformMeshDecl() const;
+
+  StructuredMeshDecl* getAsStructuredMeshDecl() const;
+
+  RectilinearMeshDecl* getAsRectilinearMeshDecl() const;
+
+  UnstructuredMeshDecl* getAsUnstructuredMeshDecl() const;
+  // +========================================
+
   /// If this is a pointer or reference to a RecordType, return the
   /// CXXRecordDecl that that type refers to.
   ///

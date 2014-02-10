@@ -1,3 +1,57 @@
+/*
+ * ###########################################################################
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
+ * All rights reserved.
+ *
+ *  Copyright 2010. Los Alamos National Security, LLC. This software was
+ *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
+ *  Alamos National Laboratory (LANL), which is operated by Los Alamos
+ *  National Security, LLC for the U.S. Department of Energy. The
+ *  U.S. Government has rights to use, reproduce, and distribute this
+ *  software.  NEITHER THE GOVERNMENT NOR LOS ALAMOS NATIONAL SECURITY,
+ *  LLC MAKES ANY WARRANTY, EXPRESS OR IMPLIED, OR ASSUMES ANY LIABILITY
+ *  FOR THE USE OF THIS SOFTWARE.  If software is modified to produce
+ *  derivative works, such modified software should be clearly marked,
+ *  so as not to confuse it with the version available from LANL.
+ *
+ *  Additionally, redistribution and use in source and binary forms,
+ *  with or without modification, are permitted provided that the
+ *  following conditions are met:
+ *
+ *    * Redistributions of source code must retain the above copyright
+ *      notice, this list of conditions and the following disclaimer.
+ *
+ *    * Redistributions in binary form must reproduce the above
+ *      copyright notice, this list of conditions and the following
+ *      disclaimer in the documentation and/or other materials provided
+ *      with the distribution.
+ *
+ *    * Neither the name of Los Alamos National Security, LLC, Los
+ *      Alamos National Laboratory, LANL, the U.S. Government, nor the
+ *      names of its contributors may be used to endorse or promote
+ *      products derived from this software without specific prior
+ *      written permission.
+ *
+ *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
+ *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ *  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ *  DISCLAIMED. IN NO EVENT SHALL LOS ALAMOS NATIONAL SECURITY, LLC OR
+ *  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ *  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ *  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ *  USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ *  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ *  SUCH DAMAGE.
+ * ###########################################################################
+ *
+ * Notes
+ *
+ * #####
+ */
+
 #include "CGDebugInfo.h"
 #include "CGBlocks.h"
 #include "CGCXXABI.h"
@@ -26,9 +80,6 @@
 #include "llvm/Support/Path.h"
 
 #include "clang/AST/Scout/MeshLayout.h"
-
-// ndm - temp
-#include <iostream>
 
 using namespace clang;
 using namespace clang::CodeGen;
@@ -163,8 +214,6 @@ void CGDebugInfo::completeClassData(const UnstructuredMeshDecl *MD) {
 // ----- CreateType
 //
 llvm::DIType CGDebugInfo::CreateType(const UniformMeshType *Ty) {
-  std::cout << "di1" << std::endl;
-  
   UniformMeshDecl *MD = Ty->getDecl();
 
   // Always emit declarations for types that aren't required to be
@@ -195,8 +244,6 @@ llvm::DIType CGDebugInfo::CreateType(const UniformMeshType *Ty) {
 // ----- CreateTypeDefinition
 //
 llvm::DIType CGDebugInfo::CreateTypeDefinition(const UniformMeshType *Ty) {
-  std::cout << "di2" << std::endl;
-
   UniformMeshDecl *MD = Ty->getDecl();
 
   // Get overall information about the mesh type for the debug info.
@@ -244,8 +291,6 @@ llvm::DIType CGDebugInfo::CreateTypeDefinition(const UniformMeshType *Ty) {
 // TODO: Currently used for context chains when limiting debug info.
 llvm::DICompositeType
 CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
-  std::cout << "di3" << std::endl;
-
   UniformMeshDecl *MD = Ty->getDecl();
 
   // Get overall information about the mesh type for the debug info.
@@ -281,10 +326,10 @@ CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
 
   SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
 
-  RealDecl = DBuilder.createStructType(MDContext, MDName, DefUnit, Line,
-                                       Size, Align, 0, llvm::DIType(),
-                                       llvm::DIArray(), 0,
-                                       llvm::DIType(), FullName);
+  RealDecl = DBuilder.createUniformMeshType(MDContext, MDName, DefUnit, Line,
+                                            Size, Align, 0, llvm::DIType(),
+                                            llvm::DIArray(), 0,
+                                            llvm::DIType(), FullName);
 
   RegionMap[Ty->getDecl()] = llvm::WeakVH(RealDecl);
   TypeCache[QualType(Ty, 0).getAsOpaquePtr()] = RealDecl;
@@ -296,8 +341,6 @@ CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
 llvm::DICompositeType
 CGDebugInfo::getOrCreateMeshFwdDecl(const UniformMeshType *Ty,
                                     llvm::DIDescriptor Ctx) {
-  std::cout << "di4" << std::endl;
-
   const UniformMeshDecl *MD = Ty->getDecl();
   if (llvm::DIType T = getTypeOrNull(CGM.getContext().getUniformMeshType(MD)))
     return llvm::DICompositeType(T);
@@ -318,8 +361,6 @@ CGDebugInfo::getOrCreateMeshFwdDecl(const UniformMeshType *Ty,
 /// limited type if necessary.
 llvm::DIType CGDebugInfo::getOrCreateLimitedType(const UniformMeshType *Ty,
                                                  llvm::DIFile Unit) {
-  std::cout << "di6" << std::endl;
-
   QualType QTy(Ty, 0);
 
   llvm::DICompositeType T(getTypeOrNull(QTy));
@@ -468,10 +509,10 @@ CGDebugInfo::CreateLimitedType(const RectilinearMeshType *Ty) {
 
   SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
 
-  RealDecl = DBuilder.createStructType(MDContext, MDName, DefUnit, Line,
-                                       Size, Align, 0, llvm::DIType(),
-                                       llvm::DIArray(), 0,
-                                       llvm::DIType(), FullName);
+  RealDecl = DBuilder.createRectilinearMeshType(MDContext, MDName, DefUnit, Line,
+                                                Size, Align, 0, llvm::DIType(),
+                                                llvm::DIArray(), 0,
+                                                llvm::DIType(), FullName);
 
   RegionMap[Ty->getDecl()] = llvm::WeakVH(RealDecl);
   TypeCache[QualType(Ty, 0).getAsOpaquePtr()] = RealDecl;
@@ -653,10 +694,10 @@ CGDebugInfo::CreateLimitedType(const StructuredMeshType *Ty) {
 
   SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
 
-  RealDecl = DBuilder.createStructType(MDContext, MDName, DefUnit, Line,
-                                       Size, Align, 0, llvm::DIType(),
-                                       llvm::DIArray(), 0,
-                                       llvm::DIType(), FullName);
+  RealDecl = DBuilder.createStructuredMeshType(MDContext, MDName, DefUnit, Line,
+                                               Size, Align, 0, llvm::DIType(),
+                                               llvm::DIArray(), 0,
+                                               llvm::DIType(), FullName);
 
   RegionMap[Ty->getDecl()] = llvm::WeakVH(RealDecl);
   TypeCache[QualType(Ty, 0).getAsOpaquePtr()] = RealDecl;
@@ -789,10 +830,10 @@ CGDebugInfo::CreateLimitedType(const UnstructuredMeshType *Ty) {
 
   SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
 
-  RealDecl = DBuilder.createStructType(MDContext, MDName, DefUnit, Line,
-                                       Size, Align, 0, llvm::DIType(),
-                                       llvm::DIArray(), 0,
-                                       llvm::DIType(), FullName);
+  RealDecl = DBuilder.createUnstructuredMeshType(MDContext, MDName, DefUnit, Line,
+                                                 Size, Align, 0, llvm::DIType(),
+                                                 llvm::DIArray(), 0,
+                                                 llvm::DIType(), FullName);
 
   RegionMap[Ty->getDecl()] = llvm::WeakVH(RealDecl);
   TypeCache[QualType(Ty, 0).getAsOpaquePtr()] = RealDecl;
