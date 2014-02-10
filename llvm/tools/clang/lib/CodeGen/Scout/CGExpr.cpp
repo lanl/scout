@@ -39,7 +39,6 @@ static char IRNameStr[160];
 
 LValue
 CodeGenFunction::EmitColorDeclRefLValue(const NamedDecl *ND) {
-  llvm::errs() << "in EmitScoutColorDeclRefLValue\n";
   const ValueDecl *VD = cast<ValueDecl>(ND);
   CharUnits Alignment = getContext().getDeclAlign(ND);
   llvm::Value *idx = getLinearIdx();

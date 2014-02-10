@@ -1095,18 +1095,27 @@ namespace {
     }
 
     void VisitBinaryOperator(BinaryOperator* S){
-
       switch(S->getOpcode()){
         case BO_Assign:
           if(S->getOpcode() == BO_Assign){
-            if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(S->getLHS())) {
-              //SC_TODO: could replace string matching if rtti worked on ImplicitColorParamDecl
-              //if(isa<ImplicitColorParamDecl>(dr->getDecl())) {
-              if(dr->getDecl()->getName().str() == "color") {
 
+           // "color = " case
+            if(DeclRefExpr* DR = dyn_cast<DeclRefExpr>(S->getLHS())) {
+              //SC_TODO: could remove string matching if rtti worked on ImplicitColorParamDecl
+              // this is the same as isa<ImplicitParamDecl> for now
+              if(isa<ImplicitColorParamDecl>(DR->getDecl()) && DR->getDecl()->getName().str() == "color") {
                 foundColorAssign_ = true;
-                llvm::errs() << "found color\n";
               }
+            // "color.{rgba} = " case
+            } else if(ExtVectorElementExpr* VE = dyn_cast<ExtVectorElementExpr>(S->getLHS())) {
+
+                //only allow .r .g .b .a not combos like .rg
+                if (VE->getNumElements() == 1) {
+                  const char *namestart = VE->getAccessor().getNameStart();
+                  // find the index for this accesssor name {r,g,b,a} -> {0,1,2,3}
+                  int idx = ExtVectorType::getAccessorIdx(*namestart);
+                  foundComponentAssign_[idx] = true;
+                }
             }
             /* SC_TODO: convert to new vectors
             else if(ScoutVectorMemberExpr* vm =
@@ -1293,6 +1302,11 @@ StmtResult Sema::ActOnRenderallMeshStmt(SourceLocation RenderallLoc,
   // perform other semantic checks
   RenderallVisitor v(*this, RS);
   v.Visit(Body);
+
+  if(!v.foundColorAssign()){
+    Diag(RenderallLoc, diag::err_no_color_assignment_renderall);
+    return StmtError();
+  }
 
   if (v.error()){
     return StmtError();

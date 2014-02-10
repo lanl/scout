@@ -475,10 +475,8 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 	// find number of fields
 	MeshDecl* MD =  S.getMeshType()->getDecl();
 	unsigned int nfields = MD->fields();
-	llvm::errs() << "nfields " << nfields << "\n";
 
 	unsigned int rank = S.getMeshType()->rankOf();
-	llvm::errs() << "rank " << rank << "\n";
 
 	LoopBounds.clear();
 	InductionVar.clear();
@@ -547,12 +545,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned r) {
   RegionCounter Cnt = getPGORegionCounter(&S);
 
-  llvm::Value *MeshBaseAddr = GetMeshBaseAddr(S);
   llvm::StringRef MeshName = S.getMeshType()->getName();
-
-  // find number of fields
-  MeshDecl* MD =  S.getMeshType()->getDecl();
-  unsigned int nfields = MD->fields();
 
   CGDebugInfo *DI = getDebugInfo();
 
@@ -575,8 +568,6 @@ void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned
   // a GEP from the mesh and a load from returned address...
   // note: width/height depth are stored after mesh fields
   // GEP is done in EmitRenderallStmt so just load here.
-  //sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[r-1]);
-  //LoopBounds[r-1] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+r-1, IRNameStr);
   sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[r-1]);
   llvm::LoadInst *LoopBound  = Builder.CreateLoad(LoopBounds[r-1], IRNameStr);
 
