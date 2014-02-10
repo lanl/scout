@@ -53,6 +53,7 @@
  */ 
 
 #include "Scout/CGScoutRuntime.h"
+#include "CodeGenFunction.h"
 
 using namespace clang;
 using namespace CodeGen;
@@ -127,7 +128,7 @@ llvm::Function *CGScoutRuntime::RenderallEndFunction() {
 }
 
 // get Value for global runtime variable __scrt_renderall_uniform_colors
-llvm::Value *CGScoutRuntime::RenderallUniformColorsGlobal() {
+llvm::Value *CGScoutRuntime::RenderallUniformColorsGlobal(CodeGenFunction &CGF) {
   std::string varName = "__scrt_renderall_uniform_colors";
   llvm::Type *flt4PtrTy = llvm::PointerType::get(
       llvm::VectorType::get(llvm::Type::getFloatTy(CGM.getLLVMContext()), 4), 0);
@@ -142,9 +143,12 @@ llvm::Value *CGScoutRuntime::RenderallUniformColorsGlobal() {
         varName);
   }
 
-  llvm::Value *colors = CGM.getModule().getNamedGlobal(varName);
+  llvm::Value *Color = CGM.getModule().getNamedGlobal(varName);
 
-  return colors;
+  llvm::Value *ColorPtr  = CGF.Builder.CreateAlloca(flt4PtrTy, 0, "color.ptr");
+  CGF.Builder.CreateStore(CGF.Builder.CreateLoad(Color, "runtime.color"), ColorPtr);
+
+  return ColorPtr;
 }
 
 
