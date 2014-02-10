@@ -190,7 +190,6 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
   }
   // create linear loop index as 4th element and zero-initialize.
-  InductionVar.push_back(0);
   InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "forall.linearidx.ptr");
   //zero-initialize induction var
   Builder.CreateStore(ConstantZero, InductionVar[3]);
@@ -336,6 +335,8 @@ void CodeGenFunction::ResetVars(void) {
        LoopBounds.push_back(0);
        InductionVar.push_back(0);
     }
+    // create linear loop index as 4th element
+    InductionVar.push_back(0);
 }
 
 // Emit a branch and block. used as markers for code extraction
@@ -508,12 +509,11 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 		 Args[i] = Builder.CreateLoad(LoopBounds[i], IRNameStr);
 	}
 	for(unsigned int i = rank; i < 3; i++) {
-	  LoopBounds.push_back(llvm::ConstantInt::get(Int32Ty, 0));
+	  LoopBounds[i] = llvm::ConstantInt::get(Int32Ty, 0);
 		Args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
 	}
 
-	// create linear loop index as 4th element and zero-initialize.
-	InductionVar.push_back(0);
+	// create linear loop index as 4th element and zero-initialize
 	InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "renderall.linearidx.ptr");
 	//zero-initialize induction var
 	Builder.CreateStore(ConstantZero, InductionVar[3]);
@@ -523,13 +523,8 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   Builder.CreateCall(BeginFunc, ArrayRef<llvm::Value *>(Args));
 
 	// call renderall color buffer setup
-	// SC_TODO: move more to RenderallUniformColorsGlobal()
-	llvm::Value *RuntimeColorPtr = CGM.getScoutRuntime().RenderallUniformColorsGlobal();
-	llvm::Type *flt4PtrTy = llvm::PointerType::get(
-	      llvm::VectorType::get(llvm::Type::getFloatTy(CGM.getLLVMContext()), 4), 0);
-	llvm::Value *ColorPtr  = Builder.CreateAlloca(flt4PtrTy, 0, "color.ptr");
-	Builder.CreateStore(Builder.CreateLoad(RuntimeColorPtr, "runtime.color"), ColorPtr);
-	Color = Builder.CreateLoad(ColorPtr, "color");
+ llvm::Value *RuntimeColorPtr = CGM.getScoutRuntime().RenderallUniformColorsGlobal(*this);
+ Color = Builder.CreateLoad(RuntimeColorPtr, "color");
 
 	// renderall loops + body
 	EmitRenderallMeshLoop(S, rank);
