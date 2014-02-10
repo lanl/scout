@@ -466,6 +466,15 @@ public:
                           lldb::AccessType access,
                           uint32_t bitfield_bit_size);
     
+    // +===== Scout ==========================================
+    clang::MeshFieldDecl *
+    AddFieldToMeshType (const char *name,
+                        const ClangASTType &field_type,
+                        lldb::AccessType access,
+                        uint32_t bitfield_bit_size);
+    // +=======================================================
+
+
     void
     BuildIndirectFields ();
     
@@ -658,6 +667,11 @@ public:
     
     clang::ObjCInterfaceDecl *
     GetAsObjCInterfaceDecl () const;
+
+    // +===== Scout =====================
+    clang::MeshDecl *
+    GetAsMeshDecl () const;
+    // +=================================
 
     void
     Clear()

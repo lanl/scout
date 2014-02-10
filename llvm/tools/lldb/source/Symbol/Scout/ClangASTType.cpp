@@ -104,3 +104,58 @@ ClangASTType::CompleteMeshDeclarationDefinition ()
     }
     return false;
 }
+
+clang::MeshFieldDecl *
+ClangASTType::AddFieldToMeshType (const char *name,
+                                  const ClangASTType &field_clang_type,
+                                  AccessType access,
+                                  uint32_t bitfield_bit_size)
+{
+    if (!IsValid() || !field_clang_type.IsValid())
+        return NULL;
+
+    MeshFieldDecl *field = NULL;
+
+    clang::Expr *bit_width = NULL;
+    if (bitfield_bit_size != 0)
+    {
+        APInt bitfield_bit_size_apint(m_ast->getTypeSize(m_ast->IntTy), bitfield_bit_size);
+        bit_width = new (*m_ast)IntegerLiteral (*m_ast, bitfield_bit_size_apint, m_ast->IntTy, SourceLocation());
+    }
+
+    MeshDecl *mesh_decl = GetAsMeshDecl ();
+    assert(mesh_decl && "Expected a MeshDecl");
+
+    field = MeshFieldDecl::Create (*m_ast,
+                                   mesh_decl,
+                                   SourceLocation(),
+                                   SourceLocation(),
+                                   name ? &m_ast->Idents.get(name) : NULL,  // Identifier
+                                   field_clang_type.GetQualType(),          // Field type
+                                   NULL,            // TInfo *
+                                   bit_width,       // BitWidth
+                                   false,           // Mutable
+                                   ICIS_NoInit);    // HasInit
+
+    if (field)
+    {
+      field->setAccess (ClangASTContext::ConvertAccessTypeToAccessSpecifier (access));
+
+      mesh_decl->addDecl(field);
+
+#ifdef LLDB_CONFIGURATION_DEBUG
+      VerifyDecl(field);
+#endif
+    }
+
+    return field;
+}
+
+clang::MeshDecl *
+ClangASTType::GetAsMeshDecl () const
+{
+    const MeshType *mesh_type = dyn_cast<MeshType>(GetCanonicalQualType());
+    if (mesh_type)
+        return mesh_type->getDecl();
+    return NULL;
+}
