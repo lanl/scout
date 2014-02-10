@@ -183,6 +183,22 @@ public:
         llvm::DenseMap <const clang::CXXRecordDecl *, clang::CharUnits> base_offsets;
         llvm::DenseMap <const clang::CXXRecordDecl *, clang::CharUnits> vbase_offsets;
     };
+
+    // +===== Scout ========================
+    struct MeshLayoutInfo
+    {
+        MeshLayoutInfo () :
+            bit_size(0),
+            alignment(0),
+            field_offsets()
+        {
+        }
+        uint64_t bit_size;
+        uint64_t alignment;
+        llvm::DenseMap <const clang::MeshFieldDecl *, uint64_t> field_offsets;
+    };
+    // +=====================================
+
     //------------------------------------------------------------------
     // PluginInterface protocol
     //------------------------------------------------------------------
@@ -356,6 +372,16 @@ protected:
                                 lldb::AccessType &default_accessibility,
                                 bool &is_a_class,
                                 LayoutInfo &layout_info);
+
+    // +===== Scout =========================================================
+    size_t                  ParseMeshChildMembers(
+                                const lldb_private::SymbolContext& sc,
+                                DWARFCompileUnit* dwarf_cu,
+                                const DWARFDebugInfoEntry *die,
+                                lldb_private::ClangASTType &class_clang_type,
+                                lldb::AccessType &default_accessibility,
+                                MeshLayoutInfo &layout_info);
+    // +=====================================================================
 
     size_t                  ParseChildParameters(
                                 const lldb_private::SymbolContext& sc,
@@ -617,6 +643,11 @@ protected:
     DIEToClangType m_forward_decl_die_to_clang_type;
     ClangTypeToDIE m_forward_decl_clang_type_to_die;
     RecordDeclToLayoutMap m_record_decl_to_layout_map;
+
+    // +===== Scout ==========================================
+    typedef llvm::DenseMap<const clang::MeshDecl *, MeshLayoutInfo> MeshDeclToLayoutMap;
+    MeshDeclToLayoutMap m_mesh_decl_to_layout_map;
+    // +======================================================
 };
 
 #endif  // SymbolFileDWARF_SymbolFileDWARF_h_

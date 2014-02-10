@@ -2408,6 +2408,72 @@ SymbolFileDWARF::ResolveClangOpaqueTypeDefinition (ClangASTType &clang_type)
 
     switch (tag)
     {
+    // +===== Scout =======================
+    case DW_TAG_SCOUT_uniform_mesh_type:
+    case DW_TAG_SCOUT_structured_mesh_type:
+    case DW_TAG_SCOUT_rectilinear_mesh_type:
+    case DW_TAG_SCOUT_unstructured_mesh_type:
+    {
+      MeshLayoutInfo layout_info;
+
+      {
+          if (die->HasChildren())
+          {
+
+            AccessType default_accessibility = eAccessPublic;
+
+            SymbolContext sc(GetCompUnitForDWARFCompUnit(dwarf_cu));
+
+            ParseMeshChildMembers (sc,
+                                   dwarf_cu,
+                                   die,
+                                   clang_type,
+                                   default_accessibility,
+                                   layout_info);
+          }
+      }
+
+      clang_type.CompleteMeshDeclarationDefinition ();
+
+      if (!layout_info.field_offsets.empty())
+      {
+          if (type)
+              layout_info.bit_size = type->GetByteSize() * 8;
+          if (layout_info.bit_size == 0)
+              layout_info.bit_size = die->GetAttributeValueAsUnsigned(this, dwarf_cu, DW_AT_byte_size, 0) * 8;
+
+          clang::MeshDecl *mesh_decl = clang_type.GetAsMeshDecl();
+          assert(mesh_decl && "Expected as MeshDecl");
+
+          if (log)
+          {
+            GetObjectFile()->GetModule()->LogMessage (log,
+                                                      "SymbolFileDWARF::ResolveClangOpaqueTypeDefinition (clang_type = %p) caching layout info for record_decl = %p, bit_size = %" PRIu64 ", alignment = %" PRIu64 ", field_offsets[%u])",
+                                                      clang_type.GetOpaqueQualType(),
+                                                      mesh_decl,
+                                                      layout_info.bit_size,
+                                                      layout_info.alignment,
+                                                      (uint32_t)layout_info.field_offsets.size());
+
+            uint32_t idx;
+            {
+              llvm::DenseMap <const clang::MeshFieldDecl *, uint64_t>::const_iterator pos, end = layout_info.field_offsets.end();
+              for (idx = 0, pos = layout_info.field_offsets.begin(); pos != end; ++pos, ++idx)
+              {
+                GetObjectFile()->GetModule()->LogMessage (log,
+                                                          "SymbolFileDWARF::ResolveClangOpaqueTypeDefinition (clang_type = %p) field[%u] = { bit_offset=%u, name='%s' }",
+                                                          clang_type.GetOpaqueQualType(),
+                                                          idx,
+                                                          (uint32_t)pos->second,
+                                                          pos->first->getNameAsString().c_str());
+              }
+            }
+          }
+          m_mesh_decl_to_layout_map.insert(std::make_pair(mesh_decl, layout_info));
+      }
+      return (bool)clang_type;
+    }
+    // +===================================
     case DW_TAG_structure_type:
     case DW_TAG_union_type:
     case DW_TAG_class_type:
@@ -6341,8 +6407,16 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                         if (die->HasChildren() == false)
                         {
                             // No children for this struct/union/class, lets finish it
-                            clang_type.StartTagDeclarationDefinition ();
-                            clang_type.CompleteTagDeclarationDefinition ();
+                            // +===== Scout ==========================
+                            if(isScoutMesh){
+                              clang_type.StartMeshDeclarationDefinition ();
+                              clang_type.CompleteMeshDeclarationDefinition ();
+                            }
+                            else{
+                              clang_type.StartTagDeclarationDefinition ();
+                              clang_type.CompleteTagDeclarationDefinition ();
+                            }
+                            // +======================================
                             
                             if (tag == DW_TAG_structure_type) // this only applies in C
                             {
@@ -6370,8 +6444,14 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                             // to complete that type..
                             
                             if (class_language != eLanguageTypeObjC &&
-                                class_language != eLanguageTypeObjC_plus_plus)
+                                class_language != eLanguageTypeObjC_plus_plus){
+                              // +===== Scout =========================
+                              if(isScoutMesh)
+                                clang_type.StartMeshDeclarationDefinition ();
+                              else
                                 clang_type.StartTagDeclarationDefinition ();
+                              // +=====================================
+                            }
 
                             // Leave this as a forward declaration until we need
                             // to know the details of the type. lldb_private::Type

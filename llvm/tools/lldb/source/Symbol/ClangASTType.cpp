@@ -686,6 +686,9 @@ ClangASTType::IsDefined() const
 
     QualType qual_type(GetQualType());
     const TagType *tag_type = dyn_cast<TagType>(qual_type.getTypePtr());
+    // +===== Scout ==========================
+    const MeshType* mesh_type;
+    // +======================================
     if (tag_type)
     {
         TagDecl *tag_decl = tag_type->getDecl();
@@ -693,6 +696,15 @@ ClangASTType::IsDefined() const
             return tag_decl->isCompleteDefinition();
         return false;
     }
+    // +===== Scout ===================================
+    else if ((mesh_type = dyn_cast<MeshType>(qual_type.getTypePtr())))
+    {
+        MeshDecl *mesh_decl = mesh_type->getDecl();
+        if (mesh_decl)
+            return mesh_decl->isCompleteDefinition();
+        return false;
+    }
+    // +================================================
     else
     {
         const ObjCObjectType *objc_class_type = dyn_cast<ObjCObjectType>(qual_type);
