@@ -55,7 +55,7 @@
 #ifndef LLVM_SCOUT_DEBUGINFO_H
 #define LLVM_SCOUT_DEBUGINFO_H
 
-#include "DebugInfo.h"
+#include "llvm/DebugInfo.h"
 
 namespace llvm {
 
@@ -75,7 +75,7 @@ namespace llvm {
 
     explicit DIScoutDerivedType(const MDNode* N = 0) : DIDerivedType(N) {}
 
-    unsigned getScoutFlags() const { return getUnsignedField(9); }
+    unsigned getScoutFlags() const { return getUnsignedField(10); }
 
     bool isCellLocated() const { 
       return (getScoutFlags() & FlagMeshFieldCellLocated) != 0;

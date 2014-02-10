@@ -66,6 +66,8 @@
 
 #include <map>
 
+#include "llvm/Scout/DebugInfo.h"
+
 //#define ENABLE_DEBUG_PRINTF // COMMENT OUT THIS LINE PRIOR TO CHECKIN
 
 #ifdef ENABLE_DEBUG_PRINTF
@@ -154,6 +156,7 @@ SymbolFileDWARF::ParseMeshChildMembers
             AccessType accessibility = eAccessNone;
             uint32_t member_byte_offset = UINT32_MAX;
             uint32_t i;
+            uint32_t fieldFlags;
             for (i=0; i<num_attributes; ++i)
             {
               const dw_attr_t attr = attributes.AttributeAtIndex(i);
@@ -200,7 +203,7 @@ SymbolFileDWARF::ParseMeshChildMembers
                   }
                   break;
                 case DW_AT_SCOUT_mesh_field_flags:
-                  // ndm - need to handle
+                  fieldFlags = form_value.Unsigned();
                   break;
                 }
               }
@@ -225,6 +228,19 @@ SymbolFileDWARF::ParseMeshChildMembers
                                                                     member_clang_type,
                                                                     accessibility,
                                                                     0);
+
+                  if(fieldFlags & llvm::DIScoutDerivedType::FlagMeshFieldCellLocated){
+                    field_decl->setCellLocated(true);
+                  }
+                  else if(fieldFlags & llvm::DIScoutDerivedType::FlagMeshFieldVertexLocated){
+                    field_decl->setVertexLocated(true);
+                  }
+                  else if(fieldFlags & llvm::DIScoutDerivedType::FlagMeshFieldEdgeLocated){
+                    field_decl->setEdgeLocated(true);
+                  }
+                  else if(fieldFlags & llvm::DIScoutDerivedType::FlagMeshFieldFaceLocated){
+                    field_decl->setFaceLocated(true);
+                  }
 
                   GetClangASTContext().SetMetadataAsUserID (field_decl, MakeUserID(die->GetOffset()));
 
