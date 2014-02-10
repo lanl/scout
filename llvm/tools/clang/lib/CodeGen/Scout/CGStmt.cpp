@@ -176,16 +176,13 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
   unsigned int rank = S.getMeshType()->rankOf();
 
-  LoopBounds.clear();
-  InductionVar.clear();
+  ResetVars();
 
   //need a marker for start of Forall for CodeExtraction
-  llvm::BasicBlock *entry = EmitForallMarkerBlock("forall.entry");
+  llvm::BasicBlock *entry = EmitMarkerBlock("forall.entry");
 
   // Create the induction variables for eack rank.
   for(unsigned int i = 0; i < 3; i++) {
-    LoopBounds.push_back(0);
-    InductionVar.push_back(0);
     sprintf(IRNameStr, "forall.induct.%s.ptr", IndexNames[i]);
     InductionVar[i] = Builder.CreateAlloca(Int32Ty, 0, IRNameStr);
     //zero-initialize induction var
@@ -200,8 +197,12 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
   EmitForallMeshLoop(S, rank);
 
+  // reset Loopbounds and induction var
+  // so width/height etc can't be called after forall
+  ResetVars();
+
   //need a marker for end of Forall for CodeExtraction
-  llvm::BasicBlock *exit = EmitForallMarkerBlock("forall.exit");
+  llvm::BasicBlock *exit = EmitMarkerBlock("forall.exit");
 
   // Extract Blocks to function and replace w/ call to function
   ExtractRegion(entry, exit, "ForallMeshFunction");
@@ -289,7 +290,7 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
 
   BreakContinueStack.push_back(BreakContinue(LoopExit, Continue, &Cnt));
   if (r == 1) {  // This is our innermost rank, generate the loop body.
-    EmitForallBody(S);
+    EmitStmt(S.getBody());
 
     // Increment the loop index stored as last element of InductionVar
     llvm::LoadInst* liv = Builder.CreateLoad(InductionVar[3], "forall.linearidx");
@@ -326,14 +327,19 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
   EmitBlock(LoopExit.getBlock(), true);
 }
 
-// ----- EmitForallBody
-//
-void CodeGenFunction::EmitForallBody(const ForallStmt &S) {
-  EmitStmt(S.getBody());
+
+// reset Loopbounds and induction var
+void CodeGenFunction::ResetVars(void) {
+    LoopBounds.clear();
+    InductionVar.clear();
+    for(unsigned int i = 0; i < 3; i++) {
+       LoopBounds.push_back(0);
+       InductionVar.push_back(0);
+    }
 }
 
 // Emit a branch and block. used as markers for code extraction
-llvm::BasicBlock *CodeGenFunction::EmitForallMarkerBlock(const std::string name) {
+llvm::BasicBlock *CodeGenFunction::EmitMarkerBlock(const std::string name) {
   llvm::BasicBlock *entry = createBasicBlock(name);
   Builder.CreateBr(entry);
   EmitBlock(entry);
@@ -364,12 +370,12 @@ void CodeGenFunction:: ExtractRegion(llvm::BasicBlock *entry, llvm::BasicBlock *
 void CodeGenFunction::EmitForallArrayStmt(const ForallArrayStmt &S) {
 
   //need a marker for start of Forall for CodeExtraction
-  llvm::BasicBlock *entry = EmitForallMarkerBlock("forall.entry");
+  llvm::BasicBlock *entry = EmitMarkerBlock("forall.entry");
 
   EmitForallArrayLoop(S, S.getDims());
 
   //need a marker for end of Forall for CodeExtraction
-  llvm::BasicBlock *exit = EmitForallMarkerBlock("forall.exit");
+  llvm::BasicBlock *exit = EmitMarkerBlock("forall.exit");
 
   // Extract Blocks to function and replace w/ call to function
   ExtractRegion(entry, exit, "ForallArrayFunction");
@@ -438,7 +444,7 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
   BreakContinueStack.push_back(BreakContinue(LoopExit, Continue, &Cnt));
 
   if (r == 1) {  // This is our innermost rank, generate the loop body.
-    EmitForallBody(S);
+    EmitStmt(S.getBody());
   } else { // generate nested loop
     EmitForallArrayLoop(S, r-1);
   }
@@ -468,44 +474,45 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
 
 void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 
+  llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
 	llvm::Value *MeshBaseAddr = GetMeshBaseAddr(S);
 	llvm::StringRef MeshName = S.getMeshType()->getName();
 
 	// find number of fields
 	MeshDecl* MD =  S.getMeshType()->getDecl();
 	unsigned int nfields = MD->fields();
-	llvm::errs() << "nfields " << nfields << "\n";
 
 	unsigned int rank = S.getMeshType()->rankOf();
-	llvm::errs() << "rank " << rank << "\n";
 
-	LoopBounds.clear();
-	InductionVar.clear();
+	ResetVars();
+
 	llvm::SmallVector< llvm::Value *, 3 > Args;
 	Args.clear();
 
 	//need a marker for start of Renderall for CodeExtraction
-	llvm::BasicBlock *entry = EmitForallMarkerBlock("renderall.entry");
+	llvm::BasicBlock *entry = EmitMarkerBlock("renderall.entry");
 
-	llvm::Value *LoopBound = llvm::ConstantInt::get(Int32Ty, 1);
+	// Create the induction variables for eack rank.
+	for(unsigned int i = 0; i < 3; i++) {
+	  sprintf(IRNameStr, "renderall.induct.%s.ptr", IndexNames[i]);
+	  InductionVar[i] = Builder.CreateAlloca(Int32Ty, 0, IRNameStr);
+	  //zero-initialize induction var
+	  Builder.CreateStore(ConstantZero, InductionVar[i]);
+	}
+
+	//build argument list for renderall setup runtime function
 	for(unsigned int i = 0; i < rank; i++) {
-		 LoopBounds.push_back(0);
-		 InductionVar.push_back(0); //unused in renderall
 		 Args.push_back(0);
 		 sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
 		 LoopBounds[i] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
-		 sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[i]);
 		 Args[i] = Builder.CreateLoad(LoopBounds[i], IRNameStr);
-		 LoopBound = Builder.CreateMul(LoopBound, Args[i], "renderall.elements"); //total number of elements
 	}
 	for(unsigned int i = rank; i < 3; i++) {
-		LoopBounds.push_back(llvm::ConstantInt::get(Int32Ty, 0));
-		InductionVar.push_back(0); // unused in renderall
+	  LoopBounds.push_back(llvm::ConstantInt::get(Int32Ty, 0));
 		Args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
 	}
 
 	// create linear loop index as 4th element and zero-initialize.
-	llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
 	InductionVar.push_back(0);
 	InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "renderall.linearidx.ptr");
 	//zero-initialize induction var
@@ -524,22 +531,30 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 	Builder.CreateStore(Builder.CreateLoad(RuntimeColorPtr, "runtime.color"), ColorPtr);
 	Color = Builder.CreateLoad(ColorPtr, "color");
 
-	// renderall loop + body
-	EmitRenderallMeshLoop(S, LoopBound);
+	// renderall loops + body
+	EmitRenderallMeshLoop(S, rank);
 
 	// call renderall cleanup runtime function
 	llvm::Function *EndFunc = CGM.getScoutRuntime().RenderallEndFunction();
 	std::vector<llvm::Value*> EmptyArgs;
 	Builder.CreateCall(EndFunc, ArrayRef<llvm::Value *>(EmptyArgs));
 
-	//need a marker for end of Forall for CodeExtraction
-	llvm::BasicBlock *exit = EmitForallMarkerBlock("renderall.exit");
+	// reset Loopbounds and induction var
+	// so width/height etc can't be called after renderall
+	ResetVars();
+
+	//need a marker for end of Renderall for CodeExtraction
+	llvm::BasicBlock *exit = EmitMarkerBlock("renderall.exit");
 
 	ExtractRegion(entry, exit, "RenderallFunction");
 }
 
-void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, llvm::Value *LoopBound) {
+//generate one of the nested loops
+void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned r) {
   RegionCounter Cnt = getPGORegionCounter(&S);
+
+  llvm::StringRef MeshName = S.getMeshType()->getName();
+
   CGDebugInfo *DI = getDebugInfo();
 
   llvm::Value *ConstantZero  = 0;
@@ -548,26 +563,39 @@ void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, llvm::Va
   ConstantOne  = llvm::ConstantInt::get(Int32Ty, 1);
 
   //zero-initialize induction var
-  Builder.CreateStore(ConstantZero, InductionVar[3]);
+  Builder.CreateStore(ConstantZero, InductionVar[r-1]);
 
-  JumpDest LoopExit = getJumpDestInCurrentScope("renderall.end");
+  sprintf(IRNameStr, "renderall.%s.end", DimNames[r-1]);
+  JumpDest LoopExit = getJumpDestInCurrentScope(IRNameStr);
   RunCleanupsScope RenderallScope(*this);
 
   if (DI)
     DI->EmitLexicalBlockStart(Builder, S.getSourceRange().getBegin());
 
+  // Extract the loop bounds from the mesh for this rank, this requires
+  // a GEP from the mesh and a load from returned address...
+  // note: width/height depth are stored after mesh fields
+  // GEP is done in EmitRenderallStmt so just load here.
+  sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[r-1]);
+  llvm::LoadInst *LoopBound  = Builder.CreateLoad(LoopBounds[r-1], IRNameStr);
+
 
   // Next we create a block that tests the induction variables value to
   // the rank's dimension.
-  JumpDest Continue = getJumpDestInCurrentScope("renderall.cond");
+  sprintf(IRNameStr, "renderall.cond.%s", DimNames[r-1]);
+  JumpDest Continue = getJumpDestInCurrentScope(IRNameStr);
   llvm::BasicBlock *CondBlock = Continue.getBlock();
   EmitBlock(CondBlock);
 
   RunCleanupsScope ConditionScope(*this);
 
-  llvm::LoadInst *IVar = Builder.CreateLoad(InductionVar[3], "renderall.induct");
+  sprintf(IRNameStr, "renderall.induct.%s", IndexNames[r-1]);
+  llvm::LoadInst *IVar = Builder.CreateLoad(InductionVar[r-1], IRNameStr);
+
+  sprintf(IRNameStr, "renderall.done.%s", IndexNames[r-1]);
   llvm::Value *CondValue = Builder.CreateICmpSLT(IVar,
-      LoopBound, "renderall.done");
+                                                  LoopBound,
+                                                  IRNameStr);
 
   llvm::BasicBlock *ExitBlock = LoopExit.getBlock();
 
@@ -575,10 +603,11 @@ void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, llvm::Va
   // scope, create a block to stage a loop exit along.  (We're
   // following Clang's lead here in generating a for loop.)
   if (RenderallScope.requiresCleanups()) {
-    ExitBlock = createBasicBlock("renderall.cond.cleanup");
+    sprintf(IRNameStr, "renderall.cond.cleanup.%s", DimNames[r-1]);
+    ExitBlock = createBasicBlock(IRNameStr);
   }
 
-  llvm::BasicBlock *LoopBody = createBasicBlock("renderall.done");
+  llvm::BasicBlock *LoopBody = createBasicBlock(IRNameStr);
   Builder.CreateCondBr(CondValue, LoopBody, ExitBlock);
 
   if (ExitBlock != LoopExit.getBlock()) {
@@ -588,24 +617,37 @@ void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, llvm::Va
 
   EmitBlock(LoopBody);
 
-  Continue = getJumpDestInCurrentScope("renderall.incblk");
+  sprintf(IRNameStr, "renderall.incblk.%s", IndexNames[r-1]);
+  Continue = getJumpDestInCurrentScope(IRNameStr);
 
   // Store the blocks to use for break and continue.
 
   BreakContinueStack.push_back(BreakContinue(LoopExit, Continue, &Cnt));
 
-  //Emit Body
-  EmitStmt(S.getBody());
+  if (r == 1) {  // This is our innermost rank, generate the loop body.
+    EmitStmt(S.getBody());
+    // Increment the loop index stored as last element of InductionVar
+    llvm::LoadInst* liv = Builder.CreateLoad(InductionVar[3], "renderall.linearidx");
+    llvm::Value *IncLoopIndexVar = Builder.CreateAdd(liv,
+        ConstantOne,
+        "renderall.linearidx.inc");
+
+    Builder.CreateStore(IncLoopIndexVar, InductionVar[3]);
+  } else { // generate nested loop
+    EmitRenderallMeshLoop(S, r-1);
+  }
 
   EmitBlock(Continue.getBlock());
 
-  // Increment the loop index stored as last element of InductionVar
-  llvm::LoadInst* liv = Builder.CreateLoad(InductionVar[3], "renderall.induct");
-  llvm::Value *IncLoopIndexVar = Builder.CreateAdd(liv,
-      ConstantOne,
-      "renderall.induct.inc");
-  Builder.CreateStore(IncLoopIndexVar, InductionVar[3]);
+  sprintf(IRNameStr, "renderall.induct.%s", IndexNames[r-1]);
+  llvm::LoadInst* iv = Builder.CreateLoad(InductionVar[r-1], IRNameStr);
 
+  sprintf(IRNameStr, "renderall.inc.%s", IndexNames[r-1]);
+  llvm::Value *IncInductionVar = Builder.CreateAdd(iv,
+      ConstantOne,
+      IRNameStr);
+
+  Builder.CreateStore(IncInductionVar, InductionVar[r-1]);
 
   BreakContinueStack.pop_back();
   ConditionScope.ForceCleanup();

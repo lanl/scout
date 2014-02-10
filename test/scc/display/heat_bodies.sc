@@ -49,30 +49,107 @@
  * 
  * Notes
  *
- * ##### 
- */ 
+ * Simplistic 2D heat transfer...
+ * Modified to include (quasi-)soluble bodies and constant advection term
+ * Jamal Mohd-Yusof 10/20/11
+ *
+ */
+
 #include <stdio.h>
 
-int main(int argc, char** argv){
+#define N_BODIES   5
+#define SOLUBLE    1
+#define SHOW_SOLID (1-SOLUBLE)
+#define MESH_DIM   512
 
-  uniform mesh MyMesh{
-  cells:
-    float i;
+int main(int argc, char *argv[])
+{
+  const int NTIME_STEPS     = 100;
+  const float MAX_TEMP      = 100.0f;
+
+  uniform mesh HeatMeshType{
+   cells:
+    float h;
+    float h_next;
+    float mask;
   };
 
-  MyMesh m[512,512];
+  HeatMeshType heat_mesh[MESH_DIM, MESH_DIM];
 
-  forall cells c in m{
-    i = position().x;
-  } 
+  int c_x[N_BODIES] = {128, 128, 394, 394, 256};
+  int c_y[N_BODIES] = {128, 394, 128, 394, 256};
+  int r2cyl = MESH_DIM / 4;
+  float u = 0.001;
 
-  for(float k = 0.0; k < 1.0; k += 0.01){  
-    renderall cells c in m{
-      color = hsva(i/512.0*360.0, i/512.0, k, 1.0);
+  forall cells c in heat_mesh {
+    h = 0.0f;
+    h_next = 0.0f;
+    mask = 1.0;
+
+    /* no left/right boundaries 
+    if (position().x == 0 || position().x == (width()-1)) {
+      h = MAX_TEMP;
+      h_next = MAX_TEMP;
+      mask = 0.0;
+    }
+    */
+
+    if (position().y == 0 || position().y == (height()-1)) {
+      h = MAX_TEMP;
+      h_next = MAX_TEMP;
+      mask = 0.0;
+    }
+
+    for (int i = 0; i < N_BODIES; i++) {
+      float r2 = (position().x - c_x[i])*(position().x - c_x[i]) +
+        (position().y - c_y[i])*(position().y - c_y[i]);
+      if (r2 < r2cyl) {
+        if (SOLUBLE) {
+          mask = r2/r2cyl;
+        } else {
+          mask = 0.0;
+        }
+        h = MAX_TEMP;
+        h_next = MAX_TEMP;
+      }
     }
   }
   
+  const float dx    = 10.0f / MESH_DIM;
+  const float dy    = 10.0f / MESH_DIM;
+  const float alpha = 0.00001f;
+  const float dt    = 0.5f * (dx * dx+ dy * dy)/4.0f/alpha;
+  
+  //printf ("dx = dy = %e, alpha = %e, dt = %e\n", dx, alpha, dt);
 
+  // Time steps loop.
+  for(unsigned int t = 0; t < NTIME_STEPS; ++t) {
+    
+    forall cells c in heat_mesh {
+      float ddx = 0.5*(cshift(c.h, 1, 0) - cshift(c.h, -1, 0))/dx;
+      float d2dx2 = cshift(c.h, 1, 0) - 2.0f * c.h + cshift(c.h, -1,  0);
+      d2dx2 /= dx * dx;
+
+      float d2dy2 = cshift(c.h, 0, 1) - 2.0f * c.h + cshift(c.h,  0, -1);
+      d2dy2 /= dy * dy;
+
+      h_next = mask*dt*(alpha * (d2dx2 + d2dy2) - mask*u*ddx) + c.h;
+    }
+
+
+    forall cells c in heat_mesh {
+      h = h_next;
+    }
+
+    renderall cells c in heat_mesh {
+      float norm_h = h / MAX_TEMP;
+      float hue = 240.0f - 240.0f * norm_h;
+#if (SHOW_SOLID)
+      color = hsv(hue, 1.0f, mask);
+#else
+      color = hsv(hue, 1.0f, 1.0f);
+#endif
+    }
+  }
   return 0;
 }
-

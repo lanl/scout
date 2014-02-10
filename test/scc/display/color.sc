@@ -49,30 +49,34 @@
  * 
  * Notes
  *
+ * A simple rendering test with no forall stmt's.
+ *
  * ##### 
- */ 
-#include <stdio.h>
+ */
 
-int main(int argc, char** argv){
+int main(int argc, char *argv[]) {
+  const int NTIME_STEPS = 1000;
 
-  uniform mesh MyMesh{
+  uniform mesh HeatMeshType{
   cells:
-    float i;
+    float h1;
   };
 
-  MyMesh m[512,512];
+  HeatMeshType heat_mesh[2, 2];
 
-  forall cells c in m{
-    i = position().x;
-  } 
+  for(float t = 0; t < NTIME_STEPS; ++t) {
 
-  for(float k = 0.0; k < 1.0; k += 0.01){  
-    renderall cells c in m{
-      color = hsva(i/512.0*360.0, i/512.0, k, 1.0);
+    forall cells c in heat_mesh {
+      h1 = t/NTIME_STEPS;
+    }
+
+    renderall cells c in heat_mesh {
+      color.r = ((float)position().x / width())*h1;
+      color.g = ((float)position().y / height())*h1;
+      color.b = 0.0f;
+      color.a = 1.0f;
     }
   }
-  
 
   return 0;
 }
-

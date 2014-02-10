@@ -1942,10 +1942,10 @@ public:
                         llvm::SmallVector<llvm::Value*, 3> &MeshDimensions,
                         llvm::Value* MeshBaseAddr);
 
-  void EmitForallBody(const ForallStmt &S);
+  void ResetVars(void);
   void EmitForallMeshStmt(const ForallMeshStmt &S);
   void EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r);
-  llvm::BasicBlock *EmitForallMarkerBlock(const std::string name);
+  llvm::BasicBlock *EmitMarkerBlock(const std::string name);
   void ExtractRegion(llvm::BasicBlock *entry, llvm::BasicBlock *exit, const std::string name);
 
   void EmitForAllStmtWrapper(const ForallMeshStmt &S);
@@ -1958,7 +1958,7 @@ public:
   void EmitForallArrayLoop(const ForallArrayStmt &S,  unsigned r);
 
   void EmitRenderallStmt(const RenderallMeshStmt &S);
-  void EmitRenderallMeshLoop(const RenderallMeshStmt &S, llvm::Value *LoopBound);
+  void EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned r);
   //void EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S);
 
   void insertMeshDump(llvm::Value* baseAddr);

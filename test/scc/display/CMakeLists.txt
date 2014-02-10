@@ -48,41 +48,25 @@
 #
 ###########################################################################
 #
+project(scout_test_display)
 
-include(${CMAKE_BINARY_DIR}/CMake/Modules/Configuration.cmake)
+# only run these tests if the $DISPLAY variable is set
 
-set(CMAKE_MODULE_PATH
-  ${SCOUT_CMAKE_PATH}
-  ${CMAKE_MODULE_PATH}
-)
+# Note: By default we pull in all the .sc source files in this
+# directory for inclusion into the regression checks. 
+file(GLOB SC_SRCS *.sc) 
 
-#ignore warnings about i/o in forall
-set(CMAKE_SCC_FLAGS "${CMAKE_SCC_FLAGS} -Wno-calling-io-function")
+# Add an executable and test entry for each source file...
+foreach (test ${SC_SRCS})
+  get_filename_component(tname ${test} NAME_WE) 
+  if (NOT tname) 
+    message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
+  else (NOT tname)
+    add_executable(scc_display_${tname} ${test})
+    if(DEFINED ENV{DISPLAY}) 
+      add_test("scc_display_${tname}" "${TEST_BINARY_DIR}/scc_display_${tname}")
+      message(" + added runtime regression test entry: scc_display_${tname}")
+    endif()
+  endif(NOT tname)
+endforeach(test)
 
-project(scout_test_scc)
-    
-  cmake_minimum_required(VERSION 2.8.9)
-
-  # Note: By default we pull in all the .sc source files in this
-  # directory for inclusion into the regression checks.  If you want do
-  # build more complex tests we suggest creating a subdirectory for the
-  # source.
-  #
-  file(GLOB SC_SRCS *.sc) 
-
-  # Add an executable and test entry for each source file...
-  foreach (test ${SC_SRCS})
-    get_filename_component(tname ${test} NAME_WE) 
-    if (NOT tname) 
-      message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
-    else (NOT tname)
-      add_executable(scc_${tname} ${test})
-      add_test("scc_${tname}" "${TEST_BINARY_DIR}/scc_${tname}")
-      message(" + added runtime regression test entry: scc_${tname}")
-    endif(NOT tname)
-  endforeach(test)
-
-  add_subdirectory(display) 
-  add_subdirectory(driver) 
-  add_subdirectory(error) 
-  add_subdirectory(warning) 

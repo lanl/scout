@@ -71,5 +71,7 @@ int main(int argc, char** argv){
            depth());
   }
   
+  printf("2nd out-of-scope width: %d\n", width());
+
   return 0;
 }
