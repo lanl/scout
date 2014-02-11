@@ -57,6 +57,36 @@
 
 // ===== Scout -- Visit Mesh Types  ===========================================
 
+bool ASTNodeImporter::ImportDefinition(MeshDecl *From, MeshDecl *To,
+                                       ImportDefinitionKind Kind) {
+  if (To->getDefinition() || To->isBeingDefined()) {
+    if (Kind == IDK_Everything)
+      ImportDeclContext(From, /*ForceImport=*/true);
+
+    return false;
+  }
+
+  To->startDefinition();
+
+  if (shouldForceImportDeclContext(Kind))
+    ImportDeclContext(From, /*ForceImport=*/true);
+
+  if(UniformMeshDecl* MD = dyn_cast<UniformMeshDecl>(To)){
+    MD->completeDefinition();
+  }
+  else if(StructuredMeshDecl* MD = dyn_cast<StructuredMeshDecl>(To)){
+    MD->completeDefinition();
+  }
+  else if(RectilinearMeshDecl* MD = dyn_cast<RectilinearMeshDecl>(To)){
+    MD->completeDefinition();
+  }
+  else if(UnstructuredMeshDecl* MD = dyn_cast<UnstructuredMeshDecl>(To)){
+    MD->completeDefinition();
+  }
+
+  return false;
+}
+
 QualType
 ASTNodeImporter::VisitUniformMeshType(const UniformMeshType *T) {
   assert(T != 0);
@@ -138,6 +168,9 @@ Decl *ASTNodeImporter::VisitUniformMeshDecl(UniformMeshDecl *D) {
 
   Importer.Imported(D, D2);
 
+  if (D->isCompleteDefinition() && ImportDefinition(D, D2, IDK_Default))
+    return 0;
+
   return D2;
 }
 
@@ -170,6 +203,9 @@ Decl *ASTNodeImporter::VisitStructuredMeshDecl(StructuredMeshDecl *D) {
   LexicalDC->addDeclInternal(D2);
 
   Importer.Imported(D, D2);
+
+  if (D->isCompleteDefinition() && ImportDefinition(D, D2, IDK_Default))
+    return 0;
 
   return D2;
 }
@@ -204,6 +240,9 @@ Decl *ASTNodeImporter::VisitRectilinearMeshDecl(RectilinearMeshDecl *D) {
 
   Importer.Imported(D, D2);
 
+  if (D->isCompleteDefinition() && ImportDefinition(D, D2, IDK_Default))
+    return 0;
+
   return D2;
 }
 
@@ -236,6 +275,9 @@ Decl *ASTNodeImporter::VisitUnstructuredMeshDecl(UnstructuredMeshDecl *D) {
   LexicalDC->addDeclInternal(D2);
 
   Importer.Imported(D, D2);
+
+  if (D->isCompleteDefinition() && ImportDefinition(D, D2, IDK_Default))
+    return 0;
 
   return D2;
 }

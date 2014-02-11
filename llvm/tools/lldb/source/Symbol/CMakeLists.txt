@@ -31,5 +31,6 @@ add_lldb_library(lldbSymbol
 # +===== Scout ======================
   Scout/ClangASTContext.cpp
   Scout/ClangASTType.cpp
+  Scout/ClangASTImporter.cpp
 # +==================================
   )

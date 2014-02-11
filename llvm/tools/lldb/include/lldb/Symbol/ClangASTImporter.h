@@ -124,6 +124,14 @@ public:
     
     bool
     CompleteTagDeclWithOrigin (clang::TagDecl *decl, clang::TagDecl *origin);
+
+    // +===== Scout =====================================
+    bool
+    CompleteMeshDecl (clang::MeshDecl *decl);
+
+    bool
+    CompleteMeshDeclWithOrigin (clang::MeshDecl *decl, clang::MeshDecl *origin);
+    // +=================================================
     
     bool
     CompleteObjCInterfaceDecl (clang::ObjCInterfaceDecl *interface_decl);

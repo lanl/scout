@@ -2168,6 +2168,20 @@ ClangASTContext::GetCompleteDecl (clang::ASTContext *ast,
         
         return !tag_decl->getTypeForDecl()->isIncompleteType();
     }
+    // +===== Scout ========================
+    else if (clang::MeshDecl *mesh_decl = llvm::dyn_cast<clang::MeshDecl>(decl))
+    {
+        if (mesh_decl->isCompleteDefinition())
+            return true;
+
+        if (!mesh_decl->hasExternalLexicalStorage())
+            return false;
+
+        ast_source->CompleteType(mesh_decl);
+
+        return !mesh_decl->getTypeForDecl()->isIncompleteType();
+    }
+    // +===================================
     else if (clang::ObjCInterfaceDecl *objc_interface_decl = llvm::dyn_cast<clang::ObjCInterfaceDecl>(decl))
     {
         if (objc_interface_decl->getDefinition())

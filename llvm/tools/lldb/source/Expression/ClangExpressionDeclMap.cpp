@@ -1605,6 +1605,10 @@ ClangExpressionDeclMap::AddOneVariable (NameSearchContext &context, VariableSP v
     {
         if (const TagType *tag_type = dyn_cast<TagType>(parser_type))
             CompleteType(tag_type->getDecl());
+        // +===== Scout ====================
+        else if (const MeshType *mesh_type = dyn_cast<MeshType>(parser_type))
+            CompleteType(mesh_type->getDecl());
+        // +================================
         if (const ObjCObjectPointerType *objc_object_ptr_type = dyn_cast<ObjCObjectPointerType>(parser_type))
             CompleteType(objc_object_ptr_type->getInterfaceDecl());
     }

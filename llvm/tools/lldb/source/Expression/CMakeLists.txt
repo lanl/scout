@@ -20,4 +20,7 @@ add_lldb_library(lldbExpression
   IRInterpreter.cpp
   IRMemoryMap.cpp
   Materializer.cpp
+# +===== Scout ========
+  Scout/ClangASTSource.cpp
+# ====== Scout ========
   )

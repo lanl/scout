@@ -117,6 +117,10 @@ namespace clang {
 
     bool ImportDefinition(RecordDecl *From, RecordDecl *To, 
                           ImportDefinitionKind Kind = IDK_Default);
+    // +===== Scout ===============================================
+    bool ImportDefinition(MeshDecl *From, MeshDecl *To,
+                          ImportDefinitionKind Kind = IDK_Default);
+    // +===========================================================
     bool ImportDefinition(VarDecl *From, VarDecl *To,
                           ImportDefinitionKind Kind = IDK_Default);
     bool ImportDefinition(EnumDecl *From, EnumDecl *To,
@@ -4983,6 +4987,16 @@ void ASTImporter::ImportDefinition(Decl *From) {
         return;
       }      
     }
+
+    // +===== Scout ======================================
+    if (MeshDecl *ToMesh = dyn_cast<MeshDecl>(To)) {
+      if (!ToMesh->getDefinition()) {
+        Importer.ImportDefinition(cast<MeshDecl>(FromDC), ToMesh,
+                                  ASTNodeImporter::IDK_Everything);
+        return;
+      }
+    }
+    // +==================================================
 
     if (EnumDecl *ToEnum = dyn_cast<EnumDecl>(To)) {
       if (!ToEnum->getDefinition()) {
