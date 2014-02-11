@@ -107,26 +107,136 @@ ASTNodeImporter::VisitUnstructuredMeshType(const UnstructuredMeshType *T) {
 
 
 // ===== Scout -- Mesh Types Import ===========================================
-//
-// SC_TODO - we need to implement these...
 
 Decl *ASTNodeImporter::VisitUniformMeshDecl(UniformMeshDecl *D) {
-  assert(D != 0);
-  return 0;
+  MeshDecl *Definition = D->getDefinition();
+  if (Definition && Definition != D) {
+    Decl *ImportedDef = Importer.Import(Definition);
+    if (!ImportedDef)
+      return 0;
+
+    return Importer.Imported(D, ImportedDef);
+  }
+
+  // Import the major distinguishing characteristics of this record.
+  DeclContext *DC, *LexicalDC;
+  DeclarationName Name;
+  SourceLocation Loc;
+  if (ImportDeclParts(D, DC, LexicalDC, Name, Loc))
+    return 0;
+
+  SourceLocation StartLoc = Importer.Import(D->getLocStart());
+  UniformMeshDecl *D2 =
+      UniformMeshDecl::Create(Importer.getToContext(),
+                              DC,
+                              StartLoc, Loc,
+                              Name.getAsIdentifierInfo());
+  D2->setAccess(D->getAccess());
+  D2->setQualifierInfo(Importer.Import(D->getQualifierLoc()));
+  D2->setLexicalDeclContext(LexicalDC);
+  LexicalDC->addDeclInternal(D2);
+
+  Importer.Imported(D, D2);
+
+  return D2;
 }
 
 Decl *ASTNodeImporter::VisitStructuredMeshDecl(StructuredMeshDecl *D) {
-  assert(D != 0);
-  return 0;
+  MeshDecl *Definition = D->getDefinition();
+  if (Definition && Definition != D) {
+    Decl *ImportedDef = Importer.Import(Definition);
+    if (!ImportedDef)
+      return 0;
+
+    return Importer.Imported(D, ImportedDef);
+  }
+
+  // Import the major distinguishing characteristics of this record.
+  DeclContext *DC, *LexicalDC;
+  DeclarationName Name;
+  SourceLocation Loc;
+  if (ImportDeclParts(D, DC, LexicalDC, Name, Loc))
+    return 0;
+
+  SourceLocation StartLoc = Importer.Import(D->getLocStart());
+  StructuredMeshDecl *D2 =
+      StructuredMeshDecl::Create(Importer.getToContext(),
+                                 DC,
+                                 StartLoc, Loc,
+                                 Name.getAsIdentifierInfo());
+  D2->setAccess(D->getAccess());
+  D2->setQualifierInfo(Importer.Import(D->getQualifierLoc()));
+  D2->setLexicalDeclContext(LexicalDC);
+  LexicalDC->addDeclInternal(D2);
+
+  Importer.Imported(D, D2);
+
+  return D2;
 }
 
 Decl *ASTNodeImporter::VisitRectilinearMeshDecl(RectilinearMeshDecl *D) {
-  assert(D != 0);
-  return 0;
+  MeshDecl *Definition = D->getDefinition();
+  if (Definition && Definition != D) {
+    Decl *ImportedDef = Importer.Import(Definition);
+    if (!ImportedDef)
+      return 0;
+
+    return Importer.Imported(D, ImportedDef);
+  }
+
+  // Import the major distinguishing characteristics of this record.
+  DeclContext *DC, *LexicalDC;
+  DeclarationName Name;
+  SourceLocation Loc;
+  if (ImportDeclParts(D, DC, LexicalDC, Name, Loc))
+    return 0;
+
+  SourceLocation StartLoc = Importer.Import(D->getLocStart());
+  RectilinearMeshDecl *D2 =
+      RectilinearMeshDecl::Create(Importer.getToContext(),
+                                  DC,
+                                  StartLoc, Loc,
+                                  Name.getAsIdentifierInfo());
+  D2->setAccess(D->getAccess());
+  D2->setQualifierInfo(Importer.Import(D->getQualifierLoc()));
+  D2->setLexicalDeclContext(LexicalDC);
+  LexicalDC->addDeclInternal(D2);
+
+  Importer.Imported(D, D2);
+
+  return D2;
 }
 
 Decl *ASTNodeImporter::VisitUnstructuredMeshDecl(UnstructuredMeshDecl *D) {
-  assert(D != 0);
-  return 0;
+  MeshDecl *Definition = D->getDefinition();
+  if (Definition && Definition != D) {
+    Decl *ImportedDef = Importer.Import(Definition);
+    if (!ImportedDef)
+      return 0;
+
+    return Importer.Imported(D, ImportedDef);
+  }
+
+  // Import the major distinguishing characteristics of this record.
+  DeclContext *DC, *LexicalDC;
+  DeclarationName Name;
+  SourceLocation Loc;
+  if (ImportDeclParts(D, DC, LexicalDC, Name, Loc))
+    return 0;
+
+  SourceLocation StartLoc = Importer.Import(D->getLocStart());
+  UnstructuredMeshDecl *D2 =
+      UnstructuredMeshDecl::Create(Importer.getToContext(),
+                                   DC,
+                                   StartLoc, Loc,
+                                   Name.getAsIdentifierInfo());
+  D2->setAccess(D->getAccess());
+  D2->setQualifierInfo(Importer.Import(D->getQualifierLoc()));
+  D2->setLexicalDeclContext(LexicalDC);
+  LexicalDC->addDeclInternal(D2);
+
+  Importer.Imported(D, D2);
+
+  return D2;
 }
 
