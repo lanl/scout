@@ -1,3 +1,4 @@
+// REQUIRES: scoutdisable
 RUN: diagtool list-warnings > %t 2>&1
 RUN: FileCheck --input-file=%t %s
 

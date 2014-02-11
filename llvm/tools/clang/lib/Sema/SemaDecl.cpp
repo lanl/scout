@@ -728,8 +728,6 @@ Corrected:
 
         if (SS.isEmpty()) {
           diagnoseTypo(Corrected, PDiag(UnqualifiedDiag) << Name);
-          if (UnqualifiedDiag == diag::err_undeclared_var_use_suggest)
-            abort();
         } else {// FIXME: is this even reachable? Test it.
           std::string CorrectedStr(Corrected.getAsString(getLangOpts()));
           bool DroppedSpecifier = Corrected.WillReplaceSpecifier() &&
