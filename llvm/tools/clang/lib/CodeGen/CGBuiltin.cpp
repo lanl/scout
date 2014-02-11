@@ -212,7 +212,7 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
 
   // ===== Scout ==============================================================
   RValue RV; 
-  if (EmitScoutBuiltinExpr(FD, BuiltinID, E, &RV)) return RV;
+  if (isScoutLang(getLangOpts()) && EmitScoutBuiltinExpr(FD, BuiltinID, E, &RV)) return RV;
   // ==========================================================================
 
   switch (BuiltinID) {

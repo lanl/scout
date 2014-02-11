@@ -1,7 +1,7 @@
 // RUN: %clang -target mipsel-unknown-nacl -### %s -emit-llvm-only -c -o %t.o 2>&1 | FileCheck %s -check-prefix=ECHO
 // RUN: %clang -target mipsel-unknown-nacl %s -emit-llvm -S -c -o - | FileCheck %s
 // RUN: %clang -target mipsel-unknown-nacl %s -emit-llvm -S -c -pthread -o - | FileCheck %s -check-prefix=THREADS
-
+// REQUIRES: scoutdisable
 // ECHO: {{.*}} "-cc1" {{.*}}mipsel-nacl-defines.c
 
 // Check platform defines

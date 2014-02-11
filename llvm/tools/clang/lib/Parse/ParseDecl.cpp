@@ -5442,20 +5442,22 @@ void Parser::ParseParameterDeclarationClause(
     //  parse mesh parameters
     // e.g: "MyMesh[]", "MyMesh[:]", "MyMesh[::]" and ensure that mesh
     // parameters are declared as references or pointers
-    DeclSpec::TST tst = DS.getTypeSpecType();
-    if(tst == DeclSpec::TST_typename){
-      ParsedType parsedType = DS.getRepAsType();
-      const MeshType* mt =
-      dyn_cast<MeshType>(parsedType.get().getCanonicalType().getTypePtr());
-      if(mt){
-        if (Tok.is(tok::l_square)) {
-          ParseMeshParameterDeclaration(DS);
-        }
+    if(isScoutLang()) {
+      DeclSpec::TST tst = DS.getTypeSpecType();
+      if(tst == DeclSpec::TST_typename){
+        ParsedType parsedType = DS.getRepAsType();
+        const MeshType* mt =
+        dyn_cast<MeshType>(parsedType.get().getCanonicalType().getTypePtr());
+        if(mt){
+          if (Tok.is(tok::l_square)) {
+            ParseMeshParameterDeclaration(DS);
+          }
 
-        if (Tok.isNot(tok::amp) && Tok.isNot(tok::star)) {
-          Diag(Tok, diag::err_expected_mesh_param_star_amp);
-          SkipUntil(tok::r_paren);
-          return;
+          if (Tok.isNot(tok::amp) && Tok.isNot(tok::star)) {
+            Diag(Tok, diag::err_expected_mesh_param_star_amp);
+            SkipUntil(tok::r_paren);
+            return;
+          }
         }
       }
     }
