@@ -99,9 +99,13 @@ DICompositeType DIBuilder::createUniformMeshType(DIDescriptor Context,
     uint64_t AlignInBits,
     unsigned Flags, DIType DerivedFrom,
     DIArray Elements,
+    unsigned dimX,
+    unsigned dimY,
+    unsigned dimZ,
     unsigned RunTimeLang,
     DIType VTableHolder,
-    StringRef UniqueIdentifier) {
+    StringRef UniqueIdentifier
+) {
  // TAG_structure_type is encoded in DICompositeType format.
   Value *Elts[] = {
     GetTagConstant(VMContext, dwarf::DW_TAG_SCOUT_uniform_mesh_type),
@@ -118,7 +122,14 @@ DICompositeType DIBuilder::createUniformMeshType(DIDescriptor Context,
     ConstantInt::get(Type::getInt32Ty(VMContext), RunTimeLang),
     VTableHolder.getRef(),
     NULL,
-    UniqueIdentifier.empty() ? NULL : MDString::get(VMContext, UniqueIdentifier)
+    UniqueIdentifier.empty() ? NULL : MDString::get(VMContext, UniqueIdentifier),
+
+    // These are the Scout-specific fields, we need to keep an eye on this when we merge
+    // with LLVM/Clang in case new fields are added to DICompositeType, we need to add them
+    // here and update the accessor methods on DIScoutCompositeType to reflect layout changes
+    ConstantInt::get(Type::getInt32Ty(VMContext), dimX),
+    ConstantInt::get(Type::getInt32Ty(VMContext), dimY),
+    ConstantInt::get(Type::getInt32Ty(VMContext), dimZ)
   };
   DICompositeType R(MDNode::get(VMContext, Elts));
   assert(R.isCompositeType() &&
@@ -135,6 +146,9 @@ DICompositeType DIBuilder::createStructuredMeshType(DIDescriptor Context,
     uint64_t AlignInBits,
     unsigned Flags, DIType DerivedFrom,
     DIArray Elements,
+    unsigned dimX,
+    unsigned dimY,
+    unsigned dimZ,
     unsigned RunTimeLang,
     DIType VTableHolder,
     StringRef UniqueIdentifier) {
@@ -154,7 +168,14 @@ DICompositeType DIBuilder::createStructuredMeshType(DIDescriptor Context,
     ConstantInt::get(Type::getInt32Ty(VMContext), RunTimeLang),
     VTableHolder.getRef(),
     NULL,
-    UniqueIdentifier.empty() ? NULL : MDString::get(VMContext, UniqueIdentifier)
+    UniqueIdentifier.empty() ? NULL : MDString::get(VMContext, UniqueIdentifier),
+
+    // These are the Scout-specific fields, we need to keep an eye on this when we merge
+    // with LLVM/Clang in case new fields are added to DICompositeType, we need to add them
+    // here and update the accessor methods on DIScoutCompositeType to reflect layout changes
+    ConstantInt::get(Type::getInt32Ty(VMContext), dimX),
+    ConstantInt::get(Type::getInt32Ty(VMContext), dimY),
+    ConstantInt::get(Type::getInt32Ty(VMContext), dimZ)
   };
   DICompositeType R(MDNode::get(VMContext, Elts));
   assert(R.isCompositeType() &&
@@ -171,6 +192,9 @@ DICompositeType DIBuilder::createRectilinearMeshType(DIDescriptor Context,
     uint64_t AlignInBits,
     unsigned Flags, DIType DerivedFrom,
     DIArray Elements,
+    unsigned dimX,
+    unsigned dimY,
+    unsigned dimZ,
     unsigned RunTimeLang,
     DIType VTableHolder,
     StringRef UniqueIdentifier) {
@@ -190,7 +214,14 @@ DICompositeType DIBuilder::createRectilinearMeshType(DIDescriptor Context,
     ConstantInt::get(Type::getInt32Ty(VMContext), RunTimeLang),
     VTableHolder.getRef(),
     NULL,
-    UniqueIdentifier.empty() ? NULL : MDString::get(VMContext, UniqueIdentifier)
+    UniqueIdentifier.empty() ? NULL : MDString::get(VMContext, UniqueIdentifier),
+
+    // These are the Scout-specific fields, we need to keep an eye on this when we merge
+    // with LLVM/Clang in case new fields are added to DICompositeType, we need to add them
+    // here and update the accessor methods on DIScoutCompositeType to reflect layout changes
+    ConstantInt::get(Type::getInt32Ty(VMContext), dimX),
+    ConstantInt::get(Type::getInt32Ty(VMContext), dimY),
+    ConstantInt::get(Type::getInt32Ty(VMContext), dimZ)
   };
   DICompositeType R(MDNode::get(VMContext, Elts));
   assert(R.isCompositeType() &&
@@ -207,6 +238,9 @@ DICompositeType DIBuilder::createUnstructuredMeshType(DIDescriptor Context,
     uint64_t AlignInBits,
     unsigned Flags, DIType DerivedFrom,
     DIArray Elements,
+    unsigned dimX,
+    unsigned dimY,
+    unsigned dimZ,
     unsigned RunTimeLang,
     DIType VTableHolder,
     StringRef UniqueIdentifier) {
@@ -226,7 +260,14 @@ DICompositeType DIBuilder::createUnstructuredMeshType(DIDescriptor Context,
     ConstantInt::get(Type::getInt32Ty(VMContext), RunTimeLang),
     VTableHolder.getRef(),
     NULL,
-    UniqueIdentifier.empty() ? NULL : MDString::get(VMContext, UniqueIdentifier)
+    UniqueIdentifier.empty() ? NULL : MDString::get(VMContext, UniqueIdentifier),
+
+    // These are the Scout-specific fields, we need to keep an eye on this when we merge
+    // with LLVM/Clang in case new fields are added to DICompositeType, we need to add them
+    // here and update the accessor methods on DIScoutCompositeType to reflect layout changes
+    ConstantInt::get(Type::getInt32Ty(VMContext), dimX),
+    ConstantInt::get(Type::getInt32Ty(VMContext), dimY),
+    ConstantInt::get(Type::getInt32Ty(VMContext), dimZ)
   };
   DICompositeType R(MDNode::get(VMContext, Elts));
   assert(R.isCompositeType() &&

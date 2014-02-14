@@ -344,7 +344,11 @@ namespace llvm {
                                           DIFile File, unsigned LineNumber,
                                           uint64_t SizeInBits, uint64_t AlignInBits,
                                           unsigned Flags, DIType DerivedFrom,
-                                          DIArray Elements, unsigned RunTimeLang = 0,
+                                          DIArray Elements,
+                                          unsigned dimX,
+                                          unsigned dimY,
+                                          unsigned dimZ,
+                                          unsigned RunTimeLang = 0,
                                           DIType VTableHolder = DIType(),
                                           StringRef UniqueIdentifier = StringRef());
 
@@ -363,7 +367,11 @@ namespace llvm {
                                              DIFile File, unsigned LineNumber,
                                              uint64_t SizeInBits, uint64_t AlignInBits,
                                              unsigned Flags, DIType DerivedFrom,
-                                             DIArray Elements, unsigned RunTimeLang = 0,
+                                             DIArray Elements,
+                                             unsigned dimX,
+                                             unsigned dimY,
+                                             unsigned dimZ,
+                                             unsigned RunTimeLang = 0,
                                              DIType VTableHolder = DIType(),
                                              StringRef UniqueIdentifier = StringRef());
 
@@ -382,7 +390,11 @@ namespace llvm {
                                              DIFile File, unsigned LineNumber,
                                              uint64_t SizeInBits, uint64_t AlignInBits,
                                              unsigned Flags, DIType DerivedFrom,
-                                             DIArray Elements, unsigned RunTimeLang = 0,
+                                             DIArray Elements,
+                                             unsigned dimX,
+                                             unsigned dimY,
+                                             unsigned dimZ,
+                                             unsigned RunTimeLang = 0,
                                              DIType VTableHolder = DIType(),
                                              StringRef UniqueIdentifier = StringRef());
 
@@ -401,7 +413,11 @@ namespace llvm {
                                                DIFile File, unsigned LineNumber,
                                                uint64_t SizeInBits, uint64_t AlignInBits,
                                                unsigned Flags, DIType DerivedFrom,
-                                               DIArray Elements, unsigned RunTimeLang = 0,
+                                               DIArray Elements,
+                                               unsigned dimX,
+                                               unsigned dimY,
+                                               unsigned dimZ,
+                                               unsigned RunTimeLang = 0,
                                                DIType VTableHolder = DIType(),
                                                StringRef UniqueIdentifier = StringRef());
 

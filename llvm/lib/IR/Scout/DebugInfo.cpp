@@ -52,66 +52,34 @@
  * #####
  */
 
-#ifndef LLVM_SCOUT_DEBUGINFO_H
-#define LLVM_SCOUT_DEBUGINFO_H
-
 #include "llvm/DebugInfo.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/Analysis/ValueTracking.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/Module.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/Dwarf.h"
+#include "llvm/Support/ValueHandle.h"
+#include "llvm/Support/raw_ostream.h"
+using namespace llvm;
+using namespace llvm::dwarf;
 
-namespace llvm {
-
-  // Note: the layout of the metadata must be kept in sync. with the
-  // layout of DIDerivedType as there may be new fields which are added
-  // to the DIDerivedType, and we need to maintain the ability that
-  // DIScoutDerivedType is a proper subclass of DIDerivedType
-
-  class DIScoutDerivedType : public DIDerivedType {
-  public:
-    enum {
-      FlagMeshFieldCellLocated     = 1 << 0,
-      FlagMeshFieldVertexLocated   = 1 << 1,
-      FlagMeshFieldEdgeLocated     = 1 << 2,
-      FlagMeshFieldFaceLocated     = 1 << 3
-    };
-
-    explicit DIScoutDerivedType(const MDNode* N = 0) : DIDerivedType(N) {}
-
-    unsigned getScoutFlags() const { return getUnsignedField(10); }
-
-    bool isCellLocated() const { 
-      return (getScoutFlags() & FlagMeshFieldCellLocated) != 0;
-    }
-
-    bool isVertexLocated() const { 
-      return (getScoutFlags() & FlagMeshFieldVertexLocated) != 0;
-    }
-
-    bool isEdgeLocated() const { 
-      return (getScoutFlags() & FlagMeshFieldEdgeLocated) != 0;
-    }
-
-    bool isFaceLocated() const { 
-      return (getScoutFlags() & FlagMeshFieldFaceLocated) != 0;
-    }
-  };
-
-  class DIScoutCompositeType : public DICompositeType {
-  public:
-    explicit DIScoutCompositeType(const MDNode* N = 0) : DICompositeType(N) {}
-
-    unsigned getDimension(int dim) const {
-      switch(dim){
-      case 0:
-        return getUnsignedField(15);
-      case 1:
-        return getUnsignedField(16);
-      case 2:
-        return getUnsignedField(17);
-      default:
-        assert(false && "Invalid mesh dimension");
-      }
-    }
-  };
-
-} // end namespace llvm
-
-#endif
+bool DIDescriptor::isScoutCompositeType() const {
+  if (!DbgNode)
+    return false;
+  switch (getTag()) {
+  case dwarf::DW_TAG_SCOUT_uniform_mesh_type:
+  case dwarf::DW_TAG_SCOUT_structured_mesh_type:
+  case dwarf::DW_TAG_SCOUT_rectilinear_mesh_type:
+  case dwarf::DW_TAG_SCOUT_unstructured_mesh_type:
+    return true;
+  default:
+    return false;
+  }
+}

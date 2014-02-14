@@ -326,9 +326,32 @@ CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
 
   SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
 
+  MeshType::MeshDimensions dims = Ty->dimensions();
+  unsigned dimX = 0;
+  unsigned dimY = 0;
+  unsigned dimZ = 0;
+
+  for(size_t i = 0; i < dims.size(); ++i){
+    llvm::APSInt d;
+    bool success = dims[i]->EvaluateAsInt(d, CGM.getContext());
+    assert(success && "Failed to evaluate mesh dimension");
+
+    switch(i){
+    case 0:
+      dimX = d.getLimitedValue();
+      break;
+    case 1:
+      dimY = d.getLimitedValue();
+      break;
+    case 2:
+      dimZ = d.getLimitedValue();
+      break;
+    }
+  }
+
   RealDecl = DBuilder.createUniformMeshType(MDContext, MDName, DefUnit, Line,
                                             Size, Align, 0, llvm::DIType(),
-                                            llvm::DIArray(), 0,
+                                            llvm::DIArray(), dimX, dimY, dimZ, 0,
                                             llvm::DIType(), FullName);
 
   RegionMap[Ty->getDecl()] = llvm::WeakVH(RealDecl);
@@ -509,9 +532,32 @@ CGDebugInfo::CreateLimitedType(const RectilinearMeshType *Ty) {
 
   SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
 
+  MeshType::MeshDimensions dims = Ty->dimensions();
+  unsigned dimX = 0;
+  unsigned dimY = 0;
+  unsigned dimZ = 0;
+
+  for(size_t i = 0; i < dims.size(); ++i){
+    llvm::APSInt d;
+    bool success = dims[i]->EvaluateAsInt(d, CGM.getContext());
+    assert(success && "Failed to evaluate mesh dimension");
+
+    switch(i){
+    case 0:
+      dimX = d.getLimitedValue();
+      break;
+    case 1:
+      dimY = d.getLimitedValue();
+      break;
+    case 2:
+      dimZ = d.getLimitedValue();
+      break;
+    }
+  }
+
   RealDecl = DBuilder.createRectilinearMeshType(MDContext, MDName, DefUnit, Line,
                                                 Size, Align, 0, llvm::DIType(),
-                                                llvm::DIArray(), 0,
+                                                llvm::DIArray(), dimX, dimY, dimZ, 0,
                                                 llvm::DIType(), FullName);
 
   RegionMap[Ty->getDecl()] = llvm::WeakVH(RealDecl);
@@ -694,9 +740,32 @@ CGDebugInfo::CreateLimitedType(const StructuredMeshType *Ty) {
 
   SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
 
+  MeshType::MeshDimensions dims = Ty->dimensions();
+  unsigned dimX = 0;
+  unsigned dimY = 0;
+  unsigned dimZ = 0;
+
+  for(size_t i = 0; i < dims.size(); ++i){
+    llvm::APSInt d;
+    bool success = dims[i]->EvaluateAsInt(d, CGM.getContext());
+    assert(success && "Failed to evaluate mesh dimension");
+
+    switch(i){
+    case 0:
+      dimX = d.getLimitedValue();
+      break;
+    case 1:
+      dimY = d.getLimitedValue();
+      break;
+    case 2:
+      dimZ = d.getLimitedValue();
+      break;
+    }
+  }
+
   RealDecl = DBuilder.createStructuredMeshType(MDContext, MDName, DefUnit, Line,
                                                Size, Align, 0, llvm::DIType(),
-                                               llvm::DIArray(), 0,
+                                               llvm::DIArray(), dimX, dimY, dimZ, 0,
                                                llvm::DIType(), FullName);
 
   RegionMap[Ty->getDecl()] = llvm::WeakVH(RealDecl);
@@ -830,9 +899,32 @@ CGDebugInfo::CreateLimitedType(const UnstructuredMeshType *Ty) {
 
   SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
 
+  MeshType::MeshDimensions dims = Ty->dimensions();
+  unsigned dimX = 0;
+  unsigned dimY = 0;
+  unsigned dimZ = 0;
+
+  for(size_t i = 0; i < dims.size(); ++i){
+    llvm::APSInt d;
+    bool success = dims[i]->EvaluateAsInt(d, CGM.getContext());
+    assert(success && "Failed to evaluate mesh dimension");
+
+    switch(i){
+    case 0:
+      dimX = d.getLimitedValue();
+      break;
+    case 1:
+      dimY = d.getLimitedValue();
+      break;
+    case 2:
+      dimZ = d.getLimitedValue();
+      break;
+    }
+  }
+
   RealDecl = DBuilder.createUnstructuredMeshType(MDContext, MDName, DefUnit, Line,
                                                  Size, Align, 0, llvm::DIType(),
-                                                 llvm::DIArray(), 0,
+                                                 llvm::DIArray(), dimX, dimY, dimZ, 0,
                                                  llvm::DIType(), FullName);
 
   RegionMap[Ty->getDecl()] = llvm::WeakVH(RealDecl);
