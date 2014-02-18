@@ -75,6 +75,8 @@ using namespace llvm;
 
 // The following functions were copied from LLVM DwarfUnit.cpp
 
+#if 0
+// currently unused
 /// If this type is derived from a base type then return base type size.
 static uint64_t getBaseTypeSize(DwarfDebug *DD, DIDerivedType Ty) {
   unsigned Tag = Ty.getTag();
@@ -102,6 +104,7 @@ static uint64_t getBaseTypeSize(DwarfDebug *DD, DIDerivedType Ty) {
 
   return BaseType.getSizeInBits();
 }
+#endif
 
 void DwarfUnit::constructMeshMemberDIE(DIE &Buffer, DIScoutDerivedType DT) {
   // This method is modeled after constructMemberDIE - which is called for
@@ -140,7 +143,7 @@ void DwarfUnit::constructScoutTypeDIE(DIE &Buffer, DIScoutCompositeType CTy) {
   // Add name if not anonymous or intermediate type.
   StringRef Name = CTy.getName();
 
-  uint64_t Size = CTy.getSizeInBits() >> 3;
+  //uint64_t Size = CTy.getSizeInBits() >> 3;
   uint16_t Tag = Buffer.getTag();
 
   switch (Tag) {
