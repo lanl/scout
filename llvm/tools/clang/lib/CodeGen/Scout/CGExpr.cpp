@@ -139,6 +139,7 @@ CodeGenFunction::EmitLValueForMeshField(LValue base,
   llvm::Value *addr = base.getAddress();
   unsigned cvr = base.getVRQualifiers();
   bool TBAAPath = CGM.getCodeGenOpts().StructPathTBAA;
+  (void)TBAAPath; // suppress warning
 
   // We GEP to the field that the record layout suggests.
   unsigned idx = CGM.getTypes().getCGMeshLayout(mesh).getLLVMFieldNo(field);
