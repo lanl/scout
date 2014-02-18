@@ -218,3 +218,23 @@ void ASTContext::setInstantiatedFromUnnamedFieldDecl(MeshFieldDecl *Inst,
 
   InstantiatedFromUnnamedMeshFieldDecl[Inst] = Tmpl;
 }
+
+
+// ===== Render Target Types ====================================================
+
+QualType ASTContext::getWindowType(const llvm::SmallVector<Expr*,2> &dims) const {
+  assert(dims[0] != 0 && dims[1] != 0);  
+  WindowType *newType;
+  newType = new (*this, TypeAlignment) WindowType(dims[0], dims[1]);
+  Types.push_back(newType);
+  return QualType(newType, 0);
+}
+
+QualType ASTContext::getImageType(const llvm::SmallVector<Expr*,2> &dims) const {
+  assert(dims[0] != 0 && dims[1] != 0);
+  ImageType *newType;
+  newType = new (*this, TypeAlignment) ImageType(dims[0], dims[1]);
+  Types.push_back(newType);
+  return QualType(newType, 0);
+}
+

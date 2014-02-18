@@ -304,13 +304,6 @@ Retry:
         return StmtError();
     }
   }
-
-  case tok::kw_window:
-      return ParseWindowOrImageDeclaration(true, Stmts, OnlyStatement);
-  case tok::kw_image:
-    return ParseWindowOrImageDeclaration(false, Stmts, OnlyStatement);
-  case tok::kw_camera:
-    return ParseCameraDeclaration(Stmts, OnlyStatement);
   // +========================================================================+
 
   case tok::kw_goto:                // C99 6.8.6.1: goto-statement

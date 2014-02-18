@@ -2222,6 +2222,15 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
       addAssociatedClassesAndNamespaces(Result, UMD);
       break;
     }
+
+    case Type::Window: {
+      break;  // SC_TODO: We're assuming window is a fundamental type (correct?) 
+    }
+      
+    case Type::Image: {
+      break;  // SC_TODO: We're assuming image is a fundamental type (correct?) 
+    }
+
     // +======================================================================+
 
     //     -- If T is a class type (including unions), its associated

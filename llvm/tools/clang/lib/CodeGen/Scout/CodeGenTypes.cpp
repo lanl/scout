@@ -55,7 +55,7 @@
 #include "CodeGenTypes.h"
 #include "CGCXXABI.h"
 #include "CGCall.h"
-#include "CGOpenCLRuntime.h"
+#include "CGScoutRuntime.h"
 #include "CGRecordLayout.h"
 #include "TargetInfo.h"
 #include "clang/AST/ASTContext.h"
@@ -334,4 +334,10 @@ CodeGenTypes::getCGMeshLayout(const MeshDecl *MD) {
 
   assert(Layout && "Unable to find mesh layout");
   return *Layout;
+}
+
+
+llvm::Type *CodeGenTypes::ConvertScoutRenderTargetType(QualType T) {
+  const Type *Ty = T.getTypePtr();  
+  return CGM.getScoutRuntime().convertScoutSpecificType(Ty);
 }

@@ -50,99 +50,34 @@
  *
  */
 
-// Note - this file is included by the TypePrinter source file
-// one directory up (TypePrinter is all contained in a single
-// file there...).
-//
-void
-TypePrinter::printUniformMeshBefore(const UniformMeshType *T,
-                                    raw_ostream &OS)
+#ifndef __SCOUT_IMAGE_H__ 
+#define __SCOUT_IMAGE_H__
+
+#include "scout/new-runtime/RenderTarget.h"
+
+namespace scout 
 {
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
+
+  class Image : public RenderTarget {
+
+   public:
+    Image(unsigned width, unsigned height);
+    ~Image();
+
+    void bind();
+    void release();
+
+    void clear();
+    void swapBuffers() { /* no-op for images. */  }
+
+    float4 *getColorBuffer() { return ColorBuffer; }    
+    const float4 *readColorBuffer() { return ColorBuffer; }
+
+    bool savePNG(const char *filename);
+    
+   private:
+    float4 *ColorBuffer;
+  };
 }
 
-void
-TypePrinter::printStructuredMeshBefore(const StructuredMeshType *T,
-                                       raw_ostream &OS)
-{
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
-}
-
-
-void
-TypePrinter::printRectilinearMeshBefore(const RectilinearMeshType *T,
-                                        raw_ostream &OS)
-{
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
-}
-
-
-void
-TypePrinter::printUnstructuredMeshBefore(const UnstructuredMeshType *T,
-                                         raw_ostream &OS)
-{
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
-}
-
-
-void
-TypePrinter::printWindowBefore(const WindowType *T,
-                               raw_ostream &OS)
-{
-  OS << T->getName(Policy);
-  spaceBeforePlaceHolder(OS);  
-}
-
-void
-TypePrinter::printImageBefore(const ImageType *T,
-                              raw_ostream &OS) {
-  OS << T->getName(Policy);
-  spaceBeforePlaceHolder(OS);
-}
-
-void
-TypePrinter::printUniformMeshAfter(const UniformMeshType *T,
-                                   raw_ostream &OS)
-{
-  OS << '[';
-  MeshType::MeshDimensions dv = T->dimensions();
-  MeshType::MeshDimensions::iterator dimiter;
-  for (dimiter = dv.begin();
-      dimiter != dv.end();
-      dimiter++){
-    (*dimiter)->printPretty(OS, 0, Policy);
-    if (dimiter+1 != dv.end()) OS << ',';
-  }
-  OS << ']';
-}
-
-void
-TypePrinter::printStructuredMeshAfter(const StructuredMeshType *T,
-                                      raw_ostream &OS)
-{ }
-
-
-void
-TypePrinter::printRectilinearMeshAfter(const RectilinearMeshType *T,
-                                      raw_ostream &OS)
-{ }
-
-
-void
-TypePrinter::printUnstructuredMeshAfter(const UnstructuredMeshType *T,
-                                        raw_ostream &OS)
-{ }
-
-void
-TypePrinter::printWindowAfter(const WindowType *T,
-                              raw_ostream &OS)
-{ }
-
-void
-TypePrinter::printImageAfter(const ImageType *T,
-                              raw_ostream &OS)
-{ }
+#endif

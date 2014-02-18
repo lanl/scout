@@ -81,19 +81,27 @@ using namespace clang;
 UniformMeshDecl *Type::getAsUniformMeshDecl() const {
   if (const UniformMeshType *RT = getAs<UniformMeshType>())
     return dyn_cast<UniformMeshDecl>(RT->getDecl());
+  else
+    return 0;
 }
 
 StructuredMeshDecl *Type::getAsStructuredMeshDecl() const {
   if (const StructuredMeshType *RT = getAs<StructuredMeshType>())
     return dyn_cast<StructuredMeshDecl>(RT->getDecl());
+  else
+    return 0;
 }
 
 RectilinearMeshDecl *Type::getAsRectilinearMeshDecl() const {
   if (const RectilinearMeshType *RT = getAs<RectilinearMeshType>())
     return dyn_cast<RectilinearMeshDecl>(RT->getDecl());
+  else
+    return 0;
 }
 
 UnstructuredMeshDecl *Type::getAsUnstructuredMeshDecl() const {
   if (const UnstructuredMeshType *RT = getAs<UnstructuredMeshType>())
     return dyn_cast<UnstructuredMeshDecl>(RT->getDecl());
+  else
+    return 0;
 }

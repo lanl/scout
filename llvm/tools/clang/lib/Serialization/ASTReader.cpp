@@ -5130,6 +5130,10 @@ void TypeLocReader::VisitRectilinearMeshTypeLoc(RectilinearMeshTypeLoc TL)
 { }
 void TypeLocReader::VisitUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc TL)
 { }
+void TypeLocReader::VisitWindowTypeLoc(WindowTypeLoc TL)
+{ }
+void TypeLocReader::VisitImageTypeLoc(ImageTypeLoc TL)
+{ }
 // +==========================================================================+
 
 void TypeLocReader::VisitEnumTypeLoc(EnumTypeLoc TL) {

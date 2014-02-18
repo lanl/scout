@@ -332,6 +332,8 @@ static DeclaratorChunk *maybeMovePastReturnType(Declarator &declarator,
     case DeclaratorChunk::RectilinearMesh:
     case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
+    case DeclaratorChunk::Window:
+    case DeclaratorChunk::Image:
     // +======================================================================+
       return result;
 
@@ -352,6 +354,8 @@ static DeclaratorChunk *maybeMovePastReturnType(Declarator &declarator,
         case DeclaratorChunk::RectilinearMesh:
         case DeclaratorChunk::StructuredMesh:
         case DeclaratorChunk::UnstructuredMesh:
+        case DeclaratorChunk::Window:
+        case DeclaratorChunk::Image: 
         // +==================================================================+
           continue;
         case DeclaratorChunk::BlockPointer:
@@ -410,6 +414,8 @@ static void distributeObjCPointerTypeAttr(TypeProcessingState &state,
     case DeclaratorChunk::RectilinearMesh:
     case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
+    case DeclaratorChunk::Window:
+    case DeclaratorChunk::Image:
     // +======================================================================+
       continue;
 
@@ -465,6 +471,8 @@ distributeObjCPointerTypeAttrFromDeclarator(TypeProcessingState &state,
     case DeclaratorChunk::RectilinearMesh:
     case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
+    case DeclaratorChunk::Window:
+    case DeclaratorChunk::Image:
     // +======================================================================+
       continue;
 
@@ -531,6 +539,8 @@ static void distributeFunctionTypeAttr(TypeProcessingState &state,
     case DeclaratorChunk::RectilinearMesh:
     case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
+    case DeclaratorChunk::Window:
+    case DeclaratorChunk::Image:
     // +======================================================================+
     case DeclaratorChunk::MemberPointer:
       continue;
@@ -913,6 +923,11 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
   case DeclSpec::TST_unstructured_mesh:
     assert(false && "invalid case for mesh type.");
     break;
+
+  case DeclSpec::TST_window:
+  case DeclSpec::TST_image:
+    Result = Context.VoidTy;
+    break;    
   // +========================================================================+
   case DeclSpec::TST_bool: Result = Context.BoolTy; break; // _Bool or bool
   case DeclSpec::TST_decimal32:    // _Decimal32
@@ -1707,6 +1722,27 @@ QualType Sema::BuildUnstructuredMeshType(QualType T, Expr* filename,
   return QualType(mdt,0);
 }
 
+QualType Sema::BuildWindowType(QualType T, const llvm::SmallVector<Expr*,2> &dims) {
+  assert(dims.size() > 0 && dims[0] != 0 && dims[1] != 0);
+  const WindowType* cWT;
+  cWT = dyn_cast<WindowType>(T.getCanonicalType().getTypePtr());
+  if (cWT) {
+    return Context.getWindowType(dims);
+  }
+  return QualType();  
+}
+
+QualType Sema::BuildImageType(QualType T, const llvm::SmallVector<Expr*,2> &dims) {
+  assert(dims.size() > 0 && dims[0] != 0 && dims[1] != 0);
+  const ImageType* cIT;
+  cIT = dyn_cast<ImageType>(T.getCanonicalType().getTypePtr());
+  if (cIT) {
+    return Context.getImageType(dims);
+  }
+  return QualType();  
+}
+
+
 // +==========================================================================+
 
 /// \brief Build an ext-vector type.
@@ -1954,6 +1990,8 @@ static void inferARCWriteback(TypeProcessingState &state,
     case DeclaratorChunk::RectilinearMesh:
     case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
+    case DeclaratorChunk::Window:
+    case DeclaratorChunk::Image:      
     // +======================================================================+
       return;
     }
@@ -2098,6 +2136,8 @@ static void diagnoseIgnoredFunctionQualifiers(Sema &S, QualType RetTy,
     case DeclaratorChunk::RectilinearMesh:
     case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
+    case DeclaratorChunk::Window:
+    case DeclaratorChunk::Image:
     // +======================================================================+
     case DeclaratorChunk::MemberPointer:
       // FIXME: We can't currently provide an accurate source location and a
@@ -2402,6 +2442,8 @@ static void checkQualifiedFunction(Sema &S, QualType T,
   case DeclaratorChunk::RectilinearMesh:
   case DeclaratorChunk::StructuredMesh:
   case DeclaratorChunk::UnstructuredMesh:
+  case DeclaratorChunk::Window:
+  case DeclaratorChunk::Image:
   // +========================================================================+
     // These cases don't allow function types at all; no need to diagnose the
     // qualifiers separately.
@@ -2608,6 +2650,8 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
         case DeclaratorChunk::RectilinearMesh:
         case DeclaratorChunk::StructuredMesh:
         case DeclaratorChunk::UnstructuredMesh:
+        case DeclaratorChunk::Window:
+        case DeclaratorChunk::Image:
         // +==================================================================+
           continue;
         case DeclaratorChunk::Function: {
@@ -2764,6 +2808,8 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
           case DeclaratorChunk::RectilinearMesh:
           case DeclaratorChunk::StructuredMesh:
           case DeclaratorChunk::UnstructuredMesh:
+          case DeclaratorChunk::Window:
+          case DeclaratorChunk::Image:
           // +================================================================+
             // These are invalid anyway, so just ignore.
             break;
@@ -2813,6 +2859,18 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
       Expr* filename = DeclType.Unsmsh.StrLitFileName;
       T = S.BuildUnstructuredMeshType(T, filename, SourceRange(DeclType.Loc,
                                       DeclType.EndLoc), Name);
+      break;
+    }
+
+    case DeclaratorChunk::Window: {
+      llvm::SmallVector<Expr*,2> dims = DeclType.Win.Dims();
+      T = S.BuildWindowType(T, dims);
+      break;
+    }
+
+    case DeclaratorChunk::Image: {
+      llvm::SmallVector<Expr*,2> dims = DeclType.Img.Dims();
+      T = S.BuildWindowType(T, dims);
       break;
     }
 
@@ -3469,6 +3527,8 @@ static void transferARCOwnership(TypeProcessingState &state,
     case DeclaratorChunk::RectilinearMesh:
     case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
+    case DeclaratorChunk::Window:
+    case DeclaratorChunk::Image:
     // +======================================================================+
     case DeclaratorChunk::Reference:
     case DeclaratorChunk::Pointer:
@@ -3908,6 +3968,7 @@ namespace {
       TL.setRParenLoc(Chunk.EndLoc);
       TL.setFileName(Chunk.Unsmsh.StrLitFileName);
     }
+
     // +======================================================================+
 
     void VisitTypeLoc(TypeLoc TL) {
@@ -3926,6 +3987,8 @@ static void fillAtomicQualLoc(AtomicTypeLoc ATL, const DeclaratorChunk &Chunk) {
   case DeclaratorChunk::RectilinearMesh:
   case DeclaratorChunk::StructuredMesh:
   case DeclaratorChunk::UnstructuredMesh:
+  case DeclaratorChunk::Window:
+  case DeclaratorChunk::Image:
   // +========================================================================+
   case DeclaratorChunk::Paren:
     llvm_unreachable("cannot be _Atomic qualified");

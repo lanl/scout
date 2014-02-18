@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyright (c) 2013, Los Alamos National Security, LLC.
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -50,34 +50,14 @@
  * Notes
  *
  * ##### 
- */ 
+ */
+#include <assert.h> 
+#include <stdio.h>
 
-#ifndef CLANG_CODEGEN_SCOUTRUNTIME_H
-#define CLANG_CODEGEN_SCOUTRUNTIME_H
+const int win_width=256;
+const int win_height=256;
 
-#include "CodeGenModule.h"
-
-namespace llvm {
-  class Function;
+int main(int argc, char** argv) {
+  window w[512,512];
+  return 0;
 }
-
-namespace clang {
-namespace CodeGen {
-  class CodeGenModule;
-
-  class CGScoutRuntime {
-  protected:
-    CodeGen::CodeGenModule &CGM;
-    llvm::Function *ScoutRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params);
-  public:
-    CGScoutRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM) {}
-    virtual ~CGScoutRuntime();
-    llvm::Function *ModuleInitFunction();
-    llvm::Function *RenderallUniformBeginFunction();
-    llvm::Function *RenderallEndFunction();
-    llvm::Value    *RenderallUniformColorsGlobal(CodeGenFunction &CGF);
-    llvm::Type     *convertScoutSpecificType(const Type *T);    
-  };
-}
-}
-#endif

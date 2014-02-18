@@ -1049,6 +1049,9 @@ public:
   QualType BuildUnstructuredMeshType(QualType T, Expr* filename,
                                      SourceRange Brackets,
                                      DeclarationName Entity);
+
+  QualType BuildWindowType(QualType T, const llvm::SmallVector<Expr*,2> &dims);
+  QualType BuildImageType(QualType T, const llvm::SmallVector<Expr*,2> &dims);
   // +========================================================================+
 
   /// \brief Build a function type.

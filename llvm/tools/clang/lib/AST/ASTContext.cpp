@@ -1746,6 +1746,18 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     Align = toBits(Layout.getAlignment());
     break;
   }
+
+  case Type::Window: {
+    Width = Target->getPointerWidth(0);
+    Align = Target->getPointerAlign(0);    
+    break;
+  }
+    
+  case Type::Image: {
+    Width = Target->getPointerWidth(0);
+    Align = Target->getPointerAlign(0);    
+    break;
+  }
   // +========================================================================+
 
   case Type::SubstTemplateTypeParm:
@@ -2529,6 +2541,8 @@ QualType ASTContext::getVariableArrayDecayedType(QualType type) const {
   case Type::RectilinearMesh:
   case Type::StructuredMesh:
   case Type::UnstructuredMesh:
+  case Type::Window:
+  case Type::Image:
   // +========================================================================+
   case Type::Enum:
   case Type::UnresolvedUsing:
@@ -5685,6 +5699,8 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
   case Type::RectilinearMesh:
   case Type::StructuredMesh:
   case Type::UnstructuredMesh:
+  case Type::Window:
+  case Type::Image:
     return;
   // +========================================================================+
   }
@@ -7403,6 +7419,10 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
   case Type::RectilinearMesh:
   case Type::StructuredMesh:
   case Type::UnstructuredMesh:
+    return QualType();
+
+  case Type::Window:
+  case Type::Image:
     return QualType();
   // +========================================================================+
   case Type::Record:

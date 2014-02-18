@@ -1089,3 +1089,17 @@ CGDebugInfo::createMeshFieldType(const MeshFieldDecl *field,
                                   alignInBits, offsetInBits, 
                                   flags, scoutFlags, debugType);
 }
+
+
+//===----------------------------------------------------------------------===//
+// RenderTarget debug support
+//===----------------------------------------------------------------------===//
+
+
+llvm::DIType CGDebugInfo::CreateType(const WindowType *Ty) {
+  return getOrCreateStructPtrType("__scout_win_t", WindowDITy);
+}
+
+llvm::DIType CGDebugInfo::CreateType(const ImageType *Ty) {
+  return getOrCreateStructPtrType("__scout_win_t", ImageDITy);
+}

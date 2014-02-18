@@ -261,6 +261,8 @@ bool Declarator::isDeclarationOfFunction() const {
     case DeclaratorChunk::RectilinearMesh:
     case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
+    case DeclaratorChunk::Window:
+    case DeclaratorChunk::Image:
     // +======================================================================+
       return false;
     }
@@ -287,6 +289,9 @@ bool Declarator::isDeclarationOfFunction() const {
     case TST_structured_mesh:
     case TST_rectilinear_mesh:
     case TST_unstructured_mesh:
+      
+    case TST_window:
+    case TST_image:
     // +======================================================================+
 
     case TST_float:
@@ -453,6 +458,9 @@ const char *DeclSpec::getSpecifierName(DeclSpec::TST T,
   case DeclSpec::TST_rectilinear_mesh:  return "rectilinear mesh";
   case DeclSpec::TST_structured_mesh:   return "structured mesh";
   case DeclSpec::TST_unstructured_mesh: return "unstructured mesh";
+
+  case DeclSpec::TST_window:            return "window";
+  case DeclSpec::TST_image:             return "image";
   // +========================================================================+
 
   case DeclSpec::TST_bool:        return Policy.Bool ? "bool" : "_Bool";

@@ -50,99 +50,50 @@
  *
  */
 
-// Note - this file is included by the TypePrinter source file
-// one directory up (TypePrinter is all contained in a single
-// file there...).
-//
-void
-TypePrinter::printUniformMeshBefore(const UniformMeshType *T,
-                                    raw_ostream &OS)
+#ifndef __SCOUT_WINDOW_H__ 
+#define __SCOUT_WINDOW_H__
+
+#include "scout/new-runtime/RenderTarget.h"
+
+struct GLFWwindow;
+
+namespace scout 
 {
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
+
+  class Viewport;
+  
+  class Window : public RenderTarget {
+
+   public:
+    Window(unsigned width, unsigned height);
+    ~Window();
+
+    void bind();
+    void release();
+
+    void clear();
+    void swapBuffers();
+
+    float4 *getColorBuffer() {
+      // For hardware accelerated graphics we don't have a CPU-side
+      // copy of the frame buffer and therefore can't give a pointer
+      // to the data.  This matches the details of what we need to do
+      // from a code generation perspective -- our 'color' target
+      // within a renderall is actually handled by OpenGL and the
+      // shader implementation.  To get a copy of the pixel data you
+      // should call 'readColorBuffer()'.  
+      return 0;
+    }
+    
+    const float4 *readColorBuffer();
+
+    bool savePNG(const char *filename);    
+    
+   private:
+    bool    Modified;
+    float4 *ColorBuffer;
+    GLFWwindow *Handle;
+  };
 }
 
-void
-TypePrinter::printStructuredMeshBefore(const StructuredMeshType *T,
-                                       raw_ostream &OS)
-{
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
-}
-
-
-void
-TypePrinter::printRectilinearMeshBefore(const RectilinearMeshType *T,
-                                        raw_ostream &OS)
-{
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
-}
-
-
-void
-TypePrinter::printUnstructuredMeshBefore(const UnstructuredMeshType *T,
-                                         raw_ostream &OS)
-{
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
-}
-
-
-void
-TypePrinter::printWindowBefore(const WindowType *T,
-                               raw_ostream &OS)
-{
-  OS << T->getName(Policy);
-  spaceBeforePlaceHolder(OS);  
-}
-
-void
-TypePrinter::printImageBefore(const ImageType *T,
-                              raw_ostream &OS) {
-  OS << T->getName(Policy);
-  spaceBeforePlaceHolder(OS);
-}
-
-void
-TypePrinter::printUniformMeshAfter(const UniformMeshType *T,
-                                   raw_ostream &OS)
-{
-  OS << '[';
-  MeshType::MeshDimensions dv = T->dimensions();
-  MeshType::MeshDimensions::iterator dimiter;
-  for (dimiter = dv.begin();
-      dimiter != dv.end();
-      dimiter++){
-    (*dimiter)->printPretty(OS, 0, Policy);
-    if (dimiter+1 != dv.end()) OS << ',';
-  }
-  OS << ']';
-}
-
-void
-TypePrinter::printStructuredMeshAfter(const StructuredMeshType *T,
-                                      raw_ostream &OS)
-{ }
-
-
-void
-TypePrinter::printRectilinearMeshAfter(const RectilinearMeshType *T,
-                                      raw_ostream &OS)
-{ }
-
-
-void
-TypePrinter::printUnstructuredMeshAfter(const UnstructuredMeshType *T,
-                                        raw_ostream &OS)
-{ }
-
-void
-TypePrinter::printWindowAfter(const WindowType *T,
-                              raw_ostream &OS)
-{ }
-
-void
-TypePrinter::printImageAfter(const ImageType *T,
-                              raw_ostream &OS)
-{ }
+#endif

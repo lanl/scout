@@ -49,100 +49,85 @@
  *  SUCH DAMAGE.
  *
  */
-
-// Note - this file is included by the TypePrinter source file
-// one directory up (TypePrinter is all contained in a single
-// file there...).
-//
-void
-TypePrinter::printUniformMeshBefore(const UniformMeshType *T,
-                                    raw_ostream &OS)
-{
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
-}
-
-void
-TypePrinter::printStructuredMeshBefore(const StructuredMeshType *T,
-                                       raw_ostream &OS)
-{
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
-}
+#include <cassert>
+#include <png.h>
 
 
-void
-TypePrinter::printRectilinearMeshBefore(const RectilinearMeshType *T,
-                                        raw_ostream &OS)
-{
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
-}
+#include "scout/new-runtime/graphics.h"
+#include "scout/new-runtime/Image.h"
+#include "scout/new-runtime/Window.h"
 
+using namespace scout;
 
-void
-TypePrinter::printUnstructuredMeshBefore(const UnstructuredMeshType *T,
-                                         raw_ostream &OS)
-{
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
-}
+extern "C"
+bool __scout_write_png(unsigned char *buf8,
+                       unsigned width, unsigned height,
+                       const char *filename) {
 
-
-void
-TypePrinter::printWindowBefore(const WindowType *T,
-                               raw_ostream &OS)
-{
-  OS << T->getName(Policy);
-  spaceBeforePlaceHolder(OS);  
-}
-
-void
-TypePrinter::printImageBefore(const ImageType *T,
-                              raw_ostream &OS) {
-  OS << T->getName(Policy);
-  spaceBeforePlaceHolder(OS);
-}
-
-void
-TypePrinter::printUniformMeshAfter(const UniformMeshType *T,
-                                   raw_ostream &OS)
-{
-  OS << '[';
-  MeshType::MeshDimensions dv = T->dimensions();
-  MeshType::MeshDimensions::iterator dimiter;
-  for (dimiter = dv.begin();
-      dimiter != dv.end();
-      dimiter++){
-    (*dimiter)->printPretty(OS, 0, Policy);
-    if (dimiter+1 != dv.end()) OS << ',';
+  FILE *fp = fopen(filename, "wb");
+  if (! fp) {
+    fprintf(stderr, "scout runtime: could not open file: %s\n", filename);
+    return false;
   }
-  OS << ']';
+
+  png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+  if (! png_ptr) {
+    fprintf(stderr, "unable to create png struct pointer!\n");
+    fclose(fp);
+    return false;
+  }
+
+  png_infop info_ptr = png_create_info_struct(png_ptr);
+  if (! info_ptr) {
+    fprintf(stderr, "unable to create png info structure!\n");
+    png_destroy_write_struct(&png_ptr, (png_infopp)NULL);
+
+    fclose(fp);
+    return false;
+  }
+
+  if (setjmp(png_jmpbuf(png_ptr))) {
+    fprintf(stderr, "png setjmp() error!\n");
+    png_destroy_write_struct(&png_ptr, &info_ptr);
+    fclose(fp);
+    return false;
+  }
+
+  png_init_io(png_ptr, fp);
+  int bit_depth = 8;
+  png_set_IHDR(png_ptr, info_ptr,
+               width, height,
+               bit_depth,
+               PNG_COLOR_TYPE_RGB,
+               PNG_INTERLACE_NONE,
+               PNG_COMPRESSION_TYPE_DEFAULT,
+               PNG_FILTER_TYPE_DEFAULT);
+
+
+  png_write_info(png_ptr, info_ptr);
+
+  png_bytep *rows = new png_bytep[height];
+  if (! rows) {
+    fprintf(stderr, "unable to allocate png row pointers!\n");
+    png_destroy_write_struct(&png_ptr, &info_ptr);
+    fclose(fp);
+    return false;
+  }
+
+  png_bytep fb_start = (png_bytep)buf8;
+  int row_offset = width * sizeof(unsigned char) * 3;
+  for(int i = 0; i < height; ++i) {
+    rows[i] = fb_start + i * row_offset;
+  }
+
+  png_write_image(png_ptr, rows);
+  png_write_end(png_ptr, info_ptr);
+
+  fclose(fp);
+
+  delete []rows;
+  png_destroy_write_struct(&png_ptr, &info_ptr);
+  return true;
 }
 
-void
-TypePrinter::printStructuredMeshAfter(const StructuredMeshType *T,
-                                      raw_ostream &OS)
-{ }
 
-
-void
-TypePrinter::printRectilinearMeshAfter(const RectilinearMeshType *T,
-                                      raw_ostream &OS)
-{ }
-
-
-void
-TypePrinter::printUnstructuredMeshAfter(const UnstructuredMeshType *T,
-                                        raw_ostream &OS)
-{ }
-
-void
-TypePrinter::printWindowAfter(const WindowType *T,
-                              raw_ostream &OS)
-{ }
-
-void
-TypePrinter::printImageAfter(const ImageType *T,
-                              raw_ostream &OS)
-{ }

@@ -1012,6 +1012,8 @@ DEF_TRAVERSE_TYPE(UniformMeshType, { })
 DEF_TRAVERSE_TYPE(StructuredMeshType, { })
 DEF_TRAVERSE_TYPE(RectilinearMeshType, { })
 DEF_TRAVERSE_TYPE(UnstructuredMeshType, { })
+DEF_TRAVERSE_TYPE(WindowType, { })
+DEF_TRAVERSE_TYPE(ImageType, { })
 // +==========================================================================+
 
 DEF_TRAVERSE_TYPE(TemplateSpecializationType, {
@@ -1251,6 +1253,9 @@ DEF_TRAVERSE_TYPELOC(UniformMeshType, { })
 DEF_TRAVERSE_TYPELOC(StructuredMeshType, { })
 DEF_TRAVERSE_TYPELOC(RectilinearMeshType, { })
 DEF_TRAVERSE_TYPELOC(UnstructuredMeshType, { })
+
+DEF_TRAVERSE_TYPELOC(WindowType, { })
+DEF_TRAVERSE_TYPELOC(ImageType, { })
 // ============================================================================
 
 // FIXME: use the loc for the template name?

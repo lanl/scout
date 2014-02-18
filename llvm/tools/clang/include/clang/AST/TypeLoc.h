@@ -2102,6 +2102,70 @@ class UnstructuredMeshTypeLoc :
        setRParenLoc(Loc);
      }
 };
+
+
+struct RenderTargetLocInfo {
+  SourceLocation LBracketLoc, RBracketLoc;
+  Expr *Width;
+  Expr *Height;
+};
+    
+
+class RenderTargetTypeLoc : public ConcreteTypeLoc<TypeSpecTypeLoc,
+                                                   RenderTargetTypeLoc,
+                                                   RenderTargetType,
+                                                   RenderTargetLocInfo> {
+ public:
+  SourceLocation getLBracketLoc() const {
+    return getLocalData()->LBracketLoc;
+  }
+  void setLBracketLoc(SourceLocation Loc) {
+    getLocalData()->LBracketLoc = Loc;
+  }
+
+  SourceLocation getRBracketLoc() const {
+    return getLocalData()->RBracketLoc;
+  }
+  void setRBracketLoc(SourceLocation Loc) {
+    getLocalData()->RBracketLoc = Loc;
+  }
+
+  SourceRange getBracketsRange() const {
+    return SourceRange(getLBracketLoc(), getRBracketLoc());
+  }
+
+  Expr *getWidth() const {
+    return getLocalData()->Width;
+  }
+  
+  void setWidth(Expr *Width) {
+    getLocalData()->Width = Width;
+  }
+
+  Expr *getHeight() const {
+    return getLocalData()->Height;
+  }
+  
+  void setHeight(Expr *Height) {
+    getLocalData()->Height = Height;
+  }
+  
+};
+
+
+class WindowTypeLoc :
+    public InheritingConcreteTypeLoc<RenderTargetTypeLoc,
+                                     WindowTypeLoc,
+                                     WindowType> {
+};
+
+class ImageTypeLoc :
+    public InheritingConcreteTypeLoc<RenderTargetTypeLoc,
+                                     ImageTypeLoc,
+                                     ImageType> {
+};  
+
+  
 // +==========================================================================+
 
 }

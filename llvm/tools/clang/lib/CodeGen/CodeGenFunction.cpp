@@ -116,6 +116,11 @@ TypeEvaluationKind CodeGenFunction::getEvaluationKind(QualType type) {
   case Type::RectilinearMesh:
   case Type::UnstructuredMesh:
     return TEK_Aggregate;
+
+  case Type::Window:
+  case Type::Image:
+    return TEK_Scalar;
+    
   // +========================================================================+
 
     // Various scalar types.
@@ -1391,6 +1396,10 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
     case Type::RectilinearMesh:
     case Type::UnstructuredMesh:
       llvm_unreachable("type class is never variably-modified!");
+
+    case Type::Window:
+    case Type::Image:
+      llvm_unreachable("type class is never variably-modified!");      
     // +======================================================================+
     case Type::Builtin:
     case Type::Complex:

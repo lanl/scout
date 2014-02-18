@@ -2158,6 +2158,10 @@ llvm::DIType CGDebugInfo::CreateTypeNode(QualType Ty, llvm::DIFile Unit) {
     return CreateType(cast<RectilinearMeshType>(Ty));
   case Type::UnstructuredMesh:
     return CreateType(cast<UnstructuredMeshType>(Ty));
+  case Type::Window:
+    return CreateType(cast<WindowType>(Ty));
+  case Type::Image:
+    return CreateType(cast<ImageType>(Ty));    
   // +========================================================================+
 
   case Type::Record:
