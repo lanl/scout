@@ -126,6 +126,11 @@ public:
 
   bool isDerivedType() const;
   bool isCompositeType() const;
+
+  // +===== Scout =========================
+  bool isScoutCompositeType() const;
+  // +=====================================
+
   bool isBasicType() const;
   bool isVariable() const;
   bool isSubprogram() const;

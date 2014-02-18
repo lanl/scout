@@ -478,6 +478,11 @@ private:
   /// constructTypeDIE - Construct type DIE from DICompositeType.
   void constructTypeDIE(DIE &Buffer, DICompositeType CTy);
 
+  // +===== Scout ====================================
+  /// constructScoutTypeDIE - Construct type DIE from DIScoutCompositeType.
+  void constructScoutTypeDIE(DIE &Buffer, DIScoutCompositeType CTy);
+  // +================================================
+
   /// constructSubrangeDIE - Construct subrange DIE from DISubrange.
   void constructSubrangeDIE(DIE &Buffer, DISubrange SR, DIE *IndexTy);
 

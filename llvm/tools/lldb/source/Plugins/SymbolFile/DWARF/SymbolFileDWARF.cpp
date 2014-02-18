@@ -6296,11 +6296,26 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                         {
                             // +===== Scout =================
                             if(isScoutMesh){
+
+                              const uint32_t dimX =
+                                  die->GetAttributeValueAsUnsigned(this, dwarf_cu, DW_AT_SCOUT_mesh_dim_x, 0);
+
+                              const uint32_t dimY =
+                                  die->GetAttributeValueAsUnsigned(this, dwarf_cu, DW_AT_SCOUT_mesh_dim_y, 0);
+
+                              const uint32_t dimZ =
+                                  die->GetAttributeValueAsUnsigned(this, dwarf_cu, DW_AT_SCOUT_mesh_dim_z, 0);
+
+
+
                               switch(tag){
                               case DW_TAG_SCOUT_uniform_mesh_type:
                                 clang_type = ast.CreateUniformMeshType (decl_ctx,
                                                                         accessibility,
                                                                         type_name_cstr,
+                                                                        dimX,
+                                                                        dimY,
+                                                                        dimZ,
                                                                         class_language,
                                                                         &metadata);
                                 break;
@@ -6308,6 +6323,9 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                                 clang_type = ast.CreateStructuredMeshType (decl_ctx,
                                                                            accessibility,
                                                                            type_name_cstr,
+                                                                           dimX,
+                                                                           dimY,
+                                                                           dimZ,
                                                                            class_language,
                                                                            &metadata);
                                 break;
@@ -6315,6 +6333,9 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                                 clang_type = ast.CreateRectilinearMeshType (decl_ctx,
                                                                             accessibility,
                                                                             type_name_cstr,
+                                                                            dimX,
+                                                                            dimY,
+                                                                            dimZ,
                                                                             class_language,
                                                                             &metadata);
                                 break;
@@ -6322,8 +6343,11 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                                 clang_type = ast.CreateUnstructuredMeshType (decl_ctx,
                                                                              accessibility,
                                                                              type_name_cstr,
+                                                                             dimX,
+                                                                             dimY,
+                                                                             dimZ,
                                                                              class_language,
-                                                                            &metadata);
+                                                                             &metadata);
                                 break;
                               default:
                                 assert(false && "Invalid mesh type");
