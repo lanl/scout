@@ -69,6 +69,43 @@ GetCompleteQualType (ASTContext *ast, QualType qual_type, bool allow_completion 
                 return GetCompleteQualType (ast, array_type->getElementType(), allow_completion);
         }
             break;
+
+        // +===== Scout ======================================
+        case clang::Type::UniformMesh:
+        case clang::Type::StructuredMesh:
+        case clang::Type::RectilinearMesh:
+        case clang::Type::UnstructuredMesh:
+        {
+            const MeshType *mesh_type = dyn_cast<MeshType>(qual_type.getTypePtr());
+            if (mesh_type)
+            {
+                MeshDecl *mesh_decl = mesh_type->getDecl();
+                if (mesh_decl)
+                {
+                    if (mesh_decl->isCompleteDefinition())
+                        return true;
+
+                    if (!allow_completion)
+                        return false;
+
+                    if (mesh_decl->hasExternalLexicalStorage())
+                    {
+                        if (ast)
+                        {
+                            ExternalASTSource *external_ast_source = ast->getExternalSource();
+                            if (external_ast_source)
+                            {
+                                external_ast_source->CompleteType(mesh_decl);
+                                return !mesh_type->isIncompleteType();
+                            }
+                        }
+                    }
+                    return false;
+                }
+            }
+        }
+            break;
+        // +=====================================================
             
         case clang::Type::Record:
         case clang::Type::Enum:
@@ -2111,7 +2148,25 @@ ClangASTType::GetNumChildren (bool omit_empty_base_classes) const
             break;
             
         case clang::Type::Complex: return 0;
-            
+
+        // +===== Scout =================================
+        case clang::Type::UniformMesh:
+        case clang::Type::StructuredMesh:
+        case clang::Type::RectilinearMesh:
+        case clang::Type::UnstructuredMesh:
+          if (GetCompleteQualType (m_ast, qual_type))
+          {
+            const MeshType *mesh_type = cast<MeshType>(qual_type.getTypePtr());
+            const MeshDecl *mesh_decl = mesh_type->getDecl();
+            assert(mesh_decl);
+
+            MeshDecl::field_iterator field, field_end;
+            for (field = mesh_decl->field_begin(), field_end = mesh_decl->field_end(); field != field_end; ++field)
+                ++num_children;
+          }
+          break;
+        // ==============================================
+
         case clang::Type::Record:
             if (GetCompleteQualType (m_ast, qual_type))
             {
