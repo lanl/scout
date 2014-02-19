@@ -14,8 +14,8 @@
 # you pass compile and regression checks).  However, we'll leave this
 # as a sanity check...
 branch=$(active_git_branch)
-if [ $branch != 'devel' ] && [ $branch != 'overhaul' ]; then 
-    echo "This script must be run on the 'devel' or 'overhaul' branch."
+if [ $branch != 'devel' ] && [ $branch != 'overhaul' ]  && [ $branch != 'merge' ]; then 
+    echo "This script must be run on the 'devel', 'overhaul' or 'merge' branch."
     exit 1;
 fi
 
