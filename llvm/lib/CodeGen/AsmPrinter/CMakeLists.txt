@@ -12,7 +12,7 @@ add_llvm_library(LLVMAsmPrinter
   DwarfUnit.cpp
   ErlangGCPrinter.cpp
   OcamlGCPrinter.cpp
-  Win64Exception.cp
+  Win64Exception.cpp
   WinCodeViewLineTables.cpp
 # +===== Scout =====================
   Scout/DwarfUnit.cpp
