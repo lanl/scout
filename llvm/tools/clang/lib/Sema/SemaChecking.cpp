@@ -333,9 +333,9 @@ Sema::CheckBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
 }
 
 // Get the valid immediate range for the specified NEON type code.
-static unsigned RFT(unsigned t, bool shift = false) {
+static unsigned RFT(unsigned t, bool shift = false, bool ForceQuad = false) {
   NeonTypeFlags Type(t);
-  int IsQuad = Type.isQuad();
+  int IsQuad = ForceQuad ? true : Type.isQuad();
   switch (Type.getEltType()) {
   case NeonTypeFlags::Int8:
   case NeonTypeFlags::Poly8:
@@ -395,24 +395,21 @@ static QualType getNeonEltType(NeonTypeFlags Flags, ASTContext &Context,
   llvm_unreachable("Invalid NeonTypeFlag!");
 }
 
-bool Sema::CheckAArch64BuiltinFunctionCall(unsigned BuiltinID,
-                                           CallExpr *TheCall) {
-
+bool Sema::CheckNeonBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
   llvm::APSInt Result;
-
   uint64_t mask = 0;
   unsigned TV = 0;
   int PtrArgNum = -1;
   bool HasConstPtr = false;
   switch (BuiltinID) {
-#define GET_NEON_AARCH64_OVERLOAD_CHECK
+#define GET_NEON_OVERLOAD_CHECK
 #include "clang/Basic/arm_neon.inc"
-#undef GET_NEON_AARCH64_OVERLOAD_CHECK
+#undef GET_NEON_OVERLOAD_CHECK
   }
 
   // For NEON intrinsics which are overloaded on vector element type, validate
   // the immediate which specifies which variant to emit.
-  unsigned ImmArg = TheCall->getNumArgs() - 1;
+  unsigned ImmArg = TheCall->getNumArgs()-1;
   if (mask) {
     if (SemaBuiltinConstantArg(TheCall, ImmArg, Result))
       return true;
@@ -420,7 +417,7 @@ bool Sema::CheckAArch64BuiltinFunctionCall(unsigned BuiltinID,
     TV = Result.getLimitedValue(64);
     if ((TV > 63) || (mask & (1ULL << TV)) == 0)
       return Diag(TheCall->getLocStart(), diag::err_invalid_neon_type_code)
-             << TheCall->getArg(ImmArg)->getSourceRange();
+        << TheCall->getArg(ImmArg)->getSourceRange();
   }
 
   if (PtrArgNum >= 0) {
@@ -430,7 +427,10 @@ bool Sema::CheckAArch64BuiltinFunctionCall(unsigned BuiltinID,
       Arg = ICE->getSubExpr();
     ExprResult RHS = DefaultFunctionArrayLvalueConversion(Arg);
     QualType RHSTy = RHS.get()->getType();
-    QualType EltTy = getNeonEltType(NeonTypeFlags(TV), Context, true);
+
+    bool IsAArch64 =
+        Context.getTargetInfo().getTriple().getArch() == llvm::Triple::aarch64;
+    QualType EltTy = getNeonEltType(NeonTypeFlags(TV), Context, IsAArch64);
     if (HasConstPtr)
       EltTy = EltTy.withConst();
     QualType LHSTy = Context.getPointerType(EltTy);
@@ -449,9 +449,9 @@ bool Sema::CheckAArch64BuiltinFunctionCall(unsigned BuiltinID,
   switch (BuiltinID) {
   default:
     return false;
-#define GET_NEON_AARCH64_IMMEDIATE_CHECK
+#define GET_NEON_IMMEDIATE_CHECK
 #include "clang/Basic/arm_neon.inc"
-#undef GET_NEON_AARCH64_IMMEDIATE_CHECK
+#undef GET_NEON_IMMEDIATE_CHECK
   }
   ;
 
@@ -469,6 +469,14 @@ bool Sema::CheckAArch64BuiltinFunctionCall(unsigned BuiltinID,
   if (Val < l || Val > (u + l))
     return Diag(TheCall->getLocStart(), diag::err_argument_invalid_range)
            << l << u + l << TheCall->getArg(i)->getSourceRange();
+
+  return false;
+}
+
+bool Sema::CheckAArch64BuiltinFunctionCall(unsigned BuiltinID,
+                                           CallExpr *TheCall) {
+  if (CheckNeonBuiltinFunctionCall(BuiltinID, TheCall))
+    return true;
 
   return false;
 }
@@ -587,48 +595,8 @@ bool Sema::CheckARMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
     return CheckARMBuiltinExclusiveCall(BuiltinID, TheCall);
   }
 
-  uint64_t mask = 0;
-  unsigned TV = 0;
-  int PtrArgNum = -1;
-  bool HasConstPtr = false;
-  switch (BuiltinID) {
-#define GET_NEON_OVERLOAD_CHECK
-#include "clang/Basic/arm_neon.inc"
-#undef GET_NEON_OVERLOAD_CHECK
-  }
-  
-  // For NEON intrinsics which are overloaded on vector element type, validate
-  // the immediate which specifies which variant to emit.
-  unsigned ImmArg = TheCall->getNumArgs()-1;
-  if (mask) {
-    if (SemaBuiltinConstantArg(TheCall, ImmArg, Result))
-      return true;
-    
-    TV = Result.getLimitedValue(64);
-    if ((TV > 63) || (mask & (1ULL << TV)) == 0)
-      return Diag(TheCall->getLocStart(), diag::err_invalid_neon_type_code)
-        << TheCall->getArg(ImmArg)->getSourceRange();
-  }
-
-  if (PtrArgNum >= 0) {
-    // Check that pointer arguments have the specified type.
-    Expr *Arg = TheCall->getArg(PtrArgNum);
-    if (ImplicitCastExpr *ICE = dyn_cast<ImplicitCastExpr>(Arg))
-      Arg = ICE->getSubExpr();
-    ExprResult RHS = DefaultFunctionArrayLvalueConversion(Arg);
-    QualType RHSTy = RHS.get()->getType();
-    QualType EltTy = getNeonEltType(NeonTypeFlags(TV), Context, false);
-    if (HasConstPtr)
-      EltTy = EltTy.withConst();
-    QualType LHSTy = Context.getPointerType(EltTy);
-    AssignConvertType ConvTy;
-    ConvTy = CheckSingleAssignmentConstraints(LHSTy, RHS);
-    if (RHS.isInvalid())
-      return true;
-    if (DiagnoseAssignmentResult(ConvTy, Arg->getLocStart(), LHSTy, RHSTy,
-                                 RHS.get(), AA_Assigning))
-      return true;
-  }
+  if (CheckNeonBuiltinFunctionCall(BuiltinID, TheCall))
+    return true;
 
   // For NEON intrinsics which take an immediate value as part of the 
   // instruction, range check them here.
@@ -641,9 +609,6 @@ bool Sema::CheckARMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
   case ARM::BI__builtin_arm_vcvtr_d: i = 1; u = 1; break;
   case ARM::BI__builtin_arm_dmb:
   case ARM::BI__builtin_arm_dsb: l = 0; u = 15; break;
-#define GET_NEON_IMMEDIATE_CHECK
-#include "clang/Basic/arm_neon.inc"
-#undef GET_NEON_IMMEDIATE_CHECK
   };
 
   // We can't check the value of a dependent argument.
@@ -2195,27 +2160,6 @@ checkFormatStringExpr(Sema &S, const Expr *E, ArrayRef<const Expr *> Args,
 
     return SLCT_NotALiteral;
   }
-      
-  case Stmt::ObjCMessageExprClass: {
-    const ObjCMessageExpr *ME = cast<ObjCMessageExpr>(E);
-    if (const ObjCMethodDecl *MDecl = ME->getMethodDecl()) {
-      if (const NamedDecl *ND = dyn_cast<NamedDecl>(MDecl)) {
-        if (const FormatArgAttr *FA = ND->getAttr<FormatArgAttr>()) {
-          unsigned ArgIndex = FA->getFormatIdx();
-          if (ArgIndex <= ME->getNumArgs()) {
-            const Expr *Arg = ME->getArg(ArgIndex-1);
-            return checkFormatStringExpr(S, Arg, Args,
-                                         HasVAListArg, format_idx,
-                                         firstDataArg, Type, CallType,
-                                         InFunctionCall, CheckedVarArgs);
-          }
-        }
-      }
-    }
-
-    return SLCT_NotALiteral;
-  }
-      
   case Stmt::ObjCStringLiteralClass:
   case Stmt::StringLiteralClass: {
     const StringLiteral *StrE = NULL;
@@ -4143,6 +4087,10 @@ static Expr *EvalAddr(Expr *E, SmallVectorImpl<DeclRefExpr *> &refVars,
   case Stmt::DeclRefExprClass: {
     DeclRefExpr *DR = cast<DeclRefExpr>(E);
 
+    // If we leave the immediate function, the lifetime isn't about to end.
+    if (DR->refersToEnclosingLocal())
+      return 0;
+
     if (VarDecl *V = dyn_cast<VarDecl>(DR->getDecl()))
       // If this is a reference variable, follow through to the expression that
       // it points to.
@@ -4298,6 +4246,10 @@ do {
     // variable's name. If it's not a reference variable we check if it has
     // local storage within the function, and if so, return the expression.
     DeclRefExpr *DR = cast<DeclRefExpr>(E);
+
+    // If we leave the immediate function, the lifetime isn't about to end.
+    if (DR->refersToEnclosingLocal())
+      return 0;
 
     if (VarDecl *V = dyn_cast<VarDecl>(DR->getDecl())) {
       // Check if it refers to itself, e.g. "int& i = i;".
@@ -5365,6 +5317,13 @@ void CheckImplicitConversion(Sema &S, Expr *E, QualType T,
       // prevented by a check in AnalyzeImplicitConversions().
       return DiagnoseImpCast(S, E, T, CC,
                              diag::warn_impcast_string_literal_to_bool);
+    if (isa<ObjCStringLiteral>(E) || isa<ObjCArrayLiteral>(E) ||
+        isa<ObjCDictionaryLiteral>(E) || isa<ObjCBoxedExpr>(E)) {
+      // This covers the literal expressions that evaluate to Objective-C
+      // objects.
+      return DiagnoseImpCast(S, E, T, CC,
+                             diag::warn_impcast_objective_c_literal_to_bool);
+    }
     if (Source->isFunctionType()) {
       // Warn on function to bool. Checks free functions and static member
       // functions. Weakly imported functions are excluded from the check,

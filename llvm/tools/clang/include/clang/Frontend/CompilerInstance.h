@@ -80,6 +80,9 @@ class CompilerInstance : public ModuleLoader {
   /// The target being compiled for.
   IntrusiveRefCntPtr<TargetInfo> Target;
 
+  /// The virtual file system.
+  IntrusiveRefCntPtr<vfs::FileSystem> VirtualFileSystem;
+
   /// The file manager.
   IntrusiveRefCntPtr<FileManager> FileMgr;
 
@@ -353,6 +356,23 @@ public:
   void setTarget(TargetInfo *Value);
 
   /// }
+  /// @name Virtual File System
+  /// {
+
+  bool hasVirtualFileSystem() const { return VirtualFileSystem != 0; }
+
+  vfs::FileSystem &getVirtualFileSystem() const {
+    assert(hasVirtualFileSystem() &&
+           "Compiler instance has no virtual file system");
+    return *VirtualFileSystem;
+  }
+
+  /// \brief Replace the current virtual file system.
+  void setVirtualFileSystem(IntrusiveRefCntPtr<vfs::FileSystem> FS) {
+    VirtualFileSystem = FS;
+  }
+
+  /// }
   /// @name File Manager
   /// {
 
@@ -565,6 +585,10 @@ public:
                     DiagnosticConsumer *Client = 0,
                     bool ShouldOwnClient = true,
                     const CodeGenOptions *CodeGenOpts = 0);
+
+  /// Create a virtual file system and replace any existing one with it.
+  /// The default is to use the real file system.
+  void createVirtualFileSystem();
 
   /// Create the file manager and replace any existing one with it.
   void createFileManager();

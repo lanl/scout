@@ -17,6 +17,8 @@ def err_drv_unsupported_option_argument : Error<
   "unsupported argument '%1' to option '%0'">;
 def err_drv_unknown_stdin_type : Error<
   "-E or -x required when input is from standard input">;
+def err_drv_unknown_stdin_type_clang_cl : Error<
+  "use /Tc or /Tp to set input type for standard input">;
 def err_drv_unknown_language : Error<"language not recognized: '%0'">;
 def err_drv_invalid_arch_name : Error<
   "invalid arch name '%0'">;
@@ -170,4 +172,11 @@ def err_analyzer_config_no_value : Error<
   "analyzer-config option '%0' has a key but no value">;
 def err_analyzer_config_multiple_values : Error<
   "analyzer-config option '%0' should contain only one '='">;
+
+def err_drv_modules_validate_once_requires_timestamp : Error<
+  "option '-fmodules-validate-once-per-build-session' requires "
+  "'-fbuild-session-timestamp=<seconds since Epoch>'">;
+
+def warn_drv_invoking_fallback : Warning<"falling back to %0">,
+  InGroup<DiagGroup<"fallback">>;
 }

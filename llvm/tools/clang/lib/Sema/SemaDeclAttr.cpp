@@ -367,7 +367,7 @@ static const RecordType *getRecordType(QualType QT) {
 static bool checkBaseClassIsLockableCallback(const CXXBaseSpecifier *Specifier,
                                              CXXBasePath &Path, void *Unused) {
   const RecordType *RT = Specifier->getType()->getAs<RecordType>();
-  return RT->getDecl()->hasAttr<LockableAttr>();
+  return RT->getDecl()->hasAttr<CapabilityAttr>();
 }
 
 
@@ -395,7 +395,7 @@ static void checkForLockableRecord(Sema &S, Decl *D, const AttributeList &Attr,
 
   // Check if the type is lockable.
   RecordDecl *RD = RT->getDecl();
-  if (RD->hasAttr<LockableAttr>())
+  if (RD->hasAttr<CapabilityAttr>())
     return;
 
   // Else check if any base classes are lockable.
@@ -548,7 +548,7 @@ static bool checkAcquireOrderAttrCommon(Sema &S, Decl *D,
   QualType QT = cast<ValueDecl>(D)->getType();
   if (!QT->isDependentType()) {
     const RecordType *RT = getRecordType(QT);
-    if (!RT || !RT->getDecl()->hasAttr<LockableAttr>()) {
+    if (!RT || !RT->getDecl()->hasAttr<CapabilityAttr>()) {
       S.Diag(Attr.getLoc(), diag::warn_thread_attribute_decl_not_lockable)
         << Attr.getName();
       return false;
@@ -696,46 +696,6 @@ static void handleExclusiveTrylockFunctionAttr(Sema &S, Decl *D,
                                           Attr.getArgAsExpr(0),
                                           Args.data(), Args.size(),
                                           Attr.getAttributeSpellingListIndex()));
-}
-
-static bool checkLocksRequiredCommon(Sema &S, Decl *D,
-                                     const AttributeList &Attr,
-                                     SmallVectorImpl<Expr *> &Args) {
-  if (!checkAttributeAtLeastNumArgs(S, Attr, 1))
-    return false;
-
-  // check that all arguments are lockable objects
-  checkAttrArgsAreLockableObjs(S, D, Attr, Args);
-  if (Args.empty())
-    return false;
-
-  return true;
-}
-
-static void handleExclusiveLocksRequiredAttr(Sema &S, Decl *D,
-                                             const AttributeList &Attr) {
-  SmallVector<Expr*, 1> Args;
-  if (!checkLocksRequiredCommon(S, D, Attr, Args))
-    return;
-
-  Expr **StartArg = &Args[0];
-  D->addAttr(::new (S.Context)
-             ExclusiveLocksRequiredAttr(Attr.getRange(), S.Context,
-                                        StartArg, Args.size(),
-                                        Attr.getAttributeSpellingListIndex()));
-}
-
-static void handleSharedLocksRequiredAttr(Sema &S, Decl *D,
-                                          const AttributeList &Attr) {
-  SmallVector<Expr*, 1> Args;
-  if (!checkLocksRequiredCommon(S, D, Attr, Args))
-    return;
-
-  Expr **StartArg = &Args[0];
-  D->addAttr(::new (S.Context)
-             SharedLocksRequiredAttr(Attr.getRange(), S.Context,
-                                     StartArg, Args.size(),
-                                     Attr.getAttributeSpellingListIndex()));
 }
 
 static void handleUnlockFunAttr(Sema &S, Decl *D,
@@ -1170,23 +1130,6 @@ static bool attrNonNullArgCheck(Sema &S, QualType T, const AttributeList &Attr,
   return true;
 }
 
-static void handleNonNullAttrParameter(Sema &S, ParmVarDecl *D,
-                                       const AttributeList &Attr) {
-  // Is the argument a pointer type?
-  if (!attrNonNullArgCheck(S, D->getType(), Attr, D->getSourceRange()))
-    return;
-
-  if (Attr.getNumArgs() > 0) {
-    S.Diag(Attr.getLoc(), diag::warn_attribute_nonnull_parm_no_args)
-      << D->getSourceRange();
-    return;
-  }
-
-  D->addAttr(::new (S.Context)
-             NonNullAttr(Attr.getRange(), S.Context, 0, 0,
-                         Attr.getAttributeSpellingListIndex()));
-}
-
 static void handleNonNullAttr(Sema &S, Decl *D, const AttributeList &Attr) {
   SmallVector<unsigned, 8> NonNullArgs;
   for (unsigned i = 0; i < Attr.getNumArgs(); ++i) {
@@ -1229,6 +1172,27 @@ static void handleNonNullAttr(Sema &S, Decl *D, const AttributeList &Attr) {
   llvm::array_pod_sort(start, start + size);
   D->addAttr(::new (S.Context)
              NonNullAttr(Attr.getRange(), S.Context, start, size,
+                         Attr.getAttributeSpellingListIndex()));
+}
+
+static void handleNonNullAttrParameter(Sema &S, ParmVarDecl *D,
+                                       const AttributeList &Attr) {
+  if (Attr.getNumArgs() > 0) {
+    if (D->getFunctionType()) {
+      handleNonNullAttr(S, D, Attr);
+    } else {
+      S.Diag(Attr.getLoc(), diag::warn_attribute_nonnull_parm_no_args)
+        << D->getSourceRange();
+    }
+    return;
+  }
+
+  // Is the argument a pointer type?
+  if (!attrNonNullArgCheck(S, D->getType(), Attr, D->getSourceRange()))
+    return;
+
+  D->addAttr(::new (S.Context)
+             NonNullAttr(Attr.getRange(), S.Context, 0, 0,
                          Attr.getAttributeSpellingListIndex()));
 }
 
@@ -2810,14 +2774,12 @@ void Sema::AddAlignedAttr(SourceRange AttrRange, Decl *D, Expr *E,
     return;
   }
 
-  if (TmpAttr.isDeclspec()) {
-    // We've already verified it's a power of 2, now let's make sure it's
-    // 8192 or less.
-    if (Alignment.getZExtValue() > 8192) {
-      Diag(AttrLoc, diag::err_attribute_aligned_greater_than_8192)
-        << E->getSourceRange();
-      return;
-    }
+  // Alignment calculations can wrap around if it's greater than 2**28.
+  unsigned MaxValidAlignment = TmpAttr.isDeclspec() ? 8192 : 268435456;
+  if (Alignment.getZExtValue() > MaxValidAlignment) {
+    Diag(AttrLoc, diag::err_attribute_aligned_too_great) << MaxValidAlignment
+                                                         << E->getSourceRange();
+    return;
   }
 
   AlignedAttr *AA = ::new (Context) AlignedAttr(AttrRange, Context, true,
@@ -2870,6 +2832,35 @@ void Sema::CheckAlignasUnderalignment(Decl *D) {
       Diag(AlignasAttr->getLocation(), diag::err_alignas_underaligned)
         << Ty << (unsigned)NaturalAlign.getQuantity();
   }
+}
+
+bool Sema::checkMSInheritanceAttrOnDefinition(
+    CXXRecordDecl *RD, SourceRange Range, bool BestCase,
+    MSInheritanceAttr::Spelling SemanticSpelling) {
+  assert(RD->hasDefinition() && "RD has no definition!");
+
+  // We may not have seen base specifiers or any virtual methods yet.  We will
+  // have to wait until the record is defined to catch any mismatches.
+  if (!RD->getDefinition()->isCompleteDefinition())
+    return false;
+
+  // The unspecified model never matches what a definition could need.
+  if (SemanticSpelling == MSInheritanceAttr::Keyword_unspecified_inheritance)
+    return false;
+
+  if (BestCase) {
+    if (RD->calculateInheritanceModel() == SemanticSpelling)
+      return false;
+  } else {
+    if (RD->calculateInheritanceModel() <= SemanticSpelling)
+      return false;
+  }
+
+  Diag(Range.getBegin(), diag::err_mismatched_ms_inheritance)
+      << 0 /*definition*/;
+  Diag(RD->getDefinition()->getLocation(), diag::note_defined_here)
+      << RD->getNameAsString();
+  return true;
 }
 
 /// handleModeAttr - This attribute modifies the width of a decl with primitive
@@ -3674,6 +3665,20 @@ static void handleUuidAttr(Sema &S, Decl *D, const AttributeList &Attr) {
                                         Attr.getAttributeSpellingListIndex()));
 }
 
+static void handleMSInheritanceAttr(Sema &S, Decl *D, const AttributeList &Attr) {
+  if (!S.LangOpts.CPlusPlus) {
+    S.Diag(Attr.getLoc(), diag::err_attribute_not_supported_in_lang)
+      << Attr.getName() << AttributeLangSupport::C;
+    return;
+  }
+  MSInheritanceAttr *IA = S.mergeMSInheritanceAttr(
+      D, Attr.getRange(), /*BestCase=*/true,
+      Attr.getAttributeSpellingListIndex(),
+      (MSInheritanceAttr::Spelling)Attr.getSemanticSpelling());
+  if (IA)
+    D->addAttr(IA);
+}
+
 static void handleARMInterruptAttr(Sema &S, Decl *D,
                                    const AttributeList &Attr) {
   // Check the attribute arguments.
@@ -3846,6 +3851,76 @@ static void handleDLLExportAttr(Sema &S, Decl *D, const AttributeList &Attr) {
   DLLExportAttr *NewAttr = S.mergeDLLExportAttr(D, Attr.getRange(), Index);
   if (NewAttr)
     D->addAttr(NewAttr);
+}
+
+MSInheritanceAttr *
+Sema::mergeMSInheritanceAttr(Decl *D, SourceRange Range, bool BestCase,
+                             unsigned AttrSpellingListIndex,
+                             MSInheritanceAttr::Spelling SemanticSpelling) {
+  if (MSInheritanceAttr *IA = D->getAttr<MSInheritanceAttr>()) {
+    if (IA->getSemanticSpelling() == SemanticSpelling)
+      return 0;
+    Diag(IA->getLocation(), diag::err_mismatched_ms_inheritance)
+        << 1 /*previous declaration*/;
+    Diag(Range.getBegin(), diag::note_previous_ms_inheritance);
+    D->dropAttr<MSInheritanceAttr>();
+  }
+
+  CXXRecordDecl *RD = cast<CXXRecordDecl>(D);
+  if (RD->hasDefinition()) {
+    if (checkMSInheritanceAttrOnDefinition(RD, Range, BestCase,
+                                           SemanticSpelling)) {
+      return 0;
+    }
+  } else {
+    if (isa<ClassTemplatePartialSpecializationDecl>(RD)) {
+      Diag(Range.getBegin(), diag::warn_ignored_ms_inheritance)
+          << 1 /*partial specialization*/;
+      return 0;
+    }
+    if (RD->getDescribedClassTemplate()) {
+      Diag(Range.getBegin(), diag::warn_ignored_ms_inheritance)
+          << 0 /*primary template*/;
+      return 0;
+    }
+  }
+
+  return ::new (Context)
+      MSInheritanceAttr(Range, Context, BestCase, AttrSpellingListIndex);
+}
+
+static void handleCapabilityAttr(Sema &S, Decl *D, const AttributeList &Attr) {
+  // The capability attributes take a single string parameter for the name of
+  // the capability they represent. The lockable attribute does not take any
+  // parameters. However, semantically, both attributes represent the same
+  // concept, and so they use the same semantic attribute. Eventually, the
+  // lockable attribute will be removed.
+  StringRef N;
+  SourceLocation LiteralLoc;
+  if (Attr.getKind() == AttributeList::AT_Capability &&
+      !S.checkStringLiteralArgumentAttr(Attr, 0, N, &LiteralLoc))
+    return;
+
+  D->addAttr(::new (S.Context) CapabilityAttr(Attr.getRange(), S.Context, N,
+                                        Attr.getAttributeSpellingListIndex()));
+}
+
+static void handleRequiresCapabilityAttr(Sema &S, Decl *D,
+                                         const AttributeList &Attr) {
+  if (!checkAttributeAtLeastNumArgs(S, Attr, 1))
+    return;
+
+  // check that all arguments are lockable objects
+  SmallVector<Expr*, 1> Args;
+  checkAttrArgsAreLockableObjs(S, D, Attr, Args);
+  if (Args.empty())
+    return;
+
+  RequiresCapabilityAttr *RCA = ::new (S.Context)
+    RequiresCapabilityAttr(Attr.getRange(), S.Context, Args.data(),
+                           Args.size(), Attr.getAttributeSpellingListIndex());
+
+  D->addAttr(RCA);
 }
 
 /// Handles semantic checking for features that are common to all attributes,
@@ -4130,7 +4205,7 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
     handleUuidAttr(S, D, Attr);
     break;
   case AttributeList::AT_MSInheritance:
-    handleSimpleAttribute<MSInheritanceAttr>(S, D, Attr); break;
+    handleMSInheritanceAttr(S, D, Attr); break;
   case AttributeList::AT_ForceInline:
     handleSimpleAttribute<ForceInlineAttr>(S, D, Attr); break;
   case AttributeList::AT_SelectAny:
@@ -4162,8 +4237,6 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
   case AttributeList::AT_NoSanitizeMemory:
     handleSimpleAttribute<NoSanitizeMemoryAttr>(S, D, Attr);
     break;
-  case AttributeList::AT_Lockable:
-    handleSimpleAttribute<LockableAttr>(S, D, Attr); break;
   case AttributeList::AT_GuardedBy:
     handleGuardedByAttr(S, D, Attr);
     break;
@@ -4172,9 +4245,6 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
     break;
   case AttributeList::AT_ExclusiveLockFunction:
     handleExclusiveLockFunctionAttr(S, D, Attr);
-    break;
-  case AttributeList::AT_ExclusiveLocksRequired:
-    handleExclusiveLocksRequiredAttr(S, D, Attr);
     break;
   case AttributeList::AT_ExclusiveTrylockFunction:
     handleExclusiveTrylockFunctionAttr(S, D, Attr);
@@ -4188,9 +4258,6 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
   case AttributeList::AT_SharedLockFunction:
     handleSharedLockFunctionAttr(S, D, Attr);
     break;
-  case AttributeList::AT_SharedLocksRequired:
-    handleSharedLocksRequiredAttr(S, D, Attr);
-    break;
   case AttributeList::AT_SharedTrylockFunction:
     handleSharedTrylockFunctionAttr(S, D, Attr);
     break;
@@ -4203,6 +4270,13 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
   case AttributeList::AT_AcquiredAfter:
     handleAcquiredAfterAttr(S, D, Attr);
     break;
+
+  // Capability analysis attributes.
+  case AttributeList::AT_Capability:
+  case AttributeList::AT_Lockable:
+    handleCapabilityAttr(S, D, Attr); break;
+  case AttributeList::AT_RequiresCapability:
+    handleRequiresCapabilityAttr(S, D, Attr); break;
 
   // Consumed analysis attributes.
   case AttributeList::AT_Consumable:

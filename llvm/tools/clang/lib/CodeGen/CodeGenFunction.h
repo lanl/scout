@@ -774,8 +774,8 @@ public:
       // act exactly like l-values but are formally required to be
       // r-values in C.
       return expr->isGLValue() ||
-             expr->getType()->isRecordType() ||
-             expr->getType()->isFunctionType();
+             expr->getType()->isFunctionType() ||
+             hasAggregateEvaluationKind(expr->getType());
     }
 
     static OpaqueValueMappingData bind(CodeGenFunction &CGF,
@@ -904,18 +904,13 @@ private:
   llvm::DenseMap<const LabelDecl*, JumpDest> LabelMap;
 
   // BreakContinueStack - This keeps track of where break and continue
-  // statements should jump to and the associated base counter for
-  // instrumentation.
+  // statements should jump to.
   struct BreakContinue {
-    BreakContinue(JumpDest Break, JumpDest Continue, RegionCounter *LoopCnt,
-                  bool CountBreak = true)
-      : BreakBlock(Break), ContinueBlock(Continue), LoopCnt(LoopCnt),
-        CountBreak(CountBreak) {}
+    BreakContinue(JumpDest Break, JumpDest Continue)
+      : BreakBlock(Break), ContinueBlock(Continue) {}
 
     JumpDest BreakBlock;
     JumpDest ContinueBlock;
-    RegionCounter *LoopCnt;
-    bool CountBreak;
   };
   SmallVector<BreakContinue, 8> BreakContinueStack;
 
@@ -1123,6 +1118,7 @@ public:
   void pushLifetimeExtendedDestroy(CleanupKind kind, llvm::Value *addr,
                                    QualType type, Destroyer *destroyer,
                                    bool useEHCleanupForArray);
+  void pushStackRestore(CleanupKind kind, llvm::Value *SPMem);
   void emitDestroy(llvm::Value *addr, QualType type, Destroyer *destroyer,
                    bool useEHCleanupForArray);
   llvm::Function *generateDestroyHelper(llvm::Constant *addr, QualType type,
@@ -1241,6 +1237,7 @@ public:
   void EmitDestructorBody(FunctionArgList &Args);
   void emitImplicitAssignmentOperatorBody(FunctionArgList &Args);
   void EmitFunctionBody(FunctionArgList &Args, const Stmt *Body);
+  void EmitBlockWithFallThrough(llvm::BasicBlock *BB, RegionCounter &Cnt);
 
   void EmitForwardingCallToLambda(const CXXMethodDecl *LambdaCallOperator,
                                   CallArgList &CallArgs);
@@ -1483,6 +1480,10 @@ public:
                                  AggValueSlot::DoesNotNeedGCBarriers,
                                  AggValueSlot::IsNotAliased);
   }
+
+  /// CreateInAllocaTmp - Create a temporary memory object for the given
+  /// aggregate type.
+  AggValueSlot CreateInAllocaTmp(QualType T, const Twine &Name = "inalloca");
 
   /// Emit a cast to void* in the appropriate address space.
   llvm::Value *EmitCastToVoidPtr(llvm::Value *value);
@@ -1877,7 +1878,8 @@ public:
                          llvm::GlobalValue::LinkageTypes Linkage);
 
   /// EmitParmDecl - Emit a ParmVarDecl or an ImplicitParamDecl.
-  void EmitParmDecl(const VarDecl &D, llvm::Value *Arg, unsigned ArgNo);
+  void EmitParmDecl(const VarDecl &D, llvm::Value *Arg, bool ArgIsPointer,
+                    unsigned ArgNo);
 
   /// protectFromPeepholes - Protect a value that we're intending to
   /// store to the side, but which will probably be used later, from
@@ -2323,6 +2325,9 @@ public:
   llvm::Value *EmitAArch64CompareBuiltinExpr(llvm::Value *Op, llvm::Type *Ty);
   llvm::Value *EmitAArch64BuiltinExpr(unsigned BuiltinID, const CallExpr *E);
   llvm::Value *EmitARMBuiltinExpr(unsigned BuiltinID, const CallExpr *E);
+  llvm::Value *EmitCommonNeonBuiltinExpr(unsigned BuiltinID, const CallExpr *E,
+                                         SmallVectorImpl<llvm::Value *> &Ops,
+                                         llvm::Value *Align = 0);
   llvm::Value *EmitNeonCall(llvm::Function *F,
                             SmallVectorImpl<llvm::Value*> &O,
                             const char *name,
@@ -2638,6 +2643,11 @@ public:
 private:
   llvm::MDNode *getRangeForLoadFromType(QualType Ty);
   void EmitReturnOfRValue(RValue RV, QualType Ty);
+
+  void deferPlaceholderReplacement(llvm::Instruction *Old, llvm::Value *New);
+
+  llvm::SmallVector<std::pair<llvm::Instruction *, llvm::Value *>, 4>
+  DeferredReplacements;
 
   /// ExpandTypeFromArgs - Reconstruct a structure of type \arg Ty
   /// from function arguments into \arg Dst. See ABIArgInfo::Expand.
