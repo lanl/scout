@@ -49,100 +49,61 @@
  *  SUCH DAMAGE.
  *
  */
+#include <cassert>
+#include <limits.h>
+#include "scout/new-runtime/graphics.h"
+#include "scout/new-runtime/Image.h"
+using namespace scout;
 
-// Note - this file is included by the TypePrinter source file
-// one directory up (TypePrinter is all contained in a single
-// file there...).
-//
-void
-TypePrinter::printUniformMeshBefore(const UniformMeshType *T,
-                                    raw_ostream &OS)
-{
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
+Image::Image(unsigned width, unsigned height)
+    : RenderTarget(RTK_image, width, height) {
+  ColorBuffer = new float4[Width * Height];
+  // By default we do not initialize the image -- this gives us a
+  // somewhat similar behavior pattern to the hardware framebuffer
+  // semantics. 
 }
 
-void
-TypePrinter::printStructuredMeshBefore(const StructuredMeshType *T,
-                                       raw_ostream &OS)
-{
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
+Image::~Image() {
+  delete []ColorBuffer;
 }
 
-
-void
-TypePrinter::printRectilinearMeshBefore(const RectilinearMeshType *T,
-                                        raw_ostream &OS)
-{
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
+void Image::bind() {
+  if (ColorBuffer) 
+    RenderTarget::setActiveTarget(this);
 }
 
-
-void
-TypePrinter::printUnstructuredMeshBefore(const UnstructuredMeshType *T,
-                                         raw_ostream &OS)
-{
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
+void Image::release() {
+  RenderTarget *RT = RenderTarget::getActiveTarget();
+  if (RT == this) // Don't accidently trash another active RT. 
+    RenderTarget::setActiveTarget(0);
 }
 
-
-void
-TypePrinter::printWindowBefore(const WindowType *T,
-                               raw_ostream &OS)
-{
-  OS << T->getName(Policy);
-  spaceBeforePlaceHolder(OS);  
-}
-
-void
-TypePrinter::printImageBefore(const ImageType *T,
-                              raw_ostream &OS) {
-  OS << T->getName(Policy);
-  spaceBeforePlaceHolder(OS);
-}
-
-void
-TypePrinter::printUniformMeshAfter(const UniformMeshType *T,
-                                   raw_ostream &OS)
-{
-  OS << '[';
-  MeshType::MeshDimensions dv = T->dimensions();
-  MeshType::MeshDimensions::iterator dimiter;
-  for (dimiter = dv.begin();
-      dimiter != dv.end();
-      dimiter++){
-    (*dimiter)->printPretty(OS, 0, Policy);
-    if (dimiter+1 != dv.end()) OS << ',';
+void Image::clear() {
+  if (ColorBuffer) {
+    unsigned NPixels = Width * Height;
+    for(unsigned i = 0; i < NPixels; ++i) {
+      ColorBuffer[i] = Background;
+    }
   }
-  OS << ']';
 }
 
-void
-TypePrinter::printStructuredMeshAfter(const StructuredMeshType *T,
-                                      raw_ostream &OS)
-{ }
+bool Image::savePNG(const char *filename) {
+  bool retval = false;
+  if (ColorBuffer) {
+    unsigned NPixels = Width * Height;
+    // Note we drop alpha from the channels or you can end up with an
+    // odd transparent png image. 
+    unsigned char *buf8 = new unsigned char[NPixels * 3];
+    for(unsigned npix = 0, upix = 0; npix < NPixels; ++npix, upix += 3) {
+      buf8[upix]   = (unsigned char)(ColorBuffer[npix].x * UCHAR_MAX);
+      buf8[upix+1] = (unsigned char)(ColorBuffer[npix].y * UCHAR_MAX);
+      buf8[upix+2] = (unsigned char)(ColorBuffer[npix].z * UCHAR_MAX);
+    }
+    retval = __scout_write_png(buf8, Width, Height, filename);
+    delete []buf8;
+  } 
+    
+  return retval;
+}
 
 
-void
-TypePrinter::printRectilinearMeshAfter(const RectilinearMeshType *T,
-                                      raw_ostream &OS)
-{ }
-
-
-void
-TypePrinter::printUnstructuredMeshAfter(const UnstructuredMeshType *T,
-                                        raw_ostream &OS)
-{ }
-
-void
-TypePrinter::printWindowAfter(const WindowType *T,
-                              raw_ostream &OS)
-{ }
-
-void
-TypePrinter::printImageAfter(const ImageType *T,
-                              raw_ostream &OS)
-{ }

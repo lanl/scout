@@ -264,242 +264,117 @@ void Parser::ParseMeshParameterDeclaration(DeclSpec& DS) {
   DS.UpdateTypeRep(parsedType);
 }
 
-// scout - parse a window or image declaration
-// return true on success
-// these look like:
+void Parser::ParseWindowBracketDeclarator(Declarator &D) {
+  
+  // We've already seen the opening square bracket prior to calling
+  // this function.  Set up the balanced delimiter tracker to take
+  // care of the closing bracket details for us...
+  BalancedDelimiterTracker T(*this, tok::l_square);
+  T.consumeOpen();
 
-// window win[1024,1024] {
-//   background  = hsv(0.1, 0.2, 0.3);
-//   save_frames = true;
-//   filename    = "heat2d-####.png";
-// };
+  ExprResult NumElements;  
+  llvm::SmallVector<Expr*, 2> Dims;
+  
+  while(1) {
+    NumElements = ParseConstantExpression();
+    if (NumElements.isInvalid()) {
+      D.setInvalidType(true);
+      SkipUntil(tok::r_square, StopAtSemi);
+      return;
+    } 
+    Dims.push_back(NumElements.get());
 
-// image img[1024, 1024]{
-//   background = hsv(0.0f, 0.0f, 0.0f);
-//   filename   = "heat2d-####.png";
-//  };
-
-
-StmtResult
-Parser::ParseWindowOrImageDeclaration(bool window,
-                                      StmtVector &Stmts,
-                                      bool OnlyStatement){
-  if(window){
-    assert(Tok.is(tok::kw_window) && "Not a window declaration stmt!");
-  }
-  else{
-    assert(Tok.is(tok::kw_image) && "Not an image declaration stmt!");
-  }
-
-  ConsumeToken();
-
-  if(Tok.isNot(tok::identifier)){
-    Diag(Tok, diag::err_expected_ident);
-    SkipUntil(tok::semi);
-    ConsumeToken();
-    return StmtError();
-  }
-
-  IdentifierInfo* Name = Tok.getIdentifierInfo();
-  SourceLocation NameLoc = ConsumeToken();
-
-  if(Tok.isNot(tok::l_square)){
-    Diag(Tok, diag::err_expected_lsquare);
-
-    SkipUntil(tok::r_brace);
-    SkipUntil(tok::semi);
-    ConsumeToken();
-    return StmtError();
-  }
-
-  ConsumeBracket();
-
-  if(Tok.isNot(tok::numeric_constant)){
-    Diag(Tok, diag::err_expected_numeric_constant_in_window_def);
-
-    SkipUntil(tok::r_brace);
-    SkipUntil(tok::semi);
-    ConsumeToken();
-    return StmtError();
-  }
-
-  ExprResult XSize = Actions.ActOnNumericConstant(Tok).get();
-
-  ConsumeToken();
-
-  if(Tok.isNot(tok::comma)){
-    Diag(Tok, diag::err_expected_comma);
-
-    SkipUntil(tok::r_brace);
-    SkipUntil(tok::semi);
-    ConsumeToken();
-    return StmtError();
-  }
-
-  ConsumeToken();
-
-  ExprResult YSize = Actions.ActOnNumericConstant(Tok).get();
-
-  ConsumeToken();
-
-  if(Tok.isNot(tok::r_square)){
-    Diag(Tok, diag::err_expected_rsquare);
-
-    SkipUntil(tok::r_brace);
-    SkipUntil(tok::semi);
-    ConsumeToken();
-    return StmtError();
-  }
-
-  ConsumeBracket();
-
-  if(Tok.isNot(tok::l_brace)){
-    Diag(Tok, diag::err_expected_lbrace);
-
-    SkipUntil(tok::r_brace);
-    SkipUntil(tok::semi);
-    ConsumeToken();
-    return StmtError();
-  }
-
-  ConsumeBrace();
-
-  typedef std::map<std::string, Expr*> ArgExprMap;
-
-  ArgExprMap argExprMap;
-
-  bool error = false;
-
-  for(;;){
-    if(Tok.is(tok::r_brace) || Tok.is(tok::eof)){
+    if (Dims.size() == 1) {
+      if (Tok.isNot(tok::comma)) {
+        Diag(Tok, diag::err_expected_comma);
+        Diag(Tok, diag::warn_render_targets_2d);
+        D.setInvalidType(true);
+        SkipUntil(tok::r_square, StopAtSemi);
+        return;
+      }
+      ConsumeToken();
+    } else if (Dims.size() == 2) {
+      if (Tok.isNot(tok::r_square)) {
+        Diag(Tok, diag::err_expected_rsquare);
+        D.setInvalidType(true);
+        if (Tok.is(tok::comma))
+          Diag(Tok, diag::warn_render_targets_2d);          
+        SkipUntil(tok::r_square, StopAtSemi);        
+        return;
+      }
+      T.consumeClose();
       break;
-    }
-
-    if(Tok.isNot(tok::identifier)){
-      Diag(Tok, diag::err_expected_ident);
-
-      SkipUntil(tok::r_brace);
+    } else {
+      Diag(Tok, diag::err_too_many_dims);
+      D.setInvalidType(true);
       SkipUntil(tok::semi);
-      ConsumeToken();
-      return StmtError();
+      return;
     }
-
-    IdentifierInfo* Arg = Tok.getIdentifierInfo();
-    SourceLocation ArgLoc = ConsumeToken();
-    (void)ArgLoc; //suppress warning
-
-    if(Tok.isNot(tok::equal)){
-      Diag(Tok, diag::err_expected_equal_after) << Arg->getName();
-
-      SkipUntil(tok::r_brace);
-      SkipUntil(tok::semi);
-      ConsumeToken();
-      return StmtError();
-    }
-
-    ConsumeToken();
-
-    ExprResult argResult = ParseExpression();
-    if(argResult.isInvalid()){
-      error = true;
-    }
-
-    argExprMap[Arg->getName()] = argResult.get();
-
-    if(Tok.isNot(tok::semi)){
-      if(window){
-        Diag(Tok, diag::err_expected_semi_window_arg);
-      }
-      else{
-        Diag(Tok, diag::err_expected_semi_image_arg);
-      }
-
-      SkipUntil(tok::r_brace);
-      SkipUntil(tok::semi);
-      ConsumeToken();
-      return StmtError();
-    }
-
-    ConsumeToken();
   }
-
-  assert(Tok.is(tok::r_brace) && "expected r_brace");
-
-  ConsumeBrace();
-
-  assert(Tok.is(tok::semi) && "expected semi");
-
-  ConsumeToken();
-
-  if(error){
-    return StmtError();
-  }
-
-  std::string code;
-
-  if(window){
-    code = "scout::window_rt " + Name->getName().str() + "(" +
-    ToCPPCode(XSize.get()) + ", " + ToCPPCode(YSize.get()) + ", ";
-
-    ArgExprMap::iterator itr = argExprMap.find("background");
-    if(itr == argExprMap.end()){
-      Diag(Tok, diag::err_missing_field_window_decl) << "background";
-      error = true;
-    }
-
-    code += ToCPPCode(itr->second) + ".x, ";
-    code += ToCPPCode(itr->second) + ".y, ";
-    code += ToCPPCode(itr->second) + ".z, ";
-    code += ToCPPCode(itr->second) + ".w, ";
-
-    itr = argExprMap.find("save_frames");
-    if(itr == argExprMap.end()){
-      Diag(Tok, diag::err_missing_field_window_decl) << "save_frames";
-      error = true;
-    }
-
-    code += ToCPPCode(itr->second) + ", ";
-
-    itr = argExprMap.find("filename");
-    if(itr == argExprMap.end()){
-      Diag(Tok, diag::err_missing_field_window_decl) << "filename";
-      error = true;
-    }
-
-    code += ToCPPCode(itr->second) + ");";
-  }
-  else{
-    code = "scout::image_rt " + Name->getName().str() + "(" +
-    ToCPPCode(XSize.get()) + ", " + ToCPPCode(YSize.get()) + ", ";
-
-    ArgExprMap::iterator itr = argExprMap.find("background");
-    if(itr == argExprMap.end()){
-      Diag(Tok, diag::err_missing_field_image_decl) << "background";
-      error = true;
-    }
-
-    code += ToCPPCode(itr->second) + ".x, ";
-    code += ToCPPCode(itr->second) + ".y, ";
-    code += ToCPPCode(itr->second) + ".z, ";
-    code += ToCPPCode(itr->second) + ".w, ";
-
-    itr = argExprMap.find("filename");
-    if(itr == argExprMap.end()){
-      Diag(Tok, diag::err_missing_field_image_decl) << "filename";
-      error = true;
-    }
-
-    code += ToCPPCode(itr->second) + ");";
-  }
-
-  if(error){
-    return StmtError();
-  }
-
-  InsertCPPCode(code, NameLoc);
-
-  return ParseStatementOrDeclaration(Stmts, OnlyStatement);
+  
+  ParsedAttributes attrs(AttrFactory);
+  MaybeParseCXX11Attributes(attrs);  
+  D.AddTypeInfo(DeclaratorChunk::getWindow(Dims, T.getOpenLocation(),
+                                           T.getCloseLocation()),
+                attrs, T.getCloseLocation());
 }
+
+void Parser::ParseImageBracketDeclarator(Declarator &D) {
+  
+  // We've already seen the opening square bracket prior to calling
+  // this function.  Set up the balanced delimiter tracker to take
+  // care of the closing bracket details for us...
+  BalancedDelimiterTracker T(*this, tok::l_square);
+  T.consumeOpen();
+
+  ExprResult NumElements;  
+  llvm::SmallVector<Expr*, 2> Dims;
+  
+  while(1) {
+    NumElements = ParseConstantExpression();
+    if (NumElements.isInvalid()) {
+      D.setInvalidType(true);
+      SkipUntil(tok::r_square, StopAtSemi);
+      return;
+    } 
+    Dims.push_back(NumElements.get());
+
+    if (Dims.size() == 1) {
+      if (Tok.isNot(tok::comma)) {
+        Diag(Tok, diag::err_expected_comma);
+        Diag(Tok, diag::warn_render_targets_2d);
+        D.setInvalidType(true);
+        SkipUntil(tok::r_square, StopAtSemi);
+        return;
+      }
+      ConsumeToken();
+    } else if (Dims.size() == 2) {
+      if (Tok.isNot(tok::r_square)) {
+        Diag(Tok, diag::err_expected_rsquare);
+        D.setInvalidType(true);
+        if (Tok.is(tok::comma))
+          Diag(Tok, diag::warn_render_targets_2d);          
+        SkipUntil(tok::r_square, StopAtSemi);        
+        return;
+      }
+      T.consumeClose();
+      break;
+    } else {
+      Diag(Tok, diag::err_too_many_dims);
+      D.setInvalidType(true);
+      SkipUntil(tok::semi);
+      return;
+    }
+  }
+  
+  ParsedAttributes attrs(AttrFactory);
+  MaybeParseCXX11Attributes(attrs);  
+  D.AddTypeInfo(DeclaratorChunk::getImage(Dims, T.getOpenLocation(),
+                                          T.getCloseLocation()),
+                attrs, T.getCloseLocation());
+}
+
+
 
 // scout - parse a camera declaration
 // return true on success

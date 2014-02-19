@@ -164,6 +164,7 @@ private:
 
   // ===== Scout ===============================================
   void mangleType(const MeshType*);
+  void mangleType(const RenderTargetType*);
   // ===========================================================
   void mangleFunctionType(const FunctionType *T, const FunctionDecl *D,
                           bool IsStructor, bool IsInstMethod);
@@ -1520,6 +1521,22 @@ void MicrosoftCXXNameMangler::mangleType(const MeshType *T) {
       break;
   }
   mangleName(T->getDecl());
+}
+
+// These are totally made up and likely will break things... 
+void MicrosoftCXXNameMangler::mangleType(const WindowType *T,
+                                         SourceRange) {
+  Out << "_Rw"; 
+}
+
+void MicrosoftCXXNameMangler::mangleType(const ImageType *T,
+                                         SourceRange) {
+  Out << "_Ri"; 
+}
+
+
+void MicrosoftCXXNameMangler::mangleType(const RenderTargetType *T) {
+  Out << "Rt";
 }
 
 // ============================================================================

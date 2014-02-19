@@ -279,6 +279,10 @@ void ASTTypeWriter::VisitRectilinearMeshType(const RectilinearMeshType *T)
 { }
 void ASTTypeWriter::VisitUnstructuredMeshType(const UnstructuredMeshType *T)
 { }
+void ASTTypeWriter::VisitWindowType(const WindowType *T)
+{ }
+void ASTTypeWriter::VisitImageType(const ImageType *T)
+{ }
 // +==========================================================================+
 void ASTTypeWriter::VisitRecordType(const RecordType *T) {
   VisitTagType(T);
@@ -571,6 +575,10 @@ void TypeLocWriter::VisitStructuredMeshTypeLoc(StructuredMeshTypeLoc TL)
 void TypeLocWriter::VisitRectilinearMeshTypeLoc(RectilinearMeshTypeLoc TL)
 { }
 void TypeLocWriter::VisitUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc TL)
+{ }
+void TypeLocWriter::VisitWindowTypeLoc(WindowTypeLoc TL)
+{ }
+void TypeLocWriter::VisitImageTypeLoc(ImageTypeLoc TL)
 { }
 // +==========================================================================+
 void TypeLocWriter::VisitRecordTypeLoc(RecordTypeLoc TL) {

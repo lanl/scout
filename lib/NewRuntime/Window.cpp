@@ -50,99 +50,79 @@
  *
  */
 
-// Note - this file is included by the TypePrinter source file
-// one directory up (TypePrinter is all contained in a single
-// file there...).
-//
-void
-TypePrinter::printUniformMeshBefore(const UniformMeshType *T,
-                                    raw_ostream &OS)
-{
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
+#include <cassert>
+#include <limits.h>
+#include <GLFW/glfw3.h>
+#include "scout/new-runtime/opengl.h"
+#include "scout/new-runtime/graphics.h"
+#include "scout/new-runtime/Window.h"
+using namespace scout;
+
+Window::Window(unsigned width, unsigned height)
+    : RenderTarget(RTK_window, width, height) {
+  Handle = glfwCreateWindow(Width, Height, "scout", NULL, NULL);
+  assert(Handle && "fatal error - could not create window");
+  ColorBuffer = 0;
+  glfwSetWindowUserPointer(Handle, (void*)this); // attach ourselves to the window. 
 }
 
-void
-TypePrinter::printStructuredMeshBefore(const StructuredMeshType *T,
-                                       raw_ostream &OS)
-{
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
-}
-
-
-void
-TypePrinter::printRectilinearMeshBefore(const RectilinearMeshType *T,
-                                        raw_ostream &OS)
-{
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
-}
-
-
-void
-TypePrinter::printUnstructuredMeshBefore(const UnstructuredMeshType *T,
-                                         raw_ostream &OS)
-{
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
-}
-
-
-void
-TypePrinter::printWindowBefore(const WindowType *T,
-                               raw_ostream &OS)
-{
-  OS << T->getName(Policy);
-  spaceBeforePlaceHolder(OS);  
-}
-
-void
-TypePrinter::printImageBefore(const ImageType *T,
-                              raw_ostream &OS) {
-  OS << T->getName(Policy);
-  spaceBeforePlaceHolder(OS);
-}
-
-void
-TypePrinter::printUniformMeshAfter(const UniformMeshType *T,
-                                   raw_ostream &OS)
-{
-  OS << '[';
-  MeshType::MeshDimensions dv = T->dimensions();
-  MeshType::MeshDimensions::iterator dimiter;
-  for (dimiter = dv.begin();
-      dimiter != dv.end();
-      dimiter++){
-    (*dimiter)->printPretty(OS, 0, Policy);
-    if (dimiter+1 != dv.end()) OS << ',';
+Window::~Window() {
+  if (Handle) {
+    release();
+    glfwDestroyWindow(Handle);
   }
-  OS << ']';
 }
 
-void
-TypePrinter::printStructuredMeshAfter(const StructuredMeshType *T,
-                                      raw_ostream &OS)
-{ }
+void Window::bind() {
+  if (Handle) {
+    RenderTarget::setActiveTarget(this);
+    glfwMakeContextCurrent(Handle);
+  }
+}
 
+void Window::release() {
+  RenderTarget *RT = RenderTarget::getActiveTarget();
+  if (RT == this) { // Don't accidently trash another active RT. 
+    RenderTarget::setActiveTarget(0);
+    glfwMakeContextCurrent(0);
+  }
+}
 
-void
-TypePrinter::printRectilinearMeshAfter(const RectilinearMeshType *T,
-                                      raw_ostream &OS)
-{ }
+void Window::clear() {
+  if (Handle) {
+    assert(RenderTarget::getActiveTarget() == this && "target must be bound before clear()");
+    glClearColor(Background.x, Background.y, Background.z, Background.w);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  }
+}
+  
+void Window::swapBuffers() {
+  if (Handle) {
+    assert(RenderTarget::getActiveTarget() == this && "target must be bound before swapBuffers()");  
+    glfwSwapBuffers(Handle);
+  }
+}
 
+const float4 *Window::readColorBuffer() {
+  assert(RenderTarget::getActiveTarget() == this && "target must be bound before reading buffer");
+  if (ColorBuffer == 0) {
+    ColorBuffer = new float4[Width * Height];
+  }
+  glReadPixels(0, 0, Width, Height, GL_RGBA, GL_FLOAT, (GLvoid*)ColorBuffer);
+  return ColorBuffer;
+}
 
-void
-TypePrinter::printUnstructuredMeshAfter(const UnstructuredMeshType *T,
-                                        raw_ostream &OS)
-{ }
-
-void
-TypePrinter::printWindowAfter(const WindowType *T,
-                              raw_ostream &OS)
-{ }
-
-void
-TypePrinter::printImageAfter(const ImageType *T,
-                              raw_ostream &OS)
-{ }
+bool Window::savePNG(const char *filename) {
+  assert(RenderTarget::getActiveTarget() == this && "target must be bound before reading buffer");
+  const float4* buf = readColorBuffer();
+  unsigned NPixels = Width * Height;
+  unsigned char *buf8 = new unsigned char[NPixels * 3];
+  for(unsigned npix = 0, upix = 0; npix < NPixels; ++npix, upix += 3) {
+    buf8[upix]   = (unsigned char)(ColorBuffer[npix].x * UCHAR_MAX);
+    buf8[upix+1] = (unsigned char)(ColorBuffer[npix].y * UCHAR_MAX);
+    buf8[upix+2] = (unsigned char)(ColorBuffer[npix].z * UCHAR_MAX);
+  }
+  bool retval = __scout_write_png(buf8, Width, Height, filename);
+  delete []buf8;
+  return retval;
+}

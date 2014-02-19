@@ -3953,6 +3953,16 @@ bool
 UnnamedLocalNoLinkageFinder::VisitUnstructuredMeshType(const UnstructuredMeshType* T) {
   return VisitMeshDecl(T->getDecl());
 }
+
+bool UnnamedLocalNoLinkageFinder::VisitWindowType(const WindowType* T) {
+  return false;
+}
+
+bool UnnamedLocalNoLinkageFinder::VisitImageType(const ImageType* T) {
+  return false;
+}
+
+
 // +==========================================================================+
 
 bool UnnamedLocalNoLinkageFinder::VisitAutoType(const AutoType *T) {

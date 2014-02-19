@@ -343,7 +343,9 @@ def err_expected_lbrace : Error<"expected '{'">;
 def err_expected_rbrace : Error<"expected '}'">;
 def err_expected_comma : Error<"expected ','">;
 def err_expected_colon_after : Error<"expected ':' after %0">;
-
+def err_too_few_dims : Error <"Not enough dimensions">;
+def err_too_many_dims : Error <"Too many dimensions">;
+def warn_render_targets_2d : Warning<"Render targets must be two dimensional">;
 // +=======================================================================+
 def err_templated_using_directive : Error<
   "cannot template a using directive">;

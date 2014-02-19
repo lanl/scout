@@ -588,6 +588,12 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     // certainly a non-trivial operation in the complex cases).
     ResultType = ConvertScoutMeshType(OT);
     break;
+
+  case Type::Window:
+  case Type::Image:
+    ResultType = ConvertScoutRenderTargetType(OT);
+    break;
+      
   // +========================================================================+
 
   case Type::Enum: {

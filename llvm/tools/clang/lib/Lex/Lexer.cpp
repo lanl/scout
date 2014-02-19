@@ -143,10 +143,10 @@ Lexer::Lexer(FileID FID, const llvm::MemoryBuffer *InputFile, Preprocessor &PP)
     std::string bufferName = PP.getSourceManager().getBufferName(FileLoc);
     std::string ext;
 
-    bool valid = false;
+    //bool valid = false;
     for(int i = bufferName.length() - 1; i >= 0; --i) {
       if (bufferName[i] == '.') {
-        valid = true;
+        //valid = true;
         break;
       }
       ext.insert(0, 1, bufferName[i]);

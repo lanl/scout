@@ -1653,6 +1653,14 @@ bool CursorVisitor::VisitRectilinearMeshTypeLoc(RectilinearMeshTypeLoc TL) {
 bool CursorVisitor::VisitUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc TL) {
   return false;
 }
+
+bool CursorVisitor::VisitWindowTypeLoc(WindowTypeLoc TL) {
+  return false;
+}
+
+bool CursorVisitor::VisitImageTypeLoc(ImageTypeLoc TL) {
+  return false;
+}
 // +==========================================================================+
 
 bool CursorVisitor::VisitAtomicTypeLoc(AtomicTypeLoc TL) {

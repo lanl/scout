@@ -1598,6 +1598,13 @@ public:
 
   bool isOpenCLSpecificType() const;            // Any OpenCL specific type
 
+
+  // +===== Scout ==============================================================+
+  bool isScoutWindowType() const;
+  bool isScoutImageType() const;
+  bool isScoutRenderTargetType() const;
+  // +==========================================================================+  
+  
   /// Determines if this type, which must satisfy
   /// isObjCLifetimeType(), is implicitly __unsafe_unretained rather
   /// than implicitly __strong.
@@ -3634,8 +3641,107 @@ public:
   MeshFormat meshFormat;
   Expr* strLitFileName;
 };
+
+
+class RenderTargetType : public Type {
+
+  friend class ASTContext;  // ASTContext creates these. 
+  
+ protected:
+  Stmt     *WidthExpr;
+  Stmt     *HeightExpr;
+
+  RenderTargetType(TypeClass TC, QualType can);  
+  RenderTargetType(TypeClass TC, Expr *WE, Expr *HE, QualType can);
+
+ public:
+  Expr *getWidthExpr() const {
+    // We use a C-style cast here instead of cast<> as we do not wish
+    // to have an include dependency on Type.h in Stmt.h/Expr.h (based
+    // on array type implementation).
+    return (Expr *)WidthExpr;
+  };
+
+  void setWidthExpr(Expr *WE) {
+    // We use C-style cast here instead of a cast<> as we do not wish
+    // to have an include dependency on Type.h in Stmt.h/Expr.h (based
+    // on array type implementation).     
+    WidthExpr = (Stmt*)WE;
+  }
+
+  Expr *getHeightExpr() const {
+    // We use C-style cast here instead of a cast<> as we do not wish
+    // to have an include dependency on Type.h in Stmt.h/Expr.h (based
+    // on array type implementation). 
+    return (Expr *)HeightExpr;
+  }
+
+  void setHeightExpr(Expr *HE) {
+    // We use C-style cast here instead of a cast<> as we do not wish
+    // to have an include dependency on Type.h in Stmt.h/Expr.h (based
+    // on array type implementation). 
+    HeightExpr = (Stmt*)HE;
+  }
+  
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == Window ||
+           T->getTypeClass() == Image;
+  };
+};
+
+  
+class WindowType :  public RenderTargetType {
+  
+ public:
+  WindowType()
+      : RenderTargetType(Window, QualType()) { }
+
+  WindowType(Expr *WE, Expr *HE)
+      : RenderTargetType(Window, WE, HE, QualType()) { }  
+
+  static bool classof(const WindowType *T) { return true; }
+  
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == Window;
+  }
+
+  StringRef getName(const PrintingPolicy &Policy) const {
+    return "window";
+  }
+    
+  bool isSugared() const { return false; }
+  
+  QualType desugar() const { return QualType(this, 0); }
+};
+
+  
+class ImageType :  public RenderTargetType {
+  
+ public:
+  ImageType()
+      : RenderTargetType(Image, QualType()) { }
+
+  ImageType(Expr *WE, Expr *HE)
+      : RenderTargetType(Image, WE, HE, QualType()) { }  
+
+  static bool classof(const ImageType *T) { return true; }
+  
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == Image;
+  }
+
+  StringRef getName(const PrintingPolicy &Policy) const {
+    return "image";
+  }  
+  
+  bool isSugared() const { return false; }
+  
+  QualType desugar() const { return QualType(this, 0); }
+};
+  
 // +==========================================================================+
 
+  
 /// EnumType - This is a helper class that allows the use of isa/cast/dyncast
 /// to detect TagType objects of enums.
 class EnumType : public TagType {
@@ -5325,6 +5431,18 @@ inline bool Type::isOpenCLSpecificType() const {
   return isSamplerT() || isEventT() || isImageType();
 }
 
+// +===== Scout ===========================================================+
+inline bool Type::isScoutWindowType() const {
+  return isa<WindowType>(CanonicalType);
+}
+inline bool Type::isScoutImageType() const {
+  return isa<ImageType>(CanonicalType);
+}
+inline bool Type::isScoutRenderTargetType() const {
+  return isScoutWindowType() || isScoutImageType();
+}
+// +=======================================================================+
+  
 inline bool Type::isTemplateTypeParmType() const {
   return isa<TemplateTypeParmType>(CanonicalType);
 }

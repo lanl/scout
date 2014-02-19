@@ -2268,6 +2268,12 @@ static CachedProperties computeCachedProperties(const Type *T) {
       !Mesh->getIdentifier();
     return CachedProperties(L, IsLocalOrUnnamed);
   }
+
+  case Type::Window:
+  case Type::Image: {
+    return CachedProperties(ExternalLinkage, false);
+  }
+      
   // =========================================================================
   case Type::Record:
   case Type::Enum: {
@@ -2420,6 +2426,10 @@ static LinkageInfo computeLinkageInfo(const Type *T) {
   case Type::RectilinearMesh:
   case Type::UnstructuredMesh:
     return LinkageInfo::external();
+
+  case Type::Window:
+  case Type::Image:
+      return LinkageInfo::external();
   // +========================================================================+
   }
 

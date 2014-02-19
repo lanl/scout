@@ -49,100 +49,60 @@
  *  SUCH DAMAGE.
  *
  */
+#include <cassert>
+#include "scout/new-runtime/Viewport.h"
+#include "scout/new-runtime/opengl.h"
 
-// Note - this file is included by the TypePrinter source file
-// one directory up (TypePrinter is all contained in a single
-// file there...).
-//
-void
-TypePrinter::printUniformMeshBefore(const UniformMeshType *T,
-                                    raw_ostream &OS)
-{
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
+using namespace scout;
+
+Viewport::Viewport(Window *parent,
+                   float xpos, float ypos,
+                   float width, float height)
+    : RenderTarget(RTK_viewport,
+                   parent->width()  * width,
+                   parent->height() * height),
+      Parent(parent) {
+  
+  ColorBuffer = 0;
 }
 
-void
-TypePrinter::printStructuredMeshBefore(const StructuredMeshType *T,
-                                       raw_ostream &OS)
-{
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
+void Viewport::bind() {
+  assert(Parent != 0 && "Viewport must have valid parent window");  
+  Parent->bind();
+  glEnable(GL_SCISSOR_TEST);
+  //glViewport(x, y, width, height);
+  glLoadIdentity();
 }
 
-
-void
-TypePrinter::printRectilinearMeshBefore(const RectilinearMeshType *T,
-                                        raw_ostream &OS)
-{
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
+void Viewport::release() {
+  assert(Parent != 0 && "Viewport must have valid parent window");
+  Parent->release();
+  glDisable(GL_SCISSOR_TEST);  
 }
 
-
-void
-TypePrinter::printUnstructuredMeshBefore(const UnstructuredMeshType *T,
-                                         raw_ostream &OS)
-{
-  MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
-}
-
-
-void
-TypePrinter::printWindowBefore(const WindowType *T,
-                               raw_ostream &OS)
-{
-  OS << T->getName(Policy);
-  spaceBeforePlaceHolder(OS);  
-}
-
-void
-TypePrinter::printImageBefore(const ImageType *T,
-                              raw_ostream &OS) {
-  OS << T->getName(Policy);
-  spaceBeforePlaceHolder(OS);
-}
-
-void
-TypePrinter::printUniformMeshAfter(const UniformMeshType *T,
-                                   raw_ostream &OS)
-{
-  OS << '[';
-  MeshType::MeshDimensions dv = T->dimensions();
-  MeshType::MeshDimensions::iterator dimiter;
-  for (dimiter = dv.begin();
-      dimiter != dv.end();
-      dimiter++){
-    (*dimiter)->printPretty(OS, 0, Policy);
-    if (dimiter+1 != dv.end()) OS << ',';
+void Viewport::clear() {
+  assert(Parent != 0 && "Viewport must have valid parent window");
+  RenderTarget *RT = RenderTarget::getActiveTarget();
+  if (RT == Parent) { // Don't accidently trash another active RT.
+    Parent->clear();
   }
-  OS << ']';
 }
 
-void
-TypePrinter::printStructuredMeshAfter(const StructuredMeshType *T,
-                                      raw_ostream &OS)
-{ }
+void  Viewport::swapBuffers() {
+  assert(Parent != 0 && "Viewport must have valid parent window");
+  RenderTarget *RT = RenderTarget::getActiveTarget();
+  if (RT == Parent) { // Don't accidently trash another active RT.
+    Parent->swapBuffers();
+  }  
+}
+
+const float4 *Viewport::readColorBuffer() {
+
+}
+
+bool Viewport::savePNG(const char *filename) {
 
 
-void
-TypePrinter::printRectilinearMeshAfter(const RectilinearMeshType *T,
-                                      raw_ostream &OS)
-{ }
+}
 
 
-void
-TypePrinter::printUnstructuredMeshAfter(const UnstructuredMeshType *T,
-                                        raw_ostream &OS)
-{ }
-
-void
-TypePrinter::printWindowAfter(const WindowType *T,
-                              raw_ostream &OS)
-{ }
-
-void
-TypePrinter::printImageAfter(const ImageType *T,
-                              raw_ostream &OS)
-{ }
