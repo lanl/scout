@@ -16,7 +16,7 @@ public:
     {
         if (PyErr_Occurred())
         {
-            if(m_print)
+            if(m_print && !PyErr_ExceptionMatches(PyExc_SystemExit))
                 PyErr_Print();
             PyErr_Clear();
         }
@@ -135,6 +135,7 @@ public:
         {
             if (!arg)
                 return retval;
+            Py_INCREF(arg); // _SetItem steals a reference
             PyTuple_SetItem(pargs,idx,arg);
             idx++;
         }

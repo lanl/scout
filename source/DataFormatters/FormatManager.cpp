@@ -821,6 +821,24 @@ static void AddCXXSynthetic  (TypeCategoryImpl::SharedPointer category_sp,
 }
 #endif
 
+#ifndef LLDB_DISABLE_PYTHON
+static void AddFilter  (TypeCategoryImpl::SharedPointer category_sp,
+                        std::vector<std::string> children,
+                        const char* description,
+                        ConstString type_name,
+                        ScriptedSyntheticChildren::Flags flags,
+                        bool regex = false)
+{
+    TypeFilterImplSP filter_sp(new TypeFilterImpl(flags));
+    for (auto child : children)
+        filter_sp->AddExpressionPath(child);
+    if (regex)
+        category_sp->GetRegexTypeFiltersContainer()->Add(RegularExpressionSP(new RegularExpression(type_name.AsCString())), filter_sp);
+    else
+        category_sp->GetTypeFiltersContainer()->Add(type_name,filter_sp);
+}
+#endif
+
 void
 FormatManager::LoadLibStdcppFormatters()
 {
@@ -971,6 +989,7 @@ FormatManager::LoadLibcxxFormatters()
     
     AddCXXSynthetic(libcxx_category_sp, lldb_private::formatters::LibCxxMapIteratorSyntheticFrontEndCreator, "std::map iterator synthetic children", ConstString("^std::__1::__map_iterator<.+>$"), stl_synth_flags, true);
     
+    AddFilter(libcxx_category_sp, {"__a_"}, "libc++ std::atomic filter", ConstString("^std::__1::atomic<.*>$"), stl_synth_flags, true);
 #endif
 }
 
@@ -1288,7 +1307,7 @@ FormatManager::LoadObjCFormatters()
     AddStringSummary(appkit_category_sp,"name:${var.name%S} reason:${var.reason%S}",ConstString("NSException"),appkit_flags);
 
     AddCXXSummary(appkit_category_sp, lldb_private::formatters::NSNumberSummaryProvider, "NSNumber summary provider", ConstString("NSNumber"), appkit_flags);
-    AddCXXSummary(appkit_category_sp, lldb_private::formatters::NSNumberSummaryProvider, "CFNumberRef summary provider", ConstString("CFNumberRef"), appkit_flags);
+    AddCXXSummary(corefoundation_category_sp, lldb_private::formatters::NSNumberSummaryProvider, "CFNumberRef summary provider", ConstString("CFNumberRef"), appkit_flags);
     AddCXXSummary(corefoundation_category_sp, lldb_private::formatters::NSNumberSummaryProvider, "NSNumber summary provider", ConstString("__NSCFBoolean"), appkit_flags);
     AddCXXSummary(corefoundation_category_sp, lldb_private::formatters::NSNumberSummaryProvider, "NSNumber summary provider", ConstString("__NSCFNumber"), appkit_flags);
     AddCXXSummary(corefoundation_category_sp, lldb_private::formatters::NSNumberSummaryProvider, "NSNumber summary provider", ConstString("NSCFBoolean"), appkit_flags);
@@ -1308,7 +1327,7 @@ FormatManager::LoadObjCFormatters()
     AddCXXSummary(appkit_category_sp, lldb_private::formatters::NSDateSummaryProvider, "NSDate summary provider", ConstString("NSCalendarDate"), appkit_flags);
 
     AddCXXSummary(appkit_category_sp, lldb_private::formatters::NSTimeZoneSummaryProvider, "NSTimeZone summary provider", ConstString("NSTimeZone"), appkit_flags);
-    AddCXXSummary(appkit_category_sp, lldb_private::formatters::NSTimeZoneSummaryProvider, "NSTimeZone summary provider", ConstString("CFTimeZoneRef"), appkit_flags);
+    AddCXXSummary(corefoundation_category_sp, lldb_private::formatters::NSTimeZoneSummaryProvider, "NSTimeZone summary provider", ConstString("CFTimeZoneRef"), appkit_flags);
     AddCXXSummary(appkit_category_sp, lldb_private::formatters::NSTimeZoneSummaryProvider, "NSTimeZone summary provider", ConstString("__NSTimeZone"), appkit_flags);
 
     // CFAbsoluteTime is actually a double rather than a pointer to an object
@@ -1320,7 +1339,7 @@ FormatManager::LoadObjCFormatters()
     AddCXXSummary(appkit_category_sp, lldb_private::formatters::NSIndexSetSummaryProvider, "NSIndexSet summary provider", ConstString("NSIndexSet"), appkit_flags);
     AddCXXSummary(appkit_category_sp, lldb_private::formatters::NSIndexSetSummaryProvider, "NSIndexSet summary provider", ConstString("NSMutableIndexSet"), appkit_flags);
 
-    AddStringSummary(appkit_category_sp,
+    AddStringSummary(corefoundation_category_sp,
                      "@\"${var.month%d}/${var.day%d}/${var.year%d} ${var.hour%d}:${var.minute%d}:${var.second}\"",
                      ConstString("CFGregorianDate"),
                      appkit_flags);
