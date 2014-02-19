@@ -44,6 +44,7 @@ def NonLiteralNullConversion : DiagGroup<"non-literal-null-conversion">;
 def NullConversion : DiagGroup<"null-conversion">;
 def ImplicitConversionFloatingPointToBool :
   DiagGroup<"implicit-conversion-floating-point-to-bool">;
+def ObjCLiteralConversion : DiagGroup<"objc-literal-conversion">;
 def BadArrayNewLength : DiagGroup<"bad-array-new-length">;
 def BuiltinMacroRedefined : DiagGroup<"builtin-macro-redefined">;
 def BuiltinRequiresHeader : DiagGroup<"builtin-requires-header">;
@@ -338,6 +339,8 @@ def UninitializedStaticSelfInit : DiagGroup<"static-self-init">;
 def Uninitialized  : DiagGroup<"uninitialized", [UninitializedSometimes,
                                                  UninitializedStaticSelfInit]>;
 def UnknownPragmas : DiagGroup<"unknown-pragmas">;
+def IgnoredPragmas : DiagGroup<"ignored-pragmas">;
+def Pragmas : DiagGroup<"pragmas", [UnknownPragmas, IgnoredPragmas]>;
 def UnknownWarningOption : DiagGroup<"unknown-warning-option">;
 def NSobjectAttribute : DiagGroup<"NSObject-attribute">;
 def UnknownAttributes : DiagGroup<"unknown-attributes">;
@@ -446,6 +449,7 @@ def Conversion : DiagGroup<"conversion",
                             LiteralConversion,
                             NonLiteralNullConversion, // (1-1)->pointer (etc)
                             NullConversion, // NULL->non-pointer
+                            ObjCLiteralConversion,
                             SignConversion,
                             StringConversion]>,
                  DiagCategory<"Value Conversion Issue">;
@@ -623,3 +627,8 @@ def ASM : DiagGroup<"asm", [
 
 // OpenMP warnings.
 def SourceUsesOpenMP : DiagGroup<"source-uses-openmp">;
+
+// Backend warnings.
+def BackendInlineAsm : DiagGroup<"inline-asm">;
+def BackendFrameLargerThan : DiagGroup<"frame-larger-than">;
+def BackendPlugin : DiagGroup<"backend-plugin">;
