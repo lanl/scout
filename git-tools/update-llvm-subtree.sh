@@ -7,7 +7,7 @@
 # This script should be run from the root directory of the Scout
 # source.
 #
-. tools/update-subtree-funcs.sh 
+. git-tools/update-subtree-funcs.sh 
 
 # Make sure we're in the devel branch -- at "home" we lock this down
 # so people can't muck with the master branch (as getting there means
