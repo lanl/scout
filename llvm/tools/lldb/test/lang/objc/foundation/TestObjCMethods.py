@@ -113,14 +113,12 @@ class FoundationTestCase(TestBase):
             substrs = ["Foundation`-[NSAutoreleasePool release]"])
 
     @dsym_test
-    @expectedFailureDarwin(15797390)
     def test_expression_lookups_objc_dsym(self):
         """Test running an expression detect spurious debug info lookups (dSYM)."""
         self.buildDsym()
         self.expression_lookups_objc()
 
     @dwarf_test
-    @expectedFailureDarwin(15797390)
     def test_expression_lookups_objc_dwarf(self):
         """Test running an expression detect spurious debug info lookups (DWARF)."""
         self.buildDwarf()
@@ -137,7 +135,7 @@ class FoundationTestCase(TestBase):
         self.runCmd("run", RUN_SUCCEEDED)
 
         # Log any DWARF lookups
-        logfile = os.path.join(os.getcwd(), "dwarf-lookups.txt")
+        logfile = os.path.join(os.getcwd(), "dwarf-lookups-" + self.getArchitecture() + ".txt")
         self.runCmd("log enable -f %s dwarf lookups" % (logfile))
         self.runCmd("expr self")
         self.runCmd("log disable dwarf lookups")

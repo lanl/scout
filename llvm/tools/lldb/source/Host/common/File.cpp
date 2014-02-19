@@ -13,10 +13,13 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <stdarg.h>
+#include <stdio.h>
 #include <sys/stat.h>
 
 #ifdef _WIN32
 #include "lldb/Host/windows/windows.h"
+#else
+#include <sys/ioctl.h>
 #endif
 
 #include "lldb/Core/DataBufferHeap.h"
@@ -78,7 +81,9 @@ File::File(const char *path, uint32_t options, uint32_t permissions) :
     m_stream (kInvalidStream),
     m_options (),
     m_own_stream (false),
-    m_own_descriptor (false)
+    m_own_descriptor (false),
+    m_is_interactive (eLazyBoolCalculate),
+    m_is_real_terminal (eLazyBoolCalculate)
 {
     Open (path, options, permissions);
 }
@@ -90,7 +95,10 @@ File::File (const FileSpec& filespec,
     m_stream (kInvalidStream),
     m_options (0),
     m_own_stream (false),
-    m_own_descriptor (false)
+    m_own_descriptor (false),
+    m_is_interactive (eLazyBoolCalculate),
+    m_is_real_terminal (eLazyBoolCalculate)
+
 {
     if (filespec)
     {
@@ -103,7 +111,9 @@ File::File (const File &rhs) :
     m_stream (kInvalidStream),
     m_options (0),
     m_own_stream (false),
-    m_own_descriptor (false)
+    m_own_descriptor (false),
+    m_is_interactive (eLazyBoolCalculate),
+    m_is_real_terminal (eLazyBoolCalculate)
 {
     Duplicate (rhs);
 }
@@ -371,6 +381,8 @@ File::Close ()
     m_options = 0;
     m_own_stream = false;
     m_own_descriptor = false;
+    m_is_interactive = eLazyBoolCalculate;
+    m_is_real_terminal = eLazyBoolCalculate;
     return error;
 }
 
@@ -866,3 +878,43 @@ File::ConvertOpenOptionsForPOSIXOpen (uint32_t open_options)
 
     return mode;
 }
+
+void
+File::CalculateInteractiveAndTerminal ()
+{
+    const int fd = GetDescriptor();
+    if (fd >= 0)
+    {
+        m_is_interactive = eLazyBoolNo;
+        m_is_real_terminal = eLazyBoolNo;
+#ifndef _MSC_VER
+        if (isatty(fd))
+        {
+            m_is_interactive = eLazyBoolYes;
+            struct winsize window_size;
+            if (::ioctl (fd, TIOCGWINSZ, &window_size) == 0)
+            {
+                if (window_size.ws_col > 0)
+                    m_is_real_terminal = eLazyBoolYes;
+            }
+        }
+#endif
+    }
+}
+
+bool
+File::GetIsInteractive ()
+{
+    if (m_is_interactive == eLazyBoolCalculate)
+        CalculateInteractiveAndTerminal ();
+    return m_is_interactive == eLazyBoolYes;
+}
+
+bool
+File::GetIsRealTerminal ()
+{
+    if (m_is_real_terminal == eLazyBoolCalculate)
+        CalculateInteractiveAndTerminal();
+    return m_is_real_terminal == eLazyBoolYes;
+}
+

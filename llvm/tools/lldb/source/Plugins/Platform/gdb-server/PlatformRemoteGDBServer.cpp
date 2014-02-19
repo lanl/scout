@@ -701,3 +701,9 @@ PlatformRemoteGDBServer::RunShellCommand (const char *command,           // Shou
 {
     return m_gdb_client.RunShellCommand (command, working_dir, status_ptr, signo_ptr, command_output, timeout_sec);
 }
+
+void
+PlatformRemoteGDBServer::CalculateTrapHandlerSymbolNames ()
+{   
+    m_trap_handlers.push_back (ConstString ("_sigtramp"));
+}   
