@@ -1305,6 +1305,7 @@ namespace clang {
       return getSema().BuildObjCAtThrowStmt(AtLoc, Operand);
     }
 
+
     /// \brief Build a new OpenMP parallel directive.
     ///
     /// By default, performs semantic analysis to build the new statement.
@@ -1315,6 +1316,18 @@ namespace clang {
                                            SourceLocation EndLoc) {
       return getSema().ActOnOpenMPParallelDirective(Clauses, AStmt,
                                                     StartLoc, EndLoc);
+    }
+
+    /// \brief Build a new OpenMP 'if' clause.
+    ///
+    /// By default, performs semantic analysis to build the new statement.
+    /// Subclasses may override this routine to provide different behavior.
+    OMPClause *RebuildOMPIfClause(Expr *Condition,
+                                  SourceLocation StartLoc,
+                                  SourceLocation LParenLoc,
+                                  SourceLocation EndLoc) {
+      return getSema().ActOnOpenMPIfClause(Condition, StartLoc,
+                                           LParenLoc, EndLoc);
     }
 
     /// \brief Build a new OpenMP 'default' clause.
@@ -1330,30 +1343,17 @@ namespace clang {
                                                 StartLoc, LParenLoc, EndLoc);
     }
 
-  /// \brief Build a new OpenMP 'if' clause.
-  ///
-  /// By default, performs semantic analysis to build the new statement.
-  /// Subclasses may override this routine to provide different behavior.
-  OMPClause *RebuildOMPIfClause(Expr *Condition,
-                                SourceLocation StartLoc,
-                                SourceLocation LParenLoc,
-                                SourceLocation EndLoc) {
-    return getSema().ActOnOpenMPIfClause(Condition, StartLoc,
-                                         LParenLoc, EndLoc);
-  }
-
-  /// \brief Build a new OpenMP 'default' clause.
-  ///
-  /// By default, performs semantic analysis to build the new statement.
-  /// Subclasses may override this routine to provide different behavior.
-  OMPClause *RebuildOMPDefaultClause(OpenMPDefaultClauseKind Kind,
-                                     SourceLocation KindKwLoc,
-                                     SourceLocation StartLoc,
-                                     SourceLocation LParenLoc,
-                                     SourceLocation EndLoc) {
-    return getSema().ActOnOpenMPDefaultClause(Kind, KindKwLoc,
-                                              StartLoc, LParenLoc, EndLoc);
-  }
+    /// \brief Build a new OpenMP 'private' clause.
+    ///
+    /// By default, performs semantic analysis to build the new statement.
+    /// Subclasses may override this routine to provide different behavior.
+    OMPClause *RebuildOMPPrivateClause(ArrayRef<Expr *> VarList,
+                                       SourceLocation StartLoc,
+                                       SourceLocation LParenLoc,
+                                       SourceLocation EndLoc) {
+      return getSema().ActOnOpenMPPrivateClause(VarList, StartLoc, LParenLoc,
+                                                EndLoc);
+    }
 
     /// \brief Build a new OpenMP 'firstprivate' clause.
     ///
@@ -1374,6 +1374,7 @@ namespace clang {
       return getSema().ActOnOpenMPSharedClause(VarList, StartLoc, LParenLoc,
                                                EndLoc);
     }
+
 
     /// \brief Rebuild the operand to an Objective-C \@synchronized statement.
     ///

@@ -956,7 +956,7 @@ DIE *DwarfUnit::getOrCreateTypeDIE(const MDNode *TyNode) {
     DIScoutCompositeType CTy(Ty);
     if (GenerateDwarfTypeUnits && !Ty.isForwardDecl())
       if (MDString *TypeId = CTy.getIdentifier()) {
-        DD->addDwarfTypeUnitType(getCUNode(), TypeId->getString(), TyDIE, CTy);
+        DD->addDwarfTypeUnitType(getCU(), TypeId->getString(), TyDIE, CTy);
         // Skip updating the accellerator tables since this is not the full type
         return TyDIE;
       }

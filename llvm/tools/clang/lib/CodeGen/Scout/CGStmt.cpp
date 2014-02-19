@@ -287,7 +287,7 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
 
   // Store the blocks to use for break and continue.
 
-  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue, &Cnt));
+  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue));
   if (r == 1) {  // This is our innermost rank, generate the loop body.
     EmitStmt(S.getBody());
 
@@ -442,7 +442,7 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
   Continue = getJumpDestInCurrentScope(IRNameStr);
 
   // Store the blocks to use for break and continue.
-  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue, &Cnt));
+  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue));
 
   if (r == 1) {  // This is our innermost rank, generate the loop body.
     EmitStmt(S.getBody());
@@ -617,7 +617,7 @@ void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned
 
   // Store the blocks to use for break and continue.
 
-  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue, &Cnt));
+  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue));
 
   if (r == 1) {  // This is our innermost rank, generate the loop body.
     EmitStmt(S.getBody());
