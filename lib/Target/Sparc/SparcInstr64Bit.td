@@ -415,7 +415,7 @@ def SETHIXi : F2_1<0b100,
 
 // ATOMICS.
 let Predicates = [Is64Bit], Constraints = "$swap = $rd" in {
-  def CASXrr: F3_1<3, 0b111110,
+  def CASXrr: F3_1_asi<3, 0b111110, 0b10000000,
                 (outs I64Regs:$rd), (ins I64Regs:$rs1, I64Regs:$rs2,
                                      I64Regs:$swap),
                  "casx [$rs1], $rs2, $rd",
@@ -462,6 +462,14 @@ defm ATOMIC_LOAD_MIN  : AtomicRMW<atomic_load_min_32,  atomic_load_min_64>;
 defm ATOMIC_LOAD_MAX  : AtomicRMW<atomic_load_max_32,  atomic_load_max_64>;
 defm ATOMIC_LOAD_UMIN : AtomicRMW<atomic_load_umin_32, atomic_load_umin_64>;
 defm ATOMIC_LOAD_UMAX : AtomicRMW<atomic_load_umax_32, atomic_load_umax_64>;
+
+// There is no 64-bit variant of SWAP, so use a pseudo.
+let usesCustomInserter = 1, hasCtrlDep = 1, mayLoad = 1, mayStore = 1,
+    Defs = [ICC], Predicates = [Is64Bit] in
+def ATOMIC_SWAP_64 : Pseudo<(outs I64Regs:$rd),
+                            (ins ptr_rc:$addr, I64Regs:$rs2), "",
+                            [(set i64:$rd,
+                                  (atomic_swap_64 iPTR:$addr, i64:$rs2))]>;
 
 // Global addresses, constant pool entries
 let Predicates = [Is64Bit] in {

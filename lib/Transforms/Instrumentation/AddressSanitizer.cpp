@@ -60,6 +60,8 @@ static const uint64_t kDefaultShadowOffset64 = 1ULL << 44;
 static const uint64_t kDefaultShort64bitShadowOffset = 0x7FFF8000;  // < 2G.
 static const uint64_t kPPC64_ShadowOffset64 = 1ULL << 41;
 static const uint64_t kMIPS32_ShadowOffset32 = 0x0aaa8000;
+static const uint64_t kFreeBSD_ShadowOffset32 = 1ULL << 30;
+static const uint64_t kFreeBSD_ShadowOffset64 = 1ULL << 46;
 
 static const size_t kMinStackMallocSize = 1 << 6;  // 64B
 static const size_t kMaxStackMallocSize = 1 << 16;  // 64K
@@ -240,6 +242,7 @@ static ShadowMapping getShadowMapping(const Module &M, int LongSize) {
   llvm::Triple TargetTriple(M.getTargetTriple());
   bool IsAndroid = TargetTriple.getEnvironment() == llvm::Triple::Android;
   bool IsMacOSX = TargetTriple.getOS() == llvm::Triple::MacOSX;
+  bool IsFreeBSD = TargetTriple.getOS() == llvm::Triple::FreeBSD;
   bool IsPPC64 = TargetTriple.getArch() == llvm::Triple::ppc64 ||
                  TargetTriple.getArch() == llvm::Triple::ppc64le;
   bool IsX86_64 = TargetTriple.getArch() == llvm::Triple::x86_64;
@@ -255,11 +258,13 @@ static ShadowMapping getShadowMapping(const Module &M, int LongSize) {
 
   Mapping.Offset = IsAndroid ? 0 :
       (LongSize == 32 ?
-       (IsMIPS32 ? kMIPS32_ShadowOffset32 : kDefaultShadowOffset32) :
+        (IsMIPS32 ? kMIPS32_ShadowOffset32 :
+          (IsFreeBSD ? kFreeBSD_ShadowOffset32 : kDefaultShadowOffset32)) :
        IsPPC64 ? kPPC64_ShadowOffset64 : kDefaultShadowOffset64);
   if (!IsAndroid && ClShort64BitOffset && IsX86_64 && !IsMacOSX) {
     assert(LongSize == 64);
-    Mapping.Offset = kDefaultShort64bitShadowOffset;
+    Mapping.Offset = (IsFreeBSD ?
+                      kFreeBSD_ShadowOffset64 : kDefaultShort64bitShadowOffset);
   }
   if (!IsAndroid && ClMappingOffsetLog >= 0) {
     // Zero offset log is the special case.
@@ -556,19 +561,13 @@ static size_t TypeSizeToSizeIndex(uint32_t TypeSize) {
 static GlobalVariable *createPrivateGlobalForString(
     Module &M, StringRef Str, bool AllowMerging) {
   Constant *StrConst = ConstantDataArray::getString(M.getContext(), Str);
-  // For module-local strings that can be merged with another one we set the
-  // private linkage and the unnamed_addr attribute.
-  // Non-mergeable strings are made linker_private to remove them from the
-  // symbol table. "private" linkage doesn't work for Darwin, where the
-  // "L"-prefixed globals  end up in __TEXT,__const section
-  // (see http://llvm.org/bugs/show_bug.cgi?id=17976 for more info).
-  GlobalValue::LinkageTypes linkage =
-      AllowMerging ? GlobalValue::PrivateLinkage
-                   : GlobalValue::LinkerPrivateLinkage;
+  // We use private linkage for module-local strings. If they can be merged
+  // with another one, we set the unnamed_addr attribute.
   GlobalVariable *GV =
       new GlobalVariable(M, StrConst->getType(), true,
-                         linkage, StrConst, kAsanGenPrefix);
-  if (AllowMerging) GV->setUnnamedAddr(true);
+                         GlobalValue::PrivateLinkage, StrConst, kAsanGenPrefix);
+  if (AllowMerging)
+    GV->setUnnamedAddr(true);
   GV->setAlignment(1);  // Strings may not be merged w/o setting align 1.
   return GV;
 }

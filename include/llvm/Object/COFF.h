@@ -244,6 +244,29 @@ struct coff_aux_section_definition {
   char Unused[3];
 };
 
+struct coff_load_configuration32 {
+  support::ulittle32_t Characteristics;
+  support::ulittle32_t TimeDateStamp;
+  support::ulittle16_t MajorVersion;
+  support::ulittle16_t MinorVersion;
+  support::ulittle32_t GlobalFlagsClear;
+  support::ulittle32_t GlobalFlagsSet;
+  support::ulittle32_t CriticalSectionDefaultTimeout;
+  support::ulittle32_t DeCommitFreeBlockThreshold;
+  support::ulittle32_t DeCommitTotalFreeThreshold;
+  support::ulittle32_t LockPrefixTable;
+  support::ulittle32_t MaximumAllocationSize;
+  support::ulittle32_t VirtualMemoryThreshold;
+  support::ulittle32_t ProcessAffinityMask;
+  support::ulittle32_t ProcessHeapFlags;
+  support::ulittle16_t CSDVersion;
+  char Reserved[4];
+  support::ulittle32_t EditList;
+  support::ulittle32_t SecurityCookie;
+  support::ulittle32_t SEHandlerTable;
+  support::ulittle32_t SEHandlerCount;
+};
+
 class COFFObjectFile : public ObjectFile {
 private:
   friend class ImportDirectoryEntryRef;
@@ -271,74 +294,82 @@ private:
         error_code        initExportTablePtr();
 
 protected:
-  virtual error_code getSymbolNext(DataRefImpl Symb, SymbolRef &Res) const;
-  virtual error_code getSymbolName(DataRefImpl Symb, StringRef &Res) const;
-  virtual error_code getSymbolFileOffset(DataRefImpl Symb, uint64_t &Res) const;
-  virtual error_code getSymbolAddress(DataRefImpl Symb, uint64_t &Res) const;
-  virtual error_code getSymbolSize(DataRefImpl Symb, uint64_t &Res) const;
-  virtual error_code getSymbolFlags(DataRefImpl Symb, uint32_t &Res) const;
-  virtual error_code getSymbolType(DataRefImpl Symb, SymbolRef::Type &Res) const;
-  virtual error_code getSymbolSection(DataRefImpl Symb,
-                                      section_iterator &Res) const;
-  virtual error_code getSymbolValue(DataRefImpl Symb, uint64_t &Val) const;
+  void moveSymbolNext(DataRefImpl &Symb) const LLVM_OVERRIDE;
+  error_code getSymbolName(DataRefImpl Symb, StringRef &Res) const
+      LLVM_OVERRIDE;
+  error_code getSymbolAddress(DataRefImpl Symb, uint64_t &Res) const
+      LLVM_OVERRIDE;
+  error_code getSymbolFileOffset(DataRefImpl Symb, uint64_t &Res) const
+      LLVM_OVERRIDE;
+  error_code getSymbolSize(DataRefImpl Symb, uint64_t &Res) const LLVM_OVERRIDE;
+  uint32_t getSymbolFlags(DataRefImpl Symb) const LLVM_OVERRIDE;
+  error_code getSymbolType(DataRefImpl Symb, SymbolRef::Type &Res) const
+      LLVM_OVERRIDE;
+  error_code getSymbolSection(DataRefImpl Symb, section_iterator &Res) const
+      LLVM_OVERRIDE;
+  error_code getSymbolValue(DataRefImpl Symb, uint64_t &Val) const
+      LLVM_OVERRIDE;
+  void moveSectionNext(DataRefImpl &Sec) const LLVM_OVERRIDE;
+  error_code getSectionName(DataRefImpl Sec, StringRef &Res) const
+      LLVM_OVERRIDE;
+  error_code getSectionAddress(DataRefImpl Sec, uint64_t &Res) const
+      LLVM_OVERRIDE;
+  error_code getSectionSize(DataRefImpl Sec, uint64_t &Res) const LLVM_OVERRIDE;
+  error_code getSectionContents(DataRefImpl Sec, StringRef &Res) const
+      LLVM_OVERRIDE;
+  error_code getSectionAlignment(DataRefImpl Sec, uint64_t &Res) const
+      LLVM_OVERRIDE;
+  error_code isSectionText(DataRefImpl Sec, bool &Res) const LLVM_OVERRIDE;
+  error_code isSectionData(DataRefImpl Sec, bool &Res) const LLVM_OVERRIDE;
+  error_code isSectionBSS(DataRefImpl Sec, bool &Res) const LLVM_OVERRIDE;
+  error_code isSectionVirtual(DataRefImpl Sec, bool &Res) const LLVM_OVERRIDE;
+  error_code isSectionZeroInit(DataRefImpl Sec, bool &Res) const LLVM_OVERRIDE;
+  error_code isSectionReadOnlyData(DataRefImpl Sec, bool &Res) const
+      LLVM_OVERRIDE;
+  error_code isSectionRequiredForExecution(DataRefImpl Sec, bool &Res) const
+      LLVM_OVERRIDE;
+  error_code sectionContainsSymbol(DataRefImpl Sec, DataRefImpl Symb,
+                                   bool &Result) const LLVM_OVERRIDE;
+  relocation_iterator section_rel_begin(DataRefImpl Sec) const LLVM_OVERRIDE;
+  relocation_iterator section_rel_end(DataRefImpl Sec) const LLVM_OVERRIDE;
 
-  virtual error_code getSectionNext(DataRefImpl Sec, SectionRef &Res) const;
-  virtual error_code getSectionName(DataRefImpl Sec, StringRef &Res) const;
-  virtual error_code getSectionAddress(DataRefImpl Sec, uint64_t &Res) const;
-  virtual error_code getSectionSize(DataRefImpl Sec, uint64_t &Res) const;
-  virtual error_code getSectionContents(DataRefImpl Sec, StringRef &Res) const;
-  virtual error_code getSectionAlignment(DataRefImpl Sec, uint64_t &Res) const;
-  virtual error_code isSectionText(DataRefImpl Sec, bool &Res) const;
-  virtual error_code isSectionData(DataRefImpl Sec, bool &Res) const;
-  virtual error_code isSectionBSS(DataRefImpl Sec, bool &Res) const;
-  virtual error_code isSectionVirtual(DataRefImpl Sec, bool &Res) const;
-  virtual error_code isSectionZeroInit(DataRefImpl Sec, bool &Res) const;
-  virtual error_code isSectionReadOnlyData(DataRefImpl Sec, bool &Res) const;
-  virtual error_code isSectionRequiredForExecution(DataRefImpl Sec,
-                                                   bool &Res) const;
-  virtual error_code sectionContainsSymbol(DataRefImpl Sec, DataRefImpl Symb,
-                                           bool &Result) const;
-  virtual relocation_iterator section_rel_begin(DataRefImpl Sec) const;
-  virtual relocation_iterator section_rel_end(DataRefImpl Sec) const;
+  void moveRelocationNext(DataRefImpl &Rel) const LLVM_OVERRIDE;
+  error_code getRelocationAddress(DataRefImpl Rel, uint64_t &Res) const
+      LLVM_OVERRIDE;
+  error_code getRelocationOffset(DataRefImpl Rel, uint64_t &Res) const
+      LLVM_OVERRIDE;
+  symbol_iterator getRelocationSymbol(DataRefImpl Rel) const LLVM_OVERRIDE;
+  error_code getRelocationType(DataRefImpl Rel, uint64_t &Res) const
+      LLVM_OVERRIDE;
+  error_code getRelocationTypeName(DataRefImpl Rel,
+                                   SmallVectorImpl<char> &Result) const
+      LLVM_OVERRIDE;
+  error_code getRelocationValueString(DataRefImpl Rel,
+                                      SmallVectorImpl<char> &Result) const
+      LLVM_OVERRIDE;
 
-  virtual error_code getRelocationNext(DataRefImpl Rel,
-                                       RelocationRef &Res) const;
-  virtual error_code getRelocationAddress(DataRefImpl Rel,
-                                          uint64_t &Res) const;
-  virtual error_code getRelocationOffset(DataRefImpl Rel,
-                                         uint64_t &Res) const;
-  virtual symbol_iterator getRelocationSymbol(DataRefImpl Rel) const;
-  virtual error_code getRelocationType(DataRefImpl Rel,
-                                       uint64_t &Res) const;
-  virtual error_code getRelocationTypeName(DataRefImpl Rel,
-                                           SmallVectorImpl<char> &Result) const;
-  virtual error_code getRelocationValueString(DataRefImpl Rel,
-                                           SmallVectorImpl<char> &Result) const;
-
-  virtual error_code getLibraryNext(DataRefImpl LibData,
-                                    LibraryRef &Result) const;
-  virtual error_code getLibraryPath(DataRefImpl LibData,
-                                    StringRef &Result) const;
+  error_code getLibraryNext(DataRefImpl LibData, LibraryRef &Result) const
+      LLVM_OVERRIDE;
+  error_code getLibraryPath(DataRefImpl LibData, StringRef &Result) const
+      LLVM_OVERRIDE;
 
 public:
   COFFObjectFile(MemoryBuffer *Object, error_code &EC, bool BufferOwned = true);
-  virtual symbol_iterator begin_symbols() const;
-  virtual symbol_iterator end_symbols() const;
-  virtual symbol_iterator begin_dynamic_symbols() const;
-  virtual symbol_iterator end_dynamic_symbols() const;
-  virtual library_iterator begin_libraries_needed() const;
-  virtual library_iterator end_libraries_needed() const;
-  virtual section_iterator begin_sections() const;
-  virtual section_iterator end_sections() const;
+  symbol_iterator symbol_begin() const LLVM_OVERRIDE;
+  symbol_iterator symbol_end() const LLVM_OVERRIDE;
+  library_iterator needed_library_begin() const LLVM_OVERRIDE;
+  library_iterator needed_library_end() const LLVM_OVERRIDE;
+  section_iterator section_begin() const LLVM_OVERRIDE;
+  section_iterator section_end() const LLVM_OVERRIDE;
 
   const coff_section *getCOFFSection(section_iterator &It) const;
   const coff_symbol *getCOFFSymbol(symbol_iterator &It) const;
   const coff_relocation *getCOFFRelocation(relocation_iterator &It) const;
 
-  virtual uint8_t getBytesInAddress() const;
-  virtual StringRef getFileFormatName() const;
-  virtual unsigned getArch() const;
-  virtual StringRef getLoadName() const;
+  uint8_t getBytesInAddress() const LLVM_OVERRIDE;
+  StringRef getFileFormatName() const LLVM_OVERRIDE;
+  unsigned getArch() const LLVM_OVERRIDE;
+  StringRef getLoadName() const LLVM_OVERRIDE;
 
   import_directory_iterator import_directory_begin() const;
   import_directory_iterator import_directory_end() const;
@@ -383,7 +414,7 @@ public:
       : ImportTable(Table), Index(I), OwningObject(Owner) {}
 
   bool operator==(const ImportDirectoryEntryRef &Other) const;
-  error_code getNext(ImportDirectoryEntryRef &Result) const;
+  void moveNext();
   error_code getName(StringRef &Result) const;
 
   error_code
@@ -407,7 +438,7 @@ public:
       : ExportTable(Table), Index(I), OwningObject(Owner) {}
 
   bool operator==(const ExportDirectoryEntryRef &Other) const;
-  error_code getNext(ExportDirectoryEntryRef &Result) const;
+  void moveNext();
 
   error_code getDllName(StringRef &Result) const;
   error_code getOrdinalBase(uint32_t &Result) const;

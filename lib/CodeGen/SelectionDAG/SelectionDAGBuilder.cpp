@@ -1393,7 +1393,9 @@ SelectionDAGBuilder::EmitBranchForMergedCondition(const Value *Cond,
                                                   MachineBasicBlock *TBB,
                                                   MachineBasicBlock *FBB,
                                                   MachineBasicBlock *CurBB,
-                                                  MachineBasicBlock *SwitchBB) {
+                                                  MachineBasicBlock *SwitchBB,
+                                                  uint32_t TWeight,
+                                                  uint32_t FWeight) {
   const BasicBlock *BB = CurBB->getBasicBlock();
 
   // If the leaf of the tree is a comparison, merge the condition into
@@ -1418,7 +1420,7 @@ SelectionDAGBuilder::EmitBranchForMergedCondition(const Value *Cond,
       }
 
       CaseBlock CB(Condition, BOp->getOperand(0),
-                   BOp->getOperand(1), NULL, TBB, FBB, CurBB);
+                   BOp->getOperand(1), NULL, TBB, FBB, CurBB, TWeight, FWeight);
       SwitchCases.push_back(CB);
       return;
     }
@@ -1426,8 +1428,16 @@ SelectionDAGBuilder::EmitBranchForMergedCondition(const Value *Cond,
 
   // Create a CaseBlock record representing this branch.
   CaseBlock CB(ISD::SETEQ, Cond, ConstantInt::getTrue(*DAG.getContext()),
-               NULL, TBB, FBB, CurBB);
+               NULL, TBB, FBB, CurBB, TWeight, FWeight);
   SwitchCases.push_back(CB);
+}
+
+/// Scale down both weights to fit into uint32_t.
+static void ScaleWeights(uint64_t &NewTrue, uint64_t &NewFalse) {
+  uint64_t NewMax = (NewTrue > NewFalse) ? NewTrue : NewFalse;
+  uint32_t Scale = (NewMax / UINT32_MAX) + 1;
+  NewTrue = NewTrue / Scale;
+  NewFalse = NewFalse / Scale;
 }
 
 /// FindMergedConditions - If Cond is an expression like
@@ -1436,7 +1446,8 @@ void SelectionDAGBuilder::FindMergedConditions(const Value *Cond,
                                                MachineBasicBlock *FBB,
                                                MachineBasicBlock *CurBB,
                                                MachineBasicBlock *SwitchBB,
-                                               unsigned Opc) {
+                                               unsigned Opc, uint32_t TWeight,
+                                               uint32_t FWeight) {
   // If this node is not part of the or/and tree, emit it as a branch.
   const Instruction *BOp = dyn_cast<Instruction>(Cond);
   if (!BOp || !(isa<BinaryOperator>(BOp) || isa<CmpInst>(BOp)) ||
@@ -1444,7 +1455,8 @@ void SelectionDAGBuilder::FindMergedConditions(const Value *Cond,
       BOp->getParent() != CurBB->getBasicBlock() ||
       !InBlock(BOp->getOperand(0), CurBB->getBasicBlock()) ||
       !InBlock(BOp->getOperand(1), CurBB->getBasicBlock())) {
-    EmitBranchForMergedCondition(Cond, TBB, FBB, CurBB, SwitchBB);
+    EmitBranchForMergedCondition(Cond, TBB, FBB, CurBB, SwitchBB,
+                                 TWeight, FWeight);
     return;
   }
 
@@ -1456,6 +1468,7 @@ void SelectionDAGBuilder::FindMergedConditions(const Value *Cond,
 
   if (Opc == Instruction::Or) {
     // Codegen X | Y as:
+    // BB1:
     //   jmp_if_X TBB
     //   jmp TmpBB
     // TmpBB:
@@ -1463,14 +1476,34 @@ void SelectionDAGBuilder::FindMergedConditions(const Value *Cond,
     //   jmp FBB
     //
 
-    // Emit the LHS condition.
-    FindMergedConditions(BOp->getOperand(0), TBB, TmpBB, CurBB, SwitchBB, Opc);
+    // We have flexibility in setting Prob for BB1 and Prob for TmpBB.
+    // The requirement is that
+    //   TrueProb for BB1 + (FalseProb for BB1 * TrueProb for TmpBB)
+    //     = TrueProb for orignal BB.
+    // Assuming the orignal weights are A and B, one choice is to set BB1's
+    // weights to A and A+2B, and set TmpBB's weights to A and 2B. This choice
+    // assumes that
+    //   TrueProb for BB1 == FalseProb for BB1 * TrueProb for TmpBB.
+    // Another choice is to assume TrueProb for BB1 equals to TrueProb for
+    // TmpBB, but the math is more complicated.
 
+    uint64_t NewTrueWeight = TWeight;
+    uint64_t NewFalseWeight = (uint64_t)TWeight + 2 * (uint64_t)FWeight;
+    ScaleWeights(NewTrueWeight, NewFalseWeight);
+    // Emit the LHS condition.
+    FindMergedConditions(BOp->getOperand(0), TBB, TmpBB, CurBB, SwitchBB, Opc,
+                         NewTrueWeight, NewFalseWeight);
+
+    NewTrueWeight = TWeight;
+    NewFalseWeight = 2 * (uint64_t)FWeight;
+    ScaleWeights(NewTrueWeight, NewFalseWeight);
     // Emit the RHS condition into TmpBB.
-    FindMergedConditions(BOp->getOperand(1), TBB, FBB, TmpBB, SwitchBB, Opc);
+    FindMergedConditions(BOp->getOperand(1), TBB, FBB, TmpBB, SwitchBB, Opc,
+                         NewTrueWeight, NewFalseWeight);
   } else {
     assert(Opc == Instruction::And && "Unknown merge op!");
     // Codegen X & Y as:
+    // BB1:
     //   jmp_if_X TmpBB
     //   jmp FBB
     // TmpBB:
@@ -1479,11 +1512,28 @@ void SelectionDAGBuilder::FindMergedConditions(const Value *Cond,
     //
     //  This requires creation of TmpBB after CurBB.
 
-    // Emit the LHS condition.
-    FindMergedConditions(BOp->getOperand(0), TmpBB, FBB, CurBB, SwitchBB, Opc);
+    // We have flexibility in setting Prob for BB1 and Prob for TmpBB.
+    // The requirement is that
+    //   FalseProb for BB1 + (TrueProb for BB1 * FalseProb for TmpBB)
+    //     = FalseProb for orignal BB.
+    // Assuming the orignal weights are A and B, one choice is to set BB1's
+    // weights to 2A+B and B, and set TmpBB's weights to 2A and B. This choice
+    // assumes that
+    //   FalseProb for BB1 == TrueProb for BB1 * FalseProb for TmpBB.
 
+    uint64_t NewTrueWeight = 2 * (uint64_t)TWeight + (uint64_t)FWeight;
+    uint64_t NewFalseWeight = FWeight;
+    ScaleWeights(NewTrueWeight, NewFalseWeight);
+    // Emit the LHS condition.
+    FindMergedConditions(BOp->getOperand(0), TmpBB, FBB, CurBB, SwitchBB, Opc,
+                         NewTrueWeight, NewFalseWeight);
+
+    NewTrueWeight = 2 * (uint64_t)TWeight;
+    NewFalseWeight = FWeight;
+    ScaleWeights(NewTrueWeight, NewFalseWeight);
     // Emit the RHS condition into TmpBB.
-    FindMergedConditions(BOp->getOperand(1), TBB, FBB, TmpBB, SwitchBB, Opc);
+    FindMergedConditions(BOp->getOperand(1), TBB, FBB, TmpBB, SwitchBB, Opc,
+                         NewTrueWeight, NewFalseWeight);
   }
 }
 
@@ -1570,7 +1620,8 @@ void SelectionDAGBuilder::visitBr(const BranchInst &I) {
         (BOp->getOpcode() == Instruction::And ||
          BOp->getOpcode() == Instruction::Or)) {
       FindMergedConditions(BOp, Succ0MBB, Succ1MBB, BrMBB, BrMBB,
-                           BOp->getOpcode());
+                           BOp->getOpcode(), getEdgeWeight(BrMBB, Succ0MBB),
+                           getEdgeWeight(BrMBB, Succ1MBB));
       // If the compares in later blocks need to use values not currently
       // exported from this block, export them now.  This block should always
       // be the first entry.
@@ -2945,9 +2996,13 @@ void SelectionDAGBuilder::visitBitCast(const User &I) {
   if (DestVT != N.getValueType())
     setValue(&I, DAG.getNode(ISD::BITCAST, getCurSDLoc(),
                              DestVT, N)); // convert types.
-  else if(ConstantSDNode *C = dyn_cast<ConstantSDNode>(N))
-    setValue(&I, DAG.getConstant(C->getAPIntValue(), C->getValueType(0),
-                                 /*isTarget=*/false, /*isOpaque*/true));
+  // Check if the original LLVM IR Operand was a ConstantInt, because getValue()
+  // might fold any kind of constant expression to an integer constant and that
+  // is not what we are looking for. Only regcognize a bitcast of a genuine
+  // constant integer as an opaque constant.
+  else if(ConstantInt *C = dyn_cast<ConstantInt>(I.getOperand(0)))
+    setValue(&I, DAG.getConstant(C->getValue(), DestVT, /*isTarget=*/false,
+                                 /*isOpaque*/true));
   else
     setValue(&I, N);            // noop cast.
 }
@@ -5383,6 +5438,8 @@ void SelectionDAGBuilder::LowerCallTo(ImmutableCallSite CS, SDValue Callee,
   int DemoteStackIdx = -100;
 
   if (!CanLowerReturn) {
+    assert(!CS.hasInAllocaArgument() &&
+           "sret demotion is incompatible with inalloca");
     uint64_t TySize = TLI->getDataLayout()->getTypeAllocSize(
                       FTy->getReturnType());
     unsigned Align  = TLI->getDataLayout()->getPrefTypeAlignment(
@@ -5670,9 +5727,13 @@ bool SelectionDAGBuilder::visitMemCmpCall(const CallInst &I) {
     // bloat the code.
     const TargetLowering *TLI = TM.getTargetLowering();
     if (ActuallyDoIt && CSize->getZExtValue() > 4) {
+      unsigned DstAS = LHS->getType()->getPointerAddressSpace();
+      unsigned SrcAS = RHS->getType()->getPointerAddressSpace();
       // TODO: Handle 5 byte compare as 4-byte + 1 byte.
       // TODO: Handle 8 byte compare on x86-32 as two 32-bit loads.
-      if (!TLI->isTypeLegal(LoadVT) ||!TLI->allowsUnalignedMemoryAccesses(LoadVT))
+      if (!TLI->isTypeLegal(LoadVT) ||
+          !TLI->allowsUnalignedMemoryAccesses(LoadVT, SrcAS) ||
+          !TLI->allowsUnalignedMemoryAccesses(LoadVT, DstAS))
         ActuallyDoIt = false;
     }
 
@@ -6841,55 +6902,56 @@ void SelectionDAGBuilder::visitStackmap(const CallInst &CI) {
 
   assert(CI.getType()->isVoidTy() && "Stackmap cannot return a value.");
 
-  SDValue Callee = getValue(CI.getCalledValue());
+  SDValue Chain, InFlag, Callee, NullPtr;
+  SmallVector<SDValue, 32> Ops;
 
-  // Lower into a call sequence with no args and no return value.
-  std::pair<SDValue, SDValue> Result = LowerCallOperands(CI, 0, 0, Callee);
-  // Set the root to the target-lowered call chain.
-  SDValue Chain = Result.second;
-  DAG.setRoot(Chain);
+  SDLoc DL = getCurSDLoc();
+  Callee = getValue(CI.getCalledValue());
+  NullPtr = DAG.getIntPtrConstant(0, true);
 
-  /// Get a call instruction from the call sequence chain.
-  /// Tail calls are not allowed.
-  SDNode *CallEnd = Chain.getNode();
-  assert(CallEnd->getOpcode() == ISD::CALLSEQ_END &&
-         "Expected a callseq node.");
-  SDNode *Call = CallEnd->getOperand(0).getNode();
-  bool hasGlue = Call->getGluedNode();
+  // The stackmap intrinsic only records the live variables (the arguemnts
+  // passed to it) and emits NOPS (if requested). Unlike the patchpoint
+  // intrinsic, this won't be lowered to a function call. This means we don't
+  // have to worry about calling conventions and target specific lowering code.
+  // Instead we perform the call lowering right here.
+  //
+  // chain, flag = CALLSEQ_START(chain, 0)
+  // chain, flag = STACKMAP(id, nbytes, ..., chain, flag)
+  // chain, flag = CALLSEQ_END(chain, 0, 0, flag)
+  //
+  Chain = DAG.getCALLSEQ_START(getRoot(), NullPtr, DL);
+  InFlag = Chain.getValue(1);
 
-  // Replace the target specific call node with the stackmap intrinsic.
-  SmallVector<SDValue, 8> Ops;
+  // Add the <id> and <numBytes> constants.
+  SDValue IDVal = getValue(CI.getOperand(PatchPointOpers::IDPos));
+  Ops.push_back(DAG.getTargetConstant(
+                  cast<ConstantSDNode>(IDVal)->getZExtValue(), MVT::i64));
+  SDValue NBytesVal = getValue(CI.getOperand(PatchPointOpers::NBytesPos));
+  Ops.push_back(DAG.getTargetConstant(
+                  cast<ConstantSDNode>(NBytesVal)->getZExtValue(), MVT::i32));
 
-  // Add the <id> and <numShadowBytes> constants.
-  for (unsigned i = 0; i < 2; ++i) {
-    SDValue tmp = getValue(CI.getOperand(i));
-    Ops.push_back(DAG.getTargetConstant(
-        cast<ConstantSDNode>(tmp)->getZExtValue(), MVT::i32));
-  }
   // Push live variables for the stack map.
   addStackMapLiveVars(CI, 2, Ops, *this);
 
-  // Push the chain (this is originally the first operand of the call, but
-  // becomes now the last or second to last operand).
-  Ops.push_back(*(Call->op_begin()));
+  // We are not pushing any register mask info here on the operands list,
+  // because the stackmap doesn't clobber anything.
 
-    // Push the glue flag (last operand).
-  if (hasGlue)
-    Ops.push_back(*(Call->op_end()-1));
+  // Push the chain and the glue flag.
+  Ops.push_back(Chain);
+  Ops.push_back(InFlag);
 
+  // Create the STACKMAP node.
   SDVTList NodeTys = DAG.getVTList(MVT::Other, MVT::Glue);
+  SDNode *SM = DAG.getMachineNode(TargetOpcode::STACKMAP, DL, NodeTys, Ops);
+  Chain = SDValue(SM, 0);
+  InFlag = Chain.getValue(1);
 
-  // Replace the target specific call node with a STACKMAP node.
-  MachineSDNode *MN = DAG.getMachineNode(TargetOpcode::STACKMAP, getCurSDLoc(),
-                                         NodeTys, Ops);
+  Chain = DAG.getCALLSEQ_END(Chain, NullPtr, NullPtr, InFlag, DL);
 
-  // StackMap generates no value, so nothing goes in the NodeMap.
+  // Stackmaps don't generate values, so nothing goes into the NodeMap.
 
-  // Fixup the consumers of the intrinsic. The chain and glue may be used in the
-  // call sequence.
-  DAG.ReplaceAllUsesWith(Call, MN);
-
-  DAG.DeleteNode(Call);
+  // Set the root to the target-lowered call chain.
+  DAG.setRoot(Chain);
 
   // Inform the Frame Information that we have a stackmap in this function.
   FuncInfo.MF->getFrameInfo()->setHasStackMap();
@@ -7091,8 +7153,18 @@ TargetLowering::LowerCallTo(TargetLowering::CallLoweringInfo &CLI) const {
         Flags.setInReg();
       if (Args[i].isSRet)
         Flags.setSRet();
-      if (Args[i].isByVal) {
+      if (Args[i].isByVal)
         Flags.setByVal();
+      if (Args[i].isInAlloca) {
+        Flags.setInAlloca();
+        // Set the byval flag for CCAssignFn callbacks that don't know about
+        // inalloca.  This way we can know how many bytes we should've allocated
+        // and how many bytes a callee cleanup function will pop.  If we port
+        // inalloca to more targets, we'll have to add custom inalloca handling
+        // in the various CC lowering callbacks.
+        Flags.setByVal();
+      }
+      if (Args[i].isByVal || Args[i].isInAlloca) {
         PointerType *Ty = cast<PointerType>(Args[i].Ty);
         Type *ElementTy = Ty->getElementType();
         Flags.setByValSize(getDataLayout()->getTypeAllocSize(ElementTy));
@@ -7311,8 +7383,18 @@ void SelectionDAGISel::LowerArguments(const Function &F) {
         Flags.setInReg();
       if (F.getAttributes().hasAttribute(Idx, Attribute::StructRet))
         Flags.setSRet();
-      if (F.getAttributes().hasAttribute(Idx, Attribute::ByVal)) {
+      if (F.getAttributes().hasAttribute(Idx, Attribute::ByVal))
         Flags.setByVal();
+      if (F.getAttributes().hasAttribute(Idx, Attribute::InAlloca)) {
+        Flags.setInAlloca();
+        // Set the byval flag for CCAssignFn callbacks that don't know about
+        // inalloca.  This way we can know how many bytes we should've allocated
+        // and how many bytes a callee cleanup function will pop.  If we port
+        // inalloca to more targets, we'll have to add custom inalloca handling
+        // in the various CC lowering callbacks.
+        Flags.setByVal();
+      }
+      if (Flags.isByVal() || Flags.isInAlloca()) {
         PointerType *Ty = cast<PointerType>(I->getType());
         Type *ElementTy = Ty->getElementType();
         Flags.setByValSize(TD->getTypeAllocSize(ElementTy));

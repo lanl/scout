@@ -380,6 +380,9 @@ static unsigned adjustFixupValue(const MCFixup &Fixup, uint64_t Value,
   case ARM::fixup_arm_blx:
     // These values don't encode the low two bits since they're always zero.
     // Offset by 8 just as above.
+    if (const MCSymbolRefExpr *SRE = dyn_cast<MCSymbolRefExpr>(Fixup.getValue()))
+      if (SRE->getKind() == MCSymbolRefExpr::VK_ARM_TLSCALL)
+        return 0;
     return 0xffffff & ((Value - 8) >> 2);
   case ARM::fixup_t2_uncondbranch: {
     Value = Value - 4;
@@ -461,6 +464,9 @@ static unsigned adjustFixupValue(const MCFixup &Fixup, uint64_t Value,
     // Note that the halfwords are stored high first, low second; so we need
     // to transpose the fixup value here to map properly.
     uint32_t offset = (Value - 2) >> 2;
+    if (const MCSymbolRefExpr *SRE = dyn_cast<MCSymbolRefExpr>(Fixup.getValue()))
+      if (SRE->getKind() == MCSymbolRefExpr::VK_ARM_TLSCALL)
+        offset = 0;
     uint32_t signBit = (offset & 0x400000) >> 22;
     uint32_t I1Bit = (offset & 0x200000) >> 21;
     uint32_t J1Bit = (I1Bit ^ 0x1) ^ signBit;
@@ -559,11 +565,18 @@ void ARMAsmBackend::processFixupValue(const MCAssembler &Asm,
         Value |= 1;
     }
   }
+  // For Thumb1 BL instruction, it is possible to be a long jump between
+  // the basic blocks of the same function.  Thus, we would like to resolve
+  // the offset when the destination has the same MCFragment.
+  if (A && (unsigned)Fixup.getKind() == ARM::fixup_arm_thumb_bl) {
+    const MCSymbol &Sym = A->getSymbol().AliasedSymbol();
+    MCSymbolData &SymData = Asm.getSymbolData(Sym);
+    IsResolved = (SymData.getFragment() == DF);
+  }
   // We must always generate a relocation for BL/BLX instructions if we have
   // a symbol to reference, as the linker relies on knowing the destination
   // symbol's thumb-ness to get interworking right.
   if (A && ((unsigned)Fixup.getKind() == ARM::fixup_arm_thumb_blx ||
-            (unsigned)Fixup.getKind() == ARM::fixup_arm_thumb_bl ||
             (unsigned)Fixup.getKind() == ARM::fixup_arm_blx ||
             (unsigned)Fixup.getKind() == ARM::fixup_arm_uncondbl ||
             (unsigned)Fixup.getKind() == ARM::fixup_arm_condbl))
@@ -669,10 +682,6 @@ public:
     return createARMMachObjectWriter(OS, /*Is64Bit=*/false,
                                      MachO::CPU_TYPE_ARM,
                                      Subtype);
-  }
-
-  virtual bool doesSectionRequireSymbols(const MCSection &Section) const {
-    return false;
   }
 };
 
