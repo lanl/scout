@@ -2240,15 +2240,36 @@ validateInstruction(MCInst &Inst,
 bool AArch64AsmParser::ParseInstruction(ParseInstructionInfo &Info,
                                         StringRef Name, SMLoc NameLoc,
                                SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
-  size_t CondCodePos = Name.find('.');
+  StringRef PatchedName = StringSwitch<StringRef>(Name.lower())
+    .Case("beq", "b.eq")
+    .Case("bne", "b.ne")
+    .Case("bhs", "b.hs")
+    .Case("bcs", "b.cs")
+    .Case("blo", "b.lo")
+    .Case("bcc", "b.cc")
+    .Case("bmi", "b.mi")
+    .Case("bpl", "b.pl")
+    .Case("bvs", "b.vs")
+    .Case("bvc", "b.vc")
+    .Case("bhi", "b.hi")
+    .Case("bls", "b.ls")
+    .Case("bge", "b.ge")
+    .Case("blt", "b.lt")
+    .Case("bgt", "b.gt")
+    .Case("ble", "b.le")
+    .Case("bal", "b.al")
+    .Case("bnv", "b.nv")
+    .Default(Name);
 
-  StringRef Mnemonic = Name.substr(0, CondCodePos);
+  size_t CondCodePos = PatchedName.find('.');
+
+  StringRef Mnemonic = PatchedName.substr(0, CondCodePos);
   Operands.push_back(AArch64Operand::CreateToken(Mnemonic, NameLoc));
 
   if (CondCodePos != StringRef::npos) {
     // We have a condition code
     SMLoc S = SMLoc::getFromPointer(NameLoc.getPointer() + CondCodePos + 1);
-    StringRef CondStr = Name.substr(CondCodePos + 1, StringRef::npos);
+    StringRef CondStr = PatchedName.substr(CondCodePos + 1, StringRef::npos);
     A64CC::CondCodes Code;
 
     Code = A64StringToCondCode(CondStr);
@@ -2375,7 +2396,7 @@ bool AArch64AsmParser::ParseDirectiveTLSDescCall(SMLoc L) {
   Inst.setOpcode(AArch64::TLSDESCCALL);
   Inst.addOperand(MCOperand::CreateExpr(Expr));
 
-  getParser().getStreamer().EmitInstruction(Inst);
+  getParser().getStreamer().EmitInstruction(Inst, STI);
   return false;
 }
 
@@ -2398,7 +2419,7 @@ bool AArch64AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
     if (validateInstruction(Inst, Operands))
       return true;
 
-    Out.EmitInstruction(Inst);
+    Out.EmitInstruction(Inst, STI);
     return false;
   case Match_MissingFeature:
     Error(IDLoc, "instruction requires a CPU feature not currently enabled");

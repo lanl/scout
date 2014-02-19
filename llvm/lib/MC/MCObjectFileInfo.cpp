@@ -79,16 +79,10 @@ void MCObjectFileInfo::InitMachOMCObjectFileInfo(Triple T) {
                            MCSectionMachO::S_8BYTE_LITERALS,
                            SectionKind::getMergeableConst8());
 
-  // ld_classic doesn't support .literal16 in 32-bit mode, and ld64 falls back
-  // to using it in -static mode.
-  SixteenByteConstantSection = 0;
-  if (RelocM != Reloc::Static &&
-      T.getArch() != Triple::x86_64 && T.getArch() != Triple::ppc64 &&
-      T.getArch() != Triple::ppc64le)
-    SixteenByteConstantSection =   // .literal16
-      Ctx->getMachOSection("__TEXT", "__literal16",
-                           MCSectionMachO::S_16BYTE_LITERALS,
-                           SectionKind::getMergeableConst16());
+  SixteenByteConstantSection // .literal16
+      = Ctx->getMachOSection("__TEXT", "__literal16",
+                             MCSectionMachO::S_16BYTE_LITERALS,
+                             SectionKind::getMergeableConst16());
 
   ReadOnlySection  // .const
     = Ctx->getMachOSection("__TEXT", "__const", 0,
@@ -149,6 +143,8 @@ void MCObjectFileInfo::InitMachOMCObjectFileInfo(Triple T) {
   // Exception Handling.
   LSDASection = Ctx->getMachOSection("__TEXT", "__gcc_except_tab", 0,
                                      SectionKind::getReadOnlyWithRel());
+
+  COFFDebugSymbolsSection = 0;
 
   if (T.isMacOSX() && !T.isMacOSXVersionLT(10, 6)) {
     CompactUnwindSection =
@@ -457,6 +453,8 @@ void MCObjectFileInfo::InitELFMCObjectFileInfo(Triple T) {
     Ctx->getELFSection(".gcc_except_table", ELF::SHT_PROGBITS,
                        ELF::SHF_ALLOC,
                        SectionKind::getReadOnly());
+
+  COFFDebugSymbolsSection = 0;
 
   // Debug Info Sections.
   DwarfAbbrevSection =

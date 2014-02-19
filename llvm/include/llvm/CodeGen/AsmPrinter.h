@@ -42,6 +42,7 @@ namespace llvm {
   class MCAsmInfo;
   class MCCFIInstruction;
   class MCContext;
+  class MCInst;
   class MCInstrInfo;
   class MCSection;
   class MCStreamer;
@@ -149,11 +150,19 @@ namespace llvm {
     /// getDataLayout - Return information about data layout.
     const DataLayout &getDataLayout() const;
 
+    /// getSubtargetInfo - Return information about subtarget.
+    const MCSubtargetInfo &getSubtargetInfo() const;
+
+    void EmitToStreamer(MCStreamer &S, const MCInst &Inst);
+
     /// getTargetTriple - Return the target triple string.
     StringRef getTargetTriple() const;
 
     /// getCurrentSection() - Return the current section we are emitting to.
     const MCSection *getCurrentSection() const;
+
+    void getNameWithPrefix(SmallVectorImpl<char> &Name,
+                           const GlobalValue *GV) const;
 
     MCSymbol *getSymbol(const GlobalValue *GV) const;
 
@@ -469,7 +478,7 @@ namespace llvm {
     /// \p EndInfo   - the final subtarget info after parsing the inline asm,
     ///                or NULL if the value is unknown.
     virtual void emitInlineAsmEnd(const MCSubtargetInfo &StartInfo,
-                                  MCSubtargetInfo *EndInfo) const;
+                                  const MCSubtargetInfo *EndInfo) const;
 
   private:
     /// Private state for PrintSpecial()

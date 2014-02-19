@@ -378,10 +378,14 @@ void RuntimeDyldMachO::processRelocationRef(unsigned SectionID,
     }
   } else {
     SectionRef Sec = MachO->getRelocationSection(RE);
-    Value.SectionID = findOrEmitSection(Obj, Sec, true, ObjSectionToID);
+    bool IsCode = false;
+    Sec.isText(IsCode);
+    Value.SectionID = findOrEmitSection(Obj, Sec, IsCode, ObjSectionToID);
     uint64_t Addr;
     Sec.getAddress(Addr);
     Value.Addend = Addend - Addr;
+    if (IsPCRel)
+      Value.Addend += Offset + NumBytes;
   }
 
   if (Arch == Triple::x86_64 && (RelType == MachO::X86_64_RELOC_GOT ||

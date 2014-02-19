@@ -386,19 +386,15 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   // in RelocSecs contain the relocations for section S.
   error_code EC;
   std::map<SectionRef, SmallVector<SectionRef, 1> > SectionRelocMap;
-  for (section_iterator I = Obj->begin_sections(), E = Obj->end_sections();
-       I != E; I.increment(EC)) {
-    if (error(EC))
-      break;
+  for (section_iterator I = Obj->section_begin(), E = Obj->section_end();
+       I != E; ++I) {
     section_iterator Sec2 = I->getRelocatedSection();
-    if (Sec2 != Obj->end_sections())
+    if (Sec2 != Obj->section_end())
       SectionRelocMap[*Sec2].push_back(*I);
   }
 
-  for (section_iterator I = Obj->begin_sections(), E = Obj->end_sections();
-       I != E; I.increment(EC)) {
-    if (error(EC))
-      break;
+  for (section_iterator I = Obj->section_begin(), E = Obj->section_end();
+       I != E; ++I) {
     bool Text;
     if (error(I->isText(Text)))
       break;
@@ -411,8 +407,8 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 
     // Make a list of all the symbols in this section.
     std::vector<std::pair<uint64_t, StringRef> > Symbols;
-    for (symbol_iterator SI = Obj->begin_symbols(), SE = Obj->end_symbols();
-         SI != SE; SI.increment(EC)) {
+    for (symbol_iterator SI = Obj->symbol_begin(), SE = Obj->symbol_end();
+         SI != SE; ++SI) {
       bool contains;
       if (!error(I->containsSymbol(*SI, contains)) && contains) {
         uint64_t Address;
@@ -439,13 +435,10 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
       for (SmallVectorImpl<SectionRef>::iterator RelocSec = RelocSecs->begin(),
                                                  E = RelocSecs->end();
            RelocSec != E; ++RelocSec) {
-        for (relocation_iterator RI = RelocSec->begin_relocations(),
-                                 RE = RelocSec->end_relocations();
-             RI != RE; RI.increment(EC)) {
-          if (error(EC))
-            break;
+        for (relocation_iterator RI = RelocSec->relocation_begin(),
+                                 RE = RelocSec->relocation_end();
+             RI != RE; ++RI)
           Rels.push_back(*RI);
-        }
       }
     }
 
@@ -559,22 +552,16 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 }
 
 static void PrintRelocations(const ObjectFile *o) {
-  error_code EC;
-  for (section_iterator si = o->begin_sections(), se = o->end_sections();
-       si != se; si.increment(EC)) {
-    if (error(EC))
-      return;
-    if (si->begin_relocations() == si->end_relocations())
+  for (section_iterator si = o->section_begin(), se = o->section_end();
+       si != se; ++si) {
+    if (si->relocation_begin() == si->relocation_end())
       continue;
     StringRef secname;
     if (error(si->getName(secname))) continue;
     outs() << "RELOCATION RECORDS FOR [" << secname << "]:\n";
-    for (relocation_iterator ri = si->begin_relocations(),
-                             re = si->end_relocations();
-         ri != re; ri.increment(EC)) {
-      if (error(EC))
-        return;
-
+    for (relocation_iterator ri = si->relocation_begin(),
+                             re = si->relocation_end();
+         ri != re; ++ri) {
       bool hidden;
       uint64_t address;
       SmallString<32> relocname;
@@ -593,12 +580,9 @@ static void PrintRelocations(const ObjectFile *o) {
 static void PrintSectionHeaders(const ObjectFile *o) {
   outs() << "Sections:\n"
             "Idx Name          Size      Address          Type\n";
-  error_code EC;
   unsigned i = 0;
-  for (section_iterator si = o->begin_sections(), se = o->end_sections();
-       si != se; si.increment(EC)) {
-    if (error(EC))
-      return;
+  for (section_iterator si = o->section_begin(), se = o->section_end();
+       si != se; ++si) {
     StringRef Name;
     if (error(si->getName(Name)))
       return;
@@ -620,10 +604,8 @@ static void PrintSectionHeaders(const ObjectFile *o) {
 
 static void PrintSectionContents(const ObjectFile *o) {
   error_code EC;
-  for (section_iterator si = o->begin_sections(), se = o->end_sections();
-       si != se; si.increment(EC)) {
-    if (error(EC))
-      return;
+  for (section_iterator si = o->section_begin(), se = o->section_end();
+       si != se; ++si) {
     StringRef Name;
     StringRef Contents;
     uint64_t BaseAddr;
@@ -714,20 +696,16 @@ static void PrintSymbolTable(const ObjectFile *o) {
   if (const COFFObjectFile *coff = dyn_cast<const COFFObjectFile>(o))
     PrintCOFFSymbolTable(coff);
   else {
-    error_code EC;
-    for (symbol_iterator si = o->begin_symbols(), se = o->end_symbols();
-         si != se; si.increment(EC)) {
-      if (error(EC))
-        return;
+    for (symbol_iterator si = o->symbol_begin(), se = o->symbol_end();
+         si != se; ++si) {
       StringRef Name;
       uint64_t Address;
       SymbolRef::Type Type;
       uint64_t Size;
-      uint32_t Flags;
-      section_iterator Section = o->end_sections();
+      uint32_t Flags = si->getFlags();
+      section_iterator Section = o->section_end();
       if (error(si->getName(Name))) continue;
       if (error(si->getAddress(Address))) continue;
-      if (error(si->getFlags(Flags))) continue;
       if (error(si->getType(Type))) continue;
       if (error(si->getSize(Size))) continue;
       if (error(si->getSection(Section))) continue;
@@ -765,7 +743,7 @@ static void PrintSymbolTable(const ObjectFile *o) {
              << ' ';
       if (Absolute)
         outs() << "*ABS*";
-      else if (Section == o->end_sections())
+      else if (Section == o->section_end())
         outs() << "*UND*";
       else {
         if (const MachOObjectFile *MachO =

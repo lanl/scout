@@ -78,13 +78,13 @@ public:
   virtual void FinishImpl();
 
 private:
-  virtual void EmitInstToData(const MCInst &Inst) {
+  virtual void EmitInstToData(const MCInst &Inst, const MCSubtargetInfo &STI) {
     MCDataFragment *DF = getOrCreateDataFragment();
 
     SmallVector<MCFixup, 4> Fixups;
     SmallString<256> Code;
     raw_svector_ostream VecOS(Code);
-    getAssembler().getEmitter().EncodeInstruction(Inst, VecOS, Fixups);
+    getAssembler().getEmitter().EncodeInstruction(Inst, VecOS, Fixups, STI);
     VecOS.flush();
 
     // Add the fixups and data.
@@ -128,13 +128,13 @@ void WinCOFFStreamer::InitSections(bool Force) {
   // This emulates the same behavior of GNU as. This makes it easier
   // to compare the output as the major sections are in the same order.
   SwitchSection(getContext().getObjectFileInfo()->getTextSection());
-  EmitCodeAlignment(4, 0);
+  EmitCodeAlignment(4);
 
   SwitchSection(getContext().getObjectFileInfo()->getDataSection());
-  EmitCodeAlignment(4, 0);
+  EmitCodeAlignment(4);
 
   SwitchSection(getContext().getObjectFileInfo()->getBSSSection());
-  EmitCodeAlignment(4, 0);
+  EmitCodeAlignment(4);
 
   SwitchSection(getContext().getObjectFileInfo()->getTextSection());
 }

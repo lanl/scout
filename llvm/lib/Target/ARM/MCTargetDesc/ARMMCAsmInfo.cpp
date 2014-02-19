@@ -16,12 +16,6 @@
 
 using namespace llvm;
 
-cl::opt<bool>
-EnableARMEHABI("arm-enable-ehabi", cl::Hidden,
-  cl::desc("Generate ARM EHABI tables"),
-  cl::init(false));
-
-
 void ARMMCAsmInfoDarwin::anchor() { }
 
 ARMMCAsmInfoDarwin::ARMMCAsmInfoDarwin() {
@@ -35,6 +29,8 @@ ARMMCAsmInfoDarwin::ARMMCAsmInfoDarwin() {
 
   // Exceptions handling
   ExceptionsType = ExceptionHandling::SjLj;
+
+  UseIntegratedAssembler = true;
 }
 
 void ARMELFMCAsmInfo::anchor() { }
@@ -52,9 +48,10 @@ ARMELFMCAsmInfo::ARMELFMCAsmInfo() {
   SupportsDebugInformation = true;
 
   // Exceptions handling
-  if (EnableARMEHABI)
-    ExceptionsType = ExceptionHandling::ARM;
+  ExceptionsType = ExceptionHandling::ARM;
 
   // foo(plt) instead of foo@plt
   UseParensForSymbolVariant = true;
+
+  UseIntegratedAssembler = true;
 }
