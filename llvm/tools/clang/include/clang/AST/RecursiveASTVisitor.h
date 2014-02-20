@@ -2473,6 +2473,12 @@ bool RecursiveASTVisitor<Derived>::TraverseOMPClause(OMPClause *C) {
 }
 
 template<typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOMPIfClause(OMPIfClause *C) {
+  TraverseStmt(C->getCondition());
+  return true;
+}
+
+template<typename Derived>
 bool RecursiveASTVisitor<Derived>::VisitOMPDefaultClause(OMPDefaultClause *C) {
   return true;
 }

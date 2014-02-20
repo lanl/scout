@@ -1137,7 +1137,7 @@ CodeGenFunction::GenerateBlockFunction(GlobalDecl GD,
 
   // Create the function declaration.
   const FunctionProtoType *fnType = blockInfo.getBlockExpr()->getFunctionType();
-  const CGFunctionInfo &fnInfo = CGM.getTypes().arrangeFunctionDeclaration(
+  const CGFunctionInfo &fnInfo = CGM.getTypes().arrangeFreeFunctionDeclaration(
       fnType->getReturnType(), args, fnType->getExtInfo(),
       fnType->isVariadic());
   if (CGM.ReturnTypeUsesSRet(fnInfo))
@@ -1298,10 +1298,8 @@ CodeGenFunction::GenerateCopyHelperFunction(const CGBlockInfo &blockInfo) {
   ImplicitParamDecl srcDecl(0, SourceLocation(), 0, C.VoidPtrTy);
   args.push_back(&srcDecl);
 
-  const CGFunctionInfo &FI =
-    CGM.getTypes().arrangeFunctionDeclaration(C.VoidTy, args,
-                                              FunctionType::ExtInfo(),
-                                              /*variadic*/ false);
+  const CGFunctionInfo &FI = CGM.getTypes().arrangeFreeFunctionDeclaration(
+      C.VoidTy, args, FunctionType::ExtInfo(), /*variadic=*/false);
 
   // FIXME: it would be nice if these were mergeable with things with
   // identical semantics.
@@ -1473,10 +1471,8 @@ CodeGenFunction::GenerateDestroyHelperFunction(const CGBlockInfo &blockInfo) {
   ImplicitParamDecl srcDecl(0, SourceLocation(), 0, C.VoidPtrTy);
   args.push_back(&srcDecl);
 
-  const CGFunctionInfo &FI =
-    CGM.getTypes().arrangeFunctionDeclaration(C.VoidTy, args,
-                                              FunctionType::ExtInfo(),
-                                              /*variadic*/ false);
+  const CGFunctionInfo &FI = CGM.getTypes().arrangeFreeFunctionDeclaration(
+      C.VoidTy, args, FunctionType::ExtInfo(), /*variadic=*/false);
 
   // FIXME: We'd like to put these into a mergable by content, with
   // internal linkage.
@@ -1764,10 +1760,8 @@ generateByrefCopyHelper(CodeGenFunction &CGF,
   ImplicitParamDecl src(0, SourceLocation(), 0, Context.VoidPtrTy);
   args.push_back(&src);
 
-  const CGFunctionInfo &FI =
-    CGF.CGM.getTypes().arrangeFunctionDeclaration(R, args,
-                                                  FunctionType::ExtInfo(),
-                                                  /*variadic*/ false);
+  const CGFunctionInfo &FI = CGF.CGM.getTypes().arrangeFreeFunctionDeclaration(
+      R, args, FunctionType::ExtInfo(), /*variadic=*/false);
 
   CodeGenTypes &Types = CGF.CGM.getTypes();
   llvm::FunctionType *LTy = Types.GetFunctionType(FI);
@@ -1835,10 +1829,8 @@ generateByrefDisposeHelper(CodeGenFunction &CGF,
   ImplicitParamDecl src(0, SourceLocation(), 0, Context.VoidPtrTy);
   args.push_back(&src);
 
-  const CGFunctionInfo &FI =
-    CGF.CGM.getTypes().arrangeFunctionDeclaration(R, args,
-                                                  FunctionType::ExtInfo(),
-                                                  /*variadic*/ false);
+  const CGFunctionInfo &FI = CGF.CGM.getTypes().arrangeFreeFunctionDeclaration(
+      R, args, FunctionType::ExtInfo(), /*variadic=*/false);
 
   CodeGenTypes &Types = CGF.CGM.getTypes();
   llvm::FunctionType *LTy = Types.GetFunctionType(FI);

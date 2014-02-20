@@ -42,13 +42,13 @@ void MCELFStreamer::InitSections(bool Force) {
   // This emulates the same behavior of GNU as. This makes it easier
   // to compare the output as the major sections are in the same order.
   SwitchSection(getContext().getObjectFileInfo()->getTextSection());
-  EmitCodeAlignment(4, 0);
+  EmitCodeAlignment(4);
 
   SwitchSection(getContext().getObjectFileInfo()->getDataSection());
-  EmitCodeAlignment(4, 0);
+  EmitCodeAlignment(4);
 
   SwitchSection(getContext().getObjectFileInfo()->getBSSSection());
-  EmitCodeAlignment(4, 0);
+  EmitCodeAlignment(4);
 
   SwitchSection(getContext().getObjectFileInfo()->getTextSection());
 }
@@ -397,20 +397,22 @@ void MCELFStreamer::fixSymbolsInTLSFixups(const MCExpr *expr) {
   }
 }
 
-void MCELFStreamer::EmitInstToFragment(const MCInst &Inst) {
-  this->MCObjectStreamer::EmitInstToFragment(Inst);
+void MCELFStreamer::EmitInstToFragment(const MCInst &Inst,
+                                       const MCSubtargetInfo &STI) {
+  this->MCObjectStreamer::EmitInstToFragment(Inst, STI);
   MCRelaxableFragment &F = *cast<MCRelaxableFragment>(getCurrentFragment());
 
   for (unsigned i = 0, e = F.getFixups().size(); i != e; ++i)
     fixSymbolsInTLSFixups(F.getFixups()[i].getValue());
 }
 
-void MCELFStreamer::EmitInstToData(const MCInst &Inst) {
+void MCELFStreamer::EmitInstToData(const MCInst &Inst,
+                                   const MCSubtargetInfo &STI) {
   MCAssembler &Assembler = getAssembler();
   SmallVector<MCFixup, 4> Fixups;
   SmallString<256> Code;
   raw_svector_ostream VecOS(Code);
-  Assembler.getEmitter().EncodeInstruction(Inst, VecOS, Fixups);
+  Assembler.getEmitter().EncodeInstruction(Inst, VecOS, Fixups, STI);
   VecOS.flush();
 
   for (unsigned i = 0, e = Fixups.size(); i != e; ++i)

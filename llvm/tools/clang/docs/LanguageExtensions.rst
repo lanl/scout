@@ -12,7 +12,7 @@ Clang Language Extensions
    ObjectiveCLiterals
    BlockLanguageSpec
    Block-ABI-Apple
-   AutomaticReferenceCounting   
+   AutomaticReferenceCounting
 
 Introduction
 ============
@@ -425,103 +425,6 @@ Clang will treat the presence of this file as an indicator that the framework
 should be treated as a system framework, regardless of how it was found in the
 framework search path.  For consistency, we recommend that such files never be
 included in installed versions of the framework.
-
-Availability attribute
-======================
-
-Clang introduces the ``availability`` attribute, which can be placed on
-declarations to describe the lifecycle of that declaration relative to
-operating system versions.  Consider the function declaration for a
-hypothetical function ``f``:
-
-.. code-block:: c++
-
-  void f(void) __attribute__((availability(macosx,introduced=10.4,deprecated=10.6,obsoleted=10.7)));
-
-The availability attribute states that ``f`` was introduced in Mac OS X 10.4,
-deprecated in Mac OS X 10.6, and obsoleted in Mac OS X 10.7.  This information
-is used by Clang to determine when it is safe to use ``f``: for example, if
-Clang is instructed to compile code for Mac OS X 10.5, a call to ``f()``
-succeeds.  If Clang is instructed to compile code for Mac OS X 10.6, the call
-succeeds but Clang emits a warning specifying that the function is deprecated.
-Finally, if Clang is instructed to compile code for Mac OS X 10.7, the call
-fails because ``f()`` is no longer available.
-
-The availability attribute is a comma-separated list starting with the
-platform name and then including clauses specifying important milestones in the
-declaration's lifetime (in any order) along with additional information.  Those
-clauses can be:
-
-introduced=\ *version*
-  The first version in which this declaration was introduced.
-
-deprecated=\ *version*
-  The first version in which this declaration was deprecated, meaning that
-  users should migrate away from this API.
-
-obsoleted=\ *version*
-  The first version in which this declaration was obsoleted, meaning that it
-  was removed completely and can no longer be used.
-
-unavailable
-  This declaration is never available on this platform.
-
-message=\ *string-literal*
-  Additional message text that Clang will provide when emitting a warning or
-  error about use of a deprecated or obsoleted declaration.  Useful to direct
-  users to replacement APIs.
-
-Multiple availability attributes can be placed on a declaration, which may
-correspond to different platforms.  Only the availability attribute with the
-platform corresponding to the target platform will be used; any others will be
-ignored.  If no availability attribute specifies availability for the current
-target platform, the availability attributes are ignored.  Supported platforms
-are:
-
-``ios``
-  Apple's iOS operating system.  The minimum deployment target is specified by
-  the ``-mios-version-min=*version*`` or ``-miphoneos-version-min=*version*``
-  command-line arguments.
-
-``macosx``
-  Apple's Mac OS X operating system.  The minimum deployment target is
-  specified by the ``-mmacosx-version-min=*version*`` command-line argument.
-
-A declaration can be used even when deploying back to a platform version prior
-to when the declaration was introduced.  When this happens, the declaration is
-`weakly linked
-<https://developer.apple.com/library/mac/#documentation/MacOSX/Conceptual/BPFrameworks/Concepts/WeakLinking.html>`_,
-as if the ``weak_import`` attribute were added to the declaration.  A
-weakly-linked declaration may or may not be present a run-time, and a program
-can determine whether the declaration is present by checking whether the
-address of that declaration is non-NULL.
-
-If there are multiple declarations of the same entity, the availability
-attributes must either match on a per-platform basis or later
-declarations must not have availability attributes for that
-platform. For example:
-
-.. code-block:: c
-
-  void g(void) __attribute__((availability(macosx,introduced=10.4)));
-  void g(void) __attribute__((availability(macosx,introduced=10.4))); // okay, matches
-  void g(void) __attribute__((availability(ios,introduced=4.0))); // okay, adds a new platform
-  void g(void); // okay, inherits both macosx and ios availability from above.
-  void g(void) __attribute__((availability(macosx,introduced=10.5))); // error: mismatch
-
-When one method overrides another, the overriding method can be more widely available than the overridden method, e.g.,:
-
-.. code-block:: objc
-
-  @interface A
-  - (id)method __attribute__((availability(macosx,introduced=10.4)));
-  - (id)method2 __attribute__((availability(macosx,introduced=10.4)));
-  @end
-
-  @interface B : A
-  - (id)method __attribute__((availability(macosx,introduced=10.3))); // okay: method moved into base class later
-  - (id)method __attribute__((availability(macosx,introduced=10.5))); // error: this method was available via the base class in 10.4
-  @end
 
 Checks for Standard Language Features
 =====================================
@@ -1195,77 +1098,6 @@ feature, clang provides default synthesis of those properties not declared
 ``__has_feature(objc_default_synthesize_properties)`` checks for availability
 of this feature in version of clang being used.
 
-.. _langext-objc_method_family:
-
-
-Objective-C requiring a call to ``super`` in an override
---------------------------------------------------------
-
-Some Objective-C classes allow a subclass to override a particular method in a
-parent class but expect that the overriding method also calls the overridden
-method in the parent class. For these cases, we provide an attribute to
-designate that a method requires a "call to ``super``" in the overriding
-method in the subclass.
-
-**Usage**: ``__attribute__((objc_requires_super))``.  This attribute can only
-be placed at the end of a method declaration:
-
-.. code-block:: objc
-
-  - (void)foo __attribute__((objc_requires_super));
-
-This attribute can only be applied the method declarations within a class, and
-not a protocol.  Currently this attribute does not enforce any placement of
-where the call occurs in the overriding method (such as in the case of
-``-dealloc`` where the call must appear at the end).  It checks only that it
-exists.
-
-Note that on both OS X and iOS that the Foundation framework provides a
-convenience macro ``NS_REQUIRES_SUPER`` that provides syntactic sugar for this
-attribute:
-
-.. code-block:: objc
-
-  - (void)foo NS_REQUIRES_SUPER;
-
-This macro is conditionally defined depending on the compiler's support for
-this attribute.  If the compiler does not support the attribute the macro
-expands to nothing.
-
-Operationally, when a method has this annotation the compiler will warn if the
-implementation of an override in a subclass does not call super.  For example:
-
-.. code-block:: objc
-
-   warning: method possibly missing a [super AnnotMeth] call
-   - (void) AnnotMeth{};
-                      ^
-
-Objective-C Method Families
----------------------------
-
-Many methods in Objective-C have conventional meanings determined by their
-selectors. It is sometimes useful to be able to mark a method as having a
-particular conventional meaning despite not having the right selector, or as
-not having the conventional meaning that its selector would suggest. For these
-use cases, we provide an attribute to specifically describe the "method family"
-that a method belongs to.
-
-**Usage**: ``__attribute__((objc_method_family(X)))``, where ``X`` is one of
-``none``, ``alloc``, ``copy``, ``init``, ``mutableCopy``, or ``new``.  This
-attribute can only be placed at the end of a method declaration:
-
-.. code-block:: objc
-
-  - (NSString *)initMyStringValue __attribute__((objc_method_family(none)));
-
-Users who do not wish to change the conventional meaning of a method, and who
-merely want to document its non-standard retain and release semantics, should
-use the :ref:`retaining behavior attributes <langext-objc-retain-release>`
-described below.
-
-Query for this feature with ``__has_attribute(objc_method_family)``.
-
 .. _langext-objc-retain-release:
 
 Objective-C retaining behavior attributes
@@ -1278,8 +1110,7 @@ conventions for ownership of object arguments and
 return values. However, there are exceptions, and so Clang provides attributes
 to allow these exceptions to be documented. This are used by ARC and the
 `static analyzer <http://clang-analyzer.llvm.org>`_ Some exceptions may be
-better described using the :ref:`objc_method_family
-<langext-objc_method_family>` attribute instead.
+better described using the ``objc_method_family`` attribute instead.
 
 **Usage**: The ``ns_returns_retained``, ``ns_returns_not_retained``,
 ``ns_returns_autoreleased``, ``cf_returns_retained``, and
@@ -1337,167 +1168,6 @@ Query the presence of this new mangling with
 ``__has_feature(objc_protocol_qualifier_mangling)``.
 
 .. _langext-overloading:
-
-Function Overloading in C
-=========================
-
-Clang provides support for C++ function overloading in C.  Function overloading
-in C is introduced using the ``overloadable`` attribute.  For example, one
-might provide several overloaded versions of a ``tgsin`` function that invokes
-the appropriate standard function computing the sine of a value with ``float``,
-``double``, or ``long double`` precision:
-
-.. code-block:: c
-
-  #include <math.h>
-  float __attribute__((overloadable)) tgsin(float x) { return sinf(x); }
-  double __attribute__((overloadable)) tgsin(double x) { return sin(x); }
-  long double __attribute__((overloadable)) tgsin(long double x) { return sinl(x); }
-
-Given these declarations, one can call ``tgsin`` with a ``float`` value to
-receive a ``float`` result, with a ``double`` to receive a ``double`` result,
-etc.  Function overloading in C follows the rules of C++ function overloading
-to pick the best overload given the call arguments, with a few C-specific
-semantics:
-
-* Conversion from ``float`` or ``double`` to ``long double`` is ranked as a
-  floating-point promotion (per C99) rather than as a floating-point conversion
-  (as in C++).
-
-* A conversion from a pointer of type ``T*`` to a pointer of type ``U*`` is
-  considered a pointer conversion (with conversion rank) if ``T`` and ``U`` are
-  compatible types.
-
-* A conversion from type ``T`` to a value of type ``U`` is permitted if ``T``
-  and ``U`` are compatible types.  This conversion is given "conversion" rank.
-
-The declaration of ``overloadable`` functions is restricted to function
-declarations and definitions.  Most importantly, if any function with a given
-name is given the ``overloadable`` attribute, then all function declarations
-and definitions with that name (and in that scope) must have the
-``overloadable`` attribute.  This rule even applies to redeclarations of
-functions whose original declaration had the ``overloadable`` attribute, e.g.,
-
-.. code-block:: c
-
-  int f(int) __attribute__((overloadable));
-  float f(float); // error: declaration of "f" must have the "overloadable" attribute
-
-  int g(int) __attribute__((overloadable));
-  int g(int) { } // error: redeclaration of "g" must also have the "overloadable" attribute
-
-Functions marked ``overloadable`` must have prototypes.  Therefore, the
-following code is ill-formed:
-
-.. code-block:: c
-
-  int h() __attribute__((overloadable)); // error: h does not have a prototype
-
-However, ``overloadable`` functions are allowed to use a ellipsis even if there
-are no named parameters (as is permitted in C++).  This feature is particularly
-useful when combined with the ``unavailable`` attribute:
-
-.. code-block:: c++
-
-  void honeypot(...) __attribute__((overloadable, unavailable)); // calling me is an error
-
-Functions declared with the ``overloadable`` attribute have their names mangled
-according to the same rules as C++ function names.  For example, the three
-``tgsin`` functions in our motivating example get the mangled names
-``_Z5tgsinf``, ``_Z5tgsind``, and ``_Z5tgsine``, respectively.  There are two
-caveats to this use of name mangling:
-
-* Future versions of Clang may change the name mangling of functions overloaded
-  in C, so you should not depend on an specific mangling.  To be completely
-  safe, we strongly urge the use of ``static inline`` with ``overloadable``
-  functions.
-
-* The ``overloadable`` attribute has almost no meaning when used in C++,
-  because names will already be mangled and functions are already overloadable.
-  However, when an ``overloadable`` function occurs within an ``extern "C"``
-  linkage specification, it's name *will* be mangled in the same way as it
-  would in C.
-
-Query for this feature with ``__has_extension(attribute_overloadable)``.
-
-Controlling Overload Resolution
-===============================
-
-Clang introduces the ``enable_if`` attribute, which can be placed on function
-declarations to control which overload is selected based on the values of the
-function's arguments. When combined with the
-:ref:`overloadable<langext-overloading>` attribute, this feature is also
-available in C.
-
-.. code-block:: c++
-
-  int isdigit(int c);
-  int isdigit(int c) __attribute__((enable_if(c <= -1 || c > 255, "chosen when 'c' is out of range"))) __attribute__((unavailable("'c' must have the value of an unsigned char or EOF")));
-  
-  void foo(char c) {
-    isdigit(c);
-    isdigit(10);
-    isdigit(-10);  // results in a compile-time error.
-  }
-
-The enable_if attribute takes two arguments, the first is an expression written
-in terms of the function parameters, the second is a string explaining why this
-overload candidate could not be selected to be displayed in diagnostics. The
-expression is part of the function signature for the purposes of determining
-whether it is a redeclaration (following the rules used when determining
-whether a C++ template specialization is ODR-equivalent), but is not part of
-the type.
-
-The enable_if expression is evaluated as if it were the body of a
-bool-returning constexpr function declared with the arguments of the function
-it is being applied to, then called with the parameters at the callsite. If the
-result is false or could not be determined through constant expression
-evaluation, then this overload will not be chosen and the provided string may
-be used in a diagnostic if the compile fails as a result.
-
-Because the enable_if expression is an unevaluated context, there are no global
-state changes, nor the ability to pass information from the enable_if
-expression to the function body. For example, suppose we want calls to
-strnlen(strbuf, maxlen) to resolve to strnlen_chk(strbuf, maxlen, size of
-strbuf) only if the size of strbuf can be determined:
-
-.. code-block:: c++
-
-  __attribute__((always_inline))
-  static inline size_t strnlen(const char *s, size_t maxlen)
-    __attribute__((overloadable))
-    __attribute__((enable_if(__builtin_object_size(s, 0) != -1))),
-                             "chosen when the buffer size is known but 'maxlen' is not")))
-  {
-    return strnlen_chk(s, maxlen, __builtin_object_size(s, 0));
-  }
-
-Multiple enable_if attributes may be applied to a single declaration. In this
-case, the enable_if expressions are evaluated from left to right in the
-following manner. First, the candidates whose enable_if expressions evaluate to
-false or cannot be evaluated are discarded. If the remaining candidates do not
-share ODR-equivalent enable_if expressions, the overload resolution is
-ambiguous. Otherwise, enable_if overload resolution continues with the next
-enable_if attribute on the candidates that have not been discarded and have
-remaining enable_if attributes. In this way, we pick the most specific
-overload out of a number of viable overloads using enable_if.
-
-.. code-block:: c++
-
-  void f() __attribute__((enable_if(true, "")));  // #1
-  void f() __attribute__((enable_if(true, ""))) __attribute__((enable_if(true, "")));  // #2
-  
-  void g(int i, int j) __attribute__((enable_if(i, "")));  // #1
-  void g(int i, int j) __attribute__((enable_if(j, ""))) __attribute__((enable_if(true)));  // #2
-
-In this example, a call to f() is always resolved to #2, as the first enable_if
-expression is ODR-equivalent for both declarations, but #1 does not have another
-enable_if expression to continue evaluating, so the next round of evaluation has
-only a single candidate. In a call to g(1, 1), the call is ambiguous even though
-#2 has more enable_if attributes, because the first enable_if expressions are
-not ODR-equivalent.
-
-Query for this feature with ``__has_attribute(enable_if)``.
 
 Initializer lists for complex numbers in C
 ==========================================
@@ -2015,7 +1685,7 @@ ARM targets. This attribute may be attached to a function definition and
 instructs the backend to generate appropriate function entry/exit code so that
 it can be used directly as an interrupt service routine.
 
- The parameter passed to the interrupt attribute is optional, but if
+The parameter passed to the interrupt attribute is optional, but if
 provided it must be a string literal with one of the following values: "IRQ",
 "FIQ", "SWI", "ABORT", "UNDEF".
 
@@ -2099,159 +1769,21 @@ to specify that checks for uninitialized memory should not be inserted
 to avoid false positives in other places.
 
 
-Thread-Safety Annotation Checking
-=================================
+Thread Safety Analysis
+======================
 
-Clang supports additional attributes for checking basic locking policies in
-multithreaded programs.  Clang currently parses the following list of
-attributes, although **the implementation for these annotations is currently in
-development.** For more details, see the `GCC implementation
-<http://gcc.gnu.org/wiki/ThreadSafetyAnnotation>`_.
+Clang Thread Safety Analysis is a C++ language extension which warns about
+potential race conditions in code.  The analysis works very much like a type
+system for multi-threaded programs.  In addition to declaring the *type* of
+data (e.g. ``int``, ``float``, etc.), the programmer can (optionally) declare
+how access to that data is controlled in a multi-threaded environment.  The
+compiler will then issue warnings whenever code fails to follow obey the
+declared requirements.
 
-``no_thread_safety_analysis``
------------------------------
+The complete list of thread safety attributes, along with examples and
+frequently asked questions, can be found in the main documentation: see 
+:doc:`ThreadSafetyAnalysis`.
 
-Use ``__attribute__((no_thread_safety_analysis))`` on a function declaration to
-specify that the thread safety analysis should not be run on that function.
-This attribute provides an escape hatch (e.g. for situations when it is
-difficult to annotate the locking policy).
-
-``lockable``
-------------
-
-Use ``__attribute__((lockable))`` on a class definition to specify that it has
-a lockable type (e.g. a Mutex class).  This annotation is primarily used to
-check consistency.
-
-``scoped_lockable``
--------------------
-
-Use ``__attribute__((scoped_lockable))`` on a class definition to specify that
-it has a "scoped" lockable type.  Objects of this type will acquire the lock
-upon construction and release it upon going out of scope.  This annotation is
-primarily used to check consistency.
-
-``guarded_var``
----------------
-
-Use ``__attribute__((guarded_var))`` on a variable declaration to specify that
-the variable must be accessed while holding some lock.
-
-``pt_guarded_var``
-------------------
-
-Use ``__attribute__((pt_guarded_var))`` on a pointer declaration to specify
-that the pointer must be dereferenced while holding some lock.
-
-``guarded_by(l)``
------------------
-
-Use ``__attribute__((guarded_by(l)))`` on a variable declaration to specify
-that the variable must be accessed while holding lock ``l``.
-
-``pt_guarded_by(l)``
---------------------
-
-Use ``__attribute__((pt_guarded_by(l)))`` on a pointer declaration to specify
-that the pointer must be dereferenced while holding lock ``l``.
-
-``acquired_before(...)``
-------------------------
-
-Use ``__attribute__((acquired_before(...)))`` on a declaration of a lockable
-variable to specify that the lock must be acquired before all attribute
-arguments.  Arguments must be lockable type, and there must be at least one
-argument.
-
-``acquired_after(...)``
------------------------
-
-Use ``__attribute__((acquired_after(...)))`` on a declaration of a lockable
-variable to specify that the lock must be acquired after all attribute
-arguments.  Arguments must be lockable type, and there must be at least one
-argument.
-
-``exclusive_lock_function(...)``
---------------------------------
-
-Use ``__attribute__((exclusive_lock_function(...)))`` on a function declaration
-to specify that the function acquires all listed locks exclusively.  This
-attribute takes zero or more arguments: either of lockable type or integers
-indexing into function parameters of lockable type.  If no arguments are given,
-the acquired lock is implicitly ``this`` of the enclosing object.
-
-``shared_lock_function(...)``
------------------------------
-
-Use ``__attribute__((shared_lock_function(...)))`` on a function declaration to
-specify that the function acquires all listed locks, although the locks may be
-shared (e.g. read locks).  This attribute takes zero or more arguments: either
-of lockable type or integers indexing into function parameters of lockable
-type.  If no arguments are given, the acquired lock is implicitly ``this`` of
-the enclosing object.
-
-``exclusive_trylock_function(...)``
------------------------------------
-
-Use ``__attribute__((exclusive_lock_function(...)))`` on a function declaration
-to specify that the function will try (without blocking) to acquire all listed
-locks exclusively.  This attribute takes one or more arguments.  The first
-argument is an integer or boolean value specifying the return value of a
-successful lock acquisition.  The remaining arugments are either of lockable
-type or integers indexing into function parameters of lockable type.  If only
-one argument is given, the acquired lock is implicitly ``this`` of the
-enclosing object.
-
-``shared_trylock_function(...)``
---------------------------------
-
-Use ``__attribute__((shared_lock_function(...)))`` on a function declaration to
-specify that the function will try (without blocking) to acquire all listed
-locks, although the locks may be shared (e.g. read locks).  This attribute
-takes one or more arguments.  The first argument is an integer or boolean value
-specifying the return value of a successful lock acquisition.  The remaining
-arugments are either of lockable type or integers indexing into function
-parameters of lockable type.  If only one argument is given, the acquired lock
-is implicitly ``this`` of the enclosing object.
-
-``unlock_function(...)``
-------------------------
-
-Use ``__attribute__((unlock_function(...)))`` on a function declaration to
-specify that the function release all listed locks.  This attribute takes zero
-or more arguments: either of lockable type or integers indexing into function
-parameters of lockable type.  If no arguments are given, the acquired lock is
-implicitly ``this`` of the enclosing object.
-
-``lock_returned(l)``
---------------------
-
-Use ``__attribute__((lock_returned(l)))`` on a function declaration to specify
-that the function returns lock ``l`` (``l`` must be of lockable type).  This
-annotation is used to aid in resolving lock expressions.
-
-``locks_excluded(...)``
------------------------
-
-Use ``__attribute__((locks_excluded(...)))`` on a function declaration to
-specify that the function must not be called with the listed locks.  Arguments
-must be lockable type, and there must be at least one argument.
-
-``exclusive_locks_required(...)``
----------------------------------
-
-Use ``__attribute__((exclusive_locks_required(...)))`` on a function
-declaration to specify that the function must be called while holding the
-listed exclusive locks.  Arguments must be lockable type, and there must be at
-least one argument.
-
-``shared_locks_required(...)``
-------------------------------
-
-Use ``__attribute__((shared_locks_required(...)))`` on a function declaration
-to specify that the function must be called while holding the listed shared
-locks.  Arguments must be lockable type, and there must be at least one
-argument.
 
 Consumed Annotation Checking
 ============================

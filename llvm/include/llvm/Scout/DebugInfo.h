@@ -94,6 +94,24 @@ namespace llvm {
     }
   };
 
+  class DIScoutCompositeType : public DICompositeType {
+  public:
+    explicit DIScoutCompositeType(const MDNode* N = 0) : DICompositeType(N) {}
+
+    unsigned getDimension(int dim) const {
+      switch(dim){
+      case 0:
+        return getUnsignedField(15);
+      case 1:
+        return getUnsignedField(16);
+      case 2:
+        return getUnsignedField(17);
+      default:
+        assert(false && "Invalid mesh dimension");
+      }
+    }
+  };
+
 } // end namespace llvm
 
 #endif

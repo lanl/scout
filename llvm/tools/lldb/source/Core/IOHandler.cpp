@@ -10,10 +10,6 @@
 
 #include "lldb/lldb-python.h"
 
-#include <stdio.h>	/* ioctl, TIOCGWINSZ */
-#include <sys/ioctl.h>	/* ioctl, TIOCGWINSZ */
-
-
 #include <string>
 
 #include "lldb/Breakpoint/BreakpointLocation.h"
@@ -31,17 +27,20 @@
 #include "lldb/Target/RegisterContext.h"
 #include "lldb/Target/ThreadPlan.h"
 
+#ifndef LLDB_DISABLE_CURSES
 #include <ncurses.h>
 #include <panel.h>
+#endif
 
 using namespace lldb;
 using namespace lldb_private;
 
 IOHandler::IOHandler (Debugger &debugger) :
     IOHandler (debugger,
-               StreamFileSP(), // Adopt STDIN from top input reader
-               StreamFileSP(), // Adopt STDOUT from top input reader
-               StreamFileSP()) // Adopt STDERR from top input reader
+               StreamFileSP(),  // Adopt STDIN from top input reader
+               StreamFileSP(),  // Adopt STDOUT from top input reader
+               StreamFileSP(),  // Adopt STDERR from top input reader
+               0)               // Flags
 {
 }
 
@@ -49,11 +48,13 @@ IOHandler::IOHandler (Debugger &debugger) :
 IOHandler::IOHandler (Debugger &debugger,
                       const lldb::StreamFileSP &input_sp,
                       const lldb::StreamFileSP &output_sp,
-                      const lldb::StreamFileSP &error_sp) :
+                      const lldb::StreamFileSP &error_sp,
+                      uint32_t flags) :
     m_debugger (debugger),
     m_input_sp (input_sp),
     m_output_sp (output_sp),
     m_error_sp (error_sp),
+    m_flags (flags),
     m_user_data (NULL),
     m_done (false),
     m_active (false)
@@ -137,6 +138,17 @@ IOHandler::GetErrorStreamFile()
     return m_error_sp;
 }
 
+bool
+IOHandler::GetIsInteractive ()
+{
+    return GetInputStreamFile()->GetFile().GetIsInteractive ();
+}
+
+bool
+IOHandler::GetIsRealTerminal ()
+{
+    return GetInputStreamFile()->GetFile().GetIsRealTerminal();
+}
 
 IOHandlerConfirm::IOHandlerConfirm (Debugger &debugger,
                                     const char *prompt,
@@ -304,6 +316,7 @@ IOHandlerEditline::IOHandlerEditline (Debugger &debugger,
                       StreamFileSP(), // Inherit input from top input reader
                       StreamFileSP(), // Inherit output from top input reader
                       StreamFileSP(), // Inherit error from top input reader
+                      0,              // Flags
                       editline_name,  // Used for saving history files
                       prompt,
                       multi_line,
@@ -315,31 +328,26 @@ IOHandlerEditline::IOHandlerEditline (Debugger &debugger,
                                       const lldb::StreamFileSP &input_sp,
                                       const lldb::StreamFileSP &output_sp,
                                       const lldb::StreamFileSP &error_sp,
+                                      uint32_t flags,
                                       const char *editline_name, // Used for saving history files
                                       const char *prompt,
                                       bool multi_line,
                                       IOHandlerDelegate &delegate) :
-    IOHandler (debugger, input_sp, output_sp, error_sp),
+    IOHandler (debugger, input_sp, output_sp, error_sp, flags),
     m_editline_ap (),
     m_delegate (delegate),
     m_prompt (),
-    m_multi_line (multi_line),
-    m_interactive (false)
+    m_multi_line (multi_line)
 {
     SetPrompt(prompt);
 
-    const int in_fd = GetInputFD();
-    struct winsize window_size;
     bool use_editline = false;
-    if (isatty (in_fd))
-    {
-        m_interactive = true;
-        if (::ioctl (in_fd, TIOCGWINSZ, &window_size) == 0)
-        {
-            if (window_size.ws_col > 0)
-                use_editline = true;
-        }
-    }
+    
+#ifndef _MSC_VER
+    use_editline = m_input_sp->GetFile().GetIsRealTerminal();
+#else
+    use_editline = true;
+#endif
 
     if (use_editline)
     {
@@ -374,7 +382,7 @@ IOHandlerEditline::GetLine (std::string &line)
         FILE *in = GetInputFILE();
         if (in)
         {
-            if (m_interactive)
+            if (GetIsInteractive())
             {
                 const char *prompt = GetPrompt();
                 if (prompt && prompt[0])
@@ -389,12 +397,14 @@ IOHandlerEditline::GetLine (std::string &line)
             }
             char buffer[256];
             bool done = false;
+            bool got_line = false;
             while (!done)
             {
                 if (fgets(buffer, sizeof(buffer), in) == NULL)
                     done = true;
                 else
                 {
+                    got_line = true;
                     size_t buffer_len = strlen(buffer);
                     assert (buffer[buffer_len] == '\0');
                     char last_char = buffer[buffer_len-1];
@@ -413,13 +423,16 @@ IOHandlerEditline::GetLine (std::string &line)
                     line.append(buffer, buffer_len);
                 }
             }
+            // We might have gotten a newline on a line by itself
+            // make sure to return true in this case.
+            return got_line;
         }
         else
         {
             // No more input file, we are done...
             SetIsDone(true);
         }
-        return !line.empty();
+        return false;
     }
 }
 
@@ -587,6 +600,10 @@ IOHandlerEditline::GotEOF()
     if (m_editline_ap)
         m_editline_ap->Interrupt();
 }
+
+// we may want curses to be disabled for some builds
+// for instance, windows
+#ifndef LLDB_DISABLE_CURSES
 
 #include "lldb/Core/ValueObject.h"
 #include "lldb/Symbol/VariableList.h"
@@ -1313,7 +1330,12 @@ type summary add -s "${var.origin%S} ${var.size%S}" curses::Rect
                             bounds.size.height -= 2*inset_h;
                         }
                     }
-                    WindowSP help_window_sp = GetParent()->CreateSubWindow("Help", bounds, true);
+                    WindowSP help_window_sp;
+                    Window *parent_window = GetParent();
+                    if (parent_window)
+                        help_window_sp = parent_window->CreateSubWindow("Help", bounds, true);
+                    else
+                        help_window_sp = CreateSubWindow("Help", bounds, true);
                     help_window_sp->SetDelegate(WindowDelegateSP(help_delegate_ap.release()));
                     return true;
                 }
@@ -3806,6 +3828,7 @@ CursesKeyToCString (int ch)
         case KEY_EVENT:     return "We were interrupted by an event";
         case KEY_RETURN:    return "return";
         case ' ':           return "space";
+        case '\t':          return "tab";
         case KEY_ESCAPE:    return "escape";
         default:
             if (isprint(ch))
@@ -3977,16 +4000,56 @@ public:
     {
         return false; // Drawing not handled, let standard window drawing happen
     }
-
+    
     virtual HandleCharResult
     WindowDelegateHandleChar (Window &window, int key)
     {
-        if (key == '\t')
+        switch (key)
         {
-            window.SelectNextWindowAsActive();
-            return eKeyHandled;
+            case '\t':
+                window.SelectNextWindowAsActive();
+                return eKeyHandled;
+
+            case 'h':
+                window.CreateHelpSubwindow();
+                return eKeyHandled;
+
+            case KEY_ESCAPE:
+                return eQuitApplication;
+
+            default:
+                break;
         }
         return eKeyNotHandled;
+    }
+    
+    
+    virtual const char *
+    WindowDelegateGetHelpText ()
+    {
+        return "Welcome to the LLDB curses GUI.\n\n"
+        "Press the TAB key to change the selected view.\n"
+        "Each view has its own keyboard shortcuts, press 'h' to open a dialog to display them.\n\n"
+        "Common key bindings for all views:";
+    }
+    
+    virtual KeyHelp *
+    WindowDelegateGetKeyHelp ()
+    {
+        static curses::KeyHelp g_source_view_key_help[] = {
+            { '\t', "Select next view" },
+            { 'h', "Show help dialog with view specific key bindings" },
+            { ',', "Page up" },
+            { '.', "Page down" },
+            { KEY_UP, "Select previous" },
+            { KEY_DOWN, "Select next" },
+            { KEY_LEFT, "Unexpand or select parent" },
+            { KEY_RIGHT, "Expand" },
+            { KEY_PPAGE, "Page up" },
+            { KEY_NPAGE, "Page down" },
+            { '\0', NULL }
+        };
+        return g_source_view_key_help;
     }
     
     virtual MenuActionResult
@@ -4241,6 +4304,7 @@ public:
                 return MenuActionResult::Handled;
                 
             case eMenuID_HelpGUIHelp:
+                m_app.GetMainWindow ()->CreateHelpSubwindow();
                 return MenuActionResult::Handled;
         
             default:
@@ -5167,7 +5231,15 @@ IOHandlerCursesGUI::Activate ()
         TreeDelegateSP thread_delegate_sp (new ThreadTreeDelegate(m_debugger));
         threads_window_sp->SetDelegate (WindowDelegateSP(new TreeWindowDelegate(m_debugger, thread_delegate_sp)));
         status_window_sp->SetDelegate (WindowDelegateSP(new StatusBarWindowDelegate(m_debugger)));
-        
+
+        // Show the main help window once the first time the curses GUI is launched
+        static bool g_showed_help = false;
+        if (!g_showed_help)
+        {
+            g_showed_help = true;
+            main_window_sp->CreateHelpSubwindow();
+        }
+
         init_pair (1, COLOR_WHITE   , COLOR_BLUE  );
         init_pair (2, COLOR_BLACK   , COLOR_WHITE );
         init_pair (3, COLOR_MAGENTA , COLOR_WHITE );
@@ -5219,3 +5291,4 @@ IOHandlerCursesGUI::GotEOF()
 {
 }
 
+#endif // #ifndef LLDB_DISABLE_CURSES

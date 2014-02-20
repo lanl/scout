@@ -13,7 +13,7 @@
 #include "type_traits"
 
 #ifdef __clang__
-#pragma clang diagnostic ignored "-Wtautological-constant-out-of-range-compare"
+//#pragma clang diagnostic ignored "-Wtautological-constant-out-of-range-compare"
 #endif
 
 _LIBCPP_BEGIN_NAMESPACE_STD

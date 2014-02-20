@@ -47,8 +47,7 @@ extern "C" void LLVMInitializeR600AsmPrinter() {
 
 AMDGPUAsmPrinter::AMDGPUAsmPrinter(TargetMachine &TM, MCStreamer &Streamer)
     : AsmPrinter(TM, Streamer) {
-  DisasmEnabled = TM.getSubtarget<AMDGPUSubtarget>().dumpCode() &&
-                  ! Streamer.hasRawTextSupport();
+  DisasmEnabled = TM.getSubtarget<AMDGPUSubtarget>().dumpCode();
 }
 
 /// We need to override this function so we can avoid
@@ -56,9 +55,7 @@ AMDGPUAsmPrinter::AMDGPUAsmPrinter(TargetMachine &TM, MCStreamer &Streamer)
 bool AMDGPUAsmPrinter::runOnMachineFunction(MachineFunction &MF) {
   SetupMachineFunction(MF);
 
-  if (OutStreamer.hasRawTextSupport()) {
-    OutStreamer.EmitRawText("@" + MF.getName() + ":");
-  }
+  OutStreamer.emitRawComment(Twine('@') + MF.getName() + Twine(':'));
 
   MCContext &Context = getObjFileLowering().getContext();
   const MCSectionELF *ConfigSection = Context.getELFSection(".AMDGPU.config",
@@ -82,7 +79,7 @@ bool AMDGPUAsmPrinter::runOnMachineFunction(MachineFunction &MF) {
   OutStreamer.SwitchSection(getObjFileLowering().getTextSection());
   EmitFunctionBody();
 
-  if (isVerbose() && OutStreamer.hasRawTextSupport()) {
+  if (isVerbose()) {
     const MCSectionELF *CommentSection
       = Context.getELFSection(".AMDGPU.csdata",
                               ELF::SHT_PROGBITS, 0,
@@ -97,7 +94,7 @@ bool AMDGPUAsmPrinter::runOnMachineFunction(MachineFunction &MF) {
                                  false);
     } else {
       R600MachineFunctionInfo *MFI = MF.getInfo<R600MachineFunctionInfo>();
-      OutStreamer.EmitRawText(
+      OutStreamer.emitRawComment(
         Twine("SQ_PGM_RESOURCES:STACK_SIZE = " + Twine(MFI->StackSize)));
     }
   }

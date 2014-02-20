@@ -1305,6 +1305,7 @@ namespace clang {
       return getSema().BuildObjCAtThrowStmt(AtLoc, Operand);
     }
 
+
     /// \brief Build a new OpenMP parallel directive.
     ///
     /// By default, performs semantic analysis to build the new statement.
@@ -1315,6 +1316,18 @@ namespace clang {
                                            SourceLocation EndLoc) {
       return getSema().ActOnOpenMPParallelDirective(Clauses, AStmt,
                                                     StartLoc, EndLoc);
+    }
+
+    /// \brief Build a new OpenMP 'if' clause.
+    ///
+    /// By default, performs semantic analysis to build the new statement.
+    /// Subclasses may override this routine to provide different behavior.
+    OMPClause *RebuildOMPIfClause(Expr *Condition,
+                                  SourceLocation StartLoc,
+                                  SourceLocation LParenLoc,
+                                  SourceLocation EndLoc) {
+      return getSema().ActOnOpenMPIfClause(Condition, StartLoc,
+                                           LParenLoc, EndLoc);
     }
 
     /// \brief Build a new OpenMP 'default' clause.
@@ -1361,6 +1374,7 @@ namespace clang {
       return getSema().ActOnOpenMPSharedClause(VarList, StartLoc, LParenLoc,
                                                EndLoc);
     }
+
 
     /// \brief Rebuild the operand to an Objective-C \@synchronized statement.
     ///
@@ -3948,7 +3962,9 @@ TreeTransform<Derived>::TransformVariableArrayType(TypeLocBuilder &TLB,
       return QualType();
   }
 
-  VariableArrayTypeLoc NewTL = TLB.push<VariableArrayTypeLoc>(Result);
+  // We might have constant size array now, but fortunately it has the same
+  // location layout.
+  ArrayTypeLoc NewTL = TLB.push<ArrayTypeLoc>(Result);
   NewTL.setLBracketLoc(TL.getLBracketLoc());
   NewTL.setRBracketLoc(TL.getRBracketLoc());
   NewTL.setSizeExpr(Size);
@@ -6451,6 +6467,13 @@ TreeTransform<Derived>::TransformOMPParallelDirective(OMPParallelDirective *D) {
                                                             D->getLocEnd());
   getSema().EndOpenMPDSABlock(Res.get());
   return Res;
+}
+
+template<typename Derived>
+OMPClause *
+TreeTransform<Derived>::TransformOMPIfClause(OMPIfClause *C) {
+  return getDerived().RebuildOMPIfClause(C->getCondition(), C->getLocStart(),
+                                         C->getLParenLoc(), C->getLocEnd());
 }
 
 template<typename Derived>

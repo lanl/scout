@@ -15,6 +15,7 @@
 #include "InstPrinter/MipsInstPrinter.h"
 #include "MipsMCAsmInfo.h"
 #include "MipsTargetStreamer.h"
+#include "llvm/ADT/Triple.h"
 #include "llvm/MC/MCCodeGenInfo.h"
 #include "llvm/MC/MCELFStreamer.h"
 #include "llvm/MC/MCInstrInfo.h"
@@ -38,38 +39,6 @@
 
 using namespace llvm;
 
-static std::string ParseMipsTriple(StringRef TT, StringRef CPU) {
-  std::string MipsArchFeature;
-  size_t DashPosition = 0;
-  StringRef TheTriple;
-
-  // Let's see if there is a dash, like mips-unknown-linux.
-  DashPosition = TT.find('-');
-
-  if (DashPosition == StringRef::npos) {
-    // No dash, we check the string size.
-    TheTriple = TT.substr(0);
-  } else {
-    // We are only interested in substring before dash.
-    TheTriple = TT.substr(0,DashPosition);
-  }
-
-  if (TheTriple == "mips" || TheTriple == "mipsel") {
-    if (CPU.empty() || CPU == "mips32") {
-      MipsArchFeature = "+mips32";
-    } else if (CPU == "mips32r2") {
-      MipsArchFeature = "+mips32r2";
-    }
-  } else {
-      if (CPU.empty() || CPU == "mips64") {
-        MipsArchFeature = "+mips64";
-      } else if (CPU == "mips64r2") {
-        MipsArchFeature = "+mips64r2";
-      }
-  }
-  return MipsArchFeature;
-}
-
 static MCInstrInfo *createMipsMCInstrInfo() {
   MCInstrInfo *X = new MCInstrInfo();
   InitMipsMCInstrInfo(X);
@@ -84,15 +53,17 @@ static MCRegisterInfo *createMipsMCRegisterInfo(StringRef TT) {
 
 static MCSubtargetInfo *createMipsMCSubtargetInfo(StringRef TT, StringRef CPU,
                                                   StringRef FS) {
-  std::string ArchFS = ParseMipsTriple(TT,CPU);
-  if (!FS.empty()) {
-    if (!ArchFS.empty())
-      ArchFS = ArchFS + "," + FS.str();
+  if (CPU.empty()) {
+    Triple TheTriple(TT);
+    // FIXME: CodeGen picks mips32 in both cases.
+    if (TheTriple.getArch() == Triple::mips ||
+        TheTriple.getArch() == Triple::mipsel)
+      CPU = "mips32";
     else
-      ArchFS = FS;
+      CPU = "mips64";
   }
   MCSubtargetInfo *X = new MCSubtargetInfo();
-  InitMipsMCSubtargetInfo(X, TT, CPU, ArchFS);
+  InitMipsMCSubtargetInfo(X, TT, CPU, FS);
   return X;
 }
 
@@ -140,12 +111,12 @@ static MCStreamer *createMCStreamer(const Target &T, StringRef TT,
 
 static MCStreamer *
 createMCAsmStreamer(MCContext &Ctx, formatted_raw_ostream &OS,
-                    bool isVerboseAsm, bool useLoc, bool useCFI,
-                    bool useDwarfDirectory, MCInstPrinter *InstPrint,
-                    MCCodeEmitter *CE, MCAsmBackend *TAB, bool ShowInst) {
+                    bool isVerboseAsm, bool useCFI, bool useDwarfDirectory,
+                    MCInstPrinter *InstPrint, MCCodeEmitter *CE,
+                    MCAsmBackend *TAB, bool ShowInst) {
   MCStreamer *S =
-      llvm::createAsmStreamer(Ctx, OS, isVerboseAsm, useLoc, useCFI,
-                              useDwarfDirectory, InstPrint, CE, TAB, ShowInst);
+      llvm::createAsmStreamer(Ctx, OS, isVerboseAsm, useCFI, useDwarfDirectory,
+                              InstPrint, CE, TAB, ShowInst);
   new MipsTargetAsmStreamer(*S, OS);
   return S;
 }

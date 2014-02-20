@@ -78,9 +78,9 @@ namespace scout
     /// The kind of render target -- this have a direct correspondence
     /// to our subclasses.
     enum RTKind {
-      RTK_image,     // software, off-screen frame buffer. 
-      RTK_window,    // hardware, on-screen frame buffer.   
-      RTK_viewport   // hardware, on-screen subset of a frame buffer. 
+      RTK_image,        // software, off-screen frame buffer. 
+      RTK_window,       // hardware, on-screen frame buffer.   
+      RTK_viewport      // hardware, on-screen subset of a frame buffer. 
     };
 
    private:

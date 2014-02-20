@@ -21,6 +21,7 @@
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/LexicalScopes.h"
 #include "llvm/DebugInfo.h"
@@ -42,7 +43,7 @@ class MCAsmInfo;
 class MCObjectFileInfo;
 class DIEAbbrev;
 class DIE;
-class DIEBlock;
+class DIELoc;
 class DIEEntry;
 
 //===----------------------------------------------------------------------===//
@@ -243,10 +244,15 @@ class DwarfFile {
   unsigned NextStringPoolNumber;
   std::string StringPref;
 
+  struct AddressPoolEntry {
+    unsigned Number;
+    bool TLS;
+    AddressPoolEntry(unsigned Number, bool TLS) : Number(Number), TLS(TLS) {}
+  };
   // Collection of addresses for this unit and assorted labels.
   // A Symbol->unsigned mapping of addresses used by indirect
   // references.
-  typedef DenseMap<const MCExpr *, unsigned> AddrPool;
+  typedef DenseMap<const MCSymbol *, AddressPoolEntry> AddrPool;
   AddrPool AddressPool;
   unsigned NextAddrPoolNumber;
 
@@ -302,8 +308,7 @@ public:
 
   /// \brief Returns the index into the address pool with the given
   /// label/symbol.
-  unsigned getAddrPoolIndex(const MCExpr *Sym);
-  unsigned getAddrPoolIndex(const MCSymbol *Sym);
+  unsigned getAddrPoolIndex(const MCSymbol *Sym, bool TLS = false);
 
   /// \brief Returns the address pool.
   AddrPool *getAddrPool() { return &AddressPool; }
@@ -334,7 +339,7 @@ class DwarfDebug : public AsmPrinterHandler {
   DwarfCompileUnit *FirstCU;
 
   // Maps MDNode with its corresponding DwarfCompileUnit.
-  DenseMap<const MDNode *, DwarfCompileUnit *> CUMap;
+  MapVector<const MDNode *, DwarfCompileUnit *> CUMap;
 
   // Maps subprogram MDNode with its corresponding DwarfCompileUnit.
   DenseMap<const MDNode *, DwarfCompileUnit *> SPMap;
@@ -605,7 +610,7 @@ class DwarfDebug : public AsmPrinterHandler {
 
   /// \brief Construct the split debug info compile unit for the debug info
   /// section.
-  DwarfTypeUnit *constructSkeletonTU(const DwarfTypeUnit *TU);
+  DwarfTypeUnit *constructSkeletonTU(DwarfTypeUnit *TU);
 
   /// \brief Emit the debug info dwo section.
   void emitDebugInfoDWO();
@@ -709,7 +714,7 @@ public:
 
   /// \brief Add a DIE to the set of types that we're going to pull into
   /// type units.
-  void addDwarfTypeUnitType(DICompileUnit CUNode, StringRef Identifier,
+  void addDwarfTypeUnitType(DwarfCompileUnit &CU, StringRef Identifier,
                             DIE *Die, DICompositeType CTy);
 
   /// \brief Add a label so that arange data can be generated for it.

@@ -1020,9 +1020,7 @@ Process::Process(Target &target, Listener &listener) :
     m_mod_id (),
     m_process_unique_id(0),
     m_thread_index_id (0),
-    m_queue_index_id (0),
     m_thread_id_to_index_id_map (),
-    m_queue_id_to_index_id_map (),
     m_exit_status (-1),
     m_exit_string (),
     m_thread_mutex (Mutex::eMutexTypeRecursive),
@@ -1698,39 +1696,6 @@ Process::AssignIndexIDToThread(uint64_t thread_id)
     
     return result;
 }
-
-bool
-Process::HasAssignedIndexIDToQueue(queue_id_t queue_id)
-{
-    std::map<uint64_t, uint32_t>::iterator iterator = m_queue_id_to_index_id_map.find(queue_id);
-    if (iterator == m_queue_id_to_index_id_map.end())
-    {
-        return false;
-    }
-    else
-    {
-        return true;
-    }
-}
-
-uint32_t
-Process::AssignIndexIDToQueue(queue_id_t queue_id)
-{
-    uint32_t result = 0;
-    std::map<uint64_t, uint32_t>::iterator iterator = m_queue_id_to_index_id_map.find(queue_id);
-    if (iterator == m_queue_id_to_index_id_map.end())
-    {
-        result = ++m_queue_index_id;
-        m_queue_id_to_index_id_map[queue_id] = result;
-    }
-    else
-    {
-        result = iterator->second;
-    }
-    
-    return result;
-}
-
 
 StateType
 Process::GetState()
@@ -4751,7 +4716,12 @@ public:
             return true;
 
         int fds[2];
+#ifdef _MSC_VER
+        // pipe is not supported on windows so default to a fail condition
+        int err = 1;
+#else
         int err = pipe(fds);
+#endif
         if (err == 0)
         {
             m_pipe_read.SetDescriptor(fds[0], true);
@@ -4786,6 +4756,8 @@ public:
                 Terminal terminal(read_fd);
                 terminal.SetCanonical(false);
                 terminal.SetEcho(false);
+// FD_ZERO, FD_SET are not supported on windows
+#ifndef _MSC_VER
                 while (!GetIsDone())
                 {
                     fd_set read_fdset;
@@ -4825,6 +4797,7 @@ public:
                         }
                     }
                 }
+#endif
                 terminal_state.Restore();
 
             }
@@ -5945,9 +5918,7 @@ Process::ResolveIndirectFunction(const Address *address, Error &error)
 {
     if (address == nullptr)
     {
-        Symbol *symbol = address->CalculateSymbolContextSymbol();
-        error.SetErrorStringWithFormat("unable to determine direct function call for indirect function %s",
-                                          symbol ? symbol->GetName().AsCString() : "<UNKNOWN>");
+        error.SetErrorString("Invalid address argument");
         return LLDB_INVALID_ADDRESS;
     }
     

@@ -180,13 +180,17 @@ static cl::opt<bool> LoopVectorizeWithBlockFrequency(
 
 // Runtime unroll loops for load/store throughput.
 static cl::opt<bool> EnableLoadStoreRuntimeUnroll(
-    "enable-loadstore-runtime-unroll", cl::init(false), cl::Hidden,
+    "enable-loadstore-runtime-unroll", cl::init(true), cl::Hidden,
     cl::desc("Enable runtime unrolling until load/store ports are saturated"));
 
 /// The number of stores in a loop that are allowed to need predication.
 static cl::opt<unsigned> NumberOfStoresToPredicate(
-    "vectorize-num-stores-pred", cl::init(0), cl::Hidden,
+    "vectorize-num-stores-pred", cl::init(1), cl::Hidden,
     cl::desc("Max number of stores to be predicated behind an if."));
+
+static cl::opt<bool> EnableIndVarRegisterHeur(
+    "enable-ind-var-reg-heur", cl::init(true), cl::Hidden,
+    cl::desc("Count the induction variable only once when unrolling"));
 
 static cl::opt<bool> EnableCondStoresVectorization(
     "enable-cond-stores-vec", cl::init(false), cl::Hidden,
@@ -1636,6 +1640,7 @@ void InnerLoopVectorizer::scalarizeInstruction(Instruction *Instr, bool IfPredic
         Cmp = Builder.CreateExtractElement(Cond[Part], Builder.getInt32(Width));
         Cmp = Builder.CreateICmp(ICmpInst::ICMP_EQ, Cmp, ConstantInt::get(Cmp->getType(), 1));
         CondBlock = IfBlock->splitBasicBlock(InsertPt, "cond.store");
+        LoopVectorBody.push_back(CondBlock);
         VectorLp->addBasicBlockToLoop(CondBlock, LI->getBase());
         // Update Builder with newly created basic block.
         Builder.SetInsertPoint(InsertPt);
@@ -1664,6 +1669,7 @@ void InnerLoopVectorizer::scalarizeInstruction(Instruction *Instr, bool IfPredic
       // End if-block.
       if (IfPredicateStore) {
          BasicBlock *NewIfBlock = CondBlock->splitBasicBlock(InsertPt, "else");
+         LoopVectorBody.push_back(NewIfBlock);
          VectorLp->addBasicBlockToLoop(NewIfBlock, LI->getBase());
          Builder.SetInsertPoint(InsertPt);
          Instruction *OldBr = IfBlock->getTerminator();
@@ -5155,6 +5161,11 @@ LoopVectorizationCostModel::selectUnrollFactor(bool OptForSize,
   unsigned UF = PowerOf2Floor((TargetNumRegisters - R.LoopInvariantRegs) /
                               R.MaxLocalUsers);
 
+  // Don't count the induction variable as unrolled.
+  if (EnableIndVarRegisterHeur)
+    UF = PowerOf2Floor((TargetNumRegisters - R.LoopInvariantRegs - 1) /
+                       std::max(1U, (R.MaxLocalUsers - 1)));
+
   // Clamp the unroll factor ranges to reasonable factors.
   unsigned MaxUnrollSize = TTI.getMaximumUnrollFactor();
 
@@ -5186,26 +5197,33 @@ LoopVectorizationCostModel::selectUnrollFactor(bool OptForSize,
     return UF;
   }
 
-  if (EnableLoadStoreRuntimeUnroll &&
-      !Legal->getRuntimePointerCheck()->Need &&
+  // Note that if we've already vectorized the loop we will have done the
+  // runtime check and so unrolling won't require further checks.
+  bool UnrollingRequiresRuntimePointerCheck =
+      (VF == 1 && Legal->getRuntimePointerCheck()->Need);
+
+  // We want to unroll small loops in order to reduce the loop overhead and
+  // potentially expose ILP opportunities.
+  DEBUG(dbgs() << "LV: Loop cost is " << LoopCost << '\n');
+  if (!UnrollingRequiresRuntimePointerCheck &&
       LoopCost < SmallLoopCost) {
+    // We assume that the cost overhead is 1 and we use the cost model
+    // to estimate the cost of the loop and unroll until the cost of the
+    // loop overhead is about 5% of the cost of the loop.
+    unsigned SmallUF = std::min(UF, (unsigned)PowerOf2Floor(SmallLoopCost / LoopCost));
+
     // Unroll until store/load ports (estimated by max unroll factor) are
     // saturated.
-    unsigned UnrollStores = UF / (Legal->NumStores ? Legal->NumStores : 1);
-    unsigned UnrollLoads = UF /  (Legal->NumLoads ? Legal->NumLoads : 1);
-    UF = std::max(std::min(UnrollStores, UnrollLoads), 1u);
-    return UF;
-  }
+    unsigned StoresUF = UF / (Legal->NumStores ? Legal->NumStores : 1);
+    unsigned LoadsUF = UF /  (Legal->NumLoads ? Legal->NumLoads : 1);
 
-  // We want to unroll tiny loops in order to reduce the loop overhead.
-  // We assume that the cost overhead is 1 and we use the cost model
-  // to estimate the cost of the loop and unroll until the cost of the
-  // loop overhead is about 5% of the cost of the loop.
-  DEBUG(dbgs() << "LV: Loop cost is " << LoopCost << '\n');
-  if (LoopCost < SmallLoopCost) {
+    if (EnableLoadStoreRuntimeUnroll && std::max(StoresUF, LoadsUF) > SmallUF) {
+      DEBUG(dbgs() << "LV: Unrolling to saturate store or load ports.\n");
+      return std::max(StoresUF, LoadsUF);
+    }
+
     DEBUG(dbgs() << "LV: Unrolling to reduce branch cost.\n");
-    unsigned NewUF = PowerOf2Floor(SmallLoopCost / LoopCost);
-    return std::min(NewUF, UF);
+    return SmallUF;
   }
 
   DEBUG(dbgs() << "LV: Not Unrolling.\n");
@@ -5473,9 +5491,16 @@ LoopVectorizationCostModel::getInstructionCost(Instruction *I, unsigned VF) {
       TargetTransformInfo::OK_AnyValue;
     TargetTransformInfo::OperandValueKind Op2VK =
       TargetTransformInfo::OK_AnyValue;
+    Value *Op2 = I->getOperand(1);
 
-    if (isa<ConstantInt>(I->getOperand(1)))
+    // Check for a splat of a constant or for a non uniform vector of constants.
+    if (isa<ConstantInt>(Op2))
       Op2VK = TargetTransformInfo::OK_UniformConstantValue;
+    else if (isa<ConstantVector>(Op2) || isa<ConstantDataVector>(Op2)) {
+      Op2VK = TargetTransformInfo::OK_NonUniformConstantValue;
+      if (cast<Constant>(Op2)->getSplatValue() != NULL)
+        Op2VK = TargetTransformInfo::OK_UniformConstantValue;
+    }
 
     return TTI.getArithmeticInstrCost(I->getOpcode(), VectorTy, Op1VK, Op2VK);
   }
@@ -5720,6 +5745,7 @@ void InnerLoopUnroller::scalarizeInstruction(Instruction *Instr,
       Cmp = Builder.CreateICmp(ICmpInst::ICMP_EQ, Cond[Part],
                                ConstantInt::get(Cond[Part]->getType(), 1));
       CondBlock = IfBlock->splitBasicBlock(InsertPt, "cond.store");
+      LoopVectorBody.push_back(CondBlock);
       VectorLp->addBasicBlockToLoop(CondBlock, LI->getBase());
       // Update Builder with newly created basic block.
       Builder.SetInsertPoint(InsertPt);
@@ -5745,6 +5771,7 @@ void InnerLoopUnroller::scalarizeInstruction(Instruction *Instr,
     // End if-block.
       if (IfPredicateStore) {
         BasicBlock *NewIfBlock = CondBlock->splitBasicBlock(InsertPt, "else");
+        LoopVectorBody.push_back(NewIfBlock);
         VectorLp->addBasicBlockToLoop(NewIfBlock, LI->getBase());
         Builder.SetInsertPoint(InsertPt);
         Instruction *OldBr = IfBlock->getTerminator();

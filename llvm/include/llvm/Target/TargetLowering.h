@@ -48,8 +48,10 @@ namespace llvm {
   class MachineFunction;
   class MachineInstr;
   class MachineJumpTableInfo;
+  class Mangler;
   class MCContext;
   class MCExpr;
+  class MCSymbol;
   template<typename T> class SmallVectorImpl;
   class DataLayout;
   class TargetRegisterClass;
@@ -143,7 +145,7 @@ protected:
 
 public:
   const TargetMachine &getTargetMachine() const { return TM; }
-  const DataLayout *getDataLayout() const { return TD; }
+  const DataLayout *getDataLayout() const { return DL; }
   const TargetLoweringObjectFile &getObjFileLowering() const { return TLOF; }
 
   bool isBigEndian() const { return !IsLittleEndian; }
@@ -609,8 +611,9 @@ public:
     return getValueType(Ty, AllowUnknown).getSimpleVT();
   }
 
-  /// Return the desired alignment for ByVal aggregate function arguments in the
-  /// caller parameter area.  This is the actual alignment, not its logarithm.
+  /// Return the desired alignment for ByVal or InAlloca aggregate function
+  /// arguments in the caller parameter area.  This is the actual alignment, not
+  /// its logarithm.
   virtual unsigned getByValTypeAlignment(Type *Ty) const;
 
   /// Return the type of registers that this ValueType will eventually require.
@@ -712,14 +715,16 @@ public:
 
   /// \brief Determine if the target supports unaligned memory accesses.
   ///
-  /// This function returns true if the target allows unaligned memory accesses.
-  /// of the specified type. If true, it also returns whether the unaligned
-  /// memory access is "fast" in the second argument by reference. This is used,
-  /// for example, in situations where an array copy/move/set is converted to a
-  /// sequence of store operations. It's use helps to ensure that such
-  /// replacements don't generate code that causes an alignment error (trap) on
-  /// the target machine.
-  virtual bool allowsUnalignedMemoryAccesses(EVT, bool * /*Fast*/ = 0) const {
+  /// This function returns true if the target allows unaligned memory accesses
+  /// of the specified type in the given address space. If true, it also returns
+  /// whether the unaligned memory access is "fast" in the third argument by
+  /// reference. This is used, for example, in situations where an array
+  /// copy/move/set is converted to a sequence of store operations. Its use
+  /// helps to ensure that such replacements don't generate code that causes an
+  /// alignment error (trap) on the target machine.
+  virtual bool allowsUnalignedMemoryAccesses(EVT,
+                                             unsigned AddrSpace = 0,
+                                             bool * /*Fast*/ = 0) const {
     return false;
   }
 
@@ -1180,6 +1185,14 @@ public:
     return true;
   }
 
+  /// Return true if it's significantly cheaper to shift a vector by a uniform
+  /// scalar than by an amount which will vary across each lane. On x86, for
+  /// example, there is a "psllw" instruction for the former case, but no simple
+  /// instruction for a general "a << b" operation on vectors.
+  virtual bool isVectorShiftByScalarCheap(Type *Ty) const {
+    return false;
+  }
+
   /// Return true if it's free to truncate a value of type Ty1 to type
   /// Ty2. e.g. On x86 it's free to truncate a i32 value in register EAX to i16
   /// by referencing its sub-register AX.
@@ -1334,7 +1347,7 @@ public:
 
 private:
   const TargetMachine &TM;
-  const DataLayout *TD;
+  const DataLayout *DL;
   const TargetLoweringObjectFile &TLOF;
 
   /// True if this is a little endian target.
@@ -1965,12 +1978,13 @@ public:
     bool isSRet     : 1;
     bool isNest     : 1;
     bool isByVal    : 1;
+    bool isInAlloca : 1;
     bool isReturned : 1;
     uint16_t Alignment;
 
     ArgListEntry() : isSExt(false), isZExt(false), isInReg(false),
-      isSRet(false), isNest(false), isByVal(false), isReturned(false),
-      Alignment(0) { }
+      isSRet(false), isNest(false), isByVal(false), isInAlloca(false),
+      isReturned(false), Alignment(0) { }
 
     void setAttributes(ImmutableCallSite *CS, unsigned AttrIdx);
   };

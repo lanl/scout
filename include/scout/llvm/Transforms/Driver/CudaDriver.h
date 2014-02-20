@@ -260,7 +260,7 @@ class CudaDriver: public Driver {
   llvm::SmallVector< llvm::ConstantInt *, 3 > fnArgAttrs;
   llvm::SmallVector< llvm::ConstantInt *, 3 > dimensions;
   llvm::SmallVector< llvm::Value *, 3 > meshFieldNames;
-
+/* suppress unused field warning for now.
   llvm::Value *startX;
   llvm::Value *startY;
   llvm::Value *startZ;
@@ -268,6 +268,7 @@ class CudaDriver: public Driver {
   llvm::Value *stopX;
   llvm::Value *stopY;
   llvm::Value *stopZ;
+*/
 };
 
 #endif

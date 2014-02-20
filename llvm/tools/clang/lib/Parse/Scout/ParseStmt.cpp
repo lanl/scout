@@ -479,7 +479,7 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
   }
 
   IdentifierInfo *ElementIdentInfo = Tok.getIdentifierInfo();
-  SourceLocation  ElementIdentLoc  = Tok.getLocation();
+  //SourceLocation  ElementIdentLoc  = Tok.getLocation();
   ConsumeToken();
 
   // Next we should encounter the 'in' keyword...

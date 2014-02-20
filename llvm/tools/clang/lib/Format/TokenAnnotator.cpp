@@ -109,6 +109,8 @@ private:
     } else if (AfterCaret) {
       // This is the parameter list of an ObjC block.
       Contexts.back().IsExpression = false;
+    } else if (Left->Previous && Left->Previous->is(tok::kw___attribute)) {
+      Left->Type = TT_AttributeParen;
     }
 
     if (StartsObjCMethodExpr) {
@@ -158,6 +160,9 @@ private:
                 Contexts.back().LongestObjCSelectorName;
           }
         }
+
+        if (Left->Type == TT_AttributeParen)
+          CurrentToken->Type = TT_AttributeParen;
 
         if (!HasMultipleLines)
           Left->PackingKind = PPK_Inconclusive;
@@ -248,6 +253,7 @@ private:
       if (CurrentToken->is(tok::colon))
         ColonFound = true;
       if (CurrentToken->is(tok::comma) &&
+          Style.Language != FormatStyle::LK_Proto &&
           (Left->Type == TT_ArraySubscriptLSquare ||
            (Left->Type == TT_ObjCMethodExpr && !ColonFound)))
         Left->Type = TT_ArrayInitializerLSquare;
@@ -274,7 +280,8 @@ private:
         if (CurrentToken->isOneOf(tok::r_paren, tok::r_square))
           return false;
         updateParameterCount(Left, CurrentToken);
-        if (CurrentToken->is(tok::colon))
+        if (CurrentToken->is(tok::colon) &&
+            Style.Language != FormatStyle::LK_Proto)
           Left->Type = TT_DictLiteral;
         if (!consumeToken())
           return false;
@@ -979,6 +986,8 @@ private:
       else if (Current->is(tok::semi) || Current->Type == TT_InlineASMColon ||
                Current->Type == TT_ObjCSelectorName)
         return 0;
+      else if (Current->Type == TT_RangeBasedForLoopColon)
+        return prec::Comma;
       else if (Current->Type == TT_BinaryOperator || Current->is(tok::comma))
         return Current->getPrecedence();
       else if (Current->isOneOf(tok::period, tok::arrow))
@@ -1203,10 +1212,16 @@ unsigned TokenAnnotator::splitPenalty(const AnnotatedLine &Line,
 
   if (Right.Type == TT_TrailingAnnotation && Right.Next &&
       Right.Next->isNot(tok::l_paren)) {
-    // Breaking before a trailing annotation is bad unless it is function-like.
+    // Generally, breaking before a trailing annotation is bad unless it is
+    // function-like. It seems to be especially preferable to keep standard
+    // annotations (i.e. "const", "final" and "override") on the same line.
     // Use a slightly higher penalty after ")" so that annotations like
     // "const override" are kept together.
-    return Left.is(tok::r_paren) ? 100 : 120;
+    bool is_standard_annotation = Right.is(tok::kw_const) ||
+                                  Right.TokenText == "override" ||
+                                  Right.TokenText == "final";
+    return (Left.is(tok::r_paren) ? 100 : 120) +
+           (is_standard_annotation ? 50 : 0);
   }
 
   // In for-loops, prefer breaking at ',' and ';'.
@@ -1331,9 +1346,7 @@ bool TokenAnnotator::spaceRequiredBetween(const AnnotatedLine &Line,
   if (Left.is(tok::colon))
     return Left.Type != TT_ObjCMethodExpr;
   if (Right.is(tok::l_paren)) {
-    if (Left.is(tok::r_paren) && Left.MatchingParen &&
-        Left.MatchingParen->Previous &&
-        Left.MatchingParen->Previous->is(tok::kw___attribute))
+    if (Left.is(tok::r_paren) && Left.Type == TT_AttributeParen)
       return true;
     return Line.Type == LT_ObjCDecl ||
            Left.isOneOf(tok::kw_return, tok::kw_new, tok::kw_delete,
@@ -1465,7 +1478,7 @@ bool TokenAnnotator::mustBreakBefore(const AnnotatedLine &Line,
     // deliberate choice and might have aligned the contents of the string
     // literal accordingly. Thus, we try keep existing line breaks.
     return Right.NewlinesBefore > 0;
-  } else if (Right.Previous->is(tok::l_brace) &&
+  } else if (Right.Previous->is(tok::l_brace) && Right.NestingLevel == 1 &&
              Style.Language == FormatStyle::LK_Proto) {
     // Don't enums onto single lines in protocol buffers.
     return true;
@@ -1496,6 +1509,8 @@ bool TokenAnnotator::canBreakBefore(const AnnotatedLine &Line,
   if (Right.is(tok::colon) &&
       (Right.Type == TT_DictLiteral || Right.Type == TT_ObjCMethodExpr))
     return false;
+  if (Right.Type == TT_InheritanceColon)
+    return true;
   if (Left.is(tok::colon) &&
       (Left.Type == TT_DictLiteral || Left.Type == TT_ObjCMethodExpr))
     return true;
@@ -1518,14 +1533,12 @@ bool TokenAnnotator::canBreakBefore(const AnnotatedLine &Line,
     return false;
   if (Left.is(tok::equal) && Line.Type == LT_VirtualFunctionDecl)
     return false;
-  if (Left.Previous) {
-    if (Left.is(tok::l_paren) && Right.is(tok::l_paren) &&
-        Left.Previous->is(tok::kw___attribute))
-      return false;
-    if (Left.is(tok::l_paren) && (Left.Previous->Type == TT_BinaryOperator ||
-                                  Left.Previous->Type == TT_CastRParen))
-      return false;
-  }
+  if (Left.is(tok::l_paren) && Left.Type == TT_AttributeParen)
+    return false;
+  if (Left.is(tok::l_paren) && Left.Previous &&
+      (Left.Previous->Type == TT_BinaryOperator ||
+       Left.Previous->Type == TT_CastRParen))
+    return false;
   if (Right.Type == TT_ImplicitStringLiteral)
     return false;
 
@@ -1569,7 +1582,7 @@ bool TokenAnnotator::canBreakBefore(const AnnotatedLine &Line,
          Right.isOneOf(tok::lessless, tok::arrow, tok::period, tok::colon,
                        tok::l_square, tok::at) ||
          (Left.is(tok::r_paren) &&
-          Right.isOneOf(tok::identifier, tok::kw_const, tok::kw___attribute)) ||
+          Right.isOneOf(tok::identifier, tok::kw_const)) ||
          (Left.is(tok::l_paren) && !Right.is(tok::r_paren));
 }
 

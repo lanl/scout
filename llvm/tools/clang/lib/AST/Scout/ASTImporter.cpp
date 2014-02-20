@@ -96,7 +96,7 @@ ASTNodeImporter::VisitUniformMeshType(const UniformMeshType *T) {
   if (!ToDecl)
     return QualType();
 
-  return Importer.getToContext().getUniformMeshDeclType(ToDecl);
+  return Importer.getToContext().getUniformMeshType(ToDecl, T->dimensions());
 }
 
 QualType
