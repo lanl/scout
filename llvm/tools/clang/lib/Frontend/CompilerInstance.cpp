@@ -201,15 +201,10 @@ CompilerInstance::createDiagnostics(DiagnosticOptions *Opts,
   return Diags;
 }
 
-void CompilerInstance::createVirtualFileSystem() {
-  VirtualFileSystem = vfs::getRealFileSystem();
-}
-
 // File Manager
 
 void CompilerInstance::createFileManager() {
-  assert(hasVirtualFileSystem() && "expected virtual file system");
-  FileMgr = new FileManager(getFileSystemOpts(), VirtualFileSystem);
+  FileMgr = new FileManager(getFileSystemOpts());
 }
 
 // Source Manager
@@ -882,8 +877,6 @@ static void compileModule(CompilerInstance &ImportingInstance,
   Instance.createDiagnostics(new ForwardingDiagnosticConsumer(
                                    ImportingInstance.getDiagnosticClient()),
                              /*ShouldOwnClient=*/true);
-
-  Instance.setVirtualFileSystem(&ImportingInstance.getVirtualFileSystem());
 
   // Note that this module is part of the module build stack, so that we
   // can detect cycles in the module graph.

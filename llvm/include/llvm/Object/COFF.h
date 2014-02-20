@@ -260,7 +260,7 @@ struct coff_load_configuration32 {
   support::ulittle32_t ProcessAffinityMask;
   support::ulittle32_t ProcessHeapFlags;
   support::ulittle16_t CSDVersion;
-  char Reserved[4];
+  uint16_t Reserved;
   support::ulittle32_t EditList;
   support::ulittle32_t SecurityCookie;
   support::ulittle32_t SEHandlerTable;
@@ -397,6 +397,7 @@ public:
   error_code getSectionContents(const coff_section *Sec,
                                 ArrayRef<uint8_t> &Res) const;
 
+  error_code getVaPtr(uint64_t VA, uintptr_t &Res) const;
   error_code getRvaPtr(uint32_t Rva, uintptr_t &Res) const;
   error_code getHintName(uint32_t Rva, uint16_t &Hint, StringRef &Name) const;
 
