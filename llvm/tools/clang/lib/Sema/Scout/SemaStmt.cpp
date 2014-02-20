@@ -1279,20 +1279,22 @@ bool Sema::ActOnRenderallMeshRefVariable(Scope* S,
 
 
 StmtResult Sema::ActOnRenderallMeshStmt(SourceLocation RenderallLoc,
-                                RenderallMeshStmt::MeshElementType ElementType,
-                                const MeshType *MT,
-                                VarDecl* MVD,
-                                IdentifierInfo* RefVarInfo,
-                                IdentifierInfo* MeshInfo,
-                                SourceLocation LParenLoc,
-                                Expr* Predicate, SourceLocation RParenLoc,
-                                Stmt* Body) {
+                                        RenderallMeshStmt::MeshElementType ElementType,
+                                        const MeshType *MT,
+                                        VarDecl* MVD,    // Mesh var decl. 
+                                        VarDecl* RTVD,   // Render target var decl. 
+                                        IdentifierInfo* RefVarInfo,
+                                        IdentifierInfo* MeshInfo,
+                                        IdentifierInfo* RenderTargetInfo,
+                                        SourceLocation LParenLoc,
+                                        Expr* Predicate, SourceLocation RParenLoc,
+                                        Stmt* Body) {
 
   SCLStack.pop_back();
 
   RenderallMeshStmt* RS = new (Context) RenderallMeshStmt(ElementType,
-                                                          RefVarInfo,
-                                                          MeshInfo, MVD, MT,
+                                                          RefVarInfo, MeshInfo, RenderTargetInfo,
+                                                          MVD, RTVD, MT,
                                                           RenderallLoc,
                                                           Body, Predicate,
                                                           LParenLoc, RParenLoc);

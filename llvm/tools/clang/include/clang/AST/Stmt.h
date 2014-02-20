@@ -2521,7 +2521,7 @@ protected:
   };
 
   // Store the various components (collection of statements) of the
-  // forall...  In this case we store the predicate and the body of
+  // renderall...  In this case we store the predicate and the body of
   // the forall.
   Stmt* SubExprs[END_EXPR];
 
@@ -2532,23 +2532,30 @@ public:
   RenderallStmt(StmtClass SC,
                 IdentifierInfo* RefVarInfo,
                 IdentifierInfo* ContainerInfo,
+                IdentifierInfo* RenderTargetInfo, 
                 VarDecl *ContainerVarDecl,
+                VarDecl *RenderTargetDecl,
                 SourceLocation ForallLoc, Stmt *Body);
 
   RenderallStmt(StmtClass SC,
-             IdentifierInfo* RefElementInfo,
-             IdentifierInfo* ContainerInfo,
-             VarDecl *ContainerVarDecl,
-             SourceLocation ForallLoc, Stmt *Body,
-             Expr* Predicate,
-             SourceLocation LeftParenLoc, SourceLocation RightParenLoc);
+                IdentifierInfo* RefElementInfo,
+                IdentifierInfo* ContainerInfo,
+                IdentifierInfo* RenderTargetInfo, 
+                VarDecl *ContainerVarDecl,
+                VarDecl *RenderTargetDecl,
+                SourceLocation RenderallLoc, Stmt *Body,
+                Expr* Predicate,
+                SourceLocation LeftParenLoc,
+                SourceLocation RightParenLoc);
 
   RenderallStmt(StmtClass SC, EmptyShell Empty) : Stmt(SC, Empty) {
     SubExprs[PREDICATE] = 0;
     SubExprs[BODY]      = 0;
     LoopRefVarInfo      = 0;
+    RenderTargetInfo    = 0;
     ContainerRefVarInfo = 0;
     ContainerVarDecl    = 0;
+    RenderTargetVarDecl = 0;
   }
 
   // ===--- Reference variable info ---===
@@ -2561,9 +2568,20 @@ public:
   const IdentifierInfo* getContainerVarInfo() const
   { return ContainerRefVarInfo; }
 
+  // ===--- Render target variable info ---===
+  IdentifierInfo* getRenderTargetInfo() { return RenderTargetInfo; }
+  const IdentifierInfo *getRenderTargetInfo() const
+  { return RenderTargetInfo; }
+
   // ===--- Container variable declaration ---===
   VarDecl* getContainerVarDecl() { return ContainerVarDecl; }
   const VarDecl* getContainerVarDecl() const { return ContainerVarDecl; }
+
+
+  // ===--- Render target variable declaration ---===
+  VarDecl *getRenderTargetVarDecl() { return RenderTargetVarDecl; }
+  const VarDecl* getRenderTargetVarDecl() const 
+  { return RenderTargetVarDecl; }
 
   // ===--- Predicate ---===
   Expr* getPredicate() {
@@ -2628,6 +2646,11 @@ protected:
   // The  reference element is only accessible within the body of the
   // 'forall' -- its value may not be changed within the loop.
   IdentifierInfo* LoopRefVarInfo;
+
+  // The render target for the renderall controls where the rendered
+  // image is displayed/saved.
+  IdentifierInfo* RenderTargetInfo;
+  VarDecl*        RenderTargetVarDecl;  
 
   // The loop's reference container variable is the container that
   // has been specified within the forall statement. We keep track
@@ -2704,7 +2727,9 @@ public:
   RenderallMeshStmt(MeshElementType RefElement,
                     IdentifierInfo* RefVarInfo,
                     IdentifierInfo* MeshInfo,
+                    IdentifierInfo* RenderTargetInfo, 
                     VarDecl* MeshVarDecl,
+                    VarDecl* RenderTargetVarDecl, 
                     const MeshType* MT,
                     SourceLocation  RenderallLocation,
                     Stmt *Body);
@@ -2712,7 +2737,9 @@ public:
   RenderallMeshStmt(MeshElementType RefElement,
                     IdentifierInfo* RefVarInfo,
                     IdentifierInfo* MeshInfo,
+                    IdentifierInfo* RenderTargetInfo, 
                     VarDecl* MeshVarDecl,
+                    VarDecl* RenderTargetVarDecl,                    
                     const MeshType* MT,
                     SourceLocation  RenderallLocation,
                     Stmt *Body, Expr* Predicate,

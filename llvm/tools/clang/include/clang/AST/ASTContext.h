@@ -825,6 +825,10 @@ public:
   CanQualType OCLImage3dTy;
   CanQualType OCLSamplerTy, OCLEventTy;
 
+  // +===== Scout ==========================================================+
+  CanQualType SCWindowTy, SCImageTy;
+  // +======================================================================+
+  
   // Types for deductions in C++0x [stmt.ranged]'s desugaring. Built on demand.
   mutable QualType AutoDeductTy;     // Deduction against 'auto'.
   mutable QualType AutoRRefDeductTy; // Deduction against 'auto &&'.
@@ -1119,6 +1123,9 @@ public:
   QualType getStructuredMeshType(const StructuredMeshDecl *Decl) const;
   QualType getRectilinearMeshType(const RectilinearMeshDecl *Decl) const;
   QualType getUnstructuredMeshType(const UnstructuredMeshDecl *Decl) const;
+
+  QualType getWindowType(const llvm::SmallVector<Expr*,2> &dims) const;
+  QualType getImageType(const llvm::SmallVector<Expr*,2> &dims) const;  
   // +========================================================================+
 
   QualType getRecordType(const RecordDecl *Decl) const;

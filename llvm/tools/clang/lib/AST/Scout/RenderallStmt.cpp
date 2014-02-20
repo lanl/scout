@@ -72,11 +72,13 @@ using namespace clang;
 // Constructor for a Renderall statement w/out a predicate expression.
 //
 RenderallStmt::RenderallStmt(StmtClass StatementClass,
-                       IdentifierInfo* RefVarInfo,
-                       IdentifierInfo* ContainerInfo,
-                       VarDecl *ContainerVD,
-                       SourceLocation RenderallLocation,
-                       Stmt* Body)
+                             IdentifierInfo* RefVarInfo,
+                             IdentifierInfo* ContainerInfo,
+                             IdentifierInfo* RenderTargetInfo, 
+                             VarDecl *ContainerVD,
+                             VarDecl *RenderTargetVarDecl, 
+                             SourceLocation RenderallLocation,
+                             Stmt* Body)
   : Stmt(StatementClass),
     LoopRefVarInfo(RefVarInfo),
     ContainerRefVarInfo(ContainerInfo),
@@ -93,15 +95,20 @@ RenderallStmt::RenderallStmt(StmtClass StatementClass,
 // Constructor for a Renderall statement w/ a predicate expression.
 //
 RenderallStmt::RenderallStmt(StmtClass StatementClass,
-                       IdentifierInfo* RefVarInfo,
-                       IdentifierInfo* ContainerInfo,
-                       VarDecl *ContainerVD,
-                       SourceLocation RenderallLocation,
-                       Stmt* Body,
-                       Expr* Predicate,
-                       SourceLocation LeftParenLoc, SourceLocation RightParenLoc)
+                             IdentifierInfo* RefVarInfo,
+                             IdentifierInfo* ContainerInfo,
+                             IdentifierInfo* TargetInfo, 
+                             VarDecl*        ContainerVD,
+                             VarDecl*        TargetVD, 
+                             SourceLocation  RenderallLocation,
+                             Stmt*           Body,
+                             Expr*           Predicate,
+                             SourceLocation  LeftParenLoc,
+                             SourceLocation  RightParenLoc)
   : Stmt(StatementClass),
     LoopRefVarInfo(RefVarInfo),
+    RenderTargetInfo(TargetInfo),
+    RenderTargetVarDecl(TargetVD),
     ContainerRefVarInfo(ContainerInfo),
     ContainerVarDecl(ContainerVD),
     RenderallKWLoc(RenderallLocation),
@@ -112,10 +119,6 @@ RenderallStmt::RenderallStmt(StmtClass StatementClass,
 }
 
 
-
-
-
-
 // ----- RenderallMeshStmt
 //
 // Constructor for a renderall mesh statement w/out a predicate expression.
@@ -123,13 +126,18 @@ RenderallStmt::RenderallStmt(StmtClass StatementClass,
 RenderallMeshStmt::RenderallMeshStmt(MeshElementType RefElement,
                                      IdentifierInfo* RefVarInfo,
                                      IdentifierInfo* MeshInfo,
-                                     VarDecl* MeshVarDecl,
+                                     IdentifierInfo* TargetInfo, 
+                                     VarDecl*        MeshVarDecl,
+                                     VarDecl*        TargetVarDecl, 
                                      const MeshType* MT,
                                      SourceLocation ForallLocation,
                                      Stmt *Body)
   : RenderallStmt(ForallMeshStmtClass,
                   RefVarInfo,
-                  MeshInfo, MeshVarDecl,
+                  MeshInfo,
+                  TargetInfo, 
+                  MeshVarDecl,
+                  TargetVarDecl, 
                   ForallLocation, Body) {
 
     MeshElementRef = RefElement;
@@ -144,16 +152,21 @@ RenderallMeshStmt::RenderallMeshStmt(MeshElementType RefElement,
 RenderallMeshStmt::RenderallMeshStmt(MeshElementType RefElement,
                                      IdentifierInfo* RefVarInfo,
                                      IdentifierInfo* MeshInfo,
-                                     VarDecl* MeshVarDecl,
+                                     IdentifierInfo* TargetInfo, 
+                                     VarDecl*        MeshVarDecl,
+                                     VarDecl*        TargetVarDecl, 
                                      const MeshType* MT,
-                                     SourceLocation RenderallLocation,
-                                     Stmt *Body,
-                                     Expr* Predicate,
-                                     SourceLocation LeftParenLoc,
-                                     SourceLocation RightParenLoc)
+                                     SourceLocation  RenderallLocation,
+                                     Stmt*           Body,
+                                     Expr*           Predicate,
+                                     SourceLocation  LeftParenLoc,
+                                     SourceLocation  RightParenLoc)
   : RenderallStmt(RenderallMeshStmtClass,
                   RefVarInfo,
-                  MeshInfo, MeshVarDecl,
+                  MeshInfo,
+                  TargetInfo, 
+                  MeshVarDecl,
+                  TargetVarDecl, 
                   RenderallLocation, Body,
                   Predicate, LeftParenLoc, RightParenLoc) {
 

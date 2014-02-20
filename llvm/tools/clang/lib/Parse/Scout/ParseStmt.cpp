@@ -374,6 +374,49 @@ setRenderallMeshElementType(tok::TokenKind tkind) {
   }
 }
 
+
+// ----- LookupRenderTargetDecl
+//
+VarDecl* Parser::LookupRenderTargetVarDecl(IdentifierInfo *TargetInfo,
+                                           SourceLocation TargetLoc) {
+
+  LookupResult TargetLookup(Actions, TargetInfo, TargetLoc, Sema::LookupOrdinaryName);
+  Actions.LookupName(TargetLookup, getCurScope());
+
+  if (TargetLookup.getResultKind() != LookupResult::Found) {
+    Diag(TargetLoc, diag::err_unknown_render_target_variable) << TargetInfo;
+    return 0;
+  }
+
+  NamedDecl* ND = TargetLookup.getFoundDecl();
+  if (!isa<VarDecl>(ND)) {
+    Diag(TargetLoc, diag::err_expected_a_target_type) << TargetInfo;
+    return 0;
+  }
+
+  return cast<VarDecl>(ND);
+}
+
+const RenderTargetType* Parser::LookupRenderTargetType(IdentifierInfo *TargetInfo,
+                                                       SourceLocation TargetLoc) {
+
+  VarDecl* VD = LookupRenderTargetVarDecl(TargetInfo, TargetLoc);
+  if (VD == 0)
+    return 0;
+  else {
+    const Type* T = VD->getType().getCanonicalType().getTypePtr();
+    if (!isa<RenderTargetType>(T)) {
+      T = VD->getType().getCanonicalType().getNonReferenceType().getTypePtr();
+      if(!isa<MeshType>(T)) {
+        return 0;
+      }
+    }
+
+    return const_cast<RenderTargetType *>(cast<RenderTargetType>(T));
+  }
+}
+
+
 // +---- Parse a renderall statement operating on a mesh ---------------------+
 //
 //  renderall [cells|edges|vertices|faces] element-id in mesh-instance {
@@ -447,14 +490,15 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
   }
   ConsumeToken();
 
-  // Finally, we are at the identifier that specifies the mesh
+  // Next, we are at the identifier that specifies the mesh
   // that we are computing over.
   if (Tok.isNot(tok::identifier)) {
     Diag(Tok, diag::err_expected_ident);
     SkipUntil(tok::semi);
     return StmtError();
   }
-
+  ConsumeToken();
+  
   IdentifierInfo  *MeshIdentInfo = Tok.getIdentifierInfo();
   SourceLocation   MeshIdentLoc  = Tok.getLocation();
 
@@ -466,11 +510,12 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
   if (RefMeshType == 0)
     return StmtError();
 
+  
   bool success = Actions.ActOnRenderallMeshRefVariable(getCurScope(),
-                                                    MeshIdentInfo,
-                                                    MeshIdentLoc,
-                                                    RefMeshType,
-                                                    VD);
+                                                       MeshIdentInfo,
+                                                       MeshIdentLoc,
+                                                       RefMeshType,
+                                                       VD);
   if (! success)
     return StmtError();
 
@@ -507,6 +552,34 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
       break;
   }
 
+  // Next we should find the 'to' keyword that is then followed by the 
+  // the identifier for a render target. 
+  if (Tok.isNot(tok::kw_to)) {
+    Diag(Tok, diag::err_renderall_expected_kw_to);
+    SkipUntil(tok::semi);
+    return StmtError();
+  }
+  ConsumeToken();
+
+  if (Tok.isNot(tok::identifier)) {
+    Diag(Tok, diag::err_expected_ident);
+    SkipUntil(tok::semi);
+    return StmtError();
+  }
+  ConsumeToken();
+
+  IdentifierInfo *RenderTargetInfo = Tok.getIdentifierInfo();
+  SourceLocation  RenderTargetLoc  = Tok.getLocation();
+
+  VarDecl *RTVD = LookupRenderTargetVarDecl(RenderTargetInfo, RenderTargetLoc);
+  if (RTVD == 0)
+    return StmtError();
+
+  const RenderTargetType *RefRenderTargetType = LookupRenderTargetType(RenderTargetInfo,
+                                                                       RenderTargetLoc);
+  if (RefRenderTargetType == 0)
+    return StmtError();
+  
   // Now check to see if we have a predicate expression...
   //
   // SC_TODO - we need to validate/specialize the predicate...
@@ -556,8 +629,9 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
   StmtResult RenderallResult = Actions.ActOnRenderallMeshStmt(RenderallKWLoc,
                                                               MeshElementType,
                                                               RefMeshType, VD,
-                                                              ElementIdentInfo,
+                                                              RTVD, ElementIdentInfo,
                                                               MeshIdentInfo,
+                                                              RenderTargetInfo,
                                                               LParenLoc,
                                                               Predicate,
                                                               RParenLoc,

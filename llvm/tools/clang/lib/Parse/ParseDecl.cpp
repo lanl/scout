@@ -3133,9 +3133,21 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       // For now, at least the presence of one of the above keywords
       // is sufficient to denote the beginning of a mesh definition...
       ParseMeshSpecifier(DS, TemplateInfo);
-
       continue;
     }
+
+    case tok::kw_window: {
+      ConsumeToken();      
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_window, Loc, PrevSpec, DiagID, Policy);
+      continue;
+    }
+
+    case tok::kw_image: {
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_image, Loc, PrevSpec,
+                                     DiagID, Policy);
+      continue;
+    }
+        
     // +======================================================================+
 
     // enum-specifier:
@@ -3986,6 +3998,8 @@ bool Parser::isKnownToBeTypeSpecifier(const Token &Tok) const {
   case tok::kw_rectilinear:
   case tok::kw_structured:
   case tok::kw_unstructured:
+  case tok::kw_window:
+  case tok::kw_image:
   // +========================================================================+
 
   case tok::kw_bool:
@@ -4190,7 +4204,7 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
     // Debugger support
   case tok::kw___unknown_anytype:
 
-    // type-specifiers
+  // type-specifiers
   case tok::kw_short:
   case tok::kw_long:
   case tok::kw___int64:
@@ -4216,6 +4230,8 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   case tok::kw_rectilinear:
   case tok::kw_structured:
   case tok::kw_unstructured:
+  case tok::kw_window:
+  case tok::kw_image:    
   // +========================================================================+
 
   case tok::kw_bool:
@@ -5581,6 +5597,17 @@ void Parser::ParseParameterDeclarationClause(
 void Parser::ParseBracketDeclarator(Declarator &D) {
   if (CheckProhibitedCXX11Attribute())
     return;
+
+  if (getLangOpts().ScoutC || getLangOpts().ScoutCPlusPlus) {
+    const DeclSpec& DS = D.getDeclSpec();
+    if (DS.getTypeSpecType() == DeclSpec::TST_window) {
+      ParseWindowBracketDeclarator(D);
+      return;
+    } else if (DS.getTypeSpecType() == DeclSpec::TST_image) {
+      ParseImageBracketDeclarator(D);
+      return;
+    }
+  }
 
   BalancedDelimiterTracker T(*this, tok::l_square);
   T.consumeOpen();

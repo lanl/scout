@@ -343,7 +343,9 @@ def err_expected_lbrace : Error<"expected '{'">;
 def err_expected_rbrace : Error<"expected '}'">;
 def err_expected_comma : Error<"expected ','">;
 def err_expected_colon_after : Error<"expected ':' after %0">;
-
+def err_too_few_dims : Error <"Not enough dimensions">;
+def err_too_many_dims : Error <"Too many dimensions">;
+def warn_render_targets_2d : Warning<"Render targets must be two dimensional">;
 // +=======================================================================+
 def err_templated_using_directive : Error<
   "cannot template a using directive">;
@@ -918,8 +920,14 @@ def err_renderall_expected_mesh_element_kw:Error<
     "expected mesh element keyword">;
 def err_renderall_expected_kw_in:Error<
     "renderall missing (expected) keyword: 'in'">;
+def err_renderall_expected_kw_to:Error<
+    "renderall missing (expected) keyword: 'to'">;
 def err_renderall_not_a_mesh_type:Error<
     "instance if of a non-mesh type">;
+def err_unknown_render_target_variable: Error<
+    "undeclared render target specified">;
+def err_expected_a_target_type: Error<
+    "illegal render target type">;
 def err_renderall_predicate_missing_lparen:Error<
     "renderall predicate clause missing opening paren">;
 def err_renderall_predicate_missing_rparen:Error<

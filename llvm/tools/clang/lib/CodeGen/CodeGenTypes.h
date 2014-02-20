@@ -149,6 +149,7 @@ public:
 
   // +==== Scout =============================================================+
   llvm::Type *ConvertScoutMeshType(QualType T);
+  llvm::Type *ConvertScoutRenderTargetType(QualType T);  
   // +========================================================================+
 
   /// ConvertTypeForMem - Convert type T into a llvm::Type.  This differs from

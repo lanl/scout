@@ -2437,9 +2437,15 @@ private:
 
   void ParseMeshParameterDeclaration(DeclSpec& DS);
 
-  StmtResult ParseWindowOrImageDeclaration(bool window,
-                                           StmtVector &Stmts,
-                                           bool OnlyStatement);
+
+  const RenderTargetType* LookupRenderTargetType(IdentifierInfo *TargetInfo,
+                                                 SourceLocation TargetLoc);  
+
+  VarDecl* LookupRenderTargetVarDecl(IdentifierInfo *TargetInfo,
+                                     SourceLocation TargetLoc);
+  
+  void ParseWindowBracketDeclarator(Declarator &D);
+  void ParseImageBracketDeclarator(Declarator &D);
 
   StmtResult ParseCameraDeclaration(StmtVector &Stmts,
       bool OnlyStatement);

@@ -456,6 +456,12 @@ void RTTIBuilder::BuildVTablePointer(const Type *Ty) {
   case Type::UnstructuredMesh:
     VTableName = "_ZTVN10__cxxabiv???__unstruct_mesh_type_infoE";
     break;
+  case Type::Window:
+    VTableName = "_ZTVN10__cxxabiv???__window_type_infoE";
+    break;
+  case Type::Image:
+    VTableName = "_ZTVN10__cxxabiv???__image_type_infoE";
+    break;          
   // +========================================================================+
   case Type::Record: {
     const CXXRecordDecl *RD = 
@@ -608,6 +614,11 @@ llvm::Constant *RTTIBuilder::BuildTypeInfo(QualType Ty, bool Force) {
   case Type::UnstructuredMesh:
     // abi::__enum_mesh_info adds no data members to std::type_info.
     break;
+
+  case Type::Window:
+  case Type::Image:
+    // abi::__enum_render_target_info adds no data members to std::type_info.
+    break;    
   // +========================================================================+
 
   case Type::Enum:

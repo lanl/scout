@@ -867,6 +867,10 @@ void CXXNameMangler::mangleUnresolvedPrefix(NestedNameSpecifier *qualifier,
     case Type::RectilinearMesh:
     case Type::UnstructuredMesh:
       llvm_unreachable("type is illegal as a nested name specifier");
+
+    case Type::Window:
+    case Type::Image:
+      llvm_unreachable("type is illegal as a nested name specifier");      
     // +======================================================================+
 
 
@@ -2080,6 +2084,25 @@ void CXXNameMangler::mangleType(const RectilinearMeshType *T) {
 void CXXNameMangler::mangleType(const UnstructuredMeshType *T) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
+
+void CXXNameMangler::mangleType(const WindowType *T) {
+  Out << 'A';
+  // decayed vla types (size 0) will just be skipped.
+  if (T->getWidthExpr())
+    mangleExpression(T->getWidthExpr());
+  if (T->getHeightExpr())
+    mangleExpression(T->getHeightExpr());
+}
+
+void CXXNameMangler::mangleType(const ImageType *T) {
+  Out << 'A';
+  // decayed vla types (size 0) will just be skipped.
+  if (T->getWidthExpr())
+    mangleExpression(T->getWidthExpr());
+  if (T->getHeightExpr())
+    mangleExpression(T->getHeightExpr());
+}
+
 // ============================================================================
 
 // <type>       ::= <array-type>

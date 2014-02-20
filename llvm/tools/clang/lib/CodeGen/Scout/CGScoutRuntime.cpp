@@ -152,4 +152,15 @@ llvm::Value *CGScoutRuntime::RenderallUniformColorsGlobal(CodeGenFunction &CGF) 
 }
 
 
-
+llvm::Type *CGScoutRuntime::convertScoutSpecificType(const Type *T) {
+  llvm::LLVMContext& Ctx = CGM.getLLVMContext();
+  if (T->isScoutWindowType()) {
+    llvm::errs() << "code gen: coverting scout-specific type.\n";
+    return llvm::PointerType::get(llvm::Type::getVoidTy(Ctx), 0);
+  } else if (T->isScoutImageType()) {
+    return llvm::PointerType::get(llvm::Type::getVoidTy(Ctx), 0);    
+  } else {
+    llvm_unreachable("Unexpected scout type!");
+    return 0;
+  }
+}

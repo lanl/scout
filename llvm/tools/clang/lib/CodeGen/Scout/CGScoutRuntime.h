@@ -75,7 +75,8 @@ namespace CodeGen {
     llvm::Function *ModuleInitFunction();
     llvm::Function *RenderallUniformBeginFunction();
     llvm::Function *RenderallEndFunction();
-    llvm::Value *RenderallUniformColorsGlobal(CodeGenFunction &CGF);
+    llvm::Value    *RenderallUniformColorsGlobal(CodeGenFunction &CGF);
+    llvm::Type     *convertScoutSpecificType(const Type *T);    
   };
 }
 }

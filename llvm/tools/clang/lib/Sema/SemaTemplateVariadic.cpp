@@ -724,6 +724,8 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
   case TST_rectilinear_mesh:
   case TST_structured_mesh:
   case TST_unstructured_mesh:
+  case TST_window:
+  case TST_image:    
   // +========================================================================+
   case TST_bool:
   case TST_decimal32:
@@ -759,6 +761,8 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
     case DeclaratorChunk::RectilinearMesh:
     case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
+    case DeclaratorChunk::Window:
+    case DeclaratorChunk::Image:
     // +======================================================================+
 
       // Syntactically, these kinds of declarator chunks all come after the

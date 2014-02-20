@@ -1049,6 +1049,9 @@ public:
   QualType BuildUnstructuredMeshType(QualType T, Expr* filename,
                                      SourceRange Brackets,
                                      DeclarationName Entity);
+
+  QualType BuildWindowType(QualType T, const llvm::SmallVector<Expr*,2> &dims);
+  QualType BuildImageType(QualType T, const llvm::SmallVector<Expr*,2> &dims);
   // +========================================================================+
 
   /// \brief Build a function type.
@@ -8106,6 +8109,12 @@ public:
                                      const MeshType *MT,
                                      VarDecl *VD);
 
+  bool ActOnRenderallTargetRefVariable(Scope *S,
+                                       IdentifierInfo *RefVarInfo,
+                                       SourceLocation RefVarLoc,
+                                       const RenderTargetType *RT,
+                                       VarDecl *VD);
+
   bool CheckForallArray(Scope* S,
                         IdentifierInfo* InductionVarInfo,
                         SourceLocation InductionVarLoc);
@@ -8157,14 +8166,17 @@ public:
             SourceLocation ForallLoc, DeclStmt *Init[], Stmt* Body);
 
   StmtResult ActOnRenderallMeshStmt(SourceLocation ForallLoc,
-                                RenderallMeshStmt::MeshElementType ElementType,
-                                const MeshType *MT,
-                                VarDecl* MVD,
-                                IdentifierInfo* RefVarInfo,
-                                IdentifierInfo* MeshInfo,
-                                SourceLocation LParenLoc,
-                                Expr* Predicate, SourceLocation RParenLoc,
-                                Stmt* Body);
+                                    RenderallMeshStmt::MeshElementType ElementType,
+                                    const MeshType *MT,
+                                    VarDecl* MVD,    // mesh var decl
+                                    VarDecl* RTVD,   // render target var decl 
+                                    IdentifierInfo* RefVarInfo,
+                                    IdentifierInfo* MeshInfo,
+                                    IdentifierInfo* TargetInfo, 
+                                    SourceLocation  LParenLoc,
+                                    Expr* Predicate,
+                                    SourceLocation RParenLoc,
+                                    Stmt* Body);
 
   //  StmtResult ActOnVolumeRenderAllStmt(Scope* S, SourceLocation VolRenLoc,
   //                                      SourceLocation L, SourceLocation R,
