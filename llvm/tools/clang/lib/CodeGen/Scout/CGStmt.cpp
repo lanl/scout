@@ -212,7 +212,8 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 //generate one of the nested loops
 void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
   RegionCounter Cnt = getPGORegionCounter(&S);
-  
+  (void)Cnt; //suppress warning 
+ 
   llvm::Value *MeshBaseAddr = GetMeshBaseAddr(S);
   llvm::StringRef MeshName = S.getMeshType()->getName();
 
@@ -384,6 +385,7 @@ void CodeGenFunction::EmitForallArrayStmt(const ForallArrayStmt &S) {
 
 void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) {
   RegionCounter Cnt = getPGORegionCounter(&S);
+  (void)Cnt; //suppress warning
   
   CGDebugInfo *DI = getDebugInfo();
 
@@ -547,6 +549,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 //generate one of the nested loops
 void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned r) {
   RegionCounter Cnt = getPGORegionCounter(&S);
+  (void)Cnt; //suppress warning
 
   llvm::StringRef MeshName = S.getMeshType()->getName();
 
