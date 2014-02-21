@@ -127,6 +127,10 @@ function(add_llvm_symbol_exports target_name export_file)
     PROPERTY ADDITIONAL_MAKE_CLEAN_FILES ${native_export_file})
 
   add_dependencies(${target_name} ${target_name}_exports)
+
+  # Add dependency to *_exports later -- CMake issue 14747
+  list(APPEND LLVM_COMMON_DEPENDS ${target_name}_exports)
+  set(LLVM_COMMON_DEPENDS ${LLVM_COMMON_DEPENDS} PARENT_SCOPE)
 endfunction(add_llvm_symbol_exports)
 
 function(add_dead_strip target_name)
@@ -184,14 +188,18 @@ function(llvm_add_library name)
   cmake_parse_arguments(ARG
     "MODULE;SHARED;STATIC"
     "OUTPUT_NAME"
-    "ADDITIONAL_HEADERS;DEPENDS;LINK_COMPONENTS;LINK_LIBS"
+    "ADDITIONAL_HEADERS;DEPENDS;LINK_COMPONENTS;LINK_LIBS;OBJLIBS"
     ${ARGN})
   list(APPEND LLVM_COMMON_DEPENDS ${ARG_DEPENDS})
   if(ARG_ADDITIONAL_HEADERS)
     # Pass through ADDITIONAL_HEADERS.
     set(ARG_ADDITIONAL_HEADERS ADDITIONAL_HEADERS ${ARG_ADDITIONAL_HEADERS})
   endif()
-  llvm_process_sources(ALL_FILES ${ARG_UNPARSED_ARGUMENTS} ${ARG_ADDITIONAL_HEADERS})
+  if(ARG_OBJLIBS)
+    set(ALL_FILES ${ARG_OBJLIBS})
+  else()
+    llvm_process_sources(ALL_FILES ${ARG_UNPARSED_ARGUMENTS} ${ARG_ADDITIONAL_HEADERS})
+  endif()
 
   if(ARG_MODULE)
     if(ARG_SHARED OR ARG_STATIC)
@@ -208,6 +216,39 @@ function(llvm_add_library name)
     if(NOT ARG_SHARED)
       set(ARG_STATIC TRUE)
     endif()
+  endif()
+
+  # Generate objlib
+  if(ARG_SHARED AND ARG_STATIC)
+    # Generate an obj library for both targets.
+    set(obj_name "obj.${name}")
+    add_library(${obj_name} OBJECT EXCLUDE_FROM_ALL
+      ${ALL_FILES}
+      )
+    llvm_update_compile_flags(${obj_name})
+    set(ALL_FILES "$<TARGET_OBJECTS:${obj_name}>")
+
+    # Do add_dependencies(obj) later due to CMake issue 14747.
+    list(APPEND objlibs ${obj_name})
+
+    set_target_properties(${obj_name} PROPERTIES FOLDER "Object Libraries")
+  endif()
+
+  if(ARG_SHARED AND ARG_STATIC)
+    # static
+    set(name_static "${name}_static")
+    if(ARG_OUTPUT_NAME)
+      set(output_name OUTPUT_NAME "${ARG_OUTPUT_NAME}_static")
+    endif()
+    # DEPENDS has been appended to LLVM_COMMON_LIBS.
+    llvm_add_library(${name_static} STATIC
+      ${output_name}
+      OBJLIBS ${ALL_FILES} # objlib
+      LINK_LIBS ${ARG_LINK_LIBS}
+      LINK_COMPONENTS ${ARG_LINK_COMPONENTS}
+      )
+    # FIXME: Add name_static to anywhere in TARGET ${name}'s PROPERTY.
+    set(ARG_STATIC)
   endif()
 
   if(ARG_MODULE)
@@ -254,6 +295,12 @@ function(llvm_add_library name)
 
   if(LLVM_COMMON_DEPENDS)
     add_dependencies(${name} ${LLVM_COMMON_DEPENDS})
+    # Add dependencies also to objlibs.
+    # CMake issue 14747 --  add_dependencies() might be ignored to objlib's user.
+    foreach(objlib ${objlibs})
+      message("add_dependencies(${objlib} ${LLVM_COMMON_DEPENDS})")
+      add_dependencies(${objlib} ${LLVM_COMMON_DEPENDS})
+    endforeach()
   endif()
 endfunction()
 
