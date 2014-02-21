@@ -329,6 +329,20 @@ Decl *ASTNodeImporter::VisitMeshFieldDecl(MeshFieldDecl *D) {
                             Loc, Name.getAsIdentifierInfo(),
                             T, TInfo, BitWidth, D->isMutable(),
                             D->getInClassInitStyle());
+
+  if(D->isCellLocated()){
+    ToField->setCellLocated(true);
+  }
+  else if(D->isVertexLocated()){
+    ToField->setVertexLocated(true);
+  }
+  else if(D->isEdgeLocated()){
+    ToField->setEdgeLocated(true);
+  }
+  else if(D->isFaceLocated()){
+    ToField->setFaceLocated(true);
+  }
+
   ToField->setAccess(D->getAccess());
   ToField->setLexicalDeclContext(LexicalDC);
   if (ToField->hasInClassInitializer())
