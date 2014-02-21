@@ -752,10 +752,12 @@ static InputKind getSourceInputKindFromOptions(const LangOptions &LangOpts) {
     return IK_CUDA;
   if (LangOpts.ObjC1)
     return LangOpts.CPlusPlus? IK_ObjCXX : IK_ObjC;
+  // +===== Scout ==========================================================+
   if (LangOpts.ScoutC)
     return IK_Scout_C;
   if (LangOpts.ScoutCPlusPlus)
     return IK_Scout_CXX;
+  // +======================================================================+
   return LangOpts.CPlusPlus? IK_CXX : IK_C;
 }
 

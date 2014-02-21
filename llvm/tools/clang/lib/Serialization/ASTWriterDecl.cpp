@@ -1907,10 +1907,6 @@ void ASTWriter::WriteDecl(ASTContext &Context, Decl *D) {
   // Switch case IDs are per Decl.
   ClearSwitchCaseIDs();
 
-  // DDDD
-  //llvm::errs() << "::WriteDecl:\n";
-  //D->dump();
-  // DDDD
   RecordData Record;
   ASTDeclWriter W(*this, Context, Record);
 
@@ -1925,7 +1921,6 @@ void ASTWriter::WriteDecl(ASTContext &Context, Decl *D) {
 
     ID= IDR;
   }
-  //llvm::errs() << "WriteDecl: Code = " << W.Code << "\n";
   bool isReplacingADecl = ID < FirstDeclID;
 
   // If this declaration is also a DeclContext, write blocks for the
@@ -1937,9 +1932,6 @@ void ASTWriter::WriteDecl(ASTContext &Context, Decl *D) {
   uint64_t VisibleOffset = 0;
   DeclContext *DC = dyn_cast<DeclContext>(D);
   if (DC) {
-    // DDDD
-    //llvm::errs() << "::WriteDecl is a DC\n";
-    // DDDD
     if (isReplacingADecl) {
       // It is replacing a decl from a chained PCH; make sure that the
       // DeclContext is fully loaded.

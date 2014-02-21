@@ -178,12 +178,13 @@ class Preprocessor : public RefCountedBase<Preprocessor> {
   mutable IdentifierTable ScoutIdentifiers;
   // +========================================================================+
 
-  /// Selectors - This table contains all the selectors in the program. Unlike
-  /// IdentifierTable above, this table *isn't* populated by the preprocessor.
-  /// It is declared/expanded here because it's role/lifetime is
-  /// conceptually similar the IdentifierTable. In addition, the current control
-  /// flow (in clang::ParseAST()), make it convenient to put here.
-
+  /// \brief This table contains all the selectors in the program.
+  ///
+  /// Unlike IdentifierTable above, this table *isn't* populated by the
+  /// preprocessor. It is declared/expanded here because its role/lifetime is
+  /// conceptually similar to the IdentifierTable. In addition, the current
+  /// control flow (in clang::ParseAST()), make it convenient to put here.
+  ///
   /// FIXME: Make sure the lifetime of Identifiers/Selectors *isn't* tied to
   /// the lifetime of the preprocessor.
   SelectorTable Selectors;

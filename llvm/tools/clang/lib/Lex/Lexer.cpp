@@ -23,7 +23,9 @@
 //    -fexec-charset,-fwide-exec-charset
 //
 //===----------------------------------------------------------------------===//
+// +==== Scout ===============================================================+
 #include <iostream>
+// +==========================================================================+
 
 #include "clang/Lex/Lexer.h"
 #include "UnicodeCharSets.h"
@@ -229,7 +231,6 @@ Lexer::Lexer(const std::string& str, Preprocessor& PP)
   SetCommentRetentionState(PP.getCommentRetentionState());
 }
 
-// +===== Scout ==============================================================+
 Lexer::~Lexer(){
   // if this is a string lexer, clean up after it
 

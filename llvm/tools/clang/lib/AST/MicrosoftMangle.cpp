@@ -173,11 +173,11 @@ private:
   // ===== Scout ===============================================
   void mangleType(const MeshType*);
   void mangleType(const RenderTargetType*);
-  // ===========================================================
   void mangleFunctionType(const FunctionType *T, const FunctionDecl *D,
                           bool IsStructor, bool IsInstMethod);
   void mangleDecayedArrayType(const ArrayType *T, bool IsGlobal);
   void mangleArrayType(const ArrayType *T, Qualifiers Quals);
+  // ===========================================================
   void mangleFunctionClass(const FunctionDecl *FD);
   void mangleCallingConvention(const FunctionType *T);
   void mangleIntegerLiteral(const llvm::APSInt &Number, bool IsBoolean);

@@ -1794,10 +1794,12 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
     bool isBlockVariable = VD->hasAttr<BlocksAttr>();
 
     llvm::Value *V = LocalDeclMap.lookup(VD);
+    // +===== Scout ========================================================+
     if(!V) {
       llvm::errs() << "lookup fail for " << VD->getName() << "\n";
       VD->dump();
     }
+    // +====================================================================+
 
     if (!V && VD->isStaticLocal())
       V = CGM.getStaticLocalDeclAddress(VD);

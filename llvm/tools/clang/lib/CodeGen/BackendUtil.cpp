@@ -258,6 +258,7 @@ void EmitAssemblyHelper::CreateScoutPasses() {
   */
 #endif
 }
+// ===========================================================================
 
 static void addDataFlowSanitizerPass(const PassManagerBuilder &Builder,
                                      PassManagerBase &PM) {

@@ -114,11 +114,10 @@ void Driver::ParseDriverMode(ArrayRef<const char *> Args) {
         .Case("scout", ScoutCMode)      // +===== Scout ======================+
         .Default(~0U);
 
-    if (M != ~0U) {
+    if (M != ~0U)
       Mode = static_cast<DriverMode>(M);
-    } else {
+    else 
       Diag(diag::err_drv_unsupported_option_argument) << OptName << Value;
-    }
   }
 }
 
@@ -740,7 +739,9 @@ bool Driver::HandleImmediateArgs(const Compilation &C) {
     }
     llvm::outs() << "\n";
     llvm::outs() << "libraries: =" << ResourceDir;
+    // +==== Scout =============================================================+
     llvm::outs() << "scout libraries: =" << ScoutResourceDir;
+    // +========================================================================+
 
     StringRef sysroot = C.getSysRoot();
 

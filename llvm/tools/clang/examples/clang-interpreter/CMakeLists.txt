@@ -1,5 +1,6 @@
+# +===== Scout ===========================================================+
 include(sc-llvm-link-libs)
-
+# +=======================================================================+
 
 set(LLVM_LINK_COMPONENTS
   Core
@@ -19,7 +20,9 @@ add_dependencies(clang-interpreter
 
 target_link_libraries(clang-interpreter
   clangBasic
+# +===== Scout ===========================================================+
   ${SC_LLVM_LINK_LIBS}
+# +=======================================================================+
   clangCodeGen
   clangDriver
   clangFrontend

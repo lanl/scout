@@ -1262,9 +1262,11 @@ def rdynamic : Flag<["-"], "rdynamic">;
 def resource_dir : Separate<["-"], "resource-dir">,
   Flags<[DriverOption, CC1Option, HelpHidden]>,
   HelpText<"The directory which holds the compiler resource files">;
+// +===== Scout ============================================================+
 def scout_resource_dir : Separate<["-"], "scout-resource-dir">,
   Flags<[DriverOption, CC1Option, HelpHidden]>,
   HelpText<"The directory which holds the scout-centric resource files">;
+// +========================================================================+
 def resource_dir_EQ : Joined<["-"], "resource-dir=">, Flags<[DriverOption]>,
   Alias<resource_dir>;
 def rpath : Separate<["-"], "rpath">, Flags<[LinkerInput]>;

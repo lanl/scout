@@ -1172,13 +1172,15 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
 
   // OpenCL and C++ both have bool, true, false keywords.
   Opts.Bool = Opts.OpenCL || Opts.CPlusPlus ||
-              Opts.ScoutC || Opts.ScoutCPlusPlus;
+              Opts.ScoutC || Opts.ScoutCPlusPlus;  // ====== Scout ==========
 
   // C++ has wchar_t keyword.
-  Opts.WChar = Opts.CPlusPlus || Opts.ScoutCPlusPlus;
+  Opts.WChar = Opts.CPlusPlus || 
+	Opts.ScoutCPlusPlus; // ====== Scout ==========
 
   Opts.GNUKeywords = Opts.GNUMode;
-  Opts.CXXOperatorNames = Opts.CPlusPlus || Opts.ScoutCPlusPlus;
+  Opts.CXXOperatorNames = Opts.CPlusPlus || 
+		Opts.ScoutCPlusPlus; // ====== Scout ==========
 
   // Mimicing gcc's behavior, trigraphs are only enabled if -trigraphs
   // is specified, or -std is set to a conforming mode.
@@ -1218,10 +1220,9 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
       .Case(name, LangStandard::lang_##id)
 #include "clang/Frontend/LangStandards.def"
       .Default(LangStandard::lang_unspecified);
-    if (LangStd == LangStandard::lang_unspecified) {
+    if (LangStd == LangStandard::lang_unspecified)
       Diags.Report(diag::err_drv_invalid_value)
         << A->getAsString(Args) << A->getValue();
-      }
     else {
       // Valid standard, check to make sure language and standard are
       // compatible.
@@ -1232,7 +1233,6 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
       case IK_ObjC:
       case IK_PreprocessedC:
       case IK_PreprocessedObjC:
-        llvm::errs() << "IK is scout\n";
         if (!(Std.isC89() || Std.isC99()))
           Diags.Report(diag::err_drv_argument_not_allowed_with)
             << A->getAsString(Args) << "C/ObjC";

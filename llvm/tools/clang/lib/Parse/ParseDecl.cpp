@@ -5607,7 +5607,7 @@ void Parser::ParseParameterDeclarationClause(
 void Parser::ParseBracketDeclarator(Declarator &D) {
   if (CheckProhibitedCXX11Attribute())
     return;
-
+  // +===== Scout ==========================================================+
   if (getLangOpts().ScoutC || getLangOpts().ScoutCPlusPlus) {
     const DeclSpec& DS = D.getDeclSpec();
     if (DS.getTypeSpecType() == DeclSpec::TST_window) {
@@ -5618,6 +5618,7 @@ void Parser::ParseBracketDeclarator(Declarator &D) {
       return;
     }
   }
+  // +======================================================================+
 
   BalancedDelimiterTracker T(*this, tok::l_square);
   T.consumeOpen();

@@ -63,10 +63,10 @@ class CGDebugInfo {
   llvm::DIType OCLImage3dDITy;
   llvm::DIType OCLEventDITy;
   llvm::DIType BlockLiteralGeneric;
-
+  // +==== Scout =============================================================+
   llvm::DIType WindowDITy;
   llvm::DIType ImageDITy;  
-
+  // +========================================================================+
   /// TypeCache - Cache of previously constructed Types.
   llvm::DenseMap<void *, llvm::WeakVH> TypeCache;
 

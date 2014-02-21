@@ -7,9 +7,8 @@
 #make sure current-merged-llvm.sh has run
 if [ -d "/tmp/llvm/tools/clang" ]; then
 
-  # i'm not sure why we need LibraryDependencies.inc but we do.
   #exclude /llvm/project and tools/lldb for now
-  diff -rq -x .git llvm /tmp/llvm | grep "Only in llvm" | grep -iv Scout | grep -v  "llvm/projects" | grep -v "LibraryDependencies.inc" | grep -v "tools/lldb" | awk '{print $3 $4}' | sed 's/:/\//' > /tmp/filelist
+  diff -rq -x .git llvm /tmp/llvm | grep "Only in llvm" | grep -iv Scout | grep -v  "llvm/projects" | grep -v "tools/lldb" | awk '{print $3 $4}' | sed 's/:/\//' > /tmp/filelist
 
   #make sure none of these files have "Scout" in them
   while read f; do
