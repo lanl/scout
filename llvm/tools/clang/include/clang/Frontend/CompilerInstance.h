@@ -80,6 +80,9 @@ class CompilerInstance : public ModuleLoader {
   /// The target being compiled for.
   IntrusiveRefCntPtr<TargetInfo> Target;
 
+  /// The virtual file system.
+  IntrusiveRefCntPtr<vfs::FileSystem> VirtualFileSystem;
+
   /// The file manager.
   IntrusiveRefCntPtr<FileManager> FileMgr;
 
@@ -353,6 +356,26 @@ public:
   void setTarget(TargetInfo *Value);
 
   /// }
+  /// @name Virtual File System
+  /// {
+
+  bool hasVirtualFileSystem() const { return VirtualFileSystem != 0; }
+
+  vfs::FileSystem &getVirtualFileSystem() const {
+    assert(hasVirtualFileSystem() &&
+           "Compiler instance has no virtual file system");
+    return *VirtualFileSystem;
+  }
+
+  /// \brief Replace the current virtual file system.
+  ///
+  /// \note Most clients should use setFileManager, which will implicitly reset
+  /// the virtual file system to the one contained in the file manager.
+  void setVirtualFileSystem(IntrusiveRefCntPtr<vfs::FileSystem> FS) {
+    VirtualFileSystem = FS;
+  }
+
+  /// }
   /// @name File Manager
   /// {
 
@@ -369,7 +392,7 @@ public:
     FileMgr.resetWithoutRelease();
   }
 
-  /// setFileManager - Replace the current file manager.
+  /// \brief Replace the current file manager and virtual file system.
   void setFileManager(FileManager *Value);
 
   /// }
