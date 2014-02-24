@@ -56,7 +56,7 @@
 #include "scout/Runtime/renderall/RenderallUniform.h"
 #include "scout/Runtime/renderall/RenderallUniformImpl.h"
 #include "scout/Runtime/base_types.h"
-#include "scout/Runtime/opengl/glSDL.h"
+#include "scout/Runtime/opengl/glfw/glfwDevice.h"
 #include "scout/Runtime/opengl/glQuadRenderableVA.h"
 
 // scout includes
@@ -67,11 +67,17 @@ using namespace scout;
 
 namespace scout{
 
-  RenderallUniformImpl::RenderallUniformImpl(RenderallUniform* o)
-  : o_(o){
+  RenderallUniformImpl::RenderallUniformImpl(RenderallUniform* rendUnif)
+  : rendUnif_(rendUnif){
 
     glsdl_ = glSDL::Instance();
-
+    
+#ifdef CMA
+    glDevice_ = glfwDevice::Instance();
+    if (glDevice_) {
+      glWindow* glWindow_ = glDevice_->createWindow(rendUnif_->width, rendUnif_->height);
+    }
+#endif
     init();
   }
 
@@ -81,7 +87,7 @@ namespace scout{
 
   void RenderallUniformImpl::init(){
     renderable_ = new glQuadRenderableVA( glfloat3(0.0, 0.0, 0.0),
-        glfloat3(o_->width(), o_->height(), 0.0));
+        glfloat3(rendUnif_->width(), rendUnif_->height(), 0.0));
 
     registerPbo(renderable_->get_buffer_object_id());
 
@@ -89,6 +95,7 @@ namespace scout{
 
     // show empty buffer
     glsdl_->swapBuffers();
+    //glWindow_->swapBuffers();
   }
 
   void RenderallUniformImpl::begin(){
@@ -102,11 +109,21 @@ namespace scout{
     exec();
 
     // show what we just drew
+#ifdef CMA
+    glWindow_->swapBuffers();
+
+    bool done = glWindow_->processEvent();
+
+    if (done) {
+      glDevice_->deleteWindow(glWindow_);
+    }
+#endif
     glsdl_->swapBuffers();
-
+    
     bool done = glsdl_->processEvent();
-
+    
     if (done) exit(0);
+
 
   }
   void RenderallUniformImpl::exec(){

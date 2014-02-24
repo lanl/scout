@@ -48,55 +48,47 @@
 #
 ###########################################################################
 #
-# Notes 
-#
-#   This module sets the following variables: 
-#
-#     GLFW_FOUND       - Set to true if GLFW is found. 
-#     GLFW_INCLUDE_DIR - Path for reaching GLFW header files. 
-#     GLFW_LIBRARY_DIR - Path to GLFW library file(s). 
-#     GLFW_LIBRARIES   - Set of libraries required for linking.
-#
-#####
+  
+project(scout_rt_test_glfw)
 
-  ##### INCLUDE DIRECTORY AND FILES 
-  # 
-  find_path(GLFW_INCLUDE_DIR
-    GLFW/glfw3.h
-    PATH_SUFFIXES include glfw/include 
-    HINTS $ENV{GLFW_DIR}
-    PATHS
-    /usr
-    /usr/local
-    /opt/
-    /opt/local
-    DOC "Path for GLFW's include files."
-    )
-  #
-  ##### 
+message(STATUS "scout install include directory: ${SCOUT_INSTALL_INCLUDE_DIR}")
+message(STATUS "scout install lib directory: ${SCOUT_INSTALL_LIB_DIR}")
+message(STATUS "glfw library dir: ${GLFW_LIBRARY_DIR}")
+message(STATUS "glfw libs : ${GLFW_LIBS}")
 
-  ##### LIBRARY DIRECTORY
-  # 
-  find_path(GLFW_LIBRARY_DIR
-    libglfw3.a 
-    PATH_SUFFIXES lib64 lib glfw/lib64 glfw/lib 
-    HINTS $ENV{GLFW_DIR}
-    PATHS
-    /usr
-    /usr/local
-    /opt
-    /opt/local 
-    DOC "Path to GLFW libraries."
-    )
-  #
-  ##### 
+include_directories(
+  ${SCOUT_INSTALL_INCLUDE_DIR}
+  ${OPENGL_INCLUDE_DIR}
+  ${GLFW_INCLUDE_DIR}
+)
 
-  if (GLFW_LIBRARY_DIR) 
-    set(GLFW_LIBS "-lglfw3")
-  endif()
+set(LIBS
+  scRuntime
+  ${GLFW_LIBS}
+  ${OPENGL_LIBRARY}
+  ${COCOA_LIBRARY}
+  ${IOKIT_LIBRARY}
+  ${COREVIDEO_LIBRARY}
+  ${COREFOUNDATION_FRAMEWORK}
+)
 
-  find_package_handle_standard_args(GLFW
-    REQUIRED_VARS 
-    GLFW_LIBRARY_DIR 
-    GLFW_INCLUDE_DIR
-    )
+file(GLOB RT_GLFW_SRCS *.cpp)
+
+if (SCOUT_ENABLE_GLFW)
+# Add an executable and test entry for each source file...
+  foreach (test ${RT_GLFW_SRCS})
+    get_filename_component(tname ${test} NAME_WE) 
+    if (NOT tname) 
+      message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
+    else (NOT tname)
+      add_executable(runtime_glfw_${tname} ${test})
+      if(DEFINED ENV{DISPLAY}) 
+        add_test(runtime_glfw_${tname} ${TEST_BINARY_DIR}/runtime_glfw_${tname})
+        message(" + added runtime regression GLFW test entry: runtime_glfw_${tname}")
+      endif()
+      target_link_libraries(runtime_glfw_${tname} ${LIBS})
+      set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -L${SCOUT_INSTALL_LIB_DIR} -L${GLFW_LIBRARY_DIR}") 
+    endif(NOT tname)
+  endforeach(test)
+else()
+endif()

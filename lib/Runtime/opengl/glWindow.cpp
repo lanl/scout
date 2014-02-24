@@ -1,8 +1,8 @@
 /*
  * ###########################################################################
- * Copyright (c) 2010, Los Alamos National Security, LLC.
+ * Copyright(c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
- * 
+ *
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -20,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- * 
+ *
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided 
+ *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -31,7 +31,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -45,54 +45,64 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ########################################################################### 
- * 
+ * ###########################################################################
+ *
  * Notes
  *
- * ##### 
- */ 
+ * #####
+ */
 
-#ifndef SCOUT_RENDERALL_UNIFORM_IMPL_H_
-#define SCOUT_RENDERALL_UNIFORM_IMPL_H_
-#include "scout/Runtime/opengl/glSDL.h"
-#include "scout/Runtime/opengl/glDevice.h"
-#include "scout/Runtime/opengl/glQuadRenderableVA.h"
-#include "scout/Runtime/renderall/RenderallUniform.h"
+#include "scout/Runtime/opengl/glWindow.h"
+
+using namespace scout;
+
+/// Create a window of the given width and height.  The window's
+/// position is undetermined and the background color will default
+/// to black.
+glWindow::glWindow(ScreenCoord width, ScreenCoord height)
+: _frame(width, height) {
+  _bgColor.red   = 0.0f;
+  _bgColor.green = 0.0f;
+  _bgColor.blue  = 0.0f;
+  _bgColor.alpha = 1.0f;
+}
+
+/// Create a window with the given location and size (as described
+/// by the given WindowRect).  The background color will default
+/// to black.
+glWindow::glWindow(const WindowRect &rect)
+: _frame(rect) {
+  _bgColor.red   = 0.0f;
+  _bgColor.green = 0.0f;
+  _bgColor.blue  = 0.0f;
+  _bgColor.alpha = 1.0f;
+}
+
+/// Create a window with the given location, size (as described by
+/// the given WindowRect) and background color.
+glWindow::glWindow(const WindowRect &rect, const oglColor &color)
+: _frame(rect) {
+  _bgColor.red   = color.red;
+  _bgColor.green = color.green;
+  _bgColor.blue  = color.blue;
+  _bgColor.alpha = color.alpha;
+}
+
+/// Set the window's background color.
+void glWindow::setBackgroundColor(float red,
+                        float green,
+                        float blue) {
+  _bgColor.red   = red;
+  _bgColor.green = green;
+  _bgColor.blue  = blue;
+  _bgColor.alpha = 1.0;
+}
 
 
-namespace scout{
-  
-  // globals defined in lib/Runtime/scout.cpp
-  extern "C" float4* __scrt_renderall_uniform_colors;
-  extern unsigned long long __scrt_renderall_uniform_cuda_device;
-  
-  class RenderallUniformImpl{
-  public:
-    RenderallUniformImpl(RenderallUniform* rendUnif_);
-    
-    ~RenderallUniformImpl();
-    
-    void init();
-    
-    void begin();
-    
-    void end();
-    
-    void mapGpuResources();
-    
-    void unmapGpuResources();
-    
-    void registerPbo(GLuint pbo);
-    
-    void exec();
-    
-  private:
-    RenderallUniform* rendUnif_;
-    glQuadRenderableVA* renderable_;
-    glSDL *glsdl_;
-    glDevice *glDevice_;    
-    glWindow *glWindow_;
-  };
-} // end namespace scout
-
-#endif
+/// Set the window's background color.
+void glWindow::setBackgroundColor(const oglColor &rgba) {
+  _bgColor.red   = rgba.red;
+  _bgColor.green = rgba.green;
+  _bgColor.blue  = rgba.blue;
+  _bgColor.alpha = rgba.alpha;
+}

@@ -73,3 +73,8 @@ add_subdirectory(display)
 if (THRUST_FOUND)
   add_subdirectory(isosurf)
 endif()
+
+if (SCOUT_ENABLE_GLFW)
+  add_subdirectory(glfw)
+endif()
+  

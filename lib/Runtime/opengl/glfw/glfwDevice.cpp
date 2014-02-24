@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyrigh (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -54,20 +54,35 @@
 
 #include "scout/Runtime/opengl/glfw/glfwDevice.h"
 #include "scout/Runtime/opengl/glfw/glfwWindow.h"
+#include <stdio.h>
 
-using namepsace scout;
+using namespace scout;
+
+glfwDevice* glfwDevice::_instance=0;
+
+glfwDevice* glfwDevice::Instance() {
+  if (!_instance) {
+    _instance = new glfwDevice();
+  }
+  return _instance;
+}
+
+void error_callback(int error, const char* description)
+{
+  fputs(description, stderr);
+}
+
 
 /**
  *
  *
  */
-glfwDevice::glfwDevice()
-    : glDevice() {
-
+glfwDevice::glfwDevice() {
+  glfwSetErrorCallback(error_callback);
   if (glfwInit() == GL_FALSE) {
-    Enabled = false;
+    exit(EXIT_FAILURE);
   } else {
-    Enabled = true;
+    enabled = true;
   }
 }
 
@@ -77,15 +92,8 @@ glfwDevice::glfwDevice()
  *
  */
 glfwDevice::~glfwDevice() {
-  if (Enabled) {
-    glWindowList::iterator it = Windows.begin(), end = Windows.end();
-    while(it != end) {
-      delete *it;
-      ++it;
-    }
-    
-    glfwTerminate();
-  }
+  glDevice::~glDevice();
+  glfwTerminate();
 }
 
 
@@ -93,26 +101,33 @@ glfwDevice::~glfwDevice() {
  *
  *
  */
-glWindow *glfwDevice::createWindow(int width, int height) {
+glWindow* glfwDevice::createWindow(ScreenCoord width, ScreenCoord height) {
 
   glfwWindow *newWindow = new glfwWindow(width, height);
-  if (newWindow->isEnabled()) 
-    Windows.push_back(newWindow);
-  else
-    delete newWindow;
+
+  if (!newWindow)
+  {
+    glfwTerminate();
+    exit(EXIT_FAILURE);
+  }
+  else _windows.push_back(newWindow);
+  
+  return newWindow;
+
 }
 
-
-/**
- *
- *
- */
-void glfwDevice::deleteWindow(glWindow *window) {
-  Windows::iterator it = Windows.find(Windows.begin(), Windows.end() window);
-  if (it != Windows.end()) 
-    delete window;
-  else {
-
-
+glWindow* glfwDevice::createWindow(ScreenCoord xpos,
+                                   ScreenCoord ypos,
+                                   ScreenCoord width,
+                                   ScreenCoord height) {
+  glfwWindow *newWindow = new glfwWindow(width, height);
+  
+  if (!newWindow)
+  {
+    glfwTerminate();
+    exit(EXIT_FAILURE);
   }
+  else _windows.push_back(newWindow);
+  
+  return newWindow;
 }

@@ -82,6 +82,12 @@ namespace scout {
      * Scout application.
      */
     ~nsglWindow();
+    
+    void swapBuffers(){}
+    
+    bool processEvent(){}
+    
+    void eventLoop(){}
 
     /**
      * Set the title of the window.

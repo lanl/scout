@@ -63,12 +63,25 @@ using namespace scout;
 void glDevice::deleteWindow(glWindow* win) {
   using namespace std;
   
-  glWindowList::iterator it = find(windows.begin(),
-                                   windows.end(),
+  // glWindowList defined in glWindow.h
+  glWindowList::iterator it = find(_windows.begin(),
+                                   _windows.end(),
                                    win);
   
-  if (it != windows.end()) {
+  if (it != _windows.end()) {
     delete (*it);    
-    windows.erase(it);
+    _windows.erase(it);
+  } else {
+    exit(EXIT_FAILURE);
+  }
+}
+
+glDevice::~glDevice() {
+  if (enabled) {
+    glWindowList::iterator it = _windows.begin(), end = _windows.end();
+    while(it != end) {
+      delete *it;
+      ++it;
+    }
   }
 }

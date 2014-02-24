@@ -49,6 +49,8 @@
  * 
  * Notes
  *
+ * Currently not used.
+ *
  * ##### 
  */
 
