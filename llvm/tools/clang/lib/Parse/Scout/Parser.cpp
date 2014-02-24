@@ -52,7 +52,6 @@
  * #####
  */
 #include "clang/Parse/Parser.h"
-#include "ParsePragma.h"
 #include "RAIIObjectsForParser.h"
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/DeclTemplate.h"

@@ -63,7 +63,10 @@ class CGDebugInfo {
   llvm::DIType OCLImage3dDITy;
   llvm::DIType OCLEventDITy;
   llvm::DIType BlockLiteralGeneric;
-
+  // +==== Scout =============================================================+
+  llvm::DIType WindowDITy;
+  llvm::DIType ImageDITy;  
+  // +========================================================================+
   /// TypeCache - Cache of previously constructed Types.
   llvm::DenseMap<void *, llvm::WeakVH> TypeCache;
 
@@ -163,7 +166,6 @@ class CGDebugInfo {
   llvm::DIType CreateTypeDefinition(const StructuredMeshType *Ty);
   llvm::DICompositeType CreateLimitedType(const StructuredMeshType *Ty);
 
-
   llvm::DIType CreateType(const UnstructuredMeshType *Ty);
   llvm::DIType CreateTypeDefinition(const UnstructuredMeshType *Ty);
   llvm::DICompositeType CreateLimitedType(const UnstructuredMeshType *Ty);
@@ -189,6 +191,10 @@ class CGDebugInfo {
                       AccessSpecifier AS, uint64_t offsetInBits,
                       llvm::DIFile tunit,
                       llvm::DIScope scope);
+
+
+  llvm::DIType CreateType(const WindowType *Ty);
+  llvm::DIType CreateType(const ImageType *Ty);  
   // +========================================================================+
 
   void CollectCXXMemberFunctions(const CXXRecordDecl *Decl,

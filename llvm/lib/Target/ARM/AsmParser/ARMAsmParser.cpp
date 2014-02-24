@@ -56,64 +56,6 @@ class ARMOperand;
 
 enum VectorLaneTy { NoLanes, AllLanes, IndexedLane };
 
-// A class to keep track of assembler-generated constant pools that are use to
-// implement the ldr-pseudo.
-class ConstantPool {
-  typedef SmallVector<std::pair<MCSymbol *, const MCExpr *>, 4> EntryVecTy;
-  EntryVecTy Entries;
-
-public:
-  // Initialize a new empty constant pool
-  ConstantPool() { }
-
-  // Add a new entry to the constant pool in the next slot.
-  // \param Value is the new entry to put in the constant pool.
-  //
-  // \returns a MCExpr that references the newly inserted value
-  const MCExpr *addEntry(const MCExpr *Value, MCContext &Context) {
-    MCSymbol *CPEntryLabel = Context.CreateTempSymbol();
-
-    Entries.push_back(std::make_pair(CPEntryLabel, Value));
-    return MCSymbolRefExpr::Create(CPEntryLabel, Context);
-  }
-
-  // Emit the contents of the constant pool using the provided streamer.
-  void emitEntries(MCStreamer &Streamer) {
-    if (Entries.empty())
-      return;
-    Streamer.EmitCodeAlignment(4); // align to 4-byte address
-    Streamer.EmitDataRegion(MCDR_DataRegion);
-    for (EntryVecTy::const_iterator I = Entries.begin(), E = Entries.end();
-         I != E; ++I) {
-      Streamer.EmitLabel(I->first);
-      Streamer.EmitValue(I->second, 4);
-    }
-    Streamer.EmitDataRegion(MCDR_DataRegionEnd);
-    Entries.clear();
-  }
-
-  // Return true if the constant pool is empty
-  bool empty() {
-    return Entries.empty();
-  }
-};
-
-// Map type used to keep track of per-Section constant pools used by the
-// ldr-pseudo opcode. The map associates a section to its constant pool. The
-// constant pool is a vector of (label, value) pairs. When the ldr
-// pseudo is parsed we insert a new (label, value) pair into the constant pool
-// for the current section and add MCSymbolRefExpr to the new label as
-// an opcode to the ldr. After we have parsed all the user input we
-// output the (label, value) pairs in each constant pool at the end of the
-// section.
-//
-// We use the MapVector for the map type to ensure stable iteration of
-// the sections at the end of the parse. We need to iterate over the
-// sections in a stable order to ensure that we have print the
-// constant pools in a deterministic order when printing an assembly
-// file.
-typedef MapVector<const MCSection *, ConstantPool> ConstantPoolMapTy;
-
 class UnwindContext {
   MCAsmParser &Parser;
 
@@ -127,7 +69,7 @@ class UnwindContext {
   int FPReg;
 
 public:
-  UnwindContext(MCAsmParser &P) : Parser(P), FPReg(-1) {}
+  UnwindContext(MCAsmParser &P) : Parser(P), FPReg(ARM::SP) {}
 
   bool hasFnStart() const { return !FnStartLocs.empty(); }
   bool cantUnwind() const { return !CantUnwindLocs.empty(); }
@@ -182,7 +124,7 @@ public:
     PersonalityLocs = Locs();
     HandlerDataLocs = Locs();
     PersonalityIndexLocs = Locs();
-    FPReg = -1;
+    FPReg = ARM::SP;
   }
 };
 
@@ -191,21 +133,7 @@ class ARMAsmParser : public MCTargetAsmParser {
   MCAsmParser &Parser;
   const MCInstrInfo &MII;
   const MCRegisterInfo *MRI;
-  ConstantPoolMapTy ConstantPools;
   UnwindContext UC;
-
-  // Assembler created constant pools for ldr pseudo
-  ConstantPool *getConstantPool(const MCSection *Section) {
-    ConstantPoolMapTy::iterator CP = ConstantPools.find(Section);
-    if (CP == ConstantPools.end())
-      return 0;
-
-    return &CP->second;
-  }
-
-  ConstantPool &getOrCreateConstantPool(const MCSection *Section) {
-    return ConstantPools[Section];
-  }
 
   ARMTargetStreamer &getTargetStreamer() {
     MCTargetStreamer &TS = *getParser().getStreamer().getTargetStreamer();
@@ -296,6 +224,10 @@ class ARMAsmParser : public MCTargetAsmParser {
   bool parseDirectiveEven(SMLoc L);
   bool parseDirectivePersonalityIndex(SMLoc L);
   bool parseDirectiveUnwindRaw(SMLoc L);
+  bool parseDirectiveTLSDescSeq(SMLoc L);
+  bool parseDirectiveMovSP(SMLoc L);
+  bool parseDirectiveObjectArch(SMLoc L);
+  bool parseDirectiveArchExtension(SMLoc L);
 
   StringRef splitMnemonic(StringRef Mnemonic, unsigned &PredicationCode,
                           bool &CarrySetting, unsigned &ProcessorIMod,
@@ -440,7 +372,6 @@ public:
                                MCStreamer &Out, unsigned &ErrorInfo,
                                bool MatchingInlineAsm);
   void onLabelParsed(MCSymbol *Symbol);
-  void finishParse();
 };
 } // end anonymous namespace
 
@@ -2847,7 +2778,8 @@ int ARMAsmParser::tryParseShiftRegister(
                                SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   SMLoc S = Parser.getTok().getLoc();
   const AsmToken &Tok = Parser.getTok();
-  assert(Tok.is(AsmToken::Identifier) && "Token is not an Identifier");
+  if (Tok.isNot(AsmToken::Identifier))
+    return -1; 
 
   std::string lowerCase = Tok.getString().lower();
   ARM_AM::ShiftOpc ShiftTy = StringSwitch<ARM_AM::ShiftOpc>(lowerCase)
@@ -4809,17 +4741,13 @@ bool ARMAsmParser::parseOperand(SmallVectorImpl<MCParsedAsmOperand*> &Operands,
     if (Mnemonic != "ldr") // only parse for ldr pseudo (e.g. ldr r0, =val)
       return Error(Parser.getTok().getLoc(), "unexpected token in operand");
 
-    const MCSection *Section =
-        getParser().getStreamer().getCurrentSection().first;
-    assert(Section);
     Parser.Lex(); // Eat '='
     const MCExpr *SubExprVal;
     if (getParser().parseExpression(SubExprVal))
       return true;
     E = SMLoc::getFromPointer(Parser.getTok().getLoc().getPointer() - 1);
 
-    const MCExpr *CPLoc =
-        getOrCreateConstantPool(Section).addEntry(SubExprVal, getContext());
+    const MCExpr *CPLoc = getTargetStreamer().addConstantPoolEntry(SubExprVal);
     Operands.push_back(ARMOperand::CreateImm(CPLoc, S, E));
     return false;
   }
@@ -7972,7 +7900,7 @@ MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
       return false;
 
     Inst.setLoc(IDLoc);
-    Out.EmitInstruction(Inst);
+    Out.EmitInstruction(Inst, STI);
     return false;
   case Match_MissingFeature: {
     assert(ErrorInfo && "Unknown missing feature!");
@@ -8084,6 +8012,14 @@ bool ARMAsmParser::ParseDirective(AsmToken DirectiveID) {
     return parseDirectivePersonalityIndex(DirectiveID.getLoc());
   else if (IDVal == ".unwind_raw")
     return parseDirectiveUnwindRaw(DirectiveID.getLoc());
+  else if (IDVal == ".tlsdescseq")
+    return parseDirectiveTLSDescSeq(DirectiveID.getLoc());
+  else if (IDVal == ".movsp")
+    return parseDirectiveMovSP(DirectiveID.getLoc());
+  else if (IDVal == ".object_arch")
+    return parseDirectiveObjectArch(DirectiveID.getLoc());
+  else if (IDVal == ".arch_extension")
+    return parseDirectiveArchExtension(DirectiveID.getLoc());
   return true;
 }
 
@@ -8613,7 +8549,7 @@ bool ARMAsmParser::parseDirectiveSetFP(SMLoc L) {
   }
 
   // Consume comma
-  if (!Parser.getTok().is(AsmToken::Comma)) {
+  if (Parser.getTok().isNot(AsmToken::Comma)) {
     Error(Parser.getTok().getLoc(), "comma expected");
     return false;
   }
@@ -8834,13 +8770,7 @@ bool ARMAsmParser::parseDirectiveInst(SMLoc Loc, char Suffix) {
 /// parseDirectiveLtorg
 ///  ::= .ltorg | .pool
 bool ARMAsmParser::parseDirectiveLtorg(SMLoc L) {
-  MCStreamer &Streamer = getParser().getStreamer();
-  const MCSection *Section = Streamer.getCurrentSection().first;
-
-  if (ConstantPool *CP = getConstantPool(Section)) {
-    if (!CP->empty())
-      CP->emitEntries(Streamer);
-  }
+  getTargetStreamer().emitCurrentConstantPool();
   return false;
 }
 
@@ -8858,9 +8788,9 @@ bool ARMAsmParser::parseDirectiveEven(SMLoc L) {
   }
 
   if (Section->UseCodeAlign())
-    getStreamer().EmitCodeAlignment(2, 0);
+    getStreamer().EmitCodeAlignment(2);
   else
-    getStreamer().EmitValueToAlignment(2, 0, 1, 0);
+    getStreamer().EmitValueToAlignment(2);
 
   return false;
 }
@@ -9001,6 +8931,132 @@ bool ARMAsmParser::parseDirectiveUnwindRaw(SMLoc L) {
   return false;
 }
 
+/// parseDirectiveTLSDescSeq
+///   ::= .tlsdescseq tls-variable
+bool ARMAsmParser::parseDirectiveTLSDescSeq(SMLoc L) {
+  if (getLexer().isNot(AsmToken::Identifier)) {
+    TokError("expected variable after '.tlsdescseq' directive");
+    Parser.eatToEndOfStatement();
+    return false;
+  }
+
+  const MCSymbolRefExpr *SRE =
+    MCSymbolRefExpr::Create(Parser.getTok().getIdentifier(),
+                            MCSymbolRefExpr::VK_ARM_TLSDESCSEQ, getContext());
+  Lex();
+
+  if (getLexer().isNot(AsmToken::EndOfStatement)) {
+    Error(Parser.getTok().getLoc(), "unexpected token");
+    Parser.eatToEndOfStatement();
+    return false;
+  }
+
+  getTargetStreamer().AnnotateTLSDescriptorSequence(SRE);
+  return false;
+}
+
+/// parseDirectiveMovSP
+///  ::= .movsp reg [, #offset]
+bool ARMAsmParser::parseDirectiveMovSP(SMLoc L) {
+  if (!UC.hasFnStart()) {
+    Parser.eatToEndOfStatement();
+    Error(L, ".fnstart must precede .movsp directives");
+    return false;
+  }
+  if (UC.getFPReg() != ARM::SP) {
+    Parser.eatToEndOfStatement();
+    Error(L, "unexpected .movsp directive");
+    return false;
+  }
+
+  SMLoc SPRegLoc = Parser.getTok().getLoc();
+  int SPReg = tryParseRegister();
+  if (SPReg == -1) {
+    Parser.eatToEndOfStatement();
+    Error(SPRegLoc, "register expected");
+    return false;
+  }
+
+  if (SPReg == ARM::SP || SPReg == ARM::PC) {
+    Parser.eatToEndOfStatement();
+    Error(SPRegLoc, "sp and pc are not permitted in .movsp directive");
+    return false;
+  }
+
+  int64_t Offset = 0;
+  if (Parser.getTok().is(AsmToken::Comma)) {
+    Parser.Lex();
+
+    if (Parser.getTok().isNot(AsmToken::Hash)) {
+      Error(Parser.getTok().getLoc(), "expected #constant");
+      Parser.eatToEndOfStatement();
+      return false;
+    }
+    Parser.Lex();
+
+    const MCExpr *OffsetExpr;
+    SMLoc OffsetLoc = Parser.getTok().getLoc();
+    if (Parser.parseExpression(OffsetExpr)) {
+      Parser.eatToEndOfStatement();
+      Error(OffsetLoc, "malformed offset expression");
+      return false;
+    }
+
+    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(OffsetExpr);
+    if (!CE) {
+      Parser.eatToEndOfStatement();
+      Error(OffsetLoc, "offset must be an immediate constant");
+      return false;
+    }
+
+    Offset = CE->getValue();
+  }
+
+  getTargetStreamer().emitMovSP(SPReg, Offset);
+  UC.saveFPReg(SPReg);
+
+  return false;
+}
+
+/// parseDirectiveObjectArch
+///   ::= .object_arch name
+bool ARMAsmParser::parseDirectiveObjectArch(SMLoc L) {
+  if (getLexer().isNot(AsmToken::Identifier)) {
+    Error(getLexer().getLoc(), "unexpected token");
+    Parser.eatToEndOfStatement();
+    return false;
+  }
+
+  StringRef Arch = Parser.getTok().getString();
+  SMLoc ArchLoc = Parser.getTok().getLoc();
+  getLexer().Lex();
+
+  unsigned ID = StringSwitch<unsigned>(Arch)
+#define ARM_ARCH_NAME(NAME, ID, DEFAULT_CPU_NAME, DEFAULT_CPU_ARCH) \
+    .Case(NAME, ARM::ID)
+#define ARM_ARCH_ALIAS(NAME, ID) \
+    .Case(NAME, ARM::ID)
+#include "MCTargetDesc/ARMArchName.def"
+#undef ARM_ARCH_NAME
+#undef ARM_ARCH_ALIAS
+    .Default(ARM::INVALID_ARCH);
+
+  if (ID == ARM::INVALID_ARCH) {
+    Error(ArchLoc, "unknown architecture '" + Arch + "'");
+    Parser.eatToEndOfStatement();
+    return false;
+  }
+
+  getTargetStreamer().emitObjectArch(ID);
+
+  if (getLexer().isNot(AsmToken::EndOfStatement)) {
+    Error(getLexer().getLoc(), "unexpected token");
+    Parser.eatToEndOfStatement();
+  }
+
+  return false;
+}
+
 /// Force static initialization.
 extern "C" void LLVMInitializeARMAsmParser() {
   RegisterMCAsmParser<ARMAsmParser> X(TheARMTarget);
@@ -9011,6 +9067,82 @@ extern "C" void LLVMInitializeARMAsmParser() {
 #define GET_SUBTARGET_FEATURE_NAME
 #define GET_MATCHER_IMPLEMENTATION
 #include "ARMGenAsmMatcher.inc"
+
+static const struct ExtMapEntry {
+  const char *Extension;
+  const unsigned ArchCheck;
+  const uint64_t Features;
+} Extensions[] = {
+  { "crc", Feature_HasV8, ARM::FeatureCRC },
+  { "crypto",  Feature_HasV8,
+    ARM::FeatureCrypto | ARM::FeatureNEON | ARM::FeatureFPARMv8 },
+  { "fp", Feature_HasV8, ARM::FeatureFPARMv8 },
+  { "idiv", Feature_HasV7 | Feature_IsNotMClass,
+    ARM::FeatureHWDiv | ARM::FeatureHWDivARM },
+  // FIXME: iWMMXT not supported
+  { "iwmmxt", Feature_None, 0 },
+  // FIXME: iWMMXT2 not supported
+  { "iwmmxt2", Feature_None, 0 },
+  // FIXME: Maverick not supported
+  { "maverick", Feature_None, 0 },
+  { "mp", Feature_HasV7 | Feature_IsNotMClass, ARM::FeatureMP },
+  // FIXME: ARMv6-m OS Extensions feature not checked
+  { "os", Feature_None, 0 },
+  // FIXME: Also available in ARMv6-K
+  { "sec", Feature_HasV7, ARM::FeatureTrustZone },
+  { "simd", Feature_HasV8, ARM::FeatureNEON | ARM::FeatureFPARMv8 },
+  // FIXME: Only available in A-class, isel not predicated
+  { "virt", Feature_HasV7, ARM::FeatureVirtualization },
+  // FIXME: xscale not supported
+  { "xscale", Feature_None, 0 },
+};
+
+/// parseDirectiveArchExtension
+///   ::= .arch_extension [no]feature
+bool ARMAsmParser::parseDirectiveArchExtension(SMLoc L) {
+  if (getLexer().isNot(AsmToken::Identifier)) {
+    Error(getLexer().getLoc(), "unexpected token");
+    Parser.eatToEndOfStatement();
+    return false;
+  }
+
+  StringRef Extension = Parser.getTok().getString();
+  SMLoc ExtLoc = Parser.getTok().getLoc();
+  getLexer().Lex();
+
+  bool EnableFeature = true;
+  if (Extension.startswith_lower("no")) {
+    EnableFeature = false;
+    Extension = Extension.substr(2);
+  }
+
+  for (unsigned EI = 0, EE = array_lengthof(Extensions); EI != EE; ++EI) {
+    if (Extensions[EI].Extension != Extension)
+      continue;
+
+    unsigned FB = getAvailableFeatures();
+    if ((FB & Extensions[EI].ArchCheck) != Extensions[EI].ArchCheck) {
+      Error(ExtLoc, "architectural extension '" + Extension + "' is not "
+            "allowed for the current base architecture");
+      return false;
+    }
+
+    if (!Extensions[EI].Features)
+      report_fatal_error("unsupported architectural extension: " + Extension);
+
+    if (EnableFeature)
+      FB |= ComputeAvailableFeatures(Extensions[EI].Features);
+    else
+      FB &= ~ComputeAvailableFeatures(Extensions[EI].Features);
+
+    setAvailableFeatures(FB);
+    return false;
+  }
+
+  Error(ExtLoc, "unknown architectural extension: " + Extension);
+  Parser.eatToEndOfStatement();
+  return false;
+}
 
 // Define this matcher function after the auto-generated include so we
 // have the match class enum definitions.
@@ -9045,21 +9177,4 @@ unsigned ARMAsmParser::validateTargetOperandClass(MCParsedAsmOperand *AsmOp,
     break;
   }
   return Match_InvalidOperand;
-}
-
-void ARMAsmParser::finishParse() {
-  // Dump contents of assembler constant pools.
-  MCStreamer &Streamer = getParser().getStreamer();
-  for (ConstantPoolMapTy::iterator CPI = ConstantPools.begin(),
-                                   CPE = ConstantPools.end();
-       CPI != CPE; ++CPI) {
-    const MCSection *Section = CPI->first;
-    ConstantPool &CP = CPI->second;
-
-    // Dump non-empty assembler constant pools at the end of the section.
-    if (!CP.empty()) {
-      Streamer.SwitchSection(Section);
-      CP.emitEntries(Streamer);
-    }
-  }
 }

@@ -493,6 +493,7 @@ CGMeshLayout *CodeGenTypes::ComputeMeshLayout(const MeshDecl *D,
   const ASTMeshLayout &AST_ML = getContext().getASTMeshLayout(D);
   MeshDecl::field_iterator it = D->field_begin();
   const MeshFieldDecl *LastFD = 0;
+  (void)LastFD; //suppress warning
   for (unsigned i = 0, e = AST_ML.getFieldCount(); i != e; ++i, ++it) {
     const MeshFieldDecl *FD = *it;
 

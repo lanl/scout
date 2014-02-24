@@ -96,7 +96,7 @@ ASTNodeImporter::VisitUniformMeshType(const UniformMeshType *T) {
   if (!ToDecl)
     return QualType();
 
-  return Importer.getToContext().getUniformMeshDeclType(ToDecl);
+  return Importer.getToContext().getUniformMeshType(ToDecl, T->dimensions());
 }
 
 QualType
@@ -282,3 +282,73 @@ Decl *ASTNodeImporter::VisitUnstructuredMeshDecl(UnstructuredMeshDecl *D) {
   return D2;
 }
 
+Decl *ASTNodeImporter::VisitMeshFieldDecl(MeshFieldDecl *D) {
+  // Import the major distinguishing characteristics of a variable.
+  DeclContext *DC, *LexicalDC;
+  DeclarationName Name;
+  SourceLocation Loc;
+  if (ImportDeclParts(D, DC, LexicalDC, Name, Loc))
+    return 0;
+
+  // Determine whether we've already imported this field.
+  SmallVector<NamedDecl *, 2> FoundDecls;
+  DC->localUncachedLookup(Name, FoundDecls);
+  for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
+    if (FieldDecl *FoundField = dyn_cast<FieldDecl>(FoundDecls[I])) {
+      // For anonymous fields, match up by index.
+      if (!Name && getFieldIndex(D) != getFieldIndex(FoundField))
+        continue;
+
+      if (Importer.IsStructurallyEquivalent(D->getType(),
+                                            FoundField->getType())) {
+        Importer.Imported(D, FoundField);
+        return FoundField;
+      }
+
+      Importer.ToDiag(Loc, diag::err_odr_field_type_inconsistent)
+        << Name << D->getType() << FoundField->getType();
+      Importer.ToDiag(FoundField->getLocation(), diag::note_odr_value_here)
+        << FoundField->getType();
+      return 0;
+    }
+  }
+
+  // Import the type.
+  QualType T = Importer.Import(D->getType());
+  if (T.isNull())
+    return 0;
+
+  TypeSourceInfo *TInfo = Importer.Import(D->getTypeSourceInfo());
+  Expr *BitWidth = Importer.Import(D->getBitWidth());
+  if (!BitWidth && D->getBitWidth())
+    return 0;
+
+  MeshFieldDecl *ToField =
+      MeshFieldDecl::Create(Importer.getToContext(), DC,
+                            Importer.Import(D->getInnerLocStart()),
+                            Loc, Name.getAsIdentifierInfo(),
+                            T, TInfo, BitWidth, D->isMutable(),
+                            D->getInClassInitStyle());
+
+  if(D->isCellLocated()){
+    ToField->setCellLocated(true);
+  }
+  else if(D->isVertexLocated()){
+    ToField->setVertexLocated(true);
+  }
+  else if(D->isEdgeLocated()){
+    ToField->setEdgeLocated(true);
+  }
+  else if(D->isFaceLocated()){
+    ToField->setFaceLocated(true);
+  }
+
+  ToField->setAccess(D->getAccess());
+  ToField->setLexicalDeclContext(LexicalDC);
+  if (ToField->hasInClassInitializer())
+    ToField->setInClassInitializer(D->getInClassInitializer());
+  ToField->setImplicit(D->isImplicit());
+  Importer.Imported(D, ToField);
+  LexicalDC->addDeclInternal(ToField);
+  return ToField;
+}

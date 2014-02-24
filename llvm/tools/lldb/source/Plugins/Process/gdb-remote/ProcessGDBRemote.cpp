@@ -1170,7 +1170,11 @@ ProcessGDBRemote::DoResume ()
         bool continue_packet_error = false;
         if (m_gdb_comm.HasAnyVContSupport ())
         {
-            if (m_continue_c_tids.size() == num_threads)
+            if (m_continue_c_tids.size() == num_threads ||
+                (m_continue_c_tids.empty() &&
+                 m_continue_C_tids.empty() &&
+                 m_continue_s_tids.empty() &&
+                 m_continue_S_tids.empty()))
             {
                 // All threads are continuing, just send a "c" packet
                 continue_packet.PutCString ("c");
@@ -1638,6 +1642,21 @@ ProcessGDBRemote::SetThreadStopInfo (StringExtractor& stop_packet)
                             }
                         }
                     }
+                }
+            }
+
+            // If the response is old style 'S' packet which does not provide us with thread information
+            // then update the thread list and choose the first one.
+            if (!thread_sp)
+            {
+                UpdateThreadIDList ();
+
+                if (!m_thread_ids.empty ())
+                {
+                    Mutex::Locker locker (m_thread_list_real.GetMutex ());
+                    thread_sp = m_thread_list_real.FindThreadByProtocolID (m_thread_ids.front (), false);
+                    if (thread_sp)
+                        gdb_thread = static_cast<ThreadGDBRemote *> (thread_sp.get ());
                 }
             }
 

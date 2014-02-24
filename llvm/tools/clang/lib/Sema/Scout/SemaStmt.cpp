@@ -57,7 +57,6 @@
 #include "clang/Sema/Lookup.h"
 #include "clang/AST/StmtVisitor.h"
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
-#include "clang/AST/Scout/ImplicitColorParamDecl.h"
 #include "clang/Basic/Builtins.h"
 #include <map>
 
@@ -1094,39 +1093,48 @@ namespace {
       VisitChildren(S);
     }
 
+
+    bool isColorExpr(Expr *E) {
+      if (DeclRefExpr* DR = dyn_cast<DeclRefExpr>(E)) {
+
+        // is ImplicitParam Decl
+        if (ImplicitParamDecl *IPD = dyn_cast<ImplicitParamDecl>(DR->getDecl())) {
+
+          // is correct type for color
+          if(IPD->getType() == sema_.Context.getExtVectorType(sema_.Context.FloatTy, 4)) {
+
+            // is correct name
+            if (DR->getDecl()->getName().str() == "color") {
+              IPD->setColor(); // flag decl as implicit color
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    }
+
     void VisitBinaryOperator(BinaryOperator* S){
       switch(S->getOpcode()){
         case BO_Assign:
           if(S->getOpcode() == BO_Assign){
 
            // "color = " case
-            if(DeclRefExpr* DR = dyn_cast<DeclRefExpr>(S->getLHS())) {
-              //SC_TODO: could remove string matching if rtti worked on ImplicitColorParamDecl
-              // this is the same as isa<ImplicitParamDecl> for now
-              if(isa<ImplicitColorParamDecl>(DR->getDecl()) && DR->getDecl()->getName().str() == "color") {
-                foundColorAssign_ = true;
-              }
+            if(isColorExpr(S->getLHS())) {
+              foundColorAssign_ = true;
             // "color.{rgba} = " case
             } else if(ExtVectorElementExpr* VE = dyn_cast<ExtVectorElementExpr>(S->getLHS())) {
+                if(isColorExpr(VE->getBase())) { // make sure Base is a color expr
 
-                //only allow .r .g .b .a not combos like .rg
-                if (VE->getNumElements() == 1) {
-                  const char *namestart = VE->getAccessor().getNameStart();
-                  // find the index for this accesssor name {r,g,b,a} -> {0,1,2,3}
-                  int idx = ExtVectorType::getAccessorIdx(*namestart);
-                  foundComponentAssign_[idx] = true;
+                  //only allow .r .g .b .a not combos like .rg
+                  if (VE->getNumElements() == 1) {
+                    const char *namestart = VE->getAccessor().getNameStart();
+                    // find the index for this accesssor name {r,g,b,a} -> {0,1,2,3}
+                    int idx = ExtVectorType::getAccessorIdx(*namestart);
+                    foundComponentAssign_[idx] = true;
+                  }
                 }
             }
-            /* SC_TODO: convert to new vectors
-            else if(ScoutVectorMemberExpr* vm =
-                dyn_cast<ScoutVectorMemberExpr>(S->getLHS())) {
-              if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(vm->getBase())){
-                if(isa<ImplicitColorParamDecl>(dr->getDecl())) {
-                  foundComponentAssign_[vm->getIdx()] = true;
-                }
-              }
-            }
-            */
           } else {
             VisitChildren(S);
           }
@@ -1269,8 +1277,10 @@ bool Sema::ActOnRenderallMeshRefVariable(Scope* S,
   SCLStack.push_back(D);
 
   // add the implicit "color" parameter
-  ImplicitColorParamDecl* CD =
-      ImplicitColorParamDecl::Create(Context, CurContext, RefVarLoc);
+  ImplicitParamDecl* CD =
+      ImplicitParamDecl::Create(Context, CurContext, RefVarLoc,
+          &Context.Idents.get("color"),
+          Context.getExtVectorType(Context.FloatTy, 4));
 
   PushOnScopeChains(CD, S, true);
 

@@ -777,8 +777,8 @@ bool
 Host::SetShortThreadName (lldb::pid_t pid, lldb::tid_t tid,
                           const char *thread_name, size_t len)
 {
-    char *namebuf = (char *)::malloc (len + 1);
-
+    std::unique_ptr<char[]> namebuf(new char[len+1]);
+    
     // Thread names are coming in like '<lldb.comm.debugger.edit>' and
     // '<lldb.comm.debugger.editline>'.  So just chopping the end of the string
     // off leads to a lot of similar named threads.  Go through the thread name
@@ -787,10 +787,10 @@ Host::SetShortThreadName (lldb::pid_t pid, lldb::tid_t tid,
 
     if (lastdot && lastdot != thread_name)
         thread_name = lastdot + 1;
-    ::strncpy (namebuf, thread_name, len);
+    ::strncpy (namebuf.get(), thread_name, len);
     namebuf[len] = 0;
 
-    int namebuflen = strlen(namebuf);
+    int namebuflen = strlen(namebuf.get());
     if (namebuflen > 0)
     {
         if (namebuf[namebuflen - 1] == '(' || namebuf[namebuflen - 1] == '>')
@@ -799,10 +799,8 @@ Host::SetShortThreadName (lldb::pid_t pid, lldb::tid_t tid,
             namebuflen--;
             namebuf[namebuflen] = 0;
         }
-        return Host::SetThreadName (pid, tid, namebuf);
+        return Host::SetThreadName (pid, tid, namebuf.get());
     }
-
-    ::free(namebuf);
     return false;
 }
 
@@ -1745,25 +1743,32 @@ Host::LaunchProcessPosixSpawn (const char *exe_path, ProcessLaunchInfo &launch_i
     // posix_spawnattr_setbinpref_np appears to be an Apple extension per:
     // http://www.unix.com/man-page/OSX/3/posix_spawnattr_setbinpref_np/
 #if defined (__APPLE__) && !defined (__arm__)
-
-    // We don't need to do this for ARM, and we really shouldn't now that we
-    // have multiple CPU subtypes and no posix_spawnattr call that allows us
-    // to set which CPU subtype to launch...
-    const ArchSpec &arch_spec = launch_info.GetArchitecture();
-    cpu_type_t cpu = arch_spec.GetMachOCPUType();
-    cpu_type_t sub = arch_spec.GetMachOCPUSubType();
-    if (cpu != 0 &&
-        cpu != UINT32_MAX &&
-        cpu != LLDB_INVALID_CPUTYPE &&
-        !(cpu == 0x01000007 && sub == 8)) // If haswell is specified, don't try to set the CPU type or we will fail 
+    
+    // Don't set the binpref if a shell was provided.  After all, that's only going to affect what version of the shell
+    // is launched, not what fork of the binary is launched.  We insert "arch --arch <ARCH> as part of the shell invocation
+    // to do that job on OSX.
+    
+    if (launch_info.GetShell() == nullptr)
     {
-        size_t ocount = 0;
-        error.SetError( ::posix_spawnattr_setbinpref_np (&attr, 1, &cpu, &ocount), eErrorTypePOSIX);
-        if (error.Fail() || log)
-            error.PutToLog(log, "::posix_spawnattr_setbinpref_np ( &attr, 1, cpu_type = 0x%8.8x, count => %llu )", cpu, (uint64_t)ocount);
+        // We don't need to do this for ARM, and we really shouldn't now that we
+        // have multiple CPU subtypes and no posix_spawnattr call that allows us
+        // to set which CPU subtype to launch...
+        const ArchSpec &arch_spec = launch_info.GetArchitecture();
+        cpu_type_t cpu = arch_spec.GetMachOCPUType();
+        cpu_type_t sub = arch_spec.GetMachOCPUSubType();
+        if (cpu != 0 &&
+            cpu != UINT32_MAX &&
+            cpu != LLDB_INVALID_CPUTYPE &&
+            !(cpu == 0x01000007 && sub == 8)) // If haswell is specified, don't try to set the CPU type or we will fail 
+        {
+            size_t ocount = 0;
+            error.SetError( ::posix_spawnattr_setbinpref_np (&attr, 1, &cpu, &ocount), eErrorTypePOSIX);
+            if (error.Fail() || log)
+                error.PutToLog(log, "::posix_spawnattr_setbinpref_np ( &attr, 1, cpu_type = 0x%8.8x, count => %llu )", cpu, (uint64_t)ocount);
 
-        if (error.Fail() || ocount != 1)
-            return error;
+            if (error.Fail() || ocount != 1)
+                return error;
+        }
     }
 
 #endif

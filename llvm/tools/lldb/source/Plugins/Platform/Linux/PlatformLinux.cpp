@@ -397,6 +397,8 @@ PlatformLinux::GetSoftwareBreakpointTrapOpcode (Target &target,
             trap_opcode_size = sizeof(g_i386_breakpoint_opcode);
         }
         break;
+    case ArchSpec::eCore_hexagon_generic:
+        return 0;
     }
 
     if (bp_site->SetTrapOpcode(trap_opcode, trap_opcode_size))
@@ -480,3 +482,9 @@ PlatformLinux::Attach(ProcessAttachInfo &attach_info,
     }
     return process_sp;
 }
+
+void
+PlatformLinux::CalculateTrapHandlerSymbolNames ()
+{   
+    m_trap_handlers.push_back (ConstString ("_sigtramp"));
+}   

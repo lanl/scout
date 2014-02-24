@@ -185,6 +185,11 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     case Type::UnstructuredMesh:
       CanPrefixQualifiers = true;
       break;
+
+    case Type::Window:
+    case Type::Image:
+      CanPrefixQualifiers = false;
+      break;
     // +======================================================================+
 
     case Type::Record:
@@ -319,6 +324,7 @@ void TypePrinter::printBuiltinBefore(const BuiltinType *T, raw_ostream &OS) {
   OS << T->getName(Policy);
   spaceBeforePlaceHolder(OS);
 }
+
 void TypePrinter::printBuiltinAfter(const BuiltinType *T, raw_ostream &OS) { }
 
 void TypePrinter::printComplexBefore(const ComplexType *T, raw_ostream &OS) {
@@ -858,7 +864,7 @@ void TypePrinter::AppendScope(DeclContext *DC, raw_ostream &OS) {
     if (NS->getIdentifier())
       OS << NS->getName() << "::";
     else
-      OS << "<anonymous>::";
+      OS << "<anonymous namespace>::";
   } else if (ClassTemplateSpecializationDecl *Spec
                = dyn_cast<ClassTemplateSpecializationDecl>(DC)) {
     IncludeStrongLifetimeRAII Strong(Policy);

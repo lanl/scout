@@ -510,7 +510,9 @@ void UnwrappedLineParser::parsePPEndIf() {
       PPLevelBranchCount[PPBranchLevel] = PPChainBranchIndex.top() + 1;
     }
   }
-  --PPBranchLevel;
+  // Guard against #endif's without #if.
+  if (PPBranchLevel > 0)
+    --PPBranchLevel;
   if (!PPChainBranchIndex.empty())
     PPChainBranchIndex.pop();
   if (!PPStack.empty())
@@ -667,6 +669,12 @@ void UnwrappedLineParser::parseStructuralElement() {
     case tok::kw_enum:
       parseEnum();
       break;
+    case tok::kw_typedef:
+      nextToken();
+      // FIXME: Use the IdentifierTable instead.
+      if (FormatTok->TokenText == "NS_ENUM")
+        parseEnum();
+      break;
     case tok::kw_struct:
     case tok::kw_union:
     case tok::kw_class:
@@ -775,6 +783,7 @@ bool UnwrappedLineParser::tryToParseLambda() {
     case tok::less:
     case tok::greater:
     case tok::identifier:
+    case tok::coloncolon:
     case tok::kw_mutable:
     case tok::arrow:
       nextToken();
@@ -1128,7 +1137,10 @@ void UnwrappedLineParser::parseAccessSpecifier() {
 }
 
 void UnwrappedLineParser::parseEnum() {
-  nextToken();
+  if (FormatTok->Tok.is(tok::kw_enum)) {
+    // Won't be 'enum' for NS_ENUMs.
+    nextToken();
+  }
   // Eat up enum class ...
   if (FormatTok->Tok.is(tok::kw_class) ||
       FormatTok->Tok.is(tok::kw_struct))

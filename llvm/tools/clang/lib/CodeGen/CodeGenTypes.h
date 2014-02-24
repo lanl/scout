@@ -149,6 +149,7 @@ public:
 
   // +==== Scout =============================================================+
   llvm::Type *ConvertScoutMeshType(QualType T);
+  llvm::Type *ConvertScoutRenderTargetType(QualType T);  
   // +========================================================================+
 
   /// ConvertTypeForMem - Convert type T into a llvm::Type.  This differs from
@@ -213,10 +214,10 @@ public:
 
   const CGFunctionInfo &arrangeGlobalDeclaration(GlobalDecl GD);
   const CGFunctionInfo &arrangeFunctionDeclaration(const FunctionDecl *FD);
-  const CGFunctionInfo &arrangeFunctionDeclaration(QualType ResTy,
-                                                   const FunctionArgList &Args,
-                                             const FunctionType::ExtInfo &Info,
-                                                   bool isVariadic);
+  const CGFunctionInfo &
+  arrangeFreeFunctionDeclaration(QualType ResTy, const FunctionArgList &Args,
+                                 const FunctionType::ExtInfo &Info,
+                                 bool isVariadic);
 
   const CGFunctionInfo &arrangeObjCMethodDeclaration(const ObjCMethodDecl *MD);
   const CGFunctionInfo &arrangeObjCMessageSendSignature(const ObjCMethodDecl *MD,
@@ -226,6 +227,10 @@ public:
   const CGFunctionInfo &arrangeCXXConstructorDeclaration(
                                                     const CXXConstructorDecl *D,
                                                     CXXCtorType Type);
+  const CGFunctionInfo &arrangeCXXConstructorCall(const CallArgList &Args,
+                                                  const CXXConstructorDecl *D,
+                                                  CXXCtorType CtorKind,
+                                                  unsigned ExtraArgs);
   const CGFunctionInfo &arrangeCXXDestructor(const CXXDestructorDecl *D,
                                              CXXDtorType Type);
 
@@ -254,6 +259,7 @@ public:
   ///
   /// \param argTypes - must all actually be canonical as params
   const CGFunctionInfo &arrangeLLVMFunctionInfo(CanQualType returnType,
+                                                bool IsInstanceMethod,
                                                 ArrayRef<CanQualType> argTypes,
                                                 FunctionType::ExtInfo info,
                                                 RequiredArgs args);

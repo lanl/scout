@@ -243,8 +243,8 @@ public:
     Params.push_back(Ctx.getPointerDiffType()->getCanonicalTypeUnqualified());
     Params.push_back(Ctx.BoolTy);
     llvm::FunctionType *FTy =
-      Types.GetFunctionType(Types.arrangeLLVMFunctionInfo(IdType, Params,
-                                                    FunctionType::ExtInfo(),
+      Types.GetFunctionType(Types.arrangeLLVMFunctionInfo(IdType, false, Params,
+                                                          FunctionType::ExtInfo(),
                                                           RequiredArgs::All));
     return CGM.CreateRuntimeFunction(FTy, "objc_getProperty");
   }
@@ -263,8 +263,9 @@ public:
     Params.push_back(Ctx.BoolTy);
     Params.push_back(Ctx.BoolTy);
     llvm::FunctionType *FTy =
-      Types.GetFunctionType(Types.arrangeLLVMFunctionInfo(Ctx.VoidTy, Params,
-                                                     FunctionType::ExtInfo(),
+      Types.GetFunctionType(Types.arrangeLLVMFunctionInfo(Ctx.VoidTy, false,
+                                                          Params,
+                                                          FunctionType::ExtInfo(),
                                                           RequiredArgs::All));
     return CGM.CreateRuntimeFunction(FTy, "objc_setProperty");
   }
@@ -289,7 +290,8 @@ public:
     Params.push_back(IdType);
     Params.push_back(Ctx.getPointerDiffType()->getCanonicalTypeUnqualified());
     llvm::FunctionType *FTy =
-    Types.GetFunctionType(Types.arrangeLLVMFunctionInfo(Ctx.VoidTy, Params,
+    Types.GetFunctionType(Types.arrangeLLVMFunctionInfo(Ctx.VoidTy, false,
+                                                        Params,
                                                         FunctionType::ExtInfo(),
                                                         RequiredArgs::All));
     const char *name;
@@ -316,8 +318,9 @@ public:
     Params.push_back(Ctx.BoolTy);
     Params.push_back(Ctx.BoolTy);
     llvm::FunctionType *FTy =
-      Types.GetFunctionType(Types.arrangeLLVMFunctionInfo(Ctx.VoidTy, Params,
-                                                     FunctionType::ExtInfo(),
+      Types.GetFunctionType(Types.arrangeLLVMFunctionInfo(Ctx.VoidTy, false,
+                                                          Params,
+                                                          FunctionType::ExtInfo(),
                                                           RequiredArgs::All));
     return CGM.CreateRuntimeFunction(FTy, "objc_copyStruct");
   }
@@ -335,8 +338,9 @@ public:
     Params.push_back(Ctx.VoidPtrTy);
     Params.push_back(Ctx.VoidPtrTy);
     llvm::FunctionType *FTy =
-      Types.GetFunctionType(Types.arrangeLLVMFunctionInfo(Ctx.VoidTy, Params,
-                                                     FunctionType::ExtInfo(),
+      Types.GetFunctionType(Types.arrangeLLVMFunctionInfo(Ctx.VoidTy, false,
+                                                          Params,
+                                                          FunctionType::ExtInfo(),
                                                           RequiredArgs::All));
     return CGM.CreateRuntimeFunction(FTy, "objc_copyCppObjectAtomic");
   }
@@ -348,8 +352,9 @@ public:
     SmallVector<CanQualType,1> Params;
     Params.push_back(Ctx.getCanonicalParamType(Ctx.getObjCIdType()));
     llvm::FunctionType *FTy =
-      Types.GetFunctionType(Types.arrangeLLVMFunctionInfo(Ctx.VoidTy, Params,
-                                                      FunctionType::ExtInfo(),
+      Types.GetFunctionType(Types.arrangeLLVMFunctionInfo(Ctx.VoidTy, false,
+                                                          Params,
+                                                          FunctionType::ExtInfo(),
                                                       RequiredArgs::All));
     return CGM.CreateRuntimeFunction(FTy, "objc_enumerationMutation");
   }
@@ -2563,7 +2568,7 @@ llvm::Constant *CGObjCCommonMac::GetProtocolRef(const ObjCProtocolDecl *PD) {
 }
 
 /*
-// APPLE LOCAL radar 4585769 - Objective-C 1.0 extensions
+// Objective-C 1.0 extensions
 struct _objc_protocol {
 struct _objc_protocol_extension *isa;
 char *protocol_name;

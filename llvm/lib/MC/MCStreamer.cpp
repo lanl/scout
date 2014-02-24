@@ -32,6 +32,8 @@ MCTargetStreamer::MCTargetStreamer(MCStreamer &S) : Streamer(S) {
 
 void MCTargetStreamer::emitLabel(MCSymbol *Symbol) {}
 
+void MCTargetStreamer::finish() {}
+
 MCStreamer::MCStreamer(MCContext &Ctx)
     : Context(Ctx), EmitEHFrame(true), EmitDebugFrame(false),
       CurrentW64UnwindInfo(0), LastSymbol(0) {
@@ -265,15 +267,9 @@ void MCStreamer::EmitCFIStartProcImpl(MCDwarfFrameInfo &Frame) {
 
 void MCStreamer::RecordProcStart(MCDwarfFrameInfo &Frame) {
   Frame.Function = LastSymbol;
-  // If the function is externally visible, we need to create a local
-  // symbol to avoid relocations.
-  StringRef Prefix = getContext().getAsmInfo()->getPrivateGlobalPrefix();
-  if (LastSymbol && LastSymbol->getName().startswith(Prefix)) {
-    Frame.Begin = LastSymbol;
-  } else {
-    Frame.Begin = getContext().CreateTempSymbol();
-    EmitLabel(Frame.Begin);
-  }
+  // We need to create a local symbol to avoid relocations.
+  Frame.Begin = getContext().CreateTempSymbol();
+  EmitLabel(Frame.Begin);
 }
 
 void MCStreamer::EmitCFIEndProc() {
@@ -623,6 +619,10 @@ void MCStreamer::EmitW64Tables() {
 void MCStreamer::Finish() {
   if (!FrameInfos.empty() && !FrameInfos.back().End)
     report_fatal_error("Unfinished frame!");
+
+  MCTargetStreamer *TS = getTargetStreamer();
+  if (TS)
+    TS->finish();
 
   FinishImpl();
 }

@@ -133,6 +133,9 @@ ClangASTType
 ClangASTContext::CreateUniformMeshType (DeclContext *decl_ctx,
                                         AccessType access_type,
                                         const char *name,
+                                        unsigned dimX,
+                                        unsigned dimY,
+                                        unsigned dimZ,
                                         LanguageType language,
                                         ClangASTMetadata *metadata)
 {
@@ -159,7 +162,30 @@ ClangASTContext::CreateUniformMeshType (DeclContext *decl_ctx,
         if (decl_ctx)
             decl_ctx->addDecl (decl);
 
-        return ClangASTType(ast, ast->getUniformMeshDeclType(decl).getAsOpaquePtr());
+        MeshType::MeshDimensions dims;
+        for(size_t i = 0; i < 3; ++i){
+          unsigned dim;
+
+          switch(i){
+          case 0:
+            dim = dimX;
+            break;
+          case 1:
+            dim = dimY;
+            break;
+          case 2:
+            dim = dimZ;
+            break;
+          }
+
+          if(dim == 0){
+            break;
+          }
+
+          dims.push_back(IntegerLiteral::Create(*ast, APInt(32, dim), ast->UnsignedIntTy, SourceLocation()));
+        }
+
+        return ClangASTType(ast, ast->getUniformMeshType(decl, dims).getAsOpaquePtr());
     }
     return ClangASTType();
 }
@@ -168,6 +194,9 @@ ClangASTType
 ClangASTContext::CreateStructuredMeshType (DeclContext *decl_ctx,
                                            AccessType access_type,
                                            const char *name,
+                                           unsigned dimX,
+                                           unsigned dimY,
+                                           unsigned dimZ,
                                            LanguageType language,
                                            ClangASTMetadata *metadata)
 {
@@ -203,6 +232,9 @@ ClangASTType
 ClangASTContext::CreateRectilinearMeshType (DeclContext *decl_ctx,
                                            AccessType access_type,
                                            const char *name,
+                                           unsigned dimX,
+                                           unsigned dimY,
+                                           unsigned dimZ,
                                            LanguageType language,
                                            ClangASTMetadata *metadata)
 {
@@ -238,6 +270,9 @@ ClangASTType
 ClangASTContext::CreateUnstructuredMeshType (DeclContext *decl_ctx,
                                              AccessType access_type,
                                              const char *name,
+                                             unsigned dimX,
+                                             unsigned dimY,
+                                             unsigned dimZ,
                                              LanguageType language,
                                              ClangASTMetadata *metadata)
 {

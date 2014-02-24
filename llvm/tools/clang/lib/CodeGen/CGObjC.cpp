@@ -892,10 +892,14 @@ CodeGenFunction::generateObjCGetterBody(const ObjCImplementationDecl *classImpl,
 
     // FIXME: We shouldn't need to get the function info here, the
     // runtime already should have computed it to build the function.
+    llvm::Instruction *CallInstruction;
     RValue RV = EmitCall(getTypes().arrangeFreeFunctionCall(propType, args,
                                                        FunctionType::ExtInfo(),
                                                             RequiredArgs::All),
-                         getPropertyFn, ReturnValueSlot(), args);
+                         getPropertyFn, ReturnValueSlot(), args, 0,
+                         &CallInstruction);
+    if (llvm::CallInst *call = dyn_cast<llvm::CallInst>(CallInstruction))
+      call->setTailCall();
 
     // We need to fix the type here. Ivars with copy & retain are
     // always objects so we don't need to worry about complex or
@@ -1624,7 +1628,7 @@ void CodeGenFunction::EmitObjCForCollectionStmt(const ObjCForCollectionStmt &S){
     EmitAutoVarCleanups(variable);
 
   // Perform the loop body, setting up break and continue labels.
-  BreakContinueStack.push_back(BreakContinue(LoopEnd, AfterBody, &Cnt));
+  BreakContinueStack.push_back(BreakContinue(LoopEnd, AfterBody));
   {
     RunCleanupsScope Scope(*this);
     EmitStmt(S.getBody());
@@ -2896,12 +2900,10 @@ CodeGenFunction::GenerateObjCAtomicSetterCopyHelperFunction(
   args.push_back(&dstDecl);
   ImplicitParamDecl srcDecl(FD, SourceLocation(), 0, SrcTy);
   args.push_back(&srcDecl);
-  
-  const CGFunctionInfo &FI =
-    CGM.getTypes().arrangeFunctionDeclaration(C.VoidTy, args,
-                                              FunctionType::ExtInfo(),
-                                              RequiredArgs::All);
-  
+
+  const CGFunctionInfo &FI = CGM.getTypes().arrangeFreeFunctionDeclaration(
+      C.VoidTy, args, FunctionType::ExtInfo(), RequiredArgs::All);
+
   llvm::FunctionType *LTy = CGM.getTypes().GetFunctionType(FI);
   
   llvm::Function *Fn =
@@ -2977,12 +2979,10 @@ CodeGenFunction::GenerateObjCAtomicGetterCopyHelperFunction(
   args.push_back(&dstDecl);
   ImplicitParamDecl srcDecl(FD, SourceLocation(), 0, SrcTy);
   args.push_back(&srcDecl);
-  
-  const CGFunctionInfo &FI =
-  CGM.getTypes().arrangeFunctionDeclaration(C.VoidTy, args,
-                                            FunctionType::ExtInfo(),
-                                            RequiredArgs::All);
-  
+
+  const CGFunctionInfo &FI = CGM.getTypes().arrangeFreeFunctionDeclaration(
+      C.VoidTy, args, FunctionType::ExtInfo(), RequiredArgs::All);
+
   llvm::FunctionType *LTy = CGM.getTypes().GetFunctionType(FI);
   
   llvm::Function *Fn =

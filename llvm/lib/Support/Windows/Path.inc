@@ -22,8 +22,10 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-// The Windows.h header must be the last one included.
-#include "Windows.h"
+// These two headers must be included last, and make sure shlobj is required
+// after Windows.h to make sure it picks up our definition of _WIN32_WINNT
+#include "WindowsSupport.h"
+#include <shlobj.h>
 
 #undef max
 
@@ -43,15 +45,6 @@ using llvm::sys::windows::UTF8ToUTF16;
 using llvm::sys::windows::UTF16ToUTF8;
 
 namespace {
-  typedef BOOLEAN (WINAPI *PtrCreateSymbolicLinkW)(
-    /*__in*/ LPCWSTR lpSymlinkFileName,
-    /*__in*/ LPCWSTR lpTargetFileName,
-    /*__in*/ DWORD dwFlags);
-
-  PtrCreateSymbolicLinkW create_symbolic_link_api =
-      PtrCreateSymbolicLinkW(::GetProcAddress(
-          ::GetModuleHandleW(L"Kernel32.dll"), "CreateSymbolicLinkW"));
-
   error_code TempDir(SmallVectorImpl<wchar_t> &result) {
   retry_temp_dir:
     DWORD len = ::GetTempPathW(result.capacity(), result.begin());
@@ -111,25 +104,13 @@ static error_code createUniqueEntity(const Twine &model, int &result_fd,
   // needed if the randomly chosen path already exists.
   SmallVector<wchar_t, 128> random_path_utf16;
 
-  // Get a Crypto Provider for CryptGenRandom.
-  HCRYPTPROV HCPC;
-  if (!::CryptAcquireContextW(&HCPC,
-                              NULL,
-                              NULL,
-                              PROV_RSA_FULL,
-                              CRYPT_VERIFYCONTEXT))
-    return windows_error(::GetLastError());
-  ScopedCryptContext CryptoProvider(HCPC);
-
 retry_random_path:
   random_path_utf16.set_size(0);
   for (SmallVectorImpl<wchar_t>::const_iterator i = model_utf16.begin(),
                                                 e = model_utf16.end();
                                                 i != e; ++i) {
     if (*i == L'%') {
-      BYTE val = 0;
-      if (!::CryptGenRandom(CryptoProvider, 1, &val))
-          return windows_error(::GetLastError());
+      unsigned val = sys::Process::GetRandomNumber();
       random_path_utf16.push_back(L"0123456789abcdef"[val & 15]);
     }
     else
@@ -317,29 +298,6 @@ error_code create_hard_link(const Twine &to, const Twine &from) {
   if (error_code ec = UTF8ToUTF16(t, wide_to)) return ec;
 
   if (!::CreateHardLinkW(wide_from.begin(), wide_to.begin(), NULL))
-    return windows_error(::GetLastError());
-
-  return error_code::success();
-}
-
-error_code create_symlink(const Twine &to, const Twine &from) {
-  // Only do it if the function is available at runtime.
-  if (!create_symbolic_link_api)
-    return make_error_code(errc::function_not_supported);
-
-  // Get arguments.
-  SmallString<128> from_storage;
-  SmallString<128> to_storage;
-  StringRef f = from.toStringRef(from_storage);
-  StringRef t = to.toStringRef(to_storage);
-
-  // Convert to utf-16.
-  SmallVector<wchar_t, 128> wide_from;
-  SmallVector<wchar_t, 128> wide_to;
-  if (error_code ec = UTF8ToUTF16(f, wide_from)) return ec;
-  if (error_code ec = UTF8ToUTF16(t, wide_to)) return ec;
-
-  if (!create_symbolic_link_api(wide_from.begin(), wide_to.begin(), 0))
     return windows_error(::GetLastError());
 
   return error_code::success();
@@ -1063,25 +1021,41 @@ error_code openFileForWrite(const Twine &Name, int &ResultFD,
 }
 } // end namespace fs
 
+namespace path {
+
+bool home_directory(SmallVectorImpl<char> &result) {
+  wchar_t Path[MAX_PATH];
+  if (::SHGetFolderPathW(0, CSIDL_APPDATA | CSIDL_FLAG_CREATE, 0,
+                         /*SHGFP_TYPE_CURRENT*/0, Path) != S_OK)
+    return false;
+
+  if (UTF16ToUTF8(Path, ::wcslen(Path), result))
+    return false;
+
+  return true;
+}
+
+} // end namespace path
+
 namespace windows {
 llvm::error_code UTF8ToUTF16(llvm::StringRef utf8,
                              llvm::SmallVectorImpl<wchar_t> &utf16) {
-  int len = ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
-                                  utf8.begin(), utf8.size(),
-                                  utf16.begin(), 0);
+  if (!utf8.empty()) {
+    int len = ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.begin(),
+                                    utf8.size(), utf16.begin(), 0);
 
-  if (len == 0)
-    return llvm::windows_error(::GetLastError());
+    if (len == 0)
+      return llvm::windows_error(::GetLastError());
 
-  utf16.reserve(len + 1);
-  utf16.set_size(len);
+    utf16.reserve(len + 1);
+    utf16.set_size(len);
 
-  len = ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
-                              utf8.begin(), utf8.size(),
-                              utf16.begin(), utf16.size());
+    len = ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.begin(),
+                                utf8.size(), utf16.begin(), utf16.size());
 
-  if (len == 0)
-    return llvm::windows_error(::GetLastError());
+    if (len == 0)
+      return llvm::windows_error(::GetLastError());
+  }
 
   // Make utf16 null terminated.
   utf16.push_back(0);
@@ -1092,26 +1066,24 @@ llvm::error_code UTF8ToUTF16(llvm::StringRef utf8,
 
 llvm::error_code UTF16ToUTF8(const wchar_t *utf16, size_t utf16_len,
                              llvm::SmallVectorImpl<char> &utf8) {
-  // Get length.
-  int len = ::WideCharToMultiByte(CP_UTF8, 0,
-                                  utf16, utf16_len,
-                                  utf8.begin(), 0,
-                                  NULL, NULL);
+  if (utf16_len) {
+    // Get length.
+    int len = ::WideCharToMultiByte(CP_UTF8, 0, utf16, utf16_len, utf8.begin(),
+                                    0, NULL, NULL);
 
-  if (len == 0)
-    return llvm::windows_error(::GetLastError());
+    if (len == 0)
+      return llvm::windows_error(::GetLastError());
 
-  utf8.reserve(len);
-  utf8.set_size(len);
+    utf8.reserve(len);
+    utf8.set_size(len);
 
-  // Now do the actual conversion.
-  len = ::WideCharToMultiByte(CP_UTF8, 0,
-                              utf16, utf16_len,
-                              utf8.data(), utf8.size(),
-                              NULL, NULL);
+    // Now do the actual conversion.
+    len = ::WideCharToMultiByte(CP_UTF8, 0, utf16, utf16_len, utf8.data(),
+                                utf8.size(), NULL, NULL);
 
-  if (len == 0)
-    return llvm::windows_error(::GetLastError());
+    if (len == 0)
+      return llvm::windows_error(::GetLastError());
+  }
 
   // Make utf8 null terminated.
   utf8.push_back(0);

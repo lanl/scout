@@ -82,6 +82,9 @@ private:
   typedef SmallVector<SharingMapTy, 8>::reverse_iterator reverse_iterator;
 
   DSAVarData getDSA(StackTy::reverse_iterator Iter, VarDecl *D);
+
+  /// \brief Checks if the variable is a local for OpenMP region.
+  bool isOpenMPLocal(VarDecl *D, StackTy::reverse_iterator Iter);
 public:
   explicit DSAStackTy(Sema &S) : Stack(1), Actions(S) { }
 
@@ -97,9 +100,6 @@ public:
 
   /// \brief Adds explicit data sharing attribute to the specified declaration.
   void addDSA(VarDecl *D, DeclRefExpr *E, OpenMPClauseKind A);
-
-  /// \brief Checks if the variable is a local for OpenMP region.
-  bool isOpenMPLocal(VarDecl *D);
 
   /// \brief Returns data sharing attributes from top of the stack for the
   /// specified declaration.
@@ -152,7 +152,21 @@ DSAStackTy::DSAVarData DSAStackTy::getDSA(StackTy::reverse_iterator Iter,
 
     return DVar;
   }
+
   DVar.DKind = Iter->Directive;
+  // OpenMP [2.9.1.1, Data-sharing Attribute Rules for Variables Referenced
+  // in a Construct, C/C++, predetermined, p.1]
+  // Variables with automatic storage duration that are declared in a scope
+  // inside the construct are private.
+  if (DVar.DKind != OMPD_parallel) {
+    if (isOpenMPLocal(D, Iter) && D->isLocalVarDecl() &&
+        (D->getStorageClass() == SC_Auto ||
+         D->getStorageClass() == SC_None)) {
+      DVar.CKind = OMPC_private;
+      return DVar;
+    }
+  }
+
   // Explicitly specified attributes and local variables with predetermined
   // attributes.
   if (Iter->SharingMap.count(D)) {
@@ -189,8 +203,8 @@ DSAStackTy::DSAVarData DSAStackTy::getDSA(StackTy::reverse_iterator Iter,
     // TODO
     if (DVar.DKind == OMPD_task) {
       DSAVarData DVarTemp;
-      for (StackTy::reverse_iterator I = Iter + 1,
-                                     EE = Stack.rend() - 1;
+      for (StackTy::reverse_iterator I = llvm::next(Iter),
+                                     EE = llvm::prior(Stack.rend());
            I != EE; ++I) {
         // OpenMP [2.9.1.1, Data-sharing Attribute Rules for Variables Referenced
         // in a Construct, implicitly determined, p.6]
@@ -217,7 +231,7 @@ DSAStackTy::DSAVarData DSAStackTy::getDSA(StackTy::reverse_iterator Iter,
   //  For constructs other than task, if no default clause is present, these
   //  variables inherit their data-sharing attributes from the enclosing
   //  context.
-  return getDSA(Iter + 1, D);
+  return getDSA(llvm::next(Iter), D);
 }
 
 void DSAStackTy::addDSA(VarDecl *D, DeclRefExpr *E, OpenMPClauseKind A) {
@@ -231,23 +245,23 @@ void DSAStackTy::addDSA(VarDecl *D, DeclRefExpr *E, OpenMPClauseKind A) {
   }
 }
 
-bool DSAStackTy::isOpenMPLocal(VarDecl *D) {
-  Scope *CurScope = getCurScope();
-  while (CurScope && !CurScope->isDeclScope(D))
-    CurScope = CurScope->getParent();
-  while (CurScope && !CurScope->isOpenMPDirectiveScope())
-    CurScope = CurScope->getParent();
-  bool isOpenMPLocal = !!CurScope;
-  if (!isOpenMPLocal) {
-    CurScope = getCurScope();
-    while (CurScope && !CurScope->isOpenMPDirectiveScope())
+bool DSAStackTy::isOpenMPLocal(VarDecl *D, StackTy::reverse_iterator Iter) {
+  if (Stack.size() > 2) {
+    reverse_iterator I = Iter, E = Stack.rend() - 1;
+    Scope *TopScope = 0;
+    while (I != E &&
+           I->Directive != OMPD_parallel) {
+      ++I;
+    }
+    if (I == E) return false;
+    TopScope = I->CurScope ? I->CurScope->getParent() : 0;
+    Scope *CurScope = getCurScope();
+    while (CurScope != TopScope && !CurScope->isDeclScope(D)) {
       CurScope = CurScope->getParent();
-    isOpenMPLocal =
-      CurScope &&
-      isa<CapturedDecl>(D->getDeclContext()) &&
-      CurScope->getFnParent()->getEntity()->Encloses(D->getDeclContext());
+    }
+    return CurScope != TopScope;
   }
-  return isOpenMPLocal;
+  return false;
 }
 
 DSAStackTy::DSAVarData DSAStackTy::getTopDSA(VarDecl *D) {
@@ -270,11 +284,13 @@ DSAStackTy::DSAVarData DSAStackTy::getTopDSA(VarDecl *D) {
   // in a Construct, C/C++, predetermined, p.1]
   // Variables with automatic storage duration that are declared in a scope
   // inside the construct are private.
-  if (isOpenMPLocal(D) && D->isLocalVarDecl() &&
-      (D->getStorageClass() == SC_Auto ||
-       D->getStorageClass() == SC_None)) {
-    DVar.CKind = OMPC_private;
-    return DVar;
+  OpenMPDirectiveKind Kind = getCurrentDirective();
+  if (Kind != OMPD_parallel) {
+    if (isOpenMPLocal(D, llvm::next(Stack.rbegin())) && D->isLocalVarDecl() &&
+        (D->getStorageClass() == SC_Auto ||
+         D->getStorageClass() == SC_None))
+      DVar.CKind = OMPC_private;
+      return DVar;
   }
 
   // OpenMP [2.9.1.1, Data-sharing Attribute Rules for Variables Referenced
@@ -319,7 +335,7 @@ DSAStackTy::DSAVarData DSAStackTy::getTopDSA(VarDecl *D) {
   // in a Construct, C/C++, predetermined, p.7]
   //  Variables with static storage duration that are declared in a scope
   //  inside the construct are shared.
-  if (isOpenMPLocal(D) && D->isStaticLocal()) {
+  if (D->isStaticLocal()) {
     DVar.CKind = OMPC_shared;
     return DVar;
   }
@@ -335,13 +351,13 @@ DSAStackTy::DSAVarData DSAStackTy::getTopDSA(VarDecl *D) {
 }
 
 DSAStackTy::DSAVarData DSAStackTy::getImplicitDSA(VarDecl *D) {
-  return getDSA(Stack.rbegin() + 1, D);
+  return getDSA(llvm::next(Stack.rbegin()), D);
 }
 
 DSAStackTy::DSAVarData DSAStackTy::hasDSA(VarDecl *D, OpenMPClauseKind CKind,
                                           OpenMPDirectiveKind DKind) {
-  for (StackTy::reverse_iterator I = Stack.rbegin() + 1,
-                                 E = Stack.rend() - 1;
+  for (StackTy::reverse_iterator I = llvm::next(Stack.rbegin()),
+                                 E = llvm::prior(Stack.rend());
        I != E; ++I) {
     if (DKind != OMPD_unknown && DKind != I->Directive) continue;
     DSAVarData DVar = getDSA(I, D);
@@ -567,10 +583,13 @@ OMPThreadPrivateDecl *Sema::CheckOMPThreadPrivateDecl(
 
     Vars.push_back(*I);
   }
-  return Vars.empty() ?
-              0 : OMPThreadPrivateDecl::Create(Context,
-                                               getCurLexicalContext(),
-                                               Loc, Vars);
+  OMPThreadPrivateDecl *D = 0;
+  if (!Vars.empty()) {
+    D = OMPThreadPrivateDecl::Create(Context, getCurLexicalContext(), Loc,
+                                     Vars);
+    D->setAccess(AS_public);
+  }
+  return D;
 }
 
 namespace {
@@ -702,6 +721,48 @@ StmtResult Sema::ActOnOpenMPParallelDirective(ArrayRef<OMPClause *> Clauses,
                                             Clauses, AStmt));
 }
 
+OMPClause *Sema::ActOnOpenMPSingleExprClause(OpenMPClauseKind Kind,
+                                             Expr *Expr,
+                                             SourceLocation StartLoc,
+                                             SourceLocation LParenLoc,
+                                             SourceLocation EndLoc) {
+  OMPClause *Res = 0;
+  switch (Kind) {
+  case OMPC_if:
+    Res = ActOnOpenMPIfClause(Expr, StartLoc, LParenLoc, EndLoc);
+    break;
+  case OMPC_default:
+  case OMPC_private:
+  case OMPC_firstprivate:
+  case OMPC_shared:
+  case OMPC_threadprivate:
+  case OMPC_unknown:
+  case NUM_OPENMP_CLAUSES:
+    llvm_unreachable("Clause is not allowed.");
+  }
+  return Res;
+}
+
+OMPClause *Sema::ActOnOpenMPIfClause(Expr *Condition,
+                                     SourceLocation StartLoc,
+                                     SourceLocation LParenLoc,
+                                     SourceLocation EndLoc) {
+  Expr *ValExpr = Condition;
+  if (!Condition->isValueDependent() && !Condition->isTypeDependent() &&
+      !Condition->isInstantiationDependent() &&
+      !Condition->containsUnexpandedParameterPack()) {
+    ExprResult Val = ActOnBooleanCondition(DSAStack->getCurScope(),
+                                           Condition->getExprLoc(),
+                                           Condition);
+    if (Val.isInvalid())
+      return 0;
+
+    ValExpr = Val.take();
+  }
+
+  return new (Context) OMPIfClause(ValExpr, StartLoc, LParenLoc, EndLoc);
+}
+
 OMPClause *Sema::ActOnOpenMPSimpleClause(OpenMPClauseKind Kind,
                                          unsigned Argument,
                                          SourceLocation ArgumentLoc,
@@ -715,6 +776,7 @@ OMPClause *Sema::ActOnOpenMPSimpleClause(OpenMPClauseKind Kind,
       ActOnOpenMPDefaultClause(static_cast<OpenMPDefaultClauseKind>(Argument),
                                ArgumentLoc, StartLoc, LParenLoc, EndLoc);
     break;
+  case OMPC_if:
   case OMPC_private:
   case OMPC_firstprivate:
   case OMPC_shared:
@@ -761,7 +823,9 @@ OMPClause *Sema::ActOnOpenMPDefaultClause(OpenMPDefaultClauseKind Kind,
   case OMPC_DEFAULT_shared:
     DSAStack->setDefaultDSAShared();
     break;
-  default:
+  case OMPC_DEFAULT_unknown:
+  case NUM_OPENMP_DEFAULT_KINDS:
+    llvm_unreachable("Clause kind is not allowed.");
     break;
   }
   return new (Context) OMPDefaultClause(Kind, KindKwLoc, StartLoc, LParenLoc,
@@ -784,6 +848,7 @@ OMPClause *Sema::ActOnOpenMPVarListClause(OpenMPClauseKind Kind,
   case OMPC_shared:
     Res = ActOnOpenMPSharedClause(VarList, StartLoc, LParenLoc, EndLoc);
     break;
+  case OMPC_if:
   case OMPC_default:
   case OMPC_threadprivate:
   case OMPC_unknown:

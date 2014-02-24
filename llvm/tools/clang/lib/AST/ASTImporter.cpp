@@ -156,6 +156,7 @@ namespace clang {
     Decl* VisitStructuredMeshDecl(StructuredMeshDecl* D);
     Decl* VisitRectilinearMeshDecl(RectilinearMeshDecl* D);
     Decl* VisitUnstructuredMeshDecl(UnstructuredMeshDecl* D);
+    Decl* VisitMeshFieldDecl(MeshFieldDecl* D);
     // +======================================================================+
     Decl *VisitEnumConstantDecl(EnumConstantDecl *D);
     Decl *VisitFunctionDecl(FunctionDecl *D);
@@ -669,12 +670,19 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
   // +===== Scout ============================================================+
   // We do not need to test the structural equivalance of meshes so simply
   // return false.
+  // 
   // SC_TODO - Not sure why we state this...  Why no equivalance?
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
   case Type::UnstructuredMesh:
       return false;
+
+  // SC_TODO - We need to implement something to compare window and image.    
+  case Type::Window:
+  case Type::Image:
+    return false;
+    
   // +========================================================================+
   case Type::Record:
   case Type::Enum:

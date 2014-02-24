@@ -40,7 +40,6 @@ namespace clang {
   class ParsingDeclSpec;
   class ParsingDeclarator;
   class ParsingFieldDeclarator;
-  class PragmaUnusedHandler;
   class ColonProtectionRAIIObject;
   class InMessageExpressionRAIIObject;
   class PoisonSEHIdentifiersRAIIObject;
@@ -61,7 +60,6 @@ namespace clang {
 /// been read.
 ///
 class Parser : public CodeCompletionHandler {
-  friend class PragmaUnusedHandler;
   friend class ColonProtectionRAIIObject;
   friend class InMessageExpressionRAIIObject;
   friend class PoisonSEHIdentifiersRAIIObject;
@@ -164,10 +162,13 @@ class Parser : public CodeCompletionHandler {
   OwningPtr<PragmaHandler> RedefineExtnameHandler;
   OwningPtr<PragmaHandler> FPContractHandler;
   OwningPtr<PragmaHandler> OpenCLExtensionHandler;
-  OwningPtr<CommentHandler> CommentSemaHandler;
   OwningPtr<PragmaHandler> OpenMPHandler;
   OwningPtr<PragmaHandler> MSCommentHandler;
   OwningPtr<PragmaHandler> MSDetectMismatchHandler;
+  OwningPtr<PragmaHandler> MSPointersToMembers;
+  OwningPtr<PragmaHandler> MSVtorDisp;
+
+  OwningPtr<CommentHandler> CommentSemaHandler;
 
   /// Whether the '>' token acts as an operator or not. This will be
   /// true except when we are parsing an expression within a C++
@@ -456,6 +457,12 @@ private:
            Kind == tok::annot_module_end || Kind == tok::annot_module_include;
   }
 
+  /// \brief Initialize all pragma handlers.
+  void initializePragmaHandlers();
+
+  /// \brief Destroy and reset all pragma handlers.
+  void resetPragmaHandlers();
+
   /// \brief Handle the annotation token produced for #pragma unused(...)
   void HandlePragmaUnused();
 
@@ -474,6 +481,10 @@ private:
   /// \brief Handle the annotation token produced for
   /// #pragma comment...
   void HandlePragmaMSComment();
+
+  void HandlePragmaMSPointersToMembers();
+
+  void HandlePragmaMSVtorDisp();
 
   /// \brief Handle the annotation token produced for
   /// #pragma align...
@@ -2437,9 +2448,8 @@ private:
 
   void ParseMeshParameterDeclaration(DeclSpec& DS);
 
-  StmtResult ParseWindowOrImageDeclaration(bool window,
-                                           StmtVector &Stmts,
-                                           bool OnlyStatement);
+  void ParseWindowBracketDeclarator(Declarator &D);
+  void ParseImageBracketDeclarator(Declarator &D);
 
   StmtResult ParseCameraDeclaration(StmtVector &Stmts,
       bool OnlyStatement);

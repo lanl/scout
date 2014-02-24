@@ -279,6 +279,10 @@ void ASTTypeWriter::VisitRectilinearMeshType(const RectilinearMeshType *T)
 { }
 void ASTTypeWriter::VisitUnstructuredMeshType(const UnstructuredMeshType *T)
 { }
+void ASTTypeWriter::VisitWindowType(const WindowType *T)
+{ }
+void ASTTypeWriter::VisitImageType(const ImageType *T)
+{ }
 // +==========================================================================+
 void ASTTypeWriter::VisitRecordType(const RecordType *T) {
   VisitTagType(T);
@@ -572,6 +576,10 @@ void TypeLocWriter::VisitRectilinearMeshTypeLoc(RectilinearMeshTypeLoc TL)
 { }
 void TypeLocWriter::VisitUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc TL)
 { }
+void TypeLocWriter::VisitWindowTypeLoc(WindowTypeLoc TL)
+{ }
+void TypeLocWriter::VisitImageTypeLoc(ImageTypeLoc TL)
+{ }
 // +==========================================================================+
 void TypeLocWriter::VisitRecordTypeLoc(RecordTypeLoc TL) {
   Writer.AddSourceLocation(TL.getNameLoc(), Record);
@@ -836,7 +844,7 @@ void ASTWriter::WriteBlockInfoBlock() {
   RECORD(DECL_OFFSET);
   RECORD(IDENTIFIER_OFFSET);
   RECORD(IDENTIFIER_TABLE);
-  RECORD(EXTERNAL_DEFINITIONS);
+  RECORD(EAGERLY_DESERIALIZED_DECLS);
   RECORD(SPECIAL_TYPES);
   RECORD(STATISTICS);
   RECORD(TENTATIVE_DEFINITIONS);
@@ -3825,9 +3833,7 @@ ASTWriter::ASTWriter(llvm::BitstreamWriter &Stream)
 }
 
 ASTWriter::~ASTWriter() {
-  for (FileDeclIDsTy::iterator
-         I = FileDeclIDs.begin(), E = FileDeclIDs.end(); I != E; ++I)
-    delete I->second;
+  llvm::DeleteContainerSeconds(FileDeclIDs);
 }
 
 void ASTWriter::WriteAST(Sema &SemaRef,
@@ -4218,8 +4224,8 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
   Stream.EmitRecord(SPECIAL_TYPES, SpecialTypes);
 
   // Write the record containing external, unnamed definitions.
-  if (!ExternalDefinitions.empty())
-    Stream.EmitRecord(EXTERNAL_DEFINITIONS, ExternalDefinitions);
+  if (!EagerlyDeserializedDecls.empty())
+    Stream.EmitRecord(EAGERLY_DESERIALIZED_DECLS, EagerlyDeserializedDecls);
 
   // Write the record containing tentative definitions.
   if (!TentativeDefinitions.empty())

@@ -90,6 +90,21 @@ TypePrinter::printUnstructuredMeshBefore(const UnstructuredMeshType *T,
 
 
 void
+TypePrinter::printWindowBefore(const WindowType *T,
+                               raw_ostream &OS)
+{
+  OS << T->getName(Policy);
+  spaceBeforePlaceHolder(OS);  
+}
+
+void
+TypePrinter::printImageBefore(const ImageType *T,
+                              raw_ostream &OS) {
+  OS << T->getName(Policy);
+  spaceBeforePlaceHolder(OS);
+}
+
+void
 TypePrinter::printUniformMeshAfter(const UniformMeshType *T,
                                    raw_ostream &OS)
 {
@@ -120,4 +135,14 @@ TypePrinter::printRectilinearMeshAfter(const RectilinearMeshType *T,
 void
 TypePrinter::printUnstructuredMeshAfter(const UnstructuredMeshType *T,
                                         raw_ostream &OS)
+{ }
+
+void
+TypePrinter::printWindowAfter(const WindowType *T,
+                              raw_ostream &OS)
+{ }
+
+void
+TypePrinter::printImageAfter(const ImageType *T,
+                              raw_ostream &OS)
 { }

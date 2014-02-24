@@ -69,33 +69,13 @@ add_clang_library(clangAST
   Scout/MeshLayout.cpp
   Scout/RectilinearMeshDecl.cpp
   Scout/RenderallStmt.cpp
+  Scout/RenderTargetType.cpp
   Scout/StructuredMeshDecl.cpp
   Scout/UniformMeshDecl.cpp
   Scout/UnstructuredMeshDecl.cpp
   Scout/VolumeRenderAllStmt.cpp
   Scout/Type.cpp
   # +==========================================================================+
-  )
-
-add_dependencies(clangAST
-  ClangARMNeon
-  ClangAttrClasses
-  ClangAttrList
-  ClangAttrImpl
-  ClangAttrDump
-  ClangAttrVisitor
-  ClangCommentCommandInfo
-  ClangCommentCommandList
-  ClangCommentNodes
-  ClangCommentHTMLTags
-  ClangCommentHTMLTagsProperties
-  ClangCommentHTMLNamedCharacterReferences
-  ClangDeclNodes
-  ClangDiagnosticAST
-  ClangDiagnosticComment
-  ClangDiagnosticCommon
-  ClangDiagnosticSema
-  ClangStmtNodes
   )
 
 target_link_libraries(clangAST

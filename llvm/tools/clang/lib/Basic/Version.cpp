@@ -172,4 +172,5 @@ std::string getScoutFullCPPVersion() {
   return OS.str();
 }
 
+// +==========================================================================+
 } // end namespace clang

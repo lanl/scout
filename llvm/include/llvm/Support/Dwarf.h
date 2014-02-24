@@ -348,7 +348,10 @@ enum Attribute LLVM_ENUM_INT_TYPE(uint16_t) {
   DW_AT_APPLE_property = 0x3fed,
 
   // +===== Scout =====================
-  DW_AT_SCOUT_mesh_field_flags = 0x9000
+  DW_AT_SCOUT_mesh_field_flags = 0x9000,
+  DW_AT_SCOUT_mesh_dim_x = 0x9001,
+  DW_AT_SCOUT_mesh_dim_y = 0x9002,
+  DW_AT_SCOUT_mesh_dim_z = 0x9003
   // +=================================
 };
 
@@ -646,7 +649,12 @@ enum SourceLanguage {
 
   DW_LANG_lo_user = 0x8000,
   DW_LANG_Mips_Assembler = 0x8001,
-  DW_LANG_hi_user = 0xffff
+  DW_LANG_hi_user = 0xffff,
+
+  // +===== Scout ===================
+  DW_LANG_ScoutC = 0x9000,
+  DW_LANG_ScoutC_plus_plus = 0x9001
+  // +===============================
 };
 
 enum CaseSensitivity {

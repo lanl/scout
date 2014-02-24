@@ -927,6 +927,8 @@ DEF_TRAVERSE_TYPE(UniformMeshType, { })
 DEF_TRAVERSE_TYPE(RectilinearMeshType, { })
 DEF_TRAVERSE_TYPE(StructuredMeshType, { })
 DEF_TRAVERSE_TYPE(UnstructuredMeshType, { })
+DEF_TRAVERSE_TYPE(WindowType, { })
+DEF_TRAVERSE_TYPE(ImageType, { })
 // +==========================================================================+
 
 DEF_TRAVERSE_TYPE(TemplateSpecializationType, {
@@ -1166,6 +1168,8 @@ DEF_TRAVERSE_TYPELOC(UniformMeshType, { })
 DEF_TRAVERSE_TYPELOC(RectilinearMeshType, { })
 DEF_TRAVERSE_TYPELOC(StructuredMeshType, { })
 DEF_TRAVERSE_TYPELOC(UnstructuredMeshType, { })
+DEF_TRAVERSE_TYPELOC(WindowType, { })
+DEF_TRAVERSE_TYPELOC(ImageType, { })
 // +==========================================================================+
 
 // FIXME: use the loc for the template name?
@@ -1808,6 +1812,7 @@ DEF_TRAVERSE_DECL(FieldDecl, {
       TRY_TO(TraverseStmt(D->getInClassInitializer()));
   })
 
+// +===== Scout ==============================================================+
 DEF_TRAVERSE_DECL(MeshFieldDecl, {
     TRY_TO(TraverseDeclaratorHelper(D));
     if (D->isBitField())
@@ -1815,6 +1820,7 @@ DEF_TRAVERSE_DECL(MeshFieldDecl, {
     else if (D->hasInClassInitializer())
       TRY_TO(TraverseStmt(D->getInClassInitializer()));
   })
+// +==========================================================================+
 
 DEF_TRAVERSE_DECL(MSPropertyDecl, {
     TRY_TO(TraverseDeclaratorHelper(D));
@@ -2443,6 +2449,12 @@ bool DataRecursiveASTVisitor<Derived>::TraverseOMPClause(OMPClause *C) {
 #include "clang/Basic/OpenMPKinds.def"
   default: break;
   }
+  return true;
+}
+
+template<typename Derived>
+bool DataRecursiveASTVisitor<Derived>::VisitOMPIfClause(OMPIfClause *C) {
+  TraverseStmt(C->getCondition());
   return true;
 }
 

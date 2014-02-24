@@ -44,10 +44,7 @@ CodeGenTypes::CodeGenTypes(CodeGenModule &cgm)
 }
 
 CodeGenTypes::~CodeGenTypes() {
-  for (llvm::DenseMap<const Type *, CGRecordLayout *>::iterator
-         I = CGRecordLayouts.begin(), E = CGRecordLayouts.end();
-      I != E; ++I)
-    delete I->second;
+  llvm::DeleteContainerSeconds(CGRecordLayouts);
 
   for (llvm::FoldingSet<CGFunctionInfo>::iterator
        I = FunctionInfos.begin(), E = FunctionInfos.end(); I != E; )
@@ -588,6 +585,12 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     // certainly a non-trivial operation in the complex cases).
     ResultType = ConvertScoutMeshType(OT);
     break;
+
+  case Type::Window:
+  case Type::Image:
+    ResultType = ConvertScoutRenderTargetType(OT);
+    break;
+      
   // +========================================================================+
 
   case Type::Enum: {

@@ -329,6 +329,7 @@ void InitHeaderSearch::AddDefaultCIncludePaths(const LangOptions &Lang,
     AddUnmappedPath(P.str(), ExternCSystem, false);
   }
 
+  // +===== Scout ======================================================+
   // Treat scout's includes like builtins -- positioned just print to
   // C include dirs.
   StringRef SCIncludeDirs(SCOUT_RESOURCE_DIR);
@@ -341,7 +342,8 @@ void InitHeaderSearch::AddDefaultCIncludePaths(const LangOptions &Lang,
       AddPath(*i, ExternCSystem, false);
     return;
   }
-  
+  // +==================================================================+
+ 
   // All remaining additions are for system include directories, early exit if
   // we aren't using them.
   if (!HSOpts.UseStandardSystemIncludes)
@@ -598,11 +600,17 @@ void InitHeaderSearch::AddDefaultIncludePaths(const LangOptions &Lang,
       
       AddPath("/usr/include/c++/v1", CXXSystem, false);
     } else {
+      // +===== Scout ======================================================+
+      //AddDefaultCPlusPlusIncludePaths(triple, HSOpts);
       AddDefaultCPlusPlusIncludePaths(Lang, triple, HSOpts);
+      // +==================================================================+
     }
   }
 
+  // +===== Scout ======================================================+
+  //AddDefaultCIncludePaths(triple, HSOpts);
   AddDefaultCIncludePaths(Lang, triple, HSOpts);
+  // +==================================================================+
 
   // Add the default framework include paths on Darwin.
   if (HSOpts.UseStandardSystemIncludes) {

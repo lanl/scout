@@ -189,11 +189,6 @@ namespace llvm {
 
     //===--- Alignment Information ----------------------------------------===//
 
-    /// AlignDirective - The directive used to emit round up to an alignment
-    /// boundary.
-    ///
-    const char *AlignDirective;              // Defaults to "\t.align\t"
-
     /// AlignmentIsInBytes - If this is true (the default) then the asmprinter
     /// emits ".align N" directives, where N is the number of bytes to align to.
     /// Otherwise, it emits ".align log2(N)", e.g. 3 to align to an 8 byte
@@ -304,6 +299,14 @@ namespace llvm {
 
     std::vector<MCCFIInstruction> InitialFrameState;
 
+    //===--- Integrated Assembler State ----------------------------------===//
+    /// Should we use the integrated assembler?
+    /// The integrated assembler should be enabled by default (by the
+    /// constructors) when failing to parse a valid piece of assembly (inline
+    /// or otherwise) is considered a bug. It may then be overridden after
+    /// construction (see LLVMTargetMachine::initAsmInfo()).
+    bool UseIntegratedAssembler;
+
   public:
     explicit MCAsmInfo();
     virtual ~MCAsmInfo();
@@ -364,7 +367,7 @@ namespace llvm {
                                 unsigned Encoding,
                                 MCStreamer &Streamer) const;
 
-    const MCExpr *
+    virtual const MCExpr *
     getExprForFDESymbol(const MCSymbol *Sym,
                         unsigned Encoding,
                         MCStreamer &Streamer) const;
@@ -456,9 +459,6 @@ namespace llvm {
     const char *getAscizDirective() const {
       return AscizDirective;
     }
-    const char *getAlignDirective() const {
-      return AlignDirective;
-    }
     bool getAlignmentIsInBytes() const {
       return AlignmentIsInBytes;
     }
@@ -533,6 +533,14 @@ namespace llvm {
 
     const std::vector<MCCFIInstruction> &getInitialFrameState() const {
       return InitialFrameState;
+    }
+
+    /// Return true if assembly (inline or otherwise) should be parsed.
+    bool useIntegratedAssembler() const { return UseIntegratedAssembler; }
+
+    /// Set whether assembly (inline or otherwise) should be parsed.
+    void setUseIntegratedAssembler(bool Value) {
+      UseIntegratedAssembler = Value;
     }
   };
 }

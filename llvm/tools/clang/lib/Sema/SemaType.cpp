@@ -332,6 +332,8 @@ static DeclaratorChunk *maybeMovePastReturnType(Declarator &declarator,
     case DeclaratorChunk::RectilinearMesh:
     case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
+    case DeclaratorChunk::Window:
+    case DeclaratorChunk::Image:
     // +======================================================================+
       return result;
 
@@ -352,6 +354,8 @@ static DeclaratorChunk *maybeMovePastReturnType(Declarator &declarator,
         case DeclaratorChunk::RectilinearMesh:
         case DeclaratorChunk::StructuredMesh:
         case DeclaratorChunk::UnstructuredMesh:
+        case DeclaratorChunk::Window:
+        case DeclaratorChunk::Image: 
         // +==================================================================+
           continue;
         case DeclaratorChunk::BlockPointer:
@@ -410,6 +414,8 @@ static void distributeObjCPointerTypeAttr(TypeProcessingState &state,
     case DeclaratorChunk::RectilinearMesh:
     case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
+    case DeclaratorChunk::Window:
+    case DeclaratorChunk::Image:
     // +======================================================================+
       continue;
 
@@ -465,6 +471,8 @@ distributeObjCPointerTypeAttrFromDeclarator(TypeProcessingState &state,
     case DeclaratorChunk::RectilinearMesh:
     case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
+    case DeclaratorChunk::Window:
+    case DeclaratorChunk::Image:
     // +======================================================================+
       continue;
 
@@ -531,6 +539,8 @@ static void distributeFunctionTypeAttr(TypeProcessingState &state,
     case DeclaratorChunk::RectilinearMesh:
     case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
+    case DeclaratorChunk::Window:
+    case DeclaratorChunk::Image:
     // +======================================================================+
     case DeclaratorChunk::MemberPointer:
       continue;
@@ -913,6 +923,11 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
   case DeclSpec::TST_unstructured_mesh:
     assert(false && "invalid case for mesh type.");
     break;
+
+  case DeclSpec::TST_window:
+  case DeclSpec::TST_image:
+    Result = Context.VoidTy;
+    break;    
   // +========================================================================+
   case DeclSpec::TST_bool: Result = Context.BoolTy; break; // _Bool or bool
   case DeclSpec::TST_decimal32:    // _Decimal32
@@ -1159,17 +1174,33 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
       }
     }
 
-    // C++ [dcl.ref]p1:
+    // C++11 [dcl.ref]p1:
     //   Cv-qualified references are ill-formed except when the
-    //   cv-qualifiers are introduced through the use of a typedef
-    //   (7.1.3) or of a template type argument (14.3), in which
-    //   case the cv-qualifiers are ignored.
-    // FIXME: Shouldn't we be checking SCS_typedef here?
+    //   cv-qualifiers are introduced through the use of a typedef-name
+    //   or decltype-specifier, in which case the cv-qualifiers are ignored.
+    //
+    // There don't appear to be any other contexts in which a cv-qualified
+    // reference type could be formed, so the 'ill-formed' clause here appears
+    // to never happen.
     if (DS.getTypeSpecType() == DeclSpec::TST_typename &&
         TypeQuals && Result->isReferenceType()) {
-      TypeQuals &= ~DeclSpec::TQ_const;
-      TypeQuals &= ~DeclSpec::TQ_volatile;
-      TypeQuals &= ~DeclSpec::TQ_atomic;
+      // If this occurs outside a template instantiation, warn the user about
+      // it; they probably didn't mean to specify a redundant qualifier.
+      typedef std::pair<DeclSpec::TQ, SourceLocation> QualLoc;
+      QualLoc Quals[] = {
+        QualLoc(DeclSpec::TQ_const, DS.getConstSpecLoc()),
+        QualLoc(DeclSpec::TQ_volatile, DS.getVolatileSpecLoc()),
+        QualLoc(DeclSpec::TQ_atomic, DS.getAtomicSpecLoc())
+      };
+      for (unsigned I = 0, N = llvm::array_lengthof(Quals); I != N; ++I) {
+        if (S.ActiveTemplateInstantiations.empty()) {
+          if (TypeQuals & Quals[I].first)
+            S.Diag(Quals[I].second, diag::warn_typecheck_reference_qualifiers)
+              << DeclSpec::getSpecifierName(Quals[I].first) << Result
+              << FixItHint::CreateRemoval(Quals[I].second);
+        }
+        TypeQuals &= ~Quals[I].first;
+      }
     }
 
     // C90 6.5.3 constraints: "The same type qualifier shall not appear more
@@ -1632,6 +1663,7 @@ QualType Sema::BuildArrayType(QualType T, ArrayType::ArraySizeModifier ASM,
       // Prohibit the use of non-POD types in VLAs.
       QualType BaseT = Context.getBaseElementType(T);
       if (!T->isDependentType() &&
+          !RequireCompleteType(Loc, BaseT, 0) &&
           !BaseT.isPODType(Context) &&
           !BaseT->isObjCLifetimeType()) {
         Diag(Loc, diag::err_vla_non_pod)
@@ -1706,6 +1738,27 @@ QualType Sema::BuildUnstructuredMeshType(QualType T, Expr* filename,
   mdt->setFileName(filename);
   return QualType(mdt,0);
 }
+
+QualType Sema::BuildWindowType(QualType T, const llvm::SmallVector<Expr*,2> &dims) {
+  assert(dims.size() > 0 && dims[0] != 0 && dims[1] != 0);
+  const WindowType* cWT;
+  cWT = dyn_cast<WindowType>(T.getCanonicalType().getTypePtr());
+  if (cWT) {
+    return Context.getWindowType(dims);
+  }
+  return QualType();  
+}
+
+QualType Sema::BuildImageType(QualType T, const llvm::SmallVector<Expr*,2> &dims) {
+  assert(dims.size() > 0 && dims[0] != 0 && dims[1] != 0);
+  const ImageType* cIT;
+  cIT = dyn_cast<ImageType>(T.getCanonicalType().getTypePtr());
+  if (cIT) {
+    return Context.getImageType(dims);
+  }
+  return QualType();  
+}
+
 
 // +==========================================================================+
 
@@ -1954,6 +2007,8 @@ static void inferARCWriteback(TypeProcessingState &state,
     case DeclaratorChunk::RectilinearMesh:
     case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
+    case DeclaratorChunk::Window:
+    case DeclaratorChunk::Image:      
     // +======================================================================+
       return;
     }
@@ -2098,6 +2153,8 @@ static void diagnoseIgnoredFunctionQualifiers(Sema &S, QualType RetTy,
     case DeclaratorChunk::RectilinearMesh:
     case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
+    case DeclaratorChunk::Window:
+    case DeclaratorChunk::Image:
     // +======================================================================+
     case DeclaratorChunk::MemberPointer:
       // FIXME: We can't currently provide an accurate source location and a
@@ -2402,6 +2459,8 @@ static void checkQualifiedFunction(Sema &S, QualType T,
   case DeclaratorChunk::RectilinearMesh:
   case DeclaratorChunk::StructuredMesh:
   case DeclaratorChunk::UnstructuredMesh:
+  case DeclaratorChunk::Window:
+  case DeclaratorChunk::Image:
   // +========================================================================+
     // These cases don't allow function types at all; no need to diagnose the
     // qualifiers separately.
@@ -2608,6 +2667,8 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
         case DeclaratorChunk::RectilinearMesh:
         case DeclaratorChunk::StructuredMesh:
         case DeclaratorChunk::UnstructuredMesh:
+        case DeclaratorChunk::Window:
+        case DeclaratorChunk::Image:
         // +==================================================================+
           continue;
         case DeclaratorChunk::Function: {
@@ -2764,6 +2825,8 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
           case DeclaratorChunk::RectilinearMesh:
           case DeclaratorChunk::StructuredMesh:
           case DeclaratorChunk::UnstructuredMesh:
+          case DeclaratorChunk::Window:
+          case DeclaratorChunk::Image:
           // +================================================================+
             // These are invalid anyway, so just ignore.
             break;
@@ -2816,6 +2879,18 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
       break;
     }
 
+    case DeclaratorChunk::Window: {
+      llvm::SmallVector<Expr*,2> dims = DeclType.Win.Dims();
+      T = S.BuildWindowType(T, dims);
+      break;
+    }
+
+    case DeclaratorChunk::Image: {
+      llvm::SmallVector<Expr*,2> dims = DeclType.Img.Dims();
+      T = S.BuildWindowType(T, dims);
+      break;
+    }
+
     // =============================================================
 
 
@@ -2831,11 +2906,13 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
       if (!D.isInvalidType()) {
         // trailing-return-type is only required if we're declaring a function,
         // and not, for instance, a pointer to a function.
-        if (D.getDeclSpec().getTypeSpecType() == DeclSpec::TST_auto &&
+        if (D.getDeclSpec().containsPlaceholderType() &&
             !FTI.hasTrailingReturnType() && chunkIndex == 0 &&
             !S.getLangOpts().CPlusPlus1y) {
           S.Diag(D.getDeclSpec().getTypeSpecTypeLoc(),
-               diag::err_auto_missing_trailing_return);
+                 D.getDeclSpec().getTypeSpecType() == DeclSpec::TST_auto
+                     ? diag::err_auto_missing_trailing_return
+                     : diag::err_deduced_return_type);
           T = Context.IntTy;
           D.setInvalidType(true);
         } else if (FTI.hasTrailingReturnType()) {
@@ -3469,6 +3546,8 @@ static void transferARCOwnership(TypeProcessingState &state,
     case DeclaratorChunk::RectilinearMesh:
     case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
+    case DeclaratorChunk::Window:
+    case DeclaratorChunk::Image:
     // +======================================================================+
     case DeclaratorChunk::Reference:
     case DeclaratorChunk::Pointer:
@@ -3908,6 +3987,7 @@ namespace {
       TL.setRParenLoc(Chunk.EndLoc);
       TL.setFileName(Chunk.Unsmsh.StrLitFileName);
     }
+
     // +======================================================================+
 
     void VisitTypeLoc(TypeLoc TL) {
@@ -3926,6 +4006,8 @@ static void fillAtomicQualLoc(AtomicTypeLoc ATL, const DeclaratorChunk &Chunk) {
   case DeclaratorChunk::RectilinearMesh:
   case DeclaratorChunk::StructuredMesh:
   case DeclaratorChunk::UnstructuredMesh:
+  case DeclaratorChunk::Window:
+  case DeclaratorChunk::Image:
   // +========================================================================+
   case DeclaratorChunk::Paren:
     llvm_unreachable("cannot be _Atomic qualified");
@@ -5280,7 +5362,35 @@ bool Sema::RequireCompleteTypeImpl(SourceLocation Loc, QualType T,
         if (!MPTy->getClass()->isDependentType()) {
           RequireCompleteType(Loc, QualType(MPTy->getClass(), 0), 0);
 
-          MPTy->getMostRecentCXXRecordDecl()->setMSInheritanceModel();
+          CXXRecordDecl *RD = MPTy->getMostRecentCXXRecordDecl();
+          if (!RD->hasAttr<MSInheritanceAttr>()) {
+            MSInheritanceAttr::Spelling InheritanceModel;
+
+            switch (MSPointerToMemberRepresentationMethod) {
+            case LangOptions::PPTMK_BestCase:
+              InheritanceModel = RD->calculateInheritanceModel();
+              break;
+            case LangOptions::PPTMK_FullGeneralitySingleInheritance:
+              InheritanceModel = MSInheritanceAttr::Keyword_single_inheritance;
+              break;
+            case LangOptions::PPTMK_FullGeneralityMultipleInheritance:
+              InheritanceModel =
+                  MSInheritanceAttr::Keyword_multiple_inheritance;
+              break;
+            case LangOptions::PPTMK_FullGeneralityVirtualInheritance:
+              InheritanceModel =
+                  MSInheritanceAttr::Keyword_unspecified_inheritance;
+              break;
+            }
+
+            RD->addAttr(MSInheritanceAttr::CreateImplicit(
+                getASTContext(), InheritanceModel,
+                /*BestCase=*/MSPointerToMemberRepresentationMethod ==
+                    LangOptions::PPTMK_BestCase,
+                ImplicitMSInheritanceAttrLoc.isValid()
+                    ? ImplicitMSInheritanceAttrLoc
+                    : RD->getSourceRange()));
+          }
         }
       }
     }

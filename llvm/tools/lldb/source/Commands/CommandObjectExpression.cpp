@@ -36,6 +36,10 @@
 #include "lldb/Target/Thread.h"
 #include "llvm/ADT/StringRef.h"
 
+// +===== Scout ==========================
+#include "lldb/Symbol/CompileUnit.h"
+// +======================================
+
 using namespace lldb;
 using namespace lldb_private;
 
@@ -295,6 +299,23 @@ CommandObjectExpression::EvaluateExpression
         else
             options.SetTimeoutUsec(0);
         
+        // +===== Scout ==========================================
+        CompileUnit *comp_unit = NULL;
+        StackFrame *frame = m_exe_ctx.GetFramePtr();
+        if (frame)
+        {
+            SymbolContext sc = frame->GetSymbolContext (eSymbolContextCompUnit);
+            if (sc.comp_unit)
+            {
+              LanguageType lang_type = sc.comp_unit->GetLanguage();
+              if(lang_type == eLanguageTypeScoutC ||
+                 lang_type == eLanguageTypeScoutC_plus_plus){
+                options.SetLanguage(lang_type);
+              }
+            }
+        }
+        // +=======================================================
+
         exe_results = target->EvaluateExpression (expr, 
                                                   exe_ctx.GetFramePtr(),
                                                   result_valobj_sp,
@@ -365,18 +386,6 @@ CommandObjectExpression::EvaluateExpression
 }
 
 void
-CommandObjectExpression::IOHandlerActivated (IOHandler &io_handler)
-{
-    StreamFileSP output_sp(io_handler.GetOutputStreamFile());
-    if (output_sp)
-    {
-        output_sp->PutCString("Enter expressions, then terminate with an empty line to evaluate:\n");
-        output_sp->Flush();
-    }
-}
-
-
-void
 CommandObjectExpression::IOHandlerInputComplete (IOHandler &io_handler, std::string &line)
 {
     io_handler.SetIsDone(true);
@@ -441,6 +450,13 @@ CommandObjectExpression::DoExecute
                                                           NULL,             // No prompt
                                                           multiple_lines,
                                                           *this));
+        
+        StreamFileSP output_sp(io_handler_sp->GetOutputStreamFile());
+        if (output_sp)
+        {
+            output_sp->PutCString("Enter expressions, then terminate with an empty line to evaluate:\n");
+            output_sp->Flush();
+        }
         debugger.PushIOHandler(io_handler_sp);
         return result.Succeeded();
     }

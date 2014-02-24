@@ -43,6 +43,7 @@ add_llvm_library(LLVMCore
   Verifier.cpp
 # +===== Scout ====================
   Scout/DIBuilder.cpp
+  Scout/DebugInfo.cpp
 # +================================
   )
 

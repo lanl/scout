@@ -128,6 +128,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
         llvm::APSInt dimAPValue;
         evalret = E->EvaluateAsInt(dimAPValue, getContext());
         // SC_TODO: check the evalret
+        (void)evalret; //supress warning
 
         intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
       } else {
@@ -206,6 +207,8 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
         llvm::APSInt dimAPValue;
         evalret = E->EvaluateAsInt(dimAPValue, getContext());
         // SC_TODO: check the evalret
+        (void)evalret; //suppress warning
+
         intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
       } else {
         // it is an Rvalue

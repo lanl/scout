@@ -262,6 +262,32 @@ public:
 
   bool MSStructPragmaOn; // True when \#pragma ms_struct on
 
+  /// \brief Controls member pointer representation format under the MS ABI.
+  LangOptions::PragmaMSPointersToMembersKind
+      MSPointerToMemberRepresentationMethod;
+
+  enum PragmaVtorDispKind {
+    PVDK_Push,          ///< #pragma vtordisp(push, mode)
+    PVDK_Set,           ///< #pragma vtordisp(mode)
+    PVDK_Pop,           ///< #pragma vtordisp(pop)
+    PVDK_Reset          ///< #pragma vtordisp()
+  };
+
+  /// \brief Whether to insert vtordisps prior to virtual bases in the Microsoft
+  /// C++ ABI.  Possible values are 0, 1, and 2, which mean:
+  ///
+  /// 0: Suppress all vtordisps
+  /// 1: Insert vtordisps in the presence of vbase overrides and non-trivial
+  ///    structors
+  /// 2: Always insert vtordisps to support RTTI on partially constructed
+  ///    objects
+  ///
+  /// The stack always has at least one element in it.
+  SmallVector<MSVtorDispAttr::Mode, 2> VtorDispModeStack;
+
+  /// \brief Source location for newly created implicit MSInheritanceAttrs
+  SourceLocation ImplicitMSInheritanceAttrLoc;
+
   /// VisContext - Manages the stack for \#pragma GCC visibility.
   void *VisContext; // Really a "PragmaVisStack*"
 
@@ -1049,6 +1075,9 @@ public:
   QualType BuildUnstructuredMeshType(QualType T, Expr* filename,
                                      SourceRange Brackets,
                                      DeclarationName Entity);
+
+  QualType BuildWindowType(QualType T, const llvm::SmallVector<Expr*,2> &dims);
+  QualType BuildImageType(QualType T, const llvm::SmallVector<Expr*,2> &dims);
   // +========================================================================+
 
   /// \brief Build a function type.
@@ -1343,7 +1372,8 @@ public:
                                SourceLocation IILoc,
                                Scope *S,
                                CXXScopeSpec *SS,
-                               ParsedType &SuggestedType);
+                               ParsedType &SuggestedType,
+                               bool AllowClassTemplates = false);
 
   // +===== Scout ============================================================+
   TypeSpecifierType isMeshName(IdentifierInfo &II, Scope *S);
@@ -1514,7 +1544,6 @@ public:
                                      MultiTemplateParamsArg TemplateParamLists,
                                      bool &AddToScope);
   bool AddOverriddenMethods(CXXRecordDecl *DC, CXXMethodDecl *MD);
-  void checkVoidParamDecl(ParmVarDecl *Param);
 
   bool CheckConstexprFunctionDecl(const FunctionDecl *FD);
   bool CheckConstexprFunctionBody(const FunctionDecl *FD, Stmt *Body);
@@ -1883,6 +1912,10 @@ public:
                                     unsigned AttrSpellingListIndex);
   DLLExportAttr *mergeDLLExportAttr(Decl *D, SourceRange Range,
                                     unsigned AttrSpellingListIndex);
+  MSInheritanceAttr *
+  mergeMSInheritanceAttr(Decl *D, SourceRange Range, bool BestCase,
+                         unsigned AttrSpellingListIndex,
+                         MSInheritanceAttr::Spelling SemanticSpelling);
   FormatAttr *mergeFormatAttr(Decl *D, SourceRange Range,
                               IdentifierInfo *Format, int FormatIdx,
                               int FirstArg, unsigned AttrSpellingListIndex);
@@ -1905,7 +1938,7 @@ public:
   void mergeDeclAttributes(NamedDecl *New, Decl *Old,
                            AvailabilityMergeKind AMK = AMK_Redeclaration);
   void MergeTypedefNameDecl(TypedefNameDecl *New, LookupResult &OldDecls);
-  bool MergeFunctionDecl(FunctionDecl *New, Decl *Old, Scope *S,
+  bool MergeFunctionDecl(FunctionDecl *New, NamedDecl *&Old, Scope *S,
                          bool MergeTypeWithOld);
   bool MergeCompatibleFunctionDecls(FunctionDecl *New, FunctionDecl *Old,
                                     Scope *S, bool MergeTypeWithOld);
@@ -2596,6 +2629,9 @@ public:
   bool checkStringLiteralArgumentAttr(const AttributeList &Attr,
                                       unsigned ArgNum, StringRef &Str,
                                       SourceLocation *ArgLocation = 0);
+  bool checkMSInheritanceAttrOnDefinition(
+      CXXRecordDecl *RD, SourceRange Range, bool BestCase,
+      MSInheritanceAttr::Spelling SemanticSpelling);
 
   void CheckAlignasUnderalignment(Decl *D);
 
@@ -4675,8 +4711,7 @@ public:
   //
   Decl *ActOnStartLinkageSpecification(Scope *S,
                                        SourceLocation ExternLoc,
-                                       SourceLocation LangLoc,
-                                       StringRef Lang,
+                                       Expr *LangStr,
                                        SourceLocation LBraceLoc);
   Decl *ActOnFinishLinkageSpecification(Scope *S,
                                         Decl *LinkageSpec,
@@ -7011,6 +7046,17 @@ public:
   /// \#pragma comment(kind, "arg").
   void ActOnPragmaMSComment(PragmaMSCommentKind Kind, StringRef Arg);
 
+  /// ActOnPragmaMSPointersToMembers - called on well formed \#pragma
+  /// pointers_to_members(representation method[, general purpose
+  /// representation]).
+  void ActOnPragmaMSPointersToMembers(
+      LangOptions::PragmaMSPointersToMembersKind Kind,
+      SourceLocation PragmaLoc);
+
+  /// \brief Called on well formed \#pragma vtordisp().
+  void ActOnPragmaMSVtorDisp(PragmaVtorDispKind Kind, SourceLocation PragmaLoc,
+                             MSVtorDispAttr::Mode Value);
+
   /// ActOnPragmaDetectMismatch - Call on well-formed \#pragma detect_mismatch
   void ActOnPragmaDetectMismatch(StringRef Name, StringRef Value);
 
@@ -7129,6 +7175,16 @@ public:
                                           SourceLocation StartLoc,
                                           SourceLocation EndLoc);
 
+  OMPClause *ActOnOpenMPSingleExprClause(OpenMPClauseKind Kind,
+                                         Expr *Expr,
+                                         SourceLocation StartLoc,
+                                         SourceLocation LParenLoc,
+                                         SourceLocation EndLoc);
+  /// \brief Called on well-formed 'if' clause.
+  OMPClause *ActOnOpenMPIfClause(Expr *Condition, SourceLocation StartLoc,
+                                 SourceLocation LParenLoc,
+                                 SourceLocation EndLoc);
+
   OMPClause *ActOnOpenMPSimpleClause(OpenMPClauseKind Kind,
                                      unsigned Argument,
                                      SourceLocation ArgumentLoc,
@@ -7196,6 +7252,10 @@ public:
   // UsualUnaryConversions - promotes integers (C99 6.3.1.1p2) and converts
   // functions and arrays to their respective pointers (C99 6.3.2.1).
   ExprResult UsualUnaryConversions(Expr *E);
+
+  /// CallExprUnaryConversions - a special case of an unary conversion
+  /// performed on a function designator of a call expression.
+  ExprResult CallExprUnaryConversions(Expr *E);
 
   // DefaultFunctionArrayConversion - converts functions and arrays
   // to their respective pointers (C99 6.3.2.1).
@@ -7481,6 +7541,8 @@ public:
                                       SourceLocation Loc, bool isRelational);
   QualType CheckVectorLogicalOperands(ExprResult &LHS, ExprResult &RHS,
                                       SourceLocation Loc);
+
+  bool isLaxVectorConversion(QualType srcType, QualType destType);
 
   /// type checking declaration initializers (C99 6.7.8)
   bool CheckForConstantInitializer(Expr *e, QualType t);
@@ -7885,6 +7947,7 @@ private:
 
   ExprResult CheckBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
 
+  bool CheckNeonBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
   bool CheckARMBuiltinExclusiveCall(unsigned BuiltinID, CallExpr *TheCall);
   bool CheckARMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
   bool CheckAArch64BuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);

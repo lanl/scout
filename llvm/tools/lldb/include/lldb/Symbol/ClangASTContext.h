@@ -245,6 +245,9 @@ public:
     CreateUniformMeshType (clang::DeclContext *decl_ctx,
                            lldb::AccessType access_type,
                            const char *name,
+                           unsigned dimX,
+                           unsigned dimY,
+                           unsigned dimZ,
                            lldb::LanguageType language,
                            ClangASTMetadata *metadata = NULL);
 
@@ -252,6 +255,9 @@ public:
     CreateStructuredMeshType (clang::DeclContext *decl_ctx,
                               lldb::AccessType access_type,
                               const char *name,
+                              unsigned dimX,
+                              unsigned dimY,
+                              unsigned dimZ,
                               lldb::LanguageType language,
                               ClangASTMetadata *metadata = NULL);
 
@@ -259,6 +265,9 @@ public:
     CreateRectilinearMeshType (clang::DeclContext *decl_ctx,
                                lldb::AccessType access_type,
                                const char *name,
+                               unsigned dimX,
+                               unsigned dimY,
+                               unsigned dimZ,
                                lldb::LanguageType language,
                                ClangASTMetadata *metadata = NULL);
 
@@ -266,6 +275,9 @@ public:
     CreateUnstructuredMeshType (clang::DeclContext *decl_ctx,
                                 lldb::AccessType access_type,
                                 const char *name,
+                                unsigned dimX,
+                                unsigned dimY,
+                                unsigned dimZ,
                                 lldb::LanguageType language,
                                 ClangASTMetadata *metadata = NULL);
     // +=================================================

@@ -20,7 +20,6 @@
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSymbol.h"
-#include "llvm/Support/Allocator.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Format.h"
@@ -420,19 +419,78 @@ void DIETypeSignature::dump() const { print(dbgs()); }
 #endif
 
 //===----------------------------------------------------------------------===//
+// DIELoc Implementation
+//===----------------------------------------------------------------------===//
+
+/// ComputeSize - calculate the size of the location expression.
+///
+unsigned DIELoc::ComputeSize(AsmPrinter *AP) const {
+  if (Size)
+    return Size;
+
+  unsigned Sz = 0;
+  const SmallVectorImpl<DIEAbbrevData> &AbbrevData = Abbrev.getData();
+  for (unsigned i = 0, N = Values.size(); i < N; ++i)
+    Sz += Values[i]->SizeOf(AP, AbbrevData[i].getForm());
+
+  return Sz;
+}
+
+/// EmitValue - Emit location data.
+///
+void DIELoc::EmitValue(AsmPrinter *Asm, dwarf::Form Form) const {
+  switch (Form) {
+  default: llvm_unreachable("Improper form for block");
+  case dwarf::DW_FORM_block1: Asm->EmitInt8(Size);    break;
+  case dwarf::DW_FORM_block2: Asm->EmitInt16(Size);   break;
+  case dwarf::DW_FORM_block4: Asm->EmitInt32(Size);   break;
+  case dwarf::DW_FORM_block:
+  case dwarf::DW_FORM_exprloc:
+    Asm->EmitULEB128(Size); break;
+  }
+
+  const SmallVectorImpl<DIEAbbrevData> &AbbrevData = Abbrev.getData();
+  for (unsigned i = 0, N = Values.size(); i < N; ++i)
+    Values[i]->EmitValue(Asm, AbbrevData[i].getForm());
+}
+
+/// SizeOf - Determine size of location data in bytes.
+///
+unsigned DIELoc::SizeOf(AsmPrinter *AP, dwarf::Form Form) const {
+  switch (Form) {
+  case dwarf::DW_FORM_block1: return Size + sizeof(int8_t);
+  case dwarf::DW_FORM_block2: return Size + sizeof(int16_t);
+  case dwarf::DW_FORM_block4: return Size + sizeof(int32_t);
+  case dwarf::DW_FORM_block:
+  case dwarf::DW_FORM_exprloc:
+    return Size + MCAsmInfo::getULEB128Size(Size);
+  default: llvm_unreachable("Improper form for block");
+  }
+}
+
+#ifndef NDEBUG
+void DIELoc::print(raw_ostream &O) const {
+  O << "ExprLoc: ";
+  DIE::print(O, 5);
+}
+#endif
+
+//===----------------------------------------------------------------------===//
 // DIEBlock Implementation
 //===----------------------------------------------------------------------===//
 
 /// ComputeSize - calculate the size of the block.
 ///
-unsigned DIEBlock::ComputeSize(AsmPrinter *AP) {
-  if (!Size) {
-    const SmallVectorImpl<DIEAbbrevData> &AbbrevData = Abbrev.getData();
-    for (unsigned i = 0, N = Values.size(); i < N; ++i)
-      Size += Values[i]->SizeOf(AP, AbbrevData[i].getForm());
-  }
+unsigned DIEBlock::ComputeSize(AsmPrinter *AP) const {
+  if (Size)
+    return Size;
 
-  return Size;
+  unsigned Sz = 0;
+  const SmallVectorImpl<DIEAbbrevData> &AbbrevData = Abbrev.getData();
+  for (unsigned i = 0, N = Values.size(); i < N; ++i)
+    Sz += Values[i]->SizeOf(AP, AbbrevData[i].getForm());
+
+  return Sz;
 }
 
 /// EmitValue - Emit block data.

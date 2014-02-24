@@ -428,6 +428,10 @@ QualType Type::getPointeeType() const {
     return BPT->getPointeeType();
   if (const ReferenceType *RT = getAs<ReferenceType>())
     return RT->getPointeeType();
+  if (const MemberPointerType *MPT = getAs<MemberPointerType>())
+    return MPT->getPointeeType();
+  if (const DecayedType *DT = getAs<DecayedType>())
+    return DT->getPointeeType();
   return QualType();
 }
 
@@ -2268,6 +2272,12 @@ static CachedProperties computeCachedProperties(const Type *T) {
       !Mesh->getIdentifier();
     return CachedProperties(L, IsLocalOrUnnamed);
   }
+
+  case Type::Window:
+  case Type::Image: {
+    return CachedProperties(ExternalLinkage, false);
+  }
+      
   // =========================================================================
   case Type::Record:
   case Type::Enum: {
@@ -2420,6 +2430,10 @@ static LinkageInfo computeLinkageInfo(const Type *T) {
   case Type::RectilinearMesh:
   case Type::UnstructuredMesh:
     return LinkageInfo::external();
+
+  case Type::Window:
+  case Type::Image:
+      return LinkageInfo::external();
   // +========================================================================+
   }
 

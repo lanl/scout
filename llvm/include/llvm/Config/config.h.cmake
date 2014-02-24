@@ -212,6 +212,9 @@
 /* Define to 1 if you have the 'z' library (-lz). */
 #cmakedefine HAVE_LIBZ ${HAVE_LIBZ}
 
+/* Define to 1 if you have the 'edit' library (-ledit). */
+#cmakedefine HAVE_LIBEDIT ${HAVE_LIBEDIT}
+
 /* Define to 1 if you have the <limits.h> header file. */
 #cmakedefine HAVE_LIMITS_H ${HAVE_LIMITS_H}
 
@@ -437,9 +440,6 @@
 
 /* Define if the xdot.py program is available */
 #cmakedefine HAVE_XDOT ${HAVE_XDOT}
-
-/* Define to 1 if you have the <zlib.h> header file. */
-#cmakedefine HAVE_ZLIB_H ${HAVE_ZLIB_H}
 
 /* Define to 1 if you have the <zlib.h> header file. */
 #cmakedefine HAVE_ZLIB_H ${HAVE_ZLIB_H}

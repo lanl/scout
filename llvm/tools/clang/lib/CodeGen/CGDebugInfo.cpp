@@ -360,7 +360,16 @@ void CGDebugInfo::CreateCompileUnit() {
 
   unsigned LangTag;
   const LangOptions &LO = CGM.getLangOpts();
-  if (LO.CPlusPlus) {
+
+  // +===== Scout ========================
+  if(LO.ScoutCPlusPlus){
+    LangTag = llvm::dwarf::DW_LANG_ScoutC_plus_plus;
+  }
+  else if(LO.ScoutC){
+    LangTag = llvm::dwarf::DW_LANG_ScoutC;
+  }
+  // +====================================
+  else if (LO.CPlusPlus) {
     if (LO.ObjC1)
       LangTag = llvm::dwarf::DW_LANG_ObjC_plus_plus;
     else
@@ -1476,10 +1485,9 @@ llvm::DIType CGDebugInfo::CreateType(const RecordType *Ty) {
         // If the class is dynamic, only emit a declaration. A definition will be
         // emitted whenever the vtable is emitted.
         (CXXDecl && CXXDecl->hasDefinition() && CXXDecl->isDynamicClass())))) {
-    llvm::DIDescriptor FDContext =
-      getContextDescriptor(cast<Decl>(RD->getDeclContext()));
     if (!T)
-      T = getOrCreateRecordFwdDecl(Ty, FDContext);
+      T = getOrCreateRecordFwdDecl(
+          Ty, getContextDescriptor(cast<Decl>(RD->getDeclContext())));
     return T;
   }
 
@@ -2158,6 +2166,10 @@ llvm::DIType CGDebugInfo::CreateTypeNode(QualType Ty, llvm::DIFile Unit) {
     return CreateType(cast<RectilinearMeshType>(Ty));
   case Type::UnstructuredMesh:
     return CreateType(cast<UnstructuredMeshType>(Ty));
+  case Type::Window:
+    return CreateType(cast<WindowType>(Ty));
+  case Type::Image:
+    return CreateType(cast<ImageType>(Ty));    
   // +========================================================================+
 
   case Type::Record:
@@ -2262,9 +2274,10 @@ llvm::DICompositeType CGDebugInfo::CreateLimitedType(const RecordType *Ty) {
   if (T && (!T.isForwardDecl() || !RD->getDefinition()))
       return T;
 
-  // If this is just a forward declaration, construct an appropriately
-  // marked node and just return it.
-  if (!RD->getDefinition())
+  // If this is just a forward or incomplete declaration, construct an
+  // appropriately marked node and just return it.
+  const RecordDecl *D = RD->getDefinition();
+  if (!D || !D->isCompleteDefinition())
     return getOrCreateRecordFwdDecl(Ty, RDContext);
 
   uint64_t Size = CGM.getContext().getTypeSize(Ty);

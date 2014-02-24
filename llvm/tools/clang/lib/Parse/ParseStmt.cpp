@@ -304,13 +304,6 @@ Retry:
         return StmtError();
     }
   }
-
-  case tok::kw_window:
-      return ParseWindowOrImageDeclaration(true, Stmts, OnlyStatement);
-  case tok::kw_image:
-    return ParseWindowOrImageDeclaration(false, Stmts, OnlyStatement);
-  case tok::kw_camera:
-    return ParseCameraDeclaration(Stmts, OnlyStatement);
   // +========================================================================+
 
   case tok::kw_goto:                // C99 6.8.6.1: goto-statement
@@ -400,6 +393,11 @@ Retry:
   case tok::annot_pragma_openmp:
     ProhibitAttributes(Attrs);
     return ParseOpenMPDeclarativeOrExecutableDirective();
+
+  case tok::annot_pragma_ms_pointers_to_members:
+    ProhibitAttributes(Attrs);
+    HandlePragmaMSPointersToMembers();
+    return StmtEmpty();
 
   }
 
@@ -875,6 +873,9 @@ void Parser::ParseCompoundStatementLeadingPragmas() {
       break;
     case tok::annot_pragma_fp_contract:
       HandlePragmaFPContract();
+      break;
+    case tok::annot_pragma_ms_pointers_to_members:
+      HandlePragmaMSPointersToMembers();
       break;
     default:
       checkForPragmas = false;

@@ -606,6 +606,23 @@ namespace {
     }
   };
 
+  // Unique the enums, but maintain the original declaration ordering.
+  std::vector<std::string>
+  uniqueEnumsInOrder(const std::vector<std::string> &enums) {
+    std::vector<std::string> uniques;
+    std::set<std::string> unique_set(enums.begin(), enums.end());
+    for (std::vector<std::string>::const_iterator i = enums.begin(),
+                                                  e = enums.end();
+         i != e; ++i) {
+      std::set<std::string>::iterator set_i = unique_set.find(*i);
+      if (set_i != unique_set.end()) {
+        uniques.push_back(*i);
+        unique_set.erase(set_i);
+      }
+    }
+    return uniques;
+  }
+
   class EnumArgument : public Argument {
     std::string type;
     std::vector<std::string> values, enums, uniques;
@@ -614,11 +631,8 @@ namespace {
       : Argument(Arg, Attr), type(Arg.getValueAsString("Type")),
         values(Arg.getValueAsListOfStrings("Values")),
         enums(Arg.getValueAsListOfStrings("Enums")),
-        uniques(enums)
+        uniques(uniqueEnumsInOrder(enums))
     {
-      // Calculate the various enum values
-      std::sort(uniques.begin(), uniques.end());
-      uniques.erase(std::unique(uniques.begin(), uniques.end()), uniques.end());
       // FIXME: Emit a proper error
       assert(!uniques.empty());
     }
@@ -711,12 +725,8 @@ namespace {
         type(Arg.getValueAsString("Type")),
         values(Arg.getValueAsListOfStrings("Values")),
         enums(Arg.getValueAsListOfStrings("Enums")),
-        uniques(enums)
+        uniques(uniqueEnumsInOrder(enums))
     {
-      // Calculate the various enum values
-      std::sort(uniques.begin(), uniques.end());
-      uniques.erase(std::unique(uniques.begin(), uniques.end()), uniques.end());
-      
       QualifiedTypeName = getAttrName().str() + "Attr::" + type;
       
       // FIXME: Emit a proper error
@@ -982,6 +992,9 @@ static Argument *createArgument(Record &Arg, StringRef Attr,
     Ptr = new SimpleArgument(Arg, Attr, "FunctionDecl *");
   else if (ArgName == "IdentifierArgument")
     Ptr = new SimpleArgument(Arg, Attr, "IdentifierInfo *");
+  else if (ArgName == "DefaultBoolArgument")
+    Ptr = new DefaultSimpleArgument(Arg, Attr, "bool",
+                                    Arg.getValueAsBit("Default"));
   else if (ArgName == "BoolArgument") Ptr = new SimpleArgument(Arg, Attr, 
                                                                "bool");
   else if (ArgName == "DefaultIntArgument")
@@ -1243,6 +1256,119 @@ void WriteSemanticSpellingSwitch(const std::string &VarName,
   OS << "  }\n";
 }
 
+// Emits the LateParsed property for attributes.
+static void emitClangAttrLateParsedList(RecordKeeper &Records, raw_ostream &OS) {
+  OS << "#if defined(CLANG_ATTR_LATE_PARSED_LIST)\n";
+  std::vector<Record*> Attrs = Records.getAllDerivedDefinitions("Attr");
+
+  for (std::vector<Record*>::iterator I = Attrs.begin(), E = Attrs.end();
+       I != E; ++I) {
+    Record &Attr = **I;
+
+    bool LateParsed = Attr.getValueAsBit("LateParsed");
+
+    if (LateParsed) {
+      std::vector<FlattenedSpelling> Spellings = GetFlattenedSpellings(Attr);
+
+      // FIXME: Handle non-GNU attributes
+      for (std::vector<FlattenedSpelling>::const_iterator
+           I = Spellings.begin(), E = Spellings.end(); I != E; ++I) {
+        if (I->variety() != "GNU")
+          continue;
+        OS << ".Case(\"" << I->name() << "\", " << LateParsed << ")\n";
+      }
+    }
+  }
+  OS << "#endif // CLANG_ATTR_LATE_PARSED_LIST\n\n";
+}
+
+/// \brief Emits the first-argument-is-type property for attributes.
+static void emitClangAttrTypeArgList(RecordKeeper &Records, raw_ostream &OS) {
+  OS << "#if defined(CLANG_ATTR_TYPE_ARG_LIST)\n";
+  std::vector<Record *> Attrs = Records.getAllDerivedDefinitions("Attr");
+
+  for (std::vector<Record *>::iterator I = Attrs.begin(), E = Attrs.end();
+       I != E; ++I) {
+    Record &Attr = **I;
+
+    // Determine whether the first argument is a type.
+    std::vector<Record *> Args = Attr.getValueAsListOfDefs("Args");
+    if (Args.empty())
+      continue;
+
+    if (Args[0]->getSuperClasses().back()->getName() != "TypeArgument")
+      continue;
+
+    // All these spellings take a single type argument.
+    std::vector<FlattenedSpelling> Spellings = GetFlattenedSpellings(Attr);
+    std::set<std::string> Emitted;
+    for (std::vector<FlattenedSpelling>::const_iterator I = Spellings.begin(),
+         E = Spellings.end(); I != E; ++I) {
+      if (Emitted.insert(I->name()).second)
+        OS << ".Case(\"" << I->name() << "\", " << "true" << ")\n";
+    }
+  }
+  OS << "#endif // CLANG_ATTR_TYPE_ARG_LIST\n\n";
+}
+
+/// \brief Emits the parse-arguments-in-unevaluated-context property for
+/// attributes.
+static void emitClangAttrArgContextList(RecordKeeper &Records, raw_ostream &OS) {
+  OS << "#if defined(CLANG_ATTR_ARG_CONTEXT_LIST)\n";
+  ParsedAttrMap Attrs = getParsedAttrList(Records);
+  for (ParsedAttrMap::const_iterator I = Attrs.begin(), E = Attrs.end();
+       I != E; ++I) {
+    const Record &Attr = *I->second;
+
+    if (!Attr.getValueAsBit("ParseArgumentsAsUnevaluated"))
+      continue;
+
+    // All these spellings take are parsed unevaluated.
+    std::vector<FlattenedSpelling> Spellings = GetFlattenedSpellings(Attr);
+    std::set<std::string> Emitted;
+    for (std::vector<FlattenedSpelling>::const_iterator I = Spellings.begin(),
+         E = Spellings.end(); I != E; ++I) {
+      if (Emitted.insert(I->name()).second)
+        OS << ".Case(\"" << I->name() << "\", " << "true" << ")\n";
+    }
+  }
+  OS << "#endif // CLANG_ATTR_ARG_CONTEXT_LIST\n\n";
+}
+
+static bool isIdentifierArgument(Record *Arg) {
+  return !Arg->getSuperClasses().empty() &&
+    llvm::StringSwitch<bool>(Arg->getSuperClasses().back()->getName())
+    .Case("IdentifierArgument", true)
+    .Case("EnumArgument", true)
+    .Default(false);
+}
+
+// Emits the first-argument-is-identifier property for attributes.
+static void emitClangAttrIdentifierArgList(RecordKeeper &Records, raw_ostream &OS) {
+  OS << "#if defined(CLANG_ATTR_IDENTIFIER_ARG_LIST)\n";
+  std::vector<Record*> Attrs = Records.getAllDerivedDefinitions("Attr");
+
+  for (std::vector<Record*>::iterator I = Attrs.begin(), E = Attrs.end();
+       I != E; ++I) {
+    Record &Attr = **I;
+
+    // Determine whether the first argument is an identifier.
+    std::vector<Record *> Args = Attr.getValueAsListOfDefs("Args");
+    if (Args.empty() || !isIdentifierArgument(Args[0]))
+      continue;
+
+    // All these spellings take an identifier argument.
+    std::vector<FlattenedSpelling> Spellings = GetFlattenedSpellings(Attr);
+    std::set<std::string> Emitted;
+    for (std::vector<FlattenedSpelling>::const_iterator I = Spellings.begin(),
+         E = Spellings.end(); I != E; ++I) {
+      if (Emitted.insert(I->name()).second)
+        OS << ".Case(\"" << I->name() << "\", " << "true" << ")\n";
+    }
+  }
+  OS << "#endif // CLANG_ATTR_IDENTIFIER_ARG_LIST\n\n";
+}
+
 namespace clang {
 
 // Emits the class definitions for attributes.
@@ -1257,6 +1383,17 @@ void EmitClangAttrClass(RecordKeeper &Records, raw_ostream &OS) {
   for (std::vector<Record*>::iterator i = Attrs.begin(), e = Attrs.end();
        i != e; ++i) {
     Record &R = **i;
+
+    // FIXME: Currently, documentation is generated as-needed due to the fact
+    // that there is no way to allow a generated project "reach into" the docs
+    // directory (for instance, it may be an out-of-tree build). However, we want
+    // to ensure that every attribute has a Documentation field, and produce an
+    // error if it has been neglected. Otherwise, the on-demand generation which
+    // happens server-side will fail. This code is ensuring that functionality,
+    // even though this Emitter doesn't technically need the documentation.
+    // When attribute documentation can be generated as part of the build
+    // itself, this code can be removed.
+    (void)R.getValueAsListOfDefs("Documentation");
     
     if (!R.getValueAsBit("ASTNode"))
       continue;
@@ -1439,97 +1576,6 @@ void EmitClangAttrClass(RecordKeeper &Records, raw_ostream &OS) {
   }
 
   OS << "#endif\n";
-}
-
-static bool isIdentifierArgument(Record *Arg) {
-  return !Arg->getSuperClasses().empty() &&
-         llvm::StringSwitch<bool>(Arg->getSuperClasses().back()->getName())
-             .Case("IdentifierArgument", true)
-             .Case("EnumArgument", true)
-             .Default(false);
-}
-
-/// \brief Emits the first-argument-is-type property for attributes.
-void EmitClangAttrTypeArgList(RecordKeeper &Records, raw_ostream &OS) {
-  emitSourceFileHeader("llvm::StringSwitch code to match attributes with a "
-                       "type argument", OS);
-
-  std::vector<Record *> Attrs = Records.getAllDerivedDefinitions("Attr");
-
-  for (std::vector<Record *>::iterator I = Attrs.begin(), E = Attrs.end();
-       I != E; ++I) {
-    Record &Attr = **I;
-
-    // Determine whether the first argument is a type.
-    std::vector<Record *> Args = Attr.getValueAsListOfDefs("Args");
-    if (Args.empty())
-      continue;
-
-    if (Args[0]->getSuperClasses().back()->getName() != "TypeArgument")
-      continue;
-
-    // All these spellings take a single type argument.
-    std::vector<FlattenedSpelling> Spellings = GetFlattenedSpellings(Attr);
-    std::set<std::string> Emitted;
-    for (std::vector<FlattenedSpelling>::const_iterator I = Spellings.begin(),
-         E = Spellings.end(); I != E; ++I) {
-      if (Emitted.insert(I->name()).second)
-        OS << ".Case(\"" << I->name() << "\", " << "true" << ")\n";
-    }
-  }
-}
-
-/// \brief Emits the parse-arguments-in-unevaluated-context property for
-/// attributes.
-void EmitClangAttrArgContextList(RecordKeeper &Records, raw_ostream &OS) {
-  emitSourceFileHeader("StringSwitch code to match attributes which require "
-                       "an unevaluated context", OS);
-
-  ParsedAttrMap Attrs = getParsedAttrList(Records);
-  for (ParsedAttrMap::const_iterator I = Attrs.begin(), E = Attrs.end();
-       I != E; ++I) {
-    const Record &Attr = *I->second;
-
-    if (!Attr.getValueAsBit("ParseArgumentsAsUnevaluated"))
-      continue;
-
-    // All these spellings take are parsed unevaluated.
-    std::vector<FlattenedSpelling> Spellings = GetFlattenedSpellings(Attr);
-    std::set<std::string> Emitted;
-    for (std::vector<FlattenedSpelling>::const_iterator I = Spellings.begin(),
-         E = Spellings.end(); I != E; ++I) {
-      if (Emitted.insert(I->name()).second)
-        OS << ".Case(\"" << I->name() << "\", " << "true" << ")\n";
-    }
-
-  }
-}
-
-// Emits the first-argument-is-identifier property for attributes.
-void EmitClangAttrIdentifierArgList(RecordKeeper &Records, raw_ostream &OS) {
-  emitSourceFileHeader("llvm::StringSwitch code to match attributes with "
-                       "an identifier argument", OS);
-
-  std::vector<Record*> Attrs = Records.getAllDerivedDefinitions("Attr");
-
-  for (std::vector<Record*>::iterator I = Attrs.begin(), E = Attrs.end();
-       I != E; ++I) {
-    Record &Attr = **I;
-
-    // Determine whether the first argument is an identifier.
-    std::vector<Record *> Args = Attr.getValueAsListOfDefs("Args");
-    if (Args.empty() || !isIdentifierArgument(Args[0]))
-      continue;
-
-    // All these spellings take an identifier argument.
-    std::vector<FlattenedSpelling> Spellings = GetFlattenedSpellings(Attr);
-    std::set<std::string> Emitted;
-    for (std::vector<FlattenedSpelling>::const_iterator I = Spellings.begin(),
-         E = Spellings.end(); I != E; ++I) {
-      if (Emitted.insert(I->name()).second)
-        OS << ".Case(\"" << I->name() << "\", " << "true" << ")\n";
-    }
-  }
 }
 
 // Emits the class method definitions for attributes.
@@ -1891,34 +1937,6 @@ void EmitClangAttrASTVisitor(RecordKeeper &Records, raw_ostream &OS) {
   OS << "  }\n";  // end case
   OS << "}\n";  // end function
   OS << "#endif  // ATTR_VISITOR_DECLS_ONLY\n";
-}
-
-
-// Emits the LateParsed property for attributes.
-void EmitClangAttrLateParsedList(RecordKeeper &Records, raw_ostream &OS) {
-  emitSourceFileHeader("llvm::StringSwitch code to match late parsed "
-                       "attributes", OS);
-
-  std::vector<Record*> Attrs = Records.getAllDerivedDefinitions("Attr");
-
-  for (std::vector<Record*>::iterator I = Attrs.begin(), E = Attrs.end();
-       I != E; ++I) {
-    Record &Attr = **I;
-
-    bool LateParsed = Attr.getValueAsBit("LateParsed");
-
-    if (LateParsed) {
-      std::vector<FlattenedSpelling> Spellings = GetFlattenedSpellings(Attr);
-
-      // FIXME: Handle non-GNU attributes
-      for (std::vector<FlattenedSpelling>::const_iterator
-           I = Spellings.begin(), E = Spellings.end(); I != E; ++I) {
-        if (I->variety() != "GNU")
-          continue;
-        OS << ".Case(\"" << I->name() << "\", " << LateParsed << ")\n";
-      }
-    }
-  }
 }
 
 // Emits code to instantiate dependent attributes on templates.
@@ -2617,6 +2635,227 @@ void EmitClangAttrDump(RecordKeeper &Records, raw_ostream &OS) {
       "  }\n";
   }
   OS << "  }\n";
+}
+
+void EmitClangAttrParserStringSwitches(RecordKeeper &Records,
+                                       raw_ostream &OS) {
+  emitSourceFileHeader("Parser-related llvm::StringSwitch cases", OS);
+  emitClangAttrArgContextList(Records, OS);
+  emitClangAttrIdentifierArgList(Records, OS);
+  emitClangAttrTypeArgList(Records, OS);
+  emitClangAttrLateParsedList(Records, OS);
+}
+
+class DocumentationData {
+public:
+  const Record *Documentation;
+  const Record *Attribute;
+
+  DocumentationData(const Record &Documentation, const Record &Attribute)
+      : Documentation(&Documentation), Attribute(&Attribute) {}
+};
+
+static void WriteCategoryHeader(const Record *DocCategory,
+                                raw_ostream &OS) {
+  const std::string &Name = DocCategory->getValueAsString("Name");
+  OS << Name << "\n" << std::string(Name.length(), '=') << "\n";
+
+  // If there is content, print that as well.
+  std::string ContentStr = DocCategory->getValueAsString("Content");
+  if (!ContentStr.empty()) {
+    // Trim leading and trailing newlines and spaces.
+    StringRef Content(ContentStr);
+    while (Content.startswith("\r") || Content.startswith("\n") ||
+           Content.startswith(" ") || Content.startswith("\t"))
+           Content = Content.substr(1);
+    while (Content.endswith("\r") || Content.endswith("\n") ||
+           Content.endswith(" ") || Content.endswith("\t"))
+           Content = Content.substr(0, Content.size() - 1);
+    OS << Content;
+  }
+  OS << "\n\n";
+}
+
+enum SpellingKind {
+  GNU = 1 << 0,
+  CXX11 = 1 << 1,
+  Declspec = 1 << 2,
+  Keyword = 1 << 3
+};
+
+static void WriteDocumentation(const DocumentationData &Doc,
+                               raw_ostream &OS) {
+  // FIXME: there is no way to have a per-spelling category for the attribute
+  // documentation. This may not be a limiting factor since the spellings
+  // should generally be consistently applied across the category.
+
+  std::vector<FlattenedSpelling> Spellings = GetFlattenedSpellings(*Doc.Attribute);
+
+  // Determine the heading to be used for this attribute.
+  std::string Heading = Doc.Documentation->getValueAsString("Heading");
+  bool CustomHeading = !Heading.empty();
+  if (Heading.empty()) {
+    // If there's only one spelling, we can simply use that.
+    if (Spellings.size() == 1)
+      Heading = Spellings.begin()->name();
+    else {
+      std::set<std::string> Uniques;
+      for (std::vector<FlattenedSpelling>::const_iterator I = Spellings.begin(),
+           E = Spellings.end(); I != E && Uniques.size() <= 1; ++I) {
+        std::string Spelling = NormalizeNameForSpellingComparison(I->name());
+        Uniques.insert(Spelling);
+      }
+      // If the semantic map has only one spelling, that is sufficient for our
+      // needs.
+      if (Uniques.size() == 1)
+        Heading = *Uniques.begin();
+    }
+  }
+
+  // If the heading is still empty, it is an error.
+  if (Heading.empty())
+    PrintFatalError(Doc.Attribute->getLoc(),
+                    "This attribute requires a heading to be specified");
+
+  // Gather a list of unique spellings; this is not the same as the semantic
+  // spelling for the attribute. Variations in underscores and other non-
+  // semantic characters are still acceptable.
+  std::vector<std::string> Names;
+
+  unsigned SupportedSpellings = 0;
+  for (std::vector<FlattenedSpelling>::const_iterator I = Spellings.begin(),
+       E = Spellings.end(); I != E; ++I) {
+    SpellingKind Kind = StringSwitch<SpellingKind>(I->variety())
+      .Case("GNU", GNU)
+      .Case("CXX11", CXX11)
+      .Case("Declspec", Declspec)
+      .Case("Keyword", Keyword);
+
+    // Mask in the supported spelling.
+    SupportedSpellings |= Kind;
+
+    std::string Name;
+    if (Kind == CXX11 && !I->nameSpace().empty())
+      Name = I->nameSpace() + "::";
+    Name += I->name();
+
+    // If this name is the same as the heading, do not add it.
+    if (Name != Heading)
+      Names.push_back(Name);
+  }
+
+  // Print out the heading for the attribute. If there are alternate spellings,
+  // then display those after the heading.
+  if (!CustomHeading && !Names.empty()) {
+    Heading += " (";
+    for (std::vector<std::string>::const_iterator I = Names.begin(),
+         E = Names.end(); I != E; ++I) {
+      if (I != Names.begin())
+        Heading += ", ";
+      Heading += *I;
+    }
+    Heading += ")";
+  }
+  OS << Heading << "\n" << std::string(Heading.length(), '-') << "\n";
+
+  if (!SupportedSpellings)
+    PrintFatalError(Doc.Attribute->getLoc(),
+                    "Attribute has no supported spellings; cannot be "
+                    "documented");
+
+  // List what spelling syntaxes the attribute supports.
+  OS << ".. csv-table:: Supported Syntaxes\n";
+  OS << "   :header: \"GNU\", \"C++11\", \"__declspec\", \"Keyword\"\n\n";
+  OS << "   \"";
+  if (SupportedSpellings & GNU) OS << "X";
+  OS << "\",\"";
+  if (SupportedSpellings & CXX11) OS << "X";
+  OS << "\",\"";
+  if (SupportedSpellings & Declspec) OS << "X";
+  OS << "\",\"";
+  if (SupportedSpellings & Keyword) OS << "X";
+  OS << "\"\n\n";
+
+  // If the attribute is deprecated, print a message about it, and possibly
+  // provide a replacement attribute.
+  if (!Doc.Documentation->isValueUnset("Deprecated")) {
+    OS << "This attribute has been deprecated, and may be removed in a future "
+       << "version of Clang.";
+    const Record &Deprecated = *Doc.Documentation->getValueAsDef("Deprecated");
+    std::string Replacement = Deprecated.getValueAsString("Replacement");
+    if (!Replacement.empty())
+      OS << "  This attribute has been superseded by ``"
+         << Replacement << "``.";
+    OS << "\n\n";
+  }
+
+  std::string ContentStr = Doc.Documentation->getValueAsString("Content");
+  // Trim leading and trailing newlines and spaces.
+  StringRef Content(ContentStr);
+  while (Content.startswith("\r") || Content.startswith("\n") ||
+         Content.startswith(" ") || Content.startswith("\t"))
+    Content = Content.substr(1);
+  while (Content.endswith("\r") || Content.endswith("\n") ||
+         Content.endswith(" ") || Content.endswith("\t"))
+    Content = Content.substr(0, Content.size() - 1);
+  OS << Content;
+
+  OS << "\n\n\n";
+}
+
+void EmitClangAttrDocs(RecordKeeper &Records, raw_ostream &OS) {
+  // Get the documentation introduction paragraph.
+  const Record *Documentation = Records.getDef("GlobalDocumentation");
+  if (!Documentation) {
+    PrintFatalError("The Documentation top-level definition is missing, "
+                    "no documentation will be generated.");
+    return;
+  }
+
+  OS << Documentation->getValueAsString("Intro") << "\n";
+
+  typedef std::map<const Record *,
+                   std::vector<DocumentationData> > CategoryMap;
+  CategoryMap SplitDocs;
+
+  // Gather the Documentation lists from each of the attributes, based on the
+  // category provided.
+  std::vector<Record *> Attrs = Records.getAllDerivedDefinitions("Attr");
+  for (std::vector<Record *>::const_iterator I = Attrs.begin(),
+       E = Attrs.end(); I != E; ++I) {
+    const Record &Attr = **I;
+    std::vector<Record *> Docs = Attr.getValueAsListOfDefs("Documentation");
+    for (std::vector<Record *>::const_iterator DI = Docs.begin(),
+         DE = Docs.end(); DI != DE; ++DI) {
+      const Record &Doc = **DI;
+      const Record *Category = Doc.getValueAsDef("Category");
+      // If the category is "undocumented", then there cannot be any other
+      // documentation categories (otherwise, the attribute would become
+      // documented).
+      std::string Cat = Category->getValueAsString("Name");
+      bool Undocumented = Cat == "Undocumented";
+      if (Undocumented && Docs.size() > 1)
+        PrintFatalError(Doc.getLoc(),
+                        "Attribute is \"Undocumented\", but has multiple "
+                        "documentation categories");      
+
+      if (!Undocumented)
+        SplitDocs[Category].push_back(DocumentationData(Doc, Attr));
+    }
+  }
+
+  // Having split the attributes out based on what documentation goes where,
+  // we can begin to generate sections of documentation.
+  for (CategoryMap::const_iterator I = SplitDocs.begin(), E = SplitDocs.end();
+       I != E; ++I) {
+    WriteCategoryHeader(I->first, OS);
+
+    // Walk over each of the attributes in the category and write out their
+    // documentation.
+    for (std::vector<DocumentationData>::const_iterator D = I->second.begin(),
+         DE = I->second.end(); D != DE; ++D)
+      WriteDocumentation(*D, OS);
+  }
 }
 
 } // end namespace clang

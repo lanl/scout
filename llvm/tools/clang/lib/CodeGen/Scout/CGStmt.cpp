@@ -212,7 +212,8 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 //generate one of the nested loops
 void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
   RegionCounter Cnt = getPGORegionCounter(&S);
-  
+  (void)Cnt; //suppress warning 
+ 
   llvm::Value *MeshBaseAddr = GetMeshBaseAddr(S);
   llvm::StringRef MeshName = S.getMeshType()->getName();
 
@@ -287,7 +288,7 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
 
   // Store the blocks to use for break and continue.
 
-  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue, &Cnt));
+  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue));
   if (r == 1) {  // This is our innermost rank, generate the loop body.
     EmitStmt(S.getBody());
 
@@ -384,6 +385,7 @@ void CodeGenFunction::EmitForallArrayStmt(const ForallArrayStmt &S) {
 
 void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) {
   RegionCounter Cnt = getPGORegionCounter(&S);
+  (void)Cnt; //suppress warning
   
   CGDebugInfo *DI = getDebugInfo();
 
@@ -442,7 +444,7 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
   Continue = getJumpDestInCurrentScope(IRNameStr);
 
   // Store the blocks to use for break and continue.
-  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue, &Cnt));
+  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue));
 
   if (r == 1) {  // This is our innermost rank, generate the loop body.
     EmitStmt(S.getBody());
@@ -547,6 +549,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 //generate one of the nested loops
 void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned r) {
   RegionCounter Cnt = getPGORegionCounter(&S);
+  (void)Cnt; //suppress warning
 
   llvm::StringRef MeshName = S.getMeshType()->getName();
 
@@ -617,7 +620,7 @@ void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned
 
   // Store the blocks to use for break and continue.
 
-  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue, &Cnt));
+  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue));
 
   if (r == 1) {  // This is our innermost rank, generate the loop body.
     EmitStmt(S.getBody());

@@ -216,7 +216,8 @@ public:
 /// "Declaration specifiers" encompasses storage-class-specifiers,
 /// type-specifiers, type-qualifiers, and function-specifiers.
 class DeclSpec {
-public:
+
+ public:
   /// \brief storage-class-specifier
   /// \note The order of these enumerators is important for diagnostics.
   enum SCS {
@@ -273,10 +274,12 @@ public:
   static const TST TST_bool = clang::TST_bool;
 
   // +===== Scout ============================================================+
-  static const TST TST_uniform_mesh = clang::TST_uniform_mesh;
-  static const TST TST_structured_mesh = clang::TST_structured_mesh;
-  static const TST TST_rectilinear_mesh = clang::TST_rectilinear_mesh;
+  static const TST TST_uniform_mesh      = clang::TST_uniform_mesh;
+  static const TST TST_structured_mesh   = clang::TST_structured_mesh;
+  static const TST TST_rectilinear_mesh  = clang::TST_rectilinear_mesh;
   static const TST TST_unstructured_mesh = clang::TST_unstructured_mesh;
+  static const TST TST_window            = clang::TST_window;
+  static const TST TST_image             = clang::TST_image;  
   // +========================================================================+
 
   static const TST TST_decimal32 = clang::TST_decimal32;
@@ -319,7 +322,7 @@ public:
     PQ_FunctionSpecifier     = 8
   };
 
-private:
+ private:
   // storage-class-specifier
   /*SCS*/unsigned StorageClassSpec : 3;
   /*TSCS*/unsigned ThreadStorageClassSpec : 2;
@@ -411,35 +414,35 @@ public:
             // +===== Scout ==================================================+
             T == TST_uniform_mesh     || T == TST_structured_mesh ||
             T == TST_rectilinear_mesh || T == TST_unstructured_mesh);
-            // +==============================================================+
+    // +==============================================================+
   }
 
   DeclSpec(AttributeFactory &attrFactory)
-    : StorageClassSpec(SCS_unspecified),
-      ThreadStorageClassSpec(TSCS_unspecified),
-      SCS_extern_in_linkage_spec(false),
-      TypeSpecWidth(TSW_unspecified),
-      TypeSpecComplex(TSC_unspecified),
-      TypeSpecSign(TSS_unspecified),
-      TypeSpecType(TST_unspecified),
-      TypeAltiVecVector(false),
-      TypeAltiVecPixel(false),
-      TypeAltiVecBool(false),
-      TypeSpecOwned(false),
-      TypeQualifiers(TQ_unspecified),
-      FS_inline_specified(false),
-      FS_forceinline_specified(false),
-      FS_virtual_specified(false),
-      FS_explicit_specified(false),
-      FS_noreturn_specified(false),
-      Friend_specified(false),
-      Constexpr_specified(false),
-      Attrs(attrFactory),
-      ProtocolQualifiers(0),
-      NumProtocolQualifiers(0),
-      ProtocolLocs(0),
-      writtenBS(),
-      ObjCQualifiers(0) {
+  : StorageClassSpec(SCS_unspecified),
+    ThreadStorageClassSpec(TSCS_unspecified),
+    SCS_extern_in_linkage_spec(false),
+    TypeSpecWidth(TSW_unspecified),
+    TypeSpecComplex(TSC_unspecified),
+    TypeSpecSign(TSS_unspecified),
+    TypeSpecType(TST_unspecified),
+    TypeAltiVecVector(false),
+    TypeAltiVecPixel(false),
+    TypeAltiVecBool(false),
+    TypeSpecOwned(false),
+    TypeQualifiers(TQ_unspecified),
+    FS_inline_specified(false),
+    FS_forceinline_specified(false),
+    FS_virtual_specified(false),
+    FS_explicit_specified(false),
+    FS_noreturn_specified(false),
+    Friend_specified(false),
+    Constexpr_specified(false),
+    Attrs(attrFactory),
+    ProtocolQualifiers(0),
+    NumProtocolQualifiers(0),
+    ProtocolLocs(0),
+    writtenBS(),
+    ObjCQualifiers(0) {
   }
   ~DeclSpec() {
     delete [] ProtocolQualifiers;
@@ -583,9 +586,9 @@ public:
   /// \brief Return true if any type-specifier has been found.
   bool hasTypeSpecifier() const {
     return getTypeSpecType() != DeclSpec::TST_unspecified ||
-           getTypeSpecWidth() != DeclSpec::TSW_unspecified ||
-           getTypeSpecComplex() != DeclSpec::TSC_unspecified ||
-           getTypeSpecSign() != DeclSpec::TSS_unspecified;
+      getTypeSpecWidth() != DeclSpec::TSW_unspecified ||
+      getTypeSpecComplex() != DeclSpec::TSC_unspecified ||
+      getTypeSpecSign() != DeclSpec::TSS_unspecified;
   }
 
   /// \brief Return a bitmask of which flavors of specifiers this
@@ -643,14 +646,14 @@ public:
                        unsigned &DiagID, Expr *Rep,
                        const PrintingPolicy &policy);
   bool SetTypeAltiVecVector(bool isAltiVecVector, SourceLocation Loc,
-                       const char *&PrevSpec, unsigned &DiagID,
-                       const PrintingPolicy &Policy);
+                            const char *&PrevSpec, unsigned &DiagID,
+                            const PrintingPolicy &Policy);
   bool SetTypeAltiVecPixel(bool isAltiVecPixel, SourceLocation Loc,
-                       const char *&PrevSpec, unsigned &DiagID,
-                       const PrintingPolicy &Policy);
+                           const char *&PrevSpec, unsigned &DiagID,
+                           const PrintingPolicy &Policy);
   bool SetTypeAltiVecBool(bool isAltiVecBool, SourceLocation Loc,
-                       const char *&PrevSpec, unsigned &DiagID,
-                       const PrintingPolicy &Policy);
+                          const char *&PrevSpec, unsigned &DiagID,
+                          const PrintingPolicy &Policy);
   bool SetTypeSpecError();
   void UpdateDeclRep(Decl *Rep) {
     assert(isDeclRep((TST) TypeSpecType));
@@ -815,8 +818,8 @@ public:
 
 
   ObjCDeclSpec()
-    : objcDeclQualifier(DQ_None), PropertyAttributes(DQ_PR_noattr),
-      GetterName(0), SetterName(0) { }
+      : objcDeclQualifier(DQ_None), PropertyAttributes(DQ_PR_noattr),
+        GetterName(0), SetterName(0) { }
   ObjCDeclQualifier getObjCDeclQualifier() const { return objcDeclQualifier; }
   void setObjCDeclQualifier(ObjCDeclQualifier DQVal) {
     objcDeclQualifier = (ObjCDeclQualifier) (objcDeclQualifier | DQVal);
@@ -1000,7 +1003,7 @@ public:
   ///
   /// \param IdLoc the location of the identifier.
   void setLiteralOperatorId(const IdentifierInfo *Id, SourceLocation OpLoc,
-                              SourceLocation IdLoc) {
+                            SourceLocation IdLoc) {
     Kind = IK_LiteralOperatorId;
     Identifier = const_cast<IdentifierInfo *>(Id);
     StartLocation = OpLoc;
@@ -1072,7 +1075,8 @@ struct DeclaratorChunk {
   enum {
     Pointer, Reference, Array, Function, BlockPointer, MemberPointer, Paren,
     // +===== Scout ==========================================================+
-    UniformMesh, UnstructuredMesh, RectilinearMesh, StructuredMesh
+    UniformMesh, UnstructuredMesh, RectilinearMesh, StructuredMesh,
+    Window, Image 
     // +======================================================================+
   } Kind;
 
@@ -1135,22 +1139,22 @@ struct DeclaratorChunk {
   // +===== Scout ============================================================+
 
   struct UniformMeshTypeInfo : TypeInfoCommon {
-     // parsed constant expressions for each dim
+    // parsed constant expressions for each dim
 
-     MeshType::MeshDimensions Dims() const {
-       MeshType::MeshDimensions dims;
-       if (NumDims > 0)  dims.push_back(Expr0);
-       if (NumDims > 1)  dims.push_back(Expr1);
-       if (NumDims > 2)  dims.push_back(Expr2);
-       return dims;
-     }
+    MeshType::MeshDimensions Dims() const {
+      MeshType::MeshDimensions dims;
+      if (NumDims > 0)  dims.push_back(Expr0);
+      if (NumDims > 1)  dims.push_back(Expr1);
+      if (NumDims > 2)  dims.push_back(Expr2);
+      return dims;
+    }
 
-     unsigned NumDims;
-     Expr *Expr0;
-     Expr *Expr1;
-     Expr *Expr2;
+    unsigned NumDims;
+    Expr *Expr0;
+    Expr *Expr1;
+    Expr *Expr2;
 
-     void destroy() {}
+    void destroy() {}
   };
 
   struct RectilinearMeshTypeInfo : TypeInfoCommon {
@@ -1184,6 +1188,37 @@ struct DeclaratorChunk {
 
     void destroy() {}
   };
+
+  struct WindowTypeInfo : TypeInfoCommon {
+    // Parsed expressions for each window dimension. 
+    llvm::SmallVector<Expr*, 2> Dims() const {
+      llvm::SmallVector<Expr*,2> dims;
+      dims.push_back(WidthExpr);
+      dims.push_back(HeightExpr);
+      return dims;
+    }
+
+    Expr *WidthExpr;
+    Expr *HeightExpr;
+
+    void destroy() {}
+  };
+
+  struct ImageTypeInfo : TypeInfoCommon {
+    // Parsed expressions for each window dimension. 
+    llvm::SmallVector<Expr*, 2> Dims() const {
+      llvm::SmallVector<Expr*,2> dims;
+      dims.push_back(WidthExpr);
+      dims.push_back(HeightExpr);
+      return dims;
+    }
+    
+    Expr *WidthExpr;
+    Expr *HeightExpr;
+
+    void destroy() {}
+  };
+
   // +========================================================================+
 
   /// ParamInfo - An array of paraminfo objects is allocated whenever a function
@@ -1208,8 +1243,8 @@ struct DeclaratorChunk {
     ParamInfo(IdentifierInfo *ident, SourceLocation iloc,
               Decl *param,
               CachedTokens *DefArgTokens = 0)
-      : Ident(ident), IdentLoc(iloc), Param(param),
-        DefaultArgTokens(DefArgTokens) {}
+        : Ident(ident), IdentLoc(iloc), Param(param),
+          DefaultArgTokens(DefArgTokens) {}
   };
 
   struct TypeAndRange {
@@ -1432,25 +1467,28 @@ struct DeclaratorChunk {
     RectilinearMeshTypeInfo    Rectmsh;
     UnstructuredMeshTypeInfo   Unsmsh;
     StructuredMeshTypeInfo     Strmsh;
+    WindowTypeInfo             Win;
+    ImageTypeInfo              Img;
     // +======================================================================+
   };
 
   void destroy() {
     switch (Kind) {
-    case DeclaratorChunk::Function:      return Fun.destroy();
-    case DeclaratorChunk::Pointer:       return Ptr.destroy();
-    case DeclaratorChunk::BlockPointer:  return Cls.destroy();
-    case DeclaratorChunk::Reference:     return Ref.destroy();
-    case DeclaratorChunk::Array:         return Arr.destroy();
-    case DeclaratorChunk::MemberPointer: return Mem.destroy();
-    case DeclaratorChunk::Paren:         return;
-    // +==== Scout ===========================================================+
-    case DeclaratorChunk::UniformMesh:        return Unimsh.destroy();
-    case DeclaratorChunk::RectilinearMesh:    return Rectmsh.destroy();
-    case DeclaratorChunk::UnstructuredMesh:   return Unsmsh.destroy();
-    case DeclaratorChunk::StructuredMesh:     return Strmsh.destroy();
-    // +======================================================================+
-
+      case DeclaratorChunk::Function:      return Fun.destroy();
+      case DeclaratorChunk::Pointer:       return Ptr.destroy();
+      case DeclaratorChunk::BlockPointer:  return Cls.destroy();
+      case DeclaratorChunk::Reference:     return Ref.destroy();
+      case DeclaratorChunk::Array:         return Arr.destroy();
+      case DeclaratorChunk::MemberPointer: return Mem.destroy();
+      case DeclaratorChunk::Paren:         return;
+        // +==== Scout ===========================================================+
+      case DeclaratorChunk::UniformMesh:        return Unimsh.destroy();
+      case DeclaratorChunk::RectilinearMesh:    return Rectmsh.destroy();
+      case DeclaratorChunk::UnstructuredMesh:   return Unsmsh.destroy();
+      case DeclaratorChunk::StructuredMesh:     return Strmsh.destroy();
+      case DeclaratorChunk::Window:             return Win.destroy();
+      case DeclaratorChunk::Image:              return Img.destroy();
+        // +======================================================================+
     }
   }
 
@@ -1532,7 +1570,7 @@ struct DeclaratorChunk {
                                      SourceLocation LocalRangeEnd,
                                      Declarator &TheDeclarator,
                                      TypeResult TrailingReturnType =
-                                                    TypeResult());
+                                     TypeResult());
 
   /// \brief Return a DeclaratorChunk for a block.
   static DeclaratorChunk getBlockPointer(unsigned TypeQuals,
@@ -1577,39 +1615,39 @@ struct DeclaratorChunk {
   static DeclaratorChunk getUniformMesh(const MeshType::MeshDimensions &dims,
                                         SourceLocation LBLoc,
                                         SourceLocation RBLoc) {
-      DeclaratorChunk I;
-      I.Kind          = UniformMesh;
-      I.Loc           = LBLoc;
-      I.EndLoc        = RBLoc;
-      I.Unimsh.NumDims = dims.size();
-      if (I.Unimsh.NumDims > 0) I.Unimsh.Expr0 = dims[0];
-      if (I.Unimsh.NumDims > 1) I.Unimsh.Expr1 = dims[1];
-      if (I.Unimsh.NumDims > 2) I.Unimsh.Expr2 = dims[2];
+    DeclaratorChunk I;
+    I.Kind          = UniformMesh;
+    I.Loc           = LBLoc;
+    I.EndLoc        = RBLoc;
+    I.Unimsh.NumDims = dims.size();
+    if (I.Unimsh.NumDims > 0) I.Unimsh.Expr0 = dims[0];
+    if (I.Unimsh.NumDims > 1) I.Unimsh.Expr1 = dims[1];
+    if (I.Unimsh.NumDims > 2) I.Unimsh.Expr2 = dims[2];
 
-      return I;
+    return I;
   }
 
-   /// \brief Return DeclaratorChunk for a rectilinear mesh.
+  /// \brief Return DeclaratorChunk for a rectilinear mesh.
   static
   DeclaratorChunk getRectilinearMesh(const MeshType::MeshDimensions &dims,
                                      SourceLocation LBLoc,
                                      SourceLocation RBLoc) {
-      DeclaratorChunk I;
-      I.Kind          = UniformMesh;
-      I.Loc           = LBLoc;
-      I.EndLoc        = RBLoc;
-      I.Rectmsh.NumDims = dims.size();
-      if (I.Rectmsh.NumDims > 0) I.Rectmsh.Expr0 = dims[0];
-      if (I.Rectmsh.NumDims > 1) I.Rectmsh.Expr1 = dims[1];
-      if (I.Rectmsh.NumDims > 2) I.Rectmsh.Expr2 = dims[2];
+    DeclaratorChunk I;
+    I.Kind          = RectilinearMesh;
+    I.Loc           = LBLoc;
+    I.EndLoc        = RBLoc;
+    I.Rectmsh.NumDims = dims.size();
+    if (I.Rectmsh.NumDims > 0) I.Rectmsh.Expr0 = dims[0];
+    if (I.Rectmsh.NumDims > 1) I.Rectmsh.Expr1 = dims[1];
+    if (I.Rectmsh.NumDims > 2) I.Rectmsh.Expr2 = dims[2];
 
-      return I;
+    return I;
   }
 
 
   /// \brief Return a DeclaratorChunk for an unstructured mesh.
   static DeclaratorChunk getUnstructuredMesh(Expr *strLit,
-      SourceLocation LBLoc, SourceLocation RBLoc) {
+                                             SourceLocation LBLoc, SourceLocation RBLoc) {
     DeclaratorChunk I;
     I.Kind          = UnstructuredMesh;
     I.Loc           = LBLoc;
@@ -1630,6 +1668,34 @@ struct DeclaratorChunk {
     I.Strmsh.StrLitFileName = strLit;
     return I;
   }
+
+  static DeclaratorChunk getWindow(const llvm::SmallVector<Expr*,2> &dims,
+                                   SourceLocation LBLoc,
+                                   SourceLocation RBLoc) {
+    DeclaratorChunk I;
+    I.Kind           = Window;
+    I.Loc            = LBLoc;
+    I.EndLoc         = RBLoc;
+    assert(dims[0] != 0 && dims[1] != 0);
+    I.Win.WidthExpr  = dims[0];
+    I.Win.HeightExpr = dims[1];  
+    return I;
+  }
+
+
+  static DeclaratorChunk getImage(const llvm::SmallVector<Expr*,2> &dims,
+                                  SourceLocation LBLoc,
+                                  SourceLocation RBLoc) {
+    DeclaratorChunk I;
+    I.Kind           = Image;
+    I.Loc            = LBLoc;
+    I.EndLoc         = RBLoc;
+    assert(dims[0] != 0 && dims[1] != 0);
+    I.Img.WidthExpr  = dims[0];
+    I.Img.HeightExpr = dims[1];  
+    return I;
+  }
+  
   // +========================================================================+
 };
 
@@ -1738,12 +1804,12 @@ private:
 
 public:
   Declarator(const DeclSpec &ds, TheContext C)
-    : DS(ds), Range(ds.getSourceRange()), Context(C),
-      InvalidType(DS.getTypeSpecType() == DeclSpec::TST_error),
-      GroupingParens(false), FunctionDefinition(FDK_Declaration),
-      Redeclaration(false),
-      Attrs(ds.getAttributePool().getFactory()), AsmLabel(0),
-      InlineParamsUsed(false), Extension(false) {
+      : DS(ds), Range(ds.getSourceRange()), Context(C),
+        InvalidType(DS.getTypeSpecType() == DeclSpec::TST_error),
+        GroupingParens(false), FunctionDefinition(FDK_Declaration),
+        Redeclaration(false),
+        Attrs(ds.getAttributePool().getFactory()), AsmLabel(0),
+        InlineParamsUsed(false), Extension(false) {
   }
 
   ~Declarator() {
@@ -1830,31 +1896,31 @@ public:
   /// parameter lists.
   bool mayOmitIdentifier() const {
     switch (Context) {
-    case FileContext:
-    case KNRTypeListContext:
-    case MemberContext:
-    case BlockContext:
-    case ForContext:
-    case ConditionContext:
-      return false;
+      case FileContext:
+      case KNRTypeListContext:
+      case MemberContext:
+      case BlockContext:
+      case ForContext:
+      case ConditionContext:
+        return false;
 
-    case TypeNameContext:
-    case AliasDeclContext:
-    case AliasTemplateContext:
-    case PrototypeContext:
-    case LambdaExprParameterContext:
-    case ObjCParameterContext:
-    case ObjCResultContext:
-    case TemplateParamContext:
-    case CXXNewContext:
-    case CXXCatchContext:
-    case ObjCCatchContext:
-    case BlockLiteralContext:
-    case LambdaExprContext:
-    case ConversionIdContext:
-    case TemplateTypeArgContext:
-    case TrailingReturnContext:
-      return true;
+      case TypeNameContext:
+      case AliasDeclContext:
+      case AliasTemplateContext:
+      case PrototypeContext:
+      case LambdaExprParameterContext:
+      case ObjCParameterContext:
+      case ObjCResultContext:
+      case TemplateParamContext:
+      case CXXNewContext:
+      case CXXCatchContext:
+      case ObjCCatchContext:
+      case BlockLiteralContext:
+      case LambdaExprContext:
+      case ConversionIdContext:
+      case TemplateTypeArgContext:
+      case TrailingReturnContext:
+        return true;
     }
     llvm_unreachable("unknown context kind!");
   }
@@ -1864,31 +1930,31 @@ public:
   /// typenames.
   bool mayHaveIdentifier() const {
     switch (Context) {
-    case FileContext:
-    case KNRTypeListContext:
-    case MemberContext:
-    case BlockContext:
-    case ForContext:
-    case ConditionContext:
-    case PrototypeContext:
-    case LambdaExprParameterContext:
-    case TemplateParamContext:
-    case CXXCatchContext:
-    case ObjCCatchContext:
-      return true;
+      case FileContext:
+      case KNRTypeListContext:
+      case MemberContext:
+      case BlockContext:
+      case ForContext:
+      case ConditionContext:
+      case PrototypeContext:
+      case LambdaExprParameterContext:
+      case TemplateParamContext:
+      case CXXCatchContext:
+      case ObjCCatchContext:
+        return true;
 
-    case TypeNameContext:
-    case CXXNewContext:
-    case AliasDeclContext:
-    case AliasTemplateContext:
-    case ObjCParameterContext:
-    case ObjCResultContext:
-    case BlockLiteralContext:
-    case LambdaExprContext:
-    case ConversionIdContext:
-    case TemplateTypeArgContext:
-    case TrailingReturnContext:
-      return false;
+      case TypeNameContext:
+      case CXXNewContext:
+      case AliasDeclContext:
+      case AliasTemplateContext:
+      case ObjCParameterContext:
+      case ObjCResultContext:
+      case BlockLiteralContext:
+      case LambdaExprContext:
+      case ConversionIdContext:
+      case TemplateTypeArgContext:
+      case TrailingReturnContext:
+        return false;
     }
     llvm_unreachable("unknown context kind!");
   }
@@ -1897,31 +1963,31 @@ public:
   /// should be diagnosed (because it cannot be anything else).
   bool diagnoseIdentifier() const {
     switch (Context) {
-    case FileContext:
-    case KNRTypeListContext:
-    case MemberContext:
-    case BlockContext:
-    case ForContext:
-    case ConditionContext:
-    case PrototypeContext:
-    case LambdaExprParameterContext:
-    case TemplateParamContext:
-    case CXXCatchContext:
-    case ObjCCatchContext:
-    case TypeNameContext:
-    case ConversionIdContext:
-    case ObjCParameterContext:
-    case ObjCResultContext:
-    case BlockLiteralContext:
-    case CXXNewContext:
-    case LambdaExprContext:
-      return false;
+      case FileContext:
+      case KNRTypeListContext:
+      case MemberContext:
+      case BlockContext:
+      case ForContext:
+      case ConditionContext:
+      case PrototypeContext:
+      case LambdaExprParameterContext:
+      case TemplateParamContext:
+      case CXXCatchContext:
+      case ObjCCatchContext:
+      case TypeNameContext:
+      case ConversionIdContext:
+      case ObjCParameterContext:
+      case ObjCResultContext:
+      case BlockLiteralContext:
+      case CXXNewContext:
+      case LambdaExprContext:
+        return false;
 
-    case AliasDeclContext:
-    case AliasTemplateContext:
-    case TemplateTypeArgContext:
-    case TrailingReturnContext:
-      return true;
+      case AliasDeclContext:
+      case AliasTemplateContext:
+      case TemplateTypeArgContext:
+      case TrailingReturnContext:
+        return true;
     }
     llvm_unreachable("unknown context kind!");
   }
@@ -1943,36 +2009,36 @@ public:
       return false;
 
     switch (Context) {
-    case FileContext:
-    case BlockContext:
-    case ForContext:
-      return true;
+      case FileContext:
+      case BlockContext:
+      case ForContext:
+        return true;
 
-    case ConditionContext:
-      // This may not be followed by a direct initializer, but it can't be a
-      // function declaration either, and we'd prefer to perform a tentative
-      // parse in order to produce the right diagnostic.
-      return true;
+      case ConditionContext:
+        // This may not be followed by a direct initializer, but it can't be a
+        // function declaration either, and we'd prefer to perform a tentative
+        // parse in order to produce the right diagnostic.
+        return true;
 
-    case KNRTypeListContext:
-    case MemberContext:
-    case PrototypeContext:
-    case LambdaExprParameterContext:
-    case ObjCParameterContext:
-    case ObjCResultContext:
-    case TemplateParamContext:
-    case CXXCatchContext:
-    case ObjCCatchContext:
-    case TypeNameContext:
-    case CXXNewContext:
-    case AliasDeclContext:
-    case AliasTemplateContext:
-    case BlockLiteralContext:
-    case LambdaExprContext:
-    case ConversionIdContext:
-    case TemplateTypeArgContext:
-    case TrailingReturnContext:
-      return false;
+      case KNRTypeListContext:
+      case MemberContext:
+      case PrototypeContext:
+      case LambdaExprParameterContext:
+      case ObjCParameterContext:
+      case ObjCResultContext:
+      case TemplateParamContext:
+      case CXXCatchContext:
+      case ObjCCatchContext:
+      case TypeNameContext:
+      case CXXNewContext:
+      case AliasDeclContext:
+      case AliasTemplateContext:
+      case BlockLiteralContext:
+      case LambdaExprContext:
+      case ConversionIdContext:
+      case TemplateTypeArgContext:
+      case TrailingReturnContext:
+        return false;
     }
     llvm_unreachable("unknown context kind!");
   }
@@ -2077,23 +2143,25 @@ public:
   bool isFunctionDeclarator(unsigned& idx) const {
     for (unsigned i = 0, i_end = DeclTypeInfo.size(); i < i_end; ++i) {
       switch (DeclTypeInfo[i].Kind) {
-      case DeclaratorChunk::Function:
-        idx = i;
-        return true;
-      case DeclaratorChunk::Paren:
-        continue;
-      case DeclaratorChunk::Pointer:
-      case DeclaratorChunk::Reference:
-      case DeclaratorChunk::Array:
-      case DeclaratorChunk::BlockPointer:
-      case DeclaratorChunk::MemberPointer:
-      // +===== Scout ========================================================+
-      case DeclaratorChunk::UniformMesh:
-      case DeclaratorChunk::UnstructuredMesh:
-      case DeclaratorChunk::StructuredMesh:
-      case DeclaratorChunk::RectilinearMesh:
-      // +====================================================================+
-        return false;
+        case DeclaratorChunk::Function:
+          idx = i;
+          return true;
+        case DeclaratorChunk::Paren:
+          continue;
+        case DeclaratorChunk::Pointer:
+        case DeclaratorChunk::Reference:
+        case DeclaratorChunk::Array:
+        case DeclaratorChunk::BlockPointer:
+        case DeclaratorChunk::MemberPointer:
+          // +===== Scout ========================================================+
+        case DeclaratorChunk::UniformMesh:
+        case DeclaratorChunk::UnstructuredMesh:
+        case DeclaratorChunk::StructuredMesh:
+        case DeclaratorChunk::RectilinearMesh:
+        case DeclaratorChunk::Window:
+        case DeclaratorChunk::Image:
+          // +====================================================================+
+          return false;
       }
       llvm_unreachable("Invalid type chunk");
     }
@@ -2138,31 +2206,31 @@ public:
       return false;
 
     switch (Context) {
-    case FileContext:
-    case MemberContext:
-    case BlockContext:
-      return true;
+      case FileContext:
+      case MemberContext:
+      case BlockContext:
+        return true;
 
-    case ForContext:
-    case ConditionContext:
-    case KNRTypeListContext:
-    case TypeNameContext:
-    case AliasDeclContext:
-    case AliasTemplateContext:
-    case PrototypeContext:
-    case LambdaExprParameterContext:
-    case ObjCParameterContext:
-    case ObjCResultContext:
-    case TemplateParamContext:
-    case CXXNewContext:
-    case CXXCatchContext:
-    case ObjCCatchContext:
-    case BlockLiteralContext:
-    case LambdaExprContext:
-    case ConversionIdContext:
-    case TemplateTypeArgContext:
-    case TrailingReturnContext:
-      return false;
+      case ForContext:
+      case ConditionContext:
+      case KNRTypeListContext:
+      case TypeNameContext:
+      case AliasDeclContext:
+      case AliasTemplateContext:
+      case PrototypeContext:
+      case LambdaExprParameterContext:
+      case ObjCParameterContext:
+      case ObjCResultContext:
+      case TemplateParamContext:
+      case CXXNewContext:
+      case CXXCatchContext:
+      case ObjCCatchContext:
+      case BlockLiteralContext:
+      case LambdaExprContext:
+      case ConversionIdContext:
+      case TemplateTypeArgContext:
+      case TrailingReturnContext:
+        return false;
     }
     llvm_unreachable("unknown context kind!");
   }
@@ -2275,7 +2343,7 @@ struct FieldDeclarator {
   Declarator D;
   Expr *BitfieldSize;
   explicit FieldDeclarator(const DeclSpec &DS)
-    : D(DS, Declarator::MemberContext), BitfieldSize(0) { }
+  : D(DS, Declarator::MemberContext), BitfieldSize(0) { }
 };
 
 /// \brief Represents a C++11 virt-specifier-seq.
@@ -2327,7 +2395,7 @@ struct LambdaCapture {
                 IdentifierInfo* Id,
                 SourceLocation EllipsisLoc,
                 ExprResult Init, ParsedType InitCaptureType)
-    : Kind(Kind), Loc(Loc), Id(Id), EllipsisLoc(EllipsisLoc), Init(Init),
+      : Kind(Kind), Loc(Loc), Id(Id), EllipsisLoc(EllipsisLoc), Init(Init),
         InitCaptureType(InitCaptureType)
   {}
 };
@@ -2340,7 +2408,7 @@ struct LambdaIntroducer {
   SmallVector<LambdaCapture, 4> Captures;
 
   LambdaIntroducer()
-    : Default(LCD_None) {}
+      : Default(LCD_None) {}
 
   /// \brief Append a capture in a lambda introducer.
   void addCapture(LambdaCaptureKind Kind,
@@ -2350,7 +2418,7 @@ struct LambdaIntroducer {
                   ExprResult Init, 
                   ParsedType InitCaptureType) {
     Captures.push_back(LambdaCapture(Kind, Loc, Id, EllipsisLoc, Init, 
-        InitCaptureType));
+                                     InitCaptureType));
   }
 };
 

@@ -249,6 +249,12 @@ public:
   //
   void addArgument();
 
+  /// Unregisters this option from the CommandLine system.
+  ///
+  /// This option must have been the last option registered.
+  /// For testing purposes only.
+  void removeArgument();
+
   Option *getNextRegisteredOption() const { return NextRegistered; }
 
   // Return the width of the option tag for printing...
@@ -1020,8 +1026,8 @@ template<> struct applicator<const char*> {
 };
 
 template<> struct applicator<NumOccurrencesFlag> {
-  static void opt(NumOccurrencesFlag NO, Option &O) {
-    O.setNumOccurrencesFlag(NO);
+  static void opt(NumOccurrencesFlag N, Option &O) {
+    O.setNumOccurrencesFlag(N);
   }
 };
 template<> struct applicator<ValueExpected> {
@@ -1055,7 +1061,7 @@ class opt_storage {
   DataType *Location;   // Where to store the object...
   OptionValue<DataType> Default;
 
-  void check() const {
+  void check_location() const {
     assert(Location != 0 && "cl::location(...) not specified for a command "
            "line option with external storage, "
            "or cl::init specified before cl::location()!!");
@@ -1073,14 +1079,14 @@ public:
 
   template<class T>
   void setValue(const T &V, bool initial = false) {
-    check();
+    check_location();
     *Location = V;
     if (initial)
       Default = V;
   }
 
-  DataType &getValue() { check(); return *Location; }
-  const DataType &getValue() const { check(); return *Location; }
+  DataType &getValue() { check_location(); return *Location; }
+  const DataType &getValue() const { check_location(); return *Location; }
 
   operator DataType() const { return this->getValue(); }
 
@@ -1645,6 +1651,10 @@ class alias : public Option {
   // Aliases do not need to print their values.
   virtual void printOptionValue(size_t /*GlobalWidth*/,
                                 bool /*Force*/) const LLVM_OVERRIDE {}
+
+  virtual ValueExpected getValueExpectedFlagDefault() const LLVM_OVERRIDE {
+    return AliasFor->getValueExpectedFlag();
+  }
 
   void done() {
     if (!hasArgStr())

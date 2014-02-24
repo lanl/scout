@@ -91,10 +91,7 @@ Driver::Driver(StringRef ClangExecutable,
 Driver::~Driver() {
   delete Opts;
 
-  for (llvm::StringMap<ToolChain *>::iterator I = ToolChains.begin(),
-                                              E = ToolChains.end();
-       I != E; ++I)
-    delete I->second;
+  llvm::DeleteContainerSeconds(ToolChains);
 }
 
 void Driver::ParseDriverMode(ArrayRef<const char *> Args) {
@@ -117,11 +114,10 @@ void Driver::ParseDriverMode(ArrayRef<const char *> Args) {
         .Case("scout", ScoutCMode)      // +===== Scout ======================+
         .Default(~0U);
 
-    if (M != ~0U) {
+    if (M != ~0U)
       Mode = static_cast<DriverMode>(M);
-    } else {
+    else 
       Diag(diag::err_drv_unsupported_option_argument) << OptName << Value;
-    }
   }
 }
 
@@ -187,6 +183,7 @@ const {
     // -{fsyntax-only,-analyze,emit-ast,S} only run up to the compiler.
   } else if ((PhaseArg = DAL.getLastArg(options::OPT_fsyntax_only)) ||
              (PhaseArg = DAL.getLastArg(options::OPT_module_file_info)) ||
+             (PhaseArg = DAL.getLastArg(options::OPT_verify_pch)) ||
              (PhaseArg = DAL.getLastArg(options::OPT_rewrite_objc)) ||
              (PhaseArg = DAL.getLastArg(options::OPT_rewrite_legacy_objc)) ||
              (PhaseArg = DAL.getLastArg(options::OPT__migrate)) ||
@@ -742,7 +739,9 @@ bool Driver::HandleImmediateArgs(const Compilation &C) {
     }
     llvm::outs() << "\n";
     llvm::outs() << "libraries: =" << ResourceDir;
+    // +==== Scout =============================================================+
     llvm::outs() << "scout libraries: =" << ScoutResourceDir;
+    // +========================================================================+
 
     StringRef sysroot = C.getSysRoot();
 
@@ -777,51 +776,34 @@ bool Driver::HandleImmediateArgs(const Compilation &C) {
   }
 
   if (C.getArgs().hasArg(options::OPT_print_multi_lib)) {
-    // FIXME: We need tool chain support for this.
-    llvm::outs() << ".;\n";
+    const MultilibSet &Multilibs = TC.getMultilibs();
 
-    switch (C.getDefaultToolChain().getTriple().getArch()) {
-    default:
-      break;
-
-    case llvm::Triple::x86_64:
-      llvm::outs() << "x86_64;@m64" << "\n";
-      break;
-
-    case llvm::Triple::ppc64:
-      llvm::outs() << "ppc64;@m64" << "\n";
-      break;
-
-    case llvm::Triple::ppc64le:
-      llvm::outs() << "ppc64le;@m64" << "\n";
-      break;
+    for (MultilibSet::const_iterator I = Multilibs.begin(), E = Multilibs.end();
+         I != E; ++I) {
+      llvm::outs() << *I << "\n";
     }
     return false;
   }
 
-  // FIXME: What is the difference between print-multi-directory and
-  // print-multi-os-directory?
-  if (C.getArgs().hasArg(options::OPT_print_multi_directory) ||
-      C.getArgs().hasArg(options::OPT_print_multi_os_directory)) {
-    switch (C.getDefaultToolChain().getTriple().getArch()) {
-    default:
-    case llvm::Triple::x86:
-    case llvm::Triple::ppc:
-      llvm::outs() << "." << "\n";
-      break;
-
-    case llvm::Triple::x86_64:
-      llvm::outs() << "x86_64" << "\n";
-      break;
-
-    case llvm::Triple::ppc64:
-      llvm::outs() << "ppc64" << "\n";
-      break;
-
-    case llvm::Triple::ppc64le:
-      llvm::outs() << "ppc64le" << "\n";
-      break;
+  if (C.getArgs().hasArg(options::OPT_print_multi_directory)) {
+    const MultilibSet &Multilibs = TC.getMultilibs();
+    for (MultilibSet::const_iterator I = Multilibs.begin(), E = Multilibs.end();
+         I != E; ++I) {
+      if (I->gccSuffix().empty())
+        llvm::outs() << ".\n";
+      else {
+        StringRef Suffix(I->gccSuffix());
+        assert(Suffix.front() == '/');
+        llvm::outs() << Suffix.substr(1) << "\n";
+      }
     }
+    return false;
+  }
+
+  if (C.getArgs().hasArg(options::OPT_print_multi_os_directory)) {
+    // FIXME: This should print out "lib/../lib", "lib/../lib64", or
+    // "lib/../lib32" as appropriate for the toolchain. For now, print
+    // nothing because it's not supported yet.
     return false;
   }
 
@@ -965,13 +947,12 @@ void Driver::BuildUniversalActions(const ToolChain &TC,
         Actions.push_back(new DsymutilJobAction(Inputs, types::TY_dSYM));
       }
 
-      // Verify the output (debug information only for now).
+      // Verify the debug info output.
       if (Args.hasArg(options::OPT_verify_debug_info)) {
-        ActionList VerifyInputs;
-        VerifyInputs.push_back(Actions.back());
+        Action *VerifyInput = Actions.back();
         Actions.pop_back();
-        Actions.push_back(new VerifyJobAction(VerifyInputs,
-                                              types::TY_Nothing));
+        Actions.push_back(new VerifyDebugInfoJobAction(VerifyInput,
+                                                       types::TY_Nothing));
       }
     }
   }
@@ -1060,7 +1041,8 @@ void Driver::BuildInputs(const ToolChain &TC, const DerivedArgList &Args,
           // Otherwise emit an error but still use a valid type to avoid
           // spurious errors (e.g., no inputs).
           if (!Args.hasArgNoClaim(options::OPT_E) && !CCCIsCPP())
-            Diag(clang::diag::err_drv_unknown_stdin_type);
+            Diag(IsCLMode() ? clang::diag::err_drv_unknown_stdin_type_clang_cl
+                            : clang::diag::err_drv_unknown_stdin_type);
           Ty = types::TY_C;
         } else {
           // Otherwise lookup by extension.
@@ -1345,6 +1327,8 @@ Action *Driver::ConstructPhaseAction(const ArgList &Args, phases::ID Phase,
       return new CompileJobAction(Input, types::TY_AST);
     } else if (Args.hasArg(options::OPT_module_file_info)) {
       return new CompileJobAction(Input, types::TY_ModuleFile);
+    } else if (Args.hasArg(options::OPT_verify_pch)) {
+      return new VerifyPCHJobAction(Input, types::TY_Nothing);
     } else if (IsUsingLTO(Args)) {
       types::ID Output =
         Args.hasArg(options::OPT_S) ? types::TY_LTO_IR : types::TY_LTO_BC;

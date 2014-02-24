@@ -366,7 +366,9 @@ added in the future:
     calling convention on how arguments and return values are passed, but it
     uses a different set of caller/callee-saved registers. This alleviates the
     burden of saving and recovering a large register set before and after the
-    call in the caller.
+    call in the caller. If the arguments are passed in callee-saved registers,
+    then they will be preserved by the callee across the call. This doesn't
+    apply for values returned in callee-saved registers.
 
     - On X86-64 the callee preserves all general purpose registers, except for
       R11. R11 can be used as a scratch register. Floating-point registers
@@ -397,7 +399,10 @@ added in the future:
     convention also behaves identical to the `C` calling convention on how
     arguments and return values are passed, but it uses a different set of
     caller/callee-saved registers. This removes the burden of saving and
-    recovering a large register set before and after the call in the caller.
+    recovering a large register set before and after the call in the caller. If
+    the arguments are passed in callee-saved registers, then they will be
+    preserved by the callee across the call. This doesn't apply for values
+    returned in callee-saved registers.
 
     - On X86-64 the callee preserves all general purpose registers, except for
       R11. R11 can be used as a scratch register. Furthermore it also preserves
@@ -787,7 +792,10 @@ Currently, only the following parameter attributes are defined:
     An argument allocation may be used by a call at most once because
     the call may deallocate it.  The ``inalloca`` attribute cannot be
     used in conjunction with other attributes that affect argument
-    storage, like ``inreg``, ``nest``, ``sret``, or ``byval``.
+    storage, like ``inreg``, ``nest``, ``sret``, or ``byval``.  The
+    ``inalloca`` attribute also disables LLVM's implicit lowering of
+    large aggregate return values, which means that frontend authors
+    must lower them with ``sret`` pointers.
 
     When the call site is reached, the argument allocation must have
     been the most recent stack allocation that is still live, or the
@@ -1104,6 +1112,9 @@ example:
     - Calls to alloca() with variable sizes or constant sizes greater than
       ``ssp-buffer-size``.
 
+    Variables that are identified as requiring a protector will be arranged
+    on the stack such that they are adjacent to the stack protector guard.
+
     If a function that has an ``ssp`` attribute is inlined into a
     function that doesn't have an ``ssp`` attribute, then the resulting
     function will have an ``ssp`` attribute.
@@ -1111,6 +1122,17 @@ example:
     This attribute indicates that the function should *always* emit a
     stack smashing protector. This overrides the ``ssp`` function
     attribute.
+
+    Variables that are identified as requiring a protector will be arranged
+    on the stack such that they are adjacent to the stack protector guard.
+    The specific layout rules are:
+
+    #. Large arrays and structures containing large arrays
+       (``>= ssp-buffer-size``) are closest to the stack protector.
+    #. Small arrays and structures containing small arrays
+       (``< ssp-buffer-size``) are 2nd closest to the protector.
+    #. Variables that have had their address taken are 3rd closest to the
+       protector.
 
     If a function that has an ``sspreq`` attribute is inlined into a
     function that doesn't have an ``sspreq`` attribute or which has an
@@ -1126,6 +1148,17 @@ example:
     - Aggregates containing an array of any size and type.
     - Calls to alloca().
     - Local variables that have had their address taken.
+
+    Variables that are identified as requiring a protector will be arranged
+    on the stack such that they are adjacent to the stack protector guard.
+    The specific layout rules are:
+
+    #. Large arrays and structures containing large arrays
+       (``>= ssp-buffer-size``) are closest to the stack protector.
+    #. Small arrays and structures containing small arrays
+       (``< ssp-buffer-size``) are 2nd closest to the protector.
+    #. Variables that have had their address taken are 3rd closest to the
+       protector.
 
     This overrides the ``ssp`` function attribute.
 
@@ -7485,7 +7518,7 @@ Semantics:
 """"""""""
 
 This function returns the same values as the libm ``fma`` functions
-would.
+would, and does not set errno.
 
 '``llvm.fabs.*``' Intrinsic
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -8293,7 +8326,8 @@ is equivalent to the expression a \* b + c, except that rounding will
 not be performed between the multiplication and addition steps if the
 code generator fuses the operations. Fusion is not guaranteed, even if
 the target platform supports it. If a fused multiply-add is required the
-corresponding llvm.fma.\* intrinsic function should be used instead.
+corresponding llvm.fma.\* intrinsic function should be used
+instead. This never sets errno, just as '``llvm.fma.*``'.
 
 Examples:
 """""""""
@@ -8941,8 +8975,12 @@ on the ``min`` argument).
 Syntax:
 """""""
 
+This is an overloaded intrinsic. You can use ``llvm.expect`` on any
+integer bit width.
+
 ::
 
+      declare i1 @llvm.expect.i1(i1 <val>, i1 <expected_val>)
       declare i32 @llvm.expect.i32(i32 <val>, i32 <expected_val>)
       declare i64 @llvm.expect.i64(i64 <val>, i64 <expected_val>)
 

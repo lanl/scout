@@ -227,10 +227,10 @@ static void diagnoseInstanceReference(Sema &SemaRef,
     // enclosing class.
     SemaRef.Diag(Loc, diag::err_nested_non_static_member_use)
       << IsField << RepClass << nameInfo.getName() << ContextClass << Range;
-  else if (IsField) {
+  else if (IsField) 
     SemaRef.Diag(Loc, diag::err_invalid_non_static_member_use)
       << nameInfo.getName() << Range;
-  } else
+  else
     SemaRef.Diag(Loc, diag::err_member_call_without_object)
       << Range;
 }
@@ -2107,6 +2107,7 @@ BuildFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
                                  Field, FoundDecl, MemberNameInfo,
                                  MemberType, VK, OK));
 }
+// +========================================================================+
 
 /// Builds an implicit member access expression.  The current context
 /// is known to be an instance method, and the given unqualified lookup

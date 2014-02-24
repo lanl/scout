@@ -2476,8 +2476,12 @@ RNBRemote::HandlePacket_m (const char *p)
         return SendPacket ("");
     }
 
-    uint8_t buf[length];
-    int bytes_read = DNBProcessMemoryRead (m_ctx.ProcessID(), addr, length, buf);
+    std::string buf(length, '\0');
+    if (buf.empty())
+    {
+        return SendPacket ("E78");
+    }
+    int bytes_read = DNBProcessMemoryRead (m_ctx.ProcessID(), addr, buf.size(), &buf[0]);
     if (bytes_read == 0)
     {
         return SendPacket ("E08");
@@ -3011,7 +3015,9 @@ RNBRemote::HandlePacket_v (const char *p)
                 m_ctx.LaunchStatus().SetErrorString(err_str);
             else
                 m_ctx.LaunchStatus().SetErrorString("attach failed");
-            return SendPacket ("E01");  // E01 is our magic error value for attach failed.
+            SendPacket ("E01");  // E01 is our magic error value for attach failed.
+            DNBLogError ("Attach failed: \"%s\".", err_str);
+            return rnb_err;
         }
     }
 

@@ -71,9 +71,11 @@ TypeResult Parser::ParseTypeName(SourceRange *Range,
 /// isAttributeLateParsed - Return true if the attribute has arguments that
 /// require late parsing.
 static bool isAttributeLateParsed(const IdentifierInfo &II) {
+#define CLANG_ATTR_LATE_PARSED_LIST
     return llvm::StringSwitch<bool>(II.getName())
-#include "clang/Parse/AttrLateParsed.inc"
+#include "clang/Parse/AttrParserStringSwitches.inc"
         .Default(false);
+#undef CLANG_ATTR_LATE_PARSED_LIST
 }
 
 /// ParseGNUAttributes - Parse a non-empty attributes list.
@@ -198,24 +200,30 @@ static StringRef normalizeAttrName(StringRef Name) {
 
 /// \brief Determine whether the given attribute has an identifier argument.
 static bool attributeHasIdentifierArg(const IdentifierInfo &II) {
+#define CLANG_ATTR_IDENTIFIER_ARG_LIST
   return llvm::StringSwitch<bool>(normalizeAttrName(II.getName()))
-#include "clang/Parse/AttrIdentifierArg.inc"
+#include "clang/Parse/AttrParserStringSwitches.inc"
            .Default(false);
+#undef CLANG_ATTR_IDENTIFIER_ARG_LIST
 }
 
 /// \brief Determine whether the given attribute parses a type argument.
 static bool attributeIsTypeArgAttr(const IdentifierInfo &II) {
+#define CLANG_ATTR_TYPE_ARG_LIST
   return llvm::StringSwitch<bool>(normalizeAttrName(II.getName()))
-#include "clang/Parse/AttrTypeArg.inc"
+#include "clang/Parse/AttrParserStringSwitches.inc"
            .Default(false);
+#undef CLANG_ATTR_TYPE_ARG_LIST
 }
 
 /// \brief Determine whether the given attribute requires parsing its arguments
 /// in an unevaluated context or not.
 static bool attributeParsedArgsUnevaluated(const IdentifierInfo &II) {
+#define CLANG_ATTR_ARG_CONTEXT_LIST
   return llvm::StringSwitch<bool>(normalizeAttrName(II.getName()))
-#include "clang/Parse/AttrArgContext.inc"
+#include "clang/Parse/AttrParserStringSwitches.inc"
            .Default(false);
+#undef CLANG_ATTR_ARG_CONTEXT_LIST
 }
 
 IdentifierLoc *Parser::ParseIdentifierLoc() {
@@ -2206,7 +2214,9 @@ bool Parser::ParseImplicitInt(DeclSpec &DS, CXXScopeSpec *SS,
   // diagnostic and attempt to recover.
   ParsedType T;
   IdentifierInfo *II = Tok.getIdentifierInfo();
-  if (Actions.DiagnoseUnknownTypeName(II, Loc, getCurScope(), SS, T)) {
+  if (Actions.DiagnoseUnknownTypeName(II, Loc, getCurScope(), SS, T,
+                                      getLangOpts().CPlusPlus &&
+                                          NextToken().is(tok::less))) {
     // The action emitted a diagnostic, so we don't have to.
     if (T) {
       // The action has suggested that the type T could be used. Set that as
@@ -3133,9 +3143,21 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       // For now, at least the presence of one of the above keywords
       // is sufficient to denote the beginning of a mesh definition...
       ParseMeshSpecifier(DS, TemplateInfo);
-
       continue;
     }
+
+    case tok::kw_window: {
+      ConsumeToken();      
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_window, Loc, PrevSpec, DiagID, Policy);
+      continue;
+    }
+
+    case tok::kw_image: {
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_image, Loc, PrevSpec,
+                                     DiagID, Policy);
+      continue;
+    }
+        
     // +======================================================================+
 
     // enum-specifier:
@@ -3986,6 +4008,8 @@ bool Parser::isKnownToBeTypeSpecifier(const Token &Tok) const {
   case tok::kw_rectilinear:
   case tok::kw_structured:
   case tok::kw_unstructured:
+  case tok::kw_window:
+  case tok::kw_image:
   // +========================================================================+
 
   case tok::kw_bool:
@@ -4190,7 +4214,7 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
     // Debugger support
   case tok::kw___unknown_anytype:
 
-    // type-specifiers
+  // type-specifiers
   case tok::kw_short:
   case tok::kw_long:
   case tok::kw___int64:
@@ -4216,6 +4240,8 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   case tok::kw_rectilinear:
   case tok::kw_structured:
   case tok::kw_unstructured:
+  case tok::kw_window:
+  case tok::kw_image:    
   // +========================================================================+
 
   case tok::kw_bool:
@@ -5581,6 +5607,18 @@ void Parser::ParseParameterDeclarationClause(
 void Parser::ParseBracketDeclarator(Declarator &D) {
   if (CheckProhibitedCXX11Attribute())
     return;
+  // +===== Scout ==========================================================+
+  if (getLangOpts().ScoutC || getLangOpts().ScoutCPlusPlus) {
+    const DeclSpec& DS = D.getDeclSpec();
+    if (DS.getTypeSpecType() == DeclSpec::TST_window) {
+      ParseWindowBracketDeclarator(D);
+      return;
+    } else if (DS.getTypeSpecType() == DeclSpec::TST_image) {
+      ParseImageBracketDeclarator(D);
+      return;
+    }
+  }
+  // +======================================================================+
 
   BalancedDelimiterTracker T(*this, tok::l_square);
   T.consumeOpen();
