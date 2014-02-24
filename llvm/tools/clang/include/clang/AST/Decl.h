@@ -1222,11 +1222,22 @@ public:
     : VarDecl(ImplicitParam, DC, IdLoc, IdLoc, Id, Type,
               /*tinfo*/ 0, SC_None) {
     setImplicit();
+    // +==== Scout =============================================================+
+    color = false;
+    // +==== Scout =============================================================+
   }
 
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
   static bool classofKind(Kind K) { return K == ImplicitParam; }
+
+  // +==== Scout =============================================================+
+  void setColor() { color = true; }
+  bool isColor() const { return color; }
+
+private:
+  bool color;
+  // +========================================================================+
 };
 
 /// ParmVarDecl - Represents a parameter to a function.

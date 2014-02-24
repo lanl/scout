@@ -29,10 +29,6 @@
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/Support/ConvertUTF.h"
 
-// +==== Scout =============================================================+
-#include "clang/AST/Scout/ImplicitColorParamDecl.h"
-// +========================================================================+
-
 using namespace clang;
 using namespace CodeGen;
 
@@ -1746,10 +1742,9 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
 
   // +==== Scout =============================================================+
   // Check if this is a 'color' expression.
-  if (isScoutLang(getLangOpts()) && ND->getDeclName().isIdentifier() && isa<ImplicitColorParamDecl>(ND)) {
-    //SC_TODO: could remove string matching if rtti worked on ImplicitColorParamDecl
-    if (ND->getName() == "color") {
-      return EmitColorDeclRefLValue(ND);
+  if (isScoutLang(getLangOpts()) && ND->getDeclName().isIdentifier()) {
+    if (const ImplicitParamDecl *IPD = dyn_cast<ImplicitParamDecl>(ND)) {
+      if (IPD->isColor()) return EmitColorDeclRefLValue(ND);
     }
   }
   // ==========================================================================

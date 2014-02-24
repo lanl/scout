@@ -1633,7 +1633,7 @@ struct DeclaratorChunk {
                                      SourceLocation LBLoc,
                                      SourceLocation RBLoc) {
     DeclaratorChunk I;
-    I.Kind          = UniformMesh;
+    I.Kind          = RectilinearMesh;
     I.Loc           = LBLoc;
     I.EndLoc        = RBLoc;
     I.Rectmsh.NumDims = dims.size();
