@@ -154,7 +154,7 @@ Lexer::Lexer(FileID FID, const llvm::MemoryBuffer *InputFile, Preprocessor &PP)
       ext.insert(0, 1, bufferName[i]);
     }
     // SC_TODO : Why do we need this but Clang doesn't?
-    if (ext != "sc" && ext != "sch" &&
+    if (bufferName != "Parse" && ext != "sc" && ext != "sch" &&
         ext != "scpp" && "schpp") {
       LangOpts.ScoutC = false;
       LangOpts.ScoutCPlusPlus = false;

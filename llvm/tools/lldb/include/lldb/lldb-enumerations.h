@@ -349,7 +349,11 @@ namespace lldb {
         eLanguageTypeUPC             = 0x0012,   ///< Unified Parallel C.
         eLanguageTypeD               = 0x0013,   ///< D.
         eLanguageTypePython          = 0x0014,   ///< Python.
-        eNumLanguageTypes
+        // +===== Scout ==================
+        eLanguageTypeScoutC           = 0x9000,
+        eLanguageTypeScoutC_plus_plus = 0x9001,
+        eNumLanguageTypes = 17
+        // +==============================
     } LanguageType;
 
     typedef enum DynamicValueType
