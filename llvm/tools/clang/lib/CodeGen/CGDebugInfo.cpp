@@ -360,7 +360,16 @@ void CGDebugInfo::CreateCompileUnit() {
 
   unsigned LangTag;
   const LangOptions &LO = CGM.getLangOpts();
-  if (LO.CPlusPlus) {
+
+  // +===== Scout ========================
+  if(LO.ScoutCPlusPlus){
+    LangTag = llvm::dwarf::DW_LANG_ScoutC_plus_plus;
+  }
+  else if(LO.ScoutC){
+    LangTag = llvm::dwarf::DW_LANG_ScoutC;
+  }
+  // +====================================
+  else if (LO.CPlusPlus) {
     if (LO.ObjC1)
       LangTag = llvm::dwarf::DW_LANG_ObjC_plus_plus;
     else
