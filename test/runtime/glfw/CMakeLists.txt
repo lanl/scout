@@ -55,6 +55,7 @@ message(STATUS "scout install include directory: ${SCOUT_INSTALL_INCLUDE_DIR}")
 message(STATUS "scout install lib directory: ${SCOUT_INSTALL_LIB_DIR}")
 message(STATUS "glfw library dir: ${GLFW_LIBRARY_DIR}")
 message(STATUS "glfw libs : ${GLFW_LIBS}")
+message(STATUS "opengl libs : ${OPENGL_LIBRARY}")
 
 include_directories(
   ${SCOUT_INSTALL_INCLUDE_DIR}
@@ -75,7 +76,7 @@ set(LIBS
 file(GLOB RT_GLFW_SRCS *.cpp)
 
 if (SCOUT_ENABLE_GLFW)
-# Add an executable and test entry for each source file...
+  # Add an executable and test entry for each source file...
   foreach (test ${RT_GLFW_SRCS})
     get_filename_component(tname ${test} NAME_WE) 
     if (NOT tname) 
@@ -86,7 +87,11 @@ if (SCOUT_ENABLE_GLFW)
         add_test(runtime_glfw_${tname} ${TEST_BINARY_DIR}/runtime_glfw_${tname})
         message(" + added runtime regression GLFW test entry: runtime_glfw_${tname}")
       endif()
-      target_link_libraries(runtime_glfw_${tname} ${LIBS})
+      if ("${CMAKE_SYSTEM}" MATCHES "Linux")
+        target_link_libraries(runtime_glfw_${tname} ${LIBS} GLU X11 Xxf86vm Xrandr pthread Xi rt)
+      else()
+        target_link_libraries(runtime_glfw_${tname} ${LIBS})
+      endif()
       set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -L${SCOUT_INSTALL_LIB_DIR} -L${GLFW_LIBRARY_DIR}") 
     endif(NOT tname)
   endforeach(test)
