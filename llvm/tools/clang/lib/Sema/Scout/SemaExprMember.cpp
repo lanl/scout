@@ -54,7 +54,6 @@
 
 #include "clang/Sema/SemaInternal.h"
 #include "clang/Sema/Lookup.h"
-#include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 
 using namespace clang;
 using namespace sema;

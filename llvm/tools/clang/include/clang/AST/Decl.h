@@ -1224,6 +1224,7 @@ public:
     setImplicit();
     // +==== Scout =============================================================+
     color = false;
+    mesh = false;
     // +==== Scout =============================================================+
   }
 
@@ -1232,11 +1233,17 @@ public:
   static bool classofKind(Kind K) { return K == ImplicitParam; }
 
   // +==== Scout =============================================================+
+  // deal w/ scout specific Implicit Decls. It would be nice to do this
+  // with clang's RTTI but it is a *huge* can of worms to extend ImplicitParamDecl
   void setColor() { color = true; }
   bool isColor() const { return color; }
 
+  void setMesh() { mesh = true; }
+  bool isMesh() const { return mesh; }
+
 private:
   bool color;
+  bool mesh;
   // +========================================================================+
 };
 

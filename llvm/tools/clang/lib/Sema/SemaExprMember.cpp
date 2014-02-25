@@ -1522,10 +1522,8 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
     // explicit accesses as an error...
     DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(BaseExpr.take());
 
-    // SC_TODO: this is really just isa<ImplicitParamDecl> here
-    // since rtti is not setup for ImplicitMeshParamDecl
-    // isa<ImplicitParamDecl> is the same as isa<ImplicitMeshParamDecl>
-    if (! isa<ImplicitMeshParamDecl>(DRE->getDecl())) {
+    ImplicitParamDecl *IPD = dyn_cast<ImplicitParamDecl>(DRE->getDecl());
+    if (IPD == 0 || IPD->isMesh() == false) {
       Diag(MemberLoc, diag::err_illegal_mesh_element_access);
       return ExprError();
     }
