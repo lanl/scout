@@ -53,13 +53,7 @@ class Lexer : public PreprocessorLexer {
   SourceLocation FileLoc;        // Location for start of file.
   LangOptions LangOpts;          // LangOpts enabled by this language (cache).
   bool Is_PragmaLexer;           // True if lexer for _Pragma handling.
-
-  // +===== Scout ============================================================+
-  // Support for lexing from a string
-  llvm::MemoryBuffer* StringLexerMemoryBuffer;
-  llvm::StringRef* StringLexerStringRef;
-  // +========================================================================+
-
+  
   //===--------------------------------------------------------------------===//
   // Context-specific lexing flags set by the preprocessor.
   //
@@ -120,12 +114,6 @@ public:
   Lexer(FileID FID, const llvm::MemoryBuffer *InputBuffer,
         const SourceManager &SM, const LangOptions &LangOpts);
 
-  // +===== Scout ============================================================+
-  // For string lexer...
-  Lexer(const std::string& str, Preprocessor& PP);
-  ~Lexer(); // added
-  // +========================================================================+
-
   /// Create_PragmaLexer: Lexer constructor - Create a new lexer object for
   /// _Pragma expansion.  This has a variety of magic semantics that this method
   /// sets up.  It returns a new'd Lexer that must be delete'd when done.
@@ -144,6 +132,11 @@ public:
   /// the virtual location encodes where we should *claim* the characters came
   /// from.  Currently this is only used by _Pragma handling.
   SourceLocation getFileLoc() const { return FileLoc; }
+
+  // +===== Scout ==============================================================+
+  void ScoutEnable(Preprocessor &PP);
+  void ScoutKeywordsAsIdentifiers(Token &Result);
+  // +==========================================================================+s
 
 private:
   /// Lex - Return the next token in the file.  If this is the end of file, it
