@@ -305,6 +305,7 @@ void Parser::ParseWindowBracketDeclarator(Declarator &D) {
       T.consumeClose();
       break;
     } else {
+      // We really should never make it here...
       Diag(Tok, diag::err_too_many_dims);
       D.setInvalidType(true);
       SkipUntil(tok::semi);
@@ -318,6 +319,7 @@ void Parser::ParseWindowBracketDeclarator(Declarator &D) {
                                            T.getCloseLocation()),
                 attrs, T.getCloseLocation());
 }
+
 
 void Parser::ParseImageBracketDeclarator(Declarator &D) {
   
@@ -360,6 +362,7 @@ void Parser::ParseImageBracketDeclarator(Declarator &D) {
       T.consumeClose();
       break;
     } else {
+      // We really should never make it here... 
       Diag(Tok, diag::err_too_many_dims);
       D.setInvalidType(true);
       SkipUntil(tok::semi);

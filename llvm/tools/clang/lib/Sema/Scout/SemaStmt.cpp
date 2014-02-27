@@ -1293,7 +1293,9 @@ StmtResult Sema::ActOnRenderallMeshStmt(SourceLocation RenderallLoc,
   SCLStack.pop_back();
 
   RenderallMeshStmt* RS = new (Context) RenderallMeshStmt(ElementType,
-                                                          RefVarInfo, MeshInfo, RenderTargetInfo,
+                                                          RefVarInfo,
+                                                          MeshInfo,
+                                                          RenderTargetInfo,
                                                           MVD, RTVD, MT,
                                                           RenderallLoc,
                                                           Body, Predicate,
@@ -1305,7 +1307,7 @@ StmtResult Sema::ActOnRenderallMeshStmt(SourceLocation RenderallLoc,
   RenderallVisitor v(*this, RS);
   v.Visit(Body);
 
-  if(!v.foundColorAssign()){
+  if (!v.foundColorAssign()) {
     Diag(RenderallLoc, diag::err_no_color_assignment_renderall);
     return StmtError();
   }

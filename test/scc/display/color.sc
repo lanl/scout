@@ -56,6 +56,7 @@
 
 int main(int argc, char *argv[]) {
   const int NTIME_STEPS = 1000;
+  window win[512,512];
 
   uniform mesh HeatMeshType{
   cells:
@@ -70,7 +71,7 @@ int main(int argc, char *argv[]) {
       h1 = t/NTIME_STEPS;
     }
 
-    renderall cells c in heat_mesh {
+    renderall cells c in heat_mesh to win {
       color.r = ((float)position().x / width())*h1;
       color.g = ((float)position().y / height())*h1;
       color.b = 0.0f;

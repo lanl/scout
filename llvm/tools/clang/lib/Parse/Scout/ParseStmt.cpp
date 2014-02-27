@@ -375,7 +375,7 @@ setRenderallMeshElementType(tok::TokenKind tkind) {
 }
 
 
-// ----- LookupRenderTargetDecl
+// ----- LookupRenderTargetVarDecl
 //
 VarDecl* Parser::LookupRenderTargetVarDecl(IdentifierInfo *TargetInfo,
                                            SourceLocation TargetLoc) {
@@ -405,13 +405,14 @@ const RenderTargetType* Parser::LookupRenderTargetType(IdentifierInfo *TargetInf
     return 0;
   else {
     const Type* T = VD->getType().getCanonicalType().getTypePtr();
+    
     if (!isa<RenderTargetType>(T)) {
       T = VD->getType().getCanonicalType().getNonReferenceType().getTypePtr();
-      if(!isa<MeshType>(T)) {
+      if(!isa<RenderTargetType>(T)) {
         return 0;
       }
     }
-
+    
     return const_cast<RenderTargetType *>(cast<RenderTargetType>(T));
   }
 }
@@ -440,8 +441,7 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
   // Upon entry we expect the input token to be on the 'renderall'
   // keyword -- we'll throw an assertion in just to make sure
   // we help maintain consistency from the caller(s).
-  assert(Tok.getKind() == tok::kw_renderall &&
-         "expected input token to be 'renderall'");
+  assert(Tok.getKind() == tok::kw_renderall && "expected 'renderall' token");
 
   // Swallow the renderall token...
   SourceLocation RenderallKWLoc = ConsumeToken();
@@ -469,9 +469,9 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
 
   ParseScope RenderallScope(this, ScopeFlags);
 
-  // We consumed the element token above and should now be
-  // at the element identifier portion of the renderall; make
-  // sure we have a valid identifier and bail if not...
+  // We consumed the element token above and should now be at the
+  // element identifier portion of the renderall; make sure we have a
+  // valid identifier and bail if not...
   if (Tok.isNot(tok::identifier)) {
     Diag(Tok, diag::err_expected_ident);
     SkipUntil(tok::semi);
@@ -497,7 +497,6 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
     SkipUntil(tok::semi);
     return StmtError();
   }
-  ConsumeToken();
   
   IdentifierInfo  *MeshIdentInfo = Tok.getIdentifierInfo();
   SourceLocation   MeshIdentLoc  = Tok.getLocation();
@@ -510,7 +509,6 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
   if (RefMeshType == 0)
     return StmtError();
 
-  
   bool success = Actions.ActOnRenderallMeshRefVariable(getCurScope(),
                                                        MeshIdentInfo,
                                                        MeshIdentLoc,
@@ -566,19 +564,24 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
     SkipUntil(tok::semi);
     return StmtError();
   }
-  ConsumeToken();
 
   IdentifierInfo *RenderTargetInfo = Tok.getIdentifierInfo();
   SourceLocation  RenderTargetLoc  = Tok.getLocation();
 
   VarDecl *RTVD = LookupRenderTargetVarDecl(RenderTargetInfo, RenderTargetLoc);
-  if (RTVD == 0)
+  if (RTVD == 0) {
+    SkipUntil(tok::semi);    
     return StmtError();
-
+  }
+  
   const RenderTargetType *RefRenderTargetType = LookupRenderTargetType(RenderTargetInfo,
                                                                        RenderTargetLoc);
-  if (RefRenderTargetType == 0)
+  if (RefRenderTargetType == 0) {
     return StmtError();
+  }
+  
+
+  ConsumeToken();
   
   // Now check to see if we have a predicate expression...
   //
@@ -619,13 +622,13 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
   StmtResult BodyResult(ParseStatement());
 
   if (BodyResult.isInvalid()) {
-    // SC_TODO -- is this a useful diagnostic?
-    Diag(Tok, diag::err_invalid_forall_body);
+    Diag(Tok, diag::err_invalid_forall_body);  // SC_TODO -- is this a useful diagnostic?
     SkipUntil(tok::semi);
     return StmtError();
   }
 
   Stmt* Body = BodyResult.get();
+
   StmtResult RenderallResult = Actions.ActOnRenderallMeshStmt(RenderallKWLoc,
                                                               MeshElementType,
                                                               RefMeshType, VD,

@@ -74,17 +74,18 @@ using namespace clang;
 RenderallStmt::RenderallStmt(StmtClass StatementClass,
                              IdentifierInfo* RefVarInfo,
                              IdentifierInfo* ContainerInfo,
-                             IdentifierInfo* RenderTargetInfo, 
+                             IdentifierInfo* TargetInfo, 
                              VarDecl *ContainerVD,
-                             VarDecl *RenderTargetVarDecl, 
+                             VarDecl *TargetVD, 
                              SourceLocation RenderallLocation,
                              Stmt* Body)
   : Stmt(StatementClass),
     LoopRefVarInfo(RefVarInfo),
+    RenderTargetInfo(TargetInfo),
+    RenderTargetVarDecl(TargetVD),        
     ContainerRefVarInfo(ContainerInfo),
     ContainerVarDecl(ContainerVD),
     RenderallKWLoc(RenderallLocation) {
-
   SubExprs[PREDICATE] = 0;
   SubExprs[BODY]      = Body;
 }

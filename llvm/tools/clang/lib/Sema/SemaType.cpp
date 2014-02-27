@@ -924,10 +924,37 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     assert(false && "invalid case for mesh type.");
     break;
 
-  case DeclSpec::TST_window:
-  case DeclSpec::TST_image:
-    Result = Context.VoidTy;
-    break;    
+   case DeclSpec::TST_window: {
+    for(unsigned i = 0; i < declarator.getNumTypeObjects(); ++i) {
+      DeclaratorChunk &DeclType = declarator.getTypeObject(i);
+      switch(DeclType.Kind) {
+        case DeclaratorChunk::Window: {
+          llvm::SmallVector<Expr*,2> dims = DeclType.Win.Dims();          
+          Result = Context.getWindowType(dims);    
+          break;
+        }
+        default:
+          break;
+      }
+    }
+    break;
+  }
+  case DeclSpec::TST_image: {
+    for(unsigned i = 0; i < declarator.getNumTypeObjects(); ++i) {
+      DeclaratorChunk &DeclType = declarator.getTypeObject(i);
+      switch(DeclType.Kind) {
+        case DeclaratorChunk::Image: {
+          llvm::SmallVector<Expr*,2> dims = DeclType.Img.Dims();          
+          Result = Context.getImageType(dims);    
+          break;
+        }
+        default:
+          break;          
+      }
+    }
+    break;
+  }
+    
   // +========================================================================+
   case DeclSpec::TST_bool: Result = Context.BoolTy; break; // _Bool or bool
   case DeclSpec::TST_decimal32:    // _Decimal32
@@ -1743,10 +1770,12 @@ QualType Sema::BuildWindowType(QualType T, const llvm::SmallVector<Expr*,2> &dim
   assert(dims.size() > 0 && dims[0] != 0 && dims[1] != 0);
   const WindowType* cWT;
   cWT = dyn_cast<WindowType>(T.getCanonicalType().getTypePtr());
+
   if (cWT) {
     return Context.getWindowType(dims);
+  } else {
+    return QualType();
   }
-  return QualType();  
 }
 
 QualType Sema::BuildImageType(QualType T, const llvm::SmallVector<Expr*,2> &dims) {
@@ -2887,7 +2916,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
 
     case DeclaratorChunk::Image: {
       llvm::SmallVector<Expr*,2> dims = DeclType.Img.Dims();
-      T = S.BuildWindowType(T, dims);
+      T = S.BuildImageType(T, dims);
       break;
     }
 
@@ -3987,6 +4016,22 @@ namespace {
       TL.setRParenLoc(Chunk.EndLoc);
       TL.setFileName(Chunk.Unsmsh.StrLitFileName);
     }
+
+    void VisitWindowTypeLoc(WindowTypeLoc TL) {
+      assert(Chunk.Kind == DeclaratorChunk::Window);
+      TL.setLBracketLoc(Chunk.Loc);
+      TL.setRBracketLoc(Chunk.EndLoc);
+      TL.setWidth(Chunk.Win.Dims()[0]);
+      TL.setHeight(Chunk.Win.Dims()[1]);
+    }
+
+    void VisitImageTypeLoc(ImageTypeLoc TL) {
+      assert(Chunk.Kind == DeclaratorChunk::Image);
+      TL.setLBracketLoc(Chunk.Loc);
+      TL.setRBracketLoc(Chunk.EndLoc);
+      TL.setWidth(Chunk.Img.Dims()[0]);
+      TL.setHeight(Chunk.Img.Dims()[1]);
+    }                  
 
     // +======================================================================+
 

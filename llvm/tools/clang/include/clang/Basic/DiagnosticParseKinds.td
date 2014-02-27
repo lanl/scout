@@ -944,7 +944,7 @@ def err_renderall_expected_kw_to:Error<
 def err_renderall_not_a_mesh_type:Error<
     "instance if of a non-mesh type">;
 def err_unknown_render_target_variable: Error<
-    "undeclared render target specified">;
+    "undeclared identifier used as rendering target">;
 def err_expected_a_target_type: Error<
     "illegal render target type">;
 def err_renderall_predicate_missing_lparen:Error<

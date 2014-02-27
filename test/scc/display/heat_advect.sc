@@ -79,6 +79,8 @@ int main(int argc, char *argv[])
 
   HeatMeshType heat_mesh[M_W,M_H];
 
+  window win[512,512];
+  
   // define simulation parameters
   const int NTIME_STEPS     = 100;
   const float MAX_TEMP      = 100.0;
@@ -209,7 +211,7 @@ int main(int argc, char *argv[])
       rho = rho_next;
     }
 
-    renderall cells c in heat_mesh {
+    renderall cells c in heat_mesh to win {
       // Temperature
       float norm_h = h / MAX_TEMP;
       // Density

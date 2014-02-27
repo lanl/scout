@@ -58,6 +58,7 @@ const int win_width=256;
 const int win_height=256;
 
 int main(int argc, char** argv) {
+  float foo[15];
   window w[512,512];
   return 0;
 }

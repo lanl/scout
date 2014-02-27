@@ -66,6 +66,8 @@ int main(int argc, char *argv[])
 
   HeatMeshType heat_mesh[1024];
 
+  window win[512,512];
+  
   // Set initial conditions.
   //
   // A nice shorthand for the forall construct above might be
@@ -110,7 +112,7 @@ int main(int argc, char *argv[])
       t1 = t2;
     }
 
-    renderall cells c in heat_mesh {
+    renderall cells c in heat_mesh to win {
       // Normalize temperatures ranges into the 0...1.0 range and then map into
       // HSV color space with hue running from blue to red for cold to hot. 
       float norm_t1 = t1 / MAX_TEMP;

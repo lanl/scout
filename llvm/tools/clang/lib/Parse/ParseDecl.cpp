@@ -3153,8 +3153,8 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
     }
 
     case tok::kw_image: {
-      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_image, Loc, PrevSpec,
-                                     DiagID, Policy);
+      ConsumeToken();
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_image, Loc, PrevSpec, DiagID, Policy);
       continue;
     }
         

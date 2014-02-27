@@ -518,13 +518,13 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 	//zero-initialize induction var
 	Builder.CreateStore(ConstantZero, InductionVar[3]);
 
-  // call renderall setup runtime function
-  llvm::Function *BeginFunc = CGM.getScoutRuntime().RenderallUniformBeginFunction();
-  Builder.CreateCall(BeginFunc, ArrayRef<llvm::Value *>(Args));
+        // call renderall setup runtime function
+        llvm::Function *BeginFunc = CGM.getScoutRuntime().RenderallUniformBeginFunction();
+        Builder.CreateCall(BeginFunc, ArrayRef<llvm::Value *>(Args));
 
 	// call renderall color buffer setup
- llvm::Value *RuntimeColorPtr = CGM.getScoutRuntime().RenderallUniformColorsGlobal(*this);
- Color = Builder.CreateLoad(RuntimeColorPtr, "color");
+        llvm::Value *RuntimeColorPtr = CGM.getScoutRuntime().RenderallUniformColorsGlobal(*this);
+        Color = Builder.CreateLoad(RuntimeColorPtr, "color");
 
 	// renderall loops + body
 	EmitRenderallMeshLoop(S, rank);

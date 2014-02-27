@@ -61,13 +61,14 @@ int main(int argc, char** argv){
   };
 
   MyMesh m[512,512];
+  window mywin[512,512];
 
   forall cells c in m{
     i = position().x;
   } 
 
   for(float k = 0.0; k < 1.0; k += 0.01){  
-    renderall cells c in m{
+    renderall cells c in m to mywin {
       color = hsva(i/512.0*360.0, i/512.0, k, 1.0);
     }
   }

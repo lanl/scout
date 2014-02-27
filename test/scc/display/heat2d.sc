@@ -65,6 +65,8 @@ int main(int argc, char *argv[])
   };
 
   HeatMeshType heat_mesh[512, 512];
+
+  window win[512,512];
   
   forall cells c in heat_mesh {
     t1 = MAX_TEMP;
@@ -108,7 +110,7 @@ int main(int argc, char *argv[])
       t1 = t2;
     }
 
-    renderall cells c in heat_mesh {
+    renderall cells c in heat_mesh to win {
       float norm_t1 = t1 / MAX_TEMP;
       float hue = 240.0f - 240.0f * norm_t1;
       color = hsv(hue, 1.0f, 1.0f);

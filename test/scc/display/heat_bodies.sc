@@ -67,6 +67,8 @@ int main(int argc, char *argv[])
   const int NTIME_STEPS     = 100;
   const float MAX_TEMP      = 100.0f;
 
+  window render_win[512,512];
+
   uniform mesh HeatMeshType{
    cells:
     float h;
@@ -136,12 +138,11 @@ int main(int argc, char *argv[])
       h_next = mask*dt*(alpha * (d2dx2 + d2dy2) - mask*u*ddx) + c.h;
     }
 
-
     forall cells c in heat_mesh {
       h = h_next;
     }
 
-    renderall cells c in heat_mesh {
+    renderall cells c in heat_mesh to render_win {
       float norm_h = h / MAX_TEMP;
       float hue = 240.0f - 240.0f * norm_h;
 #if (SHOW_SOLID)
