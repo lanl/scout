@@ -258,7 +258,7 @@ static inline unsigned getIDNS(Sema::LookupNameKind NameKind,
   case Sema::LookupLabel:
     IDNS = Decl::IDNS_Label;
     break;
-
+      
   case Sema::LookupMemberName:
     IDNS = Decl::IDNS_Member;
     if (CPlusPlus)
@@ -681,7 +681,6 @@ static bool LookupDirect(Sema &S, LookupResult &R, const DeclContext *DC) {
   DeclContext::lookup_const_result DR = DC->lookup(R.getLookupName());
   for (DeclContext::lookup_const_iterator I = DR.begin(), E = DR.end(); I != E;
        ++I) {
-
     NamedDecl *D = *I;
     if ((D = R.getAcceptableDecl(D))) {
       R.addDecl(D);
@@ -1072,14 +1071,11 @@ bool Sema::CppLookupName(LookupResult &R, Scope *S) {
 
   // Stop if we ran out of scopes.
   // FIXME:  This really, really shouldn't be happening.
-  if (!S) {
-   return false;
-  }
+  if (!S) return false;
 
   // If we are looking for members, no need to look into global/namespace scope.
-  if (NameKind == LookupMemberName) {
+  if (NameKind == LookupMemberName)
     return false;
-  }
 
   // Collect UsingDirectiveDecls in all scopes, and recursively all
   // nominated namespaces by those using-directives.
@@ -1170,6 +1166,7 @@ bool Sema::CppLookupName(LookupResult &R, Scope *S) {
     if (R.isForRedeclaration() && Ctx && !Ctx->isTransparentContext())
       return false;
   }
+
   return !R.empty();
 }
 
@@ -1324,7 +1321,6 @@ NamedDecl *LookupResult::getAcceptableDeclSlow(NamedDecl *D) const {
 /// @returns \c true if lookup succeeded and false otherwise.
 bool Sema::LookupName(LookupResult &R, Scope *S, bool AllowBuiltinCreation) {
   DeclarationName Name = R.getLookupName();
-
   if (!Name) return false;
 
   LookupNameKind NameKind = R.getLookupKind();
@@ -1378,7 +1374,7 @@ bool Sema::LookupName(LookupResult &R, Scope *S, bool AllowBuiltinCreation) {
           // actually exists in a Scope).
           while (S && !S->isDeclScope(D))
             S = S->getParent();
-
+          
           // If the scope containing the declaration is the translation unit,
           // then we'll need to perform our checks based on the matching
           // DeclContexts rather than matching scopes.
@@ -1389,7 +1385,7 @@ bool Sema::LookupName(LookupResult &R, Scope *S, bool AllowBuiltinCreation) {
           DeclContext *DC = 0;
           if (!S)
             DC = (*I)->getDeclContext()->getRedeclContext();
-
+            
           IdentifierResolver::iterator LastI = I;
           for (++LastI; LastI != IEnd; ++LastI) {
             if (S) {
@@ -1398,7 +1394,7 @@ bool Sema::LookupName(LookupResult &R, Scope *S, bool AllowBuiltinCreation) {
                 break;
             } else {
               // Match based on DeclContext.
-              DeclContext *LastDC
+              DeclContext *LastDC 
                 = (*LastI)->getDeclContext()->getRedeclContext();
               if (!LastDC->Equals(DC))
                 break;
@@ -1426,8 +1422,8 @@ bool Sema::LookupName(LookupResult &R, Scope *S, bool AllowBuiltinCreation) {
   if (AllowBuiltinCreation && LookupBuiltin(*this, R))
     return true;
 
-  // If we didn't find a use of this identifier, the ExternalSource
-  // may be able to handle the situation.
+  // If we didn't find a use of this identifier, the ExternalSource 
+  // may be able to handle the situation. 
   // Note: some lookup failures are expected!
   // See e.g. R.isForRedeclaration().
   return (ExternalSource && ExternalSource->LookupUnqualified(R, S));
@@ -2320,7 +2316,7 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
     case Type::Auto:
       break;
 
-    // If T is an Objective-C object or interface type, or a pointer to an
+    // If T is an Objective-C object or interface type, or a pointer to an 
     // object or interface type, the associated namespace is the global
     // namespace.
     case Type::ObjCObject:
@@ -3894,7 +3890,7 @@ static void AddKeywordsToConsumer(Sema &SemaRef,
     // Add type-specifier keywords to the set of results.
     static const char *const CTypeSpecs[] = {
       "char", "const", "double", "enum", "float", "int", "long", "short",
-      "signed", "struct", "union", "unsigned", "void", "volatile",
+      "signed", "struct", "union", "unsigned", "void", "volatile", 
       "_Complex", "_Imaginary",
       // storage-specifiers as well
       "extern", "inline", "static", "typedef"
@@ -3910,7 +3906,7 @@ static void AddKeywordsToConsumer(Sema &SemaRef,
       Consumer.addKeywordResult("bool");
     else if (SemaRef.getLangOpts().C99)
       Consumer.addKeywordResult("_Bool");
-
+    
     if (SemaRef.getLangOpts().CPlusPlus) {
       Consumer.addKeywordResult("class");
       Consumer.addKeywordResult("typename");

@@ -43,7 +43,6 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
       BlockPointer(0), LambdaThisCaptureField(0), NormalCleanupDest(0),
       NextCleanupDestIndex(1), FirstBlockInfo(0), EHResumeBlock(0),
       ExceptionSlot(0), EHSelectorSlot(0),
-      // RenderAll(0), // CurrentForAllArrayStmt(0), // +==== Scout ============+
       DebugInfo(CGM.getModuleDebugInfo()),
       DisableDebugInfo(false), DidCallStackSave(false), IndirectBranch(0),
       PGO(cgm), SwitchInsn(0), SwitchWeights(0),

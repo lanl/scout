@@ -159,8 +159,8 @@ Lexer::Lexer(SourceLocation fileloc, const LangOptions &langOpts,
 /// suitable for calls to 'LexFromRawLexer'.  This lexer assumes that the text
 /// range will outlive it, so it doesn't take ownership of it.
 Lexer::Lexer(FileID FID, const llvm::MemoryBuffer *FromFile,
-             const SourceManager &SM, const LangOptions &features)
-  : FileLoc(SM.getLocForStartOfFile(FID)), LangOpts(features) {
+             const SourceManager &SM, const LangOptions &langOpts)
+  : FileLoc(SM.getLocForStartOfFile(FID)), LangOpts(langOpts) {
 
   InitLexer(FromFile->getBufferStart(), FromFile->getBufferStart(),
             FromFile->getBufferEnd());
@@ -202,7 +202,7 @@ Lexer *Lexer::Create_PragmaLexer(SourceLocation SpellingLoc,
 
   L->BufferPtr = StrData;
   L->BufferEnd = StrData+TokLen;
-  assert(L->BufferEnd[0] == 0 && "Buffer is not null terminated!");
+  assert(L->BufferEnd[0] == 0 && "Buffer is not nul terminated!");
 
   // Set the SourceLocation with the remapping information.  This ensures that
   // GetMappedTokenLoc will remap the tokens as they are lexed.
