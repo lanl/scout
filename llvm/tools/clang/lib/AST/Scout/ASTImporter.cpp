@@ -166,6 +166,11 @@ Decl *ASTNodeImporter::VisitUniformMeshDecl(UniformMeshDecl *D) {
   D2->setLexicalDeclContext(LexicalDC);
   LexicalDC->addDeclInternal(D2);
 
+  D2->setHasCellData(D->hasCellData());
+  D2->setHasVertexData(D->hasVertexData());
+  D2->setHasEdgeData(D->hasEdgeData());
+  D2->setHasFaceData(D->hasFaceData());
+
   Importer.Imported(D, D2);
 
   if (D->isCompleteDefinition() && ImportDefinition(D, D2, IDK_Default))
@@ -201,6 +206,11 @@ Decl *ASTNodeImporter::VisitStructuredMeshDecl(StructuredMeshDecl *D) {
   D2->setQualifierInfo(Importer.Import(D->getQualifierLoc()));
   D2->setLexicalDeclContext(LexicalDC);
   LexicalDC->addDeclInternal(D2);
+
+  D2->setHasCellData(D->hasCellData());
+  D2->setHasVertexData(D->hasVertexData());
+  D2->setHasEdgeData(D->hasEdgeData());
+  D2->setHasFaceData(D->hasFaceData());
 
   Importer.Imported(D, D2);
 
@@ -238,6 +248,11 @@ Decl *ASTNodeImporter::VisitRectilinearMeshDecl(RectilinearMeshDecl *D) {
   D2->setLexicalDeclContext(LexicalDC);
   LexicalDC->addDeclInternal(D2);
 
+  D2->setHasCellData(D->hasCellData());
+  D2->setHasVertexData(D->hasVertexData());
+  D2->setHasEdgeData(D->hasEdgeData());
+  D2->setHasFaceData(D->hasFaceData());
+
   Importer.Imported(D, D2);
 
   if (D->isCompleteDefinition() && ImportDefinition(D, D2, IDK_Default))
@@ -273,6 +288,11 @@ Decl *ASTNodeImporter::VisitUnstructuredMeshDecl(UnstructuredMeshDecl *D) {
   D2->setQualifierInfo(Importer.Import(D->getQualifierLoc()));
   D2->setLexicalDeclContext(LexicalDC);
   LexicalDC->addDeclInternal(D2);
+
+  D2->setHasCellData(D->hasCellData());
+  D2->setHasVertexData(D->hasVertexData());
+  D2->setHasEdgeData(D->hasEdgeData());
+  D2->setHasFaceData(D->hasFaceData());
 
   Importer.Imported(D, D2);
 

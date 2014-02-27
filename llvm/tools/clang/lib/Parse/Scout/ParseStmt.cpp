@@ -123,6 +123,11 @@ const MeshType* Parser::LookupMeshType(VarDecl *VD,
   assert(VD != 0 && "null var decl passed for mesh type lookup");
   if (VD) {
     const Type* T = VD->getType().getCanonicalType().getTypePtr();
+
+    if(T->isReferenceType()){
+      T = T->getPointeeType().getTypePtr();
+    }
+
     if (! isa<MeshType>(T)) {
       //Should this diag go in sema instead?
       //Diag(MeshLoc, diag::err_forall_not_a_mesh_type) << MeshInfo;

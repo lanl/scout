@@ -131,7 +131,7 @@ DICompositeType DIBuilder::createUniformMeshType(DIDescriptor Context,
     ConstantInt::get(Type::getInt32Ty(VMContext), dimY),
     ConstantInt::get(Type::getInt32Ty(VMContext), dimZ)
   };
-  DICompositeType R(MDNode::get(VMContext, Elts));
+  DIScoutCompositeType R(MDNode::get(VMContext, Elts));
   assert(R.isCompositeType() &&
          "createUniformMeshType should return a DICompositeType");
   if (!UniqueIdentifier.empty())
@@ -177,7 +177,7 @@ DICompositeType DIBuilder::createStructuredMeshType(DIDescriptor Context,
     ConstantInt::get(Type::getInt32Ty(VMContext), dimY),
     ConstantInt::get(Type::getInt32Ty(VMContext), dimZ)
   };
-  DICompositeType R(MDNode::get(VMContext, Elts));
+  DIScoutCompositeType R(MDNode::get(VMContext, Elts));
   assert(R.isCompositeType() &&
          "createStructuredMeshType should return a DICompositeType");
   if (!UniqueIdentifier.empty())
@@ -223,7 +223,7 @@ DICompositeType DIBuilder::createRectilinearMeshType(DIDescriptor Context,
     ConstantInt::get(Type::getInt32Ty(VMContext), dimY),
     ConstantInt::get(Type::getInt32Ty(VMContext), dimZ)
   };
-  DICompositeType R(MDNode::get(VMContext, Elts));
+  DIScoutCompositeType R(MDNode::get(VMContext, Elts));
   assert(R.isCompositeType() &&
          "createRectilinearMeshType should return a DICompositeType");
   if (!UniqueIdentifier.empty())
@@ -269,7 +269,7 @@ DICompositeType DIBuilder::createUnstructuredMeshType(DIDescriptor Context,
     ConstantInt::get(Type::getInt32Ty(VMContext), dimY),
     ConstantInt::get(Type::getInt32Ty(VMContext), dimZ)
   };
-  DICompositeType R(MDNode::get(VMContext, Elts));
+  DIScoutCompositeType R(MDNode::get(VMContext, Elts));
   assert(R.isCompositeType() &&
          "createUnstructuredMeshType should return a DICompositeType");
   if (!UniqueIdentifier.empty())
