@@ -279,7 +279,7 @@ endif()
 # are empty....  This is the best way (to date) that I've found
 # to deal with the cruft of handling multiple configurations of
 # the runtime...
-add_library(scRuntime STATIC ${rt_srcs} ${gl_srcs} ${png_srcs} ${volren_srcs})
+add_library(scRuntime STATIC ${rt_srcs} ${gl_srcs} ${png_srcs} ${volren_srcs} ${glfw_srcs})
 add_dependencies(scRuntime
   scc
   glsl2cstr

@@ -1222,11 +1222,29 @@ public:
     : VarDecl(ImplicitParam, DC, IdLoc, IdLoc, Id, Type,
               /*tinfo*/ 0, SC_None) {
     setImplicit();
+    // +==== Scout =============================================================+
+    color = false;
+    mesh = false;
+    // +==== Scout =============================================================+
   }
 
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
   static bool classofKind(Kind K) { return K == ImplicitParam; }
+
+  // +==== Scout =============================================================+
+  // deal w/ scout specific Implicit Decls. It would be nice to do this
+  // with clang's RTTI but it is a *huge* can of worms to extend ImplicitParamDecl
+  void setColor() { color = true; }
+  bool isColor() const { return color; }
+
+  void setMesh() { mesh = true; }
+  bool isMesh() const { return mesh; }
+
+private:
+  bool color;
+  bool mesh;
+  // +========================================================================+
 };
 
 /// ParmVarDecl - Represents a parameter to a function.

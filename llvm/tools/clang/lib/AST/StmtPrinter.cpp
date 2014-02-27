@@ -1032,9 +1032,10 @@ void StmtPrinter::VisitMemberExpr(MemberExpr *Node) {
     ? dyn_cast<FieldDecl>(ParentMember->getMemberDecl()) : NULL;
 
   // +===== Scout ============================================================+
+  //if (!ParentDecl || !ParentDecl->isAnonymousStructOrUnion()) 
   if (!isMeshType && (!ParentDecl || !ParentDecl->isAnonymousStructOrUnion()))
-    OS << (Node->isArrow() ? "->" : ".");
   // +========================================================================+
+    OS << (Node->isArrow() ? "->" : ".");
   if (FieldDecl *FD = dyn_cast<FieldDecl>(Node->getMemberDecl()))
     if (FD->isAnonymousStructOrUnion())
       return;

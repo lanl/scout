@@ -46,7 +46,9 @@ namespace lldb {
         eLaunchFlagDisableSTDIO = (1u << 4),  ///< Disable stdio for inferior process (e.g. for a GUI app)
         eLaunchFlagLaunchInTTY  = (1u << 5),  ///< Launch the process in a new TTY if supported by the host 
         eLaunchFlagLaunchInShell= (1u << 6),   ///< Launch the process inside a shell to get shell expansion
-        eLaunchFlagLaunchInSeparateProcessGroup = (1u << 7) ///< Launch the process in a separate process group
+        eLaunchFlagLaunchInSeparateProcessGroup = (1u << 7), ///< Launch the process in a separate process group
+        eLaunchFlagsDontMonitorProcess = (1u << 8)  ///< If you are going to hand the process off (e.g. to debugserver)
+                                                    ///< set this flag so lldb & the handee don't race to reap it.
     } LaunchFlags;
         
     //----------------------------------------------------------------------
@@ -347,7 +349,11 @@ namespace lldb {
         eLanguageTypeUPC             = 0x0012,   ///< Unified Parallel C.
         eLanguageTypeD               = 0x0013,   ///< D.
         eLanguageTypePython          = 0x0014,   ///< Python.
-        eNumLanguageTypes
+        // +===== Scout ==================
+        eLanguageTypeScoutC           = 0x9000,
+        eLanguageTypeScoutC_plus_plus = 0x9001,
+        eNumLanguageTypes = 17
+        // +==============================
     } LanguageType;
 
     typedef enum DynamicValueType

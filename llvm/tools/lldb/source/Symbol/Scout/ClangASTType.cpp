@@ -91,6 +91,8 @@
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Process.h"
 
+#include "llvm/Scout/DebugInfo.h"
+
 #include <mutex>
 
 using namespace lldb;
@@ -154,7 +156,8 @@ clang::MeshFieldDecl *
 ClangASTType::AddFieldToMeshType (const char *name,
                                   const ClangASTType &field_clang_type,
                                   AccessType access,
-                                  uint32_t bitfield_bit_size)
+                                  uint32_t bitfield_bit_size,
+                                  uint32_t field_flags)
 {
     if (!IsValid() || !field_clang_type.IsValid())
         return NULL;
@@ -191,6 +194,23 @@ ClangASTType::AddFieldToMeshType (const char *name,
 #ifdef LLDB_CONFIGURATION_DEBUG
       VerifyDecl(field);
 #endif
+
+      if(field_flags & llvm::DIScoutDerivedType::FlagMeshFieldCellLocated){
+        field->setCellLocated(true);
+        mesh_decl->setHasCellData(true);
+      }
+      else if(field_flags & llvm::DIScoutDerivedType::FlagMeshFieldVertexLocated){
+        field->setVertexLocated(true);
+        mesh_decl->setHasVertexData(true);
+      }
+      else if(field_flags & llvm::DIScoutDerivedType::FlagMeshFieldEdgeLocated){
+        field->setEdgeLocated(true);
+        mesh_decl->setHasEdgeData(true);
+      }
+      else if(field_flags & llvm::DIScoutDerivedType::FlagMeshFieldFaceLocated){
+        field->setFaceLocated(true);
+        mesh_decl->setHasFaceData(true);
+      }
     }
 
     return field;

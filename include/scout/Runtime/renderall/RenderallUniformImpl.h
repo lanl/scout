@@ -55,40 +55,43 @@
 #ifndef SCOUT_RENDERALL_UNIFORM_IMPL_H_
 #define SCOUT_RENDERALL_UNIFORM_IMPL_H_
 #include "scout/Runtime/opengl/glSDL.h"
+#include "scout/Runtime/opengl/glDevice.h"
 #include "scout/Runtime/opengl/glQuadRenderableVA.h"
 #include "scout/Runtime/renderall/RenderallUniform.h"
 
 
 namespace scout{
-
+  
   // globals defined in lib/Runtime/scout.cpp
   extern "C" float4* __scrt_renderall_uniform_colors;
   extern unsigned long long __scrt_renderall_uniform_cuda_device;
   
   class RenderallUniformImpl{
-    public:
-      RenderallUniformImpl(RenderallUniform* o);
-
-      ~RenderallUniformImpl();
-
-      void init();
-
-      void begin();
-
-      void end();
-
-      void mapGpuResources();
-
-      void unmapGpuResources();
-
-      void registerPbo(GLuint pbo);
-
-      void exec();
-
-    private:
-      RenderallUniform* o_;
-      glQuadRenderableVA* renderable_;
-      glSDL *glsdl_;
+  public:
+    RenderallUniformImpl(RenderallUniform* rendUnif_);
+    
+    ~RenderallUniformImpl();
+    
+    void init();
+    
+    void begin();
+    
+    void end();
+    
+    void mapGpuResources();
+    
+    void unmapGpuResources();
+    
+    void registerPbo(GLuint pbo);
+    
+    void exec();
+    
+  private:
+    RenderallUniform* rendUnif_;
+    glQuadRenderableVA* renderable_;
+    glSDL *glsdl_;
+    glDevice *glDevice_;    
+    glWindow *glWindow_;
   };
 } // end namespace scout
 

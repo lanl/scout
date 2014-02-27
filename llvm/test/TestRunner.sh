@@ -1,4 +1,3 @@
-
 #!/bin/sh
 # Deprecated, use 'llvm-lit'.
 

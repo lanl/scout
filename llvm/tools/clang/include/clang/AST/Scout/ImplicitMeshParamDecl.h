@@ -71,6 +71,7 @@ namespace clang {
                           IdentifierInfo *Id, QualType Type, VarDecl *VD)
           : ImplicitParamDecl(DC,IdLoc, Id, Type) {
       MVD = VD;
+      setMesh();
     }
 
     VarDecl *getMeshVarDecl() {

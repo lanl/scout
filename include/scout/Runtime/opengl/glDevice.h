@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyrigh (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -63,11 +63,17 @@
 #define __SC_GL_DEVICE_H_
 
 #include "scout/Runtime/Device.h"
-#include "glWindow.h"
+#include "scout/Runtime/opengl/glWindow.h"
 
 namespace scout {
 
+  /**
+   * A convenient shorthand that reduces template syntax when managing
+   * a collection of windows.
+   */
   typedef std::list<glWindow*> glWindowList;
+  
+  // not sure we need this yet, since the context is kept with the glfw window
   class glContext;  
 
   /** ----- glDevice 
@@ -81,23 +87,21 @@ namespace scout {
       // no-op
     }
       
-    virtual ~glDevice() {
-      // no op
-    }
+    ~glDevice();
+         
+    virtual glWindow *createWindow(ScreenCoord width,
+                                   ScreenCoord height) = 0;
     
-    virtual glWindow *createWindow(unsigned short width,
-                                   unsigned short height) = 0;
-    
-    virtual glWindow *createWindow(unsigned short xpos,
-                                   unsigned short ypos,
-                                   unsigned short width,
-                                   unsigned short height)  = 0;
+    virtual glWindow *createWindow(ScreenCoord xpos,
+                                   ScreenCoord ypos,
+                                   ScreenCoord width,
+                                   ScreenCoord height)  = 0;
     
     void deleteWindow(glWindow*);
     
    protected:
-    glContext     *context;
-    glWindowList  windows;
+    glContext     *_context;
+    glWindowList  _windows;
   };
 }
 

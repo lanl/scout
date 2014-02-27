@@ -86,6 +86,10 @@ void CompilerInstance::setTarget(TargetInfo *Value) {
 
 void CompilerInstance::setFileManager(FileManager *Value) {
   FileMgr = Value;
+  if (Value)
+    VirtualFileSystem = Value->getVirtualFileSystem();
+  else
+    VirtualFileSystem.reset();
 }
 
 void CompilerInstance::setSourceManager(SourceManager *Value) {
@@ -201,14 +205,13 @@ CompilerInstance::createDiagnostics(DiagnosticOptions *Opts,
   return Diags;
 }
 
-void CompilerInstance::createVirtualFileSystem() {
-  VirtualFileSystem = vfs::getRealFileSystem();
-}
-
 // File Manager
 
 void CompilerInstance::createFileManager() {
-  assert(hasVirtualFileSystem() && "expected virtual file system");
+  if (!hasVirtualFileSystem()) {
+    // TODO: choose the virtual file system based on the CompilerInvocation.
+    setVirtualFileSystem(vfs::getRealFileSystem());
+  }
   FileMgr = new FileManager(getFileSystemOpts(), VirtualFileSystem);
 }
 
@@ -757,10 +760,12 @@ static InputKind getSourceInputKindFromOptions(const LangOptions &LangOpts) {
     return IK_CUDA;
   if (LangOpts.ObjC1)
     return LangOpts.CPlusPlus? IK_ObjCXX : IK_ObjC;
+  // +===== Scout ==========================================================+
   if (LangOpts.ScoutC)
     return IK_Scout_C;
   if (LangOpts.ScoutCPlusPlus)
     return IK_Scout_CXX;
+  // +======================================================================+
   return LangOpts.CPlusPlus? IK_CXX : IK_C;
 }
 

@@ -1812,6 +1812,7 @@ DEF_TRAVERSE_DECL(FieldDecl, {
       TRY_TO(TraverseStmt(D->getInClassInitializer()));
   })
 
+// +===== Scout ==============================================================+
 DEF_TRAVERSE_DECL(MeshFieldDecl, {
     TRY_TO(TraverseDeclaratorHelper(D));
     if (D->isBitField())
@@ -1819,6 +1820,7 @@ DEF_TRAVERSE_DECL(MeshFieldDecl, {
     else if (D->hasInClassInitializer())
       TRY_TO(TraverseStmt(D->getInClassInitializer()));
   })
+// +==========================================================================+
 
 DEF_TRAVERSE_DECL(MSPropertyDecl, {
     TRY_TO(TraverseDeclaratorHelper(D));

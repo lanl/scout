@@ -176,7 +176,7 @@ namespace scout {
 
       // Frameworks handle MacOS X details for us so we skip details here.
       #ifndef APPLE
-      "-lGLU -lGL",
+      "-lGLU -lGL -lXrandr", //glfw requires Xrandr
       #endif
 
       #endif // OPENGL 

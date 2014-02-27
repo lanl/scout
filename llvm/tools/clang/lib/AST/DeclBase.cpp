@@ -935,6 +935,8 @@ DeclContext *DeclContext::getPrimaryContext() {
       return M;
 
     } else if (DeclKind >= Decl::firstTag && DeclKind <= Decl::lastTag) {
+    // if (DeclKind >= Decl::firstTag && DeclKind <= Decl::lastTag) {
+    // +=====================================================================+
       // If this is a tag type that has a definition or is currently
       // being defined, that definition is our primary context.
       TagDecl *Tag = cast<TagDecl>(this);

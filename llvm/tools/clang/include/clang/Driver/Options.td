@@ -1191,7 +1191,7 @@ def mwarn_nonportable_cfstrings : Flag<["-"], "mwarn-nonportable-cfstrings">, Gr
 def no_canonical_prefixes : Flag<["-"], "no-canonical-prefixes">, Flags<[HelpHidden]>,
   HelpText<"Use relative instead of canonical paths">;
 def no_cpp_precomp : Flag<["-"], "no-cpp-precomp">, Group<clang_ignored_f_Group>;
-def no_integrated_as : Flag<["-"], "no-integrated-as">, Flags<[DriverOption]>;
+def no_integrated_as : Flag<["-"], "no-integrated-as">, Flags<[CC1Option, DriverOption]>;
 def no_integrated_cpp : Flag<["-", "--"], "no-integrated-cpp">, Flags<[DriverOption]>;
 def no_pedantic : Flag<["-", "--"], "no-pedantic">, Group<pedantic_Group>;
 def no__dead__strip__inits__and__terms : Flag<["-"], "no_dead_strip_inits_and_terms">;
@@ -1262,9 +1262,11 @@ def rdynamic : Flag<["-"], "rdynamic">;
 def resource_dir : Separate<["-"], "resource-dir">,
   Flags<[DriverOption, CC1Option, HelpHidden]>,
   HelpText<"The directory which holds the compiler resource files">;
+// +===== Scout ============================================================+
 def scout_resource_dir : Separate<["-"], "scout-resource-dir">,
   Flags<[DriverOption, CC1Option, HelpHidden]>,
   HelpText<"The directory which holds the scout-centric resource files">;
+// +========================================================================+
 def resource_dir_EQ : Joined<["-"], "resource-dir=">, Flags<[DriverOption]>,
   Alias<resource_dir>;
 def rpath : Separate<["-"], "rpath">, Flags<[LinkerInput]>;

@@ -471,7 +471,8 @@ public:
     AddFieldToMeshType (const char *name,
                         const ClangASTType &field_type,
                         lldb::AccessType access,
-                        uint32_t bitfield_bit_size);
+                        uint32_t bitfield_bit_size,
+                        uint32_t field_flags);
     // +=======================================================
 
 

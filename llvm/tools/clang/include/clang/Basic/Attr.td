@@ -11,10 +11,12 @@
 // specific documentation that is collated within the larger document.
 class DocumentationCategory<string name> {
   string Name = name;
+  code Content = [{}];
 }
-def DocCatFunction : DocumentationCategory<"Functions">;
-def DocCatVariable : DocumentationCategory<"Variables">;
-def DocCatType : DocumentationCategory<"Types">;
+def DocCatFunction : DocumentationCategory<"Function Attributes">;
+def DocCatVariable : DocumentationCategory<"Variable Attributes">;
+def DocCatType : DocumentationCategory<"Type Attributes">;
+def DocCatStmt : DocumentationCategory<"Statement Attributes">;
 // Attributes listed under the Undocumented category do not generate any public
 // documentation. Ideally, this category should be used for internal-only
 // attributes which contain no spellings.
@@ -388,7 +390,7 @@ def ARMInterrupt : InheritableAttr, TargetSpecificAttr<TargetARM> {
                            1>];
   let ParseKind = "Interrupt";
   let HasCustomParsing = 1;
-  let Documentation = [Undocumented];
+  let Documentation = [ARMInterruptDocs];
 }
 
 def AsmLabel : InheritableAttr {
@@ -641,7 +643,7 @@ def ExtVectorType : Attr {
 def FallThrough : Attr {
   let Spellings = [CXX11<"clang", "fallthrough">];
 //  let Subjects = [NullStmt];
-  let Documentation = [Undocumented];
+  let Documentation = [FallthroughDocs];
 }
 
 def FastCall : InheritableAttr {
@@ -670,7 +672,7 @@ def Format : InheritableAttr {
               IntArgument<"FirstArg">];
   let Subjects = SubjectList<[ObjCMethod, Block, HasFunctionProto], WarnDiag,
                              "ExpectedFunction">;
-  let Documentation = [Undocumented];
+  let Documentation = [FormatDocs];
 }
 
 def FormatArg : InheritableAttr {
@@ -1242,21 +1244,21 @@ def NoSanitizeAddress : InheritableAttr {
   let Spellings = [GCC<"no_address_safety_analysis">,
                    GCC<"no_sanitize_address">];
   let Subjects = SubjectList<[Function, FunctionTemplate], ErrorDiag>;
-  let Documentation = [Undocumented];
+  let Documentation = [NoSanitizeAddressDocs];
 }
 
 // Attribute to disable ThreadSanitizer checks.
 def NoSanitizeThread : InheritableAttr {
   let Spellings = [GNU<"no_sanitize_thread">];
   let Subjects = SubjectList<[Function, FunctionTemplate], ErrorDiag>;
-  let Documentation = [Undocumented];
+  let Documentation = [NoSanitizeThreadDocs];
 }
 
 // Attribute to disable MemorySanitizer checks.
 def NoSanitizeMemory : InheritableAttr {
   let Spellings = [GNU<"no_sanitize_memory">];
   let Subjects = SubjectList<[Function, FunctionTemplate], ErrorDiag>;
-  let Documentation = [Undocumented];
+  let Documentation = [NoSanitizeMemoryDocs];
 }
 
 // C/C++ Thread safety attributes (e.g. for deadlock, data race checking)
@@ -1483,7 +1485,7 @@ def Consumable : InheritableAttr {
   let Args = [EnumArgument<"DefaultState", "ConsumedState",
                            ["unknown", "consumed", "unconsumed"],
                            ["Unknown", "Consumed", "Unconsumed"]>];
-  let Documentation = [Undocumented];
+  let Documentation = [ConsumableDocs];
 }
 
 def ConsumableAutoCast : InheritableAttr {
@@ -1504,7 +1506,7 @@ def CallableWhen : InheritableAttr {
   let Args = [VariadicEnumArgument<"CallableState", "ConsumedState",
                                    ["unknown", "consumed", "unconsumed"],
                                    ["Unknown", "Consumed", "Unconsumed"]>];
-  let Documentation = [Undocumented];
+  let Documentation = [CallableWhenDocs];
 }
 
 def ParamTypestate : InheritableAttr {
@@ -1513,7 +1515,7 @@ def ParamTypestate : InheritableAttr {
   let Args = [EnumArgument<"ParamState", "ConsumedState",
                            ["unknown", "consumed", "unconsumed"],
                            ["Unknown", "Consumed", "Unconsumed"]>];
-  let Documentation = [Undocumented];
+  let Documentation = [ParamTypestateDocs];
 }
 
 def ReturnTypestate : InheritableAttr {
@@ -1522,7 +1524,7 @@ def ReturnTypestate : InheritableAttr {
   let Args = [EnumArgument<"State", "ConsumedState",
                            ["unknown", "consumed", "unconsumed"],
                            ["Unknown", "Consumed", "Unconsumed"]>];
-  let Documentation = [Undocumented];
+  let Documentation = [ReturnTypestateDocs];
 }
 
 def SetTypestate : InheritableAttr {
@@ -1531,7 +1533,7 @@ def SetTypestate : InheritableAttr {
   let Args = [EnumArgument<"NewState", "ConsumedState",
                            ["unknown", "consumed", "unconsumed"],
                            ["Unknown", "Consumed", "Unconsumed"]>];
-  let Documentation = [Undocumented];
+  let Documentation = [SetTypestateDocs];
 }
 
 def TestTypestate : InheritableAttr {
@@ -1540,7 +1542,7 @@ def TestTypestate : InheritableAttr {
   let Args = [EnumArgument<"TestState", "ConsumedState",
                            ["consumed", "unconsumed"],
                            ["Consumed", "Unconsumed"]>];
-  let Documentation = [Undocumented];
+  let Documentation = [TestTypestateDocs];
 }
 
 // Type safety attributes for `void *' pointers and type tags.
@@ -1553,7 +1555,7 @@ def ArgumentWithTypeTag : InheritableAttr {
               UnsignedArgument<"TypeTagIdx">,
               BoolArgument<"IsPointer">];
   let HasCustomParsing = 1;
-  let Documentation = [Undocumented];
+  let Documentation = [ArgumentWithTypeTagDocs, PointerWithTypeTagDocs];
 }
 
 def TypeTagForDatatype : InheritableAttr {
@@ -1564,7 +1566,7 @@ def TypeTagForDatatype : InheritableAttr {
               BoolArgument<"MustBeNull">];
 //  let Subjects = SubjectList<[Var], ErrorDiag>;
   let HasCustomParsing = 1;
-  let Documentation = [Undocumented];
+  let Documentation = [TypeTagForDatatypeDocs];
 }
 
 // Microsoft-related attributes

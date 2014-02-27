@@ -62,7 +62,7 @@
   ##### INCLUDE DIRECTORY AND FILES 
   # 
   find_path(GLFW_INCLUDE_DIR
-    GL/glfw.h
+    GLFW/glfw3.h
     PATH_SUFFIXES include glfw/include 
     HINTS $ENV{GLFW_DIR}
     PATHS
@@ -78,7 +78,7 @@
   ##### LIBRARY DIRECTORY
   # 
   find_path(GLFW_LIBRARY_DIR
-    libglfw.a 
+    libglfw3.a 
     PATH_SUFFIXES lib64 lib glfw/lib64 glfw/lib 
     HINTS $ENV{GLFW_DIR}
     PATHS
@@ -92,7 +92,7 @@
   ##### 
 
   if (GLFW_LIBRARY_DIR) 
-    set(GLFW_LIBS "-lglfw")
+    set(GLFW_LIBS "-lglfw3")
   endif()
 
   find_package_handle_standard_args(GLFW

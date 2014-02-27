@@ -227,10 +227,10 @@ static void diagnoseInstanceReference(Sema &SemaRef,
     // enclosing class.
     SemaRef.Diag(Loc, diag::err_nested_non_static_member_use)
       << IsField << RepClass << nameInfo.getName() << ContextClass << Range;
-  else if (IsField) {
+  else if (IsField) 
     SemaRef.Diag(Loc, diag::err_invalid_non_static_member_use)
       << nameInfo.getName() << Range;
-  } else
+  else
     SemaRef.Diag(Loc, diag::err_member_call_without_object)
       << Range;
 }
@@ -1522,10 +1522,8 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
     // explicit accesses as an error...
     DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(BaseExpr.take());
 
-    // SC_TODO: this is really just isa<ImplicitParamDecl> here
-    // since rtti is not setup for ImplicitMeshParamDecl
-    // isa<ImplicitParamDecl> is the same as isa<ImplicitMeshParamDecl>
-    if (! isa<ImplicitMeshParamDecl>(DRE->getDecl())) {
+    ImplicitParamDecl *IPD = dyn_cast<ImplicitParamDecl>(DRE->getDecl());
+    if (IPD == 0 || IPD->isMesh() == false) {
       Diag(MemberLoc, diag::err_illegal_mesh_element_access);
       return ExprError();
     }
@@ -2107,6 +2105,7 @@ BuildFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
                                  Field, FoundDecl, MemberNameInfo,
                                  MemberType, VK, OK));
 }
+// +========================================================================+
 
 /// Builds an implicit member access expression.  The current context
 /// is known to be an instance method, and the given unqualified lookup

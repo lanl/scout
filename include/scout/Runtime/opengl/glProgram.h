@@ -24,14 +24,18 @@
 #include <string>
 #include <list>
 
+#include "scout/Runtime/opengl/opengl.h"
 #include "scout/Runtime/opengl/glVertexShader.h"
 #include "scout/Runtime/opengl/glGeometryShader.h"
 #include "scout/Runtime/opengl/glFragmentShader.h"
 #include "scout/Runtime/opengl/glUniformValue.h"
 
+//deal with broken glext.h on linux
+extern GLboolean glIsProgram (GLuint program);  
+extern GLint glGetUniformLocation (GLuint program, const GLchar *name);
+
 namespace scout
 {
-  
   // ..... glProgram
   //
   class glProgram {

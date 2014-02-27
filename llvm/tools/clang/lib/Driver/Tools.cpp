@@ -47,6 +47,21 @@ using namespace clang::driver::tools;
 using namespace clang;
 using namespace llvm::opt;
 
+static void addAssemblerKPIC(const ArgList &Args, ArgStringList &CmdArgs) {
+  Arg *LastPICArg = Args.getLastArg(options::OPT_fPIC, options::OPT_fno_PIC,
+                                    options::OPT_fpic, options::OPT_fno_pic,
+                                    options::OPT_fPIE, options::OPT_fno_PIE,
+                                    options::OPT_fpie, options::OPT_fno_pie);
+  if (!LastPICArg)
+    return;
+  if (LastPICArg->getOption().matches(options::OPT_fPIC) ||
+      LastPICArg->getOption().matches(options::OPT_fpic) ||
+      LastPICArg->getOption().matches(options::OPT_fPIE) ||
+      LastPICArg->getOption().matches(options::OPT_fpie)) {
+    CmdArgs.push_back("-KPIC");
+  }
+}
+
 /// CheckPreprocessingOptions - Perform some validation of preprocessing
 /// arguments that is shared with gcc.
 static void CheckPreprocessingOptions(const Driver &D, const ArgList &Args) {
@@ -211,26 +226,6 @@ static bool isObjCRuntimeLinked(const ArgList &Args) {
     return true;
   }
   return Args.hasArg(options::OPT_fobjc_link_runtime);
-}
-
-static void addProfileRT(const ToolChain &TC, const ArgList &Args,
-                         ArgStringList &CmdArgs,
-                         llvm::Triple Triple) {
-  if (!(Args.hasArg(options::OPT_fprofile_arcs) ||
-        Args.hasArg(options::OPT_fprofile_generate) ||
-        Args.hasArg(options::OPT_fprofile_instr_generate) ||
-        Args.hasArg(options::OPT_fcreate_profile) ||
-        Args.hasArg(options::OPT_coverage)))
-    return;
-
-  // GCC links libgcov.a by adding -L<inst>/gcc/lib/gcc/<triple>/<ver> -lgcov to
-  // the link line. We cannot do the same thing because unlike gcov there is a
-  // libprofile_rt.so. We used to use the -l:libprofile_rt.a syntax, but that is
-  // not supported by old linkers.
-  std::string ProfileRT =
-    std::string(TC.getDriver().Dir) + "/../lib/libprofile_rt.a";
-
-  CmdArgs.push_back(Args.MakeArgString(ProfileRT));
 }
 
 static bool forwardToGCC(const Option &O) {
@@ -574,6 +569,11 @@ static void getARMFPUFeatures(const Driver &D, const Arg *A,
     Features.push_back("-neon");
   } else if (FPU == "vfp4" || FPU == "vfpv4") {
     Features.push_back("+vfp4");
+    Features.push_back("-neon");
+  } else if (FPU == "fp4-sp-d16" || FPU == "fpv4-sp-d16") {
+    Features.push_back("+vfp4");
+    Features.push_back("+d16");
+    Features.push_back("+fp-only-sp");
     Features.push_back("-neon");
   } else if (FPU == "fp-armv8") {
     Features.push_back("+fp-armv8");
@@ -1767,6 +1767,10 @@ static StringRef getArchNameForCompilerRTLib(const ToolChain &TC) {
     return TC.getArchName();
 }
 
+static StringRef getOSNameForCompilerRTLib(const ToolChain &TC) {
+  return TC.getOS();
+}
+
 // This adds the static libclang_rt.arch.a directly to the command line
 // FIXME: Make sure we can also emit shared objects if they're requested
 // and available, check for possible errors, etc.
@@ -1785,7 +1789,7 @@ static void addClangRTLinux(
     CmdArgs.push_back("-lgcc_eh");
 }
 
-static void addProfileRTLinux(
+static void addProfileRT(
     const ToolChain &TC, const ArgList &Args, ArgStringList &CmdArgs) {
   if (!(Args.hasArg(options::OPT_fprofile_arcs) ||
         Args.hasArg(options::OPT_fprofile_generate) ||
@@ -1794,11 +1798,11 @@ static void addProfileRTLinux(
         Args.hasArg(options::OPT_coverage)))
     return;
 
-  // The profile runtime is located in the Linux library directory and has name
-  // "libclang_rt.profile-<ArchName>.a".
+  // The profile runtime is located in the OS-specific resource directory and
+  // has name "libclang_rt.profile-<ArchName>.a".
   SmallString<128> LibProfile(TC.getDriver().ResourceDir);
   llvm::sys::path::append(
-      LibProfile, "lib", "linux",
+      LibProfile, "lib", getOSNameForCompilerRTLib(TC),
       Twine("libclang_rt.profile-") + getArchNameForCompilerRTLib(TC) + ".a");
 
   CmdArgs.push_back(Args.MakeArgString(LibProfile));
@@ -5463,7 +5467,7 @@ void solaris::Link::ConstructJob(Compilation &C, const JobAction &JA,
   }
   CmdArgs.push_back(Args.MakeArgString(LibPath + "crtn.o"));
 
-  addProfileRT(getToolChain(), Args, CmdArgs, getToolChain().getTriple());
+  addProfileRT(getToolChain(), Args, CmdArgs);
 
   const char *Exec =
     Args.MakeArgString(getToolChain().GetProgramPath("ld"));
@@ -5575,7 +5579,7 @@ void auroraux::Link::ConstructJob(Compilation &C, const JobAction &JA,
                                 getToolChain().GetFilePath("crtend.o")));
   }
 
-  addProfileRT(getToolChain(), Args, CmdArgs, getToolChain().getTriple());
+  addProfileRT(getToolChain(), Args, CmdArgs);
 
   const char *Exec =
     Args.MakeArgString(getToolChain().GetProgramPath("ld"));
@@ -5610,17 +5614,7 @@ void openbsd::Assemble::ConstructJob(Compilation &C, const JobAction &JA,
     else
       CmdArgs.push_back("-EL");
 
-    Arg *LastPICArg = Args.getLastArg(options::OPT_fPIC, options::OPT_fno_PIC,
-                                      options::OPT_fpic, options::OPT_fno_pic,
-                                      options::OPT_fPIE, options::OPT_fno_PIE,
-                                      options::OPT_fpie, options::OPT_fno_pie);
-    if (LastPICArg &&
-        (LastPICArg->getOption().matches(options::OPT_fPIC) ||
-         LastPICArg->getOption().matches(options::OPT_fpic) ||
-         LastPICArg->getOption().matches(options::OPT_fPIE) ||
-         LastPICArg->getOption().matches(options::OPT_fpie))) {
-      CmdArgs.push_back("-KPIC");
-    }
+    addAssemblerKPIC(Args, CmdArgs);
   }
 
   Args.AddAllArgValues(CmdArgs, options::OPT_Wa_COMMA,
@@ -5945,17 +5939,7 @@ void freebsd::Assemble::ConstructJob(Compilation &C, const JobAction &JA,
     else
       CmdArgs.push_back("-EL");
 
-    Arg *LastPICArg = Args.getLastArg(options::OPT_fPIC, options::OPT_fno_PIC,
-                                      options::OPT_fpic, options::OPT_fno_pic,
-                                      options::OPT_fPIE, options::OPT_fno_PIE,
-                                      options::OPT_fpie, options::OPT_fno_pie);
-    if (LastPICArg &&
-        (LastPICArg->getOption().matches(options::OPT_fPIC) ||
-         LastPICArg->getOption().matches(options::OPT_fpic) ||
-         LastPICArg->getOption().matches(options::OPT_fPIE) ||
-         LastPICArg->getOption().matches(options::OPT_fpie))) {
-      CmdArgs.push_back("-KPIC");
-    }
+    addAssemblerKPIC(Args, CmdArgs);
   } else if (getToolChain().getArch() == llvm::Triple::arm ||
              getToolChain().getArch() == llvm::Triple::thumb) {
     const Driver &D = getToolChain().getDriver();
@@ -5980,17 +5964,7 @@ void freebsd::Assemble::ConstructJob(Compilation &C, const JobAction &JA,
     }
   } else if (getToolChain().getArch() == llvm::Triple::sparc ||
              getToolChain().getArch() == llvm::Triple::sparcv9) {
-    Arg *LastPICArg = Args.getLastArg(options::OPT_fPIC, options::OPT_fno_PIC,
-                                      options::OPT_fpic, options::OPT_fno_pic,
-                                      options::OPT_fPIE, options::OPT_fno_PIE,
-                                      options::OPT_fpie, options::OPT_fno_pie);
-    if (LastPICArg &&
-        (LastPICArg->getOption().matches(options::OPT_fPIC) ||
-         LastPICArg->getOption().matches(options::OPT_fpic) ||
-         LastPICArg->getOption().matches(options::OPT_fPIE) ||
-         LastPICArg->getOption().matches(options::OPT_fpie))) {
-      CmdArgs.push_back("-KPIC");
-    }
+    addAssemblerKPIC(Args, CmdArgs);
   }
 
   Args.AddAllArgValues(CmdArgs, options::OPT_Wa_COMMA,
@@ -6182,7 +6156,7 @@ void freebsd::Link::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back(Args.MakeArgString(ToolChain.GetFilePath("crtn.o")));
   }
 
-  addProfileRT(ToolChain, Args, CmdArgs, ToolChain.getTriple());
+  addProfileRT(ToolChain, Args, CmdArgs);
 
   const char *Exec =
     Args.MakeArgString(ToolChain.GetProgramPath("ld"));
@@ -6196,23 +6170,23 @@ void netbsd::Assemble::ConstructJob(Compilation &C, const JobAction &JA,
                                      const char *LinkingOutput) const {
   ArgStringList CmdArgs;
 
-  // When building 32-bit code on NetBSD/amd64, we have to explicitly
-  // instruct as in the base system to assemble 32-bit code.
-  if (getToolChain().getArch() == llvm::Triple::x86)
+  // GNU as needs different flags for creating the correct output format
+  // on architectures with different ABIs or optional feature sets.
+  switch (getToolChain().getArch()) {
+  case llvm::Triple::x86:
     CmdArgs.push_back("--32");
-
-  // Pass the target CPU to GNU as for ARM, since the source code might
-  // not have the correct .cpu annotation.
-  if (getToolChain().getArch() == llvm::Triple::arm ||
-      getToolChain().getArch() == llvm::Triple::thumb) {
+    break;
+  case llvm::Triple::arm:
+  case llvm::Triple::thumb: {
     std::string MArch(arm::getARMTargetCPU(Args, getToolChain().getTriple()));
     CmdArgs.push_back(Args.MakeArgString("-mcpu=" + MArch));
+    break;
   }
 
-  if (getToolChain().getArch() == llvm::Triple::mips ||
-      getToolChain().getArch() == llvm::Triple::mipsel ||
-      getToolChain().getArch() == llvm::Triple::mips64 ||
-      getToolChain().getArch() == llvm::Triple::mips64el) {
+  case llvm::Triple::mips:
+  case llvm::Triple::mipsel:
+  case llvm::Triple::mips64:
+  case llvm::Triple::mips64el: {
     StringRef CPUName;
     StringRef ABIName;
     getMipsCPUAndABI(Args, getToolChain().getTriple(), CPUName, ABIName);
@@ -6229,17 +6203,23 @@ void netbsd::Assemble::ConstructJob(Compilation &C, const JobAction &JA,
     else
       CmdArgs.push_back("-EL");
 
-    Arg *LastPICArg = Args.getLastArg(options::OPT_fPIC, options::OPT_fno_PIC,
-                                      options::OPT_fpic, options::OPT_fno_pic,
-                                      options::OPT_fPIE, options::OPT_fno_PIE,
-                                      options::OPT_fpie, options::OPT_fno_pie);
-    if (LastPICArg &&
-        (LastPICArg->getOption().matches(options::OPT_fPIC) ||
-         LastPICArg->getOption().matches(options::OPT_fpic) ||
-         LastPICArg->getOption().matches(options::OPT_fPIE) ||
-         LastPICArg->getOption().matches(options::OPT_fpie))) {
-      CmdArgs.push_back("-KPIC");
-    }
+    addAssemblerKPIC(Args, CmdArgs);
+    break;
+  }
+
+  case llvm::Triple::sparc:
+    CmdArgs.push_back("-32");
+    addAssemblerKPIC(Args, CmdArgs);
+    break;
+
+  case llvm::Triple::sparcv9:
+    CmdArgs.push_back("-64");
+    CmdArgs.push_back("-Av9");
+    addAssemblerKPIC(Args, CmdArgs);
+    break;
+
+  default:
+    break;  
   }
 
   Args.AddAllArgValues(CmdArgs, options::OPT_Wa_COMMA,
@@ -6323,6 +6303,17 @@ void netbsd::Link::ConstructJob(Compilation &C, const JobAction &JA,
        CmdArgs.push_back("elf64ltsmip");
    }
    break;
+
+  case llvm::Triple::sparc:
+    CmdArgs.push_back("-m");
+    CmdArgs.push_back("elf32_sparc");
+    break;
+
+  case llvm::Triple::sparcv9:
+    CmdArgs.push_back("-m");
+    CmdArgs.push_back("elf64_sparc");
+    break;
+
   default:
     break;
   }
@@ -6414,7 +6405,7 @@ void netbsd::Link::ConstructJob(Compilation &C, const JobAction &JA,
                                                                     "crtn.o")));
   }
 
-  addProfileRT(getToolChain(), Args, CmdArgs, getToolChain().getTriple());
+  addProfileRT(getToolChain(), Args, CmdArgs);
 
   const char *Exec = Args.MakeArgString(getToolChain().GetProgramPath("ld"));
   C.addCommand(new Command(JA, *this, Exec, CmdArgs));
@@ -6524,19 +6515,8 @@ void gnutools::Assemble::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back(Args.MakeArgString("-march=" + CPUName));
   }
 
-  if (NeedsKPIC) {
-    Arg *LastPICArg = Args.getLastArg(options::OPT_fPIC, options::OPT_fno_PIC,
-                                      options::OPT_fpic, options::OPT_fno_pic,
-                                      options::OPT_fPIE, options::OPT_fno_PIE,
-                                      options::OPT_fpie, options::OPT_fno_pie);
-    if (LastPICArg &&
-        (LastPICArg->getOption().matches(options::OPT_fPIC) ||
-         LastPICArg->getOption().matches(options::OPT_fpic) ||
-         LastPICArg->getOption().matches(options::OPT_fPIE) ||
-         LastPICArg->getOption().matches(options::OPT_fpie))) {
-      CmdArgs.push_back("-KPIC");
-    }
-  }
+  if (NeedsKPIC)
+    addAssemblerKPIC(Args, CmdArgs);
 
   Args.AddAllArgValues(CmdArgs, options::OPT_Wa_COMMA,
                        options::OPT_Xassembler);
@@ -6824,7 +6804,7 @@ void gnutools::Link::ConstructJob(Compilation &C, const JobAction &JA,
     addDfsanRTLinux(getToolChain(), Args, CmdArgs);
 
   // The profile runtime also needs access to system libraries.
-  addProfileRTLinux(getToolChain(), Args, CmdArgs);
+  addProfileRT(getToolChain(), Args, CmdArgs);
 
   // +===== Scout ============================================================+
   if (D.CCCIsScout()){
@@ -6944,7 +6924,7 @@ void minix::Link::ConstructJob(Compilation &C, const JobAction &JA,
 
   AddLinkerInputs(getToolChain(), Inputs, Args, CmdArgs);
 
-  addProfileRT(getToolChain(), Args, CmdArgs, getToolChain().getTriple());
+  addProfileRT(getToolChain(), Args, CmdArgs);
 
   // +===== Scout ============================================================+
   if (D.CCCIsScout()){
@@ -7158,7 +7138,7 @@ void dragonfly::Link::ConstructJob(Compilation &C, const JobAction &JA,
                             getToolChain().GetFilePath("crtn.o")));
   }
 
-  addProfileRT(getToolChain(), Args, CmdArgs, getToolChain().getTriple());
+  addProfileRT(getToolChain(), Args, CmdArgs);
 
   const char *Exec =
     Args.MakeArgString(getToolChain().GetProgramPath("ld"));
@@ -7309,6 +7289,8 @@ Command *visualstudio::Compile::GetCommand(Compilation &C, const JobAction &JA,
                                                                    : "/GR-");
   if (Args.hasArg(options::OPT_fsyntax_only))
     CmdArgs.push_back("/Zs");
+  if (Args.hasArg(options::OPT_g_Flag, options::OPT_gline_tables_only))
+    CmdArgs.push_back("/Z7");
 
   std::vector<std::string> Includes = Args.getAllArgValues(options::OPT_include);
   for (size_t I = 0, E = Includes.size(); I != E; ++I)

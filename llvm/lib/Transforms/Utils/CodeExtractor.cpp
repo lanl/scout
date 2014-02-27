@@ -54,12 +54,13 @@ static bool isBlockValidForExtraction(const BasicBlock &BB) {
 
   // Don't hoist code containing allocas, invokes, or vastarts.
   for (BasicBlock::const_iterator I = BB.begin(), E = BB.end(); I != E; ++I) {
-    // ==== Scout ===========================================================================================
+    // ==== Scout ========================================================================
     // To work correctly with Scout we need to allow alloca instructions.
     // SC_TODO -- we probably shouldn't break this functionality uniformly; instead we
     // should find a Scout-centric way to enable this functionality…  Remove the comment
     // and use some explicit conditional mode of operation. 
     if (/*isa<AllocaInst>(I) || */isa<InvokeInst>(I))
+    // ===================================================================================
       return false;
     if (const CallInst *CI = dyn_cast<CallInst>(I))
       if (const Function *F = CI->getCalledFunction())

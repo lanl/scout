@@ -247,18 +247,38 @@ endif()
   #endif()
 
 
+  
   # --- GLFW support.
-  #find_package(GLFW)
-  #if (GLFW_FOUND)
-  #  message(STATUS "scout: GLFW found, enabling runtime support.")
-  #  message(STATUS "scout: GLFW include path: ${GLFW_INCLUDE_DIR}")
-  #  set(SCOUT_ENABLE_GLFW ON CACHE BOOL
-  #    "Enable GLFW runtime support.")
-  #else()
-  #  message(STATUS "scout: GLFW not found, disabling support.")
+  find_package(GLFW)
+  if (GLFW_FOUND)
+    if(APPLE)
+      # GLFW needs COCOA, IOKIT and COREVIDEO on the mac.
+      find_library(COCOA_LIBRARY Cocoa)
+      find_library(IOKIT_LIBRARY IOKit)
+      find_library(COREVIDEO_LIBRARY CoreVideo)
+      find_library(COREFOUNDATION_FRAMEWORK CoreFoundation)
+      if(COCOA_LIBRARY AND IOKIT_LIBRARY AND COREVIDEO_LIBRARY AND COREFOUNDATION_FRAMEWORK)
+          message(STATUS "scout: GLFW, COCOA, IOKIT, COREVIDEO and COREFOUNDATION found.")
+          message(STATUS "scout: GLFW include path: ${GLFW_INCLUDE_DIR}")
+          message(STATUS "scout: enabling GLFW runtime support.")
+          set(SCOUT_ENABLE_GLFW ON CACHE BOOL
+            "Enable GLFW runtime support.")
+        else()
+          message(STATUS "scout: COCOA, IOKIT, COREVIDEO or COREFOUNDATION not found, disabling GLFW support.")
+          set(SCOUT_ENABLE_GLFW OFF CACHE BOOL
+            "Enable GLFW runtime support.")
+        endif()
+    else()    
+        message(STATUS "scout: GLFW found, enabling runtime support.")
+        message(STATUS "scout: GLFW include path: ${GLFW_INCLUDE_DIR}")
+        set(SCOUT_ENABLE_GLFW ON CACHE BOOL
+          "Enable GLFW runtime support.")
+    endif()
+  else()
+    message(STATUS "scout: GLFW not found, disabling support.")
     set(SCOUT_ENABLE_GLFW OFF CACHE BOOL
       "Enable GLFW runtime support.")
-  #endif()
+  endif()
 
 
   # --- SDL support.

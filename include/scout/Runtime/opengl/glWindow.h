@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyrigh (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -57,8 +57,12 @@
 
 #include <string>
 #include <list>
+#include <deque>
 
 #include "scout/Runtime/opengl/opengl.h"
+#include "scout/Runtime/opengl/glCamera.h"
+#include "scout/Runtime/opengl/glManipulator.h"
+#include "scout/Runtime/opengl/glRenderable.h"
 
 namespace scout {
 
@@ -155,79 +159,54 @@ namespace scout {
     /// Create a window of the given width and height.  The window's
     /// position is undetermined and the background color will default
     /// to black.
-    glWindow(ScreenCoord width, ScreenCoord height)
-        : frame(width, height) {
-      bgColor.red   = 0.0f;
-      bgColor.green = 0.0f;
-      bgColor.blue  = 0.0f;
-      bgColor.alpha = 1.0f;      
-    }
+    glWindow(ScreenCoord width, ScreenCoord height);
     
     /// Create a window with the given location and size (as described
     /// by the given WindowRect).  The background color will default
     /// to black.
-    glWindow(const WindowRect &rect)
-        : frame(rect) {
-      bgColor.red   = 0.0f;
-      bgColor.green = 0.0f;
-      bgColor.blue  = 0.0f;
-      bgColor.alpha = 1.0f;      
-    }
+    glWindow(const WindowRect &rect);
     
     /// Create a window with the given location, size (as described by
     /// the given WindowRect) and background color.
-    glWindow(const WindowRect &rect, const oglColor &color) 
-        : frame(rect) {
-      bgColor.red   = color.red;
-      bgColor.green = color.green;
-      bgColor.blue  = color.blue;
-      bgColor.alpha = color.alpha;      
-    }
-
-    virtual ~glWindow() {
-      // no-op
-    };
-
-    /// Set the window's on screen title.  
-    virtual void setTitle(const char *title) = 0;
-
-    /// Minimize the window (aka iconify). 
-    virtual void minimize() = 0;
-
-    /// Restore the window from a minimized/iconic state. 
-    virtual void restore() = 0;
-
-    /// Refresh/update the window's display. 
-    virtual void refresh() = 0;
-
+    glWindow(const WindowRect &rect, const oglColor &color);
+    
+    virtual ~glWindow(){};
+    
     /// Set the window's background color.
     void setBackgroundColor(float red,
                             float green,
-                            float blue) {
-      bgColor.red   = red;
-      bgColor.green = green;
-      bgColor.blue  = blue;
-      bgColor.alpha = 1.0;
-    }
-
+                            float blue);
+    
     /// Set the window's background color.
-    void setBackgroundColor(const oglColor &rgba) {
-      bgColor.red   = rgba.red;
-      bgColor.green = rgba.green;
-      bgColor.blue  = rgba.blue;
-      bgColor.alpha = rgba.alpha;
-    }
-
+    void setBackgroundColor(const oglColor &rgba);
+    
+    void paint(){};
+    void paintMono();
+    void paintStereo();
+    
+    // not sure these should be here and if they make sense for derived classes that are not GLFW, eg macosx
+    virtual void swapBuffers() = 0;
+    virtual bool processEvent() = 0;
+    virtual void eventLoop() = 0;
+    
    protected:
-    WindowRect  frame;     /// The position and dimensions of window. 
-    oglColor    bgColor;   /// Window's background color. 
+    WindowRect      _frame;     /// The position and dimensions of window.
+    oglColor        _bgColor;   /// Window's background color.
+   
+    typedef std::deque<glRenderable*>  RenderableList;
+    RenderableList _renderables;
+    
+    bool           _ignore_events;
+    bool           _stereo_mode;
+    bool           _save_frames;
+    int            _img_seq_num;
+    std::string    _frame_basename;
+    std::string    _display_text;
+    int            _text_x, _text_y;
+    glCamera       *_camera;
+    glManipulator  *_manipulator;    
+    glfloat4       _bg_color;
   };
   
-  /**
-   * A convenient shorthand that reduces template syntax when managing
-   * a collection of windows. 
-   */
-  typedef std::list<glWindow*> glWindowList;
 }
-
 #endif

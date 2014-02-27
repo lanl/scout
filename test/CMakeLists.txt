@@ -79,4 +79,5 @@ project(scout_test_scc SCC SCXX )#  C CXX)
 
   add_subdirectory(scc)
   add_subdirectory(sc++)
+  add_subdirectory(runtime/glfw)
 

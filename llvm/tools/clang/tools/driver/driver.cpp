@@ -11,10 +11,11 @@
 // for functionality in the Driver clang library.
 //
 //===----------------------------------------------------------------------===//
-
+// +===== Scout ========================================================+
 #include <unistd.h>
 #include <iostream>
 #include <sstream>
+// +====================================================================+
 
 #include "clang/Basic/CharInfo.h"
 #include "clang/Basic/DiagnosticOptions.h"
@@ -314,10 +315,9 @@ int main(int argc_, const char **argv_) {
   if (argv.size() > 1 && StringRef(argv[1]).startswith("-cc1")) {
     StringRef Tool = argv[1] + 4;
 
-    if (Tool == "") {
+    if (Tool == "") 
       return cc1_main(argv.data()+2, argv.data()+argv.size(), argv[0],
                       (void*) (intptr_t) GetExecutablePath);
-    }
     if (Tool == "as")
       return cc1as_main(argv.data()+2, argv.data()+argv.size(), argv[0],
                       (void*) (intptr_t) GetExecutablePath);

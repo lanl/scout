@@ -29,10 +29,6 @@
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/Support/ConvertUTF.h"
 
-// +==== Scout =============================================================+
-#include "clang/AST/Scout/ImplicitColorParamDecl.h"
-// +========================================================================+
-
 using namespace clang;
 using namespace CodeGen;
 
@@ -394,7 +390,7 @@ LValue CodeGenFunction::EmitMaterializeTemporaryExpr(
     case SubobjectAdjustment::MemberPointerAdjustment: {
       llvm::Value *Ptr = EmitScalarExpr(Adjustment.Ptr.RHS);
       Object = CGM.getCXXABI().EmitMemberDataPointerAddress(
-                    *this, Object, Ptr, Adjustment.Ptr.MPT);
+          *this, E, Object, Ptr, Adjustment.Ptr.MPT);
       break;
     }
     }
@@ -1746,10 +1742,9 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
 
   // +==== Scout =============================================================+
   // Check if this is a 'color' expression.
-  if (isScoutLang(getLangOpts()) && ND->getDeclName().isIdentifier() && isa<ImplicitColorParamDecl>(ND)) {
-    //SC_TODO: could remove string matching if rtti worked on ImplicitColorParamDecl
-    if (ND->getName() == "color") {
-      return EmitColorDeclRefLValue(ND);
+  if (isScoutLang(getLangOpts()) && ND->getDeclName().isIdentifier()) {
+    if (const ImplicitParamDecl *IPD = dyn_cast<ImplicitParamDecl>(ND)) {
+      if (IPD->isColor()) return EmitColorDeclRefLValue(ND);
     }
   }
   // ==========================================================================
@@ -1794,10 +1789,12 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
     bool isBlockVariable = VD->hasAttr<BlocksAttr>();
 
     llvm::Value *V = LocalDeclMap.lookup(VD);
+    // +===== Scout ========================================================+
     if(!V) {
       llvm::errs() << "lookup fail for " << VD->getName() << "\n";
       VD->dump();
     }
+    // +====================================================================+
 
     if (!V && VD->isStaticLocal())
       V = CGM.getStaticLocalDeclAddress(VD);
@@ -3266,8 +3263,8 @@ EmitPointerToDataMemberBinaryExpr(const BinaryOperator *E) {
   const MemberPointerType *MPT
     = E->getRHS()->getType()->getAs<MemberPointerType>();
 
-  llvm::Value *AddV =
-    CGM.getCXXABI().EmitMemberDataPointerAddress(*this, BaseV, OffsetV, MPT);
+  llvm::Value *AddV = CGM.getCXXABI().EmitMemberDataPointerAddress(
+      *this, E, BaseV, OffsetV, MPT);
 
   return MakeAddrLValue(AddV, MPT->getPointeeType());
 }

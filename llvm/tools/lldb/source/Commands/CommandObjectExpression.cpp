@@ -36,6 +36,10 @@
 #include "lldb/Target/Thread.h"
 #include "llvm/ADT/StringRef.h"
 
+// +===== Scout ==========================
+#include "lldb/Symbol/CompileUnit.h"
+// +======================================
+
 using namespace lldb;
 using namespace lldb_private;
 
@@ -295,6 +299,23 @@ CommandObjectExpression::EvaluateExpression
         else
             options.SetTimeoutUsec(0);
         
+        // +===== Scout ==========================================
+        CompileUnit *comp_unit = NULL;
+        StackFrame *frame = m_exe_ctx.GetFramePtr();
+        if (frame)
+        {
+            SymbolContext sc = frame->GetSymbolContext (eSymbolContextCompUnit);
+            if (sc.comp_unit)
+            {
+              LanguageType lang_type = sc.comp_unit->GetLanguage();
+              if(lang_type == eLanguageTypeScoutC ||
+                 lang_type == eLanguageTypeScoutC_plus_plus){
+                options.SetLanguage(lang_type);
+              }
+            }
+        }
+        // +=======================================================
+
         exe_results = target->EvaluateExpression (expr, 
                                                   exe_ctx.GetFramePtr(),
                                                   result_valobj_sp,

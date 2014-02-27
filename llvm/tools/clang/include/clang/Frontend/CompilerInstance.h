@@ -368,6 +368,9 @@ public:
   }
 
   /// \brief Replace the current virtual file system.
+  ///
+  /// \note Most clients should use setFileManager, which will implicitly reset
+  /// the virtual file system to the one contained in the file manager.
   void setVirtualFileSystem(IntrusiveRefCntPtr<vfs::FileSystem> FS) {
     VirtualFileSystem = FS;
   }
@@ -389,7 +392,7 @@ public:
     FileMgr.resetWithoutRelease();
   }
 
-  /// setFileManager - Replace the current file manager.
+  /// \brief Replace the current file manager and virtual file system.
   void setFileManager(FileManager *Value);
 
   /// }
@@ -585,10 +588,6 @@ public:
                     DiagnosticConsumer *Client = 0,
                     bool ShouldOwnClient = true,
                     const CodeGenOptions *CodeGenOpts = 0);
-
-  /// Create a virtual file system and replace any existing one with it.
-  /// The default is to use the real file system.
-  void createVirtualFileSystem();
 
   /// Create the file manager and replace any existing one with it.
   void createFileManager();

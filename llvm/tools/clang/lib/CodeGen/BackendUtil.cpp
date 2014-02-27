@@ -258,6 +258,7 @@ void EmitAssemblyHelper::CreateScoutPasses() {
   */
 #endif
 }
+// ===========================================================================
 
 static void addDataFlowSanitizerPass(const PassManagerBuilder &Builder,
                                      PassManagerBase &PM) {
@@ -484,6 +485,9 @@ TargetMachine *EmitAssemblyHelper::CreateTargetMachine(bool MustCreateTM) {
   }
 
   llvm::TargetOptions Options;
+
+  if (CodeGenOpts.DisableIntegratedAS)
+    Options.DisableIntegratedAS = true;
 
   // Set frame pointer elimination mode.
   if (!CodeGenOpts.DisableFPElim) {

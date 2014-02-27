@@ -213,8 +213,6 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
   }
 
   // Set up the file and source managers, if needed.
-  if (!CI.hasVirtualFileSystem())
-    CI.createVirtualFileSystem();
   if (!CI.hasFileManager())
     CI.createFileManager();
   if (!CI.hasSourceManager())

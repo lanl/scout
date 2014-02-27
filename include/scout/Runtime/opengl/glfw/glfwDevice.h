@@ -56,7 +56,7 @@
 #define __SC_GLFW_DEVICE_H__
 
 #include "scout/Runtime/opengl/glDevice.h"
-#include <GL/glfw.h>
+#include <GLFW/glfw3.h>
 
 namespace scout {
 
@@ -66,10 +66,18 @@ namespace scout {
     glfwDevice();
     ~glfwDevice();
 
-    bool initialize();
+    static glfwDevice* Instance();
+    glWindow* createWindow(ScreenCoord width,
+                           ScreenCoord height);
+    
+    glWindow* createWindow(ScreenCoord xpos,
+                                   ScreenCoord ypos,
+                                   ScreenCoord width,
+                                   ScreenCoord height);
+
 
    private:
-    int    Status;
+    static glfwDevice*      _instance;
   };
 }
 

@@ -84,8 +84,6 @@ public:
   void deregisterEHFrames();
 
   StringRef getErrorString();
-
-  StringRef getEHFrameSection();
 };
 
 } // end namespace llvm

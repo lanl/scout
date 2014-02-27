@@ -227,20 +227,8 @@ SymbolFileDWARF::ParseMeshChildMembers
                   field_decl = class_clang_type.AddFieldToMeshType (name,
                                                                     member_clang_type,
                                                                     accessibility,
-                                                                    0);
-
-                  if(fieldFlags & llvm::DIScoutDerivedType::FlagMeshFieldCellLocated){
-                    field_decl->setCellLocated(true);
-                  }
-                  else if(fieldFlags & llvm::DIScoutDerivedType::FlagMeshFieldVertexLocated){
-                    field_decl->setVertexLocated(true);
-                  }
-                  else if(fieldFlags & llvm::DIScoutDerivedType::FlagMeshFieldEdgeLocated){
-                    field_decl->setEdgeLocated(true);
-                  }
-                  else if(fieldFlags & llvm::DIScoutDerivedType::FlagMeshFieldFaceLocated){
-                    field_decl->setFaceLocated(true);
-                  }
+                                                                    0,
+                                                                    fieldFlags);
 
                   GetClangASTContext().SetMetadataAsUserID (field_decl, MakeUserID(die->GetOffset()));
 

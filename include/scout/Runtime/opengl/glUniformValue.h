@@ -17,9 +17,14 @@
 #include "scout/Runtime/opengl/opengl.h"
 #include "scout/types.h"
 
+//deal w/ broken glext.h on linux
+extern void glUniform1iv(GLint location, GLsizei count, const GLint *value);
+extern void glUniform4iv(GLint location, GLsizei count, const GLint *value);
+extern void glUniform1fv (GLint location, GLsizei count, const GLfloat *value);
+extern void glUniform4fv (GLint location, GLsizei count, const GLfloat *value);
+
 namespace scout
 {
-
   // ..... glUniformValue
   //
   class glUniformValue {

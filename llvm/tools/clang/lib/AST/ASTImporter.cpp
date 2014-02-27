@@ -156,6 +156,7 @@ namespace clang {
     Decl* VisitStructuredMeshDecl(StructuredMeshDecl* D);
     Decl* VisitRectilinearMeshDecl(RectilinearMeshDecl* D);
     Decl* VisitUnstructuredMeshDecl(UnstructuredMeshDecl* D);
+    Decl* VisitMeshFieldDecl(MeshFieldDecl* D);
     // +======================================================================+
     Decl *VisitEnumConstantDecl(EnumConstantDecl *D);
     Decl *VisitFunctionDecl(FunctionDecl *D);

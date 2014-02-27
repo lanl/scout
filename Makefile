@@ -133,6 +133,8 @@ uname := $(shell uname)
 
 ifeq ($(uname), Darwin)
   cmake_flags += -DCMAKE_CXX_FLAGS="-stdlib=libc++" -DCMAKE_SHARED_LINKER_FLAGS="-stdlib=libc++"
+else
+  cmake_flags += -DCMAKE_CXX_FLAGS="-std=c++11"
 endif
 
 all: $(build_dir)/Makefile toolchain stdlib
