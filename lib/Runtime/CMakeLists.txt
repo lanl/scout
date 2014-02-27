@@ -51,7 +51,7 @@
 
 project(scRuntime)
 
-#find_library(GLFW glfw)
+find_library(GLFW glfw)
 
 # Build w/ clang as volren uses blocks
 set(CMAKE_CXX_COMPILER ${SCOUT_BUILD_DIR}/bin/clang)

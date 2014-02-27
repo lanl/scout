@@ -71,7 +71,7 @@ project(scout_test_scc SCC SCXX )#  C CXX)
   add_definitions(-DSC_REG_DATA_PATH=${SCOUT_REGRESSION_DIR}/data)
   add_definitions(-DSC_REG_BIN_PATH=${SCOUT_BINARY_REGRESSION_DIR})
 
-  set(CMAKE_VERBOSE_MAKEFILE OFF)
+  set(CMAKE_VERBOSE_MAKEFILE ON)
 
   if(DEFINED ENV{SDLDIR})
     set(CMAKE_SCC_LINK_FLAGS -L$ENV{SDLDIR}/lib)
