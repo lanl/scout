@@ -58,6 +58,7 @@
 using namespace clang;
 using namespace sema;
 
+#if 0
 // Convert mesh struct rep to mesh decl - used to interface with Scout LLDB debugger.
 void ScoutLookupMesh( NamedDecl *D, Sema &S) {
 
@@ -84,3 +85,4 @@ void ScoutLookupMesh( NamedDecl *D, Sema &S) {
     }
   }
 }
+#endif

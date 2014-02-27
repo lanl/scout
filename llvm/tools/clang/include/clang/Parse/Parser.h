@@ -2426,7 +2426,11 @@ private:
 
   StmtResult ParseForallArrayStatement(ParsedAttributes &Attr);
 
+  void MeshElementTypeDiag(int MeshElementType,
+      const MeshType *RefMeshType, SourceLocation MeshIdentLoc);
+
   StmtResult ParseForallMeshStatement(ParsedAttributes &Attr);
+
   StmtResult ParseRenderallMeshStatement(ParsedAttributes &Attr);
 
   const MeshType* LookupMeshType(IdentifierInfo *MeshInfo,
