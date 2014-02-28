@@ -67,6 +67,7 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Intrinsics.h"
 #include "clang/AST/Scout/MeshLayout.h"
 #include "Scout/CGMeshLayout.h"
 
@@ -76,6 +77,7 @@ using namespace CodeGen;
 static bool
 isSafeToConvert(QualType T, CodeGenTypes &CGT,
                 llvm::SmallPtrSet<const MeshDecl*, 16> &AlreadyChecked);
+
 
 // Handle the cases for converting the following scout mesh
 // types:
@@ -91,22 +93,42 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
 
   // Implemented as a struct of n-dimensional array's type.
   MeshDecl *mesh = cast<MeshType>(Ty)->getDecl();
-  MeshType::MeshDimensions dims;
   const MeshType *meshType =  cast<MeshType>(T.getCanonicalType().getTypePtr());
-  dims = meshType->dimensions();
+  MeshType::MeshDimensions dims = meshType->dimensions();
+  llvm::StringRef meshName = mesh->getName();
 
   unsigned int rank = 0;
   for(unsigned int i = 0; i < dims.size(); ++i) {
-    if (dims[i] != 0)
+    if (dims[i] != 0) {
       rank++;
+    }
   }
 
-  llvm::StringRef meshName = mesh->getName();
+  // As we lower our mesh types to llvm we also add a set of metadata relevant to the
+  // mesh so we can use it within LLVM during optimization and code generation. 
+  llvm::NamedMDNode *MeshMD;
+  MeshMD = CGM.getModule().getOrInsertNamedMetadata("scout.meshes");
+  SmallVector<llvm::Value*, 16> MeshInfoMD;
+
+  // Metadata - mesh type (uniform, rectilinear, etc).
+  llvm::MDString *MDKind = llvm::MDString::get(getLLVMContext(), meshType->getTypeClassName());
+  MeshInfoMD.push_back(MDKind);
+  llvm::MDString *MDName = llvm::MDString::get(getLLVMContext(), meshName);
+  MeshInfoMD.push_back(MDName);
+  // Metadata - mesh dims.   
+  llvm::IntegerType *Int32Ty = llvm::Type::getInt32Ty(getLLVMContext());
+  llvm::Value *MDRank = llvm::ConstantInt::get(Int32Ty, rank);
+  MeshInfoMD.push_back(MDRank);
+  
   typedef llvm::ArrayType ArrayTy;
   MeshDecl::field_iterator it     = mesh->field_begin();
   MeshDecl::field_iterator it_end = mesh->field_end();
 
-  std::vector< llvm::Type * > eltTys;
+  std::vector< llvm::Type * > eltTys;  
+  std::vector<llvm::Type*> MeshCellFields; 
+  std::vector<llvm::Type*> MeshVertexFields;
+  std::vector<llvm::Type*> MeshEdgeFields;
+  std::vector<llvm::Type*> MeshFaceFields;     
 
   for( ; it != it_end; ++it) {
     // Do not generate code for implicit mesh member variables.
@@ -120,13 +142,28 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
         llvm::APSInt result;
         dims[i]->EvaluateAsInt(result, Context);
         numElts *= result.getSExtValue();
-      }
+        eltTys.push_back(llvm::PointerType::getUnqual(ty));
 
-      eltTys.push_back(llvm::PointerType::getUnqual(ty));
+        if (it->isCellLocated()) {
+          MDName = llvm::MDString::get(getLLVMContext(), it->getName());          
+          llvm::Value *MField = llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(MDName));
+          MeshInfoMD.push_back(MField);
+        } else if (it->isVertexLocated()) {
+
+        } else if (it->isEdgeLocated()) {
+
+        } else if (it->isFaceLocated()) {
+
+        } else {
+          llvm_unreachable("field has unknown location!");
+        }
+      }
     }
   }
 
-  if(isa<UniformMeshType>(meshType) || isa<RectilinearMeshType>(meshType)) {
+  MeshMD->addOperand(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(MeshInfoMD)));
+  
+  if (isa<UniformMeshType>(meshType) || isa<RectilinearMeshType>(meshType)) {
     // put width/height/depth after fields
     for(size_t i = 0; i < rank; ++i) {
       eltTys.push_back(llvm::IntegerType::get(getLLVMContext(), 32));
@@ -160,7 +197,6 @@ void CodeGenTypes::UpdateCompletedType(const MeshDecl *MD) {
    if (CGDebugInfo *DI = CGM.getModuleDebugInfo())
      DI->completeType(MD);
 }
-
 
 void CodeGenTypes::addMeshTypeName(const MeshDecl *RD,
                                      llvm::StructType *Ty,
