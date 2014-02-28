@@ -62,46 +62,7 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace clang;
 
-// scout - parser utility method
-// insert CPP code into the lexer stream for parsing.
-// Inserts a stream of tokens before or after the current token Tok.
-// This is a good method for handling cases such as inserting the call
-// to initScout(argc, argv) at the beginning of main(), for other cases
-// it may be necessary to construct the AST manually.
-void Parser::InsertCPPCode(const std::string& code,
-                           SourceLocation location,
-                           bool beforeLookAhead){
-
-  typedef std::vector<Token> TokenStream;
-  Lexer lexer(code, PP);
-
-  TokenStream tokenStream;
-
-  for(;;) {
-    Token tok;
-    lexer.LexFromRawLexer(tok);
-    tok.setLocation(location);
-    if (tok.is(tok::eof)) {
-      break;
-    }
-    tokenStream.push_back(tok);
-  }
-
-  if (beforeLookAhead) {
-    tokenStream.push_back(Tok);
-  }
-
-  for(TokenStream::reverse_iterator itr = tokenStream.rbegin(),
-      itrEnd = tokenStream.rend(); itr != itrEnd; ++itr) {
-    PP.EnterToken(*itr);
-  }
-
-  if (beforeLookAhead) {
-    ConsumeAnyToken();
-  }
-}
-
-// scout - debugging method for displaying the next N lookahead tokens
+// scout - debugging method for displaying the next N lookashead tokens
 void Parser::DumpLookAheads(unsigned N){
   for(unsigned i = 0; i < N; ++i){
     const Token& t = GetLookAheadToken(i);

@@ -25,6 +25,9 @@ add_clang_library(clangLex
   ScratchBuffer.cpp
   TokenConcatenation.cpp
   TokenLexer.cpp
+  # ===== Scout ============
+  Scout/Lexer.cpp
+  #=========================
   )
 
 target_link_libraries(clangLex

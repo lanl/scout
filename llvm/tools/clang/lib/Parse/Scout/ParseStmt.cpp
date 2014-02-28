@@ -162,6 +162,38 @@ static ForallMeshStmt::MeshElementType setMeshElementType(tok::TokenKind tkind) 
   }
 }
 
+// SC_TODO: Probably want to rename warning values
+// e.g. 'diag::warn_mesh_has_no_cell_fields'.s..
+void Parser::MeshElementTypeDiag(int MeshElementType,
+    const MeshType *RefMeshType, SourceLocation MeshIdentLoc) {
+  switch(MeshElementType) {
+
+  case ForallMeshStmt::Cells:
+    if (! RefMeshType->hasCellData())
+      Diag(MeshIdentLoc, diag::warn_mesh_has_no_cell_fields);
+    break;
+
+  case ForallMeshStmt::Vertices:
+    if (! RefMeshType->hasVertexData())
+      Diag(MeshIdentLoc, diag::warn_mesh_has_no_vertex_fields);
+    break;
+
+  case ForallMeshStmt::Edges:
+    if (! RefMeshType->hasEdgeData())
+      Diag(MeshIdentLoc, diag::warn_mesh_has_no_edge_fields);
+    break;
+
+  case ForallMeshStmt::Faces:
+    if (! RefMeshType->hasFaceData())
+      Diag(MeshIdentLoc, diag::warn_mesh_has_no_face_fields);
+    break;
+
+  default:
+    llvm_unreachable("unhandled/unrecognized mesh element type in case");
+    break;
+  }
+}
+
 // +---- Parse a forall statement operating on a mesh ------------------------+
 //
 //  forall [cells|edges|vertices|faces] element-id in mesh-instance {
@@ -265,34 +297,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
   ConsumeToken();
 
 
-  // SC_TODO - we might want to lift this block of code out into a
-  // function where we can reuse it. 
-  switch(MeshElementType) {
-
-    case ForallMeshStmt::Cells:
-      if (! RefMeshType->hasCellData())
-        Diag(MeshIdentLoc, diag::warn_mesh_has_no_cell_fields);
-      break;
-
-    case ForallMeshStmt::Vertices:
-      if (! RefMeshType->hasVertexData())
-        Diag(MeshIdentLoc, diag::warn_mesh_has_no_vertex_fields);
-      break;
-
-    case ForallMeshStmt::Edges:
-      if (! RefMeshType->hasEdgeData())
-        Diag(MeshIdentLoc, diag::warn_mesh_has_no_edge_fields);
-      break;
-
-    case ForallMeshStmt::Faces:
-      if (! RefMeshType->hasFaceData())
-        Diag(MeshIdentLoc, diag::warn_mesh_has_no_face_fields);
-      break;
-
-    default:
-      llvm_unreachable("unhandled/unrecognized mesh element type in case");
-      break;
-  }
+  MeshElementTypeDiag(MeshElementType, RefMeshType, MeshIdentLoc);
 
   // Now check to see if we have a predicate/conditional expression...
   //
@@ -524,36 +529,7 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
 
   ConsumeToken();
 
-
-  // SC_TODO - we might want to lift this block of code out into a
-  // function where we can reuse it.  Probably want to rename warning
-  // values as well -- e.g. 'diag::warn_mesh_has_no_cell_fields'...
-  switch(MeshElementType) {
-
-    case ForallMeshStmt::Cells:
-      if (! RefMeshType->hasCellData())
-        Diag(MeshIdentLoc, diag::warn_mesh_has_no_cell_fields);
-      break;
-
-    case ForallMeshStmt::Vertices:
-      if (! RefMeshType->hasVertexData())
-        Diag(MeshIdentLoc, diag::warn_mesh_has_no_vertex_fields);
-      break;
-
-    case ForallMeshStmt::Edges:
-      if (! RefMeshType->hasEdgeData())
-        Diag(MeshIdentLoc, diag::warn_mesh_has_no_edge_fields);
-      break;
-
-    case ForallMeshStmt::Faces:
-      if (! RefMeshType->hasFaceData())
-        Diag(MeshIdentLoc, diag::warn_mesh_has_no_face_fields);
-      break;
-
-    default:
-      llvm_unreachable("unhandled/unrecognized mesh element type in case");
-      break;
-  }
+  MeshElementTypeDiag(MeshElementType, RefMeshType, MeshIdentLoc);
 
   // Next we should find the 'to' keyword that is then followed by the 
   // the identifier for a render target. 

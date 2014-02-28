@@ -23,14 +23,15 @@ add_clang_library(clangDriver
   # +===== Scout ============================================================+
   Scout/Tools.cpp
   # +========================================================================+
-  )
 
-add_dependencies(clangDriver
-  ClangAttrList
+  DEPENDS
   ClangCC1AsOptions
+  ClangDriverOptions
+  # +===== Scout ============================================================+
+  ClangAttrList
   ClangDiagnosticCommon
   ClangDiagnosticDriver
-  ClangDriverOptions
+  # +========================================================================+
   )
 
 target_link_libraries(clangDriver

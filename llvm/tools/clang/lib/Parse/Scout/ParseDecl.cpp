@@ -392,7 +392,7 @@ void Parser::ParseImageBracketDeclarator(Declarator &D) {
 //  up = float3(-1.0, 0.0, 0.0);
 //};
 
-
+#if 0
 StmtResult
 Parser::ParseCameraDeclaration(StmtVector &Stmts,
                                bool OnlyStatement){
@@ -562,4 +562,4 @@ Parser::ParseCameraDeclaration(StmtVector &Stmts,
 
   return ParseStatementOrDeclaration(Stmts, OnlyStatement);
 }
-
+#endif

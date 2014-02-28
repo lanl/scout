@@ -27,8 +27,6 @@
 #include "llvm/ADT/StringSwitch.h"
 using namespace clang;
 
-
-
 //===----------------------------------------------------------------------===//
 // C99 6.7: Declarations.
 //===----------------------------------------------------------------------===//
@@ -1294,7 +1292,7 @@ void Parser::ProhibitCXX11Attributes(ParsedAttributesWithRange &attrs) {
   AttributeList *AttrList = attrs.getList();
   while (AttrList) {
     if (AttrList->isCXX11Attribute()) {
-      Diag(AttrList->getLoc(), diag::err_attribute_not_type_attr)
+      Diag(AttrList->getLoc(), diag::err_attribute_not_type_attr) 
         << AttrList->getName();
       AttrList->setInvalid();
     }
@@ -1686,7 +1684,7 @@ Parser::DeclGroupPtrTy Parser::ParseDeclGroup(ParsingDeclSpec &DS,
     DeclsInGroup.push_back(FirstDecl);
 
   bool ExpectSemi = Context != Declarator::ForContext;
-
+  
   // If we don't have a comma, it is either the end of the list (a ';') or an
   // error, bail out.
   SourceLocation CommaLoc;
@@ -2059,7 +2057,7 @@ static bool isValidAfterIdentifierInDeclarator(const Token &T) {
 ///
 bool Parser::ParseImplicitInt(DeclSpec &DS, CXXScopeSpec *SS,
                               const ParsedTemplateInfo &TemplateInfo,
-                              AccessSpecifier AS, DeclSpecContext DSC,
+                              AccessSpecifier AS, DeclSpecContext DSC, 
                               ParsedAttributesWithRange &Attrs) {
   assert(Tok.is(tok::identifier) && "should have identifier");
 
@@ -2124,7 +2122,7 @@ bool Parser::ParseImplicitInt(DeclSpec &DS, CXXScopeSpec *SS,
       case DeclSpec::TST_class:
         TagName="class" ; FixitTagName = "class " ;TagKind=tok::kw_class ;break;
     }
-    
+
     if (TagName) {
       IdentifierInfo *TokenName = Tok.getIdentifierInfo();
       LookupResult R(Actions, TokenName, SourceLocation(),
@@ -4214,7 +4212,7 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
     // Debugger support
   case tok::kw___unknown_anytype:
 
-  // type-specifiers
+    // type-specifiers
   case tok::kw_short:
   case tok::kw_long:
   case tok::kw___int64:
@@ -4797,8 +4795,7 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
   if (isScoutLang()) {
     DeclSpec& DS = D.getMutableDeclSpec();
     DeclSpec::TST tst = DS.getTypeSpecType();
-    // OVERHAUL/DEBUG: replaced TST_typename with TST_uniform mesh...     
-    if (Tok.is(tok::l_square) && tst == DeclSpec::TST_typename) {
+    if (Tok.is(tok::l_square) && DeclSpec::DeclSpec::isMeshDeclRep(tst)) {
       ParsedType parsedType = DS.getRepAsType();
       const MeshType* MT = dyn_cast<MeshType>(parsedType.get().getTypePtr());
       if (MT) {
@@ -5208,7 +5205,7 @@ void Parser::ParseFunctionDeclarator(Declarator &D,
     EndLoc = RParenLoc;
   } else {
     if (Tok.isNot(tok::r_paren))
-      ParseParameterDeclarationClause(D, FirstArgAttrs, ParamInfo,
+      ParseParameterDeclarationClause(D, FirstArgAttrs, ParamInfo, 
                                       EllipsisLoc);
     else if (RequiresArg)
       Diag(Tok, diag::err_argument_required_after_attribute);
@@ -5489,12 +5486,12 @@ void Parser::ParseParameterDeclarationClause(
     }
     // +======================================================================+
 
-    // Parse the declarator.  This is "PrototypeContext" or
-    // "LambdaExprParameterContext", because we must accept either
+    // Parse the declarator.  This is "PrototypeContext" or 
+    // "LambdaExprParameterContext", because we must accept either 
     // 'declarator' or 'abstract-declarator' here.
-    Declarator ParmDeclarator(DS,
+    Declarator ParmDeclarator(DS, 
               D.getContext() == Declarator::LambdaExprContext ?
-                                  Declarator::LambdaExprParameterContext :
+                                  Declarator::LambdaExprParameterContext : 
                                                 Declarator::PrototypeContext);
     ParseDeclarator(ParmDeclarator);
 
@@ -5520,7 +5517,7 @@ void Parser::ParseParameterDeclarationClause(
 
       // Inform the actions module about the parameter declarator, so it gets
       // added to the current scope.
-      Decl *Param = Actions.ActOnParamDeclarator(getCurScope(),
+      Decl *Param = Actions.ActOnParamDeclarator(getCurScope(), 
                                                        ParmDeclarator);
       // Parse the default argument, if any. We parse the default
       // arguments in all dialects; the semantic analysis in
@@ -5580,7 +5577,7 @@ void Parser::ParseParameterDeclarationClause(
       }
 
       ParamInfo.push_back(DeclaratorChunk::ParamInfo(ParmII,
-                                          ParmDeclarator.getIdentifierLoc(),
+                                          ParmDeclarator.getIdentifierLoc(), 
                                           Param, DefArgToks));
     }
 

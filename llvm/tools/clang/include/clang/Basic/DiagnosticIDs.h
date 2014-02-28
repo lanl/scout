@@ -33,7 +33,10 @@ namespace clang {
       DIAG_START_SERIALIZATION = DIAG_START_FRONTEND        +  100,
       DIAG_START_LEX           = DIAG_START_SERIALIZATION   +  120,
       DIAG_START_PARSE         = DIAG_START_LEX             +  300,
+      // +===== Scout ============================================================+
+      //DIAG_START_AST           = DIAG_START_PARSE           +  400,
       DIAG_START_AST           = DIAG_START_PARSE           +  600,
+      // +========================================================================+
       DIAG_START_COMMENT       = DIAG_START_AST             +  100,
       DIAG_START_SEMA          = DIAG_START_COMMENT         +  100,
       DIAG_START_ANALYSIS      = DIAG_START_SEMA            + 3000,

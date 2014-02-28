@@ -6,4 +6,6 @@ add_subdirectory(IPO)
 add_subdirectory(Vectorize)
 add_subdirectory(Hello)
 add_subdirectory(ObjCARC)
+# +===== Scout ===================+
 add_subdirectory(Scout)
+# +===============================+

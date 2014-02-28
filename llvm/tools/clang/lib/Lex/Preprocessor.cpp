@@ -64,7 +64,9 @@ Preprocessor::Preprocessor(IntrusiveRefCntPtr<PreprocessorOptions> PPOpts,
       FileMgr(Headers.getFileMgr()), SourceMgr(SM), HeaderInfo(Headers),
       TheModuleLoader(TheModuleLoader), ExternalSource(0),
       Identifiers(opts, IILookup),
-      ScoutIdentifiers(LangOptions()), // +===== Scout ======================+
+      // +===== Scout ===========================================================+
+      ScoutIdentifiers(LangOptions()),
+      // +=======================================================================+
       IncrementalProcessing(IncrProcessing),
       CodeComplete(0), CodeCompletionFile(0), CodeCompletionOffset(0),
       LastTokenWasAt(false), ModuleImportExpectsIdentifier(false),
