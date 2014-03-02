@@ -226,11 +226,8 @@ llvm::DIType CGDebugInfo::CreateType(const UniformMeshType *Ty) {
   // declaration.  The completeType(), completeRequiredType(), and
   // completeClassData() callbacks will handle promoting the declaration
   // to a definition.
-  if (T || (DebugKind <= CodeGenOptions::LimitedDebugInfo &&
-    // Under -flimit-debug-info emit only a declaration unless the type is
-    // required to be complete.
-    !MD->isCompleteDefinitionRequired() && CGM.getLangOpts().CPlusPlus)) {
 
+  if (T){
     llvm::DIDescriptor FDContext =
       getContextDescriptor(cast<Decl>(MD->getDeclContext()));
     if (!T)
@@ -431,10 +428,7 @@ llvm::DIType CGDebugInfo::CreateType(const RectilinearMeshType *Ty) {
   // declaration.  The completeType(), completeRequiredType(), and
   // completeClassData() callbacks will handle promoting the declaration
   // to a definition.
-  if (T || (DebugKind <= CodeGenOptions::LimitedDebugInfo &&
-     // Under -flimit-debug-info emit only a declaration unless the type is
-    // required to be complete.
-    !MD->isCompleteDefinitionRequired() && CGM.getLangOpts().CPlusPlus)) {
+  if (T) {
 
     llvm::DIDescriptor FDContext =
       getContextDescriptor(cast<Decl>(MD->getDeclContext()));
@@ -637,11 +631,7 @@ llvm::DIType CGDebugInfo::CreateType(const StructuredMeshType *Ty) {
   // declaration.  The completeType(), completeRequiredType(), and
   // completeClassData() callbacks will handle promoting the declaration
   // to a definition.
-  if (T || (DebugKind <= CodeGenOptions::LimitedDebugInfo &&
-     // Under -flimit-debug-info emit only a declaration unless the type is
-    // required to be complete.
-    !MD->isCompleteDefinitionRequired() && CGM.getLangOpts().CPlusPlus)) {
-
+  if (T) {
     llvm::DIDescriptor FDContext =
       getContextDescriptor(cast<Decl>(MD->getDeclContext()));
     if (!T)
@@ -846,11 +836,7 @@ llvm::DIType CGDebugInfo::CreateType(const UnstructuredMeshType *Ty) {
   // declaration.  The completeType(), completeRequiredType(), and
   // completeClassData() callbacks will handle promoting the declaration
   // to a definition.
-  if (T || (DebugKind <= CodeGenOptions::LimitedDebugInfo &&
-     // Under -flimit-debug-info emit only a declaration unless the type is
-    // required to be complete.
-    !MD->isCompleteDefinitionRequired() && CGM.getLangOpts().CPlusPlus)) {
-
+  if (T) {
     llvm::DIDescriptor FDContext =
       getContextDescriptor(cast<Decl>(MD->getDeclContext()));
     if (!T)
