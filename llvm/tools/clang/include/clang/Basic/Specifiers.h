@@ -34,7 +34,7 @@ namespace clang {
   
   /// \brief Specifies the kind of type.
   enum TypeSpecifierType {
-    TST_unspecified = 0,
+    TST_unspecified,
     TST_void,
     TST_char,
     TST_wchar,        // C++ wchar_t

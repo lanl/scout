@@ -48,8 +48,7 @@ public:
   virtual ~ASTMutationListener();
 
   /// \brief A new TagDecl definition was completed.
-  virtual void
-  CompletedTagDefinition(const TagDecl *D) { }
+  virtual void CompletedTagDefinition(const TagDecl *D) { }
 
   // +===== Scout ============================================================+
   /// \brief A new MeshDecl definition was completed.

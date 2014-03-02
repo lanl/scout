@@ -255,10 +255,10 @@ class CodeGenModule : public CodeGenTypeCache {
   /// VTables - Holds information about C++ vtables.
   CodeGenVTables VTables;
 
+  CGObjCRuntime* ObjCRuntime;
   // ===== Scout ======================
   CGScoutRuntime* ScoutRuntime;
   // ==================================
-  CGObjCRuntime* ObjCRuntime;
   CGOpenCLRuntime* OpenCLRuntime;
   CGCUDARuntime* CUDARuntime;
   CGDebugInfo* DebugInfo;

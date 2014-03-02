@@ -10,9 +10,6 @@
 /// \file
 /// \brief Implements serialization for Statements and Expressions.
 ///
-//
-//  This file implements serialization for Statements and Expressions.
-//
 //===----------------------------------------------------------------------===//
 
 #include "clang/Serialization/ASTWriter.h"

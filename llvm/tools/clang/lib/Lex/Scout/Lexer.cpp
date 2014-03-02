@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyright (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2014, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -52,37 +52,54 @@
  * ##### 
  */ 
 
-#include "clang/Sema/Sema.h"
-#include "clang/Sema/SemaInternal.h"
-#include "clang/AST/Decl.h"
+#include "clang/Lex/Lexer.h"
+#include "clang/Basic/SourceManager.h"
+#include "clang/Lex/Preprocessor.h"
 using namespace clang;
-using namespace sema;
 
-#if 0
-// Convert mesh struct rep to mesh decl - used to interface with Scout LLDB debugger.
-void ScoutLookupMesh( NamedDecl *D, Sema &S) {
+// Enable our keywords only when the file being lexed from is a ".sc", or
+// ".sch" file -- this extra check is necessary because we might be including
+// a C++ header from a .sc file which would otherwise pick up the Scout
+// keyword extensions, potentially causing conflicts...
+void Lexer::ScoutEnable(Preprocessor &PP) {
+  std::string bufferName = PP.getSourceManager().getBufferName(FileLoc);
+  std::string ext;
 
-  if(ValueDecl* vd = dyn_cast<ValueDecl>(D)){
-
-    // SC_TODO -- Refactor...  Need to revisit this... 
-    if(const RecordType* rt =
-        dyn_cast<RecordType>(vd->getType().getNonReferenceType().getTypePtr())){
-      RecordDecl* rd = rt->getDecl();
-      RecordDecl::field_iterator itr = rd->field_begin();
-      if(itr != rd->field_end() && itr->getName().str() == "mesh_flags__"){
-        //UniformMeshDecl* MD =
-        //    UniformMeshDecl::
-        //    CreateFromStructRep(S.Context,
-        //        clang::Decl::UniformMesh,
-        //        D->getDeclContext(),
-        //        &S.Context.Idents.get(rd->getName()),
-        //       rd);
-        //
-        //UniformMeshType* mt = new UniformMeshType(MD); //SC_TDOO: possible alignment issue
-        //
-        //vd->setType(S.Context.getLValueReferenceType(QualType(mt, 0)));
-      }
+  //bool valid = false;
+  for(int i = bufferName.length() - 1; i >= 0; --i) {
+    if (bufferName[i] == '.') {
+      //valid = true;
+      break;
     }
+    ext.insert(0, 1, bufferName[i]);
+  }
+  // SC_TODO : Why do we need this but Clang doesn't?
+  // and why the special case for buffername Parse???
+  if (bufferName != "Parse" && ext != "sc" && ext != "sch" &&
+      ext != "scpp" && "schpp") {
+    LangOpts.ScoutC = false;
+    LangOpts.ScoutCPlusPlus = false;
+  } else {
+    LangOpts.ScoutC         = true;
+    LangOpts.ScoutCPlusPlus = true;
   }
 }
-#endif
+
+// If we are lexing from a non-Scout file, then we need to treat Scout
+// keywords as ordinary identifiers…
+void Lexer::ScoutKeywordsAsIdentifiers(Token &Result) {
+  IdentifierInfo* NII = 0;
+  switch(Result.getKind()) {
+  #define SCOUT_KEYWORD(X) case tok::kw_##X: \
+    NII = PP->getScoutIdentifier(#X);        \
+    break;
+  #include "clang/Basic/TokenKinds.def"
+  default:
+    break;
+  }
+  if (NII) {
+    Result.setIdentifierInfo(NII);
+    Result.setKind(tok::identifier);
+  }
+}
+
