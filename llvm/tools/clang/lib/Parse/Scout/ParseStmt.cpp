@@ -217,7 +217,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
   // Upon entry we expect the input token to be on the 'forall'
   // keyword -- we'll throw an assertion in just to make sure
   // we help maintain consistency from the caller(s).
-  assert(Tok.getKind() == tok::kw_forall && "epxected input token to be 'forall'");
+  assert(Tok.getKind() == tok::kw_forall && "expected input token to be 'forall'");
 
   // Swallow the forall token...
   SourceLocation ForallKWLoc = ConsumeToken();
