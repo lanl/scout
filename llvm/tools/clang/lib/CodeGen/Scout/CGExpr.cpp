@@ -35,7 +35,38 @@ static const char *IndexNames[] = { "x", "y", "z"};
 // strings.
 static char IRNameStr[160];
 
+namespace{
 
+// note: these functions were copied from Clang CGExpr.cpp
+
+llvm::Value *
+EmitBitCastOfLValueToProperType(CodeGenFunction &CGF,
+                                llvm::Value *V, llvm::Type *IRType,
+                                StringRef Name = StringRef()) {
+  unsigned AS = cast<llvm::PointerType>(V->getType())->getAddressSpace();
+  return CGF.Builder.CreateBitCast(V, IRType->getPointerTo(AS), Name);
+}
+
+LValue EmitGlobalVarDeclLValue(CodeGenFunction &CGF,
+    const Expr *E, const VarDecl *VD) {
+  llvm::Value *V = CGF.CGM.GetAddrOfGlobalVar(VD);
+  llvm::Type *RealVarTy = CGF.getTypes().ConvertTypeForMem(VD->getType());
+  V = EmitBitCastOfLValueToProperType(CGF, V, RealVarTy);
+  CharUnits Alignment = CGF.getContext().getDeclAlign(VD);
+  QualType T = E->getType();
+  LValue LV;
+  if (VD->getType()->isReferenceType()) {
+    llvm::LoadInst *LI = CGF.Builder.CreateLoad(V);
+    LI->setAlignment(Alignment.getQuantity());
+    V = LI;
+    LV = CGF.MakeNaturalAlignAddrLValue(V, T);
+  } else {
+    LV = CGF.MakeAddrLValue(V, E->getType(), Alignment);
+  }
+  return LV;
+}
+
+} // end namespace
 
 LValue
 CodeGenFunction::EmitColorDeclRefLValue(const NamedDecl *ND) {
@@ -72,15 +103,27 @@ CodeGenFunction::EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND) {
 LValue
 CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index) {
 
-  DeclRefExpr *D = dyn_cast<DeclRefExpr>(E->getBase());
+  DeclRefExpr* Base = cast<DeclRefExpr>(E->getBase());
 
   // inside forall we are referencing the implicit mesh e.g. 'c' in forall cells c in mesh
-  if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(D->getDecl())) {
+  if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(Base->getDecl())) {
     if(IMPD->isMesh()) { // double check that it is really is a ImplicitMeshParamDecl
       // lookup underlying mesh instead of implicit mesh
-      llvm::Value *V = LocalDeclMap.lookup(IMPD->getMeshVarDecl());
-      // need underlying mesh to make LValue
-      LValue BaseLV  = MakeAddrLValue(V, E->getType());
+      VarDecl* VD = IMPD->getMeshVarDecl();
+      LValue BaseLV;
+
+      if (VD->hasLinkage() || VD->isStaticDataMember()) {
+        // If it's thread_local, emit a call to its wrapper function instead.
+        if (VD->getTLSKind() == VarDecl::TLS_Dynamic)
+          BaseLV = CGM.getCXXABI().EmitThreadLocalDeclRefExpr(*this, Base);
+        else
+          BaseLV = EmitGlobalVarDeclLValue(*this, Base, VD);
+      }
+      else{
+        llvm::Value *V = LocalDeclMap.lookup(VD);
+        // need underlying mesh to make LValue
+        BaseLV  = MakeAddrLValue(V, E->getType());
+      }
       // assume we have already checked that we are working w/ a mesh and cast to MeshField Decl
       return EmitLValueForMeshField(BaseLV, cast<MeshFieldDecl>(E->getMemberDecl()), Index);
     }
