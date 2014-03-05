@@ -39,7 +39,6 @@ Our primary development platforms are Mac OS X and several varieties
 of Linux distributions.  A list of Linux releases we use as part of
 our continuous integration development process are listed below:
 
-   * **Scientific Linux 6.2** -- See https://www.scientificlinux.org
    * **Fedora 17** -- See http://fedoraproject.org
    * **Ubuntu 12.04** -- See http://www.ubuntu.com 
 
@@ -55,6 +54,31 @@ While there are several package distribution management systems for
 Mac OS (e.g. macports) we typically do not use them in favor of
 building and installing from source.
 
+Ubuntu 12.04 Requirements
+---------------------
+
+A number of other required packages need to be installed:
+ 
+    $ apt-get install build-essential git libsdl1.2dev freeglut3 freeglut3-dev xorg xorg-dev
+
+LLVM requires gcc 4.7 which does not ship with Ubuntu 12.04 but can
+be added via:
+
+    $ add-apt-repository ppa:ubuntu-toolchain-r/test
+
+    $ apt-get update
+
+    $ apt-get install gcc-4.7 g++-4.7
+
+    $ update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.6 60 --slave /usr/bin/g++ g++ /usr/bin/g++-4.6 
+
+    $ update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.7 40 --slave /usr/bin/g++ g++ /usr/bin/g++-4.7 
+
+    $ update-alternatives --config gcc
+
+    $ > select gcc-4.7 (option 2)
+
+Other required packages need to be build from source, these include CMake and GLFW3
 
 CMake
 -------------
@@ -82,6 +106,8 @@ strongly recommended, packages include:
     rendering during execution. 
 
     .. todo:: Since we're using a one-off version of SDL we really need to explore other options or find a more easily downloaded (up-to-date) version of SDL... 
+
+  * **GLFW3**. Library to replace use of SDL.  See http://www.glfw.org/
 
   * **OpenGL 2.X or higher**.  We *strongly* recommend having access
     to a system with a GPU capable of supporting hardware accelerated
