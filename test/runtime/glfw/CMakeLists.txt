@@ -88,6 +88,7 @@ if (SCOUT_ENABLE_GLFW)
         message(" + added runtime regression GLFW test entry: runtime_glfw_${tname}")
       endif()
       if ("${CMAKE_SYSTEM}" MATCHES "Linux")
+        #GL and GLU are added here as findOpenGL is broken on Ubuntu
         target_link_libraries(runtime_glfw_${tname} ${LIBS} GL GLU X11 Xxf86vm Xrandr pthread Xi rt)
       else()
         target_link_libraries(runtime_glfw_${tname} ${LIBS})
