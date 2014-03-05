@@ -78,6 +78,32 @@ static bool
 isSafeToConvert(QualType T, CodeGenTypes &CGT,
                 llvm::SmallPtrSet<const MeshDecl*, 16> &AlreadyChecked);
 
+// Add mesh field informaiton to the given meta data vector.
+// This should be call for each mesh location (cells, vertices,
+// etc.) with the 'location' name providing the unique location
+// kind as a string.
+void CodeGenTypes::AddMeshFieldMetadata(const char *locationName,
+                                 FieldDeclVector Fields,
+                                 MetadataVector &MD) {
+  if (Fields.size() == 0)
+    return;
+  
+  llvm::MDString *MDName = llvm::MDString::get(getLLVMContext(), locationName);
+  MD.push_back(MDName);
+  
+  FieldDeclVector::iterator it = Fields.begin(), end = Fields.end();
+  MetadataVector FieldInfo;    
+  for(; it != end; ++it) {
+    QualType QT = (*it)->getType();
+    MDName = llvm::MDString::get(getLLVMContext(), QT.getAsString());
+    FieldInfo.push_back(MDName);
+    MDName = llvm::MDString::get(getLLVMContext(), (*it)->getName());
+    FieldInfo.push_back(MDName);
+    llvm::Value *FieldsMD = llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(FieldInfo));
+    MD.push_back(FieldsMD);
+    FieldInfo.clear();
+  }
+}
 
 // Handle the cases for converting the following scout mesh
 // types:
@@ -102,8 +128,12 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
   // relevant to the mesh so we can use it within LLVM during
   // optimization and code generation.
   llvm::NamedMDNode *MeshMD;
-  MeshMD = CGM.getModule().getOrInsertNamedMetadata("scout.meshes");
+  MeshMD = CGM.getModule().getOrInsertNamedMetadata("scout.meshmd");
   SmallVector<llvm::Value*, 16> MeshInfoMD;
+
+  // Mesh type "name"... 
+  llvm::MDString *MDName = llvm::MDString::get(getLLVMContext(), meshName);
+  MeshInfoMD.push_back(MDName);
 
   // Metadata - mesh type (uniform, rectilinear, etc).
   llvm::MDString *MDKind;
@@ -117,10 +147,8 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
     MDKind = llvm::MDString::get(getLLVMContext(), "unstructured");
   else
     llvm_unreachable("unknown mesh type encountered!");
-  
   MeshInfoMD.push_back(MDKind);
-  llvm::MDString *MDName = llvm::MDString::get(getLLVMContext(), meshName);
-  MeshInfoMD.push_back(MDName);
+  
   // Metadata - mesh dims.   
   llvm::IntegerType *Int32Ty = llvm::Type::getInt32Ty(getLLVMContext());
   llvm::Value *MDRank = llvm::ConstantInt::get(Int32Ty, rank);
@@ -130,11 +158,11 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
   MeshDecl::field_iterator it     = mesh->field_begin();
   MeshDecl::field_iterator it_end = mesh->field_end();
 
-  std::vector< llvm::Type * > eltTys;  
-  std::vector<llvm::Type*> CellFields; 
-  std::vector<llvm::Type*> VertexFields;
-  std::vector<llvm::Type*> EdgeFields;
-  std::vector<llvm::Type*> FaceFields;     
+  std::vector<llvm::Type*> eltTys;
+  FieldDeclVector CellFields; 
+  FieldDeclVector VertexFields;
+  FieldDeclVector EdgeFields;
+  FieldDeclVector FaceFields;     
 
   for( ; it != it_end; ++it) {
     // Do not generate code for implicit mesh member variables.
@@ -145,25 +173,25 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
       // Keep track of each field so we can transform each
       // into a pointer (see below where struct is created).
       eltTys.push_back(llvm::PointerType::getUnqual(ty));
-
-      MDName = llvm::MDString::get(getLLVMContext(), it->getName());          
-      llvm::Value *MField = llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(MDName));
-      MeshInfoMD.push_back(MField);        
-
       // Create field metadata entry. 
       if (it->isCellLocated()) {
-        CellFields.push_back(ty);
+        CellFields.push_back(*it);
       } else if (it->isVertexLocated()) {
-        VertexFields.push_back(ty);
+        VertexFields.push_back(*it);
       } else if (it->isEdgeLocated()) {
-        EdgeFields.push_back(ty);
+        EdgeFields.push_back(*it);
       } else if (it->isFaceLocated()) {
-        FaceFields.push_back(ty);
+        FaceFields.push_back(*it);
       } else {
         llvm_unreachable("field has unknown location!");
       }
     }
   }
+
+  AddMeshFieldMetadata("cells",    CellFields,   MeshInfoMD);
+  AddMeshFieldMetadata("vertices", VertexFields, MeshInfoMD);
+  AddMeshFieldMetadata("edges",    EdgeFields,   MeshInfoMD);
+  AddMeshFieldMetadata("faces",    FaceFields,   MeshInfoMD);    
 
   MeshMD->addOperand(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(MeshInfoMD)));
   

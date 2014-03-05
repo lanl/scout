@@ -2361,6 +2361,7 @@ public:
    IdentifierInfo* getRefVarInfo() {
      return LoopRefVarInfo;
    }
+  
    const IdentifierInfo* getRefElementInfo() const {
     return LoopRefVarInfo;
   }

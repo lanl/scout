@@ -1389,8 +1389,8 @@ Parser::ParseSimpleDeclaration(StmtVector &Stmts, unsigned Context,
                                bool RequireSemi, ForRangeInit *FRI) {
   // ===== Scout ================================+
   // Clang normally assumes that we are parsing a TagDecl, but here
-  // we have to check if we are parasing a mesh declaration and omit
-  // one of the paths followed below if so
+  // we have to check if we are parasing a mesh declaration and avoid
+  // one of the paths below.
   bool isMeshDecl;
   
   if(isScoutLang()){

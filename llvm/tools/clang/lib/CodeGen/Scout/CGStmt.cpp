@@ -176,6 +176,11 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
   unsigned int rank = S.getMeshType()->rankOf();
 
+  // Track down the mesh meta data. 
+  llvm::NamedMDNode *MeshMD = CGM.getModule().getNamedMetadata("scout.meshmd");
+  assert(MeshMD != 0 && "unable to find module-level mesh metadata!");
+
+  llvm::errs() << "forall mesh type name = '" << S.getMeshVarDecl()->getTypeSourceInfo()->getType().getTypePtr()->getTypeClassName() << "'\n";
   ResetVars();
 
   //need a marker for start of Forall for CodeExtraction
@@ -205,7 +210,6 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
   // Extract Blocks to function and replace w/ call to function
   ExtractRegion(entry, exit, "ForallMeshFunction");
-
 }
 
 

@@ -77,29 +77,6 @@ CodeGenFunction::EmitColorDeclRefLValue(const NamedDecl *ND) {
   return MakeAddrLValue(ep, VD->getType(), Alignment);
 }
 
-
-/*
-LValue
-CodeGenFunction::EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND) {
-  CharUnits Alignment = getContext().getDeclAlign(ND);
-  for(unsigned i = 0; i < 3; ++i) {
-    const IdentifierInfo* ii = CurrentForAllArrayStmt->getInductionVar(i);
-    if (!ii)
-      break;
-
-    if (ii->getName().equals(ND->getName())) {
-      const ValueDecl *VD = cast<ValueDecl>(ND);
-      return MakeAddrLValue(ScoutIdxVars[i], VD->getType(), Alignment);
-    }
-
-  }
-  // SC_TODO -- what happens if we fall through here?  For now we'll
-  // bail with an assertion.  Overall, the logic seems a bit screwy
-  // to me here...
-  assert(false && "missed conditional case in emiting forall array lval.");
-}
-*/
-
 LValue
 CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index) {
 
@@ -118,22 +95,23 @@ CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index) {
           BaseLV = CGM.getCXXABI().EmitThreadLocalDeclRefExpr(*this, Base);
         else
           BaseLV = EmitGlobalVarDeclLValue(*this, Base, VD);
-      }
-      else{
+      }else {
         llvm::Value *V = LocalDeclMap.lookup(VD);
         // need underlying mesh to make LValue
         BaseLV  = MakeAddrLValue(V, E->getType());
       }
       // assume we have already checked that we are working w/ a mesh and cast to MeshField Decl
-      return EmitLValueForMeshField(BaseLV, cast<MeshFieldDecl>(E->getMemberDecl()), Index);
+      MeshFieldDecl* MFD = cast<MeshFieldDecl>(E->getMemberDecl());
+      return EmitLValueForMeshField(BaseLV, cast<MeshFieldDecl>(MFD), Index);
     }
   }
+  
   llvm_unreachable("Cannot lookup underlying mesh");
 }
 
-LValue
-CodeGenFunction::EmitLValueForMeshField(LValue base,
-                                     const MeshFieldDecl *field, llvm::Value *Index) {
+LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
+                                               const MeshFieldDecl *field,
+                                               llvm::Value *Index) {
 
   // This follows very closely with the details used to
   // emit a record member from the clang code. EmitLValueForField()
@@ -172,7 +150,7 @@ CodeGenFunction::EmitLValueForMeshField(LValue base,
   QualType type = field->getType();
   CharUnits alignment = getContext().getDeclAlign(field);
 
- // FIXME: It should be impossible to have an LValue without alignment for a
+  // FIXME: It should be impossible to have an LValue without alignment for a
   // complete type.
   if (!base.getAlignment().isZero())
     alignment = std::min(alignment, base.getAlignment());

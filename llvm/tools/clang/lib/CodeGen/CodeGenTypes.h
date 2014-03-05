@@ -148,8 +148,13 @@ public:
   llvm::Type *ConvertType(QualType T);
 
   // +==== Scout =============================================================+
+  typedef std::vector<MeshFieldDecl*>   FieldDeclVector;
+  typedef SmallVector<llvm::Value*, 16> MetadataVector;
+  void AddMeshFieldMetadata(const char *locationName,
+                            FieldDeclVector Fields,
+                            MetadataVector &MD);
   llvm::Type *ConvertScoutMeshType(QualType T);
-  llvm::Type *ConvertScoutRenderTargetType(QualType T);  
+  llvm::Type *ConvertScoutRenderTargetType(QualType T);
   // +========================================================================+
 
   /// ConvertTypeForMem - Convert type T into a llvm::Type.  This differs from
