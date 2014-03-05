@@ -104,14 +104,26 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
     }
   }
 
-  // As we lower our mesh types to llvm we also add a set of metadata relevant to the
-  // mesh so we can use it within LLVM during optimization and code generation. 
+  // As we lower our mesh types to llvm we also add a set of metadata
+  // relevant to the mesh so we can use it within LLVM during
+  // optimization and code generation.
   llvm::NamedMDNode *MeshMD;
   MeshMD = CGM.getModule().getOrInsertNamedMetadata("scout.meshes");
   SmallVector<llvm::Value*, 16> MeshInfoMD;
 
   // Metadata - mesh type (uniform, rectilinear, etc).
-  llvm::MDString *MDKind = llvm::MDString::get(getLLVMContext(), meshType->getTypeClassName());
+  llvm::MDString *MDKind;
+  if (meshType->isUniform()) 
+    MDKind = llvm::MDString::get(getLLVMContext(), "uniform");
+  else if (meshType->isRectilinear())
+    MDKind = llvm::MDString::get(getLLVMContext(), "rectilinear");
+  else if (meshType->isStructured())
+    MDKind = llvm::MDString::get(getLLVMContext(), "structured");
+  else if (meshType->isUnstructured())
+    MDKind = llvm::MDString::get(getLLVMContext(), "unstructured");
+  else
+    llvm_unreachable("unknown mesh type encountered!");
+  
   MeshInfoMD.push_back(MDKind);
   llvm::MDString *MDName = llvm::MDString::get(getLLVMContext(), meshName);
   MeshInfoMD.push_back(MDName);
@@ -142,21 +154,22 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
         llvm::APSInt result;
         dims[i]->EvaluateAsInt(result, Context);
         numElts *= result.getSExtValue();
-        eltTys.push_back(llvm::PointerType::getUnqual(ty));
+      }
+      
+      eltTys.push_back(llvm::PointerType::getUnqual(ty));
 
-        if (it->isCellLocated()) {
-          MDName = llvm::MDString::get(getLLVMContext(), it->getName());          
-          llvm::Value *MField = llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(MDName));
-          MeshInfoMD.push_back(MField);
-        } else if (it->isVertexLocated()) {
+      if (it->isCellLocated()) {
+        MDName = llvm::MDString::get(getLLVMContext(), it->getName());          
+        llvm::Value *MField = llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(MDName));
+        MeshInfoMD.push_back(MField);
+      } else if (it->isVertexLocated()) {
 
-        } else if (it->isEdgeLocated()) {
+      } else if (it->isEdgeLocated()) {
 
-        } else if (it->isFaceLocated()) {
+      } else if (it->isFaceLocated()) {
 
-        } else {
-          llvm_unreachable("field has unknown location!");
-        }
+      } else {
+        llvm_unreachable("field has unknown location!");
       }
     }
   }
