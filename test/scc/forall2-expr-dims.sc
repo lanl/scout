@@ -67,16 +67,18 @@ int main(int argc, char** argv){
 
   MyMesh m[W,(int)sqrt(H)];
   
-  forall cells c in m{
+  forall cells c in m {
     a = 1;
     b = 1;
   }
   
-  forall cells c in m{
+  forall cells c in m { 
     if ((a-b)*(a-b) > 1e-10) {
       printf("bad val %f\n", a);
       assert(false);
     }
+    assert(width() == W);
+    assert(height() == (int)sqrt(H));
   }
 
   return 0;
