@@ -4791,11 +4791,14 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
   DeclaratorScopeObj DeclScopeObj(*this, D.getCXXScopeSpec());
 
   // +===== Scout ============================================================+
+  // old mesh parameter typedef case for example: typedef MyMesh[:] MyMesh2D
+#if 0
   bool hasMeshTypedefParameters = false;
   if (isScoutLang()) {
     DeclSpec& DS = D.getMutableDeclSpec();
     DeclSpec::TST tst = DS.getTypeSpecType();
-    if (Tok.is(tok::l_square) && DeclSpec::DeclSpec::isMeshDeclRep(tst)) {
+    //llvm::errs() << "PDD tst " << tst << "\n";
+    if (Tok.is(tok::l_square) && DeclSpec::isMeshDeclRep(tst)) {
       ParsedType parsedType = DS.getRepAsType();
       const MeshType* MT = dyn_cast<MeshType>(parsedType.get().getTypePtr());
       if (MT) {
@@ -4804,6 +4807,7 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
       }
     }
   }
+#endif
   // +========================================================================+
 
   if (getLangOpts().CPlusPlus && D.mayHaveIdentifier()) {
@@ -4966,31 +4970,22 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
   if (D.hasName() && !D.getNumTypeObjects())
     MaybeParseCXX11Attributes(D);
 
-  // +===== Scout ============================================================+
-  if (isScoutLang()) {
-    DeclSpec& DS = D.getMutableDeclSpec();
-    DeclSpec::TST tst = DS.getTypeSpecType();
-
-    if (tst == DeclSpec::TST_typename) {
-      ParsedType parsedType = DS.getRepAsType();
-      const UniformMeshType* uniMT =
-        dyn_cast<UniformMeshType>(parsedType.get().getTypePtr());
-      if(uniMT && Tok.is(tok::l_square) && !hasMeshTypedefParameters) {
-        ParseMeshVarBracketDeclarator(D);
-        return;
-      }
-      const UnstructuredMeshType* unsMT =
-        dyn_cast<UnstructuredMeshType>(parsedType.get().getTypePtr());
-      if(unsMT && Tok.is(tok::l_paren) && !hasMeshTypedefParameters) {
-        ParseMeshVarParenDeclarator(D);
-        return;
-      }
-    }
-  }
-  // +========================================================================+
-
   while (1) {
     if (Tok.is(tok::l_paren)) {
+
+      // +===== Scout ============================================================+
+      //parse mesh declarator for UnstructuredMeshType
+      if (isScoutLang()) {
+        DeclSpec& DS = D.getMutableDeclSpec();
+        if (DS.getTypeSpecType() == DeclSpec::TST_typename) {
+          if (isa<UnstructuredMeshType>(DS.getRepAsType().get().getTypePtr())) {
+            ParseMeshVarParenDeclarator(D);
+            return;
+          }
+        }
+      }
+      // +========================================================================+
+
       // Enter function-declaration scope, limiting any declarators to the
       // function prototype scope, including parameter declarators.
       ParseScope PrototypeScope(this,
@@ -5605,14 +5600,28 @@ void Parser::ParseBracketDeclarator(Declarator &D) {
   if (CheckProhibitedCXX11Attribute())
     return;
   // +===== Scout ==========================================================+
-  if (getLangOpts().ScoutC || getLangOpts().ScoutCPlusPlus) {
+  if (isScoutLang()) {
     const DeclSpec& DS = D.getDeclSpec();
-    if (DS.getTypeSpecType() == DeclSpec::TST_window) {
+    DeclSpec::TST tst = DS.getTypeSpecType();
+
+    switch(tst) {
+    case DeclSpec::TST_typename: {
+      if (isa<UniformMeshType>(DS.getRepAsType().get().getTypePtr())) {
+        ParseMeshVarBracketDeclarator(D);
+        return;
+      }
+      break;
+    }
+    case DeclSpec::TST_window: {
       ParseWindowBracketDeclarator(D);
       return;
-    } else if (DS.getTypeSpecType() == DeclSpec::TST_image) {
+    }
+    case DeclSpec::TST_image: {
       ParseImageBracketDeclarator(D);
       return;
+    }
+    default:
+      break;
     }
   }
   // +======================================================================+
