@@ -34,10 +34,6 @@ cscope.out
 autoconf/aclocal.m4
 autoconf/autom4te.cache
 .svn
-# Avoid any eclipse files
-.project
-.cproject
-.settings
 # Avoid scout's local build directory. 
 build
 # Avoid any xcode 's local build directory.
