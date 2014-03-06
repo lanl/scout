@@ -179,8 +179,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   // Track down the mesh meta data. 
   llvm::NamedMDNode *MeshMD = CGM.getModule().getNamedMetadata("scout.meshmd");
   assert(MeshMD != 0 && "unable to find module-level mesh metadata!");
-
-  llvm::errs() << "forall mesh type name = '" << S.getMeshVarDecl()->getTypeSourceInfo()->getType().getTypePtr()->getTypeClassName() << "'\n";
+  //llvm::errs() << "forall mesh type name = '" << S.getMeshVarDecl()->getTypeSourceInfo()->getType().getTypePtr()->getTypeClassName() << "'\n";
   ResetVars();
 
   //need a marker for start of Forall for CodeExtraction

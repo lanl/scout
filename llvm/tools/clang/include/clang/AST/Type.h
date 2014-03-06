@@ -1600,6 +1600,11 @@ public:
 
 
   // +===== Scout ==============================================================+
+  bool isMeshType() const;
+  bool isUniformMeshType() const;
+  bool isRectilinearMeshType() const;
+  bool isStructuredMeshType() const;
+  bool isUnstructuredMeshType() const;
   bool isScoutWindowType() const;
   bool isScoutImageType() const;
   bool isScoutRenderTargetType() const;
@@ -5432,6 +5437,29 @@ inline bool Type::isOpenCLSpecificType() const {
 }
 
 // +===== Scout ===========================================================+
+inline bool Type::isMeshType() const {
+  return isUniformMeshType() ||
+         isRectilinearMeshType() ||
+         isStructuredMeshType() ||
+         isUnstructuredMeshType();
+}
+
+inline bool Type::isUniformMeshType() const {
+  return isa<UniformMeshType>(CanonicalType);  
+}
+
+inline bool Type::isRectilinearMeshType() const {
+  return isa<RectilinearMeshType>(CanonicalType);  
+}
+
+inline bool Type::isStructuredMeshType() const {
+  return isa<StructuredMeshType>(CanonicalType);  
+}
+
+inline bool Type::isUnstructuredMeshType() const {
+  return isa<UnstructuredMeshType>(CanonicalType);  
+}
+
 inline bool Type::isScoutWindowType() const {
   return isa<WindowType>(CanonicalType);
 }

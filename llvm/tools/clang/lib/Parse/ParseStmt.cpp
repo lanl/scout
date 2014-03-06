@@ -196,16 +196,6 @@ Retry:
       return ParseLabeledStatement(Attrs);
     }
 
-    // +===== Scout ==========================================================+
-    // SC_TODO -- why are we doing this separately from the standard path
-    // below???
-    //if (isScoutLang()) {
-    //  StmtResult SR;
-    //  if (ParseForallMeshShortcutStatement(Stmts, OnlyStatement, Next, SR))
-    //    return SR;
-    //}
-    // +======================================================================+
-
     // Look up the identifier, and typo-correct it to a keyword if it's not
     // found.
     if (Next.isNot(tok::coloncolon)) {

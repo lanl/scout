@@ -1392,7 +1392,7 @@ Parser::ParseSimpleDeclaration(StmtVector &Stmts, unsigned Context,
   // we have to check if we are parasing a mesh declaration and avoid
   // one of the paths below.
   bool isMeshDecl;
-  
+
   if(isScoutLang()){
     isMeshDecl =
     Tok.is(tok::kw_uniform) ||
@@ -2482,7 +2482,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
     DS.SetRangeStart(Tok.getLocation());
     DS.SetRangeEnd(Tok.getLocation());
   }
-
+      
   bool EnteringContext = (DSContext == DSC_class || DSContext == DSC_top_level);
   bool AttrsLastTime = false;
   ParsedAttributesWithRange attrs(AttrFactory);
@@ -2721,6 +2721,10 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
 
       if (Tok.getAnnotationValue()) {
         ParsedType T = getTypeAnnotation(Tok);
+        // +===== SC_TODO - We need to set the type spec type to uniform mesh, and
+        // other mesh types below... Keying off the is*MeshType() is probably the
+        // easiest route: if (T.get().getTypePtr()->isUniformMeshType())
+        // +========================================================================+
         isInvalid = DS.SetTypeSpecType(DeclSpec::TST_typename, Loc, PrevSpec,
                                        DiagID, T, Policy);
       } else
