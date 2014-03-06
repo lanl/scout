@@ -101,9 +101,9 @@ const MeshType* Parser::LookupMeshType(IdentifierInfo *MeshInfo,
     return 0;
   else {
     const Type* T = VD->getType().getCanonicalType().getTypePtr();
-    if (!isa<MeshType>(T)) {
+    if (!T->isMeshType()) {
       T = VD->getType().getCanonicalType().getNonReferenceType().getTypePtr();
-      if(!isa<MeshType>(T)) {
+      if(!T->isMeshType()) {
         // Should this diag go in sema instead?
         //Diag(MeshLoc, diag::err_forall_not_a_mesh_type) << MeshInfo;
         return 0;
@@ -113,7 +113,7 @@ const MeshType* Parser::LookupMeshType(IdentifierInfo *MeshInfo,
     return const_cast<MeshType *>(cast<MeshType>(T));
   }
 }
-
+#
 
 // ---- LookupMeshType
 //
@@ -128,7 +128,7 @@ const MeshType* Parser::LookupMeshType(VarDecl *VD,
       T = T->getPointeeType().getTypePtr();
     }
 
-    if (! isa<MeshType>(T)) {
+    if (!T->isMeshType()) {
       //Should this diag go in sema instead?
       //Diag(MeshLoc, diag::err_forall_not_a_mesh_type) << MeshInfo;
       return 0;
@@ -626,43 +626,6 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
   return RenderallResult;
 }
 
-
-bool Parser::ParseForallMeshShortcutStatement(StmtVector &Stmts,
-                                bool OnlyStatement,
-                                Token &Next,
-                                StmtResult &SR) {
-
-  //IdentifierInfo* Name = Tok.getIdentifierInfo();
-  //SourceLocation NameLoc = Tok.getLocation();
-
-  /*
-  // scout - detect the forall shorthand, e.g:
-  // m.a[1..width-2][1..height-2] = MAX_TEMP;
-  if(isScoutLang()) {
-    if(Actions.isScoutSource(NameLoc)){
-      if(GetLookAheadToken(1).is(tok::period) &&
-         GetLookAheadToken(2).is(tok::identifier) &&
-         GetLookAheadToken(3).is(tok::l_square)){
-
-        LookupResult
-        Result(Actions, Name, NameLoc, Sema::LookupOrdinaryName);
-
-        Actions.LookupName(Result, getCurScope());
-
-        if(Result.getResultKind() == LookupResult::Found){
-          if(VarDecl* vd = dyn_cast<VarDecl>(Result.getFoundDecl())){
-            if(isa<MeshType>(vd->getType().getCanonicalType().getTypePtr())){
-              SR = ParseForAllShortStatement(Name, NameLoc, vd);
-              return true;
-            }
-          }
-        }
-      }
-    }
-  }
-  */
-  return false;
-}
 
 // +---- Parse a forall statement operating on an array --------------------+
 //

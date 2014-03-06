@@ -2421,9 +2421,6 @@ private:
 
   void ParseMeshVarParenDeclarator(Declarator &D);
 
-  bool ParseForallMeshShortcutStatement(StmtVector &Stmts,
-       bool OnlyStatement, Token &Next, StmtResult &SR);
-
   StmtResult ParseForallArrayStatement(ParsedAttributes &Attr);
 
   void MeshElementTypeDiag(int MeshElementType,

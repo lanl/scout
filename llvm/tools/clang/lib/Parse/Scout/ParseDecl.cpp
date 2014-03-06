@@ -104,14 +104,14 @@ void Parser::ParseMeshDeclaration(ParsingDeclSpec &DS,
 }
 
 // Tail end of mesh variable declaration (the bracket and beyond)
+// for Uniform Mesh
 void Parser::ParseMeshVarBracketDeclarator(Declarator &D) {
 
   // get type info of this object
   DeclSpec& DS = D.getMutableDeclSpec();
 
-  ParsedType parsedType = DS.getRepAsType();
-  const UniformMeshType* umt = dyn_cast<UniformMeshType>(parsedType.get().getTypePtr());
-  if (umt) {
+  const Type *Ty = DS.getRepAsType().get().getCanonicalType().getTypePtr();
+  if (Ty->isUniformMeshType()) {
     BalancedDelimiterTracker T(*this, tok::l_square);
     T.consumeOpen();
 
@@ -166,14 +166,14 @@ void Parser::ParseMeshVarBracketDeclarator(Declarator &D) {
 }
 
 // scout - tail end of mesh variable declaration (the parenthesis and beyond)
+// for Unstructured Mesh
 void Parser::ParseMeshVarParenDeclarator(Declarator &D) {
 
   // get type info of this object
   DeclSpec& DS = D.getMutableDeclSpec();
 
-  ParsedType parsedType = DS.getRepAsType();
-  const UnstructuredMeshType* unsMT = dyn_cast<UnstructuredMeshType>(parsedType.get().getTypePtr());
-  if(unsMT){
+  const Type *Ty = DS.getRepAsType().get().getCanonicalType().getTypePtr();
+  if(Ty->isUnstructuredMeshType()) {
 
     BalancedDelimiterTracker T(*this, tok::l_paren);
     T.consumeOpen();
@@ -211,58 +211,6 @@ void Parser::ParseMeshVarParenDeclarator(Declarator &D) {
   } // else if any other mesh type, do something else
 }
 
-
-
-// parse a mesh parameter declaration
-// assumes on entry that the token stream looks like:
-// [], [:], [::], and that we have already parsed a mesh type
-//
-void Parser::ParseMeshParameterDeclaration(DeclSpec& DS) {
-
-  ParsedType parsedType = DS.getRepAsType();
-  const MeshType* mt;
-  mt = dyn_cast<MeshType>(parsedType.get().getTypePtr());
-  assert(mt && "expected mesh type");
-  const UniformMeshType *umt = reinterpret_cast<const UniformMeshType *>(mt);
-
-  ConsumeBracket();
-  size_t numDims;
-  if(Tok.is(tok::r_square)) {
-    numDims = 1;
-  } else if(Tok.is(tok::colon)) {
-    numDims = 2;
-    ConsumeToken();
-  } else if(Tok.is(tok::coloncolon)) {
-    numDims = 3;
-    ConsumeToken();
-  } else {
-    Diag(Tok, diag::err_expected_mesh_param_token);
-    SkipUntil(tok::r_square);
-    return;
-  }
-
-  if (Tok.isNot(tok::r_square)){
-    Diag(Tok, diag::err_expected_mesh_param_token);
-    SkipUntil(tok::r_square);
-    return;
-  } else {
-    ConsumeBracket();
-  }
-
-  // SC_TODO - does this only handle integer constants?  Would be 
-  // nice to support variable sizes for mesh dimensions. 
-  MeshType::MeshDimensions dims;
-  for(size_t i = 0; i < numDims; ++i) {
-    dims.push_back(Actions.ActOnIntegerConstant(Tok.getLocation(), 0).get());
-  }
-
-  // SC_TODO: possible alignment problem?
-  UniformMeshType* mdt = new UniformMeshType(umt->getDecl());
-
-  mdt->setDimensions(dims);
-  parsedType.set(QualType(mdt, 0));
-  DS.UpdateTypeRep(parsedType);
-}
 
 void Parser::ParseWindowBracketDeclarator(Declarator &D) {
   
@@ -377,189 +325,3 @@ void Parser::ParseImageBracketDeclarator(Declarator &D) {
                 attrs, T.getCloseLocation());
 }
 
-
-
-// scout - parse a camera declaration
-// return true on success
-// these look like:
-
-//camera cam {
-//  near = 70.0;
-//  far = 500.0;
-//  fov = 40.0;
-//  pos = float3(350.0, -100.0, 650.0);
-//  lookat = float3(350.0, 200.0, 25.0);
-//  up = float3(-1.0, 0.0, 0.0);
-//};
-
-#if 0
-StmtResult
-Parser::ParseCameraDeclaration(StmtVector &Stmts,
-                               bool OnlyStatement){
-  ConsumeToken();
-
-  if(Tok.isNot(tok::identifier)){
-    Diag(Tok, diag::err_expected_ident);
-    SkipUntil(tok::semi);
-    ConsumeToken();
-    return StmtError();
-  }
-
-  IdentifierInfo* Name = Tok.getIdentifierInfo();
-  SourceLocation NameLoc = ConsumeToken();
-
-  if(Tok.isNot(tok::l_brace)){
-    Diag(Tok, diag::err_expected_lbrace);
-
-    SkipUntil(tok::r_brace);
-    SkipUntil(tok::semi);
-    ConsumeToken();
-    return StmtError();
-  }
-
-  ConsumeBrace();
-
-  typedef std::map<std::string, Expr*> ArgExprMap;
-
-  ArgExprMap argExprMap;
-
-  bool error = false;
-
-  for(;;){
-    if(Tok.is(tok::r_brace) || Tok.is(tok::eof)){
-      break;
-    }
-
-    if(Tok.isNot(tok::identifier)){
-      Diag(Tok, diag::err_expected_ident);
-
-      SkipUntil(tok::r_brace);
-      SkipUntil(tok::semi);
-      ConsumeToken();
-      return StmtError();
-    }
-
-    IdentifierInfo* Arg = Tok.getIdentifierInfo();
-    SourceLocation ArgLoc = ConsumeToken();
-    (void)ArgLoc; //suppress warning
-
-    if(Tok.isNot(tok::equal)){
-      Diag(Tok, diag::err_expected_equal_after) << Arg->getName();
-
-      SkipUntil(tok::r_brace);
-      SkipUntil(tok::semi);
-      ConsumeToken();
-      return StmtError();
-    }
-
-    ConsumeToken();
-
-    ExprResult argResult = ParseExpression();
-    if(argResult.isInvalid()){
-      error = true;
-    }
-
-    argExprMap[Arg->getName()] = argResult.get();
-
-    if(Tok.isNot(tok::semi)){
-      Diag(Tok, diag::err_expected_semi_camera_arg);
-
-      SkipUntil(tok::r_brace);
-      SkipUntil(tok::semi);
-      ConsumeToken();
-      return StmtError();
-    }
-
-    ConsumeToken();
-  }
-
-  assert(Tok.is(tok::r_brace) && "expected r_brace");
-
-  ConsumeBrace();
-
-  assert(Tok.is(tok::semi) && "expected semi");
-
-  ConsumeToken();
-
-  if(error){
-    return StmtError();
-  }
-
-  std::string code;
-
-  code = "scout::glCamera " + Name->getName().str() + "(";
-
-  // put together the constructor call for glCamera
-
-  ArgExprMap::iterator itr = argExprMap.find("fov");
-  if(itr == argExprMap.end()){
-    Diag(Tok, diag::err_missing_field_window_decl) << "fov";
-    error = true;
-  }
-
-  code += ToCPPCode(itr->second);
-  code += ",";
-
-  itr = argExprMap.find("pos");
-  if(itr == argExprMap.end()){
-    Diag(Tok, diag::err_missing_field_window_decl) << "pos";
-    error = true;
-  }
-
-  code += "scout::glfloat3(";
-  code += ToCPPCode(itr->second) + ".x, ";
-  code += ToCPPCode(itr->second) + ".y, ";
-  code += ToCPPCode(itr->second) + ".z ";
-  code += "), ";
-
-  itr = argExprMap.find("lookat");
-  if(itr == argExprMap.end()){
-    Diag(Tok, diag::err_missing_field_window_decl) << "lookat";
-    error = true;
-  }
-
-  code += "scout::glfloat3(";
-  code += ToCPPCode(itr->second) + ".x, ";
-  code += ToCPPCode(itr->second) + ".y, ";
-  code += ToCPPCode(itr->second) + ".z ";
-  code += "), ";
-
-  itr = argExprMap.find("up");
-  if(itr == argExprMap.end()){
-    Diag(Tok, diag::err_missing_field_window_decl) << "up";
-    error = true;
-  }
-
-  code += "scout::glfloat3(";
-  code += ToCPPCode(itr->second) + ".x, ";
-  code += ToCPPCode(itr->second) + ".y, ";
-  code += ToCPPCode(itr->second) + ".z ";
-  code += "), ";
-
-  itr = argExprMap.find("near");
-  if(itr == argExprMap.end()){
-    Diag(Tok, diag::err_missing_field_window_decl) << "near";
-    error = true;
-  }
-
-  code += ToCPPCode(itr->second);
-  code += ", ";
-
-  itr = argExprMap.find("far");
-  if(itr == argExprMap.end()){
-    Diag(Tok, diag::err_missing_field_window_decl) << "far";
-    error = true;
-  }
-
-  code += ToCPPCode(itr->second);
-  code += ");";
-
-  if(error){
-    return StmtError();
-  }
-
-  InsertCPPCode(code, NameLoc);
-
-  return ParseStatementOrDeclaration(Stmts, OnlyStatement);
-}
-#endif

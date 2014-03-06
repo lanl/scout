@@ -1387,24 +1387,22 @@ Parser::ParseSimpleDeclaration(StmtVector &Stmts, unsigned Context,
                                SourceLocation &DeclEnd,
                                ParsedAttributesWithRange &Attrs,
                                bool RequireSemi, ForRangeInit *FRI) {
-  // ===== Scout ================================+
+  // +===== Scout ==========================================================+
   // Clang normally assumes that we are parsing a TagDecl, but here
-  // we have to check if we are parasing a mesh declaration and avoid
-  // one of the paths below.
-  bool isMeshDecl;
-
+  // we have to check if we are parsing a mesh declaration and avoid
+  // the call to hasTagDefinition() below which casts to a TagDecl and
+  // will crash for a Mesh. Need to run this before ParseDeclarationSpecifiers()
+  bool isMeshDecl = false;
+  
   if(isScoutLang()){
     isMeshDecl =
-    Tok.is(tok::kw_uniform) ||
-    Tok.is(tok::kw_structured) ||
-    Tok.is(tok::kw_unstructured) ||
-    Tok.is(tok::kw_rectilinear);
+        Tok.is(tok::kw_uniform) ||
+        Tok.is(tok::kw_structured) ||
+        Tok.is(tok::kw_unstructured) ||
+        Tok.is(tok::kw_rectilinear);
   }
-  else{
-    isMeshDecl = false;
-  }
-  // +============================================+
-  
+  // +======================================================================+
+
   // Parse the common declaration-specifiers piece.
   ParsingDeclSpec DS(*this);
 
@@ -1412,12 +1410,15 @@ Parser::ParseSimpleDeclaration(StmtVector &Stmts, unsigned Context,
   ParseDeclarationSpecifiers(DS, ParsedTemplateInfo(), AS_none, DSContext);
 
   // If we had a free-standing type definition with a missing semicolon, we
-  // may get this far before the problem becomes obvious.
-  // ===== Scout ================================+
+  // may get this far before the problem becomes obvious
+  // +===== Scout ==========================================================+
+  // for a Mesh, avoid the call to hasTagDefinition() which casts to a
+  // TagDecl and will crash for a Mesh
+  //if (DS.hasTagDefinition() &&
   if (!isMeshDecl && DS.hasTagDefinition() &&
+  // +======================================================================+
       DiagnoseMissingSemiAfterTagDefinition(DS, AS_none, DSContext))
     return DeclGroupPtrTy();
-  // +============================================+
 
   // C99 6.7.2.3p6: Handle "struct-or-union identifier;", "enum { X };"
   // declaration-specifiers init-declarator-list[opt] ';'
@@ -2482,7 +2483,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
     DS.SetRangeStart(Tok.getLocation());
     DS.SetRangeEnd(Tok.getLocation());
   }
-      
+
   bool EnteringContext = (DSContext == DSC_class || DSContext == DSC_top_level);
   bool AttrsLastTime = false;
   ParsedAttributesWithRange attrs(AttrFactory);
@@ -2721,10 +2722,6 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
 
       if (Tok.getAnnotationValue()) {
         ParsedType T = getTypeAnnotation(Tok);
-        // +===== SC_TODO - We need to set the type spec type to uniform mesh, and
-        // other mesh types below... Keying off the is*MeshType() is probably the
-        // easiest route: if (T.get().getTypePtr()->isUniformMeshType())
-        // +========================================================================+
         isInvalid = DS.SetTypeSpecType(DeclSpec::TST_typename, Loc, PrevSpec,
                                        DiagID, T, Policy);
       } else
@@ -2764,6 +2761,22 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       // typedef-name
     case tok::kw_decltype:
     case tok::identifier: {
+      // +===== Scout ============================================================+
+      // A mesh in a function parameter list will be an identifier
+      // rather than an annot_typename. This is because when a mesh
+      // declaration is parsed in ParseStatementOrDeclarationAfterAttributes()
+      // it runs TryAnnotateName() which turns it from a identifier into an
+      // annot_typename. Do the same here if we are a Mesh.
+      if(getLangOpts().ScoutC) {
+        LookupResult MeshLookup(Actions, Tok.getIdentifierInfo(),
+            Tok.getLocation(), Sema::LookupMeshName);
+        Actions.LookupName(MeshLookup, getCurScope());
+        if (MeshLookup.getResultKind() == LookupResult::Found) {
+          if(TryAnnotateName(false)) continue;
+        }
+      }
+      // +========================================================================+
+
       // In C++, check to see if this is a scope specifier like foo::bar::, if
       // so handle it as such.  This is important for ctor parsing.
       if (getLangOpts().CPlusPlus) {
@@ -4794,26 +4807,6 @@ static void diagnoseMisplacedEllipsis(Parser &P, Declarator &D,
 void Parser::ParseDirectDeclarator(Declarator &D) {
   DeclaratorScopeObj DeclScopeObj(*this, D.getCXXScopeSpec());
 
-  // +===== Scout ============================================================+
-  // old mesh parameter typedef case for example: typedef MyMesh[:] MyMesh2D
-#if 0
-  bool hasMeshTypedefParameters = false;
-  if (isScoutLang()) {
-    DeclSpec& DS = D.getMutableDeclSpec();
-    DeclSpec::TST tst = DS.getTypeSpecType();
-    //llvm::errs() << "PDD tst " << tst << "\n";
-    if (Tok.is(tok::l_square) && DeclSpec::isMeshDeclRep(tst)) {
-      ParsedType parsedType = DS.getRepAsType();
-      const MeshType* MT = dyn_cast<MeshType>(parsedType.get().getTypePtr());
-      if (MT) {
-        hasMeshTypedefParameters = true;
-        ParseMeshParameterDeclaration(DS);
-      }
-    }
-  }
-#endif
-  // +========================================================================+
-
   if (getLangOpts().CPlusPlus && D.mayHaveIdentifier()) {
     // ParseDeclaratorInternal might already have parsed the scope.
     if (D.getCXXScopeSpec().isEmpty()) {
@@ -4982,7 +4975,8 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
       if (isScoutLang()) {
         DeclSpec& DS = D.getMutableDeclSpec();
         if (DS.getTypeSpecType() == DeclSpec::TST_typename) {
-          if (isa<UnstructuredMeshType>(DS.getRepAsType().get().getTypePtr())) {
+          const Type *T = DS.getRepAsType().get().getCanonicalType().getTypePtr();
+          if (T->isUnstructuredMeshType()) {
             ParseMeshVarParenDeclarator(D);
             return;
           }
@@ -5460,30 +5454,6 @@ void Parser::ParseParameterDeclarationClause(
 
     ParseDeclarationSpecifiers(DS);
 
-    // +===== Scout ==========================================================+
-    //  parse mesh parameters
-    // e.g: "MyMesh[]", "MyMesh[:]", "MyMesh[::]" and ensure that mesh
-    // parameters are declared as references or pointers
-    if(isScoutLang()) {
-      DeclSpec::TST tst = DS.getTypeSpecType();
-      if(tst == DeclSpec::TST_typename){
-        ParsedType parsedType = DS.getRepAsType();
-        const MeshType* mt =
-        dyn_cast<MeshType>(parsedType.get().getCanonicalType().getTypePtr());
-        if(mt){
-          if (Tok.is(tok::l_square)) {
-            ParseMeshParameterDeclaration(DS);
-          }
-
-          if (Tok.isNot(tok::amp) && Tok.isNot(tok::star)) {
-            Diag(Tok, diag::err_expected_mesh_param_star_amp);
-            SkipUntil(tok::r_paren);
-            return;
-          }
-        }
-      }
-    }
-    // +======================================================================+
 
     // Parse the declarator.  This is "PrototypeContext" or 
     // "LambdaExprParameterContext", because we must accept either 
@@ -5604,13 +5574,15 @@ void Parser::ParseBracketDeclarator(Declarator &D) {
   if (CheckProhibitedCXX11Attribute())
     return;
   // +===== Scout ==========================================================+
+  // Parse Scout declarators for UniformMesh, Window and Image
   if (isScoutLang()) {
     const DeclSpec& DS = D.getDeclSpec();
     DeclSpec::TST tst = DS.getTypeSpecType();
 
     switch(tst) {
     case DeclSpec::TST_typename: {
-      if (isa<UniformMeshType>(DS.getRepAsType().get().getTypePtr())) {
+      const Type *T = DS.getRepAsType().get().getCanonicalType().getTypePtr();
+      if (T->isUniformMeshType()) {
         ParseMeshVarBracketDeclarator(D);
         return;
       }

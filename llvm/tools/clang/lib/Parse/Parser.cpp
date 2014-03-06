@@ -69,10 +69,6 @@ Parser::Parser(Preprocessor &pp, Sema &actions, bool skipFunctionBodies)
   PP.addCommentHandler(CommentSemaHandler.get());
 
   PP.setCodeCompletionHandler(*this);
-
-  // +===== Scout ============================================================+
-  DeclaringMesh = false; //SC_TODO: is this even used?
-  // +========================================================================+
 }
 
 DiagnosticBuilder Parser::Diag(SourceLocation Loc, unsigned DiagID) {

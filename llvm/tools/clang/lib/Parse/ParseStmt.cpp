@@ -11,6 +11,7 @@
 // interface.
 //
 //===----------------------------------------------------------------------===//
+
 #include "clang/Parse/Parser.h"
 #include "RAIIObjectsForParser.h"
 #include "clang/AST/ASTContext.h"
@@ -2203,7 +2204,7 @@ StmtResult Parser::ParseMicrosoftAsmStatement(SourceLocation AsmLoc) {
   OwningPtr<llvm::MCRegisterInfo> MRI(TheTarget->createMCRegInfo(TT));
   OwningPtr<llvm::MCAsmInfo> MAI(TheTarget->createMCAsmInfo(*MRI, TT));
   // Get the instruction descriptor.
-  const llvm::MCInstrInfo *MII = TheTarget->createMCInstrInfo();
+  const llvm::MCInstrInfo *MII = TheTarget->createMCInstrInfo(); 
   OwningPtr<llvm::MCObjectFileInfo> MOFI(new llvm::MCObjectFileInfo());
   OwningPtr<llvm::MCSubtargetInfo>
     STI(TheTarget->createMCSubtargetInfo(TT, "", ""));
