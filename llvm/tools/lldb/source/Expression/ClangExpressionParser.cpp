@@ -254,6 +254,18 @@ ClangExpressionParser::ClangExpressionParser (ExecutionContextScope *exe_scope,
     
     switch (language)
     {
+    // +===== Scout ============================
+    case lldb::eLanguageTypeScoutC:
+        m_compiler->getLangOpts().ScoutC = true;
+        m_compiler->getLangOpts().CPlusPlus = true;
+        //m_compiler->getLangOpts().CPlusPlus11 = true;
+        break;
+    case lldb::eLanguageTypeScoutC_plus_plus:
+        m_compiler->getLangOpts().ScoutCPlusPlus = true;
+        m_compiler->getLangOpts().CPlusPlus = true;
+        //m_compiler->getLangOpts().CPlusPlus11 = true;
+        break;
+    // +========================================
     case lldb::eLanguageTypeC:
         break;
     case lldb::eLanguageTypeObjC:
@@ -272,7 +284,7 @@ ClangExpressionParser::ClangExpressionParser (ExecutionContextScope *exe_scope,
         m_compiler->getLangOpts().CPlusPlus11 = true;
         break;
     }
-    
+
     m_compiler->getLangOpts().Bool = true;
     m_compiler->getLangOpts().WChar = true;
     m_compiler->getLangOpts().Blocks = true;
@@ -477,6 +489,10 @@ ClangExpressionParser::PrepareForExecution (lldb::addr_t &func_addr,
         return err;
     }
     
+    // +===== Scout =================================
+    // uncomment to view the final module after all LLDB transformations have been made
+    //module_ap.get()->dump();
+
     // Find the actual name of the function (it's often mangled somehow)
     
     ConstString function_name;

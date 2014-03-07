@@ -177,10 +177,17 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   unsigned int rank = S.getMeshType()->rankOf();
 
   // Track down the mesh meta data. 
-  llvm::NamedMDNode *MeshMD = CGM.getModule().getNamedMetadata("scout.meshmd");
-  assert(MeshMD != 0 && "unable to find module-level mesh metadata!");
+  //llvm::NamedMDNode *MeshMD = CGM.getModule().getNamedMetadata("scout.meshmd");
+  //assert(MeshMD != 0 && "unable to find module-level mesh metadata!");
   //llvm::errs() << "forall mesh type name = '" << S.getMeshVarDecl()->getTypeSourceInfo()->getType().getTypePtr()->getTypeClassName() << "'\n";
   ResetVars();
+
+  const VarDecl* VD = S.getMeshVarDecl();
+  if ((VD->hasLinkage() || VD->isStaticDataMember()) && VD->getTLSKind() != VarDecl::TLS_Dynamic) {
+    llvm::Value* V = CGM.GetAddrOfGlobalVar(VD);
+    llvm::Value* VP = Builder.CreateLoad(V);
+    LocalDeclMap[VD] = VP;
+  }
 
   //need a marker for start of Forall for CodeExtraction
   llvm::BasicBlock *entry = EmitMarkerBlock("forall.entry");
@@ -217,7 +224,7 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
   RegionCounter Cnt = getPGORegionCounter(&S);
   (void)Cnt; //suppress warning 
  
-  llvm::Value *MeshBaseAddr = GetMeshBaseAddr(S);
+  llvm::Value *MeshBaseAddr = LocalDeclMap[S.getMeshVarDecl()];
   llvm::StringRef MeshName = S.getMeshType()->getName();
 
   // find number of fields
@@ -364,7 +371,9 @@ void CodeGenFunction:: ExtractRegion(llvm::BasicBlock *entry, llvm::BasicBlock *
   	Blocks.push_back(BB);
   }
 
-  llvm::CodeExtractor codeExtractor(Blocks, 0, false);
+  //llvm::DominatorTree DT;
+
+  llvm::CodeExtractor codeExtractor(Blocks, 0/*&DT*/, false);
 
   llvm::Function *ForallFn = codeExtractor.extractCodeRegion();
 
