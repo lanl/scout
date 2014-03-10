@@ -59,7 +59,7 @@ TypePrinter::printUniformMeshBefore(const UniformMeshType *T,
                                     raw_ostream &OS)
 {
   MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
+  OS << MD->getIdentifier()->getName().str() << " ";
 }
 
 void
@@ -67,7 +67,7 @@ TypePrinter::printStructuredMeshBefore(const StructuredMeshType *T,
                                        raw_ostream &OS)
 {
   MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
+  OS << MD->getIdentifier()->getName().str() << " ";
 }
 
 
@@ -76,7 +76,7 @@ TypePrinter::printRectilinearMeshBefore(const RectilinearMeshType *T,
                                         raw_ostream &OS)
 {
   MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
+  OS << MD->getIdentifier()->getName().str() << " ";
 }
 
 
@@ -85,7 +85,7 @@ TypePrinter::printUnstructuredMeshBefore(const UnstructuredMeshType *T,
                                          raw_ostream &OS)
 {
   MeshDecl* MD = T->getDecl();
-  OS << MD->getIdentifier()->getName().str();
+  OS << MD->getIdentifier()->getName().str() << " ";
 }
 
 

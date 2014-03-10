@@ -10771,6 +10771,11 @@ bool Sema::DiagnoseAssignmentResult(AssignConvertType ConvTy,
     MayHaveConvFixit = true;
     break;
   case IncompatiblePointer:
+    // +===== Scout ==========================================================+
+    // allow partially mismatched pointers on meshes
+    if(isScoutLang(getLangOpts()) && CheckMeshPtrTypes(SrcType, DstType))
+      return isInvalid;
+    // +======================================================================+
       DiagKind =
         (Action == AA_Passing_CFAudited ?
           diag::err_arc_typecheck_convert_incompatible_pointer :

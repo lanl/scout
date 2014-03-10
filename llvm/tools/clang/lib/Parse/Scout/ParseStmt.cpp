@@ -83,7 +83,8 @@ VarDecl* Parser::LookupMeshVarDecl(IdentifierInfo *MeshInfo,
 
   NamedDecl* ND = MeshLookup.getFoundDecl();
   if (!isa<VarDecl>(ND)) {
-    Diag(MeshLoc, diag::err_expected_a_mesh_type) << MeshInfo;
+    Diag(MeshLoc, diag::err_expected_a_mesh_type);
+    SkipUntil(tok::semi);
     return 0;
   }
 
@@ -104,8 +105,9 @@ const MeshType* Parser::LookupMeshType(IdentifierInfo *MeshInfo,
     if (!T->isMeshType()) {
       T = VD->getType().getCanonicalType().getNonReferenceType().getTypePtr();
       if(!T->isMeshType()) {
-        // Should this diag go in sema instead?
-        //Diag(MeshLoc, diag::err_forall_not_a_mesh_type) << MeshInfo;
+        // SC_TODO: Should this diag go in sema instead?
+        Diag(MeshLoc, diag::err_expected_a_mesh_type);
+        SkipUntil(tok::semi);
         return 0;
       }
     }
@@ -129,8 +131,9 @@ const MeshType* Parser::LookupMeshType(VarDecl *VD,
     }
 
     if (!T->isMeshType()) {
-      //Should this diag go in sema instead?
-      //Diag(MeshLoc, diag::err_forall_not_a_mesh_type) << MeshInfo;
+      // SC_TODO: Should this diag go in sema instead?
+      Diag(MeshLoc, diag::err_expected_a_mesh_type);
+      SkipUntil(tok::semi);
       return 0;
     } else {
       return const_cast<MeshType *>(cast<MeshType>(T));
@@ -281,6 +284,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
     return StmtError();
 
   const MeshType *RefMeshType = LookupMeshType(VD, MeshIdentInfo, MeshIdentLoc);
+
   if (RefMeshType == 0)
     return StmtError();
 

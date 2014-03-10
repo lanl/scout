@@ -1645,29 +1645,4 @@ llvm::Value *CodeGenFunction::EmitFieldAnnotations(const FieldDecl *D,
   return V;
 }
 
-
-// +===== Scout ==============================================================+
-llvm::Value *CodeGenFunction::EmitFieldAnnotations(const MeshFieldDecl *D,
-                                                   llvm::Value *V) {
-  assert(D->hasAttr<AnnotateAttr>() && "no annotate attribute");
-  llvm::Type *VTy = V->getType();
-  llvm::Value *F = CGM.getIntrinsic(llvm::Intrinsic::ptr_annotation,
-                                    CGM.Int8PtrTy);
-
-  for (specific_attr_iterator<AnnotateAttr>
-       ai = D->specific_attr_begin<AnnotateAttr>(),
-       ae = D->specific_attr_end<AnnotateAttr>(); ai != ae; ++ai) {
-    // FIXME Always emit the cast inst so we can differentiate between
-    // annotation on the first field of a struct and annotation on the struct
-    // itself.
-    if (VTy != CGM.Int8PtrTy)
-      V = Builder.Insert(new llvm::BitCastInst(V, CGM.Int8PtrTy));
-    V = EmitAnnotationCall(F, V, (*ai)->getAnnotation(), D->getLocation());
-    V = Builder.CreateBitCast(V, VTy);
-  }
-
-  return V;
-}
-// +==========================================================================+
-
 CodeGenFunction::CGCapturedStmtInfo::~CGCapturedStmtInfo() { }

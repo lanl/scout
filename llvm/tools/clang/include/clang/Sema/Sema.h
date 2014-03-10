@@ -8249,6 +8249,8 @@ public:
 
   bool IsValidDeclInMesh(Decl* D);
 
+  bool CheckMeshPtrTypes(QualType &Src, QualType &Dst);
+
   bool ScoutMemberReferenceExpr(DeclarationName &Name,
       SourceLocation &NameLoc,
       DeclarationNameInfo &NameInfo,

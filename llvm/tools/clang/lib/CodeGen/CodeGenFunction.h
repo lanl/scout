@@ -2636,6 +2636,13 @@ public:
   /// point operation, expressed as the maximum relative error in ulp.
   void SetFPAccuracy(llvm::Value *Val, float Accuracy);
 
+  // +==== Scout =======================================================+
+  /// Special case for mesh types, because we cannot check
+  /// for type pointer equality  because each mesh has its own type
+  /// pointer to hold the mesh dimensions and other instance data
+  bool CheckMeshPtrTypes(QualType &ArgType, QualType &ActualArgType);
+  // +==================================================================+
+
 private:
   llvm::MDNode *getRangeForLoadFromType(QualType Ty);
   void EmitReturnOfRValue(RValue RV, QualType Ty);
@@ -2719,31 +2726,17 @@ public:
               ActualArgType = ArgType;
           }
         }
-
-        // +==== Scout =======================================================+
-        // Special case for mesh types, because we cannot check
-        // for type pointer equality because each mesh has its own type
-        // pointer to hold the mesh dimensions and other instance data
-        //
-        // SC_TODO - long call chains (like those below) should be turned into
-        // a convenience function to clean things up.
-        const Type* argType;
-        argType =
-          getContext().getCanonicalType(ArgType.getNonReferenceType()).getTypePtr();
-        const Type* actualType;
-        actualType = getContext().getCanonicalType(ActualArgType).getTypePtr();
-
-        if (isa<MeshType>(argType) && isa<MeshType>(actualType)) {
-          // fine ...
-        } else if (argType != actualType) {
-          assert(false && "type mismatch in call argument!");
-        }
-        // +==================================================================+
       }
+      // +==== Scout =======================================================+
+      if(isScoutLang(getLangOpts()) && !CheckMeshPtrTypes(ArgType, ActualArgType)) {
+      // +==================================================================+
       assert(getContext().getCanonicalType(ArgType.getNonReferenceType()).
              getTypePtr() ==
              getContext().getCanonicalType(ActualArgType).getTypePtr() &&
              "type mismatch in call argument!");
+      // +==== Scout =======================================================+
+      }
+      // +==================================================================+
 #endif
       ArgTypes.push_back(*I);
     }

@@ -211,6 +211,53 @@ void Parser::ParseMeshVarParenDeclarator(Declarator &D) {
   } // else if any other mesh type, do something else
 }
 
+void Parser::ParseMeshParameterDeclaration(DeclSpec& DS) {
+
+  ParsedType parsedType = DS.getRepAsType();
+  const MeshType* mt;
+  mt = dyn_cast<MeshType>(parsedType.get().getTypePtr());
+  assert(mt && "expected mesh type");
+  const UniformMeshType *umt = reinterpret_cast<const UniformMeshType *>(mt);
+
+  ConsumeBracket();
+  size_t numDims;
+  if(Tok.is(tok::r_square)) {
+    numDims = 1;
+  } else if(Tok.is(tok::colon)) {
+    numDims = 2;
+    ConsumeToken();
+  } else if(Tok.is(tok::coloncolon)) {
+    numDims = 3;
+    ConsumeToken();
+  } else {
+    Diag(Tok, diag::err_expected_mesh_param_token);
+    SkipUntil(tok::r_square);
+    return;
+  }
+
+  if (Tok.isNot(tok::r_square)){
+    Diag(Tok, diag::err_expected_mesh_param_token);
+    SkipUntil(tok::r_square);
+    return;
+  } else {
+    ConsumeBracket();
+  }
+
+  // just set sizes to zero
+  MeshType::MeshDimensions dims;
+  for(size_t i = 0; i < numDims; ++i) {
+    dims.push_back(Actions.ActOnIntegerConstant(Tok.getLocation(), 0).get());
+  }
+
+  // SC_TODO: possible alignment problem?
+  UniformMeshType* mdt = new UniformMeshType(umt->getDecl());
+
+  mdt->setDimensions(dims);
+  parsedType.set(QualType(mdt, 0));
+  DS.UpdateTypeRep(parsedType);
+}
+
+
 
 void Parser::ParseWindowBracketDeclarator(Declarator &D) {
   
