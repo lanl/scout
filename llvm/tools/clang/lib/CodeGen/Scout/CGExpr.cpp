@@ -87,19 +87,8 @@ CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index) {
     if(IMPD->isMesh()) { // double check that it is really is a ImplicitMeshParamDecl
       // lookup underlying mesh instead of implicit mesh
       VarDecl* VD = IMPD->getMeshVarDecl();
-      LValue BaseLV;
-
-      if (VD->hasLinkage() || VD->isStaticDataMember()) {
-        // If it's thread_local, emit a call to its wrapper function instead.
-        if (VD->getTLSKind() == VarDecl::TLS_Dynamic)
-          BaseLV = CGM.getCXXABI().EmitThreadLocalDeclRefExpr(*this, Base);
-        else
-          BaseLV = EmitGlobalVarDeclLValue(*this, Base, VD);
-      }else {
-        llvm::Value *V = LocalDeclMap.lookup(VD);
-        // need underlying mesh to make LValue
-        BaseLV  = MakeAddrLValue(V, E->getType());
-      }
+      llvm::Value *V = LocalDeclMap.lookup(VD);
+      LValue BaseLV  = MakeAddrLValue(V, E->getType());
       // assume we have already checked that we are working w/ a mesh and cast to MeshField Decl
       MeshFieldDecl* MFD = cast<MeshFieldDecl>(E->getMemberDecl());
       return EmitLValueForMeshField(BaseLV, cast<MeshFieldDecl>(MFD), Index);
