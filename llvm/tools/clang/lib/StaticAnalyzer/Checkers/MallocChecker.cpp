@@ -199,13 +199,13 @@ public:
                   const char *NL, const char *Sep) const;
 
 private:
-  mutable OwningPtr<BugType> BT_DoubleFree[CK_NumCheckKinds];
-  mutable OwningPtr<BugType> BT_DoubleDelete;
-  mutable OwningPtr<BugType> BT_Leak[CK_NumCheckKinds];
-  mutable OwningPtr<BugType> BT_UseFree[CK_NumCheckKinds];
-  mutable OwningPtr<BugType> BT_BadFree[CK_NumCheckKinds];
-  mutable OwningPtr<BugType> BT_MismatchedDealloc;
-  mutable OwningPtr<BugType> BT_OffsetFree[CK_NumCheckKinds];
+  mutable std::unique_ptr<BugType> BT_DoubleFree[CK_NumCheckKinds];
+  mutable std::unique_ptr<BugType> BT_DoubleDelete;
+  mutable std::unique_ptr<BugType> BT_Leak[CK_NumCheckKinds];
+  mutable std::unique_ptr<BugType> BT_UseFree[CK_NumCheckKinds];
+  mutable std::unique_ptr<BugType> BT_BadFree[CK_NumCheckKinds];
+  mutable std::unique_ptr<BugType> BT_MismatchedDealloc;
+  mutable std::unique_ptr<BugType> BT_OffsetFree[CK_NumCheckKinds];
   mutable IdentifierInfo *II_malloc, *II_free, *II_realloc, *II_calloc,
                          *II_valloc, *II_reallocf, *II_strndup, *II_strdup;
 
@@ -512,11 +512,8 @@ bool MallocChecker::isAllocationFunction(const FunctionDecl *FD,
   }
 
   if (ChecksEnabled[CK_MallocOptimistic] && FD->hasAttrs())
-    for (specific_attr_iterator<OwnershipAttr>
-           i = FD->specific_attr_begin<OwnershipAttr>(),
-           e = FD->specific_attr_end<OwnershipAttr>();
-           i != e; ++i)
-      if ((*i)->getOwnKind() == OwnershipAttr::Returns)
+    for (const auto *I : FD->specific_attrs<OwnershipAttr>())
+      if (I->getOwnKind() == OwnershipAttr::Returns)
         return true;
   return false;
 }
@@ -534,12 +531,9 @@ bool MallocChecker::isFreeFunction(const FunctionDecl *FD, ASTContext &C) const 
   }
 
   if (ChecksEnabled[CK_MallocOptimistic] && FD->hasAttrs())
-    for (specific_attr_iterator<OwnershipAttr>
-           i = FD->specific_attr_begin<OwnershipAttr>(),
-           e = FD->specific_attr_end<OwnershipAttr>();
-           i != e; ++i)
-      if ((*i)->getOwnKind() == OwnershipAttr::Takes ||
-          (*i)->getOwnKind() == OwnershipAttr::Holds)
+    for (const auto *I : FD->specific_attrs<OwnershipAttr>())
+      if (I->getOwnKind() == OwnershipAttr::Takes ||
+          I->getOwnKind() == OwnershipAttr::Holds)
         return true;
   return false;
 }
@@ -633,17 +627,14 @@ void MallocChecker::checkPostStmt(const CallExpr *CE, CheckerContext &C) const {
     // Check all the attributes, if there are any.
     // There can be multiple of these attributes.
     if (FD->hasAttrs())
-      for (specific_attr_iterator<OwnershipAttr>
-          i = FD->specific_attr_begin<OwnershipAttr>(),
-          e = FD->specific_attr_end<OwnershipAttr>();
-          i != e; ++i) {
-        switch ((*i)->getOwnKind()) {
+      for (const auto *I : FD->specific_attrs<OwnershipAttr>()) {
+        switch (I->getOwnKind()) {
         case OwnershipAttr::Returns:
-          State = MallocMemReturnsAttr(C, CE, *i);
+          State = MallocMemReturnsAttr(C, CE, I);
           break;
         case OwnershipAttr::Takes:
         case OwnershipAttr::Holds:
-          State = FreeMemAttr(C, CE, *i);
+          State = FreeMemAttr(C, CE, I);
           break;
         }
       }
@@ -980,7 +971,7 @@ ProgramStateRef MallocChecker::FreeMemAux(CheckerContext &C,
 
   // The explicit NULL case, no operation is performed.
   ProgramStateRef notNullState, nullState;
-  llvm::tie(notNullState, nullState) = State->assume(location);
+  std::tie(notNullState, nullState) = State->assume(location);
   if (nullState && !notNullState)
     return 0;
 
@@ -1505,9 +1496,9 @@ ProgramStateRef MallocChecker::ReallocMem(CheckerContext &C,
                        svalBuilder.makeIntValWithPtrWidth(0, false));
 
   ProgramStateRef StatePtrIsNull, StatePtrNotNull;
-  llvm::tie(StatePtrIsNull, StatePtrNotNull) = state->assume(PtrEQ);
+  std::tie(StatePtrIsNull, StatePtrNotNull) = state->assume(PtrEQ);
   ProgramStateRef StateSizeIsZero, StateSizeNotZero;
-  llvm::tie(StateSizeIsZero, StateSizeNotZero) = state->assume(SizeZero);
+  std::tie(StateSizeIsZero, StateSizeNotZero) = state->assume(SizeZero);
   // We only assume exceptional states if they are definitely true; if the
   // state is under-constrained, assume regular realloc behavior.
   bool PrtIsNull = StatePtrIsNull && !StatePtrNotNull;
@@ -1666,7 +1657,7 @@ void MallocChecker::reportLeak(SymbolRef Sym, ExplodedNode *N,
   PathDiagnosticLocation LocUsedForUniqueing;
   const ExplodedNode *AllocNode = 0;
   const MemRegion *Region = 0;
-  llvm::tie(AllocNode, Region) = getAllocationSite(N, Sym, C);
+  std::tie(AllocNode, Region) = getAllocationSite(N, Sym, C);
   
   ProgramPoint P = AllocNode->getLocation();
   const Stmt *AllocationStmt = 0;

@@ -18,7 +18,7 @@
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/LLVM.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
-#include "llvm/ADT/OwningPtr.h"
+#include <memory>
 
 namespace clang {
 class DiagnosticOptions;
@@ -30,7 +30,7 @@ class TextDiagnosticPrinter : public DiagnosticConsumer {
   IntrusiveRefCntPtr<DiagnosticOptions> DiagOpts;
 
   /// \brief Handle to the currently active text diagnostic emitter.
-  OwningPtr<TextDiagnostic> TextDiag;
+  std::unique_ptr<TextDiagnostic> TextDiag;
 
   /// A string to prefix to error messages.
   std::string Prefix;

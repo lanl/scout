@@ -56,8 +56,7 @@ bool CodeGenModule::TryEmitBaseDestructorAsAlias(const CXXDestructorDecl *D) {
 
   // If any field has a non-trivial destructor, we have to emit the
   // destructor separately.
-  for (CXXRecordDecl::field_iterator I = Class->field_begin(),
-         E = Class->field_end(); I != E; ++I)
+  for (const auto *I : Class->fields())
     if (I->getType().isDestructedType())
       return true;
 
@@ -92,7 +91,13 @@ bool CodeGenModule::TryEmitBaseDestructorAsAlias(const CXXDestructorDecl *D) {
   if (!ClassLayout.getBaseClassOffset(UniqueBase).isZero())
     return true;
 
+  // Give up if the calling conventions don't match. We could update the call,
+  // but it is probably not worth it.
   const CXXDestructorDecl *BaseD = UniqueBase->getDestructor();
+  if (BaseD->getType()->getAs<FunctionType>()->getCallConv() !=
+      D->getType()->getAs<FunctionType>()->getCallConv())
+    return true;
+
   return TryEmitDefinitionAsAlias(GlobalDecl(D, Dtor_Base),
                                   GlobalDecl(BaseD, Dtor_Base),
                                   false);

@@ -445,6 +445,7 @@ private:
   bool TraverseFunctionHelper(FunctionDecl *D);
   bool TraverseVarHelper(VarDecl *D);
   bool TraverseOMPClause(OMPClause *C);
+  bool TraverseOMPExecutableDirective(OMPExecutableDirective *S);
 #define OPENMP_CLAUSE(Name, Class)                                      \
   bool Visit##Class(Class *C);
 #include "clang/Basic/OpenMPKinds.def"
@@ -679,8 +680,8 @@ bool RecursiveASTVisitor<Derived>::TraverseDecl(Decl *D) {
   }
 
   // Visit any attributes attached to this declaration.
-  for (Decl::attr_iterator I=D->attr_begin(), E=D->attr_end(); I != E; ++I) {
-    if (!getDerived().TraverseAttr(*I))
+  for (auto *I : D->attrs()) {
+    if (!getDerived().TraverseAttr(I))
       return false;
   }
   return true;
@@ -1332,13 +1333,11 @@ bool RecursiveASTVisitor<Derived>::TraverseDeclContextHelper(DeclContext *DC) {
   if (!DC)
     return true;
 
-  for (DeclContext::decl_iterator Child = DC->decls_begin(),
-           ChildEnd = DC->decls_end();
-       Child != ChildEnd; ++Child) {
+  for (auto *Child : DC->decls()) {
     // BlockDecls and CapturedDecls are traversed through BlockExprs and
     // CapturedStmts respectively.
-    if (!isa<BlockDecl>(*Child) && !isa<CapturedDecl>(*Child))
-      TRY_TO(TraverseDecl(*Child));
+    if (!isa<BlockDecl>(Child) && !isa<CapturedDecl>(Child))
+      TRY_TO(TraverseDecl(Child));
   }
 
   return true;
@@ -2451,11 +2450,22 @@ DEF_TRAVERSE_STMT(ObjCDictionaryLiteral, { })
 DEF_TRAVERSE_STMT(AsTypeExpr, { })
 
 // OpenMP directives.
-DEF_TRAVERSE_STMT(OMPParallelDirective, {
+template<typename Derived>
+bool RecursiveASTVisitor<Derived>::TraverseOMPExecutableDirective(
+                                           OMPExecutableDirective *S) {
   ArrayRef<OMPClause *> Clauses = S->clauses();
   for (ArrayRef<OMPClause *>::iterator I = Clauses.begin(), E = Clauses.end();
        I != E; ++I)
     if (!TraverseOMPClause(*I)) return false;
+  return true;
+}
+
+DEF_TRAVERSE_STMT(OMPParallelDirective, {
+  if (!TraverseOMPExecutableDirective(S)) return false;
+})
+
+DEF_TRAVERSE_STMT(OMPSimdDirective, {
+  if (!TraverseOMPExecutableDirective(S)) return false;
 })
 
 // OpenMP clauses.
@@ -2475,6 +2485,13 @@ bool RecursiveASTVisitor<Derived>::TraverseOMPClause(OMPClause *C) {
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::VisitOMPIfClause(OMPIfClause *C) {
   TraverseStmt(C->getCondition());
+  return true;
+}
+
+template<typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOMPNumThreadsClause(
+                                                      OMPNumThreadsClause *C) {
+  TraverseStmt(C->getNumThreads());
   return true;
 }
 

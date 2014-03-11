@@ -38,8 +38,8 @@
 #include "llvm/Transforms/ObjCARC.h"
 #include "llvm/Transforms/Scalar.h"
 
+#include <memory>
 
-// +===== Scout ==============================================================+
 #include "scout/Config/defs.h"
 #ifdef SC_ENABLE_CUDA
 #include "llvm/Transforms/Scout/DoallToPTX/DoallToPTX.h"
@@ -72,7 +72,7 @@ private:
   PassManager *getCodeGenPasses() const {
     if (!CodeGenPasses) {
       CodeGenPasses = new PassManager();
-      CodeGenPasses->add(new DataLayout(TheModule));
+      CodeGenPasses->add(new DataLayoutPass(TheModule));
       if (TM)
         TM->addAnalysisPasses(*CodeGenPasses);
     }
@@ -82,7 +82,7 @@ private:
   PassManager *getPerModulePasses() const {
     if (!PerModulePasses) {
       PerModulePasses = new PassManager();
-      PerModulePasses->add(new DataLayout(TheModule));
+      PerModulePasses->add(new DataLayoutPass(TheModule));
       if (TM)
         TM->addAnalysisPasses(*PerModulePasses);
     }
@@ -92,7 +92,7 @@ private:
   FunctionPassManager *getPerFunctionPasses() const {
     if (!PerFunctionPasses) {
       PerFunctionPasses = new FunctionPassManager(TheModule);
-      PerFunctionPasses->add(new DataLayout(TheModule));
+      PerFunctionPasses->add(new DataLayoutPass(TheModule));
       if (TM)
         TM->addAnalysisPasses(*PerFunctionPasses);
     }
@@ -136,10 +136,10 @@ public:
     delete PerModulePasses;
     delete PerFunctionPasses;
     if (CodeGenOpts.DisableFree)
-      BuryPointer(TM.take());
+      BuryPointer(TM.release());
   }
 
-  llvm::OwningPtr<TargetMachine> TM;
+  std::unique_ptr<TargetMachine> TM;
 
   void EmitAssembly(BackendAction Action, raw_ostream *OS);
 };
@@ -181,6 +181,11 @@ static void addSampleProfileLoaderPass(const PassManagerBuilder &Builder,
       static_cast<const PassManagerBuilderWrapper &>(Builder);
   const CodeGenOptions &CGOpts = BuilderWrapper.getCGOpts();
   PM.add(createSampleProfileLoaderPass(CGOpts.SampleProfileFile));
+}
+
+static void addAddDiscriminatorsPass(const PassManagerBuilder &Builder,
+                                     PassManagerBase &PM) {
+  PM.add(createAddDiscriminatorsPass());
 }
 
 static void addBoundsCheckingPass(const PassManagerBuilder &Builder,
@@ -292,6 +297,9 @@ void EmitAssemblyHelper::CreatePasses() {
   PMBuilder.DisableUnitAtATime = !CodeGenOpts.UnitAtATime;
   PMBuilder.DisableUnrollLoops = !CodeGenOpts.UnrollLoops;
   PMBuilder.RerollLoops = CodeGenOpts.RerollLoops;
+
+  PMBuilder.addExtension(PassManagerBuilder::EP_EarlyAsPossible,
+                         addAddDiscriminatorsPass);
 
   if (!CodeGenOpts.SampleProfileFile.empty())
     PMBuilder.addExtension(PassManagerBuilder::EP_EarlyAsPossible,

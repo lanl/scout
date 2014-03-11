@@ -23,11 +23,11 @@
 #include "clang/Lex/Lexer.h"
 #include "clang/Rewrite/Core/Rewriter.h"
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
+#include <memory>
 
 using namespace clang;
 using llvm::utostr;
@@ -500,6 +500,14 @@ namespace {
       TypeSourceInfo *TInfo = Ctx->getTrivialTypeSourceInfo(Ty, SourceLocation());
       return CStyleCastExpr::Create(*Ctx, Ty, VK_RValue, Kind, E, 0, TInfo,
                                     SourceLocation(), SourceLocation());
+    }
+
+    StringLiteral *getStringLiteral(StringRef Str) {
+      QualType StrType = Context->getConstantArrayType(
+          Context->CharTy, llvm::APInt(32, Str.size() + 1), ArrayType::Normal,
+          0);
+      return StringLiteral::Create(*Context, Str, StringLiteral::Ascii,
+                                   /*Pascal=*/false, StrType, SourceLocation());
     }
   };
   
@@ -1133,9 +1141,7 @@ void RewriteObjC::RewriteObjCMethodDecl(const ObjCInterfaceDecl *IDecl,
   ResultStr += " _cmd";
 
   // Method arguments.
-  for (ObjCMethodDecl::param_iterator PI = OMD->param_begin(),
-       E = OMD->param_end(); PI != E; ++PI) {
-    ParmVarDecl *PDecl = *PI;
+  for (const auto *PDecl : OMD->params()) {
     ResultStr += ", ";
     if (PDecl->getType()->isObjCQualifiedIdType()) {
       ResultStr += "id ";
@@ -2012,12 +2018,9 @@ Stmt *RewriteObjC::RewriteObjCThrowStmt(ObjCAtThrowStmt *S) {
 
 Stmt *RewriteObjC::RewriteAtEncode(ObjCEncodeExpr *Exp) {
   // Create a new string expression.
-  QualType StrType = Context->getPointerType(Context->CharTy);
   std::string StrEncoding;
   Context->getObjCEncodingForType(Exp->getEncodedType(), StrEncoding);
-  Expr *Replacement = StringLiteral::Create(*Context, StrEncoding,
-                                            StringLiteral::Ascii, false,
-                                            StrType, SourceLocation());
+  Expr *Replacement = getStringLiteral(StrEncoding);
   ReplaceStmt(Exp, Replacement);
 
   // Replace this subexpr in the parent.
@@ -2031,11 +2034,7 @@ Stmt *RewriteObjC::RewriteAtSelector(ObjCSelectorExpr *Exp) {
   assert(SelGetUidFunctionDecl && "Can't find sel_registerName() decl");
   // Create a call to sel_registerName("selName").
   SmallVector<Expr*, 8> SelExprs;
-  QualType argType = Context->getPointerType(Context->CharTy);
-  SelExprs.push_back(StringLiteral::Create(*Context,
-                                           Exp->getSelector().getAsString(),
-                                           StringLiteral::Ascii, false,
-                                           argType, SourceLocation()));
+  SelExprs.push_back(getStringLiteral(Exp->getSelector().getAsString()));
   CallExpr *SelExp = SynthesizeCallToFunctionDecl(SelGetUidFunctionDecl,
                                                  &SelExprs[0], SelExprs.size());
   ReplaceStmt(Exp, SelExp);
@@ -2717,11 +2716,7 @@ Stmt *RewriteObjC::SynthMessageExpr(ObjCMessageExpr *Exp,
 
     // (id)class_getSuperclass((Class)objc_getClass("CurrentClass"))
     SmallVector<Expr*, 8> ClsExprs;
-    QualType argType = Context->getPointerType(Context->CharTy);
-    ClsExprs.push_back(StringLiteral::Create(*Context,
-                                   ClassDecl->getIdentifier()->getName(),
-                                   StringLiteral::Ascii, false,
-                                   argType, SourceLocation()));
+    ClsExprs.push_back(getStringLiteral(ClassDecl->getIdentifier()->getName()));
     CallExpr *Cls = SynthesizeCallToFunctionDecl(GetMetaClassFunctionDecl,
                                                  &ClsExprs[0],
                                                  ClsExprs.size(),
@@ -2791,14 +2786,10 @@ Stmt *RewriteObjC::SynthMessageExpr(ObjCMessageExpr *Exp,
 
   case ObjCMessageExpr::Class: {
     SmallVector<Expr*, 8> ClsExprs;
-    QualType argType = Context->getPointerType(Context->CharTy);
     ObjCInterfaceDecl *Class
       = Exp->getClassReceiver()->getAs<ObjCObjectType>()->getInterface();
     IdentifierInfo *clsName = Class->getIdentifier();
-    ClsExprs.push_back(StringLiteral::Create(*Context,
-                                             clsName->getName(),
-                                             StringLiteral::Ascii, false,
-                                             argType, SourceLocation()));
+    ClsExprs.push_back(getStringLiteral(clsName->getName()));
     CallExpr *Cls = SynthesizeCallToFunctionDecl(GetClassFunctionDecl,
                                                  &ClsExprs[0],
                                                  ClsExprs.size(), 
@@ -2826,11 +2817,7 @@ Stmt *RewriteObjC::SynthMessageExpr(ObjCMessageExpr *Exp,
     
     // (id)class_getSuperclass((Class)objc_getClass("CurrentClass"))
     SmallVector<Expr*, 8> ClsExprs;
-    QualType argType = Context->getPointerType(Context->CharTy);
-    ClsExprs.push_back(StringLiteral::Create(*Context,
-                                   ClassDecl->getIdentifier()->getName(),
-                                   StringLiteral::Ascii, false, argType,
-                                   SourceLocation()));
+    ClsExprs.push_back(getStringLiteral(ClassDecl->getIdentifier()->getName()));
     CallExpr *Cls = SynthesizeCallToFunctionDecl(GetClassFunctionDecl,
                                                  &ClsExprs[0],
                                                  ClsExprs.size(), 
@@ -2911,11 +2898,7 @@ Stmt *RewriteObjC::SynthMessageExpr(ObjCMessageExpr *Exp,
 
   // Create a call to sel_registerName("selName"), it will be the 2nd argument.
   SmallVector<Expr*, 8> SelExprs;
-  QualType argType = Context->getPointerType(Context->CharTy);
-  SelExprs.push_back(StringLiteral::Create(*Context,
-                                       Exp->getSelector().getAsString(),
-                                       StringLiteral::Ascii, false,
-                                       argType, SourceLocation()));
+  SelExprs.push_back(getStringLiteral(Exp->getSelector().getAsString()));
   CallExpr *SelExp = SynthesizeCallToFunctionDecl(SelGetUidFunctionDecl,
                                                  &SelExprs[0], SelExprs.size(),
                                                   StartLoc,
@@ -2990,11 +2973,10 @@ Stmt *RewriteObjC::SynthMessageExpr(ObjCMessageExpr *Exp,
   ArgTypes.push_back(Context->getObjCSelType());
   if (ObjCMethodDecl *OMD = Exp->getMethodDecl()) {
     // Push any user argument types.
-    for (ObjCMethodDecl::param_iterator PI = OMD->param_begin(),
-         E = OMD->param_end(); PI != E; ++PI) {
-      QualType t = (*PI)->getType()->isObjCQualifiedIdType()
+    for (const auto *PI : OMD->params()) {
+      QualType t = PI->getType()->isObjCQualifiedIdType()
                      ? Context->getObjCIdType()
-                     : (*PI)->getType();
+                     : PI->getType();
       // Make sure we convert "t (^)(...)" to "t (*)(...)".
       (void)convertBlockPointerToFunctionPointer(t);
       ArgTypes.push_back(t);
@@ -4881,9 +4863,7 @@ Stmt *RewriteObjC::RewriteFunctionBodyOrGlobalInitializer(Stmt *S) {
 }
 
 void RewriteObjC::RewriteRecordBody(RecordDecl *RD) {
-  for (RecordDecl::field_iterator i = RD->field_begin(), 
-                                  e = RD->field_end(); i != e; ++i) {
-    FieldDecl *FD = *i;
+  for (auto *FD : RD->fields()) {
     if (isTopLevelBlockPointerType(FD->getType()))
       RewriteBlockPointerDecl(FD);
     if (FD->getType()->isObjCQualifiedIdType() ||

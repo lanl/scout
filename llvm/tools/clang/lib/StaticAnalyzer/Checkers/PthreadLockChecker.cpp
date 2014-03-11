@@ -25,8 +25,8 @@ using namespace ento;
 
 namespace {
 class PthreadLockChecker : public Checker< check::PostStmt<CallExpr> > {
-  mutable OwningPtr<BugType> BT_doublelock;
-  mutable OwningPtr<BugType> BT_lor;
+  mutable std::unique_ptr<BugType> BT_doublelock;
+  mutable std::unique_ptr<BugType> BT_lor;
   enum LockingSemantics {
     NotApplicable = 0,
     PthreadSemantics,
@@ -120,10 +120,10 @@ void PthreadLockChecker::AcquireLock(CheckerContext &C, const CallExpr *CE,
     ProgramStateRef lockFail;
     switch (semantics) {
     case PthreadSemantics:
-      llvm::tie(lockFail, lockSucc) = state->assume(retVal);    
+      std::tie(lockFail, lockSucc) = state->assume(retVal);
       break;
     case XNUSemantics:
-      llvm::tie(lockSucc, lockFail) = state->assume(retVal);    
+      std::tie(lockSucc, lockFail) = state->assume(retVal);
       break;
     default:
       llvm_unreachable("Unknown tryLock locking semantics");

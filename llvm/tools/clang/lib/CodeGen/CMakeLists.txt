@@ -79,9 +79,11 @@ add_clang_library(clangCodeGen
   Scout/CodeGenTypes.cpp
   Scout/CodeGenModule.cpp
   # +========================================================================+
-  )
 
-target_link_libraries(clangCodeGen
+  DEPENDS
+  intrinsics_gen
+
+  LINK_LIBS
   clangBasic
   clangAST
   clangFrontend

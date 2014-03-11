@@ -80,10 +80,16 @@ public:
   void VisitUnresolvedUsingTypenameDecl(const UnresolvedUsingTypenameDecl *D) {
     IgnoreResults = true;
   }
-  
+
+  bool ShouldGenerateLocation(const NamedDecl *D);
+
+  bool isLocal(const NamedDecl *D) {
+    return D->getParentFunctionOrMethod() != 0;
+  }
+
   /// Generate the string component containing the location of the
   ///  declaration.
-  bool GenLoc(const Decl *D);
+  bool GenLoc(const Decl *D, bool IncludeOffset);
 
   /// String generation methods used both by the visitation methods
   /// and from other clients that want to directly generate USRs.  These
@@ -143,8 +149,13 @@ bool USRGenerator::EmitDeclName(const NamedDecl *D) {
   return startSize == endSize;
 }
 
-static inline bool ShouldGenerateLocation(const NamedDecl *D) {
-  return !D->isExternallyVisible();
+bool USRGenerator::ShouldGenerateLocation(const NamedDecl *D) {
+  if (D->isExternallyVisible())
+    return false;
+  if (D->getParentFunctionOrMethod())
+    return true;
+  const SourceManager &SM = Context->getSourceManager();
+  return !SM.isInSystemHeader(D->getLocation());
 }
 
 void USRGenerator::VisitDeclContext(const DeclContext *DC) {
@@ -168,7 +179,7 @@ void USRGenerator::VisitFieldDecl(const FieldDecl *D) {
 }
 
 void USRGenerator::VisitFunctionDecl(const FunctionDecl *D) {
-  if (ShouldGenerateLocation(D) && GenLoc(D))
+  if (ShouldGenerateLocation(D) && GenLoc(D, /*IncludeOffset=*/isLocal(D)))
     return;
 
   VisitDeclContext(D->getDeclContext());
@@ -194,12 +205,9 @@ void USRGenerator::VisitFunctionDecl(const FunctionDecl *D) {
   }
 
   // Mangle in type information for the arguments.
-  for (FunctionDecl::param_const_iterator I = D->param_begin(),
-                                          E = D->param_end();
-       I != E; ++I) {
+  for (auto PD : D->params()) {
     Out << '#';
-    if (ParmVarDecl *PD = *I)
-      VisitType(PD->getType());
+    VisitType(PD->getType());
   }
   if (D->isVariadic())
     Out << '.';
@@ -229,7 +237,7 @@ void USRGenerator::VisitVarDecl(const VarDecl *D) {
   // VarDecls can be declared 'extern' within a function or method body,
   // but their enclosing DeclContext is the function, not the TU.  We need
   // to check the storage class to correctly generate the USR.
-  if (ShouldGenerateLocation(D) && GenLoc(D))
+  if (ShouldGenerateLocation(D) && GenLoc(D, /*IncludeOffset=*/isLocal(D)))
     return;
 
   VisitDeclContext(D->getDeclContext());
@@ -249,13 +257,13 @@ void USRGenerator::VisitVarDecl(const VarDecl *D) {
 
 void USRGenerator::VisitNonTypeTemplateParmDecl(
                                         const NonTypeTemplateParmDecl *D) {
-  GenLoc(D);
+  GenLoc(D, /*IncludeOffset=*/true);
   return;
 }
 
 void USRGenerator::VisitTemplateTemplateParmDecl(
                                         const TemplateTemplateParmDecl *D) {
-  GenLoc(D);
+  GenLoc(D, /*IncludeOffset=*/true);
   return;
 }
 
@@ -329,7 +337,7 @@ void USRGenerator::VisitObjCContainerDecl(const ObjCContainerDecl *D) {
       // We want to mangle in the location to uniquely distinguish them.
       if (CD->IsClassExtension()) {
         Out << "objc(ext)" << ID->getName() << '@';
-        GenLoc(CD);
+        GenLoc(CD, /*IncludeOffset=*/true);
       }
       else
         GenObjCCategory(ID->getName(), CD->getName());
@@ -378,7 +386,7 @@ void USRGenerator::VisitObjCPropertyImplDecl(const ObjCPropertyImplDecl *D) {
 void USRGenerator::VisitTagDecl(const TagDecl *D) {
   // Add the location of the tag decl to handle resolution across
   // translation units.
-  if (ShouldGenerateLocation(D) && GenLoc(D))
+  if (ShouldGenerateLocation(D) && GenLoc(D, /*IncludeOffset=*/isLocal(D)))
     return;
 
   D = D->getCanonicalDecl();
@@ -449,7 +457,7 @@ void USRGenerator::VisitTagDecl(const TagDecl *D) {
 }
 
 void USRGenerator::VisitTypedefDecl(const TypedefDecl *D) {
-  if (ShouldGenerateLocation(D) && GenLoc(D))
+  if (ShouldGenerateLocation(D) && GenLoc(D, /*IncludeOffset=*/isLocal(D)))
     return;
   const DeclContext *DC = D->getDeclContext();
   if (const NamedDecl *DCN = dyn_cast<NamedDecl>(DC))
@@ -459,11 +467,11 @@ void USRGenerator::VisitTypedefDecl(const TypedefDecl *D) {
 }
 
 void USRGenerator::VisitTemplateTypeParmDecl(const TemplateTypeParmDecl *D) {
-  GenLoc(D);
+  GenLoc(D, /*IncludeOffset=*/true);
   return;
 }
 
-bool USRGenerator::GenLoc(const Decl *D) {
+bool USRGenerator::GenLoc(const Decl *D, bool IncludeOffset) {
   if (generatedLoc)
     return IgnoreResults;
   generatedLoc = true;
@@ -494,10 +502,12 @@ bool USRGenerator::GenLoc(const Decl *D) {
     IgnoreResults = true;
     return true;
   }
-  // Use the offest into the FileID to represent the location.  Using
-  // a line/column can cause us to look back at the original source file,
-  // which is expensive.
-  Out << '@' << Decomposed.second;
+  if (IncludeOffset) {
+    // Use the offest into the FileID to represent the location.  Using
+    // a line/column can cause us to look back at the original source file,
+    // which is expensive.
+    Out << '@' << Decomposed.second;
+  }
   return IgnoreResults;
 }
 

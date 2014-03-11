@@ -57,9 +57,8 @@ add_clang_library(clangSema
   Scout/SemaStmt.cpp
   # +========================================================================+
   TypeLocBuilder.cpp
-  )
 
-target_link_libraries(clangSema
+  LINK_LIBS
   clangAST
   clangAnalysis
   clangBasic

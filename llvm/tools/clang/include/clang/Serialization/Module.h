@@ -18,9 +18,9 @@
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Serialization/ASTBitCodes.h"
 #include "clang/Serialization/ContinuousRangeMap.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Bitcode/BitstreamReader.h"
+#include <memory>
 #include <string>
 
 namespace clang {
@@ -151,7 +151,7 @@ public:
   
   /// \brief The memory buffer that stores the data associated with
   /// this AST file.
-  OwningPtr<llvm::MemoryBuffer> Buffer;
+  std::unique_ptr<llvm::MemoryBuffer> Buffer;
 
   /// \brief The size of this file, in bits.
   uint64_t SizeInBits;
@@ -171,6 +171,9 @@ public:
   /// If module A depends on and imports module B, both modules will have the
   /// same DirectImportLoc, but different ImportLoc (B's ImportLoc will be a
   /// source location inside module A).
+  ///
+  /// WARNING: This is largely useless. It doesn't tell you when a module was
+  /// made visible, just when the first submodule of that module was imported.
   SourceLocation DirectImportLoc;
 
   /// \brief The source location where this module was first imported.

@@ -13,8 +13,8 @@
 
 #include "clang/Parse/Parser.h"
 #include "RAIIObjectsForParser.h"
-#include "clang/AST/DeclTemplate.h"
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/DeclTemplate.h"
 #include "clang/Basic/AddressSpaces.h"
 #include "clang/Basic/CharInfo.h"
 #include "clang/Parse/ParseDiagnostic.h"
@@ -302,14 +302,14 @@ void Parser::ParseGNUAttributeArgs(IdentifierInfo *AttrName,
 
   // These may refer to the function arguments, but need to be parsed early to
   // participate in determining whether it's a redeclaration.
-  llvm::OwningPtr<ParseScope> PrototypeScope;
+  std::unique_ptr<ParseScope> PrototypeScope;
   if (AttrName->isStr("enable_if") && D && D->isFunctionDeclarator()) {
     DeclaratorChunk::FunctionTypeInfo FTI = D->getFunctionTypeInfo();
     PrototypeScope.reset(new ParseScope(this, Scope::FunctionPrototypeScope |
                                         Scope::FunctionDeclarationScope |
                                         Scope::DeclScope));
-    for (unsigned i = 0; i != FTI.NumArgs; ++i) {
-      ParmVarDecl *Param = cast<ParmVarDecl>(FTI.ArgInfo[i].Param);
+    for (unsigned i = 0; i != FTI.NumParams; ++i) {
+      ParmVarDecl *Param = cast<ParmVarDecl>(FTI.Params[i].Param);
       Actions.ActOnReenterCXXMethodParameter(getCurScope(), Param);
     }
   }
@@ -342,7 +342,7 @@ void Parser::ParseGNUAttributeArgs(IdentifierInfo *AttrName,
 
     // Parse the non-empty comma-separated list of expressions.
     do {
-      OwningPtr<EnterExpressionEvaluationContext> Unevaluated;
+      std::unique_ptr<EnterExpressionEvaluationContext> Unevaluated;
       if (attributeParsedArgsUnevaluated(*AttrName))
         Unevaluated.reset(new EnterExpressionEvaluationContext(Actions,
         Sema::Unevaluated));
@@ -2613,7 +2613,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
         if ((DSContext == DSC_top_level || DSContext == DSC_class) &&
             TemplateId->Name &&
             Actions.isCurrentClassName(*TemplateId->Name, getCurScope(), &SS)) {
-          if (isConstructorDeclarator()) {
+          if (isConstructorDeclarator(/*Unqualified*/false)) {
             // The user meant this to be an out-of-line constructor
             // definition, but template arguments are not allowed
             // there.  Just allow this as a constructor; we'll
@@ -2663,7 +2663,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       if ((DSContext == DSC_top_level || DSContext == DSC_class) &&
           Actions.isCurrentClassName(*Next.getIdentifierInfo(), getCurScope(),
                                      &SS)) {
-        if (isConstructorDeclarator())
+        if (isConstructorDeclarator(/*Unqualified*/false))
           goto DoneWithDeclSpec;
 
         // As noted in C++ [class.qual]p2 (cited above), when the name
@@ -2826,7 +2826,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       // check whether this is a constructor declaration.
       if (getLangOpts().CPlusPlus && DSContext == DSC_class &&
           Actions.isCurrentClassName(*Tok.getIdentifierInfo(), getCurScope()) &&
-          isConstructorDeclarator())
+          isConstructorDeclarator(/*Unqualified*/true))
         goto DoneWithDeclSpec;
 
       isInvalid = DS.SetTypeSpecType(DeclSpec::TST_typename, Loc, PrevSpec,
@@ -2862,7 +2862,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       // constructor declaration.
       if (getLangOpts().CPlusPlus && DSContext == DSC_class &&
           Actions.isCurrentClassName(*TemplateId->Name, getCurScope()) &&
-          isConstructorDeclarator())
+          isConstructorDeclarator(TemplateId->SS.isEmpty()))
         goto DoneWithDeclSpec;
 
       // Turn the template-id annotation token into a type annotation
@@ -4343,7 +4343,7 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   }
 }
 
-bool Parser::isConstructorDeclarator() {
+bool Parser::isConstructorDeclarator(bool IsUnqualified) {
   TentativeParsingAction TPA(*this);
 
   // Parse the C++ scope specifier.
@@ -4425,10 +4425,33 @@ bool Parser::isConstructorDeclarator() {
     case tok::coloncolon:
       // C(X   ::   Y);
       // C(X   ::   *p);
-    case tok::r_paren:
-      // C(X   )
       // Assume this isn't a constructor, rather than assuming it's a
       // constructor with an unnamed parameter of an ill-formed type.
+      break;
+
+    case tok::r_paren:
+      // C(X   )
+      if (NextToken().is(tok::colon) || NextToken().is(tok::kw_try)) {
+        // Assume these were meant to be constructors:
+        //   C(X)   :    (the name of a bit-field cannot be parenthesized).
+        //   C(X)   try  (this is otherwise ill-formed).
+        IsConstructor = true;
+      }
+      if (NextToken().is(tok::semi) || NextToken().is(tok::l_brace)) {
+        // If we have a constructor name within the class definition,
+        // assume these were meant to be constructors:
+        //   C(X)   {
+        //   C(X)   ;
+        // ... because otherwise we would be declaring a non-static data
+        // member that is ill-formed because it's of the same type as its
+        // surrounding class.
+        //
+        // FIXME: We can actually do this whether or not the name is qualified,
+        // because if it is qualified in this context it must be being used as
+        // a constructor name. However, we do not implement that rule correctly
+        // currently, so we're somewhat conservative here.
+        IsConstructor = IsUnqualified;
+      }
       break;
 
     default:
@@ -5177,7 +5200,6 @@ void Parser::ParseFunctionDeclarator(Declarator &D,
   ParsedAttributes FnAttrs(AttrFactory);
   TypeResult TrailingReturnType;
 
-  Actions.ActOnStartFunctionDeclarator();
   /* LocalEndLoc is the end location for the local FunctionTypeLoc.
      EndLoc is the end location for the function declarator.
      They differ for trailing return types. */
@@ -5306,8 +5328,6 @@ void Parser::ParseFunctionDeclarator(Declarator &D,
                                              StartLoc, LocalEndLoc, D,
                                              TrailingReturnType),
                 FnAttrs, EndLoc);
-
-  Actions.ActOnEndFunctionDeclarator();
 }
 
 /// isFunctionDeclaratorIdentifierList - This parameter list may have an

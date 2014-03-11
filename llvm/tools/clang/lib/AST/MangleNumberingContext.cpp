@@ -38,8 +38,10 @@ MangleNumberingContext::getManglingNumber(const BlockDecl *BD) {
 }
 
 unsigned
-MangleNumberingContext::getManglingNumber(const TagDecl *TD) {
-  return ++TagManglingNumbers[TD->getIdentifier()];
+MangleNumberingContext::getStaticLocalNumber(const VarDecl *VD) {
+  // FIXME: Compute a BlockPointerType?  Not obvious how.
+  const Type *Ty = 0;
+  return ++ManglingNumbers[Ty];
 }
 
 // +===== Scout ==============================================================+

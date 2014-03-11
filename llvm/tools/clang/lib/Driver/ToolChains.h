@@ -186,8 +186,8 @@ protected:
   /// @}
 
 private:
-  mutable OwningPtr<tools::gcc::Preprocess> Preprocess;
-  mutable OwningPtr<tools::gcc::Compile> Compile;
+  mutable std::unique_ptr<tools::gcc::Preprocess> Preprocess;
+  mutable std::unique_ptr<tools::gcc::Compile> Compile;
 };
 
 class LLVM_LIBRARY_VISIBILITY MachO : public ToolChain {
@@ -196,9 +196,9 @@ protected:
   virtual Tool *buildLinker() const;
   virtual Tool *getTool(Action::ActionClass AC) const;
 private:
-  mutable OwningPtr<tools::darwin::Lipo> Lipo;
-  mutable OwningPtr<tools::darwin::Dsymutil> Dsymutil;
-  mutable OwningPtr<tools::darwin::VerifyDebug> VerifyDebug;
+  mutable std::unique_ptr<tools::darwin::Lipo> Lipo;
+  mutable std::unique_ptr<tools::darwin::Dsymutil> Dsymutil;
+  mutable std::unique_ptr<tools::darwin::VerifyDebug> VerifyDebug;
 
 public:
   MachO(const Driver &D, const llvm::Triple &Triple,
@@ -361,11 +361,11 @@ public:
 
   virtual void
   addMinVersionArgs(const llvm::opt::ArgList &Args,
-                    llvm::opt::ArgStringList &CmdArgs) const LLVM_OVERRIDE;
+                    llvm::opt::ArgStringList &CmdArgs) const override;
 
   virtual void
   addStartObjectFileArgs(const llvm::opt::ArgList &Args,
-                         llvm::opt::ArgStringList &CmdArgs) const LLVM_OVERRIDE;
+                         llvm::opt::ArgStringList &CmdArgs) const override;
 
   virtual bool isKernelStatic() const {
     return !isTargetIPhoneOS() || isIPhoneOSVersionLT(6, 0);
@@ -478,19 +478,19 @@ public:
 
   virtual void
   AddLinkRuntimeLibArgs(const llvm::opt::ArgList &Args,
-                        llvm::opt::ArgStringList &CmdArgs) const LLVM_OVERRIDE;
+                        llvm::opt::ArgStringList &CmdArgs) const override;
 
   virtual void
   AddCXXStdlibLibArgs(const llvm::opt::ArgList &Args,
-                                   llvm::opt::ArgStringList &CmdArgs) const LLVM_OVERRIDE;
+                      llvm::opt::ArgStringList &CmdArgs) const override;
 
   virtual void
   AddCCKextLibArgs(const llvm::opt::ArgList &Args,
-                   llvm::opt::ArgStringList &CmdArgs) const LLVM_OVERRIDE;
+                   llvm::opt::ArgStringList &CmdArgs) const override;
 
   virtual void
   AddLinkARCArgs(const llvm::opt::ArgList &Args,
-                 llvm::opt::ArgStringList &CmdArgs) const LLVM_OVERRIDE;
+                 llvm::opt::ArgStringList &CmdArgs) const override;
   /// }
 };
 
@@ -590,6 +590,7 @@ public:
   }
 
   virtual bool UseSjLjExceptions() const;
+  virtual bool isPIEDefault() const;
 protected:
   virtual Tool *buildAssembler() const;
   virtual Tool *buildLinker() const;

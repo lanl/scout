@@ -486,7 +486,7 @@ void Darwin::AddDeploymentTarget(DerivedArgList &Args) const {
       if (const Arg *A = Args.getLastArg(options::OPT_isysroot)) {
         StringRef first, second;
         StringRef isysroot = A->getValue();
-        llvm::tie(first, second) = isysroot.split(StringRef("SDKs/iPhoneOS"));
+        std::tie(first, second) = isysroot.split(StringRef("SDKs/iPhoneOS"));
         if (second != "")
           iOSTarget = second.substr(0,3);
       }
@@ -1383,6 +1383,7 @@ bool Generic_GCC::GCCInstallationDetector::getBiarchSibling(Multilib &M) const {
 
   switch (TargetTriple.getArch()) {
   case llvm::Triple::aarch64:
+  case llvm::Triple::aarch64_be:
     LibDirs.append(AArch64LibDirs,
                    AArch64LibDirs + llvm::array_lengthof(AArch64LibDirs));
     TripleAliases.append(AArch64Triples,
@@ -1538,11 +1539,11 @@ bool Generic_GCC::GCCInstallationDetector::getBiarchSibling(Multilib &M) const {
 
 namespace {
 // Filter to remove Multilibs that don't exist as a suffix to Path
-class FilterNonExistant : public MultilibSet::FilterCallback {
+class FilterNonExistent : public MultilibSet::FilterCallback {
   std::string Base;
 public:
-  FilterNonExistant(std::string Base) : Base(Base) {}
-  bool operator()(const Multilib &M) const LLVM_OVERRIDE {
+  FilterNonExistent(std::string Base) : Base(Base) {}
+  bool operator()(const Multilib &M) const override {
     return !llvm::sys::fs::exists(Base + M.gccSuffix() + "/crtbegin.o");
   }
 };
@@ -1641,7 +1642,7 @@ bool Generic_GCC::GCCInstallationDetector::findMIPSMultilibs(
   //     /usr
   //       /lib  <= crt*.o files compiled with '-mips32'
 
-  FilterNonExistant NonExistant(Path);
+  FilterNonExistent NonExistent(Path);
 
   // Check for FSF toolchain multilibs
   MultilibSet FSFMipsMultilibs;
@@ -1685,6 +1686,9 @@ bool Generic_GCC::GCCInstallationDetector::findMIPSMultilibs(
       .includeSuffix("/64")
       .flag("+mabi=64").flag("-mabi=n32").flag("-m32");
 
+    Multilib BigEndian = Multilib()
+      .flag("+EB").flag("-EL");
+
     Multilib LittleEndian = Multilib()
       .gccSuffix("/el")
       .osSuffix("/el")
@@ -1721,13 +1725,13 @@ bool Generic_GCC::GCCInstallationDetector::findMIPSMultilibs(
       .FilterOut("/mips32/64")
       .FilterOut("^/64")
       .FilterOut("/mips16/64")
-      .Maybe(LittleEndian)
+      .Either(BigEndian, LittleEndian)
       .Maybe(SoftFloat)
       .Maybe(FP64)
       .Maybe(Nan2008)
       .FilterOut(".*sof/nan2008")
       .FilterOut(".*sof/fp64")
-      .FilterOut(NonExistant);
+      .FilterOut(NonExistent);
   }
 
   // Check for Code Sourcery toolchain multilibs
@@ -1763,6 +1767,9 @@ bool Generic_GCC::GCCInstallationDetector::findMIPSMultilibs(
     Multilib DefaultFloat = Multilib()
       .flag("-msoft-float").flag("-mnan=2008");
 
+    Multilib BigEndian = Multilib()
+      .flag("+EB").flag("-EL");
+
     Multilib LittleEndian = Multilib()
       .gccSuffix("/el")
       .osSuffix("/el")
@@ -1780,16 +1787,16 @@ bool Generic_GCC::GCCInstallationDetector::findMIPSMultilibs(
       .Either(SoftFloat, Nan2008, DefaultFloat)
       .FilterOut("/micromips/nan2008")
       .FilterOut("/mips16/nan2008")
-      .Maybe(LittleEndian)
+      .Either(BigEndian, LittleEndian)
       .Maybe(MAbi64)
       .FilterOut("/mips16.*/64")
       .FilterOut("/micromips.*/64")
-      .FilterOut(NonExistant);
+      .FilterOut(NonExistent);
   }
 
   MultilibSet AndroidMipsMultilibs = MultilibSet()
     .Maybe(Multilib("/mips-r2").flag("+march=mips32r2"))
-    .FilterOut(NonExistant);
+    .FilterOut(NonExistent);
 
   MultilibSet DebianMipsMultilibs;
   {
@@ -1808,23 +1815,8 @@ bool Generic_GCC::GCCInstallationDetector::findMIPSMultilibs(
 
     DebianMipsMultilibs = MultilibSet()
       .Either(M32, M64, MAbiN32)
-      .FilterOut(NonExistant);
+      .FilterOut(NonExistent);
   }
-
-  Multilibs.clear();
-
-  // Decide which MultilibSet matches best for the given path
-  // (we do this rather than combining them all because there is a
-  //  a bit of overlap in the directories that each specifies)
-  if (TargetTriple.getEnvironment() == llvm::Triple::Android)
-    Multilibs.combineWith(AndroidMipsMultilibs);
-  else if (DebianMipsMultilibs.size() == 3) {
-    Multilibs.combineWith(DebianMipsMultilibs);
-    BiarchSibling = Multilib();
-  } else if (FSFMipsMultilibs.size() > CSMipsMultilibs.size())
-    Multilibs.combineWith(FSFMipsMultilibs);
-  else
-    Multilibs.combineWith(CSMipsMultilibs);
 
   llvm::Triple::ArchType TargetArch = TargetTriple.getArch();
 
@@ -1851,7 +1843,31 @@ bool Generic_GCC::GCCInstallationDetector::findMIPSMultilibs(
   addMultilibFlag(isMipsEL(TargetArch), "EL", Flags);
   addMultilibFlag(isMipsEB(TargetArch), "EB", Flags);
 
-  return Multilibs.select(Flags, SelectedMultilib);
+  if (TargetTriple.getEnvironment() == llvm::Triple::Android) {
+    // Select Android toolchain. It's the only choice in that case.
+    Multilibs.clear();
+    Multilibs.combineWith(AndroidMipsMultilibs);
+    return Multilibs.select(Flags, SelectedMultilib);
+  }
+
+  // Sort candidates. Toolchain that best meets the directories goes first.
+  // Then select the first toolchains matches command line flags.
+  MultilibSet *candidates[] = { &DebianMipsMultilibs, &FSFMipsMultilibs,
+                                &CSMipsMultilibs };
+  std::sort(
+      std::begin(candidates), std::end(candidates),
+      [](MultilibSet *a, MultilibSet *b) { return a->size() > b->size(); });
+  for (const auto &candidate : candidates) {
+    Multilibs.clear();
+    Multilibs.combineWith(*candidate);
+    if (Multilibs.select(Flags, SelectedMultilib)) {
+      if (candidate == &DebianMipsMultilibs)
+        BiarchSibling = Multilib();
+      return true;
+    }
+  }
+
+  return false;
 }
 
 bool Generic_GCC::GCCInstallationDetector::findBiarchMultilibs(
@@ -1875,14 +1891,14 @@ bool Generic_GCC::GCCInstallationDetector::findBiarchMultilibs(
     .includeSuffix("/32")
     .flag("+m32").flag("-m64");
 
-  FilterNonExistant NonExistant(Path);
+  FilterNonExistent NonExistent(Path);
 
   // Decide whether the default multilib is 32bit, correcting for
   // when the default multilib and the alternate appear backwards
   bool DefaultIs32Bit;
-  if (TargetTriple.isArch32Bit() && !NonExistant(Alt32))
+  if (TargetTriple.isArch32Bit() && !NonExistent(Alt32))
     DefaultIs32Bit = false;
-  else if (TargetTriple.isArch64Bit() && !NonExistant(Alt64))
+  else if (TargetTriple.isArch64Bit() && !NonExistent(Alt64))
     DefaultIs32Bit = true;
   else {
     if (NeedsBiarchSuffix)
@@ -1900,7 +1916,7 @@ bool Generic_GCC::GCCInstallationDetector::findBiarchMultilibs(
   Multilibs.push_back(Alt64);
   Multilibs.push_back(Alt32);
 
-  Multilibs.FilterOut(NonExistant);
+  Multilibs.FilterOut(NonExistent);
 
   Multilib::flags_list Flags;
   addMultilibFlag(TargetTriple.isArch64Bit(), "m64", Flags);
@@ -2049,6 +2065,7 @@ bool Generic_GCC::IsIntegratedAssemblerDefault() const {
   return getTriple().getArch() == llvm::Triple::x86 ||
          getTriple().getArch() == llvm::Triple::x86_64 ||
          getTriple().getArch() == llvm::Triple::aarch64 ||
+         getTriple().getArch() == llvm::Triple::aarch64_be ||
          getTriple().getArch() == llvm::Triple::arm ||
          getTriple().getArch() == llvm::Triple::thumb;
 }
@@ -2058,6 +2075,7 @@ void Generic_ELF::addClangTargetOptions(const ArgList &DriverArgs,
   const Generic_GCC::GCCVersion &V = GCCInstallation.getVersion();
   bool UseInitArrayDefault = 
       getTriple().getArch() == llvm::Triple::aarch64 ||
+      getTriple().getArch() == llvm::Triple::aarch64_be ||
       (getTriple().getOS() == llvm::Triple::Linux && (
          !V.isOlderThan(4, 7, 0) ||
          getTriple().getEnvironment() == llvm::Triple::Android));
@@ -2473,6 +2491,14 @@ bool FreeBSD::UseSjLjExceptions() const {
   }
 }
 
+bool FreeBSD::HasNativeLLVMSupport() const {
+  return true;
+}
+
+bool FreeBSD::isPIEDefault() const {
+  return getSanitizerArgs().hasZeroBaseShadow();
+}
+
 /// NetBSD - NetBSD tool chain which can call as(1) and ld(1) directly.
 
 NetBSD::NetBSD(const Driver &D, const llvm::Triple& Triple, const ArgList &Args)
@@ -2683,7 +2709,7 @@ static bool IsUbuntu(enum Distro Distro) {
 }
 
 static Distro DetectDistro(llvm::Triple::ArchType Arch) {
-  OwningPtr<llvm::MemoryBuffer> File;
+  std::unique_ptr<llvm::MemoryBuffer> File;
   if (!llvm::MemoryBuffer::getFile("/etc/lsb-release", File)) {
     StringRef Data = File.get()->getBuffer();
     SmallVector<StringRef, 8> Lines;
@@ -2758,7 +2784,7 @@ static Distro DetectDistro(llvm::Triple::ArchType Arch) {
 /// a target-triple directory in the library and header search paths.
 /// Unfortunately, this triple does not align with the vanilla target triple,
 /// so we provide a rough mapping here.
-static std::string getMultiarchTriple(const llvm::Triple TargetTriple,
+static std::string getMultiarchTriple(const llvm::Triple &TargetTriple,
                                       StringRef SysRoot) {
   // For most architectures, just use whatever we have rather than trying to be
   // clever.
@@ -2789,6 +2815,7 @@ static std::string getMultiarchTriple(const llvm::Triple TargetTriple,
       return "x86_64-linux-gnu";
     return TargetTriple.str();
   case llvm::Triple::aarch64:
+  case llvm::Triple::aarch64_be:
     if (llvm::sys::fs::exists(SysRoot + "/lib/aarch64-linux-gnu"))
       return "aarch64-linux-gnu";
     return TargetTriple.str();
@@ -3023,10 +3050,6 @@ Linux::Linux(const Driver &D, const llvm::Triple &Triple, const ArgList &Args)
   addPathIfExists(SysRoot + "/usr/lib", Paths);
 }
 
-bool FreeBSD::HasNativeLLVMSupport() const {
-  return true;
-}
-
 bool Linux::HasNativeLLVMSupport() const {
   return true;
 }
@@ -3192,7 +3215,8 @@ void Linux::AddClangSystemIncludeArgs(const ArgList &DriverArgs,
     MultiarchIncludeDirs = X86_64MultiarchIncludeDirs;
   } else if (getTriple().getArch() == llvm::Triple::x86) {
     MultiarchIncludeDirs = X86MultiarchIncludeDirs;
-  } else if (getTriple().getArch() == llvm::Triple::aarch64) {
+  } else if ((getTriple().getArch() == llvm::Triple::aarch64) ||
+             (getTriple().getArch() == llvm::Triple::aarch64_be)) {
     MultiarchIncludeDirs = AArch64MultiarchIncludeDirs;
   } else if (getTriple().getArch() == llvm::Triple::arm) {
     if (getTriple().getEnvironment() == llvm::Triple::GNUEABIHF)

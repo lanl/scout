@@ -59,15 +59,16 @@ Preprocessor::Preprocessor(IntrusiveRefCntPtr<PreprocessorOptions> PPOpts,
                            const TargetInfo *target, SourceManager &SM,
                            HeaderSearch &Headers, ModuleLoader &TheModuleLoader,
                            IdentifierInfoLookup *IILookup, bool OwnsHeaders,
-                           bool DelayInitialization, bool IncrProcessing)
+                           bool DelayInitialization, bool IncrProcessing,
+                           TranslationUnitKind TUKind)
     : PPOpts(PPOpts), Diags(&diags), LangOpts(opts), Target(target),
       FileMgr(Headers.getFileMgr()), SourceMgr(SM), HeaderInfo(Headers),
       TheModuleLoader(TheModuleLoader), ExternalSource(0),
       Identifiers(opts, IILookup),
-      // +===== Scout ===========================================================+
+      // +===== Scout ========================================+
       ScoutIdentifiers(LangOptions()),
-      // +=======================================================================+
-      IncrementalProcessing(IncrProcessing),
+      // +====================================================+
+      IncrementalProcessing(IncrProcessing), TUKind(TUKind),
       CodeComplete(0), CodeCompletionFile(0), CodeCompletionOffset(0),
       LastTokenWasAt(false), ModuleImportExpectsIdentifier(false),
       CodeCompletionReached(0), SkipMainFilePreamble(0, true), CurPPLexer(0),
@@ -631,7 +632,7 @@ bool Preprocessor::HandleIdentifier(Token &Identifier) {
   // name of a macro.
   // FIXME: This warning is disabled in cases where it shouldn't be, like
   //   "#define constexpr constexpr", "int constexpr;"
-  if (II.isCXX11CompatKeyword() & !DisableMacroExpansion) {
+  if (II.isCXX11CompatKeyword() && !DisableMacroExpansion) {
     Diag(Identifier, diag::warn_cxx11_keyword) << II.getName();
     // Don't diagnose this keyword again in this translation unit.
     II.setIsCXX11CompatKeyword(false);

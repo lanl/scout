@@ -61,7 +61,7 @@ namespace {
   class EmptyLookupIterator : public IdentifierIterator
   {
   public:
-    virtual StringRef Next() { return StringRef(); }
+    StringRef Next() override { return StringRef(); }
   };
 }
 

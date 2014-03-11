@@ -13,8 +13,8 @@
 
 #include "clang/Parse/Parser.h"
 #include "RAIIObjectsForParser.h"
-#include "clang/AST/DeclTemplate.h"
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/DeclTemplate.h"
 #include "clang/Basic/CharInfo.h"
 #include "clang/Basic/OperatorKinds.h"
 #include "clang/Parse/ParseDiagnostic.h"
@@ -313,11 +313,42 @@ Decl *Parser::ParseLinkage(ParsingDeclSpec &DS, unsigned Context) {
 
   BalancedDelimiterTracker T(*this, tok::l_brace);
   T.consumeOpen();
-  while (Tok.isNot(tok::r_brace) && !isEofOrEom()) {
-    ParsedAttributesWithRange attrs(AttrFactory);
-    MaybeParseCXX11Attributes(attrs);
-    MaybeParseMicrosoftAttributes(attrs);
-    ParseExternalDeclaration(attrs);
+
+  unsigned NestedModules = 0;
+  while (true) {
+    switch (Tok.getKind()) {
+    case tok::annot_module_begin:
+      ++NestedModules;
+      ParseTopLevelDecl();
+      continue;
+
+    case tok::annot_module_end:
+      if (!NestedModules)
+        break;
+      --NestedModules;
+      ParseTopLevelDecl();
+      continue;
+
+    case tok::annot_module_include:
+      ParseTopLevelDecl();
+      continue;
+
+    case tok::eof:
+      break;
+
+    case tok::r_brace:
+      if (!NestedModules)
+        break;
+      // Fall through.
+    default:
+      ParsedAttributesWithRange attrs(AttrFactory);
+      MaybeParseCXX11Attributes(attrs);
+      MaybeParseMicrosoftAttributes(attrs);
+      ParseExternalDeclaration(attrs);
+      continue;
+    }
+
+    break;
   }
 
   T.consumeClose();
@@ -1776,8 +1807,8 @@ void Parser::HandleMemberFunctionDeclDelays(Declarator& DeclaratorInfo,
   DeclaratorChunk::FunctionTypeInfo &FTI
     = DeclaratorInfo.getFunctionTypeInfo();
 
-  for (unsigned ParamIdx = 0; ParamIdx < FTI.NumArgs; ++ParamIdx) {
-    if (LateMethod || FTI.ArgInfo[ParamIdx].DefaultArgTokens) {
+  for (unsigned ParamIdx = 0; ParamIdx < FTI.NumParams; ++ParamIdx) {
+    if (LateMethod || FTI.Params[ParamIdx].DefaultArgTokens) {
       if (!LateMethod) {
         // Push this method onto the stack of late-parsed method
         // declarations.
@@ -1787,17 +1818,16 @@ void Parser::HandleMemberFunctionDeclDelays(Declarator& DeclaratorInfo,
 
         // Add all of the parameters prior to this one (they don't
         // have default arguments).
-        LateMethod->DefaultArgs.reserve(FTI.NumArgs);
+        LateMethod->DefaultArgs.reserve(FTI.NumParams);
         for (unsigned I = 0; I < ParamIdx; ++I)
           LateMethod->DefaultArgs.push_back(
-                             LateParsedDefaultArgument(FTI.ArgInfo[I].Param));
+              LateParsedDefaultArgument(FTI.Params[I].Param));
       }
 
       // Add this parameter to the list of parameters (it may or may
       // not have a default argument).
-      LateMethod->DefaultArgs.push_back(
-        LateParsedDefaultArgument(FTI.ArgInfo[ParamIdx].Param,
-                                  FTI.ArgInfo[ParamIdx].DefaultArgTokens));
+      LateMethod->DefaultArgs.push_back(LateParsedDefaultArgument(
+          FTI.Params[ParamIdx].Param, FTI.Params[ParamIdx].DefaultArgTokens));
     }
   }
 }

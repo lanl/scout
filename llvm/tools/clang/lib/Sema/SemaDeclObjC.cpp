@@ -329,17 +329,15 @@ void Sema::ActOnStartOfObjCMethodDef(Scope *FnBodyScope, Decl *D) {
                            /*CheckParameterNames=*/false);
 
   // Introduce all of the other parameters into this scope.
-  for (ObjCMethodDecl::param_iterator PI = MDecl->param_begin(),
-       E = MDecl->param_end(); PI != E; ++PI) {
-    ParmVarDecl *Param = (*PI);
+  for (auto *Param : MDecl->params()) {
     if (!Param->isInvalidDecl() &&
         getLangOpts().ObjCAutoRefCount &&
         !HasExplicitOwnershipAttr(*this, Param))
       Diag(Param->getLocation(), diag::warn_arc_strong_pointer_objc_pointer) <<
             Param->getType();
     
-    if ((*PI)->getIdentifier())
-      PushOnScopeChains(*PI, FnBodyScope);
+    if (Param->getIdentifier())
+      PushOnScopeChains(Param, FnBodyScope);
   }
 
   // In ARC, disallow definition of retain/release/autorelease/retainCount
@@ -1632,6 +1630,35 @@ void Sema::WarnExactTypedMethods(ObjCMethodDecl *ImpMethodDecl,
 /// we used an immutable set to keep the table then it wouldn't add significant
 /// memory cost and it would be handy for lookups.
 
+typedef llvm::DenseSet<IdentifierInfo*> ProtocolNameSet;
+typedef std::unique_ptr<ProtocolNameSet> LazyProtocolNameSet;
+
+static void findProtocolsWithExplicitImpls(const ObjCProtocolDecl *PDecl,
+                                           ProtocolNameSet &PNS) {
+  if (PDecl->hasAttr<ObjCExplicitProtocolImplAttr>())
+    PNS.insert(PDecl->getIdentifier());
+  for (ObjCProtocolDecl::protocol_iterator PI = PDecl->protocol_begin(),
+       PE = PDecl->protocol_end(); PI != PE; ++PI)
+    findProtocolsWithExplicitImpls(*PI, PNS);
+}
+
+/// Recursively populates a set with all conformed protocols in a class
+/// hierarchy that have the 'objc_protocol_requires_explicit_implementation'
+/// attribute.
+static void findProtocolsWithExplicitImpls(const ObjCInterfaceDecl *Super,
+                                           ProtocolNameSet &PNS) {
+  if (!Super)
+    return;
+
+  for (ObjCInterfaceDecl::all_protocol_iterator
+        I = Super->all_referenced_protocol_begin(),
+        E = Super->all_referenced_protocol_end(); I != E; ++I) {
+    findProtocolsWithExplicitImpls(*I, PNS);
+  }
+
+  findProtocolsWithExplicitImpls(Super->getSuperClass(), PNS);
+}
+
 /// CheckProtocolMethodDefs - This routine checks unimplemented methods
 /// Declared in protocol, and those referenced by it.
 static void CheckProtocolMethodDefs(Sema &S,
@@ -1641,7 +1668,7 @@ static void CheckProtocolMethodDefs(Sema &S,
                                     const Sema::SelectorSet &InsMap,
                                     const Sema::SelectorSet &ClsMap,
                                     ObjCContainerDecl *CDecl,
-                                    bool isExplicitProtocol = true) {
+                                    LazyProtocolNameSet &ProtocolsExplictImpl) {
   ObjCCategoryDecl *C = dyn_cast<ObjCCategoryDecl>(CDecl);
   ObjCInterfaceDecl *IDecl = C ? C->getClassInterface() 
                                : dyn_cast<ObjCInterfaceDecl>(CDecl);
@@ -1649,6 +1676,32 @@ static void CheckProtocolMethodDefs(Sema &S,
   
   ObjCInterfaceDecl *Super = IDecl->getSuperClass();
   ObjCInterfaceDecl *NSIDecl = 0;
+
+  // If this protocol is marked 'objc_protocol_requires_explicit_implementation'
+  // then we should check if any class in the super class hierarchy also
+  // conforms to this protocol, either directly or via protocol inheritance.
+  // If so, we can skip checking this protocol completely because we
+  // know that a parent class already satisfies this protocol.
+  //
+  // Note: we could generalize this logic for all protocols, and merely
+  // add the limit on looking at the super class chain for just
+  // specially marked protocols.  This may be a good optimization.  This
+  // change is restricted to 'objc_protocol_requires_explicit_implementation'
+  // protocols for now for controlled evaluation.
+  if (PDecl->hasAttr<ObjCExplicitProtocolImplAttr>()) {
+    if (!ProtocolsExplictImpl) {
+      ProtocolsExplictImpl.reset(new ProtocolNameSet);
+      findProtocolsWithExplicitImpls(Super, *ProtocolsExplictImpl);
+    }
+    if (ProtocolsExplictImpl->find(PDecl->getIdentifier()) !=
+        ProtocolsExplictImpl->end())
+      return;
+
+    // If no super class conforms to the protocol, we should not search
+    // for methods in the super class to implicitly satisfy the protocol.
+    Super = NULL;
+  }
+
   if (S.getLangOpts().ObjCRuntime.isNeXTFamily()) {
     // check to see if class implements forwardInvocation method and objects
     // of this class are derived from 'NSProxy' so that to forward requests
@@ -1674,8 +1727,6 @@ static void CheckProtocolMethodDefs(Sema &S,
   // the method was implemented by a base class or an inherited
   // protocol. This lookup is slow, but occurs rarely in correct code
   // and otherwise would terminate in a warning.
-  if (isExplicitProtocol && PDecl->hasAttr<ObjCExplicitProtocolImplAttr>())
-    Super = NULL;
 
   // check unimplemented instance methods.
   if (!NSIDecl)
@@ -1744,7 +1795,7 @@ static void CheckProtocolMethodDefs(Sema &S,
   for (ObjCProtocolDecl::protocol_iterator PI = PDecl->protocol_begin(),
        E = PDecl->protocol_end(); PI != E; ++PI)
     CheckProtocolMethodDefs(S, ImpLoc, *PI, IncompleteImpl, InsMap, ClsMap,
-                            CDecl, /* isExplicitProtocl */ false);
+                            CDecl, ProtocolsExplictImpl);
 }
 
 /// MatchAllMethodDeclarations - Check methods declared in interface
@@ -1927,12 +1978,13 @@ void Sema::ImplMethodsVsClassMethods(Scope *S, ObjCImplDecl* IMPDecl,
   // Check and see if properties declared in the interface have either 1)
   // an implementation or 2) there is a @synthesize/@dynamic implementation
   // of the property in the @implementation.
-  if (const ObjCInterfaceDecl *IDecl = dyn_cast<ObjCInterfaceDecl>(CDecl))
-    if  (!(LangOpts.ObjCDefaultSynthProperties &&
-           LangOpts.ObjCRuntime.isNonFragile()) ||
-         IDecl->isObjCRequiresPropertyDefs())
-      DiagnoseUnimplementedProperties(S, IMPDecl, CDecl);
-      
+  if (const ObjCInterfaceDecl *IDecl = dyn_cast<ObjCInterfaceDecl>(CDecl)) {
+    bool SynthesizeProperties = LangOpts.ObjCDefaultSynthProperties &&
+                                LangOpts.ObjCRuntime.isNonFragile() &&
+                                !IDecl->isObjCRequiresPropertyDefs();
+    DiagnoseUnimplementedProperties(S, IMPDecl, CDecl, SynthesizeProperties);
+  }
+
   SelectorSet ClsMap;
   for (ObjCImplementationDecl::classmeth_iterator
        I = IMPDecl->classmeth_begin(),
@@ -1957,12 +2009,15 @@ void Sema::ImplMethodsVsClassMethods(Scope *S, ObjCImplDecl* IMPDecl,
   // Check and see if class methods in class interface have been
   // implemented in the implementation class.
 
+  LazyProtocolNameSet ExplicitImplProtocols;
+
   if (ObjCInterfaceDecl *I = dyn_cast<ObjCInterfaceDecl> (CDecl)) {
     for (ObjCInterfaceDecl::all_protocol_iterator
           PI = I->all_referenced_protocol_begin(),
           E = I->all_referenced_protocol_end(); PI != E; ++PI)
       CheckProtocolMethodDefs(*this, IMPDecl->getLocation(), *PI,
-                              IncompleteImpl, InsMap, ClsMap, I);
+                              IncompleteImpl, InsMap, ClsMap, I,
+                              ExplicitImplProtocols);
     // Check class extensions (unnamed categories)
     for (ObjCInterfaceDecl::visible_extensions_iterator
            Ext = I->visible_extensions_begin(),
@@ -1977,8 +2032,10 @@ void Sema::ImplMethodsVsClassMethods(Scope *S, ObjCImplDecl* IMPDecl,
       for (ObjCCategoryDecl::protocol_iterator PI = C->protocol_begin(),
            E = C->protocol_end(); PI != E; ++PI)
         CheckProtocolMethodDefs(*this, IMPDecl->getLocation(), *PI,
-                                IncompleteImpl, InsMap, ClsMap, CDecl);
-      DiagnoseUnimplementedProperties(S, IMPDecl, CDecl);
+                                IncompleteImpl, InsMap, ClsMap, CDecl,
+                                ExplicitImplProtocols);
+      DiagnoseUnimplementedProperties(S, IMPDecl, CDecl,
+                                      /* SynthesizeProperties */ false);
     } 
   } else
     llvm_unreachable("invalid ObjCContainerDecl type.");

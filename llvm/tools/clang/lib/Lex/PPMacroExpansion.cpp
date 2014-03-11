@@ -293,11 +293,11 @@ bool Preprocessor::HandleMacroExpandedIdentifier(Token &Identifier,
     for (MacroDirective::DefInfo PrevDef = Def.getPreviousDefinition();
          PrevDef && !PrevDef.isUndefined();
          PrevDef = PrevDef.getPreviousDefinition()) {
-      if (PrevDef.getDirective()->isAmbiguous()) {
-        Diag(PrevDef.getMacroInfo()->getDefinitionLoc(),
-             diag::note_pp_ambiguous_macro_other)
-          << Identifier.getIdentifierInfo();
-      }
+      Diag(PrevDef.getMacroInfo()->getDefinitionLoc(),
+           diag::note_pp_ambiguous_macro_other)
+        << Identifier.getIdentifierInfo();
+      if (!PrevDef.getDirective()->isAmbiguous())
+        break;
     }
   }
 
@@ -796,7 +796,7 @@ Token *Preprocessor::cacheMacroExpandedTokens(TokenLexer *tokLexer,
     for (unsigned i = 0, e = MacroExpandingLexersStack.size(); i != e; ++i) {
       TokenLexer *prevLexer;
       size_t tokIndex;
-      llvm::tie(prevLexer, tokIndex) = MacroExpandingLexersStack[i];
+      std::tie(prevLexer, tokIndex) = MacroExpandingLexersStack[i];
       prevLexer->Tokens = MacroExpandedTokens.data() + tokIndex;
     }
   }

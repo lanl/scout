@@ -63,6 +63,27 @@ The semantics are as follows:
   a sequence equivalent to "movs pc, lr" will be used.
 
 
+acquire_capability (acquire_shared_capability, clang::acquire_capability, clang::acquire_shared_capability)
+-----------------------------------------------------------------------------------------------------------
+.. csv-table:: Supported Syntaxes
+   :header: "GNU", "C++11", "__declspec", "Keyword"
+
+   "X","X","",""
+
+Marks a function as acquiring a capability.
+
+
+assert_capability (assert_shared_capability, clang::assert_capability, clang::assert_shared_capability)
+-------------------------------------------------------------------------------------------------------
+.. csv-table:: Supported Syntaxes
+   :header: "GNU", "C++11", "__declspec", "Keyword"
+
+   "X","X","",""
+
+Marks a function that dynamically tests whether a capability is held, and halts
+the program if it is not held.
+
+
 availability
 ------------
 .. csv-table:: Supported Syntaxes
@@ -356,12 +377,60 @@ Clang implements two kinds of checks with this attribute.
    incorrect, the caller of ``foo`` will receive a warning.
 
 
+noduplicate (clang::noduplicate)
+--------------------------------
+.. csv-table:: Supported Syntaxes
+   :header: "GNU", "C++11", "__declspec", "Keyword"
+
+   "X","X","",""
+
+The ``noduplicate`` attribute can be placed on function declarations to control
+whether function calls to this function can be duplicated or not as a result of
+optimizations. This is required for the implementation of functions with
+certain special requirements, like the OpenCL "barrier" function, that might
+need to be run concurrently by all the threads that are executing in lockstep
+on the hardware. For example this attribute applied on the function
+"nodupfunc" in the code below avoids that:
+
+.. code-block:: c
+
+  void nodupfunc() __attribute__((noduplicate));
+  // Setting it as a C++11 attribute is also valid
+  // void nodupfunc() [[clang::noduplicate]];
+  void foo();
+  void bar();
+
+  nodupfunc();
+  if (a > n) {
+    foo();
+  } else {
+    bar();
+  }
+
+gets possibly modified by some optimizations into code similar to this:
+
+.. code-block:: c
+
+  if (a > n) {
+    nodupfunc();
+    foo();
+  } else {
+    nodupfunc();
+    bar();
+  }
+
+where the call to "nodupfunc" is duplicated and sunk into the two branches
+of the condition.
+
+
 no_sanitize_address (no_address_safety_analysis, gnu::no_address_safety_analysis, gnu::no_sanitize_address)
 -----------------------------------------------------------------------------------------------------------
 .. csv-table:: Supported Syntaxes
    :header: "GNU", "C++11", "__declspec", "Keyword"
 
    "X","X","",""
+
+.. _langext-address_sanitizer:
 
 Use ``__attribute__((no_sanitize_address))`` on a function declaration to
 specify that address safety instrumentation (e.g. AddressSanitizer) should
@@ -375,6 +444,8 @@ no_sanitize_memory
 
    "X","","",""
 
+.. _langext-memory_sanitizer:
+
 Use ``__attribute__((no_sanitize_memory))`` on a function declaration to
 specify that checks for uninitialized memory should not be inserted 
 (e.g. by MemorySanitizer). The function may still be instrumented by the tool
@@ -387,6 +458,8 @@ no_sanitize_thread
    :header: "GNU", "C++11", "__declspec", "Keyword"
 
    "X","","",""
+
+.. _langext-thread_sanitizer:
 
 Use ``__attribute__((no_sanitize_thread))`` on a function declaration to
 specify that checks for data races on plain (non-atomic) memory accesses should
@@ -559,6 +632,29 @@ caveats to this use of name mangling:
 Query for this feature with ``__has_extension(attribute_overloadable)``.
 
 
+release_capability (release_shared_capability, clang::release_capability, clang::release_shared_capability)
+-----------------------------------------------------------------------------------------------------------
+.. csv-table:: Supported Syntaxes
+   :header: "GNU", "C++11", "__declspec", "Keyword"
+
+   "X","X","",""
+
+Marks a function as releasing a capability.
+
+
+try_acquire_capability (try_acquire_shared_capability, clang::try_acquire_capability, clang::try_acquire_shared_capability)
+---------------------------------------------------------------------------------------------------------------------------
+.. csv-table:: Supported Syntaxes
+   :header: "GNU", "C++11", "__declspec", "Keyword"
+
+   "X","X","",""
+
+Marks a function that attempts to acquire a capability. This function may fail to
+actually acquire the capability; they accept a Boolean value determining
+whether acquiring the capability means success (true), or failing to acquire
+the capability means success (false).
+
+
 Variable Attributes
 ===================
 
@@ -579,6 +675,59 @@ model to use. It accepts the following strings:
 * local-exec
 
 TLS models are mutually exclusive.
+
+
+Type Attributes
+===============
+
+
+__single_inhertiance, __multiple_inheritance, __virtual_inheritance
+-------------------------------------------------------------------
+.. csv-table:: Supported Syntaxes
+   :header: "GNU", "C++11", "__declspec", "Keyword"
+
+   "","","","X"
+
+This collection of keywords is enabled under ``-fms-extensions`` and controls
+the pointer-to-member representation used on ``*-*-win32`` targets.
+
+The ``*-*-win32`` targets utilize a pointer-to-member representation which
+varies in size and alignment depending on the definition of the underlying
+class.
+
+However, this is problematic when a forward declaration is only available and
+no definition has been made yet.  In such cases, Clang is forced to utilize the
+most general representation that is available to it.
+
+These keywords make it possible to use a pointer-to-member representation other
+than the most general one regardless of whether or not the definition will ever
+be present in the current translation unit.
+
+This family of keywords belong between the ``class-key`` and ``class-name``:
+
+.. code-block:: c++
+
+  struct __single_inheritance S;
+  int S::*i;
+  struct S {};
+
+This keyword can be applied to class templates but only has an effect when used
+on full specializations:
+
+.. code-block:: c++
+
+  template <typename T, typename U> struct __single_inheritance A; // warning: inheritance model ignored on primary template
+  template <typename T> struct __multiple_inheritance A<T, T>; // warning: inheritance model ignored on partial specialization
+  template <> struct __single_inheritance A<int, float>;
+
+Note that choosing an inheritance model less general than strictly necessary is
+an error:
+
+.. code-block:: c++
+
+  struct __multiple_inheritance S; // error: inheritance model does not match definition
+  int S::*i;
+  struct S {};
 
 
 Statement Attributes

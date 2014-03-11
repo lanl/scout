@@ -214,9 +214,8 @@ static bool isEmptyRecord(ASTContext &Context, QualType T, bool AllowArrays) {
       if (!isEmptyRecord(Context, i->getType(), true))
         return false;
 
-  for (RecordDecl::field_iterator i = RD->field_begin(), e = RD->field_end();
-         i != e; ++i)
-    if (!isEmptyField(Context, *i, AllowArrays))
+  for (const auto *I : RD->fields())
+    if (!isEmptyField(Context, I, AllowArrays))
       return false;
   return true;
 }
@@ -261,9 +260,7 @@ static const Type *isSingleElementStruct(QualType T, ASTContext &Context) {
   }
 
   // Check for single element.
-  for (RecordDecl::field_iterator i = RD->field_begin(), e = RD->field_end();
-         i != e; ++i) {
-    const FieldDecl *FD = *i;
+  for (const auto *FD : RD->fields()) {
     QualType FT = FD->getType();
 
     // Ignore empty fields.
@@ -339,10 +336,7 @@ static bool canExpandIndirectArgument(QualType Ty, ASTContext &Context) {
 
   uint64_t Size = 0;
 
-  for (RecordDecl::field_iterator i = RD->field_begin(), e = RD->field_end();
-         i != e; ++i) {
-    const FieldDecl *FD = *i;
-
+  for (const auto *FD : RD->fields()) {
     if (!is32Or64BitBasicType(FD->getType(), Context))
       return false;
 
@@ -678,10 +672,7 @@ bool X86_32ABIInfo::shouldReturnTypeInRegister(QualType Ty, ASTContext &Context,
 
   // Structure types are passed in register if all fields would be
   // passed in a register.
-  for (RecordDecl::field_iterator i = RT->getDecl()->field_begin(),
-         e = RT->getDecl()->field_end(); i != e; ++i) {
-    const FieldDecl *FD = *i;
-
+  for (const auto *FD : RT->getDecl()->fields()) {
     // Empty fields are ignored.
     if (isEmptyField(Context, FD, true))
       continue;
@@ -795,8 +786,7 @@ static bool isRecordWithSSEVectorType(ASTContext &Context, QualType Ty) {
       if (!isRecordWithSSEVectorType(Context, i->getType()))
         return false;
 
-  for (RecordDecl::field_iterator i = RD->field_begin(), e = RD->field_end();
-       i != e; ++i) {
+  for (const auto *i : RD->fields()) {
     QualType FT = i->getType();
 
     if (isSSEVectorType(Context, FT))
@@ -1061,6 +1051,8 @@ void X86_32ABIInfo::rewriteWithInAlloca(CGFunctionInfo &FI) const {
   if (Ret.isIndirect() && !Ret.getInReg()) {
     CanQualType PtrTy = getContext().getPointerType(FI.getReturnType());
     addFieldToArgStruct(FrameFields, StackOffset, Ret, PtrTy);
+    // On Windows, the hidden sret parameter is always returned in eax.
+    Ret.setInAllocaSRet(IsWin32StructABI);
   }
 
   // Skip the 'this' parameter in ecx.
@@ -3403,9 +3395,7 @@ static bool isHomogeneousAggregate(QualType Ty, const Type *&Base,
       return false;
 
     Members = 0;
-    for (RecordDecl::field_iterator i = RD->field_begin(), e = RD->field_end();
-         i != e; ++i) {
-      const FieldDecl *FD = *i;
+    for (const auto *FD : RD->fields()) {
       uint64_t FldMembers;
       if (!isHomogeneousAggregate(FD->getType(), Base, Context, &FldMembers))
         return false;
@@ -4607,10 +4597,7 @@ bool SystemZABIInfo::isFPArgumentType(QualType Ty) const {
       }
 
     // Check the fields.
-    for (RecordDecl::field_iterator I = RD->field_begin(),
-           E = RD->field_end(); I != E; ++I) {
-      const FieldDecl *FD = *I;
-
+    for (const auto *FD : RD->fields()) {
       // Empty bitfields don't affect things either way.
       // Unlike isSingleElementStruct(), empty structure and array fields
       // do count.  So do anonymous bitfields that aren't zero-sized.
@@ -5660,12 +5647,53 @@ class SparcV9TargetCodeGenInfo : public TargetCodeGenInfo {
 public:
   SparcV9TargetCodeGenInfo(CodeGenTypes &CGT)
     : TargetCodeGenInfo(new SparcV9ABIInfo(CGT)) {}
+
+  int getDwarfEHStackPointer(CodeGen::CodeGenModule &M) const {
+    return 14;
+  }
+
+  bool initDwarfEHRegSizeTable(CodeGen::CodeGenFunction &CGF,
+                               llvm::Value *Address) const;
 };
 } // end anonymous namespace
 
+bool
+SparcV9TargetCodeGenInfo::initDwarfEHRegSizeTable(CodeGen::CodeGenFunction &CGF,
+                                                llvm::Value *Address) const {
+  // This is calculated from the LLVM and GCC tables and verified
+  // against gcc output.  AFAIK all ABIs use the same encoding.
+
+  CodeGen::CGBuilderTy &Builder = CGF.Builder;
+
+  llvm::IntegerType *i8 = CGF.Int8Ty;
+  llvm::Value *Four8 = llvm::ConstantInt::get(i8, 4);
+  llvm::Value *Eight8 = llvm::ConstantInt::get(i8, 8);
+
+  // 0-31: the 8-byte general-purpose registers
+  AssignToArrayRange(Builder, Address, Eight8, 0, 31);
+
+  // 32-63: f0-31, the 4-byte floating-point registers
+  AssignToArrayRange(Builder, Address, Four8, 32, 63);
+
+  //   Y   = 64
+  //   PSR = 65
+  //   WIM = 66
+  //   TBR = 67
+  //   PC  = 68
+  //   NPC = 69
+  //   FSR = 70
+  //   CSR = 71
+  AssignToArrayRange(Builder, Address, Eight8, 64, 71);
+   
+  // 72-87: d0-15, the 8-byte floating-point registers
+  AssignToArrayRange(Builder, Address, Eight8, 72, 87);
+
+  return false;
+}
+
 
 //===----------------------------------------------------------------------===//
-// Xcore ABI Implementation
+// XCore ABI Implementation
 //===----------------------------------------------------------------------===//
 namespace {
 class XCoreABIInfo : public DefaultABIInfo {
@@ -5675,9 +5703,9 @@ public:
                                  CodeGenFunction &CGF) const;
 };
 
-class XcoreTargetCodeGenInfo : public TargetCodeGenInfo {
+class XCoreTargetCodeGenInfo : public TargetCodeGenInfo {
 public:
-  XcoreTargetCodeGenInfo(CodeGenTypes &CGT)
+  XCoreTargetCodeGenInfo(CodeGenTypes &CGT)
     :TargetCodeGenInfo(new XCoreABIInfo(CGT)) {}
 };
 } // End anonymous namespace.
@@ -5755,6 +5783,7 @@ const TargetCodeGenInfo &CodeGenModule::getTargetCodeGenInfo() {
     return *(TheTargetCodeGenInfo = new MIPSTargetCodeGenInfo(Types, false));
 
   case llvm::Triple::aarch64:
+  case llvm::Triple::aarch64_be:
     return *(TheTargetCodeGenInfo = new AArch64TargetCodeGenInfo(Types));
 
   case llvm::Triple::arm:
@@ -5844,7 +5873,7 @@ const TargetCodeGenInfo &CodeGenModule::getTargetCodeGenInfo() {
   case llvm::Triple::sparcv9:
     return *(TheTargetCodeGenInfo = new SparcV9TargetCodeGenInfo(Types));
   case llvm::Triple::xcore:
-    return *(TheTargetCodeGenInfo = new XcoreTargetCodeGenInfo(Types));
+    return *(TheTargetCodeGenInfo = new XCoreTargetCodeGenInfo(Types));
 
   }
 }

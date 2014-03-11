@@ -227,7 +227,7 @@ public:
 /// The TemplateDecl class stores the list of template parameters and a
 /// reference to the templated scoped declaration: the underlying AST node.
 class TemplateDecl : public NamedDecl {
-  virtual void anchor();
+  void anchor() override;
 protected:
   // This is probably never used.
   TemplateDecl(Kind DK, DeclContext *DC, SourceLocation L,
@@ -261,7 +261,7 @@ public:
     return K >= firstTemplate && K <= lastTemplate;
   }
 
-  SourceRange getSourceRange() const LLVM_READONLY {
+  SourceRange getSourceRange() const override LLVM_READONLY {
     return SourceRange(TemplateParams->getTemplateLoc(),
                        TemplatedDecl->getSourceRange().getEnd());
   }
@@ -530,13 +530,13 @@ class RedeclarableTemplateDecl : public TemplateDecl,
                                  public Redeclarable<RedeclarableTemplateDecl> 
 {
   typedef Redeclarable<RedeclarableTemplateDecl> redeclarable_base;
-  virtual RedeclarableTemplateDecl *getNextRedeclaration() {
+  RedeclarableTemplateDecl *getNextRedeclaration() override {
     return RedeclLink.getNext();
   }
-  virtual RedeclarableTemplateDecl *getPreviousDeclImpl() {
+  RedeclarableTemplateDecl *getPreviousDeclImpl() override {
     return getPreviousDecl();
   }
-  virtual RedeclarableTemplateDecl *getMostRecentDeclImpl() {
+  RedeclarableTemplateDecl *getMostRecentDeclImpl() override {
     return getMostRecentDecl();
   }
 
@@ -631,7 +631,9 @@ public:
   template <class decl_type> friend class RedeclarableTemplate;
 
   /// \brief Retrieves the canonical declaration of this template.
-  RedeclarableTemplateDecl *getCanonicalDecl() { return getFirstDecl(); }
+  RedeclarableTemplateDecl *getCanonicalDecl() override {
+    return getFirstDecl();
+  }
   const RedeclarableTemplateDecl *getCanonicalDecl() const {
     return getFirstDecl();
   }
@@ -710,9 +712,11 @@ public:
     getCommonPtr()->InstantiatedFromMember.setPointer(TD);
   }
 
+  typedef redeclarable_base::redecl_range redecl_range;
   typedef redeclarable_base::redecl_iterator redecl_iterator;
   using redeclarable_base::redecls_begin;
   using redeclarable_base::redecls_end;
+  using redeclarable_base::redecls;
   using redeclarable_base::getPreviousDecl;
   using redeclarable_base::getMostRecentDecl;
   using redeclarable_base::isFirstDecl;
@@ -773,7 +777,7 @@ protected:
                        TemplateParameterList *Params, NamedDecl *Decl)
     : RedeclarableTemplateDecl(FunctionTemplate, DC, L, Name, Params, Decl) { }
 
-  CommonBase *newCommon(ASTContext &C) const;
+  CommonBase *newCommon(ASTContext &C) const override;
 
   Common *getCommonPtr() const {
     return static_cast<Common *>(RedeclarableTemplateDecl::getCommonPtr());
@@ -813,7 +817,7 @@ public:
   FunctionDecl *findSpecialization(const TemplateArgument *Args,
                                    unsigned NumArgs, void *&InsertPos);
 
-  FunctionTemplateDecl *getCanonicalDecl() {
+  FunctionTemplateDecl *getCanonicalDecl() override {
     return cast<FunctionTemplateDecl>(
              RedeclarableTemplateDecl::getCanonicalDecl());
   }
@@ -1006,7 +1010,7 @@ public:
   /// \brief Returns whether this is a parameter pack.
   bool isParameterPack() const;
 
-  SourceRange getSourceRange() const LLVM_READONLY;
+  SourceRange getSourceRange() const override LLVM_READONLY;
 
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
@@ -1083,7 +1087,7 @@ public:
   using TemplateParmPosition::setPosition;
   using TemplateParmPosition::getIndex;
 
-  SourceRange getSourceRange() const LLVM_READONLY;
+  SourceRange getSourceRange() const override LLVM_READONLY;
 
   /// \brief Determine whether this template parameter has a default
   /// argument.
@@ -1203,7 +1207,7 @@ public:
 class TemplateTemplateParmDecl : public TemplateDecl, 
                                  protected TemplateParmPosition 
 {
-  virtual void anchor();
+  void anchor() override;
 
   /// DefaultArgument - The default template argument, if any.
   TemplateArgumentLoc DefaultArgument;
@@ -1344,7 +1348,7 @@ public:
     DefaultArgumentWasInherited = false;
   }
 
-  SourceRange getSourceRange() const LLVM_READONLY {
+  SourceRange getSourceRange() const override LLVM_READONLY {
     SourceLocation End = getLocation();
     if (hasDefaultArgument() && !defaultArgumentWasInherited())
       End = getDefaultArgument().getSourceRange().getEnd();
@@ -1441,9 +1445,8 @@ public:
   static ClassTemplateSpecializationDecl *
   CreateDeserialized(ASTContext &C, unsigned ID);
 
-  virtual void getNameForDiagnostic(raw_ostream &OS,
-                                    const PrintingPolicy &Policy,
-                                    bool Qualified) const;
+  void getNameForDiagnostic(raw_ostream &OS, const PrintingPolicy &Policy,
+                            bool Qualified) const override;
 
   ClassTemplateSpecializationDecl *getMostRecentDecl() {
     CXXRecordDecl *Recent = static_cast<CXXRecordDecl *>(
@@ -1614,7 +1617,7 @@ public:
     return ExplicitInfo ? ExplicitInfo->TemplateKeywordLoc : SourceLocation();
   }
 
-  SourceRange getSourceRange() const LLVM_READONLY;
+  SourceRange getSourceRange() const override LLVM_READONLY;
 
   void Profile(llvm::FoldingSetNodeID &ID) const {
     Profile(ID, TemplateArgs->data(), TemplateArgs->size(), getASTContext());
@@ -1640,7 +1643,7 @@ public:
 
 class ClassTemplatePartialSpecializationDecl
   : public ClassTemplateSpecializationDecl {
-  virtual void anchor();
+  void anchor() override;
 
   /// \brief The list of template parameters
   TemplateParameterList* TemplateParams;
@@ -1837,7 +1840,7 @@ protected:
     : RedeclarableTemplateDecl(ClassTemplate, 0, SourceLocation(),
                                DeclarationName(), 0, 0) { }
 
-  CommonBase *newCommon(ASTContext &C) const;
+  CommonBase *newCommon(ASTContext &C) const override;
 
   Common *getCommonPtr() const {
     return static_cast<Common *>(RedeclarableTemplateDecl::getCommonPtr());
@@ -1876,7 +1879,7 @@ public:
   /// in. InsertPos must be obtained from findSpecialization.
   void AddSpecialization(ClassTemplateSpecializationDecl *D, void *InsertPos);
 
-  ClassTemplateDecl *getCanonicalDecl() {
+  ClassTemplateDecl *getCanonicalDecl() override {
     return cast<ClassTemplateDecl>(
              RedeclarableTemplateDecl::getCanonicalDecl());
   }
@@ -2106,7 +2109,7 @@ protected:
                         TemplateParameterList *Params, NamedDecl *Decl)
     : RedeclarableTemplateDecl(TypeAliasTemplate, DC, L, Name, Params, Decl) { }
 
-  CommonBase *newCommon(ASTContext &C) const;
+  CommonBase *newCommon(ASTContext &C) const override;
 
   Common *getCommonPtr() {
     return static_cast<Common *>(RedeclarableTemplateDecl::getCommonPtr());
@@ -2119,7 +2122,7 @@ public:
   }
 
 
-  TypeAliasTemplateDecl *getCanonicalDecl() {
+  TypeAliasTemplateDecl *getCanonicalDecl() override {
     return cast<TypeAliasTemplateDecl>(
              RedeclarableTemplateDecl::getCanonicalDecl());
   }
@@ -2312,9 +2315,8 @@ public:
   static VarTemplateSpecializationDecl *CreateDeserialized(ASTContext &C,
                                                            unsigned ID);
 
-  virtual void getNameForDiagnostic(raw_ostream &OS,
-                                    const PrintingPolicy &Policy,
-                                    bool Qualified) const;
+  void getNameForDiagnostic(raw_ostream &OS, const PrintingPolicy &Policy,
+                            bool Qualified) const override;
 
   VarTemplateSpecializationDecl *getMostRecentDecl() {
     VarDecl *Recent = static_cast<VarDecl *>(this)->getMostRecentDecl();
@@ -2506,7 +2508,7 @@ public:
 
 class VarTemplatePartialSpecializationDecl
     : public VarTemplateSpecializationDecl {
-  virtual void anchor();
+  void anchor() override;
 
   /// \brief The list of template parameters
   TemplateParameterList *TemplateParams;
@@ -2681,7 +2683,7 @@ protected:
       : RedeclarableTemplateDecl(VarTemplate, 0, SourceLocation(),
                                  DeclarationName(), 0, 0) {}
 
-  CommonBase *newCommon(ASTContext &C) const;
+  CommonBase *newCommon(ASTContext &C) const override;
 
   Common *getCommonPtr() const {
     return static_cast<Common *>(RedeclarableTemplateDecl::getCommonPtr());
@@ -2720,7 +2722,7 @@ public:
   /// in. InsertPos must be obtained from findSpecialization.
   void AddSpecialization(VarTemplateSpecializationDecl *D, void *InsertPos);
 
-  VarTemplateDecl *getCanonicalDecl() {
+  VarTemplateDecl *getCanonicalDecl() override {
     return cast<VarTemplateDecl>(RedeclarableTemplateDecl::getCanonicalDecl());
   }
   const VarTemplateDecl *getCanonicalDecl() const {

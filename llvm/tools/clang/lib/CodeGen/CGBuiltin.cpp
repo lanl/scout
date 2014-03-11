@@ -973,6 +973,7 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
     Args[2] = EmitToInt(*this, EmitScalarExpr(E->getArg(2)), T, IntType);
 
     Value *Result = Builder.CreateAtomicCmpXchg(Args[0], Args[1], Args[2],
+                                                llvm::SequentiallyConsistent,
                                                 llvm::SequentiallyConsistent);
     Result = EmitFromInt(*this, Result, T, ValueType);
     return RValue::get(Result);
@@ -999,6 +1000,7 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
 
     Value *OldVal = Args[1];
     Value *PrevVal = Builder.CreateAtomicCmpXchg(Args[0], Args[1], Args[2],
+                                                 llvm::SequentiallyConsistent,
                                                  llvm::SequentiallyConsistent);
     Value *Result = Builder.CreateICmpEQ(PrevVal, OldVal);
     // zext bool to int.
@@ -1320,7 +1322,6 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
     llvm::Type *ArgType = Base->getType();
     Value *F = CGM.getIntrinsic(Intrinsic::pow, ArgType);
     return RValue::get(Builder.CreateCall2(F, Base, Exponent));
-    break;
   }
 
   case Builtin::BIfma:
@@ -1509,6 +1510,43 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
     return RValue::get(EmitLValue(E->getArg(0)).getAddress());
   case Builtin::BI__noop:
     return RValue::get(0);
+  case Builtin::BI_InterlockedCompareExchange: {
+    AtomicCmpXchgInst *CXI = Builder.CreateAtomicCmpXchg(
+        EmitScalarExpr(E->getArg(0)),
+        EmitScalarExpr(E->getArg(2)),
+        EmitScalarExpr(E->getArg(1)),
+        SequentiallyConsistent,
+        SequentiallyConsistent);
+      CXI->setVolatile(true);
+      return RValue::get(CXI);
+  }
+  case Builtin::BI_InterlockedIncrement: {
+    AtomicRMWInst *RMWI = Builder.CreateAtomicRMW(
+      AtomicRMWInst::Add,
+      EmitScalarExpr(E->getArg(0)),
+      ConstantInt::get(Int32Ty, 1),
+      llvm::SequentiallyConsistent);
+    RMWI->setVolatile(true);
+    return RValue::get(Builder.CreateAdd(RMWI, ConstantInt::get(Int32Ty, 1)));
+  }
+  case Builtin::BI_InterlockedDecrement: {
+    AtomicRMWInst *RMWI = Builder.CreateAtomicRMW(
+      AtomicRMWInst::Sub,
+      EmitScalarExpr(E->getArg(0)),
+      ConstantInt::get(Int32Ty, 1),
+      llvm::SequentiallyConsistent);
+    RMWI->setVolatile(true);
+    return RValue::get(Builder.CreateSub(RMWI, ConstantInt::get(Int32Ty, 1)));
+  }
+  case Builtin::BI_InterlockedExchangeAdd: {
+    AtomicRMWInst *RMWI = Builder.CreateAtomicRMW(
+      AtomicRMWInst::Add,
+      EmitScalarExpr(E->getArg(0)),
+      EmitScalarExpr(E->getArg(1)),
+      llvm::SequentiallyConsistent);
+    RMWI->setVolatile(true);
+    return RValue::get(RMWI);
+  }
   }
 
   // If this is an alias for a lib function (e.g. __builtin_sin), emit
@@ -1600,6 +1638,7 @@ Value *CodeGenFunction::EmitTargetBuiltinExpr(unsigned BuiltinID,
                                               const CallExpr *E) {
   switch (getTarget().getTriple().getArch()) {
   case llvm::Triple::aarch64:
+  case llvm::Triple::aarch64_be:
     return EmitAArch64BuiltinExpr(BuiltinID, E);
   case llvm::Triple::arm:
   case llvm::Triple::thumb:
@@ -3092,11 +3131,10 @@ static Value *packTBLDVectorList(CodeGenFunction &CGF, ArrayRef<Value *> Ops,
 
   TblTy = llvm::VectorType::get(TblTy->getElementType(),
                                 2*TblTy->getNumElements());
-  llvm::Type *Tys[2] = { ResTy, TblTy };
 
   Function *TblF;
   TblOps.push_back(IndexOp);
-  TblF = CGF.CGM.getIntrinsic(IntID, Tys);
+  TblF = CGF.CGM.getIntrinsic(IntID, ResTy);
   
   return CGF.EmitNeonCall(TblF, TblOps, Name);
 }
@@ -3162,9 +3200,6 @@ static Value *EmitAArch64TblBuiltinExpr(CodeGenFunction &CGF,
   }
 
   Arg = E->getArg(TblPos);
-  llvm::Type *TblTy = CGF.ConvertType(Arg->getType());
-  llvm::VectorType *VTblTy = cast<llvm::VectorType>(TblTy);
-  llvm::Type *Tys[2] = { Ty, VTblTy };
   unsigned nElts = VTy->getNumElements();  
 
   // AArch64 scalar builtins are not overloaded, they do not have an extra
@@ -3278,7 +3313,7 @@ static Value *EmitAArch64TblBuiltinExpr(CodeGenFunction &CGF,
   if (!Int)
     return 0;
 
-  Function *F = CGF.CGM.getIntrinsic(Int, Tys);
+  Function *F = CGF.CGM.getIntrinsic(Int, Ty);
   return CGF.EmitNeonCall(F, Ops, s);
 }
 
@@ -3813,8 +3848,8 @@ Value *CodeGenFunction::EmitAArch64BuiltinExpr(unsigned BuiltinID,
     Int = Intrinsic::aarch64_neon_rbit;
     return EmitNeonCall(CGM.getIntrinsic(Int, Ty), Ops, "vrbit");
   case NEON::BI__builtin_neon_vcvt_f32_f64: {
-    Ops[0] = Builder.CreateBitCast(Ops[0], Ty);
-    Ty = GetNeonType(this, NeonTypeFlags(NeonTypeFlags::Float32, false, false));
+    NeonTypeFlags SrcFlag = NeonTypeFlags(NeonTypeFlags::Float64, false, true);
+    Ops[0] = Builder.CreateBitCast(Ops[0], GetNeonType(this, SrcFlag));
     return Builder.CreateFPTrunc(Ops[0], Ty, "vcvt");
   }
   case NEON::BI__builtin_neon_vcvtx_f32_v: {
@@ -4446,6 +4481,14 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
 
   switch (BuiltinID) {
   default: return 0;
+  case X86::BI_mm_prefetch: {
+    Value *Address = EmitScalarExpr(E->getArg(0));
+    Value *RW = ConstantInt::get(Int32Ty, 0);
+    Value *Locality = EmitScalarExpr(E->getArg(1));
+    Value *Data = ConstantInt::get(Int32Ty, 1);
+    Value *F = CGM.getIntrinsic(Intrinsic::prefetch);
+    return Builder.CreateCall4(F, Address, RW, Locality, Data);
+  }
   case X86::BI__builtin_ia32_vec_init_v8qi:
   case X86::BI__builtin_ia32_vec_init_v4hi:
   case X86::BI__builtin_ia32_vec_init_v2si:

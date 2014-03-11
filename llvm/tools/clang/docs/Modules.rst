@@ -198,6 +198,40 @@ Command-line parameters
 ``-fmodule-map-file=<file>``
   Load the given module map file if a header from its directory or one of its subdirectories is loaded.
 
+Module Semantics
+================
+
+Modules are modeled as if each submodule were a separate translation unit, and a module import makes names from the other translation unit visible. Each submodule starts with a new preprocessor state and an empty translation unit.
+
+.. note::
+
+  This behavior is currently only approximated when building a module. Entities within a submodule that has already been built are visible when building later submodules in that module. This can lead to fragile modules that depend on the build order used for the submodules of the module, and should not be relied upon.
+
+As an example, in C, this implies that if two structs are defined in different submodules with the same name, those two types are distinct types (but may be *compatible* types if their definitions match. In C++, two structs defined with the same name in different submodules are the *same* type, and must be equivalent under C++'s One Definition Rule.
+
+.. note::
+
+  Clang currently only performs minimal checking for violations of the One Definition Rule.
+
+Macros
+------
+
+The C and C++ preprocessor assumes that the input text is a single linear buffer, but with modules this is not the case. It is possible to import two modules that have conflicting definitions for a macro (or where one ``#define``\s a macro and the other ``#undef``\ines it). The rules for handling macro definitions in the presence of modules are as follows:
+
+* Each definition and undefinition of a macro is considered to be a distinct entity.
+* Such entities are *visible* if they are from the current submodule or translation unit, or if they were exported from a submodule that has been imported.
+* A ``#define X`` or ``#undef X`` directive *overrides* all definitions of ``X`` that are visible at the point of the directive.
+* A ``#define`` or ``#undef`` directive is *active* if it is visible and no visible directive overrides it.
+* A set of macro directives is *consistent* if it consists of only ``#undef`` directives, or if all ``#define`` directives in the set define the macro name to the same sequence of tokens (following the usual rules for macro redefinitions).
+* If a macro name is used and the set of active directives is not consistent, the program is ill-formed. Otherwise, the (unique) meaning of the macro name is used.
+
+For example, suppose:
+
+* ``<stdio.h>`` defines a macro ``getc`` (and exports its ``#define``)
+* ``<cstdio>`` imports the ``<stdio.h>`` module and undefines the macro (and exports its ``#undef``)
+  
+The ``#undef`` overrides the ``#define``, and a source file that imports both modules *in any order* will not see ``getc`` defined as a macro.
+
 Module Map Language
 ===================
 
@@ -211,7 +245,7 @@ As an example, the module map file for the C standard library might look a bit l
 
 .. parsed-literal::
 
-  module std [system] {
+  module std [system] [extern_c] {
     module complex {
       header "complex.h"
       export *
@@ -291,7 +325,9 @@ The ``framework`` qualifier specifies that this module corresponds to a Darwin-s
     Resources/                Subdirectory containing additional resources
     Name                      Symbolic link to the shared library for the framework
 
-The ``system`` attribute specifies that the module is a system module. When a system module is rebuilt, all of the module's header will be considered system headers, which suppresses warnings. This is equivalent to placing ``#pragma GCC system_header`` in each of the module's headers. The form of attributes is described in the section Attributes_, below.
+The ``system`` attribute specifies that the module is a system module. When a system module is rebuilt, all of the module's headers will be considered system headers, which suppresses warnings. This is equivalent to placing ``#pragma GCC system_header`` in each of the module's headers. The form of attributes is described in the section Attributes_, below.
+
+The ``extern_c`` attribute specifies that the module contains C code that can be used from within C++. When such a module is built for use in C++ code, all of the module's headers will be treated as if they were contained within an implicit ``extern "C"`` block. An import for a module with this attribute can appear within an ``extern "C"`` block. No other restrictions are lifted, however: the module currently cannot be imported within an ``extern "C"`` block in a namespace.
 
 Modules can have a number of different kinds of members, each of which is described below:
 
@@ -573,7 +609,7 @@ A *use-declaration* specifies one of the other modules that the module is allowe
     use B
   }
 
-When compiling a source file that implements a module, use the option ``-fmodule-name=``module-id to indicate that the source file is logically part of that module.
+When compiling a source file that implements a module, use the option ``-fmodule-name=module-id`` to indicate that the source file is logically part of that module.
 
 The compiler at present only applies restrictions to the module directly being built.
 

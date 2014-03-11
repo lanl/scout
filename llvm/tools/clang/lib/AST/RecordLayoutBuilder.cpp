@@ -173,9 +173,7 @@ void EmptySubobjectMap::ComputeEmptySubobjectSizes() {
   }
 
   // Check the fields.
-  for (CXXRecordDecl::field_iterator I = Class->field_begin(),
-       E = Class->field_end(); I != E; ++I) {
-
+  for (const auto *I : Class->fields()) {
     const RecordType *RT =
       Context.getBaseElementType(I->getType())->getAs<RecordType>();
 
@@ -1486,9 +1484,8 @@ void RecordLayoutBuilder::Layout(const ObjCInterfaceDecl *D) {
 void RecordLayoutBuilder::LayoutFields(const RecordDecl *D) {
   // Layout each field, for now, just sequentially, respecting alignment.  In
   // the future, this will need to be tweakable by targets.
-  for (RecordDecl::field_iterator Field = D->field_begin(),
-       FieldEnd = D->field_end(); Field != FieldEnd; ++Field)
-    LayoutField(*Field);
+  for (const auto *Field : D->fields())
+    LayoutField(Field);
 }
 
 void RecordLayoutBuilder::LayoutWideBitField(uint64_t FieldSize,
@@ -1616,6 +1613,10 @@ void RecordLayoutBuilder::LayoutBitField(const FieldDecl *D) {
   // __attribute__((packed))) always uses the next available bit
   // offset.
 
+  // In an ms_struct struct, the alignment of a fundamental type is
+  // always equal to its size.  This is necessary in order to mimic
+  // the i386 alignment rules on targets which might not fully align
+  // all types (e.g. Darwin PPC32, where alignof(long long) == 4).
 
   // First, some simple bookkeeping to perform for ms_struct structs.
   if (IsMsStruct) {
@@ -2375,6 +2376,8 @@ MicrosoftRecordLayoutBuilder::ElementInfo
 MicrosoftRecordLayoutBuilder::getAdjustedElementInfo(
     const FieldDecl *FD) {
   ElementInfo Info;
+  std::tie(Info.Size, Info.Alignment) =
+      Context.getTypeInfoInChars(FD->getType());
   // Respect align attributes.
   CharUnits FieldRequiredAlignment = 
       Context.toCharUnitsFromBits(FD->getMaxAlignment());
@@ -2383,18 +2386,11 @@ MicrosoftRecordLayoutBuilder::getAdjustedElementInfo(
       FD->getType()->getBaseElementTypeUnsafe()->getAs<RecordType>()) {
     const ASTRecordLayout &Layout = Context.getASTRecordLayout(RT->getDecl());
     // Get the element info for a layout, respecting pack.
-    Info = getAdjustedElementInfo(Layout, false);
-    // If the field is an array type, scale it's size properly.
-    if (const ConstantArrayType *CAT =
-        dyn_cast<ConstantArrayType>(FD->getType()))
-      Info.Size = Info.Size * (int64_t)CAT->getSize().getZExtValue();
+    Info.Alignment = getAdjustedElementInfo(Layout, false).Alignment;
     // Capture required alignment as a side-effect.
     RequiredAlignment = std::max(RequiredAlignment,
                                  Layout.getRequiredAlignment());
-  }
-  else {
-    llvm::tie(Info.Size, Info.Alignment) =
-        Context.getTypeInfoInChars(FD->getType());
+  } else {
     if (FD->isBitField() && FD->getMaxAlignment() != 0)
       Info.Alignment = std::max(Info.Alignment, FieldRequiredAlignment);
     // Respect pragma pack.
@@ -2583,10 +2579,8 @@ void MicrosoftRecordLayoutBuilder::layoutNonVirtualBase(
 
 void MicrosoftRecordLayoutBuilder::layoutFields(const RecordDecl *RD) {
   LastFieldIsNonZeroWidthBitfield = false;
-  for (RecordDecl::field_iterator Field = RD->field_begin(),
-                                  FieldEnd = RD->field_end();
-       Field != FieldEnd; ++Field)
-    layoutField(*Field);
+  for (const auto *Field : RD->fields())
+    layoutField(Field);
 }
 
 void MicrosoftRecordLayoutBuilder::layoutField(const FieldDecl *FD) {
@@ -3117,10 +3111,8 @@ uint64_t ASTContext::getFieldOffset(const ValueDecl *VD) const {
     const IndirectFieldDecl *IFD = cast<IndirectFieldDecl>(VD);
 
     OffsetInBits = 0;
-    for (IndirectFieldDecl::chain_iterator CI = IFD->chain_begin(),
-                                           CE = IFD->chain_end();
-         CI != CE; ++CI)
-      OffsetInBits += ::getFieldOffset(*this, cast<FieldDecl>(*CI));
+    for (const auto *CI : IFD->chain())
+      OffsetInBits += ::getFieldOffset(*this, cast<FieldDecl>(CI));
   }
 
   return OffsetInBits;
@@ -3217,19 +3209,29 @@ static void DumpCXXRecordLayout(raw_ostream &OS,
     OS << '(' << *RD << " vftable pointer)\n";
   }
 
-  // Dump (non-virtual) bases
+  // Collect nvbases.
+  SmallVector<const CXXRecordDecl *, 4> Bases;
   for (CXXRecordDecl::base_class_const_iterator I = RD->bases_begin(),
-         E = RD->bases_end(); I != E; ++I) {
+                                                E = RD->bases_end();
+       I != E; ++I) {
     assert(!I->getType()->isDependentType() &&
            "Cannot layout class with dependent bases.");
-    if (I->isVirtual())
-      continue;
+    if (!I->isVirtual())
+      Bases.push_back(I->getType()->getAsCXXRecordDecl());
+  }
 
-    const CXXRecordDecl *Base =
-      cast<CXXRecordDecl>(I->getType()->getAs<RecordType>()->getDecl());
+  // Sort nvbases by offset.
+  std::stable_sort(Bases.begin(), Bases.end(),
+                   [&](const CXXRecordDecl *L, const CXXRecordDecl *R) {
+    return Layout.getBaseClassOffset(L) < Layout.getBaseClassOffset(R);
+  });
 
+  // Dump (non-virtual) bases
+  for (SmallVectorImpl<const CXXRecordDecl *>::iterator I = Bases.begin(),
+                                                        E = Bases.end();
+       I != E; ++I) {
+    const CXXRecordDecl *Base = *I;
     CharUnits BaseOffset = Offset + Layout.getBaseClassOffset(Base);
-
     DumpCXXRecordLayout(OS, Base, C, BaseOffset, IndentLevel,
                         Base == PrimaryBase ? "(primary base)" : "(base)",
                         /*IncludeVirtualBases=*/false);
