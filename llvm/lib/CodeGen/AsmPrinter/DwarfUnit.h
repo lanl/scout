@@ -25,7 +25,7 @@
 #include "llvm/MC/MCSection.h"
 
 // +===== Scout ======================
-#include "llvm/Scout/DebugInfo.h"
+#include "llvm/IR/Scout/DebugInfo.h"
 // +==================================
 
 namespace llvm {

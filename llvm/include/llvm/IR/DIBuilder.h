@@ -22,7 +22,7 @@
 #include "llvm/Support/DataTypes.h"
 
 // +===== Scout =======================
-#include "llvm/Scout/DebugInfo.h"
+#include "llvm/IR/Scout/DebugInfo.h"
 // +===================================
 
 namespace llvm {
