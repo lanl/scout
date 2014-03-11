@@ -978,14 +978,15 @@ ValueObject::GetPointeeData (DataExtractor& data,
             ValueObjectSP pointee_sp = Dereference(error);
             if (error.Fail() || pointee_sp.get() == NULL)
                 return 0;
-            return pointee_sp->GetData(data);
+            return pointee_sp->GetData(data, error);
         }
         else
         {
             ValueObjectSP child_sp = GetChildAtIndex(0, true);
             if (child_sp.get() == NULL)
                 return 0;
-            return child_sp->GetData(data);
+            Error error;
+            return child_sp->GetData(data, error);
         }
         return true;
     }
@@ -1059,11 +1060,11 @@ ValueObject::GetPointeeData (DataExtractor& data,
 }
 
 uint64_t
-ValueObject::GetData (DataExtractor& data)
+ValueObject::GetData (DataExtractor& data, Error &error)
 {
     UpdateValueIfNeeded(false);
     ExecutionContext exe_ctx (GetExecutionContextRef());
-    Error error = m_value.GetValueAsData(&exe_ctx, data, 0, GetModule().get());
+    error = m_value.GetValueAsData(&exe_ctx, data, 0, GetModule().get());
     if (error.Fail())
     {
         if (m_data.GetByteSize())
@@ -1707,7 +1708,7 @@ ValueObject::DumpPrintableRepresentation(Stream& s,
                 break;
                 
             case eValueObjectRepresentationStyleChildrenCount:
-                strm.Printf("%zu", GetNumChildren());
+                strm.Printf("%" PRIu64 "", (uint64_t)GetNumChildren());
                 cstr = strm.GetString().c_str();
                 break;
                 
@@ -2063,7 +2064,7 @@ ValueObject::GetSyntheticArrayMemberFromPointer (size_t index, bool can_create)
     if (IsPointerType ())
     {
         char index_str[64];
-        snprintf(index_str, sizeof(index_str), "[%zu]", index);
+        snprintf(index_str, sizeof(index_str), "[%" PRIu64 "]", (uint64_t)index);
         ConstString index_const_str(index_str);
         // Check if we have already created a synthetic array member in this
         // valid object. If we have we will re-use it.
@@ -2106,7 +2107,7 @@ ValueObject::GetSyntheticArrayMemberFromArray (size_t index, bool can_create)
     if (IsArrayType ())
     {
         char index_str[64];
-        snprintf(index_str, sizeof(index_str), "[%zu]", index);
+        snprintf(index_str, sizeof(index_str), "[%" PRIu64 "]", (uint64_t)index);
         ConstString index_const_str(index_str);
         // Check if we have already created a synthetic array member in this
         // valid object. If we have we will re-use it.

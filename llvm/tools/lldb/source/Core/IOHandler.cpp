@@ -157,6 +157,7 @@ IOHandlerConfirm::IOHandlerConfirm (Debugger &debugger,
                       NULL,     // NULL editline_name means no history loaded/saved
                       NULL,
                       false,    // Multi-line
+                      0,
                       *this),
     m_default_response (default_response),
     m_user_response (default_response)
@@ -311,6 +312,7 @@ IOHandlerEditline::IOHandlerEditline (Debugger &debugger,
                                       const char *editline_name, // Used for saving history files
                                       const char *prompt,
                                       bool multi_line,
+                                      uint32_t line_number_start,
                                       IOHandlerDelegate &delegate) :
     IOHandlerEditline(debugger,
                       StreamFileSP(), // Inherit input from top input reader
@@ -320,6 +322,7 @@ IOHandlerEditline::IOHandlerEditline (Debugger &debugger,
                       editline_name,  // Used for saving history files
                       prompt,
                       multi_line,
+                      line_number_start,
                       delegate)
 {
 }
@@ -332,11 +335,13 @@ IOHandlerEditline::IOHandlerEditline (Debugger &debugger,
                                       const char *editline_name, // Used for saving history files
                                       const char *prompt,
                                       bool multi_line,
+                                      uint32_t line_number_start,
                                       IOHandlerDelegate &delegate) :
     IOHandler (debugger, input_sp, output_sp, error_sp, flags),
     m_editline_ap (),
     m_delegate (delegate),
     m_prompt (),
+    m_base_line_number (line_number_start),
     m_multi_line (multi_line)
 {
     SetPrompt(prompt);
@@ -356,6 +361,8 @@ IOHandlerEditline::IOHandlerEditline (Debugger &debugger,
                                           GetInputFILE (),
                                           GetOutputFILE (),
                                           GetErrorFILE ()));
+        if (m_base_line_number > 0)
+            m_editline_ap->ShowLineNumbers(true, m_base_line_number);
         m_editline_ap->SetLineCompleteCallback (LineCompletedCallback, this);
         m_editline_ap->SetAutoCompleteCallback (AutoCompleteCallback, this);
     }
@@ -491,6 +498,14 @@ IOHandlerEditline::SetPrompt (const char *p)
     return true;
 }
 
+void
+IOHandlerEditline::SetBaseLineNumber (uint32_t line)
+{
+    m_base_line_number = line;
+    if (m_editline_ap)
+        m_editline_ap->ShowLineNumbers (true, line);
+    
+}
 bool
 IOHandlerEditline::GetLines (StringList &lines)
 {
@@ -506,7 +521,15 @@ IOHandlerEditline::GetLines (StringList &lines)
 
         while (lines_status == LineStatus::Success)
         {
+            // Show line numbers if we are asked to
             std::string line;
+            if (m_base_line_number > 0 && GetIsInteractive())
+            {
+                FILE *out = GetOutputFILE();
+                if (out)
+                    ::fprintf(out, "%u", m_base_line_number + (uint32_t)lines.GetSize());
+            }
+            
             if (GetLine(line))
             {
                 lines.AppendString(line);
@@ -585,6 +608,13 @@ IOHandlerEditline::Refresh ()
             }
         }
     }
+}
+
+void
+IOHandlerEditline::Cancel ()
+{
+    if (m_editline_ap)
+        m_editline_ap->Interrupt ();
 }
 
 void
@@ -2106,13 +2136,11 @@ type summary add -s "${var.origin%S} ${var.size%S}" curses::Rect
                     
                 default:
                 {
-                    bool handled = false;
                     for (size_t i=0; i<num_submenus; ++i)
                     {
                         Menu *menu = submenus[i].get();
                         if (menu->GetKeyValue() == key)
                         {
-                            handled = true;
                             SetSelectedSubmenuIndex(i);
                             window.GetParent()->RemoveSubWindow(&window);
                             if (menu->Action() == MenuActionResult::Quit)
@@ -5279,6 +5307,10 @@ IOHandlerCursesGUI::Refresh ()
 {
 }
 
+void
+IOHandlerCursesGUI::Cancel ()
+{
+}
 
 void
 IOHandlerCursesGUI::Interrupt ()

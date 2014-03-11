@@ -156,58 +156,76 @@ POSIXThread::GetRegisterContext()
         RegisterInfoInterface *reg_interface = NULL;
         const ArchSpec &target_arch = GetProcess()->GetTarget().GetArchitecture();
 
-        switch (target_arch.GetCore())
+        switch (target_arch.GetTriple().getOS())
         {
-            case ArchSpec::eCore_mips64:
-            {
-                switch (target_arch.GetTriple().getOS())
+            case llvm::Triple::FreeBSD:
+                switch (target_arch.GetCore())
                 {
-                    case llvm::Triple::FreeBSD:
+                    case ArchSpec::eCore_mips64:
                         reg_interface = new RegisterContextFreeBSD_mips64(target_arch);
                         break;
+                    case ArchSpec::eCore_x86_32_i386:
+                    case ArchSpec::eCore_x86_32_i486:
+                    case ArchSpec::eCore_x86_32_i486sx:
+                        reg_interface = new RegisterContextFreeBSD_i386(target_arch);
+                        break;
+                    case ArchSpec::eCore_x86_64_x86_64:
+                        reg_interface = new RegisterContextFreeBSD_x86_64(target_arch);
+                        break;
                     default:
-                        assert(false && "OS not supported");
+                        break;
+                }
+                break;
+
+            case llvm::Triple::Linux:
+                switch (target_arch.GetCore())
+                {
+                    case ArchSpec::eCore_x86_32_i386:
+                    case ArchSpec::eCore_x86_32_i486:
+                    case ArchSpec::eCore_x86_32_i486sx:
+                    case ArchSpec::eCore_x86_64_x86_64:
+                        if (Host::GetArchitecture().GetAddressByteSize() == 4)
+                        {
+                            // 32-bit hosts run with a RegisterContextLinux_i386 context.
+                            reg_interface = static_cast<RegisterInfoInterface*>(new RegisterContextLinux_i386(target_arch));
+                        }
+                        else
+                        {
+                            assert((Host::GetArchitecture().GetAddressByteSize() == 8) && "Register setting path assumes this is a 64-bit host");
+                            // X86_64 hosts know how to work with 64-bit and 32-bit EXEs using the x86_64 register context.
+                            reg_interface = static_cast<RegisterInfoInterface*>(new RegisterContextLinux_x86_64(target_arch));
+                        }
+                        break;
+                    default:
                         break;
                 }
 
-                if (reg_interface)
+            default:
+                break;
+        }
+
+        assert(reg_interface && "OS or CPU not supported!");
+
+        switch (target_arch.GetCore())
+        {
+            case ArchSpec::eCore_mips64:
                 {
                     RegisterContextPOSIXProcessMonitor_mips64 *reg_ctx = new RegisterContextPOSIXProcessMonitor_mips64(*this, 0, reg_interface);
                     m_posix_thread = reg_ctx;
                     m_reg_context_sp.reset(reg_ctx);
+                    break;
                 }
-                break;
-            }
-
             case ArchSpec::eCore_x86_32_i386:
             case ArchSpec::eCore_x86_32_i486:
             case ArchSpec::eCore_x86_32_i486sx:
             case ArchSpec::eCore_x86_64_x86_64:
-            {
-                switch (target_arch.GetTriple().getOS())
-                {
-                    case llvm::Triple::FreeBSD:
-                        reg_interface = new RegisterContextFreeBSD_x86_64(target_arch);
-                        break;
-                    case llvm::Triple::Linux:
-                        reg_interface = new RegisterContextLinux_x86_64(target_arch);
-                        break;
-                    default:
-                        assert(false && "OS not supported");
-                        break;
-                }
-
-                if (reg_interface)
                 {
                     RegisterContextPOSIXProcessMonitor_x86_64 *reg_ctx = new RegisterContextPOSIXProcessMonitor_x86_64(*this, 0, reg_interface);
                     m_posix_thread = reg_ctx;
                     m_reg_context_sp.reset(reg_ctx);
+                    break;
                 }
-                break;
-            }
-
             default:
-                assert(false && "CPU type not supported!");
                 break;
         }
     }

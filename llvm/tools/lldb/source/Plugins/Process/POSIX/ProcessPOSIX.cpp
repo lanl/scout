@@ -186,13 +186,15 @@ ProcessPOSIX::GetFilePath(
     if (file_action)
     {
         if (file_action->GetAction () == ProcessLaunchInfo::FileAction::eFileActionOpen)
+        {
             path = file_action->GetPath();
             // By default the stdio paths passed in will be pseudo-terminal
             // (/dev/pts). If so, convert to using a different default path
             // instead to redirect I/O to the debugger console. This should
             //  also handle user overrides to /dev/null or a different file.
-            if (::strncmp(path, pts_name, ::strlen(pts_name)) == 0)
+            if (!path || ::strncmp(path, pts_name, ::strlen(pts_name)) == 0)
                 path = default_path;
+        }
     }
 
     return path;
