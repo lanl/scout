@@ -56,7 +56,7 @@
 #include "DwarfAccelTable.h"
 #include "DwarfDebug.h"
 #include "llvm/ADT/APFloat.h"
-#include "llvm/DIBuilder.h"
+#include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/GlobalVariable.h"

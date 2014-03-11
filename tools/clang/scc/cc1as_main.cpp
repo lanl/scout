@@ -271,7 +271,7 @@ static bool ExecuteAssembler(AssemblerInvocation &Opts,
     return false;
   }
 
-  OwningPtr<MemoryBuffer> BufferPtr;
+  std::unique_ptr<MemoryBuffer> BufferPtr;
   if (error_code ec = MemoryBuffer::getFileOrSTDIN(Opts.InputFile, BufferPtr)) {
     Error = ec.message();
     Diags.Report(diag::err_fe_error_reading) << Opts.InputFile;

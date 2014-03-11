@@ -55,7 +55,7 @@
 #ifndef LLVM_SCOUT_DEBUGINFO_H
 #define LLVM_SCOUT_DEBUGINFO_H
 
-#include "llvm/DebugInfo.h"
+#include "llvm/IR/DebugInfo.h"
 
 namespace llvm {
 

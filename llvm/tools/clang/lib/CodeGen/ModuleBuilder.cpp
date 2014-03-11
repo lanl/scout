@@ -133,7 +133,7 @@ namespace {
       }
     }
 
-    virtual void HandleMeshDeclRequiredDefinition(const MeshDecl *D) LLVM_OVERRIDE {
+    virtual void HandleMeshDeclRequiredDefinition(const MeshDecl *D) override {
       if (Diags.hasErrorOccurred())
         return;
 

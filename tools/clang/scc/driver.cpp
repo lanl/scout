@@ -373,9 +373,9 @@ static void scAddFlags(Driver &driver,
 
   // Check the command line arguments in a bit more detail before
   // we get to work...
-  OwningPtr<OptTable> CC1Opts(createDriverOptTable());
+  std::unique_ptr<OptTable> CC1Opts(createDriverOptTable());
   unsigned MissingArgIndex, MissingArgCount;
-  OwningPtr<InputArgList> Args(CC1Opts->ParseArgs(argv.begin()+1, argv.end(),
+  std::unique_ptr<InputArgList> Args(CC1Opts->ParseArgs(argv.begin()+1, argv.end(),
                                                   MissingArgIndex, MissingArgCount));
 
   // Build up a string of edits to make to the command line options

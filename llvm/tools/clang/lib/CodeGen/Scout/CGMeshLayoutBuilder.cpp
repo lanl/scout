@@ -191,7 +191,7 @@ bool CGMeshLayoutBuilder::LayoutBitfields(const ASTMeshLayout &Layout,
     if (!Packed && ((*FJ)->hasAttr<PackedAttr>() || !(*FJ)->getDeclName()))
       return false;
   }
-  MeshDecl::field_iterator BFE = llvm::next(FI);
+  MeshDecl::field_iterator BFE = std::next(FI);
   --LastFieldNo;
   assert(LastFieldNo >= FirstFieldNo && "Empty run of contiguous bitfields");
   MeshFieldDecl *LastFD = *FI;

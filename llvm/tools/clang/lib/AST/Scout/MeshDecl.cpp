@@ -153,7 +153,7 @@ void MeshDecl::LoadFieldsFromExternalStorage() const {
   if (Decls.empty())
     return;
 
-  llvm::tie(FirstDecl, LastDecl) = BuildDeclChain(Decls,
+  std::tie(FirstDecl, LastDecl) = BuildDeclChain(Decls,
                                                  /*FieldsAlreadyLoaded=*/false);
 }
 
