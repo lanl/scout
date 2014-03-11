@@ -759,14 +759,14 @@ void PEI::replaceFrameIndices(MachineBasicBlock *BB, MachineFunction &Fn,
       SPAdj += Size;
 
       MachineBasicBlock::iterator PrevI = BB->end();
-      if (I != BB->begin()) PrevI = prior(I);
+      if (I != BB->begin()) PrevI = std::prev(I);
       TFI->eliminateCallFramePseudoInstr(Fn, *BB, I);
 
       // Visit the instructions created by eliminateCallFramePseudoInstr().
       if (PrevI == BB->end())
         I = BB->begin();     // The replaced instr was the first in the block.
       else
-        I = llvm::next(PrevI);
+        I = std::next(PrevI);
       continue;
     }
 
@@ -779,18 +779,15 @@ void PEI::replaceFrameIndices(MachineBasicBlock *BB, MachineFunction &Fn,
       // Frame indicies in debug values are encoded in a target independent
       // way with simply the frame index and offset rather than any
       // target-specific addressing mode.
-      if (MI->isDebugValue() ||
-          MI->getOpcode() == TargetOpcode::STACKMAP ||
-          MI->getOpcode() == TargetOpcode::PATCHPOINT) {
-        assert((!MI->isDebugValue() || i == 0) &&
-               "Frame indicies can only appear as the first operand of a "
-               "DBG_VALUE machine instruction");
+      if (MI->isDebugValue()) {
+        assert(i == 0 && "Frame indicies can only appear as the first "
+                         "operand of a DBG_VALUE machine instruction");
         unsigned Reg;
-        MachineOperand &Offset = MI->getOperand(i + 1);
+        MachineOperand &Offset = MI->getOperand(1);
         Offset.setImm(Offset.getImm() +
                       TFI->getFrameIndexReference(
-                          Fn, MI->getOperand(i).getIndex(), Reg));
-        MI->getOperand(i).ChangeToRegister(Reg, false /*isDef*/);
+                          Fn, MI->getOperand(0).getIndex(), Reg));
+        MI->getOperand(0).ChangeToRegister(Reg, false /*isDef*/);
         continue;
       }
 
@@ -852,9 +849,9 @@ void PEI::scavengeFrameVirtualRegs(MachineFunction &Fn) {
         I = BB->begin();
 
       MachineInstr *MI = I;
-      MachineBasicBlock::iterator J = llvm::next(I);
-      MachineBasicBlock::iterator P = I == BB->begin() ?
-        MachineBasicBlock::iterator(NULL) : llvm::prior(I);
+      MachineBasicBlock::iterator J = std::next(I);
+      MachineBasicBlock::iterator P =
+          I == BB->begin() ? MachineBasicBlock::iterator(NULL) : std::prev(I);
 
       // RS should process this instruction before we might scavenge at this
       // location. This is because we might be replacing a virtual register
@@ -897,7 +894,7 @@ void PEI::scavengeFrameVirtualRegs(MachineFunction &Fn) {
       // spill code will have been inserted in between I and J. This is a
       // problem because we need the spill code before I: Move I to just
       // prior to J.
-      if (I != llvm::prior(J)) {
+      if (I != std::prev(J)) {
         BB->splice(J, BB, I);
 
         // Before we move I, we need to prepare the RS to visit I again.

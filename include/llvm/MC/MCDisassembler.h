@@ -56,10 +56,9 @@ public:
   };
 
   /// Constructor     - Performs initial setup for the disassembler.
-  MCDisassembler(const MCSubtargetInfo &STI) : GetOpInfo(0), SymbolLookUp(0),
-                                               DisInfo(0), Ctx(0),
-                                               STI(STI), Symbolizer(0),
-                                               CommentStream(0) {}
+  MCDisassembler(const MCSubtargetInfo &STI)
+      : GetOpInfo(0), SymbolLookUp(0), DisInfo(0), Ctx(0), STI(STI),
+        Symbolizer(), CommentStream(0) {}
 
   virtual ~MCDisassembler();
 
@@ -102,7 +101,7 @@ private:
 protected:
   // Subtarget information, for instruction decoding predicates if required.
   const MCSubtargetInfo &STI;
-  OwningPtr<MCSymbolizer> Symbolizer;
+  std::unique_ptr<MCSymbolizer> Symbolizer;
 
 public:
   // Helpers around MCSymbolizer
@@ -115,7 +114,7 @@ public:
 
   /// Set \p Symzer as the current symbolizer.
   /// This takes ownership of \p Symzer, and deletes the previously set one.
-  void setSymbolizer(OwningPtr<MCSymbolizer> &Symzer);
+  void setSymbolizer(std::unique_ptr<MCSymbolizer> Symzer);
 
   /// Sets up an external symbolizer that uses the C API callbacks.
   void setupForSymbolicDisassembly(LLVMOpInfoCallback GetOpInfo,
@@ -123,6 +122,11 @@ public:
                                    void *DisInfo,
                                    MCContext *Ctx,
                                    OwningPtr<MCRelocationInfo> &RelInfo);
+  void setupForSymbolicDisassembly(LLVMOpInfoCallback GetOpInfo,
+                                   LLVMSymbolLookupCallback SymbolLookUp,
+                                   void *DisInfo,
+                                   MCContext *Ctx,
+                                   std::unique_ptr<MCRelocationInfo> &RelInfo);
 
   LLVMOpInfoCallback getLLVMOpInfoCallback() const { return GetOpInfo; }
   LLVMSymbolLookupCallback getLLVMSymbolLookupCallback() const {

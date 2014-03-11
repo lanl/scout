@@ -18,19 +18,20 @@
 #include "DIE.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/FoldingSet.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/MapVector.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/LexicalScopes.h"
-#include "llvm/DebugInfo.h"
+#include "llvm/IR/DebugInfo.h"
+#include "llvm/IR/DebugLoc.h"
 #include "llvm/MC/MachineLocation.h"
 #include "llvm/Support/Allocator.h"
-#include "llvm/Support/DebugLoc.h"
 
 namespace llvm {
 
+class ByteStreamer;
 class DwarfUnit;
 class DwarfCompileUnit;
 class ConstantInt;
@@ -124,8 +125,8 @@ public:
 
   /// \brief Empty entries are also used as a trigger to emit temp label. Such
   /// labels are referenced is used to find debug_loc offset for a given DIE.
-  bool isEmpty() { return Begin == 0 && End == 0; }
-  bool isMerged() { return Merged; }
+  bool isEmpty() const { return Begin == 0 && End == 0; }
+  bool isMerged() const { return Merged; }
   void Merge(DotDebugLocEntry *Next) {
     if (!(Begin && Loc == Next->Loc && End == Next->Begin))
       return;
@@ -680,6 +681,9 @@ class DwarfDebug : public AsmPrinterHandler {
   /// \brief Return Label immediately following the instruction.
   MCSymbol *getLabelAfterInsn(const MachineInstr *MI);
 
+  void attachLowHighPC(DwarfCompileUnit *Unit, DIE *D, MCSymbol *Begin,
+                       MCSymbol *End);
+
 public:
   //===--------------------------------------------------------------------===//
   // Main entry points.
@@ -698,19 +702,19 @@ public:
   void beginModule();
 
   /// \brief Emit all Dwarf sections that should come after the content.
-  void endModule();
+  void endModule() override;
 
   /// \brief Gather pre-function debug information.
-  void beginFunction(const MachineFunction *MF);
+  void beginFunction(const MachineFunction *MF) override;
 
   /// \brief Gather and emit post-function debug information.
-  void endFunction(const MachineFunction *MF);
+  void endFunction(const MachineFunction *MF) override;
 
   /// \brief Process beginning of an instruction.
-  void beginInstruction(const MachineInstr *MI);
+  void beginInstruction(const MachineInstr *MI) override;
 
   /// \brief Process end of an instruction.
-  void endInstruction();
+  void endInstruction() override;
 
   /// \brief Add a DIE to the set of types that we're going to pull into
   /// type units.
@@ -722,7 +726,7 @@ public:
 
   /// \brief For symbols that have a size designated (e.g. common symbols),
   /// this tracks that size.
-  void setSymbolSize(const MCSymbol *Sym, uint64_t Size) {
+  void setSymbolSize(const MCSymbol *Sym, uint64_t Size) override {
     SymSize[Sym] = Size;
   }
 
@@ -739,23 +743,39 @@ public:
 
   /// \brief Returns whether or not to emit tables that dwarf consumers can
   /// use to accelerate lookup.
-  bool useDwarfAccelTables() { return HasDwarfAccelTables; }
+  bool useDwarfAccelTables() const { return HasDwarfAccelTables; }
 
   /// \brief Returns whether or not to change the current debug info for the
   /// split dwarf proposal support.
-  bool useSplitDwarf() { return HasSplitDwarf; }
+  bool useSplitDwarf() const { return HasSplitDwarf; }
 
   /// \brief Returns whether or not to use AT_ranges for compilation units.
-  bool useCURanges() { return HasCURanges; }
+  bool useCURanges() const { return HasCURanges; }
 
   /// Returns the Dwarf Version.
   unsigned getDwarfVersion() const { return DwarfVersion; }
+
+  /// Returns the section symbol for the .debug_loc section.
+  MCSymbol *getDebugLocSym() const { return DwarfDebugLocSectionSym; }
+
+  /// Returns the entries for the .debug_loc section.
+  const SmallVectorImpl<DotDebugLocEntry> &getDebugLocEntries() const {
+    return DotDebugLocEntries;
+  }
+
+  /// \brief Emit an entry for the debug loc section. This can be used to
+  /// handle an entry that's going to be emitted into the debug loc section.
+  void emitDebugLocEntry(ByteStreamer &Streamer, const DotDebugLocEntry &Entry);
 
   /// Find the MDNode for the given reference.
   template <typename T> T resolve(DIRef<T> Ref) const {
     return Ref.resolve(TypeIdentifierMap);
   }
 
+  /// Find the DwarfCompileUnit for the given CU Die.
+  DwarfCompileUnit *lookupUnit(const DIE *CU) const {
+    return CUDieMap.lookup(CU);
+  }
   /// isSubprogramContext - Return true if Context is either a subprogram
   /// or another context nested inside a subprogram.
   bool isSubprogramContext(const MDNode *Context);

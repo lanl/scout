@@ -45,6 +45,8 @@ static bool allocateStack(unsigned ValNo, MVT ValVT, MVT LocVT,
 AMDGPUTargetLowering::AMDGPUTargetLowering(TargetMachine &TM) :
   TargetLowering(TM, new TargetLoweringObjectFileELF()) {
 
+  Subtarget = &TM.getSubtarget<AMDGPUSubtarget>();
+
   // Initialize target lowering borrowed from AMDIL
   InitAMDILLowering();
 
@@ -179,6 +181,7 @@ AMDGPUTargetLowering::AMDGPUTargetLowering(TargetMachine &TM) :
     setOperationAction(ISD::UDIV, VT, Expand);
     setOperationAction(ISD::UINT_TO_FP, VT, Expand);
     setOperationAction(ISD::UREM, VT, Expand);
+    setOperationAction(ISD::SELECT, VT, Expand);
     setOperationAction(ISD::VSELECT, VT, Expand);
     setOperationAction(ISD::XOR,  VT, Expand);
   }
@@ -200,6 +203,7 @@ AMDGPUTargetLowering::AMDGPUTargetLowering(TargetMachine &TM) :
     setOperationAction(ISD::FRINT, VT, Expand);
     setOperationAction(ISD::FSQRT, VT, Expand);
     setOperationAction(ISD::FSUB, VT, Expand);
+    setOperationAction(ISD::SELECT, VT, Expand);
   }
 }
 
@@ -601,8 +605,8 @@ SDValue AMDGPUTargetLowering::SplitVectorLoad(const SDValue &Op,
                         MemEltVT, Load->isVolatile(), Load->isNonTemporal(),
                         Load->getAlignment()));
   }
-  return DAG.getNode(ISD::BUILD_VECTOR, SL, Op.getValueType(), &Loads[0],
-                     Loads.size());
+  return DAG.getNode(ISD::BUILD_VECTOR, SL, Op.getValueType(),
+                     Loads.data(), Loads.size());
 }
 
 SDValue AMDGPUTargetLowering::MergeVectorStore(const SDValue &Op,
@@ -611,9 +615,9 @@ SDValue AMDGPUTargetLowering::MergeVectorStore(const SDValue &Op,
   EVT MemVT = Store->getMemoryVT();
   unsigned MemBits = MemVT.getSizeInBits();
 
-  // Byte stores are really expensive, so if possible, try to pack
-  // 32-bit vector truncatating store into an i32 store.
-  // XXX: We could also handle optimize other vector bitwidths
+  // Byte stores are really expensive, so if possible, try to pack 32-bit vector
+  // truncating store into an i32 store.
+  // XXX: We could also handle optimize other vector bitwidths.
   if (!MemVT.isVector() || MemBits > 32) {
     return SDValue();
   }
@@ -626,17 +630,8 @@ SDValue AMDGPUTargetLowering::MergeVectorStore(const SDValue &Op,
   unsigned MemEltBits = MemEltVT.getSizeInBits();
   unsigned MemNumElements = MemVT.getVectorNumElements();
   EVT PackedVT = EVT::getIntegerVT(*DAG.getContext(), MemVT.getSizeInBits());
-  SDValue Mask;
-  switch(MemEltBits) {
-  case 8:
-    Mask = DAG.getConstant(0xFF, PackedVT);
-    break;
-  case 16:
-    Mask = DAG.getConstant(0xFFFF, PackedVT);
-    break;
-  default:
-    llvm_unreachable("Cannot lower this vector store");
-  }
+  SDValue Mask = DAG.getConstant((1 << MemEltBits) - 1, PackedVT);
+
   SDValue PackedValue;
   for (unsigned i = 0; i < MemNumElements; ++i) {
     EVT ElemVT = VT.getVectorElementType();
@@ -688,6 +683,20 @@ SDValue AMDGPUTargetLowering::LowerLOAD(SDValue Op, SelectionDAG &DAG) const {
   SDLoc DL(Op);
   LoadSDNode *Load = cast<LoadSDNode>(Op);
   ISD::LoadExtType ExtType = Load->getExtensionType();
+  EVT VT = Op.getValueType();
+  EVT MemVT = Load->getMemoryVT();
+
+  if (ExtType != ISD::NON_EXTLOAD && !VT.isVector() && VT.getSizeInBits() > 32) {
+    // We can do the extload to 32-bits, and then need to separately extend to
+    // 64-bits.
+
+    SDValue ExtLoad32 = DAG.getExtLoad(ExtType, DL, MVT::i32,
+                                       Load->getChain(),
+                                       Load->getBasePtr(),
+                                       MemVT,
+                                       Load->getMemOperand());
+    return DAG.getNode(ISD::getExtForLoadExtType(ExtType), DL, VT, ExtLoad32);
+  }
 
   // Lower loads constant address space global variable loads
   if (Load->getAddressSpace() == AMDGPUAS::CONSTANT_ADDRESS &&
@@ -707,14 +716,7 @@ SDValue AMDGPUTargetLowering::LowerLOAD(SDValue Op, SelectionDAG &DAG) const {
     return SDValue();
 
 
-  EVT VT = Op.getValueType();
-  EVT MemVT = Load->getMemoryVT();
-  unsigned Mask = 0;
-  if (Load->getMemoryVT() == MVT::i8) {
-    Mask = 0xff;
-  } else if (Load->getMemoryVT() == MVT::i16) {
-    Mask = 0xffff;
-  }
+  unsigned Mask = (1 << Load->getMemoryVT().getSizeInBits()) - 1;
   SDValue Ptr = DAG.getNode(ISD::SRL, DL, MVT::i32, Load->getBasePtr(),
                             DAG.getConstant(2, MVT::i32));
   SDValue Ret = DAG.getNode(AMDGPUISD::REGISTER_LOAD, DL, Op.getValueType(),
@@ -1008,6 +1010,7 @@ const char* AMDGPUTargetLowering::getTargetNodeName(unsigned Opcode) const {
   NODE_NAME_CASE(SMIN)
   NODE_NAME_CASE(UMIN)
   NODE_NAME_CASE(URECIP)
+  NODE_NAME_CASE(DOT4)
   NODE_NAME_CASE(EXPORT)
   NODE_NAME_CASE(CONST_ADDRESS)
   NODE_NAME_CASE(REGISTER_LOAD)

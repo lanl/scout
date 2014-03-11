@@ -18,9 +18,9 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalAlias.h"
 #include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/LeakDetector.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/LeakDetector.h"
 using namespace llvm;
 
 //===----------------------------------------------------------------------===//
@@ -38,6 +38,10 @@ bool GlobalValue::Materialize(std::string *ErrInfo) {
 }
 void GlobalValue::Dematerialize() {
   getParent()->Dematerialize(this);
+}
+
+const DataLayout *GlobalValue::getDataLayout() const {
+  return getParent()->getDataLayout();
 }
 
 /// Override destroyConstant to make sure it doesn't get called on

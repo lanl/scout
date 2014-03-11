@@ -16,13 +16,9 @@ using namespace llvm;
 MCDisassembler::~MCDisassembler() {
 }
 
-void
-MCDisassembler::setupForSymbolicDisassembly(
-    LLVMOpInfoCallback GetOpInfo,
-    LLVMSymbolLookupCallback SymbolLookUp,
-    void *DisInfo,
-    MCContext *Ctx,
-    OwningPtr<MCRelocationInfo> &RelInfo) {
+void MCDisassembler::setupForSymbolicDisassembly(
+    LLVMOpInfoCallback GetOpInfo, LLVMSymbolLookupCallback SymbolLookUp,
+    void *DisInfo, MCContext *Ctx, std::unique_ptr<MCRelocationInfo> &RelInfo) {
   this->GetOpInfo = GetOpInfo;
   this->SymbolLookUp = SymbolLookUp;
   this->DisInfo = DisInfo;
@@ -31,6 +27,14 @@ MCDisassembler::setupForSymbolicDisassembly(
   if (!Symbolizer)
     Symbolizer.reset(new MCExternalSymbolizer(*Ctx, RelInfo, GetOpInfo,
                                               SymbolLookUp, DisInfo));
+}
+
+void MCDisassembler::setupForSymbolicDisassembly(
+    LLVMOpInfoCallback GetOpInfo, LLVMSymbolLookupCallback SymbolLookUp,
+    void *DisInfo, MCContext *Ctx, OwningPtr<MCRelocationInfo> &RelInfo) {
+  std::unique_ptr<MCRelocationInfo> MCRI;
+  setupForSymbolicDisassembly(GetOpInfo, SymbolLookUp, DisInfo, Ctx, MCRI);
+  RelInfo = std::move(MCRI);
 }
 
 bool MCDisassembler::tryAddingSymbolicOperand(MCInst &Inst, int64_t Value,
@@ -51,6 +55,6 @@ void MCDisassembler::tryAddingPcLoadReferenceComment(int64_t Value,
     Symbolizer->tryAddingPcLoadReferenceComment(cStream, Value, Address);
 }
 
-void MCDisassembler::setSymbolizer(OwningPtr<MCSymbolizer> &Symzer) {
-  Symbolizer.reset(Symzer.take());
+void MCDisassembler::setSymbolizer(std::unique_ptr<MCSymbolizer> Symzer) {
+  Symbolizer = std::move(Symzer);
 }

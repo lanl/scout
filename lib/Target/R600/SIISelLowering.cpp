@@ -14,6 +14,7 @@
 
 #include "SIISelLowering.h"
 #include "AMDGPU.h"
+#include "AMDGPUSubtarget.h"
 #include "AMDILIntrinsicInfo.h"
 #include "SIInstrInfo.h"
 #include "SIMachineFunctionInfo.h"
@@ -30,7 +31,6 @@ using namespace llvm;
 
 SITargetLowering::SITargetLowering(TargetMachine &TM) :
     AMDGPUTargetLowering(TM) {
-
   addRegisterClass(MVT::i1, &AMDGPU::SReg_64RegClass);
   addRegisterClass(MVT::i64, &AMDGPU::VSrc_64RegClass);
 
@@ -76,7 +76,6 @@ SITargetLowering::SITargetLowering(TargetMachine &TM) :
   setOperationAction(ISD::VECTOR_SHUFFLE, MVT::v16i32, Expand);
   setOperationAction(ISD::VECTOR_SHUFFLE, MVT::v16f32, Expand);
 
-  setOperationAction(ISD::ADD, MVT::i64, Legal);
   setOperationAction(ISD::ADD, MVT::i32, Legal);
   setOperationAction(ISD::ADDC, MVT::i32, Legal);
   setOperationAction(ISD::ADDE, MVT::i32, Legal);
@@ -99,6 +98,7 @@ SITargetLowering::SITargetLowering(TargetMachine &TM) :
   setOperationAction(ISD::LOAD, MVT::v4i32, Custom);
   setOperationAction(ISD::LOAD, MVT::v8i32, Custom);
 
+  setOperationAction(ISD::STORE, MVT::i1, Custom);
   setOperationAction(ISD::STORE, MVT::i32, Custom);
   setOperationAction(ISD::STORE, MVT::i64, Custom);
   setOperationAction(ISD::STORE, MVT::i128, Custom);
@@ -129,6 +129,9 @@ SITargetLowering::SITargetLowering(TargetMachine &TM) :
   setLoadExtAction(ISD::SEXTLOAD, MVT::i32, Expand);
   setLoadExtAction(ISD::SEXTLOAD, MVT::i8, Custom);
   setLoadExtAction(ISD::SEXTLOAD, MVT::i16, Custom);
+  setLoadExtAction(ISD::ZEXTLOAD, MVT::i32, Expand);
+  setLoadExtAction(ISD::ZEXTLOAD, MVT::i8, Custom);
+  setLoadExtAction(ISD::ZEXTLOAD, MVT::i16, Custom);
   setLoadExtAction(ISD::SEXTLOAD, MVT::v8i16, Expand);
   setLoadExtAction(ISD::SEXTLOAD, MVT::v16i16, Expand);
 
@@ -151,7 +154,7 @@ SITargetLowering::SITargetLowering(TargetMachine &TM) :
   // We only support LOAD/STORE and vector manipulation ops for vectors
   // with > 4 elements.
   MVT VecTypes[] = {
-    MVT::v8i32, MVT::v8f32
+    MVT::v8i32, MVT::v8f32, MVT::v16i32, MVT::v16f32
   };
 
   const size_t NumVecTypes = array_lengthof(VecTypes);
@@ -175,8 +178,20 @@ SITargetLowering::SITargetLowering(TargetMachine &TM) :
     }
   }
 
-  setTargetDAGCombine(ISD::SELECT_CC);
+  for (int I = MVT::v1f64; I <= MVT::v8f64; ++I) {
+    MVT::SimpleValueType VT = static_cast<MVT::SimpleValueType>(I);
+    setOperationAction(ISD::FTRUNC, VT, Expand);
+    setOperationAction(ISD::FCEIL, VT, Expand);
+    setOperationAction(ISD::FFLOOR, VT, Expand);
+  }
 
+  if (Subtarget->getGeneration() >= AMDGPUSubtarget::SEA_ISLANDS) {
+    setOperationAction(ISD::FTRUNC, MVT::f64, Legal);
+    setOperationAction(ISD::FCEIL, MVT::f64, Legal);
+    setOperationAction(ISD::FFLOOR, MVT::f64, Legal);
+  }
+
+  setTargetDAGCombine(ISD::SELECT_CC);
   setTargetDAGCombine(ISD::SETCC);
 
   setSchedulingPreference(Sched::RegPressure);
@@ -476,7 +491,6 @@ SDValue SITargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   SIMachineFunctionInfo *MFI = MF.getInfo<SIMachineFunctionInfo>();
   switch (Op.getOpcode()) {
   default: return AMDGPUTargetLowering::LowerOperation(Op, DAG);
-  case ISD::ADD: return LowerADD(Op, DAG);
   case ISD::BRCOND: return LowerBRCOND(Op, DAG);
   case ISD::LOAD: {
     LoadSDNode *Load = dyn_cast<LoadSDNode>(Op);
@@ -614,33 +628,6 @@ SDValue SITargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     }
   }
   return SDValue();
-}
-
-SDValue SITargetLowering::LowerADD(SDValue Op,
-                                   SelectionDAG &DAG) const {
-  if (Op.getValueType() != MVT::i64)
-    return SDValue();
-
-  SDLoc DL(Op);
-  SDValue LHS = Op.getOperand(0);
-  SDValue RHS = Op.getOperand(1);
-
-  SDValue Zero = DAG.getConstant(0, MVT::i32);
-  SDValue One = DAG.getConstant(1, MVT::i32);
-
-  SDValue Lo0 = DAG.getNode(ISD::EXTRACT_ELEMENT, DL, MVT::i32, LHS, Zero);
-  SDValue Hi0 = DAG.getNode(ISD::EXTRACT_ELEMENT, DL, MVT::i32, LHS, One);
-
-  SDValue Lo1 = DAG.getNode(ISD::EXTRACT_ELEMENT, DL, MVT::i32, RHS, Zero);
-  SDValue Hi1 = DAG.getNode(ISD::EXTRACT_ELEMENT, DL, MVT::i32, RHS, One);
-
-  SDVTList VTList = DAG.getVTList(MVT::i32, MVT::Glue);
-
-  SDValue AddLo = DAG.getNode(ISD::ADDC, DL, VTList, Lo0, Lo1);
-  SDValue Carry = AddLo.getValue(1);
-  SDValue AddHi = DAG.getNode(ISD::ADDE, DL, VTList, Hi0, Hi1, Carry);
-
-  return DAG.getNode(ISD::BUILD_PAIR, DL, MVT::i64, AddLo, AddHi.getValue(0));
 }
 
 /// \brief Helper function for LowerBRCOND
@@ -857,6 +844,11 @@ SDValue SITargetLowering::LowerSTORE(SDValue Op, SelectionDAG &DAG) const {
 
   if (VT.isVector() && VT.getVectorNumElements() >= 8)
       return SplitVectorStore(Op, DAG);
+
+  if (VT == MVT::i1)
+    return DAG.getTruncStore(Store->getChain(), DL,
+                        DAG.getSExtOrTrunc(Store->getValue(), DL, MVT::i32),
+                        Store->getBasePtr(), MVT::i1, Store->getMemOperand());
 
   if (Store->getAddressSpace() != AMDGPUAS::PRIVATE_ADDRESS)
     return SDValue();

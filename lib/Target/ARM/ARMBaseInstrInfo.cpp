@@ -336,7 +336,7 @@ ARMBaseInstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,MachineBasicBlock *&TBB,
       // If we can modify the function, delete everything below this
       // unconditional branch.
       if (AllowModify) {
-        MachineBasicBlock::iterator DI = llvm::next(I);
+        MachineBasicBlock::iterator DI = std::next(I);
         while (DI != MBB.end()) {
           MachineInstr *InstToDelete = DI;
           ++DI;
@@ -535,6 +535,20 @@ bool ARMBaseInstrInfo::isPredicable(MachineInstr *MI) const {
   return true;
 }
 
+template<> bool IsCPSRDead<MachineInstr>(MachineInstr* MI) {
+  for (unsigned i = 0, e = MI->getNumOperands(); i != e; ++i) {
+    const MachineOperand &MO = MI->getOperand(i);
+    if (!MO.isReg() || MO.isUndef() || MO.isUse())
+      continue;
+    if (MO.getReg() != ARM::CPSR)
+      continue;
+    if (!MO.isDead())
+      return false;
+  }
+  // all definitions of CPSR are dead
+  return true;
+}
+
 /// FIXME: Works around a gcc miscompilation with -fstrict-aliasing.
 LLVM_ATTRIBUTE_NOINLINE
 static unsigned getNumJTEntries(const std::vector<MachineJumpTableEntry> &JT,
@@ -559,15 +573,10 @@ unsigned ARMBaseInstrInfo::GetInstSizeInBytes(const MachineInstr *MI) const {
   // If this machine instr is an inline asm, measure it.
   if (MI->getOpcode() == ARM::INLINEASM)
     return getInlineAsmLength(MI->getOperand(0).getSymbolName(), *MAI);
-  if (MI->isLabel())
-    return 0;
   unsigned Opc = MI->getOpcode();
   switch (Opc) {
-  case TargetOpcode::IMPLICIT_DEF:
-  case TargetOpcode::KILL:
-  case TargetOpcode::PROLOG_LABEL:
-  case TargetOpcode::EH_LABEL:
-  case TargetOpcode::DBG_VALUE:
+  default:
+    // pseudo-instruction sizes are zero.
     return 0;
   case TargetOpcode::BUNDLE:
     return getInstBundleLength(MI);
@@ -630,9 +639,6 @@ unsigned ARMBaseInstrInfo::GetInstSizeInBytes(const MachineInstr *MI) const {
       ++NumEntries;
     return NumEntries * EntrySize + InstSize;
   }
-  default:
-    // Otherwise, pseudo-instruction sizes are zero.
-    return 0;
   }
 }
 
@@ -1537,7 +1543,7 @@ bool ARMBaseInstrInfo::isSchedulingBoundary(const MachineInstr *MI,
     return false;
 
   // Terminators and labels can't be scheduled around.
-  if (MI->isTerminator() || MI->isLabel())
+  if (MI->isTerminator() || MI->isPosition())
     return true;
 
   // Treat the start of the IT block as a scheduling boundary, but schedule
@@ -2162,7 +2168,7 @@ static bool isSuitableForMask(MachineInstr *&MI, unsigned SrcReg,
       // Walk down one instruction which is potentially an 'and'.
       const MachineInstr &Copy = *MI;
       MachineBasicBlock::iterator AND(
-        llvm::next(MachineBasicBlock::iterator(MI)));
+        std::next(MachineBasicBlock::iterator(MI)));
       if (AND == MI->getParent()->end()) return false;
       MI = AND;
       return isSuitableForMask(MI, Copy.getOperand(0).getReg(),
@@ -3239,8 +3245,7 @@ static const MachineInstr *getBundledDefMI(const TargetRegisterInfo *TRI,
   Dist = 0;
 
   MachineBasicBlock::const_iterator I = MI; ++I;
-  MachineBasicBlock::const_instr_iterator II =
-    llvm::prior(I.getInstrIterator());
+  MachineBasicBlock::const_instr_iterator II = std::prev(I.getInstrIterator());
   assert(II->isInsideBundle() && "Empty bundle?");
 
   int Idx = -1;

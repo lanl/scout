@@ -18,11 +18,11 @@
 #include "llvm-c/ExecutionEngine.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/ValueMap.h"
+#include "llvm/IR/ValueHandle.h"
+#include "llvm/IR/ValueMap.h"
 #include "llvm/MC/MCCodeGenInfo.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Mutex.h"
-#include "llvm/Support/ValueHandle.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include <map>

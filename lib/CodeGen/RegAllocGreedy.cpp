@@ -101,7 +101,7 @@ class RAGreedy : public MachineFunctionPass,
   LiveDebugVariables *DebugVars;
 
   // state
-  OwningPtr<Spiller> SpillerInstance;
+  std::unique_ptr<Spiller> SpillerInstance;
   PQueue Queue;
   unsigned NextCascade;
 
@@ -190,15 +190,14 @@ class RAGreedy : public MachineFunctionPass,
     void setBrokenHints(unsigned NHints) { BrokenHints = NHints; }
 
     bool operator<(const EvictionCost &O) const {
-      if (BrokenHints != O.BrokenHints)
-        return BrokenHints < O.BrokenHints;
-      return MaxWeight < O.MaxWeight;
+      return std::tie(BrokenHints, MaxWeight) <
+             std::tie(O.BrokenHints, O.MaxWeight);
     }
   };
 
   // splitting state.
-  OwningPtr<SplitAnalysis> SA;
-  OwningPtr<SplitEditor> SE;
+  std::unique_ptr<SplitAnalysis> SA;
+  std::unique_ptr<SplitEditor> SE;
 
   /// Cached per-block interference maps
   InterferenceCache IntfCache;
@@ -247,7 +246,7 @@ class RAGreedy : public MachineFunctionPass,
   /// class.
   SmallVector<GlobalSplitCandidate, 32> GlobalCand;
 
-  enum LLVM_ENUM_INT_TYPE(unsigned) { NoCand = ~0u };
+  enum : unsigned { NoCand = ~0u };
 
   /// Candidate map. Each edge bundle is assigned to a GlobalCand entry, or to
   /// NoCand which indicates the stack interval.
@@ -257,21 +256,20 @@ public:
   RAGreedy();
 
   /// Return the pass name.
-  virtual const char* getPassName() const {
+  const char* getPassName() const override {
     return "Greedy Register Allocator";
   }
 
   /// RAGreedy analysis usage.
-  virtual void getAnalysisUsage(AnalysisUsage &AU) const;
-  virtual void releaseMemory();
-  virtual Spiller &spiller() { return *SpillerInstance; }
-  virtual void enqueue(LiveInterval *LI);
-  virtual LiveInterval *dequeue();
-  virtual unsigned selectOrSplit(LiveInterval&,
-                                 SmallVectorImpl<unsigned>&);
+  void getAnalysisUsage(AnalysisUsage &AU) const override;
+  void releaseMemory() override;
+  Spiller &spiller() override { return *SpillerInstance; }
+  void enqueue(LiveInterval *LI) override;
+  LiveInterval *dequeue() override;
+  unsigned selectOrSplit(LiveInterval&, SmallVectorImpl<unsigned>&) override;
 
   /// Perform register allocation.
-  virtual bool runOnMachineFunction(MachineFunction &mf);
+  bool runOnMachineFunction(MachineFunction &mf) override;
 
   static char ID;
 
@@ -279,9 +277,9 @@ private:
   unsigned selectOrSplitImpl(LiveInterval &, SmallVectorImpl<unsigned> &,
                              SmallVirtRegSet &, unsigned = 0);
 
-  bool LRE_CanEraseVirtReg(unsigned);
-  void LRE_WillShrinkVirtReg(unsigned);
-  void LRE_DidCloneVirtReg(unsigned, unsigned);
+  bool LRE_CanEraseVirtReg(unsigned) override;
+  void LRE_WillShrinkVirtReg(unsigned) override;
+  void LRE_DidCloneVirtReg(unsigned, unsigned) override;
   void enqueue(PQueue &CurQueue, LiveInterval *LI);
   LiveInterval *dequeue(PQueue &CurQueue);
 
@@ -454,12 +452,18 @@ void RAGreedy::enqueue(PQueue &CurQueue, LiveInterval *LI) {
     // everything else has been allocated.
     Prio = Size;
   } else {
-    if (ExtraRegInfo[Reg].Stage == RS_Assign && !LI->empty() &&
+    // Giant live ranges fall back to the global assignment heuristic, which
+    // prevents excessive spilling in pathological cases.
+    bool ReverseLocal = TRI->reverseLocalAssignment();
+    bool ForceGlobal = !ReverseLocal && TRI->mayOverrideLocalAssignment() &&
+      (Size / SlotIndex::InstrDist) > (2 * MRI->getRegClass(Reg)->getNumRegs());
+
+    if (ExtraRegInfo[Reg].Stage == RS_Assign && !ForceGlobal && !LI->empty() &&
         LIS->intervalIsInOneMBB(*LI)) {
       // Allocate original local ranges in linear instruction order. Since they
       // are singly defined, this produces optimal coloring in the absence of
       // global interference and other constraints.
-      if (!TRI->reverseLocalAssignment())
+      if (!ReverseLocal)
         Prio = LI->beginIndex().getInstrDistance(Indexes->getLastIndex());
       else {
         // Allocating bottom up may allow many short LRGs to be assigned first
@@ -601,7 +605,7 @@ bool RAGreedy::shouldEvict(LiveInterval &A, bool IsHint,
 }
 
 /// canEvictInterference - Return true if all interferences between VirtReg and
-/// PhysReg can be evicted.  When OnlyCheap is set, don't do anything
+/// PhysReg can be evicted.
 ///
 /// @param VirtReg Live range that is about to be assigned.
 /// @param PhysReg Desired register for assignment.
@@ -1916,7 +1920,7 @@ RAGreedy::mayRecolorAllInterferences(unsigned PhysReg, LiveInterval &VirtReg,
 /// R3 is available.
 /// Recoloring => vC = R1, vA = R2, vB = R3
 ///
-/// \p Order defines the prefered allocation order for \p VirtReg.
+/// \p Order defines the preferred allocation order for \p VirtReg.
 /// \p NewRegs will contain any new virtual register that have been created
 /// (split, spill) during the process and that must be assigned.
 /// \p FixedRegisters contains all the virtual registers that cannot be

@@ -1561,12 +1561,10 @@ bool Scanner::fetchMoreTokens() {
 }
 
 Stream::Stream(StringRef Input, SourceMgr &SM)
-  : scanner(new Scanner(Input, SM))
-  , CurrentDoc(0) {}
+    : scanner(new Scanner(Input, SM)), CurrentDoc() {}
 
 Stream::Stream(MemoryBuffer *InputBuffer, SourceMgr &SM)
-  : scanner(new Scanner(InputBuffer, SM))
-  , CurrentDoc(0) {}
+    : scanner(new Scanner(InputBuffer, SM)), CurrentDoc() {}
 
 Stream::~Stream() {}
 
@@ -1601,11 +1599,9 @@ void Stream::skip() {
     i->skip();
 }
 
-Node::Node(unsigned int Type, OwningPtr<Document> &D, StringRef A, StringRef T)
-  : Doc(D)
-  , TypeID(Type)
-  , Anchor(A)
-  , Tag(T) {
+Node::Node(unsigned int Type, std::unique_ptr<Document> &D, StringRef A,
+           StringRef T)
+    : Doc(D), TypeID(Type), Anchor(A), Tag(T) {
   SMLoc Start = SMLoc::getFromPointer(peekNext().Range.begin());
   SourceRange = SMRange(Start, Start);
 }
@@ -1617,11 +1613,11 @@ std::string Node::getVerbatimTag() const {
     if (Raw.find_last_of('!') == 0) {
       Ret = Doc->getTagMap().find("!")->second;
       Ret += Raw.substr(1);
-      return llvm_move(Ret);
+      return std::move(Ret);
     } else if (Raw.startswith("!!")) {
       Ret = Doc->getTagMap().find("!!")->second;
       Ret += Raw.substr(2);
-      return llvm_move(Ret);
+      return std::move(Ret);
     } else {
       StringRef TagHandle = Raw.substr(0, Raw.find_last_of('!') + 1);
       std::map<StringRef, StringRef>::const_iterator It =
@@ -1635,7 +1631,7 @@ std::string Node::getVerbatimTag() const {
         setError(Twine("Unknown tag handle ") + TagHandle, T);
       }
       Ret += Raw.substr(Raw.find_last_of('!') + 1);
-      return llvm_move(Ret);
+      return std::move(Ret);
     }
   }
 

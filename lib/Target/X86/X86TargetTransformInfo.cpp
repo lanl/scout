@@ -33,7 +33,7 @@ void initializeX86TTIPass(PassRegistry &);
 
 namespace {
 
-class X86TTI LLVM_FINAL : public ImmutablePass, public TargetTransformInfo {
+class X86TTI final : public ImmutablePass, public TargetTransformInfo {
   const X86Subtarget *ST;
   const X86TargetLowering *TLI;
 
@@ -52,15 +52,11 @@ public:
     initializeX86TTIPass(*PassRegistry::getPassRegistry());
   }
 
-  virtual void initializePass() LLVM_OVERRIDE {
+  void initializePass() override {
     pushTTIStack(this);
   }
 
-  virtual void finalizePass() {
-    popTTIStack();
-  }
-
-  virtual void getAnalysisUsage(AnalysisUsage &AU) const LLVM_OVERRIDE {
+  void getAnalysisUsage(AnalysisUsage &AU) const override {
     TargetTransformInfo::getAnalysisUsage(AU);
   }
 
@@ -68,7 +64,7 @@ public:
   static char ID;
 
   /// Provide necessary pointer adjustments for the two base classes.
-  virtual void *getAdjustedAnalysisPointer(const void *ID) LLVM_OVERRIDE {
+  void *getAdjustedAnalysisPointer(const void *ID) override {
     if (ID == &TargetTransformInfo::ID)
       return (TargetTransformInfo*)this;
     return this;
@@ -76,45 +72,41 @@ public:
 
   /// \name Scalar TTI Implementations
   /// @{
-  virtual PopcntSupportKind
-  getPopcntSupport(unsigned TyWidth) const LLVM_OVERRIDE;
+  PopcntSupportKind getPopcntSupport(unsigned TyWidth) const override;
 
   /// @}
 
   /// \name Vector TTI Implementations
   /// @{
 
-  virtual unsigned getNumberOfRegisters(bool Vector) const LLVM_OVERRIDE;
-  virtual unsigned getRegisterBitWidth(bool Vector) const LLVM_OVERRIDE;
-  virtual unsigned getMaximumUnrollFactor() const LLVM_OVERRIDE;
-  virtual unsigned getArithmeticInstrCost(unsigned Opcode, Type *Ty,
-                                          OperandValueKind,
-                                          OperandValueKind) const LLVM_OVERRIDE;
-  virtual unsigned getShuffleCost(ShuffleKind Kind, Type *Tp,
-                                  int Index, Type *SubTp) const LLVM_OVERRIDE;
-  virtual unsigned getCastInstrCost(unsigned Opcode, Type *Dst,
-                                    Type *Src) const LLVM_OVERRIDE;
-  virtual unsigned getCmpSelInstrCost(unsigned Opcode, Type *ValTy,
-                                      Type *CondTy) const LLVM_OVERRIDE;
-  virtual unsigned getVectorInstrCost(unsigned Opcode, Type *Val,
-                                      unsigned Index) const LLVM_OVERRIDE;
-  virtual unsigned getMemoryOpCost(unsigned Opcode, Type *Src,
-                                   unsigned Alignment,
-                                   unsigned AddressSpace) const LLVM_OVERRIDE;
+  unsigned getNumberOfRegisters(bool Vector) const override;
+  unsigned getRegisterBitWidth(bool Vector) const override;
+  unsigned getMaximumUnrollFactor() const override;
+  unsigned getArithmeticInstrCost(unsigned Opcode, Type *Ty, OperandValueKind,
+                                  OperandValueKind) const override;
+  unsigned getShuffleCost(ShuffleKind Kind, Type *Tp,
+                          int Index, Type *SubTp) const override;
+  unsigned getCastInstrCost(unsigned Opcode, Type *Dst,
+                            Type *Src) const override;
+  unsigned getCmpSelInstrCost(unsigned Opcode, Type *ValTy,
+                              Type *CondTy) const override;
+  unsigned getVectorInstrCost(unsigned Opcode, Type *Val,
+                              unsigned Index) const override;
+  unsigned getMemoryOpCost(unsigned Opcode, Type *Src, unsigned Alignment,
+                           unsigned AddressSpace) const override;
 
-  virtual unsigned
-  getAddressComputationCost(Type *PtrTy, bool IsComplex) const LLVM_OVERRIDE;
-  
-  virtual unsigned getReductionCost(unsigned Opcode, Type *Ty,
-                                    bool IsPairwiseForm) const LLVM_OVERRIDE;
+  unsigned getAddressComputationCost(Type *PtrTy,
+                                     bool IsComplex) const override;
 
-  virtual unsigned getIntImmCost(const APInt &Imm,
-                                 Type *Ty) const LLVM_OVERRIDE;
+  unsigned getReductionCost(unsigned Opcode, Type *Ty,
+                            bool IsPairwiseForm) const override;
 
-  virtual unsigned getIntImmCost(unsigned Opcode, const APInt &Imm,
-                                 Type *Ty) const LLVM_OVERRIDE;
-  virtual unsigned getIntImmCost(Intrinsic::ID IID, const APInt &Imm,
-                                 Type *Ty) const LLVM_OVERRIDE;
+  unsigned getIntImmCost(const APInt &Imm, Type *Ty) const override;
+
+  unsigned getIntImmCost(unsigned Opcode, const APInt &Imm,
+                         Type *Ty) const override;
+  unsigned getIntImmCost(Intrinsic::ID IID, const APInt &Imm,
+                         Type *Ty) const override;
 
   /// @}
 };

@@ -144,23 +144,23 @@ namespace {
     // not be erased.
     bool isBulkSpilling;
 
-    enum LLVM_ENUM_INT_TYPE(unsigned) {
+    enum : unsigned {
       spillClean = 1,
       spillDirty = 100,
       spillImpossible = ~0u
     };
   public:
-    virtual const char *getPassName() const {
+    const char *getPassName() const override {
       return "Fast Register Allocator";
     }
 
-    virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+    void getAnalysisUsage(AnalysisUsage &AU) const override {
       AU.setPreservesCFG();
       MachineFunctionPass::getAnalysisUsage(AU);
     }
 
   private:
-    bool runOnMachineFunction(MachineFunction &Fn);
+    bool runOnMachineFunction(MachineFunction &Fn) override;
     void AllocateBasicBlock();
     void handleThroughOperands(MachineInstr *MI,
                                SmallVectorImpl<unsigned> &VirtDead);
@@ -585,7 +585,7 @@ RAFast::defineVirtReg(MachineInstr *MI, unsigned OpNum,
          "Not a virtual register");
   LiveRegMap::iterator LRI;
   bool New;
-  tie(LRI, New) = LiveVirtRegs.insert(LiveReg(VirtReg));
+  std::tie(LRI, New) = LiveVirtRegs.insert(LiveReg(VirtReg));
   if (New) {
     // If there is no hint, peek at the only use of this register.
     if ((!Hint || !TargetRegisterInfo::isPhysicalRegister(Hint)) &&
@@ -618,7 +618,7 @@ RAFast::reloadVirtReg(MachineInstr *MI, unsigned OpNum,
          "Not a virtual register");
   LiveRegMap::iterator LRI;
   bool New;
-  tie(LRI, New) = LiveVirtRegs.insert(LiveReg(VirtReg));
+  std::tie(LRI, New) = LiveVirtRegs.insert(LiveReg(VirtReg));
   MachineOperand &MO = MI->getOperand(OpNum);
   if (New) {
     LRI = allocVirtReg(MI, LRI, Hint);

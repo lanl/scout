@@ -11,7 +11,6 @@
 #define LLVM_MC_MCMACHOBJECTWRITER_H
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCObjectWriter.h"
@@ -92,7 +91,7 @@ class MachObjectWriter : public MCObjectWriter {
   };
 
   /// The target specific Mach-O writer instance.
-  llvm::OwningPtr<MCMachObjectTargetWriter> TargetObjectWriter;
+  std::unique_ptr<MCMachObjectTargetWriter> TargetObjectWriter;
 
   /// @name Relocation Data
   /// @{
@@ -121,7 +120,7 @@ public:
   /// @name Lifetime management Methods
   /// @{
 
-  virtual void reset();
+  void reset() override;
 
   /// @}
 
@@ -231,7 +230,7 @@ public:
 
   void RecordRelocation(const MCAssembler &Asm, const MCAsmLayout &Layout,
                         const MCFragment *Fragment, const MCFixup &Fixup,
-                        MCValue Target, uint64_t &FixedValue);
+                        MCValue Target, uint64_t &FixedValue) override;
 
   void BindIndirectSymbols(MCAssembler &Asm);
 
@@ -248,15 +247,16 @@ public:
 
   void markAbsoluteVariableSymbols(MCAssembler &Asm,
                                    const MCAsmLayout &Layout);
-  void ExecutePostLayoutBinding(MCAssembler &Asm, const MCAsmLayout &Layout);
+  void ExecutePostLayoutBinding(MCAssembler &Asm,
+                                const MCAsmLayout &Layout) override;
 
-  virtual bool IsSymbolRefDifferenceFullyResolvedImpl(const MCAssembler &Asm,
-                                                      const MCSymbolData &DataA,
-                                                      const MCFragment &FB,
-                                                      bool InSet,
-                                                      bool IsPCRel) const;
+  bool IsSymbolRefDifferenceFullyResolvedImpl(const MCAssembler &Asm,
+                                              const MCSymbolData &DataA,
+                                              const MCFragment &FB,
+                                              bool InSet,
+                                              bool IsPCRel) const override;
 
-  void WriteObject(MCAssembler &Asm, const MCAsmLayout &Layout);
+  void WriteObject(MCAssembler &Asm, const MCAsmLayout &Layout) override;
 };
 
 

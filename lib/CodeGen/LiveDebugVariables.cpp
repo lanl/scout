@@ -31,8 +31,8 @@
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/VirtRegMap.h"
-#include "llvm/DebugInfo.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/CommandLine.h"
@@ -480,7 +480,7 @@ bool LDVImpl::collectDebugValues(MachineFunction &mf) {
       // DBG_VALUE has no slot index, use the previous instruction instead.
       SlotIndex Idx = MBBI == MBB->begin() ?
         LIS->getMBBStartIdx(MBB) :
-        LIS->getInstructionIndex(llvm::prior(MBBI)).getRegSlot();
+        LIS->getInstructionIndex(std::prev(MBBI)).getRegSlot();
       // Handle consecutive DBG_VALUE instructions with the same slot index.
       do {
         if (handleDebugValue(MBBI, Idx)) {
@@ -914,7 +914,7 @@ findInsertLocation(MachineBasicBlock *MBB, SlotIndex Idx,
 
   // Don't insert anything after the first terminator, though.
   return MI->isTerminator() ? MBB->getFirstTerminator() :
-                              llvm::next(MachineBasicBlock::iterator(MI));
+                              std::next(MachineBasicBlock::iterator(MI));
 }
 
 DebugLoc UserValue::findDebugLoc() {

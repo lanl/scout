@@ -28,7 +28,6 @@
 #define LLVM_SUPPORT_FILESYSTEM_H
 
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/DataTypes.h"
@@ -39,6 +38,7 @@
 #include <iterator>
 #include <stack>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #ifdef HAVE_SYS_STAT_H
@@ -135,8 +135,7 @@ public:
   }
   bool operator!=(const UniqueID &Other) const { return !(*this == Other); }
   bool operator<(const UniqueID &Other) const {
-    return Device < Other.Device ||
-           (Device == Other.Device && File < Other.File);
+    return std::tie(Device, File) < std::tie(Other.Device, Other.File);
   }
   uint64_t getDevice() const { return Device; }
   uint64_t getFile() const { return File; }
@@ -273,32 +272,18 @@ error_code make_absolute(SmallVectorImpl<char> &path);
 /// @brief Create all the non-existent directories in path.
 ///
 /// @param path Directories to create.
-/// @param existed Set to true if \a path already existed, false otherwise.
-/// @returns errc::success if is_directory(path) and existed have been set,
-///          otherwise a platform specific error_code.
-error_code create_directories(const Twine &path, bool &existed);
-
-/// @brief Convenience function for clients that don't need to know if the
-///        directory existed or not.
-inline error_code create_directories(const Twine &Path) {
-  bool Existed;
-  return create_directories(Path, Existed);
-}
+/// @returns errc::success if is_directory(path), otherwise a platform
+///          specific error_code. If IgnoreExisting is false, also returns
+///          error if the directory already existed.
+error_code create_directories(const Twine &path, bool IgnoreExisting = true);
 
 /// @brief Create the directory in path.
 ///
 /// @param path Directory to create.
-/// @param existed Set to true if \a path already existed, false otherwise.
-/// @returns errc::success if is_directory(path) and existed have been set,
-///          otherwise a platform specific error_code.
-error_code create_directory(const Twine &path, bool &existed);
-
-/// @brief Convenience function for clients that don't need to know if the
-///        directory existed or not.
-inline error_code create_directory(const Twine &Path) {
-  bool Existed;
-  return create_directory(Path, Existed);
-}
+/// @returns errc::success if is_directory(path), otherwise a platform
+///          specific error_code. If IgnoreExisting is false, also returns
+///          error if the directory already existed.
+error_code create_directory(const Twine &path, bool IgnoreExisting = true);
 
 /// @brief Create a hard link from \a from to \a to.
 ///
@@ -318,18 +303,10 @@ error_code current_path(SmallVectorImpl<char> &result);
 /// @brief Remove path. Equivalent to POSIX remove().
 ///
 /// @param path Input path.
-/// @param existed Set to true if \a path existed, false if it did not.
-///                undefined otherwise.
-/// @returns errc::success if path has been removed and existed has been
-///          successfully set, otherwise a platform specific error_code.
-error_code remove(const Twine &path, bool &existed);
-
-/// @brief Convenience function for clients that don't need to know if the file
-///        existed or not.
-inline error_code remove(const Twine &Path) {
-  bool Existed;
-  return remove(Path, Existed);
-}
+/// @returns errc::success if path has been removed or didn't exist, otherwise a
+///          platform specific error code. If IgnoreNonExisting is false, also
+///          returns error if the file didn't exist.
+error_code remove(const Twine &path, bool IgnoreNonExisting = true);
 
 /// @brief Rename \a from to \a to. Files are renamed as if by POSIX rename().
 ///
@@ -600,9 +577,12 @@ enum OpenFlags {
   /// with F_Excl.
   F_Append = 2,
 
-  /// F_Binary - The file should be opened in binary mode on platforms that
-  /// make this distinction.
-  F_Binary = 4
+  /// The file should be opened in text mode on platforms that make this
+  /// distinction.
+  F_Text = 4,
+
+  /// Open the file for read and write.
+  F_RW = 8
 };
 
 inline OpenFlags operator|(OpenFlags A, OpenFlags B) {
@@ -683,10 +663,8 @@ private:
 public:
   typedef char char_type;
 
-#if LLVM_HAS_RVALUE_REFERENCES
   mapped_file_region(mapped_file_region&&);
   mapped_file_region &operator =(mapped_file_region&&);
-#endif
 
   /// Construct a mapped_file_region at \a path starting at \a offset of length
   /// \a length and with access \a mode.

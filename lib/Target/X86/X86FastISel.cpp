@@ -26,16 +26,16 @@
 #include "llvm/CodeGen/MachineConstantPool.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GetElementPtrTypeIterator.h"
 #include "llvm/IR/GlobalAlias.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Operator.h"
-#include "llvm/Support/CallSite.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/GetElementPtrTypeIterator.h"
 #include "llvm/Target/TargetOptions.h"
 using namespace llvm;
 
@@ -62,16 +62,16 @@ public:
     X86ScalarSSEf32 = Subtarget->hasSSE1();
   }
 
-  virtual bool TargetSelectInstruction(const Instruction *I);
+  bool TargetSelectInstruction(const Instruction *I) override;
 
   /// \brief The specified machine instr operand is a vreg, and that
   /// vreg is being provided by the specified load instruction.  If possible,
   /// try to fold the load as an operand to the instruction, returning true if
   /// possible.
-  virtual bool tryToFoldLoadIntoMI(MachineInstr *MI, unsigned OpNo,
-                                   const LoadInst *LI);
+  bool tryToFoldLoadIntoMI(MachineInstr *MI, unsigned OpNo,
+                           const LoadInst *LI) override;
 
-  virtual bool FastLowerArguments();
+  bool FastLowerArguments() override;
 
 #include "X86GenFastISel.inc"
 
@@ -128,11 +128,11 @@ private:
 
   bool handleConstantAddresses(const Value *V, X86AddressMode &AM);
 
-  unsigned TargetMaterializeConstant(const Constant *C);
+  unsigned TargetMaterializeConstant(const Constant *C) override;
 
-  unsigned TargetMaterializeAlloca(const AllocaInst *C);
+  unsigned TargetMaterializeAlloca(const AllocaInst *C) override;
 
-  unsigned TargetMaterializeFloatZero(const ConstantFP *CF);
+  unsigned TargetMaterializeFloatZero(const ConstantFP *CF) override;
 
   /// isScalarFPTypeInSSEReg - Return true if the specified scalar FP type is
   /// computed in an SSE register, not on the X87 floating point stack.

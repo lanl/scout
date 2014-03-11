@@ -28,7 +28,7 @@
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
-#include "llvm/DebugInfo.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalVariable.h"
@@ -684,7 +684,7 @@ void NVPTXAsmPrinter::emitDeclaration(const Function *F, raw_ostream &O) {
   else
     O << ".func ";
   printReturnValStr(F, O);
-  O << *getSymbol(F) << "\n";
+  O << getSymbolName(F) << "\n";
   emitFunctionParamList(F, O);
   O << ";\n";
 }
@@ -699,12 +699,11 @@ static bool usedInGlobalVarDef(const Constant *C) {
     return true;
   }
 
-  for (Value::const_use_iterator ui = C->use_begin(), ue = C->use_end();
-       ui != ue; ++ui) {
-    const Constant *C = dyn_cast<Constant>(*ui);
-    if (usedInGlobalVarDef(C))
-      return true;
-  }
+  for (const User *U : C->users())
+    if (const Constant *C = dyn_cast<Constant>(U))
+      if (usedInGlobalVarDef(C))
+        return true;
+
   return false;
 }
 
@@ -730,11 +729,10 @@ static bool usedInOneFunc(const User *U, Function const *&oneFunc) {
                           (md->getName().str() == "llvm.dbg.sp")))
       return true;
 
-  for (User::const_use_iterator ui = U->use_begin(), ue = U->use_end();
-       ui != ue; ++ui) {
-    if (usedInOneFunc(*ui, oneFunc) == false)
+  for (const User *UU : U->users())
+    if (usedInOneFunc(UU, oneFunc) == false)
       return false;
-  }
+
   return true;
 }
 
@@ -765,12 +763,11 @@ static bool canDemoteGlobalVar(const GlobalVariable *gv, Function const *&f) {
 
 static bool useFuncSeen(const Constant *C,
                         llvm::DenseMap<const Function *, bool> &seenMap) {
-  for (Value::const_use_iterator ui = C->use_begin(), ue = C->use_end();
-       ui != ue; ++ui) {
-    if (const Constant *cu = dyn_cast<Constant>(*ui)) {
+  for (const User *U : C->users()) {
+    if (const Constant *cu = dyn_cast<Constant>(U)) {
       if (useFuncSeen(cu, seenMap))
         return true;
-    } else if (const Instruction *I = dyn_cast<Instruction>(*ui)) {
+    } else if (const Instruction *I = dyn_cast<Instruction>(U)) {
       const BasicBlock *bb = I->getParent();
       if (!bb)
         continue;
@@ -797,10 +794,8 @@ void NVPTXAsmPrinter::emitDeclarations(const Module &M, raw_ostream &O) {
       emitDeclaration(F, O);
       continue;
     }
-    for (Value::const_use_iterator iter = F->use_begin(),
-                                   iterEnd = F->use_end();
-         iter != iterEnd; ++iter) {
-      if (const Constant *C = dyn_cast<Constant>(*iter)) {
+    for (const User *U : F->users()) {
+      if (const Constant *C = dyn_cast<Constant>(U)) {
         if (usedInGlobalVarDef(C)) {
           // The use is in the initialization of a global variable
           // that is a function pointer, so print a declaration
@@ -816,9 +811,9 @@ void NVPTXAsmPrinter::emitDeclarations(const Module &M, raw_ostream &O) {
         }
       }
 
-      if (!isa<Instruction>(*iter))
+      if (!isa<Instruction>(U))
         continue;
-      const Instruction *instr = cast<Instruction>(*iter);
+      const Instruction *instr = cast<Instruction>(U);
       const BasicBlock *bb = instr->getParent();
       if (!bb)
         continue;
@@ -1214,7 +1209,7 @@ void NVPTXAsmPrinter::printModuleLevelGV(const GlobalVariable *GVar,
     else
       O << getPTXFundamentalTypeStr(ETy, false);
     O << " ";
-    O << *getSymbol(GVar);
+    O << getSymbolName(GVar);
 
     // Ptx allows variable initilization only for constant and global state
     // spaces.
@@ -1250,15 +1245,15 @@ void NVPTXAsmPrinter::printModuleLevelGV(const GlobalVariable *GVar,
           bufferAggregateConstant(Initializer, &aggBuffer);
           if (aggBuffer.numSymbols) {
             if (nvptxSubtarget.is64Bit()) {
-              O << " .u64 " << *getSymbol(GVar) << "[";
+              O << " .u64 " << getSymbolName(GVar) << "[";
               O << ElementSize / 8;
             } else {
-              O << " .u32 " << *getSymbol(GVar) << "[";
+              O << " .u32 " << getSymbolName(GVar) << "[";
               O << ElementSize / 4;
             }
             O << "]";
           } else {
-            O << " .b8 " << *getSymbol(GVar) << "[";
+            O << " .b8 " << getSymbolName(GVar) << "[";
             O << ElementSize;
             O << "]";
           }
@@ -1266,7 +1261,7 @@ void NVPTXAsmPrinter::printModuleLevelGV(const GlobalVariable *GVar,
           aggBuffer.print();
           O << "}";
         } else {
-          O << " .b8 " << *getSymbol(GVar);
+          O << " .b8 " << getSymbolName(GVar);
           if (ElementSize) {
             O << "[";
             O << ElementSize;
@@ -1274,7 +1269,7 @@ void NVPTXAsmPrinter::printModuleLevelGV(const GlobalVariable *GVar,
           }
         }
       } else {
-        O << " .b8 " << *getSymbol(GVar);
+        O << " .b8 " << getSymbolName(GVar);
         if (ElementSize) {
           O << "[";
           O << ElementSize;
@@ -1381,7 +1376,7 @@ void NVPTXAsmPrinter::emitPTXGlobalVariable(const GlobalVariable *GVar,
     O << " .";
     O << getPTXFundamentalTypeStr(ETy);
     O << " ";
-    O << *getSymbol(GVar);
+    O << getSymbolName(GVar);
     return;
   }
 
@@ -1396,7 +1391,7 @@ void NVPTXAsmPrinter::emitPTXGlobalVariable(const GlobalVariable *GVar,
   case Type::ArrayTyID:
   case Type::VectorTyID:
     ElementSize = TD->getTypeStoreSize(ETy);
-    O << " .b8 " << *getSymbol(GVar) << "[";
+    O << " .b8 " << getSymbolName(GVar) << "[";
     if (ElementSize) {
       O << itostr(ElementSize);
     }
@@ -1451,7 +1446,7 @@ void NVPTXAsmPrinter::printParamName(Function::const_arg_iterator I,
                                      int paramIndex, raw_ostream &O) {
   if ((nvptxSubtarget.getDrvInterface() == NVPTX::NVCL) ||
       (nvptxSubtarget.getDrvInterface() == NVPTX::CUDA))
-    O << *getSymbol(I->getParent()) << "_param_" << paramIndex;
+    O << getSymbolName(I->getParent()) << "_param_" << paramIndex;
   else {
     std::string argName = I->getName();
     const char *p = argName.c_str();
@@ -1510,13 +1505,13 @@ void NVPTXAsmPrinter::emitFunctionParamList(const Function *F, raw_ostream &O) {
       if (llvm::isImage(*I)) {
         std::string sname = I->getName();
         if (llvm::isImageWriteOnly(*I))
-          O << "\t.param .surfref " << *getSymbol(F) << "_param_"
+          O << "\t.param .surfref " << getSymbolName(F) << "_param_"
             << paramIndex;
         else // Default image is read_only
-          O << "\t.param .texref " << *getSymbol(F) << "_param_"
+          O << "\t.param .texref " << getSymbolName(F) << "_param_"
             << paramIndex;
       } else // Should be llvm::isSampler(*I)
-        O << "\t.param .samplerref " << *getSymbol(F) << "_param_"
+        O << "\t.param .samplerref " << getSymbolName(F) << "_param_"
           << paramIndex;
       continue;
     }
@@ -1763,13 +1758,13 @@ void NVPTXAsmPrinter::printScalarConstant(const Constant *CPV, raw_ostream &O) {
     return;
   }
   if (const GlobalValue *GVar = dyn_cast<GlobalValue>(CPV)) {
-    O << *getSymbol(GVar);
+    O << getSymbolName(GVar);
     return;
   }
   if (const ConstantExpr *Cexpr = dyn_cast<ConstantExpr>(CPV)) {
     const Value *v = Cexpr->stripPointerCasts();
     if (const GlobalValue *GVar = dyn_cast<GlobalValue>(v)) {
-      O << *getSymbol(GVar);
+      O << getSymbolName(GVar);
       return;
     } else {
       O << *LowerConstant(CPV, *this);
@@ -2083,7 +2078,7 @@ void NVPTXAsmPrinter::printOperand(const MachineInstr *MI, int opNum,
     break;
 
   case MachineOperand::MO_GlobalAddress:
-    O << *getSymbol(MO.getGlobal());
+    O << getSymbolName(MO.getGlobal());
     break;
 
   case MachineOperand::MO_MachineBasicBlock:
@@ -2142,6 +2137,33 @@ LineReader *NVPTXAsmPrinter::getReader(std::string filename) {
   }
 
   return reader;
+}
+
+std::string NVPTXAsmPrinter::getSymbolName(const GlobalValue *GV) const {
+  // Obtain the original symbol name.
+  MCSymbol *Sym = getSymbol(GV);
+  std::string OriginalName;
+  raw_string_ostream OriginalNameStream(OriginalName);
+  Sym->print(OriginalNameStream);
+  OriginalNameStream.flush();
+
+  // MCSymbol already does symbol-name sanitizing, so names it produces are
+  // valid for object files. The only two characters valida in that context
+  // and indigestible by the PTX assembler are '.' and '@'.
+  std::string CleanName;
+  raw_string_ostream CleanNameStream(CleanName);
+  for (unsigned I = 0, E = OriginalName.size(); I != E; ++I) {
+    char C = OriginalName[I];
+    if (C == '.') {
+      CleanNameStream << "_$_";
+    } else if (C == '@') {
+      CleanNameStream << "_%_";
+    } else {
+      CleanNameStream << C;
+    }
+  }
+
+  return CleanNameStream.str();
 }
 
 std::string LineReader::readLine(unsigned lineNum) {

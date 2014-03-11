@@ -34,10 +34,10 @@
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/StackMaps.h"
-#include "llvm/DebugInfo.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalVariable.h"
@@ -860,10 +860,10 @@ void RegsForValue::AddInlineAsmOperands(unsigned Code, bool HasMatching,
       unsigned TheReg = Regs[Reg++];
       Ops.push_back(DAG.getRegister(TheReg, RegisterVT));
 
-      // Notice if we clobbered the stack pointer.  Yes, inline asm can do this.
       if (TheReg == SP && Code == InlineAsm::Kind_Clobber) {
-        MachineFrameInfo *MFI = DAG.getMachineFunction().getFrameInfo();
-        MFI->setHasInlineAsmWithSPAdjust(true);
+        // If we clobbered the stack pointer, MFI should know about it.
+        assert(DAG.getMachineFunction().getFrameInfo()->
+            hasInlineAsmWithSPAdjust());
       }
     }
   }
@@ -874,7 +874,7 @@ void SelectionDAGBuilder::init(GCFunctionInfo *gfi, AliasAnalysis &aa,
   AA = &aa;
   GFI = gfi;
   LibInfo = li;
-  TD = DAG.getTarget().getDataLayout();
+  DL = DAG.getTarget().getDataLayout();
   Context = DAG.getContext();
   LPadToCallSiteMap.clear();
 }
@@ -2650,7 +2650,7 @@ size_t SelectionDAGBuilder::Clusterify(CaseVector& Cases,
   if (Cases.size() >= 2)
     // Must recompute end() each iteration because it may be
     // invalidated by erase if we hold on to it
-    for (CaseItr I = Cases.begin(), J = llvm::next(Cases.begin());
+    for (CaseItr I = Cases.begin(), J = std::next(Cases.begin());
          J != Cases.end(); ) {
       const APInt& nextValue = cast<ConstantInt>(J->Low)->getValue();
       const APInt& currentValue = cast<ConstantInt>(I->High)->getValue();
@@ -3328,7 +3328,7 @@ void SelectionDAGBuilder::visitGetElementPtr(const User &I) {
       unsigned Field = cast<Constant>(Idx)->getUniqueInteger().getZExtValue();
       if (Field) {
         // N = N + Offset
-        uint64_t Offset = TD->getStructLayout(StTy)->getElementOffset(Field);
+        uint64_t Offset = DL->getStructLayout(StTy)->getElementOffset(Field);
         N = DAG.getNode(ISD::ADD, getCurSDLoc(), N.getValueType(), N,
                         DAG.getConstant(Offset, N.getValueType()));
       }
@@ -3342,7 +3342,7 @@ void SelectionDAGBuilder::visitGetElementPtr(const User &I) {
       if (const ConstantInt *CI = dyn_cast<ConstantInt>(Idx)) {
         if (CI->isZero()) continue;
         uint64_t Offs =
-            TD->getTypeAllocSize(Ty)*cast<ConstantInt>(CI)->getSExtValue();
+            DL->getTypeAllocSize(Ty)*cast<ConstantInt>(CI)->getSExtValue();
         SDValue OffsVal;
         EVT PTy = TLI->getPointerTy(AS);
         unsigned PtrBits = PTy.getSizeInBits();
@@ -3359,7 +3359,7 @@ void SelectionDAGBuilder::visitGetElementPtr(const User &I) {
 
       // N = N + Idx * ElementSize;
       APInt ElementSize = APInt(TLI->getPointerSizeInBits(AS),
-                                TD->getTypeAllocSize(Ty));
+                                DL->getTypeAllocSize(Ty));
       SDValue IdxN = getValue(Idx);
 
       // If the index is smaller or larger than intptr_t, truncate or extend
@@ -3437,9 +3437,7 @@ void SelectionDAGBuilder::visitAlloca(const AllocaInst &I) {
   setValue(&I, DSA);
   DAG.setRoot(DSA.getValue(1));
 
-  // Inform the Frame Information that we have just allocated a variable-sized
-  // object.
-  FuncInfo.MF->getFrameInfo()->CreateVariableSizedObject(Align ? Align : 1, &I);
+  assert(FuncInfo.MF->getFrameInfo()->hasVarSizedObjects());
 }
 
 void SelectionDAGBuilder::visitLoad(const LoadInst &I) {
@@ -3607,14 +3605,15 @@ static SDValue InsertFenceForAtomic(SDValue Chain, AtomicOrdering Order,
 
 void SelectionDAGBuilder::visitAtomicCmpXchg(const AtomicCmpXchgInst &I) {
   SDLoc dl = getCurSDLoc();
-  AtomicOrdering Order = I.getOrdering();
+  AtomicOrdering SuccessOrder = I.getSuccessOrdering();
+  AtomicOrdering FailureOrder = I.getFailureOrdering();
   SynchronizationScope Scope = I.getSynchScope();
 
   SDValue InChain = getRoot();
 
   const TargetLowering *TLI = TM.getTargetLowering();
   if (TLI->getInsertFencesForAtomic())
-    InChain = InsertFenceForAtomic(InChain, Order, Scope, true, dl,
+    InChain = InsertFenceForAtomic(InChain, SuccessOrder, Scope, true, dl,
                                    DAG, *TLI);
 
   SDValue L =
@@ -3625,13 +3624,14 @@ void SelectionDAGBuilder::visitAtomicCmpXchg(const AtomicCmpXchgInst &I) {
                   getValue(I.getCompareOperand()),
                   getValue(I.getNewValOperand()),
                   MachinePointerInfo(I.getPointerOperand()), 0 /* Alignment */,
-                  TLI->getInsertFencesForAtomic() ? Monotonic : Order,
+                  TLI->getInsertFencesForAtomic() ? Monotonic : SuccessOrder,
+                  TLI->getInsertFencesForAtomic() ? Monotonic : FailureOrder,
                   Scope);
 
   SDValue OutChain = L.getValue(1);
 
   if (TLI->getInsertFencesForAtomic())
-    OutChain = InsertFenceForAtomic(OutChain, Order, Scope, false, dl,
+    OutChain = InsertFenceForAtomic(OutChain, SuccessOrder, Scope, false, dl,
                                     DAG, *TLI);
 
   setValue(&I, L);
@@ -5355,7 +5355,7 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
       return 0;
 
     SmallVector<Value *, 4> Allocas;
-    GetUnderlyingObjects(I.getArgOperand(1), Allocas, TD);
+    GetUnderlyingObjects(I.getArgOperand(1), Allocas, DL);
 
     for (SmallVectorImpl<Value*>::iterator Object = Allocas.begin(),
            E = Allocas.end(); Object != E; ++Object) {
@@ -5582,9 +5582,8 @@ void SelectionDAGBuilder::LowerCallTo(ImmutableCallSite CS, SDValue Callee,
 /// IsOnlyUsedInZeroEqualityComparison - Return true if it only matters that the
 /// value is equal or not-equal to zero.
 static bool IsOnlyUsedInZeroEqualityComparison(const Value *V) {
-  for (Value::const_use_iterator UI = V->use_begin(), E = V->use_end();
-       UI != E; ++UI) {
-    if (const ICmpInst *IC = dyn_cast<ICmpInst>(*UI))
+  for (const User *U : V->users()) {
+    if (const ICmpInst *IC = dyn_cast<ICmpInst>(U))
       if (IC->isEquality())
         if (const Constant *C = dyn_cast<Constant>(IC->getOperand(1)))
           if (C->isNullValue())
@@ -5608,7 +5607,7 @@ static SDValue getMemCmpLoad(const Value *PtrVal, MVT LoadVT,
 
     if (const Constant *LoadCst =
           ConstantFoldLoadFromConstPtr(const_cast<Constant *>(LoadInput),
-                                       Builder.TD))
+                                       Builder.DL))
       return Builder.getValue(LoadCst);
   }
 
@@ -6104,7 +6103,7 @@ public:
   /// MVT::Other.
   EVT getCallOperandValEVT(LLVMContext &Context,
                            const TargetLowering &TLI,
-                           const DataLayout *TD) const {
+                           const DataLayout *DL) const {
     if (CallOperandVal == 0) return MVT::Other;
 
     if (isa<BasicBlock>(CallOperandVal))
@@ -6130,7 +6129,7 @@ public:
     // If OpTy is not a single value, it may be a struct/union that we
     // can tile with integers.
     if (!OpTy->isSingleValueType() && OpTy->isSized()) {
-      unsigned BitSize = TD->getTypeSizeInBits(OpTy);
+      unsigned BitSize = DL->getTypeSizeInBits(OpTy);
       switch (BitSize) {
       default: break;
       case 1:
@@ -6319,7 +6318,7 @@ void SelectionDAGBuilder::visitInlineAsm(ImmutableCallSite CS) {
         OpInfo.CallOperand = getValue(OpInfo.CallOperandVal);
       }
 
-      OpVT = OpInfo.getCallOperandValEVT(*DAG.getContext(), *TLI, TD).
+      OpVT = OpInfo.getCallOperandValEVT(*DAG.getContext(), *TLI, DL).
         getSimpleVT();
     }
 
@@ -6794,11 +6793,11 @@ void SelectionDAGBuilder::visitVAStart(const CallInst &I) {
 
 void SelectionDAGBuilder::visitVAArg(const VAArgInst &I) {
   const TargetLowering *TLI = TM.getTargetLowering();
-  const DataLayout &TD = *TLI->getDataLayout();
+  const DataLayout &DL = *TLI->getDataLayout();
   SDValue V = DAG.getVAArg(TLI->getValueType(I.getType()), getCurSDLoc(),
                            getRoot(), getValue(I.getOperand(0)),
                            DAG.getSrcValue(I.getOperand(0)),
-                           TD.getABITypeAlignment(I.getType()));
+                           DL.getABITypeAlignment(I.getType()));
   setValue(&I, V);
   DAG.setRoot(V.getValue(1));
 }
@@ -7328,12 +7327,10 @@ static bool isOnlyUsedInEntryBlock(const Argument *A, bool FastISel) {
     return A->use_empty();
 
   const BasicBlock *Entry = A->getParent()->begin();
-  for (Value::const_use_iterator UI = A->use_begin(), E = A->use_end();
-       UI != E; ++UI) {
-    const User *U = *UI;
+  for (const User *U : A->users())
     if (cast<Instruction>(U)->getParent() != Entry || isa<SwitchInst>(U))
       return false;  // Use not in entry block.
-  }
+
   return true;
 }
 
@@ -7341,7 +7338,7 @@ void SelectionDAGISel::LowerArguments(const Function &F) {
   SelectionDAG &DAG = SDB->DAG;
   SDLoc dl = SDB->getCurSDLoc();
   const TargetLowering *TLI = getTargetLowering();
-  const DataLayout *TD = TLI->getDataLayout();
+  const DataLayout *DL = TLI->getDataLayout();
   SmallVector<ISD::InputArg, 16> Ins;
 
   if (!FuncInfo->CanLowerReturn) {
@@ -7373,7 +7370,7 @@ void SelectionDAGISel::LowerArguments(const Function &F) {
       Type *ArgTy = VT.getTypeForEVT(*DAG.getContext());
       ISD::ArgFlagsTy Flags;
       unsigned OriginalAlignment =
-        TD->getABITypeAlignment(ArgTy);
+        DL->getABITypeAlignment(ArgTy);
 
       if (F.getAttributes().hasAttribute(Idx, Attribute::ZExt))
         Flags.setZExt();
@@ -7397,7 +7394,7 @@ void SelectionDAGISel::LowerArguments(const Function &F) {
       if (Flags.isByVal() || Flags.isInAlloca()) {
         PointerType *Ty = cast<PointerType>(I->getType());
         Type *ElementTy = Ty->getElementType();
-        Flags.setByValSize(TD->getTypeAllocSize(ElementTy));
+        Flags.setByValSize(DL->getTypeAllocSize(ElementTy));
         // For ByVal, alignment should be passed from FE.  BE will guess if
         // this info is not there but there are cases it cannot get right.
         unsigned FrameAlign;

@@ -1,7 +1,3 @@
-# NOTE: The tools are organized into groups of four consisting of one large and
-# three small executables. This is done to minimize memory load in parallel
-# builds.  Please retain this ordering.
-
 add_llvm_tool_subdirectory(llvm-config)
 
 add_llvm_tool_subdirectory(opt)
@@ -70,7 +66,12 @@ add_llvm_external_project(clang)
 if( NOT LLVM_INCLUDE_TOOLS STREQUAL "bootstrap-only" )
   add_llvm_external_project(lld)
   add_llvm_external_project(lldb)
-  add_llvm_external_project(polly)
+
+  if(WITH_POLLY)
+    add_llvm_external_project(polly)
+  else(WITH_POLLY)
+    list(APPEND LLVM_IMPLICIT_PROJECT_IGNORE "${LLVM_MAIN_SRC_DIR}/tools/polly")
+  endif(WITH_POLLY)
 
   # Automatically add remaining sub-directories containing a 'CMakeLists.txt'
   # file as external projects.
