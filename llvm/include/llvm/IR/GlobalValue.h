@@ -281,7 +281,7 @@ public:
 /// @}
 
   /// Override from Constant class.
-  virtual void destroyConstant();
+  void destroyConstant() override;
 
   /// isDeclaration - Return true if the primary definition of this global 
   /// value is outside of the current translation unit.
@@ -299,6 +299,8 @@ public:
   /// of...
   inline Module *getParent() { return Parent; }
   inline const Module *getParent() const { return Parent; }
+
+  const DataLayout *getDataLayout() const;
 
   // Methods for support type inquiry through isa, cast, and dyn_cast:
   static inline bool classof(const Value *V) {

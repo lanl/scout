@@ -28,9 +28,9 @@
 #include "llvm/CodeGen/RuntimeLibcalls.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
 #include "llvm/IR/Attributes.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/InlineAsm.h"
-#include "llvm/Support/CallSite.h"
 #include "llvm/Target/TargetCallingConv.h"
 #include "llvm/Target/TargetMachine.h"
 #include <climits>
@@ -2253,15 +2253,6 @@ public:
     /// If this is an input matching constraint, this method returns the output
     /// operand it matches.
     unsigned getMatchedOperand() const;
-
-    /// Copy constructor for copying from an AsmOperandInfo.
-    AsmOperandInfo(const AsmOperandInfo &info)
-      : InlineAsm::ConstraintInfo(info),
-        ConstraintCode(info.ConstraintCode),
-        ConstraintType(info.ConstraintType),
-        CallOperandVal(info.CallOperandVal),
-        ConstraintVT(info.ConstraintVT) {
-    }
 
     /// Copy constructor for copying from a ConstraintInfo.
     AsmOperandInfo(const InlineAsm::ConstraintInfo &info)

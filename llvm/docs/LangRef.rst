@@ -471,31 +471,22 @@ DLL storage class:
     exists for defining a dll interface, the compiler, assembler and linker know
     it is externally referenced and must refrain from deleting the symbol.
 
-Named Types
------------
+Structure Types
+---------------
 
-LLVM IR allows you to specify name aliases for certain types. This can
-make it easier to read the IR and make the IR more condensed
-(particularly when recursive types are involved). An example of a name
-specification is:
+LLVM IR allows you to specify both "identified" and "literal" :ref:`structure
+types <t_struct>`.  Literal types are uniqued structurally, but identified types
+are never uniqued.  An :ref:`opaque structural type <t_opaque>` can also be used
+to forward declare a type which is not yet available.
+
+An example of a identified structure specification is:
 
 .. code-block:: llvm
 
     %mytype = type { %mytype*, i32 }
 
-You may give a name to any :ref:`type <typesystem>` except
-":ref:`void <t_void>`". Type name aliases may be used anywhere a type is
-expected with the syntax "%mytype".
-
-Note that type names are aliases for the structural type that they
-indicate, and that you can therefore specify multiple names for the same
-type. This often leads to confusing behavior when dumping out a .ll
-file. Since LLVM IR uses structural typing, the name is not part of the
-type. When printing out LLVM IR, the printer will pick *one name* to
-render all types of a particular shape. This means that if you have code
-where two different source types end up having the same LLVM type, that
-the dumper will sometimes print the "wrong" or unexpected type. This is
-an important design point and isn't going to change.
+Prior to the LLVM 3.0 release, identified types were structurally uniqued.  Only
+literal types are uniqued in recent versions of LLVM.
 
 .. _globalvars:
 
@@ -672,7 +663,7 @@ Syntax::
     define [linkage] [visibility] [DLLStorageClass]
            [cconv] [ret attrs]
            <ResultType> @<FunctionName> ([argument list])
-           [fn Attrs] [section "name"] [align N]
+           [unnamed_addr] [fn Attrs] [section "name"] [align N]
            [gc] [prefix Constant] { ... }
 
 .. _langref_aliases:
@@ -1505,7 +1496,7 @@ Atomic Memory Ordering Constraints
 Atomic instructions (:ref:`cmpxchg <i_cmpxchg>`,
 :ref:`atomicrmw <i_atomicrmw>`, :ref:`fence <i_fence>`,
 :ref:`atomic load <i_load>`, and :ref:`atomic store <i_store>`) take
-an ordering parameter that determines which other atomic instructions on
+ordering parameters that determine which other atomic instructions on
 the same address they *synchronize with*. These semantics are borrowed
 from Java and C++0x, but are somewhat more colloquial. If these
 descriptions aren't precise enough, check those specs (see spec
@@ -1752,14 +1743,12 @@ Floating Point Types
    * - ``ppc_fp128``
      - 128-bit floating point value (two 64-bits)
 
-.. _t_x86mmx:
-
-X86mmx Type
-"""""""""""
+X86_mmx Type
+""""""""""""
 
 :Overview:
 
-The x86mmx type represents a value held in an MMX register on an x86
+The x86_mmx type represents a value held in an MMX register on an x86
 machine. The operations allowed on it are quite limited: parameters and
 return values, load and store, and bitcast. User-specified MMX
 instructions are represented as intrinsic or asm calls with arguments
@@ -1770,7 +1759,7 @@ of this type.
 
 ::
 
-      x86mmx
+      x86_mmx
 
 
 .. _t_pointer:
@@ -2055,7 +2044,7 @@ The IEEE 16-bit format (half precision) is represented by ``0xH``
 followed by 4 hexadecimal digits. All hexadecimal formats are big-endian
 (sign bit at the left).
 
-There are no constants of type x86mmx.
+There are no constants of type x86_mmx.
 
 .. _complexconstants:
 
@@ -2803,9 +2792,9 @@ metadata types that refer to the same loop identifier metadata.
 
    for.body:
      ...
-     %0 = load i32* %arrayidx, align 4, !llvm.mem.parallel_loop_access !0
+     %val0 = load i32* %arrayidx, !llvm.mem.parallel_loop_access !0
      ...
-     store i32 %0, i32* %arrayidx4, align 4, !llvm.mem.parallel_loop_access !0
+     store i32 %val0, i32* %arrayidx1, !llvm.mem.parallel_loop_access !0
      ...
      br i1 %exitcond, label %for.end, label %for.body, !llvm.loop !0
 
@@ -2820,21 +2809,22 @@ the loop identifier metadata node directly:
 .. code-block:: llvm
 
    outer.for.body:
-   ...
+     ...
+     %val1 = load i32* %arrayidx3, !llvm.mem.parallel_loop_access !2
+     ...
+     br label %inner.for.body
 
    inner.for.body:
      ...
-     %0 = load i32* %arrayidx, align 4, !llvm.mem.parallel_loop_access !0
+     %val0 = load i32* %arrayidx1, !llvm.mem.parallel_loop_access !0
      ...
-     store i32 %0, i32* %arrayidx4, align 4, !llvm.mem.parallel_loop_access !0
+     store i32 %val0, i32* %arrayidx2, !llvm.mem.parallel_loop_access !0
      ...
      br i1 %exitcond, label %inner.for.end, label %inner.for.body, !llvm.loop !1
 
    inner.for.end:
      ...
-     %0 = load i32* %arrayidx, align 4, !llvm.mem.parallel_loop_access !0
-     ...
-     store i32 %0, i32* %arrayidx4, align 4, !llvm.mem.parallel_loop_access !0
+     store i32 %val1, i32* %arrayidx4, !llvm.mem.parallel_loop_access !2
      ...
      br i1 %exitcond, label %outer.for.end, label %outer.for.body, !llvm.loop !2
 
@@ -4723,7 +4713,7 @@ Syntax:
 
 ::
 
-      <result> = alloca <type>[, inalloca][, <ty> <NumElements>][, align <alignment>]     ; yields {type*}:result
+      <result> = alloca [inalloca] <type> [, <ty> <NumElements>] [, align <alignment>]     ; yields {type*}:result
 
 Overview:
 """""""""
@@ -5000,7 +4990,7 @@ Syntax:
 
 ::
 
-      cmpxchg [volatile] <ty>* <pointer>, <ty> <cmp>, <ty> <new> [singlethread] <ordering>  ; yields {ty}
+      cmpxchg [volatile] <ty>* <pointer>, <ty> <cmp>, <ty> <new> [singlethread] <success ordering> <failure ordering> ; yields {ty}
 
 Overview:
 """""""""
@@ -5023,8 +5013,11 @@ type, and the type of '<pointer>' must be a pointer to that type. If the
 to modify the number or order of execution of this ``cmpxchg`` with
 other :ref:`volatile operations <volatile>`.
 
-The :ref:`ordering <ordering>` argument specifies how this ``cmpxchg``
-synchronizes with other atomic operations.
+The success and failure :ref:`ordering <ordering>` arguments specify how this
+``cmpxchg`` synchronizes with other atomic operations. The both ordering
+parameters must be at least ``monotonic``, the ordering constraint on failure
+must be no stronger than that on success, and the failure ordering cannot be
+either ``release`` or ``acq_rel``.
 
 The optional "``singlethread``" argument declares that the ``cmpxchg``
 is only atomic with respect to code (usually signal handlers) running in
@@ -5042,10 +5035,9 @@ operand is read and compared to '``<cmp>``'; if the read value is the
 equal, '``<new>``' is written. The original value at the location is
 returned.
 
-A successful ``cmpxchg`` is a read-modify-write instruction for the purpose
-of identifying release sequences. A failed ``cmpxchg`` is equivalent to an
-atomic load with an ordering parameter determined by dropping any
-``release`` part of the ``cmpxchg``'s ordering.
+A successful ``cmpxchg`` is a read-modify-write instruction for the purpose of
+identifying release sequences. A failed ``cmpxchg`` is equivalent to an atomic
+load with an ordering parameter determined the second ordering parameter.
 
 Example:
 """"""""
@@ -5059,7 +5051,7 @@ Example:
     loop:
       %cmp = phi i32 [ %orig, %entry ], [%old, %loop]
       %squared = mul i32 %cmp, %cmp
-      %old = cmpxchg i32* %ptr, i32 %cmp, i32 %squared          ; yields {i32}
+      %old = cmpxchg i32* %ptr, i32 %cmp, i32 %squared acq_rel monotonic ; yields {i32}
       %success = icmp eq i32 %cmp, %old
       br i1 %success, label %done, label %loop
 

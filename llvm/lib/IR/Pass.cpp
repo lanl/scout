@@ -16,9 +16,9 @@
 #include "llvm/Pass.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRPrintingPasses.h"
+#include "llvm/IR/LegacyPassNameParser.h"
 #include "llvm/PassRegistry.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/PassNameParser.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
@@ -138,7 +138,7 @@ PassManagerType FunctionPass::getPotentialPassManagerType() const {
   return PMT_FunctionPassManager;
 }
 
-bool FunctionPass::skipOptnoneFunction(Function &F) const {
+bool FunctionPass::skipOptnoneFunction(const Function &F) const {
   if (F.hasFnAttribute(Attribute::OptimizeNone)) {
     DEBUG(dbgs() << "Skipping pass '" << getPassName()
           << "' on function " << F.getName() << "\n");
@@ -166,8 +166,8 @@ bool BasicBlockPass::doFinalization(Function &) {
   return false;
 }
 
-bool BasicBlockPass::skipOptnoneFunction(BasicBlock &BB) const {
-  Function *F = BB.getParent();
+bool BasicBlockPass::skipOptnoneFunction(const BasicBlock &BB) const {
+  const Function *F = BB.getParent();
   if (F && F->hasFnAttribute(Attribute::OptimizeNone)) {
     // Report this only once per function.
     if (&BB == &F->getEntryBlock())
@@ -252,7 +252,7 @@ namespace {
     VectorType &CFGOnlyList;
     GetCFGOnlyPasses(VectorType &L) : CFGOnlyList(L) {}
 
-    void passEnumerate(const PassInfo *P) {
+    void passEnumerate(const PassInfo *P) override {
       if (P->isCFGOnlyPass())
         CFGOnlyList.push_back(P->getTypeInfo());
     }

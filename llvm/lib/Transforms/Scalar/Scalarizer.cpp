@@ -17,7 +17,7 @@
 #define DEBUG_TYPE "scalarizer"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/IRBuilder.h"
-#include "llvm/InstVisitor.h"
+#include "llvm/IR/InstVisitor.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Transforms/Scalar.h"
@@ -131,8 +131,8 @@ public:
     initializeScalarizerPass(*PassRegistry::getPassRegistry());
   }
 
-  virtual bool doInitialization(Module &M);
-  virtual bool runOnFunction(Function &F);
+  bool doInitialization(Module &M) override;
+  bool runOnFunction(Function &F) override;
 
   // InstVisitor methods.  They return true if the instruction was scalarized,
   // false if nothing changed.
@@ -240,7 +240,8 @@ bool Scalarizer::doInitialization(Module &M) {
 }
 
 bool Scalarizer::runOnFunction(Function &F) {
-  DL = getAnalysisIfAvailable<DataLayout>();
+  DataLayoutPass *DLP = getAnalysisIfAvailable<DataLayoutPass>();
+  DL = DLP ? &DLP->getDataLayout() : 0;
   for (Function::iterator BBI = F.begin(), BBE = F.end(); BBI != BBE; ++BBI) {
     BasicBlock *BB = BBI;
     for (BasicBlock::iterator II = BB->begin(), IE = BB->end(); II != IE;) {
@@ -268,7 +269,7 @@ Scatterer Scalarizer::scatter(Instruction *Point, Value *V) {
     // Put the scattered form of an instruction directly after the
     // instruction.
     BasicBlock *BB = VOp->getParent();
-    return Scatterer(BB, llvm::next(BasicBlock::iterator(VOp)),
+    return Scatterer(BB, std::next(BasicBlock::iterator(VOp)),
                      V, &Scattered[V]);
   }
   // In the fallback case, just put the scattered before Point and

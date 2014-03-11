@@ -12,14 +12,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "InstPrinter/MipsInstPrinter.h"
+#include "MipsMCTargetDesc.h"
 #include "MipsTargetObjectFile.h"
 #include "MipsTargetStreamer.h"
-#include "MipsMCTargetDesc.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCELF.h"
 #include "llvm/MC/MCSectionELF.h"
-#include "llvm/MC/MCSymbol.h"
 #include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ELF.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -97,6 +97,13 @@ void MipsTargetAsmStreamer::emitFrame(unsigned StackReg, unsigned StackSize,
      << StringRef(MipsInstPrinter::getRegisterName(ReturnReg)).lower() << '\n';
 }
 
+void MipsTargetAsmStreamer::emitDirectiveSetMips32R2() {
+  OS << "\t.set\tmips32r2\n";
+}
+
+void MipsTargetAsmStreamer::emitDirectiveSetDsp() {
+  OS << "\t.set\tdsp\n";
+}
 // Print a 32 bit hex number with all numbers.
 static void printHex32(unsigned Value, raw_ostream &OS) {
   OS << "0x";
@@ -301,4 +308,12 @@ void MipsTargetELFStreamer::emitMask(unsigned CPUBitmask,
 void MipsTargetELFStreamer::emitFMask(unsigned FPUBitmask,
                                       int FPUTopSavedRegOff) {
   // FIXME: implement.
+}
+
+void MipsTargetELFStreamer::emitDirectiveSetMips32R2() {
+  // No action required for ELF output.
+}
+
+void MipsTargetELFStreamer::emitDirectiveSetDsp() {
+  // No action required for ELF output.
 }

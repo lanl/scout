@@ -30,12 +30,12 @@ public:
     : ObjDumper(Writer)
     , Obj(Obj) { }
 
-  virtual void printFileHeaders() LLVM_OVERRIDE;
-  virtual void printSections() LLVM_OVERRIDE;
-  virtual void printRelocations() LLVM_OVERRIDE;
-  virtual void printSymbols() LLVM_OVERRIDE;
-  virtual void printDynamicSymbols() LLVM_OVERRIDE;
-  virtual void printUnwindInfo() LLVM_OVERRIDE;
+  virtual void printFileHeaders() override;
+  virtual void printSections() override;
+  virtual void printRelocations() override;
+  virtual void printSymbols() override;
+  virtual void printDynamicSymbols() override;
+  virtual void printUnwindInfo() override;
 
 private:
   void printSymbol(symbol_iterator SymI);
@@ -56,8 +56,8 @@ private:
 namespace llvm {
 
 error_code createMachODumper(const object::ObjectFile *Obj,
-                             StreamWriter& Writer,
-                             OwningPtr<ObjDumper> &Result) {
+                             StreamWriter &Writer,
+                             std::unique_ptr<ObjDumper> &Result) {
   const MachOObjectFile *MachOObj = dyn_cast<MachOObjectFile>(Obj);
   if (!MachOObj)
     return readobj_error::unsupported_obj_file_format;
@@ -125,19 +125,13 @@ static const EnumEntry<unsigned> MachOSymbolFlags[] = {
 
 static const EnumEntry<unsigned> MachOSymbolTypes[] = {
   { "Undef",           0x0 },
-  { "External",        0x1 },
   { "Abs",             0x2 },
   { "Indirect",        0xA },
   { "PreboundUndef",   0xC },
-  { "Section",         0xE },
-  { "PrivateExternal", 0x10 }
+  { "Section",         0xE }
 };
 
 namespace {
-  enum {
-    N_STAB = 0xE0
-  };
-
   struct MachOSection {
     ArrayRef<char> Name;
     ArrayRef<char> SegmentName;
@@ -396,10 +390,15 @@ void MachODumper::printSymbol(symbol_iterator SymI) {
 
   DictScope D(W, "Symbol");
   W.printNumber("Name", SymbolName, Symbol.StringIndex);
-  if (Symbol.Type & N_STAB) {
+  if (Symbol.Type & MachO::N_STAB) {
     W.printHex ("Type", "SymDebugTable", Symbol.Type);
   } else {
-    W.printEnum("Type", Symbol.Type, makeArrayRef(MachOSymbolTypes));
+    if (Symbol.Type & MachO::N_PEXT)
+      W.startLine() << "PrivateExtern\n";
+    if (Symbol.Type & MachO::N_EXT)
+      W.startLine() << "Extern\n";
+    W.printEnum("Type", uint8_t(Symbol.Type & MachO::N_TYPE),
+                makeArrayRef(MachOSymbolTypes));
   }
   W.printHex   ("Section", SectionName, Symbol.SectionIndex);
   W.printEnum  ("RefType", static_cast<uint16_t>(Symbol.Flags & 0xF),

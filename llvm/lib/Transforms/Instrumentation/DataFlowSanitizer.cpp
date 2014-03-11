@@ -52,11 +52,11 @@
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InlineAsm.h"
+#include "llvm/IR/InstVisitor.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
-#include "llvm/InstVisitor.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
@@ -164,7 +164,7 @@ class DataFlowSanitizer : public ModulePass {
     WK_Custom
   };
 
-  DataLayout *DL;
+  const DataLayout *DL;
   Module *Mod;
   LLVMContext *Ctx;
   IntegerType *ShadowTy;
@@ -190,7 +190,7 @@ class DataFlowSanitizer : public ModulePass {
   Constant *DFSanSetLabelFn;
   Constant *DFSanNonzeroLabelFn;
   MDNode *ColdCallWeights;
-  OwningPtr<SpecialCaseList> ABIList;
+  std::unique_ptr<SpecialCaseList> ABIList;
   DenseMap<Value *, Function *> UnwrappedFnMap;
   AttributeSet ReadOnlyNoneAttrs;
 
@@ -213,8 +213,8 @@ class DataFlowSanitizer : public ModulePass {
   DataFlowSanitizer(StringRef ABIListFile = StringRef(),
                     void *(*getArgTLS)() = 0, void *(*getRetValTLS)() = 0);
   static char ID;
-  bool doInitialization(Module &M);
-  bool runOnModule(Module &M);
+  bool doInitialization(Module &M) override;
+  bool runOnModule(Module &M) override;
 };
 
 struct DFSanFunction {
@@ -343,9 +343,10 @@ FunctionType *DataFlowSanitizer::getCustomFunctionType(FunctionType *T) {
 }
 
 bool DataFlowSanitizer::doInitialization(Module &M) {
-  DL = getAnalysisIfAvailable<DataLayout>();
-  if (!DL)
+  DataLayoutPass *DLP = getAnalysisIfAvailable<DataLayoutPass>();
+  if (!DLP)
     return false;
+  DL = &DLP->getDataLayout();
 
   Mod = &M;
   Ctx = &M.getContext();
@@ -606,10 +607,10 @@ bool DataFlowSanitizer::runOnModule(Module &M) {
         }
         NewF->getBasicBlockList().splice(NewF->begin(), F.getBasicBlockList());
 
-        for (Function::use_iterator ui = F.use_begin(), ue = F.use_end();
-             ui != ue;) {
-          BlockAddress *BA = dyn_cast<BlockAddress>(ui.getUse().getUser());
-          ++ui;
+        for (Function::user_iterator UI = F.user_begin(), UE = F.user_end();
+             UI != UE;) {
+          BlockAddress *BA = dyn_cast<BlockAddress>(*UI);
+          ++UI;
           if (BA) {
             BA->replaceAllUsesWith(
                 BlockAddress::get(NewF, BA->getBasicBlock()));
@@ -1104,12 +1105,11 @@ void DFSanVisitor::visitInsertValueInst(InsertValueInst &I) {
 
 void DFSanVisitor::visitAllocaInst(AllocaInst &I) {
   bool AllLoadsStores = true;
-  for (Instruction::use_iterator i = I.use_begin(), e = I.use_end(); i != e;
-       ++i) {
-    if (isa<LoadInst>(*i))
+  for (User *U : I.users()) {
+    if (isa<LoadInst>(U))
       continue;
 
-    if (StoreInst *SI = dyn_cast<StoreInst>(*i)) {
+    if (StoreInst *SI = dyn_cast<StoreInst>(U)) {
       if (SI->getPointerOperand() == &I)
         continue;
     }

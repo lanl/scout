@@ -29,8 +29,8 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/PredIteratorCache.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/PredIteratorCache.h"
 using namespace llvm;
 
 STATISTIC(NumCacheNonLocal, "Number of fully cached non-local responses");
@@ -59,7 +59,7 @@ INITIALIZE_PASS_END(MemoryDependenceAnalysis, "memdep",
                       "Memory Dependence Analysis", false, true)
 
 MemoryDependenceAnalysis::MemoryDependenceAnalysis()
-: FunctionPass(ID), PredCache(0) {
+    : FunctionPass(ID), PredCache() {
   initializeMemoryDependenceAnalysisPass(*PassRegistry::getPassRegistry());
 }
 MemoryDependenceAnalysis::~MemoryDependenceAnalysis() {
@@ -87,7 +87,8 @@ void MemoryDependenceAnalysis::getAnalysisUsage(AnalysisUsage &AU) const {
 
 bool MemoryDependenceAnalysis::runOnFunction(Function &) {
   AA = &getAnalysis<AliasAnalysis>();
-  DL = getAnalysisIfAvailable<DataLayout>();
+  DataLayoutPass *DLP = getAnalysisIfAvailable<DataLayoutPass>();
+  DL = DLP ? &DLP->getDataLayout() : 0;
   DominatorTreeWrapperPass *DTWP =
       getAnalysisIfAvailable<DominatorTreeWrapperPass>();
   DT = DTWP ? &DTWP->getDomTree() : 0;
@@ -692,7 +693,7 @@ MemoryDependenceAnalysis::getNonLocalCallDependency(CallSite QueryCS) {
     NonLocalDepInfo::iterator Entry =
       std::upper_bound(Cache.begin(), Cache.begin()+NumSortedEntries,
                        NonLocalDepEntry(DirtyBB));
-    if (Entry != Cache.begin() && prior(Entry)->getBB() == DirtyBB)
+    if (Entry != Cache.begin() && std::prev(Entry)->getBB() == DirtyBB)
       --Entry;
 
     NonLocalDepEntry *ExistingResult = 0;

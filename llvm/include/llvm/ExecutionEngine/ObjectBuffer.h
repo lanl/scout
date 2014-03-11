@@ -15,7 +15,6 @@
 #ifndef LLVM_EXECUTIONENGINE_OBJECTBUFFER_H
 #define LLVM_EXECUTIONENGINE_OBJECTBUFFER_H
 
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
@@ -49,7 +48,7 @@ public:
 
 protected:
   // The memory contained in an ObjectBuffer
-  OwningPtr<MemoryBuffer> Buffer;
+  std::unique_ptr<MemoryBuffer> Buffer;
 };
 
 /// ObjectBufferStream - This class encapsulates the SmallVector and
@@ -57,7 +56,7 @@ protected:
 /// while providing a common ObjectBuffer interface for access to the
 /// memory once the object has been generated.
 class ObjectBufferStream : public ObjectBuffer {
-  virtual void anchor();
+  void anchor() override;
 public:
   ObjectBufferStream() : OS(SV) {}
   virtual ~ObjectBufferStream() {}

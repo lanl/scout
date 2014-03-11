@@ -11,8 +11,8 @@
 #include "BitcodeReader.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/AutoUpgrade.h"
 #include "llvm/Bitcode/LLVMBitCodes.h"
+#include "llvm/IR/AutoUpgrade.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/InlineAsm.h"
@@ -332,7 +332,7 @@ void BitcodeReaderValueList::ResolveConstantForwardRefs() {
     // new value.  If they reference more than one placeholder, update them all
     // at once.
     while (!Placeholder->use_empty()) {
-      Value::use_iterator UI = Placeholder->use_begin();
+      auto UI = Placeholder->user_begin();
       User *U = *UI;
 
       // If the using object isn't uniqued, just update the operands.  This
@@ -2882,7 +2882,8 @@ error_code BitcodeReader::ParseFunctionBody(Function *F) {
       break;
     }
     case bitc::FUNC_CODE_INST_CMPXCHG: {
-      // CMPXCHG:[ptrty, ptr, cmp, new, vol, ordering, synchscope]
+      // CMPXCHG:[ptrty, ptr, cmp, new, vol, successordering, synchscope,
+      //          failureordering]
       unsigned OpNum = 0;
       Value *Ptr, *Cmp, *New;
       if (getValueTypePair(Record, OpNum, NextValueNo, Ptr) ||
@@ -2890,13 +2891,22 @@ error_code BitcodeReader::ParseFunctionBody(Function *F) {
                     cast<PointerType>(Ptr->getType())->getElementType(), Cmp) ||
           popValue(Record, OpNum, NextValueNo,
                     cast<PointerType>(Ptr->getType())->getElementType(), New) ||
-          OpNum+3 != Record.size())
+          (OpNum + 3 != Record.size() && OpNum + 4 != Record.size()))
         return Error(InvalidRecord);
-      AtomicOrdering Ordering = GetDecodedOrdering(Record[OpNum+1]);
-      if (Ordering == NotAtomic || Ordering == Unordered)
+      AtomicOrdering SuccessOrdering = GetDecodedOrdering(Record[OpNum+1]);
+      if (SuccessOrdering == NotAtomic || SuccessOrdering == Unordered)
         return Error(InvalidRecord);
       SynchronizationScope SynchScope = GetDecodedSynchScope(Record[OpNum+2]);
-      I = new AtomicCmpXchgInst(Ptr, Cmp, New, Ordering, SynchScope);
+
+      AtomicOrdering FailureOrdering;
+      if (Record.size() < 7)
+        FailureOrdering =
+            AtomicCmpXchgInst::getStrongestFailureOrdering(SuccessOrdering);
+      else
+        FailureOrdering = GetDecodedOrdering(Record[OpNum+3]);
+
+      I = new AtomicCmpXchgInst(Ptr, Cmp, New, SuccessOrdering, FailureOrdering,
+                                SynchScope);
       cast<AtomicCmpXchgInst>(I)->setVolatile(Record[OpNum]);
       InstructionList.push_back(I);
       break;
@@ -3116,8 +3126,8 @@ error_code BitcodeReader::Materialize(GlobalValue *GV) {
   for (UpgradedIntrinsicMap::iterator I = UpgradedIntrinsics.begin(),
        E = UpgradedIntrinsics.end(); I != E; ++I) {
     if (I->first != I->second) {
-      for (Value::use_iterator UI = I->first->use_begin(),
-           UE = I->first->use_end(); UI != UE; ) {
+      for (auto UI = I->first->user_begin(), UE = I->first->user_end();
+           UI != UE;) {
         if (CallInst* CI = dyn_cast<CallInst>(*UI++))
           UpgradeIntrinsicCall(CI, I->second);
       }
@@ -3172,8 +3182,8 @@ error_code BitcodeReader::MaterializeModule(Module *M) {
   for (std::vector<std::pair<Function*, Function*> >::iterator I =
        UpgradedIntrinsics.begin(), E = UpgradedIntrinsics.end(); I != E; ++I) {
     if (I->first != I->second) {
-      for (Value::use_iterator UI = I->first->use_begin(),
-           UE = I->first->use_end(); UI != UE; ) {
+      for (auto UI = I->first->user_begin(), UE = I->first->user_end();
+           UI != UE;) {
         if (CallInst* CI = dyn_cast<CallInst>(*UI++))
           UpgradeIntrinsicCall(CI, I->second);
       }
@@ -3246,10 +3256,10 @@ error_code BitcodeReader::InitLazyStream() {
 
 namespace {
 class BitcodeErrorCategoryType : public _do_message {
-  const char *name() const LLVM_OVERRIDE {
+  const char *name() const override {
     return "llvm.bitcode";
   }
-  std::string message(int IE) const LLVM_OVERRIDE {
+  std::string message(int IE) const override {
     BitcodeReader::ErrorType E = static_cast<BitcodeReader::ErrorType>(IE);
     switch (E) {
     case BitcodeReader::BitcodeStreamInvalidSize:

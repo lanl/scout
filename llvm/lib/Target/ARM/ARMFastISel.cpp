@@ -30,18 +30,18 @@
 #include "llvm/CodeGen/MachineMemOperand.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GetElementPtrTypeIterator.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
-#include "llvm/Support/CallSite.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/GetElementPtrTypeIterator.h"
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/Target/TargetMachine.h"
@@ -144,12 +144,12 @@ class ARMFastISel : public FastISel {
 
     // Backend specific FastISel code.
   private:
-    virtual bool TargetSelectInstruction(const Instruction *I);
-    virtual unsigned TargetMaterializeConstant(const Constant *C);
-    virtual unsigned TargetMaterializeAlloca(const AllocaInst *AI);
-    virtual bool tryToFoldLoadIntoMI(MachineInstr *MI, unsigned OpNo,
-                                     const LoadInst *LI);
-    virtual bool FastLowerArguments();
+    bool TargetSelectInstruction(const Instruction *I) override;
+    unsigned TargetMaterializeConstant(const Constant *C) override;
+    unsigned TargetMaterializeAlloca(const AllocaInst *AI) override;
+    bool tryToFoldLoadIntoMI(MachineInstr *MI, unsigned OpNo,
+                             const LoadInst *LI) override;
+    bool FastLowerArguments() override;
   private:
   #include "ARMGenFastISel.inc"
 

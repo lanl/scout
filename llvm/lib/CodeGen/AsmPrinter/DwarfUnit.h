@@ -18,9 +18,9 @@
 #include "DwarfDebug.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Optional.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/StringMap.h"
-#include "llvm/DebugInfo.h"
+#include "llvm/IR/DIBuilder.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCSection.h"
 
@@ -74,7 +74,7 @@ protected:
   DICompileUnit CUNode;
 
   /// Unit debug information entry.
-  const OwningPtr<DIE> UnitDie;
+  const std::unique_ptr<DIE> UnitDie;
 
   /// Offset of the UnitDie from beginning of debug info section.
   unsigned DebugInfoOffset;
@@ -253,7 +253,11 @@ public:
   bool hasContent() const { return !UnitDie->getChildren().empty(); }
 
   /// addRange - Add an address range to the list of ranges for this unit.
-  void addRange(RangeSpan Range) { CURanges.push_back(Range); }
+  void addRange(RangeSpan Range) {
+    // Only add a range for this unit if we're emitting full debug.
+    if (getCUNode().getEmissionKind() == DIBuilder::FullDebug)
+      CURanges.push_back(Range);
+  }
 
   /// getRanges - Get the list of ranges for this unit.
   const SmallVectorImpl<RangeSpan> &getRanges() const { return CURanges; }
@@ -339,6 +343,9 @@ public:
 
   void addLabel(DIELoc *Die, dwarf::Form Form, const MCSymbol *Label);
 
+  /// addLocationList - Add a Dwarf loclistptr attribute data and value.
+  void addLocationList(DIE *Die, dwarf::Attribute Attribute, unsigned Index);
+
   /// addSectionLabel - Add a Dwarf section label attribute data and value.
   ///
   void addSectionLabel(DIE *Die, dwarf::Attribute Attribute,
@@ -355,6 +362,10 @@ public:
   /// addSectionDelta - Add a label delta attribute data and value.
   void addSectionDelta(DIE *Die, dwarf::Attribute Attribute, const MCSymbol *Hi,
                        const MCSymbol *Lo);
+
+  /// addLabelDelta - Add a label delta attribute data and value.
+  void addLabelDelta(DIE *Die, dwarf::Attribute Attribute, const MCSymbol *Hi,
+                     const MCSymbol *Lo);
 
   /// addDIEEntry - Add a DIE attribute data and value.
   void addDIEEntry(DIE *Die, dwarf::Attribute Attribute, DIE *Entry);
@@ -455,6 +466,9 @@ public:
 
   /// constructVariableDIE - Construct a DIE for the given DbgVariable.
   DIE *constructVariableDIE(DbgVariable &DV, bool isScopeAbstract);
+
+  /// constructSubprogramArguments - Construct function argument DIEs.
+  void constructSubprogramArguments(DIE &Buffer, DIArray Args);
 
   /// Create a DIE with the given Tag, add the DIE to its parent, and
   /// call insertDIE if MD is not null.
@@ -579,7 +593,7 @@ public:
   /// either DW_FORM_addr or DW_FORM_GNU_addr_index.
   void addLabelAddress(DIE *Die, dwarf::Attribute Attribute, MCSymbol *Label);
 
-  DwarfCompileUnit &getCU() LLVM_OVERRIDE { return *this; }
+  DwarfCompileUnit &getCU() override { return *this; }
 };
 
 class DwarfTypeUnit : public DwarfUnit {
@@ -598,13 +612,13 @@ public:
 
   /// Emit the header for this unit, not including the initial length field.
   void emitHeader(const MCSection *ASection, const MCSymbol *ASectionSym) const
-      LLVM_OVERRIDE;
-  unsigned getHeaderSize() const LLVM_OVERRIDE {
+      override;
+  unsigned getHeaderSize() const override {
     return DwarfUnit::getHeaderSize() + sizeof(uint64_t) + // Type Signature
            sizeof(uint32_t);                               // Type DIE Offset
   }
   void initSection(const MCSection *Section);
-  DwarfCompileUnit &getCU() LLVM_OVERRIDE { return CU; }
+  DwarfCompileUnit &getCU() override { return CU; }
 };
 } // end llvm namespace
 #endif

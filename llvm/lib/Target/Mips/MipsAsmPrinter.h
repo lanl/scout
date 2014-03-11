@@ -73,6 +73,8 @@ private:
 
   void EmitFPCallStub(const char *, const Mips16HardFloatInfo::FuncSignature *);
 
+  void NaClAlignIndirectJumpTargets(MachineFunction &MF);
+
 public:
 
   const MipsSubtarget *Subtarget;
@@ -91,7 +93,7 @@ public:
 
   virtual bool runOnMachineFunction(MachineFunction &MF);
 
-  virtual void EmitConstantPool() LLVM_OVERRIDE {
+  virtual void EmitConstantPool() override {
     bool UsingConstantPools =
       (Subtarget->inMips16Mode() && Subtarget->useConstantIslands());
     if (!UsingConstantPools)

@@ -14,6 +14,7 @@
 #include "LLVMSymbolize.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Config/config.h"
+#include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/MachO.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Compression.h"
@@ -54,36 +55,49 @@ ModuleInfo::ModuleInfo(ObjectFile *Obj, DIContext *DICtx)
     : Module(Obj), DebugInfoContext(DICtx) {
   for (symbol_iterator si = Module->symbol_begin(), se = Module->symbol_end();
        si != se; ++si) {
-    SymbolRef::Type SymbolType;
-    if (error(si->getType(SymbolType)))
-      continue;
-    if (SymbolType != SymbolRef::ST_Function &&
-        SymbolType != SymbolRef::ST_Data)
-      continue;
-    uint64_t SymbolAddress;
-    if (error(si->getAddress(SymbolAddress)) ||
-        SymbolAddress == UnknownAddressOrSize)
-      continue;
-    uint64_t SymbolSize;
-    // Getting symbol size is linear for Mach-O files, so assume that symbol
-    // occupies the memory range up to the following symbol.
-    if (isa<MachOObjectFile>(Obj))
-      SymbolSize = 0;
-    else if (error(si->getSize(SymbolSize)) ||
-             SymbolSize == UnknownAddressOrSize)
-      continue;
-    StringRef SymbolName;
-    if (error(si->getName(SymbolName)))
-      continue;
-    // Mach-O symbol table names have leading underscore, skip it.
-    if (Module->isMachO() && SymbolName.size() > 0 && SymbolName[0] == '_')
-      SymbolName = SymbolName.drop_front();
-    // FIXME: If a function has alias, there are two entries in symbol table
-    // with same address size. Make sure we choose the correct one.
-    SymbolMapTy &M = SymbolType == SymbolRef::ST_Function ? Functions : Objects;
-    SymbolDesc SD = { SymbolAddress, SymbolSize };
-    M.insert(std::make_pair(SD, SymbolName));
+    addSymbol(si);
   }
+  bool NoSymbolTable = (Module->symbol_begin() == Module->symbol_end());
+  if (NoSymbolTable && Module->isELF()) {
+    // Fallback to dynamic symbol table, if regular symbol table is stripped.
+    std::pair<symbol_iterator, symbol_iterator> IDyn =
+        getELFDynamicSymbolIterators(Module);
+    for (symbol_iterator si = IDyn.first, se = IDyn.second; si != se; ++si) {
+      addSymbol(si);
+    }
+  }
+}
+
+void ModuleInfo::addSymbol(const symbol_iterator &Sym) {
+  SymbolRef::Type SymbolType;
+  if (error(Sym->getType(SymbolType)))
+    return;
+  if (SymbolType != SymbolRef::ST_Function &&
+      SymbolType != SymbolRef::ST_Data)
+    return;
+  uint64_t SymbolAddress;
+  if (error(Sym->getAddress(SymbolAddress)) ||
+      SymbolAddress == UnknownAddressOrSize)
+    return;
+  uint64_t SymbolSize;
+  // Getting symbol size is linear for Mach-O files, so assume that symbol
+  // occupies the memory range up to the following symbol.
+  if (isa<MachOObjectFile>(Module))
+    SymbolSize = 0;
+  else if (error(Sym->getSize(SymbolSize)) ||
+           SymbolSize == UnknownAddressOrSize)
+    return;
+  StringRef SymbolName;
+  if (error(Sym->getName(SymbolName)))
+    return;
+  // Mach-O symbol table names have leading underscore, skip it.
+  if (Module->isMachO() && SymbolName.size() > 0 && SymbolName[0] == '_')
+    SymbolName = SymbolName.drop_front();
+  // FIXME: If a function has alias, there are two entries in symbol table
+  // with same address size. Make sure we choose the correct one.
+  SymbolMapTy &M = SymbolType == SymbolRef::ST_Function ? Functions : Objects;
+  SymbolDesc SD = { SymbolAddress, SymbolSize };
+  M.insert(std::make_pair(SD, SymbolName));
 }
 
 bool ModuleInfo::getNameFromSymbolTable(SymbolRef::Type Type, uint64_t Address,
@@ -217,7 +231,7 @@ static std::string getDarwinDWARFResourceForPath(const std::string &Path) {
 }
 
 static bool checkFileCRC(StringRef Path, uint32_t CRCHash) {
-  OwningPtr<MemoryBuffer> MB;
+  std::unique_ptr<MemoryBuffer> MB;
   if (MemoryBuffer::getFileOrSTDIN(Path, MB))
     return false;
   return !zlib::isAvailable() || CRCHash == zlib::crc32(MB->getBuffer());
@@ -299,9 +313,9 @@ LLVMSymbolizer::getOrCreateBinary(const std::string &Path) {
   Binary *DbgBin = 0;
   ErrorOr<Binary *> BinaryOrErr = createBinary(Path);
   if (!error(BinaryOrErr.getError())) {
-    OwningPtr<Binary> ParsedBinary(BinaryOrErr.get());
+    std::unique_ptr<Binary> ParsedBinary(BinaryOrErr.get());
     // Check if it's a universal binary.
-    Bin = ParsedBinary.take();
+    Bin = ParsedBinary.release();
     ParsedBinariesAndObjects.push_back(Bin);
     if (Bin->isMachO() || Bin->isMachOUniversalBinary()) {
       // On Darwin we may find DWARF in separate object file in
@@ -347,9 +361,9 @@ LLVMSymbolizer::getObjectFileFromBinary(Binary *Bin, const std::string &ArchName
         std::make_pair(UB, ArchName));
     if (I != ObjectFileForArch.end())
       return I->second;
-    OwningPtr<ObjectFile> ParsedObj;
+    std::unique_ptr<ObjectFile> ParsedObj;
     if (!UB->getObjectForArch(Triple(ArchName).getArch(), ParsedObj)) {
-      Res = ParsedObj.take();
+      Res = ParsedObj.release();
       ParsedBinariesAndObjects.push_back(Res);
     }
     ObjectFileForArch[std::make_pair(UB, ArchName)] = Res;

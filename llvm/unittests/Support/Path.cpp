@@ -210,6 +210,35 @@ TEST(Support, AbsolutePathIteratorWin32) {
 }
 #endif // LLVM_ON_WIN32
 
+TEST(Support, AbsolutePathIteratorEnd) {
+  // Trailing slashes are converted to '.' unless they are part of the root path.
+  SmallVector<StringRef, 4> Paths;
+  Paths.push_back("/foo/");
+  Paths.push_back("/foo//");
+  Paths.push_back("//net//");
+#ifdef LLVM_ON_WIN32
+  Paths.push_back("c:\\\\");
+#endif
+
+  for (StringRef Path : Paths) {
+    StringRef LastComponent = *--path::end(Path);
+    EXPECT_EQ(".", LastComponent);
+  }
+
+  SmallVector<StringRef, 3> RootPaths;
+  RootPaths.push_back("/");
+  RootPaths.push_back("//net/");
+#ifdef LLVM_ON_WIN32
+  RootPaths.push_back("c:\\");
+#endif
+
+  for (StringRef Path : RootPaths) {
+    StringRef LastComponent = *--path::end(Path);
+    EXPECT_EQ(1u, LastComponent.size());
+    EXPECT_TRUE(path::is_separator(LastComponent[0]));
+  }
+}
+
 TEST(Support, HomeDirectory) {
 #ifdef LLVM_ON_UNIX
   // This test only makes sense on Unix if $HOME is set.
@@ -318,8 +347,10 @@ TEST_F(FileSystemTest, TempFiles) {
   ::close(FD2);
 
   // Remove Temp2.
-  ASSERT_NO_ERROR(fs::remove(Twine(TempPath2), TempFileExists));
-  EXPECT_TRUE(TempFileExists);
+  ASSERT_NO_ERROR(fs::remove(Twine(TempPath2)));
+  ASSERT_NO_ERROR(fs::remove(Twine(TempPath2)));
+  ASSERT_EQ(fs::remove(Twine(TempPath2), false),
+            errc::no_such_file_or_directory);
 
   error_code EC = fs::status(TempPath2.c_str(), B);
   EXPECT_EQ(EC, errc::no_such_file_or_directory);
@@ -344,12 +375,10 @@ TEST_F(FileSystemTest, TempFiles) {
 
   // Remove Temp1.
   ::close(FileDescriptor);
-  ASSERT_NO_ERROR(fs::remove(Twine(TempPath), TempFileExists));
-  EXPECT_TRUE(TempFileExists);
+  ASSERT_NO_ERROR(fs::remove(Twine(TempPath)));
 
   // Remove the hard link.
-  ASSERT_NO_ERROR(fs::remove(Twine(TempPath2), TempFileExists));
-  EXPECT_TRUE(TempFileExists);
+  ASSERT_NO_ERROR(fs::remove(Twine(TempPath2)));
 
   // Make sure Temp1 doesn't exist.
   ASSERT_NO_ERROR(fs::exists(Twine(TempPath), TempFileExists));
@@ -368,23 +397,30 @@ TEST_F(FileSystemTest, TempFiles) {
 #endif
 }
 
+TEST_F(FileSystemTest, CreateDir) {
+  ASSERT_NO_ERROR(fs::create_directory(Twine(TestDirectory) + "foo"));
+  ASSERT_NO_ERROR(fs::create_directory(Twine(TestDirectory) + "foo"));
+  ASSERT_EQ(fs::create_directory(Twine(TestDirectory) + "foo", false),
+            errc::file_exists);
+  ASSERT_NO_ERROR(fs::remove(Twine(TestDirectory) + "foo"));
+}
+
 TEST_F(FileSystemTest, DirectoryIteration) {
   error_code ec;
   for (fs::directory_iterator i(".", ec), e; i != e; i.increment(ec))
     ASSERT_NO_ERROR(ec);
 
   // Create a known hierarchy to recurse over.
-  bool existed;
-  ASSERT_NO_ERROR(fs::create_directories(Twine(TestDirectory)
-                  + "/recursive/a0/aa1", existed));
-  ASSERT_NO_ERROR(fs::create_directories(Twine(TestDirectory)
-                  + "/recursive/a0/ab1", existed));
-  ASSERT_NO_ERROR(fs::create_directories(Twine(TestDirectory)
-                  + "/recursive/dontlookhere/da1", existed));
-  ASSERT_NO_ERROR(fs::create_directories(Twine(TestDirectory)
-                  + "/recursive/z0/za1", existed));
-  ASSERT_NO_ERROR(fs::create_directories(Twine(TestDirectory)
-                  + "/recursive/pop/p1", existed));
+  ASSERT_NO_ERROR(
+      fs::create_directories(Twine(TestDirectory) + "/recursive/a0/aa1"));
+  ASSERT_NO_ERROR(
+      fs::create_directories(Twine(TestDirectory) + "/recursive/a0/ab1"));
+  ASSERT_NO_ERROR(fs::create_directories(Twine(TestDirectory) +
+                                         "/recursive/dontlookhere/da1"));
+  ASSERT_NO_ERROR(
+      fs::create_directories(Twine(TestDirectory) + "/recursive/z0/za1"));
+  ASSERT_NO_ERROR(
+      fs::create_directories(Twine(TestDirectory) + "/recursive/pop/p1"));
   typedef std::vector<std::string> v_t;
   v_t visited;
   for (fs::recursive_directory_iterator i(Twine(TestDirectory)
@@ -494,7 +530,7 @@ TEST_F(FileSystemTest, Magic) {
     SmallString<128> file_pathname(TestDirectory);
     path::append(file_pathname, i->filename);
     std::string ErrMsg;
-    raw_fd_ostream file(file_pathname.c_str(), ErrMsg, sys::fs::F_Binary);
+    raw_fd_ostream file(file_pathname.c_str(), ErrMsg, sys::fs::F_None);
     ASSERT_FALSE(file.has_error());
     StringRef magic(i->magic_str, i->magic_str_len);
     file << magic;
@@ -514,23 +550,23 @@ TEST_F(FileSystemTest, CarriageReturn) {
   path::append(FilePathname, "test");
 
   {
-    raw_fd_ostream File(FilePathname.c_str(), ErrMsg);
+    raw_fd_ostream File(FilePathname.c_str(), ErrMsg, sys::fs::F_Text);
     EXPECT_EQ(ErrMsg, "");
     File << '\n';
   }
   {
-    OwningPtr<MemoryBuffer> Buf;
+    std::unique_ptr<MemoryBuffer> Buf;
     MemoryBuffer::getFile(FilePathname.c_str(), Buf);
     EXPECT_EQ(Buf->getBuffer(), "\r\n");
   }
 
   {
-    raw_fd_ostream File(FilePathname.c_str(), ErrMsg, sys::fs::F_Binary);
+    raw_fd_ostream File(FilePathname.c_str(), ErrMsg, sys::fs::F_None);
     EXPECT_EQ(ErrMsg, "");
     File << '\n';
   }
   {
-    OwningPtr<MemoryBuffer> Buf;
+    std::unique_ptr<MemoryBuffer> Buf;
     MemoryBuffer::getFile(FilePathname.c_str(), Buf);
     EXPECT_EQ(Buf->getBuffer(), "\n");
   }
@@ -574,7 +610,6 @@ TEST_F(FileSystemTest, FileMapping) {
 
   // Unmap temp file
 
-#if LLVM_HAS_RVALUE_REFERENCES
   fs::mapped_file_region m(Twine(TempPath),
                              fs::mapped_file_region::readonly,
                              0,
@@ -582,8 +617,7 @@ TEST_F(FileSystemTest, FileMapping) {
                              EC);
   ASSERT_NO_ERROR(EC);
   const char *Data = m.const_data();
-  fs::mapped_file_region mfrrv(llvm_move(m));
+  fs::mapped_file_region mfrrv(std::move(m));
   EXPECT_EQ(mfrrv.const_data(), Data);
-#endif
 }
 } // anonymous namespace

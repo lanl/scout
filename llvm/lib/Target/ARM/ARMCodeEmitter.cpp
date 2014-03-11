@@ -57,7 +57,7 @@ namespace {
     bool IsPIC;
     bool IsThumb;
 
-    void getAnalysisUsage(AnalysisUsage &AU) const {
+    void getAnalysisUsage(AnalysisUsage &AU) const override {
       AU.addRequired<MachineModuleInfo>();
       MachineFunctionPass::getAnalysisUsage(AU);
     }
@@ -76,9 +76,9 @@ namespace {
     /// machine instructions.
     uint64_t getBinaryCodeForInstr(const MachineInstr &MI) const;
 
-    bool runOnMachineFunction(MachineFunction &MF);
+    bool runOnMachineFunction(MachineFunction &MF) override;
 
-    virtual const char *getPassName() const {
+    const char *getPassName() const override {
       return "ARM Machine Code Emitter";
     }
 
@@ -866,7 +866,8 @@ void ARMCodeEmitter::emitPseudoInstruction(const MachineInstr &MI) {
     }
     break;
   }
-  case TargetOpcode::PROLOG_LABEL:
+  case TargetOpcode::CFI_INSTRUCTION:
+    break;
   case TargetOpcode::EH_LABEL:
     MCE.emitLabel(MI.getOperand(0).getMCSymbol());
     break;

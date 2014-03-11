@@ -18,13 +18,13 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/CodeGen/ValueTypes.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/InstIterator.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/LeakDetector.h"
 #include "llvm/IR/Module.h"
-#include "llvm/Support/CallSite.h"
-#include "llvm/Support/InstIterator.h"
-#include "llvm/Support/LeakDetector.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/RWMutex.h"
 #include "llvm/Support/StringPool.h"
@@ -711,15 +711,15 @@ Function *Intrinsic::getDeclaration(Module *M, ID id, ArrayRef<Type*> Tys) {
 /// hasAddressTaken - returns true if there are any uses of this function
 /// other than direct calls or invokes to it.
 bool Function::hasAddressTaken(const User* *PutOffender) const {
-  for (Value::const_use_iterator I = use_begin(), E = use_end(); I != E; ++I) {
-    const User *U = *I;
-    if (isa<BlockAddress>(U))
+  for (const Use &U : uses()) {
+    const User *FU = U.getUser();
+    if (isa<BlockAddress>(FU))
       continue;
-    if (!isa<CallInst>(U) && !isa<InvokeInst>(U))
-      return PutOffender ? (*PutOffender = U, true) : true;
-    ImmutableCallSite CS(cast<Instruction>(U));
-    if (!CS.isCallee(I))
-      return PutOffender ? (*PutOffender = U, true) : true;
+    if (!isa<CallInst>(FU) && !isa<InvokeInst>(FU))
+      return PutOffender ? (*PutOffender = FU, true) : true;
+    ImmutableCallSite CS(cast<Instruction>(FU));
+    if (!CS.isCallee(&U))
+      return PutOffender ? (*PutOffender = FU, true) : true;
   }
   return false;
 }
@@ -731,8 +731,8 @@ bool Function::isDefTriviallyDead() const {
     return false;
 
   // Check if the function is used by anything other than a blockaddress.
-  for (Value::const_use_iterator I = use_begin(), E = use_end(); I != E; ++I)
-    if (!isa<BlockAddress>(*I))
+  for (const User *U : users())
+    if (!isa<BlockAddress>(U))
       return false;
 
   return true;
@@ -778,4 +778,12 @@ void Function::setPrefixData(Constant *PrefixData) {
     SCData &= ~2;
   }
   setValueSubclassData(SCData);
+}
+
+
+/// isARMTargetCC - Return true if the specific calling convention is one of
+/// ARM target specific calling convention.
+/// There isn't a CallingConv.cpp so we are adding this utility routine here.
+bool CallingConv::isARMTargetCC(ID id) {
+  return id == ARM_APCS || id == ARM_AAPCS || id == ARM_AAPCS_VFP;
 }

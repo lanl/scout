@@ -289,43 +289,16 @@ GetInstByName(const char *Name,
   return I->second;
 }
 
-namespace {
-/// SortInstByName - Sorting predicate to sort instructions by name.
-///
-struct SortInstByName {
-  bool operator()(const CodeGenInstruction *Rec1,
-                  const CodeGenInstruction *Rec2) const {
-    return Rec1->TheDef->getName() < Rec2->TheDef->getName();
-  }
-};
-}
-
 /// \brief Return all of the instructions defined by the target, ordered by
 /// their enum value.
 void CodeGenTarget::ComputeInstrsByEnum() const {
   // The ordering here must match the ordering in TargetOpcodes.h.
   static const char *const FixedInstrs[] = {
-    "PHI",
-    "INLINEASM",
-    "PROLOG_LABEL",
-    "EH_LABEL",
-    "GC_LABEL",
-    "KILL",
-    "EXTRACT_SUBREG",
-    "INSERT_SUBREG",
-    "IMPLICIT_DEF",
-    "SUBREG_TO_REG",
-    "COPY_TO_REGCLASS",
-    "DBG_VALUE",
-    "REG_SEQUENCE",
-    "COPY",
-    "BUNDLE",
-    "LIFETIME_START",
-    "LIFETIME_END",
-    "STACKMAP",
-    "PATCHPOINT",
-    0
-  };
+      "PHI",          "INLINEASM",     "CFI_INSTRUCTION",  "EH_LABEL",
+      "GC_LABEL",     "KILL",          "EXTRACT_SUBREG",   "INSERT_SUBREG",
+      "IMPLICIT_DEF", "SUBREG_TO_REG", "COPY_TO_REGCLASS", "DBG_VALUE",
+      "REG_SEQUENCE", "COPY",          "BUNDLE",           "LIFETIME_START",
+      "LIFETIME_END", "STACKMAP",      "PATCHPOINT",       0};
   const DenseMap<const Record*, CodeGenInstruction*> &Insts = getInstructions();
   for (const char *const *p = FixedInstrs; *p; ++p) {
     const CodeGenInstruction *Instr = GetInstByName(*p, Insts, Records);
@@ -346,8 +319,10 @@ void CodeGenTarget::ComputeInstrsByEnum() const {
 
   // All of the instructions are now in random order based on the map iteration.
   // Sort them by name.
-  std::sort(InstrsByEnum.begin()+EndOfPredefines, InstrsByEnum.end(),
-            SortInstByName());
+  std::sort(InstrsByEnum.begin() + EndOfPredefines, InstrsByEnum.end(),
+            [](const CodeGenInstruction *Rec1, const CodeGenInstruction *Rec2) {
+    return Rec1->TheDef->getName() < Rec2->TheDef->getName();
+  });
 }
 
 

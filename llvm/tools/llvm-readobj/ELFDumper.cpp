@@ -42,18 +42,18 @@ public:
   ELFDumper(const ELFFile<ELFT> *Obj, StreamWriter &Writer)
       : ObjDumper(Writer), Obj(Obj) {}
 
-  virtual void printFileHeaders() LLVM_OVERRIDE;
-  virtual void printSections() LLVM_OVERRIDE;
-  virtual void printRelocations() LLVM_OVERRIDE;
-  virtual void printSymbols() LLVM_OVERRIDE;
-  virtual void printDynamicSymbols() LLVM_OVERRIDE;
-  virtual void printUnwindInfo() LLVM_OVERRIDE;
+  void printFileHeaders() override;
+  void printSections() override;
+  void printRelocations() override;
+  void printSymbols() override;
+  void printDynamicSymbols() override;
+  void printUnwindInfo() override;
 
-  virtual void printDynamicTable() LLVM_OVERRIDE;
-  virtual void printNeededLibraries() LLVM_OVERRIDE;
-  virtual void printProgramHeaders() LLVM_OVERRIDE;
+  void printDynamicTable() override;
+  void printNeededLibraries() override;
+  void printProgramHeaders() override;
 
-  virtual void printAttributes() LLVM_OVERRIDE;
+  void printAttributes() override;
 
 private:
   typedef ELFFile<ELFT> ELFO;
@@ -83,14 +83,13 @@ namespace llvm {
 template <class ELFT>
 static error_code createELFDumper(const ELFFile<ELFT> *Obj,
                                   StreamWriter &Writer,
-                                  OwningPtr<ObjDumper> &Result) {
+                                  std::unique_ptr<ObjDumper> &Result) {
   Result.reset(new ELFDumper<ELFT>(Obj, Writer));
   return readobj_error::success;
 }
 
-error_code createELFDumper(const object::ObjectFile *Obj,
-                           StreamWriter& Writer,
-                           OwningPtr<ObjDumper> &Result) {
+error_code createELFDumper(const object::ObjectFile *Obj, StreamWriter &Writer,
+                           std::unique_ptr<ObjDumper> &Result) {
   // Little-endian 32-bit
   if (const ELF32LEObjectFile *ELFObj = dyn_cast<ELF32LEObjectFile>(Obj))
     return createELFDumper(ELFObj->getELFFile(), Writer, Result);

@@ -31,9 +31,22 @@ dnl===
 dnl===-----------------------------------------------------------------------===
 dnl Initialize autoconf and define the package name, version number and
 dnl address for reporting bugs.
-AC_INIT([LLVM],[3.5svn],[http://llvm.org/bugs/])
-LLVM_DEFINE_SUBST([LLVM_VERSION_MAJOR], [3], [Major version of the LLVM API])
-LLVM_DEFINE_SUBST([LLVM_VERSION_MINOR], [5], [Minor version of the LLVM API])
+
+AC_INIT([LLVM],[3.5.0svn],[http://llvm.org/bugs/])
+
+LLVM_VERSION_MAJOR=3
+LLVM_VERSION_MINOR=5
+LLVM_VERSION_PATCH=0
+LLVM_VERSION_SUFFIX=svn
+
+AC_DEFINE_UNQUOTED([LLVM_VERSION_MAJOR], $LLVM_VERSION_MAJOR, [Major version of the LLVM API])
+AC_DEFINE_UNQUOTED([LLVM_VERSION_MINOR], $LLVM_VERSION_MINOR, [Minor version of the LLVM API])
+AC_DEFINE_UNQUOTED([LLVM_VERSION_PATCH], $LLVM_VERSION_PATCH, [Patch version of the LLVM API])
+
+AC_SUBST([LLVM_VERSION_MAJOR])
+AC_SUBST([LLVM_VERSION_MINOR])
+AC_SUBST([LLVM_VERSION_PATCH])
+AC_SUBST([LLVM_VERSION_SUFFIX])
 
 dnl Provide a copyright substitution and ensure the copyright notice is included
 dnl in the output of --version option of the generated configure script.
@@ -589,19 +602,19 @@ bypass these sanity checks.])])
     ;;
 esac
 
-dnl --enable-cxx11 : check whether or not to use -std=c++11 on the command line
-AC_ARG_ENABLE(cxx11,
-              AS_HELP_STRING([--enable-cxx11],
-                             [Use c++11 if available (default is NO)]),,
+dnl --enable-cxx1y : check whether or not to use -std=c++1y on the command line
+AC_ARG_ENABLE(cxx1y,
+              AS_HELP_STRING([--enable-cxx1y],
+                             [Use c++1y if available (default is NO)]),,
                              enableval=default)
 case "$enableval" in
-  yes) AC_SUBST(ENABLE_CXX11,[1]) ;;
-  no)  AC_SUBST(ENABLE_CXX11,[0]) ;;
-  default) AC_SUBST(ENABLE_CXX11,[0]);;
-  *) AC_MSG_ERROR([Invalid setting for --enable-cxx11. Use "yes" or "no"]) ;;
+  yes) AC_SUBST(ENABLE_CXX1Y,[1]) ;;
+  no)  AC_SUBST(ENABLE_CXX1Y,[0]) ;;
+  default) AC_SUBST(ENABLE_CXX1Y,[0]);;
+  *) AC_MSG_ERROR([Invalid setting for --enable-cxx1y. Use "yes" or "no"]) ;;
 esac
 
-dnl --enable-fission : check whether or not to use -gsplit-dwarf on the command
+dnl --enable-split-dwarf : check whether or not to use -gsplit-dwarf on the command
 dnl line
 AC_ARG_ENABLE(split-dwarf,
               AS_HELP_STRING([--enable-split-dwarf],
@@ -626,6 +639,20 @@ case "$enableval" in
   no)  AC_SUBST(ENABLE_CLANG_ARCMT,[0]) ;;
   default) AC_SUBST(ENABLE_CLANG_ARCMT,[1]);;
   *) AC_MSG_ERROR([Invalid setting for --enable-clang-arcmt. Use "yes" or "no"]) ;;
+esac
+
+dnl --enable-clang-plugin-support: check whether to enable plugins in clang
+clang_plugin_support="yes"
+AC_ARG_ENABLE(clang-plugin-support,
+              AS_HELP_STRING([--enable-clang-plugin-support],
+                             [Enable plugin support in clang (default is YES)]),
+                             clang_plugin_support="$enableval",
+                             enableval="yes")
+case "$enableval" in
+  yes) AC_SUBST(CLANG_PLUGIN_SUPPORT,[1]) ;;
+  no)  AC_SUBST(CLANG_PLUGIN_SUPPORT,[0]) ;;
+  default) AC_SUBST(CLANG_PLUGIN_SUPPORT,[1]);;
+  *) AC_MSG_ERROR([Invalid setting for --enable-clang-plugin-support. Use "yes" or "no"]) ;;
 esac
 
 dnl --enable-clang-static-analyzer: check whether to enable static-analyzer
@@ -1235,12 +1262,10 @@ dnl=== SECTION 4: Check for programs we need and that they are the right version
 dnl===
 dnl===-----------------------------------------------------------------------===
 
-AC_PROG_NM
-AC_SUBST(NM)
-
 dnl Check for the tools that the makefiles require
 AC_CHECK_GNU_MAKE
 AC_PROG_LN_S
+AC_PATH_PROG(NM, [nm], [nm])
 AC_PATH_PROG(CMP, [cmp], [cmp])
 AC_PATH_PROG(CP, [cp], [cp])
 AC_PATH_PROG(DATE, [date], [date])
@@ -1386,11 +1411,15 @@ AC_LINK_EXPORT_DYNAMIC
 dnl Determine whether the linker supports the --version-script option.
 AC_LINK_VERSION_SCRIPT
 
-dnl Check for libtool and the library that has dlopen function (which must come
-dnl before the AC_PROG_LIBTOOL check in order to enable dlopening libraries with
-dnl libtool).
-AC_LIBTOOL_DLOPEN
-AC_LIB_LTDL
+AC_CHECK_HEADERS([errno.h])
+
+case "$llvm_cv_os_type" in
+  Cygwin|MingW|Win32) llvm_shlib_ext=.dll ;;
+  Darwin) llvm_shlib_ext=.dylib ;;
+  *) llvm_shlib_ext=.so ;;
+esac
+
+AC_DEFINE_UNQUOTED([LTDL_SHLIB_EXT], ["$llvm_shlib_ext"], [The shared library extension])
 
 AC_MSG_CHECKING([tool compatibility])
 
@@ -1900,11 +1929,7 @@ AC_CHECK_FUNCS([__dso_handle])
 
 dnl Propagate the shared library extension that the libltdl checks did to
 dnl the Makefiles so we can use it there too
-AC_SUBST(SHLIBEXT,$libltdl_cv_shlibext)
-
-dnl Propagate the run-time library path variable that the libltdl
-dnl checks found to the Makefiles so we can use it there too
-AC_SUBST(SHLIBPATH_VAR,$libltdl_cv_shlibpath_var)
+AC_SUBST(SHLIBEXT,$llvm_shlib_ext)
 
 dnl Translate the various configuration directories and other basic
 dnl information into substitutions that will end up in Makefile.config.in
