@@ -21,11 +21,11 @@
 #include "clang/Lex/PTHManager.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Lex/Token.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/system_error.h"
+#include <memory>
 using namespace clang;
 using namespace clang::io;
 
@@ -425,7 +425,7 @@ static void InvalidPTH(DiagnosticsEngine &Diags, const char *Msg) {
 PTHManager *PTHManager::Create(const std::string &file,
                                DiagnosticsEngine &Diags) {
   // Memory map the PTH file.
-  OwningPtr<llvm::MemoryBuffer> File;
+  std::unique_ptr<llvm::MemoryBuffer> File;
 
   if (llvm::MemoryBuffer::getFile(file, File)) {
     // FIXME: Add ec.message() to this diag.
@@ -475,7 +475,7 @@ PTHManager *PTHManager::Create(const std::string &file,
     return 0; // FIXME: Proper error diagnostic?
   }
 
-  OwningPtr<PTHFileLookup> FL(PTHFileLookup::Create(FileTable, BufBeg));
+  std::unique_ptr<PTHFileLookup> FL(PTHFileLookup::Create(FileTable, BufBeg));
 
   // Warn if the PTH file is empty.  We still want to create a PTHManager
   // as the PTH could be used with -include-pth.
@@ -501,8 +501,8 @@ PTHManager *PTHManager::Create(const std::string &file,
     return 0;
   }
 
-  OwningPtr<PTHStringIdLookup> SL(PTHStringIdLookup::Create(StringIdTable,
-                                                                  BufBeg));
+  std::unique_ptr<PTHStringIdLookup> SL(
+      PTHStringIdLookup::Create(StringIdTable, BufBeg));
 
   // Get the location of the spelling cache.
   const unsigned char* spellingBaseOffset = PrologueOffset + sizeof(uint32_t)*3;
@@ -534,9 +534,9 @@ PTHManager *PTHManager::Create(const std::string &file,
   if (!len) originalSourceBase = 0;
 
   // Create the new PTHManager.
-  return new PTHManager(File.take(), FL.take(), IData, PerIDCache,
-                        SL.take(), NumIds, spellingBase,
-                        (const char*) originalSourceBase);
+  return new PTHManager(File.release(), FL.release(), IData, PerIDCache,
+                        SL.release(), NumIds, spellingBase,
+                        (const char *)originalSourceBase);
 }
 
 IdentifierInfo* PTHManager::LazilyCreateIdentifierInfo(unsigned PersistentID) {
@@ -675,7 +675,7 @@ public:
   ~PTHStatCache() {}
 
   LookupResult getStat(const char *Path, FileData &Data, bool isFile,
-                       vfs::File **F, vfs::FileSystem &FS) {
+                       vfs::File **F, vfs::FileSystem &FS) override {
     // Do the lookup for the file's data in the PTH file.
     CacheTy::iterator I = Cache.find(Path);
 
@@ -688,6 +688,7 @@ public:
     if (!D.HasData)
       return CacheMissing;
 
+    Data.Name = Path;
     Data.Size = D.Size;
     Data.ModTime = D.ModTime;
     Data.UniqueID = D.UniqueID;

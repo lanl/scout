@@ -465,9 +465,8 @@ void ObjCInterfaceDecl::startDefinition() {
   allocateDefinitionData();
 
   // Update all of the declarations with a pointer to the definition.
-  for (redecl_iterator RD = redecls_begin(), RDEnd = redecls_end();
-       RD != RDEnd; ++RD) {
-    if (*RD != this)
+  for (auto RD : redecls()) {
+    if (RD != this)
       RD->Data = Data;
   }
 }
@@ -950,8 +949,8 @@ ObjCInterfaceDecl *ObjCMethodDecl::getClassInterface() {
     return CD->getClassInterface();
   if (ObjCImplDecl *IMD = dyn_cast<ObjCImplDecl>(getDeclContext()))
     return IMD->getClassInterface();
-
-  assert(!isa<ObjCProtocolDecl>(getDeclContext()) && "It's a protocol method");
+  if (isa<ObjCProtocolDecl>(getDeclContext()))
+    return 0;
   llvm_unreachable("unknown method context");
 }
 
@@ -1591,8 +1590,7 @@ void ObjCProtocolDecl::startDefinition() {
   allocateDefinitionData();
   
   // Update all of the declarations with a pointer to the definition.
-  for (redecl_iterator RD = redecls_begin(), RDEnd = redecls_end();
-       RD != RDEnd; ++RD)
+  for (auto RD : redecls())
     RD->Data = this->Data;
 }
 

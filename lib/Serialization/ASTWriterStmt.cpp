@@ -1684,6 +1684,11 @@ void OMPClauseWriter::VisitOMPIfClause(OMPIfClause *C) {
   Writer->Writer.AddSourceLocation(C->getLParenLoc(), Record);
 }
 
+void OMPClauseWriter::VisitOMPNumThreadsClause(OMPNumThreadsClause *C) {
+  Writer->Writer.AddStmt(C->getNumThreads());
+  Writer->Writer.AddSourceLocation(C->getLParenLoc(), Record);
+}
+
 void OMPClauseWriter::VisitOMPDefaultClause(OMPDefaultClause *C) {
   Record.push_back(C->getDefaultKind());
   Writer->Writer.AddSourceLocation(C->getLParenLoc(), Record);
@@ -1721,8 +1726,6 @@ void OMPClauseWriter::VisitOMPSharedClause(OMPSharedClause *C) {
 // OpenMP Directives.
 //===----------------------------------------------------------------------===//
 void ASTStmtWriter::VisitOMPExecutableDirective(OMPExecutableDirective *E) {
-  VisitStmt(E);
-  Record.push_back(E->getNumClauses());
   Writer.AddSourceLocation(E->getLocStart(), Record);
   Writer.AddSourceLocation(E->getLocEnd(), Record);
   OMPClauseWriter ClauseWriter(this, Record);
@@ -1733,8 +1736,18 @@ void ASTStmtWriter::VisitOMPExecutableDirective(OMPExecutableDirective *E) {
 }
 
 void ASTStmtWriter::VisitOMPParallelDirective(OMPParallelDirective *D) {
+  VisitStmt(D);
+  Record.push_back(D->getNumClauses());
   VisitOMPExecutableDirective(D);
   Code = serialization::STMT_OMP_PARALLEL_DIRECTIVE;
+}
+
+void ASTStmtWriter::VisitOMPSimdDirective(OMPSimdDirective *D) {
+  VisitStmt(D);
+  Record.push_back(D->getNumClauses());
+  Record.push_back(D->getCollapsedNumber());
+  VisitOMPExecutableDirective(D);
+  Code = serialization::STMT_OMP_SIMD_DIRECTIVE;
 }
 
 //===----------------------------------------------------------------------===//

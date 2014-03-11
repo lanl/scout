@@ -18,12 +18,12 @@
 #include "clang/Basic/LLVM.h"
 #include "clang/Tooling/CompilationDatabase.h"
 #include "clang/Tooling/FileMatchTrie.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/YAMLParser.h"
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -104,7 +104,7 @@ private:
 
   FileMatchTrie MatchTrie;
 
-  OwningPtr<llvm::MemoryBuffer> Database;
+  std::unique_ptr<llvm::MemoryBuffer> Database;
   llvm::SourceMgr SM;
   llvm::yaml::Stream YAMLStream;
 };

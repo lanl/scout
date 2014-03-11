@@ -332,7 +332,7 @@ void CodeGenFunction::EmitStaticVarDecl(const VarDecl &D,
     var->setSection(SA->getName());
 
   if (D.hasAttr<UsedAttr>())
-    CGM.AddUsedGlobal(var);
+    CGM.addUsedGlobal(var);
 
   // We may have to cast the constant because of the initializer
   // mismatch above.
@@ -949,7 +949,7 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
 
     llvm::Value *elementCount;
     QualType elementType;
-    llvm::tie(elementCount, elementType) = getVLASize(Ty);
+    std::tie(elementCount, elementType) = getVLASize(Ty);
 
     llvm::Type *llvmTy = ConvertTypeForMem(elementType);
 

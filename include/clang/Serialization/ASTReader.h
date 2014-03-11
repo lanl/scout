@@ -36,7 +36,6 @@
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/MapVector.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -45,6 +44,7 @@
 #include "llvm/Support/DataTypes.h"
 #include <deque>
 #include <map>
+#include <memory>
 #include <string>
 #include <sys/stat.h>
 #include <utility>
@@ -64,6 +64,7 @@ class ASTUnit; // FIXME: Layering violation and egregious hack.
 class Attr;
 class Decl;
 class DeclContext;
+class DefMacroDirective;
 class DiagnosticOptions;
 class NestedNameSpecifier;
 class CXXBaseSpecifier;
@@ -173,12 +174,49 @@ public:
   /// \brief Returns true if this \c ASTReaderListener wants to receive the
   /// input files of the AST file via \c visitInputFile, false otherwise.
   virtual bool needsInputFileVisitation() { return false; }
-
-  /// \brief if \c needsInputFileVisitation returns true, this is called for each
-  /// input file of the AST file.
+  /// \brief Returns true if this \c ASTReaderListener wants to receive the
+  /// system input files of the AST file via \c visitInputFile, false otherwise.
+  virtual bool needsSystemInputFileVisitation() { return false; }
+  /// \brief if \c needsInputFileVisitation returns true, this is called for
+  /// each non-system input file of the AST File. If
+  /// \c needsSystemInputFileVisitation is true, then it is called for all
+  /// system input files as well.
   ///
   /// \returns true to continue receiving the next input file, false to stop.
   virtual bool visitInputFile(StringRef Filename, bool isSystem) { return true;}
+};
+
+/// \brief Simple wrapper class for chaining listeners.
+class ChainedASTReaderListener : public ASTReaderListener {
+  std::unique_ptr<ASTReaderListener> First;
+  std::unique_ptr<ASTReaderListener> Second;
+
+public:
+  /// Takes ownership of \p First and \p Second.
+  ChainedASTReaderListener(ASTReaderListener *First, ASTReaderListener *Second)
+      : First(First), Second(Second) { }
+
+  virtual bool ReadFullVersionInformation(StringRef FullVersion);
+  virtual bool ReadLanguageOptions(const LangOptions &LangOpts,
+                                   bool Complain);
+  virtual bool ReadTargetOptions(const TargetOptions &TargetOpts,
+                                 bool Complain);
+  virtual bool ReadDiagnosticOptions(const DiagnosticOptions &DiagOpts,
+                                     bool Complain);
+  virtual bool ReadFileSystemOptions(const FileSystemOptions &FSOpts,
+                                     bool Complain);
+
+  virtual bool ReadHeaderSearchOptions(const HeaderSearchOptions &HSOpts,
+                                       bool Complain);
+  virtual bool ReadPreprocessorOptions(const PreprocessorOptions &PPOpts,
+                                       bool Complain,
+                                       std::string &SuggestedPredefines);
+
+  virtual void ReadCounter(const serialization::ModuleFile &M,
+                           unsigned Value);
+  virtual bool needsInputFileVisitation();
+  virtual bool needsSystemInputFileVisitation();
+  virtual bool visitInputFile(StringRef Filename, bool isSystem);
 };
 
 /// \brief ASTReaderListener implementation to validate the information of
@@ -285,7 +323,7 @@ public:
 
 private:
   /// \brief The receiver of some callbacks invoked by ASTReader.
-  OwningPtr<ASTReaderListener> Listener;
+  std::unique_ptr<ASTReaderListener> Listener;
 
   /// \brief The receiver of deserialization events.
   ASTDeserializationListener *DeserializationListener;
@@ -315,7 +353,7 @@ private:
   SourceLocation CurrentImportLoc;
 
   /// \brief The global module index, if loaded.
-  llvm::OwningPtr<GlobalModuleIndex> GlobalIndex;
+  std::unique_ptr<GlobalModuleIndex> GlobalIndex;
 
   /// \brief A map of global bit offsets to the module that stores entities
   /// at those bit offsets.
@@ -471,18 +509,22 @@ private:
   /// global submodule ID to produce a local ID.
   GlobalSubmoduleMapType GlobalSubmoduleMap;
 
+  /// \brief Information on a macro definition or undefinition that is visible
+  /// at the end of a submodule.
+  struct ModuleMacroInfo;
+
   /// \brief An entity that has been hidden.
   class HiddenName {
   public:
     enum NameKind {
       Declaration,
-      MacroVisibility
+      Macro
     } Kind;
 
   private:
     union {
       Decl *D;
-      MacroDirective *MD;
+      ModuleMacroInfo *MMI;
     };
 
     IdentifierInfo *Id;
@@ -490,8 +532,8 @@ private:
   public:
     HiddenName(Decl *D) : Kind(Declaration), D(D), Id() { }
 
-    HiddenName(IdentifierInfo *II, MacroDirective *MD)
-      : Kind(MacroVisibility), MD(MD), Id(II) { }
+    HiddenName(IdentifierInfo *II, ModuleMacroInfo *MMI)
+      : Kind(Macro), MMI(MMI), Id(II) { }
 
     NameKind getKind() const { return Kind; }
 
@@ -500,15 +542,21 @@ private:
       return D;
     }
 
-    std::pair<IdentifierInfo *, MacroDirective *> getMacro() const {
-      assert(getKind() == MacroVisibility && "Hidden name is not a macro!");
-      return std::make_pair(Id, MD);
+    std::pair<IdentifierInfo *, ModuleMacroInfo *> getMacro() const {
+      assert(getKind() == Macro && "Hidden name is not a macro!");
+      return std::make_pair(Id, MMI);
     }
-};
+  };
+
+  typedef llvm::SmallDenseMap<IdentifierInfo*,
+                              ModuleMacroInfo*> HiddenMacrosMap;
 
   /// \brief A set of hidden declarations.
-  typedef SmallVector<HiddenName, 2> HiddenNames;
-  
+  struct HiddenNames {
+    SmallVector<Decl*, 2> HiddenDecls;
+    HiddenMacrosMap HiddenMacros;
+  };
+
   typedef llvm::DenseMap<Module *, HiddenNames> HiddenNamesMapType;
 
   /// \brief A mapping from each of the hidden submodules to the deserialized
@@ -564,8 +612,8 @@ private:
     ModuleFile *M;
 
     struct ModuleMacroDataTy {
-      serialization::GlobalMacroID GMacID;
-      unsigned ImportLoc;
+      uint32_t MacID;
+      serialization::SubmoduleID *Overrides;
     };
     struct PCHMacroDataTy {
       uint64_t MacroDirectivesOffset;
@@ -577,10 +625,10 @@ private:
     };
 
     PendingMacroInfo(ModuleFile *M,
-                     serialization::GlobalMacroID GMacID,
-                     SourceLocation ImportLoc) : M(M) {
-      ModuleMacroData.GMacID = GMacID;
-      ModuleMacroData.ImportLoc = ImportLoc.getRawEncoding();
+                     uint32_t MacID,
+                     serialization::SubmoduleID *Overrides) : M(M) {
+      ModuleMacroData.MacID = MacID;
+      ModuleMacroData.Overrides = Overrides;
     }
 
     PendingMacroInfo(ModuleFile *M, uint64_t MacroDirectivesOffset) : M(M) {
@@ -977,6 +1025,13 @@ private:
   /// \brief Reads a statement from the specified cursor.
   Stmt *ReadStmtFromStream(ModuleFile &F);
 
+  /// \brief Reads the stored information about an input file.
+  void readInputFileInfo(ModuleFile &F, unsigned ID, std::string &Filename,
+                         off_t &StoredSize, time_t &StoredTime,
+                         bool &Overridden);
+  /// \brief A convenience method to read the filename from an input file.
+  std::string getInputFileName(ModuleFile &F, unsigned ID);
+
   /// \brief Retrieve the file entry and 'overridden' bit for an input
   /// file in the given module file.
   serialization::InputFile getInputFile(ModuleFile &F, unsigned ID,
@@ -1253,24 +1308,33 @@ public:
   /// \param ImportLoc The location at which the import occurs.
   ///
   /// \param Complain Whether to complain about conflicting module imports.
-  void makeModuleVisible(Module *Mod, 
+  void makeModuleVisible(Module *Mod,
                          Module::NameVisibilityKind NameVisibility,
                          SourceLocation ImportLoc,
                          bool Complain);
-  
+
   /// \brief Make the names within this set of hidden names visible.
   void makeNamesVisible(const HiddenNames &Names, Module *Owner);
-  
+
   /// \brief Set the AST callbacks listener.
   void setListener(ASTReaderListener *listener) {
     Listener.reset(listener);
+  }
+
+  /// \brief Add an AST callbak listener.
+  ///
+  /// Takes ownership of \p L.
+  void addListener(ASTReaderListener *L) {
+    if (Listener)
+      L = new ChainedASTReaderListener(L, Listener.release());
+    Listener.reset(L);
   }
 
   /// \brief Set the AST deserialization listener.
   void setDeserializationListener(ASTDeserializationListener *Listener);
 
   /// \brief Determine whether this AST reader has a global index.
-  bool hasGlobalIndex() const { return GlobalIndex.isValid(); }
+  bool hasGlobalIndex() const { return (bool)GlobalIndex; }
 
   /// \brief Attempts to load the global index.
   ///
@@ -1687,13 +1751,26 @@ public:
   serialization::IdentifierID getGlobalIdentifierID(ModuleFile &M,
                                                     unsigned LocalID);
 
+  ModuleMacroInfo *getModuleMacro(const PendingMacroInfo &PMInfo);
+
   void resolvePendingMacro(IdentifierInfo *II, const PendingMacroInfo &PMInfo);
 
   void installPCHMacroDirectives(IdentifierInfo *II,
                                  ModuleFile &M, uint64_t Offset);
 
-  void installImportedMacro(IdentifierInfo *II, MacroDirective *MD,
+  void installImportedMacro(IdentifierInfo *II, ModuleMacroInfo *MMI,
                             Module *Owner);
+
+  typedef llvm::SmallVector<DefMacroDirective*, 1> AmbiguousMacros;
+  llvm::DenseMap<IdentifierInfo*, AmbiguousMacros> AmbiguousMacroDefs;
+
+  void
+  removeOverriddenMacros(IdentifierInfo *II, AmbiguousMacros &Ambig,
+                         llvm::ArrayRef<serialization::SubmoduleID> Overrides);
+
+  AmbiguousMacros *
+  removeOverriddenMacros(IdentifierInfo *II,
+                         llvm::ArrayRef<serialization::SubmoduleID> Overrides);
 
   /// \brief Retrieve the macro with the given ID.
   MacroInfo *getMacro(serialization::MacroID ID);
@@ -1871,11 +1948,10 @@ public:
   /// \param II The name of the macro.
   /// \param M The module file.
   /// \param GMacID The global macro ID that is associated with this identifier.
-  /// \param ImportLoc The location where the module is imported.
   void addPendingMacroFromModule(IdentifierInfo *II,
                                  ModuleFile *M,
                                  serialization::GlobalMacroID GMacID,
-                                 SourceLocation ImportLoc);
+                                 llvm::ArrayRef<serialization::SubmoduleID>);
 
   /// \brief Add a macro to deserialize its macro directive history from a PCH.
   ///

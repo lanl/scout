@@ -357,7 +357,7 @@ def AlignMac68k : InheritableAttr {
 }
 
 def AlwaysInline : InheritableAttr {
-  let Spellings = [GCC<"always_inline">];
+  let Spellings = [GCC<"always_inline">, Keyword<"__forceinline">];
   let Subjects = SubjectList<[Function]>;
   let Documentation = [Undocumented];
 }
@@ -801,6 +801,12 @@ def NoCommon : InheritableAttr {
 def NoDebug : InheritableAttr {
   let Spellings = [GNU<"nodebug">];
   let Documentation = [Undocumented];
+}
+
+def NoDuplicate : InheritableAttr {
+  let Spellings = [GNU<"noduplicate">, CXX11<"clang", "noduplicate">];
+  let Subjects = SubjectList<[Function]>;
+  let Documentation = [NoDuplicateDocs];
 }
 
 def NoInline : InheritableAttr {
@@ -1300,6 +1306,86 @@ def Capability : InheritableAttr {
                     [GNU<"shared_capability">,
                      CXX11<"clang","shared_capability">]>];
   let Documentation = [Undocumented];
+  let AdditionalMembers = [{
+    bool isMutex() const { return getName().equals_lower("mutex"); }
+    bool isRole() const { return getName().equals_lower("role"); }
+  }];
+}
+
+def AssertCapability : InheritableAttr {
+  let Spellings = [GNU<"assert_capability">,
+                   CXX11<"clang", "assert_capability">,
+                   GNU<"assert_shared_capability">,
+                   CXX11<"clang", "assert_shared_capability">];
+  let Subjects = SubjectList<[Function, FunctionTemplate]>;
+  let LateParsed = 1;
+  let TemplateDependent = 1;
+  let ParseArgumentsAsUnevaluated = 1;
+  let DuplicatesAllowedWhileMerging = 1;
+  let Args = [ExprArgument<"Expr">];
+  let Accessors = [Accessor<"isShared",
+                    [GNU<"assert_shared_capability">,
+                     CXX11<"clang", "assert_shared_capability">]>];
+  let Documentation = [AssertCapabilityDocs];
+}
+
+def AcquireCapability : InheritableAttr {
+  let Spellings = [GNU<"acquire_capability">,
+                   CXX11<"clang", "acquire_capability">,
+                   GNU<"acquire_shared_capability">,
+                   CXX11<"clang", "acquire_shared_capability">];
+  let Subjects = SubjectList<[Function, FunctionTemplate],
+                             ErrorDiag>;
+  let LateParsed = 1;
+  let TemplateDependent = 1;
+  let ParseArgumentsAsUnevaluated = 1;
+  let DuplicatesAllowedWhileMerging = 1;
+  let Args = [VariadicExprArgument<"Args">];
+  let Accessors = [Accessor<"isShared",
+                    [GNU<"acquire_shared_capability">,
+                     CXX11<"clang", "acquire_shared_capability">]>];
+  let Documentation = [AcquireCapabilityDocs];
+}
+
+def TryAcquireCapability : InheritableAttr {
+  let Spellings = [GNU<"try_acquire_capability">,
+                   CXX11<"clang", "try_acquire_capability">,
+                   GNU<"try_acquire_shared_capability">,
+                   CXX11<"clang", "try_acquire_shared_capability">];
+  let Subjects = SubjectList<[Function, FunctionTemplate],
+                             ErrorDiag>;
+  let LateParsed = 1;
+  let TemplateDependent = 1;
+  let ParseArgumentsAsUnevaluated = 1;
+  let DuplicatesAllowedWhileMerging = 1;
+  let Args = [ExprArgument<"SuccessValue">, VariadicExprArgument<"Args">];
+  let Accessors = [Accessor<"isShared",
+                    [GNU<"try_acquire_shared_capability">,
+                     CXX11<"clang", "try_acquire_shared_capability">]>];
+  let Documentation = [TryAcquireCapabilityDocs];
+}
+
+def ReleaseCapability : InheritableAttr {
+  let Spellings = [GNU<"release_capability">,
+                   CXX11<"clang", "release_capability">,
+                   GNU<"release_shared_capability">,
+                   CXX11<"clang", "release_shared_capability">,
+                   GNU<"release_generic_capability">,
+                   CXX11<"clang", "release_generic_capability">];
+  let Subjects = SubjectList<[Function, FunctionTemplate],
+                             ErrorDiag>;
+  let LateParsed = 1;
+  let TemplateDependent = 1;
+  let ParseArgumentsAsUnevaluated = 1;
+  let DuplicatesAllowedWhileMerging = 1;
+  let Args = [VariadicExprArgument<"Args">];
+  let Accessors = [Accessor<"isShared",
+                    [GNU<"release_shared_capability">,
+                     CXX11<"clang", "release_shared_capability">]>,
+                   Accessor<"isGeneric",
+                     [GNU<"release_generic_capability">,
+                      CXX11<"clang", "release_generic_capability">]>];
+  let Documentation = [ReleaseCapabilityDocs];
 }
 
 def RequiresCapability : InheritableAttr {
@@ -1594,12 +1680,6 @@ def DLLImport : InheritableAttr, TargetSpecificAttr<TargetX86Win> {
   let Documentation = [Undocumented];
 }
 
-def ForceInline : InheritableAttr {
-  let Spellings = [Keyword<"__forceinline">];
-  let LangOpts = [MicrosoftExt];
-  let Documentation = [Undocumented];
-}
-
 def SelectAny : InheritableAttr {
   let Spellings = [Declspec<"selectany">];
   let LangOpts = [MicrosoftExt];
@@ -1660,7 +1740,7 @@ def MSInheritance : InheritableAttr {
     return Inheritance <= Keyword_multiple_inheritance;
   }
   }];
-  let Documentation = [Undocumented];
+  let Documentation = [MSInheritanceDocs];
 }
 
 def MSVtorDisp : InheritableAttr {

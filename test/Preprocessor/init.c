@@ -15,7 +15,7 @@
 // CXX1Y:#define __GXX_EXPERIMENTAL_CXX0X__ 1
 // CXX1Y:#define __GXX_RTTI 1
 // CXX1Y:#define __GXX_WEAK__ 1
-// CXX1Y:#define __cplusplus 201305L
+// CXX1Y:#define __cplusplus 201402L
 // CXX1Y:#define __private_extern__ extern
 //
 //
@@ -89,7 +89,7 @@
 //
 // GXX1Y:#define __GNUG__
 // GXX1Y:#define __GXX_WEAK__ 1
-// GXX1Y:#define __cplusplus 201305L
+// GXX1Y:#define __cplusplus 201402L
 // GXX1Y:#define __private_extern__ extern
 //
 //
@@ -196,17 +196,125 @@
 // SCHAR:#define __clang__ 1
 //
 // RUN: %clang_cc1 -E -dM -fshort-wchar < /dev/null | FileCheck -check-prefix SHORTWCHAR %s
+// wchar_t is u16 for targeting Win32.
+// FIXME: Implement and check x86_64-cygwin.
+// RUN: %clang_cc1 -E -dM -fno-short-wchar -triple=x86_64-w64-mingw32 < /dev/null | FileCheck -check-prefix SHORTWCHAR %s
 //
 // SHORTWCHAR: #define __SIZEOF_WCHAR_T__ 2
 // SHORTWCHAR: #define __WCHAR_MAX__ 65535U
 // SHORTWCHAR: #define __WCHAR_TYPE__ unsigned short
 // SHORTWCHAR: #define __WCHAR_WIDTH__ 16
 //
+// RUN: %clang_cc1 -E -dM -fno-short-wchar -triple=i686-unknown-unknown < /dev/null | FileCheck -check-prefix SHORTWCHAR2 %s
+// RUN: %clang_cc1 -E -dM -fno-short-wchar -triple=x86_64-unknown-unknown < /dev/null | FileCheck -check-prefix SHORTWCHAR2 %s
+//
+// SHORTWCHAR2: #define __SIZEOF_WCHAR_T__ 4
+// SHORTWCHAR2: #define __WCHAR_WIDTH__ 32
+// Other definitions vary from platform to platform
+//
+// RUN: %clang_cc1 -E -dM -ffreestanding -triple=aarch64-none-none < /dev/null | FileCheck -check-prefix AARCH64 %s
+//
+// AARCH64:#define _LP64 1
+// AARCH64:#define __AARCH64EL__ 1
+// AARCH64:#define __ARM_64BIT_STATE 1
+// AARCH64:#define __ARM_ARCH 8
+// AARCH64:#define __ARM_ARCH_ISA_A64 1
+// AARCH64:#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
+// AARCH64:#define __CHAR16_TYPE__ unsigned short
+// AARCH64:#define __CHAR32_TYPE__ unsigned int
+// AARCH64:#define __CHAR_BIT__ 8
+// AARCH64:#define __DBL_DENORM_MIN__ 4.9406564584124654e-324
+// AARCH64:#define __DBL_DIG__ 15
+// AARCH64:#define __DBL_EPSILON__ 2.2204460492503131e-16
+// AARCH64:#define __DBL_HAS_DENORM__ 1
+// AARCH64:#define __DBL_HAS_INFINITY__ 1
+// AARCH64:#define __DBL_HAS_QUIET_NAN__ 1
+// AARCH64:#define __DBL_MANT_DIG__ 53
+// AARCH64:#define __DBL_MAX_10_EXP__ 308
+// AARCH64:#define __DBL_MAX_EXP__ 1024
+// AARCH64:#define __DBL_MAX__ 1.7976931348623157e+308
+// AARCH64:#define __DBL_MIN_10_EXP__ (-307)
+// AARCH64:#define __DBL_MIN_EXP__ (-1021)
+// AARCH64:#define __DBL_MIN__ 2.2250738585072014e-308
+// AARCH64:#define __DECIMAL_DIG__ 36
+// AARCH64:#define __FLT_DENORM_MIN__ 1.40129846e-45F
+// AARCH64:#define __FLT_DIG__ 6
+// AARCH64:#define __FLT_EPSILON__ 1.19209290e-7F
+// AARCH64:#define __FLT_EVAL_METHOD__ 0
+// AARCH64:#define __FLT_HAS_DENORM__ 1
+// AARCH64:#define __FLT_HAS_INFINITY__ 1
+// AARCH64:#define __FLT_HAS_QUIET_NAN__ 1
+// AARCH64:#define __FLT_MANT_DIG__ 24
+// AARCH64:#define __FLT_MAX_10_EXP__ 38
+// AARCH64:#define __FLT_MAX_EXP__ 128
+// AARCH64:#define __FLT_MAX__ 3.40282347e+38F
+// AARCH64:#define __FLT_MIN_10_EXP__ (-37)
+// AARCH64:#define __FLT_MIN_EXP__ (-125)
+// AARCH64:#define __FLT_MIN__ 1.17549435e-38F
+// AARCH64:#define __FLT_RADIX__ 2
+// AARCH64:#define __INT16_TYPE__ short
+// AARCH64:#define __INT32_TYPE__ int
+// AARCH64:#define __INT64_C_SUFFIX__ L
+// AARCH64:#define __INT64_TYPE__ long int
+// AARCH64:#define __INT8_TYPE__ char
+// AARCH64:#define __INTMAX_MAX__ 9223372036854775807L
+// AARCH64:#define __INTMAX_TYPE__ long int
+// AARCH64:#define __INTMAX_WIDTH__ 64
+// AARCH64:#define __INTPTR_TYPE__ long int
+// AARCH64:#define __INTPTR_WIDTH__ 64
+// AARCH64:#define __INT_MAX__ 2147483647
+// AARCH64:#define __LDBL_DENORM_MIN__ 6.47517511943802511092443895822764655e-4966L
+// AARCH64:#define __LDBL_DIG__ 33
+// AARCH64:#define __LDBL_EPSILON__ 1.92592994438723585305597794258492732e-34L
+// AARCH64:#define __LDBL_HAS_DENORM__ 1
+// AARCH64:#define __LDBL_HAS_INFINITY__ 1
+// AARCH64:#define __LDBL_HAS_QUIET_NAN__ 1
+// AARCH64:#define __LDBL_MANT_DIG__ 113
+// AARCH64:#define __LDBL_MAX_10_EXP__ 4932
+// AARCH64:#define __LDBL_MAX_EXP__ 16384
+// AARCH64:#define __LDBL_MAX__ 1.18973149535723176508575932662800702e+4932L
+// AARCH64:#define __LDBL_MIN_10_EXP__ (-4931)
+// AARCH64:#define __LDBL_MIN_EXP__ (-16381)
+// AARCH64:#define __LDBL_MIN__ 3.36210314311209350626267781732175260e-4932L
+// AARCH64:#define __LONG_LONG_MAX__ 9223372036854775807LL
+// AARCH64:#define __LONG_MAX__ 9223372036854775807L
+// AARCH64:#define __LP64__ 1
+// AARCH64:#define __POINTER_WIDTH__ 64
+// AARCH64:#define __PTRDIFF_TYPE__ long int
+// AARCH64:#define __PTRDIFF_WIDTH__ 64
+// AARCH64:#define __SCHAR_MAX__ 127
+// AARCH64:#define __SHRT_MAX__ 32767
+// AARCH64:#define __SIG_ATOMIC_WIDTH__ 32
+// AARCH64:#define __SIZEOF_DOUBLE__ 8
+// AARCH64:#define __SIZEOF_FLOAT__ 4
+// AARCH64:#define __SIZEOF_INT128__ 16
+// AARCH64:#define __SIZEOF_INT__ 4
+// AARCH64:#define __SIZEOF_LONG_DOUBLE__ 16
+// AARCH64:#define __SIZEOF_LONG_LONG__ 8
+// AARCH64:#define __SIZEOF_LONG__ 8
+// AARCH64:#define __SIZEOF_POINTER__ 8
+// AARCH64:#define __SIZEOF_PTRDIFF_T__ 8
+// AARCH64:#define __SIZEOF_SHORT__ 2
+// AARCH64:#define __SIZEOF_SIZE_T__ 8
+// AARCH64:#define __SIZEOF_WCHAR_T__ 4
+// AARCH64:#define __SIZEOF_WINT_T__ 4
+// AARCH64:#define __SIZE_MAX__ 18446744073709551615UL
+// AARCH64:#define __SIZE_TYPE__ long unsigned int
+// AARCH64:#define __SIZE_WIDTH__ 64
+// AARCH64:#define __UINTMAX_TYPE__ long unsigned int
+// AARCH64:#define __USER_LABEL_PREFIX__ _
+// AARCH64:#define __WCHAR_MAX__ 4294967295U
+// AARCH64:#define __WCHAR_TYPE__ unsigned int
+// AARCH64:#define __WCHAR_UNSIGNED__ 1
+// AARCH64:#define __WCHAR_WIDTH__ 32
+// AARCH64:#define __WINT_TYPE__ int
+// AARCH64:#define __WINT_WIDTH__ 32
+// AARCH64:#define __aarch64__ 1
+//
 // RUN: %clang_cc1 -E -dM -ffreestanding -triple=aarch64-netbsd < /dev/null | FileCheck -check-prefix AARCH64-NETBSD %s
 //
 // AARCH64-NETBSD:#define _LP64 1
 // AARCH64-NETBSD:#define __AARCH64EL__ 1
-// AARCH64-NETBSD:#define __ALIGNOF_MAX_ALIGN_T__ 16
 // AARCH64-NETBSD:#define __ARM_64BIT_STATE 1
 // AARCH64-NETBSD:#define __ARM_ARCH 8
 // AARCH64-NETBSD:#define __ARM_ARCH_ISA_A64 1
@@ -246,11 +354,11 @@
 // AARCH64-NETBSD:#define __FLT_RADIX__ 2
 // AARCH64-NETBSD:#define __INT16_TYPE__ short
 // AARCH64-NETBSD:#define __INT32_TYPE__ int
-// AARCH64-NETBSD:#define __INT64_C_SUFFIX__ LL
-// AARCH64-NETBSD:#define __INT64_TYPE__ long long int
+// AARCH64-NETBSD:#define __INT64_C_SUFFIX__ L
+// AARCH64-NETBSD:#define __INT64_TYPE__ long int
 // AARCH64-NETBSD:#define __INT8_TYPE__ char
-// AARCH64-NETBSD:#define __INTMAX_MAX__ 9223372036854775807LL
-// AARCH64-NETBSD:#define __INTMAX_TYPE__ long long int
+// AARCH64-NETBSD:#define __INTMAX_MAX__ 9223372036854775807L
+// AARCH64-NETBSD:#define __INTMAX_TYPE__ long int
 // AARCH64-NETBSD:#define __INTMAX_WIDTH__ 64
 // AARCH64-NETBSD:#define __INTPTR_TYPE__ long int
 // AARCH64-NETBSD:#define __INTPTR_WIDTH__ 64
@@ -294,7 +402,7 @@
 // AARCH64-NETBSD:#define __SIZE_MAX__ 18446744073709551615UL
 // AARCH64-NETBSD:#define __SIZE_TYPE__ long unsigned int
 // AARCH64-NETBSD:#define __SIZE_WIDTH__ 64
-// AARCH64-NETBSD:#define __UINTMAX_TYPE__ long long unsigned int
+// AARCH64-NETBSD:#define __UINTMAX_TYPE__ long unsigned int
 // AARCH64-NETBSD:#define __USER_LABEL_PREFIX__
 // AARCH64-NETBSD:#define __WCHAR_MAX__ 2147483647
 // AARCH64-NETBSD:#define __WCHAR_TYPE__ int
@@ -306,7 +414,6 @@
 // RUN: %clang_cc1 -E -dM -ffreestanding -triple=arm-none-none < /dev/null | FileCheck -check-prefix ARM %s
 //
 // ARM-NOT:#define _LP64
-// ARM:#define __ALIGNOF_MAX_ALIGN_T__ 8
 // ARM:#define __APCS_32__ 1
 // ARM:#define __ARMEL__ 1
 // ARM:#define __ARM_ARCH_6J__ 1
@@ -407,7 +514,6 @@
 // RUN: %clang_cc1 -E -dM -ffreestanding -triple=arm-none-linux-gnueabi -target-feature +soft-float -target-feature +soft-float-abi < /dev/null | FileCheck -check-prefix ARMEABISOFTFP %s
 //
 // ARM-NOT:#define _LP64
-// ARMEABISOFTFP:#define __ALIGNOF_MAX_ALIGN_T__ 8
 // ARMEABISOFTFP:#define __APCS_32__ 1
 // ARMEABISOFTFP:#define __ARMEL__ 1
 // ARMEABISOFTFP:#define __ARM_ARCH 6
@@ -513,7 +619,6 @@
 // RUN: %clang_cc1 -E -dM -ffreestanding -triple=arm-none-linux-gnueabi < /dev/null | FileCheck -check-prefix ARMEABIHARDFP %s
 //
 // ARM-NOT:#define _LP64
-// ARMEABIHARDFP:#define __ALIGNOF_MAX_ALIGN_T__ 8
 // ARMEABIHARDFP:#define __APCS_32__ 1
 // ARMEABIHARDFP:#define __ARMEL__ 1
 // ARMEABIHARDFP:#define __ARM_ARCH 6
@@ -667,7 +772,6 @@
 // RUN: %clang_cc1 -E -dM -ffreestanding -triple=i386-none-none < /dev/null | FileCheck -check-prefix I386 %s
 //
 // I386-NOT:#define _LP64
-// I386:#define __ALIGNOF_MAX_ALIGN_T__ 16
 // I386:#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
 // I386:#define __CHAR16_TYPE__ unsigned short
 // I386:#define __CHAR32_TYPE__ unsigned int
@@ -766,7 +870,6 @@
 // RUN: %clang_cc1 -E -dM -ffreestanding -triple=i386-pc-linux-gnu -target-cpu pentium4 < /dev/null | FileCheck -check-prefix I386-LINUX %s
 //
 // I386-LINUX-NOT:#define _LP64
-// I386-LINUX:#define __ALIGNOF_MAX_ALIGN_T__ 16
 // I386-LINUX:#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
 // I386-LINUX:#define __CHAR16_TYPE__ unsigned short
 // I386-LINUX:#define __CHAR32_TYPE__ unsigned int
@@ -865,7 +968,6 @@
 // RUN: %clang_cc1 -E -dM -ffreestanding -triple=i386-netbsd < /dev/null | FileCheck -check-prefix I386-NETBSD %s
 //
 // I386-NETBSD-NOT:#define _LP64
-// I386-NETBSD:#define __ALIGNOF_MAX_ALIGN_T__ 16
 // I386-NETBSD:#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
 // I386-NETBSD:#define __CHAR16_TYPE__ unsigned short
 // I386-NETBSD:#define __CHAR32_TYPE__ unsigned int
@@ -982,7 +1084,7 @@
 // MIPS32BE:#define _MIPS_SZINT 32
 // MIPS32BE:#define _MIPS_SZLONG 32
 // MIPS32BE:#define _MIPS_SZPTR 32
-// MIPS32BE:#define __ALIGNOF_MAX_ALIGN_T__ 8
+// MIPS32BE:#define __BIG_ENDIAN__ 1
 // MIPS32BE:#define __BYTE_ORDER__ __ORDER_BIG_ENDIAN__
 // MIPS32BE:#define __CHAR16_TYPE__ unsigned short
 // MIPS32BE:#define __CHAR32_TYPE__ unsigned int
@@ -1102,7 +1204,6 @@
 // MIPS32EL:#define _MIPS_SZINT 32
 // MIPS32EL:#define _MIPS_SZLONG 32
 // MIPS32EL:#define _MIPS_SZPTR 32
-// MIPS32EL:#define __ALIGNOF_MAX_ALIGN_T__ 8
 // MIPS32EL:#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
 // MIPS32EL:#define __CHAR16_TYPE__ unsigned short
 // MIPS32EL:#define __CHAR32_TYPE__ unsigned int
@@ -1161,6 +1262,7 @@
 // MIPS32EL:#define __LDBL_MIN_10_EXP__ (-307)
 // MIPS32EL:#define __LDBL_MIN_EXP__ (-1021)
 // MIPS32EL:#define __LDBL_MIN__ 2.2250738585072014e-308L
+// MIPS32EL:#define __LITTLE_ENDIAN__ 1
 // MIPS32EL:#define __LONG_LONG_MAX__ 9223372036854775807LL
 // MIPS32EL:#define __LONG_MAX__ 2147483647L
 // MIPS32EL-NOT:#define __LP64__
@@ -1219,7 +1321,7 @@
 // MIPS64BE:#define _MIPS_SZINT 32
 // MIPS64BE:#define _MIPS_SZLONG 64
 // MIPS64BE:#define _MIPS_SZPTR 64
-// MIPS64BE:#define __ALIGNOF_MAX_ALIGN_T__ 16
+// MIPS64BE:#define __BIG_ENDIAN__ 1
 // MIPS64BE:#define __BYTE_ORDER__ __ORDER_BIG_ENDIAN__
 // MIPS64BE:#define __CHAR16_TYPE__ unsigned short
 // MIPS64BE:#define __CHAR32_TYPE__ unsigned int
@@ -1338,7 +1440,6 @@
 // MIPS64EL:#define _MIPS_SZINT 32
 // MIPS64EL:#define _MIPS_SZLONG 64
 // MIPS64EL:#define _MIPS_SZPTR 64
-// MIPS64EL:#define __ALIGNOF_MAX_ALIGN_T__ 16
 // MIPS64EL:#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
 // MIPS64EL:#define __CHAR16_TYPE__ unsigned short
 // MIPS64EL:#define __CHAR32_TYPE__ unsigned int
@@ -1397,6 +1498,7 @@
 // MIPS64EL:#define __LDBL_MIN_10_EXP__ (-4931)
 // MIPS64EL:#define __LDBL_MIN_EXP__ (-16381)
 // MIPS64EL:#define __LDBL_MIN__ 3.36210314311209350626267781732175260e-4932L
+// MIPS64EL:#define __LITTLE_ENDIAN__ 1
 // MIPS64EL:#define __LONG_LONG_MAX__ 9223372036854775807LL
 // MIPS64EL:#define __LONG_MAX__ 9223372036854775807L
 // MIPS64EL:#define __LP64__ 1
@@ -1592,7 +1694,6 @@
 //
 // MSP430:#define MSP430 1
 // MSP430-NOT:#define _LP64
-// MSP430:#define __ALIGNOF_MAX_ALIGN_T__ 2
 // MSP430:#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
 // MSP430:#define __CHAR16_TYPE__ unsigned short
 // MSP430:#define __CHAR32_TYPE__ unsigned int
@@ -1649,6 +1750,7 @@
 // MSP430:#define __LDBL_MIN_10_EXP__ (-307)
 // MSP430:#define __LDBL_MIN_EXP__ (-1021)
 // MSP430:#define __LDBL_MIN__ 2.2250738585072014e-308L
+// MSP430:#define __LITTLE_ENDIAN__ 1
 // MSP430:#define __LONG_LONG_MAX__ 9223372036854775807LL
 // MSP430:#define __LONG_MAX__ 2147483647L
 // MSP430-NOT:#define __LP64__
@@ -1686,7 +1788,6 @@
 // RUN: %clang_cc1 -E -dM -ffreestanding -triple=nvptx-none-none < /dev/null | FileCheck -check-prefix NVPTX32 %s
 //
 // NVPTX32-NOT:#define _LP64
-// NVPTX32:#define __ALIGNOF_MAX_ALIGN_T__ 8
 // NVPTX32:#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
 // NVPTX32:#define __CHAR16_TYPE__ unsigned short
 // NVPTX32:#define __CHAR32_TYPE__ unsigned int
@@ -1746,6 +1847,7 @@
 // NVPTX32:#define __LDBL_MIN_10_EXP__ (-307)
 // NVPTX32:#define __LDBL_MIN_EXP__ (-1021)
 // NVPTX32:#define __LDBL_MIN__ 2.2250738585072014e-308L
+// NVPTX32:#define __LITTLE_ENDIAN__ 1
 // NVPTX32:#define __LONG_LONG_MAX__ 9223372036854775807LL
 // NVPTX32:#define __LONG_MAX__ 9223372036854775807L
 // NVPTX32-NOT:#define __LP64__
@@ -1784,7 +1886,6 @@
 // RUN: %clang_cc1 -E -dM -ffreestanding -triple=nvptx64-none-none < /dev/null | FileCheck -check-prefix NVPTX64 %s
 //
 // NVPTX64:#define _LP64 1
-// NVPTX64:#define __ALIGNOF_MAX_ALIGN_T__ 8
 // NVPTX64:#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
 // NVPTX64:#define __CHAR16_TYPE__ unsigned short
 // NVPTX64:#define __CHAR32_TYPE__ unsigned int
@@ -1844,6 +1945,7 @@
 // NVPTX64:#define __LDBL_MIN_10_EXP__ (-307)
 // NVPTX64:#define __LDBL_MIN_EXP__ (-1021)
 // NVPTX64:#define __LDBL_MIN__ 2.2250738585072014e-308L
+// NVPTX64:#define __LITTLE_ENDIAN__ 1
 // NVPTX64:#define __LONG_LONG_MAX__ 9223372036854775807LL
 // NVPTX64:#define __LONG_MAX__ 9223372036854775807L
 // NVPTX64:#define __LP64__ 1
@@ -1887,7 +1989,6 @@
 // PPC603E:#define _ARCH_PPCGR 1
 // PPC603E:#define _BIG_ENDIAN 1
 // PPC603E-NOT:#define _LP64
-// PPC603E:#define __ALIGNOF_MAX_ALIGN_T__ 8
 // PPC603E:#define __BIG_ENDIAN__ 1
 // PPC603E:#define __BYTE_ORDER__ __ORDER_BIG_ENDIAN__
 // PPC603E:#define __CHAR16_TYPE__ unsigned short
@@ -1997,7 +2098,6 @@
 // PPC64:#define _ARCH_PWR7 1
 // PPC64:#define _BIG_ENDIAN 1
 // PPC64:#define _LP64 1
-// PPC64:#define __ALIGNOF_MAX_ALIGN_T__ 8
 // PPC64:#define __BIG_ENDIAN__ 1
 // PPC64:#define __BYTE_ORDER__ __ORDER_BIG_ENDIAN__
 // PPC64:#define __CHAR16_TYPE__ unsigned short
@@ -2111,7 +2211,6 @@
 // PPC64LE:#define _ARCH_PWR7 1
 // PPC64LE:#define _LITTLE_ENDIAN 1
 // PPC64LE:#define _LP64 1
-// PPC64LE:#define __ALIGNOF_MAX_ALIGN_T__ 8
 // PPC64LE:#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
 // PPC64LE:#define __CHAR16_TYPE__ unsigned short
 // PPC64LE:#define __CHAR32_TYPE__ unsigned int
@@ -2377,7 +2476,6 @@
 // PPC64-LINUX:#define _ARCH_PPC64 1
 // PPC64-LINUX:#define _BIG_ENDIAN 1
 // PPC64-LINUX:#define _LP64 1
-// PPC64-LINUX:#define __ALIGNOF_MAX_ALIGN_T__ 8
 // PPC64-LINUX:#define __BIG_ENDIAN__ 1
 // PPC64-LINUX:#define __BYTE_ORDER__ __ORDER_BIG_ENDIAN__
 // PPC64-LINUX:#define __CHAR16_TYPE__ unsigned short
@@ -2485,7 +2583,6 @@
 // PPC:#define _ARCH_PPC 1
 // PPC:#define _BIG_ENDIAN 1
 // PPC-NOT:#define _LP64
-// PPC:#define __ALIGNOF_MAX_ALIGN_T__ 8
 // PPC:#define __BIG_ENDIAN__ 1
 // PPC:#define __BYTE_ORDER__ __ORDER_BIG_ENDIAN__
 // PPC:#define __CHAR16_TYPE__ unsigned short
@@ -2588,7 +2685,6 @@
 // PPC-LINUX:#define _ARCH_PPC 1
 // PPC-LINUX:#define _BIG_ENDIAN 1
 // PPC-LINUX-NOT:#define _LP64
-// PPC-LINUX:#define __ALIGNOF_MAX_ALIGN_T__ 8
 // PPC-LINUX:#define __BIG_ENDIAN__ 1
 // PPC-LINUX:#define __BYTE_ORDER__ __ORDER_BIG_ENDIAN__
 // PPC-LINUX:#define __CHAR16_TYPE__ unsigned short
@@ -2692,7 +2788,6 @@
 //
 // PPC-DARWIN:#define _ARCH_PPC 1
 // PPC-DARWIN:#define _BIG_ENDIAN 1
-// PPC-DARWIN:#define __ALIGNOF_MAX_ALIGN_T__ 16
 // PPC-DARWIN:#define __BIG_ENDIAN__ 1
 // PPC-DARWIN:#define __BYTE_ORDER__ __ORDER_BIG_ENDIAN__
 // PPC-DARWIN:#define __CHAR16_TYPE__ unsigned short
@@ -2891,7 +2986,7 @@
 // RUN: %clang_cc1 -E -dM -ffreestanding -triple=sparc-none-none < /dev/null | FileCheck -check-prefix SPARC %s
 //
 // SPARC-NOT:#define _LP64
-// SPARC:#define __ALIGNOF_MAX_ALIGN_T__ 8
+// SPARC:#define __BIG_ENDIAN__ 1
 // SPARC:#define __BYTE_ORDER__ __ORDER_BIG_ENDIAN__
 // SPARC:#define __CHAR16_TYPE__ unsigned short
 // SPARC:#define __CHAR32_TYPE__ unsigned int
@@ -2990,7 +3085,7 @@
 // RUN: %clang_cc1 -E -dM -ffreestanding -triple=tce-none-none < /dev/null | FileCheck -check-prefix TCE %s
 //
 // TCE-NOT:#define _LP64
-// TCE:#define __ALIGNOF_MAX_ALIGN_T__ 4
+// TCE:#define __BIG_ENDIAN__ 1
 // TCE:#define __BYTE_ORDER__ __ORDER_BIG_ENDIAN__
 // TCE:#define __CHAR16_TYPE__ unsigned short
 // TCE:#define __CHAR32_TYPE__ unsigned int
@@ -3086,7 +3181,6 @@
 // RUN: %clang_cc1 -E -dM -ffreestanding -triple=x86_64-none-none < /dev/null | FileCheck -check-prefix X86_64 %s
 //
 // X86_64:#define _LP64 1
-// X86_64:#define __ALIGNOF_MAX_ALIGN_T__ 16
 // X86_64:#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
 // X86_64:#define __CHAR16_TYPE__ unsigned short
 // X86_64:#define __CHAR32_TYPE__ unsigned int
@@ -3191,7 +3285,6 @@
 // RUN: %clang_cc1 -E -dM -ffreestanding -triple=x86_64-pc-linux-gnu < /dev/null | FileCheck -check-prefix X86_64-LINUX %s
 //
 // X86_64-LINUX:#define _LP64 1
-// X86_64-LINUX:#define __ALIGNOF_MAX_ALIGN_T__ 16
 // X86_64-LINUX:#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
 // X86_64-LINUX:#define __CHAR16_TYPE__ unsigned short
 // X86_64-LINUX:#define __CHAR32_TYPE__ unsigned int
@@ -3302,7 +3395,6 @@
 // RUN: %clang_cc1 -E -dM -ffreestanding -triple=x86_64-netbsd < /dev/null | FileCheck -check-prefix X86_64-NETBSD %s
 //
 // X86_64-NETBSD:#define _LP64 1
-// X86_64-NETBSD:#define __ALIGNOF_MAX_ALIGN_T__ 16
 // X86_64-NETBSD:#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
 // X86_64-NETBSD:#define __CHAR16_TYPE__ unsigned short
 // X86_64-NETBSD:#define __CHAR32_TYPE__ unsigned int
@@ -3441,4 +3533,6 @@
 // PPC64-FREEBSD-NOT: #define __LONG_DOUBLE_128__ 1
 //
 // RUN: %clang_cc1 -E -dM -ffreestanding -triple=xcore-none-none < /dev/null | FileCheck -check-prefix XCORE %s
+// XCORE:#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
+// XCORE:#define __LITTLE_ENDIAN__ 1
 // XCORE:#define __XS1B__ 1

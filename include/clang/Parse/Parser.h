@@ -21,11 +21,11 @@
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Sema/DeclSpec.h"
 #include "clang/Sema/Sema.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/SaveAndRestore.h"
+#include <memory>
 #include <stack>
 
 namespace clang {
@@ -139,23 +139,23 @@ class Parser : public CodeCompletionHandler {
   llvm::SmallDenseMap<const IdentifierInfo *, tok::TokenKind>
   ContextualKeywords;
 
-  OwningPtr<PragmaHandler> AlignHandler;
-  OwningPtr<PragmaHandler> GCCVisibilityHandler;
-  OwningPtr<PragmaHandler> OptionsHandler;
-  OwningPtr<PragmaHandler> PackHandler;
-  OwningPtr<PragmaHandler> MSStructHandler;
-  OwningPtr<PragmaHandler> UnusedHandler;
-  OwningPtr<PragmaHandler> WeakHandler;
-  OwningPtr<PragmaHandler> RedefineExtnameHandler;
-  OwningPtr<PragmaHandler> FPContractHandler;
-  OwningPtr<PragmaHandler> OpenCLExtensionHandler;
-  OwningPtr<PragmaHandler> OpenMPHandler;
-  OwningPtr<PragmaHandler> MSCommentHandler;
-  OwningPtr<PragmaHandler> MSDetectMismatchHandler;
-  OwningPtr<PragmaHandler> MSPointersToMembers;
-  OwningPtr<PragmaHandler> MSVtorDisp;
+  std::unique_ptr<PragmaHandler> AlignHandler;
+  std::unique_ptr<PragmaHandler> GCCVisibilityHandler;
+  std::unique_ptr<PragmaHandler> OptionsHandler;
+  std::unique_ptr<PragmaHandler> PackHandler;
+  std::unique_ptr<PragmaHandler> MSStructHandler;
+  std::unique_ptr<PragmaHandler> UnusedHandler;
+  std::unique_ptr<PragmaHandler> WeakHandler;
+  std::unique_ptr<PragmaHandler> RedefineExtnameHandler;
+  std::unique_ptr<PragmaHandler> FPContractHandler;
+  std::unique_ptr<PragmaHandler> OpenCLExtensionHandler;
+  std::unique_ptr<PragmaHandler> OpenMPHandler;
+  std::unique_ptr<PragmaHandler> MSCommentHandler;
+  std::unique_ptr<PragmaHandler> MSDetectMismatchHandler;
+  std::unique_ptr<PragmaHandler> MSPointersToMembers;
+  std::unique_ptr<PragmaHandler> MSVtorDisp;
 
-  OwningPtr<CommentHandler> CommentSemaHandler;
+  std::unique_ptr<CommentHandler> CommentSemaHandler;
 
   /// Whether the '>' token acts as an operator or not. This will be
   /// true except when we are parsing an expression within a C++
@@ -169,7 +169,7 @@ class Parser : public CodeCompletionHandler {
   /// ColonProtectionRAIIObject RAII object.
   bool ColonIsSacred;
 
-  /// \brief When true, we are directly inside an Objective-C messsage
+  /// \brief When true, we are directly inside an Objective-C message
   /// send expression.
   ///
   /// This is managed by the \c InMessageExpressionRAIIObject class, and
@@ -235,6 +235,9 @@ public:
 
   const Token &getCurToken() const { return Tok; }
   Scope *getCurScope() const { return Actions.getCurScope(); }
+  void incrementMSLocalManglingNumber() const {
+    return Actions.incrementMSLocalManglingNumber();
+  }
 
   Decl  *getObjCDeclContext() const { return Actions.getObjCDeclContext(); }
 
@@ -272,6 +275,10 @@ public:
   /// ParseTopLevelDecl - Parse one top-level declaration. Returns true if
   /// the EOF was encountered.
   bool ParseTopLevelDecl(DeclGroupPtrTy &Result);
+  bool ParseTopLevelDecl() {
+    DeclGroupPtrTy Result;
+    return ParseTopLevelDecl(Result);
+  }
 
   /// ConsumeToken - Consume the current 'peek token' and lex the next one.
   /// This does not work with special tokens: string literals, code completion
@@ -733,14 +740,18 @@ public:
   public:
     // ParseScope - Construct a new object to manage a scope in the
     // parser Self where the new Scope is created with the flags
-    // ScopeFlags, but only when ManageScope is true (the default). If
-    // ManageScope is false, this object does nothing.
-    ParseScope(Parser *Self, unsigned ScopeFlags, bool ManageScope = true)
+    // ScopeFlags, but only when we aren't about to enter a compound statement.
+    ParseScope(Parser *Self, unsigned ScopeFlags, bool EnteredScope = true,
+               bool BeforeCompoundStmt = false)
       : Self(Self) {
-      if (ManageScope)
+      if (EnteredScope && !BeforeCompoundStmt)
         Self->EnterScope(ScopeFlags);
-      else
+      else {
+        if (BeforeCompoundStmt)
+          Self->incrementMSLocalManglingNumber();
+
         this->Self = 0;
+      }
     }
 
     // Exit - Exit the scope associated with this object now, rather
@@ -1793,7 +1804,7 @@ private:
   /// \brief Starting with a scope specifier, identifier, or
   /// template-id that refers to the current class, determine whether
   /// this is a constructor declarator.
-  bool isConstructorDeclarator();
+  bool isConstructorDeclarator(bool Unqualified);
 
   /// \brief Specifies the context in which type-id/expression
   /// disambiguation will occur.

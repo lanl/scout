@@ -19,8 +19,8 @@
 #include "clang/Analysis/CFG.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/FoldingSet.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/Support/Allocator.h"
+#include <memory>
 
 namespace clang {
 
@@ -69,16 +69,16 @@ class AnalysisDeclContext {
 
   const Decl * const D;
 
-  OwningPtr<CFG> cfg, completeCFG;
-  OwningPtr<CFGStmtMap> cfgStmtMap;
+  std::unique_ptr<CFG> cfg, completeCFG;
+  std::unique_ptr<CFGStmtMap> cfgStmtMap;
 
   CFG::BuildOptions cfgBuildOptions;
   CFG::BuildOptions::ForcedBlkExprs *forcedBlkExprs;
 
   bool builtCFG, builtCompleteCFG;
-  OwningPtr<ParentMap> PM;
-  OwningPtr<PseudoConstantAnalysis> PCA;
-  OwningPtr<CFGReverseBlockReachabilityAnalysis> CFA;
+  std::unique_ptr<ParentMap> PM;
+  std::unique_ptr<PseudoConstantAnalysis> PCA;
+  std::unique_ptr<CFGReverseBlockReachabilityAnalysis> CFA;
 
   llvm::BumpPtrAllocator A;
 

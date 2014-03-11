@@ -89,6 +89,9 @@ public:
   /// \brief The directory used for the module cache.
   std::string ModuleCachePath;
 
+  /// \brief The directory used for a user build.
+  std::string ModuleUserBuildPath;
+
   /// \brief Whether we should disable the use of the hash string within the
   /// module cache.
   ///
@@ -128,6 +131,9 @@ public:
 
   /// \brief The set of user-provided module-map-files.
   llvm::SetVector<std::string> ModuleMapFiles;
+
+  /// \brief The set of user-provided virtual filesystem overlay files.
+  std::vector<std::string> VFSOverlayFiles;
 
   /// Include the compiler builtin includes.
   unsigned UseBuiltinIncludes : 1;
@@ -171,6 +177,10 @@ public:
   /// header.
   void AddSystemHeaderPrefix(StringRef Prefix, bool IsSystemHeader) {
     SystemHeaderPrefixes.push_back(SystemHeaderPrefix(Prefix, IsSystemHeader));
+  }
+
+  void AddVFSOverlayFile(StringRef Name) {
+    VFSOverlayFiles.push_back(Name);
   }
 };
 

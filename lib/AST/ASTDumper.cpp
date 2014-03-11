@@ -32,11 +32,22 @@ using namespace clang::comments;
 
 namespace  {
   // Colors used for various parts of the AST dump
+  // Do not use bold yellow for any text.  It is hard to read on white screens.
 
   struct TerminalColor {
     raw_ostream::Colors Color;
     bool Bold;
   };
+
+  // Red           - CastColor
+  // Green         - TypeColor
+  // Bold Green    - DeclKindNameColor, UndeserializedColor
+  // Yellow        - AddressColor, LocationColor
+  // Blue          - CommentColor, NullColor, IndentColor
+  // Bold Blue     - AttrColor
+  // Bold Magenta  - StmtColor
+  // Cyan          - ValueKindColor, ObjectKindColor
+  // Bold Cyan     - ValueColor, DeclNameColor
 
   // Decl kind names (VarDecl, FunctionDecl, etc)
   static const TerminalColor DeclKindNameColor = { raw_ostream::GREEN, true };
@@ -45,7 +56,7 @@ namespace  {
   // Statement names (DeclStmt, ImplicitCastExpr, etc)
   static const TerminalColor StmtColor = { raw_ostream::MAGENTA, true };
   // Comment names (FullComment, ParagraphComment, TextComment, etc)
-  static const TerminalColor CommentColor = { raw_ostream::YELLOW, true };
+  static const TerminalColor CommentColor = { raw_ostream::BLUE, false };
 
   // Type names (int, float, etc, plus user defined types)
   static const TerminalColor TypeColor = { raw_ostream::GREEN, false };
@@ -751,7 +762,7 @@ void ASTDumper::dumpDecl(const Decl *D) {
     if (ND->isHidden())
       OS << " hidden";
 
-  bool HasAttrs = D->attr_begin() != D->attr_end();
+  bool HasAttrs = D->hasAttrs();
   const FullComment *Comment =
       D->getASTContext().getLocalCommentForDeclUncached(D);
   // Decls within functions are visited by the body
@@ -1428,9 +1439,8 @@ void ASTDumper::VisitObjCPropertyImplDecl(const ObjCPropertyImplDecl *D) {
 }
 
 void ASTDumper::VisitBlockDecl(const BlockDecl *D) {
-  for (BlockDecl::param_const_iterator I = D->param_begin(), E = D->param_end();
-       I != E; ++I)
-    dumpDecl(*I);
+  for (auto I : D->params())
+    dumpDecl(I);
 
   if (D->isVariadic()) {
     IndentScope Indent(*this);

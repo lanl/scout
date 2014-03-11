@@ -1715,9 +1715,7 @@ IsTransparentUnionStandardConversion(Sema &S, Expr* From,
   // The field to initialize within the transparent union.
   RecordDecl *UD = UT->getDecl();
   // It's compatible if the expression matches any of the fields.
-  for (RecordDecl::field_iterator it = UD->field_begin(),
-       itend = UD->field_end();
-       it != itend; ++it) {
+  for (const auto *it : UD->fields()) {
     if (IsStandardConversion(S, From, it->getType(), InOverloadResolution, SCS,
                              CStyle, /*ObjCWritebackConversion=*/false)) {
       ToType = it->getType();
@@ -5646,7 +5644,8 @@ EnableIfAttr *Sema::CheckEnableIf(FunctionDecl *Function, ArrayRef<Expr *> Args,
   bool InitializationFailed = false;
   for (unsigned i = 0, e = Args.size(); i != e; ++i) {
     if (i == 0 && !MissingImplicitThis && isa<CXXMethodDecl>(Function) &&
-        !cast<CXXMethodDecl>(Function)->isStatic()) {
+        !cast<CXXMethodDecl>(Function)->isStatic() &&
+        !isa<CXXConstructorDecl>(Function)) {
       CXXMethodDecl *Method = cast<CXXMethodDecl>(Function);
       ExprResult R =
         PerformObjectArgumentInitialization(Args[0], /*Qualifier=*/0,
@@ -10384,7 +10383,7 @@ BuildRecoveryCallExpr(Sema &SemaRef, Scope *S, Expr *Fn,
   LookupResult R(SemaRef, ULE->getName(), ULE->getNameLoc(),
                  Sema::LookupOrdinaryName);
   FunctionCallFilterCCC Validator(SemaRef, Args.size(),
-                                  ExplicitTemplateArgs != 0);
+                                  ExplicitTemplateArgs != 0, false);
   NoTypoCorrectionCCC RejectAll;
   CorrectionCandidateCallback *CCC = AllowTypoCorrection ?
       (CorrectionCandidateCallback*)&Validator :
@@ -11686,7 +11685,7 @@ Sema::BuildCallToObjectOfClassType(Scope *S, Expr *Obj,
 
   // Build the full argument list for the method call (the implicit object
   // parameter is placed at the beginning of the list).
-  llvm::OwningArrayPtr<Expr *> MethodArgs(new Expr*[Args.size() + 1]);
+  std::unique_ptr<Expr * []> MethodArgs(new Expr *[Args.size() + 1]);
   MethodArgs[0] = Object.get();
   std::copy(Args.begin(), Args.end(), &MethodArgs[1]);
 

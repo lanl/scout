@@ -60,6 +60,7 @@ Parser::DeclGroupPtrTy Parser::ParseOpenMPDeclarativeDirective() {
     Diag(Tok, diag::err_omp_unknown_directive);
     break;
   case OMPD_parallel:
+  case OMPD_simd:
   case OMPD_task:
   case NUM_OPENMP_DIRECTIVES:
     Diag(Tok, diag::err_omp_unexpected_directive)
@@ -114,7 +115,8 @@ StmtResult Parser::ParseOpenMPDeclarativeOrExecutableDirective() {
     }
     SkipUntil(tok::annot_pragma_openmp_end);
     break;
-  case OMPD_parallel: {
+  case OMPD_parallel:
+  case OMPD_simd: {
     ConsumeToken();
 
     Actions.StartOpenMPDSABlock(DKind, DirName, Actions.getCurScope());
@@ -270,8 +272,10 @@ OMPClause *Parser::ParseOpenMPClause(OpenMPDirectiveKind DKind,
 
   switch (CKind) {
   case OMPC_if:
+  case OMPC_num_threads:
     // OpenMP [2.5, Restrictions]
     //  At most one if clause can appear on the directive.
+    //  At most one num_threads clause can appear on the directive.
     if (!FirstClause) {
       Diag(Tok, diag::err_omp_more_one_clause)
            << getOpenMPDirectiveName(DKind) << getOpenMPClauseName(CKind);
@@ -327,10 +331,6 @@ OMPClause *Parser::ParseOpenMPSingleExprClause(OpenMPClauseKind Kind) {
 
   ExprResult LHS(ParseCastExpression(false, false, NotTypeCast));
   ExprResult Val(ParseRHSOfBinaryExpression(LHS, prec::Conditional));
-
-  if (Tok.isNot(tok::r_paren) && Tok.isNot(tok::comma) &&
-      Tok.isNot(tok::annot_pragma_openmp_end))
-    ConsumeAnyToken();
 
   // Parse ')'.
   T.consumeClose();

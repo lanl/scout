@@ -861,7 +861,7 @@ static CharSourceRange makeRangeFromFileLocs(CharSourceRange Range,
   // Break down the source locations.
   FileID FID;
   unsigned BeginOffs;
-  llvm::tie(FID, BeginOffs) = SM.getDecomposedLoc(Begin);
+  std::tie(FID, BeginOffs) = SM.getDecomposedLoc(Begin);
   if (FID.isInvalid())
     return CharSourceRange();
 
@@ -1620,6 +1620,7 @@ bool Lexer::LexNumericConstant(Token &Result, const char *CurPtr) {
       if (!isLexingRawMode())
         Diag(CurPtr, diag::warn_cxx11_compat_digit_separator);
       CurPtr = ConsumeChar(CurPtr, Size, Result);
+      CurPtr = ConsumeChar(CurPtr, NextSize, Result);
       return LexNumericConstant(Result, CurPtr);
     }
   }

@@ -20,10 +20,10 @@
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Frontend/CodeGenOptions.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/DIBuilder.h"
-#include "llvm/DebugInfo.h"
+#include "llvm/IR/DIBuilder.h"
+#include "llvm/IR/DebugInfo.h"
+#include "llvm/IR/ValueHandle.h"
 #include "llvm/Support/Allocator.h"
-#include "llvm/Support/ValueHandle.h"
 
 namespace llvm {
   class MDNode;
@@ -287,6 +287,8 @@ public:
   void completeType(const RecordDecl *RD);
   void completeRequiredType(const RecordDecl *RD);
   void completeClassData(const RecordDecl *RD);
+
+  void completeTemplateDefinition(const ClassTemplateSpecializationDecl &SD);
 
 private:
   /// EmitDeclare - Emit call to llvm.dbg.declare for a variable declaration.

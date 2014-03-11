@@ -153,9 +153,7 @@ namespace {
     void addUsingDirectives(DeclContext *DC, DeclContext *EffectiveDC) {
       SmallVector<DeclContext*,4> queue;
       while (true) {
-        DeclContext::udir_iterator I, End;
-        for (llvm::tie(I, End) = DC->getUsingDirectives(); I != End; ++I) {
-          UsingDirectiveDecl *UD = *I;
+        for (auto UD : DC->getUsingDirectives()) {
           DeclContext *NS = UD->getNominatedNamespace();
           if (visited.insert(NS)) {
             addUsingDirective(UD, EffectiveDC);
@@ -768,7 +766,7 @@ CppNamespaceLookup(Sema &S, LookupResult &R, ASTContext &Context,
   // Perform direct name lookup into the namespaces nominated by the
   // using directives whose common ancestor is this namespace.
   UnqualUsingDirectiveSet::const_iterator UI, UEnd;
-  llvm::tie(UI, UEnd) = UDirs.getNamespacesFor(NS);
+  std::tie(UI, UEnd) = UDirs.getNamespacesFor(NS);
 
   for (; UI != UEnd; ++UI)
     if (LookupDirect(S, R, UI->getNominatedNamespace()))
@@ -980,7 +978,7 @@ bool Sema::CppLookupName(LookupResult &R, Scope *S) {
     if (Ctx) {
       DeclContext *OuterCtx;
       bool SearchAfterTemplateScope;
-      llvm::tie(OuterCtx, SearchAfterTemplateScope) = findOuterContext(S);
+      std::tie(OuterCtx, SearchAfterTemplateScope) = findOuterContext(S);
       if (SearchAfterTemplateScope)
         OutsideOfTemplateParamDC = OuterCtx;
 
@@ -1123,7 +1121,7 @@ bool Sema::CppLookupName(LookupResult &R, Scope *S) {
     if (Ctx) {
       DeclContext *OuterCtx;
       bool SearchAfterTemplateScope;
-      llvm::tie(OuterCtx, SearchAfterTemplateScope) = findOuterContext(S);
+      std::tie(OuterCtx, SearchAfterTemplateScope) = findOuterContext(S);
       if (SearchAfterTemplateScope)
         OutsideOfTemplateParamDC = OuterCtx;
 
@@ -1269,9 +1267,8 @@ bool LookupResult::isVisibleSlow(Sema &SemaRef, NamedDecl *D) {
 static NamedDecl *findAcceptableDecl(Sema &SemaRef, NamedDecl *D) {
   assert(!LookupResult::isVisible(SemaRef, D) && "not in slow case");
 
-  for (Decl::redecl_iterator RD = D->redecls_begin(), RDEnd = D->redecls_end();
-       RD != RDEnd; ++RD) {
-    if (NamedDecl *ND = dyn_cast<NamedDecl>(*RD)) {
+  for (auto RD : D->redecls()) {
+    if (auto ND = dyn_cast<NamedDecl>(RD)) {
       if (LookupResult::isVisible(SemaRef, ND))
         return ND;
     }
@@ -1516,8 +1513,8 @@ static bool LookupQualifiedNameInUsingDirectives(Sema &S, LookupResult &R,
       continue;
     }
 
-    for (llvm::tie(I,E) = ND->getUsingDirectives(); I != E; ++I) {
-      NamespaceDecl *Nom = (*I)->getNominatedNamespace();
+    for (auto I : ND->getUsingDirectives()) {
+      NamespaceDecl *Nom = I->getNominatedNamespace();
       if (Visited.insert(Nom))
         Queue.push_back(Nom);
     }
@@ -3086,9 +3083,8 @@ static void LookupVisibleDecls(DeclContext *Ctx, LookupResult &Result,
   // Traverse using directives for qualified name lookup.
   if (QualifiedNameLookup) {
     ShadowContextRAII Shadow(Visited);
-    DeclContext::udir_iterator I, E;
-    for (llvm::tie(I, E) = Ctx->getUsingDirectives(); I != E; ++I) {
-      LookupVisibleDecls((*I)->getNominatedNamespace(), Result,
+    for (auto I : Ctx->getUsingDirectives()) {
+      LookupVisibleDecls(I->getNominatedNamespace(), Result,
                          QualifiedNameLookup, InBaseClass, Consumer, Visited);
     }
   }
@@ -3273,7 +3269,7 @@ static void LookupVisibleDecls(Scope *S, LookupResult &Result,
     // Lookup visible declarations in any namespaces found by using
     // directives.
     UnqualUsingDirectiveSet::const_iterator UI, UEnd;
-    llvm::tie(UI, UEnd) = UDirs.getNamespacesFor(Entity);
+    std::tie(UI, UEnd) = UDirs.getNamespacesFor(Entity);
     for (; UI != UEnd; ++UI)
       LookupVisibleDecls(const_cast<DeclContext *>(UI->getNominatedNamespace()),
                          Result, /*QualifiedNameLookup=*/false,
@@ -3504,7 +3500,7 @@ void TypoCorrectionConsumer::addCorrection(TypoCorrection Correction) {
     CList.push_back(Correction);
 
   while (CorrectionResults.size() > MaxTypoDistanceResultSets)
-    erase(llvm::prior(CorrectionResults.end()));
+    erase(std::prev(CorrectionResults.end()));
 }
 
 // Fill the supplied vector with the IdentifierInfo pointers for each piece of
@@ -4167,7 +4163,7 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
     // FIXME: Re-add the ability to skip very unlikely potential corrections.
     if (IdentifierInfoLookup *External
                             = Context.Idents.getExternalIdentifierLookup()) {
-      OwningPtr<IdentifierIterator> Iter(External->getIdentifiers());
+      std::unique_ptr<IdentifierIterator> Iter(External->getIdentifiers());
       do {
         StringRef Name = Iter->Next();
         if (Name.empty())
@@ -4546,8 +4542,11 @@ bool CorrectionCandidateCallback::ValidateCandidate(const TypoCorrection &candid
 }
 
 FunctionCallFilterCCC::FunctionCallFilterCCC(Sema &SemaRef, unsigned NumArgs,
-                                             bool HasExplicitTemplateArgs)
-    : NumArgs(NumArgs), HasExplicitTemplateArgs(HasExplicitTemplateArgs) {
+                                             bool HasExplicitTemplateArgs,
+                                             bool AllowNonStaticMethods)
+    : NumArgs(NumArgs), HasExplicitTemplateArgs(HasExplicitTemplateArgs),
+      AllowNonStaticMethods(AllowNonStaticMethods),
+      CurContext(SemaRef.CurContext) {
   WantTypeSpecifiers = SemaRef.getLangOpts().CPlusPlus;
   WantRemainingKeywords = false;
 }
@@ -4576,9 +4575,28 @@ bool FunctionCallFilterCCC::ValidateCandidate(const TypoCorrection &candidate) {
             return true;
       }
     }
-    if (FD && FD->getNumParams() >= NumArgs &&
-        FD->getMinRequiredArguments() <= NumArgs)
-      return true;
+
+    // Skip the current candidate if it is not a FunctionDecl or does not accept
+    // the current number of arguments.
+    if (!FD || !(FD->getNumParams() >= NumArgs &&
+                 FD->getMinRequiredArguments() <= NumArgs))
+      continue;
+
+    // If the current candidate is a non-static C++ method and non-static
+    // methods are being excluded, then skip the candidate unless the current
+    // DeclContext is a method in the same class or a descendent class of the
+    // candidate's parent class.
+    if (CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(FD)) {
+      if (!AllowNonStaticMethods && !MD->isStatic()) {
+        CXXMethodDecl *CurMD = dyn_cast_or_null<CXXMethodDecl>(CurContext);
+        CXXRecordDecl *CurRD =
+            CurMD ? CurMD->getParent()->getCanonicalDecl() : 0;
+        CXXRecordDecl *RD = MD->getParent()->getCanonicalDecl();
+        if (!CurRD || (CurRD != RD && !CurRD->isDerivedFrom(RD)))
+          continue;
+      }
+    }
+    return true;
   }
   return false;
 }

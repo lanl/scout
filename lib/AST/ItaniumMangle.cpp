@@ -101,11 +101,18 @@ static const NamedDecl *getStructor(const NamedDecl *decl) {
   const FunctionDecl *fn = dyn_cast_or_null<FunctionDecl>(decl);
   return (fn ? getStructor(fn) : decl);
 }
-                                                    
+
+static bool isLambda(const NamedDecl *ND) {
+  const CXXRecordDecl *Record = dyn_cast<CXXRecordDecl>(ND);
+  if (!Record)
+    return false;
+
+  return Record->isLambda();
+}
+
 static const unsigned UnknownArity = ~0U;
 
 class ItaniumMangleContextImpl : public ItaniumMangleContext {
-  llvm::DenseMap<const TagDecl *, uint64_t> AnonStructIds;
   typedef std::pair<const DeclContext*, IdentifierInfo*> DiscriminatorKeyTy;
   llvm::DenseMap<DiscriminatorKeyTy, unsigned> Discriminator;
   llvm::DenseMap<const NamedDecl*, unsigned> Uniquifier;
@@ -115,52 +122,41 @@ public:
                                     DiagnosticsEngine &Diags)
       : ItaniumMangleContext(Context, Diags) {}
 
-  uint64_t getAnonymousStructId(const TagDecl *TD) {
-    std::pair<llvm::DenseMap<const TagDecl *,
-      uint64_t>::iterator, bool> Result =
-      AnonStructIds.insert(std::make_pair(TD, AnonStructIds.size()));
-    return Result.first->second;
-  }
-
   /// @name Mangler Entry Points
   /// @{
 
-  bool shouldMangleCXXName(const NamedDecl *D);
-  void mangleCXXName(const NamedDecl *D, raw_ostream &);
-  void mangleThunk(const CXXMethodDecl *MD,
-                   const ThunkInfo &Thunk,
-                   raw_ostream &);
+  bool shouldMangleCXXName(const NamedDecl *D) override;
+  void mangleCXXName(const NamedDecl *D, raw_ostream &) override;
+  void mangleThunk(const CXXMethodDecl *MD, const ThunkInfo &Thunk,
+                   raw_ostream &) override;
   void mangleCXXDtorThunk(const CXXDestructorDecl *DD, CXXDtorType Type,
                           const ThisAdjustment &ThisAdjustment,
-                          raw_ostream &);
-  void mangleReferenceTemporary(const VarDecl *D,
-                                raw_ostream &);
-  void mangleCXXVTable(const CXXRecordDecl *RD,
-                       raw_ostream &);
-  void mangleCXXVTT(const CXXRecordDecl *RD,
-                    raw_ostream &);
+                          raw_ostream &) override;
+  void mangleReferenceTemporary(const VarDecl *D, raw_ostream &) override;
+  void mangleCXXVTable(const CXXRecordDecl *RD, raw_ostream &) override;
+  void mangleCXXVTT(const CXXRecordDecl *RD, raw_ostream &) override;
   void mangleCXXCtorVTable(const CXXRecordDecl *RD, int64_t Offset,
-                           const CXXRecordDecl *Type,
-                           raw_ostream &);
-  void mangleCXXRTTI(QualType T, raw_ostream &);
-  void mangleCXXRTTIName(QualType T, raw_ostream &);
-  void mangleTypeName(QualType T, raw_ostream &);
+                           const CXXRecordDecl *Type, raw_ostream &) override;
+  void mangleCXXRTTI(QualType T, raw_ostream &) override;
+  void mangleCXXRTTIName(QualType T, raw_ostream &) override;
+  void mangleTypeName(QualType T, raw_ostream &) override;
   void mangleCXXCtor(const CXXConstructorDecl *D, CXXCtorType Type,
-                     raw_ostream &);
+                     raw_ostream &) override;
   void mangleCXXDtor(const CXXDestructorDecl *D, CXXDtorType Type,
-                     raw_ostream &);
+                     raw_ostream &) override;
 
-  void mangleStaticGuardVariable(const VarDecl *D, raw_ostream &);
-  void mangleDynamicInitializer(const VarDecl *D, raw_ostream &Out);
-  void mangleDynamicAtExitDestructor(const VarDecl *D, raw_ostream &Out);
-  void mangleItaniumThreadLocalInit(const VarDecl *D, raw_ostream &);
-  void mangleItaniumThreadLocalWrapper(const VarDecl *D, raw_ostream &);
+  void mangleStaticGuardVariable(const VarDecl *D, raw_ostream &) override;
+  void mangleDynamicInitializer(const VarDecl *D, raw_ostream &Out) override;
+  void mangleDynamicAtExitDestructor(const VarDecl *D,
+                                     raw_ostream &Out) override;
+  void mangleItaniumThreadLocalInit(const VarDecl *D, raw_ostream &) override;
+  void mangleItaniumThreadLocalWrapper(const VarDecl *D,
+                                       raw_ostream &) override;
 
   bool getNextDiscriminator(const NamedDecl *ND, unsigned &disc) {
     // Lambda closure types are already numbered.
-    if (const CXXRecordDecl *RD = dyn_cast<CXXRecordDecl>(ND))
-      if (RD->isLambda())
-        return false;
+    if (isLambda(ND))
+      return false;
 
     // Anonymous tags are already numbered.
     if (const TagDecl *Tag = dyn_cast<TagDecl>(ND)) {
@@ -536,14 +532,6 @@ isTemplate(const NamedDecl *ND, const TemplateArgumentList *&TemplateArgs) {
   }
 
   return 0;
-}
-
-static bool isLambda(const NamedDecl *ND) {
-  const CXXRecordDecl *Record = dyn_cast<CXXRecordDecl>(ND);
-  if (!Record)
-    return false;
-  
-  return Record->isLambda();
 }
 
 void CXXNameMangler::mangleName(const NamedDecl *ND) {
@@ -1033,10 +1021,9 @@ static const FieldDecl *FindFirstNamedDataMember(const RecordDecl *RD) {
   assert(RD->isAnonymousStructOrUnion() &&
          "Expected anonymous struct or union!");
   
-  for (RecordDecl::field_iterator I = RD->field_begin(), E = RD->field_end();
-       I != E; ++I) {
+  for (const auto *I : RD->fields()) {
     if (I->getIdentifier())
-      return *I;
+      return I;
     
     if (const RecordType *RT = I->getType()->getAs<RecordType>())
       if (const FieldDecl *NamedDataMember = 
@@ -1149,7 +1136,7 @@ void CXXNameMangler::mangleUnqualifiedName(const NamedDecl *ND,
     }
 
     // Get a unique id for the anonymous struct.
-    uint64_t AnonStructId = Context.getAnonymousStructId(TD);
+    unsigned AnonStructId = Context.getAnonymousStructId(TD);
 
     // Mangle it as a source name in the form
     // [n] $_<id>
@@ -2203,7 +2190,7 @@ static StringRef mangleAArch64VectorBase(const BuiltinType *EltType) {
     return "Int16";
   case BuiltinType::Int:
     return "Int32";
-  case BuiltinType::LongLong:
+  case BuiltinType::Long:
     return "Int64";
   case BuiltinType::UChar:
     return "Uint8";
@@ -2211,7 +2198,7 @@ static StringRef mangleAArch64VectorBase(const BuiltinType *EltType) {
     return "Uint16";
   case BuiltinType::UInt:
     return "Uint32";
-  case BuiltinType::ULongLong:
+  case BuiltinType::ULong:
     return "Uint64";
   case BuiltinType::Half:
     return "Float16";
@@ -2246,7 +2233,7 @@ void CXXNameMangler::mangleAArch64NeonVectorType(const VectorType *T) {
     case BuiltinType::UShort:
       EltName = "Poly16";
       break;
-    case BuiltinType::ULongLong:
+    case BuiltinType::ULong:
       EltName = "Poly64";
       break;
     default:
@@ -2271,8 +2258,10 @@ void CXXNameMangler::mangleAArch64NeonVectorType(const VectorType *T) {
 void CXXNameMangler::mangleType(const VectorType *T) {
   if ((T->getVectorKind() == VectorType::NeonVector ||
        T->getVectorKind() == VectorType::NeonPolyVector)) {
-    if (getASTContext().getTargetInfo().getTriple().getArch() ==
-        llvm::Triple::aarch64)
+    llvm::Triple::ArchType Arch =
+        getASTContext().getTargetInfo().getTriple().getArch();
+    if ((Arch == llvm::Triple::aarch64) ||
+        (Arch == llvm::Triple::aarch64_be))
       mangleAArch64NeonVectorType(T);
     else
       mangleNeonVectorType(T);
@@ -2439,7 +2428,7 @@ void CXXNameMangler::mangleType(const AutoType *T) {
 }
 
 void CXXNameMangler::mangleType(const AtomicType *T) {
-  // <type> ::= U <source-name> <type>	# vendor extended type qualifier
+  // <type> ::= U <source-name> <type>  # vendor extended type qualifier
   // (Until there's a standardized mangling...)
   Out << "U7_Atomic";
   mangleType(T->getValueType());

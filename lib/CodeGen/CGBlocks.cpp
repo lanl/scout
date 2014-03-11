@@ -18,9 +18,9 @@
 #include "CodeGenModule.h"
 #include "clang/AST/DeclObjC.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Module.h"
-#include "llvm/Support/CallSite.h"
 #include <algorithm>
 #include <cstdio>
 
@@ -300,8 +300,8 @@ static void initializeForBlockHeader(CodeGenModule &CGM, CGBlockInfo &info,
 
   // The header is basically a 'struct { void *; int; int; void *; void *; }'.
   CharUnits ptrSize, ptrAlign, intSize, intAlign;
-  llvm::tie(ptrSize, ptrAlign) = C.getTypeInfoInChars(C.VoidPtrTy);
-  llvm::tie(intSize, intAlign) = C.getTypeInfoInChars(C.IntTy);
+  std::tie(ptrSize, ptrAlign) = C.getTypeInfoInChars(C.VoidPtrTy);
+  std::tie(intSize, intAlign) = C.getTypeInfoInChars(C.IntTy);
 
   // Are there crazy embedded platforms where this isn't true?
   assert(intSize <= ptrSize && "layout assumptions horribly violated");
@@ -679,7 +679,7 @@ llvm::Value *CodeGenFunction::EmitBlockLiteral(const BlockExpr *blockExpr) {
   }
 
   // Find the block info for this block and take ownership of it.
-  OwningPtr<CGBlockInfo> blockInfo;
+  std::unique_ptr<CGBlockInfo> blockInfo;
   blockInfo.reset(findAndRemoveBlockInfo(&FirstBlockInfo,
                                          blockExpr->getBlockDecl()));
 
@@ -1117,9 +1117,8 @@ CodeGenFunction::GenerateBlockFunction(GlobalDecl GD,
   args.push_back(&selfDecl);
 
   // Now add the rest of the parameters.
-  for (BlockDecl::param_const_iterator i = blockDecl->param_begin(),
-       e = blockDecl->param_end(); i != e; ++i)
-    args.push_back(*i);
+  for (auto i : blockDecl->params())
+    args.push_back(i);
 
   // Create the function declaration.
   const FunctionProtoType *fnType = blockInfo.getBlockExpr()->getFunctionType();
@@ -1200,8 +1199,14 @@ CodeGenFunction::GenerateBlockFunction(GlobalDecl GD,
 
   if (IsLambdaConversionToBlock)
     EmitLambdaBlockInvokeBody();
-  else
+  else {
+    PGO.assignRegionCounters(blockDecl, fn);
+    RegionCounter Cnt = getPGORegionCounter(blockDecl->getBody());
+    Cnt.beginRegion(Builder);
     EmitStmt(blockDecl->getBody());
+    PGO.emitWriteoutFunction();
+    PGO.destroyRegionCounters();
+  }
 
   // Remember where we were...
   llvm::BasicBlock *resume = Builder.GetInsertBlock();

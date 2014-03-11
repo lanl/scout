@@ -1161,6 +1161,7 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
 
   AddString(HSOpts.ResourceDir, Record);
   AddString(HSOpts.ModuleCachePath, Record);
+  AddString(HSOpts.ModuleUserBuildPath, Record);
   Record.push_back(HSOpts.DisableModuleHash);
   Record.push_back(HSOpts.UseBuiltinIncludes);
   Record.push_back(HSOpts.UseStandardSystemIncludes);
@@ -1299,33 +1300,6 @@ void ASTWriter::WriteInputFiles(SourceManager &SourceMgr,
       SortedFiles.push_front(Entry);
   }
 
-  // If we have an isysroot for a Darwin SDK, include its SDKSettings.plist in
-  // the set of (non-system) input files. This is simple heuristic for
-  // detecting whether the system headers may have changed, because it is too
-  // expensive to stat() all of the system headers.
-  FileManager &FileMgr = SourceMgr.getFileManager();
-  if (!HSOpts.Sysroot.empty() && !Chain) {
-    llvm::SmallString<128> SDKSettingsFileName(HSOpts.Sysroot);
-    llvm::sys::path::append(SDKSettingsFileName, "SDKSettings.plist");
-    if (const FileEntry *SDKSettingsFile = FileMgr.getFile(SDKSettingsFileName)) {
-      InputFileEntry Entry = { SDKSettingsFile, false, false };
-      SortedFiles.push_front(Entry);
-    }
-  }
-
-  // Add the compiler's own module.map in the set of (non-system) input files.
-  // This is a simple heuristic for detecting whether the compiler's headers
-  // have changed, because we don't want to stat() all of them.
-  if (Modules && !Chain) {
-    SmallString<128> P = StringRef(HSOpts.ResourceDir);
-    llvm::sys::path::append(P, "include");
-    llvm::sys::path::append(P, "module.map");
-    if (const FileEntry *ModuleMapFile = FileMgr.getFile(P)) {
-      InputFileEntry Entry = { ModuleMapFile, false, false };
-      SortedFiles.push_front(Entry);
-    }
-  }
-
   unsigned UserFilesNum = 0;
   // Write out all of the input files.
   std::vector<uint32_t> InputFileOffsets;
@@ -1362,7 +1336,7 @@ void ASTWriter::WriteInputFiles(SourceManager &SourceMgr,
     
     // Ask the file manager to fixup the relative path for us. This will 
     // honor the working directory.
-    FileMgr.FixupRelativePath(FilePath);
+    SourceMgr.getFileManager().FixupRelativePath(FilePath);
     
     // FIXME: This call to make_absolute shouldn't be necessary, the
     // call to FixupRelativePath should always return an absolute path.
@@ -2251,7 +2225,8 @@ void ASTWriter::WriteSubmodules(Module *WritingModule) {
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // Parent
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // IsFramework
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // IsExplicit
-  Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // IsSystem  
+  Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // IsSystem
+  Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // IsExternC
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // InferSubmodules...
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // InferExplicit...
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // InferExportWild...
@@ -2339,6 +2314,7 @@ void ASTWriter::WriteSubmodules(Module *WritingModule) {
     Record.push_back(Mod->IsFramework);
     Record.push_back(Mod->IsExplicit);
     Record.push_back(Mod->IsSystem);
+    Record.push_back(Mod->IsExternC);
     Record.push_back(Mod->InferSubmodules);
     Record.push_back(Mod->InferExplicitSubmodules);
     Record.push_back(Mod->InferExportWildcard);
@@ -2621,9 +2597,8 @@ uint64_t ASTWriter::WriteDeclContextLexicalBlock(ASTContext &Context,
   RecordData Record;
   Record.push_back(DECL_CONTEXT_LEXICAL);
   SmallVector<KindDeclIDPair, 64> Decls;
-  for (DeclContext::decl_iterator D = DC->decls_begin(), DEnd = DC->decls_end();
-         D != DEnd; ++D)
-    Decls.push_back(std::make_pair((*D)->getKind(), GetDeclRef(*D)));
+  for (const auto *D : DC->decls())
+    Decls.push_back(std::make_pair(D->getKind(), GetDeclRef(D)));
 
   ++NumLexicalDeclContexts;
   Stream.EmitRecordWithBlob(DeclContextLexicalAbbrev, Record, data(Decls));
@@ -2962,80 +2937,101 @@ class ASTIdentifierTableTrait {
     return false;
   }
 
-  DefMacroDirective *getFirstPublicSubmoduleMacro(MacroDirective *MD,
-                                                  SubmoduleID &ModID) {
+  typedef llvm::SmallVectorImpl<SubmoduleID> OverriddenList;
+
+  MacroDirective *
+  getFirstPublicSubmoduleMacro(MacroDirective *MD, SubmoduleID &ModID) {
     ModID = 0;
-    if (DefMacroDirective *DefMD = getPublicSubmoduleMacro(MD, ModID))
-      if (!shouldIgnoreMacro(DefMD, IsModule, PP))
-        return DefMD;
+    llvm::SmallVector<SubmoduleID, 1> Overridden;
+    if (MacroDirective *NextMD = getPublicSubmoduleMacro(MD, ModID, Overridden))
+      if (!shouldIgnoreMacro(NextMD, IsModule, PP))
+        return NextMD;
     return 0;
   }
 
-  DefMacroDirective *getNextPublicSubmoduleMacro(DefMacroDirective *MD,
-                                                 SubmoduleID &ModID) {
-    if (DefMacroDirective *
-          DefMD = getPublicSubmoduleMacro(MD->getPrevious(), ModID))
-      if (!shouldIgnoreMacro(DefMD, IsModule, PP))
-        return DefMD;
+  MacroDirective *
+  getNextPublicSubmoduleMacro(MacroDirective *MD, SubmoduleID &ModID,
+                              OverriddenList &Overridden) {
+    if (MacroDirective *NextMD =
+            getPublicSubmoduleMacro(MD->getPrevious(), ModID, Overridden))
+      if (!shouldIgnoreMacro(NextMD, IsModule, PP))
+        return NextMD;
     return 0;
   }
 
   /// \brief Traverses the macro directives history and returns the latest
-  /// macro that is public and not undefined in the same submodule.
-  /// A macro that is defined in submodule A and undefined in submodule B,
+  /// public macro definition or undefinition that is not in ModID.
+  /// A macro that is defined in submodule A and undefined in submodule B
   /// will still be considered as defined/exported from submodule A.
-  DefMacroDirective *getPublicSubmoduleMacro(MacroDirective *MD,
-                                             SubmoduleID &ModID) {
+  /// ModID is updated to the module containing the returned directive.
+  ///
+  /// FIXME: This process breaks down if a module defines a macro, imports
+  ///        another submodule that changes the macro, then changes the
+  ///        macro again itself.
+  MacroDirective *getPublicSubmoduleMacro(MacroDirective *MD,
+                                          SubmoduleID &ModID,
+                                          OverriddenList &Overridden) {
     if (!MD)
       return 0;
 
+    Overridden.clear();
     SubmoduleID OrigModID = ModID;
-    bool isUndefined = false;
-    Optional<bool> isPublic;
+    Optional<bool> IsPublic;
     for (; MD; MD = MD->getPrevious()) {
       SubmoduleID ThisModID = getSubmoduleID(MD);
       if (ThisModID == 0) {
-        isUndefined = false;
-        isPublic = Optional<bool>();
+        IsPublic = Optional<bool>();
         continue;
       }
-      if (ThisModID != ModID){
+      if (ThisModID != ModID) {
         ModID = ThisModID;
-        isUndefined = false;
-        isPublic = Optional<bool>();
+        IsPublic = Optional<bool>();
       }
+
+      // If this is a definition from a submodule import, that submodule's
+      // definition is overridden by the definition or undefinition that we
+      // started with.
+      // FIXME: This should only apply to macros defined in OrigModID.
+      // We can't do that currently, because a #include of a different submodule
+      // of the same module just leaks through macros instead of providing new
+      // DefMacroDirectives for them.
+      if (DefMacroDirective *DefMD = dyn_cast<DefMacroDirective>(MD)) {
+        // Figure out which submodule the macro was originally defined within.
+        SubmoduleID SourceID = DefMD->getInfo()->getOwningModuleID();
+        if (!SourceID) {
+          SourceLocation DefLoc = DefMD->getInfo()->getDefinitionLoc();
+          if (DefLoc == MD->getLocation())
+            SourceID = ThisModID;
+          else
+            SourceID = Writer.inferSubmoduleIDFromLocation(DefLoc);
+        }
+        if (SourceID != OrigModID)
+          Overridden.push_back(SourceID);
+      }
+
       // We are looking for a definition in a different submodule than the one
       // that we started with. If a submodule has re-definitions of the same
       // macro, only the last definition will be used as the "exported" one.
       if (ModID == OrigModID)
         continue;
 
-      if (DefMacroDirective *DefMD = dyn_cast<DefMacroDirective>(MD)) {
-        if (!isUndefined && (!isPublic.hasValue() || isPublic.getValue()))
-          return DefMD;
-        continue;
+      // The latest visibility directive for a name in a submodule affects all
+      // the directives that come before it.
+      if (VisibilityMacroDirective *VisMD =
+              dyn_cast<VisibilityMacroDirective>(MD)) {
+        if (!IsPublic.hasValue())
+          IsPublic = VisMD->isPublic();
+      } else if (!IsPublic.hasValue() || IsPublic.getValue()) {
+        // FIXME: If we find an imported macro, we should include its list of
+        // overrides in our export.
+        return MD;
       }
-
-      if (isa<UndefMacroDirective>(MD)) {
-        isUndefined = true;
-        continue;
-      }
-
-      VisibilityMacroDirective *VisMD = cast<VisibilityMacroDirective>(MD);
-      if (!isPublic.hasValue())
-        isPublic = VisMD->isPublic();
     }
 
     return 0;
   }
 
   SubmoduleID getSubmoduleID(MacroDirective *MD) {
-    if (DefMacroDirective *DefMD = dyn_cast<DefMacroDirective>(MD)) {
-      MacroInfo *MI = DefMD->getInfo();
-      if (unsigned ID = MI->getOwningModuleID())
-        return ID;
-      return Writer.inferSubmoduleIDFromLocation(MI->getDefinitionLoc());
-    }
     return Writer.inferSubmoduleIDFromLocation(MD->getLocation());
   }
 
@@ -3066,11 +3062,18 @@ public:
         DataLen += 4; // MacroDirectives offset.
         if (IsModule) {
           SubmoduleID ModID;
-          for (DefMacroDirective *
-                 DefMD = getFirstPublicSubmoduleMacro(Macro, ModID);
-                 DefMD; DefMD = getNextPublicSubmoduleMacro(DefMD, ModID)) {
-            DataLen += 4; // MacroInfo ID.
+          llvm::SmallVector<SubmoduleID, 4> Overridden;
+          for (MacroDirective *
+                 MD = getFirstPublicSubmoduleMacro(Macro, ModID);
+                 MD; MD = getNextPublicSubmoduleMacro(MD, ModID, Overridden)) {
+            // Previous macro's overrides.
+            if (!Overridden.empty())
+              DataLen += 4 * (1 + Overridden.size());
+            DataLen += 4; // MacroInfo ID or ModuleID.
           }
+          // Previous macro's overrides.
+          if (!Overridden.empty())
+            DataLen += 4 * (1 + Overridden.size());
           DataLen += 4;
         }
       }
@@ -3094,6 +3097,15 @@ public:
     // the mapping from persistent IDs to strings.
     Writer.SetIdentifierOffset(II, Out.tell());
     Out.write(II->getNameStart(), KeyLen);
+  }
+
+  static void emitMacroOverrides(raw_ostream &Out,
+                                 llvm::ArrayRef<SubmoduleID> Overridden) {
+    if (!Overridden.empty()) {
+      clang::io::Emit32(Out, Overridden.size() | 0x80000000U);
+      for (unsigned I = 0, N = Overridden.size(); I != N; ++I)
+        clang::io::Emit32(Out, Overridden[I]);
+    }
   }
 
   void EmitData(raw_ostream& Out, IdentifierInfo* II,
@@ -3123,13 +3135,22 @@ public:
       if (IsModule) {
         // Write the IDs of macros coming from different submodules.
         SubmoduleID ModID;
-        for (DefMacroDirective *
-               DefMD = getFirstPublicSubmoduleMacro(Macro, ModID);
-               DefMD; DefMD = getNextPublicSubmoduleMacro(DefMD, ModID)) {
-          MacroID InfoID = Writer.getMacroID(DefMD->getInfo());
-          assert(InfoID);
-          clang::io::Emit32(Out, InfoID);
+        llvm::SmallVector<SubmoduleID, 4> Overridden;
+        for (MacroDirective *
+               MD = getFirstPublicSubmoduleMacro(Macro, ModID);
+               MD; MD = getNextPublicSubmoduleMacro(MD, ModID, Overridden)) {
+          MacroID InfoID = 0;
+          emitMacroOverrides(Out, Overridden);
+          if (DefMacroDirective *DefMD = dyn_cast<DefMacroDirective>(MD)) {
+            InfoID = Writer.getMacroID(DefMD->getInfo());
+            assert(InfoID);
+            clang::io::Emit32(Out, InfoID << 1);
+          } else {
+            assert(isa<UndefMacroDirective>(MD));
+            clang::io::Emit32(Out, (ModID << 1) | 1);
+          }
         }
+        emitMacroOverrides(Out, Overridden);
         clang::io::Emit32(Out, 0);
       }
     }
@@ -4030,11 +4051,9 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
   // translation unit that do not come from other AST files.
   const TranslationUnitDecl *TU = Context.getTranslationUnitDecl();
   SmallVector<KindDeclIDPair, 64> NewGlobalDecls;
-  for (DeclContext::decl_iterator I = TU->noload_decls_begin(),
-                                  E = TU->noload_decls_end();
-       I != E; ++I) {
-    if (!(*I)->isFromASTFile())
-      NewGlobalDecls.push_back(std::make_pair((*I)->getKind(), GetDeclRef(*I)));
+  for (const auto *I : TU->noload_decls()) {
+    if (!I->isFromASTFile())
+      NewGlobalDecls.push_back(std::make_pair(I->getKind(), GetDeclRef(I)));
   }
   
   llvm::BitCodeAbbrev *Abv = new llvm::BitCodeAbbrev();
@@ -4646,7 +4665,7 @@ void ASTWriter::associateDeclWithFile(const Decl *D, DeclID ID) {
   assert(SM.isLocalSourceLocation(FileLoc));
   FileID FID;
   unsigned Offset;
-  llvm::tie(FID, Offset) = SM.getDecomposedLoc(FileLoc);
+  std::tie(FID, Offset) = SM.getDecomposedLoc(FileLoc);
   if (FID.isInvalid())
     return;
   assert(SM.getSLocEntry(FID).isFile());

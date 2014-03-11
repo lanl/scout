@@ -783,7 +783,7 @@ DeduceTemplateArguments(Sema &S,
       S.collectUnexpandedParameterPacks(Pattern, Unexpanded);
       for (unsigned I = 0, N = Unexpanded.size(); I != N; ++I) {
         unsigned Depth, Index;
-        llvm::tie(Depth, Index) = getDepthAndIndex(Unexpanded[I]);
+        std::tie(Depth, Index) = getDepthAndIndex(Unexpanded[I]);
         if (Depth == 0 && !SawIndices[Index]) {
           SawIndices[Index] = true;
           PackIndices.push_back(Index);
@@ -1863,7 +1863,7 @@ DeduceTemplateArguments(Sema &S,
       S.collectUnexpandedParameterPacks(Pattern, Unexpanded);
       for (unsigned I = 0, N = Unexpanded.size(); I != N; ++I) {
         unsigned Depth, Index;
-        llvm::tie(Depth, Index) = getDepthAndIndex(Unexpanded[I]);
+        std::tie(Depth, Index) = getDepthAndIndex(Unexpanded[I]);
         if (Depth == 0 && !SawIndices[Index]) {
           SawIndices[Index] = true;
           PackIndices.push_back(Index);
@@ -2507,11 +2507,8 @@ Sema::SubstituteExplicitTemplateArguments(
   if (ExplicitTemplateArgs.size() == 0) {
     // No arguments to substitute; just copy over the parameter types and
     // fill in the function type.
-    for (FunctionDecl::param_iterator P = Function->param_begin(),
-                                   PEnd = Function->param_end();
-         P != PEnd;
-         ++P)
-      ParamTypes.push_back((*P)->getType());
+    for (auto P : Function->params())
+      ParamTypes.push_back(P->getType());
 
     if (FunctionType)
       *FunctionType = Function->getType();
@@ -3415,7 +3412,7 @@ Sema::TemplateDeductionResult Sema::DeduceTemplateArguments(
       collectUnexpandedParameterPacks(ParamPattern, Unexpanded);
       for (unsigned I = 0, N = Unexpanded.size(); I != N; ++I) {
         unsigned Depth, Index;
-        llvm::tie(Depth, Index) = getDepthAndIndex(Unexpanded[I]);
+        std::tie(Depth, Index) = getDepthAndIndex(Unexpanded[I]);
         if (Depth == 0 && !SawIndices[Index]) {
           SawIndices[Index] = true;
           PackIndices.push_back(Index);
