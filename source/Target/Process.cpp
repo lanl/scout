@@ -30,6 +30,7 @@
 #include "lldb/Host/Terminal.h"
 #include "lldb/Target/ABI.h"
 #include "lldb/Target/DynamicLoader.h"
+#include "lldb/Target/JITLoader.h"
 #include "lldb/Target/OperatingSystem.h"
 #include "lldb/Target/LanguageRuntime.h"
 #include "lldb/Target/CPPLanguageRuntime.h"
@@ -1154,6 +1155,7 @@ Process::Finalize()
     m_os_ap.reset();
     m_system_runtime_ap.reset();
     m_dyld_ap.reset();
+    m_jit_loaders_ap.reset();
     m_thread_list_real.Destroy();
     m_thread_list.Destroy();
     m_extended_thread_list.Destroy();
@@ -1523,7 +1525,6 @@ Process::SetExitStatus (int status, const char *cstr)
     DidExit ();
 
     SetPrivateState (eStateExited);
-    CancelWatchForSTDIN (true);
     return true;
 }
 
@@ -2930,13 +2931,14 @@ Process::DeallocateMemory (addr_t ptr)
 
 ModuleSP
 Process::ReadModuleFromMemory (const FileSpec& file_spec, 
-                               lldb::addr_t header_addr)
+                               lldb::addr_t header_addr,
+                               size_t size_to_read)
 {
     ModuleSP module_sp (new Module (file_spec, ArchSpec()));
     if (module_sp)
     {
         Error error;
-        ObjectFile *objfile = module_sp->GetMemoryObjectFile (shared_from_this(), header_addr, error);
+        ObjectFile *objfile = module_sp->GetMemoryObjectFile (shared_from_this(), header_addr, error, size_to_read);
         if (objfile)
             return module_sp;
     }
@@ -2989,6 +2991,7 @@ Process::Launch (ProcessLaunchInfo &launch_info)
     Error error;
     m_abi_sp.reset();
     m_dyld_ap.reset();
+    m_jit_loaders_ap.reset();
     m_system_runtime_ap.reset();
     m_os_ap.reset();
     m_process_input_reader.reset();
@@ -3065,6 +3068,8 @@ Process::Launch (ProcessLaunchInfo &launch_info)
                         if (dyld)
                             dyld->DidLaunch();
 
+                        // GetJITLoaders().DidLaunch();
+
                         SystemRuntime *system_runtime = GetSystemRuntime ();
                         if (system_runtime)
                             system_runtime->DidLaunch();
@@ -3111,6 +3116,8 @@ Process::LoadCore ()
         DynamicLoader *dyld = GetDynamicLoader ();
         if (dyld)
             dyld->DidAttach();
+
+        //GetJITLoaders().DidAttach();
         
         SystemRuntime *system_runtime = GetSystemRuntime ();
         if (system_runtime)
@@ -3132,6 +3139,17 @@ Process::GetDynamicLoader ()
     if (m_dyld_ap.get() == NULL)
         m_dyld_ap.reset (DynamicLoader::FindPlugin(this, NULL));
     return m_dyld_ap.get();
+}
+
+JITLoaderList &
+Process::GetJITLoaders ()
+{
+    if (!m_jit_loaders_ap)
+    {
+        m_jit_loaders_ap.reset(new JITLoaderList());
+        JITLoader::LoadPlugins(this, *m_jit_loaders_ap);
+    }
+    return *m_jit_loaders_ap;
 }
 
 SystemRuntime *
@@ -3204,6 +3222,7 @@ Process::Attach (ProcessAttachInfo &attach_info)
     m_abi_sp.reset();
     m_process_input_reader.reset();
     m_dyld_ap.reset();
+    m_jit_loaders_ap.reset();
     m_system_runtime_ap.reset();
     m_os_ap.reset();
     
@@ -3377,6 +3396,8 @@ Process::CompleteAttach ()
     if (dyld)
         dyld->DidAttach();
 
+    // GetJITLoaders().DidAttach();
+
     SystemRuntime *system_runtime = GetSystemRuntime ();
     if (system_runtime)
         system_runtime->DidAttach();
@@ -3547,7 +3568,7 @@ Process::Halt (bool clear_thread_plans)
                     // Wait for 1 second for the process to stop.
                     TimeValue timeout_time;
                     timeout_time = TimeValue::Now();
-                    timeout_time.OffsetWithSeconds(1);
+                    timeout_time.OffsetWithSeconds(10);
                     bool got_event = halt_listener.WaitForEvent (&timeout_time, event_sp);
                     StateType state = ProcessEventData::GetStateFromEvent(event_sp.get());
                     
@@ -3738,9 +3759,14 @@ Process::Destroy ()
         }
         m_stdio_communication.StopReadThread();
         m_stdio_communication.Disconnect();
+
         if (m_process_input_reader)
+        {
+            m_process_input_reader->SetIsDone(true);
+            m_process_input_reader->Cancel();
             m_process_input_reader.reset();
-        
+        }
+
         // If we exited when we were waiting for a process to stop, then
         // forward the event here so we don't lose the event
         if (exit_event_sp)
@@ -4116,6 +4142,7 @@ Process::HandlePrivateEvent (EventSP &event_sp)
 
     if (should_broadcast)
     {
+        const bool is_hijacked = IsHijackedForEvent(eBroadcastBitStateChanged);
         if (log)
         {
             log->Printf ("Process::%s (pid = %" PRIu64 ") broadcasting new state %s (old state %s) to %s",
@@ -4123,7 +4150,7 @@ Process::HandlePrivateEvent (EventSP &event_sp)
                          GetID(), 
                          StateAsCString(new_state), 
                          StateAsCString (GetState ()),
-                         IsHijackedForEvent(eBroadcastBitStateChanged) ? "hijacked" : "public");
+                         is_hijacked ? "hijacked" : "public");
         }
         Process::ProcessEventData::SetUpdateStateOnRemoval(event_sp.get());
         if (StateIsRunningState (new_state))
@@ -4133,8 +4160,43 @@ Process::HandlePrivateEvent (EventSP &event_sp)
             if (!GetTarget().GetDebugger().IsForwardingEvents())
                 PushProcessIOHandler ();
         }
-        else if (!Process::ProcessEventData::GetRestartedFromEvent(event_sp.get()))
-            PopProcessIOHandler ();
+        else if (StateIsStoppedState(new_state, false))
+        {
+            if (!Process::ProcessEventData::GetRestartedFromEvent(event_sp.get()))
+            {
+                // If the lldb_private::Debugger is handling the events, we don't
+                // want to pop the process IOHandler here, we want to do it when
+                // we receive the stopped event so we can carefully control when
+                // the process IOHandler is popped because when we stop we want to
+                // display some text stating how and why we stopped, then maybe some
+                // process/thread/frame info, and then we want the "(lldb) " prompt
+                // to show up. If we pop the process IOHandler here, then we will
+                // cause the command interpreter to become the top IOHandler after
+                // the process pops off and it will update its prompt right away...
+                // See the Debugger.cpp file where it calls the function as
+                // "process_sp->PopProcessIOHandler()" to see where I am talking about.
+                // Otherwise we end up getting overlapping "(lldb) " prompts and
+                // garbled output.
+                //
+                // If we aren't handling the events in the debugger (which is indicated
+                // by "m_target.GetDebugger().IsHandlingEvents()" returning false) or we
+                // are hijacked, then we always pop the process IO handler manually.
+                // Hijacking happens when the internal process state thread is running
+                // thread plans, or when commands want to run in synchronous mode
+                // and they call "process->WaitForProcessToStop()". An example of something
+                // that will hijack the events is a simple expression:
+                //
+                //  (lldb) expr (int)puts("hello")
+                //
+                // This will cause the internal process state thread to resume and halt
+                // the process (and _it_ will hijack the eBroadcastBitStateChanged
+                // events) and we do need the IO handler to be pushed and popped
+                // correctly.
+                
+                if (is_hijacked || m_target.GetDebugger().IsHandlingEvents() == false)
+                    PopProcessIOHandler ();
+            }
+        }
 
         BroadcastEvent (event_sp);
     }
@@ -4680,13 +4742,6 @@ Process::STDIOReadThreadBytesReceived (void *baton, const void *src, size_t src_
     process->AppendSTDOUT (static_cast<const char *>(src), src_len);
 }
 
-void
-Process::ResetProcessIOHandler ()
-{   
-    m_process_input_reader.reset();
-}
-
-
 class IOHandlerProcessSTDIO :
     public IOHandler
 {
@@ -4793,7 +4848,16 @@ public:
                             // Consume the interrupt byte
                             n = 1;
                             m_pipe_read.Read (&ch, n);
-                            SetIsDone(true);
+                            switch (ch)
+                            {
+                                case 'q':
+                                    SetIsDone(true);
+                                    break;
+                                case 'i':
+                                    if (StateIsRunningState(m_process->GetState()))
+                                        m_process->Halt();
+                                    break;
+                            }
                         }
                     }
                 }
@@ -4824,12 +4888,33 @@ public:
     {
         
     }
+    
+    virtual void
+    Cancel ()
+    {
+        size_t n = 1;
+        char ch = 'q';  // Send 'q' for quit
+        m_pipe_write.Write (&ch, n);
+    }
+
     virtual void
     Interrupt ()
     {
+#ifdef _MSC_VER
+        // Windows doesn't support pipes, so we will send an async interrupt
+        // event to stop the process
+        if (StateIsRunningState(m_process->GetState()))
+            m_process->SendAsyncInterrupt();
+#else
+        // Do only things that are safe to do in an interrupt context (like in
+        // a SIGINT handler), like write 1 byte to a file descriptor. This will
+        // interrupt the IOHandlerProcessSTDIO::Run() and we can look at the byte
+        // that was written to the pipe and then call m_process->Halt() from a
+        // much safer location in code.
         size_t n = 1;
-        char ch = 'q';
+        char ch = 'i'; // Send 'i' for interrupt
         m_pipe_write.Write (&ch, n);
+#endif
     }
     
     virtual void
@@ -4846,22 +4931,6 @@ protected:
     File m_pipe_write;
 
 };
-
-void
-Process::WatchForSTDIN (IOHandler &io_handler)
-{
-}
-
-void
-Process::CancelWatchForSTDIN (bool exited)
-{
-    if (m_process_input_reader)
-    {
-        if (exited)
-            m_process_input_reader->SetIsDone(true);
-        m_process_input_reader->Interrupt();
-    }
-}
 
 void
 Process::SetSTDIOFileDescriptor (int fd)
@@ -4886,7 +4955,15 @@ Process::SetSTDIOFileDescriptor (int fd)
     }
 }
 
-void
+bool
+Process::ProcessIOHandlerIsActive ()
+{
+    IOHandlerSP io_handler_sp (m_process_input_reader);
+    if (io_handler_sp)
+        return m_target.GetDebugger().IsTopIOHandler (io_handler_sp);
+    return false;
+}
+bool
 Process::PushProcessIOHandler ()
 {
     IOHandlerSP io_handler_sp (m_process_input_reader);
@@ -4894,18 +4971,18 @@ Process::PushProcessIOHandler ()
     {
         io_handler_sp->SetIsDone(false);
         m_target.GetDebugger().PushIOHandler (io_handler_sp);
+        return true;
     }
+    return false;
 }
 
-void
+bool
 Process::PopProcessIOHandler ()
 {
     IOHandlerSP io_handler_sp (m_process_input_reader);
     if (io_handler_sp)
-    {
-        io_handler_sp->Interrupt();
-        m_target.GetDebugger().PopIOHandler (io_handler_sp);
-    }
+        return m_target.GetDebugger().PopIOHandler (io_handler_sp);
+    return false;
 }
 
 // The process needs to know about installed plug-ins
@@ -5088,7 +5165,12 @@ Process::RunThreadPlan (ExecutionContext &exe_ctx,
         TimeValue final_timeout = one_thread_timeout;
         
         uint32_t timeout_usec = options.GetTimeoutUsec();
-        if (options.GetTryAllThreads())
+        if (!options.GetStopOthers())
+        {
+            before_first_timeout = false;
+            final_timeout.OffsetWithMicroSeconds(timeout_usec);
+        }
+        else if (options.GetTryAllThreads())
         {
             // If we are running all threads then we take half the time to run all threads, bounded by
             // .25 sec.
@@ -5815,24 +5897,46 @@ Process::GetThreadStatus (Stream &strm,
 {
     size_t num_thread_infos_dumped = 0;
     
-    Mutex::Locker locker (GetThreadList().GetMutex());
-    const size_t num_threads = GetThreadList().GetSize();
+    // You can't hold the thread list lock while calling Thread::GetStatus.  That very well might run code (e.g. if we need it
+    // to get return values or arguments.)  For that to work the process has to be able to acquire it.  So instead copy the thread
+    // ID's, and look them up one by one:
+    
+    uint32_t num_threads;
+    std::vector<uint32_t> thread_index_array;
+    //Scope for thread list locker;
+    {
+        Mutex::Locker locker (GetThreadList().GetMutex());
+        ThreadList &curr_thread_list = GetThreadList();
+        num_threads = curr_thread_list.GetSize();
+        uint32_t idx;
+        thread_index_array.resize(num_threads);
+        for (idx = 0; idx < num_threads; ++idx)
+            thread_index_array[idx] = curr_thread_list.GetThreadAtIndex(idx)->GetID();
+    }
+    
     for (uint32_t i = 0; i < num_threads; i++)
     {
-        Thread *thread = GetThreadList().GetThreadAtIndex(i).get();
-        if (thread)
+        ThreadSP thread_sp(GetThreadList().FindThreadByID(thread_index_array[i]));
+        if (thread_sp)
         {
             if (only_threads_with_stop_reason)
             {
-                StopInfoSP stop_info_sp = thread->GetStopInfo();
+                StopInfoSP stop_info_sp = thread_sp->GetStopInfo();
                 if (stop_info_sp.get() == NULL || !stop_info_sp->IsValid())
                     continue;
             }
-            thread->GetStatus (strm, 
+            thread_sp->GetStatus (strm,
                                start_frame, 
                                num_frames, 
                                num_frames_with_source);
             ++num_thread_infos_dumped;
+        }
+        else
+        {
+            Log *log(lldb_private::GetLogIfAnyCategoriesSet (LIBLLDB_LOG_PROCESS));
+            if (log)
+                log->Printf("Process::GetThreadStatus - thread 0x" PRIu64 " vanished while running Thread::GetStatus.");
+            
         }
     }
     return num_thread_infos_dumped;
@@ -5897,6 +6001,7 @@ Process::DidExec ()
     m_system_runtime_ap.reset();
     m_os_ap.reset();
     m_dyld_ap.reset();
+    m_jit_loaders_ap.reset();
     m_image_tokens.clear();
     m_allocated_memory_cache.Clear();
     m_language_runtimes.clear();

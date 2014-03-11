@@ -66,6 +66,7 @@ GDBRemoteCommunicationClient::GDBRemoteCommunicationClient(bool is_platform) :
     m_prepare_for_reg_writing_reply (eLazyBoolCalculate),
     m_supports_p (eLazyBoolCalculate),
     m_supports_QSaveRegisterState (eLazyBoolCalculate),
+    m_supports_qXfer_auxv_read (eLazyBoolCalculate),
     m_supports_qXfer_libraries_read (eLazyBoolCalculate),
     m_supports_qXfer_libraries_svr4_read (eLazyBoolCalculate),
     m_supports_augmented_libraries_svr4_read (eLazyBoolCalculate),
@@ -136,6 +137,11 @@ GDBRemoteCommunicationClient::HandshakeWithServer (Error *error_ptr)
         // a live connection to a remote GDB server...
         if (QueryNoAckModeSupported())
         {
+#if 0
+            // Set above line to "#if 1" to test packet speed if remote GDB server
+            // supports the qSpeedTest packet...
+            TestPacketSpeed(10000);
+#endif
             return true;
         }
         else
@@ -180,6 +186,16 @@ GDBRemoteCommunicationClient::GetQXferLibrariesReadSupported ()
         GetRemoteQSupported();
     }
     return (m_supports_qXfer_libraries_read == eLazyBoolYes);
+}
+
+bool
+GDBRemoteCommunicationClient::GetQXferAuxvReadSupported ()
+{
+    if (m_supports_qXfer_auxv_read == eLazyBoolCalculate)
+    {
+        GetRemoteQSupported();
+    }
+    return (m_supports_qXfer_auxv_read == eLazyBoolYes);
 }
 
 uint64_t
@@ -289,6 +305,7 @@ GDBRemoteCommunicationClient::ResetDiscoverableSettings()
     m_supports_memory_region_info = eLazyBoolCalculate;
     m_prepare_for_reg_writing_reply = eLazyBoolCalculate;
     m_attach_or_wait_reply = eLazyBoolCalculate;
+    m_supports_qXfer_auxv_read = eLazyBoolCalculate;
     m_supports_qXfer_libraries_read = eLazyBoolCalculate;
     m_supports_qXfer_libraries_svr4_read = eLazyBoolCalculate;
     m_supports_augmented_libraries_svr4_read = eLazyBoolCalculate;
@@ -315,8 +332,9 @@ void
 GDBRemoteCommunicationClient::GetRemoteQSupported ()
 {
     // Clear out any capabilities we expect to see in the qSupported response
-    m_supports_qXfer_libraries_svr4_read = eLazyBoolNo;
+    m_supports_qXfer_auxv_read = eLazyBoolNo;
     m_supports_qXfer_libraries_read = eLazyBoolNo;
+    m_supports_qXfer_libraries_svr4_read = eLazyBoolNo;
     m_supports_augmented_libraries_svr4_read = eLazyBoolNo;
     m_max_packet_size = UINT64_MAX;  // It's supposed to always be there, but if not, we assume no limit
 
@@ -326,6 +344,8 @@ GDBRemoteCommunicationClient::GetRemoteQSupported ()
                                      /*send_async=*/false) == PacketResult::Success)
     {
         const char *response_cstr = response.GetStringRef().c_str();
+        if (::strstr (response_cstr, "qXfer:auxv:read+"))
+            m_supports_qXfer_auxv_read = eLazyBoolYes;
         if (::strstr (response_cstr, "qXfer:libraries-svr4:read+"))
             m_supports_qXfer_libraries_svr4_read = eLazyBoolYes;
         if (::strstr (response_cstr, "augmented-libraries-svr4-read"))
@@ -497,11 +517,8 @@ GDBRemoteCommunicationClient::SendPacketsAndConcatenateResponses
         {
             return PacketResult::ErrorReplyInvalid;
         }
-        // Skip past m or l
-        const char *s = this_string.c_str() + 1;
-
-        // Concatenate the result so far
-        response_string += s;
+        // Concatenate the result so far (skipping 'm' or 'l')
+        response_string.append(this_string, 1, std::string::npos);
         if (first_char == 'l')
             // We're done
             return PacketResult::Success;
@@ -545,7 +562,6 @@ GDBRemoteCommunicationClient::SendPacketAndWaitForResponse
     PacketResult packet_result = PacketResult::ErrorSendFailed;
     Mutex::Locker locker;
     Log *log (ProcessGDBRemoteLog::GetLogIfAllCategoriesSet (GDBR_LOG_PROCESS));
-    size_t response_len = 0;
     if (GetSequenceMutex (locker))
     {
         packet_result = SendPacketAndWaitForResponseNoLock (payload, payload_length, response);
@@ -583,7 +599,6 @@ GDBRemoteCommunicationClient::SendPacketAndWaitForResponse
 
                             // Swap the response buffer to avoid malloc and string copy
                             response.GetStringRef().swap (m_async_response.GetStringRef());
-                            response_len = response.GetStringRef().size();
                             packet_result = m_async_result;
                         }
                         else
@@ -2420,50 +2435,81 @@ GDBRemoteCommunicationClient::TestPacketSpeed (const uint32_t num_packets)
     uint32_t i;
     TimeValue start_time, end_time;
     uint64_t total_time_nsec;
-    float packets_per_second;
     if (SendSpeedTestPacket (0, 0))
     {
-        for (uint32_t send_size = 0; send_size <= 1024; send_size *= 2)
+        static uint32_t g_send_sizes[] = { 0, 64, 128, 512, 1024 };
+        static uint32_t g_recv_sizes[] = { 0, 64, 128, 512, 1024 }; //, 4*1024, 8*1024, 16*1024, 32*1024, 48*1024, 64*1024, 96*1024, 128*1024 };
+        const size_t k_num_send_sizes = sizeof(g_send_sizes)/sizeof(uint32_t);
+        const size_t k_num_recv_sizes = sizeof(g_recv_sizes)/sizeof(uint32_t);
+        const uint64_t k_recv_amount = 4*1024*1024; // Receive 4MB
+        for (uint32_t send_idx = 0; send_idx < k_num_send_sizes; ++send_idx)
         {
-            for (uint32_t recv_size = 0; recv_size <= 1024; recv_size *= 2)
+            const uint32_t send_size = g_send_sizes[send_idx];
+            for (uint32_t recv_idx = 0; recv_idx < k_num_recv_sizes; ++recv_idx)
             {
-                start_time = TimeValue::Now();
-                for (i=0; i<num_packets; ++i)
+                const uint32_t recv_size = g_recv_sizes[recv_idx];
+                StreamString packet;
+                packet.Printf ("qSpeedTest:response_size:%i;data:", recv_size);
+                uint32_t bytes_left = send_size;
+                while (bytes_left > 0)
                 {
-                    SendSpeedTestPacket (send_size, recv_size);
+                    if (bytes_left >= 26)
+                    {
+                        packet.PutCString("abcdefghijklmnopqrstuvwxyz");
+                        bytes_left -= 26;
+                    }
+                    else
+                    {
+                        packet.Printf ("%*.*s;", bytes_left, bytes_left, "abcdefghijklmnopqrstuvwxyz");
+                        bytes_left = 0;
+                    }
+                }
+
+                start_time = TimeValue::Now();
+                if (recv_size == 0)
+                {
+                    for (i=0; i<num_packets; ++i)
+                    {
+                        StringExtractorGDBRemote response;
+                        SendPacketAndWaitForResponse (packet.GetData(), packet.GetSize(), response, false);
+                    }
+                }
+                else
+                {
+                    uint32_t bytes_read = 0;
+                    while (bytes_read < k_recv_amount)
+                    {
+                        StringExtractorGDBRemote response;
+                        SendPacketAndWaitForResponse (packet.GetData(), packet.GetSize(), response, false);
+                        bytes_read += recv_size;
+                    }
                 }
                 end_time = TimeValue::Now();
                 total_time_nsec = end_time.GetAsNanoSecondsSinceJan1_1970() - start_time.GetAsNanoSecondsSinceJan1_1970();
-                packets_per_second = (((float)num_packets)/(float)total_time_nsec) * (float)TimeValue::NanoSecPerSec;
-                printf ("%u qSpeedTest(send=%-5u, recv=%-5u) in %" PRIu64 ".%9.9" PRIu64 " sec for %f packets/sec.\n",
-                        num_packets, 
-                        send_size,
-                        recv_size,
-                        total_time_nsec / TimeValue::NanoSecPerSec,
-                        total_time_nsec % TimeValue::NanoSecPerSec, 
-                        packets_per_second);
                 if (recv_size == 0)
-                    recv_size = 32;
+                {
+                    float packets_per_second = (((float)num_packets)/(float)total_time_nsec) * (float)TimeValue::NanoSecPerSec;
+                    printf ("%u qSpeedTest(send=%-7u, recv=%-7u) in %" PRIu64 ".%9.9" PRIu64 " sec for %f packets/sec.\n",
+                            num_packets, 
+                            send_size,
+                            recv_size,
+                            total_time_nsec / TimeValue::NanoSecPerSec,
+                            total_time_nsec % TimeValue::NanoSecPerSec, 
+                            packets_per_second);
+                }
+                else
+                {
+                    float mb_second = ((((float)k_recv_amount)/(float)total_time_nsec) * (float)TimeValue::NanoSecPerSec) / (1024.0*1024.0);
+                    printf ("%u qSpeedTest(send=%-7u, recv=%-7u) sent 4MB in %" PRIu64 ".%9.9" PRIu64 " sec for %f MB/sec.\n",
+                            num_packets,
+                            send_size,
+                            recv_size,
+                            total_time_nsec / TimeValue::NanoSecPerSec,
+                            total_time_nsec % TimeValue::NanoSecPerSec,
+                            mb_second);
+                }
             }
-            if (send_size == 0)
-                send_size = 32;
         }
-    }
-    else
-    {
-        start_time = TimeValue::Now();
-        for (i=0; i<num_packets; ++i)
-        {
-            GetCurrentProcessID ();
-        }
-        end_time = TimeValue::Now();
-        total_time_nsec = end_time.GetAsNanoSecondsSinceJan1_1970() - start_time.GetAsNanoSecondsSinceJan1_1970();
-        packets_per_second = (((float)num_packets)/(float)total_time_nsec) * (float)TimeValue::NanoSecPerSec;
-        printf ("%u 'qC' packets packets in 0x%" PRIu64 "%9.9" PRIu64 " sec for %f packets/sec.\n",
-                num_packets, 
-                total_time_nsec / TimeValue::NanoSecPerSec, 
-                total_time_nsec % TimeValue::NanoSecPerSec, 
-                packets_per_second);
     }
 }
 
@@ -2639,15 +2685,10 @@ GDBRemoteCommunicationClient::GetThreadStopInfo (lldb::tid_t tid, StringExtracto
 uint8_t
 GDBRemoteCommunicationClient::SendGDBStoppointTypePacket (GDBStoppointType type, bool insert,  addr_t addr, uint32_t length)
 {
-    switch (type)
-    {
-    case eBreakpointSoftware:   if (!m_supports_z0) return UINT8_MAX; break;
-    case eBreakpointHardware:   if (!m_supports_z1) return UINT8_MAX; break;
-    case eWatchpointWrite:      if (!m_supports_z2) return UINT8_MAX; break;
-    case eWatchpointRead:       if (!m_supports_z3) return UINT8_MAX; break;
-    case eWatchpointReadWrite:  if (!m_supports_z4) return UINT8_MAX; break;
-    }
-
+    // Check if the stub is known not to support this breakpoint type
+    if (!SupportsGDBStoppointPacket(type))
+        return UINT8_MAX;
+    // Construct the breakpoint packet
     char packet[64];
     const int packet_len = ::snprintf (packet, 
                                        sizeof(packet), 
@@ -2656,28 +2697,35 @@ GDBRemoteCommunicationClient::SendGDBStoppointTypePacket (GDBStoppointType type,
                                        type, 
                                        addr, 
                                        length);
-
+    // Check we havent overwritten the end of the packet buffer
     assert (packet_len + 1 < (int)sizeof(packet));
     StringExtractorGDBRemote response;
+    // Try to send the breakpoint packet, and check that it was correctly sent
     if (SendPacketAndWaitForResponse(packet, packet_len, response, true) == PacketResult::Success)
     {
+        // Receive and OK packet when the breakpoint successfully placed
         if (response.IsOKResponse())
             return 0;
-        else if (response.IsErrorResponse())
+
+        // Error while setting breakpoint, send back specific error
+        if (response.IsErrorResponse())
             return response.GetError();
-    }
-    else
-    {
-        switch (type)
+
+        // Empty packet informs us that breakpoint is not supported
+        if (response.IsUnsupportedResponse())
         {
+            // Disable this breakpoint type since it is unsupported
+            switch (type)
+            {
             case eBreakpointSoftware:   m_supports_z0 = false; break;
             case eBreakpointHardware:   m_supports_z1 = false; break;
             case eWatchpointWrite:      m_supports_z2 = false; break;
             case eWatchpointRead:       m_supports_z3 = false; break;
             case eWatchpointReadWrite:  m_supports_z4 = false; break;
+            }
         }
     }
-
+    // Signal generic faliure
     return UINT8_MAX;
 }
 

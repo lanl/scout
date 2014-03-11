@@ -526,59 +526,15 @@ SystemRuntimeMacOSX::PopulateQueueList (lldb_private::QueueList &queue_list)
     }
 }
 
-void
-SystemRuntimeMacOSX::PopulatePendingItemsForQueue (Queue *queue)
-{
-    if (BacktraceRecordingHeadersInitialized())
-    {
-        std::vector<addr_t> pending_item_refs = GetPendingItemRefsForQueue (queue->GetLibdispatchQueueAddress());
-        for (addr_t pending_item : pending_item_refs)
-        {
-            AppleGetItemInfoHandler::GetItemInfoReturnInfo ret;
-            ThreadSP cur_thread_sp (m_process->GetThreadList().GetSelectedThread());
-            Error error;
-            ret = m_get_item_info_handler.GetItemInfo (*cur_thread_sp.get(), pending_item, m_page_to_free, m_page_to_free_size, error);
-            m_page_to_free = LLDB_INVALID_ADDRESS;
-            m_page_to_free_size = 0;
-            if (ret.item_buffer_ptr != 0 &&  ret.item_buffer_ptr != LLDB_INVALID_ADDRESS && ret.item_buffer_size > 0)
-            {
-                DataBufferHeap data (ret.item_buffer_size, 0);
-                if (m_process->ReadMemory (ret.item_buffer_ptr, data.GetBytes(), ret.item_buffer_size, error) && error.Success())
-                {
-                    DataExtractor extractor (data.GetBytes(), data.GetByteSize(), m_process->GetByteOrder(), m_process->GetAddressByteSize());
-                    ItemInfo item = ExtractItemInfoFromBuffer (extractor);
-                    QueueItemSP queue_item_sp (new QueueItem (queue->shared_from_this()));
-                    queue_item_sp->SetItemThatEnqueuedThis (item.item_that_enqueued_this);
+// Returns either an array of introspection_dispatch_item_info_ref's for the pending items on
+// a queue or an array introspection_dispatch_item_info_ref's and code addresses for the 
+// pending items on a queue.  The information about each of these pending items then needs to 
+// be fetched individually by passing the ref to libBacktraceRecording.
 
-                    Address addr;
-                    if (!m_process->GetTarget().ResolveLoadAddress (item.function_or_block, addr, item.stop_id))
-                    {
-                        m_process->GetTarget().ResolveLoadAddress (item.function_or_block, addr);
-                    }
-                    queue_item_sp->SetAddress (addr);
-                    queue_item_sp->SetEnqueueingThreadID (item.enqueuing_thread_id);
-                    queue_item_sp->SetTargetQueueID (item.enqueuing_thread_id);
-                    queue_item_sp->SetStopID (item.stop_id);
-                    queue_item_sp->SetEnqueueingBacktrace (item.enqueuing_callstack);
-                    queue_item_sp->SetThreadLabel (item.enqueuing_thread_label);
-                    queue_item_sp->SetQueueLabel (item.enqueuing_queue_label);
-                    queue_item_sp->SetTargetQueueLabel (item.target_queue_label);
-
-                    queue->PushPendingQueueItem (queue_item_sp);
-                }
-            }
-        }
-    }
-}
-
-// Returns an array of introspection_dispatch_item_info_ref's for the pending items on
-// a queue.  The information about each of these pending items then needs to be fetched
-// individually by passing the ref to libBacktraceRecording.
-
-std::vector<lldb::addr_t>
+SystemRuntimeMacOSX::PendingItemsForQueue
 SystemRuntimeMacOSX::GetPendingItemRefsForQueue (lldb::addr_t queue)
 {
-    std::vector<addr_t> pending_item_refs;
+    PendingItemsForQueue pending_item_refs;
     AppleGetPendingItemsHandler::GetPendingItemsReturnInfo pending_items_pointer;
     ThreadSP cur_thread_sp (m_process->GetThreadList().GetSelectedThread());
     if (cur_thread_sp)
@@ -597,13 +553,53 @@ SystemRuntimeMacOSX::GetPendingItemRefsForQueue (lldb::addr_t queue)
                 DataBufferHeap data (pending_items_pointer.items_buffer_size, 0);
                 if (m_process->ReadMemory (pending_items_pointer.items_buffer_ptr, data.GetBytes(), pending_items_pointer.items_buffer_size, error))
                 {
-                    offset_t offset = 0;
                     DataExtractor extractor (data.GetBytes(), data.GetByteSize(), m_process->GetByteOrder(), m_process->GetAddressByteSize());
+
+                    // We either have an array of
+                    //    void* item_ref
+                    // (old style) or we have a structure returned which looks like
+                    //
+                    // struct introspection_dispatch_pending_item_info_s {
+                    //   void *item_ref;
+                    //   void *function_or_block;
+                    // };
+                    //
+                    // struct introspection_dispatch_pending_items_array_s {
+                    //   uint32_t version;
+                    //   uint32_t size_of_item_info;
+                    //   introspection_dispatch_pending_item_info_s items[];
+                    //   }
+
+                    offset_t offset = 0;
                     int i = 0;
-                    while (offset < pending_items_pointer.items_buffer_size && i < pending_items_pointer.count)
+                    uint32_t version = extractor.GetU32(&offset);
+                    if (version == 1)
                     {
-                        pending_item_refs.push_back (extractor.GetPointer (&offset));
-                        i++;
+                        pending_item_refs.new_style = true;
+                        uint32_t item_size = extractor.GetU32(&offset);
+                        uint32_t start_of_array_offset = offset;
+                        while (offset < pending_items_pointer.items_buffer_size && i < pending_items_pointer.count)
+                        {
+                            offset = start_of_array_offset + (i * item_size);
+                            ItemRefAndCodeAddress item;
+                            item.item_ref = extractor.GetPointer (&offset);
+                            item.code_address = extractor.GetPointer (&offset);
+                            pending_item_refs.item_refs_and_code_addresses.push_back (item);
+                            i++;
+                        }
+                    }
+                    else
+                    {
+                        offset = 0;
+                        pending_item_refs.new_style = false;
+                        while (offset < pending_items_pointer.items_buffer_size && i < pending_items_pointer.count)
+                        {
+                            ItemRefAndCodeAddress item;
+                            item.item_ref = extractor.GetPointer (&offset);
+                            item.code_address = LLDB_INVALID_ADDRESS;
+                            pending_item_refs.item_refs_and_code_addresses.push_back (item);
+                            i++;
+                        }
                     }
                 }
                 m_page_to_free = pending_items_pointer.items_buffer_ptr;
@@ -615,12 +611,61 @@ SystemRuntimeMacOSX::GetPendingItemRefsForQueue (lldb::addr_t queue)
 }
 
 
+
+void
+SystemRuntimeMacOSX::PopulatePendingItemsForQueue (Queue *queue)
+{
+    if (BacktraceRecordingHeadersInitialized())
+    {
+        PendingItemsForQueue pending_item_refs = GetPendingItemRefsForQueue (queue->GetLibdispatchQueueAddress());
+        for (ItemRefAndCodeAddress pending_item : pending_item_refs.item_refs_and_code_addresses)
+        {
+            Address addr;
+            m_process->GetTarget().ResolveLoadAddress (pending_item.code_address, addr);
+            QueueItemSP queue_item_sp (new QueueItem (queue->shared_from_this(), m_process->shared_from_this(), pending_item.item_ref, addr));
+            queue->PushPendingQueueItem (queue_item_sp);
+        }
+    }
+}
+
+void 
+SystemRuntimeMacOSX::CompleteQueueItem (QueueItem *queue_item, addr_t item_ref)
+{
+    AppleGetItemInfoHandler::GetItemInfoReturnInfo ret;
+
+    ThreadSP cur_thread_sp (m_process->GetThreadList().GetSelectedThread());
+    Error error;
+    ret = m_get_item_info_handler.GetItemInfo (*cur_thread_sp.get(), item_ref, m_page_to_free, m_page_to_free_size, error);
+    m_page_to_free = LLDB_INVALID_ADDRESS;
+    m_page_to_free_size = 0;
+    if (ret.item_buffer_ptr != 0 &&  ret.item_buffer_ptr != LLDB_INVALID_ADDRESS && ret.item_buffer_size > 0)
+    {
+        DataBufferHeap data (ret.item_buffer_size, 0);
+        if (m_process->ReadMemory (ret.item_buffer_ptr, data.GetBytes(), ret.item_buffer_size, error) && error.Success())
+        {
+            DataExtractor extractor (data.GetBytes(), data.GetByteSize(), m_process->GetByteOrder(), m_process->GetAddressByteSize());
+            ItemInfo item = ExtractItemInfoFromBuffer (extractor);
+            queue_item->SetItemThatEnqueuedThis (item.item_that_enqueued_this);
+            queue_item->SetEnqueueingThreadID (item.enqueuing_thread_id);
+            queue_item->SetEnqueueingQueueID (item.enqueuing_queue_serialnum);
+            queue_item->SetStopID (item.stop_id);
+            queue_item->SetEnqueueingBacktrace (item.enqueuing_callstack);
+            queue_item->SetThreadLabel (item.enqueuing_thread_label);
+            queue_item->SetQueueLabel (item.enqueuing_queue_label);
+            queue_item->SetTargetQueueLabel (item.target_queue_label);
+        }
+        m_page_to_free = ret.item_buffer_ptr;
+        m_page_to_free_size = ret.item_buffer_size;
+    }
+}
+
 void
 SystemRuntimeMacOSX::PopulateQueuesUsingLibBTR (lldb::addr_t queues_buffer, uint64_t queues_buffer_size, 
                                                 uint64_t count, lldb_private::QueueList &queue_list)
 {
     Error error;
     DataBufferHeap data (queues_buffer_size, 0);
+    Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_SYSTEM_RUNTIME));
     if (m_process->ReadMemory (queues_buffer, data.GetBytes(), queues_buffer_size, error) == queues_buffer_size && error.Success())
     {
         // We've read the information out of inferior memory; free it on the next call we make
@@ -648,11 +693,8 @@ SystemRuntimeMacOSX::PopulateQueuesUsingLibBTR (lldb::addr_t queues_buffer, uint
             offset_t    start_of_this_item = offset;
 
             uint32_t    offset_to_next = extractor.GetU32 (&offset);
-            /* on 64-bit architectures, the pointer will be 8-byte aligned so there's 4 bytes of
-             * padding between these fields. 
-             */
-            if (m_process->GetAddressByteSize() == 8)
-                offset += 4;
+
+            offset += 4; // Skip over the 4 bytes of reserved space
             addr_t      queue = extractor.GetPointer (&offset);
             uint64_t    serialnum = extractor.GetU64 (&offset);
             uint32_t    running_work_items_count = extractor.GetU32 (&offset);
@@ -666,6 +708,9 @@ SystemRuntimeMacOSX::PopulateQueuesUsingLibBTR (lldb::addr_t queues_buffer, uint
 
             offset_t    start_of_next_item = start_of_this_item + offset_to_next;
             offset = start_of_next_item;
+
+            if (log)
+                log->Printf ("SystemRuntimeMacOSX::PopulateQueuesUsingLibBTR added queue with dispatch_queue_t 0x%" PRIx64 ", serial number 0x%" PRIx64 ", running items %d, pending items %d, name '%s'", queue, serialnum, running_work_items_count, pending_work_items_count, queue_label);
 
             QueueSP queue_sp (new Queue (m_process->shared_from_this(), serialnum, queue_label));
             queue_sp->SetNumRunningWorkItems (running_work_items_count);

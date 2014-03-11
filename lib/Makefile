@@ -105,14 +105,16 @@ ifeq ($(HOST_OS),Linux)
               lldbPluginProcessLinux.a \
               lldbPluginProcessPOSIX.a \
               lldbPluginDynamicLoaderMacOSX.a \
-              lldbPluginProcessElfCore.a
+              lldbPluginProcessElfCore.a \
+              lldbPluginJITLoaderGDB.a
 endif
 
 ifneq (,$(filter $(HOST_OS), FreeBSD GNU/kFreeBSD))
   USEDLIBS += lldbHostFreeBSD.a \
               lldbPluginProcessPOSIX.a \
               lldbPluginProcessFreeBSD.a \
-              lldbPluginProcessElfCore.a
+              lldbPluginProcessElfCore.a \
+              lldbPluginJITLoaderGDB.a
 endif
 
 include $(LEVEL)/Makefile.common
@@ -130,7 +132,7 @@ ifeq ($(HOST_OS),Darwin)
 	LLVMLibsOptions += -framework Foundation -framework CoreFoundation
 	LLVMLibsOptions += -framework CoreServices -framework Carbon -framework Security
 	LLVMLibsOptions += -framework DebugSymbols $(PYTHON_BUILD_FLAGS) -lobjc
-	LLVMLibsOptions += -lxml2
+	LLVMLibsOptions += -lxml2 -ledit -lpanel -lcurses
 	ifneq ($(EXPORTED_SYMBOL_FILE),)
 		LLVMLibsOptions += -Wl,-exported_symbols_list -Wl,"$(EXPORTED_SYMBOL_FILE)"
 	endif

@@ -329,7 +329,6 @@ BreakpointLocation::ConditionSaysStop (ExecutionContext &exe_ctx, Error &error)
     {
         if (!result_variable_sp)
         {
-            ret = false;
             error.SetErrorString("Expression did not return a result");
             return false;
         }
@@ -627,7 +626,7 @@ BreakpointLocation::GetDescription (Stream *s, lldb::DescriptionLevel level)
     if (exe_scope == NULL)
         exe_scope = target;
 
-    if (eDescriptionLevelInitial)
+    if (level == eDescriptionLevelInitial)
         m_address.Dump(s, exe_scope, Address::DumpStyleLoadAddress, Address::DumpStyleFileAddress);
     else
         m_address.Dump(s, exe_scope, Address::DumpStyleLoadAddress, Address::DumpStyleModuleWithFileAddress);

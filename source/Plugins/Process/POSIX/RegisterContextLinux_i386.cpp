@@ -34,11 +34,39 @@ struct GPR
     uint32_t ss;
 };
 
+struct FPR_i386
+{
+    uint16_t fctrl;         // FPU Control Word (fcw)
+    uint16_t fstat;         // FPU Status Word (fsw)
+    uint16_t ftag;          // FPU Tag Word (ftw)
+    uint16_t fop;           // Last Instruction Opcode (fop)
+    union
+    {
+        struct
+        {
+            uint64_t fip;   // Instruction Pointer
+            uint64_t fdp;   // Data Pointer
+        } x86_64;
+        struct
+        {
+            uint32_t fioff;   // FPU IP Offset (fip)
+            uint32_t fiseg;   // FPU IP Selector (fcs)
+            uint32_t fooff;   // FPU Operand Pointer Offset (foo)
+            uint32_t foseg;   // FPU Operand Pointer Selector (fos)
+        } i386;
+    } ptr;
+    uint32_t mxcsr;         // MXCSR Register State
+    uint32_t mxcsrmask;     // MXCSR Mask
+    MMSReg   stmm[8];       // 8*16 bytes for each FP-reg = 128 bytes
+    XMMReg   xmm[8];        // 8*16 bytes for each XMM-reg = 128 bytes
+    uint32_t padding[56];
+};
+
 struct UserArea
 {
     GPR      regs;          // General purpose registers.
     int32_t  fpvalid;       // True if FPU is being used.
-    FXSAVE   i387;          // FPU registers.
+    FPR_i386   i387;        // FPU registers.
     uint32_t tsize;         // Text segment size.
     uint32_t dsize;         // Data segment size.
     uint32_t ssize;         // Stack segment size.
@@ -55,8 +83,10 @@ struct UserArea
 };
 
 #define DR_SIZE sizeof(UserArea::u_debugreg[0])
+#define DR_0_OFFSET 0xFC
 #define DR_OFFSET(reg_index) \
-    (LLVM_EXTENSION offsetof(UserArea, u_debugreg[reg_index]))
+    (DR_0_OFFSET + (reg_index * 4))
+#define FPR_SIZE(reg) sizeof(((FPR_i386*)NULL)->reg)
 
 //---------------------------------------------------------------------------
 // Include RegisterInfos_i386 to declare our g_register_infos_i386 structure.
