@@ -160,7 +160,10 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
 
       // Compute size of needed field memory in bytes
       llvm::Type *fieldTy = structTy->getContainedType(i);
-
+      llvm::PointerType* ptrTy = dyn_cast<llvm::PointerType>(fieldTy);
+      assert(ptrTy && "Expected a pointer");
+      fieldTy = ptrTy->getElementType();
+      
       // If this is a externally allocated field, go on
       MeshFieldDecl* FD = *itr;
 
