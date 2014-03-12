@@ -69,7 +69,9 @@
 #include "llvm/IR/Type.h"
 #include "clang/AST/Type.h"
 #include <stdio.h>
+#include <cassert>
 
+using namespace std;
 using namespace clang;
 using namespace CodeGen;
 
@@ -84,10 +86,9 @@ static char IRNameStr[160];
 
 void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
                                              const VarDecl &D) {
-
   QualType T = D.getType();
   const clang::Type &Ty = *getContext().getCanonicalType(T).getTypePtr();
-
+  
   // SC_TODO - we need to handle the other mesh types here...
   //
   if (Ty.getTypeClass() == Type::UniformMesh) {
@@ -99,17 +100,41 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
     //
     // SC_TODO - We are only supporting one mesh type here...
     //
+    const MeshType* MT = cast<MeshType>(T.getTypePtr());
+    llvm::StringRef MeshName  = MT->getName();
+    MeshDecl* MD = MT->getDecl();
+    
     MeshType::MeshDimensions dims;
     dims = cast<MeshType>(T.getTypePtr())->dimensions();
     unsigned int rank = dims.size();
 
+    llvm::Value* numCells = 0;
+    llvm::Value* numVertices = 0;
+    llvm::Value* numFaces = 0;
+    llvm::Value* numEdges = 0;
+    
+    for(MeshDecl::field_iterator itr = MD->field_begin(),
+        itr_end = MD->field_end(); itr != itr_end; ++itr){
+      if(itr->isCellLocated()){
+        numCells = numCells ? numCells : Builder.getInt64(1);
+      }
+      else if(itr->isVertexLocated()){
+        numVertices = numVertices ? numVertices : Builder.getInt64(1);
+      }
+      else if(itr->isFaceLocated()){
+        numFaces = numFaces ? numFaces : Builder.getInt64(1);
+      }
+      else if(itr->isEdgeLocated()){
+        numEdges = numEdges ? numEdges : Builder.getInt64(1);
+      }
+    }
+    
     // Maybe dimensions needs to hold values???
 
     // Need to make this different for variable dims as
     // we want to evaluate each dim and if its a variable
     // then we want to make an expression multiplying
     // the dims to get numElts as a variable.
-    llvm::Value *numElements = Builder.getInt64(1);
     for(unsigned i = 0; i < rank; ++i) {
       llvm::Value* intValue;
       Expr* E = dims[i];
@@ -139,17 +164,31 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
 
       intValue = Builder.CreateZExt(intValue, Int64Ty);
       // SC_TODO: check the evalret
-      numElements = Builder.CreateMul(intValue, numElements);
-    }
+      if(numCells){
+        numCells = Builder.CreateMul(intValue, numCells);
+      }
+      
+      if(numVertices){
+        llvm::Value* intValue2 = Builder.CreateAdd(intValue, Builder.getInt64(1));
+        numVertices = Builder.CreateMul(intValue2, numVertices);
+      }
 
+      // SC_TODO: finish faces and edges - the following is not correct
+      if(numFaces){
+        numFaces = Builder.CreateMul(intValue, numFaces);
+      }
+      
+      if(numEdges){
+        numEdges = Builder.CreateMul(intValue, numEdges);
+      }
+
+    }
+    
     // need access to these field decls so we
     // can determine if we will dynamically allocate
     // memory for each field
     // fields are first and then mesh dimensions
     // this is setup in Codegentypes.h ConvertScoutMeshType()
-    const MeshType* MT = cast<MeshType>(T.getTypePtr());
-    llvm::StringRef MeshName  = MT->getName();
-    MeshDecl* MD = MT->getDecl();
     MeshDecl::field_iterator itr = MD->field_begin();
     MeshDecl::field_iterator itr_end = MD->field_end();
     unsigned int nfields = MD->fields();
@@ -180,6 +219,24 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
 
       llvm::Value *fieldTotalBytes = 0;
       llvm::Value *fieldTyBytesValue = Builder.getInt64(fieldTyBytes);
+      
+      llvm::Value* numElements = 0;
+      
+      if(FD->isCellLocated()){
+        numElements = numCells;
+      }
+      else if(FD->isVertexLocated()){
+        numElements = numVertices;
+      }
+      else if(FD->isFaceLocated()){
+        numElements = numFaces;
+      }
+      else if(FD->isEdgeLocated()){
+        numElements = numEdges;
+      }
+      
+      assert(numElements && "invalid numElements");
+      
       fieldTotalBytes = Builder.CreateNUWMul(numElements, fieldTyBytesValue);
 
       // Dynamically allocate memory.
