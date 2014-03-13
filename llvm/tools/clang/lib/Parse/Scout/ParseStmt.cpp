@@ -292,6 +292,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
   DeclStmt* Init; //declstmt for forall implicit variable
   bool success = Actions.ActOnForallMeshRefVariable(getCurScope(),
                                                     MeshIdentInfo, MeshIdentLoc,
+                                                    MeshElementType,
                                                     ElementIdentInfo,
                                                     ElementIdentLoc,
                                                     RefMeshType,
@@ -525,6 +526,7 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
     return StmtError();
 
   bool success = Actions.ActOnRenderallMeshRefVariable(getCurScope(),
+                                                       MeshElementType,
                                                        MeshIdentInfo,
                                                        MeshIdentLoc,
                                                        RefMeshType,
