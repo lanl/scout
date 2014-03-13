@@ -270,6 +270,11 @@ void OMPClauseProfiler::VisitOMPIfClause(const OMPIfClause *C) {
     Profiler->VisitStmt(C->getCondition());
 }
 
+void OMPClauseProfiler::VisitOMPNumThreadsClause(const OMPNumThreadsClause *C) {
+  if (C->getNumThreads())
+    Profiler->VisitStmt(C->getNumThreads());
+}
+
 void OMPClauseProfiler::VisitOMPDefaultClause(const OMPDefaultClause *C) { }
 
 template<typename T>
@@ -293,7 +298,7 @@ void OMPClauseProfiler::VisitOMPSharedClause(const OMPSharedClause *C) {
 }
 
 void
-StmtProfiler::VisitOMPParallelDirective(const OMPParallelDirective *S) {
+StmtProfiler::VisitOMPExecutableDirective(const OMPExecutableDirective *S) {
   VisitStmt(S);
   OMPClauseProfiler P(this);
   ArrayRef<OMPClause *> Clauses = S->clauses();
@@ -301,6 +306,14 @@ StmtProfiler::VisitOMPParallelDirective(const OMPParallelDirective *S) {
        I != E; ++I)
     if (*I)
       P.Visit(*I);
+}
+
+void StmtProfiler::VisitOMPParallelDirective(const OMPParallelDirective *S) {
+  VisitOMPExecutableDirective(S);
+}
+
+void StmtProfiler::VisitOMPSimdDirective(const OMPSimdDirective *S) {
+  VisitOMPExecutableDirective(S);
 }
 
 void StmtProfiler::VisitExpr(const Expr *S) {

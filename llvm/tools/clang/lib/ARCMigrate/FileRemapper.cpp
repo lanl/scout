@@ -64,8 +64,8 @@ bool FileRemapper::initFromFile(StringRef filePath, DiagnosticsEngine &Diag,
     return false;
 
   std::vector<std::pair<const FileEntry *, const FileEntry *> > pairs;
-  
-  OwningPtr<llvm::MemoryBuffer> fileBuf;
+
+  std::unique_ptr<llvm::MemoryBuffer> fileBuf;
   if (llvm::MemoryBuffer::getFile(infoFile.c_str(), fileBuf))
     return report("Error opening file: " + infoFile, Diag);
   
@@ -123,8 +123,7 @@ bool FileRemapper::flushToFile(StringRef outputPath, DiagnosticsEngine &Diag) {
 
   std::string errMsg;
   std::string infoFile = outputPath;
-  llvm::raw_fd_ostream infoOut(infoFile.c_str(), errMsg,
-                               llvm::sys::fs::F_Binary);
+  llvm::raw_fd_ostream infoOut(infoFile.c_str(), errMsg, llvm::sys::fs::F_None);
   if (!errMsg.empty())
     return report(errMsg, Diag);
 
@@ -180,8 +179,7 @@ bool FileRemapper::overwriteOriginal(DiagnosticsEngine &Diag,
                     Diag);
 
     std::string errMsg;
-    llvm::raw_fd_ostream Out(origFE->getName(), errMsg,
-                             llvm::sys::fs::F_Binary);
+    llvm::raw_fd_ostream Out(origFE->getName(), errMsg, llvm::sys::fs::F_None);
     if (!errMsg.empty())
       return report(errMsg, Diag);
 

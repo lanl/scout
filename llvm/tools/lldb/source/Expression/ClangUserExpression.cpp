@@ -709,7 +709,7 @@ ClangUserExpression::PrepareToExecuteJITExpression (Stream &error_stream,
         
         if (!materialize_error.Success())
         {
-            error_stream.Printf("Couldn't materialize struct: %s\n", materialize_error.AsCString());
+            error_stream.Printf("Couldn't materialize: %s\n", materialize_error.AsCString());
             return false;
         }
     }
@@ -823,6 +823,12 @@ ClangUserExpression::Execute (Stream &error_stream,
         }
         else
         {
+            if (!exe_ctx.HasThreadScope())
+            {
+                error_stream.Printf("ClangUserExpression::Execute called with no thread selected.");
+                return eExecutionSetupError;
+            }
+                
             Address wrapper_address (m_jit_start_addr);
             
             llvm::SmallVector <lldb::addr_t, 3> args;

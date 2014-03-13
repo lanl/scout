@@ -15,6 +15,7 @@
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "DwarfDebug.h"
 #include "DwarfException.h"
+#include "WinCodeViewLineTables.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/ConstantFolding.h"
@@ -26,8 +27,8 @@
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
 #include "llvm/CodeGen/MachineLoopInfo.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
-#include "llvm/DebugInfo.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
@@ -50,7 +51,6 @@
 #include "llvm/Target/TargetRegisterInfo.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
 #include "llvm/Transforms/Utils/GlobalStatus.h"
-#include "WinCodeViewLineTables.h"
 using namespace llvm;
 
 static const char *const DWARFGroupName = "DWARF Emission";
@@ -174,7 +174,7 @@ bool AsmPrinter::doInitialization(Module &M) {
   const_cast<TargetLoweringObjectFile&>(getObjFileLowering())
     .Initialize(OutContext, TM);
 
-  OutStreamer.InitSections(false);
+  OutStreamer.InitSections();
 
   Mang = new Mangler(TM.getDataLayout());
 
@@ -699,9 +699,7 @@ bool AsmPrinter::needsSEHMoves() {
     MF->getFunction()->needsUnwindTableEntry();
 }
 
-void AsmPrinter::emitPrologLabel(const MachineInstr &MI) {
-  const MCSymbol *Label = MI.getOperand(0).getMCSymbol();
-
+void AsmPrinter::emitCFIInstruction(const MachineInstr &MI) {
   ExceptionHandling::ExceptionsType ExceptionHandlingType =
       MAI->getExceptionHandlingType();
   if (ExceptionHandlingType != ExceptionHandling::DwarfCFI &&
@@ -716,16 +714,9 @@ void AsmPrinter::emitPrologLabel(const MachineInstr &MI) {
 
   const MachineModuleInfo &MMI = MF->getMMI();
   const std::vector<MCCFIInstruction> &Instrs = MMI.getFrameInstructions();
-  bool FoundOne = false;
-  (void)FoundOne;
-  for (std::vector<MCCFIInstruction>::const_iterator I = Instrs.begin(),
-         E = Instrs.end(); I != E; ++I) {
-    if (I->getLabel() == Label) {
-      emitCFIInstruction(*I);
-      FoundOne = true;
-    }
-  }
-  assert(FoundOne);
+  unsigned CFIIndex = MI.getOperand(0).getCFIIndex();
+  const MCCFIInstruction &CFI = Instrs[CFIIndex];
+  emitCFIInstruction(CFI);
 }
 
 /// EmitFunctionBody - This method emits the body and trailer for a
@@ -748,7 +739,7 @@ void AsmPrinter::EmitFunctionBody() {
       LastMI = II;
 
       // Print the assembly for the instruction.
-      if (!II->isLabel() && !II->isImplicitDef() && !II->isKill() &&
+      if (!II->isPosition() && !II->isImplicitDef() && !II->isKill() &&
           !II->isDebugValue()) {
         HasAnyRealCode = true;
         ++EmittedInsts;
@@ -767,8 +758,8 @@ void AsmPrinter::EmitFunctionBody() {
         emitComments(*II, OutStreamer.GetCommentOS());
 
       switch (II->getOpcode()) {
-      case TargetOpcode::PROLOG_LABEL:
-        emitPrologLabel(*II);
+      case TargetOpcode::CFI_INSTRUCTION:
+        emitCFIInstruction(*II);
         break;
 
       case TargetOpcode::EH_LABEL:
@@ -811,7 +802,7 @@ void AsmPrinter::EmitFunctionBody() {
   // label equaling the end of function label and an invalid "row" in the
   // FDE. We need to emit a noop in this situation so that the FDE's rows are
   // valid.
-  bool RequiresNoop = LastMI && LastMI->isPrologLabel();
+  bool RequiresNoop = LastMI && LastMI->isCFIInstruction();
 
   // If the function is empty and the object file uses .subsections_via_symbols,
   // then we need to emit *something* to the function body to prevent the
@@ -869,81 +860,6 @@ void AsmPrinter::EmitFunctionBody() {
   EmitJumpTableInfo();
 
   OutStreamer.AddBlankLine();
-}
-
-/// EmitDwarfRegOp - Emit dwarf register operation.
-void AsmPrinter::EmitDwarfRegOp(const MachineLocation &MLoc,
-                                bool Indirect) const {
-  const TargetRegisterInfo *TRI = TM.getRegisterInfo();
-  int Reg = TRI->getDwarfRegNum(MLoc.getReg(), false);
-  bool isSubRegister = Reg < 0;
-  unsigned Idx = 0;
-
-  for (MCSuperRegIterator SR(MLoc.getReg(), TRI); SR.isValid() && Reg < 0;
-       ++SR) {
-    Reg = TRI->getDwarfRegNum(*SR, false);
-    if (Reg >= 0)
-      Idx = TRI->getSubRegIndex(*SR, MLoc.getReg());
-  }
-
-  // FIXME: Handle cases like a super register being encoded as
-  // DW_OP_reg 32 DW_OP_piece 4 DW_OP_reg 33
-
-  // FIXME: We have no reasonable way of handling errors in here. The
-  // caller might be in the middle of an dwarf expression. We should
-  // probably assert that Reg >= 0 once debug info generation is more mature.
-  if (Reg < 0) {
-    OutStreamer.AddComment("nop (invalid dwarf register number)");
-    EmitInt8(dwarf::DW_OP_nop);
-    return;
-  }
-
-  if (MLoc.isIndirect() || Indirect) {
-    if (Reg < 32) {
-      OutStreamer.AddComment(
-        dwarf::OperationEncodingString(dwarf::DW_OP_breg0 + Reg));
-      EmitInt8(dwarf::DW_OP_breg0 + Reg);
-    } else {
-      OutStreamer.AddComment("DW_OP_bregx");
-      EmitInt8(dwarf::DW_OP_bregx);
-      OutStreamer.AddComment(Twine(Reg));
-      EmitULEB128(Reg);
-    }
-    EmitSLEB128(!MLoc.isIndirect() ? 0 : MLoc.getOffset());
-    if (MLoc.isIndirect() && Indirect)
-      EmitInt8(dwarf::DW_OP_deref);
-  } else {
-    if (Reg < 32) {
-      OutStreamer.AddComment(
-        dwarf::OperationEncodingString(dwarf::DW_OP_reg0 + Reg));
-      EmitInt8(dwarf::DW_OP_reg0 + Reg);
-    } else {
-      OutStreamer.AddComment("DW_OP_regx");
-      EmitInt8(dwarf::DW_OP_regx);
-      OutStreamer.AddComment(Twine(Reg));
-      EmitULEB128(Reg);
-    }
-  }
-
-  // Emit Mask
-  if (isSubRegister) {
-    unsigned Size = TRI->getSubRegIdxSize(Idx);
-    unsigned Offset = TRI->getSubRegIdxOffset(Idx);
-    if (Offset > 0) {
-      OutStreamer.AddComment("DW_OP_bit_piece");
-      EmitInt8(dwarf::DW_OP_bit_piece);
-      OutStreamer.AddComment(Twine(Size));
-      EmitULEB128(Size);
-      OutStreamer.AddComment(Twine(Offset));
-      EmitULEB128(Offset);
-    } else {
-      OutStreamer.AddComment("DW_OP_piece");
-      EmitInt8(dwarf::DW_OP_piece);
-      unsigned ByteSize = Size / 8; // Assuming 8 bits per byte.
-      OutStreamer.AddComment(Twine(ByteSize));
-      EmitULEB128(ByteSize);
-    }
-  }
 }
 
 bool AsmPrinter::doFinalization(Module &M) {
@@ -1374,7 +1290,7 @@ void AsmPrinter::EmitLLVMUsedList(const ConstantArray *InitList) {
   for (unsigned i = 0, e = InitList->getNumOperands(); i != e; ++i) {
     const GlobalValue *GV =
       dyn_cast<GlobalValue>(InitList->getOperand(i)->stripPointerCasts());
-    if (GV && getObjFileLowering().shouldEmitUsedDirectiveFor(GV, *Mang, TM))
+    if (GV)
       OutStreamer.EmitSymbolAttribute(getSymbol(GV), MCSA_NoDeadStrip);
   }
 }

@@ -19,7 +19,7 @@ This test serves two purposes:
 
 The list of warnings below should NEVER grow.  It should gradually shrink to 0.
 
-CHECK: Warnings without flags (111):
+CHECK: Warnings without flags (108):
 CHECK-NEXT:   ext_delete_void_ptr_operand
 CHECK-NEXT:   ext_expected_semi_decl_list
 CHECK-NEXT:   ext_explicit_specialization_storage_class
@@ -50,7 +50,6 @@ CHECK-NEXT:   warn_accessor_property_type_mismatch
 CHECK-NEXT:   warn_anon_bitfield_width_exceeds_type_size
 CHECK-NEXT:   warn_asm_label_on_auto_decl
 CHECK-NEXT:   warn_bitfield_width_exceeds_type_size
-CHECK-NEXT:   warn_bool_switch_condition
 CHECK-NEXT:   warn_braces_around_scalar_init
 CHECK-NEXT:   warn_c_kext
 CHECK-NEXT:   warn_call_to_pure_virtual_member_function_from_ctor_dtor
@@ -70,9 +69,7 @@ CHECK-NEXT:   warn_drv_objc_gc_unsupported
 CHECK-NEXT:   warn_drv_pch_not_first_include
 CHECK-NEXT:   warn_dup_category_def
 CHECK-NEXT:   warn_duplicate_protocol_def
-CHECK-NEXT:   warn_enum_too_large
 CHECK-NEXT:   warn_enum_value_overflow
-CHECK-NEXT:   warn_enumerator_too_large
 CHECK-NEXT:   warn_exception_caught_by_earlier_handler
 CHECK-NEXT:   warn_excess_initializers
 CHECK-NEXT:   warn_excess_initializers_in_char_array_initializer

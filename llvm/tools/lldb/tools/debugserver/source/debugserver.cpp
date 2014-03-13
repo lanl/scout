@@ -63,6 +63,7 @@ static nub_launch_flavor_t g_launch_flavor = eLaunchFlavorDefault;
 int g_disable_aslr = 0;
 
 int g_isatty = 0;
+bool g_detach_on_error = true;
 
 #define RNBLogSTDOUT(fmt, ...) do { if (g_isatty) { fprintf(stdout, fmt, ## __VA_ARGS__); } else { _DNBLog(0, fmt, ## __VA_ARGS__); } } while (0)
 #define RNBLogSTDERR(fmt, ...) do { if (g_isatty) { fprintf(stderr, fmt, ## __VA_ARGS__); } else { _DNBLog(0, fmt, ## __VA_ARGS__); } } while (0)
@@ -571,8 +572,24 @@ RNBRunLoopInferiorExecuting (RNBRemote *remote)
                     // in its current state and listen for another connection...
                     if (ctx.ProcessStateRunning())
                     {
-                        DNBLog ("debugserver's event read thread is exiting, killing the inferior process.");
-                        DNBProcessKill (ctx.ProcessID());
+                        if (ctx.GetDetachOnError())
+                        {
+                            DNBLog ("debugserver's event read thread is exiting, detaching from the inferior process.");
+                            DNBProcessDetach (ctx.ProcessID());
+                        }
+                        else
+                        {
+                            DNBLog ("debugserver's event read thread is exiting, killing the inferior process.");
+                            DNBProcessKill (ctx.ProcessID());
+                        }
+                    }
+                    else
+                    {
+                        if (ctx.GetDetachOnError())
+                        {
+                            DNBLog ("debugserver's event read thread is exiting, detaching from the inferior process.");
+                            DNBProcessDetach (ctx.ProcessID());
+                        }
                     }
                 }
                 mode = eRNBRunLoopModeExit;
@@ -728,7 +745,7 @@ ConnectRemote (RNBRemote *remote,
         else
         {
             if (port != 0)
-                RNBLogSTDOUT ("Listening to port %i for a connection from %s...\n", port, host ? host : "localhost");
+                RNBLogSTDOUT ("Listening to port %i for a connection from %s...\n", port, host ? host : "127.0.0.1");
             if (unix_socket_name && unix_socket_name[0])
             {
                 if (remote->Comm().Listen(host, port, PortWasBoundCallbackUnixSocket, unix_socket_name) != rnb_success)
@@ -814,6 +831,7 @@ static struct option g_long_options[] =
     { "attach",             required_argument,  NULL,               'a' },
     { "arch",               required_argument,  NULL,               'A' },
     { "debug",              no_argument,        NULL,               'g' },
+    { "kill-on-error",      no_argument,        NULL,               'K' },
     { "verbose",            no_argument,        NULL,               'v' },
     { "lockdown",           no_argument,        &g_lockdown_opt,    1   },  // short option "-k"
     { "applist",            no_argument,        &g_applist_opt,     1   },  // short option "-t"
@@ -1011,6 +1029,9 @@ main (int argc, char *argv[])
                     }
                 }
                 break;
+                
+            case 'K':
+                g_detach_on_error = false;
 
             case 'W':
                 if (optarg && optarg[0])
@@ -1181,6 +1202,8 @@ main (int argc, char *argv[])
         }
     }
 
+    remote->Context().SetDetachOnError(g_detach_on_error);
+    
     remote->Initialize();
 
     // It is ok for us to set NULL as the logfile (this will disable any logging)
@@ -1243,7 +1266,7 @@ main (int argc, char *argv[])
             int items_scanned = ::sscanf (argv[0], "%i", &port);
             if (items_scanned == 1)
             {
-                host = "localhost";
+                host = "127.0.0.1";
                 DNBLogDebug("host = '%s'  port = %i", host.c_str(), port);
             }
             else if (argv[0][0] == '/')
@@ -1513,7 +1536,12 @@ main (int argc, char *argv[])
                         }
 
                         if (mode != eRNBRunLoopModeExit)
-                            RNBLogSTDOUT ("Got a connection, launched process %s.\n", argv_sub_zero);
+                        {
+                            const char *proc_name = "<unknown>";
+                            if (ctx.ArgumentCount() > 0)
+                                proc_name = ctx.ArgumentAtIndex(0);
+                            RNBLogSTDOUT ("Got a connection, launched process %s (pid = %d).\n", proc_name, ctx.ProcessID());
+                        }
                     }
                     else
                     {

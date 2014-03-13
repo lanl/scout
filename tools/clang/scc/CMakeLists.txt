@@ -1,7 +1,7 @@
 project(scc)
 include(sc-llvm-link-libs)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility-inlines-hidden -fno-rtti")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fvisibility-inlines-hidden -fno-rtti")
 
 add_llvm_definitions( -D__STDC_CONSTANT_MACROS )
 add_llvm_definitions( -D__STDC_FORMAT_MACROS )

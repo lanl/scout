@@ -15,8 +15,9 @@
 
 #include "clang/Basic/LLVM.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
-#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/ErrorOr.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/SourceMgr.h"
 
 namespace llvm {
 class MemoryBuffer;
@@ -28,7 +29,6 @@ namespace vfs {
 /// \brief The result of a \p status operation.
 class Status {
   std::string Name;
-  std::string ExternalName;
   llvm::sys::fs::UniqueID UID;
   llvm::sys::TimeValue MTime;
   uint32_t User;
@@ -45,16 +45,9 @@ public:
          uint64_t Size, llvm::sys::fs::file_type Type,
          llvm::sys::fs::perms Perms);
 
-  /// \brief Returns the name this status was looked up by.
+  /// \brief Returns the name that should be used for this file or directory.
   StringRef getName() const { return Name; }
-
-  /// \brief Returns the name to use outside the compiler.
-  ///
-  /// For example, in diagnostics or debug info we should use this name.
-  StringRef getExternalName() const { return ExternalName; }
-
   void setName(StringRef N) { Name = N; }
-  void setExternalName(StringRef N) { ExternalName = N; }
 
   /// @name Status interface from llvm::sys::fs
   /// @{
@@ -91,16 +84,17 @@ public:
   /// \brief Get the status of the file.
   virtual llvm::ErrorOr<Status> status() = 0;
   /// \brief Get the contents of the file as a \p MemoryBuffer.
-  virtual llvm::error_code getBuffer(const Twine &Name,
-                                     OwningPtr<llvm::MemoryBuffer> &Result,
-                                     int64_t FileSize = -1,
-                                     bool RequiresNullTerminator = true) = 0;
+  virtual llvm::error_code
+  getBuffer(const Twine &Name, std::unique_ptr<llvm::MemoryBuffer> &Result,
+            int64_t FileSize = -1, bool RequiresNullTerminator = true) = 0;
   /// \brief Closes the file.
   virtual llvm::error_code close() = 0;
+  /// \brief Sets the name to use for this file.
+  virtual void setName(StringRef Name) = 0;
 };
 
 /// \brief The virtual file system interface.
-class FileSystem : public RefCountedBase<FileSystem> {
+class FileSystem : public llvm::ThreadSafeRefCountedBase<FileSystem> {
 public:
   virtual ~FileSystem();
 
@@ -108,12 +102,12 @@ public:
   virtual llvm::ErrorOr<Status> status(const Twine &Path) = 0;
   /// \brief Get a \p File object for the file at \p Path, if one exists.
   virtual llvm::error_code openFileForRead(const Twine &Path,
-                                           OwningPtr<File> &Result) = 0;
+                                           std::unique_ptr<File> &Result) = 0;
 
   /// This is a convenience method that opens a file, gets its content and then
   /// closes the file.
   llvm::error_code getBufferForFile(const Twine &Name,
-                                    OwningPtr<llvm::MemoryBuffer> &Result,
+                                    std::unique_ptr<llvm::MemoryBuffer> &Result,
                                     int64_t FileSize = -1,
                                     bool RequiresNullTerminator = true);
 };
@@ -125,7 +119,7 @@ IntrusiveRefCntPtr<FileSystem> getRealFileSystem();
 /// \brief A file system that allows overlaying one \p AbstractFileSystem on top
 /// of another.
 ///
-/// Consists of a stack of >=1 \p FileSytem objects, which are treated as being
+/// Consists of a stack of >=1 \p FileSystem objects, which are treated as being
 /// one merged file system. When there is a directory that exists in more than
 /// one file system, the \p OverlayFileSystem contains a directory containing
 /// the union of their contents.  The attributes (permissions, etc.) of the
@@ -152,10 +146,23 @@ public:
   /// \brief Pushes a file system on top of the stack.
   void pushOverlay(IntrusiveRefCntPtr<FileSystem> FS);
 
-  llvm::ErrorOr<Status> status(const Twine &Path) LLVM_OVERRIDE;
+  llvm::ErrorOr<Status> status(const Twine &Path) override;
   llvm::error_code openFileForRead(const Twine &Path,
-                                   OwningPtr<File> &Result) LLVM_OVERRIDE;
+                                   std::unique_ptr<File> &Result) override;
 };
+
+/// \brief Get a globally unique ID for a virtual file or directory.
+llvm::sys::fs::UniqueID getNextVirtualUniqueID();
+
+/// \brief Gets a \p FileSystem for a virtual file system described in YAML
+/// format.
+///
+/// Takes ownership of \p Buffer.
+IntrusiveRefCntPtr<FileSystem>
+getVFSFromYAML(llvm::MemoryBuffer *Buffer,
+               llvm::SourceMgr::DiagHandlerTy DiagHandler,
+               void *DiagContext = 0,
+               IntrusiveRefCntPtr<FileSystem> ExternalFS = getRealFileSystem());
 
 } // end namespace vfs
 } // end namespace clang

@@ -50,6 +50,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/IRBuilder.h"
@@ -58,11 +59,10 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
+#include "llvm/IR/ValueHandle.h"
 #include "llvm/Pass.h"
-#include "llvm/Support/CallSite.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/ValueHandle.h"
 #include "llvm/Support/raw_ostream.h"
 #include <vector>
 using namespace llvm;
@@ -108,12 +108,12 @@ public:
   static const ComparableFunction TombstoneKey;
   static DataLayout * const LookupOnly;
 
-  ComparableFunction(Function *Func, DataLayout *DL)
+  ComparableFunction(Function *Func, const DataLayout *DL)
     : Func(Func), Hash(profileFunction(Func)), DL(DL) {}
 
   Function *getFunc() const { return Func; }
   unsigned getHash() const { return Hash; }
-  DataLayout *getDataLayout() const { return DL; }
+  const DataLayout *getDataLayout() const { return DL; }
 
   // Drops AssertingVH reference to the function. Outside of debug mode, this
   // does nothing.
@@ -129,7 +129,7 @@ private:
 
   AssertingVH<Function> Func;
   unsigned Hash;
-  DataLayout *DL;
+  const DataLayout *DL;
 };
 
 const ComparableFunction ComparableFunction::EmptyKey = ComparableFunction(0);
@@ -341,7 +341,10 @@ bool FunctionComparator::isEquivalentOperation(const Instruction *I1,
            FI->getSynchScope() == cast<FenceInst>(I2)->getSynchScope();
   if (const AtomicCmpXchgInst *CXI = dyn_cast<AtomicCmpXchgInst>(I1))
     return CXI->isVolatile() == cast<AtomicCmpXchgInst>(I2)->isVolatile() &&
-           CXI->getOrdering() == cast<AtomicCmpXchgInst>(I2)->getOrdering() &&
+           CXI->getSuccessOrdering() ==
+               cast<AtomicCmpXchgInst>(I2)->getSuccessOrdering() &&
+           CXI->getFailureOrdering() ==
+               cast<AtomicCmpXchgInst>(I2)->getFailureOrdering() &&
            CXI->getSynchScope() == cast<AtomicCmpXchgInst>(I2)->getSynchScope();
   if (const AtomicRMWInst *RMWI = dyn_cast<AtomicRMWInst>(I1))
     return RMWI->getOperation() == cast<AtomicRMWInst>(I2)->getOperation() &&
@@ -561,7 +564,7 @@ public:
     initializeMergeFunctionsPass(*PassRegistry::getPassRegistry());
   }
 
-  bool runOnModule(Module &M);
+  bool runOnModule(Module &M) override;
 
 private:
   typedef DenseSet<ComparableFunction> FnSetType;
@@ -606,7 +609,7 @@ private:
   FnSetType FnSet;
 
   /// DataLayout for more accurate GEP comparisons. May be NULL.
-  DataLayout *DL;
+  const DataLayout *DL;
 
   /// Whether or not the target supports global aliases.
   bool HasGlobalAliases;
@@ -623,7 +626,8 @@ ModulePass *llvm::createMergeFunctionsPass() {
 
 bool MergeFunctions::runOnModule(Module &M) {
   bool Changed = false;
-  DL = getAnalysisIfAvailable<DataLayout>();
+  DataLayoutPass *DLP = getAnalysisIfAvailable<DataLayoutPass>();
+  DL = DLP ? &DLP->getDataLayout() : 0;
 
   for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I) {
     if (!I->isDeclaration() && !I->hasAvailableExternallyLinkage())
@@ -696,14 +700,13 @@ bool DenseMapInfo<ComparableFunction>::isEqual(const ComparableFunction &LHS,
 // Replace direct callers of Old with New.
 void MergeFunctions::replaceDirectCallers(Function *Old, Function *New) {
   Constant *BitcastNew = ConstantExpr::getBitCast(New, Old->getType());
-  for (Value::use_iterator UI = Old->use_begin(), UE = Old->use_end();
-       UI != UE;) {
-    Value::use_iterator TheIter = UI;
+  for (auto UI = Old->use_begin(), UE = Old->use_end(); UI != UE;) {
+    Use *U = &*UI;
     ++UI;
-    CallSite CS(*TheIter);
-    if (CS && CS.isCallee(TheIter)) {
+    CallSite CS(U->getUser());
+    if (CS && CS.isCallee(U)) {
       remove(CS.getInstruction()->getParent()->getParent());
-      TheIter.getUse().set(BitcastNew);
+      U->set(BitcastNew);
     }
   }
 }
@@ -894,17 +897,14 @@ void MergeFunctions::removeUsers(Value *V) {
     Value *V = Worklist.back();
     Worklist.pop_back();
 
-    for (Value::use_iterator UI = V->use_begin(), UE = V->use_end();
-         UI != UE; ++UI) {
-      Use &U = UI.getUse();
-      if (Instruction *I = dyn_cast<Instruction>(U.getUser())) {
+    for (User *U : V->users()) {
+      if (Instruction *I = dyn_cast<Instruction>(U)) {
         remove(I->getParent()->getParent());
-      } else if (isa<GlobalValue>(U.getUser())) {
+      } else if (isa<GlobalValue>(U)) {
         // do nothing
-      } else if (Constant *C = dyn_cast<Constant>(U.getUser())) {
-        for (Value::use_iterator CUI = C->use_begin(), CUE = C->use_end();
-             CUI != CUE; ++CUI)
-          Worklist.push_back(*CUI);
+      } else if (Constant *C = dyn_cast<Constant>(U)) {
+        for (User *UU : C->users())
+          Worklist.push_back(UU);
       }
     }
   }

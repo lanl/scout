@@ -28,13 +28,13 @@
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/Attributes.h"
+#include "llvm/IR/CFG.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
-#include "llvm/Support/CFG.h"
 #include "llvm/Transforms/Utils/Local.h"
 using namespace llvm;
 
@@ -46,9 +46,9 @@ struct CFGSimplifyPass : public FunctionPass {
   CFGSimplifyPass() : FunctionPass(ID) {
     initializeCFGSimplifyPassPass(*PassRegistry::getPassRegistry());
   }
-  virtual bool runOnFunction(Function &F);
+  bool runOnFunction(Function &F) override;
 
-  virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+  void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.addRequired<TargetTransformInfo>();
   }
 };
@@ -172,7 +172,8 @@ bool CFGSimplifyPass::runOnFunction(Function &F) {
     return false;
 
   const TargetTransformInfo &TTI = getAnalysis<TargetTransformInfo>();
-  const DataLayout *DL = getAnalysisIfAvailable<DataLayout>();
+  DataLayoutPass *DLP = getAnalysisIfAvailable<DataLayoutPass>();
+  const DataLayout *DL = DLP ? &DLP->getDataLayout() : 0;
   bool EverChanged = removeUnreachableBlocks(F);
   EverChanged |= mergeEmptyReturnBlocks(F);
   EverChanged |= iterativelySimplifyCFG(F, TTI, DL);

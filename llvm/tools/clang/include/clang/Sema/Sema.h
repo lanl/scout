@@ -38,17 +38,18 @@
 #include "clang/Sema/LocInfoType.h"
 #include "clang/Sema/ObjCMethodList.h"
 #include "clang/Sema/Ownership.h"
+#include "clang/Sema/Scope.h"
 #include "clang/Sema/ScopeInfo.h"
 #include "clang/Sema/TypoCorrection.h"
 #include "clang/Sema/Weak.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/MC/MCParser/MCAsmParser.h"
 #include <deque>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -332,7 +333,7 @@ public:
   ExtVectorDeclsType ExtVectorDecls;
 
   /// FieldCollector - Collects CXXFieldDecls during parsing of C++ classes.
-  OwningPtr<CXXFieldCollector> FieldCollector;
+  std::unique_ptr<CXXFieldCollector> FieldCollector;
 
   typedef llvm::SmallSetVector<const NamedDecl*, 16> NamedDeclSetType;
 
@@ -344,7 +345,7 @@ public:
   /// PureVirtualClassDiagSet - a set of class declarations which we have
   /// emitted a list of pure virtual functions. Used to prevent emitting the
   /// same list more than once.
-  OwningPtr<RecordDeclSetTy> PureVirtualClassDiagSet;
+  std::unique_ptr<RecordDeclSetTy> PureVirtualClassDiagSet;
 
   /// ParsingInitForAutoVars - a set of declarations with auto types for which
   /// we are currently parsing the initializer.
@@ -596,7 +597,7 @@ public:
   RecordDecl *MSVCGuidDecl;
 
   /// \brief Caches identifiers/selectors for NSFoundation APIs.
-  OwningPtr<NSAPI> NSAPIObj;
+  std::unique_ptr<NSAPI> NSAPIObj;
 
   /// \brief The declaration of the Objective-C NSNumber class.
   ObjCInterfaceDecl *NSNumberDecl;
@@ -1346,11 +1347,6 @@ public:
   /// function to pin them on. ActOnFunctionDeclarator reads this list and patches
   /// them into the FunctionDecl.
   std::vector<NamedDecl*> DeclsInPrototypeScope;
-  /// Nonzero if we are currently parsing a function declarator. This is a counter
-  /// as opposed to a boolean so we can deal with nested function declarators
-  /// such as:
-  ///     void f(void (*g)(), ...)
-  unsigned InFunctionDeclarator;
 
   DeclGroupPtrTy ConvertDeclToDeclGroup(Decl *Ptr, Decl *OwnedType = 0);
 
@@ -1535,8 +1531,6 @@ public:
   void CheckVariableDeclarationType(VarDecl *NewVD);
   void CheckCompleteVariableDeclaration(VarDecl *var);
   void MaybeSuggestAddingStaticToDecl(const FunctionDecl *D);
-  void ActOnStartFunctionDeclarator();
-  void ActOnEndFunctionDeclarator();
 
   NamedDecl* ActOnFunctionDeclarator(Scope* S, Declarator& D, DeclContext* DC,
                                      TypeSourceInfo *TInfo,
@@ -2685,19 +2679,14 @@ public:
   /// DiagnoseUnimplementedProperties - This routine warns on those properties
   /// which must be implemented by this implementation.
   void DiagnoseUnimplementedProperties(Scope *S, ObjCImplDecl* IMPDecl,
-                                       ObjCContainerDecl *CDecl);
+                                       ObjCContainerDecl *CDecl,
+                                       bool SynthesizeProperties);
 
   /// DefaultSynthesizeProperties - This routine default synthesizes all
   /// properties which must be synthesized in the class's \@implementation.
   void DefaultSynthesizeProperties (Scope *S, ObjCImplDecl* IMPDecl,
                                     ObjCInterfaceDecl *IDecl);
   void DefaultSynthesizeProperties(Scope *S, Decl *D);
-
-  /// CollectImmediateProperties - This routine collects all properties in
-  /// the class and its conforming protocols; but not those it its super class.
-  void CollectImmediateProperties(ObjCContainerDecl *CDecl,
-            llvm::DenseMap<IdentifierInfo *, ObjCPropertyDecl*>& PropMap,
-            llvm::DenseMap<IdentifierInfo *, ObjCPropertyDecl*>& SuperPropMap);
 
   /// IvarBacksCurrentMethodAccessor - This routine returns 'true' if 'IV' is
   /// an ivar synthesized for 'Method' and 'Method' is a property accessor
@@ -7140,6 +7129,7 @@ private:
   /// \brief Initialization of data-sharing attributes stack.
   void InitDataSharingAttributesStack();
   void DestroyDataSharingAttributesStack();
+  ExprResult PerformImplicitIntegerConversion(SourceLocation OpLoc, Expr *Op);
 public:
   /// \brief Called on start of new data sharing attribute block.
   void StartOpenMPDSABlock(OpenMPDirectiveKind K,
@@ -7174,6 +7164,12 @@ public:
                                           Stmt *AStmt,
                                           SourceLocation StartLoc,
                                           SourceLocation EndLoc);
+  /// \brief Called on well-formed '\#pragma omp simd' after parsing
+  /// of the associated statement.
+  StmtResult ActOnOpenMPSimdDirective(ArrayRef<OMPClause *> Clauses,
+                                      Stmt *AStmt,
+                                      SourceLocation StartLoc,
+                                      SourceLocation EndLoc);
 
   OMPClause *ActOnOpenMPSingleExprClause(OpenMPClauseKind Kind,
                                          Expr *Expr,
@@ -7184,6 +7180,11 @@ public:
   OMPClause *ActOnOpenMPIfClause(Expr *Condition, SourceLocation StartLoc,
                                  SourceLocation LParenLoc,
                                  SourceLocation EndLoc);
+  /// \brief Called on well-formed 'num_threads' clause.
+  OMPClause *ActOnOpenMPNumThreadsClause(Expr *NumThreads,
+                                         SourceLocation StartLoc,
+                                         SourceLocation LParenLoc,
+                                         SourceLocation EndLoc);
 
   OMPClause *ActOnOpenMPSimpleClause(OpenMPClauseKind Kind,
                                      unsigned Argument,
@@ -7305,6 +7306,9 @@ public:
   /// Check to see if the given expression is a valid argument to a variadic
   /// function, issuing a diagnostic if not.
   void checkVariadicArgument(const Expr *E, VariadicCallType CT);
+
+  /// Check to see if a given expression could have '.c_str()' called on it.
+  bool hasCStrMethod(const Expr *E);
 
   /// GatherArgumentsForCall - Collector argument expressions for various
   /// form of call prototypes.
@@ -7532,6 +7536,10 @@ public:
 
   bool DiagnoseConditionalForNull(Expr *LHSExpr, Expr *RHSExpr,
                                   SourceLocation QuestionLoc);
+
+  void DiagnoseAlwaysNonNullPointer(Expr *E,
+                                    Expr::NullPointerConstantKind NullType,
+                                    bool IsEqual, SourceRange Range);
 
   /// type checking for vector binary operators.
   QualType CheckVectorOperands(ExprResult &LHS, ExprResult &RHS,
@@ -7952,6 +7960,7 @@ private:
   bool CheckARMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
   bool CheckAArch64BuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
   bool CheckMipsBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
+  bool CheckX86BuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
 
   bool SemaBuiltinVAStart(CallExpr *TheCall);
   bool SemaBuiltinUnorderedCompare(CallExpr *TheCall);
@@ -7966,6 +7975,7 @@ public:
 
 private:
   bool SemaBuiltinPrefetch(CallExpr *TheCall);
+  bool SemaBuiltinMMPrefetch(CallExpr *TheCall);
   bool SemaBuiltinObjectSize(CallExpr *TheCall);
   bool SemaBuiltinLongjmp(CallExpr *TheCall);
   ExprResult SemaBuiltinAtomicOverloaded(ExprResult TheCallResult);
@@ -8006,6 +8016,10 @@ private:
                             VariadicCallType CallType,
                             SourceLocation Loc, SourceRange range,
                             llvm::SmallBitVector &CheckedVarArgs);
+
+  void CheckAbsoluteValueFunction(const CallExpr *Call,
+                                  const FunctionDecl *FDecl,
+                                  IdentifierInfo *FnInfo);
 
   void CheckMemaccessArguments(const CallExpr *Call,
                                unsigned BId,
@@ -8068,7 +8082,7 @@ public:
 
 private:
   /// \brief A map from magic value to type information.
-  OwningPtr<llvm::DenseMap<TypeTagMagicValue, TypeTagData> >
+  std::unique_ptr<llvm::DenseMap<TypeTagMagicValue, TypeTagData>>
       TypeTagForDatatypeMagicValues;
 
   /// \brief Peform checks on a call of a function with argument_with_type_tag
@@ -8100,6 +8114,10 @@ public:
   /// itself and in routines directly invoked from the parser and *never* from
   /// template substitution or instantiation.
   Scope *getCurScope() const { return CurScope; }
+
+  void incrementMSLocalManglingNumber() const {
+    return CurScope->incrementMSLocalManglingNumber();
+  }
 
   IdentifierInfo *getSuperIdentifier() const;
   IdentifierInfo *getFloat128Identifier() const;

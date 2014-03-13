@@ -302,9 +302,9 @@ static bool isExitingLoop(const MachineLoop *From, const MachineLoop *To) {
 // instructions.
 namespace {
 class MinInstrCountEnsemble : public MachineTraceMetrics::Ensemble {
-  const char *getName() const { return "MinInstr"; }
-  const MachineBasicBlock *pickTracePred(const MachineBasicBlock*);
-  const MachineBasicBlock *pickTraceSucc(const MachineBasicBlock*);
+  const char *getName() const override { return "MinInstr"; }
+  const MachineBasicBlock *pickTracePred(const MachineBasicBlock*) override;
+  const MachineBasicBlock *pickTraceSucc(const MachineBasicBlock*) override;
 
 public:
   MinInstrCountEnsemble(MachineTraceMetrics *mtm)
@@ -944,7 +944,7 @@ static bool pushDepHeight(const DataDep &Dep,
   // Update Heights[DefMI] to be the maximum height seen.
   MIHeightMap::iterator I;
   bool New;
-  tie(I, New) = Heights.insert(std::make_pair(Dep.DefMI, UseHeight));
+  std::tie(I, New) = Heights.insert(std::make_pair(Dep.DefMI, UseHeight));
   if (New)
     return true;
 

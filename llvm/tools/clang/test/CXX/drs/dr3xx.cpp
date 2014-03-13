@@ -180,6 +180,15 @@ namespace dr313 { // dr313: dup 299 c++11
 #endif
 }
 
+namespace dr314 { // dr314: dup 1710
+  template<typename T> struct A {
+    template<typename U> struct B {};
+  };
+  template<typename T> struct C : public A<T>::template B<T> {
+    C() : A<T>::template B<T>() {}
+  };
+}
+
 // dr315: na
 // dr316: sup 1004
 
@@ -468,6 +477,22 @@ namespace dr341 {
 }
 
 // dr342: na
+
+namespace dr343 { // dr343: no
+  // FIXME: dup 1710
+  template<typename T> struct A {
+    template<typename U> struct B {};
+  };
+  // FIXME: In these contexts, the 'template' keyword is optional.
+  template<typename T> struct C : public A<T>::B<T> { // expected-error {{use 'template'}}
+    C() : A<T>::B<T>() {} // expected-error {{use 'template'}}
+  };
+}
+
+namespace dr344 { // dr344: dup 1435
+  struct A { inline virtual ~A(); };
+  struct B { friend A::~A(); };
+}
 
 namespace dr345 { // dr345: yes
   struct A {
@@ -791,3 +816,213 @@ namespace dr368 { // dr368: yes
 }
 
 // dr370: na
+
+namespace dr372 { // dr372: no
+  namespace example1 {
+    template<typename T> struct X {
+    protected:
+      typedef T Type; // expected-note 2{{protected}}
+    };
+    template<typename T> struct Y {};
+
+    // FIXME: These two are valid; deriving from T1<T> gives Z1 access to
+    // the protected member T1<T>::Type.
+    template<typename T,
+             template<typename> class T1,
+             template<typename> class T2> struct Z1 :
+      T1<T>,
+      T2<typename T1<T>::Type> {}; // expected-error {{protected}}
+
+    template<typename T,
+             template<typename> class T1,
+             template<typename> class T2> struct Z2 :
+      T2<typename T1<T>::Type>, // expected-error {{protected}}
+      T1<T> {};
+
+    Z1<int, X, Y> z1; // expected-note {{instantiation of}}
+    Z2<int, X, Y> z2; // expected-note {{instantiation of}}
+  }
+
+  namespace example2 {
+    struct X {
+    private:
+      typedef int Type; // expected-note {{private}}
+    };
+    template<typename T> struct A {
+      typename T::Type t; // expected-error {{private}}
+    };
+    A<X> ax; // expected-note {{instantiation of}}
+  }
+
+  namespace example3 {
+    struct A {
+    protected:
+      typedef int N; // expected-note 2{{protected}}
+    };
+
+    template<typename T> struct B {};
+    template<typename U> struct C : U, B<typename U::N> {}; // expected-error {{protected}}
+    template<typename U> struct D : B<typename U::N>, U {}; // expected-error {{protected}}
+
+    C<A> x; // expected-note {{instantiation of}}
+    D<A> y; // expected-note {{instantiation of}}
+  }
+
+  namespace example4 {
+    class A {
+      class B {};
+      friend class X;
+    };
+
+    struct X : A::B {
+      A::B mx;
+      class Y {
+        A::B my;
+      };
+    };
+  }
+}
+
+namespace dr373 { // dr373: no
+  // FIXME: This is valid.
+  namespace X { int dr373; } // expected-note 2{{here}}
+  struct dr373 { // expected-note {{here}}
+    void f() {
+      using namespace dr373::X; // expected-error {{no namespace named 'X' in 'dr373::dr373'}}
+      int k = dr373; // expected-error {{does not refer to a value}}
+
+      namespace Y = dr373::X; // expected-error {{no namespace named 'X' in 'dr373::dr373'}}
+      k = Y::dr373;
+    }
+  };
+}
+
+namespace dr374 { // dr374: yes c++11
+  namespace N {
+    template<typename T> void f();
+    template<typename T> struct A { void f(); };
+  }
+  template<> void N::f<char>() {}
+  template<> void N::A<char>::f() {}
+  template<> struct N::A<int> {};
+#if __cplusplus < 201103L
+  // expected-error@-4 {{extension}} expected-note@-7 {{here}}
+  // expected-error@-4 {{extension}} expected-note@-7 {{here}}
+  // expected-error@-4 {{extension}} expected-note@-8 {{here}}
+#endif
+}
+
+// dr375: dup 345
+// dr376: na
+
+namespace dr377 { // dr377: yes
+  enum E { // expected-error {{enumeration values exceed range of largest integer}}
+    a = -__LONG_LONG_MAX__ - 1, // expected-error 0-1{{extension}}
+    b = 2 * (unsigned long long)__LONG_LONG_MAX__ // expected-error 0-2{{extension}}
+  };
+}
+
+// dr378: dup 276
+// dr379: na
+
+namespace dr381 { // dr381: yes
+  struct A {
+    int a;
+  };
+  struct B : virtual A {};
+  struct C : B {};
+  struct D : B {};
+  struct E : public C, public D {};
+  struct F : public A {};
+  void f() {
+    E e;
+    e.B::a = 0; // expected-error {{ambiguous conversion}}
+    F f;
+    f.A::a = 1;
+  }
+}
+
+namespace dr382 { // dr382: yes c++11
+  // FIXME: Should we allow this in C++98 mode?
+  struct A { typedef int T; };
+  typename A::T t;
+  typename dr382::A a;
+#if __cplusplus < 201103L
+  // expected-error@-3 {{occurs outside of a template}}
+  // expected-error@-3 {{occurs outside of a template}}
+#endif
+  typename A b; // expected-error {{expected a qualified name}}
+}
+
+namespace dr383 { // dr383: yes
+  struct A { A &operator=(const A&); };
+  struct B { ~B(); };
+  union C { C &operator=(const C&); };
+  union D { ~D(); };
+  int check[(__is_pod(A) || __is_pod(B) || __is_pod(C) || __is_pod(D)) ? -1 : 1];
+}
+
+namespace dr384 { // dr384: yes
+  namespace N1 {
+    template<typename T> struct Base {};
+    template<typename T> struct X {
+      struct Y : public Base<T> {
+        Y operator+(int) const;
+      };
+      Y f(unsigned i) { return Y() + i; }
+    };
+  }
+
+  namespace N2 {
+    struct Z {};
+    template<typename T> int *operator+(T, unsigned);
+  }
+
+  int main() {
+    N1::X<N2::Z> v;
+    v.f(0);
+  }
+}
+
+namespace dr385 { // dr385: yes
+  struct A { protected: void f(); }; 
+  struct B : A { using A::f; };
+  struct C : A { void g(B b) { b.f(); } };
+  void h(B b) { b.f(); }
+
+  struct D { int n; }; // expected-note {{member}}
+  struct E : protected D {}; // expected-note 2{{protected}}
+  struct F : E { friend int i(E); };
+  int i(E e) { return e.n; } // expected-error {{protected base}} expected-error {{protected member}}
+}
+
+namespace dr387 { // dr387: yes
+  namespace old {
+    template<typename T> class number {
+      number(int); // expected-note 2{{here}}
+      friend number gcd(number &x, number &y) {}
+    };
+
+    void g() {
+      number<double> a(3), b(4); // expected-error 2{{private}}
+      a = gcd(a, b);
+      b = gcd(3, 4); // expected-error {{undeclared}}
+    }
+  }
+
+  namespace newer {
+    template <typename T> class number {
+    public:
+      number(int);
+      friend number gcd(number x, number y) { return 0; }
+    };
+
+    void g() {
+      number<double> a(3), b(4);
+      a = gcd(a, b);
+      b = gcd(3, 4); // expected-error {{undeclared}}
+    }
+  }
+}
+
+// FIXME: dr388 needs codegen test

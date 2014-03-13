@@ -73,11 +73,11 @@ public:
       Subtarget(&TM.getSubtarget<ARMSubtarget>()) {
   }
 
-  virtual const char *getPassName() const {
+  const char *getPassName() const override {
     return "ARM Instruction Selection";
   }
 
-  virtual void PreprocessISelDAG();
+  void PreprocessISelDAG() override;
 
   /// getI32Imm - Return a target constant of type i32 with the specified
   /// value.
@@ -85,7 +85,7 @@ public:
     return CurDAG->getTargetConstant(Imm, MVT::i32);
   }
 
-  SDNode *Select(SDNode *N);
+  SDNode *Select(SDNode *N) override;
 
 
   bool hasNoVMLxHazardUse(SDNode *N) const;
@@ -257,9 +257,8 @@ private:
 
   /// SelectInlineAsmMemoryOperand - Implement addressing mode selection for
   /// inline asm expressions.
-  virtual bool SelectInlineAsmMemoryOperand(const SDValue &Op,
-                                            char ConstraintCode,
-                                            std::vector<SDValue> &OutOps);
+  bool SelectInlineAsmMemoryOperand(const SDValue &Op, char ConstraintCode,
+                                    std::vector<SDValue> &OutOps) override;
 
   // Form pairs of consecutive R, S, D, or Q registers.
   SDNode *createGPRPairNode(EVT VT, SDValue V0, SDValue V1);
@@ -3321,12 +3320,6 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
   case ISD::ATOMIC_LOAD:
     if (cast<AtomicSDNode>(N)->getMemoryVT() == MVT::i64)
       return SelectAtomic(N, 0, 0, 0, ARM::ATOMIC_LOAD_I64);
-    else
-      break;
-
-  case ISD::ATOMIC_STORE:
-    if (cast<AtomicSDNode>(N)->getMemoryVT() == MVT::i64)
-      return SelectAtomic(N, 0, 0, 0, ARM::ATOMIC_STORE_I64);
     else
       break;
 

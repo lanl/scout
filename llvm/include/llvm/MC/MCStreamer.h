@@ -118,7 +118,7 @@ public:
 
   virtual void AnnotateTLSDescriptorSequence(const MCSymbolRefExpr *SRE);
 
-  virtual void finish();
+  void finish() override;
 
   /// Callback used to implement the ldr= pseudo.
   /// Add a new entry to the constant pool for the current section and return an
@@ -130,7 +130,7 @@ public:
   void emitCurrentConstantPool();
 
 private:
-  OwningPtr<AssemblerConstantPools> ConstantPools;
+  std::unique_ptr<AssemblerConstantPools> ConstantPools;
 };
 
 /// MCStreamer - Streaming machine code generation interface.  This interface
@@ -144,7 +144,7 @@ private:
 ///
 class MCStreamer {
   MCContext &Context;
-  OwningPtr<MCTargetStreamer> TargetStreamer;
+  std::unique_ptr<MCTargetStreamer> TargetStreamer;
 
   MCStreamer(const MCStreamer &) LLVM_DELETED_FUNCTION;
   MCStreamer &operator=(const MCStreamer &) LLVM_DELETED_FUNCTION;
@@ -352,10 +352,7 @@ public:
   }
 
   /// Create the default sections and set the initial one.
-  ///
-  /// @param Force - If false, a text streamer implementation can be a nop.
-  /// Used by CodeGen to avoid starting every file with '.text'.
-  virtual void InitSections(bool Force = true);
+  virtual void InitSections();
 
   /// AssignSection - Sets the symbol's section.
   ///
@@ -769,13 +766,6 @@ MCStreamer *createWinCOFFStreamer(MCContext &Ctx, MCAsmBackend &TAB,
 MCStreamer *createELFStreamer(MCContext &Ctx, MCAsmBackend &TAB,
                               raw_ostream &OS, MCCodeEmitter *CE, bool RelaxAll,
                               bool NoExecStack);
-
-/// createPureStreamer - Create a machine code streamer which will generate
-/// "pure" MC object files, for use with MC-JIT and testing tools.
-///
-/// Takes ownership of \p TAB and \p CE.
-MCStreamer *createPureStreamer(MCContext &Ctx, MCAsmBackend &TAB,
-                               raw_ostream &OS, MCCodeEmitter *CE);
 
 } // end namespace llvm
 

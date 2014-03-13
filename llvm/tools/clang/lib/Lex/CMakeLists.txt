@@ -28,8 +28,6 @@ add_clang_library(clangLex
   # ===== Scout ============
   Scout/Lexer.cpp
   #=========================
-  )
-
-target_link_libraries(clangLex
+  LINK_LIBS
   clangBasic
   )

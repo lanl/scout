@@ -13,10 +13,10 @@
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Lex/Preprocessor.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/STLExtras.h"
 #include <climits>
+#include <memory>
 
 namespace clang {
 
@@ -204,7 +204,7 @@ private:
   DiagnosticsEngine &Diags;
   DiagnosticConsumer *PrimaryClient;
   bool OwnsPrimaryClient;
-  OwningPtr<TextDiagnosticBuffer> Buffer;
+  std::unique_ptr<TextDiagnosticBuffer> Buffer;
   const Preprocessor *CurrentPreprocessor;
   const LangOptions *LangOpts;
   SourceManager *SrcManager;

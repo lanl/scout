@@ -296,12 +296,8 @@ IRForTarget::RegisterFunctionMetadata(LLVMContext &context,
                                       llvm::Value *function_ptr, 
                                       const char *name)
 {
-    for (Value::use_iterator i = function_ptr->use_begin(), e = function_ptr->use_end();
-         i != e;
-         ++i)
+    for (llvm::User *user : function_ptr->users())
     {
-        Value *user = *i;
-                
         if (Instruction *user_inst = dyn_cast<Instruction>(user))
         {
             MDString* md_name = MDString::get(context, StringRef(name));
@@ -363,8 +359,8 @@ IRForTarget::ResolveFunctionPointers(llvm::Module &llvm_module)
         if (fun->hasFnAttribute(llvm::Attribute::NoBuiltin)) {
             llvm::Attribute builtin = llvm::Attribute::get(fun->getContext(), llvm::Attribute::Builtin);
 
-            for (auto u = fun->use_begin(), e = fun->use_end(); u != e; ++u) {
-                if (auto call = dyn_cast<CallInst>(*u)) {
+            for (auto u : fun->users()) {
+                if (auto call = dyn_cast<CallInst>(u)) {
                     call->removeAttribute(AttributeSet::FunctionIndex, builtin);
                 }
             }
@@ -692,7 +688,7 @@ IRForTarget::CreateResultVariable (llvm::Function &llvm_function)
 }
 
 #if 0
-static void DebugUsers(Log *log, Value *value, uint8_t depth)
+static void DebugUsers(lldb_private::Log *log, Value *value, uint8_t depth)
 {    
     if (!depth)
         return;
@@ -702,13 +698,11 @@ static void DebugUsers(Log *log, Value *value, uint8_t depth)
     if (log)
         log->Printf("  <Begin %d users>", value->getNumUses());
     
-    for (Value::use_iterator ui = value->use_begin(), ue = value->use_end();
-         ui != ue;
-         ++ui)
+    for (llvm::User *u : value->users())
     {
         if (log)
-            log->Printf("  <Use %p> %s", *ui, PrintValue(*ui).c_str());
-        DebugUsers(log, *ui, depth);
+            log->Printf("  <Use %p> %s", u, PrintValue(u).c_str());
+        DebugUsers(log, u, depth);
     }
     
     if (log)
@@ -1656,16 +1650,14 @@ IRForTarget::HandleObjCClass(Value *classlist_reference)
     if (class_ptr == LLDB_INVALID_ADDRESS)
         return false;
     
-    if (global_variable->use_begin() == global_variable->use_end())
+    if (global_variable->use_empty())
         return false;
     
     SmallVector<LoadInst *, 2> load_instructions;
         
-    for (Value::use_iterator i = global_variable->use_begin(), e = global_variable->use_end();
-         i != e;
-         ++i)
+    for (llvm::User *u : global_variable->users())
     {
-        if (LoadInst *load_instruction = dyn_cast<LoadInst>(*i))
+        if (LoadInst *load_instruction = dyn_cast<LoadInst>(u))
             load_instructions.push_back(load_instruction);
     }
     
@@ -1900,15 +1892,13 @@ IRForTarget::ReplaceStrings ()
         if (log)
             log->Printf("Replacing GV %s with %s", PrintValue(gv).c_str(), PrintValue(new_initializer).c_str());
         
-        for (GlobalVariable::use_iterator ui = gv->use_begin(), ue = gv->use_end();
-             ui != ue;
-             ++ui)
+        for (llvm::User *u : gv->users())
         {
             if (log)
-                log->Printf("Found use %s", PrintValue(*ui).c_str());
+                log->Printf("Found use %s", PrintValue(u).c_str());
             
-            ConstantExpr *const_expr = dyn_cast<ConstantExpr>(*ui);
-            StoreInst *store_inst = dyn_cast<StoreInst>(*ui);
+            ConstantExpr *const_expr = dyn_cast<ConstantExpr>(u);
+            StoreInst *store_inst = dyn_cast<StoreInst>(u);
             
             if (const_expr)
             {
@@ -2016,7 +2006,7 @@ IRForTarget::ReplaceStaticLiterals (llvm::BasicBlock &basic_block)
                 }
                 ss.flush();
                 
-                log->Printf("Found ConstantFP with size %zu and raw data %s", operand_data_size, s.c_str());
+                log->Printf("Found ConstantFP with size %" PRIu64 " and raw data %s", (uint64_t)operand_data_size, s.c_str());
             }
             
             lldb_private::DataBufferHeap data(operand_data_size, 0);
@@ -2091,19 +2081,15 @@ IRForTarget::TurnGuardLoadIntoZero(llvm::Instruction* guard_load)
 {
     Constant* zero(ConstantInt::get(Type::getInt8Ty(m_module->getContext()), 0, true));
 
-    Value::use_iterator ui;
-    
-    for (ui = guard_load->use_begin();
-         ui != guard_load->use_end();
-         ++ui)
+    for (llvm::User *u : guard_load->users())
     {
-        if (isa<Constant>(*ui))
+        if (isa<Constant>(u))
         {
             // do nothing for the moment
         }
         else
         {
-            ui->replaceUsesOfWith(guard_load, zero);
+            u->replaceUsesOfWith(guard_load, zero);
         }
     }
     
@@ -2168,16 +2154,12 @@ IRForTarget::UnfoldConstant(Constant *old_constant,
 {
     lldb_private::Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS));
 
-    Value::use_iterator ui;
-    
     SmallVector<User*, 16> users;
     
     // We do this because the use list might change, invalidating our iterator.
     // Much better to keep a work list ourselves.
-    for (ui = old_constant->use_begin();
-         ui != old_constant->use_end();
-         ++ui)
-        users.push_back(*ui);
+    for (llvm::User *u : old_constant->users())
+        users.push_back(u);
         
     for (size_t i = 0;
          i < users.size();
@@ -2479,7 +2461,7 @@ IRForTarget::ReplaceVariables (Function &llvm_function)
     }
     
     if (log)
-        log->Printf("Total structure [align %" PRId64 ", size %zu]", alignment, size);
+        log->Printf("Total structure [align %" PRId64 ", size %" PRIu64 "]", (int64_t)alignment, (uint64_t)size);
     
     return true;
 }
@@ -2571,7 +2553,7 @@ IRForTarget::StripAllGVs (Module &llvm_module)
     {
         GlobalVariable *global_var = dyn_cast<GlobalVariable>(gi);
 
-        GlobalValue::use_iterator ui = global_var->use_begin();
+        GlobalValue::user_iterator ui = global_var->user_begin();
         
         if (log)
             log->Printf("Couldn't remove %s because of %s",

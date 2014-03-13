@@ -31,6 +31,9 @@ class Value;
 enum DiagnosticSeverity {
   DS_Error,
   DS_Warning,
+  DS_Remark,
+  // A note attaches additional information to one of the previous diagnostic
+  // types.
   DS_Note
 };
 
@@ -125,7 +128,7 @@ public:
   const Instruction *getInstruction() const { return Instr; }
 
   /// \see DiagnosticInfo::print.
-  virtual void print(DiagnosticPrinter &DP) const;
+  void print(DiagnosticPrinter &DP) const override;
 
   /// Hand rolled RTTI.
   static bool classof(const DiagnosticInfo *DI) {
@@ -153,7 +156,7 @@ public:
   unsigned getStackSize() const { return StackSize; }
 
   /// \see DiagnosticInfo::print.
-  virtual void print(DiagnosticPrinter &DP) const;
+  void print(DiagnosticPrinter &DP) const override;
 
   /// Hand rolled RTTI.
   static bool classof(const DiagnosticInfo *DI) {
@@ -182,7 +185,7 @@ public:
   unsigned getMetadataVersion() const { return MetadataVersion; }
 
   /// \see DiagnosticInfo::print.
-  virtual void print(DiagnosticPrinter &DP) const;
+  void print(DiagnosticPrinter &DP) const override;
 
   /// Hand rolled RTTI.
   static bool classof(const DiagnosticInfo *DI) {

@@ -118,18 +118,20 @@ bool Parser::ExpectAndConsume(tok::TokenKind ExpectedTok, unsigned DiagID,
   // Detect common single-character typos and resume.
   if (IsCommonTypo(ExpectedTok, Tok)) {
     SourceLocation Loc = Tok.getLocation();
-    DiagnosticBuilder DB = Diag(Loc, DiagID);
-    DB << FixItHint::CreateReplacement(SourceRange(Loc),
-                                       getPunctuatorSpelling(ExpectedTok));
-    if (DiagID == diag::err_expected)
-      DB << ExpectedTok;
-    else if (DiagID == diag::err_expected_after)
-      DB << Msg << ExpectedTok;
-    else
-      DB << Msg;
-    ConsumeAnyToken();
+    {
+      DiagnosticBuilder DB = Diag(Loc, DiagID);
+      DB << FixItHint::CreateReplacement(
+                SourceRange(Loc), tok::getPunctuatorSpelling(ExpectedTok));
+      if (DiagID == diag::err_expected)
+        DB << ExpectedTok;
+      else if (DiagID == diag::err_expected_after)
+        DB << Msg << ExpectedTok;
+      else
+        DB << Msg;
+    }
 
     // Pretend there wasn't a problem.
+    ConsumeAnyToken();
     return false;
   }
 
@@ -1197,20 +1199,20 @@ void Parser::ParseKNRParamDeclarations(Declarator &D) {
         for (unsigned i = 0; ; ++i) {
           // C99 6.9.1p6: those declarators shall declare only identifiers from
           // the identifier list.
-          if (i == FTI.NumArgs) {
+          if (i == FTI.NumParams) {
             Diag(ParmDeclarator.getIdentifierLoc(), diag::err_no_matching_param)
               << ParmDeclarator.getIdentifier();
             break;
           }
 
-          if (FTI.ArgInfo[i].Ident == ParmDeclarator.getIdentifier()) {
+          if (FTI.Params[i].Ident == ParmDeclarator.getIdentifier()) {
             // Reject redefinitions of parameters.
-            if (FTI.ArgInfo[i].Param) {
+            if (FTI.Params[i].Param) {
               Diag(ParmDeclarator.getIdentifierLoc(),
                    diag::err_param_redefinition)
                  << ParmDeclarator.getIdentifier();
             } else {
-              FTI.ArgInfo[i].Param = Param;
+              FTI.Params[i].Param = Param;
             }
             break;
           }

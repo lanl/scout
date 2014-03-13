@@ -240,7 +240,7 @@ public:
   void AutoDetectSubtargetFeatures();
 
   /// \brief Reset the features for the X86 target.
-  virtual void resetSubtargetFeatures(const MachineFunction *MF);
+  void resetSubtargetFeatures(const MachineFunction *MF) override;
 private:
   void initializeEnvironment();
   void resetSubtargetFeatures(StringRef CPU, StringRef FS);
@@ -406,12 +406,12 @@ public:
   bool hasSinCos() const;
 
   /// Enable the MachineScheduler pass for all X86 subtargets.
-  bool enableMachineScheduler() const LLVM_OVERRIDE { return true; }
+  bool enableMachineScheduler() const override { return true; }
 
   /// enablePostRAScheduler - run for Atom optimization.
   bool enablePostRAScheduler(CodeGenOpt::Level OptLevel,
                              TargetSubtargetInfo::AntiDepBreakMode& Mode,
-                             RegClassVector& CriticalPathRCs) const;
+                             RegClassVector& CriticalPathRCs) const override;
 
   bool postRAScheduler() const { return PostRAScheduler; }
 

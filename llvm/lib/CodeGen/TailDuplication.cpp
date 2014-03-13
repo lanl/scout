@@ -15,7 +15,6 @@
 #define DEBUG_TYPE "tailduplication"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/Statistic.h"
@@ -65,7 +64,7 @@ namespace {
     const MachineBranchProbabilityInfo *MBPI;
     MachineModuleInfo *MMI;
     MachineRegisterInfo *MRI;
-    OwningPtr<RegScavenger> RS;
+    std::unique_ptr<RegScavenger> RS;
     bool PreRegAlloc;
 
     // SSAUpdateVRs - A list of virtual registers for which to update SSA form.
@@ -80,9 +79,9 @@ namespace {
     explicit TailDuplicatePass() :
       MachineFunctionPass(ID), PreRegAlloc(false) {}
 
-    virtual bool runOnMachineFunction(MachineFunction &MF);
+    bool runOnMachineFunction(MachineFunction &MF) override;
 
-    virtual void getAnalysisUsage(AnalysisUsage &AU) const;
+    void getAnalysisUsage(AnalysisUsage &AU) const override;
 
   private:
     void AddSSAUpdateEntry(unsigned OrigReg, unsigned NewReg,
@@ -697,7 +696,7 @@ TailDuplicatePass::duplicateSimpleBB(MachineBasicBlock *TailBB,
                  << "From simple Succ: " << *TailBB);
 
     MachineBasicBlock *NewTarget = *TailBB->succ_begin();
-    MachineBasicBlock *NextBB = llvm::next(MachineFunction::iterator(PredBB));
+    MachineBasicBlock *NextBB = std::next(MachineFunction::iterator(PredBB));
 
     // Make PredFBB explicit.
     if (PredCond.empty())
@@ -798,7 +797,7 @@ TailDuplicatePass::TailDuplicate(MachineBasicBlock *TailBB,
       // Update PredBB livein.
       RS->enterBasicBlock(PredBB);
       if (!PredBB->empty())
-        RS->forward(prior(PredBB->end()));
+        RS->forward(std::prev(PredBB->end()));
       BitVector RegsLiveAtExit(TRI->getNumRegs());
       RS->getRegsUsed(RegsLiveAtExit, false);
       for (MachineBasicBlock::livein_iterator I = TailBB->livein_begin(),
@@ -857,7 +856,7 @@ TailDuplicatePass::TailDuplicate(MachineBasicBlock *TailBB,
   // If TailBB was duplicated into all its predecessors except for the prior
   // block, which falls through unconditionally, move the contents of this
   // block into the prior block.
-  MachineBasicBlock *PrevBB = prior(MachineFunction::iterator(TailBB));
+  MachineBasicBlock *PrevBB = std::prev(MachineFunction::iterator(TailBB));
   MachineBasicBlock *PriorTBB = 0, *PriorFBB = 0;
   SmallVector<MachineOperand, 4> PriorCond;
   // This has to check PrevBB->succ_size() because EH edges are ignored by

@@ -11,11 +11,11 @@
 #include "clang/Driver/DriverDiagnostic.h"
 #include "clang/Driver/Options.h"
 #include "clang/Driver/ToolChain.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Transforms/Utils/SpecialCaseList.h"
+#include <memory>
 
 using namespace clang::driver;
 using namespace llvm::opt;
@@ -143,7 +143,7 @@ SanitizerArgs::SanitizerArgs(const ToolChain &TC,
       if (llvm::sys::fs::exists(BLPath)) {
         // Validate the blacklist format.
         std::string BLError;
-        llvm::OwningPtr<llvm::SpecialCaseList> SCL(
+        std::unique_ptr<llvm::SpecialCaseList> SCL(
             llvm::SpecialCaseList::create(BLPath, BLError));
         if (!SCL.get())
           D.Diag(diag::err_drv_malformed_sanitizer_blacklist) << BLError;

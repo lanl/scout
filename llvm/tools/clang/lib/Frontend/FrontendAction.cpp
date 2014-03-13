@@ -148,7 +148,7 @@ ASTConsumer* FrontendAction::CreateWrappedASTConsumer(CompilerInstance &CI,
         ie = FrontendPluginRegistry::end();
         it != ie; ++it) {
       if (it->getName() == CI.getFrontendOpts().AddPluginActions[i]) {
-        OwningPtr<PluginASTAction> P(it->instantiate());
+        std::unique_ptr<PluginASTAction> P(it->instantiate());
         FrontendAction* c = P.get();
         if (P->ParseArgs(CI, CI.getFrontendOpts().AddPluginArgs[i]))
           Consumers.push_back(c->CreateASTConsumer(CI, InFile));
@@ -211,6 +211,32 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
     return true;
   }
 
+  if (!CI.getHeaderSearchOpts().VFSOverlayFiles.empty()) {
+    IntrusiveRefCntPtr<vfs::OverlayFileSystem>
+        Overlay(new vfs::OverlayFileSystem(vfs::getRealFileSystem()));
+    // earlier vfs files are on the bottom
+    const std::vector<std::string> &Files =
+        CI.getHeaderSearchOpts().VFSOverlayFiles;
+    for (std::vector<std::string>::const_iterator I = Files.begin(),
+                                                  E = Files.end();
+         I != E; ++I) {
+      std::unique_ptr<llvm::MemoryBuffer> Buffer;
+      if (llvm::errc::success != llvm::MemoryBuffer::getFile(*I, Buffer)) {
+        CI.getDiagnostics().Report(diag::err_missing_vfs_overlay_file) << *I;
+        goto failure;
+      }
+
+      IntrusiveRefCntPtr<vfs::FileSystem> FS =
+          vfs::getVFSFromYAML(Buffer.release(), /*DiagHandler*/ 0);
+      if (!FS.getPtr()) {
+        CI.getDiagnostics().Report(diag::err_invalid_vfs_overlay) << *I;
+        goto failure;
+      }
+      Overlay->pushOverlay(FS);
+    }
+    CI.setVirtualFileSystem(Overlay);
+  }
+
   // Set up the file and source managers, if needed.
   if (!CI.hasFileManager())
     CI.createFileManager();
@@ -265,7 +291,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
   }
 
   // Set up the preprocessor.
-  CI.createPreprocessor();
+  CI.createPreprocessor(getTranslationUnitKind());
 
   // Inform the diagnostic client we are processing a source file.
   CI.getDiagnosticClient().BeginSourceFile(CI.getLangOpts(),
@@ -281,8 +307,8 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
   if (!usesPreprocessorOnly()) {
     CI.createASTContext();
 
-    OwningPtr<ASTConsumer> Consumer(
-                                   CreateWrappedASTConsumer(CI, InputFile));
+    std::unique_ptr<ASTConsumer> Consumer(
+        CreateWrappedASTConsumer(CI, InputFile));
     if (!Consumer)
       goto failure;
 
@@ -290,12 +316,11 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
     
     if (!CI.getPreprocessorOpts().ChainedIncludes.empty()) {
       // Convert headers to PCH and chain them.
-      OwningPtr<ExternalASTSource> source;
-      source.reset(ChainedIncludesSource::create(CI));
+      IntrusiveRefCntPtr<ChainedIncludesSource> source;
+      source = ChainedIncludesSource::create(CI);
       if (!source)
         goto failure;
-      CI.setModuleManager(static_cast<ASTReader*>(
-         &static_cast<ChainedIncludesSource*>(source.get())->getFinalReader()));
+      CI.setModuleManager(static_cast<ASTReader*>(&source->getFinalReader()));
       CI.getASTContext().setExternalSource(source);
 
     } else if (!CI.getPreprocessorOpts().ImplicitPCHInclude.empty()) {
@@ -318,7 +343,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
         goto failure;
     }
 
-    CI.setASTConsumer(Consumer.take());
+    CI.setASTConsumer(Consumer.release());
     if (!CI.hasASTConsumer())
       goto failure;
   }
@@ -335,7 +360,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
   // provides the layouts from that file.
   if (!CI.getFrontendOpts().OverrideRecordLayoutsFile.empty() && 
       CI.hasASTContext() && !CI.getASTContext().getExternalSource()) {
-    OwningPtr<ExternalASTSource> 
+    IntrusiveRefCntPtr<ExternalASTSource> 
       Override(new LayoutOverrideSource(
                      CI.getFrontendOpts().OverrideRecordLayoutsFile));
     CI.getASTContext().setExternalSource(Override);

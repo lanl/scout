@@ -136,6 +136,16 @@ void DWARFContext::dump(raw_ostream &OS, DIDumpType DumpType) {
     }
   }
 
+  if (DumpType == DIDT_All || DumpType == DIDT_LineDwo) {
+    OS << "\n.debug_line.dwo contents:\n";
+    unsigned stmtOffset = 0;
+    DataExtractor lineData(getLineDWOSection().Data, isLittleEndian(),
+                           savedAddressByteSize);
+    DWARFDebugLine::DumpingState state(OS);
+    while (DWARFDebugLine::parsePrologue(lineData, &stmtOffset, &state.Prologue))
+      state.finalize();
+  }
+
   if (DumpType == DIDT_All || DumpType == DIDT_Str) {
     OS << "\n.debug_str contents:\n";
     DataExtractor strData(getStringSection(), isLittleEndian(), 0);
@@ -291,14 +301,14 @@ void DWARFContext::parseCompileUnits() {
   const DataExtractor &DIData = DataExtractor(getInfoSection().Data,
                                               isLittleEndian(), 0);
   while (DIData.isValidOffset(offset)) {
-    OwningPtr<DWARFCompileUnit> CU(new DWARFCompileUnit(
+    std::unique_ptr<DWARFCompileUnit> CU(new DWARFCompileUnit(
         getDebugAbbrev(), getInfoSection().Data, getAbbrevSection(),
         getRangeSection(), getStringSection(), StringRef(), getAddrSection(),
         &getInfoSection().Relocs, isLittleEndian()));
     if (!CU->extract(DIData, &offset)) {
       break;
     }
-    CUs.push_back(CU.take());
+    CUs.push_back(CU.release());
     offset = CUs.back()->getNextUnitOffset();
   }
 }
@@ -311,13 +321,13 @@ void DWARFContext::parseTypeUnits() {
     const DataExtractor &DIData =
         DataExtractor(I->second.Data, isLittleEndian(), 0);
     while (DIData.isValidOffset(offset)) {
-      OwningPtr<DWARFTypeUnit> TU(new DWARFTypeUnit(
+      std::unique_ptr<DWARFTypeUnit> TU(new DWARFTypeUnit(
           getDebugAbbrev(), I->second.Data, getAbbrevSection(),
           getRangeSection(), getStringSection(), StringRef(), getAddrSection(),
           &I->second.Relocs, isLittleEndian()));
       if (!TU->extract(DIData, &offset))
         break;
-      TUs.push_back(TU.take());
+      TUs.push_back(TU.release());
       offset = TUs.back()->getNextUnitOffset();
     }
   }
@@ -328,7 +338,7 @@ void DWARFContext::parseDWOCompileUnits() {
   const DataExtractor &DIData =
       DataExtractor(getInfoDWOSection().Data, isLittleEndian(), 0);
   while (DIData.isValidOffset(offset)) {
-    OwningPtr<DWARFCompileUnit> DWOCU(new DWARFCompileUnit(
+    std::unique_ptr<DWARFCompileUnit> DWOCU(new DWARFCompileUnit(
         getDebugAbbrevDWO(), getInfoDWOSection().Data, getAbbrevDWOSection(),
         getRangeDWOSection(), getStringDWOSection(),
         getStringOffsetDWOSection(), getAddrSection(),
@@ -336,7 +346,7 @@ void DWARFContext::parseDWOCompileUnits() {
     if (!DWOCU->extract(DIData, &offset)) {
       break;
     }
-    DWOCUs.push_back(DWOCU.take());
+    DWOCUs.push_back(DWOCU.release());
     offset = DWOCUs.back()->getNextUnitOffset();
   }
 }
@@ -349,14 +359,14 @@ void DWARFContext::parseDWOTypeUnits() {
     const DataExtractor &DIData =
         DataExtractor(I->second.Data, isLittleEndian(), 0);
     while (DIData.isValidOffset(offset)) {
-      OwningPtr<DWARFTypeUnit> TU(new DWARFTypeUnit(
+      std::unique_ptr<DWARFTypeUnit> TU(new DWARFTypeUnit(
           getDebugAbbrevDWO(), I->second.Data, getAbbrevDWOSection(),
           getRangeDWOSection(), getStringDWOSection(),
           getStringOffsetDWOSection(), getAddrSection(), &I->second.Relocs,
           isLittleEndian()));
       if (!TU->extract(DIData, &offset))
         break;
-      DWOTUs.push_back(TU.take());
+      DWOTUs.push_back(TU.release());
       offset = DWOTUs.back()->getNextUnitOffset();
     }
   }
@@ -619,14 +629,14 @@ DWARFContextInMemory::DWARFContextInMemory(object::ObjectFile *Obj) :
       if (!zlib::isAvailable() ||
           !consumeCompressedDebugSectionHeader(data, OriginalSize))
         continue;
-      OwningPtr<MemoryBuffer> UncompressedSection;
+      std::unique_ptr<MemoryBuffer> UncompressedSection;
       if (zlib::uncompress(data, UncompressedSection, OriginalSize) !=
           zlib::StatusOK)
         continue;
       // Make data point to uncompressed section contents and save its contents.
       name = name.substr(1);
       data = UncompressedSection->getBuffer();
-      UncompressedSections.push_back(UncompressedSection.take());
+      UncompressedSections.push_back(UncompressedSection.release());
     }
 
     StringRef *Section =
@@ -645,6 +655,7 @@ DWARFContextInMemory::DWARFContextInMemory(object::ObjectFile *Obj) :
             .Case("debug_gnu_pubtypes", &GnuPubTypesSection)
             .Case("debug_info.dwo", &InfoDWOSection.Data)
             .Case("debug_abbrev.dwo", &AbbrevDWOSection)
+            .Case("debug_line.dwo", &LineDWOSection.Data)
             .Case("debug_str.dwo", &StringDWOSection)
             .Case("debug_str_offsets.dwo", &StringOffsetDWOSection)
             .Case("debug_addr", &AddrSection)

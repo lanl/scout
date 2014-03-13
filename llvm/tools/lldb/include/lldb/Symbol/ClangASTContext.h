@@ -18,7 +18,6 @@
 #include <vector>
 
 // Other libraries and framework includes
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallVector.h"
 #include "clang/AST/TemplateBase.h"
 
@@ -94,7 +93,7 @@ public:
     HasExternalSource ();
 
     void
-    SetExternalSource (llvm::OwningPtr<clang::ExternalASTSource> &ast_source_ap);
+    SetExternalSource (llvm::IntrusiveRefCntPtr<clang::ExternalASTSource> &ast_source_ap);
 
     void
     RemoveExternalSource ();

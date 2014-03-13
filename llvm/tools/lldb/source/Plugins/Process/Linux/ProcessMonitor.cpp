@@ -164,17 +164,17 @@ PtraceWrapper(int req, lldb::pid_t pid, void *addr, void *data, size_t data_size
 
     Log *log (ProcessPOSIXLog::GetLogIfAllCategoriesSet (POSIX_LOG_PTRACE));
 
-    if (log)
-        log->Printf("ptrace(%s, %lu, %p, %p, %zu) called from file %s line %d",
-                    reqName, pid, addr, data, data_size, file, line);
-
     PtraceDisplayBytes(req, data, data_size);
 
     errno = 0;
     if (req == PTRACE_GETREGSET || req == PTRACE_SETREGSET)
-        result = ptrace(static_cast<__ptrace_request>(req), pid, *(unsigned int *)addr, data);
+        result = ptrace(static_cast<__ptrace_request>(req), static_cast<pid_t>(pid), *(unsigned int *)addr, data);
     else
-        result = ptrace(static_cast<__ptrace_request>(req), pid, addr, data);
+        result = ptrace(static_cast<__ptrace_request>(req), static_cast<pid_t>(pid), addr, data);
+
+    if (log)
+        log->Printf("ptrace(%s, %" PRIu64 ", %p, %p, %zu)=%lX called from file %s line %d",
+                    reqName, pid, addr, data, data_size, result, file, line);
 
     PtraceDisplayBytes(req, data, data_size);
 
@@ -532,11 +532,7 @@ WriteRegOperation::Execute(ProcessMonitor *monitor)
     void* buf;
     Log *log (ProcessPOSIXLog::GetLogIfAllCategoriesSet (POSIX_LOG_REGISTERS));
 
-#if __WORDSIZE == 32
-    buf = (void*) m_value.GetAsUInt32();
-#else
     buf = (void*) m_value.GetAsUInt64();
-#endif
 
     if (log)
         log->Printf ("ProcessMonitor::%s() reg %s: %p", __FUNCTION__, m_reg_name, buf);

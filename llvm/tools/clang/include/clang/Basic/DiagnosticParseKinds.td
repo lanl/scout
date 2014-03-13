@@ -193,7 +193,7 @@ def err_expected_semi_after_method_proto : Error<
 def err_expected_semi_after_namespace_name : Error<
   "expected ';' after namespace name">;
 def err_unexpected_namespace_attributes_alias : Error<
-  "attributes can not be specified on namespace alias">;
+  "attributes cannot be specified on namespace alias">;
 def err_inline_namespace_alias : Error<"namespace alias cannot be inline">;
 def err_namespace_nonnamespace_scope : Error<
   "namespaces can only be defined in global or namespace scope">;
@@ -428,7 +428,7 @@ def err_objc_concat_string : Error<"unexpected token after Objective-C string">;
 def err_expected_objc_container : Error<
   "'@end' must appear in an Objective-C context">;
 def err_unexpected_protocol_qualifier : Error<
-  "@implementation declaration can not be protocol qualified">;
+  "@implementation declaration cannot be protocol qualified">;
 def err_objc_unexpected_atend : Error<
   "'@end' appears where closing brace '}' is expected">;
 def error_property_ivar_decl : Error<
@@ -741,7 +741,8 @@ def warn_cxx98_compat_lambda : Warning<
   "lambda expressions are incompatible with C++98">,
   InGroup<CXX98Compat>, DefaultIgnore;
 def err_lambda_missing_parens : Error<
-  "lambda requires '()' before %select{'mutable'|return type}0">;
+  "lambda requires '()' before %select{'mutable'|return type|"
+  "attribute specifier}0">;
 
 // Availability attribute
 def err_expected_version : Error<

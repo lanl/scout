@@ -16,7 +16,6 @@
 #include "JITRegistrar.h"
 #include "ObjectImageCommon.h"
 #include "llvm/ADT/IntervalMap.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Triple.h"
@@ -95,23 +94,19 @@ class ELFObjectImage : public ObjectImageCommon {
 
     // Subclasses can override these methods to update the image with loaded
     // addresses for sections and common symbols
-    virtual void updateSectionAddress(const SectionRef &Sec, uint64_t Addr)
-    {
+    void updateSectionAddress(const SectionRef &Sec, uint64_t Addr) override {
       DyldObj->updateSectionAddress(Sec, Addr);
     }
 
-    virtual void updateSymbolAddress(const SymbolRef &Sym, uint64_t Addr)
-    {
+    void updateSymbolAddress(const SymbolRef &Sym, uint64_t Addr) override {
       DyldObj->updateSymbolAddress(Sym, Addr);
     }
 
-    virtual void registerWithDebugger()
-    {
+    void registerWithDebugger() override {
       JITRegistrar::getGDBRegistrar().registerObject(*Buffer);
       Registered = true;
     }
-    virtual void deregisterWithDebugger()
-    {
+    void deregisterWithDebugger() override {
       JITRegistrar::getGDBRegistrar().deregisterObject(*Buffer);
     }
 };
@@ -1211,11 +1206,11 @@ void RuntimeDyldELF::processRelocationRef(unsigned SectionID,
           resolveRelocation(Section, Offset,
                             (uint64_t)Section.Address + Section.StubOffset,
                             RelType, 0);
-          if (SymType == SymbolRef::ST_Unknown)
-            // Restore the TOC for external calls
-            writeInt32BE(Target+4, 0xE8410028); // ld r2,40(r1)
           Section.StubOffset += getMaxStubSize();
         }
+        if (SymType == SymbolRef::ST_Unknown)
+          // Restore the TOC for external calls
+          writeInt32BE(Target+4, 0xE8410028); // ld r2,40(r1)
       }
     } else {
       RelocationEntry RE(SectionID, Offset, RelType, Value.Addend);

@@ -21,15 +21,15 @@
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/GetElementPtrTypeIterator.h"
 #include "llvm/IR/GlobalAlias.h"
+#include "llvm/IR/InstVisitor.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Operator.h"
-#include "llvm/InstVisitor.h"
-#include "llvm/Support/CallSite.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/GetElementPtrTypeIterator.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
@@ -399,6 +399,7 @@ bool CallAnalyzer::visitBitCast(BitCastInst &I) {
 }
 
 bool CallAnalyzer::visitPtrToInt(PtrToIntInst &I) {
+  const DataLayout *DL = I.getDataLayout();
   // Propagate constants through ptrtoint.
   Constant *COp = dyn_cast<Constant>(I.getOperand(0));
   if (!COp)
@@ -435,6 +436,7 @@ bool CallAnalyzer::visitPtrToInt(PtrToIntInst &I) {
 }
 
 bool CallAnalyzer::visitIntToPtr(IntToPtrInst &I) {
+  const DataLayout *DL = I.getDataLayout();
   // Propagate constants through ptrtoint.
   Constant *COp = dyn_cast<Constant>(I.getOperand(0));
   if (!COp)
@@ -523,9 +525,9 @@ bool CallAnalyzer::visitCmpInst(CmpInst &I) {
   // a common base.
   Value *LHSBase, *RHSBase;
   APInt LHSOffset, RHSOffset;
-  llvm::tie(LHSBase, LHSOffset) = ConstantOffsetPtrs.lookup(LHS);
+  std::tie(LHSBase, LHSOffset) = ConstantOffsetPtrs.lookup(LHS);
   if (LHSBase) {
-    llvm::tie(RHSBase, RHSOffset) = ConstantOffsetPtrs.lookup(RHS);
+    std::tie(RHSBase, RHSOffset) = ConstantOffsetPtrs.lookup(RHS);
     if (RHSBase && LHSBase == RHSBase) {
       // We have common bases, fold the icmp to a constant based on the
       // offsets.
@@ -573,9 +575,9 @@ bool CallAnalyzer::visitSub(BinaryOperator &I) {
   Value *LHS = I.getOperand(0), *RHS = I.getOperand(1);
   Value *LHSBase, *RHSBase;
   APInt LHSOffset, RHSOffset;
-  llvm::tie(LHSBase, LHSOffset) = ConstantOffsetPtrs.lookup(LHS);
+  std::tie(LHSBase, LHSOffset) = ConstantOffsetPtrs.lookup(LHS);
   if (LHSBase) {
-    llvm::tie(RHSBase, RHSOffset) = ConstantOffsetPtrs.lookup(RHS);
+    std::tie(RHSBase, RHSOffset) = ConstantOffsetPtrs.lookup(RHS);
     if (RHSBase && LHSBase == RHSBase) {
       // We have common bases, fold the subtract to a constant based on the
       // offsets.
@@ -1050,9 +1052,8 @@ bool CallAnalyzer::analyzeCall(CallSite CS) {
 
   Function *Caller = CS.getInstruction()->getParent()->getParent();
   // Check if the caller function is recursive itself.
-  for (Value::use_iterator U = Caller->use_begin(), E = Caller->use_end();
-       U != E; ++U) {
-    CallSite Site(cast<Value>(*U));
+  for (User *U : Caller->users()) {
+    CallSite Site(U);
     if (!Site)
       continue;
     Instruction *I = Site.getInstruction();
@@ -1178,7 +1179,7 @@ bool CallAnalyzer::analyzeCall(CallSite CS) {
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 /// \brief Dump stats about this call's analysis.
 void CallAnalyzer::dump() {
-#define DEBUG_PRINT_STAT(x) llvm::dbgs() << "      " #x ": " << x << "\n"
+#define DEBUG_PRINT_STAT(x) dbgs() << "      " #x ": " << x << "\n"
   DEBUG_PRINT_STAT(NumConstantArgs);
   DEBUG_PRINT_STAT(NumConstantOffsetPtrArgs);
   DEBUG_PRINT_STAT(NumAllocaArgs);
@@ -1203,7 +1204,7 @@ INITIALIZE_PASS_END(InlineCostAnalysis, "inline-cost", "Inline Cost Analysis",
 
 char InlineCostAnalysis::ID = 0;
 
-InlineCostAnalysis::InlineCostAnalysis() : CallGraphSCCPass(ID), DL(0) {}
+InlineCostAnalysis::InlineCostAnalysis() : CallGraphSCCPass(ID) {}
 
 InlineCostAnalysis::~InlineCostAnalysis() {}
 
@@ -1214,7 +1215,6 @@ void InlineCostAnalysis::getAnalysisUsage(AnalysisUsage &AU) const {
 }
 
 bool InlineCostAnalysis::runOnSCC(CallGraphSCC &SCC) {
-  DL = getAnalysisIfAvailable<DataLayout>();
   TTI = &getAnalysis<TargetTransformInfo>();
   return false;
 }
@@ -1272,7 +1272,7 @@ InlineCost InlineCostAnalysis::getInlineCost(CallSite CS, Function *Callee,
   DEBUG(llvm::dbgs() << "      Analyzing call of " << Callee->getName()
         << "...\n");
 
-  CallAnalyzer CA(DL, *TTI, *Callee, Threshold);
+  CallAnalyzer CA(Callee->getDataLayout(), *TTI, *Callee, Threshold);
   bool ShouldInline = CA.analyzeCall(CS);
 
   DEBUG(CA.dump());

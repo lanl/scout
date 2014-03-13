@@ -12,7 +12,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/MC/MCELFObjectWriter.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallString.h"
@@ -79,7 +78,7 @@ class ELFObjectWriter : public MCObjectWriter {
     };
 
     /// The target specific ELF writer instance.
-    llvm::OwningPtr<MCELFObjectTargetWriter> TargetObjectWriter;
+    std::unique_ptr<MCELFObjectTargetWriter> TargetObjectWriter;
 
     SmallPtrSet<const MCSymbol *, 16> UsedInReloc;
     SmallPtrSet<const MCSymbol *, 16> WeakrefUsedInReloc;
@@ -249,11 +248,9 @@ class ELFObjectWriter : public MCObjectWriter {
                           const MCAsmLayout &Layout,
                           const SectionIndexMapTy &SectionIndexMap);
 
-    virtual void RecordRelocation(const MCAssembler &Asm,
-                                  const MCAsmLayout &Layout,
-                                  const MCFragment *Fragment,
-                                  const MCFixup &Fixup,
-                                  MCValue Target, uint64_t &FixedValue);
+    void RecordRelocation(const MCAssembler &Asm, const MCAsmLayout &Layout,
+                          const MCFragment *Fragment, const MCFixup &Fixup,
+                          MCValue Target, uint64_t &FixedValue) override;
 
     uint64_t getSymbolIndexInSymbolTable(const MCAssembler &Asm,
                                          const MCSymbol *S);
@@ -300,8 +297,8 @@ class ELFObjectWriter : public MCObjectWriter {
                                SectionIndexMapTy &SectionIndexMap,
                                const RelMapTy &RelMap);
 
-    virtual void ExecutePostLayoutBinding(MCAssembler &Asm,
-                                          const MCAsmLayout &Layout);
+    void ExecutePostLayoutBinding(MCAssembler &Asm,
+                                  const MCAsmLayout &Layout) override;
 
     void WriteSectionHeader(MCAssembler &Asm, const GroupMapTy &GroupMap,
                             const MCAsmLayout &Layout,
@@ -320,14 +317,14 @@ class ELFObjectWriter : public MCObjectWriter {
                                   MCDataFragment *F,
                                   const MCSectionData *SD);
 
-    virtual bool
+    bool
     IsSymbolRefDifferenceFullyResolvedImpl(const MCAssembler &Asm,
                                            const MCSymbolData &DataA,
                                            const MCFragment &FB,
                                            bool InSet,
-                                           bool IsPCRel) const;
+                                           bool IsPCRel) const override;
 
-    virtual void WriteObject(MCAssembler &Asm, const MCAsmLayout &Layout);
+    void WriteObject(MCAssembler &Asm, const MCAsmLayout &Layout) override;
     void WriteSection(MCAssembler &Asm,
                       const SectionIndexMapTy &SectionIndexMap,
                       uint32_t GroupSymbolIndex,

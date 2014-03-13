@@ -67,6 +67,9 @@ static MCRegisterInfo *createSparcMCRegisterInfo(StringRef TT) {
 static MCSubtargetInfo *createSparcMCSubtargetInfo(StringRef TT, StringRef CPU,
                                                    StringRef FS) {
   MCSubtargetInfo *X = new MCSubtargetInfo();
+  Triple TheTriple(TT);
+  if (CPU.empty())
+    CPU = (TheTriple.getArch() == Triple::sparcv9) ? "v9" : "v8";
   InitSparcMCSubtargetInfo(X, TT, CPU, FS);
   return X;
 }
@@ -150,7 +153,7 @@ static MCInstPrinter *createSparcMCInstPrinter(const Target &T,
                                               const MCInstrInfo &MII,
                                               const MCRegisterInfo &MRI,
                                               const MCSubtargetInfo &STI) {
-  return new SparcInstPrinter(MAI, MII, MRI);
+  return new SparcInstPrinter(MAI, MII, MRI, STI);
 }
 
 extern "C" void LLVMInitializeSparcTargetMC() {

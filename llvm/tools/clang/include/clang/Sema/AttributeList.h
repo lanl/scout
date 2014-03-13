@@ -493,7 +493,7 @@ public:
   unsigned getMaxArgs() const;
   bool diagnoseAppertainsTo(class Sema &S, const Decl *D) const;
   bool diagnoseLangOpts(class Sema &S) const;
-  bool existsInTarget(llvm::Triple T) const;
+  bool existsInTarget(const llvm::Triple &T) const;
   bool isKnownToGCC() const;
 
   /// \brief If the parsed attribute has a semantic equivalent, and it would
@@ -693,40 +693,6 @@ public:
   }
 };
 
-/// addAttributeLists - Add two AttributeLists together
-/// The right-hand list is appended to the left-hand list, if any
-/// A pointer to the joined list is returned.
-/// Note: the lists are not left unmodified.
-inline AttributeList *addAttributeLists(AttributeList *Left,
-                                        AttributeList *Right) {
-  if (!Left)
-    return Right;
-
-  AttributeList *next = Left, *prev;
-  do {
-    prev = next;
-    next = next->getNext();
-  } while (next);
-  prev->setNext(Right);
-  return Left;
-}
-
-/// CXX11AttributeList - A wrapper around a C++11 attribute list.
-/// Stores, in addition to the list proper, whether or not an actual list was
-/// (as opposed to an empty list, which may be ill-formed in some places) and
-/// the source range of the list.
-struct CXX11AttributeList { 
-  AttributeList *AttrList;
-  SourceRange Range;
-  bool HasAttr;
-  CXX11AttributeList (AttributeList *attrList, SourceRange range, bool hasAttr)
-    : AttrList(attrList), Range(range), HasAttr (hasAttr) {
-  }
-  CXX11AttributeList ()
-    : AttrList(0), Range(), HasAttr(false) {
-  }
-};
-
 /// ParsedAttributes - A collection of parsed attributes.  Currently
 /// we don't differentiate between the various attribute syntaxes,
 /// which is basically silly.
@@ -739,10 +705,7 @@ public:
     : pool(factory), list(0) {
   }
 
-  ParsedAttributes(ParsedAttributes &attrs)
-    : pool(attrs.pool), list(attrs.list) {
-    attrs.list = 0;
-  }
+  ParsedAttributes(const ParsedAttributes &) LLVM_DELETED_FUNCTION;
 
   AttributePool &getPool() const { return pool; }
 

@@ -19,6 +19,7 @@ set(LLVM_TEST_DEPENDS
           UnitTests
           BugpointPasses
           LLVMHello
+          bugpoint
           llc
           lli
           lli-child-target
@@ -44,7 +45,6 @@ set(LLVM_TEST_DEPENDS
           llvm-tblgen
           macho-dump
           opt
-          profile_rt-shared
           FileCheck
           count
           not

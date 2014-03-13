@@ -49,9 +49,9 @@ namespace {
       initializeMachineCSEPass(*PassRegistry::getPassRegistry());
     }
 
-    virtual bool runOnMachineFunction(MachineFunction &MF);
+    bool runOnMachineFunction(MachineFunction &MF) override;
 
-    virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+    void getAnalysisUsage(AnalysisUsage &AU) const override {
       AU.setPreservesCFG();
       MachineFunctionPass::getAnalysisUsage(AU);
       AU.addRequired<AliasAnalysis>();
@@ -60,7 +60,7 @@ namespace {
       AU.addPreserved<MachineDominatorTree>();
     }
 
-    virtual void releaseMemory() {
+    void releaseMemory() override {
       ScopeMap.clear();
       Exps.clear();
     }
@@ -229,7 +229,7 @@ bool MachineCSE::hasLivePhysRegDefUses(const MachineInstr *MI,
   // Next, collect all defs into PhysDefs.  If any is already in PhysRefs
   // (which currently contains only uses), set the PhysUseDef flag.
   PhysUseDef = false;
-  MachineBasicBlock::const_iterator I = MI; I = llvm::next(I);
+  MachineBasicBlock::const_iterator I = MI; I = std::next(I);
   for (unsigned i = 0, e = MI->getNumOperands(); i != e; ++i) {
     const MachineOperand &MO = MI->getOperand(i);
     if (!MO.isReg() || !MO.isDef())
@@ -280,7 +280,7 @@ bool MachineCSE::PhysRegDefsReach(MachineInstr *CSMI, MachineInstr *MI,
     }
     CrossMBB = true;
   }
-  MachineBasicBlock::const_iterator I = CSMI; I = llvm::next(I);
+  MachineBasicBlock::const_iterator I = CSMI; I = std::next(I);
   MachineBasicBlock::const_iterator E = MI;
   MachineBasicBlock::const_iterator EE = CSMBB->end();
   unsigned LookAheadLeft = LookAheadLimit;
@@ -325,8 +325,8 @@ bool MachineCSE::PhysRegDefsReach(MachineInstr *CSMI, MachineInstr *MI,
 }
 
 bool MachineCSE::isCSECandidate(MachineInstr *MI) {
-  if (MI->isLabel() || MI->isPHI() || MI->isImplicitDef() ||
-      MI->isKill() || MI->isInlineAsm() || MI->isDebugValue())
+  if (MI->isPosition() || MI->isPHI() || MI->isImplicitDef() || MI->isKill() ||
+      MI->isInlineAsm() || MI->isDebugValue())
     return false;
 
   // Ignore copies.

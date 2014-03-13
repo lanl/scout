@@ -32,8 +32,7 @@ add_clang_library(clangDriver
   ClangDiagnosticCommon
   ClangDiagnosticDriver
   # +========================================================================+
-  )
 
-target_link_libraries(clangDriver
+  LINK_LIBS
   clangBasic
   )

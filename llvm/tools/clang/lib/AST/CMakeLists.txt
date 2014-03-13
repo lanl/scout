@@ -76,9 +76,7 @@ add_clang_library(clangAST
   Scout/VolumeRenderAllStmt.cpp
   Scout/Type.cpp
   # +==========================================================================+
-  )
-
-target_link_libraries(clangAST
+  LINK_LIBS
   clangBasic
   clangLex
   )

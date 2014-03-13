@@ -36,7 +36,6 @@ class MeshDecl;
 class MangleNumberingContext
     : public RefCountedBase<MangleNumberingContext> {
   llvm::DenseMap<const Type *, unsigned> ManglingNumbers;
-  llvm::DenseMap<IdentifierInfo*, unsigned> TagManglingNumbers;
   // +===== Scout ============================================================+
   llvm::DenseMap<IdentifierInfo*, unsigned> MeshManglingNumbers;
   // +========================================================================+
@@ -52,14 +51,19 @@ public:
   /// context.
   unsigned getManglingNumber(const BlockDecl *BD);
 
-  /// \brief Retrieve the mangling number of a static local variable within
-  /// this context.
-  virtual unsigned getManglingNumber(const VarDecl *VD) = 0;
+  /// Static locals are numbered by source order.
+  unsigned getStaticLocalNumber(const VarDecl *VD);
 
   /// \brief Retrieve the mangling number of a static local variable within
   /// this context.
-  unsigned getManglingNumber(const TagDecl *TD);
+  virtual unsigned getManglingNumber(const VarDecl *VD,
+                                     unsigned MSLocalManglingNumber) = 0;
 
+  /// \brief Retrieve the mangling number of a static local variable within
+  /// this context.
+  virtual unsigned getManglingNumber(const TagDecl *TD,
+                                     unsigned MSLocalManglingNumber) = 0;
+      
   // +===== Scout ============================================================+
   // \brief Retrieve the mangling number of a static local variable within
   // this context.

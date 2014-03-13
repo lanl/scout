@@ -265,9 +265,6 @@ PlatformRemoteGDBServer::ConnectRemote (Args& args)
                     // If a working directory was set prior to connecting, send it down now
                     if (m_working_dir)
                         m_gdb_client.SetWorkingDir(m_working_dir.GetCString());
-#if 0
-                    m_gdb_client.TestPacketSpeed(10000);
-#endif
                 }
                 else
                 {
@@ -426,7 +423,7 @@ PlatformRemoteGDBServer::DebugProcess (lldb_private::ProcessLaunchInfo &launch_i
                 // When remote debugging to iOS, we use a USB mux that always talks
                 // to localhost, so we will need the remote debugserver to accept connections
                 // only from localhost, no matter what our current hostname is
-                port = m_gdb_client.LaunchGDBserverAndGetPort(debugserver_pid, "localhost");
+                port = m_gdb_client.LaunchGDBserverAndGetPort(debugserver_pid, "127.0.0.1");
             }
             else
             {
@@ -514,7 +511,7 @@ PlatformRemoteGDBServer::Attach (lldb_private::ProcessAttachInfo &attach_info,
                 // When remote debugging to iOS, we use a USB mux that always talks
                 // to localhost, so we will need the remote debugserver to accept connections
                 // only from localhost, no matter what our current hostname is
-                port = m_gdb_client.LaunchGDBserverAndGetPort(debugserver_pid, "localhost");
+                port = m_gdb_client.LaunchGDBserverAndGetPort(debugserver_pid, "127.0.0.1");
             }
             else
             {

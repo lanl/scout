@@ -51,24 +51,24 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/DebugInfo.h"
+#include "llvm/IR/CFG.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/IR/CallingConv.h"
+#include "llvm/IR/ConstantRange.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/InlineAsm.h"
+#include "llvm/IR/InstVisitor.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PassManager.h"
-#include "llvm/InstVisitor.h"
 #include "llvm/Pass.h"
-#include "llvm/Support/CFG.h"
-#include "llvm/Support/CallSite.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/ConstantRange.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
@@ -1829,10 +1829,23 @@ void Verifier::visitAllocaInst(AllocaInst &AI) {
 }
 
 void Verifier::visitAtomicCmpXchgInst(AtomicCmpXchgInst &CXI) {
-  Assert1(CXI.getOrdering() != NotAtomic,
+
+  // FIXME: more conditions???
+  Assert1(CXI.getSuccessOrdering() != NotAtomic,
           "cmpxchg instructions must be atomic.", &CXI);
-  Assert1(CXI.getOrdering() != Unordered,
+  Assert1(CXI.getFailureOrdering() != NotAtomic,
+          "cmpxchg instructions must be atomic.", &CXI);
+  Assert1(CXI.getSuccessOrdering() != Unordered,
           "cmpxchg instructions cannot be unordered.", &CXI);
+  Assert1(CXI.getFailureOrdering() != Unordered,
+          "cmpxchg instructions cannot be unordered.", &CXI);
+  Assert1(CXI.getSuccessOrdering() >= CXI.getFailureOrdering(),
+          "cmpxchg instructions be at least as constrained on success as fail",
+          &CXI);
+  Assert1(CXI.getFailureOrdering() != Release &&
+              CXI.getFailureOrdering() != AcquireRelease,
+          "cmpxchg failure ordering cannot include release semantics", &CXI);
+
   PointerType *PTy = dyn_cast<PointerType>(CXI.getOperand(0)->getType());
   Assert1(PTy, "First cmpxchg operand must be a pointer.", &CXI);
   Type *ElTy = PTy->getElementType();
@@ -1974,10 +1987,10 @@ void Verifier::visitInstruction(Instruction &I) {
   Assert1(BB, "Instruction not embedded in basic block!", &I);
 
   if (!isa<PHINode>(I)) {   // Check that non-phi nodes are not self referential
-    for (Value::use_iterator UI = I.use_begin(), UE = I.use_end();
-         UI != UE; ++UI)
-      Assert1(*UI != (User*)&I || !DT.isReachableFromEntry(BB),
+    for (User *U : I.users()) {
+      Assert1(U != (User*)&I || !DT.isReachableFromEntry(BB),
               "Only PHI nodes may reference their own value!", &I);
+    }
   }
 
   // Check that void typed values don't have names
@@ -1999,13 +2012,12 @@ void Verifier::visitInstruction(Instruction &I) {
   // Check that all uses of the instruction, if they are instructions
   // themselves, actually have parent basic blocks.  If the use is not an
   // instruction, it is an error!
-  for (User::use_iterator UI = I.use_begin(), UE = I.use_end();
-       UI != UE; ++UI) {
-    if (Instruction *Used = dyn_cast<Instruction>(*UI))
+  for (Use &U : I.uses()) {
+    if (Instruction *Used = dyn_cast<Instruction>(U.getUser()))
       Assert2(Used->getParent() != 0, "Instruction referencing instruction not"
               " embedded in a basic block!", &I, Used);
     else {
-      CheckFailed("Use of instruction is not an instruction!", *UI);
+      CheckFailed("Use of instruction is not an instruction!", U);
       return;
     }
   }
@@ -2240,8 +2252,10 @@ void Verifier::visitIntrinsicFunctionCall(Intrinsic::ID ID, CallInst &CI) {
   // know they are legal for the intrinsic!) get the intrinsic name through the
   // usual means.  This allows us to verify the mangling of argument types into
   // the name.
-  Assert1(Intrinsic::getName(ID, ArgTys) == IF->getName(),
-          "Intrinsic name not mangled correctly for type arguments!", IF);
+  const std::string ExpectedName = Intrinsic::getName(ID, ArgTys);
+  Assert1(ExpectedName == IF->getName(),
+          "Intrinsic name not mangled correctly for type arguments! "
+          "Should be: " + ExpectedName, IF);
 
   // If the intrinsic takes MDNode arguments, verify that they are either global
   // or are local to *this* function.
@@ -2403,21 +2417,21 @@ struct VerifierLegacyPass : public FunctionPass {
     initializeVerifierLegacyPassPass(*PassRegistry::getPassRegistry());
   }
 
-  bool runOnFunction(Function &F) {
+  bool runOnFunction(Function &F) override {
     if (!V.verify(F) && FatalErrors)
       report_fatal_error("Broken function found, compilation aborted!");
 
     return false;
   }
 
-  bool doFinalization(Module &M) {
+  bool doFinalization(Module &M) override {
     if (!V.verify(M) && FatalErrors)
       report_fatal_error("Broken module found, compilation aborted!");
 
     return false;
   }
 
-  virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+  void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.setPreservesAll();
   }
 };

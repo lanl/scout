@@ -123,7 +123,7 @@ int cc1_main(const char **ArgBegin, const char **ArgEnd,
              const char *Argv0, void *MainAddr,
              bool Rewrite, bool DumpRewrite) {
 
-  OwningPtr<CompilerInstance> Clang(new CompilerInstance());
+  std::unique_ptr<CompilerInstance> Clang(new CompilerInstance());
   IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
 
   // Initialize targets first, so that --version shows registered targets.
@@ -227,7 +227,7 @@ int cc1_main(const char **ArgBegin, const char **ArgEnd,
   if (Clang->getFrontendOpts().DisableFree) {
     if (llvm::AreStatisticsEnabled() || Clang->getFrontendOpts().ShowStats)
       llvm::PrintStatistics();
-    BuryPointer(Clang.take());
+    BuryPointer(Clang.release());
     return !Success;
   }
 

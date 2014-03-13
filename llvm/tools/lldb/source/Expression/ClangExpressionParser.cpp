@@ -136,10 +136,10 @@ static FrontendAction *CreateFrontendBaseAction(CompilerInstance &CI) {
                  FrontendPluginRegistry::begin(), ie = FrontendPluginRegistry::end();
                  it != ie; ++it) {
                 if (it->getName() == CI.getFrontendOpts().ActionName) {
-                    llvm::OwningPtr<PluginASTAction> P(it->instantiate());
+                    std::unique_ptr<PluginASTAction> P(it->instantiate());
                     if (!P->ParseArgs(CI, CI.getFrontendOpts().PluginArgs))
                         return 0;
-                    return P.take();
+                    return P.release();
                 }
             }
             
@@ -349,7 +349,7 @@ ClangExpressionParser::ClangExpressionParser (ExecutionContextScope *exe_scope,
         m_compiler->createSourceManager(*m_file_manager.get());
     
     m_compiler->createFileManager();
-    m_compiler->createPreprocessor();
+    m_compiler->createPreprocessor(TU_Complete);
     
     // 6. Most of this we get from the CompilerInstance, but we 
     // also want to give the context an ExternalASTSource.
@@ -368,7 +368,7 @@ ClangExpressionParser::ClangExpressionParser (ExecutionContextScope *exe_scope,
     
     if (decl_map)
     {
-        llvm::OwningPtr<clang::ExternalASTSource> ast_source(decl_map->CreateProxy());
+        llvm::IntrusiveRefCntPtr<clang::ExternalASTSource> ast_source(decl_map->CreateProxy());
         decl_map->InstallASTContext(ast_context.get());
         ast_context->setExternalSource(ast_source);
     }

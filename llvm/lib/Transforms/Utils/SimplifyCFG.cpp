@@ -23,6 +23,8 @@
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Analysis/ValueTracking.h"
+#include "llvm/IR/CFG.h"
+#include "llvm/IR/ConstantRange.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -34,14 +36,12 @@
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/NoFolder.h"
 #include "llvm/IR/Operator.h"
+#include "llvm/IR/PatternMatch.h"
 #include "llvm/IR/Type.h"
-#include "llvm/Support/CFG.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/ConstantRange.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/NoFolder.h"
-#include "llvm/Support/PatternMatch.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include <algorithm>
@@ -732,8 +732,7 @@ static void GetBranchWeights(TerminatorInst *TI,
   MDNode* MD = TI->getMetadata(LLVMContext::MD_prof);
   assert(MD);
   for (unsigned i = 1, e = MD->getNumOperands(); i < e; ++i) {
-    ConstantInt* CI = dyn_cast<ConstantInt>(MD->getOperand(i));
-    assert(CI);
+    ConstantInt *CI = cast<ConstantInt>(MD->getOperand(i));
     Weights.push_back(CI->getValue().getZExtValue());
   }
 
@@ -750,19 +749,11 @@ static void GetBranchWeights(TerminatorInst *TI,
 
 /// Keep halving the weights until all can fit in uint32_t.
 static void FitWeights(MutableArrayRef<uint64_t> Weights) {
-  while (true) {
-    bool Halve = false;
-    for (unsigned i = 0; i < Weights.size(); ++i)
-      if (Weights[i] > UINT_MAX) {
-        Halve = true;
-        break;
-      }
-
-    if (! Halve)
-      return;
-
-    for (unsigned i = 0; i < Weights.size(); ++i)
-      Weights[i] /= 2;
+  uint64_t Max = *std::max_element(Weights.begin(), Weights.end());
+  if (Max > UINT_MAX) {
+    unsigned Offset = 32 - countLeadingZeros(Max);
+    for (uint64_t &I : Weights)
+      I >>= Offset;
   }
 }
 
@@ -1422,7 +1413,7 @@ static bool SpeculativelyExecuteBB(BranchInst *BI, BasicBlock *ThenBB) {
   Value *SpeculatedStoreValue = 0;
   StoreInst *SpeculatedStore = 0;
   for (BasicBlock::iterator BBI = ThenBB->begin(),
-                            BBE = llvm::prior(ThenBB->end());
+                            BBE = std::prev(ThenBB->end());
        BBI != BBE; ++BBI) {
     Instruction *I = BBI;
     // Skip debug info.
@@ -1532,7 +1523,7 @@ static bool SpeculativelyExecuteBB(BranchInst *BI, BasicBlock *ThenBB) {
 
   // Hoist the instructions.
   BB->getInstList().splice(BI, ThenBB->getInstList(), ThenBB->begin(),
-                           llvm::prior(ThenBB->end()));
+                           std::prev(ThenBB->end()));
 
   // Insert selects and rewrite the PHI operands.
   IRBuilder<true, NoFolder> Builder(BI);
@@ -1590,10 +1581,9 @@ static bool BlockIsSimpleEnoughToThreadThrough(BasicBlock *BB) {
 
     // We can only support instructions that do not define values that are
     // live outside of the current basic block.
-    for (Value::use_iterator UI = BBI->use_begin(), E = BBI->use_end();
-         UI != E; ++UI) {
-      Instruction *U = cast<Instruction>(*UI);
-      if (U->getParent() != BB || isa<PHINode>(U)) return false;
+    for (User *U : BBI->users()) {
+      Instruction *UI = cast<Instruction>(U);
+      if (UI->getParent() != BB || isa<PHINode>(UI)) return false;
     }
 
     // Looks ok, continue checking.
@@ -2016,7 +2006,7 @@ bool llvm::FoldBranchToCommonDest(BranchInst *BI) {
   // register pressure or inhibit out-of-order execution.
   Instruction *BonusInst = 0;
   if (&*FrontIt != Cond &&
-      FrontIt->hasOneUse() && *FrontIt->use_begin() == Cond &&
+      FrontIt->hasOneUse() && FrontIt->user_back() == Cond &&
       isSafeToSpeculativelyExecute(FrontIt)) {
     BonusInst = &*FrontIt;
     ++FrontIt;
@@ -2095,7 +2085,7 @@ bool llvm::FoldBranchToCommonDest(BranchInst *BI) {
     // instructions that are used by the terminator's condition because it
     // exposes more merging opportunities.
     bool UsedByBranch = (BonusInst && BonusInst->hasOneUse() &&
-                         *BonusInst->use_begin() == Cond);
+                         BonusInst->user_back() == Cond);
 
     if (BonusInst && !UsedByBranch) {
       // Collect the values used by the bonus inst
@@ -2689,7 +2679,7 @@ static bool TryToSimplifyUncondBranchWithICmpInIt(
   // The use of the icmp has to be in the 'end' block, by the only PHI node in
   // the block.
   BasicBlock *SuccBlock = BB->getTerminator()->getSuccessor(0);
-  PHINode *PHIUse = dyn_cast<PHINode>(ICI->use_back());
+  PHINode *PHIUse = dyn_cast<PHINode>(ICI->user_back());
   if (PHIUse == 0 || PHIUse != &SuccBlock->front() ||
       isa<PHINode>(++BasicBlock::iterator(PHIUse)))
     return false;
@@ -3807,8 +3797,8 @@ static bool SwitchToLookupTable(SwitchInst *SI,
 
     // If the result is used to return immediately from the function, we want to
     // do that right here.
-    if (PHI->hasOneUse() && isa<ReturnInst>(*PHI->use_begin()) &&
-        *PHI->use_begin() == CommonDest->getFirstNonPHIOrDbg()) {
+    if (PHI->hasOneUse() && isa<ReturnInst>(*PHI->user_begin()) &&
+        PHI->user_back() == CommonDest->getFirstNonPHIOrDbg()) {
       Builder.CreateRet(Result);
       ReturnedEarly = true;
       break;
@@ -4043,7 +4033,7 @@ static bool passingValueIsAlwaysUndefined(Value *V, Instruction *I) {
 
   if (C->isNullValue()) {
     // Only look at the first use, avoid hurting compile time with long uselists
-    User *Use = *I->use_begin();
+    User *Use = *I->user_begin();
 
     // Now make sure that there are no instructions in between that can alter
     // control flow (eg. calls)

@@ -57,7 +57,7 @@ using namespace clang;
 using namespace CodeGen;
 
 //SC_TODO: should we pass these CGM instead of making them member functions?
-llvm::Value *CodeGenFunction::CreateMemAlloc(uint64_t numElts) {
+llvm::Value *CodeGenFunction::CreateMemAlloc(uint64_t numBytes) {
     llvm::Function *namF;
 
     if(!CGM.getModule().getFunction("__scrt_malloc")) {
@@ -69,13 +69,13 @@ llvm::Value *CodeGenFunction::CreateMemAlloc(uint64_t numElts) {
     }
 
     llvm::CallInst *call =
-      Builder.CreateCall(namF, llvm::ConstantInt::get(Int64Ty, 4 * numElts));
+      Builder.CreateCall(namF, llvm::ConstantInt::get(Int64Ty, numBytes));
 
     return call;
   }
 
   // wrapper to call runtime Memalloc used by CGDecl.cpp
-  llvm::Value *CodeGenFunction::CreateMemAllocForValue(llvm::Value* numEltsValue) {
+  llvm::Value *CodeGenFunction::CreateMemAllocForValue(llvm::Value* numBytesValue) {
     llvm::Function *namF;
 
     if(!CGM.getModule().getFunction("__scrt_malloc")) {
@@ -87,7 +87,7 @@ llvm::Value *CodeGenFunction::CreateMemAlloc(uint64_t numElts) {
     }
 
     llvm::CallInst *call =
-      Builder.CreateCall(namF, numEltsValue);
+      Builder.CreateCall(namF, numBytesValue);
 
     return call;
   }

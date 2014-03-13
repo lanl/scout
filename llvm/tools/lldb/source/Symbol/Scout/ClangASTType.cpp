@@ -91,7 +91,7 @@
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Process.h"
 
-#include "llvm/Scout/DebugInfo.h"
+#include "llvm/IR/Scout/DebugInfo.h"
 
 #include <mutex>
 

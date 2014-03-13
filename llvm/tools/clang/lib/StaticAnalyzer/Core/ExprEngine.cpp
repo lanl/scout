@@ -731,6 +731,7 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     case Expr::MSDependentExistsStmtClass:
     case Stmt::CapturedStmtClass:
     case Stmt::OMPParallelDirectiveClass:
+    case Stmt::OMPSimdDirectiveClass:
       llvm_unreachable("Stmt should not be in analyzer evaluation loop");
     // +==== Scout ===========================================================+
     case Stmt::ForallMeshStmtClass:
@@ -1474,7 +1475,7 @@ void ExprEngine::processBranch(const Stmt *Condition, const Stmt *Term,
     DefinedSVal V = X.castAs<DefinedSVal>();
 
     ProgramStateRef StTrue, StFalse;
-    tie(StTrue, StFalse) = PrevState->assume(V);
+    std::tie(StTrue, StFalse) = PrevState->assume(V);
 
     // Process the true branch.
     if (builder.isFeasible(true)) {
@@ -2204,7 +2205,7 @@ void ExprEngine::evalEagerlyAssumeBinOpBifurcation(ExplodedNodeSet &Dst,
         geteagerlyAssumeBinOpBifurcationTags();
 
       ProgramStateRef StateTrue, StateFalse;
-      tie(StateTrue, StateFalse) = state->assume(*SEV);
+      std::tie(StateTrue, StateFalse) = state->assume(*SEV);
 
       // First assume that the condition is true.
       if (StateTrue) {
@@ -2558,7 +2559,7 @@ void ExprEngine::ViewGraph(ArrayRef<const ExplodedNode*> Nodes) {
   GraphPrintCheckerState = this;
   GraphPrintSourceManager = &getContext().getSourceManager();
 
-  OwningPtr<ExplodedGraph> TrimmedG(G.trim(Nodes));
+  std::unique_ptr<ExplodedGraph> TrimmedG(G.trim(Nodes));
 
   if (!TrimmedG.get())
     llvm::errs() << "warning: Trimmed ExplodedGraph is empty.\n";

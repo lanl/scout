@@ -52,9 +52,9 @@
  * #####
  */
 
-#include "llvm/DIBuilder.h"
+#include "llvm/IR/DIBuilder.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/DebugInfo.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"

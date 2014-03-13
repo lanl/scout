@@ -17,7 +17,7 @@
 
 #include "clang/Basic/LLVM.h"
 #include "clang/Sema/SemaConsumer.h"
-#include "llvm/ADT/OwningPtr.h"
+#include <memory>
 #include <vector>
 
 namespace clang {
@@ -53,8 +53,8 @@ public:
 
 private:
   std::vector<ASTConsumer*> Consumers;  // Owns these.
-  OwningPtr<MultiplexASTMutationListener> MutationListener;
-  OwningPtr<MultiplexASTDeserializationListener> DeserializationListener;
+  std::unique_ptr<MultiplexASTMutationListener> MutationListener;
+  std::unique_ptr<MultiplexASTDeserializationListener> DeserializationListener;
 };
 
 }  // end namespace clang

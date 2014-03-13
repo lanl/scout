@@ -1363,8 +1363,7 @@ static bool CheckConstantExpression(EvalInfo &Info, SourceLocation DiagLoc,
           return false;
       }
     }
-    for (RecordDecl::field_iterator I = RD->field_begin(), E = RD->field_end();
-         I != E; ++I) {
+    for (const auto *I : RD->fields()) {
       if (!CheckConstantExpression(Info, DiagLoc, I->getType(),
                                    Value.getStructField(I->getFieldIndex())))
         return false;
@@ -1832,9 +1831,8 @@ static bool HandleLValueMember(EvalInfo &Info, const Expr *E, LValue &LVal,
 static bool HandleLValueIndirectMember(EvalInfo &Info, const Expr *E,
                                        LValue &LVal,
                                        const IndirectFieldDecl *IFD) {
-  for (IndirectFieldDecl::chain_iterator C = IFD->chain_begin(),
-                                         CE = IFD->chain_end(); C != CE; ++C)
-    if (!HandleLValueMember(Info, E, LVal, cast<FieldDecl>(*C)))
+  for (const auto *C : IFD->chain())
+    if (!HandleLValueMember(Info, E, LVal, cast<FieldDecl>(C)))
       return false;
   return true;
 }
@@ -3721,10 +3719,8 @@ static bool HandleConstructorCall(SourceLocation CallLoc, const LValue &This,
     } else if (IndirectFieldDecl *IFD = (*I)->getIndirectMember()) {
       // Walk the indirect field decl's chain to find the object to initialize,
       // and make sure we've initialized every step along it.
-      for (IndirectFieldDecl::chain_iterator C = IFD->chain_begin(),
-                                             CE = IFD->chain_end();
-           C != CE; ++C) {
-        FD = cast<FieldDecl>(*C);
+      for (auto *C : IFD->chain()) {
+        FD = cast<FieldDecl>(C);
         CXXRecordDecl *CD = cast<CXXRecordDecl>(FD->getParent());
         // Switch the union field if it differs. This happens if we had
         // preceding zero-initialization, and we're now initializing a union
@@ -4959,14 +4955,13 @@ static bool HandleClassZeroInitialization(EvalInfo &Info, const Expr *E,
     }
   }
 
-  for (RecordDecl::field_iterator I = RD->field_begin(), End = RD->field_end();
-       I != End; ++I) {
+  for (const auto *I : RD->fields()) {
     // -- if T is a reference type, no initialization is performed.
     if (I->getType()->isReferenceType())
       continue;
 
     LValue Subobject = This;
-    if (!HandleLValueMember(Info, E, Subobject, *I, &Layout))
+    if (!HandleLValueMember(Info, E, Subobject, I, &Layout))
       return false;
 
     ImplicitValueInitExpr VIE(I->getType());
@@ -5074,8 +5069,7 @@ bool RecordExprEvaluator::VisitInitListExpr(const InitListExpr *E) {
                    std::distance(RD->field_begin(), RD->field_end()));
   unsigned ElementNo = 0;
   bool Success = true;
-  for (RecordDecl::field_iterator Field = RD->field_begin(),
-       FieldEnd = RD->field_end(); Field != FieldEnd; ++Field) {
+  for (const auto *Field : RD->fields()) {
     // Anonymous bit-fields are not considered members of the class for
     // purposes of aggregate initialization.
     if (Field->isUnnamedBitfield())
@@ -5088,7 +5082,7 @@ bool RecordExprEvaluator::VisitInitListExpr(const InitListExpr *E) {
     // FIXME: Diagnostics here should point to the end of the initializer
     // list, not the start.
     if (!HandleLValueMember(Info, HaveInit ? E->getInit(ElementNo) : E,
-                            Subobject, *Field, &Layout))
+                            Subobject, Field, &Layout))
       return false;
 
     // Perform an implicit value-initialization for members beyond the end of
@@ -5103,7 +5097,7 @@ bool RecordExprEvaluator::VisitInitListExpr(const InitListExpr *E) {
     APValue &FieldVal = Result.getStructField(Field->getFieldIndex());
     if (!EvaluateInPlace(FieldVal, Info, Subobject, Init) ||
         (Field->isBitField() && !truncateBitfieldValue(Info, Init,
-                                                       FieldVal, *Field))) {
+                                                       FieldVal, Field))) {
       if (!Info.keepEvaluatingAfterFailure())
         return false;
       Success = false;
@@ -5123,16 +5117,15 @@ bool RecordExprEvaluator::VisitCXXConstructExpr(const CXXConstructExpr *E) {
     if (!Result.isUninit())
       return true;
 
-    if (ZeroInit)
-      return ZeroInitialization(E);
-
-    const CXXRecordDecl *RD = FD->getParent();
-    if (RD->isUnion())
-      Result = APValue((FieldDecl*)0);
-    else
-      Result = APValue(APValue::UninitStruct(), RD->getNumBases(),
-                       std::distance(RD->field_begin(), RD->field_end()));
-    return true;
+    // We can get here in two different ways:
+    //  1) We're performing value-initialization, and should zero-initialize
+    //     the object, or
+    //  2) We're performing default-initialization of an object with a trivial
+    //     constexpr default constructor, in which case we should start the
+    //     lifetimes of all the base subobjects (there can be no data member
+    //     subobjects in this case) per [basic.life]p1.
+    // Either way, ZeroInitialization is appropriate.
+    return ZeroInitialization(E);
   }
 
   const FunctionDecl *Definition = 0;
@@ -5612,19 +5605,9 @@ bool ArrayExprEvaluator::VisitCXXConstructExpr(const CXXConstructExpr *E,
     if (HadZeroInit)
       return true;
 
-    if (ZeroInit) {
-      ImplicitValueInitExpr VIE(Type);
-      return EvaluateInPlace(*Value, Info, Subobject, &VIE);
-    }
-
-    const CXXRecordDecl *RD = FD->getParent();
-    if (RD->isUnion())
-      *Value = APValue((FieldDecl*)0);
-    else
-      *Value =
-          APValue(APValue::UninitStruct(), RD->getNumBases(),
-                  std::distance(RD->field_begin(), RD->field_end()));
-    return true;
+    // See RecordExprEvaluator::VisitCXXConstructExpr for explanation.
+    ImplicitValueInitExpr VIE(Type);
+    return EvaluateInPlace(*Value, Info, Subobject, &VIE);
   }
 
   const FunctionDecl *Definition = 0;

@@ -175,28 +175,26 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
   if (MF.getFunction()->getCallingConv() == CallingConv::GHC)
     return;
 
-  // Allocate the vararg register save area. This is not counted in NumBytes.
+  // Allocate the vararg register save area.
   if (ArgRegsSaveSize) {
     emitSPUpdate(isARM, MBB, MBBI, dl, TII, -ArgRegsSaveSize,
                  MachineInstr::FrameSetup);
-    MCSymbol *SPLabel = Context.CreateTempSymbol();
-    BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::PROLOG_LABEL))
-        .addSym(SPLabel);
     CFAOffset -= ArgRegsSaveSize;
-    MMI.addFrameInst(
-        MCCFIInstruction::createDefCfaOffset(SPLabel, CFAOffset));
+    unsigned CFIIndex = MMI.addFrameInst(
+        MCCFIInstruction::createDefCfaOffset(nullptr, CFAOffset));
+    BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+        .addCFIIndex(CFIIndex);
   }
 
   if (!AFI->hasStackFrame()) {
-    if (NumBytes != 0) {
-      emitSPUpdate(isARM, MBB, MBBI, dl, TII, -NumBytes,
+    if (NumBytes - ArgRegsSaveSize != 0) {
+      emitSPUpdate(isARM, MBB, MBBI, dl, TII, -(NumBytes - ArgRegsSaveSize),
                    MachineInstr::FrameSetup);
-      MCSymbol *SPLabel = Context.CreateTempSymbol();
-      BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::PROLOG_LABEL))
-          .addSym(SPLabel);
-      CFAOffset -= NumBytes;
-      MMI.addFrameInst(MCCFIInstruction::createDefCfaOffset(SPLabel,
-                                                            CFAOffset));
+      CFAOffset -= NumBytes - ArgRegsSaveSize;
+      unsigned CFIIndex = MMI.addFrameInst(
+          MCCFIInstruction::createDefCfaOffset(nullptr, CFAOffset));
+      BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+          .addCFIIndex(CFIIndex);
     }
     return;
   }
@@ -246,12 +244,14 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
 
   // Determine starting offsets of spill areas.
   bool HasFP = hasFP(MF);
-  unsigned DPRCSOffset  = NumBytes - (GPRCS1Size + GPRCS2Size + DPRCSSize);
+  unsigned DPRCSOffset  = NumBytes - (ArgRegsSaveSize + GPRCS1Size
+                                      + GPRCS2Size + DPRCSSize);
   unsigned GPRCS2Offset = DPRCSOffset + DPRCSSize;
   unsigned GPRCS1Offset = GPRCS2Offset + GPRCS2Size;
   int FramePtrOffsetInPush = 0;
   if (HasFP) {
-    FramePtrOffsetInPush = MFI->getObjectOffset(FramePtrSpillFI) + GPRCS1Size;
+    FramePtrOffsetInPush = MFI->getObjectOffset(FramePtrSpillFI)
+                           + GPRCS1Size + ArgRegsSaveSize;
     AFI->setFramePtrSpillOffset(MFI->getObjectOffset(FramePtrSpillFI) +
                                 NumBytes);
   }
@@ -309,12 +309,12 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
   }
 
   if (adjustedGPRCS1Size > 0) {
-    MCSymbol *SPLabel = Context.CreateTempSymbol();
-    BuildMI(MBB, ++GPRCS1Push, dl, TII.get(TargetOpcode::PROLOG_LABEL))
-        .addSym(SPLabel);
     CFAOffset -= adjustedGPRCS1Size;
-    MMI.addFrameInst(
-        MCCFIInstruction::createDefCfaOffset(SPLabel, CFAOffset));
+    unsigned CFIIndex = MMI.addFrameInst(
+        MCCFIInstruction::createDefCfaOffset(nullptr, CFAOffset));
+    MachineBasicBlock::iterator Pos = ++GPRCS1Push;
+    BuildMI(MBB, Pos, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+        .addCFIIndex(CFIIndex);
     for (std::vector<CalleeSavedInfo>::const_iterator I = CSI.begin(),
            E = CSI.end(); I != E; ++I) {
       unsigned Reg = I->getReg();
@@ -337,9 +337,10 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
       case ARM::R6:
       case ARM::R7:
       case ARM::LR:
-        MMI.addFrameInst(MCCFIInstruction::createOffset(SPLabel,
-           MRI->getDwarfRegNum(Reg, true),
-           MFI->getObjectOffset(FI) - ArgRegsSaveSize));
+        CFIIndex = MMI.addFrameInst(MCCFIInstruction::createOffset(
+            nullptr, MRI->getDwarfRegNum(Reg, true), MFI->getObjectOffset(FI)));
+        BuildMI(MBB, Pos, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+            .addCFIIndex(CFIIndex);
         break;
       }
     }
@@ -355,28 +356,30 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
     emitRegPlusImmediate(!AFI->isThumbFunction(), MBB, GPRCS1Push, dl, TII,
                          FramePtr, ARM::SP, FramePtrOffsetInPush,
                          MachineInstr::FrameSetup);
-    MCSymbol *SPLabel = Context.CreateTempSymbol();
-    BuildMI(MBB, GPRCS1Push, dl, TII.get(TargetOpcode::PROLOG_LABEL))
-        .addSym(SPLabel);
     if (FramePtrOffsetInPush) {
       CFAOffset += FramePtrOffsetInPush;
-      MMI.addFrameInst(
-          MCCFIInstruction::createDefCfa(SPLabel,
-              MRI->getDwarfRegNum(FramePtr, true), CFAOffset));
-    } else
-      MMI.addFrameInst(
-          MCCFIInstruction::createDefCfaRegister(SPLabel,
-              MRI->getDwarfRegNum(FramePtr, true)));
+      unsigned CFIIndex = MMI.addFrameInst(MCCFIInstruction::createDefCfa(
+          nullptr, MRI->getDwarfRegNum(FramePtr, true), CFAOffset));
+      BuildMI(MBB, GPRCS1Push, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+          .addCFIIndex(CFIIndex);
+
+    } else {
+      unsigned CFIIndex =
+          MMI.addFrameInst(MCCFIInstruction::createDefCfaRegister(
+              nullptr, MRI->getDwarfRegNum(FramePtr, true)));
+      BuildMI(MBB, GPRCS1Push, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+          .addCFIIndex(CFIIndex);
+    }
   }
 
   if (GPRCS2Size > 0) {
-    MCSymbol *SPLabel = Context.CreateTempSymbol();
-    BuildMI(MBB, ++GPRCS2Push, dl, TII.get(TargetOpcode::PROLOG_LABEL))
-        .addSym(SPLabel);
+    MachineBasicBlock::iterator Pos = ++GPRCS2Push;
     if (!HasFP) {
       CFAOffset -= GPRCS2Size;
-      MMI.addFrameInst(
-          MCCFIInstruction::createDefCfaOffset(SPLabel, CFAOffset));
+      unsigned CFIIndex = MMI.addFrameInst(
+          MCCFIInstruction::createDefCfaOffset(nullptr, CFAOffset));
+      BuildMI(MBB, Pos, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+          .addCFIIndex(CFIIndex);
     }
     for (std::vector<CalleeSavedInfo>::const_iterator I = CSI.begin(),
            E = CSI.end(); I != E; ++I) {
@@ -390,9 +393,11 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
       case ARM::R12:
         if (STI.isTargetMachO()) {
           unsigned DwarfReg =  MRI->getDwarfRegNum(Reg, true);
-          unsigned Offset = MFI->getObjectOffset(FI) - ArgRegsSaveSize;
-          MMI.addFrameInst(
-              MCCFIInstruction::createOffset(SPLabel, DwarfReg, Offset));
+          unsigned Offset = MFI->getObjectOffset(FI);
+          unsigned CFIIndex = MMI.addFrameInst(
+              MCCFIInstruction::createOffset(nullptr, DwarfReg, Offset));
+          BuildMI(MBB, Pos, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+              .addCFIIndex(CFIIndex);
         }
         break;
       }
@@ -402,24 +407,17 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
   if (DPRCSSize > 0) {
     // Since vpush register list cannot have gaps, there may be multiple vpush
     // instructions in the prologue.
-    MCSymbol *SPLabel = NULL;
     do {
       MachineBasicBlock::iterator Push = DPRCSPush++;
       if (!HasFP) {
-        SPLabel = Context.CreateTempSymbol();
-        BuildMI(MBB, DPRCSPush, dl, TII.get(TargetOpcode::PROLOG_LABEL))
-            .addSym(SPLabel);
         CFAOffset -= sizeOfSPAdjustment(Push);;
-        MMI.addFrameInst(
-            MCCFIInstruction::createDefCfaOffset(SPLabel, CFAOffset));
+        unsigned CFIIndex = MMI.addFrameInst(
+            MCCFIInstruction::createDefCfaOffset(nullptr, CFAOffset));
+        BuildMI(MBB, DPRCSPush, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+            .addCFIIndex(CFIIndex);
       }
     } while (DPRCSPush->getOpcode() == ARM::VSTMDDB_UPD);
 
-    if (!SPLabel) {
-      SPLabel = Context.CreateTempSymbol();
-      BuildMI(MBB, DPRCSPush, dl, TII.get(TargetOpcode::PROLOG_LABEL))
-          .addSym(SPLabel);
-    }
     for (std::vector<CalleeSavedInfo>::const_iterator I = CSI.begin(),
            E = CSI.end(); I != E; ++I) {
       unsigned Reg = I->getReg();
@@ -428,20 +426,21 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
           (Reg < ARM::D8 || Reg >= ARM::D8 + AFI->getNumAlignedDPRCS2Regs())) {
         unsigned DwarfReg = MRI->getDwarfRegNum(Reg, true);
         unsigned Offset = MFI->getObjectOffset(FI);
-        MMI.addFrameInst(MCCFIInstruction::createOffset(SPLabel, DwarfReg,
-                                                        Offset));
+        unsigned CFIIndex = MMI.addFrameInst(
+            MCCFIInstruction::createOffset(nullptr, DwarfReg, Offset));
+        BuildMI(MBB, DPRCSPush, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+            .addCFIIndex(CFIIndex);
       }
     }
   }
 
   if (NumBytes) {
     if (!HasFP) {
-      MCSymbol *SPLabel = Context.CreateTempSymbol();
-      BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::PROLOG_LABEL))
-          .addSym(SPLabel);
       CFAOffset -= NumBytes;
-      MMI.addFrameInst(
-          MCCFIInstruction::createDefCfaOffset(SPLabel, CFAOffset));
+      unsigned CFIIndex = MMI.addFrameInst(
+          MCCFIInstruction::createDefCfaOffset(nullptr, CFAOffset));
+      BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+          .addCFIIndex(CFIIndex);
     }
   }
 
@@ -536,8 +535,8 @@ void ARMFrameLowering::emitEpilogue(MachineFunction &MF,
     return;
 
   if (!AFI->hasStackFrame()) {
-    if (NumBytes != 0)
-      emitSPUpdate(isARM, MBB, MBBI, dl, TII, NumBytes);
+    if (NumBytes - ArgRegsSaveSize != 0)
+      emitSPUpdate(isARM, MBB, MBBI, dl, TII, NumBytes - ArgRegsSaveSize);
   } else {
     // Unwind MBBI to point to first LDR / VLDRD.
     const uint16_t *CSRegs = RegInfo->getCalleeSavedRegs(&MF);
@@ -550,7 +549,8 @@ void ARMFrameLowering::emitEpilogue(MachineFunction &MF,
     }
 
     // Move SP to start of FP callee save spill area.
-    NumBytes -= (AFI->getGPRCalleeSavedArea1Size() +
+    NumBytes -= (ArgRegsSaveSize +
+                 AFI->getGPRCalleeSavedArea1Size() +
                  AFI->getGPRCalleeSavedArea2Size() +
                  AFI->getDPRCalleeSavedAreaSize());
 
@@ -632,7 +632,7 @@ void ARMFrameLowering::emitEpilogue(MachineFunction &MF,
         addReg(JumpTarget.getReg(), RegState::Kill);
     }
 
-    MachineInstr *NewMI = prior(MBBI);
+    MachineInstr *NewMI = std::prev(MBBI);
     for (unsigned i = 1, e = MBBI->getNumOperands(); i != e; ++i)
       NewMI->addOperand(MBBI->getOperand(i));
 
@@ -1017,7 +1017,7 @@ static void emitAlignedDPRCS2Spills(MachineBasicBlock &MBB,
   }
 
   // The last spill instruction inserted should kill the scratch register r4.
-  llvm::prior(MI)->addRegisterKilled(ARM::R4, TRI);
+  std::prev(MI)->addRegisterKilled(ARM::R4, TRI);
 }
 
 /// Skip past the code inserted by emitAlignedDPRCS2Spills, and return an
@@ -1127,7 +1127,7 @@ static void emitAlignedDPRCS2Restores(MachineBasicBlock &MBB,
                    .addReg(ARM::R4).addImm(2*(NextReg-R4BaseReg)));
 
   // Last store kills r4.
-  llvm::prior(MI)->addRegisterKilled(ARM::R4, TRI);
+  std::prev(MI)->addRegisterKilled(ARM::R4, TRI);
 }
 
 bool ARMFrameLowering::spillCalleeSavedRegisters(MachineBasicBlock &MBB,

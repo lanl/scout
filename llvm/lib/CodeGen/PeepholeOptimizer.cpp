@@ -110,9 +110,9 @@ namespace {
       initializePeepholeOptimizerPass(*PassRegistry::getPassRegistry());
     }
 
-    virtual bool runOnMachineFunction(MachineFunction &MF);
+    bool runOnMachineFunction(MachineFunction &MF) override;
 
-    virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+    void getAnalysisUsage(AnalysisUsage &AU) const override {
       AU.setPreservesCFG();
       MachineFunctionPass::getAnalysisUsage(AU);
       if (Aggressive) {
@@ -596,7 +596,7 @@ bool PeepholeOptimizer::runOnMachineFunction(MachineFunction &MF) {
 
       // If there exists an instruction which belongs to the following
       // categories, we will discard the load candidate.
-      if (MI->isLabel() || MI->isPHI() || MI->isImplicitDef() ||
+      if (MI->isPosition() || MI->isPHI() || MI->isImplicitDef() ||
           MI->isKill() || MI->isInlineAsm() || MI->isDebugValue() ||
           MI->hasUnmodeledSideEffects()) {
         FoldAsLoadDefReg = 0;

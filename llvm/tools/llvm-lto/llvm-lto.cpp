@@ -95,8 +95,8 @@ int main(int argc, char **argv) {
 
   for (unsigned i = BaseArg; i < InputFilenames.size(); ++i) {
     std::string error;
-    OwningPtr<LTOModule> Module(LTOModule::makeLTOModule(InputFilenames[i].c_str(),
-                                                         Options, error));
+    std::unique_ptr<LTOModule> Module(
+        LTOModule::makeLTOModule(InputFilenames[i].c_str(), Options, error));
     if (!error.empty()) {
       errs() << argv[0] << ": error loading file '" << InputFilenames[i]
              << "': " << error << "\n";
@@ -142,7 +142,7 @@ int main(int argc, char **argv) {
     }
 
     raw_fd_ostream FileStream(OutputFilename.c_str(), ErrorInfo,
-                              sys::fs::F_Binary);
+                              sys::fs::F_None);
     if (!ErrorInfo.empty()) {
       errs() << argv[0] << ": error opening the file '" << OutputFilename
              << "': " << ErrorInfo << "\n";

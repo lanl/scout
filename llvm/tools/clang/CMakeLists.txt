@@ -1,5 +1,19 @@
 cmake_minimum_required(VERSION 2.8.8)
 
+# FIXME: It may be removed when we use 2.8.12.
+if(CMAKE_VERSION VERSION_LESS 2.8.12)
+  # Invalidate a couple of keywords.
+  set(cmake_2_8_12_INTERFACE)
+  set(cmake_2_8_12_PRIVATE)
+else()
+  # Use ${cmake_2_8_12_KEYWORD} intead of KEYWORD in target_link_libraries().
+  set(cmake_2_8_12_INTERFACE INTERFACE)
+  set(cmake_2_8_12_PRIVATE PRIVATE)
+  if(POLICY CMP0022)
+    cmake_policy(SET CMP0022 NEW) # automatic when 2.8.12 is required
+  endif()
+endif()
+
 # If we are not building as a part of LLVM, build Clang as an
 # standalone project, using LLVM as an external library:
 
@@ -261,7 +275,7 @@ function(clang_tablegen)
   # executing the custom command depending on output-file. It is
   # possible to list more files to depend after DEPENDS.
 
-  cmake_parse_arguments(CTG "" "SOURCE;TARGET" "DEPENDS" ${ARGN})
+  cmake_parse_arguments(CTG "" "SOURCE;TARGET" "" ${ARGN})
 
   if( NOT CTG_SOURCE )
     message(FATAL_ERROR "SOURCE source-file required by clang_tablegen")
@@ -270,9 +284,8 @@ function(clang_tablegen)
   set( LLVM_TARGET_DEFINITIONS ${CTG_SOURCE} )
   tablegen(CLANG ${CTG_UNPARSED_ARGUMENTS})
 
-  list(GET CTG_UNPARSED_ARGUMENTS 0 output_file)
-  if( CTG_TARGET )
-    add_custom_target( ${CTG_TARGET} DEPENDS ${output_file} ${CTG_DEPENDS} )
+  if(CTG_TARGET)
+    add_public_tablegen_target(${CTG_TARGET})
     set_target_properties( ${CTG_TARGET} PROPERTIES FOLDER "Clang tablegenning")
     set_property(GLOBAL APPEND PROPERTY CLANG_TABLEGEN_TARGETS ${CTG_TARGET})
   endif()
@@ -319,7 +332,7 @@ macro(add_clang_library name)
   llvm_add_library(${name} ${ARG_UNPARSED_ARGUMENTS} ${srcs})
 
   if(TARGET ${name})
-    target_link_libraries( ${name} ${LLVM_COMMON_LIBS} )
+    target_link_libraries(${name} ${cmake_2_8_12_INTERFACE} ${LLVM_COMMON_LIBS})
 
     if (NOT LLVM_INSTALL_TOOLCHAIN_ONLY OR ${name} STREQUAL "libclang")
       install(TARGETS ${name}
@@ -467,15 +480,6 @@ option(CLANG_INCLUDE_DOCS "Generate build targets for the Clang docs."
   ${LLVM_INCLUDE_DOCS})
 if( CLANG_INCLUDE_DOCS )
   add_subdirectory(docs)
-endif()
-
-# Workaround for MSVS10 to avoid the Dialog Hell
-# FIXME: This could be removed with future version of CMake.
-if( CLANG_BUILT_STANDALONE AND MSVC_VERSION EQUAL 1600 )
-  set(CLANG_SLN_FILENAME "${CMAKE_CURRENT_BINARY_DIR}/Clang.sln")
-  if( EXISTS "${CLANG_SLN_FILENAME}" )
-    file(APPEND "${CLANG_SLN_FILENAME}" "\n# This should be regenerated!\n")
-  endif()
 endif()
 
 set(CLANG_ORDER_FILE "" CACHE FILEPATH
