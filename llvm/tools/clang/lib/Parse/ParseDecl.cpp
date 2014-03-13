@@ -5455,7 +5455,9 @@ void Parser::ParseParameterDeclarationClause(
     ParseDeclarationSpecifiers(DS);
 
     // +===== Scout ==========================================================+
-    // mesh as parameter case
+    // mesh as parameter case for parsing [] [:] [::] syntax
+    // skip for now
+#if 0
     if(isScoutLang()) {
       DeclSpec::TST tst = DS.getTypeSpecType();
       if(tst == DeclSpec::TST_typename){
@@ -5474,6 +5476,7 @@ void Parser::ParseParameterDeclarationClause(
         }
       }
     }
+#endif
     // +======================================================================+
 
     // Parse the declarator.  This is "PrototypeContext" or 

@@ -47,21 +47,25 @@ llvm::Value *CodeGenFunction::EmitFieldAnnotations(const MeshFieldDecl *D,
 
 // Special case for mesh types, because we cannot check
 // for type pointer equality  because each mesh has its own type
-// pointer to hold the mesh dimensions and other instance data
 bool CodeGenFunction::CheckMeshPtrTypes(QualType &ArgType, QualType &ActualArgType) {
 
   const Type* argType =
       getContext().getCanonicalType(ArgType.getNonReferenceType()).getTypePtr();
   const Type* actualType = getContext().getCanonicalType(ActualArgType).getTypePtr();
 
-  //SC_TODO: maybe check that mesh dimensions match?
+  //Check that mesh dimensions match
+  if(argType->isMeshType() && actualType->isMeshType()) {
+    const MeshType* SMTy = dyn_cast<MeshType>(argType);
+    const MeshType* DMTy = dyn_cast<MeshType>(actualType);
+    if(SMTy->rankOf() != DMTy->rankOf()) return false;
 
-  if ((argType->isUniformMeshType() && actualType->isUniformMeshType())  ||
-      (argType->isRectilinearMeshType() && actualType->isRectilinearMeshType()) ||
-      (argType->isStructuredMeshType() && actualType->isStructuredMeshType()) ||
-      (argType->isUnstructuredMeshType() && actualType->isUnstructuredMeshType())) {
-    llvm::errs() << "codegen mesh pointer compare ok\n";
-    return true;
+    if ((argType->isUniformMeshType() && actualType->isUniformMeshType())  ||
+        (argType->isRectilinearMeshType() && actualType->isRectilinearMeshType()) ||
+        (argType->isStructuredMeshType() && actualType->isStructuredMeshType()) ||
+        (argType->isUnstructuredMeshType() && actualType->isUnstructuredMeshType())) {
+      llvm::errs() << "codegen mesh pointer compare ok\n";
+      return true;
+    }
   }
   return false;
 }

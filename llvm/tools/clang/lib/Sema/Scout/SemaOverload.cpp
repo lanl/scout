@@ -58,39 +58,47 @@
 using namespace clang;
 using namespace sema;
 
-bool Sema::ScoutMeshCompareReferenceRelationship(SourceLocation &Loc,
-    QualType &UnqualT1, QualType &UnqualT2, Sema::ReferenceCompareResult &Ref) {
-  if(const MeshType* mt1 = dyn_cast<MeshType>(UnqualT1.getTypePtr())){
-    if(const MeshType* mt2 = dyn_cast<MeshType>(UnqualT2.getTypePtr())){
-      const UniformMeshType* unimt1 = dyn_cast<UniformMeshType>(mt1);
-      const UniformMeshType* unimt2 = dyn_cast<UniformMeshType>(mt2);
-      if (unimt1 && unimt2 && (unimt1->dimensions().size() == unimt2->dimensions().size())){
-        Ref = Ref_Compatible;
-        return true;
-      } else {
-        const StructuredMeshType* smt1= dyn_cast<StructuredMeshType>(mt1);
-        const StructuredMeshType* smt2= dyn_cast<StructuredMeshType>(mt2);
-        if (smt1 && smt2 && (smt1->dimensions().size() == smt2->dimensions().size())){
-          Ref = Ref_Compatible;
-          return true;
-        } else {
-          const RectilinearMeshType* rmt1 = dyn_cast<RectilinearMeshType>(mt1);
-          const RectilinearMeshType* rmt2 = dyn_cast<RectilinearMeshType>(mt2);
-          if (rmt1 && rmt2 && (rmt1->dimensions().size() == rmt2->dimensions().size())){
-            Ref = Ref_Compatible;
-            return true;
-          }
-        }
-      }
-      Diag(Loc, diag::err_mesh_param_dimensionality_mismatch);
-      Ref = Ref_Incompatible;
-      return true;
-    }
-    else{
-      Ref = Ref_Incompatible;
-      return true;
-    }
-  }
-  return false;
+// compare mesh references to make sure they are compatible
+bool Sema::CompareMeshRefTypes(SourceLocation &Loc,
+    QualType &QT1, QualType &QT2, Sema::ReferenceCompareResult &Ref) {
+  const Type *T1 = QT1.getTypePtr();
+  const Type *T2 = QT2.getTypePtr();
+
+  return CompareMeshTypes(Loc, T1, T2, Ref);
 }
 
+// compare mesh pointers to make sure they are compatible
+bool Sema::CompareMeshPtrTypes(SourceLocation &Loc, QualType &QT1, QualType &QT2) {
+  const Type *T1 = QT1.getTypePtr()->getPointeeType().getTypePtr();
+  const Type *T2 = QT2.getTypePtr()->getPointeeType().getTypePtr();
+
+  Sema::ReferenceCompareResult Ref;
+  return CompareMeshTypes(Loc, T1, T2, Ref);
+}
+
+// helper used by CompareMeshRefTypes() and CompareMeshPtrTypes()
+bool Sema::CompareMeshTypes(SourceLocation &Loc,
+    const Type *T1, const Type *T2, Sema::ReferenceCompareResult &Ref) {
+
+  if(T1->isMeshType() && T2->isMeshType()) {
+#if 0 //skip dimension compare for now
+        const MeshType* MT1 = dyn_cast<MeshType>(T1);
+        const MeshType* MT2 = dyn_cast<MeshType>(T2);
+        if(MT1->rankOf() != MT2->rankOf()) {
+          Diag(Loc, diag::err_mesh_param_dimensionality_mismatch);
+          Ref = Ref_Incompatible;
+          return false;
+        }
+#endif
+        //check that kinds match
+        if ((T1->isUniformMeshType() && T2->isUniformMeshType())  ||
+            (T1->isRectilinearMeshType() && T2->isRectilinearMeshType()) ||
+            (T1->isStructuredMeshType() && T2->isStructuredMeshType()) ||
+            (T1->isUnstructuredMeshType() && T2->isUnstructuredMeshType())) {
+          Ref = Ref_Compatible;
+          llvm::errs() << "Sema mesh ref/ptr compare ok\n";
+          return true;
+        }
+    }
+    return false;
+}

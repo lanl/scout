@@ -227,6 +227,14 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
   llvm::Value *MeshBaseAddr = LocalDeclMap[S.getMeshVarDecl()];
   llvm::StringRef MeshName = S.getMeshType()->getName();
 
+  if(isa<ParmVarDecl>(S.getMeshVarDecl())) {
+    llvm::errs() << "found ParmVarDecl\n";
+    S.getMeshVarDecl()->dump();
+    S.getMeshVarDecl()->getType().dump();
+    S.getMeshType()->dump();
+    llvm::errs() << "Mesh name " << MeshName << "\n";
+  }
+
   // find number of fields
   MeshDecl* MD =  S.getMeshType()->getDecl();
   unsigned int nfields = MD->fields();

@@ -59,23 +59,6 @@ using namespace clang;
 using namespace sema;
 
 
-bool Sema::CheckMeshPtrTypes(QualType &Src, QualType &Dst) {
-  const Type *STy = Src.getTypePtr()->getPointeeType().getTypePtr();
-  const Type *DTy = Dst.getTypePtr()->getPointeeType().getTypePtr();
-
-  //SC_TODO: maybe check that mesh dimensions match?
-
-  if ((STy->isUniformMeshType() && DTy->isUniformMeshType())  ||
-      (STy->isRectilinearMeshType() && DTy->isRectilinearMeshType()) ||
-      (STy->isStructuredMeshType() && DTy->isStructuredMeshType()) ||
-      (STy->isUnstructuredMeshType() && DTy->isUnstructuredMeshType())) {
-    llvm::errs() << "Sema mesh ptr compare ok\n";
-    return true;
-  }
-  return false;
-}
-
-
 // Check for undeclared identifiers to see if they can be qualified as
 // member reference expr's by enclosing forall / renderall loop
 // variables.  ER is modified by this call
