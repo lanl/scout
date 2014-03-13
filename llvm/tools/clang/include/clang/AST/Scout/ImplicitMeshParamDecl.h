@@ -61,16 +61,25 @@ namespace clang {
 
   class ImplicitMeshParamDecl : public ImplicitParamDecl {
   public:
+    enum MeshElementType {
+      Undefined    = -1,
+      Cells        =  1,
+      Vertices     =  2,
+      Edges        =  3,
+      Faces        =  4
+    };
+
     static ImplicitMeshParamDecl *Create(ASTContext &C, DeclContext *DC,
-        SourceLocation IdLoc, IdentifierInfo *Id,
+        MeshElementType ET, SourceLocation IdLoc, IdentifierInfo *Id,
         QualType Type, VarDecl *VD) {
-      return new (C, DC) ImplicitMeshParamDecl(DC, IdLoc, Id, Type, VD);
+      return new (C, DC) ImplicitMeshParamDecl(DC, ET, IdLoc, Id, Type, VD);
     }
 
-    ImplicitMeshParamDecl(DeclContext *DC, SourceLocation IdLoc,
-                          IdentifierInfo *Id, QualType Type, VarDecl *VD)
+    ImplicitMeshParamDecl(DeclContext *DC, MeshElementType ET, SourceLocation IdLoc,
+        IdentifierInfo *Id, QualType Type, VarDecl *VD)
           : ImplicitParamDecl(DC,IdLoc, Id, Type) {
       MVD = VD;
+      ElementType = ET;
       setMesh();
     }
 
@@ -78,8 +87,13 @@ namespace clang {
       return MVD;
     }
 
+    MeshElementType getElementType() const{
+      return ElementType;
+    }
+
   private:
     VarDecl *MVD; // Underlying mesh VarDecl
+    MeshElementType ElementType;
   };
 
 }

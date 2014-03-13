@@ -8175,6 +8175,7 @@ public:
   bool ActOnForallMeshRefVariable(Scope* S,
                                   IdentifierInfo* MeshVarInfo,
                                   SourceLocation  MeshVarLoc,
+                                  ForallMeshStmt::MeshElementType RefType,
                                   IdentifierInfo* RefVarInfo,
                                   SourceLocation  RefVarLoc,
                                   const MeshType *MT,
@@ -8182,6 +8183,7 @@ public:
                                   DeclStmt **Init);
 
   bool ActOnRenderallMeshRefVariable(Scope *S,
+                                     RenderallMeshStmt::MeshElementType RefVarType,
                                      IdentifierInfo* RefVarInfo,
                                      SourceLocation RefVarLoc,
                                      const MeshType *MT,
