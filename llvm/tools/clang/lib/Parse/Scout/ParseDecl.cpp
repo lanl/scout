@@ -243,6 +243,10 @@ void Parser::ParseMeshParameterDeclaration(DeclSpec& DS) {
     ConsumeBracket();
   }
 
+  // Just build a dummy mesh that has the correct rank.
+  // we need this so we can do the forall codegen.
+
+
   // just set sizes to zero
   MeshType::MeshDimensions dims;
   for(size_t i = 0; i < numDims; ++i) {

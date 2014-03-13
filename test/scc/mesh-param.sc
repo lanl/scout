@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyright (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2014, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -51,53 +51,30 @@
  *
  * ##### 
  */ 
+#include <assert.h>
 
-#include "clang/Sema/Sema.h"
-#include "clang/Sema/SemaInternal.h"
+uniform mesh MyMesh {
+  cells:
+    int val;
+};
 
-using namespace clang;
-using namespace sema;
-
-// compare mesh references to make sure they are compatible
-bool Sema::CompareMeshRefTypes(SourceLocation &Loc,
-    QualType &QT1, QualType &QT2, Sema::ReferenceCompareResult &Ref) {
-  const Type *T1 = QT1.getTypePtr();
-  const Type *T2 = QT2.getTypePtr();
-
-  return CompareMeshTypes(Loc, T1, T2, Ref);
+void initialize_myMesh(MyMesh[:]* mp)
+{
+  forall cells c in mp {
+    c.val = position().w;
+  }
 }
 
-// compare mesh pointers to make sure they are compatible
-bool Sema::CompareMeshPtrTypes(SourceLocation &Loc, QualType &QT1, QualType &QT2) {
-  const Type *T1 = QT1.getTypePtr()->getPointeeType().getTypePtr();
-  const Type *T2 = QT2.getTypePtr()->getPointeeType().getTypePtr();
+int main(int argc, char *argv[])
+{
+  MyMesh m[512, 512];
+  initialize_myMesh(&m);
 
-  Sema::ReferenceCompareResult Ref;
-  return CompareMeshTypes(Loc, T1, T2, Ref);
-}
-
-// helper used by CompareMeshRefTypes() and CompareMeshPtrTypes()
-bool Sema::CompareMeshTypes(SourceLocation &Loc,
-    const Type *T1, const Type *T2, Sema::ReferenceCompareResult &Ref) {
-
-  if(T1->isMeshType() && T2->isMeshType()) {
-
-        // cehck that dimensions match
-        const MeshType* MT1 = dyn_cast<MeshType>(T1);
-        const MeshType* MT2 = dyn_cast<MeshType>(T2);
-        if(MT1->rankOf() != MT2->rankOf()) {
-          Diag(Loc, diag::err_mesh_param_dimensionality_mismatch);
-          Ref = Ref_Incompatible;
-          return false;
-        }
-        //check that mesh kinds match
-        if ((T1->isUniformMeshType() && T2->isUniformMeshType())  ||
-            (T1->isRectilinearMeshType() && T2->isRectilinearMeshType()) ||
-            (T1->isStructuredMeshType() && T2->isStructuredMeshType()) ||
-            (T1->isUnstructuredMeshType() && T2->isUnstructuredMeshType())) {
-          Ref = Ref_Compatible;
-          return true;
-        }
+  forall cells c in m {
+    if (val != position().w) {
+      assert(false && "bad value");
     }
-    return false;
+  } 
+  return 0;
 }
+

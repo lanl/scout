@@ -59,11 +59,11 @@ bool CodeGenFunction::CheckMeshPtrTypes(QualType &ArgType, QualType &ActualArgTy
     const MeshType* DMTy = dyn_cast<MeshType>(actualType);
     if(SMTy->rankOf() != DMTy->rankOf()) return false;
 
+    //check that mesh kinds match
     if ((argType->isUniformMeshType() && actualType->isUniformMeshType())  ||
         (argType->isRectilinearMeshType() && actualType->isRectilinearMeshType()) ||
         (argType->isStructuredMeshType() && actualType->isStructuredMeshType()) ||
         (argType->isUnstructuredMeshType() && actualType->isUnstructuredMeshType())) {
-      llvm::errs() << "codegen mesh pointer compare ok\n";
       return true;
     }
   }

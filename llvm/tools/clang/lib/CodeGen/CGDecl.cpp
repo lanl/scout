@@ -1676,8 +1676,10 @@ void CodeGenFunction::EmitParmDecl(const VarDecl &D, llvm::Value *Arg,
   QualType QT = D.getType().getTypePtr()->getPointeeType();
   // SC_TODO why is ArgIsPointer not true for mesh??
   if (!QT.isNull() && isa<MeshType>(QT)) {
-    llvm::errs() << "mesh pointer param in CG\n";
-    ArgIsPointer = true;
+    if(ArgIsPointer == false) {
+      llvm::errs() << "fix mesh ArgIsPointer!\n";
+      ArgIsPointer = true;
+    }
   }
   // +======================================================================+
   // If we already have a pointer to the argument, reuse the input pointer.

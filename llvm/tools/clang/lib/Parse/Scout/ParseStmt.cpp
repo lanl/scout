@@ -126,13 +126,7 @@ const MeshType* Parser::LookupMeshType(VarDecl *VD,
   if (VD) {
     const Type* T = VD->getType().getCanonicalType().getTypePtr();
 
-    if(T->isPointerType()) {
-      llvm::errs() << "is mesh Pointer type\n";
-      T = T->getPointeeType().getTypePtr();
-    }
-
-    if(T->isReferenceType()) {
-      llvm::errs() << "is mesh Reference type\n";
+    if(T->isPointerType() || T->isReferenceType()) {
       T = T->getPointeeType().getTypePtr();
     }
 
