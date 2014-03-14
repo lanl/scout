@@ -33,6 +33,7 @@
 
 // +===== Scout ==============================================================+
 #include "clang/AST/Scout/MeshDecl.h"
+#include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 // +==========================================================================+
 
 #include <algorithm>
@@ -511,6 +512,9 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case EnumConstant:
     case Var:
     case ImplicitParam:
+    // +===== Scout =============================
+    case ImplicitMeshParam:
+    // +=========================================
     case ParmVar:
     case NonTypeTemplateParm:
     case ObjCMethod:

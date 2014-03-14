@@ -23,6 +23,12 @@
 #include "clang/Basic/Module.h"
 #include "clang/Basic/SourceManager.h"
 #include "llvm/Support/raw_ostream.h"
+
+// +===== Scout ==============================================================+
+#include "clang/AST/Scout/MeshDecls.h"
+#include "clang/AST/Scout/ImplicitMeshParamDecl.h"
+// +==========================================================================+
+
 using namespace clang;
 using namespace clang::comments;
 
@@ -216,6 +222,7 @@ namespace  {
 
     // +==== Scout ===========================================================+
     void VisitMeshFieldDecl(const MeshFieldDecl *D);
+    //void VisitImplicitMeshParamDecl(const ImplicitMeshParamDecl *D);
     // +======================================================================+
 
     // C++ Decls

@@ -58,6 +58,9 @@ def Named : Decl<1>;
           def VarTemplatePartialSpecialization
             : DDecl<VarTemplateSpecialization>;
         def ImplicitParam : DDecl<Var>;
+          // +===== Scout =======================================================+
+          def ImplicitMeshParam : DDecl<ImplicitParam>;
+          // +===================================================================+
         def ParmVar : DDecl<Var>;
       def NonTypeTemplateParm : DDecl<Declarator>;
   def Template : DDecl<Named, 1>;

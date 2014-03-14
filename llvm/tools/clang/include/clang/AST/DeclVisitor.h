@@ -20,6 +20,11 @@
 #include "clang/AST/DeclOpenMP.h"
 #include "clang/AST/DeclTemplate.h"
 
+// +===== Scout ==============================================================+
+#include "clang/AST/Scout/MeshDecls.h"
+#include "clang/AST/Scout/ImplicitMeshParamDecl.h"
+// +==========================================================================+
+
 namespace clang {
 namespace declvisitor {
 

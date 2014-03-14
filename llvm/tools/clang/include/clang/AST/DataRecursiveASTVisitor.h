@@ -34,6 +34,10 @@
 #include "clang/AST/Type.h"
 #include "clang/AST/TypeLoc.h"
 
+// +===== Scout ====================================
+#include "clang/AST/Scout/ImplicitMeshParamDecl.h"
+// +================================================
+
 // The following three macros are used for meta programming.  The code
 // using them is responsible for defining macro OPERATOR().
 
@@ -1970,6 +1974,12 @@ DEF_TRAVERSE_DECL(VarTemplatePartialSpecializationDecl,
 DEF_TRAVERSE_DECL(ImplicitParamDecl, {
     TRY_TO(TraverseVarHelper(D));
   })
+
+ // +===== Scout =============================
+ DEF_TRAVERSE_DECL(ImplicitMeshParamDecl, {
+    TRY_TO(TraverseVarHelper(D));
+ })
+ // +==========================================
 
 DEF_TRAVERSE_DECL(NonTypeTemplateParmDecl, {
     // A non-type template parameter, e.g. "S" in template<int S> class Foo ...

@@ -55,6 +55,8 @@
 #include "clang/Sema/SemaInternal.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/Sema/Sema.h"
+#include "clang/AST/Scout/ImplicitMeshParamDecl.h"
+
 using namespace clang;
 using namespace sema;
 
@@ -90,6 +92,10 @@ bool Sema::ScoutMemberReferenceExpr(DeclarationName &Name,
       sitr != sitrEnd; ++sitr) {
 
     VarDecl* vd = *sitr;
+
+    //ImplicitMeshParamDecl* ip = dyn_cast<ImplicitMeshParamDecl>(vd);
+
+    //ip->dump();
 
     const MeshType* mt = dyn_cast<MeshType>(vd->getType().getCanonicalType());
     MeshDecl* md = mt->getDecl();
