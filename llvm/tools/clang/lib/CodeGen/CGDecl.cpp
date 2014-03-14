@@ -1671,6 +1671,17 @@ void CodeGenFunction::EmitParmDecl(const VarDecl &D, llvm::Value *Arg,
   bool DoStore = false;
   bool IsScalar = hasScalarEvaluationKind(Ty);
   CharUnits Align = getContext().getDeclAlign(&D);
+  // +===== Scout ==========================================================+
+  // Mesh pointer as function param case
+  QualType QT = D.getType().getTypePtr()->getPointeeType();
+  // SC_TODO why is ArgIsPointer not true for mesh??
+  if (!QT.isNull() && isa<MeshType>(QT)) {
+    if(ArgIsPointer == false) {
+      llvm::errs() << "fix mesh ArgIsPointer!\n";
+      ArgIsPointer = true;
+    }
+  }
+  // +======================================================================+
   // If we already have a pointer to the argument, reuse the input pointer.
   if (ArgIsPointer) {
     assert(isa<llvm::PointerType>(Arg->getType()));

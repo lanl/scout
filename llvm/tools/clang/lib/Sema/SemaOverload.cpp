@@ -4004,7 +4004,7 @@ Sema::CompareReferenceRelationship(SourceLocation Loc,
   // +==== Scout =============================================================+
   Sema::ReferenceCompareResult Ref;
   if (isScoutLang(getLangOpts()) &&
-    ScoutMeshCompareReferenceRelationship(Loc, UnqualT1, UnqualT2, Ref)) {
+      CompareMeshRefTypes(Loc, UnqualT1, UnqualT2, Ref)) {
     return Ref;
   }
   // +========================================================================+

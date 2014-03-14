@@ -126,7 +126,7 @@ const MeshType* Parser::LookupMeshType(VarDecl *VD,
   if (VD) {
     const Type* T = VD->getType().getCanonicalType().getTypePtr();
 
-    if(T->isReferenceType()){
+    if(T->isPointerType() || T->isReferenceType()) {
       T = T->getPointeeType().getTypePtr();
     }
 
@@ -280,6 +280,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
   SourceLocation   MeshIdentLoc  = Tok.getLocation();
 
   VarDecl *VD = LookupMeshVarDecl(MeshIdentInfo, MeshIdentLoc);
+
   if (VD == 0)
     return StmtError();
 

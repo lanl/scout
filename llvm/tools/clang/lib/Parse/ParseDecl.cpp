@@ -5475,13 +5475,14 @@ void Parser::ParseParameterDeclarationClause(
     ParseDeclarationSpecifiers(DS);
 
     // +===== Scout ==========================================================+
-    // mesh as parameter case
+    //  parse mesh function parameters
+    // e.g: "MyMesh[]", "MyMesh[:]", "MyMesh[::]" and ensure that mesh
+    // parameters are declared as references or pointers
     if(isScoutLang()) {
       DeclSpec::TST tst = DS.getTypeSpecType();
       if(tst == DeclSpec::TST_typename){
         const Type *T = DS.getRepAsType().get().getCanonicalType().getTypePtr();
         if(T->isMeshType()) {
-          llvm::errs() << "is mesh parameter!\n";
           if (Tok.is(tok::l_square)) {
             ParseMeshParameterDeclaration(DS);
           }

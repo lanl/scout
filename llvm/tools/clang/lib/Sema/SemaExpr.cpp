@@ -10792,7 +10792,7 @@ bool Sema::DiagnoseAssignmentResult(AssignConvertType ConvTy,
   case IncompatiblePointer:
     // +===== Scout ==========================================================+
     // allow partially mismatched pointers on meshes
-    if(isScoutLang(getLangOpts()) && CheckMeshPtrTypes(SrcType, DstType))
+    if(isScoutLang(getLangOpts()) && CompareMeshPtrTypes(Loc, SrcType, DstType))
       return isInvalid;
     // +======================================================================+
       DiagKind =

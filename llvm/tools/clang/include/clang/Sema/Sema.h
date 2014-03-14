@@ -8269,8 +8269,6 @@ public:
 
   bool IsValidDeclInMesh(Decl* D);
 
-  bool CheckMeshPtrTypes(QualType &Src, QualType &Dst);
-
   bool ScoutMemberReferenceExpr(DeclarationName &Name,
       SourceLocation &NameLoc,
       DeclarationNameInfo &NameInfo,
@@ -8284,8 +8282,13 @@ public:
                          SourceRange BaseRange, const MeshType *MTy,
                          SourceLocation OpLoc, CXXScopeSpec &SS);
 
-  bool ScoutMeshCompareReferenceRelationship(SourceLocation &Loc,
+  bool CompareMeshPtrTypes(SourceLocation &Loc, QualType &Src, QualType &Dst);
+
+  bool CompareMeshRefTypes(SourceLocation &Loc,
       QualType &UnqualT1, QualType &UnqualT2, ReferenceCompareResult &Ref);
+
+  bool CompareMeshTypes(SourceLocation &Loc,
+        const Type *T1, const Type *T2, ReferenceCompareResult &Ref);
 
   // support for unqualified variables within a forall / renderall mesh loop
   typedef llvm::SmallVector<VarDecl*, 3> ScoutLoopStack;
