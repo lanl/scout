@@ -188,6 +188,9 @@ bool serialization::isRedeclarableDeclKind(unsigned Kind) {
   case Decl::MSProperty:
   case Decl::ObjCIvar:
   case Decl::ObjCAtDefsField:
+  // +===== Scout ============================================================+
+  case Decl::ImplicitMeshParam:
+  // +========================================================================+
   case Decl::ImplicitParam:
   case Decl::ParmVar:
   case Decl::NonTypeTemplateParm:
