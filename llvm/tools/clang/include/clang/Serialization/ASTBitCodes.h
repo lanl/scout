@@ -970,6 +970,8 @@ namespace clang {
       DECL_VAR,
       /// \brief An ImplicitParamDecl record.
       DECL_IMPLICIT_PARAM,
+      /// \brief An ImplicitMeshParamDecl record.
+      DECL_IMPLICIT_MESH_PARAM,
       /// \brief A ParmVarDecl record.
       DECL_PARM_VAR,
       /// \brief A FileScopeAsmDecl record.

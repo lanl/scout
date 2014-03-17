@@ -2754,6 +2754,9 @@ ExprResult Sema::BuildDeclarationNameExpr(
       }
       // fallthrough
 
+    // +===== Scout ==============================
+    case Decl::ImplicitMeshParam:
+    // +==========================================
     case Decl::ImplicitParam:
     case Decl::ParmVar: {
       // These are always l-values.

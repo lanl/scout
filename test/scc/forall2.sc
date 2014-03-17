@@ -58,7 +58,6 @@ int main(int argc, char** argv){
   uniform mesh MyMesh{
   cells:
     float a;
-  vertices:
     float b;
   };
   

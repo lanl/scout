@@ -2606,6 +2606,11 @@ Decl *ASTReader::ReadDeclRecord(DeclID ID) {
   case DECL_VAR:
     D = VarDecl::CreateDeserialized(Context, ID);
     break;
+  // +===== Scout ============================================================+
+  case DECL_IMPLICIT_MESH_PARAM:
+    D = ImplicitMeshParamDecl::CreateDeserialized(Context, ID);
+    break;
+  // +========================================================================+
   case DECL_IMPLICIT_PARAM:
     D = ImplicitParamDecl::CreateDeserialized(Context, ID);
     break;

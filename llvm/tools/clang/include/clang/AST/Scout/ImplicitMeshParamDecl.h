@@ -77,13 +77,13 @@ namespace clang {
 
     ImplicitMeshParamDecl(DeclContext *DC, MeshElementType ET, SourceLocation IdLoc,
         IdentifierInfo *Id, QualType Type, VarDecl *VD)
-          : ImplicitParamDecl(DC,IdLoc, Id, Type) {
+          : ImplicitParamDecl(DC,IdLoc, Id, Type, ImplicitMeshParam) {
       MVD = VD;
       ElementType = ET;
       setMesh();
     }
 
-    VarDecl *getMeshVarDecl() {
+    const VarDecl *getMeshVarDecl() const {
       return MVD;
     }
 
@@ -91,6 +91,12 @@ namespace clang {
       return ElementType;
     }
 
+    // Implement isa/cast/dyncast/etc.
+    static bool classof(const Decl *D) { return classofKind(D->getKind()); }
+    static bool classofKind(Kind K) { return K == ImplicitMeshParam; }
+
+    friend class ASTDeclReader;
+    friend class ASTDeclWriter;
   private:
     VarDecl *MVD; // Underlying mesh VarDecl
     MeshElementType ElementType;

@@ -1222,8 +1222,10 @@ public:
   static ImplicitParamDecl *CreateDeserialized(ASTContext &C, unsigned ID);
   
   ImplicitParamDecl(DeclContext *DC, SourceLocation IdLoc,
-                    IdentifierInfo *Id, QualType Type)
-    : VarDecl(ImplicitParam, DC, IdLoc, IdLoc, Id, Type,
+                    IdentifierInfo *Id, QualType Type,
+                    /*+===== Scout =====*/ Kind DK=ImplicitParam /*+=====*/ )
+    : VarDecl(/*+===== Scout =====*/ DK /*+=====*/,
+              DC, IdLoc, IdLoc, Id, Type,
               /*tinfo*/ 0, SC_None) {
     setImplicit();
     // +==== Scout =============================================================+
@@ -1234,7 +1236,12 @@ public:
 
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
-  static bool classofKind(Kind K) { return K == ImplicitParam; }
+  static bool classofKind(Kind K) {
+    // +===== Scout =========================
+    return K >= firstImplicitParam &&
+      K <= lastImplicitParam;
+    // +=====================================
+  }
 
   // +==== Scout =============================================================+
   // deal w/ scout specific Implicit Decls. It would be nice to do this

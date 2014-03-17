@@ -25,6 +25,7 @@
 
 // +===== Scout ==============================================================+
 #include "clang/AST/Scout/MeshDecls.h"
+#include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 // +==========================================================================+
 
 #include <deque>
