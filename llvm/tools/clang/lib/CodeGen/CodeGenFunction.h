@@ -291,6 +291,8 @@ public:
   // mesh dimension sizes
   llvm::SmallVector< llvm::Value *, 3 > LoopBounds;
 
+  llvm::Value* VertexIndex;
+
   //renderall color buffer
   llvm::Value *Color;
 

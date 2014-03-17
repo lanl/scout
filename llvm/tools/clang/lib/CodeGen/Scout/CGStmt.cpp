@@ -173,6 +173,63 @@ llvm::Value *CodeGenFunction::GetMeshBaseAddr(const RenderallMeshStmt &S) {
 // fields (the implementation below is cell centric).
 //
 void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
+  const VarDecl* VD = S.getMeshVarDecl();
+
+  // handle nested forall, e.g: forall vertices within a forall cells
+  if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)){
+    VD = IP->getMeshVarDecl();
+
+    ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
+    ImplicitMeshParamDecl::MeshElementType ET = IP->getElementType();
+
+    if(FET == ForallMeshStmt::Vertices){
+      assert(ET == ImplicitMeshParamDecl::Cells &&
+             "EmitForAllMeshStmt element type nesting combination not implemented");
+
+      llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.vertices.entry");
+
+      llvm::Value* ip = Builder.CreateAlloca(Int32Ty, 0, "vertex.pos");
+      VertexIndex = Builder.CreateAlloca(Int32Ty, 0, "vertex.index");
+      llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
+      llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
+      llvm::Value* Two = llvm::ConstantInt::get(Int32Ty, 2);
+      llvm::Value* Four = llvm::ConstantInt::get(Int32Ty, 4);
+
+      Builder.CreateStore(Zero, VertexIndex);
+
+      llvm::BasicBlock *LoopBlock = createBasicBlock("forall.vertices.loop");
+      Builder.CreateBr(LoopBlock);
+
+      EmitBlock(LoopBlock);
+
+      llvm::Value* i = Builder.CreateLoad(ip);
+
+      llvm::Value* v1 = Builder.CreateUDiv(i, Two);
+      llvm::Value* v2 = Builder.CreateMul(v1, Builder.CreateLoad(LoopBounds[0]));
+      llvm::Value* v3 = Builder.CreateURem(i, Two);
+      llvm::Value* v4 = Builder.CreateAdd(v2, v3);
+      llvm::Value* v5 = Builder.CreateAdd(v4, Builder.CreateLoad(InductionVar[3]));
+      Builder.CreateStore(v5, VertexIndex);
+
+      llvm::Value* v6 = Builder.CreateAdd(i, One);
+
+      Builder.CreateStore(v6, ip);
+
+      EmitStmt(S.getBody());
+
+      VertexIndex = 0;
+
+      llvm::Value *Cond = Builder.CreateICmpSLT(i, Four, "cond");
+
+      llvm::BasicBlock *ExitBlock = createBasicBlock("forall.vertices.exit");
+      Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
+      EmitBlock(ExitBlock);
+      return;
+    }
+    else{
+      assert(false && "EmitForAllMeshStmt element type nesting combination not implemented");
+    }
+  }
 
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
   unsigned int rank = S.getMeshType()->rankOf();
@@ -183,7 +240,6 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   //llvm::errs() << "forall mesh type name = '" << S.getMeshVarDecl()->getTypeSourceInfo()->getType().getTypePtr()->getTypeClassName() << "'\n";
   ResetVars();
 
-  const VarDecl* VD = S.getMeshVarDecl();
   if ((VD->hasLinkage() || VD->isStaticDataMember()) && VD->getTLSKind() != VarDecl::TLS_Dynamic) {
     llvm::Value* V = CGM.GetAddrOfGlobalVar(VD);
     llvm::Value* VP = Builder.CreateLoad(V);

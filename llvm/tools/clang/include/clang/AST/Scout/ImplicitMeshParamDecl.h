@@ -56,6 +56,7 @@
 #define __SC_CLANG_IMPLICIT_MESH_PARAM_DECL_H__
 
 #include "clang/AST/Decl.h"
+#include "clang/AST/Scout/MeshDecl.h"
 
 namespace clang {
 
@@ -78,13 +79,25 @@ namespace clang {
     ImplicitMeshParamDecl(DeclContext *DC, MeshElementType ET, SourceLocation IdLoc,
         IdentifierInfo *Id, QualType Type, VarDecl *VD)
           : ImplicitParamDecl(DC,IdLoc, Id, Type, ImplicitMeshParam) {
-      MVD = VD;
+      BVD = VD;
       ElementType = ET;
       setMesh();
     }
 
-    const VarDecl *getMeshVarDecl() const {
-      return MVD;
+    const VarDecl *getBaseVarDecl() const {
+      return BVD;
+    }
+
+    const VarDecl* getMeshVarDecl() const {
+      const VarDecl* VD = BVD;
+      for(;;){
+        if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)){
+          VD = IP->getBaseVarDecl();
+        }
+        else{
+          return VD;
+        }
+      }
     }
 
     MeshElementType getElementType() const{
@@ -98,7 +111,9 @@ namespace clang {
     friend class ASTDeclReader;
     friend class ASTDeclWriter;
   private:
-    VarDecl *MVD; // Underlying mesh VarDecl
+    // Parent of this implicit mesh param decl VarDecl
+    // could be a MeshDecl or another ImplicitMeshParamDecl
+    VarDecl *BVD;
     MeshElementType ElementType;
   };
 
