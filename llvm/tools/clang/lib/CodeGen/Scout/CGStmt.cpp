@@ -175,6 +175,8 @@ llvm::Value *CodeGenFunction::GetMeshBaseAddr(const RenderallMeshStmt &S) {
 void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   const VarDecl* VD = S.getMeshVarDecl();
 
+  VertexIndex = 0;
+
   // handle nested forall, e.g: forall vertices within a forall cells
   if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)){
     VD = IP->getMeshVarDecl();
@@ -195,7 +197,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
       llvm::Value* Two = llvm::ConstantInt::get(Int32Ty, 2);
       llvm::Value* Four = llvm::ConstantInt::get(Int32Ty, 4);
 
-      Builder.CreateStore(Zero, VertexIndex);
+      Builder.CreateStore(Zero, ip);
 
       llvm::BasicBlock *LoopBlock = createBasicBlock("forall.vertices.loop");
       Builder.CreateBr(LoopBlock);
