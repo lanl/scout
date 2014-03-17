@@ -75,6 +75,7 @@
 #include "CGBlocks.h"
 
 #include "Scout/CGScoutRuntime.h"
+#include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 
 using namespace clang;
 using namespace CodeGen;
@@ -224,7 +225,12 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
   RegionCounter Cnt = getPGORegionCounter(&S);
   (void)Cnt; //suppress warning 
  
-  llvm::Value *MeshBaseAddr = LocalDeclMap[S.getMeshVarDecl()];
+  const VarDecl* VD = S.getMeshVarDecl();
+  if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)){
+    VD = IP->getMeshVarDecl();
+  }
+
+  llvm::Value *MeshBaseAddr = LocalDeclMap[VD];
   llvm::StringRef MeshName = S.getMeshType()->getName();
 
   // find number of fields

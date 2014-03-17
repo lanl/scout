@@ -83,7 +83,7 @@ namespace clang {
       setMesh();
     }
 
-    VarDecl *getMeshVarDecl() {
+    const VarDecl *getMeshVarDecl() const {
       return MVD;
     }
 

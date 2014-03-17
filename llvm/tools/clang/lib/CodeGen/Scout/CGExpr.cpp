@@ -86,7 +86,7 @@ CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index) {
   if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(Base->getDecl())) {
     if(IMPD->isMesh()) { // double check that it is really is a ImplicitMeshParamDecl
       // lookup underlying mesh instead of implicit mesh
-      VarDecl* VD = IMPD->getMeshVarDecl();
+      const VarDecl* VD = IMPD->getMeshVarDecl();
       llvm::Value *V = LocalDeclMap.lookup(VD);
       LValue BaseLV  = MakeAddrLValue(V, E->getType());
       // assume we have already checked that we are working w/ a mesh and cast to MeshField Decl
