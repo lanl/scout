@@ -51,16 +51,10 @@ bool CodeGenFunction::CheckMeshPtrTypes(QualType &ArgType, QualType &ActualArgTy
 
   const Type* argType =
       getContext().getCanonicalType(ArgType.getNonReferenceType()).getTypePtr();
-  const Type* actualType = getContext().getCanonicalType(ActualArgType).getTypePtr();
+  const Type* actualType =
+      getContext().getCanonicalType(ActualArgType).getTypePtr();
 
-  // check that mesh kinds match
-  if ((argType->isUniformMeshType() && actualType->isUniformMeshType())  ||
-      (argType->isRectilinearMeshType() && actualType->isRectilinearMeshType()) ||
-      (argType->isStructuredMeshType() && actualType->isStructuredMeshType()) ||
-      (argType->isUnstructuredMeshType() && actualType->isUnstructuredMeshType())) {
-    return true;
-  }
-
+  if(CGM.getContext().CompareMeshTypes(argType, actualType)) return true;
   return false;
 }
 

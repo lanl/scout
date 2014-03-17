@@ -2458,10 +2458,6 @@ private:
   void ParseMeshDeclaration(ParsingDeclSpec &DS,
                             FieldCallback &Fields);
 
-  void ParseMeshParameterDeclaration(DeclSpec& DS);
-
-  void SetMeshParameterParsedType(size_t rank, ParsedType *parsedType);
-
   const RenderTargetType* LookupRenderTargetType(IdentifierInfo *TargetInfo,
                                                  SourceLocation TargetLoc);  
 
