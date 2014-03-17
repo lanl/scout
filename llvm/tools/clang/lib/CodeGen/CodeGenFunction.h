@@ -290,6 +290,8 @@ public:
   llvm::SmallVector< llvm::Value *, 4 > InductionVar;
   // mesh dimension sizes
   llvm::SmallVector< llvm::Value *, 3 > LoopBounds;
+  //used by builtins to check dimension
+  llvm::SmallVector< llvm::Value *, 3 > DimExists;
 
   //renderall color buffer
   llvm::Value *Color;

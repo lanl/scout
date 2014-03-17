@@ -5478,23 +5478,14 @@ void Parser::ParseParameterDeclarationClause(
     //  parse mesh function parameters
     // e.g: "MyMesh[]", "MyMesh[:]", "MyMesh[::]" and ensure that mesh
     // parameters are declared as references or pointers
+#if 0
     if(isScoutLang()) {
-      DeclSpec::TST tst = DS.getTypeSpecType();
-      if(tst == DeclSpec::TST_typename){
-        const Type *T = DS.getRepAsType().get().getCanonicalType().getTypePtr();
-        if(T->isMeshType()) {
-          if (Tok.is(tok::l_square)) {
-            ParseMeshParameterDeclaration(DS);
-          }
-
-          if (Tok.isNot(tok::amp) && Tok.isNot(tok::star)) {
-            Diag(Tok, diag::err_expected_mesh_param_star_amp);
-            SkipUntil(tok::r_paren);
-            return;
-          }
-        }
-      }
+       if( DS.getTypeSpecType() == DeclSpec::TST_typename) {
+         const Type *T = DS.getRepAsType().get().getCanonicalType().getTypePtr();
+         if(T->isMeshType()) ParseMeshParameterDeclaration(DS);
+       }
     }
+#endif
     // +======================================================================+
 
     // Parse the declarator.  This is "PrototypeContext" or 
@@ -5504,6 +5495,8 @@ void Parser::ParseParameterDeclarationClause(
               D.getContext() == Declarator::LambdaExprContext ?
                                   Declarator::LambdaExprParameterContext : 
                                                 Declarator::PrototypeContext);
+
+
     ParseDeclarator(ParmDeclarator);
 
     // Parse GNU attributes, if present.

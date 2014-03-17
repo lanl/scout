@@ -82,7 +82,8 @@ bool Sema::CompareMeshTypes(SourceLocation &Loc,
 
   if(T1->isMeshType() && T2->isMeshType()) {
 
-        // cehck that dimensions match
+        // check that dimensions match
+#if 0
         const MeshType* MT1 = dyn_cast<MeshType>(T1);
         const MeshType* MT2 = dyn_cast<MeshType>(T2);
         if(MT1->rankOf() != MT2->rankOf()) {
@@ -90,6 +91,7 @@ bool Sema::CompareMeshTypes(SourceLocation &Loc,
           Ref = Ref_Incompatible;
           return false;
         }
+#endif
         //check that mesh kinds match
         if ((T1->isUniformMeshType() && T2->isUniformMeshType())  ||
             (T1->isRectilinearMeshType() && T2->isRectilinearMeshType()) ||

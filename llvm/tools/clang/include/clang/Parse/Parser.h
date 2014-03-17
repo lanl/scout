@@ -769,7 +769,7 @@ public:
           Self->incrementMSLocalManglingNumber();
 
         this->Self = 0;
-      }
+    }
     }
 
     // Exit - Exit the scope associated with this object now, rather
@@ -2459,6 +2459,8 @@ private:
                             FieldCallback &Fields);
 
   void ParseMeshParameterDeclaration(DeclSpec& DS);
+
+  void SetMeshParameterParsedType(size_t rank, ParsedType *parsedType);
 
   const RenderTargetType* LookupRenderTargetType(IdentifierInfo *TargetInfo,
                                                  SourceLocation TargetLoc);  

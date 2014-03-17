@@ -118,8 +118,9 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
   }
 
   case Builtin::BIwidth: {
-    if (LoopBounds[0]) *RV = RValue::get(Builder.CreateLoad(LoopBounds[0], "width"));
-    else {
+    if (DimExists[0] && LoopBounds[0]) {
+      *RV = RValue::get(Builder.CreateLoad(LoopBounds[0], "width"));
+    } else {
       CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);    
       *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
     }
@@ -127,38 +128,46 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
   }
 
   case Builtin::BIheight: {
-    if (LoopBounds[1]) *RV = RValue::get(Builder.CreateLoad(LoopBounds[1], "height"));
-    else {
-      if (LoopBounds[0]) 
+    if (DimExists[1] && LoopBounds[1]) {
+      *RV = RValue::get(Builder.CreateLoad(LoopBounds[1], "height"));
+    } else {
+      if (DimExists[0]) {
         CGM.getDiags().Report(E->getExprLoc(), diag::warn_height_mesh_rank_mismatch);
-      else
+        *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 1));
+      } else {
         CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
-      *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+        *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+      }
     }
     return true;
   }
 
   case Builtin::BIdepth: {
-    if (LoopBounds[2]) *RV = RValue::get(Builder.CreateLoad(LoopBounds[2], "depth"));
-    else {
-      if (LoopBounds[0]) 
+    if (DimExists[2] && LoopBounds[2]) {
+      *RV = RValue::get(Builder.CreateLoad(LoopBounds[2], "depth"));
+    } else {
+      if (DimExists[0]) {
         CGM.getDiags().Report(E->getExprLoc(), diag::warn_depth_mesh_rank_mismatch);
-      else
+        *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 1));
+      } else {
         CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);        
-      *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+        *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+      }
     }
     return true;
   }
 
   case Builtin::BIrank: {
-    if (LoopBounds[2]) 
+    if (DimExists[2])
       *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 3));
-    else if (LoopBounds[1])
+    else if (DimExists[1])
       *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 2));
-    else if (LoopBounds[0]) 
+    else if (DimExists[0])
       *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 1));
-    else
-      assert(false && "no loop bounds! are we outside of looping construct?");
+    else {
+      CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
+      *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+    }
     return true;
   }
     
