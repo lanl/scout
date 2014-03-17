@@ -79,6 +79,37 @@
 
 using namespace clang;
 
+
+// make sure that mesh types and specifier match
+bool ASTContext::CompareMeshTypes(const Type *T1, const Type *T2) {
+
+  if (T1->isUniformMeshType() && T2->isUniformMeshType()
+      && T1->getAsUniformMeshDecl()->getName() ==
+          T2->getAsUniformMeshDecl()->getName()) {
+    return true;
+  }
+
+  if (T1->isRectilinearMeshType() && T2->isRectilinearMeshType()
+      && T1->getAsRectilinearMeshDecl()->getName() ==
+          T2->getAsRectilinearMeshDecl()->getName()) {
+    return true;
+  }
+
+  if (T1->isStructuredMeshType() && T2->isStructuredMeshType()
+      && T1->getAsStructuredMeshDecl()->getName() ==
+          T2->getAsStructuredMeshDecl()->getName()) {
+    return true;
+  }
+
+  if (T1->isUnstructuredMeshType() && T2->isUnstructuredMeshType()
+      && T1->getAsUnstructuredMeshDecl()->getName() ==
+          T2->getAsUnstructuredMeshDecl()->getName()) {
+    return true;
+  }
+
+  return false;
+}
+
 // ===== Mesh Declaration Types ===============================================
 
 /// getMeshDeclType - Return the unique reference to the type for the

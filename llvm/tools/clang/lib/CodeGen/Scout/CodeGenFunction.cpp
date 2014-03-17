@@ -51,57 +51,10 @@ bool CodeGenFunction::CheckMeshPtrTypes(QualType &ArgType, QualType &ActualArgTy
 
   const Type* argType =
       getContext().getCanonicalType(ArgType.getNonReferenceType()).getTypePtr();
-  const Type* actualType = getContext().getCanonicalType(ActualArgType).getTypePtr();
+  const Type* actualType =
+      getContext().getCanonicalType(ActualArgType).getTypePtr();
 
-  //Check that mesh dimensions match
-  if(argType->isMeshType() && actualType->isMeshType()) {
-    const MeshType* SMTy = dyn_cast<MeshType>(argType);
-    const MeshType* DMTy = dyn_cast<MeshType>(actualType);
-    if(SMTy->rankOf() != DMTy->rankOf()) return false;
-
-    //check that mesh kinds match
-    if ((argType->isUniformMeshType() && actualType->isUniformMeshType())  ||
-        (argType->isRectilinearMeshType() && actualType->isRectilinearMeshType()) ||
-        (argType->isStructuredMeshType() && actualType->isStructuredMeshType()) ||
-        (argType->isUnstructuredMeshType() && actualType->isUnstructuredMeshType())) {
-      return true;
-    }
-  }
+  if(CGM.getContext().CompareMeshTypes(argType, actualType)) return true;
   return false;
 }
 
-
-#if 0
-bool CodeGen::CodeGenFunction::isMeshMember(llvm::Argument *arg, 
-                                            bool& isSigned, 
-                                            std::string& typeStr) {
-     
-  isSigned = false;
-
-  if(arg->getName().endswith("height")) return false;
-  if(arg->getName().endswith("width"))  return false;
-  if(arg->getName().endswith("depth"))  return false;
-  if(arg->getName().endswith("ptr"))    return false;
-  if(arg->getName().endswith("dim_x"))  return false;
-  if(arg->getName().endswith("dim_y"))  return false;
-  if(arg->getName().endswith("dim_z"))  return false;
-    
-  typedef MemberMap::iterator MemberIterator;
-  for(MemberIterator it = MeshMembers.begin(), end = MeshMembers.end(); it != end; ++it) {
-
-    std::string name = it->first;
-    std::string argName = arg->getName();
-
-    size_t pos = argName.find(name);
-    size_t len = name.length();
-    if (pos == 0 && (argName.length() <= len || std::isdigit(argName[len]))) {
-      QualType qt = it->second.second;
-      isSigned = qt.getTypePtr()->isSignedIntegerType();
-      typeStr = qt.getAsString() + "*";
-      //llvm::outs() << "mesh: " << name << " " << typeStr << "\n";
-      return true;
-    }  
-  }
-  return false;
-}
-#endif

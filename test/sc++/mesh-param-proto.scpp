@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyright (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2014, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -51,24 +51,31 @@
  *
  * ##### 
  */ 
+#include <assert.h>
 
-#include "clang/Sema/Sema.h"
-#include "clang/Sema/SemaInternal.h"
+uniform mesh MyMesh {
+  cells:
+    int val;
+};
 
-using namespace clang;
-using namespace sema;
+void initialize_myMesh(MyMesh& mp);
 
-// compare mesh references to make sure they are compatible
-bool Sema::CompareMeshRefTypes(SourceLocation &Loc,
-    QualType &QT1, QualType &QT2, Sema::ReferenceCompareResult &Ref) {
-  const Type *T1 = QT1.getTypePtr();
-  const Type *T2 = QT2.getTypePtr();
+int main(int argc, char *argv[])
+{
+  MyMesh m[512, 512];
+  initialize_myMesh(m);
 
-  if(Context.CompareMeshTypes(T1, T2)) {
-    Ref = Ref_Compatible;
-    return true;
-  }
-  return false;
+  forall cells c in m {
+    if (val != position().w) {
+      assert(false && "bad value");
+    }
+  } 
+  return 0;
 }
 
-
+void initialize_myMesh(MyMesh& mp)
+{
+  forall cells c in mp {
+    c.val = position().w;
+  }
+}

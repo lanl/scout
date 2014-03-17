@@ -83,6 +83,12 @@ add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
 set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
     "warning: builtin mesh intrinsics called outside of mesh construct")
 
+set(name intrinsics-scope2)
+set(tname scc_warning_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "warning: builtin mesh intrinsics called outside of mesh construct")
+
 set(name rank-mismatch-depth)
 set(tname scc_warning_${name})
 add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)

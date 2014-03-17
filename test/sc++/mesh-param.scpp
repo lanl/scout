@@ -58,7 +58,7 @@ uniform mesh MyMesh {
     int val;
 };
 
-void initialize_myMesh(MyMesh[:]& mp)
+void initialize_myMesh(MyMesh& mp)
 {
   forall cells c in mp {
     c.val = position().w;

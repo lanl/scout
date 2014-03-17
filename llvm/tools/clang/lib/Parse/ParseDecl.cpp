@@ -5474,28 +5474,6 @@ void Parser::ParseParameterDeclarationClause(
 
     ParseDeclarationSpecifiers(DS);
 
-    // +===== Scout ==========================================================+
-    //  parse mesh function parameters
-    // e.g: "MyMesh[]", "MyMesh[:]", "MyMesh[::]" and ensure that mesh
-    // parameters are declared as references or pointers
-    if(isScoutLang()) {
-      DeclSpec::TST tst = DS.getTypeSpecType();
-      if(tst == DeclSpec::TST_typename){
-        const Type *T = DS.getRepAsType().get().getCanonicalType().getTypePtr();
-        if(T->isMeshType()) {
-          if (Tok.is(tok::l_square)) {
-            ParseMeshParameterDeclaration(DS);
-          }
-
-          if (Tok.isNot(tok::amp) && Tok.isNot(tok::star)) {
-            Diag(Tok, diag::err_expected_mesh_param_star_amp);
-            SkipUntil(tok::r_paren);
-            return;
-          }
-        }
-      }
-    }
-    // +======================================================================+
 
     // Parse the declarator.  This is "PrototypeContext" or 
     // "LambdaExprParameterContext", because we must accept either 
