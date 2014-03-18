@@ -189,6 +189,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
              "EmitForAllMeshStmt element type nesting combination not implemented");
 
       llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.vertices.entry");
+      (void)EntryBlock; //suppress warning
 
       llvm::Value* ip = Builder.CreateAlloca(Int32Ty, 0, "vertex.pos");
       VertexIndex = Builder.CreateAlloca(Int32Ty, 0, "vertex.index");
