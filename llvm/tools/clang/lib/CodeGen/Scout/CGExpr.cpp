@@ -84,7 +84,6 @@ CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index) {
 
   // inside forall we are referencing the implicit mesh e.g. 'c' in forall cells c in mesh
   if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(Base->getDecl())) {
-    if(IMPD->isMesh()) { // double check that it is really is a ImplicitMeshParamDecl
       // lookup underlying mesh instead of implicit mesh
       const VarDecl* VD = IMPD->getMeshVarDecl();
       llvm::Value *V = LocalDeclMap.lookup(VD);
@@ -92,7 +91,6 @@ CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index) {
       // assume we have already checked that we are working w/ a mesh and cast to MeshField Decl
       MeshFieldDecl* MFD = cast<MeshFieldDecl>(E->getMemberDecl());
       return EmitLValueForMeshField(BaseLV, cast<MeshFieldDecl>(MFD), Index);
-    }
   }
   
   llvm_unreachable("Cannot lookup underlying mesh");

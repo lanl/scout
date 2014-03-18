@@ -1230,7 +1230,6 @@ public:
     setImplicit();
     // +==== Scout =============================================================+
     color = false;
-    mesh = false;
     // +==== Scout =============================================================+
   }
 
@@ -1249,12 +1248,8 @@ public:
   void setColor() { color = true; }
   bool isColor() const { return color; }
 
-  void setMesh() { mesh = true; }
-  bool isMesh() const { return mesh; }
-
 private:
   bool color;
-  bool mesh;
   // +========================================================================+
 };
 

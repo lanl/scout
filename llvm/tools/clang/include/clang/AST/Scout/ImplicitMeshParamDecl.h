@@ -81,7 +81,6 @@ namespace clang {
           : ImplicitParamDecl(DC,IdLoc, Id, Type, ImplicitMeshParam) {
       BVD = VD;
       ElementType = ET;
-      setMesh();
     }
 
     const VarDecl *getBaseVarDecl() const {
