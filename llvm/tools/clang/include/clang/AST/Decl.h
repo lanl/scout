@@ -1228,9 +1228,6 @@ public:
               DC, IdLoc, IdLoc, Id, Type,
               /*tinfo*/ 0, SC_None) {
     setImplicit();
-    // +==== Scout =============================================================+
-    color = false;
-    // +==== Scout =============================================================+
   }
 
   // Implement isa/cast/dyncast/etc.
@@ -1241,16 +1238,6 @@ public:
       K <= lastImplicitParam;
     // +=====================================
   }
-
-  // +==== Scout =============================================================+
-  // deal w/ scout specific Implicit Decls. It would be nice to do this
-  // with clang's RTTI but it is a *huge* can of worms to extend ImplicitParamDecl
-  void setColor() { color = true; }
-  bool isColor() const { return color; }
-
-private:
-  bool color;
-  // +========================================================================+
 };
 
 /// ParmVarDecl - Represents a parameter to a function.

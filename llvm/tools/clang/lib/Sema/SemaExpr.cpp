@@ -2756,6 +2756,7 @@ ExprResult Sema::BuildDeclarationNameExpr(
 
     // +===== Scout ==============================
     case Decl::ImplicitMeshParam:
+    case Decl::ImplicitColorParam:
     // +==========================================
     case Decl::ImplicitParam:
     case Decl::ParmVar: {

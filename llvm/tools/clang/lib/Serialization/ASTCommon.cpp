@@ -190,6 +190,7 @@ bool serialization::isRedeclarableDeclKind(unsigned Kind) {
   case Decl::ObjCAtDefsField:
   // +===== Scout ============================================================+
   case Decl::ImplicitMeshParam:
+  case Decl::ImplicitColorParam:
   // +========================================================================+
   case Decl::ImplicitParam:
   case Decl::ParmVar:

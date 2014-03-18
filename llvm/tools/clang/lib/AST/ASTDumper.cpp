@@ -27,6 +27,7 @@
 // +===== Scout ==============================================================+
 #include "clang/AST/Scout/MeshDecls.h"
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
+#include "clang/AST/Scout/ImplicitColorParamDecl.h"
 // +==========================================================================+
 
 using namespace clang;
@@ -222,7 +223,6 @@ namespace  {
 
     // +==== Scout ===========================================================+
     void VisitMeshFieldDecl(const MeshFieldDecl *D);
-    //void VisitImplicitMeshParamDecl(const ImplicitMeshParamDecl *D);
     // +======================================================================+
 
     // C++ Decls

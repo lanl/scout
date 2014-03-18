@@ -36,6 +36,7 @@
 
 // +===== Scout ====================================
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
+#include "clang/AST/Scout/ImplicitColorParamDecl.h"
 // +================================================
 
 // The following three macros are used for meta programming.  The code
@@ -1977,6 +1978,9 @@ DEF_TRAVERSE_DECL(ImplicitParamDecl, {
 
  // +===== Scout =============================
  DEF_TRAVERSE_DECL(ImplicitMeshParamDecl, {
+    TRY_TO(TraverseVarHelper(D));
+ })
+ DEF_TRAVERSE_DECL(ImplicitColorParamDecl, {
     TRY_TO(TraverseVarHelper(D));
  })
  // +==========================================

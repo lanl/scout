@@ -57,6 +57,7 @@
 #include "clang/Sema/Lookup.h"
 #include "clang/AST/StmtVisitor.h"
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
+#include "clang/AST/Scout/ImplicitColorParamDecl.h"
 #include "clang/Basic/Builtins.h"
 #include <map>
 
@@ -1100,22 +1101,10 @@ namespace {
       VisitChildren(S);
     }
 
-
     bool isColorExpr(Expr *E) {
       if (DeclRefExpr* DR = dyn_cast<DeclRefExpr>(E)) {
-
-        // is ImplicitParam Decl
-        if (ImplicitParamDecl *IPD = dyn_cast<ImplicitParamDecl>(DR->getDecl())) {
-
-          // is correct type for color
-          if(IPD->getType() == sema_.Context.getExtVectorType(sema_.Context.FloatTy, 4)) {
-
-            // is correct name
-            if (DR->getDecl()->getName().str() == "color") {
-              IPD->setColor(); // flag decl as implicit color
-              return true;
-            }
-          }
+        if(isa<ImplicitColorParamDecl>(DR->getDecl())) {
+          return true;
         }
       }
       return false;
@@ -1291,10 +1280,7 @@ bool Sema::ActOnRenderallMeshRefVariable(Scope* S,
   SCLStack.push_back(D);
 
   // add the implicit "color" parameter
-  ImplicitParamDecl* CD =
-      ImplicitParamDecl::Create(Context, CurContext, RefVarLoc,
-          &Context.Idents.get("color"),
-          Context.getExtVectorType(Context.FloatTy, 4));
+  ImplicitColorParamDecl*CD = ImplicitColorParamDecl::Create(Context, CurContext, RefVarLoc);
 
   PushOnScopeChains(CD, S, true);
 

@@ -60,6 +60,7 @@ def Named : Decl<1>;
         def ImplicitParam : DDecl<Var>;
           // +===== Scout =======================================================+
           def ImplicitMeshParam : DDecl<ImplicitParam>;
+          def ImplicitColorParam : DDecl<ImplicitParam>;
           // +===================================================================+
         def ParmVar : DDecl<Var>;
       def NonTypeTemplateParm : DDecl<Declarator>;
