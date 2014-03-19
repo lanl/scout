@@ -994,10 +994,14 @@ def err_invalid_default_element:Error<
     "invalid default element, expected 'color' or 'radius'">;
 def err_not_array_renderall_elements:Error<
     "mesh field is not an array type">;
-def err_expected_mesh_param_token:Error<
-    "expected ']' or ':' while parsing mesh parameter">;
-def err_expected_mesh_param_star_amp:Error<
-    "mesh parameters must be declared as references or pointers">;
+//def err_expected_mesh_param_token:Error<
+//   "expected ']' or ':' while parsing mesh parameter">;
+def err_expected_mesh_param_amp:Error<
+    "mesh parameters must be declared as references in sc++">;
+def err_expected_mesh_param_star:Error<
+    "mesh parameters must be declared as pointers in scc">;  
+def err_expected_star_mesh:Error<
+    "expected a mesh, perhaps a missing *?">;          
 def err_expected_mesh_var_decl:Error<
     "expected mesh variable declaration">;
 // +=========================================================================+

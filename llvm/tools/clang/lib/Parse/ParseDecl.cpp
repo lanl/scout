@@ -5474,6 +5474,13 @@ void Parser::ParseParameterDeclarationClause(
 
     ParseDeclarationSpecifiers(DS);
 
+    // +===== Scout ==========================================================+
+    // Ensure that mesh parameters are declared as references or pointers
+    if( DS.getTypeSpecType() == DeclSpec::TST_typename) {
+      const Type *T = DS.getRepAsType().get().getCanonicalType().getTypePtr();
+      if(T->isMeshType()) ParseMeshParameterDeclaration(DS);
+    }
+    // +======================================================================+
 
     // Parse the declarator.  This is "PrototypeContext" or 
     // "LambdaExprParameterContext", because we must accept either 

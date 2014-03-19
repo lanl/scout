@@ -2467,6 +2467,8 @@ private:
   void ParseWindowBracketDeclarator(Declarator &D);
   void ParseImageBracketDeclarator(Declarator &D);
 
+  void ParseMeshParameterDeclaration(DeclSpec& DS);
+
   StmtResult ParseCameraDeclaration(StmtVector &Stmts,
       bool OnlyStatement);
 
