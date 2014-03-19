@@ -248,7 +248,15 @@ static void ParseProgName(SmallVectorImpl<const char *> &ArgVector,
     { "cl" ,       "--driver-mode=cl"  },
     { "++",        "--driver-mode=g++" }
   };
+
   std::string ProgName(llvm::sys::path::stem(ArgVector[0]));
+
+  // make sure we have a input file
+  if (ArgVector.size() < 2) {
+    TheDriver.Diag(clang::diag::err_drv_no_input_files);
+    exit(1);
+  }
+
   std::transform(ProgName.begin(), ProgName.end(), ProgName.begin(),
                  toLowercase);
   StringRef ProgNameRef(ProgName);
