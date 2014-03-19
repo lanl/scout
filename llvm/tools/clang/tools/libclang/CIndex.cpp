@@ -4705,6 +4705,7 @@ CXCursor clang_getCursorDefinition(CXCursor C) {
   case Decl::ClassScopeFunctionSpecialization:
   // +====== Scout ===========================================================+
   case Decl::ImplicitMeshParam:
+  case Decl::ImplicitColorParam:
   case Decl::MeshField:
   case Decl::UniformMesh:
   case Decl::RectilinearMesh:

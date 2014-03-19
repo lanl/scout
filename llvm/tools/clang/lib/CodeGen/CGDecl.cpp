@@ -55,6 +55,7 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
   case Decl::ParmVar:
   // +===== Scout ============================================================+
   case Decl::ImplicitMeshParam:
+  case Decl::ImplicitColorParam:
   // +========================================================================+
   case Decl::ImplicitParam:
   case Decl::ClassTemplate:
