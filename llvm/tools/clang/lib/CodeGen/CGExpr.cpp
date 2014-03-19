@@ -2454,9 +2454,19 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
 
   // +===== Scout ============================================================+
   // check if we are dealing w/ a mesh
-  if(isa<MeshFieldDecl>(E->getMemberDecl())) {
-    LValue LV;
-    return EmitMeshMemberExpr(E, getLinearIdx());
+  if(const MeshFieldDecl* MFD = dyn_cast<MeshFieldDecl>(E->getMemberDecl())) {
+    llvm::Value* Index;
+
+    if(MFD->isVertexLocated()){
+      assert(VertexIndex && "null VertexIndex while referencing vertex field");
+      // use the vertex index if we are within a forall vertices
+      Index = Builder.CreateLoad(VertexIndex);
+    }
+    else{
+      Index = getLinearIdx();
+    }
+
+    return EmitMeshMemberExpr(E, Index);
   }
   // +========================================================================+
 
