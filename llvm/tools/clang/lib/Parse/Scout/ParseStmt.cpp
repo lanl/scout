@@ -268,6 +268,16 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
   }
   ConsumeToken();
 
+  //if we are in scc-mode and in a function where the mesh was
+  // passed as a parameter we will have a star here.
+  bool meshptr = false;
+  if(getLangOpts().ScoutC) {
+    if(Tok.is(tok::star)) {
+      ConsumeToken();
+      meshptr = true;
+    }
+  }
+
   // Finally, we are at the identifier that specifies the mesh
   // that we are computing over.
   if (Tok.isNot(tok::identifier)) {
@@ -283,6 +293,14 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
 
   if (VD == 0)
     return StmtError();
+
+  // If we are in scc-mode and inside a function then make sure
+  // we have a *
+  if(getLangOpts().ScoutC && isa<ParmVarDecl>(VD) && meshptr == false) {
+    Diag(Tok,diag::err_expected_star_mesh);
+    SkipUntil(tok::semi);
+    return StmtError();
+  }
 
   const MeshType *RefMeshType = LookupMeshType(VD, MeshIdentInfo, MeshIdentLoc);
 
@@ -506,6 +524,16 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
   }
   ConsumeToken();
 
+  //if we are in scc-mode and in a function where the mesh was
+  // passed as a parameter we will have a star here.
+  bool meshptr = false;
+  if(getLangOpts().ScoutC) {
+    if(Tok.is(tok::star)) {
+      ConsumeToken();
+      meshptr = true;
+    }
+  }
+
   // Next, we are at the identifier that specifies the mesh
   // that we are computing over.
   if (Tok.isNot(tok::identifier)) {
@@ -520,6 +548,14 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
   VarDecl *VD = LookupMeshVarDecl(MeshIdentInfo, MeshIdentLoc);
   if (VD == 0)
     return StmtError();
+
+  // If we are in scc-mode and inside a function then make sure
+  // we have a *
+  if(getLangOpts().ScoutC && isa<ParmVarDecl>(VD) && meshptr == false) {
+    Diag(Tok,diag::err_expected_star_mesh);
+    SkipUntil(tok::semi);
+    return StmtError();
+  }
 
   const MeshType *RefMeshType = LookupMeshType(VD, MeshIdentInfo, MeshIdentLoc);
   if (RefMeshType == 0)

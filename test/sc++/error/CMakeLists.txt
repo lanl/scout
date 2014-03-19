@@ -49,35 +49,15 @@
 ###########################################################################
 #
 
-include(${CMAKE_BINARY_DIR}/CMake/Modules/Configuration.cmake)
+project(scout_test_scpp_error)
 
-set(CMAKE_MODULE_PATH
-  ${SCOUT_CMAKE_PATH}
-  ${CMAKE_MODULE_PATH}
-)
+set(SRC_PATH ${CMAKE_SOURCE_DIR}/sc++/error)
 
-project(scout_test_scxx)
-    
-  cmake_minimum_required(VERSION 2.8.9)
+set(name mesh-param-ptr)
+set(tname sc++_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: mesh parameters must be declared as references in")
+set_property(TEST ${tname} PROPERTY WILL_FAIL) 
 
-  # Note: By default we pull in all the .scpp source files in this
-  # directory for inclusion into the regression checks.  If you want do
-  # build more complex tests we suggest creating a subdirectory for the
-  # source.
-  #
-  file(GLOB SC_SRCS *.scpp) 
 
-  # Add an executable and test entry for each source file...
-  foreach (test ${SC_SRCS})
-    get_filename_component(tname ${test} NAME_WE) 
-    if (NOT tname) 
-      message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
-    else (NOT tname)
-      add_executable("sc++_${tname}" ${test})
-      add_test("sc++_${tname}" "${TEST_BINARY_DIR}/sc++_${tname}")
-      message(" + added runtime regression test entry: sc++_${tname}")
-    endif(NOT tname)
-  endforeach(test)
-
-  add_subdirectory(driver)
-  add_subdirectory(error)

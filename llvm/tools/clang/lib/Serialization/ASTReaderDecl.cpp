@@ -2610,6 +2610,9 @@ Decl *ASTReader::ReadDeclRecord(DeclID ID) {
   case DECL_IMPLICIT_MESH_PARAM:
     D = ImplicitMeshParamDecl::CreateDeserialized(Context, ID);
     break;
+  case DECL_IMPLICIT_COLOR_PARAM:
+    D = ImplicitColorParamDecl::CreateDeserialized(Context, ID);
+    break;
   // +========================================================================+
   case DECL_IMPLICIT_PARAM:
     D = ImplicitParamDecl::CreateDeserialized(Context, ID);

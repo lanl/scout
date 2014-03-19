@@ -60,7 +60,7 @@ uniform mesh MyMesh {
 
 void initialize_myMesh(MyMesh* mp)
 {
-  forall cells c in mp {
+  forall cells c in *mp {
     c.val = position().w;
   }
 }

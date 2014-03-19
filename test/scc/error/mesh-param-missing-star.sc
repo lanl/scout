@@ -58,7 +58,12 @@ uniform mesh MyMesh {
     int val;
 };
 
-void initialize_myMesh(MyMesh* mp);
+void initialize_myMesh(MyMesh* mp)
+{
+  forall cells c in mp {
+    c.val = position().w;
+  }
+}
 
 int main(int argc, char *argv[])
 {
@@ -73,9 +78,3 @@ int main(int argc, char *argv[])
   return 0;
 }
 
-void initialize_myMesh(MyMesh* mp)
-{
-  forall cells c in *mp {
-    c.val = position().w;
-  }
-}
