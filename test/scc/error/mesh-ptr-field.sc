@@ -3,7 +3,7 @@
  * Copyright (c) 2014, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
- *  Copyright 2010. Los Alamos National Security, LLC. This software was
+ *  Copyright 2014. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
  *  National Security, LLC for the U.S. Department of Energy. The
@@ -53,13 +53,14 @@
  */ 
 
 int main(int argc, char** argv){
-  
+
   uniform mesh MyMesh{
-    
+  cells:
+    float* a;
+    float b;
   };
 
-  MyMesh m[512];
+  MyMesh myMesh[512,512];
 
   return 0;
 }
-

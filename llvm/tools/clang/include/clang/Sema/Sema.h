@@ -8263,9 +8263,12 @@ public:
   //                                      MultiStmtArg elts, CompoundStmt* Body,
   //                                      bool isStmtExpr);
 
+  bool isPointerInMesh(const Type *T, SourceLocation Loc);
+  bool isValidRecordInMesh(const Type *T, SourceLocation Loc);
   bool IsValidMeshField(MeshFieldDecl* FD);
-
-  bool IsValidDeclInMesh(Decl* D);
+  bool IsValidRecordField(FieldDecl* FD);
+  bool IsValidMeshDecl(MeshDecl* D);
+  bool IsValidRecordDeclInMesh(RecordDecl* D);
 
   bool ScoutMemberReferenceExpr(DeclarationName &Name,
       SourceLocation &NameLoc,

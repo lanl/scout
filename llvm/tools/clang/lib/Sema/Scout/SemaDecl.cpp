@@ -242,58 +242,86 @@ bool Sema::ActOnMeshFinishDefinition(Scope *S, Decl *MeshD,
   if (!Mesh->isInvalidDecl())
     Consumer.HandleMeshDeclDefinition(Mesh);
 
-  return IsValidDeclInMesh(Mesh);
+  return IsValidMeshDecl(Mesh);
 }
 
-bool Sema::IsValidMeshField(MeshFieldDecl* MFD){
 
-  QualType QT = MFD->getType();
-  const Type* T = QT.getTypePtr();
-
-  // We don't allow pointers in the mesh description (this helps us
+// We don't allow pointers in the mesh description (this helps us
   // avoid aliasing issues in the mesh-oriented loops).
+bool Sema::isPointerInMesh(const Type *T, SourceLocation Loc) {
   if (T->isPointerType()) {
-    Diag(MFD->getSourceRange().getBegin(), diag::err_pointer_field_mesh);
-    return false;
+    Diag(Loc, diag::err_pointer_field_mesh);
+    return true;
   }
+  return false;
+}
 
-  if(const MeshType* MT = dyn_cast<MeshType>(T)){
-    if (!IsValidDeclInMesh(MT->getDecl())) {
-      Diag(MFD->getSourceRange().getBegin(),
-           diag::err_pointer_field_mesh);
-      return false;
-    }
-  } else if (const RecordType* RT = dyn_cast<RecordType>(T)) {
-    if (!IsValidDeclInMesh(RT->getDecl())) {
-      Diag(MFD->getSourceRange().getBegin(),
-           diag::err_pointer_field_mesh);
+// We don't allow pointers inside records the mesh description (this helps us
+// avoid aliasing issues in the mesh-oriented loops).
+bool Sema::isValidRecordInMesh(const Type *T, SourceLocation Loc) {
+  if (const RecordType* RT = dyn_cast<RecordType>(T)) {
+    if (!IsValidRecordDeclInMesh(RT->getDecl())) {
+      Diag(Loc, diag::err_pointer_field_mesh);
       return false;
     }
   }
   return true;
 }
 
+bool Sema::IsValidMeshField(MeshFieldDecl* MFD) {
 
-bool Sema::IsValidDeclInMesh(Decl* D){
+  const Type* T = MFD->getType().getCanonicalType().getTypePtr();
+  SourceLocation Loc = MFD->getSourceRange().getBegin();
 
-  if (MeshDecl* MD = dyn_cast<MeshDecl>(D)) {
+  if (isPointerInMesh(T, Loc)) return false;
 
-    if (! MD->hasValidFieldData()) {
-      Diag(MD->getSourceRange().getBegin(),
-           diag::err_mesh_has_no_elements);
+  // nested mesh
+  if(const MeshType* MT = dyn_cast<MeshType>(T)) {
+    if (!IsValidMeshDecl(MT->getDecl())) {
+      Diag(Loc, diag::err_pointer_field_mesh);
       return false;
     }
+  }
+  // struct in mesh
+  if (!isValidRecordInMesh(T, Loc)) return false;
 
-    for(MeshDecl::field_iterator itr = MD->field_begin(),
-        itrEnd = MD->field_end(); itr != itrEnd; ++itr){
-      MeshFieldDecl* MFD = *itr;
-      if (! IsValidMeshField(MFD)) {
-        return false;
-      }
-    }
-    return true;
-  } else {
-    assert(false && "passed non-mesh decl for validation");
+  return true;
+}
+
+
+bool Sema::IsValidRecordField(FieldDecl* FD) {
+  const Type* T = FD->getType().getCanonicalType().getTypePtr();
+  SourceLocation Loc = FD->getSourceRange().getBegin();
+
+  if (isPointerInMesh(T, Loc)) return false;
+  if (!isValidRecordInMesh(T, Loc)) return false;
+  return true;
+}
+
+// look through all fields in mesh for validity
+bool Sema::IsValidMeshDecl(MeshDecl* MD) {
+  if (! MD->hasValidFieldData()) {
+    Diag(MD->getSourceRange().getBegin(),
+        diag::err_mesh_has_no_elements);
     return false;
   }
+
+  for(MeshDecl::field_iterator itr = MD->field_begin(),
+      itrEnd = MD->field_end(); itr != itrEnd; ++itr){
+    MeshFieldDecl* MFD = *itr;
+    if (!IsValidMeshField(MFD)) return false;
+  }
+  return true;
 }
+
+// look through all fields  record inside mesh for validity
+bool Sema::IsValidRecordDeclInMesh(RecordDecl* RD) {
+  for(RecordDecl::field_iterator itr = RD->field_begin(),
+      itrEnd = RD->field_end(); itr != itrEnd; ++itr){
+    FieldDecl* FD = *itr;
+    if (!IsValidRecordField(FD)) return false;
+  }
+  return true;
+}
+
+

@@ -155,6 +155,20 @@ set(name mesh-param-byvalue)
 set(tname scc_error_${name})
 add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
 set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
-    "mesh parameters must be declared as pointers in scc")
+    "error: mesh parameters must be declared as pointers in scc")
+set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+
+set(name mesh-ptr-field)
+set(tname scc_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "mesh field element must be non-pointer type")
+set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+
+set(name mesh-indirect-ptr)
+set(tname scc_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "mesh field element must be non-pointer type")
 set_property(TEST ${tname} PROPERTY WILL_FAIL) 
 
