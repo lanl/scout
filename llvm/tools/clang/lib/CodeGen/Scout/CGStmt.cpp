@@ -176,6 +176,8 @@ llvm::Value *CodeGenFunction::GetMeshBaseAddr(const RenderallMeshStmt &S) {
 void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   const VarDecl* VD = S.getMeshVarDecl();
 
+  unsigned int rank = S.getMeshType()->rankOf();
+
   VertexIndex = 0;
 
   // handle nested forall, e.g: forall vertices within a forall cells
@@ -202,35 +204,54 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
       Builder.CreateStore(Zero, vertexPosPtr);
 
+      llvm::Value* width = Builder.CreateLoad(LoopBounds[0], "width");
+      llvm::Value* indVar =  Builder.CreateLoad(InductionVar[3], "indVar");
+
+      llvm::Value* width1;
+      llvm::Value* idvw;
+
+      if(rank > 1){
+        width1 =  Builder.CreateAdd(width, One);
+        idvw = Builder.CreateUDiv(indVar, width, "idvw");
+      }
+
       llvm::BasicBlock *LoopBlock = createBasicBlock("forall.vertices.loop");
       Builder.CreateBr(LoopBlock);
 
       EmitBlock(LoopBlock);
 
-      llvm::Value* width = Builder.CreateLoad(LoopBounds[0], "width");
-      llvm::Value* indVar =  Builder.CreateLoad(InductionVar[3], "indVar");
       llvm::Value* vertexPos = Builder.CreateLoad(vertexPosPtr, "vertex.pos");
 
-      llvm::Value* v1 = Builder.CreateUDiv(vertexPos, Two);
-      llvm::Value* w =  Builder.CreateAdd(width, One);
-      llvm::Value* v2 = Builder.CreateMul(v1, w);
-      llvm::Value* v3 = Builder.CreateURem(vertexPos, Two);
-      llvm::Value* v4 = Builder.CreateAdd(v2, v3);
-      llvm::Value* v5 = Builder.CreateAdd(v4, indVar);
-      llvm::Value* v6 = Builder.CreateUDiv(indVar, width);
-      llvm::Value* newVertexIndex = Builder.CreateAdd(v5, v6, "vertex.index.new");
+      if(rank > 1){
+        llvm::Value* v1 = Builder.CreateUDiv(vertexPos, Two);
+        llvm::Value* v2 = Builder.CreateMul(v1, width1);
+        llvm::Value* v3 = Builder.CreateURem(vertexPos, Two);
+        llvm::Value* v4 = Builder.CreateAdd(v2, v3);
+        llvm::Value* v5 = Builder.CreateAdd(v4, indVar);
+        llvm::Value* newVertexIndex = Builder.CreateAdd(v5, idvw, "vertex.index.new");
 
-      Builder.CreateStore(newVertexIndex, VertexIndex);
+        Builder.CreateStore(newVertexIndex, VertexIndex);
+      }
+      else{
+        llvm::Value* newVertexIndex = Builder.CreateAdd(vertexPos, indVar, "vertex.index.new");
+        Builder.CreateStore(newVertexIndex, VertexIndex);
+      }
 
       llvm::Value* newVertexPos = Builder.CreateAdd(vertexPos, One);
-
       Builder.CreateStore(newVertexPos, vertexPosPtr);
 
       EmitStmt(S.getBody());
 
       VertexIndex = 0;
 
-      llvm::Value *Cond = Builder.CreateICmpSLT(vertexPos, Three, "cond");
+      llvm::Value* Cond;
+
+      if(rank > 1){
+        Cond = Builder.CreateICmpSLT(vertexPos, Three, "cond");
+      }
+      else{
+        Cond = Builder.CreateICmpSLT(vertexPos, One, "cond");
+      }
 
       llvm::BasicBlock *ExitBlock = createBasicBlock("forall.vertices.exit");
       Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
@@ -244,8 +265,6 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
   llvm::Value *ConstantOne  = llvm::ConstantInt::get(Int32Ty, 1);
-
-  unsigned int rank = S.getMeshType()->rankOf();
 
   //used by builtins to keep track of which dims are used
   for(unsigned int i = 0; i < rank; i++) {
