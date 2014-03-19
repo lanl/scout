@@ -172,6 +172,7 @@ llvm::Value *CodeGenFunction::GetMeshBaseAddr(const RenderallMeshStmt &S) {
 // SC_TODO - need to handle cases with edge and vertex
 // fields (the implementation below is cell centric).
 //
+
 void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   const VarDecl* VD = S.getMeshVarDecl();
 
@@ -191,38 +192,45 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
       llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.vertices.entry");
       (void)EntryBlock; //suppress warning
 
-      llvm::Value* ip = Builder.CreateAlloca(Int32Ty, 0, "vertex.pos");
-      VertexIndex = Builder.CreateAlloca(Int32Ty, 0, "vertex.index");
       llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
       llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
       llvm::Value* Two = llvm::ConstantInt::get(Int32Ty, 2);
-      llvm::Value* Four = llvm::ConstantInt::get(Int32Ty, 4);
+      llvm::Value* Three = llvm::ConstantInt::get(Int32Ty, 3);
 
-      Builder.CreateStore(Zero, ip);
+      llvm::Value* vertexPosPtr = Builder.CreateAlloca(Int32Ty, 0, "vertex.pos.ptr");
+      VertexIndex = Builder.CreateAlloca(Int32Ty, 0, "vertex.index.ptr");
+
+      Builder.CreateStore(Zero, vertexPosPtr);
 
       llvm::BasicBlock *LoopBlock = createBasicBlock("forall.vertices.loop");
       Builder.CreateBr(LoopBlock);
 
       EmitBlock(LoopBlock);
 
-      llvm::Value* i = Builder.CreateLoad(ip);
+      llvm::Value* width = Builder.CreateLoad(LoopBounds[0], "width");
+      llvm::Value* indVar =  Builder.CreateLoad(InductionVar[3], "indVar");
+      llvm::Value* vertexPos = Builder.CreateLoad(vertexPosPtr, "vertex.pos");
 
-      llvm::Value* v1 = Builder.CreateUDiv(i, Two);
-      llvm::Value* v2 = Builder.CreateMul(v1, Builder.CreateLoad(LoopBounds[0]));
-      llvm::Value* v3 = Builder.CreateURem(i, Two);
+      llvm::Value* v1 = Builder.CreateUDiv(vertexPos, Two);
+      llvm::Value* w =  Builder.CreateAdd(width, One);
+      llvm::Value* v2 = Builder.CreateMul(v1, w);
+      llvm::Value* v3 = Builder.CreateURem(vertexPos, Two);
       llvm::Value* v4 = Builder.CreateAdd(v2, v3);
-      llvm::Value* v5 = Builder.CreateAdd(v4, Builder.CreateLoad(InductionVar[3]));
-      Builder.CreateStore(v5, VertexIndex);
+      llvm::Value* v5 = Builder.CreateAdd(v4, indVar);
+      llvm::Value* v6 = Builder.CreateUDiv(indVar, width);
+      llvm::Value* newVertexIndex = Builder.CreateAdd(v5, v6, "vertex.index.new");
 
-      llvm::Value* v6 = Builder.CreateAdd(i, One);
+      Builder.CreateStore(newVertexIndex, VertexIndex);
 
-      Builder.CreateStore(v6, ip);
+      llvm::Value* newVertexPos = Builder.CreateAdd(vertexPos, One);
+
+      Builder.CreateStore(newVertexPos, vertexPosPtr);
 
       EmitStmt(S.getBody());
 
       VertexIndex = 0;
 
-      llvm::Value *Cond = Builder.CreateICmpSLT(i, Four, "cond");
+      llvm::Value *Cond = Builder.CreateICmpSLT(vertexPos, Three, "cond");
 
       llvm::BasicBlock *ExitBlock = createBasicBlock("forall.vertices.exit");
       Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
