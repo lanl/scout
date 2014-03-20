@@ -249,6 +249,13 @@ static void ParseProgName(SmallVectorImpl<const char *> &ArgVector,
     { "cl" ,       "--driver-mode=cl"  },
     { "++",        "--driver-mode=g++" }
   };
+ 
+   // make sure we have a input file
+  if (ArgVector.size() < 2) {
+    TheDriver.Diag(clang::diag::err_drv_no_input_files);
+    exit(1);
+  }
+
   std::string ProgName(llvm::sys::path::stem(ArgVector[0]));
 #ifdef LLVM_ON_WIN32
   // Transform to lowercase for case insensitive file systems.
