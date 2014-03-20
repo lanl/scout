@@ -124,10 +124,7 @@ void DirectIvarAssignment::checkASTDecl(const ObjCImplementationDecl *D,
   IvarToPropertyMapTy IvarToPropMap;
 
   // Find all properties for this class.
-  for (ObjCInterfaceDecl::prop_iterator I = InterD->prop_begin(),
-      E = InterD->prop_end(); I != E; ++I) {
-    ObjCPropertyDecl *PD = *I;
-
+  for (const auto *PD : InterD->properties()) {
     // Find the corresponding IVar.
     const ObjCIvarDecl *ID = findPropertyBackingIvar(PD, InterD,
                                                      Mgr.getASTContext());
@@ -142,10 +139,7 @@ void DirectIvarAssignment::checkASTDecl(const ObjCImplementationDecl *D,
   if (IvarToPropMap.empty())
     return;
 
-  for (ObjCImplementationDecl::instmeth_iterator I = D->instmeth_begin(),
-      E = D->instmeth_end(); I != E; ++I) {
-
-    ObjCMethodDecl *M = *I;
+  for (const auto *M : D->instance_methods()) {
     AnalysisDeclContext *DCtx = Mgr.getAnalysisDeclContext(M);
 
     if ((*ShouldSkipMethod)(M))

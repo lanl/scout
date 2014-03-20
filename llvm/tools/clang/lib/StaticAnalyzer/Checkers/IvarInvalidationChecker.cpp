@@ -248,33 +248,22 @@ void IvarInvalidationCheckerImpl::containsInvalidationMethod(
   // TODO: Cache the results.
 
   // Check all methods.
-  for (ObjCContainerDecl::method_iterator
-      I = D->meth_begin(),
-      E = D->meth_end(); I != E; ++I) {
-      const ObjCMethodDecl *MDI = *I;
-      if (isInvalidationMethod(MDI, Partial))
-        OutInfo.addInvalidationMethod(
-                               cast<ObjCMethodDecl>(MDI->getCanonicalDecl()));
-  }
+  for (const auto *MDI : D->methods())
+    if (isInvalidationMethod(MDI, Partial))
+      OutInfo.addInvalidationMethod(
+          cast<ObjCMethodDecl>(MDI->getCanonicalDecl()));
 
   // If interface, check all parent protocols and super.
   if (const ObjCInterfaceDecl *InterfD = dyn_cast<ObjCInterfaceDecl>(D)) {
 
     // Visit all protocols.
-    for (ObjCInterfaceDecl::protocol_iterator
-        I = InterfD->protocol_begin(),
-        E = InterfD->protocol_end(); I != E; ++I) {
-      containsInvalidationMethod((*I)->getDefinition(), OutInfo, Partial);
-    }
+    for (const auto *I : InterfD->protocols())
+      containsInvalidationMethod(I->getDefinition(), OutInfo, Partial);
 
     // Visit all categories in case the invalidation method is declared in
     // a category.
-    for (ObjCInterfaceDecl::visible_extensions_iterator
-           Ext = InterfD->visible_extensions_begin(),
-           ExtEnd = InterfD->visible_extensions_end();
-         Ext != ExtEnd; ++Ext) {
-      containsInvalidationMethod(*Ext, OutInfo, Partial);
-    }
+    for (const auto *Ext : InterfD->visible_extensions())
+      containsInvalidationMethod(Ext, OutInfo, Partial);
 
     containsInvalidationMethod(InterfD->getSuperClass(), OutInfo, Partial);
     return;
@@ -282,10 +271,8 @@ void IvarInvalidationCheckerImpl::containsInvalidationMethod(
 
   // If protocol, check all parent protocols.
   if (const ObjCProtocolDecl *ProtD = dyn_cast<ObjCProtocolDecl>(D)) {
-    for (ObjCInterfaceDecl::protocol_iterator
-        I = ProtD->protocol_begin(),
-        E = ProtD->protocol_end(); I != E; ++I) {
-      containsInvalidationMethod((*I)->getDefinition(), OutInfo, Partial);
+    for (const auto *I : ProtD->protocols()) {
+      containsInvalidationMethod(I->getDefinition(), OutInfo, Partial);
     }
     return;
   }

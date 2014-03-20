@@ -576,10 +576,10 @@ namespace {
         TU(TranslationUnit) { }
     ~CaptureCompletionResults() { Finish(); }
 
-    virtual void ProcessCodeCompleteResults(Sema &S,
-                                            CodeCompletionContext Context,
-                                            CodeCompletionResult *Results,
-                                            unsigned NumResults) {
+    void ProcessCodeCompleteResults(Sema &S, 
+                                    CodeCompletionContext Context,
+                                    CodeCompletionResult *Results,
+                                    unsigned NumResults) override {
       StoredResults.reserve(StoredResults.size() + NumResults);
       for (unsigned I = 0; I != NumResults; ++I) {
         CodeCompletionString *StoredCompletion
@@ -653,9 +653,9 @@ namespace {
       }
     }
 
-    virtual void ProcessOverloadCandidates(Sema &S, unsigned CurrentArg,
-                                           OverloadCandidate *Candidates,
-                                           unsigned NumCandidates) {
+    void ProcessOverloadCandidates(Sema &S, unsigned CurrentArg,
+                                   OverloadCandidate *Candidates,
+                                   unsigned NumCandidates) override {
       StoredResults.reserve(StoredResults.size() + NumCandidates);
       for (unsigned I = 0; I != NumCandidates; ++I) {
         CodeCompletionString *StoredCompletion
@@ -669,11 +669,11 @@ namespace {
       }
     }
 
-    virtual CodeCompletionAllocator &getAllocator() {
+    CodeCompletionAllocator &getAllocator() override {
       return *AllocatedResults.CodeCompletionAllocator;
     }
 
-    virtual CodeCompletionTUInfo &getCodeCompletionTUInfo() { return CCTUInfo; }
+    CodeCompletionTUInfo &getCodeCompletionTUInfo() override { return CCTUInfo;}
 
   private:
     void Finish() {

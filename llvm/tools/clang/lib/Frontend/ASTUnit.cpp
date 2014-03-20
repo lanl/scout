@@ -519,8 +519,8 @@ public:
       Counter(Counter),
       InitializedLanguage(false) {}
 
-  virtual bool ReadLanguageOptions(const LangOptions &LangOpts,
-                                   bool Complain) {
+  bool ReadLanguageOptions(const LangOptions &LangOpts,
+                           bool Complain) override {
     if (InitializedLanguage)
       return false;
 
@@ -531,8 +531,8 @@ public:
     return false;
   }
 
-  virtual bool ReadTargetOptions(const TargetOptions &TargetOpts,
-                                 bool Complain) {
+  bool ReadTargetOptions(const TargetOptions &TargetOpts,
+                         bool Complain) override {
     // If we've already initialized the target, don't do it again.
     if (Target)
       return false;
@@ -545,7 +545,8 @@ public:
     return false;
   }
 
-  virtual void ReadCounter(const serialization::ModuleFile &M, unsigned Value) {
+  void ReadCounter(const serialization::ModuleFile &M,
+                   unsigned Value) override {
     Counter = Value;
   }
 
@@ -583,14 +584,14 @@ public:
                           SmallVectorImpl<StoredDiagnostic> &StoredDiags)
     : StoredDiags(StoredDiags), SourceMgr(0) { }
 
-  virtual void BeginSourceFile(const LangOptions &LangOpts,
-                               const Preprocessor *PP = 0) {
+  void BeginSourceFile(const LangOptions &LangOpts,
+                       const Preprocessor *PP = 0) override {
     if (PP)
       SourceMgr = &PP->getSourceManager();
   }
 
-  virtual void HandleDiagnostic(DiagnosticsEngine::Level Level,
-                                const Diagnostic &Info);
+  void HandleDiagnostic(DiagnosticsEngine::Level Level,
+                        const Diagnostic &Info) override;
 };
 
 /// \brief RAII object that optionally captures diagnostics, if
@@ -793,8 +794,8 @@ class MacroDefinitionTrackerPPCallbacks : public PPCallbacks {
 public:
   explicit MacroDefinitionTrackerPPCallbacks(unsigned &Hash) : Hash(Hash) { }
 
-  virtual void MacroDefined(const Token &MacroNameTok,
-                            const MacroDirective *MD) {
+  void MacroDefined(const Token &MacroNameTok,
+                    const MacroDirective *MD) override {
     Hash = llvm::HashString(MacroNameTok.getIdentifierInfo()->getName(), Hash);
   }
 };
@@ -876,25 +877,25 @@ public:
     }
   }
 
-  bool HandleTopLevelDecl(DeclGroupRef D) {
+  bool HandleTopLevelDecl(DeclGroupRef D) override {
     for (DeclGroupRef::iterator it = D.begin(), ie = D.end(); it != ie; ++it)
       handleTopLevelDecl(*it);
     return true;
   }
 
   // We're not interested in "interesting" decls.
-  void HandleInterestingDecl(DeclGroupRef) {}
+  void HandleInterestingDecl(DeclGroupRef) override {}
 
-  void HandleTopLevelDeclInObjCContainer(DeclGroupRef D) {
+  void HandleTopLevelDeclInObjCContainer(DeclGroupRef D) override {
     for (DeclGroupRef::iterator it = D.begin(), ie = D.end(); it != ie; ++it)
       handleTopLevelDecl(*it);
   }
 
-  virtual ASTMutationListener *GetASTMutationListener() {
+  ASTMutationListener *GetASTMutationListener() override {
     return Unit.getASTMutationListener();
   }
 
-  virtual ASTDeserializationListener *GetASTDeserializationListener() {
+  ASTDeserializationListener *GetASTDeserializationListener() override {
     return Unit.getDeserializationListener();
   }
 };
@@ -903,8 +904,8 @@ class TopLevelDeclTrackerAction : public ASTFrontendAction {
 public:
   ASTUnit &Unit;
 
-  virtual ASTConsumer *CreateASTConsumer(CompilerInstance &CI,
-                                         StringRef InFile) {
+  ASTConsumer *CreateASTConsumer(CompilerInstance &CI,
+                                 StringRef InFile) override {
     CI.getPreprocessor().addPPCallbacks(
      new MacroDefinitionTrackerPPCallbacks(Unit.getCurrentTopLevelHashValue()));
     return new TopLevelDeclTrackerConsumer(Unit,
@@ -914,9 +915,9 @@ public:
 public:
   TopLevelDeclTrackerAction(ASTUnit &_Unit) : Unit(_Unit) {}
 
-  virtual bool hasCodeCompletionSupport() const { return false; }
-  virtual TranslationUnitKind getTranslationUnitKind()  {
-    return Unit.getTranslationUnitKind();
+  bool hasCodeCompletionSupport() const override { return false; }
+  TranslationUnitKind getTranslationUnitKind() override {
+    return Unit.getTranslationUnitKind(); 
   }
 };
 
@@ -928,15 +929,15 @@ public:
   explicit PrecompilePreambleAction(ASTUnit &Unit)
       : Unit(Unit), HasEmittedPreamblePCH(false) {}
 
-  virtual ASTConsumer *CreateASTConsumer(CompilerInstance &CI,
-                                         StringRef InFile);
+  ASTConsumer *CreateASTConsumer(CompilerInstance &CI,
+                                 StringRef InFile) override;
   bool hasEmittedPreamblePCH() const { return HasEmittedPreamblePCH; }
   void setHasEmittedPreamblePCH() { HasEmittedPreamblePCH = true; }
-  virtual bool shouldEraseOutputFiles() { return !hasEmittedPreamblePCH(); }
+  bool shouldEraseOutputFiles() override { return !hasEmittedPreamblePCH(); }
 
-  virtual bool hasCodeCompletionSupport() const { return false; }
-  virtual bool hasASTFileSupport() const { return false; }
-  virtual TranslationUnitKind getTranslationUnitKind() { return TU_Prefix; }
+  bool hasCodeCompletionSupport() const override { return false; }
+  bool hasASTFileSupport() const override { return false; }
+  TranslationUnitKind getTranslationUnitKind() override { return TU_Prefix; }
 };
 
 class PrecompilePreambleConsumer : public PCHGenerator {
@@ -954,7 +955,7 @@ public:
     Hash = 0;
   }
 
-  virtual bool HandleTopLevelDecl(DeclGroupRef D) {
+  bool HandleTopLevelDecl(DeclGroupRef D) override {
     for (DeclGroupRef::iterator it = D.begin(), ie = D.end(); it != ie; ++it) {
       Decl *D = *it;
       // FIXME: Currently ObjC method declarations are incorrectly being
@@ -969,7 +970,7 @@ public:
     return true;
   }
 
-  virtual void HandleTranslationUnit(ASTContext &Ctx) {
+  void HandleTranslationUnit(ASTContext &Ctx) override {
     PCHGenerator::HandleTranslationUnit(Ctx);
     if (hasEmittedPCH()) {
       // Translate the top-level declarations we captured during
@@ -2144,22 +2145,21 @@ namespace {
                        |  (1LL << CodeCompletionContext::CCC_ClassOrStructTag);
     }
 
-    virtual void ProcessCodeCompleteResults(Sema &S,
-                                            CodeCompletionContext Context,
-                                            CodeCompletionResult *Results,
-                                            unsigned NumResults);
+    void ProcessCodeCompleteResults(Sema &S, CodeCompletionContext Context,
+                                    CodeCompletionResult *Results,
+                                    unsigned NumResults) override;
 
-    virtual void ProcessOverloadCandidates(Sema &S, unsigned CurrentArg,
-                                           OverloadCandidate *Candidates,
-                                           unsigned NumCandidates) {
+    void ProcessOverloadCandidates(Sema &S, unsigned CurrentArg,
+                                   OverloadCandidate *Candidates,
+                                   unsigned NumCandidates) override {
       Next.ProcessOverloadCandidates(S, CurrentArg, Candidates, NumCandidates);
     }
 
-    virtual CodeCompletionAllocator &getAllocator() {
+    CodeCompletionAllocator &getAllocator() override {
       return Next.getAllocator();
     }
 
-    virtual CodeCompletionTUInfo &getCodeCompletionTUInfo() {
+    CodeCompletionTUInfo &getCodeCompletionTUInfo() override {
       return Next.getCodeCompletionTUInfo();
     }
   };

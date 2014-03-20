@@ -1253,9 +1253,9 @@ namespace {
   public:
     CodeCompletionDeclConsumer(ResultBuilder &Results, DeclContext *CurContext)
       : Results(Results), CurContext(CurContext) { }
-    
-    virtual void FoundDecl(NamedDecl *ND, NamedDecl *Hiding, DeclContext *Ctx,
-                           bool InBaseClass) {
+
+    void FoundDecl(NamedDecl *ND, NamedDecl *Hiding, DeclContext *Ctx,
+                   bool InBaseClass) override {
       bool Accessible = true;
       if (Ctx)
         Accessible = Results.getSema().IsSimplyAccessible(ND, Ctx);
@@ -3458,32 +3458,26 @@ static void AddObjCProperties(ObjCContainerDecl *Container,
   Container = getContainerDef(Container);
   
   // Add properties in this container.
-  for (ObjCContainerDecl::prop_iterator P = Container->prop_begin(),
-                                     PEnd = Container->prop_end();
-       P != PEnd;
-       ++P) {
+  for (const auto *P : Container->properties())
     if (AddedProperties.insert(P->getIdentifier()))
-      Results.MaybeAddResult(Result(*P, Results.getBasePriority(*P), 0),
+      Results.MaybeAddResult(Result(P, Results.getBasePriority(P), 0),
                              CurContext);
-  }
   
   // Add nullary methods
   if (AllowNullaryMethods) {
     ASTContext &Context = Container->getASTContext();
     PrintingPolicy Policy = getCompletionPrintingPolicy(Results.getSema());
-    for (ObjCContainerDecl::method_iterator M = Container->meth_begin(),
-                                         MEnd = Container->meth_end();
-         M != MEnd; ++M) {
+    for (auto *M : Container->methods()) {
       if (M->getSelector().isUnarySelector())
         if (IdentifierInfo *Name = M->getSelector().getIdentifierInfoForSlot(0))
           if (AddedProperties.insert(Name)) {
             CodeCompletionBuilder Builder(Results.getAllocator(),
                                           Results.getCodeCompletionTUInfo());
-            AddResultTypeChunk(Context, Policy, *M, Builder);
+            AddResultTypeChunk(Context, Policy, M, Builder);
             Builder.AddTypedTextChunk(
                             Results.getAllocator().CopyString(Name->getName()));
             
-            Results.MaybeAddResult(Result(Builder.TakeString(), *M,
+            Results.MaybeAddResult(Result(Builder.TakeString(), M,
                                   CCP_MemberDeclaration + CCD_MethodAsProperty),
                                           CurContext);
           }
@@ -3493,27 +3487,20 @@ static void AddObjCProperties(ObjCContainerDecl *Container,
   
   // Add properties in referenced protocols.
   if (ObjCProtocolDecl *Protocol = dyn_cast<ObjCProtocolDecl>(Container)) {
-    for (ObjCProtocolDecl::protocol_iterator P = Protocol->protocol_begin(),
-                                          PEnd = Protocol->protocol_end();
-         P != PEnd; ++P)
-      AddObjCProperties(*P, AllowCategories, AllowNullaryMethods, CurContext, 
+    for (auto *P : Protocol->protocols())
+      AddObjCProperties(P, AllowCategories, AllowNullaryMethods, CurContext, 
                         AddedProperties, Results);
   } else if (ObjCInterfaceDecl *IFace = dyn_cast<ObjCInterfaceDecl>(Container)){
     if (AllowCategories) {
       // Look through categories.
-      for (ObjCInterfaceDecl::known_categories_iterator
-             Cat = IFace->known_categories_begin(),
-             CatEnd = IFace->known_categories_end();
-           Cat != CatEnd; ++Cat)
-        AddObjCProperties(*Cat, AllowCategories, AllowNullaryMethods,
-                          CurContext, AddedProperties, Results);
+      for (auto *Cat : IFace->known_categories())
+        AddObjCProperties(Cat, AllowCategories, AllowNullaryMethods, CurContext,
+                          AddedProperties, Results);
     }
-    
+
     // Look through protocols.
-    for (ObjCInterfaceDecl::all_protocol_iterator
-         I = IFace->all_referenced_protocol_begin(),
-         E = IFace->all_referenced_protocol_end(); I != E; ++I)
-      AddObjCProperties(*I, AllowCategories, AllowNullaryMethods, CurContext,
+    for (auto *I : IFace->all_referenced_protocols())
+      AddObjCProperties(I, AllowCategories, AllowNullaryMethods, CurContext,
                         AddedProperties, Results);
     
     // Look in the superclass.
@@ -3524,10 +3511,8 @@ static void AddObjCProperties(ObjCContainerDecl *Container,
   } else if (const ObjCCategoryDecl *Category
                                     = dyn_cast<ObjCCategoryDecl>(Container)) {
     // Look through protocols.
-    for (ObjCCategoryDecl::protocol_iterator P = Category->protocol_begin(),
-                                          PEnd = Category->protocol_end(); 
-         P != PEnd; ++P)
-      AddObjCProperties(*P, AllowCategories, AllowNullaryMethods, CurContext,
+    for (auto *P : Category->protocols())
+      AddObjCProperties(P, AllowCategories, AllowNullaryMethods, CurContext,
                         AddedProperties, Results);
   }
 }
@@ -3619,10 +3604,8 @@ void Sema::CodeCompleteMemberReferenceExpr(Scope *S, Expr *Base,
                       AddedProperties, Results);
     
     // Add properties from the protocols in a qualified interface.
-    for (ObjCObjectPointerType::qual_iterator I = ObjCPtr->qual_begin(),
-                                              E = ObjCPtr->qual_end();
-         I != E; ++I)
-      AddObjCProperties(*I, true, /*AllowNullaryMethods=*/true, CurContext, 
+    for (auto *I : ObjCPtr->quals())
+      AddObjCProperties(I, true, /*AllowNullaryMethods=*/true, CurContext, 
                         AddedProperties, Results);
   } else if ((IsArrow && BaseType->isObjCObjectPointerType()) ||
              (!IsArrow && BaseType->isObjCObjectType())) {
@@ -4243,21 +4226,19 @@ void Sema::CodeCompleteConstructorInitializer(
                                 Results.getCodeCompletionTUInfo());
   bool SawLastInitializer = Initializers.empty();
   CXXRecordDecl *ClassDecl = Constructor->getParent();
-  for (CXXRecordDecl::base_class_iterator Base = ClassDecl->bases_begin(),
-                                       BaseEnd = ClassDecl->bases_end();
-       Base != BaseEnd; ++Base) {
-    if (!InitializedBases.insert(Context.getCanonicalType(Base->getType()))) {
+  for (const auto &Base : ClassDecl->bases()) {
+    if (!InitializedBases.insert(Context.getCanonicalType(Base.getType()))) {
       SawLastInitializer
         = !Initializers.empty() && 
           Initializers.back()->isBaseInitializer() &&
-          Context.hasSameUnqualifiedType(Base->getType(),
+          Context.hasSameUnqualifiedType(Base.getType(),
                QualType(Initializers.back()->getBaseClass(), 0));
       continue;
     }
     
     Builder.AddTypedTextChunk(
                Results.getAllocator().CopyString(
-                          Base->getType().getAsString(Policy)));
+                          Base.getType().getAsString(Policy)));
     Builder.AddChunk(CodeCompletionString::CK_LeftParen);
     Builder.AddPlaceholderChunk("args");
     Builder.AddChunk(CodeCompletionString::CK_RightParen);
@@ -4268,21 +4249,19 @@ void Sema::CodeCompleteConstructorInitializer(
   }
   
   // Add completions for virtual base classes.
-  for (CXXRecordDecl::base_class_iterator Base = ClassDecl->vbases_begin(),
-                                       BaseEnd = ClassDecl->vbases_end();
-       Base != BaseEnd; ++Base) {
-    if (!InitializedBases.insert(Context.getCanonicalType(Base->getType()))) {
+  for (const auto &Base : ClassDecl->vbases()) {
+    if (!InitializedBases.insert(Context.getCanonicalType(Base.getType()))) {
       SawLastInitializer
         = !Initializers.empty() && 
           Initializers.back()->isBaseInitializer() &&
-          Context.hasSameUnqualifiedType(Base->getType(),
+          Context.hasSameUnqualifiedType(Base.getType(),
                QualType(Initializers.back()->getBaseClass(), 0));
       continue;
     }
     
     Builder.AddTypedTextChunk(
                Builder.getAllocator().CopyString(
-                          Base->getType().getAsString(Policy)));
+                          Base.getType().getAsString(Policy)));
     Builder.AddChunk(CodeCompletionString::CK_LeftParen);
     Builder.AddPlaceholderChunk("args");
     Builder.AddChunk(CodeCompletionString::CK_RightParen);
@@ -4356,9 +4335,8 @@ void Sema::CodeCompleteLambdaIntroducer(Scope *S, LambdaIntroducer &Intro,
   
   // Look for other capturable variables.
   for (; S && !isNamespaceScope(S); S = S->getParent()) {
-    for (Scope::decl_iterator D = S->decl_begin(), DEnd = S->decl_end();
-         D != DEnd; ++D) {
-      VarDecl *Var = dyn_cast<VarDecl>(*D);
+    for (const auto *D : S->decls()) {
+      const auto *Var = dyn_cast<VarDecl>(D);
       if (!Var ||
           !Var->hasLocalStorage() ||
           Var->hasAttr<BlocksAttr>())
@@ -4823,22 +4801,20 @@ static void AddObjCMethods(ObjCContainerDecl *Container,
   Container = getContainerDef(Container);
   ObjCInterfaceDecl *IFace = dyn_cast<ObjCInterfaceDecl>(Container);
   bool isRootClass = IFace && !IFace->getSuperClass();
-  for (ObjCContainerDecl::method_iterator M = Container->meth_begin(),
-                                       MEnd = Container->meth_end();
-       M != MEnd; ++M) {
+  for (auto *M : Container->methods()) {
     // The instance methods on the root class can be messaged via the
     // metaclass.
     if (M->isInstanceMethod() == WantInstanceMethods ||
         (isRootClass && !WantInstanceMethods)) {
       // Check whether the selector identifiers we've been given are a 
       // subset of the identifiers for this particular method.
-      if (!isAcceptableObjCMethod(*M, WantKind, SelIdents, AllowSameLength))
+      if (!isAcceptableObjCMethod(M, WantKind, SelIdents, AllowSameLength))
         continue;
 
       if (!Selectors.insert(M->getSelector()))
         continue;
       
-      Result R = Result(*M, Results.getBasePriority(*M), 0);
+      Result R = Result(M, Results.getBasePriority(M), 0);
       R.StartParameter = SelIdents.size();
       R.AllParametersAreInformative = (WantKind != MK_Any);
       if (!InOriginalClass)
@@ -4864,19 +4840,12 @@ static void AddObjCMethods(ObjCContainerDecl *Container,
     return;
   
   // Add methods in protocols.
-  for (ObjCInterfaceDecl::protocol_iterator I = IFace->protocol_begin(),
-                                            E = IFace->protocol_end();
-       I != E; ++I)
-    AddObjCMethods(*I, WantInstanceMethods, WantKind, SelIdents,
+  for (auto *I : IFace->protocols())
+    AddObjCMethods(I, WantInstanceMethods, WantKind, SelIdents,
                    CurContext, Selectors, AllowSameLength, Results, false);
   
   // Add methods in categories.
-  for (ObjCInterfaceDecl::known_categories_iterator
-         Cat = IFace->known_categories_begin(),
-         CatEnd = IFace->known_categories_end();
-       Cat != CatEnd; ++Cat) {
-    ObjCCategoryDecl *CatDecl = *Cat;
-    
+  for (auto *CatDecl : IFace->known_categories()) {
     AddObjCMethods(CatDecl, WantInstanceMethods, WantKind, SelIdents,
                    CurContext, Selectors, AllowSameLength,
                    Results, InOriginalClass);
@@ -5148,10 +5117,7 @@ static ObjCMethodDecl *AddSuperSendCompletion(
 
     // Check in categories or class extensions.
     if (!SuperMethod) {
-      for (ObjCInterfaceDecl::known_categories_iterator
-             Cat = Class->known_categories_begin(),
-             CatEnd = Class->known_categories_end();
-           Cat != CatEnd; ++Cat) {
+      for (const auto *Cat : Class->known_categories()) {
         if ((SuperMethod = Cat->getMethod(CurMethod->getSelector(),
                                                CurMethod->isInstanceMethod())))
           break;
@@ -5561,10 +5527,8 @@ void Sema::CodeCompleteObjCInstanceMessage(Scope *S, Expr *Receiver,
   else if (const ObjCObjectPointerType *QualID
              = ReceiverType->getAsObjCQualifiedIdType()) {
     // Search protocols for instance methods.
-    for (ObjCObjectPointerType::qual_iterator I = QualID->qual_begin(),
-                                              E = QualID->qual_end(); 
-         I != E; ++I)
-      AddObjCMethods(*I, true, MK_Any, SelIdents, CurContext,
+    for (auto *I : QualID->quals())
+      AddObjCMethods(I, true, MK_Any, SelIdents, CurContext,
                      Selectors, AtArgumentExpression, Results);
   }
   // Handle messages to a pointer to interface type.
@@ -5576,10 +5540,8 @@ void Sema::CodeCompleteObjCInstanceMessage(Scope *S, Expr *Receiver,
                    Results);
     
     // Search protocols for instance methods.
-    for (ObjCObjectPointerType::qual_iterator I = IFacePtr->qual_begin(),
-         E = IFacePtr->qual_end(); 
-         I != E; ++I)
-      AddObjCMethods(*I, true, MK_Any, SelIdents, CurContext,
+    for (auto *I : IFacePtr->quals())
+      AddObjCMethods(I, true, MK_Any, SelIdents, CurContext,
                      Selectors, AtArgumentExpression, Results);
   }
   // Handle messages to "id".
@@ -5879,12 +5841,8 @@ void Sema::CodeCompleteObjCInterfaceCategory(Scope *S,
   NamedDecl *CurClass
     = LookupSingleName(TUScope, ClassName, ClassNameLoc, LookupOrdinaryName);
   if (ObjCInterfaceDecl *Class = dyn_cast_or_null<ObjCInterfaceDecl>(CurClass)){
-    for (ObjCInterfaceDecl::visible_categories_iterator
-           Cat = Class->visible_categories_begin(),
-           CatEnd = Class->visible_categories_end();
-         Cat != CatEnd; ++Cat) {
+    for (const auto *Cat : Class->visible_categories())
       CategoryNames.insert(Cat->getIdentifier());
-    }
   }
 
   // Add all of the categories we know about.
@@ -5927,13 +5885,10 @@ void Sema::CodeCompleteObjCImplementationCategory(Scope *S,
   Results.EnterNewScope();
   bool IgnoreImplemented = true;
   while (Class) {
-    for (ObjCInterfaceDecl::visible_categories_iterator
-           Cat = Class->visible_categories_begin(),
-           CatEnd = Class->visible_categories_end();
-         Cat != CatEnd; ++Cat) {
+    for (const auto *Cat : Class->visible_categories()) {
       if ((!IgnoreImplemented || !Cat->getImplementation()) &&
           CategoryNames.insert(Cat->getIdentifier()))
-        Results.AddResult(Result(*Cat, Results.getBasePriority(*Cat), 0),
+        Results.AddResult(Result(Cat, Results.getBasePriority(Cat), 0),
                           CurContext, 0, false);
     }
     
@@ -6110,11 +6065,8 @@ static void FindImplementableMethods(ASTContext &Context,
                                KnownMethods, InOriginalClass);
 
     // Add methods from any class extensions and categories.
-    for (ObjCInterfaceDecl::visible_categories_iterator
-           Cat = IFace->visible_categories_begin(),
-           CatEnd = IFace->visible_categories_end();
-         Cat != CatEnd; ++Cat) {
-      FindImplementableMethods(Context, *Cat, WantInstanceMethods, ReturnType,
+    for (auto *Cat : IFace->visible_categories()) {
+      FindImplementableMethods(Context, Cat, WantInstanceMethods, ReturnType,
                                KnownMethods, false);      
     }
 
@@ -6162,16 +6114,14 @@ static void FindImplementableMethods(ASTContext &Context,
   // Add methods in this container. This operation occurs last because
   // we want the methods from this container to override any methods
   // we've previously seen with the same selector.
-  for (ObjCContainerDecl::method_iterator M = Container->meth_begin(),
-                                       MEnd = Container->meth_end();
-       M != MEnd; ++M) {
+  for (auto *M : Container->methods()) {
     if (M->isInstanceMethod() == WantInstanceMethods) {
       if (!ReturnType.isNull() &&
           !Context.hasSameUnqualifiedType(ReturnType, M->getReturnType()))
         continue;
 
       KnownMethods[M->getSelector()] =
-          KnownMethodsMap::mapped_type(*M, InOriginalClass);
+          KnownMethodsMap::mapped_type(M, InOriginalClass);
     }
   }
 }
@@ -6976,23 +6926,14 @@ void Sema::CodeCompleteObjCMethodDecl(Scope *S,
       if (ObjCCategoryDecl *Category = dyn_cast<ObjCCategoryDecl>(SearchDecl))
         IFace = Category->getClassInterface();
     
-    if (IFace) {
-      for (ObjCInterfaceDecl::visible_categories_iterator
-             Cat = IFace->visible_categories_begin(),
-             CatEnd = IFace->visible_categories_end();
-           Cat != CatEnd; ++Cat) {
-        Containers.push_back(*Cat);
-      }
-    }
+    if (IFace)
+      for (auto *Cat : IFace->visible_categories())
+        Containers.push_back(Cat);
     
-    for (unsigned I = 0, N = Containers.size(); I != N; ++I) {
-      for (ObjCContainerDecl::prop_iterator P = Containers[I]->prop_begin(),
-                                         PEnd = Containers[I]->prop_end(); 
-           P != PEnd; ++P) {
-        AddObjCKeyValueCompletions(*P, IsInstanceMethod, ReturnType, Context, 
+    for (unsigned I = 0, N = Containers.size(); I != N; ++I)
+      for (auto *P : Containers[I]->properties())
+        AddObjCKeyValueCompletions(P, IsInstanceMethod, ReturnType, Context, 
                                    KnownSelectors, Results);
-      }
-    }
   }
   
   Results.ExitScope();

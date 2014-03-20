@@ -798,9 +798,8 @@ static unsigned ComputeVMIClassTypeInfoFlags(const CXXBaseSpecifier *Base,
   }
 
   // Walk all bases.
-  for (CXXRecordDecl::base_class_const_iterator I = BaseDecl->bases_begin(),
-       E = BaseDecl->bases_end(); I != E; ++I) 
-    Flags |= ComputeVMIClassTypeInfoFlags(I, Bases);
+  for (const auto &I : BaseDecl->bases()) 
+    Flags |= ComputeVMIClassTypeInfoFlags(&I, Bases);
   
   return Flags;
 }
@@ -810,9 +809,8 @@ static unsigned ComputeVMIClassTypeInfoFlags(const CXXRecordDecl *RD) {
   SeenBases Bases;
   
   // Walk all bases.
-  for (CXXRecordDecl::base_class_const_iterator I = RD->bases_begin(),
-       E = RD->bases_end(); I != E; ++I) 
-    Flags |= ComputeVMIClassTypeInfoFlags(I, Bases);
+  for (const auto &I : RD->bases()) 
+    Flags |= ComputeVMIClassTypeInfoFlags(&I, Bases);
   
   return Flags;
 }
@@ -859,15 +857,12 @@ void RTTIBuilder::BuildVMIClassTypeInfo(const CXXRecordDecl *RD) {
   //       __offset_shift = 8
   //     };
   //   };
-  for (CXXRecordDecl::base_class_const_iterator I = RD->bases_begin(),
-       E = RD->bases_end(); I != E; ++I) {
-    const CXXBaseSpecifier *Base = I;
-
+  for (const auto &Base : RD->bases()) {
     // The __base_type member points to the RTTI for the base type.
-    Fields.push_back(RTTIBuilder(CGM).BuildTypeInfo(Base->getType()));
+    Fields.push_back(RTTIBuilder(CGM).BuildTypeInfo(Base.getType()));
 
     const CXXRecordDecl *BaseDecl = 
-      cast<CXXRecordDecl>(Base->getType()->getAs<RecordType>()->getDecl());
+      cast<CXXRecordDecl>(Base.getType()->getAs<RecordType>()->getDecl());
 
     int64_t OffsetFlags = 0;
     
@@ -876,7 +871,7 @@ void RTTIBuilder::BuildVMIClassTypeInfo(const CXXRecordDecl *RD) {
     // subobject. For a virtual base, this is the offset in the virtual table of
     // the virtual base offset for the virtual base referenced (negative).
     CharUnits Offset;
-    if (Base->isVirtual())
+    if (Base.isVirtual())
       Offset = 
         CGM.getItaniumVTableContext().getVirtualBaseOffsetOffset(RD, BaseDecl);
     else {
@@ -888,9 +883,9 @@ void RTTIBuilder::BuildVMIClassTypeInfo(const CXXRecordDecl *RD) {
     
     // The low-order byte of __offset_flags contains flags, as given by the 
     // masks from the enumeration __offset_flags_masks.
-    if (Base->isVirtual())
+    if (Base.isVirtual())
       OffsetFlags |= BCTI_Virtual;
-    if (Base->getAccessSpecifier() == AS_public)
+    if (Base.getAccessSpecifier() == AS_public)
       OffsetFlags |= BCTI_Public;
 
     Fields.push_back(llvm::ConstantInt::get(LongLTy, OffsetFlags));
