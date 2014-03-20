@@ -1,7 +1,0 @@
-error-mesh-ptr-field.sc:9:5: error: mesh field element must be non-pointer type
-    float* a;
-    ^
-error-mesh-ptr-field.sc:7:3: warning: declaration does not declare anything [-Wmissing-declarations]
-  uniform mesh MyMesh{
-  ^~~~~~~
-1 warning and 1 error generated.

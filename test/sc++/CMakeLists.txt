@@ -56,6 +56,9 @@ set(CMAKE_MODULE_PATH
   ${CMAKE_MODULE_PATH}
 )
 
+#ignore warnings about i/o in forall
+set(CMAKE_SCXX_FLAGS "${CMAKE_SCXX_FLAGS} -Wno-calling-io-function")
+
 project(scout_test_scxx)
     
   cmake_minimum_required(VERSION 2.8.9)
@@ -73,11 +76,14 @@ project(scout_test_scxx)
     if (NOT tname) 
       message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
     else (NOT tname)
-      add_executable("sc++_${tname}" ${test})
-      add_test("sc++_${tname}" "${TEST_BINARY_DIR}/sc++_${tname}")
-      message(" + added runtime regression test entry: sc++_${tname}")
+      set(fname "sc++_${tname}")
+      add_executable("${fname}" ${test})
+      add_test("${fname}" "${TEST_BINARY_DIR}/${fname}")
+      message(" + added runtime regression test entry: ${fname}")
     endif(NOT tname)
   endforeach(test)
 
+  #add_subdirectory(display)
   add_subdirectory(driver)
   add_subdirectory(error)
+  add_subdirectory(warning)

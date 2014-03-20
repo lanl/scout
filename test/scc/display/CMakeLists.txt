@@ -48,7 +48,7 @@
 #
 ###########################################################################
 #
-project(scout_test_display)
+project(scout_test_scc_display)
 
 # only run these tests if the $DISPLAY variable is set
 
@@ -62,10 +62,11 @@ foreach (test ${SC_SRCS})
   if (NOT tname) 
     message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
   else (NOT tname)
-    add_executable(scc_display_${tname} ${test})
+     set(fname "scc_display_${tname}")
+    add_executable(${fname} ${test})
     if(DEFINED ENV{DISPLAY}) 
-      add_test("scc_display_${tname}" "${TEST_BINARY_DIR}/scc_display_${tname}")
-      message(" + added runtime regression test entry: scc_display_${tname}")
+      add_test("${fname}" "${TEST_BINARY_DIR}/${fname}")
+      message(" + added runtime regression test entry: ${fname}")
     endif()
   endif(NOT tname)
 endforeach(test)

@@ -1,4 +1,0 @@
-error-empty-mesh.sc:7:22: warning: mesh definition with no fields
-  uniform mesh MyMesh{
-                     ^
-1 warning generated.
