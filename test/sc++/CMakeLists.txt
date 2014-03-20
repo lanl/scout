@@ -83,7 +83,7 @@ project(scout_test_scxx)
     endif(NOT tname)
   endforeach(test)
 
-  #add_subdirectory(display)
+  add_subdirectory(display)
   add_subdirectory(driver)
   add_subdirectory(error)
   add_subdirectory(warning)
