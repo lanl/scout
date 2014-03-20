@@ -88,8 +88,10 @@ static GlobalValue::LinkageTypes GetDecodedLinkage(unsigned Val) {
   case 10: return GlobalValue::WeakODRLinkage;
   case 11: return GlobalValue::LinkOnceODRLinkage;
   case 12: return GlobalValue::AvailableExternallyLinkage;
-  case 13: return GlobalValue::LinkerPrivateLinkage;
-  case 14: return GlobalValue::LinkerPrivateWeakLinkage;
+  case 13:
+    return GlobalValue::PrivateLinkage; // Obsolete LinkerPrivateLinkage
+  case 14:
+    return GlobalValue::PrivateLinkage; // Obsolete LinkerPrivateWeakLinkage
   }
 }
 
@@ -3255,7 +3257,7 @@ error_code BitcodeReader::InitLazyStream() {
 }
 
 namespace {
-class BitcodeErrorCategoryType : public _do_message {
+class BitcodeErrorCategoryType : public error_category {
   const char *name() const override {
     return "llvm.bitcode";
   }

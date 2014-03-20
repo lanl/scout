@@ -55,3 +55,13 @@ ARMELFMCAsmInfo::ARMELFMCAsmInfo() {
 
   UseIntegratedAssembler = true;
 }
+
+void ARMELFMCAsmInfo::setUseIntegratedAssembler(bool Value) {
+  UseIntegratedAssembler = Value;
+  if (!UseIntegratedAssembler) {
+    // gas doesn't handle VFP register names in cfi directives,
+    // so don't use register names with external assembler.
+    // See https://sourceware.org/bugzilla/show_bug.cgi?id=16694
+    DwarfRegNumForCFI = true;
+  }
+}

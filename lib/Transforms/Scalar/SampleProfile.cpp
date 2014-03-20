@@ -34,6 +34,7 @@
 #include "llvm/Analysis/PostDominators.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DebugInfo.h"
+#include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/InstIterator.h"
@@ -93,7 +94,7 @@ template <> struct DenseMapInfo<InstructionLocation> {
                                DiscriminatorInfo::getTombstoneKey());
   }
   static inline unsigned getHashValue(InstructionLocation Val) {
-    return DenseMapInfo<std::pair<int, unsigned> >::getHashValue(
+    return DenseMapInfo<std::pair<int, unsigned>>::getHashValue(
         std::pair<int, unsigned>(Val.LineOffset, Val.Discriminator));
   }
   static inline bool isEqual(InstructionLocation LHS, InstructionLocation RHS) {
@@ -109,7 +110,7 @@ typedef DenseMap<BasicBlock *, unsigned> BlockWeightMap;
 typedef DenseMap<BasicBlock *, BasicBlock *> EquivalenceClassMap;
 typedef std::pair<BasicBlock *, BasicBlock *> Edge;
 typedef DenseMap<Edge, unsigned> EdgeWeightMap;
-typedef DenseMap<BasicBlock *, SmallVector<BasicBlock *, 8> > BlockEdgeMap;
+typedef DenseMap<BasicBlock *, SmallVector<BasicBlock *, 8>> BlockEdgeMap;
 
 /// \brief Representation of the runtime profile for a function.
 ///
@@ -238,10 +239,11 @@ protected:
 ///      be relative to the start of the function.
 class SampleModuleProfile {
 public:
-  SampleModuleProfile(StringRef F) : Profiles(0), Filename(F) {}
+  SampleModuleProfile(const Module &M, StringRef F)
+      : Profiles(0), Filename(F), M(M) {}
 
   void dump();
-  void loadText();
+  bool loadText();
   void loadNative() { llvm_unreachable("not implemented"); }
   void printFunctionProfile(raw_ostream &OS, StringRef FName);
   void dumpFunctionProfile(StringRef FName);
@@ -249,9 +251,10 @@ public:
     return Profiles[F.getName()];
   }
 
-  /// \brief Report a parse error message and stop compilation.
+  /// \brief Report a parse error message.
   void reportParseError(int64_t LineNumber, Twine Msg) const {
-    report_fatal_error(Filename + ":" + Twine(LineNumber) + ": " + Msg + "\n");
+    DiagnosticInfoSampleProfile Diag(Filename.data(), LineNumber, Msg);
+    M.getContext().diagnose(Diag);
   }
 
 protected:
@@ -269,6 +272,10 @@ protected:
   /// version of the profile format to be used in constructing test
   /// cases and debugging.
   StringRef Filename;
+
+  /// \brief Module being compiled. Used mainly to access the current
+  /// LLVM context for diagnostics.
+  const Module &M;
 };
 
 /// \brief Sample profile pass.
@@ -282,7 +289,7 @@ public:
   static char ID;
 
   SampleProfileLoader(StringRef Name = SampleProfileFile)
-      : FunctionPass(ID), Profiler(), Filename(Name) {
+      : FunctionPass(ID), Profiler(), Filename(Name), ProfileIsValid(false) {
     initializeSampleProfileLoaderPass(*PassRegistry::getPassRegistry());
   }
 
@@ -307,6 +314,9 @@ protected:
 
   /// \brief Name of the profile file to load.
   StringRef Filename;
+
+  /// \brief Flag indicating whether the profile input loaded succesfully.
+  bool ProfileIsValid;
 };
 }
 
@@ -437,29 +447,42 @@ void SampleModuleProfile::dump() {
 /// for debugging purposes, but it should not be used to generate
 /// profiles for large programs, as the representation is extremely
 /// inefficient.
-void SampleModuleProfile::loadText() {
+///
+/// \returns true if the file was loaded successfully, false otherwise.
+bool SampleModuleProfile::loadText() {
   std::unique_ptr<MemoryBuffer> Buffer;
   error_code EC = MemoryBuffer::getFile(Filename, Buffer);
-  if (EC)
-    report_fatal_error("Could not open file " + Filename + ": " + EC.message());
+  if (EC) {
+    std::string Msg(EC.message());
+    M.getContext().diagnose(DiagnosticInfoSampleProfile(Filename.data(), Msg));
+    return false;
+  }
   line_iterator LineIt(*Buffer, '#');
 
   // Read the profile of each function. Since each function may be
   // mentioned more than once, and we are collecting flat profiles,
   // accumulate samples as we parse them.
-  Regex HeadRE("^([^:]+):([0-9]+):([0-9]+)$");
+  Regex HeadRE("^([^0-9].*):([0-9]+):([0-9]+)$");
   Regex LineSample("^([0-9]+)\\.?([0-9]+)?: ([0-9]+)(.*)$");
   while (!LineIt.is_at_eof()) {
-    // Read the header of each function. The function header should
-    // have this format:
+    // Read the header of each function.
     //
-    //        function_name:total_samples:total_head_samples
+    // Note that for function identifiers we are actually expecting
+    // mangled names, but we may not always get them. This happens when
+    // the compiler decides not to emit the function (e.g., it was inlined
+    // and removed). In this case, the binary will not have the linkage
+    // name for the function, so the profiler will emit the function's
+    // unmangled name, which may contain characters like ':' and '>' in its
+    // name (member functions, templates, etc).
     //
-    // See above for an explanation of each field.
+    // The only requirement we place on the identifier, then, is that it
+    // should not begin with a number.
     SmallVector<StringRef, 3> Matches;
-    if (!HeadRE.match(*LineIt, &Matches))
+    if (!HeadRE.match(*LineIt, &Matches)) {
       reportParseError(LineIt.line_number(),
                        "Expected 'mangled_name:NUM:NUM', found " + *LineIt);
+      return false;
+    }
     assert(Matches.size() == 4);
     StringRef FName = Matches[1];
     unsigned NumSamples, NumHeadSamples;
@@ -474,10 +497,12 @@ void SampleModuleProfile::loadText() {
     // Now read the body. The body of the function ends when we reach
     // EOF or when we see the start of the next function.
     while (!LineIt.is_at_eof() && isdigit((*LineIt)[0])) {
-      if (!LineSample.match(*LineIt, &Matches))
+      if (!LineSample.match(*LineIt, &Matches)) {
         reportParseError(
             LineIt.line_number(),
             "Expected 'NUM[.NUM]: NUM[ mangled_name:NUM]*', found " + *LineIt);
+        return false;
+      }
       assert(Matches.size() == 5);
       unsigned LineOffset, NumSamples, Discriminator = 0;
       Matches[1].getAsInteger(10, LineOffset);
@@ -497,6 +522,8 @@ void SampleModuleProfile::loadText() {
       ++LineIt;
     }
   }
+
+  return true;
 }
 
 /// \brief Get the weight for an instruction.
@@ -935,7 +962,8 @@ void SampleFunctionProfile::propagateWeights(Function &F) {
 ///
 /// \param F  Function object to query.
 ///
-/// \returns the line number where \p F is defined.
+/// \returns the line number where \p F is defined. If it returns 0,
+///          it means that there is no debug information available for \p F.
 unsigned SampleFunctionProfile::getFunctionLoc(Function &F) {
   NamedMDNode *CUNodes = F.getParent()->getNamedMetadata("llvm.dbg.cu");
   if (CUNodes) {
@@ -950,8 +978,9 @@ unsigned SampleFunctionProfile::getFunctionLoc(Function &F) {
     }
   }
 
-  report_fatal_error("No debug information found in function " + F.getName() +
-                     "\n");
+  F.getContext().diagnose(DiagnosticInfoSampleProfile(
+      "No debug information found in function " + F.getName()));
+  return 0;
 }
 
 /// \brief Generate branch weight metadata for all branches in \p F.
@@ -1001,6 +1030,8 @@ unsigned SampleFunctionProfile::getFunctionLoc(Function &F) {
 /// metadata on B using the computed values for each of its branches.
 ///
 /// \param F The function to query.
+///
+/// \returns true if \p F was modified. Returns false, otherwise.
 bool SampleFunctionProfile::emitAnnotations(Function &F, DominatorTree *DomTree,
                                             PostDominatorTree *PostDomTree,
                                             LoopInfo *Loops) {
@@ -1008,6 +1039,9 @@ bool SampleFunctionProfile::emitAnnotations(Function &F, DominatorTree *DomTree,
 
   // Initialize invariants used during computation and propagation.
   HeaderLineno = getFunctionLoc(F);
+  if (HeaderLineno == 0)
+    return false;
+
   DEBUG(dbgs() << "Line number for the first instruction in " << F.getName()
                << ": " << HeaderLineno << "\n");
   DT = DomTree;
@@ -1040,8 +1074,8 @@ INITIALIZE_PASS_END(SampleProfileLoader, "sample-profile",
                     "Sample Profile loader", false, false)
 
 bool SampleProfileLoader::doInitialization(Module &M) {
-  Profiler.reset(new SampleModuleProfile(Filename));
-  Profiler->loadText();
+  Profiler.reset(new SampleModuleProfile(M, Filename));
+  ProfileIsValid = Profiler->loadText();
   return true;
 }
 
@@ -1054,6 +1088,8 @@ FunctionPass *llvm::createSampleProfileLoaderPass(StringRef Name) {
 }
 
 bool SampleProfileLoader::runOnFunction(Function &F) {
+  if (!ProfileIsValid)
+    return false;
   DominatorTree *DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
   PostDominatorTree *PDT = &getAnalysis<PostDominatorTree>();
   LoopInfo *LI = &getAnalysis<LoopInfo>();

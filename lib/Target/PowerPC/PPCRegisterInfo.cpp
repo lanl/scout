@@ -27,7 +27,6 @@
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
-#include "llvm/CodeGen/ValueTypes.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
@@ -230,7 +229,11 @@ PPCRegisterInfo::getRegPressureLimit(const TargetRegisterClass *RC,
   case PPC::F8RCRegClassID:
   case PPC::F4RCRegClassID:
   case PPC::VRRCRegClassID:
+  case PPC::VSLRCRegClassID:
+  case PPC::VSHRCRegClassID:
     return 32 - DefaultSafety;
+  case PPC::VSRCRegClassID:
+    return 64 - DefaultSafety;
   case PPC::CRRCRegClassID:
     return 8 - DefaultSafety;
   }

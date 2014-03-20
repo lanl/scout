@@ -178,6 +178,25 @@ bool AsmPrinter::doInitialization(Module &M) {
 
   Mang = new Mangler(TM.getDataLayout());
 
+  // Emit the version-min deplyment target directive if needed.
+  //
+  // FIXME: If we end up with a collection of these sorts of Darwin-specific
+  // or ELF-specific things, it may make sense to have a platform helper class
+  // that will work with the target helper class. For now keep it here, as the
+  // alternative is duplicated code in each of the target asm printers that
+  // use the directive, where it would need the same conditionalization
+  // anyway.
+  Triple TT(getTargetTriple());
+  if (TT.isOSDarwin()) {
+    unsigned Major, Minor, Update;
+    TT.getOSVersion(Major, Minor, Update);
+    // If there is a version specified, Major will be non-zero.
+    if (Major)
+      OutStreamer.EmitVersionMin((TT.isMacOSX() ?
+                                  MCVM_OSXVersionMin : MCVM_IOSVersionMin),
+                                 Major, Minor, Update);
+  }
+
   // Allow the target to emit any magic that it wants at the start of the file.
   EmitStartOfAsmFile(M);
 
@@ -272,7 +291,6 @@ void AsmPrinter::EmitLinkage(const GlobalValue *GV, MCSymbol *GVSym) const {
   case GlobalValue::LinkOnceODRLinkage:
   case GlobalValue::WeakAnyLinkage:
   case GlobalValue::WeakODRLinkage:
-  case GlobalValue::LinkerPrivateWeakLinkage:
     if (MAI->hasWeakDefDirective()) {
       // .globl _foo
       OutStreamer.EmitSymbolAttribute(GVSym, MCSA_Global);
@@ -301,7 +319,6 @@ void AsmPrinter::EmitLinkage(const GlobalValue *GV, MCSymbol *GVSym) const {
     return;
   case GlobalValue::PrivateLinkage:
   case GlobalValue::InternalLinkage:
-  case GlobalValue::LinkerPrivateLinkage:
     return;
   case GlobalValue::AvailableExternallyLinkage:
     llvm_unreachable("Should never emit this");
@@ -928,11 +945,7 @@ bool AsmPrinter::doFinalization(Module &M) {
       MCSymbol *Name = getSymbol(I);
 
       const GlobalValue *GV = I->getAliasedGlobal();
-      if (GV->isDeclaration()) {
-        report_fatal_error(Name->getName() +
-                           ": Target doesn't support aliases to declarations");
-      }
-
+      assert(!GV->isDeclaration());
       MCSymbol *Target = getSymbol(GV);
 
       if (I->hasExternalLinkage() || !MAI->getWeakRefDirective())
@@ -1978,7 +1991,7 @@ void AsmPrinter::printOffset(int64_t Offset, raw_ostream &OS) const {
 
 /// GetTempSymbol - Return the MCSymbol corresponding to the assembler
 /// temporary label with the specified stem and unique ID.
-MCSymbol *AsmPrinter::GetTempSymbol(StringRef Name, unsigned ID) const {
+MCSymbol *AsmPrinter::GetTempSymbol(Twine Name, unsigned ID) const {
   const DataLayout *DL = TM.getDataLayout();
   return OutContext.GetOrCreateSymbol(Twine(DL->getPrivateGlobalPrefix()) +
                                       Name + Twine(ID));
@@ -1986,7 +1999,7 @@ MCSymbol *AsmPrinter::GetTempSymbol(StringRef Name, unsigned ID) const {
 
 /// GetTempSymbol - Return an assembler temporary label with the specified
 /// stem.
-MCSymbol *AsmPrinter::GetTempSymbol(StringRef Name) const {
+MCSymbol *AsmPrinter::GetTempSymbol(Twine Name) const {
   const DataLayout *DL = TM.getDataLayout();
   return OutContext.GetOrCreateSymbol(Twine(DL->getPrivateGlobalPrefix())+
                                       Name);

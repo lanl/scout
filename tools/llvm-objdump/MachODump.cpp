@@ -146,29 +146,23 @@ static void DumpDataInCode(const char *bytes, uint64_t Size,
   }
 }
 
-static void
-getSectionsAndSymbols(const MachO::mach_header Header,
-                      MachOObjectFile *MachOObj,
-                      std::vector<SectionRef> &Sections,
-                      std::vector<SymbolRef> &Symbols,
-                      SmallVectorImpl<uint64_t> &FoundFns,
-                      uint64_t &BaseSegmentAddress) {
-  for (symbol_iterator SI = MachOObj->symbol_begin(),
-                       SE = MachOObj->symbol_end();
-       SI != SE; ++SI)
-    Symbols.push_back(*SI);
+static void getSectionsAndSymbols(const MachO::mach_header Header,
+                                  MachOObjectFile *MachOObj,
+                                  std::vector<SectionRef> &Sections,
+                                  std::vector<SymbolRef> &Symbols,
+                                  SmallVectorImpl<uint64_t> &FoundFns,
+                                  uint64_t &BaseSegmentAddress) {
+  for (const SymbolRef &Symbol : MachOObj->symbols())
+    Symbols.push_back(Symbol);
 
-  for (section_iterator SI = MachOObj->section_begin(),
-                        SE = MachOObj->section_end();
-       SI != SE; ++SI) {
-    SectionRef SR = *SI;
+  for (const SectionRef &Section : MachOObj->sections()) {
     StringRef SectName;
-    SR.getName(SectName);
-    Sections.push_back(*SI);
+    Section.getName(SectName);
+    Sections.push_back(Section);
   }
 
   MachOObjectFile::LoadCommandInfo Command =
-    MachOObj->getFirstLoadCommandInfo();
+      MachOObj->getFirstLoadCommandInfo();
   bool BaseSegmentAddressSet = false;
   for (unsigned i = 0; ; ++i) {
     if (Command.C.cmd == MachO::LC_FUNCTION_STARTS) {
@@ -328,16 +322,14 @@ static void DisassembleInputMachO2(StringRef Filename,
     bool symbolTableWorked = false;
 
     // Parse relocations.
-    std::vector<std::pair<uint64_t, SymbolRef> > Relocs;
-    for (relocation_iterator RI = Sections[SectIdx].relocation_begin(),
-                             RE = Sections[SectIdx].relocation_end();
-         RI != RE; ++RI) {
+    std::vector<std::pair<uint64_t, SymbolRef>> Relocs;
+    for (const RelocationRef &Reloc : Sections[SectIdx].relocations()) {
       uint64_t RelocOffset, SectionAddress;
-      RI->getOffset(RelocOffset);
+      Reloc.getOffset(RelocOffset);
       Sections[SectIdx].getAddress(SectionAddress);
       RelocOffset -= SectionAddress;
 
-      symbol_iterator RelocSym = RI->getSymbol();
+      symbol_iterator RelocSym = Reloc.getSymbol();
 
       Relocs.push_back(std::make_pair(RelocOffset, *RelocSym));
     }

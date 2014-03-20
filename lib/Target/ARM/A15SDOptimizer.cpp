@@ -225,9 +225,9 @@ void A15SDOptimizer::eraseInstrWithNoUses(MachineInstr *MI) {
           IsDead = false;
           break;
         }
-        for (MachineRegisterInfo::use_iterator II = MRI->use_begin(Reg),
-                            EE = MRI->use_end();
-                            II != EE; ++II) {
+        for (MachineRegisterInfo::use_instr_iterator
+             II = MRI->use_instr_begin(Reg), EE = MRI->use_instr_end();
+             II != EE; ++II) {
           // We don't care about self references.
           if (&*II == Def)
             continue;
@@ -416,7 +416,8 @@ SmallVector<unsigned, 8> A15SDOptimizer::getReadDPRs(MachineInstr *MI) {
     if (!MO.isReg() || !MO.isUse())
       continue;
     if (!usesRegClass(MO, &ARM::DPRRegClass) &&
-        !usesRegClass(MO, &ARM::QPRRegClass))
+        !usesRegClass(MO, &ARM::QPRRegClass) &&
+        !usesRegClass(MO, &ARM::DPairRegClass)) // Treat DPair as QPR
       continue;
 
     Defs.push_back(MO.getReg());
@@ -536,7 +537,10 @@ A15SDOptimizer::optimizeAllLanesPattern(MachineInstr *MI, unsigned Reg) {
   InsertPt++;
   unsigned Out;
 
-  if (MRI->getRegClass(Reg)->hasSuperClassEq(&ARM::QPRRegClass)) {
+  // DPair has the same length as QPR and also has two DPRs as subreg.
+  // Treat DPair as QPR.
+  if (MRI->getRegClass(Reg)->hasSuperClassEq(&ARM::QPRRegClass) ||
+      MRI->getRegClass(Reg)->hasSuperClassEq(&ARM::DPairRegClass)) {
     unsigned DSub0 = createExtractSubreg(MBB, InsertPt, DL, Reg,
                                          ARM::dsub_0, &ARM::DPRRegClass);
     unsigned DSub1 = createExtractSubreg(MBB, InsertPt, DL, Reg,
@@ -569,7 +573,9 @@ A15SDOptimizer::optimizeAllLanesPattern(MachineInstr *MI, unsigned Reg) {
       default: llvm_unreachable("Unknown preferred lane!");
     }
 
-    bool UsesQPR = usesRegClass(MI->getOperand(0), &ARM::QPRRegClass);
+    // Treat DPair as QPR
+    bool UsesQPR = usesRegClass(MI->getOperand(0), &ARM::QPRRegClass) ||
+                   usesRegClass(MI->getOperand(0), &ARM::DPairRegClass);
 
     Out = createImplicitDef(MBB, InsertPt, DL);
     Out = createInsertSubreg(MBB, InsertPt, DL, Out, PrefLane, Reg);
@@ -646,7 +652,7 @@ bool A15SDOptimizer::runOnInstruction(MachineInstr *MI) {
       unsigned DPRDefReg = MI->getOperand(0).getReg();
       for (MachineRegisterInfo::use_iterator I = MRI->use_begin(DPRDefReg),
              E = MRI->use_end(); I != E; ++I)
-        Uses.push_back(&I.getOperand());
+        Uses.push_back(&*I);
 
       // We can optimize this.
       unsigned NewReg = optimizeSDPattern(MI);

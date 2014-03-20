@@ -59,8 +59,6 @@ MCContext::MCContext(const MCAsmInfo *mai, const MCRegisterInfo *mri,
 
   if (SrcMgr && SrcMgr->getNumBuffers() > 0)
     MainFileName = SrcMgr->getMemoryBuffer(0)->getBufferIdentifier();
-  else
-    MainFileName = "";
 }
 
 MCContext::~MCContext() {
@@ -84,14 +82,10 @@ void MCContext::reset() {
   Symbols.clear();
   Allocator.Reset();
   Instances.clear();
-  MCDwarfFilesCUMap.clear();
-  MCDwarfDirsCUMap.clear();
+  MCDwarfLineTablesCUMap.clear();
   MCGenDwarfLabelEntries.clear();
   DwarfDebugFlags = StringRef();
-  MCLineSections.clear();
-  MCLineSectionOrder.clear();
   DwarfCompileUnitID = 0;
-  MCLineTableSymbols.clear();
   CurrentDwarfLoc = MCDwarfLoc(0,0,0,DWARF2_FLAG_IS_STMT,0,0);
 
   // If we have the MachO uniquing map, free it.
@@ -166,32 +160,39 @@ MCSymbol *MCContext::CreateTempSymbol() {
   return CreateSymbol(NameSV);
 }
 
-unsigned MCContext::NextInstance(int64_t LocalLabelVal) {
+unsigned MCContext::NextInstance(unsigned LocalLabelVal) {
   MCLabel *&Label = Instances[LocalLabelVal];
   if (!Label)
     Label = new (*this) MCLabel(0);
   return Label->incInstance();
 }
 
-unsigned MCContext::GetInstance(int64_t LocalLabelVal) {
+unsigned MCContext::GetInstance(unsigned LocalLabelVal) {
   MCLabel *&Label = Instances[LocalLabelVal];
   if (!Label)
     Label = new (*this) MCLabel(0);
   return Label->getInstance();
 }
 
-MCSymbol *MCContext::CreateDirectionalLocalSymbol(int64_t LocalLabelVal) {
-  return GetOrCreateSymbol(Twine(MAI->getPrivateGlobalPrefix()) +
-                           Twine(LocalLabelVal) +
-                           "\2" +
-                           Twine(NextInstance(LocalLabelVal)));
+MCSymbol *MCContext::getOrCreateDirectionalLocalSymbol(unsigned LocalLabelVal,
+                                                       unsigned Instance) {
+  MCSymbol *&Sym = LocalSymbols[std::make_pair(LocalLabelVal, Instance)];
+  if (!Sym)
+    Sym = CreateTempSymbol();
+  return Sym;
 }
-MCSymbol *MCContext::GetDirectionalLocalSymbol(int64_t LocalLabelVal,
-                                               int bORf) {
-  return GetOrCreateSymbol(Twine(MAI->getPrivateGlobalPrefix()) +
-                           Twine(LocalLabelVal) +
-                           "\2" +
-                           Twine(GetInstance(LocalLabelVal) + bORf));
+
+MCSymbol *MCContext::CreateDirectionalLocalSymbol(unsigned LocalLabelVal) {
+  unsigned Instance = NextInstance(LocalLabelVal);
+  return getOrCreateDirectionalLocalSymbol(LocalLabelVal, Instance);
+}
+
+MCSymbol *MCContext::GetDirectionalLocalSymbol(unsigned LocalLabelVal,
+                                               bool Before) {
+  unsigned Instance = GetInstance(LocalLabelVal);
+  if (!Before)
+    ++Instance;
+  return getOrCreateDirectionalLocalSymbol(LocalLabelVal, Instance);
 }
 
 MCSymbol *MCContext::LookupSymbol(StringRef Name) const {
@@ -334,84 +335,25 @@ const MCSectionCOFF *MCContext::getCOFFSection(StringRef Section) {
 /// allocated file number is returned.  The file numbers may be in any order.
 unsigned MCContext::GetDwarfFile(StringRef Directory, StringRef FileName,
                                  unsigned FileNumber, unsigned CUID) {
-  // TODO: a FileNumber of zero says to use the next available file number.
-  // Note: in GenericAsmParser::ParseDirectiveFile() FileNumber was checked
-  // to not be less than one.  This needs to be change to be not less than zero.
-
-  SmallVectorImpl<MCDwarfFile *>& MCDwarfFiles = MCDwarfFilesCUMap[CUID];
-  SmallVectorImpl<StringRef>& MCDwarfDirs = MCDwarfDirsCUMap[CUID];
-  // Make space for this FileNumber in the MCDwarfFiles vector if needed.
-  if (FileNumber >= MCDwarfFiles.size()) {
-    MCDwarfFiles.resize(FileNumber + 1);
-  } else {
-    MCDwarfFile *&ExistingFile = MCDwarfFiles[FileNumber];
-    if (ExistingFile)
-      // It is an error to use see the same number more than once.
-      return 0;
-  }
-
-  // Get the new MCDwarfFile slot for this FileNumber.
-  MCDwarfFile *&File = MCDwarfFiles[FileNumber];
-
-  if (Directory.empty()) {
-    // Separate the directory part from the basename of the FileName.
-    StringRef tFileName = sys::path::filename(FileName);
-    if (!tFileName.empty()) {
-      Directory = sys::path::parent_path(FileName);
-      if (!Directory.empty())
-        FileName = tFileName;
-    }
-  }
-
-  // Find or make a entry in the MCDwarfDirs vector for this Directory.
-  // Capture directory name.
-  unsigned DirIndex;
-  if (Directory.empty()) {
-    // For FileNames with no directories a DirIndex of 0 is used.
-    DirIndex = 0;
-  } else {
-    DirIndex = 0;
-    for (unsigned End = MCDwarfDirs.size(); DirIndex < End; DirIndex++) {
-      if (Directory == MCDwarfDirs[DirIndex])
-        break;
-    }
-    if (DirIndex >= MCDwarfDirs.size()) {
-      char *Buf = static_cast<char *>(Allocate(Directory.size()));
-      memcpy(Buf, Directory.data(), Directory.size());
-      MCDwarfDirs.push_back(StringRef(Buf, Directory.size()));
-    }
-    // The DirIndex is one based, as DirIndex of 0 is used for FileNames with
-    // no directories.  MCDwarfDirs[] is unlike MCDwarfFiles[] in that the
-    // directory names are stored at MCDwarfDirs[DirIndex-1] where FileNames
-    // are stored at MCDwarfFiles[FileNumber].Name .
-    DirIndex++;
-  }
-
-  // Now make the MCDwarfFile entry and place it in the slot in the MCDwarfFiles
-  // vector.
-  char *Buf = static_cast<char *>(Allocate(FileName.size()));
-  memcpy(Buf, FileName.data(), FileName.size());
-  File = new (*this) MCDwarfFile(StringRef(Buf, FileName.size()), DirIndex);
-
-  // return the allocated FileNumber.
-  return FileNumber;
+  MCDwarfLineTable &Table = MCDwarfLineTablesCUMap[CUID];
+  return Table.getFile(Directory, FileName, FileNumber);
 }
 
 /// isValidDwarfFileNumber - takes a dwarf file number and returns true if it
 /// currently is assigned and false otherwise.
 bool MCContext::isValidDwarfFileNumber(unsigned FileNumber, unsigned CUID) {
-  SmallVectorImpl<MCDwarfFile *>& MCDwarfFiles = MCDwarfFilesCUMap[CUID];
+  const SmallVectorImpl<MCDwarfFile>& MCDwarfFiles = getMCDwarfFiles(CUID);
   if(FileNumber == 0 || FileNumber >= MCDwarfFiles.size())
     return false;
 
-  return MCDwarfFiles[FileNumber] != 0;
+  return !MCDwarfFiles[FileNumber].Name.empty();
 }
 
 void MCContext::FatalError(SMLoc Loc, const Twine &Msg) {
   // If we have a source manager and a location, use it. Otherwise just
   // use the generic report_fatal_error().
   if (!SrcMgr || Loc == SMLoc())
-    report_fatal_error(Msg);
+    report_fatal_error(Msg, false);
 
   // Use the source manager to print the message.
   SrcMgr->PrintMessage(Loc, SourceMgr::DK_Error, Msg);

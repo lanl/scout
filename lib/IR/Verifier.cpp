@@ -479,20 +479,21 @@ void Verifier::visitGlobalAlias(const GlobalAlias &GA) {
   Assert1(!GA.getAlignment(), "Alias connot have an alignment", &GA);
 
   const Constant *Aliasee = GA.getAliasee();
+  const GlobalValue *GV = dyn_cast<GlobalValue>(Aliasee);
 
-  if (!isa<GlobalValue>(Aliasee)) {
+  if (!GV) {
     const ConstantExpr *CE = dyn_cast<ConstantExpr>(Aliasee);
-    Assert1(CE &&
-            (CE->getOpcode() == Instruction::BitCast ||
-             CE->getOpcode() == Instruction::AddrSpaceCast ||
-             CE->getOpcode() == Instruction::GetElementPtr) &&
-            isa<GlobalValue>(CE->getOperand(0)),
-            "Aliasee should be either GlobalValue, bitcast or "
-             "addrspacecast of GlobalValue",
+    if (CE && (CE->getOpcode() == Instruction::BitCast ||
+               CE->getOpcode() == Instruction::AddrSpaceCast ||
+               CE->getOpcode() == Instruction::GetElementPtr))
+      GV = dyn_cast<GlobalValue>(CE->getOperand(0));
+
+    Assert1(GV, "Aliasee should be either GlobalValue, bitcast or "
+                "addrspacecast of GlobalValue",
             &GA);
 
     if (CE->getOpcode() == Instruction::BitCast) {
-      unsigned SrcAS = CE->getOperand(0)->getType()->getPointerAddressSpace();
+      unsigned SrcAS = GV->getType()->getPointerAddressSpace();
       unsigned DstAS = CE->getType()->getPointerAddressSpace();
 
       Assert1(SrcAS == DstAS,
@@ -500,6 +501,7 @@ void Verifier::visitGlobalAlias(const GlobalAlias &GA) {
               &GA);
     }
   }
+  Assert1(!GV->isDeclaration(), "Alias must point to a definition", &GA);
 
   const GlobalValue* Resolved = GA.resolveAliasedGlobal(/*stopOnWeak*/ false);
   Assert1(Resolved,
@@ -2353,22 +2355,21 @@ void Verifier::visitIntrinsicFunctionCall(Intrinsic::ID ID, CallInst &CI) {
 void Verifier::verifyDebugInfo() {
   // Verify Debug Info.
   if (!DisableDebugInfoVerifier) {
-    for (DebugInfoFinder::iterator I = Finder.compile_unit_begin(),
-         E = Finder.compile_unit_end(); I != E; ++I)
-      Assert1(DICompileUnit(*I).Verify(), "DICompileUnit does not Verify!", *I);
-    for (DebugInfoFinder::iterator I = Finder.subprogram_begin(),
-         E = Finder.subprogram_end(); I != E; ++I)
-      Assert1(DISubprogram(*I).Verify(), "DISubprogram does not Verify!", *I);
-    for (DebugInfoFinder::iterator I = Finder.global_variable_begin(),
-         E = Finder.global_variable_end(); I != E; ++I)
-      Assert1(DIGlobalVariable(*I).Verify(),
-              "DIGlobalVariable does not Verify!", *I);
-    for (DebugInfoFinder::iterator I = Finder.type_begin(),
-         E = Finder.type_end(); I != E; ++I)
-      Assert1(DIType(*I).Verify(), "DIType does not Verify!", *I);
-    for (DebugInfoFinder::iterator I = Finder.scope_begin(),
-         E = Finder.scope_end(); I != E; ++I)
-      Assert1(DIScope(*I).Verify(), "DIScope does not Verify!", *I);
+    for (DICompileUnit CU : Finder.compile_units()) {
+      Assert1(CU.Verify(), "DICompileUnit does not Verify!", CU);
+    }
+    for (DISubprogram S : Finder.subprograms()) {
+      Assert1(S.Verify(), "DISubprogram does not Verify!", S);
+    }
+    for (DIGlobalVariable GV : Finder.global_variables()) {
+      Assert1(GV.Verify(), "DIGlobalVariable does not Verify!", GV);
+    }
+    for (DIType T : Finder.types()) {
+      Assert1(T.Verify(), "DIType does not Verify!", T);
+    }
+    for (DIScope S : Finder.scopes()) {
+      Assert1(S.Verify(), "DIScope does not Verify!", S);
+    }
   }
 }
 

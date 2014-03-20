@@ -122,7 +122,7 @@ uint64_t MCAsmLayout::getSymbolOffset(const MCSymbolData *SD) const {
   // If this is a variable, then recursively evaluate now.
   if (S.isVariable()) {
     MCValue Target;
-    if (!S.getVariableValue()->EvaluateAsRelocatable(Target, *this))
+    if (!S.getVariableValue()->EvaluateAsRelocatable(Target, this))
       report_fatal_error("unable to evaluate offset for variable '" +
                          S.getName() + "'");
 
@@ -296,6 +296,7 @@ MCAssembler::MCAssembler(MCContext &Context_, MCAsmBackend &Backend_,
   : Context(Context_), Backend(Backend_), Emitter(Emitter_), Writer(Writer_),
     OS(OS_), BundleAlignSize(0), RelaxAll(false), NoExecStack(false),
     SubsectionsViaSymbols(false), ELFHeaderEFlags(0) {
+  VersionMinInfo.Major = 0; // Major version == 0 for "none specified"
 }
 
 MCAssembler::~MCAssembler() {
@@ -357,7 +358,7 @@ bool MCAssembler::evaluateFixup(const MCAsmLayout &Layout,
                                 MCValue &Target, uint64_t &Value) const {
   ++stats::evaluateFixup;
 
-  if (!Fixup.getValue()->EvaluateAsRelocatable(Target, Layout))
+  if (!Fixup.getValue()->EvaluateAsRelocatable(Target, &Layout))
     getContext().FatalError(Fixup.getLoc(), "expected relocatable expression");
 
   bool IsPCRel = Backend.getFixupKindInfo(

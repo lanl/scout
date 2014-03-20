@@ -187,10 +187,8 @@ optimizeExtInstr(MachineInstr *MI, MachineBasicBlock *MBB,
   // The source has other uses. See if we can replace the other uses with use of
   // the result of the extension.
   SmallPtrSet<MachineBasicBlock*, 4> ReachedBBs;
-  for (MachineRegisterInfo::use_nodbg_iterator
-       UI = MRI->use_nodbg_begin(DstReg), UE = MRI->use_nodbg_end();
-       UI != UE; ++UI)
-    ReachedBBs.insert(UI->getParent());
+  for (MachineInstr &UI : MRI->use_nodbg_instructions(DstReg))
+    ReachedBBs.insert(UI.getParent());
 
   // Uses that are in the same BB of uses of the result of the instruction.
   SmallVector<MachineOperand*, 8> Uses;
@@ -199,11 +197,8 @@ optimizeExtInstr(MachineInstr *MI, MachineBasicBlock *MBB,
   SmallVector<MachineOperand*, 8> ExtendedUses;
 
   bool ExtendLife = true;
-  for (MachineRegisterInfo::use_nodbg_iterator
-       UI = MRI->use_nodbg_begin(SrcReg), UE = MRI->use_nodbg_end();
-       UI != UE; ++UI) {
-    MachineOperand &UseMO = UI.getOperand();
-    MachineInstr *UseMI = &*UI;
+  for (MachineOperand &UseMO : MRI->use_nodbg_operands(SrcReg)) {
+    MachineInstr *UseMI = UseMO.getParent();
     if (UseMI == MI)
       continue;
 
@@ -270,11 +265,9 @@ optimizeExtInstr(MachineInstr *MI, MachineBasicBlock *MBB,
     // Look for PHI uses of the extended result, we don't want to extend the
     // liveness of a PHI input. It breaks all kinds of assumptions down
     // stream. A PHI use is expected to be the kill of its source values.
-    for (MachineRegisterInfo::use_nodbg_iterator
-         UI = MRI->use_nodbg_begin(DstReg), UE = MRI->use_nodbg_end();
-         UI != UE; ++UI)
-      if (UI->isPHI())
-        PHIBBs.insert(UI->getParent());
+    for (MachineInstr &UI : MRI->use_nodbg_instructions(DstReg))
+      if (UI.isPHI())
+        PHIBBs.insert(UI.getParent());
 
     const TargetRegisterClass *RC = MRI->getRegClass(SrcReg);
     for (unsigned i = 0, e = Uses.size(); i != e; ++i) {
@@ -505,12 +498,12 @@ bool PeepholeOptimizer::isLoadFoldable(MachineInstr *MI,
     return false;
 
   unsigned Reg = MI->getOperand(0).getReg();
-  // To reduce compilation time, we check MRI->hasOneUse when inserting
+  // To reduce compilation time, we check MRI->hasOneNonDBGUse when inserting
   // loads. It should be checked when processing uses of the load, since
   // uses can be removed during peephole.
   if (!MI->getOperand(0).getSubReg() &&
       TargetRegisterInfo::isVirtualRegister(Reg) &&
-      MRI->hasOneUse(Reg)) {
+      MRI->hasOneNonDBGUse(Reg)) {
     FoldAsLoadDefReg = Reg;
     return true;
   }
@@ -594,10 +587,14 @@ bool PeepholeOptimizer::runOnMachineFunction(MachineFunction &MF) {
       ++MII;
       LocalMIs.insert(MI);
 
+      // Skip debug values. They should not affect this peephole optimization.
+      if (MI->isDebugValue())
+          continue;
+
       // If there exists an instruction which belongs to the following
       // categories, we will discard the load candidate.
       if (MI->isPosition() || MI->isPHI() || MI->isImplicitDef() ||
-          MI->isKill() || MI->isInlineAsm() || MI->isDebugValue() ||
+          MI->isKill() || MI->isInlineAsm() ||
           MI->hasUnmodeledSideEffects()) {
         FoldAsLoadDefReg = 0;
         continue;
@@ -633,6 +630,9 @@ bool PeepholeOptimizer::runOnMachineFunction(MachineFunction &MF) {
       if (!isLoadFoldable(MI, FoldAsLoadDefReg) && FoldAsLoadDefReg) {
         // We need to fold load after optimizeCmpInstr, since optimizeCmpInstr
         // can enable folding by converting SUB to CMP.
+        // Save FoldAsLoadDefReg because optimizeLoadInstr() resets it and we
+        // need it for markUsesInDebugValueAsUndef().
+        unsigned FoldedReg = FoldAsLoadDefReg;
         MachineInstr *DefMI = 0;
         MachineInstr *FoldMI = TII->optimizeLoadInstr(MI, MRI,
                                                       FoldAsLoadDefReg, DefMI);
@@ -645,6 +645,7 @@ bool PeepholeOptimizer::runOnMachineFunction(MachineFunction &MF) {
           LocalMIs.insert(FoldMI);
           MI->eraseFromParent();
           DefMI->eraseFromParent();
+          MRI->markUsesInDebugValueAsUndef(FoldedReg);
           ++NumLoadFold;
 
           // MI is replaced with FoldMI.
