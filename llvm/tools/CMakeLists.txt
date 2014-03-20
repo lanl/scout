@@ -1,5 +1,13 @@
 add_llvm_tool_subdirectory(llvm-config)
 
+# Build polly before the tools: the tools link against polly when
+# LINK_POLLY_INTO_TOOLS is set.
+if(WITH_POLLY)
+  add_llvm_external_project(polly)
+else(WITH_POLLY)
+  list(APPEND LLVM_IMPLICIT_PROJECT_IGNORE "${LLVM_MAIN_SRC_DIR}/tools/polly")
+endif(WITH_POLLY)
+
 add_llvm_tool_subdirectory(opt)
 add_llvm_tool_subdirectory(llvm-as)
 add_llvm_tool_subdirectory(llvm-dis)
@@ -70,12 +78,6 @@ if( NOT LLVM_INCLUDE_TOOLS STREQUAL "bootstrap-only" )
 #  Temporarily disable building of LLDB as we are developing it.
 #  add_llvm_external_project(lldb)
 # +=====================================================================+
-
-  if(WITH_POLLY)
-    add_llvm_external_project(polly)
-  else(WITH_POLLY)
-    list(APPEND LLVM_IMPLICIT_PROJECT_IGNORE "${LLVM_MAIN_SRC_DIR}/tools/polly")
-  endif(WITH_POLLY)
 
   # Automatically add remaining sub-directories containing a 'CMakeLists.txt'
   # file as external projects.

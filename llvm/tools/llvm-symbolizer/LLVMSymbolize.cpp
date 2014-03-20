@@ -53,9 +53,8 @@ static void patchFunctionNameInDILineInfo(const std::string &NewFunctionName,
 
 ModuleInfo::ModuleInfo(ObjectFile *Obj, DIContext *DICtx)
     : Module(Obj), DebugInfoContext(DICtx) {
-  for (symbol_iterator si = Module->symbol_begin(), se = Module->symbol_end();
-       si != se; ++si) {
-    addSymbol(si);
+  for (const SymbolRef &Symbol : Module->symbols()) {
+    addSymbol(Symbol);
   }
   bool NoSymbolTable = (Module->symbol_begin() == Module->symbol_end());
   if (NoSymbolTable && Module->isELF()) {
@@ -63,20 +62,19 @@ ModuleInfo::ModuleInfo(ObjectFile *Obj, DIContext *DICtx)
     std::pair<symbol_iterator, symbol_iterator> IDyn =
         getELFDynamicSymbolIterators(Module);
     for (symbol_iterator si = IDyn.first, se = IDyn.second; si != se; ++si) {
-      addSymbol(si);
+      addSymbol(*si);
     }
   }
 }
 
-void ModuleInfo::addSymbol(const symbol_iterator &Sym) {
+void ModuleInfo::addSymbol(const SymbolRef &Symbol) {
   SymbolRef::Type SymbolType;
-  if (error(Sym->getType(SymbolType)))
+  if (error(Symbol.getType(SymbolType)))
     return;
-  if (SymbolType != SymbolRef::ST_Function &&
-      SymbolType != SymbolRef::ST_Data)
+  if (SymbolType != SymbolRef::ST_Function && SymbolType != SymbolRef::ST_Data)
     return;
   uint64_t SymbolAddress;
-  if (error(Sym->getAddress(SymbolAddress)) ||
+  if (error(Symbol.getAddress(SymbolAddress)) ||
       SymbolAddress == UnknownAddressOrSize)
     return;
   uint64_t SymbolSize;
@@ -84,11 +82,11 @@ void ModuleInfo::addSymbol(const symbol_iterator &Sym) {
   // occupies the memory range up to the following symbol.
   if (isa<MachOObjectFile>(Module))
     SymbolSize = 0;
-  else if (error(Sym->getSize(SymbolSize)) ||
+  else if (error(Symbol.getSize(SymbolSize)) ||
            SymbolSize == UnknownAddressOrSize)
     return;
   StringRef SymbolName;
-  if (error(Sym->getName(SymbolName)))
+  if (error(Symbol.getName(SymbolName)))
     return;
   // Mach-O symbol table names have leading underscore, skip it.
   if (Module->isMachO() && SymbolName.size() > 0 && SymbolName[0] == '_')
@@ -279,14 +277,13 @@ static bool getGNUDebuglinkContents(const Binary *Bin, std::string &DebugName,
   const ObjectFile *Obj = dyn_cast<ObjectFile>(Bin);
   if (!Obj)
     return false;
-  for (section_iterator I = Obj->section_begin(), E = Obj->section_end();
-       I != E; ++I) {
+  for (const SectionRef &Section : Obj->sections()) {
     StringRef Name;
-    I->getName(Name);
+    Section.getName(Name);
     Name = Name.substr(Name.find_first_not_of("._"));
     if (Name == "gnu_debuglink") {
       StringRef Data;
-      I->getContents(Data);
+      Section.getContents(Data);
       DataExtractor DE(Data, Obj->isLittleEndian(), 0);
       uint32_t Offset = 0;
       if (const char *DebugNameStr = DE.getCStr(&Offset)) {

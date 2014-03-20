@@ -60,10 +60,6 @@ static cl::opt<bool> UnknownLocations(
     cl::desc("Make an absence of debug location information explicit."),
     cl::init(false));
 
-static cl::opt<bool> GenerateCUHash("generate-cu-hash", cl::Hidden,
-                                    cl::desc("Add the CU hash as the dwo_id."),
-                                    cl::init(false));
-
 static cl::opt<bool>
 GenerateGnuPubSections("generate-gnu-dwarf-pub-sections", cl::Hidden,
                        cl::desc("Generate GNU-style pubnames and pubtypes"),
@@ -106,11 +102,6 @@ static cl::opt<unsigned>
 DwarfVersionNumber("dwarf-version", cl::Hidden,
                    cl::desc("Generate DWARF for dwarf version."), cl::init(0));
 
-static cl::opt<bool>
-DwarfCURanges("generate-dwarf-cu-ranges", cl::Hidden,
-              cl::desc("Generate DW_AT_ranges for compile units"),
-              cl::init(false));
-
 static const char *const DWARFGroupName = "DWARF Emission";
 static const char *const DbgTimerName = "DWARF Debug Writer";
 
@@ -124,11 +115,17 @@ template <typename T> T DbgVariable::resolve(DIRef<T> Ref) const {
   return DD->resolve(Ref);
 }
 
+bool DbgVariable::isBlockByrefVariable() const {
+  assert(Var.isVariable() && "Invalid complex DbgVariable!");
+  return Var.isBlockByrefVariable(DD->getTypeIdentifierMap());
+}
+
+
 DIType DbgVariable::getType() const {
-  DIType Ty = Var.getType();
+  DIType Ty = Var.getType().resolve(DD->getTypeIdentifierMap());
   // FIXME: isBlockByrefVariable should be reformulated in terms of complex
   // addresses instead.
-  if (Var.isBlockByrefVariable()) {
+  if (Var.isBlockByrefVariable(DD->getTypeIdentifierMap())) {
     /* Byref variables, in Blocks, are declared by the programmer as
        "SomeType VarName;", but the compiler creates a
        __Block_byref_x_VarName struct, and gives the variable VarName
@@ -180,8 +177,7 @@ static unsigned getDwarfVersionFromModule(const Module *M) {
 }
 
 DwarfDebug::DwarfDebug(AsmPrinter *A, Module *M)
-    : Asm(A), MMI(Asm->MMI), FirstCU(0), SourceIdMap(DIEValueAllocator),
-      PrevLabel(NULL), GlobalRangeCount(0),
+    : Asm(A), MMI(Asm->MMI), FirstCU(0), PrevLabel(NULL), GlobalRangeCount(0),
       InfoHolder(A, "info_string", DIEValueAllocator), HasCURanges(false),
       UsedNonDefaultText(false),
       SkeletonHolder(A, "skel_string", DIEValueAllocator) {
@@ -549,9 +545,9 @@ DIE *DwarfDebug::constructInlinedScopeDIE(DwarfCompileUnit *TheCU,
 
   // Add the call site information to the DIE.
   DILocation DL(Scope->getInlinedAt());
-  TheCU->addUInt(ScopeDIE, dwarf::DW_AT_call_file, None,
-                 getOrCreateSourceID(DL.getFilename(), DL.getDirectory(),
-                                     TheCU->getUniqueID()));
+  TheCU->addUInt(
+      ScopeDIE, dwarf::DW_AT_call_file, None,
+      TheCU->getOrCreateSourceID(DL.getFilename(), DL.getDirectory()));
   TheCU->addUInt(ScopeDIE, dwarf::DW_AT_call_line, None, DL.getLineNumber());
 
   // Add name to the name table, we do this here because we're guaranteed
@@ -607,7 +603,8 @@ DIE *DwarfDebug::constructScopeDIE(DwarfCompileUnit *TheCU,
   if (!Scope || !Scope->getScopeNode())
     return NULL;
 
-  DIScope DS(Scope->getScopeNode());
+  // Unique scope where applicable.
+  DIScope DS(resolve(DIScope(Scope->getScopeNode()).getRef()));
 
   SmallVector<DIE *, 8> Children;
   DIE *ObjectPointer = NULL;
@@ -674,50 +671,6 @@ DIE *DwarfDebug::constructScopeDIE(DwarfCompileUnit *TheCU,
   return ScopeDIE;
 }
 
-// Look up the source id with the given directory and source file names.
-// If none currently exists, create a new id and insert it in the
-// SourceIds map. This can update DirectoryNames and SourceFileNames maps
-// as well.
-unsigned DwarfDebug::getOrCreateSourceID(StringRef FileName, StringRef DirName,
-                                         unsigned CUID) {
-  // If we print assembly, we can't separate .file entries according to
-  // compile units. Thus all files will belong to the default compile unit.
-
-  // FIXME: add a better feature test than hasRawTextSupport. Even better,
-  // extend .file to support this.
-  if (Asm->OutStreamer.hasRawTextSupport())
-    CUID = 0;
-
-  // If FE did not provide a file name, then assume stdin.
-  if (FileName.empty())
-    return getOrCreateSourceID("<stdin>", StringRef(), CUID);
-
-  // TODO: this might not belong here. See if we can factor this better.
-  if (DirName == CompilationDir)
-    DirName = "";
-
-  // FileIDCUMap stores the current ID for the given compile unit.
-  unsigned SrcId = FileIDCUMap[CUID] + 1;
-
-  // We look up the CUID/file/dir by concatenating them with a zero byte.
-  SmallString<128> NamePair;
-  NamePair += utostr(CUID);
-  NamePair += '\0';
-  NamePair += DirName;
-  NamePair += '\0'; // Zero bytes are not allowed in paths.
-  NamePair += FileName;
-
-  StringMapEntry<unsigned> &Ent = SourceIdMap.GetOrCreateValue(NamePair, SrcId);
-  if (Ent.getValue() != SrcId)
-    return Ent.getValue();
-
-  FileIDCUMap[CUID] = SrcId;
-  // Print out a .file directive to specify files for .loc directives.
-  Asm->OutStreamer.EmitDwarfFileDirective(SrcId, DirName, FileName, CUID);
-
-  return SrcId;
-}
-
 void DwarfDebug::addGnuPubAttributes(DwarfUnit *U, DIE *D) const {
   if (!GenerateGnuPubSections)
     return;
@@ -735,8 +688,9 @@ DwarfCompileUnit *DwarfDebug::constructDwarfCompileUnit(DICompileUnit DIUnit) {
   DwarfCompileUnit *NewCU = new DwarfCompileUnit(
       InfoHolder.getUnits().size(), Die, DIUnit, Asm, this, &InfoHolder);
   InfoHolder.addUnit(NewCU);
-
-  FileIDCUMap[NewCU->getUniqueID()] = 0;
+  if (!Asm->OutStreamer.hasRawTextSupport() || SingleCU)
+    Asm->OutStreamer.getContext().setMCLineTableCompilationDir(
+        NewCU->getUniqueID(), CompilationDir);
 
   NewCU->addString(Die, dwarf::DW_AT_producer, DIUnit.getProducer());
   NewCU->addUInt(Die, dwarf::DW_AT_language, dwarf::DW_FORM_data2,
@@ -838,11 +792,9 @@ void DwarfDebug::constructImportedEntityDIE(DwarfCompileUnit *TheCU,
     EntityDie = TheCU->getOrCreateTypeDIE(DIType(Entity));
   else
     EntityDie = TheCU->getDIE(Entity);
-  unsigned FileID = getOrCreateSourceID(Module.getContext().getFilename(),
-                                        Module.getContext().getDirectory(),
-                                        TheCU->getUniqueID());
-  TheCU->addUInt(IMDie, dwarf::DW_AT_decl_file, None, FileID);
-  TheCU->addUInt(IMDie, dwarf::DW_AT_decl_line, None, Module.getLineNumber());
+  TheCU->addSourceLine(IMDie, Module.getLineNumber(),
+                       Module.getContext().getFilename(),
+                       Module.getContext().getDirectory());
   TheCU->addDIEEntry(IMDie, dwarf::DW_AT_import, EntityDie);
   StringRef Name = Module.getName();
   if (!Name.empty())
@@ -869,6 +821,8 @@ void DwarfDebug::beginModule() {
   // Emit initial sections so we can reference labels later.
   emitSectionLabels();
 
+  SingleCU = CU_Nodes->getNumOperands() == 1;
+
   for (MDNode *N : CU_Nodes->operands()) {
     DICompileUnit CUNode(N);
     DwarfCompileUnit *CU = constructDwarfCompileUnit(CUNode);
@@ -889,8 +843,13 @@ void DwarfDebug::beginModule() {
     for (unsigned i = 0, e = EnumTypes.getNumElements(); i != e; ++i)
       CU->getOrCreateTypeDIE(EnumTypes.getElement(i));
     DIArray RetainedTypes = CUNode.getRetainedTypes();
-    for (unsigned i = 0, e = RetainedTypes.getNumElements(); i != e; ++i)
-      CU->getOrCreateTypeDIE(RetainedTypes.getElement(i));
+    for (unsigned i = 0, e = RetainedTypes.getNumElements(); i != e; ++i) {
+      DIType Ty(RetainedTypes.getElement(i));
+      // The retained types array by design contains pointers to
+      // MDNodes rather than DIRefs. Unique them here.
+      DIType UniqueTy(resolve(Ty.getRef()));
+      CU->getOrCreateTypeDIE(UniqueTy);
+    }
     // Emit imported_modules last so that the relevant context is already
     // available.
     for (unsigned i = 0, e = ImportedEntities.getNumElements(); i != e; ++i)
@@ -980,12 +939,8 @@ void DwarfDebug::finalizeModuleInfo() {
       DwarfCompileUnit *SkCU =
           static_cast<DwarfCompileUnit *>(TheU->getSkeleton());
       if (useSplitDwarf()) {
-        // This should be a unique identifier when we want to build .dwp files.
-        uint64_t ID = 0;
-        if (GenerateCUHash) {
-          DIEHash CUHash(Asm);
-          ID = CUHash.computeCUSignature(*TheU->getUnitDie());
-        }
+        // Emit a unique identifier for this CU.
+        uint64_t ID = DIEHash(Asm).computeCUSignature(*TheU->getUnitDie());
         TheU->addUInt(TheU->getUnitDie(), dwarf::DW_AT_GNU_dwo_id,
                       dwarf::DW_FORM_data8, ID);
         SkCU->addUInt(SkCU->getUnitDie(), dwarf::DW_AT_GNU_dwo_id,
@@ -1067,13 +1022,12 @@ void DwarfDebug::endSections() {
     SectionMap[Section].push_back(SymbolCU(NULL, Sym));
   }
 
-  // For now only turn on CU ranges if we've explicitly asked for it,
-  // we have -ffunction-sections enabled, we've emitted a function
-  // into a unique section, or we're using LTO. If we're using LTO then
-  // we can't know that any particular function in the module is correlated
-  // to a particular CU and so we need to be conservative. At this point all
-  // sections should be finalized except for dwarf sections.
-  HasCURanges = DwarfCURanges || UsedNonDefaultText || (CUMap.size() > 1) ||
+  // For now only turn on CU ranges if we have -ffunction-sections enabled,
+  // we've emitted a function into a unique section, or we're using LTO. If
+  // we're using LTO then we can't know that any particular function in the
+  // module is correlated to a particular CU and so we need to be conservative.
+  // At this point all sections should be finalized except for dwarf sections.
+  HasCURanges = UsedNonDefaultText || (CUMap.size() > 1) ||
                 TargetMachine::getFunctionSections();
 }
 
@@ -1114,6 +1068,7 @@ void DwarfDebug::endModule() {
     emitDebugStrDWO();
     emitDebugInfoDWO();
     emitDebugAbbrevDWO();
+    emitDebugLineDWO();
     // Emit DWO addresses.
     InfoHolder.emitAddresses(Asm->getObjFileLowering().getDwarfAddrSection());
   }
@@ -1216,7 +1171,7 @@ static bool isDbgValueInDefinedReg(const MachineInstr *MI) {
 }
 
 // Get .debug_loc entry for the instruction range starting at MI.
-static DotDebugLocEntry getDebugLocEntry(AsmPrinter *Asm,
+static DebugLocEntry getDebugLocEntry(AsmPrinter *Asm,
                                          const MCSymbol *FLabel,
                                          const MCSymbol *SLabel,
                                          const MachineInstr *MI) {
@@ -1231,14 +1186,14 @@ static DotDebugLocEntry getDebugLocEntry(AsmPrinter *Asm,
       MLoc.set(MI->getOperand(0).getReg());
     else
       MLoc.set(MI->getOperand(0).getReg(), MI->getOperand(1).getImm());
-    return DotDebugLocEntry(FLabel, SLabel, MLoc, Var);
+    return DebugLocEntry(FLabel, SLabel, MLoc, Var);
   }
   if (MI->getOperand(0).isImm())
-    return DotDebugLocEntry(FLabel, SLabel, MI->getOperand(0).getImm());
+    return DebugLocEntry(FLabel, SLabel, MI->getOperand(0).getImm());
   if (MI->getOperand(0).isFPImm())
-    return DotDebugLocEntry(FLabel, SLabel, MI->getOperand(0).getFPImm());
+    return DebugLocEntry(FLabel, SLabel, MI->getOperand(0).getFPImm());
   if (MI->getOperand(0).isCImm())
-    return DotDebugLocEntry(FLabel, SLabel, MI->getOperand(0).getCImm());
+    return DebugLocEntry(FLabel, SLabel, MI->getOperand(0).getCImm());
 
   llvm_unreachable("Unexpected 3 operand DBG_VALUE instruction!");
 }
@@ -1331,7 +1286,7 @@ DwarfDebug::collectVariableInfo(SmallPtrSet<const MDNode *, 16> &Processed) {
       DotDebugLocEntries.push_back(
           getDebugLocEntry(Asm, FLabel, SLabel, Begin));
     }
-    DotDebugLocEntries.push_back(DotDebugLocEntry());
+    DotDebugLocEntries.push_back(DebugLocEntry());
   }
 
   // Collect info for variables that were optimized out.
@@ -1468,8 +1423,12 @@ void DwarfDebug::beginFunction(const MachineFunction *MF) {
   // Grab the lexical scopes for the function, if we don't have any of those
   // then we're not going to be able to do anything.
   LScopes.initialize(*MF);
-  if (LScopes.empty())
+  if (LScopes.empty()) {
+    // If we don't have a lexical scope for this function then there will
+    // be a hole in the range information. Keep note of this.
+    UsedNonDefaultText = true;
     return;
+  }
 
   assert(UserVariables.empty() && DbgValues.empty() && "Maps weren't cleaned");
 
@@ -1799,8 +1758,9 @@ void DwarfDebug::recordSourceLine(unsigned Line, unsigned Col, const MDNode *S,
     } else
       llvm_unreachable("Unexpected scope info");
 
-    Src = getOrCreateSourceID(
-        Fn, Dir, Asm->OutStreamer.getContext().getDwarfCompileUnitID());
+    unsigned CUID = Asm->OutStreamer.getContext().getDwarfCompileUnitID();
+    Src = static_cast<DwarfCompileUnit *>(InfoHolder.getUnits()[CUID])
+              ->getOrCreateSourceID(Fn, Dir);
   }
   Asm->OutStreamer.EmitDwarfLocDirective(Src, Line, Col, Flags, 0,
                                          Discriminator, Fn);
@@ -2204,8 +2164,20 @@ void DwarfDebug::emitDebugPubNames(bool GnuStyle) {
       GnuStyle ? Asm->getObjFileLowering().getDwarfGnuPubNamesSection()
                : Asm->getObjFileLowering().getDwarfPubNamesSection();
 
+  emitDebugPubSection(GnuStyle, PSec, "Names", &DwarfUnit::getGlobalNames);
+}
+
+void DwarfDebug::emitDebugPubSection(
+    bool GnuStyle, const MCSection *PSec, StringRef Name,
+    const StringMap<const DIE *> &(DwarfUnit::*Accessor)() const) {
   for (const auto &NU : CUMap) {
     DwarfCompileUnit *TheU = NU.second;
+
+    const auto &Globals = (TheU->*Accessor)();
+
+    if (Globals.empty())
+      continue;
+
     if (auto Skeleton = static_cast<DwarfCompileUnit *>(TheU->getSkeleton()))
       TheU = Skeleton;
     unsigned ID = TheU->getUniqueID();
@@ -2213,14 +2185,10 @@ void DwarfDebug::emitDebugPubNames(bool GnuStyle) {
     // Start the dwarf pubnames section.
     Asm->OutStreamer.SwitchSection(PSec);
 
-    // Emit a label so we can reference the beginning of this pubname section.
-    if (GnuStyle)
-      Asm->OutStreamer.EmitLabel(Asm->GetTempSymbol("gnu_pubnames", ID));
-
     // Emit the header.
-    Asm->OutStreamer.AddComment("Length of Public Names Info");
-    MCSymbol *BeginLabel = Asm->GetTempSymbol("pubnames_begin", ID);
-    MCSymbol *EndLabel = Asm->GetTempSymbol("pubnames_end", ID);
+    Asm->OutStreamer.AddComment("Length of Public " + Name + " Info");
+    MCSymbol *BeginLabel = Asm->GetTempSymbol("pub" + Name + "_begin", ID);
+    MCSymbol *EndLabel = Asm->GetTempSymbol("pub" + Name + "_end", ID);
     Asm->EmitLabelDifference(EndLabel, BeginLabel, 4);
 
     Asm->OutStreamer.EmitLabel(BeginLabel);
@@ -2235,7 +2203,7 @@ void DwarfDebug::emitDebugPubNames(bool GnuStyle) {
     Asm->EmitLabelDifference(TheU->getLabelEnd(), TheU->getLabelBegin(), 4);
 
     // Emit the pubnames for this compilation unit.
-    for (const auto &GI : getUnits()[ID]->getGlobalNames()) {
+    for (const auto &GI : Globals) {
       const char *Name = GI.getKeyData();
       const DIE *Entity = GI.second;
 
@@ -2265,62 +2233,7 @@ void DwarfDebug::emitDebugPubTypes(bool GnuStyle) {
       GnuStyle ? Asm->getObjFileLowering().getDwarfGnuPubTypesSection()
                : Asm->getObjFileLowering().getDwarfPubTypesSection();
 
-  for (const auto &NU : CUMap) {
-    DwarfCompileUnit *TheU = NU.second;
-    if (auto Skeleton = static_cast<DwarfCompileUnit *>(TheU->getSkeleton()))
-      TheU = Skeleton;
-    unsigned ID = TheU->getUniqueID();
-
-    // Start the dwarf pubtypes section.
-    Asm->OutStreamer.SwitchSection(PSec);
-
-    // Emit a label so we can reference the beginning of this pubtype section.
-    if (GnuStyle)
-      Asm->OutStreamer.EmitLabel(Asm->GetTempSymbol("gnu_pubtypes", ID));
-
-    // Emit the header.
-    Asm->OutStreamer.AddComment("Length of Public Types Info");
-    MCSymbol *BeginLabel = Asm->GetTempSymbol("pubtypes_begin", ID);
-    MCSymbol *EndLabel = Asm->GetTempSymbol("pubtypes_end", ID);
-    Asm->EmitLabelDifference(EndLabel, BeginLabel, 4);
-
-    Asm->OutStreamer.EmitLabel(BeginLabel);
-
-    Asm->OutStreamer.AddComment("DWARF Version");
-    Asm->EmitInt16(dwarf::DW_PUBTYPES_VERSION);
-
-    Asm->OutStreamer.AddComment("Offset of Compilation Unit Info");
-    Asm->EmitSectionOffset(TheU->getLabelBegin(), TheU->getSectionSym());
-
-    Asm->OutStreamer.AddComment("Compilation Unit Length");
-    Asm->EmitLabelDifference(TheU->getLabelEnd(), TheU->getLabelBegin(), 4);
-
-    // Emit the pubtypes.
-    for (const auto &GI : getUnits()[ID]->getGlobalTypes()) {
-      const char *Name = GI.getKeyData();
-      const DIE *Entity = GI.second;
-
-      Asm->OutStreamer.AddComment("DIE offset");
-      Asm->EmitInt32(Entity->getOffset());
-
-      if (GnuStyle) {
-        dwarf::PubIndexEntryDescriptor Desc = computeIndexValue(TheU, Entity);
-        Asm->OutStreamer.AddComment(
-            Twine("Kind: ") + dwarf::GDBIndexEntryKindString(Desc.Kind) + ", " +
-            dwarf::GDBIndexEntryLinkageString(Desc.Linkage));
-        Asm->EmitInt8(Desc.toBits());
-      }
-
-      Asm->OutStreamer.AddComment("External Name");
-
-      // Emit the name with a terminating null byte.
-      Asm->OutStreamer.EmitBytes(StringRef(Name, GI.getKeyLength() + 1));
-    }
-
-    Asm->OutStreamer.AddComment("End Mark");
-    Asm->EmitInt32(0);
-    Asm->OutStreamer.EmitLabel(EndLabel);
-  }
+  emitDebugPubSection(GnuStyle, PSec, "Types", &DwarfUnit::getGlobalTypes);
 }
 
 // Emit strings into a string section.
@@ -2393,10 +2306,10 @@ void DwarfDebug::emitDebugStr() {
 }
 
 void DwarfDebug::emitDebugLocEntry(ByteStreamer &Streamer,
-                                   const DotDebugLocEntry &Entry) {
+                                   const DebugLocEntry &Entry) {
   DIVariable DV(Entry.getVariable());
   if (Entry.isInt()) {
-    DIBasicType BTy(DV.getType());
+    DIBasicType BTy(resolve(DV.getType()));
     if (BTy.Verify() && (BTy.getEncoding() == dwarf::DW_ATE_signed ||
                          BTy.getEncoding() == dwarf::DW_ATE_signed_char)) {
       Streamer.EmitInt8(dwarf::DW_OP_consts, "DW_OP_consts");
@@ -2456,11 +2369,11 @@ void DwarfDebug::emitDebugLoc() {
   if (DotDebugLocEntries.empty())
     return;
 
-  for (SmallVectorImpl<DotDebugLocEntry>::iterator
+  for (SmallVectorImpl<DebugLocEntry>::iterator
            I = DotDebugLocEntries.begin(),
            E = DotDebugLocEntries.end();
        I != E; ++I) {
-    DotDebugLocEntry &Entry = *I;
+    DebugLocEntry &Entry = *I;
     if (I + 1 != DotDebugLocEntries.end())
       Entry.Merge(I + 1);
   }
@@ -2471,11 +2384,11 @@ void DwarfDebug::emitDebugLoc() {
   unsigned char Size = Asm->getDataLayout().getPointerSize();
   Asm->OutStreamer.EmitLabel(Asm->GetTempSymbol("debug_loc", 0));
   unsigned index = 1;
-  for (SmallVectorImpl<DotDebugLocEntry>::const_iterator
+  for (SmallVectorImpl<DebugLocEntry>::const_iterator
            I = DotDebugLocEntries.begin(),
            E = DotDebugLocEntries.end();
        I != E; ++I, ++index) {
-    const DotDebugLocEntry &Entry = *I;
+    const DebugLocEntry &Entry = *I;
     if (Entry.isMerged())
       continue;
 
@@ -2756,7 +2669,6 @@ DwarfTypeUnit *DwarfDebug::constructSkeletonTU(DwarfTypeUnit *TU) {
   NewTU->setType(NULL);
   NewTU->initSection(
       Asm->getObjFileLowering().getDwarfTypesSection(TU->getTypeSignature()));
-  CU.applyStmtList(*Die);
 
   initSkeletonUnit(TU, Die, NewTU);
   return NewTU;
@@ -2778,6 +2690,13 @@ void DwarfDebug::emitDebugAbbrevDWO() {
   InfoHolder.emitAbbrevs(Asm->getObjFileLowering().getDwarfAbbrevDWOSection());
 }
 
+void DwarfDebug::emitDebugLineDWO() {
+  assert(useSplitDwarf() && "No split dwarf?");
+  Asm->OutStreamer.SwitchSection(
+      Asm->getObjFileLowering().getDwarfLineDWOSection());
+  SplitTypeUnitFileTable.Emit(Asm->OutStreamer);
+}
+
 // Emit the .debug_str.dwo section for separated dwarf. This contains the
 // string section and is identical in format to traditional .debug_str
 // sections.
@@ -2788,6 +2707,14 @@ void DwarfDebug::emitDebugStrDWO() {
   const MCSymbol *StrSym = DwarfStrSectionSym;
   InfoHolder.emitStrings(Asm->getObjFileLowering().getDwarfStrDWOSection(),
                          OffSec, StrSym);
+}
+
+MCDwarfDwoLineTable *DwarfDebug::getDwoLineTable(const DwarfCompileUnit &CU) {
+  if (!useSplitDwarf())
+    return nullptr;
+  if (SingleCU)
+    SplitTypeUnitFileTable.setCompilationDir(CU.getCUNode().getDirectory());
+  return &SplitTypeUnitFileTable;
 }
 
 void DwarfDebug::addDwarfTypeUnitType(DwarfCompileUnit &CU,
@@ -2806,8 +2733,9 @@ void DwarfDebug::addDwarfTypeUnitType(DwarfCompileUnit &CU,
   }
 
   DIE *UnitDie = new DIE(dwarf::DW_TAG_type_unit);
-  DwarfTypeUnit *NewTU = new DwarfTypeUnit(InfoHolder.getUnits().size(),
-                                           UnitDie, CU, Asm, this, &InfoHolder);
+  DwarfTypeUnit *NewTU =
+      new DwarfTypeUnit(InfoHolder.getUnits().size(), UnitDie, CU, Asm, this,
+                        &InfoHolder, getDwoLineTable(CU));
   TU = NewTU;
   InfoHolder.addUnit(NewTU);
 

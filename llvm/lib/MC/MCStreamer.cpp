@@ -34,6 +34,8 @@ void MCTargetStreamer::emitLabel(MCSymbol *Symbol) {}
 
 void MCTargetStreamer::finish() {}
 
+void MCTargetStreamer::emitAssignment(MCSymbol *Symbol, const MCExpr *Value) {}
+
 MCStreamer::MCStreamer(MCContext &Ctx)
     : Context(Ctx), EmitEHFrame(true), EmitDebugFrame(false),
       CurrentW64UnwindInfo(0), LastSymbol(0) {
@@ -174,10 +176,10 @@ void MCStreamer::EmitZeros(uint64_t NumBytes) {
   EmitFill(NumBytes, 0);
 }
 
-bool MCStreamer::EmitDwarfFileDirective(unsigned FileNo,
-                                        StringRef Directory,
-                                        StringRef Filename, unsigned CUID) {
-  return getContext().GetDwarfFile(Directory, Filename, FileNo, CUID) == 0;
+unsigned MCStreamer::EmitDwarfFileDirective(unsigned FileNo,
+                                            StringRef Directory,
+                                            StringRef Filename, unsigned CUID) {
+  return getContext().GetDwarfFile(Directory, Filename, FileNo, CUID);
 }
 
 void MCStreamer::EmitDwarfLocDirective(unsigned FileNo, unsigned Line,
@@ -627,7 +629,15 @@ void MCStreamer::Finish() {
   FinishImpl();
 }
 
-MCSymbolData &MCStreamer::getOrCreateSymbolData(MCSymbol *Symbol) {
+MCSymbolData &MCStreamer::getOrCreateSymbolData(const MCSymbol *Symbol) {
   report_fatal_error("Not supported!");
   return *(static_cast<MCSymbolData*>(0));
+}
+
+void MCStreamer::EmitAssignment(MCSymbol *Symbol, const MCExpr *Value) {
+  Symbol->setVariableValue(Value);
+
+  MCTargetStreamer *TS = getTargetStreamer();
+  if (TS)
+    TS->emitAssignment(Symbol, Value);
 }

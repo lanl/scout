@@ -30,6 +30,9 @@
 namespace llvm {
 namespace COFF {
 
+  // The maximum number of sections that a COFF object can have (inclusive).
+  const int MaxNumberOfSections = 65299;
+
   // The PE signature bytes that follows the DOS stub header.
   static const char PEMagic[] = { 'P', 'E', '\0', '\0' };
 
@@ -138,8 +141,8 @@ namespace COFF {
   };
 
   enum SymbolSectionNumber {
-    IMAGE_SYM_DEBUG     = -2,
-    IMAGE_SYM_ABSOLUTE  = -1,
+    IMAGE_SYM_DEBUG     = 0xFFFE,
+    IMAGE_SYM_ABSOLUTE  = 0xFFFF,
     IMAGE_SYM_UNDEFINED = 0
   };
 
@@ -207,6 +210,10 @@ namespace COFF {
 
     /// Type is formed as (base + (derived << SCT_COMPLEX_TYPE_SHIFT))
     SCT_COMPLEX_TYPE_SHIFT   = 4
+  };
+
+  enum AuxSymbolType {
+    IMAGE_AUX_SYMBOL_TYPE_TOKEN_DEF = 1
   };
 
   struct section {
@@ -334,7 +341,7 @@ namespace COFF {
     uint32_t TotalSize;
     uint32_t PointerToLinenumber;
     uint32_t PointerToNextFunction;
-    uint8_t  unused[2];
+    char     unused[2];
   };
 
   struct AuxiliarybfAndefSymbol {
@@ -369,7 +376,14 @@ namespace COFF {
     uint32_t CheckSum;
     uint16_t Number;
     uint8_t  Selection;
-    uint8_t  unused[3];
+    char     unused[3];
+  };
+
+  struct AuxiliaryCLRToken {
+    uint8_t  AuxType;
+    uint8_t  unused1;
+    uint32_t SymbolTableIndex;
+    char     unused2[12];
   };
 
   union Auxiliary {
@@ -624,6 +638,10 @@ namespace COFF {
     DEBUG_STRING_TABLE_SUBSECTION = 0xF3,
     DEBUG_INDEX_SUBSECTION        = 0xF4
   };
+
+  inline bool isReservedSectionNumber(int N) {
+    return N == IMAGE_SYM_UNDEFINED || N > MaxNumberOfSections;
+  }
 
 } // End namespace COFF.
 } // End namespace llvm.

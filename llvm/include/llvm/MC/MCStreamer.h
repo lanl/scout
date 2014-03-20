@@ -79,6 +79,8 @@ public:
 
   // Allow a target to add behavior to the EmitLabel of MCStreamer.
   virtual void emitLabel(MCSymbol *Symbol);
+  // Allow a target to add behavior to the emitAssignment of MCStreamer.
+  virtual void emitAssignment(MCSymbol *Symbol, const MCExpr *Value);
 
   virtual void finish();
 };
@@ -386,12 +388,16 @@ public:
   /// EmitDataRegion - Note in the output the specified region @p Kind.
   virtual void EmitDataRegion(MCDataRegionType Kind) {}
 
+  /// EmitVersionMin - Specify the MachO minimum deployment target version.
+  virtual void EmitVersionMin(MCVersionMinType, unsigned Major, unsigned Minor,
+                              unsigned Update) {}
+
   /// EmitThumbFunc - Note in the output that the specified @p Func is
   /// a Thumb mode function (ARM target only).
   virtual void EmitThumbFunc(MCSymbol *Func) = 0;
 
   /// getOrCreateSymbolData - Get symbol data for given symbol.
-  virtual MCSymbolData &getOrCreateSymbolData(MCSymbol *Symbol);
+  virtual MCSymbolData &getOrCreateSymbolData(const MCSymbol *Symbol);
 
   /// EmitAssignment - Emit an assignment of @p Value to @p Symbol.
   ///
@@ -404,7 +410,7 @@ public:
   ///
   /// @param Symbol - The symbol being assigned to.
   /// @param Value - The value for the symbol.
-  virtual void EmitAssignment(MCSymbol *Symbol, const MCExpr *Value) = 0;
+  virtual void EmitAssignment(MCSymbol *Symbol, const MCExpr *Value);
 
   /// EmitWeakReference - Emit an weak reference from @p Alias to @p Symbol.
   ///
@@ -628,8 +634,9 @@ public:
   /// EmitDwarfFileDirective - Associate a filename with a specified logical
   /// file number.  This implements the DWARF2 '.file 4 "foo.c"' assembler
   /// directive.
-  virtual bool EmitDwarfFileDirective(unsigned FileNo, StringRef Directory,
-                                      StringRef Filename, unsigned CUID = 0);
+  virtual unsigned EmitDwarfFileDirective(unsigned FileNo, StringRef Directory,
+                                          StringRef Filename,
+                                          unsigned CUID = 0);
 
   /// EmitDwarfLocDirective - This implements the DWARF2
   // '.loc fileno lineno ...' assembler directive.

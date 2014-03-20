@@ -82,7 +82,7 @@ uint64_t MachObjectWriter::getSymbolAddress(const MCSymbolData* SD,
 
 
     MCValue Target;
-    if (!S.getVariableValue()->EvaluateAsRelocatable(Target, Layout))
+    if (!S.getVariableValue()->EvaluateAsRelocatable(Target, &Layout))
       report_fatal_error("unable to evaluate offset for variable '" +
                          S.getName() + "'");
 
@@ -631,7 +631,7 @@ void MachObjectWriter::markAbsoluteVariableSymbols(MCAssembler &Asm,
     // and neither symbol is external, mark the variable as absolute.
     const MCExpr *Expr = SD.getSymbol().getVariableValue();
     MCValue Value;
-    if (Expr->EvaluateAsRelocatable(Value, Layout)) {
+    if (Expr->EvaluateAsRelocatable(Value, &Layout)) {
       if (Value.getSymA() && Value.getSymB())
         const_cast<MCSymbol*>(&SD.getSymbol())->setAbsolute();
     }
@@ -688,7 +688,8 @@ IsSymbolRefDifferenceFullyResolvedImpl(const MCAssembler &Asm,
     // same assumptions about any symbol that we normally make about
     // assembler locals.
 
-    if (!Asm.getBackend().hasReliableSymbolDifference()) {
+    bool hasReliableSymbolDifference = isX86_64();
+    if (!hasReliableSymbolDifference) {
       if (!SA.isInSection() || &SecA != &SecB ||
           (!SA.isTemporary() &&
            FB.getAtom() != Asm.getSymbolData(SA).getFragment()->getAtom() &&
@@ -736,6 +737,8 @@ IsSymbolRefDifferenceFullyResolvedImpl(const MCAssembler &Asm,
 void MachObjectWriter::WriteObject(MCAssembler &Asm,
                                    const MCAsmLayout &Layout) {
   unsigned NumSections = Asm.size();
+  const MCAssembler::VersionMinInfoType &VersionInfo =
+    Layout.getAssembler().getVersionMinInfo();
 
   // The section data starts after the header, the segment load command (and
   // section headers) and the symbol table.
@@ -743,6 +746,12 @@ void MachObjectWriter::WriteObject(MCAssembler &Asm,
   uint64_t LoadCommandsSize = is64Bit() ?
     sizeof(MachO::segment_command_64) + NumSections * sizeof(MachO::section_64):
     sizeof(MachO::segment_command) + NumSections * sizeof(MachO::section);
+
+  // Add the deployment target version info load command size, if used.
+  if (VersionInfo.Major != 0) {
+    ++NumLoadCommands;
+    LoadCommandsSize += sizeof(MachO::version_min_command);
+  }
 
   // Add the data-in-code load command size, if used.
   unsigned NumDataRegions = Asm.getDataRegions().size();
@@ -814,6 +823,20 @@ void MachObjectWriter::WriteObject(MCAssembler &Asm,
     uint64_t SectionStart = SectionDataStart + getSectionAddress(it);
     WriteSection(Asm, Layout, *it, SectionStart, RelocTableEnd, NumRelocs);
     RelocTableEnd += NumRelocs * sizeof(MachO::any_relocation_info);
+  }
+
+  // Write out the deployment target information, if it's available.
+  if (VersionInfo.Major != 0) {
+    assert(VersionInfo.Update < 256 && "unencodable update target version");
+    assert(VersionInfo.Minor < 256 && "unencodable minor target version");
+    assert(VersionInfo.Major < 65536 && "unencodable major target version");
+    uint32_t EncodedVersion = VersionInfo.Update | (VersionInfo.Minor << 8) |
+      (VersionInfo.Major << 16);
+    Write32(VersionInfo.Kind == MCVM_OSXVersionMin ? MachO::LC_VERSION_MIN_MACOSX :
+            MachO::LC_VERSION_MIN_IPHONEOS);
+    Write32(sizeof(MachO::version_min_command));
+    Write32(EncodedVersion);
+    Write32(0);         // reserved.
   }
 
   // Write the data-in-code load command, if used.

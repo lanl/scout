@@ -51,11 +51,11 @@ MCMachObjectSymbolizer::MCMachObjectSymbolizer(
     : MCObjectSymbolizer(Ctx, RelInfo, MOOF), MOOF(MOOF), StubsStart(0),
       StubsCount(0), StubSize(0), StubsIndSymIndex(0) {
 
-  for (section_iterator SI = MOOF->section_begin(), SE = MOOF->section_end();
-       SI != SE; ++SI) {
-    StringRef Name; SI->getName(Name);
+  for (const SectionRef &Section : MOOF->sections()) {
+    StringRef Name;
+    Section.getName(Name);
     if (Name == "__stubs") {
-      SectionRef StubsSec = *SI;
+      SectionRef StubsSec = Section;
       if (MOOF->is64Bit()) {
         MachO::section_64 S = MOOF->getSection64(StubsSec.getRawDataRefImpl());
         StubsIndSymIndex = S.reserved1;
@@ -153,14 +153,17 @@ tryAddingSymbolicOperand(MCInst &MI, raw_ostream &cStream,
     return false;
   uint64_t UValue = Value;
   // FIXME: map instead of looping each time?
-  for (symbol_iterator SI = Obj->symbol_begin(), SE = Obj->symbol_end();
-       SI != SE; ++SI) {
-    uint64_t SymAddr; SI->getAddress(SymAddr);
-    uint64_t SymSize; SI->getSize(SymSize);
-    StringRef SymName; SI->getName(SymName);
-    SymbolRef::Type SymType; SI->getType(SymType);
-    if (SymAddr == UnknownAddressOrSize || SymSize == UnknownAddressOrSize
-        || SymName.empty() || SymType != SymbolRef::ST_Function)
+  for (const SymbolRef &Symbol : Obj->symbols()) {
+    uint64_t SymAddr;
+    Symbol.getAddress(SymAddr);
+    uint64_t SymSize;
+    Symbol.getSize(SymSize);
+    StringRef SymName;
+    Symbol.getName(SymName);
+    SymbolRef::Type SymType;
+    Symbol.getType(SymType);
+    if (SymAddr == UnknownAddressOrSize || SymSize == UnknownAddressOrSize ||
+        SymName.empty() || SymType != SymbolRef::ST_Function)
       continue;
 
     if ( SymAddr == UValue ||
@@ -230,41 +233,40 @@ const RelocationRef *MCObjectSymbolizer::findRelocationAt(uint64_t Addr) {
 }
 
 void MCObjectSymbolizer::buildSectionList() {
-  for (section_iterator SI = Obj->section_begin(), SE = Obj->section_end();
-       SI != SE; ++SI) {
-    bool RequiredForExec; SI->isRequiredForExecution(RequiredForExec);
+  for (const SectionRef &Section : Obj->sections()) {
+    bool RequiredForExec;
+    Section.isRequiredForExecution(RequiredForExec);
     if (RequiredForExec == false)
       continue;
-    uint64_t SAddr; SI->getAddress(SAddr);
-    uint64_t SSize; SI->getSize(SSize);
-    SortedSectionList::iterator It = std::lower_bound(SortedSections.begin(),
-                                                      SortedSections.end(),
-                                                      SAddr,
-                                                      SectionStartsBefore);
+    uint64_t SAddr;
+    Section.getAddress(SAddr);
+    uint64_t SSize;
+    Section.getSize(SSize);
+    SortedSectionList::iterator It =
+        std::lower_bound(SortedSections.begin(), SortedSections.end(), SAddr,
+                         SectionStartsBefore);
     if (It != SortedSections.end()) {
       uint64_t FoundSAddr; It->getAddress(FoundSAddr);
       if (FoundSAddr < SAddr + SSize)
         llvm_unreachable("Inserting overlapping sections");
     }
-    SortedSections.insert(It, *SI);
+    SortedSections.insert(It, Section);
   }
 }
 
 void MCObjectSymbolizer::buildRelocationByAddrMap() {
-  for (section_iterator SI = Obj->section_begin(), SE = Obj->section_end();
-       SI != SE; ++SI) {
-    section_iterator RelSecI = SI->getRelocatedSection();
+  for (const SectionRef &Section : Obj->sections()) {
+    section_iterator RelSecI = Section.getRelocatedSection();
     if (RelSecI == Obj->section_end())
       continue;
 
     uint64_t StartAddr; RelSecI->getAddress(StartAddr);
     uint64_t Size; RelSecI->getSize(Size);
-    bool RequiredForExec; RelSecI->isRequiredForExecution(RequiredForExec);
+    bool RequiredForExec;
+    RelSecI->isRequiredForExecution(RequiredForExec);
     if (RequiredForExec == false || Size == 0)
       continue;
-    for (relocation_iterator RI = SI->relocation_begin(),
-                             RE = SI->relocation_end();
-         RI != RE; ++RI) {
+    for (const RelocationRef &Reloc : Section.relocations()) {
       // FIXME: libObject is inconsistent regarding error handling. The
       // overwhelming majority of methods always return object_error::success,
       // and assert for simple errors.. Here, ELFObjectFile::getRelocationOffset
@@ -276,18 +278,18 @@ void MCObjectSymbolizer::buildRelocationByAddrMap() {
         if (ELFObj == 0)
           break;
         if (ELFObj->getELFFile()->getHeader()->e_type == ELF::ET_REL) {
-          RI->getOffset(Offset);
+          Reloc.getOffset(Offset);
           Offset += StartAddr;
         } else {
-          RI->getAddress(Offset);
+          Reloc.getAddress(Offset);
         }
       } else {
-        RI->getOffset(Offset);
+        Reloc.getOffset(Offset);
         Offset += StartAddr;
       }
       // At a specific address, only keep the first relocation.
       if (AddrToReloc.find(Offset) == AddrToReloc.end())
-        AddrToReloc[Offset] = *RI;
+        AddrToReloc[Offset] = Reloc;
     }
   }
 }

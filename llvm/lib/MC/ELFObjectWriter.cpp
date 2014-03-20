@@ -472,18 +472,21 @@ uint64_t ELFObjectWriter::SymbolValue(MCSymbolData &Data,
   if (Symbol.isAbsolute() && Symbol.isVariable()) {
     if (const MCExpr *Value = Symbol.getVariableValue()) {
       int64_t IntValue;
-      if (Value->EvaluateAsAbsolute(IntValue, Layout))
-        return (uint64_t)IntValue;
+      if (Value->EvaluateAsAbsolute(IntValue, Layout)) {
+        if (Data.getFlags() & ELF_Other_ThumbFunc)
+          return static_cast<uint64_t>(IntValue | 1);
+        else
+          return static_cast<uint64_t>(IntValue);
+      }
     }
   }
 
   if (!Symbol.isInSection())
     return 0;
 
-
   if (Data.getFragment()) {
     if (Data.getFlags() & ELF_Other_ThumbFunc)
-      return Layout.getSymbolOffset(&Data)+1;
+      return Layout.getSymbolOffset(&Data) | 1;
     else
       return Layout.getSymbolOffset(&Data);
   }
@@ -578,6 +581,8 @@ void ELFObjectWriter::WriteSymbol(MCDataFragment *SymtabF,
   // Binding and Type share the same byte as upper and lower nibbles
   uint8_t Binding = MCELF::GetBinding(OrigData);
   uint8_t Type = mergeTypeForSet(MCELF::GetType(OrigData), MCELF::GetType(Data));
+  if (OrigData.getFlags() & ELF_Other_ThumbFunc)
+    Type = ELF::STT_FUNC;
   uint8_t Info = (Binding << ELF_STB_Shift) | (Type << ELF_STT_Shift);
 
   // Other and Visibility share the same byte with Visibility using the lower
@@ -587,6 +592,8 @@ void ELFObjectWriter::WriteSymbol(MCDataFragment *SymtabF,
   Other |= Visibility;
 
   uint64_t Value = SymbolValue(Data, Layout);
+  if (OrigData.getFlags() & ELF_Other_ThumbFunc)
+    Value |= 1;
   uint64_t Size = 0;
 
   assert(!(Data.isCommon() && !Data.isExternal()));
@@ -778,7 +785,7 @@ void ELFObjectWriter::RecordRelocation(const MCAssembler &Asm,
         Index = 0;
       }
     } else {
-      if (Asm.getSymbolData(Symbol).getFlags() & ELF_Other_Weakref)
+      if (Target.getSymA()->getKind() == MCSymbolRefExpr::VK_WEAKREF)
         WeakrefUsedInReloc.insert(RelocSymbol);
       else
         UsedInReloc.insert(RelocSymbol);
@@ -823,16 +830,20 @@ ELFObjectWriter::getSymbolIndexInSymbolTable(const MCAssembler &Asm,
 bool ELFObjectWriter::isInSymtab(const MCAssembler &Asm,
                                  const MCSymbolData &Data,
                                  bool Used, bool Renamed) {
-  if (Data.getFlags() & ELF_Other_Weakref)
-    return false;
+  const MCSymbol &Symbol = Data.getSymbol();
+  if (Symbol.isVariable()) {
+    const MCExpr *Expr = Symbol.getVariableValue();
+    if (const MCSymbolRefExpr *Ref = dyn_cast<MCSymbolRefExpr>(Expr)) {
+      if (Ref->getKind() == MCSymbolRefExpr::VK_WEAKREF)
+        return false;
+    }
+  }
 
   if (Used)
     return true;
 
   if (Renamed)
     return false;
-
-  const MCSymbol &Symbol = Data.getSymbol();
 
   if (Symbol.getName() == "_GLOBAL_OFFSET_TABLE_")
     return true;

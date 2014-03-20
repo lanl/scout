@@ -120,7 +120,7 @@ unsigned MLxExpansion::getDefReg(MachineInstr *MI) const {
     return Reg;
 
   MachineBasicBlock *MBB = MI->getParent();
-  MachineInstr *UseMI = &*MRI->use_nodbg_begin(Reg);
+  MachineInstr *UseMI = &*MRI->use_instr_nodbg_begin(Reg);
   if (UseMI->getParent() != MBB)
     return Reg;
 
@@ -129,7 +129,7 @@ unsigned MLxExpansion::getDefReg(MachineInstr *MI) const {
     if (TargetRegisterInfo::isPhysicalRegister(Reg) ||
         !MRI->hasOneNonDBGUse(Reg))
       return Reg;
-    UseMI = &*MRI->use_nodbg_begin(Reg);
+    UseMI = &*MRI->use_instr_nodbg_begin(Reg);
     if (UseMI->getParent() != MBB)
       return Reg;
   }
@@ -385,11 +385,8 @@ bool MLxExpansion::runOnMachineFunction(MachineFunction &Fn) {
   isSwift = STI->isSwift();
 
   bool Modified = false;
-  for (MachineFunction::iterator MFI = Fn.begin(), E = Fn.end(); MFI != E;
-       ++MFI) {
-    MachineBasicBlock &MBB = *MFI;
+  for (MachineBasicBlock &MBB : Fn)
     Modified |= ExpandFPMLxInstructions(MBB);
-  }
 
   return Modified;
 }

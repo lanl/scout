@@ -27,6 +27,7 @@
 #include "llvm/Object/MachO.h"
 #include "llvm/Object/MachOUniversal.h"
 #include "llvm/Object/ObjectFile.h"
+#include "llvm/Support/COFF.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Format.h"
@@ -300,7 +301,7 @@ static char getSymbolNMTypeChar(ELFObjectFile<ELFT> &Obj,
 }
 
 static char getSymbolNMTypeChar(COFFObjectFile &Obj, symbol_iterator I) {
-  const coff_symbol *Symb = Obj.getCOFFSymbol(I);
+  const coff_symbol *Symb = Obj.getCOFFSymbol(*I);
   // OK, this is COFF.
   symbol_iterator SymI(I);
 
@@ -317,11 +318,11 @@ static char getSymbolNMTypeChar(COFFObjectFile &Obj, symbol_iterator I) {
     return Ret;
 
   uint32_t Characteristics = 0;
-  if (Symb->SectionNumber > 0) {
+  if (!COFF::isReservedSectionNumber(Symb->SectionNumber)) {
     section_iterator SecI = Obj.section_end();
     if (error(SymI->getSection(SecI)))
       return '?';
-    const coff_section *Section = Obj.getCOFFSection(SecI);
+    const coff_section *Section = Obj.getCOFFSection(*SecI);
     Characteristics = Section->Characteristics;
   }
 
@@ -343,8 +344,7 @@ static char getSymbolNMTypeChar(COFFObjectFile &Obj, symbol_iterator I) {
       return 'i';
 
     // Check for section symbol.
-    else if (Symb->StorageClass == COFF::IMAGE_SYM_CLASS_STATIC &&
-             Symb->Value == 0)
+    else if (Symb->isSectionDefinition())
       return 's';
   }
 

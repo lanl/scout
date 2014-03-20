@@ -989,12 +989,12 @@ private:
   }
 };
 
-static void addInnerLoop(Loop *L, SmallVectorImpl<Loop *> &V) {
-  if (L->empty())
-    return V.push_back(L);
+static void addInnerLoop(Loop &L, SmallVectorImpl<Loop *> &V) {
+  if (L.empty())
+    return V.push_back(&L);
 
-  for (Loop::iterator I = L->begin(), E = L->end(); I != E; ++I)
-    addInnerLoop(*I, V);
+  for (Loop *InnerL : L)
+    addInnerLoop(*InnerL, V);
 }
 
 /// The LoopVectorize Pass.
@@ -1051,8 +1051,8 @@ struct LoopVectorize : public FunctionPass {
     // and can invalidate iterators across the loops.
     SmallVector<Loop *, 8> Worklist;
 
-    for (LoopInfo::iterator I = LI->begin(), E = LI->end(); I != E; ++I)
-      addInnerLoop(*I, Worklist);
+    for (Loop *L : *LI)
+      addInnerLoop(*L, Worklist);
 
     // Now walk the identified inner loops.
     bool Changed = false;
@@ -1064,14 +1064,7 @@ struct LoopVectorize : public FunctionPass {
   }
 
   bool processLoop(Loop *L) {
-    // We only handle inner loops, so if there are children just recurse.
-    if (!L->empty()) {
-      bool Changed = false;
-      for (Loop::iterator I = L->begin(), E = L->begin(); I != E; ++I)
-        Changed |= processLoop(*I);
-      return Changed;
-    }
-
+    assert(L->empty() && "Only process inner loops.");
     DEBUG(dbgs() << "LV: Checking a loop in \"" <<
           L->getHeader()->getParent()->getName() << "\"\n");
 

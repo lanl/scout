@@ -210,14 +210,7 @@ static void AddOptimizationPasses(PassManagerBase &MPM,FunctionPassManager &FPM,
   if (DisableInline) {
     // No inlining pass
   } else if (OptLevel > 1) {
-    unsigned Threshold = 225;
-    if (SizeLevel == 1)      // -Os
-      Threshold = 75;
-    else if (SizeLevel == 2) // -Oz
-      Threshold = 25;
-    if (OptLevel > 2)
-      Threshold = 275;
-    Builder.Inliner = createFunctionInliningPass(Threshold);
+    Builder.Inliner = createFunctionInliningPass(OptLevel, SizeLevel);
   } else {
     Builder.Inliner = createAlwaysInlinerPass();
   }
@@ -311,6 +304,12 @@ static TargetMachine* GetTargetMachine(Triple TheTriple) {
                                         GetCodeGenOptLevel());
 }
 
+#ifdef LINK_POLLY_INTO_TOOLS
+namespace polly {
+void initializePollyPasses(llvm::PassRegistry &Registry);
+}
+#endif
+
 //===----------------------------------------------------------------------===//
 // main for opt
 //
@@ -344,6 +343,10 @@ int main(int argc, char **argv) {
   // For codegen passes, only passes that do IR to IR transformation are
   // supported. For now, just add CodeGenPrepare.
   initializeCodeGenPreparePass(Registry);
+
+#ifdef LINK_POLLY_INTO_TOOLS
+  polly::initializePollyPasses(Registry);
+#endif
 
   cl::ParseCommandLineOptions(argc, argv,
     "llvm .bc -> .bc modular optimizer and analysis printer\n");

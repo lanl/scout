@@ -15,8 +15,8 @@
 
 #include "X86.h"
 #include "X86CallingConv.h"
-#include "X86ISelLowering.h"
 #include "X86InstrBuilder.h"
+#include "X86MachineFunctionInfo.h"
 #include "X86RegisterInfo.h"
 #include "X86Subtarget.h"
 #include "X86TargetMachine.h"
@@ -41,7 +41,7 @@ using namespace llvm;
 
 namespace {
 
-class X86FastISel : public FastISel {
+class X86FastISel final : public FastISel {
   /// Subtarget - Keep a pointer to the X86Subtarget around so that we can
   /// make the right decision when generating code for different targets.
   const X86Subtarget *Subtarget;

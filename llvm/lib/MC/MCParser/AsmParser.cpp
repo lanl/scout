@@ -640,9 +640,8 @@ bool AsmParser::Run(bool NoInitialTextSection, bool NoFinalize) {
     MCSymbol *SectionStartSym = getContext().CreateTempSymbol();
     getStreamer().EmitLabel(SectionStartSym);
     getContext().setGenDwarfSectionStartSym(SectionStartSym);
-    getStreamer().EmitDwarfFileDirective(getContext().nextGenDwarfFileNumber(),
-                                         StringRef(),
-                                         getContext().getMainFileName());
+    getContext().setGenDwarfFileNumber(getStreamer().EmitDwarfFileDirective(
+        0, StringRef(), getContext().getMainFileName()));
   }
 
   // While we have input, parse each statement.
@@ -662,10 +661,10 @@ bool AsmParser::Run(bool NoInitialTextSection, bool NoFinalize) {
     return TokError("unmatched .ifs or .elses");
 
   // Check to see there are no empty DwarfFile slots.
-  const SmallVectorImpl<MCDwarfFile *> &MCDwarfFiles =
+  const SmallVectorImpl<MCDwarfFile> &MCDwarfFiles =
       getContext().getMCDwarfFiles();
   for (unsigned i = 1; i < MCDwarfFiles.size(); i++) {
-    if (!MCDwarfFiles[i])
+    if (MCDwarfFiles[i].Name.empty())
       TokError("unassigned file number: " + Twine(i) + " for .file directives");
   }
 
@@ -884,7 +883,7 @@ bool AsmParser::parsePrimaryExpr(const MCExpr *&Res, SMLoc &EndLoc) {
       }
       if (IDVal == "f" || IDVal == "b") {
         MCSymbol *Sym =
-            Ctx.GetDirectionalLocalSymbol(IntVal, IDVal == "f" ? 1 : 0);
+            Ctx.GetDirectionalLocalSymbol(IntVal, IDVal == "b");
         Res = MCSymbolRefExpr::Create(Sym, Variant, getContext());
         if (IDVal == "b" && Sym->isUndefined())
           return Error(Loc, "invalid reference to undefined symbol");
@@ -1589,14 +1588,10 @@ bool AsmParser::parseStatement(ParseStatementInfo &Info) {
     // If we previously parsed a cpp hash file line comment then make sure the
     // current Dwarf File is for the CppHashFilename if not then emit the
     // Dwarf File table for it and adjust the line number for the .loc.
-    const SmallVectorImpl<MCDwarfFile *> &MCDwarfFiles =
-        getContext().getMCDwarfFiles();
     if (CppHashFilename.size() != 0) {
-      if (MCDwarfFiles[getContext().getGenDwarfFileNumber()]->getName() !=
-          CppHashFilename)
-        getStreamer().EmitDwarfFileDirective(
-            getContext().nextGenDwarfFileNumber(), StringRef(),
-            CppHashFilename);
+      unsigned FileNumber = getStreamer().EmitDwarfFileDirective(
+          0, StringRef(), CppHashFilename);
+      getContext().setGenDwarfFileNumber(FileNumber);
 
       // Since SrcMgr.FindLineNumber() is slow and messes up the SourceMgr's
       // cache with the different Loc from the call above we save the last
@@ -2003,6 +1998,7 @@ bool AsmParser::parseMacroArguments(const MCAsmMacro *M,
           break;
 
       if (FAI >= NParameters) {
+	assert(M && "expected macro to be defined");
         Error(IDLoc,
               "parameter named '" + FA.Name + "' does not exist for macro '" +
               M->Name + "'");
@@ -2762,7 +2758,8 @@ bool AsmParser::parseDirectiveFile(SMLoc DirectiveLoc) {
             "input can't have .file dwarf directives when -g is "
             "used to generate dwarf debug info for assembly code");
 
-    if (getStreamer().EmitDwarfFileDirective(FileNumber, Directory, Filename))
+    if (getStreamer().EmitDwarfFileDirective(FileNumber, Directory, Filename) ==
+        0)
       Error(FileNumberLoc, "file number already allocated");
   }
 

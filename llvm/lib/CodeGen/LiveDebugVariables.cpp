@@ -568,13 +568,11 @@ UserValue::addDefsFromCopies(LiveInterval *LI, unsigned LocNo,
 
   // Collect all the (vreg, valno) pairs that are copies of LI.
   SmallVector<std::pair<LiveInterval*, const VNInfo*>, 8> CopyValues;
-  for (MachineRegisterInfo::use_nodbg_iterator
-         UI = MRI.use_nodbg_begin(LI->reg),
-         UE = MRI.use_nodbg_end(); UI != UE; ++UI) {
+  for (MachineOperand &MO : MRI.use_nodbg_operands(LI->reg)) {
+    MachineInstr *MI = MO.getParent();
     // Copies of the full value.
-    if (UI.getOperand().getSubReg() || !UI->isCopy())
+    if (MO.getSubReg() || !MI->isCopy())
       continue;
-    MachineInstr *MI = &*UI;
     unsigned DstReg = MI->getOperand(0).getReg();
 
     // Don't follow copies to physregs. These are usually setting up call

@@ -56,8 +56,13 @@ DwarfCompileUnit::DwarfCompileUnit(unsigned UID, DIE *D, DICompileUnit Node,
 }
 
 DwarfTypeUnit::DwarfTypeUnit(unsigned UID, DIE *D, DwarfCompileUnit &CU,
-                             AsmPrinter *A, DwarfDebug *DW, DwarfFile *DWU)
-    : DwarfUnit(UID, D, CU.getCUNode(), A, DW, DWU), CU(CU) {}
+                             AsmPrinter *A, DwarfDebug *DW, DwarfFile *DWU,
+                             MCDwarfDwoLineTable *SplitLineTable)
+    : DwarfUnit(UID, D, CU.getCUNode(), A, DW, DWU), CU(CU),
+      SplitLineTable(SplitLineTable) {
+  if (SplitLineTable)
+    addSectionOffset(UnitDie.get(), dwarf::DW_AT_stmt_list, 0);
+}
 
 /// ~Unit - Destructor for compile unit.
 DwarfUnit::~DwarfUnit() {
@@ -296,6 +301,22 @@ void DwarfCompileUnit::addLabelAddress(DIE *Die, dwarf::Attribute Attribute,
   }
 }
 
+unsigned DwarfCompileUnit::getOrCreateSourceID(StringRef FileName, StringRef DirName) {
+  // If we print assembly, we can't separate .file entries according to
+  // compile units. Thus all files will belong to the default compile unit.
+
+  // FIXME: add a better feature test than hasRawTextSupport. Even better,
+  // extend .file to support this.
+  return Asm->OutStreamer.EmitDwarfFileDirective(
+      0, DirName, FileName,
+      Asm->OutStreamer.hasRawTextSupport() ? 0 : getUniqueID());
+}
+
+unsigned DwarfTypeUnit::getOrCreateSourceID(StringRef FileName, StringRef DirName) {
+  return SplitLineTable ? SplitLineTable->getFile(DirName, FileName)
+                        : getCU().getOrCreateSourceID(FileName, DirName);
+}
+
 /// addOpAddress - Add a dwarf op address data and value using the
 /// form given and an op of either DW_FORM_addr or DW_FORM_GNU_addr_index.
 ///
@@ -383,8 +404,7 @@ void DwarfUnit::addSourceLine(DIE *Die, unsigned Line, StringRef File,
   if (Line == 0)
     return;
 
-  unsigned FileID =
-      DD->getOrCreateSourceID(File, Directory, getCU().getUniqueID());
+  unsigned FileID = getOrCreateSourceID(File, Directory);
   assert(FileID && "Invalid file id");
   addUInt(Die, dwarf::DW_AT_decl_file, None, FileID);
   addUInt(Die, dwarf::DW_AT_decl_line, None, Line);
@@ -751,8 +771,9 @@ static uint64_t getBaseTypeSize(DwarfDebug *DD, DIDerivedType Ty) {
 
   DIType BaseType = DD->resolve(Ty.getTypeDerivedFrom());
 
-  // If this type is not derived from any type then take conservative approach.
-  if (!BaseType.isValid())
+  // If this type is not derived from any type or the type is a declaration then
+  // take conservative approach.
+  if (!BaseType.isValid() || BaseType.isForwardDecl())
     return Ty.getSizeInBits();
 
   // If this is a derived type, go ahead and get the base type, unless it's a
@@ -950,6 +971,8 @@ DIE *DwarfUnit::getOrCreateTypeDIE(const MDNode *TyNode) {
 
   DIType Ty(TyNode);
   assert(Ty.isType());
+  assert(*&Ty == resolve(Ty.getRef()) &&
+         "type was not uniqued, possible ODR violation.");
 
   // Construct the context before querying for the existence of the DIE in case
   // such construction creates the DIE.
@@ -985,7 +1008,7 @@ DIE *DwarfUnit::getOrCreateTypeDIE(const MDNode *TyNode) {
     if (GenerateDwarfTypeUnits && !Ty.isForwardDecl())
       if (MDString *TypeId = CTy.getIdentifier()) {
         DD->addDwarfTypeUnitType(getCU(), TypeId->getString(), TyDIE, CTy);
-        // Skip updating the accellerator tables since this is not the full type
+        // Skip updating the accelerator tables since this is not the full type.
         return TyDIE;
       }
     constructTypeDIE(*TyDIE, CTy);
@@ -1010,8 +1033,9 @@ void DwarfUnit::updateAcceleratorTables(DIScope Context, DIType Ty,
     unsigned Flags = IsImplementation ? dwarf::DW_FLAG_type_implementation : 0;
     addAccelType(Ty.getName(), std::make_pair(TyDIE, Flags));
 
-    if (!Context || Context.isCompileUnit() || Context.isFile() ||
-        Context.isNameSpace())
+    if ((!Context || Context.isCompileUnit() || Context.isFile() ||
+         Context.isNameSpace()) &&
+        getCUNode().getEmissionKind() != DIBuilder::LineTablesOnly)
       GlobalTypes[getParentContextString(Context) + Ty.getName().str()] = TyDIE;
   }
 }
@@ -1076,6 +1100,8 @@ void DwarfUnit::addAccelType(StringRef Name,
 
 /// addGlobalName - Add a new global name to the compile unit.
 void DwarfUnit::addGlobalName(StringRef Name, DIE *Die, DIScope Context) {
+  if (getCUNode().getEmissionKind() == DIBuilder::LineTablesOnly)
+    return;
   std::string FullName = getParentContextString(Context) + Name.str();
   GlobalNames[FullName] = Die;
 }
@@ -1433,7 +1459,12 @@ DIE *DwarfUnit::getOrCreateSubprogramDIE(DISubprogram SP) {
   // Construct the context before querying for the existence of the DIE in case
   // such construction creates the DIE (as is the case for member function
   // declarations).
-  DIE *ContextDIE = getOrCreateContextDIE(resolve(SP.getContext()));
+  DIScope Context = resolve(SP.getContext());
+  DIE *ContextDIE = getOrCreateContextDIE(Context);
+
+  // Unique declarations based on the ODR, where applicable.
+  SP = DISubprogram(DD->resolve(SP.getRef()));
+  assert(SP.Verify());
 
   DIE *SPDie = getDIE(SP);
   if (SPDie)
@@ -1583,7 +1614,7 @@ void DwarfCompileUnit::createGlobalVariableDIE(DIGlobalVariable GV) {
   assert(GV.isGlobalVariable());
 
   DIScope GVContext = GV.getContext();
-  DIType GTy = GV.getType();
+  DIType GTy = DD->resolve(GV.getType());
 
   // If this is a static data member definition, some attributes belong
   // to the declaration DIE.
@@ -1674,7 +1705,8 @@ void DwarfCompileUnit::createGlobalVariableDIE(DIGlobalVariable GV) {
       // TAG_variable.
       addString(IsStaticMember && VariableSpecDIE ? VariableSpecDIE
                                                   : VariableDIE,
-                dwarf::DW_AT_MIPS_linkage_name,
+                DD->getDwarfVersion() >= 4 ? dwarf::DW_AT_linkage_name
+                                           : dwarf::DW_AT_MIPS_linkage_name,
                 GlobalValue::getRealLinkageName(LinkageName));
   } else if (const ConstantInt *CI =
                  dyn_cast_or_null<ConstantInt>(GV.getConstant())) {
@@ -1915,10 +1947,9 @@ void DwarfUnit::constructMemberDIE(DIE &Buffer, DIDerivedType DT) {
     uint64_t OffsetInBytes;
 
     if (Size != FieldSize) {
-      // Handle bitfield.
-      addUInt(MemberDie, dwarf::DW_AT_byte_size, None,
-              getBaseTypeSize(DD, DT) >> 3);
-      addUInt(MemberDie, dwarf::DW_AT_bit_size, None, DT.getSizeInBits());
+      // Handle bitfield, assume bytes are 8 bits.
+      addUInt(MemberDie, dwarf::DW_AT_byte_size, None, FieldSize/8);
+      addUInt(MemberDie, dwarf::DW_AT_bit_size, None, Size);
 
       uint64_t Offset = DT.getOffsetInBits();
       uint64_t AlignMask = ~(DT.getAlignInBits() - 1);

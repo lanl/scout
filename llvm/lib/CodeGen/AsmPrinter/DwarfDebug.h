@@ -17,35 +17,28 @@
 #include "AsmPrinterHandler.h"
 #include "DIE.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/MapVector.h"
-#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringMap.h"
-#include "llvm/CodeGen/AsmPrinter.h"
+#include "llvm/ADT/FoldingSet.h"
 #include "llvm/CodeGen/LexicalScopes.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DebugLoc.h"
 #include "llvm/MC/MachineLocation.h"
+#include "llvm/MC/MCDwarf.h"
 #include "llvm/Support/Allocator.h"
 
 namespace llvm {
 
+class AsmPrinter;
 class ByteStreamer;
-class DwarfUnit;
-class DwarfCompileUnit;
 class ConstantInt;
 class ConstantFP;
-class DbgVariable;
-class MachineFrameInfo;
+class DwarfCompileUnit;
+class DwarfDebug;
+class DwarfTypeUnit;
+class DwarfUnit;
 class MachineModuleInfo;
-class MachineOperand;
-class MCAsmInfo;
-class MCObjectFileInfo;
-class DIEAbbrev;
-class DIE;
-class DIELoc;
-class DIEEntry;
 
 //===----------------------------------------------------------------------===//
 /// \brief This class is used to record source line correspondence.
@@ -67,18 +60,13 @@ public:
 
 /// \brief This struct describes location entries emitted in the .debug_loc
 /// section.
-class DotDebugLocEntry {
+class DebugLocEntry {
   // Begin and end symbols for the address range that this location is valid.
   const MCSymbol *Begin;
   const MCSymbol *End;
 
   // Type of entry that this represents.
-  enum EntryType {
-    E_Location,
-    E_Integer,
-    E_ConstantFP,
-    E_ConstantInt
-  };
+  enum EntryType { E_Location, E_Integer, E_ConstantFP, E_ConstantInt };
   enum EntryType EntryKind;
 
   union {
@@ -97,27 +85,26 @@ class DotDebugLocEntry {
   bool Merged;
 
 public:
-  DotDebugLocEntry() : Begin(0), End(0), Variable(0), Merged(false) {
+  DebugLocEntry() : Begin(0), End(0), Variable(0), Merged(false) {
     Constants.Int = 0;
   }
-  DotDebugLocEntry(const MCSymbol *B, const MCSymbol *E, MachineLocation &L,
-                   const MDNode *V)
+  DebugLocEntry(const MCSymbol *B, const MCSymbol *E, MachineLocation &L,
+                const MDNode *V)
       : Begin(B), End(E), Loc(L), Variable(V), Merged(false) {
     Constants.Int = 0;
     EntryKind = E_Location;
   }
-  DotDebugLocEntry(const MCSymbol *B, const MCSymbol *E, int64_t i)
+  DebugLocEntry(const MCSymbol *B, const MCSymbol *E, int64_t i)
       : Begin(B), End(E), Variable(0), Merged(false) {
     Constants.Int = i;
     EntryKind = E_Integer;
   }
-  DotDebugLocEntry(const MCSymbol *B, const MCSymbol *E, const ConstantFP *FPtr)
+  DebugLocEntry(const MCSymbol *B, const MCSymbol *E, const ConstantFP *FPtr)
       : Begin(B), End(E), Variable(0), Merged(false) {
     Constants.CFP = FPtr;
     EntryKind = E_ConstantFP;
   }
-  DotDebugLocEntry(const MCSymbol *B, const MCSymbol *E,
-                   const ConstantInt *IPtr)
+  DebugLocEntry(const MCSymbol *B, const MCSymbol *E, const ConstantInt *IPtr)
       : Begin(B), End(E), Variable(0), Merged(false) {
     Constants.CIP = IPtr;
     EntryKind = E_ConstantInt;
@@ -127,7 +114,7 @@ public:
   /// labels are referenced is used to find debug_loc offset for a given DIE.
   bool isEmpty() const { return Begin == 0 && End == 0; }
   bool isMerged() const { return Merged; }
-  void Merge(DotDebugLocEntry *Next) {
+  void Merge(DebugLocEntry *Next) {
     if (!(Begin && Loc == Next->Loc && End == Next->Begin))
       return;
     Next->Begin = Begin;
@@ -203,10 +190,7 @@ public:
     assert(Var.isVariable() && "Invalid complex DbgVariable!");
     return Var.hasComplexAddress();
   }
-  bool isBlockByrefVariable() const {
-    assert(Var.isVariable() && "Invalid complex DbgVariable!");
-    return Var.isBlockByrefVariable();
-  }
+  bool isBlockByrefVariable() const;
   unsigned getNumAddrElements() const {
     assert(Var.isVariable() && "Invalid complex DbgVariable!");
     return Var.getNumAddrElements();
@@ -353,12 +337,6 @@ class DwarfDebug : public AsmPrinterHandler {
   /// of in DwarfCompileUnit.
   DenseMap<const MDNode *, DIE *> MDTypeNodeToDieMap;
 
-  // Stores the current file ID for a given compile unit.
-  DenseMap<unsigned, unsigned> FileIDCUMap;
-  // Source id map, i.e. CUID, source filename and directory,
-  // separated by a zero byte, mapped to a unique id.
-  StringMap<unsigned, BumpPtrAllocator &> SourceIdMap;
-
   // List of all labels used in aranges generation.
   std::vector<SymbolCU> ArangeLabels;
 
@@ -385,8 +363,8 @@ class DwarfDebug : public AsmPrinterHandler {
   // Collection of abstract variables.
   DenseMap<const MDNode *, DbgVariable *> AbstractVariables;
 
-  // Collection of DotDebugLocEntry.
-  SmallVector<DotDebugLocEntry, 4> DotDebugLocEntries;
+  // Collection of DebugLocEntry.
+  SmallVector<DebugLocEntry, 4> DotDebugLocEntries;
 
   // Collection of subprogram DIEs that are marked (at the end of the module)
   // as DW_AT_inline.
@@ -489,6 +467,18 @@ class DwarfDebug : public AsmPrinterHandler {
   // Holder for the skeleton information.
   DwarfFile SkeletonHolder;
 
+  /// Store file names for type units under fission in a line table header that
+  /// will be emitted into debug_line.dwo.
+  // FIXME: replace this with a map from comp_dir to table so that we can emit
+  // multiple tables during LTO each of which uses directory 0, referencing the
+  // comp_dir of all the type units that use it.
+  MCDwarfDwoLineTable SplitTypeUnitFileTable;
+
+  // True iff there are multiple CUs in this module.
+  bool SingleCU;
+
+  MCDwarfDwoLineTable *getDwoLineTable(const DwarfCompileUnit &);
+
   void addScopeVariable(LexicalScope *LS, DbgVariable *Var);
 
   const SmallVectorImpl<DwarfUnit *> &getUnits() {
@@ -585,6 +575,11 @@ class DwarfDebug : public AsmPrinterHandler {
   /// index.
   void emitDebugPubTypes(bool GnuStyle = false);
 
+  void
+  emitDebugPubSection(bool GnuStyle, const MCSection *PSec, StringRef Name,
+                      const StringMap<const DIE *> &(DwarfUnit::*Accessor)()
+                      const);
+
   /// \brief Emit visible names into a debug str section.
   void emitDebugStr();
 
@@ -618,6 +613,9 @@ class DwarfDebug : public AsmPrinterHandler {
 
   /// \brief Emit the debug abbrev dwo section.
   void emitDebugAbbrevDWO();
+
+  /// \brief Emit the debug line dwo section.
+  void emitDebugLineDWO();
 
   /// \brief Emit the debug str dwo section.
   void emitDebugStrDWO();
@@ -730,12 +728,6 @@ public:
     SymSize[Sym] = Size;
   }
 
-  /// \brief Look up the source id with the given directory and source file
-  /// names. If none currently exists, create a new id and insert it in the
-  /// SourceIds map.
-  unsigned getOrCreateSourceID(StringRef DirName, StringRef FullName,
-                               unsigned CUID);
-
   /// \brief Recursively Emits a debug information entry.
   void emitDIE(DIE *Die);
 
@@ -759,17 +751,22 @@ public:
   MCSymbol *getDebugLocSym() const { return DwarfDebugLocSectionSym; }
 
   /// Returns the entries for the .debug_loc section.
-  const SmallVectorImpl<DotDebugLocEntry> &getDebugLocEntries() const {
+  const SmallVectorImpl<DebugLocEntry> &getDebugLocEntries() const {
     return DotDebugLocEntries;
   }
 
   /// \brief Emit an entry for the debug loc section. This can be used to
   /// handle an entry that's going to be emitted into the debug loc section.
-  void emitDebugLocEntry(ByteStreamer &Streamer, const DotDebugLocEntry &Entry);
+  void emitDebugLocEntry(ByteStreamer &Streamer, const DebugLocEntry &Entry);
 
   /// Find the MDNode for the given reference.
   template <typename T> T resolve(DIRef<T> Ref) const {
     return Ref.resolve(TypeIdentifierMap);
+  }
+
+  /// \brief Return the TypeIdentifierMap.
+  const DITypeIdentifierMap &getTypeIdentifierMap() const {
+    return TypeIdentifierMap;
   }
 
   /// Find the DwarfCompileUnit for the given CU Die.

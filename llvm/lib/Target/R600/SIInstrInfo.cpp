@@ -349,21 +349,32 @@ bool SIInstrInfo::isSALUInstr(const MachineInstr &MI) const {
 }
 
 bool SIInstrInfo::isInlineConstant(const MachineOperand &MO) const {
-  if(MO.isImm()) {
-    return MO.getImm() >= -16 && MO.getImm() <= 64;
+
+  union {
+    int32_t I;
+    float F;
+  } Imm;
+
+  if (MO.isImm()) {
+    Imm.I = MO.getImm();
+  } else if (MO.isFPImm()) {
+    Imm.F = MO.getFPImm()->getValueAPF().convertToFloat();
+  } else {
+    return false;
   }
-  if (MO.isFPImm()) {
-    return MO.getFPImm()->isExactlyValue(0.0)  ||
-           MO.getFPImm()->isExactlyValue(0.5)  ||
-           MO.getFPImm()->isExactlyValue(-0.5) ||
-           MO.getFPImm()->isExactlyValue(1.0)  ||
-           MO.getFPImm()->isExactlyValue(-1.0) ||
-           MO.getFPImm()->isExactlyValue(2.0)  ||
-           MO.getFPImm()->isExactlyValue(-2.0) ||
-           MO.getFPImm()->isExactlyValue(4.0)  ||
-           MO.getFPImm()->isExactlyValue(-4.0);
-  }
-  return false;
+
+  // The actual type of the operand does not seem to matter as long
+  // as the bits match one of the inline immediate values.  For example:
+  //
+  // -nan has the hexadecimal encoding of 0xfffffffe which is -2 in decimal,
+  // so it is a legal inline immediate.
+  //
+  // 1065353216 has the hexadecimal encoding 0x3f800000 which is 1.0f in
+  // floating-point, so it is a legal inline immediate.
+  return (Imm.I >= -16 && Imm.I <= 64) ||
+          Imm.F == 0.0f || Imm.F == 0.5f || Imm.F == -0.5f || Imm.F == 1.0f ||
+          Imm.F == -1.0f || Imm.F == 2.0f || Imm.F == -2.0f || Imm.F == 4.0f ||
+          Imm.F == -4.0f;
 }
 
 bool SIInstrInfo::isLiteralConstant(const MachineOperand &MO) const {
@@ -376,6 +387,47 @@ bool SIInstrInfo::verifyInstruction(const MachineInstr *MI,
   int Src0Idx = AMDGPU::getNamedOperandIdx(Opcode, AMDGPU::OpName::src0);
   int Src1Idx = AMDGPU::getNamedOperandIdx(Opcode, AMDGPU::OpName::src1);
   int Src2Idx = AMDGPU::getNamedOperandIdx(Opcode, AMDGPU::OpName::src2);
+
+  // Make sure the number of operands is correct.
+  const MCInstrDesc &Desc = get(Opcode);
+  if (!Desc.isVariadic() &&
+      Desc.getNumOperands() != MI->getNumExplicitOperands()) {
+     ErrInfo = "Instruction has wrong number of operands.";
+     return false;
+  }
+
+  // Make sure the register classes are correct
+  for (unsigned i = 0, e = Desc.getNumOperands(); i != e; ++i) {
+    switch (Desc.OpInfo[i].OperandType) {
+    case MCOI::OPERAND_REGISTER:
+      break;
+    case MCOI::OPERAND_IMMEDIATE:
+      if (!MI->getOperand(i).isImm() && !MI->getOperand(i).isFPImm()) {
+        ErrInfo = "Expected immediate, but got non-immediate";
+        return false;
+      }
+      // Fall-through
+    default:
+      continue;
+    }
+
+    if (!MI->getOperand(i).isReg())
+      continue;
+
+    int RegClass = Desc.OpInfo[i].RegClass;
+    if (RegClass != -1) {
+      unsigned Reg = MI->getOperand(i).getReg();
+      if (TargetRegisterInfo::isVirtualRegister(Reg))
+        continue;
+
+      const TargetRegisterClass *RC = RI.getRegClass(RegClass);
+      if (!RC->contains(Reg)) {
+        ErrInfo = "Operand has incorrect register class.";
+        return false;
+      }
+    }
+  }
+
 
   // Verify VOP*
   if (isVOP1(Opcode) || isVOP2(Opcode) || isVOP3(Opcode) || isVOPC(Opcode)) {
@@ -691,7 +743,7 @@ void SIInstrInfo::moveToVALU(MachineInstr &TopInst) const {
 
     for (MachineRegisterInfo::use_iterator I = MRI.use_begin(NewDstReg),
            E = MRI.use_end(); I != E; ++I) {
-      MachineInstr &UseMI = *I;
+      MachineInstr &UseMI = *I->getParent();
       if (!canReadVGPR(UseMI, I.getOperandNo())) {
         Worklist.push_back(&UseMI);
       }

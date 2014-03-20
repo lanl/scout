@@ -112,6 +112,10 @@ public:
 
   relocation_iterator relocation_begin() const;
   relocation_iterator relocation_end() const;
+  typedef iterator_range<relocation_iterator> relocation_iterator_range;
+  relocation_iterator_range relocations() const {
+    return relocation_iterator_range(relocation_begin(), relocation_end());
+  }
   section_iterator getRelocatedSection() const;
 
   DataRefImpl getRawDataRefImpl() const;
@@ -282,12 +286,18 @@ protected:
   virtual error_code getLibraryPath(DataRefImpl Lib, StringRef &Res) const = 0;
 
 public:
-
-  symbol_iterator begin_symbols() const;
-  symbol_iterator end_symbols() const;
+  typedef iterator_range<symbol_iterator> symbol_iterator_range;
+  symbol_iterator_range symbols() const {
+    return symbol_iterator_range(symbol_begin(), symbol_end());
+  }
 
   virtual section_iterator section_begin() const = 0;
   virtual section_iterator section_end() const = 0;
+
+  typedef iterator_range<section_iterator> section_iterator_range;
+  section_iterator_range sections() const {
+    return section_iterator_range(section_begin(), section_end());
+  }
 
   virtual library_iterator needed_library_begin() const = 0;
   virtual library_iterator needed_library_end() const = 0;
@@ -333,20 +343,6 @@ public:
 // Inline function definitions.
 inline SymbolRef::SymbolRef(DataRefImpl SymbolP, const ObjectFile *Owner)
     : BasicSymbolRef(SymbolP, Owner) {}
-
-inline symbol_iterator ObjectFile::begin_symbols() const {
-  basic_symbol_iterator I = symbol_begin_impl();
-  const BasicSymbolRef &Ref = *I;
-  const SymbolRef &Cast = static_cast<const SymbolRef&>(Ref);
-  return symbol_iterator(Cast);
-}
-
-inline symbol_iterator ObjectFile::end_symbols() const {
-  basic_symbol_iterator I = symbol_end_impl();
-  const BasicSymbolRef &Ref = *I;
-  const SymbolRef &Cast = static_cast<const SymbolRef&>(Ref);
-  return symbol_iterator(Cast);
-}
 
 inline error_code SymbolRef::getName(StringRef &Result) const {
   return getObject()->getSymbolName(getRawDataRefImpl(), Result);
