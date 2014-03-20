@@ -768,28 +768,6 @@ AddStringSummary(TypeCategoryImpl::SharedPointer category_sp,
 
 #ifndef LLDB_DISABLE_PYTHON
 static void
-AddScriptSummary(TypeCategoryImpl::SharedPointer category_sp,
-                 const char* funct_name,
-                 ConstString type_name,
-                 TypeSummaryImpl::Flags flags,
-                 bool regex = false)
-{
-    
-    std::string code("     ");
-    code.append(funct_name).append("(valobj,internal_dict)");
-    
-    lldb::TypeSummaryImplSP summary_sp(new ScriptSummaryFormat(flags,
-                                                               funct_name,
-                                                               code.c_str()));
-    if (regex)
-        category_sp->GetRegexTypeSummariesContainer()->Add(RegularExpressionSP(new RegularExpression(type_name.AsCString())),summary_sp);
-    else
-        category_sp->GetTypeSummariesContainer()->Add(type_name, summary_sp);
-}
-#endif
-
-#ifndef LLDB_DISABLE_PYTHON
-static void
 AddCXXSummary (TypeCategoryImpl::SharedPointer category_sp,
                CXXFunctionSummaryFormat::Callback funct,
                const char* description,
@@ -1294,6 +1272,7 @@ FormatManager::LoadObjCFormatters()
     AddCXXSummary(appkit_category_sp, lldb_private::formatters::NSDataSummaryProvider<false>, "NSData summary provider", ConstString("NSData"), appkit_flags);
     AddCXXSummary(appkit_category_sp, lldb_private::formatters::NSDataSummaryProvider<false>, "NSData summary provider", ConstString("NSConcreteData"), appkit_flags);
     AddCXXSummary(appkit_category_sp, lldb_private::formatters::NSDataSummaryProvider<false>, "NSData summary provider", ConstString("NSConcreteMutableData"), appkit_flags);
+    AddCXXSummary(appkit_category_sp, lldb_private::formatters::NSDataSummaryProvider<false>, "NSData summary provider", ConstString("NSMutableData"), appkit_flags);
     AddCXXSummary(corefoundation_category_sp, lldb_private::formatters::NSDataSummaryProvider<false>, "NSData summary provider", ConstString("__NSCFData"), appkit_flags);
     AddCXXSummary(corefoundation_category_sp, lldb_private::formatters::NSDataSummaryProvider<true>, "NSData summary provider", ConstString("CFDataRef"), appkit_flags);
     AddCXXSummary(corefoundation_category_sp, lldb_private::formatters::NSDataSummaryProvider<true>, "NSData summary provider", ConstString("CFMutableDataRef"), appkit_flags);

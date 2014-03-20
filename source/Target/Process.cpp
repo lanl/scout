@@ -3068,7 +3068,7 @@ Process::Launch (ProcessLaunchInfo &launch_info)
                         if (dyld)
                             dyld->DidLaunch();
 
-                        // GetJITLoaders().DidLaunch();
+                        GetJITLoaders().DidLaunch();
 
                         SystemRuntime *system_runtime = GetSystemRuntime ();
                         if (system_runtime)
@@ -3117,7 +3117,7 @@ Process::LoadCore ()
         if (dyld)
             dyld->DidAttach();
 
-        //GetJITLoaders().DidAttach();
+        GetJITLoaders().DidAttach();
         
         SystemRuntime *system_runtime = GetSystemRuntime ();
         if (system_runtime)
@@ -3396,7 +3396,7 @@ Process::CompleteAttach ()
     if (dyld)
         dyld->DidAttach();
 
-    // GetJITLoaders().DidAttach();
+    GetJITLoaders().DidAttach();
 
     SystemRuntime *system_runtime = GetSystemRuntime ();
     if (system_runtime)
@@ -4771,7 +4771,7 @@ public:
             return true;
 
         int fds[2];
-#ifdef _MSC_VER
+#ifdef _WIN32
         // pipe is not supported on windows so default to a fail condition
         int err = 1;
 #else
@@ -4812,7 +4812,7 @@ public:
                 terminal.SetCanonical(false);
                 terminal.SetEcho(false);
 // FD_ZERO, FD_SET are not supported on windows
-#ifndef _MSC_VER
+#ifndef _WIN32
                 while (!GetIsDone())
                 {
                     fd_set read_fdset;
@@ -6052,3 +6052,14 @@ Process::ResolveIndirectFunction(const Address *address, Error &error)
     return function_addr;
 }
 
+void
+Process::ModulesDidLoad (ModuleList &module_list)
+{
+  SystemRuntime *sys_runtime = GetSystemRuntime();
+  if (sys_runtime)
+  {
+    sys_runtime->ModulesDidLoad (module_list);
+  }
+
+  GetJITLoaders().ModulesDidLoad (module_list);
+}

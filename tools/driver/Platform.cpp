@@ -8,10 +8,11 @@
 //===----------------------------------------------------------------------===//
 
 // this file is only relevant for Visual C++
-#if defined( _MSC_VER )
+#if defined( _WIN32 )
 
 #include <process.h>
 #include <assert.h>
+#include <stdlib.h>
 
 #include "Platform.h"
 
@@ -83,6 +84,7 @@ tcgetattr (int fildes, struct termios *termios_p)
     return -1;
 }
 
+#ifdef _MSC_VER
 sighandler_t
 signal (int sig, sighandler_t sigFunc)
 {
@@ -105,5 +107,6 @@ signal (int sig, sighandler_t sigFunc)
     }
     return 0;
 }
+#endif
 
 #endif

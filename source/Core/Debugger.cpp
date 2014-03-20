@@ -1089,6 +1089,7 @@ Debugger::FindDebuggerWithID (lldb::user_id_t id)
     return debugger_sp;
 }
 
+#if 0
 static void
 TestPromptFormats (StackFrame *frame)
 {
@@ -1149,6 +1150,7 @@ TestPromptFormats (StackFrame *frame)
         printf ("what we got: %s\n", s.GetData());
     }
 }
+#endif
 
 static bool
 ScanFormatDescriptor (const char* var_name_begin,
@@ -1680,6 +1682,13 @@ FormatPromptRecurse
                                         break;
                                     }
                                     do_deref_pointer = false;
+                                }
+                                
+                                if (!target)
+                                {
+                                    if (log)
+                                        log->Printf("[Debugger::FormatPrompt] could not calculate target for prompt expression");
+                                    break;
                                 }
                                 
                                 // we do not want to use the summary for a bitfield of type T:n
