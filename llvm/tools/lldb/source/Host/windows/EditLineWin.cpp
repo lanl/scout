@@ -8,7 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 // this file is only relevant for Visual C++
-#if defined( _MSC_VER )
+#if defined( _WIN32 )
 
 #include "lldb/Host/windows/windows.h"
 
@@ -247,7 +247,7 @@ el_set (EditLine *el, int code, ...)
 
             // get the function pointer from the arg list
             void *func_vp = (void*)va_arg(vl, el_prompt_func);
-            char  escape = (char)va_arg(vl, char);
+            char  escape = (char)va_arg(vl, int);
             // call to get the prompt as a string
             el_prompt_func func_fp = (el_prompt_func)func_vp;
             const char *newPrompt = func_fp(el);
