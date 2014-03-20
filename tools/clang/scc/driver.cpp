@@ -29,6 +29,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Config/config.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/OptTable.h"
 #include "llvm/Option/Option.h"
@@ -248,17 +249,12 @@ static void ParseProgName(SmallVectorImpl<const char *> &ArgVector,
     { "cl" ,       "--driver-mode=cl"  },
     { "++",        "--driver-mode=g++" }
   };
-
   std::string ProgName(llvm::sys::path::stem(ArgVector[0]));
-
-  // make sure we have a input file
-  if (ArgVector.size() < 2) {
-    TheDriver.Diag(clang::diag::err_drv_no_input_files);
-    exit(1);
-  }
-
+#ifdef LLVM_ON_WIN32
+  // Transform to lowercase for case insensitive file systems.
   std::transform(ProgName.begin(), ProgName.end(), ProgName.begin(),
                  toLowercase);
+#endif
   StringRef ProgNameRef(ProgName);
   StringRef Prefix;
 
@@ -472,13 +468,9 @@ int main(int argc_, const char **argv_) {
   }
 
   // Handle CCC_OVERRIDE_OPTIONS, used for editing a command line behind the
-  // scenes. Temporarily accept the old QA_OVERRIDE_GCC3_OPTIONS name
-  // for this, to ease the transition. FIXME: Remove support for that old name
-  // after a while.
+  // scenes.
   if (const char *OverrideStr = ::getenv("CCC_OVERRIDE_OPTIONS")) {
     // FIXME: Driver shouldn't take extra initial argument.
-    ApplyQAOverride(argv, OverrideStr, SavedStrings);
-  } else if (const char *OverrideStr = ::getenv("QA_OVERRIDE_GCC3_OPTIONS")) {
     ApplyQAOverride(argv, OverrideStr, SavedStrings);
   }
 
@@ -592,7 +584,7 @@ int main(int argc_, const char **argv_) {
 
   llvm::llvm_shutdown();
 
-#ifdef _WIN32
+#ifdef LLVM_ON_WIN32
   // Exit status should not be negative on Win32, unless abnormal termination.
   // Once abnormal termiation was caught, negative status should not be
   // propagated.
