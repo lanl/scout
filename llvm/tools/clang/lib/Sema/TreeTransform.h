@@ -971,15 +971,10 @@ namespace clang {
             break;
           }
           default:
-            // FIXME: Would be nice to highlight just the source range.
-            SemaRef.Diag(IdLoc, diag::err_not_tag_in_scope)
-              << Kind << Id << DC;
-            break;
-        }
-        default:
           SemaRef.Diag(IdLoc, diag::err_not_tag_in_scope)
               << Kind << Id << DC << QualifierLoc.getSourceRange();
           break;
+        }
       }
 
       if (!SemaRef.isAcceptableTagRedeclaration(Tag, Kind, /*isDefinition*/false,
