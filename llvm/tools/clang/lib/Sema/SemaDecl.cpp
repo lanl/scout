@@ -601,6 +601,7 @@ static bool isMeshTypeWithMissingMesh(Sema &SemaRef, LookupResult &Result,
                                       IdentifierInfo *&Name,
                                       SourceLocation NameLoc) {
   LookupResult R(SemaRef, Name, NameLoc, Sema::LookupMeshName); 
+
   if(SemaRef.LookupParsedName(R, S, &SS)) {
     if (MeshDecl *MD = R.getAsSingle<MeshDecl>()) {
       (void)MD; //suppress warning 
@@ -709,7 +710,13 @@ Corrected:
 
     // Perform typo correction to determine if there is another name that is
     // close to this name.
-    if (!SecondTry && CCC) {
+    if (!SecondTry && CCC
+          /* ===== Scout =================================================== *
+           * SC_TODO: this causes problems w/ unqualified mesh members but   *
+           * only in sc++ and only on mac. This is just a workaround until   *
+           * we can fix the mesh lookup                                      */ 
+          && !getLangOpts().ScoutCPlusPlus) {
+         // +================================================================+
       SecondTry = true;
       if (TypoCorrection Corrected = CorrectTypo(Result.getLookupNameInfo(),
                                                  Result.getLookupKind(), S, 
