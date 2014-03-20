@@ -359,8 +359,17 @@ def warn_suggest_noreturn_function : Warning<
 def warn_suggest_noreturn_block : Warning<
   "block could be declared with attribute 'noreturn'">,
   InGroup<MissingNoreturn>, DefaultIgnore;
-def warn_unreachable : Warning<"will never be executed">,
-  InGroup<DiagGroup<"unreachable-code">>, DefaultIgnore;
+
+// Unreachable code.
+def warn_unreachable : Warning<
+  "code will never be executed">,
+  InGroup<UnreachableCode>, DefaultIgnore;
+def warn_unreachable_break : Warning<
+  "'break' will never be executed">,
+  InGroup<UnreachableCodeBreak>, DefaultIgnore;
+def warn_unreachable_return : Warning<
+  "'return' will never be executed">,
+  InGroup<UnreachableCodeReturn>, DefaultIgnore;
 
 /// Built-in functions.
 def ext_implicit_lib_function_decl : ExtWarn<
@@ -892,7 +901,9 @@ def warn_unimplemented_selector:  Warning<
   InGroup<Selector>, DefaultIgnore;
 def warn_unimplemented_protocol_method : Warning<
   "method %0 in protocol %1 not implemented">, InGroup<Protocol>;
-
+def warning_multiple_selectors: Warning<
+  "several methods with selector %0 of mismatched types are found for the @selector expression">,
+  InGroup<SelectorTypeMismatch>;
 // C++ declarations
 def err_static_assert_expression_is_not_constant : Error<
   "static_assert expression is not an integral constant expression">;
@@ -1538,12 +1549,15 @@ def err_auto_var_requires_init : Error<
   "declaration of variable %0 with type %1 requires an initializer">;
 def err_auto_new_requires_ctor_arg : Error<
   "new expression for type %0 requires a constructor argument">;
-def err_auto_new_requires_parens : Error<
+def err_auto_new_list_init : Error<
   "new expression for type %0 cannot use list-initialization">;
 def err_auto_var_init_no_expression : Error<
   "initializer for variable %0 with type %1 is empty">;
 def err_auto_var_init_multiple_expressions : Error<
   "initializer for variable %0 with type %1 contains multiple expressions">;
+def err_auto_var_init_paren_braces : Error<
+  "cannot deduce type for variable %0 with type %1 from "
+  "parenthesized initializer list">;
 def err_auto_new_ctor_multiple_expressions : Error<
   "new expression for type %0 contains multiple constructor arguments">;
 def err_auto_missing_trailing_return : Error<
@@ -2083,7 +2097,7 @@ def warn_attribute_wrong_decl_type : Warning<
   "variables and fields|variables, data members and tag types|"
   "types and namespaces|Objective-C interfaces|methods and properties|"
   "struct or union|struct, union or class|types|"
-  "Objective-C instance methods|init methods of interface declarations|"
+  "Objective-C instance methods|init methods of interface or class extension declarations|"
   "variables, functions and classes|Objective-C protocols|"
   "functions and global variables}1">,
   InGroup<IgnoredAttributes>;
@@ -2485,6 +2499,8 @@ def warn_objc_requires_super_protocol : Warning<
   InGroup<DiagGroup<"requires-super-attribute">>;
 def note_protocol_decl : Note<
   "protocol is declared here">;
+def note_protocol_decl_undefined : Note<
+  "protocol %0 has no definition">;
 
 // objc_designated_initializer attribute diagnostics.
 def warn_objc_designated_init_missing_super_call : Warning<
@@ -5237,6 +5253,9 @@ let CategoryName = "Lambda Issue" in {
     "initializer missing for lambda capture %0">;
   def err_init_capture_multiple_expressions : Error<
     "initializer for lambda capture %0 contains multiple expressions">;
+  def err_init_capture_paren_braces : Error<
+    "cannot deduce type for lambda capture %0 from "
+    "parenthesized initializer list">;
   def err_init_capture_deduction_failure : Error<
     "cannot deduce type for lambda capture %0 from initializer of type %2">;
   def err_init_capture_deduction_failure_from_init_list : Error<

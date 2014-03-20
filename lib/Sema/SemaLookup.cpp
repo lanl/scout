@@ -113,10 +113,8 @@ namespace {
         if (Ctx && Ctx->isFileContext()) {
           visit(Ctx, Ctx);
         } else if (!Ctx || Ctx->isFunctionOrMethod()) {
-          Scope::udir_iterator I = S->using_directives_begin(),
-                             End = S->using_directives_end();
-          for (; I != End; ++I)
-            visit(*I, InnermostFileDC);
+          for (auto *I : S->using_directives())
+            visit(I, InnermostFileDC);
         }
       }
     }
@@ -153,7 +151,7 @@ namespace {
     void addUsingDirectives(DeclContext *DC, DeclContext *EffectiveDC) {
       SmallVector<DeclContext*,4> queue;
       while (true) {
-        for (auto UD : DC->getUsingDirectives()) {
+        for (auto UD : DC->using_directives()) {
           DeclContext *NS = UD->getNominatedNamespace();
           if (visited.insert(NS)) {
             addUsingDirective(UD, EffectiveDC);
@@ -1450,10 +1448,8 @@ static bool LookupQualifiedNameInUsingDirectives(Sema &S, LookupResult &R,
                                                  DeclContext *StartDC) {
   assert(StartDC->isFileContext() && "start context is not a file context");
 
-  DeclContext::udir_iterator I = StartDC->using_directives_begin();
-  DeclContext::udir_iterator E = StartDC->using_directives_end();
-
-  if (I == E) return false;
+  DeclContext::udir_range UsingDirectives = StartDC->using_directives();
+  if (UsingDirectives.begin() == UsingDirectives.end()) return false;
 
   // We have at least added all these contexts to the queue.
   llvm::SmallPtrSet<DeclContext*, 8> Visited;
@@ -1465,8 +1461,8 @@ static bool LookupQualifiedNameInUsingDirectives(Sema &S, LookupResult &R,
 
   // We have already looked into the initial namespace; seed the queue
   // with its using-children.
-  for (; I != E; ++I) {
-    NamespaceDecl *ND = (*I)->getNominatedNamespace()->getOriginalNamespace();
+  for (auto *I : UsingDirectives) {
+    NamespaceDecl *ND = I->getNominatedNamespace()->getOriginalNamespace();
     if (Visited.insert(ND))
       Queue.push_back(ND);
   }
@@ -1513,7 +1509,7 @@ static bool LookupQualifiedNameInUsingDirectives(Sema &S, LookupResult &R,
       continue;
     }
 
-    for (auto I : ND->getUsingDirectives()) {
+    for (auto I : ND->using_directives()) {
       NamespaceDecl *Nom = I->getNominatedNamespace();
       if (Visited.insert(Nom))
         Queue.push_back(Nom);
@@ -2027,6 +2023,10 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result,
 
   // Add the class itself. If we've already seen this class, we don't
   // need to visit base classes.
+  //
+  // FIXME: That's not correct, we may have added this class only because it
+  // was the enclosing class of another class, and in that case we won't have
+  // added its base classes yet.
   if (!Result.Classes.insert(Class))
     return;
 
@@ -2053,12 +2053,8 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result,
   }
 
   // Only recurse into base classes for complete types.
-  if (!Class->hasDefinition()) {
-    QualType type = Result.S.Context.getTypeDeclType(Class);
-    if (Result.S.RequireCompleteType(Result.InstantiationLoc, type,
-                                     /*no diagnostic*/ 0))
-      return;
-  }
+  if (!Class->hasDefinition())
+    return;
 
   // Add direct and indirect base classes along with their associated
   // namespaces.
@@ -2069,10 +2065,8 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result,
     Class = Bases.pop_back_val();
 
     // Visit the base classes.
-    for (CXXRecordDecl::base_class_iterator Base = Class->bases_begin(),
-                                         BaseEnd = Class->bases_end();
-         Base != BaseEnd; ++Base) {
-      const RecordType *BaseType = Base->getType()->getAs<RecordType>();
+    for (const auto &Base : Class->bases()) {
+      const RecordType *BaseType = Base.getType()->getAs<RecordType>();
       // In dependent contexts, we do ADL twice, and the first time around,
       // the base type might be a dependent TemplateSpecializationType, or a
       // TemplateTypeParmType. If that happens, simply ignore it.
@@ -2152,6 +2146,8 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
     //        classes. Its associated namespaces are the namespaces in
     //        which its associated classes are defined.
     case Type::Record: {
+      Result.S.RequireCompleteType(Result.InstantiationLoc, QualType(T, 0),
+                                   /*no diagnostic*/ 0);
       CXXRecordDecl *Class
         = cast<CXXRecordDecl>(cast<RecordType>(T)->getDecl());
       addAssociatedClassesAndNamespaces(Result, Class);
@@ -2180,11 +2176,8 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
     //        types and those associated with the return type.
     case Type::FunctionProto: {
       const FunctionProtoType *Proto = cast<FunctionProtoType>(T);
-      for (FunctionProtoType::param_type_iterator
-               Arg = Proto->param_type_begin(),
-               ArgEnd = Proto->param_type_end();
-           Arg != ArgEnd; ++Arg)
-        Queue.push_back(Arg->getTypePtr());
+      for (const auto &Arg : Proto->param_types())
+        Queue.push_back(Arg.getTypePtr());
       // fallthrough
     }
     case Type::FunctionNoProto: {
@@ -3065,13 +3058,9 @@ static void LookupVisibleDecls(DeclContext *Ctx, LookupResult &Result,
     Result.getSema().ForceDeclarationOfImplicitMembers(Class);
 
   // Enumerate all of the results in this context.
-  for (DeclContext::all_lookups_iterator L = Ctx->lookups_begin(),
-                                      LEnd = Ctx->lookups_end();
-       L != LEnd; ++L) {
-    DeclContext::lookup_result R = *L;
-    for (DeclContext::lookup_iterator I = R.begin(), E = R.end(); I != E;
-         ++I) {
-      if (NamedDecl *ND = dyn_cast<NamedDecl>(*I)) {
+  for (const auto &R : Ctx->lookups()) {
+    for (auto *I : R) {
+      if (NamedDecl *ND = dyn_cast<NamedDecl>(I)) {
         if ((ND = Result.getAcceptableDecl(ND))) {
           Consumer.FoundDecl(ND, Visited.checkHidden(ND), Ctx, InBaseClass);
           Visited.add(ND);
@@ -3083,7 +3072,7 @@ static void LookupVisibleDecls(DeclContext *Ctx, LookupResult &Result,
   // Traverse using directives for qualified name lookup.
   if (QualifiedNameLookup) {
     ShadowContextRAII Shadow(Visited);
-    for (auto I : Ctx->getUsingDirectives()) {
+    for (auto I : Ctx->using_directives()) {
       LookupVisibleDecls(I->getNominatedNamespace(), Result,
                          QualifiedNameLookup, InBaseClass, Consumer, Visited);
     }
@@ -3094,10 +3083,8 @@ static void LookupVisibleDecls(DeclContext *Ctx, LookupResult &Result,
     if (!Record->hasDefinition())
       return;
 
-    for (CXXRecordDecl::base_class_iterator B = Record->bases_begin(),
-                                         BEnd = Record->bases_end();
-         B != BEnd; ++B) {
-      QualType BaseType = B->getType();
+    for (const auto &B : Record->bases()) {
+      QualType BaseType = B.getType();
 
       // Don't look into dependent bases, because name lookup can't look
       // there anyway.
@@ -3137,21 +3124,16 @@ static void LookupVisibleDecls(DeclContext *Ctx, LookupResult &Result,
   // Traverse the contexts of Objective-C classes.
   if (ObjCInterfaceDecl *IFace = dyn_cast<ObjCInterfaceDecl>(Ctx)) {
     // Traverse categories.
-    for (ObjCInterfaceDecl::visible_categories_iterator
-           Cat = IFace->visible_categories_begin(),
-           CatEnd = IFace->visible_categories_end();
-         Cat != CatEnd; ++Cat) {
+    for (auto *Cat : IFace->visible_categories()) {
       ShadowContextRAII Shadow(Visited);
-      LookupVisibleDecls(*Cat, Result, QualifiedNameLookup, false,
+      LookupVisibleDecls(Cat, Result, QualifiedNameLookup, false,
                          Consumer, Visited);
     }
 
     // Traverse protocols.
-    for (ObjCInterfaceDecl::all_protocol_iterator
-         I = IFace->all_referenced_protocol_begin(),
-         E = IFace->all_referenced_protocol_end(); I != E; ++I) {
+    for (auto *I : IFace->all_referenced_protocols()) {
       ShadowContextRAII Shadow(Visited);
-      LookupVisibleDecls(*I, Result, QualifiedNameLookup, false, Consumer,
+      LookupVisibleDecls(I, Result, QualifiedNameLookup, false, Consumer,
                          Visited);
     }
 
@@ -3170,17 +3152,15 @@ static void LookupVisibleDecls(DeclContext *Ctx, LookupResult &Result,
                          QualifiedNameLookup, InBaseClass, Consumer, Visited);
     }
   } else if (ObjCProtocolDecl *Protocol = dyn_cast<ObjCProtocolDecl>(Ctx)) {
-    for (ObjCProtocolDecl::protocol_iterator I = Protocol->protocol_begin(),
-           E = Protocol->protocol_end(); I != E; ++I) {
+    for (auto *I : Protocol->protocols()) {
       ShadowContextRAII Shadow(Visited);
-      LookupVisibleDecls(*I, Result, QualifiedNameLookup, false, Consumer,
+      LookupVisibleDecls(I, Result, QualifiedNameLookup, false, Consumer,
                          Visited);
     }
   } else if (ObjCCategoryDecl *Category = dyn_cast<ObjCCategoryDecl>(Ctx)) {
-    for (ObjCCategoryDecl::protocol_iterator I = Category->protocol_begin(),
-           E = Category->protocol_end(); I != E; ++I) {
+    for (auto *I : Category->protocols()) {
       ShadowContextRAII Shadow(Visited);
-      LookupVisibleDecls(*I, Result, QualifiedNameLookup, false, Consumer,
+      LookupVisibleDecls(I, Result, QualifiedNameLookup, false, Consumer,
                          Visited);
     }
 
@@ -3206,9 +3186,8 @@ static void LookupVisibleDecls(Scope *S, LookupResult &Result,
       (S->getEntity())->isFunctionOrMethod()) {
     FindLocalExternScope FindLocals(Result);
     // Walk through the declarations in this Scope.
-    for (Scope::decl_iterator D = S->decl_begin(), DEnd = S->decl_end();
-         D != DEnd; ++D) {
-      if (NamedDecl *ND = dyn_cast<NamedDecl>(*D))
+    for (auto *D : S->decls()) {
+      if (NamedDecl *ND = dyn_cast<NamedDecl>(D))
         if ((ND = Result.getAcceptableDecl(ND))) {
           Consumer.FoundDecl(ND, Visited.checkHidden(ND), 0, false);
           Visited.add(ND);
@@ -3383,10 +3362,10 @@ public:
     : Typo(Typo->getName()),
       SemaRef(SemaRef) {}
 
-  bool includeHiddenDecls() const { return true; }
+  bool includeHiddenDecls() const override { return true; }
 
-  virtual void FoundDecl(NamedDecl *ND, NamedDecl *Hiding, DeclContext *Ctx,
-                         bool InBaseClass);
+  void FoundDecl(NamedDecl *ND, NamedDecl *Hiding, DeclContext *Ctx,
+                 bool InBaseClass) override;
   void FoundName(StringRef Name);
   void addKeywordResult(StringRef Keyword);
   void addName(StringRef Name, NamedDecl *ND, NestedNameSpecifier *NNS = NULL,
@@ -4088,10 +4067,8 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
 
     // Look in qualified interfaces.
     if (OPT) {
-      for (ObjCObjectPointerType::qual_iterator
-             I = OPT->qual_begin(), E = OPT->qual_end();
-           I != E; ++I)
-        LookupVisibleDecls(*I, LookupKind, Consumer);
+      for (auto *I : OPT->quals())
+        LookupVisibleDecls(I, LookupKind, Consumer);
     }
   } else if (SS && SS->isSet()) {
     QualifiedDC = computeDeclContext(*SS, EnteringContext);
@@ -4212,10 +4189,8 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
       if (const Type *T = NNS->getAsType())
         SSIsTemplate = T->getTypeClass() == Type::TemplateSpecialization;
     }
-    for (ASTContext::type_iterator TI = Context.types_begin(),
-                                   TIEnd = Context.types_end();
-         TI != TIEnd; ++TI) {
-      if (CXXRecordDecl *CD = (*TI)->getAsCXXRecordDecl()) {
+    for (const auto *TI : Context.types()) {
+      if (CXXRecordDecl *CD = TI->getAsCXXRecordDecl()) {
         CD = CD->getCanonicalDecl();
         if (!CD->isDependentType() && !CD->isAnonymousStructOrUnion() &&
             !CD->isUnion() && CD->getIdentifier() &&

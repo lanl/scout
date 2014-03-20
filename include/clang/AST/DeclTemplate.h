@@ -846,7 +846,11 @@ public:
   }
 
   typedef SpecIterator<FunctionTemplateSpecializationInfo> spec_iterator;
+  typedef llvm::iterator_range<spec_iterator> spec_range;
 
+  spec_range specializations() const {
+    return spec_range(spec_begin(), spec_end());
+  }
   spec_iterator spec_begin() const {
     return makeSpecIterator(getSpecializations(), false);
   }
@@ -1448,6 +1452,11 @@ public:
   void getNameForDiagnostic(raw_ostream &OS, const PrintingPolicy &Policy,
                             bool Qualified) const override;
 
+  // FIXME: This is broken. CXXRecordDecl::getMostRecentDecl() returns a
+  // different "most recent" declaration from this function for the same
+  // declaration, because we don't override getMostRecentDeclImpl(). But
+  // it's not clear that we should override that, because the most recent
+  // declaration as a CXXRecordDecl sometimes is the injected-class-name.
   ClassTemplateSpecializationDecl *getMostRecentDecl() {
     CXXRecordDecl *Recent = static_cast<CXXRecordDecl *>(
                               this)->getMostRecentDecl();
@@ -1516,17 +1525,11 @@ public:
   llvm::PointerUnion<ClassTemplateDecl *,
                      ClassTemplatePartialSpecializationDecl *>
   getInstantiatedFrom() const {
-    if (getSpecializationKind() != TSK_ImplicitInstantiation &&
-        getSpecializationKind() != TSK_ExplicitInstantiationDefinition &&
-        getSpecializationKind() != TSK_ExplicitInstantiationDeclaration)
+    if (!isTemplateInstantiation(getSpecializationKind()))
       return llvm::PointerUnion<ClassTemplateDecl *,
                                 ClassTemplatePartialSpecializationDecl *>();
 
-    if (SpecializedPartialSpecialization *PartialSpec
-          = SpecializedTemplate.dyn_cast<SpecializedPartialSpecialization*>())
-      return PartialSpec->PartialSpecialization;
-
-    return SpecializedTemplate.get<ClassTemplateDecl*>();
+    return getSpecializedTemplateOrPartial();
   }
 
   /// \brief Retrieve the class template or class template partial
@@ -1970,6 +1973,11 @@ public:
   QualType getInjectedClassNameSpecialization();
 
   typedef SpecIterator<ClassTemplateSpecializationDecl> spec_iterator;
+  typedef llvm::iterator_range<spec_iterator> spec_range;
+
+  spec_range specializations() const {
+    return spec_range(spec_begin(), spec_end());
+  }
 
   spec_iterator spec_begin() const {
     return makeSpecIterator(getSpecializations(), false);
@@ -1977,17 +1985,6 @@ public:
 
   spec_iterator spec_end() const {
     return makeSpecIterator(getSpecializations(), true);
-  }
-
-  typedef SpecIterator<ClassTemplatePartialSpecializationDecl>
-          partial_spec_iterator;
-
-  partial_spec_iterator partial_spec_begin() {
-    return makeSpecIterator(getPartialSpecializations(), false);
-  }
-
-  partial_spec_iterator partial_spec_end() {
-    return makeSpecIterator(getPartialSpecializations(), true);
   }
 
   // Implement isa/cast/dyncast support
@@ -2778,6 +2775,11 @@ public:
       VarTemplatePartialSpecializationDecl *D);
 
   typedef SpecIterator<VarTemplateSpecializationDecl> spec_iterator;
+  typedef llvm::iterator_range<spec_iterator> spec_range;
+
+  spec_range specializations() const {
+    return spec_range(spec_begin(), spec_end());
+  }
 
   spec_iterator spec_begin() const {
     return makeSpecIterator(getSpecializations(), false);
@@ -2785,17 +2787,6 @@ public:
 
   spec_iterator spec_end() const {
     return makeSpecIterator(getSpecializations(), true);
-  }
-
-  typedef SpecIterator<VarTemplatePartialSpecializationDecl>
-  partial_spec_iterator;
-
-  partial_spec_iterator partial_spec_begin() {
-    return makeSpecIterator(getPartialSpecializations(), false);
-  }
-
-  partial_spec_iterator partial_spec_end() {
-    return makeSpecIterator(getPartialSpecializations(), true);
   }
 
   // Implement isa/cast/dyncast support

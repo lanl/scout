@@ -521,6 +521,10 @@ public:
 
   // Iterator access to properties.
   typedef specific_decl_iterator<ObjCPropertyDecl> prop_iterator;
+  typedef llvm::iterator_range<specific_decl_iterator<ObjCPropertyDecl>>
+    prop_range;
+
+  prop_range properties() const { return prop_range(prop_begin(), prop_end()); }
   prop_iterator prop_begin() const {
     return prop_iterator(decls_begin());
   }
@@ -530,6 +534,12 @@ public:
 
   // Iterator access to instance/class methods.
   typedef specific_decl_iterator<ObjCMethodDecl> method_iterator;
+  typedef llvm::iterator_range<specific_decl_iterator<ObjCMethodDecl>>
+    method_range;
+
+  method_range methods() const {
+    return method_range(meth_begin(), meth_end());
+  }
   method_iterator meth_begin() const {
     return method_iterator(decls_begin());
   }
@@ -540,6 +550,11 @@ public:
   typedef filtered_decl_iterator<ObjCMethodDecl,
                                  &ObjCMethodDecl::isInstanceMethod>
     instmeth_iterator;
+  typedef llvm::iterator_range<instmeth_iterator> instmeth_range;
+
+  instmeth_range instance_methods() const {
+    return instmeth_range(instmeth_begin(), instmeth_end());
+  }
   instmeth_iterator instmeth_begin() const {
     return instmeth_iterator(decls_begin());
   }
@@ -550,6 +565,11 @@ public:
   typedef filtered_decl_iterator<ObjCMethodDecl,
                                  &ObjCMethodDecl::isClassMethod>
     classmeth_iterator;
+  typedef llvm::iterator_range<classmeth_iterator> classmeth_range;
+
+  classmeth_range class_methods() const {
+    return classmeth_range(classmeth_begin(), classmeth_end());
+  }
   classmeth_iterator classmeth_begin() const {
     return classmeth_iterator(decls_begin());
   }
@@ -803,7 +823,11 @@ public:
   }
 
   typedef ObjCProtocolList::iterator protocol_iterator;
+  typedef llvm::iterator_range<protocol_iterator> protocol_range;
 
+  protocol_range protocols() const {
+    return protocol_range(protocol_begin(), protocol_end());
+  }
   protocol_iterator protocol_begin() const {
     // FIXME: Should make sure no callers ever do this.
     if (!hasDefinition())
@@ -826,7 +850,11 @@ public:
   }
 
   typedef ObjCProtocolList::loc_iterator protocol_loc_iterator;
+  typedef llvm::iterator_range<protocol_loc_iterator> protocol_loc_range;
 
+  protocol_loc_range protocol_locs() const {
+    return protocol_loc_range(protocol_loc_begin(), protocol_loc_end());
+  }
   protocol_loc_iterator protocol_loc_begin() const {
     // FIXME: Should make sure no callers ever do this.
     if (!hasDefinition())
@@ -850,7 +878,12 @@ public:
   }
 
   typedef ObjCList<ObjCProtocolDecl>::iterator all_protocol_iterator;
+  typedef llvm::iterator_range<all_protocol_iterator> all_protocol_range;
 
+  all_protocol_range all_referenced_protocols() const {
+    return all_protocol_range(all_referenced_protocol_begin(),
+                              all_referenced_protocol_end());
+  }
   all_protocol_iterator all_referenced_protocol_begin() const {
     // FIXME: Should make sure no callers ever do this.
     if (!hasDefinition())
@@ -877,7 +910,9 @@ public:
   }
 
   typedef specific_decl_iterator<ObjCIvarDecl> ivar_iterator;
+  typedef llvm::iterator_range<specific_decl_iterator<ObjCIvarDecl>> ivar_range;
 
+  ivar_range ivars() const { return ivar_range(ivar_begin(), ivar_end()); }
   ivar_iterator ivar_begin() const { 
     if (const ObjCInterfaceDecl *Def = getDefinition())
       return ivar_iterator(Def->decls_begin()); 
@@ -1057,6 +1092,14 @@ public:
   typedef filtered_category_iterator<isVisibleCategory>
     visible_categories_iterator;
 
+  typedef llvm::iterator_range<visible_categories_iterator>
+    visible_categories_range;
+
+  visible_categories_range visible_categories() const {
+    return visible_categories_range(visible_categories_begin(),
+                                    visible_categories_end());
+  }
+
   /// \brief Retrieve an iterator to the beginning of the visible-categories
   /// list.
   visible_categories_iterator visible_categories_begin() const {
@@ -1083,6 +1126,13 @@ public:
   /// \brief Iterator that walks over all of the known categories and
   /// extensions, including those that are hidden.
   typedef filtered_category_iterator<isKnownCategory> known_categories_iterator;
+  typedef llvm::iterator_range<known_categories_iterator>
+    known_categories_range;
+
+  known_categories_range known_categories() const {
+    return known_categories_range(known_categories_begin(),
+                                  known_categories_end());
+  }
 
   /// \brief Retrieve an iterator to the beginning of the known-categories
   /// list.
@@ -1112,6 +1162,14 @@ public:
   typedef filtered_category_iterator<isVisibleExtension>
     visible_extensions_iterator;
 
+  typedef llvm::iterator_range<visible_extensions_iterator>
+    visible_extensions_range;
+
+  visible_extensions_range visible_extensions() const {
+    return visible_extensions_range(visible_extensions_begin(),
+                                    visible_extensions_end());
+  }
+
   /// \brief Retrieve an iterator to the beginning of the visible-extensions
   /// list.
   visible_extensions_iterator visible_extensions_begin() const {
@@ -1138,6 +1196,13 @@ public:
   /// \brief Iterator that walks over all of the known extensions.
   typedef filtered_category_iterator<isKnownExtension>
     known_extensions_iterator;
+  typedef llvm::iterator_range<known_extensions_iterator>
+    known_extensions_range;
+
+  known_extensions_range known_extensions() const {
+    return known_extensions_range(known_extensions_begin(),
+                                  known_extensions_end());
+  }
 
   /// \brief Retrieve an iterator to the beginning of the known-extensions
   /// list.
@@ -1488,6 +1553,11 @@ public:
     return data().ReferencedProtocols;
   }
   typedef ObjCProtocolList::iterator protocol_iterator;
+  typedef llvm::iterator_range<protocol_iterator> protocol_range;
+
+  protocol_range protocols() const {
+    return protocol_range(protocol_begin(), protocol_end());
+  }
   protocol_iterator protocol_begin() const {
     if (!hasDefinition())
       return protocol_iterator();
@@ -1501,6 +1571,11 @@ public:
     return data().ReferencedProtocols.end(); 
   }
   typedef ObjCProtocolList::loc_iterator protocol_loc_iterator;
+  typedef llvm::iterator_range<protocol_loc_iterator> protocol_loc_range;
+
+  protocol_loc_range protocol_locs() const {
+    return protocol_loc_range(protocol_loc_begin(), protocol_loc_end());
+  }
   protocol_loc_iterator protocol_loc_begin() const {
     if (!hasDefinition())
       return protocol_loc_iterator();
@@ -1688,10 +1763,22 @@ public:
   }
 
   typedef ObjCProtocolList::iterator protocol_iterator;
-  protocol_iterator protocol_begin() const {return ReferencedProtocols.begin();}
+  typedef llvm::iterator_range<protocol_iterator> protocol_range;
+
+  protocol_range protocols() const {
+    return protocol_range(protocol_begin(), protocol_end());
+  }
+  protocol_iterator protocol_begin() const {
+    return ReferencedProtocols.begin();
+  }
   protocol_iterator protocol_end() const { return ReferencedProtocols.end(); }
   unsigned protocol_size() const { return ReferencedProtocols.size(); }
   typedef ObjCProtocolList::loc_iterator protocol_loc_iterator;
+  typedef llvm::iterator_range<protocol_loc_iterator> protocol_loc_range;
+
+  protocol_loc_range protocol_locs() const {
+    return protocol_loc_range(protocol_loc_begin(), protocol_loc_end());
+  }
   protocol_loc_iterator protocol_loc_begin() const {
     return ReferencedProtocols.loc_begin();
   }
@@ -1710,6 +1797,9 @@ public:
   bool IsClassExtension() const { return getIdentifier() == 0; }
 
   typedef specific_decl_iterator<ObjCIvarDecl> ivar_iterator;
+  typedef llvm::iterator_range<specific_decl_iterator<ObjCIvarDecl>> ivar_range;
+
+  ivar_range ivars() const { return ivar_range(ivar_begin(), ivar_end()); }
   ivar_iterator ivar_begin() const {
     return ivar_iterator(decls_begin());
   }
@@ -1776,6 +1866,12 @@ public:
 
   // Iterator access to properties.
   typedef specific_decl_iterator<ObjCPropertyImplDecl> propimpl_iterator;
+  typedef llvm::iterator_range<specific_decl_iterator<ObjCPropertyImplDecl>>
+    propimpl_range;
+
+  propimpl_range property_impls() const {
+    return propimpl_range(propimpl_begin(), propimpl_end());
+  }
   propimpl_iterator propimpl_begin() const {
     return propimpl_iterator(decls_begin());
   }
@@ -1934,6 +2030,14 @@ public:
   /// init_const_iterator - Iterates through the ivar initializer list.
   typedef CXXCtorInitializer * const * init_const_iterator;
 
+  typedef llvm::iterator_range<init_iterator> init_range;
+  typedef llvm::iterator_range<init_const_iterator> init_const_range;
+
+  init_range inits() { return init_range(init_begin(), init_end()); }
+  init_const_range inits() const {
+    return init_const_range(init_begin(), init_end());
+  }
+
   /// init_begin() - Retrieve an iterator to the first initializer.
   init_iterator       init_begin()       { return IvarInitializers; }
   /// begin() - Retrieve an iterator to the first initializer.
@@ -2005,6 +2109,9 @@ public:
   SourceLocation getIvarRBraceLoc() const { return IvarRBraceLoc; }
   
   typedef specific_decl_iterator<ObjCIvarDecl> ivar_iterator;
+  typedef llvm::iterator_range<specific_decl_iterator<ObjCIvarDecl>> ivar_range;
+
+  ivar_range ivars() const { return ivar_range(ivar_begin(), ivar_end()); }
   ivar_iterator ivar_begin() const {
     return ivar_iterator(decls_begin());
   }

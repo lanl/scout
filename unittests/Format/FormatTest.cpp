@@ -2024,6 +2024,10 @@ TEST_F(FormatTest, DoesntRemoveUnknownTokens) {
   verifyFormat("#define A ''qqq");
   verifyFormat("#define A `qqq");
   verifyFormat("f(\"aaaa, bbbb, \"\\\"ccccc\\\"\");");
+  EXPECT_EQ("const char *c = STRINGIFY(\n"
+            "\\na : b);",
+            format("const char * c = STRINGIFY(\n"
+                   "\\na : b);"));
 }
 
 TEST_F(FormatTest, IndentsPPDirectiveInReducedSpace) {
@@ -2283,30 +2287,30 @@ TEST_F(FormatTest, MacroCallsWithoutTrailingSemicolon) {
                    "  ifstream(x)\n >> x;\n"
                    "}\n"));
   EXPECT_EQ("int q() {\n"
-            "  f(x)\n"
+            "  F(x)\n"
             "  if (1) {\n"
             "  }\n"
-            "  f(x)\n"
+            "  F(x)\n"
             "  while (1) {\n"
             "  }\n"
-            "  f(x)\n"
-            "  g(x);\n"
-            "  f(x)\n"
+            "  F(x)\n"
+            "  G(x);\n"
+            "  F(x)\n"
             "  try {\n"
-            "    q();\n"
+            "    Q();\n"
             "  }\n"
             "  catch (...) {\n"
             "  }\n"
             "}\n",
             format("int q() {\n"
-                   "f(x)\n"
+                   "F(x)\n"
                    "if (1) {}\n"
-                   "f(x)\n"
+                   "F(x)\n"
                    "while (1) {}\n"
-                   "f(x)\n"
-                   "g(x);\n"
-                   "f(x)\n"
-                   "try { q(); } catch (...) {}\n"
+                   "F(x)\n"
+                   "G(x);\n"
+                   "F(x)\n"
+                   "try { Q(); } catch (...) {}\n"
                    "}\n"));
   EXPECT_EQ("class A {\n"
             "  A() : t(0) {}\n"
@@ -2321,6 +2325,27 @@ TEST_F(FormatTest, MacroCallsWithoutTrailingSemicolon) {
                    "  A(X x)\n"
                    "  try : t(0) {} catch (...) {}\n"
                    "};"));
+  EXPECT_EQ(
+      "class SomeClass {\n"
+      "public:\n"
+      "  SomeClass() EXCLUSIVE_LOCK_FUNCTION(mu_);\n"
+      "};",
+      format("class SomeClass {\n"
+             "public:\n"
+             "  SomeClass()\n"
+             "  EXCLUSIVE_LOCK_FUNCTION(mu_);\n"
+             "};"));
+  EXPECT_EQ(
+      "class SomeClass {\n"
+      "public:\n"
+      "  SomeClass()\n"
+      "      EXCLUSIVE_LOCK_FUNCTION(mu_);\n"
+      "};",
+      format("class SomeClass {\n"
+             "public:\n"
+             "  SomeClass()\n"
+             "  EXCLUSIVE_LOCK_FUNCTION(mu_);\n"
+             "};", getLLVMStyleWithColumns(40)));
 }
 
 TEST_F(FormatTest, LayoutMacroDefinitionsStatementsSpanningBlocks) {
@@ -6007,6 +6032,11 @@ TEST_F(FormatTest, ObjCDictLiterals) {
       "  NSFontAttributeNameeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee : "
       "regularFont,\n"
       "};");
+  verifyFormat(
+      "@{\n"
+      "  NSFontAttributeNameeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee :\n"
+      "      reeeeeeeeeeeeeeeeeeeeeeeegularFont,\n"
+      "};");
 
   // We should try to be robust in case someone forgets the "@".
   verifyFormat(
@@ -8058,6 +8088,14 @@ TEST_F(FormatTest, FormatsBlocks) {
                "        // ...\n"
                "        int i;\n"
                "    }];");
+
+  verifyFormat("f(^{\n"
+               "    @autoreleasepool {\n"
+               "      if (a) {\n"
+               "        g();\n"
+               "      }\n"
+               "    }\n"
+               "});");
 }
 
 TEST_F(FormatTest, SupportsCRLF) {
@@ -8154,6 +8192,20 @@ TEST_F(FormatTest, SpacesInAngles) {
 
   Spaces.SpacesInAngles = false;
   verifyFormat("A<A<int>>();", Spaces);
+}
+
+TEST_F(FormatTest, HandleUnbalancedImplicitBracesAcrossPPBranches) {
+  std::string code = "#if A\n"
+                     "#if B\n"
+                     "a.\n"
+                     "#endif\n"
+                     "    a = 1;\n"
+                     "#else\n"
+                     "#endif\n"
+                     "#if C\n"
+                     "#else\n"
+                     "#endif\n";
+  EXPECT_EQ(code, format(code));
 }
 
 } // end namespace tooling

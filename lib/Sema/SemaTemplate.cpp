@@ -3912,10 +3912,8 @@ bool UnnamedLocalNoLinkageFinder::VisitExtVectorType(const ExtVectorType* T) {
 
 bool UnnamedLocalNoLinkageFinder::VisitFunctionProtoType(
                                                   const FunctionProtoType* T) {
-  for (FunctionProtoType::param_type_iterator A = T->param_type_begin(),
-                                              AEnd = T->param_type_end();
-       A != AEnd; ++A) {
-    if (Visit(*A))
+  for (const auto &A : T->param_types()) {
+    if (Visit(A))
       return true;
   }
 
@@ -4781,9 +4779,9 @@ ExprResult Sema::CheckTemplateArgument(NonTypeTemplateParmDecl *Param,
         
       public:
         TmplArgICEDiagnoser(QualType T) : T(T) { }
-        
-        virtual void diagnoseNotICE(Sema &S, SourceLocation Loc,
-                                    SourceRange SR) {
+
+        void diagnoseNotICE(Sema &S, SourceLocation Loc,
+                            SourceRange SR) override {
           S.Diag(Loc, diag::err_template_arg_not_ice) << T << SR;
         }
       } Diagnoser(ArgType);

@@ -3318,13 +3318,12 @@ static EvalStmtResult EvaluateStmt(APValue &Result, EvalInfo &Info,
 
   case Stmt::DeclStmtClass: {
     const DeclStmt *DS = cast<DeclStmt>(S);
-    for (DeclStmt::const_decl_iterator DclIt = DS->decl_begin(),
-           DclEnd = DS->decl_end(); DclIt != DclEnd; ++DclIt) {
+    for (const auto *DclIt : DS->decls()) {
       // Each declaration initialization is its own full-expression.
       // FIXME: This isn't quite right; if we're performing aggregate
       // initialization, each braced subexpression is its own full-expression.
       FullExpressionRAII Scope(Info);
-      if (!EvaluateDecl(Info, *DclIt) && !Info.keepEvaluatingAfterFailure())
+      if (!EvaluateDecl(Info, DclIt) && !Info.keepEvaluatingAfterFailure())
         return ESR_Failed;
     }
     return ESR_Succeeded;
@@ -3342,9 +3341,8 @@ static EvalStmtResult EvaluateStmt(APValue &Result, EvalInfo &Info,
     BlockScopeRAII Scope(Info);
 
     const CompoundStmt *CS = cast<CompoundStmt>(S);
-    for (CompoundStmt::const_body_iterator BI = CS->body_begin(),
-           BE = CS->body_end(); BI != BE; ++BI) {
-      EvalStmtResult ESR = EvaluateStmt(Result, Info, *BI, Case);
+    for (const auto *BI : CS->body()) {
+      EvalStmtResult ESR = EvaluateStmt(Result, Info, BI, Case);
       if (ESR == ESR_Succeeded)
         Case = 0;
       else if (ESR != ESR_CaseNotFound)
@@ -3686,15 +3684,14 @@ static bool HandleConstructorCall(SourceLocation CallLoc, const LValue &This,
 #ifndef NDEBUG
   CXXRecordDecl::base_class_const_iterator BaseIt = RD->bases_begin();
 #endif
-  for (CXXConstructorDecl::init_const_iterator I = Definition->init_begin(),
-       E = Definition->init_end(); I != E; ++I) {
+  for (const auto *I : Definition->inits()) {
     LValue Subobject = This;
     APValue *Value = &Result;
 
     // Determine the subobject to initialize.
     FieldDecl *FD = 0;
-    if ((*I)->isBaseInitializer()) {
-      QualType BaseType((*I)->getBaseClass(), 0);
+    if (I->isBaseInitializer()) {
+      QualType BaseType(I->getBaseClass(), 0);
 #ifndef NDEBUG
       // Non-virtual base classes are initialized in the order in the class
       // definition. We have already checked for virtual base classes.
@@ -3703,12 +3700,12 @@ static bool HandleConstructorCall(SourceLocation CallLoc, const LValue &This,
              "base class initializers not in expected order");
       ++BaseIt;
 #endif
-      if (!HandleLValueDirectBase(Info, (*I)->getInit(), Subobject, RD,
+      if (!HandleLValueDirectBase(Info, I->getInit(), Subobject, RD,
                                   BaseType->getAsCXXRecordDecl(), &Layout))
         return false;
       Value = &Result.getStructBase(BasesSeen++);
-    } else if ((FD = (*I)->getMember())) {
-      if (!HandleLValueMember(Info, (*I)->getInit(), Subobject, FD, &Layout))
+    } else if ((FD = I->getMember())) {
+      if (!HandleLValueMember(Info, I->getInit(), Subobject, FD, &Layout))
         return false;
       if (RD->isUnion()) {
         Result = APValue(FD);
@@ -3716,7 +3713,7 @@ static bool HandleConstructorCall(SourceLocation CallLoc, const LValue &This,
       } else {
         Value = &Result.getStructField(FD->getFieldIndex());
       }
-    } else if (IndirectFieldDecl *IFD = (*I)->getIndirectMember()) {
+    } else if (IndirectFieldDecl *IFD = I->getIndirectMember()) {
       // Walk the indirect field decl's chain to find the object to initialize,
       // and make sure we've initialized every step along it.
       for (auto *C : IFD->chain()) {
@@ -3735,7 +3732,7 @@ static bool HandleConstructorCall(SourceLocation CallLoc, const LValue &This,
             *Value = APValue(APValue::UninitStruct(), CD->getNumBases(),
                              std::distance(CD->field_begin(), CD->field_end()));
         }
-        if (!HandleLValueMember(Info, (*I)->getInit(), Subobject, FD))
+        if (!HandleLValueMember(Info, I->getInit(), Subobject, FD))
           return false;
         if (CD->isUnion())
           Value = &Value->getUnionValue();
@@ -3747,8 +3744,8 @@ static bool HandleConstructorCall(SourceLocation CallLoc, const LValue &This,
     }
 
     FullExpressionRAII InitScope(Info);
-    if (!EvaluateInPlace(*Value, Info, Subobject, (*I)->getInit()) ||
-        (FD && FD->isBitField() && !truncateBitfieldValue(Info, (*I)->getInit(),
+    if (!EvaluateInPlace(*Value, Info, Subobject, I->getInit()) ||
+        (FD && FD->isBitField() && !truncateBitfieldValue(Info, I->getInit(),
                                                           *Value, FD))) {
       // If we're checking for a potential constant expression, evaluate all
       // initializers even if some of them fail.
@@ -8036,6 +8033,9 @@ static bool EvaluateInPlace(APValue &Result, EvalInfo &Info, const LValue &This,
 /// EvaluateAsRValue - Try to evaluate this expression, performing an implicit
 /// lvalue-to-rvalue cast if it is an lvalue.
 static bool EvaluateAsRValue(EvalInfo &Info, const Expr *E, APValue &Result) {
+  if (E->getType().isNull())
+    return false;
+
   if (!CheckLiteralType(Info, E))
     return false;
 
@@ -8061,6 +8061,13 @@ static bool FastEvaluateAsRValue(const Expr *Exp, Expr::EvalResult &Result,
     Result.Val = APValue(APSInt(L->getValue(),
                                 L->getType()->isUnsignedIntegerType()));
     IsConst = true;
+    return true;
+  }
+
+  // This case should be rare, but we need to check it before we check on
+  // the type below.
+  if (Exp->getType().isNull()) {
+    IsConst = false;
     return true;
   }
   

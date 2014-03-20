@@ -617,16 +617,6 @@ public:
   /// \brief Iterator that traverses the base classes of a class.
   typedef const CXXBaseSpecifier* base_class_const_iterator;
 
-  /// \brief Iterator that traverses the base classes of a class in reverse
-  /// order.
-  typedef std::reverse_iterator<base_class_iterator>
-    reverse_base_class_iterator;
-
-  /// \brief Iterator that traverses the base classes of a class in reverse
-  /// order.
-  typedef std::reverse_iterator<base_class_const_iterator>
-    reverse_base_class_const_iterator;
-
   CXXRecordDecl *getCanonicalDecl() override {
     return cast<CXXRecordDecl>(RecordDecl::getCanonicalDecl());
   }
@@ -678,27 +668,33 @@ public:
   /// \brief Retrieves the number of base classes of this class.
   unsigned getNumBases() const { return data().NumBases; }
 
+  typedef llvm::iterator_range<base_class_iterator> base_class_range;
+  typedef llvm::iterator_range<base_class_const_iterator>
+    base_class_const_range;
+
+  base_class_range bases() {
+    return base_class_range(bases_begin(), bases_end());
+  }
+  base_class_const_range bases() const {
+    return base_class_const_range(bases_begin(), bases_end());
+  }
+
   base_class_iterator bases_begin() { return data().getBases(); }
   base_class_const_iterator bases_begin() const { return data().getBases(); }
   base_class_iterator bases_end() { return bases_begin() + data().NumBases; }
   base_class_const_iterator bases_end() const {
     return bases_begin() + data().NumBases;
   }
-  reverse_base_class_iterator       bases_rbegin() {
-    return reverse_base_class_iterator(bases_end());
-  }
-  reverse_base_class_const_iterator bases_rbegin() const {
-    return reverse_base_class_const_iterator(bases_end());
-  }
-  reverse_base_class_iterator bases_rend() {
-    return reverse_base_class_iterator(bases_begin());
-  }
-  reverse_base_class_const_iterator bases_rend() const {
-    return reverse_base_class_const_iterator(bases_begin());
-  }
 
   /// \brief Retrieves the number of virtual base classes of this class.
   unsigned getNumVBases() const { return data().NumVBases; }
+
+  base_class_range vbases() {
+    return base_class_range(vbases_begin(), vbases_end());
+  }
+  base_class_const_range vbases() const {
+    return base_class_const_range(vbases_begin(), vbases_end());
+  }
 
   base_class_iterator vbases_begin() { return data().getVBases(); }
   base_class_const_iterator vbases_begin() const { return data().getVBases(); }
@@ -706,18 +702,6 @@ public:
   base_class_const_iterator vbases_end() const {
     return vbases_begin() + data().NumVBases;
   }
-  reverse_base_class_iterator vbases_rbegin() {
-    return reverse_base_class_iterator(vbases_end());
-  }
-  reverse_base_class_const_iterator vbases_rbegin() const {
-    return reverse_base_class_const_iterator(vbases_end());
-  }
-  reverse_base_class_iterator vbases_rend() {
-    return reverse_base_class_iterator(vbases_begin());
-  }
-  reverse_base_class_const_iterator vbases_rend() const {
-    return reverse_base_class_const_iterator(vbases_begin());
- }
 
   /// \brief Determine whether this class has any dependent base classes which
   /// are not the current instantiation.
@@ -727,6 +711,12 @@ public:
   /// all method members of the class, including non-instance methods,
   /// special methods, etc.
   typedef specific_decl_iterator<CXXMethodDecl> method_iterator;
+  typedef llvm::iterator_range<specific_decl_iterator<CXXMethodDecl>>
+    method_range;
+
+  method_range methods() const {
+    return method_range(method_begin(), method_end());
+  }
 
   /// \brief Method begin iterator.  Iterates in the order the methods
   /// were declared.
@@ -740,6 +730,10 @@ public:
 
   /// Iterator access to constructor members.
   typedef specific_decl_iterator<CXXConstructorDecl> ctor_iterator;
+  typedef llvm::iterator_range<specific_decl_iterator<CXXConstructorDecl>>
+    ctor_range;
+
+  ctor_range ctors() const { return ctor_range(ctor_begin(), ctor_end()); }
 
   ctor_iterator ctor_begin() const {
     return ctor_iterator(decls_begin());
@@ -751,6 +745,9 @@ public:
   /// An iterator over friend declarations.  All of these are defined
   /// in DeclFriend.h.
   class friend_iterator;
+  typedef llvm::iterator_range<friend_iterator> friend_range;
+
+  friend_range friends() const;
   friend_iterator friend_begin() const;
   friend_iterator friend_end() const;
   void pushFriendDecl(FriendDecl *FD);
@@ -1022,6 +1019,11 @@ public:
                         FieldDecl *&ThisCapture) const;
 
   typedef const LambdaExpr::Capture* capture_const_iterator;
+  typedef llvm::iterator_range<capture_const_iterator> capture_const_range;
+
+  capture_const_range captures() const {
+    return capture_const_range(captures_begin(), captures_end());
+  }
   capture_const_iterator captures_begin() const {
     return isLambda() ? getLambdaData().Captures : NULL;
   }
@@ -2133,6 +2135,14 @@ public:
   /// \brief Iterates through the member/base initializer list.
   typedef CXXCtorInitializer * const * init_const_iterator;
 
+  typedef llvm::iterator_range<init_iterator> init_range;
+  typedef llvm::iterator_range<init_const_iterator> init_const_range;
+
+  init_range inits() { return init_range(init_begin(), init_end()); }
+  init_const_range inits() const {
+    return init_const_range(init_begin(), init_end());
+  }
+
   /// \brief Retrieve an iterator to the first initializer.
   init_iterator       init_begin()       { return CtorInitializers; }
   /// \brief Retrieve an iterator to the first initializer.
@@ -2872,6 +2882,11 @@ public:
     }
   };
 
+  typedef llvm::iterator_range<shadow_iterator> shadow_range;
+
+  shadow_range shadows() const {
+    return shadow_range(shadow_begin(), shadow_end());
+  }
   shadow_iterator shadow_begin() const {
     return shadow_iterator(FirstUsingShadow.getPointer());
   }

@@ -71,7 +71,7 @@ class TypeNameValidatorCCC : public CorrectionCandidateCallback {
     WantRemainingKeywords = false;
   }
 
-  virtual bool ValidateCandidate(const TypoCorrection &candidate) {
+  bool ValidateCandidate(const TypoCorrection &candidate) override {
     if (NamedDecl *ND = candidate.getCorrectionDecl()) {
       bool IsType = isa<TypeDecl>(ND) || isa<ObjCInterfaceDecl>(ND);
       bool AllowedTemplate = AllowClassTemplates && isa<ClassTemplateDecl>(ND);
@@ -386,9 +386,8 @@ bool Sema::isMicrosoftMissingTypename(const CXXScopeSpec *SS, Scope *S) {
     const Type *Ty = SS->getScopeRep()->getAsType();
 
     CXXRecordDecl *RD = cast<CXXRecordDecl>(CurContext);
-    for (CXXRecordDecl::base_class_const_iterator Base = RD->bases_begin(),
-          BaseEnd = RD->bases_end(); Base != BaseEnd; ++Base)
-      if (Context.hasSameUnqualifiedType(QualType(Ty, 1), Base->getType()))
+    for (const auto &Base : RD->bases())
+      if (Context.hasSameUnqualifiedType(QualType(Ty, 1), Base.getType()))
         return true;
     return S->isFunctionPrototypeScope();
   } 
@@ -1376,9 +1375,7 @@ void Sema::ActOnPopScope(SourceLocation Loc, Scope *S) {
   assert((S->getFlags() & (Scope::DeclScope | Scope::TemplateParamScope)) &&
          "Scope shouldn't contain decls!");
 
-  for (Scope::decl_iterator I = S->decl_begin(), E = S->decl_end();
-       I != E; ++I) {
-    Decl *TmpD = (*I);
+  for (auto *TmpD : S->decls()) {
     assert(TmpD && "This decl didn't get pushed??");
 
     assert(isa<NamedDecl>(TmpD) && "Decl isn't NamedDecl?");
@@ -2650,8 +2647,7 @@ bool Sema::MergeFunctionDecl(FunctionDecl *New, NamedDecl *&OldD,
       // The old declaration provided a function prototype, but the
       // new declaration does not. Merge in the prototype.
       assert(!OldProto->hasExceptionSpec() && "Exception spec in C");
-      SmallVector<QualType, 16> ParamTypes(OldProto->param_type_begin(),
-                                           OldProto->param_type_end());
+      SmallVector<QualType, 16> ParamTypes(OldProto->param_types());
       NewQType =
           Context.getFunctionType(NewFuncType->getReturnType(), ParamTypes,
                                   OldProto->getExtProtoInfo());
@@ -2660,16 +2656,10 @@ bool Sema::MergeFunctionDecl(FunctionDecl *New, NamedDecl *&OldD,
 
       // Synthesize a parameter for each argument type.
       SmallVector<ParmVarDecl*, 16> Params;
-      for (FunctionProtoType::param_type_iterator
-               ParamType = OldProto->param_type_begin(),
-               ParamEnd = OldProto->param_type_end();
-           ParamType != ParamEnd; ++ParamType) {
-        ParmVarDecl *Param = ParmVarDecl::Create(Context, New,
-                                                 SourceLocation(),
-                                                 SourceLocation(), 0,
-                                                 *ParamType, /*TInfo=*/0,
-                                                 SC_None,
-                                                 0);
+      for (const auto &ParamType : OldProto->param_types()) {
+        ParmVarDecl *Param = ParmVarDecl::Create(Context, New, SourceLocation(),
+                                                 SourceLocation(), 0, ParamType,
+                                                 /*TInfo=*/0, SC_None, 0);
         Param->setScopeInfo(0, Params.size());
         Param->setImplicit();
         Params.push_back(Param);
@@ -5942,9 +5932,8 @@ bool Sema::AddOverriddenMethods(CXXRecordDecl *DC, CXXMethodDecl *MD) {
   bool hasNonDeletedOverridenMethods = false;
   bool AddedAny = false;
   if (DC->lookupInBases(&FindOverriddenMethod, &Data, Paths)) {
-    for (CXXBasePaths::decl_iterator I = Paths.found_decls_begin(),
-         E = Paths.found_decls_end(); I != E; ++I) {
-      if (CXXMethodDecl *OldMD = dyn_cast<CXXMethodDecl>(*I)) {
+    for (auto *I : Paths.found_decls()) {
+      if (CXXMethodDecl *OldMD = dyn_cast<CXXMethodDecl>(I)) {
         MD->addOverriddenMethod(OldMD->getCanonicalDecl());
         if (!CheckOverridingFunctionReturnType(MD, OldMD) &&
             !CheckOverridingFunctionAttributes(MD, OldMD) &&
@@ -5990,7 +5979,7 @@ class DifferentNameValidatorCCC : public CorrectionCandidateCallback {
       : Context(Context), OriginalFD(TypoFD),
         ExpectedParent(Parent ? Parent->getCanonicalDecl() : 0) {}
 
-  virtual bool ValidateCandidate(const TypoCorrection &candidate) {
+  bool ValidateCandidate(const TypoCorrection &candidate) override {
     if (candidate.getEditDistance() == 0)
       return false;
 
@@ -6911,11 +6900,9 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
     // @endcode
 
     // Synthesize a parameter for each argument type.
-    for (FunctionProtoType::param_type_iterator AI = FT->param_type_begin(),
-                                                AE = FT->param_type_end();
-         AI != AE; ++AI) {
+    for (const auto &AI : FT->param_types()) {
       ParmVarDecl *Param =
-        BuildParmVarDeclForTypedef(NewFD, D.getIdentifierLoc(), *AI);
+          BuildParmVarDeclForTypedef(NewFD, D.getIdentifierLoc(), AI);
       Param->setScopeInfo(0, Params.size());
       Params.push_back(Param);
     }
@@ -8057,6 +8044,11 @@ void Sema::AddInitializerToDecl(Decl *RealDecl, Expr *Init,
         return;
       } else {
         DeduceInit = CXXDirectInit->getExpr(0);
+        if (isa<InitListExpr>(DeduceInit))
+          Diag(CXXDirectInit->getLocStart(),
+               diag::err_auto_var_init_paren_braces)
+            << VDecl->getDeclName() << VDecl->getType()
+            << VDecl->getSourceRange();
       }
     }
 
@@ -9466,22 +9458,21 @@ static void RebuildLambdaScopeInfo(CXXMethodDecl *CallOperator,
 
   // Add the captures to the LSI so they can be noted as already
   // captured within tryCaptureVar. 
-  for (LambdaExpr::capture_iterator C = LambdaClass->captures_begin(),
-      CEnd = LambdaClass->captures_end(); C != CEnd; ++C) {
-    if (C->capturesVariable()) {
-      VarDecl *VD = C->getCapturedVar();
+  for (const auto &C : LambdaClass->captures()) {
+    if (C.capturesVariable()) {
+      VarDecl *VD = C.getCapturedVar();
       if (VD->isInitCapture())
         S.CurrentInstantiationScope->InstantiatedLocal(VD, VD);
       QualType CaptureType = VD->getType();
-      const bool ByRef = C->getCaptureKind() == LCK_ByRef;
+      const bool ByRef = C.getCaptureKind() == LCK_ByRef;
       LSI->addCapture(VD, /*IsBlock*/false, ByRef, 
-          /*RefersToEnclosingLocal*/true, C->getLocation(),
-          /*EllipsisLoc*/C->isPackExpansion() 
-                         ? C->getEllipsisLoc() : SourceLocation(),
+          /*RefersToEnclosingLocal*/true, C.getLocation(),
+          /*EllipsisLoc*/C.isPackExpansion() 
+                         ? C.getEllipsisLoc() : SourceLocation(),
           CaptureType, /*Expr*/ 0);
       
-    } else if (C->capturesThis()) {
-      LSI->addThisCapture(/*Nested*/ false, C->getLocation(), 
+    } else if (C.capturesThis()) {
+      LSI->addThisCapture(/*Nested*/ false, C.getLocation(), 
                               S.getCurrentThisType(), /*Expr*/ 0);
     }
   }
@@ -9690,6 +9681,30 @@ void Sema::computeNRVO(Stmt *Body, FunctionScopeInfo *Scope) {
     const_cast<VarDecl*>(NRVOCandidate)->setNRVOVariable(true);
 }
 
+bool Sema::canDelayFunctionBody(const Declarator &D) {
+  // We can't delay parsing the body of a constexpr function template (yet).
+  if (D.getDeclSpec().isConstexprSpecified())
+    return false;
+
+  // We can't delay parsing the body of a function template with a deduced
+  // return type (yet).
+  if (D.getDeclSpec().containsPlaceholderType()) {
+    // If the placeholder introduces a non-deduced trailing return type,
+    // we can still delay parsing it.
+    if (D.getNumTypeObjects()) {
+      const auto &Outer = D.getTypeObject(D.getNumTypeObjects() - 1);
+      if (Outer.Kind == DeclaratorChunk::Function &&
+          Outer.Fun.hasTrailingReturnType()) {
+        QualType Ty = GetTypeFromParser(Outer.Fun.getTrailingReturnType());
+        return Ty.isNull() || !Ty->isUndeducedType();
+      }
+    }
+    return false;
+  }
+
+  return true;
+}
+
 bool Sema::canSkipFunctionBody(Decl *D) {
   // We cannot skip the body of a function (or function template) which is
   // constexpr, since we may need to evaluate its body in order to parse the
@@ -9805,14 +9820,19 @@ Decl *Sema::ActOnFinishFunctionBody(Decl *dcl, Stmt *Body,
           MD->isDesignatedInitializerForTheInterface(&InitMethod);
       assert(isDesignated && InitMethod);
       (void)isDesignated;
-      Diag(MD->getLocation(),
-           diag::warn_objc_designated_init_missing_super_call);
-      Diag(InitMethod->getLocation(),
-           diag::note_objc_designated_init_marked_here);
+      // Don't issue this warning for unavaialable inits.
+      if (!MD->isUnavailable()) {
+        Diag(MD->getLocation(),
+             diag::warn_objc_designated_init_missing_super_call);
+        Diag(InitMethod->getLocation(),
+             diag::note_objc_designated_init_marked_here);
+      }
       getCurFunction()->ObjCWarnForNoDesignatedInitChain = false;
     }
     if (getCurFunction()->ObjCWarnForNoInitDelegation) {
-      Diag(MD->getLocation(), diag::warn_objc_secondary_init_missing_init_call);
+      // Don't issue this warning for unavaialable inits.
+      if (!MD->isUnavailable())
+        Diag(MD->getLocation(), diag::warn_objc_secondary_init_missing_init_call);
       getCurFunction()->ObjCWarnForNoInitDelegation = false;
     }
   } else {
@@ -12222,10 +12242,7 @@ void Sema::ActOnFields(Scope *S, SourceLocation RecLoc, Decl *EnclosingDecl,
             Diag(ClsIvar->getLocation(), diag::note_previous_definition);
             continue;
           }
-          for (ObjCInterfaceDecl::known_extensions_iterator
-                 Ext = IDecl->known_extensions_begin(),
-                 ExtEnd = IDecl->known_extensions_end();
-               Ext != ExtEnd; ++Ext) {
+          for (const auto *Ext : IDecl->known_extensions()) {
             if (const ObjCIvarDecl *ClsExtIvar
                   = Ext->getIvarDecl(ClsFields[i]->getIdentifier())) {
               Diag(ClsFields[i]->getLocation(), 

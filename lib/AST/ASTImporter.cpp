@@ -1598,10 +1598,8 @@ QualType ASTNodeImporter::VisitFunctionProtoType(const FunctionProtoType *T) {
   
   // Import argument types
   SmallVector<QualType, 4> ArgTypes;
-  for (FunctionProtoType::param_type_iterator A = T->param_type_begin(),
-                                              AEnd = T->param_type_end();
-       A != AEnd; ++A) {
-    QualType ArgType = Importer.Import(*A);
+  for (const auto &A : T->param_types()) {
+    QualType ArgType = Importer.Import(A);
     if (ArgType.isNull())
       return QualType();
     ArgTypes.push_back(ArgType);
@@ -1609,10 +1607,8 @@ QualType ASTNodeImporter::VisitFunctionProtoType(const FunctionProtoType *T) {
   
   // Import exception types
   SmallVector<QualType, 4> ExceptionTypes;
-  for (FunctionProtoType::exception_iterator E = T->exception_begin(),
-                                          EEnd = T->exception_end();
-       E != EEnd; ++E) {
-    QualType ExceptionType = Importer.Import(*E);
+  for (const auto &E : T->exceptions()) {
+    QualType ExceptionType = Importer.Import(E);
     if (ExceptionType.isNull())
       return QualType();
     ExceptionTypes.push_back(ExceptionType);
@@ -1784,11 +1780,9 @@ QualType ASTNodeImporter::VisitObjCObjectType(const ObjCObjectType *T) {
     return QualType();
 
   SmallVector<ObjCProtocolDecl *, 4> Protocols;
-  for (ObjCObjectType::qual_iterator P = T->qual_begin(), 
-                                     PEnd = T->qual_end();
-       P != PEnd; ++P) {
+  for (auto *P : T->quals()) {
     ObjCProtocolDecl *Protocol
-      = dyn_cast_or_null<ObjCProtocolDecl>(Importer.Import(*P));
+      = dyn_cast_or_null<ObjCProtocolDecl>(Importer.Import(P));
     if (!Protocol)
       return QualType();
     Protocols.push_back(Protocol);
@@ -1981,29 +1975,25 @@ bool ASTNodeImporter::ImportDefinition(RecordDecl *From, RecordDecl *To,
     ToData.IsLambda = FromData.IsLambda;
 
     SmallVector<CXXBaseSpecifier *, 4> Bases;
-    for (CXXRecordDecl::base_class_iterator 
-                  Base1 = FromCXX->bases_begin(),
-            FromBaseEnd = FromCXX->bases_end();
-         Base1 != FromBaseEnd;
-         ++Base1) {
-      QualType T = Importer.Import(Base1->getType());
+    for (const auto &Base1 : FromCXX->bases()) {
+      QualType T = Importer.Import(Base1.getType());
       if (T.isNull())
         return true;
 
       SourceLocation EllipsisLoc;
-      if (Base1->isPackExpansion())
-        EllipsisLoc = Importer.Import(Base1->getEllipsisLoc());
+      if (Base1.isPackExpansion())
+        EllipsisLoc = Importer.Import(Base1.getEllipsisLoc());
 
       // Ensure that we have a definition for the base.
-      ImportDefinitionIfNeeded(Base1->getType()->getAsCXXRecordDecl());
+      ImportDefinitionIfNeeded(Base1.getType()->getAsCXXRecordDecl());
         
       Bases.push_back(
                     new (Importer.getToContext()) 
-                      CXXBaseSpecifier(Importer.Import(Base1->getSourceRange()),
-                                       Base1->isVirtual(),
-                                       Base1->isBaseOfClass(),
-                                       Base1->getAccessSpecifierAsWritten(),
-                                   Importer.Import(Base1->getTypeSourceInfo()),
+                      CXXBaseSpecifier(Importer.Import(Base1.getSourceRange()),
+                                       Base1.isVirtual(),
+                                       Base1.isBaseOfClass(),
+                                       Base1.getAccessSpecifierAsWritten(),
+                                   Importer.Import(Base1.getTypeSourceInfo()),
                                        EllipsisLoc));
     }
     if (!Bases.empty())
@@ -3552,12 +3542,8 @@ bool ASTNodeImporter::ImportDefinition(ObjCInterfaceDecl *From,
   
   // Import categories. When the categories themselves are imported, they'll
   // hook themselves into this interface.
-  for (ObjCInterfaceDecl::known_categories_iterator
-         Cat = From->known_categories_begin(),
-         CatEnd = From->known_categories_end();
-       Cat != CatEnd; ++Cat) {
-    Importer.Import(*Cat);
-  }
+  for (auto *Cat : From->known_categories())
+    Importer.Import(Cat);
   
   // If we have an @implementation, import it as well.
   if (From->getImplementation()) {

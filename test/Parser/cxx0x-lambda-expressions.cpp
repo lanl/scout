@@ -24,7 +24,6 @@ class C {
     [] () -> class C { return C(); };
     [] () -> enum E { return e; };
 
-    [] [[fake_ident]] { while (1) ; }; // expected-error {{lambda requires '()' before attribute specifier}} expected-warning {{unknown attribute 'fake_ident' ignored}}
     [] -> int { return 0; }; // expected-error{{lambda requires '()' before return type}}
     [] mutable -> int { return 0; }; // expected-error{{lambda requires '()' before 'mutable'}}
     [](int) -> {}; // PR13652 expected-error {{expected a type}}
@@ -64,5 +63,23 @@ class C {
       r += 2;
       return x + 2;
     } ();
+  }
+
+  void attributes() {
+    [] [[]] {}; // expected-error {{lambda requires '()' before attribute specifier}}
+    [] __attribute__((noreturn)) {}; // expected-error {{lambda requires '()' before attribute specifier}}
+    []() [[]]
+      mutable {}; // expected-error {{expected body of lambda expression}}
+
+    []() [[]] {};
+    []() [[]] -> void {};
+    []() mutable [[]] -> void {};
+    []() mutable noexcept [[]] -> void {};
+
+    // Testing GNU-style attributes on lambdas -- the attribute is specified
+    // before the mutable specifier instead of after (unlike C++11).
+    []() __attribute__((noreturn)) mutable { while(1); };
+    []() mutable
+      __attribute__((noreturn)) { while(1); }; // expected-error {{expected body of lambda expression}}
   }
 };

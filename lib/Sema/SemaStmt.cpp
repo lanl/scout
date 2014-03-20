@@ -601,41 +601,41 @@ Sema::ActOnStartOfSwitchStmt(SourceLocation SwitchLoc, Expr *Cond,
         : ICEConvertDiagnoser(/*AllowScopedEnumerations*/true, false, true),
           Cond(Cond) {}
 
-    virtual SemaDiagnosticBuilder diagnoseNotInt(Sema &S, SourceLocation Loc,
-                                                 QualType T) {
+    SemaDiagnosticBuilder diagnoseNotInt(Sema &S, SourceLocation Loc,
+                                         QualType T) override {
       return S.Diag(Loc, diag::err_typecheck_statement_requires_integer) << T;
     }
 
-    virtual SemaDiagnosticBuilder diagnoseIncomplete(
-        Sema &S, SourceLocation Loc, QualType T) {
+    SemaDiagnosticBuilder diagnoseIncomplete(
+        Sema &S, SourceLocation Loc, QualType T) override {
       return S.Diag(Loc, diag::err_switch_incomplete_class_type)
                << T << Cond->getSourceRange();
     }
 
-    virtual SemaDiagnosticBuilder diagnoseExplicitConv(
-        Sema &S, SourceLocation Loc, QualType T, QualType ConvTy) {
+    SemaDiagnosticBuilder diagnoseExplicitConv(
+        Sema &S, SourceLocation Loc, QualType T, QualType ConvTy) override {
       return S.Diag(Loc, diag::err_switch_explicit_conversion) << T << ConvTy;
     }
 
-    virtual SemaDiagnosticBuilder noteExplicitConv(
-        Sema &S, CXXConversionDecl *Conv, QualType ConvTy) {
+    SemaDiagnosticBuilder noteExplicitConv(
+        Sema &S, CXXConversionDecl *Conv, QualType ConvTy) override {
       return S.Diag(Conv->getLocation(), diag::note_switch_conversion)
         << ConvTy->isEnumeralType() << ConvTy;
     }
 
-    virtual SemaDiagnosticBuilder diagnoseAmbiguous(Sema &S, SourceLocation Loc,
-                                                    QualType T) {
+    SemaDiagnosticBuilder diagnoseAmbiguous(Sema &S, SourceLocation Loc,
+                                            QualType T) override {
       return S.Diag(Loc, diag::err_switch_multiple_conversions) << T;
     }
 
-    virtual SemaDiagnosticBuilder noteAmbiguous(
-        Sema &S, CXXConversionDecl *Conv, QualType ConvTy) {
+    SemaDiagnosticBuilder noteAmbiguous(
+        Sema &S, CXXConversionDecl *Conv, QualType ConvTy) override {
       return S.Diag(Conv->getLocation(), diag::note_switch_conversion)
       << ConvTy->isEnumeralType() << ConvTy;
     }
 
-    virtual SemaDiagnosticBuilder diagnoseConversion(
-        Sema &S, SourceLocation Loc, QualType T, QualType ConvTy) {
+    SemaDiagnosticBuilder diagnoseConversion(
+        Sema &S, SourceLocation Loc, QualType T, QualType ConvTy) override {
       llvm_unreachable("conversion functions are permitted");
     }
   } SwitchDiagnoser(Cond);
@@ -1594,14 +1594,13 @@ Sema::ActOnForStmt(SourceLocation ForLoc, SourceLocation LParenLoc,
       // C99 6.8.5p3: The declaration part of a 'for' statement shall only
       // declare identifiers for objects having storage class 'auto' or
       // 'register'.
-      for (DeclStmt::decl_iterator DI=DS->decl_begin(), DE=DS->decl_end();
-           DI!=DE; ++DI) {
-        VarDecl *VD = dyn_cast<VarDecl>(*DI);
+      for (auto *DI : DS->decls()) {
+        VarDecl *VD = dyn_cast<VarDecl>(DI);
         if (VD && VD->isLocalVarDecl() && !VD->hasLocalStorage())
           VD = 0;
         if (VD == 0) {
-          Diag((*DI)->getLocation(), diag::err_non_local_variable_decl_in_for);
-          (*DI)->setInvalidDecl();
+          Diag(DI->getLocation(), diag::err_non_local_variable_decl_in_for);
+          DI->setInvalidDecl();
         }
       }
     }

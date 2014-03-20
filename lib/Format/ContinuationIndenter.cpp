@@ -217,8 +217,8 @@ unsigned ContinuationIndenter::addTokenToState(LineState &State, bool Newline,
                                                unsigned ExtraSpaces) {
   const FormatToken &Current = *State.NextToken;
 
-  if (State.Stack.size() == 0 ||
-      (Current.Type == TT_ImplicitStringLiteral &&
+  assert(!State.Stack.empty());
+  if ((Current.Type == TT_ImplicitStringLiteral &&
        (Current.Previous->Tok.getIdentifierInfo() == NULL ||
         Current.Previous->Tok.getIdentifierInfo()->getPPKeywordID() ==
             tok::pp_not_keyword))) {
@@ -227,8 +227,8 @@ unsigned ContinuationIndenter::addTokenToState(LineState &State, bool Newline,
                                State.NextToken->WhitespaceRange.getEnd()) -
                            SourceMgr.getSpellingColumnNumber(
                                State.NextToken->WhitespaceRange.getBegin());
-    State.Column += WhitespaceLength + State.NextToken->ColumnWidth;
-    State.NextToken = State.NextToken->Next;
+    State.Column += WhitespaceLength;
+    moveStateToNextToken(State, DryRun, /*NewLine=*/false);
     return 0;
   }
 
@@ -349,7 +349,6 @@ unsigned ContinuationIndenter::addTokenOnNewLine(LineState &State,
 
   Penalty += State.NextToken->SplitPenalty;
 
-
   // Breaking before the first "<<" is generally not desirable if the LHS is
   // short. Also always add the penalty if the LHS is split over mutliple lines
   // to avoid unncessary line breaks that just work around this penalty.
@@ -427,8 +426,9 @@ unsigned ContinuationIndenter::addTokenOnNewLine(LineState &State,
   } else if (NextNonComment->Type == TT_StartOfName ||
              Previous.isOneOf(tok::coloncolon, tok::equal)) {
     State.Column = ContinuationIndent;
-  } else if (PreviousNonComment &&
-             PreviousNonComment->Type == TT_ObjCMethodExpr) {
+  } else if (PreviousNonComment && PreviousNonComment->is(tok::colon) &&
+             (PreviousNonComment->Type == TT_ObjCMethodExpr ||
+              PreviousNonComment->Type == TT_DictLiteral)) {
     State.Column = ContinuationIndent;
     // FIXME: This is hacky, find a better way. The problem is that in an ObjC
     // method expression, the block should be aligned to the line starting it,
@@ -628,8 +628,14 @@ unsigned ContinuationIndenter::moveStateToNextToken(LineState &State,
         //   SomeFunction(a, [] {
         //                     f();  // break
         //                   });
-        for (unsigned i = 0; i != Current.MatchingParen->FakeRParens; ++i)
+        for (unsigned i = 0; i != Current.MatchingParen->FakeRParens; ++i) {
+          assert(State.Stack.size() > 1);
+          if (State.Stack.size() == 1) {
+            // Do not pop the last element.
+            break;
+          }
           State.Stack.pop_back();
+        }
         bool IsObjCBlock =
             Previous &&
             (Previous->is(tok::caret) ||
@@ -709,6 +715,11 @@ unsigned ContinuationIndenter::moveStateToNextToken(LineState &State,
     // as they will have been removed early (see above).
     for (unsigned i = 0, e = Current.FakeRParens; i != e; ++i) {
       unsigned VariablePos = State.Stack.back().VariablePos;
+      assert(State.Stack.size() > 1);
+      if (State.Stack.size() == 1) {
+        // Do not pop the last element.
+        break;
+      }
       State.Stack.pop_back();
       State.Stack.back().VariablePos = VariablePos;
     }

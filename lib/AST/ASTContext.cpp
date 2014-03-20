@@ -387,10 +387,7 @@ static void addRedeclaredMethods(const ObjCMethodDecl *ObjCMethod,
     if (!ID)
       return;
     // Add redeclared method here.
-    for (ObjCInterfaceDecl::known_extensions_iterator
-           Ext = ID->known_extensions_begin(),
-           ExtEnd = ID->known_extensions_end();
-         Ext != ExtEnd; ++Ext) {
+    for (const auto *Ext : ID->known_extensions()) {
       if (ObjCMethodDecl *RedeclaredMethod =
             Ext->getMethod(ObjCMethod->getSelector(),
                                   ObjCMethod->isInstanceMethod()))
@@ -481,11 +478,10 @@ comments::FullComment *ASTContext::getCommentForDecl(
       if (!(RD = RD->getDefinition()))
         return NULL;
       // Check non-virtual bases.
-      for (CXXRecordDecl::base_class_const_iterator I =
-           RD->bases_begin(), E = RD->bases_end(); I != E; ++I) {
-        if (I->isVirtual() || (I->getAccessSpecifier() != AS_public))
+      for (const auto &I : RD->bases()) {
+        if (I.isVirtual() || (I.getAccessSpecifier() != AS_public))
           continue;
-        QualType Ty = I->getType();
+        QualType Ty = I.getType();
         if (Ty.isNull())
           continue;
         if (const CXXRecordDecl *NonVirtualBase = Ty->getAsCXXRecordDecl()) {
@@ -497,11 +493,10 @@ comments::FullComment *ASTContext::getCommentForDecl(
         }
       }
       // Check virtual bases.
-      for (CXXRecordDecl::base_class_const_iterator I =
-           RD->vbases_begin(), E = RD->vbases_end(); I != E; ++I) {
-        if (I->getAccessSpecifier() != AS_public)
+      for (const auto &I : RD->vbases()) {
+        if (I.getAccessSpecifier() != AS_public)
           continue;
-        QualType Ty = I->getType();
+        QualType Ty = I.getType();
         if (Ty.isNull())
           continue;
         if (const CXXRecordDecl *VirtualBase = Ty->getAsCXXRecordDecl()) {
@@ -1797,9 +1792,8 @@ void ASTContext::DeepCollectObjCIvars(const ObjCInterfaceDecl *OI,
   if (const ObjCInterfaceDecl *SuperClass = OI->getSuperClass())
     DeepCollectObjCIvars(SuperClass, false, Ivars);
   if (!leafClass) {
-    for (ObjCInterfaceDecl::ivar_iterator I = OI->ivar_begin(),
-         E = OI->ivar_end(); I != E; ++I)
-      Ivars.push_back(*I);
+    for (const auto *I : OI->ivars())
+      Ivars.push_back(I);
   } else {
     ObjCInterfaceDecl *IDecl = const_cast<ObjCInterfaceDecl *>(OI);
     for (const ObjCIvarDecl *Iv = IDecl->all_declared_ivar_begin(); Iv; 
@@ -1815,24 +1809,17 @@ void ASTContext::CollectInheritedProtocols(const Decl *CDecl,
   if (const ObjCInterfaceDecl *OI = dyn_cast<ObjCInterfaceDecl>(CDecl)) {
     // We can use protocol_iterator here instead of
     // all_referenced_protocol_iterator since we are walking all categories.    
-    for (ObjCInterfaceDecl::all_protocol_iterator P = OI->all_referenced_protocol_begin(),
-         PE = OI->all_referenced_protocol_end(); P != PE; ++P) {
-      ObjCProtocolDecl *Proto = (*P);
+    for (auto *Proto : OI->all_referenced_protocols()) {
       Protocols.insert(Proto->getCanonicalDecl());
-      for (ObjCProtocolDecl::protocol_iterator P = Proto->protocol_begin(),
-           PE = Proto->protocol_end(); P != PE; ++P) {
-        Protocols.insert((*P)->getCanonicalDecl());
-        CollectInheritedProtocols(*P, Protocols);
+      for (auto *P : Proto->protocols()) {
+        Protocols.insert(P->getCanonicalDecl());
+        CollectInheritedProtocols(P, Protocols);
       }
     }
     
     // Categories of this Interface.
-    for (ObjCInterfaceDecl::visible_categories_iterator
-           Cat = OI->visible_categories_begin(),
-           CatEnd = OI->visible_categories_end();
-         Cat != CatEnd; ++Cat) {
-      CollectInheritedProtocols(*Cat, Protocols);
-    }
+    for (const auto *Cat : OI->visible_categories())
+      CollectInheritedProtocols(Cat, Protocols);
 
     if (ObjCInterfaceDecl *SD = OI->getSuperClass())
       while (SD) {
@@ -1840,22 +1827,16 @@ void ASTContext::CollectInheritedProtocols(const Decl *CDecl,
         SD = SD->getSuperClass();
       }
   } else if (const ObjCCategoryDecl *OC = dyn_cast<ObjCCategoryDecl>(CDecl)) {
-    for (ObjCCategoryDecl::protocol_iterator P = OC->protocol_begin(),
-         PE = OC->protocol_end(); P != PE; ++P) {
-      ObjCProtocolDecl *Proto = (*P);
+    for (auto *Proto : OC->protocols()) {
       Protocols.insert(Proto->getCanonicalDecl());
-      for (ObjCProtocolDecl::protocol_iterator P = Proto->protocol_begin(),
-           PE = Proto->protocol_end(); P != PE; ++P)
-        CollectInheritedProtocols(*P, Protocols);
+      for (const auto *P : Proto->protocols())
+        CollectInheritedProtocols(P, Protocols);
     }
   } else if (const ObjCProtocolDecl *OP = dyn_cast<ObjCProtocolDecl>(CDecl)) {
-    for (ObjCProtocolDecl::protocol_iterator P = OP->protocol_begin(),
-         PE = OP->protocol_end(); P != PE; ++P) {
-      ObjCProtocolDecl *Proto = (*P);
+    for (auto *Proto : OP->protocols()) {
       Protocols.insert(Proto->getCanonicalDecl());
-      for (ObjCProtocolDecl::protocol_iterator P = Proto->protocol_begin(),
-           PE = Proto->protocol_end(); P != PE; ++P)
-        CollectInheritedProtocols(*P, Protocols);
+      for (const auto *P : Proto->protocols())
+        CollectInheritedProtocols(P, Protocols);
     }
   }
 }
@@ -1863,12 +1844,8 @@ void ASTContext::CollectInheritedProtocols(const Decl *CDecl,
 unsigned ASTContext::CountNonClassIvars(const ObjCInterfaceDecl *OI) const {
   unsigned count = 0;  
   // Count ivars declared in class extension.
-  for (ObjCInterfaceDecl::known_extensions_iterator
-         Ext = OI->known_extensions_begin(),
-         ExtEnd = OI->known_extensions_end();
-       Ext != ExtEnd; ++Ext) {
+  for (const auto *Ext : OI->known_extensions())
     count += Ext->ivar_size();
-  }
   
   // Count ivar defined in this class's implementation.  This
   // includes synthesized ivars.
@@ -3537,9 +3514,7 @@ bool ASTContext::ObjCObjectAdoptsQTypeProtocols(QualType QT,
   
   if (const ObjCObjectPointerType *OPT = QT->getAs<ObjCObjectPointerType>()) {
     // If both the right and left sides have qualifiers.
-    for (ObjCObjectPointerType::qual_iterator I = OPT->qual_begin(),
-         E = OPT->qual_end(); I != E; ++I) {
-      ObjCProtocolDecl *Proto = *I;
+    for (auto *Proto : OPT->quals()) {
       if (!IC->ClassImplementsProtocol(Proto, false))
         return false;
     }
@@ -3565,16 +3540,12 @@ bool ASTContext::QIdProtocolsAdoptObjCObjectProtocols(QualType QT,
   if (InheritedProtocols.empty())
     return false;
       
-  for (llvm::SmallPtrSet<ObjCProtocolDecl*,8>::iterator PI =
-       InheritedProtocols.begin(),
-       E = InheritedProtocols.end(); PI != E; ++PI) {
+  for (auto *PI : InheritedProtocols) {
     // If both the right and left sides have qualifiers.
     bool Adopts = false;
-    for (ObjCObjectPointerType::qual_iterator I = OPT->qual_begin(),
-         E = OPT->qual_end(); I != E; ++I) {
-      ObjCProtocolDecl *Proto = *I;
+    for (auto *Proto : OPT->quals()) {
       // return 'true' if '*PI' is in the inheritance hierarchy of Proto
-      if ((Adopts = ProtocolCompatibleWithProtocol(*PI, Proto)))
+      if ((Adopts = ProtocolCompatibleWithProtocol(PI, Proto)))
         break;
     }
     if (!Adopts)
@@ -4959,22 +4930,14 @@ ASTContext::getObjCPropertyImplDeclForPropertyDecl(
     return 0;
   if (const ObjCCategoryImplDecl *CID =
       dyn_cast<ObjCCategoryImplDecl>(Container)) {
-    for (ObjCCategoryImplDecl::propimpl_iterator
-         i = CID->propimpl_begin(), e = CID->propimpl_end();
-         i != e; ++i) {
-      ObjCPropertyImplDecl *PID = *i;
-        if (PID->getPropertyDecl() == PD)
-          return PID;
-      }
+    for (auto *PID : CID->property_impls())
+      if (PID->getPropertyDecl() == PD)
+        return PID;
     } else {
       const ObjCImplementationDecl *OID=cast<ObjCImplementationDecl>(Container);
-      for (ObjCCategoryImplDecl::propimpl_iterator
-           i = OID->propimpl_begin(), e = OID->propimpl_end();
-           i != e; ++i) {
-        ObjCPropertyImplDecl *PID = *i;
+      for (auto *PID : OID->property_impls())
         if (PID->getPropertyDecl() == PD)
           return PID;
-      }
     }
   return 0;
 }
@@ -5411,19 +5374,11 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
       S += "@?";
       // Block parameters
       if (const FunctionProtoType *FPT = dyn_cast<FunctionProtoType>(FT)) {
-        for (FunctionProtoType::param_type_iterator I = FPT->param_type_begin(),
-                                                    E = FPT->param_type_end();
-             I && (I != E); ++I) {
-          getObjCEncodingForTypeImpl(*I, S, 
-                                     ExpandPointedToStructures, 
-                                     ExpandStructures, 
-                                     FD, 
-                                     false /* OutermostType */, 
-                                     EncodingProperty, 
-                                     false /* StructField */, 
-                                     EncodeBlockParameters, 
-                                     EncodeClassNames);
-        }
+        for (const auto &I : FPT->param_types())
+          getObjCEncodingForTypeImpl(
+              I, S, ExpandPointedToStructures, ExpandStructures, FD,
+              false /* OutermostType */, EncodingProperty,
+              false /* StructField */, EncodeBlockParameters, EncodeClassNames);
       }
       S += '>';
     }
@@ -5494,10 +5449,9 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
         // Note that we do extended encoding of protocol qualifer list
         // Only when doing ivar or property encoding.
         S += '"';
-        for (ObjCObjectPointerType::qual_iterator I = OPT->qual_begin(),
-             E = OPT->qual_end(); I != E; ++I) {
+        for (const auto *I : OPT->quals()) {
           S += '<';
-          S += (*I)->getNameAsString();
+          S += I->getNameAsString();
           S += '>';
         }
         S += '"';
@@ -5540,10 +5494,9 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
         (FD || EncodingProperty || EncodeClassNames)) {
       S += '"';
       S += OPT->getInterfaceDecl()->getIdentifier()->getName();
-      for (ObjCObjectPointerType::qual_iterator I = OPT->qual_begin(),
-           E = OPT->qual_end(); I != E; ++I) {
+      for (const auto *I : OPT->quals()) {
         S += '<';
-        S += (*I)->getNameAsString();
+        S += I->getNameAsString();
         S += '>';
       }
       S += '"';
@@ -5596,11 +5549,9 @@ void ASTContext::getObjCEncodingForStructureImpl(RecordDecl *RDecl,
   const ASTRecordLayout &layout = getASTRecordLayout(RDecl);
 
   if (CXXRec) {
-    for (CXXRecordDecl::base_class_iterator
-           BI = CXXRec->bases_begin(),
-           BE = CXXRec->bases_end(); BI != BE; ++BI) {
-      if (!BI->isVirtual()) {
-        CXXRecordDecl *base = BI->getType()->getAsCXXRecordDecl();
+    for (const auto &BI : CXXRec->bases()) {
+      if (!BI.isVirtual()) {
+        CXXRecordDecl *base = BI.getType()->getAsCXXRecordDecl();
         if (base->isEmpty())
           continue;
         uint64_t offs = toBits(layout.getBaseClassOffset(base));
@@ -5620,10 +5571,8 @@ void ASTContext::getObjCEncodingForStructureImpl(RecordDecl *RDecl,
   }
 
   if (CXXRec && includeVBases) {
-    for (CXXRecordDecl::base_class_iterator
-           BI = CXXRec->vbases_begin(),
-           BE = CXXRec->vbases_end(); BI != BE; ++BI) {
-      CXXRecordDecl *base = BI->getType()->getAsCXXRecordDecl();
+    for (const auto &BI : CXXRec->vbases()) {
+      CXXRecordDecl *base = BI.getType()->getAsCXXRecordDecl();
       if (base->isEmpty())
         continue;
       uint64_t offs = toBits(layout.getVBaseClassOffset(base));
@@ -6406,9 +6355,8 @@ ASTContext::ProtocolCompatibleWithProtocol(ObjCProtocolDecl *lProto,
                                            ObjCProtocolDecl *rProto) const {
   if (declaresSameEntity(lProto, rProto))
     return true;
-  for (ObjCProtocolDecl::protocol_iterator PI = rProto->protocol_begin(),
-       E = rProto->protocol_end(); PI != E; ++PI)
-    if (ProtocolCompatibleWithProtocol(lProto, *PI))
+  for (auto *PI : rProto->protocols())
+    if (ProtocolCompatibleWithProtocol(lProto, PI))
       return true;
   return false;
 }
@@ -6421,13 +6369,9 @@ bool ASTContext::ObjCQualifiedClassTypesAreCompatible(QualType lhs,
   const ObjCObjectPointerType *rhsOPT = rhs->getAs<ObjCObjectPointerType>();
   assert ((lhsQID && rhsOPT) && "ObjCQualifiedClassTypesAreCompatible");
   
-  for (ObjCObjectPointerType::qual_iterator I = lhsQID->qual_begin(),
-       E = lhsQID->qual_end(); I != E; ++I) {
+  for (auto *lhsProto : lhsQID->quals()) {
     bool match = false;
-    ObjCProtocolDecl *lhsProto = *I;
-    for (ObjCObjectPointerType::qual_iterator J = rhsOPT->qual_begin(),
-         E = rhsOPT->qual_end(); J != E; ++J) {
-      ObjCProtocolDecl *rhsProto = *J;
+    for (auto *rhsProto : rhsOPT->quals()) {
       if (ProtocolCompatibleWithProtocol(lhsProto, rhsProto)) {
         match = true;
         break;
@@ -6460,12 +6404,11 @@ bool ASTContext::ObjCQualifiedIdTypesAreCompatible(QualType lhs, QualType rhs,
       // If the RHS is a unqualified interface pointer "NSString*",
       // make sure we check the class hierarchy.
       if (ObjCInterfaceDecl *rhsID = rhsOPT->getInterfaceDecl()) {
-        for (ObjCObjectPointerType::qual_iterator I = lhsQID->qual_begin(),
-             E = lhsQID->qual_end(); I != E; ++I) {
+        for (auto *I : lhsQID->quals()) {
           // when comparing an id<P> on lhs with a static type on rhs,
           // see if static class implements all of id's protocols, directly or
           // through its super class and categories.
-          if (!rhsID->ClassImplementsProtocol(*I, true))
+          if (!rhsID->ClassImplementsProtocol(I, true))
             return false;
         }
       }
@@ -6473,17 +6416,13 @@ bool ASTContext::ObjCQualifiedIdTypesAreCompatible(QualType lhs, QualType rhs,
       return true;
     }
     // Both the right and left sides have qualifiers.
-    for (ObjCObjectPointerType::qual_iterator I = lhsQID->qual_begin(),
-         E = lhsQID->qual_end(); I != E; ++I) {
-      ObjCProtocolDecl *lhsProto = *I;
+    for (auto *lhsProto : lhsQID->quals()) {
       bool match = false;
 
       // when comparing an id<P> on lhs with a static type on rhs,
       // see if static class implements all of id's protocols, directly or
       // through its super class and categories.
-      for (ObjCObjectPointerType::qual_iterator J = rhsOPT->qual_begin(),
-           E = rhsOPT->qual_end(); J != E; ++J) {
-        ObjCProtocolDecl *rhsProto = *J;
+      for (auto *rhsProto : rhsOPT->quals()) {
         if (ProtocolCompatibleWithProtocol(lhsProto, rhsProto) ||
             (compare && ProtocolCompatibleWithProtocol(rhsProto, lhsProto))) {
           match = true;
@@ -6493,12 +6432,11 @@ bool ASTContext::ObjCQualifiedIdTypesAreCompatible(QualType lhs, QualType rhs,
       // If the RHS is a qualified interface pointer "NSString<P>*",
       // make sure we check the class hierarchy.
       if (ObjCInterfaceDecl *rhsID = rhsOPT->getInterfaceDecl()) {
-        for (ObjCObjectPointerType::qual_iterator I = lhsQID->qual_begin(),
-             E = lhsQID->qual_end(); I != E; ++I) {
+        for (auto *I : lhsQID->quals()) {
           // when comparing an id<P> on lhs with a static type on rhs,
           // see if static class implements all of id's protocols, directly or
           // through its super class and categories.
-          if (rhsID->ClassImplementsProtocol(*I, true)) {
+          if (rhsID->ClassImplementsProtocol(I, true)) {
             match = true;
             break;
           }
@@ -6517,9 +6455,7 @@ bool ASTContext::ObjCQualifiedIdTypesAreCompatible(QualType lhs, QualType rhs,
   if (const ObjCObjectPointerType *lhsOPT =
         lhs->getAsObjCInterfacePointerType()) {
     // If both the right and left sides have qualifiers.
-    for (ObjCObjectPointerType::qual_iterator I = lhsOPT->qual_begin(),
-         E = lhsOPT->qual_end(); I != E; ++I) {
-      ObjCProtocolDecl *lhsProto = *I;
+    for (auto *lhsProto : lhsOPT->quals()) {
       bool match = false;
 
       // when comparing an id<P> on rhs with a static type on lhs,
@@ -6527,9 +6463,7 @@ bool ASTContext::ObjCQualifiedIdTypesAreCompatible(QualType lhs, QualType rhs,
       // through its super class and categories.
       // First, lhs protocols in the qualifier list must be found, direct
       // or indirect in rhs's qualifier list or it is a mismatch.
-      for (ObjCObjectPointerType::qual_iterator J = rhsQID->qual_begin(),
-           E = rhsQID->qual_end(); J != E; ++J) {
-        ObjCProtocolDecl *rhsProto = *J;
+      for (auto *rhsProto : rhsQID->quals()) {
         if (ProtocolCompatibleWithProtocol(lhsProto, rhsProto) ||
             (compare && ProtocolCompatibleWithProtocol(rhsProto, lhsProto))) {
           match = true;
@@ -6550,14 +6484,9 @@ bool ASTContext::ObjCQualifiedIdTypesAreCompatible(QualType lhs, QualType rhs,
       // assume that it is mismatch.
       if (LHSInheritedProtocols.empty() && lhsOPT->qual_empty())
         return false;
-      for (llvm::SmallPtrSet<ObjCProtocolDecl*,8>::iterator I =
-           LHSInheritedProtocols.begin(),
-           E = LHSInheritedProtocols.end(); I != E; ++I) {
+      for (auto *lhsProto : LHSInheritedProtocols) {
         bool match = false;
-        ObjCProtocolDecl *lhsProto = (*I);
-        for (ObjCObjectPointerType::qual_iterator J = rhsQID->qual_begin(),
-             E = rhsQID->qual_end(); J != E; ++J) {
-          ObjCProtocolDecl *rhsProto = *J;
+        for (auto *rhsProto : rhsQID->quals()) {
           if (ProtocolCompatibleWithProtocol(lhsProto, rhsProto) ||
               (compare && ProtocolCompatibleWithProtocol(rhsProto, lhsProto))) {
             match = true;
@@ -6750,16 +6679,9 @@ bool ASTContext::canAssignObjCInterfaces(const ObjCObjectType *LHS,
       if (SuperClassInheritedProtocols.empty())
         return false;
       
-      for (ObjCObjectType::qual_iterator LHSPI = LHS->qual_begin(),
-           LHSPE = LHS->qual_end();
-           LHSPI != LHSPE; LHSPI++) {
-        bool SuperImplementsProtocol = false;
-        ObjCProtocolDecl *LHSProto = (*LHSPI);
-        
-        for (llvm::SmallPtrSet<ObjCProtocolDecl*,8>::iterator I =
-             SuperClassInheritedProtocols.begin(),
-             E = SuperClassInheritedProtocols.end(); I != E; ++I) {
-          ObjCProtocolDecl *SuperClassProto = (*I);
+      for (const auto *LHSProto : LHS->quals()) {
+        bool SuperImplementsProtocol = false;        
+        for (auto *SuperClassProto : SuperClassInheritedProtocols) {
           if (SuperClassProto->lookupProtocolNamed(LHSProto->getIdentifier())) {
             SuperImplementsProtocol = true;
             break;
@@ -6773,17 +6695,13 @@ bool ASTContext::canAssignObjCInterfaces(const ObjCObjectType *LHS,
     return false;
   }
 
-  for (ObjCObjectType::qual_iterator LHSPI = LHS->qual_begin(),
-                                     LHSPE = LHS->qual_end();
-       LHSPI != LHSPE; LHSPI++) {
+  for (const auto *LHSPI : LHS->quals()) {
     bool RHSImplementsProtocol = false;
 
     // If the RHS doesn't implement the protocol on the left, the types
     // are incompatible.
-    for (ObjCObjectType::qual_iterator RHSPI = RHS->qual_begin(),
-                                       RHSPE = RHS->qual_end();
-         RHSPI != RHSPE; RHSPI++) {
-      if ((*RHSPI)->lookupProtocolNamed((*LHSPI)->getIdentifier())) {
+    for (auto *RHSPI : RHS->quals()) {
+      if (RHSPI->lookupProtocolNamed(LHSPI->getIdentifier())) {
         RHSImplementsProtocol = true;
         break;
       }

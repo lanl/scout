@@ -151,7 +151,8 @@ def warn_ucn_not_valid_in_c89_literal : ExtWarn<
 // Literal
 def ext_nonstandard_escape : Extension<
   "use of non-standard escape character '\\%0'">;
-def ext_unknown_escape : ExtWarn<"unknown escape sequence '\\%0'">;
+def ext_unknown_escape : ExtWarn<"unknown escape sequence '\\%0'">,
+  InGroup<DiagGroup<"unknown-escape-sequence">>;
 def err_invalid_decimal_digit : Error<"invalid digit '%0' in decimal constant">;
 def err_invalid_binary_digit : Error<"invalid digit '%0' in binary constant">;
 def err_invalid_octal_digit : Error<"invalid digit '%0' in octal constant">;
@@ -401,6 +402,9 @@ def err_warning_check_malformed : Error<
 def warn_has_warning_invalid_option :
    ExtWarn<"__has_warning expected option name (e.g. \"-Wundef\")">,
    InGroup<MalformedWarningCheck>;
+
+def err_pp_identifier_arg_not_identifier : Error<
+  "cannot convert %0 token to an identifier">;
 
 def warn_pragma_include_alias_mismatch_angle :
    ExtWarn<"angle-bracketed include <%0> cannot be aliased to double-quoted "
