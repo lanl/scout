@@ -48,35 +48,26 @@
 #
 ###########################################################################
 #
-#  Notes: 
+project(scout_test_scxx_display)
 
-project(scout_test_scpp_driver)
+# only run these tests if the $DISPLAY variable is set
 
+# Note: By default we pull in all the .scpp source files in this
+# directory for inclusion into the regression checks. 
+file(GLOB SC_SRCS *.scpp) 
 
-  # Note: By default we pull in all the .scpp source files in this
-  # directory for inclusion into the regression checks.  If you want do
-  # build more complex tests we suggest creating a subdirectory for the
-  # source.
-  #
-  file(GLOB SC_SRCS *.scpp) 
-
-  # Add an executable and test entry for each source file...
-  foreach (test ${SC_SRCS})
-    get_filename_component(tname ${test} NAME_WE) 
-    if (NOT tname) 
-      message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
-    else (NOT tname)
-      set(fname "sc++_driver_${tname}")
-      add_executable("${fname}" ${test})
+# Add an executable and test entry for each source file...
+foreach (test ${SC_SRCS})
+  get_filename_component(tname ${test} NAME_WE) 
+  if (NOT tname) 
+    message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
+  else (NOT tname)
+     set(fname "sc++_display_${tname}")
+    add_executable(${fname} ${test})
+    if(DEFINED ENV{DISPLAY}) 
       add_test("${fname}" "${TEST_BINARY_DIR}/${fname}")
       message(" + added runtime regression test entry: ${fname}")
-    endif(NOT tname)
-  endforeach(test)
-
-  set(name no-input-files)
-  set(tname sc++_driver_${name})
-  add_test(${tname} ${CMAKE_SCC_COMPILER})
-  set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
-    "error: no input files")
-  set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+    endif()
+  endif(NOT tname)
+endforeach(test)
 

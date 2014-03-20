@@ -48,35 +48,57 @@
 #
 ###########################################################################
 #
-#  Notes: 
 
-project(scout_test_scpp_driver)
+project(scout_test_scxx_warning)
 
+set(SRC_PATH ${CMAKE_SOURCE_DIR}/sc++/warning)
 
-  # Note: By default we pull in all the .scpp source files in this
-  # directory for inclusion into the regression checks.  If you want do
-  # build more complex tests we suggest creating a subdirectory for the
-  # source.
-  #
-  file(GLOB SC_SRCS *.scpp) 
+set(name empty-mesh)
+set(tname sc++_warning_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "warning: mesh definition with no fields")
+set_property(TEST ${tname} PROPERTY WILL_FAIL) 
 
-  # Add an executable and test entry for each source file...
-  foreach (test ${SC_SRCS})
-    get_filename_component(tname ${test} NAME_WE) 
-    if (NOT tname) 
-      message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
-    else (NOT tname)
-      set(fname "sc++_driver_${tname}")
-      add_executable("${fname}" ${test})
-      add_test("${fname}" "${TEST_BINARY_DIR}/${fname}")
-      message(" + added runtime regression test entry: ${fname}")
-    endif(NOT tname)
-  endforeach(test)
+set(name forall-mesh-shadow)
+set(tname sc++_warning_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "warning: forall loop variable 'c' shadows an existing identifier")
 
-  set(name no-input-files)
-  set(tname sc++_driver_${name})
-  add_test(${tname} ${CMAKE_SCC_COMPILER})
-  set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
-    "error: no input files")
-  set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+set(name forall-array-shadow)
+set(tname sc++_warning_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "warning: forall loop variable 'i' shadows an existing identifier")
+
+set(name dup)
+set(tname sc++_warning_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY FAIL_REGULAR_EXPRESSION "2 warnings generated")
+
+set(name intrinsics-scope)
+set(tname sc++_warning_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "warning: builtin mesh intrinsics called outside of mesh construct")
+
+set(name intrinsics-scope2)
+set(tname sc++_warning_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "warning: builtin mesh intrinsics called outside of mesh construct")
+
+set(name rank-mismatch-depth)
+set(tname sc++_warning_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "warning: rank mismatch -- depth.* called when rank < 3, will return zero")
+
+set(name rank-mismatch-height)
+set(tname sc++_warning_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "warning: rank mismatch -- height.* called when rank < 2, will return zero")
+
 
