@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyright (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2013, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -50,34 +50,34 @@
  * Notes
  *
  * ##### 
- */
-#include <assert.h> 
+ */ 
 #include <stdio.h>
 
+
 uniform mesh MyMesh {
- cells:
-  float a;
-  float b;
+  cells:
+    float i;
 };
 
-MyMesh m[512];
-
-int main(int argc, char** argv) {
-
-  forall cells c in m {
-    a = 0;
-    b = 1;
-  }
-
-  forall cells c in m {
-    a += b;
-  }
-
-  forall cells c in m {
-    if ((a-b)*(a-b) > 1e-10) {
-      printf("bad val %f\n", a);
-      assert(false);
+void renderall_func(MyMesh *mp) {
+  window mywin[512,512];
+  for(float k = 0.0; k < 1.0; k += 0.01){  
+    renderall cells c in *mp to mywin {
+      color = hsva(i/512.0*360.0, i/512.0, k, 1.0);
     }
   }
+}
+
+int main(int argc, char** argv){
+
+
+  MyMesh m[512,512];
+
+  forall cells c in m {
+    i = position().x;
+  } 
+
+  renderall_func(&m);
   return 0;
 }
+

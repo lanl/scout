@@ -467,7 +467,7 @@ void CodeGenFunction:: ExtractRegion(llvm::BasicBlock *entry, llvm::BasicBlock *
 
   // collect forall basic blocks up to exit
   for( ; BB->getName() != exit->getName(); ++BB) {
-  	Blocks.push_back(BB);
+    Blocks.push_back(BB);
   }
 
   //SC_TODO: should we be using a DominatorTree?
@@ -591,71 +591,77 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
   llvm::Value *ConstantOne = llvm::ConstantInt::get(Int32Ty, 1);
-	llvm::Value *MeshBaseAddr = GetMeshBaseAddr(S);
-	llvm::StringRef MeshName = S.getMeshType()->getName();
 
-	// find number of fields
-	MeshDecl* MD =  S.getMeshType()->getDecl();
-	unsigned int nfields = MD->fields();
+  const VarDecl* VD = S.getMeshVarDecl();
+  if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)){
+    VD = IP->getMeshVarDecl();
+  }
 
-	unsigned int rank = S.getMeshType()->rankOf();
-	//used by builtins to keep track of which dims are used
-	for(unsigned int i = 0; i < rank; i++) {
-	  DimExists[i] = ConstantOne;
-	}
-	ResetVars();
+  llvm::Value *MeshBaseAddr = LocalDeclMap[VD];
+  llvm::StringRef MeshName = S.getMeshType()->getName();
 
-	llvm::SmallVector< llvm::Value *, 3 > Args;
-	Args.clear();
+  // find number of fields
+  MeshDecl* MD =  S.getMeshType()->getDecl();
+  unsigned int nfields = MD->fields();
 
-	//need a marker for start of Renderall for CodeExtraction
-	llvm::BasicBlock *entry = EmitMarkerBlock("renderall.entry");
+  unsigned int rank = S.getMeshType()->rankOf();
+  //used by builtins to keep track of which dims are used
+  for(unsigned int i = 0; i < rank; i++) {
+    DimExists[i] = ConstantOne;
+  }
+  ResetVars();
 
-	// Create the induction variables for eack rank.
-	for(unsigned int i = 0; i < 3; i++) {
-	  sprintf(IRNameStr, "renderall.induct.%s.ptr", IndexNames[i]);
-	  InductionVar[i] = Builder.CreateAlloca(Int32Ty, 0, IRNameStr);
-	  //zero-initialize induction var
-	  Builder.CreateStore(ConstantZero, InductionVar[i]);
-	}
+  llvm::SmallVector< llvm::Value *, 3 > Args;
+  Args.clear();
 
-	//build argument list for renderall setup runtime function
-	for(unsigned int i = 0; i < 3; i++) {
-		 Args.push_back(0);
-		 sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
-		 LoopBounds[i] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
-		 Args[i] = Builder.CreateLoad(LoopBounds[i], IRNameStr);
-	}
+  //need a marker for start of Renderall for CodeExtraction
+  llvm::BasicBlock *entry = EmitMarkerBlock("renderall.entry");
 
-	// create linear loop index as 4th element and zero-initialize
-	InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "renderall.linearidx.ptr");
-	//zero-initialize induction var
-	Builder.CreateStore(ConstantZero, InductionVar[3]);
+  // Create the induction variables for eack rank.
+  for(unsigned int i = 0; i < 3; i++) {
+    sprintf(IRNameStr, "renderall.induct.%s.ptr", IndexNames[i]);
+    InductionVar[i] = Builder.CreateAlloca(Int32Ty, 0, IRNameStr);
+    //zero-initialize induction var
+    Builder.CreateStore(ConstantZero, InductionVar[i]);
+  }
+
+  //build argument list for renderall setup runtime function
+  for(unsigned int i = 0; i < 3; i++) {
+     Args.push_back(0);
+     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
+     LoopBounds[i] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
+     Args[i] = Builder.CreateLoad(LoopBounds[i], IRNameStr);
+  }
+
+  // create linear loop index as 4th element and zero-initialize
+  InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "renderall.linearidx.ptr");
+  //zero-initialize induction var
+  Builder.CreateStore(ConstantZero, InductionVar[3]);
 
         // call renderall setup runtime function
         llvm::Function *BeginFunc = CGM.getScoutRuntime().RenderallUniformBeginFunction();
         Builder.CreateCall(BeginFunc, ArrayRef<llvm::Value *>(Args));
 
-	// call renderall color buffer setup
+  // call renderall color buffer setup
         llvm::Value *RuntimeColorPtr = CGM.getScoutRuntime().RenderallUniformColorsGlobal(*this);
         Color = Builder.CreateLoad(RuntimeColorPtr, "color");
 
-	// renderall loops + body
-	EmitRenderallMeshLoop(S, 3);
+  // renderall loops + body
+  EmitRenderallMeshLoop(S, 3);
 
-	// call renderall cleanup runtime function
-	llvm::Function *EndFunc = CGM.getScoutRuntime().RenderallEndFunction();
-	std::vector<llvm::Value*> EmptyArgs;
-	Builder.CreateCall(EndFunc, ArrayRef<llvm::Value *>(EmptyArgs));
+  // call renderall cleanup runtime function
+  llvm::Function *EndFunc = CGM.getScoutRuntime().RenderallEndFunction();
+  std::vector<llvm::Value*> EmptyArgs;
+  Builder.CreateCall(EndFunc, ArrayRef<llvm::Value *>(EmptyArgs));
 
-	// reset Loopbounds and induction var
-	// so width/height etc can't be called after renderall
-	ResetVars();
+  // reset Loopbounds and induction var
+  // so width/height etc can't be called after renderall
+  ResetVars();
 
-	//need a marker for end of Renderall for CodeExtraction
-	llvm::BasicBlock *exit = EmitMarkerBlock("renderall.exit");
+  //need a marker for end of Renderall for CodeExtraction
+  llvm::BasicBlock *exit = EmitMarkerBlock("renderall.exit");
 
-	ExtractRegion(entry, exit, "RenderallFunction");
+  ExtractRegion(entry, exit, "RenderallFunction");
 }
 
 //generate one of the nested loops
