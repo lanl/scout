@@ -52,3 +52,5 @@ project(gdb)
 
 configure_file(gdb-scc.in ${CMAKE_INSTALL_PREFIX}/bin/gdb-scc)
 configure_file(gdb-sc++.in ${CMAKE_INSTALL_PREFIX}/bin/gdb-sc++)
+configure_file(gdb-clang.in ${CMAKE_INSTALL_PREFIX}/bin/gdb-clang)
+configure_file(gdb-clang++.in ${CMAKE_INSTALL_PREFIX}/bin/gdb-clang++)
