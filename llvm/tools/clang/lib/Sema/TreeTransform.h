@@ -975,6 +975,7 @@ namespace clang {
               << Kind << Id << DC << QualifierLoc.getSourceRange();
           break;
         }
+        return QualType();
       }
 
       if (!SemaRef.isAcceptableTagRedeclaration(Tag, Kind, /*isDefinition*/false,
