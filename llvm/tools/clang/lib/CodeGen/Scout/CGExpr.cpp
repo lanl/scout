@@ -35,6 +35,7 @@ static const char *IndexNames[] = { "x", "y", "z"};
 // strings.
 static char IRNameStr[160];
 
+#if 0 // not currently used
 namespace{
 
 // note: these functions were copied from Clang CGExpr.cpp
@@ -67,6 +68,7 @@ LValue EmitGlobalVarDeclLValue(CodeGenFunction &CGF,
 }
 
 } // end namespace
+#endif
 
 LValue
 CodeGenFunction::EmitColorDeclRefLValue(const NamedDecl *ND) {

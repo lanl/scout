@@ -85,7 +85,7 @@ namespace scout {
     
     void swapBuffers(){}
     
-    bool processEvent(){}
+    bool processEvent(){return true;}
     
     void eventLoop(){}
 
