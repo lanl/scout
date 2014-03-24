@@ -315,6 +315,8 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
 //generate one of the nested loops
 void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
+  unsigned int rank = S.getMeshType()->rankOf();
+
   RegionCounter Cnt = getPGORegionCounter(&S);
   (void)Cnt; //suppress warning 
  
@@ -353,7 +355,15 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
   sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[r-1]);
   LoopBounds[r-1] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+r-1, IRNameStr);
   sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[r-1]);
-  llvm::LoadInst *LoopBound  = Builder.CreateLoad(LoopBounds[r-1], IRNameStr);
+  llvm::Value *LoopBound  = Builder.CreateLoad(LoopBounds[r-1], IRNameStr);
+
+  ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
+  if(FET == ForallMeshStmt::Vertices){
+    if(r <= rank){
+      LoopBound = Builder.CreateAdd(LoopBound, ConstantOne);
+    }
+    VertexIndex = InductionVar[3];
+  }
 
   // Next we create a block that tests the induction variables value to
   // the rank's dimension.
@@ -434,6 +444,8 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
     DI->EmitLexicalBlockEnd(Builder, S.getSourceRange().getEnd());
 
   EmitBlock(LoopExit.getBlock(), true);
+
+  VertexIndex = 0;
 }
 
 
