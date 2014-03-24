@@ -48,27 +48,16 @@
 #
 ###########################################################################
 #
-project(scout_test_scc_display)
+# simple two-dimensional heat transfer example that shows 
+# the support for multiple compilation units and 
+# meshes being passed as parameters to functions. 
 
-# only run these tests if the $DISPLAY variable is set
+project(scout_test_scc_display_multifile)
 
-# Note: By default we pull in all the .sc source files in this
-# directory for inclusion into the regression checks. 
-file(GLOB SC_SRCS *.sc) 
+set(tname scc_display_heat-multifile)
+add_executable(${tname} main.sc heat.sc initialize_mesh.sc)
+if(DEFINED ENV{DISPLAY}) 
+  add_test(${tname} ${TEST_BINARY_DIR}/${tname})
+  message(" + added runtime regression test entry: ${tname}")
+endif()
 
-# Add an executable and test entry for each source file...
-foreach (test ${SC_SRCS})
-  get_filename_component(tname ${test} NAME_WE) 
-  if (NOT tname) 
-    message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
-  else (NOT tname)
-     set(fname "scc_display_${tname}")
-    add_executable(${fname} ${test})
-    if(DEFINED ENV{DISPLAY}) 
-      add_test("${fname}" "${TEST_BINARY_DIR}/${fname}")
-      message(" + added runtime regression test entry: ${fname}")
-    endif()
-  endif(NOT tname)
-endforeach(test)
-
-add_subdirectory(multifile)

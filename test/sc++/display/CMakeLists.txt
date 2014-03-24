@@ -71,3 +71,4 @@ foreach (test ${SC_SRCS})
   endif(NOT tname)
 endforeach(test)
 
+add_subdirectory(multifile)
