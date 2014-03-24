@@ -174,8 +174,10 @@ llvm::Value *CodeGenFunction::GetMeshBaseAddr(const RenderallMeshStmt &S) {
 //
 
 void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
+
   const VarDecl* VD = S.getMeshVarDecl();
 
+  //SC_TODO: this will not work inside a function
   unsigned int rank = S.getMeshType()->rankOf();
 
   VertexIndex = 0;
@@ -264,12 +266,18 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   }
 
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
-  llvm::Value *ConstantOne  = llvm::ConstantInt::get(Int32Ty, 1);
 
-  //used by builtins to keep track of which dims are used
-  for(unsigned int i = 0; i < rank; i++) {
-    DimExists[i] = ConstantOne;
+  //get mesh Base Addr
+  if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)){
+    VD = IP->getMeshVarDecl();
   }
+  llvm::Value *MeshBaseAddr = LocalDeclMap[VD];
+
+  llvm::StringRef MeshName = S.getMeshType()->getName();
+
+  // find number of fields
+  MeshDecl* MD =  S.getMeshType()->getDecl();
+  unsigned int nfields = MD->fields();
 
   // Track down the mesh meta data. 
   //llvm::NamedMDNode *MeshMD = CGM.getModule().getNamedMetadata("scout.meshmd");
@@ -299,11 +307,23 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   //zero-initialize induction var
   Builder.CreateStore(ConstantZero, InductionVar[3]);
 
+  // Extract width/height/depth from the mesh for this rank
+  // note: width/height depth are stored after mesh fields
+  for(unsigned int i = 0; i < 3; i++) {
+    sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
+    LoopBounds[i] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
+  }
+
+  // extract rank from mesh stored after width/height/depth
+  sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
+  Rank = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+3, IRNameStr);
+
   EmitForallMeshLoop(S, 3);
 
-  // reset Loopbounds and induction var
+  // reset Loopbounds, Rank and induction var
   // so width/height etc can't be called after forall
   ResetVars();
+  Rank = 0;
 
   //need a marker for end of Forall for CodeExtraction
   llvm::BasicBlock *exit = EmitMarkerBlock("forall.exit");
@@ -320,17 +340,7 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
   RegionCounter Cnt = getPGORegionCounter(&S);
   (void)Cnt; //suppress warning 
  
-  const VarDecl* VD = S.getMeshVarDecl();
-  if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)){
-    VD = IP->getMeshVarDecl();
-  }
-
-  llvm::Value *MeshBaseAddr = LocalDeclMap[VD];
   llvm::StringRef MeshName = S.getMeshType()->getName();
-
-  // find number of fields
-  MeshDecl* MD =  S.getMeshType()->getDecl();
-  unsigned int nfields = MD->fields();
 
   CGDebugInfo *DI = getDebugInfo();
 
@@ -349,11 +359,7 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
   if (DI)
     DI->EmitLexicalBlockStart(Builder, S.getSourceRange().getBegin());
 
-  // Extract the loop bounds from the mesh for this rank, this requires
-  // a GEP from the mesh and a load from returned address...
-  // note: width/height depth are stored after mesh fields
-  sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[r-1]);
-  LoopBounds[r-1] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+r-1, IRNameStr);
+  // Extract the loop bounds from the mesh for this rank
   sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[r-1]);
   llvm::Value *LoopBound  = Builder.CreateLoad(LoopBounds[r-1], IRNameStr);
 
@@ -602,7 +608,6 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
 void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
-  llvm::Value *ConstantOne = llvm::ConstantInt::get(Int32Ty, 1);
 
   const VarDecl* VD = S.getMeshVarDecl();
   if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)){
@@ -616,11 +621,6 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   MeshDecl* MD =  S.getMeshType()->getDecl();
   unsigned int nfields = MD->fields();
 
-  unsigned int rank = S.getMeshType()->rankOf();
-  //used by builtins to keep track of which dims are used
-  for(unsigned int i = 0; i < rank; i++) {
-    DimExists[i] = ConstantOne;
-  }
   ResetVars();
 
   llvm::SmallVector< llvm::Value *, 3 > Args;
@@ -650,13 +650,17 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   //zero-initialize induction var
   Builder.CreateStore(ConstantZero, InductionVar[3]);
 
-        // call renderall setup runtime function
-        llvm::Function *BeginFunc = CGM.getScoutRuntime().RenderallUniformBeginFunction();
-        Builder.CreateCall(BeginFunc, ArrayRef<llvm::Value *>(Args));
+  // call renderall setup runtime function
+  llvm::Function *BeginFunc = CGM.getScoutRuntime().RenderallUniformBeginFunction();
+  Builder.CreateCall(BeginFunc, ArrayRef<llvm::Value *>(Args));
 
   // call renderall color buffer setup
-        llvm::Value *RuntimeColorPtr = CGM.getScoutRuntime().RenderallUniformColorsGlobal(*this);
-        Color = Builder.CreateLoad(RuntimeColorPtr, "color");
+  llvm::Value *RuntimeColorPtr = CGM.getScoutRuntime().RenderallUniformColorsGlobal(*this);
+  Color = Builder.CreateLoad(RuntimeColorPtr, "color");
+
+  // extract rank from mesh stored after width/height/depth
+  sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
+  Rank = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+3, IRNameStr);
 
   // renderall loops + body
   EmitRenderallMeshLoop(S, 3);
@@ -666,9 +670,10 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   std::vector<llvm::Value*> EmptyArgs;
   Builder.CreateCall(EndFunc, ArrayRef<llvm::Value *>(EmptyArgs));
 
-  // reset Loopbounds and induction var
+  // reset Loopbounds, Rank, induction var
   // so width/height etc can't be called after renderall
   ResetVars();
+  Rank = 0;
 
   //need a marker for end of Renderall for CodeExtraction
   llvm::BasicBlock *exit = EmitMarkerBlock("renderall.exit");

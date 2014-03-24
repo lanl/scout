@@ -58,6 +58,9 @@ set(CMAKE_MODULE_PATH
 
 #ignore warnings about i/o in forall
 set(CMAKE_SCXX_FLAGS "${CMAKE_SCXX_FLAGS} -Wno-calling-io-function")
+#ignore specific warnings for some files
+set_source_files_properties(intrinsics-scope.scpp PROPERTIES COMPILE_FLAGS "-Wno-mesh-bulitin-scope")
+set_source_files_properties(meshscope.scpp PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
 
 project(scout_test_scxx)
     

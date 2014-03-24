@@ -10,6 +10,8 @@
 
 // +===== Scout ============================================================+
 def CallingIOFunction : DiagGroup<"calling-io-function">;
+def MeshBuiltinScope: DiagGroup<"mesh-builtin-scope">;
+def MeshVariableScope: DiagGroup<"mesh-variable-scope">;
 // +========================================================================+
 
 def ImplicitFunctionDeclare : DiagGroup<"implicit-function-declaration">;

@@ -290,8 +290,7 @@ public:
   llvm::SmallVector< llvm::Value *, 4 > InductionVar;
   // mesh dimension sizes
   llvm::SmallVector< llvm::Value *, 3 > LoopBounds;
-  //used by builtins to check dimension
-  llvm::SmallVector< llvm::Value *, 3 > DimExists;
+  llvm::Value *Rank = 0;
 
   llvm::Value* VertexIndex;
 

@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyright (c) 2013, Los Alamos National Security, LLC.
+ * Copyright (c) 2014, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -55,19 +55,26 @@
 #include <stdio.h>
 
 uniform mesh MyMesh {
- cells: float a,b;
+  cells:
+    int val;
 };
 
-int main(int argc, char** argv){
+void func(MyMesh* mp)
+{
+  forall cells c in *mp {
+    printf("%d %d %d\n", width(), height(), rank());
+    assert(width() == 2 && "incorrect width"); 
+    assert(height() == 3 && "incorrect height"); 
+    assert(rank() == 2 && "incorrect rank"); 
 
-  MyMesh m[4,4];
-
-  forall cells c in m {
-    printf("mesh dims: %d x %d x %d\n",
-           width(),
-           height(),
-           depth());
   }
-  
+}
+
+int main(int argc, char *argv[])
+{
+  MyMesh m[2, 3];
+  func(&m);
+
   return 0;
 }
+

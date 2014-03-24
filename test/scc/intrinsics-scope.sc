@@ -62,7 +62,7 @@ int main(int argc, char** argv){
 
   MyMesh m[4,4,4];
 
-  printf("out-of-scope width: %d\n", width());
+  assert(width() == 0 && "out of scope width before forall");
  
   forall cells c in m {
     printf("mesh dims: %d x %d x %d\n",
@@ -71,5 +71,6 @@ int main(int argc, char** argv){
            depth());
   }
   
+  assert(width() == 0 && "out of scope width after forall");
   return 0;
 }
