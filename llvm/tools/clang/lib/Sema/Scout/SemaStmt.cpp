@@ -124,10 +124,7 @@ namespace {
           unsigned extra = 1; // cshift has 1 extra arg: mesh
            if (isEOShift(id)) extra = 2; // EOshift has 2 extra args: mesh and value
 
-          const MeshType* mt = fs_->getMeshType();
           unsigned args = E->getNumArgs();
-
-          unsigned dims = mt->rankOf();
 
           if (args > extra + 3) {
             sema_.Diag(E->getRParenLoc(), diag::err_shift_args);

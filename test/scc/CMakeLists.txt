@@ -59,7 +59,7 @@ set(CMAKE_MODULE_PATH
 #ignore warnings about i/o in forall
 set(CMAKE_SCC_FLAGS "${CMAKE_SCC_FLAGS} -Wno-calling-io-function")
 #ignore specific warnings for some files
-set_source_files_properties(intrinsics-scope.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-bulitin-scope")
+set_source_files_properties(intrinsics-scope.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-builtin-scope")
 set_source_files_properties(meshscope.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
 
 project(scout_test_scc)
