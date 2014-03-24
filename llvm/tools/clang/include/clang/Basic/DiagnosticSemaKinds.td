@@ -7014,7 +7014,7 @@ def err_rhs_after_lhs_forall : Error<
 def err_shift_not_allowed : Error<
     "cannot use cshift/eoshift on unstructured mesh">;
 def err_shift_args : Error<
-    "number of cshift/eoshift args does not correspond to mesh dimensions">;
+    "invalid number of cshift/eoshift args">;
 def err_shift_field : Error<
     "first argument to cshift/eoshift must be a mesh field">;
 def err_pointer_field_mesh : Error<
@@ -7032,7 +7032,8 @@ def err_invalid_depth_mesh : Error<
 def err_height_depth_invalid_mesh: Error<
     "invalid use of height or depth for unstructured mesh">;
 def warn_lhs_outside_forall : Warning<
-    "non-mesh variable '%0' from outer scope on LHS of parallel construct">;
+    "non-mesh variable '%0' from outer scope on LHS of parallel construct">,
+     InGroup<MeshVariableScope>;
 def err_invalid_scout_vector_component : Error<
     "invalid vector component, expected [x,y,z,w]">;
 def err_invalid_scout_color_component : Error<
@@ -7043,13 +7044,9 @@ def err_not_camera_variable_renderall : Error<
     "not a camera variable %0 while parsing renderall statement">;
 def err_unknown_camera_variable_renderall : Error<
     "unknown camera variable %0 while parsing renderall statement">;
-
-def warn_height_mesh_rank_mismatch : Warning<
-    "rank mismatch -- height() called when rank < 2, will return zero...">;
-def warn_depth_mesh_rank_mismatch : Warning<
-    "rank mismatch -- depth() called when rank < 3, will return zero...">;
 def warn_mesh_intrinsic_outside_scope : Warning<
-    "builtin mesh intrinsics called outside of mesh construct.">;
+    "builtin mesh intrinsics called outside of mesh construct.">,
+     InGroup<MeshBuiltinScope>;
 } // end Scout issue category
 // +=========================================================================+
 

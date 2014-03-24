@@ -280,9 +280,13 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
     }
     // set unused dimensions to size 1 this makes the codegen for forall/renderall easier
     for(size_t i = rank; i< 3; i++) {
+      sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
       llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, nfields+i, IRNameStr);
       llvm::Value* ConstantOne =  llvm::ConstantInt::get(Int32Ty, 1);
       Builder.CreateStore(ConstantOne, field);
     }
+    //set rank this makes Codegen easier for rank() builtin
+    llvm::Value *Rank = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, nfields+3, "rank");
+    Builder.CreateStore(llvm::ConstantInt::get(Int32Ty, rank), Rank);
   }
 }

@@ -53,11 +53,117 @@ project(scout_test_scpp_error)
 
 set(SRC_PATH ${CMAKE_SOURCE_DIR}/sc++/error)
 
-set(name mesh-param-ptr)
+set(name forall-mesh-unknown)
 set(tname sc++_error_${name})
 add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
 set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
-    "error: mesh parameters must be declared as references in")
+    "error: unknown or invalid mesh instance")
 set_property(TEST ${tname} PROPERTY WILL_FAIL) 
 
+set(name forall-mesh-shadow)
+set(tname sc++_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: forall loop variable 'c' shadows mesh member")
+set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+
+set(name lhs-rhs)
+set(tname sc++_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: mesh field appears on LHS then on subsequent RHS")
+set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+
+set(name forall-array-4d)
+set(tname sc++_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: forall missing.*expected.*keyword: 'in'")
+set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+
+set(name forall-array-coloncolon)
+set(tname sc++_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: invalid end in forall")
+set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+
+set(name forall-array-comma)
+set(tname sc++_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: forall missing.*expected.*comma or keyword: 'in'")
+set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+
+#SC_TODO
+#set(name forall-array-end)
+#set(tname sc++_error_${name})
+#add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+#set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+#    "error: invalid end in forall")
+#set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+ 
+set(name forall-array-ident)
+set(tname sc++_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: expected identifier")
+set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+
+set(name forall-array-square)
+set(tname sc++_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: expected '\\['")
+set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+
+set(name forall-array-groups)
+set(tname sc++_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: start/end/stride groups misformated")
+set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+
+set(name eoshift-args)
+set(tname sc++_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: invalid number of cshift/eoshift args")
+set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+
+set(name eoshift-nonmesh)
+set(tname sc++_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: first argument to cshift/eoshift must be a mesh field")
+set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+
+set(name renderall-color)
+set(tname sc++_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: color components {r,g,b,a} were not assigned in renderall")
+set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+
+#SC_TODO
+#set(name mesh-param-byvalue)
+#set(tname sc++_error_${name})
+#add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+#set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+#    "error: mesh parameters must be declared as pointers in scc")
+#set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+
+set(name mesh-ptr-field)
+set(tname sc++_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "mesh field element must be non-pointer type")
+set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+
+set(name mesh-indirect-ptr)
+set(tname sc++_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "mesh field element must be non-pointer type")
+set_property(TEST ${tname} PROPERTY WILL_FAIL) 
 

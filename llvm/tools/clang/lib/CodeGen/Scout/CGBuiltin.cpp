@@ -118,7 +118,7 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
   }
 
   case Builtin::BIwidth: {
-    if (DimExists[0] && LoopBounds[0]) {
+    if (LoopBounds[0]) {
       *RV = RValue::get(Builder.CreateLoad(LoopBounds[0], "width"));
     } else {
       CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);    
@@ -128,42 +128,28 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
   }
 
   case Builtin::BIheight: {
-    if (DimExists[1] && LoopBounds[1]) {
+    if (LoopBounds[1]) {
       *RV = RValue::get(Builder.CreateLoad(LoopBounds[1], "height"));
     } else {
-      if (DimExists[0]) {
-        CGM.getDiags().Report(E->getExprLoc(), diag::warn_height_mesh_rank_mismatch);
-        *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 1));
-      } else {
-        CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
-        *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
-      }
+      CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
+      *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
     }
     return true;
   }
 
   case Builtin::BIdepth: {
-    if (DimExists[2] && LoopBounds[2]) {
+    if (LoopBounds[2]) {
       *RV = RValue::get(Builder.CreateLoad(LoopBounds[2], "depth"));
     } else {
-      if (DimExists[0]) {
-        CGM.getDiags().Report(E->getExprLoc(), diag::warn_depth_mesh_rank_mismatch);
-        *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 1));
-      } else {
-        CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);        
-        *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
-      }
+      CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
+      *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
     }
     return true;
   }
 
   case Builtin::BIrank: {
-    if (DimExists[2])
-      *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 3));
-    else if (DimExists[1])
-      *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 2));
-    else if (DimExists[0])
-      *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 1));
+    if (Rank)
+      *RV = RValue::get(Builder.CreateLoad(Rank, "rank"));
     else {
       CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
       *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));

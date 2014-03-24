@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyright (c) 2013, Los Alamos National Security, LLC.
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -48,26 +48,44 @@
  * ########################################################################### 
  * 
  * Notes
+ * test for 2d mesh indexing ...
  *
  * ##### 
- */ 
-#include <assert.h>
-#include <stdio.h>
+ */
+#include <stdio.h> 
 
-uniform mesh MyMesh {
- cells: float a,b;
+uniform mesh AMeshType{
+cells:
+  int a;
+  int b;
 };
 
-int main(int argc, char** argv){
 
-  MyMesh m[4];
+void func(AMeshType *mp, int outfield[]) {
 
-  forall cells c in m {
-    printf("mesh dims: %d x %d x %d\n",
-           width(),
-           height(),
-           depth());
+  forall cells c in *mp {
+    c.a = position().x + position().y;
   }
-  
+
+  forall cells c in *mp {
+    int val = cshift(c.a, 1, 1);
+    c.b = val;
+    outfield[position().y*3 + position().x] = val;
+  }
+}
+
+int main(int argc, char *argv[])
+{
+
+  AMeshType m[3,3];
+  int outfield[3*3];
+  int expected[] = {2,3,1,3,4,2,1,2,0};
+
+  func(&m, outfield);
+
+  for(int i =0; i< 3*3; i++) {
+    printf("%d ", outfield[i]);
+    if(outfield[i] != expected[i]) return -1;
+  }
   return 0;
 }

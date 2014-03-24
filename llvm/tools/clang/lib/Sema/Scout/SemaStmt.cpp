@@ -129,7 +129,7 @@ namespace {
 
           unsigned dims = mt->rankOf();
 
-          if (args != dims + extra) {
+          if (args > extra + 3) {
             sema_.Diag(E->getRParenLoc(), diag::err_shift_args);
             error_ = true;
           } else {

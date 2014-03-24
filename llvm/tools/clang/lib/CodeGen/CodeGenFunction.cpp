@@ -66,11 +66,11 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
 
   // +===== Scout =========================================+
   for(unsigned i = 0; i < 3; ++i) {
-    // We use DimExists[0] == 0 as a test for being in a
+    // We use LoopBounds[0] == 0 as a test for being in a
     // valid mesh/forall state where instrinsics are safe
     // to call -- may not be a rock solid plan but working
     // for now...
-    DimExists.push_back(0);
+    LoopBounds.push_back(0);
   }
   // +=====================================================+ 
 }

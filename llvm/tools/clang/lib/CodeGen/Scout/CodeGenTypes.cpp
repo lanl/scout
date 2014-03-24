@@ -196,8 +196,8 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
   MeshMD->addOperand(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(MeshInfoMD)));
   
   if (isa<UniformMeshType>(meshType) || isa<RectilinearMeshType>(meshType)) {
-    // put width/height/depth after fields
-    for(size_t i = 0; i < 3; ++i) {
+    // put width/height/depth/rank after fields
+    for(size_t i = 0; i < 4; ++i) {
       eltTys.push_back(llvm::IntegerType::get(getLLVMContext(), 32));
     }
   }
