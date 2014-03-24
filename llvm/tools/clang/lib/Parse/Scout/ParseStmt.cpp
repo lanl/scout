@@ -757,6 +757,10 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
     } // end if is :
     if (Tok.is(tok::colon) || isTokenStringLiteral() || isTokenParen() || isTokenBracket()) {
       ConsumeToken();
+    } else if (Tok.is(tok::coloncolon)) {
+      Diag(Tok, diag::err_forall_array_invalid_end);
+      SkipUntil(tok::r_brace, StopBeforeMatch);
+      return StmtError();
     } else {
       Diag(Tok, diag:: err_forall_array_misformat);
       SkipUntil(tok::r_brace, StopBeforeMatch);

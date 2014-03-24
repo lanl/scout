@@ -95,13 +95,12 @@ set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION
     "error: forall missing.*expected.*comma or keyword: 'in'")
 set_property(TEST ${tname} PROPERTY WILL_FAIL) 
 
-#SC_TODO
-#set(name forall-array-end)
-#set(tname sc++_error_${name})
-#add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
-#set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
-#    "error: invalid end in forall")
-#set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+set(name forall-array-end)
+set(tname sc++_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: invalid end in forall")
+set_property(TEST ${tname} PROPERTY WILL_FAIL) 
  
 set(name forall-array-ident)
 set(tname sc++_error_${name})
