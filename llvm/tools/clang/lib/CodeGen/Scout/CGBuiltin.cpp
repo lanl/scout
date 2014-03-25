@@ -118,43 +118,71 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
   }
 
   case Builtin::BIwidth: {
-    if (LoopBounds[0]) {
-      *RV = RValue::get(Builder.CreateLoad(LoopBounds[0], "width"));
+    if(E->getNumArgs() == 0) { //inside forall/renderall
+      if (LoopBounds[0]) {
+        *RV = RValue::get(Builder.CreateLoad(LoopBounds[0], "width"));
+      } else {
+        CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
+        *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+      }
+    } else if (E->getNumArgs() == 1) { //outside forall/renderall
+      *RV = EmitMeshParameterExpr(*(E->arg_begin()), MeshParameterOffset::WidthOffset);
     } else {
-      CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);    
-      *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+      CGM.getDiags().Report(E->getExprLoc(), diag::err_mesh_builtin_nargs)
+                         << MeshParameterOffset::WidthOffset;
     }
     return true;
   }
 
   case Builtin::BIheight: {
-    if (LoopBounds[1]) {
-      *RV = RValue::get(Builder.CreateLoad(LoopBounds[1], "height"));
+    if(E->getNumArgs() == 0) { //inside forall/renderall
+      if (LoopBounds[1]) {
+        *RV = RValue::get(Builder.CreateLoad(LoopBounds[1], "height"));
+      } else {
+        CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
+        *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+      }
+    } else if (E->getNumArgs() == 1) { //outside forall/renderall
+      *RV = EmitMeshParameterExpr(*(E->arg_begin()), MeshParameterOffset::HeightOffset);
     } else {
-      CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
-      *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+      CGM.getDiags().Report(E->getExprLoc(), diag::err_mesh_builtin_nargs)
+                         << MeshParameterOffset::HeightOffset;
     }
     return true;
   }
 
   case Builtin::BIdepth: {
-    if (LoopBounds[2]) {
-      *RV = RValue::get(Builder.CreateLoad(LoopBounds[2], "depth"));
+    if(E->getNumArgs() == 0) { //inside forall/renderall
+      if (LoopBounds[2]) {
+        *RV = RValue::get(Builder.CreateLoad(LoopBounds[2], "depth"));
+      } else {
+        CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
+        *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+      }
+    } else if (E->getNumArgs() == 1) { //outside forall/renderall
+      *RV = EmitMeshParameterExpr(*(E->arg_begin()), MeshParameterOffset::DepthOffset);
     } else {
-      CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
-      *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+      CGM.getDiags().Report(E->getExprLoc(), diag::err_mesh_builtin_nargs)
+                 << MeshParameterOffset::DepthOffset;
     }
     return true;
   }
 
   case Builtin::BIrank: {
-    if (Rank)
-      *RV = RValue::get(Builder.CreateLoad(Rank, "rank"));
-    else {
-      CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
-      *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+    if(E->getNumArgs() == 0) { //inside forall/renderall
+      if (Rank)
+        *RV = RValue::get(Builder.CreateLoad(Rank, "rank"));
+      else {
+        CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
+        *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+      }
+    } else if (E->getNumArgs() == 1) { //outside forall/renderall
+         *RV = EmitMeshParameterExpr(*(E->arg_begin()), MeshParameterOffset::RankOffset);
+    } else {
+      CGM.getDiags().Report(E->getExprLoc(), diag::err_mesh_builtin_nargs)
+          << MeshParameterOffset::RankOffset;
     }
-    return true;
+      return true;
   }
     
   case Builtin::BIcshift:

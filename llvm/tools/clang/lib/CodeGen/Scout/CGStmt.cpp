@@ -103,40 +103,38 @@ llvm::Value *CodeGenFunction::TranslateExprToValue(const Expr *E) {
   }
 }
 
-llvm::Value *CodeGenFunction::GetMeshBaseAddr(const ForallMeshStmt &S) {
-  const VarDecl *MeshVarDecl = S.getMeshVarDecl();
-  llvm::Value *BaseAddr = 0;
-
-  if (MeshVarDecl->hasGlobalStorage()) {
+//from VarDecl get base addr of mesh
+void CodeGenFunction::GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& BaseAddr) {
+  // is a global. SC_TODO why not MeshVarDecl->hasGlobalStorage()?
+  if ((MeshVarDecl->hasLinkage() || MeshVarDecl->isStaticDataMember())
+      && MeshVarDecl->getTLSKind() != VarDecl::TLS_Dynamic) {
+    //SC_TODO: global mesh case is broken.
+    llvm::errs() << "global mesh\n";
     BaseAddr = Builder.CreateLoad(CGM.GetAddrOfGlobalVar(MeshVarDecl));
+    LocalDeclMap[MeshVarDecl] = BaseAddr; //SC_TODO: why?
   } else {
-    BaseAddr = LocalDeclMap[MeshVarDecl];
-    if (MeshVarDecl->getType().getTypePtr()->isReferenceType()) {
-      BaseAddr = Builder.CreateLoad(BaseAddr);
+    if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(MeshVarDecl)){
+      MeshVarDecl = IP->getMeshVarDecl();
     }
+    BaseAddr = LocalDeclMap[MeshVarDecl];
   }
-
-  return BaseAddr;
 }
 
-//SC_TODO: remove Renderall/Forall duplication here.
-llvm::Value *CodeGenFunction::GetMeshBaseAddr(const RenderallMeshStmt &S) {
-  const VarDecl *MeshVarDecl = S.getMeshVarDecl();
-  llvm::Value *BaseAddr = 0;
+//from Stmt get base addr of mesh
+void CodeGenFunction::GetMeshBaseAddr(const Stmt &S, llvm::Value*& BaseAddr) {
 
-  if (MeshVarDecl->hasGlobalStorage()) {
-    BaseAddr = Builder.CreateLoad(CGM.GetAddrOfGlobalVar(MeshVarDecl));
+  const VarDecl *MeshVarDecl;
+
+  if(const ForallMeshStmt *FA = dyn_cast<ForallMeshStmt>(&S)) {
+    MeshVarDecl = FA->getMeshVarDecl();
+  } else if (const RenderallMeshStmt *RA = dyn_cast<RenderallMeshStmt>(&S)) {
+    MeshVarDecl = RA->getMeshVarDecl();
   } else {
-    BaseAddr = LocalDeclMap[MeshVarDecl];
-    if (MeshVarDecl->getType().getTypePtr()->isReferenceType()) {
-      BaseAddr = Builder.CreateLoad(BaseAddr);
-    }
+    assert(false && "expected ForallMeshStmt or RenderallMeshStmt");
   }
 
-  return BaseAddr;
+  GetMeshBaseAddr(MeshVarDecl, BaseAddr);
 }
-
-
 
 // ----- EmitforallMeshStmt
 //
@@ -268,11 +266,8 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
 
   //get mesh Base Addr
-  if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)){
-    VD = IP->getMeshVarDecl();
-  }
-  llvm::Value *MeshBaseAddr = LocalDeclMap[VD];
-
+  llvm::Value *MeshBaseAddr;
+  GetMeshBaseAddr(S, MeshBaseAddr);
   llvm::StringRef MeshName = S.getMeshType()->getName();
 
   // find number of fields
@@ -284,12 +279,6 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   //assert(MeshMD != 0 && "unable to find module-level mesh metadata!");
   //llvm::errs() << "forall mesh type name = '" << S.getMeshVarDecl()->getTypeSourceInfo()->getType().getTypePtr()->getTypeClassName() << "'\n";
   ResetVars();
-
-  if ((VD->hasLinkage() || VD->isStaticDataMember()) && VD->getTLSKind() != VarDecl::TLS_Dynamic) {
-    llvm::Value* V = CGM.GetAddrOfGlobalVar(VD);
-    llvm::Value* VP = Builder.CreateLoad(V);
-    LocalDeclMap[VD] = VP;
-  }
 
   //need a marker for start of Forall for CodeExtraction
   llvm::BasicBlock *entry = EmitMarkerBlock("forall.entry");
@@ -609,12 +598,8 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
 
-  const VarDecl* VD = S.getMeshVarDecl();
-  if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)){
-    VD = IP->getMeshVarDecl();
-  }
-
-  llvm::Value *MeshBaseAddr = LocalDeclMap[VD];
+  llvm::Value *MeshBaseAddr;
+  GetMeshBaseAddr(S, MeshBaseAddr);
   llvm::StringRef MeshName = S.getMeshType()->getName();
 
   // find number of fields

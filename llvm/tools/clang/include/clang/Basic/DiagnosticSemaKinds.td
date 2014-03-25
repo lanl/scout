@@ -7047,6 +7047,11 @@ def err_unknown_camera_variable_renderall : Error<
 def warn_mesh_intrinsic_outside_scope : Warning<
     "builtin mesh intrinsics called outside of mesh construct.">,
      InGroup<MeshBuiltinScope>;
+def err_mesh_builtin_nargs : Error<
+    "invalid number of args in  %select(width()|height()|depth()|rank()}0 ">;
+def  err_mesh_builtin_arg : Error<
+ 	"argument to %select(width()|height()|depth()|rank()}0 must be a mesh">;    
+    
 } // end Scout issue category
 // +=========================================================================+
 

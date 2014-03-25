@@ -1927,8 +1927,8 @@ public:
 
   // +===== Scout ============================================================+
   //
-  llvm::Value *GetMeshBaseAddr(const ForallMeshStmt &S);
-  llvm::Value *GetMeshBaseAddr(const RenderallMeshStmt &S);
+  void GetMeshBaseAddr(const Stmt &S, llvm::Value *&BaseAddr);
+  void GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& BaseAddr);
 
   void GetMeshDimValues(const ForallMeshStmt &S,
                         llvm::SmallVector<llvm::Value*, 3> &MeshDimensions,
@@ -1964,6 +1964,16 @@ public:
   llvm::Value *getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args);
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
   RValue EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
+
+
+  //layout of mesh Paramters
+  enum MeshParameterOffset {
+    WidthOffset,
+    HeightOffset,
+    DepthOffset,
+    RankOffset
+  };
+  RValue EmitMeshParameterExpr(const Expr *E, MeshParameterOffset offset);
 
   bool EmitScoutBuiltinExpr(const FunctionDecl *FD,
                          unsigned BuiltinID, const CallExpr *E, RValue *Rv);

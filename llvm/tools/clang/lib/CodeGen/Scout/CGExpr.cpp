@@ -17,6 +17,7 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/MDBuilder.h"
+#include "clang/Sema/SemaDiagnostic.h"
 #include "llvm/Support/ConvertUTF.h"
 #include "Scout/CGMeshLayout.h"
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
@@ -506,4 +507,49 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
   }
   assert(false && "Failed to translate Scout eoshift expression to LLVM IR!");
 }
+
+
+//emit width()/height()/depth()/rank() with mesh as argument
+RValue CodeGenFunction::EmitMeshParameterExpr(const Expr *E, MeshParameterOffset offset) {
+  llvm::Value* rank;
+  unsigned int nfields = 0;
+  llvm::StringRef meshName;
+
+  static const char *names[]   = { "width", "height", "depth", "rank" };
+
+  if (const ImplicitCastExpr *ICE = dyn_cast<ImplicitCastExpr>(E)) {
+
+    if(const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(ICE->getSubExpr())) {
+
+      //get number of fields and mesh name
+      if(const MeshType *MT = dyn_cast<MeshType>(DRE->getType())) {
+        nfields = MT->getDecl()->fields();
+        meshName = MT->getName();
+      } else {
+        CGM.getDiags().Report(E->getExprLoc(), diag::err_mesh_builtin_arg)
+                   << offset;
+      }
+
+      if(const VarDecl *VD = dyn_cast<VarDecl>(DRE->getDecl())) {
+        llvm::Value *BaseAddr;
+        GetMeshBaseAddr(VD, BaseAddr);
+
+        sprintf(IRNameStr, "%s.%s.ptr", meshName.str().c_str(), names[offset]);
+        rank = Builder.CreateConstInBoundsGEP2_32(BaseAddr, 0, nfields+offset, IRNameStr);
+
+        sprintf(IRNameStr, "%s.%s", meshName.str().c_str(), names[offset]);
+        rank = Builder.CreateLoad(rank, IRNameStr);
+      } else {
+        CGM.getDiags().Report(E->getExprLoc(), diag::err_mesh_builtin_arg)
+                         << offset;
+      }
+      return RValue::get(rank);
+    } else {
+      assert(false && "expected DeclRefExpr");
+    }
+  } else {
+    assert(false && "expected ImplicitCastExpr");
+  }
+}
+
 

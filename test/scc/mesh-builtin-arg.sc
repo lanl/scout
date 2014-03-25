@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyright (c) 2013, Los Alamos National Security, LLC.
+ * Copyright (c) 2014, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -47,37 +47,38 @@
  *  SUCH DAMAGE.
  * ########################################################################### 
  * 
- * Notes
- * See Builtins.def for documentation of BUILTIN macro
+ * Notes: test mesh builtins with mesh as parameter
+ *
  * ##### 
- */ 
+ */
+#include <assert.h> 
+#include <stdio.h>
 
-BUILTIN(position, "E4i", "n")
-BUILTIN(positionx, "i", "n")
-BUILTIN(positiony, "i", "n")
-BUILTIN(positionz, "i", "n")
-BUILTIN(positionw, "i", "n")
+uniform mesh MyMesh {
+ cells:
+  float a;
+  float b;
+};
 
-//0 or 1 args
-BUILTIN(width, "i.", "n")
-BUILTIN(height, "i.", "n")
-BUILTIN(depth, "i.", "n")
-BUILTIN(rank, "i.", "n") 
+int main(int argc, char** argv) {
 
-// circular shift builtins
-// "template like" CShift that works for all types
-// "t" is the magic to make this work
-BUILTIN(cshift, "vvi.", "t") // generic 
-BUILTIN(cshifti, "iii.", "n") // just for int
-BUILTIN(cshiftf, "ffi.", "n") // just for float
-BUILTIN(cshiftd, "ddi.", "n") // just for double
+  MyMesh m[3,4];
+ 
+  assert(width(m) == 3 && "bad width(m)"); 
+  assert(height(m) == 4 && "bad height(m)"); 
+  assert(depth(m) == 1 && "bad depth(m)");
+  assert(rank(m) == 2 && "bad rank(m)"); 
 
-//end-off shift builtins
-BUILTIN(eoshift, "vvvi.", "t") // generic 
-BUILTIN(eoshifti, "iiii.", "n") // just for int
-BUILTIN(eoshiftf, "fffi.", "n") // just for float
-BUILTIN(eoshiftd, "dddi.", "n") // just for double
+  forall cells c in m {
+    assert(width() == 3 && "bad width()"); 
+    assert(height() == 4 && "bad height()"); 
+    assert(depth() == 1 && "bad depth()"); 
+    assert(rank() == 2 && "bad rank()"); 
+    assert(width(c) == 3 && "bad width(c)"); 
+    assert(height(c) == 4 && "bad height(c)"); 
+    assert(depth(c) == 1 && "bad depth(c)"); 
+    assert(rank(c) == 2 && "bad rank(c)"); 
+  }
 
-
-
-
+  return 0;
+}
