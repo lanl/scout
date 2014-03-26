@@ -179,6 +179,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   unsigned int rank = S.getMeshType()->rankOf();
 
   VertexIndex = 0;
+  CellIndex = 0;
 
   // handle nested forall, e.g: forall vertices within a forall cells
   if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)){
@@ -257,6 +258,96 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
       Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
       EmitBlock(ExitBlock);
       return;
+    }
+    else if(FET == ForallMeshStmt::Cells){
+      assert(ET == ImplicitMeshParamDecl::Vertices &&
+             "EmitForAllMeshStmt element type nesting combination not implemented");
+
+      llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.cells.entry");
+      (void)EntryBlock; //suppress warning
+
+      llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
+      llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
+      llvm::Value* Two = llvm::ConstantInt::get(Int32Ty, 2);
+      llvm::Value* Three = llvm::ConstantInt::get(Int32Ty, 3);
+
+      llvm::Value* cellPosPtr = Builder.CreateAlloca(Int32Ty, 0, "cell.pos.ptr");
+      CellIndex = Builder.CreateAlloca(Int32Ty, 0, "cell.index.ptr");
+
+      Builder.CreateStore(Zero, cellPosPtr);
+
+      llvm::Value* width = Builder.CreateLoad(LoopBounds[0], "width");
+
+      llvm::Value* height;
+      if(rank > 1){
+        height = Builder.CreateLoad(LoopBounds[1], "height");
+      }
+
+      llvm::BasicBlock *LoopBlock = createBasicBlock("forall.cells.loop");
+      Builder.CreateBr(LoopBlock);
+
+      EmitBlock(LoopBlock);
+
+      llvm::Value* cellPos = Builder.CreateLoad(cellPosPtr, "cell.pos");
+
+      if(rank > 1){
+        llvm::Value* i = Builder.CreateLoad(InductionVar[0], "i");
+
+        llvm::Value* vx1 = Builder.CreateUDiv(cellPos, Two);
+        llvm::Value* x = Builder.CreateSub(i, vx1, "x");
+
+        llvm::Value* cx1 = Builder.CreateICmpSLT(x, Zero);
+        llvm::Value* cx2 = Builder.CreateICmpSGE(x, width);
+        llvm::Value* vx2 = Builder.CreateAdd(x, width);
+        llvm::Value* vx3 = Builder.CreateURem(x, width);
+        x = Builder.CreateSelect(cx1, vx2, Builder.CreateSelect(cx2, vx3, x));
+
+        llvm::Value* j = Builder.CreateLoad(InductionVar[1], "j");
+        llvm::Value* vy1 = Builder.CreateURem(cellPos, Two);
+        llvm::Value* y = Builder.CreateSub(j, vy1, "y");
+
+        llvm::Value* cy1 = Builder.CreateICmpSLT(y, Zero);
+        llvm::Value* cy2 = Builder.CreateICmpSGE(y, height);
+        llvm::Value* vy2 = Builder.CreateAdd(y, height);
+        llvm::Value* vy3 = Builder.CreateURem(y, height);
+        y = Builder.CreateSelect(cy1, vy2, Builder.CreateSelect(cy2, vy3, y));
+
+        llvm::Value* newCellIndex = Builder.CreateAdd(Builder.CreateMul(y, width), x);
+        Builder.CreateStore(newCellIndex, CellIndex);
+      }
+      else{
+        llvm::Value* i = Builder.CreateLoad(InductionVar[0], "i");
+        llvm::Value* vx1 = Builder.CreateURem(cellPos, Two);
+        llvm::Value* x = Builder.CreateSub(i, vx1, "x");
+
+        llvm::Value* cx1 = Builder.CreateICmpSLT(x, Zero);
+        llvm::Value* cx2 = Builder.CreateICmpSGE(x, width);
+        llvm::Value* vx2 = Builder.CreateAdd(x, width);
+        llvm::Value* vx3 = Builder.CreateURem(x, width);
+        x = Builder.CreateSelect(cx1, vx2, Builder.CreateSelect(cx2, vx3, x));
+
+        Builder.CreateStore(x, CellIndex);
+      }
+
+      llvm::Value* newCellPos = Builder.CreateAdd(cellPos, One);
+      Builder.CreateStore(newCellPos, cellPosPtr);
+
+      EmitStmt(S.getBody());
+
+      CellIndex = 0;
+
+      llvm::Value* Cond;
+
+      if(rank > 1){
+        Cond = Builder.CreateICmpSLT(cellPos, Three, "cond");
+      }
+      else{
+        Cond = Builder.CreateICmpSLT(cellPos, One, "cond");
+      }
+
+      llvm::BasicBlock *ExitBlock = createBasicBlock("forall.cells.exit");
+      Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
+      EmitBlock(ExitBlock);
     }
     else{
       assert(false && "EmitForAllMeshStmt element type nesting combination not implemented");
@@ -441,6 +532,7 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
   EmitBlock(LoopExit.getBlock(), true);
 
   VertexIndex = 0;
+  CellIndex = 0;
 }
 
 

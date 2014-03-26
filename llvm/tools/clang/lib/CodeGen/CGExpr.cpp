@@ -2462,6 +2462,9 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
       // use the vertex index if we are within a forall vertices
       Index = Builder.CreateLoad(VertexIndex);
     }
+    else if(MFD->isCellLocated() && CellIndex){
+      Index = Builder.CreateLoad(CellIndex);
+    }
     else{
       Index = getLinearIdx();
     }

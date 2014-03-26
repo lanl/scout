@@ -293,6 +293,7 @@ public:
   llvm::Value *Rank = 0;
 
   llvm::Value* VertexIndex;
+  llvm::Value* CellIndex;
 
   //renderall color buffer
   llvm::Value *Color;
