@@ -51,34 +51,84 @@
  *
  * ##### 
  */ 
-#include <assert.h>
-#include <stdio.h>
+#include "clang/Sema/SemaInternal.h"
+#include "clang/AST/ASTContext.h"
+#include "clang/Sema/Sema.h"
+#include "clang/Basic/TargetBuiltins.h"
+#include "clang/Basic/Scout/BuiltinsScout.h"
+using namespace clang;
+using namespace sema;
 
-uniform mesh MyMesh {
-  cells:
-    int val;
-};
 
-void func(MyMesh* mp)
-{
-  assert(rank(*mp) == 2 && "incorrect rank");
-  //also works w/ mesh ptr
-  assert(rank(mp) == 2 && "incorrect rank");
-
-  forall cells c in *mp {
-    printf("%d %d %d\n", width(), height(), rank());
-    assert(width() == 2 && "incorrect width"); 
-    assert(height() == 3 && "incorrect height"); 
-    assert(rank() == 2 && "incorrect rank"); 
-
+static bool CheckMeshParameterDeclRefExpr(const DeclRefExpr *DRE) {
+  bool ret = true;
+  if(!isa<MeshType>(DRE->getType()) &&
+      !isa<MeshType>(DRE->getType().getTypePtr()->getPointeeType())) {
+    ret = false;  // not mesh or mesh ptr
   }
+  if(!isa<VarDecl>(DRE->getDecl())) {
+    ret = false; //not vardecl
+  }
+  return ret;
 }
 
-int main(int argc, char *argv[])
-{
-  MyMesh m[2, 3];
-  func(&m);
+//drill down Expr till we getr the Sub DeclRefExpr we want
+static bool CheckMeshParameterExpr(Expr *E) {
+  bool ret = true;
+  if (ImplicitCastExpr *ICE = dyn_cast<ImplicitCastExpr>(E)) {
+    if(const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(ICE->getSubExpr())) {
+      ret = CheckMeshParameterDeclRefExpr(DRE);
 
-  return 0;
+    } else if(const UnaryOperator *UO = dyn_cast<UnaryOperator>(ICE->getSubExpr())) {
+      //found a star
+      ret = CheckMeshParameterExpr(UO->getSubExpr());
+    } else {
+      ret = false; // not DeclRef or UnaryOperator
+    }
+  } else {
+    ret = false; // not ImplicitCastExpr
+  }
+  return ret;
+}
+
+bool Sema::CheckMeshParameterCall(unsigned BuiltinID, CallExpr *TheCall) {
+  int diagarg = 0;
+  switch (BuiltinID) {
+  case Builtin::BIwidth:
+    diagarg = MeshParameterOffset::WidthOffset;
+    break;
+  case Builtin::BIheight:
+    diagarg = MeshParameterOffset::HeightOffset;
+    break;
+  case Builtin::BIdepth:
+    diagarg = MeshParameterOffset::DepthOffset;
+    break;
+  case Builtin::BIrank:
+    diagarg = MeshParameterOffset::RankOffset;
+    break;
+  default:
+    break;
+  }
+
+  // check number of args
+  if(TheCall->getNumArgs() > 1) {
+    Diag(TheCall->getExprLoc(), diag::err_mesh_builtin_nargs) << diagarg;
+    return false;
+  }
+
+  bool ret = true;
+  // if we have an argument check it
+  if(TheCall->getNumArgs() == 1) {
+
+    ArrayRef<Stmt*> children = TheCall->getRawSubExprs();
+    assert(children.size() == 2 && "bad mesh builtin CallExpr");
+    Expr *E = dyn_cast<Expr>(children[1]);
+    E->dump();
+
+    ret = CheckMeshParameterExpr(E);
+  }
+
+  if (!ret) Diag(TheCall->getExprLoc(), diag::err_mesh_builtin_arg) << diagarg;
+  return ret;
 }
 

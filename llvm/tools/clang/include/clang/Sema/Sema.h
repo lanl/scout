@@ -7985,6 +7985,9 @@ private:
   bool CheckObjCString(Expr *Arg);
 
   ExprResult CheckBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
+  // +===== Scout ==========================================================+
+  bool CheckMeshParameterCall(unsigned BuiltinID, CallExpr *TheCall);
+  // +======================================================================+
 
   bool CheckNeonBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
   bool CheckARMBuiltinExclusiveCall(unsigned BuiltinID, CallExpr *TheCall);

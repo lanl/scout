@@ -33,6 +33,10 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/ValueHandle.h"
 #include "llvm/Support/Debug.h"
+// +===== Scout ==========================================================+
+#include "clang/Basic/Scout/BuiltinsScout.h"
+// +======================================================================+
+
 
 namespace llvm {
   class BasicBlock;
@@ -1963,17 +1967,10 @@ public:
   LValue EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index);
   LValue EmitLValueForMeshField(LValue base, const MeshFieldDecl *field, llvm::Value *Index);
   llvm::Value *getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args);
+
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
   RValue EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
 
-
-  //layout of mesh Paramters
-  enum MeshParameterOffset {
-    WidthOffset,
-    HeightOffset,
-    DepthOffset,
-    RankOffset
-  };
   RValue EmitMeshParameterExpr(const Expr *E, MeshParameterOffset offset);
 
   bool EmitScoutBuiltinExpr(const FunctionDecl *FD,

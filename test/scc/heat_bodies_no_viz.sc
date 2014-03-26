@@ -110,8 +110,8 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  const float dx = 10.0f / MESH_DIM;
-  const float dy = 10.0f / MESH_DIM;
+  const float dx = 10.0f / width(heat_mesh);
+  const float dy = 10.0f / height(heat_mesh);
   const float alpha = 0.00001f;
   const float dt = 0.5f * (dx * dx + dy * dy) / 4.0f / alpha;
 

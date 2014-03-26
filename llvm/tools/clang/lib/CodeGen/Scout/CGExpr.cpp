@@ -511,45 +511,55 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
 
 //emit width()/height()/depth()/rank() with mesh as argument
 RValue CodeGenFunction::EmitMeshParameterExpr(const Expr *E, MeshParameterOffset offset) {
-  llvm::Value* rank;
+  llvm::Value* rank = 0;
   unsigned int nfields = 0;
   llvm::StringRef meshName;
 
   static const char *names[]   = { "width", "height", "depth", "rank" };
 
-  if (const ImplicitCastExpr *ICE = dyn_cast<ImplicitCastExpr>(E)) {
-
-    if(const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(ICE->getSubExpr())) {
-
-      //get number of fields and mesh name
-      if(const MeshType *MT = dyn_cast<MeshType>(DRE->getType())) {
-        nfields = MT->getDecl()->fields();
-        meshName = MT->getName();
-      } else {
-        CGM.getDiags().Report(E->getExprLoc(), diag::err_mesh_builtin_arg)
-                   << offset;
+  // Get the expr we are after, might have leading casts and star
+  Expr *EE = const_cast<Expr *>(E);
+  if (ImplicitCastExpr *ICE = dyn_cast<ImplicitCastExpr>(EE)) {
+    EE = ICE->getSubExpr();
+    if(const UnaryOperator *UO = dyn_cast<UnaryOperator>(EE)) {
+      EE = UO->getSubExpr();
+      if (ImplicitCastExpr *ICE2 = dyn_cast<ImplicitCastExpr>(EE)) {
+        EE = ICE2->getSubExpr();
       }
-
-      if(const VarDecl *VD = dyn_cast<VarDecl>(DRE->getDecl())) {
-        llvm::Value *BaseAddr;
-        GetMeshBaseAddr(VD, BaseAddr);
-
-        sprintf(IRNameStr, "%s.%s.ptr", meshName.str().c_str(), names[offset]);
-        rank = Builder.CreateConstInBoundsGEP2_32(BaseAddr, 0, nfields+offset, IRNameStr);
-
-        sprintf(IRNameStr, "%s.%s", meshName.str().c_str(), names[offset]);
-        rank = Builder.CreateLoad(rank, IRNameStr);
-      } else {
-        CGM.getDiags().Report(E->getExprLoc(), diag::err_mesh_builtin_arg)
-                         << offset;
-      }
-      return RValue::get(rank);
-    } else {
-      assert(false && "expected DeclRefExpr");
     }
-  } else {
-    assert(false && "expected ImplicitCastExpr");
   }
+
+  if(const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(EE)) {
+
+
+    //get number of fields and mesh name
+    if(const MeshType *MT = dyn_cast<MeshType>(DRE->getType())) {
+      nfields = MT->getDecl()->fields();
+      meshName = MT->getName();
+    } else { // might have mesh ptr
+      const Type *T = DRE->getType().getTypePtr()->getPointeeType().getTypePtr();
+      if(T) {
+        if(const MeshType *MT = dyn_cast<MeshType>(T)) {
+          nfields = MT->getDecl()->fields();
+          meshName = MT->getName();
+        }
+      }
+    }
+
+    if(const VarDecl *VD = dyn_cast<VarDecl>(DRE->getDecl())) {
+      llvm::Value *BaseAddr;
+      GetMeshBaseAddr(VD, BaseAddr);
+
+      sprintf(IRNameStr, "%s.%s.ptr", meshName.str().c_str(), names[offset]);
+      rank = Builder.CreateConstInBoundsGEP2_32(BaseAddr, 0, nfields+offset, IRNameStr);
+
+      sprintf(IRNameStr, "%s.%s", meshName.str().c_str(), names[offset]);
+      rank = Builder.CreateLoad(rank, IRNameStr);
+      return RValue::get(rank);
+    }
+  }
+  //sema should make sure we don't get here.
+  assert(false && "Failed to emit Mesh Parameter");
 }
 
 
