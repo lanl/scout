@@ -172,14 +172,10 @@ void CodeGenFunction::GetMeshBaseAddr(const Stmt &S, llvm::Value*& BaseAddr) {
 //
 
 void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
-
   const VarDecl* VD = S.getMeshVarDecl();
 
   //SC_TODO: this will not work inside a function
   unsigned int rank = S.getMeshType()->rankOf();
-
-  VertexIndex = 0;
-  CellIndex = 0;
 
   // handle nested forall, e.g: forall vertices within a forall cells
   if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)){
@@ -348,6 +344,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
       llvm::BasicBlock *ExitBlock = createBasicBlock("forall.cells.exit");
       Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
       EmitBlock(ExitBlock);
+      return;
     }
     else{
       assert(false && "EmitForAllMeshStmt element type nesting combination not implemented");
