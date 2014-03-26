@@ -51,34 +51,16 @@
  *
  * ##### 
  */ 
-#include <assert.h>
-#include <stdio.h>
 
-uniform mesh MyMesh {
-  cells:
-    int val;
-};
+#ifndef LLVM_CLANG_BASIC_BUILTINS_SCOUT_H
+#define LLVM_CLANG_BASIC_BUILTINS_SCOUT_H
 
-void func(MyMesh* mp)
-{
-  assert(rank(*mp) == 2 && "incorrect rank");
-  //also works w/ mesh ptr
-  assert(rank(mp) == 2 && "incorrect rank");
+//layout of mesh Parameters
+  enum MeshParameterOffset {
+    WidthOffset = 0,
+    HeightOffset,
+    DepthOffset,
+    RankOffset
+  };
 
-  forall cells c in *mp {
-    printf("%d %d %d\n", width(), height(), rank());
-    assert(width() == 2 && "incorrect width"); 
-    assert(height() == 3 && "incorrect height"); 
-    assert(rank() == 2 && "incorrect rank"); 
-
-  }
-}
-
-int main(int argc, char *argv[])
-{
-  MyMesh m[2, 3];
-  func(&m);
-
-  return 0;
-}
-
+#endif

@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyright (c) 2014, Los Alamos National Security, LLC.
+ * Copyright (c) 2013, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -51,34 +51,19 @@
  *
  * ##### 
  */ 
-#include <assert.h>
-#include <stdio.h>
-
-uniform mesh MyMesh {
-  cells:
-    int val;
-};
-
-void func(MyMesh* mp)
-{
-  assert(rank(*mp) == 2 && "incorrect rank");
-  //also works w/ mesh ptr
-  assert(rank(mp) == 2 && "incorrect rank");
-
-  forall cells c in *mp {
-    printf("%d %d %d\n", width(), height(), rank());
-    assert(width() == 2 && "incorrect width"); 
-    assert(height() == 3 && "incorrect height"); 
-    assert(rank() == 2 && "incorrect rank"); 
-
-  }
-}
 
 int main(int argc, char *argv[])
 {
-  MyMesh m[2, 3];
-  func(&m);
+uniform mesh MyMesh {
+  cells:
+    int a;
+    int b;
+  };
+  
+  MyMesh m[2,3];
+
+  rank(1);
+  
 
   return 0;
 }
-

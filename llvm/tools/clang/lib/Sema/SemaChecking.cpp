@@ -138,7 +138,14 @@ Sema::CheckBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
   // for generic CsShift we need to set the type based on the type of the
   // 1st arg otherwise it will end up getting cast to an int
   case Builtin::BIcshift:
+  case Builtin::BIeoshift:
     TheCall->setType(TheCall->getArg(0)->getType());
+    break;
+   case Builtin::BIwidth:
+   case Builtin::BIheight:
+   case Builtin::BIdepth:
+   case Builtin::BIrank:
+    if(!CheckMeshParameterCall(BuiltinID, TheCall)) return ExprError();
     break;
   // +========================================================================+
   case Builtin::BI__builtin___CFStringMakeConstantString:

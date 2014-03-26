@@ -64,6 +64,71 @@
 using namespace clang;
 using namespace sema;
 
+enum ShiftKind {
+  CShift,
+  EOShift
+};
+
+//check if builtin id is a cshift
+static bool isCShift(unsigned id) {
+  if (id == Builtin::BIcshift || id == Builtin::BIcshifti
+      || id == Builtin::BIcshiftf || id == Builtin::BIcshiftd ) return true;
+  return false;
+}
+
+//check if builtin id is an eoshift
+static bool isEOShift(unsigned id) {
+  if (id == Builtin::BIeoshift || id == Builtin::BIeoshifti
+      || id == Builtin::BIeoshiftf || id == Builtin::BIeoshiftd ) return true;
+  return false;
+}
+
+static bool CheckShift(unsigned id, CallExpr *E, Sema &S) {
+  bool error = false;
+  unsigned kind = 0;
+  if (isCShift(id)) kind = ShiftKind::CShift;
+  if (isEOShift(id)) kind = ShiftKind::EOShift;
+
+  unsigned args = E->getNumArgs();
+
+  // max number of args is 4 for cshift and 5 for eoshift
+  if (args > kind + 4) {
+    S.Diag(E->getRParenLoc(), diag::err_shift_args) << kind;
+    error = true;
+  } else {
+    Expr* fe = E->getArg(0);
+
+    if (ImplicitCastExpr* ce = dyn_cast<ImplicitCastExpr>(fe)) {
+      fe = ce->getSubExpr();
+    }
+
+    if (MemberExpr* me = dyn_cast<MemberExpr>(fe)) {
+      if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(me->getBase())) {
+        ValueDecl* bd = dr->getDecl();
+        const Type *T= bd->getType().getCanonicalType().getTypePtr();
+        if (!isa<MeshType>(T)) {
+          S.Diag(E->getRParenLoc(), diag::err_shift_field) << kind;
+          error = true;
+        }
+        if(isa<StructuredMeshType>(T)) {
+          S.Diag(E->getRParenLoc(), diag::err_shift_not_allowed) << kind << 0;
+          error = true;
+        }
+        if(isa<UnstructuredMeshType>(T)) {
+          S.Diag(E->getRParenLoc(), diag::err_shift_not_allowed) << kind << 1;
+          error = true;
+        }
+
+      }
+    } else {
+      S.Diag(E->getRParenLoc(), diag::err_shift_field) << kind;
+      error = true;
+    }
+  }
+  return error;
+}
+
+
 // ===== Scout ================================================================
 // ForAllVisitor class to check that LHS mesh field assignment
 // operators do not appear as subsequent RHS values, and various other
@@ -82,27 +147,13 @@ namespace {
 
     ForallVisitor(Sema& sema, ForallMeshStmt* fs)
       : sema_(sema),
-        fs_(fs),
+        //fs_(fs),
         error_(false),
         nodeType_(NodeNone) {
     }
 
     void VisitStmt(Stmt* S) {
       VisitChildren(S);
-    }
-
-    //check if builtin id is a cshift
-    bool isCShift(unsigned id) {
-         if (id == Builtin::BIcshift || id == Builtin::BIcshifti
-             || id == Builtin::BIcshiftf || id == Builtin::BIcshiftd ) return true;
-         return false;
-       }
-
-    //check if builtin id is an eoshift
-    bool isEOShift(unsigned id) {
-      if (id == Builtin::BIeoshift || id == Builtin::BIeoshifti
-          || id == Builtin::BIeoshiftf || id == Builtin::BIeoshiftd ) return true;
-      return false;
     }
 
     void VisitCallExpr(CallExpr* E) {
@@ -119,37 +170,7 @@ namespace {
           // (2) replace print function with a "special" version...
           sema_.Diag(E->getExprLoc(), diag::warn_forall_calling_io_func);
         } else if (isCShift(id) || isEOShift(id)) {
-          // SC_TODO -- need to check mesh types here for cshift() validity.
-
-          unsigned extra = 1; // cshift has 1 extra arg: mesh
-           if (isEOShift(id)) extra = 2; // EOshift has 2 extra args: mesh and value
-
-          unsigned args = E->getNumArgs();
-
-          if (args > extra + 3) {
-            sema_.Diag(E->getRParenLoc(), diag::err_shift_args);
-            error_ = true;
-          } else {
-            Expr* fe = E->getArg(0);
-
-            if (ImplicitCastExpr* ce = dyn_cast<ImplicitCastExpr>(fe)) {
-              fe = ce->getSubExpr();
-            }
-
-            if (MemberExpr* me = dyn_cast<MemberExpr>(fe)) {
-              if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(me->getBase())) {
-                ValueDecl* bd = dr->getDecl();
-
-                if (!isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
-                  sema_.Diag(E->getRParenLoc(), diag::err_shift_field);
-                  error_ = true;
-                }
-              }
-            } else {
-              sema_.Diag(E->getRParenLoc(), diag::err_shift_field);
-              error_ = true;
-            }
-          }
+          error_ = CheckShift(id, E, sema_);
         }
       }
 
@@ -247,7 +268,7 @@ namespace {
 
   private:
     Sema& sema_;
-    ForallMeshStmt *fs_;
+    //ForallMeshStmt *fs_;
     typedef std::map<std::string, bool> RefMap_;
     RefMap_ refMap_;
     RefMap_ localMap_;
@@ -471,488 +492,6 @@ StmtResult Sema::ActOnForallArrayStmt(IdentifierInfo* InductionVarInfo[],
   return Owned(FS);
 }
 
-#if 0
-namespace{
-
-  class RenderAllVisitor : public StmtVisitor<RenderAllVisitor> {
-  public:
-
-    RenderAllVisitor()
-    : foundColorAssign_(false){
-
-      for(size_t i = 0; i < 4; ++i){
-        foundComponentAssign_[i] = false;
-      }
-
-    }
-
-    void VisitStmt(Stmt* S){
-      VisitChildren(S);
-    }
-
-    void VisitIfStmt(IfStmt* S){
-      size_t ic = 0;
-      for(Stmt::child_iterator I = S->child_begin(),
-          E = S->child_end(); I != E; ++I){
-
-        if(Stmt* child = *I){
-          if(isa<CompoundStmt>(child) || isa<IfStmt>(child)){
-            RenderAllVisitor v;
-            v.Visit(child);
-            if(v.foundColorAssign()){
-              foundColorAssign_ = true;
-            }
-            else{
-              foundColorAssign_ = false;
-              break;
-            }
-          }
-          else{
-            Visit(child);
-          }
-          ++ic;
-        }
-      }
-      if(ic == 2){
-        foundColorAssign_ = false;
-      }
-    }
-
-    void VisitBinaryOperator(BinaryOperator* S){
-      if(S->getOpcode() == BO_Assign){
-        if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(S->getLHS())){
-          if(dr->getDecl()->getName().str() == "color"){
-            foundColorAssign_ = true;
-          }
-        }
-        else if(ScoutVectorMemberExpr* vm =
-                dyn_cast<ScoutVectorMemberExpr>(S->getLHS())){
-
-          if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(vm->getBase())){
-            if(dr->getDecl()->getName().str() == "color"){
-              foundComponentAssign_[vm->getIdx()] = true;
-            }
-          }
-        }
-      }
-      else{
-        VisitChildren(S);
-      }
-    }
-
-    void VisitChildren(Stmt* S){
-      for(Stmt::child_iterator I = S->child_begin(),
-          E = S->child_end(); I != E; ++I){
-        if(Stmt* child = *I){
-          Visit(child);
-        }
-      }
-    }
-
-    bool foundColorAssign(){
-      if(foundColorAssign_){
-        return true;
-      }
-
-      for(size_t i = 0; i < 4; ++i){
-        if(!foundComponentAssign_[i]){
-          return false;
-        }
-      }
-
-      return true;
-    }
-
-  private:
-    bool foundColorAssign_;
-    bool foundComponentAssign_[4];
-  };
-
-} // end namespace
-
-namespace {
-  // scout
-  class VolumeRenderAllVisitor : public StmtVisitor<VolumeRenderAllVisitor> {
-    public:
-      VolumeRenderAllVisitor() {}
-      void VisitStmt(Stmt* S){
-        VisitChildren(S);
-      }
-      void VisitIfStmt(IfStmt* S){}
-      void VisitBinaryOperator(BinaryOperator* S){}
-      void VisitChildren(Stmt* S){}
-#ifdef NOTYET
-      VolumeRenderAllVisitor()
-        foundColorAssign_(false){
-
-          for(size_t i = 0; i < 4; ++i){
-            foundComponentAssign_[i] = false;
-          }
-
-        }
-
-      void VisitStmt(Stmt* S){
-        VisitChildren(S);
-      }
-
-      void VisitIfStmt(IfStmt* S){
-        size_t ic = 0;
-        for(Stmt::child_iterator I = S->child_begin(),
-            E = S->child_end(); I != E; ++I){
-
-
-          if(Stmt* child = *I){
-            if(isa<CompoundStmt>(child) || isa<IfStmt>(child)){
-              RenderAllVisitor v;
-              v.Visit(child);
-              if(v.foundColorAssign()){
-                foundColorAssign_ = true;
-              }
-              else{
-                foundColorAssign_ = false;
-                break;
-              }
-            }
-            else{
-              Visit(child);
-            }
-            ++ic;
-          }
-        }
-        if(ic == 2){
-          foundColorAssign_ = false;
-        }
-      }
-
-      void VisitBinaryOperator(BinaryOperator* S){
-        if(S->getOpcode() == BO_Assign){
-          if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(S->getLHS())){
-            if(dr->getDecl()->getName().str() == "color"){
-              foundColorAssign_ = true;
-            }
-          }
-          else if(ScoutVectorMemberExpr* vm =
-              dyn_cast<ScoutVectorMemberExpr>(S->getLHS())){
-
-            if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(vm->getBase())){
-              if(dr->getDecl()->getName().str() == "color"){
-                foundComponentAssign_[vm->getIdx()] = true;
-              }
-            }
-          }
-        }
-        else{
-          VisitChildren(S);
-        }
-      }
-
-      void VisitChildren(Stmt* S){
-        for(Stmt::child_iterator I = S->child_begin(),
-            E = S->child_end(); I != E; ++I){
-          if(Stmt* child = *I){
-            Visit(child);
-          }
-        }
-      }
-
-      bool foundColorAssign(){
-        if(foundColorAssign_){
-          return true;
-        }
-
-        for(size_t i = 0; i < 4; ++i){
-          if(!foundComponentAssign_[i]){
-            return false;
-          }
-        }
-
-        return true;
-      }
-
-    private:
-      bool foundColorAssign_;
-      bool foundComponentAssign_[4];
-#endif
-  };
-
-} // end namespace
-
-
-StmtResult Sema::ActOnRenderAllStmt(SourceLocation RenderAllLoc,
-                                    ForAllStmt::ForAllType Type,
-                                    const MeshType *MT,
-                                    VarDecl* MVD,
-                                    IdentifierInfo* LoopVariableII,
-                                    IdentifierInfo* MeshII,
-                                    SourceLocation LParenLoc,
-                                    Expr *Op, SourceLocation RParenLoc,
-                                    Stmt* Body,
-                                    BlockExpr *Block){
-
-  SCLStack.pop_back();
-
-  RenderAllVisitor v;
-  v.Visit(Body);
-
-  if(!v.foundColorAssign()){
-    Diag(RenderAllLoc, diag::err_no_color_assignment_renderall);
-    return StmtError();
-  }
-
-  return Owned(new (Context) RenderAllStmt(Context, Type, MT,
-                                           LoopVariableII, MeshII, MVD,
-                                           Op, Body, Block,
-                                           RenderAllLoc, LParenLoc,
-                                           RParenLoc));
-}
-
-// scout - Scout Stmts
-
-bool Sema::ActOnForAllLoopVariable(Scope* S,
-                                   tok::TokenKind VariableType,
-                                   IdentifierInfo* LoopVariableII,
-                                   SourceLocation LoopVariableLoc,
-                                   IdentifierInfo* MeshII,
-                                   SourceLocation MeshLoc){
-
-  // lookup result below
-  LookupResult LResult(*this, LoopVariableII, LoopVariableLoc,
-                       LookupOrdinaryName);
-
-  LookupName(LResult, S);
-
-  if(LResult.getResultKind() != LookupResult::NotFound){
-    Diag(LoopVariableLoc, diag::err_loop_variable_shadows_forall) << LoopVariableII;
-    return false;
-  }
-
-  LookupResult MResult(*this, MeshII, MeshLoc, LookupOrdinaryName);
-
-  LookupName(MResult, S);
-
-  if(MResult.getResultKind() != LookupResult::Found){
-    Diag(MeshLoc, diag::err_unknown_mesh_variable_forall) << MeshII;
-    return false;
-  }
-
-  NamedDecl* ND = MResult.getFoundDecl();
-
-  if(!isa<VarDecl>(ND)){
-    Diag(MeshLoc, diag::err_not_mesh_variable_forall) << MeshII;
-    return false;
-  }
-
-  VarDecl* VD = cast<VarDecl>(ND);
-
-  const Type* T = VD->getType().getCanonicalType().getTypePtr();
-
-  if(!isa<MeshType>(T)){
-    T = VD->getType().getCanonicalType().getNonReferenceType().getTypePtr();
-    if(!isa<MeshType>(T)){
-      Diag(MeshLoc, diag::err_not_mesh_variable_forall) << MeshII;
-      return false;
-    }
-  }
-
-  MeshType* MT = const_cast<MeshType *>(cast<MeshType>(T));
-  UniformMeshType* UMT = cast<UniformMeshType>(MT);
-
-  ImplicitMeshParamDecl* D =
-  ImplicitMeshParamDecl::Create(Context, CurContext, LoopVariableLoc,
-                            LoopVariableII, QualType(UMT, 0), VD);
-
-  PushOnScopeChains(D, S, true);
-
-  SCLStack.push_back(D);
-
-  return true;
-}
-
-bool Sema::ActOnForAllArrayInductionVariable(Scope* S,
-                                             IdentifierInfo* InductionVarII,
-                                             SourceLocation InductionVarLoc){
-
-  // lookup result below
-
-  LookupResult LResult(*this, InductionVarII, InductionVarLoc,
-                       LookupOrdinaryName);
-
-  LookupName(LResult, S);
-
-  if(LResult.getResultKind() != LookupResult::NotFound){
-    Diag(InductionVarLoc, diag::err_loop_variable_shadows_forall) <<
-    InductionVarII;
-    return false;
-  }
-
-  ImplicitParamDecl* IV =
-  ImplicitParamDecl::Create(Context, CurContext,
-                            InductionVarLoc, InductionVarII,
-                            Context.IntTy);
-
-  PushOnScopeChains(IV, S, true);
-
-  return true;
-}
-
-// scout - Scout Stmts
-
-bool Sema::ActOnRenderAllLoopVariable(Scope* S,
-                                      tok::TokenKind VariableType,
-                                      IdentifierInfo* LoopVariableII,
-                                      SourceLocation LoopVariableLoc,
-                                      IdentifierInfo* MeshII,
-                                      SourceLocation MeshLoc){
-
-
-  LookupResult LResult(*this, LoopVariableII, LoopVariableLoc,
-                       LookupOrdinaryName);
-
-  LookupName(LResult, S);
-
-  if(LResult.getResultKind() != LookupResult::NotFound){
-    Diag(LoopVariableLoc, diag::err_loop_variable_shadows_renderall) << LoopVariableII;
-    return false;
-  }
-
-  LookupResult MResult(*this, MeshII, MeshLoc, LookupOrdinaryName);
-
-  LookupName(MResult, S);
-
-  if(MResult.getResultKind() != LookupResult::Found){
-    Diag(MeshLoc, diag::err_unknown_mesh_variable_renderall) << MeshII;
-    return false;
-  }
-
-  NamedDecl* ND = MResult.getFoundDecl();
-
-  if(!isa<VarDecl>(ND)){
-    Diag(MeshLoc, diag::err_not_mesh_variable_renderall) << MeshII;
-    return false;
-  }
-
-  VarDecl* VD = cast<VarDecl>(ND);
-
-  const Type* T = VD->getType().getCanonicalType().getNonReferenceType().getTypePtr();
-
-  if(!isa<MeshType>(T)){
-    Diag(MeshLoc, diag::err_not_mesh_variable_renderall) << MeshII;
-    return false;
-  }
-
-  MeshType* MT = const_cast<MeshType *>(cast<MeshType>(T));
-  UniformMeshType* UMT = cast<UniformMeshType>(MT);
-
-  ImplicitParamDecl* D =
-  ImplicitParamDecl::Create(Context, CurContext, LoopVariableLoc,
-                            LoopVariableII, QualType(UMT, 0));
-
-
-  PushOnScopeChains(D, S, true);
-
-  ImplicitParamDecl* CD =
-  ImplicitParamDecl::Create(Context, CurContext, MeshLoc,
-                            &Context.Idents.get("color"),
-                            Context.Float4Ty);
-
-  PushOnScopeChains(CD, S, true);
-
-  SCLStack.push_back(D);
-
-  return true;
-}
-
-const MeshType*
-Sema::ActOnRenderAllElementsVariable(Scope* S,
-                                     MemberExpr* ME,
-                                     tok::TokenKind VariableType,
-                                     IdentifierInfo* ElementsVariableII,
-                                     SourceLocation ElementsVariableLoc){
-
-  LookupResult LResult(*this, ElementsVariableII, ElementsVariableLoc,
-                       LookupOrdinaryName);
-
-  LookupName(LResult, S);
-
-  if(LResult.getResultKind() != LookupResult::NotFound){
-    Diag(ElementsVariableLoc,
-         diag::err_elements_variable_shadows_renderall) << ElementsVariableII;
-
-    return 0;
-  }
-
-  if(SCLStack.empty()){
-    Diag(ElementsVariableLoc, diag::err_elements_not_in_forall_renderall);
-    return 0;
-  }
-
-  VarDecl* MD = SCLStack.back();
-  const MeshType* T =
-  dyn_cast<MeshType>(MD->getType().getCanonicalType().getTypePtr());
-
-  UniformMeshType* MT = cast<UniformMeshType>(const_cast<MeshType *>(T));
-
-  ImplicitParamDecl* D =
-  ImplicitParamDecl::Create(Context, CurContext, ElementsVariableLoc,
-                            ElementsVariableII, QualType(MT, 0));
-
-  PushOnScopeChains(D, S, true);
-
-  SCLStack.push_back(D);
-
-  return MT;
-}
-
-StmtResult
-Sema::ActOnVolumeRenderAllStmt(
-        Scope* scope, SourceLocation VolRenLoc,
-        SourceLocation L, SourceLocation R,
-        IdentifierInfo* MeshII, VarDecl* MeshVD,
-        IdentifierInfo* CameraII, SourceLocation CameraLoc,
-        MultiStmtArg elts,
-        CompoundStmt* body, bool isStmtExpr)
-{
-
-  // check camera if one was specified
-
-  VarDecl* CameraVD = 0;
-
-  if (CameraII != 0) {
-
-    LookupResult CameraResult(*this, CameraII, CameraLoc, LookupOrdinaryName);
-
-    LookupName(CameraResult, scope);
-
-    if(CameraResult.getResultKind() != LookupResult::Found){
-      Diag(CameraLoc, diag::err_unknown_camera_variable_renderall) << CameraII;
-      return false;
-    }
-
-    NamedDecl* CameraND = CameraResult.getFoundDecl();
-
-    if(!isa<VarDecl>(CameraND)){
-      Diag(CameraLoc, diag::err_not_camera_variable_renderall) << CameraII;
-      return false;
-    }
-
-    VarDecl* CameraVD = cast<VarDecl>(CameraND);
-
-    QualType CameraVarType = CameraVD->getType();
-
-    if (CameraVarType.getAsString() != "scout::glCamera") {
-      Diag(CameraLoc, diag::err_not_camera_variable_renderall) << CameraII;
-      return false;
-    }
-
-  }
-
-  VolumeRenderAllStmt* vrs = new (Context) VolumeRenderAllStmt(Context,
-      VolRenLoc, L, R, MeshII, MeshVD, CameraII, CameraVD, body);
-
-  return Owned(vrs);
-}
-#endif
-
 
 namespace {
   class RenderallVisitor : public StmtVisitor<RenderallVisitor> {
@@ -980,20 +519,6 @@ namespace {
       VisitChildren(S);
     }
 
-    //check if builtin id is a cshift
-    bool isCShift(unsigned id) {
-      if (id == Builtin::BIcshift || id == Builtin::BIcshifti
-          || id == Builtin::BIcshiftf || id == Builtin::BIcshiftd ) return true;
-      return false;
-    }
-
-    //check if builtin id is an eoshift
-    bool isEOShift(unsigned id) {
-      if (id == Builtin::BIeoshift || id == Builtin::BIeoshifti
-          || id == Builtin::BIeoshiftf || id == Builtin::BIeoshiftd ) return true;
-      return false;
-    }
-
     void VisitCallExpr(CallExpr* E) {
 
       FunctionDecl* fd = E->getDirectCallee();
@@ -1008,41 +533,7 @@ namespace {
           // (2) replace print function with a "special" version...
           sema_.Diag(E->getExprLoc(), diag::warn_renderall_calling_io_func);
         } else if (isCShift(id) || isEOShift(id)) {
-
-          // SC_TODO -- need to check mesh types here for cshift() validity.
-
-          unsigned extra = 1; // cshift has 1 extra arg: mesh
-          if (isEOShift(id)) extra = 2; // EOshift has 2 extra args: mesh and value
-
-          const MeshType* mt = fs_->getMeshType();
-          unsigned args = E->getNumArgs();
-
-          unsigned dims = mt->rankOf();
-
-          if (args != dims + extra) {
-            sema_.Diag(E->getRParenLoc(), diag::err_shift_args);
-            error_ = true;
-          } else {
-            Expr* fe = E->getArg(0);
-
-            if (ImplicitCastExpr* ce = dyn_cast<ImplicitCastExpr>(fe)) {
-              fe = ce->getSubExpr();
-            }
-
-            if (MemberExpr* me = dyn_cast<MemberExpr>(fe)) {
-              if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(me->getBase())) {
-                ValueDecl* bd = dr->getDecl();
-
-                if (!isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
-                  sema_.Diag(E->getRParenLoc(), diag::err_shift_field);
-                  error_ = true;
-                }
-              }
-            } else {
-              sema_.Diag(E->getRParenLoc(), diag::err_shift_field);
-              error_ = true;
-            }
-          }
+          error_ = CheckShift(id, E, sema_);
         }
       }
 

@@ -48,8 +48,9 @@ add_clang_library(clangSema
   SemaTemplateVariadic.cpp
   SemaType.cpp
   # +===== Scout ============================================================+
-  Scout/SemaDecl.cpp
   Scout/Sema.cpp
+  Scout/SemaChecking.cpp
+  Scout/SemaDecl.cpp
   Scout/SemaExpr.cpp
   Scout/SemaExprMember.cpp
   Scout/SemaLookup.cpp

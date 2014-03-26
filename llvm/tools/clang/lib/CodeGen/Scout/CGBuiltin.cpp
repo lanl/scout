@@ -58,6 +58,7 @@
 #include "clang/AST/Decl.h"
 #include "clang/Basic/TargetBuiltins.h"
 #include "clang/Basic/TargetInfo.h"
+#include "clang/Basic/Scout/BuiltinsScout.h"
 #include "clang/Sema/SemaDiagnostic.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Intrinsics.h"
@@ -118,6 +119,7 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
   }
 
   case Builtin::BIwidth: {
+    // number of args is already known to be 0 or 1 as it was checked in sema
     if(E->getNumArgs() == 0) { //inside forall/renderall
       if (LoopBounds[0]) {
         *RV = RValue::get(Builder.CreateLoad(LoopBounds[0], "width"));
@@ -125,16 +127,14 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
         CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
         *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
       }
-    } else if (E->getNumArgs() == 1) { //outside forall/renderall
-      *RV = EmitMeshParameterExpr(*(E->arg_begin()), MeshParameterOffset::WidthOffset);
-    } else {
-      CGM.getDiags().Report(E->getExprLoc(), diag::err_mesh_builtin_nargs)
-                         << MeshParameterOffset::WidthOffset;
+    } else  { //outside forall/renderall
+      *RV = EmitMeshParameterExpr(E->getArg(0), MeshParameterOffset::WidthOffset);
     }
     return true;
   }
 
   case Builtin::BIheight: {
+    // number of args is already known to be 0 or 1 as it was checked in sema
     if(E->getNumArgs() == 0) { //inside forall/renderall
       if (LoopBounds[1]) {
         *RV = RValue::get(Builder.CreateLoad(LoopBounds[1], "height"));
@@ -142,16 +142,14 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
         CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
         *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
       }
-    } else if (E->getNumArgs() == 1) { //outside forall/renderall
-      *RV = EmitMeshParameterExpr(*(E->arg_begin()), MeshParameterOffset::HeightOffset);
-    } else {
-      CGM.getDiags().Report(E->getExprLoc(), diag::err_mesh_builtin_nargs)
-                         << MeshParameterOffset::HeightOffset;
+    } else { //outside forall/renderall
+      *RV = EmitMeshParameterExpr(E->getArg(0), MeshParameterOffset::HeightOffset);
     }
     return true;
   }
 
   case Builtin::BIdepth: {
+    // number of args is already known to be 0 or 1 as it was checked in sema
     if(E->getNumArgs() == 0) { //inside forall/renderall
       if (LoopBounds[2]) {
         *RV = RValue::get(Builder.CreateLoad(LoopBounds[2], "depth"));
@@ -159,16 +157,14 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
         CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
         *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
       }
-    } else if (E->getNumArgs() == 1) { //outside forall/renderall
-      *RV = EmitMeshParameterExpr(*(E->arg_begin()), MeshParameterOffset::DepthOffset);
-    } else {
-      CGM.getDiags().Report(E->getExprLoc(), diag::err_mesh_builtin_nargs)
-                 << MeshParameterOffset::DepthOffset;
+    } else { //outside forall/renderall
+      *RV = EmitMeshParameterExpr(E->getArg(0), MeshParameterOffset::DepthOffset);
     }
     return true;
-  }
+	  }
 
   case Builtin::BIrank: {
+    // number of args is already known to be 0 or 1 as it was checked in sema
     if(E->getNumArgs() == 0) { //inside forall/renderall
       if (Rank)
         *RV = RValue::get(Builder.CreateLoad(Rank, "rank"));
@@ -176,11 +172,8 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
         CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
         *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
       }
-    } else if (E->getNumArgs() == 1) { //outside forall/renderall
-         *RV = EmitMeshParameterExpr(*(E->arg_begin()), MeshParameterOffset::RankOffset);
-    } else {
-      CGM.getDiags().Report(E->getExprLoc(), diag::err_mesh_builtin_nargs)
-          << MeshParameterOffset::RankOffset;
+    } else { //outside forall/renderall
+         *RV = EmitMeshParameterExpr(E->getArg(0), MeshParameterOffset::RankOffset);
     }
       return true;
   }

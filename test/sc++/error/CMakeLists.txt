@@ -127,14 +127,14 @@ set(name eoshift-args)
 set(tname sc++_error_${name})
 add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
 set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
-    "error: invalid number of cshift/eoshift args")
+    "error: invalid number of eoshift")
 set_property(TEST ${tname} PROPERTY WILL_FAIL) 
 
 set(name eoshift-nonmesh)
 set(tname sc++_error_${name})
 add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
 set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
-    "error: first argument to cshift/eoshift must be a mesh field")
+    "error: first argument to eoshift")
 set_property(TEST ${tname} PROPERTY WILL_FAIL) 
 
 set(name renderall-color)
@@ -165,4 +165,18 @@ add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
 set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
     "mesh field element must be non-pointer type")
 set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+
+set(name builtin-args)
+set(tname sc++_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION
+    "error: invalid number of args")
+set_property(TEST ${tname} PROPERTY WILL_FAIL)
+
+set(name builtin-nonmesh)
+set(tname sc++_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION
+    "error: argument to rank")
+set_property(TEST ${tname} PROPERTY WILL_FAIL)
 

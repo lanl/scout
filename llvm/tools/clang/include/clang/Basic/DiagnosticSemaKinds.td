@@ -7012,11 +7012,11 @@ def err_no_color_assignment_renderall : Error<
 def err_rhs_after_lhs_forall : Error<
     "mesh field appears on LHS then on subsequent RHS">;
 def err_shift_not_allowed : Error<
-    "cannot use cshift/eoshift on unstructured mesh">;
+    "cannot use %select{cshift()|eoshift()}0 on %select{structured|unstructured}1 mesh">;
 def err_shift_args : Error<
-    "invalid number of cshift/eoshift args">;
+    "invalid number of %select{cshift()|eoshift()}0 args">;
 def err_shift_field : Error<
-    "first argument to cshift/eoshift must be a mesh field">;
+    "first argument to %select{cshift()|eoshift()}0 must be a mesh field">;
 def err_pointer_field_mesh : Error<
     "mesh field element must be non-pointer type">;
 def err_elements_not_in_forall_renderall : Error<
@@ -7048,9 +7048,9 @@ def warn_mesh_intrinsic_outside_scope : Warning<
     "builtin mesh intrinsics called outside of mesh construct.">,
      InGroup<MeshBuiltinScope>;
 def err_mesh_builtin_nargs : Error<
-    "invalid number of args in  %select(width()|height()|depth()|rank()}0 ">;
+    "invalid number of args in  %select{width()|height()|depth()|rank()}0 ">;
 def  err_mesh_builtin_arg : Error<
- 	"argument to %select(width()|height()|depth()|rank()}0 must be a mesh">;    
+ 	"argument to %select{width()|height()|depth()|rank()}0 must be a mesh">;    
     
 } // end Scout issue category
 // +=========================================================================+
