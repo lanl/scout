@@ -1,5 +1,4 @@
-// REQUIRES: scoutdisable 
-// problem is with builtin "width"
+// Scout: change width->Width because of conflict w/ mesh builtin
 // RUN: %clang_cc1 -fsyntax-only -std=c++11 -pedantic -verify -fcxx-exceptions %s -fconstexpr-depth 128 -triple i686-pc-linux-gnu
 
 // A conditional-expression is a core constant expression unless it involves one
@@ -575,10 +574,10 @@ template<unsigned int v>
 class bitWidthHolding {
 public:
   static const
-  unsigned int width = (v == 0 ? 0 : bitWidthHolding<(v >> 1)>::width + 1);
+  unsigned int Width = (v == 0 ? 0 : bitWidthHolding<(v >> 1)>::Width + 1);
 };
 
-static const int width=bitWidthHolding<255>::width;
+static const int Width=bitWidthHolding<255>::Width;
 
 template<bool b>
 struct always_false {
