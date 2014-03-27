@@ -62,14 +62,8 @@ uniform mesh MyMesh {
 void func(MyMesh* mp)
 {
   assert(rank(*mp) == 2 && "incorrect rank");
-
-  forall cells c in *mp {
-    printf("%d %d %d\n", width(), height(), rank());
-    assert(width() == 2 && "incorrect width"); 
-    assert(height() == 3 && "incorrect height"); 
-    assert(rank() == 2 && "incorrect rank"); 
-
-  }
+  //also works w/ mesh ptr w/ warning
+  assert(rank(mp) == 2 && "incorrect rank");
 }
 
 int main(int argc, char *argv[])

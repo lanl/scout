@@ -7050,7 +7050,9 @@ def warn_mesh_intrinsic_outside_scope : Warning<
 def err_mesh_builtin_nargs : Error<
     "invalid number of args in  %select{width()|height()|depth()|rank()}0 ">;
 def  err_mesh_builtin_arg : Error<
- 	"argument to %select{width()|height()|depth()|rank()}0 must be a mesh">;    
+ 	"argument to %select{width()|height()|depth()|rank()}0 must be a mesh">;  
+def  warn_mesh_builtin_ptr : Warning<
+ 	"argument to %select{width()|height()|depth()|rank()}0 must be a mesh, adding *">;  	  
     
 } // end Scout issue category
 // +=========================================================================+

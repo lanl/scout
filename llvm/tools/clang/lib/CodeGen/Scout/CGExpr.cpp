@@ -531,7 +531,6 @@ RValue CodeGenFunction::EmitMeshParameterExpr(const Expr *E, MeshParameterOffset
 
   if(const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(EE)) {
 
-
     //get number of fields and mesh name
     if(const MeshType *MT = dyn_cast<MeshType>(DRE->getType())) {
       nfields = MT->getDecl()->fields();

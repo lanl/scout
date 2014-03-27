@@ -89,3 +89,8 @@ add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
 set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
     "warning: builtin mesh intrinsics called outside of mesh construct")
 
+set(name  mesh-param-builtin)
+set(tname scc_warning_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "warning: argument to rank")

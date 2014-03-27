@@ -60,37 +60,6 @@ using namespace clang;
 using namespace sema;
 
 
-static bool CheckMeshParameterDeclRefExpr(const DeclRefExpr *DRE) {
-  bool ret = true;
-  if(!isa<MeshType>(DRE->getType()) &&
-      !isa<MeshType>(DRE->getType().getTypePtr()->getPointeeType())) {
-    ret = false;  // not mesh or mesh ptr
-  }
-  if(!isa<VarDecl>(DRE->getDecl())) {
-    ret = false; //not vardecl
-  }
-  return ret;
-}
-
-//drill down Expr till we getr the Sub DeclRefExpr we want
-static bool CheckMeshParameterExpr(Expr *E) {
-  bool ret = true;
-  if (ImplicitCastExpr *ICE = dyn_cast<ImplicitCastExpr>(E)) {
-    if(const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(ICE->getSubExpr())) {
-      ret = CheckMeshParameterDeclRefExpr(DRE);
-
-    } else if(const UnaryOperator *UO = dyn_cast<UnaryOperator>(ICE->getSubExpr())) {
-      //found a star
-      ret = CheckMeshParameterExpr(UO->getSubExpr());
-    } else {
-      ret = false; // not DeclRef or UnaryOperator
-    }
-  } else {
-    ret = false; // not ImplicitCastExpr
-  }
-  return ret;
-}
-
 bool Sema::CheckMeshParameterCall(unsigned BuiltinID, CallExpr *TheCall) {
   int diagarg = 0;
   switch (BuiltinID) {
@@ -116,19 +85,48 @@ bool Sema::CheckMeshParameterCall(unsigned BuiltinID, CallExpr *TheCall) {
     return false;
   }
 
-  bool ret = true;
+  bool star = false;
   // if we have an argument check it
   if(TheCall->getNumArgs() == 1) {
 
     ArrayRef<Stmt*> children = TheCall->getRawSubExprs();
     assert(children.size() == 2 && "bad mesh builtin CallExpr");
     Expr *E = dyn_cast<Expr>(children[1]);
-    E->dump();
 
-    ret = CheckMeshParameterExpr(E);
+    // Get the expr we are after, might have leading casts and star
+    Expr *EE = E;
+    if (ImplicitCastExpr *ICE = dyn_cast<ImplicitCastExpr>(EE)) {
+      EE = ICE->getSubExpr();
+      if(const UnaryOperator *UO = dyn_cast<UnaryOperator>(EE)) {
+        star = true;
+        EE = UO->getSubExpr();
+        if (ImplicitCastExpr *ICE2 = dyn_cast<ImplicitCastExpr>(EE)) {
+          EE = ICE2->getSubExpr();
+        }
+      }
+    }
+
+    DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(EE);
+    if(!DRE) {
+      Diag(TheCall->getExprLoc(), diag::err_mesh_builtin_arg) << diagarg;
+      return false;
+    }
+    QualType QT = DRE->getType().getTypePtr()->getPointeeType();
+
+    // warn about missing star if called from function w/ mesh passed a ptr
+    if(!star && !QT.isNull() && isa<MeshType>(QT)) {
+      Diag(E->getExprLoc(), diag::warn_mesh_builtin_ptr) << diagarg;
+    }
+
+    if(!isa<MeshType>(DRE->getType()) && !QT.isNull() && !isa<MeshType>(QT)) {
+      Diag(TheCall->getExprLoc(), diag::err_mesh_builtin_arg) << diagarg;
+      return false;  // not mesh or mesh ptr
+    }
+    if(!isa<VarDecl>(DRE->getDecl())) {
+      Diag(TheCall->getExprLoc(), diag::err_mesh_builtin_arg) << diagarg;
+      return false; //not vardecl
+    }
   }
-
-  if (!ret) Diag(TheCall->getExprLoc(), diag::err_mesh_builtin_arg) << diagarg;
-  return ret;
+  return true;
 }
 
