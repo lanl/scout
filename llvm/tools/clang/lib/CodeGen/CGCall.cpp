@@ -1438,6 +1438,16 @@ void CodeGenFunction::EmitFunctionProlog(const CGFunctionInfo &FI,
         if (V->getType() != LTy)
           V = Builder.CreateBitCast(V, LTy);
 
+        // +===== Scout ==========================================================+
+        // mesh types are passed by pointer/reference in user defined functions
+        if(isScoutLang(getLangOpts())) {
+          QualType QT = Arg->getType().getTypePtr()->getPointeeType();
+          if (!QT.isNull() && isa<MeshType>(QT)) {
+            ArgVals.push_back(ValueAndIsPtr(V, HavePointer));
+            break;
+          }
+        }
+        // +======================================================================+
         ArgVals.push_back(ValueAndIsPtr(V, HaveValue));
         break;
       }
