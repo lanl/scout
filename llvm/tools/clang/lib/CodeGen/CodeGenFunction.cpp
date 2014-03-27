@@ -65,6 +65,8 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
   Builder.SetFastMathFlags(FMF);
 
   // +===== Scout =========================================+
+  VertexIndex = 0;
+  CellIndex = 0;
   for(unsigned i = 0; i < 3; ++i) {
     // We use LoopBounds[0] == 0 as a test for being in a
     // valid mesh/forall state where instrinsics are safe
