@@ -302,6 +302,8 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
       llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
       llvm::Value* Two = llvm::ConstantInt::get(Int32Ty, 2);
       llvm::Value* Three = llvm::ConstantInt::get(Int32Ty, 3);
+      llvm::Value* Four = llvm::ConstantInt::get(Int32Ty, 4);
+      llvm::Value* Seven = llvm::ConstantInt::get(Int32Ty, 7);
 
       llvm::Value* cellPosPtr = Builder.CreateAlloca(Int32Ty, 0, "cell.pos.ptr");
       CellIndex = Builder.CreateAlloca(Int32Ty, 0, "cell.index.ptr");
@@ -311,8 +313,13 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
       llvm::Value* width = Builder.CreateLoad(LoopBounds[0], "width");
 
       llvm::Value* height;
+      llvm::Value* depth;
       if(rank > 1){
         height = Builder.CreateLoad(LoopBounds[1], "height");
+      }
+
+      if(rank > 2){
+        depth = Builder.CreateLoad(LoopBounds[2], "depth");
       }
 
       llvm::BasicBlock *LoopBlock = createBasicBlock("forall.cells.loop");
@@ -322,7 +329,46 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
       llvm::Value* cellPos = Builder.CreateLoad(cellPosPtr, "cell.pos");
 
-      if(rank > 1){
+      if(rank == 3){
+        llvm::Value* pd4 = Builder.CreateUDiv(cellPos, Four);
+        llvm::Value* pm4 = Builder.CreateURem(cellPos, Four);
+        llvm::Value* pd2 = Builder.CreateUDiv(pm4, Two);
+        llvm::Value* pm2 = Builder.CreateURem(pm4, Two);
+
+        llvm::Value* i = Builder.CreateLoad(InductionVar[0], "i");
+        llvm::Value* x = Builder.CreateSub(i, pd2, "x");
+
+        llvm::Value* cx1 = Builder.CreateICmpSLT(x, Zero);
+        llvm::Value* cx2 = Builder.CreateICmpSGE(x, width);
+        llvm::Value* vx2 = Builder.CreateAdd(x, width);
+        llvm::Value* vx3 = Builder.CreateURem(x, width);
+        x = Builder.CreateSelect(cx1, vx2, Builder.CreateSelect(cx2, vx3, x));
+
+        llvm::Value* j = Builder.CreateLoad(InductionVar[1], "j");
+        llvm::Value* y = Builder.CreateSub(j, pm2, "y");
+
+        llvm::Value* cy1 = Builder.CreateICmpSLT(y, Zero);
+        llvm::Value* cy2 = Builder.CreateICmpSGE(y, height);
+        llvm::Value* vy2 = Builder.CreateAdd(y, height);
+        llvm::Value* vy3 = Builder.CreateURem(y, height);
+        y = Builder.CreateSelect(cy1, vy2, Builder.CreateSelect(cy2, vy3, y));
+
+        llvm::Value* k = Builder.CreateLoad(InductionVar[2], "k");
+        llvm::Value* z = Builder.CreateSub(k, pd4, "z");
+
+        llvm::Value* cz1 = Builder.CreateICmpSLT(z, Zero);
+        llvm::Value* cz2 = Builder.CreateICmpSGE(z, depth);
+        llvm::Value* vz2 = Builder.CreateAdd(z, depth);
+        llvm::Value* vz3 = Builder.CreateURem(z, depth);
+        z = Builder.CreateSelect(cz1, vz2, Builder.CreateSelect(cz2, vz3, z));
+
+        llvm::Value* v1 = Builder.CreateMul(j, width);
+        llvm::Value* v2 = Builder.CreateMul(k, Builder.CreateMul(width, height));
+
+        llvm::Value* newCellIndex = Builder.CreateAdd(i, Builder.CreateAdd(v1, v2));
+        Builder.CreateStore(newCellIndex, CellIndex);
+      }
+      else if(rank == 2){
         llvm::Value* i = Builder.CreateLoad(InductionVar[0], "i");
 
         llvm::Value* vx1 = Builder.CreateUDiv(cellPos, Two);
@@ -370,11 +416,18 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
       llvm::Value* Cond;
 
-      if(rank > 1){
+      switch(rank){
+      case 3:
+        Cond = Builder.CreateICmpSLT(cellPos, Seven, "cond");
+        break;
+      case 2:
         Cond = Builder.CreateICmpSLT(cellPos, Three, "cond");
-      }
-      else{
+        break;
+      case 1:
         Cond = Builder.CreateICmpSLT(cellPos, One, "cond");
+        break;
+      default:
+        assert(false && "invalid rank");
       }
 
       llvm::BasicBlock *ExitBlock = createBasicBlock("forall.cells.exit");
