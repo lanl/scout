@@ -195,6 +195,8 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
       llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
       llvm::Value* Two = llvm::ConstantInt::get(Int32Ty, 2);
       llvm::Value* Three = llvm::ConstantInt::get(Int32Ty, 3);
+      llvm::Value* Four = llvm::ConstantInt::get(Int32Ty, 4);
+      llvm::Value* Seven = llvm::ConstantInt::get(Int32Ty, 7);
 
       llvm::Value* vertexPosPtr = Builder.CreateAlloca(Int32Ty, 0, "vertex.pos.ptr");
       VertexIndex = Builder.CreateAlloca(Int32Ty, 0, "vertex.index.ptr");
@@ -202,14 +204,23 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
       Builder.CreateStore(Zero, vertexPosPtr);
 
       llvm::Value* width = Builder.CreateLoad(LoopBounds[0], "width");
+      llvm::Value* height;
       llvm::Value* indVar =  Builder.CreateLoad(InductionVar[3], "indVar");
 
       llvm::Value* width1;
+      llvm::Value* height1;
       llvm::Value* idvw;
+      llvm::Value* wh1;
 
       if(rank > 1){
         width1 =  Builder.CreateAdd(width, One);
         idvw = Builder.CreateUDiv(indVar, width, "idvw");
+      }
+
+      if(rank > 2){
+        height = Builder.CreateLoad(LoopBounds[1], "height");
+        height1 =  Builder.CreateAdd(height, One);
+        wh1 = Builder.CreateMul(width1, height1);
       }
 
       llvm::BasicBlock *LoopBlock = createBasicBlock("forall.vertices.loop");
@@ -219,7 +230,29 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
       llvm::Value* vertexPos = Builder.CreateLoad(vertexPosPtr, "vertex.pos");
 
-      if(rank > 1){
+      if(rank == 3){
+        llvm::Value* i = Builder.CreateLoad(InductionVar[0], "i");
+        llvm::Value* j = Builder.CreateLoad(InductionVar[1], "j");
+        llvm::Value* k = Builder.CreateLoad(InductionVar[2], "k");
+        llvm::Value* v1 = Builder.CreateMul(j, width1);
+        llvm::Value* v2 = Builder.CreateMul(k, wh1);
+        llvm::Value* xyz = Builder.CreateAdd(i, Builder.CreateAdd(v1, v2));
+
+        llvm::Value* pd4 = Builder.CreateUDiv(vertexPos, Four);
+        llvm::Value* pm4 = Builder.CreateURem(vertexPos, Four);
+        llvm::Value* pd2 = Builder.CreateUDiv(pm4, Two);
+        llvm::Value* pm2 = Builder.CreateURem(pm4, Two);
+
+        llvm::Value* v3 = Builder.CreateMul(pd2, width1);
+        llvm::Value* v4 = Builder.CreateMul(pd4, wh1);
+
+        llvm::Value* newVertexIndex =
+            Builder.CreateAdd(Builder.CreateAdd(xyz, v3),
+                              Builder.CreateAdd(pm2, v4));
+
+        Builder.CreateStore(newVertexIndex, VertexIndex);
+      }
+      else if(rank == 2){
         llvm::Value* v1 = Builder.CreateUDiv(vertexPos, Two);
         llvm::Value* v2 = Builder.CreateMul(v1, width1);
         llvm::Value* v3 = Builder.CreateURem(vertexPos, Two);
@@ -243,7 +276,10 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
       llvm::Value* Cond;
 
-      if(rank > 1){
+      if(rank == 3){
+        Cond = Builder.CreateICmpSLT(vertexPos, Seven, "cond");
+      }
+      else if(rank == 2){
         Cond = Builder.CreateICmpSLT(vertexPos, Three, "cond");
       }
       else{
