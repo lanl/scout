@@ -108,15 +108,15 @@ void CodeGenFunction::GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& 
   // is a global. SC_TODO why not MeshVarDecl->hasGlobalStorage()?
   if ((MeshVarDecl->hasLinkage() || MeshVarDecl->isStaticDataMember())
       && MeshVarDecl->getTLSKind() != VarDecl::TLS_Dynamic) {
-    //SC_TODO: global mesh case is broken.
-    llvm::errs() << "global mesh\n";
-    BaseAddr = Builder.CreateLoad(CGM.GetAddrOfGlobalVar(MeshVarDecl));
-    LocalDeclMap[MeshVarDecl] = BaseAddr; //SC_TODO: why?
+    BaseAddr = CGM.GetAddrOfGlobalVar(MeshVarDecl);
+    //SC_TODO: work in progress not the correct place to do this
+    EmitMeshParameters(BaseAddr, *MeshVarDecl);
   } else {
     if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(MeshVarDecl)){
-      MeshVarDecl = IP->getMeshVarDecl();
+      BaseAddr = LocalDeclMap[IP->getMeshVarDecl()];
+    } else {
+      BaseAddr = LocalDeclMap[MeshVarDecl];
     }
-    BaseAddr = LocalDeclMap[MeshVarDecl];
   }
 }
 

@@ -153,7 +153,7 @@ public:
   void AddMeshFieldMetadata(const char *locationName,
                             FieldDeclVector Fields,
                             MetadataVector &MD);
-  llvm::Type *ConvertScoutMeshType(QualType T);
+  llvm::Type *ConvertScoutMeshType(QualType T, bool isGlobal=false);
   llvm::Type *ConvertScoutRenderTargetType(QualType T);
   // +========================================================================+
 

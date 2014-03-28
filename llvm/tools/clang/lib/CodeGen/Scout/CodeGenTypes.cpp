@@ -113,10 +113,17 @@ void CodeGenTypes::AddMeshFieldMetadata(const char *locationName,
 //  Type::UnstructuredMesh
 //
 // put fields first and then the mesh dimensions (if required)
-llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
-
+llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T, bool isGlobal) {
   const Type *Ty = T.getTypePtr();
 
+  if(isGlobal) {
+    // See if type is already cached.
+    llvm::DenseMap<const Type *, llvm::Type *>::iterator TCI = TypeCache.find(Ty);
+    // If type is found in map then use it. Otherwise, convert type T.
+    if (TCI != TypeCache.end())
+      return TCI->second;
+  }
+  
   // Implemented as a struct of n-dimensional array's type.
   MeshDecl *mesh = cast<MeshType>(Ty)->getDecl();
   const MeshType *meshType =  cast<MeshType>(T.getCanonicalType().getTypePtr());
@@ -170,9 +177,26 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
       // Identify the type of each mesh member.
       llvm::Type *ty = ConvertType(it->getType());
 
-      // Keep track of each field so we can transform each
-      // into a pointer (see below where struct is created).
-      eltTys.push_back(llvm::PointerType::getUnqual(ty));
+
+      if(isGlobal)  {
+        // is mesh is global make each field into an array
+        // calculate total size
+        size_t Size = 1;
+        llvm::APSInt Dim;
+        for (unsigned int i = 0; i < rank ;i++) {
+          if(dims[i]->EvaluateAsInt(Dim, getContext())) {
+            Size *= Dim.getLimitedValue();
+          }
+        }
+        // build array
+        eltTys.push_back(llvm::ArrayType::get(ty,Size));
+      }
+      else {
+        // Keep track of each field so we can transform each
+        // into a pointer (see below where struct is created).
+        eltTys.push_back(llvm::PointerType::getUnqual(ty));
+      }
+
       // Create field metadata entry. 
       if (it->isCellLocated()) {
         CellFields.push_back(*it);
@@ -210,6 +234,8 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
                                         Array(eltTys),
                                         meshName,
                                         false);
+  //add globals to cache
+  if(isGlobal) TypeCache[Ty] = structTy;
 
   return structTy;
 }

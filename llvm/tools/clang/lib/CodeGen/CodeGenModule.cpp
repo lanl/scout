@@ -1671,8 +1671,20 @@ llvm::Constant *CodeGenModule::GetAddrOfGlobalVar(const VarDecl *D,
                                                   llvm::Type *Ty) {
   assert(D->hasGlobalStorage() && "Not a global variable");
   QualType ASTTy = D->getType();
-  if (Ty == 0)
-    Ty = getTypes().ConvertTypeForMem(ASTTy);
+  if (Ty == 0) 
+    // +===== Scout ==========================================================+
+    {
+    // for global mesh case we need to build type w/ array fields
+    if(isa<MeshType>(ASTTy)) {
+      llvm::errs() << "GetAddrOfGlobalVar convert mesh\n";
+      Ty = getTypes().ConvertScoutMeshType(ASTTy, true);
+    } else {
+    // +======================================================================+
+     Ty = getTypes().ConvertTypeForMem(ASTTy);
+  // +===== Scout ==========================================================+
+    }
+  }
+  // +======================================================================+
 
   llvm::PointerType *PTy =
     llvm::PointerType::get(Ty, getContext().getTargetAddressSpace(ASTTy));
@@ -1781,7 +1793,17 @@ void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D) {
     // exists. A use may still exists, however, so we still may need
     // to do a RAUW.
     assert(!ASTTy->isIncompleteType() && "Unexpected incomplete type");
-    Init = EmitNullConstant(D->getType());
+    // +===== Scout ==========================================================+
+    if(isa<MeshType>(D->getType())) {
+      llvm::errs() << "EmitGlobalVarDefinition convert mesh\n";
+      Init = llvm::Constant::getNullValue(getTypes().ConvertScoutMeshType(
+	D->getType(), true));
+    } else {
+    // +======================================================================+
+      Init = EmitNullConstant(D->getType());
+    // +===== Scout ==========================================================+
+    }
+    // +=========== ==========================================================+
   } else {
     initializedGlobalDecl = GlobalDecl(D);
     Init = EmitConstantInit(*InitDecl);

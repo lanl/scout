@@ -1860,6 +1860,7 @@ public:
   AutoVarEmission EmitAutoVarAlloca(const VarDecl &var);
 
   // +===== Scout ============================================================+
+  void EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D);
   void EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
                               const VarDecl &var);
   // +========================================================================+

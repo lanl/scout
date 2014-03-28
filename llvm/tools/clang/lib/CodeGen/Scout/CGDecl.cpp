@@ -84,6 +84,59 @@ static const char *DimNames[]   = { "width", "height", "depth" };
 // strings.
 static char IRNameStr[160];
 
+void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D) {
+
+  QualType T = D.getType();
+  const MeshType* MT = cast<MeshType>(T.getTypePtr());
+  llvm::StringRef MeshName  = MT->getName();
+  MeshDecl* MD = MT->getDecl();
+  unsigned int nfields = MD->fields();
+
+  MeshType::MeshDimensions dims;
+  dims = cast<MeshType>(T.getTypePtr())->dimensions();
+  unsigned int rank = dims.size();
+
+  for(size_t i = 0; i < rank; ++i) {
+    sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
+    llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(MeshAddr, 0, nfields+i, IRNameStr);
+    llvm::Value* intValue;
+
+    Expr* E = dims[i];
+    if (E->isGLValue()) {
+      // Emit the expression as an lvalue.
+      LValue LV = EmitLValue(E);
+      // We have to load the lvalue.
+      RValue RV = EmitLoadOfLValue(LV, E->getExprLoc());
+      intValue = RV.getScalarVal();
+    } else if (E->isConstantInitializer(getContext(), false)) {
+      bool evalret;
+      llvm::APSInt dimAPValue;
+      evalret = E->EvaluateAsInt(dimAPValue, getContext());
+      // SC_TODO: check the evalret
+      (void)evalret; //suppress warning
+
+      intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
+    } else {
+      // it is an Rvalue
+      RValue RV = EmitAnyExpr(E);
+      intValue = RV.getScalarVal();
+    }
+
+    Builder.CreateStore(intValue, field);
+  }
+  // set unused dimensions to size 1 this makes the codegen for forall/renderall easier
+  for(size_t i = rank; i< 3; i++) {
+    sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
+    llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(MeshAddr, 0, nfields+i, IRNameStr);
+    llvm::Value* ConstantOne =  llvm::ConstantInt::get(Int32Ty, 1);
+    Builder.CreateStore(ConstantOne, field);
+  }
+  //set rank this makes Codegen easier for rank() builtin
+  sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
+  llvm::Value *Rank = Builder.CreateConstInBoundsGEP2_32(MeshAddr, 0, nfields+3, IRNameStr);
+  Builder.CreateStore(llvm::ConstantInt::get(Int32Ty, rank), Rank);
+}
+
 void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
                                              const VarDecl &D) {
   QualType T = D.getType();
@@ -250,43 +303,9 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
 
     // mesh dimensions after the fields
     // this is setup in Codegentypes.cpp ConvertScoutMeshType()
-    for(size_t i = 0; i < rank; ++i) {
-      sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
-      llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, nfields+i, IRNameStr);
-      llvm::Value* intValue;
-
-      Expr* E = dims[i];
-      if (E->isGLValue()) {
-        // Emit the expression as an lvalue.
-        LValue LV = EmitLValue(E);
-        // We have to load the lvalue.
-        RValue RV = EmitLoadOfLValue(LV, E->getExprLoc());
-        intValue = RV.getScalarVal();
-      } else if (E->isConstantInitializer(getContext(), false)) {
-        bool evalret;
-        llvm::APSInt dimAPValue;
-        evalret = E->EvaluateAsInt(dimAPValue, getContext());
-        // SC_TODO: check the evalret
-        (void)evalret; //suppress warning
-
-        intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
-      } else {
-        // it is an Rvalue
-        RValue RV = EmitAnyExpr(E);
-        intValue = RV.getScalarVal();
-      }
-
-      Builder.CreateStore(intValue, field);
-    }
-    // set unused dimensions to size 1 this makes the codegen for forall/renderall easier
-    for(size_t i = rank; i< 3; i++) {
-      sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
-      llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, nfields+i, IRNameStr);
-      llvm::Value* ConstantOne =  llvm::ConstantInt::get(Int32Ty, 1);
-      Builder.CreateStore(ConstantOne, field);
-    }
-    //set rank this makes Codegen easier for rank() builtin
-    llvm::Value *Rank = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, nfields+3, "rank");
-    Builder.CreateStore(llvm::ConstantInt::get(Int32Ty, rank), Rank);
+    EmitMeshParameters(Alloc, D);
   }
 }
+
+
+
