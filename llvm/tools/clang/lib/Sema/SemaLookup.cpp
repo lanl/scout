@@ -1320,7 +1320,16 @@ bool Sema::LookupName(LookupResult &R, Scope *S, bool AllowBuiltinCreation) {
 
   LookupNameKind NameKind = R.getLookupKind();
 
-  if (!getLangOpts().CPlusPlus) {
+  // +===== Scout ==========================================================+
+  // workaround for broken meshlookup
+  bool CLookup = !getLangOpts().CPlusPlus;
+  if(NameKind == LookupMeshName) {
+    CLookup = true;
+  }
+
+  if (CLookup) {
+  //if (!getLangOpts().CPlusPlus) {
+  // +======================================================================+
     // Unqualified name lookup in C/Objective-C is purely lexical, so
     // search in the declarations attached to the name.
     if (NameKind == Sema::LookupRedeclarationWithLinkage) {

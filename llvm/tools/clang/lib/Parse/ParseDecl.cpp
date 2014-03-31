@@ -2762,12 +2762,12 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
     case tok::kw_decltype:
     case tok::identifier: {
       // +===== Scout ============================================================+
-      // A mesh in a function parameter list will be an identifier
+      // A mesh in a function parameter list or a global mesh will be an identifier
       // rather than an annot_typename. This is because when a mesh
       // declaration is parsed in ParseStatementOrDeclarationAfterAttributes()
       // it runs TryAnnotateName() which turns it from a identifier into an
       // annot_typename. Do the same here if we are a Mesh.
-      if(getLangOpts().ScoutC) {
+      if(getLangOpts().ScoutC  || getLangOpts().ScoutCPlusPlus) {
         LookupResult MeshLookup(Actions, Tok.getIdentifierInfo(),
             Tok.getLocation(), Sema::LookupMeshName);
         Actions.LookupName(MeshLookup, getCurScope());

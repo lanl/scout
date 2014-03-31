@@ -404,6 +404,8 @@ bool CXXRecordDecl::FindTagMember(const CXXBaseSpecifier *Specifier,
 bool CXXRecordDecl::FindMeshMember(const CXXBaseSpecifier *Specifier,
                                   CXXBasePath &Path,
                                   void *Name) {
+assert(false && "FindMeshMember is currently broken and should not be used");
+
 MeshDecl *BaseMesh =
     Specifier->getType()->castAs<MeshType>()->getDecl();
 

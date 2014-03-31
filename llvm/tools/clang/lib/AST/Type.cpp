@@ -2423,11 +2423,12 @@ static LinkageInfo computeLinkageInfo(const Type *T) {
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
   case Type::UnstructuredMesh:
-    return LinkageInfo::external();
+    return cast<MeshType>(T)->getDecl()->getLinkageAndVisibility();
 
   case Type::Window:
   case Type::Image:
-      return LinkageInfo::external();
+    //SC_TODO: is external correct here?
+    return LinkageInfo::external();
   // +========================================================================+
   }
 
