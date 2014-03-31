@@ -52,7 +52,6 @@
  * ##### 
  */
 #include <assert.h> 
-#include <stdio.h>
 
 uniform mesh MyMesh {
  cells:
@@ -60,24 +59,24 @@ uniform mesh MyMesh {
   float b;
 };
 
-MyMesh m[512];
+MyMesh m2[3,3];
+MyMesh m3[2,2,2];
 
 int main(int argc, char** argv) {
+  MyMesh m1[4];
 
-  forall cells c in m {
-    a = 0;
-    b = 1;
-  }
+  assert(rank(m1) == 1 && "bad m1 rank");
+  assert(rank(m2) == 2 && "bad m2 rank");
+  assert(rank(m3) == 3 && "bad m3 rank");
 
-  forall cells c in m {
-    a += b;
-  }
+  assert(width(m1) == 4 && "bad m1 width");
+ 
+  assert(width(m2) == 3 && "bad m2 width");
+  assert(height(m2) == 3 && "bad m2 height");
 
-  forall cells c in m {
-    if ((a-b)*(a-b) > 1e-10) {
-      printf("bad val %f\n", a);
-      assert(false);
-    }
-  }
+  assert(width(m3) == 2 && "bad m3 width");
+  assert(height(m3) == 2 && "bad m3 height");
+  assert(depth(m3) == 2 && "bad m3 depth");
+
   return 0;
 }

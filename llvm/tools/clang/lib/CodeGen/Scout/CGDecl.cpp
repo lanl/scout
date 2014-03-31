@@ -84,6 +84,22 @@ static const char *DimNames[]   = { "width", "height", "depth" };
 // strings.
 static char IRNameStr[160];
 
+//if global mesh is not setup then set it up
+void CodeGenFunction::EmitGlobalMeshAllocaIfMissing(llvm::Value* MeshAddr, const VarDecl &D) {
+
+  const Type *Ty = D.getType().getTypePtr();
+
+  // See if type is already setup
+  llvm::DenseMap<const Type *, bool>::iterator TCI = getTypes().GlobalMeshInit.find(Ty);
+  if (TCI != getTypes().GlobalMeshInit.end())
+    return;
+
+  EmitScoutAutoVarAlloca(MeshAddr, D);
+
+  // flag as setup
+  getTypes().GlobalMeshInit[Ty] = true;
+}
+
 void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D) {
 
   QualType T = D.getType();
@@ -137,7 +153,7 @@ void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D
   Builder.CreateStore(llvm::ConstantInt::get(Int32Ty, rank), Rank);
 }
 
-void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
+void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
                                              const VarDecl &D) {
   QualType T = D.getType();
   const clang::Type &Ty = *getContext().getCanonicalType(T).getTypePtr();

@@ -102,7 +102,6 @@ CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index) {
 LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
                                                const MeshFieldDecl *field,
                                                llvm::Value *Index) {
-
   // This follows very closely with the details used to
   // emit a record member from the clang code. EmitLValueForField()
   // We have removed details having to do with unions as we know

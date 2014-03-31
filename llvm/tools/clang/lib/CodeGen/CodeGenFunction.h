@@ -1861,7 +1861,8 @@ public:
 
   // +===== Scout ============================================================+
   void EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D);
-  void EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
+  void EmitGlobalMeshAllocaIfMissing(llvm::Value* MeshAddr, const VarDecl &D);
+  void EmitScoutAutoVarAlloca(llvm::Value *Alloc,
                               const VarDecl &var);
   // +========================================================================+
 

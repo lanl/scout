@@ -109,8 +109,10 @@ void CodeGenFunction::GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& 
   if ((MeshVarDecl->hasLinkage() || MeshVarDecl->isStaticDataMember())
       && MeshVarDecl->getTLSKind() != VarDecl::TLS_Dynamic) {
     BaseAddr = CGM.GetAddrOfGlobalVar(MeshVarDecl);
-    //SC_TODO: work in progress not the correct place to do this
-    EmitMeshParameters(BaseAddr, *MeshVarDecl);
+    //SC_TODO: not sure this is the best place to do this
+    EmitGlobalMeshAllocaIfMissing(BaseAddr, *MeshVarDecl);
+    // EmitMeshMemberExpr assumes this is in the localDeclMap so add it;
+    LocalDeclMap[MeshVarDecl] = BaseAddr;
   } else {
     if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(MeshVarDecl)){
       BaseAddr = LocalDeclMap[IP->getMeshVarDecl()];

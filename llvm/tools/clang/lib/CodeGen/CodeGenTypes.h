@@ -126,6 +126,9 @@ class CodeGenTypes {
   llvm::SmallPtrSet<const Type*, 4> MeshesBeingLaidOut;
 
   SmallVector<const MeshDecl *, 8> DeferredMeshes;
+public:
+  // has the global mesh been initialized
+  llvm::DenseMap<const Type *, bool> GlobalMeshInit;
   // +========================================================================+
 
 private:
@@ -153,7 +156,7 @@ public:
   void AddMeshFieldMetadata(const char *locationName,
                             FieldDeclVector Fields,
                             MetadataVector &MD);
-  llvm::Type *ConvertScoutMeshType(QualType T, bool isGlobal=false);
+  llvm::Type *ConvertScoutMeshType(QualType T);
   llvm::Type *ConvertScoutRenderTargetType(QualType T);
   // +========================================================================+
 
