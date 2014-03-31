@@ -157,7 +157,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
                                              const VarDecl &D) {
   QualType T = D.getType();
   const clang::Type &Ty = *getContext().getCanonicalType(T).getTypePtr();
-  
+
   // SC_TODO - we need to handle the other mesh types here...
   //
   if (Ty.getTypeClass() == Type::UniformMesh) {
@@ -172,33 +172,12 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     const MeshType* MT = cast<MeshType>(T.getTypePtr());
     llvm::StringRef MeshName  = MT->getName();
     MeshDecl* MD = MT->getDecl();
-    
+
     MeshType::MeshDimensions dims;
     dims = cast<MeshType>(T.getTypePtr())->dimensions();
     unsigned int rank = dims.size();
 
-    llvm::Value* numCells = 0;
-    llvm::Value* numVertices = 0;
-    llvm::Value* numFaces = 0;
-    llvm::Value* numEdges = 0;
-    
-    for(MeshDecl::field_iterator itr = MD->field_begin(),
-        itr_end = MD->field_end(); itr != itr_end; ++itr){
-      if(itr->isCellLocated()){
-        numCells = numCells ? numCells : Builder.getInt64(1);
-      }
-      else if(itr->isVertexLocated()){
-        numVertices = numVertices ? numVertices : Builder.getInt64(1);
-      }
-      else if(itr->isFaceLocated()){
-        numFaces = numFaces ? numFaces : Builder.getInt64(1);
-      }
-      else if(itr->isEdgeLocated()){
-        numEdges = numEdges ? numEdges : Builder.getInt64(1);
-      }
-    }
-    
-    // Maybe dimensions needs to hold values???
+    SmallVector<llvm::Value*, 3> Dimensions;
 
     // Need to make this different for variable dims as
     // we want to evaluate each dim and if its a variable
@@ -232,27 +211,135 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
       }
 
       intValue = Builder.CreateZExt(intValue, Int64Ty);
-      // SC_TODO: check the evalret
-      if(numCells){
-        numCells = Builder.CreateMul(intValue, numCells);
-      }
-      
-      if(numVertices){
-        llvm::Value* intValue2 = Builder.CreateAdd(intValue, Builder.getInt64(1));
-        numVertices = Builder.CreateMul(intValue2, numVertices);
-      }
 
-      // SC_TODO: finish faces and edges - the following is not correct
-      if(numFaces){
-        numFaces = Builder.CreateMul(intValue, numFaces);
-      }
-      
-      if(numEdges){
-        numEdges = Builder.CreateMul(intValue, numEdges);
-      }
-
+      Dimensions.push_back(intValue);
     }
-    
+
+    bool hasCells = false;
+    bool hasVertices = false;
+    bool hasEdges = false;
+    bool hasFaces = false;
+
+    for(MeshDecl::field_iterator itr = MD->field_begin(),
+        itr_end = MD->field_end(); itr != itr_end; ++itr){
+      if(itr->isCellLocated()){
+        hasCells = true;
+      }
+      else if(itr->isVertexLocated()){
+        hasVertices = true;
+      }
+      else if(itr->isEdgeLocated()){
+        hasEdges = true;
+      }
+      else if(itr->isFaceLocated()){
+        hasFaces = true;
+      }
+    }
+
+    llvm::Value* numCells = 0;
+    llvm::Value* numVertices = 0;
+    llvm::Value* numEdges = 0;
+    llvm::Value* numFaces = 0;
+
+    llvm::Value* One = Builder.getInt64(1);
+
+    llvm::Value* w1 = 0;
+    llvm::Value* h1 = 0;
+    llvm::Value* d1 = 0;
+
+    if(hasCells){
+      switch(rank){
+      case 1:
+        numCells = Dimensions[0];
+        break;
+      case 2:
+      case 3:
+        llvm::Value* wh = Builder.CreateMul(Dimensions[0], Dimensions[1]);
+        if(rank == 2){
+          numCells = wh;
+          break;
+        }
+        numCells = Builder.CreateMul(wh, Dimensions[2]);
+        break;
+      }
+    }
+
+    if(hasVertices){
+      w1 = w1 ? w1 : Builder.CreateAdd(Dimensions[0], One);
+      if(rank > 1){
+        h1 = h1 ? h1 : Builder.CreateAdd(Dimensions[1], One);
+        llvm::Value* wh1 = Builder.CreateMul(w1, h1);
+        if(rank > 2){
+          d1 = d1 ? d1 : Builder.CreateAdd(Dimensions[2], One);
+          numVertices = Builder.CreateMul(wh1, d1);
+        }
+        else{
+          numVertices = wh1;
+        }
+      }
+      else{
+        numVertices = w1;
+      }
+    }
+
+    if(hasEdges){
+      switch(rank){
+      case 1:
+        numEdges = Dimensions[0];
+        break;
+      case 2:
+      case 3:{
+        w1 = w1 ? w1 : Builder.CreateAdd(Dimensions[0], One);
+        h1 = h1 ? h1 : Builder.CreateAdd(Dimensions[1], One);
+        llvm::Value* v3 = Builder.CreateMul(w1, Dimensions[1]);
+        llvm::Value* v4 = Builder.CreateMul(h1, Dimensions[0]);
+        llvm::Value* v5 = Builder.CreateAdd(v3, v4);
+
+        if(rank == 2){
+          numEdges = v5;
+          break;
+        }
+
+        d1 = d1 ? d1 : Builder.CreateAdd(Dimensions[2], One);
+        llvm::Value* v7 = Builder.CreateMul(v5, d1);
+        llvm::Value* v8 = Builder.CreateMul(Builder.CreateMul(w1, h1), Dimensions[2]);
+        numEdges = Builder.CreateAdd(v7, v8);
+        break;
+      }
+      }
+    }
+
+    if(hasFaces){
+      switch(rank){
+      case 1:
+        numFaces = Dimensions[0];
+        break;
+      case 2:{
+        w1 = w1 ? w1 : Builder.CreateAdd(Dimensions[0], One);
+        h1 = h1 ? h1 : Builder.CreateAdd(Dimensions[1], One);
+        llvm::Value* v3 = Builder.CreateMul(w1, Dimensions[1]);
+        llvm::Value* v4 = Builder.CreateMul(h1, Dimensions[0]);
+        numFaces = Builder.CreateAdd(v3, v4);
+        break;
+      }
+      case 3:{
+        w1 = w1 ? w1 : Builder.CreateAdd(Dimensions[0], One);
+        h1 = h1 ? h1 : Builder.CreateAdd(Dimensions[1], One);
+        d1 = d1 ? d1 : Builder.CreateAdd(Dimensions[2], One);
+
+        llvm::Value* v1 =
+            Builder.CreateMul(w1, Builder.CreateMul(Dimensions[1], Dimensions[2]));
+        llvm::Value* v2 =
+            Builder.CreateMul(h1, Builder.CreateMul(Dimensions[0], Dimensions[2]));
+        llvm::Value* v3 =
+            Builder.CreateMul(d1, Builder.CreateMul(Dimensions[0], Dimensions[1]));
+
+        numFaces = Builder.CreateAdd(v1, Builder.CreateAdd(v2, v3));
+        break;
+      }
+      }
+    }
+
     // need access to these field decls so we
     // can determine if we will dynamically allocate
     // memory for each field
@@ -271,7 +358,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
       llvm::PointerType* ptrTy = dyn_cast<llvm::PointerType>(fieldTy);
       assert(ptrTy && "Expected a pointer");
       fieldTy = ptrTy->getElementType();
-      
+
       // If this is a externally allocated field, go on
       MeshFieldDecl* FD = *itr;
 
@@ -288,24 +375,24 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
 
       llvm::Value *fieldTotalBytes = 0;
       llvm::Value *fieldTyBytesValue = Builder.getInt64(fieldTyBytes);
-      
+
       llvm::Value* numElements = 0;
-      
+
       if(FD->isCellLocated()){
         numElements = numCells;
       }
       else if(FD->isVertexLocated()){
         numElements = numVertices;
       }
-      else if(FD->isFaceLocated()){
-        numElements = numFaces;
-      }
       else if(FD->isEdgeLocated()){
         numElements = numEdges;
       }
-      
+      else if(FD->isFaceLocated()){
+        numElements = numFaces;
+      }
+
       assert(numElements && "invalid numElements");
-      
+
       fieldTotalBytes = Builder.CreateNUWMul(numElements, fieldTyBytesValue);
 
       // Dynamically allocate memory.
@@ -322,6 +409,3 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     EmitMeshParameters(Alloc, D);
   }
 }
-
-
-
