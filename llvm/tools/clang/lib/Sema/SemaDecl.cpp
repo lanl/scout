@@ -712,8 +712,7 @@ Corrected:
     if (!SecondTry && CCC
           /* ===== Scout =================================================== *
            * SC_TODO: this causes problems w/ unqualified mesh members but   *
-           * only in sc++ and only on mac. This is just a workaround until   *
-           * we can fix the mesh lookup                                      */ 
+           * only in sc++ and only on mac.                                   */
           && !getLangOpts().ScoutCPlusPlus) {
          // +================================================================+
       SecondTry = true;

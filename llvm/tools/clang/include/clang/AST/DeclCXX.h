@@ -1502,17 +1502,6 @@ public:
   static bool FindTagMember(const CXXBaseSpecifier *Specifier,
                             CXXBasePath &Path, void *Name);
 
-  // +===== Scout ============================================================+
-  /// \brief Base-class lookup callback that determines whether there exists
-  /// a mesh with the given name.
-  ///
-  /// This callback can be used with \c lookupInBases() to find mesh members
-  /// of the given name within a C++ class hierarchy.  The user data pointer
-  /// is an opaque \c DeclarationName pointer.
-  static bool FindMeshMember(const CXXBaseSpecifier *Specifier,
-                             CXXBasePath &Path, void *Name);
-  // +========================================================================+
-
   /// \brief Base-class lookup callback that determines whether there exists
   /// a member with the given name.
   ///
