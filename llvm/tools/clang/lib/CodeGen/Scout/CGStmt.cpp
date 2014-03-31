@@ -108,9 +108,26 @@ void CodeGenFunction::GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& 
   // is a global. SC_TODO why not MeshVarDecl->hasGlobalStorage()?
   if ((MeshVarDecl->hasLinkage() || MeshVarDecl->isStaticDataMember())
       && MeshVarDecl->getTLSKind() != VarDecl::TLS_Dynamic) {
+
     BaseAddr = CGM.GetAddrOfGlobalVar(MeshVarDecl);
+
+    // If BaseAddr is an external global then it is assumed that we are within LLDB
+    // and we need to load the mesh base address because it is passed as a global
+    // reference.
+    bool shouldLoad = false;
+    if(llvm::PointerType* PT = dyn_cast<llvm::PointerType>(BaseAddr->getType())){
+      llvm::Type* ET = PT->getElementType();
+      shouldLoad = ET->isPointerTy();
+    }
+
+    if(shouldLoad){
+      BaseAddr = Builder.CreateLoad(BaseAddr);
+    }
+    else{
+      EmitGlobalMeshAllocaIfMissing(BaseAddr, *MeshVarDecl);
+    }
+
     //SC_TODO: not sure this is the best place to do this
-    EmitGlobalMeshAllocaIfMissing(BaseAddr, *MeshVarDecl);
     // EmitMeshMemberExpr assumes this is in the localDeclMap so add it;
     LocalDeclMap[MeshVarDecl] = BaseAddr;
   } else {
