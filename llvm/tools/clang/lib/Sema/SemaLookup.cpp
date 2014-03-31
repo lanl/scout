@@ -1321,7 +1321,8 @@ bool Sema::LookupName(LookupResult &R, Scope *S, bool AllowBuiltinCreation) {
   LookupNameKind NameKind = R.getLookupKind();
 
   // +===== Scout ==========================================================+
-  // workaround for broken meshlookup
+  // For a mesh always do the C style lookup otherwise
+  // we would have to have a CXXMeshDecl like CXXRecordDecl
   bool CLookup = !getLangOpts().CPlusPlus;
   if(NameKind == LookupMeshName) {
     CLookup = true;
@@ -1616,7 +1617,6 @@ bool Sema::LookupQualifiedName(LookupResult &R, DeclContext *LookupCtx,
 
   // Make sure that the declaration context is complete.
   assert((!isa<TagDecl>(LookupCtx) ||
-          !isa<MeshDecl>(LookupCtx) ||   // +===== Scout =====================+
           LookupCtx->isDependentContext() ||
           cast<TagDecl>(LookupCtx)->isCompleteDefinition() ||
           cast<TagDecl>(LookupCtx)->isBeingDefined()) &&
@@ -1681,13 +1681,6 @@ bool Sema::LookupQualifiedName(LookupResult &R, DeclContext *LookupCtx,
     case LookupTagName:
       BaseCallback = &CXXRecordDecl::FindTagMember;
       break;
-
-    // +===== Scout ==========================================================+
-    // SC_TODO : This is wrong!!!  We need our own look-up now!!!
-    case LookupMeshName:
-      BaseCallback = &CXXRecordDecl::FindMeshMember;
-      break;
-    // +======================================================================+
 
     case LookupAnyName:
       BaseCallback = &LookupAnyMember;

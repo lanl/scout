@@ -398,30 +398,6 @@ bool CXXRecordDecl::FindTagMember(const CXXBaseSpecifier *Specifier,
   return false;
 }
 
-// +===== Scout ==============================================================+
-// SC_TODO : I'm not sure this belongs here -- we don't support inheritance
-// in meshes and that appears to be the primary driver for much of this...
-bool CXXRecordDecl::FindMeshMember(const CXXBaseSpecifier *Specifier,
-                                  CXXBasePath &Path,
-                                  void *Name) {
-assert(false && "FindMeshMember is currently broken and should not be used");
-
-MeshDecl *BaseMesh =
-    Specifier->getType()->castAs<MeshType>()->getDecl();
-
-  const unsigned IDNS = IDNS_Mesh | IDNS_Member;
-  DeclarationName N = DeclarationName::getFromOpaquePtr(Name);
-  for (Path.Decls = BaseMesh->lookup(N);
-       !Path.Decls.empty();
-       Path.Decls = Path.Decls.slice(1)) {
-    if (Path.Decls.front()->isInIdentifierNamespace(IDNS))
-      return true;
-  }
-
-  return false;
-}
-// +==========================================================================+
-
 bool CXXRecordDecl::FindOrdinaryMember(const CXXBaseSpecifier *Specifier,
                                        CXXBasePath &Path,
                                        void *Name) {
