@@ -1682,6 +1682,13 @@ bool Sema::LookupQualifiedName(LookupResult &R, DeclContext *LookupCtx,
       BaseCallback = &CXXRecordDecl::FindTagMember;
       break;
 
+    // +===== Scout ==========================================================+
+    case LookupMeshName:
+      //mesh always uses C style lookup
+      assert(false && "mesh not supported in LookupQualifiedName()");
+      break;
+    // +======================================================================+
+
     case LookupAnyName:
       BaseCallback = &LookupAnyMember;
       break;
