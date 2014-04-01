@@ -1912,6 +1912,17 @@ void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D) {
 
 llvm::GlobalValue::LinkageTypes
 CodeGenModule::GetLLVMLinkageVarDefinition(const VarDecl *D, bool isConstant) {
+
+  // +===== Scout ==========================================================+
+  // SC_TODO: global mesh gets internal linkage in sc++
+  // without this fix but common in scc. For a global struct
+  // there is no linkage qualifier.
+  if(getLangOpts().ScoutCPlusPlus &&
+      isa<MeshType>(D->getType()) && !D->hasExternalStorage()) {
+    return llvm::GlobalVariable::CommonLinkage;
+  }
+  // +======================================================================+
+
   GVALinkage Linkage = getContext().GetGVALinkageForVariable(D);
   if (Linkage == GVA_Internal)
     return llvm::Function::InternalLinkage;

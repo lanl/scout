@@ -88,5 +88,6 @@ project(scout_test_scxx)
 
   add_subdirectory(display)
   add_subdirectory(driver)
+  add_subdirectory(global-multifile)
   add_subdirectory(error)
   add_subdirectory(warning)

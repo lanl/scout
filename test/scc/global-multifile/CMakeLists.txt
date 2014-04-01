@@ -48,46 +48,14 @@
 #
 ###########################################################################
 #
+# simple two-dimensional heat transfer example that shows 
+# the support for multiple compilation units and 
+# meshes being passed as parameters to functions. 
 
-include(${CMAKE_BINARY_DIR}/CMake/Modules/Configuration.cmake)
+project(scout_test_scc_global_multifile)
 
-set(CMAKE_MODULE_PATH
-  ${SCOUT_CMAKE_PATH}
-  ${CMAKE_MODULE_PATH}
-)
+set(tname scc_display_global_multifile)
+add_executable(${tname} init.sc global-mesh.sc)
+  add_test(${tname} ${TEST_BINARY_DIR}/${tname})
+  message(" + added runtime regression test entry: ${tname}")
 
-#ignore warnings about i/o in forall
-set(CMAKE_SCC_FLAGS "${CMAKE_SCC_FLAGS} -Wno-calling-io-function")
-#ignore specific warnings for some files
-set_source_files_properties(intrinsics-scope.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-builtin-scope")
-set_source_files_properties(meshscope.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
-
-project(scout_test_scc)
-    
-  cmake_minimum_required(VERSION 2.8.9)
-
-  # Note: By default we pull in all the .sc source files in this
-  # directory for inclusion into the regression checks.  If you want do
-  # build more complex tests we suggest creating a subdirectory for the
-  # source.
-  #
-  file(GLOB SC_SRCS *.sc) 
-
-  # Add an executable and test entry for each source file...
-  foreach (test ${SC_SRCS})
-    get_filename_component(tname ${test} NAME_WE) 
-    if (NOT tname) 
-      message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
-    else (NOT tname)
-      set(fname "scc_${tname}")
-      add_executable(${fname} ${test})
-      add_test("${fname}" "${TEST_BINARY_DIR}/${fname}")
-      message(" + added runtime regression test entry: ${fname}")
-    endif(NOT tname)
-  endforeach(test)
-
-  add_subdirectory(display) 
-  add_subdirectory(driver) 
-  add_subdirectory(global-multifile) 
-  add_subdirectory(error) 
-  add_subdirectory(warning) 

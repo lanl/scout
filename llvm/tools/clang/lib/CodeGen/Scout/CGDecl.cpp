@@ -94,10 +94,45 @@ void CodeGenFunction::EmitGlobalMeshAllocaIfMissing(llvm::Value* MeshAddr, const
   if (TCI != getTypes().GlobalMeshInit.end())
     return;
 
-  EmitScoutAutoVarAlloca(MeshAddr, D);
-
   // flag as setup
   getTypes().GlobalMeshInit[Ty] = true;
+
+  const MeshType* MT = cast<MeshType>(Ty);
+  llvm::StringRef MeshName  = MT->getName();
+  MeshDecl* MD = MT->getDecl();
+  unsigned int nfields = MD->fields();
+
+  // If the rank has not been set it is ok to do the alloc and other setup
+  // this is for the multifile case to make sure we don't double alloc.
+
+  // get function
+  llvm::Function *TheFunction;
+  TheFunction = Builder.GetInsertBlock()->getParent();
+
+  llvm::BasicBlock *Then = createBasicBlock("global.alloc");
+  llvm::BasicBlock *Done = createBasicBlock("global.done");
+
+  llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
+
+  // test if rank is not set.
+  sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
+  llvm::Value *Rank = Builder.CreateConstInBoundsGEP2_32(MeshAddr, 0, nfields+3, IRNameStr);
+  sprintf(IRNameStr, "%s.rank", MeshName.str().c_str());
+  llvm::Value *Check = Builder.CreateICmpEQ(Builder.CreateLoad(Rank, IRNameStr), ConstantZero);
+  Builder.CreateCondBr(Check, Then, Done);
+
+  //then block (do setup)
+  TheFunction->getBasicBlockList().push_back(Then);
+  Builder.SetInsertPoint(Then);
+  EmitScoutAutoVarAlloca(MeshAddr, D);
+  Builder.CreateBr(Done);
+  Then = Builder.GetInsertBlock();
+
+  // done block
+  TheFunction->getBasicBlockList().push_back(Done);
+  Builder.SetInsertPoint(Done);
+  Done = Builder.GetInsertBlock();
+  return;
 }
 
 void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D) {
