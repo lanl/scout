@@ -298,6 +298,7 @@ public:
 
   llvm::Value* VertexIndex;
   llvm::Value* CellIndex;
+  llvm::Value* EdgeIndex;
 
   //renderall color buffer
   llvm::Value *Color;
