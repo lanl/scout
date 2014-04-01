@@ -68,6 +68,7 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
   VertexIndex = 0;
   CellIndex = 0;
   EdgeIndex = 0;
+  FaceIndex = 0;
   for(unsigned i = 0; i < 3; ++i) {
     // We use LoopBounds[0] == 0 as a test for being in a
     // valid mesh/forall state where instrinsics are safe

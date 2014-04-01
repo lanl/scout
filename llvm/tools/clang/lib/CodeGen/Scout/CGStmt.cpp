@@ -520,12 +520,78 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
       return;
     }
+    else if(FET == ForallMeshStmt::Faces){
+      assert(ET == ImplicitMeshParamDecl::Cells &&
+             "EmitForAllMeshStmt element type nesting combination not implemented");
+
+      llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.faces.entry");
+      (void)EntryBlock; //suppress warning
+
+      llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
+      llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
+      llvm::Value* Two = llvm::ConstantInt::get(Int32Ty, 2);
+      llvm::Value* Three = llvm::ConstantInt::get(Int32Ty, 3);
+      llvm::Value* Four = llvm::ConstantInt::get(Int32Ty, 4);
+      llvm::Value* Seven = llvm::ConstantInt::get(Int32Ty, 7);
+
+      llvm::Value* facePosPtr = Builder.CreateAlloca(Int32Ty, 0, "face.pos.ptr");
+      FaceIndex = Builder.CreateAlloca(Int32Ty, 0, "face.index.ptr");
+
+      Builder.CreateStore(Zero, facePosPtr);
+
+      llvm::Value* width = Builder.CreateLoad(LoopBounds[0], "width");
+      llvm::Value* height;
+
+      llvm::Value* width1;
+
+      if(rank > 1){
+        width1 =  Builder.CreateAdd(width, One);
+      }
+
+      llvm::BasicBlock *LoopBlock = createBasicBlock("forall.faces.loop");
+      Builder.CreateBr(LoopBlock);
+
+      EmitBlock(LoopBlock);
+
+      llvm::Value* facePos = Builder.CreateLoad(facePosPtr, "face.pos");
+
+      llvm::Value* i = Builder.CreateLoad(InductionVar[0], "i");
+
+      if(rank == 3){
+        assert(false && "EmitForallMeshStmt forall faces rank 3 unimplemented");
+      }
+      else if(rank == 2){
+        llvm::Value* j = Builder.CreateLoad(InductionVar[1], "j");
+        llvm::Value* height = Builder.CreateLoad(LoopBounds[1], "height");
+
+        llvm::Value* c1 = Builder.CreateICmpEQ(facePos, Two);
+        llvm::Value* c2 = Builder.CreateICmpEQ(facePos, Three);
+
+        llvm::Value* x = Builder.CreateAdd(i, Builder.CreateSelect(c1, One, Zero));
+        llvm::Value* y = Builder.CreateAdd(j, Builder.CreateSelect(c2, One, Zero));
+        llvm::Value* h = Builder.CreateURem(facePos, Two);
+
+        llvm::Value* v1 = Builder.CreateMul(width1, height);
+        llvm::Value* v2 = Builder.CreateMul(y, width);
+        llvm::Value* e1 = Builder.CreateAdd(v1, Builder.CreateAdd(v2, x));
+        llvm::Value* e2 = Builder.CreateAdd(Builder.CreateMul(y, width1), x);
+
+        llvm::Value* newFaceIndex = Builder.CreateSelect(Builder.CreateICmpEQ(h, One), e1, e2);
+
+        Builder.CreateStore(newFaceIndex, FaceIndex);
+      }
+      else{
+        Builder.CreateStore(i, FaceIndex);
+      }
+
+      return;
+    }
     else{
       assert(false && "EmitForAllMeshStmt element type nesting combination not implemented");
     }
   }
 
-  llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
+  llvm::Value* ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
 
   //get mesh Base Addr
   llvm::Value *MeshBaseAddr;
