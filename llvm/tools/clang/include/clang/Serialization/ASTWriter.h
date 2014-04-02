@@ -711,6 +711,9 @@ public:
   unsigned getDeclTypedefAbbrev() const { return DeclTypedefAbbrev; }
   unsigned getDeclVarAbbrev() const { return DeclVarAbbrev; }
   unsigned getDeclFieldAbbrev() const { return DeclFieldAbbrev; }
+  // +===== Scout ==========================================================+
+  unsigned getDeclMeshFieldAbbrev() const { return DeclMeshFieldAbbrev; }
+  // +======================================================================+
   unsigned getDeclEnumAbbrev() const { return DeclEnumAbbrev; }
   unsigned getDeclObjCIvarAbbrev() const { return DeclObjCIvarAbbrev; }
 

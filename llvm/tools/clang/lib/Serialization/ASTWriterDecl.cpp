@@ -699,7 +699,7 @@ void ASTDeclWriter::VisitMeshFieldDecl(MeshFieldDecl *D) {
       !ObjCIvarDecl::classofKind(D->getKind()) &&
       !ObjCAtDefsFieldDecl::classofKind(D->getKind()) &&
       D->getDeclName())
-    AbbrevToUse = Writer.getDeclFieldAbbrev();  // SC_TODO -- should be for mesh.
+    AbbrevToUse = Writer.getDeclMeshFieldAbbrev();  
 
   Code = serialization::DECL_MESHFIELD;
 }
@@ -1502,7 +1502,6 @@ void ASTWriter::WriteDeclsBlockAbbrevs() {
 
   // +===== Scout ============================================================+
   // Abbreviation for mesh fields.
-  /*
   Abv = new BitCodeAbbrev();
   Abv->Add(BitCodeAbbrevOp(serialization::DECL_MESHFIELD));
   // Decl
@@ -1533,7 +1532,6 @@ void ASTWriter::WriteDeclsBlockAbbrevs() {
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // TypeLoc
   DeclMeshFieldAbbrev = Stream.EmitAbbrev(Abv);
-  */
   // +========================================================================+
 
   // Abbreviation for DECL_OBJC_IVAR

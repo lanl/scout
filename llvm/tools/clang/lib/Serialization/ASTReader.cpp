@@ -5121,6 +5121,50 @@ QualType ASTReader::readTypeRecord(unsigned Index) {
     return T;
   }
 
+  // +===== Scout ==========================================================+
+  //SC_TODO: untested
+  case TYPE_UNIFORM_MESH: {
+    unsigned Idx = 0;
+    bool IsDependent = Record[Idx++];
+    UniformMeshDecl *RD = ReadDeclAs<UniformMeshDecl>(*Loc.F, Record, Idx);
+    RD = cast_or_null<UniformMeshDecl>(RD->getCanonicalDecl());
+    QualType T = Context.getUniformMeshType(RD);
+    const_cast<Type*>(T.getTypePtr())->setDependent(IsDependent);
+    return T;
+  }
+  case TYPE_RECTILINEAR_MESH: {
+    unsigned Idx = 0;
+    bool IsDependent = Record[Idx++];
+    RectilinearMeshDecl *RD = ReadDeclAs<RectilinearMeshDecl>(*Loc.F, Record, Idx);
+    RD = cast_or_null<RectilinearMeshDecl>(RD->getCanonicalDecl());
+    QualType T = Context.getRectilinearMeshType(RD);
+    const_cast<Type*>(T.getTypePtr())->setDependent(IsDependent);
+    return T;
+  }
+  case TYPE_STRUCTURED_MESH: {
+    unsigned Idx = 0;
+    bool IsDependent = Record[Idx++];
+    StructuredMeshDecl *RD = ReadDeclAs<StructuredMeshDecl>(*Loc.F, Record, Idx);
+    RD = cast_or_null<StructuredMeshDecl>(RD->getCanonicalDecl());
+    QualType T = Context.getStructuredMeshType(RD);
+    const_cast<Type*>(T.getTypePtr())->setDependent(IsDependent);
+    return T;
+  }
+  case TYPE_UNSTRUCTURED_MESH: {
+    unsigned Idx = 0;
+    bool IsDependent = Record[Idx++];
+    UnstructuredMeshDecl *RD = ReadDeclAs<UnstructuredMeshDecl>(*Loc.F, Record, Idx);
+    RD = cast_or_null<UnstructuredMeshDecl>(RD->getCanonicalDecl());
+    QualType T = Context.getUnstructuredMeshType(RD);
+    const_cast<Type*>(T.getTypePtr())->setDependent(IsDependent);
+    return T;
+  }
+  //SC_TODO: implement these
+  case TYPE_WINDOW:
+  case TYPE_IMAGE:
+    return QualType();
+  // +======================================================================+
+
   case TYPE_ENUM: {
     if (Record.size() != 2) {
       Error("incorrect encoding of enum type");
@@ -5459,19 +5503,26 @@ void TypeLocReader::VisitRecordTypeLoc(RecordTypeLoc TL) {
 }
 
 // +===== Scout ==============================================================+
-// SC_TODO - implement these…
-void TypeLocReader::VisitUniformMeshTypeLoc(UniformMeshTypeLoc TL)
-{ }
-void TypeLocReader::VisitStructuredMeshTypeLoc(StructuredMeshTypeLoc TL)
-{ }
-void TypeLocReader::VisitRectilinearMeshTypeLoc(RectilinearMeshTypeLoc TL)
-{ }
-void TypeLocReader::VisitUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc TL)
-{ }
-void TypeLocReader::VisitWindowTypeLoc(WindowTypeLoc TL)
-{ }
-void TypeLocReader::VisitImageTypeLoc(ImageTypeLoc TL)
-{ }
+// SC_TODO: untested
+void TypeLocReader::VisitUniformMeshTypeLoc(UniformMeshTypeLoc TL) {
+  TL.setNameLoc(ReadSourceLocation(Record, Idx));
+}
+void TypeLocReader::VisitStructuredMeshTypeLoc(StructuredMeshTypeLoc TL) {
+  TL.setNameLoc(ReadSourceLocation(Record, Idx));
+}
+void TypeLocReader::VisitRectilinearMeshTypeLoc(RectilinearMeshTypeLoc TL) {
+  TL.setNameLoc(ReadSourceLocation(Record, Idx));
+}
+void TypeLocReader::VisitUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc TL) {
+  TL.setNameLoc(ReadSourceLocation(Record, Idx));
+}
+
+void TypeLocReader::VisitWindowTypeLoc(WindowTypeLoc TL) {
+  TL.setNameLoc(ReadSourceLocation(Record, Idx));
+}
+void TypeLocReader::VisitImageTypeLoc(ImageTypeLoc TL) {
+  TL.setNameLoc(ReadSourceLocation(Record, Idx));
+}
 // +==========================================================================+
 
 void TypeLocReader::VisitEnumTypeLoc(EnumTypeLoc TL) {

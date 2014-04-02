@@ -87,6 +87,9 @@ namespace {
     void VisitArrayType(const ArrayType *T);
     void VisitFunctionType(const FunctionType *T);
     void VisitTagType(const TagType *T);
+    // +===== Scout ==========================================================+
+    void VisitMeshType(const MeshType *T);
+    // +======================================================================+
 
 #define TYPE(Class, Base) void Visit##Class##Type(const Class##Type *T);
 #define ABSTRACT_TYPE(Class, Base)
@@ -270,19 +273,39 @@ void ASTTypeWriter::VisitTagType(const TagType *T) {
 }
 
 // +===== Scout ==============================================================+
+//SC_TODO: untested
+void  ASTTypeWriter::VisitMeshType(const MeshType *T) {
+  Record.push_back(T->isDependentType());
+  Writer.AddDeclRef(T->getDecl()->getCanonicalDecl(), Record);
+  assert(!T->isBeingDefined() &&
+         "Cannot serialize in the middle of a type definition");
+}
+
+void ASTTypeWriter::VisitUniformMeshType(const UniformMeshType *T) {
+  VisitMeshType(T);
+  Code = TYPE_UNIFORM_MESH;
+}
+
+void ASTTypeWriter::VisitStructuredMeshType(const StructuredMeshType *T) {
+  VisitMeshType(T);
+  Code = TYPE_STRUCTURED_MESH;
+}
+void ASTTypeWriter::VisitRectilinearMeshType(const RectilinearMeshType *T) {
+  VisitMeshType(T);
+  Code = TYPE_RECTILINEAR_MESH;
+}
+void ASTTypeWriter::VisitUnstructuredMeshType(const UnstructuredMeshType *T) {
+  VisitMeshType(T);
+  Code = TYPE_UNSTRUCTURED_MESH;
+}
+
 // SC_TODO - implement these
-void ASTTypeWriter::VisitUniformMeshType(const UniformMeshType *T)
-{ }
-void ASTTypeWriter::VisitStructuredMeshType(const StructuredMeshType *T)
-{ }
-void ASTTypeWriter::VisitRectilinearMeshType(const RectilinearMeshType *T)
-{ }
-void ASTTypeWriter::VisitUnstructuredMeshType(const UnstructuredMeshType *T)
-{ }
-void ASTTypeWriter::VisitWindowType(const WindowType *T)
-{ }
-void ASTTypeWriter::VisitImageType(const ImageType *T)
-{ }
+void ASTTypeWriter::VisitWindowType(const WindowType *T) {
+  Code = TYPE_WINDOW;
+}
+void ASTTypeWriter::VisitImageType(const ImageType *T) {
+  Code = TYPE_IMAGE;
+}
 // +==========================================================================+
 void ASTTypeWriter::VisitRecordType(const RecordType *T) {
   VisitTagType(T);

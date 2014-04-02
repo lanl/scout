@@ -1906,6 +1906,18 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
       S = new (Context) ForStmt(Empty);
       break;
 
+    // +===== Scout ==========================================================+
+    case STMT_FORALL_MESH:
+      S = new (Context) ForallMeshStmt(Empty);
+      break;
+    case STMT_RENDERALL_MESH:
+      S = new (Context) RenderallMeshStmt(Empty);
+      break;
+    case STMT_FORALL_ARRAY:
+      S = new (Context) ForallArrayStmt(Empty);
+      break;
+    // +======================================================================+
+
     case STMT_GOTO:
       S = new (Context) GotoStmt(Empty);
       break;
@@ -2502,12 +2514,16 @@ Done:
 }
 
 // +===== Scout ==============================================================+
-// SC_TODO : implement these...
-void ASTStmtReader::VisitForallMeshStmt(ForallMeshStmt *S)
-{ }
-void ASTStmtReader::VisitRenderallMeshStmt(RenderallMeshStmt *S)
-{ }
-void ASTStmtReader::VisitForallArrayStmt(ForallArrayStmt *S) { }
+// SC_TODO: finish implementation of these
+void ASTStmtReader::VisitForallMeshStmt(ForallMeshStmt *S) {
+  VisitStmt(S);
+}
+void ASTStmtReader::VisitRenderallMeshStmt(RenderallMeshStmt *S) {
+  VisitStmt(S);
+}
+void ASTStmtReader::VisitForallArrayStmt(ForallArrayStmt *S) {
+  VisitStmt(S);
+}
 //void ASTStmtReader::VisitRenderAllStmt(RenderAllStmt *S) { }
 //void ASTStmtReader::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *S) { }
 // =============================================================================

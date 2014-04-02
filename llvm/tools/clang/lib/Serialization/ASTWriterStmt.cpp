@@ -1862,12 +1862,19 @@ void ASTWriter::FlushStmts() {
 }
 
 // +==== Scout ===============================================================+
-//SC_TODO: Implement these
-void ASTStmtWriter::VisitForallMeshStmt(ForallMeshStmt *S)
-{ }
-void ASTStmtWriter::VisitRenderallMeshStmt(RenderallMeshStmt *S)
-{ }
-void ASTStmtWriter::VisitForallArrayStmt(ForallArrayStmt *S) { }
+//SC_TODO: finish implementation of these
+void ASTStmtWriter::VisitForallMeshStmt(ForallMeshStmt *S) {
+  VisitStmt(S);
+  Code = serialization::STMT_FORALL_MESH;
+}
+void ASTStmtWriter::VisitRenderallMeshStmt(RenderallMeshStmt *S) {
+  VisitStmt(S);
+  Code = serialization::STMT_RENDERALL_MESH;
+}
+void ASTStmtWriter::VisitForallArrayStmt(ForallArrayStmt *S) {
+  VisitStmt(S);
+  Code = serialization::STMT_FORALL_ARRAY;
+}
 //void ASTStmtWriter::VisitRenderAllStmt(RenderAllStmt *S) { }
 //void ASTStmtWriter::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *S) { }
 // +==========================================================================+

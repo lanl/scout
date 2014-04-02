@@ -105,7 +105,7 @@ llvm::Value *CodeGenFunction::TranslateExprToValue(const Expr *E) {
 
 //from VarDecl get base addr of mesh
 void CodeGenFunction::GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& BaseAddr) {
-  // is a global. SC_TODO why not MeshVarDecl->hasGlobalStorage()?
+  // check if it is a global.
   if ((MeshVarDecl->hasLinkage() || MeshVarDecl->isStaticDataMember())
       && MeshVarDecl->getTLSKind() != VarDecl::TLS_Dynamic) {
 
@@ -124,10 +124,10 @@ void CodeGenFunction::GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& 
       BaseAddr = Builder.CreateLoad(BaseAddr);
     }
     else{
+      //SC_TODO: not sure this is the best place to do this
       EmitGlobalMeshAllocaIfMissing(BaseAddr, *MeshVarDecl);
     }
 
-    //SC_TODO: not sure this is the best place to do this
     // EmitMeshMemberExpr assumes this is in the localDeclMap so add it;
     LocalDeclMap[MeshVarDecl] = BaseAddr;
   } else {

@@ -843,7 +843,21 @@ namespace clang {
       /// \brief A DecayedType record.
       TYPE_DECAYED               = 41,
       /// \brief An AdjustedType record.
-      TYPE_ADJUSTED              = 42
+      TYPE_ADJUSTED              = 42,
+      // ===== Scout ===========================
+      /// \brief An Uniform Mesh type.
+      TYPE_UNIFORM_MESH       = 43,
+      /// \brief A Rectilinear Mesh type.
+      TYPE_RECTILINEAR_MESH   = 44,
+      /// \brief A Structured Mesh type.
+      TYPE_STRUCTURED_MESH    = 45,
+      /// \brief An Unstructured Mesh type.
+      TYPE_UNSTRUCTURED_MESH  = 46,
+      /// \brief A Window type.
+      TYPE_WINDOW             = 47,
+      /// \brief A Image type.
+      TYPE_IMAGE              = 48,
+      // =======================================
     };
 
     /// \brief The type IDs for special types constructed by semantic
@@ -1349,7 +1363,13 @@ namespace clang {
       EXPR_OBJC_BRIDGED_CAST,     // ObjCBridgedCastExpr
 
       STMT_MS_DEPENDENT_EXISTS,   // MSDependentExistsStmt
-      EXPR_LAMBDA                 // LambdaExpr
+      EXPR_LAMBDA,                 // LambdaExpr
+
+      // ===== Scout ================================
+      STMT_FORALL_MESH,
+      STMT_RENDERALL_MESH,
+      STMT_FORALL_ARRAY
+      // ============================================
     };
 
     /// \brief The kinds of designators that can occur in a
