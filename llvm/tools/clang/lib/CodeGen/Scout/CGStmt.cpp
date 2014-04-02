@@ -635,6 +635,8 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
       llvm::Value* Three = llvm::ConstantInt::get(Int32Ty, 3);
       llvm::Value* Four = llvm::ConstantInt::get(Int32Ty, 4);
       llvm::Value* Seven = llvm::ConstantInt::get(Int32Ty, 7);
+      (void)Four; //suppress warning
+      (void)Seven; //suppres warning
 
       llvm::Value* facePosPtr = Builder.CreateAlloca(Int32Ty, 0, "face.pos.ptr");
       FaceIndex = Builder.CreateAlloca(Int32Ty, 0, "face.index.ptr");
@@ -643,7 +645,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
       llvm::Value* width = Builder.CreateLoad(LoopBounds[0], "width");
       llvm::Value* height;
-
+      (void)height; //suppress warning
       llvm::Value* width1;
 
       if(rank > 1){
