@@ -248,6 +248,7 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
         Diag(Tok, diag::err_expected_colon_after) << " faces";
         SkipUntil(tok::r_brace, StopAtSemi|StopBeforeMatch);
       }
+      ConsumeToken();
     } else if (Tok.is(tok::kw_edges)) {
       MFK = Edge;
       ConsumeToken();
@@ -256,6 +257,7 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
         Diag(Tok, diag::err_expected_colon_after) << " edges";
         SkipUntil(tok::r_brace, StopAtSemi|StopBeforeMatch);
       }
+      ConsumeToken();
     }
 
     ParsingDeclSpec DS(*this);
