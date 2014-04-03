@@ -105,7 +105,7 @@ llvm::Value *CodeGenFunction::TranslateExprToValue(const Expr *E) {
 
 //from VarDecl get base addr of mesh
 void CodeGenFunction::GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& BaseAddr) {
-  // check if it is a global.
+  // is a global. SC_TODO why not MeshVarDecl->hasGlobalStorage()?
   if ((MeshVarDecl->hasLinkage() || MeshVarDecl->isStaticDataMember())
       && MeshVarDecl->getTLSKind() != VarDecl::TLS_Dynamic) {
 
@@ -124,10 +124,10 @@ void CodeGenFunction::GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& 
       BaseAddr = Builder.CreateLoad(BaseAddr);
     }
     else{
-      //SC_TODO: not sure this is the best place to do this
       EmitGlobalMeshAllocaIfMissing(BaseAddr, *MeshVarDecl);
     }
 
+    //SC_TODO: not sure this is the best place to do this
     // EmitMeshMemberExpr assumes this is in the localDeclMap so add it;
     LocalDeclMap[MeshVarDecl] = BaseAddr;
   } else {
@@ -217,8 +217,8 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
       llvm::Value* Four = llvm::ConstantInt::get(Int32Ty, 4);
       llvm::Value* Seven = llvm::ConstantInt::get(Int32Ty, 7);
 
-      llvm::Value* vertexPosPtr = Builder.CreateAlloca(Int32Ty, 0, "vertex.pos.ptr");
-      VertexIndex = Builder.CreateAlloca(Int32Ty, 0, "vertex.index.ptr");
+      llvm::Value* vertexPosPtr = InnerInductionVar;
+      VertexIndex = InnerIndex;
 
       Builder.CreateStore(Zero, vertexPosPtr);
 
@@ -324,8 +324,8 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
       llvm::Value* Four = llvm::ConstantInt::get(Int32Ty, 4);
       llvm::Value* Seven = llvm::ConstantInt::get(Int32Ty, 7);
 
-      llvm::Value* cellPosPtr = Builder.CreateAlloca(Int32Ty, 0, "cell.pos.ptr");
-      CellIndex = Builder.CreateAlloca(Int32Ty, 0, "cell.index.ptr");
+      llvm::Value* cellPosPtr = InnerInductionVar;
+      CellIndex = InnerIndex;
 
       Builder.CreateStore(Zero, cellPosPtr);
 
@@ -462,7 +462,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
       (void)EntryBlock; //suppress warning
 
       if(rank == 1){
-        EdgeIndex = Builder.CreateAlloca(Int32Ty, 0, "edge.index.ptr");
+        EdgeIndex = InnerIndex;
         Builder.CreateStore(InductionVar[0], EdgeIndex);
         EmitStmt(S.getBody());
         EdgeIndex = 0;
@@ -476,8 +476,8 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
       llvm::Value* Four = llvm::ConstantInt::get(Int32Ty, 4);
       llvm::Value* Seven = llvm::ConstantInt::get(Int32Ty, 7);
 
-      llvm::Value* edgePosPtr = Builder.CreateAlloca(Int32Ty, 0, "edge.pos.ptr");
-      EdgeIndex = Builder.CreateAlloca(Int32Ty, 0, "edge.index.ptr");
+      EdgeIndex = InnerIndex;
+      llvm::Value* edgePosPtr = InnerInductionVar;
       Builder.CreateStore(Zero, edgePosPtr);
 
       if(rank == 3){
@@ -575,8 +575,11 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
       else if(rank == 2){
         llvm::Value* width = Builder.CreateLoad(LoopBounds[0], "width");
         llvm::Value* height = Builder.CreateLoad(LoopBounds[1], "height");
+        llvm::Value* width1 = Builder.CreateAdd(width, One, "width1");
+        llvm::Value* w1h = Builder.CreateMul(width1, height, "w1h");
+        llvm::Value* i = Builder.CreateLoad(InductionVar[0], "i");
+        llvm::Value* j = Builder.CreateLoad(InductionVar[1], "j");
 
-        llvm::Value* width1 = Builder.CreateAdd(width, One);
         llvm::BasicBlock *LoopBlock = createBasicBlock("forall.edges.loop");
         Builder.CreateBr(LoopBlock);
 
@@ -584,31 +587,29 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
         llvm::Value* edgePos = Builder.CreateLoad(edgePosPtr, "edge.pos");
 
-        llvm::Value* i = Builder.CreateLoad(InductionVar[0], "i");
-        llvm::Value* j = Builder.CreateLoad(InductionVar[1], "j");
-
         llvm::Value* c1 = Builder.CreateICmpEQ(edgePos, Two);
         llvm::Value* c2 = Builder.CreateICmpEQ(edgePos, Three);
 
-        llvm::Value* x = Builder.CreateAdd(i, Builder.CreateSelect(c1, One, Zero));
-        llvm::Value* y = Builder.CreateAdd(j, Builder.CreateSelect(c2, One, Zero));
-        llvm::Value* h = Builder.CreateURem(edgePos, Two);
+        llvm::Value* x = Builder.CreateSelect(c1, Builder.CreateAdd(i, One), i);
+        llvm::Value* y = Builder.CreateSelect(c2, Builder.CreateAdd(j, One), j);
 
-        llvm::Value* v1 = Builder.CreateMul(width1, height);
-        llvm::Value* v2 = Builder.CreateMul(y, width);
-        llvm::Value* e1 = Builder.CreateAdd(v1, Builder.CreateAdd(v2, x));
+        llvm::Value* v1 = Builder.CreateMul(y, width);
+        llvm::Value* e1 = Builder.CreateAdd(w1h, Builder.CreateAdd(v1, x));
         llvm::Value* e2 = Builder.CreateAdd(Builder.CreateMul(y, width1), x);
 
-        llvm::Value* newEdgeIndex = Builder.CreateSelect(Builder.CreateICmpEQ(h, One), e1, e2);
+        llvm::Value* h = Builder.CreateURem(edgePos, Two);
+
+        llvm::Value* newEdgeIndex =
+            Builder.CreateSelect(Builder.CreateICmpEQ(h, One), e1, e2);
 
         Builder.CreateStore(newEdgeIndex, EdgeIndex);
-
-        llvm::Value* newEdgePos = Builder.CreateAdd(edgePos, One);
-        Builder.CreateStore(newEdgePos, edgePosPtr);
 
         EmitStmt(S.getBody());
 
         EdgeIndex = 0;
+
+        llvm::Value* newEdgePos = Builder.CreateAdd(edgePos, One);
+        Builder.CreateStore(newEdgePos, edgePosPtr);
 
         llvm::Value* Cond = Builder.CreateICmpSLT(edgePos, Three, "cond");
 
@@ -629,63 +630,75 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
       llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.faces.entry");
       (void)EntryBlock; //suppress warning
 
+      if(rank == 1){
+        FaceIndex = InnerIndex;
+        Builder.CreateStore(InductionVar[0], FaceIndex);
+        EmitStmt(S.getBody());
+        FaceIndex = 0;
+        return;
+      }
+
       llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
       llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
       llvm::Value* Two = llvm::ConstantInt::get(Int32Ty, 2);
       llvm::Value* Three = llvm::ConstantInt::get(Int32Ty, 3);
-      llvm::Value* Four = llvm::ConstantInt::get(Int32Ty, 4);
-      llvm::Value* Seven = llvm::ConstantInt::get(Int32Ty, 7);
-      (void)Four; //suppress warning
-      (void)Seven; //suppres warning
+      //llvm::Value* Four = llvm::ConstantInt::get(Int32Ty, 4);
+      //llvm::Value* Seven = llvm::ConstantInt::get(Int32Ty, 7);
 
-      llvm::Value* facePosPtr = Builder.CreateAlloca(Int32Ty, 0, "face.pos.ptr");
-      FaceIndex = Builder.CreateAlloca(Int32Ty, 0, "face.index.ptr");
-
+      EdgeIndex = InnerIndex;
+      llvm::Value* facePosPtr = InnerInductionVar;
       Builder.CreateStore(Zero, facePosPtr);
 
-      llvm::Value* width = Builder.CreateLoad(LoopBounds[0], "width");
-      llvm::Value* height;
-      (void)height; //suppress warning
-      llvm::Value* width1;
-
-      if(rank > 1){
-        width1 =  Builder.CreateAdd(width, One);
-      }
-
-      llvm::BasicBlock *LoopBlock = createBasicBlock("forall.faces.loop");
-      Builder.CreateBr(LoopBlock);
-
-      EmitBlock(LoopBlock);
-
-      llvm::Value* facePos = Builder.CreateLoad(facePosPtr, "face.pos");
-
-      llvm::Value* i = Builder.CreateLoad(InductionVar[0], "i");
-
       if(rank == 3){
-        assert(false && "EmitForallMeshStmt forall faces rank 3 unimplemented");
+        assert(false && "rank 3 forall faces unimplemented");
       }
       else if(rank == 2){
-        llvm::Value* j = Builder.CreateLoad(InductionVar[1], "j");
+        llvm::Value* width = Builder.CreateLoad(LoopBounds[0], "width");
         llvm::Value* height = Builder.CreateLoad(LoopBounds[1], "height");
+        llvm::Value* width1 = Builder.CreateAdd(width, One, "width1");
+        llvm::Value* w1h = Builder.CreateMul(width1, height, "w1h");
+        llvm::Value* i = Builder.CreateLoad(InductionVar[0], "i");
+        llvm::Value* j = Builder.CreateLoad(InductionVar[1], "j");
+
+        llvm::BasicBlock *LoopBlock = createBasicBlock("forall.faces.loop");
+        Builder.CreateBr(LoopBlock);
+
+        EmitBlock(LoopBlock);
+
+        llvm::Value* facePos = Builder.CreateLoad(facePosPtr, "edge.pos");
 
         llvm::Value* c1 = Builder.CreateICmpEQ(facePos, Two);
         llvm::Value* c2 = Builder.CreateICmpEQ(facePos, Three);
 
-        llvm::Value* x = Builder.CreateAdd(i, Builder.CreateSelect(c1, One, Zero));
-        llvm::Value* y = Builder.CreateAdd(j, Builder.CreateSelect(c2, One, Zero));
-        llvm::Value* h = Builder.CreateURem(facePos, Two);
+        llvm::Value* x = Builder.CreateSelect(c1, Builder.CreateAdd(i, One), i);
+        llvm::Value* y = Builder.CreateSelect(c2, Builder.CreateAdd(j, One), j);
 
-        llvm::Value* v1 = Builder.CreateMul(width1, height);
-        llvm::Value* v2 = Builder.CreateMul(y, width);
-        llvm::Value* e1 = Builder.CreateAdd(v1, Builder.CreateAdd(v2, x));
+        llvm::Value* v1 = Builder.CreateMul(y, width);
+        llvm::Value* e1 = Builder.CreateAdd(w1h, Builder.CreateAdd(v1, x));
         llvm::Value* e2 = Builder.CreateAdd(Builder.CreateMul(y, width1), x);
 
-        llvm::Value* newFaceIndex = Builder.CreateSelect(Builder.CreateICmpEQ(h, One), e1, e2);
+        llvm::Value* h = Builder.CreateURem(facePos, Two);
+
+        llvm::Value* newFaceIndex =
+            Builder.CreateSelect(Builder.CreateICmpEQ(h, One), e1, e2);
 
         Builder.CreateStore(newFaceIndex, FaceIndex);
+
+        EmitStmt(S.getBody());
+
+        FaceIndex = 0;
+
+        llvm::Value* newFacePos = Builder.CreateAdd(facePos, One);
+        Builder.CreateStore(newFacePos, facePosPtr);
+
+        llvm::Value* Cond = Builder.CreateICmpSLT(facePos, Three, "cond");
+
+        llvm::BasicBlock *ExitBlock = createBasicBlock("forall.faces.exit");
+        Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
+        EmitBlock(ExitBlock);
       }
       else{
-        Builder.CreateStore(i, FaceIndex);
+        assert(false && "invalid rank");
       }
 
       return;
@@ -727,6 +740,11 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "forall.linearidx.ptr");
   //zero-initialize induction var
   Builder.CreateStore(ConstantZero, InductionVar[3]);
+
+  InnerInductionVar =
+      Builder.CreateAlloca(Int32Ty, 0, "forall.inneridx_ind.ptr");
+
+  InnerIndex = Builder.CreateAlloca(Int32Ty, 0, "forall.inneridx.ptr");
 
   // Extract width/height/depth from the mesh for this rank
   // note: width/height depth are stored after mesh fields

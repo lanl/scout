@@ -337,7 +337,8 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
 
         d1 = d1 ? d1 : Builder.CreateAdd(Dimensions[2], One);
         llvm::Value* v7 = Builder.CreateMul(v5, d1);
-        llvm::Value* v8 = Builder.CreateMul(Builder.CreateMul(w1, h1), Dimensions[2]);
+        llvm::Value* v8 =
+            Builder.CreateMul(Builder.CreateMul(w1, h1), Dimensions[2]);
         numEdges = Builder.CreateAdd(v7, v8);
         break;
       }
@@ -363,11 +364,14 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
         d1 = d1 ? d1 : Builder.CreateAdd(Dimensions[2], One);
 
         llvm::Value* v1 =
-            Builder.CreateMul(w1, Builder.CreateMul(Dimensions[1], Dimensions[2]));
+            Builder.CreateMul(w1, Builder.CreateMul(Dimensions[1],
+                                                    Dimensions[2]));
         llvm::Value* v2 =
-            Builder.CreateMul(h1, Builder.CreateMul(Dimensions[0], Dimensions[2]));
+            Builder.CreateMul(h1, Builder.CreateMul(Dimensions[0],
+                                                    Dimensions[2]));
         llvm::Value* v3 =
-            Builder.CreateMul(d1, Builder.CreateMul(Dimensions[0], Dimensions[1]));
+            Builder.CreateMul(d1, Builder.CreateMul(Dimensions[0],
+                                                    Dimensions[1]));
 
         numFaces = Builder.CreateAdd(v1, Builder.CreateAdd(v2, v3));
         break;
