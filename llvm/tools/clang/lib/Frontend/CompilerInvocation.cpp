@@ -1804,7 +1804,7 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
   if (DashX == IK_Scout_C || DashX == IK_Scout_CXX) {
     // Implicitly include the Scout headers
     Res.getPreprocessorOpts().Includes.push_back("scout/scout.sch");
-    Res.getPreprocessorOpts().Includes.push_back("scout/Runtime/scout.h");
+    Res.getPreprocessorOpts().Includes.push_back("scout/Runtime/Initialization.h");
   }
   // +========================================================================+
 

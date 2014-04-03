@@ -81,60 +81,15 @@ else()
     )
 endif()
 
+#cpu
+file(GLOB rt_srcs_cpu cpu/*.cpp)
+list(APPEND rt_srcs ${rt_srcs_cpu})
+
 #renderall
 file(GLOB rt_srcs_renderall renderall/*.cpp)
 list(APPEND rt_srcs ${rt_srcs_renderall})
-if (SCOUT_ENABLE_CUDA)
-  file(GLOB rt_srcs_renderall_cuda renderall/cuda/*.cpp)
-  list(APPEND rt_srcs ${rt_srcs_renderall_cuda})
-elseif (SCOUT_ENABLE_OPENCL)
-  file(GLOB rt_srcs_renderall_opencl renderall/opencl/*.cpp)
-  list(APPEND rt_srcs ${rt_srcs_renderall_opencl})
-else()
-  file(GLOB rt_srcs_renderall_cpu renderall/cpu/*.cpp)
-  list(APPEND rt_srcs ${rt_srcs_renderall_cpu})
-endif()
-
-#cpu/numa
-file(GLOB rt_srcs_cpu cpu/*.cpp)
-list(APPEND rt_srcs ${rt_srcs_cpu})
-if (SCOUT_ENABLE_NUMA)
-  include_directories(${HWLOC_INCLUDE_DIR})
-  file(GLOB rt_srcs_cpu_numa cpu/numa/*.cpp)
-else()
-  file(GLOB rt_srcs_cpu_numa cpu/cpu/*.cpp)
-endif()
-list(APPEND rt_srcs ${rt_srcs_cpu_numa})
-
-if (SCOUT_ENABLE_MPI)
-  include_directories(${MPI_INCLUDE_PATH})
-  file(GLOB rt_srcs_mpi renderall/mpi/*.cpp)
-  list(APPEND rt_srcs ${rt_srcs_mpi})
-endif()
-
-if (SCOUT_ENABLE_CUDA)
-  include_directories(${CUDA_INCLUDE_DIRS})
-  file(GLOB rt_srcs_cuda cuda/*.cpp)
-  list(APPEND rt_srcs ${rt_srcs_cuda})
-endif()
-
-if (SCOUT_ENABLE_OPENCL)
-  include_directories(${OPENCL_INCLUDE_DIRS})
-  file(GLOB rt_srcs_opencl opencl/*.cpp)
-  list(APPEND rt_srcs ${rt_srcs_opencl})
-
-  include_directories(
-    /opt/AMDAPP/include
-  )
-endif()
-
-# CPP backend
-if (SCOUT_ENABLE_CPP_THRUST)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP")
-  include_directories(${THRUST_INCLUDE_DIR})
-  file(GLOB rt_srcs_isosurface_cpp isosurf/*_cpp.cpp)
-  list(APPEND rt_srcs ${rt_srcs_isosurface_cpp})
-endif()
+file(GLOB rt_srcs_renderall_cpu renderall/cpu/*.cpp)
+list(APPEND rt_srcs ${rt_srcs_renderall_cpu})
 
 if (SCOUT_ENABLE_OPENGL)
 
@@ -269,17 +224,12 @@ if (SCOUT_ENABLE_MPI)
   file(GLOB volren_srcs volren/hpgv/*.cpp)
 endif()
 
-# Check to see if we should add PNG support...
-if (SCOUT_ENABLE_PNG)
-  file(GLOB png_srcs png/*.cpp)
-endif()
-
 # Finally add the library and dependencies...  Note that if we
 # are running w/out PNG/OpenGL support the associated variables
 # are empty....  This is the best way (to date) that I've found
 # to deal with the cruft of handling multiple configurations of
 # the runtime...
-add_library(scRuntime STATIC ${rt_srcs} ${gl_srcs} ${png_srcs} ${volren_srcs} ${glfw_srcs})
+add_library(scRuntime STATIC ${rt_srcs} ${gl_srcs} ${glfw_srcs})
 add_dependencies(scRuntime
   scc
   glsl2cstr

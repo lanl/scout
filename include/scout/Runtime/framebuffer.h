@@ -30,13 +30,6 @@ namespace scout
   };
 }
 
-
-#ifdef SC_ENABLE_PNG
-
-extern bool save_framebuffer_as_png(const scout::framebuffer_rt* fb, const char *filename);
-
-#endif
-
 #endif
 
 

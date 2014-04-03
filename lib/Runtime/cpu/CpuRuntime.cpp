@@ -51,12 +51,7 @@
  *
  * #####
  */
-#include "scout/Runtime/Settings.h"
-#include "scout/Runtime/cpu/Block.h"
 #include "scout/Runtime/cpu/CpuRuntime.h"
-#include "scout/Runtime/cpu/CpuUtilities.h"
-#include "scout/Runtime/cpu/Queue.h"
-#include "scout/Runtime/cpu/MeshThread.h"
 #include <iostream>
 #include <cstring>
 #include <cassert>
@@ -64,15 +59,6 @@
 using namespace std;
 
 namespace scout {
-
-  // hook used in llvm/tools/clang/lib/CodeGen/scout/CGBlocks.cpp
-  extern "C"
-  void __scrt_queue_block(void *blockLiteral, int numDimensions,
-      int numFields) {
-
-    CpuRuntime *cpuRuntime = CpuRuntime::Instance();
-    cpuRuntime->run(blockLiteral, numDimensions, numFields);
-  }
 
   namespace cpu {
 
@@ -86,86 +72,12 @@ namespace scout {
     }
 
     CpuRuntime::CpuRuntime() {
-      int val;
-      Settings *settings = Settings::Instance();
-      system_ = new System();
-      nThreads_ = system_->nThreads();
-      nDomains_ = system_->nDomains();
-
-      val = settings->blocksPerThread();
-      if (val) blocksPerThread_ = val;
-      else blocksPerThread_ = 4;
-      if (settings->debug()) cerr << "blocksPerThread " << blocksPerThread_ << endl;
-
-      // setup queues
-      for(size_t i = 0; i < nDomains_; i++) {
-        Queue* queue = new Queue;
-        queueVec_.push_back(queue);
-      }
-
-      //start threads
-      for (size_t i = 0; i < nThreads_; i++) {
-        MeshThread* ti = new MeshThread(system_, queueVec_);
-        ti->start();
-        if (settings->threadBind() == 2) system_->bindThreadOutside(ti->thread());
-        threadVec_.push_back(ti);
-      }
-      delete system_;
+      //SC_TODO
     }
 
     CpuRuntime::~CpuRuntime() {
-
-      for (size_t i = 0; i < nThreads_; i++) {
-        threadVec_[i]->stop();
-      }
-      for (size_t i = 0; i < nThreads_; i++) {
-        threadVec_[i]->await();
-        delete threadVec_[i];
-      }
-      for(size_t i = 0; i < nDomains_; i++) {
-        delete queueVec_[i];
-      }
+      //SC_TODO
     }
 
-    void CpuRuntime::queueBlocks(void* blockLiteral, int numDimensions, int numFields) {
-      BlockLiteral* bl = (BlockLiteral*) blockLiteral;
-      size_t count, extent, chunk, end;
-
-      extent = findExtent(bl, numDimensions); // find product of dimensions
-      chunk = extent / (threadVec_.size() * blocksPerThread_);
-      nChunk_ = extent / chunk;
-      if (extent % nChunk_) {
-        nChunk_++;
-      }
-      count = 0;
-      for (size_t i = 0; i < extent; i += chunk) {
-        end = i + chunk;
-
-        if (end > extent) {
-          end = extent;
-        }
-
-        Block* block = new Block(bl, numDimensions, numFields, i, end);
-
-        // One queue for each numa domain
-        queueVec_[count++ * nDomains_ / nChunk_]->add(block);
-      }
-    }
-
-    void CpuRuntime::run(void* blockLiteral, int numDimensions, int numFields) {
-      queueBlocks(blockLiteral, numDimensions, numFields);
-      size_t n = threadVec_.size();
-
-      for (size_t i = 0; i < n; i++) {  // release each beginSem
-        threadVec_[i]->begin(i*nDomains_/nThreads_);
-      }
-      //MeshThread::run() in each thread till queue empty
-      for (size_t i = 0; i < n; i++) { //acquire each finishSem
-        threadVec_[i]->finish();
-      }
-      for (size_t i = 0; i < queueVec_.size(); i++) {
-        queueVec_[i]->reset();
-      }
-    }
   } // end namespace cpu
 } // end namespace scout
