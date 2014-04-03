@@ -296,6 +296,8 @@ public:
   llvm::SmallVector< llvm::Value *, 3 > LoopBounds;
   llvm::Value *Rank = 0;
 
+  llvm::Value* InnerInductionVar;
+  llvm::Value* InnerIndex;
   llvm::Value* VertexIndex;
   llvm::Value* CellIndex;
   llvm::Value* EdgeIndex;
