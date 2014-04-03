@@ -1500,40 +1500,6 @@ void ASTWriter::WriteDeclsBlockAbbrevs() {
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // TypeLoc
   DeclFieldAbbrev = Stream.EmitAbbrev(Abv);
 
-  // +===== Scout ============================================================+
-  // Abbreviation for mesh fields.
-  Abv = new BitCodeAbbrev();
-  Abv->Add(BitCodeAbbrevOp(serialization::DECL_MESHFIELD));
-  // Decl
-  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // DeclContext
-  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // LexicalDeclContext
-  Abv->Add(BitCodeAbbrevOp(0));                       // isInvalidDecl
-  Abv->Add(BitCodeAbbrevOp(0));                       // HasAttrs
-  Abv->Add(BitCodeAbbrevOp(0));                       // isImplicit
-  Abv->Add(BitCodeAbbrevOp(0));                       // isUsed
-  Abv->Add(BitCodeAbbrevOp(0));                       // isReferenced
-  Abv->Add(BitCodeAbbrevOp(0));                   // TopLevelDeclInObjCContainer
-  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 2));  // AccessSpecifier
-  Abv->Add(BitCodeAbbrevOp(0));                       // ModulePrivate
-  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // SubmoduleID
-  // NamedDecl
-  Abv->Add(BitCodeAbbrevOp(0));                       // NameKind = Identifier
-  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // Name
-  // ValueDecl
-  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // Type
-  // DeclaratorDecl
-  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // InnerStartLoc
-  Abv->Add(BitCodeAbbrevOp(0));                       // hasExtInfo
-  // MeshFieldDecl
-  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // isMutable
-  Abv->Add(BitCodeAbbrevOp(0));                         //getBitWidth
-  // Type Source Info
-  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6));
-  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
-  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // TypeLoc
-  DeclMeshFieldAbbrev = Stream.EmitAbbrev(Abv);
-  // +========================================================================+
-
   // Abbreviation for DECL_OBJC_IVAR
   Abv = new BitCodeAbbrev();
   Abv->Add(BitCodeAbbrevOp(serialization::DECL_OBJC_IVAR));
@@ -1856,6 +1822,46 @@ void ASTWriter::WriteDeclsBlockAbbrevs() {
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 32));
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Blob));
   DeclContextVisibleLookupAbbrev = Stream.EmitAbbrev(Abv);
+  
+  // +===== Scout ============================================================+
+  // Abbreviation for mesh fields.
+  // SC_TODO: this will have DecMeshFieldAbbrev = 16 which causes a problem at:
+  // llvm/include/llvm/Bitcode/BitstreamWriter.h:123: void llvm::BitstreamWriter
+  // ::Emit(uint32_t, unsigned int): Assertion `(Val & ~(~0U >> (32-NumBits))) 
+  // == 0 && "High bits set!"' failed.
+
+  Abv = new BitCodeAbbrev();
+  Abv->Add(BitCodeAbbrevOp(serialization::DECL_MESHFIELD)); 
+  // Decl
+  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // DeclContext
+  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // LexicalDeclContext
+  Abv->Add(BitCodeAbbrevOp(0));                       // isInvalidDecl
+  Abv->Add(BitCodeAbbrevOp(0));                       // HasAttrs
+  Abv->Add(BitCodeAbbrevOp(0));                       // isImplicit
+  Abv->Add(BitCodeAbbrevOp(0));                       // isUsed
+  Abv->Add(BitCodeAbbrevOp(0));                       // isReferenced
+  Abv->Add(BitCodeAbbrevOp(0));                   // TopLevelDeclInObjCContainer
+  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 2));  // AccessSpecifier
+  Abv->Add(BitCodeAbbrevOp(0));                       // ModulePrivate
+  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // SubmoduleID
+  // NamedDecl
+  Abv->Add(BitCodeAbbrevOp(0));                       // NameKind = Identifier
+  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // Name
+  // ValueDecl
+  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // Type
+  // DeclaratorDecl
+  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // InnerStartLoc
+  Abv->Add(BitCodeAbbrevOp(0));                       // hasExtInfo
+  // MeshFieldDecl
+  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // isMutable
+  Abv->Add(BitCodeAbbrevOp(0));                         //getBitWidth
+  // Type Source Info
+  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6));
+  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
+  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // TypeLoc
+  DeclMeshFieldAbbrev = Stream.EmitAbbrev(Abv);
+  // +========================================================================+
+
 }
 
 /// isRequiredDecl - Check if this is a "required" Decl, which must be seen by
