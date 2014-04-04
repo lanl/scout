@@ -58,6 +58,8 @@
 #include "scout/Runtime/cpu/CpuRuntime.h"
 #include "scout/Runtime/Device.h"
 
+using namespace scout::cpu;
+
 namespace scout {
   class CpuDevice: public Device {
 

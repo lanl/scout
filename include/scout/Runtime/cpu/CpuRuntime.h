@@ -55,12 +55,6 @@
 #ifndef SCOUT_CPU_RUNTIME_H_
 #define SCOUT_CPU_RUNTIME_H_
 
-#include "scout/Runtime/cpu/Queue.h"
-#include "scout/Runtime/cpu/MeshThread.h"
-#include <map>
-using namespace std;
-using namespace scout::cpu;
-
 namespace scout {
   namespace cpu {
 
@@ -76,17 +70,8 @@ namespace scout {
       CpuRuntime();
       CpuRuntime(const CpuRuntime&);
       CpuRuntime& operator= (const CpuRuntime&);
-      void queueBlocks(void *blockLiteral, int numDimensions,
-                       int numFields);
-      int nThreads();
-      int nDomains();
-      int blocksPerThread();
     private:
       static CpuRuntime* instance_;
-      System *system_;
-      QueueVec queueVec_;
-      ThreadVec threadVec_;
-      size_t nThreads_, nDomains_, nChunk_, blocksPerThread_;
     };
   }
 }
