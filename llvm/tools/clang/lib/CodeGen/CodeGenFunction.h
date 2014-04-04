@@ -1955,6 +1955,10 @@ public:
 
   void ResetVars(void);
   void EmitForallMeshStmt(const ForallMeshStmt &S);
+  void EmitForallCellsVertices(const ForallMeshStmt &S);
+  void EmitForallVerticesCells(const ForallMeshStmt &S);
+  void EmitForallCellsEdges(const ForallMeshStmt &S);
+  void EmitForallCellsFaces(const ForallMeshStmt &S);
   void EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r);
   llvm::BasicBlock *EmitMarkerBlock(const std::string name);
   void ExtractRegion(llvm::BasicBlock *entry, llvm::BasicBlock *exit, const std::string name);
