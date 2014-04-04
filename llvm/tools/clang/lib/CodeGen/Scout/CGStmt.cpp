@@ -691,7 +691,80 @@ void CodeGenFunction::EmitForallCellsFaces(const ForallMeshStmt &S){
 }
 
 void CodeGenFunction::EmitForallEdgesCells(const ForallMeshStmt &S){
+  //SC_TODO: this will not work inside a function
+  unsigned int rank = S.getMeshType()->rankOf();
 
+  llvm::Value* Zero = llvm::ConstantInt::get(Int64Ty, 0);
+  llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
+
+  llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.edges.entry");
+  (void)EntryBlock; //suppress warning
+
+  if(rank == 2){
+    llvm::Value* w = Builder.CreateLoad(LoopBounds[0], "w");
+    w = Builder.CreateZExt(w, Int64Ty, "w");
+    llvm::Value* w1 = Builder.CreateAdd(w, One, "w1");
+
+    llvm::Value* h = Builder.CreateLoad(LoopBounds[1], "h");
+    h = Builder.CreateZExt(h, Int64Ty, "h");
+
+    llvm::Value* wm1 = Builder.CreateSub(w, One, "wm1");
+    llvm::Value* hm1 = Builder.CreateSub(h, One, "hm1");
+    llvm::Value* w1h = Builder.CreateMul(w1, h, "w1h");
+
+    llvm::Value* k = Builder.CreateLoad(EdgeIndex, "k");
+
+    llvm::Value* c1 = Builder.CreateICmpUGE(k, w1h, "c1");
+    llvm::Value* km = Builder.CreateSub(k, w1h, "km");
+
+    llvm::Value* x =
+        Builder.CreateSelect(c1, Builder.CreateURem(km, w),
+                             Builder.CreateURem(k, w1), "x");
+
+    llvm::Value* xm1 = Builder.CreateSub(x, One, "xm1");
+
+    llvm::Value* y =
+        Builder.CreateSelect(c1, Builder.CreateUDiv(km, w),
+                             Builder.CreateUDiv(k, w1), "y");
+
+    llvm::Value* ym1 = Builder.CreateSub(y, One, "ym1");
+
+    llvm::Value* c2 = Builder.CreateICmpEQ(x, Zero, "c2");
+    llvm::Value* x1 =
+        Builder.CreateSelect(c1, x, Builder.CreateSelect(c2, wm1, xm1), "x1");
+
+    llvm::Value* c3 = Builder.CreateICmpEQ(y, Zero, "c3");
+    llvm::Value* y1 =
+        Builder.CreateSelect(c1, Builder.CreateSelect(c3, hm1, ym1), y, "y1");
+
+    llvm::Value* cellIndex =
+        Builder.CreateAdd(Builder.CreateMul(y1, w), x1, "cellIndex.1");
+
+    CellIndex = InnerIndex;
+    Builder.CreateStore(Builder.CreateTrunc(cellIndex, Int32Ty), CellIndex);
+
+    EmitStmt(S.getBody());
+
+    llvm::Value* c4 = Builder.CreateICmpEQ(x, w, "c4");
+    llvm::Value* x2 =
+        Builder.CreateSelect(c1, x, Builder.CreateSelect(c4, Zero, x), "x2");
+
+    llvm::Value* c5 = Builder.CreateICmpEQ(y, h, "c5");
+    llvm::Value* y2 =
+        Builder.CreateSelect(c1, y, Builder.CreateSelect(c5, Zero, y), "y2");
+
+    cellIndex =
+        Builder.CreateAdd(Builder.CreateMul(y2, w), x2, "cellIndex.2");
+
+    Builder.CreateStore(Builder.CreateTrunc(cellIndex, Int32Ty), CellIndex);
+
+    EmitStmt(S.getBody());
+
+    CellIndex = 0;
+  }
+  else{
+    assert(false && "forall case unimplemented");
+  }
 }
 
 void CodeGenFunction::EmitForallFacesCells(const ForallMeshStmt &S){
@@ -708,6 +781,7 @@ void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
   InductionVar[3] = Builder.CreateAlloca(Int64Ty, 0, "forall.edges_idx.ptr");
   //zero-initialize induction var
   Builder.CreateStore(Zero, InductionVar[3]);
+  InnerIndex = Builder.CreateAlloca(Int32Ty, 0, "forall.inneridx.ptr");
 
   SmallVector<llvm::Value*, 3> Dimensions;
   GetMeshDimensions(S.getMeshType(), Dimensions);
@@ -731,6 +805,8 @@ void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
   llvm::BasicBlock *ExitBlock = createBasicBlock("forall.edges.exit");
   Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
   EmitBlock(ExitBlock);
+
+  InnerIndex = 0;
 }
 
 void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
@@ -809,7 +885,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
     case ImplicitMeshParamDecl::Edges:
       switch(FET){
       case ForallMeshStmt::Cells:
-        EmitForallVerticesCells(S);
+        EmitForallEdgesCells(S);
         return;
       case ForallMeshStmt::Vertices:
         assert(false && "unimplemented forall case");
@@ -824,7 +900,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
     case ImplicitMeshParamDecl::Faces:
       switch(FET){
       case ForallMeshStmt::Cells:
-        EmitForallFacesCells(S);;
+        EmitForallFacesCells(S);
         return;
       case ForallMeshStmt::Vertices:
         assert(false && "unimplemented forall case");
@@ -845,6 +921,23 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
   ResetVars();
 
+  //get mesh Base Addr
+  llvm::Value *MeshBaseAddr;
+  GetMeshBaseAddr(S, MeshBaseAddr);
+
+  llvm::StringRef MeshName = S.getMeshType()->getName();
+
+  // find number of fields
+  MeshDecl* MD =  S.getMeshType()->getDecl();
+  unsigned int nfields = MD->fields();
+
+  // Extract width/height/depth from the mesh for this rank
+  // note: width/height depth are stored after mesh fields
+  for(unsigned int i = 0; i < 3; i++) {
+    sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
+    LoopBounds[i] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
+  }
+
   if(FET == ForallMeshStmt::Edges){
     EmitForallEdges(S);
     return;
@@ -853,15 +946,6 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
     EmitForallFaces(S);
     return;
   }
-
-  //get mesh Base Addr
-  llvm::Value *MeshBaseAddr;
-  GetMeshBaseAddr(S, MeshBaseAddr);
-  llvm::StringRef MeshName = S.getMeshType()->getName();
-
-  // find number of fields
-  MeshDecl* MD =  S.getMeshType()->getDecl();
-  unsigned int nfields = MD->fields();
 
   // Track down the mesh meta data. 
   //llvm::NamedMDNode *MeshMD = CGM.getModule().getNamedMetadata("scout.meshmd");
@@ -888,13 +972,6 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
       Builder.CreateAlloca(Int32Ty, 0, "forall.inneridx_ind.ptr");
 
   InnerIndex = Builder.CreateAlloca(Int32Ty, 0, "forall.inneridx.ptr");
-
-  // Extract width/height/depth from the mesh for this rank
-  // note: width/height depth are stored after mesh fields
-  for(unsigned int i = 0; i < 3; i++) {
-    sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
-    LoopBounds[i] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
-  }
 
   // extract rank from mesh stored after width/height/depth
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
