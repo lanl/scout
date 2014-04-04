@@ -1959,6 +1959,8 @@ public:
   void EmitForallVerticesCells(const ForallMeshStmt &S);
   void EmitForallCellsEdges(const ForallMeshStmt &S);
   void EmitForallCellsFaces(const ForallMeshStmt &S);
+  void EmitForallEdges(const ForallMeshStmt &S);
+  void EmitForallFaces(const ForallMeshStmt &S);
   void EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r);
   llvm::BasicBlock *EmitMarkerBlock(const std::string name);
   void ExtractRegion(llvm::BasicBlock *entry, llvm::BasicBlock *exit, const std::string name);

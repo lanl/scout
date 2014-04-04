@@ -689,6 +689,76 @@ void CodeGenFunction::EmitForallCellsFaces(const ForallMeshStmt &S){
   }
 }
 
+void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
+  llvm::Value* Zero = llvm::ConstantInt::get(Int64Ty, 0);
+  llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
+
+  llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.edges.entry");
+  (void)EntryBlock; //suppress warning
+
+  InductionVar[3] = Builder.CreateAlloca(Int64Ty, 0, "forall.edges_idx.ptr");
+  //zero-initialize induction var
+  Builder.CreateStore(Zero, InductionVar[3]);
+
+  SmallVector<llvm::Value*, 3> Dimensions;
+  GetMeshDimensions(S.getMeshType(), Dimensions);
+  llvm::Value* numEdges;
+  GetNumMeshItems(Dimensions, 0, 0, &numEdges, 0);
+
+  llvm::BasicBlock *LoopBlock = createBasicBlock("forall.edges.loop");
+  Builder.CreateBr(LoopBlock);
+
+  EmitBlock(LoopBlock);
+
+  EdgeIndex = InductionVar[3];
+  EmitStmt(S.getBody());
+  EdgeIndex = 0;
+
+  llvm::Value* k = Builder.CreateLoad(InductionVar[3], "forall.edges_idx");
+  Builder.CreateStore(Builder.CreateAdd(k, One), InductionVar[3]);
+
+  llvm::Value* Cond = Builder.CreateICmpSLT(k, numEdges, "cond");
+
+  llvm::BasicBlock *ExitBlock = createBasicBlock("forall.edges.exit");
+  Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
+  EmitBlock(ExitBlock);
+}
+
+void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
+  llvm::Value* Zero = llvm::ConstantInt::get(Int64Ty, 0);
+  llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
+
+  llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.faces.entry");
+  (void)EntryBlock; //suppress warning
+
+  InductionVar[3] = Builder.CreateAlloca(Int64Ty, 0, "forall.faces_idx.ptr");
+  //zero-initialize induction var
+  Builder.CreateStore(Zero, InductionVar[3]);
+
+  SmallVector<llvm::Value*, 3> Dimensions;
+  GetMeshDimensions(S.getMeshType(), Dimensions);
+  llvm::Value* numFaces;
+  GetNumMeshItems(Dimensions, 0, 0, 0, &numFaces);
+
+  llvm::BasicBlock *LoopBlock = createBasicBlock("forall.faces.loop");
+  Builder.CreateBr(LoopBlock);
+
+  EmitBlock(LoopBlock);
+
+  FaceIndex = InductionVar[3];
+  EmitStmt(S.getBody());
+  FaceIndex = 0;
+
+  llvm::Value* k = Builder.CreateLoad(InductionVar[3], "forall.faces_idx");
+  Builder.CreateStore(Builder.CreateAdd(k, One), InductionVar[3]);
+
+  llvm::Value* Cond = Builder.CreateICmpSLT(k, numFaces, "cond");
+
+  llvm::BasicBlock *ExitBlock = createBasicBlock("forall.faces.exit");
+  Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
+  EmitBlock(ExitBlock);
+}
+
 void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   const VarDecl* VD = S.getMeshVarDecl();
 
@@ -704,6 +774,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
       assert(ET == ImplicitMeshParamDecl::Cells &&
              "EmitForAllMeshStmt element type nesting combination not implemented");
       EmitForallCellsVertices(S);
+      return;
     }
     else if(FET == ForallMeshStmt::Cells){
       assert(ET == ImplicitMeshParamDecl::Vertices &&
@@ -720,6 +791,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
       assert(ET == ImplicitMeshParamDecl::Cells &&
              "EmitForAllMeshStmt element type nesting combination not implemented");
       EmitForallCellsFaces(S);
+      return;
     }
     else{
       assert(false && "EmitForAllMeshStmt element type nesting combination not implemented");
@@ -728,11 +800,14 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
   llvm::Value* ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
 
-  if(FET == ForallMeshStmt::Faces){
-    InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "forall.edgesidx.ptr");
-    //zero-initialize induction var
-    Builder.CreateStore(ConstantZero, InductionVar[3]);
+  ResetVars();
 
+  if(FET == ForallMeshStmt::Edges){
+    EmitForallEdges(S);
+    return;
+  }
+  else if(FET == ForallMeshStmt::Faces){
+    EmitForallFaces(S);
     return;
   }
 
@@ -749,7 +824,6 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   //llvm::NamedMDNode *MeshMD = CGM.getModule().getNamedMetadata("scout.meshmd");
   //assert(MeshMD != 0 && "unable to find module-level mesh metadata!");
   //llvm::errs() << "forall mesh type name = '" << S.getMeshVarDecl()->getTypeSourceInfo()->getType().getTypePtr()->getTypeClassName() << "'\n";
-  ResetVars();
 
   //need a marker for start of Forall for CodeExtraction
   llvm::BasicBlock *entry = EmitMarkerBlock("forall.entry");
