@@ -1868,6 +1868,14 @@ public:
   void EmitGlobalMeshAllocaIfMissing(llvm::Value* MeshAddr, const VarDecl &D);
   void EmitScoutAutoVarAlloca(llvm::Value *Alloc,
                               const VarDecl &var);
+  void GetMeshDimensions(const MeshType* MT, SmallVector<llvm::Value*, 3>& DS);
+
+  void GetNumMeshItems(SmallVector<llvm::Value*, 3>& Dimensions,
+                       llvm::Value** numCells,
+                       llvm::Value** numVertices,
+                       llvm::Value** numEdges,
+                       llvm::Value** numFaces);
+
   // +========================================================================+
 
   void EmitAutoVarInit(const AutoVarEmission &emission);

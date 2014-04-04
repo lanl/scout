@@ -196,11 +196,12 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   //SC_TODO: this will not work inside a function
   unsigned int rank = S.getMeshType()->rankOf();
 
+  ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
+
   // handle nested forall, e.g: forall vertices within a forall cells
   if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)){
     VD = IP->getMeshVarDecl();
 
-    ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
     ImplicitMeshParamDecl::MeshElementType ET = IP->getElementType();
 
     if(FET == ForallMeshStmt::Vertices){
@@ -709,6 +710,14 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   }
 
   llvm::Value* ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
+
+  if(FET == ForallMeshStmt::Faces){
+    InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "forall.edgesidx.ptr");
+    //zero-initialize induction var
+    Builder.CreateStore(ConstantZero, InductionVar[3]);
+
+    return;
+  }
 
   //get mesh Base Addr
   llvm::Value *MeshBaseAddr;
