@@ -1959,6 +1959,8 @@ public:
   void EmitForallVerticesCells(const ForallMeshStmt &S);
   void EmitForallCellsEdges(const ForallMeshStmt &S);
   void EmitForallCellsFaces(const ForallMeshStmt &S);
+  void EmitForallEdgesCells(const ForallMeshStmt &S);
+  void EmitForallFacesCells(const ForallMeshStmt &S);
   void EmitForallEdges(const ForallMeshStmt &S);
   void EmitForallFaces(const ForallMeshStmt &S);
   void EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r);

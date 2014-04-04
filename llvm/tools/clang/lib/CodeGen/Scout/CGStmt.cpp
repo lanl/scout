@@ -70,6 +70,7 @@
 #include "llvm/IR/Dominators.h"
 
 #include <stdio.h>
+#include <cassert>
 #include "llvm/Transforms/Utils/CodeExtractor.h"
 #include "clang/AST/Decl.h"
 #include "CGBlocks.h"
@@ -689,6 +690,14 @@ void CodeGenFunction::EmitForallCellsFaces(const ForallMeshStmt &S){
   }
 }
 
+void CodeGenFunction::EmitForallEdgesCells(const ForallMeshStmt &S){
+
+}
+
+void CodeGenFunction::EmitForallFacesCells(const ForallMeshStmt &S){
+
+}
+
 void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
   llvm::Value* Zero = llvm::ConstantInt::get(Int64Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
@@ -766,35 +775,69 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
   // handle nested forall, e.g: forall vertices within a forall cells
   if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)){
-    VD = IP->getMeshVarDecl();
-
-    ImplicitMeshParamDecl::MeshElementType ET = IP->getElementType();
-
-    if(FET == ForallMeshStmt::Vertices){
-      assert(ET == ImplicitMeshParamDecl::Cells &&
-             "EmitForAllMeshStmt element type nesting combination not implemented");
-      EmitForallCellsVertices(S);
-      return;
-    }
-    else if(FET == ForallMeshStmt::Cells){
-      assert(ET == ImplicitMeshParamDecl::Vertices &&
-             "EmitForAllMeshStmt element type nesting combination not implemented");
-      EmitForallVerticesCells(S);
-    }
-    else if(FET == ForallMeshStmt::Edges){
-      assert(ET == ImplicitMeshParamDecl::Cells &&
-             "EmitForAllMeshStmt element type nesting combination not implemented");
-      EmitForallCellsEdges(S);
-      return;
-    }
-    else if(FET == ForallMeshStmt::Faces){
-      assert(ET == ImplicitMeshParamDecl::Cells &&
-             "EmitForAllMeshStmt element type nesting combination not implemented");
-      EmitForallCellsFaces(S);
-      return;
-    }
-    else{
-      assert(false && "EmitForAllMeshStmt element type nesting combination not implemented");
+    switch(IP->getElementType()){
+    case ImplicitMeshParamDecl::Cells:
+      switch(FET){
+      case ForallMeshStmt::Vertices:
+        EmitForallCellsVertices(S);
+        return;
+      case ForallMeshStmt::Edges:
+        EmitForallCellsEdges(S);
+        return;
+      case ForallMeshStmt::Faces:
+        EmitForallCellsFaces(S);
+        return;
+      default:
+        assert(false && "invalid forall case");
+        return;
+      }
+    case ImplicitMeshParamDecl::Vertices:
+      switch(FET){
+      case ForallMeshStmt::Cells:
+        EmitForallVerticesCells(S);
+        return;
+      case ForallMeshStmt::Edges:
+        assert(false && "unimplemented forall case");
+        return;
+      case ForallMeshStmt::Faces:
+        assert(false && "unimplemented forall case");
+        return;
+      default:
+        assert(false && "invalid forall case");
+        return;
+      }
+    case ImplicitMeshParamDecl::Edges:
+      switch(FET){
+      case ForallMeshStmt::Cells:
+        EmitForallVerticesCells(S);
+        return;
+      case ForallMeshStmt::Vertices:
+        assert(false && "unimplemented forall case");
+        return;
+      case ForallMeshStmt::Faces:
+        assert(false && "unimplemented forall case");
+        return;
+      default:
+        assert(false && "invalid forall case");
+        return;
+      }
+    case ImplicitMeshParamDecl::Faces:
+      switch(FET){
+      case ForallMeshStmt::Cells:
+        EmitForallFacesCells(S);;
+        return;
+      case ForallMeshStmt::Vertices:
+        assert(false && "unimplemented forall case");
+        return;
+      case ForallMeshStmt::Edges:
+        assert(false && "unimplemented forall case");
+        return;
+      default:
+        assert(false && "invalid forall case");
+        return;
+      }
+      default:
+        assert(false && "invalid forall case");
     }
   }
 
