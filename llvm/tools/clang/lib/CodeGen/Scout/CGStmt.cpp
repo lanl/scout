@@ -691,6 +691,18 @@ void CodeGenFunction::EmitForallCellsFaces(const ForallMeshStmt &S){
 }
 
 void CodeGenFunction::EmitForallEdgesCells(const ForallMeshStmt &S){
+  unsigned int rank = S.getMeshType()->rankOf();
+  if(rank <= 2){
+    EmitForallEdgesOrFacesCellsLowD(S, EdgeIndex);
+  }
+  else{
+    assert(false && "forall case unimplemented");
+  }
+}
+
+void
+CodeGenFunction::EmitForallEdgesOrFacesCellsLowD(const ForallMeshStmt &S,
+                                                 llvm::Value* OuterIndex){
   //SC_TODO: this will not work inside a function
   unsigned int rank = S.getMeshType()->rankOf();
 
@@ -700,6 +712,13 @@ void CodeGenFunction::EmitForallEdgesCells(const ForallMeshStmt &S){
   llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.cells.entry");
   (void)EntryBlock; //suppress warning
 
+  if(rank == 1){
+    CellIndex = InnerIndex;
+    Builder.CreateStore(Builder.CreateTrunc(OuterIndex, Int32Ty), CellIndex);
+
+    EmitStmt(S.getBody());
+    CellIndex = 0;
+  }
   if(rank == 2){
     llvm::Value* w = Builder.CreateLoad(LoopBounds[0], "w");
     w = Builder.CreateZExt(w, Int64Ty, "w");
@@ -712,7 +731,7 @@ void CodeGenFunction::EmitForallEdgesCells(const ForallMeshStmt &S){
     llvm::Value* hm1 = Builder.CreateSub(h, One, "hm1");
     llvm::Value* w1h = Builder.CreateMul(w1, h, "w1h");
 
-    llvm::Value* k = Builder.CreateLoad(EdgeIndex, "k");
+    llvm::Value* k = Builder.CreateLoad(OuterIndex, "k");
 
     llvm::Value* c1 = Builder.CreateICmpUGE(k, w1h, "c1");
     llvm::Value* km = Builder.CreateSub(k, w1h, "km");
@@ -763,15 +782,23 @@ void CodeGenFunction::EmitForallEdgesCells(const ForallMeshStmt &S){
     CellIndex = 0;
   }
   else{
-    assert(false && "forall case unimplemented");
+    assert(false && "invalid rank");
   }
 }
 
 void CodeGenFunction::EmitForallFacesCells(const ForallMeshStmt &S){
-
+  unsigned int rank = S.getMeshType()->rankOf();
+  if(rank <= 2){
+    EmitForallEdgesOrFacesCellsLowD(S, FaceIndex);
+  }
+  else{
+    assert(false && "forall case unimplemented");
+  }
 }
 
-void CodeGenFunction::EmitForallEdgesVertices(const ForallMeshStmt &S){
+void
+CodeGenFunction::EmitForallEdgesOrFacesVerticesLowD(const ForallMeshStmt &S,
+                                                    llvm::Value* OuterIndex){
   //SC_TODO: this will not work inside a function
   unsigned int rank = S.getMeshType()->rankOf();
 
@@ -781,7 +808,25 @@ void CodeGenFunction::EmitForallEdgesVertices(const ForallMeshStmt &S){
   llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.edges.entry");
   (void)EntryBlock; //suppress warning
 
-  if(rank == 2){
+  if(rank == 1){
+    llvm::Value* One32 = llvm::ConstantInt::get(Int32Ty, 1);
+
+    llvm::Value* k = Builder.CreateLoad(OuterIndex, "k");
+
+    VertexIndex = InnerIndex;
+    llvm::Value* vertexIndex = Builder.CreateTrunc(k, Int32Ty);
+    Builder.CreateStore(vertexIndex, VertexIndex);
+
+    EmitStmt(S.getBody());
+
+    vertexIndex = Builder.CreateAdd(vertexIndex, One32);
+    Builder.CreateStore(vertexIndex, VertexIndex);
+
+    EmitStmt(S.getBody());
+
+    VertexIndex = 0;
+  }
+  else if(rank == 2){
     llvm::Value* w = Builder.CreateLoad(LoopBounds[0], "w");
     w = Builder.CreateZExt(w, Int64Ty, "w");
     llvm::Value* w1 = Builder.CreateAdd(w, One, "w1");
@@ -791,7 +836,7 @@ void CodeGenFunction::EmitForallEdgesVertices(const ForallMeshStmt &S){
 
     llvm::Value* w1h = Builder.CreateMul(w1, h, "w1h");
 
-    llvm::Value* k = Builder.CreateLoad(EdgeIndex, "k");
+    llvm::Value* k = Builder.CreateLoad(OuterIndex, "k");
 
     llvm::Value* c1 = Builder.CreateICmpUGE(k, w1h, "c1");
     llvm::Value* km = Builder.CreateSub(k, w1h, "km");
@@ -829,8 +874,24 @@ void CodeGenFunction::EmitForallEdgesVertices(const ForallMeshStmt &S){
   }
 }
 
-void CodeGenFunction::EmitForallFacesVertices(const ForallMeshStmt &S){
+void CodeGenFunction::EmitForallEdgesVertices(const ForallMeshStmt &S){
+  unsigned int rank = S.getMeshType()->rankOf();
+  if(rank <= 2){
+    EmitForallEdgesOrFacesVerticesLowD(S, EdgeIndex);
+  }
+  else{
+    assert(false && "forall case unimplemented");
+  }
+}
 
+void CodeGenFunction::EmitForallFacesVertices(const ForallMeshStmt &S){
+  unsigned int rank = S.getMeshType()->rankOf();
+  if(rank <= 2){
+    EmitForallEdgesOrFacesVerticesLowD(S, FaceIndex);
+  }
+  else{
+    assert(false && "forall case unimplemented");
+  }
 }
 
 void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
