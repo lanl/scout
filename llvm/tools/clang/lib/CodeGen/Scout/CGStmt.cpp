@@ -1026,7 +1026,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
         EmitForallFacesCells(S);
         return;
       case ForallMeshStmt::Vertices:
-        assert(false && "unimplemented forall case");
+        EmitForallFacesVertices(S);
         return;
       case ForallMeshStmt::Edges:
         assert(false && "unimplemented forall case");
