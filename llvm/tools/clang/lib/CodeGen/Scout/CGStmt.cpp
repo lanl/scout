@@ -697,7 +697,7 @@ void CodeGenFunction::EmitForallEdgesCells(const ForallMeshStmt &S){
   llvm::Value* Zero = llvm::ConstantInt::get(Int64Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
 
-  llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.edges.entry");
+  llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.cells.entry");
   (void)EntryBlock; //suppress warning
 
   if(rank == 2){
@@ -768,6 +768,68 @@ void CodeGenFunction::EmitForallEdgesCells(const ForallMeshStmt &S){
 }
 
 void CodeGenFunction::EmitForallFacesCells(const ForallMeshStmt &S){
+
+}
+
+void CodeGenFunction::EmitForallEdgesVertices(const ForallMeshStmt &S){
+  //SC_TODO: this will not work inside a function
+  unsigned int rank = S.getMeshType()->rankOf();
+
+  //llvm::Value* Zero = llvm::ConstantInt::get(Int64Ty, 0);
+  llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
+
+  llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.edges.entry");
+  (void)EntryBlock; //suppress warning
+
+  if(rank == 2){
+    llvm::Value* w = Builder.CreateLoad(LoopBounds[0], "w");
+    w = Builder.CreateZExt(w, Int64Ty, "w");
+    llvm::Value* w1 = Builder.CreateAdd(w, One, "w1");
+
+    llvm::Value* h = Builder.CreateLoad(LoopBounds[1], "h");
+    h = Builder.CreateZExt(h, Int64Ty, "h");
+
+    llvm::Value* w1h = Builder.CreateMul(w1, h, "w1h");
+
+    llvm::Value* k = Builder.CreateLoad(EdgeIndex, "k");
+
+    llvm::Value* c1 = Builder.CreateICmpUGE(k, w1h, "c1");
+    llvm::Value* km = Builder.CreateSub(k, w1h, "km");
+
+    llvm::Value* x1 =
+        Builder.CreateSelect(c1, Builder.CreateURem(km, w),
+                             Builder.CreateURem(k, w1), "x1");
+
+    llvm::Value* y1 =
+        Builder.CreateSelect(c1, Builder.CreateUDiv(km, w),
+                             Builder.CreateUDiv(k, w1), "y1");
+
+    llvm::Value* vertexIndex =
+        Builder.CreateAdd(Builder.CreateMul(y1, w1), x1, "vertexIndex.1");
+
+    VertexIndex = InnerIndex;
+    Builder.CreateStore(Builder.CreateTrunc(vertexIndex, Int32Ty), VertexIndex);
+
+    EmitStmt(S.getBody());
+
+    llvm::Value* x2 = Builder.CreateSelect(c1, Builder.CreateAdd(x1, One), x1);
+    llvm::Value* y2 = Builder.CreateSelect(c1, y1, Builder.CreateAdd(y1, One));
+
+    vertexIndex =
+        Builder.CreateAdd(Builder.CreateMul(y2, w1), x2, "vertexIndex.2");
+
+    Builder.CreateStore(Builder.CreateTrunc(vertexIndex, Int32Ty), VertexIndex);
+
+    EmitStmt(S.getBody());
+
+    VertexIndex = 0;
+  }
+  else{
+    assert(false && "forall case unimplemented");
+  }
+}
+
+void CodeGenFunction::EmitForallFacesVertices(const ForallMeshStmt &S){
 
 }
 
@@ -888,7 +950,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
         EmitForallEdgesCells(S);
         return;
       case ForallMeshStmt::Vertices:
-        assert(false && "unimplemented forall case");
+        EmitForallEdgesVertices(S);
         return;
       case ForallMeshStmt::Faces:
         assert(false && "unimplemented forall case");
