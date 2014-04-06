@@ -365,7 +365,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     SmallVector<llvm::Value*, 3> Dimensions;
 
     GetMeshDimensions(MT, Dimensions);
-    unsigned int rank = Dimensions.size();
+    //unsigned int rank = Dimensions.size();
 
     bool hasCells = false;
     bool hasVertices = false;
