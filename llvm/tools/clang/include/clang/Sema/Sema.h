@@ -8315,6 +8315,9 @@ public:
 
   void ScoutMeshExternAlloc(Expr *LHSExpr, QualType &LHSType);
 
+  bool LookupMeshMemberExpr(LookupResult &R, ExprResult &BaseExpr, SourceLocation OpLoc,
+      CXXScopeSpec &SS, const MeshType *MTy, ExprResult &Result);
+
   bool LookupMemberExprInMesh(Sema &SemaRef, LookupResult &R,
                          SourceRange BaseRange, const MeshType *MTy,
                          SourceLocation OpLoc, CXXScopeSpec &SS);

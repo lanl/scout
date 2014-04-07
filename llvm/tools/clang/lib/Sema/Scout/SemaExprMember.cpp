@@ -54,9 +54,46 @@
 
 #include "clang/Sema/SemaInternal.h"
 #include "clang/Sema/Lookup.h"
+#include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 
 using namespace clang;
 using namespace sema;
+
+bool Sema::LookupMeshMemberExpr(LookupResult &R, ExprResult &BaseExpr, SourceLocation OpLoc,
+    CXXScopeSpec &SS, const MeshType *MTy, ExprResult &Result) {
+
+  SourceLocation MemberLoc = R.getNameLoc();
+  // Scout's mesh element access operations are all through
+  // implicit constructs (for now) -- as such we treat all
+  // explicit accesses as an error...
+
+  Result = ExprError();
+
+  Expr *E = BaseExpr.take();
+  if(ImplicitCastExpr *ICE = dyn_cast<ImplicitCastExpr>(E)) {
+    E = ICE->getSubExpr();
+  }
+
+  DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(E);
+  if(!DRE) {
+    Diag(MemberLoc, diag::err_illegal_mesh_element_access);
+    return false;
+  }
+
+  if(!isa<ImplicitMeshParamDecl>(DRE->getDecl())) {
+    Diag(MemberLoc, diag::err_illegal_mesh_element_access);
+    return false;
+  }
+
+  if (LookupMemberExprInMesh(*this, R, BaseExpr.get()->getSourceRange(),
+      MTy, OpLoc, SS))
+    return false;
+
+  // Returning valid-but-null is how we indicate to the caller that
+  // the lookup result was filled in.
+  Result = Owned((Expr*) 0);
+  return true;
+}
 
 bool Sema::LookupMemberExprInMesh(Sema &SemaRef, LookupResult &R,
                        SourceRange BaseRange, const MeshType *MTy,
