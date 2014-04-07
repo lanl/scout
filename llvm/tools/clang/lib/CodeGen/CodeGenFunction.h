@@ -1868,6 +1868,14 @@ public:
   void EmitGlobalMeshAllocaIfMissing(llvm::Value* MeshAddr, const VarDecl &D);
   void EmitScoutAutoVarAlloca(llvm::Value *Alloc,
                               const VarDecl &var);
+  void GetMeshDimensions(const MeshType* MT, SmallVector<llvm::Value*, 3>& DS);
+
+  void GetNumMeshItems(SmallVector<llvm::Value*, 3>& Dimensions,
+                       llvm::Value** numCells,
+                       llvm::Value** numVertices,
+                       llvm::Value** numEdges,
+                       llvm::Value** numFaces);
+
   // +========================================================================+
 
   void EmitAutoVarInit(const AutoVarEmission &emission);
@@ -1947,6 +1955,26 @@ public:
 
   void ResetVars(void);
   void EmitForallMeshStmt(const ForallMeshStmt &S);
+
+  void EmitForallEdges(const ForallMeshStmt &S);
+  void EmitForallFaces(const ForallMeshStmt &S);
+
+  void EmitForallCellsVertices(const ForallMeshStmt &S);
+  void EmitForallCellsEdges(const ForallMeshStmt &S);
+  void EmitForallCellsFaces(const ForallMeshStmt &S);
+
+  void EmitForallVerticesCells(const ForallMeshStmt &S);
+
+  void EmitForallEdgesCells(const ForallMeshStmt &S);
+  void EmitForallFacesCells(const ForallMeshStmt &S);
+  void EmitForallEdgesOrFacesCellsLowD(const ForallMeshStmt &S,
+                                       llvm::Value* OuterIndex);
+
+  void EmitForallEdgesVertices(const ForallMeshStmt &S);
+  void EmitForallFacesVertices(const ForallMeshStmt &S);
+  void EmitForallEdgesOrFacesVerticesLowD(const ForallMeshStmt &S,
+                                          llvm::Value* OuterIndex);
+
   void EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r);
   llvm::BasicBlock *EmitMarkerBlock(const std::string name);
   void ExtractRegion(llvm::BasicBlock *entry, llvm::BasicBlock *exit, const std::string name);

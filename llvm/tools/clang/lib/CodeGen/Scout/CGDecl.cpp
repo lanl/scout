@@ -189,6 +189,160 @@ void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D
   Builder.CreateStore(llvm::ConstantInt::get(Int32Ty, rank), Rank);
 }
 
+void CodeGenFunction::GetMeshDimensions(const MeshType* MT,
+                                        SmallVector<llvm::Value*, 3>& DS){
+  MeshType::MeshDimensions dims = MT->dimensions();
+  unsigned int rank = dims.size();
+
+  // Need to make this different for variable dims as
+  // we want to evaluate each dim and if its a variable
+  // then we want to make an expression multiplying
+  // the dims to get numElts as a variable.
+  for(unsigned i = 0; i < rank; ++i) {
+    llvm::Value* intValue;
+    Expr* E = dims[i];
+
+    if (E->isGLValue()) {
+      // Emit the expression as an lvalue.
+      LValue LV = EmitLValue(E);
+
+      // We have to load the lvalue.
+      RValue RV = EmitLoadOfLValue(LV, E->getExprLoc() );
+      intValue  = RV.getScalarVal();
+
+    } else if (E->isConstantInitializer(getContext(), false)) {
+
+      bool evalret;
+      llvm::APSInt dimAPValue;
+      evalret = E->EvaluateAsInt(dimAPValue, getContext());
+      // SC_TODO: check the evalret
+      (void)evalret; //supress warning
+
+      intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
+    } else {
+      // it is an Rvalue
+      RValue RV = EmitAnyExpr(E);
+      intValue = RV.getScalarVal();
+    }
+
+    intValue = Builder.CreateZExt(intValue, Int64Ty);
+
+    DS.push_back(intValue);
+  }
+}
+
+void
+CodeGenFunction::GetNumMeshItems(SmallVector<llvm::Value*, 3>& Dimensions,
+                                 llvm::Value** numCells,
+                                 llvm::Value** numVertices,
+                                 llvm::Value** numEdges,
+                                 llvm::Value** numFaces){
+  size_t rank = Dimensions.size();
+
+  llvm::Value* One = Builder.getInt64(1);
+
+  llvm::Value* w1 = 0;
+  llvm::Value* h1 = 0;
+  llvm::Value* d1 = 0;
+
+  if(numCells){
+    switch(rank){
+    case 1:
+      *numCells = Dimensions[0];
+      break;
+    case 2:
+    case 3:
+      llvm::Value* wh = Builder.CreateMul(Dimensions[0], Dimensions[1]);
+      if(rank == 2){
+        *numCells = wh;
+        break;
+      }
+      *numCells = Builder.CreateMul(wh, Dimensions[2]);
+      break;
+    }
+  }
+
+  if(numVertices){
+    w1 = w1 ? w1 : Builder.CreateAdd(Dimensions[0], One);
+    if(rank > 1){
+      h1 = h1 ? h1 : Builder.CreateAdd(Dimensions[1], One);
+      llvm::Value* wh1 = Builder.CreateMul(w1, h1);
+      if(rank > 2){
+        d1 = d1 ? d1 : Builder.CreateAdd(Dimensions[2], One);
+        *numVertices = Builder.CreateMul(wh1, d1);
+      }
+      else{
+        *numVertices = wh1;
+      }
+    }
+    else{
+      *numVertices = w1;
+    }
+  }
+
+  if(numEdges){
+    switch(rank){
+    case 1:
+      *numEdges = Dimensions[0];
+      break;
+    case 2:
+    case 3:{
+      w1 = w1 ? w1 : Builder.CreateAdd(Dimensions[0], One);
+      h1 = h1 ? h1 : Builder.CreateAdd(Dimensions[1], One);
+      llvm::Value* v3 = Builder.CreateMul(w1, Dimensions[1]);
+      llvm::Value* v4 = Builder.CreateMul(h1, Dimensions[0]);
+      llvm::Value* v5 = Builder.CreateAdd(v3, v4);
+
+      if(rank == 2){
+        *numEdges = v5;
+        break;
+      }
+
+      d1 = d1 ? d1 : Builder.CreateAdd(Dimensions[2], One);
+      llvm::Value* v7 = Builder.CreateMul(v5, d1);
+      llvm::Value* v8 =
+          Builder.CreateMul(Builder.CreateMul(w1, h1), Dimensions[2]);
+      *numEdges = Builder.CreateAdd(v7, v8);
+      break;
+    }
+    }
+  }
+
+  if(numFaces){
+    switch(rank){
+    case 1:
+      *numFaces = Dimensions[0];
+      break;
+    case 2:{
+      w1 = w1 ? w1 : Builder.CreateAdd(Dimensions[0], One);
+      h1 = h1 ? h1 : Builder.CreateAdd(Dimensions[1], One);
+      llvm::Value* v3 = Builder.CreateMul(w1, Dimensions[1]);
+      llvm::Value* v4 = Builder.CreateMul(h1, Dimensions[0]);
+      *numFaces = Builder.CreateAdd(v3, v4);
+      break;
+    }
+    case 3:{
+      w1 = w1 ? w1 : Builder.CreateAdd(Dimensions[0], One);
+      h1 = h1 ? h1 : Builder.CreateAdd(Dimensions[1], One);
+      d1 = d1 ? d1 : Builder.CreateAdd(Dimensions[2], One);
+
+      llvm::Value* v1 =
+          Builder.CreateMul(w1, Builder.CreateMul(Dimensions[1],
+                                                  Dimensions[2]));
+      llvm::Value* v2 =
+          Builder.CreateMul(h1, Builder.CreateMul(Dimensions[0],
+                                                  Dimensions[2]));
+      llvm::Value* v3 =
+          Builder.CreateMul(d1, Builder.CreateMul(Dimensions[0],
+                                                  Dimensions[1]));
+
+      *numFaces = Builder.CreateAdd(v1, Builder.CreateAdd(v2, v3));
+      break;
+    }
+    }
+  }
+}
+
 void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
                                              const VarDecl &D) {
   QualType T = D.getType();
@@ -209,47 +363,10 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     llvm::StringRef MeshName  = MT->getName();
     MeshDecl* MD = MT->getDecl();
 
-    MeshType::MeshDimensions dims;
-    dims = cast<MeshType>(T.getTypePtr())->dimensions();
-    unsigned int rank = dims.size();
-
     SmallVector<llvm::Value*, 3> Dimensions;
 
-    // Need to make this different for variable dims as
-    // we want to evaluate each dim and if its a variable
-    // then we want to make an expression multiplying
-    // the dims to get numElts as a variable.
-    for(unsigned i = 0; i < rank; ++i) {
-      llvm::Value* intValue;
-      Expr* E = dims[i];
-
-      if (E->isGLValue()) {
-        // Emit the expression as an lvalue.
-        LValue LV = EmitLValue(E);
-
-        // We have to load the lvalue.
-        RValue RV = EmitLoadOfLValue(LV, E->getExprLoc() );
-        intValue  = RV.getScalarVal();
-
-      } else if (E->isConstantInitializer(getContext(), false)) {
-
-        bool evalret;
-        llvm::APSInt dimAPValue;
-        evalret = E->EvaluateAsInt(dimAPValue, getContext());
-        // SC_TODO: check the evalret
-        (void)evalret; //supress warning
-
-        intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
-      } else {
-        // it is an Rvalue
-        RValue RV = EmitAnyExpr(E);
-        intValue = RV.getScalarVal();
-      }
-
-      intValue = Builder.CreateZExt(intValue, Int64Ty);
-
-      Dimensions.push_back(intValue);
-    }
+    GetMeshDimensions(MT, Dimensions);
+    //unsigned int rank = Dimensions.size();
 
     bool hasCells = false;
     bool hasVertices = false;
@@ -277,108 +394,11 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     llvm::Value* numEdges = 0;
     llvm::Value* numFaces = 0;
 
-    llvm::Value* One = Builder.getInt64(1);
-
-    llvm::Value* w1 = 0;
-    llvm::Value* h1 = 0;
-    llvm::Value* d1 = 0;
-
-    if(hasCells){
-      switch(rank){
-      case 1:
-        numCells = Dimensions[0];
-        break;
-      case 2:
-      case 3:
-        llvm::Value* wh = Builder.CreateMul(Dimensions[0], Dimensions[1]);
-        if(rank == 2){
-          numCells = wh;
-          break;
-        }
-        numCells = Builder.CreateMul(wh, Dimensions[2]);
-        break;
-      }
-    }
-
-    if(hasVertices){
-      w1 = w1 ? w1 : Builder.CreateAdd(Dimensions[0], One);
-      if(rank > 1){
-        h1 = h1 ? h1 : Builder.CreateAdd(Dimensions[1], One);
-        llvm::Value* wh1 = Builder.CreateMul(w1, h1);
-        if(rank > 2){
-          d1 = d1 ? d1 : Builder.CreateAdd(Dimensions[2], One);
-          numVertices = Builder.CreateMul(wh1, d1);
-        }
-        else{
-          numVertices = wh1;
-        }
-      }
-      else{
-        numVertices = w1;
-      }
-    }
-
-    if(hasEdges){
-      switch(rank){
-      case 1:
-        numEdges = Dimensions[0];
-        break;
-      case 2:
-      case 3:{
-        w1 = w1 ? w1 : Builder.CreateAdd(Dimensions[0], One);
-        h1 = h1 ? h1 : Builder.CreateAdd(Dimensions[1], One);
-        llvm::Value* v3 = Builder.CreateMul(w1, Dimensions[1]);
-        llvm::Value* v4 = Builder.CreateMul(h1, Dimensions[0]);
-        llvm::Value* v5 = Builder.CreateAdd(v3, v4);
-
-        if(rank == 2){
-          numEdges = v5;
-          break;
-        }
-
-        d1 = d1 ? d1 : Builder.CreateAdd(Dimensions[2], One);
-        llvm::Value* v7 = Builder.CreateMul(v5, d1);
-        llvm::Value* v8 =
-            Builder.CreateMul(Builder.CreateMul(w1, h1), Dimensions[2]);
-        numEdges = Builder.CreateAdd(v7, v8);
-        break;
-      }
-      }
-    }
-
-    if(hasFaces){
-      switch(rank){
-      case 1:
-        numFaces = Dimensions[0];
-        break;
-      case 2:{
-        w1 = w1 ? w1 : Builder.CreateAdd(Dimensions[0], One);
-        h1 = h1 ? h1 : Builder.CreateAdd(Dimensions[1], One);
-        llvm::Value* v3 = Builder.CreateMul(w1, Dimensions[1]);
-        llvm::Value* v4 = Builder.CreateMul(h1, Dimensions[0]);
-        numFaces = Builder.CreateAdd(v3, v4);
-        break;
-      }
-      case 3:{
-        w1 = w1 ? w1 : Builder.CreateAdd(Dimensions[0], One);
-        h1 = h1 ? h1 : Builder.CreateAdd(Dimensions[1], One);
-        d1 = d1 ? d1 : Builder.CreateAdd(Dimensions[2], One);
-
-        llvm::Value* v1 =
-            Builder.CreateMul(w1, Builder.CreateMul(Dimensions[1],
-                                                    Dimensions[2]));
-        llvm::Value* v2 =
-            Builder.CreateMul(h1, Builder.CreateMul(Dimensions[0],
-                                                    Dimensions[2]));
-        llvm::Value* v3 =
-            Builder.CreateMul(d1, Builder.CreateMul(Dimensions[0],
-                                                    Dimensions[1]));
-
-        numFaces = Builder.CreateAdd(v1, Builder.CreateAdd(v2, v3));
-        break;
-      }
-      }
-    }
+    GetNumMeshItems(Dimensions,
+                    hasCells ? &numCells : 0,
+                    hasVertices ? &numVertices : 0,
+                    hasEdges ? &numEdges : 0,
+                    hasFaces ? &numFaces : 0);
 
     // need access to these field decls so we
     // can determine if we will dynamically allocate
