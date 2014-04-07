@@ -68,6 +68,7 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Type.h"
 #include "clang/AST/Type.h"
+#include "Scout/CGScoutRuntime.h"
 #include <stdio.h>
 #include <cassert>
 
@@ -455,7 +456,10 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
       fieldTotalBytes = Builder.CreateNUWMul(numElements, fieldTyBytesValue);
 
       // Dynamically allocate memory.
-      llvm::Value *val = CreateMemAllocForValue(fieldTotalBytes);
+      llvm::SmallVector< llvm::Value *, 3 > Args;
+      Args.push_back(fieldTotalBytes);
+      llvm::Function *MallocFunc = CGM.getScoutRuntime().MemAllocFunction();
+      llvm::Value *val = Builder.CreateCall(MallocFunc, ArrayRef<llvm::Value *>(Args));
       val = Builder.CreateBitCast(val, structTy->getContainedType(i));
 
       sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), MeshFieldName.str().c_str());

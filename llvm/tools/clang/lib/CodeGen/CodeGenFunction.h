@@ -2010,9 +2010,6 @@ public:
   bool EmitScoutBuiltinExpr(const FunctionDecl *FD,
                          unsigned BuiltinID, const CallExpr *E, RValue *Rv);
 
-  llvm::Value *CreateMemAlloc(uint64_t numBytes);
-  llvm::Value *CreateMemAllocForValue(llvm::Value* numBytesValue);
-
   void DEBUG_OUT(const char *s) {
     llvm::outs() << "Attempting " << s << ".\n";
   }

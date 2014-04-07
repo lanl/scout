@@ -73,6 +73,7 @@ namespace CodeGen {
     CGScoutRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM) {}
     virtual ~CGScoutRuntime();
     llvm::Function *ModuleInitFunction();
+    llvm::Function *MemAllocFunction();
     llvm::Function *RenderallUniformBeginFunction();
     llvm::Function *RenderallEndFunction();
     llvm::Value    *RenderallUniformColorsGlobal(CodeGenFunction &CGF);

@@ -65,8 +65,6 @@ add_clang_library(clangCodeGen
   ModuleBuilder.cpp
   TargetInfo.cpp
   # +===== Scout ============================================================+
-  #Scout/CGBlocks.cpp
-  Scout/MemAlloc.cpp
   Scout/CGDebugInfo.cpp
   Scout/CGDecl.cpp
   Scout/CGExpr.cpp

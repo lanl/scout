@@ -90,7 +90,7 @@ llvm::Function *CGScoutRuntime::ModuleInitFunction() {
   return scrtInit;
 }
 
-// build a function call to a scout runtime function t
+// build a function call to a scout runtime function w/ no arguments
 // SC_TODO: could we use CreateRuntimeFunction? or GetOrCreateLLVMFunction?
 llvm::Function *CGScoutRuntime::ScoutRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params ) {
 
@@ -104,6 +104,22 @@ llvm::Function *CGScoutRuntime::ScoutRuntimeFunction(std::string funcName, std::
         llvm::Function::ExternalLinkage,
         funcName,
         &CGM.getModule());
+  }
+  return Func;
+}
+
+// function call to runtime malloc
+llvm::Function *CGScoutRuntime::MemAllocFunction() {
+  std::string funcName = "__scrt_malloc";
+  llvm::Function *Func = CGM.getModule().getFunction(funcName);
+
+  if(!Func) {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(CGM.Int8PtrTy,
+        CGM.Int64Ty, /*isVarArg=*/false);
+    Func = llvm::Function::Create(FTy,
+       llvm::GlobalValue::ExternalLinkage,
+       funcName,
+       &CGM.getModule());
   }
   return Func;
 }
