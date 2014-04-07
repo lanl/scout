@@ -837,7 +837,7 @@ CodeGenFunction::EmitForallEdgesOrFacesVerticesLowD(const ForallMeshStmt &S,
     llvm::Value* w1h = Builder.CreateMul(w1, h, "w1h");
 
     llvm::Value* k = Builder.CreateLoad(OuterIndex, "k");
-
+    
     llvm::Value* c1 = Builder.CreateICmpUGE(k, w1h, "c1");
     llvm::Value* km = Builder.CreateSub(k, w1h, "km");
 
@@ -848,7 +848,7 @@ CodeGenFunction::EmitForallEdgesOrFacesVerticesLowD(const ForallMeshStmt &S,
     llvm::Value* y1 =
         Builder.CreateSelect(c1, Builder.CreateUDiv(km, w),
                              Builder.CreateUDiv(k, w1), "y1");
-
+    
     llvm::Value* vertexIndex =
         Builder.CreateAdd(Builder.CreateMul(y1, w1), x1, "vertexIndex.1");
 
@@ -921,7 +921,8 @@ void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
   EdgeIndex = 0;
 
   llvm::Value* k = Builder.CreateLoad(InductionVar[3], "forall.edges_idx");
-  Builder.CreateStore(Builder.CreateAdd(k, One), InductionVar[3]);
+  k = Builder.CreateAdd(k, One);
+  Builder.CreateStore(k, InductionVar[3]);
 
   llvm::Value* Cond = Builder.CreateICmpSLT(k, numEdges, "cond");
 
@@ -958,7 +959,8 @@ void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
   FaceIndex = 0;
 
   llvm::Value* k = Builder.CreateLoad(InductionVar[3], "forall.faces_idx");
-  Builder.CreateStore(Builder.CreateAdd(k, One), InductionVar[3]);
+  k = Builder.CreateAdd(k, One);
+  Builder.CreateStore(k, InductionVar[3]);
 
   llvm::Value* Cond = Builder.CreateICmpSLT(k, numFaces, "cond");
 
