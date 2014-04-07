@@ -53,7 +53,6 @@ add_clang_library(clangSema
   Scout/SemaDecl.cpp
   Scout/SemaExpr.cpp
   Scout/SemaExprMember.cpp
-  Scout/SemaLookup.cpp
   Scout/SemaOverload.cpp
   Scout/SemaStmt.cpp
   # +========================================================================+

@@ -62,7 +62,7 @@ void StmtPrinter::VisitForallMeshStmt(ForallMeshStmt *Node) {
   else if (Node->isOverEdges())
     OS << "edges ";
   else if (Node->isOverVertices())
-    OS << "verticies ";
+    OS << "vertices ";
   else if (Node->isOverFaces())
     OS << "faces ";
   else
@@ -96,7 +96,7 @@ void StmtPrinter::VisitRenderallMeshStmt(RenderallMeshStmt *Node) {
   else if (Node->isOverEdges())
     OS << "edges ";
   else if (Node->isOverVertices())
-    OS << "verticies ";
+    OS << "vertices ";
   else if (Node->isOverFaces())
     OS << "faces ";
   else
@@ -121,14 +121,25 @@ void StmtPrinter::VisitRenderallMeshStmt(RenderallMeshStmt *Node) {
 }
 
 void StmtPrinter::VisitForallArrayStmt(ForallArrayStmt *Node) {
-  //SC_TODO
-}
+  size_t dims = Node->getDims();
 
-std::string Stmt::toCPPCode(ASTContext& context) {
-  std::string str;
-  llvm::raw_string_ostream ostr(str);
-  printPretty(ostr, 0, PrintingPolicy(context.getLangOpts()));
-  return ostr.str();
+  for (size_t i = 0; i < dims; i++) {
+    OS << "for " << Node->getInductionVarInfo(i)->getName() << " in [";
+    PrintExpr(Node->getStart(i));
+    OS << ":";
+    PrintExpr(Node->getEnd(i));
+    OS << ":";
+    PrintExpr(Node->getStride(i));
+    OS << "]";
+  }
+  if (CompoundStmt *CS = dyn_cast<CompoundStmt>(Node->getBody())) {
+    PrintRawCompoundStmt(CS);
+    OS << "\n";
+  } else {
+    OS << "\n";
+    PrintStmt(Node->getBody());
+  }
+
 }
 
 

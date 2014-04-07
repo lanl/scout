@@ -2476,10 +2476,6 @@ private:
   // Convert a token into a string representation
   std::string TokToStr(const Token& tok);
 
-  std::string ToCPPCode(Stmt* stmt){
-    return stmt->toCPPCode(Actions.Context);
-  }
-
   typedef std::vector<StmtVector*> StmtVectorVec;
 
   //StmtVectorVec StmtsStack;
