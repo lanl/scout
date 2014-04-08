@@ -584,6 +584,7 @@ bool Sema::MergeCXXFunctionDecl(FunctionDecl *New, FunctionDecl *Old,
     }
   }
 
+  const FunctionDecl *Def;
   // C++11 [dcl.constexpr]p1: If any declaration of a function or function
   // template has a constexpr specifier then all its declarations shall
   // contain the constexpr specifier.
@@ -591,6 +592,13 @@ bool Sema::MergeCXXFunctionDecl(FunctionDecl *New, FunctionDecl *Old,
     Diag(New->getLocation(), diag::err_constexpr_redecl_mismatch)
       << New << New->isConstexpr();
     Diag(Old->getLocation(), diag::note_previous_declaration);
+    Invalid = true;
+  } else if (!Old->isInlined() && New->isInlined() && Old->isDefined(Def)) {
+    // C++11 [dcl.fcn.spec]p4:
+    //   If the definition of a function appears in a translation unit before its
+    //   first declaration as inline, the program is ill-formed.
+    Diag(New->getLocation(), diag::err_inline_decl_follows_def) << New;
+    Diag(Def->getLocation(), diag::note_previous_definition);
     Invalid = true;
   }
 
@@ -4659,15 +4667,6 @@ computeImplicitExceptionSpec(Sema &S, SourceLocation Loc, CXXMethodDecl *MD) {
   return S.ComputeInheritingCtorExceptionSpec(cast<CXXConstructorDecl>(MD));
 }
 
-static void
-updateExceptionSpec(Sema &S, FunctionDecl *FD, const FunctionProtoType *FPT,
-                    const Sema::ImplicitExceptionSpecification &ExceptSpec) {
-  FunctionProtoType::ExtProtoInfo EPI = FPT->getExtProtoInfo();
-  ExceptSpec.getEPI(EPI);
-  FD->setType(S.Context.getFunctionType(FPT->getReturnType(),
-                                        FPT->getParamTypes(), EPI));
-}
-
 static FunctionProtoType::ExtProtoInfo getImplicitMethodEPI(Sema &S,
                                                             CXXMethodDecl *MD) {
   FunctionProtoType::ExtProtoInfo EPI;
@@ -4692,8 +4691,11 @@ void Sema::EvaluateImplicitExceptionSpec(SourceLocation Loc, CXXMethodDecl *MD) 
   ImplicitExceptionSpecification ExceptSpec =
       computeImplicitExceptionSpec(*this, Loc, MD);
 
+  FunctionProtoType::ExtProtoInfo EPI;
+  ExceptSpec.getEPI(EPI);
+
   // Update the type of the special member to use it.
-  updateExceptionSpec(*this, MD, FPT, ExceptSpec);
+  UpdateExceptionSpec(MD, EPI);
 
   // A user-provided destructor can be defined outside the class. When that
   // happens, be sure to update the exception specification on both
@@ -4701,8 +4703,7 @@ void Sema::EvaluateImplicitExceptionSpec(SourceLocation Loc, CXXMethodDecl *MD) 
   const FunctionProtoType *CanonicalFPT =
     MD->getCanonicalDecl()->getType()->castAs<FunctionProtoType>();
   if (CanonicalFPT->getExceptionSpecType() == EST_Unevaluated)
-    updateExceptionSpec(*this, MD->getCanonicalDecl(),
-                        CanonicalFPT, ExceptSpec);
+    UpdateExceptionSpec(MD->getCanonicalDecl(), EPI);
 }
 
 void Sema::CheckExplicitlyDefaultedSpecialMember(CXXMethodDecl *MD) {
@@ -7392,7 +7393,7 @@ NamedDecl *Sema::BuildUsingDeclaration(Scope *S, AccessSpecifier AS,
     return 0;
 
   // Check for bad qualifiers.
-  if (CheckUsingDeclQualifier(UsingLoc, SS, IdentLoc))
+  if (CheckUsingDeclQualifier(UsingLoc, SS, NameInfo, IdentLoc))
     return 0;
 
   DeclContext *LookupContext = computeDeclContext(SS);
@@ -7618,6 +7619,7 @@ bool Sema::CheckUsingDeclRedeclaration(SourceLocation UsingLoc,
 /// scope.  If an error is found, diagnoses it and returns true.
 bool Sema::CheckUsingDeclQualifier(SourceLocation UsingLoc,
                                    const CXXScopeSpec &SS,
+                                   const DeclarationNameInfo &NameInfo,
                                    SourceLocation NameLoc) {
   DeclContext *NamedContext = computeDeclContext(SS);
 
@@ -7629,8 +7631,56 @@ bool Sema::CheckUsingDeclQualifier(SourceLocation UsingLoc,
     // If we weren't able to compute a valid scope, it must be a
     // dependent class scope.
     if (!NamedContext || NamedContext->isRecord()) {
+      auto *RD = dyn_cast<CXXRecordDecl>(NamedContext);
+      if (RD && RequireCompleteDeclContext(const_cast<CXXScopeSpec&>(SS), RD))
+        RD = 0;
+
       Diag(NameLoc, diag::err_using_decl_can_not_refer_to_class_member)
         << SS.getRange();
+
+      // If we have a complete, non-dependent source type, try to suggest a
+      // way to get the same effect.
+      if (!RD)
+        return true;
+
+      // Find what this using-declaration was referring to.
+      LookupResult R(*this, NameInfo, LookupOrdinaryName);
+      R.setHideTags(false);
+      R.suppressDiagnostics();
+      LookupQualifiedName(R, RD);
+
+      if (R.getAsSingle<TypeDecl>()) {
+        if (getLangOpts().CPlusPlus11) {
+          // Convert 'using X::Y;' to 'using Y = X::Y;'.
+          Diag(SS.getBeginLoc(), diag::note_using_decl_class_member_workaround)
+            << 0 // alias declaration
+            << FixItHint::CreateInsertion(SS.getBeginLoc(),
+                                          NameInfo.getName().getAsString() +
+                                              " = ");
+        } else {
+          // Convert 'using X::Y;' to 'typedef X::Y Y;'.
+          SourceLocation InsertLoc =
+              PP.getLocForEndOfToken(NameInfo.getLocEnd());
+          Diag(InsertLoc, diag::note_using_decl_class_member_workaround)
+            << 1 // typedef declaration
+            << FixItHint::CreateReplacement(UsingLoc, "typedef")
+            << FixItHint::CreateInsertion(
+                   InsertLoc, " " + NameInfo.getName().getAsString());
+        }
+      } else if (R.getAsSingle<VarDecl>()) {
+        // Don't provide a fixit outside C++11 mode; we don't want to suggest
+        // repeating the type of the static data member here.
+        FixItHint FixIt;
+        if (getLangOpts().CPlusPlus11) {
+          // Convert 'using X::Y;' to 'auto &Y = X::Y;'.
+          FixIt = FixItHint::CreateReplacement(
+              UsingLoc, "auto &" + NameInfo.getName().getAsString() + " = ");
+        }
+
+        Diag(UsingLoc, diag::note_using_decl_class_member_workaround)
+          << 2 // reference declaration
+          << FixIt;
+      }
       return true;
     }
 
@@ -10470,6 +10520,7 @@ void Sema::FinalizeVarWithDestructor(VarDecl *VD, const RecordType *Record) {
                         << VD->getType());
   DiagnoseUseOfDecl(Destructor, VD->getLocation());
 
+  if (Destructor->isTrivial()) return;
   if (!VD->hasGlobalStorage()) return;
 
   // Emit warning for non-trivial dtor in global scope (a real global,

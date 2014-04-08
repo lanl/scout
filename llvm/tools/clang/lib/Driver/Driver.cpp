@@ -352,9 +352,10 @@ Compilation *Driver::BuildCompilation(ArrayRef<const char *> ArgList) {
   // FIXME: DefaultTargetTriple is used by the target-prefixed calls to as/ld
   // and getToolChain is const.
   if (IsCLMode()) {
-    // clang-cl targets Win32.
+    // clang-cl targets MSVC-style Win32.
     llvm::Triple T(DefaultTargetTriple);
-    T.setOSName(llvm::Triple::getOSTypeName(llvm::Triple::Win32));
+    T.setOS(llvm::Triple::Win32);
+    T.setEnvironment(llvm::Triple::MSVC);
     DefaultTargetTriple = T.str();
   }
   if (const Arg *A = Args->getLastArg(options::OPT_target))
@@ -1979,10 +1980,29 @@ const ToolChain &Driver::getToolChain(const ArgList &Args,
       TC = new toolchains::Solaris(*this, Target, Args);
       break;
     case llvm::Triple::Win32:
-      TC = new toolchains::Windows(*this, Target, Args);
+      switch (Target.getEnvironment()) {
+      default:
+        if (Target.isOSBinFormatELF())
+          TC = new toolchains::Generic_ELF(*this, Target, Args);
+        else if (Target.isOSBinFormatMachO())
+          TC = new toolchains::MachO(*this, Target, Args);
+        else
+          TC = new toolchains::Generic_GCC(*this, Target, Args);
+        break;
+      case llvm::Triple::GNU:
+        // FIXME: We need a MinGW toolchain.  Use the default Generic_GCC
+        // toolchain for now as the default case would below otherwise.
+        if (Target.isOSBinFormatELF())
+          TC = new toolchains::Generic_ELF(*this, Target, Args);
+        else
+          TC = new toolchains::Generic_GCC(*this, Target, Args);
+        break;
+      case llvm::Triple::MSVC:
+      case llvm::Triple::UnknownEnvironment:
+        TC = new toolchains::Windows(*this, Target, Args);
+        break;
+      }
       break;
-    case llvm::Triple::MinGW32:
-      // FIXME: We need a MinGW toolchain. Fallthrough for now.
     default:
       // TCE is an OSless target
       if (Target.getArchName() == "tce") {
@@ -2079,4 +2099,8 @@ std::pair<unsigned, unsigned> Driver::getIncludeExcludeOptionFlagMasks() const {
   }
 
   return std::make_pair(IncludedFlagsBitmask, ExcludedFlagsBitmask);
+}
+
+bool clang::driver::isOptimizationLevelFast(const llvm::opt::ArgList &Args) {
+  return Args.hasFlag(options::OPT_Ofast, options::OPT_O_Group, false);
 }

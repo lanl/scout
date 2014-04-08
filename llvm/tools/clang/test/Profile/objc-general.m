@@ -29,9 +29,9 @@ struct NSFastEnumerationState;
 @end;
 #endif
 
-// PGOGEN: @[[FRC:"__llvm_pgo_counters_\+\[A foreach:\]"]] = internal global [2 x i64] zeroinitializer
-// PGOGEN: @[[BLC:"__llvm_pgo_counters___13\+\[A foreach:\]_block_invoke"]] = internal global [2 x i64] zeroinitializer
-// PGOGEN: @[[MAC:__llvm_pgo_counters_main]] = global [1 x i64] zeroinitializer
+// PGOGEN: @[[FRC:"__llvm_profile_counters_\+\[A foreach:\]"]] = internal global [2 x i64] zeroinitializer
+// PGOGEN: @[[BLC:"__llvm_profile_counters___13\+\[A foreach:\]_block_invoke"]] = internal global [2 x i64] zeroinitializer
+// PGOGEN: @[[MAC:__llvm_profile_counters_main]] = global [1 x i64] zeroinitializer
 
 @interface A : NSObject
 + (void)foreach: (NSArray *)array;
@@ -45,7 +45,8 @@ struct NSFastEnumerationState;
 {
   __block id result;
   // PGOGEN: store {{.*}} @[[FRC]], i64 0, i64 1
-  // FIXME: We don't emit branch weights for this yet.
+  // PGOUSE: br {{.*}} !prof ![[FR1:[0-9]+]]
+  // PGOUSE: br {{.*}} !prof ![[FR2:[0-9]+]]
   for (id x in array) {
     // PGOGEN: define {{.*}}_block_invoke
     // PGOUSE: define {{.*}}_block_invoke
@@ -60,6 +61,8 @@ struct NSFastEnumerationState;
 }
 @end
 
+// PGOUSE-DAG: ![[FR1]] = metadata !{metadata !"branch_weights", i32 2, i32 3}
+// PGOUSE-DAG: ![[FR2]] = metadata !{metadata !"branch_weights", i32 3, i32 2}
 // PGOUSE-DAG: ![[BL1]] = metadata !{metadata !"branch_weights", i32 2, i32 2}
 
 int main(int argc, const char *argv[]) {

@@ -274,6 +274,11 @@ void OMPClauseProfiler::VisitOMPNumThreadsClause(const OMPNumThreadsClause *C) {
     Profiler->VisitStmt(C->getNumThreads());
 }
 
+void OMPClauseProfiler::VisitOMPSafelenClause(const OMPSafelenClause *C) {
+  if (C->getSafelen())
+    Profiler->VisitStmt(C->getSafelen());
+}
+
 void OMPClauseProfiler::VisitOMPDefaultClause(const OMPDefaultClause *C) { }
 
 template<typename T>
@@ -290,6 +295,9 @@ void OMPClauseProfiler::VisitOMPFirstprivateClause(
   VisitOMPClauseList(C);
 }
 void OMPClauseProfiler::VisitOMPSharedClause(const OMPSharedClause *C) {
+  VisitOMPClauseList(C);
+}
+void OMPClauseProfiler::VisitOMPCopyinClause(const OMPCopyinClause *C) {
   VisitOMPClauseList(C);
 }
 }

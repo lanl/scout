@@ -53,26 +53,22 @@ public:
 class CodeGenPGO {
 private:
   CodeGenModule &CGM;
-  std::string *PrefixedFuncName;
+  std::unique_ptr<std::string> PrefixedFuncName;
   StringRef RawFuncName;
-  llvm::GlobalValue::LinkageTypes FuncLinkage;
+  llvm::GlobalValue::LinkageTypes VarLinkage;
 
   unsigned NumRegionCounters;
   uint64_t FunctionHash;
   llvm::GlobalVariable *RegionCounters;
-  llvm::DenseMap<const Stmt*, unsigned> *RegionCounterMap;
-  llvm::DenseMap<const Stmt*, uint64_t> *StmtCountMap;
-  std::vector<uint64_t> *RegionCounts;
+  std::unique_ptr<llvm::DenseMap<const Stmt *, unsigned>> RegionCounterMap;
+  std::unique_ptr<llvm::DenseMap<const Stmt *, uint64_t>> StmtCountMap;
+  std::unique_ptr<std::vector<uint64_t>> RegionCounts;
   uint64_t CurrentRegionCount;
 
 public:
   CodeGenPGO(CodeGenModule &CGM)
-      : CGM(CGM), PrefixedFuncName(0), NumRegionCounters(0), FunctionHash(0),
-        RegionCounters(0), RegionCounterMap(0), StmtCountMap(0),
-        RegionCounts(0), CurrentRegionCount(0) {}
-  ~CodeGenPGO() {
-    if (PrefixedFuncName) delete PrefixedFuncName;
-  }
+      : CGM(CGM), NumRegionCounters(0), FunctionHash(0), RegionCounters(0),
+        CurrentRegionCount(0) {}
 
   /// Whether or not we have PGO region data for the current function. This is
   /// false both when we have no data at all and when our data has been
@@ -83,7 +79,7 @@ public:
   /// For functions with local linkage, this includes the main file name.
   StringRef getFuncName() const { return StringRef(*PrefixedFuncName); }
   std::string getFuncVarName(StringRef VarName) const {
-    return ("__llvm_pgo_" + VarName + "_" + RawFuncName).str();
+    return ("__llvm_profile_" + VarName + "_" + RawFuncName).str();
   }
 
   /// Return the counter value of the current region.

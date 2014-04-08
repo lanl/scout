@@ -317,8 +317,7 @@ void LookupResult::configure() {
 }
 
 bool LookupResult::sanity() const {
-  // Note that this function is never called by NDEBUG builds. See
-  // LookupResult::sanity().
+  // This function is never called by NDEBUG builds.
   assert(ResultKind != NotFound || Decls.size() == 0);
   assert(ResultKind != Found || Decls.size() == 1);
   assert(ResultKind != FoundOverloaded || Decls.size() > 1 ||
@@ -4264,11 +4263,8 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
         KnownNamespaces[ExternalKnownNamespaces[I]] = true;
     }
 
-    for (llvm::MapVector<NamespaceDecl*, bool>::iterator
-           KNI = KnownNamespaces.begin(),
-           KNIEnd = KnownNamespaces.end();
-         KNI != KNIEnd; ++KNI)
-      Namespaces.AddNameSpecifier(KNI->first);
+    for (auto KNPair : KnownNamespaces)
+      Namespaces.AddNameSpecifier(KNPair.first);
 
     bool SSIsTemplate = false;
     if (NestedNameSpecifier *NNS =
@@ -4299,13 +4295,17 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
                                               IEnd = DI->second.end();
          I != IEnd; /* Increment in loop. */) {
       // If we only want nested name specifier corrections, ignore potential
-      // corrections that have a different base identifier from the typo.
-      if (AllowOnlyNNSChanges &&
-          I->second.front().getCorrectionAsIdentifierInfo() != Typo) {
-        TypoCorrectionConsumer::result_iterator Prev = I;
-        ++I;
-        DI->second.erase(Prev);
-        continue;
+      // corrections that have a different base identifier from the typo or
+      // which have a normalized edit distance longer than the typo itself.
+      if (AllowOnlyNNSChanges) {
+        TypoCorrection &TC = I->second.front();
+        if (TC.getCorrectionAsIdentifierInfo() != Typo ||
+            TC.getEditDistance(true) > TypoLen) {
+          TypoCorrectionConsumer::result_iterator Prev = I;
+          ++I;
+          DI->second.erase(Prev);
+          continue;
+        }
       }
 
       // If the item already has been looked up or is a keyword, keep it.
@@ -4378,10 +4378,8 @@ retry_lookup:
       case LookupResult::FoundOverloaded: {
         TypoCorrectionConsumer::result_iterator Prev = I;
         // Store all of the Decls for overloaded symbols
-        for (LookupResult::iterator TRD = TmpRes.begin(),
-                                 TRDEnd = TmpRes.end();
-             TRD != TRDEnd; ++TRD)
-          Candidate.addCorrectionDecl(*TRD);
+        for (auto *TRD : TmpRes)
+          Candidate.addCorrectionDecl(TRD);
         ++I;
         if (!isCandidateViable(CCC, Candidate)) {
           QualifiedResults.push_back(Candidate);
@@ -4413,15 +4411,10 @@ retry_lookup:
     // Only perform the qualified lookups for C++
     if (SearchNamespaces) {
       TmpRes.suppressDiagnostics();
-      for (SmallVector<TypoCorrection,
-                       16>::iterator QRI = QualifiedResults.begin(),
-                                  QRIEnd = QualifiedResults.end();
-           QRI != QRIEnd; ++QRI) {
-        for (NamespaceSpecifierSet::iterator NI = Namespaces.begin(),
-                                          NIEnd = Namespaces.end();
-             NI != NIEnd; ++NI) {
-          DeclContext *Ctx = NI->DeclCtx;
-          const Type *NSType = NI->NameSpecifier->getAsType();
+      for (auto QR : QualifiedResults) {
+        for (auto NSI : Namespaces) {
+          DeclContext *Ctx = NSI.DeclCtx;
+          const Type *NSType = NSI.NameSpecifier->getAsType();
 
           // If the current NestedNameSpecifier refers to a class and the
           // current correction candidate is the name of that class, then skip
@@ -4429,26 +4422,26 @@ retry_lookup:
           // is an appropriate correction.
           if (CXXRecordDecl *NSDecl =
                   NSType ? NSType->getAsCXXRecordDecl() : 0) {
-            if (NSDecl->getIdentifier() == QRI->getCorrectionAsIdentifierInfo())
+            if (NSDecl->getIdentifier() == QR.getCorrectionAsIdentifierInfo())
               continue;
           }
 
-          TypoCorrection TC(*QRI);
+          TypoCorrection TC(QR);
           TC.ClearCorrectionDecls();
-          TC.setCorrectionSpecifier(NI->NameSpecifier);
-          TC.setQualifierDistance(NI->EditDistance);
+          TC.setCorrectionSpecifier(NSI.NameSpecifier);
+          TC.setQualifierDistance(NSI.EditDistance);
           TC.setCallbackDistance(0); // Reset the callback distance
 
           // If the current correction candidate and namespace combination are
           // too far away from the original typo based on the normalized edit
           // distance, then skip performing a qualified name lookup.
           unsigned TmpED = TC.getEditDistance(true);
-          if (QRI->getCorrectionAsIdentifierInfo() != Typo &&
+          if (QR.getCorrectionAsIdentifierInfo() != Typo &&
               TmpED && TypoLen / TmpED < 3)
             continue;
 
           TmpRes.clear();
-          TmpRes.setLookupName(QRI->getCorrectionAsIdentifierInfo());
+          TmpRes.setLookupName(QR.getCorrectionAsIdentifierInfo());
           if (!LookupQualifiedName(TmpRes, Ctx)) continue;
 
           // Any corrections added below will be validated in subsequent
@@ -4605,10 +4598,9 @@ bool CorrectionCandidateCallback::ValidateCandidate(const TypoCorrection &candid
 
 FunctionCallFilterCCC::FunctionCallFilterCCC(Sema &SemaRef, unsigned NumArgs,
                                              bool HasExplicitTemplateArgs,
-                                             bool AllowNonStaticMethods)
+                                             MemberExpr *ME)
     : NumArgs(NumArgs), HasExplicitTemplateArgs(HasExplicitTemplateArgs),
-      AllowNonStaticMethods(AllowNonStaticMethods),
-      CurContext(SemaRef.CurContext) {
+      CurContext(SemaRef.CurContext), MemberFn(ME) {
   WantTypeSpecifiers = SemaRef.getLangOpts().CPlusPlus;
   WantRemainingKeywords = false;
 }
@@ -4644,13 +4636,16 @@ bool FunctionCallFilterCCC::ValidateCandidate(const TypoCorrection &candidate) {
                  FD->getMinRequiredArguments() <= NumArgs))
       continue;
 
-    // If the current candidate is a non-static C++ method and non-static
-    // methods are being excluded, then skip the candidate unless the current
-    // DeclContext is a method in the same class or a descendent class of the
-    // candidate's parent class.
+    // If the current candidate is a non-static C++ method, skip the candidate
+    // unless the method being corrected--or the current DeclContext, if the
+    // function being corrected is not a method--is a method in the same class
+    // or a descendent class of the candidate's parent class.
     if (CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(FD)) {
-      if (!AllowNonStaticMethods && !MD->isStatic()) {
-        CXXMethodDecl *CurMD = dyn_cast_or_null<CXXMethodDecl>(CurContext);
+      if (MemberFn || !MD->isStatic()) {
+        CXXMethodDecl *CurMD =
+            MemberFn
+                ? dyn_cast_or_null<CXXMethodDecl>(MemberFn->getMemberDecl())
+                : dyn_cast_or_null<CXXMethodDecl>(CurContext);
         CXXRecordDecl *CurRD =
             CurMD ? CurMD->getParent()->getCanonicalDecl() : 0;
         CXXRecordDecl *RD = MD->getParent()->getCanonicalDecl();

@@ -33,6 +33,8 @@
 
 using clang::format::FormatStyle;
 
+LLVM_YAML_IS_FLOW_SEQUENCE_VECTOR(std::string)
+
 namespace llvm {
 namespace yaml {
 template <> struct ScalarEnumerationTraits<FormatStyle::LanguageKind> {
@@ -60,6 +62,16 @@ template <> struct ScalarEnumerationTraits<FormatStyle::UseTabStyle> {
     IO.enumCase(Value, "Always", FormatStyle::UT_Always);
     IO.enumCase(Value, "true", FormatStyle::UT_Always);
     IO.enumCase(Value, "ForIndentation", FormatStyle::UT_ForIndentation);
+  }
+};
+
+template <> struct ScalarEnumerationTraits<FormatStyle::ShortFunctionStyle> {
+  static void enumeration(IO &IO, FormatStyle::ShortFunctionStyle &Value) {
+    IO.enumCase(Value, "None", FormatStyle::SFS_None);
+    IO.enumCase(Value, "false", FormatStyle::SFS_None);
+    IO.enumCase(Value, "All", FormatStyle::SFS_All);
+    IO.enumCase(Value, "true", FormatStyle::SFS_All);
+    IO.enumCase(Value, "Inline", FormatStyle::SFS_Inline);
   }
 };
 
@@ -163,6 +175,8 @@ template <> struct MappingTraits<FormatStyle> {
                    Style.ExperimentalAutoDetectBinPacking);
     IO.mapOptional("IndentCaseLabels", Style.IndentCaseLabels);
     IO.mapOptional("MaxEmptyLinesToKeep", Style.MaxEmptyLinesToKeep);
+    IO.mapOptional("KeepEmptyLinesAtTheStartOfBlocks",
+                   Style.KeepEmptyLinesAtTheStartOfBlocks);
     IO.mapOptional("NamespaceIndentation", Style.NamespaceIndentation);
     IO.mapOptional("ObjCSpaceAfterProperty", Style.ObjCSpaceAfterProperty);
     IO.mapOptional("ObjCSpaceBeforeProtocolList",
@@ -198,6 +212,7 @@ template <> struct MappingTraits<FormatStyle> {
                    Style.SpaceBeforeAssignmentOperators);
     IO.mapOptional("ContinuationIndentWidth", Style.ContinuationIndentWidth);
     IO.mapOptional("CommentPragmas", Style.CommentPragmas);
+    IO.mapOptional("ForEachMacros", Style.ForEachMacros); 
 
     // For backward compatibility.
     if (!IO.outputting()) {
@@ -246,7 +261,7 @@ FormatStyle getLLVMStyle() {
   LLVMStyle.AlignEscapedNewlinesLeft = false;
   LLVMStyle.AlignTrailingComments = true;
   LLVMStyle.AllowAllParametersOfDeclarationOnNextLine = true;
-  LLVMStyle.AllowShortFunctionsOnASingleLine = true;
+  LLVMStyle.AllowShortFunctionsOnASingleLine = FormatStyle::SFS_All;
   LLVMStyle.AllowShortIfStatementsOnASingleLine = false;
   LLVMStyle.AllowShortLoopsOnASingleLine = false;
   LLVMStyle.AlwaysBreakBeforeMultilineStrings = false;
@@ -257,16 +272,22 @@ FormatStyle getLLVMStyle() {
   LLVMStyle.BreakBeforeBraces = FormatStyle::BS_Attach;
   LLVMStyle.BreakConstructorInitializersBeforeComma = false;
   LLVMStyle.ColumnLimit = 80;
+  LLVMStyle.CommentPragmas = "^ IWYU pragma:";
   LLVMStyle.ConstructorInitializerAllOnOneLineOrOnePerLine = false;
   LLVMStyle.ConstructorInitializerIndentWidth = 4;
+  LLVMStyle.ContinuationIndentWidth = 4;
   LLVMStyle.Cpp11BracedListStyle = true;
   LLVMStyle.DerivePointerBinding = false;
   LLVMStyle.ExperimentalAutoDetectBinPacking = false;
+  LLVMStyle.ForEachMacros.push_back("foreach");
+  LLVMStyle.ForEachMacros.push_back("Q_FOREACH");
+  LLVMStyle.ForEachMacros.push_back("BOOST_FOREACH");
   LLVMStyle.IndentCaseLabels = false;
   LLVMStyle.IndentFunctionDeclarationAfterType = false;
   LLVMStyle.IndentWidth = 2;
   LLVMStyle.TabWidth = 8;
   LLVMStyle.MaxEmptyLinesToKeep = 1;
+  LLVMStyle.KeepEmptyLinesAtTheStartOfBlocks = true;
   LLVMStyle.NamespaceIndentation = FormatStyle::NI_None;
   LLVMStyle.ObjCSpaceAfterProperty = false;
   LLVMStyle.ObjCSpaceBeforeProtocolList = true;
@@ -280,9 +301,7 @@ FormatStyle getLLVMStyle() {
   LLVMStyle.SpacesInCStyleCastParentheses = false;
   LLVMStyle.SpaceBeforeParens = FormatStyle::SBPO_ControlStatements;
   LLVMStyle.SpaceBeforeAssignmentOperators = true;
-  LLVMStyle.ContinuationIndentWidth = 4;
   LLVMStyle.SpacesInAngles = false;
-  LLVMStyle.CommentPragmas = "^ IWYU pragma:";
 
   LLVMStyle.PenaltyBreakComment = 300;
   LLVMStyle.PenaltyBreakFirstLessLess = 120;
@@ -308,6 +327,7 @@ FormatStyle getGoogleStyle(FormatStyle::LanguageKind Language) {
   GoogleStyle.DerivePointerBinding = true;
   GoogleStyle.IndentCaseLabels = true;
   GoogleStyle.IndentFunctionDeclarationAfterType = true;
+  GoogleStyle.KeepEmptyLinesAtTheStartOfBlocks = false;
   GoogleStyle.ObjCSpaceAfterProperty = false;
   GoogleStyle.ObjCSpaceBeforeProtocolList = false;
   GoogleStyle.PointerBindsToType = true;
@@ -322,7 +342,7 @@ FormatStyle getGoogleStyle(FormatStyle::LanguageKind Language) {
     GoogleStyle.MaxEmptyLinesToKeep = 2;
     GoogleStyle.SpacesInContainerLiterals = false;
   } else if (Language == FormatStyle::LK_Proto) {
-    GoogleStyle.AllowShortFunctionsOnASingleLine = false;
+    GoogleStyle.AllowShortFunctionsOnASingleLine = FormatStyle::SFS_None;
   }
 
   return GoogleStyle;
@@ -331,6 +351,7 @@ FormatStyle getGoogleStyle(FormatStyle::LanguageKind Language) {
 FormatStyle getChromiumStyle(FormatStyle::LanguageKind Language) {
   FormatStyle ChromiumStyle = getGoogleStyle(Language);
   ChromiumStyle.AllowAllParametersOfDeclarationOnNextLine = false;
+  ChromiumStyle.AllowShortFunctionsOnASingleLine = FormatStyle::SFS_Inline;
   ChromiumStyle.AllowShortIfStatementsOnASingleLine = false;
   ChromiumStyle.AllowShortLoopsOnASingleLine = false;
   ChromiumStyle.BinPackParameters = false;
@@ -513,11 +534,16 @@ public:
     if (I + 1 == E || I[1]->Type == LT_Invalid)
       return 0;
 
+    // FIXME: TheLine->Level != 0 might or might not be the right check to do.
+    // If necessary, change to something smarter.
+    bool MergeShortFunctions =
+        Style.AllowShortFunctionsOnASingleLine == FormatStyle::SFS_All ||
+        (Style.AllowShortFunctionsOnASingleLine == FormatStyle::SFS_Inline &&
+         TheLine->Level != 0);
+
     if (TheLine->Last->Type == TT_FunctionLBrace &&
         TheLine->First != TheLine->Last) {
-      return Style.AllowShortFunctionsOnASingleLine
-                 ? tryMergeSimpleBlock(I, E, Limit)
-                 : 0;
+      return MergeShortFunctions ? tryMergeSimpleBlock(I, E, Limit) : 0;
     }
     if (TheLine->Last->is(tok::l_brace)) {
       return Style.BreakBeforeBraces == FormatStyle::BS_Attach
@@ -532,7 +558,7 @@ public:
       Limit -= 2;
 
       unsigned MergedLines = 0;
-      if (Style.AllowShortFunctionsOnASingleLine) {
+      if (MergeShortFunctions) {
         MergedLines = tryMergeSimpleBlock(I + 1, E, Limit);
         // If we managed to merge the block, count the function header, which is
         // on a separate line.
@@ -613,7 +639,7 @@ private:
     AnnotatedLine &Line = **I;
     if (Line.First->isOneOf(tok::kw_if, tok::kw_while, tok::kw_do, tok::r_brace,
                             tok::kw_else, tok::kw_try, tok::kw_catch,
-                            tok::kw_for,
+                            tok::kw_for, tok::kw_case,
                             // This gets rid of all ObjC @ keywords and methods.
                             tok::at, tok::minus, tok::plus))
       return 0;
@@ -888,6 +914,12 @@ private:
     if (Newlines == 0 && !RootToken.IsFirst)
       Newlines = 1;
 
+    // Remove empty lines after "{".
+    if (!Style.KeepEmptyLinesAtTheStartOfBlocks && PreviousLine &&
+        PreviousLine->Last->is(tok::l_brace) &&
+        PreviousLine->First->isNot(tok::kw_namespace))
+      Newlines = 1;
+
     // Insert extra new line before access specifiers.
     if (PreviousLine && PreviousLine->Last->isOneOf(tok::semi, tok::r_brace) &&
         RootToken.isAccessSpecifier() && RootToken.NewlinesBefore == 1)
@@ -1121,6 +1153,10 @@ public:
         TrailingWhitespace(0), Lex(Lex), SourceMgr(SourceMgr), Style(Style),
         IdentTable(getFormattingLangOpts()), Encoding(Encoding) {
     Lex.SetKeepWhitespaceMode(true);
+
+    for (const std::string& ForEachMacro : Style.ForEachMacros)
+      ForEachMacros.push_back(&IdentTable.get(ForEachMacro));
+    std::sort(ForEachMacros.begin(), ForEachMacros.end());
   }
 
   ArrayRef<FormatToken *> lex() {
@@ -1341,6 +1377,10 @@ private:
       Column = FormatTok->LastLineColumnWidth;
     }
 
+    FormatTok->IsForEachMacro =
+        std::binary_search(ForEachMacros.begin(), ForEachMacros.end(),
+                           FormatTok->Tok.getIdentifierInfo());
+
     return FormatTok;
   }
 
@@ -1356,6 +1396,7 @@ private:
   encoding::Encoding Encoding;
   llvm::SpecificBumpPtrAllocator<FormatToken> Allocator;
   SmallVector<FormatToken *, 16> Tokens;
+  SmallVector<IdentifierInfo*, 8> ForEachMacros;
 
   void readRawToken(FormatToken &Tok) {
     Lex.LexFromRawLexer(Tok.Tok);

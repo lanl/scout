@@ -167,6 +167,7 @@ class Parser : public CodeCompletionHandler {
   std::unique_ptr<PragmaHandler> MSDetectMismatchHandler;
   std::unique_ptr<PragmaHandler> MSPointersToMembers;
   std::unique_ptr<PragmaHandler> MSVtorDisp;
+  std::unique_ptr<PragmaHandler> MSInitSeg;
 
   std::unique_ptr<CommentHandler> CommentSemaHandler;
 
@@ -2014,6 +2015,16 @@ private:
   /// locations where attributes are not allowed.
   void DiagnoseAndSkipCXX11Attributes();
 
+  /// \brief Parses syntax-generic attribute arguments for attributes which are
+  /// known to the implementation, and adds them to the given ParsedAttributes
+  /// list with the given attribute syntax.
+  void ParseAttributeArgsCommon(IdentifierInfo *AttrName,
+                                SourceLocation AttrNameLoc,
+                                ParsedAttributes &Attrs, SourceLocation *EndLoc,
+                                IdentifierInfo *ScopeName,
+                                SourceLocation ScopeLoc,
+                                AttributeList::Syntax Syntax);
+
   void MaybeParseGNUAttributes(Declarator &D,
                                LateParsedAttrList *LateAttrs = 0) {
     if (Tok.is(tok::kw___attribute)) {
@@ -2071,6 +2082,13 @@ private:
                                     SourceLocation *EndLoc = 0);
   void ParseCXX11Attributes(ParsedAttributesWithRange &attrs,
                             SourceLocation *EndLoc = 0);
+  /// \brief Parses a C++-style attribute argument list. Returns true if this
+  /// results in adding an attribute to the ParsedAttributes list.
+  bool ParseCXX11AttributeArgs(IdentifierInfo *AttrName,
+                               SourceLocation AttrNameLoc,
+                               ParsedAttributes &Attrs, SourceLocation *EndLoc,
+                               IdentifierInfo *ScopeName,
+                               SourceLocation ScopeLoc);
 
   IdentifierInfo *TryParseCXX11AttributeIdentifier(SourceLocation &Loc);
 
@@ -2082,13 +2100,9 @@ private:
   void ParseMicrosoftAttributes(ParsedAttributes &attrs,
                                 SourceLocation *endLoc = 0);
   void ParseMicrosoftDeclSpec(ParsedAttributes &Attrs);
-  bool IsSimpleMicrosoftDeclSpec(IdentifierInfo *Ident);
-  void ParseComplexMicrosoftDeclSpec(IdentifierInfo *Ident, 
-                                     SourceLocation Loc,
-                                     ParsedAttributes &Attrs);
-  void ParseMicrosoftDeclSpecWithSingleArg(IdentifierInfo *AttrName, 
-                                           SourceLocation AttrNameLoc, 
-                                           ParsedAttributes &Attrs);
+  bool ParseMicrosoftDeclSpecArgs(IdentifierInfo *AttrName,
+                                  SourceLocation AttrNameLoc,
+                                  ParsedAttributes &Attrs);
   void ParseMicrosoftTypeAttributes(ParsedAttributes &attrs);
   void ParseMicrosoftInheritanceClassAttributes(ParsedAttributes &attrs);
   void ParseBorlandTypeAttributes(ParsedAttributes &attrs);

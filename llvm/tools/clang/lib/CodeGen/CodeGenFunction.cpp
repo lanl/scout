@@ -369,6 +369,8 @@ static void GenOpenCLArgMetadata(const FunctionDecl *FD, llvm::Function *Fn,
   // Each MDNode is a list in the form of "key", N number of values which is
   // the same number of values as their are kernel arguments.
 
+  const PrintingPolicy &Policy = ASTCtx.getPrintingPolicy();
+
   // MDNode for the kernel argument address space qualifiers.
   SmallVector<llvm::Value*, 8> addressQuals;
   addressQuals.push_back(llvm::MDString::get(Context, "kernel_arg_addr_space"));
@@ -402,7 +404,8 @@ static void GenOpenCLArgMetadata(const FunctionDecl *FD, llvm::Function *Fn,
         pointeeTy.getAddressSpace())));
 
       // Get argument type name.
-      std::string typeName = pointeeTy.getUnqualifiedType().getAsString() + "*";
+      std::string typeName =
+          pointeeTy.getUnqualifiedType().getAsString(Policy) + "*";
 
       // Turn "unsigned type" to "utype"
       std::string::size_type pos = typeName.find("unsigned");
@@ -428,7 +431,7 @@ static void GenOpenCLArgMetadata(const FunctionDecl *FD, llvm::Function *Fn,
       addressQuals.push_back(Builder.getInt32(AddrSpc));
 
       // Get argument type name.
-      std::string typeName = ty.getUnqualifiedType().getAsString();
+      std::string typeName = ty.getUnqualifiedType().getAsString(Policy);
 
       // Turn "unsigned type" to "utype"
       std::string::size_type pos = typeName.find("unsigned");

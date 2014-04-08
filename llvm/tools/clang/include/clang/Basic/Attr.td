@@ -234,7 +234,7 @@ def TargetARM : TargetArch<["arm", "thumb"]>;
 def TargetMSP430 : TargetArch<["msp430"]>;
 def TargetX86 : TargetArch<["x86"]>;
 def TargetX86Win : TargetArch<["x86", "x86_64"]> {
-  let OSes = ["Win32", "MinGW32"];
+  let OSes = ["Win32"];
 }
 def TargetMips : TargetArch<["mips", "mipsel"]>;
 
@@ -975,6 +975,12 @@ def ObjCDesignatedInitializer : Attr {
   let Documentation = [Undocumented];
 }
 
+def OptimizeNone : InheritableAttr {
+  let Spellings = [GNU<"optnone">, CXX11<"clang", "optnone">];
+  let Subjects = SubjectList<[Function, ObjCMethod]>;
+  let Documentation = [OptnoneDocs];
+}
+
 def Overloadable : Attr {
   let Spellings = [GNU<"overloadable">];
   let Subjects = SubjectList<[Function], ErrorDiag>;
@@ -1030,7 +1036,7 @@ def Pcs : InheritableAttr {
                            ["aapcs", "aapcs-vfp"],
                            ["AAPCS", "AAPCS_VFP"]>];
 //  let Subjects = [Function, ObjCMethod];
-  let Documentation = [Undocumented];
+  let Documentation = [PcsDocs];
 }
 
 def Pure : InheritableAttr {
@@ -1302,7 +1308,8 @@ def Capability : InheritableAttr {
   let Spellings = [GNU<"capability">, CXX11<"clang", "capability">,
                    GNU<"shared_capability">,
                    CXX11<"clang", "shared_capability">];
-  let Subjects = SubjectList<[Struct], ErrorDiag, "ExpectedStruct">;
+  let Subjects = SubjectList<[Struct, TypedefName], ErrorDiag,
+                             "ExpectedStructOrTypedef">;
   let Args = [StringArgument<"Name">];
   let Accessors = [Accessor<"isShared",
                     [GNU<"shared_capability">,
@@ -1388,7 +1395,8 @@ def ReleaseCapability : InheritableAttr {
                      CXX11<"clang", "release_shared_capability">]>,
                    Accessor<"isGeneric",
                      [GNU<"release_generic_capability">,
-                      CXX11<"clang", "release_generic_capability">]>];
+                      CXX11<"clang", "release_generic_capability">,
+                      GNU<"unlock_function">]>];
   let Documentation = [ReleaseCapabilityDocs];
 }
 
