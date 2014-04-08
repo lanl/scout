@@ -32,7 +32,6 @@
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/Target/TargetOptions.h"
 
@@ -253,8 +252,6 @@ private:
 
   SDNode *SelectConcatVector(SDNode *N);
 
-  SDNode *SelectAtomic(SDNode *N, unsigned Op8, unsigned Op16, unsigned Op32, unsigned Op64);
-
   /// SelectInlineAsmMemoryOperand - Implement addressing mode selection for
   /// inline asm expressions.
   bool SelectInlineAsmMemoryOperand(const SDValue &Op, char ConstraintCode,
@@ -400,7 +397,7 @@ void ARMDAGToDAGISel::PreprocessISelDAG() {
     N1 = CurDAG->getNode(ISD::SHL, SDLoc(N1), MVT::i32,
                          N1, CurDAG->getConstant(TZ, MVT::i32));
     CurDAG->UpdateNodeOperands(N, N0, N1);
-  }  
+  }
 }
 
 /// hasNoVMLxHazardUse - Return true if it's desirable to select a FP MLA / MLS
@@ -413,8 +410,8 @@ bool ARMDAGToDAGISel::hasNoVMLxHazardUse(SDNode *N) const {
   if (!CheckVMLxHazard)
     return true;
 
-  if (!Subtarget->isCortexA8() && !Subtarget->isCortexA9() &&
-      !Subtarget->isSwift())
+  if (!Subtarget->isCortexA7() && !Subtarget->isCortexA8() &&
+      !Subtarget->isCortexA9() && !Subtarget->isSwift())
     return true;
 
   if (!N->hasOneUse())
@@ -1702,10 +1699,10 @@ static bool isVSTfixed(unsigned Opc)
   case ARM::VST1d16wb_fixed : return true;
   case ARM::VST1d32wb_fixed : return true;
   case ARM::VST1d64wb_fixed : return true;
-  case ARM::VST1q8wb_fixed : return true; 
-  case ARM::VST1q16wb_fixed : return true; 
-  case ARM::VST1q32wb_fixed : return true; 
-  case ARM::VST1q64wb_fixed : return true; 
+  case ARM::VST1q8wb_fixed : return true;
+  case ARM::VST1q16wb_fixed : return true;
+  case ARM::VST1q32wb_fixed : return true;
+  case ARM::VST1q64wb_fixed : return true;
   case ARM::VST1d64TPseudoWB_fixed : return true;
   case ARM::VST1d64QPseudoWB_fixed : return true;
   case ARM::VST2d8wb_fixed : return true;
@@ -2412,38 +2409,6 @@ SDNode *ARMDAGToDAGISel::SelectConcatVector(SDNode *N) {
   return createDRegPairNode(VT, N->getOperand(0), N->getOperand(1));
 }
 
-SDNode *ARMDAGToDAGISel::SelectAtomic(SDNode *Node, unsigned Op8,
-                                      unsigned Op16,unsigned Op32,
-                                      unsigned Op64) {
-  // Mostly direct translation to the given operations, except that we preserve
-  // the AtomicOrdering for use later on.
-  AtomicSDNode *AN = cast<AtomicSDNode>(Node);
-  EVT VT = AN->getMemoryVT();
-
-  unsigned Op;
-  SDVTList VTs = CurDAG->getVTList(AN->getValueType(0), MVT::Other);
-  if (VT == MVT::i8)
-    Op = Op8;
-  else if (VT == MVT::i16)
-    Op = Op16;
-  else if (VT == MVT::i32)
-    Op = Op32;
-  else if (VT == MVT::i64) {
-    Op = Op64;
-    VTs = CurDAG->getVTList(MVT::i32, MVT::i32, MVT::Other);
-  } else
-    llvm_unreachable("Unexpected atomic operation");
-
-  SmallVector<SDValue, 6> Ops;
-  for (unsigned i = 1; i < AN->getNumOperands(); ++i)
-      Ops.push_back(AN->getOperand(i));
-
-  Ops.push_back(CurDAG->getTargetConstant(AN->getOrdering(), MVT::i32));
-  Ops.push_back(AN->getOperand(0)); // Chain moves to the end
-
-  return CurDAG->SelectNodeTo(Node, Op, VTs, &Ops[0], Ops.size());
-}
-
 SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
   SDLoc dl(N);
 
@@ -3023,13 +2988,16 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
     default:
       break;
 
+    case Intrinsic::arm_ldaexd:
     case Intrinsic::arm_ldrexd: {
-      SDValue MemAddr = N->getOperand(2);
       SDLoc dl(N);
       SDValue Chain = N->getOperand(0);
-
+      SDValue MemAddr = N->getOperand(2);
       bool isThumb = Subtarget->isThumb() && Subtarget->hasThumb2();
-      unsigned NewOpc = isThumb ? ARM::t2LDREXD :ARM::LDREXD;
+
+      bool IsAcquire = IntNo == Intrinsic::arm_ldaexd;
+      unsigned NewOpc = isThumb ? (IsAcquire ? ARM::t2LDAEXD : ARM::t2LDREXD)
+                                : (IsAcquire ? ARM::LDAEXD : ARM::LDREXD);
 
       // arm_ldrexd returns a i64 value in {i32, i32}
       std::vector<EVT> ResTys;
@@ -3081,7 +3049,7 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
       ReplaceUses(SDValue(N, 2), OutChain);
       return NULL;
     }
-
+    case Intrinsic::arm_stlexd:
     case Intrinsic::arm_strexd: {
       SDLoc dl(N);
       SDValue Chain = N->getOperand(0);
@@ -3107,7 +3075,9 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
       Ops.push_back(CurDAG->getRegister(0, MVT::i32));
       Ops.push_back(Chain);
 
-      unsigned NewOpc = isThumb ? ARM::t2STREXD : ARM::STREXD;
+      bool IsRelease = IntNo == Intrinsic::arm_stlexd;
+      unsigned NewOpc = isThumb ? (IsRelease ? ARM::t2STLEXD : ARM::t2STREXD)
+                                : (IsRelease ? ARM::STLEXD : ARM::STREXD);
 
       SDNode *St = CurDAG->getMachineNode(NewOpc, dl, ResTys, Ops);
       // Transfer memoperands.
@@ -3316,85 +3286,6 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
 
   case ISD::CONCAT_VECTORS:
     return SelectConcatVector(N);
-
-  case ISD::ATOMIC_LOAD:
-    if (cast<AtomicSDNode>(N)->getMemoryVT() == MVT::i64)
-      return SelectAtomic(N, 0, 0, 0, ARM::ATOMIC_LOAD_I64);
-    else
-      break;
-
-  case ISD::ATOMIC_LOAD_ADD:
-    return SelectAtomic(N,
-                        ARM::ATOMIC_LOAD_ADD_I8,
-                        ARM::ATOMIC_LOAD_ADD_I16,
-                        ARM::ATOMIC_LOAD_ADD_I32,
-                        ARM::ATOMIC_LOAD_ADD_I64);
-  case ISD::ATOMIC_LOAD_SUB:
-    return SelectAtomic(N,
-                        ARM::ATOMIC_LOAD_SUB_I8,
-                        ARM::ATOMIC_LOAD_SUB_I16,
-                        ARM::ATOMIC_LOAD_SUB_I32,
-                        ARM::ATOMIC_LOAD_SUB_I64);
-  case ISD::ATOMIC_LOAD_AND:
-    return SelectAtomic(N,
-                        ARM::ATOMIC_LOAD_AND_I8,
-                        ARM::ATOMIC_LOAD_AND_I16,
-                        ARM::ATOMIC_LOAD_AND_I32,
-                        ARM::ATOMIC_LOAD_AND_I64);
-  case ISD::ATOMIC_LOAD_OR:
-    return SelectAtomic(N,
-                        ARM::ATOMIC_LOAD_OR_I8,
-                        ARM::ATOMIC_LOAD_OR_I16,
-                        ARM::ATOMIC_LOAD_OR_I32,
-                        ARM::ATOMIC_LOAD_OR_I64);
-  case ISD::ATOMIC_LOAD_XOR:
-    return SelectAtomic(N,
-                        ARM::ATOMIC_LOAD_XOR_I8,
-                        ARM::ATOMIC_LOAD_XOR_I16,
-                        ARM::ATOMIC_LOAD_XOR_I32,
-                        ARM::ATOMIC_LOAD_XOR_I64);
-  case ISD::ATOMIC_LOAD_NAND:
-    return SelectAtomic(N,
-                        ARM::ATOMIC_LOAD_NAND_I8,
-                        ARM::ATOMIC_LOAD_NAND_I16,
-                        ARM::ATOMIC_LOAD_NAND_I32,
-                        ARM::ATOMIC_LOAD_NAND_I64);
-  case ISD::ATOMIC_LOAD_MIN:
-    return SelectAtomic(N,
-                        ARM::ATOMIC_LOAD_MIN_I8,
-                        ARM::ATOMIC_LOAD_MIN_I16,
-                        ARM::ATOMIC_LOAD_MIN_I32,
-                        ARM::ATOMIC_LOAD_MIN_I64);
-  case ISD::ATOMIC_LOAD_MAX:
-    return SelectAtomic(N,
-                        ARM::ATOMIC_LOAD_MAX_I8,
-                        ARM::ATOMIC_LOAD_MAX_I16,
-                        ARM::ATOMIC_LOAD_MAX_I32,
-                        ARM::ATOMIC_LOAD_MAX_I64);
-  case ISD::ATOMIC_LOAD_UMIN:
-    return SelectAtomic(N,
-                        ARM::ATOMIC_LOAD_UMIN_I8,
-                        ARM::ATOMIC_LOAD_UMIN_I16,
-                        ARM::ATOMIC_LOAD_UMIN_I32,
-                        ARM::ATOMIC_LOAD_UMIN_I64);
-  case ISD::ATOMIC_LOAD_UMAX:
-    return SelectAtomic(N,
-                        ARM::ATOMIC_LOAD_UMAX_I8,
-                        ARM::ATOMIC_LOAD_UMAX_I16,
-                        ARM::ATOMIC_LOAD_UMAX_I32,
-                        ARM::ATOMIC_LOAD_UMAX_I64);
-  case ISD::ATOMIC_SWAP:
-    return SelectAtomic(N,
-                        ARM::ATOMIC_SWAP_I8,
-                        ARM::ATOMIC_SWAP_I16,
-                        ARM::ATOMIC_SWAP_I32,
-                        ARM::ATOMIC_SWAP_I64);
-  case ISD::ATOMIC_CMP_SWAP:
-    return SelectAtomic(N,
-                        ARM::ATOMIC_CMP_SWAP_I8,
-                        ARM::ATOMIC_CMP_SWAP_I16,
-                        ARM::ATOMIC_CMP_SWAP_I32,
-                        ARM::ATOMIC_CMP_SWAP_I64);
   }
 
   return SelectCode(N);

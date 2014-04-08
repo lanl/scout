@@ -11,6 +11,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -29,24 +30,24 @@ using namespace llvm;
 /// \returns The process ID of the process that owns this lock file
 Optional<std::pair<std::string, int> >
 LockFileManager::readLockFile(StringRef LockFileName) {
-  // Check whether the lock file exists. If not, clearly there's nothing
-  // to read, so we just return.
-  if (!sys::fs::exists(LockFileName))
-    return None;
-
   // Read the owning host and PID out of the lock file. If it appears that the
   // owning process is dead, the lock file is invalid.
   std::unique_ptr<MemoryBuffer> MB;
-  if (MemoryBuffer::getFile(LockFileName, MB))
+  if (MemoryBuffer::getFile(LockFileName, MB)) {
+    sys::fs::remove(LockFileName);
     return None;
+  }
 
   StringRef Hostname;
   StringRef PIDStr;
   std::tie(Hostname, PIDStr) = getToken(MB->getBuffer(), " ");
   PIDStr = PIDStr.substr(PIDStr.find_first_not_of(" "));
   int PID;
-  if (!PIDStr.getAsInteger(10, PID))
-    return std::make_pair(std::string(Hostname), PID);
+  if (!PIDStr.getAsInteger(10, PID)) {
+    auto Owner = std::make_pair(std::string(Hostname), PID);
+    if (processStillExecuting(Owner.first, Owner.second))
+      return Owner;
+  }
 
   // Delete the lock file. It's invalid anyway.
   sys::fs::remove(LockFileName);
@@ -70,7 +71,11 @@ bool LockFileManager::processStillExecuting(StringRef Hostname, int PID) {
 LockFileManager::LockFileManager(StringRef FileName)
 {
   this->FileName = FileName;
-  LockFileName = FileName;
+  if (error_code EC = sys::fs::make_absolute(this->FileName)) {
+    Error = EC;
+    return;
+  }
+  LockFileName = this->FileName;
   LockFileName += ".lock";
 
   // If the lock file already exists, don't bother to try to create our own
@@ -169,9 +174,9 @@ LockFileManager::~LockFileManager() {
   sys::fs::remove(UniqueLockFileName.str());
 }
 
-void LockFileManager::waitForUnlock() {
+LockFileManager::WaitForUnlockResult LockFileManager::waitForUnlock() {
   if (getState() != LFS_Shared)
-    return;
+    return Res_Success;
 
 #if LLVM_ON_WIN32
   unsigned long Interval = 1;
@@ -191,7 +196,7 @@ void LockFileManager::waitForUnlock() {
 #if LLVM_ON_WIN32
     Sleep(Interval);
 #else
-    nanosleep(&Interval, NULL);
+    nanosleep(&Interval, nullptr);
 #endif
     bool LockFileJustDisappeared = false;
 
@@ -209,7 +214,7 @@ void LockFileManager::waitForUnlock() {
     // available now.
     if (LockFileGone) {
       if (sys::fs::exists(FileName.str())) {
-        return;
+        return Res_Success;
       }
 
       // The lock file is gone, so now we're waiting for the original file to
@@ -232,7 +237,7 @@ void LockFileManager::waitForUnlock() {
     // owning the lock died without cleaning up, just bail out.
     if (!LockFileGone &&
         !processStillExecuting((*Owner).first, (*Owner).second)) {
-      return;
+      return Res_OwnerDied;
     }
 
     // Exponentially increase the time we wait for the lock to be removed.
@@ -255,4 +260,5 @@ void LockFileManager::waitForUnlock() {
            );
 
   // Give up.
+  return Res_Timeout;
 }

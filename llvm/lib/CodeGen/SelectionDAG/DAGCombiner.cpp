@@ -290,6 +290,11 @@ namespace {
                              bool NotExtCompare = false);
     SDValue SimplifySetCC(EVT VT, SDValue N0, SDValue N1, ISD::CondCode Cond,
                           SDLoc DL, bool foldBooleans = true);
+
+    bool isSetCCEquivalent(SDValue N, SDValue &LHS, SDValue &RHS,
+                           SDValue &CC) const;
+    bool isOneUseSetCC(SDValue N) const;
+
     SDValue SimplifyNodeWithTwoResults(SDNode *N, unsigned LoOp,
                                          unsigned HiOp);
     SDValue CombineConsecutiveLoads(SDNode *N, EVT VT);
@@ -597,37 +602,35 @@ static SDValue GetNegatedExpression(SDValue Op, SelectionDAG &DAG,
   }
 }
 
-
 // isSetCCEquivalent - Return true if this node is a setcc, or is a select_cc
-// that selects between the values 1 and 0, making it equivalent to a setcc.
-// Also, set the incoming LHS, RHS, and CC references to the appropriate
-// nodes based on the type of node we are checking.  This simplifies life a
-// bit for the callers.
-static bool isSetCCEquivalent(SDValue N, SDValue &LHS, SDValue &RHS,
-                              SDValue &CC) {
+// that selects between the target values used for true and false, making it
+// equivalent to a setcc. Also, set the incoming LHS, RHS, and CC references to
+// the appropriate nodes based on the type of node we are checking. This
+// simplifies life a bit for the callers.
+bool DAGCombiner::isSetCCEquivalent(SDValue N, SDValue &LHS, SDValue &RHS,
+                                    SDValue &CC) const {
   if (N.getOpcode() == ISD::SETCC) {
     LHS = N.getOperand(0);
     RHS = N.getOperand(1);
     CC  = N.getOperand(2);
     return true;
   }
-  if (N.getOpcode() == ISD::SELECT_CC &&
-      N.getOperand(2).getOpcode() == ISD::Constant &&
-      N.getOperand(3).getOpcode() == ISD::Constant &&
-      cast<ConstantSDNode>(N.getOperand(2))->getAPIntValue() == 1 &&
-      cast<ConstantSDNode>(N.getOperand(3))->isNullValue()) {
-    LHS = N.getOperand(0);
-    RHS = N.getOperand(1);
-    CC  = N.getOperand(4);
-    return true;
-  }
-  return false;
+
+  if (N.getOpcode() != ISD::SELECT_CC ||
+      !TLI.isConstTrueVal(N.getOperand(2).getNode()) ||
+      !TLI.isConstFalseVal(N.getOperand(3).getNode()))
+    return false;
+
+  LHS = N.getOperand(0);
+  RHS = N.getOperand(1);
+  CC  = N.getOperand(4);
+  return true;
 }
 
 // isOneUseSetCC - Return true if this is a SetCC-equivalent operation with only
 // one use.  If this is true, it allows the users to invert the operation for
 // free when it is profitable to do so.
-static bool isOneUseSetCC(SDValue N) {
+bool DAGCombiner::isOneUseSetCC(SDValue N) const {
   SDValue N0, N1, N2;
   if (isSetCCEquivalent(N, N0, N1, N2) && N.getNode()->hasOneUse())
     return true;
@@ -667,7 +670,7 @@ static ConstantSDNode *isConstOrConstSplat(SDValue N) {
     return CN;
 
   if (BuildVectorSDNode *BV = dyn_cast<BuildVectorSDNode>(N))
-    return BV->isConstantSplat();
+    return BV->getConstantSplatValue();
 
   return nullptr;
 }
@@ -9745,9 +9748,10 @@ SDValue DAGCombiner::visitEXTRACT_VECTOR_ELT(SDNode *N) {
   // We only perform this optimization before the op legalization phase because
   // we may introduce new vector instructions which are not backed by TD
   // patterns. For example on AVX, extracting elements from a wide vector
-  // without using extract_subvector.
+  // without using extract_subvector. However, if we can find an underlying
+  // scalar value, then we can always use that.
   if (InVec.getOpcode() == ISD::VECTOR_SHUFFLE
-      && ConstEltNo && !LegalOperations) {
+      && ConstEltNo) {
     int Elt = cast<ConstantSDNode>(EltNo)->getZExtValue();
     int NumElem = VT.getVectorNumElements();
     ShuffleVectorSDNode *SVOp = cast<ShuffleVectorSDNode>(InVec);
@@ -9759,16 +9763,32 @@ SDValue DAGCombiner::visitEXTRACT_VECTOR_ELT(SDNode *N) {
       return DAG.getUNDEF(NVT);
 
     // Select the right vector half to extract from.
+    SDValue SVInVec;
     if (OrigElt < NumElem) {
-      InVec = InVec->getOperand(0);
+      SVInVec = InVec->getOperand(0);
     } else {
-      InVec = InVec->getOperand(1);
+      SVInVec = InVec->getOperand(1);
       OrigElt -= NumElem;
     }
 
-    EVT IndexTy = TLI.getVectorIdxTy();
-    return DAG.getNode(ISD::EXTRACT_VECTOR_ELT, SDLoc(N), NVT,
-                       InVec, DAG.getConstant(OrigElt, IndexTy));
+    if (SVInVec.getOpcode() == ISD::BUILD_VECTOR) {
+      SDValue InOp = SVInVec.getOperand(OrigElt);
+      if (InOp.getValueType() != NVT) {
+        assert(InOp.getValueType().isInteger() && NVT.isInteger());
+        InOp = DAG.getSExtOrTrunc(InOp, SDLoc(SVInVec), NVT);
+      }
+
+      return InOp;
+    }
+
+    // FIXME: We should handle recursing on other vector shuffles and
+    // scalar_to_vector here as well.
+
+    if (!LegalOperations) {
+      EVT IndexTy = TLI.getVectorIdxTy();
+      return DAG.getNode(ISD::EXTRACT_VECTOR_ELT, SDLoc(N), NVT,
+                         SVInVec, DAG.getConstant(OrigElt, IndexTy));
+    }
   }
 
   // Perform only after legalization to ensure build_vector / vector_shuffle

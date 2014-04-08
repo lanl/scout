@@ -661,11 +661,15 @@ bool AsmParser::Run(bool NoInitialTextSection, bool NoFinalize) {
     return TokError("unmatched .ifs or .elses");
 
   // Check to see there are no empty DwarfFile slots.
-  const SmallVectorImpl<MCDwarfFile> &MCDwarfFiles =
-      getContext().getMCDwarfFiles();
-  for (unsigned i = 1; i < MCDwarfFiles.size(); i++) {
-    if (MCDwarfFiles[i].Name.empty())
-      TokError("unassigned file number: " + Twine(i) + " for .file directives");
+  const auto &LineTables = getContext().getMCDwarfLineTables();
+  if (!LineTables.empty()) {
+    unsigned Index = 0;
+    for (const auto &File : LineTables.begin()->second.getMCDwarfFiles()) {
+      if (File.Name.empty() && Index != 0)
+        TokError("unassigned file number: " + Twine(Index) +
+                 " for .file directives");
+      ++Index;
+    }
   }
 
   // Check to see that all assembler local symbols were actually defined.
@@ -875,10 +879,8 @@ bool AsmParser::parsePrimaryExpr(const MCExpr *&Res, SMLoc &EndLoc) {
       MCSymbolRefExpr::VariantKind Variant = MCSymbolRefExpr::VK_None;
       if (Split.first.size() != IDVal.size()) {
         Variant = MCSymbolRefExpr::getVariantKindForName(Split.second);
-        if (Variant == MCSymbolRefExpr::VK_Invalid) {
-          Variant = MCSymbolRefExpr::VK_None;
+        if (Variant == MCSymbolRefExpr::VK_Invalid)
           return TokError("invalid variant '" + Split.second + "'");
-        }
         IDVal = Split.first;
       }
       if (IDVal == "f" || IDVal == "b") {
@@ -1617,9 +1619,9 @@ bool AsmParser::parseStatement(ParseStatementInfo &Info) {
   // If parsing succeeded, match the instruction.
   if (!HadError) {
     unsigned ErrorInfo;
-    HadError = getTargetParser().MatchAndEmitInstruction(
-        IDLoc, Info.Opcode, Info.ParsedOperands, Out, ErrorInfo,
-        ParsingInlineAsm);
+    getTargetParser().MatchAndEmitInstruction(IDLoc, Info.Opcode,
+                                              Info.ParsedOperands, Out,
+                                              ErrorInfo, ParsingInlineAsm);
   }
 
   // Don't skip the rest of the line, the instruction parser is responsible for
@@ -2694,7 +2696,9 @@ bool AsmParser::parseDirectiveAlign(bool IsPow2, unsigned ValueSize) {
 
   // Check whether we should use optimal code alignment for this .align
   // directive.
-  bool UseCodeAlign = getStreamer().getCurrentSection().first->UseCodeAlign();
+  const MCSection *Section = getStreamer().getCurrentSection().first;
+  assert(Section && "must have section to emit alignment");
+  bool UseCodeAlign = Section->UseCodeAlign();
   if ((!HasFillExpr || Lexer.getMAI().getTextAlignFillValue() == FillExpr) &&
       ValueSize == 1 && UseCodeAlign) {
     getStreamer().EmitCodeAlignment(Alignment, MaxBytesToFill);

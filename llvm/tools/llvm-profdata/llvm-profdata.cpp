@@ -12,8 +12,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ProfileData/InstrProfReader.h"
+#include "llvm/ProfileData/InstrProfWriter.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/LineIterator.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
@@ -22,21 +24,17 @@
 
 using namespace llvm;
 
-static void exitWithError(const std::string &Message,
-                          const std::string &Filename, int64_t Line = -1) {
-  errs() << "error: " << Filename;
-  if (Line >= 0)
-    errs() << ":" << Line;
-  errs() << ": " << Message << "\n";
+static void exitWithError(const Twine &Message, StringRef Whence = "") {
+  errs() << "error: ";
+  if (!Whence.empty())
+    errs() << Whence << ": ";
+  errs() << Message << "\n";
   ::exit(1);
 }
 
-//===----------------------------------------------------------------------===//
 int merge_main(int argc, const char *argv[]) {
-  cl::opt<std::string> Filename1(cl::Positional, cl::Required,
-                                 cl::desc("file1"));
-  cl::opt<std::string> Filename2(cl::Positional, cl::Required,
-                                 cl::desc("file2"));
+  cl::list<std::string> Inputs(cl::Positional, cl::Required, cl::OneOrMore,
+                               cl::desc("<filenames...>"));
 
   cl::opt<std::string> OutputFilename("output", cl::value_desc("output"),
                                       cl::init("-"),
@@ -46,80 +44,107 @@ int merge_main(int argc, const char *argv[]) {
 
   cl::ParseCommandLineOptions(argc, argv, "LLVM profile data merger\n");
 
-  std::unique_ptr<MemoryBuffer> File1;
-  std::unique_ptr<MemoryBuffer> File2;
-  if (error_code ec = MemoryBuffer::getFile(Filename1, File1))
-    exitWithError(ec.message(), Filename1);
-  if (error_code ec = MemoryBuffer::getFile(Filename2, File2))
-    exitWithError(ec.message(), Filename2);
+  if (OutputFilename.empty())
+    OutputFilename = "-";
+
+  std::string ErrorInfo;
+  // FIXME: F_Text would be available if line_iterator could accept CRLF.
+  raw_fd_ostream Output(OutputFilename.data(), ErrorInfo, sys::fs::F_None);
+  if (!ErrorInfo.empty())
+    exitWithError(ErrorInfo, OutputFilename);
+
+  InstrProfWriter Writer;
+  for (const auto &Filename : Inputs) {
+    std::unique_ptr<InstrProfReader> Reader;
+    if (error_code ec = InstrProfReader::create(Filename, Reader))
+      exitWithError(ec.message(), Filename);
+
+    for (const auto &I : *Reader)
+      if (error_code EC = Writer.addFunctionCounts(I.Name, I.Hash, I.Counts))
+        errs() << Filename << ": " << I.Name << ": " << EC.message() << "\n";
+    if (Reader->hasError())
+      exitWithError(Reader->getError().message(), Filename);
+  }
+  Writer.write(Output);
+
+  return 0;
+}
+
+int show_main(int argc, const char *argv[]) {
+  cl::opt<std::string> Filename(cl::Positional, cl::Required,
+                                cl::desc("<profdata-file>"));
+
+  cl::opt<bool> ShowCounts("counts", cl::init(false),
+                           cl::desc("Show counter values for shown functions"));
+  cl::opt<bool> ShowAllFunctions("all-functions", cl::init(false),
+                                 cl::desc("Details for every function"));
+  cl::opt<std::string> ShowFunction("function",
+                                    cl::desc("Details for matching functions"));
+
+  cl::opt<std::string> OutputFilename("output", cl::value_desc("output"),
+                                      cl::init("-"),
+                                      cl::desc("Output file"));
+  cl::alias OutputFilenameA("o", cl::desc("Alias for --output"),
+                            cl::aliasopt(OutputFilename));
+
+  cl::ParseCommandLineOptions(argc, argv, "LLVM profile data summary\n");
+
+  std::unique_ptr<InstrProfReader> Reader;
+  if (error_code EC = InstrProfReader::create(Filename, Reader))
+    exitWithError(EC.message(), Filename);
 
   if (OutputFilename.empty())
     OutputFilename = "-";
 
   std::string ErrorInfo;
-  raw_fd_ostream Output(OutputFilename.data(), ErrorInfo, sys::fs::F_Text);
+  raw_fd_ostream OS(OutputFilename.data(), ErrorInfo, sys::fs::F_Text);
   if (!ErrorInfo.empty())
     exitWithError(ErrorInfo, OutputFilename);
 
-  enum {ReadName, ReadHash, ReadCount, ReadCounters} State = ReadName;
-  uint64_t N1, N2, NumCounters;
-  line_iterator I1(*File1, '#'), I2(*File2, '#');
-  for (; !I1.is_at_end() && !I2.is_at_end(); ++I1, ++I2) {
-    if (I1->empty()) {
-      if (!I2->empty())
-        exitWithError("data mismatch", Filename2, I2.line_number());
-      Output << "\n";
-      continue;
-    }
-    switch (State) {
-    case ReadName:
-      if (*I1 != *I2)
-        exitWithError("function name mismatch", Filename2, I2.line_number());
-      Output << *I1 << "\n";
-      State = ReadHash;
-      break;
-    case ReadHash:
-      if (I1->getAsInteger(10, N1))
-        exitWithError("bad function hash", Filename1, I1.line_number());
-      if (I2->getAsInteger(10, N2))
-        exitWithError("bad function hash", Filename2, I2.line_number());
-      if (N1 != N2)
-        exitWithError("function hash mismatch", Filename2, I2.line_number());
-      Output << N1 << "\n";
-      State = ReadCount;
-      break;
-    case ReadCount:
-      if (I1->getAsInteger(10, N1))
-        exitWithError("bad function count", Filename1, I1.line_number());
-      if (I2->getAsInteger(10, N2))
-        exitWithError("bad function count", Filename2, I2.line_number());
-      if (N1 != N2)
-        exitWithError("function count mismatch", Filename2, I2.line_number());
-      Output << N1 << "\n";
-      NumCounters = N1;
-      State = ReadCounters;
-      break;
-    case ReadCounters:
-      if (I1->getAsInteger(10, N1))
-        exitWithError("invalid counter", Filename1, I1.line_number());
-      if (I2->getAsInteger(10, N2))
-        exitWithError("invalid counter", Filename2, I2.line_number());
-      uint64_t Sum = N1 + N2;
-      if (Sum < N1)
-        exitWithError("counter overflow", Filename2, I2.line_number());
-      Output << N1 + N2 << "\n";
-      if (--NumCounters == 0)
-        State = ReadName;
-      break;
-    }
-  }
-  if (!I1.is_at_end())
-    exitWithError("truncated file", Filename1, I1.line_number());
-  if (!I2.is_at_end())
-    exitWithError("truncated file", Filename2, I2.line_number());
-  if (State != ReadName)
-    exitWithError("truncated file", Filename1, I1.line_number());
+  if (ShowAllFunctions && !ShowFunction.empty())
+    errs() << "warning: -function argument ignored: showing all functions\n";
 
+  uint64_t MaxFunctionCount = 0, MaxBlockCount = 0;
+  size_t ShownFunctions = 0, TotalFunctions = 0;
+  for (const auto &Func : *Reader) {
+    bool Show = ShowAllFunctions ||
+                (!ShowFunction.empty() &&
+                 Func.Name.find(ShowFunction) != Func.Name.npos);
+
+    ++TotalFunctions;
+    if (Func.Counts[0] > MaxFunctionCount)
+      MaxFunctionCount = Func.Counts[0];
+
+    if (Show) {
+      if (!ShownFunctions)
+        OS << "Counters:\n";
+      ++ShownFunctions;
+
+      OS << "  " << Func.Name << ":\n"
+         << "    Hash: " << format("0x%016" PRIx64, Func.Hash) << "\n"
+         << "    Counters: " << Func.Counts.size() << "\n"
+         << "    Function count: " << Func.Counts[0] << "\n";
+    }
+
+    if (Show && ShowCounts)
+      OS << "    Block counts: [";
+    for (size_t I = 1, E = Func.Counts.size(); I < E; ++I) {
+      if (Func.Counts[I] > MaxBlockCount)
+        MaxBlockCount = Func.Counts[I];
+      if (Show && ShowCounts)
+        OS << (I == 1 ? "" : ", ") << Func.Counts[I];
+    }
+    if (Show && ShowCounts)
+      OS << "]\n";
+  }
+  if (Reader->hasError())
+    exitWithError(Reader->getError().message(), Filename);
+
+  if (ShowAllFunctions || !ShowFunction.empty())
+    OS << "Functions shown: " << ShownFunctions << "\n";
+  OS << "Total functions: " << TotalFunctions << "\n";
+  OS << "Maximum function count: " << MaxFunctionCount << "\n";
+  OS << "Maximum internal block count: " << MaxBlockCount << "\n";
   return 0;
 }
 
@@ -135,6 +160,8 @@ int main(int argc, const char *argv[]) {
 
     if (strcmp(argv[1], "merge") == 0)
       func = merge_main;
+    else if (strcmp(argv[1], "show") == 0)
+      func = show_main;
 
     if (func) {
       std::string Invocation(ProgName.str() + " " + argv[1]);
@@ -149,7 +176,7 @@ int main(int argc, const char *argv[]) {
       errs() << "OVERVIEW: LLVM profile data tools\n\n"
              << "USAGE: " << ProgName << " <command> [args...]\n"
              << "USAGE: " << ProgName << " <command> -help\n\n"
-             << "Available commands: merge\n";
+             << "Available commands: merge, show\n";
       return 0;
     }
   }
@@ -159,6 +186,6 @@ int main(int argc, const char *argv[]) {
   else
     errs() << ProgName << ": Unknown command!\n";
 
-  errs() << "USAGE: " << ProgName << " <merge|show|generate> [args...]\n";
+  errs() << "USAGE: " << ProgName << " <merge|show> [args...]\n";
   return 1;
 }

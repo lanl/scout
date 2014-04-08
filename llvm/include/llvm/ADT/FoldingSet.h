@@ -18,12 +18,12 @@
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Allocator.h"
 #include "llvm/Support/DataTypes.h"
 
 namespace llvm {
   class APFloat;
   class APInt;
-  class BumpPtrAllocator;
 
 /// This folding set used for two purposes:
 ///   1. Given information about a node we want to create, look up the unique
@@ -137,7 +137,7 @@ public:
 
   public:
 
-    Node() : NextInFoldingSetBucket(0) {}
+    Node() : NextInFoldingSetBucket(nullptr) {}
 
     // Accessors
     void *getNextInBucket() const { return NextInFoldingSetBucket; }
@@ -269,7 +269,7 @@ class FoldingSetNodeIDRef {
   const unsigned *Data;
   size_t Size;
 public:
-  FoldingSetNodeIDRef() : Data(0), Size(0) {}
+  FoldingSetNodeIDRef() : Data(nullptr), Size(0) {}
   FoldingSetNodeIDRef(const unsigned *D, size_t S) : Data(D), Size(S) {}
 
   /// ComputeHash - Compute a strong hash value for this FoldingSetNodeIDRef,

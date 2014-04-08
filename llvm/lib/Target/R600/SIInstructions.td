@@ -904,18 +904,6 @@ def : Pat <
   (EXTRACT_SUBREG $val, sub0)
 >;
 
-//use two V_CNDMASK_B32_e64 instructions for f64
-def : Pat <
-  (f64 (select i1:$src2, f64:$src1, f64:$src0)),
-  (INSERT_SUBREG (INSERT_SUBREG (f64 (IMPLICIT_DEF)),
-  (V_CNDMASK_B32_e64 (EXTRACT_SUBREG $src0, sub0),
-                     (EXTRACT_SUBREG $src1, sub0),
-                     $src2), sub0),
-  (V_CNDMASK_B32_e64 (EXTRACT_SUBREG $src0, sub1),
-                     (EXTRACT_SUBREG $src1, sub1),
-                     $src2), sub1)
->;
-
 def V_READLANE_B32 : VOP2 <
   0x00000001,
   (outs SReg_32:$vdst),
@@ -958,11 +946,11 @@ defm V_MUL_F32 : VOP2_32 <0x00000008, "V_MUL_F32",
 
 
 defm V_MUL_I32_I24 : VOP2_32 <0x00000009, "V_MUL_I32_I24",
-  [(set i32:$dst, (mul I24:$src0, I24:$src1))]
+  [(set i32:$dst, (AMDGPUmul_i24 i32:$src0, i32:$src1))]
 >;
 //defm V_MUL_HI_I32_I24 : VOP2_32 <0x0000000a, "V_MUL_HI_I32_I24", []>;
 defm V_MUL_U32_U24 : VOP2_32 <0x0000000b, "V_MUL_U32_U24",
-  [(set i32:$dst, (mul U24:$src0, U24:$src1))]
+  [(set i32:$dst, (AMDGPUmul_u24 i32:$src0, i32:$src1))]
 >;
 //defm V_MUL_HI_U32_U24 : VOP2_32 <0x0000000c, "V_MUL_HI_U32_U24", []>;
 
@@ -977,51 +965,32 @@ defm V_MAX_LEGACY_F32 : VOP2_32 <0x0000000e, "V_MAX_LEGACY_F32",
 
 defm V_MIN_F32 : VOP2_32 <0x0000000f, "V_MIN_F32", []>;
 defm V_MAX_F32 : VOP2_32 <0x00000010, "V_MAX_F32", []>;
-defm V_MIN_I32 : VOP2_32 <0x00000011, "V_MIN_I32",
-  [(set i32:$dst, (AMDGPUsmin i32:$src0, i32:$src1))]
->;
-defm V_MAX_I32 : VOP2_32 <0x00000012, "V_MAX_I32",
-  [(set i32:$dst, (AMDGPUsmax i32:$src0, i32:$src1))]
->;
-defm V_MIN_U32 : VOP2_32 <0x00000013, "V_MIN_U32",
-  [(set i32:$dst, (AMDGPUumin i32:$src0, i32:$src1))]
->;
-defm V_MAX_U32 : VOP2_32 <0x00000014, "V_MAX_U32",
-  [(set i32:$dst, (AMDGPUumax i32:$src0, i32:$src1))]
->;
+defm V_MIN_I32 : VOP2_32 <0x00000011, "V_MIN_I32", []>;
+defm V_MAX_I32 : VOP2_32 <0x00000012, "V_MAX_I32", []>;
+defm V_MIN_U32 : VOP2_32 <0x00000013, "V_MIN_U32", []>;
+defm V_MAX_U32 : VOP2_32 <0x00000014, "V_MAX_U32", []>;
 
-defm V_LSHR_B32 : VOP2_32 <0x00000015, "V_LSHR_B32",
-  [(set i32:$dst, (srl i32:$src0, i32:$src1))]
->;
+defm V_LSHR_B32 : VOP2_32 <0x00000015, "V_LSHR_B32", []>;
 defm V_LSHRREV_B32 : VOP2_32 <0x00000016, "V_LSHRREV_B32", [], "V_LSHR_B32">;
 
-defm V_ASHR_I32 : VOP2_32 <0x00000017, "V_ASHR_I32",
-  [(set i32:$dst, (sra i32:$src0, i32:$src1))]
->;
+defm V_ASHR_I32 : VOP2_32 <0x00000017, "V_ASHR_I32", []>;
 defm V_ASHRREV_I32 : VOP2_32 <0x00000018, "V_ASHRREV_I32", [], "V_ASHR_I32">;
 
 let hasPostISelHook = 1 in {
 
-defm V_LSHL_B32 : VOP2_32 <0x00000019, "V_LSHL_B32",
-  [(set i32:$dst, (shl i32:$src0, i32:$src1))]
->;
+defm V_LSHL_B32 : VOP2_32 <0x00000019, "V_LSHL_B32", []>;
 
 }
 defm V_LSHLREV_B32 : VOP2_32 <0x0000001a, "V_LSHLREV_B32", [], "V_LSHL_B32">;
 
-defm V_AND_B32 : VOP2_32 <0x0000001b, "V_AND_B32",
-  [(set i32:$dst, (and i32:$src0, i32:$src1))]
->;
-defm V_OR_B32 : VOP2_32 <0x0000001c, "V_OR_B32",
-  [(set i32:$dst, (or i32:$src0, i32:$src1))]
->;
-defm V_XOR_B32 : VOP2_32 <0x0000001d, "V_XOR_B32",
-  [(set i32:$dst, (xor i32:$src0, i32:$src1))]
->;
+defm V_AND_B32 : VOP2_32 <0x0000001b, "V_AND_B32", []>;
+defm V_OR_B32 : VOP2_32 <0x0000001c, "V_OR_B32", []>;
+defm V_XOR_B32 : VOP2_32 <0x0000001d, "V_XOR_B32", []>;
 
 } // End isCommutable = 1
 
-defm V_BFM_B32 : VOP2_32 <0x0000001e, "V_BFM_B32", []>;
+defm V_BFM_B32 : VOP2_32 <0x0000001e, "V_BFM_B32",
+  [(set i32:$dst, (AMDGPUbfm i32:$src0, i32:$src1))]>;
 defm V_MAC_F32 : VOP2_32 <0x0000001f, "V_MAC_F32", []>;
 defm V_MADMK_F32 : VOP2_32 <0x00000020, "V_MADMK_F32", []>;
 defm V_MADAK_F32 : VOP2_32 <0x00000021, "V_MADAK_F32", []>;
@@ -1077,10 +1046,10 @@ let neverHasSideEffects = 1 in {
 def V_MAD_LEGACY_F32 : VOP3_32 <0x00000140, "V_MAD_LEGACY_F32", []>;
 def V_MAD_F32 : VOP3_32 <0x00000141, "V_MAD_F32", []>;
 def V_MAD_I32_I24 : VOP3_32 <0x00000142, "V_MAD_I32_I24",
-  [(set i32:$dst, (add (mul I24:$src0, I24:$src1), i32:$src2))]
+  [(set i32:$dst, (add (AMDGPUmul_i24 i32:$src0, i32:$src1), i32:$src2))]
 >;
 def V_MAD_U32_U24 : VOP3_32 <0x00000143, "V_MAD_U32_U24",
-  [(set i32:$dst, (add (mul U24:$src0, U24:$src1), i32:$src2))]
+  [(set i32:$dst, (add (AMDGPUmul_u24 i32:$src0, i32:$src1), i32:$src2))]
 >;
 
 } // End neverHasSideEffects
@@ -1096,7 +1065,8 @@ def V_BFE_I32 : VOP3_32 <0x00000149, "V_BFE_I32",
   [(set i32:$dst, (AMDGPUbfe_i32 i32:$src0, i32:$src1, i32:$src2))]>;
 }
 
-def V_BFI_B32 : VOP3_32 <0x0000014a, "V_BFI_B32", []>;
+def V_BFI_B32 : VOP3_32 <0x0000014a, "V_BFI_B32",
+  [(set i32:$dst, (AMDGPUbfi i32:$src0, i32:$src1, i32:$src2))]>;
 defm : BFIPatterns <V_BFI_B32>;
 def V_FMA_F32 : VOP3_32 <0x0000014b, "V_FMA_F32",
   [(set f32:$dst, (fma f32:$src0, f32:$src1, f32:$src2))]
@@ -1215,10 +1185,18 @@ def S_SUBB_U32 : SOP2_32 <0x00000005, "S_SUBB_U32",
 } // End Uses = [SCC]
 } // End Defs = [SCC]
 
-def S_MIN_I32 : SOP2_32 <0x00000006, "S_MIN_I32", []>;
-def S_MIN_U32 : SOP2_32 <0x00000007, "S_MIN_U32", []>;
-def S_MAX_I32 : SOP2_32 <0x00000008, "S_MAX_I32", []>;
-def S_MAX_U32 : SOP2_32 <0x00000009, "S_MAX_U32", []>;
+def S_MIN_I32 : SOP2_32 <0x00000006, "S_MIN_I32",
+  [(set i32:$dst, (AMDGPUsmin i32:$src0, i32:$src1))]
+>;
+def S_MIN_U32 : SOP2_32 <0x00000007, "S_MIN_U32",
+  [(set i32:$dst, (AMDGPUumin i32:$src0, i32:$src1))]
+>;
+def S_MAX_I32 : SOP2_32 <0x00000008, "S_MAX_I32",
+  [(set i32:$dst, (AMDGPUsmax i32:$src0, i32:$src1))]
+>;
+def S_MAX_U32 : SOP2_32 <0x00000009, "S_MAX_U32",
+  [(set i32:$dst, (AMDGPUumax i32:$src0, i32:$src1))]
+>;
 
 def S_CSELECT_B32 : SOP2 <
   0x0000000a, (outs SReg_32:$dst),
@@ -1228,7 +1206,9 @@ def S_CSELECT_B32 : SOP2 <
 
 def S_CSELECT_B64 : SOP2_64 <0x0000000b, "S_CSELECT_B64", []>;
 
-def S_AND_B32 : SOP2_32 <0x0000000e, "S_AND_B32", []>;
+def S_AND_B32 : SOP2_32 <0x0000000e, "S_AND_B32",
+  [(set i32:$dst, (and i32:$src0, i32:$src1))]
+>;
 
 def S_AND_B64 : SOP2_64 <0x0000000f, "S_AND_B64",
   [(set i64:$dst, (and i64:$src0, i64:$src1))]
@@ -1239,13 +1219,23 @@ def : Pat <
   (S_AND_B64 $src0, $src1)
 >;
 
-def S_OR_B32 : SOP2_32 <0x00000010, "S_OR_B32", []>;
-def S_OR_B64 : SOP2_64 <0x00000011, "S_OR_B64", []>;
+def S_OR_B32 : SOP2_32 <0x00000010, "S_OR_B32",
+  [(set i32:$dst, (or i32:$src0, i32:$src1))]
+>;
+
+def S_OR_B64 : SOP2_64 <0x00000011, "S_OR_B64",
+  [(set i64:$dst, (or i64:$src0, i64:$src1))]
+>;
+
 def : Pat <
   (i1 (or i1:$src0, i1:$src1)),
   (S_OR_B64 $src0, $src1)
 >;
-def S_XOR_B32 : SOP2_32 <0x00000012, "S_XOR_B32", []>;
+
+def S_XOR_B32 : SOP2_32 <0x00000012, "S_XOR_B32",
+  [(set i32:$dst, (xor i32:$src0, i32:$src1))]
+>;
+
 def S_XOR_B64 : SOP2_64 <0x00000013, "S_XOR_B64",
   [(set i1:$dst, (xor i1:$src0, i1:$src1))]
 >;
@@ -1698,6 +1688,7 @@ def : BitConvert <f64, i64, VReg_64>;
 def : BitConvert <v2f32, v2i32, VReg_64>;
 def : BitConvert <v2i32, v2f32, VReg_64>;
 def : BitConvert <v2i32, i64, VReg_64>;
+def : BitConvert <i64, v2i32, VReg_64>;
 
 def : BitConvert <v4f32, v4i32, VReg_128>;
 def : BitConvert <v4i32, v4f32, VReg_128>;
@@ -1784,21 +1775,6 @@ def : Pat <
 def : Pat <
   (i64 InlineImm<i64>:$imm),
   (S_MOV_B64 InlineImm<i64>:$imm)
->;
-
-// i64 immediates aren't supported in hardware, split it into two 32bit values
-def : Pat <
-  (i64 imm:$imm),
-  (INSERT_SUBREG (INSERT_SUBREG (i64 (IMPLICIT_DEF)),
-    (S_MOV_B32 (i32 (LO32 imm:$imm))), sub0),
-    (S_MOV_B32 (i32 (HI32 imm:$imm))), sub1)
->;
-
-def : Pat <
-  (f64 fpimm:$imm),
-  (INSERT_SUBREG (INSERT_SUBREG (f64 (IMPLICIT_DEF)),
-    (V_MOV_B32_e32 (f32 (LO32f fpimm:$imm))), sub0),
-    (V_MOV_B32_e32 (f32 (HI32f fpimm:$imm))), sub1)
 >;
 
 /********** ===================== **********/
@@ -2282,14 +2258,6 @@ def : Pat <
 def : Pat <
   (i32 (addc i32:$src0, i32:$src1)),
   (S_ADD_I32 $src0, $src1)
->;
-
-def : Pat <
-  (or i64:$a, i64:$b),
-  (INSERT_SUBREG
-    (INSERT_SUBREG (IMPLICIT_DEF),
-      (V_OR_B32_e32 (EXTRACT_SUBREG $a, sub0), (EXTRACT_SUBREG $b, sub0)), sub0),
-    (V_OR_B32_e32 (EXTRACT_SUBREG $a, sub1), (EXTRACT_SUBREG $b, sub1)), sub1)
 >;
 
 //============================================================================//

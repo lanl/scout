@@ -198,11 +198,23 @@ public:
     /// The cost threshold for the unrolled loop when optimizing for size (set
     /// to UINT_MAX to disable).
     unsigned OptSizeThreshold;
+    /// The cost threshold for the unrolled loop, like Threshold, but used
+    /// for partial/runtime unrolling (set to UINT_MAX to disable).
+    unsigned PartialThreshold;
+    /// The cost threshold for the unrolled loop when optimizing for size, like
+    /// OptSizeThreshold, but used for partial/runtime unrolling (set to UINT_MAX
+    /// to disable).
+    unsigned PartialOptSizeThreshold;
     /// A forced unrolling factor (the number of concatenated bodies of the
     /// original loop in the unrolled loop body). When set to 0, the unrolling
     /// transformation will select an unrolling factor based on the current cost
     /// threshold and other factors.
     unsigned Count;
+    // Set the maximum unrolling factor. The unrolling factor may be selected
+    // using the appropriate cost threshold, but may not exceed this number
+    // (set to UINT_MAX to disable). This does not apply in cases where the
+    // loop is being fully unrolled.
+    unsigned MaxCount;
     /// Allow partial unrolling (unrolling of loops to expand the size of the
     /// loop body, not only to eliminate small constant-trip-count loops).
     bool     Partial;
@@ -297,10 +309,10 @@ public:
   /// \brief Return the expected cost of materialization for the given integer
   /// immediate of the specified type for a given instruction. The cost can be
   /// zero if the immediate can be folded into the specified instruction.
-  virtual unsigned getIntImmCost(unsigned Opcode, const APInt &Imm,
+  virtual unsigned getIntImmCost(unsigned Opc, unsigned Idx, const APInt &Imm,
                                  Type *Ty) const;
-  virtual unsigned getIntImmCost(Intrinsic::ID IID, const APInt &Imm,
-                                 Type *Ty) const;
+  virtual unsigned getIntImmCost(Intrinsic::ID IID, unsigned Idx,
+                                 const APInt &Imm, Type *Ty) const;
   /// @}
 
   /// \name Vector Target Information

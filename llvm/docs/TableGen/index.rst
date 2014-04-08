@@ -10,6 +10,7 @@ TableGen
 
    BackEnds
    LangRef
+   LangIntro
    Deficiencies
 
 Introduction
@@ -23,7 +24,7 @@ amount of duplication in the description, reduces the chance of error, and makes
 it easier to structure domain specific information.
 
 The core part of TableGen parses a file, instantiates the declarations, and
-hands the result off to a domain-specific `backends`_ for processing.
+hands the result off to a domain-specific `backend`_ for processing.
 
 The current major users of TableGen are :doc:`../CodeGenerator`
 and the
@@ -145,11 +146,10 @@ of the x86 architecture.  ``def ADD32rr`` defines a record named
 ``ADD32rr``, and the comment at the end of the line indicates the superclasses
 of the definition.  The body of the record contains all of the data that
 TableGen assembled for the record, indicating that the instruction is part of
-the "X86" namespace, the pattern indicating how the instruction should be
-emitted into the assembly file, that it is a two-address instruction, has a
-particular encoding, etc.  The contents and semantics of the information in the
-record are specific to the needs of the X86 backend, and are only shown as an
-example.
+the "X86" namespace, the pattern indicating how the instruction is selected by
+the code generator, that it is a two-address instruction, has a particular
+encoding, etc.  The contents and semantics of the information in the record are
+specific to the needs of the X86 backend, and are only shown as an example.
 
 As you can see, a lot of information is needed for every instruction supported
 by the code generator, and specifying it all manually would be unmaintainable,
@@ -182,7 +182,7 @@ refer to ``NAME`` anywhere she desires to use the ultimate name of the ``def``.
 Syntax
 ======
 
-TableGen has a syntax that is losely based on C++ templates, with built-in
+TableGen has a syntax that is loosely based on C++ templates, with built-in
 types and specification. In addition, TableGen's syntax introduces some
 automation concepts like multiclass, foreach, let, etc.
 
@@ -195,7 +195,7 @@ which are considered 'records'.
 **TableGen records** have a unique name, a list of values, and a list of
 superclasses.  The list of values is the main data that TableGen builds for each
 record; it is this that holds the domain specific information for the
-application.  The interpretation of this data is left to a specific `backends`_,
+application.  The interpretation of this data is left to a specific `backend`_,
 but the structure and format rules are taken care of and are fixed by
 TableGen.
 
@@ -256,7 +256,10 @@ in the current multiclass.
 
 
 
-See the `TableGen Language Reference <LangRef.html>`_ for more information.
+See the :doc:`TableGen Language Introduction <LangIntro>` for more generic
+information on the usage of the language, and the
+:doc:`TableGen Language Reference <LangRef>` for more in-depth description
+of the formal language specification.
 
 .. _backend:
 .. _backends:
@@ -296,11 +299,11 @@ the basic concepts via custom-made back-ends, which can pervert the original
 design and make it very hard for newcomers to understand the evil TableGen
 file.
 
-There are some in favour of extending the semantics even more, but makeing sure
-back-ends adhere to strict rules. Others suggesting we should move to less,
+There are some in favour of extending the semantics even more, but making sure
+back-ends adhere to strict rules. Others are suggesting we should move to less,
 more powerful DSLs designed with specific purposes, or even re-using existing
 DSLs.
 
-Either way, this is a discussion that is likely spanning across several years,
+Either way, this is a discussion that will likely span across several years,
 if not decades. You can read more in the `TableGen Deficiencies <Deficiencies.html>`_
 document.

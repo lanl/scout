@@ -45,6 +45,7 @@ public:
   RangeSpan(MCSymbol *S, MCSymbol *E) : Start(S), End(E) {}
   const MCSymbol *getStart() const { return Start; }
   const MCSymbol *getEnd() const { return End; }
+  void setEnd(const MCSymbol *E) { End = E; }
 
 private:
   const MCSymbol *Start, *End;
@@ -255,11 +256,7 @@ public:
   bool hasContent() const { return !UnitDie->getChildren().empty(); }
 
   /// addRange - Add an address range to the list of ranges for this unit.
-  void addRange(RangeSpan Range) {
-    // Only add a range for this unit if we're emitting full debug.
-    if (getCUNode().getEmissionKind() == DIBuilder::FullDebug)
-      CURanges.push_back(Range);
-  }
+  void addRange(RangeSpan Range);
 
   /// getRanges - Get the list of ranges for this unit.
   const SmallVectorImpl<RangeSpan> &getRanges() const { return CURanges; }
@@ -486,8 +483,7 @@ public:
   }
 
   /// Emit the header for this unit, not including the initial length field.
-  virtual void emitHeader(const MCSection *ASection,
-                          const MCSymbol *ASectionSym) const;
+  virtual void emitHeader(const MCSymbol *ASectionSym) const;
 
   virtual DwarfCompileUnit &getCU() = 0;
 
@@ -597,7 +593,13 @@ public:
 
   /// addLabelAddress - Add a dwarf label attribute data and value using
   /// either DW_FORM_addr or DW_FORM_GNU_addr_index.
-  void addLabelAddress(DIE *Die, dwarf::Attribute Attribute, MCSymbol *Label);
+  void addLabelAddress(DIE *Die, dwarf::Attribute Attribute,
+                       const MCSymbol *Label);
+
+  /// addLocalLabelAddress - Add a dwarf label attribute data and value using
+  /// DW_FORM_addr only.
+  void addLocalLabelAddress(DIE *Die, dwarf::Attribute Attribute,
+                            const MCSymbol *Label);
 
   DwarfCompileUnit &getCU() override { return *this; }
 
@@ -621,8 +623,7 @@ public:
   void setType(const DIE *Ty) { this->Ty = Ty; }
 
   /// Emit the header for this unit, not including the initial length field.
-  void emitHeader(const MCSection *ASection, const MCSymbol *ASectionSym) const
-      override;
+  void emitHeader(const MCSymbol *ASectionSym) const override;
   unsigned getHeaderSize() const override {
     return DwarfUnit::getHeaderSize() + sizeof(uint64_t) + // Type Signature
            sizeof(uint32_t);                               // Type DIE Offset

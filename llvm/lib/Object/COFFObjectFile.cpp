@@ -135,22 +135,6 @@ error_code COFFObjectFile::getSymbolName(DataRefImpl Ref,
   return getSymbolName(Symb, Result);
 }
 
-error_code COFFObjectFile::getSymbolFileOffset(DataRefImpl Ref,
-                                            uint64_t &Result) const {
-  const coff_symbol *Symb = toSymb(Ref);
-  const coff_section *Section = NULL;
-  if (error_code EC = getSection(Symb->SectionNumber, Section))
-    return EC;
-
-  if (Symb->SectionNumber == COFF::IMAGE_SYM_UNDEFINED)
-    Result = UnknownAddressOrSize;
-  else if (Section)
-    Result = Section->PointerToRawData + Symb->Value;
-  else
-    Result = Symb->Value;
-  return object_error::success;
-}
-
 error_code COFFObjectFile::getSymbolAddress(DataRefImpl Ref,
                                             uint64_t &Result) const {
   const coff_symbol *Symb = toSymb(Ref);
@@ -250,11 +234,6 @@ error_code COFFObjectFile::getSymbolSection(DataRefImpl Ref,
     Result = section_iterator(SectionRef(Ref, this));
   }
   return object_error::success;
-}
-
-error_code COFFObjectFile::getSymbolValue(DataRefImpl Ref,
-                                          uint64_t &Val) const {
-  report_fatal_error("getSymbolValue unimplemented in COFFObjectFile");
 }
 
 void COFFObjectFile::moveSectionNext(DataRefImpl &Ref) const {
@@ -367,25 +346,46 @@ error_code COFFObjectFile::sectionContainsSymbol(DataRefImpl SecRef,
 relocation_iterator COFFObjectFile::section_rel_begin(DataRefImpl Ref) const {
   const coff_section *Sec = toSec(Ref);
   DataRefImpl Ret;
-  if (Sec->NumberOfRelocations == 0)
+  if (Sec->NumberOfRelocations == 0) {
     Ret.p = 0;
-  else
-    Ret.p = reinterpret_cast<uintptr_t>(base() + Sec->PointerToRelocations);
-
+  } else {
+    auto begin = reinterpret_cast<const coff_relocation*>(
+        base() + Sec->PointerToRelocations);
+    if (Sec->hasExtendedRelocations()) {
+      // Skip the first relocation entry repurposed to store the number of
+      // relocations.
+      begin++;
+    }
+    Ret.p = reinterpret_cast<uintptr_t>(begin);
+  }
   return relocation_iterator(RelocationRef(Ret, this));
+}
+
+static uint32_t getNumberOfRelocations(const coff_section *Sec,
+                                       const uint8_t *base) {
+  // The field for the number of relocations in COFF section table is only
+  // 16-bit wide. If a section has more than 65535 relocations, 0xFFFF is set to
+  // NumberOfRelocations field, and the actual relocation count is stored in the
+  // VirtualAddress field in the first relocation entry.
+  if (Sec->hasExtendedRelocations()) {
+    auto *FirstReloc = reinterpret_cast<const coff_relocation*>(
+        base + Sec->PointerToRelocations);
+    return FirstReloc->VirtualAddress;
+  }
+  return Sec->NumberOfRelocations;
 }
 
 relocation_iterator COFFObjectFile::section_rel_end(DataRefImpl Ref) const {
   const coff_section *Sec = toSec(Ref);
   DataRefImpl Ret;
-  if (Sec->NumberOfRelocations == 0)
+  if (Sec->NumberOfRelocations == 0) {
     Ret.p = 0;
-  else
-    Ret.p = reinterpret_cast<uintptr_t>(
-              reinterpret_cast<const coff_relocation*>(
-                base() + Sec->PointerToRelocations)
-              + Sec->NumberOfRelocations);
-
+  } else {
+    auto begin = reinterpret_cast<const coff_relocation*>(
+        base() + Sec->PointerToRelocations);
+    uint32_t NumReloc = getNumberOfRelocations(Sec, base());
+    Ret.p = reinterpret_cast<uintptr_t>(begin + NumReloc);
+  }
   return relocation_iterator(RelocationRef(Ret, this));
 }
 

@@ -15,17 +15,15 @@
 #ifndef ARMISELLOWERING_H
 #define ARMISELLOWERING_H
 
-#include "ARM.h"
-#include "ARMSubtarget.h"
+#include "MCTargetDesc/ARMBaseInfo.h"
 #include "llvm/CodeGen/CallingConvLower.h"
-#include "llvm/CodeGen/FastISel.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/Target/TargetLowering.h"
-#include "llvm/Target/TargetRegisterInfo.h"
 #include <vector>
 
 namespace llvm {
   class ARMConstantPoolValue;
+  class ARMSubtarget;
 
   namespace ARMISD {
     // ARM Specific DAG Nodes
@@ -549,29 +547,6 @@ namespace llvm {
     SDValue duplicateCmp(SDValue Cmp, SelectionDAG &DAG) const;
 
     SDValue OptimizeVFPBrcond(SDValue Op, SelectionDAG &DAG) const;
-
-    MachineBasicBlock *EmitAtomicCmpSwap(MachineInstr *MI,
-                                         MachineBasicBlock *BB,
-                                         unsigned Size) const;
-    MachineBasicBlock *EmitAtomicBinary(MachineInstr *MI,
-                                        MachineBasicBlock *BB,
-                                        unsigned Size,
-                                        unsigned BinOpcode) const;
-    MachineBasicBlock *EmitAtomicBinary64(MachineInstr *MI,
-                                          MachineBasicBlock *BB,
-                                          unsigned Op1,
-                                          unsigned Op2,
-                                          bool NeedsCarry = false,
-                                          bool IsCmpxchg = false,
-                                          bool IsMinMax = false,
-                                          ARMCC::CondCodes CC = ARMCC::AL) const;
-    MachineBasicBlock * EmitAtomicBinaryMinMax(MachineInstr *MI,
-                                               MachineBasicBlock *BB,
-                                               unsigned Size,
-                                               bool signExtend,
-                                               ARMCC::CondCodes Cond) const;
-    MachineBasicBlock *EmitAtomicLoad64(MachineInstr *MI,
-                                        MachineBasicBlock *BB) const;
 
     void SetupEntryBlockForSjLj(MachineInstr *MI,
                                 MachineBasicBlock *MBB,

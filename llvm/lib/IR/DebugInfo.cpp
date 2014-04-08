@@ -435,8 +435,10 @@ static bool fieldIsTypeRef(const MDNode *DbgNode, unsigned Elt) {
 /// Check if a value can be a ScopeRef.
 static bool isScopeRef(const Value *Val) {
   return !Val ||
-         (isa<MDString>(Val) && !cast<MDString>(Val)->getString().empty()) ||
-         (isa<MDNode>(Val) && DIScope(cast<MDNode>(Val)).isScope());
+    (isa<MDString>(Val) && !cast<MDString>(Val)->getString().empty()) ||
+    // Not checking for Val->isScope() here, because it would work
+    // only for lexical scopes and not all subclasses of DIScope.
+    isa<MDNode>(Val);
 }
 
 /// Check if a field at position Elt of a MDNode can be a ScopeRef.
@@ -1022,7 +1024,7 @@ void DebugInfoFinder::processModule(const Module &M) {
       DIArray Imports = CU.getImportedEntities();
       for (unsigned i = 0, e = Imports.getNumElements(); i != e; ++i) {
         DIImportedEntity Import = DIImportedEntity(Imports.getElement(i));
-        DIDescriptor Entity = Import.getEntity();
+        DIDescriptor Entity = Import.getEntity().resolve(TypeIdentifierMap);
         if (Entity.isType())
           processType(DIType(Entity));
         else if (Entity.isSubprogram())
@@ -1091,18 +1093,6 @@ void DebugInfoFinder::processScope(DIScope Scope) {
     DINameSpace NS(Scope);
     processScope(NS.getContext());
   }
-}
-
-/// processLexicalBlock
-void DebugInfoFinder::processLexicalBlock(DILexicalBlock LB) {
-  DIScope Context = LB.getContext();
-  if (Context.isLexicalBlock())
-    return processLexicalBlock(DILexicalBlock(Context));
-  else if (Context.isLexicalBlockFile()) {
-    DILexicalBlockFile DBF = DILexicalBlockFile(Context);
-    return processLexicalBlock(DILexicalBlock(DBF.getScope()));
-  } else
-    return processSubprogram(DISubprogram(Context));
 }
 
 /// processSubprogram - Process DISubprogram.
