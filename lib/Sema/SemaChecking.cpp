@@ -142,6 +142,7 @@ Sema::CheckBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
     break;
   case Builtin::BI__builtin_stdarg_start:
   case Builtin::BI__builtin_va_start:
+  case Builtin::BI__va_start:
     if (SemaBuiltinVAStart(TheCall))
       return ExprError();
     break;
@@ -302,8 +303,14 @@ Sema::CheckBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
   if (BuiltinID >= Builtin::FirstTSBuiltin) {
     switch (Context.getTargetInfo().getTriple().getArch()) {
       case llvm::Triple::arm:
+      case llvm::Triple::armeb:
       case llvm::Triple::thumb:
+      case llvm::Triple::thumbeb:
         if (CheckARMBuiltinFunctionCall(BuiltinID, TheCall))
+          return ExprError();
+        break;
+      case llvm::Triple::arm64:
+        if (CheckARM64BuiltinFunctionCall(BuiltinID, TheCall))
           return ExprError();
         break;
       case llvm::Triple::aarch64:
@@ -366,7 +373,7 @@ static unsigned RFT(unsigned t, bool shift = false, bool ForceQuad = false) {
 /// the vector type specified by the NeonTypeFlags.  This is used to check
 /// the pointer arguments for Neon load/store intrinsics.
 static QualType getNeonEltType(NeonTypeFlags Flags, ASTContext &Context,
-                               bool IsAArch64) {
+                               bool IsPolyUnsigned, bool IsInt64Long) {
   switch (Flags.getEltType()) {
   case NeonTypeFlags::Int8:
     return Flags.isUnsigned() ? Context.UnsignedCharTy : Context.SignedCharTy;
@@ -375,15 +382,15 @@ static QualType getNeonEltType(NeonTypeFlags Flags, ASTContext &Context,
   case NeonTypeFlags::Int32:
     return Flags.isUnsigned() ? Context.UnsignedIntTy : Context.IntTy;
   case NeonTypeFlags::Int64:
-    if (IsAArch64)
+    if (IsInt64Long)
       return Flags.isUnsigned() ? Context.UnsignedLongTy : Context.LongTy;
     else
       return Flags.isUnsigned() ? Context.UnsignedLongLongTy
                                 : Context.LongLongTy;
   case NeonTypeFlags::Poly8:
-    return IsAArch64 ? Context.UnsignedCharTy : Context.SignedCharTy;
+    return IsPolyUnsigned ? Context.UnsignedCharTy : Context.SignedCharTy;
   case NeonTypeFlags::Poly16:
-    return IsAArch64 ? Context.UnsignedShortTy : Context.ShortTy;
+    return IsPolyUnsigned ? Context.UnsignedShortTy : Context.ShortTy;
   case NeonTypeFlags::Poly64:
     return Context.UnsignedLongTy;
   case NeonTypeFlags::Poly128:
@@ -431,9 +438,13 @@ bool Sema::CheckNeonBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
     ExprResult RHS = DefaultFunctionArrayLvalueConversion(Arg);
     QualType RHSTy = RHS.get()->getType();
 
-    bool IsAArch64 =
-        Context.getTargetInfo().getTriple().getArch() == llvm::Triple::aarch64;
-    QualType EltTy = getNeonEltType(NeonTypeFlags(TV), Context, IsAArch64);
+    llvm::Triple::ArchType Arch = Context.getTargetInfo().getTriple().getArch();
+    bool IsPolyUnsigned =
+        Arch == llvm::Triple::aarch64 || Arch == llvm::Triple::arm64;
+    bool IsInt64Long =
+        Context.getTargetInfo().getInt64Type() == TargetInfo::SignedLong;
+    QualType EltTy =
+        getNeonEltType(NeonTypeFlags(TV), Context, IsPolyUnsigned, IsInt64Long);
     if (HasConstPtr)
       EltTy = EltTy.withConst();
     QualType LHSTy = Context.getPointerType(EltTy);
@@ -484,11 +495,15 @@ bool Sema::CheckAArch64BuiltinFunctionCall(unsigned BuiltinID,
   return false;
 }
 
-bool Sema::CheckARMBuiltinExclusiveCall(unsigned BuiltinID, CallExpr *TheCall) {
+bool Sema::CheckARMBuiltinExclusiveCall(unsigned BuiltinID, CallExpr *TheCall,
+                                        unsigned MaxWidth) {
   assert((BuiltinID == ARM::BI__builtin_arm_ldrex ||
-          BuiltinID == ARM::BI__builtin_arm_strex) &&
+          BuiltinID == ARM::BI__builtin_arm_strex ||
+          BuiltinID == ARM64::BI__builtin_arm_ldrex ||
+          BuiltinID == ARM64::BI__builtin_arm_strex) &&
          "unexpected ARM builtin");
-  bool IsLdrex = BuiltinID == ARM::BI__builtin_arm_ldrex;
+  bool IsLdrex = BuiltinID == ARM::BI__builtin_arm_ldrex ||
+                 BuiltinID == ARM64::BI__builtin_arm_ldrex;
 
   DeclRefExpr *DRE =cast<DeclRefExpr>(TheCall->getCallee()->IgnoreParenCasts());
 
@@ -549,7 +564,8 @@ bool Sema::CheckARMBuiltinExclusiveCall(unsigned BuiltinID, CallExpr *TheCall) {
   }
 
   // But ARM doesn't have instructions to deal with 128-bit versions.
-  if (Context.getTypeSize(ValType) > 64) {
+  if (Context.getTypeSize(ValType) > MaxWidth) {
+    assert(MaxWidth == 64 && "Diagnostic unexpectedly inaccurate");
     Diag(DRE->getLocStart(), diag::err_atomic_exclusive_builtin_pointer_size)
       << PointerArg->getType() << PointerArg->getSourceRange();
     return true;
@@ -595,7 +611,7 @@ bool Sema::CheckARMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
 
   if (BuiltinID == ARM::BI__builtin_arm_ldrex ||
       BuiltinID == ARM::BI__builtin_arm_strex) {
-    return CheckARMBuiltinExclusiveCall(BuiltinID, TheCall);
+    return CheckARMBuiltinExclusiveCall(BuiltinID, TheCall, 64);
   }
 
   if (CheckNeonBuiltinFunctionCall(BuiltinID, TheCall))
@@ -630,6 +646,21 @@ bool Sema::CheckARMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
       << l << u+l << TheCall->getArg(i)->getSourceRange();
 
   // FIXME: VFP Intrinsics should error if VFP not present.
+  return false;
+}
+
+bool Sema::CheckARM64BuiltinFunctionCall(unsigned BuiltinID,
+                                         CallExpr *TheCall) {
+  llvm::APSInt Result;
+
+  if (BuiltinID == ARM64::BI__builtin_arm_ldrex ||
+      BuiltinID == ARM64::BI__builtin_arm_strex) {
+    return CheckARMBuiltinExclusiveCall(BuiltinID, TheCall, 128);
+  }
+
+  if (CheckNeonBuiltinFunctionCall(BuiltinID, TheCall))
+    return true;
+
   return false;
 }
 
@@ -2426,9 +2457,6 @@ protected:
   void EmitFormatDiagnostic(PartialDiagnostic PDiag, SourceLocation StringLoc,
                             bool IsStringLocation, Range StringRange,
                             ArrayRef<FixItHint> Fixit = None);
-
-  void CheckPositionalAndNonpositionalArgs(
-      const analyze_format_string::FormatSpecifier *FS);
 };
 }
 
@@ -5306,90 +5334,182 @@ static void DiagnoseOutOfRangeComparison(Sema &S, BinaryOperator *E,
   if (!S.ActiveTemplateInstantiations.empty())
     return;
 
+  // TODO: Investigate using GetExprRange() to get tighter bounds
+  // on the bit ranges.
+  QualType OtherT = Other->getType();
+  IntRange OtherRange = IntRange::forValueOfType(S.Context, OtherT);
+  unsigned OtherWidth = OtherRange.Width;
+
+  bool OtherIsBooleanType = Other->isKnownToHaveBooleanValue();
+
   // 0 values are handled later by CheckTrivialUnsignedComparison().
-  if (Value == 0)
+  if ((Value == 0) && (!OtherIsBooleanType))
     return;
 
   BinaryOperatorKind op = E->getOpcode();
-  QualType OtherT = Other->getType();
-  QualType ConstantT = Constant->getType();
-  QualType CommonT = E->getLHS()->getType();
-  if (S.Context.hasSameUnqualifiedType(OtherT, ConstantT))
-    return;
-  assert((OtherT->isIntegerType() && ConstantT->isIntegerType())
-         && "comparison with non-integer type");
+  bool IsTrue = true;
 
-  bool ConstantSigned = ConstantT->isSignedIntegerType();
-  bool CommonSigned = CommonT->isSignedIntegerType();
+  // Used for diagnostic printout.
+  enum {
+    LiteralConstant = 0,
+    CXXBoolLiteralTrue,
+    CXXBoolLiteralFalse
+  } LiteralOrBoolConstant = LiteralConstant;
 
-  bool EqualityOnly = false;
+  if (!OtherIsBooleanType) {
+    QualType ConstantT = Constant->getType();
+    QualType CommonT = E->getLHS()->getType();
 
-  // TODO: Investigate using GetExprRange() to get tighter bounds on
-  // on the bit ranges.
-  IntRange OtherRange = IntRange::forValueOfType(S.Context, OtherT);
-  unsigned OtherWidth = OtherRange.Width;
-  
-  if (CommonSigned) {
-    // The common type is signed, therefore no signed to unsigned conversion.
-    if (!OtherRange.NonNegative) {
-      // Check that the constant is representable in type OtherT.
-      if (ConstantSigned) {
-        if (OtherWidth >= Value.getMinSignedBits())
-          return;
-      } else { // !ConstantSigned
-        if (OtherWidth >= Value.getActiveBits() + 1)
-          return;
+    if (S.Context.hasSameUnqualifiedType(OtherT, ConstantT))
+      return;
+    assert((OtherT->isIntegerType() && ConstantT->isIntegerType()) &&
+           "comparison with non-integer type");
+
+    bool ConstantSigned = ConstantT->isSignedIntegerType();
+    bool CommonSigned = CommonT->isSignedIntegerType();
+
+    bool EqualityOnly = false;
+
+    if (CommonSigned) {
+      // The common type is signed, therefore no signed to unsigned conversion.
+      if (!OtherRange.NonNegative) {
+        // Check that the constant is representable in type OtherT.
+        if (ConstantSigned) {
+          if (OtherWidth >= Value.getMinSignedBits())
+            return;
+        } else { // !ConstantSigned
+          if (OtherWidth >= Value.getActiveBits() + 1)
+            return;
+        }
+      } else { // !OtherSigned
+               // Check that the constant is representable in type OtherT.
+        // Negative values are out of range.
+        if (ConstantSigned) {
+          if (Value.isNonNegative() && OtherWidth >= Value.getActiveBits())
+            return;
+        } else { // !ConstantSigned
+          if (OtherWidth >= Value.getActiveBits())
+            return;
+        }
       }
-    } else { // !OtherSigned
-      // Check that the constant is representable in type OtherT.
-      // Negative values are out of range.
-      if (ConstantSigned) {
-        if (Value.isNonNegative() && OtherWidth >= Value.getActiveBits())
-          return;
-      } else { // !ConstantSigned
+    } else { // !CommonSigned
+      if (OtherRange.NonNegative) {
         if (OtherWidth >= Value.getActiveBits())
           return;
+      } else if (!OtherRange.NonNegative && !ConstantSigned) {
+        // Check to see if the constant is representable in OtherT.
+        if (OtherWidth > Value.getActiveBits())
+          return;
+        // Check to see if the constant is equivalent to a negative value
+        // cast to CommonT.
+        if (S.Context.getIntWidth(ConstantT) ==
+                S.Context.getIntWidth(CommonT) &&
+            Value.isNegative() && Value.getMinSignedBits() <= OtherWidth)
+          return;
+        // The constant value rests between values that OtherT can represent
+        // after conversion.  Relational comparison still works, but equality
+        // comparisons will be tautological.
+        EqualityOnly = true;
+      } else { // OtherSigned && ConstantSigned
+        assert(0 && "Two signed types converted to unsigned types.");
       }
     }
-  } else {  // !CommonSigned
-    if (OtherRange.NonNegative) {
-      if (OtherWidth >= Value.getActiveBits())
-        return;
-    } else if (!OtherRange.NonNegative && !ConstantSigned) {
-      // Check to see if the constant is representable in OtherT.
-      if (OtherWidth > Value.getActiveBits())
-        return;
-      // Check to see if the constant is equivalent to a negative value
-      // cast to CommonT.
-      if (S.Context.getIntWidth(ConstantT) == S.Context.getIntWidth(CommonT) &&
-          Value.isNegative() && Value.getMinSignedBits() <= OtherWidth)
-        return;
-      // The constant value rests between values that OtherT can represent after
-      // conversion.  Relational comparison still works, but equality
-      // comparisons will be tautological.
-      EqualityOnly = true;
-    } else { // OtherSigned && ConstantSigned
-      assert(0 && "Two signed types converted to unsigned types.");
+
+    bool PositiveConstant = !ConstantSigned || Value.isNonNegative();
+
+    if (op == BO_EQ || op == BO_NE) {
+      IsTrue = op == BO_NE;
+    } else if (EqualityOnly) {
+      return;
+    } else if (RhsConstant) {
+      if (op == BO_GT || op == BO_GE)
+        IsTrue = !PositiveConstant;
+      else // op == BO_LT || op == BO_LE
+        IsTrue = PositiveConstant;
+    } else {
+      if (op == BO_LT || op == BO_LE)
+        IsTrue = !PositiveConstant;
+      else // op == BO_GT || op == BO_GE
+        IsTrue = PositiveConstant;
     }
-  }
-
-  bool PositiveConstant = !ConstantSigned || Value.isNonNegative();
-
-  bool IsTrue = true;
-  if (op == BO_EQ || op == BO_NE) {
-    IsTrue = op == BO_NE;
-  } else if (EqualityOnly) {
-    return;
-  } else if (RhsConstant) {
-    if (op == BO_GT || op == BO_GE)
-      IsTrue = !PositiveConstant;
-    else // op == BO_LT || op == BO_LE
-      IsTrue = PositiveConstant;
   } else {
-    if (op == BO_LT || op == BO_LE)
-      IsTrue = !PositiveConstant;
-    else // op == BO_GT || op == BO_GE
-      IsTrue = PositiveConstant;
+    // Other isKnownToHaveBooleanValue
+    enum CompareBoolWithConstantResult { AFals, ATrue, Unkwn };
+    enum ConstantValue { LT_Zero, Zero, One, GT_One, SizeOfConstVal };
+    enum ConstantSide { Lhs, Rhs, SizeOfConstSides };
+
+    static const struct LinkedConditions {
+      CompareBoolWithConstantResult BO_LT_OP[SizeOfConstSides][SizeOfConstVal];
+      CompareBoolWithConstantResult BO_GT_OP[SizeOfConstSides][SizeOfConstVal];
+      CompareBoolWithConstantResult BO_LE_OP[SizeOfConstSides][SizeOfConstVal];
+      CompareBoolWithConstantResult BO_GE_OP[SizeOfConstSides][SizeOfConstVal];
+      CompareBoolWithConstantResult BO_EQ_OP[SizeOfConstSides][SizeOfConstVal];
+      CompareBoolWithConstantResult BO_NE_OP[SizeOfConstSides][SizeOfConstVal];
+
+    } TruthTable = {
+        // Constant on LHS.              | Constant on RHS.              |
+        // LT_Zero| Zero  | One   |GT_One| LT_Zero| Zero  | One   |GT_One|
+        { { ATrue, Unkwn, AFals, AFals }, { AFals, AFals, Unkwn, ATrue } },
+        { { AFals, AFals, Unkwn, ATrue }, { ATrue, Unkwn, AFals, AFals } },
+        { { ATrue, ATrue, Unkwn, AFals }, { AFals, Unkwn, ATrue, ATrue } },
+        { { AFals, Unkwn, ATrue, ATrue }, { ATrue, ATrue, Unkwn, AFals } },
+        { { AFals, Unkwn, Unkwn, AFals }, { AFals, Unkwn, Unkwn, AFals } },
+        { { ATrue, Unkwn, Unkwn, ATrue }, { ATrue, Unkwn, Unkwn, ATrue } }
+      };
+
+    bool ConstantIsBoolLiteral = isa<CXXBoolLiteralExpr>(Constant);
+
+    enum ConstantValue ConstVal = Zero;
+    if (Value.isUnsigned() || Value.isNonNegative()) {
+      if (Value == 0) {
+        LiteralOrBoolConstant =
+            ConstantIsBoolLiteral ? CXXBoolLiteralFalse : LiteralConstant;
+        ConstVal = Zero;
+      } else if (Value == 1) {
+        LiteralOrBoolConstant =
+            ConstantIsBoolLiteral ? CXXBoolLiteralTrue : LiteralConstant;
+        ConstVal = One;
+      } else {
+        LiteralOrBoolConstant = LiteralConstant;
+        ConstVal = GT_One;
+      }
+    } else {
+      ConstVal = LT_Zero;
+    }
+
+    CompareBoolWithConstantResult CmpRes;
+
+    switch (op) {
+    case BO_LT:
+      CmpRes = TruthTable.BO_LT_OP[RhsConstant][ConstVal];
+      break;
+    case BO_GT:
+      CmpRes = TruthTable.BO_GT_OP[RhsConstant][ConstVal];
+      break;
+    case BO_LE:
+      CmpRes = TruthTable.BO_LE_OP[RhsConstant][ConstVal];
+      break;
+    case BO_GE:
+      CmpRes = TruthTable.BO_GE_OP[RhsConstant][ConstVal];
+      break;
+    case BO_EQ:
+      CmpRes = TruthTable.BO_EQ_OP[RhsConstant][ConstVal];
+      break;
+    case BO_NE:
+      CmpRes = TruthTable.BO_NE_OP[RhsConstant][ConstVal];
+      break;
+    default:
+      CmpRes = Unkwn;
+      break;
+    }
+
+    if (CmpRes == AFals) {
+      IsTrue = false;
+    } else if (CmpRes == ATrue) {
+      IsTrue = true;
+    } else {
+      return;
+    }
   }
 
   // If this is a comparison to an enum constant, include that
@@ -5405,11 +5525,12 @@ static void DiagnoseOutOfRangeComparison(Sema &S, BinaryOperator *E,
   else
     OS << Value;
 
-  S.DiagRuntimeBehavior(E->getOperatorLoc(), E,
-                        S.PDiag(diag::warn_out_of_range_compare)
-                          << OS.str() << OtherT << IsTrue
-                          << E->getLHS()->getSourceRange()
-                          << E->getRHS()->getSourceRange());
+  S.DiagRuntimeBehavior(
+    E->getOperatorLoc(), E,
+    S.PDiag(diag::warn_out_of_range_compare)
+        << OS.str() << LiteralOrBoolConstant
+        << OtherT << (OtherIsBooleanType && !OtherT->isBooleanType()) << IsTrue
+        << E->getLHS()->getSourceRange() << E->getRHS()->getSourceRange());
 }
 
 /// Analyze the operands of the given comparison.  Implements the
@@ -5752,6 +5873,8 @@ void CheckImplicitConversion(Sema &S, Expr *E, QualType T,
     Source = cast<VectorType>(Source)->getElementType().getTypePtr();
     Target = cast<VectorType>(Target)->getElementType().getTypePtr();
   }
+  if (auto VecTy = dyn_cast<VectorType>(Target))
+    Target = VecTy->getElementType().getTypePtr();
 
   // Strip complex types.
   if (isa<ComplexType>(Source)) {
@@ -5995,7 +6118,7 @@ void AnalyzeImplicitConversions(Sema &S, Expr *OrigE, SourceLocation CC) {
 
   if (E->isTypeDependent() || E->isValueDependent())
     return;
-
+  
   // For conditional operators, we analyze the arguments as if they
   // were being fed directly into the output.
   if (isa<ConditionalOperator>(E)) {

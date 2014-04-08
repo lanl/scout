@@ -12,6 +12,7 @@
 #include "clang/Sema/SemaInternal.h"
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/ASTMutationListener.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/DeclVisitor.h"
 #include "clang/AST/DependentDiagnostic.h"
@@ -2168,7 +2169,7 @@ Decl *TemplateDeclInstantiator::VisitUsingDecl(UsingDecl *D) {
   }
 
   if (!NewUD->isInvalidDecl() &&
-      SemaRef.CheckUsingDeclQualifier(D->getUsingLoc(), SS,
+      SemaRef.CheckUsingDeclQualifier(D->getUsingLoc(), SS, NameInfo,
                                       D->getLocation()))
     NewUD->setInvalidDecl();
 
@@ -3131,19 +3132,13 @@ static void InstantiateExceptionSpec(Sema &SemaRef, FunctionDecl *New,
     }
   }
 
-  // Rebuild the function type
-  const FunctionProtoType *NewProto
-    = New->getType()->getAs<FunctionProtoType>();
-  assert(NewProto && "Template instantiation without function prototype?");
-
-  FunctionProtoType::ExtProtoInfo EPI = NewProto->getExtProtoInfo();
+  FunctionProtoType::ExtProtoInfo EPI;
   EPI.ExceptionSpecType = Proto->getExceptionSpecType();
   EPI.NumExceptions = Exceptions.size();
   EPI.Exceptions = Exceptions.data();
   EPI.NoexceptExpr = NoexceptExpr;
 
-  New->setType(SemaRef.Context.getFunctionType(NewProto->getReturnType(),
-                                               NewProto->getParamTypes(), EPI));
+  SemaRef.UpdateExceptionSpec(New, EPI);
 }
 
 void Sema::InstantiateExceptionSpec(SourceLocation PointOfInstantiation,
@@ -3157,10 +3152,9 @@ void Sema::InstantiateExceptionSpec(SourceLocation PointOfInstantiation,
   if (Inst.isInvalid()) {
     // We hit the instantiation depth limit. Clear the exception specification
     // so that our callers don't have to cope with EST_Uninstantiated.
-    FunctionProtoType::ExtProtoInfo EPI = Proto->getExtProtoInfo();
+    FunctionProtoType::ExtProtoInfo EPI;
     EPI.ExceptionSpecType = EST_None;
-    Decl->setType(Context.getFunctionType(Proto->getReturnType(),
-                                          Proto->getParamTypes(), EPI));
+    UpdateExceptionSpec(Decl, EPI);
     return;
   }
 
@@ -3446,6 +3440,9 @@ void Sema::InstantiateFunctionDefinition(SourceLocation PointOfInstantiation,
 
     PerformDependentDiagnostics(PatternDecl, TemplateArgs);
 
+    if (auto *Listener = getASTMutationListener())
+      Listener->FunctionDefinitionInstantiated(Function);
+
     savedContext.pop();
   }
 
@@ -3595,9 +3592,6 @@ void Sema::BuildVariableInstantiation(
   }
 
   InstantiateAttrs(TemplateArgs, OldVar, NewVar, LateAttrs, StartingScope);
-
-  if (NewVar->hasAttrs())
-    CheckAlignasUnderalignment(NewVar);
 
   LookupResult Previous(
       *this, NewVar->getDeclName(), NewVar->getLocation(),
@@ -4599,14 +4593,6 @@ NamedDecl *Sema::FindInstantiatedDecl(SourceLocation Loc, NamedDecl *D,
 /// \brief Performs template instantiation for all implicit template
 /// instantiations we have seen until this point.
 void Sema::PerformPendingInstantiations(bool LocalOnly) {
-  // Load pending instantiations from the external source.
-  if (!LocalOnly && ExternalSource) {
-    SmallVector<PendingImplicitInstantiation, 4> Pending;
-    ExternalSource->ReadPendingInstantiations(Pending);
-    PendingInstantiations.insert(PendingInstantiations.begin(),
-                                 Pending.begin(), Pending.end());
-  }
-
   while (!PendingLocalImplicitInstantiations.empty() ||
          (!LocalOnly && !PendingInstantiations.empty())) {
     PendingImplicitInstantiation Inst;

@@ -319,7 +319,10 @@ class CodeGenModule : public CodeGenTypeCache {
   llvm::StringMap<llvm::Constant*> AnnotationStrings;
 
   llvm::StringMap<llvm::Constant*> CFConstantStringMap;
-  llvm::StringMap<llvm::GlobalVariable*> ConstantStringMap;
+
+  llvm::StringMap<llvm::GlobalVariable *> Constant1ByteStringMap;
+  llvm::StringMap<llvm::GlobalVariable *> Constant2ByteStringMap;
+  llvm::StringMap<llvm::GlobalVariable *> Constant4ByteStringMap;
   llvm::DenseMap<const Decl*, llvm::Constant *> StaticLocalDeclMap;
   llvm::DenseMap<const Decl*, llvm::GlobalVariable*> StaticLocalDeclGuardMap;
   llvm::DenseMap<const Expr*, llvm::Constant *> MaterializedGlobalTemporaryMap;
@@ -904,6 +907,10 @@ public:
   /// ReturnTypeUsesSRet - Return true iff the given type uses 'sret' when used
   /// as a return type.
   bool ReturnTypeUsesSRet(const CGFunctionInfo &FI);
+
+  /// ReturnSlotInterferesWithArgs - Return true iff the given type uses an
+  /// argument slot when 'sret' is used as a return type.
+  bool ReturnSlotInterferesWithArgs(const CGFunctionInfo &FI);
 
   /// ReturnTypeUsesFPRet - Return true iff the given type uses 'fpret' when
   /// used as a return type.

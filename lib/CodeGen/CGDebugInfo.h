@@ -109,6 +109,7 @@ class CGDebugInfo {
   llvm::DIType CreateType(const ComplexType *Ty);
   llvm::DIType CreateQualifiedType(QualType Ty, llvm::DIFile Fg);
   llvm::DIType CreateType(const TypedefType *Ty, llvm::DIFile Fg);
+  llvm::DIType CreateType(const TemplateSpecializationType *Ty, llvm::DIFile Fg);
   llvm::DIType CreateType(const ObjCObjectPointerType *Ty,
                           llvm::DIFile F);
   llvm::DIType CreateType(const PointerType *Ty, llvm::DIFile F);
@@ -344,9 +345,9 @@ private:
   llvm::DIType CreateMemberType(llvm::DIFile Unit, QualType FType,
                                 StringRef Name, uint64_t *Offset);
 
-  /// \brief Retrieve the DIDescriptor, if any, for the canonical form of this
+  /// \brief Retrieve the DIScope, if any, for the canonical form of this
   /// declaration.
-  llvm::DIDescriptor getDeclarationOrDefinition(const Decl *D);
+  llvm::DIScope getDeclarationOrDefinition(const Decl *D);
 
   /// getFunctionDeclaration - Return debug info descriptor to describe method
   /// declaration for the given method definition.

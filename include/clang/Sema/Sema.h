@@ -1128,6 +1128,8 @@ public:
   CanThrowResult canThrow(const Expr *E);
   const FunctionProtoType *ResolveExceptionSpec(SourceLocation Loc,
                                                 const FunctionProtoType *FPT);
+  void UpdateExceptionSpec(FunctionDecl *FD,
+                           const FunctionProtoType::ExtProtoInfo &EPI);
   bool CheckSpecifiedExceptionType(QualType &T, const SourceRange &Range);
   bool CheckDistantExceptionSpec(QualType T);
   bool CheckEquivalentExceptionSpec(FunctionDecl *Old, FunctionDecl *New);
@@ -3732,6 +3734,7 @@ public:
                                    const LookupResult &Previous);
   bool CheckUsingDeclQualifier(SourceLocation UsingLoc,
                                const CXXScopeSpec &SS,
+                               const DeclarationNameInfo &NameInfo,
                                SourceLocation NameLoc);
 
   NamedDecl *BuildUsingDeclaration(Scope *S, AccessSpecifier AS,
@@ -7112,6 +7115,8 @@ private:
   void InitDataSharingAttributesStack();
   void DestroyDataSharingAttributesStack();
   ExprResult PerformImplicitIntegerConversion(SourceLocation OpLoc, Expr *Op);
+  ExprResult VerifyPositiveIntegerConstantInClause(Expr *Op,
+                                                   OpenMPClauseKind CKind);
 public:
   /// \brief Called on start of new data sharing attribute block.
   void StartOpenMPDSABlock(OpenMPDirectiveKind K,
@@ -7167,6 +7172,11 @@ public:
                                          SourceLocation StartLoc,
                                          SourceLocation LParenLoc,
                                          SourceLocation EndLoc);
+  /// \brief Called on well-formed 'safelen' clause.
+  OMPClause *ActOnOpenMPSafelenClause(Expr *Length,
+                                      SourceLocation StartLoc,
+                                      SourceLocation LParenLoc,
+                                      SourceLocation EndLoc);
 
   OMPClause *ActOnOpenMPSimpleClause(OpenMPClauseKind Kind,
                                      unsigned Argument,
@@ -7198,6 +7208,11 @@ public:
                                            SourceLocation EndLoc);
   /// \brief Called on well-formed 'shared' clause.
   OMPClause *ActOnOpenMPSharedClause(ArrayRef<Expr *> VarList,
+                                     SourceLocation StartLoc,
+                                     SourceLocation LParenLoc,
+                                     SourceLocation EndLoc);
+  /// \brief Called on well-formed 'copyin' clause.
+  OMPClause *ActOnOpenMPCopyinClause(ArrayRef<Expr *> VarList,
                                      SourceLocation StartLoc,
                                      SourceLocation LParenLoc,
                                      SourceLocation EndLoc);
@@ -7932,9 +7947,12 @@ private:
 
   ExprResult CheckBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
 
+  bool CheckARMBuiltinExclusiveCall(unsigned BuiltinID, CallExpr *TheCall,
+                                    unsigned MaxWidth);
   bool CheckNeonBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
-  bool CheckARMBuiltinExclusiveCall(unsigned BuiltinID, CallExpr *TheCall);
   bool CheckARMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
+
+  bool CheckARM64BuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
   bool CheckAArch64BuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
   bool CheckMipsBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
   bool CheckX86BuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);

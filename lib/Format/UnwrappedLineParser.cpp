@@ -654,6 +654,12 @@ void UnwrappedLineParser::parseStructuralElement() {
         return;
       }
     }
+    break;
+  case tok::identifier:
+    if (FormatTok->IsForEachMacro) {
+      parseForOrWhileLoop();
+      return;
+    }
     // In all other cases, parse the declaration.
     break;
   default:
@@ -694,9 +700,13 @@ void UnwrappedLineParser::parseStructuralElement() {
       break;
     case tok::caret:
       nextToken();
-      if (FormatTok->is(tok::l_brace)) {
+      if (FormatTok->Tok.isAnyIdentifier() ||
+          FormatTok->isSimpleTypeSpecifier())
+        nextToken();
+      if (FormatTok->is(tok::l_paren))
+        parseParens();
+      if (FormatTok->is(tok::l_brace))
         parseChildBlock();
-      }
       break;
     case tok::l_brace:
       if (!tryToParseBracedList()) {
@@ -1037,8 +1047,9 @@ void UnwrappedLineParser::parseNamespace() {
 }
 
 void UnwrappedLineParser::parseForOrWhileLoop() {
-  assert((FormatTok->Tok.is(tok::kw_for) || FormatTok->Tok.is(tok::kw_while)) &&
-         "'for' or 'while' expected");
+  assert((FormatTok->Tok.is(tok::kw_for) || FormatTok->Tok.is(tok::kw_while) ||
+          FormatTok->IsForEachMacro) &&
+         "'for', 'while' or foreach macro expected");
   nextToken();
   if (FormatTok->Tok.is(tok::l_paren))
     parseParens();
@@ -1215,7 +1226,7 @@ void UnwrappedLineParser::parseRecord() {
         Style.BreakBeforeBraces == FormatStyle::BS_GNU)
       addUnwrappedLine();
 
-    parseBlock(/*MustBeDeclaration=*/true, /*Addlevel=*/true,
+    parseBlock(/*MustBeDeclaration=*/true, /*AddLevel=*/true,
                /*MunchSemi=*/false);
   }
   // We fall through to parsing a structural element afterwards, so

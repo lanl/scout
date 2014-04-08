@@ -1932,6 +1932,10 @@ void OMPClauseEnqueue::VisitOMPNumThreadsClause(const OMPNumThreadsClause *C) {
   Visitor->AddStmt(C->getNumThreads());
 }
 
+void OMPClauseEnqueue::VisitOMPSafelenClause(const OMPSafelenClause *C) {
+  Visitor->AddStmt(C->getSafelen());
+}
+
 void OMPClauseEnqueue::VisitOMPDefaultClause(const OMPDefaultClause *C) { }
 
 template<typename T>
@@ -1948,6 +1952,9 @@ void OMPClauseEnqueue::VisitOMPFirstprivateClause(
   VisitOMPClauseList(C);
 }
 void OMPClauseEnqueue::VisitOMPSharedClause(const OMPSharedClause *C) {
+  VisitOMPClauseList(C);
+}
+void OMPClauseEnqueue::VisitOMPCopyinClause(const OMPCopyinClause *C) {
   VisitOMPClauseList(C);
 }
 }
@@ -6394,6 +6401,16 @@ unsigned clang_CXXMethod_isPureVirtual(CXCursor C) {
   const CXXMethodDecl *Method =
       D ? dyn_cast_or_null<CXXMethodDecl>(D->getAsFunction()) : 0;
   return (Method && Method->isVirtual() && Method->isPure()) ? 1 : 0;
+}
+
+unsigned clang_CXXMethod_isConst(CXCursor C) {
+  if (!clang_isDeclaration(C.kind))
+    return 0;
+
+  const Decl *D = cxcursor::getCursorDecl(C);
+  const CXXMethodDecl *Method =
+      D ? dyn_cast_or_null<CXXMethodDecl>(D->getAsFunction()) : 0;
+  return (Method && (Method->getTypeQualifiers() & Qualifiers::Const)) ? 1 : 0;
 }
 
 unsigned clang_CXXMethod_isStatic(CXCursor C) {

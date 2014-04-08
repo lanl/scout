@@ -58,6 +58,9 @@ struct FormatStyle {
   /// \brief The maximum number of consecutive empty lines to keep.
   unsigned MaxEmptyLinesToKeep;
 
+  /// \brief If true, empty lines at the start of blocks are kept.
+  bool KeepEmptyLinesAtTheStartOfBlocks;
+
   /// \brief The penalty for each line break introduced inside a comment.
   unsigned PenaltyBreakComment;
 
@@ -160,9 +163,20 @@ struct FormatStyle {
   /// single line.
   bool AllowShortLoopsOnASingleLine;
 
-  /// \brief If \c true, <tt>int f() { return 0; }</tt> can be put on a single
-  /// line.
-  bool AllowShortFunctionsOnASingleLine;
+  /// \brief Different styles for merging short functions containing at most one
+  /// statement.
+  enum ShortFunctionStyle {
+    /// \brief Never merge functions into a single line.
+    SFS_None,
+    /// \brief Only merge functions defined inside a class.
+    SFS_Inline,
+    /// \brief Merge all functions fitting on a single line.
+    SFS_All,
+  };
+
+  /// \brief Dependent on the value, <tt>int f() { return 0; }</tt> can be put
+  /// on a single line.
+  ShortFunctionStyle AllowShortFunctionsOnASingleLine;
 
   /// \brief Add a space after \c @property in Objective-C, i.e. use
   /// <tt>@property (readonly)</tt> instead of <tt>@property(readonly)</tt>.
@@ -299,6 +313,18 @@ struct FormatStyle {
   /// which should not be split into lines or otherwise changed.
   std::string CommentPragmas;
 
+  /// \brief A vector of macros that should be interpreted as foreach loops
+  /// instead of as function calls.
+  ///
+  /// These are expected to be macros of the form:
+  /// \code
+  /// FOREACH(<variable-declaration>, ...)
+  ///   <loop-body>
+  /// \endcode
+  ///
+  /// For example: BOOST_FOREACH.
+  std::vector<std::string> ForEachMacros;
+
   bool operator==(const FormatStyle &R) const {
     return AccessModifierOffset == R.AccessModifierOffset &&
            ConstructorInitializerIndentWidth ==
@@ -333,6 +359,8 @@ struct FormatStyle {
                R.IndentFunctionDeclarationAfterType &&
            IndentWidth == R.IndentWidth && Language == R.Language &&
            MaxEmptyLinesToKeep == R.MaxEmptyLinesToKeep &&
+           KeepEmptyLinesAtTheStartOfBlocks ==
+               R.KeepEmptyLinesAtTheStartOfBlocks &&
            NamespaceIndentation == R.NamespaceIndentation &&
            ObjCSpaceAfterProperty == R.ObjCSpaceAfterProperty &&
            ObjCSpaceBeforeProtocolList == R.ObjCSpaceBeforeProtocolList &&
@@ -353,7 +381,8 @@ struct FormatStyle {
            SpaceBeforeParens == R.SpaceBeforeParens &&
            SpaceBeforeAssignmentOperators == R.SpaceBeforeAssignmentOperators &&
            ContinuationIndentWidth == R.ContinuationIndentWidth &&
-           CommentPragmas == R.CommentPragmas;
+           CommentPragmas == R.CommentPragmas &&
+           ForEachMacros == R.ForEachMacros;
   }
 };
 

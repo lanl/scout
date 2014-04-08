@@ -224,6 +224,8 @@ def err_expected_selector_for_method : Error<
 def err_expected_property_name : Error<"expected property name">;
 
 def err_unexpected_at : Error<"unexpected '@' in program">;
+def err_atimport : Error<
+"use of '@import' when modules are disabled, add -fmodules">;
 
 def err_invalid_reference_qualifier_application : Error<
   "'%0' qualifier may not be applied to a reference">;
@@ -533,8 +535,6 @@ def err_l_square_l_square_not_attribute : Error<
   "introducing an attribute">;
 def err_ms_declspec_type : Error<
   "__declspec attributes must be an identifier or string literal">;
-def warn_ms_declspec_unknown : Warning<
-  "unknown __declspec attribute %0 ignored">, InGroup<UnknownAttributes>;
 def err_ms_property_no_getter_or_putter : Error<
   "property does not specify a getter or a putter">;
 def err_ms_property_unknown_accessor : Error<
@@ -845,20 +845,20 @@ def err_seh___finally_block : Error<
   "%0 only allowed in __finally block">;
 
 // OpenMP support.
-def warn_pragma_omp_ignored : Warning <
+def warn_pragma_omp_ignored : Warning<
   "unexpected '#pragma omp ...' in program">, InGroup<SourceUsesOpenMP>, DefaultIgnore;
-def warn_omp_extra_tokens_at_eol : Warning <
+def warn_omp_extra_tokens_at_eol : Warning<
   "extra tokens at the end of '#pragma omp %0' are ignored">,
   InGroup<ExtraTokens>;
-def err_omp_unknown_directive : Error <
+def err_omp_unknown_directive : Error<
   "expected an OpenMP directive">;
-def err_omp_unexpected_directive : Error <
+def err_omp_unexpected_directive : Error<
   "unexpected OpenMP directive '#pragma omp %0'">;
-def err_omp_expected_punc : Error <
+def err_omp_expected_punc : Error<
   "expected ',' or ')' in '%0' clause">;
-def err_omp_unexpected_clause : Error <
+def err_omp_unexpected_clause : Error<
   "unexpected OpenMP clause '%0' in directive '#pragma omp %1'">;
-def err_omp_more_one_clause : Error <
+def err_omp_more_one_clause : Error<
   "directive '#pragma omp %0' cannot contain more than one '%1' clause">;
 } // end of Parse Issue category.
 

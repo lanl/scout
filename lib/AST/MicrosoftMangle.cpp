@@ -20,6 +20,7 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
+#include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/VTableBuilder.h"
 #include "clang/Basic/ABI.h"
@@ -27,6 +28,7 @@
 #include "clang/Basic/TargetInfo.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/Support/MathExtras.h"
 
 using namespace clang;
 
@@ -93,6 +95,7 @@ public:
   MicrosoftMangleContextImpl(ASTContext &Context, DiagnosticsEngine &Diags)
       : MicrosoftMangleContext(Context, Diags) {}
   bool shouldMangleCXXName(const NamedDecl *D) override;
+  bool shouldMangleStringLiteral(const StringLiteral *SL) override;
   void mangleCXXName(const NamedDecl *D, raw_ostream &Out) override;
   void mangleVirtualMemPtrThunk(const CXXMethodDecl *MD, raw_ostream &) override;
   void mangleThunk(const CXXMethodDecl *MD, const ThunkInfo &Thunk,
@@ -118,6 +121,7 @@ public:
   void mangleDynamicInitializer(const VarDecl *D, raw_ostream &Out) override;
   void mangleDynamicAtExitDestructor(const VarDecl *D,
                                      raw_ostream &Out) override;
+  void mangleStringLiteral(const StringLiteral *SL, raw_ostream &Out) override;
   bool getNextDiscriminator(const NamedDecl *ND, unsigned &disc) {
     // Lambda closure types are already numbered.
     if (isLambda(ND))
@@ -208,7 +212,6 @@ public:
 
   void mangle(const NamedDecl *D, StringRef Prefix = "\01?");
   void mangleName(const NamedDecl *ND);
-  void mangleDeclaration(const NamedDecl *ND);
   void mangleFunctionEncoding(const FunctionDecl *FD);
   void mangleVariableEncoding(const VarDecl *VD);
   void mangleMemberDataPointer(const CXXRecordDecl *RD, const ValueDecl *VD);
@@ -320,6 +323,13 @@ bool MicrosoftMangleContextImpl::shouldMangleCXXName(const NamedDecl *D) {
   }
 
   return true;
+}
+
+bool
+MicrosoftMangleContextImpl::shouldMangleStringLiteral(const StringLiteral *SL) {
+  return SL->isAscii() || SL->isWide();
+  // TODO: This needs to be updated when MSVC gains support for Unicode
+  // literals.
 }
 
 void MicrosoftCXXNameMangler::mangle(const NamedDecl *D,
@@ -460,6 +470,9 @@ void MicrosoftCXXNameMangler::mangleMemberDataPointer(const CXXRecordDecl *RD,
 
   mangleNumber(FieldOffset);
 
+  // The C++ standard doesn't allow base-to-derived member pointer conversions
+  // in template parameter contexts, so the vbptr offset of data member pointers
+  // is always zero.
   if (MSInheritanceAttr::hasVBPtrOffsetField(IM))
     mangleNumber(0);
   if (MSInheritanceAttr::hasVBTableOffsetField(IM))
@@ -499,6 +512,7 @@ MicrosoftCXXNameMangler::mangleMemberFunctionPointer(const CXXRecordDecl *RD,
   // thunk.
   uint64_t NVOffset = 0;
   uint64_t VBTableOffset = 0;
+  uint64_t VBPtrOffset = 0;
   if (MD->isVirtual()) {
     MicrosoftVTableContext *VTContext =
         cast<MicrosoftVTableContext>(getASTContext().getVTableContext());
@@ -508,11 +522,8 @@ MicrosoftCXXNameMangler::mangleMemberFunctionPointer(const CXXRecordDecl *RD,
     NVOffset = ML.VFPtrOffset.getQuantity();
     VBTableOffset = ML.VBTableIndex * 4;
     if (ML.VBase) {
-      DiagnosticsEngine &Diags = Context.getDiags();
-      unsigned DiagID = Diags.getCustomDiagID(
-          DiagnosticsEngine::Error,
-          "cannot mangle pointers to member functions from virtual bases");
-      Diags.Report(MD->getLocation(), DiagID);
+      const ASTRecordLayout &Layout = getASTContext().getASTRecordLayout(RD);
+      VBPtrOffset = Layout.getVBPtrOffset().getQuantity();
     }
   } else {
     mangleName(MD);
@@ -522,7 +533,7 @@ MicrosoftCXXNameMangler::mangleMemberFunctionPointer(const CXXRecordDecl *RD,
   if (MSInheritanceAttr::hasNVOffsetField(/*IsMemberFunction=*/true, IM))
     mangleNumber(NVOffset);
   if (MSInheritanceAttr::hasVBPtrOffsetField(IM))
-    mangleNumber(0);
+    mangleNumber(VBPtrOffset);
   if (MSInheritanceAttr::hasVBTableOffsetField(IM))
     mangleNumber(VBTableOffset);
 }
@@ -1091,15 +1102,11 @@ MicrosoftCXXNameMangler::mangleExpression(const Expr *E) {
     << E->getStmtClassName() << E->getSourceRange();
 }
 
-void
-MicrosoftCXXNameMangler::mangleTemplateArgs(const TemplateDecl *TD,
-                                     const TemplateArgumentList &TemplateArgs) {
+void MicrosoftCXXNameMangler::mangleTemplateArgs(
+    const TemplateDecl *TD, const TemplateArgumentList &TemplateArgs) {
   // <template-args> ::= <template-arg>+ @
-  unsigned NumTemplateArgs = TemplateArgs.size();
-  for (unsigned i = 0; i < NumTemplateArgs; ++i) {
-    const TemplateArgument &TA = TemplateArgs[i];
+  for (const TemplateArgument &TA : TemplateArgs.asArray())
     mangleTemplateArg(TD, TA);
-  }
   Out << '@';
 }
 
@@ -1539,9 +1546,18 @@ void MicrosoftCXXNameMangler::mangleFunctionType(const FunctionType *T,
     Out << '@';
   } else {
     QualType ResultType = Proto->getReturnType();
-    if (ResultType->isVoidType())
-      ResultType = ResultType.getUnqualifiedType();
-    mangleType(ResultType, Range, QMM_Result);
+    if (const auto *AT =
+            dyn_cast_or_null<AutoType>(ResultType->getContainedAutoType())) {
+      Out << '?';
+      mangleQualifiers(ResultType.getLocalQualifiers(), /*IsMember=*/false);
+      Out << '?';
+      mangleSourceName(AT->isDecltypeAuto() ? "<decltype-auto>" : "<auto>");
+      Out << '@';
+    } else {
+      if (ResultType->isVoidType())
+        ResultType = ResultType.getUnqualifiedType();
+      mangleType(ResultType, Range, QMM_Result);
+    }
   }
 
   // <argument-list> ::= X # void
@@ -2314,6 +2330,172 @@ MicrosoftMangleContextImpl::mangleDynamicAtExitDestructor(const VarDecl *D,
                                                           raw_ostream &Out) {
   // <destructor-name> ::= ?__F <name> YAXXZ
   mangleInitFiniStub(D, Out, 'F');
+}
+
+void MicrosoftMangleContextImpl::mangleStringLiteral(const StringLiteral *SL,
+                                                     raw_ostream &Out) {
+  // <char-type> ::= 0   # char
+  //             ::= 1   # wchar_t
+  //             ::= ??? # char16_t/char32_t will need a mangling too...
+  //
+  // <literal-length> ::= <non-negative integer>  # the length of the literal
+  //
+  // <encoded-crc>    ::= <hex digit>+ @          # crc of the literal including
+  //                                              # null-terminator
+  //
+  // <encoded-string> ::= <simple character>           # uninteresting character
+  //                  ::= '?$' <hex digit> <hex digit> # these two nibbles
+  //                                                   # encode the byte for the
+  //                                                   # character
+  //                  ::= '?' [a-z]                    # \xe1 - \xfa
+  //                  ::= '?' [A-Z]                    # \xc1 - \xda
+  //                  ::= '?' [0-9]                    # [,/\:. \n\t'-]
+  //
+  // <literal> ::= '??_C@_' <char-type> <literal-length> <encoded-crc>
+  //               <encoded-string> '@'
+  MicrosoftCXXNameMangler Mangler(*this, Out);
+  Mangler.getStream() << "\01??_C@_";
+
+  // <char-type>: The "kind" of string literal is encoded into the mangled name.
+  // TODO: This needs to be updated when MSVC gains support for unicode
+  // literals.
+  if (SL->isAscii())
+    Mangler.getStream() << '0';
+  else if (SL->isWide())
+    Mangler.getStream() << '1';
+  else
+    llvm_unreachable("unexpected string literal kind!");
+
+  // <literal-length>: The next part of the mangled name consists of the length
+  // of the string.
+  // The StringLiteral does not consider the NUL terminator byte(s) but the
+  // mangling does.
+  // N.B. The length is in terms of bytes, not characters.
+  Mangler.mangleNumber(SL->getByteLength() + SL->getCharByteWidth());
+
+  // We will use the "Rocksoft^tm Model CRC Algorithm" to describe the
+  // properties of our CRC:
+  //   Width  : 32
+  //   Poly   : 04C11DB7
+  //   Init   : FFFFFFFF
+  //   RefIn  : True
+  //   RefOut : True
+  //   XorOut : 00000000
+  //   Check  : 340BC6D9
+  uint32_t CRC = 0xFFFFFFFFU;
+
+  auto UpdateCRC = [&CRC](char Byte) {
+    for (unsigned i = 0; i < 8; ++i) {
+      bool Bit = CRC & 0x80000000U;
+      if (Byte & (1U << i))
+        Bit = !Bit;
+      CRC <<= 1;
+      if (Bit)
+        CRC ^= 0x04C11DB7U;
+    }
+  };
+
+  auto GetLittleEndianByte = [&Mangler, &SL](unsigned Index) {
+    unsigned CharByteWidth = SL->getCharByteWidth();
+    uint32_t CodeUnit = SL->getCodeUnit(Index / CharByteWidth);
+    unsigned OffsetInCodeUnit = Index % CharByteWidth;
+    return static_cast<char>((CodeUnit >> (8 * OffsetInCodeUnit)) & 0xff);
+  };
+
+  auto GetBigEndianByte = [&Mangler, &SL](unsigned Index) {
+    unsigned CharByteWidth = SL->getCharByteWidth();
+    uint32_t CodeUnit = SL->getCodeUnit(Index / CharByteWidth);
+    unsigned OffsetInCodeUnit = (CharByteWidth - 1) - (Index % CharByteWidth);
+    return static_cast<char>((CodeUnit >> (8 * OffsetInCodeUnit)) & 0xff);
+  };
+
+  // CRC all the bytes of the StringLiteral.
+  for (unsigned I = 0, E = SL->getByteLength(); I != E; ++I)
+    UpdateCRC(GetLittleEndianByte(I));
+
+  // The NUL terminator byte(s) were not present earlier,
+  // we need to manually process those bytes into the CRC.
+  for (unsigned NullTerminator = 0; NullTerminator < SL->getCharByteWidth();
+       ++NullTerminator)
+    UpdateCRC('\x00');
+
+  // The literature refers to the process of reversing the bits in the final CRC
+  // output as "reflection".
+  CRC = llvm::reverseBits(CRC);
+
+  // <encoded-crc>: The CRC is encoded utilizing the standard number mangling
+  // scheme.
+  Mangler.mangleNumber(CRC);
+
+  // <encoded-string>: The mangled name also contains the first 32 _characters_
+  // (including null-terminator bytes) of the StringLiteral.
+  // Each character is encoded by splitting them into bytes and then encoding
+  // the constituent bytes.
+  auto MangleByte = [&Mangler](char Byte) {
+    // There are five different manglings for characters:
+    // - [a-zA-Z0-9_$]: A one-to-one mapping.
+    // - ?[a-z]: The range from \xe1 to \xfa.
+    // - ?[A-Z]: The range from \xc1 to \xda.
+    // - ?[0-9]: The set of [,/\:. \n\t'-].
+    // - ?$XX: A fallback which maps nibbles.
+    if (isIdentifierBody(Byte, /*AllowDollar=*/true)) {
+      Mangler.getStream() << Byte;
+    } else if (isLetter(Byte & 0x7f)) {
+      Mangler.getStream() << '?' << static_cast<char>(Byte & 0x7f);
+    } else {
+      switch (Byte) {
+        case ',':
+          Mangler.getStream() << "?0";
+          break;
+        case '/':
+          Mangler.getStream() << "?1";
+          break;
+        case '\\':
+          Mangler.getStream() << "?2";
+          break;
+        case ':':
+          Mangler.getStream() << "?3";
+          break;
+        case '.':
+          Mangler.getStream() << "?4";
+          break;
+        case ' ':
+          Mangler.getStream() << "?5";
+          break;
+        case '\n':
+          Mangler.getStream() << "?6";
+          break;
+        case '\t':
+          Mangler.getStream() << "?7";
+          break;
+        case '\'':
+          Mangler.getStream() << "?8";
+          break;
+        case '-':
+          Mangler.getStream() << "?9";
+          break;
+        default:
+          Mangler.getStream() << "?$";
+          Mangler.getStream() << static_cast<char>('A' + ((Byte >> 4) & 0xf));
+          Mangler.getStream() << static_cast<char>('A' + (Byte & 0xf));
+          break;
+      }
+    }
+  };
+
+  // Enforce our 32 character max.
+  unsigned NumCharsToMangle = std::min(32U, SL->getLength());
+  for (unsigned I = 0, E = NumCharsToMangle * SL->getCharByteWidth(); I != E;
+       ++I)
+    MangleByte(GetBigEndianByte(I));
+
+  // Encode the NUL terminator if there is room.
+  if (NumCharsToMangle < 32)
+    for (unsigned NullTerminator = 0; NullTerminator < SL->getCharByteWidth();
+         ++NullTerminator)
+      MangleByte(0);
+
+  Mangler.getStream() << '@';
 }
 
 MicrosoftMangleContext *

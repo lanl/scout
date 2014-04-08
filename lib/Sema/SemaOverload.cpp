@@ -3278,7 +3278,7 @@ compareConversionFunctions(Sema &S, FunctionDecl *Function1,
   //   respectively, always prefer the conversion to a function pointer,
   //   because the function pointer is more lightweight and is more likely
   //   to keep code working.
-  CXXConversionDecl *Conv1 = dyn_cast<CXXConversionDecl>(Function1);
+  CXXConversionDecl *Conv1 = dyn_cast_or_null<CXXConversionDecl>(Function1);
   if (!Conv1)
     return ImplicitConversionSequence::Indistinguishable;
 
@@ -10383,7 +10383,8 @@ BuildRecoveryCallExpr(Sema &SemaRef, Scope *S, Expr *Fn,
   LookupResult R(SemaRef, ULE->getName(), ULE->getNameLoc(),
                  Sema::LookupOrdinaryName);
   FunctionCallFilterCCC Validator(SemaRef, Args.size(),
-                                  ExplicitTemplateArgs != 0, false);
+                                  ExplicitTemplateArgs != 0,
+                                  dyn_cast<MemberExpr>(Fn));
   NoTypoCorrectionCCC RejectAll;
   CorrectionCandidateCallback *CCC = AllowTypoCorrection ?
       (CorrectionCandidateCallback*)&Validator :

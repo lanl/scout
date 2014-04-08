@@ -283,7 +283,37 @@ private:
   llvm::DenseMap<const MacroDefinition *, serialization::PreprocessedEntityID>
       MacroDefinitions;
 
-  typedef SmallVector<uint64_t, 2> UpdateRecord;
+  /// An update to a Decl.
+  class DeclUpdate {
+    /// A DeclUpdateKind.
+    unsigned Kind;
+    union {
+      const Decl *Dcl;
+      void *Type;
+      unsigned Loc;
+      unsigned Val;
+    };
+
+  public:
+    DeclUpdate(unsigned Kind) : Kind(Kind), Dcl(0) {}
+    DeclUpdate(unsigned Kind, const Decl *Dcl) : Kind(Kind), Dcl(Dcl) {}
+    DeclUpdate(unsigned Kind, QualType Type)
+        : Kind(Kind), Type(Type.getAsOpaquePtr()) {}
+    DeclUpdate(unsigned Kind, SourceLocation Loc)
+        : Kind(Kind), Loc(Loc.getRawEncoding()) {}
+    DeclUpdate(unsigned Kind, unsigned Val)
+        : Kind(Kind), Val(Val) {}
+
+    unsigned getKind() const { return Kind; }
+    const Decl *getDecl() const { return Dcl; }
+    QualType getType() const { return QualType::getFromOpaquePtr(Type); }
+    SourceLocation getLoc() const {
+      return SourceLocation::getFromRawEncoding(Loc);
+    }
+    unsigned getNumber() const { return Val; }
+  };
+
+  typedef SmallVector<DeclUpdate, 1> UpdateRecord;
   typedef llvm::DenseMap<const Decl *, UpdateRecord> DeclUpdateMap;
   /// \brief Mapping from declarations that came from a chained PCH to the
   /// record containing modifications to them.
@@ -437,6 +467,8 @@ private:
                                      bool isModule);
   void WriteCXXBaseSpecifiersOffsets();
   void WriteType(QualType T);
+  uint32_t GenerateNameLookupTable(const DeclContext *DC,
+                                   llvm::SmallVectorImpl<char> &LookupTable);
   uint64_t WriteDeclContextLexicalBlock(ASTContext &Context, DeclContext *DC);
   uint64_t WriteDeclContextVisibleBlock(ASTContext &Context, DeclContext *DC);
   void WriteTypeDeclOffsets();
@@ -447,8 +479,7 @@ private:
   void WriteIdentifierTable(Preprocessor &PP, IdentifierResolver &IdResolver,
                             bool IsModule);
   void WriteAttributes(ArrayRef<const Attr*> Attrs, RecordDataImpl &Record);
-  void ResolveDeclUpdatesBlocks();
-  void WriteDeclUpdatesBlocks();
+  void WriteDeclUpdatesBlocks(RecordDataImpl &OffsetsRecord);
   void WriteDeclReplacementsBlock();
   void WriteDeclContextVisibleUpdate(const DeclContext *DC);
   void WriteFPPragmaOptions(const FPOptions &Opts);
@@ -474,6 +505,7 @@ private:
 
   void WriteDeclsBlockAbbrevs();
   void WriteDecl(ASTContext &Context, Decl *D);
+  void AddFunctionDefinition(const FunctionDecl *FD, RecordData &Record);
 
   void WriteASTCore(Sema &SemaRef,
                     StringRef isysroot, const std::string &OutputFile,
@@ -733,9 +765,11 @@ public:
                                const VarTemplateSpecializationDecl *D) override;
   void AddedCXXTemplateSpecialization(const FunctionTemplateDecl *TD,
                                       const FunctionDecl *D) override;
+  void ResolvedExceptionSpec(const FunctionDecl *FD) override;
   void DeducedReturnType(const FunctionDecl *FD, QualType ReturnType) override;
   void CompletedImplicitDefinition(const FunctionDecl *D) override;
   void StaticDataMemberInstantiated(const VarDecl *D) override;
+  void FunctionDefinitionInstantiated(const FunctionDecl *D) override;
   void AddedObjCCategoryToInterface(const ObjCCategoryDecl *CatD,
                                     const ObjCInterfaceDecl *IFD) override;
   void AddedObjCPropertyInClassExtension(const ObjCPropertyDecl *Prop,
