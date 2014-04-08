@@ -14,7 +14,6 @@
 #ifndef ARM_FRAMEINFO_H
 #define ARM_FRAMEINFO_H
 
-#include "ARM.h"
 #include "ARMSubtarget.h"
 #include "llvm/Target/TargetFrameLowering.h"
 
@@ -57,6 +56,8 @@ public:
 
   void processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
                                             RegScavenger *RS) const override;
+
+  void adjustForSegmentedStacks(MachineFunction &MF) const;
 
  private:
   void emitPushInst(MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,

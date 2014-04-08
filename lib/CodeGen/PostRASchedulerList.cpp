@@ -175,7 +175,6 @@ namespace {
     void ReleaseSuccessors(SUnit *SU);
     void ScheduleNodeTopDown(SUnit *SU, unsigned CurCycle);
     void ListScheduleTopDown();
-    void StartBlockForKills(MachineBasicBlock *BB);
 
     void dumpSchedule() const;
     void emitNoop(unsigned CurCycle);
@@ -246,6 +245,9 @@ void SchedulePostRATDList::dumpSchedule() const {
 #endif
 
 bool PostRAScheduler::runOnMachineFunction(MachineFunction &Fn) {
+  if (skipOptnoneFunction(*Fn.getFunction()))
+    return false;
+
   TII = Fn.getTarget().getInstrInfo();
   MachineLoopInfo &MLI = getAnalysis<MachineLoopInfo>();
   MachineDominatorTree &MDT = getAnalysis<MachineDominatorTree>();

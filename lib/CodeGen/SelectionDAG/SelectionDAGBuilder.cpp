@@ -214,6 +214,20 @@ static SDValue getCopyFromParts(SelectionDAG &DAG, SDLoc DL,
   llvm_unreachable("Unknown mismatch!");
 }
 
+static void diagnosePossiblyInvalidConstraint(LLVMContext &Ctx, const Value *V,
+                                              const Twine &ErrMsg) {
+  const Instruction *I = dyn_cast_or_null<Instruction>(V);
+  if (!V)
+    return Ctx.emitError(ErrMsg);
+
+  const char *AsmError = ", possible invalid constraint for vector type";
+  if (const CallInst *CI = dyn_cast<CallInst>(I))
+    if (isa<InlineAsm>(CI->getCalledValue()))
+      return Ctx.emitError(I, ErrMsg + AsmError);
+
+  return Ctx.emitError(I, ErrMsg);
+}
+
 /// getCopyFromPartsVector - Create a value that contains the specified legal
 /// parts combined into the value they represent.  If the parts combine to a
 /// type larger then ValueVT then AssertOp can be used to specify whether the
@@ -306,16 +320,8 @@ static SDValue getCopyFromPartsVector(SelectionDAG &DAG, SDLoc DL,
 
   // Handle cases such as i8 -> <1 x i1>
   if (ValueVT.getVectorNumElements() != 1) {
-    LLVMContext &Ctx = *DAG.getContext();
-    Twine ErrMsg("non-trivial scalar-to-vector conversion");
-    if (const Instruction *I = dyn_cast_or_null<Instruction>(V)) {
-      if (const CallInst *CI = dyn_cast<CallInst>(I))
-        if (isa<InlineAsm>(CI->getCalledValue()))
-          ErrMsg = ErrMsg + ", possible invalid constraint for vector type";
-      Ctx.emitError(I, ErrMsg);
-    } else {
-      Ctx.emitError(ErrMsg);
-    }
+    diagnosePossiblyInvalidConstraint(*DAG.getContext(), V,
+                                      "non-trivial scalar-to-vector conversion");
     return DAG.getUNDEF(ValueVT);
   }
 
@@ -397,18 +403,9 @@ static void getCopyToParts(SelectionDAG &DAG, SDLoc DL,
          "Failed to tile the value with PartVT!");
 
   if (NumParts == 1) {
-    if (PartEVT != ValueVT) {
-      LLVMContext &Ctx = *DAG.getContext();
-      Twine ErrMsg("scalar-to-vector conversion failed");
-      if (const Instruction *I = dyn_cast_or_null<Instruction>(V)) {
-        if (const CallInst *CI = dyn_cast<CallInst>(I))
-          if (isa<InlineAsm>(CI->getCalledValue()))
-            ErrMsg = ErrMsg + ", possible invalid constraint for vector type";
-        Ctx.emitError(I, ErrMsg);
-      } else {
-        Ctx.emitError(ErrMsg);
-      }
-    }
+    if (PartEVT != ValueVT)
+      diagnosePossiblyInvalidConstraint(*DAG.getContext(), V,
+                                        "scalar-to-vector conversion failed");
 
     Parts[0] = Val;
     return;
@@ -625,16 +622,6 @@ namespace {
         RegVTs.push_back(RegisterVT);
         Reg += NumRegs;
       }
-    }
-
-    /// areValueTypesLegal - Return true if types of all the values are legal.
-    bool areValueTypesLegal(const TargetLowering &TLI) {
-      for (unsigned Value = 0, e = ValueVTs.size(); Value != e; ++Value) {
-        MVT RegisterVT = RegVTs[Value];
-        if (!TLI.isTypeLegal(RegisterVT))
-          return false;
-      }
-      return true;
     }
 
     /// append - Add the specified values to this one.
@@ -1584,8 +1571,9 @@ void SelectionDAGBuilder::visitBr(const BranchInst &I) {
     // Update machine-CFG edges.
     BrMBB->addSuccessor(Succ0MBB);
 
-    // If this is not a fall-through branch, emit the branch.
-    if (Succ0MBB != NextBlock)
+    // If this is not a fall-through branch or optimizations are switched off,
+    // emit the branch.
+    if (Succ0MBB != NextBlock || TM.getOptLevel() == CodeGenOpt::None)
       DAG.setRoot(DAG.getNode(ISD::BR, getCurSDLoc(),
                               MVT::Other, getControlRoot(),
                               DAG.getBasicBlock(Succ0MBB)));
@@ -5396,6 +5384,8 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
     (void)getControlRoot();
     return 0;
   }
+  case Intrinsic::clear_cache:
+    return TLI->getClearCacheBuiltinName();
   case Intrinsic::donothing:
     // ignore
     return 0;
@@ -6185,7 +6175,7 @@ static void GetRegistersForValue(SelectionDAG &DAG,
       // types are identical size, use a bitcast to convert (e.g. two differing
       // vector types).
       MVT RegVT = *PhysReg.second->vt_begin();
-      if (RegVT.getSizeInBits() == OpInfo.ConstraintVT.getSizeInBits()) {
+      if (RegVT.getSizeInBits() == OpInfo.CallOperand.getValueSizeInBits()) {
         OpInfo.CallOperand = DAG.getNode(ISD::BITCAST, DL,
                                          RegVT, OpInfo.CallOperand);
         OpInfo.ConstraintVT = RegVT;

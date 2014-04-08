@@ -277,7 +277,7 @@ getGlobalAddressWrapper(SDValue GA, const GlobalValue *GV,
   const GlobalValue *UnderlyingGV = GV;
   // If GV is an alias then use the aliasee to determine the wrapper type
   if (const GlobalAlias *GA = dyn_cast<GlobalAlias>(GV))
-    UnderlyingGV = GA->resolveAliasedGlobal();
+    UnderlyingGV = GA->getAliasedGlobal();
   if (const GlobalVariable *GVar = dyn_cast<GlobalVariable>(UnderlyingGV)) {
     if (  ( GVar->isConstant() &&
             UnderlyingGV->isLocalLinkage(GV->getLinkage()) )
@@ -1384,7 +1384,7 @@ XCoreTargetLowering::LowerCCCArguments(SDValue Chain,
   // 1b. CopyFromReg vararg registers.
   if (isVarArg) {
     // Argument registers
-    static const uint16_t ArgRegs[] = {
+    static const MCPhysReg ArgRegs[] = {
       XCore::R0, XCore::R1, XCore::R2, XCore::R3
     };
     XCoreFunctionInfo *XFI = MF.getInfo<XCoreFunctionInfo>();

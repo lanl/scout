@@ -48,6 +48,7 @@ public:
   virtual void PostprocessISelDAG();
 
 private:
+  bool isInlineImmediate(SDNode *N) const;
   inline SDValue getSmallIPtrImm(unsigned Imm);
   bool FoldOperand(SDValue &Src, SDValue &Sel, SDValue &Neg, SDValue &Abs,
                    const R600InstrInfo *TII);
@@ -58,9 +59,6 @@ private:
   bool SelectADDRParam(SDValue Addr, SDValue& R1, SDValue& R2);
   bool SelectADDR(SDValue N, SDValue &R1, SDValue &R2);
   bool SelectADDR64(SDValue N, SDValue &R1, SDValue &R2);
-  SDValue SimplifyI24(SDValue &Op);
-  bool SelectI24(SDValue Addr, SDValue &Op);
-  bool SelectU24(SDValue Addr, SDValue &Op);
 
   static bool checkType(const Value *ptr, unsigned int addrspace);
 
@@ -101,6 +99,12 @@ AMDGPUDAGToDAGISel::AMDGPUDAGToDAGISel(TargetMachine &TM)
 }
 
 AMDGPUDAGToDAGISel::~AMDGPUDAGToDAGISel() {
+}
+
+bool AMDGPUDAGToDAGISel::isInlineImmediate(SDNode *N) const {
+  const SITargetLowering *TL
+      = static_cast<const SITargetLowering *>(getTargetLowering());
+  return TL->analyzeImmediate(N) == 0;
 }
 
 /// \brief Determine the register class for \p OpNo
@@ -357,6 +361,36 @@ SDNode *AMDGPUDAGToDAGISel::Select(SDNode *N) {
     return CurDAG->getMachineNode(TargetOpcode::REG_SEQUENCE,
                                   SDLoc(N), N->getValueType(0), Ops);
   }
+
+  case ISD::Constant:
+  case ISD::ConstantFP: {
+    const AMDGPUSubtarget &ST = TM.getSubtarget<AMDGPUSubtarget>();
+    if (ST.getGeneration() < AMDGPUSubtarget::SOUTHERN_ISLANDS ||
+        N->getValueType(0).getSizeInBits() != 64 || isInlineImmediate(N))
+      break;
+
+    uint64_t Imm;
+    if (ConstantFPSDNode *FP = dyn_cast<ConstantFPSDNode>(N))
+      Imm = FP->getValueAPF().bitcastToAPInt().getZExtValue();
+    else {
+      ConstantSDNode *C = cast<ConstantSDNode>(N);
+      Imm = C->getZExtValue();
+    }
+
+    SDNode *Lo = CurDAG->getMachineNode(AMDGPU::S_MOV_B32, SDLoc(N), MVT::i32,
+                                CurDAG->getConstant(Imm & 0xFFFFFFFF, MVT::i32));
+    SDNode *Hi = CurDAG->getMachineNode(AMDGPU::S_MOV_B32, SDLoc(N), MVT::i32,
+                                CurDAG->getConstant(Imm >> 32, MVT::i32));
+    const SDValue Ops[] = {
+      CurDAG->getTargetConstant(AMDGPU::SReg_64RegClassID, MVT::i32),
+      SDValue(Lo, 0), CurDAG->getTargetConstant(AMDGPU::sub0, MVT::i32),
+      SDValue(Hi, 0), CurDAG->getTargetConstant(AMDGPU::sub1, MVT::i32)
+    };
+
+    return CurDAG->getMachineNode(TargetOpcode::REG_SEQUENCE, SDLoc(N),
+                                  N->getValueType(0), Ops);
+  }
+
   case AMDGPUISD::REGISTER_LOAD: {
     const AMDGPUSubtarget &ST = TM.getSubtarget<AMDGPUSubtarget>();
     if (ST.getGeneration() <= AMDGPUSubtarget::NORTHERN_ISLANDS)
@@ -561,49 +595,6 @@ bool AMDGPUDAGToDAGISel::SelectADDRIndirect(SDValue Addr, SDValue &Base,
   }
 
   return true;
-}
-
-SDValue AMDGPUDAGToDAGISel::SimplifyI24(SDValue &Op) {
-  APInt Demanded = APInt(32, 0x00FFFFFF);
-  APInt KnownZero, KnownOne;
-  TargetLowering::TargetLoweringOpt TLO(*CurDAG, true, true);
-  const TargetLowering *TLI = getTargetLowering();
-  if (TLI->SimplifyDemandedBits(Op, Demanded, KnownZero, KnownOne, TLO)) {
-    CurDAG->ReplaceAllUsesWith(Op, TLO.New);
-    CurDAG->RepositionNode(Op.getNode(), TLO.New.getNode());
-    return SimplifyI24(TLO.New);
-  } else {
-    return  Op;
-  }
-}
-
-bool AMDGPUDAGToDAGISel::SelectI24(SDValue Op, SDValue &I24) {
-
-  assert(Op.getValueType() == MVT::i32);
-
-  if (CurDAG->ComputeNumSignBits(Op) == 9) {
-    I24 = SimplifyI24(Op);
-    return true;
-  }
-  return false;
-}
-
-bool AMDGPUDAGToDAGISel::SelectU24(SDValue Op, SDValue &U24) {
-  APInt KnownZero;
-  APInt KnownOne;
-  CurDAG->ComputeMaskedBits(Op, KnownZero, KnownOne);
-
-  assert (Op.getValueType() == MVT::i32);
-
-  // ANY_EXTEND and EXTLOAD operations can only be done on types smaller than
-  // i32.  These smaller types are legal to use with the i24 instructions.
-  if ((KnownZero & APInt(KnownZero.getBitWidth(), 0xFF000000)) == 0xFF000000 ||
-       Op.getOpcode() == ISD::ANY_EXTEND ||
-       ISD::isEXTLoad(Op.getNode())) {
-    U24 = SimplifyI24(Op);
-    return true;
-  }
-  return false;
 }
 
 void AMDGPUDAGToDAGISel::PostprocessISelDAG() {

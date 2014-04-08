@@ -283,24 +283,11 @@ void DIEHash::hashBlockData(const SmallVectorImpl<DIEValue *> &Values) {
 
 // Hash the contents of a loclistptr class.
 void DIEHash::hashLocList(const DIELocList &LocList) {
-  SmallVectorImpl<DebugLocEntry>::const_iterator Start =
-      AP->getDwarfDebug()->getDebugLocEntries().begin();
-  Start += LocList.getValue();
   HashingByteStreamer Streamer(*this);
-  for (SmallVectorImpl<DebugLocEntry>::const_iterator
-           I = Start,
-           E = AP->getDwarfDebug()->getDebugLocEntries().end();
-       I != E; ++I) {
-    const DebugLocEntry &Entry = *I;
-    // Go through the entries until we hit the end of the list,
-    // which is the next empty entry.
-    if (Entry.isEmpty())
-      return;
-    else if (Entry.isMerged())
-      continue;
-    else
-      AP->getDwarfDebug()->emitDebugLocEntry(Streamer, Entry);
-  }
+  DwarfDebug &DD = *AP->getDwarfDebug();
+  for (const auto &Entry :
+       DD.getDebugLocEntries()[LocList.getValue()].List)
+    DD.emitDebugLocEntry(Streamer, Entry);
 }
 
 // Hash an individual attribute \param Attr based on the type of attribute and

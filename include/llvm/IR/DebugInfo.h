@@ -197,6 +197,13 @@ typedef DIRef<DIScope> DIScopeRef;
 typedef DIRef<DIType> DITypeRef;
 
 /// DIScope - A base class for various scopes.
+///
+/// Although, implementation-wise, DIScope is the parent class of most
+/// other DIxxx classes, including DIType and its descendants, most of
+/// DIScope's descendants are not a substitutable subtype of
+/// DIScope. The DIDescriptor::isScope() method only is true for
+/// DIScopes that are scopes in the strict lexical scope sense
+/// (DICompileUnit, DISubprogram, etc.), but not for, e.g., a DIType.
 class DIScope : public DIDescriptor {
 protected:
   friend class DIDescriptor;
@@ -612,7 +619,6 @@ class DIGlobalVariable : public DIDescriptor {
 public:
   explicit DIGlobalVariable(const MDNode *N = 0) : DIDescriptor(N) {}
 
-  // FIXME: use DIScopeRef for LTO type uniqueing.
   DIScope getContext() const { return getFieldAs<DIScope>(2); }
   StringRef getName() const { return getStringField(3); }
   StringRef getDisplayName() const { return getStringField(4); }
@@ -646,7 +652,6 @@ class DIVariable : public DIDescriptor {
 public:
   explicit DIVariable(const MDNode *N = 0) : DIDescriptor(N) {}
 
-  // FIXME: use DIScopeRef for LTO type uniqueing.
   DIScope getContext() const { return getFieldAs<DIScope>(1); }
   StringRef getName() const { return getStringField(2); }
   DIFile getFile() const { return getFieldAs<DIFile>(3); }
@@ -767,6 +772,8 @@ public:
     return (getUnsignedField(6) & dwarf::DW_APPLE_PROPERTY_nonatomic) != 0;
   }
 
+  /// Objective-C doesn't have an ODR, so there is no benefit in storing
+  /// the type as a DITypeRef here.
   DIType getType() const { return getFieldAs<DIType>(7); }
 
   /// Verify - Verify that a derived type descriptor is well formed.
@@ -781,7 +788,7 @@ class DIImportedEntity : public DIDescriptor {
 public:
   explicit DIImportedEntity(const MDNode *N) : DIDescriptor(N) {}
   DIScope getContext() const { return getFieldAs<DIScope>(1); }
-  DIDescriptor getEntity() const { return getFieldAs<DIDescriptor>(2); }
+  DIScopeRef getEntity() const { return getFieldAs<DIScopeRef>(2); }
   unsigned getLineNumber() const { return getUnsignedField(3); }
   StringRef getName() const { return getStringField(4); }
   bool Verify() const;
@@ -853,9 +860,6 @@ private:
 
   /// processType - Process DIType.
   void processType(DIType DT);
-
-  /// processLexicalBlock - Process DILexicalBlock.
-  void processLexicalBlock(DILexicalBlock LB);
 
   /// processSubprogram - Process DISubprogram.
   void processSubprogram(DISubprogram SP);

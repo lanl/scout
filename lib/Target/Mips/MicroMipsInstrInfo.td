@@ -70,6 +70,13 @@ class LoadMM<string opstr, DAGOperand RO, SDPatternOperator OpNode = null_frag,
   let mayLoad = 1;
 }
 
+class MoveFromHILOMM<string opstr, RegisterOperand RO, Register UseReg> :
+      MicroMipsInst16<(outs RO:$rd), (ins), !strconcat(opstr, "\t$rd"),
+  [], II_MFHI_MFLO, FrmR> {
+  let Uses = [UseReg];
+  let hasSideEffects = 0;
+}
+
 class MoveMM16<string opstr, RegisterOperand RO, bit isComm = 0,
                InstrItinClass Itin = NoItinerary> :
   MicroMipsInst16<(outs RO:$rd), (ins RO:$rs),
@@ -78,20 +85,17 @@ class MoveMM16<string opstr, RegisterOperand RO, bit isComm = 0,
   let isReMaterializable = 1;
 }
 
-// MicroMIPS Call
-def MicroMipsJmpLink : SDNode<"MipsISD::JmpLinkMM",SDT_MipsJmpLink,
-                              [SDNPHasChain, SDNPOutGlue, SDNPOptInGlue,
-                              SDNPVariadic]>;
-
 // 16-bit Jump and Link (Call)
 class JumpLinkRegMM16<string opstr, RegisterOperand RO> :
   MicroMipsInst16<(outs), (ins RO:$rs), !strconcat(opstr, "\t$rs"),
-           [(MicroMipsJmpLink RO:$rs)], IIBranch, FrmR> {
+           [(MipsJmpLink RO:$rs)], IIBranch, FrmR> {
   let isCall = 1;
   let hasDelaySlot = 1;
   let Defs = [RA];
 }
 
+def MFHI16_MM : MoveFromHILOMM<"mfhi", GPR32Opnd, AC0>, MFHILO_FM_MM16<0x10>;
+def MFLO16_MM : MoveFromHILOMM<"mflo", GPR32Opnd, AC0>, MFHILO_FM_MM16<0x12>;
 def MOVE16_MM : MoveMM16<"move", GPR32Opnd>, MOVE_FM_MM16<0x03>;
 def JALR16_MM : JumpLinkRegMM16<"jalr", GPR32Opnd>, JALR_FM_MM16<0x0e>;
 

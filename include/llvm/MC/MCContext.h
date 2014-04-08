@@ -193,6 +193,10 @@ namespace llvm {
     /// @name Symbol Management
     /// @{
 
+    /// CreateLinkerPrivateTempSymbol - Create and return a new linker temporary
+    /// symbol with a unique but unspecified name.
+    MCSymbol *CreateLinkerPrivateTempSymbol();
+
     /// CreateTempSymbol - Create and return a new assembler temporary symbol
     /// with a unique but unspecified name.
     MCSymbol *CreateTempSymbol();
@@ -300,14 +304,6 @@ namespace llvm {
 
     bool isValidDwarfFileNumber(unsigned FileNumber, unsigned CUID = 0);
 
-    bool hasDwarfFiles() const {
-      // Traverse MCDwarfFilesCUMap and check whether each entry is empty.
-      for (const auto &FileTable : MCDwarfLineTablesCUMap)
-        if (!FileTable.second.getMCDwarfFiles().empty())
-           return true;
-      return false;
-    }
-
     const std::map<unsigned, MCDwarfLineTable> &getMCDwarfLineTables() const {
       return MCDwarfLineTablesCUMap;
     }
@@ -340,12 +336,6 @@ namespace llvm {
     }
     void setDwarfCompileUnitID(unsigned CUIndex) {
       DwarfCompileUnitID = CUIndex;
-    }
-    MCSymbol *getMCLineTableSymbol(unsigned ID) const {
-      return getMCDwarfLineTable(ID).getLabel();
-    }
-    void setMCLineTableSymbol(MCSymbol *Sym, unsigned ID) {
-      getMCDwarfLineTable(ID).setLabel(Sym);
     }
     void setMCLineTableCompilationDir(unsigned CUID, StringRef CompilationDir) {
       getMCDwarfLineTable(CUID).setCompilationDir(CompilationDir);

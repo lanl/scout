@@ -331,11 +331,23 @@ SDValue DAGTypeLegalizer::ScalarizeVecRes_VSETCC(SDNode *N) {
   assert(N->getValueType(0).isVector() &&
          N->getOperand(0).getValueType().isVector() &&
          "Operand types must be vectors");
-
-  SDValue LHS = GetScalarizedVector(N->getOperand(0));
-  SDValue RHS = GetScalarizedVector(N->getOperand(1));
+  SDValue LHS = N->getOperand(0);
+  SDValue RHS = N->getOperand(1);
+  EVT OpVT = LHS.getValueType();
   EVT NVT = N->getValueType(0).getVectorElementType();
   SDLoc DL(N);
+
+  // The result needs scalarizing, but it's not a given that the source does.
+  if (getTypeAction(OpVT) == TargetLowering::TypeScalarizeVector) {
+    LHS = GetScalarizedVector(LHS);
+    RHS = GetScalarizedVector(RHS);
+  } else {
+    EVT VT = OpVT.getVectorElementType();
+    LHS = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, DL, VT, LHS,
+                      DAG.getConstant(0, TLI.getVectorIdxTy()));
+    RHS = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, DL, VT, RHS,
+                      DAG.getConstant(0, TLI.getVectorIdxTy()));
+  }
 
   // Turn it into a scalar SETCC.
   SDValue Res = DAG.getNode(ISD::SETCC, DL, MVT::i1, LHS, RHS,
@@ -381,6 +393,9 @@ bool DAGTypeLegalizer::ScalarizeVectorOperand(SDNode *N, unsigned OpNo) {
       break;
     case ISD::EXTRACT_VECTOR_ELT:
       Res = ScalarizeVecOp_EXTRACT_VECTOR_ELT(N);
+      break;
+    case ISD::VSELECT:
+      Res = ScalarizeVecOp_VSELECT(N);
       break;
     case ISD::STORE:
       Res = ScalarizeVecOp_STORE(cast<StoreSDNode>(N), OpNo);
@@ -448,6 +463,18 @@ SDValue DAGTypeLegalizer::ScalarizeVecOp_EXTRACT_VECTOR_ELT(SDNode *N) {
     Res = DAG.getNode(ISD::ANY_EXTEND, SDLoc(N), N->getValueType(0),
                       Res);
   return Res;
+}
+
+
+/// ScalarizeVecOp_VSELECT - If the input condition is a vector that needs to be
+/// scalarized, it must be <1 x i1>, so just convert to a normal ISD::SELECT
+/// (still with vector output type since that was acceptable if we got here).
+SDValue DAGTypeLegalizer::ScalarizeVecOp_VSELECT(SDNode *N) {
+  SDValue ScalarCond = GetScalarizedVector(N->getOperand(0));
+  EVT VT = N->getValueType(0);
+
+  return DAG.getNode(ISD::SELECT, SDLoc(N), VT, ScalarCond, N->getOperand(1),
+                     N->getOperand(2));
 }
 
 /// ScalarizeVecOp_STORE - If the value to store is a vector that needs to be

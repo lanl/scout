@@ -128,7 +128,7 @@ inline static bool isMem(const MachineInstr *MI, unsigned Op) {
     isLeaMem(MI, Op);
 }
 
-class X86InstrInfo : public X86GenInstrInfo {
+class X86InstrInfo final : public X86GenInstrInfo {
   X86TargetMachine &TM;
   const X86RegisterInfo RI;
 
@@ -228,6 +228,9 @@ public:
   /// commute them.
   ///
   MachineInstr *commuteInstruction(MachineInstr *MI, bool NewMI) const override;
+
+  bool findCommutedOpIndices(MachineInstr *MI, unsigned &SrcOpIdx1,
+                             unsigned &SrcOpIdx2) const override;
 
   // Branch analysis.
   bool isUnpredicatedTerminator(const MachineInstr* MI) const override;

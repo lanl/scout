@@ -250,6 +250,13 @@ struct coff_section {
   support::ulittle16_t NumberOfRelocations;
   support::ulittle16_t NumberOfLinenumbers;
   support::ulittle32_t Characteristics;
+
+  // Returns true if the actual number of relocations is stored in
+  // VirtualAddress field of the first relocation table entry.
+  bool hasExtendedRelocations() const {
+    return Characteristics & COFF::IMAGE_SCN_LNK_NRELOC_OVFL &&
+        NumberOfRelocations == UINT16_MAX;
+  };
 };
 
 struct coff_relocation {
@@ -356,15 +363,12 @@ protected:
   void moveSymbolNext(DataRefImpl &Symb) const override;
   error_code getSymbolName(DataRefImpl Symb, StringRef &Res) const override;
   error_code getSymbolAddress(DataRefImpl Symb, uint64_t &Res) const override;
-  error_code getSymbolFileOffset(DataRefImpl Symb,
-                                 uint64_t &Res) const override;
   error_code getSymbolSize(DataRefImpl Symb, uint64_t &Res) const override;
   uint32_t getSymbolFlags(DataRefImpl Symb) const override;
   error_code getSymbolType(DataRefImpl Symb,
                            SymbolRef::Type &Res) const override;
   error_code getSymbolSection(DataRefImpl Symb,
                               section_iterator &Res) const override;
-  error_code getSymbolValue(DataRefImpl Symb, uint64_t &Val) const override;
   void moveSectionNext(DataRefImpl &Sec) const override;
   error_code getSectionName(DataRefImpl Sec, StringRef &Res) const override;
   error_code getSectionAddress(DataRefImpl Sec, uint64_t &Res) const override;

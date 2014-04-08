@@ -73,8 +73,8 @@ const MCExpr *MCStreamer::BuildSymbolDiff(MCContext &Context,
 }
 
 const MCExpr *MCStreamer::ForceExpAbs(const MCExpr* Expr) {
-  if (Context.getAsmInfo()->hasAggressiveSymbolFolding() ||
-      isa<MCSymbolRefExpr>(Expr))
+  assert(!isa<MCSymbolRefExpr>(Expr));
+  if (Context.getAsmInfo()->hasAggressiveSymbolFolding())
     return Expr;
 
   MCSymbol *ABS = Context.CreateTempSymbol();
@@ -189,6 +189,16 @@ void MCStreamer::EmitDwarfLocDirective(unsigned FileNo, unsigned Line,
                                        StringRef FileName) {
   getContext().setCurrentDwarfLoc(FileNo, Line, Column, Flags, Isa,
                                   Discriminator);
+}
+
+MCSymbol *MCStreamer::getDwarfLineTableSymbol(unsigned CUID) {
+  MCDwarfLineTable &Table = getContext().getMCDwarfLineTable(CUID);
+  if (!Table.getLabel()) {
+    StringRef Prefix = Context.getAsmInfo()->getPrivateGlobalPrefix();
+    Table.setLabel(
+        Context.GetOrCreateSymbol(Prefix + "line_table_start" + Twine(CUID)));
+  }
+  return Table.getLabel();
 }
 
 MCDwarfFrameInfo *MCStreamer::getCurrentFrameInfo() {

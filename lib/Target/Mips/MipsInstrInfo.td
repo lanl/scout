@@ -236,17 +236,27 @@ include "MipsInstrFormats.td"
 // Mips Operand, Complex Patterns and Transformations Definitions.
 //===----------------------------------------------------------------------===//
 
+def MipsJumpTargetAsmOperand : AsmOperandClass {
+  let Name = "JumpTarget";
+  let ParserMethod = "ParseJumpTarget";
+  let PredicateMethod = "isImm";
+  let RenderMethod = "addImmOperands";
+}
+
 // Instruction operand types
 def jmptarget   : Operand<OtherVT> {
   let EncoderMethod = "getJumpTargetOpValue";
+  let ParserMatchClass = MipsJumpTargetAsmOperand;
 }
 def brtarget    : Operand<OtherVT> {
   let EncoderMethod = "getBranchTargetOpValue";
   let OperandType = "OPERAND_PCREL";
   let DecoderMethod = "DecodeBranchTarget";
+  let ParserMatchClass = MipsJumpTargetAsmOperand;
 }
 def calltarget  : Operand<iPTR> {
   let EncoderMethod = "getJumpTargetOpValue";
+  let ParserMatchClass = MipsJumpTargetAsmOperand;
 }
 
 def simm10 : Operand<i32>;
@@ -266,6 +276,11 @@ def uimm10      : Operand<i32> {
 
 def simm16_64   : Operand<i64> {
   let DecoderMethod = "DecodeSimm16";
+}
+
+// Zero
+def uimmz       : Operand<i32> {
+  let PrintMethod = "printUnsignedImm";
 }
 
 // Unsigned Operand
@@ -294,12 +309,6 @@ def MipsInvertedImmoperand : AsmOperandClass {
   let RenderMethod = "addImmOperands";
   let ParserMethod = "parseInvNum";
 }
-
-def PtrRegAsmOperand : AsmOperandClass {
-  let Name = "PtrReg";
-  let ParserMethod = "parsePtrReg";
-}
-
 
 def InvertedImOperand : Operand<i32> {
   let ParserMatchClass = MipsInvertedImmoperand;
@@ -332,7 +341,7 @@ def mem_ea : Operand<iPTR> {
 def PtrRC : Operand<iPTR> {
   let MIOperandInfo = (ops ptr_rc);
   let DecoderMethod = "DecodePtrRegisterClass";
-  let ParserMatchClass = PtrRegAsmOperand;
+  let ParserMatchClass = GPR32AsmOperand;
 }
 
 // size operand of ext instruction
@@ -359,6 +368,9 @@ def HI16 : SDNodeXForm<imm, [{
 
 // Plus 1.
 def Plus1 : SDNodeXForm<imm, [{ return getImm(N, N->getSExtValue() + 1); }]>;
+
+// Node immediate is zero (e.g. insve.d)
+def immz : PatLeaf<(imm), [{ return N->getSExtValue() == 0; }]>;
 
 // Node immediate fits as 16-bit sign extended on target immediate.
 // e.g. addi, andi
@@ -426,6 +438,7 @@ class ArithLogicR<string opstr, RegisterOperand RO, bit isComm = 0,
          [(set RO:$rd, (OpNode RO:$rs, RO:$rt))], Itin, FrmR, opstr> {
   let isCommutable = isComm;
   let isReMaterializable = 1;
+  let TwoOperandAliasConstraint = "$rd = $rs";
 }
 
 // Arithmetic and logical instructions with 2 register operands.
@@ -1043,11 +1056,11 @@ def BLTZ    : MMRel, CBranchZero<"bltz", brtarget, setlt, GPR32Opnd>,
 def B       : UncondBranch<BEQ>;
 
 def JAL  : MMRel, JumpLink<"jal", calltarget>, FJ<3>;
-let Predicates = [NotInMicroMips] in {
+let Predicates = [NotInMicroMips, HasStdEnc] in {
 def JALR : JumpLinkReg<"jalr", GPR32Opnd>, JALR_FM;
+def JALRPseudo : JumpLinkRegPseudo<GPR32Opnd, JALR, RA>;
 }
 def JALX  : JumpLink<"jalx", calltarget>, FJ<0x1D>;
-def JALRPseudo : JumpLinkRegPseudo<GPR32Opnd, JALR, RA>;
 def BGEZAL : MMRel, BGEZAL_FT<"bgezal", brtarget, GPR32Opnd>, BGEZAL_FM<0x11>;
 def BLTZAL : MMRel, BGEZAL_FT<"bltzal", brtarget, GPR32Opnd>, BGEZAL_FM<0x10>;
 def BAL_BR : BAL_BR_Pseudo<BGEZAL>;
@@ -1089,8 +1102,10 @@ def UDIV  : MMRel, Div<"divu", II_DIVU, GPR32Opnd, [HI0, LO0]>,
 
 def MTHI : MMRel, MoveToLOHI<"mthi", GPR32Opnd, [HI0]>, MTLO_FM<0x11>;
 def MTLO : MMRel, MoveToLOHI<"mtlo", GPR32Opnd, [LO0]>, MTLO_FM<0x13>;
+let Predicates = [NotInMicroMips] in {
 def MFHI : MMRel, MoveFromLOHI<"mfhi", GPR32Opnd, AC0>, MFLO_FM<0x10>;
 def MFLO : MMRel, MoveFromLOHI<"mflo", GPR32Opnd, AC0>, MFLO_FM<0x12>;
+}
 
 /// Sign Ext In Register Instructions.
 def SEB : MMRel, SignExtInReg<"seb", i8, GPR32Opnd, II_SEB>, SEB_FM<0x10, 0x20>;
@@ -1145,6 +1160,12 @@ def MFC0 : MFC3OP<"mfc0", GPR32Opnd>, MFC3OP_FM<0x10, 0>;
 def MTC0 : MFC3OP<"mtc0", GPR32Opnd>, MFC3OP_FM<0x10, 4>;
 def MFC2 : MFC3OP<"mfc2", GPR32Opnd>, MFC3OP_FM<0x12, 0>;
 def MTC2 : MFC3OP<"mtc2", GPR32Opnd>, MFC3OP_FM<0x12, 4>;
+
+class Barrier<string asmstr> : InstSE<(outs), (ins), asmstr, [], NoItinerary,
+                                      FrmOther>;
+def SSNOP : Barrier<"ssnop">, BARRIER_FM<1>;
+def EHB : Barrier<"ehb">, BARRIER_FM<3>;
+def PAUSE : Barrier<"pause">, BARRIER_FM<5>, Requires<[HasMips32r2]>;
 
 //===----------------------------------------------------------------------===//
 // Instruction aliases

@@ -521,7 +521,7 @@ namespace llvm {
 
   //===--------------------------------------------------------------------===//
   //  X86TargetLowering - X86 Implementation of the TargetLowering interface
-  class X86TargetLowering : public TargetLowering {
+  class X86TargetLowering final : public TargetLowering {
   public:
     explicit X86TargetLowering(X86TargetMachine &TM);
 
@@ -626,6 +626,7 @@ namespace llvm {
     // ComputeNumSignBitsForTargetNode - Determine the number of bits in the
     // operation that are sign bits.
     unsigned ComputeNumSignBitsForTargetNode(SDValue Op,
+                                             const SelectionDAG &DAG,
                                              unsigned Depth) const override;
 
     bool isGAPlusOffset(SDNode *N, const GlobalValue* &GA,
@@ -756,7 +757,7 @@ namespace llvm {
     /// isTargetFTOL - Return true if the target uses the MSVC _ftol2 routine
     /// for fptoui.
     bool isTargetFTOL() const {
-      return Subtarget->isTargetWindows() && !Subtarget->is64Bit();
+      return Subtarget->isTargetKnownWindowsMSVC() && !Subtarget->is64Bit();
     }
 
     /// isIntegerTypeFTOL - Return true if the MSVC _ftol2 routine should be
@@ -769,6 +770,11 @@ namespace llvm {
     /// to just the constant itself.
     bool shouldConvertConstantLoadToIntImm(const APInt &Imm,
                                            Type *Ty) const override;
+
+    /// Intel processors have a unified instruction and data cache
+    const char * getClearCacheBuiltinName() const {
+      return 0; // nothing to do, move along.
+    }
 
     /// createFastISel - This method returns a target specific FastISel object,
     /// or null if the target does not support "fast" ISel.
@@ -931,7 +937,7 @@ namespace llvm {
                         const SmallVectorImpl<ISD::OutputArg> &Outs,
                         LLVMContext &Context) const override;
 
-    const uint16_t *getScratchRegisters(CallingConv::ID CC) const override;
+    const MCPhysReg *getScratchRegisters(CallingConv::ID CC) const override;
 
     /// Utility function to emit atomic-load-arith operations (and, or, xor,
     /// nand, max, min, umax, umin). It takes the corresponding instruction to

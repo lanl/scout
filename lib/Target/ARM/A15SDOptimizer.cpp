@@ -27,18 +27,13 @@
 #define DEBUG_TYPE "a15-sd-optimizer"
 #include "ARM.h"
 #include "ARMBaseInstrInfo.h"
-#include "ARMISelLowering.h"
-#include "ARMSubtarget.h"
-#include "ARMTargetMachine.h"
-#include "llvm/ADT/SmallPtrSet.h"
+#include "ARMBaseRegisterInfo.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
-#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 #include <set>
 
@@ -95,7 +90,7 @@ namespace {
     unsigned createImplicitDef(MachineBasicBlock &MBB,
                                MachineBasicBlock::iterator InsertBefore,
                                DebugLoc DL);
-    
+
     //
     // Various property checkers
     //
@@ -440,7 +435,7 @@ A15SDOptimizer::createDupLane(MachineBasicBlock &MBB,
                          Out)
                    .addReg(Reg)
                    .addImm(Lane));
- 
+
   return Out;
 }
 
@@ -606,7 +601,7 @@ bool A15SDOptimizer::runOnInstruction(MachineInstr *MI) {
   //   * INSERT_SUBREG: * If the SPR value was originally in another DPR/QPR
   //                      lane, and the other lane(s) of the DPR/QPR register
   //                      that we are inserting in are undefined, use the
-  //                      original DPR/QPR value. 
+  //                      original DPR/QPR value.
   //                    * Otherwise, fall back on the same stategy as COPY.
   //
   //   * REG_SEQUENCE:  * If all except one of the input operands are
@@ -698,7 +693,7 @@ bool A15SDOptimizer::runOnMachineFunction(MachineFunction &Fn) {
       MI != ME;) {
       Modified |= runOnInstruction(MI++);
     }
- 
+
   }
 
   for (std::set<MachineInstr *>::iterator I = DeadInstr.begin(),
