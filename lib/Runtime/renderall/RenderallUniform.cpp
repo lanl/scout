@@ -56,7 +56,9 @@
 #include "scout/Runtime/renderall/RenderallUniform.h"
 #include "scout/Runtime/renderall/RenderallUniformImpl.h"
 #include "scout/Runtime/base_types.h"
+#ifdef CMA
 #include "scout/Runtime/opengl/glfw/glfwDevice.h"
+#endif
 #include "scout/Runtime/opengl/glQuadRenderableVA.h"
 
 // scout includes
