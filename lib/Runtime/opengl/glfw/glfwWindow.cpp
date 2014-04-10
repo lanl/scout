@@ -52,7 +52,7 @@
  * #####
  */
 //
-
+#include <cstdlib>
 #include "scout/Runtime/opengl/glfw/glfwWindow.h"
 
 using namespace scout;
