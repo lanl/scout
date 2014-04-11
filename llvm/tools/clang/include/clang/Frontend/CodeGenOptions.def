@@ -157,7 +157,7 @@ CODEGENOPT(SanitizeRecover, 1, 1) ///< Attempt to recover from sanitizer checks
 
 
 // +===== Scout =============================================================+
-//CODEGENOPT(ScoutNvidiaGPU, 1, 0) /// with -gpu flag
+CODEGENOPT(ScoutNvidiaGPU, 1, 0) /// with -gpu flag
 CODEGENOPT(ScoutCPUThreads, 1, 0) /// with -mt flag
 //CODEGENOPT(ScoutEmitAllDefinitions, 1, 0) /// -emit-all-definitions flag
 //CODEGENOPT(ScoutAMDGPU, 1, 0) /// -gpu-amd flag
