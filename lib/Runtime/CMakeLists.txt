@@ -54,8 +54,10 @@ project(scRuntime)
 find_library(GLFW glfw)
 
 # Build w/ clang as volren uses blocks
-set(CMAKE_CXX_COMPILER ${SCOUT_BUILD_DIR}/bin/clang)
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fblocks")
+set(CMAKE_CXX_COMPILER ${SCOUT_BUILD_DIR}/bin/clang++)
+if(NOT APPLE)
+  set(CMAKE_CXX_FLAGS "") #don't use c++11 for runtime
+endif()
 
 include_directories(
   ${SCOUT_INCLUDE_DIR}
