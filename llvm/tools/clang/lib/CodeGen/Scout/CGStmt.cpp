@@ -1080,6 +1080,76 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   //need a marker for start of Forall for CodeExtraction
   llvm::BasicBlock *entry = EmitMarkerBlock("forall.entry");
 
+  if(isGPU()){
+    unsigned int rank = S.getMeshType()->rankOf();
+
+    //llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
+
+    // tid.* are dummy values
+    // to be replaced when we generate the actual GPU module
+    llvm::Value* tidPtr = Builder.CreateAlloca(Int32Ty, 0, "tid.x.ptr");
+    llvm::Value* tidX = Builder.CreateLoad(tidPtr, "tid.x");
+
+    llvm::Value* tidYPtr;
+    llvm::Value* tidY;
+    llvm::Value* w;
+    if(rank > 1){
+      tidYPtr = Builder.CreateAlloca(Int32Ty, 0, "tid.y.ptr");
+      tidY = Builder.CreateLoad(tidYPtr, "tid.y");
+      w = Builder.CreateLoad(LoopBounds[0]);
+    }
+
+    llvm::Value* tidZPtr;
+    llvm::Value* tidZ;
+    llvm::Value* h;
+    if(rank > 2){
+      tidZPtr = Builder.CreateAlloca(Int32Ty, 0, "tid.z.ptr");
+      tidZ = Builder.CreateLoad(tidZPtr, "tid.z");
+      h = Builder.CreateLoad(LoopBounds[1]);
+    }
+
+    CellIndex = Builder.CreateAlloca(Int32Ty, 0, "cell_index");
+
+    llvm::Value* newCellIndex;
+    switch(rank){
+      case 1:
+      {
+        newCellIndex = tidX;
+        break;
+      }
+      case 2:
+      {
+        newCellIndex = Builder.CreateAdd(tidX, Builder.CreateMul(tidY, w));
+        break;
+      }
+      case 3:
+      {
+        llvm::Value* v1 = Builder.CreateAdd(tidX, Builder.CreateMul(tidY, w));
+        llvm::Value* wh = Builder.CreateMul(w, h);
+        newCellIndex = Builder.CreateAdd(v1, Builder.CreateMul(tidZ, wh));
+        break;
+      }
+    }
+
+    Builder.CreateStore(newCellIndex, CellIndex);
+
+    EmitStmt(S.getBody());
+    CellIndex = 0;
+
+    llvm::BasicBlock *exit = EmitMarkerBlock("forall.exit");
+    llvm::Function* f = ExtractRegion(entry, exit, "ForallMeshFunction");
+
+    llvm::NamedMDNode* kernels =
+        CGM.getModule().getOrInsertNamedMetadata("scout.kernels");
+
+    llvm::SmallVector<llvm::Value*, 3> kernelData;
+    kernelData.push_back(f);
+
+    kernels->addOperand(llvm::MDNode::get(CGM.getLLVMContext(), kernelData));
+
+    return;
+  }
+
   // Create the induction variables for eack rank.
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "forall.induct.%s.ptr", IndexNames[i]);
@@ -1261,7 +1331,7 @@ llvm::BasicBlock *CodeGenFunction::EmitMarkerBlock(const std::string name) {
 }
 
 // Extract blocks to function and replace w/ call to function
-void CodeGenFunction:: ExtractRegion(llvm::BasicBlock *entry, llvm::BasicBlock *exit, const std::string name) {
+llvm::Function* CodeGenFunction:: ExtractRegion(llvm::BasicBlock *entry, llvm::BasicBlock *exit, const std::string name) {
   std::vector< llvm::BasicBlock * > Blocks;
 
   llvm::Function::iterator BB = CurFn->begin();
@@ -1281,6 +1351,8 @@ void CodeGenFunction:: ExtractRegion(llvm::BasicBlock *entry, llvm::BasicBlock *
   llvm::Function *ForallFn = codeExtractor.extractCodeRegion();
 
   ForallFn->setName(name);
+
+  return ForallFn;
 }
 
 

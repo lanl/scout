@@ -311,11 +311,7 @@ public:
   }
 
   bool isGPU() {
-    return false;
-    // --- all gpu support disabled for now.
-    //return (CGM.getCodeGenOpts().ScoutNvidiaGPU
-    //        || CGM.getCodeGenOpts().ScoutAMDGPU
-    //        && !CallsPrintf);
+    return CGM.getCodeGenOpts().ScoutNvidiaGPU;
   }
 
   // --- AMD gpu support disabled for now (they're off-version of us)
@@ -1977,7 +1973,9 @@ public:
 
   void EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r);
   llvm::BasicBlock *EmitMarkerBlock(const std::string name);
-  void ExtractRegion(llvm::BasicBlock *entry, llvm::BasicBlock *exit, const std::string name);
+  llvm::Function* ExtractRegion(llvm::BasicBlock *entry,
+                                llvm::BasicBlock *exit,
+                                const std::string name);
 
   void EmitForAllStmtWrapper(const ForallMeshStmt &S);
 
