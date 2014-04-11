@@ -969,6 +969,39 @@ void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
   EmitBlock(ExitBlock);
 }
 
+void CodeGenFunction::AddScoutKernel(llvm::Function* f){
+  llvm::NamedMDNode* kernels =
+      CGM.getModule().getOrInsertNamedMetadata("scout.kernels");
+
+  llvm::SmallVector<llvm::Value*, 3> kernelData;
+  kernelData.push_back(f);
+
+  kernels->addOperand(llvm::MDNode::get(CGM.getLLVMContext(), kernelData));
+}
+
+void CodeGenFunction::EmitGPUIndices(const ForallMeshStmt& S){
+  assert(isGPU());
+
+  GPUTid.clear();
+  GPUNTid.clear();
+
+  unsigned int rank = S.getMeshType()->rankOf();
+
+  char dims[] = {'x', 'y', 'z'};
+  char name[64];
+  for(unsigned i = 0; i < rank; ++i){
+    sprintf(name, "tid.%c.ptr", dims[i]);
+    llvm::Value* tidPtr = Builder.CreateAlloca(Int32Ty, 0, name);
+    sprintf(name, "tid.%c", dims[i]);
+    GPUTid.push_back(Builder.CreateLoad(tidPtr, name));
+
+    sprintf(name, "ntid.%c.ptr", dims[i]);
+    llvm::Value* ntidPtr = Builder.CreateAlloca(Int32Ty, 0, name);
+    sprintf(name, "ntid.%c", dims[i]);
+    GPUNTid.push_back(Builder.CreateLoad(ntidPtr, name));
+  }
+}
+
 void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   const VarDecl* VD = S.getMeshVarDecl();
 
@@ -1081,32 +1114,9 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   llvm::BasicBlock *entry = EmitMarkerBlock("forall.entry");
 
   if(isGPU()){
+    EmitGPUIndices(S);
+
     unsigned int rank = S.getMeshType()->rankOf();
-
-    //llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
-
-    // tid.* are dummy values
-    // to be replaced when we generate the actual GPU module
-    llvm::Value* tidPtr = Builder.CreateAlloca(Int32Ty, 0, "tid.x.ptr");
-    llvm::Value* tidX = Builder.CreateLoad(tidPtr, "tid.x");
-
-    llvm::Value* tidYPtr;
-    llvm::Value* tidY;
-    llvm::Value* w;
-    if(rank > 1){
-      tidYPtr = Builder.CreateAlloca(Int32Ty, 0, "tid.y.ptr");
-      tidY = Builder.CreateLoad(tidYPtr, "tid.y");
-      w = Builder.CreateLoad(LoopBounds[0]);
-    }
-
-    llvm::Value* tidZPtr;
-    llvm::Value* tidZ;
-    llvm::Value* h;
-    if(rank > 2){
-      tidZPtr = Builder.CreateAlloca(Int32Ty, 0, "tid.z.ptr");
-      tidZ = Builder.CreateLoad(tidZPtr, "tid.z");
-      h = Builder.CreateLoad(LoopBounds[1]);
-    }
 
     CellIndex = Builder.CreateAlloca(Int32Ty, 0, "cell_index");
 
@@ -1114,19 +1124,21 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
     switch(rank){
       case 1:
       {
-        newCellIndex = tidX;
+        newCellIndex = GPUTid[0];
         break;
       }
       case 2:
       {
-        newCellIndex = Builder.CreateAdd(tidX, Builder.CreateMul(tidY, w));
+        newCellIndex =
+            Builder.CreateAdd(GPUTid[0], Builder.CreateMul(GPUTid[1], GPUNTid[0]));
         break;
       }
       case 3:
       {
-        llvm::Value* v1 = Builder.CreateAdd(tidX, Builder.CreateMul(tidY, w));
-        llvm::Value* wh = Builder.CreateMul(w, h);
-        newCellIndex = Builder.CreateAdd(v1, Builder.CreateMul(tidZ, wh));
+        llvm::Value* v1 =
+            Builder.CreateAdd(GPUTid[0], Builder.CreateMul(GPUTid[1], GPUNTid[0]));
+        llvm::Value* wh = Builder.CreateMul(GPUNTid[0], GPUNTid[1]);
+        newCellIndex = Builder.CreateAdd(v1, Builder.CreateMul(GPUTid[2], wh));
         break;
       }
     }
@@ -1139,13 +1151,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
     llvm::BasicBlock *exit = EmitMarkerBlock("forall.exit");
     llvm::Function* f = ExtractRegion(entry, exit, "ForallMeshFunction");
 
-    llvm::NamedMDNode* kernels =
-        CGM.getModule().getOrInsertNamedMetadata("scout.kernels");
-
-    llvm::SmallVector<llvm::Value*, 3> kernelData;
-    kernelData.push_back(f);
-
-    kernels->addOperand(llvm::MDNode::get(CGM.getLLVMContext(), kernelData));
+    AddScoutKernel(f);
 
     return;
   }

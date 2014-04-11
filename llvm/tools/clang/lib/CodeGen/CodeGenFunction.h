@@ -303,6 +303,9 @@ public:
   llvm::Value* EdgeIndex;
   llvm::Value* FaceIndex;
 
+  llvm::SmallVector<llvm::Value*, 3> GPUTid;
+  llvm::SmallVector<llvm::Value*, 3> GPUNTid;
+
   //renderall color buffer
   llvm::Value *Color;
 
@@ -1977,6 +1980,9 @@ public:
                                 llvm::BasicBlock *exit,
                                 const std::string name);
 
+  void EmitGPUIndices(const ForallMeshStmt& S);
+  void AddScoutKernel(llvm::Function* f);
+
   void EmitForAllStmtWrapper(const ForallMeshStmt &S);
 
   bool hasCalledFn(llvm::Function *Fn, llvm::StringRef name);
@@ -2006,7 +2012,7 @@ public:
   RValue EmitMeshParameterExpr(const Expr *E, MeshParameterOffset offset);
 
   bool EmitScoutBuiltinExpr(const FunctionDecl *FD,
-                         unsigned BuiltinID, const CallExpr *E, RValue *Rv);
+                            unsigned BuiltinID, const CallExpr *E, RValue *Rv);
 
   void DEBUG_OUT(const char *s) {
     llvm::outs() << "Attempting " << s << ".\n";
