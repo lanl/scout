@@ -549,8 +549,6 @@ def cl_std_EQ : Joined<["-"], "cl-std=">,
   HelpText<"OpenCL language standard to compile for">;
 
 // +===== Scout =============================================================+
-def gpu : Flag<["-"], "gpu">,
-  HelpText<"Enable NVIDIA GPU support.">;
 // --- Disabled for now (AMD is off-version of us at present).
 //def gpuAMD : Flag<["-"], "gpu-amd">,
 //  HelpText<"Enable AMD GPU support.">;

@@ -327,7 +327,7 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   // more lines of merging when sync'ing with the trunk…
   //
   // GPU support disabled for now...
-  // Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
+  Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
   //Opts.ScoutAMDGPU = Args.hasArg(OPT_gpuAMD);
 
   // Enable scout CPU multithreading support if OPT_cpuThreads is present.
@@ -1525,7 +1525,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
 
   // +==== Scout =============================================================+
   // Detect -gpu flag
-  //Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
+  Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
   // --- Disabled for now (AMD is behind us in version support)
   //Opts.ScoutAMDGPU = Args.hasArg(OPT_gpuAMD);
   // +========================================================================+

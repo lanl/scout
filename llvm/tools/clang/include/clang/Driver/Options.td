@@ -1227,6 +1227,7 @@ def _no_scout_standard_includes : Flag<["--"], "no-scout-standard-includes">,
     Alias<noscstdinc>;
 def _no_scout_standard_libraries : Flag<["--"], "no-scout-standard-libraries">, 
     Alias<noscstdlib>;
+def gpu : Flag<["-"], "gpu">, Flags<[CC1Option]>, HelpText<"Enable NVIDIA gpu mode.">;
 // +====================================================================================+
 def object : Flag<["-"], "object">;
 def o : JoinedOrSeparate<["-"], "o">, Flags<[DriverOption, RenderAsInput, CC1Option]>,

@@ -115,6 +115,23 @@ LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
   // this is setup in Codegentypes.h ConvertScoutMeshType()
   const MeshDecl *mesh = field->getParent();
 
+  if(isGPU()){
+    const CGMeshLayout &ML = CGM.getTypes().getCGMeshLayout(field->getParent());
+    unsigned Idx = ML.getLLVMFieldNo(field);
+
+    llvm::StructType* s = ML.getLLVMType();
+    llvm::Type* et = s->getElementType(Idx);
+    sprintf(IRNameStr, "TheMesh.%s.ptr",
+            field->getName().str().c_str());
+    llvm::Value* addr = Builder.CreateAlloca(et, 0, IRNameStr);
+
+    sprintf(IRNameStr, "TheMesh.%s.element.ptr",
+            field->getName().str().c_str());
+    addr = Builder.CreateInBoundsGEP(addr, Index, IRNameStr);
+    LValue LV = MakeAddrLValue(addr, field->getType(), CharUnits::Zero());
+    return LV;
+  }
+
   if (field->isBitField()) {
     const CGMeshLayout &ML = CGM.getTypes().getCGMeshLayout(mesh);
     const CGBitFieldInfo &Info = ML.getBitFieldInfo(field);

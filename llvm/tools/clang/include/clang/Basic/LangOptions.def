@@ -46,6 +46,7 @@ LANGOPT(ScoutC,                       1, 0, "Scout C")
 LANGOPT(ScoutCPlusPlus,               1, 0, "Scout C++")
 BENIGN_LANGOPT(DumpMeshLayouts,       1, 0, "dumping the layout of IRgen'd meshes")
 BENIGN_LANGOPT(DumpMeshLayoutsSimple, 1, 0, "dumping the layout of IRgen'd meshes in a simple form")
+LANGOPT(ScoutNvidiaGPU,               1, 0, "ScoutNvidiaGPU")
 // +=========================================================================+
 
 LANGOPT(C99               , 1, 0, "C99")

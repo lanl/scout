@@ -303,6 +303,9 @@ public:
   llvm::Value* EdgeIndex;
   llvm::Value* FaceIndex;
 
+  llvm::SmallVector<llvm::Value*, 3> GPUTid;
+  llvm::SmallVector<llvm::Value*, 3> GPUNTid;
+
   //renderall color buffer
   llvm::Value *Color;
 
@@ -311,11 +314,7 @@ public:
   }
 
   bool isGPU() {
-    return false;
-    // --- all gpu support disabled for now.
-    //return (CGM.getCodeGenOpts().ScoutNvidiaGPU
-    //        || CGM.getCodeGenOpts().ScoutAMDGPU
-    //        && !CallsPrintf);
+    return CGM.getCodeGenOpts().ScoutNvidiaGPU;
   }
 
   // --- AMD gpu support disabled for now (they're off-version of us)
@@ -1977,7 +1976,12 @@ public:
 
   void EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r);
   llvm::BasicBlock *EmitMarkerBlock(const std::string name);
-  void ExtractRegion(llvm::BasicBlock *entry, llvm::BasicBlock *exit, const std::string name);
+  llvm::Function* ExtractRegion(llvm::BasicBlock *entry,
+                                llvm::BasicBlock *exit,
+                                const std::string name);
+
+  void EmitGPUIndices(const ForallMeshStmt& S);
+  void AddScoutKernel(llvm::Function* f);
 
   void EmitForAllStmtWrapper(const ForallMeshStmt &S);
 
@@ -2008,7 +2012,7 @@ public:
   RValue EmitMeshParameterExpr(const Expr *E, MeshParameterOffset offset);
 
   bool EmitScoutBuiltinExpr(const FunctionDecl *FD,
-                         unsigned BuiltinID, const CallExpr *E, RValue *Rv);
+                            unsigned BuiltinID, const CallExpr *E, RValue *Rv);
 
   void DEBUG_OUT(const char *s) {
     llvm::outs() << "Attempting " << s << ".\n";
