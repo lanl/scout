@@ -1686,15 +1686,6 @@ void CodeGenFunction::EmitParmDecl(const VarDecl &D, llvm::Value *Arg,
     // If we have a prettier pointer type at this point, bitcast to that.
     unsigned AS = cast<llvm::PointerType>(Arg->getType())->getAddressSpace();
     llvm::Type *IRTy = ConvertTypeForMem(Ty)->getPointerTo(AS);
-    // +===== Scout ==========================================================+
-    // Mesh pointer as function param case,
-    // already have pointer, so don't do getPointerTo()
-    // SC_TODO: why is this different than the struct case??
-    QualType QT = D.getType().getTypePtr()->getPointeeType();
-    if (!QT.isNull() && isa<MeshType>(QT)) {
-      IRTy = ConvertTypeForMem(Ty);
-    }
-    // +======================================================================+
     DeclPtr = Arg->getType() == IRTy ? Arg : Builder.CreateBitCast(Arg, IRTy,
                                                                      D.getName());
 

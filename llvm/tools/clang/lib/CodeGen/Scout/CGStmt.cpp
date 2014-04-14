@@ -121,21 +121,24 @@ void CodeGenFunction::GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& 
       shouldLoad = ET->isPointerTy();
     }
 
-    if(shouldLoad){
+    if(shouldLoad) {
       BaseAddr = Builder.CreateLoad(BaseAddr);
-    }
-    else{
+      LocalDeclMap[MeshVarDecl] = BaseAddr; // SC_TODO: is this required for LLDB?
+    } else {
       EmitGlobalMeshAllocaIfMissing(BaseAddr, *MeshVarDecl);
     }
 
-    //SC_TODO: not sure this is the best place to do this
-    // EmitMeshMemberExpr assumes this is in the localDeclMap so add it;
-    LocalDeclMap[MeshVarDecl] = BaseAddr;
   } else {
     if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(MeshVarDecl)){
       BaseAddr = LocalDeclMap[IP->getMeshVarDecl()];
     } else {
       BaseAddr = LocalDeclMap[MeshVarDecl];
+    }
+
+    // If Mesh ptr then load
+    const Type *T = MeshVarDecl->getType().getTypePtr();
+    if(T->isAnyPointerType() || T->isReferenceType()) {
+      BaseAddr = Builder.CreateLoad(BaseAddr);
     }
   }
 }

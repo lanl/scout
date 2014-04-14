@@ -88,9 +88,9 @@ CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index) {
   // inside forall we are referencing the implicit mesh e.g. 'c' in forall cells c in mesh
   if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(Base->getDecl())) {
       // lookup underlying mesh instead of implicit mesh
-      const VarDecl* VD = IMPD->getMeshVarDecl();
-      llvm::Value *V = LocalDeclMap.lookup(VD);
-      LValue BaseLV  = MakeAddrLValue(V, E->getType());
+      llvm::Value *Addr;
+      GetMeshBaseAddr(IMPD->getMeshVarDecl(), Addr);
+      LValue BaseLV  = MakeAddrLValue(Addr, E->getType());
       // assume we have already checked that we are working w/ a mesh and cast to MeshField Decl
       MeshFieldDecl* MFD = cast<MeshFieldDecl>(E->getMemberDecl());
       return EmitLValueForMeshField(BaseLV, cast<MeshFieldDecl>(MFD), Index);
