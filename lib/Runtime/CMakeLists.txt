@@ -87,6 +87,10 @@ endif()
 file(GLOB rt_srcs_cpu cpu/*.cpp)
 list(APPEND rt_srcs ${rt_srcs_cpu})
 
+#gpu
+#file(GLOB rt_srcs_gpu gpu/*.cpp)
+#list(APPEND rt_srcs ${rt_srcs_gpu})
+
 #renderall
 file(GLOB rt_srcs_renderall renderall/*.cpp)
 list(APPEND rt_srcs ${rt_srcs_renderall})

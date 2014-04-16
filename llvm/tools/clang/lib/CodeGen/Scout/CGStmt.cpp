@@ -972,19 +972,49 @@ void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
   EmitBlock(ExitBlock);
 }
 
-void CodeGenFunction::AddScoutKernel(llvm::Function* f){
+void CodeGenFunction::AddScoutKernel(llvm::Function* f,
+                                     const ForallMeshStmt &S){
   llvm::NamedMDNode* kernels =
       CGM.getModule().getOrInsertNamedMetadata("scout.kernels");
 
   llvm::SmallVector<llvm::Value*, 3> kernelData;
   kernelData.push_back(f);
-
+  
+  const MeshType* mt = S.getMeshType();
+  kernelData.push_back(llvm::MDString::get(CGM.getLLVMContext(),
+                                           mt->getName()));
+  
+  MeshDecl* md = mt->getDecl();
+  
+  llvm::SmallVector<llvm::Value*, 16> meshFields;
+  
+  for (MeshDecl::field_iterator itr = md->field_begin(),
+       itrEnd = md->field_end(); itr != itrEnd; ++itr){
+    MeshFieldDecl* fd = *itr;
+    meshFields.push_back(llvm::MDString::get(CGM.getLLVMContext(),
+                                             fd->getName()));
+  }
+  
+  llvm::Value* fieldsMD =
+  llvm::MDNode::get(CGM.getLLVMContext(), ArrayRef<llvm::Value*>(meshFields));
+  
+  kernelData.push_back(fieldsMD);
+  
   kernels->addOperand(llvm::MDNode::get(CGM.getLLVMContext(), kernelData));
 }
 
 void CodeGenFunction::EmitGPUIndices(const ForallMeshStmt& S){
   assert(isGPU());
 
+  const VarDecl* VD = S.getMeshVarDecl();
+  llvm::Value* V = LocalDeclMap.lookup(VD);
+  llvm::Value* Addr = Builder.CreateAlloca(V->getType(), 0, "TheMesh_addr");
+  Builder.CreateStore(V, Addr);
+
+  Builder.CreateLoad(LoopBounds[0], "TheMesh.width");
+  Builder.CreateLoad(LoopBounds[1], "TheMesh.height");
+  Builder.CreateLoad(LoopBounds[2], "TheMesh.depth");
+  
   GPUTid.clear();
   GPUNTid.clear();
 
@@ -1154,7 +1184,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
     llvm::BasicBlock *exit = EmitMarkerBlock("forall.exit");
     llvm::Function* f = ExtractRegion(entry, exit, "ForallMeshFunction");
 
-    AddScoutKernel(f);
+    AddScoutKernel(f, S);
 
     return;
   }

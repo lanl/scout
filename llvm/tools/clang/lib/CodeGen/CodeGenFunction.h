@@ -1981,7 +1981,7 @@ public:
                                 const std::string name);
 
   void EmitGPUIndices(const ForallMeshStmt& S);
-  void AddScoutKernel(llvm::Function* f);
+  void AddScoutKernel(llvm::Function* f, const ForallMeshStmt &S);
 
   void EmitForAllStmtWrapper(const ForallMeshStmt &S);
 

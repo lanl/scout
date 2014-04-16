@@ -60,19 +60,23 @@
 // scout includes
 #include "scout/Config/defs.h"
 
+#if 0
 #ifdef SC_ENABLE_CUDA
 #include <cuda.h>
 #include <cudaGL.h>
 #include "scout/Runtime/cuda/CudaDevice.h"
+#endif
 #endif
 
 #ifdef SC_ENABLE_OPENCL
 #include "scout/Runtime/opencl/scout_opencl.h"
 #endif
 
+#if 0
 #ifdef SC_ENABLE_CUDA
 #include <thrust/extrema.h>
 #include <thrust/host_vector.h>
+#endif
 #endif
 
 using namespace std;
