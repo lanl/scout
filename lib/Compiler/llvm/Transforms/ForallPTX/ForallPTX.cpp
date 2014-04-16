@@ -1,4 +1,4 @@
-#include "llvm/Transforms/Scout/ToCUDA.h"
+#include "llvm/Transforms/Scout/ForallPTX/ForallPTX.h"
 
 #include <iostream>
 #include <memory>
@@ -48,13 +48,15 @@
 using namespace std;
 using namespace llvm;
 
+namespace{
+
 typedef vector<Type*> TypeVec;
 typedef vector<Value*> ValueVec;
 typedef vector<string> StringVec;
 
 static const uint8_t FIELD_READ = 0x01;
 static const uint8_t FIELD_WRITE = 0x02;
-static const uint8_t FIELD_READ_WRITE = 0x03;
+//static const uint8_t FIELD_READ_WRITE = 0x03;
 
 class CUDAModule{
 public:
@@ -194,7 +196,8 @@ public:
               continue;
             }
 
-            createField(n, fieldPositionMap_[n], ai->getType());
+            Type* et = ai->getType()->getElementType();
+            createField(n, fieldPositionMap_[n], PointerType::get(et, 1));
           }
         }
       }
@@ -351,7 +354,7 @@ public:
 
       Value* width = builder.CreateLoad(widthPtr, "width");
       Value* height = builder.CreateLoad(heightPtr, "height");
-      Value* depth = builder.CreateLoad(widthPtr, "depth");
+      Value* depth = builder.CreateLoad(depthPtr, "depth");
 
       Value* ptx = builder.CreateBitCast(m_.ptxGlobal(), m_.stringTy);
       Value* meshName = builder.CreateGlobalStringPtr(meshName_);
@@ -615,3 +618,26 @@ private:
   IRBuilder<> builder_;
   GlobalVariable* ptxGlobal_;
 };
+
+class ForallPTX : public ModulePass{
+public:
+  static char ID;
+
+  ForallPTX() : ModulePass(ID){}
+
+  void getAnalysisUsage(AnalysisUsage& AU) const override{}
+
+  bool runOnModule(Module& M) override{
+    CUDAModule cudaModule(&M);
+    cudaModule.init();
+    return true;
+  }
+};
+
+char ForallPTX::ID;
+
+} // end namespace
+
+ModulePass* createForallPTXPass(){
+  return new ForallPTX;
+}

@@ -48,13 +48,15 @@
  *  SUCH DAMAGE.
  */ 
 
-#ifndef _SC_LLVM_TO_CUDA_H_
-#define _SC_LLVM_TO_CUDA_H_
+#ifndef __SC_LLVM_FORALL_PTX_H__
+#define __SC_LLVM_FORALL_PTX_H__
 
 namespace llvm{
-  ModulePass;
-}
 
-ModulePass *createToCUDAPass();
+class ModulePass;
 
-#endif
+ModulePass* createForallPTXPass();
+
+} // end namespace llvm
+
+#endif // __SC_LLVM_FORALL_PTX_H__

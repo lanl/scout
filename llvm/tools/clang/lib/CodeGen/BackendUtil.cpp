@@ -42,7 +42,7 @@
 
 #include "scout/Config/defs.h"
 #ifdef SC_ENABLE_CUDA
-#include "llvm/Transforms/Scout/DoallToPTX/DoallToPTX.h"
+#include "llvm/Transforms/Scout/ForallPTX/ForallPTX.h"
 #endif
 #ifdef SC_ENABLE_OPENCL
 #include "llvm/Transforms/Scout/DoallToAMDIL/DoallToAMDIL.h"
@@ -241,15 +241,12 @@ static void addThreadSanitizerPass(const PassManagerBuilder &Builder,
 // ===== Scout ================================================================
 //
 void EmitAssemblyHelper::CreateScoutPasses() {
-
 #ifdef SC_ENABLE_CUDA
-
-  if (CodeGenOpts.ScoutNvidiaGPU) {
+  if(CodeGenOpts.ScoutNvidiaGPU){
     PassManager MPM;
-    MPM.add(createDoallToPTXPass());
+    MPM.add(createForallPTXPass());
     MPM.run(*TheModule);
   }
-
 #endif
 
 #ifdef SC_ENABLE_OPENCL

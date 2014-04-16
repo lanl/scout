@@ -8,17 +8,10 @@
 # Scout with CMake.
 #
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
 
-# Is this all CUDA-dependent?
-add_subdirectory(Driver)
+add_llvm_library(LLVMForallPTX
+  ForallPTX.cpp
+)
 
-if(${SC_ENABLE_CUDA})
-   add_subdirectory(ForallPTX)
-#  add_subdirectory(CudaError)
-#  add_subdirectory(DoallToPTX)
-endif()
-
-if (${SC_ENABLE_OPENCL})
-  add_subdirectory(DoallToAMDIL)
-endif()
-
+add_dependencies(LLVMForallPTX intrinsics_gen)
