@@ -80,7 +80,8 @@ bool Sema::LookupMeshMemberExpr(LookupResult &R, ExprResult &BaseExpr, SourceLoc
     return false;
   }
 
-  if(!isa<ImplicitMeshParamDecl>(DRE->getDecl())) {
+  if(!isa<ImplicitMeshParamDecl>(DRE->getDecl()) &&
+      !isa<ParmVarDecl>(DRE->getDecl())) { // for stencil
     Diag(MemberLoc, diag::err_illegal_mesh_element_access);
     return false;
   }

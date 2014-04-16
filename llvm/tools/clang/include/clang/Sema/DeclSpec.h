@@ -346,6 +346,9 @@ private:
   unsigned FS_virtual_specified : 1;
   unsigned FS_explicit_specified : 1;
   unsigned FS_noreturn_specified : 1;
+  // +===== Scout ==========================================================+
+  unsigned FS_stencil_specified : 1;
+  // +======================================================================+
 
   // friend-specifier
   unsigned Friend_specified : 1;
@@ -440,6 +443,9 @@ public:
       FS_virtual_specified(false),
       FS_explicit_specified(false),
       FS_noreturn_specified(false),
+      // +===== Scout ==================================================+
+      FS_stencil_specified(false),
+      // +==============================================================+
       Friend_specified(false),
       Constexpr_specified(false),
       Attrs(attrFactory),
@@ -575,6 +581,12 @@ public:
   bool isNoreturnSpecified() const { return FS_noreturn_specified; }
   SourceLocation getNoreturnSpecLoc() const { return FS_noreturnLoc; }
 
+  // +===== Scout ==========================================================+
+  bool isStencilSpecified() const {
+    return FS_stencil_specified;
+  }
+  // +======================================================================+
+
   void ClearFunctionSpecs() {
     FS_inline_specified = false;
     FS_inlineLoc = SourceLocation();
@@ -686,6 +698,10 @@ public:
                                unsigned &DiagID);
   bool setFunctionSpecNoreturn(SourceLocation Loc, const char *&PrevSpec,
                                unsigned &DiagID);
+  // +===== Scout ==========================================================+
+  bool setFunctionSpecStencil(SourceLocation Loc, const char *&PrevSpec,
+                                    unsigned &DiagID);
+  // +======================================================================+
 
   bool SetFriendSpec(SourceLocation Loc, const char *&PrevSpec,
                      unsigned &DiagID);

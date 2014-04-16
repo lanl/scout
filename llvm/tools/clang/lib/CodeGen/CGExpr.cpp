@@ -29,6 +29,7 @@
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/Support/ConvertUTF.h"
 // +===== Scout ==========================================================+
+#include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 #include "clang/AST/Scout/ImplicitColorParamDecl.h"
 // +======================================================================+
 
@@ -1793,8 +1794,15 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
 
     bool isBlockVariable = VD->hasAttr<BlocksAttr>();
 
+
     llvm::Value *V = LocalDeclMap.lookup(VD);
     // +===== Scout ========================================================+
+    // for stencil
+    if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)) {
+      llvm::errs() << "lookup implicit mesh " << IP->getName() << " -> " << IP->getMeshVarDecl()->getName() << "\n";
+      V = LocalDeclMap.lookup(IP->getMeshVarDecl());
+    }
+
     if(!V) {
       llvm::errs() << "lookup fail for " << VD->getName() << "\n";
       VD->dump();

@@ -1215,6 +1215,9 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
   case tok::kw_thread_local:
   case tok::kw__Thread_local:
     // function-specifier
+  // +===== Scout ==========================================================+
+  case tok::kw_stencil:
+  // +======================================================================+
   case tok::kw_inline:
   case tok::kw_virtual:
   case tok::kw_explicit:
