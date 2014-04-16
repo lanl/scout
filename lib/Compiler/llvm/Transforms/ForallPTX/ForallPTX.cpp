@@ -30,8 +30,6 @@
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/IR/DerivedTypes.h"
-#include "llvm/ExecutionEngine/ExecutionEngine.h"
-#include "llvm/ExecutionEngine/JIT.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Analysis/Passes.h"
@@ -250,7 +248,7 @@ public:
       FunctionType* ft = FunctionType::get(m_.voidTy, tv, false);
 
       kf_ = Function::Create(ft, Function::ExternalLinkage,
-                             "forall_kernel", &kernelModule);
+                             f_->getName(), &kernelModule);
 
       Function::arg_iterator aitr = kf_->arg_begin();
       for(auto& itr : fieldMap_){
@@ -382,7 +380,7 @@ public:
         PointerType* pointerType = field->type();
         Type* elementType = pointerType->getElementType();
         Value* elementSize = 
-          m_.getInt32(elementType->getPrimitiveSizeInBits()*8);
+          m_.getInt32(elementType->getPrimitiveSizeInBits()/8);
         
         Value* mode = m_.getInt8(field->mode());
 
@@ -638,6 +636,6 @@ char ForallPTX::ID;
 
 } // end namespace
 
-ModulePass* createForallPTXPass(){
+ModulePass* llvm::createForallPTXPass(){
   return new ForallPTX;
 }

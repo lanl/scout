@@ -1,10 +1,16 @@
+#include <iostream>
+
+#include <map>
+#include <vector>
+#include <cassert>
+
 #include <cuda.h>
 
 using namespace std;
 
 static const uint8_t FIELD_READ = 0x01;
 static const uint8_t FIELD_WRITE = 0x02;
-static const uint8_t FIELD_READ_WRITE = 0x03;
+//static const uint8_t FIELD_READ_WRITE = 0x03;
 
 class CUDARuntime{
 public:
@@ -160,7 +166,7 @@ public:
                        meshField->size); 
         }
       }
-
+      
       CUresult err = cuLaunchKernel(function_, 1, 1, 1,
                                     mesh_->width(),
                                     mesh_->height(),
@@ -173,7 +179,7 @@ public:
         if(field->isWrite()){
           MeshField* meshField = field->meshField;
           cuMemcpyDtoH(meshField->hostPtr, meshField->devPtr, 
-                       meshField->size); 
+                       meshField->size);
         }
       }
     }
@@ -255,6 +261,7 @@ public:
                   uint32_t width,
                   uint32_t height,
                   uint32_t depth){
+
     auto kitr = kernelMap_.find(kernelName);
     if(kitr != kernelMap_.end()){
       return;
@@ -277,7 +284,7 @@ public:
     }
     else{
       module = new PTXModule(ptx);
-      moduleMap_[meshName];
+      moduleMap_[meshName] = module;
     }
 
     Kernel* kernel = module->createKernel(mesh, kernelName);
@@ -289,21 +296,22 @@ public:
                  void* hostPtr,
                  uint32_t elementSize,
                  uint8_t mode){
-    
+
     auto kitr = kernelMap_.find(kernelName);
     assert(kitr != kernelMap_.end() && "invalid kernel");
 
     Kernel* kernel = kitr->second;
-    
-    if(!kernel->ready()){
-      Mesh* mesh = kernel->mesh();
-      MeshField* meshField = mesh->getField(fieldName);
-      if(!meshField){
-        meshField = mesh->addField(fieldName, hostPtr, elementSize); 
-      }
-
-      kernel->addField(fieldName, meshField, mode);
+    if(kernel->ready()){
+      return;
     }
+
+    Mesh* mesh = kernel->mesh();
+    MeshField* meshField = mesh->getField(fieldName);
+    if(!meshField){
+      meshField = mesh->addField(fieldName, hostPtr, elementSize); 
+    }
+    
+    kernel->addField(fieldName, meshField, mode);
   }
 
   void runKernel(const char* kernelName){
