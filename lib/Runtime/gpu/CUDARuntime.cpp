@@ -14,6 +14,15 @@ static const uint8_t FIELD_WRITE = 0x02;
 
 class CUDARuntime{
 public:
+  static void check(CUresult err){
+    if(err != CUDA_SUCCESS){
+      const char* s;
+      cuGetErrorString(err, &s);
+      cerr << "CUDARuntime error: " << s << endl;
+      assert(false);
+    }
+  }
+
   class MeshField{
   public:
     MeshField(void* hostPtr, CUdeviceptr devPtr, size_t size)
@@ -64,7 +73,7 @@ public:
       
       CUdeviceptr devPtr;
       CUresult err = cuMemAlloc(&devPtr, size);
-      assert(err == CUDA_SUCCESS);
+      check(err);
 
       MeshField* meshField = new MeshField(hostPtr, devPtr, size);
       meshFieldMap_[name] = meshField;
@@ -98,7 +107,7 @@ public:
   public:    
     PTXModule(const char* ptx){
       CUresult err = cuModuleLoadData(&module_, (void*)ptx);
-      assert(err == CUDA_SUCCESS);
+      check(err);
     }
 
     Kernel* createKernel(Mesh* mesh, const char* kernelName);
@@ -157,33 +166,37 @@ public:
         }
         ready_ = true;
       }
-      
+
+      CUresult err;
+
       for(auto& itr : fieldMap_){
         Field* field = itr.second;
         if(field->isRead()){
           MeshField* meshField = field->meshField;
-          cuMemcpyHtoD(meshField->devPtr, meshField->hostPtr,
-                       meshField->size); 
+          err = cuMemcpyHtoD(meshField->devPtr, meshField->hostPtr,
+                             meshField->size);
+          check(err);
         }
       }
       
-      CUresult err = cuLaunchKernel(function_, 1, 1, 1,
-                                    mesh_->width(),
-                                    mesh_->height(),
-                                    mesh_->depth(),
-                                    0, NULL, kernelParams_.data(), NULL);
-      assert(err == CUDA_SUCCESS);
+      err = cuLaunchKernel(function_, 1, 1, 1,
+                           mesh_->width(),
+                           mesh_->height(),
+                           mesh_->depth(),
+                           0, NULL, kernelParams_.data(), NULL);
+      check(err);
 
       for(auto& itr : fieldMap_){
         Field* field = itr.second;
         if(field->isWrite()){
           MeshField* meshField = field->meshField;
-          cuMemcpyDtoH(meshField->hostPtr, meshField->devPtr, 
-                       meshField->size);
+          err = cuMemcpyDtoH(meshField->hostPtr, meshField->devPtr, 
+                             meshField->size);
+          check(err);
         }
       }
     }
-
+    
     PTXModule* module(){
       return module_;
     }
@@ -229,7 +242,7 @@ public:
 
   ~CUDARuntime(){
     CUresult err = cuCtxDestroy(context_);
-    assert(err == CUDA_SUCCESS);
+    check(err);
 
     for(auto& itr : kernelMap_){
       delete itr.second;
@@ -246,13 +259,13 @@ public:
 
   void init_(){
     CUresult err = cuInit(0);
-    assert(err == CUDA_SUCCESS);
+    check(err);
     
     err = cuDeviceGet(&device_, 0);
-    assert(err == CUDA_SUCCESS);
+    check(err);
 
     err = cuCtxCreate(&context_, 0, device_);
-    assert(err == CUDA_SUCCESS);
+    check(err);
   }
 
   void initKernel(const char* meshName,
@@ -342,7 +355,7 @@ CUDARuntime::Kernel*
 CUDARuntime::PTXModule::createKernel(Mesh* mesh, const char* kernelName){
   CUfunction function;
   CUresult err = cuModuleGetFunction(&function, module_, kernelName);
-  assert(err == CUDA_SUCCESS);
+  check(err);
   
   Kernel* kernel = new Kernel(this, mesh, function);
   
