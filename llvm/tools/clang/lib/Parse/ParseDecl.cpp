@@ -2923,6 +2923,11 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       break;
 
     // function-specifier
+    // +===== Scout ==========================================================+
+    case tok::kw_stencil:
+      isInvalid = DS.setFunctionSpecStencil(Loc, PrevSpec, DiagID);
+      break;
+    // +======================================================================+
     case tok::kw_inline:
       isInvalid = DS.setFunctionSpecInline(Loc, PrevSpec, DiagID);
       break;
