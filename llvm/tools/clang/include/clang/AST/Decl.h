@@ -1482,6 +1482,10 @@ private:
   /// skipped.
   unsigned HasSkippedBody : 1;
 
+  /* +===== Scout ==============*/
+  bool IsStencilSpecified: 1;
+  /* +==========================*/
+
   /// \brief End part of this FunctionDecl's source range.
   ///
   /// We could compute the full range in getSourceRange(). However, when we're
@@ -1554,7 +1558,11 @@ protected:
                const DeclarationNameInfo &NameInfo,
                QualType T, TypeSourceInfo *TInfo,
                StorageClass S, bool isInlineSpecified,
-               bool isConstexprSpecified)
+               bool isConstexprSpecified,
+               /* +===== Scout ==============*/
+               bool isStencilSpecified = false
+               /* +==========================*/
+               )
     : DeclaratorDecl(DK, DC, NameInfo.getLoc(), NameInfo.getName(), T, TInfo,
                      StartLoc),
       DeclContext(DK),
@@ -1566,6 +1574,9 @@ protected:
       IsDefaulted(false), IsExplicitlyDefaulted(false),
       HasImplicitReturnZero(false), IsLateTemplateParsed(false),
       IsConstexpr(isConstexprSpecified), HasSkippedBody(false),
+      /* +===== Scout ==============*/
+      IsStencilSpecified(isStencilSpecified),
+      /* +==========================*/
       EndRangeLoc(NameInfo.getEndLoc()),
       TemplateOrSpecialization(),
       DNLoc(NameInfo.getInfo()) {}
@@ -1596,12 +1607,20 @@ public:
                               StorageClass SC,
                               bool isInlineSpecified = false,
                               bool hasWrittenPrototype = true,
-                              bool isConstexprSpecified = false) {
+                              bool isConstexprSpecified = false,
+                              /* +===== Scout ====================*/
+                              bool isStencilSpecified = false
+                              /* +================================*/
+                              ) {
     DeclarationNameInfo NameInfo(N, NLoc);
     return FunctionDecl::Create(C, DC, StartLoc, NameInfo, T, TInfo,
                                 SC,
                                 isInlineSpecified, hasWrittenPrototype,
-                                isConstexprSpecified);
+                                isConstexprSpecified,
+                                /* +===== Scout ====================*/
+                                isStencilSpecified
+                                /* +================================*/
+                                );
   }
 
   static FunctionDecl *Create(ASTContext &C, DeclContext *DC,
@@ -1611,7 +1630,11 @@ public:
                               StorageClass SC,
                               bool isInlineSpecified,
                               bool hasWrittenPrototype,
-                              bool isConstexprSpecified = false);
+                              bool isConstexprSpecified = false,
+                              /* +===== Scout ====================*/
+                              bool isStencilSpecified = false
+                              /* +================================*/
+                              );
 
   static FunctionDecl *CreateDeserialized(ASTContext &C, unsigned ID);
                        
@@ -1924,6 +1947,10 @@ public:
     IsInlineSpecified = I;
     IsInline = I;
   }
+
+  // +===== Scout ==========================================================+
+  bool isStencilSpecified() const { return IsStencilSpecified; }
+  // +======================================================================+
 
   /// Flag that this function is implicitly inline.
   void setImplicitlyInline() {

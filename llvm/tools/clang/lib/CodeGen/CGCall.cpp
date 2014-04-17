@@ -1295,6 +1295,7 @@ void CodeGenFunction::EmitFunctionProlog(const CGFunctionInfo &FI,
   // initialize the return value.  TODO: it might be nice to have
   // a more general mechanism for this that didn't require synthesized
   // return statements.
+
   if (const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(CurCodeDecl)) {
     if (FD->hasImplicitReturnZero()) {
       QualType RetTy = FD->getReturnType().getUnqualifiedType();
@@ -1302,6 +1303,11 @@ void CodeGenFunction::EmitFunctionProlog(const CGFunctionInfo &FI,
       llvm::Constant* Zero = llvm::Constant::getNullValue(LLVMTy);
       Builder.CreateStore(Zero, ReturnValue);
     }
+    // +===== Scout ==========================================================+
+    if(FD->isStencilSpecified()) {
+      llvm::errs() << "stencil " << Fn->getName() << "\n";
+    }
+    // +======================================================================+
   }
 
   // FIXME: We no longer need the types from FunctionArgList; lift up and

@@ -6456,6 +6456,9 @@ static FunctionDecl* CreateNewFunctionDecl(Sema &SemaRef, Declarator &D,
 
   FunctionDecl *NewFD = 0;
   bool isInline = D.getDeclSpec().isInlineSpecified();
+  // +===== Scout ==========================================================+
+  bool isStencil = D.getDeclSpec().isStencilSpecified();
+  // +======================================================================+
 
   if (!SemaRef.getLangOpts().CPlusPlus) {
     // Determine whether the function was written with a
@@ -6470,7 +6473,12 @@ static FunctionDecl* CreateNewFunctionDecl(Sema &SemaRef, Declarator &D,
     NewFD = FunctionDecl::Create(SemaRef.Context, DC, 
                                  D.getLocStart(), NameInfo, R, 
                                  TInfo, SC, isInline, 
-                                 HasPrototype, false);
+                                 HasPrototype, false,
+                                 /* ====== Scout ====== */
+                                 isStencil
+                                 /* =================== */
+                                 );
+
     if (D.isInvalidType())
       NewFD->setInvalidDecl();
 
@@ -6537,7 +6545,11 @@ static FunctionDecl* CreateNewFunctionDecl(Sema &SemaRef, Declarator &D,
                                   D.getLocStart(),
                                   D.getIdentifierLoc(), Name, R, TInfo,
                                   SC, isInline,
-                                  /*hasPrototype=*/true, isConstexpr);
+                                  /*hasPrototype=*/true, isConstexpr,
+                                  /* ====== Scout ====== */
+                                  isStencil
+                                  /* =================== */
+                                  );
     }
 
   } else if (Name.getNameKind() == DeclarationName::CXXConversionFunctionName) {
@@ -6582,7 +6594,11 @@ static FunctionDecl* CreateNewFunctionDecl(Sema &SemaRef, Declarator &D,
     return FunctionDecl::Create(SemaRef.Context, DC,
                                 D.getLocStart(),
                                 NameInfo, R, TInfo, SC, isInline,
-                                true/*HasPrototype*/, isConstexpr);
+                                true/*HasPrototype*/, isConstexpr,
+                                /* ====== Scout ====== */
+                                isStencil
+                                /* =================== */
+                                );
   }
 }
 

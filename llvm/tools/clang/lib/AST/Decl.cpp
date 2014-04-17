@@ -3638,10 +3638,19 @@ FunctionDecl *FunctionDecl::Create(ASTContext &C, DeclContext *DC,
                                    StorageClass SC,
                                    bool isInlineSpecified,
                                    bool hasWrittenPrototype,
-                                   bool isConstexprSpecified) {
+                                   bool isConstexprSpecified,
+                                   /* +===== Scout ==============*/
+                                   bool isStencilSpecified
+                                   /* +==========================*/
+                                   ) {
+
   FunctionDecl *New =
       new (C, DC) FunctionDecl(Function, DC, StartLoc, NameInfo, T, TInfo, SC,
-                               isInlineSpecified, isConstexprSpecified);
+                               isInlineSpecified, isConstexprSpecified,
+                               /* +===== Scout ==============*/
+                               isStencilSpecified
+                               /* +==========================*/
+                               );
   New->HasWrittenPrototype = hasWrittenPrototype;
   return New;
 }
