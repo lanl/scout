@@ -220,8 +220,12 @@ public:
 
   /// EmitFunctionStart - Emit a call to llvm.dbg.function.start to indicate
   /// start of a new function.
-  void EmitFunctionStart(GlobalDecl GD, QualType FnType,
-                         llvm::Function *Fn, CGBuilderTy &Builder);
+  /// \param Loc       The location of the function header.
+  /// \param ScopeLoc  The location of the function body.
+  void EmitFunctionStart(GlobalDecl GD,
+                         SourceLocation Loc, SourceLocation ScopeLoc,
+                         QualType FnType, llvm::Function *Fn,
+                         CGBuilderTy &Builder);
 
   /// EmitFunctionEnd - Constructs the debug code for exiting a function.
   void EmitFunctionEnd(CGBuilderTy &Builder);
@@ -357,6 +361,13 @@ private:
   /// declaration for the given out-of-class definition.
   llvm::DIDerivedType
   getOrCreateStaticDataMemberDeclarationOrNull(const VarDecl *D);
+
+  /// Return a global variable that represents one of the collection of
+  /// global variables created for an anonmyous union.
+  llvm::DIGlobalVariable
+  CollectAnonRecordDecls(const RecordDecl *RD, llvm::DIFile Unit, unsigned LineNo,
+                         StringRef LinkageName, llvm::GlobalVariable *Var,
+                         llvm::DIDescriptor DContext);
 
   /// getFunctionName - Get function name for the given FunctionDecl. If the
   /// name is constructed on demand (e.g. C++ destructor) then the name

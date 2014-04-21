@@ -225,7 +225,7 @@ def err_expected_property_name : Error<"expected property name">;
 
 def err_unexpected_at : Error<"unexpected '@' in program">;
 def err_atimport : Error<
-"use of '@import' when modules are disabled, add -fmodules">;
+"use of '@import' when modules are disabled">;
 
 def err_invalid_reference_qualifier_application : Error<
   "'%0' qualifier may not be applied to a reference">;
@@ -339,8 +339,10 @@ def err_templated_using_directive : Error<
   "cannot template a using directive">;
 def err_templated_using_declaration : Error<
   "cannot template a using declaration">;
-def err_unexected_colon_in_nested_name_spec : Error<
+def err_unexpected_colon_in_nested_name_spec : Error<
   "unexpected ':' in nested name specifier; did you mean '::'?">;
+def err_unexpected_token_in_nested_name_spec : Error<
+  "'%0' cannot be a part of nested name specifier; did you mean ':'?">;
 def err_bool_redeclaration : Error<
   "redeclaration of C++ built-in type 'bool'">;
 def ext_c11_static_assert : Extension<
@@ -524,7 +526,9 @@ def warn_cxx98_compat_attribute : Warning<
   "C++11 attribute syntax is incompatible with C++98">,
   InGroup<CXX98Compat>, DefaultIgnore;
 def err_cxx11_attribute_forbids_arguments : Error<
-  "attribute '%0' cannot have an argument list">;
+  "attribute %0 cannot have an argument list">;
+def err_attribute_requires_arguments : Error<
+  "parentheses must be omitted if %0 attribute's argument list is empty">;
 def err_cxx11_attribute_forbids_ellipsis : Error<
   "attribute '%0' cannot be used as an attribute pack">;
 def err_cxx11_attribute_repeated : Error<
@@ -771,6 +775,15 @@ def warn_pragma_expected_rparen : Warning<
   "missing ')' after '#pragma %0' - ignoring">, InGroup<IgnoredPragmas>;
 def warn_pragma_expected_identifier : Warning<
   "expected identifier in '#pragma %0' - ignored">, InGroup<IgnoredPragmas>;
+def warn_pragma_expected_section_name : Warning<
+  "expected a string literal for the section name in '#pragma %0' - ignored">,
+  InGroup<IgnoredPragmas>;
+def warn_pragma_expected_section_push_pop_or_name : Warning<
+  "expected push, pop or a string literal for the section name in '#pragma %0' - ignored">,
+  InGroup<IgnoredPragmas>;
+def warn_pragma_expected_section_label_or_name : Warning<
+  "expected a stack label or a string literal for the section name in '#pragma %0' - ignored">,
+  InGroup<IgnoredPragmas>;
 def warn_pragma_expected_integer : Warning<
   "expected integer between %0 and %1 inclusive in '#pragma %2' - ignored">,
   InGroup<IgnoredPragmas>;
@@ -793,6 +806,15 @@ def warn_pragma_align_invalid_option : Warning<
   "invalid alignment option in '#pragma %select{align|options align}0' - ignored">,
   InGroup<IgnoredPragmas>;
 // - #pragma pack
+def warn_pragma_unsupported_action : Warning<
+  "known but unsupported action '%1' for '#pragma %0' - ignored">,
+  InGroup<IgnoredPragmas>;
+def warn_pragma_invalid_specific_action : Warning<
+  "unknown action '%1' for '#pragma %0' - ignored">,
+  InGroup<IgnoredPragmas>;
+def warn_pragma_expected_action_or_r_paren : Warning<
+  "expected action or ')' in '#pragma %0' - ignored">,
+  InGroup<IgnoredPragmas>;
 def warn_pragma_invalid_action : Warning<
   "unknown action for '#pragma %0' - ignored">,
   InGroup<IgnoredPragmas>;

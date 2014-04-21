@@ -155,6 +155,11 @@ class Parser : public CodeCompletionHandler {
   std::unique_ptr<PragmaHandler> MSPointersToMembers;
   std::unique_ptr<PragmaHandler> MSVtorDisp;
   std::unique_ptr<PragmaHandler> MSInitSeg;
+  std::unique_ptr<PragmaHandler> MSDataSeg;
+  std::unique_ptr<PragmaHandler> MSBSSSeg;
+  std::unique_ptr<PragmaHandler> MSConstSeg;
+  std::unique_ptr<PragmaHandler> MSCodeSeg;
+  std::unique_ptr<PragmaHandler> MSSection;
 
   std::unique_ptr<CommentHandler> CommentSemaHandler;
 
@@ -475,6 +480,14 @@ private:
   void HandlePragmaMSPointersToMembers();
 
   void HandlePragmaMSVtorDisp();
+
+  void HandlePragmaMSPragma();
+  unsigned HandlePragmaMSSection(llvm::StringRef PragmaName,
+                                 SourceLocation PragmaLocation);
+  unsigned HandlePragmaMSSegment(llvm::StringRef PragmaName,
+                                 SourceLocation PragmaLocation);
+  unsigned HandlePragmaMSInitSeg(llvm::StringRef PragmaName,
+                                 SourceLocation PragmaLocation);
 
   /// \brief Handle the annotation token produced for
   /// #pragma align...
@@ -1999,13 +2012,13 @@ private:
 
   /// \brief Parses syntax-generic attribute arguments for attributes which are
   /// known to the implementation, and adds them to the given ParsedAttributes
-  /// list with the given attribute syntax.
-  void ParseAttributeArgsCommon(IdentifierInfo *AttrName,
-                                SourceLocation AttrNameLoc,
-                                ParsedAttributes &Attrs, SourceLocation *EndLoc,
-                                IdentifierInfo *ScopeName,
-                                SourceLocation ScopeLoc,
-                                AttributeList::Syntax Syntax);
+  /// list with the given attribute syntax. Returns the number of arguments
+  /// parsed for the attribute.
+  unsigned
+  ParseAttributeArgsCommon(IdentifierInfo *AttrName, SourceLocation AttrNameLoc,
+                           ParsedAttributes &Attrs, SourceLocation *EndLoc,
+                           IdentifierInfo *ScopeName, SourceLocation ScopeLoc,
+                           AttributeList::Syntax Syntax);
 
   void MaybeParseGNUAttributes(Declarator &D,
                                LateParsedAttrList *LateAttrs = 0) {

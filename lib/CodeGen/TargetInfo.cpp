@@ -1013,24 +1013,22 @@ void
 X86_32ABIInfo::addFieldToArgStruct(SmallVector<llvm::Type *, 6> &FrameFields,
                                    unsigned &StackOffset,
                                    ABIArgInfo &Info, QualType Type) const {
+  assert(StackOffset % 4U == 0 && "unaligned inalloca struct");
+  Info = ABIArgInfo::getInAlloca(FrameFields.size());
+  FrameFields.push_back(CGT.ConvertTypeForMem(Type));
+  StackOffset += getContext().getTypeSizeInChars(Type).getQuantity();
+
   // Insert padding bytes to respect alignment.  For x86_32, each argument is 4
   // byte aligned.
-  unsigned Align = 4U;
-  if (Info.getKind() == ABIArgInfo::Indirect && Info.getIndirectByVal())
-    Align = std::max(Align, Info.getIndirectAlign());
-  if (StackOffset & (Align - 1)) {
+  if (StackOffset % 4U) {
     unsigned OldOffset = StackOffset;
-    StackOffset = llvm::RoundUpToAlignment(StackOffset, Align);
+    StackOffset = llvm::RoundUpToAlignment(StackOffset, 4U);
     unsigned NumBytes = StackOffset - OldOffset;
     assert(NumBytes);
     llvm::Type *Ty = llvm::Type::getInt8Ty(getVMContext());
     Ty = llvm::ArrayType::get(Ty, NumBytes);
     FrameFields.push_back(Ty);
   }
-
-  Info = ABIArgInfo::getInAlloca(FrameFields.size());
-  FrameFields.push_back(CGT.ConvertTypeForMem(Type));
-  StackOffset += getContext().getTypeSizeInChars(Type).getQuantity();
 }
 
 void X86_32ABIInfo::rewriteWithInAlloca(CGFunctionInfo &FI) const {
@@ -3160,7 +3158,7 @@ private:
   ABIArgInfo classifyReturnType(QualType RetTy) const;
   ABIArgInfo classifyArgumentType(QualType RetTy, unsigned &AllocatedVFP,
                                   bool &IsHA, unsigned &AllocatedGPR,
-                                  bool &IsSmallAggr) const;
+                                  bool &IsSmallAggr, bool IsNamedArg) const;
   bool isIllegalVectorType(QualType Ty) const;
 
   virtual void computeInfo(CGFunctionInfo &FI) const {
@@ -3171,11 +3169,19 @@ private:
     // and Floating-point Registers (with one register per member of the HFA or
     // HVA). Otherwise, the NSRN is set to 8.
     unsigned AllocatedVFP = 0;
+
     // To correctly handle small aggregates, we need to keep track of the number
     // of GPRs allocated so far. If the small aggregate can't all fit into
     // registers, it will be on stack. We don't allow the aggregate to be
     // partially in registers.
     unsigned AllocatedGPR = 0;
+
+    // Find the number of named arguments. Variadic arguments get special
+    // treatment with the Darwin ABI.
+    unsigned NumRequiredArgs = (FI.isVariadic() ?
+                                FI.getRequiredArgs().getNumRequiredArgs() :
+                                FI.arg_size());
+
     FI.getReturnInfo() = classifyReturnType(FI.getReturnType());
     for (CGFunctionInfo::arg_iterator it = FI.arg_begin(), ie = FI.arg_end();
          it != ie; ++it) {
@@ -3183,28 +3189,33 @@ private:
       bool IsHA = false, IsSmallAggr = false;
       const unsigned NumVFPs = 8;
       const unsigned NumGPRs = 8;
+      bool IsNamedArg = ((it - FI.arg_begin()) <
+                         static_cast<signed>(NumRequiredArgs));
       it->info = classifyArgumentType(it->type, AllocatedVFP, IsHA,
-                                      AllocatedGPR, IsSmallAggr);
+                                      AllocatedGPR, IsSmallAggr, IsNamedArg);
+
+      // Under AAPCS the 64-bit stack slot alignment means we can't pass HAs
+      // as sequences of floats since they'll get "holes" inserted as
+      // padding by the back end.
+      if (IsHA && AllocatedVFP > NumVFPs && !isDarwinPCS() &&
+          getContext().getTypeAlign(it->type) < 64) {
+        uint32_t NumStackSlots = getContext().getTypeSize(it->type);
+        NumStackSlots = llvm::RoundUpToAlignment(NumStackSlots, 64) / 64;
+
+        llvm::Type *CoerceTy = llvm::ArrayType::get(
+            llvm::Type::getDoubleTy(getVMContext()), NumStackSlots);
+        it->info = ABIArgInfo::getDirect(CoerceTy);
+      }
+
       // If we do not have enough VFP registers for the HA, any VFP registers
       // that are unallocated are marked as unavailable. To achieve this, we add
       // padding of (NumVFPs - PreAllocation) floats.
       if (IsHA && AllocatedVFP > NumVFPs && PreAllocation < NumVFPs) {
         llvm::Type *PaddingTy = llvm::ArrayType::get(
             llvm::Type::getFloatTy(getVMContext()), NumVFPs - PreAllocation);
-        if (isDarwinPCS())
-          it->info = ABIArgInfo::getExpandWithPadding(false, PaddingTy);
-        else {
-          // Under AAPCS the 64-bit stack slot alignment means we can't pass HAs
-          // as sequences of floats since they'll get "holes" inserted as
-          // padding by the back end.
-          uint32_t NumStackSlots = getContext().getTypeSize(it->type);
-          NumStackSlots = llvm::RoundUpToAlignment(NumStackSlots, 64) / 64;
-
-          llvm::Type *CoerceTy = llvm::ArrayType::get(
-              llvm::Type::getDoubleTy(getVMContext()), NumStackSlots);
-          it->info = ABIArgInfo::getDirect(CoerceTy, 0, PaddingTy);
-        }
+        it->info.setPaddingType(PaddingTy);
       }
+
       // If we do not have enough GPRs for the small aggregate, any GPR regs
       // that are unallocated are marked as unavailable.
       if (IsSmallAggr && AllocatedGPR > NumGPRs && PreGPR < NumGPRs) {
@@ -3252,7 +3263,8 @@ ABIArgInfo ARM64ABIInfo::classifyArgumentType(QualType Ty,
                                               unsigned &AllocatedVFP,
                                               bool &IsHA,
                                               unsigned &AllocatedGPR,
-                                              bool &IsSmallAggr) const {
+                                              bool &IsSmallAggr,
+                                              bool IsNamedArg) const {
   // Handle illegal vector types here.
   if (isIllegalVectorType(Ty)) {
     uint64_t Size = getContext().getTypeSize(Ty);
@@ -3293,6 +3305,10 @@ ABIArgInfo ARM64ABIInfo::classifyArgumentType(QualType Ty,
       Ty = EnumTy->getDecl()->getIntegerType();
 
     if (!Ty->isFloatingType() && !Ty->isVectorType()) {
+      unsigned Alignment = getContext().getTypeAlign(Ty);
+      if (!isDarwinPCS() && Alignment > 64)
+        AllocatedGPR = llvm::RoundUpToAlignment(AllocatedGPR, Alignment / 64);
+
       int RegsNeeded = getContext().getTypeSize(Ty) > 64 ? 2 : 1;
       AllocatedGPR += RegsNeeded;
     }
@@ -3322,20 +3338,31 @@ ABIArgInfo ARM64ABIInfo::classifyArgumentType(QualType Ty,
   const Type *Base = 0;
   uint64_t Members = 0;
   if (isHomogeneousAggregate(Ty, Base, getContext(), &Members)) {
-    AllocatedVFP += Members;
     IsHA = true;
+    if (!IsNamedArg && isDarwinPCS()) {
+      // With the Darwin ABI, variadic arguments are always passed on the stack
+      // and should not be expanded. Treat variadic HFAs as arrays of doubles.
+      uint64_t Size = getContext().getTypeSize(Ty);
+      llvm::Type *BaseTy = llvm::Type::getDoubleTy(getVMContext());
+      return ABIArgInfo::getDirect(llvm::ArrayType::get(BaseTy, Size / 64));
+    }
+    AllocatedVFP += Members;
     return ABIArgInfo::getExpand();
   }
 
   // Aggregates <= 16 bytes are passed directly in registers or on the stack.
   uint64_t Size = getContext().getTypeSize(Ty);
   if (Size <= 128) {
+    unsigned Alignment = getContext().getTypeAlign(Ty);
+    if (!isDarwinPCS() && Alignment > 64)
+      AllocatedGPR = llvm::RoundUpToAlignment(AllocatedGPR, Alignment / 64);
+
     Size = 64 * ((Size + 63) / 64); // round up to multiple of 8 bytes
     AllocatedGPR += Size / 64;
     IsSmallAggr = true;
     // We use a pair of i64 for 16-byte aggregate with 8-byte alignment.
     // For aggregates with 16-byte alignment, we use i128.
-    if (getContext().getTypeAlign(Ty) < 128 && Size == 128) {
+    if (Alignment < 128 && Size == 128) {
       llvm::Type *BaseTy = llvm::Type::getInt64Ty(getVMContext());
       return ABIArgInfo::getDirect(llvm::ArrayType::get(BaseTy, Size / 64));
     }
@@ -3359,8 +3386,9 @@ ABIArgInfo ARM64ABIInfo::classifyReturnType(QualType RetTy) const {
     if (const EnumType *EnumTy = RetTy->getAs<EnumType>())
       RetTy = EnumTy->getDecl()->getIntegerType();
 
-    return (RetTy->isPromotableIntegerType() ? ABIArgInfo::getExtend()
-                                             : ABIArgInfo::getDirect());
+    return (RetTy->isPromotableIntegerType() && isDarwinPCS()
+                ? ABIArgInfo::getExtend()
+                : ABIArgInfo::getDirect());
   }
 
   // Structures with either a non-trivial destructor or a non-trivial
@@ -3454,7 +3482,7 @@ static llvm::Value *EmitAArch64VAArg(llvm::Value *VAListAddr, QualType Ty,
   CGF.Builder.CreateCondBr(UsingStack, OnStackBlock, MaybeRegBlock);
 
   // Otherwise, at least some kind of argument could go in these registers, the
-  // quesiton is whether this particular type is too big.
+  // question is whether this particular type is too big.
   CGF.EmitBlock(MaybeRegBlock);
 
   // Integer arguments may need to correct register alignment (for example a
@@ -3631,8 +3659,8 @@ llvm::Value *ARM64ABIInfo::EmitAAPCSVAArg(llvm::Value *VAListAddr, QualType Ty,
 
   unsigned AllocatedGPR = 0, AllocatedVFP = 0;
   bool IsHA = false, IsSmallAggr = false;
-  ABIArgInfo AI =
-      classifyArgumentType(Ty, AllocatedVFP, IsHA, AllocatedGPR, IsSmallAggr);
+  ABIArgInfo AI = classifyArgumentType(Ty, AllocatedVFP, IsHA, AllocatedGPR,
+                                       IsSmallAggr, false /*IsNamedArg*/);
 
   return EmitAArch64VAArg(VAListAddr, Ty, AllocatedGPR, AllocatedVFP,
                           AI.isIndirect(), CGF);
@@ -4764,7 +4792,9 @@ public:
   void SetTargetAttributes(const Decl *D, llvm::GlobalValue *GV,
                            CodeGen::CodeGenModule &M) const override;
 private:
-  static void addKernelMetadata(llvm::Function *F);
+  // Adds a NamedMDNode with F, Name, and Operand as operands, and adds the
+  // resulting MDNode to the nvvm.annotations MDNode.
+  static void addNVVMMetadata(llvm::Function *F, StringRef Name, int Operand);
 };
 
 ABIArgInfo NVPTXABIInfo::classifyReturnType(QualType RetTy) const {
@@ -4823,7 +4853,8 @@ SetTargetAttributes(const Decl *D, llvm::GlobalValue *GV,
     // By default, all functions are device functions
     if (FD->hasAttr<OpenCLKernelAttr>()) {
       // OpenCL __kernel functions get kernel metadata
-      addKernelMetadata(F);
+      // Create !{<func-ref>, metadata !"kernel", i32 1} node
+      addNVVMMetadata(F, "kernel", 1);
       // And kernel functions are not subject to inlining
       F->addFnAttr(llvm::Attribute::NoInline);
     }
@@ -4834,28 +4865,41 @@ SetTargetAttributes(const Decl *D, llvm::GlobalValue *GV,
     // CUDA __global__ functions get a kernel metadata entry.  Since
     // __global__ functions cannot be called from the device, we do not
     // need to set the noinline attribute.
-    if (FD->hasAttr<CUDAGlobalAttr>())
-      addKernelMetadata(F);
+    if (FD->hasAttr<CUDAGlobalAttr>()) {
+      // Create !{<func-ref>, metadata !"kernel", i32 1} node
+      addNVVMMetadata(F, "kernel", 1);
+    }
+    if (FD->hasAttr<CUDALaunchBoundsAttr>()) {
+      // Create !{<func-ref>, metadata !"maxntidx", i32 <val>} node
+      addNVVMMetadata(F, "maxntidx",
+                      FD->getAttr<CUDALaunchBoundsAttr>()->getMaxThreads());
+      // min blocks is a default argument for CUDALaunchBoundsAttr, so getting a
+      // zero value from getMinBlocks either means it was not specified in
+      // __launch_bounds__ or the user specified a 0 value. In both cases, we
+      // don't have to add a PTX directive.
+      int MinCTASM = FD->getAttr<CUDALaunchBoundsAttr>()->getMinBlocks();
+      if (MinCTASM > 0) {
+        // Create !{<func-ref>, metadata !"minctasm", i32 <val>} node
+        addNVVMMetadata(F, "minctasm", MinCTASM);
+      }
+    }
   }
 }
 
-void NVPTXTargetCodeGenInfo::addKernelMetadata(llvm::Function *F) {
+void NVPTXTargetCodeGenInfo::addNVVMMetadata(llvm::Function *F, StringRef Name,
+                                             int Operand) {
   llvm::Module *M = F->getParent();
   llvm::LLVMContext &Ctx = M->getContext();
 
   // Get "nvvm.annotations" metadata node
   llvm::NamedMDNode *MD = M->getOrInsertNamedMetadata("nvvm.annotations");
 
-  // Create !{<func-ref>, metadata !"kernel", i32 1} node
-  llvm::SmallVector<llvm::Value *, 3> MDVals;
-  MDVals.push_back(F);
-  MDVals.push_back(llvm::MDString::get(Ctx, "kernel"));
-  MDVals.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(Ctx), 1));
-
+  llvm::Value *MDVals[] = {
+      F, llvm::MDString::get(Ctx, Name),
+      llvm::ConstantInt::get(llvm::Type::getInt32Ty(Ctx), Operand)};
   // Append metadata to nvvm.annotations
   MD->addOperand(llvm::MDNode::get(Ctx, MDVals));
 }
-
 }
 
 //===----------------------------------------------------------------------===//

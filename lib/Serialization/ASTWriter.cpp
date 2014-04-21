@@ -25,7 +25,6 @@
 #include "clang/AST/TypeLocVisitor.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/FileSystemStatCache.h"
-#include "clang/Basic/OnDiskHashTable.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/SourceManagerInternals.h"
 #include "clang/Basic/TargetInfo.h"
@@ -49,6 +48,7 @@
 #include "llvm/Support/EndianStream.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/OnDiskHashTable.h"
 #include "llvm/Support/Path.h"
 #include <algorithm>
 #include <cstdio>
@@ -798,6 +798,8 @@ void ASTWriter::WriteBlockInfoBlock() {
   // Control Block.
   BLOCK(CONTROL_BLOCK);
   RECORD(METADATA);
+  RECORD(MODULE_NAME);
+  RECORD(MODULE_MAP_FILE);
   RECORD(IMPORTS);
   RECORD(LANGUAGE_OPTIONS);
   RECORD(TARGET_OPTIONS);
@@ -1050,6 +1052,32 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
   Stream.EmitRecordWithBlob(MetadataAbbrevCode, Record,
                             getClangFullRepositoryVersion());
 
+  // Module name
+  if (WritingModule) {
+    BitCodeAbbrev *Abbrev = new BitCodeAbbrev();
+    Abbrev->Add(BitCodeAbbrevOp(MODULE_NAME));
+    Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Blob)); // Name
+    unsigned AbbrevCode = Stream.EmitAbbrev(Abbrev);
+    RecordData Record;
+    Record.push_back(MODULE_NAME);
+    Stream.EmitRecordWithBlob(AbbrevCode, Record, WritingModule->Name);
+  }
+
+  // Module map file
+  if (WritingModule) {
+    BitCodeAbbrev *Abbrev = new BitCodeAbbrev();
+    Abbrev->Add(BitCodeAbbrevOp(MODULE_MAP_FILE));
+    Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Blob)); // Filename
+    unsigned AbbrevCode = Stream.EmitAbbrev(Abbrev);
+
+    assert(WritingModule->ModuleMap && "missing module map");
+    SmallString<128> ModuleMap(WritingModule->ModuleMap->getName());
+    llvm::sys::fs::make_absolute(ModuleMap);
+    RecordData Record;
+    Record.push_back(MODULE_MAP_FILE);
+    Stream.EmitRecordWithBlob(AbbrevCode, Record, ModuleMap.str());
+  }
+
   // Imports
   if (Chain) {
     serialization::ModuleManager &Mgr = Chain->getModuleManager();
@@ -1065,7 +1093,6 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
       AddSourceLocation((*M)->ImportLoc, Record);
       Record.push_back((*M)->File->getSize());
       Record.push_back((*M)->File->getModificationTime());
-      // FIXME: This writes the absolute path for AST files we depend on.
       const std::string &FileName = (*M)->FileName;
       Record.push_back(FileName.size());
       Record.append(FileName.begin(), FileName.end());
@@ -1455,8 +1482,10 @@ namespace {
     
     typedef HeaderFileInfo data_type;
     typedef const data_type &data_type_ref;
+    typedef unsigned hash_value_type;
+    typedef unsigned offset_type;
     
-    static unsigned ComputeHash(key_type_ref key) {
+    static hash_value_type ComputeHash(key_type_ref key) {
       // The hash is based only on size/time of the file, so that the reader can
       // match even when symlinking or excess path elements ("foo/../", "../")
       // change the form of the name. However, complete path is still the key.
@@ -1548,7 +1577,7 @@ void ASTWriter::WriteHeaderSearch(const HeaderSearch &HS, StringRef isysroot) {
     FilesByUID.resize(HS.header_file_size());
   
   HeaderFileInfoTrait GeneratorTrait(*this, HS);
-  OnDiskChainedHashTableGenerator<HeaderFileInfoTrait> Generator;  
+  llvm::OnDiskChainedHashTableGenerator<HeaderFileInfoTrait> Generator;
   SmallVector<const char *, 4> SavedStrings;
   unsigned NumHeaderSearchEntries = 0;
   for (unsigned UID = 0, LastUID = FilesByUID.size(); UID != LastUID; ++UID) {
@@ -1828,8 +1857,10 @@ public:
 
   typedef Data data_type;
   typedef const data_type &data_type_ref;
+  typedef unsigned hash_value_type;
+  typedef unsigned offset_type;
 
-  static unsigned ComputeHash(IdentID IdID) {
+  static hash_value_type ComputeHash(IdentID IdID) {
     return llvm::hash_value(IdID);
   }
 
@@ -1921,7 +1952,7 @@ void ASTWriter::WritePreprocessor(const Preprocessor &PP, bool IsModule) {
   llvm::array_pod_sort(MacroDirectives.begin(), MacroDirectives.end(),
                        &compareMacroDirectives);
 
-  OnDiskChainedHashTableGenerator<ASTMacroTableTrait> Generator;
+  llvm::OnDiskChainedHashTableGenerator<ASTMacroTableTrait> Generator;
 
   // Emit the macro directives as a list and associate the offset with the
   // identifier they belong to.
@@ -2003,6 +2034,7 @@ void ASTWriter::WritePreprocessor(const Preprocessor &PP, bool IsModule) {
     AddSourceLocation(MI->getDefinitionLoc(), Record);
     AddSourceLocation(MI->getDefinitionEndLoc(), Record);
     Record.push_back(MI->isUsed());
+    Record.push_back(MI->isUsedForHeaderGuard());
     unsigned Code;
     if (MI->isObjectLike()) {
       Code = PP_MACRO_OBJECT_LIKE;
@@ -2710,9 +2742,12 @@ public:
   };
   typedef const data_type& data_type_ref;
 
+  typedef unsigned hash_value_type;
+  typedef unsigned offset_type;
+
   explicit ASTMethodPoolTrait(ASTWriter &Writer) : Writer(Writer) { }
 
-  static unsigned ComputeHash(Selector Sel) {
+  static hash_value_type ComputeHash(Selector Sel) {
     return serialization::ComputeHash(Sel);
   }
 
@@ -2806,7 +2841,7 @@ void ASTWriter::WriteSelectors(Sema &SemaRef) {
   unsigned NumTableEntries = 0;
   // Create and write out the blob that contains selectors and the method pool.
   {
-    OnDiskChainedHashTableGenerator<ASTMethodPoolTrait> Generator;
+    llvm::OnDiskChainedHashTableGenerator<ASTMethodPoolTrait> Generator;
     ASTMethodPoolTrait Trait(*this);
 
     // Create the on-disk hash table representation. We walk through every
@@ -3062,11 +3097,14 @@ public:
   typedef IdentID data_type;
   typedef data_type data_type_ref;
 
+  typedef unsigned hash_value_type;
+  typedef unsigned offset_type;
+
   ASTIdentifierTableTrait(ASTWriter &Writer, Preprocessor &PP, 
                           IdentifierResolver &IdResolver, bool IsModule)
     : Writer(Writer), PP(PP), IdResolver(IdResolver), IsModule(IsModule) { }
 
-  static unsigned ComputeHash(const IdentifierInfo* II) {
+  static hash_value_type ComputeHash(const IdentifierInfo* II) {
     return llvm::HashString(II->getName());
   }
 
@@ -3232,7 +3270,7 @@ void ASTWriter::WriteIdentifierTable(Preprocessor &PP,
   // Create and write out the blob that contains the identifier
   // strings.
   {
-    OnDiskChainedHashTableGenerator<ASTIdentifierTableTrait> Generator;
+    llvm::OnDiskChainedHashTableGenerator<ASTIdentifierTableTrait> Generator;
     ASTIdentifierTableTrait Trait(*this, PP, IdResolver, IsModule);
 
     // Look for any identifiers that were named while processing the
@@ -3321,9 +3359,12 @@ public:
   typedef DeclContext::lookup_result data_type;
   typedef const data_type& data_type_ref;
 
+  typedef unsigned hash_value_type;
+  typedef unsigned offset_type;
+
   explicit ASTDeclContextNameLookupTrait(ASTWriter &Writer) : Writer(Writer) { }
 
-  unsigned ComputeHash(DeclarationName Name) {
+  hash_value_type ComputeHash(DeclarationName Name) {
     llvm::FoldingSetNodeID ID;
     ID.AddInteger(Name.getNameKind());
 
@@ -3430,54 +3471,18 @@ public:
 };
 } // end anonymous namespace
 
-uint32_t
-ASTWriter::GenerateNameLookupTable(const DeclContext *DC,
-                                   llvm::SmallVectorImpl<char> &LookupTable) {
-  assert(!DC->LookupPtr.getInt() && "must call buildLookups first");
+template<typename Visitor>
+static void visitLocalLookupResults(const DeclContext *ConstDC,
+                                    bool NeedToReconcileExternalVisibleStorage,
+                                    Visitor AddLookupResult) {
+  // FIXME: We need to build the lookups table, which is logically const.
+  DeclContext *DC = const_cast<DeclContext*>(ConstDC);
   assert(DC == DC->getPrimaryContext() && "only primary DC has lookup table");
 
-  OnDiskChainedHashTableGenerator<ASTDeclContextNameLookupTrait> Generator;
-  ASTDeclContextNameLookupTrait Trait(*this);
-
-  // Create the on-disk hash table representation.
-  DeclarationName ConstructorName;
-  DeclarationName ConversionName;
-  SmallVector<NamedDecl *, 8> ConstructorDecls;
-  SmallVector<NamedDecl *, 4> ConversionDecls;
-
-  auto AddLookupResult = [&](DeclarationName Name,
-                             DeclContext::lookup_result Result) {
-    if (Result.empty())
-      return;
-
-    // Different DeclarationName values of certain kinds are mapped to
-    // identical serialized keys, because we don't want to use type
-    // identifiers in the keys (since type ids are local to the module).
-    switch (Name.getNameKind()) {
-    case DeclarationName::CXXConstructorName:
-      // There may be different CXXConstructorName DeclarationName values
-      // in a DeclContext because a UsingDecl that inherits constructors
-      // has the DeclarationName of the inherited constructors.
-      if (!ConstructorName)
-        ConstructorName = Name;
-      ConstructorDecls.append(Result.begin(), Result.end());
-      return;
-    case DeclarationName::CXXConversionFunctionName:
-      if (!ConversionName)
-        ConversionName = Name;
-      ConversionDecls.append(Result.begin(), Result.end());
-      return;
-    default:
-      break;
-    }
-
-    Generator.insert(Name, Result, Trait);
-  };
-
   SmallVector<DeclarationName, 16> ExternalNames;
-  for (auto &Lookup : *DC->getLookupPtr()) {
+  for (auto &Lookup : *DC->buildLookup()) {
     if (Lookup.second.hasExternalDecls() ||
-        DC->NeedToReconcileExternalVisibleStorage) {
+        NeedToReconcileExternalVisibleStorage) {
       // We don't know for sure what declarations are found by this name,
       // because the external source might have a different set from the set
       // that are in the lookup map, and we can't update it now without
@@ -3495,8 +3500,67 @@ ASTWriter::GenerateNameLookupTable(const DeclContext *DC,
   // be imported from an external source.
   // FIXME: What if the external source isn't an ASTReader?
   for (const auto &Name : ExternalNames)
-    // FIXME: const_cast since OnDiskHashTable wants a non-const lookup result.
-    AddLookupResult(Name, const_cast<DeclContext*>(DC)->lookup(Name));
+    AddLookupResult(Name, DC->lookup(Name));
+}
+
+void ASTWriter::AddUpdatedDeclContext(const DeclContext *DC) {
+  if (UpdatedDeclContexts.insert(DC) && WritingAST) {
+    // Ensure we emit all the visible declarations.
+    visitLocalLookupResults(DC, DC->NeedToReconcileExternalVisibleStorage,
+                            [&](DeclarationName Name,
+                                DeclContext::lookup_const_result Result) {
+      for (auto *Decl : Result)
+        GetDeclRef(Decl);
+    });
+  }
+}
+
+uint32_t
+ASTWriter::GenerateNameLookupTable(const DeclContext *DC,
+                                   llvm::SmallVectorImpl<char> &LookupTable) {
+  assert(!DC->LookupPtr.getInt() && "must call buildLookups first");
+
+  llvm::OnDiskChainedHashTableGenerator<ASTDeclContextNameLookupTrait>
+      Generator;
+  ASTDeclContextNameLookupTrait Trait(*this);
+
+  // Create the on-disk hash table representation.
+  DeclarationName ConstructorName;
+  DeclarationName ConversionName;
+  SmallVector<NamedDecl *, 8> ConstructorDecls;
+  SmallVector<NamedDecl *, 4> ConversionDecls;
+
+  visitLocalLookupResults(DC, DC->NeedToReconcileExternalVisibleStorage,
+                          [&](DeclarationName Name,
+                              DeclContext::lookup_result Result) {
+    if (Result.empty())
+      return;
+
+    // Different DeclarationName values of certain kinds are mapped to
+    // identical serialized keys, because we don't want to use type
+    // identifiers in the keys (since type ids are local to the module).
+    switch (Name.getNameKind()) {
+    case DeclarationName::CXXConstructorName:
+      // There may be different CXXConstructorName DeclarationName values
+      // in a DeclContext because a UsingDecl that inherits constructors
+      // has the DeclarationName of the inherited constructors.
+      if (!ConstructorName)
+        ConstructorName = Name;
+      ConstructorDecls.append(Result.begin(), Result.end());
+      return;
+
+    case DeclarationName::CXXConversionFunctionName:
+      if (!ConversionName)
+        ConversionName = Name;
+      ConversionDecls.append(Result.begin(), Result.end());
+      return;
+
+    default:
+      break;
+    }
+
+    Generator.insert(Name, Result, Trait);
+  });
 
   // Add the constructors.
   if (!ConstructorDecls.empty()) {
@@ -3505,6 +3569,7 @@ ASTWriter::GenerateNameLookupTable(const DeclContext *DC,
                                                 ConstructorDecls.end()),
                      Trait);
   }
+
   // Add the conversion functions.
   if (!ConversionDecls.empty()) {
     Generator.insert(ConversionName,
@@ -3750,7 +3815,7 @@ void ASTWriter::WriteMergedDecls() {
                                         IEnd = Chain->MergedDecls.end();
        I != IEnd; ++I) {
     DeclID CanonID = I->first->isFromASTFile()? I->first->getGlobalID()
-                                              : getDeclID(I->first);
+                                              : GetDeclRef(I->first);
     assert(CanonID && "Merged declaration not known?");
     
     Record.push_back(CanonID);
@@ -3985,6 +4050,15 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
     for (unsigned I = 0, N = OutOfDate.size(); I != N; ++I) {
       ExtSource->updateOutOfDateIdentifier(*OutOfDate[I]);
     }
+  }
+
+  // If we saw any DeclContext updates before we started writing the AST file,
+  // make sure all visible decls in those DeclContexts are written out.
+  if (!UpdatedDeclContexts.empty()) {
+    auto OldUpdatedDeclContexts = std::move(UpdatedDeclContexts);
+    UpdatedDeclContexts.clear();
+    for (auto *DC : OldUpdatedDeclContexts)
+      AddUpdatedDeclContext(DC);
   }
 
   // Build a record containing all of the tentative definitions in this file, in
@@ -4346,11 +4420,8 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
     Stream.EmitRecord(UNDEFINED_BUT_USED, UndefinedButUsed);
   
   // Write the visible updates to DeclContexts.
-  for (llvm::SmallPtrSet<const DeclContext *, 16>::iterator
-       I = UpdatedDeclContexts.begin(),
-       E = UpdatedDeclContexts.end();
-       I != E; ++I)
-    WriteDeclContextVisibleUpdate(*I);
+  for (auto *DC : UpdatedDeclContexts)
+    WriteDeclContextVisibleUpdate(DC);
 
   if (!WritingModule) {
     // Write the submodules that were imported, if any.
@@ -4417,9 +4488,6 @@ void ASTWriter::WriteDeclUpdatesBlocks(RecordDataImpl &OffsetsRecord) {
     if (isRewritten(D))
       continue; // The decl will be written completely,no need to store updates.
 
-    OffsetsRecord.push_back(GetDeclRef(D));
-    OffsetsRecord.push_back(Stream.GetCurrentBitNo());
-
     bool HasUpdatedBody = false;
     RecordData Record;
     for (auto &Update : DeclUpdate.second) {
@@ -4430,6 +4498,7 @@ void ASTWriter::WriteDeclUpdatesBlocks(RecordDataImpl &OffsetsRecord) {
       case UPD_CXX_ADDED_IMPLICIT_MEMBER:
       case UPD_CXX_ADDED_TEMPLATE_SPECIALIZATION:
       case UPD_CXX_ADDED_ANONYMOUS_NAMESPACE:
+        assert(Update.getDecl() && "no decl to add?");
         Record.push_back(GetDeclRef(Update.getDecl()));
         break;
 
@@ -4443,6 +4512,39 @@ void ASTWriter::WriteDeclUpdatesBlocks(RecordDataImpl &OffsetsRecord) {
         Record.pop_back();
         HasUpdatedBody = true;
         break;
+
+      case UPD_CXX_INSTANTIATED_CLASS_DEFINITION: {
+        auto *RD = cast<CXXRecordDecl>(D);
+        AddUpdatedDeclContext(RD->getPrimaryContext());
+        AddCXXDefinitionData(RD, Record);
+        Record.push_back(WriteDeclContextLexicalBlock(
+            *Context, const_cast<CXXRecordDecl *>(RD)));
+
+        // This state is sometimes updated by template instantiation, when we
+        // switch from the specialization referring to the template declaration
+        // to it referring to the template definition.
+        if (auto *MSInfo = RD->getMemberSpecializationInfo()) {
+          Record.push_back(MSInfo->getTemplateSpecializationKind());
+          AddSourceLocation(MSInfo->getPointOfInstantiation(), Record);
+        } else {
+          auto *Spec = cast<ClassTemplateSpecializationDecl>(RD);
+          Record.push_back(Spec->getTemplateSpecializationKind());
+          AddSourceLocation(Spec->getPointOfInstantiation(), Record);
+        }
+        Record.push_back(RD->getTagKind());
+        AddSourceLocation(RD->getLocation(), Record);
+        AddSourceLocation(RD->getLocStart(), Record);
+        AddSourceLocation(RD->getRBraceLoc(), Record);
+
+        // Instantiation may change attributes; write them all out afresh.
+        Record.push_back(D->hasAttrs());
+        if (Record.back())
+          WriteAttributes(ArrayRef<const Attr*>(D->getAttrs().begin(),
+                                                D->getAttrs().size()), Record);
+
+        // FIXME: Ensure we don't get here for explicit instantiations.
+        break;
+      }
 
       case UPD_CXX_RESOLVED_EXCEPTION_SPEC:
         addExceptionSpec(
@@ -4473,10 +4575,16 @@ void ASTWriter::WriteDeclUpdatesBlocks(RecordDataImpl &OffsetsRecord) {
       AddFunctionDefinition(Def, Record);
     }
 
+    OffsetsRecord.push_back(GetDeclRef(D));
+    OffsetsRecord.push_back(Stream.GetCurrentBitNo());
+
     Stream.EmitRecord(DECL_UPDATES, Record);
 
     // Flush any statements that were written as part of this update record.
     FlushStmts();
+
+    // Flush C++ base specifiers, if there are any.
+    FlushCXXBaseSpecifiers();
   }
 }
 
@@ -5220,6 +5328,7 @@ void ASTWriter::AddCXXDefinitionData(const CXXRecordDecl *D, RecordDataImpl &Rec
   Record.push_back(Data.DefaultedMoveAssignmentIsDeleted);
   Record.push_back(Data.DefaultedDestructorIsDeleted);
   Record.push_back(Data.HasTrivialSpecialMembers);
+  Record.push_back(Data.DeclaredNonTrivialSpecialMembers);
   Record.push_back(Data.HasIrrelevantDestructor);
   Record.push_back(Data.HasConstexprNonCopyMoveConstructor);
   Record.push_back(Data.DefaultedDefaultConstructorIsConstexpr);
@@ -5362,7 +5471,10 @@ void ASTWriter::CompletedTagDefinition(const TagDecl *D) {
       // A forward reference was mutated into a definition. Rewrite it.
       // FIXME: This happens during template instantiation, should we
       // have created a new definition decl instead ?
-      RewriteDecl(RD);
+      assert(isTemplateInstantiation(RD->getTemplateSpecializationKind()) &&
+             "completed a tag from another module but not by instantiation?");
+      DeclUpdates[RD].push_back(
+          DeclUpdate(UPD_CXX_INSTANTIATED_CLASS_DEFINITION));
     }
   }
 }

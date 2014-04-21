@@ -473,6 +473,7 @@ static bool isSignedCharDefault(const llvm::Triple &Triple) {
   case llvm::Triple::aarch64:
   case llvm::Triple::aarch64_be:
   case llvm::Triple::arm64:
+  case llvm::Triple::arm64_be:
   case llvm::Triple::arm:
   case llvm::Triple::armeb:
     if (Triple.isOSDarwin() || Triple.isOSWindows())
@@ -875,8 +876,12 @@ static std::string getARM64TargetCPU(const ArgList &Args) {
   // At some point, we may need to check -march here, but for now we only
   // one arm64 architecture.
 
-  // Default to "cyclone" CPU.
-  return "cyclone";
+  // Make sure we pick "cyclone" if -arch is used.
+  // FIXME: Should this be picked by checking the target triple instead?
+  if (Args.getLastArg(options::OPT_arch))
+    return "cyclone";
+
+  return "generic";
 }
 
 void Clang::AddARM64TargetArgs(const ArgList &Args,
@@ -1336,6 +1341,10 @@ static std::string getCPUName(const ArgList &Args, const llvm::Triple &T) {
   case llvm::Triple::aarch64_be:
     return getAArch64TargetCPU(Args, T);
 
+  case llvm::Triple::arm64:
+  case llvm::Triple::arm64_be:
+    return getARM64TargetCPU(Args);
+
   case llvm::Triple::arm:
   case llvm::Triple::armeb:
   case llvm::Triple::thumb:
@@ -1564,6 +1573,8 @@ static void getTargetFeatures(const Driver &D, const llvm::Triple &Triple,
     break;
   case llvm::Triple::aarch64:
   case llvm::Triple::aarch64_be:
+  case llvm::Triple::arm64:
+  case llvm::Triple::arm64_be:
     getAArch64TargetFeatures(D, Args, Features);
     break;
   case llvm::Triple::x86:
@@ -2508,8 +2519,11 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // enabled.  This alias option is being used to simplify the hasFlag logic.
   OptSpecifier StrictAliasingAliasOption = OFastEnabled ? options::OPT_Ofast :
     options::OPT_fstrict_aliasing;
+  // We turn strict aliasing off by default if we're in CL mode, since MSVC
+  // doesn't do any TBAA.
+  bool TBAAOnByDefault = !getToolChain().getDriver().IsCLMode();
   if (!Args.hasFlag(options::OPT_fstrict_aliasing, StrictAliasingAliasOption,
-                    options::OPT_fno_strict_aliasing, true))
+                    options::OPT_fno_strict_aliasing, TBAAOnByDefault))
     CmdArgs.push_back("-relaxed-aliasing");
   if (!Args.hasFlag(options::OPT_fstruct_path_tbaa,
                     options::OPT_fno_struct_path_tbaa))
@@ -2754,6 +2768,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     break;
 
   case llvm::Triple::arm64:
+  case llvm::Triple::arm64_be:
     AddARM64TargetArgs(Args, CmdArgs);
     break;
 
@@ -3409,6 +3424,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       A->render(Args, CmdArgs);
   }
 
+  if (Arg *A = Args.getLastArg(options::OPT_Rpass_EQ))
+    A->render(Args, CmdArgs);
+
   if (Args.hasArg(options::OPT_mkernel)) {
     if (!Args.hasArg(options::OPT_fapple_kext) && types::isCXX(InputType))
       CmdArgs.push_back("-fapple-kext");
@@ -3464,6 +3482,14 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                    options::OPT_fno_modules_decluse,
                    false)) {
     CmdArgs.push_back("-fmodules-decluse");
+  }
+
+  // -fmodules-strict-decluse is like -fmodule-decluse, but also checks that
+  // all #included headers are part of modules.
+  if (Args.hasFlag(options::OPT_fmodules_strict_decluse,
+                   options::OPT_fno_modules_strict_decluse,
+                   false)) {
+    CmdArgs.push_back("-fmodules-strict-decluse");
   }
 
   // -fmodule-name specifies the module that is currently being built (or
@@ -6825,7 +6851,8 @@ static StringRef getLinuxDynamicLinker(const ArgList &Args,
   else if (ToolChain.getArch() == llvm::Triple::aarch64 ||
            ToolChain.getArch() == llvm::Triple::arm64)
     return "/lib/ld-linux-aarch64.so.1";
-  else if (ToolChain.getArch() == llvm::Triple::aarch64_be)
+  else if (ToolChain.getArch() == llvm::Triple::aarch64_be ||
+           ToolChain.getArch() == llvm::Triple::arm64_be)
     return "/lib/ld-linux-aarch64_be.so.1";
   else if (ToolChain.getArch() == llvm::Triple::arm ||
            ToolChain.getArch() == llvm::Triple::thumb) {
@@ -6926,7 +6953,8 @@ void gnutools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   else if (ToolChain.getArch() == llvm::Triple::aarch64 ||
            ToolChain.getArch() == llvm::Triple::arm64)
     CmdArgs.push_back("aarch64linux");
-  else if (ToolChain.getArch() == llvm::Triple::aarch64_be)
+  else if (ToolChain.getArch() == llvm::Triple::aarch64_be ||
+           ToolChain.getArch() == llvm::Triple::arm64_be)
     CmdArgs.push_back("aarch64_be_linux");
   else if (ToolChain.getArch() == llvm::Triple::arm
            ||  ToolChain.getArch() == llvm::Triple::thumb)

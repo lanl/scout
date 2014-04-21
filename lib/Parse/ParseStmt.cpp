@@ -350,6 +350,10 @@ Retry:
     HandlePragmaMSPointersToMembers();
     return StmtEmpty();
 
+  case tok::annot_pragma_ms_pragma:
+    ProhibitAttributes(Attrs);
+    HandlePragmaMSPragma();
+    return StmtEmpty();
   }
 
   // If we reached this code, the statement must end in a semicolon.
@@ -639,8 +643,9 @@ StmtResult Parser::ParseCaseStatement(bool MissingCase, ExprResult Expr) {
     ColonProtection.restore();
 
     if (TryConsumeToken(tok::colon, ColonLoc)) {
-    } else if (TryConsumeToken(tok::semi, ColonLoc)) {
-      // Treat "case blah;" as a typo for "case blah:".
+    } else if (TryConsumeToken(tok::semi, ColonLoc) ||
+               TryConsumeToken(tok::coloncolon, ColonLoc)) {
+      // Treat "case blah;" or "case blah::" as a typo for "case blah:".
       Diag(ColonLoc, diag::err_expected_after)
           << "'case'" << tok::colon
           << FixItHint::CreateReplacement(ColonLoc, ":");
@@ -827,6 +832,9 @@ void Parser::ParseCompoundStatementLeadingPragmas() {
       break;
     case tok::annot_pragma_ms_pointers_to_members:
       HandlePragmaMSPointersToMembers();
+      break;
+    case tok::annot_pragma_ms_pragma:
+      HandlePragmaMSPragma();
       break;
     default:
       checkForPragmas = false;

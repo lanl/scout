@@ -1356,14 +1356,11 @@ CollectFunctionTemplateParams(const FunctionDecl *FD, llvm::DIFile Unit) {
 llvm::DIArray CGDebugInfo::
 CollectCXXTemplateParams(const ClassTemplateSpecializationDecl *TSpecial,
                          llvm::DIFile Unit) {
-  llvm::PointerUnion<ClassTemplateDecl *,
-                     ClassTemplatePartialSpecializationDecl *>
-    PU = TSpecial->getSpecializedTemplateOrPartial();
-
-  TemplateParameterList *TPList = PU.is<ClassTemplateDecl *>() ?
-    PU.get<ClassTemplateDecl *>()->getTemplateParameters() :
-    PU.get<ClassTemplatePartialSpecializationDecl *>()->getTemplateParameters();
-  const TemplateArgumentList &TAList = TSpecial->getTemplateInstantiationArgs();
+  // Always get the full list of parameters, not just the ones from
+  // the specialization.
+  TemplateParameterList *TPList =
+    TSpecial->getSpecializedTemplate()->getTemplateParameters();
+  const TemplateArgumentList &TAList = TSpecial->getTemplateArgs();
   return CollectTemplateParams(TPList, TAList.asArray(), Unit);
 }
 
@@ -2504,7 +2501,10 @@ llvm::DICompositeType CGDebugInfo::getOrCreateFunctionType(const Decl *D,
 }
 
 /// EmitFunctionStart - Constructs the debug code for entering a function.
-void CGDebugInfo::EmitFunctionStart(GlobalDecl GD, QualType FnType,
+void CGDebugInfo::EmitFunctionStart(GlobalDecl GD,
+                                    SourceLocation Loc,
+                                    SourceLocation ScopeLoc,
+                                    QualType FnType,
                                     llvm::Function *Fn,
                                     CGBuilderTy &Builder) {
 
@@ -2514,24 +2514,7 @@ void CGDebugInfo::EmitFunctionStart(GlobalDecl GD, QualType FnType,
   FnBeginRegionCount.push_back(LexicalBlockStack.size());
 
   const Decl *D = GD.getDecl();
-
-  // Use the location of the start of the function to determine where
-  // the function definition is located. By default use the location
-  // of the declaration as the location for the subprogram. A function
-  // may lack a declaration in the source code if it is created by code
-  // gen. (examples: _GLOBAL__I_a, __cxx_global_array_dtor, thunk).
   bool HasDecl = (D != 0);
-  SourceLocation Loc;
-  if (HasDecl) {
-    Loc = D->getLocation();
-
-    // If this is a function specialization then use the pattern body
-    // as the location for the function.
-    if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(D))
-      if (const FunctionDecl *SpecDecl = FD->getTemplateInstantiationPattern())
-        if (SpecDecl->hasBody(SpecDecl))
-          Loc = SpecDecl->getLocation();
-  }
 
   unsigned Flags = 0;
   llvm::DIFile Unit = getOrCreateFile(Loc);
@@ -2591,9 +2574,14 @@ void CGDebugInfo::EmitFunctionStart(GlobalDecl GD, QualType FnType,
   if (!Name.empty() && Name[0] == '\01')
     Name = Name.substr(1);
 
-  unsigned LineNo = getLineNumber(Loc);
-  if (!HasDecl || D->isImplicit())
+  if (!HasDecl || D->isImplicit()) {
     Flags |= llvm::DIDescriptor::FlagArtificial;
+    // Artificial functions without a location should not silently reuse CurLoc.
+    if (Loc.isInvalid())
+      CurLoc = SourceLocation();
+  }
+  unsigned LineNo = getLineNumber(Loc);
+  unsigned ScopeLine = getLineNumber(ScopeLoc);
 
   // FIXME: The function declaration we're constructing here is mostly reusing
   // declarations from CXXMethodDecl and not constructing new ones for arbitrary
@@ -2604,7 +2592,7 @@ void CGDebugInfo::EmitFunctionStart(GlobalDecl GD, QualType FnType,
       DBuilder.createFunction(FDContext, Name, LinkageName, Unit, LineNo,
                               getOrCreateFunctionType(D, FnType, Unit),
                               Fn->hasInternalLinkage(), true /*definition*/,
-                              getLineNumber(CurLoc), Flags,
+                              ScopeLine, Flags,
                               CGM.getLangOpts().Optimize, Fn, TParamsArray,
                               getFunctionDeclaration(D));
   if (HasDecl)
@@ -3180,6 +3168,37 @@ CGDebugInfo::getOrCreateStaticDataMemberDeclarationOrNull(const VarDecl *D) {
   return T;
 }
 
+/// Recursively collect all of the member fields of a global anonymous decl and
+/// create static variables for them. The first time this is called it needs
+/// to be on a union and then from there we can have additional unnamed fields.
+llvm::DIGlobalVariable
+CGDebugInfo::CollectAnonRecordDecls(const RecordDecl *RD, llvm::DIFile Unit,
+                                    unsigned LineNo, StringRef LinkageName,
+                                    llvm::GlobalVariable *Var,
+                                    llvm::DIDescriptor DContext) {
+  llvm::DIGlobalVariable GV;
+
+  for (const auto *Field : RD->fields()) {
+    llvm::DIType FieldTy = getOrCreateType(Field->getType(), Unit);
+    StringRef FieldName = Field->getName();
+
+    // Ignore unnamed fields, but recurse into anonymous records.
+    if (FieldName.empty()) {
+      const RecordType *RT = dyn_cast<RecordType>(Field->getType());
+      if (RT)
+        GV = CollectAnonRecordDecls(RT->getDecl(), Unit, LineNo, LinkageName,
+                                    Var, DContext);
+      continue;
+    }
+    // Use VarDecl's Tag, Scope and Line number.
+    GV = DBuilder.createStaticVariable(DContext, FieldName, LinkageName, Unit,
+                                       LineNo, FieldTy,
+                                       Var->hasInternalLinkage(), Var,
+                                       llvm::DIDerivedType());
+  }
+  return GV;
+}
+
 /// EmitGlobalVariable - Emit information about a global variable.
 void CGDebugInfo::EmitGlobalVariable(llvm::GlobalVariable *Var,
                                      const VarDecl *D) {
@@ -3200,19 +3219,35 @@ void CGDebugInfo::EmitGlobalVariable(llvm::GlobalVariable *Var,
     T = CGM.getContext().getConstantArrayType(ET, ConstVal,
                                               ArrayType::Normal, 0);
   }
+
   StringRef DeclName = D->getName();
   StringRef LinkageName;
-  if (D->getDeclContext() && !isa<FunctionDecl>(D->getDeclContext())
-      && !isa<ObjCMethodDecl>(D->getDeclContext()))
+  if (D->getDeclContext() && !isa<FunctionDecl>(D->getDeclContext()) &&
+      !isa<ObjCMethodDecl>(D->getDeclContext()))
     LinkageName = Var->getName();
   if (LinkageName == DeclName)
     LinkageName = StringRef();
+
   llvm::DIDescriptor DContext =
     getContextDescriptor(dyn_cast<Decl>(D->getDeclContext()));
-  llvm::DIGlobalVariable GV = DBuilder.createStaticVariable(
-      DContext, DeclName, LinkageName, Unit, LineNo, getOrCreateType(T, Unit),
-      Var->hasInternalLinkage(), Var,
-      getOrCreateStaticDataMemberDeclarationOrNull(D));
+
+  // Attempt to store one global variable for the declaration - even if we
+  // emit a lot of fields.
+  llvm::DIGlobalVariable GV;
+
+  // If this is an anonymous union then we'll want to emit a global
+  // variable for each member of the anonymous union so that it's possible
+  // to find the name of any field in the union.
+  if (T->isUnionType() && DeclName.empty()) {
+    const RecordDecl *RD = cast<RecordType>(T)->getDecl();
+    assert(RD->isAnonymousStructOrUnion() && "unnamed non-anonymous struct or union?");
+    GV = CollectAnonRecordDecls(RD, Unit, LineNo, LinkageName, Var, DContext);
+  } else {
+      GV = DBuilder.createStaticVariable(
+        DContext, DeclName, LinkageName, Unit, LineNo, getOrCreateType(T, Unit),
+        Var->hasInternalLinkage(), Var,
+        getOrCreateStaticDataMemberDeclarationOrNull(D));
+  }
   DeclCache.insert(std::make_pair(D->getCanonicalDecl(), llvm::WeakVH(GV)));
 }
 
