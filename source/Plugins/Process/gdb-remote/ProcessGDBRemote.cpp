@@ -178,7 +178,7 @@ namespace {
 #define HIGH_PORT   (49151u)
 #endif
 
-#if defined(__APPLE__) && defined(__arm__)
+#if defined(__APPLE__) && (defined(__arm__) || defined(__arm64__))
 static bool rand_initialized = false;
 
 static inline uint16_t
@@ -244,6 +244,7 @@ ProcessGDBRemote::CanDebug (Target &target, bool plugin_specified_by_name)
             case ObjectFile::eTypeObjectFile:
             case ObjectFile::eTypeSharedLibrary:
             case ObjectFile::eTypeStubLibrary:
+            case ObjectFile::eTypeJIT:
                 return false;
             case ObjectFile::eTypeExecutable:
             case ObjectFile::eTypeDynamicLinker:
@@ -798,6 +799,10 @@ ProcessGDBRemote::DoLaunch (Module *exe_module, ProcessLaunchInfo &launch_info)
             m_gdb_comm.SetDisableASLR (launch_flags & eLaunchFlagDisableASLR);
 
             m_gdb_comm.SendLaunchArchPacket (m_target.GetArchitecture().GetArchitectureName());
+            
+            const char * launch_event_data = launch_info.GetLaunchEventData();
+            if (launch_event_data != NULL && *launch_event_data != '\0')
+                m_gdb_comm.SendLaunchEventDataPacket (launch_event_data);
             
             if (working_dir && working_dir[0])
             {
@@ -1453,8 +1458,7 @@ ProcessGDBRemote::UpdateThreadList (ThreadList &old_thread_list, ThreadList &new
                 if (log && log->GetMask().Test(GDBR_LOG_VERBOSE))
                     log->Printf(
                             "ProcessGDBRemote::%s Making new thread: %p for thread ID: 0x%" PRIx64 ".\n",
-                            __FUNCTION__,
-                            thread_sp.get(),
+                            __FUNCTION__, static_cast<void*>(thread_sp.get()),
                             thread_sp->GetID());
             }
             else
@@ -1462,8 +1466,7 @@ ProcessGDBRemote::UpdateThreadList (ThreadList &old_thread_list, ThreadList &new
                 if (log && log->GetMask().Test(GDBR_LOG_VERBOSE))
                     log->Printf(
                            "ProcessGDBRemote::%s Found old thread: %p for thread ID: 0x%" PRIx64 ".\n",
-                           __FUNCTION__,
-                           thread_sp.get(),
+                           __FUNCTION__, static_cast<void*>(thread_sp.get()),
                            thread_sp->GetID());
             }
             new_thread_list.AddThread(thread_sp);
@@ -1558,9 +1561,9 @@ ProcessGDBRemote::SetThreadStopInfo (StringExtractor& stop_packet)
                         if (log && log->GetMask().Test(GDBR_LOG_VERBOSE))
                             log->Printf ("ProcessGDBRemote::%s Adding new thread: %p for thread ID: 0x%" PRIx64 ".\n",
                                          __FUNCTION__,
-                                         thread_sp.get(),
+                                         static_cast<void*>(thread_sp.get()),
                                          thread_sp->GetID());
-                                         
+
                         m_thread_list_real.AddThread(thread_sp);
                     }
                     gdb_thread = static_cast<ThreadGDBRemote *> (thread_sp.get());
@@ -1583,7 +1586,6 @@ ProcessGDBRemote::SetThreadStopInfo (StringExtractor& stop_packet)
                         if (tid != LLDB_INVALID_THREAD_ID)
                             m_thread_ids.push_back (tid);
                         value.erase(0, comma_pos + 1);
-                            
                     }
                     tid = Args::StringToUInt64 (value.c_str(), LLDB_INVALID_THREAD_ID, 16);
                     if (tid != LLDB_INVALID_THREAD_ID)
@@ -1710,7 +1712,6 @@ ProcessGDBRemote::SetThreadStopInfo (StringExtractor& stop_packet)
                                     thread_sp->SetStopInfo (invalid_stop_info_sp);
                                 }
                             }
-                            
                         }
                         else if (reason.compare("trap") == 0)
                         {
@@ -1735,7 +1736,7 @@ ProcessGDBRemote::SetThreadStopInfo (StringExtractor& stop_packet)
                             handled = true;
                         }
                     }
-                    
+
                     if (!handled && signo && did_exec == false)
                     {
                         if (signo == SIGTRAP)
@@ -1745,7 +1746,7 @@ ProcessGDBRemote::SetThreadStopInfo (StringExtractor& stop_packet)
                             handled = true;
                             addr_t pc = thread_sp->GetRegisterContext()->GetPC() + m_breakpoint_pc_offset;
                             lldb::BreakpointSiteSP bp_site_sp = thread_sp->GetProcess()->GetBreakpointSiteList().FindByAddress(pc);
-                            
+
                             if (bp_site_sp)
                             {
                                 // If the breakpoint is for this thread, then we'll report the hit, but if it is for another thread,
@@ -1777,7 +1778,7 @@ ProcessGDBRemote::SetThreadStopInfo (StringExtractor& stop_packet)
                         if (!handled)
                             thread_sp->SetStopInfo (StopInfo::CreateStopReasonWithSignal (*thread_sp, signo));
                     }
-                    
+
                     if (!description.empty())
                     {
                         lldb::StopInfoSP stop_info_sp (thread_sp->GetStopInfo ());
@@ -1865,10 +1866,6 @@ ProcessGDBRemote::DoDetach(bool keep_stopped)
     if (log)
         log->Printf ("ProcessGDBRemote::DoDetach(keep_stopped: %i)", keep_stopped);
  
-    DisableAllBreakpointSites ();
-
-    m_thread_list.DiscardThreadPlans();
-
     error = m_gdb_comm.Detach (keep_stopped);
     if (log)
     {
@@ -2611,7 +2608,7 @@ ProcessGDBRemote::LaunchAndConnectToDebugserver (const ProcessInfo &process_info
         debugserver_launch_info.SetMonitorProcessCallback (MonitorDebugserverProcess, this, false);
         debugserver_launch_info.SetUserID(process_info.GetUserID());
 
-#if defined (__APPLE__) && defined (__arm__)
+#if defined (__APPLE__) && (defined (__arm__) || defined (__arm64__))
         // On iOS, still do a local connection using a random port
         const char *hostname = "127.0.0.1";
         uint16_t port = get_random_port ();
@@ -2927,13 +2924,33 @@ ProcessGDBRemote::AsyncThread (void *arg)
                                         break;
 
                                     case eStateExited:
+                                    {
                                         process->SetLastStopPacket (response);
                                         process->ClearThreadIDList();
                                         response.SetFilePos(1);
-                                        process->SetExitStatus(response.GetHexU8(), NULL);
+                                        
+                                        int exit_status = response.GetHexU8();
+                                        const char *desc_cstr = NULL;
+                                        StringExtractor extractor;
+                                        std::string desc_string;
+                                        if (response.GetBytesLeft() > 0 && response.GetChar('-') == ';')
+                                        {
+                                            std::string desc_token;
+                                            while (response.GetNameColonValue (desc_token, desc_string))
+                                            {
+                                                if (desc_token == "description")
+                                                {
+                                                    extractor.GetStringRef().swap(desc_string);
+                                                    extractor.SetFilePos(0);
+                                                    extractor.GetHexByteString (desc_string);
+                                                    desc_cstr = desc_string.c_str();
+                                                }
+                                            }
+                                        }
+                                        process->SetExitStatus(exit_status, desc_cstr);
                                         done = true;
                                         break;
-
+                                    }
                                     case eStateInvalid:
                                         process->SetExitStatus(-1, "lost connection");
                                         break;
@@ -3069,6 +3086,25 @@ ProcessGDBRemote::GetDynamicLoader ()
     return m_dyld_ap.get();
 }
 
+Error
+ProcessGDBRemote::SendEventData(const char *data)
+{
+    int return_value;
+    bool was_supported;
+    
+    Error error;
+    
+    return_value = m_gdb_comm.SendLaunchEventDataPacket (data, &was_supported);
+    if (return_value != 0)
+    {
+        if (!was_supported)
+            error.SetErrorString("Sending events is not supported for this process.");
+        else
+            error.SetErrorStringWithFormat("Error sending event data: %d.", return_value);
+    }
+    return error;
+}
+
 const DataBufferSP
 ProcessGDBRemote::GetAuxvData()
 {
@@ -3081,7 +3117,6 @@ ProcessGDBRemote::GetAuxvData()
     }
     return buf;
 }
-
 
 class CommandObjectProcessGDBRemotePacketHistory : public CommandObjectParsed
 {

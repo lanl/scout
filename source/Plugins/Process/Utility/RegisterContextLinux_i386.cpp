@@ -53,7 +53,7 @@ struct FPR_i386
             uint32_t fiseg;   // FPU IP Selector (fcs)
             uint32_t fooff;   // FPU Operand Pointer Offset (foo)
             uint32_t foseg;   // FPU Operand Pointer Selector (fos)
-        } i386;
+        } i386_;// Added _ in the end to avoid error with gcc defining i386 in some cases
     } ptr;
     uint32_t mxcsr;         // MXCSR Register State
     uint32_t mxcsrmask;     // MXCSR Mask
@@ -113,11 +113,9 @@ RegisterContextLinux_i386::GetGPRSize()
 const RegisterInfo *
 RegisterContextLinux_i386::GetRegisterInfo()
 {
-    switch (m_target_arch.GetCore())
+    switch (m_target_arch.GetMachine())
     {
-        case ArchSpec::eCore_x86_32_i386:
-        case ArchSpec::eCore_x86_32_i486:
-        case ArchSpec::eCore_x86_32_i486sx:
+        case llvm::Triple::x86:            
             return g_register_infos_i386;
         default:
             assert(false && "Unhandled target architecture.");
