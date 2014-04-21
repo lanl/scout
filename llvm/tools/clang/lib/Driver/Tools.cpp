@@ -3066,6 +3066,10 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
   if (getToolChain().getDriver().CCCIsScoutC() ||
       getToolChain().getDriver().CCCIsScoutCXX()) {
+   
+    // Enable debug flag 
+    Args.AddAllArgs(CmdArgs, options::OPT_debug);
+
     // Enable cpu multithreading.
     Args.AddAllArgs(CmdArgs, options::OPT_cpuThreads);
 

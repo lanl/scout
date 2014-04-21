@@ -326,6 +326,9 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   // SC_TODO - we could move this into our own function call to avoid
   // more lines of merging when sync'ing with the trunk…
   //
+  // Enable debug flag
+  Opts.ScoutDebug = Args.hasArg(OPT_debug);
+
   // GPU support disabled for now...
   Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
   //Opts.ScoutAMDGPU = Args.hasArg(OPT_gpuAMD);
@@ -1524,6 +1527,8 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
                                  Opts.Deprecated);
 
   // +==== Scout =============================================================+
+  // Detect -debug flag
+  Opts.ScoutDebug = Args.hasArg(OPT_debug);
   // Detect -gpu flag
   Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
   // --- Disabled for now (AMD is behind us in version support)
