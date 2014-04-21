@@ -2973,6 +2973,19 @@ defm XOR  : sse12_fp_packed_logical<0x57, "xor", xor>;
 let isCommutable = 0 in
   defm ANDN : sse12_fp_packed_logical<0x55, "andn", X86andnp>;
 
+// AVX1 requires type coercions in order to fold loads directly into logical
+// operations.
+let Predicates = [HasAVX1Only] in {
+  def : Pat<(bc_v8f32 (and VR256:$src1, (loadv4i64 addr:$src2))),
+            (VANDPSYrm VR256:$src1, addr:$src2)>;
+  def : Pat<(bc_v8f32 (or VR256:$src1, (loadv4i64 addr:$src2))),
+            (VORPSYrm VR256:$src1, addr:$src2)>;
+  def : Pat<(bc_v8f32 (xor VR256:$src1, (loadv4i64 addr:$src2))),
+            (VXORPSYrm VR256:$src1, addr:$src2)>;
+  def : Pat<(bc_v8f32 (X86andnp VR256:$src1, (loadv4i64 addr:$src2))),
+            (VANDNPSYrm VR256:$src1, addr:$src2)>;
+}
+
 //===----------------------------------------------------------------------===//
 // SSE 1 & 2 - Arithmetic Instructions
 //===----------------------------------------------------------------------===//
@@ -8291,6 +8304,12 @@ let Predicates = [HasF16C] in {
   defm VCVTPH2PSY : f16c_ph2ps<VR256, f128mem, int_x86_vcvtph2ps_256>, VEX_L;
   defm VCVTPS2PH  : f16c_ps2ph<VR128, f64mem, int_x86_vcvtps2ph_128>;
   defm VCVTPS2PHY : f16c_ps2ph<VR256, f128mem, int_x86_vcvtps2ph_256>, VEX_L;
+
+  // Pattern match vcvtph2ps of a scalar i64 load.
+  def : Pat<(int_x86_vcvtph2ps_128 (vzmovl_v2i64 addr:$src)),
+            (VCVTPH2PSrm addr:$src)>;
+  def : Pat<(int_x86_vcvtph2ps_128 (vzload_v2i64 addr:$src)),
+            (VCVTPH2PSrm addr:$src)>;
 }
 
 //===----------------------------------------------------------------------===//

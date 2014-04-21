@@ -44,7 +44,7 @@ void MCObjectFileInfo::InitMachOMCObjectFileInfo(Triple T) {
                            SectionKind::getDataRel());
 
   // BSSSection might not be expected initialized on msvc.
-  BSSSection = 0;
+  BSSSection = nullptr;
 
   TLSDataSection // .tdata
     = Ctx->getMachOSection("__DATA", "__thread_data",
@@ -147,7 +147,7 @@ void MCObjectFileInfo::InitMachOMCObjectFileInfo(Triple T) {
   LSDASection = Ctx->getMachOSection("__TEXT", "__gcc_except_tab", 0,
                                      SectionKind::getReadOnlyWithRel());
 
-  COFFDebugSymbolsSection = 0;
+  COFFDebugSymbolsSection = nullptr;
 
   if ((T.isMacOSX() && !T.isMacOSXVersionLT(10, 6)) ||
       (T.isOSDarwin() && T.getArch() == Triple::arm64)) {
@@ -289,8 +289,9 @@ void MCObjectFileInfo::InitELFMCObjectFileInfo(Triple T) {
       TTypeEncoding = (CMModel == CodeModel::Small)
         ? dwarf::DW_EH_PE_udata4 : dwarf::DW_EH_PE_absptr;
     }
-  }  else if (T.getArch() == Triple::aarch64 ||
-              T.getArch() == Triple::aarch64_be ) {
+  } else if (T.getArch() == Triple::aarch64 ||
+             T.getArch() == Triple::aarch64_be ||
+             T.getArch() == Triple::arm64) {
     // The small model guarantees static code/data size < 4GB, but not where it
     // will be in memory. Most of these could end up >2GB away so even a signed
     // pc-relative 32-bit address is insufficient, theoretically.
@@ -461,7 +462,7 @@ void MCObjectFileInfo::InitELFMCObjectFileInfo(Triple T) {
                        ELF::SHF_ALLOC,
                        SectionKind::getReadOnly());
 
-  COFFDebugSymbolsSection = 0;
+  COFFDebugSymbolsSection = nullptr;
 
   // Debug Info Sections.
   DwarfAbbrevSection =
@@ -548,6 +549,10 @@ void MCObjectFileInfo::InitELFMCObjectFileInfo(Triple T) {
 
 
 void MCObjectFileInfo::InitCOFFMCObjectFileInfo(Triple T) {
+  // The object file format cannot represent common symbols with explicit
+  // alignments.
+  CommDirectiveSupportsAlignment = false;
+
   // COFF
   BSSSection =
     Ctx->getCOFFSection(".bss",
@@ -756,12 +761,12 @@ void MCObjectFileInfo::InitMCObjectFileInfo(StringRef TT, Reloc::Model relocm,
 
   CompactUnwindDwarfEHFrameOnly = 0;
 
-  EHFrameSection = 0;             // Created on demand.
-  CompactUnwindSection = 0;       // Used only by selected targets.
-  DwarfAccelNamesSection = 0;     // Used only by selected targets.
-  DwarfAccelObjCSection = 0;      // Used only by selected targets.
-  DwarfAccelNamespaceSection = 0; // Used only by selected targets.
-  DwarfAccelTypesSection = 0;     // Used only by selected targets.
+  EHFrameSection = nullptr;             // Created on demand.
+  CompactUnwindSection = nullptr;       // Used only by selected targets.
+  DwarfAccelNamesSection = nullptr;     // Used only by selected targets.
+  DwarfAccelObjCSection = nullptr;      // Used only by selected targets.
+  DwarfAccelNamespaceSection = nullptr; // Used only by selected targets.
+  DwarfAccelTypesSection = nullptr;     // Used only by selected targets.
 
   Triple T(TT);
   Triple::ArchType Arch = T.getArch();

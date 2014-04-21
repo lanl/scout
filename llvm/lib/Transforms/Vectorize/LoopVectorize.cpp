@@ -91,6 +91,7 @@
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Local.h"
+#include "llvm/Transforms/Utils/VectorUtils.h"
 #include <algorithm>
 #include <map>
 
@@ -1066,7 +1067,8 @@ struct LoopVectorize : public FunctionPass {
       return false;
 
     if (DL == NULL) {
-      DEBUG(dbgs() << "LV: Not vectorizing: Missing data layout\n");
+      DEBUG(dbgs() << "\nLV: Not vectorizing " << F.getName()
+                   << ": Missing data layout\n");
       return false;
     }
 
@@ -1089,12 +1091,19 @@ struct LoopVectorize : public FunctionPass {
 
   bool processLoop(Loop *L) {
     assert(L->empty() && "Only process inner loops.");
-    DEBUG(dbgs() << "LV: Checking a loop in \""
+    DEBUG(dbgs() << "\nLV: Checking a loop in \""
                  << L->getHeader()->getParent()->getName() << "\" from "
                  << getDebugLocString(L->getHeader()->getFirstNonPHIOrDbg())
                  << "\n");
 
     LoopVectorizeHints Hints(L, DisableUnrolling);
+
+    DEBUG(dbgs() << "LV: Loop hints:"
+                 << " force=" << (Hints.Force == 0
+                                      ? "disabled"
+                                      : (Hints.Force == 1 ? "enabled" : "?"))
+                 << " width=" << Hints.Width << " unroll=" << Hints.Unroll
+                 << "\n");
 
     if (Hints.Force == 0) {
       DEBUG(dbgs() << "LV: Not vectorizing: #pragma vectorize disable.\n");
@@ -1149,10 +1158,10 @@ struct LoopVectorize : public FunctionPass {
     }
 
     // Select the optimal vectorization factor.
-    LoopVectorizationCostModel::VectorizationFactor VF;
-    VF = CM.selectVectorizationFactor(OptForSize, Hints.Width);
+    const LoopVectorizationCostModel::VectorizationFactor VF =
+                          CM.selectVectorizationFactor(OptForSize, Hints.Width);
     // Select the unroll factor.
-    unsigned UF = CM.selectUnrollFactor(OptForSize, Hints.Unroll, VF.Width,
+    const unsigned UF = CM.selectUnrollFactor(OptForSize, Hints.Unroll, VF.Width,
                                         VF.Cost);
 
     DEBUG(dbgs() << "LV: Found a vectorizable loop ("
@@ -2266,32 +2275,12 @@ static Intrinsic::ID
 getIntrinsicIDForCall(CallInst *CI, const TargetLibraryInfo *TLI) {
   // If we have an intrinsic call, check if it is trivially vectorizable.
   if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(CI)) {
-    switch (II->getIntrinsicID()) {
-    case Intrinsic::sqrt:
-    case Intrinsic::sin:
-    case Intrinsic::cos:
-    case Intrinsic::exp:
-    case Intrinsic::exp2:
-    case Intrinsic::log:
-    case Intrinsic::log10:
-    case Intrinsic::log2:
-    case Intrinsic::fabs:
-    case Intrinsic::copysign:
-    case Intrinsic::floor:
-    case Intrinsic::ceil:
-    case Intrinsic::trunc:
-    case Intrinsic::rint:
-    case Intrinsic::nearbyint:
-    case Intrinsic::round:
-    case Intrinsic::pow:
-    case Intrinsic::fma:
-    case Intrinsic::fmuladd:
-    case Intrinsic::lifetime_start:
-    case Intrinsic::lifetime_end:
-      return II->getIntrinsicID();
-    default:
+    Intrinsic::ID ID = II->getIntrinsicID();
+    if (isTriviallyVectorizable(ID) || ID == Intrinsic::lifetime_start ||
+        ID == Intrinsic::lifetime_end)
+      return ID;
+    else
       return Intrinsic::not_intrinsic;
-    }
   }
 
   if (!TLI)
@@ -5095,7 +5084,7 @@ LoopVectorizationCostModel::selectVectorizationFactor(bool OptForSize,
     }
   }
 
-  DEBUG(dbgs() << "LV: Selecting VF = : "<< Width << ".\n");
+  DEBUG(dbgs() << "LV: Selecting VF: "<< Width << ".\n");
   Factor.Width = Width;
   Factor.Cost = Width * Cost;
   return Factor;

@@ -160,7 +160,7 @@ public:
     template<class OtherTy, class OtherIterTy>
     bundle_iterator(const bundle_iterator<OtherTy, OtherIterTy> &I)
       : MII(I.getInstrIterator()) {}
-    bundle_iterator() : MII(0) {}
+    bundle_iterator() : MII(nullptr) {}
 
     Ty &operator*() const { return *MII; }
     Ty *operator->() const { return &operator*(); }
@@ -242,6 +242,12 @@ public:
   reverse_iterator       rend  ()       { return instr_rend();   }
   const_reverse_iterator rend  () const { return instr_rend();   }
 
+  inline iterator_range<iterator> terminators() {
+    return iterator_range<iterator>(getFirstTerminator(), end());
+  }
+  inline iterator_range<const_iterator> terminators() const {
+    return iterator_range<const_iterator>(getFirstTerminator(), end());
+  }
 
   // Machine-CFG iterators
   typedef std::vector<MachineBasicBlock *>::iterator       pred_iterator;
@@ -621,7 +627,7 @@ public:
 
   // Debugging methods.
   void dump() const;
-  void print(raw_ostream &OS, SlotIndexes* = 0) const;
+  void print(raw_ostream &OS, SlotIndexes* = nullptr) const;
 
   // Printing method used by LoopInfo.
   void printAsOperand(raw_ostream &OS, bool PrintType = true);

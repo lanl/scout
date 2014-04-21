@@ -16,7 +16,6 @@
 #include "NVPTX.h"
 #include "NVPTXAllocaHoisting.h"
 #include "NVPTXLowerAggrCopies.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/Analysis/Passes.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/MachineFunctionAnalysis.h"
@@ -143,6 +142,7 @@ void NVPTXPassConfig::addIRPasses() {
   disablePass(&BranchFolderPassID);
   disablePass(&TailDuplicateID);
 
+  addPass(createNVPTXImageOptimizerPass());
   TargetPassConfig::addIRPasses();
   addPass(createNVPTXAssignValidGlobalNamesPass());
   addPass(createGenericToNVVMPass());
@@ -155,9 +155,16 @@ void NVPTXPassConfig::addIRPasses() {
 }
 
 bool NVPTXPassConfig::addInstSelector() {
+  const NVPTXSubtarget &ST =
+    getTM<NVPTXTargetMachine>().getSubtarget<NVPTXSubtarget>();
+
   addPass(createLowerAggrCopies());
   addPass(createAllocaHoisting());
   addPass(createNVPTXISelDag(getNVPTXTargetMachine(), getOptLevel()));
+
+  if (!ST.hasImageHandles())
+    addPass(createNVPTXReplaceImageHandlesPass());
+
   return false;
 }
 

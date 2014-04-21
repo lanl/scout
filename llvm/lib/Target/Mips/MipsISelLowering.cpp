@@ -50,6 +50,11 @@ NoZeroDivCheck("mno-check-zero-division", cl::Hidden,
                cl::desc("MIPS: Don't trap on integer division by zero."),
                cl::init(false));
 
+cl::opt<bool>
+EnableMipsFastISel("mips-fast-isel", cl::Hidden,
+  cl::desc("Allow mips-fast-isel to be used"),
+  cl::init(false));
+
 static const MCPhysReg O32IntRegs[4] = {
   Mips::A0, Mips::A1, Mips::A2, Mips::A3
 };
@@ -245,12 +250,7 @@ MipsTargetLowering::MipsTargetLowering(MipsTargetMachine &TM)
   setOperationAction(ISD::FCOPYSIGN,          MVT::f64,   Custom);
   setOperationAction(ISD::FP_TO_SINT,         MVT::i32,   Custom);
 
-  if (!TM.Options.NoNaNsFPMath) {
-    setOperationAction(ISD::FABS,             MVT::f32,   Custom);
-    setOperationAction(ISD::FABS,             MVT::f64,   Custom);
-  }
-
-  if (hasMips64()) {
+  if (isGP64bit()) {
     setOperationAction(ISD::GlobalAddress,      MVT::i64,   Custom);
     setOperationAction(ISD::BlockAddress,       MVT::i64,   Custom);
     setOperationAction(ISD::GlobalTLSAddress,   MVT::i64,   Custom);
@@ -262,14 +262,14 @@ MipsTargetLowering::MipsTargetLowering(MipsTargetMachine &TM)
     setOperationAction(ISD::FP_TO_SINT,         MVT::i64,   Custom);
   }
 
-  if (!hasMips64()) {
+  if (!isGP64bit()) {
     setOperationAction(ISD::SHL_PARTS,          MVT::i32,   Custom);
     setOperationAction(ISD::SRA_PARTS,          MVT::i32,   Custom);
     setOperationAction(ISD::SRL_PARTS,          MVT::i32,   Custom);
   }
 
   setOperationAction(ISD::ADD,                MVT::i32,   Custom);
-  if (hasMips64())
+  if (isGP64bit())
     setOperationAction(ISD::ADD,                MVT::i64,   Custom);
 
   setOperationAction(ISD::SDIV, MVT::i32, Expand);
@@ -334,11 +334,6 @@ MipsTargetLowering::MipsTargetLowering(MipsTargetMachine &TM)
   setOperationAction(ISD::FREM,              MVT::f32,   Expand);
   setOperationAction(ISD::FREM,              MVT::f64,   Expand);
 
-  if (!TM.Options.NoNaNsFPMath) {
-    setOperationAction(ISD::FNEG,             MVT::f32,   Expand);
-    setOperationAction(ISD::FNEG,             MVT::f64,   Expand);
-  }
-
   setOperationAction(ISD::EH_RETURN, MVT::Other, Custom);
 
   setOperationAction(ISD::VAARG,             MVT::Other, Expand);
@@ -371,7 +366,7 @@ MipsTargetLowering::MipsTargetLowering(MipsTargetMachine &TM)
     setOperationAction(ISD::BSWAP, MVT::i64, Expand);
   }
 
-  if (hasMips64()) {
+  if (isGP64bit()) {
     setLoadExtAction(ISD::SEXTLOAD, MVT::i32, Custom);
     setLoadExtAction(ISD::ZEXTLOAD, MVT::i32, Custom);
     setLoadExtAction(ISD::EXTLOAD, MVT::i32, Custom);
@@ -387,7 +382,7 @@ MipsTargetLowering::MipsTargetLowering(MipsTargetMachine &TM)
   setTargetDAGCombine(ISD::OR);
   setTargetDAGCombine(ISD::ADD);
 
-  setMinFunctionAlignment(hasMips64() ? 3 : 2);
+  setMinFunctionAlignment(isGP64bit() ? 3 : 2);
 
   setStackPointerRegisterToSaveRestore(isN64() ? Mips::SP_64 : Mips::SP);
 
@@ -404,6 +399,15 @@ const MipsTargetLowering *MipsTargetLowering::create(MipsTargetMachine &TM) {
     return llvm::createMips16TargetLowering(TM);
 
   return llvm::createMipsSETargetLowering(TM);
+}
+
+// Create a fast isel object.
+FastISel *
+MipsTargetLowering::createFastISel(FunctionLoweringInfo &funcInfo,
+                                  const TargetLibraryInfo *libInfo) const {
+  if (!EnableMipsFastISel)
+    return TargetLowering::createFastISel(funcInfo, libInfo);
+  return Mips::createFastISel(funcInfo, libInfo);
 }
 
 EVT MipsTargetLowering::getSetCCResultType(LLVMContext &, EVT VT) const {
@@ -779,7 +783,6 @@ LowerOperation(SDValue Op, SelectionDAG &DAG) const
   case ISD::SETCC:              return lowerSETCC(Op, DAG);
   case ISD::VASTART:            return lowerVASTART(Op, DAG);
   case ISD::FCOPYSIGN:          return lowerFCOPYSIGN(Op, DAG);
-  case ISD::FABS:               return lowerFABS(Op, DAG);
   case ISD::FRAMEADDR:          return lowerFRAMEADDR(Op, DAG);
   case ISD::RETURNADDR:         return lowerRETURNADDR(Op, DAG);
   case ISD::EH_RETURN:          return lowerEH_RETURN(Op, DAG);
@@ -1765,69 +1768,10 @@ static SDValue lowerFCOPYSIGN64(SDValue Op, SelectionDAG &DAG,
 
 SDValue
 MipsTargetLowering::lowerFCOPYSIGN(SDValue Op, SelectionDAG &DAG) const {
-  if (Subtarget->hasMips64())
+  if (Subtarget->isGP64bit())
     return lowerFCOPYSIGN64(Op, DAG, Subtarget->hasExtractInsert());
 
   return lowerFCOPYSIGN32(Op, DAG, Subtarget->hasExtractInsert());
-}
-
-static SDValue lowerFABS32(SDValue Op, SelectionDAG &DAG,
-                           bool HasExtractInsert) {
-  SDValue Res, Const1 = DAG.getConstant(1, MVT::i32);
-  SDLoc DL(Op);
-
-  // If operand is of type f64, extract the upper 32-bit. Otherwise, bitcast it
-  // to i32.
-  SDValue X = (Op.getValueType() == MVT::f32) ?
-    DAG.getNode(ISD::BITCAST, DL, MVT::i32, Op.getOperand(0)) :
-    DAG.getNode(MipsISD::ExtractElementF64, DL, MVT::i32, Op.getOperand(0),
-                Const1);
-
-  // Clear MSB.
-  if (HasExtractInsert)
-    Res = DAG.getNode(MipsISD::Ins, DL, MVT::i32,
-                      DAG.getRegister(Mips::ZERO, MVT::i32),
-                      DAG.getConstant(31, MVT::i32), Const1, X);
-  else {
-    SDValue SllX = DAG.getNode(ISD::SHL, DL, MVT::i32, X, Const1);
-    Res = DAG.getNode(ISD::SRL, DL, MVT::i32, SllX, Const1);
-  }
-
-  if (Op.getValueType() == MVT::f32)
-    return DAG.getNode(ISD::BITCAST, DL, MVT::f32, Res);
-
-  SDValue LowX = DAG.getNode(MipsISD::ExtractElementF64, DL, MVT::i32,
-                             Op.getOperand(0), DAG.getConstant(0, MVT::i32));
-  return DAG.getNode(MipsISD::BuildPairF64, DL, MVT::f64, LowX, Res);
-}
-
-static SDValue lowerFABS64(SDValue Op, SelectionDAG &DAG,
-                           bool HasExtractInsert) {
-  SDValue Res, Const1 = DAG.getConstant(1, MVT::i32);
-  SDLoc DL(Op);
-
-  // Bitcast to integer node.
-  SDValue X = DAG.getNode(ISD::BITCAST, DL, MVT::i64, Op.getOperand(0));
-
-  // Clear MSB.
-  if (HasExtractInsert)
-    Res = DAG.getNode(MipsISD::Ins, DL, MVT::i64,
-                      DAG.getRegister(Mips::ZERO_64, MVT::i64),
-                      DAG.getConstant(63, MVT::i32), Const1, X);
-  else {
-    SDValue SllX = DAG.getNode(ISD::SHL, DL, MVT::i64, X, Const1);
-    Res = DAG.getNode(ISD::SRL, DL, MVT::i64, SllX, Const1);
-  }
-
-  return DAG.getNode(ISD::BITCAST, DL, MVT::f64, Res);
-}
-
-SDValue
-MipsTargetLowering::lowerFABS(SDValue Op, SelectionDAG &DAG) const {
-  if (Subtarget->hasMips64() && (Op.getValueType() == MVT::f64))
-    return lowerFABS64(Op, DAG, Subtarget->hasExtractInsert());
-
-  return lowerFABS32(Op, DAG, Subtarget->hasExtractInsert());
 }
 
 SDValue MipsTargetLowering::
@@ -3265,7 +3209,7 @@ static bool originalTypeIsF128(const Type *Ty, const SDNode *CallNode) {
 MipsTargetLowering::MipsCC::SpecialCallingConvType
   MipsTargetLowering::getSpecialCallingConv(SDValue Callee) const {
   MipsCC::SpecialCallingConvType SpecialCallingConv =
-    MipsCC::NoSpecialCallingConv;;
+    MipsCC::NoSpecialCallingConv;
   if (Subtarget->inMips16HardFloat()) {
     if (GlobalAddressSDNode *G = dyn_cast<GlobalAddressSDNode>(Callee)) {
       llvm::StringRef Sym = G->getGlobal()->getName();
@@ -3620,7 +3564,7 @@ passByValArg(SDValue Chain, SDLoc DL,
                             DAG.getIntPtrConstant(ByVal.Address));
   Chain = DAG.getMemcpy(Chain, DL, Dst, Src, DAG.getConstant(MemCpySize, PtrTy),
                         Alignment, /*isVolatile=*/false, /*AlwaysInline=*/false,
-                        MachinePointerInfo(0), MachinePointerInfo(0));
+                        MachinePointerInfo(), MachinePointerInfo());
   MemOpChains.push_back(Chain);
 }
 
@@ -3662,7 +3606,7 @@ void MipsTargetLowering::writeVarArgRegs(std::vector<SDValue> &OutChains,
     SDValue PtrOff = DAG.getFrameIndex(FI, getPointerTy());
     SDValue Store = DAG.getStore(Chain, DL, ArgValue, PtrOff,
                                  MachinePointerInfo(), false, false, 0);
-    cast<StoreSDNode>(Store.getNode())->getMemOperand()->setValue(0);
+    cast<StoreSDNode>(Store.getNode())->getMemOperand()->setValue((Value*)0);
     OutChains.push_back(Store);
   }
 }

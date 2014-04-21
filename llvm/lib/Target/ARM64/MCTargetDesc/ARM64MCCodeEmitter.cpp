@@ -13,9 +13,9 @@
 
 #define DEBUG_TYPE "mccodeemitter"
 #include "MCTargetDesc/ARM64AddressingModes.h"
-#include "MCTargetDesc/ARM64BaseInfo.h"
 #include "MCTargetDesc/ARM64FixupKinds.h"
 #include "MCTargetDesc/ARM64MCExpr.h"
+#include "Utils/ARM64BaseInfo.h"
 #include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCInst.h"
@@ -176,6 +176,16 @@ public:
   void EncodeInstruction(const MCInst &MI, raw_ostream &OS,
                          SmallVectorImpl<MCFixup> &Fixups,
                          const MCSubtargetInfo &STI) const;
+
+  unsigned fixMulHigh(const MCInst &MI, unsigned EncodedValue,
+                      const MCSubtargetInfo &STI) const;
+
+  template<int hasRs, int hasRt2> unsigned
+  fixLoadStoreExclusive(const MCInst &MI, unsigned EncodedValue,
+                        const MCSubtargetInfo &STI) const;
+
+  unsigned fixOneOperandFPComparison(const MCInst &MI, unsigned EncodedValue,
+                                     const MCSubtargetInfo &STI) const;
 };
 
 } // end anonymous namespace
@@ -540,6 +550,22 @@ unsigned ARM64MCCodeEmitter::fixMOVZ(const MCInst &MI, unsigned EncodedValue,
   if (UImm16MO.isImm())
     return EncodedValue;
 
+  const ARM64MCExpr *A64E = cast<ARM64MCExpr>(UImm16MO.getExpr());
+  switch (A64E->getKind()) {
+  case ARM64MCExpr::VK_DTPREL_G2:
+  case ARM64MCExpr::VK_DTPREL_G1:
+  case ARM64MCExpr::VK_DTPREL_G0:
+  case ARM64MCExpr::VK_GOTTPREL_G1:
+  case ARM64MCExpr::VK_TPREL_G2:
+  case ARM64MCExpr::VK_TPREL_G1:
+  case ARM64MCExpr::VK_TPREL_G0:
+    return EncodedValue & ~(1u << 30);
+  default:
+    // Nothing to do for an unsigned fixup.
+    return EncodedValue;
+  }
+
+
   return EncodedValue & ~(1u << 30);
 }
 
@@ -558,6 +584,36 @@ void ARM64MCCodeEmitter::EncodeInstruction(const MCInst &MI, raw_ostream &OS,
   uint64_t Binary = getBinaryCodeForInstr(MI, Fixups, STI);
   EmitConstant(Binary, 4, OS);
   ++MCNumEmitted; // Keep track of the # of mi's emitted.
+}
+
+unsigned
+ARM64MCCodeEmitter::fixMulHigh(const MCInst &MI,
+                               unsigned EncodedValue,
+                               const MCSubtargetInfo &STI) const {
+  // The Ra field of SMULH and UMULH is unused: it should be assembled as 31
+  // (i.e. all bits 1) but is ignored by the processor.
+  EncodedValue |= 0x1f << 10;
+  return EncodedValue;
+}
+
+template<int hasRs, int hasRt2> unsigned
+ARM64MCCodeEmitter::fixLoadStoreExclusive(const MCInst &MI,
+                                          unsigned EncodedValue,
+                                          const MCSubtargetInfo &STI) const {
+  if (!hasRs) EncodedValue |= 0x001F0000;
+  if (!hasRt2) EncodedValue |= 0x00007C00;
+
+  return EncodedValue;
+}
+
+unsigned
+ARM64MCCodeEmitter::fixOneOperandFPComparison(const MCInst &MI,
+                                              unsigned EncodedValue,
+                                              const MCSubtargetInfo &STI) const {
+  // The Rm field of FCMP and friends is unused - it should be assembled
+  // as 0, but is ignored by the processor.
+  EncodedValue &= ~(0x1f << 16);
+  return EncodedValue;
 }
 
 #include "ARM64GenMCCodeEmitter.inc"

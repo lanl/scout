@@ -1063,7 +1063,7 @@ class opt_storage {
   OptionValue<DataType> Default;
 
   void check_location() const {
-    assert(Location != 0 && "cl::location(...) not specified for a command "
+    assert(Location && "cl::location(...) not specified for a command "
            "line option with external storage, "
            "or cl::init specified before cl::location()!!");
   }
@@ -1664,7 +1664,7 @@ class alias : public Option {
   void done() {
     if (!hasArgStr())
       error("cl::alias must have argument name specified!");
-    if (AliasFor == nullptr)
+    if (!AliasFor)
       error("cl::alias must have an cl::aliasopt(option) specified!");
       addArgument();
   }

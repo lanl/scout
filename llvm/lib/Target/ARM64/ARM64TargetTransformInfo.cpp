@@ -22,6 +22,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Target/CostTable.h"
 #include "llvm/Target/TargetLowering.h"
+#include <algorithm>
 using namespace llvm;
 
 // Declare the pass initialization routine locally as target-specific passes
@@ -71,8 +72,12 @@ public:
 
   /// \name Scalar TTI Implementations
   /// @{
-
+  unsigned getIntImmCost(int64_t Val) const;
   unsigned getIntImmCost(const APInt &Imm, Type *Ty) const override;
+  unsigned getIntImmCost(unsigned Opcode, unsigned Idx, const APInt &Imm,
+                         Type *Ty) const override;
+  unsigned getIntImmCost(Intrinsic::ID IID, unsigned Idx, const APInt &Imm,
+                         Type *Ty) const override;
   PopcntSupportKind getPopcntSupport(unsigned TyWidth) const override;
 
   /// @}
@@ -128,6 +133,23 @@ llvm::createARM64TargetTransformInfoPass(const ARM64TargetMachine *TM) {
   return new ARM64TTI(TM);
 }
 
+/// \brief Calculate the cost of materializing a 64-bit value. This helper
+/// method might only calculate a fraction of a larger immediate. Therefore it
+/// is valid to return a cost of ZERO.
+unsigned ARM64TTI::getIntImmCost(int64_t Val) const {
+  // Check if the immediate can be encoded within an instruction.
+  if (Val == 0 || ARM64_AM::isLogicalImmediate(Val, 64))
+    return 0;
+
+  if (Val < 0)
+    Val = ~Val;
+
+  // Calculate how many moves we will need to materialize this constant.
+  unsigned LZ = countLeadingZeros((uint64_t)Val);
+  return (64 - LZ + 15) / 16;
+}
+
+/// \brief Calculate the cost of materializing the given constant.
 unsigned ARM64TTI::getIntImmCost(const APInt &Imm, Type *Ty) const {
   assert(Ty->isIntegerTy());
 
@@ -135,19 +157,125 @@ unsigned ARM64TTI::getIntImmCost(const APInt &Imm, Type *Ty) const {
   if (BitSize == 0)
     return ~0U;
 
-  int64_t Val = Imm.getSExtValue();
-  if (Val == 0 || ARM64_AM::isLogicalImmediate(Val, BitSize))
-    return 1;
+  // Sign-extend all constants to a multiple of 64-bit.
+  APInt ImmVal = Imm;
+  if (BitSize & 0x3f)
+    ImmVal = Imm.sext((BitSize + 63) & ~0x3fU);
 
-  if ((int64_t)Val < 0)
-    Val = ~Val;
-  if (BitSize == 32)
-    Val &= (1LL << 32) - 1;
+  // Split the constant into 64-bit chunks and calculate the cost for each
+  // chunk.
+  unsigned Cost = 0;
+  for (unsigned ShiftVal = 0; ShiftVal < BitSize; ShiftVal += 64) {
+    APInt Tmp = ImmVal.ashr(ShiftVal).sextOrTrunc(64);
+    int64_t Val = Tmp.getSExtValue();
+    Cost += getIntImmCost(Val);
+  }
+  // We need at least one instruction to materialze the constant.
+  return std::max(1U, Cost);
+}
 
-  unsigned LZ = countLeadingZeros((uint64_t)Val);
-  unsigned Shift = (63 - LZ) / 16;
-  // MOVZ is free so return true for one or fewer MOVK.
-  return (Shift == 0) ? 1 : Shift;
+unsigned ARM64TTI::getIntImmCost(unsigned Opcode, unsigned Idx,
+                                 const APInt &Imm, Type *Ty) const {
+  assert(Ty->isIntegerTy());
+
+  unsigned BitSize = Ty->getPrimitiveSizeInBits();
+  // There is no cost model for constants with a bit size of 0. Return TCC_Free
+  // here, so that constant hoisting will ignore this constant.
+  if (BitSize == 0)
+    return TCC_Free;
+
+  unsigned ImmIdx = ~0U;
+  switch (Opcode) {
+  default:
+    return TCC_Free;
+  case Instruction::GetElementPtr:
+    // Always hoist the base address of a GetElementPtr.
+    if (Idx == 0)
+      return 2 * TCC_Basic;
+    return TCC_Free;
+  case Instruction::Store:
+    ImmIdx = 0;
+    break;
+  case Instruction::Add:
+  case Instruction::Sub:
+  case Instruction::Mul:
+  case Instruction::UDiv:
+  case Instruction::SDiv:
+  case Instruction::URem:
+  case Instruction::SRem:
+  case Instruction::And:
+  case Instruction::Or:
+  case Instruction::Xor:
+  case Instruction::ICmp:
+    ImmIdx = 1;
+    break;
+  // Always return TCC_Free for the shift value of a shift instruction.
+  case Instruction::Shl:
+  case Instruction::LShr:
+  case Instruction::AShr:
+    if (Idx == 1)
+      return TCC_Free;
+    break;
+  case Instruction::Trunc:
+  case Instruction::ZExt:
+  case Instruction::SExt:
+  case Instruction::IntToPtr:
+  case Instruction::PtrToInt:
+  case Instruction::BitCast:
+  case Instruction::PHI:
+  case Instruction::Call:
+  case Instruction::Select:
+  case Instruction::Ret:
+  case Instruction::Load:
+    break;
+  }
+
+  if (Idx == ImmIdx) {
+    unsigned NumConstants = (BitSize + 63) / 64;
+    unsigned Cost = ARM64TTI::getIntImmCost(Imm, Ty);
+    return (Cost <= NumConstants * TCC_Basic)
+      ? static_cast<unsigned>(TCC_Free) : Cost;
+  }
+  return ARM64TTI::getIntImmCost(Imm, Ty);
+}
+
+unsigned ARM64TTI::getIntImmCost(Intrinsic::ID IID, unsigned Idx,
+                                 const APInt &Imm, Type *Ty) const {
+  assert(Ty->isIntegerTy());
+
+  unsigned BitSize = Ty->getPrimitiveSizeInBits();
+  // There is no cost model for constants with a bit size of 0. Return TCC_Free
+  // here, so that constant hoisting will ignore this constant.
+  if (BitSize == 0)
+    return TCC_Free;
+
+  switch (IID) {
+  default:
+    return TCC_Free;
+  case Intrinsic::sadd_with_overflow:
+  case Intrinsic::uadd_with_overflow:
+  case Intrinsic::ssub_with_overflow:
+  case Intrinsic::usub_with_overflow:
+  case Intrinsic::smul_with_overflow:
+  case Intrinsic::umul_with_overflow:
+    if (Idx == 1) {
+      unsigned NumConstants = (BitSize + 63) / 64;
+      unsigned Cost = ARM64TTI::getIntImmCost(Imm, Ty);
+      return (Cost <= NumConstants * TCC_Basic)
+        ? static_cast<unsigned>(TCC_Free) : Cost;
+    }
+    break;
+  case Intrinsic::experimental_stackmap:
+    if ((Idx < 2) || (Imm.getBitWidth() <= 64 && isInt<64>(Imm.getSExtValue())))
+      return TCC_Free;
+    break;
+  case Intrinsic::experimental_patchpoint_void:
+  case Intrinsic::experimental_patchpoint_i64:
+    if ((Idx < 4) || (Imm.getBitWidth() <= 64 && isInt<64>(Imm.getSExtValue())))
+      return TCC_Free;
+    break;
+  }
+  return ARM64TTI::getIntImmCost(Imm, Ty);
 }
 
 ARM64TTI::PopcntSupportKind ARM64TTI::getPopcntSupport(unsigned TyWidth) const {
@@ -188,6 +316,10 @@ unsigned ARM64TTI::getCastInstrCost(unsigned Opcode, Type *Dst,
     { ISD::FP_TO_UINT, MVT::v2i64, MVT::v2f64, 1 },
     { ISD::FP_TO_UINT, MVT::v2i32, MVT::v2f64, 1 },
     { ISD::FP_TO_SINT, MVT::v2i32, MVT::v2f64, 1 },
+    { ISD::FP_TO_UINT, MVT::v2i64, MVT::v2f32, 4 },
+    { ISD::FP_TO_SINT, MVT::v2i64, MVT::v2f32, 4 },
+    { ISD::FP_TO_UINT, MVT::v4i16, MVT::v4f32, 4 },
+    { ISD::FP_TO_SINT, MVT::v4i16, MVT::v4f32, 4 },
     { ISD::FP_TO_UINT, MVT::v2i64, MVT::v2f64, 4 },
     { ISD::FP_TO_SINT, MVT::v2i64, MVT::v2f64, 4 },
   };
