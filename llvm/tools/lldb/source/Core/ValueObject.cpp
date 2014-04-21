@@ -237,28 +237,25 @@ ValueObject::UpdateFormatsIfNeeded()
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_TYPES));
     if (log)
         log->Printf("[%s %p] checking for FormatManager revisions. ValueObject rev: %d - Global rev: %d",
-           GetName().GetCString(),
-           this,
-           m_last_format_mgr_revision,
-           DataVisualization::GetCurrentRevision());
-    
+                    GetName().GetCString(), static_cast<void*>(this),
+                    m_last_format_mgr_revision,
+                    DataVisualization::GetCurrentRevision());
+
     bool any_change = false;
-    
+
     if ( (m_last_format_mgr_revision != DataVisualization::GetCurrentRevision()))
     {
+        m_last_format_mgr_revision = DataVisualization::GetCurrentRevision();
+        any_change = true;
+        
         SetValueFormat(DataVisualization::GetFormat (*this, eNoDynamicValues));
         SetSummaryFormat(DataVisualization::GetSummaryFormat (*this, GetDynamicValueType()));
 #ifndef LLDB_DISABLE_PYTHON
         SetSyntheticChildren(DataVisualization::GetSyntheticChildren (*this, GetDynamicValueType()));
 #endif
-
-        m_last_format_mgr_revision = DataVisualization::GetCurrentRevision();
-        
-        any_change = true;
     }
-    
+
     return any_change;
-    
 }
 
 void
@@ -3882,7 +3879,7 @@ ValueObject::CreateValueObjectFromAddress (const char* name,
 
 lldb::ValueObjectSP
 ValueObject::CreateValueObjectFromData (const char* name,
-                                        DataExtractor& data,
+                                        const DataExtractor& data,
                                         const ExecutionContext& exe_ctx,
                                         ClangASTType type)
 {

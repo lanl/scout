@@ -37,6 +37,8 @@
 #include "lldb/Target/Target.h"
 #include "lldb/Symbol/SymbolFile.h"
 
+#include "Plugins/ObjectFile/JIT/ObjectFileJIT.h"
+
 using namespace lldb;
 using namespace lldb_private;
 
@@ -145,6 +147,7 @@ Module::Module (const ModuleSpec &module_spec) :
     m_symfile_ap (),
     m_ast (),
     m_source_mappings (),
+    m_sections_ap(),
     m_did_load_objfile (false),
     m_did_load_symbol_vendor (false),
     m_did_parse_uuid (false),
@@ -158,23 +161,23 @@ Module::Module (const ModuleSpec &module_spec) :
         Mutex::Locker locker (GetAllocationModuleCollectionMutex());
         GetModuleCollection().push_back(this);
     }
-    
+
     Log *log(lldb_private::GetLogIfAnyCategoriesSet (LIBLLDB_LOG_OBJECT|LIBLLDB_LOG_MODULES));
     if (log)
         log->Printf ("%p Module::Module((%s) '%s%s%s%s')",
-                     this,
+                     static_cast<void*>(this),
                      module_spec.GetArchitecture().GetArchitectureName(),
                      module_spec.GetFileSpec().GetPath().c_str(),
                      module_spec.GetObjectName().IsEmpty() ? "" : "(",
                      module_spec.GetObjectName().IsEmpty() ? "" : module_spec.GetObjectName().AsCString(""),
                      module_spec.GetObjectName().IsEmpty() ? "" : ")");
-    
+
     // First extract all module specifications from the file using the local
     // file path. If there are no specifications, then don't fill anything in
     ModuleSpecList modules_specs;
     if (ObjectFile::GetModuleSpecifications(module_spec.GetFileSpec(), 0, 0, modules_specs) == 0)
         return;
-    
+
     // Now make sure that one of the module specifications matches what we just
     // extract. We might have a module specification that specifies a file "/usr/lib/dyld"
     // with UUID XXX, but we might have a local version of "/usr/lib/dyld" that has
@@ -219,6 +222,7 @@ Module::Module(const FileSpec& file_spec,
     m_symfile_ap (),
     m_ast (),
     m_source_mappings (),
+    m_sections_ap(),
     m_did_load_objfile (false),
     m_did_load_symbol_vendor (false),
     m_did_parse_uuid (false),
@@ -235,19 +239,47 @@ Module::Module(const FileSpec& file_spec,
 
     if (object_name)
         m_object_name = *object_name;
-    
+
     if (object_mod_time_ptr)
         m_object_mod_time = *object_mod_time_ptr;
 
     Log *log(lldb_private::GetLogIfAnyCategoriesSet (LIBLLDB_LOG_OBJECT|LIBLLDB_LOG_MODULES));
     if (log)
         log->Printf ("%p Module::Module((%s) '%s%s%s%s')",
-                     this,
-                     m_arch.GetArchitectureName(),
+                     static_cast<void*>(this), m_arch.GetArchitectureName(),
                      m_file.GetPath().c_str(),
                      m_object_name.IsEmpty() ? "" : "(",
                      m_object_name.IsEmpty() ? "" : m_object_name.AsCString(""),
                      m_object_name.IsEmpty() ? "" : ")");
+}
+
+Module::Module () :
+    m_mutex (Mutex::eMutexTypeRecursive),
+    m_mod_time (),
+    m_arch (),
+    m_uuid (),
+    m_file (),
+    m_platform_file(),
+    m_remote_install_file (),
+    m_symfile_spec (),
+    m_object_name (),
+    m_object_offset (0),
+    m_object_mod_time (),
+    m_objfile_sp (),
+    m_symfile_ap (),
+    m_ast (),
+    m_source_mappings (),
+    m_sections_ap(),
+    m_did_load_objfile (false),
+    m_did_load_symbol_vendor (false),
+    m_did_parse_uuid (false),
+    m_did_init_ast (false),
+    m_is_dynamic_loader_module (false),
+    m_file_has_changed (false),
+    m_first_file_changed_log (false)
+{
+    Mutex::Locker locker (GetAllocationModuleCollectionMutex());
+    GetModuleCollection().push_back(this);
 }
 
 Module::~Module()
@@ -267,7 +299,7 @@ Module::~Module()
     Log *log(lldb_private::GetLogIfAnyCategoriesSet (LIBLLDB_LOG_OBJECT|LIBLLDB_LOG_MODULES));
     if (log)
         log->Printf ("%p Module::~Module((%s) '%s%s%s%s')",
-                     this,
+                     static_cast<void*>(this),
                      m_arch.GetArchitectureName(),
                      m_file.GetPath().c_str(),
                      m_object_name.IsEmpty() ? "" : "(",
@@ -371,6 +403,7 @@ Module::GetClangASTContext ()
                 && object_arch.GetTriple().getOS() == llvm::Triple::UnknownOS)
             {
                 if (object_arch.GetTriple().getArch() == llvm::Triple::arm || 
+                    object_arch.GetTriple().getArch() == llvm::Triple::arm64 ||
                     object_arch.GetTriple().getArch() == llvm::Triple::thumb)
                 {
                     object_arch.GetTriple().setOS(llvm::Triple::IOS);
@@ -439,14 +472,16 @@ Module::CalculateSymbolContextModule ()
 void
 Module::DumpSymbolContext(Stream *s)
 {
-    s->Printf(", Module{%p}", this);
+    s->Printf(", Module{%p}", static_cast<void*>(this));
 }
 
 size_t
 Module::GetNumCompileUnits()
 {
     Mutex::Locker locker (m_mutex);
-    Timer scoped_timer(__PRETTY_FUNCTION__, "Module::GetNumCompileUnits (module = %p)", this);
+    Timer scoped_timer(__PRETTY_FUNCTION__,
+                       "Module::GetNumCompileUnits (module = %p)",
+                       static_cast<void*>(this));
     SymbolVendor *symbols = GetSymbolVendor ();
     if (symbols)
         return symbols->GetNumCompileUnits();
@@ -959,7 +994,7 @@ Module::FindTypes (const SymbolContext& sc,
         {
             // The "type_name_cstr" will have been modified if we have a valid type class
             // prefix (like "struct", "class", "union", "typedef" etc).
-            num_matches = FindTypes_Impl(sc, ConstString(type_name_cstr), NULL, append, max_matches, types);
+            FindTypes_Impl(sc, ConstString(type_name_cstr), NULL, append, max_matches, types);
             types.RemoveMismatchedTypes (type_class);
             num_matches = types.GetSize();
         }
@@ -1613,7 +1648,7 @@ Module::GetVersion (uint32_t *versions, uint32_t num_versions)
     if (versions && num_versions)
     {
         for (uint32_t i=0; i<num_versions; ++i)
-            versions[i] = UINT32_MAX;
+            versions[i] = LLDB_INVALID_MODULE_VERSION;
     }
     return 0;
 }
@@ -1722,3 +1757,27 @@ Module::PrepareForFunctionNameLookup (const ConstString &name,
         match_name_after_lookup = false;
     }
 }
+
+ModuleSP
+Module::CreateJITModule (const lldb::ObjectFileJITDelegateSP &delegate_sp)
+{
+    if (delegate_sp)
+    {
+        // Must create a module and place it into a shared pointer before
+        // we can create an object file since it has a std::weak_ptr back
+        // to the module, so we need to control the creation carefully in
+        // this static function
+        ModuleSP module_sp(new Module());
+        module_sp->m_objfile_sp.reset (new ObjectFileJIT (module_sp, delegate_sp));
+        if (module_sp->m_objfile_sp)
+        {
+            // Once we get the object file, update our module with the object file's
+            // architecture since it might differ in vendor/os if some parts were
+            // unknown.
+            module_sp->m_objfile_sp->GetArchitecture (module_sp->m_arch);
+        }
+        return module_sp;
+    }
+    return ModuleSP();
+}
+

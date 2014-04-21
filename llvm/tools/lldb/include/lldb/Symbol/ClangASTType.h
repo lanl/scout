@@ -155,6 +155,9 @@ public:
     bool
     IsFunctionType (bool *is_variadic_ptr = NULL) const;
 
+    uint32_t
+    IsHomogeneousAggregate (ClangASTType* base_type_ptr) const;
+
     size_t
     GetNumberOfFunctionArguments () const;
     
@@ -210,7 +213,7 @@ public:
     IsPointerOrReferenceType (ClangASTType *pointee_type = NULL) const;
     
     bool
-    IsReferenceType (ClangASTType *pointee_type = NULL) const;
+    IsReferenceType (ClangASTType *pointee_type = nullptr, bool* is_rvalue = nullptr) const;
     
     bool
     IsScalarType () const;
@@ -309,7 +312,7 @@ public:
                        clang::DeclContext *decl_ctx) const;
     
     ClangASTType
-    GetArrayElementType (uint64_t& stride) const;
+    GetArrayElementType (uint64_t *stride = nullptr) const;
     
     ClangASTType
     GetCanonicalType () const;

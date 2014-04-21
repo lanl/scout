@@ -8,6 +8,8 @@
 //===---------------------------------------------------------------------===//
 #include "llvm/Support/Compiler.h"
 
+#include <stddef.h>
+
 #ifdef DECLARE_REGISTER_INFOS_I386_STRUCT
 
 // Computes the offset of the given GPR in the user data area.
@@ -131,10 +133,10 @@ g_register_infos_i386[] =
     DEFINE_FPR(fstat,     fstat,          LLDB_INVALID_REGNUM, dwarf_fstat_i386,    LLDB_INVALID_REGNUM, gdb_fstat_i386),
     DEFINE_FPR(ftag,      ftag,           LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM, gdb_ftag_i386),
     DEFINE_FPR(fop,       fop,            LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM, gdb_fop_i386),
-    DEFINE_FPR(fiseg,     ptr.i386.fiseg, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM, gdb_fiseg_i386),
-    DEFINE_FPR(fioff,     ptr.i386.fioff, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM, gdb_fioff_i386),
-    DEFINE_FPR(foseg,     ptr.i386.foseg, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM, gdb_foseg_i386),
-    DEFINE_FPR(fooff,     ptr.i386.fooff, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM, gdb_fooff_i386),
+    DEFINE_FPR(fiseg,     ptr.i386_.fiseg, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM, gdb_fiseg_i386),
+    DEFINE_FPR(fioff,     ptr.i386_.fioff, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM, gdb_fioff_i386),
+    DEFINE_FPR(foseg,     ptr.i386_.foseg, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM, gdb_foseg_i386),
+    DEFINE_FPR(fooff,     ptr.i386_.fooff, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM, gdb_fooff_i386),
     DEFINE_FPR(mxcsr,     mxcsr,          LLDB_INVALID_REGNUM, dwarf_mxcsr_i386,    LLDB_INVALID_REGNUM, gdb_mxcsr_i386),
     DEFINE_FPR(mxcsrmask, mxcsrmask,      LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM),
 

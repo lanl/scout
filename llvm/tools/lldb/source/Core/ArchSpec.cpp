@@ -17,7 +17,7 @@
 #include "llvm/Support/COFF.h"
 #include "llvm/Support/ELF.h"
 #include "llvm/Support/Host.h"
-#include "llvm/Support/MachO.h"
+#include "lldb/Utility/SafeMachO.h"
 #include "lldb/Core/RegularExpression.h"
 #include "lldb/Host/Endian.h"
 #include "lldb/Host/Host.h"
@@ -76,6 +76,7 @@ static const CoreDefinition g_core_definitions[ArchSpec::kNumCores] =
     { eByteOrderLittle, 4, 2, 4, llvm::Triple::thumb  , ArchSpec::eCore_thumbv7k        , "thumbv7k"  },
     { eByteOrderLittle, 4, 2, 4, llvm::Triple::thumb  , ArchSpec::eCore_thumbv7m        , "thumbv7m"  },
     { eByteOrderLittle, 4, 2, 4, llvm::Triple::thumb  , ArchSpec::eCore_thumbv7em       , "thumbv7em" },
+    { eByteOrderLittle, 8, 4, 4, llvm::Triple::arm64  , ArchSpec::eCore_arm_arm64       , "arm64"     },
 
     { eByteOrderBig   , 8, 4, 4, llvm::Triple::mips64 , ArchSpec::eCore_mips64          , "mips64"    },
     
@@ -102,6 +103,7 @@ static const CoreDefinition g_core_definitions[ArchSpec::kNumCores] =
     { eByteOrderLittle, 4, 1, 15, llvm::Triple::x86    , ArchSpec::eCore_x86_32_i386    , "i386"      },
     { eByteOrderLittle, 4, 1, 15, llvm::Triple::x86    , ArchSpec::eCore_x86_32_i486    , "i486"      },
     { eByteOrderLittle, 4, 1, 15, llvm::Triple::x86    , ArchSpec::eCore_x86_32_i486sx  , "i486sx"    },
+    { eByteOrderLittle, 4, 1, 15, llvm::Triple::x86    , ArchSpec::eCore_x86_32_i686    , "i686"      },
 
     { eByteOrderLittle, 8, 1, 15, llvm::Triple::x86_64 , ArchSpec::eCore_x86_64_x86_64  , "x86_64"    },
     { eByteOrderLittle, 8, 1, 15, llvm::Triple::x86_64 , ArchSpec::eCore_x86_64_x86_64h , "x86_64h"   },
@@ -179,6 +181,10 @@ static const ArchDefinitionEntry g_macho_arch_entries[] =
     { ArchSpec::eCore_arm_armv7k      , llvm::MachO::CPU_TYPE_ARM       , 12     , UINT32_MAX , SUBTYPE_MASK },
     { ArchSpec::eCore_arm_armv7m      , llvm::MachO::CPU_TYPE_ARM       , 15     , UINT32_MAX , SUBTYPE_MASK },
     { ArchSpec::eCore_arm_armv7em     , llvm::MachO::CPU_TYPE_ARM       , 16     , UINT32_MAX , SUBTYPE_MASK },
+    { ArchSpec::eCore_arm_arm64       , llvm::MachO::CPU_TYPE_ARM64     , CPU_ANY, UINT32_MAX , SUBTYPE_MASK },
+    { ArchSpec::eCore_arm_arm64       , llvm::MachO::CPU_TYPE_ARM64     , 0      , UINT32_MAX , SUBTYPE_MASK },
+    { ArchSpec::eCore_arm_arm64       , llvm::MachO::CPU_TYPE_ARM64     , 1      , UINT32_MAX , SUBTYPE_MASK },
+    { ArchSpec::eCore_arm_arm64       , llvm::MachO::CPU_TYPE_ARM64     , 13     , UINT32_MAX , SUBTYPE_MASK },
     { ArchSpec::eCore_thumb           , llvm::MachO::CPU_TYPE_ARM       , 0      , UINT32_MAX , SUBTYPE_MASK },
     { ArchSpec::eCore_thumbv4t        , llvm::MachO::CPU_TYPE_ARM       , 5      , UINT32_MAX , SUBTYPE_MASK },
     { ArchSpec::eCore_thumbv5         , llvm::MachO::CPU_TYPE_ARM       , 7      , UINT32_MAX , SUBTYPE_MASK },
@@ -729,6 +735,7 @@ ArchSpec::SetArchitecture (ArchitectureType arch_type, uint32_t cpu, uint32_t su
 
                     switch (core_def->machine)
                     {
+                        case llvm::Triple::arm64:
                         case llvm::Triple::arm:
                         case llvm::Triple::thumb:
                             m_triple.setOS (llvm::Triple::IOS);
