@@ -457,7 +457,7 @@ public:
   /// Materialize - Make sure the GlobalValue is fully read.  If the module is
   /// corrupt, this returns true and fills in the optional string with
   /// information about the problem.  If successful, this returns false.
-  bool Materialize(GlobalValue *GV, std::string *ErrInfo = 0);
+  bool Materialize(GlobalValue *GV, std::string *ErrInfo = nullptr);
   /// Dematerialize - If the GlobalValue is read in, and if the GVMaterializer
   /// supports it, release the memory for the function, and set it up to be
   /// materialized lazily.  If !isDematerializable(), this method is a noop.
@@ -598,12 +598,20 @@ public:
   /// is delete'd for real.  Note that no operations are valid on an object
   /// that has "dropped all references", except operator delete.
   void dropAllReferences();
+
+/// @}
+/// @name Utility functions for querying Debug information.
+/// @{
+
+  /// \brief Returns the Dwarf Version by checking module flags.
+  unsigned getDwarfVersion() const;
+
 /// @}
 };
 
 /// An raw_ostream inserter for modules.
 inline raw_ostream &operator<<(raw_ostream &O, const Module &M) {
-  M.print(O, 0);
+  M.print(O, nullptr);
   return O;
 }
 

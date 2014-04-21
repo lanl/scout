@@ -68,7 +68,7 @@ void DiagnosticInfoSampleProfile::print(DiagnosticPrinter &DP) const {
 }
 
 bool DiagnosticInfoOptimizationRemark::isLocationAvailable() const {
-  return getFunction().getParent()->getNamedMetadata("llvm.dbg.cu") != 0;
+  return getFunction().getParent()->getNamedMetadata("llvm.dbg.cu") != nullptr;
 }
 
 void DiagnosticInfoOptimizationRemark::getLocation(StringRef *Filename,
@@ -80,7 +80,7 @@ void DiagnosticInfoOptimizationRemark::getLocation(StringRef *Filename,
   *Column = DIL.getColumnNumber();
 }
 
-const StringRef DiagnosticInfoOptimizationRemark::getLocationStr() const {
+const std::string DiagnosticInfoOptimizationRemark::getLocationStr() const {
   StringRef Filename("<unknown>");
   unsigned Line = 0;
   unsigned Column = 0;
