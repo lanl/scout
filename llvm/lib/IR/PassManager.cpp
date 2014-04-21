@@ -59,7 +59,7 @@ ModuleAnalysisManager::ResultConceptT *
 ModuleAnalysisManager::getCachedResultImpl(void *PassID, Module *M) const {
   ModuleAnalysisResultMapT::const_iterator RI =
       ModuleAnalysisResults.find(PassID);
-  return RI == ModuleAnalysisResults.end() ? 0 : &*RI->second;
+  return RI == ModuleAnalysisResults.end() ? nullptr : &*RI->second;
 }
 
 void ModuleAnalysisManager::invalidateImpl(void *PassID, Module *M) {
@@ -135,7 +135,7 @@ FunctionAnalysisManager::ResultConceptT *
 FunctionAnalysisManager::getCachedResultImpl(void *PassID, Function *F) const {
   FunctionAnalysisResultMapT::const_iterator RI =
       FunctionAnalysisResults.find(std::make_pair(PassID, F));
-  return RI == FunctionAnalysisResults.end() ? 0 : &*RI->second->second;
+  return RI == FunctionAnalysisResults.end() ? nullptr : &*RI->second->second;
 }
 
 void FunctionAnalysisManager::invalidateImpl(void *PassID, Function *F) {
@@ -165,6 +165,8 @@ void FunctionAnalysisManager::invalidateImpl(Function *F,
   while (!InvalidatedPassIDs.empty())
     FunctionAnalysisResults.erase(
         std::make_pair(InvalidatedPassIDs.pop_back_val(), F));
+  if (ResultsList.empty())
+    FunctionAnalysisResultLists.erase(F);
 }
 
 char FunctionAnalysisManagerModuleProxy::PassID;

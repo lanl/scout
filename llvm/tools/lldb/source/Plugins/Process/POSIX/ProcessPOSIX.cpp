@@ -337,11 +337,9 @@ ProcessPOSIX::DoDestroy()
 
     if (!HasExited())
     {
-        // Drive the exit event to completion (do not keep the inferior in
-        // limbo).
+        assert(m_monitor);
         m_exit_now = true;
-
-        if ((m_monitor == NULL || kill(m_monitor->GetPID(), SIGKILL)) && error.Success())
+        if (!m_monitor->Kill())
         {
             error.SetErrorToErrno();
             return error;
@@ -381,6 +379,8 @@ ProcessPOSIX::DoDidExec()
 void
 ProcessPOSIX::SendMessage(const ProcessMessage &message)
 {
+    Log *log (ProcessPOSIXLog::GetLogIfAllCategoriesSet (POSIX_LOG_PROCESS));
+
     Mutex::Locker lock(m_message_mutex);
 
     Mutex::Locker thread_lock(m_thread_list.GetMutex());
@@ -422,8 +422,14 @@ ProcessPOSIX::SendMessage(const ProcessMessage &message)
         break;
 
     case ProcessMessage::eExitMessage:
-        assert(thread);
-        thread->SetState(eStateExited);
+        if (thread != nullptr)
+            thread->SetState(eStateExited);
+        else
+        {
+            if (log)
+                log->Warning ("ProcessPOSIX::%s eExitMessage for TID %" PRIu64 " failed to find a thread to mark as eStateExited, ignoring", __FUNCTION__, message.GetTID ());
+        }
+
         // FIXME: I'm not sure we need to do this.
         if (message.GetTID() == GetID())
         {
@@ -643,14 +649,14 @@ ProcessPOSIX::GetSoftwareBreakpointTrapOpcode(BreakpointSite* bp_site)
     const uint8_t *opcode = NULL;
     size_t opcode_size = 0;
 
-    switch (arch.GetCore())
+    switch (arch.GetMachine())
     {
     default:
         assert(false && "CPU type not supported!");
         break;
 
-    case ArchSpec::eCore_x86_32_i386:
-    case ArchSpec::eCore_x86_64_x86_64:
+    case llvm::Triple::x86:
+    case llvm::Triple::x86_64:
         opcode = g_i386_opcode;
         opcode_size = sizeof(g_i386_opcode);
         break;

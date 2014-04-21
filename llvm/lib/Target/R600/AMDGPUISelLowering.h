@@ -29,9 +29,6 @@ protected:
   const AMDGPUSubtarget *Subtarget;
 
 private:
-  void ExtractVectorElements(SDValue Op, SelectionDAG &DAG,
-                             SmallVectorImpl<SDValue> &Args,
-                             unsigned Start, unsigned Count) const;
   SDValue LowerConstantInitializer(const Constant* Init, const GlobalValue *GV,
                                    const SDValue &InitPtr,
                                    SDValue Chain,
@@ -44,7 +41,7 @@ private:
   /// of the same bitwidth.
   SDValue MergeVectorStore(const SDValue &Op, SelectionDAG &DAG) const;
   /// \brief Split a vector store into multiple scalar stores.
-  /// \returns The resulting chain. 
+  /// \returns The resulting chain.
   SDValue LowerUDIVREM(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerUINT_TO_FP(SDValue Op, SelectionDAG &DAG) const;
 

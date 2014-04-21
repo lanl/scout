@@ -274,6 +274,15 @@ public:
     PVDK_Reset          ///< #pragma vtordisp()
   };
 
+  enum PragmaMsStackAction {
+    PSK_Reset,    // #pragma ()
+    PSK_Set,      // #pragma ("name")
+    PSK_Push,     // #pragma (push[, id])
+    PSK_Push_Set, // #pragma (push[, id], "name")
+    PSK_Pop,      // #pragma (pop[, id])
+    PSK_Pop_Set,  // #pragma (pop[, id], "name")
+  };
+
   /// \brief Whether to insert vtordisps prior to virtual bases in the Microsoft
   /// C++ ABI.  Possible values are 0, 1, and 2, which mean:
   ///
@@ -288,6 +297,35 @@ public:
 
   /// \brief Source location for newly created implicit MSInheritanceAttrs
   SourceLocation ImplicitMSInheritanceAttrLoc;
+
+  template<typename ValueType>
+  struct PragmaStack {
+    struct Slot {
+      llvm::StringRef StackSlotLabel;
+      ValueType Value;
+      SourceLocation PragmaLocation;
+      Slot(llvm::StringRef StackSlotLabel,
+           ValueType Value,
+           SourceLocation PragmaLocation)
+        : StackSlotLabel(StackSlotLabel), Value(Value),
+          PragmaLocation(PragmaLocation) {}
+    };
+    void Act(SourceLocation PragmaLocation,
+             PragmaMsStackAction Action,
+             llvm::StringRef StackSlotLabel,
+             ValueType Value);
+    explicit PragmaStack(const ValueType &Value)
+      : CurrentValue(Value) {}
+    SmallVector<Slot, 2> Stack;
+    ValueType CurrentValue;
+    SourceLocation CurrentPragmaLocation;
+  };
+  // FIXME: We should serialize / deserialize these if they occur in a PCH (but
+  // we shouldn't do so if they're in a module).
+  PragmaStack<StringLiteral *> DataSegStack;
+  PragmaStack<StringLiteral *> BSSSegStack;
+  PragmaStack<StringLiteral *> ConstSegStack;
+  PragmaStack<StringLiteral *> CodeSegStack;
 
   /// VisContext - Manages the stack for \#pragma GCC visibility.
   void *VisContext; // Really a "PragmaVisStack*"
@@ -2261,7 +2299,7 @@ public:
                                     SourceLocation OpLoc, ArrayRef<Expr *> Args,
                                     OverloadCandidateSet& CandidateSet);
   void AddArgumentDependentLookupCandidates(DeclarationName Name,
-                                            bool Operator, SourceLocation Loc,
+                                            SourceLocation Loc,
                                             ArrayRef<Expr *> Args,
                                 TemplateArgumentListInfo *ExplicitTemplateArgs,
                                             OverloadCandidateSet& CandidateSet,
@@ -2552,6 +2590,9 @@ public:
   void LookupOverloadedOperatorName(OverloadedOperatorKind Op, Scope *S,
                                     QualType T1, QualType T2,
                                     UnresolvedSetImpl &Functions);
+  void addOverloadedOperatorToUnresolvedSet(UnresolvedSetImpl &Functions,
+                                            DeclAccessPair Operator,
+                                            QualType T1, QualType T2);
 
   LabelDecl *LookupOrCreateLabel(IdentifierInfo *II, SourceLocation IdentLoc,
                                  SourceLocation GnuLabelLoc = SourceLocation());
@@ -2576,10 +2617,8 @@ public:
                                                     bool AllowStringTemplate);
   bool isKnownName(StringRef name);
 
-  void ArgumentDependentLookup(DeclarationName Name, bool Operator,
-                               SourceLocation Loc,
-                               ArrayRef<Expr *> Args,
-                               ADLResult &Functions);
+  void ArgumentDependentLookup(DeclarationName Name, SourceLocation Loc,
+                               ArrayRef<Expr *> Args, ADLResult &Functions);
 
   void LookupVisibleDecls(Scope *S, LookupNameKind Kind,
                           VisibleDeclConsumer &Consumer,
@@ -4435,7 +4474,8 @@ public:
                                    bool EnteringContext,
                                    CXXScopeSpec &SS,
                                    NamedDecl *ScopeLookupResult,
-                                   bool ErrorRecoveryLookup);
+                                   bool ErrorRecoveryLookup,
+                                   bool *IsCorrectedToColon = 0);
 
   /// \brief The parser has parsed a nested-name-specifier 'identifier::'.
   ///
@@ -4458,6 +4498,13 @@ public:
   /// output parameter (containing the full nested-name-specifier,
   /// including this new type).
   ///
+  /// \param ErrorRecoveryLookup If true, then this method is called to improve
+  /// error recovery. In this case do not emit error message.
+  ///
+  /// \param IsCorrectedToColon If not null, suggestions to replace '::' -> ':'
+  /// are allowed.  The bool value pointed by this parameter is set to 'true'
+  /// if the identifier is treated as if it was followed by ':', not '::'.
+  ///
   /// \returns true if an error occurred, false otherwise.
   bool ActOnCXXNestedNameSpecifier(Scope *S,
                                    IdentifierInfo &Identifier,
@@ -4465,7 +4512,9 @@ public:
                                    SourceLocation CCLoc,
                                    ParsedType ObjectType,
                                    bool EnteringContext,
-                                   CXXScopeSpec &SS);
+                                   CXXScopeSpec &SS,
+                                   bool ErrorRecoveryLookup = false,
+                                   bool *IsCorrectedToColon = 0);
 
   ExprResult ActOnDecltypeExpression(Expr *E);
 
@@ -5197,7 +5246,8 @@ public:
                                   TemplateParamListContext TPC);
   TemplateParameterList *MatchTemplateParametersToScopeSpecifier(
       SourceLocation DeclStartLoc, SourceLocation DeclLoc,
-      const CXXScopeSpec &SS, ArrayRef<TemplateParameterList *> ParamLists,
+      const CXXScopeSpec &SS, TemplateIdAnnotation *TemplateId,
+      ArrayRef<TemplateParameterList *> ParamLists,
       bool IsFriend, bool &IsExplicitSpecialization, bool &Invalid);
 
   DeclResult CheckClassTemplate(Scope *S, unsigned TagSpec, TagUseKind TUK,
@@ -5279,12 +5329,7 @@ public:
   ActOnClassTemplateSpecialization(Scope *S, unsigned TagSpec, TagUseKind TUK,
                                    SourceLocation KWLoc,
                                    SourceLocation ModulePrivateLoc,
-                                   CXXScopeSpec &SS,
-                                   TemplateTy Template,
-                                   SourceLocation TemplateNameLoc,
-                                   SourceLocation LAngleLoc,
-                                   ASTTemplateArgsPtr TemplateArgs,
-                                   SourceLocation RAngleLoc,
+                                   TemplateIdAnnotation &TemplateId,
                                    AttributeList *Attr,
                                  MultiTemplateParamsArg TemplateParameterLists);
 
@@ -7080,6 +7125,54 @@ public:
   void ActOnPragmaMSVtorDisp(PragmaVtorDispKind Kind, SourceLocation PragmaLoc,
                              MSVtorDispAttr::Mode Value);
 
+  enum PragmaSectionKind {
+    PSK_DataSeg,
+    PSK_BSSSeg,
+    PSK_ConstSeg,
+    PSK_CodeSeg,
+  };
+
+  enum PragmaSectionFlag : unsigned {
+    PSF_None = 0,
+    PSF_Read = 0x1,
+    PSF_Write = 0x2,
+    PSF_Execute = 0x4,
+    PSF_Implicit = 0x8,
+    PSF_Invalid = 0x80000000U,
+  };
+
+  struct SectionInfo {
+    DeclaratorDecl *Decl;
+    SourceLocation PragmaSectionLocation;
+    int SectionFlags;
+    SectionInfo() {}
+    SectionInfo(DeclaratorDecl *Decl,
+                SourceLocation PragmaSectionLocation,
+                int SectionFlags)
+      : Decl(Decl),
+        PragmaSectionLocation(PragmaSectionLocation),
+        SectionFlags(SectionFlags) {}
+  };
+
+  llvm::StringMap<SectionInfo> SectionInfos;
+  bool UnifySection(const StringRef &SectionName, 
+                    int SectionFlags,
+                    DeclaratorDecl *TheDecl);
+  bool UnifySection(const StringRef &SectionName,
+                    int SectionFlags,
+                    SourceLocation PragmaSectionLocation);
+
+  /// \brief Called on well formed \#pragma bss_seg/data_seg/const_seg/code_seg.
+  void ActOnPragmaMSSeg(SourceLocation PragmaLocation,
+                        PragmaMsStackAction Action,
+                        llvm::StringRef StackSlotLabel,
+                        StringLiteral *SegmentName,
+                        llvm::StringRef PragmaName);
+
+  /// \brief Called on well formed \#pragma section().
+  void ActOnPragmaMSSection(SourceLocation PragmaLocation,
+                            int SectionFlags, StringLiteral *SegmentName);
+
   /// ActOnPragmaDetectMismatch - Call on well-formed \#pragma detect_mismatch
   void ActOnPragmaDetectMismatch(StringRef Name, StringRef Value);
 
@@ -8027,14 +8120,14 @@ public:
 
 private:
   bool SemaBuiltinPrefetch(CallExpr *TheCall);
-  bool SemaBuiltinMMPrefetch(CallExpr *TheCall);
-  bool SemaBuiltinObjectSize(CallExpr *TheCall);
   bool SemaBuiltinLongjmp(CallExpr *TheCall);
   ExprResult SemaBuiltinAtomicOverloaded(ExprResult TheCallResult);
   ExprResult SemaAtomicOpsOverloaded(ExprResult TheCallResult,
                                      AtomicExpr::AtomicOp Op);
   bool SemaBuiltinConstantArg(CallExpr *TheCall, int ArgNum,
                               llvm::APSInt &Result);
+  bool SemaBuiltinConstantArgRange(CallExpr *TheCall, int ArgNum,
+                                   int Low, int High);
 
 public:
   enum FormatStringType {

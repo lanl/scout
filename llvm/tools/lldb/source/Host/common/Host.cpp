@@ -12,6 +12,7 @@
 // C includes
 #include <errno.h>
 #include <limits.h>
+#include <stdlib.h>
 #include <sys/types.h>
 #ifdef _WIN32
 #include "lldb/Host/windows/windows.h"
@@ -168,7 +169,7 @@ MonitorChildProcessThreadFunction (void *arg)
     const bool monitor_signals = info->monitor_signals;
 
     assert (info->pid <= UINT32_MAX);
-    const ::pid_t pid = monitor_signals ? -1 * info->pid : info->pid;
+    const ::pid_t pid = monitor_signals ? -1 * getpgid(info->pid) : info->pid;
 
     delete info;
 
@@ -401,6 +402,7 @@ Host::GetArchitecture (SystemDefaultArchitecture arch_kind)
             g_supports_32 = true;
             break;
 
+        case llvm::Triple::mips64:
         case llvm::Triple::sparcv9:
         case llvm::Triple::ppc64:
             g_host_arch_64.SetTriple(triple);
@@ -1008,6 +1010,20 @@ Host::GetModuleFileSpecForHostAddress (const void *host_addr)
 
 #endif
 
+
+static void CleanupProcessSpecificLLDBTempDir ()
+{
+    // Get the process specific LLDB temporary directory and delete it.
+    FileSpec tmpdir_file_spec;
+    if (Host::GetLLDBPath (ePathTypeLLDBTempSystemDir, tmpdir_file_spec))
+    {
+        // Remove the LLDB temporary directory if we have one. Set "recurse" to
+        // true to all files that were created for the LLDB process can be cleaned up.
+        const bool recurse = true;
+        Host::RemoveDirectory(tmpdir_file_spec.GetDirectory().GetCString(), recurse);
+    }
+}
+
 bool
 Host::GetLLDBPath (PathType path_type, FileSpec &file_spec)
 {
@@ -1052,7 +1068,7 @@ Host::GetLLDBPath (PathType path_type, FileSpec &file_spec)
                     if (framework_pos)
                     {
                         framework_pos += strlen("LLDB.framework");
-#if defined (__arm__)
+#if defined (__arm__) || defined (__arm64__)
                         // Shallow bundle
                         *framework_pos = '\0';
 #else
@@ -1060,7 +1076,7 @@ Host::GetLLDBPath (PathType path_type, FileSpec &file_spec)
                         ::strncpy (framework_pos, "/Resources", PATH_MAX - (framework_pos - raw_path));
 #endif
                     }
-#endif
+#endif  // #if defined (__APPLE__)
                     FileSpec::Resolve (raw_path, resolved_path, sizeof(resolved_path));
                     g_lldb_support_exe_dir.SetCString(resolved_path);
                 }
@@ -1279,9 +1295,22 @@ Host::GetLLDBPath (PathType path_type, FileSpec &file_spec)
                 }
                 if (tmpdir_cstr)
                 {
-                    g_lldb_tmp_dir.SetCString(tmpdir_cstr);
-                    if (log)
-                        log->Printf("Host::GetLLDBPath(ePathTypeLLDBTempSystemDir) => '%s'", g_lldb_tmp_dir.GetCString());
+                    StreamString pid_tmpdir;
+                    pid_tmpdir.Printf("%s/lldb", tmpdir_cstr);
+                    if (Host::MakeDirectory(pid_tmpdir.GetString().c_str(), eFilePermissionsDirectoryDefault).Success())
+                    {
+                        pid_tmpdir.Printf("/%" PRIu64, Host::GetCurrentProcessID());
+                        if (Host::MakeDirectory(pid_tmpdir.GetString().c_str(), eFilePermissionsDirectoryDefault).Success())
+                        {
+                            // Make an atexit handler to clean up the process specify LLDB temp dir
+                            // and all of its contents.
+                            ::atexit (CleanupProcessSpecificLLDBTempDir);
+                            g_lldb_tmp_dir.SetCString(pid_tmpdir.GetString().c_str());
+                            if (log)
+                                log->Printf("Host::GetLLDBPath(ePathTypeLLDBTempSystemDir) => '%s'", g_lldb_tmp_dir.GetCString());
+                            
+                        }
+                    }
                 }
             }
             file_spec.GetDirectory() = g_lldb_tmp_dir;
@@ -1757,8 +1786,8 @@ Host::LaunchProcessPosixSpawn (const char *exe_path, ProcessLaunchInfo &launch_i
         cpu_type_t cpu = arch_spec.GetMachOCPUType();
         cpu_type_t sub = arch_spec.GetMachOCPUSubType();
         if (cpu != 0 &&
-            cpu != UINT32_MAX &&
-            cpu != LLDB_INVALID_CPUTYPE &&
+            cpu != static_cast<cpu_type_t>(UINT32_MAX) &&
+            cpu != static_cast<cpu_type_t>(LLDB_INVALID_CPUTYPE) &&
             !(cpu == 0x01000007 && sub == 8)) // If haswell is specified, don't try to set the CPU type or we will fail 
         {
             size_t ocount = 0;
@@ -1862,12 +1891,10 @@ Host::LaunchProcessPosixSpawn (const char *exe_path, ProcessLaunchInfo &launch_i
         if (error.Fail() || log)
         {
             error.PutToLog(log, "::posix_spawnp ( pid => %i, path = '%s', file_actions = %p, attr = %p, argv = %p, envp = %p )",
-                           pid,
-                           exe_path,
-                           &file_actions,
-                           &attr,
-                           argv,
-                           envp);
+                           pid, exe_path, static_cast<void*>(&file_actions),
+                           static_cast<void*>(&attr),
+                           reinterpret_cast<const void*>(argv),
+                           reinterpret_cast<const void*>(envp));
             if (log)
             {
                 for (int ii=0; argv[ii]; ++ii)
@@ -1889,11 +1916,9 @@ Host::LaunchProcessPosixSpawn (const char *exe_path, ProcessLaunchInfo &launch_i
         if (error.Fail() || log)
         {
             error.PutToLog(log, "::posix_spawnp ( pid => %i, path = '%s', file_actions = NULL, attr = %p, argv = %p, envp = %p )",
-                           pid,
-                           exe_path,
-                           &attr,
-                           argv,
-                           envp);
+                           pid, exe_path, static_cast<void*>(&attr),
+                           reinterpret_cast<const void*>(argv),
+                           reinterpret_cast<const void*>(envp));
             if (log)
             {
                 for (int ii=0; argv[ii]; ++ii)
@@ -2141,6 +2166,14 @@ Host::Unlink (const char *path)
     return error;
 }
 
+Error
+Host::RemoveDirectory (const char* path, bool recurse)
+{
+    Error error;
+    error.SetErrorStringWithFormat("%s is not supported on this host", __PRETTY_FUNCTION__);
+    return error;
+}
+
 #else
 
 Error
@@ -2181,6 +2214,33 @@ Host::MakeDirectory (const char* path, uint32_t file_permissions)
                 }
                 break;
             }
+        }
+    }
+    else
+    {
+        error.SetErrorString("empty path");
+    }
+    return error;
+}
+                                                                    
+Error
+Host::RemoveDirectory (const char* path, bool recurse)
+{
+    Error error;
+    if (path && path[0])
+    {
+        if (recurse)
+        {
+            StreamString command;
+            command.Printf("rm -rf \"%s\"", path);
+            int status = ::system(command.GetString().c_str());
+            if (status != 0)
+                error.SetError(status, eErrorTypeGeneric);
+        }
+        else
+        {
+            if (::rmdir(path) != 0)
+                error.SetErrorToErrno();
         }
     }
     else
@@ -2242,7 +2302,7 @@ Host::Readlink (const char *path, char *buf, size_t buf_len)
     ssize_t count = ::readlink(path, buf, buf_len);
     if (count < 0)
         error.SetErrorToErrno();
-    else if (count < (buf_len-1))
+    else if (static_cast<size_t>(count) < (buf_len-1))
         buf[count] = '\0'; // Success
     else
         error.SetErrorString("'buf' buffer is too small to contain link contents");
@@ -2327,7 +2387,8 @@ Host::WriteFile (lldb::user_id_t fd, uint64_t offset, const void* src, uint64_t 
         error.SetErrorString ("invalid host backing file");
         return UINT64_MAX;
     }
-    if (file_sp->SeekFromStart(offset, &error) != offset || error.Fail())
+    if (static_cast<uint64_t>(file_sp->SeekFromStart(offset, &error)) != offset ||
+        error.Fail())
         return UINT64_MAX;
     size_t bytes_written = src_len;
     error = file_sp->Write(src, bytes_written);
@@ -2357,7 +2418,8 @@ Host::ReadFile (lldb::user_id_t fd, uint64_t offset, void* dst, uint64_t dst_len
         error.SetErrorString ("invalid host backing file");
         return UINT64_MAX;
     }
-    if (file_sp->SeekFromStart(offset, &error) != offset || error.Fail())
+    if (static_cast<uint64_t>(file_sp->SeekFromStart(offset, &error)) != offset ||
+        error.Fail())
         return UINT64_MAX;
     size_t bytes_read = dst_len;
     error = file_sp->Read(dst ,bytes_read);

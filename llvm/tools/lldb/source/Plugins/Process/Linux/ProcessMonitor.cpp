@@ -904,31 +904,6 @@ EventMessageOperation::Execute(ProcessMonitor *monitor)
 }
 
 //------------------------------------------------------------------------------
-/// @class KillOperation
-/// @brief Implements ProcessMonitor::BringProcessIntoLimbo.
-class KillOperation : public Operation
-{
-public:
-    KillOperation(bool &result) : m_result(result) { }
-
-    void Execute(ProcessMonitor *monitor);
-
-private:
-    bool &m_result;
-};
-
-void
-KillOperation::Execute(ProcessMonitor *monitor)
-{
-    lldb::pid_t pid = monitor->GetPID();
-
-    if (PTRACE(PTRACE_KILL, pid, NULL, NULL, 0))
-        m_result = false;
-    else
-        m_result = true;
-}
-
-//------------------------------------------------------------------------------
 /// @class DetachOperation
 /// @brief Implements ProcessMonitor::Detach.
 class DetachOperation : public Operation
@@ -1167,7 +1142,7 @@ ProcessMonitor::Launch(LaunchArgs *args)
     if (envp == NULL || envp[0] == NULL)
         envp = const_cast<const char **>(environ);
 
-    if ((pid = terminal.Fork(err_str, err_len)) == -1)
+    if ((pid = terminal.Fork(err_str, err_len)) == static_cast<lldb::pid_t>(-1))
     {
         args->m_error.SetErrorToGenericError();
         args->m_error.SetErrorString("Process fork failed.");
@@ -1228,7 +1203,7 @@ ProcessMonitor::Launch(LaunchArgs *args)
     }
 
     // Wait for the child process to to trap on its call to execve.
-    pid_t wpid;
+    lldb::pid_t wpid;
     int status;
     if ((wpid = waitpid(pid, &status, 0)) < 0)
     {
@@ -1767,11 +1742,11 @@ ProcessMonitor::StopThread(lldb::tid_t tid)
         int status = -1;
         if (log)
             log->Printf ("ProcessMonitor::%s(bp) waitpid...", __FUNCTION__);
-        lldb::pid_t wait_pid = ::waitpid (-1*m_pid, &status, __WALL);
+        lldb::pid_t wait_pid = ::waitpid (-1*getpgid(m_pid), &status, __WALL);
         if (log)
             log->Printf ("ProcessMonitor::%s(bp) waitpid, pid = %" PRIu64 ", status = %d", __FUNCTION__, wait_pid, status);
 
-        if (wait_pid == -1)
+        if (wait_pid == static_cast<lldb::pid_t>(-1))
         {
             // If we got interrupted by a signal (in our process, not the
             // inferior) try again.
@@ -2229,12 +2204,9 @@ ProcessMonitor::SingleStep(lldb::tid_t tid, uint32_t signo)
 }
 
 bool
-ProcessMonitor::BringProcessIntoLimbo()
+ProcessMonitor::Kill()
 {
-    bool result;
-    KillOperation op(result);
-    DoOperation(&op);
-    return result;
+    return kill(GetPID(), SIGKILL) == 0;
 }
 
 bool

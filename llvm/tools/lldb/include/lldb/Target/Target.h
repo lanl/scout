@@ -201,9 +201,12 @@ public:
         m_stop_others(true),
         m_debug(false),
         m_trap_exceptions(true),
+        m_generate_debug_info(false),
         m_use_dynamic(lldb::eNoDynamicValues),
-        m_timeout_usec(default_timeout)
-    {}
+        m_timeout_usec(default_timeout),
+        m_one_thread_timeout_usec(0)
+    {
+    }
     
     ExecutionPolicy
     GetExecutionPolicy () const
@@ -301,6 +304,18 @@ public:
         m_timeout_usec = timeout;
     }
     
+    uint32_t
+    GetOneThreadTimeoutUsec () const
+    {
+        return m_one_thread_timeout_usec;
+    }
+    
+    void
+    SetOneThreadTimeoutUsec (uint32_t timeout = 0)
+    {
+        m_one_thread_timeout_usec = timeout;
+    }
+    
     bool
     GetTryAllThreads () const
     {
@@ -335,6 +350,20 @@ public:
     SetDebug(bool b)
     {
         m_debug = b;
+        if (m_debug)
+            m_generate_debug_info = true;
+    }
+    
+    bool
+    GetGenerateDebugInfo() const
+    {
+        return m_generate_debug_info;
+    }
+    
+    void
+    SetGenerateDebugInfo(bool b)
+    {
+        m_generate_debug_info = b;
     }
     
     bool
@@ -360,8 +389,10 @@ private:
     bool m_stop_others;
     bool m_debug;
     bool m_trap_exceptions;
+    bool m_generate_debug_info;
     lldb::DynamicValueType m_use_dynamic;
     uint32_t m_timeout_usec;
+    uint32_t m_one_thread_timeout_usec;
 };
 
 //----------------------------------------------------------------------

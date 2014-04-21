@@ -540,6 +540,8 @@ AArch64TargetLowering::AArch64TargetLowering(AArch64TargetMachine &TM)
 
   setTargetDAGCombine(ISD::SIGN_EXTEND);
   setTargetDAGCombine(ISD::VSELECT);
+
+  MaskAndBranchFoldingIsLegal = true;
 }
 
 EVT AArch64TargetLowering::getSetCCResultType(LLVMContext &, EVT VT) const {
@@ -1659,7 +1661,7 @@ AArch64TargetLowering::LowerCall(CallLoweringInfo &CLI,
                                   Flags.getByValAlign(),
                                   /*isVolatile = */ false,
                                   /*alwaysInline = */ false,
-                                  DstInfo, MachinePointerInfo(0));
+                                  DstInfo, MachinePointerInfo());
       MemOpChains.push_back(Cpy);
     } else {
       // Normal stack argument, put it where it's needed.
@@ -4178,7 +4180,7 @@ static SDValue CombineBaseUpdate(SDNode *N,
       Tys[n] = VecTy;
     Tys[n++] = MVT::i64;
     Tys[n] = MVT::Other;
-    SDVTList SDTys = DAG.getVTList(Tys, NumResultVecs + 2);
+    SDVTList SDTys = DAG.getVTList(ArrayRef<EVT>(Tys, NumResultVecs + 2));
     SmallVector<SDValue, 8> Ops;
     Ops.push_back(N->getOperand(0)); // incoming chain
     Ops.push_back(N->getOperand(AddrOpIdx));
@@ -4254,7 +4256,7 @@ static SDValue CombineVLDDUP(SDNode *N, TargetLowering::DAGCombinerInfo &DCI) {
   for (n = 0; n < NumVecs; ++n)
     Tys[n] = VT;
   Tys[n] = MVT::Other;
-  SDVTList SDTys = DAG.getVTList(Tys, NumVecs + 1);
+  SDVTList SDTys = DAG.getVTList(ArrayRef<EVT>(Tys, NumVecs + 1));
   SDValue Ops[] = { VLD->getOperand(0), VLD->getOperand(2) };
   MemIntrinsicSDNode *VLDMemInt = cast<MemIntrinsicSDNode>(VLD);
   SDValue VLDDup = DAG.getMemIntrinsicNode(NewOpc, SDLoc(VLD), SDTys, Ops, 2,
@@ -4412,6 +4414,50 @@ AArch64TargetLowering::isFMAFasterThanFMulAndFAdd(EVT VT) const {
 
   return false;
 }
+
+bool AArch64TargetLowering::allowsUnalignedMemoryAccesses(EVT VT,
+                                                          unsigned AddrSpace,
+                                                          bool *Fast) const {
+  const AArch64Subtarget *Subtarget = getSubtarget();
+  // The AllowsUnaliged flag models the SCTLR.A setting in ARM cpus
+  bool AllowsUnaligned = Subtarget->allowsUnalignedMem();
+
+  switch (VT.getSimpleVT().SimpleTy) {
+  default:
+    return false;
+  // Scalar types
+  case MVT::i8:  case MVT::i16:
+  case MVT::i32: case MVT::i64:
+  case MVT::f32: case MVT::f64: {
+    // Unaligned access can use (for example) LRDB, LRDH, LDRW
+    if (AllowsUnaligned) {
+      if (Fast)
+        *Fast = true;
+      return true;
+    }
+    return false;
+  }
+  // 64-bit vector types
+  case MVT::v8i8:  case MVT::v4i16:
+  case MVT::v2i32: case MVT::v1i64:
+  case MVT::v2f32: case MVT::v1f64:
+  // 128-bit vector types
+  case MVT::v16i8: case MVT::v8i16:
+  case MVT::v4i32: case MVT::v2i64:
+  case MVT::v4f32: case MVT::v2f64: {
+    // For any little-endian targets with neon, we can support unaligned
+    // load/store of V registers using ld1/st1.
+    // A big-endian target may also explicitly support unaligned accesses
+    if (Subtarget->hasNEON() && (AllowsUnaligned || isLittleEndian())) {
+      if (Fast)
+        *Fast = true;
+      return true;
+    }
+    return false;
+  }
+  }
+}
+
 // Check whether a shuffle_vector could be presented as concat_vector.
 bool AArch64TargetLowering::isConcatVector(SDValue Op, SelectionDAG &DAG,
                                            SDValue V0, SDValue V1,
@@ -5367,4 +5413,127 @@ bool AArch64TargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
   }
 
   return false;
+}
+
+// Truncations from 64-bit GPR to 32-bit GPR is free.
+bool AArch64TargetLowering::isTruncateFree(Type *Ty1, Type *Ty2) const {
+  if (!Ty1->isIntegerTy() || !Ty2->isIntegerTy())
+    return false;
+  unsigned NumBits1 = Ty1->getPrimitiveSizeInBits();
+  unsigned NumBits2 = Ty2->getPrimitiveSizeInBits();
+  if (NumBits1 <= NumBits2)
+    return false;
+  return true;
+}
+
+bool AArch64TargetLowering::isTruncateFree(EVT VT1, EVT VT2) const {
+  if (!VT1.isInteger() || !VT2.isInteger())
+    return false;
+  unsigned NumBits1 = VT1.getSizeInBits();
+  unsigned NumBits2 = VT2.getSizeInBits();
+  if (NumBits1 <= NumBits2)
+    return false;
+  return true;
+}
+
+// All 32-bit GPR operations implicitly zero the high-half of the corresponding
+// 64-bit GPR.
+bool AArch64TargetLowering::isZExtFree(Type *Ty1, Type *Ty2) const {
+  if (!Ty1->isIntegerTy() || !Ty2->isIntegerTy())
+    return false;
+  unsigned NumBits1 = Ty1->getPrimitiveSizeInBits();
+  unsigned NumBits2 = Ty2->getPrimitiveSizeInBits();
+  if (NumBits1 == 32 && NumBits2 == 64)
+    return true;
+  return false;
+}
+
+bool AArch64TargetLowering::isZExtFree(EVT VT1, EVT VT2) const {
+  if (!VT1.isInteger() || !VT2.isInteger())
+    return false;
+  unsigned NumBits1 = VT1.getSizeInBits();
+  unsigned NumBits2 = VT2.getSizeInBits();
+  if (NumBits1 == 32 && NumBits2 == 64)
+    return true;
+  return false;
+}
+
+bool AArch64TargetLowering::isZExtFree(SDValue Val, EVT VT2) const {
+  EVT VT1 = Val.getValueType();
+  if (isZExtFree(VT1, VT2)) {
+    return true;
+  }
+
+  if (Val.getOpcode() != ISD::LOAD)
+    return false;
+
+  // 8-, 16-, and 32-bit integer loads all implicitly zero-extend.
+  return (VT1.isSimple() && VT1.isInteger() && VT2.isSimple() &&
+          VT2.isInteger() && VT1.getSizeInBits() <= 32);
+}
+
+// isLegalAddressingMode - Return true if the addressing mode represented
+/// by AM is legal for this target, for a load/store of the specified type.
+bool AArch64TargetLowering::isLegalAddressingMode(const AddrMode &AM,
+                                                Type *Ty) const {
+  // AArch64 has five basic addressing modes:
+  //  reg
+  //  reg + 9-bit signed offset
+  //  reg + SIZE_IN_BYTES * 12-bit unsigned offset
+  //  reg1 + reg2
+  //  reg + SIZE_IN_BYTES * reg
+
+  // No global is ever allowed as a base.
+  if (AM.BaseGV)
+    return false;
+
+  // No reg+reg+imm addressing.
+  if (AM.HasBaseReg && AM.BaseOffs && AM.Scale)
+    return false;
+
+  // check reg + imm case:
+  // i.e., reg + 0, reg + imm9, reg + SIZE_IN_BYTES * uimm12
+  uint64_t NumBytes = 0;
+  if (Ty->isSized()) {
+    uint64_t NumBits = getDataLayout()->getTypeSizeInBits(Ty);
+    NumBytes = NumBits / 8;
+    if (!isPowerOf2_64(NumBits))
+      NumBytes = 0;
+  }
+
+  if (!AM.Scale) {
+    int64_t Offset = AM.BaseOffs;
+
+    // 9-bit signed offset
+    if (Offset >= -(1LL << 9) && Offset <= (1LL << 9) - 1)
+      return true;
+
+    // 12-bit unsigned offset
+    unsigned shift = Log2_64(NumBytes);
+    if (NumBytes && Offset > 0 && (Offset / NumBytes) <= (1LL << 12) - 1 &&
+        // Must be a multiple of NumBytes (NumBytes is a power of 2)
+        (Offset >> shift) << shift == Offset)
+      return true;
+    return false;
+  }
+  if (!AM.Scale || AM.Scale == 1 ||
+      (AM.Scale > 0 && (uint64_t)AM.Scale == NumBytes))
+    return true;
+  return false;
+}
+
+int AArch64TargetLowering::getScalingFactorCost(const AddrMode &AM,
+                                              Type *Ty) const {
+  // Scaling factors are not free at all.
+  // Operands                     | Rt Latency
+  // -------------------------------------------
+  // Rt, [Xn, Xm]                 | 4
+  // -------------------------------------------
+  // Rt, [Xn, Xm, lsl #imm]       | Rn: 4 Rm: 5
+  // Rt, [Xn, Wm, <extend> #imm]  |
+  if (isLegalAddressingMode(AM, Ty))
+    // Scale represents reg2 * scale, thus account for 1 if
+    // it is not equal to 0 or 1.
+    return AM.Scale != 0 && AM.Scale != 1;
+  return -1;
 }

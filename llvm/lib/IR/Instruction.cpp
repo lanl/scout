@@ -23,7 +23,7 @@ using namespace llvm;
 
 Instruction::Instruction(Type *ty, unsigned it, Use *Ops, unsigned NumOps,
                          Instruction *InsertBefore)
-  : User(ty, Value::InstructionVal + it, Ops, NumOps), Parent(0) {
+  : User(ty, Value::InstructionVal + it, Ops, NumOps), Parent(nullptr) {
   // Make sure that we get added to a basicblock
   LeakDetector::addGarbageObject(this);
 
@@ -41,7 +41,7 @@ const DataLayout *Instruction::getDataLayout() const {
 
 Instruction::Instruction(Type *ty, unsigned it, Use *Ops, unsigned NumOps,
                          BasicBlock *InsertAtEnd)
-  : User(ty, Value::InstructionVal + it, Ops, NumOps), Parent(0) {
+  : User(ty, Value::InstructionVal + it, Ops, NumOps), Parent(nullptr) {
   // Make sure that we get added to a basicblock
   LeakDetector::addGarbageObject(this);
 
@@ -53,7 +53,7 @@ Instruction::Instruction(Type *ty, unsigned it, Use *Ops, unsigned NumOps,
 
 // Out of line virtual method, so the vtable, etc has a home.
 Instruction::~Instruction() {
-  assert(Parent == 0 && "Instruction still linked in the program!");
+  assert(!Parent && "Instruction still linked in the program!");
   if (hasMetadataHashEntry())
     clearMetadataHashEntries();
 }
@@ -410,7 +410,7 @@ bool Instruction::isUsedOutsideOfBlock(const BasicBlock *BB) const {
     // instructions, just check to see whether the parent of the use matches up.
     const Instruction *I = cast<Instruction>(U.getUser());
     const PHINode *PN = dyn_cast<PHINode>(I);
-    if (PN == 0) {
+    if (!PN) {
       if (I->getParent() != BB)
         return true;
       continue;

@@ -160,10 +160,16 @@ def HasMips32    :    Predicate<"Subtarget.hasMips32()">,
                       AssemblerPredicate<"FeatureMips32">;
 def HasMips32r2  :    Predicate<"Subtarget.hasMips32r2()">,
                       AssemblerPredicate<"FeatureMips32r2">;
+def IsGP64bit    :    Predicate<"Subtarget.isGP64bit()">,
+                      AssemblerPredicate<"FeatureGP64Bit">;
+def IsGP32bit    :    Predicate<"!Subtarget.isGP64bit()">,
+                      AssemblerPredicate<"!FeatureGP64Bit">;
 def HasMips64    :    Predicate<"Subtarget.hasMips64()">,
                       AssemblerPredicate<"FeatureMips64">;
-def NotMips64    :    Predicate<"!Subtarget.hasMips64()">,
-                      AssemblerPredicate<"!FeatureMips64">;
+def IsGP32       :    Predicate<"!Subtarget.isGP64()">,
+                      AssemblerPredicate<"!FeatureGP64Bit">;
+def IsGP64       :    Predicate<"Subtarget.isGP64()">,
+                      AssemblerPredicate<"FeatureGP64Bit">;
 def HasMips64r2  :    Predicate<"Subtarget.hasMips64r2()">,
                       AssemblerPredicate<"FeatureMips64r2">;
 def IsN64       :     Predicate<"Subtarget.isABI_N64()">,
@@ -176,8 +182,7 @@ def RelocStatic :     Predicate<"TM.getRelocationModel() == Reloc::Static">,
                       AssemblerPredicate<"FeatureMips32">;
 def RelocPIC    :     Predicate<"TM.getRelocationModel() == Reloc::PIC_">,
                       AssemblerPredicate<"FeatureMips32">;
-def NoNaNsFPMath :    Predicate<"TM.Options.NoNaNsFPMath">,
-                      AssemblerPredicate<"FeatureMips32">;
+def NoNaNsFPMath :    Predicate<"TM.Options.NoNaNsFPMath">;
 def HasStdEnc :       Predicate<"Subtarget.hasStandardEncoding()">,
                       AssemblerPredicate<"!FeatureMips16">;
 def NotDSP :          Predicate<"!Subtarget.hasDSP()">;
@@ -311,6 +316,10 @@ def MipsInvertedImmoperand : AsmOperandClass {
 }
 
 def InvertedImOperand : Operand<i32> {
+  let ParserMatchClass = MipsInvertedImmoperand;
+}
+
+def InvertedImOperand64 : Operand<i64> {
   let ParserMatchClass = MipsInvertedImmoperand;
 }
 
@@ -478,14 +487,18 @@ class shift_rotate_imm<string opstr, Operand ImmOpnd,
                        SDPatternOperator PF = null_frag> :
   InstSE<(outs RO:$rd), (ins RO:$rt, ImmOpnd:$shamt),
          !strconcat(opstr, "\t$rd, $rt, $shamt"),
-         [(set RO:$rd, (OpNode RO:$rt, PF:$shamt))], itin, FrmR, opstr>;
+         [(set RO:$rd, (OpNode RO:$rt, PF:$shamt))], itin, FrmR, opstr> {
+  let TwoOperandAliasConstraint = "$rt = $rd";
+}
 
 class shift_rotate_reg<string opstr, RegisterOperand RO, InstrItinClass itin,
                        SDPatternOperator OpNode = null_frag>:
   InstSE<(outs RO:$rd), (ins RO:$rt, GPR32Opnd:$rs),
          !strconcat(opstr, "\t$rd, $rt, $rs"),
          [(set RO:$rd, (OpNode RO:$rt, GPR32Opnd:$rs))], itin, FrmR,
-         opstr>;
+         opstr> {
+  let TwoOperandAliasConstraint = "$rt = $rd";
+}
 
 // Load Upper Imediate
 class LoadUpper<string opstr, RegisterOperand RO, Operand Imm>:
@@ -1172,7 +1185,7 @@ def PAUSE : Barrier<"pause">, BARRIER_FM<5>, Requires<[HasMips32r2]>;
 //===----------------------------------------------------------------------===//
 def : InstAlias<"move $dst, $src",
                 (ADDu GPR32Opnd:$dst, GPR32Opnd:$src,ZERO), 1>,
-      Requires<[NotMips64, NotInMicroMips]>;
+      Requires<[IsGP32, NotInMicroMips]>;
 def : InstAlias<"bal $offset", (BGEZAL ZERO, brtarget:$offset), 0>;
 def : InstAlias<"addu $rs, $rt, $imm",
                 (ADDiu GPR32Opnd:$rs, GPR32Opnd:$rt, simm16:$imm), 0>;
@@ -1223,9 +1236,14 @@ def  : InstAlias<"tltu $rs, $rt", (TLTU GPR32Opnd:$rs, GPR32Opnd:$rt, 0), 1>;
 def  : InstAlias<"tne $rs, $rt", (TNE GPR32Opnd:$rs, GPR32Opnd:$rt, 0), 1>;
 def : InstAlias<"sub, $rd, $rs, $imm",
                 (ADDi GPR32Opnd:$rd, GPR32Opnd:$rs, InvertedImOperand:$imm)>;
+def : InstAlias<"sub $rs, $imm",
+                (ADDi GPR32Opnd:$rs, GPR32Opnd:$rs, InvertedImOperand:$imm),
+                0>;
 def : InstAlias<"subu, $rd, $rs, $imm",
                 (ADDiu GPR32Opnd:$rd, GPR32Opnd:$rs, InvertedImOperand:$imm)>;
-
+def : InstAlias<"subu $rs, $imm",
+                (ADDiu GPR32Opnd:$rs, GPR32Opnd:$rs, InvertedImOperand:$imm),
+                0>;
 //===----------------------------------------------------------------------===//
 // Assembler Pseudo Instructions
 //===----------------------------------------------------------------------===//

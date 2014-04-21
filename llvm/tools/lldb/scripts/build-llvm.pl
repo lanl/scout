@@ -75,6 +75,13 @@ our @archive_files = (
     "$llvm_configuration/lib/libLLVMARMDesc.a",
     "$llvm_configuration/lib/libLLVMARMDisassembler.a",
     "$llvm_configuration/lib/libLLVMARMInfo.a",
+    "$llvm_configuration/lib/libLLVMARM64AsmParser.a",
+    "$llvm_configuration/lib/libLLVMARM64AsmPrinter.a",
+    "$llvm_configuration/lib/libLLVMARM64CodeGen.a",
+    "$llvm_configuration/lib/libLLVMARM64Desc.a",
+    "$llvm_configuration/lib/libLLVMARM64Disassembler.a",
+    "$llvm_configuration/lib/libLLVMARM64Info.a",
+    "$llvm_configuration/lib/libLLVMARM64Utils.a",
     "$llvm_configuration/lib/libLLVMAsmParser.a",
     "$llvm_configuration/lib/libLLVMAsmPrinter.a",
     "$llvm_configuration/lib/libLLVMBitReader.a",
@@ -82,6 +89,7 @@ our @archive_files = (
     "$llvm_configuration/lib/libLLVMCodeGen.a",
     "$llvm_configuration/lib/libLLVMCore.a",
     "$llvm_configuration/lib/libLLVMExecutionEngine.a",
+    "$llvm_configuration/lib/libLLVMProfileData.a",
     "$llvm_configuration/lib/libLLVMInstCombine.a",
     "$llvm_configuration/lib/libLLVMInstrumentation.a",
     "$llvm_configuration/lib/libLLVMipa.a",
@@ -327,7 +335,7 @@ sub build_llvm
         {
             # Build llvm and clang
             print "Configuring clang ($arch) in '$llvm_dstroot_arch'...\n";
-            my $lldb_configuration_options = "--enable-targets=x86_64,arm $common_configure_options $llvm_config_href->{configure_options}";
+            my $lldb_configuration_options = "--enable-targets=x86_64,arm,arm64 $common_configure_options $llvm_config_href->{configure_options}";
 
             # We're configuring llvm/clang with --enable-cxx11 and --enable-libcpp but llvm/configure doesn't
             # pick up the right C++ standard library.  If we have a MACOSX_DEPLOYMENT_TARGET of 10.7 or 10.8

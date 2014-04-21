@@ -638,16 +638,15 @@ Sema::NameClassification Sema::ClassifyName(Scope *S,
                                             CorrectionCandidateCallback *CCC) {
   DeclarationNameInfo NameInfo(Name, NameLoc);
   ObjCMethodDecl *CurMethod = getCurMethodDecl();
-  
+
   if (NextToken.is(tok::coloncolon)) {
     BuildCXXNestedNameSpecifier(S, *Name, NameLoc, NextToken.getLocation(),
                                 QualType(), false, SS, 0, false);
-    
   }
-      
+
   LookupResult Result(*this, Name, NameLoc, LookupOrdinaryName);
   LookupParsedName(Result, S, &SS, !CurMethod);
-  
+
   // Perform lookup for Objective-C instance variables (including automatically 
   // synthesized instance variables), if we're in an Objective-C method.
   // FIXME: This lookup really, really needs to be folded in to the normal
@@ -2007,43 +2006,43 @@ static bool mergeAlignedAttrs(Sema &S, NamedDecl *New, Decl *Old) {
   return AnyAdded;
 }
 
-static bool mergeDeclAttribute(Sema &S, NamedDecl *D, InheritableAttr *Attr,
-                               bool Override) {
-  InheritableAttr *NewAttr = NULL;
+static bool mergeDeclAttribute(Sema &S, NamedDecl *D,
+                               const InheritableAttr *Attr, bool Override) {
+  InheritableAttr *NewAttr = nullptr;
   unsigned AttrSpellingListIndex = Attr->getSpellingListIndex();
-  if (AvailabilityAttr *AA = dyn_cast<AvailabilityAttr>(Attr))
+  if (const auto *AA = dyn_cast<AvailabilityAttr>(Attr))
     NewAttr = S.mergeAvailabilityAttr(D, AA->getRange(), AA->getPlatform(),
                                       AA->getIntroduced(), AA->getDeprecated(),
                                       AA->getObsoleted(), AA->getUnavailable(),
                                       AA->getMessage(), Override,
                                       AttrSpellingListIndex);
-  else if (VisibilityAttr *VA = dyn_cast<VisibilityAttr>(Attr))
+  else if (const auto *VA = dyn_cast<VisibilityAttr>(Attr))
     NewAttr = S.mergeVisibilityAttr(D, VA->getRange(), VA->getVisibility(),
                                     AttrSpellingListIndex);
-  else if (TypeVisibilityAttr *VA = dyn_cast<TypeVisibilityAttr>(Attr))
+  else if (const auto *VA = dyn_cast<TypeVisibilityAttr>(Attr))
     NewAttr = S.mergeTypeVisibilityAttr(D, VA->getRange(), VA->getVisibility(),
                                         AttrSpellingListIndex);
-  else if (DLLImportAttr *ImportA = dyn_cast<DLLImportAttr>(Attr))
+  else if (const auto *ImportA = dyn_cast<DLLImportAttr>(Attr))
     NewAttr = S.mergeDLLImportAttr(D, ImportA->getRange(),
                                    AttrSpellingListIndex);
-  else if (DLLExportAttr *ExportA = dyn_cast<DLLExportAttr>(Attr))
+  else if (const auto *ExportA = dyn_cast<DLLExportAttr>(Attr))
     NewAttr = S.mergeDLLExportAttr(D, ExportA->getRange(),
                                    AttrSpellingListIndex);
-  else if (FormatAttr *FA = dyn_cast<FormatAttr>(Attr))
+  else if (const auto *FA = dyn_cast<FormatAttr>(Attr))
     NewAttr = S.mergeFormatAttr(D, FA->getRange(), FA->getType(),
                                 FA->getFormatIdx(), FA->getFirstArg(),
                                 AttrSpellingListIndex);
-  else if (SectionAttr *SA = dyn_cast<SectionAttr>(Attr))
+  else if (const auto *SA = dyn_cast<SectionAttr>(Attr))
     NewAttr = S.mergeSectionAttr(D, SA->getRange(), SA->getName(),
                                  AttrSpellingListIndex);
-  else if (MSInheritanceAttr *IA = dyn_cast<MSInheritanceAttr>(Attr))
+  else if (const auto *IA = dyn_cast<MSInheritanceAttr>(Attr))
     NewAttr = S.mergeMSInheritanceAttr(D, IA->getRange(), IA->getBestCase(),
                                        AttrSpellingListIndex,
                                        IA->getSemanticSpelling());
   else if (isa<AlignedAttr>(Attr))
     // AlignedAttrs are handled separately, because we need to handle all
     // such attributes on a declaration at the same time.
-    NewAttr = 0;
+    NewAttr = nullptr;
   else if (Attr->duplicatesAllowed() || !DeclHasAttr(D, Attr))
     NewAttr = cast<InheritableAttr>(Attr->clone(S.Context));
 
@@ -5368,28 +5367,12 @@ Sema::ActOnVariableDeclarator(Scope *S, Declarator &D, DeclContext *DC,
     // determine whether we have a template or a template specialization.
     TemplateParams = MatchTemplateParametersToScopeSpecifier(
         D.getDeclSpec().getLocStart(), D.getIdentifierLoc(),
-        D.getCXXScopeSpec(), TemplateParamLists,
+        D.getCXXScopeSpec(),
+        D.getName().getKind() == UnqualifiedId::IK_TemplateId
+            ? D.getName().TemplateId
+            : 0,
+        TemplateParamLists,
         /*never a friend*/ false, IsExplicitSpecialization, Invalid);
-
-    if (D.getName().getKind() == UnqualifiedId::IK_TemplateId &&
-        !TemplateParams) {
-      TemplateIdAnnotation *TemplateId = D.getName().TemplateId;
-
-      // We have encountered something that the user meant to be a
-      // specialization (because it has explicitly-specified template
-      // arguments) but that was not introduced with a "template<>" (or had
-      // too few of them).
-      // FIXME: Differentiate between attempts for explicit instantiations
-      // (starting with "template") and the rest.
-      Diag(D.getIdentifierLoc(), diag::err_template_spec_needs_header)
-          << SourceRange(TemplateId->LAngleLoc, TemplateId->RAngleLoc)
-          << FixItHint::CreateInsertion(D.getDeclSpec().getLocStart(),
-                                        "template<> ");
-      IsExplicitSpecialization = true;
-      TemplateParams = TemplateParameterList::Create(Context, SourceLocation(),
-                                                     SourceLocation(), 0, 0,
-                                                     SourceLocation());
-    }
 
     if (TemplateParams) {
       if (!TemplateParams->size() &&
@@ -5403,12 +5386,6 @@ Sema::ActOnVariableDeclarator(Scope *S, Declarator &D, DeclContext *DC,
                          TemplateParams->getRAngleLoc());
         TemplateParams = 0;
       } else {
-        // Only C++1y supports variable templates (N3651).
-        Diag(D.getIdentifierLoc(),
-             getLangOpts().CPlusPlus1y
-                 ? diag::warn_cxx11_compat_variable_template
-                 : diag::ext_variable_template);
-
         if (D.getName().getKind() == UnqualifiedId::IK_TemplateId) {
           // This is an explicit specialization or a partial specialization.
           // FIXME: Check that we can declare a specialization here.
@@ -5421,8 +5398,17 @@ Sema::ActOnVariableDeclarator(Scope *S, Declarator &D, DeclContext *DC,
           // Check that we can declare a template here.
           if (CheckTemplateDeclScope(S, TemplateParams))
             return 0;
+
+          // Only C++1y supports variable templates (N3651).
+          Diag(D.getIdentifierLoc(),
+               getLangOpts().CPlusPlus1y
+                   ? diag::warn_cxx11_compat_variable_template
+                   : diag::ext_variable_template);
         }
       }
+    } else {
+      assert(D.getName().getKind() != UnqualifiedId::IK_TemplateId &&
+             "should have a 'template<>' for this decl");
     }
 
     if (IsVariableTemplateSpecialization) {
@@ -6865,8 +6851,12 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
     if (TemplateParameterList *TemplateParams =
             MatchTemplateParametersToScopeSpecifier(
                 D.getDeclSpec().getLocStart(), D.getIdentifierLoc(),
-                D.getCXXScopeSpec(), TemplateParamLists, isFriend,
-                isExplicitSpecialization, Invalid)) {
+                D.getCXXScopeSpec(),
+                D.getName().getKind() == UnqualifiedId::IK_TemplateId
+                    ? D.getName().TemplateId
+                    : 0,
+                TemplateParamLists, isFriend, isExplicitSpecialization,
+                Invalid)) {
       if (TemplateParams->size() > 0) {
         // This is a function template
 
@@ -6907,9 +6897,10 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
         // This is a function template specialization.
         isFunctionTemplateSpecialization = true;
         // For source fidelity, store all the template param lists.
-        NewFD->setTemplateParameterListsInfo(Context,
-                                             TemplateParamLists.size(),
-                                             TemplateParamLists.data());
+        if (TemplateParamLists.size() > 0)
+          NewFD->setTemplateParameterListsInfo(Context,
+                                               TemplateParamLists.size(),
+                                               TemplateParamLists.data());
 
         // C++0x [temp.expl.spec]p20 forbids "template<> friend void foo(int);".
         if (isFriend) {
@@ -7214,6 +7205,17 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
     NewFD->setInvalidDecl();
   }
 
+  if (D.isFunctionDefinition() && CodeSegStack.CurrentValue &&
+      !NewFD->hasAttr<SectionAttr>()) {
+    NewFD->addAttr(
+        SectionAttr::CreateImplicit(Context, SectionAttr::Declspec_allocate,
+                                    CodeSegStack.CurrentValue->getString(),
+                                    CodeSegStack.CurrentPragmaLocation));
+    if (UnifySection(CodeSegStack.CurrentValue->getString(),
+                     PSF_Implicit | PSF_Execute | PSF_Read, NewFD))
+      NewFD->dropAttr<SectionAttr>();
+  }
+
   // Handle attributes.
   ProcessDeclAttributes(S, NewFD, D);
 
@@ -7297,21 +7299,10 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
           << SourceRange(TemplateId->LAngleLoc, TemplateId->RAngleLoc);
 
         HasExplicitTemplateArgs = false;
-      } else if (!isFunctionTemplateSpecialization && 
-                 !D.getDeclSpec().isFriendSpecified()) {
-        // We have encountered something that the user meant to be a 
-        // specialization (because it has explicitly-specified template
-        // arguments) but that was not introduced with a "template<>" (or had
-        // too few of them).
-        // FIXME: Differentiate between attempts for explicit instantiations
-        // (starting with "template") and the rest.
-        Diag(D.getIdentifierLoc(), diag::err_template_spec_needs_header)
-          << SourceRange(TemplateId->LAngleLoc, TemplateId->RAngleLoc)
-          << FixItHint::CreateInsertion(
-                                    D.getDeclSpec().getLocStart(),
-                                        "template<> ");
-        isFunctionTemplateSpecialization = true;
       } else {
+        assert((isFunctionTemplateSpecialization ||
+                D.getDeclSpec().isFriendSpecified()) &&
+               "should have a 'template<>' for this decl");
         // "friend void foo<>(int);" is an implicit specialization decl.
         isFunctionTemplateSpecialization = true;
       }
@@ -7323,7 +7314,7 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
       //   friend void foo<>(int);
       // Go ahead and fake up a template id.
       HasExplicitTemplateArgs = true;
-        TemplateArgs.setLAngleLoc(D.getIdentifierLoc());
+      TemplateArgs.setLAngleLoc(D.getIdentifierLoc());
       TemplateArgs.setRAngleLoc(D.getIdentifierLoc());
     }
 
@@ -8768,7 +8759,7 @@ void Sema::ActOnInitializerError(Decl *D) {
     return;
   }
 
-  // Require an abstract type.
+  // Require a non-abstract type.
   if (RequireNonAbstractType(VD->getLocation(), Ty,
                              diag::err_abstract_type_in_decl,
                              AbstractVariableType)) {
@@ -9082,6 +9073,29 @@ void Sema::CheckCompleteVariableDeclaration(VarDecl *var) {
     Diag(var->getLocation(), diag::err_thread_nontrivial_dtor);
     if (getLangOpts().CPlusPlus11)
       Diag(var->getLocation(), diag::note_use_thread_local);
+  }
+
+  if (var->isThisDeclarationADefinition() &&
+      ActiveTemplateInstantiations.empty()) {
+    PragmaStack<StringLiteral *> *Stack = nullptr;
+    int SectionFlags = PSF_Implicit | PSF_Read;
+    if (var->getType().isConstQualified())
+      Stack = &ConstSegStack;
+    else if (!var->getInit()) {
+      Stack = &BSSSegStack;
+      SectionFlags |= PSF_Write;
+    } else {
+      Stack = &DataSegStack;
+      SectionFlags |= PSF_Write;
+    }
+    if (!var->hasAttr<SectionAttr>() && Stack->CurrentValue)
+      var->addAttr(
+          SectionAttr::CreateImplicit(Context, SectionAttr::Declspec_allocate,
+                                      Stack->CurrentValue->getString(),
+                                      Stack->CurrentPragmaLocation));
+    if (const SectionAttr *SA = var->getAttr<SectionAttr>())
+      if (UnifySection(SA->getName(), SectionFlags, var))
+        var->dropAttr<SectionAttr>();
   }
 
   // All the following checks are C++ only.
@@ -9591,8 +9605,12 @@ ParmVarDecl *Sema::CheckParameter(DeclContext *DC, SourceLocation StartLoc,
   // Since all parameters have automatic store duration, they can not have
   // an address space.
   if (T.getAddressSpace() != 0) {
-    Diag(NameLoc, diag::err_arg_with_address_space);
-    New->setInvalidDecl();
+    // OpenCL allows function arguments declared to be an array of a type
+    // to be qualified with an address space.
+    if (!(getLangOpts().OpenCL && T->isArrayType())) {
+      Diag(NameLoc, diag::err_arg_with_address_space);
+      New->setInvalidDecl();
+    }
   }   
 
   return New;
@@ -10094,8 +10112,20 @@ Decl *Sema::ActOnFinishFunctionBody(Decl *dcl, Stmt *Body,
           MD->isDesignatedInitializerForTheInterface(&InitMethod);
       assert(isDesignated && InitMethod);
       (void)isDesignated;
-      // Don't issue this warning for unavaialable inits.
-      if (!MD->isUnavailable()) {
+
+      auto superIsNSObject = [&](const ObjCMethodDecl *MD) {
+        auto IFace = MD->getClassInterface();
+        if (!IFace)
+          return false;
+        auto SuperD = IFace->getSuperClass();
+        if (!SuperD)
+          return false;
+        return SuperD->getIdentifier() ==
+            NSAPIObj->getNSClassId(NSAPI::ClassId_NSObject);
+      };
+      // Don't issue this warning for unavailable inits or direct subclasses
+      // of NSObject.
+      if (!MD->isUnavailable() && !superIsNSObject(MD)) {
         Diag(MD->getLocation(),
              diag::warn_objc_designated_init_missing_super_call);
         Diag(InitMethod->getLocation(),
@@ -10675,8 +10705,8 @@ Decl *Sema::ActOnTag(Scope *S, unsigned TagSpec, TagUseKind TUK,
       (SS.isNotEmpty() && TUK != TUK_Reference)) {
     if (TemplateParameterList *TemplateParams =
             MatchTemplateParametersToScopeSpecifier(
-                KWLoc, NameLoc, SS, TemplateParameterLists, TUK == TUK_Friend,
-                isExplicitSpecialization, Invalid)) {
+                KWLoc, NameLoc, SS, 0, TemplateParameterLists,
+                TUK == TUK_Friend, isExplicitSpecialization, Invalid)) {
       if (Kind == TTK_Enum) {
         Diag(KWLoc, diag::err_enum_template);
         return 0;

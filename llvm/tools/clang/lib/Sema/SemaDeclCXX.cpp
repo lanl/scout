@@ -1960,14 +1960,19 @@ Sema::ActOnCXXMemberDeclarator(Scope *S, AccessSpecifier AS, Declarator &D,
         Diag(DS.getConstexprSpecLoc(), diag::err_invalid_constexpr_member);
     SourceLocation ConstexprLoc = DS.getConstexprSpecLoc();
     if (InitStyle == ICIS_NoInit) {
-      B << 0 << 0 << FixItHint::CreateReplacement(ConstexprLoc, "const");
-      D.getMutableDeclSpec().ClearConstexprSpec();
-      const char *PrevSpec;
-      unsigned DiagID;
-      bool Failed = D.getMutableDeclSpec().SetTypeQual(DeclSpec::TQ_const, ConstexprLoc,
-                                         PrevSpec, DiagID, getLangOpts());
-      (void)Failed;
-      assert(!Failed && "Making a constexpr member const shouldn't fail");
+      B << 0 << 0;
+      if (D.getDeclSpec().getTypeQualifiers() & DeclSpec::TQ_const)
+        B << FixItHint::CreateRemoval(ConstexprLoc);
+      else {
+        B << FixItHint::CreateReplacement(ConstexprLoc, "const");
+        D.getMutableDeclSpec().ClearConstexprSpec();
+        const char *PrevSpec;
+        unsigned DiagID;
+        bool Failed = D.getMutableDeclSpec().SetTypeQual(
+            DeclSpec::TQ_const, ConstexprLoc, PrevSpec, DiagID, getLangOpts());
+        (void)Failed;
+        assert(!Failed && "Making a constexpr member const shouldn't fail");
+      }
     } else {
       B << 1;
       const char *PrevSpec;
@@ -3435,7 +3440,8 @@ static bool CollectFieldInitializer(Sema &SemaRef, BaseAndFieldInfo &Info,
     return false;
 
   // Overwhelmingly common case: we have a direct initializer for this field.
-  if (CXXCtorInitializer *Init = Info.AllBaseFields.lookup(Field))
+  if (CXXCtorInitializer *Init =
+          Info.AllBaseFields.lookup(Field->getCanonicalDecl()))
     return Info.addFieldInitializer(Init);
 
   // C++11 [class.base.init]p8:
@@ -3548,7 +3554,7 @@ bool Sema::SetCtorInitializers(CXXConstructorDecl *Constructor, bool AnyErrors,
     if (Member->isBaseInitializer())
       Info.AllBaseFields[Member->getBaseClass()->getAs<RecordType>()] = Member;
     else {
-      Info.AllBaseFields[Member->getAnyMember()] = Member;
+      Info.AllBaseFields[Member->getAnyMember()->getCanonicalDecl()] = Member;
 
       if (IndirectFieldDecl *F = Member->getIndirectMember()) {
         for (auto *C : F->chain()) {
@@ -3696,7 +3702,7 @@ static void PopulateKeysForFields(FieldDecl *Field, SmallVectorImpl<const void*>
       return;
     }
   }
-  IdealInits.push_back(Field);
+  IdealInits.push_back(Field->getCanonicalDecl());
 }
 
 static const void *GetKeyForBase(ASTContext &Context, QualType BaseType) {
@@ -3708,7 +3714,7 @@ static const void *GetKeyForMember(ASTContext &Context,
   if (!Member->isAnyMemberInitializer())
     return GetKeyForBase(Context, QualType(Member->getBaseClass(), 0));
     
-  return Member->getAnyMember();
+  return Member->getAnyMember()->getCanonicalDecl();
 }
 
 static void DiagnoseBaseOrMemInitializerOrder(
@@ -3903,13 +3909,12 @@ void Sema::ActOnMemInitializers(Decl *ConstructorDecl,
     Init->setSourceOrder(i);
 
     if (Init->isAnyMemberInitializer()) {
-      FieldDecl *Field = Init->getAnyMember();
-      if (CheckRedundantInit(*this, Init, Members[Field]) ||
+      const void *Key = GetKeyForMember(Context, Init);
+      if (CheckRedundantInit(*this, Init, Members[Key]) ||
           CheckRedundantUnionInit(*this, Init, MemberUnions))
         HadError = true;
     } else if (Init->isBaseInitializer()) {
-      const void *Key =
-          GetKeyForBase(Context, QualType(Init->getBaseClass(), 0));
+      const void *Key = GetKeyForMember(Context, Init);
       if (CheckRedundantInit(*this, Init, Members[Key]))
         HadError = true;
     } else {
@@ -7378,6 +7383,13 @@ NamedDecl *Sema::BuildUsingDeclaration(Scope *S, AccessSpecifier AS,
     while (F.hasNext()) {
       NamedDecl *D = F.next();
       if (!isDeclInScope(D, CurContext, S))
+        F.erase();
+      // If we found a local extern declaration that's not ordinarily visible,
+      // and this declaration is being added to a non-block scope, ignore it.
+      // We're only checking for scope conflicts here, not also for violations
+      // of the linkage rules.
+      else if (!CurContext->isFunctionOrMethod() && D->isLocalExternDecl() &&
+               !(D->getIdentifierNamespace() & Decl::IDNS_Ordinary))
         F.erase();
     }
     F.done();
@@ -11358,7 +11370,7 @@ Decl *Sema::ActOnTemplatedFriendTag(Scope *S, SourceLocation FriendLoc,
 
   if (TemplateParameterList *TemplateParams =
           MatchTemplateParametersToScopeSpecifier(
-              TagLoc, NameLoc, SS, TempParamLists, /*friend*/ true,
+              TagLoc, NameLoc, SS, 0, TempParamLists, /*friend*/ true,
               isExplicitSpecialization, Invalid)) {
     if (TemplateParams->size() > 0) {
       // This is a declaration of a class template.
