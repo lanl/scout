@@ -1,0 +1,4 @@
+#!/bin/sh
+# wrapper to run lldb on clang
+lldb -- `@CMAKE_INSTALL_PREFIX@/bin/clang -### $@ 2>&1 | tail -2 | head -1 | sed 's/"//g'`
+#
