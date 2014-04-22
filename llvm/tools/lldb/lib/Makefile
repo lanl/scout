@@ -32,16 +32,19 @@ USEDLIBS = lldbAPI.a \
 	lldbInitAndLog.a \
 	lldbInterpreter.a \
 	lldbPluginABIMacOSX_arm.a \
+	lldbPluginABIMacOSX_arm64.a \
 	lldbPluginABIMacOSX_i386.a \
 	lldbPluginABISysV_x86_64.a \
 	lldbPluginDisassemblerLLVM.a \
 	lldbPluginDynamicLoaderStatic.a \
 	lldbPluginDynamicLoaderPOSIX.a \
 	lldbPluginEmulateInstructionARM.a \
+	lldbPluginEmulateInstructionARM64.a \
 	lldbPluginLanguageRuntimeCPlusPlusItaniumABI.a \
 	lldbPluginLanguageRuntimeObjCAppleObjCRuntime.a \
 	lldbPluginObjectContainerBSDArchive.a \
 	lldbPluginObjectFileELF.a \
+	lldbPluginObjectFileJIT.a \
 	lldbPluginSymbolVendorELF.a \
 	lldbPluginObjectFilePECOFF.a \
 	lldbPluginOperatingSystemPython.a \
@@ -88,10 +91,6 @@ LINK_COMPONENTS := $(TARGETS_TO_BUILD) asmparser bitreader bitwriter codegen \
                    instrumentation ipo irreader selectiondag jit mc mcjit \
                    linker option
 
-ifeq ($(HOST_OS),MingW)
-  USEDLIBS += lldbHostWindows.a
-endif
-
 ifeq ($(HOST_OS),Darwin)
   USEDLIBS += lldbHostMacOSX.a \
               lldbPluginDynamicLoaderMacOSX.a \
@@ -131,6 +130,9 @@ include $(LEVEL)/Makefile.common
 
 ifeq ($(HOST_OS),MingW)
     LLVMLibsOptions += -lws2_32
+    # Include everything from the .a's into the shared library.
+    ProjLibsOptions := -Wl,--whole-archive $(ProjLibsOptions) \
+                       -Wl,--no-whole-archive
 endif
 
 ifeq ($(HOST_OS),Darwin)

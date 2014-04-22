@@ -9,6 +9,7 @@
 
 #include "llvm/Option/ArgList.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Option/Arg.h"
 #include "llvm/Option/Option.h"
@@ -30,11 +31,6 @@ void arg_iterator::SkipToNextArg() {
         (Id2.isValid() && O.matches(Id2)))
       break;
   }
-}
-
-//
-
-ArgList::ArgList() {
 }
 
 ArgList::~ArgList() {
@@ -60,11 +56,11 @@ Arg *ArgList::getLastArgNoClaim(OptSpecifier Id) const {
   for (const_reverse_iterator it = rbegin(), ie = rend(); it != ie; ++it)
     if ((*it)->getOption().matches(Id))
       return *it;
-  return 0;
+  return nullptr;
 }
 
 Arg *ArgList::getLastArg(OptSpecifier Id) const {
-  Arg *Res = 0;
+  Arg *Res = nullptr;
   for (const_iterator it = begin(), ie = end(); it != ie; ++it) {
     if ((*it)->getOption().matches(Id)) {
       Res = *it;
@@ -76,7 +72,7 @@ Arg *ArgList::getLastArg(OptSpecifier Id) const {
 }
 
 Arg *ArgList::getLastArg(OptSpecifier Id0, OptSpecifier Id1) const {
-  Arg *Res = 0;
+  Arg *Res = nullptr;
   for (const_iterator it = begin(), ie = end(); it != ie; ++it) {
     if ((*it)->getOption().matches(Id0) ||
         (*it)->getOption().matches(Id1)) {
@@ -91,7 +87,7 @@ Arg *ArgList::getLastArg(OptSpecifier Id0, OptSpecifier Id1) const {
 
 Arg *ArgList::getLastArg(OptSpecifier Id0, OptSpecifier Id1,
                          OptSpecifier Id2) const {
-  Arg *Res = 0;
+  Arg *Res = nullptr;
   for (const_iterator it = begin(), ie = end(); it != ie; ++it) {
     if ((*it)->getOption().matches(Id0) ||
         (*it)->getOption().matches(Id1) ||
@@ -106,7 +102,7 @@ Arg *ArgList::getLastArg(OptSpecifier Id0, OptSpecifier Id1,
 
 Arg *ArgList::getLastArg(OptSpecifier Id0, OptSpecifier Id1,
                          OptSpecifier Id2, OptSpecifier Id3) const {
-  Arg *Res = 0;
+  Arg *Res = nullptr;
   for (const_iterator it = begin(), ie = end(); it != ie; ++it) {
     if ((*it)->getOption().matches(Id0) ||
         (*it)->getOption().matches(Id1) ||
@@ -123,7 +119,7 @@ Arg *ArgList::getLastArg(OptSpecifier Id0, OptSpecifier Id1,
 Arg *ArgList::getLastArg(OptSpecifier Id0, OptSpecifier Id1,
                          OptSpecifier Id2, OptSpecifier Id3,
                          OptSpecifier Id4) const {
-  Arg *Res = 0;
+  Arg *Res = nullptr;
   for (const_iterator it = begin(), ie = end(); it != ie; ++it) {
     if ((*it)->getOption().matches(Id0) ||
         (*it)->getOption().matches(Id1) ||
@@ -141,7 +137,7 @@ Arg *ArgList::getLastArg(OptSpecifier Id0, OptSpecifier Id1,
 Arg *ArgList::getLastArg(OptSpecifier Id0, OptSpecifier Id1,
                          OptSpecifier Id2, OptSpecifier Id3,
                          OptSpecifier Id4, OptSpecifier Id5) const {
-  Arg *Res = 0;
+  Arg *Res = nullptr;
   for (const_iterator it = begin(), ie = end(); it != ie; ++it) {
     if ((*it)->getOption().matches(Id0) ||
         (*it)->getOption().matches(Id1) ||
@@ -161,7 +157,7 @@ Arg *ArgList::getLastArg(OptSpecifier Id0, OptSpecifier Id1,
                          OptSpecifier Id2, OptSpecifier Id3,
                          OptSpecifier Id4, OptSpecifier Id5,
                          OptSpecifier Id6) const {
-  Arg *Res = 0;
+  Arg *Res = nullptr;
   for (const_iterator it = begin(), ie = end(); it != ie; ++it) {
     if ((*it)->getOption().matches(Id0) ||
         (*it)->getOption().matches(Id1) ||
@@ -182,7 +178,7 @@ Arg *ArgList::getLastArg(OptSpecifier Id0, OptSpecifier Id1,
                          OptSpecifier Id2, OptSpecifier Id3,
                          OptSpecifier Id4, OptSpecifier Id5,
                          OptSpecifier Id6, OptSpecifier Id7) const {
-  Arg *Res = 0;
+  Arg *Res = nullptr;
   for (const_iterator it = begin(), ie = end(); it != ie; ++it) {
     if ((*it)->getOption().matches(Id0) ||
         (*it)->getOption().matches(Id1) ||
@@ -348,52 +344,50 @@ DerivedArgList::DerivedArgList(const InputArgList &_BaseArgs)
   : BaseArgs(_BaseArgs) {
 }
 
-DerivedArgList::~DerivedArgList() {
-  // We only own the arguments we explicitly synthesized.
-  for (iterator it = SynthesizedArgs.begin(), ie = SynthesizedArgs.end();
-       it != ie; ++it)
-    delete *it;
-}
+DerivedArgList::~DerivedArgList() {}
 
 const char *DerivedArgList::MakeArgString(StringRef Str) const {
   return BaseArgs.MakeArgString(Str);
 }
 
+void DerivedArgList::AddSynthesizedArg(Arg *A) {
+  SynthesizedArgs.push_back(std::unique_ptr<Arg>(A));
+}
+
 Arg *DerivedArgList::MakeFlagArg(const Arg *BaseArg, const Option Opt) const {
-  Arg *A = new Arg(Opt, ArgList::MakeArgString(Twine(Opt.getPrefix()) +
-                                               Twine(Opt.getName())),
-                   BaseArgs.MakeIndex(Opt.getName()), BaseArg);
-  SynthesizedArgs.push_back(A);
-  return A;
+  SynthesizedArgs.push_back(make_unique<Arg>(
+      Opt,
+      ArgList::MakeArgString(Twine(Opt.getPrefix()) + Twine(Opt.getName())),
+      BaseArgs.MakeIndex(Opt.getName()), BaseArg));
+  return SynthesizedArgs.back().get();
 }
 
 Arg *DerivedArgList::MakePositionalArg(const Arg *BaseArg, const Option Opt,
                                        StringRef Value) const {
   unsigned Index = BaseArgs.MakeIndex(Value);
-  Arg *A = new Arg(Opt, ArgList::MakeArgString(Twine(Opt.getPrefix()) +
-                                               Twine(Opt.getName())),
-                   Index, BaseArgs.getArgString(Index), BaseArg);
-  SynthesizedArgs.push_back(A);
-  return A;
+  SynthesizedArgs.push_back(make_unique<Arg>(
+      Opt,
+      ArgList::MakeArgString(Twine(Opt.getPrefix()) + Twine(Opt.getName())),
+      Index, BaseArgs.getArgString(Index), BaseArg));
+  return SynthesizedArgs.back().get();
 }
 
 Arg *DerivedArgList::MakeSeparateArg(const Arg *BaseArg, const Option Opt,
                                      StringRef Value) const {
   unsigned Index = BaseArgs.MakeIndex(Opt.getName(), Value);
-  Arg *A = new Arg(Opt, ArgList::MakeArgString(Twine(Opt.getPrefix()) +
-                                               Twine(Opt.getName())),
-                   Index, BaseArgs.getArgString(Index + 1), BaseArg);
-  SynthesizedArgs.push_back(A);
-  return A;
+  SynthesizedArgs.push_back(make_unique<Arg>(
+      Opt,
+      ArgList::MakeArgString(Twine(Opt.getPrefix()) + Twine(Opt.getName())),
+      Index, BaseArgs.getArgString(Index + 1), BaseArg));
+  return SynthesizedArgs.back().get();
 }
 
 Arg *DerivedArgList::MakeJoinedArg(const Arg *BaseArg, const Option Opt,
                                    StringRef Value) const {
   unsigned Index = BaseArgs.MakeIndex(Opt.getName().str() + Value.str());
-  Arg *A = new Arg(Opt, ArgList::MakeArgString(Twine(Opt.getPrefix()) +
-                                               Twine(Opt.getName())), Index,
-                   BaseArgs.getArgString(Index) + Opt.getName().size(),
-                   BaseArg);
-  SynthesizedArgs.push_back(A);
-  return A;
+  SynthesizedArgs.push_back(make_unique<Arg>(
+      Opt,
+      ArgList::MakeArgString(Twine(Opt.getPrefix()) + Twine(Opt.getName())),
+      Index, BaseArgs.getArgString(Index) + Opt.getName().size(), BaseArg));
+  return SynthesizedArgs.back().get();
 }

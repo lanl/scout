@@ -232,7 +232,6 @@ ObjectFilePECOFF::SetLoadAddress(Target &target, addr_t value, bool value_is_off
                 }
             }
             changed = num_loaded_sections > 0;
-            return num_loaded_sections > 0;
         }
     }
     return changed;
@@ -791,19 +790,19 @@ ObjectFilePECOFF::Dump(Stream *s)
     if (module_sp)
     {
         lldb_private::Mutex::Locker locker(module_sp->GetMutex());
-        s->Printf("%p: ", this);
+        s->Printf("%p: ", static_cast<void*>(this));
         s->Indent();
         s->PutCString("ObjectFilePECOFF");
-        
+
         ArchSpec header_arch;
         GetArchitecture (header_arch);
-        
+
         *s << ", file = '" << m_file << "', arch = " << header_arch.GetArchitectureName() << "\n";
-        
+
         SectionList *sections = GetSectionList();
         if (sections)
             sections->Dump(s, NULL, true, UINT32_MAX);
-        
+
         if (m_symtab_ap.get())
             m_symtab_ap->Dump(s, NULL, eSortOrderNone);
 

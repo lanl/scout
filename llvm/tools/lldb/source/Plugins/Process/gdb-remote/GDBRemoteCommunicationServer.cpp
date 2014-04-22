@@ -447,22 +447,21 @@ GDBRemoteCommunicationServer::Handle_qHostInfo (StringExtractorGDBRemote &packet
     }
 #if defined(__APPLE__)
 
-#if defined(__arm__)
+#if defined(__arm__) || defined(__arm64__)
     // For iOS devices, we are connected through a USB Mux so we never pretend
     // to actually have a hostname as far as the remote lldb that is connecting
     // to this lldb-platform is concerned
     response.PutCString ("hostname:");
     response.PutCStringAsRawHex8("127.0.0.1");
     response.PutChar(';');
-#else   // #if defined(__arm__)
+#else   // #if defined(__arm__) || defined(__arm64__)
     if (Host::GetHostname (s))
     {
         response.PutCString ("hostname:");
         response.PutCStringAsRawHex8(s.c_str());
         response.PutChar(';');
     }
-
-#endif  // #if defined(__arm__)
+#endif  // #if defined(__arm__) || defined(__arm64__)
 
 #else   // #if defined(__APPLE__)
     if (Host::GetHostname (s))
@@ -956,7 +955,7 @@ GDBRemoteCommunicationServer::Handle_qLaunchGDBServer (StringExtractorGDBRemote 
             {
                 char response[256];
                 const int response_len = ::snprintf (response, sizeof(response), "pid:%" PRIu64 ";port:%u;", debugserver_pid, port + m_port_offset);
-                assert (response_len < sizeof(response));
+                assert (response_len < (int)sizeof(response));
                 PacketResult packet_result = SendPacketNoLock (response, response_len);
 
                 if (packet_result != PacketResult::Success)

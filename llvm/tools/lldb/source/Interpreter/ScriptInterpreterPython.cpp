@@ -41,26 +41,26 @@ using namespace lldb;
 using namespace lldb_private;
 
 
-static ScriptInterpreter::SWIGInitCallback g_swig_init_callback = NULL;
-static ScriptInterpreter::SWIGBreakpointCallbackFunction g_swig_breakpoint_callback = NULL;
-static ScriptInterpreter::SWIGWatchpointCallbackFunction g_swig_watchpoint_callback = NULL;
-static ScriptInterpreter::SWIGPythonTypeScriptCallbackFunction g_swig_typescript_callback = NULL;
-static ScriptInterpreter::SWIGPythonCreateSyntheticProvider g_swig_synthetic_script = NULL;
-static ScriptInterpreter::SWIGPythonCalculateNumChildren g_swig_calc_children = NULL;
-static ScriptInterpreter::SWIGPythonGetChildAtIndex g_swig_get_child_index = NULL;
-static ScriptInterpreter::SWIGPythonGetIndexOfChildWithName g_swig_get_index_child = NULL;
-static ScriptInterpreter::SWIGPythonCastPyObjectToSBValue g_swig_cast_to_sbvalue  = NULL;
-static ScriptInterpreter::SWIGPythonGetValueObjectSPFromSBValue g_swig_get_valobj_sp_from_sbvalue = NULL;
-static ScriptInterpreter::SWIGPythonUpdateSynthProviderInstance g_swig_update_provider = NULL;
-static ScriptInterpreter::SWIGPythonMightHaveChildrenSynthProviderInstance g_swig_mighthavechildren_provider = NULL;
-static ScriptInterpreter::SWIGPythonCallCommand g_swig_call_command = NULL;
-static ScriptInterpreter::SWIGPythonCallModuleInit g_swig_call_module_init = NULL;
-static ScriptInterpreter::SWIGPythonCreateOSPlugin g_swig_create_os_plugin = NULL;
-static ScriptInterpreter::SWIGPythonScriptKeyword_Process g_swig_run_script_keyword_process = NULL;
-static ScriptInterpreter::SWIGPythonScriptKeyword_Thread g_swig_run_script_keyword_thread = NULL;
-static ScriptInterpreter::SWIGPythonScriptKeyword_Target g_swig_run_script_keyword_target = NULL;
-static ScriptInterpreter::SWIGPythonScriptKeyword_Frame g_swig_run_script_keyword_frame = NULL;
-static ScriptInterpreter::SWIGPython_GetDynamicSetting g_swig_plugin_get = NULL;
+static ScriptInterpreter::SWIGInitCallback g_swig_init_callback = nullptr;
+static ScriptInterpreter::SWIGBreakpointCallbackFunction g_swig_breakpoint_callback = nullptr;
+static ScriptInterpreter::SWIGWatchpointCallbackFunction g_swig_watchpoint_callback = nullptr;
+static ScriptInterpreter::SWIGPythonTypeScriptCallbackFunction g_swig_typescript_callback = nullptr;
+static ScriptInterpreter::SWIGPythonCreateSyntheticProvider g_swig_synthetic_script = nullptr;
+static ScriptInterpreter::SWIGPythonCalculateNumChildren g_swig_calc_children = nullptr;
+static ScriptInterpreter::SWIGPythonGetChildAtIndex g_swig_get_child_index = nullptr;
+static ScriptInterpreter::SWIGPythonGetIndexOfChildWithName g_swig_get_index_child = nullptr;
+static ScriptInterpreter::SWIGPythonCastPyObjectToSBValue g_swig_cast_to_sbvalue  = nullptr;
+static ScriptInterpreter::SWIGPythonGetValueObjectSPFromSBValue g_swig_get_valobj_sp_from_sbvalue = nullptr;
+static ScriptInterpreter::SWIGPythonUpdateSynthProviderInstance g_swig_update_provider = nullptr;
+static ScriptInterpreter::SWIGPythonMightHaveChildrenSynthProviderInstance g_swig_mighthavechildren_provider = nullptr;
+static ScriptInterpreter::SWIGPythonCallCommand g_swig_call_command = nullptr;
+static ScriptInterpreter::SWIGPythonCallModuleInit g_swig_call_module_init = nullptr;
+static ScriptInterpreter::SWIGPythonCreateOSPlugin g_swig_create_os_plugin = nullptr;
+static ScriptInterpreter::SWIGPythonScriptKeyword_Process g_swig_run_script_keyword_process = nullptr;
+static ScriptInterpreter::SWIGPythonScriptKeyword_Thread g_swig_run_script_keyword_thread = nullptr;
+static ScriptInterpreter::SWIGPythonScriptKeyword_Target g_swig_run_script_keyword_target = nullptr;
+static ScriptInterpreter::SWIGPythonScriptKeyword_Frame g_swig_run_script_keyword_frame = nullptr;
+static ScriptInterpreter::SWIGPython_GetDynamicSetting g_swig_plugin_get = nullptr;
 
 static std::string
 ReadPythonBacktrace (PyObject* py_backtrace);
@@ -149,7 +149,7 @@ ScriptInterpreterPython::ScriptInterpreterPython (CommandInterpreter &interprete
     m_session_is_active (false),
     m_pty_slave_is_open (false),
     m_valid_session (true),
-    m_command_thread_state (NULL)
+    m_command_thread_state (nullptr)
 {
 
     ScriptInterpreterPython::InitializePrivate ();
@@ -206,7 +206,7 @@ ScriptInterpreterPython::~ScriptInterpreterPython ()
 void
 ScriptInterpreterPython::IOHandlerActivated (IOHandler &io_handler)
 {
-    const char *instructions = NULL;
+    const char *instructions = nullptr;
     
     switch (m_active_io_handler)
     {
@@ -254,7 +254,7 @@ ScriptInterpreterPython::IOHandlerInputComplete (IOHandler &io_handler, std::str
             {
                 data_ap->user_source.SplitIntoLines(data);
                 
-                if (GenerateBreakpointCommandCallbackData (data_ap->user_source, data_ap->script_source))
+                if (GenerateBreakpointCommandCallbackData (data_ap->user_source, data_ap->script_source).Success())
                 {
                     BatonSP baton_sp (new BreakpointOptions::CommandBaton (data_ap.release()));
                     bp_options->SetCallback (ScriptInterpreterPython::BreakpointCallbackFunction, baton_sp);
@@ -420,42 +420,42 @@ ScriptInterpreterPython::EnterSession (uint16_t on_entry_flags,
         lldb::StreamFileSP in_sp;
         lldb::StreamFileSP out_sp;
         lldb::StreamFileSP err_sp;
-        if (in == NULL || out == NULL || err == NULL)
+        if (in == nullptr || out == nullptr || err == nullptr)
             m_interpreter.GetDebugger().AdoptTopIOHandlerFilesIfInvalid (in_sp, out_sp, err_sp);
 
-        if (in == NULL && in_sp && (on_entry_flags & Locker::NoSTDIN) == 0)
+        if (in == nullptr && in_sp && (on_entry_flags & Locker::NoSTDIN) == 0)
             in = in_sp->GetFile().GetStream();
         if (in)
         {
             m_saved_stdin.Reset(sys_module_dict.GetItemForKey("stdin"));
 
-            PyObject *new_file = PyFile_FromFile (in, (char *) "", (char *) "r", 0);
+            PyObject *new_file = PyFile_FromFile (in, (char *) "", (char *) "r", nullptr);
             sys_module_dict.SetItemForKey ("stdin", new_file);
             Py_DECREF (new_file);
         }
         else
             m_saved_stdin.Reset();
         
-        if (out == NULL && out_sp)
+        if (out == nullptr && out_sp)
             out = out_sp->GetFile().GetStream();
         if (out)
         {
             m_saved_stdout.Reset(sys_module_dict.GetItemForKey("stdout"));
 
-            PyObject *new_file = PyFile_FromFile (out, (char *) "", (char *) "w", 0);
+            PyObject *new_file = PyFile_FromFile (out, (char *) "", (char *) "w", nullptr);
             sys_module_dict.SetItemForKey ("stdout", new_file);
             Py_DECREF (new_file);
         }
         else
             m_saved_stdout.Reset();
 
-        if (err == NULL && err_sp)
+        if (err == nullptr && err_sp)
             err = err_sp->GetFile().GetStream();
         if (err)
         {
             m_saved_stderr.Reset(sys_module_dict.GetItemForKey("stderr"));
 
-            PyObject *new_file = PyFile_FromFile (err, (char *) "", (char *) "w", 0);
+            PyObject *new_file = PyFile_FromFile (err, (char *) "", (char *) "w", nullptr);
             sys_module_dict.SetItemForKey ("stderr", new_file);
             Py_DECREF (new_file);
         }
@@ -510,7 +510,7 @@ ScriptInterpreterPython::GetSysModuleDictionary ()
 static std::string
 GenerateUniqueName (const char* base_name_wanted,
                     uint32_t& functions_counter,
-                    void* name_token = NULL)
+                    void* name_token = nullptr)
 {
     StreamString sstr;
     
@@ -531,7 +531,7 @@ ScriptInterpreterPython::GetEmbeddedInterpreterModuleObjects ()
     if (!m_run_one_line_function)
     {
         PyObject *module = PyImport_AddModule ("lldb.embedded_interpreter");
-        if (module != NULL)
+        if (module != nullptr)
         {
             PythonDictionary module_dict (PyModule_GetDict (module));
             if (module_dict)
@@ -595,7 +595,7 @@ ScriptInterpreterPython::ExecuteOneLine (const char *command, CommandReturnObjec
                         output_file_sp.reset(new StreamFile(outfile_handle, true));
                         error_file_sp = output_file_sp;
                         if (outfile_handle)
-                            ::setbuf (outfile_handle, NULL);
+                            ::setbuf (outfile_handle, nullptr);
                         
                         result->SetImmediateOutputFile(debugger.GetOutputFile()->GetFile().GetStream());
                         result->SetImmediateErrorFile(debugger.GetErrorFile()->GetFile().GetStream());
@@ -830,10 +830,10 @@ ScriptInterpreterPython::ExecuteOneLineWithReturn (const char *in_string,
                   ScriptInterpreterPython::Locker::AcquireLock | ScriptInterpreterPython::Locker::InitSession | (options.GetSetLLDBGlobals() ? ScriptInterpreterPython::Locker::InitGlobals : 0),
                   ScriptInterpreterPython::Locker::FreeAcquiredLock | ScriptInterpreterPython::Locker::TearDownSession);
 
-    PyObject *py_return = NULL;
+    PyObject *py_return = nullptr;
     PythonObject &main_module = GetMainModule ();
     PythonDictionary globals (PyModule_GetDict(main_module.get()));
-    PyObject *py_error = NULL;
+    PyObject *py_error = nullptr;
     bool ret_success = false;
     int success;
     
@@ -848,25 +848,25 @@ ScriptInterpreterPython::ExecuteOneLineWithReturn (const char *in_string,
         locals = globals;
 
     py_error = PyErr_Occurred();
-    if (py_error != NULL)
+    if (py_error != nullptr)
         PyErr_Clear();
     
-    if (in_string != NULL)
+    if (in_string != nullptr)
     {
         { // scope for PythonInputReaderManager
             //PythonInputReaderManager py_input(options.GetEnableIO() ? this : NULL);
             py_return = PyRun_String (in_string, Py_eval_input, globals.get(), locals.get());
-            if (py_return == NULL)
+            if (py_return == nullptr)
             { 
                 py_error = PyErr_Occurred ();
-                if (py_error != NULL)
+                if (py_error != nullptr)
                     PyErr_Clear ();
 
                 py_return = PyRun_String (in_string, Py_single_input, globals.get(), locals.get());
             }
         }
 
-        if (py_return != NULL)
+        if (py_return != nullptr)
         {
             switch (return_type)
             {
@@ -971,7 +971,7 @@ ScriptInterpreterPython::ExecuteOneLineWithReturn (const char *in_string,
     }
 
     py_error = PyErr_Occurred();
-    if (py_error != NULL)
+    if (py_error != nullptr)
     {
         ret_success = false;
         if (options.GetMaskoutErrors())
@@ -998,7 +998,7 @@ ScriptInterpreterPython::ExecuteMultipleLines (const char *in_string, const Exec
     PythonObject return_value;
     PythonObject &main_module = GetMainModule ();
     PythonDictionary globals (PyModule_GetDict(main_module.get()));
-    PyObject *py_error = NULL;
+    PyObject *py_error = nullptr;
 
     PythonDictionary locals = GetSessionDictionary ();
     
@@ -1013,10 +1013,10 @@ ScriptInterpreterPython::ExecuteMultipleLines (const char *in_string, const Exec
     }
 
     py_error = PyErr_Occurred();
-    if (py_error != NULL)
+    if (py_error != nullptr)
         PyErr_Clear();
     
-    if (in_string != NULL)
+    if (in_string != nullptr)
     {
         struct _node *compiled_node = PyParser_SimpleParseString (in_string, Py_file_input);
         if (compiled_node)
@@ -1035,16 +1035,16 @@ ScriptInterpreterPython::ExecuteMultipleLines (const char *in_string, const Exec
     }
 
     py_error = PyErr_Occurred ();
-    if (py_error != NULL)
+    if (py_error != nullptr)
     {
 //        puts(in_string);
 //        _PyObject_Dump (py_error);
 //        PyErr_Print();
 //        success = false;
         
-        PyObject *type = NULL;
-        PyObject *value = NULL;
-        PyObject *traceback = NULL;
+        PyObject *type = nullptr;
+        PyObject *value = nullptr;
+        PyObject *traceback = nullptr;
         PyErr_Fetch (&type,&value,&traceback);
         
         // get the backtrace
@@ -1083,27 +1083,39 @@ ScriptInterpreterPython::CollectDataForWatchpointCommandCallback (WatchpointOpti
     m_interpreter.GetPythonCommandsFromIOHandler ("    ", *this, true, wp_options);
 }
 
-// Set a Python one-liner as the callback for the breakpoint.
 void
+ScriptInterpreterPython::SetBreakpointCommandCallbackFunction (BreakpointOptions *bp_options,
+                                                               const char *function_name)
+{
+    // For now just cons up a oneliner that calls the provided function.
+    std::string oneliner("return ");
+    oneliner += function_name;
+    oneliner += "(frame, bp_loc, internal_dict)";
+    m_interpreter.GetScriptInterpreter()->SetBreakpointCommandCallback (bp_options,
+                                                                        oneliner.c_str());
+}
+
+// Set a Python one-liner as the callback for the breakpoint.
+Error
 ScriptInterpreterPython::SetBreakpointCommandCallback (BreakpointOptions *bp_options,
-                                                       const char *oneliner)
+                                                       const char *command_body_text)
 {
     std::unique_ptr<BreakpointOptions::CommandData> data_ap(new BreakpointOptions::CommandData());
 
-    // It's necessary to set both user_source and script_source to the oneliner.
-    // The former is used to generate callback description (as in breakpoint command list)
-    // while the latter is used for Python to interpret during the actual callback.
-
-    data_ap->user_source.AppendString (oneliner);
-    data_ap->script_source.assign (oneliner);
-
-    if (GenerateBreakpointCommandCallbackData (data_ap->user_source, data_ap->script_source))
+    // Split the command_body_text into lines, and pass that to GenerateBreakpointCommandCallbackData.  That will
+    // wrap the body in an auto-generated function, and return the function name in script_source.  That is what
+    // the callback will actually invoke.
+    
+    data_ap->user_source.SplitIntoLines(command_body_text);
+    Error error = GenerateBreakpointCommandCallbackData (data_ap->user_source, data_ap->script_source);
+    if (error.Success())
     {
         BatonSP baton_sp (new BreakpointOptions::CommandBaton (data_ap.release()));
         bp_options->SetCallback (ScriptInterpreterPython::BreakpointCallbackFunction, baton_sp);
+        return error;
     }
-    
-    return;
+    else
+        return error;
 }
 
 // Set a Python one-liner as the callback for the watchpoint.
@@ -1129,24 +1141,32 @@ ScriptInterpreterPython::SetWatchpointCommandCallback (WatchpointOptions *wp_opt
     return;
 }
 
-bool
+Error
 ScriptInterpreterPython::ExportFunctionDefinitionToInterpreter (StringList &function_def)
 {
     // Convert StringList to one long, newline delimited, const char *.
     std::string function_def_string(function_def.CopyList());
 
-    return ExecuteMultipleLines (function_def_string.c_str(), ScriptInterpreter::ExecuteScriptOptions().SetEnableIO(false)).Success();
+    Error error = ExecuteMultipleLines (function_def_string.c_str(), ScriptInterpreter::ExecuteScriptOptions().SetEnableIO(false));
+    return error;
 }
 
-bool
+Error
 ScriptInterpreterPython::GenerateFunction(const char *signature, const StringList &input)
 {
+    Error error;
     int num_lines = input.GetSize ();
     if (num_lines == 0)
-        return false;
+    {
+        error.SetErrorString ("No input data.");
+        return error;
+    }
     
     if (!signature || *signature == 0)
-        return false;
+    {
+        error.SetErrorString("No output function name.");
+        return error;
+    }
 
     StreamString sstr;
     StringList auto_generated_function;
@@ -1173,11 +1193,9 @@ ScriptInterpreterPython::GenerateFunction(const char *signature, const StringLis
     
     // Verify that the results are valid Python.
     
-    if (!ExportFunctionDefinitionToInterpreter (auto_generated_function))
-        return false;
+    error = ExportFunctionDefinitionToInterpreter (auto_generated_function);
     
-    return true;
-
+    return error;
 }
 
 bool
@@ -1197,7 +1215,7 @@ ScriptInterpreterPython::GenerateTypeScriptFunction (StringList &user_input, std
     std::string auto_generated_function_name(GenerateUniqueName("lldb_autogen_python_type_print_func", num_created_functions, name_token));
     sstr.Printf ("def %s (valobj, internal_dict):", auto_generated_function_name.c_str());
     
-    if (!GenerateFunction(sstr.GetData(), user_input))
+    if (!GenerateFunction(sstr.GetData(), user_input).Success())
         return false;
 
     // Store the name of the auto-generated function to be called.
@@ -1220,7 +1238,7 @@ ScriptInterpreterPython::GenerateScriptAliasFunction (StringList &user_input, st
 
     sstr.Printf ("def %s (debugger, args, result, internal_dict):", auto_generated_function_name.c_str());
     
-    if (!GenerateFunction(sstr.GetData(),user_input))
+    if (!GenerateFunction(sstr.GetData(),user_input).Success())
         return false;
     
     // Store the name of the auto-generated function to be called.
@@ -1266,7 +1284,7 @@ ScriptInterpreterPython::GenerateTypeSynthClass (StringList &user_input, std::st
     // Verify that the results are valid Python.
     // (even though the method is ExportFunctionDefinitionToInterpreter, a class will actually be exported)
     // (TODO: rename that method to ExportDefinitionToInterpreter)
-    if (!ExportFunctionDefinitionToInterpreter (auto_generated_class))
+    if (!ExportFunctionDefinitionToInterpreter (auto_generated_class).Success())
         return false;
     
     // Store the name of the auto-generated class
@@ -1278,7 +1296,7 @@ ScriptInterpreterPython::GenerateTypeSynthClass (StringList &user_input, std::st
 lldb::ScriptInterpreterObjectSP
 ScriptInterpreterPython::OSPlugin_CreatePluginObject (const char *class_name, lldb::ProcessSP process_sp)
 {
-    if (class_name == NULL || class_name[0] == '\0')
+    if (class_name == nullptr || class_name[0] == '\0')
         return lldb::ScriptInterpreterObjectSP();
     
     if (!process_sp)
@@ -1312,7 +1330,7 @@ ScriptInterpreterPython::OSPlugin_RegisterInfo (lldb::ScriptInterpreterObjectSP 
     
     PyObject* implementor = (PyObject*)os_plugin_object_sp->GetObject();
     
-    if (implementor == NULL || implementor == Py_None)
+    if (implementor == nullptr || implementor == Py_None)
         return lldb::ScriptInterpreterObjectSP();
     
     PyObject* pmeth  = PyObject_GetAttrString(implementor, callee_name);
@@ -1322,7 +1340,7 @@ ScriptInterpreterPython::OSPlugin_RegisterInfo (lldb::ScriptInterpreterObjectSP 
         PyErr_Clear();
     }
     
-    if (pmeth == NULL || pmeth == Py_None)
+    if (pmeth == nullptr || pmeth == Py_None)
     {
         Py_XDECREF(pmeth);
         return lldb::ScriptInterpreterObjectSP();
@@ -1347,7 +1365,7 @@ ScriptInterpreterPython::OSPlugin_RegisterInfo (lldb::ScriptInterpreterObjectSP 
     Py_XDECREF(pmeth);
     
     // right now we know this function exists and is callable..
-    PyObject* py_return = PyObject_CallMethod(implementor, callee_name, NULL);
+    PyObject* py_return = PyObject_CallMethod(implementor, callee_name, nullptr);
     
     // if it fails, print the error but otherwise go on
     if (PyErr_Occurred())
@@ -1373,7 +1391,7 @@ ScriptInterpreterPython::OSPlugin_ThreadsInfo (lldb::ScriptInterpreterObjectSP o
     
     PyObject* implementor = (PyObject*)os_plugin_object_sp->GetObject();
     
-    if (implementor == NULL || implementor == Py_None)
+    if (implementor == nullptr || implementor == Py_None)
         return lldb::ScriptInterpreterObjectSP();
     
     PyObject* pmeth  = PyObject_GetAttrString(implementor, callee_name);
@@ -1383,7 +1401,7 @@ ScriptInterpreterPython::OSPlugin_ThreadsInfo (lldb::ScriptInterpreterObjectSP o
         PyErr_Clear();
     }
     
-    if (pmeth == NULL || pmeth == Py_None)
+    if (pmeth == nullptr || pmeth == Py_None)
     {
         Py_XDECREF(pmeth);
         return lldb::ScriptInterpreterObjectSP();
@@ -1408,7 +1426,7 @@ ScriptInterpreterPython::OSPlugin_ThreadsInfo (lldb::ScriptInterpreterObjectSP o
     Py_XDECREF(pmeth);
     
     // right now we know this function exists and is callable..
-    PyObject* py_return = PyObject_CallMethod(implementor, callee_name, NULL);
+    PyObject* py_return = PyObject_CallMethod(implementor, callee_name, nullptr);
     
     // if it fails, print the error but otherwise go on
     if (PyErr_Occurred())
@@ -1430,7 +1448,7 @@ template <typename T>
 const char *GetPythonValueFormatString(T t)
 {
     assert(!"Unhandled type passed to GetPythonValueFormatString(T), make a specialization of GetPythonValueFormatString() to support this type.");
-    return NULL;
+    return nullptr;
 }
 template <> const char *GetPythonValueFormatString (char *)             { return "s"; }
 template <> const char *GetPythonValueFormatString (char)               { return "b"; }
@@ -1462,7 +1480,7 @@ ScriptInterpreterPython::OSPlugin_RegisterContextData (lldb::ScriptInterpreterOb
     
     PyObject* implementor = (PyObject*)os_plugin_object_sp->GetObject();
     
-    if (implementor == NULL || implementor == Py_None)
+    if (implementor == nullptr || implementor == Py_None)
         return lldb::ScriptInterpreterObjectSP();
 
     PyObject* pmeth  = PyObject_GetAttrString(implementor, callee_name);
@@ -1472,7 +1490,7 @@ ScriptInterpreterPython::OSPlugin_RegisterContextData (lldb::ScriptInterpreterOb
         PyErr_Clear();
     }
     
-    if (pmeth == NULL || pmeth == Py_None)
+    if (pmeth == nullptr || pmeth == Py_None)
     {
         Py_XDECREF(pmeth);
         return lldb::ScriptInterpreterObjectSP();
@@ -1528,7 +1546,7 @@ ScriptInterpreterPython::OSPlugin_CreateThread (lldb::ScriptInterpreterObjectSP 
     
     PyObject* implementor = (PyObject*)os_plugin_object_sp->GetObject();
     
-    if (implementor == NULL || implementor == Py_None)
+    if (implementor == nullptr || implementor == Py_None)
         return lldb::ScriptInterpreterObjectSP();
     
     PyObject* pmeth  = PyObject_GetAttrString(implementor, callee_name);
@@ -1538,7 +1556,7 @@ ScriptInterpreterPython::OSPlugin_CreateThread (lldb::ScriptInterpreterObjectSP 
         PyErr_Clear();
     }
     
-    if (pmeth == NULL || pmeth == Py_None)
+    if (pmeth == nullptr || pmeth == Py_None)
     {
         Py_XDECREF(pmeth);
         return lldb::ScriptInterpreterObjectSP();
@@ -1620,7 +1638,7 @@ lldb::ScriptInterpreterObjectSP
 ScriptInterpreterPython::CreateSyntheticScriptedProvider (const char *class_name,
                                                           lldb::ValueObjectSP valobj)
 {
-    if (class_name == NULL || class_name[0] == '\0')
+    if (class_name == nullptr || class_name[0] == '\0')
         return lldb::ScriptInterpreterObjectSP();
     
     if (!valobj.get())
@@ -1668,25 +1686,29 @@ ScriptInterpreterPython::GenerateTypeSynthClass (const char* oneliner, std::stri
 }
 
 
-bool
+Error
 ScriptInterpreterPython::GenerateBreakpointCommandCallbackData (StringList &user_input, std::string& output)
 {
     static uint32_t num_created_functions = 0;
     user_input.RemoveBlankLines ();
     StreamString sstr;
-
+    Error error;
     if (user_input.GetSize() == 0)
-        return false;
+    {
+        error.SetErrorString("No input data.");
+        return error;
+    }
 
     std::string auto_generated_function_name(GenerateUniqueName("lldb_autogen_python_bp_callback_func_",num_created_functions));
     sstr.Printf ("def %s (frame, bp_loc, internal_dict):", auto_generated_function_name.c_str());
     
-    if (!GenerateFunction(sstr.GetData(), user_input))
-        return false;
+    error = GenerateFunction(sstr.GetData(), user_input);
+    if (!error.Success())
+        return error;
     
     // Store the name of the auto-generated function to be called.
     output.assign(auto_generated_function_name);
-    return true;
+    return error;
 }
 
 bool
@@ -1702,7 +1724,7 @@ ScriptInterpreterPython::GenerateWatchpointCommandCallbackData (StringList &user
     std::string auto_generated_function_name(GenerateUniqueName("lldb_autogen_python_wp_callback_func_",num_created_functions));
     sstr.Printf ("def %s (frame, wp, internal_dict):", auto_generated_function_name.c_str());
     
-    if (!GenerateFunction(sstr.GetData(), user_input))
+    if (!GenerateFunction(sstr.GetData(), user_input).Success())
         return false;
     
     // Store the name of the auto-generated function to be called.
@@ -1725,7 +1747,7 @@ ScriptInterpreterPython::GetScriptedSummary (const char *python_function_name,
         return false;
     }
         
-    void* old_callee = (callee_wrapper_sp ? callee_wrapper_sp->GetObject() : NULL);
+    void* old_callee = (callee_wrapper_sp ? callee_wrapper_sp->GetObject() : nullptr);
     void* new_callee = old_callee;
     
     bool ret_val;
@@ -1907,10 +1929,10 @@ ScriptInterpreterPython::GetChildAtIndex (const lldb::ScriptInterpreterObjectSP&
     {
         Locker py_lock(this, Locker::AcquireLock | Locker::InitSession | Locker::NoSTDIN);
         void* child_ptr = g_swig_get_child_index (implementor,idx);
-        if (child_ptr != NULL && child_ptr != Py_None)
+        if (child_ptr != nullptr && child_ptr != Py_None)
         {
             lldb::SBValue* sb_value_ptr = (lldb::SBValue*)g_swig_cast_to_sbvalue(child_ptr);
-            if (sb_value_ptr == NULL)
+            if (sb_value_ptr == nullptr)
                 Py_XDECREF(child_ptr);
             else
                 ret_val = g_swig_get_valobj_sp_from_sbvalue (sb_value_ptr);
@@ -1999,15 +2021,15 @@ ScriptInterpreterPython::MightHaveChildrenSynthProviderInstance (const lldb::Scr
 static std::string
 ReadPythonBacktrace (PyObject* py_backtrace)
 {
-    PyObject* traceback_module = NULL,
-    *stringIO_module = NULL,
-    *stringIO_builder = NULL,
-    *stringIO_buffer = NULL,
-    *printTB = NULL,
-    *printTB_args = NULL,
-    *printTB_result = NULL,
-    *stringIO_getvalue = NULL,
-    *printTB_string = NULL;
+    PyObject* traceback_module = nullptr,
+    *stringIO_module = nullptr,
+    *stringIO_builder = nullptr,
+    *stringIO_buffer = nullptr,
+    *printTB = nullptr,
+    *printTB_args = nullptr,
+    *printTB_result = nullptr,
+    *stringIO_getvalue = nullptr,
+    *printTB_string = nullptr;
 
     std::string retval("backtrace unavailable");
     
@@ -2021,7 +2043,7 @@ ReadPythonBacktrace (PyObject* py_backtrace)
             stringIO_builder = PyObject_GetAttrString(stringIO_module, "StringIO");
             if (stringIO_builder && stringIO_builder != Py_None)
             {
-                stringIO_buffer = PyObject_CallObject(stringIO_builder, NULL);
+                stringIO_buffer = PyObject_CallObject(stringIO_builder, nullptr);
                 if (stringIO_buffer && stringIO_buffer != Py_None)
                 {
                     printTB = PyObject_GetAttrString(traceback_module, "print_tb");
@@ -2032,7 +2054,7 @@ ReadPythonBacktrace (PyObject* py_backtrace)
                         stringIO_getvalue = PyObject_GetAttrString(stringIO_buffer, "getvalue");
                         if (stringIO_getvalue && stringIO_getvalue != Py_None)
                         {
-                            printTB_string = PyObject_CallObject (stringIO_getvalue,NULL);
+                            printTB_string = PyObject_CallObject (stringIO_getvalue,nullptr);
                             if (printTB_string && printTB_string != Py_None && PyString_Check(printTB_string))
                                 retval.assign(PyString_AsString(printTB_string));
                         }
@@ -2436,7 +2458,7 @@ ScriptInterpreterPython::GetDocumentationForItem(const char* item, std::string& 
     std::string command(item);
     command += ".__doc__";
     
-    char* result_ptr = NULL; // Python is going to point this to valid data if ExecuteOneLineWithReturn returns successfully
+    char* result_ptr = nullptr; // Python is going to point this to valid data if ExecuteOneLineWithReturn returns successfully
     
     if (ExecuteOneLineWithReturn (command.c_str(),
                                   ScriptInterpreter::eScriptReturnTypeCharStrOrNone,

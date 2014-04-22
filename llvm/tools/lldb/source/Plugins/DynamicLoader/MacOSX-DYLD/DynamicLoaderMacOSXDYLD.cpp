@@ -8,8 +8,6 @@
 //===----------------------------------------------------------------------===//
 
 
-#include "llvm/Support/MachO.h"
-
 #include "lldb/Breakpoint/StoppointCallbackContext.h"
 #include "lldb/Core/DataBuffer.h"
 #include "lldb/Core/DataBufferHeap.h"
@@ -328,7 +326,7 @@ DynamicLoaderMacOSXDYLD::LocateDYLD()
         {
             return ReadDYLDInfoFromMemoryAndSetNotificationCallback(0x7fff5fc00000ull);
         }
-        else if (exe_arch.GetMachine() == llvm::Triple::arm || exe_arch.GetMachine() == llvm::Triple::thumb)
+        else if (exe_arch.GetMachine() == llvm::Triple::arm || exe_arch.GetMachine() == llvm::Triple::thumb || exe_arch.GetMachine() == llvm::Triple::arm64)
         {
             return ReadDYLDInfoFromMemoryAndSetNotificationCallback(0x2fe00000);
         }
@@ -635,11 +633,11 @@ DynamicLoaderMacOSXDYLD::NotifyBreakpointHit (void *baton,
         if (abi->GetArgumentValues (exe_ctx.GetThreadRef(), argument_values))
         {
             uint32_t dyld_mode = argument_values.GetValueAtIndex(0)->GetScalar().UInt (-1);
-            if (dyld_mode != -1)
+            if (dyld_mode != static_cast<uint32_t>(-1))
             {
                 // Okay the mode was right, now get the number of elements, and the array of new elements...
                 uint32_t image_infos_count = argument_values.GetValueAtIndex(1)->GetScalar().UInt (-1);
-                if (image_infos_count != -1)
+                if (image_infos_count != static_cast<uint32_t>(-1))
                 {
                     // Got the number added, now go through the array of added elements, putting out the mach header 
                     // address, and adding the image.

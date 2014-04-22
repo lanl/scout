@@ -100,7 +100,7 @@ const MCExpr *TargetLoweringObjectFileELF::getTTypeGlobalReference(
     // Add information about the stub reference to ELFMMI so that the stub
     // gets emitted by the asmprinter.
     MachineModuleInfoImpl::StubValueTy &StubSym = ELFMMI.getGVStubEntry(SSym);
-    if (StubSym.getPointer() == 0) {
+    if (!StubSym.getPointer()) {
       MCSymbol *Sym = TM.getSymbol(GV, Mang);
       StubSym = MachineModuleInfoImpl::StubValueTy(Sym, !GV->hasLocalLinkage());
     }
@@ -418,7 +418,7 @@ emitModuleFlags(MCStreamer &Streamer,
                 Mangler &Mang, const TargetMachine &TM) const {
   unsigned VersionVal = 0;
   unsigned ImageInfoFlags = 0;
-  MDNode *LinkerOptions = 0;
+  MDNode *LinkerOptions = nullptr;
   StringRef SectionVal;
 
   for (ArrayRef<Module::ModuleFlagEntry>::iterator
@@ -659,7 +659,7 @@ const MCExpr *TargetLoweringObjectFileMachO::getTTypeGlobalReference(
     MachineModuleInfoImpl::StubValueTy &StubSym =
       GV->hasHiddenVisibility() ? MachOMMI.getHiddenGVStubEntry(SSym) :
                                   MachOMMI.getGVStubEntry(SSym);
-    if (StubSym.getPointer() == 0) {
+    if (!StubSym.getPointer()) {
       MCSymbol *Sym = TM.getSymbol(GV, Mang);
       StubSym = MachineModuleInfoImpl::StubValueTy(Sym, !GV->hasLocalLinkage());
     }
@@ -685,7 +685,7 @@ MCSymbol *TargetLoweringObjectFileMachO::getCFIPersonalitySymbol(
   // Add information about the stub reference to MachOMMI so that the stub
   // gets emitted by the asmprinter.
   MachineModuleInfoImpl::StubValueTy &StubSym = MachOMMI.getGVStubEntry(SSym);
-  if (StubSym.getPointer() == 0) {
+  if (!StubSym.getPointer()) {
     MCSymbol *Sym = TM.getSymbol(GV, Mang);
     StubSym = MachineModuleInfoImpl::StubValueTy(Sym, !GV->hasLocalLinkage());
   }
@@ -755,7 +755,7 @@ const MCSection *TargetLoweringObjectFileCOFF::getExplicitSectionGlobal(
 static const char *getCOFFSectionNameForUniqueGlobal(SectionKind Kind) {
   if (Kind.isText())
     return ".text";
-  if (Kind.isBSS ())
+  if (Kind.isBSS())
     return ".bss";
   if (Kind.isThreadLocal())
     return ".tls$";
@@ -781,7 +781,7 @@ SelectSectionForGlobal(const GlobalValue *GV, SectionKind Kind,
   // Section names depend on the name of the symbol which is not feasible if the
   // symbol has private linkage.
   if ((GV->isWeakForLinker() || EmitUniquedSection) &&
-      !GV->hasPrivateLinkage()) {
+      !GV->hasPrivateLinkage() && !Kind.isCommon()) {
     const char *Name = getCOFFSectionNameForUniqueGlobal(Kind);
     unsigned Characteristics = getCOFFSectionFlags(Kind);
 
@@ -802,7 +802,10 @@ SelectSectionForGlobal(const GlobalValue *GV, SectionKind Kind,
   if (Kind.isReadOnly())
     return ReadOnlySection;
 
-  if (Kind.isBSS())
+  // Note: we claim that common symbols are put in BSSSection, but they are
+  // really emitted with the magic .comm directive, which creates a symbol table
+  // entry but not a section.
+  if (Kind.isBSS() || Kind.isCommon())
     return BSSSection;
 
   return DataSection;
@@ -820,7 +823,7 @@ void TargetLoweringObjectFileCOFF::
 emitModuleFlags(MCStreamer &Streamer,
                 ArrayRef<Module::ModuleFlagEntry> ModuleFlags,
                 Mangler &Mang, const TargetMachine &TM) const {
-  MDNode *LinkerOptions = 0;
+  MDNode *LinkerOptions = nullptr;
 
   // Look for the "Linker Options" flag, since it's the only one we support.
   for (ArrayRef<Module::ModuleFlagEntry>::iterator

@@ -409,7 +409,7 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
     do {
       MachineBasicBlock::iterator Push = DPRCSPush++;
       if (!HasFP) {
-        CFAOffset -= sizeOfSPAdjustment(Push);;
+        CFAOffset -= sizeOfSPAdjustment(Push);
         unsigned CFIIndex = MMI.addFrameInst(
             MCCFIInstruction::createDefCfaOffset(nullptr, CFAOffset));
         BuildMI(MBB, DPRCSPush, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
@@ -1675,7 +1675,7 @@ void ARMFrameLowering::adjustForSegmentedStacks(MachineFunction &MF) const {
   if (MF.getFunction()->isVarArg())
     report_fatal_error("Segmented stacks do not support vararg functions.");
   if (!ST->isTargetAndroid() && !ST->isTargetLinux())
-    report_fatal_error("Segmented stacks not supported on this platfrom.");
+    report_fatal_error("Segmented stacks not supported on this platform.");
 
   MachineBasicBlock &prologueMBB = MF.front();
   MachineFrameInfo *MFI = MF.getFrameInfo();

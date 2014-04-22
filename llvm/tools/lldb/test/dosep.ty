@@ -6,13 +6,12 @@ Run the test suite using a separate process for each test file.
 
 import os, sys, platform
 import Queue, threading
+import multiprocessing
 
 from optparse import OptionParser
 
 # Command template of the invocation of the test driver.
 template = '%s/dotest.py %s -p %s %s'
-
-multithreaded_envar = 'LLDB_TEST_THREADS'
 
 def process_dir(root, files, test_root, dotest_options):
     """Examine a directory for tests, and invoke any found within it."""
@@ -56,7 +55,7 @@ def walk_and_invoke(test_root, dotest_options, num_threads):
     failed = []
     passed = []
     if (num_threads > 1):
-        print "Running multithreaded with " + str(num_threads) + " threads (from " + multithreaded_envar + ")"
+        print("Running multithreaded with %d threads" % num_threads)
         global in_q
         global out_q
         in_q = Queue.Queue()
@@ -66,7 +65,7 @@ def walk_and_invoke(test_root, dotest_options, num_threads):
             t.daemon = True
             t.start()
     else:
-        print "NOT running multithreaded.  Consider setting " + multithreaded_envar + " environment variable."
+        print("Running single-threaded")
     for root, dirs, files in os.walk(test_root, topdown=False):
         if (num_threads > 1):
             in_q.put((root, files, test_root, dotest_options))
@@ -93,15 +92,23 @@ Run lldb test suite using a separate process for each test file.
                       dest='dotest_options',
                       help="""The options passed to 'dotest.py' if specified.""")
 
+    parser.add_option('-t', '--threads',
+                      type='int',
+                      dest='num_threads',
+                      help="""The number of threads to use when running tests separately.""",
+                      default=multiprocessing.cpu_count())
+
     opts, args = parser.parse_args()
     dotest_options = opts.dotest_options
-    num_threads_str = os.environ.get("LLDB_TEST_THREADS")
-    if num_threads_str:
-        num_threads = int(num_threads_str)
-        if num_threads < 1:
+    num_threads = opts.num_threads
+    if num_threads < 1:
+        num_threads_str = os.environ.get("LLDB_TEST_THREADS")
+        if num_threads_str:
+            num_threads = int(num_threads_str)
+            if num_threads < 1:
+                num_threads = 1
+        else:
             num_threads = 1
-    else:
-        num_threads = 1
 
     system_info = " ".join(platform.uname())
     (failed, passed) = walk_and_invoke(test_root, dotest_options, num_threads)

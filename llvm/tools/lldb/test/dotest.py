@@ -23,6 +23,7 @@ for available options.
 import atexit
 import commands
 import os
+import errno
 import platform
 import progress
 import signal
@@ -1336,7 +1337,11 @@ if not noHeaders:
     sys.stderr.write("Command invoked: %s\n" % getMyCommandLine())
 
 if not os.path.isdir(sdir_name):
-    os.mkdir(sdir_name)
+    try:
+        os.mkdir(sdir_name)
+    except OSError as exception:
+        if exception.errno != errno.EEXIST:
+            raise
 where_to_save_session = os.getcwd()
 fname = os.path.join(sdir_name, "TestStarted")
 with open(fname, "w") as f:
