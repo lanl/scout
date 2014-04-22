@@ -5161,6 +5161,6 @@ bool ASTImporter::IsStructurallyEquivalent(QualType From, QualType To,
 }
 
 // +===== Scout ==============================================================+
-#include "Scout/ASTImporter.cpp"
+#include "ScoutInclude/ASTImporter.cpp"
 // +==========================================================================+
 

@@ -1,3 +1,7 @@
+# +===== Scout ============================================================+
+add_subdirectory(Scout)
+# +========================================================================+
+
 set(LLVM_LINK_COMPONENTS
   Option
   Support
@@ -28,11 +32,15 @@ add_clang_library(clangDriver
   ClangCC1AsOptions
   ClangDriverOptions
   # +===== Scout ============================================================+
+  scoutDriver
   ClangAttrList
   ClangDiagnosticCommon
   ClangDiagnosticDriver
   # +========================================================================+
 
   LINK_LIBS
+  # +===== Scout ============================================================+
+  scoutDriver
+  # +========================================================================+
   clangBasic
   )

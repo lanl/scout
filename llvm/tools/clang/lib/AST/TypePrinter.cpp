@@ -1574,5 +1574,5 @@ void QualType::getAsStringInternal(const Type *ty, Qualifiers qs,
 }
 
 // +===== Scout ==============================================================+
-#include "Scout/TypePrinter.cpp"
+#include "ScoutInclude/TypePrinter.cpp"
 // +==========================================================================+

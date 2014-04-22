@@ -1292,5 +1292,5 @@ void Stmt::Profile(llvm::FoldingSetNodeID &ID, const ASTContext &Context,
 }
 
 // +===== Scout ==============================================================+
-#include "Scout/StmtProfile.cpp"
+#include "ScoutInclude/StmtProfile.cpp"
 // +==========================================================================+

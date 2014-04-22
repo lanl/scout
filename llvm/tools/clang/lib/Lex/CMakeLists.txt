@@ -2,6 +2,10 @@
 
 set(LLVM_LINK_COMPONENTS support)
 
+ # ===== Scout ============
+add_subdirectory(Scout)
+# =========================
+
 add_clang_library(clangLex
   HeaderMap.cpp
   HeaderSearch.cpp
@@ -25,9 +29,9 @@ add_clang_library(clangLex
   ScratchBuffer.cpp
   TokenConcatenation.cpp
   TokenLexer.cpp
-  # ===== Scout ============
-  Scout/Lexer.cpp
-  #=========================
   LINK_LIBS
+  # ===== Scout ============
+  scoutLex
+  # ========================
   clangBasic
   )

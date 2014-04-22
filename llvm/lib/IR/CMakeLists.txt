@@ -1,3 +1,7 @@
+# ===== Scout =================================================================
+add_subdirectory(Scout)
+# =============================================================================
+
 add_llvm_library(LLVMCore
   AsmWriter.cpp
   Attributes.cpp
@@ -44,8 +48,8 @@ add_llvm_library(LLVMCore
   ValueTypes.cpp
   Verifier.cpp
 # +===== Scout ====================
-  Scout/DIBuilder.cpp
-  Scout/DebugInfo.cpp
+  LINK_LIBS
+  ScoutCore
 # +================================
   )
 

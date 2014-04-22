@@ -2,6 +2,7 @@
 include_directories(
  ${CMAKE_BINARY_DIR}/config/include
 )
+add_subdirectory(Scout)
 # =============================================================================
 
 set(LLVM_LINK_COMPONENTS
@@ -65,24 +66,14 @@ add_clang_library(clangCodeGen
   MicrosoftCXXABI.cpp
   ModuleBuilder.cpp
   TargetInfo.cpp
-  # +===== Scout ============================================================+
-  Scout/CGDebugInfo.cpp
-  Scout/CGDecl.cpp
-  Scout/CGExpr.cpp
-  Scout/CGStmt.cpp
-  Scout/CodeGenFunction.cpp
-  Scout/CodeGenTypes.cpp
-  Scout/CGMeshLayoutBuilder.cpp
-  Scout/CGScoutRuntime.cpp
-  Scout/CGBuiltin.cpp
-  Scout/CodeGenTypes.cpp
-  Scout/CodeGenModule.cpp
-  # +========================================================================+
-
+  
   DEPENDS
   intrinsics_gen
 
   LINK_LIBS
+# ===== Scout ===================================
+  scoutCodeGen
+# ===============================================
   clangBasic
   clangAST
   clangFrontend

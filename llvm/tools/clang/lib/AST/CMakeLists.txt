@@ -1,5 +1,9 @@
 set(LLVM_LINK_COMPONENTS support)
 
+# ===== Scout ===========
+add_subdirectory(Scout)
+# =======================
+
 add_clang_library(clangAST
   APValue.cpp
   ASTConsumer.cpp
@@ -57,26 +61,11 @@ add_clang_library(clangAST
   TypePrinter.cpp
   VTableBuilder.cpp
   VTTBuilder.cpp
-  # +===== Scout ============================================================+
-  # Note: Don't include all source files in the Scout subdir here.
-  # Unfortunately, some files can't be separated out and instead are
-  # included into the source in this directory.
-  #
-  Scout/ASTContext.cpp
-  Scout/ForallStmt.cpp
-  Scout/MeshDecl.cpp
-  Scout/MeshType.cpp
-  Scout/MeshLayout.cpp
-  Scout/RectilinearMeshDecl.cpp
-  Scout/RenderallStmt.cpp
-  Scout/RenderTargetType.cpp
-  Scout/StructuredMeshDecl.cpp
-  Scout/UniformMeshDecl.cpp
-  Scout/UnstructuredMeshDecl.cpp
-  Scout/VolumeRenderAllStmt.cpp
-  Scout/Type.cpp
-  # +==========================================================================+
+  
   LINK_LIBS
+  # ====== Scout ======
+  scoutAST
+  # ===================
   clangBasic
   clangLex
   )

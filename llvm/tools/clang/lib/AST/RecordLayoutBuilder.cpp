@@ -3227,6 +3227,6 @@ void ASTContext::DumpRecordLayout(const RecordDecl *RD,
 }
 
 // +===== Scout ==============================================================+
-#include "Scout/MeshLayoutBuilder.cpp"
+#include "ScoutInclude/MeshLayoutBuilder.cpp"
 // +==========================================================================+
 

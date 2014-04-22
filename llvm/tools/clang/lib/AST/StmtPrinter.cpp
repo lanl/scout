@@ -2010,7 +2010,7 @@ PrinterHelper::~PrinterHelper() {}
 
 
 // +===== Scout ==============================================================+
-#include "Scout/StmtPrinter.cpp"
+#include "ScoutInclude/StmtPrinter.cpp"
 // +==========================================================================+
 
 

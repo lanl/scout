@@ -1,3 +1,7 @@
+ # +===== Scout ============================================================+
+add_subdirectory(Scout)
+ # +========================================================================+
+
 set(LLVM_LINK_COMPONENTS
   MCParser
   MC
@@ -19,14 +23,11 @@ add_clang_library(clangParse
   ParseTemplate.cpp
   ParseTentative.cpp
   Parser.cpp
-  # +===== Scout ============================================================+
-  Scout/ParseDecl.cpp
-  Scout/ParseDeclCXX.cpp
-  Scout/ParseExpr.cpp
-  Scout/ParseStmt.cpp
-  Scout/Parser.cpp
-  # +========================================================================+
+  
   LINK_LIBS
+  # +===== Scout ============================================================+
+  scoutParse
+  # +========================================================================+
   clangBasic
   clangAST
   clangLex
