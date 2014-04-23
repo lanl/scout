@@ -1003,7 +1003,7 @@ void CodeGenFunction::AddScoutKernel(llvm::Function* f,
   kernels->addOperand(llvm::MDNode::get(CGM.getLLVMContext(), kernelData));
 }
 
-void CodeGenFunction::EmitGPUIndices(const ForallMeshStmt& S){
+void CodeGenFunction::EmitGPUPreamble(const ForallMeshStmt& S){
   assert(isGPU());
 
   const VarDecl* VD = S.getMeshVarDecl();
@@ -1011,28 +1011,30 @@ void CodeGenFunction::EmitGPUIndices(const ForallMeshStmt& S){
   llvm::Value* Addr = Builder.CreateAlloca(V->getType(), 0, "TheMesh_addr");
   Builder.CreateStore(V, Addr);
 
-  Builder.CreateLoad(LoopBounds[0], "TheMesh.width");
-  Builder.CreateLoad(LoopBounds[1], "TheMesh.height");
-  Builder.CreateLoad(LoopBounds[2], "TheMesh.depth");
+  llvm::Value* width = Builder.CreateLoad(LoopBounds[0], "width");
+  llvm::Value* height = Builder.CreateLoad(LoopBounds[1], "height");
+  llvm::Value* depth = Builder.CreateLoad(LoopBounds[2], "depth");
   
-  GPUTid.clear();
-  GPUNTid.clear();
+  GPUNumThreads =
+  Builder.CreateMul(width, Builder.CreateMul(height, depth), "numThreads");
+  
+  llvm::Value* ptr = Builder.CreateAlloca(Int32Ty, 0, "tid.x.ptr");
+  llvm::Value* tid = Builder.CreateLoad(ptr, "tid.x");
 
-  unsigned int rank = S.getMeshType()->rankOf();
+  ptr = Builder.CreateAlloca(Int32Ty, 0, "ntid.x.ptr");
+  llvm::Value* ntid = Builder.CreateLoad(ptr, "ntid.x");
+  
+  ptr = Builder.CreateAlloca(Int32Ty, 0, "ctaid.x.ptr");
+  llvm::Value* ctaid = Builder.CreateLoad(ptr, "ctaid.x");
 
-  char dims[] = {'x', 'y', 'z'};
-  char name[64];
-  for(unsigned i = 0; i < rank; ++i){
-    sprintf(name, "tid.%c.ptr", dims[i]);
-    llvm::Value* tidPtr = Builder.CreateAlloca(Int32Ty, 0, name);
-    sprintf(name, "tid.%c", dims[i]);
-    GPUTid.push_back(Builder.CreateLoad(tidPtr, name));
-
-    sprintf(name, "ntid.%c.ptr", dims[i]);
-    llvm::Value* ntidPtr = Builder.CreateAlloca(Int32Ty, 0, name);
-    sprintf(name, "ntid.%c", dims[i]);
-    GPUNTid.push_back(Builder.CreateLoad(ntidPtr, name));
-  }
+  ptr = Builder.CreateAlloca(Int32Ty, 0, "nctaid.x.ptr");
+  llvm::Value* nctaid = Builder.CreateLoad(ptr, "nctaid.x");
+  
+  GPUThreadId = Builder.CreateAlloca(Int32Ty, 0, "threadId.ptr");
+  llvm::Value* threadId = Builder.CreateAdd(tid, Builder.CreateMul(ctaid, ntid));
+  Builder.CreateStore(threadId, GPUThreadId);
+  
+  GPUThreadInc = Builder.CreateMul(ntid, nctaid, "threadInc");
 }
 
 void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
@@ -1147,43 +1149,35 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   llvm::BasicBlock *entry = EmitMarkerBlock("forall.entry");
 
   if(isGPU()){
-    EmitGPUIndices(S);
+    EmitGPUPreamble(S);
 
-    unsigned int rank = S.getMeshType()->rankOf();
-
-    CellIndex = Builder.CreateAlloca(Int32Ty, 0, "cell_index");
-
-    llvm::Value* newCellIndex;
-    switch(rank){
-      case 1:
-      {
-        newCellIndex = GPUTid[0];
-        break;
-      }
-      case 2:
-      {
-        newCellIndex =
-            Builder.CreateAdd(GPUTid[0], Builder.CreateMul(GPUTid[1], GPUNTid[0]));
-        break;
-      }
-      case 3:
-      {
-        llvm::Value* v1 =
-            Builder.CreateAdd(GPUTid[0], Builder.CreateMul(GPUTid[1], GPUNTid[0]));
-        llvm::Value* wh = Builder.CreateMul(GPUNTid[0], GPUNTid[1]);
-        newCellIndex = Builder.CreateAdd(v1, Builder.CreateMul(GPUTid[2], wh));
-        break;
-      }
-    }
-
-    Builder.CreateStore(newCellIndex, CellIndex);
-
+    llvm::BasicBlock* condBlock = createBasicBlock("forall.cond");
+    EmitBlock(condBlock);
+    
+    llvm::Value* threadId = Builder.CreateLoad(GPUThreadId, "threadId");
+    
+    llvm::Value* cond = Builder.CreateICmpULT(threadId, GPUNumThreads);
+    
+    llvm::BasicBlock* bodyBlock = createBasicBlock("forall.body");
+    llvm::BasicBlock* exitBlock = createBasicBlock("forall.exit");
+    
+    Builder.CreateCondBr(cond, bodyBlock, exitBlock);
+    
+    EmitBlock(bodyBlock);
+    
+    CellIndex = GPUThreadId;
     EmitStmt(S.getBody());
     CellIndex = 0;
+    
+    threadId = Builder.CreateAdd(threadId, GPUThreadInc);
+    Builder.CreateStore(threadId, GPUThreadId);
+    
+    Builder.CreateBr(condBlock);
 
-    llvm::BasicBlock *exit = EmitMarkerBlock("forall.exit");
-    llvm::Function* f = ExtractRegion(entry, exit, "ForallMeshFunction");
-
+    EmitBlock(exitBlock);
+    
+    llvm::Function* f = ExtractRegion(entry, exitBlock, "ForallMeshFunction");
+    
     AddScoutKernel(f, S);
 
     return;

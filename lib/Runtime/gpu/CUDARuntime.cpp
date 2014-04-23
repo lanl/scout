@@ -1,18 +1,102 @@
+/*
+ * ###########################################################################
+ * Copyright (c) 2014, Los Alamos National Security, LLC.
+ * All rights reserved.
+ *
+ *  Copyright 2010. Los Alamos National Security, LLC. This software was
+ *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
+ *  Alamos National Laboratory (LANL), which is operated by Los Alamos
+ *  National Security, LLC for the U.S. Department of Energy. The
+ *  U.S. Government has rights to use, reproduce, and distribute this
+ *  software.  NEITHER THE GOVERNMENT NOR LOS ALAMOS NATIONAL SECURITY,
+ *  LLC MAKES ANY WARRANTY, EXPRESS OR IMPLIED, OR ASSUMES ANY LIABILITY
+ *  FOR THE USE OF THIS SOFTWARE.  If software is modified to produce
+ *  derivative works, such modified software should be clearly marked,
+ *  so as not to confuse it with the version available from LANL.
+ *
+ *  Additionally, redistribution and use in source and binary forms,
+ *  with or without modification, are permitted provided that the
+ *  following conditions are met:
+ *
+ *    * Redistributions of source code must retain the above copyright
+ *      notice, this list of conditions and the following disclaimer.
+ *
+ *    * Redistributions in binary form must reproduce the above
+ *      copyright notice, this list of conditions and the following
+ *      disclaimer in the documentation and/or other materials provided
+ *      with the distribution.
+ *
+ *    * Neither the name of Los Alamos National Security, LLC, Los
+ *      Alamos National Laboratory, LANL, the U.S. Government, nor the
+ *      names of its contributors may be used to endorse or promote
+ *      products derived from this software without specific prior
+ *      written permission.
+ *
+ *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
+ *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ *  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ *  DISCLAIMED. IN NO EVENT SHALL LOS ALAMOS NATIONAL SECURITY, LLC OR
+ *  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ *  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ *  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ *  USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ *  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ *  SUCH DAMAGE.
+ * ###########################################################################
+ *
+ * Notes
+ *
+ * #####
+ */
+
+#include "scout/Runtime/gpu/GPURuntime.h"
+
 #include <iostream>
 
 #include <map>
 #include <vector>
 #include <cassert>
+#include <cmath>
+
+//#include <sys/time.h>
 
 #include <cuda.h>
 
 using namespace std;
+using namespace scout;
 
 static const uint8_t FIELD_READ = 0x01;
 static const uint8_t FIELD_WRITE = 0x02;
-//static const uint8_t FIELD_READ_WRITE = 0x03;
+static const size_t DEFAULT_THREADS = 128;
 
-class CUDARuntime{
+/*
+namespace{
+
+void sleep(double dt){
+  double sec = floor(dt);
+  double fsec = dt - sec;
+  
+  timespec ts;
+  ts.tv_sec = sec;
+  ts.tv_nsec = fsec*1e9;
+  
+  nanosleep(&ts, 0);
+}
+
+double now(){
+  timeval tv;
+  gettimeofday(&tv, 0);
+  
+  return tv.tv_sec + tv.tv_usec/1e6;
+}
+
+} // end namespace
+*/
+
+class CUDARuntime : public GPURuntime{
 public:
   static void check(CUresult err){
     if(err != CUDA_SUCCESS){
@@ -33,7 +117,8 @@ public:
     }
 
     ~MeshField(){
-      cuMemFree(devPtr);
+      CUresult err = cuMemFree(devPtr);
+      check(err);
     }
 
     void* hostPtr;
@@ -43,11 +128,28 @@ public:
 
   class Mesh{
   public:
-    Mesh(size_t width, size_t height, size_t depth)
+    Mesh(uint32_t width, uint32_t height, uint32_t depth)
       : width_(width),
         height_(height),
         depth_(depth){
-      
+
+      CUresult err = cuMemAlloc(&widthDev_, 4);
+      check(err);     
+
+      err = cuMemcpyHtoD(widthDev_, &width_, 4);
+      check(err);
+ 
+      err = cuMemAlloc(&heightDev_, 4);
+      check(err);  
+
+      err = cuMemcpyHtoD(heightDev_, &height_, 4);
+      check(err);
+
+      err = cuMemAlloc(&depthDev_, 4);
+      check(err);
+
+      err = cuMemcpyHtoD(depthDev_, &depth_, 4);
+      check(err);
     }
 
     ~Mesh(){
@@ -80,25 +182,40 @@ public:
       return meshField;
     }
 
-    size_t width(){
+    uint32_t width(){
       return width_;
     }
 
-    size_t height(){
+    CUdeviceptr& widthDev(){
+      return widthDev_;
+    }
+
+    uint32_t height(){
       return height_;
     }
 
-    size_t depth(){
+    CUdeviceptr& heightDev(){
+      return heightDev_;
+    }
+
+    uint32_t depth(){
       return depth_;
+    }
+
+    CUdeviceptr& depthDev(){
+      return depthDev_;
     }
 
   private:
     typedef map<const char*, MeshField*> MeshFieldMap_;
 
     MeshFieldMap_ meshFieldMap_;
-    size_t width_;
-    size_t height_;
-    size_t depth_;
+    uint32_t width_;
+    uint32_t height_;
+    uint32_t depth_;
+    CUdeviceptr widthDev_;
+    CUdeviceptr heightDev_;
+    CUdeviceptr depthDev_;
   };
 
   class Kernel;
@@ -132,11 +249,14 @@ public:
       }
     };
 
-    Kernel(PTXModule* module, Mesh* mesh, CUfunction function)
+    Kernel(PTXModule* module,
+           Mesh* mesh,
+           CUfunction function)
       : module_(module),
         mesh_(mesh),
         function_(function),
-        ready_(false){
+        ready_(false),
+        numThreads_(DEFAULT_THREADS){
       
     }
 
@@ -144,6 +264,10 @@ public:
       for(auto& itr : fieldMap_){
         delete itr.second;
       }
+    }
+    
+    void setNumThreads(size_t numThreads){
+      numThreads_ = numThreads;
     }
 
     void addField(const char* fieldName,
@@ -159,6 +283,10 @@ public:
 
     void run(){
       if(!ready_){
+        kernelParams_.push_back(&mesh_->widthDev());
+        kernelParams_.push_back(&mesh_->heightDev());
+        kernelParams_.push_back(&mesh_->depthDev());
+
         for(auto& itr : fieldMap_){
           Field* field = itr.second;
           MeshField* meshField = field->meshField;
@@ -178,11 +306,9 @@ public:
           check(err);
         }
       }
-      
+
       err = cuLaunchKernel(function_, 1, 1, 1,
-                           mesh_->width(),
-                           mesh_->height(),
-                           mesh_->depth(),
+                           numThreads_, 1, 1, 
                            0, NULL, kernelParams_.data(), NULL);
       check(err);
 
@@ -193,6 +319,11 @@ public:
           err = cuMemcpyDtoH(meshField->hostPtr, meshField->devPtr, 
                              meshField->size);
           check(err);
+          //float* a = (float*)meshField->hostPtr;
+          //size_t size = mesh_->width() * mesh_->height() * mesh_->depth();
+          //for(size_t i = 0; i < size; ++i){
+          //cout << "a[" << i << "] = " << a[i] << endl;
+          //}
         }
       }
     }
@@ -219,25 +350,11 @@ public:
     bool ready_;
     FieldMap_ fieldMap_;
     KernelParams_ kernelParams_;
+    size_t numThreads_;
   };
 
-  static CUDARuntime* get(){
-    assert(instance_ && "CUDA runtime has not been initialized");
-    return instance_;
-  }
+  CUDARuntime(){
 
-  static void init(){
-    assert(!instance_ && "CUDA runtime has already been initialized");
-    
-    instance_ = new CUDARuntime;
-    instance_->init_();
-  }
-
-  static void finish(){
-    if(instance_){
-      delete instance_;
-      instance_ = 0;
-    }
   }
 
   ~CUDARuntime(){
@@ -257,7 +374,7 @@ public:
     }
   }
 
-  void init_(){
+  void init(){
     CUresult err = cuInit(0);
     check(err);
     
@@ -266,6 +383,13 @@ public:
 
     err = cuCtxCreate(&context_, 0, device_);
     check(err);
+
+    int threadsPerBlock;
+    err = 
+      cuDeviceGetAttribute(&threadsPerBlock,
+                           CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK, device_);
+    check(err);
+    numThreads_ = threadsPerBlock;
   }
 
   void initKernel(const char* meshName,
@@ -301,6 +425,7 @@ public:
     }
 
     Kernel* kernel = module->createKernel(mesh, kernelName);
+    kernel->setNumThreads(numThreads_);
     kernelMap_.insert({kernelName, kernel});
   }
 
@@ -336,15 +461,13 @@ public:
   }
 
 private:
-  CUDARuntime(){}
-
   typedef map<const char*, PTXModule*> ModuleMap_;
   typedef map<const char*, Mesh*> MeshMap_;
   typedef map<const char*, Kernel*> KernelMap_;
 
-  static CUDARuntime* instance_;
   CUdevice device_;
   CUcontext context_;
+  size_t numThreads_;
 
   ModuleMap_ moduleMap_;
   MeshMap_ meshMap_;
@@ -362,41 +485,10 @@ CUDARuntime::PTXModule::createKernel(Mesh* mesh, const char* kernelName){
   return kernel;
 }
 
-CUDARuntime* CUDARuntime::instance_ = 0;
-
 extern "C"
 void __scrt_cuda_init(){
-  CUDARuntime::init();
-}
+  CUDARuntime* runtime = new CUDARuntime;
+  runtime->init();
 
-extern "C"
-void __scrt_cuda_finish(){
-  CUDARuntime::finish();
-}
-
-extern "C"
-void __scrt_cuda_init_kernel(const char* meshName,
-                             const char* ptx,
-                             const char* kernelName,
-                             uint32_t width,
-                             uint32_t height,
-                             uint32_t depth){
-  CUDARuntime* runtime = CUDARuntime::get();
-  runtime->initKernel(meshName, ptx, kernelName, width, height, depth);
-}
-
-extern "C"
-void __scrt_cuda_init_field(const char* kernelName,
-                            const char* fieldName,
-                            void* hostPtr,
-                            uint32_t elementSize,
-                            uint8_t mode){
-  CUDARuntime* runtime = CUDARuntime::get();
-  runtime->initField(kernelName, fieldName, hostPtr, elementSize, mode);
-}
-
-extern "C"
-void __scrt_cuda_run_kernel(const char* kernelName){
-  CUDARuntime* runtime = CUDARuntime::get();
-  runtime->runKernel(kernelName);
+  GPURuntime::init(runtime);
 }

@@ -54,7 +54,6 @@ typedef vector<string> StringVec;
 
 static const uint8_t FIELD_READ = 0x01;
 static const uint8_t FIELD_WRITE = 0x02;
-//static const uint8_t FIELD_READ_WRITE = 0x03;
 
 class CUDAModule{
 public:
@@ -237,7 +236,13 @@ public:
     void createFunction(){
       Module& kernelModule = m_.kernelModule();
 
+      //f_->dump();
+
       TypeVec tv;
+      for(size_t i = 0; i < 3; ++i){
+        tv.push_back(PointerType::get(m_.int32Ty, 1));
+      }
+
       for(auto& itr : fieldMap_){
         Field* field = itr.second;
         tv.push_back(field->type());
@@ -250,12 +255,30 @@ public:
       kf_ = Function::Create(ft, Function::ExternalLinkage,
                              f_->getName(), &kernelModule);
 
-      Function::arg_iterator aitr = kf_->arg_begin();
+      Function::arg_iterator aitr = f_->arg_begin();
+      Function::arg_iterator aitr2 = kf_->arg_begin();
+      ++aitr;
+              
+      aitr2->setName("width.ptr");
+      vm[aitr] = aitr2;
+      ++aitr;
+      ++aitr2;
+
+      aitr2->setName("height.ptr");
+      vm[aitr] = aitr2;
+      ++aitr;
+      ++aitr2;
+
+      aitr2->setName("depth.ptr");
+      vm[aitr] = aitr2;
+      ++aitr;
+      ++aitr2;
+
       for(auto& itr : fieldMap_){
         Field* field = itr.second;
-        field->setValue(aitr);
-        aitr->setName(itr.first);
-        ++aitr;
+        field->setValue(aitr2);
+        aitr2->setName(itr.first);
+        ++aitr2;
       }
 
       for(Function::iterator itr = f_->begin(), itrEnd = f_->end();
@@ -272,6 +295,8 @@ public:
           if(AllocaInst* ai = dyn_cast<AllocaInst>(i)){
             if(ai->getName().startswith("tid.") ||
                ai->getName().startswith("ntid.") ||
+               ai->getName().startswith("ctaid.") ||
+               ai->getName().startswith("nctaid.") ||
                ai->getName().startswith("TheMesh_addr")){
               continue;
             }
@@ -286,16 +311,13 @@ public:
           }
           else if(LoadInst* li = dyn_cast<LoadInst>(i)){
             if(li->getName().startswith("tid.") ||
-               li->getName().startswith("ntid.")){
+               li->getName().startswith("ntid.") ||
+               li->getName().startswith("ctaid.") ||
+               li->getName().startswith("nctaid.")){
               string n = li->getName().str();
               Function* sf = m_.getSREGFunc(n);
               Instruction* ik = CallInst::Create(sf, li->getName(), bk);
               vm[i] = ik;
-              continue;
-            }
-            else if(li->getName().startswith("TheMesh.width") ||
-                    li->getName().startswith("TheMesh.height") ||
-                    li->getName().startswith("TheMesh.depth")){
               continue;
             }
           }
@@ -360,13 +382,13 @@ public:
       Value* kernelName = builder.CreateGlobalStringPtr(f_->getName());
       kernelName = builder.CreateBitCast(kernelName, m_.stringTy);
 
-      Function* f = module->getFunction("__scrt_cuda_init_kernel");
+      Function* f = module->getFunction("__scrt_gpu_init_kernel");
       
       ValueVec args = {meshName, ptx, kernelName, width, height, depth};
 
       builder.CreateCall(f, args);
 
-      f = module->getFunction("__scrt_cuda_init_field");
+      f = module->getFunction("__scrt_gpu_init_field");
 
       for(auto& itr : fieldMap_){
         Field* field = itr.second;
@@ -375,6 +397,7 @@ public:
         fieldName = builder.CreateBitCast(fieldName, m_.stringTy);
 
         Value* hostPtr = builder.CreateStructGEP(meshPtr, field->position());
+        hostPtr = builder.CreateLoad(hostPtr);
         hostPtr = builder.CreateBitCast(hostPtr, m_.voidPtrTy);
 
         PointerType* pointerType = field->type();
@@ -389,7 +412,7 @@ public:
         builder.CreateCall(f, args);
       }
 
-      f = module->getFunction("__scrt_cuda_run_kernel");
+      f = module->getFunction("__scrt_gpu_run_kernel");
       args = {kernelName};
       builder.CreateCall(f, args);
 
@@ -441,19 +464,19 @@ public:
     createFunction("__scrt_cuda_init",
                    voidTy, tv);
 
-    createFunction("__scrt_cuda_finish",
+    createFunction("__scrt_gpu_finish",
                    voidTy, tv);
 
     tv = {stringTy, stringTy, stringTy, int32Ty, int32Ty, int32Ty};
-    createFunction("__scrt_cuda_init_kernel",
+    createFunction("__scrt_gpu_init_kernel",
                    voidTy, tv);
 
     tv = {stringTy, stringTy, voidPtrTy, int32Ty, int8Ty};
-    createFunction("__scrt_cuda_init_field",
+    createFunction("__scrt_gpu_init_field",
                    voidTy, tv);
 
     tv = {stringTy};
-    createFunction("__scrt_cuda_run_kernel",
+    createFunction("__scrt_gpu_run_kernel",
                    voidTy, tv);
   }
 

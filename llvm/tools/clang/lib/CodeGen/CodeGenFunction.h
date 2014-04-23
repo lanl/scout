@@ -305,9 +305,10 @@ public:
   llvm::Value* EdgeIndex;
   llvm::Value* FaceIndex;
 
-  llvm::SmallVector<llvm::Value*, 3> GPUTid;
-  llvm::SmallVector<llvm::Value*, 3> GPUNTid;
-
+  llvm::Value* GPUThreadId;
+  llvm::Value* GPUThreadInc;
+  llvm::Value* GPUNumThreads;
+  
   //renderall color buffer
   llvm::Value *Color;
 
@@ -1986,7 +1987,7 @@ public:
                                 llvm::BasicBlock *exit,
                                 const std::string name);
 
-  void EmitGPUIndices(const ForallMeshStmt& S);
+  void EmitGPUPreamble(const ForallMeshStmt& S);
   void AddScoutKernel(llvm::Function* f, const ForallMeshStmt &S);
 
   void EmitForAllStmtWrapper(const ForallMeshStmt &S);
