@@ -113,7 +113,7 @@ namespace scout {
       "-I${MPI_CXX_INCLUDE_PATH}",
       #endif
       #ifdef SCOUT_ENABLE_PNG
-      "-I${PNG_INCLUDE_DIR}",
+      "-I${PNG_PNG_INCLUDE_DIR}",
       #endif
 
       0 // end of include paths. 
