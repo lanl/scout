@@ -3,6 +3,9 @@
 #include <map>
 #include <vector>
 #include <cassert>
+#include <cmath>
+
+//#include <sys/time.h>
 
 #include <cuda.h>
 
@@ -10,7 +13,31 @@ using namespace std;
 
 static const uint8_t FIELD_READ = 0x01;
 static const uint8_t FIELD_WRITE = 0x02;
-//static const uint8_t FIELD_READ_WRITE = 0x03;
+static const size_t DEFAULT_THREADS = 128;
+
+/*
+namespace{
+
+void sleep(double dt){
+  double sec = floor(dt);
+  double fsec = dt - sec;
+  
+  timespec ts;
+  ts.tv_sec = sec;
+  ts.tv_nsec = fsec*1e9;
+  
+  nanosleep(&ts, 0);
+}
+
+double now(){
+  timeval tv;
+  gettimeofday(&tv, 0);
+  
+  return tv.tv_sec + tv.tv_usec/1e6;
+}
+
+} // end namespace
+*/
 
 class CUDARuntime{
 public:
@@ -33,7 +60,8 @@ public:
     }
 
     ~MeshField(){
-      cuMemFree(devPtr);
+      CUresult err = cuMemFree(devPtr);
+      check(err);
     }
 
     void* hostPtr;
@@ -43,11 +71,28 @@ public:
 
   class Mesh{
   public:
-    Mesh(size_t width, size_t height, size_t depth)
+    Mesh(uint32_t width, uint32_t height, uint32_t depth)
       : width_(width),
         height_(height),
         depth_(depth){
-      
+
+      CUresult err = cuMemAlloc(&widthDev_, 4);
+      check(err);     
+
+      err = cuMemcpyHtoD(widthDev_, &width_, 4);
+      check(err);
+ 
+      err = cuMemAlloc(&heightDev_, 4);
+      check(err);  
+
+      err = cuMemcpyHtoD(heightDev_, &height_, 4);
+      check(err);
+
+      err = cuMemAlloc(&depthDev_, 4);
+      check(err);
+
+      err = cuMemcpyHtoD(depthDev_, &depth_, 4);
+      check(err);
     }
 
     ~Mesh(){
@@ -80,25 +125,40 @@ public:
       return meshField;
     }
 
-    size_t width(){
+    uint32_t width(){
       return width_;
     }
 
-    size_t height(){
+    CUdeviceptr& widthDev(){
+      return widthDev_;
+    }
+
+    uint32_t height(){
       return height_;
     }
 
-    size_t depth(){
+    CUdeviceptr& heightDev(){
+      return heightDev_;
+    }
+
+    uint32_t depth(){
       return depth_;
+    }
+
+    CUdeviceptr& depthDev(){
+      return depthDev_;
     }
 
   private:
     typedef map<const char*, MeshField*> MeshFieldMap_;
 
     MeshFieldMap_ meshFieldMap_;
-    size_t width_;
-    size_t height_;
-    size_t depth_;
+    uint32_t width_;
+    uint32_t height_;
+    uint32_t depth_;
+    CUdeviceptr widthDev_;
+    CUdeviceptr heightDev_;
+    CUdeviceptr depthDev_;
   };
 
   class Kernel;
@@ -132,11 +192,14 @@ public:
       }
     };
 
-    Kernel(PTXModule* module, Mesh* mesh, CUfunction function)
+    Kernel(PTXModule* module,
+           Mesh* mesh,
+           CUfunction function)
       : module_(module),
         mesh_(mesh),
         function_(function),
-        ready_(false){
+        ready_(false),
+        numThreads_(DEFAULT_THREADS){
       
     }
 
@@ -144,6 +207,10 @@ public:
       for(auto& itr : fieldMap_){
         delete itr.second;
       }
+    }
+    
+    void setNumThreads(size_t numThreads){
+      numThreads_ = numThreads;
     }
 
     void addField(const char* fieldName,
@@ -159,6 +226,10 @@ public:
 
     void run(){
       if(!ready_){
+        kernelParams_.push_back(&mesh_->widthDev());
+        kernelParams_.push_back(&mesh_->heightDev());
+        kernelParams_.push_back(&mesh_->depthDev());
+
         for(auto& itr : fieldMap_){
           Field* field = itr.second;
           MeshField* meshField = field->meshField;
@@ -178,11 +249,9 @@ public:
           check(err);
         }
       }
-      
+
       err = cuLaunchKernel(function_, 1, 1, 1,
-                           mesh_->width(),
-                           mesh_->height(),
-                           mesh_->depth(),
+                           numThreads_, 1, 1, 
                            0, NULL, kernelParams_.data(), NULL);
       check(err);
 
@@ -193,6 +262,11 @@ public:
           err = cuMemcpyDtoH(meshField->hostPtr, meshField->devPtr, 
                              meshField->size);
           check(err);
+          //float* a = (float*)meshField->hostPtr;
+          //size_t size = mesh_->width() * mesh_->height() * mesh_->depth();
+          //for(size_t i = 0; i < size; ++i){
+          //cout << "a[" << i << "] = " << a[i] << endl;
+          //}
         }
       }
     }
@@ -219,6 +293,7 @@ public:
     bool ready_;
     FieldMap_ fieldMap_;
     KernelParams_ kernelParams_;
+    size_t numThreads_;
   };
 
   static CUDARuntime* get(){
@@ -266,6 +341,13 @@ public:
 
     err = cuCtxCreate(&context_, 0, device_);
     check(err);
+
+    int threadsPerBlock;
+    err = 
+      cuDeviceGetAttribute(&threadsPerBlock,
+                           CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK, device_);
+    check(err);
+    numThreads_ = threadsPerBlock;
   }
 
   void initKernel(const char* meshName,
@@ -301,6 +383,7 @@ public:
     }
 
     Kernel* kernel = module->createKernel(mesh, kernelName);
+    kernel->setNumThreads(numThreads_);
     kernelMap_.insert({kernelName, kernel});
   }
 
@@ -345,6 +428,7 @@ private:
   static CUDARuntime* instance_;
   CUdevice device_;
   CUcontext context_;
+  size_t numThreads_;
 
   ModuleMap_ moduleMap_;
   MeshMap_ meshMap_;
