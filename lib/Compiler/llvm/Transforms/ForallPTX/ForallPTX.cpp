@@ -382,13 +382,13 @@ public:
       Value* kernelName = builder.CreateGlobalStringPtr(f_->getName());
       kernelName = builder.CreateBitCast(kernelName, m_.stringTy);
 
-      Function* f = module->getFunction("__scrt_cuda_init_kernel");
+      Function* f = module->getFunction("__scrt_gpu_init_kernel");
       
       ValueVec args = {meshName, ptx, kernelName, width, height, depth};
 
       builder.CreateCall(f, args);
 
-      f = module->getFunction("__scrt_cuda_init_field");
+      f = module->getFunction("__scrt_gpu_init_field");
 
       for(auto& itr : fieldMap_){
         Field* field = itr.second;
@@ -412,7 +412,7 @@ public:
         builder.CreateCall(f, args);
       }
 
-      f = module->getFunction("__scrt_cuda_run_kernel");
+      f = module->getFunction("__scrt_gpu_run_kernel");
       args = {kernelName};
       builder.CreateCall(f, args);
 
@@ -464,19 +464,19 @@ public:
     createFunction("__scrt_cuda_init",
                    voidTy, tv);
 
-    createFunction("__scrt_cuda_finish",
+    createFunction("__scrt_gpu_finish",
                    voidTy, tv);
 
     tv = {stringTy, stringTy, stringTy, int32Ty, int32Ty, int32Ty};
-    createFunction("__scrt_cuda_init_kernel",
+    createFunction("__scrt_gpu_init_kernel",
                    voidTy, tv);
 
     tv = {stringTy, stringTy, voidPtrTy, int32Ty, int8Ty};
-    createFunction("__scrt_cuda_init_field",
+    createFunction("__scrt_gpu_init_field",
                    voidTy, tv);
 
     tv = {stringTy};
-    createFunction("__scrt_cuda_run_kernel",
+    createFunction("__scrt_gpu_run_kernel",
                    voidTy, tv);
   }
 

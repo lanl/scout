@@ -1,3 +1,59 @@
+/*
+ * ###########################################################################
+ * Copyright (c) 2014, Los Alamos National Security, LLC.
+ * All rights reserved.
+ *
+ *  Copyright 2010. Los Alamos National Security, LLC. This software was
+ *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
+ *  Alamos National Laboratory (LANL), which is operated by Los Alamos
+ *  National Security, LLC for the U.S. Department of Energy. The
+ *  U.S. Government has rights to use, reproduce, and distribute this
+ *  software.  NEITHER THE GOVERNMENT NOR LOS ALAMOS NATIONAL SECURITY,
+ *  LLC MAKES ANY WARRANTY, EXPRESS OR IMPLIED, OR ASSUMES ANY LIABILITY
+ *  FOR THE USE OF THIS SOFTWARE.  If software is modified to produce
+ *  derivative works, such modified software should be clearly marked,
+ *  so as not to confuse it with the version available from LANL.
+ *
+ *  Additionally, redistribution and use in source and binary forms,
+ *  with or without modification, are permitted provided that the
+ *  following conditions are met:
+ *
+ *    * Redistributions of source code must retain the above copyright
+ *      notice, this list of conditions and the following disclaimer.
+ *
+ *    * Redistributions in binary form must reproduce the above
+ *      copyright notice, this list of conditions and the following
+ *      disclaimer in the documentation and/or other materials provided
+ *      with the distribution.
+ *
+ *    * Neither the name of Los Alamos National Security, LLC, Los
+ *      Alamos National Laboratory, LANL, the U.S. Government, nor the
+ *      names of its contributors may be used to endorse or promote
+ *      products derived from this software without specific prior
+ *      written permission.
+ *
+ *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
+ *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ *  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ *  DISCLAIMED. IN NO EVENT SHALL LOS ALAMOS NATIONAL SECURITY, LLC OR
+ *  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ *  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ *  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ *  USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ *  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ *  SUCH DAMAGE.
+ * ###########################################################################
+ *
+ * Notes
+ *
+ * #####
+ */
+
+#include "scout/Runtime/gpu/GPURuntime.h"
+
 #include <iostream>
 
 #include <map>
@@ -10,6 +66,7 @@
 #include <cuda.h>
 
 using namespace std;
+using namespace scout;
 
 static const uint8_t FIELD_READ = 0x01;
 static const uint8_t FIELD_WRITE = 0x02;
@@ -39,7 +96,7 @@ double now(){
 } // end namespace
 */
 
-class CUDARuntime{
+class CUDARuntime : public GPURuntime{
 public:
   static void check(CUresult err){
     if(err != CUDA_SUCCESS){
@@ -296,23 +353,8 @@ public:
     size_t numThreads_;
   };
 
-  static CUDARuntime* get(){
-    assert(instance_ && "CUDA runtime has not been initialized");
-    return instance_;
-  }
+  CUDARuntime(){
 
-  static void init(){
-    assert(!instance_ && "CUDA runtime has already been initialized");
-    
-    instance_ = new CUDARuntime;
-    instance_->init_();
-  }
-
-  static void finish(){
-    if(instance_){
-      delete instance_;
-      instance_ = 0;
-    }
   }
 
   ~CUDARuntime(){
@@ -332,7 +374,7 @@ public:
     }
   }
 
-  void init_(){
+  void init(){
     CUresult err = cuInit(0);
     check(err);
     
@@ -419,13 +461,10 @@ public:
   }
 
 private:
-  CUDARuntime(){}
-
   typedef map<const char*, PTXModule*> ModuleMap_;
   typedef map<const char*, Mesh*> MeshMap_;
   typedef map<const char*, Kernel*> KernelMap_;
 
-  static CUDARuntime* instance_;
   CUdevice device_;
   CUcontext context_;
   size_t numThreads_;
@@ -446,41 +485,10 @@ CUDARuntime::PTXModule::createKernel(Mesh* mesh, const char* kernelName){
   return kernel;
 }
 
-CUDARuntime* CUDARuntime::instance_ = 0;
-
 extern "C"
 void __scrt_cuda_init(){
-  CUDARuntime::init();
-}
+  CUDARuntime* runtime = new CUDARuntime;
+  runtime->init();
 
-extern "C"
-void __scrt_cuda_finish(){
-  CUDARuntime::finish();
-}
-
-extern "C"
-void __scrt_cuda_init_kernel(const char* meshName,
-                             const char* ptx,
-                             const char* kernelName,
-                             uint32_t width,
-                             uint32_t height,
-                             uint32_t depth){
-  CUDARuntime* runtime = CUDARuntime::get();
-  runtime->initKernel(meshName, ptx, kernelName, width, height, depth);
-}
-
-extern "C"
-void __scrt_cuda_init_field(const char* kernelName,
-                            const char* fieldName,
-                            void* hostPtr,
-                            uint32_t elementSize,
-                            uint8_t mode){
-  CUDARuntime* runtime = CUDARuntime::get();
-  runtime->initField(kernelName, fieldName, hostPtr, elementSize, mode);
-}
-
-extern "C"
-void __scrt_cuda_run_kernel(const char* kernelName){
-  CUDARuntime* runtime = CUDARuntime::get();
-  runtime->runKernel(kernelName);
+  GPURuntime::init(runtime);
 }
