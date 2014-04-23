@@ -52,6 +52,7 @@
 
 project(scout_test_scpp_driver)
 
+set(SRC_PATH ${CMAKE_SOURCE_DIR}/sc++/driver)
 
   # Note: By default we pull in all the .scpp source files in this
   # directory for inclusion into the regression checks.  If you want do
@@ -59,17 +60,21 @@ project(scout_test_scpp_driver)
   # source.
   #
   file(GLOB SC_SRCS *.scpp) 
-
+  set(test symlink.scpp)
   # Add an executable and test entry for each source file...
   foreach (test ${SC_SRCS})
+
     get_filename_component(tname ${test} NAME_WE) 
     if (NOT tname) 
       message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
     else (NOT tname)
-      set(fname "sc++_driver_${tname}")
-      add_executable("${fname}" ${test})
-      add_test("${fname}" "${TEST_BINARY_DIR}/${fname}")
-      message(" + added runtime regression test entry: ${fname}")
+      if(tname STREQUAL "no-semicolon")
+      else()
+        set(fname "sc++_driver_${tname}")
+        add_executable("${fname}" ${test})
+        add_test("${fname}" "${TEST_BINARY_DIR}/${fname}")
+        message(" + added runtime regression test entry: ${fname}")
+      endif()
     endif(NOT tname)
   endforeach(test)
 
@@ -80,3 +85,9 @@ project(scout_test_scpp_driver)
     "error: no input files")
   set_property(TEST ${tname} PROPERTY WILL_FAIL) 
 
+set(name no-semicolon)
+set(tname sc++_driver_${name})
+set(FLAGS "-###")
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${FLAGS} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY FAIL_REGULAR_EXPRESSION
+    "[;]")
