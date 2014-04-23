@@ -48,39 +48,20 @@
 #
 ###########################################################################
 #
-include(${CMAKE_BINARY_DIR}/CMake/Modules/Configuration.cmake)
+project(scout_test_lldb)
 
-set(CMAKE_MODULE_PATH
-  ${SCOUT_CMAKE_PATH}
-  ${CMAKE_MODULE_PATH}
-)
+set(SRC_PATH ${CMAKE_SOURCE_DIR}/lldb)
 
+find_package(EXPECT)
+find_package(LLDB)
 
-project(scout_test_scc SCC SCXX )
-
-  cmake_minimum_required(VERSION 2.8.9)
-
-  include(CTest)
-
-  include(../cmake/Modules/ScoutConfig.cmake)
-
-  set(SCOUT_REGRESSION_DIR ${CMAKE_CURRENT_BINARY_DIR}/../../test)
-  set(SCOUT_BINARY_REGRESSION_DIR ${CMAKE_CURRENT_BINARY_DIR})
-  set(TEST_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/bin)
-
-  add_definitions(-DSC_REG_DATA_PATH=${SCOUT_REGRESSION_DIR}/data)
-  add_definitions(-DSC_REG_BIN_PATH=${SCOUT_BINARY_REGRESSION_DIR})
-
-  set(CMAKE_VERBOSE_MAKEFILE ON)
-
-  if(DEFINED ENV{SDLDIR})
-    set(CMAKE_SCC_LINK_FLAGS -L$ENV{SDLDIR}/lib)
+if(EXPECT_FOUND)
+  if(LLDB_FOUND)
+    set(name scc-breakpoint)
+    set(tname lldb_${name})
+    add_test(${tname} ${SRC_PATH}/breakpoint.exp ${SRC_PATH} "scc")
+    set(name sc++-breakpoint)
+    set(tname lldb_${name})
+    add_test(${tname} ${SRC_PATH}/breakpoint.exp ${SRC_PATH} "sc++")
   endif()
-
-  add_subdirectory(scc)
-  add_subdirectory(sc++)
-  add_subdirectory(runtime/glfw)
-  if(DEFINED ENV{DEBUG_TESTS}) 
-    add_subdirectory(gdb)
-    add_subdirectory(lldb)
-  endif()
+endif()
