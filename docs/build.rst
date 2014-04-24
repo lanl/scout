@@ -41,6 +41,7 @@ our continuous integration development process are listed below:
 
    * **Fedora 17** -- See http://fedoraproject.org
    * **Ubuntu 12.04** -- See http://www.ubuntu.com 
+   * **Ubuntu 14.04** -- See http://www.ubuntu.com 
 
 The use of these Linux-based platforms will require the installation
 of additional software development packages and libraries.  This can
@@ -55,7 +56,7 @@ Mac OS (e.g. macports) we typically do not use them in favor of
 building and installing from source.
 
 Ubuntu 12.04 Requirements
----------------------
+--------------------------
 
 A number of other required packages need to be installed:
  
@@ -79,6 +80,12 @@ be added via:
     $ > select gcc-4.7 (option 2)
 
 Other required packages need to be build from source, these include CMake and GLFW3
+
+Ubuntu 14.04 Requirements
+--------------------------
+
+A number of other required packages need to be installed:
+    $ apt-get install build-essential git libsdl1.2-dev freeglut3 freeglut3-dev xorg-dev cmake
 
 CMake
 -------------
