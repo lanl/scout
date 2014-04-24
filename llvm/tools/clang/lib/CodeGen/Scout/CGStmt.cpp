@@ -903,6 +903,43 @@ void CodeGenFunction::EmitForallFacesVertices(const ForallMeshStmt &S){
 }
 
 void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
+  if(isGPU()){
+    llvm::BasicBlock *entry = EmitMarkerBlock("forall.entry");
+    
+    EmitGPUPreamble(S);
+    
+    llvm::BasicBlock* condBlock = createBasicBlock("forall.cond");
+    EmitBlock(condBlock);
+    
+    llvm::Value* threadId = Builder.CreateLoad(GPUThreadId, "threadId");
+    
+    llvm::Value* cond = Builder.CreateICmpULT(threadId, GPUNumThreads);
+    
+    llvm::BasicBlock* bodyBlock = createBasicBlock("forall.body");
+    llvm::BasicBlock* exitBlock = createBasicBlock("forall.exit");
+    
+    Builder.CreateCondBr(cond, bodyBlock, exitBlock);
+    
+    EmitBlock(bodyBlock);
+    
+    EdgeIndex = GPUThreadId;
+    EmitStmt(S.getBody());
+    EdgeIndex = 0;
+    
+    threadId = Builder.CreateAdd(threadId, GPUThreadInc);
+    Builder.CreateStore(threadId, GPUThreadId);
+    
+    Builder.CreateBr(condBlock);
+    
+    EmitBlock(exitBlock);
+    
+    llvm::Function* f = ExtractRegion(entry, exitBlock, "ForallMeshFunction");
+    
+    AddScoutKernel(f, S);
+    
+    return;
+  }
+  
   llvm::Value* Zero = llvm::ConstantInt::get(Int64Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
 
@@ -942,6 +979,43 @@ void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
 }
 
 void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
+  if(isGPU()){
+    llvm::BasicBlock *entry = EmitMarkerBlock("forall.entry");
+    
+    EmitGPUPreamble(S);
+    
+    llvm::BasicBlock* condBlock = createBasicBlock("forall.cond");
+    EmitBlock(condBlock);
+    
+    llvm::Value* threadId = Builder.CreateLoad(GPUThreadId, "threadId");
+    
+    llvm::Value* cond = Builder.CreateICmpULT(threadId, GPUNumThreads);
+    
+    llvm::BasicBlock* bodyBlock = createBasicBlock("forall.body");
+    llvm::BasicBlock* exitBlock = createBasicBlock("forall.exit");
+    
+    Builder.CreateCondBr(cond, bodyBlock, exitBlock);
+    
+    EmitBlock(bodyBlock);
+    
+    FaceIndex = GPUThreadId;
+    EmitStmt(S.getBody());
+    FaceIndex = 0;
+    
+    threadId = Builder.CreateAdd(threadId, GPUThreadInc);
+    Builder.CreateStore(threadId, GPUThreadId);
+    
+    Builder.CreateBr(condBlock);
+    
+    EmitBlock(exitBlock);
+    
+    llvm::Function* f = ExtractRegion(entry, exitBlock, "ForallMeshFunction");
+    
+    AddScoutKernel(f, S);
+    
+    return;
+  }
+  
   llvm::Value* Zero = llvm::ConstantInt::get(Int64Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
 
@@ -1040,9 +1114,9 @@ void CodeGenFunction::EmitGPUPreamble(const ForallMeshStmt& S){
   
   ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
 
-  llvm::Value* width = Builder.CreateLoad(LoopBounds[0], "TheMesh.width");
-  llvm::Value* height = Builder.CreateLoad(LoopBounds[1], "TheMesh.height");
-  llvm::Value* depth = Builder.CreateLoad(LoopBounds[2], "TheMesh.depth");
+  Builder.CreateLoad(LoopBounds[0], "TheMesh.width");
+  Builder.CreateLoad(LoopBounds[1], "TheMesh.height");
+  Builder.CreateLoad(LoopBounds[2], "TheMesh.depth");
   
   llvm::Value* numItems;
   
