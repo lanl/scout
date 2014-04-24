@@ -86,6 +86,7 @@ public:
                          const char* fieldName,
                          void* hostPtr,
                          uint32_t elementSize,
+                         uint8_t elementType,
                          uint8_t mode) = 0;
 
   virtual void runKernel(const char* kernelName) = 0;

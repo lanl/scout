@@ -85,6 +85,11 @@ using namespace CodeGen;
 static const char *DimNames[]   = { "width", "height", "depth" };
 static const char *IndexNames[] = { "x", "y", "z"};
 
+static const uint8_t FIELD_CELL = 0;
+static const uint8_t FIELD_VERTEX = 1;
+static const uint8_t FIELD_EDGE = 2;
+static const uint8_t FIELD_FACE = 3;
+
 // We use 'IRNameStr' to hold the generated names we use for
 // various values in the IR building.  We've added a static
 // buffer to avoid the need for a lot of fine-grained new and
@@ -991,8 +996,27 @@ void CodeGenFunction::AddScoutKernel(llvm::Function* f,
   for (MeshDecl::field_iterator itr = md->field_begin(),
        itrEnd = md->field_end(); itr != itrEnd; ++itr){
     MeshFieldDecl* fd = *itr;
-    meshFields.push_back(llvm::MDString::get(CGM.getLLVMContext(),
-                                             fd->getName()));
+    
+    llvm::SmallVector<llvm::Value*, 3> fieldData;
+    fieldData.push_back(llvm::MDString::get(CGM.getLLVMContext(),
+                                            fd->getName()));
+    if(fd->isCellLocated()){
+      fieldData.push_back(llvm::ConstantInt::get(Int8Ty, FIELD_CELL));
+    }
+    else if(fd->isVertexLocated()){
+      fieldData.push_back(llvm::ConstantInt::get(Int8Ty, FIELD_VERTEX));
+    }
+    else if(fd->isEdgeLocated()){
+      fieldData.push_back(llvm::ConstantInt::get(Int8Ty, FIELD_EDGE));
+    }
+    else if(fd->isFaceLocated()){
+      fieldData.push_back(llvm::ConstantInt::get(Int8Ty, FIELD_FACE));
+    }
+    
+    llvm::Value* fieldDataMD =
+    llvm::MDNode::get(CGM.getLLVMContext(), ArrayRef<llvm::Value*>(fieldData));
+    
+    meshFields.push_back(fieldDataMD);
   }
   
   llvm::Value* fieldsMD =

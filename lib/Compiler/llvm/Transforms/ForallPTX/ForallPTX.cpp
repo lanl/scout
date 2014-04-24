@@ -55,6 +55,11 @@ typedef vector<string> StringVec;
 static const uint8_t FIELD_READ = 0x01;
 static const uint8_t FIELD_WRITE = 0x02;
 
+static const uint8_t FIELD_CELL = 0;
+static const uint8_t FIELD_VERTEX = 1;
+static const uint8_t FIELD_EDGE = 2;
+static const uint8_t FIELD_FACE = 3;
+  
 class CUDAModule{
 public:
   
@@ -62,9 +67,13 @@ public:
   public:
     class Field{
     public:
-      Field(const string& name, size_t position, PointerType* type)
+      Field(const string& name,
+            size_t position,
+            uint8_t elementType,
+            PointerType* type)
         : name_(name),
           position_(position),
+          elementType_(elementType),
           type_(type),
           mode_(0),
           value_(0){
@@ -83,6 +92,10 @@ public:
         return mode_;
       }
 
+      uint8_t elementType(){
+        return elementType_;
+      }
+      
       PointerType* type(){
         return type_;
       }
@@ -107,6 +120,7 @@ public:
       string name_;
       size_t position_;
       PointerType* type_;
+      uint8_t elementType_;
       uint8_t mode_;
       Value* value_;
     };
@@ -124,9 +138,15 @@ public:
       size_t pos = 0;
       size_t numFields = fieldsNode->getNumOperands();
       for(size_t i = 0; i < numFields; ++i){
-        string fieldName = 
-          cast<MDString>(fieldsNode->getOperand(i))->getString().str();
-        fieldPositionMap_.insert({fieldName, pos});
+        MDNode* fieldNode = cast<MDNode>(fieldsNode->getOperand(i));
+
+        string fieldName =
+          cast<MDString>(fieldNode->getOperand(0))->getString().str();
+        
+        uint8_t elementType =
+        cast<ConstantInt>(fieldNode->getOperand(1))->getZExtValue();
+
+        fieldInfoMap_.insert({fieldName, {pos, elementType}});
         ++pos;
       }
     }
@@ -194,7 +214,13 @@ public:
             }
 
             Type* et = ai->getType()->getElementType();
-            createField(n, fieldPositionMap_[n], PointerType::get(et, 1));
+
+            auto fitr = fieldInfoMap_.find(n);
+            assert(fitr != fieldInfoMap_.end());
+            size_t pos = fitr->second.first;
+            uint8_t elementType = fitr->second.second;
+            
+            createField(n, pos, elementType, PointerType::get(et, 1));
           }
         }
       }
@@ -401,13 +427,14 @@ public:
         hostPtr = builder.CreateBitCast(hostPtr, m_.voidPtrTy);
 
         PointerType* pointerType = field->type();
-        Type* elementType = pointerType->getElementType();
+        Type* type = pointerType->getElementType();
         Value* elementSize = 
-          m_.getInt32(elementType->getPrimitiveSizeInBits()/8);
+          m_.getInt32(type->getPrimitiveSizeInBits()/8);
         
+        Value* elementType = m_.getInt8(field->elementType());
         Value* mode = m_.getInt8(field->mode());
 
-        args = {kernelName, fieldName, hostPtr, elementSize, mode};
+        args = {kernelName, fieldName, hostPtr, elementSize, elementType, mode};
         
         builder.CreateCall(f, args);
       }
@@ -419,11 +446,15 @@ public:
       builder.CreateRetVoid();
     }
 
-    Field* createField(const string& name, size_t pos, PointerType* type){
+    Field* createField(const string& name,
+                       size_t pos,
+                       uint8_t elementType,
+                       PointerType* type){
+
       auto itr = fieldMap_.find(name);
       assert(itr == fieldMap_.end());
 
-      Field* field = new Field(name, pos, type);
+      Field* field = new Field(name, pos, elementType, type);
       fieldMap_.insert({name, field});
 
       return field;
@@ -437,14 +468,14 @@ public:
 
   private:
     typedef map<string, Field*> FieldMap_;
-    typedef map<string, size_t> FieldPositionMap_;
+    typedef map<string, pair<size_t, uint8_t>> FieldInfoMap_;
 
     CUDAModule& m_;
     LLVMContext& context_;
     Function* f_;
     Function* kf_;
     FieldMap_ fieldMap_;
-    FieldPositionMap_ fieldPositionMap_;
+    FieldInfoMap_ fieldInfoMap_;
     string meshName_;
   };
 
@@ -471,7 +502,7 @@ public:
     createFunction("__scrt_gpu_init_kernel",
                    voidTy, tv);
 
-    tv = {stringTy, stringTy, voidPtrTy, int32Ty, int8Ty};
+    tv = {stringTy, stringTy, voidPtrTy, int32Ty, int8Ty, int8Ty};
     createFunction("__scrt_gpu_init_field",
                    voidTy, tv);
 
@@ -481,15 +512,13 @@ public:
   }
 
   void init(){
-    //module_->dump();
-    //cerr << "--------------------------------" << endl;
-
     NamedMDNode* kernelsMD = module_->getNamedMetadata("scout.kernels");
 
     vector<Kernel*> kernels;
 
     for(size_t i = 0; i < kernelsMD->getNumOperands(); ++i){
       MDNode* kernelMD = kernelsMD->getOperand(i);
+
       Kernel* kernel = new Kernel(*this, kernelMD);
       kernel->init();
       kernels.push_back(kernel);

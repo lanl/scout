@@ -70,6 +70,12 @@ using namespace scout;
 
 static const uint8_t FIELD_READ = 0x01;
 static const uint8_t FIELD_WRITE = 0x02;
+
+static const uint8_t FIELD_CELL = 0;
+static const uint8_t FIELD_VERTEX = 1;
+static const uint8_t FIELD_EDGE = 2;
+static const uint8_t FIELD_FACE = 3;
+
 static const size_t DEFAULT_THREADS = 128;
 
 /*
@@ -150,6 +156,16 @@ public:
 
       err = cuMemcpyHtoD(depthDev_, &depth_, 4);
       check(err);
+
+      if(depth_ > 1){
+        rank_ = 3;
+      }
+      else if(height_ > 1){
+        rank_ = 2;
+      }
+      else{
+        rank_ = 1;
+      }
     }
 
     ~Mesh(){
@@ -169,10 +185,64 @@ public:
 
     MeshField* addField(const char* name,
                         void* hostPtr,
+                        uint8_t elementType,
                         uint32_t elementSize){
-
-      size_t size = width_ * height_ * depth_ * elementSize;
+      size_t size;
       
+      switch(elementType){
+      case FIELD_CELL:
+        size = width_ * height_ * depth_;
+        break;
+      case FIELD_VERTEX:
+        switch(rank_){
+        case 1:
+          size = width_ + 1;
+          break;
+        case 2:
+          size = (width_ + 1) * (height_ + 1);
+          break;
+        case 3:
+          size = (width_ + 1) * (height_ + 1) + (depth_ + 1);
+          break;
+        }
+        break;
+      case FIELD_EDGE:
+        switch(rank_){
+        case 1:
+          size = width_;
+          break;
+        case 2:
+          size = (width_ + 1)*height_ + (height_ + 1)*width_;
+          break;
+        case 3:
+          size_t w1 = width_ + 1;
+          size_t h1 = height_ + 1;
+          size = (w1*height_ + h1*width_)*(depth_ + 1) + w1*h1*depth_;
+          break;
+        }
+        break;
+      case FIELD_FACE:
+        switch(rank_){
+        case 1:
+          size = width_;
+          break;
+        case 2:
+          size = (width_ + 1)*height_ + (height_ + 1)*width_;
+          break;
+        case 3:
+          size_t w1 = width_ + 1;
+          size_t h1 = height_ + 1;
+          size_t d1 = depth_ + 1;
+          size = w1*height_*depth_ + h1*width_*depth_ + d1*width_*height_;
+          break;
+        }
+        break;
+      default:
+        assert(false && "invalid element type");
+      }
+
+      size *= elementSize;
+
       CUdeviceptr devPtr;
       CUresult err = cuMemAlloc(&devPtr, size);
       check(err);
@@ -213,6 +283,7 @@ public:
     uint32_t width_;
     uint32_t height_;
     uint32_t depth_;
+    size_t rank_;
     CUdeviceptr widthDev_;
     CUdeviceptr heightDev_;
     CUdeviceptr depthDev_;
@@ -433,6 +504,7 @@ public:
                  const char* fieldName,
                  void* hostPtr,
                  uint32_t elementSize,
+                 uint8_t elementType,
                  uint8_t mode){
 
     auto kitr = kernelMap_.find(kernelName);
@@ -446,7 +518,8 @@ public:
     Mesh* mesh = kernel->mesh();
     MeshField* meshField = mesh->getField(fieldName);
     if(!meshField){
-      meshField = mesh->addField(fieldName, hostPtr, elementSize); 
+      meshField = mesh->addField(fieldName, hostPtr,
+                                 elementType, elementSize); 
     }
     
     kernel->addField(fieldName, meshField, mode);
