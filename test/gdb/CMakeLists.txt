@@ -50,6 +50,8 @@
 #
 project(scout_test_gdb)
 
+set(SRC_PATH ${CMAKE_SOURCE_DIR}/gdb)
+
 find_package(EXPECT)
 find_package(GDB)
 

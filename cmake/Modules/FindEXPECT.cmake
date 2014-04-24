@@ -1,12 +1,13 @@
 set(EXPECT_ROOT_DIR
 	"${EXPECT_ROOT_DIR}"
+        /usr
 	CACHE
 	PATH
 	"Directory to start our search in")
 
 find_program(EXPECT_COMMAND
 	NAMES
-	lldb
+        expect	
 	HINTS
 	"${EXPECT_ROOT_DIR}"
 	PATH_SUFFIXES
@@ -14,7 +15,7 @@ find_program(EXPECT_COMMAND
 	libexec)
 
 if(EXPECT_COMMAND)
-	execute_process(COMMAND EXPECT -version
+	execute_process(COMMAND expect -version
 		COMMAND head -n 1
 		OUTPUT_VARIABLE EXPECT_VERSION
 		OUTPUT_STRIP_TRAILING_WHITESPACE)
