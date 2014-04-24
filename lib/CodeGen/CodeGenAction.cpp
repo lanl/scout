@@ -405,7 +405,7 @@ void BackendConsumer::OptimizationRemarkHandler(
                                            Column);
     }
     Diags.Report(Loc, diag::remark_fe_backend_optimization_remark)
-        << D.getMsg().str();
+        << AddFlagValue(D.getPassName()) << D.getMsg().str();
 
     if (Line == 0)
       // If we could not extract a source location for the diagnostic,

@@ -365,6 +365,7 @@ ModuleMap::findModuleForHeader(const FileEntry *File,
             llvm::sys::path::stem(SkippedDirs[I-1]->getName()), NameBuf);
         Result = findOrCreateModule(Name, Result, UmbrellaModule->ModuleMap,
                                     /*IsFramework=*/false, Explicit).first;
+        Result->IsInferred = true;
 
         // Associate the module and the directory.
         UmbrellaDirs[SkippedDirs[I-1]] = Result;
@@ -381,6 +382,7 @@ ModuleMap::findModuleForHeader(const FileEntry *File,
                          llvm::sys::path::stem(File->getName()), NameBuf);
       Result = findOrCreateModule(Name, Result, UmbrellaModule->ModuleMap,
                                   /*IsFramework=*/false, Explicit).first;
+      Result->IsInferred = true;
       Result->addTopHeader(File);
 
       // If inferred submodules export everything they import, add a
@@ -1988,7 +1990,8 @@ void ModuleMapParser::parseInferredModuleDecl(bool Framework, bool Explicit) {
 
   if (ActiveModule) {
     // Inferred modules must have umbrella directories.
-    if (!Failed && !ActiveModule->getUmbrellaDir()) {
+    if (!Failed && ActiveModule->IsAvailable &&
+        !ActiveModule->getUmbrellaDir()) {
       Diags.Report(StarLoc, diag::err_mmap_inferred_no_umbrella);
       Failed = true;
     }
