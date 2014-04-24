@@ -261,14 +261,10 @@ public:
 
     void createFunction(){
       Module& kernelModule = m_.kernelModule();
-
+      
       //f_->dump();
 
       TypeVec tv;
-      for(size_t i = 0; i < 3; ++i){
-        tv.push_back(PointerType::get(m_.int32Ty, 1));
-      }
-
       for(auto& itr : fieldMap_){
         Field* field = itr.second;
         tv.push_back(field->type());
@@ -281,30 +277,13 @@ public:
       kf_ = Function::Create(ft, Function::ExternalLinkage,
                              f_->getName(), &kernelModule);
 
-      Function::arg_iterator aitr = f_->arg_begin();
-      Function::arg_iterator aitr2 = kf_->arg_begin();
-      ++aitr;
-              
-      aitr2->setName("width.ptr");
-      vm[aitr] = aitr2;
-      ++aitr;
-      ++aitr2;
-
-      aitr2->setName("height.ptr");
-      vm[aitr] = aitr2;
-      ++aitr;
-      ++aitr2;
-
-      aitr2->setName("depth.ptr");
-      vm[aitr] = aitr2;
-      ++aitr;
-      ++aitr2;
-
+      Function::arg_iterator aitr = kf_->arg_begin();
+      
       for(auto& itr : fieldMap_){
         Field* field = itr.second;
-        field->setValue(aitr2);
-        aitr2->setName(itr.first);
-        ++aitr2;
+        field->setValue(aitr);
+        aitr->setName(itr.first);
+        ++aitr;
       }
 
       for(Function::iterator itr = f_->begin(), itrEnd = f_->end();
@@ -344,6 +323,11 @@ public:
               Function* sf = m_.getSREGFunc(n);
               Instruction* ik = CallInst::Create(sf, li->getName(), bk);
               vm[i] = ik;
+              continue;
+            }
+            else if(li->getName().startswith("TheMesh.width") ||
+                    li->getName().startswith("TheMesh.height") ||
+                    li->getName().startswith("TheMesh.depth")){
               continue;
             }
           }
@@ -512,6 +496,10 @@ public:
   }
 
   void init(){
+    //cerr << "-- CPU module before: " << endl;
+    //module_->dump();
+    //cerr << "======================" << endl;
+    
     NamedMDNode* kernelsMD = module_->getNamedMetadata("scout.kernels");
 
     vector<Kernel*> kernels;
@@ -524,7 +512,9 @@ public:
       kernels.push_back(kernel);
     }
 
+    //cerr << "--------- kernel module: " << endl;
     //kernelModule_.dump();
+    //cerr << "=========================" << endl;
 
     string ptx = generatePTX();
 
@@ -543,7 +533,9 @@ public:
       delete kernel;
     }
 
+    //cerr << "--- CPU module after: " << endl;
     //module_->dump();
+    //cerr << "======================" << endl;
   }
 
   Module* module(){

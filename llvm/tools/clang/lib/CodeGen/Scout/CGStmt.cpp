@@ -1035,12 +1035,35 @@ void CodeGenFunction::EmitGPUPreamble(const ForallMeshStmt& S){
   llvm::Value* Addr = Builder.CreateAlloca(V->getType(), 0, "TheMesh_addr");
   Builder.CreateStore(V, Addr);
 
-  llvm::Value* width = Builder.CreateLoad(LoopBounds[0], "width");
-  llvm::Value* height = Builder.CreateLoad(LoopBounds[1], "height");
-  llvm::Value* depth = Builder.CreateLoad(LoopBounds[2], "depth");
+  SmallVector<llvm::Value*, 3> Dimensions;
+  GetMeshDimensions(S.getMeshType(), Dimensions);
   
-  GPUNumThreads =
-  Builder.CreateMul(width, Builder.CreateMul(height, depth), "numThreads");
+  ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
+
+  llvm::Value* width = Builder.CreateLoad(LoopBounds[0], "TheMesh.width");
+  llvm::Value* height = Builder.CreateLoad(LoopBounds[1], "TheMesh.height");
+  llvm::Value* depth = Builder.CreateLoad(LoopBounds[2], "TheMesh.depth");
+  
+  llvm::Value* numItems;
+  
+  switch(FET){
+    case ForallMeshStmt::Cells:
+      GetNumMeshItems(Dimensions, &numItems, 0, 0, 0);
+      break;
+    case ForallMeshStmt::Vertices:
+      GetNumMeshItems(Dimensions, 0, &numItems, 0, 0);
+      break;
+    case ForallMeshStmt::Edges:
+      GetNumMeshItems(Dimensions, 0, 0, &numItems, 0);
+      break;
+    case ForallMeshStmt::Faces:
+      GetNumMeshItems(Dimensions, 0, 0, 0, &numItems);
+      break;
+    default:
+      assert(false && "unrecognized forall type");
+  }
+  
+  GPUNumThreads = Builder.CreateIntCast(numItems, Int32Ty, false);
   
   llvm::Value* ptr = Builder.CreateAlloca(Int32Ty, 0, "tid.x.ptr");
   llvm::Value* tid = Builder.CreateLoad(ptr, "tid.x");

@@ -139,24 +139,6 @@ public:
         height_(height),
         depth_(depth){
 
-      CUresult err = cuMemAlloc(&widthDev_, 4);
-      check(err);     
-
-      err = cuMemcpyHtoD(widthDev_, &width_, 4);
-      check(err);
- 
-      err = cuMemAlloc(&heightDev_, 4);
-      check(err);  
-
-      err = cuMemcpyHtoD(heightDev_, &height_, 4);
-      check(err);
-
-      err = cuMemAlloc(&depthDev_, 4);
-      check(err);
-
-      err = cuMemcpyHtoD(depthDev_, &depth_, 4);
-      check(err);
-
       if(depth_ > 1){
         rank_ = 3;
       }
@@ -256,24 +238,12 @@ public:
       return width_;
     }
 
-    CUdeviceptr& widthDev(){
-      return widthDev_;
-    }
-
     uint32_t height(){
       return height_;
     }
 
-    CUdeviceptr& heightDev(){
-      return heightDev_;
-    }
-
     uint32_t depth(){
       return depth_;
-    }
-
-    CUdeviceptr& depthDev(){
-      return depthDev_;
     }
 
   private:
@@ -284,9 +254,6 @@ public:
     uint32_t height_;
     uint32_t depth_;
     size_t rank_;
-    CUdeviceptr widthDev_;
-    CUdeviceptr heightDev_;
-    CUdeviceptr depthDev_;
   };
 
   class Kernel;
@@ -354,10 +321,6 @@ public:
 
     void run(){
       if(!ready_){
-        kernelParams_.push_back(&mesh_->widthDev());
-        kernelParams_.push_back(&mesh_->heightDev());
-        kernelParams_.push_back(&mesh_->depthDev());
-
         for(auto& itr : fieldMap_){
           Field* field = itr.second;
           MeshField* meshField = field->meshField;
