@@ -924,14 +924,14 @@ DeclContext *DeclContext::getPrimaryContext() {
       // If this is a mesh type that has a definition or is currently
       // being defined, that definition is our primary context.
       MeshDecl *M = cast<MeshDecl>(this);
-      assert(isa<MeshType>(M->TypeForDecl) ||
-             isa<InjectedClassNameType>(M->TypeForDecl));
+      assert(isa<MeshType>(M->getTypeForDecl()) ||
+             isa<InjectedClassNameType>(M->getTypeForDecl()));
 
       if (MeshDecl *Def = M->getDefinition())
         return Def;
 
-      if (!isa<InjectedClassNameType>(M->TypeForDecl)) {
-        const MeshType *MeshTy = cast<MeshType>(M->TypeForDecl);
+      if (!isa<InjectedClassNameType>(M->getTypeForDecl())) {
+        const MeshType *MeshTy = cast<MeshType>(M->getTypeForDecl());
         if (MeshTy->isBeingDefined())
           // FIXME: is it necessarily being defined in the decl
           // that owns the type?
