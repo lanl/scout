@@ -12,7 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "aarch64-isel"
 #include "AArch64.h"
 #include "AArch64ISelLowering.h"
 #include "AArch64MachineFunctionInfo.h"
@@ -29,6 +28,8 @@
 #include "llvm/Support/MathExtras.h"
 
 using namespace llvm;
+
+#define DEBUG_TYPE "aarch64-isel"
 
 static TargetLoweringObjectFile *createTLOF(AArch64TargetMachine &TM) {
   assert (TM.getSubtarget<AArch64Subtarget>().isTargetELF() &&
@@ -1522,6 +1523,10 @@ AArch64TargetLowering::LowerCall(CallLoweringInfo &CLI,
     IsTailCall = IsEligibleForTailCallOptimization(Callee, CallConv,
                     IsVarArg, IsStructRet, MF.getFunction()->hasStructRetAttr(),
                                                    Outs, OutVals, Ins, DAG);
+
+    if (!IsTailCall && CLI.CS && CLI.CS->isMustTailCall())
+      report_fatal_error("failed to perform tail call elimination on a call "
+                         "site marked musttail");
 
     // A sibling call is one where we're under the usual C ABI and not planning
     // to change that but can still do a tail call:
@@ -5537,3 +5542,10 @@ int AArch64TargetLowering::getScalingFactorCost(const AddrMode &AM,
     return AM.Scale != 0 && AM.Scale != 1;
   return -1;
 }
+
+/// getMaximalGlobalOffset - Returns the maximal possible offset which can
+/// be used for loads / stores from the global.
+unsigned AArch64TargetLowering::getMaximalGlobalOffset() const {
+  return 4095;
+}
+

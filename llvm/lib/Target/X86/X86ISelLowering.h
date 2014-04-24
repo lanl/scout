@@ -83,6 +83,9 @@ namespace llvm {
       /// readcyclecounter
       RDTSC_DAG,
 
+      /// X86 Read Time-Stamp Counter and Processor ID.
+      RDTSCP_DAG,
+
       /// X86 compare and logical compare instructions.
       CMP, COMI, UCOMI,
 
@@ -291,7 +294,6 @@ namespace llvm {
       ADD, SUB, ADC, SBB, SMUL,
       INC, DEC, OR, XOR, AND,
 
-      BZHI,   // BZHI - Zero high bits
       BEXTR,  // BEXTR - Bit field extract
 
       UMUL, // LOW, HI, FLAGS = umul LHS, RHS

@@ -115,15 +115,15 @@ SITargetLowering::SITargetLowering(TargetMachine &TM) :
   setOperationAction(ISD::SIGN_EXTEND, MVT::i64, Custom);
   setOperationAction(ISD::ZERO_EXTEND, MVT::i64, Custom);
 
-  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i1, Custom);
+  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i1, Legal);
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::v2i1, Custom);
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::v4i1, Custom);
 
-  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i8, Custom);
+  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i8, Legal);
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::v2i8, Custom);
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::v4i8, Custom);
 
-  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i16, Custom);
+  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i16, Legal);
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::v2i16, Custom);
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::v4i16, Custom);
 
@@ -164,9 +164,6 @@ SITargetLowering::SITargetLowering(TargetMachine &TM) :
   setTruncStoreAction(MVT::v16i32, MVT::v16i16, Expand);
 
   setOperationAction(ISD::LOAD, MVT::i1, Custom);
-
-  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i8, Legal);
-  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i16, Legal);
 
   setOperationAction(ISD::GlobalAddress, MVT::i32, Custom);
   setOperationAction(ISD::GlobalAddress, MVT::i64, Custom);
@@ -226,10 +223,40 @@ SITargetLowering::SITargetLowering(TargetMachine &TM) :
 bool SITargetLowering::allowsUnalignedMemoryAccesses(EVT  VT,
                                                      unsigned AddrSpace,
                                                      bool *IsFast) const {
+  if (IsFast)
+    *IsFast = false;
+
   // XXX: This depends on the address space and also we may want to revist
   // the alignment values we specify in the DataLayout.
+
+  // TODO: I think v3i32 should allow unaligned accesses on CI with DS_READ_B96,
+  // which isn't a simple VT.
   if (!VT.isSimple() || VT == MVT::Other)
     return false;
+
+  // XXX - CI changes say "Support for unaligned memory accesses" but I don't
+  // see what for specifically. The wording everywhere else seems to be the
+  // same.
+
+  // 3.6.4 - Operations using pairs of VGPRs (for example: double-floats) have
+  // no alignment restrictions.
+  if (AddrSpace == AMDGPUAS::PRIVATE_ADDRESS) {
+    // Using any pair of GPRs should be the same as any other pair.
+    if (IsFast)
+      *IsFast = true;
+    return VT.bitsGE(MVT::i64);
+  }
+
+  // XXX - The only mention I see of this in the ISA manual is for LDS direct
+  // reads the "byte address and must be dword aligned". Is it also true for the
+  // normal loads and stores?
+  if (AddrSpace == AMDGPUAS::LOCAL_ADDRESS)
+    return false;
+
+  // 8.1.6 - For Dword or larger reads or writes, the two LSBs of the
+  // byte-address are ignored, thus forcing Dword alignment.
+  if (IsFast)
+    *IsFast = true;
   return VT.bitsGT(MVT::i32);
 }
 

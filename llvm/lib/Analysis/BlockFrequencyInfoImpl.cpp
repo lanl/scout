@@ -11,13 +11,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "block-freq"
 #include "llvm/Analysis/BlockFrequencyInfoImpl.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/Support/raw_ostream.h"
 #include <deque>
 
 using namespace llvm;
+
+#define DEBUG_TYPE "block-freq"
 
 //===----------------------------------------------------------------------===//
 //
@@ -366,7 +367,7 @@ typedef BlockFrequencyInfoImplBase::BlockNode BlockNode;
 typedef BlockFrequencyInfoImplBase::Distribution Distribution;
 typedef BlockFrequencyInfoImplBase::Distribution::WeightList WeightList;
 typedef BlockFrequencyInfoImplBase::Float Float;
-typedef BlockFrequencyInfoImplBase::PackagedLoopData PackagedLoopData;
+typedef BlockFrequencyInfoImplBase::LoopData LoopData;
 typedef BlockFrequencyInfoImplBase::Weight Weight;
 typedef BlockFrequencyInfoImplBase::FrequencyData FrequencyData;
 
@@ -597,7 +598,11 @@ void Distribution::normalize() {
 }
 
 void BlockFrequencyInfoImplBase::clear() {
-  *this = BlockFrequencyInfoImplBase();
+  // Swap with a default-constructed std::vector, since std::vector<>::clear()
+  // does not actually clear heap storage.
+  std::vector<FrequencyData>().swap(Freqs);
+  std::vector<WorkingData>().swap(Working);
+  std::vector<std::unique_ptr<LoopData>>().swap(Loops);
 }
 
 /// \brief Clear all memory not needed downstream.
@@ -625,11 +630,11 @@ static void cleanup(BlockFrequencyInfoImplBase &BFI) {
 static BlockNode getPackagedNode(const BlockFrequencyInfoImplBase &BFI,
                                  const BlockNode &Node) {
   assert(Node.isValid());
-  if (!BFI.Working[Node.Index].IsPackaged)
+  if (!BFI.Working[Node.Index].isPackaged())
     return Node;
-  if (!BFI.Working[Node.Index].ContainingLoop.isValid())
+  if (!BFI.Working[Node.Index].isAPackage())
     return Node;
-  return getPackagedNode(BFI, BFI.Working[Node.Index].ContainingLoop);
+  return getPackagedNode(BFI, BFI.Working[Node.Index].getContainingHeader());
 }
 
 /// \brief Get the appropriate mass for a possible pseudo-node loop package.
@@ -640,8 +645,8 @@ static BlockNode getPackagedNode(const BlockFrequencyInfoImplBase &BFI,
 static BlockMass &getPackageMass(BlockFrequencyInfoImplBase &BFI,
                                  const BlockNode &Node) {
   assert(Node.isValid());
-  assert(!BFI.Working[Node.Index].IsPackaged);
-  if (!BFI.Working[Node.Index].IsAPackage)
+  assert(!BFI.Working[Node.Index].isPackaged());
+  if (!BFI.Working[Node.Index].isAPackage())
     return BFI.Working[Node.Index].Mass;
 
   return BFI.getLoopPackage(Node).Mass;
@@ -676,13 +681,13 @@ void BlockFrequencyInfoImplBase::addToDist(Distribution &Dist,
   BlockNode Resolved = getPackagedNode(*this, Succ);
   assert(Resolved != LoopHead);
 
-  if (Working[Resolved.Index].ContainingLoop != LoopHead) {
+  if (Working[Resolved.Index].getContainingHeader() != LoopHead) {
     DEBUG(debugSuccessor("  exit  ", Resolved));
     Dist.addExit(Resolved, Weight);
     return;
   }
 
-  if (!LoopHead.isValid() && Resolved < Pred) {
+  if (Resolved < Pred) {
     // Irreducible backedge.  Skip this edge in the distribution.
     DEBUG(debugSuccessor("skipped ", Resolved));
     return;
@@ -695,8 +700,8 @@ void BlockFrequencyInfoImplBase::addToDist(Distribution &Dist,
 void BlockFrequencyInfoImplBase::addLoopSuccessorsToDist(
     const BlockNode &LoopHead, const BlockNode &LocalLoopHead,
     Distribution &Dist) {
-  PackagedLoopData &LoopPackage = getLoopPackage(LocalLoopHead);
-  const PackagedLoopData::ExitMap &Exits = LoopPackage.Exits;
+  LoopData &LoopPackage = getLoopPackage(LocalLoopHead);
+  const LoopData::ExitMap &Exits = LoopPackage.Exits;
 
   // Copy the exit map into Dist.
   for (const auto &I : Exits)
@@ -720,7 +725,7 @@ void BlockFrequencyInfoImplBase::computeLoopScale(const BlockNode &LoopHead) {
 
   // LoopScale == 1 / ExitMass
   // ExitMass == HeadMass - BackedgeMass
-  PackagedLoopData &LoopPackage = getLoopPackage(LoopHead);
+  LoopData &LoopPackage = getLoopPackage(LoopHead);
   BlockMass ExitMass = BlockMass::getFull() - LoopPackage.BackedgeMass;
 
   // Block scale stores the inverse of the scale.
@@ -739,11 +744,12 @@ void BlockFrequencyInfoImplBase::computeLoopScale(const BlockNode &LoopHead) {
 /// \brief Package up a loop.
 void BlockFrequencyInfoImplBase::packageLoop(const BlockNode &LoopHead) {
   DEBUG(dbgs() << "packaging-loop: " << getBlockName(LoopHead) << "\n");
-  Working[LoopHead.Index].IsAPackage = true;
-  for (const BlockNode &M : getLoopPackage(LoopHead).Members) {
-    DEBUG(dbgs() << " - node: " << getBlockName(M.Index) << "\n");
-    Working[M.Index].IsPackaged = true;
-  }
+  auto &PackagedLoop = getLoopPackage(LoopHead);
+  PackagedLoop.IsPackaged = true;
+  DEBUG(for (const BlockNode &M
+             : PackagedLoop.Members) {
+               dbgs() << " - node: " << getBlockName(M.Index) << "\n";
+             });
 }
 
 void BlockFrequencyInfoImplBase::distributeMass(const BlockNode &Source,
@@ -770,7 +776,7 @@ void BlockFrequencyInfoImplBase::distributeMass(const BlockNode &Source,
   (void)debugAssign;
 #endif
 
-  PackagedLoopData *LoopPackage = 0;
+  LoopData *LoopPackage = 0;
   if (LoopHead.isValid())
     LoopPackage = &getLoopPackage(LoopHead);
   for (const Weight &W : Dist.Weights) {
@@ -828,7 +834,7 @@ static void convertFloatingToInteger(BlockFrequencyInfoImplBase &BFI,
 
 static void scaleBlockData(BlockFrequencyInfoImplBase &BFI,
                            const BlockNode &Node,
-                           const PackagedLoopData &Loop) {
+                           const LoopData &Loop) {
   Float F = Loop.Mass.toFloat() * Loop.Scale;
 
   Float &Current = BFI.Freqs[Node.Index].Floating;
@@ -848,7 +854,7 @@ static void unwrapLoopPackage(BlockFrequencyInfoImplBase &BFI,
                               const BlockNode &Head) {
   assert(Head.isValid());
 
-  PackagedLoopData &LoopPackage = BFI.getLoopPackage(Head);
+  LoopData &LoopPackage = BFI.getLoopPackage(Head);
   DEBUG(dbgs() << "unwrap-loop-package: " << BFI.getBlockName(Head)
                << ": mass = " << LoopPackage.Mass
                << ", scale = " << LoopPackage.Scale << "\n");

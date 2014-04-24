@@ -20,6 +20,7 @@
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
+#include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCParser/MCAsmLexer.h"
 #include "llvm/MC/MCParser/MCAsmParser.h"
 #include "llvm/MC/MCParser/MCParsedAsmOperand.h"
@@ -55,6 +56,7 @@ static const char OpPrecedence[] = {
 class X86AsmParser : public MCTargetAsmParser {
   MCSubtargetInfo &STI;
   MCAsmParser &Parser;
+  const MCInstrInfo &MII;
   ParseInstructionInfo *InstInfo;
   std::unique_ptr<X86AsmInstrumentation> Instrumentation;
 private:
@@ -710,13 +712,16 @@ private:
 
 public:
   X86AsmParser(MCSubtargetInfo &sti, MCAsmParser &parser,
-               const MCInstrInfo &MII)
-      : MCTargetAsmParser(), STI(sti), Parser(parser), InstInfo(0) {
+               const MCInstrInfo &mii,
+               const MCTargetOptions &Options)
+      : MCTargetAsmParser(), STI(sti), Parser(parser), MII(mii), InstInfo(0) {
 
     // Initialize the set of available features.
     setAvailableFeatures(ComputeAvailableFeatures(STI.getFeatureBits()));
-    Instrumentation.reset(CreateX86AsmInstrumentation(STI));
+    Instrumentation.reset(
+        CreateX86AsmInstrumentation(Options, Parser.getContext(), STI));
   }
+
   bool ParseRegister(unsigned &RegNo, SMLoc &StartLoc, SMLoc &EndLoc) override;
 
   bool
@@ -2070,8 +2075,10 @@ ParseInstruction(ParseInstructionInfo &Info, StringRef Name, SMLoc NameLoc,
       (Name == "smov" || Name == "smovb" || Name == "smovw" ||
        Name == "smovl" || Name == "smovd" || Name == "smovq"))) {
     if (Operands.size() == 1) {
-      if (Name == "movsd")
+      if (Name == "movsd") {
+        delete Operands.back();
         Operands.back() = X86Operand::CreateToken("movsl", NameLoc);
+      }
       if (isParsingIntelSyntax()) {
         Operands.push_back(DefaultMemDIOperand(NameLoc));
         Operands.push_back(DefaultMemSIOperand(NameLoc));
@@ -2253,7 +2260,8 @@ static const char *getSubtargetFeatureName(unsigned Val);
 void X86AsmParser::EmitInstruction(
     MCInst &Inst, SmallVectorImpl<MCParsedAsmOperand *> &Operands,
     MCStreamer &Out) {
-  Instrumentation->InstrumentInstruction(Inst, Operands, getContext(), Out);
+  Instrumentation->InstrumentInstruction(Inst, Operands, getContext(), MII,
+                                         Out);
   Out.EmitInstruction(Inst, STI);
 }
 

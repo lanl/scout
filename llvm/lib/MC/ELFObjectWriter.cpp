@@ -492,7 +492,6 @@ uint64_t ELFObjectWriter::SymbolValue(MCSymbolData &OrigData,
     return Data->getCommonAlignment();
 
   const MCSymbol *Symbol = &Data->getSymbol();
-  bool IsThumbFunc = OrigData.getFlags() & ELF_Other_ThumbFunc;
 
   uint64_t Res = 0;
   if (Symbol->isVariable()) {
@@ -514,7 +513,8 @@ uint64_t ELFObjectWriter::SymbolValue(MCSymbolData &OrigData,
     }
   }
 
-  if (IsThumbFunc)
+  if ((Data && Data->getFlags() & ELF_Other_ThumbFunc) ||
+      OrigData.getFlags() & ELF_Other_ThumbFunc)
     Res |= 1;
 
   if (!Symbol || !Symbol->isInSection())
@@ -645,8 +645,6 @@ void ELFObjectWriter::WriteSymbol(SymbolTableWriter &Writer, ELFSymbolData &MSD,
   Other |= Visibility;
 
   uint64_t Value = SymbolValue(OrigData, Layout);
-  if (OrigData.getFlags() & ELF_Other_ThumbFunc)
-    Value |= 1;
   uint64_t Size = 0;
 
   const MCExpr *ESize = OrigData.getSize();
@@ -927,7 +925,7 @@ void ELFObjectWriter::RecordRelocation(const MCAssembler &Asm,
 uint64_t
 ELFObjectWriter::getSymbolIndexInSymbolTable(const MCAssembler &Asm,
                                              const MCSymbol *S) {
-  MCSymbolData &SD = Asm.getSymbolData(*S);
+  const MCSymbolData &SD = Asm.getSymbolData(*S);
   return SD.getIndex();
 }
 

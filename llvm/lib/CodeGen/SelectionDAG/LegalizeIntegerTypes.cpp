@@ -24,6 +24,8 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
+#define DEBUG_TYPE "legalize-types"
+
 //===----------------------------------------------------------------------===//
 //  Integer Result Promotion
 //===----------------------------------------------------------------------===//
