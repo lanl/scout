@@ -1,3 +1,14 @@
+# +===== Scout =========================================================+
+  if((NOT APPLE) AND (DEFINED ENV{SC_BUILD_LLDB}))
+    find_package(PythonLibs)
+    find_package(SWIG)
+    find_package(LIBEDIT)
+
+    if(PYTHONLIBS_FOUND AND SWIG_FOUND AND LIBEDIT_FOUND)
+      message("building LLDB")
+
+# +=====================================================================+
+
 if ( CMAKE_SYSTEM_NAME MATCHES "Windows" )
   set(LLDB_DEFAULT_DISABLE_PYTHON 1)
   set(LLDB_DEFAULT_DISABLE_CURSES 1)
@@ -300,3 +311,10 @@ endif()
 add_subdirectory(source)
 add_subdirectory(test)
 add_subdirectory(tools)
+# +===== Scout =========================================================+
+    else()
+      message("Pythonlibs, SWIG and libedit required for LLDB, not building")
+    endif()
+  endif()
+# +=====================================================================+
+
