@@ -45,9 +45,10 @@ public:
       { "fixup_arm64_ldst_imm12_scale4", 10, 12, 0 },
       { "fixup_arm64_ldst_imm12_scale8", 10, 12, 0 },
       { "fixup_arm64_ldst_imm12_scale16", 10, 12, 0 },
+      { "fixup_arm64_ldr_pcrel_imm19", 5, 19, PCRelFlagVal },
       { "fixup_arm64_movw", 5, 16, 0 },
       { "fixup_arm64_pcrel_branch14", 5, 14, PCRelFlagVal },
-      { "fixup_arm64_pcrel_imm19", 5, 19, PCRelFlagVal },
+      { "fixup_arm64_pcrel_branch19", 5, 19, PCRelFlagVal },
       { "fixup_arm64_pcrel_branch26", 0, 26, PCRelFlagVal },
       { "fixup_arm64_pcrel_call26", 0, 26, PCRelFlagVal },
       { "fixup_arm64_tlsdesc_call", 0, 0, 0 }
@@ -101,7 +102,8 @@ static unsigned getFixupKindNumBytes(unsigned Kind) {
   case ARM64::fixup_arm64_ldst_imm12_scale4:
   case ARM64::fixup_arm64_ldst_imm12_scale8:
   case ARM64::fixup_arm64_ldst_imm12_scale16:
-  case ARM64::fixup_arm64_pcrel_imm19:
+  case ARM64::fixup_arm64_ldr_pcrel_imm19:
+  case ARM64::fixup_arm64_pcrel_branch19:
     return 3;
 
   case ARM64::fixup_arm64_pcrel_adr_imm21:
@@ -133,7 +135,8 @@ static uint64_t adjustFixupValue(unsigned Kind, uint64_t Value) {
     return AdrImmBits(Value & 0x1fffffULL);
   case ARM64::fixup_arm64_pcrel_adrp_imm21:
     return AdrImmBits((Value & 0x1fffff000ULL) >> 12);
-  case ARM64::fixup_arm64_pcrel_imm19:
+  case ARM64::fixup_arm64_ldr_pcrel_imm19:
+  case ARM64::fixup_arm64_pcrel_branch19:
     // Signed 21-bit immediate
     if (SignedValue > 2097151 || SignedValue < -2097152)
       report_fatal_error("fixup value out of range");
@@ -483,12 +486,13 @@ namespace {
 class ELFARM64AsmBackend : public ARM64AsmBackend {
 public:
   uint8_t OSABI;
+  bool IsLittleEndian;
 
-  ELFARM64AsmBackend(const Target &T, uint8_t OSABI)
-      : ARM64AsmBackend(T), OSABI(OSABI) {}
+  ELFARM64AsmBackend(const Target &T, uint8_t OSABI, bool IsLittleEndian)
+    : ARM64AsmBackend(T), OSABI(OSABI), IsLittleEndian(IsLittleEndian) {}
 
   MCObjectWriter *createObjectWriter(raw_ostream &OS) const {
-    return createARM64ELFObjectWriter(OS, OSABI);
+    return createARM64ELFObjectWriter(OS, OSABI, IsLittleEndian);
   }
 
   void processFixupValue(const MCAssembler &Asm, const MCAsmLayout &Layout,
@@ -520,14 +524,23 @@ void ELFARM64AsmBackend::processFixupValue(const MCAssembler &Asm,
 }
 }
 
-MCAsmBackend *llvm::createARM64AsmBackend(const Target &T,
-                                          const MCRegisterInfo &MRI,
-                                          StringRef TT, StringRef CPU) {
+MCAsmBackend *llvm::createARM64leAsmBackend(const Target &T,
+                                            const MCRegisterInfo &MRI,
+                                            StringRef TT, StringRef CPU) {
   Triple TheTriple(TT);
 
   if (TheTriple.isOSDarwin())
     return new DarwinARM64AsmBackend(T, MRI);
 
   assert(TheTriple.isOSBinFormatELF() && "Expect either MachO or ELF target");
-  return new ELFARM64AsmBackend(T, TheTriple.getOS());
+  return new ELFARM64AsmBackend(T, TheTriple.getOS(), /*IsLittleEndian=*/true);
+}
+
+MCAsmBackend *llvm::createARM64beAsmBackend(const Target &T,
+                                            const MCRegisterInfo &MRI,
+                                            StringRef TT, StringRef CPU) {
+  Triple TheTriple(TT);
+
+  assert(TheTriple.isOSBinFormatELF() && "Big endian is only supported for ELF targets!");
+  return new ELFARM64AsmBackend(T, TheTriple.getOS(), /*IsLittleEndian=*/false);
 }

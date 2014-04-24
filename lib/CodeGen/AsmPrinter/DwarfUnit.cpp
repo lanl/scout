@@ -11,8 +11,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "dwarfdebug"
-
 #include "DwarfUnit.h"
 #include "DwarfAccelTable.h"
 #include "DwarfDebug.h"
@@ -35,6 +33,8 @@
 
 using namespace llvm;
 
+#define DEBUG_TYPE "dwarfdebug"
+
 static cl::opt<bool>
 GenerateDwarfTypeUnits("generate-type-units", cl::Hidden,
                        cl::desc("Generate DWARF4 type units."),
@@ -44,7 +44,8 @@ GenerateDwarfTypeUnits("generate-type-units", cl::Hidden,
 DwarfUnit::DwarfUnit(unsigned UID, DIE *D, DICompileUnit Node, AsmPrinter *A,
                      DwarfDebug *DW, DwarfFile *DWU)
     : UniqueID(UID), CUNode(Node), UnitDie(D), DebugInfoOffset(0), Asm(A),
-      DD(DW), DU(DWU), IndexTyDie(0), Section(0), Skeleton(0) {
+      DD(DW), DU(DWU), IndexTyDie(nullptr), Section(nullptr),
+      Skeleton(nullptr) {
   DIEIntegerOne = new (DIEValueAllocator) DIEInteger(1);
 }
 
@@ -290,7 +291,7 @@ void DwarfCompileUnit::addLabelAddress(DIE *Die, dwarf::Attribute Attribute,
   if (Label)
     DD->addArangeLabel(SymbolCU(this, Label));
 
-  unsigned idx = DU->getAddrPoolIndex(Label);
+  unsigned idx = DD->getAddressPool().getIndex(Label);
   DIEValue *Value = new (DIEValueAllocator) DIEInteger(idx);
   Die->addValue(Attribute, dwarf::DW_FORM_GNU_addr_index, Value);
 }
@@ -335,7 +336,8 @@ void DwarfUnit::addOpAddress(DIELoc *Die, const MCSymbol *Sym) {
     addLabel(Die, dwarf::DW_FORM_udata, Sym);
   } else {
     addUInt(Die, dwarf::DW_FORM_data1, dwarf::DW_OP_GNU_addr_index);
-    addUInt(Die, dwarf::DW_FORM_GNU_addr_index, DU->getAddrPoolIndex(Sym));
+    addUInt(Die, dwarf::DW_FORM_GNU_addr_index,
+            DD->getAddressPool().getIndex(Sym));
   }
 }
 
@@ -978,7 +980,7 @@ DIE *DwarfUnit::createTypeDIE(DICompositeType Ty) {
 /// given DIType.
 DIE *DwarfUnit::getOrCreateTypeDIE(const MDNode *TyNode) {
   if (!TyNode)
-    return NULL;
+    return nullptr;
 
   DIType Ty(TyNode);
   assert(Ty.isType());
@@ -1034,7 +1036,7 @@ void DwarfUnit::updateAcceleratorTables(DIScope Context, DIType Ty,
       IsImplementation = (CT.getRunTimeLang() == 0) || CT.isObjcClassComplete();
     }
     unsigned Flags = IsImplementation ? dwarf::DW_FLAG_type_implementation : 0;
-    addAccelType(Ty.getName(), std::make_pair(TyDIE, Flags));
+    DD->addAccelType(Ty.getName(), TyDIE, Flags);
 
     if ((!Context || Context.isCompileUnit() || Context.isFile() ||
          Context.isNameSpace()) &&
@@ -1062,43 +1064,6 @@ void DwarfUnit::addType(DIE *Entity, DIType Ty, dwarf::Attribute Attribute) {
   Entry = createDIEEntry(Buffer);
   insertDIEEntry(Ty, Entry);
   addDIEEntry(Entity, Attribute, Entry);
-}
-
-// Accelerator table mutators - add each name along with its companion
-// DIE to the proper table while ensuring that the name that we're going
-// to reference is in the string table. We do this since the names we
-// add may not only be identical to the names in the DIE.
-void DwarfUnit::addAccelName(StringRef Name, const DIE *Die) {
-  if (!DD->useDwarfAccelTables())
-    return;
-  DU->getStringPoolEntry(Name);
-  std::vector<const DIE *> &DIEs = AccelNames[Name];
-  DIEs.push_back(Die);
-}
-
-void DwarfUnit::addAccelObjC(StringRef Name, const DIE *Die) {
-  if (!DD->useDwarfAccelTables())
-    return;
-  DU->getStringPoolEntry(Name);
-  std::vector<const DIE *> &DIEs = AccelObjC[Name];
-  DIEs.push_back(Die);
-}
-
-void DwarfUnit::addAccelNamespace(StringRef Name, const DIE *Die) {
-  if (!DD->useDwarfAccelTables())
-    return;
-  DU->getStringPoolEntry(Name);
-  std::vector<const DIE *> &DIEs = AccelNamespace[Name];
-  DIEs.push_back(Die);
-}
-
-void DwarfUnit::addAccelType(StringRef Name,
-                             std::pair<const DIE *, unsigned> Die) {
-  if (!DD->useDwarfAccelTables())
-    return;
-  DU->getStringPoolEntry(Name);
-  std::vector<std::pair<const DIE *, unsigned> > &DIEs = AccelTypes[Name];
-  DIEs.push_back(Die);
 }
 
 /// addGlobalName - Add a new global name to the compile unit.
@@ -1262,7 +1227,7 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, DICompositeType CTy) {
     DIArray Elements = CTy.getTypeArray();
     for (unsigned i = 0, N = Elements.getNumElements(); i < N; ++i) {
       DIDescriptor Element = Elements.getElement(i);
-      DIE *ElemDie = NULL;
+      DIE *ElemDie = nullptr;
       if (Element.isSubprogram())
         ElemDie = getOrCreateSubprogramDIE(DISubprogram(Element));
       else if (Element.isDerivedType()) {
@@ -1434,10 +1399,10 @@ DIE *DwarfUnit::getOrCreateNameSpace(DINameSpace NS) {
 
   if (!NS.getName().empty()) {
     addString(NDie, dwarf::DW_AT_name, NS.getName());
-    addAccelNamespace(NS.getName(), NDie);
+    DD->addAccelNamespace(NS.getName(), NDie);
     addGlobalName(NS.getName(), NDie, NS.getContext());
   } else
-    addAccelNamespace("(anonymous namespace)", NDie);
+    DD->addAccelNamespace("(anonymous namespace)", NDie);
   addSourceLine(NDie, NS);
   return NDie;
 }
@@ -1466,7 +1431,7 @@ DIE *DwarfUnit::getOrCreateSubprogramDIE(DISubprogram SP) {
   // DW_TAG_inlined_subroutine may refer to this DIE.
   SPDie = createAndAddDIE(dwarf::DW_TAG_subprogram, *ContextDIE, SP);
 
-  DIE *DeclDie = NULL;
+  DIE *DeclDie = nullptr;
   if (SPDecl.isSubprogram())
     DeclDie = getOrCreateSubprogramDIE(SPDecl);
 
@@ -1578,22 +1543,22 @@ static const ConstantExpr *getMergedGlobalExpr(const Value *V) {
   const ConstantExpr *CE = dyn_cast_or_null<ConstantExpr>(V);
   if (!CE || CE->getNumOperands() != 3 ||
       CE->getOpcode() != Instruction::GetElementPtr)
-    return NULL;
+    return nullptr;
 
   // First operand points to a global struct.
   Value *Ptr = CE->getOperand(0);
   if (!isa<GlobalValue>(Ptr) ||
       !isa<StructType>(cast<PointerType>(Ptr->getType())->getElementType()))
-    return NULL;
+    return nullptr;
 
   // Second operand is zero.
   const ConstantInt *CI = dyn_cast_or_null<ConstantInt>(CE->getOperand(1));
   if (!CI || !CI->isZero())
-    return NULL;
+    return nullptr;
 
   // Third operand is offset.
   if (!isa<ConstantInt>(CE->getOperand(2)))
-    return NULL;
+    return nullptr;
 
   return CE;
 }
@@ -1611,7 +1576,7 @@ void DwarfCompileUnit::createGlobalVariableDIE(DIGlobalVariable GV) {
 
   // If this is a static data member definition, some attributes belong
   // to the declaration DIE.
-  DIE *VariableDIE = NULL;
+  DIE *VariableDIE = nullptr;
   bool IsStaticMember = false;
   DIDerivedType SDMDecl = GV.getStaticDataMemberDeclaration();
   if (SDMDecl.Verify()) {
@@ -1645,8 +1610,8 @@ void DwarfCompileUnit::createGlobalVariableDIE(DIGlobalVariable GV) {
 
   // Add location.
   bool addToAccelTable = false;
-  DIE *VariableSpecDIE = NULL;
-  bool isGlobalVariable = GV.getGlobal() != NULL;
+  DIE *VariableSpecDIE = nullptr;
+  bool isGlobalVariable = GV.getGlobal() != nullptr;
   if (isGlobalVariable) {
     addToAccelTable = true;
     DIELoc *Loc = new (DIEValueAllocator) DIELoc();
@@ -1668,7 +1633,7 @@ void DwarfCompileUnit::createGlobalVariableDIE(DIGlobalVariable GV) {
       } else {
         addUInt(Loc, dwarf::DW_FORM_data1, dwarf::DW_OP_GNU_const_index);
         addUInt(Loc, dwarf::DW_FORM_udata,
-                DU->getAddrPoolIndex(Sym, /* TLS */ true));
+                DD->getAddressPool().getIndex(Sym, /* TLS */ true));
       }
       // 3) followed by a custom OP to make the debugger do a TLS lookup.
       addUInt(Loc, dwarf::DW_FORM_data1, dwarf::DW_OP_GNU_push_tls_address);
@@ -1726,12 +1691,12 @@ void DwarfCompileUnit::createGlobalVariableDIE(DIGlobalVariable GV) {
 
   if (addToAccelTable) {
     DIE *AddrDIE = VariableSpecDIE ? VariableSpecDIE : VariableDIE;
-    addAccelName(GV.getName(), AddrDIE);
+    DD->addAccelName(GV.getName(), AddrDIE);
 
     // If the linkage name is different than the name, go ahead and output
     // that as well into the name table.
     if (GV.getLinkageName() != "" && GV.getName() != GV.getLinkageName())
-      addAccelName(GV.getLinkageName(), AddrDIE);
+      DD->addAccelName(GV.getLinkageName(), AddrDIE);
   }
 
   if (!GV.isLocalToUnit())
@@ -1842,7 +1807,7 @@ DIE *DwarfUnit::constructVariableDIE(DbgVariable &DV, bool isScopeAbstract) {
   // Define variable debug information entry.
   DIE *VariableDie = new DIE(DV.getTag());
   DbgVariable *AbsVar = DV.getAbstractVariable();
-  DIE *AbsDIE = AbsVar ? AbsVar->getDIE() : NULL;
+  DIE *AbsDIE = AbsVar ? AbsVar->getDIE() : nullptr;
   if (AbsDIE)
     addDIEEntry(VariableDie, dwarf::DW_AT_abstract_origin, AbsDIE);
   else {
@@ -1999,7 +1964,7 @@ void DwarfUnit::constructMemberDIE(DIE &Buffer, DIDerivedType DT) {
 /// getOrCreateStaticMemberDIE - Create new DIE for C++ static member.
 DIE *DwarfUnit::getOrCreateStaticMemberDIE(DIDerivedType DT) {
   if (!DT.Verify())
-    return NULL;
+    return nullptr;
 
   // Construct the context before querying for the existence of the DIE in case
   // such construction creates the DIE.

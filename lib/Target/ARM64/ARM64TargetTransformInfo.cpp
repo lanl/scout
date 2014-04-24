@@ -14,7 +14,6 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "arm64tti"
 #include "ARM64.h"
 #include "ARM64TargetMachine.h"
 #include "MCTargetDesc/ARM64AddressingModes.h"
@@ -24,6 +23,8 @@
 #include "llvm/Target/TargetLowering.h"
 #include <algorithm>
 using namespace llvm;
+
+#define DEBUG_TYPE "arm64tti"
 
 // Declare the pass initialization routine locally as target-specific passes
 // don't havve a target-wide initialization entry point, and so we rely on the
@@ -86,16 +87,20 @@ public:
   /// @{
 
   unsigned getNumberOfRegisters(bool Vector) const override {
-    if (Vector)
-      return 32;
-
+    if (Vector) {
+      if (ST->hasNEON())
+        return 32;
+      return 0;
+    }
     return 31;
   }
 
   unsigned getRegisterBitWidth(bool Vector) const override {
-    if (Vector)
-      return 128;
-
+    if (Vector) {
+      if (ST->hasNEON())
+        return 128;
+      return 0;
+    }
     return 64;
   }
 

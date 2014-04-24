@@ -24,6 +24,8 @@
 #include <string>
 #include <vector>
 
+#define DEBUG_TYPE "block-freq"
+
 //===----------------------------------------------------------------------===//
 //
 // UnsignedFloat definition.
@@ -935,19 +937,47 @@ public:
     uint64_t Integer;
   };
 
+  /// \brief Data about a loop.
+  ///
+  /// Contains the data necessary to represent represent a loop as a
+  /// pseudo-node once it's packaged.
+  struct LoopData {
+    typedef SmallVector<std::pair<BlockNode, BlockMass>, 4> ExitMap;
+    typedef SmallVector<BlockNode, 4> MemberList;
+    BlockNode Header;       ///< Header.
+    bool IsPackaged;        ///< Whether this has been packaged.
+    ExitMap Exits;          ///< Successor edges (and weights).
+    MemberList Members;     ///< Members of the loop.
+    BlockMass BackedgeMass; ///< Mass returned to loop header.
+    BlockMass Mass;
+    Float Scale;
+
+    LoopData(const BlockNode &Header) : Header(Header), IsPackaged(false) {}
+  };
+
   /// \brief Index of loop information.
   struct WorkingData {
-    BlockNode ContainingLoop; ///< The block whose loop this block is inside.
-    uint32_t LoopIndex;       ///< Index into PackagedLoops.
-    bool IsPackaged;          ///< Has ContainingLoop been packaged up?
-    bool IsAPackage;          ///< Has this block's loop been packaged up?
+    LoopData *Loop;           ///< The loop this block is the header of.
+    LoopData *ContainingLoop; ///< The block whose loop this block is inside.
     BlockMass Mass;           ///< Mass distribution from the entry block.
 
-    WorkingData()
-        : LoopIndex(UINT32_MAX), IsPackaged(false), IsAPackage(false) {}
+    WorkingData() : Loop(nullptr), ContainingLoop(nullptr) {}
 
-    bool hasLoopHeader() const { return ContainingLoop.isValid(); }
-    bool isLoopHeader() const { return LoopIndex != UINT32_MAX; }
+    bool hasLoopHeader() const { return ContainingLoop; }
+    bool isLoopHeader() const { return Loop; }
+
+    BlockNode getContainingHeader() const {
+      if (ContainingLoop)
+        return ContainingLoop->Header;
+      return BlockNode();
+    }
+
+    /// \brief Has ContainingLoop been packaged up?
+    bool isPackaged() const {
+      return ContainingLoop && ContainingLoop->IsPackaged;
+    }
+    /// \brief Has Loop been packaged up?
+    bool isAPackage() const { return Loop && Loop->IsPackaged; }
   };
 
   /// \brief Unscaled probability weight.
@@ -1014,43 +1044,14 @@ public:
     void add(const BlockNode &Node, uint64_t Amount, Weight::DistType Type);
   };
 
-  /// \brief Data for a packaged loop.
-  ///
-  /// Contains the data necessary to represent represent a loop as a node once
-  /// it's packaged.
-  ///
-  /// PackagedLoopData inherits from BlockData to give the node the necessary
-  /// stats.  Further, it has a list of successors, list of members, and stores
-  /// the backedge mass assigned to this loop.
-  struct PackagedLoopData {
-    typedef SmallVector<std::pair<BlockNode, BlockMass>, 4> ExitMap;
-    typedef SmallVector<BlockNode, 4> MemberList;
-    BlockNode Header;       ///< Header.
-    ExitMap Exits;          ///< Successor edges (and weights).
-    MemberList Members;     ///< Members of the loop.
-    BlockMass BackedgeMass; ///< Mass returned to loop header.
-    BlockMass Mass;
-    Float Scale;
-
-    PackagedLoopData(const BlockNode &Header) : Header(Header) {}
-  };
-
   /// \brief Data about each block.  This is used downstream.
   std::vector<FrequencyData> Freqs;
 
   /// \brief Loop data: see initializeLoops().
   std::vector<WorkingData> Working;
 
-  /// \brief Indexed information about packaged loops.
-  std::vector<PackagedLoopData> PackagedLoops;
-
-  /// \brief Create the initial loop packages.
-  ///
-  /// Initializes PackagedLoops using the data in Working about backedges
-  /// and containing loops.  Called by initializeLoops().
-  ///
-  /// \post WorkingData::LoopIndex has been initialized for every loop header
-  /// and PackagedLoopData::Members has been initialized.
+  /// \brief Indexed information about loops.
+  std::vector<std::unique_ptr<LoopData>> Loops;
 
   /// \brief Add all edges out of a packaged loop to the distribution.
   ///
@@ -1069,17 +1070,16 @@ public:
   void addToDist(Distribution &Dist, const BlockNode &LoopHead,
                  const BlockNode &Pred, const BlockNode &Succ, uint64_t Weight);
 
-  PackagedLoopData &getLoopPackage(const BlockNode &Head) {
+  LoopData &getLoopPackage(const BlockNode &Head) {
     assert(Head.Index < Working.size());
-    size_t Index = Working[Head.Index].LoopIndex;
-    assert(Index < PackagedLoops.size());
-    return PackagedLoops[Index];
+    assert(Working[Head.Index].Loop != nullptr);
+    return *Working[Head.Index].Loop;
   }
 
   /// \brief Distribute mass according to a distribution.
   ///
   /// Distributes the mass in Source according to Dist.  If LoopHead.isValid(),
-  /// backedges and exits are stored in its entry in PackagedLoops.
+  /// backedges and exits are stored in its entry in Loops.
   ///
   /// Mass is distributed in parallel from two copies of the source mass.
   ///
@@ -1227,7 +1227,7 @@ template <> inline std::string getBlockName(const BasicBlock *BB) {
 ///
 ///         - Fetch and categorize the weight distribution for its successors.
 ///           If this is a packaged-subloop, the weight distribution is stored
-///           in \a PackagedLoopData::Exits.  Otherwise, fetch it from
+///           in \a LoopData::Exits.  Otherwise, fetch it from
 ///           BranchProbabilityInfo.
 ///
 ///         - Each successor is categorized as \a Weight::Local, a normal
@@ -1438,8 +1438,8 @@ template <class BT> void BlockFrequencyInfoImpl<BT>::initializeLoops() {
     BlockNode Header = getNode(Loop->getHeader());
     assert(Header.isValid());
 
-    Working[Header.Index].LoopIndex = PackagedLoops.size();
-    PackagedLoops.emplace_back(Header);
+    Loops.emplace_back(new LoopData(Header));
+    Working[Header.Index].Loop = Loops.back().get();
     DEBUG(dbgs() << " - loop = " << getBlockName(Header) << "\n");
   }
 
@@ -1461,8 +1461,8 @@ template <class BT> void BlockFrequencyInfoImpl<BT>::initializeLoops() {
     const auto &HeaderData = Working[Header.Index];
     assert(HeaderData.isLoopHeader());
 
-    Working[Index].ContainingLoop = Header;
-    PackagedLoops[HeaderData.LoopIndex].Members.push_back(Index);
+    Working[Index].ContainingLoop = HeaderData.Loop;
+    HeaderData.Loop->Members.push_back(Index);
     DEBUG(dbgs() << " - loop = " << getBlockName(Header)
                  << ": member = " << getBlockName(Index) << "\n");
   }
@@ -1470,7 +1470,7 @@ template <class BT> void BlockFrequencyInfoImpl<BT>::initializeLoops() {
 
 template <class BT> void BlockFrequencyInfoImpl<BT>::computeMassInLoops() {
   // Visit loops with the deepest first, and the top-level loops last.
-  for (auto L = PackagedLoops.rbegin(), LE = PackagedLoops.rend(); L != LE; ++L)
+  for (const auto &L : make_range(Loops.rbegin(), Loops.rend()))
     computeMassInLoop(L->Header);
 }
 
@@ -1544,5 +1544,7 @@ raw_ostream &BlockFrequencyInfoImpl<BT>::print(raw_ostream &OS) const {
   return OS;
 }
 }
+
+#undef DEBUG_TYPE
 
 #endif

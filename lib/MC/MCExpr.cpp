@@ -7,7 +7,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "mcexpr"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -22,6 +21,8 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
+
+#define DEBUG_TYPE "mcexpr"
 
 namespace {
 namespace stats {
@@ -505,8 +506,8 @@ static void AttemptToFoldSymbolOffsetDifference(const MCAssembler *Asm,
   if (!Asm->getWriter().IsSymbolRefDifferenceFullyResolved(*Asm, A, B, InSet))
     return;
 
-  MCSymbolData &AD = Asm->getSymbolData(SA);
-  MCSymbolData &BD = Asm->getSymbolData(SB);
+  const MCSymbolData &AD = Asm->getSymbolData(SA);
+  const MCSymbolData &BD = Asm->getSymbolData(SB);
 
   if (AD.getFragment() == BD.getFragment()) {
     Addend += (AD.getOffset() - BD.getOffset());
