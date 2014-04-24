@@ -85,6 +85,11 @@ using namespace CodeGen;
 static const char *DimNames[]   = { "width", "height", "depth" };
 static const char *IndexNames[] = { "x", "y", "z"};
 
+static const uint8_t FIELD_CELL = 0;
+static const uint8_t FIELD_VERTEX = 1;
+static const uint8_t FIELD_EDGE = 2;
+static const uint8_t FIELD_FACE = 3;
+
 // We use 'IRNameStr' to hold the generated names we use for
 // various values in the IR building.  We've added a static
 // buffer to avoid the need for a lot of fine-grained new and
@@ -898,6 +903,43 @@ void CodeGenFunction::EmitForallFacesVertices(const ForallMeshStmt &S){
 }
 
 void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
+  if(isGPU()){
+    llvm::BasicBlock *entry = EmitMarkerBlock("forall.entry");
+    
+    EmitGPUPreamble(S);
+    
+    llvm::BasicBlock* condBlock = createBasicBlock("forall.cond");
+    EmitBlock(condBlock);
+    
+    llvm::Value* threadId = Builder.CreateLoad(GPUThreadId, "threadId");
+    
+    llvm::Value* cond = Builder.CreateICmpULT(threadId, GPUNumThreads);
+    
+    llvm::BasicBlock* bodyBlock = createBasicBlock("forall.body");
+    llvm::BasicBlock* exitBlock = createBasicBlock("forall.exit");
+    
+    Builder.CreateCondBr(cond, bodyBlock, exitBlock);
+    
+    EmitBlock(bodyBlock);
+    
+    EdgeIndex = GPUThreadId;
+    EmitStmt(S.getBody());
+    EdgeIndex = 0;
+    
+    threadId = Builder.CreateAdd(threadId, GPUThreadInc);
+    Builder.CreateStore(threadId, GPUThreadId);
+    
+    Builder.CreateBr(condBlock);
+    
+    EmitBlock(exitBlock);
+    
+    llvm::Function* f = ExtractRegion(entry, exitBlock, "ForallMeshFunction");
+    
+    AddScoutKernel(f, S);
+    
+    return;
+  }
+  
   llvm::Value* Zero = llvm::ConstantInt::get(Int64Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
 
@@ -937,6 +979,43 @@ void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
 }
 
 void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
+  if(isGPU()){
+    llvm::BasicBlock *entry = EmitMarkerBlock("forall.entry");
+    
+    EmitGPUPreamble(S);
+    
+    llvm::BasicBlock* condBlock = createBasicBlock("forall.cond");
+    EmitBlock(condBlock);
+    
+    llvm::Value* threadId = Builder.CreateLoad(GPUThreadId, "threadId");
+    
+    llvm::Value* cond = Builder.CreateICmpULT(threadId, GPUNumThreads);
+    
+    llvm::BasicBlock* bodyBlock = createBasicBlock("forall.body");
+    llvm::BasicBlock* exitBlock = createBasicBlock("forall.exit");
+    
+    Builder.CreateCondBr(cond, bodyBlock, exitBlock);
+    
+    EmitBlock(bodyBlock);
+    
+    FaceIndex = GPUThreadId;
+    EmitStmt(S.getBody());
+    FaceIndex = 0;
+    
+    threadId = Builder.CreateAdd(threadId, GPUThreadInc);
+    Builder.CreateStore(threadId, GPUThreadId);
+    
+    Builder.CreateBr(condBlock);
+    
+    EmitBlock(exitBlock);
+    
+    llvm::Function* f = ExtractRegion(entry, exitBlock, "ForallMeshFunction");
+    
+    AddScoutKernel(f, S);
+    
+    return;
+  }
+  
   llvm::Value* Zero = llvm::ConstantInt::get(Int64Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
 
@@ -991,8 +1070,27 @@ void CodeGenFunction::AddScoutKernel(llvm::Function* f,
   for (MeshDecl::field_iterator itr = md->field_begin(),
        itrEnd = md->field_end(); itr != itrEnd; ++itr){
     MeshFieldDecl* fd = *itr;
-    meshFields.push_back(llvm::MDString::get(CGM.getLLVMContext(),
-                                             fd->getName()));
+    
+    llvm::SmallVector<llvm::Value*, 3> fieldData;
+    fieldData.push_back(llvm::MDString::get(CGM.getLLVMContext(),
+                                            fd->getName()));
+    if(fd->isCellLocated()){
+      fieldData.push_back(llvm::ConstantInt::get(Int8Ty, FIELD_CELL));
+    }
+    else if(fd->isVertexLocated()){
+      fieldData.push_back(llvm::ConstantInt::get(Int8Ty, FIELD_VERTEX));
+    }
+    else if(fd->isEdgeLocated()){
+      fieldData.push_back(llvm::ConstantInt::get(Int8Ty, FIELD_EDGE));
+    }
+    else if(fd->isFaceLocated()){
+      fieldData.push_back(llvm::ConstantInt::get(Int8Ty, FIELD_FACE));
+    }
+    
+    llvm::Value* fieldDataMD =
+    llvm::MDNode::get(CGM.getLLVMContext(), ArrayRef<llvm::Value*>(fieldData));
+    
+    meshFields.push_back(fieldDataMD);
   }
   
   llvm::Value* fieldsMD =
@@ -1011,12 +1109,35 @@ void CodeGenFunction::EmitGPUPreamble(const ForallMeshStmt& S){
   llvm::Value* Addr = Builder.CreateAlloca(V->getType(), 0, "TheMesh_addr");
   Builder.CreateStore(V, Addr);
 
-  llvm::Value* width = Builder.CreateLoad(LoopBounds[0], "width");
-  llvm::Value* height = Builder.CreateLoad(LoopBounds[1], "height");
-  llvm::Value* depth = Builder.CreateLoad(LoopBounds[2], "depth");
+  SmallVector<llvm::Value*, 3> Dimensions;
+  GetMeshDimensions(S.getMeshType(), Dimensions);
   
-  GPUNumThreads =
-  Builder.CreateMul(width, Builder.CreateMul(height, depth), "numThreads");
+  ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
+
+  Builder.CreateLoad(LoopBounds[0], "TheMesh.width");
+  Builder.CreateLoad(LoopBounds[1], "TheMesh.height");
+  Builder.CreateLoad(LoopBounds[2], "TheMesh.depth");
+  
+  llvm::Value* numItems;
+  
+  switch(FET){
+    case ForallMeshStmt::Cells:
+      GetNumMeshItems(Dimensions, &numItems, 0, 0, 0);
+      break;
+    case ForallMeshStmt::Vertices:
+      GetNumMeshItems(Dimensions, 0, &numItems, 0, 0);
+      break;
+    case ForallMeshStmt::Edges:
+      GetNumMeshItems(Dimensions, 0, 0, &numItems, 0);
+      break;
+    case ForallMeshStmt::Faces:
+      GetNumMeshItems(Dimensions, 0, 0, 0, &numItems);
+      break;
+    default:
+      assert(false && "unrecognized forall type");
+  }
+  
+  GPUNumThreads = Builder.CreateIntCast(numItems, Int32Ty, false);
   
   llvm::Value* ptr = Builder.CreateAlloca(Int32Ty, 0, "tid.x.ptr");
   llvm::Value* tid = Builder.CreateLoad(ptr, "tid.x");

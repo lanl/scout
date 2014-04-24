@@ -41,6 +41,7 @@
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/iterator.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
@@ -112,12 +113,9 @@ public:
   /// be scanned for "calls" or uses of functions and its child information
   /// will be constructed. All of these results are accumulated and cached in
   /// the graph.
-  class iterator : public std::iterator<std::bidirectional_iterator_tag, Node *,
-                                        ptrdiff_t, Node *, Node *> {
+  class iterator : public std::iterator<std::bidirectional_iterator_tag, Node> {
     friend class LazyCallGraph;
     friend class LazyCallGraph::Node;
-    typedef std::iterator<std::bidirectional_iterator_tag, Node *, ptrdiff_t,
-                          Node *, Node *> BaseT;
 
     /// \brief Nonce type to select the constructor for the end iterator.
     struct IsAtEndT {};
@@ -134,19 +132,19 @@ public:
         : G(&G), NI(Nodes.end()) {}
 
   public:
-    bool operator==(const iterator &Arg) { return NI == Arg.NI; }
-    bool operator!=(const iterator &Arg) { return !operator==(Arg); }
+    bool operator==(const iterator &Arg) const { return NI == Arg.NI; }
+    bool operator!=(const iterator &Arg) const { return !operator==(Arg); }
 
     reference operator*() const {
       if (NI->is<Node *>())
-        return NI->get<Node *>();
+        return *NI->get<Node *>();
 
       Function *F = NI->get<Function *>();
-      Node *ChildN = G->get(*F);
-      *NI = ChildN;
+      Node &ChildN = G->get(*F);
+      *NI = &ChildN;
       return ChildN;
     }
-    pointer operator->() const { return operator*(); }
+    pointer operator->() const { return &operator*(); }
 
     iterator &operator++() {
       ++NI;
@@ -187,10 +185,10 @@ public:
     int LowLink;
 
     mutable NodeVectorT Callees;
-    SmallPtrSet<Function *, 4> CalleeSet;
+    DenseMap<Function *, size_t> CalleeIndexMap;
 
     /// \brief Basic constructor implements the scanning of F into Callees and
-    /// CalleeSet.
+    /// CalleeIndexMap.
     Node(LazyCallGraph &G, Function &F);
 
   public:
@@ -217,17 +215,30 @@ public:
     friend class LazyCallGraph;
     friend class LazyCallGraph::Node;
 
-    SmallSetVector<SCC *, 1> ParentSCCs;
+    SmallPtrSet<SCC *, 1> ParentSCCs;
     SmallVector<Node *, 1> Nodes;
-    SmallPtrSet<Function *, 1> NodeSet;
 
     SCC() {}
 
+    void removeEdge(LazyCallGraph &G, Function &Caller, Function &Callee,
+                    SCC &CalleeC);
+
+    SmallVector<LazyCallGraph::SCC *, 1>
+    removeInternalEdge(LazyCallGraph &G, Node &Caller, Node &Callee);
+
   public:
     typedef SmallVectorImpl<Node *>::const_iterator iterator;
+    typedef pointee_iterator<SmallPtrSet<SCC *, 1>::const_iterator> parent_iterator;
 
     iterator begin() const { return Nodes.begin(); }
     iterator end() const { return Nodes.end(); }
+
+    parent_iterator parent_begin() const { return ParentSCCs.begin(); }
+    parent_iterator parent_end() const { return ParentSCCs.end(); }
+
+    iterator_range<parent_iterator> parents() const {
+      return iterator_range<parent_iterator>(parent_begin(), parent_end());
+    }
   };
 
   /// \brief A post-order depth-first SCC iterator over the call graph.
@@ -237,12 +248,9 @@ public:
   /// always visits SCCs for a callee prior to visiting the SCC for a caller
   /// (when they are in different SCCs).
   class postorder_scc_iterator
-      : public std::iterator<std::forward_iterator_tag, SCC *, ptrdiff_t, SCC *,
-                             SCC *> {
+      : public std::iterator<std::forward_iterator_tag, SCC> {
     friend class LazyCallGraph;
     friend class LazyCallGraph::Node;
-    typedef std::iterator<std::forward_iterator_tag, SCC *, ptrdiff_t,
-                          SCC *, SCC *> BaseT;
 
     /// \brief Nonce type to select the constructor for the end iterator.
     struct IsAtEndT {};
@@ -260,15 +268,15 @@ public:
         : G(&G), C(nullptr) {}
 
   public:
-    bool operator==(const postorder_scc_iterator &Arg) {
+    bool operator==(const postorder_scc_iterator &Arg) const {
       return G == Arg.G && C == Arg.C;
     }
-    bool operator!=(const postorder_scc_iterator &Arg) {
+    bool operator!=(const postorder_scc_iterator &Arg) const {
       return !operator==(Arg);
     }
 
-    reference operator*() const { return C; }
-    pointer operator->() const { return operator*(); }
+    reference operator*() const { return *C; }
+    pointer operator->() const { return &operator*(); }
 
     postorder_scc_iterator &operator++() {
       C = G->getNextSCCInPostOrder();
@@ -310,14 +318,28 @@ public:
   /// added.
   Node *lookup(const Function &F) const { return NodeMap.lookup(&F); }
 
+  /// \brief Lookup a function's SCC in the graph.
+  ///
+  /// \returns null if the function hasn't been assigned an SCC via the SCC
+  /// iterator walk.
+  SCC *lookupSCC(Node &N) const { return SCCMap.lookup(&N); }
+
   /// \brief Get a graph node for a given function, scanning it to populate the
   /// graph data as necessary.
-  Node *get(Function &F) {
+  Node &get(Function &F) {
     Node *&N = NodeMap[&F];
     if (N)
-      return N;
+      return *N;
 
     return insertInto(F, N);
+  }
+
+  /// \brief Update the call graph after deleting an edge.
+  void removeEdge(Node &Caller, Function &Callee);
+
+  /// \brief Update the call graph after deleting an edge.
+  void removeEdge(Function &Caller, Function &Callee) {
+    return removeEdge(get(Caller), Callee);
   }
 
 private:
@@ -333,35 +355,43 @@ private:
   /// escape at the module scope.
   NodeVectorT EntryNodes;
 
-  /// \brief Set of the entry nodes to the graph.
-  SmallPtrSet<Function *, 4> EntryNodeSet;
+  /// \brief Map of the entry nodes in the graph to their indices in
+  /// \c EntryNodes.
+  DenseMap<Function *, size_t> EntryIndexMap;
 
   /// \brief Allocator that holds all the call graph SCCs.
   SpecificBumpPtrAllocator<SCC> SCCBPA;
 
   /// \brief Maps Function -> SCC for fast lookup.
-  DenseMap<const Function *, SCC *> SCCMap;
+  DenseMap<Node *, SCC *> SCCMap;
 
   /// \brief The leaf SCCs of the graph.
   ///
   /// These are all of the SCCs which have no children.
   SmallVector<SCC *, 4> LeafSCCs;
 
-  /// \brief Stack of nodes not-yet-processed into SCCs.
+  /// \brief Stack of nodes in the DFS walk.
   SmallVector<std::pair<Node *, iterator>, 4> DFSStack;
 
   /// \brief Set of entry nodes not-yet-processed into SCCs.
   SmallSetVector<Function *, 4> SCCEntryNodes;
+
+  /// \brief Stack of nodes the DFS has walked but not yet put into a SCC.
+  SmallVector<Node *, 4> PendingSCCStack;
 
   /// \brief Counter for the next DFS number to assign.
   int NextDFSNumber;
 
   /// \brief Helper to insert a new function, with an already looked-up entry in
   /// the NodeMap.
-  Node *insertInto(Function &F, Node *&MappedN);
+  Node &insertInto(Function &F, Node *&MappedN);
 
   /// \brief Helper to update pointers back to the graph object during moves.
   void updateGraphPtrs();
+
+  /// \brief Helper to form a new SCC out of the top of a DFSStack-like
+  /// structure.
+  SCC *formSCC(Node *RootN, SmallVectorImpl<Node *> &NodeStack);
 
   /// \brief Retrieve the next node in the post-order SCC walk of the call graph.
   SCC *getNextSCCInPostOrder();

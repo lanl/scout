@@ -2464,12 +2464,12 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
       Index = Builder.CreateLoad(VertexIndex);
     }
     else if(MFD->isEdgeLocated()){
-      assert(EdgeIndex && "null EdgeIndex while referencing vertex field");
+      assert(EdgeIndex && "null EdgeIndex while referencing edge field");
       // use the vertex index if we are within a forall vertices
       Index = Builder.CreateLoad(EdgeIndex);
     }
     else if(MFD->isFaceLocated()){
-      assert(EdgeIndex && "null FaceIndex while referencing vertex field");
+      assert(FaceIndex && "null FaceIndex while referencing face field");
       // use the vertex index if we are within a forall vertices
       Index = Builder.CreateLoad(FaceIndex);
     }

@@ -11,7 +11,6 @@
 // selection DAG.
 //
 //===----------------------------------------------------------------------===//
-#define DEBUG_TYPE "mips-lower"
 #include "MipsISelLowering.h"
 #include "InstPrinter/MipsInstPrinter.h"
 #include "MCTargetDesc/MipsBaseInfo.h"
@@ -38,6 +37,8 @@
 #include <cctype>
 
 using namespace llvm;
+
+#define DEBUG_TYPE "mips-lower"
 
 STATISTIC(NumTailCalls, "Number of tail calls");
 
@@ -2337,6 +2338,10 @@ MipsTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
     IsTailCall =
       isEligibleForTailCallOptimization(MipsCCInfo, NextStackOffset,
                                         *MF.getInfo<MipsFunctionInfo>());
+
+  if (!IsTailCall && CLI.CS && CLI.CS->isMustTailCall())
+    report_fatal_error("failed to perform tail call elimination on a call "
+                       "site marked musttail");
 
   if (IsTailCall)
     ++NumTailCalls;

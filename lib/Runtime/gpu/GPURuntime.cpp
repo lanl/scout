@@ -99,9 +99,11 @@ void __scrt_gpu_init_field(const char* kernelName,
                            const char* fieldName,
                            void* hostPtr,
                            uint32_t elementSize,
+                           uint8_t elementType,
                            uint8_t mode){
   GPURuntime* runtime = GPURuntime::get();
-  runtime->initField(kernelName, fieldName, hostPtr, elementSize, mode);
+  runtime->initField(kernelName, fieldName, hostPtr,
+                     elementSize, elementType, mode);
 }
 
 extern "C"

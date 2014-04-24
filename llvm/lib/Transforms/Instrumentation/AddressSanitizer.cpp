@@ -13,8 +13,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "asan"
-
 #include "llvm/Transforms/Instrumentation.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -53,8 +51,11 @@
 
 using namespace llvm;
 
+#define DEBUG_TYPE "asan"
+
 static const uint64_t kDefaultShadowScale = 3;
 static const uint64_t kDefaultShadowOffset32 = 1ULL << 29;
+static const uint64_t kIOSShadowOffset32 = 1ULL << 30;
 static const uint64_t kDefaultShadowOffset64 = 1ULL << 44;
 static const uint64_t kSmallX86_64ShadowOffset = 0x7FFF8000;  // < 2G.
 static const uint64_t kPPC64_ShadowOffset64 = 1ULL << 41;
@@ -250,7 +251,7 @@ struct ShadowMapping {
 static ShadowMapping getShadowMapping(const Module &M, int LongSize) {
   llvm::Triple TargetTriple(M.getTargetTriple());
   bool IsAndroid = TargetTriple.getEnvironment() == llvm::Triple::Android;
-  // bool IsMacOSX = TargetTriple.getOS() == llvm::Triple::MacOSX;
+  bool IsIOS = TargetTriple.getOS() == llvm::Triple::IOS;
   bool IsFreeBSD = TargetTriple.getOS() == llvm::Triple::FreeBSD;
   bool IsLinux = TargetTriple.getOS() == llvm::Triple::Linux;
   bool IsPPC64 = TargetTriple.getArch() == llvm::Triple::ppc64 ||
@@ -268,6 +269,8 @@ static ShadowMapping getShadowMapping(const Module &M, int LongSize) {
       Mapping.Offset = kMIPS32_ShadowOffset32;
     else if (IsFreeBSD)
       Mapping.Offset = kFreeBSD_ShadowOffset32;
+    else if (IsIOS)
+      Mapping.Offset = kIOSShadowOffset32;
     else
       Mapping.Offset = kDefaultShadowOffset32;
   } else {  // LongSize == 64
@@ -326,9 +329,6 @@ struct AddressSanitizer : public FunctionPass {
                                  bool IsWrite, size_t AccessSizeIndex,
                                  Value *SizeArgument);
   void instrumentMemIntrinsic(MemIntrinsic *MI);
-  void instrumentMemIntrinsicParam(Instruction *OrigIns, Value *Addr,
-                                   Value *Size, Instruction *InsertBefore,
-                                   bool IsWrite, bool UseCalls);
   Value *memToShadow(Value *Shadow, IRBuilder<> &IRB);
   bool runOnFunction(Function &F) override;
   bool maybeInsertAsanInitAtFunctionEntry(Function &F);
@@ -603,24 +603,6 @@ Value *AddressSanitizer::memToShadow(Value *Shadow, IRBuilder<> &IRB) {
     return IRB.CreateAdd(Shadow, ConstantInt::get(IntptrTy, Mapping.Offset));
 }
 
-void AddressSanitizer::instrumentMemIntrinsicParam(Instruction *OrigIns,
-                                                   Value *Addr, Value *Size,
-                                                   Instruction *InsertBefore,
-                                                   bool IsWrite,
-                                                   bool UseCalls) {
-  IRBuilder<> IRB(InsertBefore);
-  if (Size->getType() != IntptrTy)
-    Size = IRB.CreateIntCast(Size, IntptrTy, false);
-  // Check the first byte.
-  instrumentAddress(OrigIns, InsertBefore, Addr, 8, IsWrite, Size, false);
-  // Check the last byte.
-  IRB.SetInsertPoint(InsertBefore);
-  Value *SizeMinusOne = IRB.CreateSub(Size, ConstantInt::get(IntptrTy, 1));
-  Value *AddrLong = IRB.CreatePointerCast(Addr, IntptrTy);
-  Value *AddrLast = IRB.CreateAdd(AddrLong, SizeMinusOne);
-  instrumentAddress(OrigIns, InsertBefore, AddrLast, 8, IsWrite, Size, false);
-}
-
 // Instrument memset/memmove/memcpy
 void AddressSanitizer::instrumentMemIntrinsic(MemIntrinsic *MI) {
   IRBuilder<> IRB(MI);
@@ -756,13 +738,19 @@ void AddressSanitizer::instrumentMop(Instruction *I, bool UseCalls) {
   // and the last bytes. We call __asan_report_*_n(addr, real_size) to be able
   // to report the actual access size.
   IRBuilder<> IRB(I);
-  Value *LastByte =  IRB.CreateIntToPtr(
-      IRB.CreateAdd(IRB.CreatePointerCast(Addr, IntptrTy),
-                    ConstantInt::get(IntptrTy, TypeSize / 8 - 1)),
-      OrigPtrTy);
   Value *Size = ConstantInt::get(IntptrTy, TypeSize / 8);
-  instrumentAddress(I, I, Addr, 8, IsWrite, Size, false);
-  instrumentAddress(I, I, LastByte, 8, IsWrite, Size, false);
+  Value *AddrLong = IRB.CreatePointerCast(Addr, IntptrTy);
+  if (UseCalls) {
+    CallInst *Check =
+        IRB.CreateCall2(AsanMemoryAccessCallbackSized[IsWrite], AddrLong, Size);
+    Check->setDebugLoc(I->getDebugLoc());
+  } else {
+    Value *LastByte = IRB.CreateIntToPtr(
+        IRB.CreateAdd(AddrLong, ConstantInt::get(IntptrTy, TypeSize / 8 - 1)),
+        OrigPtrTy);
+    instrumentAddress(I, I, Addr, 8, IsWrite, Size, false);
+    instrumentAddress(I, I, LastByte, 8, IsWrite, Size, false);
+  }
 }
 
 // Validate the result of Module::getOrInsertFunction called for an interface
@@ -1179,7 +1167,7 @@ bool AddressSanitizer::doInitialization(Module &M) {
   // Initialize the private fields. No one has accessed them before.
   DataLayoutPass *DLP = getAnalysisIfAvailable<DataLayoutPass>();
   if (!DLP)
-    return false;
+    report_fatal_error("data layout missing");
   DL = &DLP->getDataLayout();
 
   BL.reset(SpecialCaseList::createOrDie(BlacklistFile));

@@ -277,6 +277,15 @@ def movz_symbol_g0 : Operand<i32> {
   let ParserMatchClass = MovZSymbolG0AsmOperand;
 }
 
+def MovKSymbolG3AsmOperand : AsmOperandClass {
+  let Name = "MovKSymbolG3";
+  let RenderMethod = "addImmOperands";
+}
+
+def movk_symbol_g3 : Operand<i32> {
+  let ParserMatchClass = MovKSymbolG3AsmOperand;
+}
+
 def MovKSymbolG2AsmOperand : AsmOperandClass {
   let Name = "MovKSymbolG2";
   let RenderMethod = "addImmOperands";
@@ -858,14 +867,14 @@ def dotCcode : Operand<i32> {
 
 // Conditional branch target. 19-bit immediate. The low two bits of the target
 // offset are implied zero and so are not part of the immediate.
-def BranchTarget19Operand : AsmOperandClass {
-  let Name = "BranchTarget19";
+def PCRelLabel19Operand : AsmOperandClass {
+  let Name = "PCRelLabel19";
 }
 def am_brcond : Operand<OtherVT> {
   let EncoderMethod = "getCondBranchTargetOpValue";
-  let DecoderMethod = "DecodeCondBranchTarget";
-  let PrintMethod = "printAlignedBranchTarget";
-  let ParserMatchClass = BranchTarget19Operand;
+  let DecoderMethod = "DecodePCRelLabel19";
+  let PrintMethod = "printAlignedLabel";
+  let ParserMatchClass = PCRelLabel19Operand;
 }
 
 class BranchCond : I<(outs), (ins dotCcode:$cond, am_brcond:$target),
@@ -922,7 +931,7 @@ def BranchTarget14Operand : AsmOperandClass {
 }
 def am_tbrcond : Operand<OtherVT> {
   let EncoderMethod = "getTestBranchTargetOpValue";
-  let PrintMethod = "printAlignedBranchTarget";
+  let PrintMethod = "printAlignedLabel";
   let ParserMatchClass = BranchTarget14Operand;
 }
 
@@ -956,12 +965,12 @@ def BranchTarget26Operand : AsmOperandClass {
 }
 def am_b_target : Operand<OtherVT> {
   let EncoderMethod = "getBranchTargetOpValue";
-  let PrintMethod = "printAlignedBranchTarget";
+  let PrintMethod = "printAlignedLabel";
   let ParserMatchClass = BranchTarget26Operand;
 }
 def am_bl_target : Operand<i64> {
   let EncoderMethod = "getBranchTargetOpValue";
-  let PrintMethod = "printAlignedBranchTarget";
+  let PrintMethod = "printAlignedLabel";
   let ParserMatchClass = BranchTarget26Operand;
 }
 
@@ -1798,12 +1807,18 @@ multiclass LogicalReg<bits<2> opc, bit N, string mnemonic,
 }
 
 // Split from LogicalReg to allow setting CPSR Defs
-multiclass LogicalRegS<bits<2> opc, bit N, string mnemonic> {
+multiclass LogicalRegS<bits<2> opc, bit N, string mnemonic,
+                       SDPatternOperator OpNode = null_frag> {
   let Defs = [CPSR], mayLoad = 0, mayStore = 0, hasSideEffects = 0 in {
-  def Wrs : BaseLogicalSReg<opc, N, GPR32, logical_shifted_reg32, mnemonic, []>{
+  def Wrr : BaseLogicalRegPseudo<GPR32, OpNode>;
+  def Xrr : BaseLogicalRegPseudo<GPR64, OpNode>;
+
+  def Wrs : BaseLogicalSReg<opc, N, GPR32, logical_shifted_reg32, mnemonic,
+            [(set GPR32:$Rd, (OpNode GPR32:$Rn, logical_shifted_reg32:$Rm))]> {
     let Inst{31} = 0;
   }
-  def Xrs : BaseLogicalSReg<opc, N, GPR64, logical_shifted_reg64, mnemonic, []>{
+  def Xrs : BaseLogicalSReg<opc, N, GPR64, logical_shifted_reg64, mnemonic,
+            [(set GPR64:$Rd, (OpNode GPR64:$Rn, logical_shifted_reg64:$Rm))]> {
     let Inst{31} = 1;
   }
   } // Defs = [CPSR]
@@ -2122,9 +2137,18 @@ class PrefetchUI<bits<2> sz, bit V, bits<2> opc, string asm, list<dag> pat>
 // Load literal
 //---
 
+// Load literal address: 19-bit immediate. The low two bits of the target
+// offset are implied zero and so are not part of the immediate.
+def am_ldrlit : Operand<OtherVT> {
+  let EncoderMethod = "getLoadLiteralOpValue";
+  let DecoderMethod = "DecodePCRelLabel19";
+  let PrintMethod = "printAlignedLabel";
+  let ParserMatchClass = PCRelLabel19Operand;
+}
+
 let mayLoad = 1, mayStore = 0, hasSideEffects = 0 in
 class LoadLiteral<bits<2> opc, bit V, RegisterClass regtype, string asm>
-    : I<(outs regtype:$Rt), (ins am_brcond:$label),
+    : I<(outs regtype:$Rt), (ins am_ldrlit:$label),
         asm, "\t$Rt, $label", "", []>,
       Sched<[WriteLD]> {
   bits<5> Rt;
@@ -2139,7 +2163,7 @@ class LoadLiteral<bits<2> opc, bit V, RegisterClass regtype, string asm>
 
 let mayLoad = 0, mayStore = 0, hasSideEffects = 1 in
 class PrefetchLiteral<bits<2> opc, bit V, string asm, list<dag> pat>
-    : I<(outs), (ins prfop:$Rt, am_brcond:$label),
+    : I<(outs), (ins prfop:$Rt, am_ldrlit:$label),
         asm, "\t$Rt, $label", "", pat>,
       Sched<[WriteLD]> {
   bits<5> Rt;
@@ -3071,6 +3095,8 @@ class ExceptionGeneration<bits<3> op1, bits<2> ll, string asm>
   let Inst{1-0}   = ll;
 }
 
+let Predicates = [HasFPARMv8] in {
+
 //---
 // Floating point to integer conversion
 //---
@@ -3702,6 +3728,7 @@ multiclass FPMoveImmediate<string asm> {
     let Inst{22} = 1;
   }
 }
+} // end of 'let Predicates = [HasFPARMv8]'
 
 //----------------------------------------------------------------------------
 // AdvSIMD
@@ -3739,6 +3766,20 @@ def VectorIndexD : Operand<i64>, ImmLeaf<i64, [{
   let PrintMethod = "printVectorIndex";
   let MIOperandInfo = (ops i64imm);
 }
+
+def MemorySIMDNoIndexOperand : AsmOperandClass {
+  let Name = "MemorySIMDNoIndex";
+  let ParserMethod = "tryParseNoIndexMemory";
+}
+def am_simdnoindex : Operand<i64>,
+                     ComplexPattern<i64, 1, "SelectAddrModeNoIndex", []> {
+  let PrintMethod = "printAMNoIndex";
+  let ParserMatchClass = MemorySIMDNoIndexOperand;
+  let MIOperandInfo = (ops GPR64sp:$base);
+  let DecoderMethod = "DecodeGPR64spRegisterClass";
+}
+
+let Predicates = [HasNEON] in {
 
 //----------------------------------------------------------------------------
 // AdvSIMD three register vector instructions
@@ -4628,12 +4669,14 @@ multiclass SIMDDifferentThreeVectorBD<bit U, bits<4> opc, string asm,
   def v16i8  : BaseSIMDDifferentThreeVector<U, 0b001, opc,
                                             V128, V128, V128,
                                             asm#"2", ".8h", ".16b", ".16b", []>;
-  def v1i64  : BaseSIMDDifferentThreeVector<U, 0b110, opc,
-                                            V128, V64, V64,
-                                            asm, ".1q", ".1d", ".1d", []>;
-  def v2i64  : BaseSIMDDifferentThreeVector<U, 0b111, opc,
-                                            V128, V128, V128,
-                                            asm#"2", ".1q", ".2d", ".2d", []>;
+  let Predicates = [HasCrypto] in {
+    def v1i64  : BaseSIMDDifferentThreeVector<U, 0b110, opc,
+                                              V128, V64, V64,
+                                              asm, ".1q", ".1d", ".1d", []>;
+    def v2i64  : BaseSIMDDifferentThreeVector<U, 0b111, opc,
+                                              V128, V128, V128,
+                                              asm#"2", ".1q", ".2d", ".2d", []>;
+  }
 
   def : Pat<(v8i16 (IntOp (v8i8 (extract_high_v16i8 V128:$Rn)),
                           (v8i8 (extract_high_v16i8 V128:$Rm)))),
@@ -5800,6 +5843,10 @@ multiclass SIMDScalarCPY<string asm> {
     let Inst{20} = idx;
     let Inst{19-16} = 0b1000;
   }
+
+  def : Pat<(v1i64 (scalar_to_vector (i64 (vector_extract (v2i64 V128:$src),
+                                                          VectorIndexD:$idx)))),
+            (!cast<Instruction>(NAME # i64) V128:$src, VectorIndexD:$idx)>;
 
   // 'DUP' mnemonic aliases.
   def : SIMDScalarCPYAlias<"dup", ".b",
@@ -7356,17 +7403,6 @@ multiclass SIMDVectorLShiftLongBHSD<bit U, bits<5> opc, string asm,
 // ", #0" constant and handle post-indexing explicitly, so we use
 // a more specialized parse method for them. Otherwise, it's the same as
 // the general am_noindex handling.
-def MemorySIMDNoIndexOperand : AsmOperandClass {
-  let Name = "MemorySIMDNoIndex";
-  let ParserMethod = "tryParseNoIndexMemory";
-}
-def am_simdnoindex : Operand<i64>,
-                     ComplexPattern<i64, 1, "SelectAddrModeNoIndex", []> {
-  let PrintMethod = "printAMNoIndex";
-  let ParserMatchClass = MemorySIMDNoIndexOperand;
-  let MIOperandInfo = (ops GPR64sp:$base);
-  let DecoderMethod = "DecodeGPR64spRegisterClass";
-}
 
 class BaseSIMDLdSt<bit Q, bit L, bits<4> opcode, bits<2> size,
                    string asm, dag oops, dag iops, list<dag> pattern>
@@ -8181,11 +8217,13 @@ multiclass SIMDLdSt4SingleAliases<string asm> {
   defm : SIMDLdStSingleAliases<asm, "s", "i32", "Four", 16, VectorIndexS>;
   defm : SIMDLdStSingleAliases<asm, "d", "i64", "Four", 32, VectorIndexD>;
 }
+} // end of 'let Predicates = [HasNEON]'
 
 //----------------------------------------------------------------------------
 // Crypto extensions
 //----------------------------------------------------------------------------
 
+let Predicates = [HasCrypto] in {
 let mayLoad = 0, mayStore = 0, hasSideEffects = 0 in
 class AESBase<bits<4> opc, string asm, dag outs, dag ins, string cstr,
               list<dag> pat>
@@ -8275,6 +8313,7 @@ class SHATiedInstVV<bits<4> opc, string asm, Intrinsic OpNode>
 class SHAInstSS<bits<4> opc, string asm, Intrinsic OpNode>
   : SHA2OpInst<opc, asm, "", "", (outs FPR32:$Rd), (ins FPR32:$Rn),
                [(set (i32 FPR32:$Rd), (OpNode (i32 FPR32:$Rn)))]>;
+} // end of 'let Predicates = [HasCrypto]'
 
 // Allow the size specifier tokens to be upper case, not just lower.
 def : TokenAlias<".8B", ".8b">;

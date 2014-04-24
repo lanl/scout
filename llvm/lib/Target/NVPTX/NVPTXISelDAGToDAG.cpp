@@ -20,10 +20,9 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetIntrinsicInfo.h"
 
-#undef DEBUG_TYPE
-#define DEBUG_TYPE "nvptx-isel"
-
 using namespace llvm;
+
+#define DEBUG_TYPE "nvptx-isel"
 
 static cl::opt<int>
 FMAContractLevel("nvptx-fma-level", cl::ZeroOrMore, cl::Hidden,

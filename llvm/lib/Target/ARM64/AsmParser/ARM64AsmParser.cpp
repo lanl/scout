@@ -104,9 +104,13 @@ public:
 #include "ARM64GenAsmMatcher.inc"
   };
   ARM64AsmParser(MCSubtargetInfo &_STI, MCAsmParser &_Parser,
-                 const MCInstrInfo &MII)
+                 const MCInstrInfo &MII,
+                 const MCTargetOptions &Options)
       : MCTargetAsmParser(), STI(_STI), Parser(_Parser) {
     MCAsmParserExtension::Initialize(_Parser);
+
+    // Initialize the set of available features.
+    setAvailableFeatures(ComputeAvailableFeatures(STI.getFeatureBits()));
   }
 
   virtual bool ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
@@ -118,7 +122,7 @@ public:
   static bool classifySymbolRef(const MCExpr *Expr,
                                 ARM64MCExpr::VariantKind &ELFRefKind,
                                 MCSymbolRefExpr::VariantKind &DarwinRefKind,
-                                const MCConstantExpr *&Addend);
+                                int64_t &Addend);
 };
 } // end anonymous namespace
 
@@ -554,7 +558,7 @@ public:
       return false;
     return (Val >= -(0x2000000 << 2) && Val <= (0x1ffffff << 2));
   }
-  bool isBranchTarget19() const {
+  bool isPCRelLabel19() const {
     if (!isImm())
       return false;
     const MCConstantExpr *MCE = dyn_cast<MCConstantExpr>(getImm());
@@ -583,7 +587,7 @@ public:
 
     ARM64MCExpr::VariantKind ELFRefKind;
     MCSymbolRefExpr::VariantKind DarwinRefKind;
-    const MCConstantExpr *Addend;
+    int64_t Addend;
     if (!ARM64AsmParser::classifySymbolRef(getImm(), ELFRefKind, DarwinRefKind,
                                            Addend)) {
       return false;
@@ -606,6 +610,7 @@ public:
 
   bool isMovZSymbolG2() const {
     static ARM64MCExpr::VariantKind Variants[] = { ARM64MCExpr::VK_ABS_G2,
+                                                   ARM64MCExpr::VK_ABS_G2_S,
                                                    ARM64MCExpr::VK_TPREL_G2,
                                                    ARM64MCExpr::VK_DTPREL_G2 };
     return isMovWSymbol(Variants);
@@ -613,6 +618,7 @@ public:
 
   bool isMovZSymbolG1() const {
     static ARM64MCExpr::VariantKind Variants[] = { ARM64MCExpr::VK_ABS_G1,
+                                                   ARM64MCExpr::VK_ABS_G1_S,
                                                    ARM64MCExpr::VK_GOTTPREL_G1,
                                                    ARM64MCExpr::VK_TPREL_G1,
                                                    ARM64MCExpr::VK_DTPREL_G1, };
@@ -621,8 +627,14 @@ public:
 
   bool isMovZSymbolG0() const {
     static ARM64MCExpr::VariantKind Variants[] = { ARM64MCExpr::VK_ABS_G0,
+                                                   ARM64MCExpr::VK_ABS_G0_S,
                                                    ARM64MCExpr::VK_TPREL_G0,
                                                    ARM64MCExpr::VK_DTPREL_G0 };
+    return isMovWSymbol(Variants);
+  }
+
+  bool isMovKSymbolG3() const {
+    static ARM64MCExpr::VariantKind Variants[] = { ARM64MCExpr::VK_ABS_G3 };
     return isMovWSymbol(Variants);
   }
 
@@ -899,7 +911,7 @@ public:
     const MCExpr *Expr = Mem.OffsetImm;
     ARM64MCExpr::VariantKind ELFRefKind;
     MCSymbolRefExpr::VariantKind DarwinRefKind;
-    const MCConstantExpr *Addend;
+    int64_t Addend;
     if (!ARM64AsmParser::classifySymbolRef(Expr, ELFRefKind, DarwinRefKind,
                                            Addend)) {
       // If we don't understand the expression, assume the best and
@@ -919,8 +931,7 @@ public:
       // Note that we don't range-check the addend. It's adjusted modulo page
       // size when converted, so there is no "out of range" condition when using
       // @pageoff.
-      int64_t Value = Addend ? Addend->getValue() : 0;
-      return Value >= 0 && (Value % Scale) == 0;
+      return Addend >= 0 && (Addend % Scale) == 0;
     } else if (DarwinRefKind == MCSymbolRefExpr::VK_GOTPAGEOFF ||
                DarwinRefKind == MCSymbolRefExpr::VK_TLVPPAGEOFF) {
       // @gotpageoff/@tlvppageoff can only be used directly, not with an addend.
@@ -1268,7 +1279,7 @@ public:
     Inst.addOperand(MCOperand::CreateImm(MCE->getValue() >> 2));
   }
 
-  void addBranchTarget19Operands(MCInst &Inst, unsigned N) const {
+  void addPCRelLabel19Operands(MCInst &Inst, unsigned N) const {
     // Branch operands don't encode the low bits, so shift them off
     // here. If it's a label, however, just put it on directly as there's
     // not enough information now to do anything.
@@ -1416,7 +1427,7 @@ public:
     assert(N == 3 && "Invalid number of operands!");
 
     Inst.addOperand(MCOperand::CreateReg(Mem.BaseRegNum));
-    Inst.addOperand(MCOperand::CreateReg(Mem.OffsetRegNum));
+    Inst.addOperand(MCOperand::CreateReg(getXRegFromWReg(Mem.OffsetRegNum)));
     unsigned ExtendImm = ARM64_AM::getMemExtendImm(Mem.ExtType, DoShift);
     Inst.addOperand(MCOperand::CreateImm(ExtendImm));
   }
@@ -1470,7 +1481,7 @@ public:
     const MCExpr *Expr = Mem.OffsetImm;
     ARM64MCExpr::VariantKind ELFRefKind;
     MCSymbolRefExpr::VariantKind DarwinRefKind;
-    const MCConstantExpr *Addend;
+    int64_t Addend;
     if (Scale > 1 &&
         (!ARM64AsmParser::classifySymbolRef(Expr, ELFRefKind, DarwinRefKind,
                                             Addend) ||
@@ -2079,7 +2090,7 @@ ARM64AsmParser::tryParseAdrpLabel(OperandVector &Operands) {
 
   ARM64MCExpr::VariantKind ELFRefKind;
   MCSymbolRefExpr::VariantKind DarwinRefKind;
-  const MCConstantExpr *Addend;
+  int64_t Addend;
   if (classifySymbolRef(Expr, ELFRefKind, DarwinRefKind, Addend)) {
     if (DarwinRefKind == MCSymbolRefExpr::VK_None &&
         ELFRefKind == ARM64MCExpr::VK_INVALID) {
@@ -2844,6 +2855,18 @@ bool ARM64AsmParser::parseMemory(OperandVector &Operands) {
 
         Parser.Lex(); // Eat the extend op.
 
+        // A 32-bit offset register is only valid for [SU]/XTW extend
+        // operators.
+        if (ARM64MCRegisterClasses[ARM64::GPR32allRegClassID].contains(Reg2)) {
+         if (ExtOp != ARM64_AM::UXTW &&
+            ExtOp != ARM64_AM::SXTW)
+          return Error(ExtLoc, "32-bit general purpose offset register "
+                               "requires sxtw or uxtw extend");
+        } else if (!ARM64MCRegisterClasses[ARM64::GPR64allRegClassID].contains(
+                       Reg2))
+          return Error(OffsetLoc,
+                       "64-bit general purpose offset register expected");
+
         bool Hash = getLexer().is(AsmToken::Hash);
         if (getLexer().is(AsmToken::RBrac)) {
           // No immediate operand.
@@ -2901,7 +2924,7 @@ bool ARM64AsmParser::parseMemory(OperandVector &Operands) {
       // assume it's OK and let the relocation stuff puke if it's not.
       ARM64MCExpr::VariantKind ELFRefKind;
       MCSymbolRefExpr::VariantKind DarwinRefKind;
-      const MCConstantExpr *Addend;
+      int64_t Addend;
       if (classifySymbolRef(OffsetExpr, ELFRefKind, DarwinRefKind, Addend) &&
           Addend == 0) {
         assert(ELFRefKind == ARM64MCExpr::VK_INVALID &&
@@ -2969,10 +2992,13 @@ bool ARM64AsmParser::parseSymbolicImmVal(const MCExpr *&ImmVal) {
                   .Case("lo12", ARM64MCExpr::VK_LO12)
                   .Case("abs_g3", ARM64MCExpr::VK_ABS_G3)
                   .Case("abs_g2", ARM64MCExpr::VK_ABS_G2)
+                  .Case("abs_g2_s", ARM64MCExpr::VK_ABS_G2_S)
                   .Case("abs_g2_nc", ARM64MCExpr::VK_ABS_G2_NC)
                   .Case("abs_g1", ARM64MCExpr::VK_ABS_G1)
+                  .Case("abs_g1_s", ARM64MCExpr::VK_ABS_G1_S)
                   .Case("abs_g1_nc", ARM64MCExpr::VK_ABS_G1_NC)
                   .Case("abs_g0", ARM64MCExpr::VK_ABS_G0)
+                  .Case("abs_g0_s", ARM64MCExpr::VK_ABS_G0_S)
                   .Case("abs_g0_nc", ARM64MCExpr::VK_ABS_G0_NC)
                   .Case("dtprel_g2", ARM64MCExpr::VK_DTPREL_G2)
                   .Case("dtprel_g1", ARM64MCExpr::VK_DTPREL_G1)
@@ -3310,57 +3336,6 @@ bool ARM64AsmParser::ParseInstruction(ParseInstructionInfo &Info,
   return false;
 }
 
-/// isFPR32Register - Check if a register is in the FPR32 register class.
-/// (The parser does not have the target register info to check the register
-/// class directly.)
-static bool isFPR32Register(unsigned Reg) {
-  using namespace ARM64;
-  switch (Reg) {
-  default:
-    break;
-  case S0:  case S1:  case S2:  case S3:  case S4:  case S5:  case S6:
-  case S7:  case S8:  case S9:  case S10:  case S11:  case S12:  case S13:
-  case S14:  case S15:  case S16:  case S17:  case S18:  case S19:  case S20:
-  case S21:  case S22:  case S23:  case S24:  case S25:  case S26:  case S27:
-  case S28:  case S29:  case S30:  case S31:
-    return true;
-  }
-  return false;
-}
-
-/// isGPR32Register - Check if a register is in the GPR32sp register class.
-/// (The parser does not have the target register info to check the register
-/// class directly.)
-static bool isGPR32Register(unsigned Reg) {
-  using namespace ARM64;
-  switch (Reg) {
-  default:
-    break;
-  case W0:  case W1:  case W2:  case W3:  case W4:  case W5:  case W6:
-  case W7:  case W8:  case W9:  case W10:  case W11:  case W12:  case W13:
-  case W14:  case W15:  case W16:  case W17:  case W18:  case W19:  case W20:
-  case W21:  case W22:  case W23:  case W24:  case W25:  case W26:  case W27:
-  case W28:  case W29:  case W30:  case WSP:  case WZR:
-    return true;
-  }
-  return false;
-}
-
-static bool isGPR64Reg(unsigned Reg) {
-  using namespace ARM64;
-  switch (Reg) {
-  case X0:  case X1:  case X2:  case X3:  case X4:  case X5:  case X6:
-  case X7:  case X8:  case X9:  case X10:  case X11:  case X12:  case X13:
-  case X14:  case X15:  case X16:  case X17:  case X18:  case X19:  case X20:
-  case X21:  case X22:  case X23:  case X24:  case X25:  case X26:  case X27:
-  case X28:  case FP:  case LR:  case SP:  case XZR:
-    return true;
-  default:
-    return false;
-  }
-}
-
-
 // FIXME: This entire function is a giant hack to provide us with decent
 // operand range validation/diagnostics until TableGen/MC can be extended
 // to support autogeneration of this kind of validation.
@@ -3515,7 +3490,7 @@ bool ARM64AsmParser::validateInstruction(MCInst &Inst,
       const MCExpr *Expr = Inst.getOperand(2).getExpr();
       ARM64MCExpr::VariantKind ELFRefKind;
       MCSymbolRefExpr::VariantKind DarwinRefKind;
-      const MCConstantExpr *Addend;
+      int64_t Addend;
       if (!classifySymbolRef(Expr, ELFRefKind, DarwinRefKind, Addend)) {
         return Error(Loc[2], "invalid immediate expression");
       }
@@ -3798,7 +3773,8 @@ static void rewriteMOVR(ARM64AsmParser::OperandVector &Operands,
   Operands.push_back(Operands[2]);
   // And Operands[2] becomes ZR.
   unsigned ZeroReg = ARM64::XZR;
-  if (isGPR32Register(Operands[2]->getReg()))
+  if (ARM64MCRegisterClasses[ARM64::GPR32allRegClassID].contains(
+          Operands[2]->getReg()))
     ZeroReg = ARM64::WZR;
 
   Operands[2] =
@@ -3853,6 +3829,8 @@ bool ARM64AsmParser::showMatchError(SMLoc Loc, unsigned ErrCode) {
   }
 }
 
+static const char *getSubtargetFeatureName(unsigned Val);
+
 bool ARM64AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
                                              OperandVector &Operands,
                                              MCStreamer &Out,
@@ -3878,7 +3856,9 @@ bool ARM64AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
     // Insert WZR or XZR as destination operand.
     ARM64Operand *RegOp = static_cast<ARM64Operand *>(Operands[1]);
     unsigned ZeroReg;
-    if (RegOp->isReg() && isGPR32Register(RegOp->getReg()))
+    if (RegOp->isReg() &&
+        ARM64MCRegisterClasses[ARM64::GPR32allRegClassID].contains(
+            RegOp->getReg()))
       ZeroReg = ARM64::WZR;
     else
       ZeroReg = ARM64::XZR;
@@ -3909,7 +3889,9 @@ bool ARM64AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
         // set, clear the complemented upper 32-bits so the logic below works
         // for 32-bit registers too.
         ARM64Operand *Op1 = static_cast<ARM64Operand *>(Operands[1]);
-        if (Op1->isReg() && isGPR32Register(Op1->getReg()) &&
+        if (Op1->isReg() &&
+            ARM64MCRegisterClasses[ARM64::GPR32allRegClassID].contains(
+                Op1->getReg()) &&
             (Val & 0xFFFFFFFFULL) == Val)
           NVal &= 0x00000000FFFFFFFFULL;
 
@@ -3949,10 +3931,14 @@ bool ARM64AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
       // reg->reg move.
       unsigned Reg1 = Op1->getReg();
       unsigned Reg2 = Op2->getReg();
-      if ((Reg1 == ARM64::SP && isGPR64Reg(Reg2)) ||
-          (Reg2 == ARM64::SP && isGPR64Reg(Reg1)) ||
-          (Reg1 == ARM64::WSP && isGPR32Register(Reg2)) ||
-          (Reg2 == ARM64::WSP && isGPR32Register(Reg1)))
+      if ((Reg1 == ARM64::SP &&
+           ARM64MCRegisterClasses[ARM64::GPR64allRegClassID].contains(Reg2)) ||
+          (Reg2 == ARM64::SP &&
+           ARM64MCRegisterClasses[ARM64::GPR64allRegClassID].contains(Reg1)) ||
+          (Reg1 == ARM64::WSP &&
+           ARM64MCRegisterClasses[ARM64::GPR32allRegClassID].contains(Reg2)) ||
+          (Reg2 == ARM64::WSP &&
+           ARM64MCRegisterClasses[ARM64::GPR32allRegClassID].contains(Reg1)))
         rewriteMOVRSP(Operands, getContext());
       else
         rewriteMOVR(Operands, getContext());
@@ -3999,7 +3985,8 @@ bool ARM64AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
           uint64_t Op3Val = Op3CE->getValue();
           uint64_t NewOp3Val = 0;
           uint64_t NewOp4Val = 0;
-          if (isGPR32Register(Op2->getReg())) {
+          if (ARM64MCRegisterClasses[ARM64::GPR32allRegClassID].contains(
+                  Op2->getReg())) {
             NewOp3Val = (32 - Op3Val) & 0x1f;
             NewOp4Val = 31 - Op3Val;
           } else {
@@ -4066,7 +4053,8 @@ bool ARM64AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
           uint64_t Op4Val = Op4CE->getValue();
 
           uint64_t NewOp3Val = 0;
-          if (isGPR32Register(Op1->getReg()))
+          if (ARM64MCRegisterClasses[ARM64::GPR32allRegClassID].contains(
+                  Op1->getReg()))
             NewOp3Val = (32 - Op3Val) & 0x1f;
           else
             NewOp3Val = (64 - Op3Val) & 0x3f;
@@ -4179,7 +4167,9 @@ bool ARM64AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
   else if (NumOperands == 3 &&
            (Tok == "sxtb" || Tok == "uxtb" || Tok == "sxth" || Tok == "uxth")) {
     ARM64Operand *Op = static_cast<ARM64Operand *>(Operands[1]);
-    if (Op->isReg() && isGPR64Reg(Op->getReg())) {
+    if (Op->isReg() &&
+        ARM64MCRegisterClasses[ARM64::GPR64allRegClassID].contains(
+            Op->getReg())) {
       // The source register can be Wn here, but the matcher expects a
       // GPR64. Twiddle it here if necessary.
       ARM64Operand *Op = static_cast<ARM64Operand *>(Operands[2]);
@@ -4198,8 +4188,10 @@ bool ARM64AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
     ARM64Operand *ImmOp = static_cast<ARM64Operand *>(Operands[2]);
     if (RegOp->isReg() && ImmOp->isFPImm() &&
         ImmOp->getFPImm() == (unsigned)-1) {
-      unsigned zreg =
-          isFPR32Register(RegOp->getReg()) ? ARM64::WZR : ARM64::XZR;
+      unsigned zreg = ARM64MCRegisterClasses[ARM64::FPR32RegClassID].contains(
+                          RegOp->getReg())
+                          ? ARM64::WZR
+                          : ARM64::XZR;
       Operands[2] = ARM64Operand::CreateReg(zreg, false, Op->getStartLoc(),
                                             Op->getEndLoc(), getContext());
       delete ImmOp;
@@ -4271,7 +4263,21 @@ bool ARM64AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
     Out.EmitInstruction(Inst, STI);
     return false;
   }
-  case Match_MissingFeature:
+  case Match_MissingFeature: {
+    assert(ErrorInfo && "Unknown missing feature!");
+    // Special case the error message for the very common case where only
+    // a single subtarget feature is missing (neon, e.g.).
+    std::string Msg = "instruction requires:";
+    unsigned Mask = 1;
+    for (unsigned i = 0; i < (sizeof(ErrorInfo)*8-1); ++i) {
+      if (ErrorInfo & Mask) {
+        Msg += " ";
+        Msg += getSubtargetFeatureName(ErrorInfo & Mask);
+      }
+      Mask <<= 1;
+    }
+    return Error(IDLoc, Msg);
+  }
   case Match_MnemonicFail:
     return showMatchError(IDLoc, MatchResult);
   case Match_InvalidOperand: {
@@ -4307,8 +4313,9 @@ bool ARM64AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
       MatchResult = Match_InvalidMemoryIndexed64;
       if (ErrorInfo) {
         ARM64Operand *PrevOp = (ARM64Operand *)Operands[ErrorInfo - 1];
-        if (PrevOp->isReg() && ARM64MCRegisterClasses[ARM64::GPR32RegClassID]
-                                   .contains(PrevOp->getReg()))
+        if (PrevOp->isReg() &&
+            ARM64MCRegisterClasses[ARM64::GPR32RegClassID].contains(
+                PrevOp->getReg()))
           MatchResult = Match_InvalidMemoryIndexed32;
       }
     }
@@ -4470,9 +4477,10 @@ bool
 ARM64AsmParser::classifySymbolRef(const MCExpr *Expr,
                                   ARM64MCExpr::VariantKind &ELFRefKind,
                                   MCSymbolRefExpr::VariantKind &DarwinRefKind,
-                                  const MCConstantExpr *&Addend) {
+                                  int64_t &Addend) {
   ELFRefKind = ARM64MCExpr::VK_INVALID;
   DarwinRefKind = MCSymbolRefExpr::VK_None;
+  Addend = 0;
 
   if (const ARM64MCExpr *AE = dyn_cast<ARM64MCExpr>(Expr)) {
     ELFRefKind = AE->getKind();
@@ -4483,7 +4491,6 @@ ARM64AsmParser::classifySymbolRef(const MCExpr *Expr,
   if (SE) {
     // It's a simple symbol reference with no addend.
     DarwinRefKind = SE->getKind();
-    Addend = 0;
     return true;
   }
 
@@ -4496,14 +4503,19 @@ ARM64AsmParser::classifySymbolRef(const MCExpr *Expr,
     return false;
   DarwinRefKind = SE->getKind();
 
-  if (BE->getOpcode() != MCBinaryExpr::Add)
+  if (BE->getOpcode() != MCBinaryExpr::Add &&
+      BE->getOpcode() != MCBinaryExpr::Sub)
     return false;
 
   // See if the addend is is a constant, otherwise there's more going
   // on here than we can deal with.
-  Addend = dyn_cast<MCConstantExpr>(BE->getRHS());
-  if (!Addend)
+  auto AddendExpr = dyn_cast<MCConstantExpr>(BE->getRHS());
+  if (!AddendExpr)
     return false;
+
+  Addend = AddendExpr->getValue();
+  if (BE->getOpcode() == MCBinaryExpr::Sub)
+    Addend = -Addend;
 
   // It's some symbol reference + a constant addend, but really
   // shouldn't use both Darwin and ELF syntax.
@@ -4513,10 +4525,12 @@ ARM64AsmParser::classifySymbolRef(const MCExpr *Expr,
 
 /// Force static initialization.
 extern "C" void LLVMInitializeARM64AsmParser() {
-  RegisterMCAsmParser<ARM64AsmParser> X(TheARM64Target);
+  RegisterMCAsmParser<ARM64AsmParser> X(TheARM64leTarget);
+  RegisterMCAsmParser<ARM64AsmParser> Y(TheARM64beTarget);
 }
 
 #define GET_REGISTER_MATCHER
+#define GET_SUBTARGET_FEATURE_NAME
 #define GET_MATCHER_IMPLEMENTATION
 #include "ARM64GenAsmMatcher.inc"
 

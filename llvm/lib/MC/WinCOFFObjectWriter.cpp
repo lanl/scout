@@ -11,8 +11,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "WinCOFFObjectWriter"
-
 #include "llvm/MC/MCWinCOFFObjectWriter.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringMap.h"
@@ -35,6 +33,8 @@
 #include <cstdio>
 
 using namespace llvm;
+
+#define DEBUG_TYPE "WinCOFFObjectWriter"
 
 namespace {
 typedef SmallString<COFF::NameSize> name;
@@ -633,7 +633,7 @@ void WinCOFFObjectWriter::ExecutePostLayoutBinding(MCAssembler &Asm,
   // "Define" each section & symbol. This creates section & symbol
   // entries in the staging area.
 
-  static_assert(sizeof(((COFF::AuxiliaryFile *)0)->FileName) == COFF::SymbolSize,
+  static_assert(sizeof(((COFF::AuxiliaryFile *)nullptr)->FileName) == COFF::SymbolSize,
                 "size mismatch for COFF::AuxiliaryFile::FileName");
   for (auto FI = Asm.file_names_begin(), FE = Asm.file_names_end();
        FI != FE; ++FI) {
@@ -686,7 +686,7 @@ void WinCOFFObjectWriter::RecordRelocation(const MCAssembler &Asm,
         Fixup.getLoc(),
         Twine("symbol '") + A.getName() + "' can not be undefined");
 
-  MCSymbolData &A_SD = Asm.getSymbolData(A);
+  const MCSymbolData &A_SD = Asm.getSymbolData(A);
 
   MCSectionData const *SectionData = Fragment->getParent();
 
@@ -703,7 +703,7 @@ void WinCOFFObjectWriter::RecordRelocation(const MCAssembler &Asm,
 
   if (SymB) {
     const MCSymbol *B = &SymB->getSymbol();
-    MCSymbolData &B_SD = Asm.getSymbolData(*B);
+    const MCSymbolData &B_SD = Asm.getSymbolData(*B);
     if (!B_SD.getFragment())
       Asm.getContext().FatalError(
           Fixup.getLoc(),
