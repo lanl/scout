@@ -104,6 +104,11 @@ public:
     return ::operator new(S, R);
   }
 
+  // SExpr objects cannot be deleted.
+  // This declaration is public to workaround a gcc bug that breaks building
+  // with REQUIRES_EH=1.
+  void operator delete(void *) LLVM_DELETED_FUNCTION;
+
 protected:
   SExpr(TIL_Opcode Op) : Opcode(Op), Reserved(0), Flags(0) {}
   SExpr(const SExpr &E) : Opcode(E.Opcode), Reserved(0), Flags(E.Flags) {}
@@ -115,9 +120,8 @@ protected:
 private:
   SExpr() LLVM_DELETED_FUNCTION;
 
-  // SExpr objects must be created in an arena and cannot be deleted.
+  // SExpr objects must be created in an arena.
   void *operator new(size_t) LLVM_DELETED_FUNCTION;
-  void operator delete(void *) LLVM_DELETED_FUNCTION;
 };
 
 
@@ -222,6 +226,7 @@ public:
     Id = static_cast<unsigned short>(I);
   }
   void setClangDecl(const clang::ValueDecl *VD) { Cvdecl = VD; }
+  void setDefinition(SExpr *E);
 
   template <class V> typename V::R_SExpr traverse(V &Visitor) {
     // This routine is only called for variable references.
@@ -316,7 +321,8 @@ private:
   SExprRef *Location;
 };
 
-void SExprRef::attach() {
+
+inline void SExprRef::attach() {
   if (!Ptr)
     return;
 
@@ -328,43 +334,47 @@ void SExprRef::attach() {
   }
 }
 
-void SExprRef::detach() {
+inline void SExprRef::detach() {
   if (Ptr && Ptr->opcode() == COP_Variable) {
     cast<Variable>(Ptr)->detachVar();
   }
 }
 
-SExprRef::SExprRef(SExpr *P) : Ptr(P) {
+inline SExprRef::SExprRef(SExpr *P) : Ptr(P) {
   attach();
 }
 
-SExprRef::~SExprRef() {
+inline SExprRef::~SExprRef() {
   detach();
 }
 
-void SExprRef::reset(SExpr *P) {
+inline void SExprRef::reset(SExpr *P) {
   detach();
   Ptr = P;
   attach();
 }
 
 
-Variable::Variable(VariableKind K, SExpr *D, const clang::ValueDecl *Cvd)
+inline Variable::Variable(VariableKind K, SExpr *D, const clang::ValueDecl *Cvd)
     : SExpr(COP_Variable), Definition(D), Cvdecl(Cvd),
       BlockID(0), Id(0),  NumUses(0) {
   Flags = K;
 }
 
-Variable::Variable(SExpr *D, const clang::ValueDecl *Cvd)
+inline Variable::Variable(SExpr *D, const clang::ValueDecl *Cvd)
     : SExpr(COP_Variable), Definition(D), Cvdecl(Cvd),
       BlockID(0), Id(0),  NumUses(0) {
   Flags = VK_Let;
 }
 
-Variable::Variable(const Variable &Vd, SExpr *D) // rewrite constructor
+inline Variable::Variable(const Variable &Vd, SExpr *D) // rewrite constructor
     : SExpr(Vd), Definition(D), Cvdecl(Vd.Cvdecl),
       BlockID(0), Id(0), NumUses(0) {
   Flags = Vd.kind();
+}
+
+inline void Variable::setDefinition(SExpr *E) {
+  Definition.reset(E);
 }
 
 void Future::force() {
@@ -375,6 +385,7 @@ void Future::force() {
     Location->reset(R);
   Status = FS_done;
 }
+
 
 // Placeholder for C++ expressions that cannot be represented in the TIL.
 class Undefined : public SExpr {
@@ -791,6 +802,7 @@ private:
 
 
 // Store a value to memory.
+// Source is a pointer, destination is the value to store.
 class Store : public SExpr {
 public:
   static bool classof(const SExpr *E) { return E->opcode() == COP_Store; }
@@ -823,6 +835,68 @@ private:
 };
 
 
+// If p is a reference to an array, then first(p) is a reference to the first
+// element.  The usual array notation p[i]  becomes first(p + i).
+class ArrayFirst : public SExpr {
+public:
+  static bool classof(const SExpr *E) { return E->opcode() == COP_ArrayFirst; }
+
+  ArrayFirst(SExpr *A) : SExpr(COP_ArrayFirst), Array(A) {}
+  ArrayFirst(const ArrayFirst &E, SExpr *A) : SExpr(E), Array(A) {}
+
+  SExpr *array() { return Array.get(); }
+  const SExpr *array() const { return Array.get(); }
+
+  template <class V> typename V::R_SExpr traverse(V &Visitor) {
+    typename V::R_SExpr Na = Visitor.traverse(Array);
+    return Visitor.reduceArrayFirst(*this, Na);
+  }
+
+  template <class C> typename C::CType compare(ArrayFirst* E, C& Cmp) {
+    return Cmp.compare(array(), E->array());
+  }
+
+private:
+  SExprRef Array;
+};
+
+
+// Pointer arithmetic, restricted to arrays only.
+// If p is a reference to an array, then p + n, where n is an integer, is
+// a reference to a subarray.
+class ArrayAdd : public SExpr {
+public:
+  static bool classof(const SExpr *E) { return E->opcode() == COP_ArrayAdd; }
+
+  ArrayAdd(SExpr *A, SExpr *N) : SExpr(COP_ArrayAdd), Array(A), Index(N) {}
+  ArrayAdd(const ArrayAdd &E, SExpr *A, SExpr *N)
+    : SExpr(E), Array(A), Index(N) {}
+
+  SExpr *array() { return Array.get(); }
+  const SExpr *array() const { return Array.get(); }
+
+  SExpr *index() { return Index.get(); }
+  const SExpr *index() const { return Index.get(); }
+
+  template <class V> typename V::R_SExpr traverse(V &Visitor) {
+    typename V::R_SExpr Na = Visitor.traverse(Array);
+    typename V::R_SExpr Ni = Visitor.traverse(Index);
+    return Visitor.reduceArrayAdd(*this, Na, Ni);
+  }
+
+  template <class C> typename C::CType compare(ArrayAdd* E, C& Cmp) {
+    typename C::CType Ct = Cmp.compare(array(), E->array());
+    if (Cmp.notTrue(Ct))
+      return Ct;
+    return Cmp.compare(index(), E->index());
+  }
+
+private:
+  SExprRef Array;
+  SExprRef Index;
+};
+
+
 // Simple unary operation -- e.g. !, ~, etc.
 class UnaryOp : public SExpr {
 public:
@@ -831,7 +905,7 @@ public:
   UnaryOp(TIL_UnaryOpcode Op, SExpr *E) : SExpr(COP_UnaryOp), Expr0(E) {
     Flags = Op;
   }
-  UnaryOp(const UnaryOp &U, SExpr *E) : SExpr(U) { Flags = U.Flags; }
+  UnaryOp(const UnaryOp &U, SExpr *E) : SExpr(U), Expr0(E) { Flags = U.Flags; }
 
   TIL_UnaryOpcode unaryOpcode() const {
     return static_cast<TIL_UnaryOpcode>(Flags);
