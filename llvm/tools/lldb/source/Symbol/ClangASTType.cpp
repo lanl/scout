@@ -74,10 +74,12 @@ GetCompleteQualType (clang::ASTContext *ast, clang::QualType qual_type, bool all
         case clang::Type::RectilinearMesh:
         case clang::Type::UnstructuredMesh:
         {
-            const MeshType *mesh_type = dyn_cast<MeshType>(qual_type.getTypePtr());
+            const clang::MeshType *mesh_type =
+                llvm::dyn_cast<clang::MeshType>(qual_type.getTypePtr());
+
             if (mesh_type)
             {
-                MeshDecl *mesh_decl = mesh_type->getDecl();
+                clang::MeshDecl *mesh_decl = mesh_type->getDecl();
                 if (mesh_decl)
                 {
                     if (mesh_decl->isCompleteDefinition())
@@ -90,7 +92,9 @@ GetCompleteQualType (clang::ASTContext *ast, clang::QualType qual_type, bool all
                     {
                         if (ast)
                         {
-                            ExternalASTSource *external_ast_source = ast->getExternalSource();
+                            clang::ExternalASTSource *external_ast_source =
+                                ast->getExternalSource();
+
                             if (external_ast_source)
                             {
                                 external_ast_source->CompleteType(mesh_decl);
@@ -822,7 +826,7 @@ ClangASTType::IsDefined() const
     clang::QualType qual_type(GetQualType());
     const clang::TagType *tag_type =  llvm::dyn_cast<clang::TagType>(qual_type.getTypePtr());
     // +===== Scout ==========================
-    const MeshType* mesh_type;
+    const clang::MeshType* mesh_type;
     // +======================================
     if (tag_type)
     {
@@ -832,9 +836,9 @@ ClangASTType::IsDefined() const
         return false;
     }
     // +===== Scout ===================================
-    else if ((mesh_type = dyn_cast<MeshType>(qual_type.getTypePtr())))
+    else if ((mesh_type = llvm::dyn_cast<clang::MeshType>(qual_type.getTypePtr())))
     {
-        MeshDecl *mesh_decl = mesh_type->getDecl();
+        clang::MeshDecl *mesh_decl = mesh_type->getDecl();
         if (mesh_decl)
             return mesh_decl->isCompleteDefinition();
         return false;
@@ -2263,11 +2267,13 @@ ClangASTType::GetNumChildren (bool omit_empty_base_classes) const
         case clang::Type::UnstructuredMesh:
           if (GetCompleteQualType (m_ast, qual_type))
           {
-            const MeshType *mesh_type = cast<MeshType>(qual_type.getTypePtr());
-            const MeshDecl *mesh_decl = mesh_type->getDecl();
+            const clang::MeshType *mesh_type =
+                llvm::cast<clang::MeshType>(qual_type.getTypePtr());
+
+            const clang::MeshDecl *mesh_decl = mesh_type->getDecl();
             assert(mesh_decl);
 
-            MeshDecl::field_iterator field, field_end;
+            clang::MeshDecl::field_iterator field, field_end;
             for (field = mesh_decl->field_begin(), field_end = mesh_decl->field_end(); field != field_end; ++field)
                 ++num_children;
           }
