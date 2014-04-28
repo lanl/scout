@@ -153,7 +153,7 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
   llvm::Value *MDRank = llvm::ConstantInt::get(Int32Ty, rank);
   MeshInfoMD.push_back(MDRank);
   
-  typedef llvm::ArrayType ArrayTy;
+  //typedef llvm::ArrayType ArrayTy;
   MeshDecl::field_iterator it     = mesh->field_begin();
   MeshDecl::field_iterator it_end = mesh->field_end();
 

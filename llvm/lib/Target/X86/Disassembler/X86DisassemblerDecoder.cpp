@@ -1663,7 +1663,7 @@ static int readMaskRegister(struct InternalInstruction* insn) {
  * @return      - 0 if all operands could be read; nonzero otherwise.
  */
 static int readOperands(struct InternalInstruction* insn) {
-  int index;
+  unsigned int index;
   int hasVVVV, needVVVV;
   int sawRegImm = 0;
 

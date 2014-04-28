@@ -787,7 +787,7 @@ static bool translateInstruction(MCInst &mcInst,
       mcInst.setOpcode(X86::XACQUIRE_PREFIX);
   }
   
-  int index;
+  unsigned int index;
   
   insn.numImmediatesTranslated = 0;
   
