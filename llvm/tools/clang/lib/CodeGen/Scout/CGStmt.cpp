@@ -127,8 +127,14 @@ void CodeGenFunction::GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& 
     }
 
     if(shouldLoad) {
+      llvm::Value* V = LocalDeclMap.lookup(MeshVarDecl);
+      if(V){
+        BaseAddr = V;
+        return;
+      }
+
       BaseAddr = Builder.CreateLoad(BaseAddr);
-      LocalDeclMap[MeshVarDecl] = BaseAddr; // SC_TODO: is this required for LLDB?
+      LocalDeclMap[MeshVarDecl] = BaseAddr;
     } else {
       EmitGlobalMeshAllocaIfMissing(BaseAddr, *MeshVarDecl);
     }

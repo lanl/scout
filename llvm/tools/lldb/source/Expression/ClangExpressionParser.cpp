@@ -456,7 +456,7 @@ ClangExpressionParser::PrepareForExecution (lldb::addr_t &func_addr,
     
     // +===== Scout =================================
     // uncomment to view the final module after all LLDB transformations have been made
-    //module_ap.get()->dump();
+    //llvm_module_ap.get()->dump();
 
     // Find the actual name of the function (it's often mangled somehow)
     
