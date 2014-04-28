@@ -1,11 +1,9 @@
 /*
- *
  * ###########################################################################
- *
- * Copyright (c) 2014, Los Alamos National Security, LLC.
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
- *
- *  Copyright 2014. Los Alamos National Security, LLC. This software was
+ * 
+ *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
  *  National Security, LLC for the U.S. Department of Energy. The
@@ -22,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- *
+ * 
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided
+ *      disclaimer in the documentation and/or other materials provided 
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -33,7 +31,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- *
+ * 
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -47,44 +45,15 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
+ * ########################################################################### 
+ * 
+ * Notes
  *
+ * ##### 
  */
-#include <iostream>
-#include <sstream>
 
-using namespace std;
-
-#include "scout/types.h"
-#include "scout/Config/defs.h"
-#include "scout/Runtime/Device.h"
-#include "scout/Runtime/DeviceList.h"
-#include "scout/Runtime/opengl/opengl.h"
-#include "scout/Runtime/opengl/glyph_vertex.h"
-#include "scout/Runtime/opengl/glSDL.h"
-#include "scout/Runtime/GraphicsCInterface.h"
-#include "scout/Runtime/cpu/CpuInitialization.h"
-
-
-using namespace scout;
-
-//globals accessed by llvm/tools/clang/lib/CodeGen/CGScoutRuntime.cpp
-float4*       __scrt_renderall_uniform_colors;
-
-
-
-extern "C" void __scrt_init_cpu() {
-  DeviceList *devicelist = DeviceList::Instance();
-  cpu::scInitialize(*devicelist);
-
-  // CMS -- not sure this is the best way to do this.
-  // Could create general __scrt_init() function that calls 
-  // __scrt_init_cpu and __scrt_init_graphics(), 
-  // but it appears we want to insert different
-  // device initialization depending on available
-  // hardware (see CGScoutRuntime::ModuleInitFunction())
-  // For now, just add graphics init for each case (cpu, cuda, opencl).
-
-  __scrt_init_graphics();
-
+int main(int argc, char** argv) {
+  window w[512, 1024];
+  sleep(5);
+  return 0;
 }
-

@@ -2115,6 +2115,11 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // +===== Scout ============================================================+
   // SC_TODO -- do we always want to do this?
   CmdArgs.push_back("-pthread");
+
+  // scout - debug wait flag
+  if(Args.hasArg(options::OPT_debugWait)){
+    CmdArgs.push_back("-debug-wait");
+  }
   // +========================================================================+
 
   // Select the appropriate action.

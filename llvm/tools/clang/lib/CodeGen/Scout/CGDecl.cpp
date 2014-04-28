@@ -67,7 +67,9 @@
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Type.h"
+#include "llvm/IR/Module.h"
 #include "clang/AST/Type.h"
+#include "Scout/CGScoutRuntime.h"
 #include <stdio.h>
 #include <cassert>
 
@@ -446,5 +448,94 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     // mesh dimensions after the fields
     // this is setup in Codegentypes.cpp ConvertScoutMeshType()
     EmitMeshParameters(Alloc, D);
+  } else if (Ty.getTypeClass() == Type::Window) {
+    //llvm::Type *voidPtrTy = llvm::PointerType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()),0);
+    //llvm::Value *voidPtr  = Builder.CreateAlloca(voidPtrTy, 0, "void.ptr");
+
+    const WindowType* windowTy = cast<WindowType>(&Ty);
+
+    // params to __scrt_create_window()
+    Expr* widthExpr = windowTy->getWidthExpr();
+    Expr* heightExpr = windowTy->getHeightExpr();
+
+    std::vector<llvm::Value*> ptr_call_params;
+
+    llvm::Value* intValue;
+    Expr* E;
+    E = widthExpr;
+
+    if (E->isGLValue()) {
+      // Emit the expression as an lvalue.
+      LValue LV = EmitLValue(E);
+
+      // We have to load the lvalue.
+      RValue RV = EmitLoadOfLValue(LV, E->getExprLoc() );
+      intValue  = RV.getScalarVal();
+
+    } else if (E->isConstantInitializer(getContext(), false)) {
+
+      bool evalret;
+      llvm::APSInt dimAPValue;
+      evalret = E->EvaluateAsInt(dimAPValue, getContext());
+      // SC_TODO: check the evalret
+      (void)evalret; //supress warning
+
+      intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
+    } else {
+      // it is an Rvalue
+      RValue RV = EmitAnyExpr(E);
+      intValue = RV.getScalarVal();
+    }
+
+    intValue = Builder.CreateTruncOrBitCast(intValue, Int16Ty);
+    ptr_call_params.push_back(intValue);
+
+    E = heightExpr;
+
+    if (E->isGLValue()) {
+      // Emit the expression as an lvalue.
+      LValue LV = EmitLValue(E);
+
+      // We have to load the lvalue.
+      RValue RV = EmitLoadOfLValue(LV, E->getExprLoc() );
+      intValue  = RV.getScalarVal();
+
+    } else if (E->isConstantInitializer(getContext(), false)) {
+
+      bool evalret;
+      llvm::APSInt dimAPValue;
+      evalret = E->EvaluateAsInt(dimAPValue, getContext());
+      // SC_TODO: check the evalret
+      (void)evalret; //supress warning
+
+      intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
+    } else {
+      // it is an Rvalue
+      RValue RV = EmitAnyExpr(E);
+      intValue = RV.getScalarVal();
+    }
+
+    intValue = Builder.CreateTruncOrBitCast(intValue, Int16Ty);
+    ptr_call_params.push_back(intValue);
+
+    // Should do a runtime check on the window parameters to make sure within range
+
+    // call __scrt_create_window()
+    llvm::CallInst* ptr_call = 
+      Builder.CreateCall(CGM.getScoutRuntime().CreateWindowFunction(), ptr_call_params, "");
+
+    // make type for ptr to scout.window_t
+    llvm::StructType *StructTy_scout_window_t = CGM.getModule().getTypeByName("scout.window_t");
+
+    llvm::PointerType* PointerTy_scout_window_t = llvm::PointerType::get(StructTy_scout_window_t, 0);
+
+    // cast call result to scout.window_t
+    llvm::Value* ptr_cast = Builder.CreateBitCast(ptr_call, PointerTy_scout_window_t, "");
+
+
+    // store call result into previously allocated ptr for window
+    llvm::Value* void_store = Builder.CreateStore(ptr_cast, Alloc, false);
+
   }
+
 }

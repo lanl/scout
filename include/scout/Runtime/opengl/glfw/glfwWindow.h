@@ -60,6 +60,7 @@
 #include <GLFW/glfw3.h>
 
 #include "scout/Runtime/opengl/glWindow.h"
+#include "scout/Runtime/opengl/glCamera.h"
 
 namespace scout
 {
@@ -148,12 +149,12 @@ namespace scout
     void scroll(double xoffset, double yoffset){}
     
   public:    
-    void paintMono();
-    void paintStereo();
-    
     void eventLoop();
     bool processEvent();
     void swapBuffers() { glfwSwapBuffers(_window); }
+    void makeContextCurrent() { glfwMakeContextCurrent(_window); }
+    void makeContextNotCurrent() { glfwMakeContextCurrent(0); }
+
    
 #ifdef CMA
     void keyPress(int a, int b);

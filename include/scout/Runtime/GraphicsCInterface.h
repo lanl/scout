@@ -2,10 +2,10 @@
  *
  * ###########################################################################
  *
- * Copyright (c) 2014, Los Alamos National Security, LLC.
+ * Copyright (c) 2013, Los Alamos National Security, LLC.
  * All rights reserved.
  *
- *  Copyright 2014. Los Alamos National Security, LLC. This software was
+ *  Copyright 2013. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
  *  National Security, LLC for the U.S. Department of Energy. The
@@ -49,42 +49,38 @@
  *  SUCH DAMAGE.
  *
  */
-#include <iostream>
-#include <sstream>
 
-using namespace std;
+#ifndef __SCOUT_GRAPHICS_H__ 
+#define __SCOUT_GRAPHICS_H__
 
-#include "scout/types.h"
-#include "scout/Config/defs.h"
-#include "scout/Runtime/Device.h"
-#include "scout/Runtime/DeviceList.h"
-#include "scout/Runtime/opengl/opengl.h"
-#include "scout/Runtime/opengl/glyph_vertex.h"
-#include "scout/Runtime/opengl/glSDL.h"
-#include "scout/Runtime/GraphicsCInterface.h"
-#include "scout/Runtime/cpu/CpuInitialization.h"
+#if defined(__cplusplus)
+extern "C" {
+#endif
 
+  // These interface calls were prototyped by Pat McCormick in NewRuntime.
 
-using namespace scout;
+  // This call initializes the underlying graphics system.  It should
+  // be called prior to any graphics operations -- in our case we hook
+  // it into being run before the user's main() function is executed. 
+  // 
+  // CMS:  I made this return void.  Should make it return bool?  What would we do if it fails?
+  void __scrt_init_graphics();
 
-//globals accessed by llvm/tools/clang/lib/CodeGen/CGScoutRuntime.cpp
-float4*       __scrt_renderall_uniform_colors;
+  // This is our sole opaque type for dealing with render targets
+  // within the runtime.  Note that we also maintain a C-compatible
+  // calling interface so we can support both Scout C and Scout C++
+  // without multiple libraries.  That said, we use C++ under the hood
+  // and thus C programs have to link with C++ (which we handle within
+  // 'scc' so it should hopefully be transparent to the programmer).
+  typedef void* __scrt_target_t;
 
+  /// Create an on screen (window-based) rendering target of the given
+  /// width and height in pixels.
+  __scrt_target_t __scrt_create_window(unsigned short width, unsigned short height);
 
-
-extern "C" void __scrt_init_cpu() {
-  DeviceList *devicelist = DeviceList::Instance();
-  cpu::scInitialize(*devicelist);
-
-  // CMS -- not sure this is the best way to do this.
-  // Could create general __scrt_init() function that calls 
-  // __scrt_init_cpu and __scrt_init_graphics(), 
-  // but it appears we want to insert different
-  // device initialization depending on available
-  // hardware (see CGScoutRuntime::ModuleInitFunction())
-  // For now, just add graphics init for each case (cpu, cuda, opencl).
-
-  __scrt_init_graphics();
-
+#if defined(__cplusplus)
 }
+#endif
+
+#endif
 

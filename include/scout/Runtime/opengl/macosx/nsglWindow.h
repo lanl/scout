@@ -120,6 +120,9 @@ namespace scout {
     bool isValid() const {
        return valid;
     }
+
+    void    makeContextCurrent(){};
+    void    makeContextNotCurrent(){};
     
    private:
     bool        valid;

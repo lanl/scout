@@ -116,6 +116,10 @@ namespace scout {
       "-I${PNG_INCLUDE_DIR}",
       #endif
 
+      #ifdef SCOUT_ENABLE_GLFW
+      "-I${GLFW_INCLUDE_DIR}",
+      #endif
+
       0 // end of include paths. 
     };
 
@@ -134,7 +138,7 @@ namespace scout {
       #ifdef SCOUT_ENABLE_OPENGL
     
       #ifdef APPLE
-      "-framework OpenGL",
+      "-F/System/Library/Frameworks",
       #else
       // Ignore this on Mac OS X (frameworks handle details).      
       "${OPENGL_gl_LIBRARY}",
@@ -154,7 +158,11 @@ namespace scout {
       // Note MPI includes compiler flags in dirs string.       
       "${MPI_CXX_LINK_DIRS}",
       #endif
-    
+   
+      #ifdef SCOUT_ENABLE_GLFW
+      "-L${GLFW_LIBRARY_DIR}",
+      #endif
+
       0 // mark end of library paths.
     };
   
@@ -170,6 +178,9 @@ namespace scout {
       #ifdef APPLE 
       "-framework Cocoa", 
       "-framework Foundation", 
+      "-framework OpenGL", 
+      "-framework IOKit", 
+      "-framework CoreVideo", 
       #endif
 
       #ifdef SCOUT_ENABLE_OPENGL
@@ -207,6 +218,10 @@ namespace scout {
     
       #ifdef SCOUT_ENABLE_PNG
       "${PNG_LINK_LIBS}",
+      #endif
+
+      #ifdef SCOUT_ENABLE_GLFW
+      "${GLFW_LIBS}",
       #endif
 
       0 // mark end of library paths.      

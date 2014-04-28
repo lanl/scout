@@ -108,6 +108,22 @@ llvm::Function *CGScoutRuntime::ScoutRuntimeFunction(std::string funcName, std::
   return Func;
 }
 
+llvm::Function *CGScoutRuntime::ScoutRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params, 
+    llvm::Type* retType) {
+
+  llvm::Function *Func = CGM.getModule().getFunction(funcName);
+  if(!Func){
+    llvm::FunctionType *FTy =
+        llvm::FunctionType::get(retType, Params, false);
+
+    Func = llvm::Function::Create(FTy,
+        llvm::Function::ExternalLinkage,
+        funcName,
+        &CGM.getModule());
+  }
+  return Func;
+}
+
 // build function call to __scrt_renderall_uniform_begin()
 llvm::Function *CGScoutRuntime::RenderallUniformBeginFunction() {
   std::string funcName = "__scrt_renderall_uniform_begin";
@@ -125,6 +141,23 @@ llvm::Function *CGScoutRuntime::RenderallEndFunction() {
 
   std::vector<llvm::Type*> Params;
   return ScoutRuntimeFunction(funcName, Params);
+}
+
+// build function call to __scrt_create_window()
+llvm::Function *CGScoutRuntime::CreateWindowFunction() {
+  std::string funcName = "__scrt_create_window";
+
+  std::vector<llvm::Type*> Params;
+  Params.push_back(llvm::IntegerType::get(CGM.getModule().getContext(), 16));
+  Params.push_back(llvm::IntegerType::get(CGM.getModule().getContext(), 16));
+
+  return ScoutRuntimeFunction(
+      funcName, Params, 
+      /*retType*/ 
+      llvm::PointerType::get(llvm::IntegerType::get(CGM.getModule().getContext(), 8), 0));
+
+      // not sure this works
+      // llvm::PointerType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()),0));
 }
 
 // get Value for global runtime variable __scrt_renderall_uniform_colors

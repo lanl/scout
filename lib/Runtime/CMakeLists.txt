@@ -61,6 +61,7 @@ include_directories(
   ${SCOUT_INCLUDE_DIR}
   ${SCOUT_BUILD_DIR}/config/include
   ${SDL_INCLUDE_DIR}
+  ${GLFW_INCLUDE_DIR}
   ${PNG_INCLUDE_DIR}
   ${SCOUT_INCLUDE_DIR}/scout/sys/linux #find our unistd.h wrapper to deal with __block in linux unistd.h
 )

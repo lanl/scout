@@ -60,8 +60,9 @@ using namespace scout;
 // ---- constructor
 //
 glfwWindow::glfwWindow(ScreenCoord width, ScreenCoord height, glCamera* camera)
-:glWindow(width, height)
+:glWindow(width, height, camera)
 {
+  // need to check here?
   assert(glfwInit());
   
   size_t accumRedBits = 8;
@@ -90,7 +91,7 @@ glfwWindow::glfwWindow(ScreenCoord width, ScreenCoord height, glCamera* camera)
   
   
   
-  _window = glfwCreateWindow(width, height, "title", NULL, NULL);  
+  _window = glfwCreateWindow(_width, _height, "title", NULL, NULL);  
   if (!_window)
   {
     glfwTerminate();
@@ -100,8 +101,6 @@ glfwWindow::glfwWindow(ScreenCoord width, ScreenCoord height, glCamera* camera)
   // make glfw window point back to this object, so we can refer to this object in callbacks
   glfwSetWindowUserPointer(_window, (void*)this);
   
-  glfwMakeContextCurrent(_window);
-    
   glfwSetInputMode(_window, GLFW_STICKY_KEYS, GL_TRUE);
   
   // set standard callbacks
@@ -128,128 +127,6 @@ glfwWindow::~glfwWindow()
 void glfwWindow::keyfun(int key, int scancode, int action, int mods) {
   if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
     glfwSetWindowShouldClose(_window, GL_TRUE);
-}
-
-// ---- paintMono
-//
-void glfwWindow::paintMono()
-{
-  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-  
-  if (_camera != 0) {
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    gluPerspective(_camera->fov, _camera->aspect, _camera->near, _camera->far);
-    
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-    
-    gluLookAt(_camera->position.x, _camera->position.y, _camera->position.z,
-              _camera->look_at.x, _camera->look_at.y, _camera->look_at.z,
-              _camera->up[0], _camera->up[1], _camera->up[2]);
-    
-    if (_manipulator)
-      _manipulator->apply();
-    
-    RenderableList::iterator it;
-    for(it = _renderables.begin(); it != _renderables.end(); ++it) {
-      if ((*it)->isHidden() == false)
-        (*it)->render(_camera);
-    }
-  }
-  
-}
-
-void glfwWindow::paintStereo()
-{
-#ifdef DOSTEREO
-  const double DTOR = 0.0174532925;
-  
-  if (_camera != 0) {
-    double ratio   = _camera->win_width / (double)_camera->win_height;
-    double radians = DTOR * _camera->fov / 2.0;
-    double wd2     = _camera->near * tan(radians);
-    double ndfl    = _camera->near / _camera->focal_length;
-    
-    float3 view_dir = _camera->look_at - _camera->position;
-    float3 r = cross(view_dir, _camera->up);
-    r = normalize(r);
-    r.x *= _camera->eye_sep / 2.0;
-    r.y *= _camera->eye_sep / 2.0;
-    r.z *= _camera->eye_sep / 2.0;
-    
-    // ****** Left
-    
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    double left   = -ratio * wd2 - 0.5 * _camera->eye_sep * ndfl;
-    double right  =  ratio * wd2 - 0.5 * _camera->eye_sep * ndfl;
-    double top    =  wd2;
-    double bottom = -wd2;
-    oglErrorCheck();
-    glFrustum(left, right, bottom, top, _camera->near, _camera->far);
-    oglErrorCheck();
-    
-    glDrawBuffer(GL_BACK_RIGHT);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-    gluLookAt(_camera->position.x + r.x,
-              _camera->position.y + r.y,
-              _camera->position.z + r.z,
-              
-              _camera->position.x + r.x + view_dir.x,
-              _camera->position.y + r.y + view_dir.y,
-              _camera->position.z + r.z + view_dir.z,
-              
-              _camera->up[0],
-              _camera->up[1],
-              _camera->up[2]);
-    
-    
-    if (_manipulator)
-      _manipulator->apply();
-    
-    RenderableList::iterator it;
-    for(it = _renderables.begin(); it != _renderables.end(); ++it) {
-      if ((*it)->isHidden() == false)
-        (*it)->render(_camera);
-    }
-    
-    // ****** Left
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    left   = -ratio * wd2 + 0.5 * _camera->eye_sep * ndfl;
-    right  =  ratio * wd2 + 0.5 * _camera->eye_sep * ndfl;
-    glFrustum(left, right, bottom, top, _camera->near, _camera->far);
-    
-    
-    glDrawBuffer(GL_BACK_LEFT);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-    
-    gluLookAt(_camera->position.x - r.x,
-              _camera->position.y - r.y,
-              _camera->position.z - r.z,
-              _camera->position.x - r.x + view_dir.x,
-              _camera->position.y - r.y + view_dir.y,
-              _camera->position.z - r.z + view_dir.z,
-              _camera->up[0],
-              _camera->up[1],
-              _camera->up[2]);
-    
-    if (_manipulator)
-      _manipulator->apply();
-    
-    for(it = _renderables.begin(); it != _renderables.end(); ++it) {
-      if ((*it)->isHidden() == false)
-        (*it)->render(_camera);
-    }
-  }
-#endif
 }
 
 #ifdef CMA
@@ -300,7 +177,7 @@ void glfwWindow::eventLoop()
 bool glfwWindow::processEvent()
 {
   bool done = false;
-  glfwPollEvents();
+  glfwWaitEvents();  // better than glfwPollEvents() for our purposes
   if (glfwWindowShouldClose(_window)) {
     done = true;
   }

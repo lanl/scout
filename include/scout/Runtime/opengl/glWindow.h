@@ -59,6 +59,8 @@
 #include <list>
 #include <deque>
 
+
+#include "scout/Runtime/RenderTarget.h"
 #include "scout/Runtime/opengl/opengl.h"
 #include "scout/Runtime/opengl/glCamera.h"
 #include "scout/Runtime/opengl/glManipulator.h"
@@ -66,13 +68,6 @@
 
 namespace scout {
 
-  /**
-   * For future flexibility we represent both screen coordinates and
-   * dimensions using this type -- both measured in terms of pixels.
-   */   
-  typedef unsigned short ScreenCoord;
-
-  
   /** ----- ScreenPoint
    * A location on the screen measured in pixels. 
    */
@@ -152,46 +147,51 @@ namespace scout {
    * the window.  The overall, platform-centric, details of the window
    * must be provied by subclasses. 
    */
-  class glWindow {
+  class glWindow: public RenderTarget {
     
    public:
     
     /// Create a window of the given width and height.  The window's
     /// position is undetermined and the background color will default
     /// to black.
-    glWindow(ScreenCoord width, ScreenCoord height);
+    glWindow(ScreenCoord width, ScreenCoord height, glCamera* camera = 0);
     
     /// Create a window with the given location and size (as described
     /// by the given WindowRect).  The background color will default
     /// to black.
     glWindow(const WindowRect &rect);
     
-    /// Create a window with the given location, size (as described by
-    /// the given WindowRect) and background color.
-    glWindow(const WindowRect &rect, const oglColor &color);
+    ~glWindow();
     
-    virtual ~glWindow(){};
+    void setActive();
+    void unsetActive();
+    void clear();
+
+    float4 *getColorBuffer() {
+      // For hardware accelerated graphics we don't have a CPU-side
+      // copy of the frame buffer and therefore can't give a pointer
+      // to the data.  This matches the details of what we need to do
+      // from a code generation perspective -- our 'color' target
+      // within a renderall is actually handled by OpenGL and the
+      // shader implementation.  To get a copy of the pixel data you
+      // should call 'readColorBuffer()'.  
+      return 0;
+    }
     
-    /// Set the window's background color.
-    void setBackgroundColor(float red,
-                            float green,
-                            float blue);
-    
-    /// Set the window's background color.
-    void setBackgroundColor(const oglColor &rgba);
-    
+    const float4 *readColorBuffer();
+
+    bool savePNG(const char *filename);    
+
     void paint(){};
     void paintMono();
     void paintStereo();
     
     // not sure these should be here and if they make sense for derived classes that are not GLFW, eg macosx
-    virtual void swapBuffers() = 0;
     virtual bool processEvent() = 0;
     virtual void eventLoop() = 0;
     
    protected:
     WindowRect      _frame;     /// The position and dimensions of window.
-    oglColor        _bgColor;   /// Window's background color.
    
     typedef std::deque<glRenderable*>  RenderableList;
     RenderableList _renderables;
@@ -205,7 +205,10 @@ namespace scout {
     int            _text_x, _text_y;
     glCamera       *_camera;
     glManipulator  *_manipulator;    
-    glfloat4       _bg_color;
+
+   private:
+    bool        _modified;
+    float4 *    _colorBuffer;
   };
   
 }

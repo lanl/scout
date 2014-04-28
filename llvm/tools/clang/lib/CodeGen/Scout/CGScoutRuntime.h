@@ -69,12 +69,15 @@ namespace CodeGen {
   protected:
     CodeGen::CodeGenModule &CGM;
     llvm::Function *ScoutRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params);
+    llvm::Function *ScoutRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params, 
+        llvm::Type* retType);
   public:
     CGScoutRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM) {}
     virtual ~CGScoutRuntime();
     llvm::Function *ModuleInitFunction();
     llvm::Function *RenderallUniformBeginFunction();
     llvm::Function *RenderallEndFunction();
+    llvm::Function *CreateWindowFunction();
     llvm::Value    *RenderallUniformColorsGlobal(CodeGenFunction &CGF);
     llvm::Type     *convertScoutSpecificType(const Type *T);    
   };

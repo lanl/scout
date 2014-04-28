@@ -568,6 +568,8 @@ def noRewrite : Flag<["-"], "rewrite">,
   HelpText<"run the rewriter">;
 def dumpRewrite : Flag<["-"], "dump-rewrite">,
   HelpText<"dump rewritten code to stdout">;
+def debugWait : Flag<["-"], "debug-wait">,
+      HelpText<"Used to allow debugger to attach to the scc driver.">;
 // +=========================================================================+
 
 //===----------------------------------------------------------------------===//
