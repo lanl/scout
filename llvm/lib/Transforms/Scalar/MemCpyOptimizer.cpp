@@ -12,7 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "memcpyopt"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
@@ -32,6 +31,8 @@
 #include "llvm/Transforms/Utils/Local.h"
 #include <list>
 using namespace llvm;
+
+#define DEBUG_TYPE "memcpyopt"
 
 STATISTIC(NumMemCpyInstr, "Number of memcpy instructions deleted");
 STATISTIC(NumMemSetInfer, "Number of memsets inferred");
@@ -851,9 +852,9 @@ bool MemCpyOpt::processMemCpy(MemCpyInst *M) {
   // The are three possible optimizations we can do for memcpy:
   //   a) memcpy-memcpy xform which exposes redundance for DSE.
   //   b) call-memcpy xform for return slot optimization.
-  //   c) memcpy from freshly alloca'd space copies undefined data, and we can
-  //      therefore eliminate the memcpy in favor of the data that was already
-  //      at the destination.
+  //   c) memcpy from freshly alloca'd space or space that has just started its
+  //      lifetime copies undefined data, and we can therefore eliminate the
+  //      memcpy in favor of the data that was already at the destination.
   MemDepResult DepInfo = MD->getDependency(M);
   if (DepInfo.isClobber()) {
     if (CallInst *C = dyn_cast<CallInst>(DepInfo.getInst())) {
@@ -874,7 +875,19 @@ bool MemCpyOpt::processMemCpy(MemCpyInst *M) {
     if (MemCpyInst *MDep = dyn_cast<MemCpyInst>(SrcDepInfo.getInst()))
       return processMemCpyMemCpyDependence(M, MDep, CopySize->getZExtValue());
   } else if (SrcDepInfo.isDef()) {
-    if (isa<AllocaInst>(SrcDepInfo.getInst())) {
+    Instruction *I = SrcDepInfo.getInst();
+    bool hasUndefContents = false;
+
+    if (isa<AllocaInst>(I)) {
+      hasUndefContents = true;
+    } else if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(I)) {
+      if (II->getIntrinsicID() == Intrinsic::lifetime_start)
+        if (ConstantInt *LTSize = dyn_cast<ConstantInt>(II->getArgOperand(0)))
+          if (LTSize->getZExtValue() >= CopySize->getZExtValue())
+            hasUndefContents = true;
+    }
+
+    if (hasUndefContents) {
       MD->removeInstruction(M);
       M->eraseFromParent();
       ++NumMemCpyInstr;

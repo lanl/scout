@@ -160,7 +160,7 @@ public:
     template<class OtherTy, class OtherIterTy>
     bundle_iterator(const bundle_iterator<OtherTy, OtherIterTy> &I)
       : MII(I.getInstrIterator()) {}
-    bundle_iterator() : MII(0) {}
+    bundle_iterator() : MII(nullptr) {}
 
     Ty &operator*() const { return *MII; }
     Ty *operator->() const { return &operator*(); }
@@ -242,6 +242,12 @@ public:
   reverse_iterator       rend  ()       { return instr_rend();   }
   const_reverse_iterator rend  () const { return instr_rend();   }
 
+  inline iterator_range<iterator> terminators() {
+    return iterator_range<iterator>(getFirstTerminator(), end());
+  }
+  inline iterator_range<const_iterator> terminators() const {
+    return iterator_range<const_iterator>(getFirstTerminator(), end());
+  }
 
   // Machine-CFG iterators
   typedef std::vector<MachineBasicBlock *>::iterator       pred_iterator;
@@ -256,7 +262,6 @@ public:
                                                          succ_reverse_iterator;
   typedef std::vector<MachineBasicBlock *>::const_reverse_iterator
                                                    const_succ_reverse_iterator;
-
   pred_iterator        pred_begin()       { return Predecessors.begin(); }
   const_pred_iterator  pred_begin() const { return Predecessors.begin(); }
   pred_iterator        pred_end()         { return Predecessors.end();   }
@@ -289,6 +294,19 @@ public:
     return (unsigned)Successors.size();
   }
   bool                 succ_empty() const { return Successors.empty();   }
+
+  inline iterator_range<pred_iterator> predecessors() {
+    return iterator_range<pred_iterator>(pred_begin(), pred_end());
+  }
+  inline iterator_range<const_pred_iterator> predecessors() const {
+    return iterator_range<const_pred_iterator>(pred_begin(), pred_end());
+  }
+  inline iterator_range<succ_iterator> successors() {
+    return iterator_range<succ_iterator>(succ_begin(), succ_end());
+  }
+  inline iterator_range<const_succ_iterator> successors() const {
+    return iterator_range<const_succ_iterator>(succ_begin(), succ_end());
+  }
 
   // LiveIn management methods.
 
@@ -609,7 +627,7 @@ public:
 
   // Debugging methods.
   void dump() const;
-  void print(raw_ostream &OS, SlotIndexes* = 0) const;
+  void print(raw_ostream &OS, SlotIndexes* = nullptr) const;
 
   // Printing method used by LoopInfo.
   void printAsOperand(raw_ostream &OS, bool PrintType = true);

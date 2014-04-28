@@ -27,12 +27,12 @@ MCObjectStreamer::MCObjectStreamer(MCContext &Context, MCAsmBackend &TAB,
     : MCStreamer(Context),
       Assembler(new MCAssembler(Context, TAB, *Emitter_,
                                 *TAB.createObjectWriter(OS), OS)),
-      CurSectionData(0) {}
+      CurSectionData(nullptr) {}
 
 MCObjectStreamer::MCObjectStreamer(MCContext &Context, MCAsmBackend &TAB,
                                    raw_ostream &OS, MCCodeEmitter *Emitter_,
                                    MCAssembler *_Assembler)
-    : MCStreamer(Context), Assembler(_Assembler), CurSectionData(0) {}
+    : MCStreamer(Context), Assembler(_Assembler), CurSectionData(nullptr) {}
 
 MCObjectStreamer::~MCObjectStreamer() {
   delete &Assembler->getBackend();
@@ -44,7 +44,7 @@ MCObjectStreamer::~MCObjectStreamer() {
 void MCObjectStreamer::reset() {
   if (Assembler)
     Assembler->reset();
-  CurSectionData = 0;
+  CurSectionData = nullptr;
   CurInsertionPoint = MCSectionData::iterator();
   MCStreamer::reset();
 }
@@ -55,7 +55,7 @@ MCFragment *MCObjectStreamer::getCurrentFragment() const {
   if (CurInsertionPoint != getCurrentSectionData()->getFragmentList().begin())
     return std::prev(CurInsertionPoint);
 
-  return 0;
+  return nullptr;
 }
 
 MCDataFragment *MCObjectStreamer::getOrCreateDataFragment() const {
@@ -97,7 +97,8 @@ const MCExpr *MCObjectStreamer::AddValueSymbols(const MCExpr *Value) {
   return Value;
 }
 
-void MCObjectStreamer::EmitValueImpl(const MCExpr *Value, unsigned Size) {
+void MCObjectStreamer::EmitValueImpl(const MCExpr *Value, unsigned Size,
+                                     const SMLoc &Loc) {
   MCDataFragment *DF = getOrCreateDataFragment();
 
   MCLineEntry::Make(this, getCurrentSection().first);
@@ -110,7 +111,7 @@ void MCObjectStreamer::EmitValueImpl(const MCExpr *Value, unsigned Size) {
   }
   DF->getFixups().push_back(
       MCFixup::Create(DF->getContents().size(), Value,
-                      MCFixup::getKindForSize(Size, false)));
+                      MCFixup::getKindForSize(Size, false), Loc));
   DF->getContents().resize(DF->getContents().size() + Size, 0);
 }
 
@@ -378,14 +379,12 @@ void MCObjectStreamer::EmitZeros(uint64_t NumBytes) {
 }
 
 void MCObjectStreamer::FinishImpl() {
-  // Dump out the dwarf file & directory tables and line tables.
-  const MCSymbol *LineSectionSymbol = NULL;
-  if (getContext().hasMCLineSections())
-    LineSectionSymbol = MCDwarfLineTable::Emit(this);
-
   // If we are generating dwarf for assembly source files dump out the sections.
   if (getContext().getGenDwarfForAssembly())
-    MCGenDwarfInfo::Emit(this, LineSectionSymbol);
+    MCGenDwarfInfo::Emit(this);
+
+  // Dump out the dwarf file & directory tables and line tables.
+  MCDwarfLineTable::Emit(this);
 
   getAssembler().Finish();
 }

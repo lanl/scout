@@ -64,6 +64,7 @@ project(sc_tools)
   endif()
 
   add_subdirectory(gdb)
+  add_subdirectory(lldb)
   add_subdirectory(sc-config)
   add_subdirectory(clang)
 

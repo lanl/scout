@@ -19,6 +19,8 @@
 
 using namespace llvm;
 
+#define DEBUG_TYPE "systemz-isel"
+
 namespace {
 // Used to build addressing modes.
 struct SystemZAddressingMode {
@@ -986,8 +988,8 @@ bool SystemZDAGToDAGISel::canUseBlockOperation(StoreSDNode *Store,
     return true;
 
   // Otherwise we need to check whether there's an alias.
-  const Value *V1 = Load->getSrcValue();
-  const Value *V2 = Store->getSrcValue();
+  const Value *V1 = Load->getMemOperand()->getValue();
+  const Value *V2 = Store->getMemOperand()->getValue();
   if (!V1 || !V2)
     return false;
 

@@ -363,9 +363,11 @@ static bool printAsmMRegister(X86AsmPrinter &P, const MachineOperand &MO,
   case 'k': // Print SImode register
     Reg = getX86SubSuperRegister(Reg, MVT::i32);
     break;
-  case 'q': // Print DImode register
-    // FIXME: gcc will actually print e instead of r for 32-bit.
-    Reg = getX86SubSuperRegister(Reg, MVT::i64);
+  case 'q':
+    // Print 64-bit register names if 64-bit integer registers are available.
+    // Otherwise, print 32-bit register names.
+    MVT::SimpleValueType Ty = P.getSubtarget().is64Bit() ? MVT::i64 : MVT::i32;
+    Reg = getX86SubSuperRegister(Reg, Ty);
     break;
   }
 
@@ -621,8 +623,7 @@ void X86AsmPrinter::EmitEndOfAsmFile(Module &M) {
     OutStreamer.EmitAssemblerFlag(MCAF_SubsectionsViaSymbols);
   }
 
-  if (Subtarget->isTargetWindows() && !Subtarget->isTargetCygMing() &&
-      MMI->usesVAFloatArgument()) {
+  if (Subtarget->isTargetKnownWindowsMSVC() && MMI->usesVAFloatArgument()) {
     StringRef SymbolName = Subtarget->is64Bit() ? "_fltused" : "__fltused";
     MCSymbol *S = MMI->getContext().GetOrCreateSymbol(SymbolName);
     OutStreamer.EmitSymbolAttribute(S, MCSA_Global);
@@ -679,12 +680,12 @@ void X86AsmPrinter::EmitEndOfAsmFile(Module &M) {
       OutStreamer.SwitchSection(TLOFCOFF.getDrectveSection());
       SmallString<128> name;
       for (unsigned i = 0, e = DLLExportedGlobals.size(); i != e; ++i) {
-        if (Subtarget->isTargetWindows())
+        if (Subtarget->isTargetKnownWindowsMSVC())
           name = " /EXPORT:";
         else
           name = " -export:";
         name += DLLExportedGlobals[i]->getName();
-        if (Subtarget->isTargetWindows())
+        if (Subtarget->isTargetKnownWindowsMSVC())
           name += ",DATA";
         else
         name += ",data";
@@ -692,7 +693,7 @@ void X86AsmPrinter::EmitEndOfAsmFile(Module &M) {
       }
 
       for (unsigned i = 0, e = DLLExportedFns.size(); i != e; ++i) {
-        if (Subtarget->isTargetWindows())
+        if (Subtarget->isTargetKnownWindowsMSVC())
           name = " /EXPORT:";
         else
           name = " -export:";

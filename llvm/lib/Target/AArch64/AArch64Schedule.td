@@ -37,8 +37,16 @@ def ReadDiv : SchedRead;
 // Loads
 def WriteLd : SchedWrite;
 def WritePreLd : SchedWrite;
+def WriteVecLd : SchedWrite;
 def ReadLd : SchedRead;
 def ReadPreLd : SchedRead;
+def ReadVecLd : SchedRead;
+
+// Stores
+def WriteSt : SchedWrite;
+def WriteVecSt : SchedWrite;
+def ReadSt : SchedRead;
+def ReadVecSt : SchedRead;
 
 // Branches
 def WriteBr : SchedWrite;
@@ -51,7 +59,7 @@ def ReadFPALU : SchedRead;
 
 // Floating Point MAC, Mul, Div, Sqrt
 //   Most processors will simply send all of these down a dedicated pipe, but
-//   they're explicitly seperated here for flexibility of modeling later. May
+//   they're explicitly separated here for flexibility of modeling later. May
 //   consider consolidating them into a single WriteFPXXXX type in the future.
 def WriteFPMAC : SchedWrite;
 def WriteFPMul : SchedWrite;

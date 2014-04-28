@@ -79,4 +79,18 @@ __writeeflags(unsigned int __f)
 }
 #endif /* !__x86_64__ */
 
+/* __rdtsc */
+static __inline__ unsigned long long __attribute__((__always_inline__, __nodebug__))
+__rdtsc(void) {
+  return __builtin_ia32_rdtsc();
+}
+
+/* __rdtscp */
+static __inline__ unsigned long long __attribute__((__always_inline__, __nodebug__))
+__rdtscp(unsigned int *__A) {
+  return __builtin_ia32_rdtscp(__A);
+}
+
+#define _rdtsc() __rdtsc()
+
 #endif /* __IA32INTRIN_H */

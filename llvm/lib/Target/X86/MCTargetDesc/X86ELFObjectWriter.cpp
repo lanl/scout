@@ -25,8 +25,7 @@ namespace {
     virtual ~X86ELFObjectWriter();
   protected:
     unsigned GetRelocType(const MCValue &Target, const MCFixup &Fixup,
-                          bool IsPCRel, bool IsRelocWithSymbol,
-                          int64_t Addend) const override;
+                          bool IsPCRel) const override;
   };
 }
 
@@ -41,9 +40,7 @@ X86ELFObjectWriter::~X86ELFObjectWriter()
 
 unsigned X86ELFObjectWriter::GetRelocType(const MCValue &Target,
                                           const MCFixup &Fixup,
-                                          bool IsPCRel,
-                                          bool IsRelocWithSymbol,
-                                          int64_t Addend) const {
+                                          bool IsPCRel) const {
   // determine the type of the relocation
 
   MCSymbolRefExpr::VariantKind Modifier = Fixup.getAccessVariant();
@@ -101,6 +98,12 @@ unsigned X86ELFObjectWriter::GetRelocType(const MCValue &Target,
     } else {
       switch ((unsigned)Fixup.getKind()) {
       default: llvm_unreachable("invalid fixup kind!");
+      case X86::reloc_global_offset_table8:
+        Type = ELF::R_X86_64_GOTPC64;
+        break;
+      case X86::reloc_global_offset_table:
+        Type = ELF::R_X86_64_GOTPC32;
+        break;
       case FK_Data_8:
         switch (Modifier) {
         default:

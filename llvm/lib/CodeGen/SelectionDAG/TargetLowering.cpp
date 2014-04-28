@@ -40,7 +40,7 @@ TargetLowering::TargetLowering(const TargetMachine &tm,
   : TargetLoweringBase(tm, tlof) {}
 
 const char *TargetLowering::getTargetNodeName(unsigned Opcode) const {
-  return NULL;
+  return nullptr;
 }
 
 /// Check whether a given call node is in tail position within its function. If
@@ -226,7 +226,7 @@ unsigned TargetLowering::getJumpTableEncoding() const {
     return MachineJumpTableInfo::EK_BlockAddress;
 
   // In PIC mode, if the target supports a GPRel32 directive, use it.
-  if (getTargetMachine().getMCAsmInfo()->getGPRel32Directive() != 0)
+  if (getTargetMachine().getMCAsmInfo()->getGPRel32Directive() != nullptr)
     return MachineJumpTableInfo::EK_GPRel32BlockAddress;
 
   // Otherwise, use a label difference.
@@ -1074,6 +1074,7 @@ void TargetLowering::computeMaskedBitsForTargetNode(const SDValue Op,
 /// targets that want to expose additional information about sign bits to the
 /// DAG Combiner.
 unsigned TargetLowering::ComputeNumSignBitsForTargetNode(SDValue Op,
+                                                         const SelectionDAG &,
                                                          unsigned Depth) const {
   assert((Op.getOpcode() >= ISD::BUILTIN_OP_END ||
           Op.getOpcode() == ISD::INTRINSIC_WO_CHAIN ||
@@ -1115,6 +1116,54 @@ static bool ValueHasExactlyOneBitSet(SDValue Val, const SelectionDAG &DAG) {
   DAG.ComputeMaskedBits(Val, KnownZero, KnownOne);
   return (KnownZero.countPopulation() == BitWidth - 1) &&
          (KnownOne.countPopulation() == 1);
+}
+
+bool TargetLowering::isConstTrueVal(const SDNode *N) const {
+  if (!N)
+    return false;
+
+  bool IsVec = false;
+  const ConstantSDNode *CN = dyn_cast<ConstantSDNode>(N);
+  if (!CN) {
+    const BuildVectorSDNode *BV = dyn_cast<BuildVectorSDNode>(N);
+    if (!BV)
+      return false;
+
+    IsVec = true;
+    CN = BV->getConstantSplatValue();
+  }
+
+  switch (getBooleanContents(IsVec)) {
+  case UndefinedBooleanContent:
+    return CN->getAPIntValue()[0];
+  case ZeroOrOneBooleanContent:
+    return CN->isOne();
+  case ZeroOrNegativeOneBooleanContent:
+    return CN->isAllOnesValue();
+  }
+
+  llvm_unreachable("Invalid boolean contents");
+}
+
+bool TargetLowering::isConstFalseVal(const SDNode *N) const {
+  if (!N)
+    return false;
+
+  bool IsVec = false;
+  const ConstantSDNode *CN = dyn_cast<ConstantSDNode>(N);
+  if (!CN) {
+    const BuildVectorSDNode *BV = dyn_cast<BuildVectorSDNode>(N);
+    if (!BV)
+      return false;
+
+    IsVec = true;
+    CN = BV->getConstantSplatValue();
+  }
+
+  if (getBooleanContents(IsVec) == UndefinedBooleanContent)
+    return !CN->getAPIntValue()[0];
+
+  return CN->isNullValue();
 }
 
 /// SimplifySetCC - Try to simplify a setcc built with the specified operands
@@ -1470,24 +1519,32 @@ TargetLowering::SimplifySetCC(EVT VT, SDValue N0, SDValue N1,
     // Canonicalize GE/LE comparisons to use GT/LT comparisons.
     if (Cond == ISD::SETGE || Cond == ISD::SETUGE) {
       if (C1 == MinVal) return DAG.getConstant(1, VT);   // X >= MIN --> true
-      // X >= C0 --> X > (C0-1)
-      APInt C = C1-1;
-      if (!N1C->isOpaque() || (N1C->isOpaque() && C.getBitWidth() <= 64 &&
-                               isLegalICmpImmediate(C.getSExtValue())))
+      // X >= C0 --> X > (C0 - 1)
+      APInt C = C1 - 1;
+      ISD::CondCode NewCC = (Cond == ISD::SETGE) ? ISD::SETGT : ISD::SETUGT;
+      if ((DCI.isBeforeLegalizeOps() ||
+           isCondCodeLegal(NewCC, VT.getSimpleVT())) &&
+          (!N1C->isOpaque() || (N1C->isOpaque() && C.getBitWidth() <= 64 &&
+                                isLegalICmpImmediate(C.getSExtValue())))) {
         return DAG.getSetCC(dl, VT, N0,
                             DAG.getConstant(C, N1.getValueType()),
-                            (Cond == ISD::SETGE) ? ISD::SETGT : ISD::SETUGT);
+                            NewCC);
+      }
     }
 
     if (Cond == ISD::SETLE || Cond == ISD::SETULE) {
       if (C1 == MaxVal) return DAG.getConstant(1, VT);   // X <= MAX --> true
-      // X <= C0 --> X < (C0+1)
-      APInt C = C1+1;
-      if (!N1C->isOpaque() || (N1C->isOpaque() && C.getBitWidth() <= 64 &&
-                               isLegalICmpImmediate(C.getSExtValue())))
+      // X <= C0 --> X < (C0 + 1)
+      APInt C = C1 + 1;
+      ISD::CondCode NewCC = (Cond == ISD::SETLE) ? ISD::SETLT : ISD::SETULT;
+      if ((DCI.isBeforeLegalizeOps() ||
+           isCondCodeLegal(NewCC, VT.getSimpleVT())) &&
+          (!N1C->isOpaque() || (N1C->isOpaque() && C.getBitWidth() <= 64 &&
+                                isLegalICmpImmediate(C.getSExtValue())))) {
         return DAG.getSetCC(dl, VT, N0,
                             DAG.getConstant(C, N1.getValueType()),
-                            (Cond == ISD::SETLE) ? ISD::SETLT : ISD::SETULT);
+                            NewCC);
+      }
     }
 
     if ((Cond == ISD::SETLT || Cond == ISD::SETULT) && C1 == MinVal)
@@ -1996,7 +2053,7 @@ const char *TargetLowering::LowerXConstraint(EVT ConstraintVT) const{
     return "r";
   if (ConstraintVT.isFloatingPoint())
     return "f";      // works for many targets
-  return 0;
+  return nullptr;
 }
 
 /// LowerAsmOperandForConstraint - Lower the specified operand into the Ops
@@ -2030,12 +2087,12 @@ void TargetLowering::LowerAsmOperandForConstraint(SDValue Op,
     if (Op.getOpcode() == ISD::ADD) {
       C = dyn_cast<ConstantSDNode>(Op.getOperand(1));
       GA = dyn_cast<GlobalAddressSDNode>(Op.getOperand(0));
-      if (C == 0 || GA == 0) {
+      if (!C || !GA) {
         C = dyn_cast<ConstantSDNode>(Op.getOperand(0));
         GA = dyn_cast<GlobalAddressSDNode>(Op.getOperand(1));
       }
-      if (C == 0 || GA == 0)
-        C = 0, GA = 0;
+      if (!C || !GA)
+        C = nullptr, GA = nullptr;
     }
 
     // If we find a valid operand, map to the TargetXXX version so that the
@@ -2070,14 +2127,14 @@ std::pair<unsigned, const TargetRegisterClass*> TargetLowering::
 getRegForInlineAsmConstraint(const std::string &Constraint,
                              MVT VT) const {
   if (Constraint.empty() || Constraint[0] != '{')
-    return std::make_pair(0u, static_cast<TargetRegisterClass*>(0));
+    return std::make_pair(0u, static_cast<TargetRegisterClass*>(nullptr));
   assert(*(Constraint.end()-1) == '}' && "Not a brace enclosed constraint?");
 
   // Remove the braces from around the name.
   StringRef RegName(Constraint.data()+1, Constraint.size()-2);
 
   std::pair<unsigned, const TargetRegisterClass*> R =
-    std::make_pair(0u, static_cast<const TargetRegisterClass*>(0));
+    std::make_pair(0u, static_cast<const TargetRegisterClass*>(nullptr));
 
   // Figure out which register class contains this reg.
   const TargetRegisterInfo *RI = getTargetMachine().getRegisterInfo();
@@ -2372,7 +2429,7 @@ TargetLowering::ConstraintWeight
   Value *CallOperandVal = info.CallOperandVal;
     // If we don't have a value, we can't do a match,
     // but allow it at the lowest weight.
-  if (CallOperandVal == NULL)
+  if (!CallOperandVal)
     return CW_Default;
   // Look at the constraint type.
   switch (*constraint) {
@@ -2680,5 +2737,112 @@ verifyReturnAddressArgumentIsConstant(SDValue Op, SelectionDAG &DAG) const {
     return true;
   }
 
+  return false;
+}
+
+//===----------------------------------------------------------------------===//
+// Legalization Utilities
+//===----------------------------------------------------------------------===//
+
+bool TargetLowering::expandMUL(SDNode *N, SDValue &Lo, SDValue &Hi, EVT HiLoVT,
+                               SelectionDAG &DAG, SDValue LL, SDValue LH,
+			       SDValue RL, SDValue RH) const {
+  EVT VT = N->getValueType(0);
+  SDLoc dl(N);
+
+  bool HasMULHS = isOperationLegalOrCustom(ISD::MULHS, HiLoVT);
+  bool HasMULHU = isOperationLegalOrCustom(ISD::MULHU, HiLoVT);
+  bool HasSMUL_LOHI = isOperationLegalOrCustom(ISD::SMUL_LOHI, HiLoVT);
+  bool HasUMUL_LOHI = isOperationLegalOrCustom(ISD::UMUL_LOHI, HiLoVT);
+  if (HasMULHU || HasMULHS || HasUMUL_LOHI || HasSMUL_LOHI) {
+    unsigned OuterBitSize = VT.getSizeInBits();
+    unsigned InnerBitSize = HiLoVT.getSizeInBits();
+    unsigned LHSSB = DAG.ComputeNumSignBits(N->getOperand(0));
+    unsigned RHSSB = DAG.ComputeNumSignBits(N->getOperand(1));
+
+    // LL, LH, RL, and RH must be either all NULL or all set to a value.
+    assert((LL.getNode() && LH.getNode() && RL.getNode() && RH.getNode()) ||
+           (!LL.getNode() && !LH.getNode() && !RL.getNode() && !RH.getNode()));
+
+    if (!LL.getNode() && !RL.getNode() &&
+        isOperationLegalOrCustom(ISD::TRUNCATE, HiLoVT)) {
+      LL = DAG.getNode(ISD::TRUNCATE, dl, HiLoVT, N->getOperand(0));
+      RL = DAG.getNode(ISD::TRUNCATE, dl, HiLoVT, N->getOperand(1));
+    }
+
+    if (!LL.getNode())
+      return false;
+
+    APInt HighMask = APInt::getHighBitsSet(OuterBitSize, InnerBitSize);
+    if (DAG.MaskedValueIsZero(N->getOperand(0), HighMask) &&
+        DAG.MaskedValueIsZero(N->getOperand(1), HighMask)) {
+      // The inputs are both zero-extended.
+      if (HasUMUL_LOHI) {
+        // We can emit a umul_lohi.
+        Lo = DAG.getNode(ISD::UMUL_LOHI, dl,
+	                 DAG.getVTList(HiLoVT, HiLoVT), LL, RL);
+        Hi = SDValue(Lo.getNode(), 1);
+        return true;
+      }
+      if (HasMULHU) {
+        // We can emit a mulhu+mul.
+        Lo = DAG.getNode(ISD::MUL, dl, HiLoVT, LL, RL);
+        Hi = DAG.getNode(ISD::MULHU, dl, HiLoVT, LL, RL);
+        return true;
+      }
+    }
+    if (LHSSB > InnerBitSize && RHSSB > InnerBitSize) {
+      // The input values are both sign-extended.
+      if (HasSMUL_LOHI) {
+        // We can emit a smul_lohi.
+        Lo = DAG.getNode(ISD::SMUL_LOHI, dl,
+	                 DAG.getVTList(HiLoVT, HiLoVT), LL, RL);
+        Hi = SDValue(Lo.getNode(), 1);
+        return true;
+      }
+      if (HasMULHS) {
+        // We can emit a mulhs+mul.
+        Lo = DAG.getNode(ISD::MUL, dl, HiLoVT, LL, RL);
+        Hi = DAG.getNode(ISD::MULHS, dl, HiLoVT, LL, RL);
+        return true;
+      }
+    }
+
+    if (!LH.getNode() && !RH.getNode() &&
+        isOperationLegalOrCustom(ISD::SRL, VT) &&
+        isOperationLegalOrCustom(ISD::TRUNCATE, HiLoVT)) {
+      unsigned ShiftAmt = VT.getSizeInBits() - HiLoVT.getSizeInBits();
+      SDValue Shift = DAG.getConstant(ShiftAmt, getShiftAmountTy(VT));
+      LH = DAG.getNode(ISD::SRL, dl, VT, N->getOperand(0), Shift);
+      LH = DAG.getNode(ISD::TRUNCATE, dl, HiLoVT, LH);
+      RH = DAG.getNode(ISD::SRL, dl, VT, N->getOperand(1), Shift);
+      RH = DAG.getNode(ISD::TRUNCATE, dl, HiLoVT, RH);
+    }
+
+    if (!LH.getNode())
+      return false;
+
+    if (HasUMUL_LOHI) {
+      // Lo,Hi = umul LHS, RHS.
+      SDValue UMulLOHI = DAG.getNode(ISD::UMUL_LOHI, dl,
+                                     DAG.getVTList(HiLoVT, HiLoVT), LL, RL);
+      Lo = UMulLOHI;
+      Hi = UMulLOHI.getValue(1);
+      RH = DAG.getNode(ISD::MUL, dl, HiLoVT, LL, RH);
+      LH = DAG.getNode(ISD::MUL, dl, HiLoVT, LH, RL);
+      Hi = DAG.getNode(ISD::ADD, dl, HiLoVT, Hi, RH);
+      Hi = DAG.getNode(ISD::ADD, dl, HiLoVT, Hi, LH);
+      return true;
+    }
+    if (HasMULHU) {
+      Lo = DAG.getNode(ISD::MUL, dl, HiLoVT, LL, RL);
+      Hi = DAG.getNode(ISD::MULHU, dl, HiLoVT, LL, RL);
+      RH = DAG.getNode(ISD::MUL, dl, HiLoVT, LL, RH);
+      LH = DAG.getNode(ISD::MUL, dl, HiLoVT, LH, RL);
+      Hi = DAG.getNode(ISD::ADD, dl, HiLoVT, Hi, RH);
+      Hi = DAG.getNode(ISD::ADD, dl, HiLoVT, Hi, LH);
+      return true;
+    }
+  }
   return false;
 }

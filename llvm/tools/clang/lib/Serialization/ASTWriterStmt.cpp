@@ -1684,6 +1684,11 @@ void OMPClauseWriter::VisitOMPNumThreadsClause(OMPNumThreadsClause *C) {
   Writer->Writer.AddSourceLocation(C->getLParenLoc(), Record);
 }
 
+void OMPClauseWriter::VisitOMPSafelenClause(OMPSafelenClause *C) {
+  Writer->Writer.AddStmt(C->getSafelen());
+  Writer->Writer.AddSourceLocation(C->getLParenLoc(), Record);
+}
+
 void OMPClauseWriter::VisitOMPDefaultClause(OMPDefaultClause *C) {
   Record.push_back(C->getDefaultKind());
   Writer->Writer.AddSourceLocation(C->getLParenLoc(), Record);
@@ -1693,22 +1698,38 @@ void OMPClauseWriter::VisitOMPDefaultClause(OMPDefaultClause *C) {
 void OMPClauseWriter::VisitOMPPrivateClause(OMPPrivateClause *C) {
   Record.push_back(C->varlist_size());
   Writer->Writer.AddSourceLocation(C->getLParenLoc(), Record);
-  for (auto *I : C->varlists())
-    Writer->Writer.AddStmt(I);
+  for (auto *VE : C->varlists())
+    Writer->Writer.AddStmt(VE);
 }
 
 void OMPClauseWriter::VisitOMPFirstprivateClause(OMPFirstprivateClause *C) {
   Record.push_back(C->varlist_size());
   Writer->Writer.AddSourceLocation(C->getLParenLoc(), Record);
-  for (auto *I : C->varlists())
-    Writer->Writer.AddStmt(I);
+  for (auto *VE : C->varlists())
+    Writer->Writer.AddStmt(VE);
 }
 
 void OMPClauseWriter::VisitOMPSharedClause(OMPSharedClause *C) {
   Record.push_back(C->varlist_size());
   Writer->Writer.AddSourceLocation(C->getLParenLoc(), Record);
-  for (auto *I : C->varlists())
-    Writer->Writer.AddStmt(I);
+  for (auto *VE : C->varlists())
+    Writer->Writer.AddStmt(VE);
+}
+
+void OMPClauseWriter::VisitOMPLinearClause(OMPLinearClause *C) {
+  Record.push_back(C->varlist_size());
+  Writer->Writer.AddSourceLocation(C->getLParenLoc(), Record);
+  Writer->Writer.AddSourceLocation(C->getColonLoc(), Record);
+  for (auto *VE : C->varlists())
+    Writer->Writer.AddStmt(VE);
+  Writer->Writer.AddStmt(C->getStep());
+}
+
+void OMPClauseWriter::VisitOMPCopyinClause(OMPCopyinClause *C) {
+  Record.push_back(C->varlist_size());
+  Writer->Writer.AddSourceLocation(C->getLParenLoc(), Record);
+  for (auto *VE : C->varlists())
+    Writer->Writer.AddStmt(VE);
 }
 
 //===----------------------------------------------------------------------===//

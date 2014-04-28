@@ -45,6 +45,7 @@ public:
   RangeSpan(MCSymbol *S, MCSymbol *E) : Start(S), End(E) {}
   const MCSymbol *getStart() const { return Start; }
   const MCSymbol *getEnd() const { return End; }
+  void setEnd(const MCSymbol *E) { End = E; }
 
 private:
   const MCSymbol *Start, *End;
@@ -105,18 +106,6 @@ protected:
   /// GlobalTypes - A map of globally visible types for this unit.
   StringMap<const DIE *> GlobalTypes;
 
-  /// AccelNames - A map of names for the name accelerator table.
-  StringMap<std::vector<const DIE *> > AccelNames;
-
-  /// AccelObjC - A map of objc spec for the objc accelerator table.
-  StringMap<std::vector<const DIE *> > AccelObjC;
-
-  /// AccelNamespace - A map of names for the namespace accelerator table.
-  StringMap<std::vector<const DIE *> > AccelNamespace;
-
-  /// AccelTypes - A map of names for the type accelerator table.
-  StringMap<std::vector<std::pair<const DIE *, unsigned> > > AccelTypes;
-
   /// DIEBlocks - A list of all the DIEBlocks in use.
   std::vector<DIEBlock *> DIEBlocks;
   
@@ -166,7 +155,7 @@ public:
   virtual ~DwarfUnit();
 
   /// Set the skeleton unit associated with this unit.
-  void setSkeleton(DwarfUnit *Skel) { Skeleton = Skel; }
+  void setSkeleton(DwarfUnit &Skel) { Skeleton = &Skel; }
 
   /// Get the skeleton unit associated with this unit.
   DwarfUnit *getSkeleton() const { return Skeleton; }
@@ -234,20 +223,6 @@ public:
   const StringMap<const DIE *> &getGlobalNames() const { return GlobalNames; }
   const StringMap<const DIE *> &getGlobalTypes() const { return GlobalTypes; }
 
-  const StringMap<std::vector<const DIE *> > &getAccelNames() const {
-    return AccelNames;
-  }
-  const StringMap<std::vector<const DIE *> > &getAccelObjC() const {
-    return AccelObjC;
-  }
-  const StringMap<std::vector<const DIE *> > &getAccelNamespace() const {
-    return AccelNamespace;
-  }
-  const StringMap<std::vector<std::pair<const DIE *, unsigned> > > &
-  getAccelTypes() const {
-    return AccelTypes;
-  }
-
   unsigned getDebugInfoOffset() const { return DebugInfoOffset; }
   void setDebugInfoOffset(unsigned DbgInfoOff) { DebugInfoOffset = DbgInfoOff; }
 
@@ -255,11 +230,7 @@ public:
   bool hasContent() const { return !UnitDie->getChildren().empty(); }
 
   /// addRange - Add an address range to the list of ranges for this unit.
-  void addRange(RangeSpan Range) {
-    // Only add a range for this unit if we're emitting full debug.
-    if (getCUNode().getEmissionKind() == DIBuilder::FullDebug)
-      CURanges.push_back(Range);
-  }
+  void addRange(RangeSpan Range);
 
   /// getRanges - Get the list of ranges for this unit.
   const SmallVectorImpl<RangeSpan> &getRanges() const { return CURanges; }
@@ -282,17 +253,8 @@ public:
   ///
   void addGlobalName(StringRef Name, DIE *Die, DIScope Context);
 
-  /// addAccelName - Add a new name to the name accelerator table.
-  void addAccelName(StringRef Name, const DIE *Die);
-
-  /// addAccelObjC - Add a new name to the ObjC accelerator table.
-  void addAccelObjC(StringRef Name, const DIE *Die);
-
   /// addAccelNamespace - Add a new name to the namespace accelerator table.
   void addAccelNamespace(StringRef Name, const DIE *Die);
-
-  /// addAccelType - Add a new type to the type accelerator table.
-  void addAccelType(StringRef Name, std::pair<const DIE *, unsigned> Die);
 
   /// getDIE - Returns the debug information entry map slot for the
   /// specified debug variable. We delegate the request to DwarfDebug
@@ -486,8 +448,7 @@ public:
   }
 
   /// Emit the header for this unit, not including the initial length field.
-  virtual void emitHeader(const MCSection *ASection,
-                          const MCSymbol *ASectionSym) const;
+  virtual void emitHeader(const MCSymbol *ASectionSym) const;
 
   virtual DwarfCompileUnit &getCU() = 0;
 
@@ -597,7 +558,13 @@ public:
 
   /// addLabelAddress - Add a dwarf label attribute data and value using
   /// either DW_FORM_addr or DW_FORM_GNU_addr_index.
-  void addLabelAddress(DIE *Die, dwarf::Attribute Attribute, MCSymbol *Label);
+  void addLabelAddress(DIE *Die, dwarf::Attribute Attribute,
+                       const MCSymbol *Label);
+
+  /// addLocalLabelAddress - Add a dwarf label attribute data and value using
+  /// DW_FORM_addr only.
+  void addLocalLabelAddress(DIE *Die, dwarf::Attribute Attribute,
+                            const MCSymbol *Label);
 
   DwarfCompileUnit &getCU() override { return *this; }
 
@@ -621,8 +588,7 @@ public:
   void setType(const DIE *Ty) { this->Ty = Ty; }
 
   /// Emit the header for this unit, not including the initial length field.
-  void emitHeader(const MCSection *ASection, const MCSymbol *ASectionSym) const
-      override;
+  void emitHeader(const MCSymbol *ASectionSym) const override;
   unsigned getHeaderSize() const override {
     return DwarfUnit::getHeaderSize() + sizeof(uint64_t) + // Type Signature
            sizeof(uint32_t);                               // Type DIE Offset

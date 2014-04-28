@@ -232,6 +232,9 @@ public:
                           SDLoc dl, SelectionDAG &DAG,
                           SmallVectorImpl<SDValue> &InVals) const;
 
+  SDValue LowerShiftLeftParts(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerShiftRightParts(SDValue Op, SelectionDAG &DAG) const;
+
   bool isConcatVector(SDValue Op, SelectionDAG &DAG, SDValue V0, SDValue V1,
                       const int *Mask, SDValue &Res) const;
 
@@ -274,6 +277,25 @@ public:
   SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const;
 
   bool isLegalICmpImmediate(int64_t Val) const;
+
+  /// \brief Return true if the addressing mode represented by AM is legal for
+  /// this target, for a load/store of the specified type.
+  bool isLegalAddressingMode(const AddrMode &AM, Type *Ty) const override;
+
+  /// \brief Return the cost of the scaling factor used in the addressing
+  /// mode represented by AM for this target, for a load/store
+  /// of the specified type.
+  /// If the AM is supported, the return value must be >= 0.
+  /// If the AM is not supported, it returns a negative value.
+  int getScalingFactorCost(const AddrMode &AM, Type *Ty) const override;
+
+  bool isTruncateFree(Type *Ty1, Type *Ty2) const override;
+  bool isTruncateFree(EVT VT1, EVT VT2) const override;
+
+  bool isZExtFree(Type *Ty1, Type *Ty2) const override;
+  bool isZExtFree(EVT VT1, EVT VT2) const override;
+  bool isZExtFree(SDValue Val, EVT VT2) const override;
+
   SDValue getSelectableIntSetCC(SDValue LHS, SDValue RHS, ISD::CondCode CC,
                          SDValue &A64cc, SelectionDAG &DAG, SDLoc &dl) const;
 
@@ -333,6 +355,12 @@ public:
   /// expanded to fmul + fadd.
   virtual bool isFMAFasterThanFMulAndFAdd(EVT VT) const;
 
+  /// allowsUnalignedMemoryAccesses - Returns true if the target allows
+  /// unaligned memory accesses of the specified type. Returns whether it
+  /// is "fast" by reference in the second argument.
+  virtual bool allowsUnalignedMemoryAccesses(EVT VT, unsigned AddrSpace,
+                                             bool *Fast) const;
+
   ConstraintType getConstraintType(const std::string &Constraint) const;
 
   ConstraintWeight getSingleConstraintMatchWeight(AsmOperandInfo &Info,
@@ -347,6 +375,10 @@ public:
 
   virtual bool getTgtMemIntrinsic(IntrinsicInfo &Info, const CallInst &I,
                                   unsigned Intrinsic) const override;
+
+  /// getMaximalGlobalOffset - Returns the maximal possible offset which can
+  /// be used for loads / stores from the global.
+  unsigned getMaximalGlobalOffset() const override;
 
 protected:
   std::pair<const TargetRegisterClass*, uint8_t>

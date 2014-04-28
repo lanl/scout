@@ -807,6 +807,7 @@ enum : unsigned {
   EF_MIPS_CPIC      = 0x00000004, // Call object with Position independent code
   EF_MIPS_ABI2      = 0x00000020,
   EF_MIPS_32BITMODE = 0x00000100,
+  EF_MIPS_NAN2008   = 0x00000400, // Uses IEE 754-2008 NaN encoding
   EF_MIPS_ABI_O32   = 0x00001000, // This file follows the first MIPS 32 bit ABI
 
   //ARCH_ASE
@@ -839,7 +840,6 @@ enum {
   R_MIPS_GPREL16           =  7,
   R_MIPS_LITERAL           =  8,
   R_MIPS_GOT16             =  9,
-  R_MIPS_GOT               =  9,
   R_MIPS_PC16              = 10,
   R_MIPS_CALL16            = 11,
   R_MIPS_GPREL32           = 12,
@@ -881,6 +881,9 @@ enum {
   R_MIPS_TLS_TPREL_HI16    = 49,
   R_MIPS_TLS_TPREL_LO16    = 50,
   R_MIPS_GLOB_DAT          = 51,
+  R_MIPS16_GOT16           = 102,
+  R_MIPS16_HI16            = 104,
+  R_MIPS16_LO16            = 105,
   R_MIPS_COPY              = 126,
   R_MIPS_JUMP_SLOT         = 127,
   R_MICROMIPS_26_S1        = 133,
@@ -904,7 +907,11 @@ enum {
 
 // Special values for the st_other field in the symbol table entry for MIPS.
 enum {
-  STO_MIPS_MICROMIPS       = 0x80 // MIPS Specific ISA for MicroMips
+  STO_MIPS_OPTIONAL        = 0x04,  // Symbol whose definition is optional
+  STO_MIPS_PLT             = 0x08,  // PLT entry related dynamic table record
+  STO_MIPS_PIC             = 0x20,  // PIC func in an object mixes PIC/non-PIC
+  STO_MIPS_MICROMIPS       = 0x80,  // MIPS Specific ISA for MicroMips
+  STO_MIPS_MIPS16          = 0xf0   // MIPS Specific ISA for Mips16
 };
 
 // Hexagon Specific e_flags

@@ -21,8 +21,6 @@
 //
 //
 
-#define DEBUG_TYPE "mips-constant-islands"
-
 #include "Mips.h"
 #include "MCTargetDesc/MipsBaseInfo.h"
 #include "Mips16InstrInfo.h"
@@ -46,6 +44,8 @@
 #include <algorithm>
 
 using namespace llvm;
+
+#define DEBUG_TYPE "mips-constant-islands"
 
 STATISTIC(NumCPEs,       "Number of constpool entries");
 STATISTIC(NumSplit,      "Number of uncond branches inserted");
@@ -384,15 +384,11 @@ namespace {
     unsigned getOffsetOf(MachineInstr *MI) const;
     unsigned getUserOffset(CPUser&) const;
     void dumpBBs();
-    void verify();
 
     bool isOffsetInRange(unsigned UserOffset, unsigned TrialOffset,
                          unsigned Disp, bool NegativeOK);
     bool isOffsetInRange(unsigned UserOffset, unsigned TrialOffset,
                          const CPUser &U);
-
-    bool isLongFormOffsetInRange(unsigned UserOffset, unsigned TrialOffset,
-                                const CPUser &U);
 
     void computeBlockSize(MachineBasicBlock *MBB);
     MachineBasicBlock *splitBlockBeforeInstr(MachineInstr *MI);
@@ -426,14 +422,6 @@ namespace {
 
   char MipsConstantIslands::ID = 0;
 } // end of anonymous namespace
-
-
-bool MipsConstantIslands::isLongFormOffsetInRange
-  (unsigned UserOffset, unsigned TrialOffset,
-   const CPUser &U) {
-  return isOffsetInRange(UserOffset, TrialOffset,
-                         U.getLongFormMaxDisp(), U.NegOk);
-}
 
 bool MipsConstantIslands::isOffsetInRange
   (unsigned UserOffset, unsigned TrialOffset,

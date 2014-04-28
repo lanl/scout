@@ -15,7 +15,9 @@
 #ifndef LLVM_SUPPORT_DIAGNOSTICINFO_H
 #define LLVM_SUPPORT_DIAGNOSTICINFO_H
 
+#include "llvm-c/Core.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/IR/DebugLoc.h"
 #include "llvm/Support/Casting.h"
 
 namespace llvm {
@@ -26,6 +28,7 @@ class Function;
 class Instruction;
 class Twine;
 class Value;
+class DebugLoc;
 
 /// \brief Defines the different supported severity of a diagnostic.
 enum DiagnosticSeverity {
@@ -44,6 +47,7 @@ enum DiagnosticKind {
   DK_StackSize,
   DK_DebugMetadataVersion,
   DK_SampleProfile,
+  DK_OptimizationRemark,
   DK_FirstPluginKind
 };
 
@@ -105,7 +109,7 @@ public:
   DiagnosticInfoInlineAsm(const Twine &MsgStr,
                           DiagnosticSeverity Severity = DS_Error)
       : DiagnosticInfo(DK_InlineAsm, Severity), LocCookie(0), MsgStr(MsgStr),
-        Instr(NULL) {}
+        Instr(nullptr) {}
 
   /// \p LocCookie if non-zero gives the line number for this report.
   /// \p MsgStr gives the message.
@@ -114,7 +118,7 @@ public:
   DiagnosticInfoInlineAsm(unsigned LocCookie, const Twine &MsgStr,
                           DiagnosticSeverity Severity = DS_Error)
       : DiagnosticInfo(DK_InlineAsm, Severity), LocCookie(LocCookie),
-        MsgStr(MsgStr), Instr(NULL) {}
+        MsgStr(MsgStr), Instr(nullptr) {}
 
   /// \p Instr gives the original instruction that triggered the diagnostic.
   /// \p MsgStr gives the message.
@@ -208,7 +212,7 @@ public:
         LineNum(0), Msg(Msg) {}
   DiagnosticInfoSampleProfile(const Twine &Msg,
                               DiagnosticSeverity Severity = DS_Error)
-      : DiagnosticInfo(DK_SampleProfile, Severity), FileName(NULL),
+      : DiagnosticInfo(DK_SampleProfile, Severity), FileName(nullptr),
         LineNum(0), Msg(Msg) {}
 
   /// \see DiagnosticInfo::print.
@@ -227,13 +231,73 @@ private:
   /// Name of the input file associated with this diagnostic.
   const char *FileName;
 
-  /// Line number where the diagnostic occured. If 0, no line number will
+  /// Line number where the diagnostic occurred. If 0, no line number will
   /// be emitted in the message.
   unsigned LineNum;
 
   /// Message to report.
   const Twine &Msg;
 };
+
+/// Diagnostic information for optimization remarks.
+class DiagnosticInfoOptimizationRemark : public DiagnosticInfo {
+public:
+  /// \p PassName is the name of the pass emitting this diagnostic. If
+  /// this name matches the regular expression given in -Rpass=, then the
+  /// diagnostic will be emitted. \p Fn is the function where the diagnostic
+  /// is being emitted. \p DLoc is the location information to use in the
+  /// diagnostic. If line table information is available, the diagnostic
+  /// will include the source code location. \p Msg is the message to show.
+  /// Note that this class does not copy this message, so this reference
+  /// must be valid for the whole life time of the diagnostic.
+  DiagnosticInfoOptimizationRemark(const char *PassName, const Function &Fn,
+                                   const DebugLoc &DLoc, const Twine &Msg)
+      : DiagnosticInfo(DK_OptimizationRemark, DS_Remark), PassName(PassName),
+        Fn(Fn), DLoc(DLoc), Msg(Msg) {}
+
+  /// \see DiagnosticInfo::print.
+  void print(DiagnosticPrinter &DP) const override;
+
+  /// Hand rolled RTTI.
+  static bool classof(const DiagnosticInfo *DI) {
+    return DI->getKind() == DK_OptimizationRemark;
+  }
+
+  /// Return true if location information is available for this diagnostic.
+  bool isLocationAvailable() const;
+
+  /// Return a string with the location information for this diagnostic
+  /// in the format "file:line:col". If location information is not available,
+  /// it returns "<unknown>:0:0".
+  const std::string getLocationStr() const;
+
+  /// Return location information for this diagnostic in three parts:
+  /// the source file name, line number and column.
+  void getLocation(StringRef *Filename, unsigned *Line, unsigned *Column) const;
+
+  const char *getPassName() const { return PassName; }
+  const Function &getFunction() const { return Fn; }
+  const DebugLoc &getDebugLoc() const { return DLoc; }
+  const Twine &getMsg() const { return Msg; }
+
+private:
+  /// Name of the pass that triggers this report. If this matches the
+  /// regular expression given in -Rpass=regexp, then the remark will
+  /// be emitted.
+  const char *PassName;
+
+  /// Function where this diagnostic is triggered.
+  const Function &Fn;
+
+  /// Debug location where this diagnostic is triggered.
+  DebugLoc DLoc;
+
+  /// Message to report.
+  const Twine &Msg;
+};
+
+// Create wrappers for C Binding types (see CBindingWrapping.h).
+DEFINE_SIMPLE_CONVERSION_FUNCTIONS(DiagnosticInfo, LLVMDiagnosticInfoRef)
 
 } // End namespace llvm
 

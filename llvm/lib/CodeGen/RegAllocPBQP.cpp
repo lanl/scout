@@ -29,8 +29,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "regalloc"
-
 #include "llvm/CodeGen/RegAllocPBQP.h"
 #include "RegisterCoalescer.h"
 #include "Spiller.h"
@@ -58,6 +56,8 @@
 #include <vector>
 
 using namespace llvm;
+
+#define DEBUG_TYPE "regalloc"
 
 static RegisterRegAlloc
 registerPBQPRepAlloc("pbqp", "PBQP register allocator",
@@ -87,7 +87,7 @@ public:
   static char ID;
 
   /// Construct a PBQP register allocator.
-  RegAllocPBQP(std::unique_ptr<PBQPBuilder> &b, char *cPassID=0)
+  RegAllocPBQP(std::unique_ptr<PBQPBuilder> &b, char *cPassID=nullptr)
       : MachineFunctionPass(ID), builder(b.release()), customPassID(cPassID) {
     initializeSlotIndexesPass(*PassRegistry::getPassRegistry());
     initializeLiveIntervalsPass(*PassRegistry::getPassRegistry());
@@ -215,7 +215,7 @@ PBQPRAProblem *PBQPBuilder::build(MachineFunction *mf, const LiveIntervals *lis,
     // Compute an initial allowed set for the current vreg.
     typedef std::vector<unsigned> VRAllowed;
     VRAllowed vrAllowed;
-    ArrayRef<uint16_t> rawOrder = trc->getRawAllocationOrder(*mf);
+    ArrayRef<MCPhysReg> rawOrder = trc->getRawAllocationOrder(*mf);
     for (unsigned i = 0; i != rawOrder.size(); ++i) {
       unsigned preg = rawOrder[i];
       if (mri->isReserved(preg))

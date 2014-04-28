@@ -1,3 +1,6 @@
+# +===== Scout ============================================================+
+add_subdirectory(Scout)
+# +========================================================================+
 set(LLVM_LINK_COMPONENTS
   Support
   )
@@ -47,19 +50,12 @@ add_clang_library(clangSema
   SemaTemplateInstantiateDecl.cpp
   SemaTemplateVariadic.cpp
   SemaType.cpp
-  # +===== Scout ============================================================+
-  Scout/Sema.cpp
-  Scout/SemaChecking.cpp
-  Scout/SemaDecl.cpp
-  Scout/SemaExpr.cpp
-  Scout/SemaExprMember.cpp
-  Scout/SemaLookup.cpp
-  Scout/SemaOverload.cpp
-  Scout/SemaStmt.cpp
-  # +========================================================================+
   TypeLocBuilder.cpp
 
   LINK_LIBS
+  # +===== Scout ============================================================+
+  scoutSema
+  # +========================================================================+
   clangAST
   clangAnalysis
   clangBasic

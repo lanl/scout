@@ -19,6 +19,8 @@
 using namespace llvm;
 using namespace PatternMatch;
 
+#define DEBUG_TYPE "instcombine"
+
 Instruction *InstCombiner::commonShiftTransforms(BinaryOperator &I) {
   assert(I.getOperand(1)->getType() == I.getOperand(0)->getType());
   Value *Op0 = I.getOperand(0), *Op1 = I.getOperand(1);
@@ -33,7 +35,7 @@ Instruction *InstCombiner::commonShiftTransforms(BinaryOperator &I) {
       if (Instruction *R = FoldOpIntoSelect(I, SI))
         return R;
 
-  if (ConstantInt *CUI = dyn_cast<ConstantInt>(Op1))
+  if (Constant *CUI = dyn_cast<Constant>(Op1))
     if (Instruction *Res = FoldShiftByConstant(Op0, CUI, I))
       return Res;
 
@@ -309,37 +311,38 @@ static Value *GetShiftedValue(Value *V, unsigned NumBits, bool isLeftShift,
 
 
 
-Instruction *InstCombiner::FoldShiftByConstant(Value *Op0, ConstantInt *Op1,
+Instruction *InstCombiner::FoldShiftByConstant(Value *Op0, Constant *Op1,
                                                BinaryOperator &I) {
   bool isLeftShift = I.getOpcode() == Instruction::Shl;
 
+  ConstantInt *COp1 = nullptr;
+  if (ConstantDataVector *CV = dyn_cast<ConstantDataVector>(Op1))
+    COp1 = dyn_cast_or_null<ConstantInt>(CV->getSplatValue());
+  else if (ConstantVector *CV = dyn_cast<ConstantVector>(Op1))
+    COp1 = dyn_cast_or_null<ConstantInt>(CV->getSplatValue());
+  else
+    COp1 = dyn_cast<ConstantInt>(Op1);
+
+  if (!COp1)
+    return nullptr;
 
   // See if we can propagate this shift into the input, this covers the trivial
   // cast of lshr(shl(x,c1),c2) as well as other more complex cases.
   if (I.getOpcode() != Instruction::AShr &&
-      CanEvaluateShifted(Op0, Op1->getZExtValue(), isLeftShift, *this)) {
+      CanEvaluateShifted(Op0, COp1->getZExtValue(), isLeftShift, *this)) {
     DEBUG(dbgs() << "ICE: GetShiftedValue propagating shift through expression"
               " to eliminate shift:\n  IN: " << *Op0 << "\n  SH: " << I <<"\n");
 
     return ReplaceInstUsesWith(I,
-                 GetShiftedValue(Op0, Op1->getZExtValue(), isLeftShift, *this));
+                 GetShiftedValue(Op0, COp1->getZExtValue(), isLeftShift, *this));
   }
-
 
   // See if we can simplify any instructions used by the instruction whose sole
   // purpose is to compute bits we don't care about.
   uint32_t TypeBits = Op0->getType()->getScalarSizeInBits();
 
-  // shl i32 X, 32 = 0 and srl i8 Y, 9 = 0, ... just don't eliminate
-  // a signed shift.
-  //
-  if (Op1->uge(TypeBits)) {
-    if (I.getOpcode() != Instruction::AShr)
-      return ReplaceInstUsesWith(I, Constant::getNullValue(Op0->getType()));
-    // ashr i32 X, 32 --> ashr i32 X, 31
-    I.setOperand(1, ConstantInt::get(I.getType(), TypeBits-1));
-    return &I;
-  }
+  assert(!COp1->uge(TypeBits) &&
+         "Shift over the type width should have been removed already");
 
   // ((X*C1) << C2) == (X * (C1 << C2))
   if (BinaryOperator *BO = dyn_cast<BinaryOperator>(Op0))
@@ -367,7 +370,7 @@ Instruction *InstCombiner::FoldShiftByConstant(Value *Op0, ConstantInt *Op1,
     if (TrOp && I.isLogicalShift() && TrOp->isShift() &&
         isa<ConstantInt>(TrOp->getOperand(1))) {
       // Okay, we'll do this xform.  Make the shift of shift.
-      Constant *ShAmt = ConstantExpr::getZExt(Op1, TrOp->getType());
+      Constant *ShAmt = ConstantExpr::getZExt(COp1, TrOp->getType());
       // (shift2 (shift1 & 0x00FF), c2)
       Value *NSh = Builder->CreateBinOp(I.getOpcode(), TrOp, ShAmt,I.getName());
 
@@ -384,10 +387,10 @@ Instruction *InstCombiner::FoldShiftByConstant(Value *Op0, ConstantInt *Op1,
       // shift.  We know that it is a logical shift by a constant, so adjust the
       // mask as appropriate.
       if (I.getOpcode() == Instruction::Shl)
-        MaskV <<= Op1->getZExtValue();
+        MaskV <<= COp1->getZExtValue();
       else {
         assert(I.getOpcode() == Instruction::LShr && "Unknown logical shift");
-        MaskV = MaskV.lshr(Op1->getZExtValue());
+        MaskV = MaskV.lshr(COp1->getZExtValue());
       }
 
       // shift1 & 0x00FF
@@ -421,9 +424,13 @@ Instruction *InstCombiner::FoldShiftByConstant(Value *Op0, ConstantInt *Op1,
           // (X + (Y << C))
           Value *X = Builder->CreateBinOp(Op0BO->getOpcode(), YS, V1,
                                           Op0BO->getOperand(1)->getName());
-          uint32_t Op1Val = Op1->getLimitedValue(TypeBits);
-          return BinaryOperator::CreateAnd(X, ConstantInt::get(I.getContext(),
-                     APInt::getHighBitsSet(TypeBits, TypeBits-Op1Val)));
+          uint32_t Op1Val = COp1->getLimitedValue(TypeBits);
+
+          APInt Bits = APInt::getHighBitsSet(TypeBits, TypeBits - Op1Val);
+          Constant *Mask = ConstantInt::get(I.getContext(), Bits);
+          if (VectorType *VT = dyn_cast<VectorType>(X->getType()))
+            Mask = ConstantVector::getSplat(VT->getNumElements(), Mask);
+          return BinaryOperator::CreateAnd(X, Mask);
         }
 
         // Turn (Y + ((X >> C) & CC)) << C  ->  ((X & (CC << C)) + (Y << C))
@@ -453,9 +460,13 @@ Instruction *InstCombiner::FoldShiftByConstant(Value *Op0, ConstantInt *Op1,
           // (X + (Y << C))
           Value *X = Builder->CreateBinOp(Op0BO->getOpcode(), V1, YS,
                                           Op0BO->getOperand(0)->getName());
-          uint32_t Op1Val = Op1->getLimitedValue(TypeBits);
-          return BinaryOperator::CreateAnd(X, ConstantInt::get(I.getContext(),
-                     APInt::getHighBitsSet(TypeBits, TypeBits-Op1Val)));
+          uint32_t Op1Val = COp1->getLimitedValue(TypeBits);
+
+          APInt Bits = APInt::getHighBitsSet(TypeBits, TypeBits - Op1Val);
+          Constant *Mask = ConstantInt::get(I.getContext(), Bits);
+          if (VectorType *VT = dyn_cast<VectorType>(X->getType()))
+            Mask = ConstantVector::getSplat(VT->getNumElements(), Mask);
+          return BinaryOperator::CreateAnd(X, Mask);
         }
 
         // Turn (((X >> C)&CC) + Y) << C  ->  (X + (Y << C)) & (CC << C)
@@ -541,7 +552,7 @@ Instruction *InstCombiner::FoldShiftByConstant(Value *Op0, ConstantInt *Op1,
 
     ConstantInt *ShiftAmt1C = cast<ConstantInt>(ShiftOp->getOperand(1));
     uint32_t ShiftAmt1 = ShiftAmt1C->getLimitedValue(TypeBits);
-    uint32_t ShiftAmt2 = Op1->getLimitedValue(TypeBits);
+    uint32_t ShiftAmt2 = COp1->getLimitedValue(TypeBits);
     assert(ShiftAmt2 != 0 && "Should have been simplified earlier");
     if (ShiftAmt1 == 0) return 0;  // Will be simplified in the future.
     Value *X = ShiftOp->getOperand(0);
@@ -807,4 +818,3 @@ Instruction *InstCombiner::visitAShr(BinaryOperator &I) {
 
   return 0;
 }
-

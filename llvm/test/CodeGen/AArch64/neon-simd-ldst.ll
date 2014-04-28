@@ -1,9 +1,10 @@
 ; RUN: llc < %s -O2 -verify-machineinstrs -mtriple=aarch64-none-linux-gnu -mattr=+neon | FileCheck %s
+; Just intrinsic mashing. Duplicates existing arm64 tests.
 
 define void @test_ldstq_4v(i8* noalias %io, i32 %count) {
 ; CHECK-LABEL: test_ldstq_4v
-; CHECK: ld4     {v0.16b, v1.16b, v2.16b, v3.16b}, [x0]
-; CHECK: st4     {v0.16b, v1.16b, v2.16b, v3.16b}, [x0]
+; CHECK: ld4     { v0.16b, v1.16b, v2.16b, v3.16b }, [x0]
+; CHECK: st4     { v0.16b, v1.16b, v2.16b, v3.16b }, [x0]
 entry:
   %tobool62 = icmp eq i32 %count, 0
   br i1 %tobool62, label %while.end, label %while.body
@@ -30,8 +31,8 @@ declare void @llvm.arm.neon.vst4.v16i8(i8*, <16 x i8>, <16 x i8>, <16 x i8>, <16
 
 define void @test_ldstq_3v(i8* noalias %io, i32 %count) {
 ; CHECK-LABEL: test_ldstq_3v
-; CHECK: ld3     {v0.16b, v1.16b, v2.16b}, [x0]
-; CHECK: st3     {v0.16b, v1.16b, v2.16b}, [x0]
+; CHECK: ld3     { v0.16b, v1.16b, v2.16b }, [x0]
+; CHECK: st3     { v0.16b, v1.16b, v2.16b }, [x0]
 entry:
   %tobool47 = icmp eq i32 %count, 0
   br i1 %tobool47, label %while.end, label %while.body
@@ -57,8 +58,8 @@ declare void @llvm.arm.neon.vst3.v16i8(i8*, <16 x i8>, <16 x i8>, <16 x i8>, i32
 
 define void @test_ldstq_2v(i8* noalias %io, i32 %count) {
 ; CHECK-LABEL: test_ldstq_2v
-; CHECK: ld2     {v0.16b, v1.16b}, [x0]
-; CHECK: st2     {v0.16b, v1.16b}, [x0]
+; CHECK: ld2     { v0.16b, v1.16b }, [x0]
+; CHECK: st2     { v0.16b, v1.16b }, [x0]
 entry:
   %tobool22 = icmp eq i32 %count, 0
   br i1 %tobool22, label %while.end, label %while.body
@@ -83,8 +84,8 @@ declare void @llvm.arm.neon.vst2.v16i8(i8*, <16 x i8>, <16 x i8>, i32)
 
 define void @test_ldst_4v(i8* noalias %io, i32 %count) {
 ; CHECK-LABEL: test_ldst_4v
-; CHECK: ld4     {v0.8b, v1.8b, v2.8b, v3.8b}, [x0]
-; CHECK: st4     {v0.8b, v1.8b, v2.8b, v3.8b}, [x0]
+; CHECK: ld4     { v0.8b, v1.8b, v2.8b, v3.8b }, [x0]
+; CHECK: st4     { v0.8b, v1.8b, v2.8b, v3.8b }, [x0]
 entry:
   %tobool42 = icmp eq i32 %count, 0
   br i1 %tobool42, label %while.end, label %while.body
@@ -111,8 +112,8 @@ declare void @llvm.arm.neon.vst4.v8i8(i8*, <8 x i8>, <8 x i8>, <8 x i8>, <8 x i8
 
 define void @test_ldst_3v(i8* noalias %io, i32 %count) {
 ; CHECK-LABEL: test_ldst_3v
-; CHECK: ld3     {v0.8b, v1.8b, v2.8b}, [x0]
-; CHECK: st3     {v0.8b, v1.8b, v2.8b}, [x0]
+; CHECK: ld3     { v0.8b, v1.8b, v2.8b }, [x0]
+; CHECK: st3     { v0.8b, v1.8b, v2.8b }, [x0]
 entry:
   %tobool32 = icmp eq i32 %count, 0
   br i1 %tobool32, label %while.end, label %while.body
@@ -138,8 +139,8 @@ declare void @llvm.arm.neon.vst3.v8i8(i8*, <8 x i8>, <8 x i8>, <8 x i8>, i32)
 
 define void @test_ldst_2v(i8* noalias %io, i32 %count) {
 ; CHECK-LABEL: test_ldst_2v
-; CHECK: ld2     {v0.8b, v1.8b}, [x0]
-; CHECK: st2     {v0.8b, v1.8b}, [x0]
+; CHECK: ld2     { v0.8b, v1.8b }, [x0]
+; CHECK: st2     { v0.8b, v1.8b }, [x0]
 entry:
   %tobool22 = icmp eq i32 %count, 0
   br i1 %tobool22, label %while.end, label %while.body

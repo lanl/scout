@@ -11,8 +11,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "delay-slot-filler"
-
 #include "MCTargetDesc/MipsMCNaCl.h"
 #include "Mips.h"
 #include "MipsInstrInfo.h"
@@ -32,6 +30,8 @@
 #include "llvm/Target/TargetRegisterInfo.h"
 
 using namespace llvm;
+
+#define DEBUG_TYPE "delay-slot-filler"
 
 STATISTIC(FilledSlots, "Number of delay slots filled");
 STATISTIC(UsefulSlots, "Number of delay slots filled with instructions that"
@@ -142,19 +142,21 @@ namespace {
     MemDefsUses(const MachineFrameInfo *MFI);
 
   private:
+    typedef PointerUnion<const Value *, const PseudoSourceValue *> ValueType;
+
     virtual bool hasHazard_(const MachineInstr &MI);
 
     /// Update Defs and Uses. Return true if there exist dependences that
     /// disqualify the delay slot candidate between V and values in Uses and
     /// Defs.
-    bool updateDefsUses(const Value *V, bool MayStore);
+    bool updateDefsUses(ValueType V, bool MayStore);
 
     /// Get the list of underlying objects of MI's memory operand.
     bool getUnderlyingObjects(const MachineInstr &MI,
-                              SmallVectorImpl<const Value *> &Objects) const;
+                              SmallVectorImpl<ValueType> &Objects) const;
 
     const MachineFrameInfo *MFI;
-    SmallPtrSet<const Value*, 4> Uses, Defs;
+    SmallPtrSet<ValueType, 4> Uses, Defs;
 
     /// Flags indicating whether loads or stores with no underlying objects have
     /// been seen.
@@ -399,16 +401,15 @@ bool LoadFromStackOrConst::hasHazard_(const MachineInstr &MI) {
   if (MI.mayStore())
     return true;
 
-  if (!MI.hasOneMemOperand() || !(*MI.memoperands_begin())->getValue())
+  if (!MI.hasOneMemOperand() || !(*MI.memoperands_begin())->getPseudoValue())
     return true;
 
-  const Value *V = (*MI.memoperands_begin())->getValue();
-
-  if (isa<FixedStackPseudoSourceValue>(V))
-    return false;
-
-  if (const PseudoSourceValue *PSV = dyn_cast<const PseudoSourceValue>(V))
-    return !PSV->isConstant(0) && V != PseudoSourceValue::getStack();
+  if (const PseudoSourceValue *PSV =
+      (*MI.memoperands_begin())->getPseudoValue()) {
+    if (isa<FixedStackPseudoSourceValue>(PSV))
+      return false;
+    return !PSV->isConstant(0) && PSV != PseudoSourceValue::getStack();
+  }
 
   return true;
 }
@@ -419,11 +420,11 @@ MemDefsUses::MemDefsUses(const MachineFrameInfo *MFI_)
 
 bool MemDefsUses::hasHazard_(const MachineInstr &MI) {
   bool HasHazard = false;
-  SmallVector<const Value *, 4> Objs;
+  SmallVector<ValueType, 4> Objs;
 
   // Check underlying object list.
   if (getUnderlyingObjects(MI, Objs)) {
-    for (SmallVectorImpl<const Value *>::const_iterator I = Objs.begin();
+    for (SmallVectorImpl<ValueType>::const_iterator I = Objs.begin();
          I != Objs.end(); ++I)
       HasHazard |= updateDefsUses(*I, MI.mayStore());
 
@@ -440,7 +441,7 @@ bool MemDefsUses::hasHazard_(const MachineInstr &MI) {
   return HasHazard;
 }
 
-bool MemDefsUses::updateDefsUses(const Value *V, bool MayStore) {
+bool MemDefsUses::updateDefsUses(ValueType V, bool MayStore) {
   if (MayStore)
     return !Defs.insert(V) || Uses.count(V) || SeenNoObjStore || SeenNoObjLoad;
 
@@ -450,9 +451,19 @@ bool MemDefsUses::updateDefsUses(const Value *V, bool MayStore) {
 
 bool MemDefsUses::
 getUnderlyingObjects(const MachineInstr &MI,
-                     SmallVectorImpl<const Value *> &Objects) const {
-  if (!MI.hasOneMemOperand() || !(*MI.memoperands_begin())->getValue())
+                     SmallVectorImpl<ValueType> &Objects) const {
+  if (!MI.hasOneMemOperand() ||
+      (!(*MI.memoperands_begin())->getValue() &&
+       !(*MI.memoperands_begin())->getPseudoValue()))
     return false;
+
+  if (const PseudoSourceValue *PSV =
+      (*MI.memoperands_begin())->getPseudoValue()) {
+    if (!PSV->isAliased(MFI))
+      return false;
+    Objects.push_back(PSV);
+    return true;
+  }
 
   const Value *V = (*MI.memoperands_begin())->getValue();
 
@@ -461,10 +472,7 @@ getUnderlyingObjects(const MachineInstr &MI,
 
   for (SmallVectorImpl<Value *>::iterator I = Objs.begin(), E = Objs.end();
        I != E; ++I) {
-    if (const PseudoSourceValue *PSV = dyn_cast<PseudoSourceValue>(*I)) {
-      if (PSV->isAliased(MFI))
-        return false;
-    } else if (!isIdentifiedObject(V))
+    if (!isIdentifiedObject(V))
       return false;
 
     Objects.push_back(*I);
@@ -602,7 +610,7 @@ bool Filler::searchSuccBBs(MachineBasicBlock &MBB, Iter Slot) const {
   RegDefsUses RegDU(TM);
   bool HasMultipleSuccs = false;
   BB2BrMap BrMap;
-  OwningPtr<InspectMemInstr> IM;
+  std::unique_ptr<InspectMemInstr> IM;
   Iter Filler;
 
   // Iterate over SuccBB's predecessor list.

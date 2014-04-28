@@ -189,6 +189,9 @@ CFG *AnalysisDeclContext::getCFG() {
 
     if (PM)
       addParentsForSyntheticStmts(cfg.get(), *PM);
+
+    // The Observer should only observe one build of the CFG.
+    getCFGBuildOptions().Observer = 0;
   }
   return cfg.get();
 }
@@ -205,6 +208,9 @@ CFG *AnalysisDeclContext::getUnoptimizedCFG() {
 
     if (PM)
       addParentsForSyntheticStmts(completeCFG.get(), *PM);
+
+    // The Observer should only observe one build of the CFG.
+    getCFGBuildOptions().Observer = 0;
   }
   return completeCFG.get();
 }
@@ -457,11 +463,6 @@ public:
   FindBlockDeclRefExprsVals(BumpVector<const VarDecl*> &bevals,
                             BumpVectorContext &bc)
   : BEVals(bevals), BC(bc) {}
-
-  bool IsTrackedDecl(const VarDecl *VD) {
-    const DeclContext *DC = VD->getDeclContext();
-    return IgnoredContexts.count(DC) == 0;
-  }
 
   void VisitStmt(Stmt *S) {
     for (Stmt::child_range I = S->children(); I; ++I)

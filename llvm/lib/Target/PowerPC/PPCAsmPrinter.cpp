@@ -16,7 +16,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "asmprinter"
 #include "PPC.h"
 #include "InstPrinter/PPCInstPrinter.h"
 #include "MCTargetDesc/PPCMCExpr.h"
@@ -58,6 +57,8 @@
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 using namespace llvm;
+
+#define DEBUG_TYPE "asmprinter"
 
 namespace {
   class PPCAsmPrinter : public AsmPrinter {
@@ -381,8 +382,8 @@ void PPCAsmPrinter::EmitInstruction(const MachineInstr *MI) {
     if (MO.isGlobal()) {
       const GlobalValue *GValue = MO.getGlobal();
       const GlobalAlias *GAlias = dyn_cast<GlobalAlias>(GValue);
-      const GlobalValue *RealGValue = GAlias ?
-        GAlias->resolveAliasedGlobal(false) : GValue;
+      const GlobalValue *RealGValue =
+          GAlias ? GAlias->getAliasedGlobal() : GValue;
       MOSymbol = getSymbol(RealGValue);
       const GlobalVariable *GVar = dyn_cast<GlobalVariable>(RealGValue);
       IsExternal = GVar && !GVar->hasInitializer();
@@ -428,8 +429,8 @@ void PPCAsmPrinter::EmitInstruction(const MachineInstr *MI) {
     else if (MO.isGlobal()) {
       const GlobalValue *GValue = MO.getGlobal();
       const GlobalAlias *GAlias = dyn_cast<GlobalAlias>(GValue);
-      const GlobalValue *RealGValue = GAlias ?
-        GAlias->resolveAliasedGlobal(false) : GValue;
+      const GlobalValue *RealGValue =
+          GAlias ? GAlias->getAliasedGlobal() : GValue;
       MOSymbol = getSymbol(RealGValue);
       const GlobalVariable *GVar = dyn_cast<GlobalVariable>(RealGValue);
     
@@ -463,8 +464,8 @@ void PPCAsmPrinter::EmitInstruction(const MachineInstr *MI) {
     if (MO.isGlobal()) {
       const GlobalValue *GValue = MO.getGlobal();
       const GlobalAlias *GAlias = dyn_cast<GlobalAlias>(GValue);
-      const GlobalValue *RealGValue = GAlias ?
-        GAlias->resolveAliasedGlobal(false) : GValue;
+      const GlobalValue *RealGValue =
+          GAlias ? GAlias->getAliasedGlobal() : GValue;
       MOSymbol = getSymbol(RealGValue);
       const GlobalVariable *GVar = dyn_cast<GlobalVariable>(RealGValue);
       IsExternal = GVar && !GVar->hasInitializer();

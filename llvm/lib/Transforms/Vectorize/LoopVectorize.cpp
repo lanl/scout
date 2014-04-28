@@ -42,9 +42,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define LV_NAME "loop-vectorize"
-#define DEBUG_TYPE LV_NAME
-
 #include "llvm/Transforms/Vectorize.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/EquivalenceClasses.h"
@@ -54,6 +51,7 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/BlockFrequencyInfo.h"
@@ -67,6 +65,7 @@
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
@@ -84,16 +83,24 @@
 #include "llvm/Support/BranchProbability.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Local.h"
+#include "llvm/Transforms/Utils/VectorUtils.h"
 #include <algorithm>
 #include <map>
 
 using namespace llvm;
 using namespace llvm::PatternMatch;
+
+#define LV_NAME "loop-vectorize"
+#define DEBUG_TYPE LV_NAME
+
+STATISTIC(LoopsVectorized, "Number of loops vectorized");
+STATISTIC(LoopsAnalyzed, "Number of loops analyzed for vectorization");
 
 static cl::opt<unsigned>
 VectorizationFactor("force-vector-width", cl::init(0), cl::Hidden,
@@ -468,6 +475,28 @@ static void setDebugLocFromInst(IRBuilder<> &B, const Value *Ptr) {
   else
     B.SetCurrentDebugLocation(DebugLoc());
 }
+
+#ifndef NDEBUG
+/// \return string containing a file name and a line # for the given
+/// instruction.
+static format_object3<const char *, const char *, unsigned>
+getDebugLocString(const Instruction *I) {
+  if (!I)
+    return format<const char *, const char *, unsigned>("", "", "", 0U);
+  MDNode *N = I->getMetadata("dbg");
+  if (!N) {
+    const StringRef ModuleName =
+        I->getParent()->getParent()->getParent()->getModuleIdentifier();
+    return format<const char *, const char *, unsigned>("%s", ModuleName.data(),
+                                                        "", 0U);
+  }
+  const DILocation Loc(N);
+  const unsigned LineNo = Loc.getLineNumber();
+  const char *DirName = Loc.getDirectory().data();
+  const char *FileName = Loc.getFilename().data();
+  return format("%s/%s:%u", DirName, FileName, LineNo);
+}
+#endif
 
 /// LoopVectorizationLegality checks if it is legal to vectorize a loop, and
 /// to what vectorization factor.
@@ -1042,7 +1071,8 @@ struct LoopVectorize : public FunctionPass {
       return false;
 
     if (DL == NULL) {
-      DEBUG(dbgs() << "LV: Not vectorizing: Missing data layout\n");
+      DEBUG(dbgs() << "\nLV: Not vectorizing " << F.getName()
+                   << ": Missing data layout\n");
       return false;
     }
 
@@ -1053,6 +1083,8 @@ struct LoopVectorize : public FunctionPass {
 
     for (Loop *L : *LI)
       addInnerLoop(*L, Worklist);
+
+    LoopsAnalyzed += Worklist.size();
 
     // Now walk the identified inner loops.
     bool Changed = false;
@@ -1065,10 +1097,19 @@ struct LoopVectorize : public FunctionPass {
 
   bool processLoop(Loop *L) {
     assert(L->empty() && "Only process inner loops.");
-    DEBUG(dbgs() << "LV: Checking a loop in \"" <<
-          L->getHeader()->getParent()->getName() << "\"\n");
+    DEBUG(dbgs() << "\nLV: Checking a loop in \""
+                 << L->getHeader()->getParent()->getName() << "\" from "
+                 << getDebugLocString(L->getHeader()->getFirstNonPHIOrDbg())
+                 << "\n");
 
     LoopVectorizeHints Hints(L, DisableUnrolling);
+
+    DEBUG(dbgs() << "LV: Loop hints:"
+                 << " force=" << (Hints.Force == 0
+                                      ? "disabled"
+                                      : (Hints.Force == 1 ? "enabled" : "?"))
+                 << " width=" << Hints.Width << " unroll=" << Hints.Unroll
+                 << "\n");
 
     if (Hints.Force == 0) {
       DEBUG(dbgs() << "LV: Not vectorizing: #pragma vectorize disable.\n");
@@ -1123,14 +1164,16 @@ struct LoopVectorize : public FunctionPass {
     }
 
     // Select the optimal vectorization factor.
-    LoopVectorizationCostModel::VectorizationFactor VF;
-    VF = CM.selectVectorizationFactor(OptForSize, Hints.Width);
+    const LoopVectorizationCostModel::VectorizationFactor VF =
+                          CM.selectVectorizationFactor(OptForSize, Hints.Width);
     // Select the unroll factor.
-    unsigned UF = CM.selectUnrollFactor(OptForSize, Hints.Unroll, VF.Width,
+    const unsigned UF = CM.selectUnrollFactor(OptForSize, Hints.Unroll, VF.Width,
                                         VF.Cost);
 
-    DEBUG(dbgs() << "LV: Found a vectorizable loop ("<< VF.Width << ") in "<<
-          F->getParent()->getModuleIdentifier() << '\n');
+    DEBUG(dbgs() << "LV: Found a vectorizable loop ("
+                 << VF.Width << ") in "
+                 << getDebugLocString(L->getHeader()->getFirstNonPHIOrDbg())
+                 << '\n');
     DEBUG(dbgs() << "LV: Unroll Factor is " << UF << '\n');
 
     if (VF.Width == 1) {
@@ -1145,6 +1188,7 @@ struct LoopVectorize : public FunctionPass {
       // If we decided that it is *legal* to vectorize the loop then do it.
       InnerLoopVectorizer LB(L, SE, LI, DT, DL, TLI, VF.Width, UF);
       LB.vectorize(&LVL);
+      ++LoopsVectorized;
     }
 
     // Mark the loop as already vectorized to avoid vectorizing again.
@@ -2238,32 +2282,12 @@ static Intrinsic::ID
 getIntrinsicIDForCall(CallInst *CI, const TargetLibraryInfo *TLI) {
   // If we have an intrinsic call, check if it is trivially vectorizable.
   if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(CI)) {
-    switch (II->getIntrinsicID()) {
-    case Intrinsic::sqrt:
-    case Intrinsic::sin:
-    case Intrinsic::cos:
-    case Intrinsic::exp:
-    case Intrinsic::exp2:
-    case Intrinsic::log:
-    case Intrinsic::log10:
-    case Intrinsic::log2:
-    case Intrinsic::fabs:
-    case Intrinsic::copysign:
-    case Intrinsic::floor:
-    case Intrinsic::ceil:
-    case Intrinsic::trunc:
-    case Intrinsic::rint:
-    case Intrinsic::nearbyint:
-    case Intrinsic::round:
-    case Intrinsic::pow:
-    case Intrinsic::fma:
-    case Intrinsic::fmuladd:
-    case Intrinsic::lifetime_start:
-    case Intrinsic::lifetime_end:
-      return II->getIntrinsicID();
-    default:
+    Intrinsic::ID ID = II->getIntrinsicID();
+    if (isTriviallyVectorizable(ID) || ID == Intrinsic::lifetime_start ||
+        ID == Intrinsic::lifetime_end)
+      return ID;
+    else
       return Intrinsic::not_intrinsic;
-    }
   }
 
   if (!TLI)
@@ -3655,6 +3679,16 @@ void LoopVectorizationLegality::collectLoopUniforms() {
 
   // Start with the conditional branch and walk up the block.
   Worklist.push_back(Latch->getTerminator()->getOperand(0));
+
+  // Also add all consecutive pointer values; these values will be uniform
+  // after vectorization (and subsequent cleanup) and, until revectorization is
+  // supported, all dependencies must also be uniform.
+  for (Loop::block_iterator B = TheLoop->block_begin(),
+       BE = TheLoop->block_end(); B != BE; ++B)
+    for (BasicBlock::iterator I = (*B)->begin(), IE = (*B)->end();
+         I != IE; ++I)
+      if (I->getType()->isPointerTy() && isConsecutivePtr(I))
+        Worklist.insert(Worklist.end(), I->op_begin(), I->op_end());
 
   while (Worklist.size()) {
     Instruction *I = dyn_cast<Instruction>(Worklist.back());
@@ -5057,7 +5091,7 @@ LoopVectorizationCostModel::selectVectorizationFactor(bool OptForSize,
     }
   }
 
-  DEBUG(dbgs() << "LV: Selecting VF = : "<< Width << ".\n");
+  DEBUG(dbgs() << "LV: Selecting VF: "<< Width << ".\n");
   Factor.Width = Width;
   Factor.Cost = Width * Cost;
   return Factor;

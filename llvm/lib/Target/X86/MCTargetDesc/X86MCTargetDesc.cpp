@@ -27,6 +27,12 @@
 #include "llvm/Support/Host.h"
 #include "llvm/Support/TargetRegistry.h"
 
+#if _MSC_VER
+#include <intrin.h>
+#endif
+
+using namespace llvm;
+
 #define GET_REGINFO_MC_DESC
 #include "X86GenRegisterInfo.inc"
 
@@ -35,13 +41,6 @@
 
 #define GET_SUBTARGETINFO_MC_DESC
 #include "X86GenSubtargetInfo.inc"
-
-#if _MSC_VER
-#include <intrin.h>
-#endif
-
-using namespace llvm;
-
 
 std::string X86_MC::ParseX86Triple(StringRef TT) {
   Triple TheTriple(TT);
@@ -205,8 +204,7 @@ unsigned X86_MC::getDwarfRegFlavour(StringRef TT, bool isEH) {
 
   if (TheTriple.isOSDarwin())
     return isEH ? DWARFFlavour::X86_32_DarwinEH : DWARFFlavour::X86_32_Generic;
-  if (TheTriple.getOS() == Triple::MinGW32 ||
-      TheTriple.getOS() == Triple::Cygwin)
+  if (TheTriple.isOSCygMing())
     // Unsupported by now, just quick fallback
     return DWARFFlavour::X86_32_Generic;
   return DWARFFlavour::X86_32_Generic;
@@ -231,14 +229,8 @@ MCSubtargetInfo *X86_MC::createX86MCSubtargetInfo(StringRef TT, StringRef CPU,
   }
 
   std::string CPUName = CPU;
-  if (CPUName.empty()) {
-#if defined(i386) || defined(__i386__) || defined(__x86__) || defined(_M_IX86)\
-    || defined(__x86_64__) || defined(_M_AMD64) || defined (_M_X64)
-    CPUName = sys::getHostCPUName();
-#else
+  if (CPUName.empty())
     CPUName = "generic";
-#endif
-  }
 
   MCSubtargetInfo *X = new MCSubtargetInfo();
   InitX86MCSubtargetInfo(X, TT, CPUName, ArchFS);
@@ -279,10 +271,9 @@ static MCAsmInfo *createX86MCAsmInfo(const MCRegisterInfo &MRI, StringRef TT) {
   } else if (TheTriple.isOSBinFormatELF()) {
     // Force the use of an ELF container.
     MAI = new X86ELFMCAsmInfo(TheTriple);
-  } else if (TheTriple.getOS() == Triple::Win32) {
+  } else if (TheTriple.isWindowsMSVCEnvironment()) {
     MAI = new X86MCAsmInfoMicrosoft(TheTriple);
-  } else if (TheTriple.getOS() == Triple::MinGW32 ||
-             TheTriple.getOS() == Triple::Cygwin) {
+  } else if (TheTriple.isOSCygMing()) {
     MAI = new X86MCAsmInfoGNUCOFF(TheTriple);
   } else {
     // The default is ELF.

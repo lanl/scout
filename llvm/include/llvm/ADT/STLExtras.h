@@ -165,27 +165,20 @@ struct less_second {
 //     Extra additions for arrays
 //===----------------------------------------------------------------------===//
 
-/// Find where an array ends (for ending iterators)
-/// This returns a pointer to the byte immediately
-/// after the end of an array.
-template<class T, std::size_t N>
-inline T *array_endof(T (&x)[N]) {
-  return x+N;
-}
-
 /// Find the length of an array.
-template<class T, std::size_t N>
-inline size_t array_lengthof(T (&)[N]) {
+template <class T, std::size_t N>
+LLVM_CONSTEXPR inline size_t array_lengthof(T (&)[N]) {
   return N;
 }
 
-/// array_pod_sort_comparator - This is helper function for array_pod_sort,
-/// which just uses operator< on T.
+/// Adapt std::less<T> for array_pod_sort.
 template<typename T>
 inline int array_pod_sort_comparator(const void *P1, const void *P2) {
-  if (*reinterpret_cast<const T*>(P1) < *reinterpret_cast<const T*>(P2))
+  if (std::less<T>()(*reinterpret_cast<const T*>(P1),
+                     *reinterpret_cast<const T*>(P2)))
     return -1;
-  if (*reinterpret_cast<const T*>(P2) < *reinterpret_cast<const T*>(P1))
+  if (std::less<T>()(*reinterpret_cast<const T*>(P2),
+                     *reinterpret_cast<const T*>(P1)))
     return 1;
   return 0;
 }
@@ -208,7 +201,7 @@ inline int (*get_array_pod_sort_comparator(const T &))
 /// possible.
 ///
 /// This function assumes that you have simple POD-like types that can be
-/// compared with operator< and can be moved with memcpy.  If this isn't true,
+/// compared with std::less and can be moved with memcpy.  If this isn't true,
 /// you should use std::sort.
 ///
 /// NOTE: If qsort_r were portable, we could allow a custom comparator and

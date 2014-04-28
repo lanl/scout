@@ -46,7 +46,10 @@ public:
   enum ArchType {
     UnknownArch,
 
-    arm,        // ARM: arm, armv.*, xscale
+    arm,        // ARM (little endian): arm, armv.*, xscale
+    armeb,      // ARM (big endian): armeb
+    arm64,      // ARM64 (little endian): arm64
+    arm64_be,   // ARM64 (big endian): arm64_be
     aarch64,    // AArch64 (little endian): aarch64
     aarch64_be, // AArch64 (big endian): aarch64_be
     hexagon,    // Hexagon: hexagon
@@ -63,7 +66,8 @@ public:
     sparcv9,    // Sparcv9: Sparcv9
     systemz,    // SystemZ: s390x
     tce,        // TCE (http://tce.cs.tut.fi/): tce
-    thumb,      // Thumb: thumb, thumbv.*
+    thumb,      // Thumb (little endian): thumb, thumbv.*
+    thumbeb,    // Thumb (big endian): thumbeb
     x86,        // X86: i[3-9]86
     x86_64,     // X86-64: amd64, x86_64
     xcore,      // XCore: xcore
@@ -125,6 +129,10 @@ public:
     EABI,
     EABIHF,
     Android,
+
+    MSVC,
+    Itanium,
+    Cygnus,
   };
   enum ObjectFormatType {
     UnknownObjectFormat,
@@ -328,14 +336,34 @@ public:
     return isMacOSX() || isiOS();
   }
 
+  bool isWindowsMSVCEnvironment() const {
+    return getOS() == Triple::Win32 &&
+           (getEnvironment() == Triple::UnknownEnvironment ||
+            getEnvironment() == Triple::MSVC);
+  }
+
+  bool isKnownWindowsMSVCEnvironment() const {
+    return getOS() == Triple::Win32 && getEnvironment() == Triple::MSVC;
+  }
+
+  bool isWindowsCygwinEnvironment() const {
+    return getOS() == Triple::Cygwin ||
+           (getOS() == Triple::Win32 && getEnvironment() == Triple::Cygnus);
+  }
+
+  bool isWindowsGNUEnvironment() const {
+    return getOS() == Triple::MinGW32 ||
+           (getOS() == Triple::Win32 && getEnvironment() == Triple::GNU);
+  }
+
   /// \brief Tests for either Cygwin or MinGW OS
   bool isOSCygMing() const {
-    return getOS() == Triple::Cygwin || getOS() == Triple::MinGW32;
+    return isWindowsCygwinEnvironment() || isWindowsGNUEnvironment();
   }
 
   /// \brief Is this a "Windows" OS targeting a "MSVCRT.dll" environment.
   bool isOSMSVCRT() const {
-    return getOS() == Triple::Win32 || getOS() == Triple::MinGW32;
+    return isWindowsMSVCEnvironment() || isWindowsGNUEnvironment();
   }
 
   /// \brief Tests whether the OS is Windows.

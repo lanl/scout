@@ -22,18 +22,20 @@
 #include "llvm/IR/Module.h"
 
 // Project includes
+#include "lldb/Core/DataExtractor.h"
+#include "lldb/Core/Log.h"
+#include "lldb/Core/Module.h"
+#include "lldb/Core/State.h"
+#include "lldb/Core/ValueObject.h"
+#include "lldb/Core/ValueObjectList.h"
 #include "lldb/Expression/ASTStructExtractor.h"
 #include "lldb/Expression/ClangExpressionParser.h"
 #include "lldb/Expression/ClangFunction.h"
 #include "lldb/Expression/IRExecutionUnit.h"
-#include "lldb/Symbol/Type.h"
-#include "lldb/Core/DataExtractor.h"
-#include "lldb/Core/State.h"
-#include "lldb/Core/ValueObject.h"
-#include "lldb/Core/ValueObjectList.h"
 #include "lldb/Interpreter/CommandReturnObject.h"
 #include "lldb/Symbol/ClangASTContext.h"
 #include "lldb/Symbol/Function.h"
+#include "lldb/Symbol/Type.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/RegisterContext.h"
@@ -41,7 +43,6 @@
 #include "lldb/Target/Thread.h"
 #include "lldb/Target/ThreadPlan.h"
 #include "lldb/Target/ThreadPlanCallFunction.h"
-#include "lldb/Core/Log.h"
 
 using namespace lldb_private;
 
@@ -53,8 +54,13 @@ ClangFunction::ClangFunction
     ExecutionContextScope &exe_scope,
     const ClangASTType &return_type, 
     const Address& functionAddress, 
-    const ValueList &arg_value_list
+    const ValueList &arg_value_list,
+    const char *name
 ) :
+    m_parser(),
+    m_execution_unit_sp(),
+    m_jit_module_wp(),
+    m_name (name ? name : "<unknown>"),
     m_function_ptr (NULL),
     m_function_addr (functionAddress),
     m_function_return_type(return_type),
@@ -75,8 +81,10 @@ ClangFunction::ClangFunction
     ExecutionContextScope &exe_scope,
     Function &function, 
     ClangASTContext *ast_context, 
-    const ValueList &arg_value_list
+    const ValueList &arg_value_list,
+    const char *name
 ) :
+    m_name (name ? name : "<unknown>"),
     m_function_ptr (&function),
     m_function_addr (),
     m_function_return_type (),
@@ -87,7 +95,7 @@ ClangFunction::ClangFunction
     m_compiled (false),
     m_JITted (false)
 {
-    m_jit_process_wp = lldb::ProcessWP(exe_scope.CalculateProcess());
+    m_jit_process_wp = exe_scope.CalculateProcess();
     // Can't make a ClangFunction without a process.
     assert (m_jit_process_wp.lock());
 
@@ -100,6 +108,13 @@ ClangFunction::ClangFunction
 //----------------------------------------------------------------------
 ClangFunction::~ClangFunction()
 {
+    lldb::ProcessSP process_sp (m_jit_process_wp.lock());
+    if (process_sp)
+    {
+        lldb::ModuleSP jit_module_sp (m_jit_module_wp.lock());
+        if (jit_module_sp)
+            process_sp->GetTarget().GetImages().Remove(jit_module_sp);
+    }    
 }
 
 unsigned
@@ -222,7 +237,8 @@ ClangFunction::CompileFunction (Stream &errors)
     lldb::ProcessSP jit_process_sp(m_jit_process_wp.lock());
     if (jit_process_sp)
     {
-        m_parser.reset(new ClangExpressionParser(jit_process_sp.get(), *this));
+        const bool generate_debug_info = true;
+        m_parser.reset(new ClangExpressionParser(jit_process_sp.get(), *this, generate_debug_info));
         
         num_errors = m_parser->Parse (errors);
     }
@@ -263,7 +279,7 @@ ClangFunction::WriteFunctionWrapper (ExecutionContext &exe_ctx, Stream &errors)
     
     Error jit_error (m_parser->PrepareForExecution (m_jit_start_addr,
                                                     m_jit_end_addr,
-                                                    m_execution_unit_ap,
+                                                    m_execution_unit_sp,
                                                     exe_ctx, 
                                                     can_interpret,
                                                     eExecutionPolicyAlways));
@@ -271,8 +287,22 @@ ClangFunction::WriteFunctionWrapper (ExecutionContext &exe_ctx, Stream &errors)
     if (!jit_error.Success())
         return false;
     
+    if (m_parser->GetGenerateDebugInfo())
+    {
+        lldb::ModuleSP jit_module_sp ( m_execution_unit_sp->GetJITModule());
+        
+        if (jit_module_sp)
+        {
+            ConstString const_func_name(FunctionName());
+            FileSpec jit_file;
+            jit_file.GetFilename() = const_func_name;
+            jit_module_sp->SetFileSpecAndObjectName (jit_file, ConstString());
+            m_jit_module_wp = jit_module_sp;
+            process->GetTarget().GetImages().Append(jit_module_sp);
+        }
+    }
     if (process && m_jit_start_addr)
-        m_jit_process_wp = lldb::ProcessWP(process->shared_from_this());
+        m_jit_process_wp = process->shared_from_this();
     
     m_JITted = true;
 
@@ -401,7 +431,7 @@ ClangFunction::GetThreadPlanToCallFunction (ExecutionContext &exe_ctx,
     Log *log(lldb_private::GetLogIfAnyCategoriesSet (LIBLLDB_LOG_EXPRESSIONS | LIBLLDB_LOG_STEP));
     
     if (log)
-        log->Printf("-- [ClangFunction::GetThreadPlanToCallFunction] Creating thread plan to call function --");
+        log->Printf("-- [ClangFunction::GetThreadPlanToCallFunction] Creating thread plan to call function \"%s\" --", m_name.c_str());
     
     // FIXME: Use the errors Stream for better error reporting.
     Thread *thread = exe_ctx.GetThreadPtr();
@@ -438,7 +468,7 @@ ClangFunction::FetchFunctionResults (ExecutionContext &exe_ctx, lldb::addr_t arg
     Log *log(lldb_private::GetLogIfAnyCategoriesSet (LIBLLDB_LOG_EXPRESSIONS | LIBLLDB_LOG_STEP));
     
     if (log)
-        log->Printf("-- [ClangFunction::FetchFunctionResults] Fetching function results --");
+        log->Printf("-- [ClangFunction::FetchFunctionResults] Fetching function results for \"%s\"--", m_name.c_str());
     
     Process *process = exe_ctx.GetProcessPtr();
     
@@ -509,7 +539,7 @@ ClangFunction::ExecuteFunction(
     Log *log(lldb_private::GetLogIfAnyCategoriesSet (LIBLLDB_LOG_EXPRESSIONS | LIBLLDB_LOG_STEP));
 
     if (log)
-        log->Printf("== [ClangFunction::ExecuteFunction] Executing function ==");
+        log->Printf("== [ClangFunction::ExecuteFunction] Executing function \"%s\" ==", m_name.c_str());
     
     lldb::ThreadPlanSP call_plan_sp (GetThreadPlanToCallFunction (exe_ctx,
                                                                   args_addr,
@@ -532,11 +562,11 @@ ClangFunction::ExecuteFunction(
     {
         if (return_value != eExecutionCompleted)
         {
-            log->Printf("== [ClangFunction::ExecuteFunction] Execution completed abnormally ==");
+            log->Printf("== [ClangFunction::ExecuteFunction] Execution of \"%s\" completed abnormally ==", m_name.c_str());
         }
         else
         {
-            log->Printf("== [ClangFunction::ExecuteFunction] Execution completed normally ==");
+            log->Printf("== [ClangFunction::ExecuteFunction] Execution of \"%s\" completed normally ==", m_name.c_str());
         }
     }
     

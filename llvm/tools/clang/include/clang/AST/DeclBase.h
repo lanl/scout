@@ -58,20 +58,6 @@ class MeshDecl;
 // +==========================================================================+
 }
 
-namespace llvm {
-// DeclContext* is only 4-byte aligned on 32-bit systems.
-template<>
-  class PointerLikeTypeTraits<clang::DeclContext*> {
-  typedef clang::DeclContext* PT;
-public:
-  static inline void *getAsVoidPointer(PT P) { return P; }
-  static inline PT getFromVoidPointer(void *P) {
-    return static_cast<PT>(P);
-  }
-  enum { NumLowBitsAvailable = 2 };
-};
-}
-
 namespace clang {
 
   /// \brief Captures the result of checking the availability of a
@@ -1676,7 +1662,7 @@ public:
   void dumpLookups(llvm::raw_ostream &OS) const;
 
 private:
-  void reconcileExternalVisibleStorage();
+  void reconcileExternalVisibleStorage() const;
   void LoadLexicalDeclsFromExternalStorage() const;
 
   /// @brief Makes a declaration visible within this context, but

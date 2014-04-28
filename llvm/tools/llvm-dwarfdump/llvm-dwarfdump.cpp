@@ -66,6 +66,7 @@ DumpType("debug-dump", cl::init(DIDT_All),
         clEnumValN(DIDT_Line, "line", ".debug_line"),
         clEnumValN(DIDT_LineDwo, "line.dwo", ".debug_line.dwo"),
         clEnumValN(DIDT_Loc, "loc", ".debug_loc"),
+        clEnumValN(DIDT_LocDwo, "loc.dwo", ".debug_loc.dwo"),
         clEnumValN(DIDT_Frames, "frames", ".debug_frame"),
         clEnumValN(DIDT_Ranges, "ranges", ".debug_ranges"),
         clEnumValN(DIDT_Pubnames, "pubnames", ".debug_pubnames"),
@@ -79,10 +80,8 @@ DumpType("debug-dump", cl::init(DIDT_All),
 
 static void PrintDILineInfo(DILineInfo dli) {
   if (PrintFunctions)
-    outs() << (dli.getFunctionName() ? dli.getFunctionName() : "<unknown>")
-           << "\n";
-  outs() << (dli.getFileName() ? dli.getFileName() : "<unknown>") << ':'
-         << dli.getLine() << ':' << dli.getColumn() << '\n';
+    outs() << dli.FunctionName << "\n";
+  outs() << dli.FileName << ':' << dli.Line << ':' << dli.Column << '\n';
 }
 
 static void DumpInput(const StringRef &Filename) {

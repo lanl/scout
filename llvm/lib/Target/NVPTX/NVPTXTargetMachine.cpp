@@ -16,8 +16,6 @@
 #include "NVPTX.h"
 #include "NVPTXAllocaHoisting.h"
 #include "NVPTXLowerAggrCopies.h"
-#include "NVPTXSplitBBatBar.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/Analysis/Passes.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/MachineFunctionAnalysis.h"
@@ -50,6 +48,8 @@ using namespace llvm;
 namespace llvm {
 void initializeNVVMReflectPass(PassRegistry&);
 void initializeGenericToNVVMPass(PassRegistry&);
+void initializeNVPTXAssignValidGlobalNamesPass(PassRegistry&);
+void initializeNVPTXFavorNonGenericAddrSpacesPass(PassRegistry &);
 }
 
 extern "C" void LLVMInitializeNVPTXTarget() {
@@ -61,6 +61,9 @@ extern "C" void LLVMInitializeNVPTXTarget() {
   // but it's very NVPTX-specific.
   initializeNVVMReflectPass(*PassRegistry::getPassRegistry());
   initializeGenericToNVVMPass(*PassRegistry::getPassRegistry());
+  initializeNVPTXAssignValidGlobalNamesPass(*PassRegistry::getPassRegistry());
+  initializeNVPTXFavorNonGenericAddrSpacesPass(
+    *PassRegistry::getPassRegistry());
 }
 
 static std::string computeDataLayout(const NVPTXSubtarget &ST) {
@@ -139,15 +142,29 @@ void NVPTXPassConfig::addIRPasses() {
   disablePass(&BranchFolderPassID);
   disablePass(&TailDuplicateID);
 
+  addPass(createNVPTXImageOptimizerPass());
   TargetPassConfig::addIRPasses();
+  addPass(createNVPTXAssignValidGlobalNamesPass());
   addPass(createGenericToNVVMPass());
+  addPass(createNVPTXFavorNonGenericAddrSpacesPass());
+  // The FavorNonGenericAddrSpaces pass may remove instructions and leave some
+  // values unused. Therefore, we run a DCE pass right afterwards. We could
+  // remove unused values in an ad-hoc manner, but it requires manual work and
+  // might be error-prone.
+  addPass(createDeadCodeEliminationPass());
 }
 
 bool NVPTXPassConfig::addInstSelector() {
+  const NVPTXSubtarget &ST =
+    getTM<NVPTXTargetMachine>().getSubtarget<NVPTXSubtarget>();
+
   addPass(createLowerAggrCopies());
-  addPass(createSplitBBatBarPass());
   addPass(createAllocaHoisting());
   addPass(createNVPTXISelDag(getNVPTXTargetMachine(), getOptLevel()));
+
+  if (!ST.hasImageHandles())
+    addPass(createNVPTXReplaceImageHandlesPass());
+
   return false;
 }
 

@@ -12,11 +12,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "arm-ldst-opt"
 #include "ARM.h"
 #include "ARMBaseInstrInfo.h"
 #include "ARMBaseRegisterInfo.h"
 #include "ARMMachineFunctionInfo.h"
+#include "ARMSubtarget.h"
 #include "MCTargetDesc/ARMAddressingModes.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -36,11 +36,12 @@
 #include "llvm/IR/Function.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 using namespace llvm;
+
+#define DEBUG_TYPE "arm-ldst-opt"
 
 STATISTIC(NumLDMGened , "Number of ldm instructions generated");
 STATISTIC(NumSTMGened , "Number of stm instructions generated");

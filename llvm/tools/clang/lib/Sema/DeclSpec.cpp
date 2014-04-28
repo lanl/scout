@@ -821,6 +821,16 @@ bool DeclSpec::setFunctionSpecForceInline(SourceLocation Loc, const char *&PrevS
   return false;
 }
 
+// +===== Scout ==========================================================+
+bool DeclSpec::setFunctionSpecStencil(SourceLocation Loc, const char *&PrevSpec,
+                                          unsigned &DiagID) {
+  FS_stencil_specified = true;
+  FS_forceinline_specified = true;
+  FS_forceinlineLoc = Loc;
+  return false;
+}
+// +======================================================================+
+
 bool DeclSpec::setFunctionSpecVirtual(SourceLocation Loc,
                                       const char *&PrevSpec,
                                       unsigned &DiagID) {

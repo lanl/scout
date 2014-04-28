@@ -18,7 +18,9 @@ int vasprintf(char **ret, const char *fmt, va_list ap);
 char * strcasestr(const char *s, const char* find);
 char* realpath(const char * name, char * resolved);
 
+#ifndef PATH_MAX
 #define PATH_MAX MAX_PATH
+#endif
 
 #define O_NOCTTY    0
 #define O_NONBLOCK  0
@@ -43,6 +45,7 @@ char* realpath(const char * name, char * resolved);
 
 #ifdef _MSC_VER
 
+#include <inttypes.h>
 #include <stdint.h>
 #include <io.h>
 typedef unsigned short mode_t;
@@ -57,8 +60,6 @@ char *dirname(char *path);
 int strcasecmp(const char* s1, const char* s2);
 int strncasecmp(const char* s1, const char* s2, size_t n);
 
-
-#define PATH_MAX MAX_PATH
 #define STDIN_FILENO  0
 #define STDOUT_FILENO 1
 #define STDERR_FILENO 2
@@ -69,6 +70,7 @@ int strncasecmp(const char* s1, const char* s2, size_t n);
 #define S_ISDIR(mode)  (((mode) & S_IFMT) == S_IFDIR)
 
 #define snprintf _snprintf
+#endif
 
 // timespec
 struct timespec
@@ -77,6 +79,5 @@ struct timespec
     long   tv_nsec;
 };
 
-#endif
 
 #endif  // LLDB_lldb_win32_h_

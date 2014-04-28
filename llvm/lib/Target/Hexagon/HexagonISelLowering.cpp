@@ -39,6 +39,8 @@
 
 using namespace llvm;
 
+#define DEBUG_TYPE "hexagon-lowering"
+
 static cl::opt<bool>
 EmitJumpTables("hexagon-emit-jump-tables", cl::init(true), cl::Hidden,
                cl::desc("Control jump table emission on Hexagon target"));
@@ -182,7 +184,7 @@ static bool CC_Hexagon32(unsigned ValNo, MVT ValVT,
                          MVT LocVT, CCValAssign::LocInfo LocInfo,
                          ISD::ArgFlagsTy ArgFlags, CCState &State) {
 
-  static const uint16_t RegList[] = {
+  static const MCPhysReg RegList[] = {
     Hexagon::R0, Hexagon::R1, Hexagon::R2, Hexagon::R3, Hexagon::R4,
     Hexagon::R5
   };
@@ -205,10 +207,10 @@ static bool CC_Hexagon64(unsigned ValNo, MVT ValVT,
     return false;
   }
 
-  static const uint16_t RegList1[] = {
+  static const MCPhysReg RegList1[] = {
     Hexagon::D1, Hexagon::D2
   };
-  static const uint16_t RegList2[] = {
+  static const MCPhysReg RegList2[] = {
     Hexagon::R1, Hexagon::R3
   };
   if (unsigned Reg = State.AllocateReg(RegList1, RegList2, 2)) {

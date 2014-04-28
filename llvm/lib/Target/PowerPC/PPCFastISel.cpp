@@ -13,7 +13,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "ppcfastisel"
 #include "PPC.h"
 #include "MCTargetDesc/PPCPredicates.h"
 #include "PPCISelLowering.h"
@@ -57,6 +56,8 @@
 //
 //===----------------------------------------------------------------------===//
 using namespace llvm;
+
+#define DEBUG_TYPE "ppcfastisel"
 
 namespace {
 
@@ -127,7 +128,6 @@ class PPCFastISel final : public FastISel {
     bool SelectStore(const Instruction *I);
     bool SelectBranch(const Instruction *I);
     bool SelectIndirectBr(const Instruction *I);
-    bool SelectCmp(const Instruction *I);
     bool SelectFPExt(const Instruction *I);
     bool SelectFPTrunc(const Instruction *I);
     bool SelectIToFP(const Instruction *I, bool IsSigned);
@@ -1864,7 +1864,7 @@ unsigned PPCFastISel::PPCMaterializeGV(const GlobalValue *GV, MVT VT) {
   if (!GVar) {
     // If GV is an alias, use the aliasee for determining thread-locality.
     if (const GlobalAlias *GA = dyn_cast<GlobalAlias>(GV))
-      GVar = dyn_cast_or_null<GlobalVariable>(GA->resolveAliasedGlobal(false));
+      GVar = dyn_cast_or_null<GlobalVariable>(GA->getAliasedGlobal());
   }
 
   // FIXME: We don't yet handle the complexity of TLS.

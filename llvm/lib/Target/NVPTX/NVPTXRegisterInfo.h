@@ -16,11 +16,10 @@
 
 #include "ManagedStringPool.h"
 #include "llvm/Target/TargetRegisterInfo.h"
+#include <sstream>
 
 #define GET_REGINFO_HEADER
 #include "NVPTXGenRegisterInfo.inc"
-#include "llvm/Target/TargetRegisterInfo.h"
-#include <sstream>
 
 namespace llvm {
 
@@ -42,7 +41,7 @@ public:
   //------------------------------------------------------
 
   // NVPTX callee saved registers
-  virtual const uint16_t *
+  virtual const MCPhysReg *
   getCalleeSavedRegs(const MachineFunction *MF = 0) const;
 
   // NVPTX callee saved register classes

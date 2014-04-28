@@ -15,7 +15,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "gvn"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DepthFirstIterator.h"
@@ -49,6 +48,8 @@
 #include <vector>
 using namespace llvm;
 using namespace PatternMatch;
+
+#define DEBUG_TYPE "gvn"
 
 STATISTIC(NumGVNInstr,  "Number of instructions deleted");
 STATISTIC(NumGVNLoad,   "Number of loads deleted");
@@ -111,11 +112,10 @@ namespace {
     uint32_t nextValueNumber;
 
     Expression create_expression(Instruction* I);
-    Expression create_intrinsic_expression(CallInst *C, uint32_t opcode,
-                                           bool IsCommutative);
     Expression create_cmp_expression(unsigned Opcode,
                                      CmpInst::Predicate Predicate,
                                      Value *LHS, Value *RHS);
+    Expression create_extractvalue_expression(ExtractValueInst* EI);
     uint32_t lookup_or_add_call(CallInst* C);
   public:
     ValueTable() : nextValueNumber(1) { }
@@ -189,33 +189,6 @@ Expression ValueTable::create_expression(Instruction *I) {
     for (InsertValueInst::idx_iterator II = E->idx_begin(), IE = E->idx_end();
          II != IE; ++II)
       e.varargs.push_back(*II);
-  } else if (ExtractValueInst *EVI = dyn_cast<ExtractValueInst>(I)) {
-    for (ExtractValueInst::idx_iterator II = EVI->idx_begin(),
-         IE = EVI->idx_end(); II != IE; ++II)
-      e.varargs.push_back(*II);
-  }
-
-  return e;
-}
-
-Expression ValueTable::create_intrinsic_expression(CallInst *C, uint32_t opcode,
-                                                   bool IsCommutative) {
-  Expression e;
-  e.opcode = opcode;
-  StructType *ST = cast<StructType>(C->getType());
-  assert(ST);
-  e.type = *ST->element_begin();
-
-  for (unsigned i = 0, ei = C->getNumArgOperands(); i < ei; ++i)
-    e.varargs.push_back(lookup_or_add(C->getArgOperand(i)));
-  if (IsCommutative) {
-    // Ensure that commutative instructions that only differ by a permutation
-    // of their operands get the same value number by sorting the operand value
-    // numbers.  Since all commutative instructions have two operands it is more
-    // efficient to sort by hand rather than using, say, std::sort.
-    assert(C->getNumArgOperands() == 2 && "Unsupported commutative instruction!");
-    if (e.varargs[0] > e.varargs[1])
-      std::swap(e.varargs[0], e.varargs[1]);
   }
 
   return e;
@@ -237,6 +210,58 @@ Expression ValueTable::create_cmp_expression(unsigned Opcode,
     Predicate = CmpInst::getSwappedPredicate(Predicate);
   }
   e.opcode = (Opcode << 8) | Predicate;
+  return e;
+}
+
+Expression ValueTable::create_extractvalue_expression(ExtractValueInst *EI) {
+  assert(EI != 0 && "Not an ExtractValueInst?");
+  Expression e;
+  e.type = EI->getType();
+  e.opcode = 0;
+
+  IntrinsicInst *I = dyn_cast<IntrinsicInst>(EI->getAggregateOperand());
+  if (I != 0 && EI->getNumIndices() == 1 && *EI->idx_begin() == 0 ) {
+    // EI might be an extract from one of our recognised intrinsics. If it
+    // is we'll synthesize a semantically equivalent expression instead on
+    // an extract value expression.
+    switch (I->getIntrinsicID()) {
+      case Intrinsic::sadd_with_overflow:
+      case Intrinsic::uadd_with_overflow:
+        e.opcode = Instruction::Add;
+        break;
+      case Intrinsic::ssub_with_overflow:
+      case Intrinsic::usub_with_overflow:
+        e.opcode = Instruction::Sub;
+        break;
+      case Intrinsic::smul_with_overflow:
+      case Intrinsic::umul_with_overflow:
+        e.opcode = Instruction::Mul;
+        break;
+      default:
+        break;
+    }
+
+    if (e.opcode != 0) {
+      // Intrinsic recognized. Grab its args to finish building the expression.
+      assert(I->getNumArgOperands() == 2 &&
+             "Expect two args for recognised intrinsics.");
+      e.varargs.push_back(lookup_or_add(I->getArgOperand(0)));
+      e.varargs.push_back(lookup_or_add(I->getArgOperand(1)));
+      return e;
+    }
+  }
+
+  // Not a recognised intrinsic. Fall back to producing an extract value
+  // expression.
+  e.opcode = EI->getOpcode();
+  for (Instruction::op_iterator OI = EI->op_begin(), OE = EI->op_end();
+       OI != OE; ++OI)
+    e.varargs.push_back(lookup_or_add(*OI));
+
+  for (ExtractValueInst::idx_iterator II = EI->idx_begin(), IE = EI->idx_end();
+         II != IE; ++II)
+    e.varargs.push_back(*II);
+
   return e;
 }
 
@@ -373,29 +398,8 @@ uint32_t ValueTable::lookup_or_add(Value *V) {
   Instruction* I = cast<Instruction>(V);
   Expression exp;
   switch (I->getOpcode()) {
-    case Instruction::Call: {
-      CallInst *C = cast<CallInst>(I);
-      if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(C)) {
-        switch (II->getIntrinsicID()) {
-          case Intrinsic::sadd_with_overflow:
-          case Intrinsic::uadd_with_overflow:
-            exp = create_intrinsic_expression(C, Instruction::Add, true);
-            break;
-          case Intrinsic::ssub_with_overflow:
-          case Intrinsic::usub_with_overflow:
-            exp = create_intrinsic_expression(C, Instruction::Sub, false);
-            break;
-          case Intrinsic::smul_with_overflow:
-          case Intrinsic::umul_with_overflow:
-            exp = create_intrinsic_expression(C, Instruction::Mul, true);
-            break;
-          default:
-            return lookup_or_add_call(C);
-        }
-      } else {
-        return lookup_or_add_call(C);
-      }
-    } break;
+    case Instruction::Call:
+      return lookup_or_add_call(cast<CallInst>(I));
     case Instruction::Add:
     case Instruction::FAdd:
     case Instruction::Sub:
@@ -434,8 +438,10 @@ uint32_t ValueTable::lookup_or_add(Value *V) {
     case Instruction::ShuffleVector:
     case Instruction::InsertValue:
     case Instruction::GetElementPtr:
-    case Instruction::ExtractValue:
       exp = create_expression(I);
+      break;
+    case Instruction::ExtractValue:
+      exp = create_extractvalue_expression(cast<ExtractValueInst>(I));
       break;
     default:
       valueNumbering[V] = nextValueNumber;
@@ -2184,54 +2190,6 @@ bool GVN::propagateEquality(Value *LHS, Value *RHS,
   return Changed;
 }
 
-static bool normalOpAfterIntrinsic(Instruction *I, Value *Repl)
-{
-  switch (I->getOpcode()) {
-    case Instruction::Add:
-      if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(Repl))
-          return II->getIntrinsicID() == Intrinsic::sadd_with_overflow
-              || II->getIntrinsicID() == Intrinsic::uadd_with_overflow;
-      return false;
-    case Instruction::Sub:
-      if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(Repl))
-          return II->getIntrinsicID() == Intrinsic::ssub_with_overflow
-              || II->getIntrinsicID() == Intrinsic::usub_with_overflow;
-      return false;
-    case Instruction::Mul:
-      if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(Repl))
-          return II->getIntrinsicID() == Intrinsic::smul_with_overflow
-              || II->getIntrinsicID() == Intrinsic::umul_with_overflow;
-      return false;
-    default:
-      return false;
-  }
-}
-
-static bool intrinsicAterNormalOp(Instruction *I, Value *Repl)
-{
-  IntrinsicInst *II = dyn_cast<IntrinsicInst>(I);
-  if (!II)
-    return false;
-
-  Instruction *RI = dyn_cast<Instruction>(Repl);
-  if (!RI)
-    return false;
-
-  switch (RI->getOpcode()) {
-    case Instruction::Add:
-      return II->getIntrinsicID() == Intrinsic::sadd_with_overflow
-          || II->getIntrinsicID() == Intrinsic::uadd_with_overflow;
-    case Instruction::Sub:
-      return II->getIntrinsicID() == Intrinsic::ssub_with_overflow
-          || II->getIntrinsicID() == Intrinsic::usub_with_overflow;
-    case Instruction::Mul:
-      return II->getIntrinsicID() == Intrinsic::smul_with_overflow
-          || II->getIntrinsicID() == Intrinsic::umul_with_overflow;
-    default:
-      return false;
-  }
-}
-
 /// processInstruction - When calculating availability, handle an instruction
 /// by inserting it into the appropriate sets
 bool GVN::processInstruction(Instruction *I) {
@@ -2343,27 +2301,6 @@ bool GVN::processInstruction(Instruction *I) {
     // Failure, just remember this instance for future use.
     addToLeaderTable(Num, I, I->getParent());
     return false;
-  }
-
-  if (normalOpAfterIntrinsic(I, repl)) {
-    // An intrinsic followed by a normal operation (e.g. sadd_with_overflow
-    // followed by a sadd): replace the second instruction with an extract.
-    IntrinsicInst *II = cast<IntrinsicInst>(repl);
-    assert(II);
-    repl = ExtractValueInst::Create(II, 0, I->getName() + ".repl", I);
-  } else if (intrinsicAterNormalOp(I, repl)) {
-    // A normal operation followed by an intrinsic (e.g. sadd followed by a
-    // sadd_with_overflow).
-    // Clone the intrinsic, and insert it before the replacing instruction. Then
-    // replace the (current) instruction with the cloned one. In a subsequent
-    // run, the original replacement (the non-intrinsic) will be be replaced by
-    // the new intrinsic.
-    Instruction *RI = dyn_cast<Instruction>(repl);
-    assert(RI);
-    Instruction *newIntrinsic = I->clone();
-    newIntrinsic->setName(I->getName() + ".repl");
-    newIntrinsic->insertBefore(RI);
-    repl = newIntrinsic;
   }
 
   // Remove it!
@@ -2485,10 +2422,7 @@ bool GVN::processBlock(BasicBlock *BB) {
 bool GVN::performPRE(Function &F) {
   bool Changed = false;
   SmallVector<std::pair<Value*, BasicBlock*>, 8> predMap;
-  for (df_iterator<BasicBlock*> DI = df_begin(&F.getEntryBlock()),
-       DE = df_end(&F.getEntryBlock()); DI != DE; ++DI) {
-    BasicBlock *CurrentBlock = *DI;
-
+  for (BasicBlock *CurrentBlock : depth_first(&F.getEntryBlock())) {
     // Nothing to PRE in the entry block.
     if (CurrentBlock == &F.getEntryBlock()) continue;
 
@@ -2550,8 +2484,6 @@ bool GVN::performPRE(Function &F) {
           predMap.push_back(std::make_pair(static_cast<Value *>(0), P));
           PREPred = P;
           ++NumWithout;
-        } else if (predV->getType() != CurInst->getType()) {
-          continue;
         } else if (predV == CurInst) {
           /* CurInst dominates this predecessor. */
           NumWithout = 2;
@@ -2703,9 +2635,8 @@ bool GVN::iterateOnFunction(Function &F) {
   //
   std::vector<BasicBlock *> BBVect;
   BBVect.reserve(256);
-  for (df_iterator<DomTreeNode*> DI = df_begin(DT->getRootNode()),
-       DE = df_end(DT->getRootNode()); DI != DE; ++DI)
-    BBVect.push_back(DI->getBlock());
+  for (DomTreeNode *x : depth_first(DT->getRootNode()))
+    BBVect.push_back(x->getBlock());
 
   for (std::vector<BasicBlock *>::iterator I = BBVect.begin(), E = BBVect.end();
        I != E; I++)

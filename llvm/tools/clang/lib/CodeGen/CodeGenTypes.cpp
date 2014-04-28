@@ -289,13 +289,6 @@ static llvm::Type *getTypeForFormat(llvm::LLVMContext &VMContext,
 
 /// ConvertType - Convert the specified type to its LLVM form.
 llvm::Type *CodeGenTypes::ConvertType(QualType T) {
-  // +===== Scout ============================================================+
-  // We need to save the original QualType for generating mesh types. A bit
-  // awkward but better than modifying the code below to account for this...
-  QualType OT = T;
-  typedef llvm::VectorType VectorTy;
-  typedef llvm::IntegerType IntTy;
-  // +========================================================================+
 
   T = Context.getCanonicalType(T);
 
@@ -581,12 +574,12 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     // as there are no comparisons for dealing with structs/records
     // here that we can build upon (conversion between meshes is
     // certainly a non-trivial operation in the complex cases).
-    ResultType = ConvertScoutMeshType(OT);
+    ResultType = ConvertScoutMeshType(T);
     break;
 
   case Type::Window:
   case Type::Image:
-    ResultType = ConvertScoutRenderTargetType(OT);
+    ResultType = ConvertScoutRenderTargetType(T);
     break;
       
   // +========================================================================+

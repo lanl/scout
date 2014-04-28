@@ -56,7 +56,7 @@ set(CMAKE_MODULE_PATH
 )
 
 
-project(scout_test_scc SCC SCXX )#  C CXX)
+project(scout_test_scc SCC SCXX )
 
   cmake_minimum_required(VERSION 2.8.9)
 
@@ -80,4 +80,7 @@ project(scout_test_scc SCC SCXX )#  C CXX)
   add_subdirectory(scc)
   add_subdirectory(sc++)
   add_subdirectory(runtime/glfw)
-
+  if(DEFINED ENV{SC_DEBUG_TESTS}) 
+    add_subdirectory(gdb)
+    add_subdirectory(lldb)
+  endif()

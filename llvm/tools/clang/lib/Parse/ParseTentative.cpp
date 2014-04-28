@@ -936,6 +936,7 @@ Parser::isExpressionOrTypeSpecifierSimple(tok::TokenKind Kind) {
   case tok::kw___real:
   case tok::kw___FUNCTION__:
   case tok::kw___FUNCDNAME__:
+  case tok::kw___FUNCSIG__:
   case tok::kw_L__FUNCTION__:
   case tok::kw___PRETTY_FUNCTION__:
   case tok::kw___uuidof:
@@ -1214,6 +1215,9 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
   case tok::kw_thread_local:
   case tok::kw__Thread_local:
     // function-specifier
+  // +===== Scout ==========================================================+
+  case tok::kw_stencil:
+  // +======================================================================+
   case tok::kw_inline:
   case tok::kw_virtual:
   case tok::kw_explicit:

@@ -17,7 +17,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "sccp"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -41,6 +40,8 @@
 #include "llvm/Transforms/Utils/Local.h"
 #include <algorithm>
 using namespace llvm;
+
+#define DEBUG_TYPE "sccp"
 
 STATISTIC(NumInstRemoved, "Number of instructions removed");
 STATISTIC(NumDeadBlocks , "Number of basic blocks unreachable");
@@ -491,7 +492,6 @@ private:
   }
   void visitCallSite      (CallSite CS);
   void visitResumeInst    (TerminatorInst &I) { /*returns void*/ }
-  void visitUnwindInst    (TerminatorInst &I) { /*returns void*/ }
   void visitUnreachableInst(TerminatorInst &I) { /*returns void*/ }
   void visitFenceInst     (FenceInst &I) { /*returns void*/ }
   void visitAtomicCmpXchgInst (AtomicCmpXchgInst &I) { markOverdefined(&I); }

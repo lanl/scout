@@ -858,7 +858,7 @@ void CodeGenFunction::EmitReturnStmt(const ReturnStmt &S) {
     // that the cleanup code should not destroy the variable.
     if (llvm::Value *NRVOFlag = NRVOFlags[S.getNRVOCandidate()])
       Builder.CreateStore(Builder.getTrue(), NRVOFlag);
-  } else if (!ReturnValue) {
+  } else if (!ReturnValue || (RV && RV->getType()->isVoidType())) {
     // Make sure not to return anything, but evaluate the expression
     // for side effects.
     if (RV)
@@ -1959,7 +1959,9 @@ CodeGenFunction::GenerateCapturedStmtFunction(const CapturedDecl *CD,
   CGM.SetInternalFunctionAttributes(CD, F, FuncInfo);
 
   // Generate the function.
-  StartFunction(CD, Ctx.VoidTy, F, FuncInfo, Args, CD->getBody()->getLocStart());
+  StartFunction(CD, Ctx.VoidTy, F, FuncInfo, Args,
+                CD->getLocation(),
+                CD->getBody()->getLocStart());
 
   // Set the context parameter in CapturedStmtInfo.
   llvm::Value *DeclPtr = LocalDeclMap[CD->getContextParam()];
@@ -1975,8 +1977,11 @@ CodeGenFunction::GenerateCapturedStmtFunction(const CapturedDecl *CD,
     CXXThisValue = EmitLoadOfLValue(ThisLValue, Loc).getScalarVal();
   }
 
+  PGO.assignRegionCounters(CD, F);
   CapturedStmtInfo->EmitBody(*this, CD->getBody());
   FinishFunction(CD->getBodyRBrace());
+  PGO.emitInstrumentationData();
+  PGO.destroyRegionCounters();
 
   return F;
 }

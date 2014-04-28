@@ -20,6 +20,8 @@ using namespace llvm;
 using namespace dwarf;
 using namespace object;
 
+#define DEBUG_TYPE "dwarf"
+
 typedef DWARFDebugLine::LineTable DWARFLineTable;
 
 static void dumpPubSection(raw_ostream &OS, StringRef Name, StringRef Data,
@@ -94,6 +96,11 @@ void DWARFContext::dump(raw_ostream &OS, DIDumpType DumpType) {
   if (DumpType == DIDT_All || DumpType == DIDT_Loc) {
     OS << "\n.debug_loc contents:\n";
     getDebugLoc()->dump(OS);
+  }
+
+  if (DumpType == DIDT_All || DumpType == DIDT_LocDwo) {
+    OS << "\n.debug_loc.dwo contents:\n";
+    getDebugLocDWO()->dump(OS);
   }
 
   if (DumpType == DIDT_All || DumpType == DIDT_Frames) {
@@ -237,6 +244,16 @@ const DWARFDebugLoc *DWARFContext::getDebugLoc() {
   return Loc.get();
 }
 
+const DWARFDebugLocDWO *DWARFContext::getDebugLocDWO() {
+  if (LocDWO)
+    return LocDWO.get();
+
+  DataExtractor LocData(getLocDWOSection().Data, isLittleEndian(), 0);
+  LocDWO.reset(new DWARFDebugLocDWO());
+  LocDWO->parse(LocData);
+  return LocDWO.get();
+}
+
 const DWARFDebugAranges *DWARFContext::getDebugAranges() {
   if (Aranges)
     return Aranges.get();
@@ -275,7 +292,7 @@ DWARFContext::getLineTableForCompileUnit(DWARFCompileUnit *cu) {
       cu->getCompileUnitDIE()->getAttributeValueAsSectionOffset(
           cu, DW_AT_stmt_list, -1U);
   if (stmtOffset == -1U)
-    return 0; // No line table for this compile unit.
+    return nullptr; // No line table for this compile unit.
 
   // See if the line table is cached.
   if (const DWARFLineTable *lt = Line->getLineTable(stmtOffset))
@@ -393,7 +410,7 @@ DWARFCompileUnit *DWARFContext::getCompileUnitForOffset(uint32_t Offset) {
   if (CU != CUs.end()) {
     return CU->get();
   }
-  return 0;
+  return nullptr;
 }
 
 DWARFCompileUnit *DWARFContext::getCompileUnitForAddress(uint64_t Address) {
@@ -408,8 +425,7 @@ static bool getFileNameForCompileUnit(DWARFCompileUnit *CU,
                                       uint64_t FileIndex,
                                       bool NeedsAbsoluteFilePath,
                                       std::string &FileName) {
-  if (CU == 0 ||
-      LineTable == 0 ||
+  if (!CU || !LineTable ||
       !LineTable->getFileNameByIndex(FileIndex, NeedsAbsoluteFilePath,
                                      FileName))
     return false;
@@ -429,9 +445,8 @@ static bool getFileLineInfoForCompileUnit(DWARFCompileUnit *CU,
                                           const DWARFLineTable *LineTable,
                                           uint64_t Address,
                                           bool NeedsAbsoluteFilePath,
-                                          std::string &FileName,
-                                          uint32_t &Line, uint32_t &Column) {
-  if (CU == 0 || LineTable == 0)
+                                          DILineInfo &Result) {
+  if (!CU || !LineTable)
     return false;
   // Get the index of row we're looking for in the line table.
   uint32_t RowIndex = LineTable->lookupAddress(Address);
@@ -439,45 +454,49 @@ static bool getFileLineInfoForCompileUnit(DWARFCompileUnit *CU,
     return false;
   // Take file number and line/column from the row.
   const DWARFDebugLine::Row &Row = LineTable->Rows[RowIndex];
-  if (!getFileNameForCompileUnit(CU, LineTable, Row.File,
-                                 NeedsAbsoluteFilePath, FileName))
+  if (!getFileNameForCompileUnit(CU, LineTable, Row.File, NeedsAbsoluteFilePath,
+                                 Result.FileName))
     return false;
-  Line = Row.Line;
-  Column = Row.Column;
+  Result.Line = Row.Line;
+  Result.Column = Row.Column;
   return true;
+}
+
+static bool getFunctionNameForAddress(DWARFCompileUnit *CU, uint64_t Address,
+                                      std::string &FunctionName) {
+  // The address may correspond to instruction in some inlined function,
+  // so we have to build the chain of inlined functions and take the
+  // name of the topmost function in it.
+  const DWARFDebugInfoEntryInlinedChain &InlinedChain =
+      CU->getInlinedChainForAddress(Address);
+  if (InlinedChain.DIEs.size() == 0)
+    return false;
+  const DWARFDebugInfoEntryMinimal &TopFunctionDIE = InlinedChain.DIEs[0];
+  if (const char *Name = TopFunctionDIE.getSubroutineName(InlinedChain.U)) {
+    FunctionName = Name;
+    return true;
+  }
+  return false;
 }
 
 DILineInfo DWARFContext::getLineInfoForAddress(uint64_t Address,
     DILineInfoSpecifier Specifier) {
+  DILineInfo Result;
+
   DWARFCompileUnit *CU = getCompileUnitForAddress(Address);
   if (!CU)
-    return DILineInfo();
-  std::string FileName = "<invalid>";
-  std::string FunctionName = "<invalid>";
-  uint32_t Line = 0;
-  uint32_t Column = 0;
+    return Result;
   if (Specifier.needs(DILineInfoSpecifier::FunctionName)) {
-    // The address may correspond to instruction in some inlined function,
-    // so we have to build the chain of inlined functions and take the
-    // name of the topmost function in it.
-    const DWARFDebugInfoEntryInlinedChain &InlinedChain =
-        CU->getInlinedChainForAddress(Address);
-    if (InlinedChain.DIEs.size() > 0) {
-      const DWARFDebugInfoEntryMinimal &TopFunctionDIE = InlinedChain.DIEs[0];
-      if (const char *Name = TopFunctionDIE.getSubroutineName(InlinedChain.U))
-        FunctionName = Name;
-    }
+    getFunctionNameForAddress(CU, Address, Result.FunctionName);
   }
   if (Specifier.needs(DILineInfoSpecifier::FileLineInfo)) {
     const DWARFLineTable *LineTable = getLineTableForCompileUnit(CU);
     const bool NeedsAbsoluteFilePath =
         Specifier.needs(DILineInfoSpecifier::AbsoluteFilePath);
-    getFileLineInfoForCompileUnit(CU, LineTable, Address,
-                                  NeedsAbsoluteFilePath,
-                                  FileName, Line, Column);
+    getFileLineInfoForCompileUnit(CU, LineTable, Address, NeedsAbsoluteFilePath,
+                                  Result);
   }
-  return DILineInfo(StringRef(FileName), StringRef(FunctionName),
-                    Line, Column);
+  return Result;
 }
 
 DILineInfoTable DWARFContext::getLineInfoForAddressRange(uint64_t Address,
@@ -490,23 +509,15 @@ DILineInfoTable DWARFContext::getLineInfoForAddressRange(uint64_t Address,
 
   std::string FunctionName = "<invalid>";
   if (Specifier.needs(DILineInfoSpecifier::FunctionName)) {
-    // The address may correspond to instruction in some inlined function,
-    // so we have to build the chain of inlined functions and take the
-    // name of the topmost function in it.
-    const DWARFDebugInfoEntryInlinedChain &InlinedChain =
-        CU->getInlinedChainForAddress(Address);
-    if (InlinedChain.DIEs.size() > 0) {
-      const DWARFDebugInfoEntryMinimal &TopFunctionDIE = InlinedChain.DIEs[0];
-      if (const char *Name = TopFunctionDIE.getSubroutineName(InlinedChain.U))
-        FunctionName = Name;
-    }
+    getFunctionNameForAddress(CU, Address, FunctionName);
   }
 
   // If the Specifier says we don't need FileLineInfo, just
   // return the top-most function at the starting address.
   if (!Specifier.needs(DILineInfoSpecifier::FileLineInfo)) {
-    Lines.push_back(
-        std::make_pair(Address, DILineInfo("<invalid>", FunctionName, 0, 0)));
+    DILineInfo Result;
+    Result.FunctionName = FunctionName;
+    Lines.push_back(std::make_pair(Address, Result));
     return Lines;
   }
 
@@ -522,11 +533,13 @@ DILineInfoTable DWARFContext::getLineInfoForAddressRange(uint64_t Address,
   for (uint32_t RowIndex : RowVector) {
     // Take file number and line/column from the row.
     const DWARFDebugLine::Row &Row = LineTable->Rows[RowIndex];
-    std::string FileName = "<invalid>";
-    getFileNameForCompileUnit(CU, LineTable, Row.File,
-                              NeedsAbsoluteFilePath, FileName);
-    Lines.push_back(std::make_pair(
-        Row.Address, DILineInfo(FileName, FunctionName, Row.Line, Row.Column)));
+    DILineInfo Result;
+    getFileNameForCompileUnit(CU, LineTable, Row.File, NeedsAbsoluteFilePath,
+                              Result.FileName);
+    Result.FunctionName = FunctionName;
+    Result.Line = Row.Line;
+    Result.Column = Row.Column;
+    Lines.push_back(std::make_pair(Row.Address, Result));
   }
 
   return Lines;
@@ -534,47 +547,55 @@ DILineInfoTable DWARFContext::getLineInfoForAddressRange(uint64_t Address,
 
 DIInliningInfo DWARFContext::getInliningInfoForAddress(uint64_t Address,
     DILineInfoSpecifier Specifier) {
+  DIInliningInfo InliningInfo;
+
   DWARFCompileUnit *CU = getCompileUnitForAddress(Address);
   if (!CU)
-    return DIInliningInfo();
+    return InliningInfo;
 
+  const DWARFLineTable *LineTable = nullptr;
+  const bool NeedsAbsoluteFilePath =
+      Specifier.needs(DILineInfoSpecifier::AbsoluteFilePath);
   const DWARFDebugInfoEntryInlinedChain &InlinedChain =
       CU->getInlinedChainForAddress(Address);
-  if (InlinedChain.DIEs.size() == 0)
-    return DIInliningInfo();
+  if (InlinedChain.DIEs.size() == 0) {
+    // If there is no DIE for address (e.g. it is in unavailable .dwo file),
+    // try to at least get file/line info from symbol table.
+    if (Specifier.needs(DILineInfoSpecifier::FileLineInfo)) {
+      DILineInfo Frame;
+      LineTable = getLineTableForCompileUnit(CU);
+      if (getFileLineInfoForCompileUnit(CU, LineTable, Address,
+                                        NeedsAbsoluteFilePath, Frame)) {
+        InliningInfo.addFrame(Frame);
+      }
+    }
+    return InliningInfo;
+  }
 
-  DIInliningInfo InliningInfo;
   uint32_t CallFile = 0, CallLine = 0, CallColumn = 0;
-  const DWARFLineTable *LineTable = 0;
   for (uint32_t i = 0, n = InlinedChain.DIEs.size(); i != n; i++) {
     const DWARFDebugInfoEntryMinimal &FunctionDIE = InlinedChain.DIEs[i];
-    std::string FileName = "<invalid>";
-    std::string FunctionName = "<invalid>";
-    uint32_t Line = 0;
-    uint32_t Column = 0;
+    DILineInfo Frame;
     // Get function name if necessary.
     if (Specifier.needs(DILineInfoSpecifier::FunctionName)) {
       if (const char *Name = FunctionDIE.getSubroutineName(InlinedChain.U))
-        FunctionName = Name;
+        Frame.FunctionName = Name;
     }
     if (Specifier.needs(DILineInfoSpecifier::FileLineInfo)) {
-      const bool NeedsAbsoluteFilePath =
-          Specifier.needs(DILineInfoSpecifier::AbsoluteFilePath);
       if (i == 0) {
         // For the topmost frame, initialize the line table of this
         // compile unit and fetch file/line info from it.
         LineTable = getLineTableForCompileUnit(CU);
         // For the topmost routine, get file/line info from line table.
         getFileLineInfoForCompileUnit(CU, LineTable, Address,
-                                      NeedsAbsoluteFilePath,
-                                      FileName, Line, Column);
+                                      NeedsAbsoluteFilePath, Frame);
       } else {
         // Otherwise, use call file, call line and call column from
         // previous DIE in inlined chain.
         getFileNameForCompileUnit(CU, LineTable, CallFile,
-                                  NeedsAbsoluteFilePath, FileName);
-        Line = CallLine;
-        Column = CallColumn;
+                                  NeedsAbsoluteFilePath, Frame.FileName);
+        Frame.Line = CallLine;
+        Frame.Column = CallColumn;
       }
       // Get call file/line/column of a current DIE.
       if (i + 1 < n) {
@@ -582,8 +603,6 @@ DIInliningInfo DWARFContext::getInliningInfoForAddress(uint64_t Address,
                                    CallColumn);
       }
     }
-    DILineInfo Frame(StringRef(FileName), StringRef(FunctionName),
-                     Line, Column);
     InliningInfo.addFrame(Frame);
   }
   return InliningInfo;
@@ -622,14 +641,15 @@ DWARFContextInMemory::DWARFContextInMemory(object::ObjectFile *Obj)
       if (!zlib::isAvailable() ||
           !consumeCompressedDebugSectionHeader(data, OriginalSize))
         continue;
-      std::unique_ptr<MemoryBuffer> UncompressedSection;
-      if (zlib::uncompress(data, UncompressedSection, OriginalSize) !=
-          zlib::StatusOK)
+      UncompressedSections.resize(UncompressedSections.size() + 1);
+      if (zlib::uncompress(data, UncompressedSections.back(), OriginalSize) !=
+          zlib::StatusOK) {
+        UncompressedSections.pop_back();
         continue;
+      }
       // Make data point to uncompressed section contents and save its contents.
       name = name.substr(1);
-      data = UncompressedSection->getBuffer();
-      UncompressedSections.push_back(std::move(UncompressedSection));
+      data = UncompressedSections.back();
     }
 
     StringRef *SectionData =
@@ -648,12 +668,13 @@ DWARFContextInMemory::DWARFContextInMemory(object::ObjectFile *Obj)
             .Case("debug_gnu_pubtypes", &GnuPubTypesSection)
             .Case("debug_info.dwo", &InfoDWOSection.Data)
             .Case("debug_abbrev.dwo", &AbbrevDWOSection)
+            .Case("debug_loc.dwo", &LocDWOSection.Data)
             .Case("debug_line.dwo", &LineDWOSection.Data)
             .Case("debug_str.dwo", &StringDWOSection)
             .Case("debug_str_offsets.dwo", &StringOffsetDWOSection)
             .Case("debug_addr", &AddrSection)
             // Any more debug info sections go here.
-            .Default(0);
+            .Default(nullptr);
     if (SectionData) {
       *SectionData = data;
       if (name == "debug_ranges") {
@@ -684,7 +705,7 @@ DWARFContextInMemory::DWARFContextInMemory(object::ObjectFile *Obj)
         .Case("debug_loc", &LocSection.Relocs)
         .Case("debug_info.dwo", &InfoDWOSection.Relocs)
         .Case("debug_line", &LineSection.Relocs)
-        .Default(0);
+        .Default(nullptr);
     if (!Map) {
       // Find debug_types relocs by section rather than name as there are
       // multiple, comdat grouped, debug_types sections.

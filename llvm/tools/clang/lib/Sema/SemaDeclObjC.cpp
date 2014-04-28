@@ -524,7 +524,7 @@ ActOnStartClassInterface(SourceLocation AtInterfaceLoc,
       ObjCInterfaceValidatorCCC Validator(IDecl);
       if (TypoCorrection Corrected = CorrectTypo(
           DeclarationNameInfo(SuperName, SuperLoc), LookupOrdinaryName, TUScope,
-          NULL, Validator)) {
+          NULL, Validator, CTK_ErrorRecovery)) {
         diagnoseTypo(Corrected, PDiag(diag::err_undef_superclass_suggest)
                                     << SuperName << ClassName);
         PrevDecl = Corrected.getCorrectionDeclAs<ObjCInterfaceDecl>();
@@ -794,7 +794,7 @@ Sema::FindProtocolDeclaration(bool WarnOnDeclarations,
       DeclFilterCCC<ObjCProtocolDecl> Validator;
       TypoCorrection Corrected = CorrectTypo(
           DeclarationNameInfo(ProtocolId[i].first, ProtocolId[i].second),
-          LookupObjCProtocolName, TUScope, NULL, Validator);
+          LookupObjCProtocolName, TUScope, NULL, Validator, CTK_ErrorRecovery);
       if ((PDecl = Corrected.getCorrectionDeclAs<ObjCProtocolDecl>()))
         diagnoseTypo(Corrected, PDiag(diag::err_undeclared_protocol_suggest)
                                     << ProtocolId[i].first);
@@ -1034,7 +1034,8 @@ Decl *Sema::ActOnStartClassImplementation(
     ObjCInterfaceValidatorCCC Validator;
     TypoCorrection Corrected =
             CorrectTypo(DeclarationNameInfo(ClassName, ClassLoc),
-                        LookupOrdinaryName, TUScope, NULL, Validator);
+                        LookupOrdinaryName, TUScope, NULL, Validator,
+                        CTK_NonError);
     if (Corrected.getCorrectionDeclAs<ObjCInterfaceDecl>()) {
       // Suggest the (potentially) correct interface name. Don't provide a
       // code-modification hint or use the typo name for recovery, because
@@ -2402,11 +2403,15 @@ ObjCMethodDecl *Sema::LookupImplementedMethodInGlobalPool(Selector Sel) {
     return 0;
 
   GlobalMethods &Methods = Pos->second;
-
-  if (Methods.first.Method && Methods.first.Method->isDefined())
-    return Methods.first.Method;
-  if (Methods.second.Method && Methods.second.Method->isDefined())
-    return Methods.second.Method;
+  for (const ObjCMethodList *Method = &Methods.first; Method;
+       Method = Method->getNext())
+    if (Method->Method && Method->Method->isDefined())
+      return Method->Method;
+  
+  for (const ObjCMethodList *Method = &Methods.second; Method;
+       Method = Method->getNext())
+    if (Method->Method && Method->Method->isDefined())
+      return Method->Method;
   return 0;
 }
 

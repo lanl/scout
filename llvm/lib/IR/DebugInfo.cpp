@@ -53,8 +53,8 @@ bool DIDescriptor::Verify() const {
 }
 
 static Value *getField(const MDNode *DbgNode, unsigned Elt) {
-  if (DbgNode == 0 || Elt >= DbgNode->getNumOperands())
-    return 0;
+  if (!DbgNode || Elt >= DbgNode->getNumOperands())
+    return nullptr;
   return DbgNode->getOperand(Elt);
 }
 
@@ -73,7 +73,7 @@ StringRef DIDescriptor::getStringField(unsigned Elt) const {
 }
 
 uint64_t DIDescriptor::getUInt64Field(unsigned Elt) const {
-  if (DbgNode == 0)
+  if (!DbgNode)
     return 0;
 
   if (Elt < DbgNode->getNumOperands())
@@ -85,7 +85,7 @@ uint64_t DIDescriptor::getUInt64Field(unsigned Elt) const {
 }
 
 int64_t DIDescriptor::getInt64Field(unsigned Elt) const {
-  if (DbgNode == 0)
+  if (!DbgNode)
     return 0;
 
   if (Elt < DbgNode->getNumOperands())
@@ -102,34 +102,34 @@ DIDescriptor DIDescriptor::getDescriptorField(unsigned Elt) const {
 }
 
 GlobalVariable *DIDescriptor::getGlobalVariableField(unsigned Elt) const {
-  if (DbgNode == 0)
-    return 0;
+  if (!DbgNode)
+    return nullptr;
 
   if (Elt < DbgNode->getNumOperands())
     return dyn_cast_or_null<GlobalVariable>(DbgNode->getOperand(Elt));
-  return 0;
+  return nullptr;
 }
 
 Constant *DIDescriptor::getConstantField(unsigned Elt) const {
-  if (DbgNode == 0)
-    return 0;
+  if (!DbgNode)
+    return nullptr;
 
   if (Elt < DbgNode->getNumOperands())
     return dyn_cast_or_null<Constant>(DbgNode->getOperand(Elt));
-  return 0;
+  return nullptr;
 }
 
 Function *DIDescriptor::getFunctionField(unsigned Elt) const {
-  if (DbgNode == 0)
-    return 0;
+  if (!DbgNode)
+    return nullptr;
 
   if (Elt < DbgNode->getNumOperands())
     return dyn_cast_or_null<Function>(DbgNode->getOperand(Elt));
-  return 0;
+  return nullptr;
 }
 
 void DIDescriptor::replaceFunctionField(unsigned Elt, Function *F) {
-  if (DbgNode == 0)
+  if (!DbgNode)
     return;
 
   if (Elt < DbgNode->getNumOperands()) {
@@ -435,8 +435,10 @@ static bool fieldIsTypeRef(const MDNode *DbgNode, unsigned Elt) {
 /// Check if a value can be a ScopeRef.
 static bool isScopeRef(const Value *Val) {
   return !Val ||
-         (isa<MDString>(Val) && !cast<MDString>(Val)->getString().empty()) ||
-         (isa<MDNode>(Val) && DIScope(cast<MDNode>(Val)).isScope());
+    (isa<MDString>(Val) && !cast<MDString>(Val)->getString().empty()) ||
+    // Not checking for Val->isScope() here, because it would work
+    // only for lexical scopes and not all subclasses of DIScope.
+    isa<MDNode>(Val);
 }
 
 /// Check if a field at position Elt of a MDNode can be a ScopeRef.
@@ -763,7 +765,7 @@ DIScopeRef DIScope::getContext() const {
     return DIScopeRef(DINameSpace(DbgNode).getContext());
 
   assert((isFile() || isCompileUnit()) && "Unhandled type of scope.");
-  return DIScopeRef(NULL);
+  return DIScopeRef(nullptr);
 }
 
 // If the scope node has a name, return that, else return an empty string.
@@ -1022,7 +1024,7 @@ void DebugInfoFinder::processModule(const Module &M) {
       DIArray Imports = CU.getImportedEntities();
       for (unsigned i = 0, e = Imports.getNumElements(); i != e; ++i) {
         DIImportedEntity Import = DIImportedEntity(Imports.getElement(i));
-        DIDescriptor Entity = Import.getEntity();
+        DIDescriptor Entity = Import.getEntity().resolve(TypeIdentifierMap);
         if (Entity.isType())
           processType(DIType(Entity));
         else if (Entity.isSubprogram())
@@ -1091,18 +1093,6 @@ void DebugInfoFinder::processScope(DIScope Scope) {
     DINameSpace NS(Scope);
     processScope(NS.getContext());
   }
-}
-
-/// processLexicalBlock
-void DebugInfoFinder::processLexicalBlock(DILexicalBlock LB) {
-  DIScope Context = LB.getContext();
-  if (Context.isLexicalBlock())
-    return processLexicalBlock(DILexicalBlock(Context));
-  else if (Context.isLexicalBlockFile()) {
-    DILexicalBlockFile DBF = DILexicalBlockFile(Context);
-    return processLexicalBlock(DILexicalBlock(DBF.getScope()));
-  } else
-    return processSubprogram(DISubprogram(Context));
 }
 
 /// processSubprogram - Process DISubprogram.

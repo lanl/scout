@@ -9,12 +9,12 @@
 #include <iostream>  // Scout debug
 
 #include "clang/Frontend/CompilerInvocation.h"
-#include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/Version.h"
 #include "clang/Driver/DriverDiagnostic.h"
 #include "clang/Driver/Options.h"
 #include "clang/Driver/Util.h"
+#include "clang/Frontend/FrontendDiagnostic.h"
 #include "clang/Frontend/LangStandard.h"
 #include "clang/Frontend/Utils.h"
 #include "clang/Lex/HeaderSearchOptions.h"
@@ -326,8 +326,11 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   // SC_TODO - we could move this into our own function call to avoid
   // more lines of merging when sync'ing with the trunk…
   //
+  // Enable debug flag
+  Opts.ScoutDebug = Args.hasArg(OPT_debug);
+
   // GPU support disabled for now...
-  // Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
+  Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
   //Opts.ScoutAMDGPU = Args.hasArg(OPT_gpuAMD);
 
   // Enable scout CPU multithreading support if OPT_cpuThreads is present.
@@ -472,6 +475,7 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.InstrumentFunctions = Args.hasArg(OPT_finstrument_functions);
   Opts.InstrumentForProfiling = Args.hasArg(OPT_pg);
   Opts.EmitOpenCLArgMetadata = Args.hasArg(OPT_cl_kernel_arg_info);
+  Opts.CompressDebugSections = Args.hasArg(OPT_compress_debug_sections);
   Opts.DebugCompilationDir = Args.getLastArgValue(OPT_fdebug_compilation_dir);
   Opts.LinkBitcodeFile = Args.getLastArgValue(OPT_mlink_bitcode_file);
   Opts.SanitizerBlacklistFile = Args.getLastArgValue(OPT_fsanitize_blacklist);
@@ -543,6 +547,17 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   }
 
   Opts.DependentLibraries = Args.getAllArgValues(OPT_dependent_lib);
+
+  if (Arg *A = Args.getLastArg(OPT_Rpass_EQ)) {
+    StringRef Val = A->getValue();
+    std::string RegexError;
+    Opts.OptimizationRemarkPattern = std::make_shared<llvm::Regex>(Val);
+    if (!Opts.OptimizationRemarkPattern->isValid(RegexError)) {
+      Diags.Report(diag::err_drv_optimization_remark_pattern)
+          << RegexError << A->getAsString(Args);
+      Opts.OptimizationRemarkPattern.reset();
+    }
+  }
 
   return Success;
 }
@@ -1070,12 +1085,12 @@ static void ParseHeaderSearchArgs(HeaderSearchOptions &Opts, ArgList &Args) {
   }
 
   // Add the path prefixes which are implicitly treated as being system headers.
-  for (arg_iterator I = Args.filtered_begin(OPT_isystem_prefix,
-                                            OPT_ino_system_prefix),
+  for (arg_iterator I = Args.filtered_begin(OPT_system_header_prefix,
+                                            OPT_no_system_header_prefix),
                     E = Args.filtered_end();
        I != E; ++I)
-    Opts.AddSystemHeaderPrefix((*I)->getValue(),
-                               (*I)->getOption().matches(OPT_isystem_prefix));
+    Opts.AddSystemHeaderPrefix(
+        (*I)->getValue(), (*I)->getOption().matches(OPT_system_header_prefix));
 
   for (arg_iterator I = Args.filtered_begin(OPT_ivfsoverlay),
        E = Args.filtered_end(); I != E; ++I)
@@ -1416,7 +1431,12 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.Blocks = Args.hasArg(OPT_fblocks);
   Opts.BlocksRuntimeOptional = Args.hasArg(OPT_fblocks_runtime_optional);
   Opts.Modules = Args.hasArg(OPT_fmodules);
-  Opts.ModulesDeclUse = Args.hasArg(OPT_fmodules_decluse);
+  Opts.ModulesStrictDeclUse = Args.hasArg(OPT_fmodules_strict_decluse);
+  Opts.ModulesDeclUse =
+      Args.hasArg(OPT_fmodules_decluse) || Opts.ModulesStrictDeclUse;
+  Opts.ModulesSearchAll = Opts.Modules &&
+    !Args.hasArg(OPT_fno_modules_search_all) &&
+    Args.hasArg(OPT_fmodules_search_all);
   Opts.CharIsSigned = Opts.OpenCL || !Args.hasArg(OPT_fno_signed_char);
   Opts.WChar = Opts.CPlusPlus && !Args.hasArg(OPT_fno_wchar);
   Opts.ShortWChar = Args.hasFlag(OPT_fshort_wchar, OPT_fno_short_wchar, false);
@@ -1525,8 +1545,10 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
                                  Opts.Deprecated);
 
   // +==== Scout =============================================================+
+  // Detect -debug flag
+  Opts.ScoutDebug = Args.hasArg(OPT_debug);
   // Detect -gpu flag
-  //Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
+  Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
   // --- Disabled for now (AMD is behind us in version support)
   //Opts.ScoutAMDGPU = Args.hasArg(OPT_gpuAMD);
   // +========================================================================+
@@ -1994,4 +2016,31 @@ void BuryPointer(const void *Ptr) {
     return;
   GraveYard[Idx] = Ptr;
 }
+
+IntrusiveRefCntPtr<vfs::FileSystem>
+createVFSFromCompilerInvocation(const CompilerInvocation &CI,
+                                DiagnosticsEngine &Diags) {
+  if (CI.getHeaderSearchOpts().VFSOverlayFiles.empty())
+    return vfs::getRealFileSystem();
+
+  IntrusiveRefCntPtr<vfs::OverlayFileSystem>
+    Overlay(new vfs::OverlayFileSystem(vfs::getRealFileSystem()));
+  // earlier vfs files are on the bottom
+  for (const std::string &File : CI.getHeaderSearchOpts().VFSOverlayFiles) {
+    std::unique_ptr<llvm::MemoryBuffer> Buffer;
+    if (llvm::errc::success != llvm::MemoryBuffer::getFile(File, Buffer)) {
+      Diags.Report(diag::err_missing_vfs_overlay_file) << File;
+      return IntrusiveRefCntPtr<vfs::FileSystem>();
+    }
+
+    IntrusiveRefCntPtr<vfs::FileSystem> FS =
+        vfs::getVFSFromYAML(Buffer.release(), /*DiagHandler*/0);
+    if (!FS.getPtr()) {
+      Diags.Report(diag::err_invalid_vfs_overlay) << File;
+      return IntrusiveRefCntPtr<vfs::FileSystem>();
+    }
+    Overlay->pushOverlay(FS);
+  }
+  return Overlay;
 }
+} // end namespace clang

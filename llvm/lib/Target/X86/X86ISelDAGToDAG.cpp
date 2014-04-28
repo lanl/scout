@@ -12,7 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "x86-isel"
 #include "X86.h"
 #include "X86InstrBuilder.h"
 #include "X86MachineFunctionInfo.h"
@@ -35,6 +34,8 @@
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 using namespace llvm;
+
+#define DEBUG_TYPE "x86-isel"
 
 STATISTIC(NumLoadMoved, "Number of loads moved below TokenFactor");
 
@@ -141,7 +142,7 @@ namespace {
   /// ISel - X86 specific code to select X86 machine instructions for
   /// SelectionDAG operations.
   ///
-  class X86DAGToDAGISel : public SelectionDAGISel {
+  class X86DAGToDAGISel final : public SelectionDAGISel {
     /// Subtarget - Keep a pointer to the X86Subtarget around so that we can
     /// make the right decision when generating code for different targets.
     const X86Subtarget *Subtarget;

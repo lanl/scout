@@ -8,8 +8,6 @@
 /// \file
 //==-----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "structcfg"
-
 #include "AMDGPU.h"
 #include "AMDGPUInstrInfo.h"
 #include "R600InstrInfo.h"
@@ -33,6 +31,8 @@
 #include "llvm/Target/TargetMachine.h"
 
 using namespace llvm;
+
+#define DEBUG_TYPE "structcfg"
 
 #define DEFAULT_VEC_SLOTS 8
 
@@ -790,7 +790,7 @@ bool AMDGPUCFGStructurizer::prepare() {
 bool AMDGPUCFGStructurizer::run() {
 
   //Assume reducible CFG...
-  DEBUG(dbgs() << "AMDGPUCFGStructurizer::run\n";FuncRep->viewCFG(););
+  DEBUG(dbgs() << "AMDGPUCFGStructurizer::run\n");
 
 #ifdef STRESSTEST
   //Use the worse block ordering to test the algorithm.
@@ -862,8 +862,7 @@ bool AMDGPUCFGStructurizer::run() {
           ContNextScc = false;
           DEBUG(
             dbgs() << "repeat processing SCC" << getSCCNum(MBB)
-                   << "sccNumIter = " << SccNumIter << "\n";
-            FuncRep->viewCFG();
+                   << "sccNumIter = " << SccNumIter << '\n';
           );
         } else {
           // Finish the current scc.
@@ -919,12 +918,10 @@ bool AMDGPUCFGStructurizer::run() {
   BlockInfoMap.clear();
   LLInfoMap.clear();
 
-  DEBUG(
-    FuncRep->viewCFG();
-  );
-
-  if (!Finish)
-    llvm_unreachable("IRREDUCIBL_CF");
+  if (!Finish) {
+    DEBUG(FuncRep->viewCFG());
+    llvm_unreachable("IRREDUCIBLE_CFG");
+  }
 
   return true;
 }
@@ -1078,13 +1075,11 @@ int AMDGPUCFGStructurizer::ifPatternMatch(MachineBasicBlock *MBB) {
 
 int AMDGPUCFGStructurizer::loopendPatternMatch() {
   std::vector<MachineLoop *> NestedLoops;
-  for (MachineLoopInfo::iterator It = MLI->begin(), E = MLI->end();
-      It != E; ++It) {
-    df_iterator<MachineLoop *> LpIt = df_begin(*It),
-        LpE = df_end(*It);
-    for (; LpIt != LpE; ++LpIt)
-      NestedLoops.push_back(*LpIt);
-  }
+  for (MachineLoopInfo::iterator It = MLI->begin(), E = MLI->end(); It != E;
+       ++It)
+    for (MachineLoop *ML : depth_first(*It))
+      NestedLoops.push_back(ML);
+
   if (NestedLoops.size() == 0)
     return 0;
 

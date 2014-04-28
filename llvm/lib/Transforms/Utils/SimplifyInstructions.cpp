@@ -14,7 +14,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "instsimplify"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -28,6 +27,8 @@
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Transforms/Utils/Local.h"
 using namespace llvm;
+
+#define DEBUG_TYPE "instsimplify"
 
 STATISTIC(NumSimplified, "Number of redundant instructions removed");
 
@@ -55,9 +56,10 @@ namespace {
       bool Changed = false;
 
       do {
-        for (df_iterator<BasicBlock*> DI = df_begin(&F.getEntryBlock()),
-             DE = df_end(&F.getEntryBlock()); DI != DE; ++DI)
-          for (BasicBlock::iterator BI = DI->begin(), BE = DI->end(); BI != BE;) {
+        for (BasicBlock *BB : depth_first(&F.getEntryBlock()))
+          // Here be subtlety: the iterator must be incremented before the loop
+          // body (not sure why), so a range-for loop won't work here.
+          for (BasicBlock::iterator BI = BB->begin(), BE = BB->end(); BI != BE;) {
             Instruction *I = BI++;
             // The first time through the loop ToSimplify is empty and we try to
             // simplify all instructions.  On later iterations ToSimplify is not

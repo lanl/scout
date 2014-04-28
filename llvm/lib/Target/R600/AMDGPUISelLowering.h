@@ -29,9 +29,6 @@ protected:
   const AMDGPUSubtarget *Subtarget;
 
 private:
-  void ExtractVectorElements(SDValue Op, SelectionDAG &DAG,
-                             SmallVectorImpl<SDValue> &Args,
-                             unsigned Start, unsigned Count) const;
   SDValue LowerConstantInitializer(const Constant* Init, const GlobalValue *GV,
                                    const SDValue &InitPtr,
                                    SDValue Chain,
@@ -44,7 +41,7 @@ private:
   /// of the same bitwidth.
   SDValue MergeVectorStore(const SDValue &Op, SelectionDAG &DAG) const;
   /// \brief Split a vector store into multiple scalar stores.
-  /// \returns The resulting chain. 
+  /// \returns The resulting chain.
   SDValue LowerUDIVREM(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerUINT_TO_FP(SDValue Op, SelectionDAG &DAG) const;
 
@@ -87,6 +84,12 @@ public:
   virtual bool isFNegFree(EVT VT) const override;
   virtual bool isTruncateFree(EVT Src, EVT Dest) const override;
   virtual bool isTruncateFree(Type *Src, Type *Dest) const override;
+
+  virtual bool isZExtFree(Type *Src, Type *Dest) const override;
+  virtual bool isZExtFree(EVT Src, EVT Dest) const override;
+
+  virtual bool isNarrowingProfitable(EVT VT1, EVT VT2) const override;
+
   virtual MVT getVectorIdxTy() const override;
   virtual bool isLoadBitCastBeneficial(EVT, EVT) const override;
   virtual SDValue LowerReturn(SDValue Chain, CallingConv::ID CallConv,
@@ -95,12 +98,13 @@ public:
                               const SmallVectorImpl<SDValue> &OutVals,
                               SDLoc DL, SelectionDAG &DAG) const;
   virtual SDValue LowerCall(CallLoweringInfo &CLI,
-                            SmallVectorImpl<SDValue> &InVals) const {
-    CLI.Callee.dump();
-    llvm_unreachable("Undefined function");
-  }
+                            SmallVectorImpl<SDValue> &InVals) const;
 
   virtual SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const;
+  virtual void ReplaceNodeResults(SDNode * N,
+                                  SmallVectorImpl<SDValue> &Results,
+                                  SelectionDAG &DAG) const override;
+
   SDValue LowerIntrinsicIABS(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerIntrinsicLRP(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerMinMax(SDValue Op, SelectionDAG &DAG) const;
@@ -110,9 +114,6 @@ public:
     return N;
   }
 
-// Functions defined in AMDILISelLowering.cpp
-public:
-
   /// \brief Determine which of the bits specified in \p Mask are known to be
   /// either zero or one and return them in the \p KnownZero and \p KnownOne
   /// bitsets.
@@ -120,8 +121,10 @@ public:
                                               APInt &KnownZero,
                                               APInt &KnownOne,
                                               const SelectionDAG &DAG,
-                                              unsigned Depth = 0) const;
+                                              unsigned Depth = 0) const override;
 
+// Functions defined in AMDILISelLowering.cpp
+public:
   virtual bool getTgtMemIntrinsic(IntrinsicInfo &Info,
                                   const CallInst &I, unsigned Intrinsic) const;
 
@@ -130,6 +133,8 @@ public:
 
   /// We don't want to shrink f64/f32 constants.
   bool ShouldShrinkFPConstant(EVT VT) const;
+
+  SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const;
 
 private:
   void InitAMDILLowering();
@@ -177,6 +182,10 @@ enum {
   DOT4,
   BFE_U32, // Extract range of bits with zero extension to 32-bits.
   BFE_I32, // Extract range of bits with sign extension to 32-bits.
+  BFI, // (src0 & src1) | (~src0 & src2)
+  BFM, // Insert a range of bits into a 32-bit word.
+  MUL_U24,
+  MUL_I24,
   TEXTURE_FETCH,
   EXPORT,
   CONST_ADDRESS,

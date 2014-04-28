@@ -93,12 +93,11 @@
 
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "msan"
-
 #include "llvm/Transforms/Instrumentation.h"
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Function.h"
@@ -122,12 +121,17 @@
 
 using namespace llvm;
 
+#define DEBUG_TYPE "msan"
+
 static const uint64_t kShadowMask32 = 1ULL << 31;
 static const uint64_t kShadowMask64 = 1ULL << 46;
 static const uint64_t kOriginOffset32 = 1ULL << 30;
 static const uint64_t kOriginOffset64 = 1ULL << 45;
 static const unsigned kMinOriginAlignment = 4;
 static const unsigned kShadowTLSAlignment = 8;
+
+// Accesses sizes are powers of two: 1, 2, 4, 8.
+static const size_t kNumberOfAccessSizes = 4;
 
 /// \brief Track origins of uninitialized values.
 ///
@@ -177,6 +181,14 @@ static cl::opt<bool> ClDumpStrictInstructions("msan-dump-strict-instructions",
 static cl::opt<std::string>  ClBlacklistFile("msan-blacklist",
        cl::desc("File containing the list of functions where MemorySanitizer "
                 "should not report bugs"), cl::Hidden);
+
+static cl::opt<int> ClInstrumentationWithCallThreshold(
+    "msan-instrumentation-with-call-threshold",
+    cl::desc(
+        "If the function being instrumented requires more than "
+        "this number of checks and origin stores, use callbacks instead of "
+        "inline checks (-1 means never use callbacks)."),
+    cl::Hidden, cl::init(3500));
 
 // Experimental. Wraps all indirect calls in the instrumented code with
 // a call to the given function. This is needed to assist the dynamic
@@ -245,6 +257,10 @@ class MemorySanitizer : public FunctionPass {
 
   /// \brief The run-time callback to print a warning.
   Value *WarningFn;
+  // These arrays are indexed by log2(AccessSize).
+  Value *MaybeWarningFn[kNumberOfAccessSizes];
+  Value *MaybeStoreOriginFn[kNumberOfAccessSizes];
+
   /// \brief Run-time helper that generates a new origin value for a stack
   /// allocation.
   Value *MsanSetAllocaOrigin4Fn;
@@ -320,6 +336,20 @@ void MemorySanitizer::initializeCallbacks(Module &M) {
   StringRef WarningFnName = ClKeepGoing ? "__msan_warning"
                                         : "__msan_warning_noreturn";
   WarningFn = M.getOrInsertFunction(WarningFnName, IRB.getVoidTy(), NULL);
+
+  for (size_t AccessSizeIndex = 0; AccessSizeIndex < kNumberOfAccessSizes;
+       AccessSizeIndex++) {
+    unsigned AccessSize = 1 << AccessSizeIndex;
+    std::string FunctionName = "__msan_maybe_warning_" + itostr(AccessSize);
+    MaybeWarningFn[AccessSizeIndex] = M.getOrInsertFunction(
+        FunctionName, IRB.getVoidTy(), IRB.getIntNTy(AccessSize * 8),
+        IRB.getInt32Ty(), NULL);
+
+    FunctionName = "__msan_maybe_store_origin_" + itostr(AccessSize);
+    MaybeStoreOriginFn[AccessSizeIndex] = M.getOrInsertFunction(
+        FunctionName, IRB.getVoidTy(), IRB.getIntNTy(AccessSize * 8),
+        IRB.getInt8PtrTy(), IRB.getInt32Ty(), NULL);
+  }
 
   MsanSetAllocaOrigin4Fn = M.getOrInsertFunction(
     "__msan_set_alloca_origin4", IRB.getVoidTy(), IRB.getInt8PtrTy(), IntptrTy,
@@ -397,7 +427,7 @@ void MemorySanitizer::initializeCallbacks(Module &M) {
 bool MemorySanitizer::doInitialization(Module &M) {
   DataLayoutPass *DLP = getAnalysisIfAvailable<DataLayoutPass>();
   if (!DLP)
-    return false;
+    report_fatal_error("data layout missing");
   DL = &DLP->getDataLayout();
 
   BL.reset(SpecialCaseList::createOrDie(BlacklistFile));
@@ -474,6 +504,11 @@ VarArgHelper*
 CreateVarArgHelper(Function &Func, MemorySanitizer &Msan,
                    MemorySanitizerVisitor &Visitor);
 
+unsigned TypeSizeToSizeIndex(unsigned TypeSize) {
+  if (TypeSize <= 8) return 0;
+  return Log2_32_Ceil(TypeSize / 8);
+}
+
 /// This class does all the work for a given function. Store and Load
 /// instructions store and load corresponding shadow and origin
 /// values. Most instructions propagate shadow from arguments to their
@@ -501,7 +536,6 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
     Instruction *OrigIns;
     ShadowOriginAndInsertPoint(Value *S, Value *O, Instruction *I)
       : Shadow(S), Origin(O), OrigIns(I) { }
-    ShadowOriginAndInsertPoint() : Shadow(0), Origin(0), OrigIns(0) { }
   };
   SmallVector<ShadowOriginAndInsertPoint, 16> InstrumentationList;
   SmallVector<Instruction*, 16> StoreList;
@@ -530,9 +564,42 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
     return IRB.CreateCall(MS.MsanChainOriginFn, V);
   }
 
-  void materializeStores() {
+  void storeOrigin(IRBuilder<> &IRB, Value *Addr, Value *Shadow, Value *Origin,
+                   unsigned Alignment, bool AsCall) {
+    if (isa<StructType>(Shadow->getType())) {
+      IRB.CreateAlignedStore(updateOrigin(Origin, IRB), getOriginPtr(Addr, IRB),
+                             Alignment);
+    } else {
+      Value *ConvertedShadow = convertToShadowTyNoVec(Shadow, IRB);
+      // TODO(eugenis): handle non-zero constant shadow by inserting an
+      // unconditional check (can not simply fail compilation as this could
+      // be in the dead code).
+      if (isa<Constant>(ConvertedShadow)) return;
+      unsigned TypeSizeInBits =
+          MS.DL->getTypeSizeInBits(ConvertedShadow->getType());
+      unsigned SizeIndex = TypeSizeToSizeIndex(TypeSizeInBits);
+      if (AsCall && SizeIndex < kNumberOfAccessSizes) {
+        Value *Fn = MS.MaybeStoreOriginFn[SizeIndex];
+        Value *ConvertedShadow2 = IRB.CreateZExt(
+            ConvertedShadow, IRB.getIntNTy(8 * (1 << SizeIndex)));
+        IRB.CreateCall3(Fn, ConvertedShadow2,
+                        IRB.CreatePointerCast(Addr, IRB.getInt8PtrTy()),
+                        updateOrigin(Origin, IRB));
+      } else {
+        Value *Cmp = IRB.CreateICmpNE(
+            ConvertedShadow, getCleanShadow(ConvertedShadow), "_mscmp");
+        Instruction *CheckTerm = SplitBlockAndInsertIfThen(
+            Cmp, IRB.GetInsertPoint(), false, MS.OriginStoreWeights);
+        IRBuilder<> IRBNew(CheckTerm);
+        IRBNew.CreateAlignedStore(updateOrigin(Origin, IRBNew),
+                                  getOriginPtr(Addr, IRBNew), Alignment);
+      }
+    }
+  }
+
+  void materializeStores(bool InstrumentWithCalls) {
     for (size_t i = 0, n = StoreList.size(); i < n; i++) {
-      StoreInst& I = *dyn_cast<StoreInst>(StoreList[i]);
+      StoreInst &I = *dyn_cast<StoreInst>(StoreList[i]);
 
       IRBuilder<> IRB(&I);
       Value *Val = I.getValueOperand();
@@ -541,53 +608,41 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
       Value *ShadowPtr = getShadowPtr(Addr, Shadow->getType(), IRB);
 
       StoreInst *NewSI =
-        IRB.CreateAlignedStore(Shadow, ShadowPtr, I.getAlignment());
+          IRB.CreateAlignedStore(Shadow, ShadowPtr, I.getAlignment());
       DEBUG(dbgs() << "  STORE: " << *NewSI << "\n");
       (void)NewSI;
 
-      if (ClCheckAccessAddress)
-        insertShadowCheck(Addr, &I);
+      if (ClCheckAccessAddress) insertShadowCheck(Addr, &I);
 
-      if (I.isAtomic())
-        I.setOrdering(addReleaseOrdering(I.getOrdering()));
+      if (I.isAtomic()) I.setOrdering(addReleaseOrdering(I.getOrdering()));
 
       if (MS.TrackOrigins) {
         unsigned Alignment = std::max(kMinOriginAlignment, I.getAlignment());
-        if (isa<StructType>(Shadow->getType())) {
-          IRB.CreateAlignedStore(updateOrigin(getOrigin(Val), IRB),
-                                 getOriginPtr(Addr, IRB), Alignment);
-        } else {
-          Value *ConvertedShadow = convertToShadowTyNoVec(Shadow, IRB);
-
-          // TODO(eugenis): handle non-zero constant shadow by inserting an
-          // unconditional check (can not simply fail compilation as this could
-          // be in the dead code).
-          if (isa<Constant>(ConvertedShadow))
-            continue;
-
-          Value *Cmp = IRB.CreateICmpNE(ConvertedShadow,
-              getCleanShadow(ConvertedShadow), "_mscmp");
-          Instruction *CheckTerm =
-              SplitBlockAndInsertIfThen(Cmp, &I, false, MS.OriginStoreWeights);
-          IRBuilder<> IRBNew(CheckTerm);
-          IRBNew.CreateAlignedStore(updateOrigin(getOrigin(Val), IRBNew),
-                                    getOriginPtr(Addr, IRBNew), Alignment);
-        }
+        storeOrigin(IRB, Addr, Shadow, getOrigin(Val), Alignment,
+                    InstrumentWithCalls);
       }
     }
   }
 
-  void materializeChecks() {
-    for (size_t i = 0, n = InstrumentationList.size(); i < n; i++) {
-      Value *Shadow = InstrumentationList[i].Shadow;
-      Instruction *OrigIns = InstrumentationList[i].OrigIns;
-      IRBuilder<> IRB(OrigIns);
-      DEBUG(dbgs() << "  SHAD0 : " << *Shadow << "\n");
-      Value *ConvertedShadow = convertToShadowTyNoVec(Shadow, IRB);
-      DEBUG(dbgs() << "  SHAD1 : " << *ConvertedShadow << "\n");
-      // See the comment in materializeStores().
-      if (isa<Constant>(ConvertedShadow))
-        continue;
+  void materializeOneCheck(Instruction *OrigIns, Value *Shadow, Value *Origin,
+                           bool AsCall) {
+    IRBuilder<> IRB(OrigIns);
+    DEBUG(dbgs() << "  SHAD0 : " << *Shadow << "\n");
+    Value *ConvertedShadow = convertToShadowTyNoVec(Shadow, IRB);
+    DEBUG(dbgs() << "  SHAD1 : " << *ConvertedShadow << "\n");
+    // See the comment in materializeStores().
+    if (isa<Constant>(ConvertedShadow)) return;
+    unsigned TypeSizeInBits =
+        MS.DL->getTypeSizeInBits(ConvertedShadow->getType());
+    unsigned SizeIndex = TypeSizeToSizeIndex(TypeSizeInBits);
+    if (AsCall && SizeIndex < kNumberOfAccessSizes) {
+      Value *Fn = MS.MaybeWarningFn[SizeIndex];
+      Value *ConvertedShadow2 =
+          IRB.CreateZExt(ConvertedShadow, IRB.getIntNTy(8 * (1 << SizeIndex)));
+      IRB.CreateCall2(Fn, ConvertedShadow2, MS.TrackOrigins && Origin
+                                                ? Origin
+                                                : (Value *)IRB.getInt32(0));
+    } else {
       Value *Cmp = IRB.CreateICmpNE(ConvertedShadow,
                                     getCleanShadow(ConvertedShadow), "_mscmp");
       Instruction *CheckTerm = SplitBlockAndInsertIfThen(
@@ -596,13 +651,21 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
 
       IRB.SetInsertPoint(CheckTerm);
       if (MS.TrackOrigins) {
-        Value *Origin = InstrumentationList[i].Origin;
-        IRB.CreateStore(Origin ? (Value*)Origin : (Value*)IRB.getInt32(0),
+        IRB.CreateStore(Origin ? (Value *)Origin : (Value *)IRB.getInt32(0),
                         MS.OriginTLS);
       }
       IRB.CreateCall(MS.WarningFn);
       IRB.CreateCall(MS.EmptyAsm);
       DEBUG(dbgs() << "  CHECK: " << *Cmp << "\n");
+    }
+  }
+
+  void materializeChecks(bool InstrumentWithCalls) {
+    for (size_t i = 0, n = InstrumentationList.size(); i < n; i++) {
+      Instruction *OrigIns = InstrumentationList[i].OrigIns;
+      Value *Shadow = InstrumentationList[i].Shadow;
+      Value *Origin = InstrumentationList[i].Origin;
+      materializeOneCheck(OrigIns, Shadow, Origin, InstrumentWithCalls);
     }
     DEBUG(dbgs() << "DONE:\n" << F);
   }
@@ -663,11 +726,9 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
     // Iterate all BBs in depth-first order and create shadow instructions
     // for all instructions (where applicable).
     // For PHI nodes we create dummy shadow PHIs which will be finalized later.
-    for (df_iterator<BasicBlock*> DI = df_begin(&F.getEntryBlock()),
-         DE = df_end(&F.getEntryBlock()); DI != DE; ++DI) {
-      BasicBlock *BB = *DI;
+    for (BasicBlock *BB : depth_first(&F.getEntryBlock()))
       visit(*BB);
-    }
+
 
     // Finalize PHI nodes.
     for (size_t i = 0, n = ShadowPHINodes.size(); i < n; i++) {
@@ -684,12 +745,16 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
 
     VAHelper->finalizeInstrumentation();
 
+    bool InstrumentWithCalls = ClInstrumentationWithCallThreshold >= 0 &&
+                               InstrumentationList.size() + StoreList.size() >
+                                   (unsigned)ClInstrumentationWithCallThreshold;
+
     // Delayed instrumentation of StoreInst.
     // This may add new checks to be inserted later.
-    materializeStores();
+    materializeStores(InstrumentWithCalls);
 
     // Insert shadow value checks.
-    materializeChecks();
+    materializeChecks(InstrumentWithCalls);
 
     // Wrap indirect calls.
     materializeIndirectCalls();
@@ -1323,6 +1388,17 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
       IRB.CreateIntCast(V1, Type::getIntNTy(*MS.C, dstSizeInBits), Signed);
     return IRB.CreateBitCast(V2, dstTy);
     // TODO: handle struct types.
+  }
+
+  /// \brief Cast an application value to the type of its own shadow.
+  Value *CreateAppToShadowCast(IRBuilder<> &IRB, Value *V) {
+    Type *ShadowTy = getShadowTy(V);
+    if (V->getType() == ShadowTy)
+      return V;
+    if (V->getType()->isPtrOrPtrVectorTy())
+      return IRB.CreatePtrToInt(V, ShadowTy);
+    else
+      return IRB.CreateBitCast(V, ShadowTy);
   }
 
   /// \brief Propagate shadow for arbitrary operation.
@@ -2181,40 +2257,51 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
   void visitSelectInst(SelectInst& I) {
     IRBuilder<> IRB(&I);
     // a = select b, c, d
-    Value *S = IRB.CreateSelect(I.getCondition(), getShadow(I.getTrueValue()),
-                                getShadow(I.getFalseValue()));
+    Value *B = I.getCondition();
+    Value *C = I.getTrueValue();
+    Value *D = I.getFalseValue();
+    Value *Sb = getShadow(B);
+    Value *Sc = getShadow(C);
+    Value *Sd = getShadow(D);
+
+    // Result shadow if condition shadow is 0.
+    Value *Sa0 = IRB.CreateSelect(B, Sc, Sd);
+    Value *Sa1;
     if (I.getType()->isAggregateType()) {
       // To avoid "sign extending" i1 to an arbitrary aggregate type, we just do
       // an extra "select". This results in much more compact IR.
       // Sa = select Sb, poisoned, (select b, Sc, Sd)
-      S = IRB.CreateSelect(getShadow(I.getCondition()),
-                           getPoisonedShadow(getShadowTy(I.getType())), S,
-                           "_msprop_select_agg");
+      Sa1 = getPoisonedShadow(getShadowTy(I.getType()));
     } else {
-      // Sa = (sext Sb) | (select b, Sc, Sd)
-      S = IRB.CreateOr(S, CreateShadowCast(IRB, getShadow(I.getCondition()),
-                                           S->getType(), true),
-                       "_msprop_select");
+      // Sa = select Sb, [ (c^d) | Sc | Sd ], [ b ? Sc : Sd ]
+      // If Sb (condition is poisoned), look for bits in c and d that are equal
+      // and both unpoisoned.
+      // If !Sb (condition is unpoisoned), simply pick one of Sc and Sd.
+
+      // Cast arguments to shadow-compatible type.
+      C = CreateAppToShadowCast(IRB, C);
+      D = CreateAppToShadowCast(IRB, D);
+
+      // Result shadow if condition shadow is 1.
+      Sa1 = IRB.CreateOr(IRB.CreateXor(C, D), IRB.CreateOr(Sc, Sd));
     }
-    setShadow(&I, S);
+    Value *Sa = IRB.CreateSelect(Sb, Sa1, Sa0, "_msprop_select");
+    setShadow(&I, Sa);
     if (MS.TrackOrigins) {
       // Origins are always i32, so any vector conditions must be flattened.
       // FIXME: consider tracking vector origins for app vectors?
-      Value *Cond = I.getCondition();
-      Value *CondShadow = getShadow(Cond);
-      if (Cond->getType()->isVectorTy()) {
-        Type *FlatTy = getShadowTyNoVec(Cond->getType());
-        Cond = IRB.CreateICmpNE(IRB.CreateBitCast(Cond, FlatTy),
+      if (B->getType()->isVectorTy()) {
+        Type *FlatTy = getShadowTyNoVec(B->getType());
+        B = IRB.CreateICmpNE(IRB.CreateBitCast(B, FlatTy),
                                 ConstantInt::getNullValue(FlatTy));
-        CondShadow = IRB.CreateICmpNE(IRB.CreateBitCast(CondShadow, FlatTy),
+        Sb = IRB.CreateICmpNE(IRB.CreateBitCast(Sb, FlatTy),
                                       ConstantInt::getNullValue(FlatTy));
       }
       // a = select b, c, d
       // Oa = Sb ? Ob : (b ? Oc : Od)
       setOrigin(&I, IRB.CreateSelect(
-                        CondShadow, getOrigin(I.getCondition()),
-                        IRB.CreateSelect(Cond, getOrigin(I.getTrueValue()),
-                                         getOrigin(I.getFalseValue()))));
+                        Sb, getOrigin(I.getCondition()),
+                        IRB.CreateSelect(B, getOrigin(C), getOrigin(D))));
     }
   }
 

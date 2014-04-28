@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 %s -triple=thumbv7-apple-ios3.0 -fno-use-cxa-atexit -target-abi apcs-gnu -emit-llvm -o - -fexceptions | FileCheck %s
+// RUN: %clang_cc1 %s -triple=thumbv7-apple-ios6.0 -fno-use-cxa-atexit -target-abi apcs-gnu -emit-llvm -o - -fexceptions | FileCheck %s
 
 // CHECK: @_ZZN5test74testEvE1x = internal global i32 0, align 4
 // CHECK: @_ZGVZN5test74testEvE1x = internal global i32 0
@@ -292,9 +292,9 @@ namespace test7 {
 
   // CHECK-LABEL: define void @_ZN5test74testEv()
   void test() {
-    // CHECK:      [[T0:%.*]] = load i32* @_ZGVZN5test74testEvE1x
-    // CHECK-NEXT: [[T1:%.*]] = and i32 [[T0]], 1
-    // CHECK-NEXT: [[T2:%.*]] = icmp eq i32 [[T1]], 0
+    // CHECK:      [[T0:%.*]] = load atomic i8* bitcast (i32* @_ZGVZN5test74testEvE1x to i8*) acquire, align 1
+    // CHECK-NEXT: [[T1:%.*]] = and i8 [[T0]], 1
+    // CHECK-NEXT: [[T2:%.*]] = icmp eq i8 [[T1]], 0
     // CHECK-NEXT: br i1 [[T2]]
     //   -> fallthrough, end
     // CHECK:      [[T3:%.*]] = call i32 @__cxa_guard_acquire(i32* @_ZGVZN5test74testEvE1x)
@@ -327,9 +327,9 @@ namespace test8 {
 
   // CHECK-LABEL: define void @_ZN5test84testEv()
   void test() {
-    // CHECK:      [[T0:%.*]] = load i32* @_ZGVZN5test84testEvE1x
-    // CHECK-NEXT: [[T1:%.*]] = and i32 [[T0]], 1
-    // CHECK-NEXT: [[T2:%.*]] = icmp eq i32 [[T1]], 0
+    // CHECK:      [[T0:%.*]] = load atomic i8* bitcast (i32* @_ZGVZN5test84testEvE1x to i8*) acquire, align 1
+    // CHECK-NEXT: [[T1:%.*]] = and i8 [[T0]], 1
+    // CHECK-NEXT: [[T2:%.*]] = icmp eq i8 [[T1]], 0
     // CHECK-NEXT: br i1 [[T2]]
     //   -> fallthrough, end
     // CHECK:      [[T3:%.*]] = call i32 @__cxa_guard_acquire(i32* @_ZGVZN5test84testEvE1x)

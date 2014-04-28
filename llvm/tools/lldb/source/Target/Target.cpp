@@ -94,12 +94,12 @@ Target::Target(Debugger &debugger, const ArchSpec &target_arch, const lldb::Plat
     SetEventName (eBroadcastBitModulesUnloaded, "modules-unloaded");
     SetEventName (eBroadcastBitWatchpointChanged, "watchpoint-changed");
     SetEventName (eBroadcastBitSymbolsLoaded, "symbols-loaded");
-    
+
     CheckInWithManager();
 
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_OBJECT));
     if (log)
-        log->Printf ("%p Target::Target()", this);
+        log->Printf ("%p Target::Target()", static_cast<void*>(this));
     if (m_arch.IsValid())
     {
         LogIfAnyCategoriesSet(LIBLLDB_LOG_TARGET, "Target::Target created with architecture %s (%s)", m_arch.GetArchitectureName(), m_arch.GetTriple().getTriple().c_str());
@@ -113,7 +113,7 @@ Target::~Target()
 {
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_OBJECT));
     if (log)
-        log->Printf ("%p Target::~Target()", this);
+        log->Printf ("%p Target::~Target()", static_cast<void*>(this));
     DeleteCurrentProcess ();
 }
 
@@ -1142,32 +1142,39 @@ void
 Target::ModuleAdded (const ModuleList& module_list, const ModuleSP &module_sp)
 {
     // A module is being added to this target for the first time
-    ModuleList my_module_list;
-    my_module_list.Append(module_sp);
-    LoadScriptingResourceForModule(module_sp, this);
-    ModulesDidLoad (my_module_list);
+    if (m_valid)
+    {
+        ModuleList my_module_list;
+        my_module_list.Append(module_sp);
+        LoadScriptingResourceForModule(module_sp, this);
+        ModulesDidLoad (my_module_list);
+    }
 }
 
 void
 Target::ModuleRemoved (const ModuleList& module_list, const ModuleSP &module_sp)
 {
     // A module is being added to this target for the first time
-    ModuleList my_module_list;
-    my_module_list.Append(module_sp);
-    ModulesDidUnload (my_module_list, false);
+    if (m_valid)
+    {
+        ModuleList my_module_list;
+        my_module_list.Append(module_sp);
+        ModulesDidUnload (my_module_list, false);
+    }
 }
 
 void
 Target::ModuleUpdated (const ModuleList& module_list, const ModuleSP &old_module_sp, const ModuleSP &new_module_sp)
 {
     // A module is replacing an already added module
-    m_breakpoint_list.UpdateBreakpointsWhenModuleIsReplaced(old_module_sp, new_module_sp);
+    if (m_valid)
+        m_breakpoint_list.UpdateBreakpointsWhenModuleIsReplaced(old_module_sp, new_module_sp);
 }
 
 void
 Target::ModulesDidLoad (ModuleList &module_list)
 {
-    if (module_list.GetSize())
+    if (m_valid && module_list.GetSize())
     {
         m_breakpoint_list.UpdateBreakpoints (module_list, true, false);
         if (m_process_sp)
@@ -1182,7 +1189,7 @@ Target::ModulesDidLoad (ModuleList &module_list)
 void
 Target::SymbolsDidLoad (ModuleList &module_list)
 {
-    if (module_list.GetSize())
+    if (m_valid && module_list.GetSize())
     {
         if (m_process_sp)
         {
@@ -1202,7 +1209,7 @@ Target::SymbolsDidLoad (ModuleList &module_list)
 void
 Target::ModulesDidUnload (ModuleList &module_list, bool delete_locations)
 {
-    if (module_list.GetSize())
+    if (m_valid && module_list.GetSize())
     {
         m_breakpoint_list.UpdateBreakpoints (module_list, false, delete_locations);
         // TODO: make event data that packages up the module_list
@@ -1694,6 +1701,8 @@ Target::GetSharedModule (const ModuleSpec &module_spec, Error *error_ptr)
                 else
                     m_images.Append(module_sp);
             }
+            else
+                module_sp.reset();
         }
     }
     if (error_ptr)

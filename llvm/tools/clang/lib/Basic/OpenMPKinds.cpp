@@ -79,9 +79,12 @@ unsigned clang::getOpenMPSimpleClauseType(OpenMPClauseKind Kind,
   case OMPC_threadprivate:
   case OMPC_if:
   case OMPC_num_threads:
+  case OMPC_safelen:
   case OMPC_private:
   case OMPC_firstprivate:
   case OMPC_shared:
+  case OMPC_linear:
+  case OMPC_copyin:
   case NUM_OPENMP_CLAUSES:
     break;
   }
@@ -104,9 +107,12 @@ const char *clang::getOpenMPSimpleClauseTypeName(OpenMPClauseKind Kind,
   case OMPC_threadprivate:
   case OMPC_if:
   case OMPC_num_threads:
+  case OMPC_safelen:
   case OMPC_private:
   case OMPC_firstprivate:
   case OMPC_shared:
+  case OMPC_linear:
+  case OMPC_copyin:
   case NUM_OPENMP_CLAUSES:
     break;
   }

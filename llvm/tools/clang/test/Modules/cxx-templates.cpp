@@ -29,8 +29,8 @@ void g() {
   N::f<double>(1.0);
   N::f<int>();
   N::f(); // expected-error {{no matching function}}
-  // expected-note@Inputs/cxx-templates-b.h:6 {{couldn't infer template argument}}
-  // expected-note@Inputs/cxx-templates-b.h:7 {{requires single argument 't'}}
+  // expected-note@Inputs/cxx-templates-a.h:6 {{couldn't infer template argument}}
+  // expected-note@Inputs/cxx-templates-a.h:7 {{requires 1 argument}}
 
   template_param_kinds_1<0>(); // ok, from cxx-templates-a.h
   template_param_kinds_1<int>(); // ok, from cxx-templates-b.h
@@ -117,6 +117,15 @@ void testImplicitSpecialMembers(SomeTemplate<char[1]> &a,
   c = d;
 }
 
+bool testFriendInClassTemplate(Std::WithFriend<int> wfi) {
+  return wfi != wfi;
+}
+
+namespace Std {
+  void g(); // expected-error {{functions that differ only in their return type cannot be overloaded}}
+  // expected-note@cxx-templates-common.h:21 {{previous}}
+}
+
 // CHECK-GLOBAL:      DeclarationName 'f'
 // CHECK-GLOBAL-NEXT: |-FunctionTemplate {{.*}} 'f'
 // CHECK-GLOBAL-NEXT: `-FunctionTemplate {{.*}} 'f'
@@ -125,7 +134,7 @@ void testImplicitSpecialMembers(SomeTemplate<char[1]> &a,
 // CHECK-NAMESPACE-N-NEXT: |-FunctionTemplate {{.*}} 'f'
 // CHECK-NAMESPACE-N-NEXT: `-FunctionTemplate {{.*}} 'f'
 
-// CHECK-DUMP:      ClassTemplateDecl {{.*}} <{{.*[/\\]}}cxx-templates-common.h:1:1, {{.*}}> in cxx_templates_common SomeTemplate
+// CHECK-DUMP:      ClassTemplateDecl {{.*}} <{{.*[/\\]}}cxx-templates-common.h:1:1, {{.*}}>  col:{{.*}} in cxx_templates_common SomeTemplate
 // CHECK-DUMP:        ClassTemplateSpecializationDecl {{.*}} prev [[CHAR2:[^ ]*]] {{.*}} SomeTemplate
 // CHECK-DUMP-NEXT:     TemplateArgument type 'char [2]'
 // CHECK-DUMP:        ClassTemplateSpecializationDecl [[CHAR2]] {{.*}} SomeTemplate definition

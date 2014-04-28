@@ -24,16 +24,16 @@
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
 
+using namespace llvm;
+
 #define GET_REGINFO_TARGET_DESC
 #include "AArch64GenRegisterInfo.inc"
-
-using namespace llvm;
 
 AArch64RegisterInfo::AArch64RegisterInfo()
   : AArch64GenRegisterInfo(AArch64::X30) {
 }
 
-const uint16_t *
+const MCPhysReg *
 AArch64RegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
   return CSR_PCS_SaveList;
 }

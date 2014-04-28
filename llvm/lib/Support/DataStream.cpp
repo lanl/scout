@@ -14,7 +14,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "Data-stream"
 #include "llvm/Support/DataStream.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/FileSystem.h"
@@ -29,6 +28,8 @@
 #include <io.h>
 #endif
 using namespace llvm;
+
+#define DEBUG_TYPE "Data-stream"
 
 // Interface goals:
 // * StreamableMemoryObject doesn't care about complexities like using
@@ -83,7 +84,7 @@ DataStreamer *getDataFileStreamer(const std::string &Filename,
   if (error_code e = s->OpenFile(Filename)) {
     *StrError = std::string("Could not open ") + Filename + ": " +
         e.message() + "\n";
-    return NULL;
+    return nullptr;
   }
   return s;
 }

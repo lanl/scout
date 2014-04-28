@@ -86,6 +86,30 @@ R600TargetLowering::R600TargetLowering(TargetMachine &TM) :
   setOperationAction(ISD::SELECT, MVT::v4i32, Expand);
   setOperationAction(ISD::SELECT, MVT::v4f32, Expand);
 
+  // Expand sign extension of vectors
+  if (!Subtarget->hasBFE())
+    setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i1, Expand);
+
+  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::v2i1, Expand);
+  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::v4i1, Expand);
+
+  if (!Subtarget->hasBFE())
+    setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i8, Expand);
+  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::v2i8, Expand);
+  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::v4i8, Expand);
+
+  if (!Subtarget->hasBFE())
+    setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i16, Expand);
+  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::v2i16, Expand);
+  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::v4i16, Expand);
+
+  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i32, Legal);
+  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::v2i32, Expand);
+  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::v4i32, Expand);
+
+  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::Other, Expand);
+
+
   // Legalize loads and stores to the private address space.
   setOperationAction(ISD::LOAD, MVT::i32, Custom);
   setOperationAction(ISD::LOAD, MVT::v2i32, Custom);
@@ -762,7 +786,9 @@ void R600TargetLowering::ReplaceNodeResults(SDNode *N,
                                             SmallVectorImpl<SDValue> &Results,
                                             SelectionDAG &DAG) const {
   switch (N->getOpcode()) {
-  default: return;
+  default:
+    AMDGPUTargetLowering::ReplaceNodeResults(N, Results, DAG);
+    return;
   case ISD::FP_TO_UINT: Results.push_back(LowerFPTOUINT(N->getOperand(0), DAG));
     return;
   case ISD::LOAD: {
@@ -1210,9 +1236,10 @@ SDValue R600TargetLowering::LowerLOAD(SDValue Op, SelectionDAG &DAG) const
 
   SDValue Ret = AMDGPUTargetLowering::LowerLOAD(Op, DAG);
   if (Ret.getNode()) {
-    SDValue Ops[2];
-    Ops[0] = Ret;
-    Ops[1] = Chain;
+    SDValue Ops[2] = {
+      Ret,
+      Chain
+    };
     return DAG.getMergeValues(Ops, 2, DL);
   }
 
@@ -1230,8 +1257,8 @@ SDValue R600TargetLowering::LowerLOAD(SDValue Op, SelectionDAG &DAG) const
       ((LoadNode->getExtensionType() == ISD::NON_EXTLOAD) ||
        (LoadNode->getExtensionType() == ISD::ZEXTLOAD))) {
     SDValue Result;
-    if (isa<ConstantExpr>(LoadNode->getSrcValue()) ||
-        isa<Constant>(LoadNode->getSrcValue()) ||
+    if (isa<ConstantExpr>(LoadNode->getMemOperand()->getValue()) ||
+        isa<Constant>(LoadNode->getMemOperand()->getValue()) ||
         isa<ConstantSDNode>(Ptr)) {
       SDValue Slots[4];
       for (unsigned i = 0; i < 4; i++) {
@@ -1266,8 +1293,8 @@ SDValue R600TargetLowering::LowerLOAD(SDValue Op, SelectionDAG &DAG) const
     }
 
     SDValue MergedValues[2] = {
-        Result,
-        Chain
+      Result,
+      Chain
     };
     return DAG.getMergeValues(MergedValues, 2, DL);
   }
@@ -1338,9 +1365,10 @@ SDValue R600TargetLowering::LowerLOAD(SDValue Op, SelectionDAG &DAG) const
                               Op.getOperand(2));
   }
 
-  SDValue Ops[2];
-  Ops[0] = LoweredLoad;
-  Ops[1] = Chain;
+  SDValue Ops[2] = {
+    LoweredLoad,
+    Chain
+  };
 
   return DAG.getMergeValues(Ops, 2, DL);
 }
@@ -1363,8 +1391,7 @@ SDValue R600TargetLowering::LowerFormalArguments(
 
   SmallVector<ISD::InputArg, 8> LocalIns;
 
-  getOriginalFunctionArgs(DAG, DAG.getMachineFunction().getFunction(), Ins,
-                          LocalIns);
+  getOriginalFunctionArgs(DAG, MF.getFunction(), Ins, LocalIns);
 
   AnalyzeFormalArguments(CCInfo, LocalIns);
 
@@ -1390,32 +1417,38 @@ SDValue R600TargetLowering::LowerFormalArguments(
 
     // The first 36 bytes of the input buffer contains information about
     // thread group and global sizes.
-    SDValue Arg = DAG.getExtLoad(ISD::SEXTLOAD, DL, VT, Chain,
+
+    // FIXME: This should really check the extload type, but the handling of
+    // extload vecto parameters seems to be broken.
+    //ISD::LoadExtType Ext = Ins[i].Flags.isSExt() ? ISD::SEXTLOAD : ISD::ZEXTLOAD;
+    ISD::LoadExtType Ext = ISD::SEXTLOAD;
+    SDValue Arg = DAG.getExtLoad(Ext, DL, VT, Chain,
                                  DAG.getConstant(36 + VA.getLocMemOffset(), MVT::i32),
                                  MachinePointerInfo(UndefValue::get(PtrTy)),
                                  MemVT, false, false, 4);
-    // 4 is the preferred alignment for
-    // the CONSTANT memory space.
+
+    // 4 is the preferred alignment for the CONSTANT memory space.
     InVals.push_back(Arg);
   }
   return Chain;
 }
 
 EVT R600TargetLowering::getSetCCResultType(LLVMContext &, EVT VT) const {
-   if (!VT.isVector()) return MVT::i32;
+   if (!VT.isVector())
+     return MVT::i32;
    return VT.changeVectorElementTypeToInteger();
 }
 
-static SDValue
-CompactSwizzlableVector(SelectionDAG &DAG, SDValue VectorEntry,
-                        DenseMap<unsigned, unsigned> &RemapSwizzle) {
+static SDValue CompactSwizzlableVector(
+  SelectionDAG &DAG, SDValue VectorEntry,
+  DenseMap<unsigned, unsigned> &RemapSwizzle) {
   assert(VectorEntry.getOpcode() == ISD::BUILD_VECTOR);
   assert(RemapSwizzle.empty());
   SDValue NewBldVec[4] = {
-      VectorEntry.getOperand(0),
-      VectorEntry.getOperand(1),
-      VectorEntry.getOperand(2),
-      VectorEntry.getOperand(3)
+    VectorEntry.getOperand(0),
+    VectorEntry.getOperand(1),
+    VectorEntry.getOperand(2),
+    VectorEntry.getOperand(3)
   };
 
   for (unsigned i = 0; i < 4; i++) {
@@ -1446,7 +1479,7 @@ CompactSwizzlableVector(SelectionDAG &DAG, SDValue VectorEntry,
   }
 
   return DAG.getNode(ISD::BUILD_VECTOR, SDLoc(VectorEntry),
-      VectorEntry.getValueType(), NewBldVec, 4);
+                     VectorEntry.getValueType(), NewBldVec, 4);
 }
 
 static SDValue ReorganizeVector(SelectionDAG &DAG, SDValue VectorEntry,
@@ -1522,6 +1555,7 @@ SDValue R600TargetLowering::PerformDAGCombine(SDNode *N,
   SelectionDAG &DAG = DCI.DAG;
 
   switch (N->getOpcode()) {
+  default: return AMDGPUTargetLowering::PerformDAGCombine(N, DCI);
   // (f32 fp_round (f64 uint_to_fp a)) -> (f32 uint_to_fp a)
   case ISD::FP_ROUND: {
       SDValue Arg = N->getOperand(0);
@@ -1612,7 +1646,7 @@ SDValue R600TargetLowering::PerformDAGCombine(SDNode *N,
 
     // Return the new vector
     return DAG.getNode(ISD::BUILD_VECTOR, dl,
-                       VT, &Ops[0], Ops.size());
+                       VT, Ops.data(), Ops.size());
   }
 
   // Extract_vec (Build_vector) generated by custom lowering

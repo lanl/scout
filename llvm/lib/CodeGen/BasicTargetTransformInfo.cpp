@@ -15,12 +15,13 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "basictti"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Target/TargetLowering.h"
 #include <utility>
 using namespace llvm;
+
+#define DEBUG_TYPE "basictti"
 
 namespace {
 
@@ -34,7 +35,7 @@ class BasicTTI final : public ImmutablePass, public TargetTransformInfo {
   const TargetLoweringBase *getTLI() const { return TM->getTargetLowering(); }
 
 public:
-  BasicTTI() : ImmutablePass(ID), TM(0) {
+  BasicTTI() : ImmutablePass(ID), TM(nullptr) {
     llvm_unreachable("This pass cannot be directly constructed");
   }
 
@@ -297,7 +298,8 @@ unsigned BasicTTI::getCastInstrCost(unsigned Opcode, Type *Dst,
     return 0;
 
   // If the cast is marked as legal (or promote) then assume low cost.
-  if (TLI->isOperationLegalOrPromote(ISD, DstLT.second))
+  if (SrcLT.first == DstLT.first &&
+      TLI->isOperationLegalOrPromote(ISD, DstLT.second))
     return 1;
 
   // Handle scalar conversions.
@@ -415,8 +417,32 @@ unsigned BasicTTI::getMemoryOpCost(unsigned Opcode, Type *Src,
   assert(!Src->isVoidTy() && "Invalid type");
   std::pair<unsigned, MVT> LT = getTLI()->getTypeLegalizationCost(Src);
 
-  // Assume that all loads of legal types cost 1.
-  return LT.first;
+  // Assuming that all loads of legal types cost 1.
+  unsigned Cost = LT.first;
+
+  if (Src->isVectorTy() &&
+      Src->getPrimitiveSizeInBits() < LT.second.getSizeInBits()) {
+    // This is a vector load that legalizes to a larger type than the vector
+    // itself. Unless the corresponding extending load or truncating store is
+    // legal, then this will scalarize.
+    TargetLowering::LegalizeAction LA = TargetLowering::Expand;
+    EVT MemVT = getTLI()->getValueType(Src, true);
+    if (MemVT.isSimple() && MemVT != MVT::Other) {
+      if (Opcode == Instruction::Store)
+        LA = getTLI()->getTruncStoreAction(LT.second, MemVT.getSimpleVT());
+      else
+        LA = getTLI()->getLoadExtAction(ISD::EXTLOAD, MemVT.getSimpleVT());
+    }
+
+    if (LA != TargetLowering::Legal && LA != TargetLowering::Custom) {
+      // This is a vector load/store for some illegal type that is scalarized.
+      // We must account for the cost of building or decomposing the vector.
+      Cost += getScalarizationOverhead(Src, Opcode != Instruction::Store,
+                                            Opcode == Instruction::Store);
+    }
+  }
+
+  return Cost;
 }
 
 unsigned BasicTTI::getIntrinsicInstrCost(Intrinsic::ID IID, Type *RetTy,

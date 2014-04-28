@@ -12,7 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "sink"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/AliasAnalysis.h"
@@ -24,6 +23,8 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
+
+#define DEBUG_TYPE "sink"
 
 STATISTIC(NumSunk, "Number of instructions sunk");
 STATISTIC(NumSinkIter, "Number of sinking iterations");
@@ -216,6 +217,13 @@ bool Sinking::IsAcceptableTarget(Instruction *Inst,
 /// instruction out of its current block into a successor.
 bool Sinking::SinkInstruction(Instruction *Inst,
                               SmallPtrSet<Instruction *, 8> &Stores) {
+
+  // Don't sink static alloca instructions.  CodeGen assumes allocas outside the
+  // entry block are dynamically sized stack objects.
+  if (AllocaInst *AI = dyn_cast<AllocaInst>(Inst))
+    if (AI->isStaticAlloca())
+      return false;
+
   // Check if it's safe to move the instruction.
   if (!isSafeToMove(Inst, AA, Stores))
     return false;

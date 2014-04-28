@@ -76,7 +76,9 @@ if( NOT LLVM_INCLUDE_TOOLS STREQUAL "bootstrap-only" )
 
 # +===== Scout =========================================================+
 #  Temporarily disable building of LLDB as we are developing it.
-#  add_llvm_external_project(lldb)
+  if((NOT APPLE) AND (DEFINED ENV{SC_BUILD_LLDB}))
+    add_llvm_external_project(lldb)
+  endif()
 # +=====================================================================+
 
   # Automatically add remaining sub-directories containing a 'CMakeLists.txt'

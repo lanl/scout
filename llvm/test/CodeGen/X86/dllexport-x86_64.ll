@@ -40,18 +40,18 @@ define weak_odr dllexport void @weak1() {
 ; CHECK: .globl Var1
 @Var1 = dllexport global i32 1, align 4
 
-; CHECK: .rdata,"r"
+; CHECK: .rdata,"rd"
 ; CHECK: .globl Var2
 @Var2 = dllexport unnamed_addr constant i32 1
 
 ; CHECK: .comm Var3
 @Var3 = common dllexport global i32 0, align 4
 
-; CHECK: .section .data,"w",discard,WeakVar1
+; CHECK: .section .data,"wd",discard,WeakVar1
 ; CHECK: .globl WeakVar1
 @WeakVar1 = weak_odr dllexport global i32 1, align 4
 
-; CHECK: .section .rdata,"r",discard,WeakVar2
+; CHECK: .section .rdata,"rd",discard,WeakVar2
 ; CHECK: .globl WeakVar2
 @WeakVar2 = weak_odr dllexport unnamed_addr constant i32 1
 
@@ -65,7 +65,7 @@ define weak_odr dllexport void @weak1() {
 @alias2 = dllexport alias void()* @f1
 
 ; CHECK: .globl alias3
-; CHECK: alias3 = alias
+; CHECK: alias3 = notExported
 @alias3 = dllexport alias void()* @alias
 
 ; CHECK: .weak weak_alias

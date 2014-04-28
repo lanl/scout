@@ -345,7 +345,7 @@ FunctionType *DataFlowSanitizer::getCustomFunctionType(FunctionType *T) {
 bool DataFlowSanitizer::doInitialization(Module &M) {
   DataLayoutPass *DLP = getAnalysisIfAvailable<DataLayoutPass>();
   if (!DLP)
-    return false;
+    report_fatal_error("data layout missing");
   DL = &DLP->getDataLayout();
 
   Mod = &M;
@@ -554,8 +554,7 @@ bool DataFlowSanitizer::runOnModule(Module &M) {
     ++i;
     // Don't stop on weak.  We assume people aren't playing games with the
     // instrumentedness of overridden weak aliases.
-    if (Function *F = dyn_cast<Function>(
-            GA->resolveAliasedGlobal(/*stopOnWeak=*/false))) {
+    if (Function *F = dyn_cast<Function>(GA->getAliasedGlobal())) {
       bool GAInst = isInstrumented(GA), FInst = isInstrumented(F);
       if (GAInst && FInst) {
         addGlobalNamePrefix(GA);
@@ -681,9 +680,8 @@ bool DataFlowSanitizer::runOnModule(Module &M) {
 
     // DFSanVisitor may create new basic blocks, which confuses df_iterator.
     // Build a copy of the list before iterating over it.
-    llvm::SmallVector<BasicBlock *, 4> BBList;
-    std::copy(df_begin(&(*i)->getEntryBlock()), df_end(&(*i)->getEntryBlock()),
-              std::back_inserter(BBList));
+    llvm::SmallVector<BasicBlock *, 4> BBList(
+        depth_first(&(*i)->getEntryBlock()));
 
     for (llvm::SmallVector<BasicBlock *, 4>::iterator i = BBList.begin(),
                                                       e = BBList.end();
@@ -850,7 +848,6 @@ Value *DataFlowSanitizer::combineShadows(Value *V1, Value *V2,
   PHINode *Phi = PHINode::Create(ShadowTy, 2, "", Tail->begin());
   Phi->addIncoming(Call, Call->getParent());
   Phi->addIncoming(V1, Head);
-  Pos = Phi;
   return Phi;
 }
 

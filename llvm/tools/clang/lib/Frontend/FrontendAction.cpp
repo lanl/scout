@@ -211,30 +211,13 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
     return true;
   }
 
-  if (!CI.getHeaderSearchOpts().VFSOverlayFiles.empty()) {
-    IntrusiveRefCntPtr<vfs::OverlayFileSystem>
-        Overlay(new vfs::OverlayFileSystem(vfs::getRealFileSystem()));
-    // earlier vfs files are on the bottom
-    const std::vector<std::string> &Files =
-        CI.getHeaderSearchOpts().VFSOverlayFiles;
-    for (std::vector<std::string>::const_iterator I = Files.begin(),
-                                                  E = Files.end();
-         I != E; ++I) {
-      std::unique_ptr<llvm::MemoryBuffer> Buffer;
-      if (llvm::errc::success != llvm::MemoryBuffer::getFile(*I, Buffer)) {
-        CI.getDiagnostics().Report(diag::err_missing_vfs_overlay_file) << *I;
-        goto failure;
-      }
-
-      IntrusiveRefCntPtr<vfs::FileSystem> FS =
-          vfs::getVFSFromYAML(Buffer.release(), /*DiagHandler*/ 0);
-      if (!FS.getPtr()) {
-        CI.getDiagnostics().Report(diag::err_invalid_vfs_overlay) << *I;
-        goto failure;
-      }
-      Overlay->pushOverlay(FS);
-    }
-    CI.setVirtualFileSystem(Overlay);
+  if (!CI.hasVirtualFileSystem()) {
+    if (IntrusiveRefCntPtr<vfs::FileSystem> VFS =
+          createVFSFromCompilerInvocation(CI.getInvocation(),
+                                          CI.getDiagnostics()))
+      CI.setVirtualFileSystem(VFS);
+    else
+      goto failure;
   }
 
   // Set up the file and source managers, if needed.
@@ -254,6 +237,10 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
 
     // Initialize the action.
     if (!BeginSourceFileAction(CI, InputFile))
+      goto failure;
+
+    // Initialize the main file entry.
+    if (!CI.InitializeSourceManager(CurrentInput))
       goto failure;
 
     return true;
@@ -300,6 +287,11 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
 
   // Initialize the action.
   if (!BeginSourceFileAction(CI, InputFile))
+    goto failure;
+
+  // Initialize the main file entry. It is important that this occurs after
+  // BeginSourceFileAction, which may change CurrentInput during module builds.
+  if (!CI.InitializeSourceManager(CurrentInput))
     goto failure;
 
   // Create the AST context and consumer unless this is a preprocessor only
@@ -389,13 +381,6 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
 bool FrontendAction::Execute() {
   CompilerInstance &CI = getCompilerInstance();
 
-  // Initialize the main file entry. This needs to be delayed until after PCH
-  // has loaded.
-  if (!isCurrentFileAST()) {
-    if (!CI.InitializeSourceManager(getCurrentInput()))
-      return false;
-  }
-
   if (CI.hasFrontendTimer()) {
     llvm::TimeRegion Timer(CI.getFrontendTimer());
     ExecuteAction();
@@ -423,16 +408,16 @@ void FrontendAction::EndSourceFile() {
   // Finalize the action.
   EndSourceFileAction();
 
-  // Release the consumer and the AST, in that order since the consumer may
-  // perform actions in its destructor which require the context.
+  // Sema references the ast consumer, so reset sema first.
   //
   // FIXME: There is more per-file stuff we could just drop here?
-  if (CI.getFrontendOpts().DisableFree) {
-    BuryPointer(CI.takeASTConsumer());
+  bool DisableFree = CI.getFrontendOpts().DisableFree;
+  if (DisableFree) {
     if (!isCurrentFileAST()) {
-      BuryPointer(CI.takeSema());
+      CI.resetAndLeakSema();
       CI.resetAndLeakASTContext();
     }
+    BuryPointer(CI.takeASTConsumer());
   } else {
     if (!isCurrentFileAST()) {
       CI.setSema(0);
@@ -458,8 +443,9 @@ void FrontendAction::EndSourceFile() {
   // FrontendAction.
   CI.clearOutputFiles(/*EraseFiles=*/shouldEraseOutputFiles());
 
+  // FIXME: Only do this if DisableFree is set.
   if (isCurrentFileAST()) {
-    CI.takeSema();
+    CI.resetAndLeakSema();
     CI.resetAndLeakASTContext();
     CI.resetAndLeakPreprocessor();
     CI.resetAndLeakSourceManager();

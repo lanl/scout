@@ -64,15 +64,13 @@ CGScoutRuntime::~CGScoutRuntime() {}
 llvm::Function *CGScoutRuntime::ModuleInitFunction() {
 
   std::string funcName;
-#if 0 //CUDA/OPENCL disabled for now
   if(CGM.getLangOpts().ScoutNvidiaGPU){
-   funcName = "__scrt_init_cuda";
-  } else if(CGM.getLangOpts().ScoutAMDGPU){
+   funcName = "__scrt_cuda_init";
+  } /*else if(CGM.getLangOpts().ScoutAMDGPU){
    funcName = "__scrt_init_opengl";
-  } else {
-#endif
+  }*/ else {
    funcName = "__scrt_init_cpu";
-  //}
+  }
 
   llvm::Function *scrtInit = CGM.getModule().getFunction(funcName);
   if(!scrtInit) {
@@ -90,7 +88,7 @@ llvm::Function *CGScoutRuntime::ModuleInitFunction() {
   return scrtInit;
 }
 
-// build a function call to a scout runtime function t
+// build a function call to a scout runtime function w/ no arguments
 // SC_TODO: could we use CreateRuntimeFunction? or GetOrCreateLLVMFunction?
 llvm::Function *CGScoutRuntime::ScoutRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params ) {
 
@@ -120,6 +118,22 @@ llvm::Function *CGScoutRuntime::ScoutRuntimeFunction(std::string funcName, std::
         llvm::Function::ExternalLinkage,
         funcName,
         &CGM.getModule());
+  }
+  return Func;
+}
+
+// function call to runtime malloc
+llvm::Function *CGScoutRuntime::MemAllocFunction() {
+  std::string funcName = "__scrt_malloc";
+  llvm::Function *Func = CGM.getModule().getFunction(funcName);
+
+  if(!Func) {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(CGM.Int8PtrTy,
+        CGM.Int64Ty, /*isVarArg=*/false);
+    Func = llvm::Function::Create(FTy,
+       llvm::GlobalValue::ExternalLinkage,
+       funcName,
+       &CGM.getModule());
   }
   return Func;
 }

@@ -12,7 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "reginfo"
 #include "PPCRegisterInfo.h"
 #include "PPC.h"
 #include "PPCFrameLowering.h"
@@ -42,10 +41,12 @@
 #include "llvm/Target/TargetOptions.h"
 #include <cstdlib>
 
+using namespace llvm;
+
+#define DEBUG_TYPE "reginfo"
+
 #define GET_REGINFO_TARGET_DESC
 #include "PPCGenRegisterInfo.inc"
-
-using namespace llvm;
 
 static cl::opt<bool>
 EnableBasePointer("ppc-use-base-pointer", cl::Hidden, cl::init(true),
@@ -96,7 +97,7 @@ PPCRegisterInfo::getPointerRegClass(const MachineFunction &MF, unsigned Kind)
   return &PPC::GPRCRegClass;
 }
 
-const uint16_t*
+const MCPhysReg*
 PPCRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
   if (Subtarget.isDarwinABI())
     return Subtarget.isPPC64() ? (Subtarget.hasAltivec() ?
@@ -229,14 +230,31 @@ PPCRegisterInfo::getRegPressureLimit(const TargetRegisterClass *RC,
   case PPC::F8RCRegClassID:
   case PPC::F4RCRegClassID:
   case PPC::VRRCRegClassID:
+  case PPC::VFRCRegClassID:
   case PPC::VSLRCRegClassID:
   case PPC::VSHRCRegClassID:
     return 32 - DefaultSafety;
   case PPC::VSRCRegClassID:
+  case PPC::VSFRCRegClassID:
     return 64 - DefaultSafety;
   case PPC::CRRCRegClassID:
     return 8 - DefaultSafety;
   }
+}
+
+const TargetRegisterClass*
+PPCRegisterInfo::getLargestLegalSuperClass(const TargetRegisterClass *RC)const {
+  if (Subtarget.hasVSX()) {
+    // With VSX, we can inflate various sub-register classes to the full VSX
+    // register set.
+
+    if (RC == &PPC::F8RCRegClass)
+      return &PPC::VSFRCRegClass;
+    else if (RC == &PPC::VRRCRegClass)
+      return &PPC::VSRCRegClass;
+  }
+
+  return TargetRegisterInfo::getLargestLegalSuperClass(RC);
 }
 
 //===----------------------------------------------------------------------===//
@@ -942,11 +960,8 @@ materializeFrameBaseRegister(MachineBasicBlock *MBB,
     .addFrameIndex(FrameIdx).addImm(Offset);
 }
 
-void
-PPCRegisterInfo::resolveFrameIndex(MachineBasicBlock::iterator I,
-                                   unsigned BaseReg, int64_t Offset) const {
-  MachineInstr &MI = *I;
-
+void PPCRegisterInfo::resolveFrameIndex(MachineInstr &MI, unsigned BaseReg,
+                                        int64_t Offset) const {
   unsigned FIOperandNum = 0;
   while (!MI.getOperand(FIOperandNum).isFI()) {
     ++FIOperandNum;

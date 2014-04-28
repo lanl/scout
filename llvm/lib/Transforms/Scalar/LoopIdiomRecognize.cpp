@@ -41,7 +41,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "loop-idiom"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/AliasAnalysis.h"
@@ -61,6 +60,8 @@
 #include "llvm/Transforms/Utils/Local.h"
 using namespace llvm;
 
+#define DEBUG_TYPE "loop-idiom"
+
 STATISTIC(NumMemSet, "Number of memset's formed from loop stores");
 STATISTIC(NumMemCpy, "Number of memcpy's formed from loop load+stores");
 
@@ -78,9 +79,6 @@ namespace {
     static BranchInst *getBranch(BasicBlock *BB) {
       return dyn_cast<BranchInst>(BB->getTerminator());
     }
-
-    /// Return the condition of the branch terminating the given basic block.
-    static Value *getBrCondtion(BasicBlock *);
 
     /// Derive the precondition block (i.e the block that guards the loop
     /// preheader) from the given preheader.
@@ -290,11 +288,6 @@ bool LIRUtil::isAlmostEmpty(BasicBlock *BB) {
     return Br->isUnconditional() && BB->size() == 1;
   }
   return false;
-}
-
-Value *LIRUtil::getBrCondtion(BasicBlock *BB) {
-  BranchInst *Br = getBranch(BB);
-  return Br ? Br->getCondition() : 0;
 }
 
 BasicBlock *LIRUtil::getPrecondBb(BasicBlock *PreHead) {

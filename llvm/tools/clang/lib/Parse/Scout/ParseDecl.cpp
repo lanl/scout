@@ -331,7 +331,6 @@ void Parser::ParseMeshParameterDeclaration(DeclSpec& DS) {
   if(!isa<MeshType>(parsedType.get().getTypePtr()))
         assert(false && "expected mesh type");
 
-
   if(getLangOpts().ScoutC && Tok.isNot(tok::star)) {
     Diag(Tok, diag::err_expected_mesh_param_star);
     SkipUntil(tok::semi);

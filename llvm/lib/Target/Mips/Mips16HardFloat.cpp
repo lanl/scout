@@ -11,7 +11,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "mips16-hard-float"
 #include "Mips16HardFloat.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
@@ -19,6 +18,8 @@
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 #include <string>
+
+#define DEBUG_TYPE "mips16-hard-float"
 
 static void inlineAsmOut
   (LLVMContext &C, StringRef AsmString, BasicBlock *BB ) {
@@ -354,9 +355,8 @@ static const char *IntrinsicInline[] =
   };
 
 static bool isIntrinsicInline(Function *F) {
-  return std::binary_search(
-    IntrinsicInline, array_endof(IntrinsicInline),
-    F->getName());
+  return std::binary_search(std::begin(IntrinsicInline),
+                            std::end(IntrinsicInline), F->getName());
 }
 //
 // Returns of float, double and complex need to be handled with a helper

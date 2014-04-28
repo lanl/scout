@@ -104,15 +104,6 @@ void DIEAbbrev::print(raw_ostream &O) {
 void DIEAbbrev::dump() { print(dbgs()); }
 #endif
 
-//===----------------------------------------------------------------------===//
-// DIE Implementation
-//===----------------------------------------------------------------------===//
-
-DIE::~DIE() {
-  for (unsigned i = 0, N = Children.size(); i < N; ++i)
-    delete Children[i];
-}
-
 /// Climb up the parent chain to get the unit DIE to which this DIE
 /// belongs.
 const DIE *DIE::getUnit() const {
@@ -131,7 +122,7 @@ const DIE *DIE::getUnitOrNull() const {
       return p;
     p = p->getParent();
   }
-  return NULL;
+  return nullptr;
 }
 
 DIEValue *DIE::findAttribute(dwarf::Attribute Attribute) const {
@@ -143,7 +134,7 @@ DIEValue *DIE::findAttribute(dwarf::Attribute Attribute) const {
   for (size_t i = 0; i < Values.size(); ++i)
     if (Abbrevs.getData()[i].getAttribute() == Attribute)
       return Values[i];
-  return NULL;
+  return nullptr;
 }
 
 #ifndef NDEBUG
@@ -559,13 +550,13 @@ unsigned DIELocList::SizeOf(AsmPrinter *AP, dwarf::Form Form) const {
 /// EmitValue - Emit label value.
 ///
 void DIELocList::EmitValue(AsmPrinter *AP, dwarf::Form Form) const {
-  MCSymbol *Label = AP->GetTempSymbol("debug_loc", Index);
-  MCSymbol *DwarfDebugLocSectionSym = AP->getDwarfDebug()->getDebugLocSym();
+  DwarfDebug *DD = AP->getDwarfDebug();
+  MCSymbol *Label = DD->getDebugLocEntries()[Index].Label;
 
-  if (AP->MAI->doesDwarfUseRelocationsAcrossSections())
-    AP->EmitSectionOffset(Label, DwarfDebugLocSectionSym);
+  if (AP->MAI->doesDwarfUseRelocationsAcrossSections() && !DD->useSplitDwarf())
+    AP->EmitSectionOffset(Label, DD->getDebugLocSym());
   else
-    AP->EmitLabelDifference(Label, DwarfDebugLocSectionSym, 4);
+    AP->EmitLabelDifference(Label, DD->getDebugLocSym(), 4);
 }
 
 #ifndef NDEBUG

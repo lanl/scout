@@ -52,6 +52,8 @@
 
 project(scout_test_scc_driver)
 
+set(SRC_PATH ${CMAKE_SOURCE_DIR}/scc/driver)
+
 add_subdirectory(multifile)
 
 set(name no-input-files)
@@ -60,3 +62,10 @@ add_test(${tname} ${CMAKE_SCC_COMPILER})
 set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
     "error: no input files")
 set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+
+set(name no-semicolon)
+set(tname scc_driver_${name})
+set(FLAGS "-###")
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${FLAGS} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY FAIL_REGULAR_EXPRESSION 
+    "[;]")

@@ -39,7 +39,7 @@ static std::string computeDataLayout(const X86Subtarget &ST) {
     Ret += "-p:32:32";
 
   // Some ABIs align 64 bit integers and doubles to 64 bits, others to 32.
-  if (ST.is64Bit() || ST.isTargetCygMing() || ST.isTargetWindows() ||
+  if (ST.is64Bit() || ST.isTargetCygMing() || ST.isTargetKnownWindowsMSVC() ||
       ST.isTargetNaCl())
     Ret += "-i64:64";
   else
@@ -60,7 +60,7 @@ static std::string computeDataLayout(const X86Subtarget &ST) {
     Ret += "-n8:16:32";
 
   // The stack is aligned to 32 bits on some ABIs and 128 bits on others.
-  if (!ST.is64Bit() && (ST.isTargetCygMing() || ST.isTargetWindows()))
+  if (!ST.is64Bit() && (ST.isTargetCygMing() || ST.isTargetKnownWindowsMSVC()))
     Ret += "-S32";
   else
     Ret += "-S128";
@@ -107,6 +107,13 @@ X86TargetMachine::X86TargetMachine(const Target &T, StringRef TT,
   // default to hard float ABI
   if (Options.FloatABIType == FloatABI::Default)
     this->Options.FloatABIType = FloatABI::Hard;
+
+  // Windows stack unwinder gets confused when execution flow "falls through"
+  // after a call to 'noreturn' function.
+  // To prevent that, we emit a trap for 'unreachable' IR instructions.
+  // (which on X86, happens to be the 'ud2' instruction)
+  if (Subtarget.isTargetWin64())
+    this->Options.TrapUnreachable = true;
 
   initAsmInfo();
 }

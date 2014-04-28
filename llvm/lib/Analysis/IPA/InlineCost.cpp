@@ -11,7 +11,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "inline-cost"
 #include "llvm/Analysis/InlineCost.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
@@ -33,6 +32,8 @@
 #include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
+
+#define DEBUG_TYPE "inline-cost"
 
 STATISTIC(NumCallsAnalyzed, "Number of call sites analyzed");
 
@@ -97,9 +98,6 @@ class CallAnalyzer : public InstVisitor<CallAnalyzer, bool> {
   void disableSROA(Value *V);
   void accumulateSROACost(DenseMap<Value *, int>::iterator CostIt,
                           int InstructionCost);
-  bool handleSROACandidate(bool IsSROAValid,
-                           DenseMap<Value *, int>::iterator CostIt,
-                           int InstructionCost);
   bool isGEPOffsetConstant(GetElementPtrInst &GEP);
   bool accumulateGEPOffset(GEPOperator &GEP, APInt &Offset);
   bool simplifyCallSite(Function *F, CallSite CS);
@@ -225,21 +223,6 @@ void CallAnalyzer::accumulateSROACost(DenseMap<Value *, int>::iterator CostIt,
   SROACostSavings += InstructionCost;
 }
 
-/// \brief Helper for the common pattern of handling a SROA candidate.
-/// Either accumulates the cost savings if the SROA remains valid, or disables
-/// SROA for the candidate.
-bool CallAnalyzer::handleSROACandidate(bool IsSROAValid,
-                                       DenseMap<Value *, int>::iterator CostIt,
-                                       int InstructionCost) {
-  if (IsSROAValid) {
-    accumulateSROACost(CostIt, InstructionCost);
-    return true;
-  }
-
-  disableSROA(CostIt);
-  return false;
-}
-
 /// \brief Check whether a GEP's indices are all constant.
 ///
 /// Respects any simplified values known during the analysis of this callsite.
@@ -287,8 +270,17 @@ bool CallAnalyzer::accumulateGEPOffset(GEPOperator &GEP, APInt &Offset) {
 }
 
 bool CallAnalyzer::visitAlloca(AllocaInst &I) {
-  // FIXME: Check whether inlining will turn a dynamic alloca into a static
+  // Check whether inlining will turn a dynamic alloca into a static
   // alloca, and handle that case.
+  if (I.isArrayAllocation()) {
+    if (Constant *Size = SimplifiedValues.lookup(I.getArraySize())) {
+      ConstantInt *AllocSize = dyn_cast<ConstantInt>(Size);
+      assert(AllocSize && "Allocation size not a constant int?");
+      Type *Ty = I.getAllocatedType();
+      AllocatedSize += Ty->getPrimitiveSizeInBits() * AllocSize->getZExtValue();
+      return Base::visitAlloca(I);
+    }
+  }
 
   // Accumulate the allocated size.
   if (I.isStaticAlloca()) {
@@ -934,7 +926,7 @@ bool CallAnalyzer::analyzeBlock(BasicBlock *BB) {
 /// no constant offsets applied.
 ConstantInt *CallAnalyzer::stripAndComputeInBoundsConstantOffsets(Value *&V) {
   if (!DL || !V->getType()->isPointerTy())
-    return 0;
+    return nullptr;
 
   unsigned IntPtrWidth = DL->getPointerSizeInBits();
   APInt Offset = APInt::getNullValue(IntPtrWidth);
@@ -946,7 +938,7 @@ ConstantInt *CallAnalyzer::stripAndComputeInBoundsConstantOffsets(Value *&V) {
   do {
     if (GEPOperator *GEP = dyn_cast<GEPOperator>(V)) {
       if (!GEP->isInBounds() || !accumulateGEPOffset(*GEP, Offset))
-        return 0;
+        return nullptr;
       V = GEP->getPointerOperand();
     } else if (Operator::getOpcode(V) == Instruction::BitCast) {
       V = cast<Operator>(V)->getOperand(0);

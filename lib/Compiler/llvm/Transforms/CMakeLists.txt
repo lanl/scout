@@ -13,8 +13,9 @@
 add_subdirectory(Driver)
 
 if(${SC_ENABLE_CUDA})
-  add_subdirectory(CudaError)
-  add_subdirectory(DoallToPTX)
+   add_subdirectory(ForallPTX)
+#  add_subdirectory(CudaError)
+#  add_subdirectory(DoallToPTX)
 endif()
 
 if (${SC_ENABLE_OPENCL})

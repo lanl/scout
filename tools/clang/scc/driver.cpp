@@ -453,12 +453,13 @@ int main(int argc_, const char **argv_) {
   if (argv.size() > 1 && StringRef(argv[1]).startswith("-cc1")) {
     StringRef Tool = argv[1] + 4;
 
+    //-debug flag
     for (int i = 2, size = argv.size(); i < size; ++i) {
-      if (StringRef(argv[i]) == "-debug-wait") {
+      if (StringRef(argv[i]) == "-debug") {
         size_t pid = getpid();
 
         std::cerr << "PID: " << pid << std::endl;
-        std::cerr << "<press return>" << std::endl;
+        std::cerr << "<press any key after attaching debugger, then 'continue' in debugger>" << std::endl;
         std::string str;
         std::getline(std::cin, str);
       }

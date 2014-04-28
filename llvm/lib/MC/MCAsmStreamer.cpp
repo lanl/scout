@@ -9,6 +9,7 @@
 
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/MC/MCAsmBackend.h"
@@ -31,6 +32,7 @@
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/Path.h"
 #include <cctype>
+#include <unordered_map>
 using namespace llvm;
 
 namespace {
@@ -57,7 +59,9 @@ private:
                        EHPrivateExtern  = 1 << 2 };
   DenseMap<const MCSymbol*, unsigned> FlagMap;
 
-  bool needsSet(const MCExpr *Value);
+  // Using std::unordered_map to ensure pointers to MCSymbolData remain valid
+  // over insertions/removals from the SymbolMap.
+  std::unordered_map<const MCSymbol*, MCSymbolData> SymbolMap;
 
   void EmitRegisterName(int64_t Register);
   void EmitCFIStartProcImpl(MCDwarfFrameInfo &Frame) override;
@@ -76,7 +80,6 @@ public:
     if (InstPrinter && IsVerboseAsm)
       InstPrinter->setCommentStream(CommentStream);
   }
-  ~MCAsmStreamer() {}
 
   inline void EmitEOL() {
     // If we don't have any comments, just emit a \n.
@@ -126,6 +129,7 @@ public:
   void ChangeSection(const MCSection *Section,
                      const MCExpr *Subsection) override;
 
+  void EmitLOHDirective(MCLOHType Kind, const MCLOHArgs &Args) override;
   void EmitLabel(MCSymbol *Symbol) override;
   void EmitDebugLabel(MCSymbol *Symbol) override;
 
@@ -166,7 +170,7 @@ public:
   void EmitLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size,
                              unsigned ByteAlignment) override;
 
-  void EmitZerofill(const MCSection *Section, MCSymbol *Symbol = 0,
+  void EmitZerofill(const MCSection *Section, MCSymbol *Symbol = nullptr,
                     uint64_t Size = 0, unsigned ByteAlignment = 0) override;
 
   void EmitTBSSSymbol (const MCSection *Section, MCSymbol *Symbol,
@@ -174,7 +178,8 @@ public:
 
   void EmitBytes(StringRef Data) override;
 
-  void EmitValueImpl(const MCExpr *Value, unsigned Size) override;
+  void EmitValueImpl(const MCExpr *Value, unsigned Size,
+                     const SMLoc &Loc = SMLoc()) override;
   void EmitIntValue(uint64_t Value, unsigned Size) override;
 
   void EmitULEB128Value(const MCExpr *Value) override;
@@ -206,6 +211,7 @@ public:
                              unsigned Column, unsigned Flags,
                              unsigned Isa, unsigned Discriminator,
                              StringRef FileName) override;
+  MCSymbol *getDwarfLineTableSymbol(unsigned CUID) override;
 
   void EmitIdent(StringRef IdentString) override;
   void EmitCFISections(bool EH, bool Debug) override;
@@ -252,6 +258,8 @@ public:
   void EmitRawTextImpl(StringRef String) override;
 
   void FinishImpl() override;
+
+  virtual MCSymbolData &getOrCreateSymbolData(const MCSymbol *Symbol) override;
 };
 
 } // end anonymous namespace.
@@ -337,6 +345,27 @@ void MCAsmStreamer::EmitLabel(MCSymbol *Symbol) {
   MCStreamer::EmitLabel(Symbol);
 
   OS << *Symbol << MAI->getLabelSuffix();
+  EmitEOL();
+}
+
+void MCAsmStreamer::EmitLOHDirective(MCLOHType Kind, const MCLOHArgs &Args) {
+  StringRef str = MCLOHIdToName(Kind);
+
+#ifndef NDEBUG
+  int NbArgs = MCLOHIdToNbArgs(Kind);
+  assert(NbArgs != -1 && ((size_t)NbArgs) == Args.size() && "Malformed LOH!");
+  assert(str != "" && "Invalid LOH name");
+#endif
+
+  OS << "\t" << MCLOHDirectiveName() << " " << str << "\t";
+  bool IsFirst = true;
+  for (MCLOHArgs::const_iterator It = Args.begin(), EndIt = Args.end();
+       It != EndIt; ++It) {
+    if (!IsFirst)
+      OS << ", ";
+    IsFirst = false;
+    OS << **It;
+  }
   EmitEOL();
 }
 
@@ -535,7 +564,7 @@ void MCAsmStreamer::EmitELFSize(MCSymbol *Symbol, const MCExpr *Value) {
 void MCAsmStreamer::EmitCommonSymbol(MCSymbol *Symbol, uint64_t Size,
                                      unsigned ByteAlignment) {
   // Common symbols do not belong to any actual section.
-  AssignSection(Symbol, NULL);
+  AssignSection(Symbol, nullptr);
 
   OS << "\t.comm\t" << *Symbol << ',' << Size;
   if (ByteAlignment != 0) {
@@ -554,7 +583,7 @@ void MCAsmStreamer::EmitCommonSymbol(MCSymbol *Symbol, uint64_t Size,
 void MCAsmStreamer::EmitLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size,
                                           unsigned ByteAlign) {
   // Common symbols do not belong to any actual section.
-  AssignSection(Symbol, NULL);
+  AssignSection(Symbol, nullptr);
 
   OS << "\t.lcomm\t" << *Symbol << ',' << Size;
   if (ByteAlign > 1) {
@@ -585,7 +614,7 @@ void MCAsmStreamer::EmitZerofill(const MCSection *Section, MCSymbol *Symbol,
   const MCSectionMachO *MOSection = ((const MCSectionMachO*)Section);
   OS << MOSection->getSegmentName() << "," << MOSection->getSectionName();
 
-  if (Symbol != NULL) {
+  if (Symbol) {
     OS << ',' << *Symbol << ',' << Size;
     if (ByteAlignment != 0)
       OS << ',' << Log2_32(ByteAlignment);
@@ -600,7 +629,7 @@ void MCAsmStreamer::EmitTBSSSymbol(const MCSection *Section, MCSymbol *Symbol,
                                    uint64_t Size, unsigned ByteAlignment) {
   AssignSection(Symbol, Section);
 
-  assert(Symbol != NULL && "Symbol shouldn't be NULL!");
+  assert(Symbol && "Symbol shouldn't be NULL!");
   // Instead of using the Section we'll just use the shortcut.
   // This is a mach-o specific directive and section.
   OS << ".tbss " << *Symbol << ", " << Size;
@@ -677,11 +706,12 @@ void MCAsmStreamer::EmitIntValue(uint64_t Value, unsigned Size) {
   EmitValue(MCConstantExpr::Create(Value, getContext()), Size);
 }
 
-void MCAsmStreamer::EmitValueImpl(const MCExpr *Value, unsigned Size) {
+void MCAsmStreamer::EmitValueImpl(const MCExpr *Value, unsigned Size,
+                                  const SMLoc &Loc) {
   assert(Size <= 8 && "Invalid size");
   assert(getCurrentSection().first &&
          "Cannot emit contents before setting section!");
-  const char *Directive = 0;
+  const char *Directive = nullptr;
   switch (Size) {
   default: break;
   case 1: Directive = MAI->getData8bitsDirective();  break;
@@ -750,13 +780,13 @@ void MCAsmStreamer::EmitSLEB128Value(const MCExpr *Value) {
 }
 
 void MCAsmStreamer::EmitGPRel64Value(const MCExpr *Value) {
-  assert(MAI->getGPRel64Directive() != 0);
+  assert(MAI->getGPRel64Directive() != nullptr);
   OS << MAI->getGPRel64Directive() << *Value;
   EmitEOL();
 }
 
 void MCAsmStreamer::EmitGPRel32Value(const MCExpr *Value) {
-  assert(MAI->getGPRel32Directive() != 0);
+  assert(MAI->getGPRel32Directive() != nullptr);
   OS << MAI->getGPRel32Directive() << *Value;
   EmitEOL();
 }
@@ -931,6 +961,12 @@ void MCAsmStreamer::EmitDwarfLocDirective(unsigned FileNo, unsigned Line,
        << Line << ':' << Column;
   }
   EmitEOL();
+}
+
+MCSymbol *MCAsmStreamer::getDwarfLineTableSymbol(unsigned CUID) {
+  // Always use the zeroth line table, since asm syntax only supports one line
+  // table for now.
+  return MCStreamer::getDwarfLineTableSymbol(0);
 }
 
 void MCAsmStreamer::EmitIdent(StringRef IdentString) {
@@ -1226,14 +1262,17 @@ void MCAsmStreamer::EmitWin64EHHandlerData() {
 void MCAsmStreamer::EmitWin64EHPushReg(unsigned Register) {
   MCStreamer::EmitWin64EHPushReg(Register);
 
-  OS << "\t.seh_pushreg " << Register;
+  OS << "\t.seh_pushreg ";
+  EmitRegisterName(Register);
   EmitEOL();
 }
 
 void MCAsmStreamer::EmitWin64EHSetFrame(unsigned Register, unsigned Offset) {
   MCStreamer::EmitWin64EHSetFrame(Register, Offset);
 
-  OS << "\t.seh_setframe " << Register << ", " << Offset;
+  OS << "\t.seh_setframe ";
+  EmitRegisterName(Register);
+  OS << ", " << Offset;
   EmitEOL();
 }
 
@@ -1247,14 +1286,18 @@ void MCAsmStreamer::EmitWin64EHAllocStack(unsigned Size) {
 void MCAsmStreamer::EmitWin64EHSaveReg(unsigned Register, unsigned Offset) {
   MCStreamer::EmitWin64EHSaveReg(Register, Offset);
 
-  OS << "\t.seh_savereg " << Register << ", " << Offset;
+  OS << "\t.seh_savereg ";
+  EmitRegisterName(Register);
+  OS << ", " << Offset;
   EmitEOL();
 }
 
 void MCAsmStreamer::EmitWin64EHSaveXMM(unsigned Register, unsigned Offset) {
   MCStreamer::EmitWin64EHSaveXMM(Register, Offset);
 
-  OS << "\t.seh_savexmm " << Register << ", " << Offset;
+  OS << "\t.seh_savexmm ";
+  EmitRegisterName(Register);
+  OS << ", " << Offset;
   EmitEOL();
 }
 
@@ -1411,10 +1454,30 @@ void MCAsmStreamer::EmitRawTextImpl(StringRef String) {
 void MCAsmStreamer::FinishImpl() {
   // If we are generating dwarf for assembly source files dump out the sections.
   if (getContext().getGenDwarfForAssembly())
-    MCGenDwarfInfo::Emit(this, NULL);
+    MCGenDwarfInfo::Emit(this);
+
+  // Emit the label for the line table, if requested - since the rest of the
+  // line table will be defined by .loc/.file directives, and not emitted
+  // directly, the label is the only work required here.
+  auto &Tables = getContext().getMCDwarfLineTables();
+  if (!Tables.empty()) {
+    assert(Tables.size() == 1 && "asm output only supports one line table");
+    if (auto *Label = Tables.begin()->second.getLabel()) {
+      SwitchSection(getContext().getObjectFileInfo()->getDwarfLineSection());
+      EmitLabel(Label);
+    }
+  }
 
   if (!UseCFI)
     EmitFrames(AsmBackend.get(), false);
+}
+
+MCSymbolData &MCAsmStreamer::getOrCreateSymbolData(const MCSymbol *Symbol) {
+  auto Iter = SymbolMap.find(Symbol);
+  if (Iter == SymbolMap.end())
+    Iter = SymbolMap.insert(
+        Iter, std::make_pair(Symbol, MCSymbolData(*Symbol, nullptr, 0)));
+  return Iter->second;
 }
 
 MCStreamer *llvm::createAsmStreamer(MCContext &Context,

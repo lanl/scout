@@ -12,7 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "asm-printer"
 #include "ARMAsmPrinter.h"
 #include "ARM.h"
 #include "ARMConstantPoolValue.h"
@@ -55,6 +54,8 @@
 #include <cctype>
 using namespace llvm;
 
+#define DEBUG_TYPE "asm-printer"
+
 void ARMAsmPrinter::EmitFunctionBodyEnd() {
   // Make sure to terminate any constant pools that were at the end
   // of the function.
@@ -85,7 +86,7 @@ void ARMAsmPrinter::EmitXXStructor(const Constant *CV) {
                                              ? MCSymbolRefExpr::VK_ARM_TARGET1
                                              : MCSymbolRefExpr::VK_None),
                                             OutContext);
-  
+
   OutStreamer.EmitValue(E, Size);
 }
 
@@ -239,7 +240,7 @@ bool ARMAsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNum,
       if (ARM::GPRPairRegClass.contains(RegBegin)) {
         const TargetRegisterInfo *TRI = MF->getTarget().getRegisterInfo();
         unsigned Reg0 = TRI->getSubReg(RegBegin, ARM::gsub_0);
-        O << ARMInstPrinter::getRegisterName(Reg0) << ", ";;
+        O << ARMInstPrinter::getRegisterName(Reg0) << ", ";
         RegBegin = TRI->getSubReg(RegBegin, ARM::gsub_1);
       }
       O << ARMInstPrinter::getRegisterName(RegBegin);
@@ -575,7 +576,7 @@ void ARMAsmPrinter::emitAttributes() {
                     getArchForCPU(CPUString, Subtarget));
 
   // Tag_CPU_arch_profile must have the default value of 0 when "Architecture
-  // profile is not applicable (e.g. pre v7, or cross-profile code)". 
+  // profile is not applicable (e.g. pre v7, or cross-profile code)".
   if (Subtarget->hasV7Ops()) {
     if (Subtarget->isAClass()) {
       ATS.emitAttribute(ARMBuildAttrs::CPU_arch_profile,
@@ -1719,6 +1720,8 @@ void ARMAsmPrinter::EmitInstruction(const MachineInstr *MI) {
 
 // Force static initialization.
 extern "C" void LLVMInitializeARMAsmPrinter() {
-  RegisterAsmPrinter<ARMAsmPrinter> X(TheARMTarget);
-  RegisterAsmPrinter<ARMAsmPrinter> Y(TheThumbTarget);
+  RegisterAsmPrinter<ARMAsmPrinter> X(TheARMLETarget);
+  RegisterAsmPrinter<ARMAsmPrinter> Y(TheARMBETarget);
+  RegisterAsmPrinter<ARMAsmPrinter> A(TheThumbLETarget);
+  RegisterAsmPrinter<ARMAsmPrinter> B(TheThumbBETarget);
 }

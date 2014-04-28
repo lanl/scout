@@ -180,3 +180,10 @@ set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION
     "error: argument to rank")
 set_property(TEST ${tname} PROPERTY WILL_FAIL)
 
+set(name mesh-access)
+set(tname sc++_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: illegal mesh element access -- outside of a supporting mesh construct")
+set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+

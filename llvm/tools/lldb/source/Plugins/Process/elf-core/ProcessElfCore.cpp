@@ -25,6 +25,7 @@
 
 #include "Plugins/ObjectFile/ELF/ObjectFileELF.h"
 #include "Plugins/DynamicLoader/POSIX-DYLD/DynamicLoaderPOSIXDYLD.h"
+#include "Plugins/Process/Utility/FreeBSDSignals.h"
 
 // Project includes
 #include "ProcessElfCore.h"
@@ -60,7 +61,7 @@ ProcessElfCore::CreateInstance (Target &target, Listener &listener, const FileSp
     {
         // Read enough data for a ELF32 header or ELF64 header
         const size_t header_size = sizeof(llvm::ELF::Elf64_Ehdr);
-        
+
         lldb::DataBufferSP data_sp (crash_file->ReadFileContents(0, header_size));
         if (data_sp->GetByteSize() == header_size)
         {
@@ -84,7 +85,7 @@ ProcessElfCore::CanDebug(Target &target, bool plugin_specified_by_name)
     if (!m_core_module_sp && m_core_file.Exists())
     {
         ModuleSpec core_module_spec(m_core_file, target.GetArchitecture());
-        Error error (ModuleList::GetSharedModule (core_module_spec, m_core_module_sp, 
+        Error error (ModuleList::GetSharedModule (core_module_spec, m_core_module_sp,
                                                   NULL, NULL, NULL));
         if (m_core_module_sp)
         {
@@ -105,6 +106,8 @@ ProcessElfCore::ProcessElfCore(Target& target, Listener &listener,
     m_core_module_sp (),
     m_core_file (core_file),
     m_dyld_plugin_name (),
+    m_os(llvm::Triple::UnknownOS),
+    m_signals_sp (),
     m_thread_data_valid(false),
     m_thread_data(),
     m_core_aranges ()
@@ -172,21 +175,21 @@ ProcessElfCore::DoLoadCore ()
     Error error;
     if (!m_core_module_sp)
     {
-        error.SetErrorString ("invalid core module");   
+        error.SetErrorString ("invalid core module");
         return error;
     }
 
     ObjectFileELF *core = (ObjectFileELF *)(m_core_module_sp->GetObjectFile());
     if (core == NULL)
     {
-        error.SetErrorString ("invalid core object file");   
+        error.SetErrorString ("invalid core object file");
         return error;
     }
 
     const uint32_t num_segments = core->GetProgramHeaderCount();
     if (num_segments == 0)
     {
-        error.SetErrorString ("core file has no sections");   
+        error.SetErrorString ("core file has no sections");
         return error;
     }
 
@@ -227,7 +230,16 @@ ProcessElfCore::DoLoadCore ()
     // it to match the core file which is always single arch.
     ArchSpec arch (m_core_module_sp->GetArchitecture());
     if (arch.IsValid())
-        m_target.SetArchitecture(arch);            
+        m_target.SetArchitecture(arch);
+
+    switch (m_os)
+    {
+        case llvm::Triple::FreeBSD:
+            m_signals_sp.reset(new FreeBSDSignals());
+            break;
+        default:
+            break;
+    }
 
     return error;
 }
@@ -342,13 +354,15 @@ void
 ProcessElfCore::Clear()
 {
     m_thread_list.Clear();
+    m_os = llvm::Triple::UnknownOS;
+    m_signals_sp.reset();
 }
 
 void
 ProcessElfCore::Initialize()
 {
     static bool g_initialized = false;
-    
+
     if (g_initialized == false)
     {
         g_initialized = true;
@@ -413,7 +427,7 @@ ParseFreeBSDPrStatus(ThreadData &thread_data, DataExtractor &data,
     offset += 4;        // pr_pid
     if (lp64)
         offset += 4;
-    
+
     size_t len = data.GetByteSize() - offset;
     thread_data.gpregset = DataExtractor(data, offset, len);
 }
@@ -439,7 +453,7 @@ ParseFreeBSDThrMisc(ThreadData &thread_data, DataExtractor &data)
 ///    a) Each thread context(2 or more NOTE entries) contained in its own segment (PT_NOTE)
 ///    b) All thread context is stored in a single segment(PT_NOTE).
 ///        This case is little tricker since while parsing we have to find where the
-///        new thread starts. The current implementation marks beginning of 
+///        new thread starts. The current implementation marks beginning of
 ///        new thread when it finds NT_PRSTATUS or NT_PRPSINFO NOTE entry.
 ///    For case (b) there may be either one NT_PRPSINFO per thread, or a single
 ///    one that applies to all threads (depending on the platform type).
@@ -486,6 +500,7 @@ ProcessElfCore::ParseThreadContextsFromNoteSegment(const elf::ELFProgramHeader *
         DataExtractor note_data (segment_data, note_start, note_size);
         if (note.n_name == "FreeBSD")
         {
+            m_os = llvm::Triple::FreeBSD;
             switch (note.n_type)
             {
                 case NT_FREEBSD_PRSTATUS:

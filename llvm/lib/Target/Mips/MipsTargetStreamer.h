@@ -34,13 +34,18 @@ public:
 
   virtual void emitDirectiveEnt(const MCSymbol &Symbol) = 0;
   virtual void emitDirectiveAbiCalls() = 0;
+  virtual void emitDirectiveNaN2008() = 0;
+  virtual void emitDirectiveNaNLegacy() = 0;
   virtual void emitDirectiveOptionPic0() = 0;
+  virtual void emitDirectiveOptionPic2() = 0;
   virtual void emitFrame(unsigned StackReg, unsigned StackSize,
                          unsigned ReturnReg) = 0;
   virtual void emitMask(unsigned CPUBitmask, int CPUTopSavedRegOff) = 0;
   virtual void emitFMask(unsigned FPUBitmask, int FPUTopSavedRegOff) = 0;
 
   virtual void emitDirectiveSetMips32R2() = 0;
+  virtual void emitDirectiveSetMips64() = 0;
+  virtual void emitDirectiveSetMips64R2() = 0;
   virtual void emitDirectiveSetDsp() = 0;
 };
 
@@ -65,13 +70,18 @@ public:
 
   virtual void emitDirectiveEnt(const MCSymbol &Symbol);
   virtual void emitDirectiveAbiCalls();
+  virtual void emitDirectiveNaN2008();
+  virtual void emitDirectiveNaNLegacy();
   virtual void emitDirectiveOptionPic0();
+  virtual void emitDirectiveOptionPic2();
   virtual void emitFrame(unsigned StackReg, unsigned StackSize,
                          unsigned ReturnReg);
   virtual void emitMask(unsigned CPUBitmask, int CPUTopSavedRegOff);
   virtual void emitFMask(unsigned FPUBitmask, int FPUTopSavedRegOff);
 
   virtual void emitDirectiveSetMips32R2();
+  virtual void emitDirectiveSetMips64();
+  virtual void emitDirectiveSetMips64R2();
   virtual void emitDirectiveSetDsp();
 };
 
@@ -79,6 +89,7 @@ public:
 class MipsTargetELFStreamer : public MipsTargetStreamer {
   bool MicroMipsEnabled;
   const MCSubtargetInfo &STI;
+  bool Pic;
 
 public:
   bool isMicroMipsEnabled() const { return MicroMipsEnabled; }
@@ -104,13 +115,18 @@ public:
 
   virtual void emitDirectiveEnt(const MCSymbol &Symbol);
   virtual void emitDirectiveAbiCalls();
+  virtual void emitDirectiveNaN2008();
+  virtual void emitDirectiveNaNLegacy();
   virtual void emitDirectiveOptionPic0();
+  virtual void emitDirectiveOptionPic2();
   virtual void emitFrame(unsigned StackReg, unsigned StackSize,
                          unsigned ReturnReg);
   virtual void emitMask(unsigned CPUBitmask, int CPUTopSavedRegOff);
   virtual void emitFMask(unsigned FPUBitmask, int FPUTopSavedRegOff);
 
   virtual void emitDirectiveSetMips32R2();
+  virtual void emitDirectiveSetMips64();
+  virtual void emitDirectiveSetMips64R2();
   virtual void emitDirectiveSetDsp();
 };
 }

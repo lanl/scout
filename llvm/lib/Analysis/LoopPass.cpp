@@ -19,6 +19,8 @@
 #include "llvm/Support/Timer.h"
 using namespace llvm;
 
+#define DEBUG_TYPE "loop-pass-manager"
+
 namespace {
 
 /// PrintLoopPass - Print a Function corresponding to a Loop.
@@ -61,8 +63,8 @@ LPPassManager::LPPassManager()
   : FunctionPass(ID), PMDataManager() {
   skipThisLoop = false;
   redoThisLoop = false;
-  LI = NULL;
-  CurrentLoop = NULL;
+  LI = nullptr;
+  CurrentLoop = nullptr;
 }
 
 /// Delete loop from the loop queue and loop hierarchy (LoopInfo).

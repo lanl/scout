@@ -322,13 +322,44 @@ static void UpdateCallGraphAfterInlining(CallSite CS,
   CallerNode->removeCallEdgeFor(CS);
 }
 
+static void HandleByValArgumentInit(Value *Dst, Value *Src, Module *M,
+                                    BasicBlock *InsertBlock,
+                                    InlineFunctionInfo &IFI) {
+  LLVMContext &Context = Src->getContext();
+  Type *VoidPtrTy = Type::getInt8PtrTy(Context);
+  Type *AggTy = cast<PointerType>(Src->getType())->getElementType();
+  Type *Tys[3] = { VoidPtrTy, VoidPtrTy, Type::getInt64Ty(Context) };
+  Function *MemCpyFn = Intrinsic::getDeclaration(M, Intrinsic::memcpy, Tys);
+  IRBuilder<> builder(InsertBlock->begin());
+  Value *DstCast = builder.CreateBitCast(Dst, VoidPtrTy, "tmp");
+  Value *SrcCast = builder.CreateBitCast(Src, VoidPtrTy, "tmp");
+
+  Value *Size;
+  if (IFI.DL == 0)
+    Size = ConstantExpr::getSizeOf(AggTy);
+  else
+    Size = ConstantInt::get(Type::getInt64Ty(Context),
+                            IFI.DL->getTypeStoreSize(AggTy));
+
+  // Always generate a memcpy of alignment 1 here because we don't know
+  // the alignment of the src pointer.  Other optimizations can infer
+  // better alignment.
+  Value *CallArgs[] = {
+    DstCast, SrcCast, Size,
+    ConstantInt::get(Type::getInt32Ty(Context), 1),
+    ConstantInt::getFalse(Context) // isVolatile
+  };
+  builder.CreateCall(MemCpyFn, CallArgs);
+}
+
 /// HandleByValArgument - When inlining a call site that has a byval argument,
 /// we have to make the implicit memcpy explicit by adding it.
 static Value *HandleByValArgument(Value *Arg, Instruction *TheCall,
                                   const Function *CalledFunc,
                                   InlineFunctionInfo &IFI,
                                   unsigned ByValAlignment) {
-  Type *AggTy = cast<PointerType>(Arg->getType())->getElementType();
+  PointerType *ArgTy = cast<PointerType>(Arg->getType());
+  Type *AggTy = ArgTy->getElementType();
 
   // If the called function is readonly, then it could not mutate the caller's
   // copy of the byval'd memory.  In this case, it is safe to elide the copy and
@@ -349,11 +380,7 @@ static Value *HandleByValArgument(Value *Arg, Instruction *TheCall,
     // Otherwise, we have to make a memcpy to get a safe alignment.  This is bad
     // for code quality, but rarely happens and is required for correctness.
   }
-  
-  LLVMContext &Context = Arg->getContext();
 
-  Type *VoidPtrTy = Type::getInt8PtrTy(Context);
-  
   // Create the alloca.  If we have DataLayout, use nice alignment.
   unsigned Align = 1;
   if (IFI.DL)
@@ -368,30 +395,7 @@ static Value *HandleByValArgument(Value *Arg, Instruction *TheCall,
   
   Value *NewAlloca = new AllocaInst(AggTy, 0, Align, Arg->getName(), 
                                     &*Caller->begin()->begin());
-  // Emit a memcpy.
-  Type *Tys[3] = {VoidPtrTy, VoidPtrTy, Type::getInt64Ty(Context)};
-  Function *MemCpyFn = Intrinsic::getDeclaration(Caller->getParent(),
-                                                 Intrinsic::memcpy, 
-                                                 Tys);
-  Value *DestCast = new BitCastInst(NewAlloca, VoidPtrTy, "tmp", TheCall);
-  Value *SrcCast = new BitCastInst(Arg, VoidPtrTy, "tmp", TheCall);
-  
-  Value *Size;
-  if (IFI.DL == 0)
-    Size = ConstantExpr::getSizeOf(AggTy);
-  else
-    Size = ConstantInt::get(Type::getInt64Ty(Context),
-                            IFI.DL->getTypeStoreSize(AggTy));
-  
-  // Always generate a memcpy of alignment 1 here because we don't know
-  // the alignment of the src pointer.  Other optimizations can infer
-  // better alignment.
-  Value *CallArgs[] = {
-    DestCast, SrcCast, Size,
-    ConstantInt::get(Type::getInt32Ty(Context), 1),
-    ConstantInt::getFalse(Context) // isVolatile
-  };
-  IRBuilder<>(TheCall).CreateCall(MemCpyFn, CallArgs);
+  IFI.StaticAllocas.push_back(cast<AllocaInst>(NewAlloca));
   
   // Uses of the argument in the function should use our new alloca
   // instead.
@@ -417,8 +421,10 @@ static bool isUsedByLifetimeMarker(Value *V) {
 // hasLifetimeMarkers - Check whether the given alloca already has
 // lifetime.start or lifetime.end intrinsics.
 static bool hasLifetimeMarkers(AllocaInst *AI) {
-  Type *Int8PtrTy = Type::getInt8PtrTy(AI->getType()->getContext());
-  if (AI->getType() == Int8PtrTy)
+  Type *Ty = AI->getType();
+  Type *Int8PtrTy = Type::getInt8PtrTy(Ty->getContext(),
+                                       Ty->getPointerAddressSpace());
+  if (Ty == Int8PtrTy)
     return isUsedByLifetimeMarker(AI);
 
   // Do a scan to find all the casts to i8*.
@@ -562,6 +568,8 @@ bool llvm::InlineFunction(CallSite CS, InlineFunctionInfo &IFI,
 
   { // Scope to destroy VMap after cloning.
     ValueToValueMapTy VMap;
+    // Keep a list of pair (dst, src) to emit byval initializations.
+    SmallVector<std::pair<Value*, Value*>, 4> ByValInit;
 
     assert(CalledFunc->arg_size() == CS.arg_size() &&
            "No varargs calls can be inlined!");
@@ -581,11 +589,8 @@ bool llvm::InlineFunction(CallSite CS, InlineFunctionInfo &IFI,
       if (CS.isByValArgument(ArgNo)) {
         ActualArg = HandleByValArgument(ActualArg, TheCall, CalledFunc, IFI,
                                         CalledFunc->getParamAlignment(ArgNo+1));
- 
-        // Calls that we inline may use the new alloca, so we need to clear
-        // their 'tail' flags if HandleByValArgument introduced a new alloca and
-        // the callee has calls.
-        MustClearTailCallFlags |= ActualArg != *AI;
+        if (ActualArg != *AI)
+          ByValInit.push_back(std::make_pair(ActualArg, (Value*) *AI));
       }
 
       VMap[I] = ActualArg;
@@ -601,6 +606,11 @@ bool llvm::InlineFunction(CallSite CS, InlineFunctionInfo &IFI,
 
     // Remember the first block that is newly cloned over.
     FirstNewBlock = LastBlock; ++FirstNewBlock;
+
+    // Inject byval arguments initialization.
+    for (std::pair<Value*, Value*> &Init : ByValInit)
+      HandleByValArgumentInit(Init.first, Init.second, Caller->getParent(),
+                              FirstNewBlock, IFI);
 
     // Update the callgraph if requested.
     if (IFI.CG)

@@ -199,6 +199,8 @@ public:
 
     /// \brief Emit the captured statement body.
     virtual void EmitBody(CodeGenFunction &CGF, Stmt *S) {
+      RegionCounter Cnt = CGF.getPGORegionCounter(S);
+      Cnt.beginRegion(CGF.Builder);
       CGF.EmitStmt(S);
     }
 
@@ -303,6 +305,10 @@ public:
   llvm::Value* EdgeIndex;
   llvm::Value* FaceIndex;
 
+  llvm::Value* GPUThreadId;
+  llvm::Value* GPUThreadInc;
+  llvm::Value* GPUNumThreads;
+  
   //renderall color buffer
   llvm::Value *Color;
 
@@ -311,11 +317,7 @@ public:
   }
 
   bool isGPU() {
-    return false;
-    // --- all gpu support disabled for now.
-    //return (CGM.getCodeGenOpts().ScoutNvidiaGPU
-    //        || CGM.getCodeGenOpts().ScoutAMDGPU
-    //        && !CallsPrintf);
+    return CGM.getCodeGenOpts().ScoutNvidiaGPU;
   }
 
   // --- AMD gpu support disabled for now (they're off-version of us)
@@ -1225,12 +1227,16 @@ public:
 
   void GenerateCode(GlobalDecl GD, llvm::Function *Fn,
                     const CGFunctionInfo &FnInfo);
+  /// \brief Emit code for the start of a function.
+  /// \param Loc       The location to be associated with the function.
+  /// \param StartLoc  The location of the function body.
   void StartFunction(GlobalDecl GD,
                      QualType RetTy,
                      llvm::Function *Fn,
                      const CGFunctionInfo &FnInfo,
                      const FunctionArgList &Args,
-                     SourceLocation StartLoc);
+                     SourceLocation Loc = SourceLocation(),
+                     SourceLocation StartLoc = SourceLocation());
 
   void EmitConstructorBody(FunctionArgList &Args);
   void EmitDestructorBody(FunctionArgList &Args);
@@ -1868,6 +1874,14 @@ public:
   void EmitGlobalMeshAllocaIfMissing(llvm::Value* MeshAddr, const VarDecl &D);
   void EmitScoutAutoVarAlloca(llvm::Value *Alloc,
                               const VarDecl &var);
+  void GetMeshDimensions(const MeshType* MT, SmallVector<llvm::Value*, 3>& DS);
+
+  void GetNumMeshItems(SmallVector<llvm::Value*, 3>& Dimensions,
+                       llvm::Value** numCells,
+                       llvm::Value** numVertices,
+                       llvm::Value** numEdges,
+                       llvm::Value** numFaces);
+
   // +========================================================================+
 
   void EmitAutoVarInit(const AutoVarEmission &emission);
@@ -1947,9 +1961,34 @@ public:
 
   void ResetVars(void);
   void EmitForallMeshStmt(const ForallMeshStmt &S);
+
+  void EmitForallEdges(const ForallMeshStmt &S);
+  void EmitForallFaces(const ForallMeshStmt &S);
+
+  void EmitForallCellsVertices(const ForallMeshStmt &S);
+  void EmitForallCellsEdges(const ForallMeshStmt &S);
+  void EmitForallCellsFaces(const ForallMeshStmt &S);
+
+  void EmitForallVerticesCells(const ForallMeshStmt &S);
+
+  void EmitForallEdgesCells(const ForallMeshStmt &S);
+  void EmitForallFacesCells(const ForallMeshStmt &S);
+  void EmitForallEdgesOrFacesCellsLowD(const ForallMeshStmt &S,
+                                       llvm::Value* OuterIndex);
+
+  void EmitForallEdgesVertices(const ForallMeshStmt &S);
+  void EmitForallFacesVertices(const ForallMeshStmt &S);
+  void EmitForallEdgesOrFacesVerticesLowD(const ForallMeshStmt &S,
+                                          llvm::Value* OuterIndex);
+
   void EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r);
   llvm::BasicBlock *EmitMarkerBlock(const std::string name);
-  void ExtractRegion(llvm::BasicBlock *entry, llvm::BasicBlock *exit, const std::string name);
+  llvm::Function* ExtractRegion(llvm::BasicBlock *entry,
+                                llvm::BasicBlock *exit,
+                                const std::string name);
+
+  void EmitGPUPreamble(const ForallMeshStmt& S);
+  void AddScoutKernel(llvm::Function* f, const ForallMeshStmt &S);
 
   void EmitForAllStmtWrapper(const ForallMeshStmt &S);
 
@@ -1980,10 +2019,7 @@ public:
   RValue EmitMeshParameterExpr(const Expr *E, MeshParameterOffset offset);
 
   bool EmitScoutBuiltinExpr(const FunctionDecl *FD,
-                         unsigned BuiltinID, const CallExpr *E, RValue *Rv);
-
-  llvm::Value *CreateMemAlloc(uint64_t numBytes);
-  llvm::Value *CreateMemAllocForValue(llvm::Value* numBytesValue);
+                            unsigned BuiltinID, const CallExpr *E, RValue *Rv);
 
   void DEBUG_OUT(const char *s) {
     llvm::outs() << "Attempting " << s << ".\n";
@@ -2350,6 +2386,20 @@ public:
                                    bool negateForRightShift);
   llvm::Value *EmitNeonRShiftImm(llvm::Value *Vec, llvm::Value *Amt,
                                  llvm::Type *Ty, bool usgn, const char *name);
+  llvm::Value *EmitConcatVectors(llvm::Value *Lo, llvm::Value *Hi,
+                                 llvm::Type *ArgTy);
+  llvm::Value *EmitExtractHigh(llvm::Value *In, llvm::Type *ResTy);
+  // Helper functions for EmitARM64BuiltinExpr.
+  llvm::Value *vectorWrapScalar8(llvm::Value *Op);
+  llvm::Value *vectorWrapScalar16(llvm::Value *Op);
+  llvm::Value *emitVectorWrappedScalar8Intrinsic(
+      unsigned Int, SmallVectorImpl<llvm::Value *> &Ops, const char *Name);
+  llvm::Value *emitVectorWrappedScalar16Intrinsic(
+      unsigned Int, SmallVectorImpl<llvm::Value *> &Ops, const char *Name);
+  llvm::Value *EmitARM64BuiltinExpr(unsigned BuiltinID, const CallExpr *E);
+  llvm::Value *EmitNeon64Call(llvm::Function *F,
+                              llvm::SmallVectorImpl<llvm::Value *> &O,
+                              const char *name);
 
   llvm::Value *BuildVector(ArrayRef<llvm::Value*> Ops);
   llvm::Value *EmitX86BuiltinExpr(unsigned BuiltinID, const CallExpr *E);
@@ -2486,9 +2536,9 @@ public:
 
   /// CreateStaticVarDecl - Create a zero-initialized LLVM global for
   /// a static local variable.
-  llvm::GlobalVariable *CreateStaticVarDecl(const VarDecl &D,
-                                            const char *Separator,
-                                       llvm::GlobalValue::LinkageTypes Linkage);
+  llvm::Constant *CreateStaticVarDecl(const VarDecl &D,
+                                      const char *Separator,
+                                      llvm::GlobalValue::LinkageTypes Linkage);
 
   /// AddInitializerToStaticVarDecl - Add the initializer for 'D' to the
   /// global variable that has already been created for it.  If the initializer

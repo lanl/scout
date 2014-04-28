@@ -117,6 +117,8 @@
 #include <sstream>
 using namespace llvm;
 
+#define DEBUG_TYPE "asm-matcher-emitter"
+
 static cl::opt<std::string>
 MatchPrefix("match-prefix", cl::init(""),
             cl::desc("Only match instructions with the given prefix"));
@@ -306,8 +308,8 @@ struct MatchableInfo {
     /// Register record if this token is singleton register.
     Record *SingletonReg;
 
-    explicit AsmOperand(StringRef T) : Token(T), Class(0), SubOpIdx(-1),
-                                       SingletonReg(0) {}
+    explicit AsmOperand(StringRef T) : Token(T), Class(nullptr), SubOpIdx(-1),
+                                       SingletonReg(nullptr) {}
   };
 
   /// ResOperand - This represents a single operand in the result instruction
@@ -666,7 +668,7 @@ public:
     assert(Def->isSubClassOf("Predicate") && "Invalid predicate type!");
     std::map<Record*, SubtargetFeatureInfo*, LessRecordByID>::const_iterator I =
       SubtargetFeatures.find(Def);
-    return I == SubtargetFeatures.end() ? 0 : I->second;
+    return I == SubtargetFeatures.end() ? nullptr : I->second;
   }
 
   RecordKeeper &getRecords() const {
@@ -719,12 +721,12 @@ void MatchableInfo::formTwoOperandAlias(StringRef Constraint) {
   int DstAsmOperand = findAsmOperandNamed(Ops.second);
   if (SrcAsmOperand == -1)
     PrintFatalError(TheDef->getLoc(),
-                  "unknown source two-operand alias operand '" +
-                  Ops.first.str() + "'.");
+                    "unknown source two-operand alias operand '" + Ops.first +
+                    "'.");
   if (DstAsmOperand == -1)
     PrintFatalError(TheDef->getLoc(),
-                  "unknown destination two-operand alias operand '" +
-                  Ops.second.str() + "'.");
+                    "unknown destination two-operand alias operand '" +
+                    Ops.second + "'.");
 
   // Find the ResOperand that refers to the operand we're aliasing away
   // and update it to refer to the combined operand instead.
@@ -872,7 +874,7 @@ void MatchableInfo::tokenizeAsmString(const AsmMatcherInfo &Info) {
   // FIXME : Check and raise an error if it is a register.
   if (Mnemonic[0] == '$')
     PrintFatalError(TheDef->getLoc(),
-                  "Invalid instruction mnemonic '" + Mnemonic.str() + "'!");
+                    "Invalid instruction mnemonic '" + Mnemonic + "'!");
 
   // Remove the first operand, it is tracked in the mnemonic field.
   AsmOperands.erase(AsmOperands.begin());
@@ -909,22 +911,22 @@ bool MatchableInfo::validate(StringRef CommentDelimiter, bool Hack) const {
     StringRef Tok = AsmOperands[i].Token;
     if (Tok[0] == '$' && Tok.find(':') != StringRef::npos)
       PrintFatalError(TheDef->getLoc(),
-                    "matchable with operand modifier '" + Tok.str() +
-                    "' not supported by asm matcher.  Mark isCodeGenOnly!");
+                      "matchable with operand modifier '" + Tok +
+                      "' not supported by asm matcher.  Mark isCodeGenOnly!");
 
     // Verify that any operand is only mentioned once.
     // We reject aliases and ignore instructions for now.
     if (Tok[0] == '$' && !OperandNames.insert(Tok).second) {
       if (!Hack)
         PrintFatalError(TheDef->getLoc(),
-                      "ERROR: matchable with tied operand '" + Tok.str() +
-                      "' can never be matched!");
+                        "ERROR: matchable with tied operand '" + Tok +
+                        "' can never be matched!");
       // FIXME: Should reject these.  The ARM backend hits this with $lane in a
       // bunch of instructions.  It is unclear what the right answer is.
       DEBUG({
         errs() << "warning: '" << TheDef->getName() << "': "
                << "ignoring instruction with tied operand '"
-               << Tok.str() << "'\n";
+               << Tok << "'\n";
       });
       return false;
     }
@@ -1018,7 +1020,7 @@ AsmMatcherInfo::getOperandClass(Record *Rec, int SubOpIdx) {
     // RegisterOperand may have an associated ParserMatchClass. If it does,
     // use it, else just fall back to the underlying register class.
     const RecordVal *R = Rec->getValue("ParserMatchClass");
-    if (R == 0 || R->getValue() == 0)
+    if (!R || !R->getValue())
       PrintFatalError("Record `" + Rec->getName() +
         "' does not have a ParserMatchClass!\n");
 
@@ -1500,8 +1502,8 @@ buildInstructionOperandReference(MatchableInfo *II,
   // Map this token to an operand.
   unsigned Idx;
   if (!Operands.hasOperandNamed(OperandName, Idx))
-    PrintFatalError(II->TheDef->getLoc(), "error: unable to find operand: '" +
-                  OperandName.str() + "'");
+    PrintFatalError(II->TheDef->getLoc(),
+                    "error: unable to find operand: '" + OperandName + "'");
 
   // If the instruction operand has multiple suboperands, but the parser
   // match class for the asm operand is still the default "ImmAsmOperand",
@@ -1573,8 +1575,8 @@ void AsmMatcherInfo::buildAliasOperandReference(MatchableInfo *II,
       return;
     }
 
-  PrintFatalError(II->TheDef->getLoc(), "error: unable to find operand: '" +
-                OperandName.str() + "'");
+  PrintFatalError(II->TheDef->getLoc(),
+                  "error: unable to find operand: '" + OperandName + "'");
 }
 
 void MatchableInfo::buildInstructionResultOperands() {
@@ -1897,7 +1899,7 @@ static void emitConvertFuncs(CodeGenTarget &Target, StringRef ClassName,
       }
       case MatchableInfo::ResOperand::RegOperand: {
         std::string Reg, Name;
-        if (OpInfo.Register == 0) {
+        if (!OpInfo.Register) {
           Name = "reg0";
           Reg = "0";
         } else {
@@ -2319,7 +2321,7 @@ static std::string GetAliasRequiredFeatures(Record *R,
   for (unsigned i = 0, e = ReqFeatures.size(); i != e; ++i) {
     SubtargetFeatureInfo *F = Info.getSubtargetFeature(ReqFeatures[i]);
 
-    if (F == 0)
+    if (!F)
       PrintFatalError(R->getLoc(), "Predicate '" + ReqFeatures[i]->getName() +
                     "' is not marked as an AssemblerPredicate!");
 
@@ -2881,8 +2883,8 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
   for (unsigned VC = 0; VC != VariantCount; ++VC) {
     Record *AsmVariant = Target.getAsmParserVariant(VC);
     int AsmVariantNo = AsmVariant->getValueAsInt("Variant");
-    OS << "  case " << AsmVariantNo << ": Start = MatchTable" << VC
-       << "; End = array_endof(MatchTable" << VC << "); break;\n";
+    OS << "  case " << AsmVariantNo << ": Start = std::begin(MatchTable" << VC
+       << "); End = std::end(MatchTable" << VC << "); break;\n";
   }
   OS << "  }\n";
   OS << "  // Search the table.\n";
@@ -2936,8 +2938,8 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
   for (unsigned VC = 0; VC != VariantCount; ++VC) {
     Record *AsmVariant = Target.getAsmParserVariant(VC);
     int AsmVariantNo = AsmVariant->getValueAsInt("Variant");
-    OS << "  case " << AsmVariantNo << ": Start = MatchTable" << VC
-       << "; End = array_endof(MatchTable" << VC << "); break;\n";
+    OS << "  case " << AsmVariantNo << ": Start = std::begin(MatchTable" << VC
+       << "); End = std::end(MatchTable" << VC << "); break;\n";
   }
   OS << "  }\n";
   OS << "  // Search the table.\n";

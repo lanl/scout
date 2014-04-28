@@ -31,6 +31,7 @@
 #include "clang/Sema/CodeCompleteConsumer.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Serialization/ASTReader.h"
+#include "clang/Serialization/GlobalModuleIndex.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Config/config.h"
 #include "llvm/Support/CrashRecoveryContext.h"
@@ -49,16 +50,17 @@
 
 using namespace clang;
 
-CompilerInstance::CompilerInstance()
-  : Invocation(new CompilerInvocation()), ModuleManager(0),
-    BuildGlobalModuleIndex(false), ModuleBuildFailed(false),
+CompilerInstance::CompilerInstance(bool BuildingModule)
+  : ModuleLoader(BuildingModule),
+    Invocation(new CompilerInvocation()), ModuleManager(0),
+    BuildGlobalModuleIndex(false), HaveFullGlobalModuleIndex(false),
+    ModuleBuildFailed(false),
     // +===== Scout ==========================================================+
     // Added ScoutASTConsumer / ScoutRewriter init which are used to
     // communicate between the scout driver and FrontendAction.cpp when the
     // rewriter is being used.
     ScoutASTConsumer(0), ScoutRewriter(0) {
     // +======================================================================+
-
 }
 
 CompilerInstance::~CompilerInstance() {
@@ -783,32 +785,11 @@ static InputKind getSourceInputKindFromOptions(const LangOptions &LangOpts) {
 
 /// \brief Compile a module file for the given module, using the options 
 /// provided by the importing compiler instance.
-static void compileModule(CompilerInstance &ImportingInstance,
+static void compileModuleImpl(CompilerInstance &ImportingInstance,
                           SourceLocation ImportLoc,
                           Module *Module,
                           StringRef ModuleFileName) {
-  // FIXME: have LockFileManager return an error_code so that we can
-  // avoid the mkdir when the directory already exists.
-  StringRef Dir = llvm::sys::path::parent_path(ModuleFileName);
-  llvm::sys::fs::create_directories(Dir);
-
-  llvm::LockFileManager Locked(ModuleFileName);
-  switch (Locked) {
-  case llvm::LockFileManager::LFS_Error:
-    return;
-
-  case llvm::LockFileManager::LFS_Owned:
-    // We're responsible for building the module ourselves. Do so below.
-    break;
-
-  case llvm::LockFileManager::LFS_Shared:
-    // Someone else is responsible for building the module. Wait for them to
-    // finish.
-    Locked.waitForUnlock();
-    return;
-  }
-
-  ModuleMap &ModMap
+  ModuleMap &ModMap 
     = ImportingInstance.getPreprocessor().getHeaderSearchInfo().getModuleMap();
 
   // Construct a compiler invocation for creating this module.
@@ -864,7 +845,7 @@ static void compileModule(CompilerInstance &ImportingInstance,
 
   // Construct a compiler instance that will be used to actually create the
   // module.
-  CompilerInstance Instance;
+  CompilerInstance Instance(/*BuildingModule=*/true);
   Instance.setInvocation(&*Invocation);
 
   Instance.createDiagnostics(new ForwardingDiagnosticConsumer(
@@ -904,9 +885,10 @@ static void compileModule(CompilerInstance &ImportingInstance,
     SourceMgr.overrideFileContents(ModuleMapFile, ModuleMapBuffer);
   }
 
-  // Construct a module-generating action.
-  GenerateModuleAction CreateModuleAction(Module->IsSystem);
-
+  // Construct a module-generating action. Passing through Module->ModuleMap is
+  // safe because the FileManager is shared between the compiler instances.
+  GenerateModuleAction CreateModuleAction(Module->ModuleMap, Module->IsSystem);
+  
   // Execute the action to actually build the module in-place. Use a separate
   // thread so that we get a stack large enough.
   const unsigned ThreadStackSize = 8 << 20;
@@ -924,6 +906,38 @@ static void compileModule(CompilerInstance &ImportingInstance,
   // module index, record that fact in the importing compiler instance.
   if (ImportingInstance.getFrontendOpts().GenerateGlobalModuleIndex) {
     ImportingInstance.setBuildGlobalModuleIndex(true);
+  }
+}
+
+static void compileModule(CompilerInstance &ImportingInstance,
+                          SourceLocation ImportLoc,
+                          Module *Module,
+                          StringRef ModuleFileName) {
+  // FIXME: have LockFileManager return an error_code so that we can
+  // avoid the mkdir when the directory already exists.
+  StringRef Dir = llvm::sys::path::parent_path(ModuleFileName);
+  llvm::sys::fs::create_directories(Dir);
+
+  while (1) {
+    llvm::LockFileManager Locked(ModuleFileName);
+    switch (Locked) {
+    case llvm::LockFileManager::LFS_Error:
+      return;
+
+    case llvm::LockFileManager::LFS_Owned:
+      // We're responsible for building the module ourselves. Do so below.
+      break;
+
+    case llvm::LockFileManager::LFS_Shared:
+      // Someone else is responsible for building the module. Wait for them to
+      // finish.
+      if (Locked.waitForUnlock() == llvm::LockFileManager::Res_OwnerDied)
+        continue; // try again to get the lock.
+      return;
+    }
+
+    return compileModuleImpl(ImportingInstance, ImportLoc, Module,
+                             ModuleFileName);
   }
 }
 
@@ -1098,6 +1112,43 @@ static void pruneModuleCache(const HeaderSearchOptions &HSOpts) {
   }
 }
 
+void CompilerInstance::createModuleManager() {
+  if (!ModuleManager) {
+    if (!hasASTContext())
+      createASTContext();
+
+    // If we're not recursively building a module, check whether we
+    // need to prune the module cache.
+    if (getSourceManager().getModuleBuildStack().empty() &&
+        getHeaderSearchOpts().ModuleCachePruneInterval > 0 &&
+        getHeaderSearchOpts().ModuleCachePruneAfter > 0) {
+      pruneModuleCache(getHeaderSearchOpts());
+    }
+
+    HeaderSearchOptions &HSOpts = getHeaderSearchOpts();
+    std::string Sysroot = HSOpts.Sysroot;
+    const PreprocessorOptions &PPOpts = getPreprocessorOpts();
+    ModuleManager = new ASTReader(getPreprocessor(), *Context,
+                                  Sysroot.empty() ? "" : Sysroot.c_str(),
+                                  PPOpts.DisablePCHValidation,
+                                  /*AllowASTWithCompilerErrors=*/false,
+                                  /*AllowConfigurationMismatch=*/false,
+                                  HSOpts.ModulesValidateSystemHeaders,
+                                  getFrontendOpts().UseGlobalModuleIndex);
+    if (hasASTConsumer()) {
+      ModuleManager->setDeserializationListener(
+        getASTConsumer().GetASTDeserializationListener());
+      getASTContext().setASTMutationListener(
+        getASTConsumer().GetASTMutationListener());
+    }
+    getASTContext().setExternalSource(ModuleManager);
+    if (hasSema())
+      ModuleManager->InitializeSema(getSema());
+    if (hasASTConsumer())
+      ModuleManager->StartTranslationUnit(&getASTConsumer());
+  }
+}
+
 ModuleLoadResult
 CompilerInstance::loadModule(SourceLocation ImportLoc,
                              ModuleIdPath Path,
@@ -1144,40 +1195,8 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
     std::string ModuleFileName = PP->getHeaderSearchInfo().getModuleFileName(Module);
 
     // If we don't already have an ASTReader, create one now.
-    if (!ModuleManager) {
-      if (!hasASTContext())
-        createASTContext();
-
-      // If we're not recursively building a module, check whether we
-      // need to prune the module cache.
-      if (getSourceManager().getModuleBuildStack().empty() &&
-          getHeaderSearchOpts().ModuleCachePruneInterval > 0 &&
-          getHeaderSearchOpts().ModuleCachePruneAfter > 0) {
-        pruneModuleCache(getHeaderSearchOpts());
-      }
-
-      HeaderSearchOptions &HSOpts = getHeaderSearchOpts();
-      std::string Sysroot = HSOpts.Sysroot;
-      const PreprocessorOptions &PPOpts = getPreprocessorOpts();
-      ModuleManager = new ASTReader(getPreprocessor(), *Context,
-                                    Sysroot.empty() ? "" : Sysroot.c_str(),
-                                    PPOpts.DisablePCHValidation,
-                                    /*AllowASTWithCompilerErrors=*/false,
-                                    /*AllowConfigurationMismatch=*/false,
-                                    HSOpts.ModulesValidateSystemHeaders,
-                                    getFrontendOpts().UseGlobalModuleIndex);
-      if (hasASTConsumer()) {
-        ModuleManager->setDeserializationListener(
-          getASTConsumer().GetASTDeserializationListener());
-        getASTContext().setASTMutationListener(
-          getASTConsumer().GetASTMutationListener());
-      }
-      getASTContext().setExternalSource(ModuleManager);
-      if (hasSema())
-        ModuleManager->InitializeSema(getSema());
-      if (hasASTConsumer())
-        ModuleManager->StartTranslationUnit(&getASTConsumer());
-    }
+    if (!ModuleManager)
+      createModuleManager();
 
     if (TheDependencyFileGenerator)
       TheDependencyFileGenerator->AttachToASTReader(*ModuleManager);
@@ -1404,3 +1423,84 @@ void CompilerInstance::makeModuleVisible(Module *Mod,
   ModuleManager->makeModuleVisible(Mod, Visibility, ImportLoc, Complain);
 }
 
+GlobalModuleIndex *CompilerInstance::loadGlobalModuleIndex(
+    SourceLocation TriggerLoc) {
+  if (!ModuleManager)
+    createModuleManager();
+  // Can't do anything if we don't have the module manager.
+  if (!ModuleManager)
+    return 0;
+  // Get an existing global index.  This loads it if not already
+  // loaded.
+  ModuleManager->loadGlobalIndex();
+  GlobalModuleIndex *GlobalIndex = ModuleManager->getGlobalIndex();
+  // If the global index doesn't exist, create it.
+  if (!GlobalIndex && shouldBuildGlobalModuleIndex() && hasFileManager() &&
+      hasPreprocessor()) {
+    llvm::sys::fs::create_directories(
+      getPreprocessor().getHeaderSearchInfo().getModuleCachePath());
+    GlobalModuleIndex::writeIndex(
+      getFileManager(),
+      getPreprocessor().getHeaderSearchInfo().getModuleCachePath());
+    ModuleManager->resetForReload();
+    ModuleManager->loadGlobalIndex();
+    GlobalIndex = ModuleManager->getGlobalIndex();
+  }
+  // For finding modules needing to be imported for fixit messages,
+  // we need to make the global index cover all modules, so we do that here.
+  if (!HaveFullGlobalModuleIndex && GlobalIndex && !buildingModule()) {
+    ModuleMap &MMap = getPreprocessor().getHeaderSearchInfo().getModuleMap();
+    bool RecreateIndex = false;
+    for (ModuleMap::module_iterator I = MMap.module_begin(),
+        E = MMap.module_end(); I != E; ++I) {
+      Module *TheModule = I->second;
+      const FileEntry *Entry = TheModule->getASTFile();
+      if (!Entry) {
+        SmallVector<std::pair<IdentifierInfo *, SourceLocation>, 2> Path;
+        Path.push_back(std::make_pair(
+				  getPreprocessor().getIdentifierInfo(TheModule->Name), TriggerLoc));
+        std::reverse(Path.begin(), Path.end());
+		    // Load a module as hidden.  This also adds it to the global index.
+        loadModule(TheModule->DefinitionLoc, Path,
+                                             Module::Hidden, false);
+        RecreateIndex = true;
+      }
+    }
+    if (RecreateIndex) {
+      GlobalModuleIndex::writeIndex(
+        getFileManager(),
+        getPreprocessor().getHeaderSearchInfo().getModuleCachePath());
+      ModuleManager->resetForReload();
+      ModuleManager->loadGlobalIndex();
+      GlobalIndex = ModuleManager->getGlobalIndex();
+    }
+    HaveFullGlobalModuleIndex = true;
+  }
+  return GlobalIndex;
+}
+
+// Check global module index for missing imports.
+bool
+CompilerInstance::lookupMissingImports(StringRef Name,
+                                       SourceLocation TriggerLoc) {
+  // Look for the symbol in non-imported modules, but only if an error
+  // actually occurred.
+  if (!buildingModule()) {
+    // Load global module index, or retrieve a previously loaded one.
+    GlobalModuleIndex *GlobalIndex = loadGlobalModuleIndex(
+      TriggerLoc);
+
+    // Only if we have a global index.
+    if (GlobalIndex) {
+      GlobalModuleIndex::HitSet FoundModules;
+
+      // Find the modules that reference the identifier.
+      // Note that this only finds top-level modules.
+      // We'll let diagnoseTypo find the actual declaration module.
+      if (GlobalIndex->lookupIdentifier(Name, FoundModules))
+        return true;
+    }
+  }
+
+  return false;
+}

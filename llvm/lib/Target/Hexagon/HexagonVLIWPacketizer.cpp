@@ -16,7 +16,6 @@
 // prune the dependence.
 //
 //===----------------------------------------------------------------------===//
-#define DEBUG_TYPE "packets"
 #include "llvm/CodeGen/DFAPacketizer.h"
 #include "Hexagon.h"
 #include "HexagonMachineFunctionInfo.h"
@@ -50,6 +49,8 @@
 #include <vector>
 
 using namespace llvm;
+
+#define DEBUG_TYPE "packets"
 
 static cl::opt<bool> PacketizeVolatiles("hexagon-packetize-volatiles",
       cl::ZeroOrMore, cl::Hidden, cl::init(true),
@@ -390,7 +391,7 @@ static bool IsLoopN(MachineInstr *MI) {
 /// callee-saved register.
 static bool DoesModifyCalleeSavedReg(MachineInstr *MI,
                                      const TargetRegisterInfo *TRI) {
-  for (const uint16_t *CSR = TRI->getCalleeSavedRegs(); *CSR; ++CSR) {
+  for (const MCPhysReg *CSR = TRI->getCalleeSavedRegs(); *CSR; ++CSR) {
     unsigned CalleeSavedReg = *CSR;
     if (MI->modifiesRegister(CalleeSavedReg, TRI))
       return true;

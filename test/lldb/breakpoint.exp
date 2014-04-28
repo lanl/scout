@@ -1,0 +1,22 @@
+#!/usr/bin/env expect
+#
+# make sure we can set a breakpoint inside a scout directory
+#
+
+set path [lindex $argv 0]
+set type [lindex $argv 1]
+
+set timeout 30
+
+spawn $path/../../build/bin/lldb-$type $path/breakpoint.sc
+expect "(lldb)"
+send "b clang::CodeGen::CodeGenFunction::EmitForallMeshStmt\n"
+expect {
+    "clang::CodeGen::CodeGenFunction::EmitForallMeshStmt(" {
+  }
+  timeout {
+    exit 1
+  }
+}
+send "q\n"
+#

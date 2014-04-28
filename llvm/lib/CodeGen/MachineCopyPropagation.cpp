@@ -11,7 +11,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "codegen-cp"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SetVector.h"
@@ -27,6 +26,8 @@
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 using namespace llvm;
+
+#define DEBUG_TYPE "codegen-cp"
 
 STATISTIC(NumDeletes, "Number of dead copies deleted");
 
@@ -329,6 +330,9 @@ bool MachineCopyPropagation::CopyPropagateBlock(MachineBasicBlock &MBB) {
 }
 
 bool MachineCopyPropagation::runOnMachineFunction(MachineFunction &MF) {
+  if (skipOptnoneFunction(*MF.getFunction()))
+    return false;
+
   bool Changed = false;
 
   TRI = MF.getTarget().getRegisterInfo();

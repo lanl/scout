@@ -65,7 +65,6 @@
 /// ultimately led to the creation of an illegal COPY.
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "sgpr-copies"
 #include "AMDGPU.h"
 #include "SIInstrInfo.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
@@ -76,6 +75,8 @@
 #include "llvm/Target/TargetMachine.h"
 
 using namespace llvm;
+
+#define DEBUG_TYPE "sgpr-copies"
 
 namespace {
 
@@ -255,6 +256,16 @@ bool SIFixSGPRCopies::runOnMachineFunction(MachineFunction &MF) {
 
         TII->moveToVALU(MI);
         break;
+      }
+      case AMDGPU::INSERT_SUBREG: {
+        const TargetRegisterClass *DstRC, *SrcRC;
+        DstRC = MRI.getRegClass(MI.getOperand(0).getReg());
+        SrcRC = MRI.getRegClass(MI.getOperand(1).getReg());
+        if (!TRI->isSGPRClass(DstRC) || !TRI->hasVGPRs(SrcRC))
+          break;
+        DEBUG(dbgs() << " Fixing INSERT_SUBREG:\n");
+        DEBUG(MI.print(dbgs()));
+        TII->moveToVALU(MI);
       }
       }
     }

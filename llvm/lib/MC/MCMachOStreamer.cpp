@@ -8,6 +8,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/MC/MCStreamer.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCCodeEmitter.h"
@@ -15,6 +17,7 @@
 #include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
+#include "llvm/MC/MCLinkerOptimizationHint.h"
 #include "llvm/MC/MCMachOSymbolFlags.h"
 #include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/MCObjectStreamer.h"
@@ -31,18 +34,31 @@ namespace {
 
 class MCMachOStreamer : public MCObjectStreamer {
 private:
+  /// LabelSections - true if each section change should emit a linker local
+  /// label for use in relocations for assembler local references. Obviates the
+  /// need for local relocations. False by default.
+  bool LabelSections;
+
+  /// HasSectionLabel - map of which sections have already had a non-local
+  /// label emitted to them. Used so we don't emit extraneous linker local
+  /// labels in the middle of the section.
+  DenseMap<const MCSection*, bool> HasSectionLabel;
+
   void EmitInstToData(const MCInst &Inst, const MCSubtargetInfo &STI) override;
 
   void EmitDataRegion(DataRegionData::KindTy Kind);
   void EmitDataRegionEnd();
+
 public:
   MCMachOStreamer(MCContext &Context, MCAsmBackend &MAB, raw_ostream &OS,
-                  MCCodeEmitter *Emitter)
-      : MCObjectStreamer(Context, MAB, OS, Emitter) {}
+                  MCCodeEmitter *Emitter, bool label)
+      : MCObjectStreamer(Context, MAB, OS, Emitter),
+        LabelSections(label) {}
 
   /// @name MCStreamer Interface
   /// @{
 
+  void ChangeSection(const MCSection *Sect, const MCExpr *Subsect) override;
   void EmitLabel(MCSymbol *Symbol) override;
   void EmitDebugLabel(MCSymbol *Symbol) override;
   void EmitEHSymAttributes(const MCSymbol *Symbol, MCSymbol *EHSymbol) override;
@@ -73,7 +89,7 @@ public:
   }
   void EmitLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size,
                              unsigned ByteAlignment) override;
-  void EmitZerofill(const MCSection *Section, MCSymbol *Symbol = 0,
+  void EmitZerofill(const MCSection *Section, MCSymbol *Symbol = nullptr,
                     uint64_t Size = 0, unsigned ByteAlignment = 0) override;
   virtual void EmitTBSSSymbol(const MCSection *Section, MCSymbol *Symbol,
                       uint64_t Size, unsigned ByteAlignment = 0) override;
@@ -89,10 +105,27 @@ public:
     llvm_unreachable("macho doesn't support this directive");
   }
 
+  void EmitLOHDirective(MCLOHType Kind, const MCLOHArgs &Args) override {
+    getAssembler().getLOHContainer().addDirective(Kind, Args);
+  }
+
   void FinishImpl() override;
 };
 
 } // end anonymous namespace.
+
+void MCMachOStreamer::ChangeSection(const MCSection *Section,
+                                    const MCExpr *Subsection) {
+  // Change the section normally.
+  MCObjectStreamer::ChangeSection(Section, Subsection);
+  // Output a linker-local symbol so we don't need section-relative local
+  // relocations. The linker hates us when we do that.
+  if (LabelSections && !HasSectionLabel[Section]) {
+    MCSymbol *Label = getContext().CreateLinkerPrivateTempSymbol();
+    EmitLabel(Label);
+    HasSectionLabel[Section] = true;
+  }
+}
 
 void MCMachOStreamer::EmitEHSymAttributes(const MCSymbol *Symbol,
                                           MCSymbol *EHSymbol) {
@@ -139,7 +172,7 @@ void MCMachOStreamer::EmitDataRegion(DataRegionData::KindTy Kind) {
   MCSymbol *Start = getContext().CreateTempSymbol();
   EmitLabel(Start);
   // Record the region for the object writer to use.
-  DataRegionData Data = { Kind, Start, NULL };
+  DataRegionData Data = { Kind, Start, nullptr };
   std::vector<DataRegionData> &Regions = getAssembler().getDataRegions();
   Regions.push_back(Data);
 }
@@ -150,7 +183,7 @@ void MCMachOStreamer::EmitDataRegionEnd() {
   std::vector<DataRegionData> &Regions = getAssembler().getDataRegions();
   assert(Regions.size() && "Mismatched .end_data_region!");
   DataRegionData &Data = Regions.back();
-  assert(Data.End == NULL && "Mismatched .end_data_region!");
+  assert(!Data.End && "Mismatched .end_data_region!");
   // Create a temporary label to mark the end of the data region.
   Data.End = getContext().CreateTempSymbol();
   EmitLabel(Data.End);
@@ -319,7 +352,7 @@ void MCMachOStreamer::EmitCommonSymbol(MCSymbol *Symbol, uint64_t Size,
   // FIXME: Darwin 'as' does appear to allow redef of a .comm by itself.
   assert(Symbol->isUndefined() && "Cannot define a symbol twice!");
 
-  AssignSection(Symbol, NULL);
+  AssignSection(Symbol, nullptr);
 
   MCSymbolData &SD = getAssembler().getOrCreateSymbolData(*Symbol);
   SD.setExternal(true);
@@ -397,13 +430,12 @@ void MCMachOStreamer::FinishImpl() {
   // First, scan the symbol table to build a lookup table from fragments to
   // defining symbols.
   DenseMap<const MCFragment*, MCSymbolData*> DefiningSymbolMap;
-  for (MCAssembler::symbol_iterator it = getAssembler().symbol_begin(),
-         ie = getAssembler().symbol_end(); it != ie; ++it) {
-    if (getAssembler().isSymbolLinkerVisible(it->getSymbol()) &&
-        it->getFragment()) {
+  for (MCSymbolData &SD : getAssembler().symbols()) {
+    if (getAssembler().isSymbolLinkerVisible(SD.getSymbol()) &&
+        SD.getFragment()) {
       // An atom defining symbol should never be internal to a fragment.
-      assert(it->getOffset() == 0 && "Invalid offset in atom defining symbol!");
-      DefiningSymbolMap[it->getFragment()] = it;
+      assert(SD.getOffset() == 0 && "Invalid offset in atom defining symbol!");
+      DefiningSymbolMap[SD.getFragment()] = &SD;
     }
   }
 
@@ -411,7 +443,7 @@ void MCMachOStreamer::FinishImpl() {
   // symbol.
   for (MCAssembler::iterator it = getAssembler().begin(),
          ie = getAssembler().end(); it != ie; ++it) {
-    MCSymbolData *CurrentAtom = 0;
+    MCSymbolData *CurrentAtom = nullptr;
     for (MCSectionData::iterator it2 = it->begin(),
            ie2 = it->end(); it2 != ie2; ++it2) {
       if (MCSymbolData *SD = DefiningSymbolMap.lookup(it2))
@@ -425,8 +457,9 @@ void MCMachOStreamer::FinishImpl() {
 
 MCStreamer *llvm::createMachOStreamer(MCContext &Context, MCAsmBackend &MAB,
                                       raw_ostream &OS, MCCodeEmitter *CE,
-                                      bool RelaxAll) {
-  MCMachOStreamer *S = new MCMachOStreamer(Context, MAB, OS, CE);
+                                      bool RelaxAll,
+                                      bool LabelSections) {
+  MCMachOStreamer *S = new MCMachOStreamer(Context, MAB, OS, CE, LabelSections);
   if (RelaxAll)
     S->getAssembler().setRelaxAll(true);
   return S;

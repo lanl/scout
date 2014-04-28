@@ -14,7 +14,7 @@
 #ifndef ARMBASEREGISTERINFO_H
 #define ARMBASEREGISTERINFO_H
 
-#include "ARM.h"
+#include "MCTargetDesc/ARMBaseInfo.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 
 #define GET_REGINFO_HEADER
@@ -100,7 +100,7 @@ protected:
 
 public:
   /// Code Generation virtual methods...
-  const uint16_t *
+  const MCPhysReg *
   getCalleeSavedRegs(const MachineFunction *MF = 0) const override;
   const uint32_t *getCallPreservedMask(CallingConv::ID) const override;
   const uint32_t *getNoPreservedMask() const;
@@ -150,8 +150,8 @@ public:
   void materializeFrameBaseRegister(MachineBasicBlock *MBB,
                                     unsigned BaseReg, int FrameIdx,
                                     int64_t Offset) const override;
-  void resolveFrameIndex(MachineBasicBlock::iterator I,
-                         unsigned BaseReg, int64_t Offset) const override;
+  void resolveFrameIndex(MachineInstr &MI, unsigned BaseReg,
+                         int64_t Offset) const override;
   bool isFrameOffsetLegal(const MachineInstr *MI,
                           int64_t Offset) const override;
 

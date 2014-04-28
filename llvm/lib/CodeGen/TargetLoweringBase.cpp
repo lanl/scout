@@ -82,16 +82,16 @@ static void InitLibcallNames(const char **Names, const TargetMachine &TM) {
   Names[RTLIB::UREM_I128] = "__umodti3";
 
   // These are generally not available.
-  Names[RTLIB::SDIVREM_I8] = 0;
-  Names[RTLIB::SDIVREM_I16] = 0;
-  Names[RTLIB::SDIVREM_I32] = 0;
-  Names[RTLIB::SDIVREM_I64] = 0;
-  Names[RTLIB::SDIVREM_I128] = 0;
-  Names[RTLIB::UDIVREM_I8] = 0;
-  Names[RTLIB::UDIVREM_I16] = 0;
-  Names[RTLIB::UDIVREM_I32] = 0;
-  Names[RTLIB::UDIVREM_I64] = 0;
-  Names[RTLIB::UDIVREM_I128] = 0;
+  Names[RTLIB::SDIVREM_I8] = nullptr;
+  Names[RTLIB::SDIVREM_I16] = nullptr;
+  Names[RTLIB::SDIVREM_I32] = nullptr;
+  Names[RTLIB::SDIVREM_I64] = nullptr;
+  Names[RTLIB::SDIVREM_I128] = nullptr;
+  Names[RTLIB::UDIVREM_I8] = nullptr;
+  Names[RTLIB::UDIVREM_I16] = nullptr;
+  Names[RTLIB::UDIVREM_I32] = nullptr;
+  Names[RTLIB::UDIVREM_I64] = nullptr;
+  Names[RTLIB::UDIVREM_I128] = nullptr;
 
   Names[RTLIB::NEG_I32] = "__negsi2";
   Names[RTLIB::NEG_I64] = "__negdi2";
@@ -205,6 +205,11 @@ static void InitLibcallNames(const char **Names, const TargetMachine &TM) {
   Names[RTLIB::FLOOR_F80] = "floorl";
   Names[RTLIB::FLOOR_F128] = "floorl";
   Names[RTLIB::FLOOR_PPCF128] = "floorl";
+  Names[RTLIB::ROUND_F32] = "roundf";
+  Names[RTLIB::ROUND_F64] = "round";
+  Names[RTLIB::ROUND_F80] = "roundl";
+  Names[RTLIB::ROUND_F128] = "roundl";
+  Names[RTLIB::ROUND_PPCF128] = "roundl";
   Names[RTLIB::COPYSIGN_F32] = "copysignf";
   Names[RTLIB::COPYSIGN_F64] = "copysign";
   Names[RTLIB::COPYSIGN_F80] = "copysignl";
@@ -387,18 +392,18 @@ static void InitLibcallNames(const char **Names, const TargetMachine &TM) {
     Names[RTLIB::SINCOS_PPCF128] = "sincosl";
   } else {
     // These are generally not available.
-    Names[RTLIB::SINCOS_F32] = 0;
-    Names[RTLIB::SINCOS_F64] = 0;
-    Names[RTLIB::SINCOS_F80] = 0;
-    Names[RTLIB::SINCOS_F128] = 0;
-    Names[RTLIB::SINCOS_PPCF128] = 0;
+    Names[RTLIB::SINCOS_F32] = nullptr;
+    Names[RTLIB::SINCOS_F64] = nullptr;
+    Names[RTLIB::SINCOS_F80] = nullptr;
+    Names[RTLIB::SINCOS_F128] = nullptr;
+    Names[RTLIB::SINCOS_PPCF128] = nullptr;
   }
 
   if (Triple(TM.getTargetTriple()).getOS() != Triple::OpenBSD) {
     Names[RTLIB::STACKPROTECTOR_CHECK_FAIL] = "__stack_chk_fail";
   } else {
     // These are generally not available.
-    Names[RTLIB::STACKPROTECTOR_CHECK_FAIL] = 0;
+    Names[RTLIB::STACKPROTECTOR_CHECK_FAIL] = nullptr;
   }
 }
 
@@ -675,10 +680,13 @@ TargetLoweringBase::TargetLoweringBase(const TargetMachine &tm,
   UseUnderscoreLongJmp = false;
   SelectIsExpensive = false;
   HasMultipleConditionRegisters = false;
+  HasExtractBitsInsn = false;
   IntDivIsCheap = false;
   Pow2DivIsCheap = false;
+  DivIsWellDefined = false;
   JumpIsExpensive = false;
   PredictableSelectIsExpensive = false;
+  MaskAndBranchFoldingIsLegal = false;
   StackPointerRegisterToSaveRestore = 0;
   ExceptionPointerRegister = 0;
   ExceptionSelectorRegister = 0;
@@ -759,6 +767,7 @@ void TargetLoweringBase::initActions() {
   setOperationAction(ISD::FCEIL,  MVT::f16, Expand);
   setOperationAction(ISD::FRINT,  MVT::f16, Expand);
   setOperationAction(ISD::FTRUNC, MVT::f16, Expand);
+  setOperationAction(ISD::FROUND, MVT::f16, Expand);
   setOperationAction(ISD::FLOG ,  MVT::f32, Expand);
   setOperationAction(ISD::FLOG2,  MVT::f32, Expand);
   setOperationAction(ISD::FLOG10, MVT::f32, Expand);
@@ -769,6 +778,7 @@ void TargetLoweringBase::initActions() {
   setOperationAction(ISD::FCEIL,  MVT::f32, Expand);
   setOperationAction(ISD::FRINT,  MVT::f32, Expand);
   setOperationAction(ISD::FTRUNC, MVT::f32, Expand);
+  setOperationAction(ISD::FROUND, MVT::f32, Expand);
   setOperationAction(ISD::FLOG ,  MVT::f64, Expand);
   setOperationAction(ISD::FLOG2,  MVT::f64, Expand);
   setOperationAction(ISD::FLOG10, MVT::f64, Expand);
@@ -779,6 +789,7 @@ void TargetLoweringBase::initActions() {
   setOperationAction(ISD::FCEIL,  MVT::f64, Expand);
   setOperationAction(ISD::FRINT,  MVT::f64, Expand);
   setOperationAction(ISD::FTRUNC, MVT::f64, Expand);
+  setOperationAction(ISD::FROUND, MVT::f64, Expand);
   setOperationAction(ISD::FLOG ,  MVT::f128, Expand);
   setOperationAction(ISD::FLOG2,  MVT::f128, Expand);
   setOperationAction(ISD::FLOG10, MVT::f128, Expand);
@@ -789,6 +800,7 @@ void TargetLoweringBase::initActions() {
   setOperationAction(ISD::FCEIL,  MVT::f128, Expand);
   setOperationAction(ISD::FRINT,  MVT::f128, Expand);
   setOperationAction(ISD::FTRUNC, MVT::f128, Expand);
+  setOperationAction(ISD::FROUND, MVT::f128, Expand);
 
   // Default ISD::TRAP to expand (which turns it into abort).
   setOperationAction(ISD::TRAP, MVT::Other, Expand);
@@ -996,7 +1008,7 @@ void TargetLoweringBase::computeRegisterProperties() {
 
   // Find the largest integer register class.
   unsigned LargestIntReg = MVT::LAST_INTEGER_VALUETYPE;
-  for (; RegClassForVT[LargestIntReg] == 0; --LargestIntReg)
+  for (; RegClassForVT[LargestIntReg] == nullptr; --LargestIntReg)
     assert(LargestIntReg != MVT::i1 && "No integer registers defined!");
 
   // Every integer value type larger than this largest register takes twice as
@@ -1077,7 +1089,7 @@ void TargetLoweringBase::computeRegisterProperties() {
     // that wider vector type.
     MVT EltVT = VT.getVectorElementType();
     unsigned NElts = VT.getVectorNumElements();
-    if (NElts != 1 && !shouldSplitVectorElementType(EltVT)) {
+    if (NElts != 1 && !shouldSplitVectorType(VT)) {
       bool IsLegalWiderType = false;
       // First try to promote the elements of integer vectors. If no legal
       // promotion was found, fallback to the widen-vector method.

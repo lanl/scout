@@ -1,0 +1,22 @@
+#!/usr/bin/env expect
+#
+# make sure we can set a breakpoint inside a scout directory
+#
+
+set path [lindex $argv 0]
+set type [lindex $argv 1]
+
+set timeout 60
+
+spawn $path/../../build/bin/gdb-$type $path/breakpoint.sc
+expect "(gdb)"
+send "b clang::CodeGen::CodeGenFunction::EmitForallMeshStmt\n"
+expect {
+    "llvm/tools/clang/lib/CodeGen/Scout/CGStmt.cpp" {
+  }
+  timeout {
+    exit 1
+  }
+}
+send "q\n"
+#

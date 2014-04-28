@@ -43,6 +43,8 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
+#define DEBUG_TYPE "local"
+
 STATISTIC(NumRemoved, "Number of unreachable basic blocks removed");
 
 //===----------------------------------------------------------------------===//
@@ -993,14 +995,7 @@ bool llvm::ConvertDebugDeclareToDebugValue(DbgDeclareInst *DDI,
     DbgVal = Builder.insertDbgValueIntrinsic(ExtendedArg, 0, DIVar, SI);
   else
     DbgVal = Builder.insertDbgValueIntrinsic(SI->getOperand(0), 0, DIVar, SI);
-
-  // Propagate any debug metadata from the store onto the dbg.value.
-  DebugLoc SIDL = SI->getDebugLoc();
-  if (!SIDL.isUnknown())
-    DbgVal->setDebugLoc(SIDL);
-  // Otherwise propagate debug metadata from dbg.declare.
-  else
-    DbgVal->setDebugLoc(DDI->getDebugLoc());
+  DbgVal->setDebugLoc(DDI->getDebugLoc());
   return true;
 }
 
@@ -1020,14 +1015,7 @@ bool llvm::ConvertDebugDeclareToDebugValue(DbgDeclareInst *DDI,
   Instruction *DbgVal =
     Builder.insertDbgValueIntrinsic(LI->getOperand(0), 0,
                                     DIVar, LI);
-
-  // Propagate any debug metadata from the store onto the dbg.value.
-  DebugLoc LIDL = LI->getDebugLoc();
-  if (!LIDL.isUnknown())
-    DbgVal->setDebugLoc(LIDL);
-  // Otherwise propagate debug metadata from dbg.declare.
-  else
-    DbgVal->setDebugLoc(DDI->getDebugLoc());
+  DbgVal->setDebugLoc(DDI->getDebugLoc());
   return true;
 }
 
@@ -1036,34 +1024,39 @@ bool llvm::ConvertDebugDeclareToDebugValue(DbgDeclareInst *DDI,
 bool llvm::LowerDbgDeclare(Function &F) {
   DIBuilder DIB(*F.getParent());
   SmallVector<DbgDeclareInst *, 4> Dbgs;
-  for (Function::iterator FI = F.begin(), FE = F.end(); FI != FE; ++FI)
-    for (BasicBlock::iterator BI = FI->begin(), BE = FI->end(); BI != BE; ++BI) {
-      if (DbgDeclareInst *DDI = dyn_cast<DbgDeclareInst>(BI))
+  for (auto &FI : F)
+    for (BasicBlock::iterator BI : FI)
+      if (auto DDI = dyn_cast<DbgDeclareInst>(BI))
         Dbgs.push_back(DDI);
-    }
+
   if (Dbgs.empty())
     return false;
 
-  for (SmallVectorImpl<DbgDeclareInst *>::iterator I = Dbgs.begin(),
-         E = Dbgs.end(); I != E; ++I) {
-    DbgDeclareInst *DDI = *I;
+  for (auto &I : Dbgs) {
+    DbgDeclareInst *DDI = I;
     AllocaInst *AI = dyn_cast_or_null<AllocaInst>(DDI->getAddress());
     // If this is an alloca for a scalar variable, insert a dbg.value
     // at each load and store to the alloca and erase the dbg.declare.
+    // The dbg.values allow tracking a variable even if it is not
+    // stored on the stack, while the dbg.declare can only describe
+    // the stack slot (and at a lexical-scope granularity). Later
+    // passes will attempt to elide the stack slot.
     if (AI && !AI->isArrayAllocation()) {
-
-      // We only remove the dbg.declare intrinsic if all uses are
-      // converted to dbg.value intrinsics.
-      bool RemoveDDI = true;
       for (User *U : AI->users())
         if (StoreInst *SI = dyn_cast<StoreInst>(U))
           ConvertDebugDeclareToDebugValue(DDI, SI, DIB);
         else if (LoadInst *LI = dyn_cast<LoadInst>(U))
           ConvertDebugDeclareToDebugValue(DDI, LI, DIB);
-        else
-          RemoveDDI = false;
-      if (RemoveDDI)
-        DDI->eraseFromParent();
+        else if (Instruction *I = dyn_cast<Instruction>(U)) {
+	  // This is a call by-value or some other instruction that
+	  // takes a pointer to the variable. Insert a *value*
+	  // intrinsic that describes the alloca.
+	  auto DbgVal =
+	    DIB.insertDbgValueIntrinsic(AI, 0,
+					DIVariable(DDI->getVariable()), I);
+	  DbgVal->setDebugLoc(DDI->getDebugLoc());
+	}
+      DDI->eraseFromParent();
     }
   }
   return true;

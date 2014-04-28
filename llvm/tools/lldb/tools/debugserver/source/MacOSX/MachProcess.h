@@ -55,7 +55,8 @@ public:
                                             const char *stderr_path,
                                             bool no_stdio, 
                                             nub_launch_flavor_t launch_flavor, 
-                                            int disable_aslr, 
+                                            int disable_aslr,
+                                            const char *event_data,
                                             DNBError &err);
 
     static uint32_t         GetCPUTypeForLocalProcess (pid_t pid);
@@ -76,8 +77,14 @@ public:
     static const void *     PrepareForAttach (const char *path, nub_launch_flavor_t launch_flavor, bool waitfor, DNBError &err_str);
     static void             CleanupAfterAttach (const void *attach_token, bool success, DNBError &err_str);
     static nub_process_t    CheckForProcess (const void *attach_token);
+#ifdef WITH_BKS
+    pid_t                   BKSLaunchForDebug (const char *app_bundle_path, char const *argv[], char const *envp[], bool no_stdio, bool disable_aslr, const char *event_data, DNBError &launch_err);
+    pid_t                   BKSForkChildForPTraceDebugging (const char *path, char const *argv[], char const *envp[], bool no_stdio, bool disable_aslr, const char *event_data, DNBError &launch_err);
+    bool                    BKSSendEvent (const char *event, DNBError &error);
+    static void             BKSCleanupAfterAttach (const void *attach_token, DNBError &err_str);
+#endif
 #ifdef WITH_SPRINGBOARD
-    pid_t                   SBLaunchForDebug (const char *app_bundle_path, char const *argv[], char const *envp[], bool no_stdio, DNBError &launch_err);
+    pid_t                   SBLaunchForDebug (const char *app_bundle_path, char const *argv[], char const *envp[], bool no_stdio, bool disable_aslr, DNBError &launch_err);
     static pid_t            SBForkChildForPTraceDebugging (const char *path, char const *argv[], char const *envp[], bool no_stdio, MachProcess* process, DNBError &launch_err);
 #endif
     nub_addr_t              LookupSymbol (const char *name, const char *shlib);
@@ -94,6 +101,8 @@ public:
 
     bool                    Resume (const DNBThreadResumeActions& thread_actions);
     bool                    Signal  (int signal, const struct timespec *timeout_abstime = NULL);
+    bool                    Interrupt();
+    bool                    SendEvent (const char *event, DNBError &send_err);
     bool                    Kill (const struct timespec *timeout_abstime = NULL);
     bool                    Detach ();
     nub_size_t              ReadMemory (nub_addr_t addr, nub_size_t size, void *buf);
@@ -213,6 +222,15 @@ public:
                                 m_exit_status = status;
                                 SetState(eStateExited);
                             }
+    const char *            GetExitInfo ()
+                            {
+                                return m_exit_info.c_str();
+                            }
+    
+    void                    SetExitInfo (const char *info)
+                            {
+                                m_exit_info.assign(info);
+                            }
 
     uint32_t                StopCount() const { return m_stop_count; }
     void                    SetChildFileDescriptors (int stdin_fileno, int stdout_fileno, int stderr_fileno)
@@ -248,6 +266,7 @@ public:
                             }
 
     bool                    ProcessUsingSpringBoard() const { return (m_flags & eMachProcessFlagsUsingSBS) != 0; }
+    bool                    ProcessUsingBackBoard() const { return (m_flags & eMachProcessFlagsUsingBKS) != 0; }
     
     DNBProfileDataScanType  GetProfileScanType () { return m_profile_scan_type; }
     
@@ -256,7 +275,8 @@ private:
     {
         eMachProcessFlagsNone = 0,
         eMachProcessFlagsAttached = (1 << 0),
-        eMachProcessFlagsUsingSBS = (1 << 1)
+        eMachProcessFlagsUsingSBS = (1 << 1),
+        eMachProcessFlagsUsingBKS = (1 << 2)
     };
     void                    Clear (bool detaching = false);
     void                    ReplyToAllExceptions ();
@@ -273,6 +293,7 @@ private:
     std::string                 m_path;                     // A path to the executable if we have one
     std::vector<std::string>    m_args;                     // The arguments with which the process was lauched
     int                         m_exit_status;              // The exit status for the process
+    std::string                 m_exit_info;                // Any extra info that we may have about the exit
     MachTask                    m_task;                     // The mach task for this process
     uint32_t                    m_flags;                    // Process specific flags (see eMachProcessFlags enums)
     uint32_t                    m_stop_count;               // A count of many times have we stopped
@@ -304,6 +325,19 @@ private:
     DNBCallbackCopyExecutableImageInfos
                                 m_image_infos_callback;
     void *                      m_image_infos_baton;
+    std::string                 m_bundle_id;                 // If we are a SB or BKS process, this will be our bundle ID.
+    int                         m_sent_interrupt_signo;      // When we call MachProcess::Interrupt(), we want to send a single signal
+                                                             // to the inferior and only send the signal if we aren't already stopped.
+                                                             // If we end up sending a signal to stop the process we store it until we
+                                                             // receive an exception with this signal. This helps us to verify we got
+                                                             // the signal that interrupted the process. We might stop due to another
+                                                             // reason after an interrupt signal is sent, so this helps us ensure that
+                                                             // we don't report a spurious stop on the next resume.
+    int                         m_auto_resume_signo;         // If we resume the process and still haven't received our interrupt signal
+                                                             // acknownledgement, we will shortly after the next resume. We store the
+                                                             // interrupt signal in this variable so when we get the interrupt signal
+                                                             // as the sole reason for the process being stopped, we can auto resume
+                                                             // the process.
     bool                        m_did_exec;
 };
 

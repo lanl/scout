@@ -395,10 +395,6 @@ public:
   ///   works on systems with GraphViz (Mac OS X) or dot+gv installed.
   void viewAST() const;
 
-  // +===== Scout ============================================================+
-  std::string toCPPCode(ASTContext& context);
-  // +========================================================================+
-
   /// Skip past any implicit AST nodes which might surround this
   /// statement, such as ExprWithCleanups or ImplicitCastExpr nodes.
   Stmt *IgnoreImplicit();
@@ -2492,7 +2488,7 @@ class ForallArrayStmt : public ForallStmt {
      Start[axis] = E;
    }
 
-   const Expr *getStart(int axis) const {
+   Expr *getStart(int axis) const {
      return Start[axis];
    }
 
@@ -2500,7 +2496,7 @@ class ForallArrayStmt : public ForallStmt {
      End[axis] = E;
     }
 
-   const Expr *getEnd(int axis) const {
+   Expr *getEnd(int axis) const {
      return End[axis];
    }
 
@@ -2508,7 +2504,7 @@ class ForallArrayStmt : public ForallStmt {
      Stride[axis] = E;
    }
 
-   const Expr *getStride(int axis) const {
+   Expr *getStride(int axis) const {
     return Stride[axis];
    }
 

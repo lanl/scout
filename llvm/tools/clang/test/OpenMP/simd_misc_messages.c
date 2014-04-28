@@ -77,6 +77,149 @@ void test_non_identifiers()
   for (i = 0; i < 16; ++i) ;
 }
 
+extern int foo();
+void test_safelen()
+{
+  int i;
+  // expected-error@+1 {{expected '('}}
+  #pragma omp simd safelen
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{expected expression}} expected-error@+1 {{expected ')'}} expected-note@+1 {{to match this '('}}
+  #pragma omp simd safelen(
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{expected expression}}
+  #pragma omp simd safelen()
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{expected expression}} expected-error@+1 {{expected ')'}} expected-note@+1 {{to match this '('}}
+  #pragma omp simd safelen(,
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{expected expression}}  expected-error@+1 {{expected ')'}} expected-note@+1 {{to match this '('}}
+  #pragma omp simd safelen(,)
+  for (i = 0; i < 16; ++i) ;
+  // expected-warning@+2 {{extra tokens at the end of '#pragma omp simd' are ignored}}
+  // expected-error@+1 {{expected '('}}
+  #pragma omp simd safelen 4)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+2 {{expected ')'}}
+  // expected-note@+1 {{to match this '('}}
+  #pragma omp simd safelen(4
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+2 {{expected ')'}}
+  // expected-note@+1 {{to match this '('}}
+  #pragma omp simd safelen(4,
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+2 {{expected ')'}}
+  // expected-note@+1 {{to match this '('}}
+  #pragma omp simd safelen(4,)
+  for (i = 0; i < 16; ++i) ;
+  // xxpected-error@+1 {{expected expression}}
+  #pragma omp simd safelen(4)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+2 {{expected ')'}}
+  // expected-note@+1 {{to match this '('}}
+  #pragma omp simd safelen(4 4)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+2 {{expected ')'}}
+  // expected-note@+1 {{to match this '('}}
+  #pragma omp simd safelen(4,,4)
+  for (i = 0; i < 16; ++i) ;
+  #pragma omp simd safelen(4)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+2 {{expected ')'}}
+  // expected-note@+1 {{to match this '('}}
+  #pragma omp simd safelen(4,8)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{expression is not an integer constant expression}}
+  #pragma omp simd safelen(2.5)
+  for (i = 0; i < 16; ++i);
+  // expected-error@+1 {{expression is not an integer constant expression}}
+  #pragma omp simd safelen(foo())
+  for (i = 0; i < 16; ++i);
+  // expected-error@+1 {{argument to 'safelen' clause must be a positive integer value}}
+  #pragma omp simd safelen(-5)
+  for (i = 0; i < 16; ++i);
+  // expected-error@+1 {{argument to 'safelen' clause must be a positive integer value}}
+  #pragma omp simd safelen(0)
+  for (i = 0; i < 16; ++i);
+  // expected-error@+1 {{argument to 'safelen' clause must be a positive integer value}}
+  #pragma omp simd safelen(5-5)
+  for (i = 0; i < 16; ++i);
+}
+
+void test_linear()
+{
+  int i;
+  // expected-error@+1 {{expected expression}} expected-error@+1 {{expected ')'}} expected-note@+1 {{to match this '('}}
+  #pragma omp simd linear(
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+2 {{expected expression}}
+  // expected-error@+1 {{expected expression}} expected-error@+1 {{expected ')'}} expected-note@+1 {{to match this '('}}
+  #pragma omp simd linear(,
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+2 {{expected expression}}
+  // expected-error@+1 {{expected expression}}
+  #pragma omp simd linear(,)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{expected expression}}
+  #pragma omp simd linear()
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{expected expression}}
+  #pragma omp simd linear(int)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{expected variable name}}
+  #pragma omp simd linear(0)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{use of undeclared identifier 'x'}}
+  #pragma omp simd linear(x)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+2 {{use of undeclared identifier 'x'}}
+  // expected-error@+1 {{use of undeclared identifier 'y'}}
+  #pragma omp simd linear(x, y)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+3 {{use of undeclared identifier 'x'}}
+  // expected-error@+2 {{use of undeclared identifier 'y'}}
+  // expected-error@+1 {{use of undeclared identifier 'z'}}
+  #pragma omp simd linear(x, y, z)
+  for (i = 0; i < 16; ++i) ;
+
+  int x, y;
+  // expected-error@+1 {{expected expression}}
+  #pragma omp simd linear(x:)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{expected expression}} expected-error@+1 {{expected ')'}} expected-note@+1 {{to match this '('}}
+  #pragma omp simd linear(x:,)
+  for (i = 0; i < 16; ++i) ;
+  #pragma omp simd linear(x:1)
+  for (i = 0; i < 16; ++i) ;
+  #pragma omp simd linear(x:2*2)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{expected ')'}} expected-note@+1 {{to match this '('}}
+  #pragma omp simd linear(x:1,y)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{expected ')'}} expected-note@+1 {{to match this '('}}
+  #pragma omp simd linear(x:1,y,z:1)
+  for (i = 0; i < 16; ++i) ;
+
+  // expected-note@+2 {{defined as linear}}
+  // expected-error@+1 {{linear variable cannot be linear}}
+  #pragma omp simd linear(x) linear(x)
+  for (i = 0; i < 16; ++i) ;
+
+  // expected-note@+2 {{defined as private}}
+  // expected-error@+1 {{private variable cannot be linear}}
+  #pragma omp simd private(x) linear(x)
+  for (i = 0; i < 16; ++i) ;
+
+  // expected-note@+2 {{defined as linear}}
+  // expected-error@+1 {{linear variable cannot be private}}
+  #pragma omp simd linear(x) private(x)
+  for (i = 0; i < 16; ++i) ;
+
+  // expected-warning@+1 {{zero linear step (x and other variables in clause should probably be const)}}
+  #pragma omp simd linear(x,y:0)
+  for (i = 0; i < 16; ++i) ;
+}
+
 void test_private()
 {
   int i;
@@ -121,3 +264,4 @@ void test_firstprivate()
   #pragma omp simd firstprivate(
   for (i = 0; i < 16; ++i) ;
 }
+

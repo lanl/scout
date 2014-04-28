@@ -22,11 +22,6 @@
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/ScopeInfo.h"
 
-
-// +===== Scout ==============================================================+
-#include "clang/AST/Scout/ImplicitMeshParamDecl.h"
-// +==========================================================================+
-
 using namespace clang;
 using namespace sema;
 
@@ -297,7 +292,7 @@ CheckExtVectorComponent(Sema &S, QualType baseType, ExprValueKind &VK,
 
   // This flag determines whether or not CompName has an 's' char prefix,
   // indicating that it is a string of hex values to be used as vector indices.
-  bool HexSwizzle = *compStr == 's' || *compStr == 'S';
+  bool HexSwizzle = (*compStr == 's' || *compStr == 'S') && compStr[1];
 
   bool HasRepeated = false;
   bool HasIndex[16] = {};
@@ -632,7 +627,8 @@ LookupMemberExprInRecord(Sema &SemaRef, LookupResult &R,
   RecordMemberExprValidatorCCC Validator(RTy);
   TypoCorrection Corrected = SemaRef.CorrectTypo(R.getLookupNameInfo(),
                                                  R.getLookupKind(), NULL,
-                                                 &SS, Validator, DC);
+                                                 &SS, Validator,
+                                                 Sema::CTK_ErrorRecovery, DC);
   R.clear();
   if (Corrected.isResolved() && !Corrected.isKeyword()) {
     R.setLookupName(Corrected.getCorrection());
@@ -876,8 +872,6 @@ Sema::BuildAnonymousStructUnionMemberReference(const CXXScopeSpec &SS,
     if (!result)
       return ExprError();
 
-    baseObjectIsPointer = false;
-    
     // FIXME: check qualified member access
   }
   
@@ -1511,23 +1505,10 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
 
   // +===== Scout ============================================================+
   if (const MeshType *MTy = BaseType->getAs<MeshType>()) {
-    // Scout's mesh element access operations are all through
-    // implicit constructs (for now) -- as such we treat all
-    // explicit accesses as an error...
-    DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(BaseExpr.take());
-
-    if(!isa<ImplicitMeshParamDecl>(DRE->getDecl())) {
-      Diag(MemberLoc, diag::err_illegal_mesh_element_access);
-      return ExprError();
+    ExprResult val;
+    if (LookupMeshMemberExpr(R, BaseExpr, OpLoc, SS, MTy, val)) {
+      return val;
     }
-
-    if (LookupMemberExprInMesh(*this, R, BaseExpr.get()->getSourceRange(),
-                               MTy, OpLoc, SS))
-      return ExprError();
-
-    // Returning valid-but-null is how we indicate to the caller that
-    // the lookup result was filled in.
-    return Owned((Expr*) 0);
   }
   // +========================================================================+
 
@@ -1577,7 +1558,8 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
       Validator.IsObjCIvarLookup = IsArrow;
       if (TypoCorrection Corrected = CorrectTypo(R.getLookupNameInfo(),
                                                  LookupMemberName, NULL, NULL,
-                                                 Validator, IDecl)) {
+                                                 Validator, CTK_ErrorRecovery,
+                                                 IDecl)) {
         IV = Corrected.getCorrectionDeclAs<ObjCIvarDecl>();
         diagnoseTypo(Corrected,
                      PDiag(diag::err_typecheck_member_reference_ivar_suggest)

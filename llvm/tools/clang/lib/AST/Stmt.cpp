@@ -1192,10 +1192,56 @@ OMPSharedClause *OMPSharedClause::CreateEmpty(const ASTContext &C,
   return new (Mem) OMPSharedClause(N);
 }
 
+OMPLinearClause *OMPLinearClause::Create(const ASTContext &C,
+                                         SourceLocation StartLoc,
+                                         SourceLocation LParenLoc,
+                                         SourceLocation ColonLoc,
+                                         SourceLocation EndLoc,
+                                         ArrayRef<Expr *> VL, Expr *Step) {
+  void *Mem = C.Allocate(llvm::RoundUpToAlignment(sizeof(OMPLinearClause),
+                                                  llvm::alignOf<Expr *>()) +
+                         sizeof(Expr *) * (VL.size() + 1));
+  OMPLinearClause *Clause = new (Mem)
+      OMPLinearClause(StartLoc, LParenLoc, ColonLoc, EndLoc, VL.size());
+  Clause->setVarRefs(VL);
+  Clause->setStep(Step);
+  return Clause;
+}
+
+OMPLinearClause *OMPLinearClause::CreateEmpty(const ASTContext &C,
+                                              unsigned NumVars) {
+  void *Mem = C.Allocate(llvm::RoundUpToAlignment(sizeof(OMPLinearClause),
+                                                  llvm::alignOf<Expr *>()) +
+                         sizeof(Expr *) * (NumVars + 1));
+  return new (Mem) OMPLinearClause(NumVars);
+}
+
+OMPCopyinClause *OMPCopyinClause::Create(const ASTContext &C,
+                                         SourceLocation StartLoc,
+                                         SourceLocation LParenLoc,
+                                         SourceLocation EndLoc,
+                                         ArrayRef<Expr *> VL) {
+  void *Mem = C.Allocate(llvm::RoundUpToAlignment(sizeof(OMPCopyinClause),
+                                                  llvm::alignOf<Expr *>()) +
+                         sizeof(Expr *) * VL.size());
+  OMPCopyinClause *Clause = new (Mem) OMPCopyinClause(StartLoc, LParenLoc,
+                                                      EndLoc, VL.size());
+  Clause->setVarRefs(VL);
+  return Clause;
+}
+
+OMPCopyinClause *OMPCopyinClause::CreateEmpty(const ASTContext &C,
+                                              unsigned N) {
+  void *Mem = C.Allocate(llvm::RoundUpToAlignment(sizeof(OMPCopyinClause),
+                                                  llvm::alignOf<Expr *>()) +
+                         sizeof(Expr *) * N);
+  return new (Mem) OMPCopyinClause(N);
+}
+
 void OMPExecutableDirective::setClauses(ArrayRef<OMPClause *> Clauses) {
-  assert(Clauses.size() == this->Clauses.size() &&
+  assert(Clauses.size() == getNumClauses() &&
          "Number of clauses is not the same as the preallocated buffer");
-  std::copy(Clauses.begin(), Clauses.end(), this->Clauses.begin());
+  std::copy(Clauses.begin(), Clauses.end(), getClauses().begin());
 }
 
 OMPParallelDirective *OMPParallelDirective::Create(

@@ -133,6 +133,14 @@ namespace clang {
     void VisitObjCPropertyDecl(ObjCPropertyDecl *D);
     void VisitObjCPropertyImplDecl(ObjCPropertyImplDecl *D);
     void VisitOMPThreadPrivateDecl(OMPThreadPrivateDecl *D);
+
+    void AddFunctionDefinition(const FunctionDecl *FD) {
+      assert(FD->doesThisDeclarationHaveABody());
+      if (auto *CD = dyn_cast<CXXConstructorDecl>(FD))
+        Writer.AddCXXCtorInitializers(CD->CtorInitializers,
+                                      CD->NumCtorInitializers, Record);
+      Writer.AddStmt(FD->getBody());
+    }
   };
 }
 
@@ -171,6 +179,24 @@ void ASTDeclWriter::VisitDecl(Decl *D) {
   Record.push_back(D->getAccess());
   Record.push_back(D->isModulePrivate());
   Record.push_back(Writer.inferSubmoduleIDFromLocation(D->getLocation()));
+
+  // If this declaration injected a name into a context different from its
+  // lexical context, and that context is an imported namespace, we need to
+  // update its visible declarations to include this name.
+  //
+  // This happens when we instantiate a class with a friend declaration or a
+  // function with a local extern declaration, for instance.
+  if (D->isOutOfLine()) {
+    auto *DC = D->getDeclContext();
+    while (auto *NS = dyn_cast<NamespaceDecl>(DC->getRedeclContext())) {
+      if (!NS->isFromASTFile())
+        break;
+      Writer.AddUpdatedDeclContext(NS->getPrimaryContext());
+      if (!NS->isInlineNamespace())
+        break;
+      DC = NS->getParent();
+    }
+  }
 }
 
 void ASTDeclWriter::VisitTranslationUnitDecl(TranslationUnitDecl *D) {
@@ -936,9 +962,8 @@ void ASTDeclWriter::VisitNamespaceDecl(NamespaceDecl *D) {
     Decl *Parent = cast<Decl>(
         D->getParent()->getRedeclContext()->getPrimaryContext());
     if (Parent->isFromASTFile() || isa<TranslationUnitDecl>(Parent)) {
-      ASTWriter::UpdateRecord &Record = Writer.DeclUpdates[Parent];
-      Record.push_back(UPD_CXX_ADDED_ANONYMOUS_NAMESPACE);
-      Writer.AddDeclRef(D, Record);
+      Writer.DeclUpdates[Parent].push_back(
+          ASTWriter::DeclUpdate(UPD_CXX_ADDED_ANONYMOUS_NAMESPACE, D));
     }
   }
 }
@@ -1000,9 +1025,6 @@ void ASTDeclWriter::VisitUnresolvedUsingTypenameDecl(
 
 void ASTDeclWriter::VisitCXXRecordDecl(CXXRecordDecl *D) {
   VisitRecordDecl(D);
-  Record.push_back(D->isThisDeclarationADefinition());
-  if (D->isThisDeclarationADefinition())
-    Writer.AddCXXDefinitionData(D, Record);
 
   enum {
     CXXRecNotTemplate = 0, CXXRecTemplate, CXXRecMemberSpecialization
@@ -1019,6 +1041,10 @@ void ASTDeclWriter::VisitCXXRecordDecl(CXXRecordDecl *D) {
   } else {
     Record.push_back(CXXRecNotTemplate);
   }
+
+  Record.push_back(D->isThisDeclarationADefinition());
+  if (D->isThisDeclarationADefinition())
+    Writer.AddCXXDefinitionData(D, Record);
 
   // Store (what we currently believe to be) the key function to avoid
   // deserializing every method so we can compute it.
@@ -1046,6 +1072,7 @@ void ASTDeclWriter::VisitCXXMethodDecl(CXXMethodDecl *D) {
 void ASTDeclWriter::VisitCXXConstructorDecl(CXXConstructorDecl *D) {
   VisitCXXMethodDecl(D);
 
+  Writer.AddDeclRef(D->getInheritedConstructor(), Record);
   Record.push_back(D->IsExplicitSpecified);
   Writer.AddCXXCtorInitializers(D->CtorInitializers, D->NumCtorInitializers,
                                 Record);
@@ -1974,4 +2001,12 @@ void ASTWriter::WriteDecl(ASTContext &Context, Decl *D) {
   // them to a record in the AST file later.
   if (isRequiredDecl(D, Context))
     EagerlyDeserializedDecls.push_back(ID);
+}
+
+void ASTWriter::AddFunctionDefinition(const FunctionDecl *FD,
+                                      RecordData &Record) {
+  ClearSwitchCaseIDs();
+
+  ASTDeclWriter W(*this, FD->getASTContext(), Record);
+  W.AddFunctionDefinition(FD);
 }

@@ -37,10 +37,12 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 
+using namespace llvm;
+
+#define DEBUG_TYPE "arm-instrinfo"
+
 #define GET_INSTRINFO_CTOR_DTOR
 #include "ARMGenInstrInfo.inc"
-
-using namespace llvm;
 
 static cl::opt<bool>
 EnableARM3Addr("enable-arm-3-addr-conv", cl::Hidden,
@@ -535,7 +537,8 @@ bool ARMBaseInstrInfo::isPredicable(MachineInstr *MI) const {
   return true;
 }
 
-template<> bool IsCPSRDead<MachineInstr>(MachineInstr* MI) {
+namespace llvm {
+template <> bool IsCPSRDead<MachineInstr>(MachineInstr *MI) {
   for (unsigned i = 0, e = MI->getNumOperands(); i != e; ++i) {
     const MachineOperand &MO = MI->getOperand(i);
     if (!MO.isReg() || MO.isUndef() || MO.isUse())
@@ -547,6 +550,7 @@ template<> bool IsCPSRDead<MachineInstr>(MachineInstr* MI) {
   }
   // all definitions of CPSR are dead
   return true;
+}
 }
 
 /// FIXME: Works around a gcc miscompilation with -fstrict-aliasing.
@@ -1866,6 +1870,15 @@ void llvm::emitARMRegPlusImmediate(MachineBasicBlock &MBB,
   }
 }
 
+static bool isAnySubRegLive(unsigned Reg, const TargetRegisterInfo *TRI,
+                      MachineInstr *MI) {
+  for (MCSubRegIterator Subreg(Reg, TRI, /* IncludeSelf */ true);
+       Subreg.isValid(); ++Subreg)
+    if (MI->getParent()->computeRegisterLiveness(TRI, *Subreg, MI) !=
+        MachineBasicBlock::LQR_Dead)
+      return true;
+  return false;
+}
 bool llvm::tryFoldSPUpdateIntoPushPop(const ARMSubtarget &Subtarget,
                                       MachineFunction &MF, MachineInstr *MI,
                                       unsigned NumBytes) {
@@ -1920,7 +1933,6 @@ bool llvm::tryFoldSPUpdateIntoPushPop(const ARMSubtarget &Subtarget,
   for (int i = MI->getNumOperands() - 1; i >= RegListIdx; --i)
     RegList.push_back(MI->getOperand(i));
 
-  MachineBasicBlock *MBB = MI->getParent();
   const TargetRegisterInfo *TRI = MF.getRegInfo().getTargetRegisterInfo();
   const MCPhysReg *CSRegs = TRI->getCalleeSavedRegs(&MF);
 
@@ -1941,9 +1953,11 @@ bool llvm::tryFoldSPUpdateIntoPushPop(const ARMSubtarget &Subtarget,
     // registers live within the function we might clobber a return value
     // register; the other way a register can be live here is if it's
     // callee-saved.
+    // TODO: Currently, computeRegisterLiveness() does not report "live" if a
+    // sub reg is live. When computeRegisterLiveness() works for sub reg, it
+    // can replace isAnySubRegLive().
     if (isCalleeSavedRegister(CurReg, CSRegs) ||
-        MBB->computeRegisterLiveness(TRI, CurReg, MI) !=
-            MachineBasicBlock::LQR_Dead) {
+        isAnySubRegLive(CurReg, TRI, MI)) {
       // VFP pops don't allow holes in the register list, so any skip is fatal
       // for our transformation. GPR pops do, so we should just keep looking.
       if (IsVFPPushPop)
@@ -2957,7 +2971,7 @@ ARMBaseInstrInfo::getNumMicroOps(const InstrItineraryData *ItinData,
         break;
       }
       return UOps;
-    } else if (Subtarget.isCortexA8()) {
+    } else if (Subtarget.isCortexA8() || Subtarget.isCortexA7()) {
       if (NumRegs < 4)
         return 2;
       // 4 registers would be issued: 2, 2.
@@ -2994,7 +3008,7 @@ ARMBaseInstrInfo::getVLDMDefCycle(const InstrItineraryData *ItinData,
     return ItinData->getOperandCycle(DefClass, DefIdx);
 
   int DefCycle;
-  if (Subtarget.isCortexA8()) {
+  if (Subtarget.isCortexA8() || Subtarget.isCortexA7()) {
     // (regno / 2) + (regno % 2) + 1
     DefCycle = RegNo / 2 + 1;
     if (RegNo % 2)
@@ -3035,7 +3049,7 @@ ARMBaseInstrInfo::getLDMDefCycle(const InstrItineraryData *ItinData,
     return ItinData->getOperandCycle(DefClass, DefIdx);
 
   int DefCycle;
-  if (Subtarget.isCortexA8()) {
+  if (Subtarget.isCortexA8() || Subtarget.isCortexA7()) {
     // 4 registers would be issued: 1, 2, 1.
     // 5 registers would be issued: 1, 2, 2.
     DefCycle = RegNo / 2;
@@ -3069,7 +3083,7 @@ ARMBaseInstrInfo::getVSTMUseCycle(const InstrItineraryData *ItinData,
     return ItinData->getOperandCycle(UseClass, UseIdx);
 
   int UseCycle;
-  if (Subtarget.isCortexA8()) {
+  if (Subtarget.isCortexA8() || Subtarget.isCortexA7()) {
     // (regno / 2) + (regno % 2) + 1
     UseCycle = RegNo / 2 + 1;
     if (RegNo % 2)
@@ -3109,7 +3123,7 @@ ARMBaseInstrInfo::getSTMUseCycle(const InstrItineraryData *ItinData,
     return ItinData->getOperandCycle(UseClass, UseIdx);
 
   int UseCycle;
-  if (Subtarget.isCortexA8()) {
+  if (Subtarget.isCortexA8() || Subtarget.isCortexA7()) {
     UseCycle = RegNo / 2;
     if (UseCycle < 2)
       UseCycle = 2;
@@ -3299,7 +3313,7 @@ static int adjustDefLatency(const ARMSubtarget &Subtarget,
                             const MachineInstr *DefMI,
                             const MCInstrDesc *DefMCID, unsigned DefAlign) {
   int Adjust = 0;
-  if (Subtarget.isCortexA8() || Subtarget.isLikeA9()) {
+  if (Subtarget.isCortexA8() || Subtarget.isLikeA9() || Subtarget.isCortexA7()) {
     // FIXME: Shifter op hack: no shift (i.e. [r +/- r]) or [r + r << 2]
     // variants are one cycle cheaper.
     switch (DefMCID->getOpcode()) {
@@ -3600,7 +3614,8 @@ ARMBaseInstrInfo::getOperandLatency(const InstrItineraryData *ItinData,
                                   UseMCID, UseIdx, UseAlign);
 
   if (Latency > 1 &&
-      (Subtarget.isCortexA8() || Subtarget.isLikeA9())) {
+      (Subtarget.isCortexA8() || Subtarget.isLikeA9() ||
+       Subtarget.isCortexA7())) {
     // FIXME: Shifter op hack: no shift (i.e. [r +/- r]) or [r + r << 2]
     // variants are one cycle cheaper.
     switch (DefMCID.getOpcode()) {

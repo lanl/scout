@@ -2482,6 +2482,13 @@ bool DataRecursiveASTVisitor<Derived>::VisitOMPNumThreadsClause(
 }
 
 template<typename Derived>
+bool DataRecursiveASTVisitor<Derived>::VisitOMPSafelenClause(
+                                            OMPSafelenClause *C) {
+  TraverseStmt(C->getSafelen());
+  return true;
+}
+
+template<typename Derived>
 bool DataRecursiveASTVisitor<Derived>::VisitOMPDefaultClause(OMPDefaultClause *C) {
   return true;
 }
@@ -2508,6 +2515,20 @@ bool DataRecursiveASTVisitor<Derived>::VisitOMPFirstprivateClause(
 
 template<typename Derived>
 bool DataRecursiveASTVisitor<Derived>::VisitOMPSharedClause(OMPSharedClause *C) {
+  VisitOMPClauseList(C);
+  return true;
+}
+
+template<typename Derived>
+bool
+DataRecursiveASTVisitor<Derived>::VisitOMPLinearClause(OMPLinearClause *C) {
+  VisitOMPClauseList(C);
+  TraverseStmt(C->getStep());
+  return true;
+}
+
+template<typename Derived>
+bool DataRecursiveASTVisitor<Derived>::VisitOMPCopyinClause(OMPCopyinClause *C) {
   VisitOMPClauseList(C);
   return true;
 }

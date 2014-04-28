@@ -12,7 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "phi-opt"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/Statistic.h"
@@ -22,6 +21,8 @@
 #include "llvm/IR/Function.h"
 #include "llvm/Target/TargetInstrInfo.h"
 using namespace llvm;
+
+#define DEBUG_TYPE "phi-opt"
 
 STATISTIC(NumPHICycles, "Number of PHI cycles replaced");
 STATISTIC(NumDeadPHICycles, "Number of dead PHI cycles");
@@ -61,6 +62,9 @@ INITIALIZE_PASS(OptimizePHIs, "opt-phis",
                 "Optimize machine instruction PHIs", false, false)
 
 bool OptimizePHIs::runOnMachineFunction(MachineFunction &Fn) {
+  if (skipOptnoneFunction(*Fn.getFunction()))
+    return false;
+
   MRI = &Fn.getRegInfo();
   TII = Fn.getTarget().getInstrInfo();
 

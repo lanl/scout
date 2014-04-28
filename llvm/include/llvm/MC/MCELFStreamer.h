@@ -68,11 +68,12 @@ public:
   void EmitLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size,
                              unsigned ByteAlignment) override;
 
-  void EmitZerofill(const MCSection *Section, MCSymbol *Symbol = 0,
+  void EmitZerofill(const MCSection *Section, MCSymbol *Symbol = nullptr,
                     uint64_t Size = 0, unsigned ByteAlignment = 0) override;
   void EmitTBSSSymbol(const MCSection *Section, MCSymbol *Symbol,
                       uint64_t Size, unsigned ByteAlignment = 0) override;
-  void EmitValueImpl(const MCExpr *Value, unsigned Size) override;
+  void EmitValueImpl(const MCExpr *Value, unsigned Size,
+                     const SMLoc &Loc = SMLoc()) override;
 
   void EmitFileDirective(StringRef Filename) override;
 

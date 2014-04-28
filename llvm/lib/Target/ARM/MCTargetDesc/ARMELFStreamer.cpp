@@ -17,7 +17,6 @@
 #include "ARMFPUName.h"
 #include "ARMRegisterInfo.h"
 #include "ARMUnwindOpAsm.h"
-#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/MC/MCAsmBackend.h"
@@ -532,7 +531,8 @@ public:
   /// This is one of the functions used to emit data into an ELF section, so the
   /// ARM streamer overrides it to add the appropriate mapping symbol ($d) if
   /// necessary.
-  void EmitValueImpl(const MCExpr *Value, unsigned Size) override {
+  void EmitValueImpl(const MCExpr *Value, unsigned Size,
+                     const SMLoc &Loc) override {
     EmitDataMappingSymbol();
     MCELFStreamer::EmitValueImpl(Value, Size);
   }

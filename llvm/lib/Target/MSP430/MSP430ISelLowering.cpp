@@ -11,8 +11,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "msp430-lower"
-
 #include "MSP430ISelLowering.h"
 #include "MSP430.h"
 #include "MSP430MachineFunctionInfo.h"
@@ -37,6 +35,8 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
+
+#define DEBUG_TYPE "msp430-lower"
 
 typedef enum {
   NoHWMult,
@@ -284,7 +284,7 @@ template<typename ArgT>
 static void AnalyzeArguments(CCState &State,
                              SmallVectorImpl<CCValAssign> &ArgLocs,
                              const SmallVectorImpl<ArgT> &Args) {
-  static const uint16_t RegList[] = {
+  static const MCPhysReg RegList[] = {
     MSP430::R15W, MSP430::R14W, MSP430::R13W, MSP430::R12W
   };
   static const unsigned NbRegs = array_lengthof(RegList);

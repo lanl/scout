@@ -29,7 +29,7 @@ StringRef WinCodeViewLineTables::getFullFilepath(const MDNode *S) {
   StringRef Dir = Scope.getDirectory(),
             Filename = Scope.getFilename();
   char *&Result = DirAndFilenameToFilepathMap[std::make_pair(Dir, Filename)];
-  if (Result != 0)
+  if (Result)
     return Result;
 
   // Clang emits directory and relative filename info into the IR, but CodeView
@@ -102,7 +102,7 @@ void WinCodeViewLineTables::maybeRecordLocation(DebugLoc DL,
 }
 
 WinCodeViewLineTables::WinCodeViewLineTables(AsmPrinter *AP)
-    : Asm(0), CurFn(0) {
+    : Asm(nullptr), CurFn(nullptr) {
   MachineModuleInfo *MMI = AP->MMI;
 
   // If module doesn't have named metadata anchors or COFF debug section
@@ -131,9 +131,12 @@ void WinCodeViewLineTables::emitDebugInfoForFunction(const Function *GV) {
   // For each function there is a separate subsection
   // which holds the PC to file:line table.
   const MCSymbol *Fn = Asm->getSymbol(GV);
-  const FunctionInfo &FI = FnDebugInfo[GV];
   assert(Fn);
-  assert(FI.Instrs.size() > 0);
+
+  const FunctionInfo &FI = FnDebugInfo[GV];
+  if (FI.Instrs.empty())
+    return;
+  assert(FI.End && "Don't know where the function ends?");
 
   // PCs/Instructions are grouped into segments sharing the same filename.
   // Pre-calculate the lengths (in instructions) of these segments and store
@@ -168,7 +171,7 @@ void WinCodeViewLineTables::emitDebugInfoForFunction(const Function *GV) {
   EmitLabelDiff(Asm->OutStreamer, Fn, FI.End);
 
   // PC-to-linenumber lookup table:
-  MCSymbol *FileSegmentEnd = 0;
+  MCSymbol *FileSegmentEnd = nullptr;
   for (size_t J = 0, F = FI.Instrs.size(); J != F; ++J) {
     MCSymbol *Instr = FI.Instrs[J];
     assert(InstrInfo.count(Instr));
@@ -264,12 +267,6 @@ void WinCodeViewLineTables::beginFunction(const MachineFunction *MF) {
   if (!Asm || !Asm->MMI->hasDebugInfo())
     return;
 
-  // Grab the lexical scopes for the function, if we don't have any of those
-  // then we're not going to be able to do anything.
-  LScopes.initialize(*MF);
-  if (LScopes.empty())
-    return;
-
   const Function *GV = MF->getFunction();
   assert(FnDebugInfo.count(GV) == false);
   VisitedFunctions.push_back(GV);
@@ -307,18 +304,24 @@ void WinCodeViewLineTables::beginFunction(const MachineFunction *MF) {
   }
 }
 
-void WinCodeViewLineTables::endFunction(const MachineFunction *) {
+void WinCodeViewLineTables::endFunction(const MachineFunction *MF) {
   if (!Asm || !CurFn)  // We haven't created any debug info for this function.
     return;
 
-  if (CurFn->Instrs.empty())
-    llvm_unreachable("Can this ever happen?");
+  const Function *GV = MF->getFunction();
+  assert(FnDebugInfo.count(GV) == true);
+  assert(CurFn == &FnDebugInfo[GV]);
 
-  // Define end label for subprogram.
-  MCSymbol *FunctionEndSym = Asm->OutStreamer.getContext().CreateTempSymbol();
-  Asm->OutStreamer.EmitLabel(FunctionEndSym);
-  CurFn->End = FunctionEndSym;
-  CurFn = 0;
+  if (CurFn->Instrs.empty()) {
+    FnDebugInfo.erase(GV);
+    VisitedFunctions.pop_back();
+  } else {
+    // Define end label for subprogram.
+    MCSymbol *FunctionEndSym = Asm->OutStreamer.getContext().CreateTempSymbol();
+    Asm->OutStreamer.EmitLabel(FunctionEndSym);
+    CurFn->End = FunctionEndSym;
+  }
+  CurFn = nullptr;
 }
 
 void WinCodeViewLineTables::beginInstruction(const MachineInstr *MI) {

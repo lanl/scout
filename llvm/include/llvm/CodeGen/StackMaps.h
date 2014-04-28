@@ -133,14 +133,14 @@ public:
 private:
   typedef SmallVector<Location, 8> LocationVec;
   typedef SmallVector<LiveOutReg, 8> LiveOutVec;
-  typedef MapVector<const MCSymbol *, uint32_t> FnStackSizeMap;
+  typedef MapVector<const MCSymbol *, uint64_t> FnStackSizeMap;
 
   struct CallsiteInfo {
     const MCExpr *CSOffsetExpr;
     uint64_t ID;
     LocationVec Locations;
     LiveOutVec LiveOuts;
-    CallsiteInfo() : CSOffsetExpr(0), ID(0) {}
+    CallsiteInfo() : CSOffsetExpr(nullptr), ID(0) {}
     CallsiteInfo(const MCExpr *CSOffsetExpr, uint64_t ID,
                  LocationVec &Locations, LiveOutVec &LiveOuts)
       : CSOffsetExpr(CSOffsetExpr), ID(ID), Locations(Locations),

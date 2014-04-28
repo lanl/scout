@@ -12,8 +12,6 @@
 //===----------------------------------------------------------------------===//
 //
 
-#define DEBUG_TYPE "mccodeemitter"
-
 #include "MipsMCCodeEmitter.h"
 #include "MCTargetDesc/MipsFixupKinds.h"
 #include "MCTargetDesc/MipsMCExpr.h"
@@ -27,6 +25,8 @@
 #include "llvm/MC/MCFixup.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/Support/raw_ostream.h"
+
+#define DEBUG_TYPE "mccodeemitter"
 
 #define GET_INSTRMAP_INFO
 #include "MipsGenInstrInfo.inc"
@@ -306,11 +306,17 @@ getExprOpValue(const MCExpr *Expr,SmallVectorImpl<MCFixup> &Fixups,
     Mips::Fixups FixupKind = Mips::Fixups(0);
     switch (MipsExpr->getKind()) {
     default: llvm_unreachable("Unsupported fixup kind for target expression!");
-    case MipsMCExpr::VK_Mips_ABS_HI:
+    case MipsMCExpr::VK_Mips_HIGHEST:
+      FixupKind = Mips::fixup_Mips_HIGHEST;
+      break;
+    case MipsMCExpr::VK_Mips_HIGHER:
+      FixupKind = Mips::fixup_Mips_HIGHER;
+      break;
+    case MipsMCExpr::VK_Mips_HI:
       FixupKind = isMicroMips(STI) ? Mips::fixup_MICROMIPS_HI16
                                    : Mips::fixup_Mips_HI16;
       break;
-    case MipsMCExpr::VK_Mips_ABS_LO:
+    case MipsMCExpr::VK_Mips_LO:
       FixupKind = isMicroMips(STI) ? Mips::fixup_MICROMIPS_LO16
                                    : Mips::fixup_Mips_LO16;
       break;

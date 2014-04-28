@@ -42,7 +42,7 @@
 
 #include "scout/Config/defs.h"
 #ifdef SC_ENABLE_CUDA
-#include "llvm/Transforms/Scout/DoallToPTX/DoallToPTX.h"
+#include "llvm/Transforms/Scout/ForallPTX/ForallPTX.h"
 #endif
 #ifdef SC_ENABLE_OPENCL
 #include "llvm/Transforms/Scout/DoallToAMDIL/DoallToAMDIL.h"
@@ -241,15 +241,12 @@ static void addThreadSanitizerPass(const PassManagerBuilder &Builder,
 // ===== Scout ================================================================
 //
 void EmitAssemblyHelper::CreateScoutPasses() {
-
 #ifdef SC_ENABLE_CUDA
-
-  if (CodeGenOpts.ScoutNvidiaGPU) {
+  if(CodeGenOpts.ScoutNvidiaGPU){
     PassManager MPM;
-    MPM.add(createDoallToPTXPass());
+    MPM.add(createForallPTXPass());
     MPM.run(*TheModule);
   }
-
 #endif
 
 #ifdef SC_ENABLE_OPENCL
@@ -294,6 +291,7 @@ void EmitAssemblyHelper::CreatePasses() {
   PMBuilder.SLPVectorize = CodeGenOpts.VectorizeSLP;
   PMBuilder.LoopVectorize = CodeGenOpts.VectorizeLoop;
 
+  PMBuilder.DisableTailCalls = CodeGenOpts.DisableTailCalls;
   PMBuilder.DisableUnitAtATime = !CodeGenOpts.UnitAtATime;
   PMBuilder.DisableUnrollLoops = !CodeGenOpts.UnrollLoops;
   PMBuilder.RerollLoops = CodeGenOpts.RerollLoops;
@@ -381,6 +379,8 @@ void EmitAssemblyHelper::CreatePasses() {
 
   // Set up the per-module pass manager.
   PassManager *MPM = getPerModulePasses();
+  if (CodeGenOpts.VerifyModule)
+    MPM->add(createDebugInfoVerifierPass());
 
   if (!CodeGenOpts.DisableGCov &&
       (CodeGenOpts.EmitGcovArcs || CodeGenOpts.EmitGcovNotes)) {
@@ -490,6 +490,9 @@ TargetMachine *EmitAssemblyHelper::CreateTargetMachine(bool MustCreateTM) {
   if (CodeGenOpts.DisableIntegratedAS)
     Options.DisableIntegratedAS = true;
 
+  if (CodeGenOpts.CompressDebugSections)
+    Options.CompressDebugSections = true;
+
   // Set frame pointer elimination mode.
   if (!CodeGenOpts.DisableFPElim) {
     Options.NoFramePointerElim = false;
@@ -535,7 +538,6 @@ TargetMachine *EmitAssemblyHelper::CreateTargetMachine(bool MustCreateTM) {
   Options.DisableTailCalls = CodeGenOpts.DisableTailCalls;
   Options.TrapFuncName = CodeGenOpts.TrapFuncName;
   Options.PositionIndependentExecutable = LangOpts.PIELevel != 0;
-  Options.EnableSegmentedStacks = CodeGenOpts.EnableSegmentedStacks;
 
   TargetMachine *TM = TheTarget->createTargetMachine(Triple, TargetOpts.CPU,
                                                      FeaturesStr, Options,

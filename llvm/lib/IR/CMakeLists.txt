@@ -1,3 +1,7 @@
+# ===== Scout =================================================================
+add_subdirectory(Scout)
+# =============================================================================
+
 add_llvm_library(LLVMCore
   AsmWriter.cpp
   Attributes.cpp
@@ -7,12 +11,12 @@ add_llvm_library(LLVMCore
   ConstantRange.cpp
   Constants.cpp
   Core.cpp
-  DiagnosticInfo.cpp
-  DiagnosticPrinter.cpp
   DIBuilder.cpp
   DataLayout.cpp
   DebugInfo.cpp
   DebugLoc.cpp
+  DiagnosticInfo.cpp
+  DiagnosticPrinter.cpp
   Dominators.cpp
   Function.cpp
   GCOV.cpp
@@ -28,6 +32,7 @@ add_llvm_library(LLVMCore
   LLVMContextImpl.cpp
   LeakDetector.cpp
   LegacyPassManager.cpp
+  MDBuilder.cpp
   Mangler.cpp
   Metadata.cpp
   Module.cpp
@@ -43,8 +48,8 @@ add_llvm_library(LLVMCore
   ValueTypes.cpp
   Verifier.cpp
 # +===== Scout ====================
-  Scout/DIBuilder.cpp
-  Scout/DebugInfo.cpp
+  LINK_LIBS
+  ScoutCore
 # +================================
   )
 

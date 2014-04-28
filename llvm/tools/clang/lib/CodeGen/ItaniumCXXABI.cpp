@@ -214,8 +214,8 @@ public:
   void EmitThreadLocalInitFuncs(
       llvm::ArrayRef<std::pair<const VarDecl *, llvm::GlobalVariable *> > Decls,
       llvm::Function *InitFunc) override;
-  LValue EmitThreadLocalDeclRefExpr(CodeGenFunction &CGF,
-                                    const DeclRefExpr *DRE) override;
+  LValue EmitThreadLocalVarDeclLValue(CodeGenFunction &CGF, const VarDecl *VD,
+                                      QualType LValType) override;
 
   bool NeedsVTTParameter(GlobalDecl GD) override;
 };
@@ -244,6 +244,14 @@ public:
   llvm::Value *readArrayCookieImpl(CodeGenFunction &CGF, llvm::Value *allocPtr,
                                    CharUnits cookieSize) override;
 };
+
+class iOS64CXXABI : public ARMCXXABI {
+public:
+  iOS64CXXABI(CodeGen::CodeGenModule &CGM) : ARMCXXABI(CGM) {}
+
+  // ARM64 libraries are prepared for non-unique RTTI.
+  bool shouldRTTIBeUnique() override { return false; }
+};
 }
 
 CodeGen::CGCXXABI *CodeGen::CreateItaniumCXXABI(CodeGenModule &CGM) {
@@ -253,6 +261,9 @@ CodeGen::CGCXXABI *CodeGen::CreateItaniumCXXABI(CodeGenModule &CGM) {
   case TargetCXXABI::GenericARM:
   case TargetCXXABI::iOS:
     return new ARMCXXABI(CGM);
+
+  case TargetCXXABI::iOS64:
+    return new iOS64CXXABI(CGM);
 
   // Note that AArch64 uses the generic ItaniumCXXABI class since it doesn't
   // include the other 32-bit ARM oddities: constructor/destructor return values
@@ -1382,25 +1393,7 @@ void ItaniumCXXABI::EmitGuardedInit(CodeGenFunction &CGF,
   }
 
   // Test whether the variable has completed initialization.
-  llvm::Value *isInitialized;
-
-  // ARM C++ ABI 3.2.3.1:
-  //   To support the potential use of initialization guard variables
-  //   as semaphores that are the target of ARM SWP and LDREX/STREX
-  //   synchronizing instructions we define a static initialization
-  //   guard variable to be a 4-byte aligned, 4- byte word with the
-  //   following inline access protocol.
-  //     #define INITIALIZED 1
-  //     if ((obj_guard & INITIALIZED) != INITIALIZED) {
-  //       if (__cxa_guard_acquire(&obj_guard))
-  //         ...
-  //     }
-  if (UseARMGuardVarABI && !useInt8GuardVariable) {
-    llvm::Value *V = Builder.CreateLoad(guard);
-    llvm::Value *Test1 = llvm::ConstantInt::get(guardTy, 1);
-    V = Builder.CreateAnd(V, Test1);
-    isInitialized = Builder.CreateIsNull(V, "guard.uninitialized");
-
+  //
   // Itanium C++ ABI 3.3.2:
   //   The following is pseudo-code showing how these functions can be used:
   //     if (obj_guard.first_byte == 0) {
@@ -1415,23 +1408,46 @@ void ItaniumCXXABI::EmitGuardedInit(CodeGenFunction &CGF,
   //         __cxa_guard_release (&obj_guard);
   //       }
   //     }
-  } else {
-    // Load the first byte of the guard variable.
-    llvm::LoadInst *LI = 
+
+  // Load the first byte of the guard variable.
+  llvm::LoadInst *LI =
       Builder.CreateLoad(Builder.CreateBitCast(guard, CGM.Int8PtrTy));
-    LI->setAlignment(1);
+  LI->setAlignment(1);
 
-    // Itanium ABI:
-    //   An implementation supporting thread-safety on multiprocessor
-    //   systems must also guarantee that references to the initialized
-    //   object do not occur before the load of the initialization flag.
-    //
-    // In LLVM, we do this by marking the load Acquire.
-    if (threadsafe)
-      LI->setAtomic(llvm::Acquire);
+  // Itanium ABI:
+  //   An implementation supporting thread-safety on multiprocessor
+  //   systems must also guarantee that references to the initialized
+  //   object do not occur before the load of the initialization flag.
+  //
+  // In LLVM, we do this by marking the load Acquire.
+  if (threadsafe)
+    LI->setAtomic(llvm::Acquire);
 
-    isInitialized = Builder.CreateIsNull(LI, "guard.uninitialized");
-  }
+  // For ARM, we should only check the first bit, rather than the entire byte:
+  //
+  // ARM C++ ABI 3.2.3.1:
+  //   To support the potential use of initialization guard variables
+  //   as semaphores that are the target of ARM SWP and LDREX/STREX
+  //   synchronizing instructions we define a static initialization
+  //   guard variable to be a 4-byte aligned, 4-byte word with the
+  //   following inline access protocol.
+  //     #define INITIALIZED 1
+  //     if ((obj_guard & INITIALIZED) != INITIALIZED) {
+  //       if (__cxa_guard_acquire(&obj_guard))
+  //         ...
+  //     }
+  //
+  // and similarly for ARM64:
+  //
+  // ARM64 C++ ABI 3.2.2:
+  //   This ABI instead only specifies the value bit 0 of the static guard
+  //   variable; all other bits are platform defined. Bit 0 shall be 0 when the
+  //   variable is not initialized and 1 when it is.
+  llvm::Value *V =
+      (UseARMGuardVarABI && !useInt8GuardVariable)
+          ? Builder.CreateAnd(LI, llvm::ConstantInt::get(CGM.Int8Ty, 1))
+          : LI;
+  llvm::Value *isInitialized = Builder.CreateIsNull(V, "guard.uninitialized");
 
   llvm::BasicBlock *InitCheckBlock = CGF.createBasicBlock("init.check");
   llvm::BasicBlock *EndBlock = CGF.createBasicBlock("init.end");
@@ -1647,9 +1663,9 @@ void ItaniumCXXABI::EmitThreadLocalInitFuncs(
   }
 }
 
-LValue ItaniumCXXABI::EmitThreadLocalDeclRefExpr(CodeGenFunction &CGF,
-                                                 const DeclRefExpr *DRE) {
-  const VarDecl *VD = cast<VarDecl>(DRE->getDecl());
+LValue ItaniumCXXABI::EmitThreadLocalVarDeclLValue(CodeGenFunction &CGF,
+                                                   const VarDecl *VD,
+                                                   QualType LValType) {
   QualType T = VD->getType();
   llvm::Type *Ty = CGF.getTypes().ConvertTypeForMem(T);
   llvm::Value *Val = CGF.CGM.GetAddrOfGlobalVar(VD, Ty);
@@ -1660,10 +1676,9 @@ LValue ItaniumCXXABI::EmitThreadLocalDeclRefExpr(CodeGenFunction &CGF,
 
   LValue LV;
   if (VD->getType()->isReferenceType())
-    LV = CGF.MakeNaturalAlignAddrLValue(Val, T);
+    LV = CGF.MakeNaturalAlignAddrLValue(Val, LValType);
   else
-    LV = CGF.MakeAddrLValue(Val, DRE->getType(),
-                            CGF.getContext().getDeclAlign(VD));
+    LV = CGF.MakeAddrLValue(Val, LValType, CGF.getContext().getDeclAlign(VD));
   // FIXME: need setObjCGCLValueClass?
   return LV;
 }

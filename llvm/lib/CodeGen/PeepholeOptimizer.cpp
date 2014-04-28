@@ -66,7 +66,6 @@
 //     C = copy A    <-- same-bank copy
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "peephole-opt"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -80,6 +79,8 @@
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 using namespace llvm;
+
+#define DEBUG_TYPE "peephole-opt"
 
 // Optimize Extensions
 static cl::opt<bool>
@@ -133,7 +134,8 @@ namespace {
     bool foldImmediate(MachineInstr *MI, MachineBasicBlock *MBB,
                        SmallSet<unsigned, 4> &ImmDefRegs,
                        DenseMap<unsigned, MachineInstr*> &ImmDefMIs);
-    bool isLoadFoldable(MachineInstr *MI, unsigned &FoldAsLoadDefReg);
+    bool isLoadFoldable(MachineInstr *MI,
+                        SmallSet<unsigned, 16> &FoldAsLoadDefCandidates);
   };
 }
 
@@ -182,7 +184,7 @@ optimizeExtInstr(MachineInstr *MI, MachineBasicBlock *MBB,
   // If UseSrcSubIdx is Set, SubIdx also applies to SrcReg, and only uses of
   // SrcReg:SubIdx should be replaced.
   bool UseSrcSubIdx = TM->getRegisterInfo()->
-    getSubClassWithSubReg(MRI->getRegClass(SrcReg), SubIdx) != 0;
+    getSubClassWithSubReg(MRI->getRegClass(SrcReg), SubIdx) != nullptr;
 
   // The source has other uses. See if we can replace the other uses with use of
   // the result of the extension.
@@ -357,7 +359,7 @@ static bool shareSameRegisterFile(const TargetRegisterInfo &TRI,
   unsigned SrcIdx, DefIdx;
   if (SrcSubReg && DefSubReg)
     return TRI.getCommonSuperRegClass(SrcRC, SrcSubReg, DefRC, DefSubReg,
-                                      SrcIdx, DefIdx) != NULL;
+                                      SrcIdx, DefIdx) != nullptr;
   // At most one of the register is a sub register, make it Src to avoid
   // duplicating the test.
   if (!SrcSubReg) {
@@ -367,9 +369,9 @@ static bool shareSameRegisterFile(const TargetRegisterInfo &TRI,
 
   // One of the register is a sub register, check if we can get a superclass.
   if (SrcSubReg)
-    return TRI.getMatchingSuperRegClass(SrcRC, DefRC, SrcSubReg) != NULL;
+    return TRI.getMatchingSuperRegClass(SrcRC, DefRC, SrcSubReg) != nullptr;
   // Plain copy.
-  return TRI.getCommonSubClass(DefRC, SrcRC) != NULL;
+  return TRI.getCommonSubClass(DefRC, SrcRC) != nullptr;
 }
 
 /// \brief Get the index of the definition and source for \p Copy
@@ -489,8 +491,9 @@ bool PeepholeOptimizer::optimizeCopyOrBitcast(MachineInstr *MI) {
 /// isLoadFoldable - Check whether MI is a candidate for folding into a later
 /// instruction. We only fold loads to virtual registers and the virtual
 /// register defined has a single use.
-bool PeepholeOptimizer::isLoadFoldable(MachineInstr *MI,
-                                       unsigned &FoldAsLoadDefReg) {
+bool PeepholeOptimizer::isLoadFoldable(
+                              MachineInstr *MI,
+                              SmallSet<unsigned, 16> &FoldAsLoadDefCandidates) {
   if (!MI->canFoldAsLoad() || !MI->mayLoad())
     return false;
   const MCInstrDesc &MCID = MI->getDesc();
@@ -504,7 +507,7 @@ bool PeepholeOptimizer::isLoadFoldable(MachineInstr *MI,
   if (!MI->getOperand(0).getSubReg() &&
       TargetRegisterInfo::isVirtualRegister(Reg) &&
       MRI->hasOneNonDBGUse(Reg)) {
-    FoldAsLoadDefReg = Reg;
+    FoldAsLoadDefCandidates.insert(Reg);
     return true;
   }
   return false;
@@ -554,6 +557,9 @@ bool PeepholeOptimizer::foldImmediate(MachineInstr *MI, MachineBasicBlock *MBB,
 }
 
 bool PeepholeOptimizer::runOnMachineFunction(MachineFunction &MF) {
+  if (skipOptnoneFunction(*MF.getFunction()))
+    return false;
+
   DEBUG(dbgs() << "********** PEEPHOLE OPTIMIZER **********\n");
   DEBUG(dbgs() << "********** Function: " << MF.getName() << '\n');
 
@@ -563,22 +569,18 @@ bool PeepholeOptimizer::runOnMachineFunction(MachineFunction &MF) {
   TM  = &MF.getTarget();
   TII = TM->getInstrInfo();
   MRI = &MF.getRegInfo();
-  DT  = Aggressive ? &getAnalysis<MachineDominatorTree>() : 0;
+  DT  = Aggressive ? &getAnalysis<MachineDominatorTree>() : nullptr;
 
   bool Changed = false;
 
-  SmallPtrSet<MachineInstr*, 8> LocalMIs;
-  SmallSet<unsigned, 4> ImmDefRegs;
-  DenseMap<unsigned, MachineInstr*> ImmDefMIs;
-  unsigned FoldAsLoadDefReg;
   for (MachineFunction::iterator I = MF.begin(), E = MF.end(); I != E; ++I) {
     MachineBasicBlock *MBB = &*I;
 
     bool SeenMoveImm = false;
-    LocalMIs.clear();
-    ImmDefRegs.clear();
-    ImmDefMIs.clear();
-    FoldAsLoadDefReg = 0;
+    SmallPtrSet<MachineInstr*, 8> LocalMIs;
+    SmallSet<unsigned, 4> ImmDefRegs;
+    DenseMap<unsigned, MachineInstr*> ImmDefMIs;
+    SmallSet<unsigned, 16> FoldAsLoadDefCandidates;
 
     for (MachineBasicBlock::iterator
            MII = I->begin(), MIE = I->end(); MII != MIE; ) {
@@ -592,15 +594,15 @@ bool PeepholeOptimizer::runOnMachineFunction(MachineFunction &MF) {
           continue;
 
       // If there exists an instruction which belongs to the following
-      // categories, we will discard the load candidate.
+      // categories, we will discard the load candidates.
       if (MI->isPosition() || MI->isPHI() || MI->isImplicitDef() ||
           MI->isKill() || MI->isInlineAsm() ||
           MI->hasUnmodeledSideEffects()) {
-        FoldAsLoadDefReg = 0;
+        FoldAsLoadDefCandidates.clear();
         continue;
       }
       if (MI->mayStore() || MI->isCall())
-        FoldAsLoadDefReg = 0;
+        FoldAsLoadDefCandidates.clear();
 
       if (((MI->isBitcast() || MI->isCopy()) && optimizeCopyOrBitcast(MI)) ||
           (MI->isCompare() && optimizeCmpInstr(MI, MBB)) ||
@@ -627,30 +629,43 @@ bool PeepholeOptimizer::runOnMachineFunction(MachineFunction &MF) {
       // Check whether MI is a load candidate for folding into a later
       // instruction. If MI is not a candidate, check whether we can fold an
       // earlier load into MI.
-      if (!isLoadFoldable(MI, FoldAsLoadDefReg) && FoldAsLoadDefReg) {
-        // We need to fold load after optimizeCmpInstr, since optimizeCmpInstr
-        // can enable folding by converting SUB to CMP.
-        // Save FoldAsLoadDefReg because optimizeLoadInstr() resets it and we
-        // need it for markUsesInDebugValueAsUndef().
-        unsigned FoldedReg = FoldAsLoadDefReg;
-        MachineInstr *DefMI = 0;
-        MachineInstr *FoldMI = TII->optimizeLoadInstr(MI, MRI,
-                                                      FoldAsLoadDefReg, DefMI);
-        if (FoldMI) {
-          // Update LocalMIs since we replaced MI with FoldMI and deleted DefMI.
-          DEBUG(dbgs() << "Replacing: " << *MI);
-          DEBUG(dbgs() << "     With: " << *FoldMI);
-          LocalMIs.erase(MI);
-          LocalMIs.erase(DefMI);
-          LocalMIs.insert(FoldMI);
-          MI->eraseFromParent();
-          DefMI->eraseFromParent();
-          MRI->markUsesInDebugValueAsUndef(FoldedReg);
-          ++NumLoadFold;
-
-          // MI is replaced with FoldMI.
-          Changed = true;
-          continue;
+      if (!isLoadFoldable(MI, FoldAsLoadDefCandidates) &&
+          !FoldAsLoadDefCandidates.empty()) {
+        const MCInstrDesc &MIDesc = MI->getDesc();
+        for (unsigned i = MIDesc.getNumDefs(); i != MIDesc.getNumOperands();
+             ++i) {
+          const MachineOperand &MOp = MI->getOperand(i);
+          if (!MOp.isReg())
+            continue;
+          unsigned FoldAsLoadDefReg = MOp.getReg();
+          if (FoldAsLoadDefCandidates.count(FoldAsLoadDefReg)) {
+            // We need to fold load after optimizeCmpInstr, since
+            // optimizeCmpInstr can enable folding by converting SUB to CMP.
+            // Save FoldAsLoadDefReg because optimizeLoadInstr() resets it and
+            // we need it for markUsesInDebugValueAsUndef().
+            unsigned FoldedReg = FoldAsLoadDefReg;
+            MachineInstr *DefMI = nullptr;
+            MachineInstr *FoldMI = TII->optimizeLoadInstr(MI, MRI,
+                                                          FoldAsLoadDefReg,
+                                                          DefMI);
+            if (FoldMI) {
+              // Update LocalMIs since we replaced MI with FoldMI and deleted
+              // DefMI.
+              DEBUG(dbgs() << "Replacing: " << *MI);
+              DEBUG(dbgs() << "     With: " << *FoldMI);
+              LocalMIs.erase(MI);
+              LocalMIs.erase(DefMI);
+              LocalMIs.insert(FoldMI);
+              MI->eraseFromParent();
+              DefMI->eraseFromParent();
+              MRI->markUsesInDebugValueAsUndef(FoldedReg);
+              FoldAsLoadDefCandidates.erase(FoldedReg);
+              ++NumLoadFold;
+              // MI is replaced with FoldMI.
+              Changed = true;
+              break;
+            }
+          }
         }
       }
     }

@@ -14,7 +14,6 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "aarch64tti"
 #include "AArch64.h"
 #include "AArch64TargetMachine.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
@@ -22,6 +21,8 @@
 #include "llvm/Target/CostTable.h"
 #include "llvm/Target/TargetLowering.h"
 using namespace llvm;
+
+#define DEBUG_TYPE "aarch64tti"
 
 // Declare the pass initialization routine locally as target-specific passes
 // don't have a target-wide initialization entry point, and so we rely on the
@@ -33,21 +34,16 @@ void initializeAArch64TTIPass(PassRegistry &);
 namespace {
 
 class AArch64TTI final : public ImmutablePass, public TargetTransformInfo {
-  const AArch64TargetMachine *TM;
   const AArch64Subtarget *ST;
   const AArch64TargetLowering *TLI;
 
-  /// Estimate the overhead of scalarizing an instruction. Insert and Extract
-  /// are set if the result needs to be inserted and/or extracted from vectors.
-  unsigned getScalarizationOverhead(Type *Ty, bool Insert, bool Extract) const;
-
 public:
-  AArch64TTI() : ImmutablePass(ID), TM(0), ST(0), TLI(0) {
+  AArch64TTI() : ImmutablePass(ID), ST(0), TLI(0) {
     llvm_unreachable("This pass cannot be directly constructed");
   }
 
   AArch64TTI(const AArch64TargetMachine *TM)
-      : ImmutablePass(ID), TM(TM), ST(TM->getSubtargetImpl()),
+      : ImmutablePass(ID), ST(TM->getSubtargetImpl()),
         TLI(TM->getTargetLowering()) {
     initializeAArch64TTIPass(*PassRegistry::getPassRegistry());
   }
@@ -97,6 +93,7 @@ public:
     return 64;
   }
 
+  unsigned getMaximumUnrollFactor() const override { return 2; }
   /// @}
 };
 

@@ -12,7 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "regalloc"
 #include "Spiller.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/Statistic.h"
@@ -22,6 +21,7 @@
 #include "llvm/CodeGen/LiveRangeEdit.h"
 #include "llvm/CodeGen/LiveStackAnalysis.h"
 #include "llvm/CodeGen/MachineBlockFrequencyInfo.h"
+#include "llvm/CodeGen/MachineBranchProbabilityInfo.h"
 #include "llvm/CodeGen/MachineDominators.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -37,6 +37,8 @@
 #include "llvm/Target/TargetMachine.h"
 
 using namespace llvm;
+
+#define DEBUG_TYPE "regalloc"
 
 STATISTIC(NumSpilledRanges,   "Number of spilled live ranges");
 STATISTIC(NumSnippets,        "Number of spilled snippets");
@@ -120,7 +122,7 @@ public:
 
     SibValueInfo(unsigned Reg, VNInfo *VNI)
       : AllDefsAreReloads(true), DefByOrigPHI(false), KillsSource(false),
-        SpillReg(Reg), SpillVNI(VNI), SpillMBB(0), DefMI(0) {}
+        SpillReg(Reg), SpillVNI(VNI), SpillMBB(nullptr), DefMI(nullptr) {}
 
     // Returns true when a def has been found.
     bool hasDef() const { return DefByOrigPHI || DefMI; }
@@ -166,7 +168,7 @@ private:
 
   bool isSibling(unsigned Reg);
   MachineInstr *traceSiblingValue(unsigned, VNInfo*, VNInfo*);
-  void propagateSiblingValue(SibValueMap::iterator, VNInfo *VNI = 0);
+  void propagateSiblingValue(SibValueMap::iterator, VNInfo *VNI = nullptr);
   void analyzeSiblingValues();
 
   bool hoistSpill(LiveInterval &SpillLI, MachineInstr *CopyMI);
@@ -178,7 +180,7 @@ private:
 
   bool coalesceStackAccess(MachineInstr *MI, unsigned Reg);
   bool foldMemoryOperand(ArrayRef<std::pair<MachineInstr*, unsigned> >,
-                         MachineInstr *LoadMI = 0);
+                         MachineInstr *LoadMI = nullptr);
   void insertReload(unsigned VReg, SlotIndex, MachineBasicBlock::iterator MI);
   void insertSpill(unsigned VReg, bool isKill, MachineBasicBlock::iterator MI);
 
@@ -235,7 +237,7 @@ bool InlineSpiller::isSnippet(const LiveInterval &SnipLI) {
   if (SnipLI.getNumValNums() > 2 || !LIS.intervalIsInOneMBB(SnipLI))
     return false;
 
-  MachineInstr *UseMI = 0;
+  MachineInstr *UseMI = nullptr;
 
   // Check that all uses satisfy our criteria.
   for (MachineRegisterInfo::reg_instr_nodbg_iterator
@@ -366,7 +368,7 @@ void InlineSpiller::propagateSiblingValue(SibValueMap::iterator SVIIter,
   do {
     SVI = WorkList.pop_back_val();
     TinyPtrVector<VNInfo*> *Deps = VNI ? &FirstDeps : &SVI->second.Deps;
-    VNI = 0;
+    VNI = nullptr;
 
     SibValueInfo &SV = SVI->second;
     if (!SV.SpillMBB)
@@ -440,7 +442,20 @@ void InlineSpiller::propagateSiblingValue(SibValueMap::iterator SVIIter,
           // Also hoist spills to blocks with smaller loop depth, but make sure
           // that the new value dominates.  Non-phi dependents are always
           // dominated, phis need checking.
+
+          const BranchProbability MarginProb(4, 5); // 80%
+          // Hoist a spill to outer loop if there are multiple dependents (it
+          // can be beneficial if more than one dependents are hoisted) or
+          // if DepSV (the hoisting source) is hotter than SV (the hoisting
+          // destination) (we add a 80% margin to bias a little towards
+          // loop depth).
+          bool HoistCondition =
+            (MBFI.getBlockFreq(DepSV.SpillMBB) >=
+             (MBFI.getBlockFreq(SV.SpillMBB) * MarginProb)) ||
+            Deps->size() > 1;
+
           if ((Loops.getLoopDepth(DepSV.SpillMBB) > SpillDepth) &&
+              HoistCondition &&
               (!DepSVI->first->isPHIDef() ||
                MDT.dominates(SV.SpillMBB, DepSV.SpillMBB))) {
             Changed = true;
@@ -645,7 +660,7 @@ void InlineSpiller::analyzeSiblingValues() {
       VNInfo *VNI = *VI;
       if (VNI->isUnused())
         continue;
-      MachineInstr *DefMI = 0;
+      MachineInstr *DefMI = nullptr;
       if (!VNI->isPHIDef()) {
        DefMI = LIS.getInstructionFromIndex(VNI->def);
        assert(DefMI && "No defining instruction");
@@ -1345,7 +1360,7 @@ void InlineSpiller::spill(LiveRangeEdit &edit) {
   // Share a stack slot among all descendants of Original.
   Original = VRM.getOriginal(edit.getReg());
   StackSlot = VRM.getStackSlot(Original);
-  StackInt = 0;
+  StackInt = nullptr;
 
   DEBUG(dbgs() << "Inline spilling "
                << MRI.getRegClass(edit.getReg())->getName()

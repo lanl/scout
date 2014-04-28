@@ -12,7 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "jit"
 #include "ARM.h"
 #include "ARMBaseInstrInfo.h"
 #include "ARMConstantPoolValue.h"
@@ -39,6 +38,8 @@
 #include <iomanip>
 #endif
 using namespace llvm;
+
+#define DEBUG_TYPE "jit"
 
 STATISTIC(NumEmitted, "Number of machine instructions emitted");
 
@@ -207,8 +208,6 @@ namespace {
       const { return 0; }
     unsigned getThumbAddrModeRegRegOpValue(const MachineInstr &MI, unsigned Op)
       const { return 0; }
-    unsigned getT2AddrModeImm12OpValue(const MachineInstr &MI, unsigned Op)
-      const { return 0; }
     unsigned getT2AddrModeImm8OpValue(const MachineInstr &MI, unsigned Op)
       const { return 0; }
     unsigned getT2Imm8s4OpValue(const MachineInstr &MI, unsigned Op)
@@ -218,8 +217,6 @@ namespace {
     unsigned getT2AddrModeImm0_1020s4OpValue(const MachineInstr &MI,unsigned Op)
       const { return 0; }
     unsigned getT2AddrModeImm8OffsetOpValue(const MachineInstr &MI, unsigned Op)
-      const { return 0; }
-    unsigned getT2AddrModeImm12OffsetOpValue(const MachineInstr &MI,unsigned Op)
       const { return 0; }
     unsigned getT2AddrModeSORegOpValue(const MachineInstr &MI, unsigned Op)
       const { return 0; }
@@ -238,10 +235,6 @@ namespace {
       const { return 0; }
     unsigned getBitfieldInvertedMaskOpValue(const MachineInstr &MI,
                                             unsigned Op) const { return 0; }
-    unsigned getSsatBitPosValue(const MachineInstr &MI,
-                                unsigned Op) const { return 0; }
-    uint32_t getLdStmModeOpValue(const MachineInstr &MI, unsigned OpIdx)
-      const {return 0; }
     uint32_t getLdStSORegOpValue(const MachineInstr &MI, unsigned OpIdx)
       const { return 0; }
 
@@ -270,8 +263,6 @@ namespace {
       return 0;
     }
 
-    uint32_t getAddrMode2OpValue(const MachineInstr &MI, unsigned OpIdx)
-      const { return 0;}
     uint32_t getAddrMode2OffsetOpValue(const MachineInstr &MI, unsigned OpIdx)
       const { return 0;}
     uint32_t getPostIdxRegOpValue(const MachineInstr &MI, unsigned OpIdx)
@@ -281,8 +272,6 @@ namespace {
     uint32_t getAddrMode3OpValue(const MachineInstr &MI, unsigned Op)
       const { return 0; }
     uint32_t getAddrModeThumbSPOpValue(const MachineInstr &MI, unsigned Op)
-      const { return 0; }
-    uint32_t getAddrModeSOpValue(const MachineInstr &MI, unsigned Op)
       const { return 0; }
     uint32_t getAddrModeISOpValue(const MachineInstr &MI, unsigned Op)
       const { return 0; }

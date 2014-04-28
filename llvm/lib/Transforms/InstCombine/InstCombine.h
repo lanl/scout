@@ -20,6 +20,8 @@
 #include "llvm/Pass.h"
 #include "llvm/Transforms/Utils/SimplifyLibCalls.h"
 
+#define DEBUG_TYPE "instcombine"
+
 namespace llvm {
   class CallSite;
   class DataLayout;
@@ -171,7 +173,7 @@ public:
                                 ICmpInst::Predicate Pred);
   Instruction *FoldGEPICmp(GEPOperator *GEPLHS, Value *RHS,
                            ICmpInst::Predicate Cond, Instruction &I);
-  Instruction *FoldShiftByConstant(Value *Op0, ConstantInt *Op1,
+  Instruction *FoldShiftByConstant(Value *Op0, Constant *Op1,
                                    BinaryOperator &I);
   Instruction *commonCastTransforms(CastInst &CI);
   Instruction *commonPointerCastTransforms(CastInst &CI);
@@ -394,8 +396,8 @@ private:
   Value *Descale(Value *Val, APInt Scale, bool &NoSignedWrap);
 };
 
-
-
 } // end namespace llvm.
+
+#undef DEBUG_TYPE
 
 #endif

@@ -11,8 +11,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "nvptx-reg-info"
-
 #include "NVPTXRegisterInfo.h"
 #include "NVPTX.h"
 #include "NVPTXSubtarget.h"
@@ -24,6 +22,8 @@
 #include "llvm/Target/TargetInstrInfo.h"
 
 using namespace llvm;
+
+#define DEBUG_TYPE "nvptx-reg-info"
 
 namespace llvm {
 std::string getNVPTXRegClassName(TargetRegisterClass const *RC) {
@@ -78,9 +78,9 @@ NVPTXRegisterInfo::NVPTXRegisterInfo(const NVPTXSubtarget &st)
 #include "NVPTXGenRegisterInfo.inc"
 
 /// NVPTX Callee Saved Registers
-const uint16_t *
+const MCPhysReg *
 NVPTXRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
-  static const uint16_t CalleeSavedRegs[] = { 0 };
+  static const MCPhysReg CalleeSavedRegs[] = { 0 };
   return CalleeSavedRegs;
 }
 

@@ -7,7 +7,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "tti"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/DataLayout.h"
@@ -18,6 +17,8 @@
 #include "llvm/Support/ErrorHandling.h"
 
 using namespace llvm;
+
+#define DEBUG_TYPE "tti"
 
 // Setup the analysis group to manage the TargetTransformInfo passes.
 INITIALIZE_ANALYSIS_GROUP(TargetTransformInfo, "Target Information", NoTTI)
@@ -148,14 +149,14 @@ unsigned TargetTransformInfo::getIntImmCost(const APInt &Imm, Type *Ty) const {
   return PrevTTI->getIntImmCost(Imm, Ty);
 }
 
-unsigned TargetTransformInfo::getIntImmCost(unsigned Opcode, const APInt &Imm,
-                                            Type *Ty) const {
-  return PrevTTI->getIntImmCost(Opcode, Imm, Ty);
+unsigned TargetTransformInfo::getIntImmCost(unsigned Opc, unsigned Idx,
+                                            const APInt &Imm, Type *Ty) const {
+  return PrevTTI->getIntImmCost(Opc, Idx, Imm, Ty);
 }
 
-unsigned TargetTransformInfo::getIntImmCost(Intrinsic::ID IID, const APInt &Imm,
-                                            Type *Ty) const {
-  return PrevTTI->getIntImmCost(IID, Imm, Ty);
+unsigned TargetTransformInfo::getIntImmCost(Intrinsic::ID IID, unsigned Idx,
+                                            const APInt &Imm, Type *Ty) const {
+  return PrevTTI->getIntImmCost(IID, Idx, Imm, Ty);
 }
 
 unsigned TargetTransformInfo::getNumberOfRegisters(bool Vector) const {
@@ -234,7 +235,7 @@ namespace {
 struct NoTTI final : ImmutablePass, TargetTransformInfo {
   const DataLayout *DL;
 
-  NoTTI() : ImmutablePass(ID), DL(0) {
+  NoTTI() : ImmutablePass(ID), DL(nullptr) {
     initializeNoTTIPass(*PassRegistry::getPassRegistry());
   }
 
@@ -242,9 +243,9 @@ struct NoTTI final : ImmutablePass, TargetTransformInfo {
     // Note that this subclass is special, and must *not* call initializeTTI as
     // it does not chain.
     TopTTI = this;
-    PrevTTI = 0;
+    PrevTTI = nullptr;
     DataLayoutPass *DLP = getAnalysisIfAvailable<DataLayoutPass>();
-    DL = DLP ? &DLP->getDataLayout() : 0;
+    DL = DLP ? &DLP->getDataLayout() : nullptr;
   }
 
   virtual void getAnalysisUsage(AnalysisUsage &AU) const override {
@@ -415,10 +416,10 @@ struct NoTTI final : ImmutablePass, TargetTransformInfo {
     if (isa<PHINode>(U))
       return TCC_Free; // Model all PHI nodes as free.
 
-    if (const GEPOperator *GEP = dyn_cast<GEPOperator>(U))
-      // In the basic model we just assume that all-constant GEPs will be
-      // folded into their uses via addressing modes.
-      return GEP->hasAllConstantIndices() ? TCC_Free : TCC_Basic;
+    if (const GEPOperator *GEP = dyn_cast<GEPOperator>(U)) {
+      SmallVector<const Value *, 4> Indices(GEP->idx_begin(), GEP->idx_end());
+      return TopTTI->getGEPCost(GEP->getPointerOperand(), Indices);
+    }
 
     if (ImmutableCallSite CS = U) {
       const Function *F = CS.getCalledFunction();
@@ -443,7 +444,7 @@ struct NoTTI final : ImmutablePass, TargetTransformInfo {
     // Otherwise delegate to the fully generic implementations.
     return getOperationCost(Operator::getOpcode(U), U->getType(),
                             U->getNumOperands() == 1 ?
-                                U->getOperand(0)->getType() : 0);
+                                U->getOperand(0)->getType() : nullptr);
   }
 
   bool hasBranchDivergence() const override { return false; }
@@ -539,12 +540,12 @@ struct NoTTI final : ImmutablePass, TargetTransformInfo {
     return TCC_Basic;
   }
 
-  unsigned getIntImmCost(unsigned Opcode, const APInt &Imm,
+  unsigned getIntImmCost(unsigned Opcode, unsigned Idx, const APInt &Imm,
                          Type *Ty) const override {
     return TCC_Free;
   }
 
-  unsigned getIntImmCost(Intrinsic::ID IID, const APInt &Imm,
+  unsigned getIntImmCost(Intrinsic::ID IID, unsigned Idx, const APInt &Imm,
                          Type *Ty) const override {
     return TCC_Free;
   }
@@ -567,7 +568,7 @@ struct NoTTI final : ImmutablePass, TargetTransformInfo {
   }
 
   unsigned getShuffleCost(ShuffleKind Kind, Type *Ty,
-                          int Index = 0, Type *SubTp = 0) const override {
+                          int Index = 0, Type *SubTp = nullptr) const override {
     return 1;
   }
 
@@ -581,7 +582,7 @@ struct NoTTI final : ImmutablePass, TargetTransformInfo {
   }
 
   unsigned getCmpSelInstrCost(unsigned Opcode, Type *ValTy,
-                              Type *CondTy = 0) const override {
+                              Type *CondTy = nullptr) const override {
     return 1;
   }
 

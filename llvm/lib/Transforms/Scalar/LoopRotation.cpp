@@ -11,7 +11,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "loop-rotate"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/CodeMetrics.h"
@@ -30,6 +29,8 @@
 #include "llvm/Transforms/Utils/SSAUpdater.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
 using namespace llvm;
+
+#define DEBUG_TYPE "loop-rotate"
 
 #define MAX_HEADER_SIZE 16
 
@@ -82,6 +83,9 @@ bool LoopRotate::runOnLoop(Loop *L, LPPassManager &LPM) {
   if (skipOptnoneFunction(L))
     return false;
 
+  // Save the loop metadata.
+  MDNode *LoopMD = L->getLoopID();
+
   LI = &getAnalysis<LoopInfo>();
   TTI = &getAnalysis<TargetTransformInfo>();
 
@@ -96,6 +100,12 @@ bool LoopRotate::runOnLoop(Loop *L, LPPassManager &LPM) {
     MadeChange = true;
     SimplifiedLatch = false;
   }
+
+  // Restore the loop metadata.
+  // NB! We presume LoopRotation DOESN'T ADD its own metadata.
+  if ((MadeChange || SimplifiedLatch) && LoopMD)
+    L->setLoopID(LoopMD);
+
   return MadeChange;
 }
 

@@ -18,6 +18,7 @@
 #include "llvm/MC/MCDirectives.h"
 #include "llvm/MC/MCFixup.h"
 #include "llvm/MC/MCInst.h"
+#include "llvm/MC/MCLinkerOptimizationHint.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/DataTypes.h"
@@ -85,7 +86,7 @@ private:
   /// @}
 
 protected:
-  MCFragment(FragmentType _Kind, MCSectionData *_Parent = 0);
+  MCFragment(FragmentType _Kind, MCSectionData *_Parent = nullptr);
 
 public:
   // Only for sentinel.
@@ -136,7 +137,7 @@ class MCEncodedFragment : public MCFragment {
 
   uint8_t BundlePadding;
 public:
-  MCEncodedFragment(MCFragment::FragmentType FType, MCSectionData *SD = 0)
+  MCEncodedFragment(MCFragment::FragmentType FType, MCSectionData *SD = nullptr)
     : MCFragment(FType, SD), BundlePadding(0)
   {
   }
@@ -174,7 +175,7 @@ class MCEncodedFragmentWithFixups : public MCEncodedFragment {
 
 public:
   MCEncodedFragmentWithFixups(MCFragment::FragmentType FType,
-                              MCSectionData *SD = 0)
+                              MCSectionData *SD = nullptr)
     : MCEncodedFragment(FType, SD)
   {
   }
@@ -214,7 +215,7 @@ class MCDataFragment : public MCEncodedFragmentWithFixups {
   /// Fixups - The list of fixups in this fragment.
   SmallVector<MCFixup, 4> Fixups;
 public:
-  MCDataFragment(MCSectionData *SD = 0)
+  MCDataFragment(MCSectionData *SD = nullptr)
     : MCEncodedFragmentWithFixups(FT_Data, SD),
       HasInstructions(false), AlignToBundleEnd(false)
   {
@@ -263,7 +264,7 @@ class MCCompactEncodedInstFragment : public MCEncodedFragment {
 
   SmallVector<char, 4> Contents;
 public:
-  MCCompactEncodedInstFragment(MCSectionData *SD = 0)
+  MCCompactEncodedInstFragment(MCSectionData *SD = nullptr)
     : MCEncodedFragment(FT_CompactEncodedInst, SD), AlignToBundleEnd(false)
   {
   }
@@ -306,7 +307,7 @@ class MCRelaxableFragment : public MCEncodedFragmentWithFixups {
 public:
   MCRelaxableFragment(const MCInst &_Inst,
                       const MCSubtargetInfo &_STI,
-                      MCSectionData *SD = 0)
+                      MCSectionData *SD = nullptr)
     : MCEncodedFragmentWithFixups(FT_Relaxable, SD), Inst(_Inst), STI(_STI) {
   }
 
@@ -362,7 +363,7 @@ class MCAlignFragment : public MCFragment {
 
 public:
   MCAlignFragment(unsigned _Alignment, int64_t _Value, unsigned _ValueSize,
-                  unsigned _MaxBytesToEmit, MCSectionData *SD = 0)
+                  unsigned _MaxBytesToEmit, MCSectionData *SD = nullptr)
     : MCFragment(FT_Align, SD), Alignment(_Alignment),
       Value(_Value),ValueSize(_ValueSize),
       MaxBytesToEmit(_MaxBytesToEmit), EmitNops(false) {}
@@ -403,7 +404,7 @@ class MCFillFragment : public MCFragment {
 
 public:
   MCFillFragment(int64_t _Value, unsigned _ValueSize, uint64_t _Size,
-                 MCSectionData *SD = 0)
+                 MCSectionData *SD = nullptr)
     : MCFragment(FT_Fill, SD),
       Value(_Value), ValueSize(_ValueSize), Size(_Size) {
     assert((!ValueSize || (Size % ValueSize) == 0) &&
@@ -436,7 +437,8 @@ class MCOrgFragment : public MCFragment {
   int8_t Value;
 
 public:
-  MCOrgFragment(const MCExpr &_Offset, int8_t _Value, MCSectionData *SD = 0)
+  MCOrgFragment(const MCExpr &_Offset, int8_t _Value,
+                MCSectionData *SD = nullptr)
     : MCFragment(FT_Org, SD),
       Offset(&_Offset), Value(_Value) {}
 
@@ -465,7 +467,8 @@ class MCLEBFragment : public MCFragment {
 
   SmallString<8> Contents;
 public:
-  MCLEBFragment(const MCExpr &Value_, bool IsSigned_, MCSectionData *SD = 0)
+  MCLEBFragment(const MCExpr &Value_, bool IsSigned_,
+                MCSectionData *SD = nullptr)
     : MCFragment(FT_LEB, SD),
       Value(&Value_), IsSigned(IsSigned_) { Contents.push_back(0); }
 
@@ -501,7 +504,7 @@ class MCDwarfLineAddrFragment : public MCFragment {
 
 public:
   MCDwarfLineAddrFragment(int64_t _LineDelta, const MCExpr &_AddrDelta,
-                      MCSectionData *SD = 0)
+                      MCSectionData *SD = nullptr)
     : MCFragment(FT_Dwarf, SD),
       LineDelta(_LineDelta), AddrDelta(&_AddrDelta) { Contents.push_back(0); }
 
@@ -532,7 +535,8 @@ class MCDwarfCallFrameFragment : public MCFragment {
   SmallString<8> Contents;
 
 public:
-  MCDwarfCallFrameFragment(const MCExpr &_AddrDelta,  MCSectionData *SD = 0)
+  MCDwarfCallFrameFragment(const MCExpr &_AddrDelta,
+                           MCSectionData *SD = nullptr)
     : MCFragment(FT_DwarfFrame, SD),
       AddrDelta(&_AddrDelta) { Contents.push_back(0); }
 
@@ -613,7 +617,7 @@ private:
 public:
   // Only for use as sentinel.
   MCSectionData();
-  MCSectionData(const MCSection &Section, MCAssembler *A = 0);
+  MCSectionData(const MCSection &Section, MCAssembler *A = nullptr);
 
   const MCSection &getSection() const { return *Section; }
 
@@ -723,7 +727,7 @@ public:
   // Only for use as sentinel.
   MCSymbolData();
   MCSymbolData(const MCSymbol &_Symbol, MCFragment *_Fragment, uint64_t _Offset,
-               MCAssembler *A = 0);
+               MCAssembler *A = nullptr);
 
   /// @name Accessors
   /// @{
@@ -830,6 +834,9 @@ public:
   typedef SymbolDataListType::const_iterator const_symbol_iterator;
   typedef SymbolDataListType::iterator symbol_iterator;
 
+  typedef iterator_range<symbol_iterator> symbol_range;
+  typedef iterator_range<const_symbol_iterator> const_symbol_range;
+
   typedef std::vector<std::string> FileNameVectorType;
   typedef FileNameVectorType::const_iterator const_file_name_iterator;
 
@@ -913,6 +920,10 @@ private:
   // which flags to be set.
   unsigned ELFHeaderEFlags;
 
+  /// Used to communicate Linker Optimization Hint information between
+  /// the Streamer and the .o writer
+  MCLOHContainer LOHContainer;
+
   VersionMinInfoType VersionMinInfo;
 private:
   /// Evaluate a fixup to a relocatable expression and the value which should be
@@ -960,8 +971,8 @@ private:
   /// finishLayout - Finalize a layout, including fragment lowering.
   void finishLayout(MCAsmLayout &Layout);
 
-  uint64_t handleFixup(const MCAsmLayout &Layout,
-                       MCFragment &F, const MCFixup &Fixup);
+  std::pair<uint64_t, bool> handleFixup(const MCAsmLayout &Layout,
+                                        MCFragment &F, const MCFixup &Fixup);
 
 public:
   /// Compute the effective fragment size assuming it is laid out at the given
@@ -1091,6 +1102,9 @@ public:
   symbol_iterator symbol_end() { return Symbols.end(); }
   const_symbol_iterator symbol_end() const { return Symbols.end(); }
 
+  symbol_range symbols() { return make_range(symbol_begin(), symbol_end()); }
+  const_symbol_range symbols() const { return make_range(symbol_begin(), symbol_end()); }
+
   size_t symbol_size() const { return Symbols.size(); }
 
   /// @}
@@ -1156,6 +1170,19 @@ public:
   size_t data_region_size() const { return DataRegions.size(); }
 
   /// @}
+  /// @name Data Region List Access
+  /// @{
+
+  // FIXME: This is a total hack, this should not be here. Once things are
+  // factored so that the streamer has direct access to the .o writer, it can
+  // disappear.
+  MCLOHContainer & getLOHContainer() {
+    return LOHContainer;
+  }
+  const MCLOHContainer & getLOHContainer() const {
+    return const_cast<MCAssembler *>(this)->getLOHContainer();
+  }
+  /// @}
   /// @name Backend Data Access
   /// @{
 
@@ -1166,7 +1193,7 @@ public:
   }
 
   MCSectionData &getOrCreateSectionData(const MCSection &Section,
-                                        bool *Created = 0) {
+                                        bool *Created = nullptr) {
     MCSectionData *&Entry = SectionMap[&Section];
 
     if (Created) *Created = !Entry;
@@ -1177,22 +1204,28 @@ public:
   }
 
   bool hasSymbolData(const MCSymbol &Symbol) const {
-    return SymbolMap.lookup(&Symbol) != 0;
+    return SymbolMap.lookup(&Symbol) != nullptr;
   }
 
-  MCSymbolData &getSymbolData(const MCSymbol &Symbol) const {
+  MCSymbolData &getSymbolData(const MCSymbol &Symbol) {
+    MCSymbolData *Entry = SymbolMap.lookup(&Symbol);
+    assert(Entry && "Missing symbol data!");
+    return *Entry;
+  }
+
+  const MCSymbolData &getSymbolData(const MCSymbol &Symbol) const {
     MCSymbolData *Entry = SymbolMap.lookup(&Symbol);
     assert(Entry && "Missing symbol data!");
     return *Entry;
   }
 
   MCSymbolData &getOrCreateSymbolData(const MCSymbol &Symbol,
-                                      bool *Created = 0) {
+                                      bool *Created = nullptr) {
     MCSymbolData *&Entry = SymbolMap[&Symbol];
 
     if (Created) *Created = !Entry;
     if (!Entry)
-      Entry = new MCSymbolData(Symbol, 0, 0, this);
+      Entry = new MCSymbolData(Symbol, nullptr, 0, this);
 
     return *Entry;
   }

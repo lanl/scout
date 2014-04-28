@@ -129,6 +129,9 @@ class CompilerInstance : public ModuleLoader {
   /// have finished with this translation unit.
   bool BuildGlobalModuleIndex;
 
+  /// \brief We have a full global module index, with all modules.
+  bool HaveFullGlobalModuleIndex;
+
   /// \brief One or more modules failed to build.
   bool ModuleBuildFailed;
 
@@ -161,7 +164,7 @@ class CompilerInstance : public ModuleLoader {
   CompilerInstance(const CompilerInstance &) LLVM_DELETED_FUNCTION;
   void operator=(const CompilerInstance &) LLVM_DELETED_FUNCTION;
 public:
-  CompilerInstance();
+  explicit CompilerInstance(bool BuildingModule = false);
   ~CompilerInstance();
 
   /// @name High-Level Operations
@@ -492,6 +495,7 @@ public:
   }
 
   Sema *takeSema() { return TheSema.release(); }
+  void resetAndLeakSema() { BuryPointer(TheSema.release()); }
 
   /// }
   /// @name Module Management
@@ -723,6 +727,9 @@ public:
 
   /// }
 
+  // Create module manager.
+  void createModuleManager();
+
   ModuleLoadResult loadModule(SourceLocation ImportLoc, ModuleIdPath Path,
                               Module::NameVisibilityKind Visibility,
                               bool IsInclusionDirective) override;
@@ -734,6 +741,9 @@ public:
     return ModuleLoader::HadFatalFailure;
   }
 
+  GlobalModuleIndex *loadGlobalModuleIndex(SourceLocation TriggerLoc) override;
+
+  bool lookupMissingImports(StringRef Name, SourceLocation TriggerLoc) override;
 };
 
 } // end namespace clang

@@ -37,6 +37,18 @@ class AMDGPUShaderInst <dag outs, dag ins, string asm, list<dag> pattern>
 def InstFlag : OperandWithDefaultOps <i32, (ops (i32 0))>;
 def ADDRIndirect : ComplexPattern<iPTR, 2, "SelectADDRIndirect", [], []>;
 
+def u32imm : Operand<i32> {
+  let PrintMethod = "printU32ImmOperand";
+}
+
+def u16imm : Operand<i16> {
+  let PrintMethod = "printU16ImmOperand";
+}
+
+def u8imm : Operand<i8> {
+  let PrintMethod = "printU8ImmOperand";
+}
+
 //===----------------------------------------------------------------------===//
 // PatLeafs for floating-point comparisons
 //===----------------------------------------------------------------------===//
@@ -253,9 +265,6 @@ def FP_ONE : PatLeaf <
   [{return N->isExactlyValue(1.0);}]
 >;
 
-def U24 : ComplexPattern<i32, 1, "SelectU24", [], []>;
-def I24 : ComplexPattern<i32, 1, "SelectI24", [], []>;
-
 let isCodeGenOnly = 1, isPseudo = 1 in {
 
 let usesCustomInserter = 1  in {
@@ -415,6 +424,9 @@ class UMUL24Pattern <Instruction UMUL24> : Pat <
 */
 
 include "R600Instructions.td"
+include "R700Instructions.td"
+include "EvergreenInstructions.td"
+include "CaymanInstructions.td"
 
 include "SIInstrInfo.td"
 

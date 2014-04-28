@@ -13,7 +13,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "Thumb1RegisterInfo.h"
-#include "ARM.h"
 #include "ARMBaseInstrInfo.h"
 #include "ARMMachineFunctionInfo.h"
 #include "ARMSubtarget.h"
@@ -30,7 +29,6 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetFrameLowering.h"
 #include "llvm/Target/TargetMachine.h"
 
@@ -484,10 +482,8 @@ rewriteFrameIndex(MachineBasicBlock::iterator II, unsigned FrameRegIdx,
   return Offset == 0;
 }
 
-void
-Thumb1RegisterInfo::resolveFrameIndex(MachineBasicBlock::iterator I,
-                                      unsigned BaseReg, int64_t Offset) const {
-  MachineInstr &MI = *I;
+void Thumb1RegisterInfo::resolveFrameIndex(MachineInstr &MI, unsigned BaseReg,
+                                           int64_t Offset) const {
   const ARMBaseInstrInfo &TII =
     *static_cast<const ARMBaseInstrInfo*>(
       MI.getParent()->getParent()->getTarget().getInstrInfo());

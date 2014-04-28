@@ -88,9 +88,9 @@ CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index) {
   // inside forall we are referencing the implicit mesh e.g. 'c' in forall cells c in mesh
   if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(Base->getDecl())) {
       // lookup underlying mesh instead of implicit mesh
-      const VarDecl* VD = IMPD->getMeshVarDecl();
-      llvm::Value *V = LocalDeclMap.lookup(VD);
-      LValue BaseLV  = MakeAddrLValue(V, E->getType());
+      llvm::Value *Addr;
+      GetMeshBaseAddr(IMPD->getMeshVarDecl(), Addr);
+      LValue BaseLV  = MakeAddrLValue(Addr, E->getType());
       // assume we have already checked that we are working w/ a mesh and cast to MeshField Decl
       MeshFieldDecl* MFD = cast<MeshFieldDecl>(E->getMemberDecl());
       return EmitLValueForMeshField(BaseLV, cast<MeshFieldDecl>(MFD), Index);
@@ -114,6 +114,23 @@ LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
   // fields are before mesh dimensions so we can do things the same a struct
   // this is setup in Codegentypes.h ConvertScoutMeshType()
   const MeshDecl *mesh = field->getParent();
+
+  if(isGPU()){
+    const CGMeshLayout &ML = CGM.getTypes().getCGMeshLayout(field->getParent());
+    unsigned Idx = ML.getLLVMFieldNo(field);
+
+    llvm::StructType* s = ML.getLLVMType();
+    llvm::Type* et = s->getElementType(Idx);
+    sprintf(IRNameStr, "TheMesh.%s.ptr",
+            field->getName().str().c_str());
+    llvm::Value* addr = Builder.CreateAlloca(et, 0, IRNameStr);
+
+    sprintf(IRNameStr, "TheMesh.%s.element.ptr",
+            field->getName().str().c_str());
+    addr = Builder.CreateInBoundsGEP(addr, Index, IRNameStr);
+    LValue LV = MakeAddrLValue(addr, field->getType(), CharUnits::Zero());
+    return LV;
+  }
 
   if (field->isBitField()) {
     const CGMeshLayout &ML = CGM.getTypes().getCGMeshLayout(mesh);

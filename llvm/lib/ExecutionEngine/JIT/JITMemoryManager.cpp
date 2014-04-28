@@ -11,7 +11,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "jit"
 #include "llvm/ExecutionEngine/JITMemoryManager.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/Statistic.h"
@@ -39,6 +38,8 @@
 #endif
 
 using namespace llvm;
+
+#define DEBUG_TYPE "jit"
 
 STATISTIC(NumSlabs, "Number of slabs of memory allocated by the JIT");
 
@@ -80,7 +81,7 @@ namespace {
     /// getFreeBlockBefore - If the block before this one is free, return it,
     /// otherwise return null.
     FreeRangeHeader *getFreeBlockBefore() const {
-      if (PrevAllocated) return 0;
+      if (PrevAllocated) return nullptr;
       intptr_t PrevSize = reinterpret_cast<intptr_t *>(
                             const_cast<MemoryRangeHeader *>(this))[-1];
       return reinterpret_cast<FreeRangeHeader *>(
@@ -174,7 +175,7 @@ FreeRangeHeader *MemoryRangeHeader::FreeBlock(FreeRangeHeader *FreeList) {
     // coalesce with it, update our notion of what the free list is.
     if (&FollowingFreeBlock == FreeList) {
       FreeList = FollowingFreeBlock.Next;
-      FreeListToReturn = 0;
+      FreeListToReturn = nullptr;
       assert(&FollowingFreeBlock != FreeList && "No tombstone block?");
     }
     FollowingFreeBlock.RemoveFromFreeList();
@@ -269,13 +270,12 @@ namespace {
 
   class DefaultJITMemoryManager;
 
-  class JITSlabAllocator : public SlabAllocator {
+  class JITAllocator {
     DefaultJITMemoryManager &JMM;
   public:
-    JITSlabAllocator(DefaultJITMemoryManager &jmm) : JMM(jmm) { }
-    virtual ~JITSlabAllocator() { }
-    MemSlab *Allocate(size_t Size) override;
-    void Deallocate(MemSlab *Slab) override;
+    JITAllocator(DefaultJITMemoryManager &jmm) : JMM(jmm) { }
+    void *Allocate(size_t Size, size_t /*Alignment*/);
+    void Deallocate(void *Slab, size_t Size);
   };
 
   /// DefaultJITMemoryManager - Manage memory for the JIT code generation.
@@ -285,7 +285,21 @@ namespace {
   /// middle of emitting a function, and we don't know how large the function we
   /// are emitting is.
   class DefaultJITMemoryManager : public JITMemoryManager {
+  public:
+    /// DefaultCodeSlabSize - When we have to go map more memory, we allocate at
+    /// least this much unless more is requested. Currently, in 512k slabs.
+    static const size_t DefaultCodeSlabSize = 512 * 1024;
 
+    /// DefaultSlabSize - Allocate globals and stubs into slabs of 64K (probably
+    /// 16 pages) unless we get an allocation above SizeThreshold.
+    static const size_t DefaultSlabSize = 64 * 1024;
+
+    /// DefaultSizeThreshold - For any allocation larger than 16K (probably
+    /// 4 pages), we should allocate a separate slab to avoid wasted space at
+    /// the end of a normal slab.
+    static const size_t DefaultSizeThreshold = 16 * 1024;
+
+  private:
     // Whether to poison freed memory.
     bool PoisonMemory;
 
@@ -299,9 +313,10 @@ namespace {
     // Memory slabs allocated by the JIT.  We refer to them as slabs so we don't
     // confuse them with the blocks of memory described above.
     std::vector<sys::MemoryBlock> CodeSlabs;
-    JITSlabAllocator BumpSlabAllocator;
-    BumpPtrAllocator StubAllocator;
-    BumpPtrAllocator DataAllocator;
+    BumpPtrAllocatorImpl<JITAllocator, DefaultSlabSize,
+                         DefaultSizeThreshold> StubAllocator;
+    BumpPtrAllocatorImpl<JITAllocator, DefaultSlabSize,
+                         DefaultSizeThreshold> DataAllocator;
 
     // Circular list of free blocks.
     FreeRangeHeader *FreeMemoryList;
@@ -317,18 +332,6 @@ namespace {
     /// allocateNewSlab - Allocates a new MemoryBlock and remembers it as the
     /// last slab it allocated, so that subsequent allocations follow it.
     sys::MemoryBlock allocateNewSlab(size_t size);
-
-    /// DefaultCodeSlabSize - When we have to go map more memory, we allocate at
-    /// least this much unless more is requested.
-    static const size_t DefaultCodeSlabSize;
-
-    /// DefaultSlabSize - Allocate data into slabs of this size unless we get
-    /// an allocation above SizeThreshold.
-    static const size_t DefaultSlabSize;
-
-    /// DefaultSizeThreshold - For any allocation larger than this threshold, we
-    /// should allocate a separate slab.
-    static const size_t DefaultSizeThreshold;
 
     /// getPointerToNamedFunction - This method returns the address of the
     /// specified function by using the dlsym function call.
@@ -566,30 +569,24 @@ namespace {
   };
 }
 
-MemSlab *JITSlabAllocator::Allocate(size_t Size) {
+void *JITAllocator::Allocate(size_t Size, size_t /*Alignment*/) {
   sys::MemoryBlock B = JMM.allocateNewSlab(Size);
-  MemSlab *Slab = (MemSlab*)B.base();
-  Slab->Size = B.size();
-  Slab->NextPtr = 0;
-  return Slab;
+  return B.base();
 }
 
-void JITSlabAllocator::Deallocate(MemSlab *Slab) {
-  sys::MemoryBlock B(Slab, Slab->Size);
+void JITAllocator::Deallocate(void *Slab, size_t Size) {
+  sys::MemoryBlock B(Slab, Size);
   sys::Memory::ReleaseRWX(B);
 }
 
 DefaultJITMemoryManager::DefaultJITMemoryManager()
-  :
+    :
 #ifdef NDEBUG
-    PoisonMemory(false),
+      PoisonMemory(false),
 #else
-    PoisonMemory(true),
+      PoisonMemory(true),
 #endif
-    LastSlab(0, 0),
-    BumpSlabAllocator(*this),
-    StubAllocator(DefaultSlabSize, DefaultSizeThreshold, BumpSlabAllocator),
-    DataAllocator(DefaultSlabSize, DefaultSizeThreshold, BumpSlabAllocator) {
+      LastSlab(nullptr, 0), StubAllocator(*this), DataAllocator(*this) {
 
   // Allocate space for code.
   sys::MemoryBlock MemBlock = allocateNewSlab(DefaultCodeSlabSize);
@@ -642,7 +639,7 @@ DefaultJITMemoryManager::DefaultJITMemoryManager()
   // Start out with the freelist pointing to Mem0.
   FreeMemoryList = Mem0;
 
-  GOTBase = NULL;
+  GOTBase = nullptr;
 }
 
 void DefaultJITMemoryManager::AllocateGOT() {
@@ -661,9 +658,9 @@ DefaultJITMemoryManager::~DefaultJITMemoryManager() {
 sys::MemoryBlock DefaultJITMemoryManager::allocateNewSlab(size_t size) {
   // Allocate a new block close to the last one.
   std::string ErrMsg;
-  sys::MemoryBlock *LastSlabPtr = LastSlab.base() ? &LastSlab : 0;
+  sys::MemoryBlock *LastSlabPtr = LastSlab.base() ? &LastSlab : nullptr;
   sys::MemoryBlock B = sys::Memory::AllocateRWX(size, LastSlabPtr, &ErrMsg);
-  if (B.base() == 0) {
+  if (!B.base()) {
     report_fatal_error("Allocation failed when allocating new memory in the"
                        " JIT\n" + Twine(ErrMsg));
   }
@@ -724,7 +721,7 @@ bool DefaultJITMemoryManager::CheckInvariants(std::string &ErrorStr) {
     char *End = Start + I->size();
 
     // Check each memory range.
-    for (MemoryRangeHeader *Hdr = (MemoryRangeHeader*)Start, *LastHdr = NULL;
+    for (MemoryRangeHeader *Hdr = (MemoryRangeHeader*)Start, *LastHdr = nullptr;
          Start <= (char*)Hdr && (char*)Hdr < End;
          Hdr = &Hdr->getBlockAfter()) {
       if (Hdr->ThisAllocated == 0) {
@@ -893,7 +890,7 @@ void *DefaultJITMemoryManager::getPointerToNamedFunction(const std::string &Name
     report_fatal_error("Program used external function '"+Name+
                       "' which could not be resolved!");
   }
-  return 0;
+  return nullptr;
 }
 
 
@@ -902,11 +899,6 @@ JITMemoryManager *JITMemoryManager::CreateDefaultMemManager() {
   return new DefaultJITMemoryManager();
 }
 
-// Allocate memory for code in 512K slabs.
-const size_t DefaultJITMemoryManager::DefaultCodeSlabSize = 512 * 1024;
-
-// Allocate globals and stubs in slabs of 64K.  (probably 16 pages)
-const size_t DefaultJITMemoryManager::DefaultSlabSize = 64 * 1024;
-
-// Waste at most 16K at the end of each bump slab.  (probably 4 pages)
-const size_t DefaultJITMemoryManager::DefaultSizeThreshold = 16 * 1024;
+const size_t DefaultJITMemoryManager::DefaultCodeSlabSize;
+const size_t DefaultJITMemoryManager::DefaultSlabSize;
+const size_t DefaultJITMemoryManager::DefaultSizeThreshold;

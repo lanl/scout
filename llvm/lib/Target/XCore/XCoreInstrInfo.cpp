@@ -26,6 +26,8 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/TargetRegistry.h"
 
+using namespace llvm;
+
 #define GET_INSTRINFO_CTOR_DTOR
 #include "XCoreGenInstrInfo.inc"
 
@@ -40,9 +42,6 @@ namespace XCore {
   };
 }
 }
-
-using namespace llvm;
-
 
 // Pin the vtable to this file.
 void XCoreInstrInfo::anchor() {}
@@ -428,13 +427,21 @@ static inline bool isImmU16(unsigned val) {
   return val < (1 << 16);
 }
 
+static bool isImmMskBitp(unsigned val) {
+  if (!isMask_32(val)) {
+    return false;
+  }
+  int N = Log2_32(val) + 1;
+  return (N >= 1 && N <= 8) || N == 16 || N == 24 || N == 32;
+}
+
 MachineBasicBlock::iterator XCoreInstrInfo::loadImmediate(
                                               MachineBasicBlock &MBB,
                                               MachineBasicBlock::iterator MI,
                                               unsigned Reg, uint64_t Value) const {
   DebugLoc dl;
   if (MI != MBB.end()) dl = MI->getDebugLoc();
-  if (isMask_32(Value)) {
+  if (isImmMskBitp(Value)) {
     int N = Log2_32(Value) + 1;
     return BuildMI(MBB, MI, dl, get(XCore::MKMSK_rus), Reg).addImm(N);
   }

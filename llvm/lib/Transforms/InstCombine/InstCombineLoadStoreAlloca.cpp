@@ -20,6 +20,8 @@
 #include "llvm/Transforms/Utils/Local.h"
 using namespace llvm;
 
+#define DEBUG_TYPE "instcombine"
+
 STATISTIC(NumDeadStore,    "Number of dead stores eliminated");
 STATISTIC(NumGlobalCopies, "Number of allocas copied from constant global");
 
@@ -29,10 +31,13 @@ STATISTIC(NumGlobalCopies, "Number of allocas copied from constant global");
 static bool pointsToConstantGlobal(Value *V) {
   if (GlobalVariable *GV = dyn_cast<GlobalVariable>(V))
     return GV->isConstant();
-  if (ConstantExpr *CE = dyn_cast<ConstantExpr>(V))
+
+  if (ConstantExpr *CE = dyn_cast<ConstantExpr>(V)) {
     if (CE->getOpcode() == Instruction::BitCast ||
+        CE->getOpcode() == Instruction::AddrSpaceCast ||
         CE->getOpcode() == Instruction::GetElementPtr)
       return pointsToConstantGlobal(CE->getOperand(0));
+  }
   return false;
 }
 
@@ -60,9 +65,9 @@ isOnlyCopiedFromConstantGlobal(Value *V, MemTransferInst *&TheCopy,
       continue;
     }
 
-    if (BitCastInst *BCI = dyn_cast<BitCastInst>(I)) {
+    if (isa<BitCastInst>(I) || isa<AddrSpaceCastInst>(I)) {
       // If uses of the bitcast are ok, we are ok.
-      if (!isOnlyCopiedFromConstantGlobal(BCI, TheCopy, ToDelete, IsOffset))
+      if (!isOnlyCopiedFromConstantGlobal(I, TheCopy, ToDelete, IsOffset))
         return false;
       continue;
     }
@@ -508,28 +513,39 @@ static Instruction *InstCombineStoreToCast(InstCombiner &IC, StoreInst &SI) {
   if (!SrcPTy->isIntegerTy() && !SrcPTy->isPointerTy())
     return 0;
 
-  // If the pointers point into different address spaces or if they point to
-  // values with different sizes, we can't do the transformation.
+  // If the pointers point into different address spaces don't do the
+  // transformation.
+  if (SrcTy->getAddressSpace() !=
+      cast<PointerType>(CI->getType())->getAddressSpace())
+    return 0;
+
+  // If the pointers point to values of different sizes don't do the
+  // transformation.
   if (!IC.getDataLayout() ||
-      SrcTy->getAddressSpace() !=
-        cast<PointerType>(CI->getType())->getAddressSpace() ||
       IC.getDataLayout()->getTypeSizeInBits(SrcPTy) !=
       IC.getDataLayout()->getTypeSizeInBits(DestPTy))
+    return 0;
+
+  // If the pointers point to pointers to different address spaces don't do the
+  // transformation. It is not safe to introduce an addrspacecast instruction in
+  // this case since, depending on the target, addrspacecast may not be a no-op
+  // cast.
+  if (SrcPTy->isPointerTy() && DestPTy->isPointerTy() &&
+      SrcPTy->getPointerAddressSpace() != DestPTy->getPointerAddressSpace())
     return 0;
 
   // Okay, we are casting from one integer or pointer type to another of
   // the same size.  Instead of casting the pointer before
   // the store, cast the value to be stored.
   Value *NewCast;
-  Value *SIOp0 = SI.getOperand(0);
   Instruction::CastOps opcode = Instruction::BitCast;
-  Type* CastSrcTy = SIOp0->getType();
+  Type* CastSrcTy = DestPTy;
   Type* CastDstTy = SrcPTy;
   if (CastDstTy->isPointerTy()) {
     if (CastSrcTy->isIntegerTy())
       opcode = Instruction::IntToPtr;
   } else if (CastDstTy->isIntegerTy()) {
-    if (SIOp0->getType()->isPointerTy())
+    if (CastSrcTy->isPointerTy())
       opcode = Instruction::PtrToInt;
   }
 
@@ -538,6 +554,7 @@ static Instruction *InstCombineStoreToCast(InstCombiner &IC, StoreInst &SI) {
   if (!NewGEPIndices.empty())
     CastOp = IC.Builder->CreateInBoundsGEP(CastOp, NewGEPIndices);
 
+  Value *SIOp0 = SI.getOperand(0);
   NewCast = IC.Builder->CreateCast(opcode, SIOp0, CastDstTy,
                                    SIOp0->getName()+".c");
   SI.setOperand(0, NewCast);

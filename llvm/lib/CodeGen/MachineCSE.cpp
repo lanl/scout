@@ -13,7 +13,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "machine-cse"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/ScopedHashTable.h"
@@ -27,6 +26,8 @@
 #include "llvm/Support/RecyclingAllocator.h"
 #include "llvm/Target/TargetInstrInfo.h"
 using namespace llvm;
+
+#define DEBUG_TYPE "machine-cse"
 
 STATISTIC(NumCoalesces, "Number of copies coalesced");
 STATISTIC(NumCSEs,      "Number of common subexpression eliminated");
@@ -659,6 +660,9 @@ bool MachineCSE::PerformCSE(MachineDomTreeNode *Node) {
 }
 
 bool MachineCSE::runOnMachineFunction(MachineFunction &MF) {
+  if (skipOptnoneFunction(*MF.getFunction()))
+    return false;
+
   TII = MF.getTarget().getInstrInfo();
   TRI = MF.getTarget().getRegisterInfo();
   MRI = &MF.getRegInfo();

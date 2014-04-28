@@ -10,7 +10,6 @@
 // Subclass of MipsTargetLowering specialized for mips32/64.
 //
 //===----------------------------------------------------------------------===//
-#define DEBUG_TYPE "mips-isel"
 #include "MipsSEISelLowering.h"
 #include "MipsRegisterInfo.h"
 #include "MipsTargetMachine.h"
@@ -23,6 +22,8 @@
 #include "llvm/Target/TargetInstrInfo.h"
 
 using namespace llvm;
+
+#define DEBUG_TYPE "mips-isel"
 
 static cl::opt<bool>
 EnableMipsTailCalls("enable-mips-tail-calls", cl::Hidden,
@@ -38,7 +39,7 @@ MipsSETargetLowering::MipsSETargetLowering(MipsTargetMachine &TM)
   // Set up the register classes
   addRegisterClass(MVT::i32, &Mips::GPR32RegClass);
 
-  if (HasMips64)
+  if (isGP64bit())
     addRegisterClass(MVT::i64, &Mips::GPR64RegClass);
 
   if (Subtarget->hasDSP() || Subtarget->hasMSA()) {
@@ -119,10 +120,10 @@ MipsSETargetLowering::MipsSETargetLowering(MipsTargetMachine &TM)
 
   if (Subtarget->hasCnMips())
     setOperationAction(ISD::MUL,              MVT::i64, Legal);
-  else if (HasMips64)
+  else if (isGP64bit())
     setOperationAction(ISD::MUL,              MVT::i64, Custom);
 
-  if (HasMips64) {
+  if (isGP64bit()) {
     setOperationAction(ISD::MULHS,            MVT::i64, Custom);
     setOperationAction(ISD::MULHU,            MVT::i64, Custom);
   }
@@ -1626,7 +1627,7 @@ SDValue MipsSETargetLowering::lowerINTRINSIC_WO_CHAIN(SDValue Op,
   case Intrinsic::mips_copy_s_w:
     return lowerMSACopyIntr(Op, DAG, MipsISD::VEXTRACT_SEXT_ELT);
   case Intrinsic::mips_copy_s_d:
-    if (HasMips64)
+    if (hasMips64())
       // Lower directly into VEXTRACT_SEXT_ELT since i64 is legal on Mips64.
       return lowerMSACopyIntr(Op, DAG, MipsISD::VEXTRACT_SEXT_ELT);
     else {
@@ -1641,7 +1642,7 @@ SDValue MipsSETargetLowering::lowerINTRINSIC_WO_CHAIN(SDValue Op,
   case Intrinsic::mips_copy_u_w:
     return lowerMSACopyIntr(Op, DAG, MipsISD::VEXTRACT_ZEXT_ELT);
   case Intrinsic::mips_copy_u_d:
-    if (HasMips64)
+    if (hasMips64())
       // Lower directly into VEXTRACT_ZEXT_ELT since i64 is legal on Mips64.
       return lowerMSACopyIntr(Op, DAG, MipsISD::VEXTRACT_ZEXT_ELT);
     else {
@@ -1810,6 +1811,13 @@ SDValue MipsSETargetLowering::lowerINTRINSIC_WO_CHAIN(SDValue Op,
   case Intrinsic::mips_insert_d:
     return DAG.getNode(ISD::INSERT_VECTOR_ELT, SDLoc(Op), Op->getValueType(0),
                        Op->getOperand(1), Op->getOperand(3), Op->getOperand(2));
+  case Intrinsic::mips_insve_b:
+  case Intrinsic::mips_insve_h:
+  case Intrinsic::mips_insve_w:
+  case Intrinsic::mips_insve_d:
+    return DAG.getNode(MipsISD::INSVE, DL, Op->getValueType(0),
+                       Op->getOperand(1), Op->getOperand(2), Op->getOperand(3),
+                       DAG.getConstant(0, MVT::i32));
   case Intrinsic::mips_ldi_b:
   case Intrinsic::mips_ldi_h:
   case Intrinsic::mips_ldi_w:
@@ -2566,7 +2574,14 @@ static SDValue lowerVECTOR_SHUFFLE_VSHF(SDValue Op, EVT ResTy,
   else
     llvm_unreachable("shuffle vector mask references neither vector operand?");
 
-  return DAG.getNode(MipsISD::VSHF, DL, ResTy, MaskVec, Op0, Op1);
+  // VECTOR_SHUFFLE concatenates the vectors in an vectorwise fashion.
+  // <0b00, 0b01> + <0b10, 0b11> -> <0b00, 0b01, 0b10, 0b11>
+  // VSHF concatenates the vectors in a bitwise fashion:
+  // <0b00, 0b01> + <0b10, 0b11> ->
+  // 0b0100       + 0b1110       -> 0b01001110
+  //                                <0b10, 0b11, 0b00, 0b01>
+  // We must therefore swap the operands to get the correct result.
+  return DAG.getNode(MipsISD::VSHF, DL, ResTy, MaskVec, Op1, Op0);
 }
 
 // Lower VECTOR_SHUFFLE into one of a number of instructions depending on the
@@ -2830,7 +2845,8 @@ MipsSETargetLowering::emitINSERT_FW(MachineInstr *MI,
   BuildMI(*BB, MI, DL, TII->get(Mips::INSVE_W), Wd)
       .addReg(Wd_in)
       .addImm(Lane)
-      .addReg(Wt);
+      .addReg(Wt)
+      .addImm(0);
 
   MI->eraseFromParent(); // The pseudo instruction is gone now.
   return BB;
@@ -2863,7 +2879,8 @@ MipsSETargetLowering::emitINSERT_FD(MachineInstr *MI,
   BuildMI(*BB, MI, DL, TII->get(Mips::INSVE_D), Wd)
       .addReg(Wd_in)
       .addImm(Lane)
-      .addReg(Wt);
+      .addReg(Wt)
+      .addImm(0);
 
   MI->eraseFromParent(); // The pseudo instruction is gone now.
   return BB;

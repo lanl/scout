@@ -51,7 +51,7 @@
  *
  * ##### 
  */ 
-
+#include <cstdlib>
 #include "scout/Runtime/opengl/glfw/glfwDevice.h"
 #include "scout/Runtime/opengl/glfw/glfwWindow.h"
 #include <stdio.h>

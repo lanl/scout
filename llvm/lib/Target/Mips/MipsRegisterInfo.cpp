@@ -11,8 +11,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "mips-reg-info"
-
 #include "MipsRegisterInfo.h"
 #include "Mips.h"
 #include "MipsAnalyzeImmediate.h"
@@ -37,10 +35,12 @@
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 
+using namespace llvm;
+
+#define DEBUG_TYPE "mips-reg-info"
+
 #define GET_REGINFO_TARGET_DESC
 #include "MipsGenRegisterInfo.inc"
-
-using namespace llvm;
 
 MipsRegisterInfo::MipsRegisterInfo(const MipsSubtarget &ST)
   : MipsGenRegisterInfo(Mips::RA), Subtarget(ST) {}
@@ -79,8 +79,8 @@ MipsRegisterInfo::getRegPressureLimit(const TargetRegisterClass *RC,
 //===----------------------------------------------------------------------===//
 
 /// Mips Callee Saved Registers
-const uint16_t* MipsRegisterInfo::
-getCalleeSavedRegs(const MachineFunction *MF) const {
+const MCPhysReg *
+MipsRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
   if (Subtarget.isSingleFloat())
     return CSR_SingleFloatOnly_SaveList;
 
@@ -119,11 +119,11 @@ const uint32_t *MipsRegisterInfo::getMips16RetHelperMask() {
 
 BitVector MipsRegisterInfo::
 getReservedRegs(const MachineFunction &MF) const {
-  static const uint16_t ReservedGPR32[] = {
+  static const MCPhysReg ReservedGPR32[] = {
     Mips::ZERO, Mips::K0, Mips::K1, Mips::SP
   };
 
-  static const uint16_t ReservedGPR64[] = {
+  static const MCPhysReg ReservedGPR64[] = {
     Mips::ZERO_64, Mips::K0_64, Mips::K1_64, Mips::SP_64
   };
 

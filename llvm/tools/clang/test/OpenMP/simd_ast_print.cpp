@@ -14,8 +14,8 @@ template<class T, class N> T reduct(T* arr, N num) {
   N myind;
   T sum = (T)0;
 // CHECK: T sum = (T)0;
-#pragma omp simd private(myind, g_ind)
-// CHECK-NEXT: #pragma omp simd private(myind,g_ind)
+#pragma omp simd private(myind, g_ind), linear(ind)
+// CHECK-NEXT: #pragma omp simd private(myind,g_ind) linear(ind)
   for (i = 0; i < num; ++i) {
     myind = ind;
     T cur = arr[myind];
@@ -31,20 +31,61 @@ template<class T> struct S {
   T result(T *v) const {
     T res;
     T val;
+    T lin = 0;
 // CHECK: T res;
 // CHECK: T val;
-#pragma omp simd private(val)
-// CHECK-NEXT: #pragma omp simd private(val)
+// CHECK: T lin = 0;
+    #pragma omp simd private(val)  safelen(7) linear(lin : -5)
+// CHECK-NEXT: #pragma omp simd private(val) safelen(7) linear(lin: -5)
     for (T i = 7; i < m_a; ++i) {
       val = v[i-7] + m_a;
       res = val;
+      lin -= 5;
     }
+    const T clen = 3;
+// CHECK: T clen = 3;
+    #pragma omp simd safelen(clen-1)
+// CHECK-NEXT: #pragma omp simd safelen(clen - 1)
+    for(T i = clen+2; i < 20; ++i) {
+// CHECK-NEXT: for (T i = clen + 2; i < 20; ++i) {
+      v[i] = v[v-clen] + 1;
+// CHECK-NEXT: v[i] = v[v - clen] + 1;
+    }
+// CHECK-NEXT: }
     return res;
   }
   ~S()
   {}
   T m_a;
 };
+
+template<int LEN> struct S2 {
+  static void func(int n, float *a, float *b, float *c) {
+    int k1 = 0, k2 = 0;
+#pragma omp simd safelen(LEN) linear(k1,k2:LEN)
+    for(int i = 0; i < n; i++) {
+      c[i] = a[i] + b[i];
+      c[k1] = a[k1] + b[k1];
+      c[k2] = a[k2] + b[k2];
+      k1 = k1 + LEN;
+      k2 = k2 + LEN;
+    }
+  }
+};
+
+// S2<4>::func is called below in main.
+// CHECK: template <int LEN = 4> struct S2 {
+// CHECK-NEXT: static void func(int n, float *a, float *b, float *c)     {
+// CHECK-NEXT:   int k1 = 0, k2 = 0;
+// CHECK-NEXT: #pragma omp simd safelen(4) linear(k1,k2: 4)
+// CHECK-NEXT:   for (int i = 0; i < n; i++) {
+// CHECK-NEXT:     c[i] = a[i] + b[i];
+// CHECK-NEXT:     c[k1] = a[k1] + b[k1];
+// CHECK-NEXT:     c[k2] = a[k2] + b[k2];
+// CHECK-NEXT:     k1 = k1 + 4;
+// CHECK-NEXT:     k2 = k2 + 4;
+// CHECK-NEXT:   }
+// CHECK-NEXT: }
 
 int main (int argc, char **argv) {
   int b = argc, c, d, e, f, g;
@@ -69,11 +110,16 @@ int main (int argc, char **argv) {
   for (int i = 0; i < 10; ++i)foo();
 // CHECK-NEXT: for (int i = 0; i < 10; ++i)
 // CHECK-NEXT: foo();
-#pragma omp simd
-// CHECK-NEXT: #pragma omp simd
+  const int CLEN = 4;
+// CHECK-NEXT: const int CLEN = 4;
+  #pragma omp simd linear(a:CLEN) safelen(CLEN)
+// CHECK-NEXT: #pragma omp simd linear(a: CLEN) safelen(CLEN)
   for (int i = 0; i < 10; ++i)foo();
 // CHECK-NEXT: for (int i = 0; i < 10; ++i)
 // CHECK-NEXT: foo();
+
+  float arr[16];
+  S2<4>::func(0,arr,arr,arr);
   return (0);
 }
 

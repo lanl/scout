@@ -1,4 +1,9 @@
+# +===== Scout =====================
+add_subdirectory(Scout)
+# +=================================
+
 add_llvm_library(LLVMAsmPrinter
+  AddressPool.cpp
   ARMException.cpp
   AsmPrinter.cpp
   AsmPrinterDwarf.cpp
@@ -9,13 +14,15 @@ add_llvm_library(LLVMAsmPrinter
   DwarfCFIException.cpp
   DwarfDebug.cpp
   DwarfException.cpp
+  DwarfFile.cpp
   DwarfUnit.cpp
   ErlangGCPrinter.cpp
   OcamlGCPrinter.cpp
   Win64Exception.cpp
   WinCodeViewLineTables.cpp
 # +===== Scout =====================
-  Scout/DwarfUnit.cpp
+  LINK_LIBS
+  ScoutAsmPrinter
 # +=================================
   )
 
