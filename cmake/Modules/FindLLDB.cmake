@@ -1,5 +1,8 @@
+
 set(LLDB_ROOT_DIR
 	"${LLDB_ROOT_DIR}"
+        "${CMAKE_BINARY_DIR}/llvm"
+        "${CMAKE_BINARY_DIR}/../llvm"
 	CACHE
 	PATH
 	"Directory to start our search in")
@@ -22,6 +25,6 @@ if(LLDB_COMMAND)
 endif()
 
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(LLDB DEFAULT_MSG LLDB_COMMAND LLDB_VERSION)
+find_package_handle_standard_args(LLDB DEFAULT_MSG LLDB_COMMAND)
 
 mark_as_advanced(LLDB_COMMAND)
