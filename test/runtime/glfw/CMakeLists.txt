@@ -75,6 +75,8 @@ set(LIBS
 
 file(GLOB RT_GLFW_SRCS *.cpp)
 
+set(CMAKE_CXX_COMPILER ${SCOUT_BUILD_DIR}/../bin/clang++)
+
 if (SCOUT_ENABLE_GLFW)
   # Add an executable and test entry for each source file...
   foreach (test ${RT_GLFW_SRCS})
