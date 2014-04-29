@@ -19,6 +19,10 @@ which tests are run.
 *  .. envvar:: SC_NVIDIA
 
   Controls whether tests requiring a Nvidia graphics card are run.
+
+*  .. envvar:: SC_DEBUG_TESTS
+
+  Controls whether debugger tests are run.
  
 .. ifconfig:: lanl==True
 
