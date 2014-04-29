@@ -10,7 +10,7 @@ merged into the master branch. We have two major branches in the repository: "de
 all development work should occur in the "devel" branch. To get a copy of the devel branch run the
 following at the command prompt::
     
-    $ git clone git@ccs-dev-fe:scout scout
+    $ git clone git@elmo:scout scout
     $ cd scout
     $ git checkout devel
 

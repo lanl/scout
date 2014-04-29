@@ -35,9 +35,9 @@ capabilities of Scout.
 Supported Platforms
 --------------------------
 
-Our primary development platforms are Mac OS X and several varieties
-of Linux distributions.  A list of Linux releases we use as part of
-our continuous integration development process are listed below:
+Our primary development platforms are Mac OS X 10.7-10.9 and several 
+varieties of Linux distributions.  A list of Linux releases we use as 
+part of our continuous integration development process are listed below:
 
    * **Fedora 17** -- See http://fedoraproject.org
    * **Ubuntu 12.04** -- See http://www.ubuntu.com 
@@ -50,7 +50,7 @@ and building from source.  Further details on these packages are
 provided below. 
 
 For Mac OS X based systems we primarily run and test using Mac OS X
-10.7 and 10.8 with the latest release of Xcode (currently 4.4.1).
+10.8 and 10.9 with the latest release of Xcode (currently 5.1).
 While there are several package distribution management systems for
 Mac OS (e.g. macports) we typically do not use them in favor of
 building and installing from source.
@@ -147,14 +147,6 @@ extended support for the language.  These include:
     Replace your current thrust library (e.g. /usr/local/cuda/include/thrust) 
     with the thrust sub-directory that is inside the git repository.
 
-    
-  * **hwloc** -- The hwloc library provides support for locality
-    on NUMA architectures.  
-
-  * **OpenCL** -- On systems with AMD GPUs we are able to
-    support code generation if OpenCL is installed.  Note that this is
-    current a work in progress.
-    
   * **MPI** -- We currently use MPI for 
     implementation.  Scout does not currently support 
     distributed memory applications.
@@ -168,7 +160,7 @@ use the following environment variables to help CMake find them during
 the configuration stages:
 
    * .. envvar:: SDL_DIR=/path/to/sdl/install
-   * .. envvar:: CUDA_PATH=/path/to/cuda/install
+   * .. envvar:: CUDA_DIR=/path/to/cuda/install
    * .. envvar:: MPI_HOME=/path/to/mpi/install 
 
 .. _documentation-system-label:
@@ -226,6 +218,12 @@ the following environment variables may be set prior to invoking
   both Scout and LLMV.  The set of provided flags will be passed to
   CMake as part of the configuration run.  Full details of this
   process are currently beyond the scope of this document.
+
+* .. envvar:: SC_BUILD_LLDB
+
+  Controls if lldb with scout suppport is built. This is currently
+  only supported on Linux and requries the addtional pacakges gcc-4.8
+  swig python-dev and libedit-dev.
 
 .. ifconfig:: lanl==True
 
