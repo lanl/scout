@@ -221,8 +221,10 @@ namespace scout {
       #endif
 
       #ifdef SCOUT_ENABLE_GLFW
-      //glfw requires Xrandr,Xxf86vm,Xi,Xcursor
-      "-lXrandr -lXxf86vm -lXi -lXcursor", 
+        #ifndef APPLE
+          //glfw requires Xrandr,Xxf86vm,Xi,Xcursor
+          "-lXrandr -lXxf86vm -lXi -lXcursor", 
+        #endif
       // need scRuntime here again to get lib dependency correct
       "-lscRuntime ${GLFW_LIBS}",
       #endif
