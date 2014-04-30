@@ -12,9 +12,22 @@ If you are building on the Darwin cluster use the following steps::
     $ module load mpi
 
 In addition, build SDL-1.2.15 from source and install within your home
-directory and then set __SDL_DIR__ correspondingly. You will also
-need to build cmake and add its location to the beginning of your path,
-as the version on Darwin is out of date.  Finally, you
+directory and then set __SDL_DIR__ correspondingly. 
+
+    $ curl https://www.libsdl.org/release/SDL-1.2.15.tar.gz > SDL-1.2.15.tar.gz
+    $ tar xfz SDL-1.2.15.tar.gz
+    $ cd SDL-1.2.15
+    $ ./configure -prefix=HOMEDIR
+    $ make; make install
+
+Build glfw from source and install within your home
+directory and then set __GLFW_DIR__ correspondingly. 
+
+    $ git clone https://github.com/glfw/glfw.git
+    $ cmake -DCMAKE_INSTALL_PREFIX:PATH=HOMEDIR .
+    $ make; make install
+
+Finally, you
 should unset your __DISPLAY__ environment variable to avoid issues
 with OpenGL contexts across the ssh connection (this skips the
 compilation checks of OpenGL shaders but will still build the

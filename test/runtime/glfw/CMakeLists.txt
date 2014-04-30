@@ -57,6 +57,10 @@ message(STATUS "glfw library dir: ${GLFW_LIBRARY_DIR}")
 message(STATUS "glfw libs : ${GLFW_LIBS}")
 message(STATUS "opengl libs : ${OPENGL_LIBRARY}")
 
+if(NOT APPLE)
+  set(CMAKE_CXX_FLAGS "") #don't use c++11
+endif()
+
 include_directories(
   ${SCOUT_INSTALL_INCLUDE_DIR}
   ${OPENGL_INCLUDE_DIR}
