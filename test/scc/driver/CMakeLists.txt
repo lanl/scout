@@ -69,3 +69,7 @@ set(FLAGS "-###")
 add_test(${tname} ${CMAKE_SCC_COMPILER} ${FLAGS} ${SRC_PATH}/${name}.sc)
 set_property(TEST ${tname} PROPERTY FAIL_REGULAR_EXPRESSION 
     "[;]")
+
+set (name debugflag)
+set(tname sc++_driver_${name})
+add_test(${tname} ${SRC_PATH}/debugflag.exp ${SRC_PATH} "scc" "sc")

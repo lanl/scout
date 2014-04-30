@@ -1,0 +1,19 @@
+#!/usr/bin/env expect
+#
+# make sure we can use -debug
+#
+
+set path [lindex $argv 0]
+set type [lindex $argv 1]
+set ext [lindex $argv 2]
+
+set timeout 5
+
+spawn $path/../../../build/bin/$type -debug $path/symlink.$ext
+expect {
+    "PID" {
+  }
+  timeout {
+    exit 1
+  }
+}

@@ -1,0 +1,18 @@
+#include <stdio.h>
+
+uniform mesh MyMesh {
+ cells:
+  float a;
+};
+
+int main(int argc, char** argv) {
+  MyMesh m[3];
+  
+  int x = 9;
+
+  forall cells c in m {
+    printf("%f\n", a);
+  }
+
+  return 0;
+}

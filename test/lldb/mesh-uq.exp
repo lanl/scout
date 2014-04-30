@@ -1,0 +1,53 @@
+#!/usr/bin/env expect
+#
+# make sure we can debug a mesh with unqualified fields
+#
+
+set path [lindex $argv 0]
+set type [lindex $argv 1]
+set ext [lindex $argv 2]
+
+set timeout 30
+
+spawn $path/../../build/bin/$type -g -o mesh-uq-$type $path/mesh-uq.$ext
+expect "1 warning"
+
+spawn $path/../../build/llvm/bin/lldb -- ./mesh-uq-$type
+expect "(lldb)"
+
+send "b mesh-uq.$ext:11\n"
+expect {
+    "at mesh-uq.$ext:11" {
+  }
+  timeout {
+    exit 1
+  }
+}
+
+expect "(lldb)"
+
+send "r\n"
+expect {
+    "int x = 9;" {
+  }
+  timeout {
+    exit 1
+  }
+}
+
+expect "(lldb)"
+
+send "expr forall cells c in m {a = 10;}\n"
+expect "(lldb)"
+
+send "c\n"
+expect {
+    "10.0000" {
+  }
+  timeout {
+    exit 1
+  }
+}
+
+send "q\n"
+#
