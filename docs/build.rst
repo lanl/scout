@@ -60,7 +60,7 @@ Ubuntu 12.04 Requirements
 
 A number of other required packages need to be installed:
  
-    $ apt-get install build-essential git libsdl1.2dev freeglut3 freeglut3-dev xorg xorg-dev
+    $ apt-get install build-essential git libsdl1.2dev freeglut3 freeglut3-dev xorg xorg-dev libxcursor-dev
 
 LLVM requires gcc 4.7 which does not ship with Ubuntu 12.04 but can
 be added via:
@@ -85,7 +85,7 @@ Ubuntu 14.04 Requirements
 --------------------------
 
 A number of other required packages need to be installed:
-    $ apt-get install build-essential git libsdl1.2-dev freeglut3 freeglut3-dev xorg-dev cmake
+    $ apt-get install build-essential git libsdl1.2-dev freeglut3 freeglut3-dev xorg-dev libxcursor-dev cmake
 
 CMake
 -------------

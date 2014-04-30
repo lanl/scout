@@ -187,7 +187,7 @@ namespace scout {
 
       // Frameworks handle MacOS X details for us so we skip details here.
       #ifndef APPLE
-      "-lGLU -lGL -lXrandr -lXxf86vm -lXi", //glfw requires Xrandr,Xxf86vm,Xi
+      "-lGLU -lGL -lXrandr -lXxf86vm -lXi -lXcursor", //glfw requires Xrandr,Xxf86vm,Xi,Xcursor
       #endif
 
       #endif // OPENGL 
@@ -221,6 +221,7 @@ namespace scout {
       #endif
 
       #ifdef SCOUT_ENABLE_GLFW
+      // need scRuntime here again to get lib dependency correct
       "-lscRuntime ${GLFW_LIBS}",
       #endif
 
