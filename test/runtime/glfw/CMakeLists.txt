@@ -91,7 +91,7 @@ if (SCOUT_ENABLE_GLFW)
       endif()
       if ("${CMAKE_SYSTEM}" MATCHES "Linux")
         #GL and GLU are added here as findOpenGL is broken on Ubuntu
-        target_link_libraries(runtime_glfw_${tname} ${LIBS} GL GLU X11 Xxf86vm Xrandr pthread Xi rt)
+        target_link_libraries(runtime_glfw_${tname} ${LIBS} GL GLU X11 Xxf86vm Xrandr pthread Xi Xcursor rt)
       else()
         target_link_libraries(runtime_glfw_${tname} ${LIBS})
       endif()

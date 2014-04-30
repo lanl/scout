@@ -78,13 +78,15 @@ void error_callback(int error, const char* description)
  *
  */
 glfwDevice::glfwDevice() {
-  glfwSetErrorCallback(error_callback);
-  if (glfwInit() == GL_FALSE) {
-    //fputs("glfwInit() failed\n", stderr);
-    exit(EXIT_FAILURE);
-  } else {
-    //fputs("glfwInit() succeeded\n", stderr);
-    enabled = true;
+  if (getenv("DISPLAY") != NULL) {
+    glfwSetErrorCallback(error_callback);
+    if (glfwInit() == GL_FALSE) {
+      //fputs("glfwInit() failed\n", stderr);
+      //exit(EXIT_FAILURE);
+    } else {
+      //fputs("glfwInit() succeeded\n", stderr);
+      enabled = true;
+    }
   }
 }
 

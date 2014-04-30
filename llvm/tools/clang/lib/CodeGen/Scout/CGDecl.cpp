@@ -558,6 +558,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
 
     // store call result into previously allocated ptr for window
     llvm::Value* void_store = Builder.CreateStore(ptr_cast, Alloc, false);
+    (void)void_store; // suppress warning
 
   }
 
