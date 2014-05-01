@@ -11,7 +11,7 @@ set timeout 30
 
 spawn $path/../../build/bin/$type -g -o mesh-uq-$type $path/mesh-uq.$ext
 expect "1 warning"
-
+sleep 1
 spawn $path/../../build/llvm/bin/lldb -- ./mesh-uq-$type
 expect "(lldb)"
 
