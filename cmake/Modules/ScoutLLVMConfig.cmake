@@ -61,7 +61,7 @@ endif()
 # that we really don't care about...
 #
   set(LLVM_TARGETS_TO_BUILD
-    ARM X86 NVPTX CppBackend
+    ARM X86 PowerPC NVPTX CppBackend
     CACHE STRING "Semicolon-separated list of LLVM backend targets to build, or \"all\".")
 
   message(STATUS "scout: Using custom LLVM codegen targets (\"${LLVM_TARGETS_TO_BUILD}\").")
