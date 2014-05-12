@@ -221,9 +221,9 @@ the following environment variables may be set prior to invoking
 
 * .. envvar:: SC_BUILD_LLDB
 
-  Controls if lldb with scout suppport is built. This is currently
-  only supported on Linux and requries the addtional pacakges gcc-4.8
-  swig python-dev and libedit-dev.
+  Controls if lldb with scout suppport is built. On Linux this requires 
+  the additional pacakges gcc-4.8, swig, python-dev, and libedit-dev. On mac
+  requires xcode, swig and prce.
 
 .. ifconfig:: lanl==True
 

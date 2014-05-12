@@ -1,5 +1,9 @@
 if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
-  add_subdirectory(debugserver)
+  # ===== Scout ==============================
+  # don't build debugserver use the xcode one
+  # that is already installed and signed
+  #add_subdirectory(debugserver)
+  # =========================================
 endif()
   add_subdirectory(driver)
 if (CMAKE_SYSTEM_NAME MATCHES "FreeBSD" OR CMAKE_SYSTEM_NAME MATCHES "Linux")
