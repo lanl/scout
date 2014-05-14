@@ -1,12 +1,6 @@
 # +===== Scout =========================================================+
-  if((NOT APPLE) AND (DEFINED ENV{SC_BUILD_LLDB}))
-    find_package(PythonLibs)
-    find_package(SWIG)
-    find_package(LIBEDIT)
-
-    if(PYTHONLIBS_FOUND AND SWIG_FOUND AND LIBEDIT_FOUND)
-      if(CMAKE_C_COMPILER_VERSION VERSION_GREATER 4.8 OR CMAKE_C_COMPILER_VERSION VERSION_EQUAL 4.8)
-        message("building LLDB")
+  if(SCOUT_ENABLE_LLDB)
+     message("scout: building LLDB")
 
 # +=====================================================================+
 
@@ -326,12 +320,6 @@ add_subdirectory(source)
 add_subdirectory(test)
 add_subdirectory(tools)
 # +===== Scout =========================================================+
-      else()
-        message("gcc 4.8 or greater required for LLDB, not building") 
-      endif()
-    else()
-      message("Pythonlibs, SWIG and libedit required for LLDB, not building")
-    endif()
-  endif()
+endif()
 # +=====================================================================+
 

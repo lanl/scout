@@ -1,0 +1,7 @@
+#!/bin/bash
+# use existing debugserver from xcode so we don't have to deal w/ signing it
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  export LLDB_DEBUGSERVER_PATH=/Applications/Xcode.app/Contents/SharedFrameworks/LLDB.framework/Versions/A/Resources/debugserver
+fi
+@CMAKE_INSTALL_PREFIX@/llvm/bin/lldb "$@"
+#

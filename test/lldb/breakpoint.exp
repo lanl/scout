@@ -6,7 +6,7 @@
 set path [lindex $argv 0]
 set type [lindex $argv 1]
 
-set timeout 30
+set timeout 120
 
 spawn $path/../../build/bin/lldb-$type $path/breakpoint.sc
 expect "(lldb)"

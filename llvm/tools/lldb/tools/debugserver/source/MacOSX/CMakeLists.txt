@@ -56,7 +56,10 @@ set (CODESIGN_ALLOCATE /Applications/Xcode.app/Contents/Developer/Toolchains/Xco
 add_custom_command(TARGET debugserver
   POST_BUILD
   COMMAND CODESIGN_ALLOCATE=${CODESIGN_ALLOCATE} codesign --entitlements ${CMAKE_CURRENT_SOURCE_DIR}/../debugserver-entitlements.plist --force --sign ${CODESIGN_IDENTITY} debugserver
-  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+  # ===== Scout =====================================
+  #WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/llvm/bin
+  # =================================================
   )
 
 install(TARGETS debugserver

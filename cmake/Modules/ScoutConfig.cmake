@@ -246,8 +246,6 @@ endif()
   set(SCOUT_ENABLE_MPI OFF CACHE BOOL "Enable MPI runtime support.")
   #endif()
 
-
-  
   # --- GLFW support.
   find_package(GLFW)
   if (GLFW_FOUND)
@@ -329,6 +327,39 @@ endif()
   #      set(SCOUT_ENABLE_TBB_THRUST ON CACHE BOOL "Enable THRUST support via TBB in scout's runtime libraries.")
   #  endif ()
   #endif ()
+
+
+# --- lldb supprt
+  if(DEFINED ENV{SC_BUILD_LLDB}) 
+    find_package(PythonLibs REQUIRED)
+    find_package(SWIG REQUIRED)
+    if (APPLE) 
+      find_package(XCODE REQUIRED)
+    else()
+      find_package(LIBEDIT REQUIRED)
+    endif()
+    if(APPLE) 
+      if(XCODE_VERSION VERSION_GREATER 5.1.1 OR XCODE_VERSION VERSION_EQUAL 5.1.1)
+        if(PYTHONLIBS_FOUND AND SWIG_FOUND) 
+          set(SCOUT_ENABLE_LLDB ON CACHE BOOL "Enable building of lldb")
+        else()
+          message(FATAL_ERROR "scout: Pythonlibs and SWIG required for LLDB, not building")
+        endif()
+      else()
+        message(FATAL_ERROR "scout: xcode 5.1.1 or greater required for LLDB, not building")
+      endif()
+    else() 
+      if(CMAKE_C_COMPILER_VERSION VERSION_GREATER 4.8 OR CMAKE_C_COMPILER_VERSION VERSION_EQUAL 4.8)
+        if(PYTHONLIBS_FOUND AND SWIG_FOUND AND LIBEDIT_FOUND)
+          set(SCOUT_ENABLE_LLDB ON CACHE BOOL "Enable building of lldb")
+        else()
+          message(FATAL_ERROR "scout: Pythonlibs, SWIG and libedit required for LLDB, not building")
+        endif()
+      else()      
+        message(FATAL_ERROR "scout: gcc 4.8 or greater required for LLDB, not building")
+      endif()
+    endif()
+  endif()
 
 #
 #####

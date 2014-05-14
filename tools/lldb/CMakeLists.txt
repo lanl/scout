@@ -48,9 +48,17 @@
 #
 ###########################################################################
 #
-project(gdb)
+project(lldb)
 
-configure_file(lldb-scc.in ${CMAKE_INSTALL_PREFIX}/bin/lldb-scc)
-configure_file(lldb-sc++.in ${CMAKE_INSTALL_PREFIX}/bin/lldb-sc++)
-configure_file(lldb-clang.in ${CMAKE_INSTALL_PREFIX}/bin/lldb-clang)
-configure_file(lldb-clang++.in ${CMAKE_INSTALL_PREFIX}/bin/lldb-clang++)
+#apple will have lldb so always install these wrappers
+if(APPLE OR DEFINED ENV{SC_BUILD_LLDB})
+  configure_file(lldb-scc.in ${CMAKE_INSTALL_PREFIX}/bin/lldb-scc)
+  configure_file(lldb-sc++.in ${CMAKE_INSTALL_PREFIX}/bin/lldb-sc++)
+  configure_file(lldb-clang.in ${CMAKE_INSTALL_PREFIX}/bin/lldb-clang)
+  configure_file(lldb-clang++.in ${CMAKE_INSTALL_PREFIX}/bin/lldb-clang++)
+endif()
+
+# only install our lldb wrapper if we are building lldb
+if(DEFINED ENV{SC_BUILD_LLDB})
+  configure_file(lldb.in ${CMAKE_INSTALL_PREFIX}/bin/lldb)
+endif()
