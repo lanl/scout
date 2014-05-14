@@ -56,7 +56,7 @@ set(CMAKE_MODULE_PATH
 )
 
 
-project(scout_test_scc SCC SCXX )
+project(scout_test_scc C SCC SCXX )
 
   cmake_minimum_required(VERSION 2.8.9)
 
