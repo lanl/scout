@@ -51,6 +51,10 @@ add_dependencies(debugserver generate_dnbconfig)
 target_link_libraries(debugserver ${DEBUGSERVER_USED_LIBS})
 
 # Sign the debugserver binary
+# ===== Scout =====================================
+# debugserver signing not currently working
+if (DEFINED ENV{SC_SIGN_DEBUGSERVER})
+# =================================================
 set (CODESIGN_IDENTITY lldb_codesign)
 set (CODESIGN_ALLOCATE /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/codesign_allocate)
 add_custom_command(TARGET debugserver
@@ -61,7 +65,9 @@ add_custom_command(TARGET debugserver
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/llvm/bin
   # =================================================
   )
-
+# ===== Scout =====================================
+endif()
+# =================================================
 install(TARGETS debugserver
   RUNTIME DESTINATION bin
   )
