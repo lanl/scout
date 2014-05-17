@@ -54,7 +54,6 @@
 
 #ifndef SCOUT_RENDERALL_UNIFORM_IMPL_H_
 #define SCOUT_RENDERALL_UNIFORM_IMPL_H_
-#include "scout/Runtime/opengl/glSDL.h"
 #include "scout/Runtime/opengl/glDevice.h"
 #include "scout/Runtime/opengl/glQuadRenderableVA.h"
 #include "scout/Runtime/renderall/RenderallUniform.h"
@@ -68,7 +67,7 @@ namespace scout{
   
   class RenderallUniformImpl{
   public:
-    RenderallUniformImpl(RenderallUniform* rendUnif_);
+    RenderallUniformImpl(RenderallUniform* rendUnif_, RenderTarget* renderTarget);
     
     ~RenderallUniformImpl();
     
@@ -89,9 +88,9 @@ namespace scout{
   private:
     RenderallUniform* rendUnif_;
     glQuadRenderableVA* renderable_;
-    glSDL *glsdl_;
     glDevice *glDevice_;    
     glWindow *glWindow_;
+    RenderTarget* renderTarget_;
   };
 } // end namespace scout
 

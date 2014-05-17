@@ -1636,7 +1636,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 
   ResetVars();
 
-  llvm::SmallVector< llvm::Value *, 3 > Args;
+  llvm::SmallVector< llvm::Value *, 4 > Args;
   Args.clear();
 
   //need a marker for start of Renderall for CodeExtraction
@@ -1657,6 +1657,23 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
      LoopBounds[i] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
      Args[i] = Builder.CreateLoad(LoopBounds[i], IRNameStr);
   }
+
+  // Add render target argument 
+
+  // TODO:  check if it's a window or image type
+
+  const VarDecl* RTVD = S.getRenderTargetVarDecl();
+
+  llvm::Value* RTAlloc = LocalDeclMap.lookup(RTVD);
+
+  // cast scout.window_t** to void**
+  llvm::Value* int8PtrPtrRTAlloc = Builder.CreateBitCast(RTAlloc, Int8PtrPtrTy, "");
+
+  // dereference the void** 
+  llvm::Value* int8PtrRTAlloc = Builder.CreateLoad(int8PtrPtrRTAlloc, "derefwin");
+
+  // put it on the arg list
+  Args.push_back(int8PtrRTAlloc);
 
   // create linear loop index as 4th element and zero-initialize
   InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "renderall.linearidx.ptr");

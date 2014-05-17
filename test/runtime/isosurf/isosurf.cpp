@@ -16,6 +16,7 @@
 #include "scout/Runtime/renderall/RenderallSurface.h"
 #include "scout/Runtime/isosurf/piston/hsv_color_map.h"
 #include "scout/Runtime/isosurf/user_defined_color_func.h"
+#include "scout/Runtime/opengl/glfw/glfwDevice.h"
 
 #ifdef __APPLE__
 #include <OpenGL/gl.h>
@@ -38,6 +39,12 @@ using namespace scout;
 
 static const size_t WINDOW_WIDTH = 1024;
 static const size_t WINDOW_HEIGHT = 1024;
+
+extern "C" void __scrt_renderall_surface_begin(size_t width, size_t height, size_t depth,
+        float* vertices, float* normals, float* colors, size_t num_vertices, void* renderTarget, glCamera* cam);
+extern "C" void __scrt_renderall_begin();
+extern "C" void __scrt_renderall_end();
+extern "C" void __scrt_renderall_delete();
 
 // generates test grid 
 void genTestGrid(int id, int npx, int npy, int npz, 
@@ -222,6 +229,10 @@ int main(int argc, char *argv[])
   camera.setUp(up);
   camera.resize(WINDOW_WIDTH, WINDOW_HEIGHT);
 
+  glDevice* glDevice = glfwDevice::Instance();
+
+  glWindow* glWindow = glDevice->createWindow(WINDOW_WIDTH, WINDOW_HEIGHT);
+
   float verts_simple[12] = {0.0, 0.0, 0.0, 1.0,
     5.0, 5.0, 0.0, 1.0,
     10.0, 0.0, 0.0, 1.0};
@@ -229,7 +240,7 @@ int main(int argc, char *argv[])
   float scalars_simple[3] = {.2, .2, .2};
   float colors_simple[12] = {0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0};
 
-  __scrt_renderall_surface_begin(20, 20, 20, verts_simple, normals_simple, colors_simple, 3, &camera);
+  __scrt_renderall_surface_begin(20, 20, 20, verts_simple, normals_simple, colors_simple, 3, glWindow, &camera);
 
   __scrt_renderall_end();
 

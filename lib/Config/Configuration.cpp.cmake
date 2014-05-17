@@ -89,8 +89,6 @@ namespace scout {
 
       #ifdef SCOUT_ENABLE_OPENGL
       
-      "-I${SDL_INCLUDE_DIR}",
-    
       #ifndef APPLE  // We'll use frameworks on Mac OS X.
       "-I${OPENGL_INCLUDE_DIR}",  
       #endif
@@ -133,7 +131,6 @@ namespace scout {
 
     const char* Configuration::LibraryPaths[] = {
       "-L${CMAKE_INSTALL_PREFIX}/lib",
-      "-L${SDL_LIBRARY_DIR}",    
 
       #ifdef SCOUT_ENABLE_OPENGL
     
@@ -172,8 +169,6 @@ namespace scout {
       #ifdef SCOUT_ENABLE_CUDA
       "-lscCudaError",
       #endif
-
-      "${SDL_LIBRARIES}",
 
       #ifdef APPLE 
       "-framework Cocoa", 

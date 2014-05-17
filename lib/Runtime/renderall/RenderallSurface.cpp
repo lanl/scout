@@ -55,28 +55,24 @@
 #include <iostream>
 #include "scout/Runtime/base_types.h"
 #include "scout/Runtime/renderall/RenderallSurface.h"
-#include "scout/Runtime/opengl/glSDL.h"
+#include "scout/Runtime/RenderTarget.h"
 
 // scout includes
 #include "scout/Config/defs.h"
 
-#if 0
 #ifdef SC_ENABLE_CUDA
 #include <cuda.h>
 #include <cudaGL.h>
 #include "scout/Runtime/cuda/CudaDevice.h"
-#endif
 #endif
 
 #ifdef SC_ENABLE_OPENCL
 #include "scout/Runtime/opencl/scout_opencl.h"
 #endif
 
-#if 0
 #ifdef SC_ENABLE_CUDA
 #include <thrust/extrema.h>
 #include <thrust/host_vector.h>
-#endif
 #endif
 
 using namespace std;
@@ -95,11 +91,15 @@ cl_mem __scrt_renderall_surface_opencl_device;
 
 
 RenderallSurface::RenderallSurface(size_t width, size_t height, size_t depth,
-    float* vertices, float* normals, float* colors, int numVertices, glCamera* camera) 
+    float* vertices, float* normals, float* colors, int numVertices, 
+    RenderTarget* renderTarget, glCamera* camera) 
 :RenderallBase(width, height, depth), vertices_(vertices),
-  normals_(normals), colors_(colors), numVertices_(numVertices), camera_(camera)
+  normals_(normals), colors_(colors), numVertices_(numVertices), 
+  renderTarget_(renderTarget), camera_(camera)
 {
-  glsdl_ = glSDL::Instance(__scrt_initial_window_width, __scrt_initial_window_height, camera);
+  renderTarget_->makeContextCurrent();
+
+
 
   localCamera_ = false;
 
@@ -121,7 +121,7 @@ RenderallSurface::RenderallSurface(size_t width, size_t height, size_t depth,
     camera_->setPosition(pos);
     camera_->setLookAt(lookat);
     camera_->setUp(up);
-    camera_->resize(__scrt_initial_window_width, __scrt_initial_window_height);
+    camera_->resize(renderTarget_->width(), renderTarget_->height());
 
   }
 
@@ -129,7 +129,7 @@ RenderallSurface::RenderallSurface(size_t width, size_t height, size_t depth,
       colors, numVertices_, camera_);
 
   // show empty buffer
-  glsdl_->swapBuffers();
+  renderTarget_->swapBuffers();
 }
 
 RenderallSurface::~RenderallSurface(){
@@ -146,11 +146,7 @@ void RenderallSurface::end(){
   exec();
 
   // show what we just drew
-  glsdl_->swapBuffers();
-
-  bool done = glsdl_->processEvent();
-
-  if (done) exit(0);
+  renderTarget_->swapBuffers();
 
 }
 
@@ -159,11 +155,12 @@ void RenderallSurface::exec(){
 }
 
 
-void __scrt_renderall_surface_begin(size_t width, size_t height, size_t depth,
-    float* vertices, float* normals, float* colors, size_t numVertices, glCamera* camera){
+extern "C" void __scrt_renderall_surface_begin(size_t width, size_t height, size_t depth,
+    float* vertices, float* normals, float* colors, size_t numVertices, 
+    void* renderTarget, glCamera* camera){
 
   __scrt_renderall = new RenderallSurface(width, height, depth, vertices, normals,
-      (float*)colors, numVertices, camera);
+      (float*)colors, numVertices, (RenderTarget*) renderTarget, camera);
 
 }
 

@@ -61,19 +61,21 @@
 #include "scout/Runtime/opengl/glCamera.h"
 #include "scout/Runtime/renderall/RenderallGlyph.h"
 #include "scout/Runtime/opengl/glyph_vertex.h"
-#include "scout/Runtime/opengl/glSDL.h"
+#include "scout/Runtime/opengl/glfw/glfwDevice.h"
 
-using namespace std;
-using namespace scout;
+extern "C" glyph_vertex* __scrt_renderall_glyph_vertex_data;
+extern "C" void __scrt_renderall_glyph_init(size_t width, size_t height, size_t depth,
+                           size_t npoints, void* renderTarget, glCamera* camera);
+extern "C" void __scrt_renderall_begin();
+extern "C" void __scrt_renderall_end();
+extern "C" void __scrt_renderall_delete();
+extern void compute(unsigned int npoints, glyph_vertex* vptr, unsigned int c);
 
 
 static const size_t WINDOW_WIDTH = 1000;
 static const size_t WINDOW_HEIGHT = 1000;
 
 #define DIM 1000
-
-extern glyph_vertex* __scrt_renderall_glyph_vertex_data;
-extern void compute(unsigned int npoints, glyph_vertex* vptr, unsigned int c);
 
 void Loop(int dim)
 {
@@ -106,7 +108,16 @@ int main(int argc, char *argv[])
   camera.resize(WINDOW_WIDTH, WINDOW_HEIGHT);
 
   size_t dim = DIM;
-  __scrt_renderall_glyph_init(WINDOW_WIDTH, WINDOW_HEIGHT, 0, dim, &camera);
+
+  printf("Device instance\n");
+  glDevice* glDevice = glfwDevice::Instance();
+
+  printf("make glWindow\n");
+  glWindow* glWindow = glDevice->createWindow(WINDOW_WIDTH, WINDOW_HEIGHT);
+
+  size_t dim = 1000;
+
+  __scrt_renderall_glyph_init(WINDOW_WIDTH, WINDOW_HEIGHT, 0, dim, (void*)glWindow, &camera);
 
   __scrt_renderall_begin();
 

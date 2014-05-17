@@ -56,9 +56,6 @@
 #include "scout/Runtime/renderall/RenderallUniform.h"
 #include "scout/Runtime/renderall/RenderallUniformImpl.h"
 #include "scout/Runtime/base_types.h"
-#ifdef CMA
-#include "scout/Runtime/opengl/glfw/glfwDevice.h"
-#endif
 #include "scout/Runtime/opengl/glQuadRenderableVA.h"
 
 // scout includes
@@ -69,17 +66,9 @@ using namespace scout;
 
 namespace scout{
 
-  RenderallUniformImpl::RenderallUniformImpl(RenderallUniform* rendUnif)
-  : rendUnif_(rendUnif){
+  RenderallUniformImpl::RenderallUniformImpl(RenderallUniform* rendUnif, RenderTarget* renderTarget)
+  : rendUnif_(rendUnif), renderTarget_(renderTarget){
 
-    glsdl_ = glSDL::Instance();
-    
-#ifdef CMA
-    glDevice_ = glfwDevice::Instance();
-    if (glDevice_) {
-      glWindow* glWindow_ = glDevice_->createWindow(rendUnif_->width, rendUnif_->height);
-    }
-#endif
     init();
   }
 
@@ -88,6 +77,9 @@ namespace scout{
   }
 
   void RenderallUniformImpl::init(){
+
+    renderTarget_->makeContextCurrent();
+
     renderable_ = new glQuadRenderableVA( glfloat3(0.0, 0.0, 0.0),
         glfloat3(rendUnif_->width(), rendUnif_->height(), 0.0));
 
@@ -96,8 +88,7 @@ namespace scout{
     renderable_->initialize(NULL);
 
     // show empty buffer
-    glsdl_->swapBuffers();
-    //glWindow_->swapBuffers();
+    renderTarget_->swapBuffers();
   }
 
   void RenderallUniformImpl::begin(){
@@ -111,22 +102,8 @@ namespace scout{
     exec();
 
     // show what we just drew
-#ifdef CMA
-    glWindow_->swapBuffers();
-
-    bool done = glWindow_->processEvent();
-
-    if (done) {
-      glDevice_->deleteWindow(glWindow_);
-    }
-#endif
-    glsdl_->swapBuffers();
+    renderTarget_->swapBuffers();
     
-    bool done = glsdl_->processEvent();
-    
-    if (done) exit(0);
-
-
   }
   void RenderallUniformImpl::exec(){
     renderable_->draw(NULL);
@@ -136,10 +113,11 @@ namespace scout{
 
 RenderallUniform::RenderallUniform(size_t width,
     size_t height,
-    size_t depth)
+    size_t depth,
+    RenderTarget* renderTarget)
 : RenderallBase(width, height, depth){
 
-  x_ = new RenderallUniformImpl(this);
+  x_ = new RenderallUniformImpl(this, renderTarget);
 
 }
 
@@ -157,12 +135,14 @@ void RenderallUniform::end(){
 
 extern "C" void __scrt_renderall_uniform_begin(size_t width,
     size_t height,
-    size_t depth){
-  //std::cout << "width " << width << " height " << height << " depth " << depth << "\n";
+    size_t depth,
+    void* renderTarget){
+  //std::cout << "scrt_renderall_uniform_begin: width " << width << " height " << height << " depth " << depth << "\n";
   if(!__scrt_renderall){
-    __scrt_renderall = new RenderallUniform(width, height, depth);
+    __scrt_renderall = new RenderallUniform(width, height, depth, (RenderTarget*) renderTarget);
   }
 
   __scrt_renderall->begin();
 
 }
+

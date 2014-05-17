@@ -20,35 +20,26 @@ extern "C" float4* __scrt_renderall_uniform_colors;
 
 int main(int argv, char** argc) {
 
-  printf("Device instance\n");
   glDevice* glDevice = glfwDevice::Instance();
 
 
   if (glDevice) {
 
 
-    printf("make glWindow\n");
     glWindow* glWindow = glDevice->createWindow(512, 512);
 
-    printf("make context current\n");
     glWindow->makeContextCurrent();
 
     // need to have window made and a context before can make a renderable
-    printf("quad renderable\n");
     glQuadRenderableVA* renderable = new glQuadRenderableVA( glfloat3(0.0, 0.0, 0.0),
       glfloat3(512.0, 512.0, 0.0));
 
-    printf("initialize renderable\n");
     renderable->initialize(NULL);
-    printf("swap buffers\n");
     // show empty buffer
     glWindow->swapBuffers();
-    printf("clear\n");
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    printf("map_colors\n");
     __scrt_renderall_uniform_colors = renderable->map_colors();  
-    printf("write colors into buffer\n");
 
     float* color;
 
@@ -63,24 +54,18 @@ int main(int argv, char** argc) {
       }
     }
 
-    printf("unmap colors\n");
     renderable->unmap_colors();
 
-    printf("draw\n");
     renderable->draw(NULL);
 
-    printf("swap buffers\n");
 
     // show what we have drawn
     glWindow->swapBuffers();
-    printf("sleep\n");
 
     sleep(1);
-    printf("delete window\n");
 
     glDevice->deleteWindow(glWindow);
 
-    printf("Done: \n");
   }
 
   return 0;

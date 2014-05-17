@@ -23,22 +23,18 @@ extern "C" void __scrt_renderall_delete();
 
 int main(int argv, char** argc) {
 
-  printf("Device instance\n");
   glDevice* glDevice = glfwDevice::Instance();
 
 
   if (glDevice) {
 
 
-    printf("make glWindow\n");
     glWindow* glWindow = glDevice->createWindow(512, 512);
 
-    printf("begin renderall\n");
     __scrt_renderall_uniform_begin(512, 512, 0, glWindow);
 
     float* color;
 
-    printf("write to colors\n");
     // write into colors buffer
     for (float x = 0.0f; x < 512.0f; x++) {
       for (float y = 0.0f; y < 512.0f; y++) {
@@ -50,15 +46,12 @@ int main(int argv, char** argc) {
       }
     }
 
-    printf("end renderall\n");
     __scrt_renderall_end();
 
     sleep(1);
 
-    printf("delete renderall\n");
     __scrt_renderall_delete();
 
-    printf("Done: \n");
   }
 
   return 0;
