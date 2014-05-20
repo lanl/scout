@@ -86,6 +86,7 @@ project(scout_test_scxx)
     endif(NOT tname)
   endforeach(test)
 
+  add_subdirectory(debug)
   add_subdirectory(display)
   add_subdirectory(driver)
   add_subdirectory(global-multifile)

@@ -1500,6 +1500,19 @@ llvm::Function* CodeGenFunction:: ExtractRegion(llvm::BasicBlock *entry, llvm::B
 
   // collect forall basic blocks up to exit
   for( ; BB->getName() != exit->getName(); ++BB) {
+
+    // look for function local metadata
+    for (llvm::BasicBlock::const_iterator II = BB->begin(), IE = BB->end(); II != IE; ++II) {
+      for(unsigned i = 0, e = II->getNumOperands(); i!=e; ++i){
+        if(llvm::MDNode *N = dyn_cast_or_null<llvm::MDNode>(II->getOperand(i))){
+          if (N->isFunctionLocal()) {
+            // just remove function local metadata
+            // see http://lists.cs.uiuc.edu/pipermail/llvmdev/2013-November/068205.html
+            N->replaceOperandWith(i, 0);
+          }
+        } 
+      }
+    }
     Blocks.push_back(BB);
   }
 
