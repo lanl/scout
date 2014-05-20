@@ -60,7 +60,6 @@ using namespace std;
 #include "scout/Runtime/DeviceList.h"
 #include "scout/Runtime/opengl/opengl.h"
 #include "scout/Runtime/opengl/glyph_vertex.h"
-#include "scout/Runtime/opengl/glSDL.h"
 #include "scout/Runtime/GraphicsCInterface.h"
 #include "scout/Runtime/cpu/CpuInitialization.h"
 
@@ -68,7 +67,8 @@ using namespace std;
 using namespace scout;
 
 //globals accessed by llvm/tools/clang/lib/CodeGen/CGScoutRuntime.cpp
-float4*       __scrt_renderall_uniform_colors;
+float4*         __scrt_renderall_uniform_colors;
+glyph_vertex*   __scrt_renderall_glyph_vertex_data;
 
 
 

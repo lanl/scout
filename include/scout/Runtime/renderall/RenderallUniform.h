@@ -54,13 +54,15 @@
 #include <cstdlib>
 
 #include "scout/types.h"
+#include "scout/Runtime/RenderTarget.h"
 #include "scout/Runtime/renderall/RenderallBase.h"
 
 namespace scout{
 
   class RenderallUniform : public RenderallBase {
   public:
-    RenderallUniform(size_t width, size_t height, size_t depth);
+    RenderallUniform(size_t width, size_t height, size_t depth, 
+        RenderTarget* target);
 
     ~RenderallUniform();
 
@@ -78,7 +80,8 @@ namespace scout{
 
 extern "C" void __scrt_renderall_uniform_begin(size_t width,
            size_t height,
-           size_t depth);
+           size_t depth,
+           void* target);
 
 #endif // SCOUT_RENDERALL_UNIFORM_H_
 

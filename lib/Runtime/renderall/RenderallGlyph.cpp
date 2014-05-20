@@ -57,7 +57,6 @@
 
 #include "scout/types.h"
 #include "scout/Runtime/opengl/opengl.h"
-#include "scout/Runtime/opengl/glSDL.h"
 #include "scout/Runtime/renderall/RenderallGlyph.h"
 #include "scout/Runtime/opengl/glGlyphRenderable.h"
 
@@ -67,10 +66,11 @@ namespace scout
   using namespace std;
 
   RenderallGlyph::RenderallGlyph(size_t width, size_t height, size_t depth,
-      size_t npoints, glCamera* camera)
-    : RenderallBase(width, height, depth), camera_(camera)
+      size_t npoints, RenderTarget* renderTarget, glCamera* camera)
+    : RenderallBase(width, height, depth), renderTarget_(renderTarget), camera_(camera)
   {
-    glsdl_ = glSDL::Instance(__scrt_initial_window_width, __scrt_initial_window_height, camera);
+
+    renderTarget_->makeContextCurrent();
 
     renderable_ = new glGlyphRenderable(npoints);
 
@@ -85,7 +85,7 @@ namespace scout
     renderable_->initialize(camera);
 
     // show empty buffer
-    glsdl_->swapBuffers();
+    renderTarget_->swapBuffers();
   }
 
 
@@ -108,25 +108,32 @@ namespace scout
     exec();
 
     // show what we just drew
-    glsdl_->swapBuffers();
-
-    bool done = glsdl_->processEvent();
-
-    // fix this
-    if (done) exit(0);
+    renderTarget_->swapBuffers();
   }
 
   void RenderallGlyph::exec()
   {
-    glsdl_->update();
+    if (camera_) {
+      glMatrixMode(GL_PROJECTION);
+      glLoadIdentity();
+      gluPerspective(camera_->fov, camera_->aspect, camera_->near, camera_->far);
+
+      glMatrixMode(GL_MODELVIEW);
+      glLoadIdentity();
+
+      gluLookAt(camera_->position.x, camera_->position.y, camera_->position.z,
+          camera_->look_at.x, camera_->look_at.y, camera_->look_at.z,
+          camera_->up[0], camera_->up[1], camera_->up[2]);
+    }
+
     renderable_->draw(camera_);
   }
 }
 
-void __scrt_renderall_glyph_init(size_t width, size_t height, size_t depth,
-    size_t npoints, glCamera* camera)
+extern "C" void __scrt_renderall_glyph_init(size_t width, size_t height, size_t depth,
+    size_t npoints, void* renderTarget, glCamera* camera)
 {
   if(!__scrt_renderall){
-    __scrt_renderall = new RenderallGlyph(width, height, depth, npoints, camera);
+    __scrt_renderall = new RenderallGlyph(width, height, depth, npoints, (RenderTarget*)renderTarget, camera);
   }
 }

@@ -57,10 +57,10 @@
 
 #include <cstdlib>
 
-#include "scout/Runtime/opengl/glSDL.h"
 #include "scout/Runtime/renderall/RenderallBase.h"
 #include "scout/Runtime/opengl/glSurfaceRenderable.h"
 #include "scout/Runtime/opengl/glCamera.h"
+#include "scout/Runtime/RenderTarget.h"
 
 namespace scout{
 
@@ -68,7 +68,7 @@ class RenderallSurface : public RenderallBase {
   public:
     RenderallSurface(size_t width, size_t height, size_t depth,
         float* vertices, float* normals, float* colors, int num_vertices,
-        glCamera* camera);
+        RenderTarget* renderTarget, glCamera* camera);
 
     ~RenderallSurface();
 
@@ -81,18 +81,18 @@ class RenderallSurface : public RenderallBase {
     void addVolume(void* dataptr, unsigned volumenum){}
 
   private:
-    glSDL* glsdl_;
     glSurfaceRenderable* renderable_;
     glCamera* camera_;
     float* vertices_, *normals_, *colors_;
     int numVertices_;
     bool localCamera_;
+    RenderTarget* renderTarget_;
 };
 
 } // end namespace scout
 
-extern void __scrt_renderall_surface_begin(size_t width, size_t height, size_t depth,
-    float* vertices, float* normals, float* colors, size_t num_vertices, scout::glCamera* cam);
+extern "C" void __scrt_renderall_surface_begin(size_t width, size_t height, size_t depth,
+    float* vertices, float* normals, float* colors, size_t num_vertices, void* renderTarget, glCamera* cam);
 
 #endif // SCOUT_RENDERALL_SURFACE_H_
 

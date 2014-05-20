@@ -89,8 +89,6 @@ namespace scout {
 
       #ifdef SCOUT_ENABLE_OPENGL
       
-      "-I${SDL_INCLUDE_DIR}",
-    
       #ifndef APPLE  // We'll use frameworks on Mac OS X.
       "-I${OPENGL_INCLUDE_DIR}",  
       #endif
@@ -133,7 +131,6 @@ namespace scout {
 
     const char* Configuration::LibraryPaths[] = {
       "-L${CMAKE_INSTALL_PREFIX}/lib",
-      "-L${SDL_LIBRARY_DIR}",    
 
       #ifdef SCOUT_ENABLE_OPENGL
     
@@ -172,8 +169,6 @@ namespace scout {
       #ifdef SCOUT_ENABLE_CUDA
       "-lscCudaError",
       #endif
-
-      "${SDL_LIBRARIES}",
 
       #ifdef APPLE 
       "-framework Cocoa", 
@@ -223,7 +218,7 @@ namespace scout {
       #ifdef SCOUT_ENABLE_GLFW
         #ifndef APPLE
           //glfw requires Xrandr,Xxf86vm,Xi,Xcursor
-          "-lXrandr -lXxf86vm -lXi -lXcursor -lX11", 
+          "-lXrandr -lXxf86vm -lXi -lXcursor -lX11 -lrt", 
         #endif
       // need scRuntime here again to get lib dependency correct
       "-lscRuntime ${GLFW_LIBS}",

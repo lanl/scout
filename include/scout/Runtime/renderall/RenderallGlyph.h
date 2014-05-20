@@ -59,11 +59,11 @@
 #include "scout/Runtime/opengl/opengl.h"
 #include "scout/Runtime/opengl/glyph_vertex.h"
 #include "scout/Runtime/renderall/RenderallBase.h"
-#include "scout/Runtime/opengl/glSDL.h"
+#include "scout/Runtime/RenderTarget.h"
 
 // globals defined in lib/Runtime/scout.cpp
-extern scout::glyph_vertex* __scrt_renderall_glyph_vertex_data;
-extern unsigned long long __scrt_renderall_glyph_cuda_device;
+extern "C" scout::glyph_vertex* __scrt_renderall_glyph_vertex_data;
+extern "C" unsigned long long __scrt_renderall_glyph_cuda_device;
 
 namespace scout 
 {
@@ -73,7 +73,7 @@ namespace scout
   class RenderallGlyph : public RenderallBase {
     public:
       RenderallGlyph(size_t width, size_t height, size_t depth, size_t npts,
-          glCamera* camera);
+          RenderTarget* renderTarget, glCamera* camera);
       ~RenderallGlyph();
       void addVolume(void* dataptr, unsigned volumenum){}
       void begin();
@@ -87,14 +87,14 @@ namespace scout
     private:
       glGlyphRenderable* renderable_;
       glCamera* camera_;
-      glSDL* glsdl_;
+      RenderTarget* renderTarget_;
   };
 
 } // end namespace scout
 
 using namespace scout;
 
-extern void __scrt_renderall_glyph_init(size_t width, size_t height,
-    size_t depth, size_t npoints, glCamera* camera = NULL);
+extern "C" void __scrt_renderall_glyph_init(size_t width, size_t height,
+    size_t depth, size_t npoints, void* renderTarget, glCamera* camera = NULL);
 
 #endif 

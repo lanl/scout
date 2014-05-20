@@ -279,13 +279,6 @@ endif()
   endif()
 
 
-  # --- SDL support.
-  find_package(SDL REQUIRED)
-  if (SDL_FOUND)
-    message(STATUS "scout: Found SDL -- enabling support.")
-    set(SCOUT_ENABLE_SDL ON CACHE BOOL "Enable SDL support (required).")
-  endif()
-
   # Disable PNG for now -- some Linux systems are having a hard time
   # with matching the API we've used an we haven't had time to fully
   # investigate.  Putting it on the backburner for now...

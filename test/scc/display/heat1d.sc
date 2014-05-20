@@ -66,7 +66,7 @@ int main(int argc, char *argv[])
 
   HeatMeshType heat_mesh[1024];
 
-  window win[512,512];
+  window win[1024,1024];
   
   // Set initial conditions.
   //

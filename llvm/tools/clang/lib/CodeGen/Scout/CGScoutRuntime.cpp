@@ -146,6 +146,7 @@ llvm::Function *CGScoutRuntime::RenderallUniformBeginFunction() {
   for(int i=0; i < 3; i++) {
     Params.push_back(llvm::Type::getInt32Ty(CGM.getLLVMContext()));
   }
+  Params.push_back(llvm::PointerType::get(llvm::IntegerType::get(CGM.getModule().getContext(), 8), 0));
   return ScoutRuntimeFunction(funcName, Params);
 }
 
@@ -169,9 +170,6 @@ llvm::Function *CGScoutRuntime::CreateWindowFunction() {
       funcName, Params, 
       /*retType*/ 
       llvm::PointerType::get(llvm::IntegerType::get(CGM.getModule().getContext(), 8), 0));
-
-      // not sure this works
-      // llvm::PointerType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()),0));
 }
 
 // get Value for global runtime variable __scrt_renderall_uniform_colors
