@@ -17,6 +17,7 @@
 
 #include "X86.h"
 #include "X86InstrInfo.h"
+#include "X86Subtarget.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
@@ -50,7 +51,7 @@ namespace {
   struct PadShortFunc : public MachineFunctionPass {
     static char ID;
     PadShortFunc() : MachineFunctionPass(ID)
-                   , Threshold(4), TM(0), TII(0) {}
+                   , Threshold(4), TM(nullptr), TII(nullptr) {}
 
     bool runOnMachineFunction(MachineFunction &MF) override;
 
@@ -101,6 +102,9 @@ bool PadShortFunc::runOnMachineFunction(MachineFunction &MF) {
   }
 
   TM = &MF.getTarget();
+  if (!TM->getSubtarget<X86Subtarget>().padShortFunctions())
+    return false;
+
   TII = TM->getInstrInfo();
 
   // Search through basic blocks and mark the ones that have early returns

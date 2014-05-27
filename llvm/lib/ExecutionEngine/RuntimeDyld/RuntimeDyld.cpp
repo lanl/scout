@@ -144,12 +144,14 @@ ObjectImage *RuntimeDyldImpl::loadObject(ObjectImage *InputObject) {
     bool IsCommon = Flags & SymbolRef::SF_Common;
     if (IsCommon) {
       // Add the common symbols to a list.  We'll allocate them all below.
-      uint32_t Align;
-      Check(I->getAlignment(Align));
-      uint64_t Size = 0;
-      Check(I->getSize(Size));
-      CommonSize += Size + Align;
-      CommonSymbols[*I] = CommonSymbolInfo(Size, Align);
+      if (!GlobalSymbolTable.count(Name)) {
+        uint32_t Align;
+        Check(I->getAlignment(Align));
+        uint64_t Size = 0;
+        Check(I->getSize(Size));
+        CommonSize += Size + Align;
+        CommonSymbols[*I] = CommonSymbolInfo(Size, Align);
+      }
     } else {
       if (SymType == object::SymbolRef::ST_Function ||
           SymType == object::SymbolRef::ST_Data ||
@@ -177,7 +179,7 @@ ObjectImage *RuntimeDyldImpl::loadObject(ObjectImage *InputObject) {
 
   // Allocate common symbols
   if (CommonSize != 0)
-    emitCommonSymbols(*Obj, CommonSymbols, CommonSize, LocalSymbols);
+    emitCommonSymbols(*Obj, CommonSymbols, CommonSize, GlobalSymbolTable);
 
   // Parse and process relocations
   DEBUG(dbgs() << "Parse relocations:\n");
@@ -205,7 +207,7 @@ ObjectImage *RuntimeDyldImpl::loadObject(ObjectImage *InputObject) {
   }
 
   // Give the subclasses a chance to tie-up any loose ends.
-  finalizeLoad(LocalSections);
+  finalizeLoad(*Obj, LocalSections);
 
   return Obj.release();
 }
@@ -516,7 +518,8 @@ void RuntimeDyldImpl::addRelocationForSymbol(const RelocationEntry &RE,
 }
 
 uint8_t *RuntimeDyldImpl::createStubFunction(uint8_t *Addr) {
-  if (Arch == Triple::aarch64 || Arch == Triple::aarch64_be) {
+  if (Arch == Triple::aarch64 || Arch == Triple::aarch64_be ||
+      Arch == Triple::arm64 || Arch == Triple::arm64_be) {
     // This stub has to be able to access the full address space,
     // since symbol lookup won't necessarily find a handy, in-range,
     // PLT stub for functions which could be anywhere.
@@ -586,6 +589,8 @@ uint8_t *RuntimeDyldImpl::createStubFunction(uint8_t *Addr) {
     *Addr      = 0xFF; // jmp
     *(Addr+1)  = 0x25; // rip
     // 32-bit PC-relative address of the GOT entry will be stored at Addr+2
+  } else if (Arch == Triple::x86) {
+    *Addr      = 0xE9; // 32-bit pc-relative jump.
   }
   return Addr;
 }
@@ -698,21 +703,23 @@ createRuntimeDyldMachO(RTDyldMemoryManager *MM, bool ProcessAllSections) {
   return Dyld;
 }
 
-ObjectImage *RuntimeDyld::loadObject(ObjectFile *InputObject) {
+ObjectImage *RuntimeDyld::loadObject(std::unique_ptr<ObjectFile> InputObject) {
   std::unique_ptr<ObjectImage> InputImage;
 
+  ObjectFile &Obj = *InputObject;
+
   if (InputObject->isELF()) {
-    InputImage.reset(RuntimeDyldELF::createObjectImageFromFile(InputObject));
+    InputImage.reset(RuntimeDyldELF::createObjectImageFromFile(std::move(InputObject)));
     if (!Dyld)
       Dyld = createRuntimeDyldELF(MM, ProcessAllSections).release();
   } else if (InputObject->isMachO()) {
-    InputImage.reset(RuntimeDyldMachO::createObjectImageFromFile(InputObject));
+    InputImage.reset(RuntimeDyldMachO::createObjectImageFromFile(std::move(InputObject)));
     if (!Dyld)
       Dyld = createRuntimeDyldMachO(MM, ProcessAllSections).release();
   } else
     report_fatal_error("Incompatible object format!");
 
-  if (!Dyld->isCompatibleFile(InputObject))
+  if (!Dyld->isCompatibleFile(&Obj))
     report_fatal_error("Incompatible object format!");
 
   Dyld->loadObject(InputImage.get());

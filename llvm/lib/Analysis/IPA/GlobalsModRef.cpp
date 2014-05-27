@@ -359,7 +359,7 @@ void GlobalsModRef::AnalyzeCallGraph(CallGraph &CG, Module &M) {
   // We do a bottom-up SCC traversal of the call graph.  In other words, we
   // visit all callees before callers (leaf-first).
   for (scc_iterator<CallGraph*> I = scc_begin(&CG); !I.isAtEnd(); ++I) {
-    std::vector<CallGraphNode *> &SCC = *I;
+    const std::vector<CallGraphNode *> &SCC = *I;
     assert(!SCC.empty() && "SCC with no functions?");
 
     if (!SCC[0]->getFunction()) {
@@ -411,10 +411,8 @@ void GlobalsModRef::AnalyzeCallGraph(CallGraph &CG, Module &M) {
             FunctionEffect |= CalleeFR->FunctionEffect;
 
             // Incorporate callee's effects on globals into our info.
-            for (std::map<const GlobalValue*, unsigned>::iterator GI =
-                   CalleeFR->GlobalInfo.begin(), E = CalleeFR->GlobalInfo.end();
-                 GI != E; ++GI)
-              FR.GlobalInfo[GI->first] |= GI->second;
+            for (const auto &G : CalleeFR->GlobalInfo)
+              FR.GlobalInfo[G.first] |= G.second;
             FR.MayReadAnyGlobal |= CalleeFR->MayReadAnyGlobal;
           } else {
             // Can't say anything about it.  However, if it is inside our SCC,

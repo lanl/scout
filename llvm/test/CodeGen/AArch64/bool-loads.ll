@@ -1,5 +1,4 @@
-; RUN: llc -mtriple=aarch64-none-linux-gnu < %s | FileCheck %s
-; RUN: llc -mtriple=arm64-linux-gnu -o - %s | FileCheck %s
+; RUN: llc -mtriple=aarch64-linux-gnu -o - %s | FileCheck %s
 
 @var = global i1 0
 
@@ -9,7 +8,7 @@ define i32 @test_sextloadi32() {
   %val = load i1* @var
   %ret = sext i1 %val to i32
 ; CHECK: ldrb {{w[0-9]+}}, [{{x[0-9]+}}, {{#?}}:lo12:var]
-; CHECK: {{sbfx x[0-9]+, x[0-9]+, #0, #1|sbfm w[0-9]+, w[0-9]+, #0, #0}}
+; CHECK: {{sbfx x[0-9]+, x[0-9]+, #0, #1|sbfx w[0-9]+, w[0-9]+, #0, #1}}
 
   ret i32 %ret
 ; CHECK: ret
@@ -21,7 +20,7 @@ define i64 @test_sextloadi64() {
   %val = load i1* @var
   %ret = sext i1 %val to i64
 ; CHECK: ldrb {{w[0-9]+}}, [{{x[0-9]+}}, {{#?}}:lo12:var]
-; CHECK: {{sbfx x[0-9]+, x[0-9]+, #0, #1|sbfm x[0-9]+, x[0-9]+, #0, #0}}
+; CHECK: {{sbfx x[0-9]+, x[0-9]+, #0, #1}}
 
   ret i64 %ret
 ; CHECK: ret

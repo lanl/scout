@@ -78,7 +78,6 @@ static void PrintCallingConv(unsigned cc, raw_ostream &Out) {
   case CallingConv::X86_StdCall:   Out << "x86_stdcallcc"; break;
   case CallingConv::X86_FastCall:  Out << "x86_fastcallcc"; break;
   case CallingConv::X86_ThisCall:  Out << "x86_thiscallcc"; break;
-  case CallingConv::X86_CDeclMethod:Out << "x86_cdeclmethodcc"; break;
   case CallingConv::Intel_OCL_BI:  Out << "intel_ocl_bicc"; break;
   case CallingConv::ARM_APCS:      Out << "arm_apcscc"; break;
   case CallingConv::ARM_AAPCS:     Out << "arm_aapcscc"; break;
@@ -1494,10 +1493,16 @@ void AssemblyWriter::printAlias(const GlobalAlias *GA) {
 
   PrintLinkage(GA->getLinkage(), Out);
 
+  PointerType *Ty = GA->getType();
   const Constant *Aliasee = GA->getAliasee();
+  if (!Aliasee || Ty != Aliasee->getType()) {
+    if (unsigned AddressSpace = Ty->getAddressSpace())
+      Out << "addrspace(" << AddressSpace << ") ";
+    TypePrinter.print(Ty->getElementType(), Out);
+    Out << ", ";
+  }
 
   if (!Aliasee) {
-    TypePrinter.print(GA->getType(), Out);
     Out << " <<NULL ALIASEE>>";
   } else {
     writeOperand(Aliasee, !isa<ConstantExpr>(Aliasee));
@@ -2206,9 +2211,7 @@ void Value::print(raw_ostream &ROS) const {
              isa<Argument>(this)) {
     this->printAsOperand(OS);
   } else {
-    // Otherwise we don't know what it is. Call the virtual function to
-    // allow a subclass to print itself.
-    printCustom(OS);
+    llvm_unreachable("Unknown value to print out!");
   }
 }
 
@@ -2234,11 +2237,6 @@ void Value::printAsOperand(raw_ostream &O, bool PrintType, const Module *M) cons
   }
 
   WriteAsOperandInternal(O, this, &TypePrinter, nullptr, M);
-}
-
-// Value::printCustom - subclasses should override this to implement printing.
-void Value::printCustom(raw_ostream &OS) const {
-  llvm_unreachable("Unknown value to print out!");
 }
 
 // Value::dump - allow easy printing of Values from the debugger.

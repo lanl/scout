@@ -22,12 +22,26 @@ public:
   /// Enables AddressSanitizer instrumentation at machine level.
   bool SanitizeAddress : 1;
 
+  bool MCRelaxAll : 1;
+  bool MCNoExecStack : 1;
+  bool MCSaveTempLabels : 1;
+  bool MCUseDwarfDirectory : 1;
+  bool ShowMCEncoding : 1;
+  bool ShowMCInst : 1;
+  bool AsmVerbose : 1;
   MCTargetOptions();
 };
 
 inline bool operator==(const MCTargetOptions &LHS, const MCTargetOptions &RHS) {
 #define ARE_EQUAL(X) LHS.X == RHS.X
-  return ARE_EQUAL(SanitizeAddress);
+  return (ARE_EQUAL(SanitizeAddress) &&
+          ARE_EQUAL(MCRelaxAll) &&
+          ARE_EQUAL(MCNoExecStack) &&
+          ARE_EQUAL(MCSaveTempLabels) &&
+          ARE_EQUAL(MCUseDwarfDirectory) &&
+          ARE_EQUAL(ShowMCEncoding) &&
+          ARE_EQUAL(ShowMCInst) &&
+          ARE_EQUAL(AsmVerbose));
 #undef ARE_EQUAL
 }
 

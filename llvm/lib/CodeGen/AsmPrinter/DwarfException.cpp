@@ -224,18 +224,16 @@ ComputeCallSiteTable(SmallVectorImpl<CallSiteEntry> &CallSites,
   bool PreviousIsInvoke = false;
 
   // Visit all instructions in order of address.
-  for (MachineFunction::const_iterator I = Asm->MF->begin(), E = Asm->MF->end();
-       I != E; ++I) {
-    for (MachineBasicBlock::const_iterator MI = I->begin(), E = I->end();
-         MI != E; ++MI) {
-      if (!MI->isEHLabel()) {
-        if (MI->isCall())
-          SawPotentiallyThrowing |= !CallToNoUnwindFunction(MI);
+  for (const auto &MBB : *Asm->MF) {
+    for (const auto &MI : MBB) {
+      if (!MI.isEHLabel()) {
+        if (MI.isCall())
+          SawPotentiallyThrowing |= !CallToNoUnwindFunction(&MI);
         continue;
       }
 
       // End of the previous try-range?
-      MCSymbol *BeginLabel = MI->getOperand(0).getMCSymbol();
+      MCSymbol *BeginLabel = MI.getOperand(0).getMCSymbol();
       if (BeginLabel == LastLabel)
         SawPotentiallyThrowing = false;
 
