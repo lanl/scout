@@ -295,7 +295,7 @@ private:
     };
 
   public:
-    DeclUpdate(unsigned Kind) : Kind(Kind), Dcl(0) {}
+    DeclUpdate(unsigned Kind) : Kind(Kind), Dcl(nullptr) {}
     DeclUpdate(unsigned Kind, const Decl *Dcl) : Kind(Kind), Dcl(Dcl) {}
     DeclUpdate(unsigned Kind, QualType Type)
         : Kind(Kind), Type(Type.getAsOpaquePtr()) {}
@@ -488,6 +488,7 @@ private:
   void WriteRedeclarations();
   void WriteMergedDecls();
   void WriteLateParsedTemplates(Sema &SemaRef);
+  void WriteOptimizePragmaOptions(Sema &SemaRef);
 
   unsigned DeclParmVarAbbrev;
   unsigned DeclContextLexicalAbbrev;

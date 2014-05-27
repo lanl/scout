@@ -49,7 +49,7 @@ ASTConsumer *ASTPrintAction::CreateASTConsumer(CompilerInstance &CI,
                                                StringRef InFile) {
   if (raw_ostream *OS = CI.createDefaultOutputFile(false, InFile))
     return CreateASTPrinter(OS, CI.getFrontendOpts().ASTDumpFilter);
-  return 0;
+  return nullptr;
 }
 
 ASTConsumer *ASTDumpAction::CreateASTConsumer(CompilerInstance &CI,
@@ -77,13 +77,14 @@ ASTConsumer *GeneratePCHAction::CreateASTConsumer(CompilerInstance &CI,
                                                   StringRef InFile) {
   std::string Sysroot;
   std::string OutputFile;
-  raw_ostream *OS = 0;
+  raw_ostream *OS = nullptr;
   if (ComputeASTConsumerArguments(CI, InFile, Sysroot, OutputFile, OS))
-    return 0;
+    return nullptr;
 
   if (!CI.getFrontendOpts().RelocatablePCH)
     Sysroot.clear();
-  return new PCHGenerator(CI.getPreprocessor(), OutputFile, 0, Sysroot, OS);
+  return new PCHGenerator(CI.getPreprocessor(), OutputFile, nullptr, Sysroot,
+                          OS);
 }
 
 bool GeneratePCHAction::ComputeASTConsumerArguments(CompilerInstance &CI,
@@ -114,10 +115,10 @@ ASTConsumer *GenerateModuleAction::CreateASTConsumer(CompilerInstance &CI,
                                                      StringRef InFile) {
   std::string Sysroot;
   std::string OutputFile;
-  raw_ostream *OS = 0;
+  raw_ostream *OS = nullptr;
   if (ComputeASTConsumerArguments(CI, InFile, Sysroot, OutputFile, OS))
-    return 0;
-  
+    return nullptr;
+
   return new PCHGenerator(CI.getPreprocessor(), OutputFile, Module, 
                           Sysroot, OS);
 }
@@ -446,7 +447,6 @@ namespace {
       Out.indent(4) << "  Triple: " << TargetOpts.Triple << "\n";
       Out.indent(4) << "  CPU: " << TargetOpts.CPU << "\n";
       Out.indent(4) << "  ABI: " << TargetOpts.ABI << "\n";
-      Out.indent(4) << "  Linker version: " << TargetOpts.LinkerVersion << "\n";
 
       if (!TargetOpts.FeaturesAsWritten.empty()) {
         Out.indent(4) << "Target features:\n";
@@ -454,6 +454,25 @@ namespace {
              I != N; ++I) {
           Out.indent(6) << TargetOpts.FeaturesAsWritten[I] << "\n";
         }
+      }
+
+      return false;
+    }
+
+    virtual bool
+    ReadDiagnosticOptions(IntrusiveRefCntPtr<DiagnosticOptions> DiagOpts,
+                          bool Complain) override {
+      Out.indent(2) << "Diagnostic options:\n";
+#define DIAGOPT(Name, Bits, Default) DUMP_BOOLEAN(DiagOpts->Name, #Name);
+#define ENUM_DIAGOPT(Name, Type, Bits, Default) \
+      Out.indent(4) << #Name << ": " << DiagOpts->get##Name() << "\n";
+#define VALUE_DIAGOPT(Name, Bits, Default) \
+      Out.indent(4) << #Name << ": " << DiagOpts->Name << "\n";
+#include "clang/Basic/DiagnosticOptions.def"
+
+      Out.indent(4) << "Warning options:\n";
+      for (const std::string &Warning : DiagOpts->Warnings) {
+        Out.indent(6) << "-W" << Warning << "\n";
       }
 
       return false;
@@ -574,7 +593,7 @@ void PreprocessOnlyAction::ExecuteAction() {
   Preprocessor &PP = getCompilerInstance().getPreprocessor();
 
   // Ignore unknown pragmas.
-  PP.AddPragmaHandler(new EmptyPragmaHandler());
+  PP.IgnorePragmas();
 
   Token Tok;
   // Start parsing the specified input file.

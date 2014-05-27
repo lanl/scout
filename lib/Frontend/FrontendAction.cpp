@@ -37,11 +37,16 @@ namespace {
 
 class DelegatingDeserializationListener : public ASTDeserializationListener {
   ASTDeserializationListener *Previous;
+  bool DeletePrevious;
 
 public:
   explicit DelegatingDeserializationListener(
-                                           ASTDeserializationListener *Previous)
-    : Previous(Previous) { }
+      ASTDeserializationListener *Previous, bool DeletePrevious)
+      : Previous(Previous), DeletePrevious(DeletePrevious) {}
+  virtual ~DelegatingDeserializationListener() {
+    if (DeletePrevious)
+      delete Previous;
+  }
 
   void ReaderInitialized(ASTReader *Reader) override {
     if (Previous)
@@ -74,8 +79,9 @@ public:
 /// \brief Dumps deserialized declarations.
 class DeserializedDeclsDumper : public DelegatingDeserializationListener {
 public:
-  explicit DeserializedDeclsDumper(ASTDeserializationListener *Previous)
-    : DelegatingDeserializationListener(Previous) { }
+  explicit DeserializedDeclsDumper(ASTDeserializationListener *Previous,
+                                   bool DeletePrevious)
+      : DelegatingDeserializationListener(Previous, DeletePrevious) {}
 
   void DeclRead(serialization::DeclID ID, const Decl *D) override {
     llvm::outs() << "PCH DECL: " << D->getDeclKindName();
@@ -96,9 +102,10 @@ class DeserializedDeclsChecker : public DelegatingDeserializationListener {
 public:
   DeserializedDeclsChecker(ASTContext &Ctx,
                            const std::set<std::string> &NamesToCheck,
-                           ASTDeserializationListener *Previous)
-    : DelegatingDeserializationListener(Previous),
-      Ctx(Ctx), NamesToCheck(NamesToCheck) { }
+                           ASTDeserializationListener *Previous,
+                           bool DeletePrevious)
+      : DelegatingDeserializationListener(Previous, DeletePrevious), Ctx(Ctx),
+        NamesToCheck(NamesToCheck) {}
 
   void DeclRead(serialization::DeclID ID, const Decl *D) override {
     if (const NamedDecl *ND = dyn_cast<NamedDecl>(D))
@@ -116,7 +123,7 @@ public:
 
 } // end anonymous namespace
 
-FrontendAction::FrontendAction() : Instance(0) {}
+FrontendAction::FrontendAction() : Instance(nullptr) {}
 
 FrontendAction::~FrontendAction() {}
 
@@ -130,7 +137,7 @@ ASTConsumer* FrontendAction::CreateWrappedASTConsumer(CompilerInstance &CI,
                                                       StringRef InFile) {
   ASTConsumer* Consumer = CreateASTConsumer(CI, InFile);
   if (!Consumer)
-    return 0;
+    return nullptr;
 
   if (CI.getFrontendOpts().AddPluginActions.size() == 0)
     return Consumer;
@@ -189,7 +196,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
     setCurrentInput(Input, AST);
 
     // Inform the diagnostic client we are processing a source file.
-    CI.getDiagnosticClient().BeginSourceFile(CI.getLangOpts(), 0);
+    CI.getDiagnosticClient().BeginSourceFile(CI.getLangOpts(), nullptr);
     HasBegunSourceFile = true;
 
     // Set the shared objects, these are reset when we finish processing the
@@ -232,7 +239,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
            "This action does not have IR file support!");
 
     // Inform the diagnostic client we are processing a source file.
-    CI.getDiagnosticClient().BeginSourceFile(CI.getLangOpts(), 0);
+    CI.getDiagnosticClient().BeginSourceFile(CI.getLangOpts(), nullptr);
     HasBegunSourceFile = true;
 
     // Initialize the action.
@@ -320,17 +327,24 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
       assert(hasPCHSupport() && "This action does not have PCH support!");
       ASTDeserializationListener *DeserialListener =
           Consumer->GetASTDeserializationListener();
-      if (CI.getPreprocessorOpts().DumpDeserializedPCHDecls)
-        DeserialListener = new DeserializedDeclsDumper(DeserialListener);
-      if (!CI.getPreprocessorOpts().DeserializedPCHDeclsToErrorOn.empty())
-        DeserialListener = new DeserializedDeclsChecker(CI.getASTContext(),
-                         CI.getPreprocessorOpts().DeserializedPCHDeclsToErrorOn,
-                                                        DeserialListener);
+      bool DeleteDeserialListener = false;
+      if (CI.getPreprocessorOpts().DumpDeserializedPCHDecls) {
+        DeserialListener = new DeserializedDeclsDumper(DeserialListener,
+                                                       DeleteDeserialListener);
+        DeleteDeserialListener = true;
+      }
+      if (!CI.getPreprocessorOpts().DeserializedPCHDeclsToErrorOn.empty()) {
+        DeserialListener = new DeserializedDeclsChecker(
+            CI.getASTContext(),
+            CI.getPreprocessorOpts().DeserializedPCHDeclsToErrorOn,
+            DeserialListener, DeleteDeserialListener);
+        DeleteDeserialListener = true;
+      }
       CI.createPCHExternalASTSource(
-                                CI.getPreprocessorOpts().ImplicitPCHInclude,
-                                CI.getPreprocessorOpts().DisablePCHValidation,
-                            CI.getPreprocessorOpts().AllowPCHWithCompilerErrors,
-                                DeserialListener);
+          CI.getPreprocessorOpts().ImplicitPCHInclude,
+          CI.getPreprocessorOpts().DisablePCHValidation,
+          CI.getPreprocessorOpts().AllowPCHWithCompilerErrors, DeserialListener,
+          DeleteDeserialListener);
       if (!CI.getASTContext().getExternalSource())
         goto failure;
     }
@@ -344,8 +358,21 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
   // source.
   if (!CI.hasASTContext() || !CI.getASTContext().getExternalSource()) {
     Preprocessor &PP = CI.getPreprocessor();
+
+    // If modules are enabled, create the module manager before creating
+    // any builtins, so that all declarations know that they might be
+    // extended by an external source.
+    if (CI.getLangOpts().Modules)
+      CI.createModuleManager();
+
     PP.getBuiltinInfo().InitializeBuiltins(PP.getIdentifierTable(),
                                            PP.getLangOpts());
+  } else {
+    // FIXME: If this is a problem, recover from it by creating a multiplex
+    // source.
+    assert((!CI.getLangOpts().Modules || CI.getModuleManager()) &&
+           "modules enabled but created an external source that "
+           "doesn't support modules");
   }
 
   // If there is a layout overrides file, attach an external AST source that
@@ -357,24 +384,24 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
                      CI.getFrontendOpts().OverrideRecordLayoutsFile));
     CI.getASTContext().setExternalSource(Override);
   }
-  
+
   return true;
 
   // If we failed, reset state since the client will not end up calling the
   // matching EndSourceFile().
   failure:
   if (isCurrentFileAST()) {
-    CI.setASTContext(0);
-    CI.setPreprocessor(0);
-    CI.setSourceManager(0);
-    CI.setFileManager(0);
+    CI.setASTContext(nullptr);
+    CI.setPreprocessor(nullptr);
+    CI.setSourceManager(nullptr);
+    CI.setFileManager(nullptr);
   }
 
   if (HasBegunSourceFile)
     CI.getDiagnosticClient().EndSourceFile();
   CI.clearOutputFiles(/*EraseFiles=*/true);
   setCurrentInput(FrontendInputFile());
-  setCompilerInstance(0);
+  setCompilerInstance(nullptr);
   return false;
 }
 
@@ -420,10 +447,10 @@ void FrontendAction::EndSourceFile() {
     BuryPointer(CI.takeASTConsumer());
   } else {
     if (!isCurrentFileAST()) {
-      CI.setSema(0);
-      CI.setASTContext(0);
+      CI.setSema(nullptr);
+      CI.setASTContext(nullptr);
     }
-    CI.setASTConsumer(0);
+    CI.setASTConsumer(nullptr);
   }
 
   // Inform the preprocessor we are done.
@@ -452,7 +479,7 @@ void FrontendAction::EndSourceFile() {
     CI.resetAndLeakFileManager();
   }
 
-  setCompilerInstance(0);
+  setCompilerInstance(nullptr);
   setCurrentInput(FrontendInputFile());
 }
 
@@ -476,7 +503,7 @@ void ASTFrontendAction::ExecuteAction() {
     CI.createCodeCompletionConsumer();
 
   // Use a code completion consumer?
-  CodeCompleteConsumer *CompletionConsumer = 0;
+  CodeCompleteConsumer *CompletionConsumer = nullptr;
   if (CI.hasCodeCompletionConsumer())
     CompletionConsumer = &CI.getCodeCompletionConsumer();
 

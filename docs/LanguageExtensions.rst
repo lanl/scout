@@ -750,16 +750,16 @@ for default initializers in aggregate members is enabled.
 C++1y generalized lambda capture
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Use ``__has_feature(cxx_init_capture)`` or
-``__has_extension(cxx_init_capture)`` to determine if support for
+Use ``__has_feature(cxx_init_captures)`` or
+``__has_extension(cxx_init_captures)`` to determine if support for
 lambda captures with explicit initializers is enabled
 (for instance, ``[n(0)] { return ++n; }``).
 
 C++1y generic lambdas
 ^^^^^^^^^^^^^^^^^^^^^
 
-Use ``__has_feature(cxx_generic_lambda)`` or
-``__has_extension(cxx_generic_lambda)`` to determine if support for generic
+Use ``__has_feature(cxx_generic_lambdas)`` or
+``__has_extension(cxx_generic_lambdas)`` to determine if support for generic
 (polymorphic) lambdas is enabled
 (for instance, ``[] (auto x) { return x + 1; }``).
 
@@ -1566,7 +1566,7 @@ instructions for implementing atomic operations.
   void __builtin_arm_clrex(void);
 
 The types ``T`` currently supported are:
-* Integer types with width at most 64 bits (or 128 bits on ARM64).
+* Integer types with width at most 64 bits (or 128 bits on AArch64).
 * Floating-point types
 * Pointer types.
 
