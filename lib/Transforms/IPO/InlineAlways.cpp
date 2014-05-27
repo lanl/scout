@@ -37,12 +37,13 @@ class AlwaysInliner : public Inliner {
 
 public:
   // Use extremely low threshold.
-  AlwaysInliner() : Inliner(ID, -2000000000, /*InsertLifetime*/ true), ICA(0) {
+  AlwaysInliner() : Inliner(ID, -2000000000, /*InsertLifetime*/ true),
+                    ICA(nullptr) {
     initializeAlwaysInlinerPass(*PassRegistry::getPassRegistry());
   }
 
   AlwaysInliner(bool InsertLifetime)
-      : Inliner(ID, -2000000000, InsertLifetime), ICA(0) {
+      : Inliner(ID, -2000000000, InsertLifetime), ICA(nullptr) {
     initializeAlwaysInlinerPass(*PassRegistry::getPassRegistry());
   }
 
@@ -94,8 +95,7 @@ InlineCost AlwaysInliner::getInlineCost(CallSite CS) {
   // that are viable for inlining. FIXME: We shouldn't even get here for
   // declarations.
   if (Callee && !Callee->isDeclaration() &&
-      Callee->getAttributes().hasAttribute(AttributeSet::FunctionIndex,
-                                           Attribute::AlwaysInline) &&
+      CS.hasFnAttr(Attribute::AlwaysInline) &&
       ICA->isInlineViable(*Callee))
     return InlineCost::getAlways();
 

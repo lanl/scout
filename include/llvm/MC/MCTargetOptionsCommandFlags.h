@@ -20,22 +20,24 @@
 using namespace llvm;
 
 cl::opt<MCTargetOptions::AsmInstrumentation> AsmInstrumentation(
-    "asm-instrumentation",
-    cl::desc("Instrumentation of inline assembly and "
-             "assembly source files"),
+    "asm-instrumentation", cl::desc("Instrumentation of inline assembly and "
+                                    "assembly source files"),
     cl::init(MCTargetOptions::AsmInstrumentationNone),
-    cl::values(clEnumValN(MCTargetOptions::AsmInstrumentationNone,
-                          "none",
+    cl::values(clEnumValN(MCTargetOptions::AsmInstrumentationNone, "none",
                           "no instrumentation at all"),
-               clEnumValN(MCTargetOptions::AsmInstrumentationAddress,
-                          "address",
+               clEnumValN(MCTargetOptions::AsmInstrumentationAddress, "address",
                           "instrument instructions with memory arguments"),
                clEnumValEnd));
+
+cl::opt<bool> RelaxAll("mc-relax-all",
+                       cl::desc("When used with filetype=obj, "
+                                "relax all fixups in the emitted object file"));
 
 static inline MCTargetOptions InitMCTargetOptionsFromFlags() {
   MCTargetOptions Options;
   Options.SanitizeAddress =
       (AsmInstrumentation == MCTargetOptions::AsmInstrumentationAddress);
+  Options.MCRelaxAll = RelaxAll;
   return Options;
 }
 

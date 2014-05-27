@@ -516,7 +516,7 @@ computeInsertAction(ArchiveOperation Operation,
     // We could try to optimize this to a fstat, but it is not a common
     // operation.
     sys::fs::file_status Status;
-    failIfError(sys::fs::status(*MI, Status));
+    failIfError(sys::fs::status(*MI, Status), *MI);
     if (Status.getLastModificationTime() < I->getLastModified()) {
       if (PosName.empty())
         return IA_AddOldMember;
@@ -856,7 +856,7 @@ static void performWriteOperation(ArchiveOperation Operation,
   Output.keep();
   Out.close();
   sys::fs::rename(TemporaryOutput, ArchiveName);
-  TemporaryOutput = NULL;
+  TemporaryOutput = nullptr;
 }
 
 static void createSymbolTable(object::Archive *OldArchive) {
@@ -969,6 +969,6 @@ static int performOperation(ArchiveOperation Operation) {
     }
   }
 
-  performOperation(Operation, NULL);
+  performOperation(Operation, nullptr);
   return 0;
 }

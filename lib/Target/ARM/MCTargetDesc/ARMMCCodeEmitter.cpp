@@ -1037,6 +1037,7 @@ ARMMCCodeEmitter::getHiLo16ImmOpValue(const MCInst &MI, unsigned OpIdx,
                                        : ARM::fixup_arm_movw_lo16);
       break;
     }
+
     Fixups.push_back(MCFixup::Create(0, E, Kind, MI.getLoc()));
     return 0;
   }

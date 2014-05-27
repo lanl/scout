@@ -1,8 +1,5 @@
-; RUN: llc -verify-machineinstrs < %s -mtriple=aarch64-none-linux-gnu | FileCheck --check-prefix=CHECK --check-prefix=CHECK-AARCH64 --check-prefix=CHECK-LE %s
+; RUN: llc -verify-machineinstrs < %s -mtriple=aarch64-none-linux-gnu | FileCheck --check-prefix=CHECK %s
 ; RUN: llc -verify-machineinstrs < %s -mtriple=aarch64-none-linux-gnu -mattr=-fp-armv8 | FileCheck --check-prefix=CHECK-NOFP %s
-; RUN: llc -verify-machineinstrs < %s -mtriple=aarch64_be-none-linux-gnu | FileCheck --check-prefix=CHECK --check-prefix=CHECK-BE %s
-; RUN: llc -verify-machineinstrs < %s -mtriple=aarch64_be-none-linux-gnu -mattr=-fp-armv8 | FileCheck --check-prefix=CHECK-NOFP %s
-; RUN: llc -verify-machineinstrs < %s -mtriple=arm64-none-linux-gnu | FileCheck --check-prefix=CHECK --check-prefix=CHECK-ARM64 %s
 
 %myStruct = type { i64 , i8, i32 }
 
@@ -63,9 +60,7 @@ define void @check_byval_align(i32* byval %ignore, %myStruct* byval align 16 %st
 
     %val0 = load volatile i32* %addr0
     ; Some weird move means x0 is used for one access
-; CHECK-AARCH64: add x[[STRUCTVAL_ADDR:[0-9]+]], sp, #16
-; CHECK-AARCH64: ldr [[REG32:w[0-9]+]], [x[[STRUCTVAL_ADDR]], #12]
-; CHECK-ARM64: ldr [[REG32:w[0-9]+]], [sp, #28]
+; CHECK: ldr [[REG32:w[0-9]+]], [sp, #28]
     store i32 %val0, i32* @var32
 ; CHECK: str [[REG32]], [{{x[0-9]+}}, {{#?}}:lo12:var32]
 
@@ -151,7 +146,6 @@ define i32 @struct_on_stack(i8 %var0, i16 %var1, i32 %var2, i64 %var3, i128 %var
     %retval = load volatile i32* %stacked
     ret i32 %retval
 ; CHECK-LE: ldr w0, [sp, #16]
-; CHECK-BE: ldr w0, [sp, #20]
 }
 
 define void @stacked_fpu(float %var0, double %var1, float %var2, float %var3,
@@ -187,12 +181,10 @@ define void @check_i128_stackalign(i32 %val0, i32 %val1, i32 %val2, i32 %val3,
     ; Nothing local on stack in current codegen, so first stack is 16 away
 ; CHECK-LE: add     x[[REG:[0-9]+]], sp, #16
 ; CHECK-LE: ldr {{x[0-9]+}}, [x[[REG]], #8]
-; CHECK-BE: ldr {{x[0-9]+}}, [sp, #24]
 
     ; Important point is that we address sp+24 for second dword
-; CHECK-AARCH64: ldr     {{x[0-9]+}}, [sp, #16]
 
-; CHECK-ARM64: ldp {{x[0-9]+}}, {{x[0-9]+}}, [sp, #16]
+; CHECK: ldp {{x[0-9]+}}, {{x[0-9]+}}, [sp, #16]
     ret void
 }
 
@@ -203,4 +195,14 @@ define i32 @test_extern() {
   call void @llvm.memcpy.p0i8.p0i8.i32(i8* undef, i8* undef, i32 undef, i32 4, i1 0)
 ; CHECK: bl memcpy
   ret i32 0
+}
+
+
+; A sub-i32 stack argument must be loaded on big endian with ldr{h,b}, not just
+; implicitly extended to a 32-bit load.
+define i16 @stacked_i16(i32 %val0, i32 %val1, i32 %val2, i32 %val3,
+                        i32 %val4, i32 %val5, i32 %val6, i32 %val7,
+                        i16 %stack1) {
+; CHECK-LABEL: stacked_i16
+  ret i16 %stack1
 }

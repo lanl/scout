@@ -1,5 +1,4 @@
 ; RUN: llc < %s -verify-machineinstrs -mtriple=aarch64-none-linux-gnu -mattr=+neon | FileCheck %s
-; RUN: llc < %s -verify-machineinstrs -mtriple=arm64-none-linux-gnu -mattr=+neon | FileCheck %s
 
 define <8 x i8> @and8xi8(<8 x i8> %a, <8 x i8> %b) {
 ; CHECK-LABEL: and8xi8:
@@ -661,7 +660,7 @@ define <4 x i16> @vselect_v4i16(<4 x i16> %a) {
 define <8 x i8> @vselect_cmp_ne(<8 x i8> %a, <8 x i8> %b, <8 x i8> %c) {
 ; CHECK-LABEL: vselect_cmp_ne:
 ; CHECK:  cmeq {{v[0-9]+}}.8b, {{v[0-9]+}}.8b, {{v[0-9]+}}.8b
-; CHECK-NEXT:  not {{v[0-9]+}}.8b, {{v[0-9]+}}.8b
+; CHECK-NEXT:  {{mvn|not}} {{v[0-9]+}}.8b, {{v[0-9]+}}.8b
 ; CHECK-NEXT:  bsl {{v[0-9]+}}.8b, {{v[0-9]+}}.8b, {{v[0-9]+}}.8b
   %cmp = icmp ne <8 x i8> %a, %b
   %d = select <8 x i1> %cmp, <8 x i8> %b, <8 x i8> %c
@@ -680,7 +679,7 @@ define <8 x i8> @vselect_cmp_eq(<8 x i8> %a, <8 x i8> %b, <8 x i8> %c) {
 define <8 x i8> @vselect_cmpz_ne(<8 x i8> %a, <8 x i8> %b, <8 x i8> %c) {
 ; CHECK-LABEL: vselect_cmpz_ne:
 ; CHECK:  cmeq {{v[0-9]+}}.8b, {{v[0-9]+}}.8b, #0
-; CHECK-NEXT:  not {{v[0-9]+}}.8b, {{v[0-9]+}}.8b
+; CHECK-NEXT:  {{mvn|not}} {{v[0-9]+}}.8b, {{v[0-9]+}}.8b
 ; CHECK-NEXT:  bsl {{v[0-9]+}}.8b, {{v[0-9]+}}.8b, {{v[0-9]+}}.8b
   %cmp = icmp ne <8 x i8> %a, zeroinitializer
   %d = select <8 x i1> %cmp, <8 x i8> %b, <8 x i8> %c
