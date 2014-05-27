@@ -13,6 +13,9 @@
 
 #include "CodeGenFunction.h"
 #include "CGCXXABI.h"
+// +===== Scout ==========================================================+
+#include "CGScoutABI.h"
+// +======================================================================+
 #include "CodeGenModule.h"
 #include "clang/AST/CXXInheritance.h"
 #include "clang/AST/RecordLayout.h"
@@ -214,6 +217,15 @@ void CodeGenFunction::StartThunk(llvm::Function *Fn, GlobalDecl GD,
 
   if (isa<CXXDestructorDecl>(MD))
     CGM.getCXXABI().addImplicitStructorParams(*this, ResultType, FunctionArgs);
+
+  // +===== Scout ==========================================================+
+  // add implicit stencil params
+  const FunctionDecl *FD = cast<FunctionDecl>(GD.getDecl());
+  if(FD->isStencilSpecified()) {
+    llvm::errs() << "stencil in StartThunk\n";
+    CGM.getScoutABI().buildImplicitStencilParams(*this, FunctionArgs);
+  }
+  // +======================================================================+
 
   // Start defining the function.
   StartFunction(GlobalDecl(), ResultType, Fn, FnInfo, FunctionArgs,

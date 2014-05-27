@@ -14,6 +14,9 @@
 #include "CodeGenFunction.h"
 #include "CGCUDARuntime.h"
 #include "CGCXXABI.h"
+// +===== Scout ==========================================================+
+#include "CGScoutABI.h"
+// +======================================================================+
 #include "CGDebugInfo.h"
 #include "CodeGenModule.h"
 #include "CodeGenPGO.h"
@@ -78,6 +81,11 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
     // for now...
     LoopBounds.push_back(0);
   }
+  for(unsigned i = 0; i <= 3; ++i) {
+    ScoutABIInductionVarDecl.push_back(0);
+  }
+
+
   // +=====================================================+ 
 }
 
@@ -783,6 +791,14 @@ void CodeGenFunction::GenerateCode(GlobalDecl GD, llvm::Function *Fn,
 
   if (MD && (isa<CXXConstructorDecl>(MD) || isa<CXXDestructorDecl>(MD)))
     CGM.getCXXABI().addImplicitStructorParams(*this, ResTy, Args);
+
+  // +===== Scout ==========================================================+
+  // add implicit stencil params
+  if(FD->isStencilSpecified()) {
+    llvm::errs() << "stencil in GenerateCode\n";
+    CGM.getScoutABI().buildImplicitStencilParams(*this, Args);
+  }
+  // +======================================================================+
 
   SourceRange BodyRange;
   if (Stmt *Body = FD->getBody()) BodyRange = Body->getSourceRange();

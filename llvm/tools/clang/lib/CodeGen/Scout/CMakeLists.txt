@@ -35,6 +35,7 @@ add_clang_library(scoutCodeGen
   CGBuiltin.cpp
   CodeGenTypes.cpp
   CodeGenModule.cpp
+  CGScoutABI.cpp
   
   DEPENDS
   intrinsics_gen
