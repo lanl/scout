@@ -70,7 +70,7 @@ ExprEngine::ExprEngine(AnalysisManager &mgr, bool gcEnabled,
              this),
     SymMgr(StateMgr.getSymbolManager()),
     svalBuilder(StateMgr.getSValBuilder()),
-    currStmtIdx(0), currBldrCtx(0),
+    currStmtIdx(0), currBldrCtx(nullptr),
     ObjCNoRet(mgr.getASTContext()),
     ObjCGCEnabled(gcEnabled), BR(mgr, *this),
     VisitedCallees(VisitedCalleesIn),
@@ -155,7 +155,7 @@ ProgramStateRef ExprEngine::getInitialState(const LocationContext *InitLoc) {
       // top-level function.  This is our starting assumption for
       // analyzing an "open" program.
       const StackFrameContext *SFC = InitLoc->getCurrentStackFrame();
-      if (SFC->getParent() == 0) {
+      if (SFC->getParent() == nullptr) {
         loc::MemRegionVal L = svalBuilder.getCXXThis(MD, SFC);
         SVal V = state->getSVal(L);
         if (Optional<Loc> LV = V.getAs<Loc>()) {
@@ -211,7 +211,7 @@ ExprEngine::createTemporaryRegionIfNeeded(ProgramStateRef State,
 
   // Create a temporary object region for the inner expression (which may have
   // a more derived type) and bind the value into it.
-  const TypedValueRegion *TR = NULL;
+  const TypedValueRegion *TR = nullptr;
   if (const MaterializeTemporaryExpr *MT =
           dyn_cast<MaterializeTemporaryExpr>(Result)) {
     StorageDuration SD = MT->getStorageDuration();
@@ -335,7 +335,7 @@ void ExprEngine::removeDead(ExplodedNode *Pred, ExplodedNodeSet &Out,
                             const Stmt *DiagnosticStmt,
                             ProgramPoint::Kind K) {
   assert((K == ProgramPoint::PreStmtPurgeDeadSymbolsKind ||
-          ReferenceStmt == 0 || isa<ReturnStmt>(ReferenceStmt))
+          ReferenceStmt == nullptr || isa<ReturnStmt>(ReferenceStmt))
           && "PostStmt is not generally supported by the SymbolReaper yet");
   assert(LC && "Must pass the current (or expiring) LocationContext");
 
@@ -356,7 +356,7 @@ void ExprEngine::removeDead(ExplodedNode *Pred, ExplodedNodeSet &Out,
     LC = LC->getParent();
   }
 
-  const StackFrameContext *SFC = LC ? LC->getCurrentStackFrame() : 0;
+  const StackFrameContext *SFC = LC ? LC->getCurrentStackFrame() : nullptr;
   SymbolReaper SymReaper(SFC, ReferenceStmt, SymMgr, getStoreManager());
 
   getCheckerManager().runCheckersForLiveSymbols(CleanedState, SymReaper);
@@ -664,7 +664,7 @@ void ExprEngine::ProcessTemporaryDtor(const CFGTemporaryDtor D,
 
   // FIXME: Inlining of temporary destructors is not supported yet anyway, so we
   // just put a NULL region for now. This will need to be changed later.
-  VisitCXXDestructor(varType, NULL, D.getBindTemporaryExpr(),
+  VisitCXXDestructor(varType, nullptr, D.getBindTemporaryExpr(),
                      /*IsBase=*/ false, Pred, Dst);
 }
 
@@ -880,7 +880,8 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
            it != et; ++it) {      
         ExplodedNode *N = *it;
         const LocationContext *LCtx = N->getLocationContext();
-        SVal result = svalBuilder.conjureSymbolVal(0, Ex, LCtx, resultType,
+        SVal result = svalBuilder.conjureSymbolVal(nullptr, Ex, LCtx,
+                                                   resultType,
                                                    currBldrCtx->blockCount());
         ProgramStateRef state = N->getState()->BindExpr(Ex, LCtx, result);
         Bldr2.generateNode(S, N, state);
@@ -960,7 +961,7 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
           ProgramStateRef NewState =
             createTemporaryRegionIfNeeded(State, LCtx, OCE->getArg(0));
           if (NewState != State) {
-            Pred = Bldr.generateNode(OCE, Pred, NewState, /*Tag=*/0,
+            Pred = Bldr.generateNode(OCE, Pred, NewState, /*Tag=*/nullptr,
                                      ProgramPoint::PreStmtKind);
             // Did we cache out?
             if (!Pred)
@@ -1219,14 +1220,14 @@ bool ExprEngine::replayWithoutInlining(ExplodedNode *N,
   const StackFrameContext *CalleeSF = CalleeLC->getCurrentStackFrame();
   const StackFrameContext *CallerSF = CalleeSF->getParent()->getCurrentStackFrame();
   assert(CalleeSF && CallerSF);
-  ExplodedNode *BeforeProcessingCall = 0;
+  ExplodedNode *BeforeProcessingCall = nullptr;
   const Stmt *CE = CalleeSF->getCallSite();
 
   // Find the first node before we started processing the call expression.
   while (N) {
     ProgramPoint L = N->getLocation();
     BeforeProcessingCall = N;
-    N = N->pred_empty() ? NULL : *(N->pred_begin());
+    N = N->pred_empty() ? nullptr : *(N->pred_begin());
 
     // Skip the nodes corresponding to the inlined code.
     if (L.getLocationContext()->getCurrentStackFrame() != CallerSF)
@@ -1361,6 +1362,33 @@ static SVal RecoverCastedSymbol(ProgramStateManager& StateMgr,
   return state->getSVal(Ex, LCtx);
 }
 
+#ifndef NDEBUG
+static const Stmt *getRightmostLeaf(const Stmt *Condition) {
+  while (Condition) {
+    const BinaryOperator *BO = dyn_cast<BinaryOperator>(Condition);
+    if (!BO || !BO->isLogicalOp()) {
+      return Condition;
+    }
+    Condition = BO->getRHS()->IgnoreParens();
+  }
+  return nullptr;
+}
+#endif
+
+// Returns the condition the branch at the end of 'B' depends on and whose value
+// has been evaluated within 'B'.
+// In most cases, the terminator condition of 'B' will be evaluated fully in
+// the last statement of 'B'; in those cases, the resolved condition is the
+// given 'Condition'.
+// If the condition of the branch is a logical binary operator tree, the CFG is
+// optimized: in that case, we know that the expression formed by all but the
+// rightmost leaf of the logical binary operator tree must be true, and thus
+// the branch condition is at this point equivalent to the truth value of that
+// rightmost leaf; the CFG block thus only evaluates this rightmost leaf
+// expression in its final statement. As the full condition in that case was
+// not evaluated, and is thus not in the SVal cache, we need to use that leaf
+// expression to evaluate the truth value of the condition in the current state
+// space.
 static const Stmt *ResolveCondition(const Stmt *Condition,
                                     const CFGBlock *B) {
   if (const Expr *Ex = dyn_cast<Expr>(Condition))
@@ -1369,6 +1397,12 @@ static const Stmt *ResolveCondition(const Stmt *Condition,
   const BinaryOperator *BO = dyn_cast<BinaryOperator>(Condition);
   if (!BO || !BO->isLogicalOp())
     return Condition;
+
+  // FIXME: This is a workaround until we handle temporary destructor branches
+  // correctly; currently, temporary destructor branches lead to blocks that
+  // only have a terminator (and no statements). These blocks violate the
+  // invariant this function assumes.
+  if (B->getTerminator().isTemporaryDtorsBranch()) return Condition;
 
   // For logical operations, we still have the case where some branches
   // use the traditional "merge" approach and others sink the branch
@@ -1384,18 +1418,9 @@ static const Stmt *ResolveCondition(const Stmt *Condition,
     Optional<CFGStmt> CS = Elem.getAs<CFGStmt>();
     if (!CS)
       continue;
-    if (CS->getStmt() != Condition)
-      break;
-    return Condition;
-  }
-
-  assert(I != E);
-
-  while (Condition) {
-    BO = dyn_cast<BinaryOperator>(Condition);
-    if (!BO || !BO->isLogicalOp())
-      return Condition;
-    Condition = BO->getRHS()->IgnoreParens();
+    const Stmt *LastStmt = CS->getStmt();
+    assert(LastStmt == Condition || LastStmt == getRightmostLeaf(Condition));
+    return LastStmt;
   }
   llvm_unreachable("could not resolve condition");
 }
@@ -1493,7 +1518,7 @@ void ExprEngine::processBranch(const Stmt *Condition, const Stmt *Term,
         builder.markInfeasible(false);
     }
   }
-  currBldrCtx = 0;
+  currBldrCtx = nullptr;
 }
 
 /// The GDM component containing the set of global variables which have been
@@ -1522,7 +1547,7 @@ void ExprEngine::processStaticInitializer(const DeclStmt *DS,
   builder.generateNode(state, initHasRun, Pred);
   builder.markInfeasible(!initHasRun);
 
-  currBldrCtx = 0;
+  currBldrCtx = nullptr;
 }
 
 /// processIndirectGoto - Called by CoreEngine.  Used to generate successor
@@ -1663,7 +1688,7 @@ void ExprEngine::processSwitch(SwitchNodeBuilder& builder) {
         }
         else {
           defaultIsFeasible = false;
-          DefaultSt = NULL;
+          DefaultSt = nullptr;
         }
       }
 
@@ -1724,7 +1749,7 @@ void ExprEngine::VisitCommonDeclRefExpr(const Expr *Ex, const NamedDecl *D,
         V = UnknownVal();
     }
 
-    Bldr.generateNode(Ex, Pred, state->BindExpr(Ex, LCtx, V), 0,
+    Bldr.generateNode(Ex, Pred, state->BindExpr(Ex, LCtx, V), nullptr,
                       ProgramPoint::PostLValueKind);
     return;
   }
@@ -1736,7 +1761,7 @@ void ExprEngine::VisitCommonDeclRefExpr(const Expr *Ex, const NamedDecl *D,
   }
   if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
     SVal V = svalBuilder.getFunctionPointer(FD);
-    Bldr.generateNode(Ex, Pred, state->BindExpr(Ex, LCtx, V), 0,
+    Bldr.generateNode(Ex, Pred, state->BindExpr(Ex, LCtx, V), nullptr,
                       ProgramPoint::PostLValueKind);
     return;
   }
@@ -1747,7 +1772,7 @@ void ExprEngine::VisitCommonDeclRefExpr(const Expr *Ex, const NamedDecl *D,
     SVal V = svalBuilder.conjureSymbolVal(Ex, LCtx, getContext().VoidPtrTy,
                                           currBldrCtx->blockCount());
     state = state->assume(V.castAs<DefinedOrUnknownSVal>(), true);
-    Bldr.generateNode(Ex, Pred, state->BindExpr(Ex, LCtx, V), 0,
+    Bldr.generateNode(Ex, Pred, state->BindExpr(Ex, LCtx, V), nullptr,
 		      ProgramPoint::PostLValueKind);
     return;
   }
@@ -1777,7 +1802,7 @@ void ExprEngine::VisitLvalArraySubscriptExpr(const ArraySubscriptExpr *A,
                               state->getSVal(Idx, LCtx),
                               state->getSVal(Base, LCtx));
     assert(A->isGLValue());
-    Bldr.generateNode(A, *it, state->BindExpr(A, LCtx, V), 0, 
+    Bldr.generateNode(A, *it, state->BindExpr(A, LCtx, V), nullptr,
                       ProgramPoint::PostLValueKind);
   }
 }
@@ -1851,7 +1876,7 @@ void ExprEngine::VisitMemberExpr(const MemberExpr *M, ExplodedNode *Pred,
             L = UnknownVal();
         }
 
-        Bldr.generateNode(M, *I, state->BindExpr(M, LCtx, L), 0,
+        Bldr.generateNode(M, *I, state->BindExpr(M, LCtx, L), nullptr,
                           ProgramPoint::PostLValueKind);
       } else {
         Bldr.takeNodes(*I);
@@ -1917,9 +1942,9 @@ ProgramStateRef ExprEngine::processPointerEscapedOnBind(ProgramStateRef State,
   const InvalidatedSymbols &EscapedSymbols = Scanner.getSymbols();
   State = getCheckerManager().runCheckersForPointerEscape(State,
                                                           EscapedSymbols,
-                                                          /*CallEvent*/ 0,
+                                                          /*CallEvent*/ nullptr,
                                                           PSK_EscapeOnBind,
-                                                          0);
+                                                          nullptr);
 
   return State;
 }
@@ -1938,7 +1963,7 @@ ExprEngine::notifyCheckersOfPointerEscape(ProgramStateRef State,
   if (!Call)
     return getCheckerManager().runCheckersForPointerEscape(State,
                                                            *Invalidated,
-                                                           0,
+                                                           nullptr,
                                                            PSK_EscapeOther,
                                                            &ITraits);
 
@@ -1995,7 +2020,8 @@ void ExprEngine::evalBind(ExplodedNodeSet &Dst, const Stmt *StoreE,
   // If the location is not a 'Loc', it will already be handled by
   // the checkers.  There is nothing left to do.
   if (!location.getAs<Loc>()) {
-    const ProgramPoint L = PostStore(StoreE, LC, /*Loc*/0, /*tag*/0);
+    const ProgramPoint L = PostStore(StoreE, LC, /*Loc*/nullptr,
+                                     /*tag*/nullptr);
     ProgramStateRef state = Pred->getState();
     state = processPointerEscapedOnBind(state, location, Val);
     Bldr.generateNode(L, state, Pred);
@@ -2016,13 +2042,13 @@ void ExprEngine::evalBind(ExplodedNodeSet &Dst, const Stmt *StoreE,
     state = state->bindLoc(location.castAs<Loc>(),
                            Val, /* notifyChanges = */ !atDeclInit);
 
-    const MemRegion *LocReg = 0;
+    const MemRegion *LocReg = nullptr;
     if (Optional<loc::MemRegionVal> LocRegVal =
             location.getAs<loc::MemRegionVal>()) {
       LocReg = LocRegVal->getRegion();
     }
-    
-    const ProgramPoint L = PostStore(StoreE, LC, LocReg, 0);
+
+    const ProgramPoint L = PostStore(StoreE, LC, LocReg, nullptr);
     Bldr.generateNode(L, state, PredI);
   }
 }
@@ -2411,11 +2437,11 @@ struct DOTGraphTraits<ExplodedNode*> :
               if (const CaseStmt *C = dyn_cast<CaseStmt>(Label)) {
                 Out << "\\lcase ";
                 LangOptions LO; // FIXME.
-                C->getLHS()->printPretty(Out, 0, PrintingPolicy(LO));
+                C->getLHS()->printPretty(Out, nullptr, PrintingPolicy(LO));
 
                 if (const Stmt *RHS = C->getRHS()) {
                   Out << " .. ";
-                  RHS->printPretty(Out, 0, PrintingPolicy(LO));
+                  RHS->printPretty(Out, nullptr, PrintingPolicy(LO));
                 }
 
                 Out << ":";
@@ -2457,7 +2483,7 @@ struct DOTGraphTraits<ExplodedNode*> :
 
         Out << S->getStmtClassName() << ' ' << (const void*) S << ' ';
         LangOptions LO; // FIXME.
-        S->printPretty(Out, 0, PrintingPolicy(LO));
+        S->printPretty(Out, nullptr, PrintingPolicy(LO));
         printLocation(Out, S->getLocStart());
 
         if (Loc.getAs<PreStmt>())
@@ -2547,8 +2573,8 @@ void ExprEngine::ViewGraph(bool trim) {
 
     llvm::ViewGraph(*G.roots_begin(), "ExprEngine");
 
-    GraphPrintCheckerState = NULL;
-    GraphPrintSourceManager = NULL;
+    GraphPrintCheckerState = nullptr;
+    GraphPrintSourceManager = nullptr;
   }
 #endif
 }
@@ -2565,7 +2591,7 @@ void ExprEngine::ViewGraph(ArrayRef<const ExplodedNode*> Nodes) {
   else
     llvm::ViewGraph(*TrimmedG->roots_begin(), "TrimmedExprEngine");
 
-  GraphPrintCheckerState = NULL;
-  GraphPrintSourceManager = NULL;
+  GraphPrintCheckerState = nullptr;
+  GraphPrintSourceManager = nullptr;
 #endif
 }

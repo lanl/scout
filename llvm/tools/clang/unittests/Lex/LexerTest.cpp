@@ -64,15 +64,15 @@ protected:
   std::vector<Token> CheckLex(StringRef Source,
                               ArrayRef<tok::TokenKind> ExpectedTokens) {
     MemoryBuffer *buf = MemoryBuffer::getMemBuffer(Source);
-    (void) SourceMgr.createMainFileIDForMemBuffer(buf);
+    SourceMgr.setMainFileID(SourceMgr.createFileID(buf));
 
     VoidModuleLoader ModLoader;
     HeaderSearch HeaderInfo(new HeaderSearchOptions, SourceMgr, Diags, LangOpts,
                             Target.getPtr());
-    Preprocessor PP(new PreprocessorOptions(), Diags, LangOpts, Target.getPtr(),
-                    SourceMgr, HeaderInfo, ModLoader, /*IILookup =*/ 0,
-                    /*OwnsHeaderSearch =*/ false,
-                    /*DelayInitialization =*/ false);
+    Preprocessor PP(new PreprocessorOptions(), Diags, LangOpts, SourceMgr,
+                    HeaderInfo, ModLoader, /*IILookup =*/0,
+                    /*OwnsHeaderSearch =*/false);
+    PP.Initialize(*Target);
     PP.EnterMainSourceFile();
 
     std::vector<Token> toks;

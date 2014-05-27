@@ -85,7 +85,7 @@ public:
     Qualified
   };
 
-  TypeLoc() : Ty(0), Data(0) { }
+  TypeLoc() : Ty(nullptr), Data(nullptr) { }
   TypeLoc(QualType ty, void *opaqueData)
     : Ty(ty.getAsOpaquePtr()), Data(opaqueData) { }
   TypeLoc(const Type *ty, void *opaqueData)
@@ -635,7 +635,7 @@ public:
   bool isDefinition() const {
     TagDecl *D = getDecl();
     return D->isCompleteDefinition() &&
-         (D->getIdentifier() == 0 || D->getLocation() == getNameLoc());
+           (D->getIdentifier() == nullptr || D->getLocation() == getNameLoc());
   }
 };
 
@@ -790,7 +790,7 @@ public:
     setAttrNameLoc(loc);
     if (hasAttrExprOperand()) {
       setAttrOperandParensRange(SourceRange(loc));
-      setAttrExprOperand(0);
+      setAttrExprOperand(nullptr);
     } else if (hasAttrEnumOperand()) {
       setAttrOperandParensRange(SourceRange(loc));
       setAttrEnumOperandLoc(loc);
@@ -1105,7 +1105,7 @@ public:
 
   void initializeLocal(ASTContext &Context, SourceLocation Loc) {
     setSigilLoc(Loc);
-    setClassTInfo(0);
+    setClassTInfo(nullptr);
   }
 
   SourceRange getLocalSourceRange() const {
@@ -1242,7 +1242,7 @@ public:
     setRParenLoc(Loc);
     setLocalRangeEnd(Loc);
     for (unsigned i = 0, e = getNumParams(); i != e; ++i)
-      setParam(i, NULL);
+      setParam(i, nullptr);
   }
 
   /// \brief Returns the size of the type source info data block that is
@@ -1318,7 +1318,7 @@ public:
   void initializeLocal(ASTContext &Context, SourceLocation Loc) {
     setLBracketLoc(Loc);
     setRBracketLoc(Loc);
-    setSizeExpr(NULL);
+    setSizeExpr(nullptr);
   }
 
   QualType getInnerType() const { return getTypePtr()->getElementType(); }
@@ -1778,7 +1778,7 @@ public:
       // template specialization type, we won't record the nested-name-specifier
       // location information when this type-source location information is
       // part of a nested-name-specifier.
-      getLocalData()->QualifierData = 0;
+      getLocalData()->QualifierData = nullptr;
       return;
     }
 

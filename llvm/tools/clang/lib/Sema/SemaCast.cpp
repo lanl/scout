@@ -90,7 +90,7 @@ namespace {
       if (IsARCUnbridgedCast) {
         castExpr = ImplicitCastExpr::Create(Self.Context,
                                             Self.Context.ARCUnbridgedCastTy,
-                                            CK_Dependent, castExpr, 0,
+                                            CK_Dependent, castExpr, nullptr,
                                             castExpr->getValueKind());
       }
       return Self.Owned(castExpr);
@@ -286,7 +286,7 @@ Sema::BuildCXXNamedCast(SourceLocation OpLoc, tok::TokenKind Kind,
     }
     return Op.complete(CXXReinterpretCastExpr::Create(Context, Op.ResultType,
                                     Op.ValueKind, Op.Kind, Op.SrcExpr.take(),
-                                                      0, DestTInfo, OpLoc,
+                                                      nullptr, DestTInfo, OpLoc,
                                                       Parens.getEnd(),
                                                       AngleBrackets));
   }
@@ -549,7 +549,7 @@ void CastOperation::CheckDynamicCast() {
 
   QualType DestPointee;
   const PointerType *DestPointer = DestType->getAs<PointerType>();
-  const ReferenceType *DestReference = 0;
+  const ReferenceType *DestReference = nullptr;
   if (DestPointer) {
     DestPointee = DestPointer->getPointeeType();
   } else if ((DestReference = DestType->getAs<ReferenceType>())) {
@@ -1067,6 +1067,11 @@ static TryCastResult TryStaticCast(Sema &Self, ExprResult &SrcExpr,
     Kind = CK_BitCast;
     return TC_Success;
   }
+  // Allow ns-pointer to cf-pointer conversion in either direction
+  // with static casts.
+  if (!CStyle &&
+      Self.CheckTollFreeBridgeStaticCast(DestType, SrcExpr.get(), Kind))
+    return TC_Success;
   
   // We tried everything. Everything! Nothing works! :-(
   return TC_NotApplicable;
@@ -1272,7 +1277,7 @@ TryStaticDowncast(Sema &Self, CanQualType SrcType, CanQualType DestType,
     return TC_Failed;
   }
 
-  if (Paths.getDetectedVirtual() != 0) {
+  if (Paths.getDetectedVirtual() != nullptr) {
     QualType VirtualBase(Paths.getDetectedVirtual(), 0);
     Self.Diag(OpRange.getBegin(), diag::err_static_downcast_via_virtual)
       << OrigSrcType << OrigDestType << VirtualBase << OpRange;
@@ -1584,8 +1589,7 @@ static TryCastResult TryConstCast(Sema &Self, ExprResult &SrcExpr,
     // This is a const_cast from a class prvalue to an rvalue reference type.
     // Materialize a temporary to store the result of the conversion.
     SrcExpr = new (Self.Context) MaterializeTemporaryExpr(
-        SrcType, SrcExpr.take(), /*IsLValueReference*/ false,
-        /*ExtendingDecl*/ 0);
+        SrcType, SrcExpr.take(), /*IsLValueReference*/ false);
 
   return TC_Success;
 }
@@ -1735,7 +1739,7 @@ static TryCastResult TryReinterpretCast(Sema &Self, ExprResult &SrcExpr,
     //   same effect as the conversion *reinterpret_cast<T*>(&x) with the
     //   built-in & and * operators.
 
-    const char *inappropriate = 0;
+    const char *inappropriate = nullptr;
     switch (SrcExpr.get()->getObjectKind()) {
     case OK_Ordinary:
       break;
@@ -2087,8 +2091,6 @@ void CastOperation::CheckCXXCStyleCast(bool FunctionalStyle,
 
   if (Self.getLangOpts().ObjCAutoRefCount && tcr == TC_Success)
     checkObjCARCConversion(CCK);
-  else if (Self.getLangOpts().ObjC1 && tcr == TC_Success)
-    Self.CheckTollFreeBridgeCast(DestType, SrcExpr.get());
 
   if (tcr != TC_Success && msg != 0) {
     if (SrcExpr.get()->getType() == Self.Context.OverloadTy) {
@@ -2355,8 +2357,6 @@ void CastOperation::CheckCStyleCast() {
       return;
     }
   }
-  else if (Self.getLangOpts().ObjC1)
-    Self.CheckTollFreeBridgeCast(DestType, SrcExpr.get());
   
   DiagnoseCastOfObjCSEL(Self, SrcExpr, DestType);
   DiagnoseBadFunctionCast(Self, SrcExpr, DestType);

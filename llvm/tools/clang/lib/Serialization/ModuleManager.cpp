@@ -33,14 +33,14 @@ ModuleFile *ModuleManager::lookup(StringRef Name) {
   if (Entry)
     return lookup(Entry);
 
-  return 0;
+  return nullptr;
 }
 
 ModuleFile *ModuleManager::lookup(const FileEntry *File) {
   llvm::DenseMap<const FileEntry *, ModuleFile *>::iterator Known
     = Modules.find(File);
   if (Known == Modules.end())
-    return 0;
+    return nullptr;
 
   return Known->second;
 }
@@ -58,7 +58,7 @@ ModuleManager::addModule(StringRef FileName, ModuleKind Type,
                          off_t ExpectedSize, time_t ExpectedModTime,
                          ModuleFile *&Module,
                          std::string &ErrorStr) {
-  Module = 0;
+  Module = nullptr;
 
   // Look for the file entry. This only fails if the expected size or
   // modification time differ.
@@ -140,6 +140,11 @@ void ModuleManager::removeModules(ModuleIterator first, ModuleIterator last,
   if (first == last)
     return;
 
+  // The first file entry is about to be rebuilt (or there was an error), so
+  // there should be no references to it. Remove it from the cache to close it,
+  // as Windows doesn't seem to allow renaming over an open file.
+  FileMgr.invalidateCache((*first)->File);
+
   // Collect the set of module file pointers that we'll be removing.
   llvm::SmallPtrSet<ModuleFile *, 4> victimSet(first, last);
 
@@ -154,11 +159,10 @@ void ModuleManager::removeModules(ModuleIterator first, ModuleIterator last,
   for (ModuleIterator victim = first; victim != last; ++victim) {
     Modules.erase((*victim)->File);
 
-    FileMgr.invalidateCache((*victim)->File);
     if (modMap) {
       StringRef ModuleName = (*victim)->ModuleName;
       if (Module *mod = modMap->findModule(ModuleName)) {
-        mod->setASTFile(0);
+        mod->setASTFile(nullptr);
       }
     }
     delete *victim;
@@ -181,7 +185,7 @@ ModuleManager::VisitState *ModuleManager::allocateVisitState() {
   if (FirstVisitState) {
     VisitState *Result = FirstVisitState;
     FirstVisitState = FirstVisitState->NextState;
-    Result->NextState = 0;
+    Result->NextState = nullptr;
     return Result;
   }
 
@@ -190,7 +194,7 @@ ModuleManager::VisitState *ModuleManager::allocateVisitState() {
 }
 
 void ModuleManager::returnVisitState(VisitState *State) {
-  assert(State->NextState == 0 && "Visited state is in list?");
+  assert(State->NextState == nullptr && "Visited state is in list?");
   State->NextState = FirstVisitState;
   FirstVisitState = State;
 }
@@ -219,7 +223,7 @@ void ModuleManager::moduleFileAccepted(ModuleFile *MF) {
 }
 
 ModuleManager::ModuleManager(FileManager &FileMgr)
-  : FileMgr(FileMgr), GlobalIndex(), FirstVisitState(0) { }
+  : FileMgr(FileMgr), GlobalIndex(), FirstVisitState(nullptr) {}
 
 ModuleManager::~ModuleManager() {
   for (unsigned i = 0, e = Chain.size(); i != e; ++i)
@@ -279,7 +283,7 @@ ModuleManager::visit(bool (*Visitor)(ModuleFile &M, void *UserData),
     assert(VisitOrder.size() == N && "Visitation order is wrong?");
 
     delete FirstVisitState;
-    FirstVisitState = 0;
+    FirstVisitState = nullptr;
   }
 
   VisitState *State = allocateVisitState();
@@ -381,16 +385,19 @@ bool ModuleManager::lookupModuleFile(StringRef FileName,
                                      off_t ExpectedSize,
                                      time_t ExpectedModTime,
                                      const FileEntry *&File) {
-  File = FileMgr.getFile(FileName, /*openFile=*/false, /*cacheFailure=*/false);
+  // Open the file immediately to ensure there is no race between stat'ing and
+  // opening the file.
+  File = FileMgr.getFile(FileName, /*openFile=*/true, /*cacheFailure=*/false);
 
   if (!File && FileName != "-") {
     return false;
   }
 
   if ((ExpectedSize && ExpectedSize != File->getSize()) ||
-      (ExpectedModTime && ExpectedModTime != File->getModificationTime())) {
+      (ExpectedModTime && ExpectedModTime != File->getModificationTime()))
+    // Do not destroy File, as it may be referenced. If we need to rebuild it,
+    // it will be destroyed by removeModules.
     return true;
-  }
 
   return false;
 }

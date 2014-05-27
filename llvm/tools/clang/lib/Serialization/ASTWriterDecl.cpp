@@ -280,7 +280,7 @@ void ASTDeclWriter::VisitEnumDecl(EnumDecl *D) {
     Record.push_back(MemberInfo->getTemplateSpecializationKind());
     Writer.AddSourceLocation(MemberInfo->getPointOfInstantiation(), Record);
   } else {
-    Writer.AddDeclRef(0, Record);
+    Writer.AddDeclRef(nullptr, Record);
   }
 
   if (!D->hasAttrs() &&
@@ -401,7 +401,7 @@ void ASTDeclWriter::VisitFunctionDecl(FunctionDecl *D) {
     Writer.AddTemplateArgumentList(FTSInfo->TemplateArguments, Record);
 
     // Template args as written.
-    Record.push_back(FTSInfo->TemplateArgumentsAsWritten != 0);
+    Record.push_back(FTSInfo->TemplateArgumentsAsWritten != nullptr);
     if (FTSInfo->TemplateArgumentsAsWritten) {
       Record.push_back(FTSInfo->TemplateArgumentsAsWritten->NumTemplateArgs);
       for (int i=0, e = FTSInfo->TemplateArgumentsAsWritten->NumTemplateArgs;
@@ -452,8 +452,8 @@ void ASTDeclWriter::VisitObjCMethodDecl(ObjCMethodDecl *D) {
   VisitNamedDecl(D);
   // FIXME: convert to LazyStmtPtr?
   // Unlike C/C++, method bodies will never be in header files.
-  bool HasBodyStuff = D->getBody() != 0     ||
-                      D->getSelfDecl() != 0 || D->getCmdDecl() != 0;
+  bool HasBodyStuff = D->getBody() != nullptr     ||
+                      D->getSelfDecl() != nullptr || D->getCmdDecl() != nullptr;
   Record.push_back(HasBodyStuff);
   if (HasBodyStuff) {
     Writer.AddStmt(D->getBody());
@@ -798,7 +798,7 @@ void ASTDeclWriter::VisitVarDecl(VarDecl *D) {
       !D->hasExtInfo() &&
       D->getFirstDecl() == D->getMostRecentDecl() &&
       D->getInitStyle() == VarDecl::CInit &&
-      D->getInit() == 0 &&
+      D->getInit() == nullptr &&
       !isa<ParmVarDecl>(D) &&
       !isa<VarTemplateSpecializationDecl>(D) &&
       !D->isConstexpr() &&
@@ -847,7 +847,7 @@ void ASTDeclWriter::VisitParmVarDecl(ParmVarDecl *D) {
       D->getObjCDeclQualifier() == 0 &&
       !D->isKNRPromoted() &&
       !D->hasInheritedDefaultArg() &&
-      D->getInit() == 0 &&
+      D->getInit() == nullptr &&
       !D->hasUninstantiatedDefaultArg())  // No default expr.
     AbbrevToUse = Writer.getDeclParmVarAbbrev();
 
@@ -856,7 +856,7 @@ void ASTDeclWriter::VisitParmVarDecl(ParmVarDecl *D) {
   assert(!D->getTSCSpec() && "PARM_VAR_DECL can't use TLS");
   assert(D->getAccess() == AS_none && "PARM_VAR_DECL can't be public/private");
   assert(!D->isExceptionVariable() && "PARM_VAR_DECL can't be exception var");
-  assert(D->getPreviousDecl() == 0 && "PARM_VAR_DECL can't be redecl");
+  assert(D->getPreviousDecl() == nullptr && "PARM_VAR_DECL can't be redecl");
   assert(!D->isStaticDataMember() &&
          "PARM_VAR_DECL can't be static data member");
 }
@@ -904,9 +904,11 @@ void ASTDeclWriter::VisitBlockDecl(BlockDecl *D) {
 void ASTDeclWriter::VisitCapturedDecl(CapturedDecl *CD) {
   Record.push_back(CD->getNumParams());
   VisitDecl(CD);
+  Record.push_back(CD->getContextParamPosition());
+  Record.push_back(CD->isNothrow() ? 1 : 0);
   // Body is stored by VisitCapturedStmt.
-  for (unsigned i = 0; i < CD->getNumParams(); ++i)
-    Writer.AddDeclRef(CD->getParam(i), Record);
+  for (unsigned I = 0; I < CD->getNumParams(); ++I)
+    Writer.AddDeclRef(CD->getParam(I), Record);
   Code = serialization::DECL_CAPTURED;
 }
 
@@ -1143,7 +1145,7 @@ void ASTDeclWriter::VisitFriendTemplateDecl(FriendTemplateDecl *D) {
   Record.push_back(D->getNumTemplateParameters());
   for (unsigned i = 0, e = D->getNumTemplateParameters(); i != e; ++i)
     Writer.AddTemplateParameterList(D->getTemplateParameterList(i), Record);
-  Record.push_back(D->getFriendDecl() != 0);
+  Record.push_back(D->getFriendDecl() != nullptr);
   if (D->getFriendDecl())
     Writer.AddDeclRef(D->getFriendDecl(), Record);
   else
@@ -1195,8 +1197,6 @@ void ASTDeclWriter::VisitClassTemplateDecl(ClassTemplateDecl *D) {
       assert(I->isCanonicalDecl() && "Expected only canonical decls in set");
       Writer.AddDeclRef(&*I, Record);
     }
-
-    Writer.AddTypeRef(D->getCommonPtr()->InjectedClassNameType, Record);
   }
   Code = serialization::DECL_CLASS_TEMPLATE;
 }
@@ -1244,7 +1244,7 @@ void ASTDeclWriter::VisitClassTemplatePartialSpecializationDecl(
   Writer.AddASTTemplateArgumentListInfo(D->getTemplateArgsAsWritten(), Record);
 
   // These are read/set from/to the first declaration.
-  if (D->getPreviousDecl() == 0) {
+  if (D->getPreviousDecl() == nullptr) {
     Writer.AddDeclRef(D->getInstantiatedFromMember(), Record);
     Record.push_back(D->isMemberSpecialization());
   }
@@ -1320,7 +1320,7 @@ void ASTDeclWriter::VisitVarTemplatePartialSpecializationDecl(
   Writer.AddASTTemplateArgumentListInfo(D->getTemplateArgsAsWritten(), Record);
 
   // These are read/set from/to the first declaration.
-  if (D->getPreviousDecl() == 0) {
+  if (D->getPreviousDecl() == nullptr) {
     Writer.AddDeclRef(D->getInstantiatedFromMember(), Record);
     Record.push_back(D->isMemberSpecialization());
   }
@@ -1387,7 +1387,7 @@ void ASTDeclWriter::VisitNonTypeTemplateParmDecl(NonTypeTemplateParmDecl *D) {
   } else {
     // Rest of NonTypeTemplateParmDecl.
     Record.push_back(D->isParameterPack());
-    Record.push_back(D->getDefaultArgument() != 0);
+    Record.push_back(D->getDefaultArgument() != nullptr);
     if (D->getDefaultArgument()) {
       Writer.AddStmt(D->getDefaultArgument());
       Record.push_back(D->defaultArgumentWasInherited());

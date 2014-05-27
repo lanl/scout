@@ -97,7 +97,7 @@ struct FullCommentParts {
 
 FullCommentParts::FullCommentParts(const FullComment *C,
                                    const CommandTraits &Traits) :
-    Brief(NULL), Headerfile(NULL), FirstParagraph(NULL) {
+    Brief(nullptr), Headerfile(nullptr), FirstParagraph(nullptr) {
   for (Comment::child_iterator I = C->child_begin(), E = C->child_end();
        I != E; ++I) {
     const Comment *Child = *I;
@@ -669,8 +669,8 @@ void CommentASTToXMLConverter::visitInlineCommandComment(
 void CommentASTToXMLConverter::visitHTMLStartTagComment(
     const HTMLStartTagComment *C) {
   Result << "<rawHTML";
-  if (C->isSafeToPassThrough())
-    Result << " isSafeToPassThrough=\"1\"";
+  if (C->isMalformed())
+    Result << " isMalformed=\"1\"";
   Result << ">";
   {
     SmallString<32> Tag;
@@ -686,8 +686,8 @@ void CommentASTToXMLConverter::visitHTMLStartTagComment(
 void
 CommentASTToXMLConverter::visitHTMLEndTagComment(const HTMLEndTagComment *C) {
   Result << "<rawHTML";
-  if (C->isSafeToPassThrough())
-    Result << " isSafeToPassThrough=\"1\"";
+  if (C->isMalformed())
+    Result << " isMalformed=\"1\"";
   Result << ">&lt;/" << C->getTagName() << "&gt;</rawHTML>";
 }
 
@@ -1150,7 +1150,7 @@ void CommentToXMLConverter::convertCommentToHTML(const FullComment *FC,
 void CommentToXMLConverter::convertHTMLTagNodeToText(
     const comments::HTMLTagComment *HTC, SmallVectorImpl<char> &Text,
     const ASTContext &Context) {
-  CommentASTToHTMLConverter Converter(0, Text,
+  CommentASTToHTMLConverter Converter(nullptr, Text,
                                       Context.getCommentCommandTraits());
   Converter.visit(HTC);
 }
