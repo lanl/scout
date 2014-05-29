@@ -52,30 +52,33 @@
  * ##### 
  */ 
 
-#include "CGScoutABI.h"
+#include "CGCall.h"
+#include "CodeGenFunction.h"
+#include "CodeGenModule.h"
 
 using namespace clang;
 using namespace CodeGen;
 
-void CGScoutABI::buildImplicitStencilParams(CodeGenFunction &CGF, FunctionArgList &params) {
-  llvm::errs() << "in BuildImplicitStencilParams\n";
-  const FunctionDecl *FD = cast<FunctionDecl>(CGF.CurGD.getDecl());
+const CGFunctionInfo &
+CodeGenTypes::arrangeStencilFunctionDeclaration(const FunctionDecl *FD) {
 
-  ASTContext &Context = CGF.getContext();
-  QualType T = Context.getPointerType(Context.IntTy);
-  ImplicitParamDecl* D;
-  for(int i = 0; i<=3; i++) {
-    D = ImplicitParamDecl::Create(CGM.getContext(), 0, FD->getLocation(),
-        &CGM.getContext().Idents.get("inductx"), T);
-    params.insert(params.begin(), D);
-    getInductionVarDecl(CGF, 3-i) = D;
+  CanQualType FTy = FD->getType()->getCanonicalTypeUnqualified();
+  CanQual<FunctionProtoType> FTP = FTy.getAs<FunctionProtoType>();
+
+  SmallVector<CanQualType, 16> argTypes;
+
+  //stencil args
+  for (unsigned i = 0; i <=3; i++) {
+    argTypes.push_back(Context.getPointerType(
+        CanQualType::CreateUnsafe(Context.getIntPtrType())));
   }
-}
 
-void CGScoutABI::EmitImplicitStencilParams(CodeGenFunction &CGF) {
+  // Add the formal parameters.
+  for (unsigned i = 0, e = FTP->getNumParams(); i != e; ++i)
+    argTypes.push_back(FTP->getParamType(i));
 
-}
 
-CodeGen::CGScoutABI *CodeGen::createScoutABI(CodeGenModule &CGM) {
-  return new CGScoutABI(CGM);
+  return arrangeLLVMFunctionInfo(FTP->getReturnType(), false, argTypes,
+                                     FTP->getExtInfo(), RequiredArgs::All);
+
 }

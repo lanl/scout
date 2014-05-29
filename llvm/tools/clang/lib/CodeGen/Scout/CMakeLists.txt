@@ -24,6 +24,7 @@ set(LLVM_LINK_COMPONENTS
   )
 
 add_clang_library(scoutCodeGen
+  CGCall.cpp
   CGDebugInfo.cpp
   CGDecl.cpp
   CGExpr.cpp
