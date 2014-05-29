@@ -10,14 +10,11 @@
 LLDB_LEVEL := ..
 include $(LLDB_LEVEL)/../../Makefile.config
 
-# enable lldb-gdbserver for supported platforms
 DIRS :=
+
+# enable lldb-gdbserver for supported platforms
 ifneq (,$(strip $(filter $(HOST_OS), FreeBSD Linux)))
-ifneq (,$(strip $(filter $(HOST_ARCH), x86_64)))
 DIRS += lldb-gdbserver
-else
-endif
-else
 endif
 
 ifneq ($(HOST_OS),MingW)
@@ -26,6 +23,10 @@ endif
 
 ifeq ($(HOST_OS),Darwin)
 DIRS += debugserver
+endif
+
+ifeq ($(HOST_OS),Linux)
+DIRS += lldb-mi
 endif
 
 DIRS += driver

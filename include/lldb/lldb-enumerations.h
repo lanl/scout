@@ -200,6 +200,22 @@ namespace lldb {
 
 
     //----------------------------------------------------------------------
+    // The results of expression evaluation:
+    //----------------------------------------------------------------------
+    typedef enum ExpressionResults
+    {
+        eExpressionCompleted = 0,
+        eExpressionSetupError,
+        eExpressionParseError,
+        eExpressionDiscarded,
+        eExpressionInterrupted,
+        eExpressionHitBreakpoint,
+        eExpressionTimedOut,
+        eExpressionResultUnavailable,
+        eExpressionStoppedForDebug
+    } ExpressionResults;
+
+    //----------------------------------------------------------------------
     // Connection Status Types
     //----------------------------------------------------------------------
     typedef enum ConnectionStatus
@@ -209,7 +225,8 @@ namespace lldb {
         eConnectionStatusError,           // Check GetError() for details
         eConnectionStatusTimedOut,        // Request timed out
         eConnectionStatusNoConnection,    // No connection
-        eConnectionStatusLostConnection   // Lost connection while connected to a valid connection
+        eConnectionStatusLostConnection,  // Lost connection while connected to a valid connection
+        eConnectionStatusInterrupted      // Interrupted read
     } ConnectionStatus;
 
     typedef enum ErrorType
@@ -217,7 +234,8 @@ namespace lldb {
         eErrorTypeInvalid,
         eErrorTypeGeneric,      ///< Generic errors that can be any value.
         eErrorTypeMachKernel,   ///< Mach kernel error codes.
-        eErrorTypePOSIX         ///< POSIX error codes.
+        eErrorTypePOSIX,        ///< POSIX error codes.
+        eErrorTypeExpression    ///< These are from the ExpressionResults enum.
     } ErrorType;
 
 
@@ -752,6 +770,21 @@ namespace lldb {
         eQueueKindSerial,
         eQueueKindConcurrent
     } QueueKind;
+    
+    //----------------------------------------------------------------------
+    // Expression Evaluation Stages
+    // These are the cancellable stages of expression evaluation, passed to the
+    // expression evaluation callback, so that you can interrupt expression
+    // evaluation at the various points in its lifecycle.
+    //----------------------------------------------------------------------
+    typedef enum ExpressionEvaluationPhase
+    {
+        eExpressionEvaluationParse = 0,
+        eExpressionEvaluationIRGen,
+        eExpressionEvaluationExecution,
+        eExpressionEvaluationComplete
+    } ExpressionEvaluationPhase;
+    
 
 } // namespace lldb
 

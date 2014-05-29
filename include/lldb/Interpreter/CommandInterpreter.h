@@ -332,6 +332,9 @@ public:
 
     void
     Initialize ();
+    
+    void
+    Clear ();
 
     void
     SetScriptLanguage (lldb::ScriptLanguage lang);
@@ -476,12 +479,15 @@ protected:
                             std::string &line);
 
     virtual ConstString
-    GetControlSequence (char ch)
+    IOHandlerGetControlSequence (char ch)
     {
         if (ch == 'd')
             return ConstString("quit\n");
         return ConstString();
     }
+    
+    virtual bool
+    IOHandlerInterrupt (IOHandler &io_handler);
 
     size_t
     GetProcessOutput ();

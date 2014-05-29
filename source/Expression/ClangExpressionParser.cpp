@@ -273,11 +273,10 @@ ClangExpressionParser::ClangExpressionParser (ExecutionContextScope *exe_scope,
     
     std::unique_ptr<clang::ASTContext> ast_context(new ASTContext(m_compiler->getLangOpts(),
                                                                  m_compiler->getSourceManager(),
-                                                                 &m_compiler->getTarget(),
                                                                  m_compiler->getPreprocessor().getIdentifierTable(),
                                                                  *m_selector_table.get(),
-                                                                 *m_builtin_context.get(),
-                                                                 0));
+                                                                 *m_builtin_context.get()));
+    ast_context->InitBuiltinTypes(m_compiler->getTarget());
     
     ClangExpressionDeclMap *decl_map = m_expr.DeclMap();
     
@@ -312,7 +311,8 @@ ClangExpressionParser::Parse (Stream &stream)
     diag_buf->FlushDiagnostics (m_compiler->getDiagnostics());
     
     const char *expr_text = m_expr.Text();
-    
+
+    clang::SourceManager &SourceMgr = m_compiler->getSourceManager();
     bool created_main_file = false;
     if (m_compiler->getCodeGenOpts().getDebugInfo() == CodeGenOptions::FullDebugInfo)
     {
@@ -341,7 +341,9 @@ ClangExpressionParser::Parse (Stream &stream)
                 if (bytes_written == expr_text_len)
                 {
                     file.Close();
-                    m_compiler->getSourceManager().createMainFileID(m_file_manager->getFile(temp_source_path));
+                    SourceMgr.setMainFileID(SourceMgr.createFileID(
+                        m_file_manager->getFile(temp_source_path),
+                        SourceLocation(), SrcMgr::C_User));
                     created_main_file = true;
                 }
             }
@@ -351,7 +353,7 @@ ClangExpressionParser::Parse (Stream &stream)
     if (!created_main_file)
     {
         MemoryBuffer *memory_buffer = MemoryBuffer::getMemBufferCopy(expr_text, __FUNCTION__);
-        m_compiler->getSourceManager().createMainFileIDForMemBuffer (memory_buffer);
+        SourceMgr.setMainFileID(SourceMgr.createFileID(memory_buffer));
     }
     
     diag_buf->BeginSourceFile(m_compiler->getLangOpts(), &m_compiler->getPreprocessor());

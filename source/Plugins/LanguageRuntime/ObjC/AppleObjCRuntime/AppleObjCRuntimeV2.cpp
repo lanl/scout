@@ -1846,13 +1846,13 @@ AppleObjCRuntimeV2::UpdateISAToDescriptorMapDynamic(RemoteNXMapTable &hash_table
         errors.Clear();
         
         // Run the function
-        ExecutionResults results = m_get_class_info_function->ExecuteFunction (exe_ctx,
+        ExpressionResults results = m_get_class_info_function->ExecuteFunction (exe_ctx,
                                                                                &m_get_class_info_args,
                                                                                options,
                                                                                errors,
                                                                                return_value);
         
-        if (results == eExecutionCompleted)
+        if (results == eExpressionCompleted)
         {
             // The result is the number of ClassInfo structures that were filled in
             uint32_t num_class_infos = return_value.GetScalar().ULong();
@@ -2096,13 +2096,13 @@ AppleObjCRuntimeV2::UpdateISAToDescriptorMapSharedCache()
         errors.Clear();
         
         // Run the function
-        ExecutionResults results = m_get_shared_cache_class_info_function->ExecuteFunction (exe_ctx,
+        ExpressionResults results = m_get_shared_cache_class_info_function->ExecuteFunction (exe_ctx,
                                                                                             &m_get_shared_cache_class_info_args,
                                                                                             options,
                                                                                             errors,
                                                                                             return_value);
         
-        if (results == eExecutionCompleted)
+        if (results == eExpressionCompleted)
         {
             // The result is the number of ClassInfo structures that were filled in
             uint32_t num_class_infos = return_value.GetScalar().ULong();
@@ -2582,7 +2582,7 @@ AppleObjCRuntimeV2::TaggedPointerVendorRuntimeAssisted::GetClassDescriptor (lldb
         uintptr_t slot_ptr = slot*process->GetAddressByteSize()+m_objc_debug_taggedpointer_classes;
         Error error;
         uintptr_t slot_data = process->ReadPointerFromMemory(slot_ptr, error);
-        if (error.Fail() || slot_data == 0 || slot_data == LLDB_INVALID_ADDRESS)
+        if (error.Fail() || slot_data == 0 || slot_data == uintptr_t(LLDB_INVALID_ADDRESS))
             return nullptr;
         actual_class_descriptor_sp = m_runtime.GetClassDescriptorFromISA((ObjCISA)slot_data);
         if (!actual_class_descriptor_sp)
