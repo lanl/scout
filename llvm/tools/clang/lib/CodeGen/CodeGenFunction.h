@@ -83,6 +83,9 @@ class CGFunctionInfo;
 class CGRecordLayout;
 class CGBlockInfo;
 class CGCXXABI;
+  // +===== Scout ==========================================================+
+  class CGScoutABI;
+  // +======================================================================+
 class BlockFlags;
 class BlockFieldFlags;
 
@@ -104,6 +107,9 @@ class CodeGenFunction : public CodeGenTypeCache {
   void operator=(const CodeGenFunction &) LLVM_DELETED_FUNCTION;
 
   friend class CGCXXABI;
+  // +===== Scout ==========================================================+
+  friend class CGScoutABI;
+  // +======================================================================+
 public:
   /// A jump destination is an abstract label, branching to which may
   /// require a jump out through normal cleanups.
@@ -1011,6 +1017,10 @@ private:
   ImplicitParamDecl *CXXABIThisDecl;
   llvm::Value *CXXABIThisValue;
   llvm::Value *CXXThisValue;
+
+  // +===== Scout ==========================================================+
+  llvm::SmallVector<ImplicitParamDecl*, 4 > ScoutABIInductionVarDecl;
+  // +======================================================================+
 
   /// The value of 'this' to use when evaluating CXXDefaultInitExprs within
   /// this expression.

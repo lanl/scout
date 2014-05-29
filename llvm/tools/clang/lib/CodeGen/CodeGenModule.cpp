@@ -14,6 +14,9 @@
 #include "CodeGenModule.h"
 #include "CGCUDARuntime.h"
 #include "CGCXXABI.h"
+// +===== Scout ==========================================================+
+#include "CGScoutABI.h"
+// +======================================================================+
 #include "CGCall.h"
 #include "CGDebugInfo.h"
 #include "CGObjCRuntime.h"
@@ -85,7 +88,8 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
       TheTargetCodeGenInfo(nullptr), Types(*this), VTables(*this),
       ObjCRuntime(nullptr), 
       // ===== Scout =========================================
-      ScoutRuntime(nullptr),
+    ScoutABI(createScoutABI(*this)),
+    ScoutRuntime(nullptr),
       // =====================================================
       OpenCLRuntime(nullptr), OpenMPRuntime(nullptr),
       CUDARuntime(nullptr), DebugInfo(nullptr), ARCData(nullptr),

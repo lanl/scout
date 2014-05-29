@@ -82,6 +82,7 @@ class CodeGenTBAA;
 class CGCXXABI;
 class CGDebugInfo;
   // ===== Scout ============
+  class CGScoutABI;
   class CGScoutRuntime;
   // ========================
 class CGObjCRuntime;
@@ -273,6 +274,7 @@ class CodeGenModule : public CodeGenTypeCache {
 
   CGObjCRuntime* ObjCRuntime;
   // ===== Scout ======================
+  std::unique_ptr<CGScoutABI> ScoutABI;
   CGScoutRuntime* ScoutRuntime;
   // ==================================
   CGOpenCLRuntime* OpenCLRuntime;
@@ -580,6 +582,9 @@ public:
   const llvm::DataLayout &getDataLayout() const { return TheDataLayout; }
   const TargetInfo &getTarget() const { return Target; }
   CGCXXABI &getCXXABI() const { return *ABI; }
+  // +===== Scout ==========================================================+
+  CGScoutABI &getScoutABI() const { return *ScoutABI; }
+  // +======================================================================+
   llvm::LLVMContext &getLLVMContext() { return VMContext; }
 
   bool shouldUseTBAA() const { return TBAA != nullptr; }
