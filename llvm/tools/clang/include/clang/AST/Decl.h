@@ -630,7 +630,7 @@ struct EvaluatedStmt {
   bool IsEvaluating : 1;
 
   /// \brief Whether we already checked whether this statement was an
-  /// integral constant expression.
+  /// integral constant exprFFession.
   bool CheckedICE : 1;
 
   /// \brief Whether we are checking whether this statement is an
@@ -1222,7 +1222,7 @@ public:
   ImplicitParamDecl(ASTContext &C, DeclContext *DC, SourceLocation IdLoc,
                     IdentifierInfo *Id, QualType Type,
                     /*+===== Scout =====*/ Kind DK=ImplicitParam /*+=====*/ )
-    : VarDecl(/*+===== Scout =====*/ DK /*+=====*/,
+    : VarDecl(/*+===== Scout =====*/ DK /*+=====*/, C,
               DC, IdLoc, IdLoc, Id, Type,
                             /*tinfo*/ nullptr, SC_None) {
 

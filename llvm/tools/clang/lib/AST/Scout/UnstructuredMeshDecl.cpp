@@ -79,12 +79,13 @@ using namespace clang;
 //===----------------------------------------------------------------------===//
 //
 //
-UnstructuredMeshDecl::UnstructuredMeshDecl(DeclContext* DC,
+UnstructuredMeshDecl::UnstructuredMeshDecl(const ASTContext &C,
+                                           DeclContext* DC,
                                            SourceLocation StartLoc,
                                            SourceLocation IdLoc,
                                            IdentifierInfo* Id,
                                            UnstructuredMeshDecl* PrevDecl)
-  : MeshDecl(UnstructuredMesh, TTK_UnstructuredMesh, DC, IdLoc, Id, PrevDecl, StartLoc) { }
+  : MeshDecl(UnstructuredMesh, TTK_UnstructuredMesh, C, DC, IdLoc, Id, PrevDecl, StartLoc) { }
 
 
 UnstructuredMeshDecl *UnstructuredMeshDecl::Create(const ASTContext &C,
@@ -94,7 +95,7 @@ UnstructuredMeshDecl *UnstructuredMeshDecl::Create(const ASTContext &C,
                                                    IdentifierInfo *Id,
                                                    UnstructuredMeshDecl* PrevDecl) {
 
-  UnstructuredMeshDecl* M = new (C, DC) UnstructuredMeshDecl(DC,
+  UnstructuredMeshDecl* M = new (C, DC) UnstructuredMeshDecl(C, DC,
                                                          StartLoc,
                                                          IdLoc, Id,
                                                          PrevDecl);
@@ -105,7 +106,7 @@ UnstructuredMeshDecl *UnstructuredMeshDecl::Create(const ASTContext &C,
 
 UnstructuredMeshDecl *UnstructuredMeshDecl::CreateDeserialized(const ASTContext &C,
                                                                unsigned ID) {
-  UnstructuredMeshDecl *M = new (C, ID) UnstructuredMeshDecl(0, SourceLocation(),
+  UnstructuredMeshDecl *M = new (C, ID) UnstructuredMeshDecl(C, 0, SourceLocation(),
                                                            SourceLocation(), 0, 0);
   M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
   return M;

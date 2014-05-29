@@ -2022,7 +2022,7 @@ llvm::GlobalValue::LinkageTypes CodeGenModule::getLLVMLinkageVarDefinition(
   // without this fix but common in scc. For a global struct
   // there is no linkage qualifier.
   if(getLangOpts().ScoutCPlusPlus &&
-      isa<MeshType>(D->getType()) && !D->hasExternalStorage()) {
+      isa<MeshType>(VD->getType()) && !VD->hasExternalStorage()) {
     return llvm::GlobalVariable::CommonLinkage;
   }
   // +======================================================================+

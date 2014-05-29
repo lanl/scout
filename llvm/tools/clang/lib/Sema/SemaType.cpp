@@ -2506,14 +2506,6 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
 }
 
 /// Produce an appropriate diagnostic for an ambiguity between a function
-  // +===== Scout ============================================================+
-  case DeclaratorChunk::UniformMesh:
-  case DeclaratorChunk::RectilinearMesh:
-  case DeclaratorChunk::StructuredMesh:
-  case DeclaratorChunk::UnstructuredMesh:
-  case DeclaratorChunk::Window:
-  case DeclaratorChunk::Image:
-  // +========================================================================+
 /// declarator and a C++ direct-initializer.
 static void warnAboutAmbiguousFunction(Sema &S, Declarator &D,
                                        DeclaratorChunk &DeclType, QualType RT) {

@@ -65,7 +65,8 @@ namespace clang {
 class RectilinearMeshDecl : public MeshDecl {
 
 protected:
-  RectilinearMeshDecl(DeclContext* DC,
+  RectilinearMeshDecl(const ASTContext &C,
+                      DeclContext* DC,
                       SourceLocation L,
                       SourceLocation StartL,
                       IdentifierInfo* Id,

@@ -268,7 +268,7 @@ static void ParseProgName(SmallVectorImpl<const char *> &ArgVector,
   for (int Components = 2; Components; --Components) {
     bool FoundMatch = false;
     size_t i;
-    
+
     for (i = 0; i < sizeof(suffixes) / sizeof(suffixes[0]); ++i) {
       if (ProgNameRef.endswith(suffixes[i].Suffix)) {
         FoundMatch = true;
@@ -523,7 +523,7 @@ int main(int argc_, const char **argv_) {
   DiagnosticsEngine Diags(DiagID, &*DiagOpts, DiagClient);
   ProcessWarningOptions(Diags, *DiagOpts, /*ReportDiags=*/false);
 
-  Driver TheDriver(Path, llvm::sys::getDefaultTargetTriple(), "a.out", Diags);
+  Driver TheDriver(Path, llvm::sys::getDefaultTargetTriple(), Diags);
 
   // Patch the default driver name to match 'scc' (scout) vs. clang.
   TheDriver.setTitle("scc (scout) \"clang & gcc-compatible\" driver");

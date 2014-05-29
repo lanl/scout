@@ -3672,7 +3672,7 @@ FunctionDecl *FunctionDecl::Create(ASTContext &C, DeclContext *DC,
                                    ) {
 
   FunctionDecl *New =
-      new (C, DC) FunctionDecl(Function, C, DC, StartLoc, NameInfo, T, TInfo,
+      new (C, DC) FunctionDecl(Function, C, DC, StartLoc, NameInfo, T, TInfo, SC,
                                isInlineSpecified, isConstexprSpecified,
                                /* +===== Scout ==============*/
                                isStencilSpecified

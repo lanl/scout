@@ -157,11 +157,13 @@ void CGDebugInfo::completeClassData(const UniformMeshDecl *MD) {
     return;
   QualType Ty = CGM.getContext().getUniformMeshType(MD);
   void* TyPtr = Ty.getAsOpaquePtr();
-  if (CompletedTypeCache.count(TyPtr))
+  auto I = TypeCache.find(TyPtr);
+  if (I != TypeCache.end() &&
+      !llvm::DIType(cast<llvm::MDNode>(static_cast<llvm::Value *>(I->second)))
+      .isForwardDecl())
     return;
   llvm::DIType Res = CreateTypeDefinition(Ty->castAs<UniformMeshType>());
   assert(!Res.isForwardDecl());
-  CompletedTypeCache[TyPtr] = Res;
   TypeCache[TyPtr] = Res;
 }
 
@@ -170,11 +172,13 @@ void CGDebugInfo::completeClassData(const RectilinearMeshDecl *MD) {
     return;
   QualType Ty = CGM.getContext().getRectilinearMeshType(MD);
   void* TyPtr = Ty.getAsOpaquePtr();
-  if (CompletedTypeCache.count(TyPtr))
+  auto I = TypeCache.find(TyPtr);
+  if (I != TypeCache.end() &&
+      !llvm::DIType(cast<llvm::MDNode>(static_cast<llvm::Value *>(I->second)))
+      .isForwardDecl())
     return;
   llvm::DIType Res = CreateTypeDefinition(Ty->castAs<RectilinearMeshType>());
   assert(!Res.isForwardDecl());
-  CompletedTypeCache[TyPtr] = Res;
   TypeCache[TyPtr] = Res;
 }
 
@@ -183,11 +187,13 @@ void CGDebugInfo::completeClassData(const StructuredMeshDecl *MD) {
     return;
   QualType Ty = CGM.getContext().getStructuredMeshType(MD);
   void* TyPtr = Ty.getAsOpaquePtr();
-  if (CompletedTypeCache.count(TyPtr))
+  auto I = TypeCache.find(TyPtr);
+  if (I != TypeCache.end() &&
+      !llvm::DIType(cast<llvm::MDNode>(static_cast<llvm::Value *>(I->second)))
+      .isForwardDecl())
     return;
   llvm::DIType Res = CreateTypeDefinition(Ty->castAs<StructuredMeshType>());
   assert(!Res.isForwardDecl());
-  CompletedTypeCache[TyPtr] = Res;
   TypeCache[TyPtr] = Res;
 }
 
@@ -196,11 +202,12 @@ void CGDebugInfo::completeClassData(const UnstructuredMeshDecl *MD) {
     return;
   QualType Ty = CGM.getContext().getUnstructuredMeshType(MD);
   void* TyPtr = Ty.getAsOpaquePtr();
-  if (CompletedTypeCache.count(TyPtr))
-    return;
-  llvm::DIType Res = CreateTypeDefinition(Ty->castAs<UnstructuredMeshType>());
+  auto I = TypeCache.find(TyPtr);
+  if (I != TypeCache.end() &&
+      !llvm::DIType(cast<llvm::MDNode>(static_cast<llvm::Value *>(I->second)))
+      .isForwardDecl())
+    return;  llvm::DIType Res = CreateTypeDefinition(Ty->castAs<UnstructuredMeshType>());
   assert(!Res.isForwardDecl());
-  CompletedTypeCache[TyPtr] = Res;
   TypeCache[TyPtr] = Res;
 }
 
@@ -264,9 +271,6 @@ llvm::DIType CGDebugInfo::CreateTypeDefinition(const UniformMeshType *Ty) {
   // Push the mesh on region stack.
   LexicalBlockStack.push_back(&*FwdDecl);
   RegionMap[MD] = llvm::WeakVH(FwdDecl);
-
-  // Add this to the completed-type cache while we're completing it recursively.
-  CompletedTypeCache[QualType(Ty, 0).getAsOpaquePtr()] = FwdDecl;
 
   // Convert all the elements.
   SmallVector<llvm::Value *, 16> EltTys;
@@ -398,10 +402,6 @@ llvm::DIType CGDebugInfo::getOrCreateLimitedType(const UniformMeshType *Ty,
   // correct order if the full type is needed.
   Res.setTypeArray(T.getTypeArray());
 
-  if (T && T.isForwardDecl())
-    ReplaceMap.push_back(
-        std::make_pair(QTy.getAsOpaquePtr(), static_cast<llvm::Value *>(T)));
-
   // And update the type cache.
   TypeCache[QTy.getAsOpaquePtr()] = Res;
   return Res;
@@ -466,9 +466,6 @@ llvm::DIType CGDebugInfo::CreateTypeDefinition(const RectilinearMeshType *Ty) {
   // Push the mesh on region stack.
   LexicalBlockStack.push_back(&*FwdDecl);
   RegionMap[MD] = llvm::WeakVH(FwdDecl);
-
-  // Add this to the completed-type cache while we're completing it recursively.
-  CompletedTypeCache[QualType(Ty, 0).getAsOpaquePtr()] = FwdDecl;
 
   // Convert all the elements.
   SmallVector<llvm::Value *, 16> EltTys;
@@ -601,10 +598,6 @@ llvm::DIType CGDebugInfo::getOrCreateLimitedType(const RectilinearMeshType *Ty,
   // correct order if the full type is needed.
   Res.setTypeArray(T.getTypeArray());
 
-  if (T && T.isForwardDecl())
-    ReplaceMap.push_back(
-        std::make_pair(QTy.getAsOpaquePtr(), static_cast<llvm::Value *>(T)));
-
   // And update the type cache.
   TypeCache[QTy.getAsOpaquePtr()] = Res;
   return Res;
@@ -669,9 +662,6 @@ llvm::DIType CGDebugInfo::CreateTypeDefinition(const StructuredMeshType *Ty) {
   // Push the mesh on region stack.
   LexicalBlockStack.push_back(&*FwdDecl);
   RegionMap[MD] = llvm::WeakVH(FwdDecl);
-
-  // Add this to the completed-type cache while we're completing it recursively.
-  CompletedTypeCache[QualType(Ty, 0).getAsOpaquePtr()] = FwdDecl;
 
   // Convert all the elements.
   SmallVector<llvm::Value *, 16> EltTys;
@@ -806,10 +796,6 @@ llvm::DIType CGDebugInfo::getOrCreateLimitedType(const StructuredMeshType *Ty,
   // correct order if the full type is needed.
   Res.setTypeArray(T.getTypeArray());
 
-  if (T && T.isForwardDecl())
-    ReplaceMap.push_back(
-        std::make_pair(QTy.getAsOpaquePtr(), static_cast<llvm::Value *>(T)));
-
   // And update the type cache.
   TypeCache[QTy.getAsOpaquePtr()] = Res;
   return Res;
@@ -941,10 +927,6 @@ llvm::DIType CGDebugInfo::getOrCreateLimitedType(const UnstructuredMeshType *Ty,
   // correct order if the full type is needed.
   Res.setTypeArray(T.getTypeArray());
 
-  if (T && T.isForwardDecl())
-    ReplaceMap.push_back(
-        std::make_pair(QTy.getAsOpaquePtr(), static_cast<llvm::Value *>(T)));
-
   // And update the type cache.
   TypeCache[QTy.getAsOpaquePtr()] = Res;
   return Res;
@@ -977,9 +959,6 @@ llvm::DIType CGDebugInfo::CreateTypeDefinition(const UnstructuredMeshType *Ty) {
   // Push the mesh on region stack.
   LexicalBlockStack.push_back(&*FwdDecl);
   RegionMap[MD] = llvm::WeakVH(FwdDecl);
-
-  // Add this to the completed-type cache while we're completing it recursively.
-  CompletedTypeCache[QualType(Ty, 0).getAsOpaquePtr()] = FwdDecl;
 
   // Convert all the elements.
   SmallVector<llvm::Value *, 16> EltTys;

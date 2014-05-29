@@ -112,30 +112,30 @@ void DwarfUnit::constructMeshMemberDIE(DIE &Buffer, DIScoutDerivedType DT) {
   // is simpler because we do not have classes which have virtual members,
   // access/visibility, etc.
 
-  DIE *MemberDie = createAndAddDIE(DT.getTag(), Buffer);
+  DIE *MemberDie = &createAndAddDIE(DT.getTag(), Buffer);
   StringRef Name = DT.getName();
   if (!Name.empty())
-    addString(MemberDie, dwarf::DW_AT_name, Name);
+    addString(*MemberDie, dwarf::DW_AT_name, Name);
 
-  addType(MemberDie, resolve(DT.getTypeDerivedFrom()));
+  addType(*MemberDie, resolve(DT.getTypeDerivedFrom()));
 
-  addSourceLine(MemberDie, DT);
+  addSourceLine(*MemberDie, DT);
 
   uint64_t OffsetInBytes = DT.getOffsetInBits() >> 3;
 
   if (DD->getDwarfVersion() <= 2) {
     DIEBlock *MemLocationDie = new (DIEValueAllocator) DIEBlock();
-    addUInt(MemLocationDie, dwarf::DW_FORM_data1, dwarf::DW_OP_plus_uconst);
-    addUInt(MemLocationDie, dwarf::DW_FORM_udata, OffsetInBytes);
-    addBlock(MemberDie, dwarf::DW_AT_data_member_location, MemLocationDie);
+    addUInt(*MemLocationDie, dwarf::DW_FORM_data1, dwarf::DW_OP_plus_uconst);
+    addUInt(*MemLocationDie, dwarf::DW_FORM_udata, OffsetInBytes);
+    addBlock(*MemberDie, dwarf::DW_AT_data_member_location, MemLocationDie);
   } else
-    addUInt(MemberDie, dwarf::DW_AT_data_member_location, None,
+    addUInt(*MemberDie, dwarf::DW_AT_data_member_location, None,
         OffsetInBytes);
 
-  addUInt(MemberDie, dwarf::DW_AT_accessibility, dwarf::DW_FORM_data1,
+  addUInt(*MemberDie, dwarf::DW_AT_accessibility, dwarf::DW_FORM_data1,
       dwarf::DW_ACCESS_public);
 
-  addUInt(MemberDie, dwarf::DW_AT_SCOUT_mesh_field_flags, None, DT.getScoutFlags());
+  addUInt(*MemberDie, dwarf::DW_AT_SCOUT_mesh_field_flags, None, DT.getScoutFlags());
 }
 
 /// constructTypeDIE - Construct type DIE from DIScoutCompositeType.
@@ -164,9 +164,9 @@ void DwarfUnit::constructScoutTypeDIE(DIE &Buffer, DIScoutCompositeType CTy) {
 
   // Add name if not anonymous or intermediate type.
   if (!Name.empty())
-    addString(&Buffer, dwarf::DW_AT_name, Name);
+    addString(Buffer, dwarf::DW_AT_name, Name);
 
-  addUInt(&Buffer, dwarf::DW_AT_SCOUT_mesh_dim_x, None, CTy.getDimension(0));
-  addUInt(&Buffer, dwarf::DW_AT_SCOUT_mesh_dim_y, None, CTy.getDimension(1));
-  addUInt(&Buffer, dwarf::DW_AT_SCOUT_mesh_dim_z, None, CTy.getDimension(2));
+  addUInt(Buffer, dwarf::DW_AT_SCOUT_mesh_dim_x, None, CTy.getDimension(0));
+  addUInt(Buffer, dwarf::DW_AT_SCOUT_mesh_dim_y, None, CTy.getDimension(1));
+  addUInt(Buffer, dwarf::DW_AT_SCOUT_mesh_dim_z, None, CTy.getDimension(2));
 }

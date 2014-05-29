@@ -369,12 +369,13 @@ namespace clang {
   protected:
     MeshDecl(Kind            DK,
              MeshKind        TK,
+             const ASTContext &ASTC,
              DeclContext    *DC,
              SourceLocation  L,
              IdentifierInfo *Id,
              MeshDecl       *PrevDecl,
              SourceLocation StartL)
-      : TypeDecl(DK, DC, L, Id, StartL), DeclContext(DK),
+      : TypeDecl(DK, DC, L, Id, StartL), DeclContext(DK), Redeclarable(ASTC),
         TypedefNameDeclOrQualifier((TypedefNameDecl*) 0) {
       MeshDeclKind                    = TK;
       IsCompleteDefinition            = false;
@@ -392,14 +393,12 @@ namespace clang {
     }
 
     typedef Redeclarable<MeshDecl> redeclarable_base;
-    virtual MeshDecl *getNextRedeclaration() { return RedeclLink.getNext(); }
+    
     virtual MeshDecl *getPreviousDeclImpl() {
       return getPreviousDecl();
     }
 
-      virtual MeshDecl *getMostRecentDeclImpl() {
-        return getMostRecentDecl();
-    }
+      
 
     /// @brief Completes the definition of this mesh declaration.
     ///
@@ -425,6 +424,12 @@ namespace clang {
     /// range taking into account any outer template declarations.
     SourceLocation getOuterLocStart() const;
     virtual SourceRange getSourceRange() const LLVM_READONLY;
+      
+    virtual MeshDecl *getNextRedeclaration() const { return RedeclLink.getNext(this); }
+      
+    virtual MeshDecl *getMostRecentDeclImpl() {
+        return getMostRecentDecl();
+      }
 
     virtual MeshDecl* getCanonicalDecl();
     const MeshDecl* getCanonicalDecl() const {

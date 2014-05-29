@@ -78,12 +78,13 @@ using namespace clang;
 //===----------------------------------------------------------------------===//
 //
 //
-UniformMeshDecl::UniformMeshDecl(DeclContext     *DC,
+UniformMeshDecl::UniformMeshDecl(const ASTContext &C,
+                                 DeclContext     *DC,
                                  SourceLocation  StartLoc,
                                  SourceLocation  IdLoc,
                                  IdentifierInfo  *Id,
                                  UniformMeshDecl *PrevDecl)
-  : MeshDecl(UniformMesh, TTK_UniformMesh, DC, IdLoc, Id, PrevDecl, StartLoc) { }
+  : MeshDecl(UniformMesh, TTK_UniformMesh, C, DC, IdLoc, Id, PrevDecl, StartLoc) { }
 
 UniformMeshDecl *UniformMeshDecl::Create(const ASTContext &C,
                                          DeclContext *DC,
@@ -92,7 +93,7 @@ UniformMeshDecl *UniformMeshDecl::Create(const ASTContext &C,
                                          IdentifierInfo *Id,
                                          UniformMeshDecl* PrevDecl) {
 
-  UniformMeshDecl* M = new (C, DC) UniformMeshDecl(DC,
+  UniformMeshDecl* M = new (C, DC) UniformMeshDecl(C, DC,
                                                StartLoc,
                                                IdLoc, Id,
                                                PrevDecl);
@@ -103,7 +104,7 @@ UniformMeshDecl *UniformMeshDecl::Create(const ASTContext &C,
 
 UniformMeshDecl *UniformMeshDecl::CreateDeserialized(const ASTContext &C,
                                                      unsigned ID) {
-  UniformMeshDecl *M = new (C, ID) UniformMeshDecl(0, SourceLocation(),
+  UniformMeshDecl *M = new (C, ID) UniformMeshDecl(C, 0, SourceLocation(),
                                                  SourceLocation(), 0, 0);
   M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
   return M;

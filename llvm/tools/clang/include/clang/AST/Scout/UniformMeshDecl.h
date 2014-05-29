@@ -67,7 +67,8 @@ namespace clang {
     friend void MeshDecl::startDefinition();
 
    protected:
-    UniformMeshDecl(DeclContext* DC,
+    UniformMeshDecl(const ASTContext &C,
+                    DeclContext* DC,
                     SourceLocation L,
                     SourceLocation StartL,
                     IdentifierInfo* Id,
