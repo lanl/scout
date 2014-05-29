@@ -58,14 +58,7 @@ NOT(uint64_t x)
     return ~x;
 }
 
-
-static inline int64_t
-SignExtend64(uint64_t x, uint32_t msbit) 
-{
-    return int64_t(x << (64 - msbit)) >> (64 - msbit);
-}
-
-
+#if 0
 // LSL_C() 
 // =======
 static inline uint64_t
@@ -76,6 +69,7 @@ LSL_C (uint64_t x, integer shift, bool &carry_out)
     carry_out = ((1ull << (64-1)) >> (shift - 1)) != 0;
     return result;
 }
+#endif
 
 // LSL()
 // =====
@@ -364,6 +358,8 @@ EmulateInstructionARM64::CreateFunctionEntryUnwind (UnwindPlan &unwind_plan)
     // All other registers are the same.
     
     unwind_plan.SetSourceName ("EmulateInstructionARM64");
+    unwind_plan.SetSourcedFromCompiler (eLazyBoolNo);
+    unwind_plan.SetUnwindPlanValidAtAllInstructions (eLazyBoolYes);
     return true;
 }
 
@@ -579,7 +575,7 @@ EmulateInstructionARM64::Emulate_ldstpair (const uint32_t opcode, AddrMode a_mod
     }
     
     idx = LSL(llvm::SignExtend64<7>(imm7), scale);
-    size = 1 << scale;
+    size = (integer)1 << scale;
     uint64_t datasize = size * 8;
     uint64_t address;
     uint64_t wb_address;

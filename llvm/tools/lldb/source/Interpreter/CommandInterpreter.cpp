@@ -47,6 +47,7 @@
 
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/Log.h"
+#include "lldb/Core/State.h"
 #include "lldb/Core/Stream.h"
 #include "lldb/Core/StreamFile.h"
 #include "lldb/Core/Timer.h"
@@ -352,6 +353,15 @@ CommandInterpreter::Initialize ()
         AddAlias ("rbreak", cmd_obj_sp);
         AddOrReplaceAliasOptions("rbreak", alias_arguments_vector_sp);
     }
+}
+
+void
+CommandInterpreter::Clear()
+{
+    m_command_io_handler_sp.reset();
+    
+    if (m_script_interpreter_ap)
+        m_script_interpreter_ap->Clear();
 }
 
 const char *
@@ -1454,12 +1464,12 @@ CommandInterpreter::PreprocessCommand (std::string &command)
                     options.SetTryAllThreads(true);
                     options.SetTimeoutUsec(0);
                     
-                    ExecutionResults expr_result = target->EvaluateExpression (expr_str.c_str(), 
+                    ExpressionResults expr_result = target->EvaluateExpression (expr_str.c_str(), 
                                                                                exe_ctx.GetFramePtr(),
                                                                                expr_result_valobj_sp,
                                                                                options);
                     
-                    if (expr_result == eExecutionCompleted)
+                    if (expr_result == eExpressionCompleted)
                     {
                         Scalar scalar;
                         if (expr_result_valobj_sp->ResolveValue (scalar))
@@ -1494,24 +1504,29 @@ CommandInterpreter::PreprocessCommand (std::string &command)
 
                             switch (expr_result)
                             {
-                                case eExecutionSetupError: 
+                                case eExpressionSetupError: 
                                     error.SetErrorStringWithFormat("expression setup error for the expression '%s'", expr_str.c_str());
                                     break;
-                                case eExecutionCompleted:
+                                case eExpressionParseError:
+                                    error.SetErrorStringWithFormat ("expression parse error for the expression '%s'", expr_str.c_str());
                                     break;
-                                case eExecutionDiscarded:
+                                case eExpressionResultUnavailable:
+                                    error.SetErrorStringWithFormat ("expression error fetching result for the expression '%s'", expr_str.c_str());
+                                case eExpressionCompleted:
+                                    break;
+                                case eExpressionDiscarded:
                                     error.SetErrorStringWithFormat("expression discarded for the expression '%s'", expr_str.c_str());
                                     break;
-                                case eExecutionInterrupted:
+                                case eExpressionInterrupted:
                                     error.SetErrorStringWithFormat("expression interrupted for the expression '%s'", expr_str.c_str());
                                     break;
-                                case eExecutionHitBreakpoint:
+                                case eExpressionHitBreakpoint:
                                     error.SetErrorStringWithFormat("expression hit breakpoint for the expression '%s'", expr_str.c_str());
                                     break;
-                                case eExecutionTimedOut:
+                                case eExpressionTimedOut:
                                     error.SetErrorStringWithFormat("expression timed out for the expression '%s'", expr_str.c_str());
                                     break;
-                                case eExecutionStoppedForDebug:
+                                case eExpressionStoppedForDebug:
                                     error.SetErrorStringWithFormat("expression stop at entry point for debugging for the expression '%s'", expr_str.c_str());
                                     break;
                             }
@@ -3048,6 +3063,24 @@ CommandInterpreter::IOHandlerInputComplete (IOHandler &io_handler, std::string &
             io_handler.SetIsDone(true);
             break;
     }
+}
+
+bool
+CommandInterpreter::IOHandlerInterrupt (IOHandler &io_handler)
+{
+    ExecutionContext exe_ctx (GetExecutionContext());
+    Process *process = exe_ctx.GetProcessPtr();
+    
+    if (process)
+    {
+        StateType state = process->GetState();
+        if (StateIsRunningState(state))
+        {
+            process->Halt();
+            return true; // Don't do any updating when we are running
+        }
+    }
+    return false;
 }
 
 void

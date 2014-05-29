@@ -41,6 +41,9 @@ public:
 
    ~SBThread();
 
+    lldb::SBQueue
+    GetQueue () const;
+
     bool
     IsValid() const;
 
@@ -206,6 +209,9 @@ public:
 
     uint32_t
     GetExtendedBacktraceOriginatingIndexID ();
+
+    bool
+    SafeToCallFunctions ();
 
 protected:
     friend class SBBreakpoint;

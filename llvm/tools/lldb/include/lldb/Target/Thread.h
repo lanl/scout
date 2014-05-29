@@ -365,6 +365,22 @@ public:
     }
 
     //------------------------------------------------------------------
+    /// Retrieve the Queue for this thread, if any.
+    ///
+    /// @return
+    ///     A QueueSP for the queue that is currently associated with this 
+    ///     thread.
+    ///     An empty shared pointer indicates that this thread is not
+    ///     associated with a queue, or libdispatch queues are not 
+    ///     supported on this target.
+    //------------------------------------------------------------------
+    virtual lldb::QueueSP
+    GetQueue ()
+    {
+        return lldb::QueueSP();
+    }
+
+    //------------------------------------------------------------------
     /// Retrieve the address of the libdispatch_queue_t struct for queue
     /// currently using this Thread
     ///
@@ -576,6 +592,19 @@ public:
     virtual lldb::addr_t
     GetThreadLocalData (const lldb::ModuleSP module);
 
+    //------------------------------------------------------------------
+    /// Check whether this thread is safe to run functions
+    ///
+    /// The SystemRuntime may know of certain thread states (functions in 
+    /// process of execution, for instance) which can make it unsafe for 
+    /// functions to be called.
+    ///
+    /// @return
+    ///     True if it is safe to call functions on this thread.
+    ///     False if function calls should be avoided on this thread.
+    //------------------------------------------------------------------
+    virtual bool
+    SafeToCallFunctions ();
 
     //------------------------------------------------------------------
     // Thread Plan Providers:

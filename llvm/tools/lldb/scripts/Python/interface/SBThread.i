@@ -165,6 +165,19 @@ public:
     lldb::queue_id_t
     GetQueueID() const;
 
+    %feature("autodoc", "
+    Return the SBQueue for this thread.  If this thread is not currently associated
+    with a libdispatch queue, the SBQueue object's IsValid() method will return false.
+    If this SBThread is actually a HistoryThread, we may be able to provide QueueID
+    and QueueName, but not provide an SBQueue.  Those individual attributes may have
+    been saved for the HistoryThread without enough information to reconstitute the
+    entire SBQueue at that time.
+    This method takes no arguments, returns an SBQueue.
+    ") GetQueue;
+
+    lldb::SBQueue
+    GetQueue () const;
+
     void
     StepOver (lldb::RunMode stop_other_threads = lldb::eOnlyDuringStepping);
 
@@ -283,6 +296,16 @@ public:
     ") GetExtendedBacktraceOriginatingIndexID;
     uint32_t
     GetExtendedBacktraceOriginatingIndexID();
+
+    %feature("autodoc","
+    Takes no arguments, returns a bool.
+    lldb may be able to detect that function calls should not be executed
+    on a given thread at a particular point in time.  It is recommended that
+    this is checked before performing an inferior function call on a given
+    thread.
+    ") SafeToCallFunctions;
+    bool
+    SafeToCallFunctions ();
 
     %pythoncode %{
         class frames_access(object):
