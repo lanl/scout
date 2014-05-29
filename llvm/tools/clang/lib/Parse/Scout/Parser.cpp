@@ -90,7 +90,7 @@ void Parser::DumpLookAheads(unsigned N){
       llvm::outs() << " = " << t.getIdentifierInfo()->getName().str();
     }
     else if(t.is(tok::raw_identifier)){
-      std::string str = t.getRawIdentifierData();
+      std::string str = t.getRawIdentifier().data();
       str = str.substr(0, length);
       llvm::outs() << " = " << str;
     }

@@ -1,5 +1,4 @@
 ; RUN: llc -verify-machineinstrs < %s -mtriple=aarch64-linux-gnu | FileCheck %s
-; RUN: llc -verify-machineinstrs < %s -mtriple=arm64-linux-gnu | FileCheck %s
 
 ; Note that this should be refactored (for efficiency if nothing else)
 ; when the PCS is implemented so we don't have to worry about the
@@ -87,7 +86,7 @@ define void @testing() {
 
 test2:
 ; CHECK: cmp {{w[0-9]+}}, {{#3567, lsl #12|#14610432}}
-; CHECK: b.{{cc|lo}} [[RET]]
+; CHECK: b.lo [[RET]]
   %newval2 = add i32 %val, 1
   store i32 %newval2, i32* @var_i32
   %cmp_pos_big = icmp ult i32 %val, 14610432

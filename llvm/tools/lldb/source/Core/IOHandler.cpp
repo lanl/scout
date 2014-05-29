@@ -378,11 +378,11 @@ IOHandlerEditline::~IOHandlerEditline ()
 
 
 bool
-IOHandlerEditline::GetLine (std::string &line)
+IOHandlerEditline::GetLine (std::string &line, bool &interrupted)
 {
     if (m_editline_ap)
     {
-        return m_editline_ap->GetLine(line).Success();
+        return m_editline_ap->GetLine(line, interrupted).Success();
     }
     else
     {
@@ -518,17 +518,18 @@ IOHandlerEditline::SetBaseLineNumber (uint32_t line)
     
 }
 bool
-IOHandlerEditline::GetLines (StringList &lines)
+IOHandlerEditline::GetLines (StringList &lines, bool &interrupted)
 {
     bool success = false;
     if (m_editline_ap)
     {
         std::string end_token;
-        success = m_editline_ap->GetLines(end_token, lines).Success();
+        success = m_editline_ap->GetLines(end_token, lines, interrupted).Success();
     }
     else
     {
         LineStatus lines_status = LineStatus::Success;
+        Error error;
 
         while (lines_status == LineStatus::Success)
         {
@@ -541,17 +542,29 @@ IOHandlerEditline::GetLines (StringList &lines)
                     ::fprintf(out, "%u", m_base_line_number + (uint32_t)lines.GetSize());
             }
             
-            if (GetLine(line))
+            bool interrupted = false;
+            if (GetLine(line, interrupted))
             {
-                lines.AppendString(line);
-                Error error;
-                lines_status = m_delegate.IOHandlerLinesUpdated(*this, lines, lines.GetSize() - 1, error);
+                if (interrupted)
+                {
+                    lines_status = LineStatus::Done;
+                }
+                else
+                {
+                    lines.AppendString(line);
+                    lines_status = m_delegate.IOHandlerLinesUpdated(*this, lines, lines.GetSize() - 1, error);
+                }
             }
             else
             {
                 lines_status = LineStatus::Done;
             }
         }
+        
+        // Call the IOHandlerLinesUpdated function with UINT32_MAX as the line
+        // number to indicate all lines are complete
+        m_delegate.IOHandlerLinesUpdated(*this, lines, UINT32_MAX, error);
+
         success = lines.GetSize() > 0;
     }
     return success;
@@ -566,13 +579,21 @@ IOHandlerEditline::Run ()
     std::string line;
     while (IsActive())
     {
+        bool interrupted = false;
         if (m_multi_line)
         {
             StringList lines;
-            if (GetLines (lines))
+            if (GetLines (lines, interrupted))
             {
-                line = lines.CopyList();
-                m_delegate.IOHandlerInputComplete(*this, line);
+                if (interrupted)
+                {
+                    m_done = true;
+                }
+                else
+                {
+                    line = lines.CopyList();
+                    m_delegate.IOHandlerInputComplete(*this, line);
+                }
             }
             else
             {
@@ -581,9 +602,10 @@ IOHandlerEditline::Run ()
         }
         else
         {
-            if (GetLine(line))
+            if (GetLine(line, interrupted))
             {
-                m_delegate.IOHandlerInputComplete(*this, line);
+                if (!interrupted)
+                    m_delegate.IOHandlerInputComplete(*this, line);
             }
             else
             {
@@ -596,7 +618,7 @@ IOHandlerEditline::Run ()
 void
 IOHandlerEditline::Hide ()
 {
-    if (m_editline_ap && m_editline_ap->GettingLine())
+    if (m_editline_ap)
         m_editline_ap->Hide();
 }
 
@@ -604,8 +626,10 @@ IOHandlerEditline::Hide ()
 void
 IOHandlerEditline::Refresh ()
 {
-    if (m_editline_ap && m_editline_ap->GettingLine())
+    if (m_editline_ap)
+    {
         m_editline_ap->Refresh();
+    }
     else
     {
         const char *prompt = GetPrompt();
@@ -628,11 +652,16 @@ IOHandlerEditline::Cancel ()
         m_editline_ap->Interrupt ();
 }
 
-void
+bool
 IOHandlerEditline::Interrupt ()
 {
+    // Let the delgate handle it first
+    if (m_delegate.IOHandlerInterrupt(*this))
+        return true;
+
     if (m_editline_ap)
-        m_editline_ap->Interrupt();
+        return m_editline_ap->Interrupt();
+    return false;
 }
 
 void
@@ -5454,9 +5483,10 @@ IOHandlerCursesGUI::Cancel ()
 {
 }
 
-void
+bool
 IOHandlerCursesGUI::Interrupt ()
 {
+    return false;
 }
 
 

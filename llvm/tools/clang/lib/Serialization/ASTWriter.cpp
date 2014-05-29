@@ -23,6 +23,7 @@
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/Type.h"
 #include "clang/AST/TypeLocVisitor.h"
+#include "clang/Basic/DiagnosticOptions.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/FileSystemStatCache.h"
 #include "clang/Basic/SourceManager.h"
@@ -714,7 +715,8 @@ static void EmitBlockID(unsigned ID, const char *Name,
   Stream.EmitRecord(llvm::bitc::BLOCKINFO_CODE_SETBID, Record);
 
   // Emit the block name if present.
-  if (Name == 0 || Name[0] == 0) return;
+  if (!Name || Name[0] == 0)
+    return;
   Record.clear();
   while (*Name)
     Record.push_back(*Name++);
@@ -918,6 +920,7 @@ void ASTWriter::WriteBlockInfoBlock() {
   RECORD(MACRO_OFFSET);
   RECORD(MACRO_TABLE);
   RECORD(LATE_PARSED_TEMPLATE);
+  RECORD(OPTIMIZE_PRAGMA_OPTIONS);
 
   // SourceManager Block.
   BLOCK(SOURCE_MANAGER_BLOCK);
@@ -1193,7 +1196,6 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
   AddString(TargetOpts.Triple, Record);
   AddString(TargetOpts.CPU, Record);
   AddString(TargetOpts.ABI, Record);
-  AddString(TargetOpts.LinkerVersion, Record);
   Record.push_back(TargetOpts.FeaturesAsWritten.size());
   for (unsigned I = 0, N = TargetOpts.FeaturesAsWritten.size(); I != N; ++I) {
     AddString(TargetOpts.FeaturesAsWritten[I], Record);
@@ -3058,7 +3060,7 @@ class ASTIdentifierTableTrait {
     if (MacroDirective *NextMD = getPublicSubmoduleMacro(MD, ModID, Overridden))
       if (!shouldIgnoreMacro(NextMD, IsModule, PP))
         return NextMD;
-    return 0;
+    return nullptr;
   }
 
   MacroDirective *
@@ -3068,7 +3070,7 @@ class ASTIdentifierTableTrait {
             getPublicSubmoduleMacro(MD->getPrevious(), ModID, Overridden))
       if (!shouldIgnoreMacro(NextMD, IsModule, PP))
         return NextMD;
-    return 0;
+    return nullptr;
   }
 
   /// \brief Traverses the macro directives history and returns the latest
@@ -3084,7 +3086,7 @@ class ASTIdentifierTableTrait {
                                           SubmoduleID &ModID,
                                           OverriddenList &Overridden) {
     if (!MD)
-      return 0;
+      return nullptr;
 
     Overridden.clear();
     SubmoduleID OrigModID = ModID;
@@ -3140,7 +3142,7 @@ class ASTIdentifierTableTrait {
       }
     }
 
-    return 0;
+    return nullptr;
   }
 
   SubmoduleID getSubmoduleID(MacroDirective *MD) {
@@ -3169,7 +3171,7 @@ public:
   EmitKeyDataLength(raw_ostream& Out, IdentifierInfo* II, IdentID ID) {
     unsigned KeyLen = II->getLength() + 1;
     unsigned DataLen = 4; // 4 bytes for the persistent ID << 1
-    MacroDirective *Macro = 0;
+    MacroDirective *Macro = nullptr;
     if (isInterestingIdentifier(II, Macro)) {
       DataLen += 2; // 2 bytes for builtin ID
       DataLen += 2; // 2 bytes for flags
@@ -3232,7 +3234,7 @@ public:
                 IdentID ID, unsigned) {
     using namespace llvm::support;
     endian::Writer<little> LE(Out);
-    MacroDirective *Macro = 0;
+    MacroDirective *Macro = nullptr;
     if (!isInterestingIdentifier(II, Macro)) {
       LE.write<uint32_t>(ID << 1);
       return;
@@ -3906,6 +3908,14 @@ void ASTWriter::WriteLateParsedTemplates(Sema &SemaRef) {
   Stream.EmitRecord(LATE_PARSED_TEMPLATE, Record);
 }
 
+/// \brief Write the state of 'pragma clang optimize' at the end of the module.
+void ASTWriter::WriteOptimizePragmaOptions(Sema &SemaRef) {
+  RecordData Record;
+  SourceLocation PragmaLoc = SemaRef.getOptimizeOffPragmaLocation();
+  AddSourceLocation(PragmaLoc, Record);
+  Stream.EmitRecord(OPTIMIZE_PRAGMA_OPTIONS, Record);
+}
+
 //===----------------------------------------------------------------------===//
 // General Serialization Routines
 //===----------------------------------------------------------------------===//
@@ -3979,8 +3989,8 @@ void ASTWriter::SetSelectorOffset(Selector Sel, uint32_t Offset) {
 }
 
 ASTWriter::ASTWriter(llvm::BitstreamWriter &Stream)
-  : Stream(Stream), Context(0), PP(0), Chain(0), WritingModule(0),
-    WritingAST(false), DoneWritingDeclsAndTypes(false),
+  : Stream(Stream), Context(nullptr), PP(nullptr), Chain(nullptr),
+    WritingModule(nullptr), WritingAST(false), DoneWritingDeclsAndTypes(false),
     ASTHasCompilerErrors(false),
     FirstDeclID(NUM_PREDEF_DECL_IDS), NextDeclID(FirstDeclID),
     FirstTypeID(NUM_PREDEF_TYPE_IDS), NextTypeID(FirstTypeID),
@@ -4027,18 +4037,18 @@ void ASTWriter::WriteAST(Sema &SemaRef,
   PP = &SemaRef.PP;
   this->WritingModule = WritingModule;
   WriteASTCore(SemaRef, isysroot, OutputFile, WritingModule);
-  Context = 0;
-  PP = 0;
-  this->WritingModule = 0;
-  
+  Context = nullptr;
+  PP = nullptr;
+  this->WritingModule = nullptr;
+
   WritingAST = false;
 }
 
 template<typename Vector>
 static void AddLazyVectorDecls(ASTWriter &Writer, Vector &Vec,
                                ASTWriter::RecordData &Record) {
-  for (typename Vector::iterator I = Vec.begin(0, true), E = Vec.end();
-       I != E; ++I)  {
+  for (typename Vector::iterator I = Vec.begin(nullptr, true), E = Vec.end();
+       I != E; ++I) {
     Writer.AddDeclRef(*I, Record);
   }
 }
@@ -4049,7 +4059,7 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
                              Module *WritingModule) {
   using namespace llvm;
 
-  bool isModule = WritingModule != 0;
+  bool isModule = WritingModule != nullptr;
 
   // Make sure that the AST reader knows to finalize itself.
   if (Chain)
@@ -4522,6 +4532,8 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
   WriteMergedDecls();
   WriteObjCCategories();
   WriteLateParsedTemplates(SemaRef);
+  if(!WritingModule)
+    WriteOptimizePragmaOptions(SemaRef);
 
   // Some simple statistics
   Record.clear();
@@ -4587,6 +4599,19 @@ void ASTWriter::WriteDeclUpdatesBlocks(RecordDataImpl &OffsetsRecord) {
           auto *Spec = cast<ClassTemplateSpecializationDecl>(RD);
           Record.push_back(Spec->getTemplateSpecializationKind());
           AddSourceLocation(Spec->getPointOfInstantiation(), Record);
+
+          // The instantiation might have been resolved to a partial
+          // specialization. If so, record which one.
+          auto From = Spec->getInstantiatedFrom();
+          if (auto PartialSpec =
+                From.dyn_cast<ClassTemplatePartialSpecializationDecl*>()) {
+            Record.push_back(true);
+            AddDeclRef(PartialSpec, Record);
+            AddTemplateArgumentList(&Spec->getTemplateInstantiationArgs(),
+                                    Record);
+          } else {
+            Record.push_back(false);
+          }
         }
         Record.push_back(RD->getTagKind());
         AddSourceLocation(RD->getLocation(), Record);
@@ -4688,7 +4713,7 @@ void ASTWriter::AddIdentifierRef(const IdentifierInfo *II, RecordDataImpl &Recor
 }
 
 IdentID ASTWriter::getIdentifierRef(const IdentifierInfo *II) {
-  if (II == 0)
+  if (!II)
     return 0;
 
   IdentID &ID = IdentifierIDs[II];
@@ -4701,7 +4726,7 @@ MacroID ASTWriter::getMacroRef(MacroInfo *MI, const IdentifierInfo *Name) {
   // Don't emit builtin macros like __LINE__ to the AST file unless they
   // have been redefined by the header (in which case they are not
   // isBuiltinMacro).
-  if (MI == 0 || MI->isBuiltinMacro())
+  if (!MI || MI->isBuiltinMacro())
     return 0;
 
   MacroID &ID = MacroIDs[MI];
@@ -4714,7 +4739,7 @@ MacroID ASTWriter::getMacroRef(MacroInfo *MI, const IdentifierInfo *Name) {
 }
 
 MacroID ASTWriter::getMacroID(MacroInfo *MI) {
-  if (MI == 0 || MI->isBuiltinMacro())
+  if (!MI || MI->isBuiltinMacro())
     return 0;
   
   assert(MacroIDs.find(MI) != MacroIDs.end() && "Macro not emitted!");
@@ -4731,7 +4756,7 @@ void ASTWriter::AddSelectorRef(const Selector SelRef, RecordDataImpl &Record) {
 }
 
 SelectorID ASTWriter::getSelectorRef(Selector Sel) {
-  if (Sel.getAsOpaquePtr() == 0) {
+  if (Sel.getAsOpaquePtr() == nullptr) {
     return 0;
   }
 
@@ -4809,7 +4834,7 @@ void ASTWriter::AddTemplateArgumentLoc(const TemplateArgumentLoc &Arg,
 
 void ASTWriter::AddTypeSourceInfo(TypeSourceInfo *TInfo, 
                                   RecordDataImpl &Record) {
-  if (TInfo == 0) {
+  if (!TInfo) {
     AddTypeRef(QualType(), Record);
     return;
   }
@@ -4877,8 +4902,8 @@ void ASTWriter::AddDeclRef(const Decl *D, RecordDataImpl &Record) {
 
 DeclID ASTWriter::GetDeclRef(const Decl *D) {
   assert(WritingAST && "Cannot request a declaration ID before AST writing");
-  
-  if (D == 0) {
+
+  if (!D) {
     return 0;
   }
   
@@ -4905,7 +4930,7 @@ DeclID ASTWriter::GetDeclRef(const Decl *D) {
 }
 
 DeclID ASTWriter::getDeclID(const Decl *D) {
-  if (D == 0)
+  if (!D)
     return 0;
 
   // If D comes from an AST file, its declaration ID is already known and
@@ -5358,8 +5383,7 @@ void ASTWriter::AddCXXCtorInitializers(
 }
 
 void ASTWriter::AddCXXDefinitionData(const CXXRecordDecl *D, RecordDataImpl &Record) {
-  assert(D->DefinitionData);
-  struct CXXRecordDecl::DefinitionData &Data = *D->DefinitionData;
+  auto &Data = D->data();
   Record.push_back(Data.IsLambda);
   Record.push_back(Data.UserDeclaredConstructor);
   Record.push_back(Data.UserDeclaredSpecialMembers);
@@ -5418,7 +5442,7 @@ void ASTWriter::AddCXXDefinitionData(const CXXRecordDecl *D, RecordDataImpl &Rec
   
   // Add lambda-specific data.
   if (Data.IsLambda) {
-    CXXRecordDecl::LambdaDefinitionData &Lambda = D->getLambdaData();
+    auto &Lambda = D->getLambdaData();
     Record.push_back(Lambda.Dependent);
     Record.push_back(Lambda.IsGenericLambda);
     Record.push_back(Lambda.CaptureDefault);
@@ -5428,7 +5452,7 @@ void ASTWriter::AddCXXDefinitionData(const CXXRecordDecl *D, RecordDataImpl &Rec
     AddDeclRef(Lambda.ContextDecl, Record);
     AddTypeSourceInfo(Lambda.MethodTyInfo, Record);
     for (unsigned I = 0, N = Lambda.NumCaptures; I != N; ++I) {
-      LambdaExpr::Capture &Capture = Lambda.Captures[I];
+      const LambdaCapture &Capture = Lambda.Captures[I];
       AddSourceLocation(Capture.getLocation(), Record);
       Record.push_back(Capture.isImplicit());
       Record.push_back(Capture.getCaptureKind());
@@ -5438,7 +5462,7 @@ void ASTWriter::AddCXXDefinitionData(const CXXRecordDecl *D, RecordDataImpl &Rec
       case LCK_ByCopy:
       case LCK_ByRef:
         VarDecl *Var =
-            Capture.capturesVariable() ? Capture.getCapturedVar() : 0;
+            Capture.capturesVariable() ? Capture.getCapturedVar() : nullptr;
         AddDeclRef(Var, Record);
         AddSourceLocation(Capture.isPackExpansion() ? Capture.getEllipsisLoc()
                                                     : SourceLocation(),

@@ -257,7 +257,8 @@ Platform::Platform (bool is_host) :
     m_ssh_opts (),
     m_ignores_remote_hostname (false),
     m_trap_handlers(),
-    m_calculated_trap_handlers (false)
+    m_calculated_trap_handlers (false),
+    m_trap_handler_mutex()
 {
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_OBJECT));
     if (log)
@@ -528,6 +529,9 @@ RecurseCopy_Callback (void *baton,
         case FileSpec::eFileTypeUnknown:
             rc_baton->error.SetErrorStringWithFormat("invalid file detected during copy: %s", src.GetPath().c_str());
             return FileSpec::eEnumerateDirectoryResultQuit; // got an error, bail out
+            break;
+        default:
+            return FileSpec::eEnumerateDirectoryResultQuit; // unsupported file type, bail out
             break;
     }
 }
@@ -1398,8 +1402,12 @@ Platform::GetTrapHandlerSymbolNames ()
 {
     if (!m_calculated_trap_handlers)
     {
-        CalculateTrapHandlerSymbolNames();
-        m_calculated_trap_handlers = true;
+        Mutex::Locker locker (m_trap_handler_mutex);
+        if (!m_calculated_trap_handlers)
+        {
+            CalculateTrapHandlerSymbolNames();
+            m_calculated_trap_handlers = true;
+        }
     }
     return m_trap_handlers;
 }

@@ -80,12 +80,13 @@ using namespace clang;
 //===----------------------------------------------------------------------===//
 //
 //
-RectilinearMeshDecl::RectilinearMeshDecl(DeclContext     *DC,
+RectilinearMeshDecl::RectilinearMeshDecl(const ASTContext &C,
+                                         DeclContext     *DC,
                                          SourceLocation  StartLoc,
                                          SourceLocation  IdLoc,
                                          IdentifierInfo  *Id,
                                          RectilinearMeshDecl *PrevDecl)
-  : MeshDecl(RectilinearMesh, TTK_RectilinearMesh, DC, IdLoc, Id, PrevDecl, StartLoc) { }
+  : MeshDecl(RectilinearMesh, TTK_RectilinearMesh, C, DC, IdLoc, Id, PrevDecl, StartLoc) { }
 
 RectilinearMeshDecl *RectilinearMeshDecl::Create(const ASTContext &C,
                                                  DeclContext *DC,
@@ -94,7 +95,7 @@ RectilinearMeshDecl *RectilinearMeshDecl::Create(const ASTContext &C,
                                                  IdentifierInfo *Id,
                                                  RectilinearMeshDecl* PrevDecl) {
 
-  RectilinearMeshDecl* M = new (C, DC) RectilinearMeshDecl(DC,
+  RectilinearMeshDecl* M = new (C, DC) RectilinearMeshDecl(C, DC,
                                                        StartLoc,
                                                        IdLoc, Id,
                                                        PrevDecl);
@@ -107,7 +108,7 @@ RectilinearMeshDecl
 *RectilinearMeshDecl::CreateDeserialized(const ASTContext &C, unsigned ID) {
   RectilinearMeshDecl *M;
 
-  M = new (C, ID) RectilinearMeshDecl(0, SourceLocation(),
+  M = new (C, ID) RectilinearMeshDecl(C, 0, SourceLocation(),
                                     SourceLocation(), 0, 0);
   M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
   return M;

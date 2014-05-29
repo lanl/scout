@@ -817,13 +817,13 @@ Args::StringToAddress (const ExecutionContext *exe_ctx, const char *s, lldb::add
                 options.SetKeepInMemory(false);
                 options.SetTryAllThreads(true);
                 
-                ExecutionResults expr_result = target->EvaluateExpression(s,
+                ExpressionResults expr_result = target->EvaluateExpression(s,
                                                                           exe_ctx->GetFramePtr(),
                                                                           valobj_sp,
                                                                           options);
 
                 bool success = false;
-                if (expr_result == eExecutionCompleted)
+                if (expr_result == eExpressionCompleted)
                 {
                     // Get the address to watch.
                     addr = valobj_sp->GetValueAsUnsigned(fail_value, &success);
@@ -1155,7 +1155,7 @@ Args::StringToGenericRegister (const char *s)
             return LLDB_REGNUM_GENERIC_SP;
         else if (strcmp(s, "fp") == 0)
             return LLDB_REGNUM_GENERIC_FP;
-        else if (strcmp(s, "ra") == 0)
+        else if (strcmp(s, "ra") == 0 || strcmp(s, "lr") == 0)
             return LLDB_REGNUM_GENERIC_RA;
         else if (strcmp(s, "flags") == 0)
             return LLDB_REGNUM_GENERIC_FLAGS;

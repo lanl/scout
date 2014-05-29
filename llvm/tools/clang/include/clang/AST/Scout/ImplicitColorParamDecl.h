@@ -64,14 +64,14 @@ namespace clang {
 	 
    static ImplicitColorParamDecl *Create(ASTContext &C, DeclContext *DC,
        SourceLocation IdLoc) {
-     return new (C, DC) ImplicitColorParamDecl(DC, IdLoc, 
+     return new (C, DC) ImplicitColorParamDecl(C, DC, IdLoc,
        &C.Idents.get("color"),
        C.getExtVectorType(C.FloatTy, 4));
    }
 	 
-    ImplicitColorParamDecl(DeclContext *DC, SourceLocation IdLoc,
+    ImplicitColorParamDecl(ASTContext &C, DeclContext *DC, SourceLocation IdLoc,
                          IdentifierInfo *Id, QualType Type)
-         : ImplicitParamDecl(DC,IdLoc, Id, Type, ImplicitColorParam) {
+         : ImplicitParamDecl(C, DC,IdLoc, Id, Type, ImplicitColorParam) {
    }
 
     // Implement isa/cast/dyncast/etc.

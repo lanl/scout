@@ -279,7 +279,14 @@ void OMPClauseProfiler::VisitOMPSafelenClause(const OMPSafelenClause *C) {
     Profiler->VisitStmt(C->getSafelen());
 }
 
+void OMPClauseProfiler::VisitOMPCollapseClause(const OMPCollapseClause *C) {
+  if (C->getNumForLoops())
+    Profiler->VisitStmt(C->getNumForLoops());
+}
+
 void OMPClauseProfiler::VisitOMPDefaultClause(const OMPDefaultClause *C) { }
+
+void OMPClauseProfiler::VisitOMPProcBindClause(const OMPProcBindClause *C) { }
 
 template<typename T>
 void OMPClauseProfiler::VisitOMPClauseList(T *Node) {
@@ -556,7 +563,7 @@ void StmtProfiler::VisitGenericSelectionExpr(const GenericSelectionExpr *S) {
   for (unsigned i = 0; i != S->getNumAssocs(); ++i) {
     QualType T = S->getAssocType(i);
     if (T.isNull())
-      ID.AddPointer(0);
+      ID.AddPointer(nullptr);
     else
       VisitType(T);
     VisitExpr(S->getAssocExpr(i));
@@ -950,10 +957,10 @@ StmtProfiler::VisitCXXPseudoDestructorExpr(const CXXPseudoDestructorExpr *S) {
   VisitExpr(S);
   ID.AddBoolean(S->isArrow());
   VisitNestedNameSpecifier(S->getQualifier());
-  ID.AddBoolean(S->getScopeTypeInfo() != 0);
+  ID.AddBoolean(S->getScopeTypeInfo() != nullptr);
   if (S->getScopeTypeInfo())
     VisitType(S->getScopeTypeInfo()->getType());
-  ID.AddBoolean(S->getDestroyedTypeInfo() != 0);
+  ID.AddBoolean(S->getDestroyedTypeInfo() != nullptr);
   if (S->getDestroyedTypeInfo())
     VisitType(S->getDestroyedType());
   else
@@ -1214,7 +1221,7 @@ void StmtProfiler::VisitDecl(const Decl *D) {
     }
   }
 
-  ID.AddPointer(D? D->getCanonicalDecl() : 0);
+  ID.AddPointer(D? D->getCanonicalDecl() : nullptr);
 }
 
 void StmtProfiler::VisitType(QualType T) {

@@ -37,6 +37,9 @@ namespace llvm {
 
 class ConstantInt;
 class ConstantFP;
+class DiagnosticInfoOptimizationRemark;
+class DiagnosticInfoOptimizationRemarkMissed;
+class DiagnosticInfoOptimizationRemarkAnalysis;
 class LLVMContext;
 class Type;
 class Value;
@@ -56,8 +59,8 @@ struct DenseMapAPIntKeyInfo {
       return hash_combine(Key.type, Key.val);
     }
   };
-  static inline KeyTy getEmptyKey() { return KeyTy(APInt(1,0), 0); }
-  static inline KeyTy getTombstoneKey() { return KeyTy(APInt(1,1), 0); }
+  static inline KeyTy getEmptyKey() { return KeyTy(APInt(1,0), nullptr); }
+  static inline KeyTy getTombstoneKey() { return KeyTy(APInt(1,1), nullptr); }
   static unsigned getHashValue(const KeyTy &Key) {
     return static_cast<unsigned>(hash_value(Key));
   }
@@ -242,6 +245,9 @@ public:
   LLVMContext::DiagnosticHandlerTy DiagnosticHandler;
   void *DiagnosticContext;
 
+  LLVMContext::YieldCallbackTy YieldCallback;
+  void *YieldOpaqueHandle;
+
   typedef DenseMap<DenseMapAPIntKeyInfo::KeyTy, ConstantInt *,
                    DenseMapAPIntKeyInfo> IntMapTy;
   IntMapTy IntConstants;
@@ -367,10 +373,6 @@ public:
   /// operand of an unparented ReturnInst so that the prefix data has a Use.
   typedef DenseMap<const Function *, ReturnInst *> PrefixDataMapTy;
   PrefixDataMapTy PrefixDataMap;
-
-  /// \brief Return true if the given pass name should emit optimization
-  /// remarks.
-  bool optimizationRemarksEnabledFor(const char *PassName) const;
 
   int getOrAddScopeRecordIdxEntry(MDNode *N, int ExistingIdx);
   int getOrAddScopeInlinedAtIdxEntry(MDNode *Scope, MDNode *IA,int ExistingIdx);

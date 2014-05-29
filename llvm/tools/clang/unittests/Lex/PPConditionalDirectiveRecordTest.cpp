@@ -92,16 +92,16 @@ TEST_F(PPConditionalDirectiveRecordTest, PPRecAPI) {
       "9\n";
 
   MemoryBuffer *buf = MemoryBuffer::getMemBuffer(source);
-  SourceMgr.createMainFileIDForMemBuffer(buf);
+  SourceMgr.setMainFileID(SourceMgr.createFileID(buf));
 
   VoidModuleLoader ModLoader;
   HeaderSearch HeaderInfo(new HeaderSearchOptions, SourceMgr, Diags, LangOpts, 
                           Target.getPtr());
-  Preprocessor PP(new PreprocessorOptions(), Diags, LangOpts,Target.getPtr(),
-                  SourceMgr, HeaderInfo, ModLoader,
-                  /*IILookup =*/ 0,
-                  /*OwnsHeaderSearch =*/false,
-                  /*DelayInitialization =*/ false);
+  Preprocessor PP(new PreprocessorOptions(), Diags, LangOpts, SourceMgr,
+                  HeaderInfo, ModLoader,
+                  /*IILookup =*/0,
+                  /*OwnsHeaderSearch =*/false);
+  PP.Initialize(*Target);
   PPConditionalDirectiveRecord *
     PPRec = new PPConditionalDirectiveRecord(SourceMgr);
   PP.addPPCallbacks(PPRec);

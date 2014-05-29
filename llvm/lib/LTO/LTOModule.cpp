@@ -168,7 +168,8 @@ LTOModule *LTOModule::makeLTOModule(MemoryBuffer *buffer,
       CPU = "core2";
     else if (Triple.getArch() == llvm::Triple::x86)
       CPU = "yonah";
-    else if (Triple.getArch() == llvm::Triple::arm64)
+    else if (Triple.getArch() == llvm::Triple::arm64 ||
+             Triple.getArch() == llvm::Triple::aarch64)
       CPU = "cyclone";
   }
 
@@ -396,7 +397,7 @@ void LTOModule::addDefinedSymbol(const GlobalValue *def, bool isFunction) {
 
   // set alignment part log2() can have rounding errors
   uint32_t align = def->getAlignment();
-  uint32_t attr = align ? countTrailingZeros(def->getAlignment()) : 0;
+  uint32_t attr = align ? countTrailingZeros(align) : 0;
 
   // set permissions part
   if (isFunction) {
@@ -418,17 +419,17 @@ void LTOModule::addDefinedSymbol(const GlobalValue *def, bool isFunction) {
     attr |= LTO_SYMBOL_DEFINITION_REGULAR;
 
   // set scope part
-  if (def->hasHiddenVisibility())
+  if (def->hasLocalLinkage())
+    // Ignore visibility if linkage is local.
+    attr |= LTO_SYMBOL_SCOPE_INTERNAL;
+  else if (def->hasHiddenVisibility())
     attr |= LTO_SYMBOL_SCOPE_HIDDEN;
   else if (def->hasProtectedVisibility())
     attr |= LTO_SYMBOL_SCOPE_PROTECTED;
   else if (canBeHidden(def))
     attr |= LTO_SYMBOL_SCOPE_DEFAULT_CAN_BE_HIDDEN;
-  else if (def->hasExternalLinkage() || def->hasWeakLinkage() ||
-           def->hasLinkOnceLinkage() || def->hasCommonLinkage())
-    attr |= LTO_SYMBOL_SCOPE_DEFAULT;
   else
-    attr |= LTO_SYMBOL_SCOPE_INTERNAL;
+    attr |= LTO_SYMBOL_SCOPE_DEFAULT;
 
   StringSet::value_type &entry = _defines.GetOrCreateValue(Buffer);
   entry.setValue(1);
@@ -710,9 +711,6 @@ namespace {
     bool EmitValueToOffset(const MCExpr *Offset,
                            unsigned char Value) override { return false; }
     void EmitFileDirective(StringRef Filename) override {}
-    void EmitDwarfAdvanceLineAddr(int64_t LineDelta, const MCSymbol *LastLabel,
-                                  const MCSymbol *Label,
-                                  unsigned PointerSize) override {}
     void FinishImpl() override {}
     void EmitCFIEndProcImpl(MCDwarfFrameInfo &Frame) override {
       RecordProcEnd(Frame);
@@ -803,14 +801,8 @@ bool LTOModule::parseSymbols(std::string &errMsg) {
     return true;
 
   // add aliases
-  for (Module::alias_iterator a = _module->alias_begin(),
-         e = _module->alias_end(); a != e; ++a) {
-    if (isDeclaration(*a->getAliasedGlobal()))
-      // Is an alias to a declaration.
-      addPotentialUndefinedSymbol(a, false);
-    else
-      addDefinedDataSymbol(a);
-  }
+  for (const auto &Alias : _module->aliases())
+    addDefinedDataSymbol(&Alias);
 
   // make symbols for all undefines
   for (StringMap<NameAndAttributes>::iterator u =_undefines.begin(),

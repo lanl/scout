@@ -11,6 +11,7 @@
 #define LLVM_ADT_ITERATOR_H
 
 #include <iterator>
+#include <cstddef>
 
 namespace llvm {
 
@@ -32,20 +33,38 @@ namespace llvm {
 /// terms of addition of one. These aren't equivalent for all iterator
 /// categories, and respecting that adds a lot of complexity for little gain.
 template <typename DerivedT, typename IteratorCategoryT, typename T,
-          typename DifferenceTypeT, typename PointerT = T *,
+          typename DifferenceTypeT = std::ptrdiff_t, typename PointerT = T *,
           typename ReferenceT = T &>
-struct iterator_facade_base
-    : std::iterator<IteratorCategoryT, T, DifferenceTypeT, PointerT,
-                    ReferenceT> {
+class iterator_facade_base
+    : public std::iterator<IteratorCategoryT, T, DifferenceTypeT, PointerT,
+                           ReferenceT> {
+protected:
+  enum {
+    IsRandomAccess =
+        std::is_base_of<std::random_access_iterator_tag, IteratorCategoryT>::value,
+    IsBidirectional =
+        std::is_base_of<std::bidirectional_iterator_tag, IteratorCategoryT>::value,
+  };
+
+public:
   DerivedT operator+(DifferenceTypeT n) const {
+    static_assert(
+        IsRandomAccess,
+        "The '+' operator is only defined for random access iterators.");
     DerivedT tmp = *static_cast<const DerivedT *>(this);
     tmp += n;
     return tmp;
   }
   friend DerivedT operator+(DifferenceTypeT n, const DerivedT &i) {
+    static_assert(
+        IsRandomAccess,
+        "The '+' operator is only defined for random access iterators.");
     return i + n;
   }
   DerivedT operator-(DifferenceTypeT n) const {
+    static_assert(
+        IsRandomAccess,
+        "The '-' operator is only defined for random access iterators.");
     DerivedT tmp = *static_cast<const DerivedT *>(this);
     tmp -= n;
     return tmp;
@@ -60,9 +79,15 @@ struct iterator_facade_base
     return tmp;
   }
   DerivedT &operator--() {
+    static_assert(
+        IsBidirectional,
+        "The decrement operator is only defined for bidirectional iterators.");
     return static_cast<DerivedT *>(this)->operator-=(1);
   }
   DerivedT operator--(int) {
+    static_assert(
+        IsBidirectional,
+        "The decrement operator is only defined for bidirectional iterators.");
     DerivedT tmp = *static_cast<DerivedT *>(this);
     --*static_cast<DerivedT *>(this);
     return tmp;
@@ -73,13 +98,22 @@ struct iterator_facade_base
   }
 
   bool operator>(const DerivedT &RHS) const {
+    static_assert(
+        IsRandomAccess,
+        "Relational operators are only defined for random access iterators.");
     return !static_cast<const DerivedT *>(this)->operator<(RHS) &&
            !static_cast<const DerivedT *>(this)->operator==(RHS);
   }
   bool operator<=(const DerivedT &RHS) const {
+    static_assert(
+        IsRandomAccess,
+        "Relational operators are only defined for random access iterators.");
     return !static_cast<const DerivedT *>(this)->operator>(RHS);
   }
   bool operator>=(const DerivedT &RHS) const {
+    static_assert(
+        IsRandomAccess,
+        "Relational operators are only defined for random access iterators.");
     return !static_cast<const DerivedT *>(this)->operator<(RHS);
   }
 
@@ -87,6 +121,8 @@ struct iterator_facade_base
     return &static_cast<const DerivedT *>(this)->operator*();
   }
   ReferenceT operator[](DifferenceTypeT n) const {
+    static_assert(IsRandomAccess,
+                  "Subscripting is only defined for random access iterators.");
     return *static_cast<const DerivedT *>(this)->operator+(n);
   }
 };
@@ -96,14 +132,19 @@ struct iterator_facade_base
 /// This class can be used through CRTP to adapt one iterator into another.
 /// Typically this is done through providing in the derived class a custom \c
 /// operator* implementation. Other methods can be overridden as well.
-template <typename DerivedT, typename WrappedIteratorT, typename T,
-          typename PointerT = T *, typename ReferenceT = T &,
-          // Don't provide these, they are mostly to act as aliases below.
-          typename WrappedTraitsT = std::iterator_traits<WrappedIteratorT>>
+template <
+    typename DerivedT, typename WrappedIteratorT,
+    typename IteratorCategoryT =
+        typename std::iterator_traits<WrappedIteratorT>::iterator_category,
+    typename T = typename std::iterator_traits<WrappedIteratorT>::value_type,
+    typename DifferenceTypeT =
+        typename std::iterator_traits<WrappedIteratorT>::difference_type,
+    typename PointerT = T *, typename ReferenceT = T &,
+    // Don't provide these, they are mostly to act as aliases below.
+    typename WrappedTraitsT = std::iterator_traits<WrappedIteratorT>>
 class iterator_adaptor_base
-    : public iterator_facade_base<
-          DerivedT, typename WrappedTraitsT::iterator_category, T,
-          typename WrappedTraitsT::difference_type, PointerT, ReferenceT> {
+    : public iterator_facade_base<DerivedT, IteratorCategoryT, T,
+                                  DifferenceTypeT, PointerT, ReferenceT> {
   typedef typename iterator_adaptor_base::iterator_facade_base BaseT;
 
 protected:
@@ -122,18 +163,29 @@ protected:
       : I(std::forward<U &&>(u)) {}
 
 public:
-  typedef typename WrappedTraitsT::difference_type difference_type;
+  typedef DifferenceTypeT difference_type;
 
   DerivedT &operator+=(difference_type n) {
+    static_assert(
+        BaseT::IsRandomAccess,
+        "The '+=' operator is only defined for random access iterators.");
     I += n;
     return *static_cast<DerivedT *>(this);
   }
   DerivedT &operator-=(difference_type n) {
+    static_assert(
+        BaseT::IsRandomAccess,
+        "The '-=' operator is only defined for random access iterators.");
     I -= n;
     return *static_cast<DerivedT *>(this);
   }
   using BaseT::operator-;
-  difference_type operator-(const DerivedT &RHS) const { return I - RHS.I; }
+  difference_type operator-(const DerivedT &RHS) const {
+    static_assert(
+        BaseT::IsRandomAccess,
+        "The '-' operator is only defined for random access iterators.");
+    return I - RHS.I;
+  }
 
   // We have to explicitly provide ++ and -- rather than letting the facade
   // forward to += because WrappedIteratorT might not support +=.
@@ -144,12 +196,20 @@ public:
   }
   using BaseT::operator--;
   DerivedT &operator--() {
+    static_assert(
+        BaseT::IsBidirectional,
+        "The decrement operator is only defined for bidirectional iterators.");
     --I;
     return *static_cast<DerivedT *>(this);
   }
 
   bool operator==(const DerivedT &RHS) const { return I == RHS.I; }
-  bool operator<(const DerivedT &RHS) const { return I < RHS.I; }
+  bool operator<(const DerivedT &RHS) const {
+    static_assert(
+        BaseT::IsRandomAccess,
+        "Relational operators are only defined for random access iterators.");
+    return I < RHS.I;
+  }
 
   ReferenceT operator*() const { return *I; }
 };
@@ -167,8 +227,10 @@ template <typename WrappedIteratorT,
           typename T = typename std::remove_reference<
               decltype(**std::declval<WrappedIteratorT>())>::type>
 struct pointee_iterator
-    : iterator_adaptor_base<pointee_iterator<WrappedIteratorT>,
-                            WrappedIteratorT, T> {
+    : iterator_adaptor_base<
+          pointee_iterator<WrappedIteratorT>, WrappedIteratorT,
+          typename std::iterator_traits<WrappedIteratorT>::iterator_category,
+          T> {
   pointee_iterator() {}
   template <typename U>
   pointee_iterator(U &&u)

@@ -24,6 +24,8 @@
 #include "lldb/Interpreter/PythonDataObjects.h"
 #include "lldb/Host/Terminal.h"
 
+class IOHandlerPythonInterpreter;
+
 namespace lldb_private {
     
 class ScriptInterpreterPython :
@@ -170,6 +172,9 @@ public:
                         lldb::ScriptInterpreterObjectSP& callee_wrapper_sp,
                         std::string& retval);
     
+    virtual void
+    Clear ();
+
     virtual bool
     GetDocumentationForItem (const char* item, std::string& dest);
     
@@ -279,6 +284,19 @@ public:
     }
 
     
+    PyThreadState *
+    GetThreadState()
+    {
+        return m_command_thread_state;
+    }
+
+    void
+    SetThreadState (PyThreadState *s)
+    {
+        if (s)
+            m_command_thread_state = s;
+    }
+
     //----------------------------------------------------------------------
     // IOHandlerDelegate
     //----------------------------------------------------------------------
@@ -396,7 +414,7 @@ public:
 //    	FILE*                    m_tmp_fh;
         PyGILState_STATE         m_GILState;
 	};
-private:
+protected:
 
     enum ActiveIOHandler {
         eIOHandlerNone,

@@ -155,14 +155,14 @@ Pass *createLoopRerollPass();
 //
 // LoopRotate - This pass is a simple loop rotating pass.
 //
-Pass *createLoopRotatePass();
+Pass *createLoopRotatePass(int MaxHeaderSize = -1);
 
 //===----------------------------------------------------------------------===//
 //
 // LoopIdiom - This pass recognizes and replaces idioms in loops.
 //
 Pass *createLoopIdiomPass();
-  
+
 //===----------------------------------------------------------------------===//
 //
 // PromoteMemoryToRegister - This pass is used to promote memory references to
@@ -201,7 +201,7 @@ FunctionPass *createReassociatePass();
 // preds always go to some succ.
 //
 FunctionPass *createJumpThreadingPass();
-  
+
 //===----------------------------------------------------------------------===//
 //
 // CFGSimplification - Merge basic blocks, eliminate unreachable blocks,
@@ -284,10 +284,10 @@ extern char &LCSSAID;
 // tree.
 //
 FunctionPass *createEarlyCSEPass();
-  
+
 //===----------------------------------------------------------------------===//
 //
-// GVN - This pass performs global value numbering and redundant load 
+// GVN - This pass performs global value numbering and redundant load
 // elimination cotemporaneously.
 //
 FunctionPass *createGVNPass(bool NoLoads = false);
@@ -305,7 +305,7 @@ FunctionPass *createMemCpyOptPass();
 // can prove are dead.
 //
 Pass *createLoopDeletionPass();
-  
+
 //===----------------------------------------------------------------------===//
 //
 // ConstantHoisting - This pass prepares a function for expensive constants.
@@ -318,7 +318,7 @@ FunctionPass *createConstantHoistingPass();
 //
 FunctionPass *createInstructionNamerPass();
 extern char &InstructionNamerID;
-  
+
 //===----------------------------------------------------------------------===//
 //
 // Sink - Code Sinking
@@ -344,13 +344,11 @@ Pass *createCorrelatedValuePropagationPass();
 FunctionPass *createInstructionSimplifierPass();
 extern char &InstructionSimplifierID;
 
-
 //===----------------------------------------------------------------------===//
 //
 // LowerExpectIntrinsics - Removes llvm.expect intrinsics and creates
 // "block_weights" metadata.
 FunctionPass *createLowerExpectIntrinsicPass();
-
 
 //===----------------------------------------------------------------------===//
 //
@@ -376,6 +374,12 @@ FunctionPass *createScalarizerPass();
 //
 // AddDiscriminators - Add DWARF path discriminators to the IR.
 FunctionPass *createAddDiscriminatorsPass();
+
+//===----------------------------------------------------------------------===//
+//
+// SeparateConstOffsetFromGEP - Split GEPs for better CSE
+//
+FunctionPass *createSeparateConstOffsetFromGEPPass();
 
 } // End llvm namespace
 

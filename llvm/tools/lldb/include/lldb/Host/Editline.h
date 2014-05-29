@@ -23,6 +23,7 @@
 #include <string>
 #include <vector>
 
+#include "lldb/Core/ConnectionFileDescriptor.h"
 #include "lldb/Host/Condition.h"
 #include "lldb/Host/FileSpec.h"
 #include "lldb/Host/Mutex.h"
@@ -33,6 +34,10 @@ namespace lldb_private {
 /// @class Editline Editline.h "lldb/Host/Editline.h"
 /// @brief A class that encapsulates editline functionality.
 //----------------------------------------------------------------------
+class EditlineHistory;
+    
+typedef std::shared_ptr<EditlineHistory> EditlineHistorySP;
+    
 class Editline
 {
 public:
@@ -66,10 +71,13 @@ public:
     ~Editline();
 
     Error
-    GetLine (std::string &line);
+    GetLine (std::string &line,
+             bool &interrupted);
 
     Error
-    GetLines (const std::string &end_line, StringList &lines);
+    GetLines (const std::string &end_line,
+              StringList &lines,
+              bool &interrupted);
 
     bool
     LoadHistory ();
@@ -98,7 +106,7 @@ public:
     void
     Refresh();
 
-    void
+    bool
     Interrupt ();
 
     void
@@ -119,11 +127,6 @@ public:
 
     size_t
     Push (const char *bytes, size_t len);
-
-    // Cache bytes and use them for input without using a FILE. Calling this function
-    // will set the getc callback in the editline
-    size_t
-    SetInputBuffer (const char *c, size_t len);
     
     static int
     GetCharFromInputFileCallback (::EditLine *e, char *c);
@@ -149,15 +152,8 @@ private:
     Error
     PrivateGetLine(std::string &line);
     
-    FileSpec
-    GetHistoryFile();
-
     unsigned char
     HandleCompletion (int ch);
-    
-    int
-    GetChar (char *c);
-
 
     static unsigned char
     CallbackEditPrevLine (::EditLine *e, int ch);
@@ -177,9 +173,6 @@ private:
     static FILE *
     GetFilePointer (::EditLine *e, int fd);
 
-    static int
-    GetCharInputBufferCallback (::EditLine *e, char *c);
-
     enum class Command
     {
         None = 0,
@@ -187,23 +180,19 @@ private:
         EditNextLine,
     };
     ::EditLine *m_editline;
-    ::History *m_history;
-    ::HistEvent m_history_event;
-    std::string m_program;
+    EditlineHistorySP m_history_sp;
     std::string m_prompt;
     std::string m_lines_prompt;
-    std::string m_getc_buffer;
-    Mutex m_getc_mutex;
-    Condition m_getc_cond;
+    lldb_private::Predicate<bool> m_getting_char;
     CompleteCallbackType m_completion_callback;
     void *m_completion_callback_baton;
-//    Mutex m_gets_mutex; // Make sure only one thread
     LineCompletedCallbackType m_line_complete_callback;
     void *m_line_complete_callback_baton;
     Command m_lines_command;
     uint32_t m_line_offset;
     uint32_t m_lines_curr_line;
     uint32_t m_lines_max_line;
+    ConnectionFileDescriptor m_file;
     bool m_prompt_with_line_numbers;
     bool m_getting_line;
     bool m_got_eof;    // Set to true when we detect EOF

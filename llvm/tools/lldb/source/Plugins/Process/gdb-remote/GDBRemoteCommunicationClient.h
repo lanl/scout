@@ -283,6 +283,9 @@ public:
     GetpPacketSupported (lldb::tid_t tid);
 
     bool
+    GetxPacketSupported ();
+
+    bool
     GetVAttachOrWaitSupported ();
     
     bool
@@ -534,6 +537,7 @@ protected:
     lldb_private::LazyBool m_supports_vCont_s;
     lldb_private::LazyBool m_supports_vCont_S;
     lldb_private::LazyBool m_qHostInfo_is_valid;
+    lldb_private::LazyBool m_curr_pid_is_valid;
     lldb_private::LazyBool m_qProcessInfo_is_valid;
     lldb_private::LazyBool m_qGDBServerVersion_is_valid;
     lldb_private::LazyBool m_supports_alloc_dealloc_memory;
@@ -544,6 +548,7 @@ protected:
     lldb_private::LazyBool m_attach_or_wait_reply;
     lldb_private::LazyBool m_prepare_for_reg_writing_reply;
     lldb_private::LazyBool m_supports_p;
+    lldb_private::LazyBool m_supports_x;
     lldb_private::LazyBool m_avoid_g_packets;
     lldb_private::LazyBool m_supports_QSaveRegisterState;
     lldb_private::LazyBool m_supports_qXfer_auxv_read;
@@ -565,7 +570,7 @@ protected:
         m_supports_QEnvironment:1,
         m_supports_QEnvironmentHexEncoded:1;
     
-
+    lldb::pid_t m_curr_pid;
     lldb::tid_t m_curr_tid;         // Current gdb remote protocol thread index for all other operations
     lldb::tid_t m_curr_tid_run;     // Current gdb remote protocol thread index for continue, step, etc
 

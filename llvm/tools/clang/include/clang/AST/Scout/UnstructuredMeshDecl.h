@@ -65,7 +65,8 @@ namespace clang {
 class UnstructuredMeshDecl : public MeshDecl {
 
 protected:
-  UnstructuredMeshDecl(DeclContext* DC,
+  UnstructuredMeshDecl(const ASTContext &C,
+                       DeclContext* DC,
                        SourceLocation L,
                        SourceLocation StartL,
                        IdentifierInfo* Id,

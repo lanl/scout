@@ -95,7 +95,7 @@ void Sema::ActOnForEachDeclStmt(DeclGroupPtrTy dg) {
 
   // foreach variables are never actually initialized in the way that
   // the parser came up with.
-  var->setInit(0);
+  var->setInit(nullptr);
 
   // In ARC, we don't need to retain the iteration variable of a fast
   // enumeration loop.  Rather than actually trying to catch that
@@ -289,7 +289,7 @@ void Sema::DiagnoseUnusedExprResult(const Stmt *S) {
     return;
   }
 
-  DiagRuntimeBehavior(Loc, 0, PDiag(DiagID) << R1 << R2);
+  DiagRuntimeBehavior(Loc, nullptr, PDiag(DiagID) << R1 << R2);
 }
 
 void Sema::ActOnStartOfCompoundStmt() {
@@ -351,7 +351,7 @@ StmtResult
 Sema::ActOnCaseStmt(SourceLocation CaseLoc, Expr *LHSVal,
                     SourceLocation DotDotDotLoc, Expr *RHSVal,
                     SourceLocation ColonLoc) {
-  assert((LHSVal != 0) && "missing expression in case statement");
+  assert(LHSVal && "missing expression in case statement");
 
   if (getCurFunction()->SwitchStack.empty()) {
     Diag(CaseLoc, diag::err_case_not_in_switch);
@@ -451,7 +451,7 @@ Sema::ActOnIfStmt(SourceLocation IfLoc, FullExprArg CondVal, Decl *CondVar,
 
   ExprResult CondResult(CondVal.release());
 
-  VarDecl *ConditionVar = 0;
+  VarDecl *ConditionVar = nullptr;
   if (CondVar) {
     ConditionVar = cast<VarDecl>(CondVar);
     CondResult = CheckConditionVariable(ConditionVar, IfLoc, true);
@@ -580,7 +580,7 @@ Sema::ActOnStartOfSwitchStmt(SourceLocation SwitchLoc, Expr *Cond,
                              Decl *CondVar) {
   ExprResult CondResult;
 
-  VarDecl *ConditionVar = 0;
+  VarDecl *ConditionVar = nullptr;
   if (CondVar) {
     ConditionVar = cast<VarDecl>(CondVar);
     CondResult = CheckConditionVariable(ConditionVar, SourceLocation(), false);
@@ -702,6 +702,7 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
   assert(SS == getCurFunction()->SwitchStack.back() &&
          "switch stack missing push/pop!");
 
+  if (!BodyStmt) return StmtError();
   SS->setBody(BodyStmt, SwitchLoc);
   getCurFunction()->SwitchStack.pop_back();
 
@@ -756,7 +757,7 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
   typedef std::vector<std::pair<llvm::APSInt, CaseStmt*> > CaseRangesTy;
   CaseRangesTy CaseRanges;
 
-  DefaultStmt *TheDefaultStmt = 0;
+  DefaultStmt *TheDefaultStmt = nullptr;
 
   bool CaseListIsErroneous = false;
 
@@ -963,7 +964,7 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
 
         // Check to see whether the case range overlaps with any
         // singleton cases.
-        CaseStmt *OverlapStmt = 0;
+        CaseStmt *OverlapStmt = nullptr;
         llvm::APSInt OverlapVal(32);
 
         // Find the smallest value >= the lower bound.  If I is in the
@@ -1141,8 +1142,9 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
     }
   }
 
-  DiagnoseEmptyStmtBody(CondExpr->getLocEnd(), BodyStmt,
-                        diag::warn_empty_switch_body);
+  if (BodyStmt)
+    DiagnoseEmptyStmtBody(CondExpr->getLocEnd(), BodyStmt,
+                          diag::warn_empty_switch_body);
 
   // FIXME: If the case list was broken is some way, we don't have a good system
   // to patch it up.  Instead, just return the whole substmt as broken.
@@ -1206,7 +1208,7 @@ Sema::ActOnWhileStmt(SourceLocation WhileLoc, FullExprArg Cond,
                      Decl *CondVar, Stmt *Body) {
   ExprResult CondResult(Cond.release());
 
-  VarDecl *ConditionVar = 0;
+  VarDecl *ConditionVar = nullptr;
   if (CondVar) {
     ConditionVar = cast<VarDecl>(CondVar);
     CondResult = CheckConditionVariable(ConditionVar, WhileLoc, true);
@@ -1597,8 +1599,8 @@ Sema::ActOnForStmt(SourceLocation ForLoc, SourceLocation LParenLoc,
       for (auto *DI : DS->decls()) {
         VarDecl *VD = dyn_cast<VarDecl>(DI);
         if (VD && VD->isLocalVarDecl() && !VD->hasLocalStorage())
-          VD = 0;
-        if (VD == 0) {
+          VD = nullptr;
+        if (!VD) {
           Diag(DI->getLocation(), diag::err_non_local_variable_decl_in_for);
           DI->setInvalidDecl();
         }
@@ -1613,7 +1615,7 @@ Sema::ActOnForStmt(SourceLocation ForLoc, SourceLocation LParenLoc,
   CheckForRedundantIteration(*this, third.get(), Body);
 
   ExprResult SecondResult(second.release());
-  VarDecl *ConditionVar = 0;
+  VarDecl *ConditionVar = nullptr;
   if (secondVar) {
     ConditionVar = cast<VarDecl>(secondVar);
     SecondResult = CheckConditionVariable(ConditionVar, ForLoc, true);
@@ -1698,7 +1700,7 @@ Sema::CheckObjCForCollectionOperand(SourceLocation forLoc, Expr *collection) {
     };
     Selector selector = Context.Selectors.getSelector(3, &selectorIdents[0]);
 
-    ObjCMethodDecl *method = 0;
+    ObjCMethodDecl *method = nullptr;
 
     // If there's an interface, look in both the public and private APIs.
     if (iface) {
@@ -1801,8 +1803,8 @@ Sema::ActOnObjCForCollectionStmt(SourceLocation ForLoc,
     return StmtError();
 
   return Owned(new (Context) ObjCForCollectionStmt(First,
-                                                   CollectionExprResult.take(), 0,
-                                                   ForLoc, RParenLoc));
+                                                   CollectionExprResult.take(),
+                                                   nullptr, ForLoc, RParenLoc));
 }
 
 /// Finish building a variable declaration for a for-range statement.
@@ -1880,7 +1882,7 @@ VarDecl *BuildForRangeVarDecl(Sema &SemaRef, SourceLocation Loc,
 
 static bool ObjCEnumerationCollection(Expr *Collection) {
   return !Collection->isTypeDependent()
-          && Collection->getType()->getAs<ObjCObjectPointerType>() != 0;
+          && Collection->getType()->getAs<ObjCObjectPointerType>() != nullptr;
 }
 
 /// ActOnCXXForRangeStmt - Check and build a C++11 for-range statement.
@@ -1948,8 +1950,8 @@ Sema::ActOnCXXForRangeStmt(SourceLocation ForLoc,
   }
 
   return BuildCXXForRangeStmt(ForLoc, ColonLoc, RangeDecl.get(),
-                              /*BeginEndDecl=*/0, /*Cond=*/0, /*Inc=*/0, DS,
-                              RParenLoc, Kind);
+                              /*BeginEndDecl=*/nullptr, /*Cond=*/nullptr,
+                              /*Inc=*/nullptr, DS, RParenLoc, Kind);
 }
 
 /// \brief Create the initialization, compare, and increment steps for
@@ -2333,8 +2335,8 @@ Sema::BuildCXXForRangeStmt(SourceLocation ForLoc, SourceLocation ColonLoc,
   return Owned(new (Context) CXXForRangeStmt(RangeDS,
                                      cast_or_null<DeclStmt>(BeginEndDecl.get()),
                                              NotEqExpr.take(), IncrExpr.take(),
-                                             LoopVarDS, /*Body=*/0, ForLoc,
-                                             ColonLoc, RParenLoc));
+                                             LoopVarDS, /*Body=*/nullptr,
+                                             ForLoc, ColonLoc, RParenLoc));
 }
 
 /// FinishObjCForCollectionStmt - Attach the body to a objective-C foreach
@@ -2443,52 +2445,62 @@ Sema::ActOnBreakStmt(SourceLocation BreakLoc, Scope *CurScope) {
 ///
 /// \returns The NRVO candidate variable, if the return statement may use the
 /// NRVO, or NULL if there is no such candidate.
-const VarDecl *Sema::getCopyElisionCandidate(QualType ReturnType,
-                                             Expr *E,
-                                             bool AllowFunctionParameter) {
-  QualType ExprType = E->getType();
+VarDecl *Sema::getCopyElisionCandidate(QualType ReturnType,
+                                       Expr *E,
+                                       bool AllowFunctionParameter) {
+  if (!getLangOpts().CPlusPlus)
+    return nullptr;
+
+  // - in a return statement in a function [where] ...
+  // ... the expression is the name of a non-volatile automatic object ...
+  DeclRefExpr *DR = dyn_cast<DeclRefExpr>(E->IgnoreParens());
+  if (!DR || DR->refersToEnclosingLocal())
+    return nullptr;
+  VarDecl *VD = dyn_cast<VarDecl>(DR->getDecl());
+  if (!VD)
+    return nullptr;
+
+  if (isCopyElisionCandidate(ReturnType, VD, AllowFunctionParameter))
+    return VD;
+  return nullptr;
+}
+
+bool Sema::isCopyElisionCandidate(QualType ReturnType, const VarDecl *VD,
+                                  bool AllowFunctionParameter) {
+  QualType VDType = VD->getType();
   // - in a return statement in a function with ...
   // ... a class return type ...
-  if (!ReturnType.isNull()) {
+  if (!ReturnType.isNull() && !ReturnType->isDependentType()) {
     if (!ReturnType->isRecordType())
-      return 0;
+      return false;
     // ... the same cv-unqualified type as the function return type ...
-    if (!Context.hasSameUnqualifiedType(ReturnType, ExprType))
-      return 0;
+    if (!VDType->isDependentType() &&
+        !Context.hasSameUnqualifiedType(ReturnType, VDType))
+      return false;
   }
-
-  // ... the expression is the name of a non-volatile automatic object
-  // (other than a function or catch-clause parameter)) ...
-  const DeclRefExpr *DR = dyn_cast<DeclRefExpr>(E->IgnoreParens());
-  if (!DR || DR->refersToEnclosingLocal())
-    return 0;
-  const VarDecl *VD = dyn_cast<VarDecl>(DR->getDecl());
-  if (!VD)
-    return 0;
 
   // ...object (other than a function or catch-clause parameter)...
   if (VD->getKind() != Decl::Var &&
       !(AllowFunctionParameter && VD->getKind() == Decl::ParmVar))
-    return 0;
-  if (VD->isExceptionVariable()) return 0;
+    return false;
+  if (VD->isExceptionVariable()) return false;
 
   // ...automatic...
-  if (!VD->hasLocalStorage()) return 0;
+  if (!VD->hasLocalStorage()) return false;
 
   // ...non-volatile...
-  if (VD->getType().isVolatileQualified()) return 0;
-  if (VD->getType()->isReferenceType()) return 0;
+  if (VD->getType().isVolatileQualified()) return false;
 
   // __block variables can't be allocated in a way that permits NRVO.
-  if (VD->hasAttr<BlocksAttr>()) return 0;
+  if (VD->hasAttr<BlocksAttr>()) return false;
 
   // Variables with higher required alignment than their type's ABI
   // alignment cannot use NRVO.
-  if (VD->hasAttr<AlignedAttr>() &&
+  if (!VD->getType()->isDependentType() && VD->hasAttr<AlignedAttr>() &&
       Context.getDeclAlign(VD) > Context.getTypeAlignInChars(VD->getType()))
-    return 0;
+    return false;
 
-  return VD;
+  return true;
 }
 
 /// \brief Perform the initialization of a potentially-movable value, which
@@ -2548,7 +2560,7 @@ Sema::PerformMoveOrCopyInitialization(const InitializedEntity &Entity,
         // Promote "AsRvalue" to the heap, since we now need this
         // expression node to persist.
         Value = ImplicitCastExpr::Create(Context, Value->getType(),
-                                         CK_NoOp, Value, 0, VK_XValue);
+                                         CK_NoOp, Value, nullptr, VK_XValue);
 
         // Complete type-checking the initialization of the return type
         // using the constructor we found.
@@ -2654,7 +2666,7 @@ Sema::ActOnCapScopeReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
   // Otherwise, verify that this result type matches the previous one.  We are
   // pickier with blocks than for normal functions because we don't have GCC
   // compatibility to worry about here.
-  const VarDecl *NRVOCandidate = 0;
+  const VarDecl *NRVOCandidate = nullptr;
   if (FnRetType->isDependentType()) {
     // Delay processing for now.  TODO: there are lots of dependent
     // types we can conclusively prove aren't void.
@@ -2668,7 +2680,7 @@ Sema::ActOnCapScopeReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
         Diag(ReturnLoc, diag::ext_return_has_void_expr) << "literal" << 2;
       else {
         Diag(ReturnLoc, diag::err_return_block_has_expr);
-        RetValExp = 0;
+        RetValExp = nullptr;
       }
     }
   } else if (!RetValExp) {
@@ -2685,7 +2697,7 @@ Sema::ActOnCapScopeReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
     NRVOCandidate = getCopyElisionCandidate(FnRetType, RetValExp, false);
     InitializedEntity Entity = InitializedEntity::InitializeResult(ReturnLoc,
                                                                    FnRetType,
-                                                          NRVOCandidate != 0);
+                                                      NRVOCandidate != nullptr);
     ExprResult Res = PerformMoveOrCopyInitialization(Entity, NRVOCandidate,
                                                      FnRetType, RetValExp);
     if (Res.isInvalid()) {
@@ -2694,6 +2706,8 @@ Sema::ActOnCapScopeReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
     }
     RetValExp = Res.take();
     CheckReturnValExpr(RetValExp, FnRetType, ReturnLoc);
+  } else {
+    NRVOCandidate = getCopyElisionCandidate(FnRetType, RetValExp, false);
   }
 
   if (RetValExp) {
@@ -2708,9 +2722,7 @@ Sema::ActOnCapScopeReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
   // If we need to check for the named return value optimization,
   // or if we need to infer the return type,
   // save the return statement in our scope for later processing.
-  if (CurCap->HasImplicitReturnType ||
-      (getLangOpts().CPlusPlus && FnRetType->isRecordType() &&
-       !CurContext->isDependentContext()))
+  if (CurCap->HasImplicitReturnType || NRVOCandidate)
     FunctionScopes.back()->Returns.push_back(Result);
 
   return Owned(Result);
@@ -2807,7 +2819,24 @@ bool Sema::DeduceFunctionTypeFromReturnExpr(FunctionDecl *FD,
 }
 
 StmtResult
-Sema::ActOnReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
+Sema::ActOnReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp,
+                      Scope *CurScope) {
+  StmtResult R = BuildReturnStmt(ReturnLoc, RetValExp);
+  if (R.isInvalid()) {
+    return R;
+  }
+
+  if (VarDecl *VD =
+      const_cast<VarDecl*>(cast<ReturnStmt>(R.get())->getNRVOCandidate())) {
+    CurScope->addNRVOCandidate(VD);
+  } else {
+    CurScope->setNoNRVO();
+  }
+
+  return R;
+}
+
+StmtResult Sema::BuildReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
   // Check for unexpanded parameter packs.
   if (RetValExp && DiagnoseUnexpandedParameterPack(RetValExp))
     return StmtError();
@@ -2817,7 +2846,7 @@ Sema::ActOnReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
 
   QualType FnRetType;
   QualType RelatedRetType;
-  const AttrVec *Attrs = 0;
+  const AttrVec *Attrs = nullptr;
   bool isObjCMethod = false;
 
   if (const FunctionDecl *FD = getCurFunctionDecl()) {
@@ -2858,7 +2887,7 @@ Sema::ActOnReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
 
   bool HasDependentReturnType = FnRetType->isDependentType();
 
-  ReturnStmt *Result = 0;
+  ReturnStmt *Result = nullptr;
   if (FnRetType->isVoidType()) {
     if (RetValExp) {
       if (isa<InitListExpr>(RetValExp)) {
@@ -2879,7 +2908,7 @@ Sema::ActOnReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
           << RetValExp->getSourceRange();
 
         // Drop the expression.
-        RetValExp = 0;
+        RetValExp = nullptr;
       } else if (!RetValExp->isTypeDependent()) {
         // C99 6.8.6.4p1 (ext_ since GCC warns)
         unsigned D = diag::ext_return_has_expr;
@@ -2934,7 +2963,7 @@ Sema::ActOnReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
       }
     }
 
-    Result = new (Context) ReturnStmt(ReturnLoc, RetValExp, 0);
+    Result = new (Context) ReturnStmt(ReturnLoc, RetValExp, nullptr);
   } else if (!RetValExp && !HasDependentReturnType) {
     unsigned DiagID = diag::warn_return_missing_expr;  // C90 6.6.6.4p4
     // C99 6.8.6.4p1 (ext_ since GCC warns)
@@ -2947,22 +2976,23 @@ Sema::ActOnReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
     Result = new (Context) ReturnStmt(ReturnLoc);
   } else {
     assert(RetValExp || HasDependentReturnType);
-    const VarDecl *NRVOCandidate = 0;
+    const VarDecl *NRVOCandidate = nullptr;
+
+    QualType RetType = RelatedRetType.isNull() ? FnRetType : RelatedRetType;
+
+    // C99 6.8.6.4p3(136): The return statement is not an assignment. The
+    // overlap restriction of subclause 6.5.16.1 does not apply to the case of
+    // function return.
+
+    // In C++ the return statement is handled via a copy initialization,
+    // the C version of which boils down to CheckSingleAssignmentConstraints.
+    if (RetValExp)
+      NRVOCandidate = getCopyElisionCandidate(FnRetType, RetValExp, false);
     if (!HasDependentReturnType && !RetValExp->isTypeDependent()) {
       // we have a non-void function with an expression, continue checking
-
-      QualType RetType = (RelatedRetType.isNull() ? FnRetType : RelatedRetType);
-
-      // C99 6.8.6.4p3(136): The return statement is not an assignment. The
-      // overlap restriction of subclause 6.5.16.1 does not apply to the case of
-      // function return.
-
-      // In C++ the return statement is handled via a copy initialization,
-      // the C version of which boils down to CheckSingleAssignmentConstraints.
-      NRVOCandidate = getCopyElisionCandidate(FnRetType, RetValExp, false);
       InitializedEntity Entity = InitializedEntity::InitializeResult(ReturnLoc,
                                                                      RetType,
-                                                            NRVOCandidate != 0);
+                                                      NRVOCandidate != nullptr);
       ExprResult Res = PerformMoveOrCopyInitialization(Entity, NRVOCandidate,
                                                        RetType, RetValExp);
       if (Res.isInvalid()) {
@@ -3001,8 +3031,7 @@ Sema::ActOnReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
 
   // If we need to check for the named return value optimization, save the
   // return statement in our scope for later processing.
-  if (getLangOpts().CPlusPlus && FnRetType->isRecordType() &&
-      !CurContext->isDependentContext())
+  if (Result->getNRVOCandidate())
     FunctionScopes.back()->Returns.push_back(Result);
 
   return Owned(Result);
@@ -3285,30 +3314,20 @@ Sema::CreateCapturedStmtRecordDecl(CapturedDecl *&CD, SourceLocation Loc,
   while (!(DC->isFunctionOrMethod() || DC->isRecord() || DC->isFileContext()))
     DC = DC->getParent();
 
-  RecordDecl *RD = 0;
+  RecordDecl *RD = nullptr;
   if (getLangOpts().CPlusPlus)
-    RD = CXXRecordDecl::Create(Context, TTK_Struct, DC, Loc, Loc, /*Id=*/0);
+    RD = CXXRecordDecl::Create(Context, TTK_Struct, DC, Loc, Loc,
+                               /*Id=*/nullptr);
   else
-    RD = RecordDecl::Create(Context, TTK_Struct, DC, Loc, Loc, /*Id=*/0);
+    RD = RecordDecl::Create(Context, TTK_Struct, DC, Loc, Loc, /*Id=*/nullptr);
 
   DC->addDecl(RD);
   RD->setImplicit();
   RD->startDefinition();
 
+  assert(NumParams > 0 && "CapturedStmt requires context parameter");
   CD = CapturedDecl::Create(Context, CurContext, NumParams);
   DC->addDecl(CD);
-
-  // Build the context parameter
-  assert(NumParams > 0 && "CapturedStmt requires context parameter");
-  DC = CapturedDecl::castToDeclContext(CD);
-  IdentifierInfo *VarName = &Context.Idents.get("__context");
-  QualType ParamType = Context.getPointerType(Context.getTagDeclType(RD));
-  ImplicitParamDecl *Param
-    = ImplicitParamDecl::Create(Context, DC, Loc, VarName, ParamType);
-  DC->addDecl(Param);
-
-  CD->setContextParam(Param);
-
   return RD;
 }
 
@@ -3340,9 +3359,71 @@ static void buildCapturedStmtCaptureList(
 void Sema::ActOnCapturedRegionStart(SourceLocation Loc, Scope *CurScope,
                                     CapturedRegionKind Kind,
                                     unsigned NumParams) {
-  CapturedDecl *CD = 0;
+  CapturedDecl *CD = nullptr;
   RecordDecl *RD = CreateCapturedStmtRecordDecl(CD, Loc, NumParams);
 
+  // Build the context parameter
+  DeclContext *DC = CapturedDecl::castToDeclContext(CD);
+  IdentifierInfo *ParamName = &Context.Idents.get("__context");
+  QualType ParamType = Context.getPointerType(Context.getTagDeclType(RD));
+  ImplicitParamDecl *Param
+    = ImplicitParamDecl::Create(Context, DC, Loc, ParamName, ParamType);
+  DC->addDecl(Param);
+
+  CD->setContextParam(0, Param);
+
+  // Enter the capturing scope for this captured region.
+  PushCapturedRegionScope(CurScope, CD, RD, Kind);
+
+  if (CurScope)
+    PushDeclContext(CurScope, CD);
+  else
+    CurContext = CD;
+
+  PushExpressionEvaluationContext(PotentiallyEvaluated);
+}
+
+void Sema::ActOnCapturedRegionStart(SourceLocation Loc, Scope *CurScope,
+                                    CapturedRegionKind Kind,
+                                    ArrayRef<CapturedParamNameType> Params) {
+  CapturedDecl *CD = nullptr;
+  RecordDecl *RD = CreateCapturedStmtRecordDecl(CD, Loc, Params.size());
+
+  // Build the context parameter
+  DeclContext *DC = CapturedDecl::castToDeclContext(CD);
+  bool ContextIsFound = false;
+  unsigned ParamNum = 0;
+  for (ArrayRef<CapturedParamNameType>::iterator I = Params.begin(),
+                                                 E = Params.end();
+       I != E; ++I, ++ParamNum) {
+    if (I->second.isNull()) {
+      assert(!ContextIsFound &&
+             "null type has been found already for '__context' parameter");
+      IdentifierInfo *ParamName = &Context.Idents.get("__context");
+      QualType ParamType = Context.getPointerType(Context.getTagDeclType(RD));
+      ImplicitParamDecl *Param
+        = ImplicitParamDecl::Create(Context, DC, Loc, ParamName, ParamType);
+      DC->addDecl(Param);
+      CD->setContextParam(ParamNum, Param);
+      ContextIsFound = true;
+    } else {
+      IdentifierInfo *ParamName = &Context.Idents.get(I->first);
+      ImplicitParamDecl *Param
+        = ImplicitParamDecl::Create(Context, DC, Loc, ParamName, I->second);
+      DC->addDecl(Param);
+      CD->setParam(ParamNum, Param);
+    }
+  }
+  assert(ContextIsFound && "no null type for '__context' parameter");
+  if (!ContextIsFound) {
+    // Add __context implicitly if it is not specified.
+    IdentifierInfo *ParamName = &Context.Idents.get("__context");
+    QualType ParamType = Context.getPointerType(Context.getTagDeclType(RD));
+    ImplicitParamDecl *Param =
+        ImplicitParamDecl::Create(Context, DC, Loc, ParamName, ParamType);
+    DC->addDecl(Param);
+    CD->setContextParam(ParamNum, Param);
+  }
   // Enter the capturing scope for this captured region.
   PushCapturedRegionScope(CurScope, CD, RD, Kind);
 
@@ -3363,8 +3444,8 @@ void Sema::ActOnCapturedRegionError() {
   Record->setInvalidDecl();
 
   SmallVector<Decl*, 4> Fields(Record->fields());
-  ActOnFields(/*Scope=*/0, Record->getLocation(), Record, Fields,
-              SourceLocation(), SourceLocation(), /*AttributeList=*/0);
+  ActOnFields(/*Scope=*/nullptr, Record->getLocation(), Record, Fields,
+              SourceLocation(), SourceLocation(), /*AttributeList=*/nullptr);
 
   PopDeclContext();
   PopFunctionScopeInfo();

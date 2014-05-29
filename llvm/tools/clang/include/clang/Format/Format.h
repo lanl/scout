@@ -120,9 +120,10 @@ struct FormatStyle {
   /// \brief The indentation used for namespaces.
   NamespaceIndentationKind NamespaceIndentation;
 
-  /// \brief The number of spaces before trailing line comments (//-comments).
+  /// \brief The number of spaces before trailing line comments
+  /// (\c // - comments).
   ///
-  /// This does not affect trailing block comments (/**/-comments) as those
+  /// This does not affect trailing block comments (\c /**/ - comments) as those
   /// commonly have different usage patterns and a number of special cases.
   unsigned SpacesBeforeTrailingComments;
 
@@ -157,6 +158,11 @@ struct FormatStyle {
   /// \brief Always break constructor initializers before commas and align
   /// the commas with the colon.
   bool BreakConstructorInitializersBeforeComma;
+
+  /// \brief Allows contracting simple braced statements to a single line.
+  ///
+  /// E.g., this allows <tt>if (a) { return; }</tt> to be put on a single line.
+  bool AllowShortBlocksOnASingleLine;
 
   /// \brief If \c true, <tt>if (a) return;</tt> can be put on a single
   /// line.
@@ -316,6 +322,9 @@ struct FormatStyle {
   /// which should not be split into lines or otherwise changed.
   std::string CommentPragmas;
 
+  /// \brief Disables formatting at all.
+  bool DisableFormat;
+
   /// \brief A vector of macros that should be interpreted as foreach loops
   /// instead of as function calls.
   ///
@@ -338,6 +347,7 @@ struct FormatStyle {
                R.AllowAllParametersOfDeclarationOnNextLine &&
            AllowShortFunctionsOnASingleLine ==
                R.AllowShortFunctionsOnASingleLine &&
+           AllowShortBlocksOnASingleLine == R.AllowShortBlocksOnASingleLine &&
            AllowShortIfStatementsOnASingleLine ==
                R.AllowShortIfStatementsOnASingleLine &&
            AllowShortLoopsOnASingleLine == R.AllowShortLoopsOnASingleLine &&
@@ -415,6 +425,9 @@ FormatStyle getWebKitStyle();
 /// http://www.gnu.org/prep/standards/standards.html
 FormatStyle getGNUStyle();
 
+/// \brief Returns style indicating formatting should be not applied at all.
+FormatStyle getNoStyle();
+
 /// \brief Gets a predefined style for the specified language by name.
 ///
 /// Currently supported names: LLVM, Google, Chromium, Mozilla. Names are
@@ -460,8 +473,8 @@ tooling::Replacements reformat(const FormatStyle &Style, StringRef Code,
 ///
 /// \param Standard determines lexing mode: LC_Cpp11 and LS_Auto turn on C++11
 /// lexing mode, LS_Cpp03 - C++03 mode.
-LangOptions getFormattingLangOpts(FormatStyle::LanguageStandard Standard =
-                                      FormatStyle::LS_Cpp11);
+LangOptions getFormattingLangOpts(
+    FormatStyle::LanguageStandard Standard = FormatStyle::LS_Cpp11);
 
 /// \brief Description to be used for help text for a llvm::cl option for
 /// specifying format style. The description is closely related to the operation

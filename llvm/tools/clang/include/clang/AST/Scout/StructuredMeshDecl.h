@@ -65,7 +65,8 @@ namespace clang {
 class StructuredMeshDecl : public MeshDecl {
 
 protected:
-  StructuredMeshDecl(DeclContext* DC, 
+  StructuredMeshDecl(const ASTContext &C,
+                     DeclContext* DC,
                      SourceLocation L, 
                      SourceLocation StartL,
                      IdentifierInfo* Id, 

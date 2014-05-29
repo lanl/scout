@@ -423,6 +423,40 @@ class UMUL24Pattern <Instruction UMUL24> : Pat <
 >;
 */
 
+class IMad24Pat<Instruction Inst> : Pat <
+  (add (AMDGPUmul_i24 i32:$src0, i32:$src1), i32:$src2),
+  (Inst $src0, $src1, $src2)
+>;
+
+class UMad24Pat<Instruction Inst> : Pat <
+  (add (AMDGPUmul_u24 i32:$src0, i32:$src1), i32:$src2),
+  (Inst $src0, $src1, $src2)
+>;
+
+multiclass Expand24IBitOps<Instruction MulInst, Instruction AddInst> {
+  def _expand_imad24 : Pat <
+    (AMDGPUmad_i24 i32:$src0, i32:$src1, i32:$src2),
+    (AddInst (MulInst $src0, $src1), $src2)
+  >;
+
+  def _expand_imul24 : Pat <
+    (AMDGPUmul_i24 i32:$src0, i32:$src1),
+    (MulInst $src0, $src1)
+  >;
+}
+
+multiclass Expand24UBitOps<Instruction MulInst, Instruction AddInst> {
+  def _expand_umad24 : Pat <
+    (AMDGPUmad_u24 i32:$src0, i32:$src1, i32:$src2),
+    (AddInst (MulInst $src0, $src1), $src2)
+  >;
+
+  def _expand_umul24 : Pat <
+    (AMDGPUmul_u24 i32:$src0, i32:$src1),
+    (MulInst $src0, $src1)
+  >;
+}
+
 include "R600Instructions.td"
 include "R700Instructions.td"
 include "EvergreenInstructions.td"
