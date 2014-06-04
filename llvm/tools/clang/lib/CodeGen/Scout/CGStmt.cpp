@@ -1649,6 +1649,22 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 
   ResetVars();
 
+  // Add render target argument
+  
+  // TODO:  check if it's a window or image type
+  
+  const VarDecl* RTVD = S.getRenderTargetVarDecl();
+  
+  llvm::Value* RTAlloc;
+  
+  if ((RTVD->hasLinkage() || RTVD->isStaticDataMember())
+      && RTVD->getTLSKind() != VarDecl::TLS_Dynamic) {
+    RTAlloc = CGM.GetAddrOfGlobalVar(RTVD);
+  }
+  else{
+    RTAlloc = LocalDeclMap.lookup(RTVD);
+  }
+  
   llvm::SmallVector< llvm::Value *, 4 > Args;
   Args.clear();
 
@@ -1670,15 +1686,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
      LoopBounds[i] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
      Args[i] = Builder.CreateLoad(LoopBounds[i], IRNameStr);
   }
-
-  // Add render target argument 
-
-  // TODO:  check if it's a window or image type
-
-  const VarDecl* RTVD = S.getRenderTargetVarDecl();
-
-  llvm::Value* RTAlloc = LocalDeclMap.lookup(RTVD);
-
+  
   // cast scout.window_t** to void**
   llvm::Value* int8PtrPtrRTAlloc = Builder.CreateBitCast(RTAlloc, Int8PtrPtrTy, "");
 
