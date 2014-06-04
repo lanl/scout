@@ -63,6 +63,8 @@
 #include "lldb/Symbol/ClangExternalASTSourceCommon.h"
 #include "lldb/Symbol/ClangNamespaceDecl.h"
 
+#include "clang/AST/Scout/MeshDecl.h"
+
 using namespace lldb_private;
 using namespace clang;
 
