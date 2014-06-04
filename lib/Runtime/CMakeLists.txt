@@ -105,7 +105,9 @@ if (SCOUT_ENABLE_OPENGL)
 
   if (APPLE)
     #find CoreGraphics headers if they are inside of ApplicationServices
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -F/System/Library/Frameworks/ApplicationServices.framework/Frameworks/")
+    if(NOT EXISTS /System/Library/Frameworks/CoreGraphics.framework)
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -F/System/Library/Frameworks/ApplicationServices.framework/Frameworks/")
+    endif()
     file(GLOB apple_gl_hdrs ${SCOUT_INCLUDE_DIR}/Runtime/opengl/macosx/*.h)
     file(GLOB apple_gl_srcs opengl/macosx/*.cpp opengl/macosx/*.mm)
     list(APPEND gl_hdrs ${apple_gl_hdrs})
