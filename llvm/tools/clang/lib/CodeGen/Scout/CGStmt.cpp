@@ -1660,6 +1660,9 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   if ((RTVD->hasLinkage() || RTVD->isStaticDataMember())
       && RTVD->getTLSKind() != VarDecl::TLS_Dynamic) {
     RTAlloc = CGM.GetAddrOfGlobalVar(RTVD);
+    llvm::Value* RTP = Builder.CreateAlloca(RTAlloc->getType());
+    Builder.CreateStore(RTAlloc, RTP);
+    RTAlloc = Builder.CreateLoad(RTP);
   }
   else{
     RTAlloc = LocalDeclMap.lookup(RTVD);
