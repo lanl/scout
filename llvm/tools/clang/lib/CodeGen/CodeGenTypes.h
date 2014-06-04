@@ -222,6 +222,11 @@ public:
 
   const CGFunctionInfo &arrangeGlobalDeclaration(GlobalDecl GD);
   const CGFunctionInfo &arrangeFunctionDeclaration(const FunctionDecl *FD);
+
+  // +===== Scout ==============================================================+
+  const CGFunctionInfo &arrangeStencilFunctionDeclaration(const FunctionDecl *FD);
+  // +==========================================================================+
+
   const CGFunctionInfo &
   arrangeFreeFunctionDeclaration(QualType ResTy, const FunctionArgList &Args,
                                  const FunctionType::ExtInfo &Info,

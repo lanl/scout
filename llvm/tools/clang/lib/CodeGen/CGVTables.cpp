@@ -14,7 +14,7 @@
 #include "CodeGenFunction.h"
 #include "CGCXXABI.h"
 // +===== Scout ==========================================================+
-#include "CGScoutABI.h"
+#include "Scout/CGScoutABI.h"
 // +======================================================================+
 #include "CodeGenModule.h"
 #include "clang/AST/CXXInheritance.h"

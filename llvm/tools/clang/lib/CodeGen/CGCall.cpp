@@ -359,6 +359,13 @@ CodeGenTypes::arrangeGlobalDeclaration(GlobalDecl GD) {
   // FIXME: Do we need to handle ObjCMethodDecl?
   const FunctionDecl *FD = cast<FunctionDecl>(GD.getDecl());
 
+  // +===== Scout ==============================================================+
+  if(FD->isStencilSpecified()) {
+    llvm::errs() << "stencil in arrangeGlobalDeclaration\n";
+    return arrangeStencilFunctionDeclaration(FD);
+  }
+  // +==========================================================================+
+
   if (const CXXConstructorDecl *CD = dyn_cast<CXXConstructorDecl>(FD))
     return arrangeCXXConstructorDeclaration(CD, GD.getCtorType());
 
@@ -1342,11 +1349,6 @@ void CodeGenFunction::EmitFunctionProlog(const CGFunctionInfo &FI,
       llvm::Constant* Zero = llvm::Constant::getNullValue(LLVMTy);
       Builder.CreateStore(Zero, ReturnValue);
     }
-    // +===== Scout ==========================================================+
-    if(FD->isStencilSpecified()) {
-      llvm::errs() << "stencil " << Fn->getName() << "\n";
-    }
-    // +======================================================================+
   }
 
   // FIXME: We no longer need the types from FunctionArgList; lift up and
@@ -2601,6 +2603,22 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
                                  llvm::Instruction **callOrInvoke) {
   // FIXME: We no longer need the types from CallArgs; lift up and simplify.
   SmallVector<llvm::Value*, 16> Args;
+
+  // +===== Scout ==========================================================+
+  // SC_TODO: this is not the correct place for this
+ #if 0
+   if(const FunctionDecl *FD = dyn_cast<FunctionDecl>(TargetDecl)) {
+     if (FD->isStencilSpecified()) {
+       llvm::errs() << "Args size 1: " << Args.size() << "\n";
+       for(unsigned i = 0; i <=3; i++) {
+         Args.push_back(InductionVar[i]);
+       }
+       llvm::errs() << "Args size 2: " << Args.size() << "\n";
+     }
+   }
+ #endif
+   // +======================================================================+
+
 
   // Handle struct-return functions by passing a pointer to the
   // location that we would like to return into.

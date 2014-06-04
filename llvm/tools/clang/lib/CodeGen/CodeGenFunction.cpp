@@ -15,7 +15,7 @@
 #include "CGCUDARuntime.h"
 #include "CGCXXABI.h"
 // +===== Scout ==========================================================+
-#include "CGScoutABI.h"
+#include "Scout/CGScoutABI.h"
 // +======================================================================+
 #include "CGDebugInfo.h"
 #include "CGOpenMPRuntime.h"
