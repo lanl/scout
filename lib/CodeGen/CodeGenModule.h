@@ -71,7 +71,6 @@ class CodeGenOptions;
 class DiagnosticsEngine;
 class AnnotateAttr;
 class CXXDestructorDecl;
-class MangleBuffer;
 class Module;
 
 namespace CodeGen {
@@ -288,7 +287,7 @@ class CodeGenModule : public CodeGenTypeCache {
   /// for emission and therefore should only be output if they are actually
   /// used. If a decl is in this, then it is known to have not been referenced
   /// yet.
-  llvm::StringMap<GlobalDecl> DeferredDecls;
+  std::map<StringRef, GlobalDecl> DeferredDecls;
 
   /// This is a list of deferred decls which we have seen that *are* actually
   /// referenced. These get code generated when the module is done.
@@ -328,8 +327,8 @@ class CodeGenModule : public CodeGenTypeCache {
 
   /// A map of canonical GlobalDecls to their mangled names.
   llvm::DenseMap<GlobalDecl, StringRef> MangledDeclNames;
-  llvm::BumpPtrAllocator MangledNamesAllocator;
-  
+  llvm::StringMap<GlobalDecl, llvm::BumpPtrAllocator> Manglings;
+
   /// Global annotations.
   std::vector<llvm::Constant*> Annotations;
 
@@ -522,6 +521,9 @@ public:
                                       llvm::GlobalVariable *C) {
     StaticLocalDeclGuardMap[D] = C;
   }
+
+  bool lookupRepresentativeDecl(StringRef MangledName,
+                                GlobalDecl &Result) const;
 
   llvm::Constant *getAtomicSetterHelperFnMap(QualType Ty) {
     return AtomicSetterHelperFnMap[Ty];
@@ -747,28 +749,14 @@ public:
   /// Return a pointer to a constant array for the given ObjCEncodeExpr node.
   llvm::Constant *GetAddrOfConstantStringFromObjCEncode(const ObjCEncodeExpr *);
 
-  /// Returns a pointer to a character array containing the literal. This
-  /// contents are exactly that of the given string, i.e. it will not be null
-  /// terminated automatically; see GetAddrOfConstantCString. Note that whether
-  /// the result is actually a pointer to an LLVM constant depends on
-  /// Feature.WriteableStrings.
-  ///
-  /// The result has pointer to array type.
-  ///
-  /// \param GlobalName If provided, the name to use for the global
-  /// (if one is created).
-  llvm::Constant *GetAddrOfConstantString(StringRef Str,
-                                          const char *GlobalName=nullptr,
-                                          unsigned Alignment=0);
-
   /// Returns a pointer to a character array containing the literal and a
   /// terminating '\0' character. The result has pointer to array type.
   ///
   /// \param GlobalName If provided, the name to use for the global (if one is
   /// created).
   llvm::Constant *GetAddrOfConstantCString(const std::string &str,
-                                           const char *GlobalName=nullptr,
-                                           unsigned Alignment=0);
+                                           const char *GlobalName = nullptr,
+                                           unsigned Alignment = 0);
 
   /// Returns a pointer to a constant global variable for the given file-scope
   /// compound literal expression.
@@ -937,8 +925,7 @@ public:
                               bool AttrOnCallSite);
 
   StringRef getMangledName(GlobalDecl GD);
-  void getBlockMangledName(GlobalDecl GD, MangleBuffer &Buffer,
-                           const BlockDecl *BD);
+  StringRef getBlockMangledName(GlobalDecl GD, const BlockDecl *BD);
 
   void EmitTentativeDefinition(const VarDecl *D);
 
@@ -975,8 +962,7 @@ public:
   /// Returns LLVM linkage for a declarator.
   llvm::GlobalValue::LinkageTypes
   getLLVMLinkageForDeclarator(const DeclaratorDecl *D, GVALinkage Linkage,
-                              bool IsConstantVariable,
-                              bool UseThunkForDtorVariant);
+                              bool IsConstantVariable);
 
   /// Returns LLVM linkage for a declarator.
   llvm::GlobalValue::LinkageTypes
@@ -1034,6 +1020,9 @@ private:
   llvm::Constant *GetOrCreateLLVMGlobal(StringRef MangledName,
                                         llvm::PointerType *PTy,
                                         const VarDecl *D);
+
+  llvm::StringMapEntry<llvm::GlobalVariable *> *
+  getConstantStringMapEntry(StringRef Str, int CharByteWidth);
 
   /// Set attributes which are common to any form of a global definition (alias,
   /// Objective-C method, function, global variable).

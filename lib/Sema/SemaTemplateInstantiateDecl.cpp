@@ -79,7 +79,7 @@ static void instantiateDependentAlignedAttr(
     EnterExpressionEvaluationContext Unevaluated(S, Sema::ConstantEvaluated);
     ExprResult Result = S.SubstExpr(Aligned->getAlignmentExpr(), TemplateArgs);
     if (!Result.isInvalid())
-      S.AddAlignedAttr(Aligned->getLocation(), New, Result.takeAs<Expr>(),
+      S.AddAlignedAttr(Aligned->getLocation(), New, Result.getAs<Expr>(),
                        Aligned->getSpellingListIndex(), IsPackExpansion);
   } else {
     TypeSourceInfo *Result = S.SubstType(Aligned->getAlignmentType(),
@@ -138,13 +138,13 @@ static void instantiateDependentEnableIfAttr(
     ExprResult Result = S.SubstExpr(A->getCond(), TemplateArgs);
     if (Result.isInvalid())
       return;
-    Cond = Result.takeAs<Expr>();
+    Cond = Result.getAs<Expr>();
   }
   if (A->getCond()->isTypeDependent() && !Cond->isTypeDependent()) {
     ExprResult Converted = S.PerformContextuallyConvertToBool(Cond);
     if (Converted.isInvalid())
       return;
-    Cond = Converted.take();
+    Cond = Converted.get();
   }
 
   SmallVector<PartialDiagnosticAt, 8> Diags;
@@ -423,6 +423,8 @@ Decl *TemplateDeclInstantiator::VisitVarDecl(VarDecl *D,
       Var->setNRVOVariable(true);
   }
 
+  Var->setImplicit(D->isImplicit());
+
   return Var;
 }
 
@@ -473,7 +475,7 @@ Decl *TemplateDeclInstantiator::VisitFieldDecl(FieldDecl *D) {
       Invalid = true;
       BitWidth = nullptr;
     } else
-      BitWidth = InstantiatedBitWidth.takeAs<Expr>();
+      BitWidth = InstantiatedBitWidth.getAs<Expr>();
   }
 
   FieldDecl *Field = SemaRef.CheckFieldDecl(D->getDeclName(),
@@ -739,7 +741,7 @@ void TemplateDeclInstantiator::InstantiateEnumDefinition(
   EnumConstantDecl *LastEnumConst = nullptr;
   for (auto *EC : Pattern->enumerators()) {
     // The specified value for the enumerator.
-    ExprResult Value = SemaRef.Owned((Expr *)nullptr);
+    ExprResult Value((Expr *)nullptr);
     if (Expr *UninstValue = EC->getInitExpr()) {
       // The enumerator's value expression is a constant expression.
       EnterExpressionEvaluationContext Unevaluated(SemaRef,
@@ -751,7 +753,7 @@ void TemplateDeclInstantiator::InstantiateEnumDefinition(
     // Drop the initial value and continue.
     bool isInvalid = false;
     if (Value.isInvalid()) {
-      Value = SemaRef.Owned((Expr *)nullptr);
+      Value = nullptr;
       isInvalid = true;
     }
 
@@ -885,11 +887,7 @@ Decl *TemplateDeclInstantiator::VisitClassTemplateDecl(ClassTemplateDecl *D) {
         if (DCParent->isNamespace() &&
             cast<NamespaceDecl>(DCParent)->getIdentifier() &&
             cast<NamespaceDecl>(DCParent)->getIdentifier()->isStr("tr1")) {
-          DeclContext *DCParent2 = DCParent->getParent();
-          if (DCParent2->isNamespace() &&
-              cast<NamespaceDecl>(DCParent2)->getIdentifier() &&
-              cast<NamespaceDecl>(DCParent2)->getIdentifier()->isStr("std") &&
-              DCParent2->getParent()->isTranslationUnit())
+          if (cast<Decl>(DCParent)->isInStdNamespace())
             Complain = false;
         }
       }
@@ -2313,7 +2311,7 @@ Decl *TemplateDeclInstantiator::VisitOMPThreadPrivateDecl(
                                      OMPThreadPrivateDecl *D) {
   SmallVector<Expr *, 5> Vars;
   for (auto *I : D->varlists()) {
-    Expr *Var = SemaRef.SubstExpr(I, TemplateArgs).take();
+    Expr *Var = SemaRef.SubstExpr(I, TemplateArgs).get();
     assert(isa<DeclRefExpr>(Var) && "threadprivate arg is not a DeclRefExpr");
     Vars.push_back(Var);
   }
@@ -3129,13 +3127,13 @@ static void InstantiateExceptionSpec(Sema &SemaRef, FunctionDecl *New,
       E = SemaRef.CheckBooleanCondition(E.get(), E.get()->getLocStart());
 
     if (E.isUsable()) {
-      NoexceptExpr = E.take();
+      NoexceptExpr = E.get();
       if (!NoexceptExpr->isTypeDependent() &&
           !NoexceptExpr->isValueDependent())
         NoexceptExpr
           = SemaRef.VerifyIntegerConstantExpression(NoexceptExpr,
               nullptr, diag::err_noexcept_needs_constant_expression,
-              /*AllowFold*/ false).take();
+              /*AllowFold*/ false).get();
     }
   }
 
@@ -3379,8 +3377,16 @@ void Sema::InstantiateFunctionDefinition(SourceLocation PointOfInstantiation,
       !PatternDecl->getReturnType()->getContainedAutoType())
     return;
 
-  if (PatternDecl->isInlined())
-    Function->setImplicitlyInline();
+  if (PatternDecl->isInlined()) {
+    // Function, and all later redeclarations of it (from imported modules,
+    // for instance), are now implicitly inline.
+    for (auto *D = Function->getMostRecentDecl(); /**/;
+         D = D->getPreviousDecl()) {
+      D->setImplicitlyInline();
+      if (D == Function)
+        break;
+    }
+  }
 
   InstantiatingTemplate Inst(*this, PointOfInstantiation, Function);
   if (Inst.isInvalid())
@@ -3665,6 +3671,12 @@ void Sema::InstantiateVariableInitializer(
     // We already have an initializer in the class.
     return;
 
+  if (Var->hasAttr<DLLImportAttr>() &&
+      !(OldVar->getInit() && OldVar->checkInitIsICE())) {
+    // Do not dynamically initialize dllimport variables.
+    return;
+  }
+
   if (OldVar->getInit()) {
     if (Var->isStaticDataMember() && !OldVar->isOutOfLine())
       PushExpressionEvaluationContext(Sema::ConstantEvaluated, OldVar);
@@ -3679,7 +3691,7 @@ void Sema::InstantiateVariableInitializer(
       bool TypeMayContainAuto = true;
       if (Init.get()) {
         bool DirectInit = OldVar->isDirectInit();
-        AddInitializerToDecl(Var, Init.take(), DirectInit, TypeMayContainAuto);
+        AddInitializerToDecl(Var, Init.get(), DirectInit, TypeMayContainAuto);
       } else
         ActOnUninitializedDecl(Var, TypeMayContainAuto);
     } else {
@@ -4058,7 +4070,7 @@ Sema::InstantiateMemInitializers(CXXConstructorDecl *New,
 
         // Build the initializer.
         MemInitResult NewInit = BuildBaseInitializer(BaseTInfo->getType(),
-                                                     BaseTInfo, TempInit.take(),
+                                                     BaseTInfo, TempInit.get(),
                                                      New->getParent(),
                                                      SourceLocation());
         if (NewInit.isInvalid()) {
@@ -4093,10 +4105,10 @@ Sema::InstantiateMemInitializers(CXXConstructorDecl *New,
       }
 
       if (Init->isBaseInitializer())
-        NewInit = BuildBaseInitializer(TInfo->getType(), TInfo, TempInit.take(),
+        NewInit = BuildBaseInitializer(TInfo->getType(), TInfo, TempInit.get(),
                                        New->getParent(), EllipsisLoc);
       else
-        NewInit = BuildDelegatingInitializer(TInfo, TempInit.take(),
+        NewInit = BuildDelegatingInitializer(TInfo, TempInit.get(),
                                   cast<CXXRecordDecl>(CurContext->getParent()));
     } else if (Init->isMemberInitializer()) {
       FieldDecl *Member = cast_or_null<FieldDecl>(FindInstantiatedDecl(
@@ -4109,7 +4121,7 @@ Sema::InstantiateMemInitializers(CXXConstructorDecl *New,
         continue;
       }
 
-      NewInit = BuildMemberInitializer(Member, TempInit.take(),
+      NewInit = BuildMemberInitializer(Member, TempInit.get(),
                                        Init->getSourceLocation());
     } else if (Init->isIndirectMemberInitializer()) {
       IndirectFieldDecl *IndirectMember =
@@ -4123,7 +4135,7 @@ Sema::InstantiateMemInitializers(CXXConstructorDecl *New,
         continue;
       }
 
-      NewInit = BuildMemberInitializer(IndirectMember, TempInit.take(),
+      NewInit = BuildMemberInitializer(IndirectMember, TempInit.get(),
                                        Init->getSourceLocation());
     }
 

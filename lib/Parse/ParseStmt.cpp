@@ -15,11 +15,13 @@
 #include "clang/Parse/Parser.h"
 #include "RAIIObjectsForParser.h"
 #include "clang/AST/ASTContext.h"
+#include "clang/Basic/Attributes.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/PrettyStackTrace.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Sema/DeclSpec.h"
+#include "clang/Sema/LoopHint.h"
 #include "clang/Sema/PrettyDeclStackTrace.h"
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/TypoCorrection.h"
@@ -357,6 +359,10 @@ Retry:
     ProhibitAttributes(Attrs);
     HandlePragmaMSPragma();
     return StmtEmpty();
+
+  case tok::annot_pragma_loop_hint:
+    ProhibitAttributes(Attrs);
+    return ParsePragmaLoopHint(Stmts, OnlyStatement, TrailingElseLoc, Attrs);
   }
 
   // If we reached this code, the statement must end in a semicolon.
@@ -445,8 +451,8 @@ StmtResult Parser::ParseSEHTryBlockCommon(SourceLocation TryLoc) {
 
   return Actions.ActOnSEHTryBlock(false /* IsCXXTry */,
                                   TryLoc,
-                                  TryBlock.take(),
-                                  Handler.take());
+                                  TryBlock.get(),
+                                  Handler.get());
 }
 
 /// ParseSEHExceptBlock - Handle __except
@@ -488,7 +494,7 @@ StmtResult Parser::ParseSEHExceptBlock(SourceLocation ExceptLoc) {
   if(Block.isInvalid())
     return Block;
 
-  return Actions.ActOnSEHExceptBlock(ExceptLoc, FilterExpr.take(), Block.take());
+  return Actions.ActOnSEHExceptBlock(ExceptLoc, FilterExpr.get(), Block.get());
 }
 
 /// ParseSEHFinallyBlock - Handle __finally
@@ -505,7 +511,7 @@ StmtResult Parser::ParseSEHFinallyBlock(SourceLocation FinallyBlock) {
   if(Block.isInvalid())
     return Block;
 
-  return Actions.ActOnSEHFinallyBlock(FinallyBlock,Block.take());
+  return Actions.ActOnSEHFinallyBlock(FinallyBlock,Block.get());
 }
 
 /// ParseLabeledStatement - We have an identifier and a ':' after it.
@@ -915,7 +921,7 @@ StmtResult Parser::ParseCompoundStatementBody(bool isStmtExpr) {
 
     ExpectAndConsumeSemi(diag::err_expected_semi_declaration);
     if (R.isUsable())
-      Stmts.push_back(R.release());
+      Stmts.push_back(R.get());
   }
 
   while (Tok.isNot(tok::r_brace) && !isEofOrEom()) {
@@ -975,7 +981,7 @@ StmtResult Parser::ParseCompoundStatementBody(bool isStmtExpr) {
     }
 
     if (R.isUsable())
-      Stmts.push_back(R.release());
+      Stmts.push_back(R.get());
   }
 
   SourceLocation CloseLoc = Tok.getLocation();
@@ -1596,7 +1602,7 @@ StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc) {
       ExprResult Third = ParseExpression();
       // FIXME: The C++11 standard doesn't actually say that this is a
       // discarded-value expression, but it clearly should be.
-      ThirdPart = Actions.MakeFullDiscardedValueExpr(Third.take());
+      ThirdPart = Actions.MakeFullDiscardedValueExpr(Third.get());
     }
   }
   // Match the ')'.
@@ -1609,7 +1615,7 @@ StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc) {
   StmtResult ForEachStmt;
 
   if (ForRange) {
-    ForRangeStmt = Actions.ActOnCXXForRangeStmt(ForLoc, FirstPart.take(),
+    ForRangeStmt = Actions.ActOnCXXForRangeStmt(ForLoc, FirstPart.get(),
                                                 ForRangeInit.ColonLoc,
                                                 ForRangeInit.RangeExpr.get(),
                                                 T.getCloseLocation(),
@@ -1620,8 +1626,8 @@ StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc) {
   // statement immediately in order to close over temporaries correctly.
   } else if (ForEach) {
     ForEachStmt = Actions.ActOnObjCForCollectionStmt(ForLoc,
-                                                     FirstPart.take(),
-                                                     Collection.take(),
+                                                     FirstPart.get(),
+                                                     Collection.get(),
                                                      T.getCloseLocation());
   }
 
@@ -1659,15 +1665,15 @@ StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc) {
     return StmtError();
 
   if (ForEach)
-   return Actions.FinishObjCForCollectionStmt(ForEachStmt.take(),
-                                              Body.take());
+   return Actions.FinishObjCForCollectionStmt(ForEachStmt.get(),
+                                              Body.get());
 
   if (ForRange)
-    return Actions.FinishCXXForRangeStmt(ForRangeStmt.take(), Body.take());
+    return Actions.FinishCXXForRangeStmt(ForRangeStmt.get(), Body.get());
 
-  return Actions.ActOnForStmt(ForLoc, T.getOpenLocation(), FirstPart.take(),
+  return Actions.ActOnForStmt(ForLoc, T.getOpenLocation(), FirstPart.get(),
                               SecondPart, SecondVar, ThirdPart,
-                              T.getCloseLocation(), Body.take());
+                              T.getCloseLocation(), Body.get());
 }
 
 /// ParseGotoStatement
@@ -1696,7 +1702,7 @@ StmtResult Parser::ParseGotoStatement() {
       SkipUntil(tok::semi, StopBeforeMatch);
       return StmtError();
     }
-    Res = Actions.ActOnIndirectGotoStmt(GotoLoc, StarLoc, R.take());
+    Res = Actions.ActOnIndirectGotoStmt(GotoLoc, StarLoc, R.get());
   } else {
     Diag(Tok, diag::err_expected) << tok::identifier;
     return StmtError();
@@ -1756,7 +1762,38 @@ StmtResult Parser::ParseReturnStatement() {
       return StmtError();
     }
   }
-  return Actions.ActOnReturnStmt(ReturnLoc, R.take(), getCurScope());
+  return Actions.ActOnReturnStmt(ReturnLoc, R.get(), getCurScope());
+}
+
+StmtResult Parser::ParsePragmaLoopHint(StmtVector &Stmts, bool OnlyStatement,
+                                       SourceLocation *TrailingElseLoc,
+                                       ParsedAttributesWithRange &Attrs) {
+  // Create temporary attribute list.
+  ParsedAttributesWithRange TempAttrs(AttrFactory);
+
+  // Get vectorize hints and consume annotated token.
+  while (Tok.is(tok::annot_pragma_loop_hint)) {
+    LoopHint Hint = HandlePragmaLoopHint();
+    ConsumeToken();
+
+    if (!Hint.LoopLoc || !Hint.OptionLoc || !Hint.ValueLoc)
+      continue;
+
+    ArgsUnion ArgHints[] = {Hint.OptionLoc, Hint.ValueLoc,
+                            ArgsUnion(Hint.ValueExpr)};
+    // FIXME: Replace AS_Keyword with Pragma spelling AS_Pragma.
+    TempAttrs.addNew(Hint.LoopLoc->Ident, Hint.Range, 0, Hint.LoopLoc->Loc,
+                     ArgHints, 3, AttributeList::AS_Keyword);
+  }
+
+  // Get the next statement.
+  MaybeParseCXX11Attributes(Attrs);
+
+  StmtResult S = ParseStatementOrDeclarationAfterAttributes(
+      Stmts, OnlyStatement, TrailingElseLoc, Attrs);
+
+  Attrs.takeAllFrom(TempAttrs);
+  return S;
 }
 
 namespace {
@@ -1818,7 +1855,7 @@ namespace {
       }
 
       // Initialize the "decl" with the lookup result.
-      Info.OpDecl = static_cast<void*>(Result.take());
+      Info.OpDecl = static_cast<void*>(Result.get());
       return Info.OpDecl;
     }
 
@@ -2254,7 +2291,7 @@ StmtResult Parser::ParseMicrosoftAsmStatement(SourceLocation AsmLoc) {
     // Need address of variable.
     if (OpExprs[i].second)
       OpExpr = Actions.BuildUnaryOp(getCurScope(), AsmLoc, UO_AddrOf, OpExpr)
-        .take();
+        .get();
 
     ConstraintRefs[i] = StringRef(Constraints[i]);
     Exprs[i] = OpExpr;
@@ -2334,7 +2371,7 @@ StmtResult Parser::ParseAsmStatement(bool &msAsm) {
     T.consumeClose();
     return Actions.ActOnGCCAsmStmt(AsmLoc, /*isSimple*/ true, isVolatile,
                                    /*NumOutputs*/ 0, /*NumInputs*/ 0, nullptr,
-                                   Constraints, Exprs, AsmString.take(),
+                                   Constraints, Exprs, AsmString.get(),
                                    Clobbers, T.getCloseLocation());
   }
 
@@ -2387,7 +2424,7 @@ StmtResult Parser::ParseAsmStatement(bool &msAsm) {
         if (Clobber.isInvalid())
           break;
 
-        Clobbers.push_back(Clobber.release());
+        Clobbers.push_back(Clobber.get());
 
         if (!TryConsumeToken(tok::comma))
           break;
@@ -2398,7 +2435,7 @@ StmtResult Parser::ParseAsmStatement(bool &msAsm) {
   T.consumeClose();
   return Actions.ActOnGCCAsmStmt(AsmLoc, false, isVolatile, NumOutputs,
                                  NumInputs, Names.data(), Constraints, Exprs,
-                                 AsmString.take(), Clobbers,
+                                 AsmString.get(), Clobbers,
                                  T.getCloseLocation());
 }
 
@@ -2447,7 +2484,7 @@ bool Parser::ParseAsmOperandsOpt(SmallVectorImpl<IdentifierInfo *> &Names,
         SkipUntil(tok::r_paren, StopAtSemi);
         return true;
     }
-    Constraints.push_back(Constraint.release());
+    Constraints.push_back(Constraint.get());
 
     if (Tok.isNot(tok::l_paren)) {
       Diag(Tok, diag::err_expected_lparen_after) << "asm operand";
@@ -2464,7 +2501,7 @@ bool Parser::ParseAsmOperandsOpt(SmallVectorImpl<IdentifierInfo *> &Names,
       SkipUntil(tok::r_paren, StopAtSemi);
       return true;
     }
-    Exprs.push_back(Res.release());
+    Exprs.push_back(Res.get());
     // Eat the comma and continue parsing if it exists.
     if (!TryConsumeToken(tok::comma))
       return false;
@@ -2496,7 +2533,7 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
   }
 
   BodyScope.Exit();
-  return Actions.ActOnFinishFunctionBody(Decl, FnBody.take());
+  return Actions.ActOnFinishFunctionBody(Decl, FnBody.get());
 }
 
 /// ParseFunctionTryBlock - Parse a C++ function-try-block.
@@ -2533,7 +2570,7 @@ Decl *Parser::ParseFunctionTryBlock(Decl *Decl, ParseScope &BodyScope) {
   }
 
   BodyScope.Exit();
-  return Actions.ActOnFinishFunctionBody(Decl, FnBody.take());
+  return Actions.ActOnFinishFunctionBody(Decl, FnBody.get());
 }
 
 bool Parser::trySkippingFunctionBody() {
@@ -2619,8 +2656,8 @@ StmtResult Parser::ParseCXXTryBlockCommon(SourceLocation TryLoc, bool FnTry) {
 
     return Actions.ActOnSEHTryBlock(true /* IsCXXTry */,
                                     TryLoc,
-                                    TryBlock.take(),
-                                    Handler.take());
+                                    TryBlock.get(),
+                                    Handler.get());
   }
   else {
     StmtVector Handlers;
@@ -2634,14 +2671,14 @@ StmtResult Parser::ParseCXXTryBlockCommon(SourceLocation TryLoc, bool FnTry) {
     while (Tok.is(tok::kw_catch)) {
       StmtResult Handler(ParseCXXCatchBlock(FnTry));
       if (!Handler.isInvalid())
-        Handlers.push_back(Handler.release());
+        Handlers.push_back(Handler.get());
     }
     // Don't bother creating the full statement if we don't have any usable
     // handlers.
     if (Handlers.empty())
       return StmtError();
 
-    return Actions.ActOnCXXTryBlock(TryLoc, TryBlock.take(), Handlers);
+    return Actions.ActOnCXXTryBlock(TryLoc, TryBlock.get(), Handlers);
   }
 }
 
@@ -2701,7 +2738,7 @@ StmtResult Parser::ParseCXXCatchBlock(bool FnCatch) {
   if (Block.isInvalid())
     return Block;
 
-  return Actions.ActOnCXXCatchBlock(CatchLoc, ExceptionDecl, Block.take());
+  return Actions.ActOnCXXCatchBlock(CatchLoc, ExceptionDecl, Block.get());
 }
 
 void Parser::ParseMicrosoftIfExistsStatement(StmtVector &Stmts) {
@@ -2756,7 +2793,7 @@ void Parser::ParseMicrosoftIfExistsStatement(StmtVector &Stmts) {
   while (Tok.isNot(tok::r_brace)) {
     StmtResult R = ParseStatementOrDeclaration(Stmts, false);
     if (R.isUsable())
-      Stmts.push_back(R.release());
+      Stmts.push_back(R.get());
   }
   Braces.consumeClose();
 }

@@ -137,6 +137,14 @@ TEST_F(FormatTestJS, Closures) {
                "  foo();\n"
                "  bar();\n"
                "}, this);");
+  verifyFormat("return {\n"
+               "  a: 'E',\n"
+               "  b: function() {\n"
+               "    return function() {\n"
+               "      f();  //\n"
+               "    };\n"
+               "  }\n"
+               "};");
 
   verifyFormat("var x = {a: function() { return 1; }};",
                getGoogleJSStyleWithColumns(38));
@@ -144,6 +152,39 @@ TEST_F(FormatTestJS, Closures) {
                "  a: function() { return 1; }\n"
                "};",
                getGoogleJSStyleWithColumns(37));
+}
+
+TEST_F(FormatTestJS, MultipleFunctionLiterals) {
+  verifyFormat("promise.then(\n"
+               "    function success() {\n"
+               "      doFoo();\n"
+               "      doBar();\n"
+               "    },\n"
+               "    function error() {\n"
+               "      doFoo();\n"
+               "      doBaz();\n"
+               "    },\n"
+               "    []);\n");
+  verifyFormat("promise.then(\n"
+               "    function success() {\n"
+               "      doFoo();\n"
+               "      doBar();\n"
+               "    },\n"
+               "    [],\n"
+               "    function error() {\n"
+               "      doFoo();\n"
+               "      doBaz();\n"
+               "    });\n");
+  // FIXME: Here, we should probably break right after the "(" for consistency.
+  verifyFormat("promise.then([],\n"
+               "             function success() {\n"
+               "               doFoo();\n"
+               "               doBar();\n"
+               "             },\n"
+               "             function error() {\n"
+               "               doFoo();\n"
+               "               doBaz();\n"
+               "             });\n");
 }
 
 TEST_F(FormatTestJS, ReturnStatements) {

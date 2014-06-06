@@ -168,8 +168,22 @@ void StmtPrinter::VisitLabelStmt(LabelStmt *Node) {
 }
 
 void StmtPrinter::VisitAttributedStmt(AttributedStmt *Node) {
-  for (const auto *Attr : Node->getAttrs())
-    Attr->printPretty(OS, Policy);
+  std::string raw_attr_os;
+  llvm::raw_string_ostream AttrOS(raw_attr_os);
+  for (const auto *Attr : Node->getAttrs()) {
+    // FIXME: This hack will be removed when printPretty
+    // has been modified to print pretty pragmas
+    if (const LoopHintAttr *LHA = dyn_cast<LoopHintAttr>(Attr)) {
+      LHA->print(OS, Policy);
+    } else
+      Attr->printPretty(AttrOS, Policy);
+  }
+
+  // Print attributes after pragmas.
+  StringRef AttrStr = AttrOS.str();
+  if (!AttrStr.empty())
+    OS << AttrStr;
+
   PrintStmt(Node->getSubStmt(), 0);
 }
 
@@ -657,6 +671,14 @@ void OMPClausePrinter::VisitOMPFirstprivateClause(OMPFirstprivateClause *Node) {
   }
 }
 
+void OMPClausePrinter::VisitOMPLastprivateClause(OMPLastprivateClause *Node) {
+  if (!Node->varlist_empty()) {
+    OS << "lastprivate";
+    VisitOMPClauseList(Node, '(');
+    OS << ")";
+  }
+}
+
 void OMPClausePrinter::VisitOMPSharedClause(OMPSharedClause *Node) {
   if (!Node->varlist_empty()) {
     OS << "shared";
@@ -672,6 +694,18 @@ void OMPClausePrinter::VisitOMPLinearClause(OMPLinearClause *Node) {
     if (Node->getStep() != nullptr) {
       OS << ": ";
       Node->getStep()->printPretty(OS, nullptr, Policy, 0);
+    }
+    OS << ")";
+  }
+}
+
+void OMPClausePrinter::VisitOMPAlignedClause(OMPAlignedClause *Node) {
+  if (!Node->varlist_empty()) {
+    OS << "aligned";
+    VisitOMPClauseList(Node, '(');
+    if (Node->getAlignment() != nullptr) {
+      OS << ": ";
+      Node->getAlignment()->printPretty(OS, nullptr, Policy, 0);
     }
     OS << ")";
   }

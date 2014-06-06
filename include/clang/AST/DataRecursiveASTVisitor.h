@@ -1322,8 +1322,13 @@ DEF_TRAVERSE_DECL(ObjCMethodDecl, {
   return true;
 })
 
-DEF_TRAVERSE_DECL(ObjCPropertyDecl, {// FIXME: implement
-                                    })
+DEF_TRAVERSE_DECL(ObjCPropertyDecl, {
+  if (D->getTypeSourceInfo())
+    TRY_TO(TraverseTypeLoc(D->getTypeSourceInfo()->getTypeLoc()));
+  else
+    TRY_TO(TraverseType(D->getType()));
+  return true;
+})
 
 DEF_TRAVERSE_DECL(UsingDecl, {
   TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
@@ -2354,6 +2359,13 @@ bool RecursiveASTVisitor<Derived>::VisitOMPFirstprivateClause(
 }
 
 template <typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOMPLastprivateClause(
+    OMPLastprivateClause *C) {
+  VisitOMPClauseList(C);
+  return true;
+}
+
+template <typename Derived>
 bool RecursiveASTVisitor<Derived>::VisitOMPSharedClause(OMPSharedClause *C) {
   VisitOMPClauseList(C);
   return true;
@@ -2363,6 +2375,13 @@ template <typename Derived>
 bool RecursiveASTVisitor<Derived>::VisitOMPLinearClause(OMPLinearClause *C) {
   VisitOMPClauseList(C);
   TraverseStmt(C->getStep());
+  return true;
+}
+
+template <typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOMPAlignedClause(OMPAlignedClause *C) {
+  VisitOMPClauseList(C);
+  TraverseStmt(C->getAlignment());
   return true;
 }
 

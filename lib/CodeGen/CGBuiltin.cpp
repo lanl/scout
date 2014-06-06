@@ -1508,6 +1508,12 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
   }
   case Builtin::BI__builtin_addressof:
     return RValue::get(EmitLValue(E->getArg(0)).getAddress());
+  case Builtin::BI__builtin_operator_new:
+    return EmitBuiltinNewDeleteCall(FD->getType()->castAs<FunctionProtoType>(),
+                                    E->getArg(0), false);
+  case Builtin::BI__builtin_operator_delete:
+    return EmitBuiltinNewDeleteCall(FD->getType()->castAs<FunctionProtoType>(),
+                                    E->getArg(0), true);
   case Builtin::BI__noop:
     return RValue::get(nullptr);
   case Builtin::BI_InterlockedCompareExchange: {
@@ -2493,7 +2499,7 @@ static Value *EmitCommonNeonSISDBuiltinExpr(CodeGenFunction &CGF,
   Function *F = CGF.LookupNeonLLVMIntrinsic(Int, Modifier, ArgTy, E);
 
   int j = 0;
-  ConstantInt *C0 = ConstantInt::get(CGF.Int32Ty, 0);
+  ConstantInt *C0 = ConstantInt::get(CGF.SizeTy, 0);
   for (Function::const_arg_iterator ai = F->arg_begin(), ae = F->arg_end();
        ai != ae; ++ai, ++j) {
     llvm::Type *ArgTy = ai->getType();
@@ -2733,7 +2739,7 @@ Value *CodeGenFunction::EmitCommonNeonBuiltinExpr(
     Ops[0] = Builder.CreateBitCast(Ops[0], Ty);
     LoadInst *Ld = Builder.CreateLoad(Ops[0]);
     Ld->setAlignment(cast<ConstantInt>(Align)->getZExtValue());
-    llvm::Constant *CI = ConstantInt::get(Int32Ty, 0);
+    llvm::Constant *CI = ConstantInt::get(SizeTy, 0);
     Ops[0] = Builder.CreateInsertElement(V, Ld, CI);
     return EmitNeonSplat(Ops[0], CI);
   }
@@ -3703,7 +3709,7 @@ Value *CodeGenFunction::vectorWrapScalar16(Value *Op) {
   llvm::Type *VTy = llvm::VectorType::get(Int16Ty, 4);
   Op = Builder.CreateBitCast(Op, Int16Ty);
   Value *V = UndefValue::get(VTy);
-  llvm::Constant *CI = ConstantInt::get(Int32Ty, 0);
+  llvm::Constant *CI = ConstantInt::get(SizeTy, 0);
   Op = Builder.CreateInsertElement(V, Op, CI);
   return Op;
 }
@@ -3712,7 +3718,7 @@ Value *CodeGenFunction::vectorWrapScalar8(Value *Op) {
   llvm::Type *VTy = llvm::VectorType::get(Int8Ty, 8);
   Op = Builder.CreateBitCast(Op, Int8Ty);
   Value *V = UndefValue::get(VTy);
-  llvm::Constant *CI = ConstantInt::get(Int32Ty, 0);
+  llvm::Constant *CI = ConstantInt::get(SizeTy, 0);
   Op = Builder.CreateInsertElement(V, Op, CI);
   return Op;
 }
@@ -3729,7 +3735,7 @@ emitVectorWrappedScalar8Intrinsic(unsigned Int, SmallVectorImpl<Value*> &Ops,
   Ops[1] = vectorWrapScalar8(Ops[1]);
   llvm::Type *VTy = llvm::VectorType::get(Int8Ty, 8);
   Value *V = EmitNeonCall(CGM.getIntrinsic(Int, VTy), Ops, Name);
-  Constant *CI = ConstantInt::get(Int32Ty, 0);
+  Constant *CI = ConstantInt::get(SizeTy, 0);
   return Builder.CreateExtractElement(V, CI, "lane0");
 }
 
@@ -3745,7 +3751,7 @@ emitVectorWrappedScalar16Intrinsic(unsigned Int, SmallVectorImpl<Value*> &Ops,
   Ops[1] = vectorWrapScalar16(Ops[1]);
   llvm::Type *VTy = llvm::VectorType::get(Int16Ty, 4);
   Value *V = EmitNeonCall(CGM.getIntrinsic(Int, VTy), Ops, Name);
-  Constant *CI = ConstantInt::get(Int32Ty, 0);
+  Constant *CI = ConstantInt::get(SizeTy, 0);
   return Builder.CreateExtractElement(V, CI, "lane0");
 }
 
@@ -3950,8 +3956,8 @@ Value *CodeGenFunction::EmitAArch64BuiltinExpr(unsigned BuiltinID,
     Value *Vec = EmitScalarExpr(E->getArg(0));
     // The vector is v2f64, so make sure it's bitcast to that.
     Vec = Builder.CreateBitCast(Vec, Ty, "v2i64");
-    llvm::Value *Idx0 = llvm::ConstantInt::get(Int32Ty, 0);
-    llvm::Value *Idx1 = llvm::ConstantInt::get(Int32Ty, 1);
+    llvm::Value *Idx0 = llvm::ConstantInt::get(SizeTy, 0);
+    llvm::Value *Idx1 = llvm::ConstantInt::get(SizeTy, 1);
     Value *Op0 = Builder.CreateExtractElement(Vec, Idx0, "lane0");
     Value *Op1 = Builder.CreateExtractElement(Vec, Idx1, "lane1");
     // Pairwise addition of a v2f64 into a scalar f64.
@@ -3963,8 +3969,8 @@ Value *CodeGenFunction::EmitAArch64BuiltinExpr(unsigned BuiltinID,
     Value *Vec = EmitScalarExpr(E->getArg(0));
     // The vector is v2f64, so make sure it's bitcast to that.
     Vec = Builder.CreateBitCast(Vec, Ty, "v2f64");
-    llvm::Value *Idx0 = llvm::ConstantInt::get(Int32Ty, 0);
-    llvm::Value *Idx1 = llvm::ConstantInt::get(Int32Ty, 1);
+    llvm::Value *Idx0 = llvm::ConstantInt::get(SizeTy, 0);
+    llvm::Value *Idx1 = llvm::ConstantInt::get(SizeTy, 1);
     Value *Op0 = Builder.CreateExtractElement(Vec, Idx0, "lane0");
     Value *Op1 = Builder.CreateExtractElement(Vec, Idx1, "lane1");
     // Pairwise addition of a v2f64 into a scalar f64.
@@ -3976,8 +3982,8 @@ Value *CodeGenFunction::EmitAArch64BuiltinExpr(unsigned BuiltinID,
     Value *Vec = EmitScalarExpr(E->getArg(0));
     // The vector is v2f32, so make sure it's bitcast to that.
     Vec = Builder.CreateBitCast(Vec, Ty, "v2f32");
-    llvm::Value *Idx0 = llvm::ConstantInt::get(Int32Ty, 0);
-    llvm::Value *Idx1 = llvm::ConstantInt::get(Int32Ty, 1);
+    llvm::Value *Idx0 = llvm::ConstantInt::get(SizeTy, 0);
+    llvm::Value *Idx1 = llvm::ConstantInt::get(SizeTy, 1);
     Value *Op0 = Builder.CreateExtractElement(Vec, Idx0, "lane0");
     Value *Op1 = Builder.CreateExtractElement(Vec, Idx1, "lane1");
     // Pairwise addition of a v2f32 into a scalar f32.
@@ -4228,7 +4234,7 @@ Value *CodeGenFunction::EmitAArch64BuiltinExpr(unsigned BuiltinID,
     llvm::Type *VTy = llvm::VectorType::get(Int32Ty, 4);
     Ops[1] = EmitNeonCall(CGM.getIntrinsic(Intrinsic::aarch64_neon_sqdmull, VTy),
                           ProductOps, "vqdmlXl");
-    Constant *CI = ConstantInt::get(Int32Ty, 0);
+    Constant *CI = ConstantInt::get(SizeTy, 0);
     Ops[1] = Builder.CreateExtractElement(Ops[1], CI, "lane0");
 
     unsigned AccumInt = BuiltinID == NEON::BI__builtin_neon_vqdmlalh_s16
@@ -4325,7 +4331,7 @@ Value *CodeGenFunction::EmitAArch64BuiltinExpr(unsigned BuiltinID,
     llvm::Type *VTy = llvm::VectorType::get(Int32Ty, 4);
     Ops[1] = EmitNeonCall(CGM.getIntrinsic(Intrinsic::aarch64_neon_sqdmull, VTy),
                           ProductOps, "vqdmlXl");
-    Constant *CI = ConstantInt::get(Int32Ty, 0);
+    Constant *CI = ConstantInt::get(SizeTy, 0);
     Ops[1] = Builder.CreateExtractElement(Ops[1], CI, "lane0");
     Ops.pop_back();
 
@@ -5611,7 +5617,7 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
 
     // extract (0, 1)
     unsigned Index = BuiltinID == X86::BI__builtin_ia32_storelps ? 0 : 1;
-    llvm::Value *Idx = llvm::ConstantInt::get(Int32Ty, Index);
+    llvm::Value *Idx = llvm::ConstantInt::get(SizeTy, Index);
     Ops[1] = Builder.CreateExtractElement(Ops[1], Idx, "extract");
 
     // cast pointer to i64 & store

@@ -2058,6 +2058,35 @@ AST_MATCHER_P(
           InnerMatcher.matches(*Initializer, Finder, Builder));
 }
 
+/// \brief Matches a variable declaration that has function scope and is a
+/// non-static local variable.
+///
+/// Example matches x (matcher = varDecl(hasLocalStorage())
+/// \code
+/// void f() {
+///   int x;
+///   static int y;
+/// }
+/// int z;
+/// \endcode
+AST_MATCHER(VarDecl, hasLocalStorage) {
+  return Node.hasLocalStorage();
+}
+
+/// \brief Matches a variable declaration that does not have local storage.
+///
+/// Example matches y and z (matcher = varDecl(hasGlobalStorage())
+/// \code
+/// void f() {
+///   int x;
+///   static int y;
+/// }
+/// int z;
+/// \endcode
+AST_MATCHER(VarDecl, hasGlobalStorage) {
+  return Node.hasGlobalStorage();
+}
+
 /// \brief Checks that a call expression or a constructor call expression has
 /// a specific number of arguments (including absent default arguments).
 ///
@@ -3504,15 +3533,15 @@ AST_MATCHER_P(NestedNameSpecifier, specifiesNamespace,
 /// \brief Matches if a node equals another node.
 ///
 /// \c Decl has pointer identity in the AST.
-inline internal::Matcher<Decl> equalsNode(const Decl *Node) {
-  return internal::makeMatcher(new internal::EqualsNodeMatcher<Decl>(Node));
+AST_MATCHER_P_OVERLOAD(Decl, equalsNode, const Decl*, Other, 0) {
+  return &Node == Other;
 }
 /// \brief Matches if a node equals another node.
 ///
 /// \c Stmt has pointer identity in the AST.
 ///
-inline internal::Matcher<Stmt> equalsNode(const Stmt *Node) {
-  return internal::makeMatcher(new internal::EqualsNodeMatcher<Stmt>(Node));
+AST_MATCHER_P_OVERLOAD(Stmt, equalsNode, const Stmt*, Other, 1) {
+  return &Node == Other;
 }
 
 /// @}

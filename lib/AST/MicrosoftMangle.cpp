@@ -803,11 +803,8 @@ void MicrosoftCXXNameMangler::mangleUnqualifiedName(const NamedDecl *ND,
       break;
 
     case DeclarationName::CXXLiteralOperatorName: {
-      // FIXME: Was this added in VS2010? Does MS even know how to mangle this?
-      DiagnosticsEngine &Diags = Context.getDiags();
-      unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
-        "cannot mangle this literal operator yet");
-      Diags.Report(ND->getLocation(), DiagID);
+      Out << "?__K";
+      mangleSourceName(Name.getCXXLiteralIdentifier()->getName());
       break;
     }
 
@@ -1177,11 +1174,16 @@ void MicrosoftCXXNameMangler::mangleTemplateArg(const TemplateDecl *TD,
   case TemplateArgument::Expression:
     mangleExpression(TA.getAsExpr());
     break;
-  case TemplateArgument::Pack:
-    // Unlike Itanium, there is no character code to indicate an argument pack.
-    for (const TemplateArgument &PA : TA.getPackAsArray())
-      mangleTemplateArg(TD, PA);
+  case TemplateArgument::Pack: {
+    llvm::ArrayRef<TemplateArgument> TemplateArgs = TA.getPackAsArray();
+    if (TemplateArgs.empty()) {
+      Out << "$S";
+    } else {
+      for (const TemplateArgument &PA : TemplateArgs)
+        mangleTemplateArg(TD, PA);
+    }
     break;
+  }
   case TemplateArgument::Template:
     mangleType(cast<TagDecl>(
         TA.getAsTemplate().getAsTemplateDecl()->getTemplatedDecl()));

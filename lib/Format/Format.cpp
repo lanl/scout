@@ -482,7 +482,7 @@ llvm::error_code parseConfiguration(StringRef Text, FormatStyle *Style) {
         Styles[i].Language == FormatStyle::LK_None) {
       *Style = Styles[i];
       Style->Language = Language;
-      return llvm::error_code::success();
+      return llvm::error_code();
     }
   }
   return llvm::make_error_code(llvm::errc::not_supported);
@@ -1164,7 +1164,8 @@ private:
       return true;
 
     if (NewLine) {
-      int AdditionalIndent = 0;
+      int AdditionalIndent =
+          State.FirstIndent - State.Line->Level * Style.IndentWidth;
       if (State.Stack.size() < 2 ||
           !State.Stack[State.Stack.size() - 2].JSFunctionInlined) {
         AdditionalIndent = State.Stack.back().Indent -
