@@ -900,6 +900,14 @@ void Clang::AddAArch64TargetArgs(const ArgList &Args,
     CmdArgs.push_back("-backend-option");
     CmdArgs.push_back("-aarch64-strict-align");
   }
+
+  // Setting -mno-global-merge disables the codegen global merge pass. Setting
+  // -mglobal-merge has no effect as the pass is enabled by default.
+  if (Arg *A = Args.getLastArg(options::OPT_mglobal_merge,
+                               options::OPT_mno_global_merge)) {
+    if (A->getOption().matches(options::OPT_mno_global_merge))
+      CmdArgs.push_back("-mno-global-merge");
+  }
 }
 
 // Get CPU and ABI names. They are not independent
@@ -2028,17 +2036,23 @@ static void addLsanRT(const ToolChain &TC, const ArgList &Args,
 static void addUbsanRT(const ToolChain &TC, const ArgList &Args,
                        ArgStringList &CmdArgs, bool IsCXX,
                        bool HasOtherSanitizerRt) {
+  // Export symbols if we're not building a shared library. This allows two
+  // models: either every DSO containing ubsan-sanitized code contains the
+  // ubsan runtime, or the main executable does (or both).
+  const bool ExportSymbols = !Args.hasArg(options::OPT_shared);
+
   // Need a copy of sanitizer_common. This could come from another sanitizer
   // runtime; if we're not including one, include our own copy.
   if (!HasOtherSanitizerRt)
     addSanitizerRTLinkFlags(TC, Args, CmdArgs, "san", true, false);
 
-  addSanitizerRTLinkFlags(TC, Args, CmdArgs, "ubsan", false);
+  addSanitizerRTLinkFlags(TC, Args, CmdArgs, "ubsan", false, ExportSymbols);
 
   // Only include the bits of the runtime which need a C++ ABI library if
   // we're linking in C++ mode.
   if (IsCXX)
-    addSanitizerRTLinkFlags(TC, Args, CmdArgs, "ubsan_cxx", false);
+    addSanitizerRTLinkFlags(TC, Args, CmdArgs, "ubsan_cxx", false,
+                            ExportSymbols);
 }
 
 static void addDfsanRT(const ToolChain &TC, const ArgList &Args,
@@ -2515,6 +2529,13 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back("-fno-merge-all-constants");
 
   // LLVM Code Generator Options.
+
+  if (Arg *A = Args.getLastArg(options::OPT_Wframe_larger_than_EQ)) {
+    StringRef v = A->getValue();
+    CmdArgs.push_back("-mllvm");
+    CmdArgs.push_back(Args.MakeArgString("-warn-stack-size=" + v));
+    A->claim();
+  }
 
   if (Arg *A = Args.getLastArg(options::OPT_mregparm_EQ)) {
     CmdArgs.push_back("-mregparm");
@@ -3504,6 +3525,12 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   }
 
   if (Arg *A = Args.getLastArg(options::OPT_Rpass_EQ))
+    A->render(Args, CmdArgs);
+
+  if (Arg *A = Args.getLastArg(options::OPT_Rpass_missed_EQ))
+    A->render(Args, CmdArgs);
+
+  if (Arg *A = Args.getLastArg(options::OPT_Rpass_analysis_EQ))
     A->render(Args, CmdArgs);
 
   if (Args.hasArg(options::OPT_mkernel)) {
@@ -7222,8 +7249,9 @@ void gnutools::Link::ConstructJob(Compilation &C, const JobAction &JA,
       }
       AddRunTimeLibs(ToolChain, D, CmdArgs, Args);
 
-      if (Args.hasArg(options::OPT_pthread) ||
-          Args.hasArg(options::OPT_pthreads) || UsedOpenMPLib != LibUnknown)
+      if ((Args.hasArg(options::OPT_pthread) ||
+           Args.hasArg(options::OPT_pthreads) || UsedOpenMPLib != LibUnknown) &&
+          !isAndroid)
         CmdArgs.push_back("-lpthread");
 
       CmdArgs.push_back("-lc");

@@ -5228,6 +5228,7 @@ public:
     CPU = Name;
     return true;
   }
+  const std::string& getCPU() const { return CPU; }
   void getDefaultFeatures(llvm::StringMap<bool> &Features) const override {
     // The backend enables certain ABI's by default according to the
     // architecture.
@@ -5452,6 +5453,13 @@ public:
     MipsTargetInfoBase::getTargetDefines(Opts, Builder);
 
     Builder.defineMacro("__mips", "32");
+    Builder.defineMacro("_MIPS_ISA", "_MIPS_ISA_MIPS32");
+
+    const std::string& CPUStr = getCPU();
+    if (CPUStr == "mips32")
+      Builder.defineMacro("__mips_isa_rev", "1");
+    else if (CPUStr == "mips32r2")
+      Builder.defineMacro("__mips_isa_rev", "2");
 
     if (ABI == "o32") {
       Builder.defineMacro("__mips_o32");
@@ -5587,6 +5595,13 @@ public:
     Builder.defineMacro("__mips", "64");
     Builder.defineMacro("__mips64");
     Builder.defineMacro("__mips64__");
+    Builder.defineMacro("_MIPS_ISA", "_MIPS_ISA_MIPS64");
+
+    const std::string& CPUStr = getCPU();
+    if (CPUStr == "mips64")
+      Builder.defineMacro("__mips_isa_rev", "1");
+    else if (CPUStr == "mips64r2")
+      Builder.defineMacro("__mips_isa_rev", "2");
 
     if (ABI == "n32") {
       Builder.defineMacro("__mips_n32");
@@ -5915,6 +5930,13 @@ static TargetInfo *AllocateTarget(const llvm::Triple &Triple) {
   default:
     return nullptr;
 
+  case llvm::Triple::xcore:
+    return new XCoreTargetInfo(Triple);
+
+  case llvm::Triple::hexagon:
+    return new HexagonTargetInfo(Triple);
+
+  case llvm::Triple::aarch64:
   case llvm::Triple::arm64:
     if (Triple.isOSDarwin())
       return new DarwinAArch64TargetInfo(Triple);
@@ -5928,33 +5950,8 @@ static TargetInfo *AllocateTarget(const llvm::Triple &Triple) {
       return new AArch64leTargetInfo(Triple);
     }
 
-  case llvm::Triple::arm64_be:
-    switch (os) {
-    case llvm::Triple::Linux:
-      return new LinuxTargetInfo<AArch64beTargetInfo>(Triple);
-    case llvm::Triple::NetBSD:
-      return new NetBSDTargetInfo<AArch64beTargetInfo>(Triple);
-    default:
-      return new AArch64beTargetInfo(Triple);
-    }
-
-  case llvm::Triple::xcore:
-    return new XCoreTargetInfo(Triple);
-
-  case llvm::Triple::hexagon:
-    return new HexagonTargetInfo(Triple);
-
-  case llvm::Triple::aarch64:
-    switch (os) {
-    case llvm::Triple::Linux:
-      return new LinuxTargetInfo<AArch64leTargetInfo>(Triple);
-    case llvm::Triple::NetBSD:
-      return new NetBSDTargetInfo<AArch64leTargetInfo>(Triple);
-    default:
-      return new AArch64leTargetInfo(Triple);
-    }
-
   case llvm::Triple::aarch64_be:
+  case llvm::Triple::arm64_be:
     switch (os) {
     case llvm::Triple::Linux:
       return new LinuxTargetInfo<AArch64beTargetInfo>(Triple);

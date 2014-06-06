@@ -16,13 +16,13 @@ struct External { int v; };
 
 
 // Invalid usage.
-__declspec(dllexport) typedef int typedef1; // expected-warning{{'dllexport' attribute only applies to variables and functions}}
-typedef __declspec(dllexport) int typedef2; // expected-warning{{'dllexport' attribute only applies to variables and functions}}
-typedef int __declspec(dllexport) typedef3; // expected-warning{{'dllexport' attribute only applies to variables and functions}}
-typedef __declspec(dllexport) void (*FunTy)(); // expected-warning{{'dllexport' attribute only applies to variables and functions}}
-enum __declspec(dllexport) Enum {}; // expected-warning{{'dllexport' attribute only applies to variables and functions}}
+__declspec(dllexport) typedef int typedef1; // expected-warning{{'dllexport' attribute only applies to variables, functions and classes}}
+typedef __declspec(dllexport) int typedef2; // expected-warning{{'dllexport' attribute only applies to variables, functions and classes}}
+typedef int __declspec(dllexport) typedef3; // expected-warning{{'dllexport' attribute only applies to variables, functions and classes}}
+typedef __declspec(dllexport) void (*FunTy)(); // expected-warning{{'dllexport' attribute only applies to variables, functions and classes}}
+enum __declspec(dllexport) Enum {}; // expected-warning{{'dllexport' attribute only applies to variables, functions and classes}}
 #if __has_feature(cxx_strong_enums)
-  enum class __declspec(dllexport) EnumClass {}; // expected-warning{{'dllexport' attribute only applies to variables and functions}}
+  enum class __declspec(dllexport) EnumClass {}; // expected-warning{{'dllexport' attribute only applies to variables, functions and classes}}
 #endif
 
 
@@ -212,6 +212,10 @@ __declspec(dllexport) Internal internalRetFunc(); // expected-error{{'internalRe
 namespace    { __declspec(dllexport) void internalFunc() {} } // expected-error{{'(anonymous namespace)::internalFunc' must have external linkage when declared 'dllexport'}}
 namespace ns { __declspec(dllexport) void externalFunc() {} }
 
+// Export deleted function.
+__declspec(dllexport) void deletedFunc() = delete; // expected-error{{attribute 'dllexport' cannot be applied to a deleted function}}
+__declspec(dllexport) inline void deletedInlineFunc() = delete; // expected-error{{attribute 'dllexport' cannot be applied to a deleted function}}
+
 
 
 //===----------------------------------------------------------------------===//
@@ -307,6 +311,14 @@ template<> __declspec(dllexport) inline void funcTmpl<ExplicitSpec_InlineDef_Exp
 
 
 //===----------------------------------------------------------------------===//
+// Classes
+//===----------------------------------------------------------------------===//
+
+class __declspec(dllexport) ClassDecl;
+
+class __declspec(dllexport) ClassDef { };
+
+//===----------------------------------------------------------------------===//
 // Precedence
 //===----------------------------------------------------------------------===//
 
@@ -379,6 +391,17 @@ protected:
   __declspec(dllexport)                void protectedDef();
 private:
   __declspec(dllexport)                void privateDef();
+public:
+
+  __declspec(dllexport)                int  Field; // expected-warning{{'dllexport' attribute only applies to variables, functions and classes}}
+  __declspec(dllexport) static         int  StaticField;
+  __declspec(dllexport) static         int  StaticFieldDef;
+  __declspec(dllexport) static  const  int  StaticConstField;
+  __declspec(dllexport) static  const  int  StaticConstFieldDef;
+  __declspec(dllexport) static  const  int  StaticConstFieldEqualInit = 1;
+  __declspec(dllexport) static  const  int  StaticConstFieldBraceInit{1};
+  __declspec(dllexport) constexpr static int ConstexprField = 1;
+  __declspec(dllexport) constexpr static int ConstexprFieldDef = 1;
 };
 
        void ExportMembers::Nested::normalDef() {}
@@ -394,6 +417,10 @@ inline void ExportMembers::staticInlineDef() {}
        void ExportMembers::protectedDef() {}
        void ExportMembers::privateDef() {}
 
+       int  ExportMembers::StaticFieldDef;
+const  int  ExportMembers::StaticConstFieldDef = 1;
+constexpr int ExportMembers::ConstexprFieldDef;
+
 
 // Export on member definitions.
 struct ExportMemberDefs {
@@ -406,6 +433,10 @@ struct ExportMemberDefs {
   __declspec(dllexport) static         void staticDef();
   __declspec(dllexport) static         void staticInlineDef();
   __declspec(dllexport) static  inline void staticInlineDecl();
+
+  __declspec(dllexport) static         int  StaticField;
+  __declspec(dllexport) static  const  int  StaticConstField;
+  __declspec(dllexport) constexpr static int ConstexprField = 1;
 };
 
 __declspec(dllexport)        void ExportMemberDefs::normalDef() {}
@@ -417,6 +448,10 @@ __declspec(dllexport)        void ExportMemberDefs::virtualInlineDecl() {}
 __declspec(dllexport)        void ExportMemberDefs::staticDef() {}
 __declspec(dllexport) inline void ExportMemberDefs::staticInlineDef() {}
 __declspec(dllexport)        void ExportMemberDefs::staticInlineDecl() {}
+
+__declspec(dllexport)        int  ExportMemberDefs::StaticField;
+__declspec(dllexport) const  int  ExportMemberDefs::StaticConstField = 1;
+__declspec(dllexport) constexpr int ExportMemberDefs::ConstexprField;
 
 
 // Export special member functions.
@@ -449,6 +484,18 @@ void* ExportAlloc::operator new(__SIZE_TYPE__ n) { return malloc(n); }
 void* ExportAlloc::operator new[](__SIZE_TYPE__ n) { return malloc(n); }
 void ExportAlloc::operator delete(void* p) { free(p); }
 void ExportAlloc::operator delete[](void* p) { free(p); }
+
+
+// Export deleted member functions.
+struct ExportDeleted {
+  __declspec(dllexport) ExportDeleted() = delete; // expected-error{{attribute 'dllexport' cannot be applied to a deleted function}}
+  __declspec(dllexport) ~ExportDeleted() = delete; // expected-error{{attribute 'dllexport' cannot be applied to a deleted function}}
+  __declspec(dllexport) ExportDeleted(const ExportDeleted&) = delete; // expected-error{{attribute 'dllexport' cannot be applied to a deleted function}}
+  __declspec(dllexport) ExportDeleted& operator=(const ExportDeleted&) = delete; // expected-error{{attribute 'dllexport' cannot be applied to a deleted function}}
+  __declspec(dllexport) ExportDeleted(ExportDeleted&&) = delete; // expected-error{{attribute 'dllexport' cannot be applied to a deleted function}}
+  __declspec(dllexport) ExportDeleted& operator=(ExportDeleted&&) = delete; // expected-error{{attribute 'dllexport' cannot be applied to a deleted function}}
+  __declspec(dllexport) void deleted() = delete; // expected-error{{attribute 'dllexport' cannot be applied to a deleted function}}
+};
 
 
 // Export defaulted member functions.
@@ -497,6 +544,10 @@ struct MemberRedecl {
   static         void staticDef();         // expected-note{{previous declaration is here}}
   static         void staticInlineDef();   // expected-note{{previous declaration is here}}
   static  inline void staticInlineDecl();  // expected-note{{previous declaration is here}}
+
+  static         int  StaticField;         // expected-note{{previous declaration is here}}
+  static  const  int  StaticConstField;    // expected-note{{previous declaration is here}}
+  constexpr static int ConstexprField = 1; // expected-note{{previous declaration is here}}
 };
 
 __declspec(dllexport)        void MemberRedecl::normalDef() {}         // expected-error{{redeclaration of 'MemberRedecl::normalDef' cannot add 'dllexport' attribute}}
@@ -508,6 +559,10 @@ __declspec(dllexport)        void MemberRedecl::virtualInlineDecl() {} // expect
 __declspec(dllexport)        void MemberRedecl::staticDef() {}         // expected-error{{redeclaration of 'MemberRedecl::staticDef' cannot add 'dllexport' attribute}}
 __declspec(dllexport) inline void MemberRedecl::staticInlineDef() {}   // expected-error{{redeclaration of 'MemberRedecl::staticInlineDef' cannot add 'dllexport' attribute}}
 __declspec(dllexport)        void MemberRedecl::staticInlineDecl() {}  // expected-error{{redeclaration of 'MemberRedecl::staticInlineDecl' cannot add 'dllexport' attribute}}
+
+__declspec(dllexport)        int  MemberRedecl::StaticField = 1;       // expected-error{{redeclaration of 'MemberRedecl::StaticField' cannot add 'dllexport' attribute}}
+__declspec(dllexport) const  int  MemberRedecl::StaticConstField = 1;  // expected-error{{redeclaration of 'MemberRedecl::StaticConstField' cannot add 'dllexport' attribute}}
+__declspec(dllexport) constexpr int MemberRedecl::ConstexprField;      // expected-error{{redeclaration of 'MemberRedecl::ConstexprField' cannot add 'dllexport' attribute}}
 
 
 
@@ -526,6 +581,17 @@ struct ExportMemberTmpl {
   template<typename T> __declspec(dllexport) static        void staticInclass() {}
   template<typename T> __declspec(dllexport) static        void staticInlineDef();
   template<typename T> __declspec(dllexport) static inline void staticInlineDecl();
+
+#if __has_feature(cxx_variable_templates)
+  template<typename T> __declspec(dllexport) static        int  StaticField;
+  template<typename T> __declspec(dllexport) static        int  StaticFieldDef;
+  template<typename T> __declspec(dllexport) static const  int  StaticConstField;
+  template<typename T> __declspec(dllexport) static const  int  StaticConstFieldDef;
+  template<typename T> __declspec(dllexport) static const  int  StaticConstFieldEqualInit = 1;
+  template<typename T> __declspec(dllexport) static const  int  StaticConstFieldBraceInit{1};
+  template<typename T> __declspec(dllexport) constexpr static int ConstexprField = 1;
+  template<typename T> __declspec(dllexport) constexpr static int ConstexprFieldDef = 1;
+#endif // __has_feature(cxx_variable_templates)
 };
 
 template<typename T>        void ExportMemberTmpl::normalDef() {}
@@ -535,6 +601,11 @@ template<typename T>        void ExportMemberTmpl::staticDef() {}
 template<typename T> inline void ExportMemberTmpl::staticInlineDef() {}
 template<typename T>        void ExportMemberTmpl::staticInlineDecl() {}
 
+#if __has_feature(cxx_variable_templates)
+template<typename T>        int  ExportMemberTmpl::StaticFieldDef;
+template<typename T> const  int  ExportMemberTmpl::StaticConstFieldDef = 1;
+template<typename T> constexpr int ExportMemberTmpl::ConstexprFieldDef;
+#endif // __has_feature(cxx_variable_templates)
 
 
 // Redeclarations cannot add dllexport.
@@ -545,6 +616,12 @@ struct MemTmplRedecl {
   template<typename T> static        void staticDef();         // expected-note{{previous declaration is here}}
   template<typename T> static        void staticInlineDef();   // expected-note{{previous declaration is here}}
   template<typename T> static inline void staticInlineDecl();  // expected-note{{previous declaration is here}}
+
+#if __has_feature(cxx_variable_templates)
+  template<typename T> static        int  StaticField;         // expected-note{{previous declaration is here}}
+  template<typename T> static const  int  StaticConstField;    // expected-note{{previous declaration is here}}
+  template<typename T> constexpr static int ConstexprField = 1; // expected-note{{previous declaration is here}}
+#endif // __has_feature(cxx_variable_templates)
 };
 
 template<typename T> __declspec(dllexport)        void MemTmplRedecl::normalDef() {}        // expected-error{{redeclaration of 'MemTmplRedecl::normalDef' cannot add 'dllexport' attribute}}
@@ -553,6 +630,12 @@ template<typename T> __declspec(dllexport)        void MemTmplRedecl::normalInli
 template<typename T> __declspec(dllexport)        void MemTmplRedecl::staticDef() {}        // expected-error{{redeclaration of 'MemTmplRedecl::staticDef' cannot add 'dllexport' attribute}}
 template<typename T> __declspec(dllexport) inline void MemTmplRedecl::staticInlineDef() {}  // expected-error{{redeclaration of 'MemTmplRedecl::staticInlineDef' cannot add 'dllexport' attribute}}
 template<typename T> __declspec(dllexport)        void MemTmplRedecl::staticInlineDecl() {} // expected-error{{redeclaration of 'MemTmplRedecl::staticInlineDecl' cannot add 'dllexport' attribute}}
+
+#if __has_feature(cxx_variable_templates)
+template<typename T> __declspec(dllexport)        int  MemTmplRedecl::StaticField = 1;      // expected-error{{redeclaration of 'MemTmplRedecl::StaticField' cannot add 'dllexport' attribute}}
+template<typename T> __declspec(dllexport) const  int  MemTmplRedecl::StaticConstField = 1; // expected-error{{redeclaration of 'MemTmplRedecl::StaticConstField' cannot add 'dllexport' attribute}}
+template<typename T> __declspec(dllexport) constexpr int MemTmplRedecl::ConstexprField;     // expected-error{{redeclaration of 'MemTmplRedecl::ConstexprField' cannot add 'dllexport' attribute}}
+#endif // __has_feature(cxx_variable_templates)
 
 
 
@@ -621,6 +704,52 @@ template<> __declspec(dllexport) inline void MemFunTmpl::staticDef<ExplicitSpec_
 
 
 
+#if __has_feature(cxx_variable_templates)
+struct MemVarTmpl {
+  template<typename T>                       static const int StaticVar = 1;
+  template<typename T> __declspec(dllexport) static const int ExportedStaticVar = 1;
+};
+template<typename T> const int MemVarTmpl::StaticVar;
+template<typename T> const int MemVarTmpl::ExportedStaticVar;
+
+// Export implicit instantiation of an exported member variable template.
+int useMemVarTmpl() { return MemVarTmpl::ExportedStaticVar<ImplicitInst_Exported>; }
+
+// Export explicit instantiation declaration of an exported member variable
+// template.
+extern template const int MemVarTmpl::ExportedStaticVar<ExplicitDecl_Exported>;
+       template const int MemVarTmpl::ExportedStaticVar<ExplicitDecl_Exported>;
+
+// Export explicit instantiation definition of an exported member variable
+// template.
+template const int MemVarTmpl::ExportedStaticVar<ExplicitInst_Exported>;
+
+// Export specialization of an exported member variable template.
+template<> __declspec(dllexport) const int MemVarTmpl::ExportedStaticVar<ExplicitSpec_Exported>;
+template<> __declspec(dllexport) const int MemVarTmpl::ExportedStaticVar<ExplicitSpec_Def_Exported> = 1;
+
+// Not exporting specialization of an exported member variable template without
+// explicit dllexport.
+template<> const int MemVarTmpl::ExportedStaticVar<ExplicitSpec_NotExported>;
+
+
+// Export explicit instantiation declaration of a non-exported member variable
+// template.
+extern template __declspec(dllexport) const int MemVarTmpl::StaticVar<ExplicitDecl_Exported>;
+       template __declspec(dllexport) const int MemVarTmpl::StaticVar<ExplicitDecl_Exported>;
+
+// Export explicit instantiation definition of a non-exported member variable
+// template.
+template __declspec(dllexport) const int MemVarTmpl::StaticVar<ExplicitInst_Exported>;
+
+// Export specialization of a non-exported member variable template.
+template<> __declspec(dllexport) const int MemVarTmpl::StaticVar<ExplicitSpec_Exported>;
+template<> __declspec(dllexport) const int MemVarTmpl::StaticVar<ExplicitSpec_Def_Exported> = 1;
+
+#endif // __has_feature(cxx_variable_templates)
+
+
+
 //===----------------------------------------------------------------------===//
 // Class template members
 //===----------------------------------------------------------------------===//
@@ -648,6 +777,17 @@ protected:
   __declspec(dllexport)                void protectedDef();
 private:
   __declspec(dllexport)                void privateDef();
+public:
+
+  __declspec(dllexport)                int  Field; // expected-warning{{'dllexport' attribute only applies to variables, functions and classes}}
+  __declspec(dllexport) static         int  StaticField;
+  __declspec(dllexport) static         int  StaticFieldDef;
+  __declspec(dllexport) static  const  int  StaticConstField;
+  __declspec(dllexport) static  const  int  StaticConstFieldDef;
+  __declspec(dllexport) static  const  int  StaticConstFieldEqualInit = 1;
+  __declspec(dllexport) static  const  int  StaticConstFieldBraceInit{1};
+  __declspec(dllexport) constexpr static int ConstexprField = 1;
+  __declspec(dllexport) constexpr static int ConstexprFieldDef = 1;
 };
 
 template<typename T>        void ExportClassTmplMembers<T>::normalDef() {}
@@ -661,6 +801,10 @@ template<typename T> inline void ExportClassTmplMembers<T>::staticInlineDef() {}
 template<typename T>        void ExportClassTmplMembers<T>::staticInlineDecl() {}
 template<typename T>        void ExportClassTmplMembers<T>::protectedDef() {}
 template<typename T>        void ExportClassTmplMembers<T>::privateDef() {}
+
+template<typename T>        int  ExportClassTmplMembers<T>::StaticFieldDef;
+template<typename T> const  int  ExportClassTmplMembers<T>::StaticConstFieldDef = 1;
+template<typename T> constexpr int ExportClassTmplMembers<T>::ConstexprFieldDef;
 
 template struct ExportClassTmplMembers<ImplicitInst_Exported>;
 
@@ -677,6 +821,10 @@ struct CTMR /*ClassTmplMemberRedecl*/ {
   static         void staticDef();         // expected-note{{previous declaration is here}}
   static         void staticInlineDef();   // expected-note{{previous declaration is here}}
   static  inline void staticInlineDecl();  // expected-note{{previous declaration is here}}
+
+  static         int  StaticField;         // expected-note{{previous declaration is here}}
+  static  const  int  StaticConstField;    // expected-note{{previous declaration is here}}
+  constexpr static int ConstexprField = 1; // expected-note{{previous declaration is here}}
 };
 
 template<typename T> __declspec(dllexport)        void CTMR<T>::normalDef() {}         // expected-error{{redeclaration of 'CTMR::normalDef' cannot add 'dllexport' attribute}}
@@ -688,6 +836,10 @@ template<typename T> __declspec(dllexport)        void CTMR<T>::virtualInlineDec
 template<typename T> __declspec(dllexport)        void CTMR<T>::staticDef() {}         // expected-error{{redeclaration of 'CTMR::staticDef' cannot add 'dllexport' attribute}}
 template<typename T> __declspec(dllexport) inline void CTMR<T>::staticInlineDef() {}   // expected-error{{redeclaration of 'CTMR::staticInlineDef' cannot add 'dllexport' attribute}}
 template<typename T> __declspec(dllexport)        void CTMR<T>::staticInlineDecl() {}  // expected-error{{redeclaration of 'CTMR::staticInlineDecl' cannot add 'dllexport' attribute}}
+
+template<typename T> __declspec(dllexport)        int  CTMR<T>::StaticField = 1;       // expected-error{{redeclaration of 'CTMR::StaticField' cannot add 'dllexport' attribute}}
+template<typename T> __declspec(dllexport) const  int  CTMR<T>::StaticConstField = 1;  // expected-error{{redeclaration of 'CTMR::StaticConstField' cannot add 'dllexport' attribute}}
+template<typename T> __declspec(dllexport) constexpr int CTMR<T>::ConstexprField;      // expected-error{{redeclaration of 'CTMR::ConstexprField' cannot add 'dllexport' attribute}}
 
 
 
@@ -707,6 +859,17 @@ struct ExportClsTmplMemTmpl {
   template<typename U> __declspec(dllexport) static        void staticInclass() {}
   template<typename U> __declspec(dllexport) static        void staticInlineDef();
   template<typename U> __declspec(dllexport) static inline void staticInlineDecl();
+
+#if __has_feature(cxx_variable_templates)
+  template<typename U> __declspec(dllexport) static        int  StaticField;
+  template<typename U> __declspec(dllexport) static        int  StaticFieldDef;
+  template<typename U> __declspec(dllexport) static const  int  StaticConstField;
+  template<typename U> __declspec(dllexport) static const  int  StaticConstFieldDef;
+  template<typename U> __declspec(dllexport) static const  int  StaticConstFieldEqualInit = 1;
+  template<typename U> __declspec(dllexport) static const  int  StaticConstFieldBraceInit{1};
+  template<typename U> __declspec(dllexport) constexpr static int ConstexprField = 1;
+  template<typename U> __declspec(dllexport) constexpr static int ConstexprFieldDef = 1;
+#endif // __has_feature(cxx_variable_templates)
 };
 
 template<typename T> template<typename U>        void ExportClsTmplMemTmpl<T>::normalDef() {}
@@ -715,6 +878,12 @@ template<typename T> template<typename U>        void ExportClsTmplMemTmpl<T>::n
 template<typename T> template<typename U>        void ExportClsTmplMemTmpl<T>::staticDef() {}
 template<typename T> template<typename U> inline void ExportClsTmplMemTmpl<T>::staticInlineDef() {}
 template<typename T> template<typename U>        void ExportClsTmplMemTmpl<T>::staticInlineDecl() {}
+
+#if __has_feature(cxx_variable_templates)
+template<typename T> template<typename U>        int  ExportClsTmplMemTmpl<T>::StaticFieldDef;
+template<typename T> template<typename U> const  int  ExportClsTmplMemTmpl<T>::StaticConstFieldDef = 1;
+template<typename T> template<typename U> constexpr int ExportClsTmplMemTmpl<T>::ConstexprFieldDef;
+#endif // __has_feature(cxx_variable_templates)
 
 
 // Redeclarations cannot add dllexport.
@@ -726,6 +895,12 @@ struct CTMTR /*ClassTmplMemberTmplRedecl*/ {
   template<typename U> static        void staticDef();         // expected-note{{previous declaration is here}}
   template<typename U> static        void staticInlineDef();   // expected-note{{previous declaration is here}}
   template<typename U> static inline void staticInlineDecl();  // expected-note{{previous declaration is here}}
+
+#if __has_feature(cxx_variable_templates)
+  template<typename U> static        int  StaticField;         // expected-note{{previous declaration is here}}
+  template<typename U> static const  int  StaticConstField;    // expected-note{{previous declaration is here}}
+  template<typename U> constexpr static int ConstexprField = 1; // expected-note{{previous declaration is here}}
+#endif // __has_feature(cxx_variable_templates)
 };
 
 template<typename T> template<typename U> __declspec(dllexport)        void CTMTR<T>::normalDef() {}         // expected-error{{redeclaration of 'CTMTR::normalDef' cannot add 'dllexport' attribute}}
@@ -734,3 +909,11 @@ template<typename T> template<typename U> __declspec(dllexport)        void CTMT
 template<typename T> template<typename U> __declspec(dllexport)        void CTMTR<T>::staticDef() {}         // expected-error{{redeclaration of 'CTMTR::staticDef' cannot add 'dllexport' attribute}}
 template<typename T> template<typename U> __declspec(dllexport) inline void CTMTR<T>::staticInlineDef() {}   // expected-error{{redeclaration of 'CTMTR::staticInlineDef' cannot add 'dllexport' attribute}}
 template<typename T> template<typename U> __declspec(dllexport)        void CTMTR<T>::staticInlineDecl() {}  // expected-error{{redeclaration of 'CTMTR::staticInlineDecl' cannot add 'dllexport' attribute}}
+
+#if __has_feature(cxx_variable_templates)
+template<typename T> template<typename U> __declspec(dllexport)        int  CTMTR<T>::StaticField = 1;       // expected-error{{redeclaration of 'CTMTR::StaticField' cannot add 'dllexport' attribute}}
+template<typename T> template<typename U> __declspec(dllexport) const  int  CTMTR<T>::StaticConstField = 1;  // expected-error{{redeclaration of 'CTMTR::StaticConstField' cannot add 'dllexport' attribute}}
+template<typename T> template<typename U> __declspec(dllexport) constexpr int CTMTR<T>::ConstexprField;      // expected-error{{redeclaration of 'CTMTR::ConstexprField' cannot add 'dllexport' attribute}}
+#endif // __has_feature(cxx_variable_templates)
+
+// FIXME: Precedence rules seem to be different for classes.

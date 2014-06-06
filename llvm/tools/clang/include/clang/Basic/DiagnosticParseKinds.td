@@ -1037,6 +1037,10 @@ def err_expected_star_mesh:Error<
 def err_expected_mesh_var_decl:Error<
     "expected mesh variable declaration">;
 // +=========================================================================+
+
+// Pragma loop support.
+def err_pragma_loop_invalid_option : Error<
+  "%select{invalid|missing}0 option%select{ %1|}0; expected vectorize, vectorize_width, interleave, or interleave_count">;
 } // end of Parse Issue category.
 
 let CategoryName = "Modules Issue" in {

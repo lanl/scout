@@ -1156,9 +1156,9 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
           InitializedEntity::InitializeResult(PropertyDiagLoc,
                                               getterMethod->getReturnType(),
                                               /*NRVO=*/false),
-          PropertyDiagLoc, Owned(IvarRefExpr));
+          PropertyDiagLoc, IvarRefExpr);
       if (!Res.isInvalid()) {
-        Expr *ResExpr = Res.takeAs<Expr>();
+        Expr *ResExpr = Res.getAs<Expr>();
         if (ResExpr)
           ResExpr = MaybeCreateExprWithCleanups(ResExpr);
         PIDecl->setGetterCXXConstructor(ResExpr);
@@ -1212,7 +1212,7 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
                                   BO_Assign, lhs, rhs);
       if (property->getPropertyAttributes() & 
           ObjCPropertyDecl::OBJC_PR_atomic) {
-        Expr *callExpr = Res.takeAs<Expr>();
+        Expr *callExpr = Res.getAs<Expr>();
         if (const CXXOperatorCallExpr *CXXCE = 
               dyn_cast_or_null<CXXOperatorCallExpr>(callExpr))
           if (const FunctionDecl *FuncDecl = CXXCE->getDirectCallee())
@@ -1225,7 +1225,7 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
                      diag::note_callee_decl) << FuncDecl;
               }
       }
-      PIDecl->setSetterCXXAssignment(Res.takeAs<Expr>());
+      PIDecl->setSetterCXXAssignment(Res.getAs<Expr>());
     }
   }
   
@@ -1906,6 +1906,9 @@ void Sema::ProcessPropertyDecl(ObjCPropertyDecl *property,
                                ObjCContainerDecl *lexicalDC) {
 
   ObjCMethodDecl *GetterMethod, *SetterMethod;
+
+  if (CD->isInvalidDecl())
+    return;
 
   GetterMethod = CD->getInstanceMethod(property->getGetterName());
   SetterMethod = CD->getInstanceMethod(property->getSetterName());

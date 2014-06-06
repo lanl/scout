@@ -296,7 +296,7 @@ ExprResult Sema::BuildObjCNumericLiteral(SourceLocation AtLoc, Expr *Number) {
                                                                     ParamDecl);
   ExprResult ConvertedNumber = PerformCopyInitialization(Entity,
                                                          SourceLocation(),
-                                                         Owned(Number));
+                                                         Number);
   if (ConvertedNumber.isInvalid())
     return ExprError();
   Number = ConvertedNumber.get();
@@ -445,7 +445,7 @@ ExprResult Sema::BuildObjCBoxedExpr(SourceRange SR, Expr *ValueExpr) {
   if (ValueExpr->isTypeDependent()) {
     ObjCBoxedExpr *BoxedExpr = 
       new (Context) ObjCBoxedExpr(ValueExpr, Context.DependentTy, nullptr, SR);
-    return Owned(BoxedExpr);
+    return BoxedExpr;
   }
   ObjCMethodDecl *BoxingMethod = nullptr;
   QualType BoxedType;
@@ -586,7 +586,7 @@ ExprResult Sema::BuildObjCBoxedExpr(SourceRange SR, Expr *ValueExpr) {
                                                                     ParamDecl);
   ExprResult ConvertedValueExpr = PerformCopyInitialization(Entity,
                                                             SourceLocation(),
-                                                            Owned(ValueExpr));
+                                                            ValueExpr);
   if (ConvertedValueExpr.isInvalid())
     return ExprError();
   ValueExpr = ConvertedValueExpr.get();
@@ -624,13 +624,9 @@ ExprResult Sema::BuildObjCSubscriptExpression(SourceLocation RB, Expr *BaseExpr,
   BaseExpr = Result.get();
 
   // Build the pseudo-object expression.
-  return Owned(ObjCSubscriptRefExpr::Create(Context, 
-                                            BaseExpr,
-                                            IndexExpr,
-                                            Context.PseudoObjectTy,
-                                            getterMethod,
-                                            setterMethod, RB));
-  
+  return ObjCSubscriptRefExpr::Create(Context, BaseExpr, IndexExpr,
+                                      Context.PseudoObjectTy, getterMethod,
+                                      setterMethod, RB);
 }
 
 ExprResult Sema::BuildObjCArrayLiteral(SourceRange SR, MultiExprArg Elements) {
@@ -1296,7 +1292,7 @@ bool Sema::CheckMessageArgumentTypes(QualType ReceiverType,
       }
       if (result.isInvalid())
         return true;
-      Args[i] = result.take();
+      Args[i] = result.get();
     }
 
     unsigned DiagID;
@@ -1383,7 +1379,7 @@ bool Sema::CheckMessageArgumentTypes(QualType ReceiverType,
       if (argE.isInvalid()) {
         IsError = true;
       } else {
-        Args[i] = argE.take();
+        Args[i] = argE.get();
 
         // Update the parameter type in-place.
         param->setType(paramType);
@@ -1398,11 +1394,11 @@ bool Sema::CheckMessageArgumentTypes(QualType ReceiverType,
 
     InitializedEntity Entity = InitializedEntity::InitializeParameter(Context,
                                                                       param);
-    ExprResult ArgE = PerformCopyInitialization(Entity, SelLoc, Owned(argExpr));
+    ExprResult ArgE = PerformCopyInitialization(Entity, SelLoc, argExpr);
     if (ArgE.isInvalid())
       IsError = true;
     else
-      Args[i] = ArgE.takeAs<Expr>();
+      Args[i] = ArgE.getAs<Expr>();
   }
 
   // Promote additional arguments to variadic methods.
@@ -1414,7 +1410,7 @@ bool Sema::CheckMessageArgumentTypes(QualType ReceiverType,
       ExprResult Arg = DefaultVariadicArgumentPromotion(Args[i], VariadicMethod,
                                                         nullptr);
       IsError |= Arg.isInvalid();
-      Args[i] = Arg.take();
+      Args[i] = Arg.get();
     }
   } else {
     // Check for extra arguments to non-variadic methods.
@@ -1583,14 +1579,13 @@ HandleExprPropertyRefExpr(const ObjCObjectPointerType *OPT,
     if (DiagnoseUseOfDecl(PD, MemberLoc))
       return ExprError();
     if (Super)
-      return Owned(new (Context) ObjCPropertyRefExpr(PD, Context.PseudoObjectTy,
-                                                     VK_LValue, OK_ObjCProperty,
-                                                     MemberLoc, 
-                                                     SuperLoc, SuperType));
+      return new (Context)
+          ObjCPropertyRefExpr(PD, Context.PseudoObjectTy, VK_LValue,
+                              OK_ObjCProperty, MemberLoc, SuperLoc, SuperType);
     else
-      return Owned(new (Context) ObjCPropertyRefExpr(PD, Context.PseudoObjectTy,
-                                                     VK_LValue, OK_ObjCProperty,
-                                                     MemberLoc, BaseExpr));
+      return new (Context)
+          ObjCPropertyRefExpr(PD, Context.PseudoObjectTy, VK_LValue,
+                              OK_ObjCProperty, MemberLoc, BaseExpr);
   }
   // Check protocols on qualified interfaces.
   for (const auto *I : OPT->quals())
@@ -1600,19 +1595,13 @@ HandleExprPropertyRefExpr(const ObjCObjectPointerType *OPT,
         return ExprError();
 
       if (Super)
-        return Owned(new (Context) ObjCPropertyRefExpr(PD,
-                                                       Context.PseudoObjectTy,
-                                                       VK_LValue,
-                                                       OK_ObjCProperty,
-                                                       MemberLoc, 
-                                                       SuperLoc, SuperType));
+        return new (Context) ObjCPropertyRefExpr(
+            PD, Context.PseudoObjectTy, VK_LValue, OK_ObjCProperty, MemberLoc,
+            SuperLoc, SuperType);
       else
-        return Owned(new (Context) ObjCPropertyRefExpr(PD,
-                                                       Context.PseudoObjectTy,
-                                                       VK_LValue,
-                                                       OK_ObjCProperty,
-                                                       MemberLoc,
-                                                       BaseExpr));
+        return new (Context)
+            ObjCPropertyRefExpr(PD, Context.PseudoObjectTy, VK_LValue,
+                                OK_ObjCProperty, MemberLoc, BaseExpr);
     }
   // If that failed, look for an "implicit" property by seeing if the nullary
   // selector is implemented.
@@ -1658,16 +1647,13 @@ HandleExprPropertyRefExpr(const ObjCObjectPointerType *OPT,
 
   if (Getter || Setter) {
     if (Super)
-      return Owned(new (Context) ObjCPropertyRefExpr(Getter, Setter,
-                                                     Context.PseudoObjectTy,
-                                                     VK_LValue, OK_ObjCProperty,
-                                                     MemberLoc,
-                                                     SuperLoc, SuperType));
+      return new (Context)
+          ObjCPropertyRefExpr(Getter, Setter, Context.PseudoObjectTy, VK_LValue,
+                              OK_ObjCProperty, MemberLoc, SuperLoc, SuperType);
     else
-      return Owned(new (Context) ObjCPropertyRefExpr(Getter, Setter,
-                                                     Context.PseudoObjectTy,
-                                                     VK_LValue, OK_ObjCProperty,
-                                                     MemberLoc, BaseExpr));
+      return new (Context)
+          ObjCPropertyRefExpr(Getter, Setter, Context.PseudoObjectTy, VK_LValue,
+                              OK_ObjCProperty, MemberLoc, BaseExpr);
 
   }
 
@@ -1798,18 +1784,14 @@ ActOnClassPropertyRefExpr(IdentifierInfo &receiverName,
 
   if (Getter || Setter) {
     if (IsSuper)
-    return Owned(new (Context) ObjCPropertyRefExpr(Getter, Setter,
-                                                   Context.PseudoObjectTy,
-                                                   VK_LValue, OK_ObjCProperty,
-                                                   propertyNameLoc,
-                                                   receiverNameLoc, 
-                                          Context.getObjCInterfaceType(IFace)));
+      return new (Context)
+          ObjCPropertyRefExpr(Getter, Setter, Context.PseudoObjectTy, VK_LValue,
+                              OK_ObjCProperty, propertyNameLoc, receiverNameLoc,
+                              Context.getObjCInterfaceType(IFace));
 
-    return Owned(new (Context) ObjCPropertyRefExpr(Getter, Setter,
-                                                   Context.PseudoObjectTy,
-                                                   VK_LValue, OK_ObjCProperty,
-                                                   propertyNameLoc,
-                                                   receiverNameLoc, IFace));
+    return new (Context) ObjCPropertyRefExpr(
+        Getter, Setter, Context.PseudoObjectTy, VK_LValue, OK_ObjCProperty,
+        propertyNameLoc, receiverNameLoc, IFace);
   }
   return ExprError(Diag(propertyNameLoc, diag::err_property_not_found)
                      << &propertyName << Context.getObjCInterfaceType(IFace));
@@ -2103,11 +2085,10 @@ ExprResult Sema::BuildClassMessage(TypeSourceInfo *ReceiverTypeInfo,
     unsigned NumArgs = ArgsIn.size();
     Expr **Args = ArgsIn.data();
     assert(SuperLoc.isInvalid() && "Message to super with dependent type");
-    return Owned(ObjCMessageExpr::Create(Context, ReceiverType,
-                                         VK_RValue, LBracLoc, ReceiverTypeInfo,
-                                         Sel, SelectorLocs, /*Method=*/nullptr,
-                                         makeArrayRef(Args, NumArgs),RBracLoc,
-                                         isImplicit));
+    return ObjCMessageExpr::Create(
+        Context, ReceiverType, VK_RValue, LBracLoc, ReceiverTypeInfo, Sel,
+        SelectorLocs, /*Method=*/nullptr, makeArrayRef(Args, NumArgs), RBracLoc,
+        isImplicit);
   }
   
   // Find the class to which we are sending this message.
@@ -2288,7 +2269,7 @@ ExprResult Sema::BuildInstanceMessage(Expr *Receiver,
       else
         Result = CheckPlaceholderExpr(Receiver);
       if (Result.isInvalid()) return ExprError();
-      Receiver = Result.take();
+      Receiver = Result.get();
     }
 
     if (Receiver->isTypeDependent()) {
@@ -2297,11 +2278,10 @@ ExprResult Sema::BuildInstanceMessage(Expr *Receiver,
       unsigned NumArgs = ArgsIn.size();
       Expr **Args = ArgsIn.data();
       assert(SuperLoc.isInvalid() && "Message to super with dependent type");
-      return Owned(ObjCMessageExpr::Create(Context, Context.DependentTy,
-                                           VK_RValue, LBracLoc, Receiver, Sel, 
-                                           SelectorLocs, /*Method=*/nullptr,
-                                           makeArrayRef(Args, NumArgs),
-                                           RBracLoc, isImplicit));
+      return ObjCMessageExpr::Create(
+          Context, Context.DependentTy, VK_RValue, LBracLoc, Receiver, Sel,
+          SelectorLocs, /*Method=*/nullptr, makeArrayRef(Args, NumArgs),
+          RBracLoc, isImplicit);
     }
 
     // If necessary, apply function/array conversion to the receiver.
@@ -2309,7 +2289,7 @@ ExprResult Sema::BuildInstanceMessage(Expr *Receiver,
     ExprResult Result = DefaultFunctionArrayLvalueConversion(Receiver);
     if (Result.isInvalid())
       return ExprError();
-    Receiver = Result.take();
+    Receiver = Result.get();
     ReceiverType = Receiver->getType();
 
     // If the receiver is an ObjC pointer, a block pointer, or an
@@ -2328,14 +2308,14 @@ ExprResult Sema::BuildInstanceMessage(Expr *Receiver,
         << Receiver->getSourceRange();
       if (ReceiverType->isPointerType()) {
         Receiver = ImpCastExprToType(Receiver, Context.getObjCIdType(), 
-                                     CK_CPointerToObjCPointerCast).take();
+                                     CK_CPointerToObjCPointerCast).get();
       } else {
         // TODO: specialized warning on null receivers?
         bool IsNull = Receiver->isNullPointerConstant(Context,
                                               Expr::NPC_ValueDependentIsNull);
         CastKind Kind = IsNull ? CK_NullToPointer : CK_IntegralToPointer;
         Receiver = ImpCastExprToType(Receiver, Context.getObjCIdType(),
-                                     Kind).take();
+                                     Kind).get();
       }
       ReceiverType = Receiver->getType();
     } else if (getLangOpts().CPlusPlus) {
@@ -2346,7 +2326,7 @@ ExprResult Sema::BuildInstanceMessage(Expr *Receiver,
 
       ExprResult result = PerformContextuallyConvertToObjCPointer(Receiver);
       if (result.isUsable()) {
-        Receiver = result.take();
+        Receiver = result.get();
         ReceiverType = Receiver->getType();
       }
     }
@@ -2674,7 +2654,7 @@ ExprResult Sema::BuildInstanceMessage(Expr *Receiver,
         // The implicit assignment to self means we also don't want to
         // consume the result.
         Result->setDelegateInitCall(true);
-        return Owned(Result);
+        return Result;
       }
     }
 
@@ -2733,7 +2713,7 @@ ExprResult Sema::ActOnInstanceMessage(Scope *S,
   if (isa<ParenListExpr>(Receiver)) {
     ExprResult Result = MaybeConvertParenListExprToParenExpr(S, Receiver);
     if (Result.isInvalid()) return ExprError();
-    Receiver = Result.take();
+    Receiver = Result.get();
   }
   
   if (RespondsToSelectorSel.isNull()) {
@@ -3547,7 +3527,7 @@ Sema::CheckObjCBridgeRelatedConversions(SourceLocation Loc,
                                       ClassMethod->getLocation(),
                                       ClassMethod->getSelector(), ClassMethod,
                                       MultiExprArg(args, 1));
-      SrcExpr = msg.take();
+      SrcExpr = msg.get();
       return true;
     }
   }
@@ -3584,7 +3564,7 @@ Sema::CheckObjCBridgeRelatedConversions(SourceLocation Loc,
                                      InstanceMethod->getLocation(),
                                      InstanceMethod->getSelector(),
                                      InstanceMethod, None);
-      SrcExpr = msg.take();
+      SrcExpr = msg.get();
       return true;
     }
   }
@@ -3806,7 +3786,7 @@ ExprResult Sema::BuildObjCBridgedCast(SourceLocation LParenLoc,
                                       Expr *SubExpr) {
   ExprResult SubResult = UsualUnaryConversions(SubExpr);
   if (SubResult.isInvalid()) return ExprError();
-  SubExpr = SubResult.take();
+  SubExpr = SubResult.get();
 
   QualType T = TSInfo->getType();
   QualType FromType = SubExpr->getType();

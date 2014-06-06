@@ -724,7 +724,7 @@ const char *TrackConstraintBRVisitor::getTag() {
 bool TrackConstraintBRVisitor::isUnderconstrained(const ExplodedNode *N) const {
   if (IsZeroCheck)
     return N->getState()->isNull(Constraint).isUnderconstrained();
-  return N->getState()->assume(Constraint, !Assumption);
+  return (bool)N->getState()->assume(Constraint, !Assumption);
 }
 
 PathDiagnosticPiece *
@@ -1514,7 +1514,7 @@ static bool isInStdNamespace(const Decl *D) {
   while (const NamespaceDecl *Parent = dyn_cast<NamespaceDecl>(ND->getParent()))
     ND = Parent;
 
-  return ND->getName() == "std";
+  return ND->isStdNamespace();
 }
 
 

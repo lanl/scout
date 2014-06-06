@@ -328,7 +328,7 @@ ExprResult Sema::ImpCastExprToType(Expr *E, QualType Ty,
   QualType TypeTy = Context.getCanonicalType(Ty);
 
   if (ExprTy == TypeTy)
-    return Owned(E);
+    return E;
 
   // If this is a derived-to-base cast to a through a virtual base, we
   // need a vtable.
@@ -346,11 +346,11 @@ ExprResult Sema::ImpCastExprToType(Expr *E, QualType Ty,
     if (ImpCast->getCastKind() == Kind && (!BasePath || BasePath->empty())) {
       ImpCast->setType(Ty);
       ImpCast->setValueKind(VK);
-      return Owned(E);
+      return E;
     }
   }
 
-  return Owned(ImplicitCastExpr::Create(Context, Ty, Kind, E, BasePath, VK));
+  return ImplicitCastExpr::Create(Context, Ty, Kind, E, BasePath, VK);
 }
 
 /// ScalarTypeToBooleanCastKind - Returns the cast kind corresponding
@@ -1408,7 +1408,7 @@ bool Sema::tryToRecoverWithCall(ExprResult &E, const PartialDiagnostic &PD,
 
     // FIXME: Try this before emitting the fixit, and suppress diagnostics
     // while doing so.
-    E = ActOnCallExpr(nullptr, E.take(), Range.getEnd(), None,
+    E = ActOnCallExpr(nullptr, E.get(), Range.getEnd(), None,
                       Range.getEnd().getLocWithOffset(1));
     return true;
   }

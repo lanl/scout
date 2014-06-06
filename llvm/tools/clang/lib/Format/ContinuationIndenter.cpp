@@ -112,6 +112,15 @@ bool ContinuationIndenter::canBreak(const LineState &State) {
     return false;
   if (Current.isMemberAccess() && State.Stack.back().ContainsUnwrappedBuilder)
     return false;
+
+  // Don't create a 'hanging' indent if there are multiple blocks in a single
+  // statement.
+  if (Style.Language == FormatStyle::LK_JavaScript &&
+      Previous.is(tok::l_brace) && State.Stack.size() > 1 &&
+      State.Stack[State.Stack.size() - 2].JSFunctionInlined &&
+      State.Stack[State.Stack.size() - 2].HasMultipleNestedBlocks)
+    return false;
+
   return !State.Stack.back().NoLineBreak;
 }
 
@@ -294,7 +303,7 @@ void ContinuationIndenter::addTokenOnCurrentLine(LineState &State, bool DryRun,
     // Treat the condition inside an if as if it was a second function
     // parameter, i.e. let nested calls have a continuation indent.
     State.Stack.back().LastSpace = State.Column;
-  else if (Current.isNot(tok::comment) &&
+  else if (!Current.isOneOf(tok::comment, tok::caret) &&
            (Previous.is(tok::comma) ||
             (Previous.is(tok::colon) && Previous.Type == TT_ObjCMethodExpr)))
     State.Stack.back().LastSpace = State.Column;
@@ -404,10 +413,8 @@ unsigned ContinuationIndenter::addTokenOnNewLine(LineState &State,
     State.Stack.back().BreakBeforeParameter = true;
 
   if (!DryRun) {
-    unsigned Newlines = 1;
-    if (Current.is(tok::comment))
-      Newlines = std::max(Newlines, std::min(Current.NewlinesBefore,
-                                             Style.MaxEmptyLinesToKeep + 1));
+    unsigned Newlines = std::max(
+        1u, std::min(Current.NewlinesBefore, Style.MaxEmptyLinesToKeep + 1));
     Whitespaces.replaceWhitespace(Current, Newlines,
                                   State.Stack.back().IndentLevel, State.Column,
                                   State.Column, State.Line->InPPDirective);
@@ -589,8 +596,6 @@ unsigned ContinuationIndenter::moveStateToNextToken(LineState &State,
         Current.LastOperator ? 0 : State.Column + Current.ColumnWidth;
   if (Current.Type == TT_ObjCSelectorName)
     State.Stack.back().ObjCSelectorNameFound = true;
-  if (Current.Type == TT_LambdaLSquare)
-    ++State.Stack.back().LambdasFound;
   if (Current.Type == TT_CtorInitializerColon) {
     // Indent 2 from the column, so:
     // SomeClass::SomeClass()
@@ -736,25 +741,58 @@ void ContinuationIndenter::moveStatePastFakeLParens(LineState &State,
   }
 }
 
-void ContinuationIndenter::moveStatePastFakeRParens(LineState &State) {
-  const FormatToken &Current = *State.NextToken;
-
-  // Remove scopes created by fake parenthesis.
-  if (Current.isNot(tok::r_brace) ||
-      (Current.MatchingParen && Current.MatchingParen->BlockKind != BK_Block)) {
-    // Don't remove FakeRParens attached to r_braces that surround nested blocks
-    // as they will have been removed early (see above).
-    for (unsigned i = 0, e = Current.FakeRParens; i != e; ++i) {
-      unsigned VariablePos = State.Stack.back().VariablePos;
-      assert(State.Stack.size() > 1);
-      if (State.Stack.size() == 1) {
-        // Do not pop the last element.
-        break;
-      }
-      State.Stack.pop_back();
-      State.Stack.back().VariablePos = VariablePos;
+// Remove the fake r_parens after 'Tok'.
+static void consumeRParens(LineState& State, const FormatToken &Tok) {
+  for (unsigned i = 0, e = Tok.FakeRParens; i != e; ++i) {
+    unsigned VariablePos = State.Stack.back().VariablePos;
+    assert(State.Stack.size() > 1);
+    if (State.Stack.size() == 1) {
+      // Do not pop the last element.
+      break;
     }
+    State.Stack.pop_back();
+    State.Stack.back().VariablePos = VariablePos;
   }
+}
+
+// Returns whether 'Tok' opens or closes a scope requiring special handling
+// of the subsequent fake r_parens.
+//
+// For example, if this is an l_brace starting a nested block, we pretend (wrt.
+// to indentation) that we already consumed the corresponding r_brace. Thus, we
+// remove all ParenStates caused by fake parentheses that end at the r_brace.
+// The net effect of this is that we don't indent relative to the l_brace, if
+// the nested block is the last parameter of a function. This formats:
+//
+//   SomeFunction(a, [] {
+//     f();  // break
+//   });
+//
+// instead of:
+//   SomeFunction(a, [] {
+//                     f();  // break
+//                   });
+static bool fakeRParenSpecialCase(const LineState &State) {
+  const FormatToken &Tok = *State.NextToken;
+  if (!Tok.MatchingParen)
+    return false;
+  const FormatToken *Left = &Tok;
+  if (Tok.isOneOf(tok::r_brace, tok::r_square))
+    Left = Tok.MatchingParen;
+  return !State.Stack.back().HasMultipleNestedBlocks &&
+         Left->isOneOf(tok::l_brace, tok::l_square) &&
+         (Left->BlockKind == BK_Block ||
+          Left->Type == TT_ArrayInitializerLSquare ||
+          Left->Type == TT_DictLiteral);
+}
+
+void ContinuationIndenter::moveStatePastFakeRParens(LineState &State) {
+  // Don't remove FakeRParens attached to r_braces that surround nested blocks
+  // as they will have been removed early (see above).
+  if (fakeRParenSpecialCase(State))
+    return;
+
+  consumeRParens(State, *State.NextToken);
 }
 
 void ContinuationIndenter::moveStatePastScopeOpener(LineState &State,
@@ -773,6 +811,9 @@ void ContinuationIndenter::moveStatePastScopeOpener(LineState &State,
   bool AvoidBinPacking;
   bool BreakBeforeParameter = false;
   if (Current.is(tok::l_brace) || Current.Type == TT_ArrayInitializerLSquare) {
+    if (fakeRParenSpecialCase(State))
+      consumeRParens(State, *Current.MatchingParen);
+
     NewIndent = State.Stack.back().LastSpace;
     if (Current.opensBlockTypeList(Style)) {
       NewIndent += Style.IndentWidth;
@@ -812,6 +853,7 @@ void ContinuationIndenter::moveStatePastScopeOpener(LineState &State,
                                    State.Stack.back().LastSpace,
                                    AvoidBinPacking, NoLineBreak));
   State.Stack.back().BreakBeforeParameter = BreakBeforeParameter;
+  State.Stack.back().HasMultipleNestedBlocks = Current.BlockParameterCount > 1;
 }
 
 void ContinuationIndenter::moveStatePastScopeCloser(LineState &State) {
@@ -824,9 +866,9 @@ void ContinuationIndenter::moveStatePastScopeCloser(LineState &State) {
   if (State.Stack.size() > 1 &&
       (Current.isOneOf(tok::r_paren, tok::r_square) ||
        (Current.is(tok::r_brace) && State.NextToken != State.Line->First) ||
-       State.NextToken->Type == TT_TemplateCloser)) {
+       State.NextToken->Type == TT_TemplateCloser))
     State.Stack.pop_back();
-  }
+
   if (Current.is(tok::r_square)) {
     // If this ends the array subscript expr, reset the corresponding value.
     const FormatToken *NextNonComment = Current.getNextNonComment();
@@ -836,35 +878,10 @@ void ContinuationIndenter::moveStatePastScopeCloser(LineState &State) {
 }
 
 void ContinuationIndenter::moveStateToNewBlock(LineState &State) {
-  // If this is an l_brace starting a nested block, we pretend (wrt. to
-  // indentation) that we already consumed the corresponding r_brace. Thus, we
-  // remove all ParenStates caused by fake parentheses that end at the r_brace.
-  // The net effect of this is that we don't indent relative to the l_brace, if
-  // the nested block is the last parameter of a function. For example, this
-  // formats:
-  //
-  //   SomeFunction(a, [] {
-  //     f();  // break
-  //   });
-  //
-  // instead of:
-  //   SomeFunction(a, [] {
-  //                     f();  // break
-  //                   });
-  //
   // If we have already found more than one lambda introducers on this level, we
   // opt out of this because similarity between the lambdas is more important.
-  if (State.Stack.back().LambdasFound <= 1) {
-    for (unsigned i = 0; i != State.NextToken->MatchingParen->FakeRParens;
-         ++i) {
-      assert(State.Stack.size() > 1);
-      if (State.Stack.size() == 1) {
-        // Do not pop the last element.
-        break;
-      }
-      State.Stack.pop_back();
-    }
-  }
+  if (fakeRParenSpecialCase(State))
+    consumeRParens(State, *State.NextToken->MatchingParen);
 
   // For some reason, ObjC blocks are indented like continuations.
   unsigned NewIndent = State.Stack.back().LastSpace +

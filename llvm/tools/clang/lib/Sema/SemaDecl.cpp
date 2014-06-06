@@ -5046,10 +5046,15 @@ static void checkDLLAttributeRedeclaration(Sema &S, NamedDecl *OldDecl,
   // A redeclaration is not allowed to drop a dllimport attribute, the only
   // exception being inline function definitions.
   // NB: MSVC converts such a declaration to dllexport.
-  bool IsInline =
-      isa<FunctionDecl>(NewDecl) && cast<FunctionDecl>(NewDecl)->isInlined();
+  bool IsInline = false, IsStaticDataMember = false;
+  if (const auto *VD = dyn_cast<VarDecl>(NewDecl))
+    // Ignore static data because out-of-line definitions are diagnosed
+    // separately.
+    IsStaticDataMember = VD->isStaticDataMember();
+  else if (const auto *FD = dyn_cast<FunctionDecl>(NewDecl))
+    IsInline = FD->isInlined();
 
-  if (OldImportAttr && !HasNewAttr && !IsInline) {
+  if (OldImportAttr && !HasNewAttr && !IsInline && !IsStaticDataMember) {
     S.Diag(NewDecl->getLocation(),
            diag::warn_redeclaration_without_attribute_prev_attribute_ignored)
       << NewDecl << OldImportAttr;
@@ -5592,6 +5597,10 @@ Sema::ActOnVariableDeclarator(Scope *S, Declarator &D, DeclContext *DC,
       // Global Named register
       if (!Context.getTargetInfo().isValidGCCRegisterName(Label))
         Diag(E->getExprLoc(), diag::err_asm_unknown_register_name) << Label;
+      if (!R->isIntegralType(Context) && !R->isPointerType()) {
+        Diag(D.getLocStart(), diag::err_asm_bad_register_type);
+        NewVD->setInvalidDecl(true);
+      }
     }
 
     NewVD->addAttr(::new (Context) AsmLabelAttr(SE->getStrTokenLoc(0),
@@ -8352,7 +8361,7 @@ void Sema::AddInitializerToDecl(Decl *RealDecl, Expr *Init,
         VDecl->setInvalidDecl();
         return;
       }
-      Init = Result.take();
+      Init = Result.get();
       DefaultedToAuto = true;
     }
 
@@ -8491,7 +8500,7 @@ void Sema::AddInitializerToDecl(Decl *RealDecl, Expr *Init,
       VDecl->setInvalidDecl();
       return;
     }
-    Init = Result.take();
+    Init = Result.get();
   }
 
   // Perform the initialization.
@@ -8519,7 +8528,7 @@ void Sema::AddInitializerToDecl(Decl *RealDecl, Expr *Init,
       return;
     }
 
-    Init = Result.takeAs<Expr>();
+    Init = Result.getAs<Expr>();
   }
 
   // Check for self-references within variable initializers.
@@ -8577,7 +8586,7 @@ void Sema::AddInitializerToDecl(Decl *RealDecl, Expr *Init,
     VDecl->setInvalidDecl();
     return;
   }
-  Init = Result.take();
+  Init = Result.get();
 
   // Attach the initializer to the decl.
   VDecl->setInit(Init);
@@ -9139,7 +9148,7 @@ void Sema::CheckCompleteVariableDeclaration(VarDecl *var) {
             var, var->getType(), varRef, /*AllowNRVO=*/true);
       if (!result.isInvalid()) {
         result = MaybeCreateExprWithCleanups(result);
-        Expr *init = result.takeAs<Expr>();
+        Expr *init = result.getAs<Expr>();
         Context.setBlockVarCopyInits(var, init);
       }
     }
@@ -9206,6 +9215,26 @@ Sema::FinalizeDeclaration(Decl *ThisDecl) {
     return;
 
   checkAttributesAfterMerging(*this, *VD);
+
+  // Imported static data members cannot be defined out-of-line.
+  if (const DLLImportAttr *IA = VD->getAttr<DLLImportAttr>()) {
+    if (VD->isStaticDataMember() && VD->isOutOfLine() &&
+        VD->isThisDeclarationADefinition()) {
+      // We allow definitions of dllimport class template static data members
+      // with a warning.
+      bool IsClassTemplateMember =
+          cast<CXXRecordDecl>(VD->getFirstDecl()->getDeclContext())
+              ->getDescribedClassTemplate();
+
+      Diag(VD->getLocation(),
+           IsClassTemplateMember
+               ? diag::warn_attribute_dllimport_static_field_definition
+               : diag::err_attribute_dllimport_static_field_definition);
+      Diag(IA->getLocation(), diag::note_attribute);
+      if (!IsClassTemplateMember)
+        VD->setInvalidDecl();
+    }
+  }
 
   if (UsedAttr *Attr = VD->getAttr<UsedAttr>()) {
     if (!Attr->isInherited() && !VD->isThisDeclarationADefinition()) {
@@ -9952,6 +9981,11 @@ Decl *Sema::ActOnStartOfFunctionDef(Scope *FnBodyScope, Decl *D) {
   // We want to attach documentation to original Decl (which might be
   // a function template).
   ActOnDocumentableDecl(D);
+  if (getCurLexicalContext()->isObjCContainer() &&
+      getCurLexicalContext()->getDeclKind() != Decl::ObjCCategoryImpl &&
+      getCurLexicalContext()->getDeclKind() != Decl::ObjCImplementation)
+    Diag(FD->getLocation(), diag::warn_function_def_in_objc_container);
+    
   return D;
 }
 
@@ -11603,13 +11637,13 @@ ExprResult Sema::VerifyBitField(SourceLocation FieldLoc,
   // If the bit-width is type- or value-dependent, don't try to check
   // it now.
   if (BitWidth->isValueDependent() || BitWidth->isTypeDependent())
-    return Owned(BitWidth);
+    return BitWidth;
 
   llvm::APSInt Value;
   ExprResult ICE = VerifyIntegerConstantExpression(BitWidth, &Value);
   if (ICE.isInvalid())
     return ICE;
-  BitWidth = ICE.take();
+  BitWidth = ICE.get();
 
   if (Value != 0 && ZeroWidth)
     *ZeroWidth = false;
@@ -11650,7 +11684,7 @@ ExprResult Sema::VerifyBitField(SourceLocation FieldLoc,
     }
   }
 
-  return Owned(BitWidth);
+  return BitWidth;
 }
 
 /// ActOnField - Each field of a C struct/union is passed into this in order
@@ -11849,7 +11883,7 @@ FieldDecl *Sema::CheckFieldDecl(DeclarationName Name, QualType T,
   // If this is declared as a bit-field, check the bit-field.
   if (!InvalidDecl && BitWidth) {
     BitWidth = VerifyBitField(Loc, II, T, Record->isMsStruct(Context), BitWidth,
-                              &ZeroWidth).take();
+                              &ZeroWidth).get();
     if (!BitWidth) {
       InvalidDecl = true;
       BitWidth = nullptr;
@@ -12037,7 +12071,7 @@ Decl *Sema::ActOnIvar(Scope *S,
 
   if (BitWidth) {
     // 6.7.2.1p3, 6.7.2.1p4
-    BitWidth = VerifyBitField(Loc, II, T, /*IsMsStruct*/false, BitWidth).take();
+    BitWidth = VerifyBitField(Loc, II, T, /*IsMsStruct*/false, BitWidth).get();
     if (!BitWidth)
       D.setInvalidType();
   } else {
@@ -12638,7 +12672,7 @@ EnumConstantDecl *Sema::CheckEnumConstant(EnumDecl *Enum,
     Val = nullptr;
 
   if (Val)
-    Val = DefaultLvalueConversion(Val).take();
+    Val = DefaultLvalueConversion(Val).get();
 
   if (Val) {
     if (Enum->isDependentType() || Val->isTypeDependent())
@@ -12657,10 +12691,10 @@ EnumConstantDecl *Sema::CheckEnumConstant(EnumDecl *Enum,
         if (Converted.isInvalid())
           Val = nullptr;
         else
-          Val = Converted.take();
+          Val = Converted.get();
       } else if (!Val->isValueDependent() &&
                  !(Val = VerifyIntegerConstantExpression(Val,
-                                                         &EnumVal).take())) {
+                                                         &EnumVal).get())) {
         // C99 6.7.2.2p2: Make sure we have an integer constant expression.
       } else {
         if (Enum->isFixed()) {
@@ -12673,11 +12707,11 @@ EnumConstantDecl *Sema::CheckEnumConstant(EnumDecl *Enum,
           if (!isRepresentableIntegerValue(Context, EnumVal, EltTy)) {
             if (getLangOpts().MSVCCompat) {
               Diag(IdLoc, diag::ext_enumerator_too_large) << EltTy;
-              Val = ImpCastExprToType(Val, EltTy, CK_IntegralCast).take();
+              Val = ImpCastExprToType(Val, EltTy, CK_IntegralCast).get();
             } else
               Diag(IdLoc, diag::err_enumerator_too_large) << EltTy;
           } else
-            Val = ImpCastExprToType(Val, EltTy, CK_IntegralCast).take();
+            Val = ImpCastExprToType(Val, EltTy, CK_IntegralCast).get();
         } else if (getLangOpts().CPlusPlus) {
           // C++11 [dcl.enum]p5:
           //   If the underlying type is not fixed, the type of each enumerator
@@ -12698,7 +12732,7 @@ EnumConstantDecl *Sema::CheckEnumConstant(EnumDecl *Enum,
               << (EnumVal.isUnsigned() || EnumVal.isNonNegative());
           else if (!Context.hasSameType(Val->getType(), Context.IntTy)) {
             // Force the type of the expression to 'int'.
-            Val = ImpCastExprToType(Val, Context.IntTy, CK_IntegralCast).take();
+            Val = ImpCastExprToType(Val, Context.IntTy, CK_IntegralCast).get();
           }
           EltTy = Val->getType();
         }

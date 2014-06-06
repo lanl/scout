@@ -258,6 +258,10 @@ bool Decl::isInAnonymousNamespace() const {
   return false;
 }
 
+bool Decl::isInStdNamespace() const {
+  return getDeclContext()->isStdNamespace();
+}
+
 TranslationUnitDecl *Decl::getTranslationUnitDecl() {
   if (TranslationUnitDecl *TUD = dyn_cast<TranslationUnitDecl>(this))
     return TUD;
@@ -814,6 +818,22 @@ DeclContext *DeclContext::getLookupParent() {
 bool DeclContext::isInlineNamespace() const {
   return isNamespace() &&
          cast<NamespaceDecl>(this)->isInline();
+}
+
+bool DeclContext::isStdNamespace() const {
+  if (!isNamespace())
+    return false;
+
+  const NamespaceDecl *ND = cast<NamespaceDecl>(this);
+  if (ND->isInline()) {
+    return ND->getParent()->isStdNamespace();
+  }
+
+  if (!getParent()->getRedeclContext()->isTranslationUnit())
+    return false;
+
+  const IdentifierInfo *II = ND->getIdentifier();
+  return II && II->isStr("std");
 }
 
 bool DeclContext::isDependentContext() const {
