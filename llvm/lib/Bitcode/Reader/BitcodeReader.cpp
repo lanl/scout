@@ -490,7 +490,7 @@ error_code BitcodeReader::ParseAttributeBlock() {
     case BitstreamEntry::Error:
       return Error(MalformedBlock);
     case BitstreamEntry::EndBlock:
-      return error_code::success();
+      return error_code();
     case BitstreamEntry::Record:
       // The interesting case.
       break;
@@ -549,6 +549,8 @@ static Attribute::AttrKind GetAttrFromCode(uint64_t Code) {
     return Attribute::InlineHint;
   case bitc::ATTR_KIND_IN_REG:
     return Attribute::InReg;
+  case bitc::ATTR_KIND_JUMP_TABLE:
+    return Attribute::JumpTable;
   case bitc::ATTR_KIND_MIN_SIZE:
     return Attribute::MinSize;
   case bitc::ATTR_KIND_NAKED:
@@ -619,7 +621,7 @@ error_code BitcodeReader::ParseAttrKind(uint64_t Code,
   *Kind = GetAttrFromCode(Code);
   if (*Kind == Attribute::None)
     return Error(InvalidValue);
-  return error_code::success();
+  return error_code();
 }
 
 error_code BitcodeReader::ParseAttributeGroupBlock() {
@@ -640,7 +642,7 @@ error_code BitcodeReader::ParseAttributeGroupBlock() {
     case BitstreamEntry::Error:
       return Error(MalformedBlock);
     case BitstreamEntry::EndBlock:
-      return error_code::success();
+      return error_code();
     case BitstreamEntry::Record:
       // The interesting case.
       break;
@@ -731,7 +733,7 @@ error_code BitcodeReader::ParseTypeTableBody() {
     case BitstreamEntry::EndBlock:
       if (NumRecords != TypeList.size())
         return Error(MalformedBlock);
-      return error_code::success();
+      return error_code();
     case BitstreamEntry::Record:
       // The interesting case.
       break;
@@ -947,7 +949,7 @@ error_code BitcodeReader::ParseValueSymbolTable() {
     case BitstreamEntry::Error:
       return Error(MalformedBlock);
     case BitstreamEntry::EndBlock:
-      return error_code::success();
+      return error_code();
     case BitstreamEntry::Record:
       // The interesting case.
       break;
@@ -1002,7 +1004,7 @@ error_code BitcodeReader::ParseMetadata() {
     case BitstreamEntry::Error:
       return Error(MalformedBlock);
     case BitstreamEntry::EndBlock:
-      return error_code::success();
+      return error_code();
     case BitstreamEntry::Record:
       // The interesting case.
       break;
@@ -1094,28 +1096,6 @@ uint64_t BitcodeReader::decodeSignRotatedValue(uint64_t V) {
   return 1ULL << 63;
 }
 
-// FIXME: Delete this in LLVM 4.0 and just assert that the aliasee is a
-// GlobalObject.
-static GlobalObject &
-getGlobalObjectInExpr(const DenseMap<GlobalAlias *, Constant *> &Map,
-                      Constant &C) {
-  auto *GO = dyn_cast<GlobalObject>(&C);
-  if (GO)
-    return *GO;
-
-  auto *GA = dyn_cast<GlobalAlias>(&C);
-  if (GA)
-    return getGlobalObjectInExpr(Map, *Map.find(GA)->second);
-
-  auto &CE = cast<ConstantExpr>(C);
-  assert(CE.getOpcode() == Instruction::BitCast ||
-         CE.getOpcode() == Instruction::GetElementPtr ||
-         CE.getOpcode() == Instruction::AddrSpaceCast);
-  if (CE.getOpcode() == Instruction::GetElementPtr)
-    assert(cast<GEPOperator>(CE).hasAllZeroIndices());
-  return getGlobalObjectInExpr(Map, *CE.getOperand(0));
-}
-
 /// ResolveGlobalAndAliasInits - Resolve all of the initializers for global
 /// values and aliases that we can.
 error_code BitcodeReader::ResolveGlobalAndAliasInits() {
@@ -1141,28 +1121,17 @@ error_code BitcodeReader::ResolveGlobalAndAliasInits() {
     GlobalInitWorklist.pop_back();
   }
 
-  // FIXME: Delete this in LLVM 4.0
-  // Older versions of llvm could write an alias pointing to another. We cannot
-  // construct those aliases, so we first collect an alias to aliasee expression
-  // and then compute the actual aliasee.
-  DenseMap<GlobalAlias *, Constant *> AliasInit;
-
   while (!AliasInitWorklist.empty()) {
     unsigned ValID = AliasInitWorklist.back().second;
     if (ValID >= ValueList.size()) {
       AliasInits.push_back(AliasInitWorklist.back());
     } else {
       if (Constant *C = dyn_cast_or_null<Constant>(ValueList[ValID]))
-        AliasInit.insert(std::make_pair(AliasInitWorklist.back().first, C));
+        AliasInitWorklist.back().first->setAliasee(C);
       else
         return Error(ExpectedConstant);
     }
     AliasInitWorklist.pop_back();
-  }
-
-  for (auto &Pair : AliasInit) {
-    auto &GO = getGlobalObjectInExpr(AliasInit, *Pair.second);
-    Pair.first->setAliasee(&GO);
   }
 
   while (!FunctionPrefixWorklist.empty()) {
@@ -1178,7 +1147,7 @@ error_code BitcodeReader::ResolveGlobalAndAliasInits() {
     FunctionPrefixWorklist.pop_back();
   }
 
-  return error_code::success();
+  return error_code();
 }
 
 static APInt ReadWideAPInt(ArrayRef<uint64_t> Vals, unsigned TypeBits) {
@@ -1212,7 +1181,7 @@ error_code BitcodeReader::ParseConstants() {
       // Once all the constants have been read, go through and resolve forward
       // references.
       ValueList.ResolveConstantForwardRefs();
-      return error_code::success();
+      return error_code();
     case BitstreamEntry::Record:
       // The interesting case.
       break;
@@ -1642,7 +1611,7 @@ error_code BitcodeReader::ParseUseLists() {
     case BitstreamEntry::Error:
       return Error(MalformedBlock);
     case BitstreamEntry::EndBlock:
-      return error_code::success();
+      return error_code();
     case BitstreamEntry::Record:
       // The interesting case.
       break;
@@ -1682,7 +1651,7 @@ error_code BitcodeReader::RememberAndSkipFunctionBody() {
   // Skip over the function block for now.
   if (Stream.SkipBlock())
     return Error(InvalidRecord);
-  return error_code::success();
+  return error_code();
 }
 
 error_code BitcodeReader::GlobalCleanup() {
@@ -1711,7 +1680,7 @@ error_code BitcodeReader::GlobalCleanup() {
   // want lazy deserialization.
   std::vector<std::pair<GlobalVariable*, unsigned> >().swap(GlobalInits);
   std::vector<std::pair<GlobalAlias*, unsigned> >().swap(AliasInits);
-  return error_code::success();
+  return error_code();
 }
 
 error_code BitcodeReader::ParseModule(bool Resume) {
@@ -1791,7 +1760,7 @@ error_code BitcodeReader::ParseModule(bool Resume) {
         // just finish the parse now.
         if (LazyStreamer && SeenValueSymbolTable) {
           NextUnreadBit = Stream.GetCurrentBitNo();
-          return error_code::success();
+          return error_code();
         }
         break;
       case bitc::USELIST_BLOCK_ID:
@@ -2017,6 +1986,10 @@ error_code BitcodeReader::ParseModule(bool Resume) {
         NewGA->setDLLStorageClass(GetDecodedDLLStorageClass(Record[4]));
       else
         UpgradeDLLImportExportLinkage(NewGA, Record[2]);
+      if (Record.size() > 5)
+	NewGA->setThreadLocalMode(GetDecodedThreadLocalMode(Record[5]));
+      if (Record.size() > 6)
+	NewGA->setUnnamedAddr(Record[6]);
       ValueList.push_back(NewGA);
       AliasInits.push_back(std::make_pair(NewGA, Record[1]));
       break;
@@ -2052,7 +2025,7 @@ error_code BitcodeReader::ParseBitcodeInto(Module *M) {
   // need to understand them all.
   while (1) {
     if (Stream.AtEndOfStream())
-      return error_code::success();
+      return error_code();
 
     BitstreamEntry Entry =
       Stream.advance(BitstreamCursor::AF_DontAutoprocessAbbrevs);
@@ -2061,7 +2034,7 @@ error_code BitcodeReader::ParseBitcodeInto(Module *M) {
     case BitstreamEntry::Error:
       return Error(MalformedBlock);
     case BitstreamEntry::EndBlock:
-      return error_code::success();
+      return error_code();
 
     case BitstreamEntry::SubBlock:
       switch (Entry.ID) {
@@ -2077,7 +2050,7 @@ error_code BitcodeReader::ParseBitcodeInto(Module *M) {
         if (error_code EC = ParseModule(false))
           return EC;
         if (LazyStreamer)
-          return error_code::success();
+          return error_code();
         break;
       default:
         if (Stream.SkipBlock())
@@ -2094,7 +2067,7 @@ error_code BitcodeReader::ParseBitcodeInto(Module *M) {
       if (Stream.getAbbrevIDWidth() == 2 && Entry.ID == 2 &&
           Stream.Read(6) == 2 && Stream.Read(24) == 0xa0a0a &&
           Stream.AtEndOfStream())
-        return error_code::success();
+        return error_code();
 
       return Error(InvalidRecord);
     }
@@ -2116,7 +2089,7 @@ error_code BitcodeReader::ParseModuleTriple(std::string &Triple) {
     case BitstreamEntry::Error:
       return Error(MalformedBlock);
     case BitstreamEntry::EndBlock:
-      return error_code::success();
+      return error_code();
     case BitstreamEntry::Record:
       // The interesting case.
       break;
@@ -2159,7 +2132,7 @@ error_code BitcodeReader::ParseTriple(std::string &Triple) {
     case BitstreamEntry::Error:
       return Error(MalformedBlock);
     case BitstreamEntry::EndBlock:
-      return error_code::success();
+      return error_code();
 
     case BitstreamEntry::SubBlock:
       if (Entry.ID == bitc::MODULE_BLOCK_ID)
@@ -2191,7 +2164,7 @@ error_code BitcodeReader::ParseMetadataAttachment() {
     case BitstreamEntry::Error:
       return Error(MalformedBlock);
     case BitstreamEntry::EndBlock:
-      return error_code::success();
+      return error_code();
     case BitstreamEntry::Record:
       // The interesting case.
       break;
@@ -2857,7 +2830,7 @@ error_code BitcodeReader::ParseFunctionBody(Function *F) {
         assert((CT != LandingPadInst::Filter ||
                 isa<ArrayType>(Val->getType())) &&
                "Filter clause has invalid type!");
-        LP->addClause(Val);
+        LP->addClause(cast<Constant>(Val));
       }
 
       I = LP;
@@ -3144,7 +3117,7 @@ OutOfRecordLoop:
   ValueList.shrinkTo(ModuleValueListSize);
   MDValueList.shrinkTo(ModuleMDValueListSize);
   std::vector<BasicBlock*>().swap(FunctionBBs);
-  return error_code::success();
+  return error_code();
 }
 
 /// Find the function body in the bitcode stream
@@ -3158,7 +3131,7 @@ error_code BitcodeReader::FindFunctionInStream(Function *F,
     if (error_code EC = ParseModule(true))
       return EC;
   }
-  return error_code::success();
+  return error_code();
 }
 
 //===----------------------------------------------------------------------===//
@@ -3178,7 +3151,7 @@ error_code BitcodeReader::Materialize(GlobalValue *GV) {
   Function *F = dyn_cast<Function>(GV);
   // If it's not a function or is already material, ignore the request.
   if (!F || !F->isMaterializable())
-    return error_code::success();
+    return error_code();
 
   DenseMap<Function*, uint64_t>::iterator DFII = DeferredFunctionInfo.find(F);
   assert(DFII != DeferredFunctionInfo.end() && "Deferred function not found!");
@@ -3206,7 +3179,7 @@ error_code BitcodeReader::Materialize(GlobalValue *GV) {
     }
   }
 
-  return error_code::success();
+  return error_code();
 }
 
 bool BitcodeReader::isDematerializable(const GlobalValue *GV) const {
@@ -3270,7 +3243,7 @@ error_code BitcodeReader::MaterializeModule(Module *M) {
     UpgradeInstWithTBAATag(InstsWithTBAATag[I]);
 
   UpgradeDebugInfo(*M);
-  return error_code::success();
+  return error_code();
 }
 
 error_code BitcodeReader::InitStream() {
@@ -3299,7 +3272,7 @@ error_code BitcodeReader::InitStreamFromBuffer() {
   StreamFile.reset(new BitstreamReader(BufPtr, BufEnd));
   Stream.init(*StreamFile);
 
-  return error_code::success();
+  return error_code();
 }
 
 error_code BitcodeReader::InitLazyStream() {
@@ -3323,7 +3296,7 @@ error_code BitcodeReader::InitLazyStream() {
     Bytes->dropLeadingBytes(bitcodeStart - buf);
     Bytes->setKnownObjectSize(bitcodeEnd - bitcodeStart);
   }
-  return error_code::success();
+  return error_code();
 }
 
 namespace {

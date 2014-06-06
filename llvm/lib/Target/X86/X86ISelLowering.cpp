@@ -178,29 +178,26 @@ static SDValue Concat256BitVectors(SDValue V1, SDValue V2, EVT VT,
   return Insert256BitVector(V, V2, NumElems/2, DAG, dl);
 }
 
-static TargetLoweringObjectFile *createTLOF(X86TargetMachine &TM) {
-  const X86Subtarget *Subtarget = &TM.getSubtarget<X86Subtarget>();
-  bool is64Bit = Subtarget->is64Bit();
-
-  if (Subtarget->isTargetMacho()) {
-    if (is64Bit)
+static TargetLoweringObjectFile *createTLOF(const Triple &TT) {
+  if (TT.isOSBinFormatMachO()) {
+    if (TT.getArch() == Triple::x86_64)
       return new X86_64MachoTargetObjectFile();
     return new TargetLoweringObjectFileMachO();
   }
 
-  if (Subtarget->isTargetLinux())
+  if (TT.isOSLinux())
     return new X86LinuxTargetObjectFile();
-  if (Subtarget->isTargetELF())
+  if (TT.isOSBinFormatELF())
     return new TargetLoweringObjectFileELF();
-  if (Subtarget->isTargetKnownWindowsMSVC())
+  if (TT.isKnownWindowsMSVCEnvironment())
     return new X86WindowsTargetObjectFile();
-  if (Subtarget->isTargetCOFF())
+  if (TT.isOSBinFormatCOFF())
     return new TargetLoweringObjectFileCOFF();
   llvm_unreachable("unknown subtarget type");
 }
 
 X86TargetLowering::X86TargetLowering(X86TargetMachine &TM)
-  : TargetLowering(TM, createTLOF(TM)) {
+  : TargetLowering(TM, createTLOF(Triple(TM.getTargetTriple()))) {
   Subtarget = &TM.getSubtarget<X86Subtarget>();
   X86ScalarSSEf64 = Subtarget->hasSSE2();
   X86ScalarSSEf32 = Subtarget->hasSSE1();
@@ -3967,14 +3964,22 @@ static bool isINSERTPSMask(ArrayRef<int> Mask, MVT VT) {
 
   unsigned CorrectPosV1 = 0;
   unsigned CorrectPosV2 = 0;
-  for (int i = 0, e = (int)VT.getVectorNumElements(); i != e; ++i)
+  for (int i = 0, e = (int)VT.getVectorNumElements(); i != e; ++i) {
+    if (Mask[i] == -1) {
+      ++CorrectPosV1;
+      ++CorrectPosV2;
+      continue;
+    }
+
     if (Mask[i] == i)
       ++CorrectPosV1;
     else if (Mask[i] == i + 4)
       ++CorrectPosV2;
+  }
 
   if (CorrectPosV1 == 3 || CorrectPosV2 == 3)
-    // We have 3 elements from one vector, and one from another.
+    // We have 3 elements (undefs count as elements from any vector) from one
+    // vector, and one from another.
     return true;
 
   return false;
@@ -6429,38 +6434,30 @@ static SDValue LowerCONCAT_VECTORS(SDValue Op, SelectionDAG &DAG) {
   return LowerAVXCONCAT_VECTORS(Op, DAG);
 }
 
-// Try to lower a shuffle node into a simple blend instruction.
-static SDValue
-LowerVECTOR_SHUFFLEtoBlend(ShuffleVectorSDNode *SVOp,
-                           const X86Subtarget *Subtarget, SelectionDAG &DAG) {
-  SDValue V1 = SVOp->getOperand(0);
-  SDValue V2 = SVOp->getOperand(1);
-  SDLoc dl(SVOp);
-  MVT VT = SVOp->getSimpleValueType(0);
+static bool isBlendMask(ArrayRef<int> MaskVals, MVT VT, bool hasSSE41,
+                        bool hasInt256, unsigned *MaskOut = nullptr) {
   MVT EltVT = VT.getVectorElementType();
-  unsigned NumElems = VT.getVectorNumElements();
 
   // There is no blend with immediate in AVX-512.
   if (VT.is512BitVector())
-    return SDValue();
+    return false;
 
-  if (!Subtarget->hasSSE41() || EltVT == MVT::i8)
-    return SDValue();
-  if (!Subtarget->hasInt256() && VT == MVT::v16i16)
-    return SDValue();
+  if (!hasSSE41 || EltVT == MVT::i8)
+    return false;
+  if (!hasInt256 && VT == MVT::v16i16)
+    return false;
 
-  // Check the mask for BLEND and build the value.
   unsigned MaskValue = 0;
+  unsigned NumElems = VT.getVectorNumElements();
   // There are 2 lanes if (NumElems > 8), and 1 lane otherwise.
-  unsigned NumLanes = (NumElems-1)/8 + 1;
+  unsigned NumLanes = (NumElems - 1) / 8 + 1;
   unsigned NumElemsInLane = NumElems / NumLanes;
 
   // Blend for v16i16 should be symetric for the both lanes.
   for (unsigned i = 0; i < NumElemsInLane; ++i) {
 
-    int SndLaneEltIdx = (NumLanes == 2) ?
-      SVOp->getMaskElt(i + NumElemsInLane) : -1;
-    int EltIdx = SVOp->getMaskElt(i);
+    int SndLaneEltIdx = (NumLanes == 2) ? MaskVals[i + NumElemsInLane] : -1;
+    int EltIdx = MaskVals[i];
 
     if ((EltIdx < 0 || EltIdx == (int)i) &&
         (SndLaneEltIdx < 0 || SndLaneEltIdx == (int)(i + NumElemsInLane)))
@@ -6469,10 +6466,33 @@ LowerVECTOR_SHUFFLEtoBlend(ShuffleVectorSDNode *SVOp,
     if (((unsigned)EltIdx == (i + NumElems)) &&
         (SndLaneEltIdx < 0 ||
          (unsigned)SndLaneEltIdx == i + NumElems + NumElemsInLane))
-      MaskValue |= (1<<i);
+      MaskValue |= (1 << i);
     else
-      return SDValue();
+      return false;
   }
+
+  if (MaskOut)
+    *MaskOut = MaskValue;
+  return true;
+}
+
+// Try to lower a shuffle node into a simple blend instruction.
+// This function assumes isBlendMask returns true for this
+// SuffleVectorSDNode
+static SDValue LowerVECTOR_SHUFFLEtoBlend(ShuffleVectorSDNode *SVOp,
+                                          unsigned MaskValue,
+                                          const X86Subtarget *Subtarget,
+                                          SelectionDAG &DAG) {
+  MVT VT = SVOp->getSimpleValueType(0);
+  MVT EltVT = VT.getVectorElementType();
+  assert(isBlendMask(SVOp->getMask(), VT, Subtarget->hasSSE41(),
+                     Subtarget->hasInt256() && "Trying to lower a "
+                                               "VECTOR_SHUFFLE to a Blend but "
+                                               "with the wrong mask"));
+  SDValue V1 = SVOp->getOperand(0);
+  SDValue V2 = SVOp->getOperand(1);
+  SDLoc dl(SVOp);
+  unsigned NumElems = VT.getVectorNumElements();
 
   // Convert i32 vectors to floating point if it is not AVX2.
   // AVX2 introduced VPBLENDD instruction for 128 and 256-bit vectors.
@@ -7450,8 +7470,9 @@ static SDValue getINSERTPS(ShuffleVectorSDNode *SVOp, SDLoc &dl,
   assert((VT == MVT::v4f32 || VT == MVT::v4i32) &&
          "unsupported vector type for insertps/pinsrd");
 
-  int FromV1 = std::count_if(Mask.begin(), Mask.end(),
-                             [](const int &i) { return i < 4; });
+  auto FromV1Predicate = [](const int &i) { return i < 4 && i > -1; };
+  auto FromV2Predicate = [](const int &i) { return i >= 4; };
+  int FromV1 = std::count_if(Mask.begin(), Mask.end(), FromV1Predicate);
 
   SDValue From;
   SDValue To;
@@ -7459,15 +7480,17 @@ static SDValue getINSERTPS(ShuffleVectorSDNode *SVOp, SDLoc &dl,
   if (FromV1 == 1) {
     From = V1;
     To = V2;
-    DestIndex = std::find_if(Mask.begin(), Mask.end(),
-                             [](const int &i) { return i < 4; }) -
+    DestIndex = std::find_if(Mask.begin(), Mask.end(), FromV1Predicate) -
                 Mask.begin();
   } else {
+    assert(std::count_if(Mask.begin(), Mask.end(), FromV2Predicate) == 1 &&
+           "More than one element from V1 and from V2, or no elements from one "
+           "of the vectors. This case should not have returned true from "
+           "isINSERTPSMask");
     From = V2;
     To = V1;
-    DestIndex = std::find_if(Mask.begin(), Mask.end(),
-                             [](const int &i) { return i >= 4; }) -
-                Mask.begin();
+    DestIndex =
+        std::find_if(Mask.begin(), Mask.end(), FromV2Predicate) - Mask.begin();
   }
 
   if (MayFoldLoad(From)) {
@@ -7910,9 +7933,10 @@ X86TargetLowering::LowerVECTOR_SHUFFLE(SDValue Op, SelectionDAG &DAG) const {
     return getTargetShuffleNode(X86ISD::VPERM2X128, dl, VT, V1,
                                 V2, getShuffleVPERM2X128Immediate(SVOp), DAG);
 
-  SDValue BlendOp = LowerVECTOR_SHUFFLEtoBlend(SVOp, Subtarget, DAG);
-  if (BlendOp.getNode())
-    return BlendOp;
+  unsigned MaskValue;
+  if (isBlendMask(M, VT, Subtarget->hasSSE41(), Subtarget->hasInt256(),
+                  &MaskValue))
+    return LowerVECTOR_SHUFFLEtoBlend(SVOp, MaskValue, Subtarget, DAG);
 
   if (Subtarget->hasSSE41() && isINSERTPSMask(M, VT))
     return getINSERTPS(SVOp, dl, DAG);
@@ -11469,8 +11493,9 @@ SDValue X86TargetLowering::LowerBRCOND(SDValue Op, SelectionDAG &DAG) const {
   }
 
   if (addTest) {
-    CC = DAG.getConstant(X86::COND_NE, MVT::i8);
-    Cond = EmitTest(Cond, X86::COND_NE, dl, DAG);
+    X86::CondCode X86Cond = Inverted ? X86::COND_E : X86::COND_NE;
+    CC = DAG.getConstant(X86Cond, MVT::i8);
+    Cond = EmitTest(Cond, X86Cond, dl, DAG);
   }
   Cond = ConvertCmpIfNecessary(Cond, DAG);
   return DAG.getNode(X86ISD::BRCOND, dl, Op.getValueType(),
@@ -15173,7 +15198,8 @@ X86TargetLowering::isShuffleMaskLegal(const SmallVectorImpl<int> &M,
           isUNPCKLMask(M, SVT, Subtarget->hasInt256()) ||
           isUNPCKHMask(M, SVT, Subtarget->hasInt256()) ||
           isUNPCKL_v_undef_Mask(M, SVT, Subtarget->hasInt256()) ||
-          isUNPCKH_v_undef_Mask(M, SVT, Subtarget->hasInt256()));
+          isUNPCKH_v_undef_Mask(M, SVT, Subtarget->hasInt256()) ||
+          isBlendMask(M, SVT, Subtarget->hasSSE41(), Subtarget->hasInt256()));
 }
 
 bool
@@ -17478,6 +17504,8 @@ static SDValue PerformShuffleCombine(SDNode *N, SelectionDAG &DAG,
                                      TargetLowering::DAGCombinerInfo &DCI,
                                      const X86Subtarget *Subtarget) {
   SDLoc dl(N);
+  SDValue N0 = N->getOperand(0);
+  SDValue N1 = N->getOperand(1);
   EVT VT = N->getValueType(0);
 
   // Don't create instructions with illegal types after legalize types has run.
@@ -17489,6 +17517,57 @@ static SDValue PerformShuffleCombine(SDNode *N, SelectionDAG &DAG,
   if (Subtarget->hasFp256() && VT.is256BitVector() &&
       N->getOpcode() == ISD::VECTOR_SHUFFLE)
     return PerformShuffleCombine256(N, DAG, DCI, Subtarget);
+
+  // During Type Legalization, when promoting illegal vector types,
+  // the backend might introduce new shuffle dag nodes and bitcasts.
+  //
+  // This code performs the following transformation:
+  // fold: (shuffle (bitcast (BINOP A, B)), Undef, <Mask>) ->
+  //       (shuffle (BINOP (bitcast A), (bitcast B)), Undef, <Mask>)
+  //
+  // We do this only if both the bitcast and the BINOP dag nodes have
+  // one use. Also, perform this transformation only if the new binary
+  // operation is legal. This is to avoid introducing dag nodes that
+  // potentially need to be further expanded (or custom lowered) into a
+  // less optimal sequence of dag nodes.
+  if (!DCI.isBeforeLegalize() && DCI.isBeforeLegalizeOps() &&
+      N1.getOpcode() == ISD::UNDEF && N0.hasOneUse() &&
+      N0.getOpcode() == ISD::BITCAST) {
+    SDValue BC0 = N0.getOperand(0);
+    EVT SVT = BC0.getValueType();
+    unsigned Opcode = BC0.getOpcode();
+    unsigned NumElts = VT.getVectorNumElements();
+    
+    if (BC0.hasOneUse() && SVT.isVector() &&
+        SVT.getVectorNumElements() * 2 == NumElts &&
+        TLI.isOperationLegal(Opcode, VT)) {
+      bool CanFold = false;
+      switch (Opcode) {
+      default : break;
+      case ISD::ADD :
+      case ISD::FADD :
+      case ISD::SUB :
+      case ISD::FSUB :
+      case ISD::MUL :
+      case ISD::FMUL :
+        CanFold = true;
+      }
+
+      unsigned SVTNumElts = SVT.getVectorNumElements();
+      ShuffleVectorSDNode *SVOp = cast<ShuffleVectorSDNode>(N);
+      for (unsigned i = 0, e = SVTNumElts; i != e && CanFold; ++i)
+        CanFold = SVOp->getMaskElt(i) == (int)(i * 2);
+      for (unsigned i = SVTNumElts, e = NumElts; i != e && CanFold; ++i)
+        CanFold = SVOp->getMaskElt(i) < 0;
+
+      if (CanFold) {
+        SDValue BC00 = DAG.getNode(ISD::BITCAST, dl, VT, BC0.getOperand(0));
+        SDValue BC01 = DAG.getNode(ISD::BITCAST, dl, VT, BC0.getOperand(1));
+        SDValue NewBinOp = DAG.getNode(BC0.getOpcode(), dl, VT, BC00, BC01);
+        return DAG.getVectorShuffle(VT, dl, NewBinOp, N1, &SVOp->getMask()[0]);
+      }
+    }
+  }
 
   // Only handle 128 wide vector from here on.
   if (!VT.is128BitVector())

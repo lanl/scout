@@ -19,6 +19,7 @@
 #include "PPCTargetObjectFile.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/ADT/Triple.h"
 #include "llvm/CodeGen/CallingConvLower.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -50,18 +51,18 @@ cl::desc("disable unaligned load/store generation on PPC"), cl::Hidden);
 // FIXME: Remove this once the bug has been fixed!
 extern cl::opt<bool> ANDIGlueBug;
 
-static TargetLoweringObjectFile *CreateTLOF(const PPCTargetMachine &TM) {
-  if (TM.getSubtargetImpl()->isDarwin())
+static TargetLoweringObjectFile *createTLOF(const Triple &TT) {
+  // If it isn't a Mach-O file then it's going to be a linux ELF
+  // object file.
+  if (TT.isOSDarwin())
     return new TargetLoweringObjectFileMachO();
 
-  if (TM.getSubtargetImpl()->isSVR4ABI())
-    return new PPC64LinuxTargetObjectFile();
-
-  return new TargetLoweringObjectFileELF();
+  return new PPC64LinuxTargetObjectFile();
 }
 
 PPCTargetLowering::PPCTargetLowering(PPCTargetMachine &TM)
-  : TargetLowering(TM, CreateTLOF(TM)), PPCSubTarget(*TM.getSubtargetImpl()) {
+    : TargetLowering(TM, createTLOF(Triple(TM.getTargetTriple()))),
+      PPCSubTarget(*TM.getSubtargetImpl()) {
   const PPCSubtarget *Subtarget = &TM.getSubtarget<PPCSubtarget>();
 
   setPow2DivIsCheap();
@@ -5531,10 +5532,14 @@ SDValue PPCTargetLowering::LowerBUILD_VECTOR(SDValue Op,
     // we convert to a pseudo that will be expanded later into one of
     // the above forms.
     SDValue Elt = DAG.getConstant(SextVal, MVT::i32);
-    EVT VT = Op.getValueType();
-    int Size = VT == MVT::v16i8 ? 1 : (VT == MVT::v8i16 ? 2 : 4);
-    SDValue EltSize = DAG.getConstant(Size, MVT::i32);
-    return DAG.getNode(PPCISD::VADD_SPLAT, dl, VT, Elt, EltSize);
+    EVT VT = (SplatSize == 1 ? MVT::v16i8 :
+              (SplatSize == 2 ? MVT::v8i16 : MVT::v4i32));
+    SDValue EltSize = DAG.getConstant(SplatSize, MVT::i32);
+    SDValue RetVal = DAG.getNode(PPCISD::VADD_SPLAT, dl, VT, Elt, EltSize);
+    if (VT == Op.getValueType())
+      return RetVal;
+    else
+      return DAG.getNode(ISD::BITCAST, dl, Op.getValueType(), RetVal);
   }
 
   // If this is 0x8000_0000 x 4, turn into vspltisw + vslw.  If it is
@@ -5552,6 +5557,22 @@ SDValue PPCTargetLowering::LowerBUILD_VECTOR(SDValue Op,
     Res = DAG.getNode(ISD::XOR, dl, MVT::v4i32, Res, OnesV);
     return DAG.getNode(ISD::BITCAST, dl, Op.getValueType(), Res);
   }
+
+  // The remaining cases assume either big endian element order or
+  // a splat-size that equates to the element size of the vector
+  // to be built.  An example that doesn't work for little endian is
+  // {0, -1, 0, -1, 0, -1, 0, -1} which has a splat size of 32 bits
+  // and a vector element size of 16 bits.  The code below will
+  // produce the vector in big endian element order, which for little
+  // endian is {-1, 0, -1, 0, -1, 0, -1, 0}.
+
+  // For now, just avoid these optimizations in that case.
+  // FIXME: Develop correct optimizations for LE with mismatched
+  // splat and element sizes.
+
+  if (PPCSubTarget.isLittleEndian() &&
+      SplatSize != Op.getValueType().getVectorElementType().getSizeInBits())
+    return SDValue();
 
   // Check to see if this is a wide variety of vsplti*, binop self cases.
   static const signed char SplatCsts[] = {
@@ -5816,21 +5837,36 @@ SDValue PPCTargetLowering::LowerVECTOR_SHUFFLE(SDValue Op,
 
   // The SHUFFLE_VECTOR mask is almost exactly what we want for vperm, except
   // that it is in input element units, not in bytes.  Convert now.
+
+  // For little endian, the order of the input vectors is reversed, and
+  // the permutation mask is complemented with respect to 31.  This is
+  // necessary to produce proper semantics with the big-endian-biased vperm
+  // instruction.
   EVT EltVT = V1.getValueType().getVectorElementType();
   unsigned BytesPerElement = EltVT.getSizeInBits()/8;
+  bool isLittleEndian = PPCSubTarget.isLittleEndian();
 
   SmallVector<SDValue, 16> ResultMask;
   for (unsigned i = 0, e = VT.getVectorNumElements(); i != e; ++i) {
     unsigned SrcElt = PermMask[i] < 0 ? 0 : PermMask[i];
 
     for (unsigned j = 0; j != BytesPerElement; ++j)
-      ResultMask.push_back(DAG.getConstant(SrcElt*BytesPerElement+j,
-                                           MVT::i32));
+      if (isLittleEndian)
+        ResultMask.push_back(DAG.getConstant(31 - (SrcElt*BytesPerElement+j),
+                                             MVT::i32));
+      else
+        ResultMask.push_back(DAG.getConstant(SrcElt*BytesPerElement+j,
+                                             MVT::i32));
   }
 
   SDValue VPermMask = DAG.getNode(ISD::BUILD_VECTOR, dl, MVT::v16i8,
                                   ResultMask);
-  return DAG.getNode(PPCISD::VPERM, dl, V1.getValueType(), V1, V2, VPermMask);
+  if (isLittleEndian)
+    return DAG.getNode(PPCISD::VPERM, dl, V1.getValueType(),
+                       V2, V1, VPermMask);
+  else
+    return DAG.getNode(PPCISD::VPERM, dl, V1.getValueType(),
+                       V1, V2, VPermMask);
 }
 
 /// getAltivecCompareInfo - Given an intrinsic, return false if it is not an
@@ -7926,8 +7962,8 @@ SDValue PPCTargetLowering::PerformDAGCombine(SDNode *N,
       DCI.AddToWorklist(RV.getNode());
       RV = DAGCombineFastRecip(RV, DCI);
       if (RV.getNode()) {
-	// Unfortunately, RV is now NaN if the input was exactly 0. Select out
-	// this case and force the answer to 0.
+        // Unfortunately, RV is now NaN if the input was exactly 0. Select out
+        // this case and force the answer to 0.
 
         EVT VT = RV.getValueType();
 

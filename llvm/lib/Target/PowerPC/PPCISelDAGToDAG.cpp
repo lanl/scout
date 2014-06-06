@@ -1472,8 +1472,9 @@ SDNode *PPCDAGToDAGISel::Select(SDNode *N) {
 
     if (GlobalAddressSDNode *G = dyn_cast<GlobalAddressSDNode>(GA)) {
       const GlobalValue *GValue = G->getGlobal();
-      if (GValue->isDeclaration() || GValue->hasCommonLinkage() ||
-        GValue->hasAvailableExternallyLinkage())
+      if (GValue->getType()->getElementType()->isFunctionTy() ||
+          GValue->isDeclaration() || GValue->hasCommonLinkage() ||
+          GValue->hasAvailableExternallyLinkage())
         return CurDAG->getMachineNode(PPC::LDtocL, dl, MVT::i64, GA,
                                       SDValue(Tmp, 0));
     }

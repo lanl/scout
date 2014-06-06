@@ -1451,10 +1451,11 @@ void AssemblyWriter::printGlobal(const GlobalVariable *GV) {
   PrintVisibility(GV->getVisibility(), Out);
   PrintDLLStorageClass(GV->getDLLStorageClass(), Out);
   PrintThreadLocalModel(GV->getThreadLocalMode(), Out);
+  if (GV->hasUnnamedAddr())
+    Out << "unnamed_addr ";
 
   if (unsigned AddressSpace = GV->getType()->getAddressSpace())
     Out << "addrspace(" << AddressSpace << ") ";
-  if (GV->hasUnnamedAddr()) Out << "unnamed_addr ";
   if (GV->isExternallyInitialized()) Out << "externally_initialized ";
   Out << (GV->isConstant() ? "constant " : "global ");
   TypePrinter.print(GV->getType()->getElementType(), Out);
@@ -1488,21 +1489,18 @@ void AssemblyWriter::printAlias(const GlobalAlias *GA) {
   }
   PrintVisibility(GA->getVisibility(), Out);
   PrintDLLStorageClass(GA->getDLLStorageClass(), Out);
+  PrintThreadLocalModel(GA->getThreadLocalMode(), Out);
+  if (GA->hasUnnamedAddr())
+    Out << "unnamed_addr ";
 
   Out << "alias ";
 
   PrintLinkage(GA->getLinkage(), Out);
 
-  PointerType *Ty = GA->getType();
   const Constant *Aliasee = GA->getAliasee();
-  if (!Aliasee || Ty != Aliasee->getType()) {
-    if (unsigned AddressSpace = Ty->getAddressSpace())
-      Out << "addrspace(" << AddressSpace << ") ";
-    TypePrinter.print(Ty->getElementType(), Out);
-    Out << ", ";
-  }
 
   if (!Aliasee) {
+    TypePrinter.print(GA->getType(), Out);
     Out << " <<NULL ALIASEE>>";
   } else {
     writeOperand(Aliasee, !isa<ConstantExpr>(Aliasee));
