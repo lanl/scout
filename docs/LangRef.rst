@@ -464,6 +464,34 @@ DLL storage class:
     exists for defining a dll interface, the compiler, assembler and linker know
     it is externally referenced and must refrain from deleting the symbol.
 
+.. _tls_model:
+
+Thread Local Storage Models
+---------------------------
+
+A variable may be defined as ``thread_local``, which means that it will
+not be shared by threads (each thread will have a separated copy of the
+variable). Not all targets support thread-local variables. Optionally, a
+TLS model may be specified:
+
+``localdynamic``
+    For variables that are only used within the current shared library.
+``initialexec``
+    For variables in modules that will not be loaded dynamically.
+``localexec``
+    For variables defined in the executable and only used within it.
+
+If no explicit model is given, the "general dynamic" model is used.
+
+The models correspond to the ELF TLS models; see `ELF Handling For
+Thread-Local Storage <http://people.redhat.com/drepper/tls.pdf>`_ for
+more information on under which circumstances the different models may
+be used. The target may choose a different TLS model if the specified
+model is not supported, or if a better choice of model can be made.
+
+A model can also be specified in a alias, but then it only governs how
+the alias is accessed. It will not have any effect in the aliasee.
+
 .. _namedtypes:
 
 Structure Types
@@ -496,24 +524,6 @@ to be placed in, and may have an optional explicit alignment specified.
 
 Global variables in other translation units can also be declared, in which
 case they don't have an initializer.
-
-A variable may be defined as ``thread_local``, which means that it will
-not be shared by threads (each thread will have a separated copy of the
-variable). Not all targets support thread-local variables. Optionally, a
-TLS model may be specified:
-
-``localdynamic``
-    For variables that are only used within the current shared library.
-``initialexec``
-    For variables in modules that will not be loaded dynamically.
-``localexec``
-    For variables defined in the executable and only used within it.
-
-The models correspond to the ELF TLS models; see `ELF Handling For
-Thread-Local Storage <http://people.redhat.com/drepper/tls.pdf>`_ for
-more information on under which circumstances the different models may
-be used. The target may choose a different TLS model if the specified
-model is not supported, or if a better choice of model can be made.
 
 A variable may be defined as a global ``constant``, which indicates that
 the contents of the variable will **never** be modified (enabling better
@@ -571,6 +581,9 @@ iterate over them as an array, alignment padding would break this
 iteration.
 
 Globals can also have a :ref:`DLL storage class <dllstorageclass>`.
+
+Variables and aliasaes can have a
+:ref:`Thread Local Storage Model <tls_model>`.
 
 Syntax::
 
@@ -666,29 +679,40 @@ Syntax::
 Aliases
 -------
 
-Aliases act as "second name" for the aliasee value (which can be either
-function, global variable, another alias or bitcast of global value).
+Aliases, unlike function or variables, don't create any new data. They
+are just a new symbol and metadata for an existing position.
+
+Aliases have a name and an aliasee that is either a global value or a
+constant expression.
+
 Aliases may have an optional :ref:`linkage type <linkage>`, an optional
-:ref:`visibility style <visibility>`, and an optional :ref:`DLL storage class
-<dllstorageclass>`.
+:ref:`visibility style <visibility>`, an optional :ref:`DLL storage class
+<dllstorageclass>` and an optional :ref:`tls model <tls_model>`.
 
 Syntax::
 
-    @<Name> = [Visibility] [DLLStorageClass] alias [Linkage] <AliaseeTy> @<Aliasee>
+    @<Name> = [Visibility] [DLLStorageClass] [ThreadLocal] alias [Linkage] <AliaseeTy> @<Aliasee>
 
 The linkage must be one of ``private``, ``internal``, ``linkonce``, ``weak``,
 ``linkonce_odr``, ``weak_odr``, ``external``. Note that some system linkers
-might not correctly handle dropping a weak symbol that is aliased by a non-weak
-alias.
+might not correctly handle dropping a weak symbol that is aliased.
 
 Alias that are not ``unnamed_addr`` are guaranteed to have the same address as
-the aliasee.
+the aliasee expression. ``unnamed_addr`` ones are only guaranteed to point
+to the same content.
 
-The aliasee must be a definition.
+Since aliases are only a second name, some restrictions apply, of which
+some can only be checked when producing an object file:
 
-Aliases are not allowed to point to aliases with linkages that can be
-overridden. Since they are only a second name, the possibility of the
-intermediate alias being overridden cannot be represented in an object file.
+* The expression defining the aliasee must be computable at assembly
+  time. Since it is just a name, no relocations can be used.
+
+* No alias in the expression can be weak as the possibility of the
+  intermediate alias being overridden cannot be represented in an
+  object file.
+
+* No global value in the expression can be a declaration, since that
+  would require a relocation, which is not possible.
 
 .. _namedmetadatastructure:
 
@@ -997,6 +1021,14 @@ example:
     inlining this function is desirable (such as the "inline" keyword in
     C/C++). It is just a hint; it imposes no requirements on the
     inliner.
+``jumptable``
+    This attribute indicates that the function should be added to a
+    jump-instruction table at code-generation time, and that all address-taken
+    references to this function should be replaced with a reference to the
+    appropriate jump-instruction-table function pointer. Note that this creates
+    a new pointer for the original function, which means that code that depends
+    on function-pointer identity can break. So, any function annotated with
+    ``jumptable`` must also be ``unnamed_addr``.
 ``minsize``
     This attribute suggests that optimization passes and code generator
     passes make choices that keep the code size of this function as small
@@ -2796,7 +2828,7 @@ with the same loop identifier.
 Precisely, given two instructions ``m1`` and ``m2`` that both have the 
 ``llvm.mem.parallel_loop_access`` metadata, with ``L1`` and ``L2`` being the 
 set of loops associated with that metadata, respectively, then there is no loop 
-carried dependence between ``m1`` and ``m2`` for loops ``L1`` or 
+carried dependence between ``m1`` and ``m2`` for loops in both ``L1`` and 
 ``L2``.
 
 As a special case, if all memory accessing instructions in a loop have 
@@ -3201,7 +3233,7 @@ The '``llvm.global_dtors``' Global Variable
 The ``@llvm.global_dtors`` array contains a list of destructor
 functions, priorities, and an optional associated global or function.
 The functions referenced by this array will be called in descending
-order of priority (i.e. highest first) when the module is loaded. The
+order of priority (i.e. highest first) when the module is unloaded. The
 order of functions with the same priority is not defined.
 
 If the third field is present, non-null, and points to a global variable

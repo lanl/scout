@@ -734,10 +734,13 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
       auto SelectorType = cast<VectorType>(Mask->getType());
       auto EltTy = SelectorType->getElementType();
       unsigned Size = SelectorType->getNumElements();
-      unsigned BitWidth = EltTy->isFloatTy() ? 32 : (EltTy->isDoubleTy() ? 64 : EltTy->getIntegerBitWidth());
+      unsigned BitWidth =
+          EltTy->isFloatTy()
+              ? 32
+              : (EltTy->isDoubleTy() ? 64 : EltTy->getIntegerBitWidth());
       assert((BitWidth == 64 || BitWidth == 32 || BitWidth == 8) &&
              "Wrong arguments for variable blend intrinsic");
-      SmallVector<Constant*, 32> Selectors;
+      SmallVector<Constant *, 32> Selectors;
       for (unsigned I = 0; I < Size; ++I) {
         // The intrinsics only read the top bit
         uint64_t Selector;
@@ -748,7 +751,8 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
         Selectors.push_back(ConstantInt::get(Tyi1, Selector >> (BitWidth - 1)));
       }
       auto NewSelector = ConstantVector::get(Selectors);
-      return SelectInst::Create(NewSelector, II->getArgOperand(0), II->getArgOperand(1), "blendv");
+      return SelectInst::Create(NewSelector, II->getArgOperand(1),
+                                II->getArgOperand(0), "blendv");
     } else {
       break;
     }
@@ -796,6 +800,11 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
 
   case Intrinsic::ppc_altivec_vperm:
     // Turn vperm(V1,V2,mask) -> shuffle(V1,V2,mask) if mask is a constant.
+    // Note that ppc_altivec_vperm has a big-endian bias, so when creating
+    // a vectorshuffle for little endian, we must undo the transformation
+    // performed on vec_perm in altivec.h.  That is, we must complement
+    // the permutation mask with respect to 31 and reverse the order of
+    // V1 and V2.
     if (Constant *Mask = dyn_cast<Constant>(II->getArgOperand(2))) {
       assert(Mask->getType()->getVectorNumElements() == 16 &&
              "Bad type for intrinsic!");
@@ -828,10 +837,14 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
           unsigned Idx =
             cast<ConstantInt>(Mask->getAggregateElement(i))->getZExtValue();
           Idx &= 31;  // Match the hardware behavior.
+          if (DL && DL->isLittleEndian())
+            Idx = 31 - Idx;
 
           if (!ExtractedElts[Idx]) {
+            Value *Op0ToUse = (DL && DL->isLittleEndian()) ? Op1 : Op0;
+            Value *Op1ToUse = (DL && DL->isLittleEndian()) ? Op0 : Op1;
             ExtractedElts[Idx] =
-              Builder->CreateExtractElement(Idx < 16 ? Op0 : Op1,
+              Builder->CreateExtractElement(Idx < 16 ? Op0ToUse : Op1ToUse,
                                             Builder->getInt32(Idx&15));
           }
 
