@@ -39,8 +39,7 @@ static std::string computeDataLayout(const X86Subtarget &ST) {
     Ret += "-p:32:32";
 
   // Some ABIs align 64 bit integers and doubles to 64 bits, others to 32.
-  if (ST.is64Bit() || ST.isTargetCygMing() || ST.isTargetKnownWindowsMSVC() ||
-      ST.isTargetNaCl())
+  if (ST.is64Bit() || ST.isOSWindows() || ST.isTargetNaCl())
     Ret += "-i64:64";
   else
     Ret += "-f64:32:64";
@@ -60,7 +59,7 @@ static std::string computeDataLayout(const X86Subtarget &ST) {
     Ret += "-n8:16:32";
 
   // The stack is aligned to 32 bits on some ABIs and 128 bits on others.
-  if (!ST.is64Bit() && (ST.isTargetCygMing() || ST.isTargetKnownWindowsMSVC()))
+  if (!ST.is64Bit() && ST.isOSWindows())
     Ret += "-S32";
   else
     Ret += "-S128";
@@ -80,7 +79,7 @@ X86TargetMachine::X86TargetMachine(const Target &T, StringRef TT, StringRef CPU,
                     Subtarget.getStackAlignment(),
                     Subtarget.is64Bit() ? -8 : -4),
       DL(computeDataLayout(*getSubtargetImpl())), InstrInfo(*this),
-      TLInfo(*this), TSInfo(*this), JITInfo(*this) {
+      TLInfo(*this), TSInfo(DL), JITInfo(Subtarget.hasSSE1()) {
   // Determine the PICStyle based on the target selected.
   if (getRelocationModel() == Reloc::Static) {
     // Unless we're in PIC or DynamicNoPIC mode, set the PIC style to None.

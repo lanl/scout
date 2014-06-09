@@ -1323,13 +1323,13 @@ class BaseMulAccum<bit isSub, bits<3> opc, RegisterClass multype,
 multiclass MulAccum<bit isSub, string asm, SDNode AccNode> {
   def Wrrr : BaseMulAccum<isSub, 0b000, GPR32, GPR32, asm,
       [(set GPR32:$Rd, (AccNode GPR32:$Ra, (mul GPR32:$Rn, GPR32:$Rm)))]>,
-      Sched<[WriteIM32, ReadIMA, ReadIM, ReadIM]> {
+      Sched<[WriteIM32, ReadIM, ReadIM, ReadIMA]> {
     let Inst{31} = 0;
   }
 
   def Xrrr : BaseMulAccum<isSub, 0b000, GPR64, GPR64, asm,
       [(set GPR64:$Rd, (AccNode GPR64:$Ra, (mul GPR64:$Rn, GPR64:$Rm)))]>,
-      Sched<[WriteIM64, ReadIMA, ReadIM, ReadIM]> {
+      Sched<[WriteIM64, ReadIM, ReadIM, ReadIMA]> {
     let Inst{31} = 1;
   }
 }
@@ -1339,7 +1339,7 @@ class WideMulAccum<bit isSub, bits<3> opc, string asm,
   : BaseMulAccum<isSub, opc, GPR32, GPR64, asm,
     [(set GPR64:$Rd, (AccNode GPR64:$Ra,
                             (mul (ExtNode GPR32:$Rn), (ExtNode GPR32:$Rm))))]>,
-    Sched<[WriteIM32, ReadIMA, ReadIM, ReadIM]> {
+    Sched<[WriteIM32, ReadIM, ReadIM, ReadIMA]> {
   let Inst{31} = 1;
 }
 
@@ -1738,6 +1738,10 @@ multiclass AddSubS<bit isSub, string mnemonic, SDNode OpNode, string cmp> {
                   WZR, GPR32:$src1, GPR32:$src2, 0), 5>;
   def : InstAlias<cmp#" $src1, $src2", (!cast<Instruction>(NAME#"Xrs")
                   XZR, GPR64:$src1, GPR64:$src2, 0), 5>;
+  def : InstAlias<cmp#" $src1, $src2", (!cast<Instruction>(NAME#"Wrx")
+                  WZR, GPR32sponly:$src1, GPR32:$src2, 16), 5>;
+  def : InstAlias<cmp#" $src1, $src2", (!cast<Instruction>(NAME#"Xrx64")
+                  XZR, GPR64sponly:$src1, GPR64:$src2, 24), 5>;
 
   // Register/register aliases with no shift when SP is not used.
   def : AddSubRegAlias<mnemonic, !cast<Instruction>(NAME#"Wrs"),

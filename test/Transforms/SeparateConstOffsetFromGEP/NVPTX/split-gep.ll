@@ -26,21 +26,23 @@ entry:
 ; CHECK-LABEL: @struct(
 ; CHECK: getelementptr [1024 x %struct.S]* @struct_array, i64 0, i64 %{{[a-zA-Z0-9]+}}, i32 1
 
-; We should be able to trace into s/zext(a + b) if a + b is non-negative
+; We should be able to trace into sext(a + b) if a + b is non-negative
 ; (e.g., used as an index of an inbounds GEP) and one of a and b is
 ; non-negative.
 define float* @sext_add(i32 %i, i32 %j) {
 entry:
   %0 = add i32 %i, 1
   %1 = sext i32 %0 to i64  ; inbound sext(i + 1) = sext(i) + 1
-  %2 = sub i32 %j, 2
-  ; However, inbound sext(j - 2) != sext(j) - 2, e.g., j = INT_MIN
+  %2 = add i32 %j, -2
+  ; However, inbound sext(j + -2) != sext(j) + -2, e.g., j = INT_MIN
   %3 = sext i32 %2 to i64
   %p = getelementptr inbounds [32 x [32 x float]]* @float_2d_array, i64 0, i64 %1, i64 %3
   ret float* %p
 }
 ; CHECK-LABEL: @sext_add(
 ; CHECK-NOT: = add
+; CHECK: add i32 %j, -2
+; CHECK: sext
 ; CHECK: getelementptr [32 x [32 x float]]* @float_2d_array, i64 0, i64 %{{[a-zA-Z0-9]+}}, i64 %{{[a-zA-Z0-9]+}}
 ; CHECK: getelementptr float* %{{[a-zA-Z0-9]+}}, i64 32
 
@@ -73,16 +75,16 @@ entry:
   %2 = zext i48 %1 to i64    ; zext(sext(a +nsw nuw 1)) = zext(sext(a)) + 1
   %3 = add nsw i32 %b, 2
   %4 = sext i32 %3 to i48
-  %5 = zext i48 %4 to i64    ; zext(sext(a +nsw 2)) != zext(sext(a)) + 2
-  %p1 = getelementptr inbounds [32 x [32 x float]]* @float_2d_array, i64 0, i64 %2, i64 %5
+  %5 = zext i48 %4 to i64    ; zext(sext(b +nsw 2)) != zext(sext(b)) + 2
+  %p1 = getelementptr [32 x [32 x float]]* @float_2d_array, i64 0, i64 %2, i64 %5
   store float* %p1, float** %out1
   %6 = add nuw i32 %a, 3
   %7 = zext i32 %6 to i48
-  %8 = sext i48 %7 to i64 ; sext(zext(b +nuw 3)) = zext(b +nuw 3) = zext(b) + 3
+  %8 = sext i48 %7 to i64 ; sext(zext(a +nuw 3)) = zext(a +nuw 3) = zext(a) + 3
   %9 = add nsw i32 %b, 4
   %10 = zext i32 %9 to i48
   %11 = sext i48 %10 to i64  ; sext(zext(b +nsw 4)) != zext(b) + 4
-  %p2 = getelementptr inbounds [32 x [32 x float]]* @float_2d_array, i64 0, i64 %8, i64 %11
+  %p2 = getelementptr [32 x [32 x float]]* @float_2d_array, i64 0, i64 %8, i64 %11
   store float* %p2, float** %out2
   ret void
 }
@@ -232,3 +234,28 @@ entry:
 ; CHECK-LABEL: @and(
 ; CHECK: getelementptr [32 x [32 x float]]* @float_2d_array
 ; CHECK-NOT: getelementptr
+
+; if zext(a + b) <= max signed value of typeof(a + b), then we can prove
+; a + b >= 0 and zext(a + b) == sext(a + b). If we can prove further a or b is
+; non-negative, we have zext(a + b) == sext(a) + sext(b).
+define float* @inbounds_zext_add(i32 %i, i4 %j) {
+entry:
+  %0 = add i32 %i, 1
+  %1 = zext i32 %0 to i64
+  ; Because zext(i + 1) is an index of an in bounds GEP based on
+  ; float_2d_array, zext(i + 1) <= sizeof(float_2d_array) = 4096.
+  ; Furthermore, since typeof(i + 1) is i32 and 4096 < 2^31, we are sure the
+  ; sign bit of i + 1 is 0. This implies zext(i + 1) = sext(i + 1).
+  %2 = add i4 %j, 2
+  %3 = zext i4 %2 to i64
+  ; In this case, typeof(j + 2) is i4, so zext(j + 2) <= 4096 does not imply
+  ; the sign bit of j + 2 is 0.
+  %p = getelementptr inbounds [32 x [32 x float]]* @float_2d_array, i64 0, i64 %1, i64 %3
+  ret float* %p
+}
+; CHECK-LABEL: @inbounds_zext_add(
+; CHECK-NOT: add
+; CHECK: add i4 %j, 2
+; CHECK: sext
+; CHECK: getelementptr [32 x [32 x float]]* @float_2d_array, i64 0, i64 %{{[a-zA-Z0-9]+}}, i64 %{{[a-zA-Z0-9]+}}
+; CHECK: getelementptr float* %{{[a-zA-Z0-9]+}}, i64 32

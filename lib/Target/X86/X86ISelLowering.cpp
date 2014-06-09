@@ -10074,9 +10074,26 @@ SDValue X86TargetLowering::EmitTest(SDValue Op, unsigned X86CC, SDLoc dl,
     break;
   case X86::COND_G: case X86::COND_GE:
   case X86::COND_L: case X86::COND_LE:
-  case X86::COND_O: case X86::COND_NO:
-    NeedOF = true;
+  case X86::COND_O: case X86::COND_NO: {
+    // Check if we really need to set the
+    // Overflow flag. If NoSignedWrap is present
+    // that is not actually needed.
+    switch (Op->getOpcode()) {
+    case ISD::ADD:
+    case ISD::SUB:
+    case ISD::MUL:
+    case ISD::SHL: {
+      const BinaryWithFlagsSDNode *BinNode =
+          cast<BinaryWithFlagsSDNode>(Op.getNode());
+      if (BinNode->hasNoSignedWrap())
+        break;
+    }
+    default:
+      NeedOF = true;
+      break;
+    }
     break;
+  }
   }
   // See if we can use the EFLAGS value from the operand instead of
   // doing a separate TEST. TEST always sets OF and CF to 0, so unless
@@ -10139,14 +10156,14 @@ SDValue X86TargetLowering::EmitTest(SDValue Op, unsigned X86CC, SDLoc dl,
     if (ConstantSDNode *C =
         dyn_cast<ConstantSDNode>(ArithOp.getNode()->getOperand(1))) {
       // An add of one will be selected as an INC.
-      if (C->getAPIntValue() == 1) {
+      if (C->getAPIntValue() == 1 && !Subtarget->slowIncDec()) {
         Opcode = X86ISD::INC;
         NumOperands = 1;
         break;
       }
 
       // An add of negative one (subtract of one) will be selected as a DEC.
-      if (C->getAPIntValue().isAllOnesValue()) {
+      if (C->getAPIntValue().isAllOnesValue() && !Subtarget->slowIncDec()) {
         Opcode = X86ISD::DEC;
         NumOperands = 1;
         break;
@@ -10162,7 +10179,7 @@ SDValue X86TargetLowering::EmitTest(SDValue Op, unsigned X86CC, SDLoc dl,
     // If we have a constant logical shift that's only used in a comparison
     // against zero turn it into an equivalent AND. This allows turning it into
     // a TEST instruction later.
-    if ((X86CC == X86::COND_E || X86CC == X86::COND_NE) &&
+    if ((X86CC == X86::COND_E || X86CC == X86::COND_NE) && Op->hasOneUse() &&
         isa<ConstantSDNode>(Op->getOperand(1)) && !hasNonFlagsUse(Op)) {
       EVT VT = Op.getValueType();
       unsigned BitWidth = VT.getSizeInBits();
@@ -12851,7 +12868,7 @@ static SDValue LowerINTRINSIC_W_CHAIN(SDValue Op, const X86Subtarget *Subtarget,
   case PREFETCH: {
     SDValue Hint = Op.getOperand(6);
     unsigned HintVal;
-    if (dyn_cast<ConstantSDNode> (Hint) == 0 ||
+    if (dyn_cast<ConstantSDNode> (Hint) == nullptr ||
         (HintVal = dyn_cast<ConstantSDNode> (Hint)->getZExtValue()) > 1)
       llvm_unreachable("Wrong prefetch hint in intrinsic: should be 0 or 1");
     unsigned Opcode = (HintVal ? Intr.Opc1 : Intr.Opc0);
