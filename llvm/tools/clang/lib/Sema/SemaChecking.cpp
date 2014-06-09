@@ -6203,6 +6203,13 @@ void Sema::DiagnoseAlwaysNonNullPointer(Expr *E,
 
   const bool IsCompare = NullKind != Expr::NPCK_NotNull;
 
+  if (isa<CXXThisExpr>(E)) {
+    unsigned DiagID = IsCompare ? diag::warn_this_null_compare
+                                : diag::warn_this_bool_conversion;
+    Diag(E->getExprLoc(), DiagID) << E->getSourceRange() << Range << IsEqual;
+    return;
+  }
+
   bool IsAddressOf = false;
 
   if (UnaryOperator *UO = dyn_cast<UnaryOperator>(E)) {
@@ -6232,9 +6239,14 @@ void Sema::DiagnoseAlwaysNonNullPointer(Expr *E,
     // Address of function is used to silence the function warning.
     if (IsFunction)
       return;
-    // Address of reference can be null.
-    if (T->isReferenceType())
+
+    if (T->isReferenceType()) {
+      unsigned DiagID = IsCompare
+                            ? diag::warn_address_of_reference_null_compare
+                            : diag::warn_address_of_reference_bool_conversion;
+      Diag(E->getExprLoc(), DiagID) << E->getSourceRange() << Range << IsEqual;
       return;
+    }
   }
 
   // Found nothing.
