@@ -1795,12 +1795,6 @@ namespace clang {
     Base = BaseResult.get();
     QualType BaseType = Base->getType();
     
-    CXXScopeSpec SS;
-    SS.Adopt(QualifierLoc);
-    
-    Base = BaseResult.take();
-    QualType BaseType = Base->getType();
-    
     // FIXME: this involves duplicating earlier analysis in a lot of
     // cases; we should avoid this when possible.
     LookupResult R(getSema(), MemberNameInfo, Sema::LookupMemberName);

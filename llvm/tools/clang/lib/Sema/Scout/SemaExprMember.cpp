@@ -69,7 +69,7 @@ bool Sema::LookupMeshMemberExpr(LookupResult &R, ExprResult &BaseExpr, SourceLoc
 
   Result = ExprError();
 
-  Expr *E = BaseExpr.take();
+  Expr *E = BaseExpr.get();
   if(ImplicitCastExpr *ICE = dyn_cast<ImplicitCastExpr>(E)) {
     E = ICE->getSubExpr();
   }
@@ -92,7 +92,7 @@ bool Sema::LookupMeshMemberExpr(LookupResult &R, ExprResult &BaseExpr, SourceLoc
 
   // Returning valid-but-null is how we indicate to the caller that
   // the lookup result was filled in.
-  Result = Owned((Expr*) 0);
+  Result = nullptr;
   return true;
 }
 

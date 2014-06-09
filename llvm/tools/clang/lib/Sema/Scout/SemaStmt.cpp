@@ -424,7 +424,7 @@ StmtResult Sema::ActOnForallMeshStmt(SourceLocation ForallLoc,
     return StmtError();
   }
 
-  return Owned(FS);
+  return FS;
 }
 
 
@@ -489,7 +489,7 @@ StmtResult Sema::ActOnForallArrayStmt(IdentifierInfo* InductionVarInfo[],
   new (Context) ForallArrayStmt(InductionVarInfo, InductionVarDecl,
       Start, End, Stride, Dims, ForallLoc, Init, Body);
 
-  return Owned(FS);
+  return FS;
 }
 
 
@@ -814,6 +814,6 @@ StmtResult Sema::ActOnRenderallMeshStmt(SourceLocation RenderallLoc,
     return StmtError();
   }
 
-  return Owned(RS);
+  return RS;
 }
 

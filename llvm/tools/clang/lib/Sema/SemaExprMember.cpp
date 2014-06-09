@@ -653,6 +653,11 @@ LookupMemberExprInRecord(Sema &SemaRef, LookupResult &R,
   return false;
 }
 
+static ExprResult LookupMemberExpr(Sema &S, LookupResult &R,
+                                   ExprResult &BaseExpr, bool &IsArrow,
+                                   SourceLocation OpLoc, CXXScopeSpec &SS,
+                                   Decl *ObjCImpDecl, bool HasTemplateArgs);
+
 // +===== Scout ==============================================================+
 ExprResult
 Sema::BuildMeshMemberReferenceExpr(Expr *Base, QualType BaseType,
@@ -685,15 +690,14 @@ Sema::BuildMeshMemberReferenceExpr(Expr *Base, QualType BaseType,
   } else {
     ExprResult BaseResult = Base;
     ExprResult Result =
-      LookupMemberExpr(R, BaseResult, IsArrow, OpLoc,
-                       SS, /*ObjCImpDecl*/ 0, TemplateArgs != 0);
+      LookupMemberExpr(*this, R, BaseResult, IsArrow, OpLoc,
+                       SS, nullptr, TemplateArgs != nullptr);
 
     if (BaseResult.isInvalid())
       return ExprError();
     Base = BaseResult.get();
 
     if (Result.isInvalid()) {
-      Owned(Base);
       return ExprError();
     }
 
@@ -709,11 +713,6 @@ Sema::BuildMeshMemberReferenceExpr(Expr *Base, QualType BaseType,
                                   FirstQualifierInScope, R, TemplateArgs);
 }
 // +==========================================================================+
-
-static ExprResult LookupMemberExpr(Sema &S, LookupResult &R,
-                                   ExprResult &BaseExpr, bool &IsArrow,
-                                   SourceLocation OpLoc, CXXScopeSpec &SS,
-                                   Decl *ObjCImpDecl, bool HasTemplateArgs);
 
 ExprResult
 Sema::BuildMemberReferenceExpr(Expr *Base, QualType BaseType,
@@ -2040,10 +2039,11 @@ BuildFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
                                   FoundDecl, Field);
   if (Base.isInvalid())
     return ExprError();
-  return S.Owned(BuildMemberExpr(S, S.Context, Base.take(), IsArrow, SS,
-                                 /*TemplateKWLoc=*/SourceLocation(),
-                                 Field, FoundDecl, MemberNameInfo,
-                                 MemberType, VK, OK));
+  
+  return BuildMemberExpr(S, S.Context, Base.get(), IsArrow, SS,
+                         /*TemplateKWLoc=*/SourceLocation(),
+                         Field, FoundDecl, MemberNameInfo,
+                         MemberType, VK, OK);
 }
 // +========================================================================+
 

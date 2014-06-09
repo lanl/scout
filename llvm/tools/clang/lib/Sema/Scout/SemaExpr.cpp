@@ -116,11 +116,11 @@ bool Sema::ScoutMemberReferenceExpr(DeclarationName &Name,
         baseExpr = BuildDeclRefExpr(vd, QualType(mt, 0),
                                     VK_LValue, NameLoc).get();
 
-        ER = Owned(BuildMeshMemberReferenceExpr(baseExpr, QualType(mt, 0),
-                                                NameLoc, false, SS,
-                                                SourceLocation(), 0,
-                                                NameInfo,
-                                                TemplateArgs));
+        ER = BuildMeshMemberReferenceExpr(baseExpr, QualType(mt, 0),
+                                          NameLoc, false, SS,
+                                          SourceLocation(), 0,
+                                          NameInfo,
+                                          TemplateArgs);
         return true;
       }
     }
