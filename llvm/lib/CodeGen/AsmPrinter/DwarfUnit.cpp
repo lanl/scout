@@ -1083,6 +1083,8 @@ std::string DwarfUnit::getParentContextString(DIScope Context) const {
        I != E; ++I) {
     DIScope Ctx = *I;
     StringRef Name = Ctx.getName();
+    if (Name.empty() && Ctx.isNameSpace())
+      Name = "(anonymous namespace)";
     if (!Name.empty()) {
       CS += Name;
       CS += "::";
@@ -1386,12 +1388,13 @@ DIE *DwarfUnit::getOrCreateNameSpace(DINameSpace NS) {
     return NDie;
   DIE &NDie = createAndAddDIE(dwarf::DW_TAG_namespace, *ContextDIE, NS);
 
-  if (!NS.getName().empty()) {
+  StringRef Name = NS.getName();
+  if (!Name.empty())
     addString(NDie, dwarf::DW_AT_name, NS.getName());
-    DD->addAccelNamespace(NS.getName(), NDie);
-    addGlobalName(NS.getName(), NDie, NS.getContext());
-  } else
-    DD->addAccelNamespace("(anonymous namespace)", NDie);
+  else
+    Name = "(anonymous namespace)";
+  DD->addAccelNamespace(Name, NDie);
+  addGlobalName(Name, NDie, NS.getContext());
   addSourceLine(NDie, NS);
   return &NDie;
 }
@@ -1425,13 +1428,20 @@ DIE *DwarfUnit::getOrCreateSubprogramDIE(DISubprogram SP) {
   return &SPDie;
 }
 
+void DwarfUnit::applySubprogramAttributesToDefinition(DISubprogram SP, DIE &SPDie) {
+  DISubprogram SPDecl = SP.getFunctionDeclaration();
+  DIScope Context = resolve(SPDecl ? SPDecl.getContext() : SP.getContext());
+  applySubprogramAttributes(SP, SPDie);
+  addGlobalName(SP.getName(), SPDie, Context);
+}
+
 void DwarfUnit::applySubprogramAttributes(DISubprogram SP, DIE &SPDie) {
   DIE *DeclDie = nullptr;
   StringRef DeclLinkageName;
   if (DISubprogram SPDecl = SP.getFunctionDeclaration()) {
     DeclDie = getDIE(SPDecl);
     assert(DeclDie && "This DIE should've already been constructed when the "
-                      "definition DIE was creaeted in "
+                      "definition DIE was created in "
                       "getOrCreateSubprogramDIE");
     DeclLinkageName = SPDecl.getLinkageName();
   }
@@ -1694,10 +1704,8 @@ void DwarfCompileUnit::createGlobalVariableDIE(DIGlobalVariable GV) {
       DD->addAccelName(GV.getLinkageName(), AddrDIE);
   }
 
-  if (!GV.isLocalToUnit())
-    addGlobalName(GV.getName(),
-                  VariableSpecDIE ? *VariableSpecDIE : *VariableDIE,
-                  GV.getContext());
+  addGlobalName(GV.getName(), VariableSpecDIE ? *VariableSpecDIE : *VariableDIE,
+                GV.getContext());
 }
 
 /// constructSubrangeDIE - Construct subrange DIE from DISubrange.
