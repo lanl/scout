@@ -1788,32 +1788,31 @@ namespace clang {
                                            VK, OK_Ordinary);
       return ME;
     }
-
+    
     CXXScopeSpec SS;
     SS.Adopt(QualifierLoc);
-
+    
     Base = BaseResult.get();
     QualType BaseType = Base->getType();
->>>>>>> edcc1b2059c90af2a18a42dccd3ff2d692bcd225
-
-      CXXScopeSpec SS;
-      SS.Adopt(QualifierLoc);
-
-      Base = BaseResult.take();
-      QualType BaseType = Base->getType();
-
-      // FIXME: this involves duplicating earlier analysis in a lot of
-      // cases; we should avoid this when possible.
-      LookupResult R(getSema(), MemberNameInfo, Sema::LookupMemberName);
-      R.addDecl(FoundDecl);
-      R.resolveKind();
-
-      return getSema().BuildMemberReferenceExpr(Base, BaseType, OpLoc, isArrow,
-                                                SS, TemplateKWLoc,
-                                                FirstQualifierInScope,
-                                                R, ExplicitTemplateArgs);
-    }
-
+    
+    CXXScopeSpec SS;
+    SS.Adopt(QualifierLoc);
+    
+    Base = BaseResult.take();
+    QualType BaseType = Base->getType();
+    
+    // FIXME: this involves duplicating earlier analysis in a lot of
+    // cases; we should avoid this when possible.
+    LookupResult R(getSema(), MemberNameInfo, Sema::LookupMemberName);
+    R.addDecl(FoundDecl);
+    R.resolveKind();
+    
+    return getSema().BuildMemberReferenceExpr(Base, BaseType, OpLoc, isArrow,
+                                              SS, TemplateKWLoc,
+                                              FirstQualifierInScope,
+                                              R, ExplicitTemplateArgs);
+  }
+    
     /// \brief Build a new binary operator expression.
     ///
     /// By default, performs semantic analysis to build the new expression.
@@ -1821,7 +1820,7 @@ namespace clang {
     ExprResult RebuildBinaryOperator(SourceLocation OpLoc,
                                      BinaryOperatorKind Opc,
                                      Expr *LHS, Expr *RHS) {
-    return getSema().BuildBinOp(/*Scope=*/nullptr, OpLoc, Opc, LHS, RHS);
+      return getSema().BuildBinOp(/*Scope=*/nullptr, OpLoc, Opc, LHS, RHS);
     }
 
     /// \brief Build a new conditional operator expression.
@@ -1927,6 +1926,18 @@ namespace clang {
       return new (SemaRef.Context) ImplicitValueInitExpr(T);
     }
 
+    /// \brief Build a new \c va_arg expression.
+    ///
+    /// By default, performs semantic analysis to build the new expression.
+    /// Subclasses may override this routine to provide different behavior.
+    ExprResult RebuildVAArgExpr(SourceLocation BuiltinLoc,
+                                Expr *SubExpr, TypeSourceInfo *TInfo,
+                                SourceLocation RParenLoc) {
+      return getSema().BuildVAArgExpr(BuiltinLoc,
+                                      SubExpr, TInfo,
+                                      RParenLoc);
+    }
+    
     /// \brief Build a new expression list in parentheses.
     ///
     /// By default, performs semantic analysis to build the new expression.

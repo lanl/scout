@@ -1266,7 +1266,7 @@ Sema::BuildMeshMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
                                      TemplateKWLoc, MemberNameInfo,
                                      TemplateArgs, R.begin(), R.end());
 
-    return Owned(MemExpr);
+    return MemExpr;
   }
 
   assert(R.isSingleResult());
@@ -1303,10 +1303,8 @@ Sema::BuildMeshMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
   }
 
   // Check the use of this member.
-  if (ShouldCheckUse && DiagnoseUseOfDecl(MemberDecl, MemberLoc)) {
-    Owned(BaseExpr);
+  if (ShouldCheckUse && DiagnoseUseOfDecl(MemberDecl, MemberLoc))
     return ExprError();
-  }
 
   if (MeshFieldDecl *MFD = dyn_cast<MeshFieldDecl>(MemberDecl))
     return BuildFieldReferenceExpr(*this, BaseExpr, IsArrow,
@@ -1328,10 +1326,10 @@ Sema::BuildMeshMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
                                                     OpLoc);
 
   if (VarDecl *Var = dyn_cast<VarDecl>(MemberDecl)) {
-    return Owned(BuildMemberExpr(*this, Context, BaseExpr, IsArrow, SS,
+    return BuildMemberExpr(*this, Context, BaseExpr, IsArrow, SS,
                                  TemplateKWLoc, Var, FoundDecl, MemberNameInfo,
                                  Var->getType().getNonReferenceType(),
-                                 VK_LValue, OK_Ordinary));
+                                 VK_LValue, OK_Ordinary);
   }
 
   if (CXXMethodDecl *MemberFn = dyn_cast<CXXMethodDecl>(MemberDecl)) {
@@ -1345,20 +1343,18 @@ Sema::BuildMeshMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
       type = MemberFn->getType();
     }
 
-    return Owned(BuildMemberExpr(*this, Context, BaseExpr, IsArrow, SS,
+    return BuildMemberExpr(*this, Context, BaseExpr, IsArrow, SS,
                                  TemplateKWLoc, MemberFn, FoundDecl,
                                  MemberNameInfo, type, valueKind,
-                                 OK_Ordinary));
+                                 OK_Ordinary);
   }
   assert(!isa<FunctionDecl>(MemberDecl) && "member function not C++ method?");
 
   if (EnumConstantDecl *Enum = dyn_cast<EnumConstantDecl>(MemberDecl)) {
-    return Owned(BuildMemberExpr(*this, Context, BaseExpr, IsArrow, SS,
+    return BuildMemberExpr(*this, Context, BaseExpr, IsArrow, SS,
                                  TemplateKWLoc, Enum, FoundDecl, MemberNameInfo,
-                                 Enum->getType(), VK_RValue, OK_Ordinary));
+                                 Enum->getType(), VK_RValue, OK_Ordinary);
   }
-
-  Owned(BaseExpr);
 
   // We found something that we didn't expect. Complain.
   if (isa<TypeDecl>(MemberDecl))
@@ -1500,7 +1496,7 @@ static ExprResult LookupMemberExpr(Sema &S, LookupResult &R,
   // +===== Scout ============================================================+
   if (const MeshType *MTy = BaseType->getAs<MeshType>()) {
     ExprResult val;
-    if (LookupMeshMemberExpr(R, BaseExpr, OpLoc, SS, MTy, val)) {
+    if (S.LookupMeshMemberExpr(R, BaseExpr, OpLoc, SS, MTy, val)) {
       return val;
     }
   }

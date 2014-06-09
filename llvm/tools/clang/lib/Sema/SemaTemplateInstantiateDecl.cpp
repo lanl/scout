@@ -628,7 +628,7 @@ Decl *TemplateDeclInstantiator::VisitMeshFieldDecl(MeshFieldDecl *D) {
       Invalid = true;
       BitWidth = 0;
     } else
-      BitWidth = InstantiatedBitWidth.takeAs<Expr>();
+      BitWidth = InstantiatedBitWidth.getAs<Expr>();
   }
 
   MeshFieldDecl *Field = SemaRef.CheckMeshFieldDecl(D->getDeclName(),
@@ -640,7 +640,7 @@ Decl *TemplateDeclInstantiator::VisitMeshFieldDecl(MeshFieldDecl *D) {
                                                     0);
   if (!Field) {
     cast<Decl>(Owner)->setInvalidDecl();
-    return 0;
+    return nullptr;
   }
 
   SemaRef.InstantiateAttrs(TemplateArgs, D, Field, LateAttrs, StartingScope);
