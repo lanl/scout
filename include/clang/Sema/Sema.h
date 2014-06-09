@@ -48,7 +48,6 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TinyPtrVector.h"
-#include "llvm/MC/MCParser/MCAsmParser.h"
 #include <deque>
 #include <memory>
 #include <string>
@@ -59,6 +58,7 @@ namespace llvm {
   template <typename ValueT> struct DenseMapInfo;
   template <typename ValueT, typename ValueInfoT> class DenseSet;
   class SmallBitVector;
+  class InlineAsmIdentifierInfo;
 }
 
 namespace clang {
@@ -928,9 +928,6 @@ public:
     bool OldFPContractState : 1;
   };
 
-  typedef llvm::MCAsmParserSemaCallback::InlineAsmIdentifierInfo
-    InlineAsmIdentifierInfo;
-
   void addImplicitTypedef(StringRef Name, QualType T);
 
 public:
@@ -1417,6 +1414,13 @@ public:
                                CXXScopeSpec *SS,
                                ParsedType &SuggestedType,
                                bool AllowClassTemplates = false);
+
+  /// \brief For compatibility with MSVC, we delay parsing of some default
+  /// template type arguments until instantiation time.  Emits a warning and
+  /// returns a synthesized DependentNameType that isn't really dependent on any
+  /// other template arguments.
+  ParsedType ActOnDelayedDefaultTemplateArg(const IdentifierInfo &II,
+                                            SourceLocation NameLoc);
 
   /// \brief Describes the result of the name lookup and resolution performed
   /// by \c ClassifyName().
@@ -3096,7 +3100,7 @@ public:
   ExprResult LookupInlineAsmIdentifier(CXXScopeSpec &SS,
                                        SourceLocation TemplateKWLoc,
                                        UnqualifiedId &Id,
-                                       InlineAsmIdentifierInfo &Info,
+                                       llvm::InlineAsmIdentifierInfo &Info,
                                        bool IsUnevaluatedContext);
   bool LookupInlineAsmField(StringRef Base, StringRef Member,
                             unsigned &Offset, SourceLocation AsmLoc);

@@ -2400,10 +2400,27 @@ def warn_impcast_pointer_to_bool : Warning<
     "address of%select{| function| array}0 '%1' will always evaluate to "
     "'true'">,
     InGroup<PointerBoolConversion>;
+def warn_this_bool_conversion : Warning<
+  "'this' pointer cannot be null in well-defined C++ code; pointer may be "
+  "assumed to always convert to true">, InGroup<UndefinedBoolConversion>;
+def warn_address_of_reference_bool_conversion : Warning<
+  "reference cannot be bound to dereferenced null pointer in well-defined C++ "
+  "code; pointer may be assumed to always convert to true">,
+  InGroup<UndefinedBoolConversion>;
+
 def warn_null_pointer_compare : Warning<
     "comparison of %select{address of|function|array}0 '%1' %select{not |}2"
     "equal to a null pointer is always %select{true|false}2">,
     InGroup<TautologicalPointerCompare>;
+def warn_this_null_compare : Warning<
+  "'this' pointer cannot be null in well-defined C++ code; comparison may be "
+  "assumed to always evaluate to %select{true|false}0">,
+  InGroup<TautologicalUndefinedCompare>;
+def warn_address_of_reference_null_compare : Warning<
+  "reference cannot be bound to dereferenced null pointer in well-defined C++ "
+  "code; comparison may be assumed to always evaluate to "
+  "%select{true|false}0">,
+  InGroup<TautologicalUndefinedCompare>;
 
 def note_function_warning_silence : Note<
     "prefix with the address-of operator to silence this warning">;
@@ -3206,6 +3223,9 @@ def err_pointer_to_member_oper_value_classify: Error<
   "%select{rvalue|lvalue}1">;
 def ext_ms_deref_template_argument: ExtWarn<
   "non-type template argument containing a dereference operation is a "
+  "Microsoft extension">, InGroup<Microsoft>;
+def ext_ms_delayed_template_argument: ExtWarn<
+  "using the undeclared type %0 as a default template argument is a "
   "Microsoft extension">, InGroup<Microsoft>;
 
 // C++ template specialization
