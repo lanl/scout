@@ -1396,6 +1396,12 @@ public:
   llvm::BasicBlock *createBasicBlock(const Twine &name = "",
                                      llvm::Function *parent = nullptr,
                                      llvm::BasicBlock *before = nullptr) {
+    // +===== Scout ==========================================================+
+    // if scout always set name as it is used by the codeExtraction.
+    if(isScoutLang(getLangOpts()))
+        return llvm::BasicBlock::Create(getLLVMContext(), name, parent, before);
+    // +======================================================================+
+
 #ifdef NDEBUG
     return llvm::BasicBlock::Create(getLLVMContext(), "", parent, before);
 #else

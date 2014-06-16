@@ -3388,6 +3388,11 @@ void Linux::AddClangSystemIncludeArgs(const ArgList &DriverArgs,
 
   addSystemInclude(DriverArgs, CC1Args, Base + "/" + TargetArchDir + Suffix
                    + IncludeSuffix);
+  // +===== Scout ==========================================================+
+  // for 32bit ubuntu
+  addSystemInclude(DriverArgs, CC1Args, Base + "/" + "i386-linux-gnu" + Suffix
+                   + IncludeSuffix);
+  // +======================================================================+
   return true;
 }
 
