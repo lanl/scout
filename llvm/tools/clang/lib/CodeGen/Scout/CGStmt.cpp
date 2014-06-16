@@ -746,6 +746,7 @@ CodeGenFunction::EmitForallEdgesOrFacesCellsLowD(const ForallMeshStmt &S,
     llvm::Value* w1h = Builder.CreateMul(w1, h, "w1h");
 
     llvm::Value* k = Builder.CreateLoad(OuterIndex, "k");
+    k = Builder.CreateZExt(k, Int64Ty, "k");
 
     llvm::Value* c1 = Builder.CreateICmpUGE(k, w1h, "c1");
     llvm::Value* km = Builder.CreateSub(k, w1h, "km");
@@ -826,6 +827,7 @@ CodeGenFunction::EmitForallEdgesOrFacesVerticesLowD(const ForallMeshStmt &S,
     llvm::Value* One32 = llvm::ConstantInt::get(Int32Ty, 1);
 
     llvm::Value* k = Builder.CreateLoad(OuterIndex, "k");
+    k = Builder.CreateZExt(k, Int64Ty, "k");
 
     VertexIndex = InnerIndex;
     llvm::Value* vertexIndex = Builder.CreateTrunc(k, Int32Ty);
@@ -851,6 +853,7 @@ CodeGenFunction::EmitForallEdgesOrFacesVerticesLowD(const ForallMeshStmt &S,
     llvm::Value* w1h = Builder.CreateMul(w1, h, "w1h");
 
     llvm::Value* k = Builder.CreateLoad(OuterIndex, "k");
+    k = Builder.CreateZExt(k, Int64Ty, "k");
     
     llvm::Value* c1 = Builder.CreateICmpUGE(k, w1h, "c1");
     llvm::Value* km = Builder.CreateSub(k, w1h, "km");
@@ -946,13 +949,13 @@ void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
     return;
   }
   
-  llvm::Value* Zero = llvm::ConstantInt::get(Int64Ty, 0);
-  llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
+  llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
+  llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
 
   llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.edges.entry");
   (void)EntryBlock; //suppress warning
 
-  InductionVar[3] = Builder.CreateAlloca(Int64Ty, 0, "forall.edges_idx.ptr");
+  InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "forall.edges_idx.ptr");
   //zero-initialize induction var
   Builder.CreateStore(Zero, InductionVar[3]);
   InnerIndex = Builder.CreateAlloca(Int32Ty, 0, "forall.inneridx.ptr");
@@ -974,6 +977,7 @@ void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
   llvm::Value* k = Builder.CreateLoad(InductionVar[3], "forall.edges_idx");
   k = Builder.CreateAdd(k, One);
   Builder.CreateStore(k, InductionVar[3]);
+  k = Builder.CreateZExt(k, Int64Ty, "k");
 
   llvm::Value* Cond = Builder.CreateICmpSLT(k, numEdges, "cond");
 
@@ -1022,13 +1026,13 @@ void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
     return;
   }
   
-  llvm::Value* Zero = llvm::ConstantInt::get(Int64Ty, 0);
-  llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
+  llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
+  llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
 
   llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.faces.entry");
   (void)EntryBlock; //suppress warning
 
-  InductionVar[3] = Builder.CreateAlloca(Int64Ty, 0, "forall.faces_idx.ptr");
+  InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "forall.faces_idx.ptr");
   //zero-initialize induction var
   Builder.CreateStore(Zero, InductionVar[3]);
 
@@ -1049,6 +1053,7 @@ void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
   llvm::Value* k = Builder.CreateLoad(InductionVar[3], "forall.faces_idx");
   k = Builder.CreateAdd(k, One);
   Builder.CreateStore(k, InductionVar[3]);
+  k = Builder.CreateZExt(k, Int64Ty, "k");
 
   llvm::Value* Cond = Builder.CreateICmpSLT(k, numFaces, "cond");
 
@@ -1495,6 +1500,8 @@ llvm::Function* CodeGenFunction:: ExtractRegion(llvm::BasicBlock *entry, llvm::B
   std::vector< llvm::BasicBlock * > Blocks;
 
   llvm::Function::iterator BB = CurFn->begin();
+
+  //SC_TODO: is there a better way rather than using name?
   // find start marker
   for( ; BB->getName() != entry->getName(); ++BB) { }
 
@@ -1524,7 +1531,6 @@ llvm::Function* CodeGenFunction:: ExtractRegion(llvm::BasicBlock *entry, llvm::B
   llvm::Function *ForallFn = codeExtractor.extractCodeRegion();
 
   ForallFn->setName(name);
-
   return ForallFn;
 }
 
