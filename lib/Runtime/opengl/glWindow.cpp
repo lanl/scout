@@ -62,18 +62,24 @@ using namespace scout;
 /// position is undetermined and the background color will default
 /// to black.
 glWindow::glWindow(ScreenCoord width, ScreenCoord height, glCamera* camera)
-  : RenderTarget(RTK_window, width, height), _frame(width, height), _colorBuffer(0), _camera(camera) {
+  : RenderTarget(RTK_window, width, height), _frame(width, height), _colorBuffer(0), 
+  _camera(camera), _currentRenderable(NULL)  {
 }
 
 /// Create a window with the given location and size (as described
 /// by the given WindowRect).  The background color will default
 /// to black.
 glWindow::glWindow(const WindowRect &rect)
-  : RenderTarget(RTK_window, rect.size.width, rect.size.height), _frame(rect), _colorBuffer(0), _camera(0) {
+  : RenderTarget(RTK_window, rect.size.width, rect.size.height), _frame(rect), _colorBuffer(0), 
+  _camera(0), _currentRenderable(NULL) {
 }
 
 glWindow::~glWindow() {
-    unsetActive();
+  unsetActive();
+  for (RenderableList::iterator it(_renderables.begin()); it != _renderables.end(); ++it)
+  {
+    delete (*it);
+  }
 }
 
 void glWindow::setActive() {
@@ -147,8 +153,13 @@ void glWindow::paintMono()
       if ((*it)->isHidden() == false)
         (*it)->render(_camera);
     }
+  } else {
+    RenderableList::iterator it;
+    for(it = _renderables.begin(); it != _renderables.end(); ++it) {
+      if ((*it)->isHidden() == false)
+        (*it)->render(NULL);
+    }
   }
-  
 }
 
 void glWindow::paintStereo()

@@ -182,10 +182,15 @@ namespace scout {
 
     bool savePNG(const char *filename);    
 
-    void paint(){};
+    void paint(){ paintMono(); };
     void paintMono();
     void paintStereo();
-    
+  
+    void addRenderable(glRenderable* renderable) { _renderables.push_back(renderable); }
+
+    void makeCurrentRenderable(glRenderable* rend) { _currentRenderable = rend;}
+    glRenderable* getCurrentRenderable() { return _currentRenderable;}
+
     // not sure these should be here and if they make sense for derived classes that are not GLFW, eg macosx
     virtual bool processEvent() = 0;
     virtual void eventLoop() = 0;
@@ -195,6 +200,7 @@ namespace scout {
    
     typedef std::deque<glRenderable*>  RenderableList;
     RenderableList _renderables;
+    glRenderable*  _currentRenderable;
     
     bool           _ignore_events;
     bool           _stereo_mode;

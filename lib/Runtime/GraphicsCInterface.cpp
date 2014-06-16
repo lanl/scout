@@ -53,6 +53,7 @@
 #include "scout/Runtime/GraphicsCInterface.h"
 #include "scout/Runtime/opengl/glfw/glfwDevice.h"
 #include "scout/Runtime/opengl/glfw/glfwWindow.h"
+#include "scout/Runtime/opengl/glQuadRenderableVA.h"
 
 using namespace scout;
 
@@ -69,3 +70,43 @@ __scrt_target_t __scrt_create_window(unsigned short width, unsigned short height
   glWindow *win = new glfwWindow(width, height);
   return (__scrt_target_t)win;
 }
+
+extern "C"
+float* __scrt_window_quad_renderable_colors(unsigned int width, unsigned int height, unsigned int depth,
+    void* renderTarget){
+
+  glWindow* window = (glWindow*)renderTarget;
+  window->makeContextCurrent();
+
+  // TODO:  Check if there is already a quad renderable associated with this window 
+  // and if so, try to reuse it.
+
+  glQuadRenderableVA* renderable; 
+
+  if (window->getCurrentRenderable() != NULL) {
+    // check here if right kind and size
+    renderable = (glQuadRenderableVA*)(window->getCurrentRenderable());
+  } else  {
+    renderable = new glQuadRenderableVA( glfloat3(0.0, 0.0, 0.0), glfloat3(width, height, 0.0));
+
+    // add to window's list of renderables
+
+    window->addRenderable(renderable);
+    window->makeCurrentRenderable(renderable);
+
+    renderable->initialize(NULL); // also does a clear
+  } 
+
+  return (float*)renderable->map_colors();
+}
+
+extern "C"
+void __scrt_window_paint(void* renderTarget) {
+  glWindow* window = (glWindow*)renderTarget;
+  // this is funky -- should be a separate function 
+  // (__scrt_window_quad_renderable_unmap_colors)
+  ((glQuadRenderableVA*)(window->getCurrentRenderable()))->unmap_colors();
+  window->paint();
+  window->swapBuffers();
+}
+

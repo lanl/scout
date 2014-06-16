@@ -1651,10 +1651,8 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 
   // Add render target argument
   
-  // TODO:  check if it's a window or image type
-  
   const VarDecl* RTVD = S.getRenderTargetVarDecl();
-  
+
   llvm::Value* RTAlloc;
   
   if ((RTVD->hasLinkage() || RTVD->isStaticDataMember())
@@ -1667,6 +1665,11 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   else{
     RTAlloc = LocalDeclMap.lookup(RTVD);
   }
+
+  // Check if it's a window or image type
+  // cuz we don't handle images yet.
+  const clang::Type &Ty = *getContext().getCanonicalType(RTVD->getType()).getTypePtr();
+  assert(Ty.getTypeClass() == Type::Window);
   
   llvm::SmallVector< llvm::Value *, 4 > Args;
   Args.clear();
@@ -1696,7 +1699,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   // dereference the void** 
   llvm::Value* int8PtrRTAlloc = Builder.CreateLoad(int8PtrPtrRTAlloc, "derefwin");
 
-  // put it on the arg list
+  // put the window on the arg list
   Args.push_back(int8PtrRTAlloc);
 
   // create linear loop index as 4th element and zero-initialize
@@ -1704,13 +1707,26 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   //zero-initialize induction var
   Builder.CreateStore(ConstantZero, InductionVar[3]);
 
-  // call renderall setup runtime function
-  llvm::Function *BeginFunc = CGM.getScoutRuntime().RenderallUniformBeginFunction();
-  Builder.CreateCall(BeginFunc, ArrayRef<llvm::Value *>(Args));
+  // make quad renderable and add to the window and return color pointer
+  // use same args as for RenderallUniformBeginFunction
+  // in the future, this will be a mesh renderable
+  llvm::Function *WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableColorsFunction();
 
-  // call renderall color buffer setup
-  llvm::Value *RuntimeColorPtr = CGM.getScoutRuntime().RenderallUniformColorsGlobal(*this);
-  Color = Builder.CreateLoad(RuntimeColorPtr, "color");
+  // %1 = call <4 x float>* @__scrt_window_quad_renderable_colors(i32 %HeatMeshType.width.ptr14, i32 %HeatMeshType.height.ptr16, i32 %HeatMeshType.depth.ptr18, i8* %derefwin)
+  llvm::CallInst* localColorPtr = Builder.CreateCall(WinQuadRendFunc, ArrayRef<llvm::Value *>(Args), "localcolor.ptr");
+
+  // %color.ptr = alloca <4 x float>* 
+  llvm::Type *flt4PtrTy = llvm::PointerType::get(
+            llvm::VectorType::get(llvm::Type::getFloatTy(CGM.getLLVMContext()), 4), 0);
+  llvm::Value *allocColorPtr  = Builder.CreateAlloca(flt4PtrTy, 0, "alloccolor.ptr");
+
+  // store <4 x float>* %localcolorptr, <4 x float>** %alloccolor.ptr
+  Builder.CreateStore(localColorPtr, allocColorPtr);
+
+  // store result of CreateWindowQuadRenderableColors into a variable named color;
+  // for use by code emitted by EmitRenderallMeshLoop (renderall body code references "color" variable)
+  // %color = load <4 x float>** %alloccolor.ptr
+  Color = Builder.CreateLoad(allocColorPtr, "color");
 
   // extract rank from mesh stored after width/height/depth
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
@@ -1719,10 +1735,11 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   // renderall loops + body
   EmitRenderallMeshLoop(S, 3);
 
-  // call renderall cleanup runtime function
-  llvm::Function *EndFunc = CGM.getScoutRuntime().RenderallEndFunction();
-  std::vector<llvm::Value*> EmptyArgs;
-  Builder.CreateCall(EndFunc, ArrayRef<llvm::Value *>(EmptyArgs));
+  // paint window (draws all renderables) (does clear beforehand, and swap buffers after)
+  Args.clear();
+  Args.push_back(int8PtrRTAlloc);
+  llvm::Function *WinPaintFunc = CGM.getScoutRuntime().CreateWindowPaintFunction();
+  Builder.CreateCall(WinPaintFunc, ArrayRef<llvm::Value *>(Args));
 
   // reset Loopbounds, Rank, induction var
   // so width/height etc can't be called after renderall
@@ -1772,8 +1789,8 @@ void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned
   sprintf(IRNameStr, "renderall.cond.%s", DimNames[r-1]);
   JumpDest Continue = getJumpDestInCurrentScope(IRNameStr);
   llvm::BasicBlock *CondBlock = Continue.getBlock();
-  EmitBlock(CondBlock);
 
+  EmitBlock(CondBlock);
   RunCleanupsScope ConditionScope(*this);
 
   sprintf(IRNameStr, "renderall.induct.%s", IndexNames[r-1]);
@@ -1806,6 +1823,7 @@ void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned
 
   sprintf(IRNameStr, "renderall.incblk.%s", IndexNames[r-1]);
   Continue = getJumpDestInCurrentScope(IRNameStr);
+
 
   // Store the blocks to use for break and continue.
 

@@ -172,6 +172,43 @@ llvm::Function *CGScoutRuntime::CreateWindowFunction() {
       llvm::PointerType::get(llvm::IntegerType::get(CGM.getModule().getContext(), 8), 0));
 }
 
+// build function call to create renderable if necessary and return color pointer()
+llvm::Function *CGScoutRuntime::CreateWindowQuadRenderableColorsFunction() {
+  std::string funcName = "__scrt_window_quad_renderable_colors";
+
+  std::vector<llvm::Type*> Params;
+
+  // params for width, height, depth of renderable
+  Params.push_back(llvm::IntegerType::get(CGM.getModule().getContext(), 32));
+  Params.push_back(llvm::IntegerType::get(CGM.getModule().getContext(), 32));
+  Params.push_back(llvm::IntegerType::get(CGM.getModule().getContext(), 32));
+
+  // param for pointer to window
+  Params.push_back(llvm::PointerType::get(llvm::IntegerType::get(CGM.getModule().getContext(), 8), 0));
+
+  return ScoutRuntimeFunction(
+      funcName, Params,
+      /*retType -- pointer to float for colors*/
+      llvm::PointerType::get(
+        llvm::VectorType::get(
+          llvm::Type::getFloatTy(CGM.getModule().getContext()), 4), 0));
+}
+
+// build function call to do window paint 
+llvm::Function *CGScoutRuntime::CreateWindowPaintFunction() {
+  std::string funcName = "__scrt_window_paint";
+
+  std::vector<llvm::Type*> Params;
+
+  // param for pointer to window
+  Params.push_back(llvm::PointerType::get(llvm::IntegerType::get(CGM.getModule().getContext(), 8), 0));
+
+  return ScoutRuntimeFunction(funcName, Params);
+}
+
+// build function to set all colors to red
+//llvm::Function *CGcoutRuntime::SetColorsRedFunction() { }
+
 // get Value for global runtime variable __scrt_renderall_uniform_colors
 llvm::Value *CGScoutRuntime::RenderallUniformColorsGlobal(CodeGenFunction &CGF) {
   std::string varName = "__scrt_renderall_uniform_colors";
