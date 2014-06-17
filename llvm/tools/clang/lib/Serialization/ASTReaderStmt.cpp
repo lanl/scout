@@ -1697,11 +1697,17 @@ OMPClause *OMPClauseReader::readClause() {
   case OMPC_firstprivate:
     C = OMPFirstprivateClause::CreateEmpty(Context, Record[Idx++]);
     break;
+  case OMPC_lastprivate:
+    C = OMPLastprivateClause::CreateEmpty(Context, Record[Idx++]);
+    break;
   case OMPC_shared:
     C = OMPSharedClause::CreateEmpty(Context, Record[Idx++]);
     break;
   case OMPC_linear:
     C = OMPLinearClause::CreateEmpty(Context, Record[Idx++]);
+    break;
+  case OMPC_aligned:
+    C = OMPAlignedClause::CreateEmpty(Context, Record[Idx++]);
     break;
   case OMPC_copyin:
     C = OMPCopyinClause::CreateEmpty(Context, Record[Idx++]);
@@ -1768,6 +1774,16 @@ void OMPClauseReader::VisitOMPFirstprivateClause(OMPFirstprivateClause *C) {
   C->setVarRefs(Vars);
 }
 
+void OMPClauseReader::VisitOMPLastprivateClause(OMPLastprivateClause *C) {
+  C->setLParenLoc(Reader->ReadSourceLocation(Record, Idx));
+  unsigned NumVars = C->varlist_size();
+  SmallVector<Expr *, 16> Vars;
+  Vars.reserve(NumVars);
+  for (unsigned i = 0; i != NumVars; ++i)
+    Vars.push_back(Reader->Reader.ReadSubExpr());
+  C->setVarRefs(Vars);
+}
+
 void OMPClauseReader::VisitOMPSharedClause(OMPSharedClause *C) {
   C->setLParenLoc(Reader->ReadSourceLocation(Record, Idx));
   unsigned NumVars = C->varlist_size();
@@ -1788,6 +1804,18 @@ void OMPClauseReader::VisitOMPLinearClause(OMPLinearClause *C) {
     Vars.push_back(Reader->Reader.ReadSubExpr());
   C->setVarRefs(Vars);
   C->setStep(Reader->Reader.ReadSubExpr());
+}
+
+void OMPClauseReader::VisitOMPAlignedClause(OMPAlignedClause *C) {
+  C->setLParenLoc(Reader->ReadSourceLocation(Record, Idx));
+  C->setColonLoc(Reader->ReadSourceLocation(Record, Idx));
+  unsigned NumVars = C->varlist_size();
+  SmallVector<Expr *, 16> Vars;
+  Vars.reserve(NumVars);
+  for (unsigned i = 0; i != NumVars; ++i)
+    Vars.push_back(Reader->Reader.ReadSubExpr());
+  C->setVarRefs(Vars);
+  C->setAlignment(Reader->Reader.ReadSubExpr());
 }
 
 void OMPClauseReader::VisitOMPCopyinClause(OMPCopyinClause *C) {

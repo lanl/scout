@@ -78,6 +78,11 @@ extern "C" {
   /// width and height in pixels.
   __scrt_target_t __scrt_create_window(unsigned short width, unsigned short height);
 
+  float* __scrt_window_quad_renderable_colors(unsigned int width, unsigned int height, 
+      unsigned int depth, void* renderTarget);
+
+  void __scrt_window_paint(void* renderTarget);
+
 #if defined(__cplusplus)
 }
 #endif

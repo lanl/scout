@@ -703,6 +703,8 @@ public:
                    std::string *ResultPathName,
                    std::string *TempPathName);
 
+  llvm::raw_null_ostream *createNullOutputFile();
+
   /// }
   /// @name Initialization Utility Methods
   /// {

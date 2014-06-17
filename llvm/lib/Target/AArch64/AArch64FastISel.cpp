@@ -240,20 +240,14 @@ unsigned AArch64FastISel::AArch64MaterializeFP(const ConstantFP *CFP, MVT VT) {
 }
 
 unsigned AArch64FastISel::AArch64MaterializeGV(const GlobalValue *GV) {
-  // We can't handle thread-local variables quickly yet. Unfortunately we have
-  // to peer through any aliases to find out if that rule applies.
-  const GlobalValue *TLSGV = GV;
-  if (const GlobalAlias *GA = dyn_cast<GlobalAlias>(GV))
-    TLSGV = GA->getAliasee();
+  // We can't handle thread-local variables quickly yet.
+  if (GV->isThreadLocal())
+    return 0;
 
   // MachO still uses GOT for large code-model accesses, but ELF requires
   // movz/movk sequences, which FastISel doesn't handle yet.
   if (TM.getCodeModel() != CodeModel::Small && !Subtarget->isTargetMachO())
     return 0;
-
-  if (const GlobalVariable *GVar = dyn_cast<GlobalVariable>(TLSGV))
-    if (GVar->isThreadLocal())
-      return 0;
 
   unsigned char OpFlags = Subtarget->ClassifyGlobalReference(GV, TM);
 
@@ -1224,7 +1218,6 @@ bool AArch64FastISel::ProcessCallArgs(
       Arg = EmitIntExt(SrcVT, Arg, DestVT, /*isZExt*/ false);
       if (Arg == 0)
         return false;
-      ArgVT = DestVT;
       break;
     }
     case CCValAssign::AExt:
@@ -1235,7 +1228,6 @@ bool AArch64FastISel::ProcessCallArgs(
       Arg = EmitIntExt(SrcVT, Arg, DestVT, /*isZExt*/ true);
       if (Arg == 0)
         return false;
-      ArgVT = DestVT;
       break;
     }
     default:
@@ -1254,7 +1246,7 @@ bool AArch64FastISel::ProcessCallArgs(
       assert(VA.isMemLoc() && "Assuming store on stack.");
 
       // Need to store on the stack.
-      unsigned ArgSize = VA.getLocVT().getSizeInBits() / 8;
+      unsigned ArgSize = (ArgVT.getSizeInBits() + 7) / 8;
 
       unsigned BEAlign = 0;
       if (ArgSize < 8 && !Subtarget->isLittleEndian())

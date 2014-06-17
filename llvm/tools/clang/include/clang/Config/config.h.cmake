@@ -1,3 +1,6 @@
+#ifndef CONFIG_H
+#define CONFIG_H
+
 /* Bug report URL. */
 #define BUG_REPORT_URL "${BUG_REPORT_URL}"
 
@@ -7,13 +10,21 @@
 /* Directories clang will search for headers */
 #define C_INCLUDE_DIRS "${C_INCLUDE_DIRS}"
 
-// +===== Scout =====================================================+
+/* +===== Scout =====================================================+ */
 /* Directories clang will search for scout headers */ 
 #define SCOUT_RESOURCE_DIR "${SCOUT_RESOURCE_DIR}"
-// +=================================================================+
+/* +=================================================================+ */
 
 /* Default <path> to all compiler invocations for --sysroot=<path>. */
 #define DEFAULT_SYSROOT "${DEFAULT_SYSROOT}"
 
 /* Directory where gcc is installed. */
 #define GCC_INSTALL_PREFIX "${GCC_INSTALL_PREFIX}"
+
+/* Define if we have libxml2 */
+#cmakedefine CLANG_HAVE_LIBXML ${CLANG_HAVE_LIBXML}
+
+/* The LLVM product name and version */
+#define BACKEND_PACKAGE_STRING "${BACKEND_PACKAGE_STRING}"
+
+#endif

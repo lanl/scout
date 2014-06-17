@@ -425,7 +425,8 @@ void PPCAsmPrinter::EmitInstruction(const MachineInstr *MI) {
     else if (MO.isGlobal()) {
       const GlobalValue *GValue = MO.getGlobal();
       MOSymbol = getSymbol(GValue);
-      if (GValue->isDeclaration() || GValue->hasCommonLinkage() ||
+      if (GValue->getType()->getElementType()->isFunctionTy() ||
+          GValue->isDeclaration() || GValue->hasCommonLinkage() ||
           GValue->hasAvailableExternallyLinkage() ||
           TM.getCodeModel() == CodeModel::Large)
         MOSymbol = lookUpOrCreateTOCEntry(MOSymbol);

@@ -1650,7 +1650,7 @@ QualType Sema::BuildArrayType(QualType T, ArrayType::ArraySizeModifier ASM,
   if (ArraySize && ArraySize->hasPlaceholderType()) {
     ExprResult Result = CheckPlaceholderExpr(ArraySize);
     if (Result.isInvalid()) return QualType();
-    ArraySize = Result.take();
+    ArraySize = Result.get();
   }
 
   // Do lvalue-to-rvalue conversions on the array size expression.
@@ -1659,7 +1659,7 @@ QualType Sema::BuildArrayType(QualType T, ArrayType::ArraySizeModifier ASM,
     if (Result.isInvalid())
       return QualType();
 
-    ArraySize = Result.take();
+    ArraySize = Result.get();
   }
 
   // C99 6.7.5.2p1: The size expression shall have integer type.
@@ -5426,7 +5426,7 @@ static bool hasVisibleDefinition(Sema &S, NamedDecl *D, NamedDecl **Suggested) {
       ED = NewED;
     if (ED->isFixed()) {
       // If the enum has a fixed underlying type, any declaration of it will do.
-      *Suggested = 0;
+      *Suggested = nullptr;
       for (auto *Redecl : ED->redecls()) {
         if (LookupResult::isVisible(S, Redecl))
           return true;
@@ -5461,7 +5461,7 @@ bool Sema::RequireCompleteTypeImpl(SourceLocation Loc, QualType T,
   NamedDecl *Def = nullptr;
   if (!T->isIncompleteType(&Def)) {
     // If we know about the definition but it is not visible, complain.
-    NamedDecl *SuggestedDef = 0;
+    NamedDecl *SuggestedDef = nullptr;
     if (!Diagnoser.Suppressed && Def &&
         !hasVisibleDefinition(*this, Def, &SuggestedDef)) {
       // Suppress this error outside of a SFINAE context if we've already
@@ -5760,7 +5760,7 @@ QualType Sema::getElaboratedType(ElaboratedTypeKeyword Keyword,
 QualType Sema::BuildTypeofExprType(Expr *E, SourceLocation Loc) {
   ExprResult ER = CheckPlaceholderExpr(E);
   if (ER.isInvalid()) return QualType();
-  E = ER.take();
+  E = ER.get();
 
   if (!E->isTypeDependent()) {
     QualType T = E->getType();
@@ -5840,7 +5840,7 @@ static QualType getDecltypeForExpr(Sema &S, Expr *E) {
 QualType Sema::BuildDecltypeType(Expr *E, SourceLocation Loc) {
   ExprResult ER = CheckPlaceholderExpr(E);
   if (ER.isInvalid()) return QualType();
-  E = ER.take();
+  E = ER.get();
 
   return Context.getDecltypeType(E, getDecltypeForExpr(*this, E));
 }

@@ -67,15 +67,15 @@ EnableAArch64SlrGeneration("aarch64-shift-insert-generation", cl::Hidden,
 //===----------------------------------------------------------------------===//
 // AArch64 Lowering public interface.
 //===----------------------------------------------------------------------===//
-static TargetLoweringObjectFile *createTLOF(TargetMachine &TM) {
-  if (TM.getSubtarget<AArch64Subtarget>().isTargetDarwin())
+static TargetLoweringObjectFile *createTLOF(const Triple &TT) {
+  if (TT.isOSBinFormatMachO())
     return new AArch64_MachoTargetObjectFile();
 
   return new AArch64_ELFTargetObjectFile();
 }
 
 AArch64TargetLowering::AArch64TargetLowering(AArch64TargetMachine &TM)
-    : TargetLowering(TM, createTLOF(TM)) {
+    : TargetLowering(TM, createTLOF(Triple(TM.getTargetTriple()))) {
   Subtarget = &TM.getSubtarget<AArch64Subtarget>();
 
   // AArch64 doesn't have comparisons which set GPRs or setcc instructions, so
@@ -1711,7 +1711,9 @@ SDValue AArch64TargetLowering::LowerFormalArguments(
       InVals.push_back(FrameIdxN);
 
       continue;
-    } if (VA.isRegLoc()) {
+    }
+    
+    if (VA.isRegLoc()) {
       // Arguments stored in registers.
       EVT RegVT = VA.getLocVT();
 
@@ -1772,9 +1774,15 @@ SDValue AArch64TargetLowering::LowerFormalArguments(
       SDValue FIN = DAG.getFrameIndex(FI, getPointerTy());
       SDValue ArgValue;
 
+      // For NON_EXTLOAD, generic code in getLoad assert(ValVT == MemVT)
       ISD::LoadExtType ExtType = ISD::NON_EXTLOAD;
+      MVT MemVT = VA.getValVT();
+
       switch (VA.getLocInfo()) {
       default:
+        break;
+      case CCValAssign::BCvt:
+        MemVT = VA.getLocVT();
         break;
       case CCValAssign::SExt:
         ExtType = ISD::SEXTLOAD;
@@ -1787,10 +1795,9 @@ SDValue AArch64TargetLowering::LowerFormalArguments(
         break;
       }
 
-      ArgValue = DAG.getExtLoad(ExtType, DL, VA.getValVT(), Chain, FIN,
+      ArgValue = DAG.getExtLoad(ExtType, DL, VA.getLocVT(), Chain, FIN,
                                 MachinePointerInfo::getFixedStack(FI),
-                                VA.getLocVT(),
-                                false, false, false, 0);
+                                MemVT, false, false, false, nullptr);
 
       InVals.push_back(ArgValue);
     }
@@ -2339,11 +2346,9 @@ AArch64TargetLowering::LowerCall(CallLoweringInfo &CLI,
         // Since we pass i1/i8/i16 as i1/i8/i16 on stack and Arg is already
         // promoted to a legal register type i32, we should truncate Arg back to
         // i1/i8/i16.
-        if (Arg.getValueType().isSimple() &&
-            Arg.getValueType().getSimpleVT() == MVT::i32 &&
-            (VA.getLocVT() == MVT::i1 || VA.getLocVT() == MVT::i8 ||
-             VA.getLocVT() == MVT::i16))
-          Arg = DAG.getNode(ISD::TRUNCATE, DL, VA.getLocVT(), Arg);
+        if (VA.getValVT() == MVT::i1 || VA.getValVT() == MVT::i8 ||
+            VA.getValVT() == MVT::i16)
+          Arg = DAG.getNode(ISD::TRUNCATE, DL, VA.getValVT(), Arg);
 
         SDValue Store =
             DAG.getStore(Chain, DL, Arg, DstAddr, DstInfo, false, false, 0);
@@ -6047,18 +6052,14 @@ bool AArch64TargetLowering::isTruncateFree(Type *Ty1, Type *Ty2) const {
     return false;
   unsigned NumBits1 = Ty1->getPrimitiveSizeInBits();
   unsigned NumBits2 = Ty2->getPrimitiveSizeInBits();
-  if (NumBits1 <= NumBits2)
-    return false;
-  return true;
+  return NumBits1 > NumBits2;
 }
 bool AArch64TargetLowering::isTruncateFree(EVT VT1, EVT VT2) const {
-  if (!VT1.isInteger() || !VT2.isInteger())
+  if (VT1.isVector() || VT2.isVector() || !VT1.isInteger() || !VT2.isInteger())
     return false;
   unsigned NumBits1 = VT1.getSizeInBits();
   unsigned NumBits2 = VT2.getSizeInBits();
-  if (NumBits1 <= NumBits2)
-    return false;
-  return true;
+  return NumBits1 > NumBits2;
 }
 
 // All 32-bit GPR operations implicitly zero the high-half of the corresponding
@@ -6068,18 +6069,14 @@ bool AArch64TargetLowering::isZExtFree(Type *Ty1, Type *Ty2) const {
     return false;
   unsigned NumBits1 = Ty1->getPrimitiveSizeInBits();
   unsigned NumBits2 = Ty2->getPrimitiveSizeInBits();
-  if (NumBits1 == 32 && NumBits2 == 64)
-    return true;
-  return false;
+  return NumBits1 == 32 && NumBits2 == 64;
 }
 bool AArch64TargetLowering::isZExtFree(EVT VT1, EVT VT2) const {
-  if (!VT1.isInteger() || !VT2.isInteger())
+  if (VT1.isVector() || VT2.isVector() || !VT1.isInteger() || !VT2.isInteger())
     return false;
   unsigned NumBits1 = VT1.getSizeInBits();
   unsigned NumBits2 = VT2.getSizeInBits();
-  if (NumBits1 == 32 && NumBits2 == 64)
-    return true;
-  return false;
+  return NumBits1 == 32 && NumBits2 == 64;
 }
 
 bool AArch64TargetLowering::isZExtFree(SDValue Val, EVT VT2) const {
@@ -6092,8 +6089,9 @@ bool AArch64TargetLowering::isZExtFree(SDValue Val, EVT VT2) const {
     return false;
 
   // 8-, 16-, and 32-bit integer loads all implicitly zero-extend.
-  return (VT1.isSimple() && VT1.isInteger() && VT2.isSimple() &&
-          VT2.isInteger() && VT1.getSizeInBits() <= 32);
+  return (VT1.isSimple() && !VT1.isVector() && VT1.isInteger() &&
+          VT2.isSimple() && !VT2.isVector() && VT2.isInteger() &&
+          VT1.getSizeInBits() <= 32);
 }
 
 bool AArch64TargetLowering::hasPairedLoad(Type *LoadedType,
@@ -6346,15 +6344,6 @@ static SDValue performMulCombine(SDNode *N, SelectionDAG &DAG,
   if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(N->getOperand(1))) {
     APInt Value = C->getAPIntValue();
     EVT VT = N->getValueType(0);
-    APInt VP1 = Value + 1;
-    if (VP1.isPowerOf2()) {
-      // Multiplying by one less than a power of two, replace with a shift
-      // and a subtract.
-      SDValue ShiftedVal =
-          DAG.getNode(ISD::SHL, SDLoc(N), VT, N->getOperand(0),
-                      DAG.getConstant(VP1.logBase2(), MVT::i64));
-      return DAG.getNode(ISD::SUB, SDLoc(N), VT, ShiftedVal, N->getOperand(0));
-    }
     APInt VM1 = Value - 1;
     if (VM1.isPowerOf2()) {
       // Multiplying by one more than a power of two, replace with a shift
@@ -6363,6 +6352,15 @@ static SDValue performMulCombine(SDNode *N, SelectionDAG &DAG,
           DAG.getNode(ISD::SHL, SDLoc(N), VT, N->getOperand(0),
                       DAG.getConstant(VM1.logBase2(), MVT::i64));
       return DAG.getNode(ISD::ADD, SDLoc(N), VT, ShiftedVal, N->getOperand(0));
+    }
+    APInt VP1 = Value + 1;
+    if (VP1.isPowerOf2()) {
+      // Multiplying by one less than a power of two, replace with a shift
+      // and a subtract.
+      SDValue ShiftedVal =
+          DAG.getNode(ISD::SHL, SDLoc(N), VT, N->getOperand(0),
+                      DAG.getConstant(VP1.logBase2(), MVT::i64));
+      return DAG.getNode(ISD::SUB, SDLoc(N), VT, ShiftedVal, N->getOperand(0));
     }
   }
   return SDValue();

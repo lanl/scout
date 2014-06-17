@@ -433,13 +433,13 @@ VarDecl* Parser::LookupRenderTargetVarDecl(IdentifierInfo *TargetInfo,
 
 const RenderTargetType* Parser::LookupRenderTargetType(IdentifierInfo *TargetInfo,
                                                        SourceLocation TargetLoc) {
-
+  
   VarDecl* VD = LookupRenderTargetVarDecl(TargetInfo, TargetLoc);
   if (VD == 0)
     return 0;
   else {
     const Type* T = VD->getType().getCanonicalType().getTypePtr();
-    
+
     if (!isa<RenderTargetType>(T)) {
       T = VD->getType().getCanonicalType().getNonReferenceType().getTypePtr();
       if(!isa<RenderTargetType>(T)) {
@@ -597,13 +597,19 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
     SkipUntil(tok::semi);    
     return StmtError();
   }
+
+  // this does not work from within LLDB because normally the render target type is
+  // window - but from within LLDB it is a: struct __scout_win_t *
+  // since we are not doing anything wih the RenderTargetType, this is commented
+  // out for now
   
-  const RenderTargetType *RefRenderTargetType = LookupRenderTargetType(RenderTargetInfo,
-                                                                       RenderTargetLoc);
+  /*
+  const RenderTargetType *RefRenderTargetType =
+  LookupRenderTargetType(RenderTargetInfo, RenderTargetLoc);
   if (RefRenderTargetType == 0) {
     return StmtError();
   }
-  
+  */
 
   ConsumeToken();
   

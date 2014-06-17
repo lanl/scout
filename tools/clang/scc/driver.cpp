@@ -29,7 +29,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Config/config.h"
+#include "llvm/Config/llvm-config.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/OptTable.h"
 #include "llvm/Option/Option.h"
@@ -577,7 +577,7 @@ int main(int argc_, const char **argv_) {
   // Force a crash to test the diagnostics.
   if (::getenv("FORCE_CLANG_DIAGNOSTICS_CRASH")) {
     Diags.Report(diag::err_drv_force_crash) << "FORCE_CLANG_DIAGNOSTICS_CRASH";
-    const Command *FailingCommand = 0;
+    const Command *FailingCommand = nullptr;
     FailingCommands.push_back(std::make_pair(-1, FailingCommand));
   }
 

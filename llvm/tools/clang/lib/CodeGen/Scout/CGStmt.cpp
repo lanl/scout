@@ -746,6 +746,7 @@ CodeGenFunction::EmitForallEdgesOrFacesCellsLowD(const ForallMeshStmt &S,
     llvm::Value* w1h = Builder.CreateMul(w1, h, "w1h");
 
     llvm::Value* k = Builder.CreateLoad(OuterIndex, "k");
+    k = Builder.CreateZExt(k, Int64Ty, "k");
 
     llvm::Value* c1 = Builder.CreateICmpUGE(k, w1h, "c1");
     llvm::Value* km = Builder.CreateSub(k, w1h, "km");
@@ -826,6 +827,7 @@ CodeGenFunction::EmitForallEdgesOrFacesVerticesLowD(const ForallMeshStmt &S,
     llvm::Value* One32 = llvm::ConstantInt::get(Int32Ty, 1);
 
     llvm::Value* k = Builder.CreateLoad(OuterIndex, "k");
+    k = Builder.CreateZExt(k, Int64Ty, "k");
 
     VertexIndex = InnerIndex;
     llvm::Value* vertexIndex = Builder.CreateTrunc(k, Int32Ty);
@@ -851,6 +853,7 @@ CodeGenFunction::EmitForallEdgesOrFacesVerticesLowD(const ForallMeshStmt &S,
     llvm::Value* w1h = Builder.CreateMul(w1, h, "w1h");
 
     llvm::Value* k = Builder.CreateLoad(OuterIndex, "k");
+    k = Builder.CreateZExt(k, Int64Ty, "k");
     
     llvm::Value* c1 = Builder.CreateICmpUGE(k, w1h, "c1");
     llvm::Value* km = Builder.CreateSub(k, w1h, "km");
@@ -946,13 +949,13 @@ void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
     return;
   }
   
-  llvm::Value* Zero = llvm::ConstantInt::get(Int64Ty, 0);
-  llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
+  llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
+  llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
 
   llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.edges.entry");
   (void)EntryBlock; //suppress warning
 
-  InductionVar[3] = Builder.CreateAlloca(Int64Ty, 0, "forall.edges_idx.ptr");
+  InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "forall.edges_idx.ptr");
   //zero-initialize induction var
   Builder.CreateStore(Zero, InductionVar[3]);
   InnerIndex = Builder.CreateAlloca(Int32Ty, 0, "forall.inneridx.ptr");
@@ -974,6 +977,7 @@ void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
   llvm::Value* k = Builder.CreateLoad(InductionVar[3], "forall.edges_idx");
   k = Builder.CreateAdd(k, One);
   Builder.CreateStore(k, InductionVar[3]);
+  k = Builder.CreateZExt(k, Int64Ty, "k");
 
   llvm::Value* Cond = Builder.CreateICmpSLT(k, numEdges, "cond");
 
@@ -1022,13 +1026,13 @@ void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
     return;
   }
   
-  llvm::Value* Zero = llvm::ConstantInt::get(Int64Ty, 0);
-  llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
+  llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
+  llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
 
   llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.faces.entry");
   (void)EntryBlock; //suppress warning
 
-  InductionVar[3] = Builder.CreateAlloca(Int64Ty, 0, "forall.faces_idx.ptr");
+  InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "forall.faces_idx.ptr");
   //zero-initialize induction var
   Builder.CreateStore(Zero, InductionVar[3]);
 
@@ -1049,6 +1053,7 @@ void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
   llvm::Value* k = Builder.CreateLoad(InductionVar[3], "forall.faces_idx");
   k = Builder.CreateAdd(k, One);
   Builder.CreateStore(k, InductionVar[3]);
+  k = Builder.CreateZExt(k, Int64Ty, "k");
 
   llvm::Value* Cond = Builder.CreateICmpSLT(k, numFaces, "cond");
 
@@ -1495,6 +1500,8 @@ llvm::Function* CodeGenFunction:: ExtractRegion(llvm::BasicBlock *entry, llvm::B
   std::vector< llvm::BasicBlock * > Blocks;
 
   llvm::Function::iterator BB = CurFn->begin();
+
+  //SC_TODO: is there a better way rather than using name?
   // find start marker
   for( ; BB->getName() != entry->getName(); ++BB) { }
 
@@ -1524,7 +1531,6 @@ llvm::Function* CodeGenFunction:: ExtractRegion(llvm::BasicBlock *entry, llvm::B
   llvm::Function *ForallFn = codeExtractor.extractCodeRegion();
 
   ForallFn->setName(name);
-
   return ForallFn;
 }
 
@@ -1649,6 +1655,27 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 
   ResetVars();
 
+  // Add render target argument
+  
+  const VarDecl* RTVD = S.getRenderTargetVarDecl();
+
+  llvm::Value* RTAlloc;
+  
+  if ((RTVD->hasLinkage() || RTVD->isStaticDataMember())
+      && RTVD->getTLSKind() != VarDecl::TLS_Dynamic) {
+    RTAlloc = CGM.GetAddrOfGlobalVar(RTVD);
+    llvm::Value* RTP = Builder.CreateAlloca(RTAlloc->getType());
+    Builder.CreateStore(RTAlloc, RTP);
+    RTAlloc = Builder.CreateLoad(RTP);
+  }
+  else{
+    RTAlloc = LocalDeclMap.lookup(RTVD);
+  }
+
+  // Check if it's a window or image type
+  // cuz we don't handle images yet.
+  const clang::Type &Ty = *getContext().getCanonicalType(RTVD->getType()).getTypePtr();
+  
   llvm::SmallVector< llvm::Value *, 4 > Args;
   Args.clear();
 
@@ -1670,14 +1697,10 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
      LoopBounds[i] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
      Args[i] = Builder.CreateLoad(LoopBounds[i], IRNameStr);
   }
-
-  // Add render target argument 
-
-  // TODO:  check if it's a window or image type
-
-  const VarDecl* RTVD = S.getRenderTargetVarDecl();
-
-  llvm::Value* RTAlloc = LocalDeclMap.lookup(RTVD);
+  
+  if(Ty.getTypeClass() != Type::Window){
+  	RTAlloc = Builder.CreateLoad(RTAlloc);
+  }
 
   // cast scout.window_t** to void**
   llvm::Value* int8PtrPtrRTAlloc = Builder.CreateBitCast(RTAlloc, Int8PtrPtrTy, "");
@@ -1685,7 +1708,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   // dereference the void** 
   llvm::Value* int8PtrRTAlloc = Builder.CreateLoad(int8PtrPtrRTAlloc, "derefwin");
 
-  // put it on the arg list
+  // put the window on the arg list
   Args.push_back(int8PtrRTAlloc);
 
   // create linear loop index as 4th element and zero-initialize
@@ -1693,13 +1716,26 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   //zero-initialize induction var
   Builder.CreateStore(ConstantZero, InductionVar[3]);
 
-  // call renderall setup runtime function
-  llvm::Function *BeginFunc = CGM.getScoutRuntime().RenderallUniformBeginFunction();
-  Builder.CreateCall(BeginFunc, ArrayRef<llvm::Value *>(Args));
+  // make quad renderable and add to the window and return color pointer
+  // use same args as for RenderallUniformBeginFunction
+  // in the future, this will be a mesh renderable
+  llvm::Function *WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableColorsFunction();
 
-  // call renderall color buffer setup
-  llvm::Value *RuntimeColorPtr = CGM.getScoutRuntime().RenderallUniformColorsGlobal(*this);
-  Color = Builder.CreateLoad(RuntimeColorPtr, "color");
+  // %1 = call <4 x float>* @__scrt_window_quad_renderable_colors(i32 %HeatMeshType.width.ptr14, i32 %HeatMeshType.height.ptr16, i32 %HeatMeshType.depth.ptr18, i8* %derefwin)
+  llvm::CallInst* localColorPtr = Builder.CreateCall(WinQuadRendFunc, ArrayRef<llvm::Value *>(Args), "localcolor.ptr");
+
+  // %color.ptr = alloca <4 x float>* 
+  llvm::Type *flt4PtrTy = llvm::PointerType::get(
+            llvm::VectorType::get(llvm::Type::getFloatTy(CGM.getLLVMContext()), 4), 0);
+  llvm::Value *allocColorPtr  = Builder.CreateAlloca(flt4PtrTy, 0, "alloccolor.ptr");
+
+  // store <4 x float>* %localcolorptr, <4 x float>** %alloccolor.ptr
+  Builder.CreateStore(localColorPtr, allocColorPtr);
+
+  // store result of CreateWindowQuadRenderableColors into a variable named color;
+  // for use by code emitted by EmitRenderallMeshLoop (renderall body code references "color" variable)
+  // %color = load <4 x float>** %alloccolor.ptr
+  Color = Builder.CreateLoad(allocColorPtr, "color");
 
   // extract rank from mesh stored after width/height/depth
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
@@ -1708,10 +1744,11 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   // renderall loops + body
   EmitRenderallMeshLoop(S, 3);
 
-  // call renderall cleanup runtime function
-  llvm::Function *EndFunc = CGM.getScoutRuntime().RenderallEndFunction();
-  std::vector<llvm::Value*> EmptyArgs;
-  Builder.CreateCall(EndFunc, ArrayRef<llvm::Value *>(EmptyArgs));
+  // paint window (draws all renderables) (does clear beforehand, and swap buffers after)
+  Args.clear();
+  Args.push_back(int8PtrRTAlloc);
+  llvm::Function *WinPaintFunc = CGM.getScoutRuntime().CreateWindowPaintFunction();
+  Builder.CreateCall(WinPaintFunc, ArrayRef<llvm::Value *>(Args));
 
   // reset Loopbounds, Rank, induction var
   // so width/height etc can't be called after renderall
@@ -1761,8 +1798,8 @@ void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned
   sprintf(IRNameStr, "renderall.cond.%s", DimNames[r-1]);
   JumpDest Continue = getJumpDestInCurrentScope(IRNameStr);
   llvm::BasicBlock *CondBlock = Continue.getBlock();
-  EmitBlock(CondBlock);
 
+  EmitBlock(CondBlock);
   RunCleanupsScope ConditionScope(*this);
 
   sprintf(IRNameStr, "renderall.induct.%s", IndexNames[r-1]);
@@ -1795,6 +1832,7 @@ void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned
 
   sprintf(IRNameStr, "renderall.incblk.%s", IndexNames[r-1]);
   Continue = getJumpDestInCurrentScope(IRNameStr);
+
 
   // Store the blocks to use for break and continue.
 

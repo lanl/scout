@@ -683,6 +683,13 @@ TEST_F(FormatTest, FormatsSwitchStatement) {
                "case (b):\n"
                "  return;\n"
                "}");
+
+  verifyFormat("switch (a) {\n"
+               "case some_namespace::\n"
+               "    some_constant:\n"
+               "  return;\n"
+               "}",
+               getLLVMStyleWithColumns(34));
 }
 
 TEST_F(FormatTest, CaseRanges) {
@@ -1877,6 +1884,22 @@ TEST_F(FormatTest, FormatsEnum) {
 
   verifyFormat("enum ShortEnum { A, B, C };");
   verifyGoogleFormat("enum ShortEnum { A, B, C };");
+
+  EXPECT_EQ("enum KeepEmptyLines {\n"
+            "  ONE,\n"
+            "\n"
+            "  TWO,\n"
+            "\n"
+            "  THREE\n"
+            "}",
+            format("enum KeepEmptyLines {\n"
+                   "  ONE,\n"
+                   "\n"
+                   "  TWO,\n"
+                   "\n"
+                   "\n"
+                   "  THREE\n"
+                   "}"));
 }
 
 TEST_F(FormatTest, FormatsEnumsWithErrors) {
@@ -2142,11 +2165,14 @@ TEST_F(FormatTest, StaticInitializers) {
   // Here, everything other than the "}" would fit on a line.
   verifyFormat("static int LooooooooooooooooooooooooongVariable[1] = {\n"
                "    10000000000000000000000000};");
-  EXPECT_EQ("S s = {a, b};", format("S s = {\n"
-                                    "  a,\n"
-                                    "\n"
-                                    "  b\n"
-                                    "};"));
+  EXPECT_EQ("S s = {a,\n"
+            "\n"
+            "       b};",
+            format("S s = {\n"
+                   "  a,\n"
+                   "\n"
+                   "  b\n"
+                   "};"));
 
   // FIXME: This would fit into the column limit if we'd fit "{ {" on the first
   // line. However, the formatting looks a bit off and this probably doesn't
@@ -2450,7 +2476,6 @@ TEST_F(FormatTest, MacrosWithoutTrailingSemicolon) {
             "};",
             format("class A  :  public QObject {\n"
                    "     Q_Object\n"
-                   "\n"
                    "  A() {\n}\n"
                    "}  ;"));
 }
@@ -3460,6 +3485,13 @@ TEST_F(FormatTest, BreaksFunctionDeclarationsWithTrailingTokens) {
                Style);
   verifyFormat("void someLongFunction(\n"
                "    int parameter) const override {}",
+               Style);
+
+  Style.BreakBeforeBraces = FormatStyle::BS_Allman;
+  verifyFormat("void someLongFunction(\n"
+               "    int someLongParameter) const\n"
+               "{\n"
+               "}",
                Style);
 
   // Unless these are unknown annotations.
@@ -4700,6 +4732,7 @@ TEST_F(FormatTest, UnderstandsUsesOfStarAndAmp) {
   verifyFormat("typedef typeof(int(int, int)) *MyFunc;");
   verifyIndependentOfContext("typedef void (*f)(int *a);");
   verifyIndependentOfContext("int i{a * b};");
+  verifyIndependentOfContext("aaa && aaa->f();");
 
   verifyIndependentOfContext("InvalidRegions[*R] = 0;");
 
@@ -4784,8 +4817,8 @@ TEST_F(FormatTest, UnderstandsUsesOfStarAndAmp) {
   verifyFormat("STATIC_ASSERT((a & b) == 0);");
   verifyFormat("STATIC_ASSERT(0 == (a & b));");
   verifyFormat("template <bool a, bool b> "
-               "typename t::if<x && y>::type f() {};");
-  verifyFormat("template <int *y> f() {};");
+               "typename t::if<x && y>::type f() {}");
+  verifyFormat("template <int *y> f() {}");
   verifyFormat("vector<int *> v;");
   verifyFormat("vector<int *const> v;");
   verifyFormat("vector<int *const **const *> v;");
@@ -5242,7 +5275,7 @@ TEST_F(FormatTest, LayoutCallsInsideBraceInitializers) {
 }
 
 TEST_F(FormatTest, LayoutBraceInitializersInReturnStatement) {
-  verifyFormat("return (a)(b) {1, 2, 3};");
+  verifyFormat("return (a)(b){1, 2, 3};");
 }
 
 TEST_F(FormatTest, LayoutCxx11BraceInitializers) {
@@ -5272,6 +5305,7 @@ TEST_F(FormatTest, LayoutCxx11BraceInitializers) {
 
   verifyFormat("int foo(int i) { return fo1{}(i); }");
   verifyFormat("int foo(int i) { return fo1{}(i); }");
+  verifyFormat("auto i = decltype(x){};");
 
   // In combination with BinPackParameters = false.
   FormatStyle NoBinPacking = getLLVMStyle();
@@ -6491,6 +6525,12 @@ TEST_F(FormatTest, ObjCDictLiterals) {
       "  @\"dte\" : [NSDate date],\n"
       "  @\"processInfo\" : [NSProcessInfo processInfo]\n"
       "};");
+  verifyFormat("NSMutableDictionary *dictionary =\n"
+               "    [NSMutableDictionary dictionaryWithDictionary:@{\n"
+               "      aaaaaaaaaaaaaaaaaaaaa : aaaaaaaaaaaaa,\n"
+               "      bbbbbbbbbbbbbbbbbb : bbbbb,\n"
+               "      cccccccccccccccc : ccccccccccccccc\n"
+               "    }];");
 }
 
 TEST_F(FormatTest, ObjCArrayLiterals) {
@@ -7052,7 +7092,7 @@ TEST_F(FormatTest, DoNotCreateUnreasonableUnwrappedLines) {
   verifyFormat("void f() {\n"
                "  return g() {}\n"
                "  void h() {}");
-  verifyFormat("int a[] = {void forgot_closing_brace() {f();\n"
+  verifyFormat("int a[] = {void forgot_closing_brace(){f();\n"
                "g();\n"
                "}");
 }
@@ -7659,6 +7699,11 @@ TEST_F(FormatTest, AllmanBraceBreaking) {
                "  Y = 0,\n"
                "}\n",
                BreakBeforeBrace);
+  verifyFormat("enum X\n"
+               "{\n"
+               "  Y = 0\n"
+               "}\n",
+               BreakBeforeBrace);
 
   verifyFormat("@interface BSApplicationController ()\n"
                "{\n"
@@ -8174,20 +8219,19 @@ TEST_F(FormatTest, ParsesConfigurationWithLanguages) {
   Style.IndentWidth = 234;
   Style.BreakBeforeBraces = FormatStyle::BS_Linux;
   Style.TabWidth = 345;
-  EXPECT_EQ(llvm::errc::success,
-            parseConfiguration("---\n"
-                               "IndentWidth: 456\n"
-                               "BreakBeforeBraces: Allman\n"
-                               "---\n"
-                               "Language: JavaScript\n"
-                               "IndentWidth: 111\n"
-                               "TabWidth: 111\n"
-                               "---\n"
-                               "Language: Cpp\n"
-                               "BreakBeforeBraces: Stroustrup\n"
-                               "TabWidth: 789\n"
-                               "...\n",
-                               &Style));
+  EXPECT_FALSE(parseConfiguration("---\n"
+                                  "IndentWidth: 456\n"
+                                  "BreakBeforeBraces: Allman\n"
+                                  "---\n"
+                                  "Language: JavaScript\n"
+                                  "IndentWidth: 111\n"
+                                  "TabWidth: 111\n"
+                                  "---\n"
+                                  "Language: Cpp\n"
+                                  "BreakBeforeBraces: Stroustrup\n"
+                                  "TabWidth: 789\n"
+                                  "...\n",
+                                  &Style));
   EXPECT_EQ(123u, Style.ColumnLimit);
   EXPECT_EQ(456u, Style.IndentWidth);
   EXPECT_EQ(FormatStyle::BS_Stroustrup, Style.BreakBeforeBraces);
@@ -8590,10 +8634,12 @@ TEST_F(FormatTest, FormatsWithWebKitStyle) {
             format("NSArray*a=[[NSArray alloc]initWithArray:@[ @\"a\" ]\n"
                    "             copyItems:YES];",
                    Style));
+  // FIXME: This does not seem right, there should be more indentation before
+  // the array literal's entries. Nested blocks have the same problem.
   EXPECT_EQ("NSArray* a = [[NSArray alloc] initWithArray:@[\n"
-            "                                               @\"a\",\n"
-            "                                               @\"a\"\n"
-            "                                            ]\n"
+            "    @\"a\",\n"
+            "    @\"a\"\n"
+            "]\n"
             "                                  copyItems:YES];",
             format("NSArray* a = [[NSArray alloc] initWithArray:@[\n"
                    "     @\"a\",\n"

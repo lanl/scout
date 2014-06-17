@@ -151,8 +151,7 @@ public:
 };
 
 class SelectionDAG;
-void checkForCycles(const SDNode *N);
-void checkForCycles(const SelectionDAG *DAG);
+void checkForCycles(const SelectionDAG *DAG, bool force = false);
 
 /// SelectionDAG class - This is used to represent a portion of an LLVM function
 /// in a low-level Data Dependence DAG representation suitable for instruction
@@ -335,7 +334,7 @@ public:
     assert((!N.getNode() || N.getValueType() == MVT::Other) &&
            "DAG root value is not a chain!");
     if (N.getNode())
-      checkForCycles(N.getNode());
+      checkForCycles(N.getNode(), this);
     Root = N;
     if (N.getNode())
       checkForCycles(this);
@@ -540,6 +539,12 @@ public:
   /// undefined.
   SDValue getVectorShuffle(EVT VT, SDLoc dl, SDValue N1, SDValue N2,
                            const int *MaskElts);
+  SDValue getVectorShuffle(EVT VT, SDLoc dl, SDValue N1, SDValue N2,
+                           ArrayRef<int> MaskElts) {
+    assert(VT.getVectorNumElements() == MaskElts.size() &&
+           "Must have the same number of vector elements as mask elements!");
+    return getVectorShuffle(VT, dl, N1, N2, MaskElts.data());
+  }
 
   /// getAnyExtOrTrunc - Convert Op, which must be of integer type, to the
   /// integer type VT, by either any-extending or truncating it.
@@ -607,14 +612,14 @@ public:
   ///
   SDValue getNode(unsigned Opcode, SDLoc DL, EVT VT);
   SDValue getNode(unsigned Opcode, SDLoc DL, EVT VT, SDValue N);
-  SDValue getNode(unsigned Opcode, SDLoc DL, EVT VT, SDValue N1, SDValue N2);
-  SDValue getNode(unsigned Opcode, SDLoc DL, EVT VT,
-                  SDValue N1, SDValue N2, SDValue N3);
-  SDValue getNode(unsigned Opcode, SDLoc DL, EVT VT,
-                  SDValue N1, SDValue N2, SDValue N3, SDValue N4);
-  SDValue getNode(unsigned Opcode, SDLoc DL, EVT VT,
-                  SDValue N1, SDValue N2, SDValue N3, SDValue N4,
-                  SDValue N5);
+  SDValue getNode(unsigned Opcode, SDLoc DL, EVT VT, SDValue N1, SDValue N2,
+                  bool nuw = false, bool nsw = false, bool exact = false);
+  SDValue getNode(unsigned Opcode, SDLoc DL, EVT VT, SDValue N1, SDValue N2,
+                  SDValue N3);
+  SDValue getNode(unsigned Opcode, SDLoc DL, EVT VT, SDValue N1, SDValue N2,
+                  SDValue N3, SDValue N4);
+  SDValue getNode(unsigned Opcode, SDLoc DL, EVT VT, SDValue N1, SDValue N2,
+                  SDValue N3, SDValue N4, SDValue N5);
   SDValue getNode(unsigned Opcode, SDLoc DL, EVT VT, ArrayRef<SDUse> Ops);
   SDValue getNode(unsigned Opcode, SDLoc DL, EVT VT,
                   ArrayRef<SDValue> Ops);
@@ -922,7 +927,9 @@ public:
 
   /// getNodeIfExists - Get the specified node if it's already available, or
   /// else return NULL.
-  SDNode *getNodeIfExists(unsigned Opcode, SDVTList VTs, ArrayRef<SDValue> Ops);
+  SDNode *getNodeIfExists(unsigned Opcode, SDVTList VTs, ArrayRef<SDValue> Ops,
+                          bool nuw = false, bool nsw = false,
+                          bool exact = false);
 
   /// getDbgValue - Creates a SDDbgValue node.
   ///
@@ -1178,6 +1185,10 @@ private:
   void DeallocateNode(SDNode *N);
 
   void allnodes_clear();
+
+  BinarySDNode *GetBinarySDNode(unsigned Opcode, SDLoc DL, SDVTList VTs,
+                                SDValue N1, SDValue N2, bool nuw, bool nsw,
+                                bool exact);
 
   /// VTList - List of non-single value types.
   FoldingSet<SDVTListNode> VTListMap;

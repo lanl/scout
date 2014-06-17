@@ -86,7 +86,7 @@ static llvm::StructType *getClassHierarchyDescriptorType(CodeGenModule &CGM) {
   static const char Name[] = "MSRTTIClassHierarchyDescriptor";
   if (auto Type = CGM.getModule().getTypeByName(Name))
     return Type;
-  // Forward declare RTTIClassHierarchyDescriptor to break a cycle.
+  // Forward-declare RTTIClassHierarchyDescriptor to break a cycle.
   llvm::StructType *Type = llvm::StructType::create(CGM.getLLVMContext(), Name);
   llvm::Type *FieldTypes[] = {
     CGM.IntTy,
@@ -117,7 +117,7 @@ static llvm::GlobalVariable *getTypeInfoVTable(CodeGenModule &CGM) {
   return new llvm::GlobalVariable(CGM.getModule(), CGM.Int8PtrTy,
                                   /*Constant=*/true,
                                   llvm::GlobalVariable::ExternalLinkage,
-                                  /*Initializer=*/0, MangledName);
+                                  /*Initializer=*/nullptr, MangledName);
 }
 
 namespace {
@@ -154,7 +154,7 @@ uint32_t MSRTTIClass::initialize(const MSRTTIClass *Parent,
                                  const CXXBaseSpecifier *Specifier) {
   Flags = HasHierarchyDescriptor;
   if (!Parent) {
-    VirtualRoot = 0;
+    VirtualRoot = nullptr;
     OffsetInVBase = 0;
   } else {
     if (Specifier->getAccessSpecifier() != AS_public)
@@ -256,10 +256,10 @@ llvm::GlobalVariable *MSRTTIBuilder::getClassHierarchyDescriptor() {
   if (auto CHD = Module.getNamedGlobal(MangledName))
     return CHD;
 
-  // Serialize the class hierarchy and initalize the CHD Fields.
+  // Serialize the class hierarchy and initialize the CHD Fields.
   SmallVector<MSRTTIClass, 8> Classes;
   serializeClassHierarchy(Classes, RD);
-  Classes.front().initialize(/*Parent=*/0, /*Specifier=*/0);
+  Classes.front().initialize(/*Parent=*/nullptr, /*Specifier=*/nullptr);
   detectAmbiguousBases(Classes);
   int Flags = 0;
   for (auto Class : Classes) {
@@ -277,10 +277,11 @@ llvm::GlobalVariable *MSRTTIBuilder::getClassHierarchyDescriptor() {
   llvm::Value *GEPIndices[] = {llvm::ConstantInt::get(CGM.IntTy, 0),
                                llvm::ConstantInt::get(CGM.IntTy, 0)};
 
-  // Forward declare the class hierarchy descriptor
+  // Forward-declare the class hierarchy descriptor
   auto Type = getClassHierarchyDescriptorType(CGM);
   auto CHD = new llvm::GlobalVariable(Module, Type, /*Constant=*/true, Linkage,
-                                      /*Initializer=*/0, MangledName.c_str());
+                                      /*Initializer=*/nullptr,
+                                      MangledName.c_str());
 
   // Initialize the base class ClassHierarchyDescriptor.
   llvm::Constant *Fields[] = {
@@ -302,7 +303,7 @@ MSRTTIBuilder::getBaseClassArray(SmallVectorImpl<MSRTTIClass> &Classes) {
     Mangler.mangleCXXRTTIBaseClassArray(RD, Out);
   }
 
-  // Foward declare the base class array.
+  // Forward-declare the base class array.
   // cl.exe pads the base class array with 1 (in 32 bit mode) or 4 (in 64 bit
   // mode) bytes of padding.  We provide a pointer sized amount of padding by
   // adding +1 to Classes.size().  The sections have pointer alignment and are
@@ -310,7 +311,7 @@ MSRTTIBuilder::getBaseClassArray(SmallVectorImpl<MSRTTIClass> &Classes) {
   auto PtrType = getBaseClassDescriptorType(CGM)->getPointerTo();
   auto ArrayType = llvm::ArrayType::get(PtrType, Classes.size() + 1);
   auto BCA = new llvm::GlobalVariable(Module, ArrayType,
-      /*Constant=*/true, Linkage, /*Initializer=*/0, MangledName.c_str());
+      /*Constant=*/true, Linkage, /*Initializer=*/nullptr, MangledName.c_str());
 
   // Initialize the BaseClassArray.
   SmallVector<llvm::Constant *, 8> BaseClassArrayData;
@@ -345,10 +346,11 @@ MSRTTIBuilder::getBaseClassDescriptor(const MSRTTIClass &Class) {
   if (auto BCD = Module.getNamedGlobal(MangledName))
     return BCD;
 
-  // Forward declare the base class descriptor.
+  // Forward-declare the base class descriptor.
   auto Type = getBaseClassDescriptorType(CGM);
   auto BCD = new llvm::GlobalVariable(Module, Type, /*Constant=*/true, Linkage,
-                                      /*Initializer=*/0, MangledName.c_str());
+                                      /*Initializer=*/nullptr,
+                                      MangledName.c_str());
 
   // Initialize the BaseClassDescriptor.
   llvm::Constant *Fields[] = {
@@ -386,10 +388,10 @@ MSRTTIBuilder::getCompleteObjectLocator(const VPtrInfo *Info) {
       ->second.hasVtorDisp())
       VFPtrOffset = Info->NonVirtualOffset.getQuantity() + 4;
 
-  // Forward declare the complete object locator.
+  // Forward-declare the complete object locator.
   llvm::StructType *Type = getCompleteObjectLocatorType(CGM);
   auto COL = new llvm::GlobalVariable(Module, Type, /*Constant=*/true, Linkage,
-    /*Initializer=*/0, MangledName.c_str());
+    /*Initializer=*/nullptr, MangledName.c_str());
 
   // Initialize the CompleteObjectLocator.
   llvm::Constant *Fields[] = {

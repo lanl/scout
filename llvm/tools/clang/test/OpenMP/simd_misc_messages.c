@@ -290,6 +290,94 @@ void test_linear()
   // expected-warning@+1 {{zero linear step (x and other variables in clause should probably be const)}}
   #pragma omp simd linear(x,y:0)
   for (i = 0; i < 16; ++i) ;
+
+  // expected-note@+2 {{defined as linear}}
+  // expected-error@+1 {{linear variable cannot be lastprivate}}
+  #pragma omp simd linear(x) lastprivate(x)
+  for (i = 0; i < 16; ++i) ;
+
+  // expected-note@+2 {{defined as lastprivate}}
+  // expected-error@+1 {{lastprivate variable cannot be linear}}
+  #pragma omp simd lastprivate(x) linear(x) 
+  for (i = 0; i < 16; ++i) ;
+
+}
+
+void test_aligned()
+{
+  int i;
+  // expected-error@+1 {{expected expression}} expected-error@+1 {{expected ')'}} expected-note@+1 {{to match this '('}}
+  #pragma omp simd aligned(
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+2 {{expected expression}}
+  // expected-error@+1 {{expected expression}} expected-error@+1 {{expected ')'}} expected-note@+1 {{to match this '('}}
+  #pragma omp simd aligned(,
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+2 {{expected expression}}
+  // expected-error@+1 {{expected expression}}
+  #pragma omp simd aligned(,)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{expected expression}}
+  #pragma omp simd aligned()
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{expected expression}}
+  #pragma omp simd aligned(int)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{expected variable name}}
+  #pragma omp simd aligned(0)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{use of undeclared identifier 'x'}}
+  #pragma omp simd aligned(x)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+2 {{use of undeclared identifier 'x'}}
+  // expected-error@+1 {{use of undeclared identifier 'y'}}
+  #pragma omp simd aligned(x, y)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+3 {{use of undeclared identifier 'x'}}
+  // expected-error@+2 {{use of undeclared identifier 'y'}}
+  // expected-error@+1 {{use of undeclared identifier 'z'}}
+  #pragma omp simd aligned(x, y, z)
+  for (i = 0; i < 16; ++i) ;
+
+  int *x, y, z[25]; // expected-note 4 {{'y' defined here}}
+  #pragma omp simd aligned(x)
+  for (i = 0; i < 16; ++i) ;
+  #pragma omp simd aligned(z)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{expected expression}}
+  #pragma omp simd aligned(x:)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{expected expression}} expected-error@+1 {{expected ')'}} expected-note@+1 {{to match this '('}}
+  #pragma omp simd aligned(x:,)
+  for (i = 0; i < 16; ++i) ;
+  #pragma omp simd aligned(x:1)
+  for (i = 0; i < 16; ++i) ;
+  #pragma omp simd aligned(x:2*2)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{expected ')'}} expected-note@+1 {{to match this '('}}
+  #pragma omp simd aligned(x:1,y)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{expected ')'}} expected-note@+1 {{to match this '('}}
+  #pragma omp simd aligned(x:1,y,z:1)
+  for (i = 0; i < 16; ++i) ;
+
+  // expected-error@+1 {{argument of aligned clause should be array or pointer, not 'int'}}
+  #pragma omp simd aligned(x, y)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{argument of aligned clause should be array or pointer, not 'int'}}
+  #pragma omp simd aligned(x, y, z)
+  for (i = 0; i < 16; ++i) ;
+
+  // expected-note@+2 {{defined as aligned}}
+  // expected-error@+1 {{a variable cannot appear in more than one aligned clause}}
+  #pragma omp simd aligned(x) aligned(z,x)
+  for (i = 0; i < 16; ++i) ;
+
+  // expected-note@+3 {{defined as aligned}}
+  // expected-error@+2 {{a variable cannot appear in more than one aligned clause}}
+  // expected-error@+1 2 {{argument of aligned clause should be array or pointer, not 'int'}}
+  #pragma omp simd aligned(x,y,z) aligned(y,z)
+  for (i = 0; i < 16; ++i) ;
 }
 
 void test_private()
@@ -335,5 +423,54 @@ void test_firstprivate()
   // expected-error@+1 {{expected expression}}
   #pragma omp simd firstprivate(
   for (i = 0; i < 16; ++i) ;
+}
+
+void test_lastprivate()
+{
+  int i;
+  // expected-error@+2 {{expected ')'}} expected-note@+2 {{to match this '('}}
+  // expected-error@+1 {{expected expression}}
+  #pragma omp simd lastprivate(
+  for (i = 0; i < 16; ++i) ;
+
+  // expected-error@+2 {{expected ')'}} expected-note@+2 {{to match this '('}}
+  // expected-error@+1 2 {{expected expression}}
+  #pragma omp simd lastprivate(,
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 2 {{expected expression}}
+  #pragma omp simd lastprivate(,)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{expected expression}}
+  #pragma omp simd lastprivate()
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{expected expression}}
+  #pragma omp simd lastprivate(int)
+  for (i = 0; i < 16; ++i) ;
+  // expected-error@+1 {{expected variable name}}
+  #pragma omp simd lastprivate(0)
+  for (i = 0; i < 16; ++i) ;
+
+  int x, y, z;
+  #pragma omp simd lastprivate(x)
+  for (i = 0; i < 16; ++i) ;
+  #pragma omp simd lastprivate(x, y)
+  for (i = 0; i < 16; ++i) ;
+  #pragma omp simd lastprivate(x, y, z)
+  for (i = 0; i < 16; ++i) ;
+}
+
+void test_loop_messages()
+{
+  float a[100], b[100], c[100];
+  // expected-error@+2 {{variable must be of integer or pointer type}}
+  #pragma omp simd
+  for (float fi = 0; fi < 10.0; fi++) {
+    c[(int)fi] = a[(int)fi] + b[(int)fi];
+  }
+  // expected-error@+2 {{variable must be of integer or pointer type}}
+  #pragma omp simd
+  for (double fi = 0; fi < 10.0; fi++) {
+    c[(int)fi] = a[(int)fi] + b[(int)fi];
+  }
 }
 
