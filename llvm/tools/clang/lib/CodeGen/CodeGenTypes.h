@@ -147,10 +147,10 @@ public:
   CGCXXABI &getCXXABI() const { return TheCXXABI; }
   llvm::LLVMContext &getLLVMContext() { return TheModule.getContext(); }
 
-  /// ConvertType - Convert type T into a llvm::Type.
-  llvm::Type *ConvertType(QualType T);
-
   // +==== Scout =============================================================+
+  /// ConvertType - Convert type T into a llvm::Type.
+  //llvm::Type *ConvertType(QualType T);
+  llvm::Type *ConvertType(QualType T, bool issStencil=false);
   typedef std::vector<MeshFieldDecl*>   FieldDeclVector;
   typedef SmallVector<llvm::Value*, 16> MetadataVector;
   void AddMeshFieldMetadata(const char *locationName,
@@ -225,6 +225,8 @@ public:
 
   // +===== Scout ==============================================================+
   const CGFunctionInfo &arrangeStencilFunctionDeclaration(const FunctionDecl *FD);
+  const CGFunctionInfo &arrangeStencilFunctionCall(const CallArgList &args,
+                                          const FunctionDecl *D);
   // +==========================================================================+
 
   const CGFunctionInfo &
@@ -262,6 +264,10 @@ public:
 
   const CGFunctionInfo &arrangeFreeFunctionType(CanQual<FunctionProtoType> Ty);
   const CGFunctionInfo &arrangeFreeFunctionType(CanQual<FunctionNoProtoType> Ty);
+  // +===== Scout ==============================================================+
+  const CGFunctionInfo &arrangeStencilFunctionType(CanQual<FunctionProtoType> Ty);
+  // +==========================================================================+
+
   const CGFunctionInfo &arrangeCXXMethodType(const CXXRecordDecl *RD,
                                              const FunctionProtoType *FTP);
 

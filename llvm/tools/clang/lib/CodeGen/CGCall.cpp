@@ -2604,22 +2604,6 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
   // FIXME: We no longer need the types from CallArgs; lift up and simplify.
   SmallVector<llvm::Value*, 16> Args;
 
-  // +===== Scout ==========================================================+
-  // SC_TODO: this is not the correct place for this
- #if 0
-   if(const FunctionDecl *FD = dyn_cast<FunctionDecl>(TargetDecl)) {
-     if (FD->isStencilSpecified()) {
-       llvm::errs() << "Args size 1: " << Args.size() << "\n";
-       for(unsigned i = 0; i <=3; i++) {
-         Args.push_back(InductionVar[i]);
-       }
-       llvm::errs() << "Args size 2: " << Args.size() << "\n";
-     }
-   }
- #endif
-   // +======================================================================+
-
-
   // Handle struct-return functions by passing a pointer to the
   // location that we would like to return into.
   QualType RetTy = CallInfo.getReturnType();
