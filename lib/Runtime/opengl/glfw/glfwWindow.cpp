@@ -184,3 +184,6 @@ bool glfwWindow::processEvent()
   return done;
 }
 
+void glfwWindow::pollEvents(){
+  glfwPollEvents();
+}

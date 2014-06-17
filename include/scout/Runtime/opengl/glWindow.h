@@ -194,6 +194,7 @@ namespace scout {
     // not sure these should be here and if they make sense for derived classes that are not GLFW, eg macosx
     virtual bool processEvent() = 0;
     virtual void eventLoop() = 0;
+    virtual void pollEvents() = 0;
     
    protected:
     WindowRect      _frame;     /// The position and dimensions of window.

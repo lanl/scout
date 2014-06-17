@@ -108,5 +108,6 @@ void __scrt_window_paint(void* renderTarget) {
   ((glQuadRenderableVA*)(window->getCurrentRenderable()))->unmap_colors();
   window->paint();
   window->swapBuffers();
+  window->pollEvents();
 }
 
