@@ -1555,9 +1555,21 @@ llvm::Constant *CodeGenModule::GetAddrOfFunction(GlobalDecl GD,
                                                  llvm::Type *Ty,
                                                  bool ForVTable,
                                                  bool DontDefer) {
+  // +===== Scout ==========================================================+
+  bool isStencil = false;
+  if(const FunctionDecl *FD = dyn_cast<FunctionDecl>(GD.getDecl())) {
+    if(FD->isStencilSpecified()) {
+      llvm::errs() << "Stencil in GetAddrofFunction\n";
+      isStencil = true;
+    }
+  }
+  // +======================================================================+
   // If there was no specific requested type, just convert it now.
   if (!Ty)
-    Ty = getTypes().ConvertType(cast<ValueDecl>(GD.getDecl())->getType());
+    Ty = getTypes().ConvertType(cast<ValueDecl>(GD.getDecl())->getType(),
+        /* +===== Scout ==========================================================+ */
+        isStencil);
+        // +======================================================================+
   
   StringRef MangledName = getMangledName(GD);
   return GetOrCreateLLVMFunction(MangledName, Ty, GD, ForVTable, DontDefer);

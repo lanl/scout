@@ -3301,6 +3301,18 @@ RValue CodeGenFunction::EmitCall(QualType CalleeType, llvm::Value *Callee,
   }
 
   CallArgList Args;
+
+  // +===== Scout ==============================================================+
+  if (const FunctionDecl* FD = dyn_cast_or_null<const FunctionDecl>(TargetDecl)) {
+    if (FD->isStencilSpecified()) {
+      llvm::errs() << "Stencil in EmitCall\n";
+      QualType T = getContext().getPointerType(getContext().IntTy);
+      for(unsigned i = 0; i <= 3; i++)
+      Args.add(RValue::get(InductionVar[i]), T);
+    }
+  }
+  // +==========================================================================+
+
   EmitCallArgs(Args, dyn_cast<FunctionProtoType>(FnType), ArgBeg, ArgEnd,
                ForceColumnInfo);
 

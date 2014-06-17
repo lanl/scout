@@ -292,7 +292,10 @@ static llvm::Type *getTypeForFormat(llvm::LLVMContext &VMContext,
 }
 
 /// ConvertType - Convert the specified type to its LLVM form.
-llvm::Type *CodeGenTypes::ConvertType(QualType T) {
+// +===== Scout ==========================================================+
+//llvm::Type *CodeGenTypes::ConvertType(QualType T) {
+llvm::Type *CodeGenTypes::ConvertType(QualType T, bool isStencil) {
+// +======================================================================+
 
   T = Context.getCanonicalType(T);
 
@@ -510,8 +513,18 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     // build it.
     const CGFunctionInfo *FI;
     if (const FunctionProtoType *FPT = dyn_cast<FunctionProtoType>(FT)) {
+      // +===== Scout ==========================================================+
+      if(isStencil) {
+        llvm::errs() << "Stencil in ConvertType\n";
+        FI =  &arrangeStencilFunctionType(
+            CanQual<FunctionProtoType>::CreateUnsafe(QualType(FPT, 0)));
+      } else {
+      // +======================================================================+
       FI = &arrangeFreeFunctionType(
                    CanQual<FunctionProtoType>::CreateUnsafe(QualType(FPT, 0)));
+      // +===== Scout ==========================================================+
+      }
+      // +======================================================================+
     } else {
       const FunctionNoProtoType *FNPT = cast<FunctionNoProtoType>(FT);
       FI = &arrangeFreeFunctionType(
