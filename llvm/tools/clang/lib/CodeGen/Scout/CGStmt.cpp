@@ -1675,7 +1675,6 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   // Check if it's a window or image type
   // cuz we don't handle images yet.
   const clang::Type &Ty = *getContext().getCanonicalType(RTVD->getType()).getTypePtr();
-  assert(Ty.getTypeClass() == Type::Window);
   
   llvm::SmallVector< llvm::Value *, 4 > Args;
   Args.clear();
@@ -1699,6 +1698,10 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
      Args[i] = Builder.CreateLoad(LoopBounds[i], IRNameStr);
   }
   
+  if(Ty.getTypeClass() != Type::Window){
+  	RTAlloc = Builder.CreateLoad(RTAlloc);
+  }
+
   // cast scout.window_t** to void**
   llvm::Value* int8PtrPtrRTAlloc = Builder.CreateBitCast(RTAlloc, Int8PtrPtrTy, "");
 
