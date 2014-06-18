@@ -163,7 +163,8 @@ namespace scout
 #endif
     
     void update() {}
-    
+
+    void pollEvents();
     
   private:
     GLFWwindow* _window;  // actual window handle for GLFW
