@@ -825,6 +825,8 @@ bool DeclSpec::setFunctionSpecForceInline(SourceLocation Loc, const char *&PrevS
 bool DeclSpec::setFunctionSpecStencil(SourceLocation Loc, const char *&PrevSpec,
                                           unsigned &DiagID) {
   FS_stencil_specified = true;
+  FS_inline_specified = true;
+  FS_inlineLoc = Loc;
   FS_forceinline_specified = true;
   FS_forceinlineLoc = Loc;
   return false;

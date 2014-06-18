@@ -7942,6 +7942,13 @@ static GVALinkage basicGVALinkageForFunction(const ASTContext &Context,
     if (FD->isInlineDefinitionExternallyVisible())
       return External;
 
+    // +===== Scout ==========================================================+
+    if(FD->isStencilSpecified()) {
+      llvm::errs() << "stencil in basicGVALinkageForFunction()\n";
+      return External;
+    }
+    // +======================================================================+
+
     // C99 inline semantics, where the symbol is not externally visible.
     return GVA_AvailableExternally;
   }
