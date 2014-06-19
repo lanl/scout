@@ -31,6 +31,10 @@
 #include "lldb/API/SBThread.h"
 #include "lldb/API/SBProcess.h"
 
+// ===== Scout =======================
+#include "lldb/API/SBScout.h"
+// ===================================
+
 using namespace lldb;
 
 static void reset_stdin_termios ();
@@ -475,6 +479,15 @@ Driver::GetScriptLanguage() const
 {
     return m_option_data.m_script_lang;
 }
+
+// ===== Scout ================================
+void Driver::ExecuteScoutInitialCommands(){
+	std::string cmd = "settings set target.expr-prefix " + SBScout::GetScoutPrefixPath();
+
+	SBCommandReturnObject result;
+	m_debugger.GetCommandInterpreter().HandleCommand(cmd.c_str(), result, false);
+}
+// ============================================
 
 void
 Driver::ExecuteInitialCommands (bool before_file)
@@ -952,6 +965,10 @@ Driver::MainLoop ()
     }
 
     ExecuteInitialCommands(false);
+
+    // ===== Scout ====================
+    ExecuteScoutInitialCommands();
+    // ================================
 
     // Now that all option parsing is done, we try and parse the .lldbinit
     // file in the current working directory
