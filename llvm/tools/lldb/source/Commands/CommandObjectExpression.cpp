@@ -305,7 +305,7 @@ CommandObjectExpression::EvaluateExpression
         
         // +===== Scout ==========================================
         CompileUnit *comp_unit = NULL;
-        StackFrame *frame = m_exe_ctx.GetFramePtr();
+        StackFrame *frame = exe_ctx.GetFramePtr();
         if (frame)
         {
             SymbolContext sc = frame->GetSymbolContext (eSymbolContextCompUnit);
