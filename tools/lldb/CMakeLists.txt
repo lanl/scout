@@ -61,5 +61,5 @@ endif()
 # only install our lldb wrapper if we are building lldb
 if(DEFINED ENV{SC_BUILD_LLDB})
   configure_file(lldb.in ${CMAKE_INSTALL_PREFIX}/bin/lldb)
-  configure_file(lldb-prefix.h ${CMAKE_INSTALL_PREFIX}/llvm/bin)
+  configure_file(lldb-prefix.h ${CMAKE_INSTALL_PREFIX}/llvm/bin/lldb-prefix.h)
 endif()
