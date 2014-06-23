@@ -84,19 +84,33 @@ LValue
 CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index) {
 
   DeclRefExpr* Base = cast<DeclRefExpr>(E->getBase());
+  llvm::Value *Addr;
 
   // inside forall we are referencing the implicit mesh e.g. 'c' in forall cells c in mesh
   if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(Base->getDecl())) {
-      // lookup underlying mesh instead of implicit mesh
-      llvm::Value *Addr;
-      GetMeshBaseAddr(IMPD->getMeshVarDecl(), Addr);
-      LValue BaseLV  = MakeAddrLValue(Addr, E->getType());
-      // assume we have already checked that we are working w/ a mesh and cast to MeshField Decl
-      MeshFieldDecl* MFD = cast<MeshFieldDecl>(E->getMemberDecl());
-      return EmitLValueForMeshField(BaseLV, cast<MeshFieldDecl>(MFD), Index);
+    // lookup underlying mesh instead of implicit mesh
+    GetMeshBaseAddr(IMPD->getMeshVarDecl(), Addr);
+  } else if (ParmVarDecl *PVD = dyn_cast<ParmVarDecl>(Base->getDecl())) {
+    llvm::errs() << "ParmVarDecl in EmitMeshMemberExpr must be stencil?\n";
+    Addr = LocalDeclMap.lookup(PVD);
+    if(Addr) {
+      llvm::errs() << "ParmVarDecl in LDM\n";
+
+      // If Mesh ptr then load
+      const Type *T = PVD->getType().getTypePtr();
+      if(T->isAnyPointerType() || T->isReferenceType()) {
+        llvm::errs() << "is PVD pointer\n";
+        Addr = Builder.CreateLoad(Addr);
+      }
+    }
+  } else {
+    llvm_unreachable("Cannot lookup underlying mesh");
   }
-  
-  llvm_unreachable("Cannot lookup underlying mesh");
+
+  LValue BaseLV  = MakeAddrLValue(Addr, E->getType());
+  // assume we have already checked that we are working w/ a mesh and cast to MeshField Decl
+  MeshFieldDecl* MFD = cast<MeshFieldDecl>(E->getMemberDecl());
+  return EmitLValueForMeshField(BaseLV,  cast<MeshFieldDecl>(MFD), Index); //SC_TODO: why cast?
 }
 
 LValue CodeGenFunction::EmitLValueForMeshField(LValue base,

@@ -48,38 +48,41 @@
  * ########################################################################### 
  * 
  * Notes
+ *  trivial stencil function
  *
  * ##### 
- */ 
+ */
+#include <assert.h>
+#include <stdio.h> 
 
-#include "CGScoutABI.h"
+uniform mesh AMeshType{
+cells:
+  int a;
+  int b;
+};
 
-using namespace clang;
-using namespace CodeGen;
+stencil int sten(AMeshType &c) {
+   return c.a;
+}
 
-static const char *IndexNames[] = { "x", "y", "z", "w"};
-static char IRNameStr[160];
 
-void CGScoutABI::buildImplicitStencilParams(CodeGenFunction &CGF, FunctionArgList &params) {
-  llvm::errs() << "in BuildImplicitStencilParams\n";
-  const FunctionDecl *FD = cast<FunctionDecl>(CGF.CurGD.getDecl());
+int main(int argc, char *argv[])
+{
 
-  ASTContext &Context = CGF.getContext();
-  QualType T = Context.getPointerType(Context.IntTy);
-  ImplicitParamDecl* D;
-  for(int i = 0; i<=3; i++) {
-    sprintf(IRNameStr, "induct.%s", IndexNames[3-i]);
-    D = ImplicitParamDecl::Create(CGM.getContext(), 0, FD->getLocation(),
-        &CGM.getContext().Idents.get(IRNameStr), T);
-    params.insert(params.begin(), D);
-    getInductionVarDecl(CGF, 3-i) = D;
+  AMeshType m[10];
+
+  forall cells c in m {
+    c.a = position().x;
   }
-}
 
-void CGScoutABI::EmitImplicitStencilParams(CodeGenFunction &CGF) {
+  forall cells c in m {
+    c.b = sten(c);
+    printf("%d %d\n", c.a, c.b);
+  }
 
-}
+  forall cells c in m {
+    assert(c.a == c.b);
+  }
 
-CodeGen::CGScoutABI *CodeGen::createScoutABI(CodeGenModule &CGM) {
-  return new CGScoutABI(CGM);
+  return 0;
 }

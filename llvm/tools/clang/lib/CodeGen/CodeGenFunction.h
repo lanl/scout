@@ -327,7 +327,15 @@ public:
   llvm::Value *Color;
 
   inline llvm::Value *getLinearIdx() {
-    return Builder.CreateLoad(InductionVar[3], "Xall.linearidx"); //could be forall or renderall
+    //if stencil then get ScoutABIInductionVarDecl and lookup
+    llvm::Value *V = LocalDeclMap.lookup(ScoutABIInductionVarDecl[3]);
+    if(V) {
+      llvm::errs() << "stencil in getLinearIdx()\n";
+      return Builder.CreateLoad(Builder.CreateLoad(V, "stencil.linearidx.ptr"), "stencil.linearidx");
+    } else {
+      return Builder.CreateLoad(InductionVar[3], "Xall.linearidx"); //could be forall or renderall
+    }
+
   }
 
   bool isGPU() {
