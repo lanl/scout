@@ -337,6 +337,10 @@ public:
     return CGM.getCodeGenOpts().ScoutNvidiaGPU;
   }
 
+  bool inLLDB(){
+  	return CGM.getModule().getModuleIdentifier() == "$__lldb_module";
+  }
+
   // --- AMD gpu support disabled for now (they're off-version of us)
   //bool isAMDGPU() {
   //  return CGM.getCodeGenOpts().ScoutAMDGPU && !CallsPrintf;
