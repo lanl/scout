@@ -1669,9 +1669,6 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   if ((RTVD->hasLinkage() || RTVD->isStaticDataMember())
       && RTVD->getTLSKind() != VarDecl::TLS_Dynamic) {
     RTAlloc = CGM.GetAddrOfGlobalVar(RTVD);
-    llvm::Value* RTP = Builder.CreateAlloca(RTAlloc->getType());
-    Builder.CreateStore(RTAlloc, RTP);
-    RTAlloc = Builder.CreateLoad(RTP);
   }
   else{
     RTAlloc = LocalDeclMap.lookup(RTVD);
@@ -1727,20 +1724,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   llvm::Function *WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableColorsFunction();
 
   // %1 = call <4 x float>* @__scrt_window_quad_renderable_colors(i32 %HeatMeshType.width.ptr14, i32 %HeatMeshType.height.ptr16, i32 %HeatMeshType.depth.ptr18, i8* %derefwin)
-  llvm::CallInst* localColorPtr = Builder.CreateCall(WinQuadRendFunc, ArrayRef<llvm::Value *>(Args), "localcolor.ptr");
-
-  // %color.ptr = alloca <4 x float>* 
-  llvm::Type *flt4PtrTy = llvm::PointerType::get(
-            llvm::VectorType::get(llvm::Type::getFloatTy(CGM.getLLVMContext()), 4), 0);
-  llvm::Value *allocColorPtr  = Builder.CreateAlloca(flt4PtrTy, 0, "alloccolor.ptr");
-
-  // store <4 x float>* %localcolorptr, <4 x float>** %alloccolor.ptr
-  Builder.CreateStore(localColorPtr, allocColorPtr);
-
-  // store result of CreateWindowQuadRenderableColors into a variable named color;
-  // for use by code emitted by EmitRenderallMeshLoop (renderall body code references "color" variable)
-  // %color = load <4 x float>** %alloccolor.ptr
-  Color = Builder.CreateLoad(allocColorPtr, "color");
+  Color = Builder.CreateCall(WinQuadRendFunc, ArrayRef<llvm::Value *>(Args), "localcolor.ptr");
 
   // extract rank from mesh stored after width/height/depth
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
