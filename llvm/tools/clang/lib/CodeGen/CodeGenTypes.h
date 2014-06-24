@@ -225,8 +225,6 @@ public:
 
   // +===== Scout ==============================================================+
   const CGFunctionInfo &arrangeStencilFunctionDeclaration(const FunctionDecl *FD);
-  const CGFunctionInfo &arrangeStencilFunctionCall(const CallArgList &args,
-                                          const FunctionDecl *D);
   // +==========================================================================+
 
   const CGFunctionInfo &

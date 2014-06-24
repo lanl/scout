@@ -3303,12 +3303,16 @@ RValue CodeGenFunction::EmitCall(QualType CalleeType, llvm::Value *Callee,
   CallArgList Args;
 
   // +===== Scout ==============================================================+
+  // See if this is a stencil call, if so add the implicit params.
   if (const FunctionDecl* FD = dyn_cast_or_null<const FunctionDecl>(TargetDecl)) {
     if (FD->isStencilSpecified()) {
       llvm::errs() << "Stencil in EmitCall\n";
       QualType T = getContext().getPointerType(getContext().IntTy);
+      // Add loop bounds to args, could get this out of the
+      // mesh but it is easier this way.
       for(unsigned i = 0; i < 3; i++)
         Args.add(RValue::get(LoopBounds[i]), T);
+      // Add induction vars to args
       for(unsigned i = 0; i <= 3; i++)
         Args.add(RValue::get(InductionVar[i]), T);
     }

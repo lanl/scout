@@ -119,14 +119,15 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
 
   case Builtin::BIwidth: {
     // number of args is already known to be 0 or 1 as it was checked in sema
-    if(E->getNumArgs() == 0) { //inside forall/renderall
+    if(E->getNumArgs() == 0) { //inside forall/renderall/stencil
+      // if we can lookup the LoopBound Decl then we must be in a stencil function
       if (LoopBounds[0] || LocalDeclMap.lookup(ScoutABILoopBoundDecl[0])) {
         *RV = RValue::get(Builder.CreateLoad(LookupLoopBound(0), "width"));
       } else {
         CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
         *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
       }
-    } else  { //outside forall/renderall
+    } else  { //outside forall/renderall/stencil
       *RV = EmitMeshParameterExpr(E->getArg(0), MeshParameterOffset::WidthOffset);
     }
     return true;
@@ -134,14 +135,15 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
 
   case Builtin::BIheight: {
     // number of args is already known to be 0 or 1 as it was checked in sema
-    if(E->getNumArgs() == 0) { //inside forall/renderall
+    if(E->getNumArgs() == 0) { //inside forall/renderall/stencil
+      // if we can lookup the LoopBound Decl then we must be in a stencil function
       if (LoopBounds[1] || LocalDeclMap.lookup(ScoutABILoopBoundDecl[1])) {
         *RV = RValue::get(Builder.CreateLoad(LookupLoopBound(1), "height"));
       } else {
         CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
         *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
       }
-    } else { //outside forall/renderall
+    } else { //outside forall/renderall/stencil
       *RV = EmitMeshParameterExpr(E->getArg(0), MeshParameterOffset::HeightOffset);
     }
     return true;
@@ -149,14 +151,15 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
 
   case Builtin::BIdepth: {
     // number of args is already known to be 0 or 1 as it was checked in sema
-    if(E->getNumArgs() == 0) { //inside forall/renderall
+    if(E->getNumArgs() == 0) { //inside forall/renderall/stencil
+      // if we can lookup the LoopBound Decl then we must be in a stencil function
       if (LoopBounds[2] || LocalDeclMap.lookup(ScoutABILoopBoundDecl[2])) {
         *RV = RValue::get(Builder.CreateLoad(LookupLoopBound(2), "depth"));
       } else {
         CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
         *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
       }
-    } else { //outside forall/renderall
+    } else { //outside forall/renderall/stencil
       *RV = EmitMeshParameterExpr(E->getArg(0), MeshParameterOffset::DepthOffset);
     }
     return true;
