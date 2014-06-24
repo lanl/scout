@@ -1348,7 +1348,9 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   llvm::BasicBlock *exit = EmitMarkerBlock("forall.exit");
 
   // Extract Blocks to function and replace w/ call to function
-  ExtractRegion(entry, exit, "ForallMeshFunction");
+  if(!inLLDB()){
+  	ExtractRegion(entry, exit, "ForallMeshFunction");
+  }
 }
 
 
@@ -1546,7 +1548,10 @@ void CodeGenFunction::EmitForallArrayStmt(const ForallArrayStmt &S) {
   llvm::BasicBlock *exit = EmitMarkerBlock("forall.exit");
 
   // Extract Blocks to function and replace w/ call to function
-  ExtractRegion(entry, exit, "ForallArrayFunction");
+
+  if(!inLLDB()){
+  	ExtractRegion(entry, exit, "ForallArrayFunction");
+  }
 }
 
 void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) {
@@ -1758,7 +1763,9 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   //need a marker for end of Renderall for CodeExtraction
   llvm::BasicBlock *exit = EmitMarkerBlock("renderall.exit");
 
-  ExtractRegion(entry, exit, "RenderallFunction");
+  if(!inLLDB()){
+  	ExtractRegion(entry, exit, "RenderallFunction");
+  }
 }
 
 //generate one of the nested loops
