@@ -83,7 +83,13 @@ CodeGenFunction::EmitColorDeclRefLValue(const NamedDecl *ND) {
 LValue
 CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index) {
 
-  DeclRefExpr* Base = cast<DeclRefExpr>(E->getBase());
+  DeclRefExpr* Base;
+  if(ImplicitCastExpr *CE = dyn_cast<ImplicitCastExpr>(E->getBase())) {
+    Base = cast<DeclRefExpr>(CE->getSubExpr());
+  } else {
+    Base = cast<DeclRefExpr>(E->getBase());
+  }
+
   llvm::Value *Addr;
 
   // inside forall we are referencing the implicit mesh e.g. 'c' in forall cells c in mesh

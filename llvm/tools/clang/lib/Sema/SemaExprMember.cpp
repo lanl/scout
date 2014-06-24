@@ -1991,17 +1991,18 @@ BuildFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
           DeclAccessPair FoundDecl,
                             const DeclarationNameInfo &MemberNameInfo) {
 
-  assert(IsArrow == false);
   // x.a is an l-value if 'a' has a reference type. Otherwise:
   // x.a is an l-value/x-value/pr-value if the base is (and note
   //   that *x is always an l-value), except that if the base isn't
   //   an ordinary object then we must have an rvalue.
   ExprValueKind VK = VK_LValue;
   ExprObjectKind OK = OK_Ordinary;
-  if (BaseExpr->getObjectKind() == OK_Ordinary)
-    VK = BaseExpr->getValueKind();
-  else
-    VK = VK_RValue;
+  if (!IsArrow) {
+    if (BaseExpr->getObjectKind() == OK_Ordinary)
+      VK = BaseExpr->getValueKind();
+    else
+      VK = VK_RValue;
+  }
 
   if (VK != VK_RValue && Field->isBitField())
     OK = OK_BitField;
@@ -2013,6 +2014,7 @@ BuildFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
     VK = VK_LValue;
   } else {
     QualType BaseType = BaseExpr->getType();
+    if (IsArrow) BaseType = BaseType->getAs<PointerType>()->getPointeeType();
     Qualifiers BaseQuals = BaseType.getQualifiers();
 
     // CVR attributes from the base are picked up by members,
