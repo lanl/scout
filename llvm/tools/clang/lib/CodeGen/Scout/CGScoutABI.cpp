@@ -74,6 +74,13 @@ void CGScoutABI::buildImplicitStencilParams(CodeGenFunction &CGF, FunctionArgLis
     params.insert(params.begin(), D);
     getInductionVarDecl(CGF, 3-i) = D;
   }
+  for(int i = 0; i<3; i++) {
+    sprintf(IRNameStr, "bounds.%s", IndexNames[2-i]);
+    D = ImplicitParamDecl::Create(CGM.getContext(), 0, FD->getLocation(),
+        &CGM.getContext().Idents.get(IRNameStr), T);
+    params.insert(params.begin(), D);
+    getLoopBoundDecl(CGF, 2-i) = D;
+  }
 }
 
 void CGScoutABI::EmitImplicitStencilParams(CodeGenFunction &CGF) {

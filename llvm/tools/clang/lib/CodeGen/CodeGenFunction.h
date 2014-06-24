@@ -326,16 +326,11 @@ public:
   //renderall color buffer
   llvm::Value *Color;
 
-  inline llvm::Value *getLinearIdx() {
-    //if stencil then get ScoutABIInductionVarDecl and lookup
-    llvm::Value *V = LocalDeclMap.lookup(ScoutABIInductionVarDecl[3]);
-    if(V) {
-      llvm::errs() << "stencil in getLinearIdx()\n";
-      return Builder.CreateLoad(Builder.CreateLoad(V, "stencil.linearidx.ptr"), "stencil.linearidx");
-    } else {
-      return Builder.CreateLoad(InductionVar[3], "Xall.linearidx"); //could be forall or renderall
-    }
+  llvm::Value *LookupInductionVar(unsigned int index);
+  llvm::Value *LookupLoopBound(unsigned int index);
 
+  inline llvm::Value *getLinearIdx() {
+    return Builder.CreateLoad(LookupInductionVar(3), "Xall.linearidx");
   }
 
   bool isGPU() {
@@ -1028,6 +1023,7 @@ private:
 
   // +===== Scout ==========================================================+
   llvm::SmallVector<ImplicitParamDecl*, 4 > ScoutABIInductionVarDecl;
+  llvm::SmallVector<ImplicitParamDecl*, 3 > ScoutABILoopBoundDecl;
   // +======================================================================+
 
   /// The value of 'this' to use when evaluating CXXDefaultInitExprs within

@@ -87,7 +87,9 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
   for(unsigned i = 0; i <= 3; ++i) {
     ScoutABIInductionVarDecl.push_back(0);
   }
-
+  for(unsigned i = 0; i < 3; ++i) {
+    ScoutABILoopBoundDecl.push_back(0);
+  }
 
   // +=====================================================+ 
 }

@@ -265,13 +265,13 @@ CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
   SmallVector< llvm::Value *, 3 > dims;
   for(unsigned i = 0; i < args.size(); ++i) {
     sprintf(IRNameStr, "%s", DimNames[i]);
-    dims.push_back(Builder.CreateLoad(LoopBounds[i], IRNameStr));
+    dims.push_back(Builder.CreateLoad(LookupLoopBound(i), IRNameStr));
   }
 
   SmallVector< llvm::Value *, 3 > indices;
   for(unsigned i = 0; i < args.size(); ++i) {
     sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
-    llvm::Value *iv   = Builder.CreateLoad(InductionVar[i], IRNameStr);
+    llvm::Value *iv   = Builder.CreateLoad(LookupInductionVar(i), IRNameStr);
 
     // take index and add offset from cshift
     sprintf(IRNameStr, "cshift.rawindex.%s", IndexNames[i]);
@@ -397,14 +397,14 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
        SmallVector< llvm::Value *, 3 > dims;
        for(unsigned i = 0; i < args.size(); ++i) {
          sprintf(IRNameStr, "%s", DimNames[i]);
-         dims.push_back(Builder.CreateLoad(LoopBounds[i], IRNameStr));
+         dims.push_back(Builder.CreateLoad(LookupLoopBound(i), IRNameStr));
        }
 
        //get the eoshift indices
        SmallVector< llvm::Value *, 3 > rawindices, indices;
        for(unsigned i = 0; i < args.size(); ++i) {
 				 sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
-				 llvm::Value *iv  = Builder.CreateLoad(InductionVar[i], IRNameStr);
+				 llvm::Value *iv  = Builder.CreateLoad(LookupInductionVar(i), IRNameStr);
 
 				 // take index and add offset from eoshift
 				 sprintf(IRNameStr, "eoshift.rawindex.%s", IndexNames[i]);

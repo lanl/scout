@@ -3307,8 +3307,10 @@ RValue CodeGenFunction::EmitCall(QualType CalleeType, llvm::Value *Callee,
     if (FD->isStencilSpecified()) {
       llvm::errs() << "Stencil in EmitCall\n";
       QualType T = getContext().getPointerType(getContext().IntTy);
+      for(unsigned i = 0; i < 3; i++)
+        Args.add(RValue::get(LoopBounds[i]), T);
       for(unsigned i = 0; i <= 3; i++)
-      Args.add(RValue::get(InductionVar[i]), T);
+        Args.add(RValue::get(InductionVar[i]), T);
     }
   }
   // +==========================================================================+

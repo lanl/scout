@@ -21,6 +21,25 @@
 using namespace clang;
 using namespace clang::CodeGen;
 
+static char IRNameStr[160];
+static const char *IndexNames[] = { "x", "y", "z", "w"};
+static const char *DimNames[]   = { "width", "height", "depth" };
+
+llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
+  llvm::Value *V = LocalDeclMap.lookup(ScoutABIInductionVarDecl[index]);
+  if (index == 3) sprintf(IRNameStr, "stencil.linearidx.ptr");
+  else sprintf(IRNameStr, "stencil.induct.%s.ptr", IndexNames[index]);
+  if(V) return Builder.CreateLoad(V, IRNameStr);
+  return InductionVar[index];
+}
+
+llvm::Value *CodeGenFunction::LookupLoopBound(unsigned int index) {
+  llvm::Value *V = LocalDeclMap.lookup(ScoutABILoopBoundDecl[index]);
+  sprintf(IRNameStr, "stencil.%s.ptr", DimNames[index]);
+  if(V) return Builder.CreateLoad(V, IRNameStr);
+  return LoopBounds[index];
+}
+
 /// Emit field annotations for the given mesh field & value. Returns the
 /// annotation result.
 llvm::Value *CodeGenFunction::EmitFieldAnnotations(const MeshFieldDecl *D,

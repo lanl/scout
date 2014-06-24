@@ -68,7 +68,7 @@ CodeGenTypes::arrangeStencilFunctionDeclaration(const FunctionDecl *FD) {
   SmallVector<CanQualType, 16> argTypes;
 
   //stencil args
-  for (unsigned i = 0; i <=3; i++) {
+  for (unsigned i = 0; i <=6; i++) {
     argTypes.push_back(Context.getPointerType(
         CanQualType::CreateUnsafe(Context.getIntPtrType())));
   }
@@ -95,7 +95,7 @@ static const CGFunctionInfo &arrangeLLVMStencilFunctionInfo(CodeGenTypes &CGT,
   RequiredArgs required = RequiredArgs::forPrototypePlus(FTP, prefix.size());
 
   //stencil args
-  for (unsigned i=0; i<=3; i++) {
+  for (unsigned i=0; i<=6; i++) {
     prefix.push_back(CGT.getContext().getPointerType(
           CanQualType::CreateUnsafe(CGT.getContext().getIntPtrType())));
   }
@@ -133,7 +133,7 @@ CodeGenTypes::arrangeStencilFunctionCall(const CallArgList &args,
 
   SmallVector<CanQualType, 16> ArgTypes;
   //stencil args
-  for (unsigned i = 0; i <=3; i++) {
+  for (unsigned i = 0; i <=6; i++) {
     ArgTypes.push_back(Context.getPointerType(
         CanQualType::CreateUnsafe(Context.getIntPtrType())));
   }

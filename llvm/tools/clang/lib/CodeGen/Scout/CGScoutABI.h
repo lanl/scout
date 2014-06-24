@@ -96,6 +96,14 @@ public:
     return CGF.InductionVar[index];
   }
 
+  ImplicitParamDecl *&getLoopBoundDecl(CodeGenFunction &CGF, unsigned int index) {
+    return CGF.ScoutABILoopBoundDecl[index];
+  }
+
+  llvm::Value *&getLoopBoundValue(CodeGenFunction &CGF, unsigned int index) {
+    return CGF.LoopBounds[index];
+  }
+
   void buildImplicitStencilParams(CodeGenFunction &CGF, FunctionArgList &Params);
 
   void EmitImplicitStencilParams(CodeGenFunction &CGF);
