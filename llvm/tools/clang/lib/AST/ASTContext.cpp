@@ -7944,8 +7944,14 @@ static GVALinkage basicGVALinkageForFunction(const ASTContext &Context,
 
     // +===== Scout ==========================================================+
     if(FD->isStencilSpecified()) {
-      llvm::errs() << "stencil in basicGVALinkageForFunction()\n";
-      return External;
+      // inline functions will not be emitted in C99
+      // see http://clang.llvm.org/compatibility.html#inline
+      // only static inline functions will...
+      // by setting linkage to GVA_DiscardableODR it will be emitted
+      // without optimization on and will be discarded if it is inlined
+      // with optimization on. This makes scc and sc++ behave the same
+      // with "linkonce_odr" for the stencil function
+      return GVA_DiscardableODR;
     }
     // +======================================================================+
 

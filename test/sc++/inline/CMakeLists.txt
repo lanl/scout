@@ -48,48 +48,20 @@
 #
 ###########################################################################
 #
+# make sure stencil is getting inlined
 
-include(${CMAKE_BINARY_DIR}/CMake/Modules/Configuration.cmake)
+project(scout_test_scpp_inline)
 
-set(CMAKE_MODULE_PATH
-  ${SCOUT_CMAKE_PATH}
-  ${CMAKE_MODULE_PATH}
-)
+set(SRC_PATH ${CMAKE_SOURCE_DIR}/sc++/inline)
 
-#ignore warnings about i/o in forall
-set(CMAKE_SCXX_FLAGS "${CMAKE_SCXX_FLAGS} -Wno-calling-io-function")
-#ignore specific warnings for some files
-set_source_files_properties(intrinsics-scope.scpp PROPERTIES COMPILE_FLAGS "-Wno-mesh-builtin-scope")
-set_source_files_properties(meshscope.scpp PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
+set(tname "sc++_inline_stencil-O0")
+add_test("${tname}" ${CMAKE_SCC_COMPILER} -S -O0 -emit-llvm -o - ${SRC_PATH}/stencil2.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "call i32 @_Z4stenR9AMeshType")
+message(" + added runtime regression test entry: ${tname}")
 
-project(scout_test_scxx)
-    
-  cmake_minimum_required(VERSION 2.8.9)
-
-  # Note: By default we pull in all the .scpp source files in this
-  # directory for inclusion into the regression checks.  If you want do
-  # build more complex tests we suggest creating a subdirectory for the
-  # source.
-  #
-  file(GLOB SC_SRCS *.scpp) 
-
-  # Add an executable and test entry for each source file...
-  foreach (test ${SC_SRCS})
-    get_filename_component(tname ${test} NAME_WE) 
-    if (NOT tname) 
-      message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
-    else (NOT tname)
-      set(fname "sc++_${tname}")
-      add_executable("${fname}" ${test})
-      add_test("${fname}" "${TEST_BINARY_DIR}/${fname}")
-      message(" + added runtime regression test entry: ${fname}")
-    endif(NOT tname)
-  endforeach(test)
-
-  add_subdirectory(debug)
-  add_subdirectory(display)
-  add_subdirectory(driver)
-  add_subdirectory(global-multifile)
-  add_subdirectory(error)
-  add_subdirectory(inline)
-  add_subdirectory(warning)
+set(tname "sc++_inline_stencil-O3")
+add_test("${tname}" ${CMAKE_SCC_COMPILER} -S -O3 -emit-llvm -o - ${SRC_PATH}/stencil2.scpp)
+set_property(TEST ${tname} PROPERTY FAIL_REGULAR_EXPRESSION 
+    "call i32 @_Z4stenR9AMeshType")
+message(" + added runtime regression test entry: ${tname}")
