@@ -855,6 +855,14 @@ void CodeGenFunction::GenerateCode(GlobalDecl GD, llvm::Function *Fn,
   // Emit the standard function prologue.
   StartFunction(GD, ResTy, Fn, FnInfo, Args, Loc, BodyRange.getBegin());
 
+  // +===== Scout ==========================================================+
+  // just emit a marker for now in any task function
+  if(FD->isTaskSpecified()) {
+    llvm::errs() << "task in GenerateCode\n";
+    EmitMarkerBlock("InATaskFunction");
+  }
+  // +======================================================================+
+
   // Generate the body of the function.
   PGO.assignRegionCounters(GD.getDecl(), CurFn);
   if (isa<CXXDestructorDecl>(FD))

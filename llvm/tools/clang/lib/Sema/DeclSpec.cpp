@@ -831,6 +831,12 @@ bool DeclSpec::setFunctionSpecStencil(SourceLocation Loc, const char *&PrevSpec,
   FS_forceinlineLoc = Loc;
   return false;
 }
+
+bool DeclSpec::setFunctionSpecTask(SourceLocation Loc, const char *&PrevSpec,
+                                          unsigned &DiagID) {
+  FS_task_specified = true;
+  return false;
+}
 // +======================================================================+
 
 bool DeclSpec::setFunctionSpecVirtual(SourceLocation Loc,

@@ -3663,7 +3663,8 @@ FunctionDecl *FunctionDecl::Create(ASTContext &C, DeclContext *DC,
                                    bool hasWrittenPrototype,
                                    bool isConstexprSpecified,
                                    /* +===== Scout ==============*/
-                                   bool isStencilSpecified
+                                   bool isStencilSpecified,
+                                   bool isTaskSpecified
                                    /* +==========================*/
                                    ) {
 
@@ -3671,7 +3672,8 @@ FunctionDecl *FunctionDecl::Create(ASTContext &C, DeclContext *DC,
       new (C, DC) FunctionDecl(Function, C, DC, StartLoc, NameInfo, T, TInfo, SC,
                                isInlineSpecified, isConstexprSpecified,
                                /* +===== Scout ==============*/
-                               isStencilSpecified
+                               isStencilSpecified,
+                               isTaskSpecified
                                /* +==========================*/
                                );
   New->HasWrittenPrototype = hasWrittenPrototype;

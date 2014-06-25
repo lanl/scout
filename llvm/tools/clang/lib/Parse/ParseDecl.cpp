@@ -2970,6 +2970,9 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
     case tok::kw_stencil:
       isInvalid = DS.setFunctionSpecStencil(Loc, PrevSpec, DiagID);
       break;
+    case tok::kw_task:
+      isInvalid = DS.setFunctionSpecTask(Loc, PrevSpec, DiagID);
+      break;
     // +======================================================================+
     case tok::kw_inline:
       isInvalid = DS.setFunctionSpecInline(Loc, PrevSpec, DiagID);

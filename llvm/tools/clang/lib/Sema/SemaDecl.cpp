@@ -6510,6 +6510,7 @@ static FunctionDecl* CreateNewFunctionDecl(Sema &SemaRef, Declarator &D,
   bool isInline = D.getDeclSpec().isInlineSpecified();
   // +===== Scout ==========================================================+
   bool isStencil = D.getDeclSpec().isStencilSpecified();
+  bool isTask = D.getDeclSpec().isTaskSpecified();
   // +======================================================================+
 
   if (!SemaRef.getLangOpts().CPlusPlus) {
@@ -6527,7 +6528,8 @@ static FunctionDecl* CreateNewFunctionDecl(Sema &SemaRef, Declarator &D,
                                  TInfo, SC, isInline, 
                                  HasPrototype, false,
                                  /* ====== Scout ====== */
-                                 isStencil
+                                 isStencil,
+                                 isTask
                                  /* =================== */
                                  );
 
@@ -6599,7 +6601,8 @@ static FunctionDecl* CreateNewFunctionDecl(Sema &SemaRef, Declarator &D,
                                   SC, isInline,
                                   /*hasPrototype=*/true, isConstexpr,
                                   /* ====== Scout ====== */
-                                  isStencil
+                                  isStencil,
+                                  isTask
                                   /* =================== */
                                   );
     }
@@ -6648,7 +6651,8 @@ static FunctionDecl* CreateNewFunctionDecl(Sema &SemaRef, Declarator &D,
                                 NameInfo, R, TInfo, SC, isInline,
                                 true/*HasPrototype*/, isConstexpr,
                                 /* ====== Scout ====== */
-                                isStencil
+                                isStencil,
+                                isTask
                                 /* =================== */
                                 );
   }
