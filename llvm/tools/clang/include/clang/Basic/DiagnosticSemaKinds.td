@@ -7160,6 +7160,8 @@ def err_shift_field : Error<
     "first argument to %select{cshift()|eoshift()}0 must be a mesh field">;
 def err_pointer_field_mesh : Error<
     "mesh field element must be non-pointer type">;
+def err_mesh_arrow : Error <
+	"arrow operator not allowed with mesh">;
 def err_elements_not_in_forall_renderall : Error<
     "renderall elements must appear within a forall loop">;
 def err_position_not_allowed : Error<
