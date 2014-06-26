@@ -7158,6 +7158,8 @@ def err_shift_args : Error<
     "invalid number of %select{cshift()|eoshift()}0 args">;
 def err_shift_field : Error<
     "first argument to %select{cshift()|eoshift()}0 must be a mesh field">;
+def err_shift_nonint : Error<
+    "Non integer shift in %select{cshift()|eoshift()}0 not allowed">;
 def err_pointer_field_mesh : Error<
     "mesh field element must be non-pointer type">;
 def err_mesh_arrow : Error <

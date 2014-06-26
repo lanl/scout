@@ -59,6 +59,7 @@
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 #include "clang/AST/Scout/ImplicitColorParamDecl.h"
 #include "clang/Basic/Builtins.h"
+#include "clang/AST/Expr.h"
 #include <map>
 
 using namespace clang;
@@ -107,23 +108,36 @@ static bool CheckShift(unsigned id, CallExpr *E, Sema &S) {
         ValueDecl* bd = dr->getDecl();
         const Type *T= bd->getType().getCanonicalType().getTypePtr();
         if (!isa<MeshType>(T)) {
-          S.Diag(E->getRParenLoc(), diag::err_shift_field) << kind;
+          S.Diag(fe->getExprLoc(), diag::err_shift_field) << kind;
           error = true;
         }
         if(isa<StructuredMeshType>(T)) {
-          S.Diag(E->getRParenLoc(), diag::err_shift_not_allowed) << kind << 0;
+          S.Diag(fe->getExprLoc(), diag::err_shift_not_allowed) << kind << 0;
           error = true;
         }
         if(isa<UnstructuredMeshType>(T)) {
-          S.Diag(E->getRParenLoc(), diag::err_shift_not_allowed) << kind << 1;
+          S.Diag(fe->getExprLoc(), diag::err_shift_not_allowed) << kind << 1;
           error = true;
         }
 
       }
     } else {
-      S.Diag(E->getRParenLoc(), diag::err_shift_field) << kind;
+      S.Diag(fe->getExprLoc(), diag::err_shift_field) << kind;
       error = true;
     }
+    // only allow integers for shift values
+    for (unsigned i = kind+1; i < args; i++) {
+      Expr *arg = E->getArg(i);
+      // remove unary operator if it exists
+      if(UnaryOperator *UO = dyn_cast<UnaryOperator>(arg)) {
+        arg = UO->getSubExpr();
+      }
+      if(!isa<IntegerLiteral>(arg)) {
+        S.Diag(arg->getExprLoc(), diag::err_shift_nonint) << kind;
+        error = true;
+      }
+    }
+
   }
   return error;
 }
