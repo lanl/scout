@@ -827,7 +827,6 @@ void CodeGenFunction::GenerateCode(GlobalDecl GD, llvm::Function *Fn,
   // +===== Scout ==========================================================+
   // add implicit stencil params
   if(FD->isStencilSpecified()) {
-    llvm::errs() << "stencil in GenerateCode\n";
     CGM.getScoutABI().buildImplicitStencilParams(*this, Args);
   }
   // +======================================================================+

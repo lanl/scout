@@ -62,7 +62,6 @@ static char IRNameStr[160];
 
 //Build the ImplicitParamDecls for a stencil function
 void CGScoutABI::buildImplicitStencilParams(CodeGenFunction &CGF, FunctionArgList &params) {
-  llvm::errs() << "in BuildImplicitStencilParams\n";
   const FunctionDecl *FD = cast<FunctionDecl>(CGF.CurGD.getDecl());
 
   ASTContext &Context = CGF.getContext();

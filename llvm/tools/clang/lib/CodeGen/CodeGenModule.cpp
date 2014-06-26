@@ -1559,7 +1559,6 @@ llvm::Constant *CodeGenModule::GetAddrOfFunction(GlobalDecl GD,
   bool isStencil = false;
   if(const FunctionDecl *FD = dyn_cast<FunctionDecl>(GD.getDecl())) {
     if(FD->isStencilSpecified()) {
-      llvm::errs() << "Stencil in GetAddrofFunction\n";
       isStencil = true;
     }
   }

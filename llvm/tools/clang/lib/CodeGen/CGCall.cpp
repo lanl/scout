@@ -303,7 +303,6 @@ CodeGenTypes::arrangeFunctionDeclaration(const FunctionDecl *FD) {
 
   // +===== Scout ==============================================================+
    if(FD->isStencilSpecified()) {
-     llvm::errs() << "stencil in arrangeFunctionDeclaration\n";
      return arrangeStencilFunctionDeclaration(FD);
    }
    // +==========================================================================+

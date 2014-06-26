@@ -100,12 +100,9 @@ CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index) {
     llvm::errs() << "ParmVarDecl in EmitMeshMemberExpr must be stencil?\n";
     Addr = LocalDeclMap.lookup(PVD);
     if(Addr) {
-      llvm::errs() << "ParmVarDecl in LDM\n";
-
       // If Mesh ptr then load
       const Type *T = PVD->getType().getTypePtr();
       if(T->isAnyPointerType() || T->isReferenceType()) {
-        llvm::errs() << "is PVD pointer\n";
         Addr = Builder.CreateLoad(Addr);
       }
     }

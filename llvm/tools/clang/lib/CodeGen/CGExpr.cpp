@@ -1878,7 +1878,6 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
     // +===== Scout ========================================================+
     // for stencil
     if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)) {
-      llvm::errs() << "lookup implicit mesh " << IP->getName() << " -> " << IP->getMeshVarDecl()->getName() << "\n";
       V = LocalDeclMap.lookup(IP->getMeshVarDecl());
     }
 
@@ -3306,7 +3305,6 @@ RValue CodeGenFunction::EmitCall(QualType CalleeType, llvm::Value *Callee,
   // See if this is a stencil call, if so add the implicit params.
   if (const FunctionDecl* FD = dyn_cast_or_null<const FunctionDecl>(TargetDecl)) {
     if (FD->isStencilSpecified()) {
-      llvm::errs() << "Stencil in EmitCall\n";
       QualType T = getContext().getPointerType(getContext().IntTy);
       // Add loop bounds to args, could get this out of the
       // mesh but it is easier this way.
