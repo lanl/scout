@@ -24,7 +24,8 @@ static const char *const RETVAL_PREFIX               = "retval:";
 static const char *const SLEEP_PREFIX                = "sleep:";
 static const char *const STDERR_PREFIX               = "stderr:";
 static const char *const SET_MESSAGE_PREFIX          = "set-message:";
-static const char *const GET_MESSAGE_ADDRESS_COMMAND = "get-message-address-hex:";
+static const char *const PRINT_MESSAGE_COMMAND       = "print-message:";
+static const char *const GET_DATA_ADDRESS_PREFIX     = "get-data-address-hex:";
 static const char *const GET_STACK_ADDRESS_COMMAND   = "get-stack-address-hex:";
 static const char *const GET_HEAP_ADDRESS_COMMAND    = "get-heap-address-hex:";
 
@@ -45,6 +46,9 @@ static jmp_buf g_jump_buffer;
 static bool g_is_segfaulting = false;
 
 static char g_message[256];
+
+static volatile char g_c1 = '0';
+static volatile char g_c2 = '1';
 
 static void
 print_thread_id ()
@@ -88,9 +92,12 @@ signal_handler (int signo)
 	switch (signo)
 	{
         case SIGSEGV:
-            // Fix up the pointer we're writing to.  This needs to happen if nothing intercepts the SIGSEGV
-            // (i.e. if somebody runs this from the command line).
-            longjmp(g_jump_buffer, 1);
+	        if (g_is_segfaulting)
+	        {
+	            // Fix up the pointer we're writing to.  This needs to happen if nothing intercepts the SIGSEGV
+	            // (i.e. if somebody runs this from the command line).
+	            longjmp(g_jump_buffer, 1);
+			}
             break;
         case SIGUSR1:
             if (g_is_segfaulting)
@@ -111,6 +118,16 @@ signal_handler (int signo)
 		fprintf(stderr, "failed to set signal handler: errno=%d\n", errno);
 		exit (1);
 	}
+}
+
+static void
+swap_chars ()
+{
+    g_c1 = '1';
+    g_c2 = '0';
+
+    g_c1 = '0';
+    g_c2 = '1';
 }
 
 static void
@@ -251,10 +268,25 @@ int main (int argc, char **argv)
 			g_message[sizeof (g_message) - 1] = '\0';
 
 		}
-        else if (std::strstr (argv[i], GET_MESSAGE_ADDRESS_COMMAND))
-        {
+		else if (std::strstr (argv[i], PRINT_MESSAGE_COMMAND))
+		{
 			pthread_mutex_lock (&g_print_mutex);
-            printf ("message address: %p\n", &g_message[0]);
+            printf ("message: %s\n", g_message);
+			pthread_mutex_unlock (&g_print_mutex);
+		}
+        else if (std::strstr (argv[i], GET_DATA_ADDRESS_PREFIX))
+        {
+            volatile void *data_p = nullptr;
+
+            if (std::strstr (argv[i] + strlen (GET_DATA_ADDRESS_PREFIX), "g_message"))
+                data_p = &g_message[0];
+            else if (std::strstr (argv[i] + strlen (GET_DATA_ADDRESS_PREFIX), "g_c1"))
+                data_p = &g_c1;
+            else if (std::strstr (argv[i] + strlen (GET_DATA_ADDRESS_PREFIX), "g_c2"))
+                data_p = &g_c2;
+
+			pthread_mutex_lock (&g_print_mutex);
+            printf ("data address: %p\n", data_p);
 			pthread_mutex_unlock (&g_print_mutex);
         }
         else if (std::strstr (argv[i], GET_HEAP_ADDRESS_COMMAND))
@@ -275,11 +307,12 @@ int main (int argc, char **argv)
         }
         else if (std::strstr (argv[i], GET_CODE_ADDRESS_PREFIX))
         {
-            // Defaut to providing the address of main.
             void (*func_p)() = nullptr;
 
             if (std::strstr (argv[i] + strlen (GET_CODE_ADDRESS_PREFIX), "hello"))
                 func_p = hello;
+            else if (std::strstr (argv[i] + strlen (GET_CODE_ADDRESS_PREFIX), "swap_chars"))
+                func_p = swap_chars;
 
 			pthread_mutex_lock (&g_print_mutex);
             printf ("code address: %p\n", func_p);
@@ -290,6 +323,8 @@ int main (int argc, char **argv)
             // Defaut to providing the address of main.
             if (std::strcmp (argv[i] + strlen (CALL_FUNCTION_PREFIX), "hello") == 0)
                 hello();
+            else if (std::strcmp (argv[i] + strlen (CALL_FUNCTION_PREFIX), "swap_chars") == 0)
+                swap_chars();
             else
             {
                 pthread_mutex_lock (&g_print_mutex);

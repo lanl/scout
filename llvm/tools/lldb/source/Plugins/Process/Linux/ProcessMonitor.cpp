@@ -122,18 +122,22 @@ static void PtraceDisplayBytes(int &req, void *data, size_t data_size)
                 verbose_log->Printf("PTRACE_POKEUSER %s", buf.GetData());
                 break;
             }
+#ifdef PT_SETREGS
         case PTRACE_SETREGS:
             {
                 DisplayBytes(buf, data, data_size);
                 verbose_log->Printf("PTRACE_SETREGS %s", buf.GetData());
                 break;
             }
+#endif
+#ifdef PT_SETFPREGS
         case PTRACE_SETFPREGS:
             {
                 DisplayBytes(buf, data, data_size);
                 verbose_log->Printf("PTRACE_SETFPREGS %s", buf.GetData());
                 break;
             }
+#endif
         case PTRACE_SETSIGINFO:
             {
                 DisplayBytes(buf, data, sizeof(siginfo_t));
@@ -564,10 +568,14 @@ private:
 void
 ReadGPROperation::Execute(ProcessMonitor *monitor)
 {
+#ifdef PT_GETREGS
     if (PTRACE(PTRACE_GETREGS, m_tid, NULL, m_buf, m_buf_size) < 0)
         m_result = false;
     else
         m_result = true;
+#else
+    m_result = false;
+#endif
 }
 
 //------------------------------------------------------------------------------
@@ -592,10 +600,14 @@ private:
 void
 ReadFPROperation::Execute(ProcessMonitor *monitor)
 {
+#ifdef PT_GETFPREGS
     if (PTRACE(PTRACE_GETFPREGS, m_tid, NULL, m_buf, m_buf_size) < 0)
         m_result = false;
     else
         m_result = true;
+#else
+    m_result = false;
+#endif
 }
 
 //------------------------------------------------------------------------------
@@ -649,10 +661,14 @@ private:
 void
 WriteGPROperation::Execute(ProcessMonitor *monitor)
 {
+#ifdef PT_SETREGS
     if (PTRACE(PTRACE_SETREGS, m_tid, NULL, m_buf, m_buf_size) < 0)
         m_result = false;
     else
         m_result = true;
+#else
+    m_result = false;
+#endif
 }
 
 //------------------------------------------------------------------------------
@@ -677,10 +693,14 @@ private:
 void
 WriteFPROperation::Execute(ProcessMonitor *monitor)
 {
+#ifdef PT_SETFPREGS
     if (PTRACE(PTRACE_SETFPREGS, m_tid, NULL, m_buf, m_buf_size) < 0)
         m_result = false;
     else
         m_result = true;
+#else
+    m_result = false;
+#endif
 }
 
 //------------------------------------------------------------------------------
@@ -744,6 +764,9 @@ ReadThreadPointerOperation::Execute(ProcessMonitor *monitor)
     const ArchSpec& arch = monitor->GetProcess().GetTarget().GetArchitecture();
     switch(arch.GetMachine())
     {
+#if defined(__i386__) || defined(__x86_64__)
+    // Note that struct user below has a field named i387 which is x86-specific.
+    // Therefore, this case should be compiled only for x86-based systems.
     case llvm::Triple::x86:
     {
         // Find the GS register location for our host architecture.
@@ -770,6 +793,7 @@ ReadThreadPointerOperation::Execute(ProcessMonitor *monitor)
         *m_addr = tmp[1];
         break;
     }
+#endif
     case llvm::Triple::x86_64:
         // Read the FS register base.
         m_result = (PTRACE(PTRACE_ARCH_PRCTL, m_tid, m_addr, (void *)ARCH_GET_FS, 0) == 0);
@@ -1204,8 +1228,12 @@ ProcessMonitor::Launch(LaunchArgs *args)
 
     // Wait for the child process to to trap on its call to execve.
     lldb::pid_t wpid;
+    ::pid_t raw_pid;
     int status;
-    if ((wpid = waitpid(pid, &status, 0)) < 0)
+
+    raw_pid = waitpid(pid, &status, 0);
+    wpid = static_cast <lldb::pid_t> (raw_pid);
+    if (raw_pid < 0)
     {
         args->m_error.SetErrorToErrno();
         goto FINISH;

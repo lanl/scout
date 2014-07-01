@@ -17,6 +17,7 @@
 #include <sstream>
 
 // Other libraries and framework includes
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Triple.h"
 #include "lldb/Interpreter/Args.h"
 #include "lldb/Core/ConnectionFileDescriptor.h"
@@ -75,6 +76,7 @@ GDBRemoteCommunicationClient::GDBRemoteCommunicationClient(bool is_platform) :
     m_supports_qXfer_libraries_read (eLazyBoolCalculate),
     m_supports_qXfer_libraries_svr4_read (eLazyBoolCalculate),
     m_supports_augmented_libraries_svr4_read (eLazyBoolCalculate),
+    m_supports_jThreadExtendedInfo (eLazyBoolCalculate),
     m_supports_qProcessInfoPID (true),
     m_supports_qfProcessInfo (true),
     m_supports_qUserName (true),
@@ -493,6 +495,24 @@ GDBRemoteCommunicationClient::GetpPacketSupported (lldb::tid_t tid)
         }
     }
     return m_supports_p;
+}
+
+bool
+GDBRemoteCommunicationClient::GetThreadExtendedInfoSupported ()
+{
+    if (m_supports_jThreadExtendedInfo == eLazyBoolCalculate)
+    {
+        StringExtractorGDBRemote response;
+        m_supports_jThreadExtendedInfo = eLazyBoolNo;
+        if (SendPacketAndWaitForResponse("jThreadExtendedInfo:", response, false) == PacketResult::Success)
+        {
+            if (response.IsOKResponse())
+            {
+                m_supports_jThreadExtendedInfo = eLazyBoolYes;
+            }
+        }
+    }
+    return m_supports_jThreadExtendedInfo;
 }
 
 bool
@@ -1566,6 +1586,8 @@ GDBRemoteCommunicationClient::GetGDBServerProgramVersion()
 bool
 GDBRemoteCommunicationClient::GetHostInfo (bool force)
 {
+    Log *log (ProcessGDBRemoteLog::GetLogIfAnyCategoryIsSet (GDBR_LOG_PROCESS));
+
     if (force || m_qHostInfo_is_valid == eLazyBoolCalculate)
     {
         m_qHostInfo_is_valid = eLazyBoolNo;
@@ -1799,6 +1821,9 @@ GDBRemoteCommunicationClient::GetHostInfo (bool force)
                     {
                         assert (byte_order == m_host_arch.GetByteOrder());
                     }
+
+                    if (log)
+                        log->Printf ("GDBRemoteCommunicationClient::%s parsed host architecture as %s, triple as %s from triple text %s", __FUNCTION__, m_host_arch.GetArchitectureName () ? m_host_arch.GetArchitectureName () : "<null-arch-name>", m_host_arch.GetTriple ().getTriple ().c_str(), triple.c_str ());
                 }
                 if (!distribution_id.empty ())
                     m_host_arch.SetDistributionId (distribution_id.c_str ());
@@ -1862,7 +1887,9 @@ GDBRemoteCommunicationClient::AllocateMemory (size_t size, uint32_t permissions)
         StringExtractorGDBRemote response;
         if (SendPacketAndWaitForResponse (packet, packet_len, response, false) == PacketResult::Success)
         {
-            if (!response.IsErrorResponse())
+            if (response.IsUnsupportedResponse())
+                m_supports_alloc_dealloc_memory = eLazyBoolNo;
+            else if (!response.IsErrorResponse())
                 return response.GetHexMaxU64(false, LLDB_INVALID_ADDRESS);
         }
         else
@@ -1885,7 +1912,9 @@ GDBRemoteCommunicationClient::DeallocateMemory (addr_t addr)
         StringExtractorGDBRemote response;
         if (SendPacketAndWaitForResponse (packet, packet_len, response, false) == PacketResult::Success)
         {
-            if (response.IsOKResponse())
+            if (response.IsUnsupportedResponse())
+                m_supports_alloc_dealloc_memory = eLazyBoolNo;
+            else if (response.IsOKResponse())
                 return true;
         }
         else
@@ -2233,6 +2262,25 @@ GDBRemoteCommunicationClient::SetDisableASLR (bool enable)
     return -1;
 }
 
+int
+GDBRemoteCommunicationClient::SetDetachOnError (bool enable)
+{
+    char packet[32];
+    const int packet_len = ::snprintf (packet, sizeof (packet), "QSetDetachOnError:%i", enable ? 1 : 0);
+    assert (packet_len < (int)sizeof(packet));
+    StringExtractorGDBRemote response;
+    if (SendPacketAndWaitForResponse (packet, packet_len, response, false) == PacketResult::Success)
+    {
+        if (response.IsOKResponse())
+            return 0;
+        uint8_t error = response.GetError();
+        if (error)
+            return error;
+    }
+    return -1;
+}
+
+
 bool
 GDBRemoteCommunicationClient::DecodeProcessInfoResponse (StringExtractorGDBRemote &response, ProcessInstanceInfo &process_info)
 {
@@ -2374,7 +2422,6 @@ GDBRemoteCommunicationClient::GetCurrentProcessInfo ()
             std::string triple;
             uint32_t pointer_byte_size = 0;
             StringExtractor extractor;
-            ByteOrder byte_order = eByteOrderInvalid;
             uint32_t num_keys_decoded = 0;
             lldb::pid_t pid = LLDB_INVALID_PROCESS_ID;
             while (response.GetNameColonValue(name, value))
@@ -2403,15 +2450,10 @@ GDBRemoteCommunicationClient::GetCurrentProcessInfo ()
                 }
                 else if (name.compare("endian") == 0)
                 {
-                    ++num_keys_decoded;
-                    if (value.compare("little") == 0)
-                        byte_order = eByteOrderLittle;
-                    else if (value.compare("big") == 0)
-                        byte_order = eByteOrderBig;
-                    else if (value.compare("pdp") == 0)
-                        byte_order = eByteOrderPDP;
-                    else
-                        --num_keys_decoded;
+                    if (value.compare("little") == 0 ||
+                        value.compare("big") == 0 ||
+                        value.compare("pdp") == 0)
+                        ++num_keys_decoded;
                 }
                 else if (name.compare("ptrsize") == 0)
                 {
@@ -2624,8 +2666,8 @@ GDBRemoteCommunicationClient::TestPacketSpeed (const uint32_t num_packets)
     {
         static uint32_t g_send_sizes[] = { 0, 64, 128, 512, 1024 };
         static uint32_t g_recv_sizes[] = { 0, 64, 128, 512, 1024 }; //, 4*1024, 8*1024, 16*1024, 32*1024, 48*1024, 64*1024, 96*1024, 128*1024 };
-        const size_t k_num_send_sizes = sizeof(g_send_sizes)/sizeof(uint32_t);
-        const size_t k_num_recv_sizes = sizeof(g_recv_sizes)/sizeof(uint32_t);
+        const size_t k_num_send_sizes = llvm::array_lengthof(g_send_sizes);
+        const size_t k_num_recv_sizes = llvm::array_lengthof(g_recv_sizes);
         const uint64_t k_recv_amount = 4*1024*1024; // Receive 4MB
         for (uint32_t send_idx = 0; send_idx < k_num_send_sizes; ++send_idx)
         {

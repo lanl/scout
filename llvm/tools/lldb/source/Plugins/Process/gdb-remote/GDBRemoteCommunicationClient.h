@@ -205,13 +205,25 @@ public:
     /// be launched with the 'A' packet.
     ///
     /// @param[in] enable
-    ///     A boolean value indicating wether to disable ASLR or not.
+    ///     A boolean value indicating whether to disable ASLR or not.
     ///
     /// @return
     ///     Zero if the for success, or an error code for failure.
     //------------------------------------------------------------------
     int
     SetDisableASLR (bool enable);
+    
+    //------------------------------------------------------------------
+    /// Sets the DetachOnError flag to \a enable for the process controlled by the stub.
+    ///
+    /// @param[in] enable
+    ///     A boolean value indicating whether to detach on error or not.
+    ///
+    /// @return
+    ///     Zero if the for success, or an error code for failure.
+    //------------------------------------------------------------------
+    int
+    SetDetachOnError (bool enable);
 
     //------------------------------------------------------------------
     /// Sets the working directory to \a path for a process that will 
@@ -511,6 +523,9 @@ public:
     bool
     AvoidGPackets(ProcessGDBRemote *process);
 
+    bool
+    GetThreadExtendedInfoSupported();
+
 protected:
 
     PacketResult
@@ -555,6 +570,7 @@ protected:
     lldb_private::LazyBool m_supports_qXfer_libraries_read;
     lldb_private::LazyBool m_supports_qXfer_libraries_svr4_read;
     lldb_private::LazyBool m_supports_augmented_libraries_svr4_read;
+    lldb_private::LazyBool m_supports_jThreadExtendedInfo;
 
     bool
         m_supports_qProcessInfoPID:1,

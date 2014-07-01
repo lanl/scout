@@ -15,6 +15,7 @@
 
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/Type.h"
+#include "llvm/ADT/StringRef.h"
 
 #include "lldb/lldb-private.h"
 #include "lldb/Core/ConnectionFileDescriptor.h"
@@ -26,6 +27,7 @@
 #include "lldb/Core/StreamCallback.h"
 #include "lldb/Core/StreamFile.h"
 #include "lldb/Core/StreamString.h"
+#include "lldb/Core/StructuredData.h"
 #include "lldb/Core/Timer.h"
 #include "lldb/Core/ValueObject.h"
 #include "lldb/Core/ValueObjectVariable.h"
@@ -73,7 +75,7 @@ static DebuggerList &
 GetDebuggerList()
 {
     // hide the static debugger list inside a singleton accessor to avoid
-    // global init contructors
+    // global init constructors
     static DebuggerList g_list;
     return g_list;
 }
@@ -105,6 +107,8 @@ g_language_enumerators[] =
     FILE_AND_LINE\
     "{, name = '${thread.name}'}"\
     "{, queue = '${thread.queue}'}"\
+    "{, activity = '${thread.info.activity.name}'}" \
+    "{, ${thread.info.trace_messages} messages}" \
     "{, stop reason = ${thread.stop-reason}}"\
     "{\\nReturn value: ${thread.return-value}}"\
     "\\n"
@@ -471,7 +475,7 @@ LoadPluginCallback
     {
         // Try and recurse into anything that a directory or symbolic link.
         // We must also do this for unknown as sometimes the directory enumeration
-        // might be enurating a file system that doesn't have correct file type
+        // might be enumerating a file system that doesn't have correct file type
         // information.
         return FileSpec::eEnumerateDirectoryResultEnter;
     }
@@ -898,9 +902,29 @@ Debugger::RunIOHandler (const IOHandlerSP& reader_sp)
 {
     Mutex::Locker locker (m_input_reader_stack.GetMutex());
     PushIOHandler (reader_sp);
-    reader_sp->Activate();
-    reader_sp->Run();
-    PopIOHandler (reader_sp);
+    
+    IOHandlerSP top_reader_sp = reader_sp;
+    while (top_reader_sp)
+    {
+        top_reader_sp->Activate();
+        top_reader_sp->Run();
+        top_reader_sp->Deactivate();
+        
+        if (top_reader_sp.get() == reader_sp.get())
+        {
+            if (PopIOHandler (reader_sp))
+                break;
+        }
+        
+        while (1)
+        {
+            top_reader_sp = m_input_reader_stack.Top();
+            if (top_reader_sp && top_reader_sp->GetIsDone())
+                m_input_reader_stack.Pop();
+            else
+                break;
+        }
+    }
 }
 
 void
@@ -983,7 +1007,7 @@ Debugger::PopIOHandler (const IOHandlerSP& pop_reader_sp)
     Mutex::Locker locker (m_input_reader_stack.GetMutex());
 
     // The reader on the stop of the stack is done, so let the next
-    // read on the stack referesh its prompt and if there is one...
+    // read on the stack refresh its prompt and if there is one...
     if (!m_input_reader_stack.IsEmpty())
     {
         IOHandlerSP reader_sp(m_input_reader_stack.Top());
@@ -1429,6 +1453,96 @@ IsTokenWithFormat(const char *var_name_begin, const char *var, std::string &form
     }
     return false;
 }
+
+// Find information for the "thread.info.*" specifiers in a format string
+static bool
+FormatThreadExtendedInfoRecurse
+(
+    const char *var_name_begin,
+    StructuredData::ObjectSP thread_info_dictionary,
+    const SymbolContext *sc,
+    const ExecutionContext *exe_ctx,
+    Stream &s
+)
+{
+    bool var_success = false;
+    std::string token_format;
+
+    llvm::StringRef var_name(var_name_begin);
+    size_t percent_idx = var_name.find('%');
+    size_t close_curly_idx = var_name.find('}');
+    llvm::StringRef path = var_name;
+    llvm::StringRef formatter = var_name;
+
+    // 'path' will be the dot separated list of objects to transverse up until we hit
+    // a close curly brace, a percent sign, or an end of string.
+    if (percent_idx != llvm::StringRef::npos || close_curly_idx != llvm::StringRef::npos)
+    {
+        if (percent_idx != llvm::StringRef::npos && close_curly_idx != llvm::StringRef::npos)
+        {
+            if (percent_idx < close_curly_idx)
+            {
+                path = var_name.slice(0, percent_idx);
+                formatter = var_name.substr (percent_idx);
+            }
+            else
+            {
+                path = var_name.slice(0, close_curly_idx);
+                formatter = var_name.substr (close_curly_idx);
+            }
+        }
+        else if (percent_idx != llvm::StringRef::npos)
+        {
+            path = var_name.slice(0, percent_idx);
+            formatter = var_name.substr (percent_idx);
+        }
+        else if (close_curly_idx != llvm::StringRef::npos)
+        {
+            path = var_name.slice(0, close_curly_idx);
+            formatter = var_name.substr (close_curly_idx);
+        }
+    }
+
+    StructuredData::ObjectSP value = thread_info_dictionary->GetObjectForDotSeparatedPath (path);
+
+    if (value.get())
+    {
+        if (value->GetType() == StructuredData::Type::eTypeInteger)
+        {
+            if (IsTokenWithFormat (formatter.str().c_str(), "", token_format, "0x%4.4" PRIx64, exe_ctx, sc))
+            {
+                s.Printf(token_format.c_str(), value->GetAsInteger()->GetValue());
+                var_success = true;
+            }
+        }
+        else if (value->GetType() == StructuredData::Type::eTypeFloat)
+        {
+            s.Printf ("%f", value->GetAsFloat()->GetValue());
+            var_success = true;
+        }
+        else if (value->GetType() == StructuredData::Type::eTypeString)
+        {
+            s.Printf("%s", value->GetAsString()->GetValue().c_str());
+            var_success = true;
+        }
+        else if (value->GetType() == StructuredData::Type::eTypeArray)
+        {
+            if (value->GetAsArray()->GetSize() > 0)
+            {
+                s.Printf ("%zu", value->GetAsArray()->GetSize());
+                var_success = true;
+            }
+        }
+        else if (value->GetType() == StructuredData::Type::eTypeDictionary)
+        {
+            s.Printf ("%zu", value->GetAsDictionary()->GetKeys()->GetAsArray()->GetSize());
+            var_success = true;
+        }
+    }
+
+    return var_success;
+}
+
 
 static bool
 FormatPromptRecurse
@@ -1968,6 +2082,15 @@ FormatPromptRecurse
                                             ScriptInterpreter* script_interpreter = thread->GetProcess()->GetTarget().GetDebugger().GetCommandInterpreter().GetScriptInterpreter();
                                             if (RunScriptFormatKeyword (s, script_interpreter, thread, script_name))
                                                 var_success = true;
+                                        }
+                                        else if (IsToken (var_name_begin, "info."))
+                                        {
+                                            var_name_begin += ::strlen("info.");
+                                            StructuredData::ObjectSP object_sp = thread->GetExtendedInfo();
+                                            if (object_sp && object_sp->GetType() == StructuredData::Type::eTypeDictionary)
+                                            {
+                                                var_success = FormatThreadExtendedInfoRecurse (var_name_begin, object_sp, sc, exe_ctx, s);
+                                            }
                                         }
                                     }
                                 }
