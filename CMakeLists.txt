@@ -234,7 +234,7 @@ option(LLVM_USE_OPROFILE
 # If enabled, verify we are on a platform that supports oprofile.
 if( LLVM_USE_OPROFILE )
   if( NOT CMAKE_SYSTEM_NAME MATCHES "Linux" )
-    message(FATAL_ERROR "OProfile support is available on Linux only.") 
+    message(FATAL_ERROR "OProfile support is available on Linux only.")
   endif( NOT CMAKE_SYSTEM_NAME MATCHES "Linux" )
 endif( LLVM_USE_OPROFILE )
 
@@ -499,7 +499,6 @@ add_subdirectory(lib)
 
 if( LLVM_INCLUDE_UTILS )
   add_subdirectory(utils/FileCheck)
-  add_subdirectory(utils/FileUpdate)
   add_subdirectory(utils/PerfectShuffle)
   add_subdirectory(utils/count)
   add_subdirectory(utils/not)
@@ -583,6 +582,7 @@ if (NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
     PATTERN "*.inc"
     # Exclude include/llvm/CMakeFiles/intrinsics_gen.dir, matched by "*.def"
     PATTERN "CMakeFiles" EXCLUDE
+    PATTERN "config.h" EXCLUDE
     PATTERN ".svn" EXCLUDE
     )
 endif()

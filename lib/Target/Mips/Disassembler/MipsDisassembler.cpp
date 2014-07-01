@@ -57,14 +57,22 @@ class MipsDisassembler : public MipsDisassemblerBase {
 public:
   /// Constructor     - Initializes the disassembler.
   ///
-  MipsDisassembler(const MCSubtargetInfo &STI, MCContext &Ctx,
-                   bool bigEndian) :
-    MipsDisassemblerBase(STI, Ctx, bigEndian) {
-      IsMicroMips = STI.getFeatureBits() & Mips::FeatureMicroMips;
-    }
+  MipsDisassembler(const MCSubtargetInfo &STI, MCContext &Ctx, bool bigEndian)
+      : MipsDisassemblerBase(STI, Ctx, bigEndian) {
+    IsMicroMips = STI.getFeatureBits() & Mips::FeatureMicroMips;
+  }
 
-  bool isMips32r6() const {
+  bool hasMips3() const { return STI.getFeatureBits() & Mips::FeatureMips3; }
+  bool hasMips32() const { return STI.getFeatureBits() & Mips::FeatureMips32; }
+  bool hasMips32r6() const {
     return STI.getFeatureBits() & Mips::FeatureMips32r6;
+  }
+
+  bool isGP64() const { return STI.getFeatureBits() & Mips::FeatureGP64Bit; }
+
+  bool hasCOP3() const {
+    // Only present in MIPS-I and MIPS-II
+    return !hasMips32() && !hasMips3();
   }
 
   /// getInstruction - See MCDisassembler.
@@ -148,6 +156,10 @@ static DecodeStatus DecodeFCCRegisterClass(MCInst &Inst,
                                            unsigned RegNo,
                                            uint64_t Address,
                                            const void *Decoder);
+
+static DecodeStatus DecodeFGRCCRegisterClass(MCInst &Inst, unsigned RegNo,
+                                             uint64_t Address,
+                                             const void *Decoder);
 
 static DecodeStatus DecodeHWRegsRegisterClass(MCInst &Inst,
                                               unsigned Insn,
@@ -260,6 +272,11 @@ static DecodeStatus DecodeFMem(MCInst &Inst, unsigned Insn,
                                uint64_t Address,
                                const void *Decoder);
 
+static DecodeStatus DecodeSpecial3LlSc(MCInst &Inst,
+                                       unsigned Insn,
+                                       uint64_t Address,
+                                       const void *Decoder);
+
 static DecodeStatus DecodeSimm16(MCInst &Inst,
                                  unsigned Insn,
                                  uint64_t Address,
@@ -318,6 +335,11 @@ template <typename InsnType>
 static DecodeStatus
 DecodeBgtzGroupBranch(MCInst &MI, InsnType insn, uint64_t Address,
                       const void *Decoder);
+
+template <typename InsnType>
+static DecodeStatus
+DecodeBlezGroupBranch(MCInst &MI, InsnType insn, uint64_t Address,
+                       const void *Decoder);
 
 namespace llvm {
 extern Target TheMipselTarget, TheMipsTarget, TheMips64Target,
@@ -514,6 +536,7 @@ static DecodeStatus DecodeBlezlGroupBranch(MCInst &MI, InsnType insn,
   InsnType Rs = fieldFromInstruction(insn, 21, 5);
   InsnType Rt = fieldFromInstruction(insn, 16, 5);
   InsnType Imm = SignExtend64(fieldFromInstruction(insn, 0, 16), 16) << 2;
+  bool HasRs = false;
 
   if (Rt == 0)
     return MCDisassembler::Fail;
@@ -521,8 +544,14 @@ static DecodeStatus DecodeBlezlGroupBranch(MCInst &MI, InsnType insn,
     MI.setOpcode(Mips::BLEZC);
   else if (Rs == Rt)
     MI.setOpcode(Mips::BGEZC);
-  else
-    return MCDisassembler::Fail; // FIXME: BGEC is not implemented yet.
+  else {
+    HasRs = true;
+    MI.setOpcode(Mips::BGEC);
+  }
+
+  if (HasRs)
+    MI.addOperand(MCOperand::CreateReg(getReg(Decoder, Mips::GPR32RegClassID,
+                                       Rs)));
 
   MI.addOperand(MCOperand::CreateReg(getReg(Decoder, Mips::GPR32RegClassID,
                                      Rt)));
@@ -547,6 +576,8 @@ static DecodeStatus DecodeBgtzlGroupBranch(MCInst &MI, InsnType insn,
   //      BLTZC   if rs == rt && rt != 0
   //      BLTC    if rs != rt && rs != 0  && rt != 0
 
+  bool HasRs = false;
+
   InsnType Rs = fieldFromInstruction(insn, 21, 5);
   InsnType Rt = fieldFromInstruction(insn, 16, 5);
   InsnType Imm = SignExtend64(fieldFromInstruction(insn, 0, 16), 16) << 2;
@@ -557,8 +588,14 @@ static DecodeStatus DecodeBgtzlGroupBranch(MCInst &MI, InsnType insn,
     MI.setOpcode(Mips::BGTZC);
   else if (Rs == Rt)
     MI.setOpcode(Mips::BLTZC);
-  else
-    return MCDisassembler::Fail; // FIXME: BLTC is not implemented yet.
+  else {
+    MI.setOpcode(Mips::BLTC);
+    HasRs = true;
+  }
+
+  if (HasRs)
+    MI.addOperand(MCOperand::CreateReg(getReg(Decoder, Mips::GPR32RegClassID,
+                                              Rs)));
 
   MI.addOperand(MCOperand::CreateReg(getReg(Decoder, Mips::GPR32RegClassID,
                                      Rt)));
@@ -598,8 +635,11 @@ static DecodeStatus DecodeBgtzGroupBranch(MCInst &MI, InsnType insn,
   } else if (Rs == Rt) {
     MI.setOpcode(Mips::BLTZALC);
     HasRs = true;
-  } else
-    return MCDisassembler::Fail; // BLTUC not implemented yet
+  } else {
+    MI.setOpcode(Mips::BLTUC);
+    HasRs = true;
+    HasRt = true;
+  }
 
   if (HasRs)
     MI.addOperand(MCOperand::CreateReg(getReg(Decoder, Mips::GPR32RegClassID,
@@ -608,6 +648,48 @@ static DecodeStatus DecodeBgtzGroupBranch(MCInst &MI, InsnType insn,
   if (HasRt)
     MI.addOperand(MCOperand::CreateReg(getReg(Decoder, Mips::GPR32RegClassID,
                                        Rt)));
+
+  MI.addOperand(MCOperand::CreateImm(Imm));
+
+  return MCDisassembler::Success;
+}
+
+template <typename InsnType>
+static DecodeStatus DecodeBlezGroupBranch(MCInst &MI, InsnType insn,
+                                           uint64_t Address,
+                                           const void *Decoder) {
+  // If we are called then we can assume that MIPS32r6/MIPS64r6 is enabled
+  // (otherwise we would have matched the BLEZL instruction from the earlier
+  // ISA's instead).
+  //
+  // We have:
+  //    0b000110 sssss ttttt iiiiiiiiiiiiiiii
+  //      Invalid   if rs == 0
+  //      BLEZALC   if rs == 0  && rt != 0
+  //      BGEZALC   if rs == rt && rt != 0
+  //      BGEUC     if rs != rt && rs != 0  && rt != 0
+
+  InsnType Rs = fieldFromInstruction(insn, 21, 5);
+  InsnType Rt = fieldFromInstruction(insn, 16, 5);
+  InsnType Imm = SignExtend64(fieldFromInstruction(insn, 0, 16), 16) << 2;
+  bool HasRs = false;
+
+  if (Rt == 0)
+    return MCDisassembler::Fail;
+  else if (Rs == 0)
+    MI.setOpcode(Mips::BLEZALC);
+  else if (Rs == Rt)
+    MI.setOpcode(Mips::BGEZALC);
+  else {
+    HasRs = true;
+    MI.setOpcode(Mips::BGEUC);
+  }
+
+  if (HasRs)
+    MI.addOperand(MCOperand::CreateReg(getReg(Decoder, Mips::GPR32RegClassID,
+                                       Rs)));
+  MI.addOperand(MCOperand::CreateReg(getReg(Decoder, Mips::GPR32RegClassID,
+                                     Rt)));
 
   MI.addOperand(MCOperand::CreateImm(Imm));
 
@@ -673,6 +755,7 @@ MipsDisassembler::getInstruction(MCInst &instr,
     return MCDisassembler::Fail;
 
   if (IsMicroMips) {
+    DEBUG(dbgs() << "Trying MicroMips32 table (32-bit opcodes):\n");
     // Calling the auto-generated decoder function.
     Result = decodeInstruction(DecoderTableMicroMips32, instr, Insn, Address,
                                this, STI);
@@ -683,7 +766,28 @@ MipsDisassembler::getInstruction(MCInst &instr,
     return MCDisassembler::Fail;
   }
 
-  if (isMips32r6()) {
+  if (hasCOP3()) {
+    DEBUG(dbgs() << "Trying COP3_ table (32-bit opcodes):\n");
+    Result =
+        decodeInstruction(DecoderTableCOP3_32, instr, Insn, Address, this, STI);
+    if (Result != MCDisassembler::Fail) {
+      Size = 4;
+      return Result;
+    }
+  }
+
+  if (hasMips32r6() && isGP64()) {
+    DEBUG(dbgs() << "Trying Mips32r6_64r6 (GPR64) table (32-bit opcodes):\n");
+    Result = decodeInstruction(DecoderTableMips32r6_64r6_GP6432, instr, Insn,
+                               Address, this, STI);
+    if (Result != MCDisassembler::Fail) {
+      Size = 4;
+      return Result;
+    }
+  }
+
+  if (hasMips32r6()) {
+    DEBUG(dbgs() << "Trying Mips32r6_64r6 table (32-bit opcodes):\n");
     Result = decodeInstruction(DecoderTableMips32r6_64r632, instr, Insn,
                                Address, this, STI);
     if (Result != MCDisassembler::Fail) {
@@ -692,6 +796,7 @@ MipsDisassembler::getInstruction(MCInst &instr,
     }
   }
 
+  DEBUG(dbgs() << "Trying Mips table (32-bit opcodes):\n");
   // Calling the auto-generated decoder function.
   Result = decodeInstruction(DecoderTableMips32, instr, Insn, Address,
                              this, STI);
@@ -843,6 +948,17 @@ static DecodeStatus DecodeFCCRegisterClass(MCInst &Inst,
   return MCDisassembler::Success;
 }
 
+static DecodeStatus DecodeFGRCCRegisterClass(MCInst &Inst, unsigned RegNo,
+                                             uint64_t Address,
+                                             const void *Decoder) {
+  if (RegNo > 31)
+    return MCDisassembler::Fail;
+
+  unsigned Reg = getReg(Decoder, Mips::FGRCCRegClassID, RegNo);
+  Inst.addOperand(MCOperand::CreateReg(Reg));
+  return MCDisassembler::Success;
+}
+
 static DecodeStatus DecodeMem(MCInst &Inst,
                               unsigned Insn,
                               uint64_t Address,
@@ -968,6 +1084,27 @@ static DecodeStatus DecodeFMem(MCInst &Inst,
   return MCDisassembler::Success;
 }
 
+static DecodeStatus DecodeSpecial3LlSc(MCInst &Inst,
+                                       unsigned Insn,
+                                       uint64_t Address,
+                                       const void *Decoder) {
+  int64_t Offset = SignExtend64<9>((Insn >> 7) & 0x1ff);
+  unsigned Rt = fieldFromInstruction(Insn, 16, 5);
+  unsigned Base = fieldFromInstruction(Insn, 21, 5);
+
+  Rt = getReg(Decoder, Mips::GPR32RegClassID, Rt);
+  Base = getReg(Decoder, Mips::GPR32RegClassID, Base);
+
+  if(Inst.getOpcode() == Mips::SC_R6 || Inst.getOpcode() == Mips::SCD_R6){
+    Inst.addOperand(MCOperand::CreateReg(Rt));
+  }
+
+  Inst.addOperand(MCOperand::CreateReg(Rt));
+  Inst.addOperand(MCOperand::CreateReg(Base));
+  Inst.addOperand(MCOperand::CreateImm(Offset));
+
+  return MCDisassembler::Success;
+}
 
 static DecodeStatus DecodeHWRegsRegisterClass(MCInst &Inst,
                                               unsigned RegNo,

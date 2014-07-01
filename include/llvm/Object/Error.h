@@ -14,12 +14,12 @@
 #ifndef LLVM_OBJECT_ERROR_H
 #define LLVM_OBJECT_ERROR_H
 
-#include "llvm/Support/system_error.h"
+#include <system_error>
 
 namespace llvm {
 namespace object {
 
-const error_category &object_category();
+const std::error_category &object_category();
 
 enum class object_error {
   success = 0,
@@ -29,14 +29,17 @@ enum class object_error {
   unexpected_eof
 };
 
-inline error_code make_error_code(object_error e) {
-  return error_code(static_cast<int>(e), object_category());
+inline std::error_code make_error_code(object_error e) {
+  return std::error_code(static_cast<int>(e), object_category());
 }
 
 } // end namespace object.
 
-template <> struct is_error_code_enum<object::object_error> : std::true_type {};
-
 } // end namespace llvm.
+
+namespace std {
+template <>
+struct is_error_code_enum<llvm::object::object_error> : std::true_type {};
+}
 
 #endif

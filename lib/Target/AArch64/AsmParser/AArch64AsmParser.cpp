@@ -43,6 +43,11 @@ private:
   MCSubtargetInfo &STI;
   MCAsmParser &Parser;
 
+  AArch64TargetStreamer &getTargetStreamer() {
+    MCTargetStreamer &TS = *getParser().getStreamer().getTargetStreamer();
+    return static_cast<AArch64TargetStreamer &>(TS);
+  }
+
   MCAsmParser &getParser() const { return Parser; }
   MCAsmLexer &getLexer() const { return Parser.getLexer(); }
 
@@ -67,6 +72,7 @@ private:
   bool parseDirectiveTLSDescCall(SMLoc L);
 
   bool parseDirectiveLOH(StringRef LOH, SMLoc L);
+  bool parseDirectiveLtorg(SMLoc L);
 
   bool validateInstruction(MCInst &Inst, SmallVectorImpl<SMLoc> &Loc);
   bool MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
@@ -105,6 +111,8 @@ public:
                  const MCTargetOptions &Options)
       : MCTargetAsmParser(), STI(_STI), Parser(_Parser) {
     MCAsmParserExtension::Initialize(_Parser);
+    if (Parser.getStreamer().getTargetStreamer() == nullptr)
+      new AArch64TargetStreamer(Parser.getStreamer());
 
     // Initialize the set of available features.
     setAvailableFeatures(ComputeAvailableFeatures(STI.getFeatureBits()));
@@ -2184,8 +2192,11 @@ bool AArch64AsmParser::parseCondCode(OperandVector &Operands,
     return TokError("invalid condition code");
   Parser.Lex(); // Eat identifier token.
 
-  if (invertCondCode)
+  if (invertCondCode) {
+    if (CC == AArch64CC::AL || CC == AArch64CC::NV)
+      return TokError("condition codes AL and NV are invalid for this instruction");
     CC = AArch64CC::getInvertedCondCode(AArch64CC::CondCode(CC));
+  }
 
   Operands.push_back(
       AArch64Operand::CreateCondCode(CC, S, getLoc(), getContext()));
@@ -3001,6 +3012,43 @@ bool AArch64AsmParser::parseOperand(OperandVector &Operands, bool isCondCode,
     Operands.push_back(AArch64Operand::CreateImm(ImmVal, S, E, getContext()));
     return false;
   }
+  case AsmToken::Equal: {
+    SMLoc Loc = Parser.getTok().getLoc();
+    if (Mnemonic != "ldr") // only parse for ldr pseudo (e.g. ldr r0, =val)
+      return Error(Loc, "unexpected token in operand");
+    Parser.Lex(); // Eat '='
+    const MCExpr *SubExprVal;
+    if (getParser().parseExpression(SubExprVal))
+      return true;
+
+    MCContext& Ctx = getContext();
+    E = SMLoc::getFromPointer(Loc.getPointer() - 1);
+    // If the op is an imm and can be fit into a mov, then replace ldr with mov.
+    if (isa<MCConstantExpr>(SubExprVal) && Operands.size() >= 2 &&
+        static_cast<AArch64Operand &>(*Operands[1]).isReg()) {
+      bool IsXReg =  AArch64MCRegisterClasses[AArch64::GPR64allRegClassID].contains(
+            Operands[1]->getReg());
+      uint64_t Imm = (cast<MCConstantExpr>(SubExprVal))->getValue();
+      uint32_t ShiftAmt = 0, MaxShiftAmt = IsXReg ? 48 : 16;
+      while(Imm > 0xFFFF && countTrailingZeros(Imm) >= 16) {
+        ShiftAmt += 16;
+        Imm >>= 16;
+      }
+      if (ShiftAmt <= MaxShiftAmt && Imm <= 0xFFFF) {
+          Operands[0] = AArch64Operand::CreateToken("movz", false, Loc, Ctx);
+          Operands.push_back(AArch64Operand::CreateImm(
+                     MCConstantExpr::Create(Imm, Ctx), S, E, Ctx));
+        if (ShiftAmt)
+          Operands.push_back(AArch64Operand::CreateShiftExtend(AArch64_AM::LSL,
+                     ShiftAmt, true, S, E, Ctx));
+        return false;
+      }
+    }
+    // If it is a label or an imm that cannot fit in a movz, put it into CP.
+    const MCExpr *CPLoc = getTargetStreamer().addConstantPoolEntry(SubExprVal);
+    Operands.push_back(AArch64Operand::CreateImm(CPLoc, S, E, Ctx));
+    return false;
+  }
   }
 }
 
@@ -3444,8 +3492,7 @@ bool AArch64AsmParser::showMatchError(SMLoc Loc, unsigned ErrCode) {
   case Match_MnemonicFail:
     return Error(Loc, "unrecognized instruction mnemonic");
   default:
-    assert(0 && "unexpected error code!");
-    return Error(Loc, "invalid instruction format");
+    llvm_unreachable("unexpected error code!");
   }
 }
 
@@ -3808,7 +3855,8 @@ bool AArch64AsmParser::ParseDirective(AsmToken DirectiveID) {
     return parseDirectiveWord(8, Loc);
   if (IDVal == ".tlsdesccall")
     return parseDirectiveTLSDescCall(Loc);
-
+  if (IDVal == ".ltorg" || IDVal == ".pool")
+    return parseDirectiveLtorg(Loc);
   return parseDirectiveLOH(IDVal, Loc);
 }
 
@@ -3906,6 +3954,13 @@ bool AArch64AsmParser::parseDirectiveLOH(StringRef IDVal, SMLoc Loc) {
     return TokError("unexpected token in '" + Twine(IDVal) + "' directive");
 
   getStreamer().EmitLOHDirective((MCLOHType)Kind, Args);
+  return false;
+}
+
+/// parseDirectiveLtorg
+///  ::= .ltorg | .pool
+bool AArch64AsmParser::parseDirectiveLtorg(SMLoc L) {
+  getTargetStreamer().emitCurrentConstantPool();
   return false;
 }
 

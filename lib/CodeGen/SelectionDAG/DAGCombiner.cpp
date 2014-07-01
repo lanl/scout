@@ -4567,12 +4567,9 @@ SDValue DAGCombiner::visitSELECT(SDNode *N) {
 
   // fold selects based on a setcc into other things, such as min/max/abs
   if (N0.getOpcode() == ISD::SETCC) {
-    // FIXME:
-    // Check against MVT::Other for SELECT_CC, which is a workaround for targets
-    // having to say they don't support SELECT_CC on every type the DAG knows
-    // about, since there is no way to mark an opcode illegal at all value types
-    if (TLI.isOperationLegalOrCustom(ISD::SELECT_CC, MVT::Other) &&
-        TLI.isOperationLegalOrCustom(ISD::SELECT_CC, VT))
+    if ((!LegalOperations &&
+         TLI.isOperationLegalOrCustom(ISD::SELECT_CC, VT)) ||
+	TLI.isOperationLegal(ISD::SELECT_CC, VT))
       return DAG.getNode(ISD::SELECT_CC, SDLoc(N), VT,
                          N0.getOperand(0), N0.getOperand(1),
                          N1, N2, N0.getOperand(2));
@@ -7028,11 +7025,7 @@ SDValue DAGCombiner::visitSINT_TO_FP(SDNode *N) {
   }
 
   // The next optimizations are desirable only if SELECT_CC can be lowered.
-  // Check against MVT::Other for SELECT_CC, which is a workaround for targets
-  // having to say they don't support SELECT_CC on every type the DAG knows
-  // about, since there is no way to mark an opcode illegal at all value types
-  // (See also visitSELECT)
-  if (TLI.isOperationLegalOrCustom(ISD::SELECT_CC, MVT::Other)) {
+  if (TLI.isOperationLegalOrCustom(ISD::SELECT_CC, VT) || !LegalOperations) {
     // fold (sint_to_fp (setcc x, y, cc)) -> (select_cc x, y, -1.0, 0.0,, cc)
     if (N0.getOpcode() == ISD::SETCC && N0.getValueType() == MVT::i1 &&
         !VT.isVector() &&
@@ -7085,11 +7078,7 @@ SDValue DAGCombiner::visitUINT_TO_FP(SDNode *N) {
   }
 
   // The next optimizations are desirable only if SELECT_CC can be lowered.
-  // Check against MVT::Other for SELECT_CC, which is a workaround for targets
-  // having to say they don't support SELECT_CC on every type the DAG knows
-  // about, since there is no way to mark an opcode illegal at all value types
-  // (See also visitSELECT)
-  if (TLI.isOperationLegalOrCustom(ISD::SELECT_CC, MVT::Other)) {
+  if (TLI.isOperationLegalOrCustom(ISD::SELECT_CC, VT) || !LegalOperations) {
     // fold (uint_to_fp (setcc x, y, cc)) -> (select_cc x, y, -1.0, 0.0,, cc)
 
     if (N0.getOpcode() == ISD::SETCC && !VT.isVector() &&
@@ -9720,6 +9709,27 @@ SDValue DAGCombiner::visitINSERT_VECTOR_ELT(SDNode *N) {
   if (!isa<ConstantSDNode>(EltNo))
     return SDValue();
   unsigned Elt = cast<ConstantSDNode>(EltNo)->getZExtValue();
+
+  // Canonicalize insert_vector_elt dag nodes.
+  // Example:
+  // (insert_vector_elt (insert_vector_elt A, Idx0), Idx1)
+  // -> (insert_vector_elt (insert_vector_elt A, Idx1), Idx0)
+  //
+  // Do this only if the child insert_vector node has one use; also
+  // do this only if indices are both constants and Idx1 < Idx0.
+  if (InVec.getOpcode() == ISD::INSERT_VECTOR_ELT && InVec.hasOneUse()
+      && isa<ConstantSDNode>(InVec.getOperand(2))) {
+    unsigned OtherElt =
+      cast<ConstantSDNode>(InVec.getOperand(2))->getZExtValue();
+    if (Elt < OtherElt) {
+      // Swap nodes.
+      SDValue NewOp = DAG.getNode(ISD::INSERT_VECTOR_ELT, SDLoc(N), VT,
+                                  InVec.getOperand(0), InVal, EltNo);
+      AddToWorkList(NewOp.getNode());
+      return DAG.getNode(ISD::INSERT_VECTOR_ELT, SDLoc(InVec.getNode()),
+                         VT, NewOp, InVec.getOperand(1), InVec.getOperand(2));
+    }
+  }
 
   // Check that the operand is a BUILD_VECTOR (or UNDEF, which can essentially
   // be converted to a BUILD_VECTOR).  Fill in the Ops vector with the
