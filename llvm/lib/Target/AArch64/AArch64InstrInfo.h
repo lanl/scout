@@ -44,8 +44,6 @@ public:
   /// always be able to get register info as well (through this method).
   const AArch64RegisterInfo &getRegisterInfo() const { return RI; }
 
-  const AArch64Subtarget &getSubTarget() const { return Subtarget; }
-
   unsigned GetInstSizeInBytes(const MachineInstr *MI) const;
 
   bool isCoalescableExtInstr(const MachineInstr &MI, unsigned &SrcReg,
@@ -168,7 +166,7 @@ private:
 /// if necessary, to be replaced by the scavenger at the end of PEI.
 void emitFrameOffset(MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI,
                      DebugLoc DL, unsigned DestReg, unsigned SrcReg, int Offset,
-                     const AArch64InstrInfo *TII,
+                     const TargetInstrInfo *TII,
                      MachineInstr::MIFlag = MachineInstr::NoFlags,
                      bool SetNZCV = false);
 

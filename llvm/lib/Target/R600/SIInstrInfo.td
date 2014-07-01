@@ -147,6 +147,12 @@ def FRAMEri32 : Operand<iPTR> {
 }
 
 //===----------------------------------------------------------------------===//
+// Complex patterns
+//===----------------------------------------------------------------------===//
+
+def MUBUFAddr64 : ComplexPattern<i64, 3, "SelectMUBUFAddr64">;
+
+//===----------------------------------------------------------------------===//
 // SI assembler operands
 //===----------------------------------------------------------------------===//
 
@@ -184,6 +190,12 @@ class SOP1_32 <bits<8> op, string opName, list<dag> pattern> : SOP1 <
 
 class SOP1_64 <bits<8> op, string opName, list<dag> pattern> : SOP1 <
   op, (outs SReg_64:$dst), (ins SSrc_64:$src0),
+  opName#" $dst, $src0", pattern
+>;
+
+// 64-bit input, 32-bit output.
+class SOP1_32_64 <bits<8> op, string opName, list<dag> pattern> : SOP1 <
+  op, (outs SReg_32:$dst), (ins SSrc_64:$src0),
   opName#" $dst, $src0", pattern
 >;
 
@@ -260,7 +272,7 @@ class SIMCInstr <string pseudo, int subtarget> {
 multiclass VOP3_m <bits<9> op, dag outs, dag ins, string asm, list<dag> pattern,
                    string opName> {
 
-  def "" : InstSI <outs, ins, "", pattern>, VOP <opName>,
+  def "" : VOP3Common <outs, ins, "", pattern>, VOP <opName>,
            SIMCInstr<OpName, SISubtarget.NONE> {
     let isPseudo = 1;
   }
@@ -357,12 +369,13 @@ multiclass VOP2b_32 <bits<6> op, string opName, list<dag> pattern,
 }
 
 multiclass VOPC_Helper <bits<8> op, RegisterClass vrc, RegisterClass arc,
-                        string opName, ValueType vt, PatLeaf cond> {
-
+                        string opName, ValueType vt, PatLeaf cond, bit defExec = 0> {
   def _e32 : VOPC <
     op, (ins arc:$src0, vrc:$src1),
     opName#"_e32 $dst, $src0, $src1", []
-  >, VOP <opName>;
+  >, VOP <opName> {
+    let Defs = !if(defExec, [VCC, EXEC], [VCC]);
+  }
 
   def _e64 : VOP3 <
     {0, op{7}, op{6}, op{5}, op{4}, op{3}, op{2}, op{1}, op{0}},
@@ -375,6 +388,7 @@ multiclass VOPC_Helper <bits<8> op, RegisterClass vrc, RegisterClass arc,
       [(set SReg_64:$dst, (i1 (setcc (vt arc:$src0), arc:$src1, cond)))]
     )
   >, VOP <opName> {
+    let Defs = !if(defExec, [EXEC], []);
     let src2 = SIOperand.ZERO;
     let src2_modifiers = 0;
   }
@@ -388,6 +402,14 @@ multiclass VOPC_64 <bits<8> op, string opName,
   ValueType vt = untyped, PatLeaf cond = COND_NULL>
   : VOPC_Helper <op, VReg_64, VSrc_64, opName, vt, cond>;
 
+multiclass VOPCX_32 <bits<8> op, string opName,
+  ValueType vt = untyped, PatLeaf cond = COND_NULL>
+  : VOPC_Helper <op, VReg_32, VSrc_32, opName, vt, cond, 1>;
+
+multiclass VOPCX_64 <bits<8> op, string opName,
+  ValueType vt = untyped, PatLeaf cond = COND_NULL>
+  : VOPC_Helper <op, VReg_64, VSrc_64, opName, vt, cond, 1>;
+
 multiclass VOP3_32 <bits<9> op, string opName, list<dag> pattern> : VOP3_m <
   op, (outs VReg_32:$dst),
   (ins InputMods: $src0_modifiers, VSrc_32:$src0, InputMods:$src1_modifiers,
@@ -396,7 +418,7 @@ multiclass VOP3_32 <bits<9> op, string opName, list<dag> pattern> : VOP3_m <
   opName#" $dst, $src0_modifiers, $src1, $src2, $clamp, $omod", pattern, opName
 >;
 
-class VOP3_64_Shift <bits <9> op, string opName, list<dag> pattern> : VOP3 <
+class VOP3_64_32 <bits <9> op, string opName, list<dag> pattern> : VOP3 <
   op, (outs VReg_64:$dst),
   (ins VSrc_64:$src0, VSrc_32:$src1),
   opName#" $dst, $src0, $src1", pattern
@@ -410,10 +432,28 @@ class VOP3_64_Shift <bits <9> op, string opName, list<dag> pattern> : VOP3 <
 
 class VOP3_64 <bits<9> op, string opName, list<dag> pattern> : VOP3 <
   op, (outs VReg_64:$dst),
-  (ins VSrc_64:$src0, VSrc_64:$src1, VSrc_64:$src2,
-   InstFlag:$abs, InstFlag:$clamp, InstFlag:$omod, InstFlag:$neg),
-  opName#" $dst, $src0, $src1, $src2, $abs, $clamp, $omod, $neg", pattern
+  (ins InputMods:$src0_modifiers, VSrc_64:$src0,
+       InputMods:$src1_modifiers, VSrc_64:$src1,
+       InputMods:$src2_modifiers, VSrc_64:$src2,
+       InstFlag:$clamp, InstFlag:$omod),
+  opName#" $dst, $src0_modifiers, $src1_modifiers, $src2_modifiers, $clamp, $omod", pattern
 >, VOP <opName>;
+
+
+class VOP3b_Helper <bits<9> op, RegisterClass vrc, RegisterClass arc,
+                    string opName, list<dag> pattern> : VOP3 <
+  op, (outs vrc:$dst0, SReg_64:$dst1),
+  (ins arc:$src0, arc:$src1, arc:$src2,
+   InstFlag:$abs, InstFlag:$clamp, InstFlag:$omod, InstFlag:$neg),
+  opName#" $dst0, $dst1, $src0, $src1, $src2, $abs, $clamp, $omod, $neg", pattern
+>, VOP <opName>;
+
+
+class VOP3b_64 <bits<9> op, string opName, list<dag> pattern> :
+  VOP3b_Helper <op, VReg_64, VSrc_64, opName, pattern>;
+
+class VOP3b_32 <bits<9> op, string opName, list<dag> pattern> :
+  VOP3b_Helper <op, VReg_32, VSrc_32, opName, pattern>;
 
 //===----------------------------------------------------------------------===//
 // Vector I/O classes
@@ -475,11 +515,47 @@ class DS_Store2_Helper <bits<8> op, string asm, RegisterClass regClass> : DS_1A 
   let vdst = 0;
 }
 
+// 1 address, 1 data.
 class DS_1A1D_RET <bits<8> op, string asm, RegisterClass rc> : DS_1A <
   op,
   (outs rc:$vdst),
-  (ins i1imm:$gds, VReg_32:$addr, VReg_32:$data0, u16imm:$offset),
+  (ins i1imm:$gds, VReg_32:$addr, rc:$data0, u16imm:$offset),
   asm#" $vdst, $addr, $data0, $offset, [M0]",
+  []> {
+
+  let data1 = 0;
+  let mayStore = 1;
+  let mayLoad = 1;
+}
+
+// 1 address, 2 data.
+class DS_1A2D_RET <bits<8> op, string asm, RegisterClass rc> : DS_1A <
+  op,
+  (outs rc:$vdst),
+  (ins i1imm:$gds, VReg_32:$addr, rc:$data0, rc:$data1, u16imm:$offset),
+  asm#" $vdst, $addr, $data0, $data1, $offset, [M0]",
+  []> {
+  let mayStore = 1;
+  let mayLoad = 1;
+}
+
+// 1 address, 2 data.
+class DS_1A2D_NORET <bits<8> op, string asm, RegisterClass rc> : DS_1A <
+  op,
+  (outs),
+  (ins i1imm:$gds, VReg_32:$addr, rc:$data0, rc:$data1, u16imm:$offset),
+  asm#" $addr, $data0, $data1, $offset, [M0]",
+  []> {
+  let mayStore = 1;
+  let mayLoad = 1;
+}
+
+// 1 address, 1 data.
+class DS_1A1D_NORET <bits<8> op, string asm, RegisterClass rc> : DS_1A <
+  op,
+  (outs),
+  (ins i1imm:$gds, VReg_32:$addr, rc:$data0, u16imm:$offset),
+  asm#" $addr, $data0, $offset, [M0]",
   []> {
 
   let data1 = 0;
@@ -547,11 +623,12 @@ multiclass MUBUF_Load_Helper <bits<7> op, string asm, RegisterClass regClass> {
   }
 }
 
-class MUBUF_Store_Helper <bits<7> op, string name, RegisterClass vdataClass> :
+class MUBUF_Store_Helper <bits<7> op, string name, RegisterClass vdataClass,
+                          ValueType store_vt, SDPatternOperator st> :
     MUBUF <op, (outs), (ins vdataClass:$vdata, SReg_128:$srsrc, VReg_64:$vaddr,
                             u16imm:$offset),
           name#" $vdata, $srsrc + $vaddr + $offset",
-         []> {
+          [(st store_vt:$vdata, (MUBUFAddr64 v4i32:$srsrc, i64:$vaddr, u16imm:$offset))]> {
 
   let mayLoad = 0;
   let mayStore = 1;
@@ -656,6 +733,53 @@ multiclass MIMG_Sampler <bits<7> op, string asm> {
   defm _V2 : MIMG_Sampler_Src_Helper<op, asm, VReg_64, 2>;
   defm _V3 : MIMG_Sampler_Src_Helper<op, asm, VReg_96, 3>;
   defm _V4 : MIMG_Sampler_Src_Helper<op, asm, VReg_128, 4>;
+}
+
+class MIMG_Gather_Helper <bits<7> op, string asm,
+                          RegisterClass dst_rc,
+                          RegisterClass src_rc> : MIMG <
+  op,
+  (outs dst_rc:$vdata),
+  (ins i32imm:$dmask, i1imm:$unorm, i1imm:$glc, i1imm:$da, i1imm:$r128,
+       i1imm:$tfe, i1imm:$lwe, i1imm:$slc, src_rc:$vaddr,
+       SReg_256:$srsrc, SReg_128:$ssamp),
+  asm#" $vdata, $dmask, $unorm, $glc, $da, $r128,"
+     #" $tfe, $lwe, $slc, $vaddr, $srsrc, $ssamp",
+  []> {
+  let mayLoad = 1;
+  let mayStore = 0;
+
+  // DMASK was repurposed for GATHER4. 4 components are always
+  // returned and DMASK works like a swizzle - it selects
+  // the component to fetch. The only useful DMASK values are
+  // 1=red, 2=green, 4=blue, 8=alpha. (e.g. 1 returns
+  // (red,red,red,red) etc.) The ISA document doesn't mention
+  // this.
+  // Therefore, disable all code which updates DMASK by setting these two:
+  let MIMG = 0;
+  let hasPostISelHook = 0;
+}
+
+multiclass MIMG_Gather_Src_Helper <bits<7> op, string asm,
+                                    RegisterClass dst_rc,
+                                    int channels> {
+  def _V1 : MIMG_Gather_Helper <op, asm, dst_rc, VReg_32>,
+            MIMG_Mask<asm#"_V1", channels>;
+  def _V2 : MIMG_Gather_Helper <op, asm, dst_rc, VReg_64>,
+            MIMG_Mask<asm#"_V2", channels>;
+  def _V4 : MIMG_Gather_Helper <op, asm, dst_rc, VReg_128>,
+            MIMG_Mask<asm#"_V4", channels>;
+  def _V8 : MIMG_Gather_Helper <op, asm, dst_rc, VReg_256>,
+            MIMG_Mask<asm#"_V8", channels>;
+  def _V16 : MIMG_Gather_Helper <op, asm, dst_rc, VReg_512>,
+            MIMG_Mask<asm#"_V16", channels>;
+}
+
+multiclass MIMG_Gather <bits<7> op, string asm> {
+  defm _V1 : MIMG_Gather_Src_Helper<op, asm, VReg_32, 1>;
+  defm _V2 : MIMG_Gather_Src_Helper<op, asm, VReg_64, 2>;
+  defm _V3 : MIMG_Gather_Src_Helper<op, asm, VReg_96, 3>;
+  defm _V4 : MIMG_Gather_Src_Helper<op, asm, VReg_128, 4>;
 }
 
 //===----------------------------------------------------------------------===//

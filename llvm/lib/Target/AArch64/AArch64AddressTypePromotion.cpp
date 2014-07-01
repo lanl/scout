@@ -214,8 +214,8 @@ AArch64AddressTypePromotion::shouldConsiderSExt(const Instruction *SExt) const {
   if (SExt->getType() != ConsideredSExtType)
     return false;
 
-  for (const Use &U : SExt->uses()) {
-    if (isa<GetElementPtrInst>(*U))
+  for (const User *U : SExt->users()) {
+    if (isa<GetElementPtrInst>(U))
       return true;
   }
 
@@ -285,10 +285,10 @@ AArch64AddressTypePromotion::propagateSignExtension(Instructions &SExtInsts) {
         // assertion on the type as all involved sext operation may have not
         // been moved yet.
         while (!Inst->use_empty()) {
-          Value::use_iterator UseIt = Inst->use_begin();
-          Instruction *UseInst = dyn_cast<Instruction>(*UseIt);
-          assert(UseInst && "Use of sext is not an Instruction!");
-          UseInst->setOperand(UseIt->getOperandNo(), SExt);
+          Use &U = *Inst->use_begin();
+          Instruction *User = dyn_cast<Instruction>(U.getUser());
+          assert(User && "User of sext is not an Instruction!");
+          User->setOperand(U.getOperandNo(), SExt);
         }
         ToRemove.insert(Inst);
         SExt->setOperand(0, Inst->getOperand(0));
@@ -436,7 +436,7 @@ void AArch64AddressTypePromotion::analyzeSExtension(Instructions &SExtInsts) {
 
       bool insert = false;
       // #1.
-      for (const Use &U : SExt->uses()) {
+      for (const User *U : SExt->users()) {
         const Instruction *Inst = dyn_cast<GetElementPtrInst>(U);
         if (Inst && Inst->getNumOperands() > 2) {
           DEBUG(dbgs() << "Interesting use in GetElementPtrInst\n" << *Inst

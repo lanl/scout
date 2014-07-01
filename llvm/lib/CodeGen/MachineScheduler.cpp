@@ -691,7 +691,7 @@ void ScheduleDAGMI::schedule() {
       }
     }
     // Notify the scheduling strategy before updating the DAG.
-    // This sets the scheduled nodes ReadyCycle to CurrCycle. When updateQueues
+    // This sets the scheduled node's ReadyCycle to CurrCycle. When updateQueues
     // runs, it can then use the accurate ReadyCycle time to determine whether
     // newly released nodes can move to the readyQ.
     SchedImpl->schedNode(SU, IsTopNode);
@@ -1687,8 +1687,16 @@ bool SchedBoundary::checkHazard(SUnit *SU) {
     for (TargetSchedModel::ProcResIter
            PI = SchedModel->getWriteProcResBegin(SC),
            PE = SchedModel->getWriteProcResEnd(SC); PI != PE; ++PI) {
-      if (getNextResourceCycle(PI->ProcResourceIdx, PI->Cycles) > CurrCycle)
+      unsigned NRCycle = getNextResourceCycle(PI->ProcResourceIdx, PI->Cycles);
+      if (NRCycle > CurrCycle) {
+#ifndef NDEBUG
+        MaxObservedStall = std::max(PI->Cycles, MaxObservedStall);
+#endif
+        DEBUG(dbgs() << "  SU(" << SU->NodeNum << ") "
+              << SchedModel->getResourceName(PI->ProcResourceIdx)
+              << "=" << NRCycle << "c\n");
         return true;
+      }
     }
   }
   return false;
@@ -1747,7 +1755,11 @@ void SchedBoundary::releaseNode(SUnit *SU, unsigned ReadyCycle) {
   assert(SU->getInstr() && "Scheduled SUnit must have instr");
 
 #ifndef NDEBUG
-  MaxObservedStall = std::max(ReadyCycle - CurrCycle, MaxObservedStall);
+  // ReadyCycle was been bumped up to the CurrCycle when this node was
+  // scheduled, but CurrCycle may have been eagerly advanced immediately after
+  // scheduling, so may now be greater than ReadyCycle.
+  if (ReadyCycle > CurrCycle)
+    MaxObservedStall = std::max(ReadyCycle - CurrCycle, MaxObservedStall);
 #endif
 
   if (ReadyCycle < MinReadyCycle)
@@ -1942,10 +1954,12 @@ void SchedBoundary::bumpNode(SUnit *SU) {
              PE = SchedModel->getWriteProcResEnd(SC); PI != PE; ++PI) {
         unsigned PIdx = PI->ProcResourceIdx;
         if (SchedModel->getProcResource(PIdx)->BufferSize == 0) {
-          ReservedCycles[PIdx] = isTop() ? NextCycle + PI->Cycles : NextCycle;
-#ifndef NDEBUG
-          MaxObservedStall = std::max(PI->Cycles, MaxObservedStall);
-#endif
+          if (isTop()) {
+            ReservedCycles[PIdx] =
+              std::max(getNextResourceCycle(PIdx, 0), NextCycle + PI->Cycles);
+          }
+          else
+            ReservedCycles[PIdx] = NextCycle;
         }
       }
     }

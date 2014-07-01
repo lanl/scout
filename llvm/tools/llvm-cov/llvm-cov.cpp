@@ -13,6 +13,7 @@
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Errc.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/GCOV.h"
 #include "llvm/Support/ManagedStatic.h"
@@ -20,11 +21,11 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
-#include "llvm/Support/system_error.h"
+#include <system_error>
 using namespace llvm;
 
-static cl::opt<std::string> SourceFile(cl::Positional, cl::Required,
-                                       cl::desc("SOURCEFILE"));
+static cl::list<std::string> SourceFiles(cl::Positional, cl::OneOrMore,
+                                         cl::desc("SOURCEFILE"));
 
 static cl::opt<bool> AllBlocks("a", cl::Grouping, cl::init(false),
                                cl::desc("Display all basic blocks"));
@@ -75,15 +76,7 @@ static cl::opt<std::string> InputGCNO("gcno", cl::cat(DebugCat), cl::init(""),
 static cl::opt<std::string> InputGCDA("gcda", cl::cat(DebugCat), cl::init(""),
                                       cl::desc("Override inferred gcda file"));
 
-//===----------------------------------------------------------------------===//
-int main(int argc, char **argv) {
-  // Print a stack trace if we signal out.
-  sys::PrintStackTraceOnErrorSignal();
-  PrettyStackTraceProgram X(argc, argv);
-  llvm_shutdown_obj Y;  // Call llvm_shutdown() on exit.
-
-  cl::ParseCommandLineOptions(argc, argv, "LLVM code coverage tool\n");
-
+void reportCoverage(StringRef SourceFile) {
   SmallString<128> CoverageFileStem(ObjectDir);
   if (CoverageFileStem.empty()) {
     // If no directory was specified with -o, look next to the source file.
@@ -96,37 +89,38 @@ int main(int argc, char **argv) {
     // A file was given. Ignore the source file and look next to this file.
     sys::path::replace_extension(CoverageFileStem, "");
 
-  if (InputGCNO.empty())
-    InputGCNO = (CoverageFileStem.str() + ".gcno").str();
-  if (InputGCDA.empty())
-    InputGCDA = (CoverageFileStem.str() + ".gcda").str();
-
+  std::string GCNO = InputGCNO.empty()
+                         ? std::string(CoverageFileStem.str()) + ".gcno"
+                         : InputGCNO;
+  std::string GCDA = InputGCDA.empty()
+                         ? std::string(CoverageFileStem.str()) + ".gcda"
+                         : InputGCDA;
   GCOVFile GF;
 
   std::unique_ptr<MemoryBuffer> GCNO_Buff;
-  if (error_code ec = MemoryBuffer::getFileOrSTDIN(InputGCNO, GCNO_Buff)) {
-    errs() << InputGCNO << ": " << ec.message() << "\n";
-    return 1;
+  if (std::error_code ec = MemoryBuffer::getFileOrSTDIN(GCNO, GCNO_Buff)) {
+    errs() << GCNO << ": " << ec.message() << "\n";
+    return;
   }
   GCOVBuffer GCNO_GB(GCNO_Buff.get());
   if (!GF.readGCNO(GCNO_GB)) {
     errs() << "Invalid .gcno File!\n";
-    return 1;
+    return;
   }
 
   std::unique_ptr<MemoryBuffer> GCDA_Buff;
-  if (error_code ec = MemoryBuffer::getFileOrSTDIN(InputGCDA, GCDA_Buff)) {
+  if (std::error_code ec = MemoryBuffer::getFileOrSTDIN(GCDA, GCDA_Buff)) {
     if (ec != errc::no_such_file_or_directory) {
-      errs() << InputGCDA << ": " << ec.message() << "\n";
-      return 1;
+      errs() << GCDA << ": " << ec.message() << "\n";
+      return;
     }
     // Clear the filename to make it clear we didn't read anything.
-    InputGCDA = "-";
+    GCDA = "-";
   } else {
     GCOVBuffer GCDA_GB(GCDA_Buff.get());
     if (!GF.readGCDA(GCDA_GB)) {
       errs() << "Invalid .gcda File!\n";
-      return 1;
+      return;
     }
   }
 
@@ -137,6 +131,18 @@ int main(int argc, char **argv) {
                       PreservePaths, UncondBranch, LongNames, NoOutput);
   FileInfo FI(Options);
   GF.collectLineCounts(FI);
-  FI.print(SourceFile, InputGCNO, InputGCDA);
+  FI.print(SourceFile, GCNO, GCDA);
+}
+
+int main(int argc, char **argv) {
+  // Print a stack trace if we signal out.
+  sys::PrintStackTraceOnErrorSignal();
+  PrettyStackTraceProgram X(argc, argv);
+  llvm_shutdown_obj Y; // Call llvm_shutdown() on exit.
+
+  cl::ParseCommandLineOptions(argc, argv, "LLVM code coverage tool\n");
+
+  for (const auto &SourceFile : SourceFiles)
+    reportCoverage(SourceFile);
   return 0;
 }
