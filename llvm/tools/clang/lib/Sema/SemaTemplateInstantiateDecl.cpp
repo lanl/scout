@@ -1803,13 +1803,7 @@ TemplateDeclInstantiator::VisitCXXMethodDecl(CXXMethodDecl *D,
 
     void *InsertPos = nullptr;
     FunctionDecl *SpecFunc
-<<<<<<< HEAD
-      = FunctionTemplate->findSpecialization(Innermost.begin(),
-                                             Innermost.size(),
-                                             InsertPos);
-=======
       = FunctionTemplate->findSpecialization(Innermost, InsertPos);
->>>>>>> 6ade1353e8efc5124d8a03c64153fa73de944775
 
     // If we already have a function template specialization, return it.
     if (SpecFunc)

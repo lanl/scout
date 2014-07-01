@@ -2093,6 +2093,7 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
                                  SS, TemplateArgs, ER)) {
       return ER;
     }
+  }
  // +====================================================================+
     
   // This could be an implicitly declared function reference (legal in C90,
