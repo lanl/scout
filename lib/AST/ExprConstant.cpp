@@ -1269,10 +1269,28 @@ static bool CheckLValueConstantExpression(EvalInfo &Info, SourceLocation Loc,
           LVal.getLValueCallIndex() == 0) &&
          "have call index for global lvalue");
 
-  // Check if this is a thread-local variable.
   if (const ValueDecl *VD = Base.dyn_cast<const ValueDecl*>()) {
     if (const VarDecl *Var = dyn_cast<const VarDecl>(VD)) {
+      // Check if this is a thread-local variable.
       if (Var->getTLSKind())
+        return false;
+
+      // A dllimport variable never acts like a constant.
+      if (Var->hasAttr<DLLImportAttr>())
+        return false;
+    }
+    if (const auto *FD = dyn_cast<const FunctionDecl>(VD)) {
+      // __declspec(dllimport) must be handled very carefully:
+      // We must never initialize an expression with the thunk in C++.
+      // Doing otherwise would allow the same id-expression to yield
+      // different addresses for the same function in different translation
+      // units.  However, this means that we must dynamically initialize the
+      // expression with the contents of the import address table at runtime.
+      //
+      // The C language has no notion of ODR; furthermore, it has no notion of
+      // dynamic initialization.  This means that we are permitted to
+      // perform initialization with the address of the thunk.
+      if (Info.getLangOpts().CPlusPlus && FD->hasAttr<DLLImportAttr>())
         return false;
     }
   }
@@ -2938,6 +2956,7 @@ static bool EvaluateObjectArgument(EvalInfo &Info, const Expr *Object,
   if (Object->getType()->isLiteralType(Info.Ctx))
     return EvaluateTemporary(Object, This, Info);
 
+  Info.Diag(Object, diag::note_constexpr_nonliteral) << Object->getType();
   return false;
 }
 
@@ -6910,8 +6929,9 @@ bool IntExprEvaluator::VisitBinaryOperator(const BinaryOperator *E) {
 }
 
 CharUnits IntExprEvaluator::GetAlignOfType(QualType T) {
-  // C++ [expr.alignof]p3: "When alignof is applied to a reference type, the
-  //   result shall be the alignment of the referenced type."
+  // C++ [expr.alignof]p3:
+  //     When alignof is applied to a reference type, the result is the
+  //     alignment of the referenced type.
   if (const ReferenceType *Ref = T->getAs<ReferenceType>())
     T = Ref->getPointeeType();
 
@@ -6930,7 +6950,7 @@ CharUnits IntExprEvaluator::GetAlignOfExpr(const Expr *E) {
   // alignof decl is always accepted, even if it doesn't make sense: we default
   // to 1 in those cases.
   if (const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(E))
-    return Info.Ctx.getDeclAlign(DRE->getDecl(), 
+    return Info.Ctx.getDeclAlign(DRE->getDecl(),
                                  /*RefAsPointee*/true);
 
   if (const MemberExpr *ME = dyn_cast<MemberExpr>(E))
@@ -8702,7 +8722,7 @@ bool Expr::isCXX11ConstantExpr(const ASTContext &Ctx, APValue *Result,
 
 bool Expr::EvaluateWithSubstitution(APValue &Value, ASTContext &Ctx,
                                     const FunctionDecl *Callee,
-                                    llvm::ArrayRef<const Expr*> Args) const {
+                                    ArrayRef<const Expr*> Args) const {
   Expr::EvalStatus Status;
   EvalInfo Info(Ctx, Status, EvalInfo::EM_ConstantExpressionUnevaluated);
 

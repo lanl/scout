@@ -411,8 +411,8 @@ def warn_builtin_unknown : Warning<"use of unknown builtin %0">,
   InGroup<ImplicitFunctionDeclare>, DefaultError;
 def warn_dyn_class_memaccess : Warning<
   "%select{destination for|source of|first operand of|second operand of}0 this "
-  "%1 call is a pointer to dynamic class %2; vtable pointer will be "
-  "%select{overwritten|copied|moved|compared}3">,
+  "%1 call is a pointer to %select{|class containing a }2dynamic class %3; "
+  "vtable pointer will be %select{overwritten|copied|moved|compared}4">,
   InGroup<DiagGroup<"dynamic-class-memaccess">>;
 def note_bad_memaccess_silence : Note<
   "explicitly cast the pointer to silence this warning">;
@@ -543,9 +543,9 @@ def err_pragma_pop_visibility_mismatch : Error<
 def note_surrounding_namespace_starts_here : Note<
   "surrounding namespace with visibility attribute starts here">;
 def err_pragma_loop_invalid_value : Error<
-  "%select{invalid|missing}0 value%select{ %1|}0; expected a positive integer value">;
+  "invalid argument; expected a positive integer value">;
 def err_pragma_loop_invalid_keyword : Error<
-  "%select{invalid|missing}0 keyword%select{ %1|}0; expected 'enable' or 'disable'">;
+  "invalid argument; expected 'enable' or 'disable'">;
 def err_pragma_loop_compatibility : Error<
   "%select{incompatible|duplicate}0 directives '%1(%2)' and '%3(%4)'">;
 def err_pragma_loop_precedes_nonloop : Error<
@@ -931,7 +931,12 @@ def warning_multiple_selectors: Warning<
 // C++ declarations
 def err_static_assert_expression_is_not_constant : Error<
   "static_assert expression is not an integral constant expression">;
-def err_static_assert_failed : Error<"static_assert failed %0">;
+def err_static_assert_failed : Error<"static_assert failed%select{ %1|}0">;
+def ext_static_assert_no_message : ExtWarn<
+  "static_assert with no message is a C++1z extension">, InGroup<CXX1z>;
+def warn_cxx1y_compat_static_assert_no_message : Warning<
+  "static_assert with no message is incompatible with C++ standards before C++1z">,
+  DefaultIgnore, InGroup<CXXPre1zCompat>;
 
 def warn_inline_namespace_reopened_noninline : Warning<
   "inline namespace cannot be reopened as a non-inline namespace">;
@@ -1686,6 +1691,8 @@ def err_enum_class_reference : Error<
   "not 'enum class'">;
 def err_only_enums_have_underlying_types : Error<
   "only enumeration types have underlying types">;
+def err_underlying_type_of_incomplete_enum : Error<
+  "cannot determine underlying type of incomplete enumeration type %0">;
 
 // C++11 delegating constructors
 def err_delegating_ctor : Error<
@@ -2123,6 +2130,11 @@ def warn_attribute_dllimport_static_field_definition : Warning<
   InGroup<DiagGroup<"dllimport-static-field-def">>;
 def err_attribute_dll_member_of_dll_class : Error<
   "attribute %q0 cannot be applied to member of %q1 class">;
+def warn_attribute_dll_instantiated_base_class : Warning<
+  "propagating dll attribute to %select{already instantiated|explicitly specialized}0 "
+  "base class template "
+  "%select{without dll attribute|with different dll attribute}1 is unsupported">,
+  InGroup<DiagGroup<"unsupported-dll-base-class-template">>;
 def err_attribute_weakref_not_static : Error<
   "weakref declaration must have internal linkage">;
 def err_attribute_weakref_not_global_context : Error<
@@ -2421,6 +2433,7 @@ def warn_address_of_reference_null_compare : Warning<
   "code; comparison may be assumed to always evaluate to "
   "%select{true|false}0">,
   InGroup<TautologicalUndefinedCompare>;
+def note_reference_is_return_value : Note<"%0 returns a reference">;
 
 def note_function_warning_silence : Note<
     "prefix with the address-of operator to silence this warning">;
@@ -3111,6 +3124,10 @@ def err_template_arg_must_be_type : Error<
   "template argument for template type parameter must be a type">;
 def err_template_arg_must_be_type_suggest : Error<
   "template argument for template type parameter must be a type; did you forget 'typename'?">;
+def ext_ms_template_type_arg_missing_typename : ExtWarn<
+  "template argument for template type parameter must be a type; "
+  "omitted 'typename' is a Microsoft extension">,
+  InGroup<Microsoft>;
 def err_template_arg_must_be_expr : Error<
   "template argument for non-type template parameter must be an expression">;
 def err_template_arg_nontype_ambig : Error<
@@ -3394,6 +3411,10 @@ def err_template_instantiate_undefined : Error<
   "%select{implicit|explicit}0 instantiation of undefined template %1">;
 def err_implicit_instantiate_member_undefined : Error<
   "implicit instantiation of undefined member %0">;
+def note_template_class_instantiation_was_here : Note<
+  "class template %0 was instantiated here">;
+def note_template_class_explicit_specialization_was_here : Note<
+  "class template %0 was explicitly specialized here">;
 def note_template_class_instantiation_here : Note<
   "in instantiation of template class %0 requested here">;
 def note_template_member_class_here : Note<
@@ -3544,7 +3565,7 @@ def note_typename_refers_here : Note<
     "referenced member %0 is declared here">;
 def err_typename_missing : Error<
   "missing 'typename' prior to dependent type name '%0%1'">;
-def warn_typename_missing : ExtWarn<
+def ext_typename_missing : ExtWarn<
   "missing 'typename' prior to dependent type name '%0%1'">,
   InGroup<DiagGroup<"typename-missing">>;
 def ext_typename_outside_of_template : ExtWarn<
@@ -3658,9 +3679,13 @@ def err_unexpected_typedef : Error<
 def err_unexpected_namespace : Error<
   "unexpected namespace name %0: expected expression">;
 def err_undeclared_var_use : Error<"use of undeclared identifier %0">;
-def warn_found_via_dependent_bases_lookup : ExtWarn<"use of identifier %0 "
-   "found via unqualified lookup into dependent bases of class templates is a "
-   "Microsoft extension">, InGroup<Microsoft>;
+def ext_undeclared_unqual_id_with_dependent_base : ExtWarn<
+  "use of undeclared identifier %0; "
+  "unqualified lookup into dependent bases of class template %1 is a Microsoft extension">,
+  InGroup<Microsoft>;
+def ext_found_via_dependent_bases_lookup : ExtWarn<"use of identifier %0 "
+  "found via unqualified lookup into dependent bases of class templates is a "
+  "Microsoft extension">, InGroup<Microsoft>;
 def note_dependent_var_use : Note<"must qualify identifier to find this "
     "declaration in dependent base class">;
 def err_not_found_by_two_phase_lookup : Error<"call to function %0 that is neither "
@@ -3669,6 +3694,9 @@ def note_not_found_by_two_phase_lookup : Note<"%0 should be declared prior to th
     "call site%select{| or in %2| or in an associated namespace of one of its arguments}1">;
 def err_undeclared_use : Error<"use of undeclared %0">;
 def warn_deprecated : Warning<"%0 is deprecated">,
+    InGroup<DeprecatedDeclarations>;
+def warn_property_method_deprecated :
+    Warning<"property access is using %0 method which is deprecated">,
     InGroup<DeprecatedDeclarations>;
 def warn_deprecated_message : Warning<"%0 is deprecated: %1">,
     InGroup<DeprecatedDeclarations>;
@@ -3679,6 +3707,8 @@ def warn_deprecated_def : Warning<
     "Implementing deprecated %select{method|class|category}0">,
     InGroup<DeprecatedImplementations>, DefaultIgnore;
 def err_unavailable : Error<"%0 is unavailable">;
+def err_property_method_unavailable :
+    Error<"property access is using %0 method which is unavailable">;
 def err_unavailable_message : Error<"%0 is unavailable: %1">;
 def warn_unavailable_fwdclass_message : Warning<
     "%0 may be unavailable because the receiver type is unknown">,
@@ -3799,8 +3829,8 @@ def note_extern_c_global_conflict : Note<
   "declared %select{in global scope|with C language linkage}0 here">;
 def warn_weak_import : Warning <
   "an already-declared variable is made a weak_import declaration %0">;
-def warn_static_non_static : ExtWarn<
-  "static declaration of %0 follows non-static declaration">;
+def ext_static_non_static : Extension<
+  "redeclaring non-static %0 as static is a Microsoft extension">, InGroup<Microsoft>;
 def err_non_static_static : Error<
   "non-static declaration of %0 follows static declaration">;
 def err_extern_non_extern : Error<
@@ -5476,6 +5506,8 @@ def err_typecheck_missing_return_type_incompatible : Error<
   "return type must match previous return type}0,1 when %select{block "
   "literal|lambda expression}2 has unspecified explicit return type">;
 
+def not_incomplete_class_and_qualified_id : Note<
+  "conformance of forward class %0 to protocol %1 can not be confirmed">;
 def warn_incompatible_qualified_id : Warning<
   "%select{%diff{assigning to $ from incompatible type $|"
   "assigning to type from incompatible type}0,1"
@@ -6712,6 +6744,16 @@ def err_invalid_neon_type_code : Error<
   "incompatible constant for this __builtin_neon function">; 
 def err_argument_invalid_range : Error<
   "argument should be a value from %0 to %1">;
+def warn_neon_vector_initializer_non_portable : Warning<
+  "vector initializers are not compatible with NEON intrinsics in big endian "
+  "mode">, InGroup<DiagGroup<"nonportable-vector-initialization">>;
+def note_neon_vector_initializer_non_portable : Note<
+  "consider using vld1_%0%1() to initialize a vector from memory, or "
+  "vcreate_%0%1() to initialize from an integer constant">;
+def note_neon_vector_initializer_non_portable_q : Note<
+  "consider using vld1q_%0%1() to initialize a vector from memory, or "
+  "vcombine_%0%1(vcreate_%0%1(), vcreate_%0%1()) to initialize from integer "
+  "constants">;
 
 def err_builtin_longjmp_invalid_val : Error<
   "argument to __builtin_longjmp must be a constant 1">;
@@ -6813,6 +6855,8 @@ def warn_direct_ivar_access : Warning<"instance variable %0 is being "
   "directly accessed">, InGroup<DiagGroup<"direct-ivar-access">>, DefaultIgnore;
 
 // Spell-checking diagnostics
+def err_unknown_typename : Error<
+  "unknown type name %0">;
 def err_unknown_type_or_class_name_suggest : Error<
   "unknown %select{type|class}1 name %0; did you mean %2?">;
 def err_unknown_typename_suggest : Error<
@@ -6955,6 +6999,8 @@ def err_omp_firstprivate_incomplete_type : Error<
   "a firstprivate variable with incomplete type %0">;
 def err_omp_lastprivate_incomplete_type : Error<
   "a lastprivate variable with incomplete type %0">;
+def err_omp_reduction_incomplete_type : Error<
+  "a reduction variable with incomplete type %0">;
 def err_omp_unexpected_clause_value : Error<
   "expected %0 in OpenMP clause '%1'">;
 def err_omp_expected_var_name : Error<
@@ -6972,11 +7018,24 @@ def err_omp_wrong_dsa : Error<
 def note_omp_explicit_dsa : Note<
   "defined as %0">;
 def note_omp_predetermined_dsa : Note<
-  "predetermined as %0">;
+  "%select{static data member is predetermined as shared|"
+  "variable with static storage duration is predetermined as shared|"
+  "loop iteration variable is predetermined as private|"
+  "loop iteration variable is predetermined as linear|"
+  "loop iteration variable is predetermined as lastprivate|"
+  "constant variable is predetermined as shared|"
+  "global variable is predetermined as shared|"
+  "variable with automatic storage duration is predetermined as private}0"
+  "%select{|; perhaps you forget to enclose 'omp %2' directive into a parallel or another task region?}1">;
+def note_omp_implicit_dsa : Note<
+  "implicitly determined as %0">;
 def err_omp_loop_var_dsa : Error<
   "loop iteration variable may not be %0">;
 def err_omp_not_for : Error<
-  "statement after '#pragma omp %0' must be a for loop">;
+  "%select{statement after '#pragma omp %1' must be a for loop|"
+  "expected %2 for loops after '#pragma omp %1'%select{|, but found only %4}3}0">;
+def note_omp_collapse_expr : Note<
+  "as specified in 'collapse' clause">;
 def err_omp_negative_expression_in_clause : Error<
   "argument to '%0' clause must be a positive integer value">;
 def err_omp_not_integral : Error<
@@ -7034,6 +7093,36 @@ def err_omp_loop_cannot_use_stmt : Error<
   "'%0' statement cannot be used in OpenMP for loop">;
 def err_omp_simd_region_cannot_use_stmt : Error<
   "'%0' statement cannot be used in OpenMP simd region">;
+def err_omp_unknown_reduction_identifier : Error<
+  "incorrect reduction identifier, expected one of '+', '-', '*', '&', '|', '^', '&&', '||', 'min' or 'max'">;
+def err_omp_reduction_type_array : Error<
+  "a reduction variable with array type %0">;
+def err_omp_reduction_ref_type_arg : Error<
+  "argument of OpenMP clause 'reduction' must reference the same object in all threads">;
+def err_omp_clause_not_arithmetic_type_arg : Error<
+  "arguments of OpenMP clause 'reduction' for 'min' or 'max' must be of %select{scalar|arithmetic}0 type">;
+def err_omp_clause_floating_type_arg : Error<
+  "arguments of OpenMP clause 'reduction' with bitwise operators cannot be of floating type">;
+def err_omp_once_referenced : Error<
+  "variable can appear only once in OpenMP '%0' clause">;
+def note_omp_referenced : Note<
+  "previously referenced here">;
+def err_omp_reduction_in_task : Error<
+  "reduction variables may not be accessed in an explicit task">;
+def err_omp_reduction_id_not_compatible : Error<
+  "variable of type %0 is not valid for specified reduction operation">;
+def err_omp_prohibited_region : Error<
+  "region cannot be%select{| closely}0 nested inside '%1' region"
+  "%select{|; perhaps you forget to enclose 'omp %3' directive into a parallel region?}2">;
+def err_omp_prohibited_region_simd : Error<
+  "OpenMP constructs may not be nested inside a simd region">;
+def err_omp_sections_not_compound_stmt : Error<
+  "the statement for '#pragma omp sections' must be a compound statement">;
+def err_omp_orphaned_section_directive : Error<
+  "%select{orphaned 'omp section' directives are prohibited, it|'omp section' directive}0"
+  " must be closely nested to a sections region%select{|, not a %1 region}0">;
+def err_omp_sections_substmt_not_section : Error<
+  "statement in 'omp sections' directive must be enclosed into a section region">;
 } // end of OpenMP category
 
 let CategoryName = "Related Result Type Issue" in {
@@ -7097,6 +7186,10 @@ def warn_profile_data_out_of_date : Warning<
   "profile data may be out of date: of %0 function%s0, %1 %plural{1:has|:have}1"
   " no data and %2 %plural{1:has|:have}2 mismatched data that will be ignored">,
   InGroup<ProfileInstrOutOfDate>;
+def warn_profile_data_unprofiled : Warning<
+  "no profile data available for file \"%0\"">,
+  InGroup<ProfileInstrUnprofiled>;
+
 } // end of instrumentation issue category
 
 } // end of sema component.

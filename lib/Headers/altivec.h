@@ -4194,7 +4194,7 @@ static vector bool short __ATTRS_o_ai
 vec_pack(vector bool int __a, vector bool int __b)
 {
 #ifdef __LITTLE_ENDIAN__
-  return (vector unsigned short)vec_perm(__a, __b, (vector unsigned char)
+  return (vector bool short)vec_perm(__a, __b, (vector unsigned char)
     (0x00, 0x01, 0x04, 0x05, 0x08, 0x09, 0x0C, 0x0D,
      0x10, 0x11, 0x14, 0x15, 0x18, 0x19, 0x1C, 0x1D));
 #else
@@ -5224,65 +5224,113 @@ vec_vslw(vector unsigned int __a, vector unsigned int __b)
 static vector signed char __ATTRS_o_ai
 vec_sld(vector signed char __a, vector signed char __b, unsigned char __c)
 {
+#ifdef __LITTLE_ENDIAN__
+  return vec_perm(__a, __b, (vector unsigned char)
+    (__c,   __c-1, __c-2, __c-3, __c-4, __c-5, __c-6, __c-7,
+     __c-8, __c-9, __c-10, __c-11, __c-12, __c-13, __c-14, __c-15));
+#else
   return vec_perm(__a, __b, (vector unsigned char)
     (__c,   __c+1, __c+2,  __c+3,  __c+4,  __c+5,  __c+6,  __c+7,
      __c+8, __c+9, __c+10, __c+11, __c+12, __c+13, __c+14, __c+15));
+#endif
 }
 
 static vector unsigned char __ATTRS_o_ai
 vec_sld(vector unsigned char __a, vector unsigned char __b, unsigned char __c)
 {
+#ifdef __LITTLE_ENDIAN__
+  return vec_perm(__a, __b, (vector unsigned char)
+    (__c,   __c-1, __c-2, __c-3, __c-4, __c-5, __c-6, __c-7,
+     __c-8, __c-9, __c-10, __c-11, __c-12, __c-13, __c-14, __c-15));
+#else
   return vec_perm(__a, __b, (vector unsigned char)
     (__c,   __c+1, __c+2,  __c+3,  __c+4,  __c+5,  __c+6,  __c+7,
      __c+8, __c+9, __c+10, __c+11, __c+12, __c+13, __c+14, __c+15));
+#endif
 }
 
 static vector short __ATTRS_o_ai
 vec_sld(vector short __a, vector short __b, unsigned char __c)
 {
+#ifdef __LITTLE_ENDIAN__
+  return vec_perm(__a, __b, (vector unsigned char)
+    (__c,   __c-1, __c-2, __c-3, __c-4, __c-5, __c-6, __c-7,
+     __c-8, __c-9, __c-10, __c-11, __c-12, __c-13, __c-14, __c-15));
+#else
   return vec_perm(__a, __b, (vector unsigned char)
     (__c,   __c+1, __c+2,  __c+3,  __c+4,  __c+5,  __c+6,  __c+7,
      __c+8, __c+9, __c+10, __c+11, __c+12, __c+13, __c+14, __c+15));
+#endif
 }
 
 static vector unsigned short __ATTRS_o_ai
 vec_sld(vector unsigned short __a, vector unsigned short __b, unsigned char __c)
 {
+#ifdef __LITTLE_ENDIAN__
+  return vec_perm(__a, __b, (vector unsigned char)
+    (__c,   __c-1, __c-2, __c-3, __c-4, __c-5, __c-6, __c-7,
+     __c-8, __c-9, __c-10, __c-11, __c-12, __c-13, __c-14, __c-15));
+#else
   return vec_perm(__a, __b, (vector unsigned char)
     (__c,   __c+1, __c+2,  __c+3,  __c+4,  __c+5,  __c+6,  __c+7,
      __c+8, __c+9, __c+10, __c+11, __c+12, __c+13, __c+14, __c+15));
+#endif
 }
 
 static vector pixel __ATTRS_o_ai
 vec_sld(vector pixel __a, vector pixel __b, unsigned char __c)
 {
+#ifdef __LITTLE_ENDIAN__
+  return vec_perm(__a, __b, (vector unsigned char)
+    (__c,   __c-1, __c-2, __c-3, __c-4, __c-5, __c-6, __c-7,
+     __c-8, __c-9, __c-10, __c-11, __c-12, __c-13, __c-14, __c-15));
+#else
   return vec_perm(__a, __b, (vector unsigned char)
     (__c,   __c+1, __c+2,  __c+3,  __c+4,  __c+5,  __c+6,  __c+7,
      __c+8, __c+9, __c+10, __c+11, __c+12, __c+13, __c+14, __c+15));
+#endif
 }
 
 static vector int __ATTRS_o_ai
 vec_sld(vector int __a, vector int __b, unsigned char __c)
 {
+#ifdef __LITTLE_ENDIAN__
+  return vec_perm(__a, __b, (vector unsigned char)
+    (__c,   __c-1, __c-2, __c-3, __c-4, __c-5, __c-6, __c-7,
+     __c-8, __c-9, __c-10, __c-11, __c-12, __c-13, __c-14, __c-15));
+#else
   return vec_perm(__a, __b, (vector unsigned char)
     (__c,   __c+1, __c+2,  __c+3,  __c+4,  __c+5,  __c+6,  __c+7,
      __c+8, __c+9, __c+10, __c+11, __c+12, __c+13, __c+14, __c+15));
+#endif
 }
 
 static vector unsigned int __ATTRS_o_ai
 vec_sld(vector unsigned int __a, vector unsigned int __b, unsigned char __c)
 {
+#ifdef __LITTLE_ENDIAN__
+  return vec_perm(__a, __b, (vector unsigned char)
+    (__c,   __c-1, __c-2, __c-3, __c-4, __c-5, __c-6, __c-7,
+     __c-8, __c-9, __c-10, __c-11, __c-12, __c-13, __c-14, __c-15));
+#else
   return vec_perm(__a, __b, (vector unsigned char)
     (__c,   __c+1, __c+2,  __c+3,  __c+4,  __c+5,  __c+6,  __c+7,
      __c+8, __c+9, __c+10, __c+11, __c+12, __c+13, __c+14, __c+15));
+#endif
 }
 
 static vector float __ATTRS_o_ai
 vec_sld(vector float __a, vector float __b, unsigned char __c)
 {
+#ifdef __LITTLE_ENDIAN__
+  return vec_perm(__a, __b, (vector unsigned char)
+    (__c,   __c-1, __c-2, __c-3, __c-4, __c-5, __c-6, __c-7,
+     __c-8, __c-9, __c-10, __c-11, __c-12, __c-13, __c-14, __c-15));
+#else
   return vec_perm(__a, __b, (vector unsigned char)
     (__c,   __c+1, __c+2,  __c+3,  __c+4,  __c+5,  __c+6,  __c+7,
      __c+8, __c+9, __c+10, __c+11, __c+12, __c+13, __c+14, __c+15));
+#endif
 }
 
 /* vec_vsldoi */
@@ -5290,65 +5338,113 @@ vec_sld(vector float __a, vector float __b, unsigned char __c)
 static vector signed char __ATTRS_o_ai
 vec_vsldoi(vector signed char __a, vector signed char __b, unsigned char __c)
 {
+#ifdef __LITTLE_ENDIAN__
+  return vec_perm(__a, __b, (vector unsigned char)
+    (__c,   __c-1, __c-2, __c-3, __c-4, __c-5, __c-6, __c-7,
+     __c-8, __c-9, __c-10, __c-11, __c-12, __c-13, __c-14, __c-15));
+#else
   return vec_perm(__a, __b, (vector unsigned char)
     (__c,   __c+1, __c+2,  __c+3,  __c+4,  __c+5,  __c+6,  __c+7,
      __c+8, __c+9, __c+10, __c+11, __c+12, __c+13, __c+14, __c+15));
+#endif
 }
 
 static vector unsigned char __ATTRS_o_ai
 vec_vsldoi(vector unsigned char __a, vector unsigned char __b, unsigned char __c)
 {
+#ifdef __LITTLE_ENDIAN__
+  return vec_perm(__a, __b, (vector unsigned char)
+    (__c,   __c-1, __c-2, __c-3, __c-4, __c-5, __c-6, __c-7,
+     __c-8, __c-9, __c-10, __c-11, __c-12, __c-13, __c-14, __c-15));
+#else
   return vec_perm(__a, __b, (vector unsigned char)
     (__c,   __c+1, __c+2,  __c+3,  __c+4,  __c+5,  __c+6,  __c+7,
      __c+8, __c+9, __c+10, __c+11, __c+12, __c+13, __c+14, __c+15));
+#endif
 }
 
 static vector short __ATTRS_o_ai
 vec_vsldoi(vector short __a, vector short __b, unsigned char __c)
 {
+#ifdef __LITTLE_ENDIAN__
+  return vec_perm(__a, __b, (vector unsigned char)
+    (__c,   __c-1, __c-2, __c-3, __c-4, __c-5, __c-6, __c-7,
+     __c-8, __c-9, __c-10, __c-11, __c-12, __c-13, __c-14, __c-15));
+#else
   return vec_perm(__a, __b, (vector unsigned char)
     (__c,   __c+1, __c+2,  __c+3,  __c+4,  __c+5,  __c+6,  __c+7,
      __c+8, __c+9, __c+10, __c+11, __c+12, __c+13, __c+14, __c+15));
+#endif
 }
 
 static vector unsigned short __ATTRS_o_ai
 vec_vsldoi(vector unsigned short __a, vector unsigned short __b, unsigned char __c)
 {
+#ifdef __LITTLE_ENDIAN__
+  return vec_perm(__a, __b, (vector unsigned char)
+    (__c,   __c-1, __c-2, __c-3, __c-4, __c-5, __c-6, __c-7,
+     __c-8, __c-9, __c-10, __c-11, __c-12, __c-13, __c-14, __c-15));
+#else
   return vec_perm(__a, __b, (vector unsigned char)
     (__c,   __c+1, __c+2,  __c+3,  __c+4,  __c+5,  __c+6,  __c+7,
      __c+8, __c+9, __c+10, __c+11, __c+12, __c+13, __c+14, __c+15));
+#endif
 }
 
 static vector pixel __ATTRS_o_ai
 vec_vsldoi(vector pixel __a, vector pixel __b, unsigned char __c)
 {
+#ifdef __LITTLE_ENDIAN__
+  return vec_perm(__a, __b, (vector unsigned char)
+    (__c,   __c-1, __c-2, __c-3, __c-4, __c-5, __c-6, __c-7,
+     __c-8, __c-9, __c-10, __c-11, __c-12, __c-13, __c-14, __c-15));
+#else
   return vec_perm(__a, __b, (vector unsigned char)
     (__c,   __c+1, __c+2,  __c+3,  __c+4,  __c+5,  __c+6,  __c+7,
      __c+8, __c+9, __c+10, __c+11, __c+12, __c+13, __c+14, __c+15));
+#endif
 }
 
 static vector int __ATTRS_o_ai
 vec_vsldoi(vector int __a, vector int __b, unsigned char __c)
 {
+#ifdef __LITTLE_ENDIAN__
+  return vec_perm(__a, __b, (vector unsigned char)
+    (__c,   __c-1, __c-2, __c-3, __c-4, __c-5, __c-6, __c-7,
+     __c-8, __c-9, __c-10, __c-11, __c-12, __c-13, __c-14, __c-15));
+#else
   return vec_perm(__a, __b, (vector unsigned char)
     (__c,   __c+1, __c+2,  __c+3,  __c+4,  __c+5,  __c+6,  __c+7,
      __c+8, __c+9, __c+10, __c+11, __c+12, __c+13, __c+14, __c+15));
+#endif
 }
 
 static vector unsigned int __ATTRS_o_ai
 vec_vsldoi(vector unsigned int __a, vector unsigned int __b, unsigned char __c)
 {
+#ifdef __LITTLE_ENDIAN__
+  return vec_perm(__a, __b, (vector unsigned char)
+    (__c,   __c-1, __c-2, __c-3, __c-4, __c-5, __c-6, __c-7,
+     __c-8, __c-9, __c-10, __c-11, __c-12, __c-13, __c-14, __c-15));
+#else
   return vec_perm(__a, __b, (vector unsigned char)
     (__c,   __c+1, __c+2,  __c+3,  __c+4,  __c+5,  __c+6,  __c+7,
      __c+8, __c+9, __c+10, __c+11, __c+12, __c+13, __c+14, __c+15));
+#endif
 }
 
 static vector float __ATTRS_o_ai
 vec_vsldoi(vector float __a, vector float __b, unsigned char __c)
 {
+#ifdef __LITTLE_ENDIAN__
+  return vec_perm(__a, __b, (vector unsigned char)
+    (__c,   __c-1, __c-2, __c-3, __c-4, __c-5, __c-6, __c-7,
+     __c-8, __c-9, __c-10, __c-11, __c-12, __c-13, __c-14, __c-15));
+#else
   return vec_perm(__a, __b, (vector unsigned char)
     (__c,   __c+1, __c+2,  __c+3,  __c+4,  __c+5,  __c+6,  __c+7,
      __c+8, __c+9, __c+10, __c+11, __c+12, __c+13, __c+14, __c+15));
+#endif
 }
 
 /* vec_sll */

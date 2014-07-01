@@ -201,6 +201,13 @@ CodeGenFunction::CreateStaticVarDecl(const VarDecl &D,
   if (D.getTLSKind())
     CGM.setTLSMode(GV, D);
 
+  if (D.isExternallyVisible()) {
+    if (D.hasAttr<DLLImportAttr>())
+      GV->setDLLStorageClass(llvm::GlobalVariable::DLLImportStorageClass);
+    else if (D.hasAttr<DLLExportAttr>())
+      GV->setDLLStorageClass(llvm::GlobalVariable::DLLExportStorageClass);
+  }
+
   // Make sure the result is of the correct type.
   unsigned ExpectedAddrSpace = CGM.getContext().getTargetAddressSpace(Ty);
   if (AddrSpace != ExpectedAddrSpace) {
@@ -795,9 +802,6 @@ static bool shouldUseMemSetPlusStoresToInitialize(llvm::Constant *Init,
 /// Should we use the LLVM lifetime intrinsics for the given local variable?
 static bool shouldUseLifetimeMarkers(CodeGenFunction &CGF, const VarDecl &D,
                                      unsigned Size) {
-  // Always emit lifetime markers in -fsanitize=use-after-scope mode.
-  if (CGF.getLangOpts().Sanitize.UseAfterScope)
-    return true;
   // For now, only in optimized builds.
   if (CGF.CGM.getCodeGenOpts().OptimizationLevel == 0)
     return false;

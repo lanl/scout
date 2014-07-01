@@ -30,9 +30,8 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/system_error.h"
-
 #include <cstdlib> // ::getenv
+#include <system_error>
 
 using namespace clang::driver;
 using namespace clang::driver::toolchains;
@@ -1361,11 +1360,13 @@ bool Generic_GCC::GCCInstallationDetector::getBiarchSibling(Multilib &M) const {
 
   static const char *const MIPS64LibDirs[] = { "/lib64", "/lib" };
   static const char *const MIPS64Triples[] = { "mips64-linux-gnu",
-                                               "mips-mti-linux-gnu" };
+                                               "mips-mti-linux-gnu",
+                                               "mips64-linux-gnuabi64" };
   static const char *const MIPS64ELLibDirs[] = { "/lib64", "/lib" };
   static const char *const MIPS64ELTriples[] = { "mips64el-linux-gnu",
                                                  "mips-mti-linux-gnu",
-                                                 "mips64el-linux-android" };
+                                                 "mips64el-linux-android",
+                                                 "mips64el-linux-gnuabi64" };
 
   static const char *const PPCLibDirs[] = { "/lib32", "/lib" };
   static const char *const PPCTriples[] = {
@@ -1917,6 +1918,18 @@ static bool findMIPSMultilibs(const llvm::Triple &TargetTriple, StringRef Path,
     }
   }
 
+  {
+    // Fallback to the regular toolchain-tree structure.
+    Multilib Default;
+    Result.Multilibs.push_back(Default);
+    Result.Multilibs.FilterOut(NonExistent);
+
+    if (Result.Multilibs.select(Flags, Result.SelectedMultilib)) {
+      Result.BiarchSibling = Multilib();
+      return true;
+    }
+  }
+
   return false;
 }
 
@@ -2018,7 +2031,7 @@ void Generic_GCC::GCCInstallationDetector::ScanLibDirForGCCTriple(
       (llvm::array_lengthof(LibSuffixes) - (TargetArch != llvm::Triple::x86));
   for (unsigned i = 0; i < NumLibSuffixes; ++i) {
     StringRef LibSuffix = LibSuffixes[i];
-    llvm::error_code EC;
+    std::error_code EC;
     for (llvm::sys::fs::directory_iterator LI(LibDir + LibSuffix, EC), LE;
          !EC && LI != LE; LI = LI.increment(EC)) {
       StringRef VersionText = llvm::sys::path::filename(LI->path());
@@ -2228,7 +2241,7 @@ Hexagon_TC::Hexagon_TC(const Driver &D, const llvm::Triple &Triple,
 
   // Determine version of GCC libraries and headers to use.
   const std::string HexagonDir(GnuDir + "/lib/gcc/hexagon");
-  llvm::error_code ec;
+  std::error_code ec;
   GCCVersion MaxVersion= GCCVersion::Parse("0.0.0");
   for (llvm::sys::fs::directory_iterator di(HexagonDir, ec), de;
        !ec && di != de; di = di.increment(ec)) {
@@ -2911,6 +2924,18 @@ static std::string getMultiarchTriple(const llvm::Triple &TargetTriple,
     if (llvm::sys::fs::exists(SysRoot + "/lib/mipsel-linux-gnu"))
       return "mipsel-linux-gnu";
     return TargetTriple.str();
+  case llvm::Triple::mips64:
+    if (llvm::sys::fs::exists(SysRoot + "/lib/mips64-linux-gnu"))
+      return "mips64-linux-gnu";
+    if (llvm::sys::fs::exists(SysRoot + "/lib/mips64-linux-gnuabi64"))
+      return "mips64-linux-gnuabi64";
+    return TargetTriple.str();
+  case llvm::Triple::mips64el:
+    if (llvm::sys::fs::exists(SysRoot + "/lib/mips64el-linux-gnu"))
+      return "mips64el-linux-gnu";
+    if (llvm::sys::fs::exists(SysRoot + "/lib/mips64el-linux-gnuabi64"))
+      return "mips64el-linux-gnuabi64";
+    return TargetTriple.str();
   case llvm::Triple::ppc:
     if (llvm::sys::fs::exists(SysRoot + "/lib/powerpc-linux-gnuspe"))
       return "powerpc-linux-gnuspe";
@@ -2976,7 +3001,7 @@ Linux::Linux(const Driver &D, const llvm::Triple &Triple, const ArgList &Args)
   PPaths.push_back(Twine(GCCInstallation.getParentLibPath() + "/../" +
                          GCCInstallation.getTriple().str() + "/bin").str());
 
-  Linker = GetProgramPath("ld");
+  Linker = GetLinkerPath();
 
   Distro Distro = DetectDistro(Arch);
 
@@ -3259,11 +3284,22 @@ void Linux::AddClangSystemIncludeArgs(const ArgList &DriverArgs,
   const StringRef MIPSELMultiarchIncludeDirs[] = {
     "/usr/include/mipsel-linux-gnu"
   };
+  const StringRef MIPS64MultiarchIncludeDirs[] = {
+    "/usr/include/mips64-linux-gnu",
+    "/usr/include/mips64-linux-gnuabi64"
+  };
+  const StringRef MIPS64ELMultiarchIncludeDirs[] = {
+    "/usr/include/mips64el-linux-gnu",
+    "/usr/include/mips64el-linux-gnuabi64"
+  };
   const StringRef PPCMultiarchIncludeDirs[] = {
     "/usr/include/powerpc-linux-gnu"
   };
   const StringRef PPC64MultiarchIncludeDirs[] = {
     "/usr/include/powerpc64-linux-gnu"
+  };
+  const StringRef PPC64LEMultiarchIncludeDirs[] = {
+    "/usr/include/powerpc64le-linux-gnu"
   };
   ArrayRef<StringRef> MultiarchIncludeDirs;
   if (getTriple().getArch() == llvm::Triple::x86_64) {
@@ -3284,10 +3320,16 @@ void Linux::AddClangSystemIncludeArgs(const ArgList &DriverArgs,
     MultiarchIncludeDirs = MIPSMultiarchIncludeDirs;
   } else if (getTriple().getArch() == llvm::Triple::mipsel) {
     MultiarchIncludeDirs = MIPSELMultiarchIncludeDirs;
+  } else if (getTriple().getArch() == llvm::Triple::mips64) {
+    MultiarchIncludeDirs = MIPS64MultiarchIncludeDirs;
+  } else if (getTriple().getArch() == llvm::Triple::mips64el) {
+    MultiarchIncludeDirs = MIPS64ELMultiarchIncludeDirs;
   } else if (getTriple().getArch() == llvm::Triple::ppc) {
     MultiarchIncludeDirs = PPCMultiarchIncludeDirs;
   } else if (getTriple().getArch() == llvm::Triple::ppc64) {
     MultiarchIncludeDirs = PPC64MultiarchIncludeDirs;
+  } else if (getTriple().getArch() == llvm::Triple::ppc64le) {
+    MultiarchIncludeDirs = PPC64LEMultiarchIncludeDirs;
   }
   for (StringRef Dir : MultiarchIncludeDirs) {
     if (llvm::sys::fs::exists(SysRoot + Dir)) {
