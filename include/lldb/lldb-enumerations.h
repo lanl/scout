@@ -39,16 +39,18 @@ namespace lldb {
     typedef enum LaunchFlags
     {
         eLaunchFlagNone         = 0u,
-        eLaunchFlagExec         = (1u << 0),  ///< Exec when launching and turn the calling process into a new process
-        eLaunchFlagDebug        = (1u << 1),  ///< Stop as soon as the process launches to allow the process to be debugged
-        eLaunchFlagStopAtEntry  = (1u << 2),  ///< Stop at the program entry point instead of auto-continuing when launching or attaching at entry point
-        eLaunchFlagDisableASLR  = (1u << 3),  ///< Disable Address Space Layout Randomization
-        eLaunchFlagDisableSTDIO = (1u << 4),  ///< Disable stdio for inferior process (e.g. for a GUI app)
-        eLaunchFlagLaunchInTTY  = (1u << 5),  ///< Launch the process in a new TTY if supported by the host 
-        eLaunchFlagLaunchInShell= (1u << 6),   ///< Launch the process inside a shell to get shell expansion
+        eLaunchFlagExec         = (1u << 0),       ///< Exec when launching and turn the calling process into a new process
+        eLaunchFlagDebug        = (1u << 1),       ///< Stop as soon as the process launches to allow the process to be debugged
+        eLaunchFlagStopAtEntry  = (1u << 2),       ///< Stop at the program entry point instead of auto-continuing when launching or attaching at entry point
+        eLaunchFlagDisableASLR  = (1u << 3),       ///< Disable Address Space Layout Randomization
+        eLaunchFlagDisableSTDIO = (1u << 4),       ///< Disable stdio for inferior process (e.g. for a GUI app)
+        eLaunchFlagLaunchInTTY  = (1u << 5),       ///< Launch the process in a new TTY if supported by the host
+        eLaunchFlagLaunchInShell= (1u << 6),       ///< Launch the process inside a shell to get shell expansion
         eLaunchFlagLaunchInSeparateProcessGroup = (1u << 7), ///< Launch the process in a separate process group
-        eLaunchFlagsDontMonitorProcess = (1u << 8)  ///< If you are going to hand the process off (e.g. to debugserver)
-                                                    ///< set this flag so lldb & the handee don't race to reap it.
+        eLaunchFlagDontSetExitStatus = (1u << 8), ///< If you are going to hand the process off (e.g. to debugserver)
+                                                   ///< set this flag so lldb & the handee don't race to set its exit status.
+        eLaunchFlagDetachOnError = (1u << 9)      ///< If set, then the client stub should detach rather than killing the debugee
+                                                   ///< if it loses connection with lldb.
     } LaunchFlags;
         
     //----------------------------------------------------------------------
@@ -785,6 +787,27 @@ namespace lldb {
         eExpressionEvaluationComplete
     } ExpressionEvaluationPhase;
     
+
+    //----------------------------------------------------------------------
+    // Watchpoint Kind
+    // Indicates what types of events cause the watchpoint to fire.
+    // Used by Native*Protocol-related classes.
+    //----------------------------------------------------------------------
+    typedef enum WatchpointKind
+    {
+        eWatchpointKindRead = (1u << 0),
+        eWatchpointKindWrite = (1u << 1)
+    } WatchpointKind;
+
+    typedef enum GdbSignal
+    {
+        eGdbSignalBadAccess      = 0x91,
+        eGdbSignalBadInstruction = 0x92,
+        eGdbSignalArithmetic     = 0x93,
+        eGdbSignalEmulation      = 0x94,
+        eGdbSignalSoftware       = 0x95,
+        eGdbSignalBreakpoint     = 0x96
+    } GdbRemoteSignal;
 
 } // namespace lldb
 

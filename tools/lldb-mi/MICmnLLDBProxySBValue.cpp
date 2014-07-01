@@ -23,6 +23,7 @@
 
 // Third Party Headers:
 #include <lldb/API/SBError.h>
+#include <cstdlib>
 
 // In-house headers:
 #include "MICmnLLDBProxySBValue.h"
@@ -112,7 +113,7 @@ bool CMICmnLLDBProxySBValue::GetValueAsSigned( const lldb::SBValue & vrValue, MI
 bool CMICmnLLDBProxySBValue::GetCString( const lldb::SBValue & vrValue, CMIUtilString & vwCString )
 {
 	lldb::SBValue & rValue = const_cast< lldb::SBValue & >( vrValue );
-	const char * pCType = rValue.GetTypeName();
+	const MIchar * pCType = rValue.GetTypeName();
 	if( pCType == nullptr )
 		return MIstatus::failure;
 	
@@ -129,7 +130,7 @@ bool CMICmnLLDBProxySBValue::GetCString( const lldb::SBValue & vrValue, CMIUtilS
 	lldb::SBProcess & rProcess = rSessionInfo.m_lldbProcess;
 	MIuint nBufferSize = 64;
 	bool bNeedResize = false;
-	char * pBuffer = static_cast< char * >( ::malloc( nBufferSize ) );
+	MIchar * pBuffer = static_cast< MIchar * >( ::malloc( nBufferSize ) );
 	do
 	{
 		lldb::SBError error;
@@ -138,7 +139,7 @@ bool CMICmnLLDBProxySBValue::GetCString( const lldb::SBValue & vrValue, CMIUtilS
 		{
 			bNeedResize = true;
 			nBufferSize  = nBufferSize << 1;
-			pBuffer = static_cast< char * >( ::realloc( pBuffer, nBufferSize ) );
+			pBuffer = static_cast< MIchar * >( ::realloc( pBuffer, nBufferSize ) );
 		}
 		else
 			bNeedResize = false;

@@ -129,19 +129,6 @@ ClangExpressionParser::ClangExpressionParser (ExecutionContextScope *exe_scope,
     if (target_sp && target_sp->GetArchitecture().IsValid())
     {
         std::string triple = target_sp->GetArchitecture().GetTriple().str();
-        
-        int dash_count = 0;
-        for (size_t i = 0; i < triple.size(); ++i)
-        {
-            if (triple[i] == '-')
-                dash_count++;
-            if (dash_count == 3)
-            {
-                triple.resize(i);
-                break;
-            }
-        }
-        
         m_compiler->getTargetOpts().Triple = triple;
     }
     else
@@ -157,8 +144,9 @@ ClangExpressionParser::ClangExpressionParser (ExecutionContextScope *exe_scope,
     }
     
     // Any arm32 iOS environment, but not on arm64
-    if (m_compiler->getTargetOpts().Triple.find("arm64") == std::string::npos
-        && m_compiler->getTargetOpts().Triple.find("ios") != std::string::npos)
+    if (m_compiler->getTargetOpts().Triple.find("arm64") == std::string::npos &&
+        m_compiler->getTargetOpts().Triple.find("arm") != std::string::npos &&
+        m_compiler->getTargetOpts().Triple.find("ios") != std::string::npos)
     {
         m_compiler->getTargetOpts().ABI = "apcs-gnu";
     }
@@ -242,9 +230,11 @@ ClangExpressionParser::ClangExpressionParser (ExecutionContextScope *exe_scope,
         m_compiler->getCodeGenOpts().setDebugInfo(CodeGenOptions::NoDebugInfo);
     
     // Disable some warnings.
-    m_compiler->getDiagnostics().setDiagnosticGroupMapping("unused-value", clang::diag::MAP_IGNORE, SourceLocation());
-    m_compiler->getDiagnostics().setDiagnosticGroupMapping("odr", clang::diag::MAP_IGNORE, SourceLocation());
-    
+    m_compiler->getDiagnostics().setSeverityForGroup(
+        "unused-value", clang::diag::Severity::Ignored, SourceLocation());
+    m_compiler->getDiagnostics().setSeverityForGroup(
+        "odr", clang::diag::Severity::Ignored, SourceLocation());
+
     // Inform the target of the language options
     //
     // FIXME: We shouldn't need to do this, the target should be immutable once

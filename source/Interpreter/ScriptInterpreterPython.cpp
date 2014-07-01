@@ -1018,7 +1018,6 @@ ScriptInterpreterPython::ExecuteMultipleLines (const char *in_string, const Exec
                   ScriptInterpreterPython::Locker::AcquireLock      | ScriptInterpreterPython::Locker::InitSession | (options.GetSetLLDBGlobals() ? ScriptInterpreterPython::Locker::InitGlobals : 0),
                   ScriptInterpreterPython::Locker::FreeAcquiredLock | ScriptInterpreterPython::Locker::TearDownSession);
 
-    bool success = false;
     PythonObject return_value;
     PythonObject &main_module = GetMainModule ();
     PythonDictionary globals (PyModule_GetDict(main_module.get()));
@@ -1048,12 +1047,7 @@ ScriptInterpreterPython::ExecuteMultipleLines (const char *in_string, const Exec
             PyCodeObject *compiled_code = PyNode_Compile (compiled_node, "temp.py");
             if (compiled_code)
             {
-                { // scope for PythonInputReaderManager
-                    //PythonInputReaderManager py_input(options.GetEnableIO() ? this : NULL);
-                    return_value.Reset(PyEval_EvalCode (compiled_code, globals.get(), locals.get()));
-                }
-                if (return_value)
-                    success = true;
+              return_value.Reset(PyEval_EvalCode (compiled_code, globals.get(), locals.get()));
             }
         }
     }

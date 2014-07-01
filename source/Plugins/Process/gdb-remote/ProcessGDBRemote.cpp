@@ -56,11 +56,14 @@
 #include "lldb/Target/Target.h"
 #include "lldb/Target/TargetList.h"
 #include "lldb/Target/ThreadPlanCallFunction.h"
+#include "lldb/Target/SystemRuntime.h"
 #include "lldb/Utility/PseudoTerminal.h"
 
 // Project includes
 #include "lldb/Host/Host.h"
+#include "Plugins/Process/Utility/FreeBSDSignals.h"
 #include "Plugins/Process/Utility/InferiorCallPOSIX.h"
+#include "Plugins/Process/Utility/LinuxSignals.h"
 #include "Plugins/Process/Utility/StopInfoMachException.h"
 #include "Plugins/Platform/MacOSX/PlatformRemoteiOS.h"
 #include "Utility/StringExtractorGDBRemote.h"
@@ -284,7 +287,8 @@ ProcessGDBRemote::ProcessGDBRemote(Target& target, Listener &listener) :
     m_waiting_for_attach (false),
     m_destroy_tried_resuming (false),
     m_command_sp (),
-    m_breakpoint_pc_offset (0)
+    m_breakpoint_pc_offset (0),
+    m_unix_signals_sp (new UnixSignals ())
 {
     m_async_broadcaster.SetEventName (eBroadcastBitAsyncThreadShouldExit,   "async thread should exit");
     m_async_broadcaster.SetEventName (eBroadcastBitAsyncContinue,           "async thread continue");
@@ -627,6 +631,7 @@ ProcessGDBRemote::WillAttachToProcessWithName (const char *process_name, bool wa
 Error
 ProcessGDBRemote::DoConnectRemote (Stream *strm, const char *remote_url)
 {
+    Log *log (ProcessGDBRemoteLog::GetLogIfAllCategoriesSet (GDBR_LOG_PROCESS));
     Error error (WillLaunchOrAttach ());
     
     if (error.Fail())
@@ -677,7 +682,11 @@ ProcessGDBRemote::DoConnectRemote (Stream *strm, const char *remote_url)
             error.SetErrorStringWithFormat ("Process %" PRIu64 " was reported after connecting to '%s', but no stop reply packet was received", pid, remote_url);
     }
 
-    if (error.Success() 
+    if (log)
+        log->Printf ("ProcessGDBRemote::%s pid %" PRIu64 ": normalizing target architecture initial triple: %s (GetTarget().GetArchitecture().IsValid() %s, m_gdb_comm.GetHostArchitecture().IsValid(): %s)", __FUNCTION__, GetID (), GetTarget ().GetArchitecture ().GetTriple ().getTriple ().c_str (), GetTarget ().GetArchitecture ().IsValid () ? "true" : "false", m_gdb_comm.GetHostArchitecture ().IsValid () ? "true" : "false");
+
+
+    if (error.Success()
         && !GetTarget().GetArchitecture().IsValid()
         && m_gdb_comm.GetHostArchitecture().IsValid())
     {
@@ -686,6 +695,42 @@ ProcessGDBRemote::DoConnectRemote (Stream *strm, const char *remote_url)
             GetTarget().SetArchitecture(m_gdb_comm.GetProcessArchitecture());
         else
             GetTarget().SetArchitecture(m_gdb_comm.GetHostArchitecture());
+    }
+
+    if (log)
+        log->Printf ("ProcessGDBRemote::%s pid %" PRIu64 ": normalized target architecture triple: %s", __FUNCTION__, GetID (), GetTarget ().GetArchitecture ().GetTriple ().getTriple ().c_str ());
+
+    // Set the Unix signals properly for the target.
+    // FIXME Add a gdb-remote packet to discover dynamically.
+    if (error.Success ())
+    {
+        const ArchSpec arch_spec = GetTarget ().GetArchitecture ();
+        if (arch_spec.IsValid ())
+        {
+            if (log)
+                log->Printf ("ProcessGDBRemote::%s pid %" PRIu64 ": determining unix signals type based on architecture %s, triple %s", __FUNCTION__, GetID (), arch_spec.GetArchitectureName () ? arch_spec.GetArchitectureName () : "<null>", arch_spec.GetTriple ().getTriple ().c_str ());
+
+            switch (arch_spec.GetTriple ().getOS ())
+            {
+            case llvm::Triple::Linux:
+                m_unix_signals_sp.reset (new process_linux::LinuxSignals ());
+                if (log)
+                    log->Printf ("ProcessGDBRemote::%s using Linux unix signals type for pid %" PRIu64, __FUNCTION__, GetID ());
+                break;
+            case llvm::Triple::OpenBSD:
+            case llvm::Triple::FreeBSD:
+            case llvm::Triple::NetBSD:
+                m_unix_signals_sp.reset (new FreeBSDSignals ());
+                if (log)
+                    log->Printf ("ProcessGDBRemote::%s using *BSD unix signals type for pid %" PRIu64, __FUNCTION__, GetID ());
+                break;
+            default:
+                m_unix_signals_sp.reset (new UnixSignals ());
+                if (log)
+                    log->Printf ("ProcessGDBRemote::%s using generic unix signals type for pid %" PRIu64, __FUNCTION__, GetID ());
+                break;
+            }
+        }
     }
 
     return error;
@@ -798,6 +843,7 @@ ProcessGDBRemote::DoLaunch (Module *exe_module, ProcessLaunchInfo &launch_info)
                 m_gdb_comm.SetSTDERR (stderr_path);
 
             m_gdb_comm.SetDisableASLR (launch_flags & eLaunchFlagDisableASLR);
+            m_gdb_comm.SetDetachOnError (launch_flags & eLaunchFlagDetachOnError);
 
             m_gdb_comm.SendLaunchArchPacket (m_target.GetArchitecture().GetArchitectureName());
             
@@ -1038,6 +1084,13 @@ ProcessGDBRemote::DidLaunch ()
     DidLaunchOrAttach ();
 }
 
+UnixSignals&
+ProcessGDBRemote::GetUnixSignals ()
+{
+    assert (m_unix_signals_sp && "m_unix_signals_sp is null");
+    return *m_unix_signals_sp;
+}
+
 Error
 ProcessGDBRemote::DoAttachToProcessWithID (lldb::pid_t attach_pid)
 {
@@ -1070,6 +1123,8 @@ ProcessGDBRemote::DoAttachToProcessWithID (lldb::pid_t attach_pid, const Process
     
         if (error.Success())
         {
+            m_gdb_comm.SetDetachOnError(attach_info.GetDetachOnError());
+            
             char packet[64];
             const int packet_len = ::snprintf (packet, sizeof(packet), "vAttach;%" PRIx64, attach_pid);
             SetID (attach_pid);            
@@ -1106,6 +1161,8 @@ ProcessGDBRemote::DoAttachToProcessWithName (const char *process_name, const Pro
         if (error.Success())
         {
             StreamString packet;
+            
+            m_gdb_comm.SetDetachOnError(attach_info.GetDetachOnError());
             
             if (attach_info.GetWaitForLaunch())
             {
@@ -2225,6 +2282,7 @@ ProcessGDBRemote::DoWriteMemory (addr_t addr, const void *buf, size_t size, Erro
 lldb::addr_t
 ProcessGDBRemote::DoAllocateMemory (size_t size, uint32_t permissions, Error &error)
 {
+    lldb_private::Log *log (lldb_private::GetLogIfAnyCategoriesSet (LIBLLDB_LOG_PROCESS|LIBLLDB_LOG_EXPRESSIONS));
     addr_t allocated_addr = LLDB_INVALID_ADDRESS;
     
     LazyBool supported = m_gdb_comm.SupportsAllocDeallocMemory();
@@ -2250,7 +2308,11 @@ ProcessGDBRemote::DoAllocateMemory (size_t size, uint32_t permissions, Error &er
                                  eMmapFlagsAnon | eMmapFlagsPrivate, -1, 0))
                 m_addr_to_mmap_size[allocated_addr] = size;
             else
+            {
                 allocated_addr = LLDB_INVALID_ADDRESS;
+                if (log)
+                    log->Printf ("ProcessGDBRemote::%s no direct stub support for memory allocation, and InferiorCallMmap also failed - is stub missing register context save/restore capability?", __FUNCTION__);
+            }
             break;
     }
     
@@ -3147,6 +3209,50 @@ ProcessGDBRemote::GetAuxvData()
             buf.reset(new DataBufferHeap(response_string.c_str(), response_string.length()));
     }
     return buf;
+}
+
+StructuredData::ObjectSP
+ProcessGDBRemote::GetExtendedInfoForThread (lldb::tid_t tid)
+{
+    StructuredData::ObjectSP object_sp;
+
+    if (m_gdb_comm.GetThreadExtendedInfoSupported())
+    {
+        StructuredData::ObjectSP args_dict(new StructuredData::Dictionary());
+        SystemRuntime *runtime = GetSystemRuntime();
+        if (runtime)
+        {
+            runtime->AddThreadExtendedInfoPacketHints (args_dict);
+        }
+        args_dict->GetAsDictionary()->AddIntegerItem ("thread", tid);
+
+        StreamString packet;
+        packet << "jThreadExtendedInfo:";
+        args_dict->Dump (packet);
+
+        // FIXME the final character of a JSON dictionary, '}', is the escape
+        // character in gdb-remote binary mode.  lldb currently doesn't escape
+        // these characters in its packet output -- so we add the quoted version
+        // of the } character here manually in case we talk to a debugserver which
+        // un-escapes the chracters at packet read time.
+        packet << (char) (0x7d ^ 0x20);
+
+        StringExtractorGDBRemote response;
+        if (m_gdb_comm.SendPacketAndWaitForResponse(packet.GetData(), packet.GetSize(), response, false) == GDBRemoteCommunication::PacketResult::Success)
+        {
+            StringExtractorGDBRemote::ResponseType response_type = response.GetResponseType();
+            if (response_type == StringExtractorGDBRemote::eResponse)
+            {
+                if (!response.Empty())
+                {
+                    // The packet has already had the 0x7d xor quoting stripped out at the
+                    // GDBRemoteCommunication packet receive level.
+                    object_sp = StructuredData::ParseJSON (response.GetStringRef());
+                }
+            }
+        }
+    }
+    return object_sp;
 }
 
 // Establish the largest memory read/write payloads we should use.

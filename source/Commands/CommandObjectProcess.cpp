@@ -20,6 +20,7 @@
 #include "lldb/Breakpoint/BreakpointSite.h"
 #include "lldb/Core/State.h"
 #include "lldb/Core/Module.h"
+#include "lldb/Core/PluginManager.h"
 #include "lldb/Host/Host.h"
 #include "lldb/Interpreter/Args.h"
 #include "lldb/Interpreter/Options.h"
@@ -206,6 +207,9 @@ protected:
         
         if (target->GetDisableASLR())
             m_options.launch_info.GetFlags().Set (eLaunchFlagDisableASLR);
+        
+        if (target->GetDetachOnError())
+            m_options.launch_info.GetFlags().Set (eLaunchFlagDetachOnError);
         
         if (target->GetDisableSTDIO())
             m_options.launch_info.GetFlags().Set (eLaunchFlagDisableSTDIO);
@@ -1483,6 +1487,71 @@ protected:
 };
 
 //-------------------------------------------------------------------------
+// CommandObjectProcessSaveCore
+//-------------------------------------------------------------------------
+#pragma mark CommandObjectProcessSaveCore
+
+class CommandObjectProcessSaveCore : public CommandObjectParsed
+{
+public:
+    
+    CommandObjectProcessSaveCore (CommandInterpreter &interpreter) :
+    CommandObjectParsed (interpreter,
+                         "process save-core",
+                         "Save the current process as a core file using an appropriate file type.",
+                         "process save-core FILE",
+                         eFlagRequiresProcess      |
+                         eFlagTryTargetAPILock     |
+                         eFlagProcessMustBeLaunched)
+    {
+    }
+    
+    ~CommandObjectProcessSaveCore ()
+    {
+    }
+    
+protected:
+    bool
+    DoExecute (Args& command,
+               CommandReturnObject &result)
+    {
+        ProcessSP process_sp = m_exe_ctx.GetProcessSP();
+        if (process_sp)
+        {
+            if (command.GetArgumentCount() == 1)
+            {
+                FileSpec output_file(command.GetArgumentAtIndex(0), false);
+                Error error = PluginManager::SaveCore(process_sp, output_file);
+                if (error.Success())
+                {
+                    result.SetStatus (eReturnStatusSuccessFinishResult);
+                }
+                else
+                {
+                    result.AppendErrorWithFormat ("Failed to save core file for process: %s\n", error.AsCString());
+                    result.SetStatus (eReturnStatusFailed);
+                }
+            }
+            else
+            {
+                result.AppendErrorWithFormat ("'%s' takes one arguments:\nUsage: %s\n",
+                                              m_cmd_name.c_str(),
+                                              m_cmd_syntax.c_str());
+                result.SetStatus (eReturnStatusFailed);
+            }
+        }
+        else
+        {
+            result.AppendError ("invalid process");
+            result.SetStatus (eReturnStatusFailed);
+            return false;
+        }
+        
+        return result.Succeeded();
+    }
+};
+
+//-------------------------------------------------------------------------
 // CommandObjectProcessStatus
 //-------------------------------------------------------------------------
 #pragma mark CommandObjectProcessStatus
@@ -1853,6 +1922,7 @@ CommandObjectMultiwordProcess::CommandObjectMultiwordProcess (CommandInterpreter
     LoadSubCommand ("interrupt",   CommandObjectSP (new CommandObjectProcessInterrupt (interpreter)));
     LoadSubCommand ("kill",        CommandObjectSP (new CommandObjectProcessKill      (interpreter)));
     LoadSubCommand ("plugin",      CommandObjectSP (new CommandObjectProcessPlugin    (interpreter)));
+    LoadSubCommand ("save-core",   CommandObjectSP (new CommandObjectProcessSaveCore  (interpreter)));
 }
 
 CommandObjectMultiwordProcess::~CommandObjectMultiwordProcess ()
