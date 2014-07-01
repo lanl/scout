@@ -1167,7 +1167,7 @@ public:
   /// unqualified type will always be a FunctionProtoType.
   /// Otherwise, returns a NULL type.
   QualType BuildFunctionType(QualType T,
-                             llvm::MutableArrayRef<QualType> ParamTypes,
+                             MutableArrayRef<QualType> ParamTypes,
                              SourceLocation Loc, DeclarationName Entity,
                              const FunctionProtoType::ExtProtoInfo &EPI);
 
@@ -1425,7 +1425,7 @@ public:
                          IdentifierInfo **CorrectedII = nullptr);
   TypeSpecifierType isTagName(IdentifierInfo &II, Scope *S);
   bool isMicrosoftMissingTypename(const CXXScopeSpec *SS, Scope *S);
-  bool DiagnoseUnknownTypeName(IdentifierInfo *&II,
+  void DiagnoseUnknownTypeName(IdentifierInfo *&II,
                                SourceLocation IILoc,
                                Scope *S,
                                CXXScopeSpec *SS,
@@ -1643,12 +1643,16 @@ public:
   void ActOnUninitializedDecl(Decl *dcl, bool TypeMayContainAuto);
   void ActOnInitializerError(Decl *Dcl);
   void ActOnCXXForRangeDecl(Decl *D);
+  StmtResult ActOnCXXForRangeIdentifier(Scope *S, SourceLocation IdentLoc,
+                                        IdentifierInfo *Ident,
+                                        ParsedAttributes &Attrs,
+                                        SourceLocation AttrEnd);
   void SetDeclDeleted(Decl *dcl, SourceLocation DelLoc);
   void SetDeclDefaulted(Decl *dcl, SourceLocation DefaultLoc);
   void FinalizeDeclaration(Decl *D);
   DeclGroupPtrTy FinalizeDeclaratorGroup(Scope *S, const DeclSpec &DS,
                                          ArrayRef<Decl *> Group);
-  DeclGroupPtrTy BuildDeclaratorGroup(llvm::MutableArrayRef<Decl *> Group,
+  DeclGroupPtrTy BuildDeclaratorGroup(MutableArrayRef<Decl *> Group,
                                       bool TypeMayContainAuto = true);
 
   /// Should be called on all declarations that might have attached
@@ -3236,7 +3240,8 @@ public:
                                NamedDecl *D, StringRef Message,
                                SourceLocation Loc,
                                const ObjCInterfaceDecl *UnknownObjCClass,
-                               const ObjCPropertyDecl  *ObjCProperty);
+                               const ObjCPropertyDecl  *ObjCProperty,
+                               bool ObjCPropertyAccess);
 
   void HandleDelayedAvailabilityCheck(sema::DelayedDiagnostic &DD, Decl *Ctx);
 
@@ -3248,7 +3253,8 @@ public:
 
   bool CanUseDecl(NamedDecl *D);
   bool DiagnoseUseOfDecl(NamedDecl *D, SourceLocation Loc,
-                         const ObjCInterfaceDecl *UnknownObjCClass=nullptr);
+                         const ObjCInterfaceDecl *UnknownObjCClass=nullptr,
+                         bool ObjCPropertyAccess=false);
   void NoteDeletedFunction(FunctionDecl *FD);
   std::string getDeletedOrUnavailableSuffix(const FunctionDecl *FD);
   bool DiagnosePropertyAccessorMismatch(ObjCPropertyDecl *PD,
@@ -3428,9 +3434,10 @@ public:
                                   const LookupResult &R,
                                   bool HasTrailingLParen);
 
-  ExprResult BuildQualifiedDeclarationNameExpr(CXXScopeSpec &SS,
-                                         const DeclarationNameInfo &NameInfo,
-                                               bool IsAddressOfOperand);
+  ExprResult BuildQualifiedDeclarationNameExpr(
+      CXXScopeSpec &SS, const DeclarationNameInfo &NameInfo,
+      bool IsAddressOfOperand, TypeSourceInfo **RecoveryTSI = nullptr);
+
   ExprResult BuildDependentDeclRefExpr(const CXXScopeSpec &SS,
                                        SourceLocation TemplateKWLoc,
                                 const DeclarationNameInfo &NameInfo,
@@ -3464,7 +3471,7 @@ public:
 
   /// ActOnStringLiteral - The specified tokens were lexed as pasted string
   /// fragments (e.g. "foo" "bar" L"baz").
-  ExprResult ActOnStringLiteral(const Token *StringToks, unsigned NumStringToks,
+  ExprResult ActOnStringLiteral(ArrayRef<Token> StringToks,
                                 Scope *UDLScope = nullptr);
 
   ExprResult ActOnGenericSelectionExpr(SourceLocation KeyLoc,
@@ -4789,7 +4796,8 @@ public:
                                          SourceLocation AtLoc,
                                          SourceLocation SelLoc,
                                          SourceLocation LParenLoc,
-                                         SourceLocation RParenLoc);
+                                         SourceLocation RParenLoc,
+                                         bool WarnMultipleSelectors);
 
   /// ParseObjCProtocolExpression - Build protocol expression for \@protocol
   ExprResult ParseObjCProtocolExpression(IdentifierInfo * ProtocolName,
@@ -5445,7 +5453,7 @@ public:
   };
 
   bool CheckTemplateArgument(NamedDecl *Param,
-                             const TemplateArgumentLoc &Arg,
+                             TemplateArgumentLoc &Arg,
                              NamedDecl *Template,
                              SourceLocation TemplateLoc,
                              SourceLocation RAngleLoc,
@@ -5481,7 +5489,7 @@ public:
                            SmallVectorImpl<TemplateArgument> &Converted);
 
   bool CheckTemplateTypeArgument(TemplateTypeParmDecl *Param,
-                                 const TemplateArgumentLoc &Arg,
+                                 TemplateArgumentLoc &Arg,
                            SmallVectorImpl<TemplateArgument> &Converted);
 
   bool CheckTemplateArgument(TemplateTypeParmDecl *Param,
@@ -5491,7 +5499,7 @@ public:
                                    TemplateArgument &Converted,
                                CheckTemplateArgumentKind CTAK = CTAK_Specified);
   bool CheckTemplateArgument(TemplateTemplateParmDecl *Param,
-                             const TemplateArgumentLoc &Arg,
+                             TemplateArgumentLoc &Arg,
                              unsigned ArgumentPackIndex);
 
   ExprResult
@@ -7065,6 +7073,8 @@ public:
   
   void CheckTollFreeBridgeCast(QualType castType, Expr *castExpr);
   
+  void CheckObjCBridgeRelatedCast(QualType castType, Expr *castExpr);
+  
   bool CheckTollFreeBridgeStaticCast(QualType castType, Expr *castExpr,
                                      CastKind &Kind);
   
@@ -7317,8 +7327,8 @@ public:
                                                     Expr *Op);
   /// \brief Called on start of new data sharing attribute block.
   void StartOpenMPDSABlock(OpenMPDirectiveKind K,
-                           const DeclarationNameInfo &DirName,
-                           Scope *CurScope);
+                           const DeclarationNameInfo &DirName, Scope *CurScope,
+                           SourceLocation Loc);
   /// \brief Called on end of data sharing attribute block.
   void EndOpenMPDSABlock(Stmt *CurDirective);
 
@@ -7337,9 +7347,8 @@ public:
                                      SourceLocation Loc,
                                      ArrayRef<Expr *> VarList);
 
-  // brief Initialization of captured region for OpenMP parallel region.
-  void ActOnOpenMPRegionStart(OpenMPDirectiveKind DKind, SourceLocation Loc,
-                              Scope *CurScope);
+  // brief Initialization of captured region for OpenMP region.
+  void ActOnOpenMPRegionStart(OpenMPDirectiveKind DKind, Scope *CurScope);
   StmtResult ActOnOpenMPExecutableDirective(OpenMPDirectiveKind Kind,
                                             ArrayRef<OMPClause *> Clauses,
                                             Stmt *AStmt,
@@ -7357,6 +7366,25 @@ public:
                                       Stmt *AStmt,
                                       SourceLocation StartLoc,
                                       SourceLocation EndLoc);
+  /// \brief Called on well-formed '\#pragma omp for' after parsing
+  /// of the associated statement.
+  StmtResult ActOnOpenMPForDirective(ArrayRef<OMPClause *> Clauses, Stmt *AStmt,
+                                     SourceLocation StartLoc,
+                                     SourceLocation EndLoc);
+  /// \brief Called on well-formed '\#pragma omp sections' after parsing
+  /// of the associated statement.
+  StmtResult ActOnOpenMPSectionsDirective(ArrayRef<OMPClause *> Clauses,
+                                          Stmt *AStmt, SourceLocation StartLoc,
+                                          SourceLocation EndLoc);
+  /// \brief Called on well-formed '\#pragma omp section' after parsing of the
+  /// associated statement.
+  StmtResult ActOnOpenMPSectionDirective(Stmt *AStmt, SourceLocation StartLoc,
+                                         SourceLocation EndLoc);
+  /// \brief Called on well-formed '\#pragma omp single' after parsing of the
+  /// associated statement.
+  StmtResult ActOnOpenMPSingleDirective(ArrayRef<OMPClause *> Clauses,
+                                        Stmt *AStmt, SourceLocation StartLoc,
+                                        SourceLocation EndLoc);
 
   OMPClause *ActOnOpenMPSingleExprClause(OpenMPClauseKind Kind,
                                          Expr *Expr,
@@ -7402,13 +7430,37 @@ public:
                                        SourceLocation LParenLoc,
                                        SourceLocation EndLoc);
 
-  OMPClause *ActOnOpenMPVarListClause(OpenMPClauseKind Kind,
-                                      ArrayRef<Expr *> Vars,
-                                      Expr *TailExpr,
-                                      SourceLocation StartLoc,
-                                      SourceLocation LParenLoc,
-                                      SourceLocation ColonLoc,
+  OMPClause *ActOnOpenMPSingleExprWithArgClause(OpenMPClauseKind Kind,
+                                                unsigned Argument, Expr *Expr,
+                                                SourceLocation StartLoc,
+                                                SourceLocation LParenLoc,
+                                                SourceLocation ArgumentLoc,
+                                                SourceLocation CommaLoc,
+                                                SourceLocation EndLoc);
+  /// \brief Called on well-formed 'schedule' clause.
+  OMPClause *ActOnOpenMPScheduleClause(OpenMPScheduleClauseKind Kind,
+                                       Expr *ChunkSize, SourceLocation StartLoc,
+                                       SourceLocation LParenLoc,
+                                       SourceLocation KindLoc,
+                                       SourceLocation CommaLoc,
+                                       SourceLocation EndLoc);
+
+  OMPClause *ActOnOpenMPClause(OpenMPClauseKind Kind, SourceLocation StartLoc,
+                               SourceLocation EndLoc);
+  /// \brief Called on well-formed 'ordered' clause.
+  OMPClause *ActOnOpenMPOrderedClause(SourceLocation StartLoc,
                                       SourceLocation EndLoc);
+  /// \brief Called on well-formed 'nowait' clause.
+  OMPClause *ActOnOpenMPNowaitClause(SourceLocation StartLoc,
+                                     SourceLocation EndLoc);
+
+  OMPClause *
+  ActOnOpenMPVarListClause(OpenMPClauseKind Kind, ArrayRef<Expr *> Vars,
+                           Expr *TailExpr, SourceLocation StartLoc,
+                           SourceLocation LParenLoc, SourceLocation ColonLoc,
+                           SourceLocation EndLoc,
+                           CXXScopeSpec &ReductionIdScopeSpec,
+                           const DeclarationNameInfo &ReductionId);
   /// \brief Called on well-formed 'private' clause.
   OMPClause *ActOnOpenMPPrivateClause(ArrayRef<Expr *> VarList,
                                       SourceLocation StartLoc,
@@ -7429,6 +7481,13 @@ public:
                                      SourceLocation StartLoc,
                                      SourceLocation LParenLoc,
                                      SourceLocation EndLoc);
+  /// \brief Called on well-formed 'reduction' clause.
+  OMPClause *
+  ActOnOpenMPReductionClause(ArrayRef<Expr *> VarList, SourceLocation StartLoc,
+                             SourceLocation LParenLoc, SourceLocation ColonLoc,
+                             SourceLocation EndLoc,
+                             CXXScopeSpec &ReductionIdScopeSpec,
+                             const DeclarationNameInfo &ReductionId);
   /// \brief Called on well-formed 'linear' clause.
   OMPClause *ActOnOpenMPLinearClause(ArrayRef<Expr *> VarList,
                                      Expr *Step,
@@ -7448,6 +7507,11 @@ public:
                                      SourceLocation StartLoc,
                                      SourceLocation LParenLoc,
                                      SourceLocation EndLoc);
+  /// \brief Called on well-formed 'copyprivate' clause.
+  OMPClause *ActOnOpenMPCopyprivateClause(ArrayRef<Expr *> VarList,
+                                          SourceLocation StartLoc,
+                                          SourceLocation LParenLoc,
+                                          SourceLocation EndLoc);
 
   /// \brief The kind of conversion being performed.
   enum CheckedConversionKind {
@@ -7853,7 +7917,9 @@ public:
   ARCConversionResult CheckObjCARCConversion(SourceRange castRange,
                                              QualType castType, Expr *&op,
                                              CheckedConversionKind CCK,
-                                             bool DiagnoseCFAudited = false);
+                                             bool DiagnoseCFAudited = false,
+                                             BinaryOperatorKind Opc = BO_PtrMemD
+                                             );
 
   Expr *stripARCUnbridgedCast(Expr *e);
   void diagnoseARCUnbridgedCast(Expr *e);

@@ -277,6 +277,13 @@ def ext_for_range : ExtWarn<
 def warn_cxx98_compat_for_range : Warning<
   "range-based for loop is incompatible with C++98">,
   InGroup<CXX98Compat>, DefaultIgnore;
+def ext_for_range_identifier : ExtWarn<
+  "range-based for loop with implicit deduced type is a C++1z extension">,
+  InGroup<CXX1z>;
+def warn_cxx1y_compat_for_range_identifier : Warning<
+  "range-based for loop with implicit deduced type is incompatible with "
+  "C++ standards before C++1z">,
+  InGroup<CXXPre1zCompat>, DefaultIgnore;
 def err_for_range_expected_decl : Error<
   "for range declaration must declare a variable">;
 def err_argument_required_after_attribute : Error<
@@ -333,8 +340,6 @@ def warn_vector_long_decl_spec_combination : Warning<
   "Use of 'long' with '__vector' is deprecated">, InGroup<Deprecated>;
 def err_friend_invalid_in_context : Error<
   "'friend' used outside of class">;
-def err_unknown_typename : Error<
-  "unknown type name %0">;
 def err_use_of_tag_name_without_tag : Error<
   "must use '%1' tag to refer to type %0%select{| in this scope}2">;
 
@@ -459,6 +464,8 @@ def err_invalid_operator_on_type : Error<
   "cannot use %select{dot|arrow}0 operator on a type">;
 def err_expected_unqualified_id : Error<
   "expected %select{identifier|unqualified-id}0">;
+def err_brackets_go_after_unqualified_id : Error<
+  "brackets go after the %select{identifier|unqualified-id}0">;
 def err_unexpected_unqualified_id : Error<"type-id cannot have a name">;
 def err_func_def_no_params : Error<
   "function definition does not declare parameters">;
@@ -582,6 +589,13 @@ def err_expected_comma_greater : Error<
   "expected ',' or '>' in template-parameter-list">;
 def err_class_on_template_template_param : Error<
   "template template parameter requires 'class' after the parameter list">;
+def ext_template_template_param_typename : ExtWarn<
+  "template template parameter using 'typename' is a C++1z extension">,
+  InGroup<CXX1z>;
+def warn_cxx1y_compat_template_template_param_typename : Warning<
+  "template template parameter using 'typename' is "
+  "incompatible with C++ standards before C++1z">,
+  InGroup<CXXPre1zCompat>, DefaultIgnore;
 def err_template_spec_syntax_non_template : Error<
   "identifier followed by '<' indicates a class template specialization but "
   "%0 %select{does not refer to a template|refers to a function template|"
@@ -1040,7 +1054,10 @@ def err_expected_mesh_var_decl:Error<
 
 // Pragma loop support.
 def err_pragma_loop_invalid_option : Error<
-  "%select{invalid|missing}0 option%select{ %1|}0; expected vectorize, vectorize_width, interleave, or interleave_count">;
+  "%select{invalid|missing}0 option%select{ %1|}0; expected vectorize, "
+  "vectorize_width, interleave, interleave_count, unroll, or unroll_count">;
+def err_pragma_loop_missing_argument : Error<
+  "missing argument to loop pragma %0">;
 } // end of Parse Issue category.
 
 let CategoryName = "Modules Issue" in {

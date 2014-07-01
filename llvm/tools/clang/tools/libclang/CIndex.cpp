@@ -43,6 +43,7 @@
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/CrashRecoveryContext.h"
 #include "llvm/Support/Format.h"
+#include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Mutex.h"
 #include "llvm/Support/Program.h"
@@ -1891,6 +1892,10 @@ public:
   void VisitOMPExecutableDirective(const OMPExecutableDirective *D);
   void VisitOMPParallelDirective(const OMPParallelDirective *D);
   void VisitOMPSimdDirective(const OMPSimdDirective *D);
+  void VisitOMPForDirective(const OMPForDirective *D);
+  void VisitOMPSectionsDirective(const OMPSectionsDirective *D);
+  void VisitOMPSectionDirective(const OMPSectionDirective *D);
+  void VisitOMPSingleDirective(const OMPSingleDirective *D);
 
 private:
   void AddDeclarationNameInfo(const Stmt *S);
@@ -1983,6 +1988,14 @@ void OMPClauseEnqueue::VisitOMPDefaultClause(const OMPDefaultClause *C) { }
 
 void OMPClauseEnqueue::VisitOMPProcBindClause(const OMPProcBindClause *C) { }
 
+void OMPClauseEnqueue::VisitOMPScheduleClause(const OMPScheduleClause *C) {
+  Visitor->AddStmt(C->getChunkSize());
+}
+
+void OMPClauseEnqueue::VisitOMPOrderedClause(const OMPOrderedClause *) {}
+
+void OMPClauseEnqueue::VisitOMPNowaitClause(const OMPNowaitClause *) {}
+
 template<typename T>
 void OMPClauseEnqueue::VisitOMPClauseList(T *Node) {
   for (const auto *I : Node->varlists())
@@ -2003,6 +2016,9 @@ void OMPClauseEnqueue::VisitOMPLastprivateClause(
 void OMPClauseEnqueue::VisitOMPSharedClause(const OMPSharedClause *C) {
   VisitOMPClauseList(C);
 }
+void OMPClauseEnqueue::VisitOMPReductionClause(const OMPReductionClause *C) {
+  VisitOMPClauseList(C);
+}
 void OMPClauseEnqueue::VisitOMPLinearClause(const OMPLinearClause *C) {
   VisitOMPClauseList(C);
   Visitor->AddStmt(C->getStep());
@@ -2012,6 +2028,10 @@ void OMPClauseEnqueue::VisitOMPAlignedClause(const OMPAlignedClause *C) {
   Visitor->AddStmt(C->getAlignment());
 }
 void OMPClauseEnqueue::VisitOMPCopyinClause(const OMPCopyinClause *C) {
+  VisitOMPClauseList(C);
+}
+void
+OMPClauseEnqueue::VisitOMPCopyprivateClause(const OMPCopyprivateClause *C) {
   VisitOMPClauseList(C);
 }
 }
@@ -2311,6 +2331,22 @@ void EnqueueVisitor::VisitOMPSimdDirective(const OMPSimdDirective *D) {
   VisitOMPExecutableDirective(D);
 }
 
+void EnqueueVisitor::VisitOMPForDirective(const OMPForDirective *D) {
+  VisitOMPExecutableDirective(D);
+}
+
+void EnqueueVisitor::VisitOMPSectionsDirective(const OMPSectionsDirective *D) {
+  VisitOMPExecutableDirective(D);
+}
+
+void EnqueueVisitor::VisitOMPSectionDirective(const OMPSectionDirective *D) {
+  VisitOMPExecutableDirective(D);
+}
+
+void EnqueueVisitor::VisitOMPSingleDirective(const OMPSingleDirective *D) {
+  VisitOMPExecutableDirective(D);
+}
+
 void CursorVisitor::EnqueueWorkList(VisitorWorkList &WL, const Stmt *S) {
   EnqueueVisitor(WL, MakeCXCursor(S, StmtParent, TU,RegionOfInterest)).Visit(S);
 }
@@ -2596,9 +2632,6 @@ buildPieces(unsigned NameFlags, bool IsMemberRefExpr,
 // Misc. API hooks.
 //===----------------------------------------------------------------------===//               
 
-static llvm::sys::Mutex EnableMultithreadingMutex;
-static bool EnabledMultithreading;
-
 static void fatal_error_handler(void *user_data, const std::string& reason,
                                 bool gen_crash_diag) {
   // Write the result out to stderr avoiding errs() because raw_ostreams can
@@ -2606,6 +2639,16 @@ static void fatal_error_handler(void *user_data, const std::string& reason,
   fprintf(stderr, "LIBCLANG FATAL ERROR: %s\n", reason.c_str());
   ::abort();
 }
+
+namespace {
+struct RegisterFatalErrorHandler {
+  RegisterFatalErrorHandler() {
+    llvm::install_fatal_error_handler(fatal_error_handler, nullptr);
+  }
+};
+}
+
+static llvm::ManagedStatic<RegisterFatalErrorHandler> RegisterFatalErrorHandlerOnce;
 
 extern "C" {
 CXIndex clang_createIndex(int excludeDeclarationsFromPCH,
@@ -2615,15 +2658,10 @@ CXIndex clang_createIndex(int excludeDeclarationsFromPCH,
   if (!getenv("LIBCLANG_DISABLE_CRASH_RECOVERY"))
     llvm::CrashRecoveryContext::Enable();
 
-  // Enable support for multithreading in LLVM.
-  {
-    llvm::sys::ScopedLock L(EnableMultithreadingMutex);
-    if (!EnabledMultithreading) {
-      llvm::install_fatal_error_handler(fatal_error_handler, nullptr);
-      llvm::llvm_start_multithreaded();
-      EnabledMultithreading = true;
-    }
-  }
+  // Look through the managed static to trigger construction of the managed
+  // static which registers our fatal error handler. This ensures it is only
+  // registered once.
+  (void)*RegisterFatalErrorHandlerOnce;
 
   CIndexer *CIdxr = new CIndexer();
   if (excludeDeclarationsFromPCH)
@@ -2789,8 +2827,8 @@ static void clang_parseTranslationUnit_Impl(void *UserData) {
 
   for (unsigned I = 0; I != num_unsaved_files; ++I) {
     StringRef Data(unsaved_files[I].Contents, unsaved_files[I].Length);
-    const llvm::MemoryBuffer *Buffer
-      = llvm::MemoryBuffer::getMemBufferCopy(Data, unsaved_files[I].Filename);
+    llvm::MemoryBuffer *Buffer =
+        llvm::MemoryBuffer::getMemBufferCopy(Data, unsaved_files[I].Filename);
     RemappedFiles->push_back(std::make_pair(unsaved_files[I].Filename,
                                             Buffer));
   }
@@ -3075,8 +3113,8 @@ static void clang_reparseTranslationUnit_Impl(void *UserData) {
   
   for (unsigned I = 0; I != num_unsaved_files; ++I) {
     StringRef Data(unsaved_files[I].Contents, unsaved_files[I].Length);
-    const llvm::MemoryBuffer *Buffer
-      = llvm::MemoryBuffer::getMemBufferCopy(Data, unsaved_files[I].Filename);
+    llvm::MemoryBuffer *Buffer =
+        llvm::MemoryBuffer::getMemBufferCopy(Data, unsaved_files[I].Filename);
     RemappedFiles->push_back(std::make_pair(unsaved_files[I].Filename,
                                             Buffer));
   }
@@ -4000,6 +4038,14 @@ CXString clang_getCursorKindSpelling(enum CXCursorKind Kind) {
     return cxstring::createRef("OMPParallelDirective");
   case CXCursor_OMPSimdDirective:
     return cxstring::createRef("OMPSimdDirective");
+  case CXCursor_OMPForDirective:
+    return cxstring::createRef("OMPForDirective");
+  case CXCursor_OMPSectionsDirective:
+    return cxstring::createRef("OMPSectionsDirective");
+  case CXCursor_OMPSectionDirective:
+    return cxstring::createRef("OMPSectionDirective");
+  case CXCursor_OMPSingleDirective:
+    return cxstring::createRef("OMPSingleDirective");
   }
 
   llvm_unreachable("Unhandled CXCursorKind");
@@ -7018,10 +7064,12 @@ Logger &cxindex::Logger::operator<<(const llvm::format_object_base &Fmt) {
   return *this;
 }
 
+static llvm::ManagedStatic<llvm::sys::Mutex> LoggingMutex;
+
 cxindex::Logger::~Logger() {
   LogOS.flush();
 
-  llvm::sys::ScopedLock L(EnableMultithreadingMutex);
+  llvm::sys::ScopedLock L(*LoggingMutex);
 
   static llvm::TimeRecord sBeginTR = llvm::TimeRecord::getCurrentTime();
 

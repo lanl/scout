@@ -51,10 +51,10 @@ Major New Features
   GCC 4.7 changed the mingw ABI. Clang 3.4 and older use the GCC 4.6
   ABI. Clang 3.5 and newer use the GCC 4.7 abi.
 
-- The __has_attribute feature test is now target-aware. Older versions of Clang 
-  would return true when the attribute spelling was known, regardless of whether 
-  the attribute was available to the specific target. Clang now returns true only 
-  when the attribute pertains to the current compilation target.
+- The __has_attribute feature test is now target-aware. Older versions of Clang
+  would return true when the attribute spelling was known, regardless of whether
+  the attribute was available to the specific target. Clang now returns true
+  only when the attribute pertains to the current compilation target.
 
 
 Improvements to Clang's diagnostics
@@ -96,6 +96,15 @@ It is now possible to get optimization reports from the major transformation
 passes via three new flags: `-Rpass`, `-Rpass-missed` and `-Rpass-analysis`.
 These flags take a POSIX regular expression which indicates the name
 of the pass (or passes) that should emit optimization remarks.
+
+New Pragmas in Clang
+-----------------------
+
+Loop optimization hints can be specified using the new `#pragma clang loop`
+directive just prior to the desired loop. The directive allows vectorization,
+interleaving, and unrolling to be enabled or disabled. Vector width as well
+as interleave and unrolling count can be manually specified.  See language
+extensions for details.
 
 C Language Changes in Clang
 ---------------------------
@@ -143,6 +152,16 @@ libclang
 
 Static Analyzer
 ---------------
+
+The `-analyzer-config` options are now passed from scan-build through to
+ccc-analyzer and then to Clang.
+
+With the option `-analyzer-config stable-report-filename=true`,
+instead of `report-XXXXXX.html`, scan-build/clang analyzer generate
+`report-<filename>-<function, method name>-<function position>-<id>.html`.
+(id = i++ for several issues found in the same function/method).
+
+List the function/method name in the index page of scan-build.
 
 ...
 

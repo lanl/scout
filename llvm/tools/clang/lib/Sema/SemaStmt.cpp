@@ -1157,9 +1157,7 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
 void
 Sema::DiagnoseAssignmentEnum(QualType DstType, QualType SrcType,
                              Expr *SrcExpr) {
-  if (Diags.getDiagnosticLevel(diag::warn_not_in_enum_assignment,
-                               SrcExpr->getExprLoc()) ==
-      DiagnosticsEngine::Ignored)
+  if (Diags.isIgnored(diag::warn_not_in_enum_assignment, SrcExpr->getExprLoc()))
     return;
 
   if (const EnumType *ET = DstType->getAs<EnumType>())
@@ -1406,9 +1404,8 @@ namespace {
     // Condition is empty
     if (!Second) return;
 
-    if (S.Diags.getDiagnosticLevel(diag::warn_variables_not_in_loop_body,
-                                   Second->getLocStart())
-        == DiagnosticsEngine::Ignored)
+    if (S.Diags.isIgnored(diag::warn_variables_not_in_loop_body,
+                          Second->getLocStart()))
       return;
 
     PartialDiagnostic PDiag = S.PDiag(diag::warn_variables_not_in_loop_body);
@@ -1535,9 +1532,8 @@ namespace {
     // Return when there is nothing to check.
     if (!Body || !Third) return;
 
-    if (S.Diags.getDiagnosticLevel(diag::warn_redundant_loop_iteration,
-                                   Third->getLocStart())
-        == DiagnosticsEngine::Ignored)
+    if (S.Diags.isIgnored(diag::warn_redundant_loop_iteration,
+                          Third->getLocStart()))
       return;
 
     // Get the last statement from the loop body.
@@ -1938,7 +1934,7 @@ Sema::ActOnCXXForRangeStmt(SourceLocation ForLoc,
 
   // Claim the type doesn't contain auto: we've already done the checking.
   DeclGroupPtrTy RangeGroup =
-      BuildDeclaratorGroup(llvm::MutableArrayRef<Decl *>((Decl **)&RangeVar, 1),
+      BuildDeclaratorGroup(MutableArrayRef<Decl *>((Decl **)&RangeVar, 1),
                            /*TypeMayContainAuto=*/ false);
   StmtResult RangeDecl = ActOnDeclStmt(RangeGroup, RangeLoc, RangeLoc);
   if (RangeDecl.isInvalid()) {
@@ -2255,7 +2251,7 @@ Sema::BuildCXXForRangeStmt(SourceLocation ForLoc, SourceLocation ColonLoc,
     Decl *BeginEndDecls[] = { BeginVar, EndVar };
     // Claim the type doesn't contain auto: we've already done the checking.
     DeclGroupPtrTy BeginEndGroup =
-        BuildDeclaratorGroup(llvm::MutableArrayRef<Decl *>(BeginEndDecls, 2),
+        BuildDeclaratorGroup(MutableArrayRef<Decl *>(BeginEndDecls, 2),
                              /*TypeMayContainAuto=*/ false);
     BeginEndDecl = ActOnDeclStmt(BeginEndGroup, ColonLoc, ColonLoc);
 

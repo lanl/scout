@@ -88,6 +88,31 @@ TEST_F(FormatTestJS, ES6DestructuringAssignment) {
   verifyFormat("var {a, b} = {a: 1, b: 2};");
 }
 
+TEST_F(FormatTestJS, ContainerLiterals) {
+  verifyFormat("return {\n"
+               "  link: function() {\n"
+               "    f();  //\n"
+               "  }\n"
+               "};");
+  verifyFormat("return {\n"
+               "  a: a,\n"
+               "  link: function() {\n"
+               "    f();  //\n"
+               "  }\n"
+               "};");
+  verifyFormat("return {\n"
+               "  a: a,\n"
+               "  link:\n"
+               "      function() {\n"
+               "        f();  //\n"
+               "      },\n"
+               "  link:\n"
+               "      function() {\n"
+               "        f();  //\n"
+               "      }\n"
+               "};");
+}
+
 TEST_F(FormatTestJS, SpacesInContainerLiterals) {
   verifyFormat("var arr = [1, 2, 3];");
   verifyFormat("var obj = {a: 1, b: 2, c: 3};");
@@ -113,7 +138,18 @@ TEST_F(FormatTestJS, GoogScopes) {
                "});  // goog.scope");
 }
 
-TEST_F(FormatTestJS, Closures) {
+TEST_F(FormatTestJS, FormatsFreestandingFunctions) {
+  verifyFormat("function outer1(a, b) {\n"
+               "  function inner1(a, b) { return a; }\n"
+               "  inner1(a, b);\n"
+               "}\n"
+               "function outer2(a, b) {\n"
+               "  function inner2(a, b) { return a; }\n"
+               "  inner2(a, b);\n"
+               "}");
+}
+
+TEST_F(FormatTestJS, FunctionLiterals) {
   verifyFormat("doFoo(function() { return 1; });");
   verifyFormat("var func = function() { return 1; };");
   verifyFormat("return {\n"
@@ -152,6 +188,13 @@ TEST_F(FormatTestJS, Closures) {
                "  a: function() { return 1; }\n"
                "};",
                getGoogleJSStyleWithColumns(37));
+
+  verifyFormat("return {\n"
+               "  a: function SomeFunction() {\n"
+               "    // ...\n"
+               "    return 1;\n"
+               "  }\n"
+               "};");
 }
 
 TEST_F(FormatTestJS, MultipleFunctionLiterals) {

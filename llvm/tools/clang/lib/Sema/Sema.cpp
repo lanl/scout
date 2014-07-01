@@ -313,7 +313,8 @@ ExprResult Sema::ImpCastExprToType(Expr *E, QualType Ty,
   if (VK == VK_RValue && !E->isRValue()) {
     switch (Kind) {
     default:
-      assert(0 && "can't implicitly cast lvalue to rvalue with this cast kind");
+      llvm_unreachable("can't implicitly cast lvalue to rvalue with this cast "
+                       "kind");
     case CK_LValueToRValue:
     case CK_ArrayToPointerDecay:
     case CK_FunctionToPointerDecay:
@@ -681,9 +682,7 @@ void Sema::ActOnEndOfTranslationUnit() {
   }
 
   if (LangOpts.CPlusPlus11 &&
-      Diags.getDiagnosticLevel(diag::warn_delegating_ctor_cycle,
-                               SourceLocation())
-        != DiagnosticsEngine::Ignored)
+      !Diags.isIgnored(diag::warn_delegating_ctor_cycle, SourceLocation()))
     CheckDelegatingCtorCycles();
 
   if (TUKind == TU_Module) {
@@ -823,9 +822,7 @@ void Sema::ActOnEndOfTranslationUnit() {
     checkUndefinedButUsed(*this);
   }
 
-  if (Diags.getDiagnosticLevel(diag::warn_unused_private_field,
-                               SourceLocation())
-        != DiagnosticsEngine::Ignored) {
+  if (!Diags.isIgnored(diag::warn_unused_private_field, SourceLocation())) {
     RecordCompleteMap RecordsComplete;
     RecordCompleteMap MNCComplete;
     for (NamedDeclSetType::iterator I = UnusedPrivateFields.begin(),
