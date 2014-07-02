@@ -53,8 +53,8 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/system_error.h"
 #include <memory>
+#include <system_error>
 using namespace clang;
 using namespace clang::driver;
 using namespace llvm;
@@ -282,7 +282,8 @@ static bool ExecuteAssembler(AssemblerInvocation &Opts,
     return Diags.Report(diag::err_target_unknown_triple) << Opts.Triple;
 
   std::unique_ptr<MemoryBuffer> Buffer;
-  if (error_code ec = MemoryBuffer::getFileOrSTDIN(Opts.InputFile, Buffer)) {
+  if (std::error_code ec =
+          MemoryBuffer::getFileOrSTDIN(Opts.InputFile, Buffer)) {
     Error = ec.message();
     return Diags.Report(diag::err_fe_error_reading) << Opts.InputFile;
   }

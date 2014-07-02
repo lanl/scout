@@ -770,7 +770,10 @@ void UnwrappedLineParser::parseStructuralElement() {
       return;
     case tok::identifier: {
       StringRef Text = FormatTok->TokenText;
-      if (Style.Language == FormatStyle::LK_JavaScript && Text == "function") {
+      // Parse function literal unless 'function' is the first token in a line
+      // in which case this should be treated as a free-standing function.
+      if (Style.Language == FormatStyle::LK_JavaScript && Text == "function" &&
+          Line->Tokens.size() > 0) {
         tryToParseJSFunction();
         break;
       }
@@ -891,6 +894,8 @@ bool UnwrappedLineParser::tryToParseLambdaIntroducer() {
     if (!FormatTok->isOneOf(tok::identifier, tok::kw_this))
       return false;
     nextToken();
+    if (FormatTok->is(tok::ellipsis))
+      nextToken();
     if (FormatTok->is(tok::comma)) {
       nextToken();
     } else if (FormatTok->is(tok::r_square)) {
@@ -905,6 +910,11 @@ bool UnwrappedLineParser::tryToParseLambdaIntroducer() {
 
 void UnwrappedLineParser::tryToParseJSFunction() {
   nextToken();
+
+  // Consume function name.
+  if (FormatTok->is(tok::identifier))
+      nextToken();
+
   if (FormatTok->isNot(tok::l_paren))
     return;
   nextToken();

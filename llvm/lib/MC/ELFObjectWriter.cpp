@@ -1179,7 +1179,7 @@ prependCompressionHeader(uint64_t Size,
   if (Size <= Magic.size() + sizeof(Size) + CompressedContents.size())
     return false;
   if (sys::IsLittleEndianHost)
-    Size = sys::SwapByteOrder(Size);
+    sys::swapByteOrder(Size);
   CompressedContents.insert(CompressedContents.begin(),
                             Magic.size() + sizeof(Size), 0);
   std::copy(Magic.begin(), Magic.end(), CompressedContents.begin());
@@ -1574,8 +1574,7 @@ void ELFObjectWriter::WriteSection(MCAssembler &Asm,
     break;
 
   default:
-    assert(0 && "FIXME: sh_type value not supported!");
-    break;
+    llvm_unreachable("FIXME: sh_type value not supported!");
   }
 
   if (TargetObjectWriter->getEMachine() == ELF::EM_ARM &&

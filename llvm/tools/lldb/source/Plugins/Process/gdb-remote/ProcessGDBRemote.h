@@ -23,6 +23,7 @@
 #include "lldb/Core/Error.h"
 #include "lldb/Core/StreamString.h"
 #include "lldb/Core/StringList.h"
+#include "lldb/Core/StructuredData.h"
 #include "lldb/Core/ThreadSafeValue.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Thread.h"
@@ -89,6 +90,9 @@ public:
 
     virtual void
     DidLaunch ();
+
+    lldb_private::UnixSignals&
+    GetUnixSignals () override;
 
     virtual lldb_private::Error
     WillAttachToProcessWithID (lldb::pid_t pid);
@@ -304,8 +308,11 @@ protected:
     bool
     ParseRegisters(lldb_private::ScriptInterpreterObject *registers_array);
 
-    virtual const lldb::DataBufferSP
-    GetAuxvData();
+    const lldb::DataBufferSP
+    GetAuxvData() override;
+
+    lldb_private::StructuredData::ObjectSP
+    GetExtendedInfoForThread (lldb::tid_t tid);
 
     void
     GetMaxMemorySize();
@@ -353,7 +360,9 @@ protected:
     bool m_destroy_tried_resuming;
     lldb::CommandObjectSP m_command_sp;
     int64_t m_breakpoint_pc_offset;
-    
+    std::shared_ptr<lldb_private::UnixSignals> m_unix_signals_sp;
+
+
     bool
     StartAsyncThread ();
 

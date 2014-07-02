@@ -335,9 +335,9 @@ public:
   }
 
   /// \brief Return the array of arguments in this template argument pack.
-  llvm::ArrayRef<TemplateArgument> getPackAsArray() const {
+  ArrayRef<TemplateArgument> getPackAsArray() const {
     assert(getKind() == Pack);
-    return llvm::ArrayRef<TemplateArgument>(Args.Args, Args.NumArgs);
+    return ArrayRef<TemplateArgument>(Args.Args, Args.NumArgs);
   }
 
   /// \brief Determines whether two template arguments are superficially the
@@ -540,6 +540,10 @@ public:
   }
 
   const TemplateArgumentLoc &operator[](unsigned I) const {
+    return Arguments[I];
+  }
+
+  TemplateArgumentLoc &operator[](unsigned I) {
     return Arguments[I];
   }
 

@@ -14,8 +14,20 @@
 #ifndef ARMSUBTARGET_H
 #define ARMSUBTARGET_H
 
+
+#include "ARMFrameLowering.h"
+#include "ARMISelLowering.h"
+#include "ARMInstrInfo.h"
+#include "ARMJITInfo.h"
+#include "ARMSelectionDAGInfo.h"
+#include "ARMSubtarget.h"
+#include "Thumb1FrameLowering.h"
+#include "Thumb1InstrInfo.h"
+#include "Thumb2InstrInfo.h"
+#include "ARMJITInfo.h"
 #include "MCTargetDesc/ARMMCTargetDesc.h"
 #include "llvm/ADT/Triple.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/MC/MCInstrItineraries.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
 #include <string>
@@ -233,7 +245,7 @@ protected:
   /// of the specified triple.
   ///
   ARMSubtarget(const std::string &TT, const std::string &CPU,
-               const std::string &FS, bool IsLittle,
+               const std::string &FS, TargetMachine &TM, bool IsLittle,
                const TargetOptions &Options);
 
   /// getMaxInlineSizeThreshold - Returns the maximum memset / memcpy size
@@ -247,7 +259,31 @@ protected:
 
   /// \brief Reset the features for the ARM target.
   void resetSubtargetFeatures(const MachineFunction *MF) override;
+
+  /// initializeSubtargetDependencies - Initializes using a CPU and feature string
+  /// so that we can use initializer lists for subtarget initialization.
+  ARMSubtarget &initializeSubtargetDependencies(StringRef CPU, StringRef FS);
+
+  const DataLayout *getDataLayout() const { return &DL; }
+  const ARMSelectionDAGInfo *getSelectionDAGInfo() const { return &TSInfo; }
+  ARMJITInfo *getJITInfo() { return &JITInfo; }
+  const ARMBaseInstrInfo *getInstrInfo() const { return InstrInfo.get(); }
+  const ARMTargetLowering *getTargetLowering() const { return &TLInfo; }
+  const ARMFrameLowering *getFrameLowering() const { return FrameLowering.get(); }
+  const ARMBaseRegisterInfo *getRegisterInfo() const {
+    return &InstrInfo->getRegisterInfo();
+  }
+
 private:
+  const DataLayout DL;
+  ARMSelectionDAGInfo TSInfo;
+  ARMJITInfo JITInfo;
+  // Either Thumb1InstrInfo or Thumb2InstrInfo.
+  std::unique_ptr<ARMBaseInstrInfo> InstrInfo;
+  ARMTargetLowering   TLInfo;
+  // Either Thumb1FrameLowering or ARMFrameLowering.
+  std::unique_ptr<ARMFrameLowering> FrameLowering;
+
   void initializeEnvironment();
   void resetSubtargetFeatures(StringRef CPU, StringRef FS);
 public:
@@ -379,7 +415,12 @@ public:
 
   bool isR9Reserved() const { return IsR9Reserved; }
 
-  bool useMovt() const { return UseMovt && !isMinSize(); }
+  bool useMovt() const {
+    // NOTE Windows on ARM needs to use mov.w/mov.t pairs to materialise 32-bit
+    // immediates as it is inherently position independent, and may be out of
+    // range otherwise.
+    return UseMovt && (isTargetWindows() || !isMinSize());
+  }
   bool supportsTailCall() const { return SupportsTailCall; }
 
   bool allowsUnalignedMem() const { return AllowsUnalignedMem; }
@@ -403,6 +444,9 @@ public:
   bool enablePostRAScheduler(CodeGenOpt::Level OptLevel,
                              TargetSubtargetInfo::AntiDepBreakMode& Mode,
                              RegClassVector& CriticalPathRCs) const override;
+
+  // enableAtomicExpandLoadLinked - True if we need to expand our atomics.
+  bool enableAtomicExpandLoadLinked() const override;
 
   /// getInstrItins - Return the instruction itineraies based on subtarget
   /// selection.

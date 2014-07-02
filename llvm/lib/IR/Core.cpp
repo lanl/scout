@@ -17,9 +17,9 @@
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
-#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalAlias.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
@@ -35,10 +35,10 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/system_error.h"
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
+#include <system_error>
 
 using namespace llvm;
 
@@ -281,7 +281,11 @@ char *LLVMPrintTypeToString(LLVMTypeRef Ty) {
   std::string buf;
   raw_string_ostream os(buf);
 
-  unwrap(Ty)->print(os);
+  if (unwrap(Ty))
+    unwrap(Ty)->print(os);
+  else
+    os << "Printing <null> Type";
+
   os.flush();
 
   return strdup(buf.c_str());
@@ -531,7 +535,11 @@ char* LLVMPrintValueToString(LLVMValueRef Val) {
   std::string buf;
   raw_string_ostream os(buf);
 
-  unwrap(Val)->print(os);
+  if (unwrap(Val))
+    unwrap(Val)->print(os);
+  else
+    os << "Printing <null> Value";
+
   os.flush();
 
   return strdup(buf.c_str());
@@ -2599,7 +2607,7 @@ LLVMBool LLVMCreateMemoryBufferWithContentsOfFile(
     char **OutMessage) {
 
   std::unique_ptr<MemoryBuffer> MB;
-  error_code ec;
+  std::error_code ec;
   if (!(ec = MemoryBuffer::getFile(Path, MB))) {
     *OutMemBuf = wrap(MB.release());
     return 0;
@@ -2612,7 +2620,7 @@ LLVMBool LLVMCreateMemoryBufferWithContentsOfFile(
 LLVMBool LLVMCreateMemoryBufferWithSTDIN(LLVMMemoryBufferRef *OutMemBuf,
                                          char **OutMessage) {
   std::unique_ptr<MemoryBuffer> MB;
-  error_code ec;
+  std::error_code ec;
   if (!(ec = MemoryBuffer::getSTDIN(MB))) {
     *OutMemBuf = wrap(MB.release());
     return 0;
@@ -2700,11 +2708,10 @@ void LLVMDisposePassManager(LLVMPassManagerRef PM) {
 /*===-- Threading ------------------------------------------------------===*/
 
 LLVMBool LLVMStartMultithreaded() {
-  return llvm_start_multithreaded();
+  return LLVMIsMultithreaded();
 }
 
 void LLVMStopMultithreaded() {
-  llvm_stop_multithreaded();
 }
 
 LLVMBool LLVMIsMultithreaded() {

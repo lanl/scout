@@ -194,6 +194,18 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
   case Stmt::OMPSimdDirectiveClass:
     EmitOMPSimdDirective(cast<OMPSimdDirective>(*S));
     break;
+  case Stmt::OMPForDirectiveClass:
+    EmitOMPForDirective(cast<OMPForDirective>(*S));
+    break;
+  case Stmt::OMPSectionsDirectiveClass:
+    EmitOMPSectionsDirective(cast<OMPSectionsDirective>(*S));
+    break;
+  case Stmt::OMPSectionDirectiveClass:
+    EmitOMPSectionDirective(cast<OMPSectionDirective>(*S));
+    break;
+  case Stmt::OMPSingleDirectiveClass:
+    EmitOMPSingleDirective(cast<OMPSingleDirective>(*S));
+    break;
   }
 }
 
@@ -543,7 +555,7 @@ void CodeGenFunction::EmitCondBrHints(llvm::LLVMContext &Context,
   if (Attrs.empty())
     return;
 
-  // Add vectorize hints to the metadata on the conditional branch.
+  // Add vectorize and unroll hints to the metadata on the conditional branch.
   SmallVector<llvm::Value *, 2> Metadata(1);
   for (const auto *Attr : Attrs) {
     const LoopHintAttr *LH = dyn_cast<LoopHintAttr>(Attr);
@@ -559,11 +571,17 @@ void CodeGenFunction::EmitCondBrHints(llvm::LLVMContext &Context,
     switch (Option) {
     case LoopHintAttr::Vectorize:
     case LoopHintAttr::VectorizeWidth:
-      MetadataName = "llvm.vectorizer.width";
+      MetadataName = "llvm.loop.vectorize.width";
       break;
     case LoopHintAttr::Interleave:
     case LoopHintAttr::InterleaveCount:
-      MetadataName = "llvm.vectorizer.unroll";
+      MetadataName = "llvm.loop.vectorize.unroll";
+      break;
+    case LoopHintAttr::Unroll:
+      MetadataName = "llvm.loop.unroll.enable";
+      break;
+    case LoopHintAttr::UnrollCount:
+      MetadataName = "llvm.loop.unroll.count";
       break;
     }
 
@@ -575,7 +593,7 @@ void CodeGenFunction::EmitCondBrHints(llvm::LLVMContext &Context,
       if (ValueInt == 1) {
         // FIXME: In the future I will modifiy the behavior of the metadata
         // so we can enable/disable vectorization and interleaving separately.
-        Name = llvm::MDString::get(Context, "llvm.vectorizer.enable");
+        Name = llvm::MDString::get(Context, "llvm.loop.vectorize.enable");
         Value = Builder.getTrue();
         break;
       }
@@ -584,6 +602,14 @@ void CodeGenFunction::EmitCondBrHints(llvm::LLVMContext &Context,
       // Fallthrough.
     case LoopHintAttr::VectorizeWidth:
     case LoopHintAttr::InterleaveCount:
+      Name = llvm::MDString::get(Context, MetadataName);
+      Value = llvm::ConstantInt::get(Int32Ty, ValueInt);
+      break;
+    case LoopHintAttr::Unroll:
+      Name = llvm::MDString::get(Context, MetadataName);
+      Value = (ValueInt == 0) ? Builder.getFalse() : Builder.getTrue();
+      break;
+    case LoopHintAttr::UnrollCount:
       Name = llvm::MDString::get(Context, MetadataName);
       Value = llvm::ConstantInt::get(Int32Ty, ValueInt);
       break;
@@ -2043,20 +2069,29 @@ static LValue InitCapturedStruct(CodeGenFunction &CGF, const CapturedStmt &S) {
   return SlotLV;
 }
 
+static void InitVLACaptures(CodeGenFunction &CGF, const CapturedStmt &S) {
+  for (CapturedStmt::const_capture_iterator I = S.capture_begin(),
+                                            E = S.capture_end();
+       I != E; ++I) {
+    if (I->capturesVariable()) {
+      QualType QTy = I->getCapturedVar()->getType();
+      if (QTy->isVariablyModifiedType()) {
+        CGF.EmitVariablyModifiedType(QTy);
+      }
+    }
+  }
+}
+
 /// Generate an outlined function for the body of a CapturedStmt, store any
 /// captured variables into the captured struct, and call the outlined function.
 llvm::Function *
 CodeGenFunction::EmitCapturedStmt(const CapturedStmt &S, CapturedRegionKind K) {
-  const CapturedDecl *CD = S.getCapturedDecl();
-  const RecordDecl *RD = S.getCapturedRecordDecl();
-  assert(CD->hasBody() && "missing CapturedDecl body");
-
   LValue CapStruct = InitCapturedStruct(*this, S);
 
   // Emit the CapturedDecl
   CodeGenFunction CGF(CGM, true);
   CGF.CapturedStmtInfo = new CGCapturedStmtInfo(S, K);
-  llvm::Function *F = CGF.GenerateCapturedStmtFunction(CD, RD, S.getLocStart());
+  llvm::Function *F = CGF.GenerateCapturedStmtFunction(S);
   delete CGF.CapturedStmtInfo;
 
   // Emit call to the helper function.
@@ -2073,11 +2108,13 @@ CodeGenFunction::GenerateCapturedStmtArgument(const CapturedStmt &S) {
 
 /// Creates the outlined function for a CapturedStmt.
 llvm::Function *
-CodeGenFunction::GenerateCapturedStmtFunction(const CapturedDecl *CD,
-                                              const RecordDecl *RD,
-                                              SourceLocation Loc) {
+CodeGenFunction::GenerateCapturedStmtFunction(const CapturedStmt &S) {
   assert(CapturedStmtInfo &&
     "CapturedStmtInfo should be set when generating the captured function");
+  const CapturedDecl *CD = S.getCapturedDecl();
+  const RecordDecl *RD = S.getCapturedRecordDecl();
+  SourceLocation Loc = S.getLocStart();
+  assert(CD->hasBody() && "missing CapturedDecl body");
 
   // Build the argument list.
   ASTContext &Ctx = CGM.getContext();
@@ -2100,11 +2137,13 @@ CodeGenFunction::GenerateCapturedStmtFunction(const CapturedDecl *CD,
   StartFunction(CD, Ctx.VoidTy, F, FuncInfo, Args,
                 CD->getLocation(),
                 CD->getBody()->getLocStart());
-
   // Set the context parameter in CapturedStmtInfo.
   llvm::Value *DeclPtr = LocalDeclMap[CD->getContextParam()];
   assert(DeclPtr && "missing context parameter for CapturedStmt");
   CapturedStmtInfo->setContextValue(Builder.CreateLoad(DeclPtr));
+
+  // Initialize variable-length arrays.
+  InitVLACaptures(*this, S);
 
   // If 'this' is captured, load it into CXXThisValue.
   if (CapturedStmtInfo->isCXXThisExprCaptured()) {

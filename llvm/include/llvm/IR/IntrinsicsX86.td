@@ -26,6 +26,12 @@ let TargetPrefix = "x86" in {
               Intrinsic<[llvm_i64_ty], [llvm_ptr_ty], [IntrReadWriteArgMem]>;
 }
 
+// Read Performance-Monitoring Counter.
+let TargetPrefix = "x86" in {
+  def int_x86_rdpmc : GCCBuiltin<"__builtin_ia32_rdpmc">,
+              Intrinsic<[llvm_i64_ty], [llvm_i32_ty], []>;
+}
+
 //===----------------------------------------------------------------------===//
 // 3DNow!
 
@@ -667,6 +673,15 @@ let TargetPrefix = "x86" in {  // All intrinsics start with "llvm.x86.".
   def int_x86_ssse3_pshuf_b_128     : GCCBuiltin<"__builtin_ia32_pshufb128">,
               Intrinsic<[llvm_v16i8_ty], [llvm_v16i8_ty,
                          llvm_v16i8_ty], [IntrNoMem]>;
+  def int_x86_sse2_pshuf_d          : GCCBuiltin<"__builtin_ia32_pshufd">,
+              Intrinsic<[llvm_v4i32_ty], [llvm_v4i32_ty, llvm_i8_ty],
+                         [IntrNoMem]>;
+  def int_x86_sse2_pshufl_w         : GCCBuiltin<"__builtin_ia32_pshuflw">,
+              Intrinsic<[llvm_v8i16_ty], [llvm_v8i16_ty, llvm_i8_ty],
+                         [IntrNoMem]>;
+  def int_x86_sse2_pshufh_w         : GCCBuiltin<"__builtin_ia32_pshufhw">,
+              Intrinsic<[llvm_v8i16_ty], [llvm_v8i16_ty, llvm_i8_ty],
+                         [IntrNoMem]>;
   def int_x86_sse_pshuf_w           : GCCBuiltin<"__builtin_ia32_pshufw">,
               Intrinsic<[llvm_x86mmx_ty], [llvm_x86mmx_ty, llvm_i8_ty],
                          [IntrNoMem]>;
@@ -1939,6 +1954,8 @@ let TargetPrefix = "x86" in {  // All intrinsics start with "llvm.x86.".
                          llvm_i32_ty], [IntrNoMem, Commutative]>;
   def int_x86_avx2_movntdqa : GCCBuiltin<"__builtin_ia32_movntdqa256">,
               Intrinsic<[llvm_v4i64_ty], [llvm_ptr_ty], [IntrReadMem]>;
+  def int_x86_avx512_movntdqa : GCCBuiltin<"__builtin_ia32_movntdqa512">,
+              Intrinsic<[llvm_v8i64_ty], [llvm_ptr_ty], [IntrReadMem]>;
 }
 
 //===----------------------------------------------------------------------===//
@@ -3129,6 +3146,16 @@ let TargetPrefix = "x86" in {
                     []>;
   def int_x86_avx512_mask_conflict_q_512 :
           GCCBuiltin<"__builtin_ia32_vpconflictdi_512_mask">,
+          Intrinsic<[llvm_v8i64_ty], [llvm_v8i64_ty,
+                    llvm_v8i64_ty, llvm_i8_ty],
+                    []>;
+  def int_x86_avx512_mask_lzcnt_d_512 :
+          GCCBuiltin<"__builtin_ia32_vplzcntd_512_mask">,
+          Intrinsic<[llvm_v16i32_ty], [llvm_v16i32_ty,
+                    llvm_v16i32_ty, llvm_i16_ty],
+                    []>;
+  def int_x86_avx512_mask_lzcnt_q_512 :
+          GCCBuiltin<"__builtin_ia32_vplzcntq_512_mask">,
           Intrinsic<[llvm_v8i64_ty], [llvm_v8i64_ty,
                     llvm_v8i64_ty, llvm_i8_ty],
                     []>;

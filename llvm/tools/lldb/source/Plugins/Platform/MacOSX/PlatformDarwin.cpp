@@ -28,6 +28,7 @@
 #include "lldb/Symbol/SymbolFile.h"
 #include "lldb/Symbol/SymbolVendor.h"
 #include "lldb/Target/Target.h"
+#include "llvm/ADT/STLExtras.h"
 
 using namespace lldb;
 using namespace lldb_private;
@@ -785,10 +786,10 @@ PlatformDarwin::DebugProcess (ProcessLaunchInfo &launch_info,
     
     if (IsHost())
     {
-        // We are going to hand this process off to debugserver which will monitor the process itself.
-        // So don't also monitor it from lldb or we set up a race between debugserver & us for who will find out
-        // about the debugged process's death.
-        launch_info.GetFlags().Set(eLaunchFlagsDontMonitorProcess);
+        // We are going to hand this process off to debugserver which will be in charge of setting the exit status.
+        // We still need to reap it from lldb but if we let the monitor thread also set the exit status, we set up a
+        // race between debugserver & us for who will find out about the debugged process's death.
+        launch_info.GetFlags().Set(eLaunchFlagDontSetExitStatus);
         process_sp = Platform::DebugProcess (launch_info, debugger, target, listener, error);
     }
     else
@@ -1327,7 +1328,7 @@ PlatformDarwin::SetThreadCreationBreakpoint (Target &target)
     };
 
     FileSpecList bp_modules;
-    for (size_t i = 0; i < sizeof(g_bp_modules)/sizeof(const char *); i++)
+    for (size_t i = 0; i < llvm::array_lengthof(g_bp_modules); i++)
     {
         const char *bp_module = g_bp_modules[i];
         bp_modules.Append(FileSpec(bp_module, false));
@@ -1339,7 +1340,7 @@ PlatformDarwin::SetThreadCreationBreakpoint (Target &target)
     bp_sp = target.CreateBreakpoint (&bp_modules,
                                      NULL,
                                      g_bp_names,
-                                     sizeof(g_bp_names)/sizeof(const char *),
+                                     llvm::array_lengthof(g_bp_names),
                                      eFunctionNameTypeFull,
                                      skip_prologue,
                                      internal,

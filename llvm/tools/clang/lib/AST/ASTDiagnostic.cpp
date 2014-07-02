@@ -162,9 +162,8 @@ break; \
 /// diagnostic message
 static std::string
 ConvertTypeToDiagnosticString(ASTContext &Context, QualType Ty,
-                              const DiagnosticsEngine::ArgumentValue *PrevArgs,
-                              unsigned NumPrevArgs,
-                              ArrayRef<intptr_t> QualTypeVals) {
+                            ArrayRef<DiagnosticsEngine::ArgumentValue> PrevArgs,
+                            ArrayRef<intptr_t> QualTypeVals) {
   // FIXME: Playing with std::string is really slow.
   bool ForceAKA = false;
   QualType CanTy = Ty.getCanonicalType();
@@ -202,7 +201,7 @@ ConvertTypeToDiagnosticString(ASTContext &Context, QualType Ty,
   // Check to see if we already desugared this type in this
   // diagnostic.  If so, don't do it again.
   bool Repeated = false;
-  for (unsigned i = 0; i != NumPrevArgs; ++i) {
+  for (unsigned i = 0, e = PrevArgs.size(); i != e; ++i) {
     // TODO: Handle ak_declcontext case.
     if (PrevArgs[i].first == DiagnosticsEngine::ak_qualtype) {
       void *Ptr = (void*)PrevArgs[i].second;
@@ -257,12 +256,9 @@ static bool FormatTemplateTypeDiff(ASTContext &Context, QualType FromType,
 void clang::FormatASTNodeDiagnosticArgument(
     DiagnosticsEngine::ArgumentKind Kind,
     intptr_t Val,
-    const char *Modifier,
-    unsigned ModLen,
-    const char *Argument,
-    unsigned ArgLen,
-    const DiagnosticsEngine::ArgumentValue *PrevArgs,
-    unsigned NumPrevArgs,
+    StringRef Modifier,
+    StringRef Argument,
+    ArrayRef<DiagnosticsEngine::ArgumentValue> PrevArgs,
     SmallVectorImpl<char> &Output,
     void *Cookie,
     ArrayRef<intptr_t> QualTypeVals) {
@@ -297,28 +293,26 @@ void clang::FormatASTNodeDiagnosticArgument(
       // Attempting to do a template diff on non-templates.  Set the variables
       // and continue with regular type printing of the appropriate type.
       Val = TDT.PrintFromType ? TDT.FromType : TDT.ToType;
-      ModLen = 0;
-      ArgLen = 0;
+      Modifier = StringRef();
+      Argument = StringRef();
       // Fall through
     }
     case DiagnosticsEngine::ak_qualtype: {
-      assert(ModLen == 0 && ArgLen == 0 &&
+      assert(Modifier.empty() && Argument.empty() &&
              "Invalid modifier for QualType argument");
       
       QualType Ty(QualType::getFromOpaquePtr(reinterpret_cast<void*>(Val)));
-      OS << ConvertTypeToDiagnosticString(Context, Ty, PrevArgs, NumPrevArgs,
-                                          QualTypeVals);
+      OS << ConvertTypeToDiagnosticString(Context, Ty, PrevArgs, QualTypeVals);
       NeedQuotes = false;
       break;
     }
     case DiagnosticsEngine::ak_declarationname: {
-      if (ModLen == 9 && !memcmp(Modifier, "objcclass", 9) && ArgLen == 0)
+      if (Modifier == "objcclass" && Argument.empty())
         OS << '+';
-      else if (ModLen == 12 && !memcmp(Modifier, "objcinstance", 12)
-                && ArgLen==0)
+      else if (Modifier == "objcinstance" && Argument.empty())
         OS << '-';
       else
-        assert(ModLen == 0 && ArgLen == 0 &&
+        assert(Modifier.empty() && Argument.empty() &&
                "Invalid modifier for DeclarationName argument");
 
       OS << DeclarationName::getFromOpaqueInteger(Val);
@@ -326,10 +320,10 @@ void clang::FormatASTNodeDiagnosticArgument(
     }
     case DiagnosticsEngine::ak_nameddecl: {
       bool Qualified;
-      if (ModLen == 1 && Modifier[0] == 'q' && ArgLen == 0)
+      if (Modifier == "q" && Argument.empty())
         Qualified = true;
       else {
-        assert(ModLen == 0 && ArgLen == 0 &&
+        assert(Modifier.empty() && Argument.empty() &&
                "Invalid modifier for NamedDecl* argument");
         Qualified = false;
       }
@@ -357,8 +351,7 @@ void clang::FormatASTNodeDiagnosticArgument(
       } else if (TypeDecl *Type = dyn_cast<TypeDecl>(DC)) {
         OS << ConvertTypeToDiagnosticString(Context,
                                             Context.getTypeDeclType(Type),
-                                            PrevArgs, NumPrevArgs,
-                                            QualTypeVals);
+                                            PrevArgs, QualTypeVals);
       } else {
         // FIXME: Get these strings from some localized place
         if (isa<BlockDecl>(DC)) {
@@ -966,25 +959,27 @@ class TemplateDiff {
                           ToIter.isEnd() && ToExpr);
           if (DefaultNTTPD->getType()->isIntegralOrEnumerationType()) {
             if (FromExpr)
-              FromInt = GetInt(FromIter, FromExpr);
+              HasFromInt = GetInt(FromIter, FromExpr, FromInt);
             if (ToExpr)
-              ToInt = GetInt(ToIter, ToExpr);
-            Tree.SetNode(FromInt, ToInt, FromExpr, ToExpr);
+              HasToInt = GetInt(ToIter, ToExpr, ToInt);
+          }
+          if (HasFromInt && HasToInt) {
+            Tree.SetNode(FromInt, ToInt, HasFromInt, HasToInt);
             Tree.SetSame(IsSameConvertedInt(ParamWidth, FromInt, ToInt));
+            Tree.SetKind(DiffTree::Integer);
+          } else if (HasFromInt || HasToInt) {
+            Tree.SetNode(FromInt, ToInt, HasFromInt, HasToInt);
+            Tree.SetSame(false);
             Tree.SetKind(DiffTree::Integer);
           } else {
             Tree.SetSame(IsEqualExpr(Context, ParamWidth, FromExpr, ToExpr));
             Tree.SetKind(DiffTree::Expression);
           }
         } else if (HasFromInt || HasToInt) {
-          if (!HasFromInt && FromExpr) {
-            FromInt = GetInt(FromIter, FromExpr);
-            HasFromInt = true;
-          }
-          if (!HasToInt && ToExpr) {
-            ToInt = GetInt(ToIter, ToExpr);
-            HasToInt = true;
-          }
+          if (!HasFromInt && FromExpr)
+            HasFromInt = GetInt(FromIter, FromExpr, FromInt);
+          if (!HasToInt && ToExpr)
+            HasToInt = GetInt(ToIter, ToExpr, ToInt);
           Tree.SetNode(FromInt, ToInt, HasFromInt, HasToInt);
           Tree.SetSame(IsSameConvertedInt(ParamWidth, FromInt, ToInt));
           Tree.SetDefault(FromIter.isEnd() && HasFromInt,
@@ -1128,20 +1123,28 @@ class TemplateDiff {
 
   /// GetInt - Retrieves the template integer argument, including evaluating
   /// default arguments.
-  llvm::APInt GetInt(const TSTiterator &Iter, Expr *ArgExpr) {
+  bool GetInt(const TSTiterator &Iter, Expr *ArgExpr, llvm::APInt &Int) {
     // Default, value-depenedent expressions require fetching
-    // from the desugared TemplateArgument
-    if (Iter.isEnd() && ArgExpr->isValueDependent())
+    // from the desugared TemplateArgument, otherwise expression needs to
+    // be evaluatable.
+    if (Iter.isEnd() && ArgExpr->isValueDependent()) {
       switch (Iter.getDesugar().getKind()) {
         case TemplateArgument::Integral:
-          return Iter.getDesugar().getAsIntegral();
+          Int = Iter.getDesugar().getAsIntegral();
+          return true;
         case TemplateArgument::Expression:
           ArgExpr = Iter.getDesugar().getAsExpr();
-          return ArgExpr->EvaluateKnownConstInt(Context);
+          Int = ArgExpr->EvaluateKnownConstInt(Context);
+          return true;
         default:
-          assert(0 && "Unexpected template argument kind");
+          llvm_unreachable("Unexpected template argument kind");
       }
-    return ArgExpr->EvaluateKnownConstInt(Context);
+    } else if (ArgExpr->isEvaluatable(Context)) {
+      Int = ArgExpr->EvaluateKnownConstInt(Context);
+      return true;
+    }
+
+    return false;
   }
 
   /// GetValueDecl - Retrieves the template Decl argument, including
@@ -1157,7 +1160,7 @@ class TemplateDiff {
           ArgExpr = Iter.getDesugar().getAsExpr();
           return cast<DeclRefExpr>(ArgExpr)->getDecl();
         default:
-          assert(0 && "Unexpected template argument kind");
+          llvm_unreachable("Unexpected template argument kind");
       }
     DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(ArgExpr);
     if (!DRE) {
@@ -1524,6 +1527,8 @@ class TemplateDiff {
         Bold();
       }
       OS << Val.toString(10);
+    } else if (E) {
+      PrintExpr(E);
     } else {
       OS << "(no argument)";
     }

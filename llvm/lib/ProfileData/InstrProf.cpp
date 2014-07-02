@@ -18,8 +18,8 @@
 using namespace llvm;
 
 namespace {
-class InstrProfErrorCategoryType : public error_category {
-  const char *name() const override { return "llvm.instrprof"; }
+class InstrProfErrorCategoryType : public std::error_category {
+  const char *name() const LLVM_NOEXCEPT override { return "llvm.instrprof"; }
   std::string message(int IE) const override {
     instrprof_error E = static_cast<instrprof_error>(IE);
     switch (E) {
@@ -52,15 +52,10 @@ class InstrProfErrorCategoryType : public error_category {
     }
     llvm_unreachable("A value of instrprof_error has no message.");
   }
-  error_condition default_error_condition(int EV) const override {
-    if (static_cast<instrprof_error>(EV) == instrprof_error::success)
-      return error_condition();
-    return errc::invalid_argument;
-  }
 };
 }
 
-const error_category &llvm::instrprof_category() {
+const std::error_category &llvm::instrprof_category() {
   static InstrProfErrorCategoryType C;
   return C;
 }

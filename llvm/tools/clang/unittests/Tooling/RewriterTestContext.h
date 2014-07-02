@@ -48,8 +48,7 @@ class RewriterTestContext {
   ~RewriterTestContext() {}
 
   FileID createInMemoryFile(StringRef Name, StringRef Content) {
-    const llvm::MemoryBuffer *Source =
-      llvm::MemoryBuffer::getMemBuffer(Content);
+    llvm::MemoryBuffer *Source = llvm::MemoryBuffer::getMemBuffer(Content);
     const FileEntry *Entry =
       Files.getVirtualFile(Name, Source->getBufferSize(), 0);
     Sources.overrideFileContents(Entry, Source);
@@ -62,8 +61,7 @@ class RewriterTestContext {
   FileID createOnDiskFile(StringRef Name, StringRef Content) {
     SmallString<1024> Path;
     int FD;
-    llvm::error_code EC =
-        llvm::sys::fs::createTemporaryFile(Name, "", FD, Path);
+    std::error_code EC = llvm::sys::fs::createTemporaryFile(Name, "", FD, Path);
     assert(!EC);
     (void)EC;
 

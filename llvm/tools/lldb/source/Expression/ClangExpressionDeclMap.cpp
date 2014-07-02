@@ -1376,7 +1376,7 @@ ClangExpressionDeclMap::FindExternalVisibleDecls (NameSearchContext &context,
                     }
                     else if (sym_ctx.symbol)
                     {
-                        if (sym_ctx.symbol->GetType() == eSymbolTypeReExported)
+                        if (sym_ctx.symbol->GetType() == eSymbolTypeReExported && target)
                         {
                             sym_ctx.symbol = sym_ctx.symbol->ResolveReExportedSymbol(*target);
                             if (sym_ctx.symbol == NULL)
@@ -1502,16 +1502,7 @@ ClangExpressionDeclMap::GetVariableValue (VariableSP &var,
     
     DWARFExpression &var_location_expr = var->LocationExpression();
     
-    lldb::addr_t loclist_base_load_addr = LLDB_INVALID_ADDRESS;
-    
     Target *target = m_parser_vars->m_exe_ctx.GetTargetPtr();
-
-    if (var_location_expr.IsLocationList())
-    {
-        SymbolContext var_sc;
-        var->CalculateSymbolContext (&var_sc);
-        loclist_base_load_addr = var_sc.function->GetAddressRange().GetBaseAddress().GetLoadAddress (target);
-    }
     Error err;
     
     if (var->GetLocationIsConstantValueData())

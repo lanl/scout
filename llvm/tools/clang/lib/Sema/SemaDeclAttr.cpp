@@ -3348,6 +3348,11 @@ static void handleTypeTagForDatatypeAttr(Sema &S, Decl *D,
 // Checker-specific attribute handlers.
 //===----------------------------------------------------------------------===//
 
+static bool isValidSubjectOfNSReturnsRetainedAttribute(QualType type) {
+  return type->isDependentType() ||
+         type->isObjCRetainableType();
+}
+
 static bool isValidSubjectOfNSAttribute(Sema &S, QualType type) {
   return type->isDependentType() || 
          type->isObjCObjectPointerType() || 
@@ -3412,8 +3417,12 @@ static void handleNSReturnsRetainedAttr(Sema &S, Decl *D,
   bool cf;
   switch (Attr.getKind()) {
   default: llvm_unreachable("invalid ownership attribute");
-  case AttributeList::AT_NSReturnsAutoreleased:
   case AttributeList::AT_NSReturnsRetained:
+    typeOK = isValidSubjectOfNSReturnsRetainedAttribute(returnType);
+    cf = false;
+    break;
+      
+  case AttributeList::AT_NSReturnsAutoreleased:
   case AttributeList::AT_NSReturnsNotRetained:
     typeOK = isValidSubjectOfNSAttribute(S, returnType);
     cf = false;
@@ -3835,13 +3844,6 @@ DLLImportAttr *Sema::mergeDLLImportAttr(Decl *D, SourceRange Range,
   return ::new (Context) DLLImportAttr(Range, Context, AttrSpellingListIndex);
 }
 
-static void handleDLLImportAttr(Sema &S, Decl *D, const AttributeList &Attr) {
-  unsigned Index = Attr.getAttributeSpellingListIndex();
-  DLLImportAttr *NewAttr = S.mergeDLLImportAttr(D, Attr.getRange(), Index);
-  if (NewAttr)
-    D->addAttr(NewAttr);
-}
-
 DLLExportAttr *Sema::mergeDLLExportAttr(Decl *D, SourceRange Range,
                                         unsigned AttrSpellingListIndex) {
   if (DLLImportAttr *Import = D->getAttr<DLLImportAttr>()) {
@@ -3855,9 +3857,18 @@ DLLExportAttr *Sema::mergeDLLExportAttr(Decl *D, SourceRange Range,
   return ::new (Context) DLLExportAttr(Range, Context, AttrSpellingListIndex);
 }
 
-static void handleDLLExportAttr(Sema &S, Decl *D, const AttributeList &Attr) {
-  unsigned Index = Attr.getAttributeSpellingListIndex();
-  DLLExportAttr *NewAttr = S.mergeDLLExportAttr(D, Attr.getRange(), Index);
+static void handleDLLAttr(Sema &S, Decl *D, const AttributeList &A) {
+  if (isa<ClassTemplatePartialSpecializationDecl>(D) &&
+      S.Context.getTargetInfo().getCXXABI().isMicrosoft()) {
+    S.Diag(A.getRange().getBegin(), diag::warn_attribute_ignored)
+        << A.getName();
+    return;
+  }
+
+  unsigned Index = A.getAttributeSpellingListIndex();
+  Attr *NewAttr = A.getKind() == AttributeList::AT_DLLExport
+                      ? (Attr *)S.mergeDLLExportAttr(D, A.getRange(), Index)
+                      : (Attr *)S.mergeDLLImportAttr(D, A.getRange(), Index);
   if (NewAttr)
     D->addAttr(NewAttr);
 }
@@ -4061,10 +4072,8 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
     handleX86ForceAlignArgPointerAttr(S, D, Attr);
     break;
   case AttributeList::AT_DLLExport:
-    handleDLLExportAttr(S, D, Attr);
-    break;
   case AttributeList::AT_DLLImport:
-    handleDLLImportAttr(S, D, Attr);
+    handleDLLAttr(S, D, Attr);
     break;
   case AttributeList::AT_Mips16:
     handleSimpleAttribute<Mips16Attr>(S, D, Attr);
@@ -4841,7 +4850,8 @@ DoEmitAvailabilityWarning(Sema &S,
                           StringRef Message,
                           SourceLocation Loc,
                           const ObjCInterfaceDecl *UnknownObjCClass,
-                          const ObjCPropertyDecl *ObjCProperty) {
+                          const ObjCPropertyDecl *ObjCProperty,
+                          bool ObjCPropertyAccess) {
 
   // Diagnostics for deprecated or unavailable.
   unsigned diag, diag_message, diag_fwdclass_message;
@@ -4857,7 +4867,8 @@ DoEmitAvailabilityWarning(Sema &S,
     case DelayedDiagnostic::Deprecation:
       if (isDeclDeprecated(Ctx))
         return;
-      diag = diag::warn_deprecated;
+      diag = !ObjCPropertyAccess ? diag::warn_deprecated
+                                 : diag::warn_property_method_deprecated;
       diag_message = diag::warn_deprecated_message;
       diag_fwdclass_message = diag::warn_deprecated_fwdclass_message;
       property_note_select = /* deprecated */ 0;
@@ -4867,7 +4878,8 @@ DoEmitAvailabilityWarning(Sema &S,
     case DelayedDiagnostic::Unavailable:
       if (isDeclUnavailable(Ctx))
         return;
-      diag = diag::err_unavailable;
+      diag = !ObjCPropertyAccess ? diag::err_unavailable
+                                 : diag::err_property_method_unavailable;
       diag_message = diag::err_unavailable_message;
       diag_fwdclass_message = diag::warn_unavailable_fwdclass_message;
       property_note_select = /* unavailable */ 1;
@@ -4908,20 +4920,22 @@ void Sema::HandleDelayedAvailabilityCheck(DelayedDiagnostic &DD,
                             DD.getDeprecationMessage(),
                             DD.Loc,
                             DD.getUnknownObjCClass(),
-                            DD.getObjCProperty());
+                            DD.getObjCProperty(), false);
 }
 
 void Sema::EmitAvailabilityWarning(AvailabilityDiagnostic AD,
                                    NamedDecl *D, StringRef Message,
                                    SourceLocation Loc,
                                    const ObjCInterfaceDecl *UnknownObjCClass,
-                                   const ObjCPropertyDecl  *ObjCProperty) {
+                                   const ObjCPropertyDecl  *ObjCProperty,
+                                   bool ObjCPropertyAccess) {
   // Delay if we're currently parsing a declaration.
   if (DelayedDiagnostics.shouldDelayDiagnostics()) {
     DelayedDiagnostics.add(DelayedDiagnostic::makeAvailability(AD, Loc, D,
                                                                UnknownObjCClass,
                                                                ObjCProperty,
-                                                               Message));
+                                                               Message,
+                                                               ObjCPropertyAccess));
     return;
   }
 
@@ -4937,5 +4951,5 @@ void Sema::EmitAvailabilityWarning(AvailabilityDiagnostic AD,
   }
 
   DoEmitAvailabilityWarning(*this, K, Ctx, D, Message, Loc,
-                            UnknownObjCClass, ObjCProperty);
+                            UnknownObjCClass, ObjCProperty, ObjCPropertyAccess);
 }

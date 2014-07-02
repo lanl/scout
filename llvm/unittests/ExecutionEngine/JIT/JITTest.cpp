@@ -633,7 +633,7 @@ ExecutionEngine *getJITFromBitcode(
   MemoryBuffer *BitcodeBuffer =
     MemoryBuffer::getMemBuffer(Bitcode, "Bitcode for test");
   ErrorOr<Module*> ModuleOrErr = getLazyBitcodeModule(BitcodeBuffer, Context);
-  if (error_code EC = ModuleOrErr.getError()) {
+  if (std::error_code EC = ModuleOrErr.getError()) {
     ADD_FAILURE() << EC.message();
     delete BitcodeBuffer;
     return nullptr;

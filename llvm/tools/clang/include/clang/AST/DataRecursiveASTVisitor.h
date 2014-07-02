@@ -1237,6 +1237,11 @@ DEF_TRAVERSE_DECL(BlockDecl, {
   if (TypeSourceInfo *TInfo = D->getSignatureAsWritten())
     TRY_TO(TraverseTypeLoc(TInfo->getTypeLoc()));
   TRY_TO(TraverseStmt(D->getBody()));
+  for (const auto &I : D->captures()) {
+    if (I.hasCopyExpr()) {
+      TRY_TO(TraverseStmt(I.getCopyExpr()));
+    }
+  }
   // This return statement makes sure the traversal of nodes in
   // decls_begin()/decls_end() (done in the DEF_TRAVERSE_DECL macro)
   // is skipped - don't remove it.
@@ -2399,6 +2404,26 @@ DEF_TRAVERSE_STMT(OMPSimdDirective, {
     return false;
 })
 
+DEF_TRAVERSE_STMT(OMPForDirective, {
+  if (!TraverseOMPExecutableDirective(S))
+    return false;
+})
+
+DEF_TRAVERSE_STMT(OMPSectionsDirective, {
+  if (!TraverseOMPExecutableDirective(S))
+    return false;
+})
+
+DEF_TRAVERSE_STMT(OMPSectionDirective, {
+  if (!TraverseOMPExecutableDirective(S))
+    return false;
+})
+
+DEF_TRAVERSE_STMT(OMPSingleDirective, {
+  if (!TraverseOMPExecutableDirective(S))
+    return false;
+})
+
 // OpenMP clauses.
 template <typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseOMPClause(OMPClause *C) {
@@ -2453,6 +2478,23 @@ RecursiveASTVisitor<Derived>::VisitOMPProcBindClause(OMPProcBindClause *C) {
 }
 
 template <typename Derived>
+bool
+RecursiveASTVisitor<Derived>::VisitOMPScheduleClause(OMPScheduleClause *C) {
+  TraverseStmt(C->getChunkSize());
+  return true;
+}
+
+template <typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOMPOrderedClause(OMPOrderedClause *) {
+  return true;
+}
+
+template <typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOMPNowaitClause(OMPNowaitClause *) {
+  return true;
+}
+
+template <typename Derived>
 template <typename T>
 void RecursiveASTVisitor<Derived>::VisitOMPClauseList(T *Node) {
   for (auto *I : Node->varlists())
@@ -2501,6 +2543,22 @@ bool RecursiveASTVisitor<Derived>::VisitOMPAlignedClause(OMPAlignedClause *C) {
 
 template <typename Derived>
 bool RecursiveASTVisitor<Derived>::VisitOMPCopyinClause(OMPCopyinClause *C) {
+  VisitOMPClauseList(C);
+  return true;
+}
+
+template <typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOMPCopyprivateClause(
+    OMPCopyprivateClause *C) {
+  VisitOMPClauseList(C);
+  return true;
+}
+
+template <typename Derived>
+bool
+RecursiveASTVisitor<Derived>::VisitOMPReductionClause(OMPReductionClause *C) {
+  TRY_TO(TraverseNestedNameSpecifierLoc(C->getQualifierLoc()));
+  TRY_TO(TraverseDeclarationNameInfo(C->getNameInfo()));
   VisitOMPClauseList(C);
   return true;
 }

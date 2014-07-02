@@ -109,7 +109,7 @@ class Decoder {
 
 public:
   Decoder(StreamWriter &SW) : SW(SW), OS(SW.getOStream()) {}
-  error_code dumpProcedureData(const object::COFFObjectFile &COFF);
+  std::error_code dumpProcedureData(const object::COFFObjectFile &COFF);
 };
 }
 }

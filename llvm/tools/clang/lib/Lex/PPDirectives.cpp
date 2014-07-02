@@ -101,14 +101,13 @@ Preprocessor::AllocateVisibilityMacroDirective(SourceLocation Loc,
 /// \brief Release the specified MacroInfo to be reused for allocating
 /// new MacroInfo objects.
 void Preprocessor::ReleaseMacroInfo(MacroInfo *MI) {
-  MacroInfoChain *MIChain = (MacroInfoChain*) MI;
+  MacroInfoChain *MIChain = (MacroInfoChain *)MI;
   if (MacroInfoChain *Prev = MIChain->Prev) {
     MacroInfoChain *Next = MIChain->Next;
     Prev->Next = Next;
     if (Next)
       Next->Prev = Prev;
-  }
-  else {
+  } else {
     assert(MIChainHead == MIChain);
     MIChainHead = MIChain->Next;
     MIChainHead->Prev = nullptr;
@@ -956,7 +955,7 @@ void Preprocessor::HandleLineDirective(Token &Tok) {
     return DiscardUntilEndOfDirective();
   } else {
     // Parse and validate the string, converting it into a unique ID.
-    StringLiteralParser Literal(&StrTok, 1, *this);
+    StringLiteralParser Literal(StrTok, *this);
     assert(Literal.isAscii() && "Didn't allow wide strings in");
     if (Literal.hadError)
       return DiscardUntilEndOfDirective();
@@ -1092,7 +1091,7 @@ void Preprocessor::HandleDigitDirective(Token &DigitTok) {
     return DiscardUntilEndOfDirective();
   } else {
     // Parse and validate the string, converting it into a unique ID.
-    StringLiteralParser Literal(&StrTok, 1, *this);
+    StringLiteralParser Literal(StrTok, *this);
     assert(Literal.isAscii() && "Didn't allow wide strings in");
     if (Literal.hadError)
       return DiscardUntilEndOfDirective();
@@ -2123,8 +2122,7 @@ void Preprocessor::HandleDefineDirective(Token &DefineTok,
   // If we need warning for not using the macro, add its location in the
   // warn-because-unused-macro set. If it gets used it will be removed from set.
   if (getSourceManager().isInMainFile(MI->getDefinitionLoc()) &&
-      Diags->getDiagnosticLevel(diag::pp_macro_not_used,
-          MI->getDefinitionLoc()) != DiagnosticsEngine::Ignored) {
+      !Diags->isIgnored(diag::pp_macro_not_used, MI->getDefinitionLoc())) {
     MI->setIsWarnIfUnused(true);
     WarnUnusedMacroLocs.insert(MI->getDefinitionLoc());
   }
