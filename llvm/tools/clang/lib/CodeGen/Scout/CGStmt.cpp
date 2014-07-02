@@ -73,6 +73,7 @@
 #include <cassert>
 #include "llvm/Transforms/Utils/CodeExtractor.h"
 #include "clang/AST/Decl.h"
+#include "clang/AST/Expr.h"
 #include "CGBlocks.h"
 
 #include "Scout/CGScoutRuntime.h"
@@ -96,7 +97,6 @@ static const uint8_t FIELD_FACE = 3;
 // delete calls...  We're likely safe with 160 character long
 // strings.
 static char IRNameStr[160];
-
 
 llvm::Value *CodeGenFunction::TranslateExprToValue(const Expr *E) {
 
@@ -1272,13 +1272,11 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
     return;
   }
 
-  // Track down the mesh meta data. 
-  //llvm::NamedMDNode *MeshMD = CGM.getModule().getNamedMetadata("scout.meshmd");
-  //assert(MeshMD != 0 && "unable to find module-level mesh metadata!");
-  //llvm::errs() << "forall mesh type name = '" << S.getMeshVarDecl()->getTypeSourceInfo()->getType().getTypePtr()->getTypeClassName() << "'\n";
-
   //need a marker for start of Forall for CodeExtraction
   llvm::BasicBlock *entry = EmitMarkerBlock("forall.entry");
+
+  // Track down the mesh meta data. 
+  EmitForallMeshMDBlock(S);
 
   if(isGPU()){
     EmitGPUPreamble(S);
@@ -1489,6 +1487,59 @@ void CodeGenFunction::ResetVars(void) {
     InductionVar.push_back(0);
 }
 
+
+void CodeGenFunction::EmitForallMeshMDBlock(const ForallMeshStmt &S) {
+
+  llvm::NamedMDNode *MeshMD = CGM.getModule().getNamedMetadata("scout.meshmd");
+  assert(MeshMD != 0 && "unable to find module-level mesh metadata!");
+
+  llvm::BasicBlock *entry = createBasicBlock("forall.md");
+  llvm::BranchInst *BI = Builder.CreateBr(entry);
+
+  // find meta data for mesh used in this forall
+  StringRef MeshName = S.getMeshVarDecl()->getName();
+  StringRef MeshTypeName =  S.getMeshType()->getName();
+  for (llvm::NamedMDNode::op_iterator II = MeshMD->op_begin(), IE = MeshMD->op_end();
+      II != IE; ++II) {
+    if((*II)->getOperand(0)->getName() == MeshTypeName) {
+      BI->setMetadata(MeshName, *II);
+    }
+  }
+
+  //find fields used on LHS and add to metadata
+  const ForallMeshStmt::FieldMap &LHS = S.getLHSmap();
+  SmallVector<llvm::Value*, 16> MDL;
+  llvm::MDString *MDName = llvm::MDString::get(getLLVMContext(), "LHS");
+  MDL.push_back(MDName);
+
+  for(ForallMeshStmt::FieldMap::const_iterator it = LHS.begin(); it != LHS.end(); ++it)
+  {
+    MDName = llvm::MDString::get(getLLVMContext(), it->first);
+    MDL.push_back(MDName);
+
+  }
+  BI->setMetadata(StringRef("LHS"),
+      llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(MDL)));
+
+  //find fields used on RHS and add to metadata
+  const ForallMeshStmt::FieldMap &RHS = S.getRHSmap();
+  SmallVector<llvm::Value*, 16> MDR;
+  MDName = llvm::MDString::get(getLLVMContext(), "RHS");
+  MDR.push_back(MDName);
+
+  for(ForallMeshStmt::FieldMap::const_iterator it = RHS.begin(); it != RHS.end(); ++it)
+  {
+    MDName = llvm::MDString::get(getLLVMContext(), it->first);
+    MDR.push_back(MDName);
+  }
+  BI->setMetadata(StringRef("RHS"),
+        llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(MDR)));
+
+  EmitBlock(entry);
+
+}
+
+
 // Emit a branch and block. used as markers for code extraction
 llvm::BasicBlock *CodeGenFunction::EmitMarkerBlock(const std::string name) {
   llvm::BasicBlock *entry = createBasicBlock(name);
@@ -1496,6 +1547,8 @@ llvm::BasicBlock *CodeGenFunction::EmitMarkerBlock(const std::string name) {
   EmitBlock(entry);
   return entry;
 }
+
+
 
 // Extract blocks to function and replace w/ call to function
 llvm::Function* CodeGenFunction:: ExtractRegion(llvm::BasicBlock *entry, llvm::BasicBlock *exit, const std::string name) {

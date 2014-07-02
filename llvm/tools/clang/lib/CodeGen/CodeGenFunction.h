@@ -2022,6 +2022,7 @@ public:
   llvm::Function* ExtractRegion(llvm::BasicBlock *entry,
                                 llvm::BasicBlock *exit,
                                 const std::string name);
+  void EmitForallMeshMDBlock(const ForallMeshStmt &S);
 
   void EmitGPUPreamble(const ForallMeshStmt& S);
   void AddScoutKernel(llvm::Function* f, const ForallMeshStmt &S);

@@ -161,7 +161,7 @@ namespace {
 
     ForallVisitor(Sema& sema, ForallMeshStmt* fs)
       : sema_(sema),
-        //fs_(fs),
+        fs_(fs),
         error_(false),
         nodeType_(NodeNone) {
     }
@@ -212,8 +212,10 @@ namespace {
           std::string ref = bd->getName().str() + "." + md->getName().str();
 
           if (nodeType_ == NodeLHS) {
+            fs_->LHSinsert(ref);
             refMap_.insert(make_pair(ref, true));
           } else if (nodeType_ == NodeRHS) {
+            fs_->RHSinsert(ref);
             RefMap_::iterator itr = refMap_.find(ref);
             if (itr != refMap_.end()) {
               sema_.Diag(E->getMemberLoc(), diag::err_rhs_after_lhs_forall);
@@ -282,7 +284,7 @@ namespace {
 
   private:
     Sema& sema_;
-    //ForallMeshStmt *fs_;
+    ForallMeshStmt *fs_;
     typedef std::map<std::string, bool> RefMap_;
     RefMap_ refMap_;
     RefMap_ localMap_;
