@@ -91,12 +91,6 @@ list(APPEND rt_srcs ${rt_srcs_cpu})
 #file(GLOB rt_srcs_gpu gpu/*.cpp)
 #list(APPEND rt_srcs ${rt_srcs_gpu})
 
-#renderall
-file(GLOB rt_srcs_renderall renderall/*.cpp)
-list(APPEND rt_srcs ${rt_srcs_renderall})
-file(GLOB rt_srcs_renderall_cpu renderall/cpu/*.cpp)
-list(APPEND rt_srcs ${rt_srcs_renderall_cpu})
-
 if (SCOUT_ENABLE_OPENGL)
 
   # Add OpenGL source files to the build...
