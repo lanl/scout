@@ -57,23 +57,32 @@
 using namespace clang;
 using namespace CodeGen;
 
+static const char *IndexNames[] = { "x", "y", "z", "w"};
+static char IRNameStr[160];
+
+//Build the ImplicitParamDecls for a stencil function
 void CGScoutABI::buildImplicitStencilParams(CodeGenFunction &CGF, FunctionArgList &params) {
-  llvm::errs() << "in BuildImplicitStencilParams\n";
   const FunctionDecl *FD = cast<FunctionDecl>(CGF.CurGD.getDecl());
 
   ASTContext &Context = CGF.getContext();
   QualType T = Context.getPointerType(Context.IntTy);
   ImplicitParamDecl* D;
+  // Induction Vars
   for(int i = 0; i<=3; i++) {
+    sprintf(IRNameStr, "induct.%s", IndexNames[3-i]);
     D = ImplicitParamDecl::Create(CGM.getContext(), 0, FD->getLocation(),
-        &CGM.getContext().Idents.get("inductx"), T);
+        &CGM.getContext().Idents.get(IRNameStr), T);
     params.insert(params.begin(), D);
     getInductionVarDecl(CGF, 3-i) = D;
   }
-}
-
-void CGScoutABI::EmitImplicitStencilParams(CodeGenFunction &CGF) {
-
+  // Loop Bounds
+  for(int i = 0; i<3; i++) {
+    sprintf(IRNameStr, "bounds.%s", IndexNames[2-i]);
+    D = ImplicitParamDecl::Create(CGM.getContext(), 0, FD->getLocation(),
+        &CGM.getContext().Idents.get(IRNameStr), T);
+    params.insert(params.begin(), D);
+    getLoopBoundDecl(CGF, 2-i) = D;
+  }
 }
 
 CodeGen::CGScoutABI *CodeGen::createScoutABI(CodeGenModule &CGM) {

@@ -18,11 +18,10 @@ using namespace llvm;
 using namespace object;
 
 namespace {
-class _object_error_category : public error_category {
+class _object_error_category : public std::error_category {
 public:
-  const char* name() const override;
+  const char* name() const LLVM_NOEXCEPT override;
   std::string message(int ev) const override;
-  error_condition default_error_condition(int ev) const override;
 };
 }
 
@@ -47,13 +46,7 @@ std::string _object_error_category::message(int EV) const {
                    "defined.");
 }
 
-error_condition _object_error_category::default_error_condition(int EV) const {
-  if (static_cast<object_error>(EV) == object_error::success)
-    return error_condition();
-  return errc::invalid_argument;
-}
-
-const error_category &object::object_category() {
+const std::error_category &object::object_category() {
   static _object_error_category o;
   return o;
 }

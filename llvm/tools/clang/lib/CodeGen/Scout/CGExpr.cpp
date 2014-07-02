@@ -83,20 +83,37 @@ CodeGenFunction::EmitColorDeclRefLValue(const NamedDecl *ND) {
 LValue
 CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index) {
 
-  DeclRefExpr* Base = cast<DeclRefExpr>(E->getBase());
+  DeclRefExpr* Base;
+  if(ImplicitCastExpr *CE = dyn_cast<ImplicitCastExpr>(E->getBase())) {
+    Base = cast<DeclRefExpr>(CE->getSubExpr());
+  } else {
+    Base = cast<DeclRefExpr>(E->getBase());
+  }
+
+  llvm::Value *Addr;
 
   // inside forall we are referencing the implicit mesh e.g. 'c' in forall cells c in mesh
   if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(Base->getDecl())) {
-      // lookup underlying mesh instead of implicit mesh
-      llvm::Value *Addr;
-      GetMeshBaseAddr(IMPD->getMeshVarDecl(), Addr);
-      LValue BaseLV  = MakeAddrLValue(Addr, E->getType());
-      // assume we have already checked that we are working w/ a mesh and cast to MeshField Decl
-      MeshFieldDecl* MFD = cast<MeshFieldDecl>(E->getMemberDecl());
-      return EmitLValueForMeshField(BaseLV, cast<MeshFieldDecl>(MFD), Index);
+    // lookup underlying mesh instead of implicit mesh
+    GetMeshBaseAddr(IMPD->getMeshVarDecl(), Addr);
+  } else if (ParmVarDecl *PVD = dyn_cast<ParmVarDecl>(Base->getDecl())) {
+    llvm::errs() << "ParmVarDecl in EmitMeshMemberExpr must be stencil?\n";
+    Addr = LocalDeclMap.lookup(PVD);
+    if(Addr) {
+      // If Mesh ptr then load
+      const Type *T = PVD->getType().getTypePtr();
+      if(T->isAnyPointerType() || T->isReferenceType()) {
+        Addr = Builder.CreateLoad(Addr);
+      }
+    }
+  } else {
+    llvm_unreachable("Cannot lookup underlying mesh");
   }
-  
-  llvm_unreachable("Cannot lookup underlying mesh");
+
+  LValue BaseLV  = MakeAddrLValue(Addr, E->getType());
+  // assume we have already checked that we are working w/ a mesh and cast to MeshField Decl
+  MeshFieldDecl* MFD = cast<MeshFieldDecl>(E->getMemberDecl());
+  return EmitLValueForMeshField(BaseLV,  cast<MeshFieldDecl>(MFD), Index); //SC_TODO: why cast?
 }
 
 LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
@@ -251,13 +268,13 @@ CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
   SmallVector< llvm::Value *, 3 > dims;
   for(unsigned i = 0; i < args.size(); ++i) {
     sprintf(IRNameStr, "%s", DimNames[i]);
-    dims.push_back(Builder.CreateLoad(LoopBounds[i], IRNameStr));
+    dims.push_back(Builder.CreateLoad(LookupLoopBound(i), IRNameStr));
   }
 
   SmallVector< llvm::Value *, 3 > indices;
   for(unsigned i = 0; i < args.size(); ++i) {
     sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
-    llvm::Value *iv   = Builder.CreateLoad(InductionVar[i], IRNameStr);
+    llvm::Value *iv   = Builder.CreateLoad(LookupInductionVar(i), IRNameStr);
 
     // take index and add offset from cshift
     sprintf(IRNameStr, "cshift.rawindex.%s", IndexNames[i]);
@@ -383,14 +400,14 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
        SmallVector< llvm::Value *, 3 > dims;
        for(unsigned i = 0; i < args.size(); ++i) {
          sprintf(IRNameStr, "%s", DimNames[i]);
-         dims.push_back(Builder.CreateLoad(LoopBounds[i], IRNameStr));
+         dims.push_back(Builder.CreateLoad(LookupLoopBound(i), IRNameStr));
        }
 
        //get the eoshift indices
        SmallVector< llvm::Value *, 3 > rawindices, indices;
        for(unsigned i = 0; i < args.size(); ++i) {
 				 sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
-				 llvm::Value *iv  = Builder.CreateLoad(InductionVar[i], IRNameStr);
+				 llvm::Value *iv  = Builder.CreateLoad(LookupInductionVar(i), IRNameStr);
 
 				 // take index and add offset from eoshift
 				 sprintf(IRNameStr, "eoshift.rawindex.%s", IndexNames[i]);

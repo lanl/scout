@@ -1526,8 +1526,7 @@ Decl *TemplateDeclInstantiator::VisitFunctionDecl(FunctionDecl *D,
 
     void *InsertPos = nullptr;
     FunctionDecl *SpecFunc
-      = FunctionTemplate->findSpecialization(Innermost.begin(), Innermost.size(),
-                                             InsertPos);
+      = FunctionTemplate->findSpecialization(Innermost, InsertPos);
 
     // If we already have a function template specialization, return it.
     if (SpecFunc)
@@ -1804,9 +1803,7 @@ TemplateDeclInstantiator::VisitCXXMethodDecl(CXXMethodDecl *D,
 
     void *InsertPos = nullptr;
     FunctionDecl *SpecFunc
-      = FunctionTemplate->findSpecialization(Innermost.begin(),
-                                             Innermost.size(),
-                                             InsertPos);
+      = FunctionTemplate->findSpecialization(Innermost, InsertPos);
 
     // If we already have a function template specialization, return it.
     if (SpecFunc)
@@ -2682,8 +2679,7 @@ TemplateDeclInstantiator::VisitClassTemplateSpecializationDecl(
   // in the member template's set of class template explicit specializations.
   void *InsertPos = nullptr;
   ClassTemplateSpecializationDecl *PrevDecl =
-      InstClassTemplate->findSpecialization(Converted.data(), Converted.size(),
-                                            InsertPos);
+      InstClassTemplate->findSpecialization(Converted, InsertPos);
 
   // Check whether we've already seen a conflicting instantiation of this
   // declaration (for instance, if there was a prior implicit instantiation).
@@ -2805,7 +2801,7 @@ Decl *TemplateDeclInstantiator::VisitVarTemplateSpecializationDecl(
   // corresponds to these arguments.
   void *InsertPos = nullptr;
   if (VarTemplateSpecializationDecl *VarSpec = VarTemplate->findSpecialization(
-          Converted.data(), Converted.size(), InsertPos))
+          Converted, InsertPos))
     // If we already have a variable template specialization, return it.
     return VarSpec;
 
@@ -2816,7 +2812,7 @@ Decl *TemplateDeclInstantiator::VisitVarTemplateSpecializationDecl(
 Decl *TemplateDeclInstantiator::VisitVarTemplateSpecializationDecl(
     VarTemplateDecl *VarTemplate, VarDecl *D, void *InsertPos,
     const TemplateArgumentListInfo &TemplateArgsInfo,
-    llvm::ArrayRef<TemplateArgument> Converted) {
+    ArrayRef<TemplateArgument> Converted) {
 
   // If this is the variable for an anonymous struct or union,
   // instantiate the anonymous struct/union type first.
@@ -2970,8 +2966,7 @@ TemplateDeclInstantiator::InstantiateClassTemplatePartialSpecialization(
   // in the member template's set of class template partial specializations.
   void *InsertPos = nullptr;
   ClassTemplateSpecializationDecl *PrevDecl
-    = ClassTemplate->findPartialSpecialization(Converted.data(),
-                                               Converted.size(), InsertPos);
+    = ClassTemplate->findPartialSpecialization(Converted, InsertPos);
 
   // Build the canonical type that describes the converted template
   // arguments of the class template partial specialization.
@@ -3095,8 +3090,7 @@ TemplateDeclInstantiator::InstantiateVarTemplatePartialSpecialization(
   // in the member template's set of variable template partial specializations.
   void *InsertPos = nullptr;
   VarTemplateSpecializationDecl *PrevDecl =
-      VarTemplate->findPartialSpecialization(Converted.data(), Converted.size(),
-                                             InsertPos);
+      VarTemplate->findPartialSpecialization(Converted, InsertPos);
 
   // Build the canonical type that describes the converted template
   // arguments of the variable template partial specialization.
@@ -3968,12 +3962,6 @@ void Sema::InstantiateVariableInitializer(
     // We already have an initializer in the class.
     return;
 
-  if (Var->hasAttr<DLLImportAttr>() &&
-      !(OldVar->getInit() && OldVar->checkInitIsICE())) {
-    // Do not dynamically initialize dllimport variables.
-    return;
-  }
-
   if (OldVar->getInit()) {
     if (Var->isStaticDataMember() && !OldVar->isOutOfLine())
       PushExpressionEvaluationContext(Sema::ConstantEvaluated, OldVar);
@@ -3986,9 +3974,14 @@ void Sema::InstantiateVariableInitializer(
                          OldVar->getInitStyle() == VarDecl::CallInit);
     if (!Init.isInvalid()) {
       bool TypeMayContainAuto = true;
-      if (Init.get()) {
+      Expr *InitExpr = Init.get();
+
+      if (Var->hasAttr<DLLImportAttr>() && InitExpr &&
+          !InitExpr->isConstantInitializer(getASTContext(), false)) {
+        // Do not dynamically initialize dllimport variables.
+      } else if (InitExpr) {
         bool DirectInit = OldVar->isDirectInit();
-        AddInitializerToDecl(Var, Init.get(), DirectInit, TypeMayContainAuto);
+        AddInitializerToDecl(Var, InitExpr, DirectInit, TypeMayContainAuto);
       } else
         ActOnUninitializedDecl(Var, TypeMayContainAuto);
     } else {

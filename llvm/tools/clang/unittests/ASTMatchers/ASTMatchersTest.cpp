@@ -1017,6 +1017,17 @@ TEST(Matcher, ForRange) {
                          forRangeStmt()));
 }
 
+TEST(Matcher, SubstNonTypeTemplateParm) {
+  EXPECT_FALSE(matches("template<int N>\n"
+                       "struct A {  static const int n = 0; };\n"
+                       "struct B : public A<42> {};",
+                       substNonTypeTemplateParmExpr()));
+  EXPECT_TRUE(matches("template<int N>\n"
+                      "struct A {  static const int n = N; };\n"
+                      "struct B : public A<42> {};",
+                      substNonTypeTemplateParmExpr()));
+}
+
 TEST(Matcher, UserDefinedLiteral) {
   EXPECT_TRUE(matches("constexpr char operator \"\" _inc (const char i) {"
                       "  return i + 1;"
@@ -3621,6 +3632,27 @@ TEST(HasParent, MatchesAllParents) {
       notMatches("template <typename T> struct C { static void f() {} };"
                  "void t() { C<int>::f(); }",
                  compoundStmt(hasParent(recordDecl()))));
+}
+
+TEST(HasParent, NoDuplicateParents) {
+  class HasDuplicateParents : public BoundNodesCallback {
+  public:
+    bool run(const BoundNodes *Nodes) override { return false; }
+    bool run(const BoundNodes *Nodes, ASTContext *Context) override {
+      const Stmt *Node = Nodes->getNodeAs<Stmt>("node");
+      std::set<const void *> Parents;
+      for (const auto &Parent : Context->getParents(*Node)) {
+        if (!Parents.insert(Parent.getMemoizationData()).second) {
+          return true;
+        }
+      }
+      return false;
+    }
+  };
+  EXPECT_FALSE(matchAndVerifyResultTrue(
+      "template <typename T> int Foo() { return 1 + 2; }\n"
+      "int x = Foo<int>() + Foo<unsigned>();",
+      stmt().bind("node"), new HasDuplicateParents()));
 }
 
 TEST(TypeMatching, MatchesTypes) {

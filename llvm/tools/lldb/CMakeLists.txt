@@ -224,11 +224,8 @@ macro(add_lldb_library name)
   endif ()
 
   if(LLDB_USED_LIBS)
-# ===== Scout =================
-# The --start-group / --end-group options don't work with Clang.
-# ==========================
-#    if (LLVM_COMPILER_IS_GCC_COMPATIBLE)
-      if(NOT APPLE)
+    # The Darwin linker doesn't understand --start-group/--end-group.
+    if (LLVM_COMPILER_IS_GCC_COMPATIBLE AND NOT "${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
       target_link_libraries(${name} ${cmake_2_8_12_PUBLIC}
                             -Wl,--start-group ${LLDB_USED_LIBS} -Wl,--end-group)
     else()
@@ -324,7 +321,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLDB_COMPILE_FLAGS}")
 
 #add_subdirectory(include)
 add_subdirectory(docs)
-if (NOT CMAKE_SYSTEM_NAME MATCHES "Windows")
+if (NOT CMAKE_SYSTEM_NAME MATCHES "Windows" AND NOT LLDB_DISABLE_PYTHON)
   add_subdirectory(scripts)
 endif()
 add_subdirectory(source)

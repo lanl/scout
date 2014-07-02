@@ -354,7 +354,10 @@ private:
   std::string getTypeName(Type *T) {
     std::string TypeName;
     raw_string_ostream TypeStream(TypeName);
-    T->print(TypeStream);
+    if (T)
+      T->print(TypeStream);
+    else
+      TypeStream << "Printing <null> Type";
     TypeStream.flush();
     return TypeName;
   }

@@ -2544,6 +2544,18 @@ void FunctionDecl::setDeclsInPrototypeScope(ArrayRef<NamedDecl *> NewDecls) {
     NamedDecl **A = new (getASTContext()) NamedDecl*[NewDecls.size()];
     std::copy(NewDecls.begin(), NewDecls.end(), A);
     DeclsInPrototypeScope = ArrayRef<NamedDecl *>(A, NewDecls.size());
+    // Move declarations introduced in prototype to the function context.
+    for (auto I : NewDecls) {
+      DeclContext *DC = I->getDeclContext();
+      // Forward-declared reference to an enumeration is not added to
+      // declaration scope, so skip declaration that is absent from its
+      // declaration contexts.
+      if (DC->containsDecl(I)) {
+          DC->removeDecl(I);
+          I->setDeclContext(this);
+          addDecl(I);
+      }
+    }
   }
 }
 
@@ -3663,7 +3675,8 @@ FunctionDecl *FunctionDecl::Create(ASTContext &C, DeclContext *DC,
                                    bool hasWrittenPrototype,
                                    bool isConstexprSpecified,
                                    /* +===== Scout ==============*/
-                                   bool isStencilSpecified
+                                   bool isStencilSpecified,
+                                   bool isTaskSpecified
                                    /* +==========================*/
                                    ) {
 
@@ -3671,7 +3684,8 @@ FunctionDecl *FunctionDecl::Create(ASTContext &C, DeclContext *DC,
       new (C, DC) FunctionDecl(Function, C, DC, StartLoc, NameInfo, T, TInfo, SC,
                                isInlineSpecified, isConstexprSpecified,
                                /* +===== Scout ==============*/
-                               isStencilSpecified
+                               isStencilSpecified,
+                               isTaskSpecified
                                /* +==========================*/
                                );
   New->HasWrittenPrototype = hasWrittenPrototype;

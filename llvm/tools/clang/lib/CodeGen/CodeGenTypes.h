@@ -133,7 +133,7 @@ public:
 
 private:
   /// TypeCache - This map keeps cache of llvm::Types
-  /// and maps llvm::Types to corresponding clang::Type.
+  /// and maps clang::Type to corresponding llvm::Type.
   llvm::DenseMap<const Type *, llvm::Type *> TypeCache;
 
 public:
@@ -225,8 +225,6 @@ public:
 
   // +===== Scout ==============================================================+
   const CGFunctionInfo &arrangeStencilFunctionDeclaration(const FunctionDecl *FD);
-  const CGFunctionInfo &arrangeStencilFunctionCall(const CallArgList &args,
-                                          const FunctionDecl *D);
   // +==========================================================================+
 
   const CGFunctionInfo &

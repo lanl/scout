@@ -69,8 +69,11 @@ public:
   bool ComputeAddress(const Value *Obj, Address &Addr);
 
 private:
+  bool EmitLoad(MVT VT, unsigned &ResultReg, Address &Addr,
+                unsigned Alignment = 0);
   bool EmitStore(MVT VT, unsigned SrcReg, Address &Addr,
                  unsigned Alignment = 0);
+  bool SelectLoad(const Instruction *I);
   bool SelectRet(const Instruction *I);
   bool SelectStore(const Instruction *I);
 
@@ -105,6 +108,11 @@ private:
     return EmitInst(Opc).addReg(SrcReg).addReg(MemReg).addImm(MemOffset);
   }
 
+  MachineInstrBuilder EmitInstLoad(unsigned Opc, unsigned DstReg,
+                                      unsigned MemReg, int64_t MemOffset) {
+    return EmitInst(Opc, DstReg).addReg(MemReg).addImm(MemOffset);
+  }
+
 #include "MipsGenFastISel.inc"
 };
 
@@ -126,6 +134,8 @@ bool MipsFastISel::isLoadTypeLegal(Type *Ty, MVT &VT) {
   // We will extend this in a later patch:
   //   If this is a type than can be sign or zero-extended to a basic operation
   //   go ahead and accept it now.
+  if (VT == MVT::i8 || VT == MVT::i16)
+    return true;
   return false;
 }
 
@@ -140,6 +150,45 @@ bool MipsFastISel::ComputeAddress(const Value *Obj, Address &Addr) {
     return false;
   Addr.Base.Reg = getRegForValue(Obj);
   return Addr.Base.Reg != 0;
+}
+
+bool MipsFastISel::EmitLoad(MVT VT, unsigned &ResultReg, Address &Addr,
+                            unsigned Alignment) {
+  //
+  // more cases will be handled here in following patches.
+  //
+  unsigned Opc;
+  switch (VT.SimpleTy) {
+  case MVT::i32: {
+    ResultReg = createResultReg(&Mips::GPR32RegClass);
+    Opc = Mips::LW;
+    break;
+  }
+  case MVT::i16: {
+    ResultReg = createResultReg(&Mips::GPR32RegClass);
+    Opc = Mips::LHu;
+    break;
+  }
+  case MVT::i8: {
+    ResultReg = createResultReg(&Mips::GPR32RegClass);
+    Opc = Mips::LBu;
+    break;
+  }
+  case MVT::f32: {
+    ResultReg = createResultReg(&Mips::FGR32RegClass);
+    Opc = Mips::LWC1;
+    break;
+  }
+  case MVT::f64: {
+    ResultReg = createResultReg(&Mips::AFGR64RegClass);
+    Opc = Mips::LDC1;
+    break;
+  }
+  default:
+    return false;
+  }
+  EmitInstLoad(Opc, ResultReg, Addr.Base.Reg, Addr.Offset);
+  return true;
 }
 
 // Materialize a constant into a register, and return the register
@@ -167,9 +216,49 @@ bool MipsFastISel::EmitStore(MVT VT, unsigned SrcReg, Address &Addr,
   //
   // more cases will be handled here in following patches.
   //
-  if (VT != MVT::i32)
+  unsigned Opc;
+  switch (VT.SimpleTy) {
+  case MVT::i8:
+    Opc = Mips::SB;
+    break;
+  case MVT::i16:
+    Opc = Mips::SH;
+    break;
+  case MVT::i32:
+    Opc = Mips::SW;
+    break;
+  case MVT::f32:
+    Opc = Mips::SWC1;
+    break;
+  case MVT::f64:
+    Opc = Mips::SDC1;
+    break;
+  default:
     return false;
-  EmitInstStore(Mips::SW, SrcReg, Addr.Base.Reg, Addr.Offset);
+  }
+  EmitInstStore(Opc, SrcReg, Addr.Base.Reg, Addr.Offset);
+  return true;
+}
+
+bool MipsFastISel::SelectLoad(const Instruction *I) {
+  // Atomic loads need special handling.
+  if (cast<LoadInst>(I)->isAtomic())
+    return false;
+
+  // Verify we have a legal type before going any further.
+  MVT VT;
+  if (!isLoadTypeLegal(I->getType(), VT))
+    return false;
+
+  // See if we can handle this address.
+  Address Addr;
+  if (!ComputeAddress(I->getOperand(0), Addr))
+    return false;
+
+  unsigned ResultReg;
+  if (!EmitLoad(VT, ResultReg, Addr, cast<LoadInst>(I)->getAlignment()))
+    return false;
+  UpdateValueMap(I, ResultReg);
   return true;
 }
 
@@ -219,6 +308,8 @@ bool MipsFastISel::TargetSelectInstruction(const Instruction *I) {
   switch (I->getOpcode()) {
   default:
     break;
+  case Instruction::Load:
+    return SelectLoad(I);
   case Instruction::Store:
     return SelectStore(I);
   case Instruction::Ret:
@@ -229,6 +320,22 @@ bool MipsFastISel::TargetSelectInstruction(const Instruction *I) {
 }
 
 unsigned MipsFastISel::MaterializeFP(const ConstantFP *CFP, MVT VT) {
+  int64_t Imm = CFP->getValueAPF().bitcastToAPInt().getZExtValue();
+  if (VT == MVT::f32) {
+    const TargetRegisterClass *RC = &Mips::FGR32RegClass;
+    unsigned DestReg = createResultReg(RC);
+    unsigned TempReg = Materialize32BitInt(Imm, &Mips::GPR32RegClass);
+    EmitInst(Mips::MTC1, DestReg).addReg(TempReg);
+    return DestReg;
+  } else if (VT == MVT::f64) {
+    const TargetRegisterClass *RC = &Mips::AFGR64RegClass;
+    unsigned DestReg = createResultReg(RC);
+    unsigned TempReg1 = Materialize32BitInt(Imm >> 32, &Mips::GPR32RegClass);
+    unsigned TempReg2 =
+        Materialize32BitInt(Imm & 0xFFFFFFFF, &Mips::GPR32RegClass);
+    EmitInst(Mips::BuildPairF64, DestReg).addReg(TempReg2).addReg(TempReg1);
+    return DestReg;
+  }
   return 0;
 }
 

@@ -515,7 +515,6 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T, bool isStencil) {
     if (const FunctionProtoType *FPT = dyn_cast<FunctionProtoType>(FT)) {
       // +===== Scout ==========================================================+
       if(isStencil) {
-        llvm::errs() << "Stencil in ConvertType\n";
         FI =  &arrangeStencilFunctionType(
             CanQual<FunctionProtoType>::CreateUnsafe(QualType(FPT, 0)));
       } else {

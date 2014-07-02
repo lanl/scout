@@ -1479,6 +1479,7 @@ private:
 
   /* +===== Scout ==============*/
   bool IsStencilSpecified: 1;
+  bool IsTaskSpecified: 1;
   /* +==========================*/
 
   /// \brief End part of this FunctionDecl's source range.
@@ -1555,7 +1556,8 @@ protected:
                StorageClass S, bool isInlineSpecified,
                bool isConstexprSpecified,
                /* +===== Scout ==============*/
-               bool isStencilSpecified = false
+               bool isStencilSpecified = false,
+               bool isTaskSpecified = false
                /* +==========================*/
                )
     : DeclaratorDecl(DK, DC, NameInfo.getLoc(), NameInfo.getName(), T, TInfo,
@@ -1572,6 +1574,7 @@ protected:
       IsConstexpr(isConstexprSpecified), HasSkippedBody(false),
       /* +===== Scout ==============*/
       IsStencilSpecified(isStencilSpecified),
+      IsTaskSpecified(isTaskSpecified),
       /* +==========================*/
       EndRangeLoc(NameInfo.getEndLoc()),
       TemplateOrSpecialization(),
@@ -1607,7 +1610,8 @@ public:
                               bool hasWrittenPrototype = true,
                               bool isConstexprSpecified = false,
                               /* +===== Scout ====================*/
-                              bool isStencilSpecified = false
+                              bool isStencilSpecified = false,
+                              bool isTaskSpecified = false
                               /* +================================*/
                               ) {
     DeclarationNameInfo NameInfo(N, NLoc);
@@ -1616,7 +1620,8 @@ public:
                                 isInlineSpecified, hasWrittenPrototype,
                                 isConstexprSpecified,
                                 /* +===== Scout ====================*/
-                                isStencilSpecified
+                                isStencilSpecified,
+                                isTaskSpecified
                                 /* +================================*/
                                 );
   }
@@ -1630,7 +1635,8 @@ public:
                               bool hasWrittenPrototype,
                               bool isConstexprSpecified = false,
                               /* +===== Scout ====================*/
-                              bool isStencilSpecified = false
+                              bool isStencilSpecified = false,
+                              bool isTaskSpecified = false
                               /* +================================*/
                               );
 
@@ -1948,6 +1954,7 @@ public:
 
   // +===== Scout ==========================================================+
   bool isStencilSpecified() const { return IsStencilSpecified; }
+  bool isTaskSpecified() const { return IsTaskSpecified; }
   // +======================================================================+
 
   /// Flag that this function is implicitly inline.

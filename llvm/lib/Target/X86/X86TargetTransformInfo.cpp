@@ -102,6 +102,8 @@ public:
   unsigned getReductionCost(unsigned Opcode, Type *Ty,
                             bool IsPairwiseForm) const override;
 
+  unsigned getIntImmCost(int64_t) const;
+
   unsigned getIntImmCost(const APInt &Imm, Type *Ty) const override;
 
   unsigned getIntImmCost(unsigned Opcode, unsigned Idx, const APInt &Imm,
@@ -400,17 +402,47 @@ unsigned X86TTI::getArithmeticInstrCost(unsigned Opcode, Type *Ty,
 
 unsigned X86TTI::getShuffleCost(ShuffleKind Kind, Type *Tp, int Index,
                                 Type *SubTp) const {
-  // We only estimate the cost of reverse shuffles.
-  if (Kind != SK_Reverse)
+  // We only estimate the cost of reverse and alternate shuffles.
+  if (Kind != SK_Reverse && Kind != SK_Alternate)
     return TargetTransformInfo::getShuffleCost(Kind, Tp, Index, SubTp);
 
-  std::pair<unsigned, MVT> LT = TLI->getTypeLegalizationCost(Tp);
-  unsigned Cost = 1;
-  if (LT.second.getSizeInBits() > 128)
-    Cost = 3; // Extract + insert + copy.
+  if (Kind == SK_Reverse) {
+    std::pair<unsigned, MVT> LT = TLI->getTypeLegalizationCost(Tp);
+    unsigned Cost = 1;
+    if (LT.second.getSizeInBits() > 128)
+      Cost = 3; // Extract + insert + copy.
 
-  // Multiple by the number of parts.
-  return Cost * LT.first;
+    // Multiple by the number of parts.
+    return Cost * LT.first;
+  }
+
+  if (Kind == SK_Alternate) {
+    static const CostTblEntry<MVT::SimpleValueType> X86AltShuffleTbl[] = {
+        // Alt shuffle cost table for X86. Cost is the number of instructions
+        // required to create the shuffled vector.
+
+        {ISD::VECTOR_SHUFFLE, MVT::v2f32, 1},
+        {ISD::VECTOR_SHUFFLE, MVT::v2i64, 1},
+        {ISD::VECTOR_SHUFFLE, MVT::v2f64, 1},
+
+        {ISD::VECTOR_SHUFFLE, MVT::v2i32, 2},
+        {ISD::VECTOR_SHUFFLE, MVT::v4i32, 2},
+        {ISD::VECTOR_SHUFFLE, MVT::v4f32, 2},
+
+        {ISD::VECTOR_SHUFFLE, MVT::v4i16, 8},
+        {ISD::VECTOR_SHUFFLE, MVT::v8i16, 8},
+
+        {ISD::VECTOR_SHUFFLE, MVT::v16i8, 49}};
+
+    std::pair<unsigned, MVT> LT = TLI->getTypeLegalizationCost(Tp);
+
+    int Idx = CostTableLookup(X86AltShuffleTbl, ISD::VECTOR_SHUFFLE, LT.second);
+    if (Idx == -1)
+      return TargetTransformInfo::getShuffleCost(Kind, Tp, Index, SubTp);
+    return LT.first * X86AltShuffleTbl[Idx].Cost;
+  }
+
+  return TargetTransformInfo::getShuffleCost(Kind, Tp, Index, SubTp);
 }
 
 unsigned X86TTI::getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src) const {
@@ -808,6 +840,19 @@ unsigned X86TTI::getReductionCost(unsigned Opcode, Type *ValTy,
   return TargetTransformInfo::getReductionCost(Opcode, ValTy, IsPairwise);
 }
 
+/// \brief Calculate the cost of materializing a 64-bit value. This helper
+/// method might only calculate a fraction of a larger immediate. Therefore it
+/// is valid to return a cost of ZERO.
+unsigned X86TTI::getIntImmCost(int64_t Val) const {
+  if (Val == 0)
+    return TCC_Free;
+
+  if (isInt<32>(Val))
+    return TCC_Basic;
+
+  return 2 * TCC_Basic;
+}
+
 unsigned X86TTI::getIntImmCost(const APInt &Imm, Type *Ty) const {
   assert(Ty->isIntegerTy());
 
@@ -825,11 +870,21 @@ unsigned X86TTI::getIntImmCost(const APInt &Imm, Type *Ty) const {
   if (Imm == 0)
     return TCC_Free;
 
-  if (Imm.getBitWidth() <= 64 &&
-      (isInt<32>(Imm.getSExtValue()) || isUInt<32>(Imm.getZExtValue())))
-    return TCC_Basic;
-  else
-    return 2 * TCC_Basic;
+  // Sign-extend all constants to a multiple of 64-bit.
+  APInt ImmVal = Imm;
+  if (BitSize & 0x3f)
+    ImmVal = Imm.sext((BitSize + 63) & ~0x3fU);
+
+  // Split the constant into 64-bit chunks and calculate the cost for each
+  // chunk.
+  unsigned Cost = 0;
+  for (unsigned ShiftVal = 0; ShiftVal < BitSize; ShiftVal += 64) {
+    APInt Tmp = ImmVal.ashr(ShiftVal).sextOrTrunc(64);
+    int64_t Val = Tmp.getSExtValue();
+    Cost += getIntImmCost(Val);
+  }
+  // We need at least one instruction to materialze the constant.
+  return std::max(1U, Cost);
 }
 
 unsigned X86TTI::getIntImmCost(unsigned Opcode, unsigned Idx, const APInt &Imm,
@@ -889,9 +944,13 @@ unsigned X86TTI::getIntImmCost(unsigned Opcode, unsigned Idx, const APInt &Imm,
     break;
   }
 
-  if ((Idx == ImmIdx) &&
-      Imm.getBitWidth() <= 64 && isInt<32>(Imm.getSExtValue()))
-    return TCC_Free;
+  if (Idx == ImmIdx) {
+    unsigned NumConstants = (BitSize + 63) / 64;
+    unsigned Cost = X86TTI::getIntImmCost(Imm, Ty);
+    return (Cost <= NumConstants * TCC_Basic)
+      ? static_cast<unsigned>(TCC_Free)
+      : Cost;
+  }
 
   return X86TTI::getIntImmCost(Imm, Ty);
 }

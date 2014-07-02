@@ -87,7 +87,9 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
   for(unsigned i = 0; i <= 3; ++i) {
     ScoutABIInductionVarDecl.push_back(0);
   }
-
+  for(unsigned i = 0; i < 3; ++i) {
+    ScoutABILoopBoundDecl.push_back(0);
+  }
 
   // +=====================================================+ 
 }
@@ -825,7 +827,6 @@ void CodeGenFunction::GenerateCode(GlobalDecl GD, llvm::Function *Fn,
   // +===== Scout ==========================================================+
   // add implicit stencil params
   if(FD->isStencilSpecified()) {
-    llvm::errs() << "stencil in GenerateCode\n";
     CGM.getScoutABI().buildImplicitStencilParams(*this, Args);
   }
   // +======================================================================+
@@ -852,6 +853,14 @@ void CodeGenFunction::GenerateCode(GlobalDecl GD, llvm::Function *Fn,
 
   // Emit the standard function prologue.
   StartFunction(GD, ResTy, Fn, FnInfo, Args, Loc, BodyRange.getBegin());
+
+  // +===== Scout ==========================================================+
+  // just emit a marker for now in any task function
+  if(FD->isTaskSpecified()) {
+    llvm::errs() << "task in GenerateCode\n";
+    EmitMarkerBlock("InATaskFunction");
+  }
+  // +======================================================================+
 
   // Generate the body of the function.
   PGO.assignRegionCounters(GD.getDecl(), CurFn);

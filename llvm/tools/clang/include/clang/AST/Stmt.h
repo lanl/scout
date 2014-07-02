@@ -25,6 +25,9 @@
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <string>
+// +==== Scout =============================================================+
+#include <map>
+// +========================================================================+
 
 namespace llvm {
   class FoldingSetNodeID;
@@ -1483,6 +1486,8 @@ public:
 
   typedef ExprIterator inputs_iterator;
   typedef ConstExprIterator const_inputs_iterator;
+  typedef llvm::iterator_range<inputs_iterator> inputs_range;
+  typedef llvm::iterator_range<const_inputs_iterator> inputs_const_range;
 
   inputs_iterator begin_inputs() {
     return &Exprs[0] + NumOutputs;
@@ -1492,6 +1497,8 @@ public:
     return &Exprs[0] + NumOutputs + NumInputs;
   }
 
+  inputs_range inputs() { return inputs_range(begin_inputs(), end_inputs()); }
+
   const_inputs_iterator begin_inputs() const {
     return &Exprs[0] + NumOutputs;
   }
@@ -1500,10 +1507,16 @@ public:
     return &Exprs[0] + NumOutputs + NumInputs;
   }
 
+  inputs_const_range inputs() const {
+    return inputs_const_range(begin_inputs(), end_inputs());
+  }
+
   // Output expr iterators.
 
   typedef ExprIterator outputs_iterator;
   typedef ConstExprIterator const_outputs_iterator;
+  typedef llvm::iterator_range<outputs_iterator> outputs_range;
+  typedef llvm::iterator_range<const_outputs_iterator> outputs_const_range;
 
   outputs_iterator begin_outputs() {
     return &Exprs[0];
@@ -1511,12 +1524,18 @@ public:
   outputs_iterator end_outputs() {
     return &Exprs[0] + NumOutputs;
   }
+  outputs_range outputs() {
+    return outputs_range(begin_outputs(), end_outputs());
+  }
 
   const_outputs_iterator begin_outputs() const {
     return &Exprs[0];
   }
   const_outputs_iterator end_outputs() const {
     return &Exprs[0] + NumOutputs;
+  }
+  outputs_const_range outputs() const {
+    return outputs_const_range(begin_outputs(), end_outputs());
   }
 
   child_range children() {
@@ -2328,6 +2347,7 @@ public:
     Edges        =  3,
     Faces        =  4
   };
+  typedef std::map<std::string, bool> FieldMap;
 
 private:
   // The loop's reference element variable is an implicitly declared
@@ -2361,6 +2381,10 @@ private:
   // sure appropriate steps are taken for the various mesh types (and safely
   // cast this type as needed to the appropriate subclass).
   const MeshType* MeshRefType;
+
+  //keep track of which fields are used on LHS and RHS.
+  FieldMap LHS;
+  FieldMap RHS;
 
 public:
 
@@ -2440,6 +2464,23 @@ public:
   }
 
   const MeshType* getMeshType() const { return MeshRefType; }
+
+
+  void RHSinsert(std::string ref) {
+    RHS.insert(make_pair(ref, true));
+  }
+
+  void LHSinsert(std::string ref) {
+    LHS.insert(make_pair(ref, true));
+  }
+
+  const std::map<std::string, bool>& getLHSmap() const {
+    return LHS;
+  }
+
+  const std::map<std::string, bool>& getRHSmap() const {
+    return RHS;
+  }
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == ForallMeshStmtClass;

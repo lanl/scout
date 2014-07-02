@@ -35,6 +35,7 @@
 #include "clang/Serialization/GlobalModuleIndex.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/CrashRecoveryContext.h"
+#include "llvm/Support/Errc.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/LockFileManager.h"
@@ -44,8 +45,8 @@
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/system_error.h"
 #include <sys/stat.h>
+#include <system_error>
 #include <time.h>
 
 using namespace clang;
@@ -119,6 +120,16 @@ IntrusiveRefCntPtr<ASTReader> CompilerInstance::getModuleManager() const {
 }
 void CompilerInstance::setModuleManager(IntrusiveRefCntPtr<ASTReader> Reader) {
   ModuleManager = Reader;
+}
+
+std::shared_ptr<ModuleDependencyCollector>
+CompilerInstance::getModuleDepCollector() const {
+  return ModuleDepCollector;
+}
+
+void CompilerInstance::setModuleDepCollector(
+    std::shared_ptr<ModuleDependencyCollector> Collector) {
+  ModuleDepCollector = Collector;
 }
 
 // Diagnostics
@@ -283,6 +294,14 @@ void CompilerInstance::createPreprocessor(TranslationUnitKind TUKind) {
     AttachDependencyGraphGen(*PP, DepOpts.DOTOutputFile,
                              getHeaderSearchOpts().Sysroot);
 
+  for (auto &Listener : DependencyCollectors)
+    Listener->attachToPreprocessor(*PP);
+
+  // If we don't have a collector, but we are collecting module dependencies,
+  // then we're the top level compiler instance and need to create one.
+  if (!ModuleDepCollector && !DepOpts.ModuleDependencyOutputDir.empty())
+    ModuleDepCollector = std::make_shared<ModuleDependencyCollector>(
+        DepOpts.ModuleDependencyOutputDir);
 
   // Handle generating header include information, if requested.
   if (DepOpts.ShowHeaderIncludes)
@@ -460,8 +479,8 @@ void CompilerInstance::clearOutputFiles(bool EraseFiles) {
         // If '-working-directory' was passed, the output filename should be
         // relative to that.
         FileMgr->FixupRelativePath(NewOutFile);
-        if (llvm::error_code ec = llvm::sys::fs::rename(it->TempFilename,
-                                                        NewOutFile.str())) {
+        if (std::error_code ec =
+                llvm::sys::fs::rename(it->TempFilename, NewOutFile.str())) {
           getDiagnostics().Report(diag::err_unable_to_rename_temp)
             << it->TempFilename << it->Filename << ec.message();
 
@@ -574,7 +593,7 @@ CompilerInstance::createOutputFile(StringRef OutputPath,
     TempPath = OutFile;
     TempPath += "-%%%%%%%%";
     int fd;
-    llvm::error_code EC =
+    std::error_code EC =
         llvm::sys::fs::createUniqueFile(TempPath.str(), fd, TempPath);
 
     if (CreateMissingDirectories &&
@@ -671,7 +690,7 @@ bool CompilerInstance::InitializeSourceManager(const FrontendInputFile &Input,
         SourceMgr.createFileID(File, SourceLocation(), Kind));
   } else {
     std::unique_ptr<llvm::MemoryBuffer> SB;
-    if (llvm::error_code ec = llvm::MemoryBuffer::getSTDIN(SB)) {
+    if (std::error_code ec = llvm::MemoryBuffer::getSTDIN(SB)) {
       Diags.Report(diag::err_fe_error_reading_stdin) << ec.message();
       return false;
     }
@@ -862,6 +881,10 @@ static void compileModuleImpl(CompilerInstance &ImportingInstance,
   SourceMgr.pushModuleBuildStack(Module->getTopLevelModuleName(),
     FullSourceLoc(ImportLoc, ImportingInstance.getSourceManager()));
 
+  // If we're collecting module dependencies, we need to share a collector
+  // between all of the module CompilerInstances.
+  Instance.setModuleDepCollector(ImportingInstance.getModuleDepCollector());
+
   // Get or create the module map that we'll use to build this module.
   std::string InferredModuleMapContent;
   if (const FileEntry *ModuleMapFile =
@@ -876,7 +899,7 @@ static void compileModuleImpl(CompilerInstance &ImportingInstance,
     FrontendOpts.Inputs.push_back(
         FrontendInputFile("__inferred_module.map", IK));
 
-    const llvm::MemoryBuffer *ModuleMapBuffer =
+    llvm::MemoryBuffer *ModuleMapBuffer =
         llvm::MemoryBuffer::getMemBuffer(InferredModuleMapContent);
     ModuleMapFile = Instance.getFileManager().getVirtualFile(
         "__inferred_module.map", InferredModuleMapContent.size(), 0);
@@ -907,23 +930,28 @@ static void compileModuleImpl(CompilerInstance &ImportingInstance,
   }
 }
 
-static void compileModule(CompilerInstance &ImportingInstance,
-                          SourceLocation ImportLoc,
-                          Module *Module,
-                          StringRef ModuleFileName) {
+static bool compileAndLoadModule(CompilerInstance &ImportingInstance,
+                                 SourceLocation ImportLoc,
+                                 SourceLocation ModuleNameLoc,
+                                 Module *Module,
+                                 StringRef ModuleFileName) {
   // FIXME: have LockFileManager return an error_code so that we can
   // avoid the mkdir when the directory already exists.
   StringRef Dir = llvm::sys::path::parent_path(ModuleFileName);
   llvm::sys::fs::create_directories(Dir);
 
   while (1) {
+    unsigned ModuleLoadCapabilities = ASTReader::ARR_Missing;
     llvm::LockFileManager Locked(ModuleFileName);
     switch (Locked) {
     case llvm::LockFileManager::LFS_Error:
-      return;
+      return false;
 
     case llvm::LockFileManager::LFS_Owned:
-      // We're responsible for building the module ourselves. Do so below.
+      // We're responsible for building the module ourselves.
+      // FIXME: if there are errors, don't attempt to load the module.
+      compileModuleImpl(ImportingInstance, ModuleNameLoc, Module,
+                        ModuleFileName);
       break;
 
     case llvm::LockFileManager::LFS_Shared:
@@ -931,11 +959,28 @@ static void compileModule(CompilerInstance &ImportingInstance,
       // finish.
       if (Locked.waitForUnlock() == llvm::LockFileManager::Res_OwnerDied)
         continue; // try again to get the lock.
-      return;
+      ModuleLoadCapabilities |= ASTReader::ARR_OutOfDate;
+      break;
     }
 
-    return compileModuleImpl(ImportingInstance, ImportLoc, Module,
-                             ModuleFileName);
+    // Try to read the module file, now that we've compiled it.
+    ASTReader::ASTReadResult ReadResult =
+        ImportingInstance.getModuleManager()->ReadAST(
+            ModuleFileName, serialization::MK_Module, ImportLoc,
+            ModuleLoadCapabilities);
+
+    if (ReadResult == ASTReader::OutOfDate &&
+        Locked == llvm::LockFileManager::LFS_Shared) {
+      // The module may be out of date in the presence of file system races,
+      // or if one of its imports depends on header search paths that are not
+      // consistent with this ImportingInstance.  Try again...
+      continue;
+    } else if (ReadResult == ASTReader::Missing) {
+      ImportingInstance.getDiagnostics().Report(ModuleNameLoc,
+                                                diag::err_module_not_built)
+          << Module->Name << SourceRange(ImportLoc, ModuleNameLoc);
+    }
+    return ReadResult == ASTReader::Success;
   }
 }
 
@@ -1063,7 +1108,7 @@ static void pruneModuleCache(const HeaderSearchOptions &HSOpts) {
 
   // Walk the entire module cache, looking for unused module files and module
   // indices.
-  llvm::error_code EC;
+  std::error_code EC;
   SmallString<128> ModuleCachePathNative;
   llvm::sys::path::native(HSOpts.ModuleCachePath, ModuleCachePathNative);
   for (llvm::sys::fs::directory_iterator
@@ -1200,6 +1245,12 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
     if (TheDependencyFileGenerator)
       TheDependencyFileGenerator->AttachToASTReader(*ModuleManager);
 
+    if (ModuleDepCollector)
+      ModuleDepCollector->attachToASTReader(*ModuleManager);
+
+    for (auto &Listener : DependencyCollectors)
+      Listener->attachToASTReader(*ModuleManager);
+
     // Try to load the module file.
     unsigned ARRFlags = ASTReader::ARR_OutOfDate | ASTReader::ARR_Missing;
     switch (ModuleManager->ReadAST(ModuleFileName, serialization::MK_Module,
@@ -1246,23 +1297,9 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
         return ModuleLoadResult();
       }
 
-      // Try to compile the module.
-      compileModule(*this, ModuleNameLoc, Module, ModuleFileName);
-
-      // Try to read the module file, now that we've compiled it.
-      ASTReader::ASTReadResult ReadResult
-        = ModuleManager->ReadAST(ModuleFileName,
-                                 serialization::MK_Module, ImportLoc,
-                                 ASTReader::ARR_Missing);
-      if (ReadResult != ASTReader::Success) {
-        if (ReadResult == ASTReader::Missing) {
-          getDiagnostics().Report(ModuleNameLoc,
-                                  Module? diag::err_module_not_built
-                                        : diag::err_module_not_found)
-            << ModuleName
-            << SourceRange(ImportLoc, ModuleNameLoc);
-        }
-
+      // Try to compile and then load the module.
+      if (!compileAndLoadModule(*this, ImportLoc, ModuleNameLoc, Module,
+                                ModuleFileName)) {
         if (getPreprocessorOpts().FailedModules)
           getPreprocessorOpts().FailedModules->addFailed(ModuleName);
         KnownModules[Path[0].first] = nullptr;

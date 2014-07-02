@@ -1878,7 +1878,6 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
     // +===== Scout ========================================================+
     // for stencil
     if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)) {
-      llvm::errs() << "lookup implicit mesh " << IP->getName() << " -> " << IP->getMeshVarDecl()->getName() << "\n";
       V = LocalDeclMap.lookup(IP->getMeshVarDecl());
     }
 
@@ -2129,7 +2128,7 @@ llvm::Constant *CodeGenFunction::EmitCheckTypeDescriptor(QualType T) {
   SmallString<32> Buffer;
   CGM.getDiags().ConvertArgToString(DiagnosticsEngine::ak_qualtype,
                                     (intptr_t)T.getAsOpaquePtr(),
-                                    nullptr, 0, nullptr, 0, nullptr, 0, Buffer,
+                                    StringRef(), StringRef(), None, Buffer,
                                     ArrayRef<intptr_t>());
 
   llvm::Constant *Components[] = {
@@ -2743,6 +2742,19 @@ LValue CodeGenFunction::EmitInitListLValue(const InitListExpr *E) {
   return EmitLValue(E->getInit(0));
 }
 
+/// Emit the operand of a glvalue conditional operator. This is either a glvalue
+/// or a (possibly-parenthesized) throw-expression. If this is a throw, no
+/// LValue is returned and the current block has been terminated.
+static Optional<LValue> EmitLValueOrThrowExpression(CodeGenFunction &CGF,
+                                                    const Expr *Operand) {
+  if (auto *ThrowExpr = dyn_cast<CXXThrowExpr>(Operand->IgnoreParens())) {
+    CGF.EmitCXXThrowExpr(ThrowExpr, /*KeepInsertionPoint*/false);
+    return None;
+  }
+
+  return CGF.EmitLValue(Operand);
+}
+
 LValue CodeGenFunction::
 EmitConditionalOperatorLValue(const AbstractConditionalOperator *expr) {
   if (!expr->isGLValue()) {
@@ -2780,31 +2792,40 @@ EmitConditionalOperatorLValue(const AbstractConditionalOperator *expr) {
   EmitBlock(lhsBlock);
   Cnt.beginRegion(Builder);
   eval.begin(*this);
-  LValue lhs = EmitLValue(expr->getTrueExpr());
+  Optional<LValue> lhs =
+      EmitLValueOrThrowExpression(*this, expr->getTrueExpr());
   eval.end(*this);
 
-  if (!lhs.isSimple())
+  if (lhs && !lhs->isSimple())
     return EmitUnsupportedLValue(expr, "conditional operator");
 
   lhsBlock = Builder.GetInsertBlock();
-  Builder.CreateBr(contBlock);
+  if (lhs)
+    Builder.CreateBr(contBlock);
 
   // Any temporaries created here are conditional.
   EmitBlock(rhsBlock);
   eval.begin(*this);
-  LValue rhs = EmitLValue(expr->getFalseExpr());
+  Optional<LValue> rhs =
+      EmitLValueOrThrowExpression(*this, expr->getFalseExpr());
   eval.end(*this);
-  if (!rhs.isSimple())
+  if (rhs && !rhs->isSimple())
     return EmitUnsupportedLValue(expr, "conditional operator");
   rhsBlock = Builder.GetInsertBlock();
 
   EmitBlock(contBlock);
 
-  llvm::PHINode *phi = Builder.CreatePHI(lhs.getAddress()->getType(), 2,
-                                         "cond-lvalue");
-  phi->addIncoming(lhs.getAddress(), lhsBlock);
-  phi->addIncoming(rhs.getAddress(), rhsBlock);
-  return MakeAddrLValue(phi, expr->getType());
+  if (lhs && rhs) {
+    llvm::PHINode *phi = Builder.CreatePHI(lhs->getAddress()->getType(),
+                                           2, "cond-lvalue");
+    phi->addIncoming(lhs->getAddress(), lhsBlock);
+    phi->addIncoming(rhs->getAddress(), rhsBlock);
+    return MakeAddrLValue(phi, expr->getType());
+  } else {
+    assert((lhs || rhs) &&
+           "both operands of glvalue conditional are throw-expressions?");
+    return lhs ? *lhs : *rhs;
+  }
 }
 
 /// EmitCastLValue - Casts are never lvalues unless that cast is to a reference
@@ -3303,12 +3324,17 @@ RValue CodeGenFunction::EmitCall(QualType CalleeType, llvm::Value *Callee,
   CallArgList Args;
 
   // +===== Scout ==============================================================+
+  // See if this is a stencil call, if so add the implicit params.
   if (const FunctionDecl* FD = dyn_cast_or_null<const FunctionDecl>(TargetDecl)) {
     if (FD->isStencilSpecified()) {
-      llvm::errs() << "Stencil in EmitCall\n";
       QualType T = getContext().getPointerType(getContext().IntTy);
+      // Add loop bounds to args, could get this out of the
+      // mesh but it is easier this way.
+      for(unsigned i = 0; i < 3; i++)
+        Args.add(RValue::get(LoopBounds[i]), T);
+      // Add induction vars to args
       for(unsigned i = 0; i <= 3; i++)
-      Args.add(RValue::get(InductionVar[i]), T);
+        Args.add(RValue::get(InductionVar[i]), T);
     }
   }
   // +==========================================================================+

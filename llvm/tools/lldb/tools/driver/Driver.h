@@ -54,6 +54,13 @@ public:
     void
     ExecuteInitialCommands (bool before_file);
     
+    // ===== Scout ================================
+    // Execute Scout-specific LLDB initialization commands
+    // currently used to define LLDB prefix for commonly
+    // used Scout functions, e.g: hsva()
+    void ExecuteScoutInitialCommands();
+    // ============================================
+
     bool
     GetDebugMode() const;
 

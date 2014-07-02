@@ -1304,6 +1304,11 @@ DEF_TRAVERSE_DECL(BlockDecl, {
   if (TypeSourceInfo *TInfo = D->getSignatureAsWritten())
     TRY_TO(TraverseTypeLoc(TInfo->getTypeLoc()));
   TRY_TO(TraverseStmt(D->getBody()));
+  for (const auto &I : D->captures()) {
+    if (I.hasCopyExpr()) {
+      TRY_TO(TraverseStmt(I.getCopyExpr()));
+    }
+  }
   // This return statement makes sure the traversal of nodes in
   // decls_begin()/decls_end() (done in the DEF_TRAVERSE_DECL macro)
   // is skipped - don't remove it.
@@ -1552,22 +1557,22 @@ bool RecursiveASTVisitor<Derived>::TraverseTemplateInstantiations(
 // template declarations.
 #define DEF_TRAVERSE_TMPL_DECL(TMPLDECLKIND)                                   \
   DEF_TRAVERSE_DECL(TMPLDECLKIND##TemplateDecl, {                              \
-    TRY_TO(TraverseDecl(D->getTemplatedDecl()));                             \
-    TRY_TO(TraverseTemplateParameterListHelper(D->getTemplateParameters())); \
-                                                                             \
-    /* By default, we do not traverse the instantiations of
-       class templates since they do not appear in the user code. The
-       following code optionally traverses them.
-
-       We only traverse the class instantiations when we see the canonical
-       declaration of the template, to ensure we only visit them once. */    \
-    if (getDerived().shouldVisitTemplateInstantiations() &&                  \
-        D == D->getCanonicalDecl())                                          \
-      TRY_TO(TraverseTemplateInstantiations(D));                             \
-                                                                             \
-    /* Note that getInstantiatedFromMemberTemplate() is just a link
-       from a template instantiation back to the template from which
-       it was instantiated, and thus should not be traversed. */             \
+    TRY_TO(TraverseDecl(D->getTemplatedDecl()));                               \
+    TRY_TO(TraverseTemplateParameterListHelper(D->getTemplateParameters()));   \
+                                                                               \
+    /* By default, we do not traverse the instantiations of                    \
+       class templates since they do not appear in the user code. The          \
+       following code optionally traverses them.                               \
+                                                                               \
+       We only traverse the class instantiations when we see the canonical     \
+       declaration of the template, to ensure we only visit them once. */      \
+    if (getDerived().shouldVisitTemplateInstantiations() &&                    \
+        D == D->getCanonicalDecl())                                            \
+      TRY_TO(TraverseTemplateInstantiations(D));                               \
+                                                                               \
+    /* Note that getInstantiatedFromMemberTemplate() is just a link            \
+       from a template instantiation back to the template from which           \
+       it was instantiated, and thus should not be traversed. */               \
   })
 
 DEF_TRAVERSE_TMPL_DECL(Class)
@@ -1746,24 +1751,24 @@ bool RecursiveASTVisitor<Derived>::TraverseTemplateArgumentLocsHelper(
 
 #define DEF_TRAVERSE_TMPL_PART_SPEC_DECL(TMPLDECLKIND, DECLKIND)               \
   DEF_TRAVERSE_DECL(TMPLDECLKIND##TemplatePartialSpecializationDecl, {         \
-    /* The partial specialization. */                                        \
-    if (TemplateParameterList *TPL = D->getTemplateParameters()) {           \
-      for (TemplateParameterList::iterator I = TPL->begin(), E = TPL->end(); \
-           I != E; ++I) {                                                    \
-        TRY_TO(TraverseDecl(*I));                                            \
-      }                                                                      \
-    }                                                                        \
-    /* The args that remains unspecialized. */                               \
-    TRY_TO(TraverseTemplateArgumentLocsHelper(                               \
-                      D->getTemplateArgsAsWritten()->getTemplateArgs(),      \
-                      D->getTemplateArgsAsWritten()->NumTemplateArgs));      \
-                                                                             \
-    /* Don't need the *TemplatePartialSpecializationHelper, even
-       though that's our parent class -- we already visit all the
-       template args here. */                                                \
-    TRY_TO(Traverse##DECLKIND##Helper(D));                                   \
-                                                                             \
-    /* Instantiations will have been visited with the primary template. */   \
+    /* The partial specialization. */                                          \
+    if (TemplateParameterList *TPL = D->getTemplateParameters()) {             \
+      for (TemplateParameterList::iterator I = TPL->begin(), E = TPL->end();   \
+           I != E; ++I) {                                                      \
+        TRY_TO(TraverseDecl(*I));                                              \
+      }                                                                        \
+    }                                                                          \
+    /* The args that remains unspecialized. */                                 \
+    TRY_TO(TraverseTemplateArgumentLocsHelper(                                 \
+        D->getTemplateArgsAsWritten()->getTemplateArgs(),                      \
+        D->getTemplateArgsAsWritten()->NumTemplateArgs));                      \
+                                                                               \
+    /* Don't need the *TemplatePartialSpecializationHelper, even               \
+       though that's our parent class -- we already visit all the              \
+       template args here. */                                                  \
+    TRY_TO(Traverse##DECLKIND##Helper(D));                                     \
+                                                                               \
+    /* Instantiations will have been visited with the primary template. */     \
   })
 
 DEF_TRAVERSE_TMPL_PART_SPEC_DECL(Class, CXXRecord)
@@ -2414,6 +2419,26 @@ DEF_TRAVERSE_STMT(OMPSimdDirective, {
     return false;
 })
 
+DEF_TRAVERSE_STMT(OMPForDirective, {
+  if (!TraverseOMPExecutableDirective(S))
+    return false;
+})
+
+DEF_TRAVERSE_STMT(OMPSectionsDirective, {
+  if (!TraverseOMPExecutableDirective(S))
+    return false;
+})
+
+DEF_TRAVERSE_STMT(OMPSectionDirective, {
+  if (!TraverseOMPExecutableDirective(S))
+    return false;
+})
+
+DEF_TRAVERSE_STMT(OMPSingleDirective, {
+  if (!TraverseOMPExecutableDirective(S))
+    return false;
+})
+
 // OpenMP clauses.
 template <typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseOMPClause(OMPClause *C) {
@@ -2443,19 +2468,20 @@ RecursiveASTVisitor<Derived>::VisitOMPNumThreadsClause(OMPNumThreadsClause *C) {
   return true;
 }
 
-template<typename Derived>
+template <typename Derived>
 bool RecursiveASTVisitor<Derived>::VisitOMPSafelenClause(OMPSafelenClause *C) {
   TraverseStmt(C->getSafelen());
   return true;
 }
 
 template <typename Derived>
-bool RecursiveASTVisitor<Derived>::VisitOMPCollapseClause(OMPCollapseClause *C) {
+bool
+RecursiveASTVisitor<Derived>::VisitOMPCollapseClause(OMPCollapseClause *C) {
   TraverseStmt(C->getNumForLoops());
   return true;
 }
 
-template<typename Derived>
+template <typename Derived>
 bool RecursiveASTVisitor<Derived>::VisitOMPDefaultClause(OMPDefaultClause *C) {
   return true;
 }
@@ -2463,6 +2489,23 @@ bool RecursiveASTVisitor<Derived>::VisitOMPDefaultClause(OMPDefaultClause *C) {
 template <typename Derived>
 bool
 RecursiveASTVisitor<Derived>::VisitOMPProcBindClause(OMPProcBindClause *C) {
+  return true;
+}
+
+template <typename Derived>
+bool
+RecursiveASTVisitor<Derived>::VisitOMPScheduleClause(OMPScheduleClause *C) {
+  TraverseStmt(C->getChunkSize());
+  return true;
+}
+
+template <typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOMPOrderedClause(OMPOrderedClause *) {
+  return true;
+}
+
+template <typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOMPNowaitClause(OMPNowaitClause *) {
   return true;
 }
 
@@ -2515,6 +2558,22 @@ bool RecursiveASTVisitor<Derived>::VisitOMPAlignedClause(OMPAlignedClause *C) {
 
 template <typename Derived>
 bool RecursiveASTVisitor<Derived>::VisitOMPCopyinClause(OMPCopyinClause *C) {
+  VisitOMPClauseList(C);
+  return true;
+}
+
+template <typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOMPCopyprivateClause(
+    OMPCopyprivateClause *C) {
+  VisitOMPClauseList(C);
+  return true;
+}
+
+template <typename Derived>
+bool
+RecursiveASTVisitor<Derived>::VisitOMPReductionClause(OMPReductionClause *C) {
+  TRY_TO(TraverseNestedNameSpecifierLoc(C->getQualifierLoc()));
+  TRY_TO(TraverseDeclarationNameInfo(C->getNameInfo()));
   VisitOMPClauseList(C);
   return true;
 }

@@ -25,10 +25,10 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/system_error.h"
 #include <map>
 #include <set>
 #include <string>
+#include <system_error>
 
 using namespace clang;
 
@@ -388,9 +388,9 @@ void FileManager::FixupRelativePath(SmallVectorImpl<char> &path) const {
 
 llvm::MemoryBuffer *FileManager::
 getBufferForFile(const FileEntry *Entry, std::string *ErrorStr,
-                 bool isVolatile) {
+                 bool isVolatile, bool ShouldCloseOpenFile) {
   std::unique_ptr<llvm::MemoryBuffer> Result;
-  llvm::error_code ec;
+  std::error_code ec;
 
   uint64_t FileSize = Entry->getSize();
   // If there's a high enough chance that the file have changed since we
@@ -405,7 +405,10 @@ getBufferForFile(const FileEntry *Entry, std::string *ErrorStr,
                                 /*RequiresNullTerminator=*/true, isVolatile);
     if (ErrorStr)
       *ErrorStr = ec.message();
-    Entry->closeFile();
+    // FIXME: we need a set of APIs that can make guarantees about whether a
+    // FileEntry is open or not.
+    if (ShouldCloseOpenFile)
+      Entry->closeFile();
     return Result.release();
   }
 
@@ -431,7 +434,7 @@ getBufferForFile(const FileEntry *Entry, std::string *ErrorStr,
 llvm::MemoryBuffer *FileManager::
 getBufferForFile(StringRef Filename, std::string *ErrorStr) {
   std::unique_ptr<llvm::MemoryBuffer> Result;
-  llvm::error_code ec;
+  std::error_code ec;
   if (FileSystemOpts.WorkingDir.empty()) {
     ec = FS->getBufferForFile(Filename, Result);
     if (ec && ErrorStr)

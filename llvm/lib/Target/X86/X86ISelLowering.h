@@ -15,13 +15,13 @@
 #ifndef X86ISELLOWERING_H
 #define X86ISELLOWERING_H
 
-#include "X86Subtarget.h"
 #include "llvm/CodeGen/CallingConvLower.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/Target/TargetOptions.h"
 
 namespace llvm {
+  class X86Subtarget;
   class X86TargetMachine;
 
   namespace X86ISD {
@@ -85,6 +85,9 @@ namespace llvm {
 
       /// X86 Read Time-Stamp Counter and Processor ID.
       RDTSCP_DAG,
+
+      /// X86 Read Performance Monitoring Counters.
+      RDPMC_DAG,
 
       /// X86 compare and logical compare instructions.
       CMP, COMI, UCOMI,
@@ -315,6 +318,8 @@ namespace llvm {
       KORTEST,
 
       // Several flavors of instructions with vector shuffle behaviors.
+      PACKSS,
+      PACKUS,
       PALIGNR,
       PSHUFD,
       PSHUFHW,
@@ -766,9 +771,7 @@ namespace llvm {
 
     /// isTargetFTOL - Return true if the target uses the MSVC _ftol2 routine
     /// for fptoui.
-    bool isTargetFTOL() const {
-      return Subtarget->isTargetKnownWindowsMSVC() && !Subtarget->is64Bit();
-    }
+    bool isTargetFTOL() const;
 
     /// isIntegerTypeFTOL - Return true if the MSVC _ftol2 routine should be
     /// used for fptoui to the given type.

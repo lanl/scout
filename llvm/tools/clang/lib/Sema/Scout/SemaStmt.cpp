@@ -59,6 +59,7 @@
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 #include "clang/AST/Scout/ImplicitColorParamDecl.h"
 #include "clang/Basic/Builtins.h"
+#include "clang/AST/Expr.h"
 #include <map>
 
 using namespace clang;
@@ -107,23 +108,36 @@ static bool CheckShift(unsigned id, CallExpr *E, Sema &S) {
         ValueDecl* bd = dr->getDecl();
         const Type *T= bd->getType().getCanonicalType().getTypePtr();
         if (!isa<MeshType>(T)) {
-          S.Diag(E->getRParenLoc(), diag::err_shift_field) << kind;
+          S.Diag(fe->getExprLoc(), diag::err_shift_field) << kind;
           error = true;
         }
         if(isa<StructuredMeshType>(T)) {
-          S.Diag(E->getRParenLoc(), diag::err_shift_not_allowed) << kind << 0;
+          S.Diag(fe->getExprLoc(), diag::err_shift_not_allowed) << kind << 0;
           error = true;
         }
         if(isa<UnstructuredMeshType>(T)) {
-          S.Diag(E->getRParenLoc(), diag::err_shift_not_allowed) << kind << 1;
+          S.Diag(fe->getExprLoc(), diag::err_shift_not_allowed) << kind << 1;
           error = true;
         }
 
       }
     } else {
-      S.Diag(E->getRParenLoc(), diag::err_shift_field) << kind;
+      S.Diag(fe->getExprLoc(), diag::err_shift_field) << kind;
       error = true;
     }
+    // only allow integers for shift values
+    for (unsigned i = kind+1; i < args; i++) {
+      Expr *arg = E->getArg(i);
+      // remove unary operator if it exists
+      if(UnaryOperator *UO = dyn_cast<UnaryOperator>(arg)) {
+        arg = UO->getSubExpr();
+      }
+      if(!isa<IntegerLiteral>(arg)) {
+        S.Diag(arg->getExprLoc(), diag::err_shift_nonint) << kind;
+        error = true;
+      }
+    }
+
   }
   return error;
 }
@@ -147,7 +161,7 @@ namespace {
 
     ForallVisitor(Sema& sema, ForallMeshStmt* fs)
       : sema_(sema),
-        //fs_(fs),
+        fs_(fs),
         error_(false),
         nodeType_(NodeNone) {
     }
@@ -198,8 +212,10 @@ namespace {
           std::string ref = bd->getName().str() + "." + md->getName().str();
 
           if (nodeType_ == NodeLHS) {
+            fs_->LHSinsert(ref);
             refMap_.insert(make_pair(ref, true));
           } else if (nodeType_ == NodeRHS) {
+            fs_->RHSinsert(ref);
             RefMap_::iterator itr = refMap_.find(ref);
             if (itr != refMap_.end()) {
               sema_.Diag(E->getMemberLoc(), diag::err_rhs_after_lhs_forall);
@@ -268,7 +284,7 @@ namespace {
 
   private:
     Sema& sema_;
-    //ForallMeshStmt *fs_;
+    ForallMeshStmt *fs_;
     typedef std::map<std::string, bool> RefMap_;
     RefMap_ refMap_;
     RefMap_ localMap_;

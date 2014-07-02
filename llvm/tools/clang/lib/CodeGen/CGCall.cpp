@@ -301,6 +301,12 @@ CodeGenTypes::arrangeFunctionDeclaration(const FunctionDecl *FD) {
 
   assert(isa<FunctionType>(FTy));
 
+  // +===== Scout ==============================================================+
+   if(FD->isStencilSpecified()) {
+     return arrangeStencilFunctionDeclaration(FD);
+   }
+   // +==========================================================================+
+
   // When declaring a function without a prototype, always use a
   // non-variadic type.
   if (isa<FunctionNoProtoType>(FTy)) {
@@ -358,13 +364,6 @@ const CGFunctionInfo &
 CodeGenTypes::arrangeGlobalDeclaration(GlobalDecl GD) {
   // FIXME: Do we need to handle ObjCMethodDecl?
   const FunctionDecl *FD = cast<FunctionDecl>(GD.getDecl());
-
-  // +===== Scout ==============================================================+
-  if(FD->isStencilSpecified()) {
-    llvm::errs() << "stencil in arrangeGlobalDeclaration\n";
-    return arrangeStencilFunctionDeclaration(FD);
-  }
-  // +==========================================================================+
 
   if (const CXXConstructorDecl *CD = dyn_cast<CXXConstructorDecl>(FD))
     return arrangeCXXConstructorDeclaration(CD, GD.getCtorType());

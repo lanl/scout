@@ -99,6 +99,7 @@ public:
         query_host_info,                // 'qHostInfo'
         query_gdb_server_version,       // 'qGDBServerVersion'
         query_process_info,             // 'qProcessInfo'
+        json_query_thread_extended_info,// 'jThreadExtendedInfo'
         pass_signals_to_inferior,       // 'QPassSignals'
         start_noack_mode,               // 'QStartNoAckMode'
         prefix_reg_packets_with_tid,    // 'QPrefixRegisterPacketsWithThreadID
@@ -125,6 +126,7 @@ public:
         save_register_state,            // '_g'
         restore_register_state,         // '_G'
         speed_test,                     // 'qSpeedTest:'
+        set_detach_on_error,            // 'QSetDetachOnError:'
         unknown_type
     } PacketEnum;
 
@@ -181,6 +183,7 @@ public:
     rnb_err_t HandlePacket_qVAttachOrWaitSupported (const char *p);
     rnb_err_t HandlePacket_qSyncThreadStateSupported (const char *p);
     rnb_err_t HandlePacket_qThreadInfo (const char *p);
+    rnb_err_t HandlePacket_jThreadExtendedInfo (const char *p);
     rnb_err_t HandlePacket_qThreadExtraInfo (const char *p);
     rnb_err_t HandlePacket_qThreadStopInfo (const char *p);
     rnb_err_t HandlePacket_qHostInfo (const char *p);
@@ -232,6 +235,7 @@ public:
     rnb_err_t HandlePacket_WatchpointSupportInfo (const char *p);
     rnb_err_t HandlePacket_qSpeedTest (const char *p);
     rnb_err_t HandlePacket_stop_process (const char *p);
+    rnb_err_t HandlePacket_QSetDetachOnError (const char *p);
 
     rnb_err_t SendStopReplyPacketForThread (nub_thread_t tid);
     rnb_err_t SendHexEncodedBytePacket (const char *header, const void *buf, size_t buf_len, const char *footer);
@@ -245,7 +249,7 @@ public:
     RNBSocket&      Comm() { return m_comm; }
 
 private:
-    // Outlaw some contructors
+    // Outlaw some constructors
     RNBRemote (const RNBRemote &);
 
 protected:

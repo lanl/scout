@@ -267,6 +267,7 @@ SCOUT_KEYWORD(stencil)
 SCOUT_KEYWORD(camera)
 SCOUT_KEYWORD(with)
 SCOUT_KEYWORD(to)
+SCOUT_KEYWORD(task)
 // +==========================================================================+
 
 KEYWORD(auto                        , KEYALL)

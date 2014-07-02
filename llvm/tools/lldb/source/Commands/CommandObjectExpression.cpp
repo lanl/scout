@@ -34,6 +34,7 @@
 #include "lldb/Target/StackFrame.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Target/Thread.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 
 // +===== Scout ==========================
@@ -75,7 +76,7 @@ CommandObjectExpression::CommandOptions::g_option_table[] =
 uint32_t
 CommandObjectExpression::CommandOptions::GetNumDefinitions ()
 {
-    return sizeof(g_option_table)/sizeof(OptionDefinition);
+    return llvm::array_lengthof(g_option_table);
 }
 
 Error
@@ -305,7 +306,7 @@ CommandObjectExpression::EvaluateExpression
         
         // +===== Scout ==========================================
         CompileUnit *comp_unit = NULL;
-        StackFrame *frame = m_exe_ctx.GetFramePtr();
+        StackFrame *frame = exe_ctx.GetFramePtr();
         if (frame)
         {
             SymbolContext sc = frame->GetSymbolContext (eSymbolContextCompUnit);

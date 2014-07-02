@@ -222,7 +222,6 @@ void CodeGenFunction::StartThunk(llvm::Function *Fn, GlobalDecl GD,
   // add implicit stencil params
   const FunctionDecl *FD = cast<FunctionDecl>(GD.getDecl());
   if(FD->isStencilSpecified()) {
-    llvm::errs() << "stencil in StartThunk\n";
     CGM.getScoutABI().buildImplicitStencilParams(*this, FunctionArgs);
   }
   // +======================================================================+

@@ -103,7 +103,7 @@ static cl::list<std::string> FileNames(cl::Positional, cl::desc("[<file> ...]"),
 namespace clang {
 namespace format {
 
-static FileID createInMemoryFile(StringRef FileName, const MemoryBuffer *Source,
+static FileID createInMemoryFile(StringRef FileName, MemoryBuffer *Source,
                                  SourceManager &Sources, FileManager &Files) {
   const FileEntry *Entry = Files.getVirtualFile(FileName == "-" ? "<stdin>" :
                                                     FileName,
@@ -210,7 +210,7 @@ static bool format(StringRef FileName) {
       new DiagnosticOptions);
   SourceManager Sources(Diagnostics, Files);
   std::unique_ptr<MemoryBuffer> Code;
-  if (error_code ec = MemoryBuffer::getFileOrSTDIN(FileName, Code)) {
+  if (std::error_code ec = MemoryBuffer::getFileOrSTDIN(FileName, Code)) {
     llvm::errs() << ec.message() << "\n";
     return true;
   }

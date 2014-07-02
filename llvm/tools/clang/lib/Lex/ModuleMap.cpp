@@ -706,7 +706,7 @@ ModuleMap::inferFrameworkModule(StringRef ModuleName,
   Result->InferExportWildcard = true;
   
   // Look for subframeworks.
-  llvm::error_code EC;
+  std::error_code EC;
   SmallString<128> SubframeworksDirName
     = StringRef(FrameworkDir->getName());
   llvm::sys::path::append(SubframeworksDirName, "Frameworks");
@@ -1122,7 +1122,7 @@ retry:
 
     // Parse the string literal.
     LangOptions LangOpts;
-    StringLiteralParser StringLiteral(&LToken, 1, SourceMgr, LangOpts, *Target);
+    StringLiteralParser StringLiteral(LToken, SourceMgr, LangOpts, *Target);
     if (StringLiteral.hadError)
       goto retry;
     

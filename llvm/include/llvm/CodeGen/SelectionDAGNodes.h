@@ -593,6 +593,7 @@ public:
   typedef SDUse* op_iterator;
   op_iterator op_begin() const { return OperandList; }
   op_iterator op_end() const { return OperandList+NumOperands; }
+  ArrayRef<SDUse> ops() const { return makeArrayRef(op_begin(), op_end()); }
 
   SDVTList getVTList() const {
     SDVTList X = { ValueList, NumValues };
@@ -1126,6 +1127,7 @@ public:
            N->getOpcode() == ISD::STORE               ||
            N->getOpcode() == ISD::PREFETCH            ||
            N->getOpcode() == ISD::ATOMIC_CMP_SWAP     ||
+           N->getOpcode() == ISD::ATOMIC_CMP_SWAP_WITH_SUCCESS ||
            N->getOpcode() == ISD::ATOMIC_SWAP         ||
            N->getOpcode() == ISD::ATOMIC_LOAD_ADD     ||
            N->getOpcode() == ISD::ATOMIC_LOAD_SUB     ||
@@ -1234,12 +1236,13 @@ public:
 
   bool isCompareAndSwap() const {
     unsigned Op = getOpcode();
-    return Op == ISD::ATOMIC_CMP_SWAP;
+    return Op == ISD::ATOMIC_CMP_SWAP || Op == ISD::ATOMIC_CMP_SWAP_WITH_SUCCESS;
   }
 
   // Methods to support isa and dyn_cast
   static bool classof(const SDNode *N) {
     return N->getOpcode() == ISD::ATOMIC_CMP_SWAP     ||
+           N->getOpcode() == ISD::ATOMIC_CMP_SWAP_WITH_SUCCESS ||
            N->getOpcode() == ISD::ATOMIC_SWAP         ||
            N->getOpcode() == ISD::ATOMIC_LOAD_ADD     ||
            N->getOpcode() == ISD::ATOMIC_LOAD_SUB     ||

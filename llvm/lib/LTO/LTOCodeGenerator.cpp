@@ -44,7 +44,6 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/system_error.h"
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/Target/TargetOptions.h"
@@ -52,6 +51,7 @@
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/ObjCARC.h"
+#include <system_error>
 using namespace llvm;
 
 const char* LTOCodeGenerator::getVersionString() {
@@ -124,23 +124,7 @@ bool LTOCodeGenerator::addModule(LTOModule* mod, std::string& errMsg) {
 }
 
 void LTOCodeGenerator::setTargetOptions(TargetOptions options) {
-  Options.LessPreciseFPMADOption = options.LessPreciseFPMADOption;
-  Options.NoFramePointerElim = options.NoFramePointerElim;
-  Options.AllowFPOpFusion = options.AllowFPOpFusion;
-  Options.UnsafeFPMath = options.UnsafeFPMath;
-  Options.NoInfsFPMath = options.NoInfsFPMath;
-  Options.NoNaNsFPMath = options.NoNaNsFPMath;
-  Options.HonorSignDependentRoundingFPMathOption =
-    options.HonorSignDependentRoundingFPMathOption;
-  Options.UseSoftFloat = options.UseSoftFloat;
-  Options.FloatABIType = options.FloatABIType;
-  Options.NoZerosInBSS = options.NoZerosInBSS;
-  Options.GuaranteedTailCallOpt = options.GuaranteedTailCallOpt;
-  Options.DisableTailCalls = options.DisableTailCalls;
-  Options.StackAlignmentOverride = options.StackAlignmentOverride;
-  Options.TrapFuncName = options.TrapFuncName;
-  Options.PositionIndependentExecutable = options.PositionIndependentExecutable;
-  Options.UseInitArray = options.UseInitArray;
+  Options = options;
 }
 
 void LTOCodeGenerator::setDebugInfo(lto_debug_model debug) {
@@ -208,7 +192,8 @@ bool LTOCodeGenerator::compile_to_file(const char** name,
   // make unique temp .o file to put generated object file
   SmallString<128> Filename;
   int FD;
-  error_code EC = sys::fs::createTemporaryFile("lto-llvm", "o", FD, Filename);
+  std::error_code EC =
+      sys::fs::createTemporaryFile("lto-llvm", "o", FD, Filename);
   if (EC) {
     errMsg = EC.message();
     return false;
@@ -252,7 +237,7 @@ const void* LTOCodeGenerator::compile(size_t* length,
 
   // read .o file into memory buffer
   std::unique_ptr<MemoryBuffer> BuffPtr;
-  if (error_code ec = MemoryBuffer::getFile(name, BuffPtr, -1, false)) {
+  if (std::error_code ec = MemoryBuffer::getFile(name, BuffPtr, -1, false)) {
     errMsg = ec.message();
     sys::fs::remove(NativeObjectPath);
     return nullptr;

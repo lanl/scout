@@ -348,6 +348,7 @@ private:
   unsigned FS_noreturn_specified : 1;
   // +===== Scout ==========================================================+
   unsigned FS_stencil_specified : 1;
+  unsigned FS_task_specified : 1;
   // +======================================================================+
 
   // friend-specifier
@@ -445,6 +446,7 @@ public:
       FS_noreturn_specified(false),
       // +===== Scout ==================================================+
       FS_stencil_specified(false),
+      FS_task_specified(false),
       // +==============================================================+
       Friend_specified(false),
       Constexpr_specified(false),
@@ -585,6 +587,9 @@ public:
   bool isStencilSpecified() const {
     return FS_stencil_specified;
   }
+  bool isTaskSpecified() const {
+      return FS_task_specified;
+    }
   // +======================================================================+
 
   void ClearFunctionSpecs() {
@@ -701,6 +706,8 @@ public:
   // +===== Scout ==========================================================+
   bool setFunctionSpecStencil(SourceLocation Loc, const char *&PrevSpec,
                                     unsigned &DiagID);
+  bool setFunctionSpecTask(SourceLocation Loc, const char *&PrevSpec,
+                                      unsigned &DiagID);
   // +======================================================================+
 
   bool SetFriendSpec(SourceLocation Loc, const char *&PrevSpec,

@@ -73,6 +73,7 @@
 #include <cassert>
 #include "llvm/Transforms/Utils/CodeExtractor.h"
 #include "clang/AST/Decl.h"
+#include "clang/AST/Expr.h"
 #include "CGBlocks.h"
 
 #include "Scout/CGScoutRuntime.h"
@@ -96,7 +97,6 @@ static const uint8_t FIELD_FACE = 3;
 // delete calls...  We're likely safe with 160 character long
 // strings.
 static char IRNameStr[160];
-
 
 llvm::Value *CodeGenFunction::TranslateExprToValue(const Expr *E) {
 
@@ -1272,13 +1272,11 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
     return;
   }
 
-  // Track down the mesh meta data. 
-  //llvm::NamedMDNode *MeshMD = CGM.getModule().getNamedMetadata("scout.meshmd");
-  //assert(MeshMD != 0 && "unable to find module-level mesh metadata!");
-  //llvm::errs() << "forall mesh type name = '" << S.getMeshVarDecl()->getTypeSourceInfo()->getType().getTypePtr()->getTypeClassName() << "'\n";
-
   //need a marker for start of Forall for CodeExtraction
   llvm::BasicBlock *entry = EmitMarkerBlock("forall.entry");
+
+  // Track down the mesh meta data. 
+  EmitForallMeshMDBlock(S);
 
   if(isGPU()){
     EmitGPUPreamble(S);
@@ -1348,7 +1346,9 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   llvm::BasicBlock *exit = EmitMarkerBlock("forall.exit");
 
   // Extract Blocks to function and replace w/ call to function
-  ExtractRegion(entry, exit, "ForallMeshFunction");
+  if(!inLLDB()){
+  	ExtractRegion(entry, exit, "ForallMeshFunction");
+  }
 }
 
 
@@ -1487,6 +1487,59 @@ void CodeGenFunction::ResetVars(void) {
     InductionVar.push_back(0);
 }
 
+
+void CodeGenFunction::EmitForallMeshMDBlock(const ForallMeshStmt &S) {
+
+  llvm::NamedMDNode *MeshMD = CGM.getModule().getNamedMetadata("scout.meshmd");
+  assert(MeshMD != 0 && "unable to find module-level mesh metadata!");
+
+  llvm::BasicBlock *entry = createBasicBlock("forall.md");
+  llvm::BranchInst *BI = Builder.CreateBr(entry);
+
+  // find meta data for mesh used in this forall
+  StringRef MeshName = S.getMeshVarDecl()->getName();
+  StringRef MeshTypeName =  S.getMeshType()->getName();
+  for (llvm::NamedMDNode::op_iterator II = MeshMD->op_begin(), IE = MeshMD->op_end();
+      II != IE; ++II) {
+    if((*II)->getOperand(0)->getName() == MeshTypeName) {
+      BI->setMetadata(MeshName, *II);
+    }
+  }
+
+  //find fields used on LHS and add to metadata
+  const ForallMeshStmt::FieldMap &LHS = S.getLHSmap();
+  SmallVector<llvm::Value*, 16> MDL;
+  llvm::MDString *MDName = llvm::MDString::get(getLLVMContext(), "LHS");
+  MDL.push_back(MDName);
+
+  for(ForallMeshStmt::FieldMap::const_iterator it = LHS.begin(); it != LHS.end(); ++it)
+  {
+    MDName = llvm::MDString::get(getLLVMContext(), it->first);
+    MDL.push_back(MDName);
+
+  }
+  BI->setMetadata(StringRef("LHS"),
+      llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(MDL)));
+
+  //find fields used on RHS and add to metadata
+  const ForallMeshStmt::FieldMap &RHS = S.getRHSmap();
+  SmallVector<llvm::Value*, 16> MDR;
+  MDName = llvm::MDString::get(getLLVMContext(), "RHS");
+  MDR.push_back(MDName);
+
+  for(ForallMeshStmt::FieldMap::const_iterator it = RHS.begin(); it != RHS.end(); ++it)
+  {
+    MDName = llvm::MDString::get(getLLVMContext(), it->first);
+    MDR.push_back(MDName);
+  }
+  BI->setMetadata(StringRef("RHS"),
+        llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(MDR)));
+
+  EmitBlock(entry);
+
+}
+
+
 // Emit a branch and block. used as markers for code extraction
 llvm::BasicBlock *CodeGenFunction::EmitMarkerBlock(const std::string name) {
   llvm::BasicBlock *entry = createBasicBlock(name);
@@ -1494,6 +1547,8 @@ llvm::BasicBlock *CodeGenFunction::EmitMarkerBlock(const std::string name) {
   EmitBlock(entry);
   return entry;
 }
+
+
 
 // Extract blocks to function and replace w/ call to function
 llvm::Function* CodeGenFunction:: ExtractRegion(llvm::BasicBlock *entry, llvm::BasicBlock *exit, const std::string name) {
@@ -1546,7 +1601,10 @@ void CodeGenFunction::EmitForallArrayStmt(const ForallArrayStmt &S) {
   llvm::BasicBlock *exit = EmitMarkerBlock("forall.exit");
 
   // Extract Blocks to function and replace w/ call to function
-  ExtractRegion(entry, exit, "ForallArrayFunction");
+
+  if(!inLLDB()){
+  	ExtractRegion(entry, exit, "ForallArrayFunction");
+  }
 }
 
 void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) {
@@ -1664,9 +1722,6 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   if ((RTVD->hasLinkage() || RTVD->isStaticDataMember())
       && RTVD->getTLSKind() != VarDecl::TLS_Dynamic) {
     RTAlloc = CGM.GetAddrOfGlobalVar(RTVD);
-    llvm::Value* RTP = Builder.CreateAlloca(RTAlloc->getType());
-    Builder.CreateStore(RTAlloc, RTP);
-    RTAlloc = Builder.CreateLoad(RTP);
   }
   else{
     RTAlloc = LocalDeclMap.lookup(RTVD);
@@ -1722,20 +1777,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   llvm::Function *WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableColorsFunction();
 
   // %1 = call <4 x float>* @__scrt_window_quad_renderable_colors(i32 %HeatMeshType.width.ptr14, i32 %HeatMeshType.height.ptr16, i32 %HeatMeshType.depth.ptr18, i8* %derefwin)
-  llvm::CallInst* localColorPtr = Builder.CreateCall(WinQuadRendFunc, ArrayRef<llvm::Value *>(Args), "localcolor.ptr");
-
-  // %color.ptr = alloca <4 x float>* 
-  llvm::Type *flt4PtrTy = llvm::PointerType::get(
-            llvm::VectorType::get(llvm::Type::getFloatTy(CGM.getLLVMContext()), 4), 0);
-  llvm::Value *allocColorPtr  = Builder.CreateAlloca(flt4PtrTy, 0, "alloccolor.ptr");
-
-  // store <4 x float>* %localcolorptr, <4 x float>** %alloccolor.ptr
-  Builder.CreateStore(localColorPtr, allocColorPtr);
-
-  // store result of CreateWindowQuadRenderableColors into a variable named color;
-  // for use by code emitted by EmitRenderallMeshLoop (renderall body code references "color" variable)
-  // %color = load <4 x float>** %alloccolor.ptr
-  Color = Builder.CreateLoad(allocColorPtr, "color");
+  Color = Builder.CreateCall(WinQuadRendFunc, ArrayRef<llvm::Value *>(Args), "localcolor.ptr");
 
   // extract rank from mesh stored after width/height/depth
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
@@ -1758,7 +1800,9 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   //need a marker for end of Renderall for CodeExtraction
   llvm::BasicBlock *exit = EmitMarkerBlock("renderall.exit");
 
-  ExtractRegion(entry, exit, "RenderallFunction");
+  if(!inLLDB()){
+  	ExtractRegion(entry, exit, "RenderallFunction");
+  }
 }
 
 //generate one of the nested loops

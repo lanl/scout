@@ -128,6 +128,9 @@ def FormatZeroLength : DiagGroup<"format-zero-length">;
 def CXXPre1yCompat : DiagGroup<"c++98-c++11-compat">;
 def CXXPre1yCompatPedantic : DiagGroup<"c++98-c++11-compat-pedantic",
                                        [CXXPre1yCompat]>;
+def CXXPre1zCompat : DiagGroup<"c++98-c++11-c++14-compat">;
+def CXXPre1zCompatPedantic : DiagGroup<"c++98-c++11-c++14-compat-pedantic",
+                                       [CXXPre1zCompat]>;
 
 def CXX98CompatBindToTemporaryCopy :
   DiagGroup<"c++98-compat-bind-to-temporary-copy">;
@@ -140,11 +143,13 @@ def CXX98Compat : DiagGroup<"c++98-compat",
                             [CXX98CompatBindToTemporaryCopy,
                              CXX98CompatLocalTypeTemplateArgs,
                              CXX98CompatUnnamedTypeTemplateArgs,
-                             CXXPre1yCompat]>;
+                             CXXPre1yCompat,
+                             CXXPre1zCompat]>;
 // Warnings for C++11 features which are Extensions in C++98 mode.
 def CXX98CompatPedantic : DiagGroup<"c++98-compat-pedantic",
                                     [CXX98Compat,
-                                     CXXPre1yCompatPedantic]>;
+                                     CXXPre1yCompatPedantic,
+                                     CXXPre1zCompatPedantic]>;
 
 def CXX11Narrowing : DiagGroup<"c++11-narrowing">;
 
@@ -164,10 +169,16 @@ def CXX11Compat : DiagGroup<"c++11-compat",
                             [CXX11Narrowing,
                              CXX11CompatReservedUserDefinedLiteral,
                              CXX11CompatDeprecatedWritableStr,
-                             CXXPre1yCompat]>;
+                             CXXPre1yCompat,
+                             CXXPre1zCompat]>;
 def : DiagGroup<"c++0x-compat", [CXX11Compat]>;
 def CXX11CompatPedantic : DiagGroup<"c++11-compat-pedantic",
-                                    [CXXPre1yCompatPedantic]>;
+                                    [CXXPre1yCompatPedantic,
+                                     CXXPre1zCompatPedantic]>;
+
+def CXX14Compat : DiagGroup<"c++14-compat", [CXXPre1zCompat]>;
+def CXX14CompatPedantic : DiagGroup<"c++14-compat-pedantic",
+                                    [CXXPre1zCompatPedantic]>;
 
 def : DiagGroup<"effc++">;
 def DivZero : DiagGroup<"division-by-zero">;
@@ -267,8 +278,7 @@ def DeprecatedObjCIsaUsage : DiagGroup<"deprecated-objc-isa-usage">;
 def Packed : DiagGroup<"packed">;
 def Padded : DiagGroup<"padded">;
 def PointerArith : DiagGroup<"pointer-arith">;
-def PoundWarning : DiagGroup<"#warnings">,
-                   DiagCategory<"#warning Directive">;
+def PoundWarning : DiagGroup<"#warnings">;
 def PoundPragmaMessage : DiagGroup<"#pragma-messages">,
                          DiagCategory<"#pragma message Directive">;
 def : DiagGroup<"pointer-to-int-cast">;
@@ -379,9 +389,7 @@ def UnnamedTypeTemplateArgs : DiagGroup<"unnamed-type-template-args",
                                         [CXX98CompatUnnamedTypeTemplateArgs]>;
 def UnsupportedFriend : DiagGroup<"unsupported-friend">;
 def UnusedArgument : DiagGroup<"unused-argument">;
-def UnusedSanitizeArgument : DiagGroup<"unused-sanitize-argument">;
-def UnusedCommandLineArgument : DiagGroup<"unused-command-line-argument",
-                                          [UnusedSanitizeArgument]>;
+def UnusedCommandLineArgument : DiagGroup<"unused-command-line-argument">;
 def InvalidCommandLineArgument : DiagGroup<"invalid-command-line-argument">;
 def UnusedComparison : DiagGroup<"unused-comparison">;
 def UnusedExceptionParameter : DiagGroup<"unused-exception-parameter">;
@@ -627,6 +635,10 @@ def CXX11 : DiagGroup<"c++11-extensions", [CXX11ExtraSemi, CXX11LongLong]>;
 // earlier C++ versions.
 def CXX1y : DiagGroup<"c++1y-extensions">;
 
+// A warning group for warnings about using C++1z features as extensions in
+// earlier C++ versions.
+def CXX1z : DiagGroup<"c++1z-extensions">;
+
 def : DiagGroup<"c++0x-extensions", [CXX11]>;
 def DelegatingCtorCycles :
   DiagGroup<"delegating-ctor-cycles">;
@@ -693,7 +705,7 @@ def OpenMPLoopForm : DiagGroup<"openmp-loop-form">;
 
 // Backend warnings.
 def BackendInlineAsm : DiagGroup<"inline-asm">;
-def BackendFrameLargerThan : DiagGroup<"frame-larger-than">;
+def BackendFrameLargerThanEQ : DiagGroup<"frame-larger-than=">;
 def BackendPlugin : DiagGroup<"backend-plugin">;
 def RemarkBackendPlugin : DiagGroup<"remark-backend-plugin">;
 def BackendOptimizationRemark : DiagGroup<"pass">;
@@ -702,3 +714,4 @@ def BackendOptimizationRemarkAnalysis : DiagGroup<"pass-analysis">;
 
 // Instrumentation based profiling warnings.
 def ProfileInstrOutOfDate : DiagGroup<"profile-instr-out-of-date">;
+def ProfileInstrUnprofiled : DiagGroup<"profile-instr-unprofiled">;

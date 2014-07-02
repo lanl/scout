@@ -215,7 +215,7 @@ bool CMICmdFactory::CmdCreate( const CMIUtilString & vMiCmd, const SMICmdData & 
 	}
 
 	const MapMiCmdToCmdCreatorFn_t::const_iterator it = m_mapMiCmdToCmdCreatorFn.find( vMiCmd );
-	const CMIUtilString & rMiCmd( (*it).first );
+	const CMIUtilString & rMiCmd( (*it).first ); MIunused( rMiCmd );
 	CmdCreatorFnPtr pFn = (*it).second;
 	CMICmdBase * pCmd = (*pFn)();
 

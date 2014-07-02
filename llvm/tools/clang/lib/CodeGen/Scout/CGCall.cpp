@@ -67,8 +67,8 @@ CodeGenTypes::arrangeStencilFunctionDeclaration(const FunctionDecl *FD) {
 
   SmallVector<CanQualType, 16> argTypes;
 
-  //stencil args
-  for (unsigned i = 0; i <=3; i++) {
+  //stencil args (loopbounds + induction vars)
+  for (unsigned i = 0; i < 7; i++) {
     argTypes.push_back(Context.getPointerType(
         CanQualType::CreateUnsafe(Context.getIntPtrType())));
   }
@@ -94,8 +94,8 @@ static const CGFunctionInfo &arrangeLLVMStencilFunctionInfo(CodeGenTypes &CGT,
                                               FunctionType::ExtInfo extInfo) {
   RequiredArgs required = RequiredArgs::forPrototypePlus(FTP, prefix.size());
 
-  //stencil args
-  for (unsigned i=0; i<=3; i++) {
+  //stencil args (loopbounds + induction vars)
+  for (unsigned i=0; i< 7; i++) {
     prefix.push_back(CGT.getContext().getPointerType(
           CanQualType::CreateUnsafe(CGT.getContext().getIntPtrType())));
   }
@@ -122,25 +122,4 @@ CodeGenTypes::arrangeStencilFunctionType(CanQual<FunctionProtoType> FTP) {
   return ::arrangeStencilFunctionType(*this, argTypes, FTP);
 }
 
-// currently unused
-// based on CodeGenTypes::arrangeCXXConstructorCall
-const CGFunctionInfo &
-CodeGenTypes::arrangeStencilFunctionCall(const CallArgList &args,
-                                        const FunctionDecl *D) {
 
-  CanQualType FTy = D->getType()->getCanonicalTypeUnqualified();
-  CanQual<FunctionProtoType> FTP = FTy.getAs<FunctionProtoType>();
-
-  SmallVector<CanQualType, 16> ArgTypes;
-  //stencil args
-  for (unsigned i = 0; i <=3; i++) {
-    ArgTypes.push_back(Context.getPointerType(
-        CanQualType::CreateUnsafe(Context.getIntPtrType())));
-  }
-  for (CallArgList::const_iterator i = args.begin(), e = args.end(); i != e;
-      ++i)
-    ArgTypes.push_back(Context.getCanonicalParamType(i->Ty));
-
-  return arrangeLLVMFunctionInfo(FTP->getReturnType(), false, ArgTypes,
-                                       FTP->getExtInfo(), RequiredArgs::All);
-}

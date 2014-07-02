@@ -623,8 +623,8 @@ LoopHint Parser::HandlePragmaLoopHint() {
   Hint.Range =
       SourceRange(Info->Option.getLocation(), Info->Value.getLocation());
 
-  // FIXME: We should support template parameters for the loop hint value.
-  // See bug report #19610
+  // FIXME: We should allow non-type template parameters for the loop hint
+  // value. See bug report #19610
   if (Info->Value.is(tok::numeric_constant))
     Hint.ValueExpr = Actions.ActOnNumericConstant(Info->Value).get();
   else
@@ -1211,13 +1211,11 @@ void
 PragmaNoOpenMPHandler::HandlePragma(Preprocessor &PP,
                                     PragmaIntroducerKind Introducer,
                                     Token &FirstTok) {
-  if (PP.getDiagnostics().getDiagnosticLevel(diag::warn_pragma_omp_ignored,
-                                             FirstTok.getLocation()) !=
-      DiagnosticsEngine::Ignored) {
+  if (!PP.getDiagnostics().isIgnored(diag::warn_pragma_omp_ignored,
+                                     FirstTok.getLocation())) {
     PP.Diag(FirstTok, diag::warn_pragma_omp_ignored);
-    PP.getDiagnostics().setDiagnosticMapping(diag::warn_pragma_omp_ignored,
-                                             diag::MAP_IGNORE,
-                                             SourceLocation());
+    PP.getDiagnostics().setSeverity(diag::warn_pragma_omp_ignored,
+                                    diag::Severity::Ignored, SourceLocation());
   }
   PP.DiscardUntilEndOfDirective();
 }
@@ -1641,8 +1639,10 @@ void PragmaOptimizeHandler::HandlePragma(Preprocessor &PP,
 ///  loop-hint:
 ///    'vectorize' '(' loop-hint-keyword ')'
 ///    'interleave' '(' loop-hint-keyword ')'
+///    'unroll' '(' loop-hint-keyword ')'
 ///    'vectorize_width' '(' loop-hint-value ')'
 ///    'interleave_count' '(' loop-hint-value ')'
+///    'unroll_count' '(' loop-hint-value ')'
 ///
 ///  loop-hint-keyword:
 ///    'enable'
@@ -1661,6 +1661,13 @@ void PragmaOptimizeHandler::HandlePragma(Preprocessor &PP,
 /// possible and profitable, and 0 is invalid. The loop vectorizer currently
 /// only works on inner loops.
 ///
+/// The unroll and unroll_count directives control the concatenation
+/// unroller. Specifying unroll(enable) instructs llvm to try to
+/// unroll the loop completely, and unroll(disable) disables unrolling
+/// for the loop. Specifying unroll_count(_value_) instructs llvm to
+/// try to unroll the loop the number of times indicated by the value.
+/// If unroll(enable) and unroll_count are both specified only
+/// unroll_count takes effect.
 void PragmaLoopHintHandler::HandlePragma(Preprocessor &PP,
                                          PragmaIntroducerKind Introducer,
                                          Token &Tok) {
@@ -1679,9 +1686,15 @@ void PragmaLoopHintHandler::HandlePragma(Preprocessor &PP,
     Token Option = Tok;
     IdentifierInfo *OptionInfo = Tok.getIdentifierInfo();
 
-    if (!OptionInfo->isStr("vectorize") && !OptionInfo->isStr("interleave") &&
-        !OptionInfo->isStr("vectorize_width") &&
-        !OptionInfo->isStr("interleave_count")) {
+    bool OptionValid = llvm::StringSwitch<bool>(OptionInfo->getName())
+        .Case("vectorize", true)
+        .Case("interleave", true)
+        .Case("unroll", true)
+        .Case("vectorize_width", true)
+        .Case("interleave_count", true)
+        .Case("unroll_count", true)
+        .Default(false);
+    if (!OptionValid) {
       PP.Diag(Tok.getLocation(), diag::err_pragma_loop_invalid_option)
           << /*MissingOption=*/false << OptionInfo;
       return;
@@ -1697,9 +1710,13 @@ void PragmaLoopHintHandler::HandlePragma(Preprocessor &PP,
     // FIXME: All tokens between '(' and ')' should be stored and parsed as a
     // constant expression.
     PP.Lex(Tok);
-    Token Value;
-    if (Tok.is(tok::identifier) || Tok.is(tok::numeric_constant))
-      Value = Tok;
+    if (Tok.is(tok::r_paren)) {
+      // Nothing between the parentheses.
+      PP.Diag(Tok.getLocation(), diag::err_pragma_loop_missing_argument)
+          << OptionInfo;
+      return;
+    }
+    Token Value = Tok;
 
     // Read ')'
     PP.Lex(Tok);
