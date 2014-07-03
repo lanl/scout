@@ -100,7 +100,7 @@ void CodeGenFunction::EmitGlobalMeshAllocaIfMissing(llvm::Value* MeshAddr, const
   getTypes().GlobalMeshInit[Ty] = true;
 
   const MeshType* MT = cast<MeshType>(Ty);
-  llvm::StringRef MeshName  = MT->getName();
+  llvm::StringRef MeshName  = MeshAddr->getName();
   MeshDecl* MD = MT->getDecl();
   unsigned int nfields = MD->fields();
 
@@ -141,7 +141,7 @@ void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D
 
   QualType T = D.getType();
   const MeshType* MT = cast<MeshType>(T.getTypePtr());
-  llvm::StringRef MeshName  = MT->getName();
+  llvm::StringRef MeshName  = MeshAddr->getName();
   MeshDecl* MD = MT->getDecl();
   unsigned int nfields = MD->fields();
 
@@ -361,7 +361,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     // SC_TODO - We are only supporting one mesh type here...
     //
     const MeshType* MT = cast<MeshType>(T.getTypePtr());
-    llvm::StringRef MeshName  = MT->getName();
+    llvm::StringRef MeshName  = Alloc->getName();
     MeshDecl* MD = MT->getDecl();
 
     SmallVector<llvm::Value*, 3> Dimensions;
