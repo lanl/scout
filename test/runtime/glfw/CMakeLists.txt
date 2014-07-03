@@ -77,7 +77,7 @@ set(LIBS
   ${COREFOUNDATION_FRAMEWORK}
 )
 
-file(GLOB RT_GLFW_SRCS *.cpp)
+file(GLOB RT_GLFW_SRCS simple.cpp)
 
 set(CMAKE_CXX_COMPILER ${SCOUT_BUILD_DIR}/../bin/clang++)
 

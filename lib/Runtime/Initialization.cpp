@@ -66,12 +66,6 @@ using namespace std;
 
 using namespace scout;
 
-//globals accessed by llvm/tools/clang/lib/CodeGen/CGScoutRuntime.cpp
-float4*         __scrt_renderall_uniform_colors;
-glyph_vertex*   __scrt_renderall_glyph_vertex_data;
-
-
-
 extern "C" void __scrt_init_cpu() {
   DeviceList *devicelist = DeviceList::Instance();
   cpu::scInitialize(*devicelist);

@@ -4,7 +4,6 @@
 #include "scout/sys/linux/unistd.h"
 
 #if defined(__scout_cxx__) || defined(__cplusplus)
-#include "scout/Runtime/renderall/RenderallUniform.h"
 #include "scout/Runtime/opengl/glCamera.h"
 
 extern const size_t __scrt_initial_window_width;
