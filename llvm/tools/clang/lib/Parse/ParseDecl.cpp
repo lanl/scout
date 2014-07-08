@@ -5777,6 +5777,14 @@ void Parser::ParseMisplacedBracketDeclarator(Declarator &D) {
     case DeclaratorChunk::Array:
     case DeclaratorChunk::Function:
     case DeclaratorChunk::Paren:
+    // +===== Scout ==============================================================+
+    case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::UnstructuredMesh:
+    case DeclaratorChunk::RectilinearMesh:
+    case DeclaratorChunk::StructuredMesh:
+    case DeclaratorChunk::Window:
+    case DeclaratorChunk::Image:
+    // +==========================================================================+
       break;
     }
   }

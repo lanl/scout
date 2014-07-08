@@ -12213,6 +12213,14 @@ bool Sema::tryCaptureVariable(VarDecl *Var, SourceLocation ExprLoc,
         case Type::ObjCObject:
         case Type::ObjCInterface:
         case Type::ObjCObjectPointer:
+        // +===== Scout ==============================================================+
+        case Type::UniformMesh:
+        case Type::RectilinearMesh:
+        case Type::StructuredMesh:
+        case Type::UnstructuredMesh:
+        case Type::Window:
+        case Type::Image:
+        // +==========================================================================+
           llvm_unreachable("type class is never variably-modified!");
         case Type::Adjusted:
           QTy = cast<AdjustedType>(Ty)->getOriginalType();
