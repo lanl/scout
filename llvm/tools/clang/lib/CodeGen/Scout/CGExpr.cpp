@@ -131,6 +131,8 @@ LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
   // fields are before mesh dimensions so we can do things the same a struct
   // this is setup in Codegentypes.h ConvertScoutMeshType()
   const MeshDecl *mesh = field->getParent();
+  StringRef MeshName = base.getAddress()->getName();
+  StringRef FieldName = field->getName();
 
   if(isGPU()){
     const CGMeshLayout &ML = CGM.getTypes().getCGMeshLayout(field->getParent());
@@ -156,7 +158,7 @@ LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
     unsigned Idx = ML.getLLVMFieldNo(field);
     if (Idx != 0)
       // For structs, we GEP to the field that the record layout suggests.
-      sprintf(IRNameStr, "%s.%s.ptr", mesh->getName().str().c_str(),field->getName().str().c_str());
+      sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(),FieldName.str().c_str());
       Addr = Builder.CreateStructGEP(Addr, Idx, IRNameStr);
     // Get the access type.
     llvm::Type *PtrTy = llvm::Type::getIntNPtrTy(
@@ -187,7 +189,8 @@ LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
 
   // We GEP to the field that the record layout suggests.
   unsigned idx = CGM.getTypes().getCGMeshLayout(mesh).getLLVMFieldNo(field);
-  sprintf(IRNameStr, "%s.%s.ptr", mesh->getName().str().c_str(),field->getName().str().c_str());
+
+  sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(),FieldName.str().c_str());
   addr = Builder.CreateStructGEP(addr, idx, IRNameStr);
 
   // If this is a reference field, load the reference right now.
@@ -217,7 +220,7 @@ LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
     cvr = 0; // qualifiers don't recursively apply to referencee
   }
 
-  sprintf(IRNameStr, "%s.%s", mesh->getName().str().c_str(),field->getName().str().c_str());
+  sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(),FieldName.str().c_str());
   addr = Builder.CreateLoad(addr, IRNameStr);
 
   if (field->hasAttr<AnnotateAttr>())
@@ -228,7 +231,7 @@ LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
   llvm::Value *Idx = Builder.CreateSExt(Index, IntPtrTy, "Xall.linearidx"); //forall or renderall
 
   // get the correct element of the field depending on the index
-  sprintf(IRNameStr, "%s.%s.element.ptr", mesh->getName().str().c_str(),field->getName().str().c_str());
+  sprintf(IRNameStr, "%s.%s.element.ptr", MeshName.str().c_str(),FieldName.str().c_str());
   addr = Builder.CreateInBoundsGEP(addr, Idx, IRNameStr);
 
   LValue LV = MakeAddrLValue(addr, type, alignment);
@@ -546,7 +549,6 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
 RValue CodeGenFunction::EmitMeshParameterExpr(const Expr *E, MeshParameterOffset offset) {
   llvm::Value* rank = 0;
   unsigned int nfields = 0;
-  llvm::StringRef meshName;
 
   static const char *names[]   = { "width", "height", "depth", "rank" };
 
@@ -564,16 +566,14 @@ RValue CodeGenFunction::EmitMeshParameterExpr(const Expr *E, MeshParameterOffset
 
   if(const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(EE)) {
 
-    //get number of fields and mesh name
+    //get number of fields
     if(const MeshType *MT = dyn_cast<MeshType>(DRE->getType())) {
       nfields = MT->getDecl()->fields();
-      meshName = MT->getName();
     } else { // might have mesh ptr
       const Type *T = DRE->getType().getTypePtr()->getPointeeType().getTypePtr();
       if(T) {
         if(const MeshType *MT = dyn_cast<MeshType>(T)) {
           nfields = MT->getDecl()->fields();
-          meshName = MT->getName();
         }
       }
     }
@@ -581,11 +581,13 @@ RValue CodeGenFunction::EmitMeshParameterExpr(const Expr *E, MeshParameterOffset
     if(const VarDecl *VD = dyn_cast<VarDecl>(DRE->getDecl())) {
       llvm::Value *BaseAddr;
       GetMeshBaseAddr(VD, BaseAddr);
+      llvm::StringRef MeshName = BaseAddr->getName();
 
-      sprintf(IRNameStr, "%s.%s.ptr", meshName.str().c_str(), names[offset]);
+
+      sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), names[offset]);
       rank = Builder.CreateConstInBoundsGEP2_32(BaseAddr, 0, nfields+offset, IRNameStr);
 
-      sprintf(IRNameStr, "%s.%s", meshName.str().c_str(), names[offset]);
+      sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), names[offset]);
       rank = Builder.CreateLoad(rank, IRNameStr);
       return RValue::get(rank);
     }

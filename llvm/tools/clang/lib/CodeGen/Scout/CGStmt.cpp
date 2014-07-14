@@ -1249,8 +1249,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   //get mesh Base Addr
   llvm::Value *MeshBaseAddr;
   GetMeshBaseAddr(S, MeshBaseAddr);
-
-  llvm::StringRef MeshName = S.getMeshType()->getName();
+  llvm::StringRef MeshName = MeshBaseAddr->getName();
 
   // find number of fields
   MeshDecl* MD =  S.getMeshType()->getDecl();
@@ -1359,7 +1358,7 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
   RegionCounter Cnt = getPGORegionCounter(&S);
   (void)Cnt; //suppress warning 
  
-  llvm::StringRef MeshName = S.getMeshType()->getName();
+  llvm::StringRef MeshName = S.getMeshVarDecl()->getName();
 
   CGDebugInfo *DI = getDebugInfo();
 
@@ -1705,7 +1704,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 
   llvm::Value *MeshBaseAddr;
   GetMeshBaseAddr(S, MeshBaseAddr);
-  llvm::StringRef MeshName = S.getMeshType()->getName();
+  llvm::StringRef MeshName = MeshBaseAddr->getName();
 
   // find number of fields
   MeshDecl* MD =  S.getMeshType()->getDecl();
@@ -1810,7 +1809,7 @@ void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned
   RegionCounter Cnt = getPGORegionCounter(&S);
   (void)Cnt; //suppress warning
 
-  llvm::StringRef MeshName = S.getMeshType()->getName();
+  llvm::StringRef MeshName = S.getMeshVarDecl()->getName();
 
   CGDebugInfo *DI = getDebugInfo();
 
