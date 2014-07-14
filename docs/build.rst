@@ -107,14 +107,7 @@ Scout is currently dependent on a few external projects that must be
 installed on your system prior to building.  These required, and 
 strongly recommended, packages include:
 
-  * **Simple Direct Media Layer (SDL)**.  This is the library 
-    we currently use to the support the display of visualization
-    results and provide users with an interactive (in progress)
-    rendering during execution. 
-
-    .. todo:: Since we're using a one-off version of SDL we really need to explore other options or find a more easily downloaded (up-to-date) version of SDL... 
-
-  * **GLFW3**. Library to replace use of SDL.  See http://www.glfw.org/
+  * **GLFW3**. Library for OpenGL windowing.  See http://www.glfw.org/
 
   * **OpenGL 2.X or higher**.  We *strongly* recommend having access
     to a system with a GPU capable of supporting hardware accelerated
@@ -159,7 +152,7 @@ installed in reasonably standard locations (.e.g. /usr, /usr/local,
 use the following environment variables to help CMake find them during
 the configuration stages:
 
-   * .. envvar:: SDL_DIR=/path/to/sdl/install
+   * .. envvar:: GLFW_DIR=/path/to/glfw3/install
    * .. envvar:: CUDA_DIR=/path/to/cuda/install
    * .. envvar:: MPI_HOME=/path/to/mpi/install 
 

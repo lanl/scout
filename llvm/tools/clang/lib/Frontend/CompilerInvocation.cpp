@@ -367,6 +367,9 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   // Enable scout CPU multithreading support if OPT_cpuThreads is present.
   Opts.ScoutCPUThreads = Args.hasArg(OPT_cpuThreads);
 
+  // Enable scout Legion support if OPT_legionSupport is present
+  Opts.ScoutLegionSupport = Args.hasArg(OPT_legionSupport);
+
   // Enable scout CPU multithreading support if OPT_cpuThreads is present.
   //Opts.ScoutEmitAllDefinitions = Args.hasArg(OPT_emitAllDefinitions);
 

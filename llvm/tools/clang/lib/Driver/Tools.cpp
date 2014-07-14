@@ -3165,6 +3165,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     // Enable cpu multithreading.
     Args.AddAllArgs(CmdArgs, options::OPT_cpuThreads);
 
+    // Enable legion support.
+    Args.AddAllArgs(CmdArgs, options::OPT_legionSupport);
+
     // Enable NVIDIA gpu support (if available).
     Args.AddAllArgs(CmdArgs, options::OPT_gpu);
 

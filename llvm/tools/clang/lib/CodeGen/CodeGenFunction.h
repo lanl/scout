@@ -351,6 +351,10 @@ public:
     return CGM.getCodeGenOpts().ScoutCPUThreads;
   }
 
+  bool hasLegionSupport() {
+    return CGM.getCodeGenOpts().ScoutLegionSupport;
+  }
+
   bool isSequential() {
     return !isMultiCPU() && !isGPU();
   }

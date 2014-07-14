@@ -11,15 +11,6 @@ If you are building on the Darwin cluster use the following steps::
     $ module load compilers/gcc/4.7.2
     $ module load mpi
 
-In addition, build SDL-1.2.15 from source and install within your home
-directory and then set __SDL_DIR__ correspondingly. 
-
-    $ curl https://www.libsdl.org/release/SDL-1.2.15.tar.gz > SDL-1.2.15.tar.gz
-    $ tar xfz SDL-1.2.15.tar.gz
-    $ cd SDL-1.2.15
-    $ ./configure -prefix=HOMEDIR
-    $ make; make install
-
 Build glfw from source and install within your home
 directory and then set __GLFW_DIR__ correspondingly. 
 
