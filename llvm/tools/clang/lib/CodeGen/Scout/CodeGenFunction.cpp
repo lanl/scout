@@ -4,9 +4,13 @@
 #include "CodeGenModule.h"
 #include "CodeGenFunction.h"
 #include "clang/AST/CharUnits.h"
+#include "clang/AST/Decl.h"
+#include "clang/AST/Stmt.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/Type.h"
+#include "clang/AST/DeclVisitor.h"
+#include "clang/AST/StmtVisitor.h"
 #include "clang/Basic/ABI.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Frontend/CodeGenOptions.h"
@@ -17,6 +21,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/IR/ValueHandle.h"
 #include "llvm/IR/Intrinsics.h"
+#include "Scout/Visitors.h"
 
 using namespace clang;
 using namespace clang::CodeGen;
@@ -24,6 +29,62 @@ using namespace clang::CodeGen;
 static char IRNameStr[160];
 static const char *IndexNames[] = { "x", "y", "z", "w"};
 static const char *DimNames[]   = { "width", "height", "depth" };
+
+void CodeGenFunction::addTaskMetadata(const FunctionDecl *FD) {
+  TaskVisitor v(FD);
+  v.VisitStmt(FD->getBody());
+
+  llvm::BasicBlock *entry = createBasicBlock("task.md");
+  llvm::BranchInst *BI = Builder.CreateBr(entry);
+
+  llvm::NamedMDNode *MeshMD = CGM.getModule().getNamedMetadata("scout.meshmd");
+  TaskVisitor::MeshNameMap MNM = v.getMeshNamemap();
+
+  for( TaskVisitor::MeshNameMap::const_iterator it =
+      MNM.begin(); it != MNM.end(); ++it) {
+    // find meta data for mesh used in this forall
+    const std::string MeshName = it->first;
+    const std::string MeshTypeName =  it->second;
+    for (llvm::NamedMDNode::op_iterator II = MeshMD->op_begin(), IE = MeshMD->op_end();
+        II != IE; ++II) {
+      if((*II)->getOperand(0)->getName().str() == MeshTypeName) {
+        BI->setMetadata(MeshName, *II);
+      }
+    }
+  }
+
+  //find fields used on LHS and add to metadata
+  TaskVisitor::FieldMap LHS = v.getLHSmap();
+  SmallVector<llvm::Value*, 16> MDL;
+  llvm::MDString *MDName = llvm::MDString::get(getLLVMContext(), "LHS");
+  MDL.push_back(MDName);
+
+  for( TaskVisitor::FieldMap::const_iterator it = LHS.begin(); it != LHS.end(); ++it)
+  {
+    MDName = llvm::MDString::get(getLLVMContext(), it->first);
+    MDL.push_back(MDName);
+
+  }
+  BI->setMetadata(StringRef("LHS"),
+      llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(MDL)));
+
+  //find fields used on RHS and add to metadata
+  TaskVisitor::FieldMap RHS = v.getRHSmap();
+  SmallVector<llvm::Value*, 16> MDR;
+  MDName = llvm::MDString::get(getLLVMContext(), "RHS");
+  MDR.push_back(MDName);
+
+  for(TaskVisitor::FieldMap::const_iterator it = RHS.begin(); it != RHS.end(); ++it)
+  {
+    MDName = llvm::MDString::get(getLLVMContext(), it->first);
+    MDR.push_back(MDName);
+  }
+  BI->setMetadata(StringRef("RHS"),
+      llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(MDR)));
+
+  EmitBlock(entry);
+
+}
 
 // If in Stencil then lookup and load InductionVar, otherwize return it directly
 llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {

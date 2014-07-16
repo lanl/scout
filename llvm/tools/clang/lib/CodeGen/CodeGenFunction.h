@@ -384,6 +384,8 @@ public:
   bool callsPrintf(const Stmt *S) {
     return hasPrintfNode(S);
   }
+
+  void addTaskMetadata(const FunctionDecl *FD);
   // +========================================================================+
 
 
