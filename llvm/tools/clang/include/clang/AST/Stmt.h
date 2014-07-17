@@ -2347,7 +2347,6 @@ public:
     Edges        =  3,
     Faces        =  4
   };
-  typedef std::map<std::string, bool> FieldMap;
 
 private:
   // The loop's reference element variable is an implicitly declared
@@ -2381,10 +2380,6 @@ private:
   // sure appropriate steps are taken for the various mesh types (and safely
   // cast this type as needed to the appropriate subclass).
   const MeshType* MeshRefType;
-
-  //keep track of which fields are used on LHS and RHS.
-  FieldMap LHS;
-  FieldMap RHS;
 
 public:
 
@@ -2464,23 +2459,6 @@ public:
   }
 
   const MeshType* getMeshType() const { return MeshRefType; }
-
-
-  void RHSinsert(std::string ref) {
-    RHS.insert(make_pair(ref, true));
-  }
-
-  void LHSinsert(std::string ref) {
-    LHS.insert(make_pair(ref, true));
-  }
-
-  const std::map<std::string, bool>& getLHSmap() const {
-    return LHS;
-  }
-
-  const std::map<std::string, bool>& getRHSmap() const {
-    return RHS;
-  }
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == ForallMeshStmtClass;

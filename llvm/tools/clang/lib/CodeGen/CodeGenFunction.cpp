@@ -855,10 +855,13 @@ void CodeGenFunction::GenerateCode(GlobalDecl GD, llvm::Function *Fn,
   StartFunction(GD, ResTy, Fn, FnInfo, Args, Loc, BodyRange.getBegin());
 
   // +===== Scout ==========================================================+
-  // just emit a marker for now in any task function
+  // emit metadata for a task function
   if(FD->isTaskSpecified()) {
-    llvm::errs() << "task in GenerateCode\n";
-    EmitMarkerBlock("InATaskFunction");
+    EmitTaskMDBlock(FD);
+  }
+  // emit metadata for a stencil function
+  if(FD->isStencilSpecified()) {
+    EmitStencilMDBlock(FD);
   }
   // +======================================================================+
 
