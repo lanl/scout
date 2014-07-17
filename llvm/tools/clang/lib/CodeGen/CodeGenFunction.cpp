@@ -857,7 +857,11 @@ void CodeGenFunction::GenerateCode(GlobalDecl GD, llvm::Function *Fn,
   // +===== Scout ==========================================================+
   // emit metadata for a task function
   if(FD->isTaskSpecified()) {
-    addTaskMetadata(FD);
+    EmitTaskMDBlock(FD);
+  }
+  // emit metadata for a stencil function
+  if(FD->isStencilSpecified()) {
+    EmitStencilMDBlock(FD);
   }
   // +======================================================================+
 

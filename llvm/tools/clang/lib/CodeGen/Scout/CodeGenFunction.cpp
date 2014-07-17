@@ -21,7 +21,6 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/IR/ValueHandle.h"
 #include "llvm/IR/Intrinsics.h"
-#include "Scout/Visitors.h"
 
 using namespace clang;
 using namespace clang::CodeGen;
@@ -30,7 +29,33 @@ static char IRNameStr[160];
 static const char *IndexNames[] = { "x", "y", "z", "w"};
 static const char *DimNames[]   = { "width", "height", "depth" };
 
-void CodeGenFunction::addTaskMetadata(const FunctionDecl *FD) {
+
+void CodeGenFunction::EmitMeshFieldsUsedMD(TaskVisitor::FieldMap HS,
+    const char *str, llvm::BranchInst *BI) {
+  SmallVector<llvm::Value*, 16> MDL;
+  llvm::MDString *MDName = llvm::MDString::get(getLLVMContext(), str);
+  MDL.push_back(MDName);
+
+  for( TaskVisitor::FieldMap::const_iterator it = HS.begin(); it != HS.end(); ++it)
+  {
+    MDName = llvm::MDString::get(getLLVMContext(), it->first);
+    MDL.push_back(MDName);
+
+  }
+  BI->setMetadata(StringRef(str),
+      llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(MDL)));
+
+}
+
+
+void CodeGenFunction::EmitStencilMDBlock(const FunctionDecl *FD) {
+  llvm::BasicBlock *entry = createBasicBlock("stencil.md");
+  llvm::BranchInst *BI = Builder.CreateBr(entry);
+  //SC_TODO: add stencil metadata
+  EmitBlock(entry);
+}
+
+void CodeGenFunction::EmitTaskMDBlock(const FunctionDecl *FD) {
   TaskVisitor v(FD);
   v.VisitStmt(FD->getBody());
 
@@ -55,32 +80,11 @@ void CodeGenFunction::addTaskMetadata(const FunctionDecl *FD) {
 
   //find fields used on LHS and add to metadata
   TaskVisitor::FieldMap LHS = v.getLHSmap();
-  SmallVector<llvm::Value*, 16> MDL;
-  llvm::MDString *MDName = llvm::MDString::get(getLLVMContext(), "LHS");
-  MDL.push_back(MDName);
-
-  for( TaskVisitor::FieldMap::const_iterator it = LHS.begin(); it != LHS.end(); ++it)
-  {
-    MDName = llvm::MDString::get(getLLVMContext(), it->first);
-    MDL.push_back(MDName);
-
-  }
-  BI->setMetadata(StringRef("LHS"),
-      llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(MDL)));
+  EmitMeshFieldsUsedMD(LHS, "LHS", BI);
 
   //find fields used on RHS and add to metadata
   TaskVisitor::FieldMap RHS = v.getRHSmap();
-  SmallVector<llvm::Value*, 16> MDR;
-  MDName = llvm::MDString::get(getLLVMContext(), "RHS");
-  MDR.push_back(MDName);
-
-  for(TaskVisitor::FieldMap::const_iterator it = RHS.begin(); it != RHS.end(); ++it)
-  {
-    MDName = llvm::MDString::get(getLLVMContext(), it->first);
-    MDR.push_back(MDName);
-  }
-  BI->setMetadata(StringRef("RHS"),
-      llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(MDR)));
+  EmitMeshFieldsUsedMD(RHS, "RHS", BI);
 
   EmitBlock(entry);
 

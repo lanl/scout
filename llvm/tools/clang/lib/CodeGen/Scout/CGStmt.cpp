@@ -77,7 +77,7 @@
 #include "CGBlocks.h"
 
 #include "Scout/CGScoutRuntime.h"
-#include "Scout/Visitors.h"
+#include "Scout/ASTVisitors.h"
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 
 using namespace clang;
@@ -1511,38 +1511,16 @@ void CodeGenFunction::EmitForallMeshMDBlock(const ForallMeshStmt &S) {
   v.Visit(SP);
 
   //find fields used on LHS and add to metadata
-  const ForallVisitor::FieldMap &LHS = v.getLHSmap();
-  SmallVector<llvm::Value*, 16> MDL;
-  llvm::MDString *MDName = llvm::MDString::get(getLLVMContext(), "LHS");
-  MDL.push_back(MDName);
-
-  for(ForallVisitor::FieldMap::const_iterator it = LHS.begin(); it != LHS.end(); ++it)
-  {
-    MDName = llvm::MDString::get(getLLVMContext(), it->first);
-    MDL.push_back(MDName);
-
-  }
-  BI->setMetadata(StringRef("LHS"),
-      llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(MDL)));
+  const ForallVisitor::FieldMap LHS = v.getLHSmap();
+  EmitMeshFieldsUsedMD(LHS, "LHS", BI);
 
   //find fields used on RHS and add to metadata
-  const ForallVisitor::FieldMap &RHS = v.getRHSmap();
-  SmallVector<llvm::Value*, 16> MDR;
-  MDName = llvm::MDString::get(getLLVMContext(), "RHS");
-  MDR.push_back(MDName);
-
-  for(ForallVisitor::FieldMap::const_iterator it = RHS.begin(); it != RHS.end(); ++it)
-  {
-    MDName = llvm::MDString::get(getLLVMContext(), it->first);
-    MDR.push_back(MDName);
-  }
-  BI->setMetadata(StringRef("RHS"),
-        llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(MDR)));
+  const ForallVisitor::FieldMap RHS = v.getRHSmap();
+  EmitMeshFieldsUsedMD(RHS, "RHS", BI);
 
   EmitBlock(entry);
 
 }
-
 
 // Emit a branch and block. used as markers for code extraction
 llvm::BasicBlock *CodeGenFunction::EmitMarkerBlock(const std::string name) {

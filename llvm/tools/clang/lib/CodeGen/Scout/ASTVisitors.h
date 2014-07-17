@@ -52,6 +52,9 @@
  * ##### 
  */ 
 
+#ifndef CLANG_CODEGEN_SCOUT_ASTVISTORS_H
+#define CLANG_CODEGEN_SCOUT_ASTVISTORS_H
+
 #include "CGBuilder.h"
 #include "CGDebugInfo.h"
 #include "CGValue.h"
@@ -93,6 +96,7 @@ public:
   ForallVisitor(ForallMeshStmt* fs)
   : fs_(fs),
     nodeType_(NodeNone) {
+    (void)fs_; //suppress warning
   }
 
   const std::map<std::string, bool>& getLHSmap() const {
@@ -239,3 +243,5 @@ private:
   MeshNameMap MNM_;
 
 };
+
+#endif

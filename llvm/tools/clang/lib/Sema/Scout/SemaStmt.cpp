@@ -164,6 +164,7 @@ namespace {
         fs_(fs),
         error_(false),
         nodeType_(NodeNone) {
+      (void)fs_; //suppress warning
     }
 
     void VisitStmt(Stmt* S) {
