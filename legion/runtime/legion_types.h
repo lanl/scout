@@ -1,4 +1,4 @@
-/* Copyright 2013 Stanford University
+/* Copyright 2014 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,9 +42,18 @@
 #endif
 
 #define AUTO_GENERATE_ID   UINT_MAX
+
+#ifndef MAX_RETURN_SIZE
 #define MAX_RETURN_SIZE    2048 // maximum return type size in bytes
-#define MAX_FIELDS         2048 // must be divisible by 2^FIELD_SHIFT
-#define FIELD_LOG2         11 // log2(MAX_FIELDS)
+#endif
+
+#ifndef MAX_FIELDS
+#define MAX_FIELDS         128 // must be divisible by 2^FIELD_SHIFT
+#endif
+
+#ifndef FIELD_LOG2
+#define FIELD_LOG2         7 // log2(MAX_FIELDS)
+#endif
 // The folowing macros are used in the FieldMask instantiation of BitMask
 // If you change one you probably have to change the others too
 #define FIELD_TYPE          uint64_t 
@@ -54,29 +63,61 @@
 
 // Some default values 
 
+// The maximum number of nodes to be run on
+#ifndef MAX_NUM_NODES
+#define MAX_NUM_NODES                   1024
+#endif
 // The maximum number of processors on a node
-#define MAX_NUM_PROCS           1024
+#ifndef MAX_NUM_PROCS
+#define MAX_NUM_PROCS                   1024
+#endif
 // Default number of mapper slots
-#define DEFAULT_MAPPER_SLOTS    8
+#ifndef DEFAULT_MAPPER_SLOTS
+#define DEFAULT_MAPPER_SLOTS            8
+#endif
 // Default number of contexts made for each runtime instance
 // Ideally this is a power of 2 (better for performance)
-#define DEFAULT_CONTEXTS        64 
+#ifndef DEFAULT_CONTEXTS
+#define DEFAULT_CONTEXTS                8 
+#endif
 // Maximum number of allowed contexts ever in Legion runtime
-#define MAX_CONTEXTS           1024
+#ifndef MAX_CONTEXTS
+#define MAX_CONTEXTS                    1024
+#endif
 // Maximum number of sub-tasks per task at a time
-#define DEFAULT_MAX_TASK_WINDOW         4096 
+#ifndef DEFAULT_MAX_TASK_WINDOW
+#define DEFAULT_MAX_TASK_WINDOW         1024 
+#endif
 // How many tasks to group together for runtime operations
-#define DEFAULT_MIN_TASKS_TO_SCHEDULE 1
+#ifndef DEFAULT_MIN_TASKS_TO_SCHEDULE
+#define DEFAULT_MIN_TASKS_TO_SCHEDULE   4
+#endif
 // Scheduling granularity for how many operations to
 // handle at a time at each stage of the pipeline
-#define DEFAULT_SUPERSCALAR_WIDTH 4
-// The maximum size of active messages sent by the runtime
+#ifndef DEFAULT_SUPERSCALAR_WIDTH
+#define DEFAULT_SUPERSCALAR_WIDTH       4
+#endif
+// The maximum size of active messages sent by the runtime in bytes
 // Note this value was picked based on making a tradeoff between
 // latency and bandwidth numbers on both Cray and Infiniband
 // interconnect networks.
-#define DEFAULT_MAX_MESSAGE_SIZE 4096 
+#ifndef DEFAULT_MAX_MESSAGE_SIZE
+#define DEFAULT_MAX_MESSAGE_SIZE        16384 
+#endif
 // Maximum number of tasks in logical region node before consolidation
-#define DEFAULT_MAX_FILTER_SIZE         (16*DEFAULT_MIN_TASKS_TO_SCHEDULE) 
+#ifndef DEFAULT_MAX_FILTER_SIZE
+#define DEFAULT_MAX_FILTER_SIZE         0
+#endif
+// Timeout before checking for whether a logical user
+// should be pruned from the logical region tree data strucutre
+// Making the value less than or equal to zero will
+// result in checks always being performed
+#ifndef DEFAULT_LOGICAL_USER_TIMEOUT
+#define DEFAULT_LOGICAL_USER_TIMEOUT    32
+#endif
+
+namespace BindingLib { class Utility; } // BindingLib namespace
+
 
 namespace LegionRuntime {
   /**
@@ -200,11 +241,21 @@ namespace LegionRuntime {
       ERROR_COPY_SPACE_MISMATCH = 91,
       ERROR_INVALID_COPY_PRIVILEGE = 92,
       ERROR_INVALID_PARTITION_COLOR = 93,
-      ERROR_INNER_MISMATCH = 94,
-      ERROR_INNER_LEAF_MISMATCH = 95,
-      ERROR_EXCEEDED_MAX_CONTEXTS = 96,
-      ERROR_ACQUIRE_MISMATCH = 97,
-      ERROR_RELEASE_MISMATCH = 98,
+      ERROR_EXCEEDED_MAX_CONTEXTS = 94,
+      ERROR_ACQUIRE_MISMATCH = 95,
+      ERROR_RELEASE_MISMATCH = 96,
+      ERROR_INNER_LEAF_MISMATCH = 97,
+      ERROR_INVALID_FIELD_PRIVILEGES = 98,
+      ERROR_ILLEGAL_NESTED_TRACE = 99,
+      ERROR_UNMATCHED_END_TRACE = 100,
+      ERROR_CONFLICTING_PARENT_MAPPING_DEADLOCK = 101,
+      ERROR_CONFLICTING_SIBLING_MAPPING_DEADLOCK = 102,
+      ERROR_INVALID_PARENT_REQUEST = 103,
+      ERROR_INVALID_FIELD_ID = 104,
+      ERROR_NESTED_MUST_EPOCH = 105,
+      ERROR_UNMATCHED_MUST_EPOCH = 106,
+      ERROR_MUST_EPOCH_FAILURE = 107,
+      ERROR_DOMAIN_DIM_MISMATCH = 108,
     };
 
     // enum and namepsaces don't really get along well
@@ -215,6 +266,7 @@ namespace LegionRuntime {
       WRITE_ONLY      = 0x00000010, // same as WRITE_DISCARD
       WRITE_DISCARD   = 0x00000010, // same as WRITE_ONLY
       REDUCE          = 0x00000100,
+      PROMOTED        = 0x00001000, // Internal use only
     };
 
     enum AllocateMode {
@@ -253,6 +305,7 @@ namespace LegionRuntime {
       ANTI_DEPENDENCE = 2, // Write-After-Read or Write-After-Write with Write-Only privilege
       ATOMIC_DEPENDENCE = 3,
       SIMULTANEOUS_DEPENDENCE = 4,
+      PROMOTED_DEPENDENCE = 5,
     };
 
     enum OpenState {
@@ -265,16 +318,19 @@ namespace LegionRuntime {
 
     // Runtime task numbering 
     enum {
-      INIT_FUNC_ID         = LowLevel::Processor::TASK_ID_PROCESSOR_INIT,
-      SHUTDOWN_FUNC_ID     = LowLevel::Processor::TASK_ID_PROCESSOR_SHUTDOWN,
-      SCHEDULER_ID         = LowLevel::Processor::TASK_ID_PROCESSOR_IDLE,
-      MESSAGE_TASK_ID      = (LowLevel::Processor::TASK_ID_FIRST_AVAILABLE+0),
-      POST_END_TASK_ID     = (LowLevel::Processor::TASK_ID_FIRST_AVAILABLE+1),
-      DEFERRED_COMPLETE_ID = (LowLevel::Processor::TASK_ID_FIRST_AVAILABLE+2),
-      RECLAIM_LOCAL_FID    = (LowLevel::Processor::TASK_ID_FIRST_AVAILABLE+3),
-      DEFERRED_COLLECT_ID  = (LowLevel::Processor::TASK_ID_FIRST_AVAILABLE+4),
-      LEGION_LOGGING_ID    = (LowLevel::Processor::TASK_ID_FIRST_AVAILABLE+5),
-      TASK_ID_AVAILABLE    = (LowLevel::Processor::TASK_ID_FIRST_AVAILABLE+6),
+      INIT_FUNC_ID          = LowLevel::Processor::TASK_ID_PROCESSOR_INIT,
+      SHUTDOWN_FUNC_ID      = LowLevel::Processor::TASK_ID_PROCESSOR_SHUTDOWN,
+      SCHEDULER_ID          = LowLevel::Processor::TASK_ID_PROCESSOR_IDLE,
+      MESSAGE_TASK_ID       = (LowLevel::Processor::TASK_ID_FIRST_AVAILABLE+0),
+      POST_END_TASK_ID      = (LowLevel::Processor::TASK_ID_FIRST_AVAILABLE+1),
+      DEFERRED_COMPLETE_ID  = (LowLevel::Processor::TASK_ID_FIRST_AVAILABLE+2),
+      RECLAIM_LOCAL_FID     = (LowLevel::Processor::TASK_ID_FIRST_AVAILABLE+3),
+      DEFERRED_COLLECT_ID   = (LowLevel::Processor::TASK_ID_FIRST_AVAILABLE+4),
+      TRIGGER_DEPENDENCE_ID = (LowLevel::Processor::TASK_ID_FIRST_AVAILABLE+5),
+      TRIGGER_OP_ID         = (LowLevel::Processor::TASK_ID_FIRST_AVAILABLE+6),
+      TRIGGER_TASK_ID       = (LowLevel::Processor::TASK_ID_FIRST_AVAILABLE+7),
+      DEFERRED_RECYCLE_ID   = (LowLevel::Processor::TASK_ID_FIRST_AVAILABLE+8),
+      TASK_ID_AVAILABLE     = (LowLevel::Processor::TASK_ID_FIRST_AVAILABLE+9),
     };
 
     // Forward declarations for user level objects
@@ -287,7 +343,7 @@ namespace LegionRuntime {
     class TaskArgument;
     class ArgumentMap;
     class Lock;
-    class LockRequest;
+    struct LockRequest;
     class Grant;
     class PhaseBarrier;
     struct RegionRequirement;
@@ -347,6 +403,7 @@ namespace LegionRuntime {
     class NotPredOp;
     class AndPredOp;
     class OrPredOp;
+    class MustEpochOp;
     class TaskOp;
 
     // legion_tasks.h
@@ -360,6 +417,11 @@ namespace LegionRuntime {
     class IndexTask;
     class SliceTask;
     class RemoteTask;
+    
+    // legion_trace.h
+    class LegionTrace;
+    class TraceCaptureOp;
+    class TraceCompleteOp;
 
     // region_tree.h
     class RegionTreeForest;
@@ -375,22 +437,26 @@ namespace LegionRuntime {
     class RegionTreePath;
     class PathTraverser;
     class NodeTraverser;
+    template<bool DOM>
     class LogicalRegistrar;
     class LogicalInitializer;
     class LogicalInvalidator;
     class PremapTraverser;
     class MappingTraverser;
 
-    class LogicalState;
+    struct LogicalState;
     class PhysicalVersion;
 
     class DistributedCollectable;
     class HierarchicalCollectable;
     class PhysicalManager; // base class for instance and reduction
-    class PhysicalView; // base class for instance and reduciton
+    class LogicalView; // base class for instance and reduction
     class InstanceManager;
     class InstanceKey;
     class InstanceView;
+    class MaterializedView;
+    class CompositeView;
+    class CompositeNode;
     class MappingRef;
     class InstanceRef;
     class InnerTaskView;
@@ -410,9 +476,12 @@ namespace LegionRuntime {
     struct LogicalUser;
     struct PhysicalUser;
     class TreeCloser;
-    class LogicalCloser;
-    class PhysicalCloser;
+    struct LogicalCloser;
+    struct PhysicalCloser;
     class ReductionCloser;
+    class TreeCloseImpl;
+    class TreeClose;
+    struct CloseInfo;
 
     // legion_utilities.h
     class Serializer;
@@ -422,6 +491,14 @@ namespace LegionRuntime {
              unsigned SHIFT, unsigned MASK> class BitMask;
     template<typename T, unsigned int MAX,
              unsigned SHIFT, unsigned MASK> class TLBitMask;
+#ifdef __SSE2__
+    template<unsigned int MAX> class SSEBitMask;
+    template<unsigned int MAX> class SSETLBitMask;
+#endif
+#ifdef __AVX__
+    template<unsigned int MAX> class AVXBitMask;
+    template<unsigned int MAX> class AVXTLBitMask;
+#endif
     template<typename T, unsigned LOG2MAX> class BitPermutation;
 
     // legion_logging.h
@@ -448,6 +525,7 @@ namespace LegionRuntime {
     typedef unsigned int Color;
     typedef unsigned int IndexPartition;
     typedef unsigned int FieldID;
+    typedef unsigned int TraceID;
     typedef unsigned int MapperID;
     typedef unsigned int ContextID;
     typedef unsigned int InstanceID;
@@ -458,6 +536,7 @@ namespace LegionRuntime {
     typedef unsigned int RegionTreeID;
     typedef unsigned int DistributedID;
     typedef unsigned int AddressSpaceID;
+    typedef unsigned int TunableID;
     typedef unsigned long MappingTagID;
     typedef unsigned long VariantID;
     typedef unsigned long long UniqueID;
@@ -466,6 +545,7 @@ namespace LegionRuntime {
     typedef SingleTask* Context;
     typedef std::map<Color,ColoredPoints<ptr_t> > Coloring;
     typedef std::map<Color,Domain> DomainColoring;
+    typedef std::map<Color,std::set<Domain> > MultiDomainColoring;
     typedef void (*RegistrationCallbackFnptr)(Machine *machine, 
         HighLevelRuntime *rt, const std::set<Processor> &local_procs);
     typedef LogicalRegion (*RegionProjectionFnptr)(LogicalRegion parent, 
@@ -481,8 +561,40 @@ namespace LegionRuntime {
     typedef void (*LowLevelFnptr)(const void*,size_t,Processor);
     typedef void (*InlineFnptr)(const Task*,const std::vector<PhysicalRegion>&,
       Context,HighLevelRuntime*,void*&,size_t&);
-    //typedef BitMask<FIELD_TYPE,MAX_FIELDS,FIELD_SHIFT,FIELD_MASK> FieldMask;
+    // A little bit of logic here to figure out the 
+    // kind of bit mask to use for FieldMask
+    // Disable the use of AVX field masks for now since GCC doesn't
+    // know how to properly align them on the stack. If you want
+    // to try it, you can build with -DDYNAMIC_FIELD_MASKS which
+    // will cause all the AVXFieldMasks to allocate their own
+    // aligned backing store on the heap.  While correct, this
+    // will disable many compiler optimizations due to GCC and
+    // other C compilers being awful at alias analysis.
+#if defined(DYNAMIC_FIELD_MASKS) && defined(__AVX__)
+#if (MAX_FIELDS > 256)
+    typedef AVXTLBitMask<MAX_FIELDS> FieldMask;
+#elif (MAX_FIELDS > 128)
+    typedef AVXBitMask<MAX_FIELDS> FieldMask;
+#elif (MAX_FIELDS > 64)
+    typedef SSEBitMask<MAX_FIELDS> FieldMask;
+#else
+    typedef BitMask<FIELD_TYPE,MAX_FIELDS,FIELD_SHIFT,FIELD_MASK> FieldMask;
+#endif
+#elif defined(__SSE2__)
+#if (MAX_FIELDS > 128)
+    typedef SSETLBitMask<MAX_FIELDS> FieldMask;
+#elif (MAX_FIELDS > 64)
+    typedef SSEBitMask<MAX_FIELDS> FieldMask;
+#else
+    typedef BitMask<FIELD_TYPE,MAX_FIELDS,FIELD_SHIFT,FIELD_MASK> FieldMask;
+#endif
+#else
+#if (MAX_FIELDS > 64)
     typedef TLBitMask<FIELD_TYPE,MAX_FIELDS,FIELD_SHIFT,FIELD_MASK> FieldMask;
+#else
+    typedef BitMask<FIELD_TYPE,MAX_FIELDS,FIELD_SHIFT,FIELD_MASK> FieldMask;
+#endif
+#endif
     typedef BitPermutation<FieldMask,FIELD_LOG2> FieldPermutation;
     typedef Fraction<unsigned long> InstFrac;
 
@@ -508,6 +620,7 @@ namespace LegionRuntime {
     friend class NotPredOp;                       \
     friend class AndPredOp;                       \
     friend class OrPredOp;                        \
+    friend class MustEpochOp;                     \
     friend class TaskOp;                          \
     friend class SingleTask;                      \
     friend class MultiTask;                       \
@@ -522,15 +635,19 @@ namespace LegionRuntime {
     friend class RegionTreeNode;                  \
     friend class RegionNode;                      \
     friend class PartitionNode;                   \
-    friend class PhysicalView;                    \
+    friend class LogicalView;                     \
     friend class InstanceView;                    \
     friend class ReductionView;                   \
+    friend class MaterializedView;                \
+    friend class CompositeView;                   \
+    friend class CompositeNode;                   \
     friend class PhysicalManager;                 \
     friend class InstanceManager;                 \
     friend class ReductionManager;                \
     friend class ListReductionManager;            \
     friend class FoldReductionManager;            \
-    friend class TreeStateLogger;
+    friend class TreeStateLogger;                 \
+    friend class BindingLib::Utility;
 
     // Timing events
     enum {

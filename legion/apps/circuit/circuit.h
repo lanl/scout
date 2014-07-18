@@ -1,4 +1,4 @@
-/* Copyright 2013 Stanford University
+/* Copyright 2014 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -84,6 +84,8 @@ struct CircuitPiece {
   ptr_t first_wire;
   unsigned      num_nodes;
   ptr_t first_node;
+  float dt;
+  int steps;
 };
 
 struct Partitions {

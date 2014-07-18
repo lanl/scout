@@ -1,4 +1,4 @@
-/* Copyright 2013 Stanford University
+/* Copyright 2014 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,11 +21,11 @@
 
 namespace LegionRuntime {
   namespace LowLevel {
-    struct RemoteCopyArgs {
-      int num_srcs, num_dsts;
+    struct RemoteCopyArgs : public BaseMedium {
       ReductionOpID redop_id;
       bool red_fold;
       Event before_copy, after_copy;
+      int priority;
     };
 
     extern void handle_remote_copy(RemoteCopyArgs args, const void *data, size_t msglen);
@@ -41,6 +41,7 @@ namespace LegionRuntime {
     extern void init_dma_handler(void);
 
     extern void start_dma_worker_threads(int count);
+    extern void stop_dma_worker_threads(void);
 
     /*
     extern Event enqueue_dma(IndexSpace idx,

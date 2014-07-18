@@ -1,4 +1,4 @@
-/* Copyright 2013 Stanford University
+/* Copyright 2014 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -113,7 +113,7 @@ namespace LegionRuntime {
         ProcessorProfiler(void)
           : proc(Processor::NO_PROC), utility(false), init_time(0) { }
         ProcessorProfiler(Processor p, bool util, Processor::Kind k) 
-          : proc(p), utility(util), kind(k),
+          : proc(p), utility(util), kind(k), dumped(0),
             init_time(TimeStamp::get_current_time_in_micros()) { }
       public:
         inline void add_event(const ProfilingEvent &event) 
@@ -126,6 +126,8 @@ namespace LegionRuntime {
                           { mappings.push_back(inst); }
         inline void add_close(const OpInstance &inst)
                           { closes.push_back(inst); }
+        inline void add_copy(const OpInstance &inst)
+                          { copies.push_back(inst); }
       private:
 	// no copy constructor or assignment
 	ProcessorProfiler(const ProcessorProfiler& copy_from) 
@@ -136,12 +138,14 @@ namespace LegionRuntime {
         Processor proc;
         bool utility;
         Processor::Kind kind;
+        int dumped;
         unsigned long long init_time;
         std::deque<ProfilingEvent> proc_events;
         std::deque<MemoryEvent> mem_events;
         std::deque<TaskInstance> tasks;
         std::deque<OpInstance> mappings;
         std::deque<OpInstance> closes;
+        std::deque<OpInstance> copies;
       };
 
       extern Logger::Category log_prof;
@@ -152,13 +156,14 @@ namespace LegionRuntime {
 
       static inline ProcessorProfiler& get_profiler(Processor proc)
       {
-        return legion_prof_table[(proc.id & 0xffff)];
+        return legion_prof_table[proc.local_id()];
       }
 
       static inline void register_task_variant(unsigned task_id, 
                                                const char *name)
       {
-        log_prof(LEVEL_INFO,"Prof Task Variant %u %s", task_id, name);
+        if (profiling_enabled)
+          log_prof(LEVEL_INFO,"Prof Task Variant %u %s", task_id, name);
       }
 
       static inline void initialize_processor(Processor proc, 
@@ -174,43 +179,60 @@ namespace LegionRuntime {
 
       static inline void initialize_memory(Memory mem, Memory::Kind kind)
       {
-        log_prof(LEVEL_INFO,"Prof Memory %u %u", mem.id, kind);
+        if (profiling_enabled)
+          log_prof(LEVEL_INFO,"Prof Memory " IDFMT " %u", mem.id, kind);
       }
 
       static inline void finalize_processor(Processor proc)
       {
         ProcessorProfiler &prof = get_profiler(proc);
-        log_prof(LEVEL_INFO,"Prof Processor %u %u %u", 
-                  proc.id, prof.utility, prof.kind);
+        int perform_dump = __sync_fetch_and_add(&prof.dumped, 1);
+        // Someone else has already dumped this processor
+        if (perform_dump > 0)
+          return;
+        if (profiling_enabled)
+          log_prof(LEVEL_INFO,"Prof Processor " IDFMT " %u %u", 
+                    proc.id, prof.utility, prof.kind);
         for (unsigned idx = 0; idx < prof.tasks.size(); idx++)
         {
           const TaskInstance &inst = prof.tasks[idx];
-          log_prof(LEVEL_INFO,"Prof Unique Task %u %llu %u %u %u %u %u",
+          log_prof(LEVEL_INFO,"Prof Unique Task " IDFMT " %llu %u %u %u %u %u",
               proc.id, inst.unique_id, inst.task_id, 
               inst.point.get_dim(), inst.point.point_data[0],
               inst.point.point_data[1], inst.point.point_data[2]);
         }
+        prof.tasks.clear();
         for (unsigned idx = 0; idx < prof.mappings.size(); idx++)
         {
           const OpInstance &inst = prof.mappings[idx];
-          log_prof(LEVEL_INFO,"Prof Unique Map %u %llu %llu",
+          log_prof(LEVEL_INFO,"Prof Unique Map " IDFMT " %llu %llu",
               proc.id, inst.unique_id, inst.parent_id);
         }
+        prof.mappings.clear();
         for (unsigned idx = 0; idx < prof.closes.size(); idx++)
         {
           const OpInstance &inst = prof.closes[idx];
-          log_prof(LEVEL_INFO,"Prof Unique Close %u %llu %llu",
+          log_prof(LEVEL_INFO,"Prof Unique Close " IDFMT " %llu %llu",
               proc.id, inst.unique_id, inst.parent_id);
         }
+        prof.closes.clear();
+        for (unsigned idx = 0; idx < prof.copies.size(); idx++)
+        {
+          const OpInstance &inst = prof.copies[idx];
+          log_prof(LEVEL_INFO,"Prof Unique Copy " IDFMT " %llu %llu",
+              proc.id, inst.unique_id, inst.parent_id);
+        }
+        prof.copies.clear();
         for (unsigned idx = 0; idx < prof.proc_events.size(); idx++)
         {
           ProfilingEvent &event = prof.proc_events[idx]; 
           // Probably shouldn't role over, if something did then
           // we may need to change our assumptions
           assert(event.time >= prof.init_time);
-          log_prof(LEVEL_INFO, "Prof Event %u %u %llu %llu", 
+          log_prof(LEVEL_INFO, "Prof Event " IDFMT " %u %llu %llu", 
             proc.id, event.kind, event.unique_id, (event.time-prof.init_time));
         }
+        prof.proc_events.clear();
         for (unsigned idx = 0; idx < prof.mem_events.size(); idx++)
         {
           MemoryEvent &event = prof.mem_events[idx];
@@ -237,6 +259,7 @@ namespace LegionRuntime {
                 event.inst_id , (event.time - prof.init_time));
           }
         }
+        prof.mem_events.clear();
       }
 
       static inline void register_event(UniqueID uid, ProfKind kind)
@@ -277,6 +300,15 @@ namespace LegionRuntime {
         }
       }
 
+      static inline void register_copy(UniqueID uid, UniqueID pid)
+      {
+        if (profiling_enabled)
+        {
+          Processor proc = Machine::get_executing_processor();
+          get_profiler(proc).add_copy(OpInstance(uid, pid));
+        }
+      }
+
       static inline void register_instance_creation(unsigned inst_id, 
         unsigned memory, unsigned redop, 
         size_t blocking_factor, const std::map<unsigned,size_t> &fields)
@@ -297,6 +329,26 @@ namespace LegionRuntime {
           unsigned long long time = TimeStamp::get_current_time_in_micros();
           Processor proc = Machine::get_executing_processor();
           get_profiler(proc).add_event(MemoryEvent(inst_id, time));
+        }
+      }
+
+      static inline void enable_profiling(void)
+      {
+        profiling_enabled = true;        
+      }
+
+      static inline void disable_profiling(void)
+      {
+        profiling_enabled = false;
+      }
+
+      static inline void dump_profiling(void)
+      {
+        for (unsigned idx = 0; idx < (MAX_NUM_PROCS+1); idx++)
+        {
+          Processor proc = legion_prof_table[idx].proc;
+          if (proc.exists())
+            finalize_processor(proc);
         }
       }
 

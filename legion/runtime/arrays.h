@@ -1,4 +1,4 @@
-/* Copyright 2013 Stanford University
+/* Copyright 2014 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -125,6 +125,38 @@ namespace LegionRuntime {
 	  res.x[i] = x[i] / other.x[i];
 	return res;
       }
+
+      static Point<DIM> sum(const Point<DIM> a, const Point<DIM> b)
+      {
+        Point<DIM> res;
+        for(unsigned i = 0; i < DIM; i++)
+	  res.x[i] = a.x[i] + b.x[i];
+	return res;
+      }
+
+      static Point<DIM> min(const Point<DIM> a, const Point<DIM> b)
+      {
+        Point<DIM> res;
+        for(unsigned i = 0; i < DIM; i++)
+	  res.x[i] = imin(a.x[i], b.x[i]);
+	return res;
+      }
+
+      static Point<DIM> max(const Point<DIM> a, const Point<DIM> b)
+      {
+        Point<DIM> res;
+        for(unsigned i = 0; i < DIM; i++)
+	  res.x[i] = imax(a.x[i], b.x[i]);
+	return res;
+      }
+
+      static int dot(const Point<DIM> a, const Point<DIM> b)
+      {
+	int v = 0;
+        for(unsigned i = 0; i < DIM; i++)
+	  v += a.x[i] * b.x[i];
+	return v;
+      }
   
       int dot(const Point<DIM> other) const
       {
@@ -230,7 +262,7 @@ namespace LegionRuntime {
 
       bool operator!=(const Rect<DIM>& other)
       {
-	return ((lo != other.lo) && (hi != other.hi));
+	return ((lo != other.lo) || (hi != other.hi));
       }
 
       bool overlaps(const Rect<DIM>& other) const
@@ -275,6 +307,12 @@ namespace LegionRuntime {
       {
 	return Rect<DIM>(Point<DIM>::max(lo, other.lo),
 			 Point<DIM>::min(hi, other.hi));
+      }
+
+      Rect<DIM> convex_hull(const Rect<DIM>& other)
+      {
+        return Rect<DIM>(Point<DIM>::min(lo, other.lo),
+                         Point<DIM>::max(hi, other.hi));
       }
   
       Point<DIM> lo, hi;
@@ -328,6 +366,11 @@ namespace LegionRuntime {
 
     template <unsigned IDIM_, unsigned ODIM_>
     class Mapping {
+    private:
+      unsigned references;
+    public:
+      Mapping(void)
+        : references(0) { }
     public:
       static const unsigned IDIM = IDIM_;
       static const unsigned ODIM = ODIM_;
@@ -368,8 +411,19 @@ namespace LegionRuntime {
       virtual Rect<ODIM> image_dense_subrect(const Rect<IDIM> r, Rect<IDIM>& subrect) const = 0;
       virtual Point<ODIM> image_linear_subrect(const Rect<IDIM> r, Rect<IDIM>& subrect, Point<ODIM> strides[IDIM]) const = 0;
 
-      virtual Rect<IDIM> preimage(const Point<ODIM> p) const { assert(0); }//= 0;
+      virtual Rect<IDIM> preimage(const Point<ODIM> p) const { assert(0); return Rect<IDIM>(); }//= 0;
       virtual bool preimage_is_dense(const Point<ODIM> p) const { assert(0); return false; }//= 0;
+      
+      inline void add_reference(void)
+      {
+        __sync_fetch_and_add(&references, 1);
+      }
+      inline bool remove_reference(void)
+      {
+        unsigned prev = __sync_fetch_and_sub(&references, 1);
+        assert(prev >= 1);
+        return (prev == 1);
+      }
     };
 
     template <typename T>
@@ -526,13 +580,13 @@ namespace LegionRuntime {
       GenericLinearSubrectIterator(const Rect<T::IDIM> r, const T& m)
 	: orig_rect(r), mapping(m)
       {
-	image = m.image_linear_subrect(r, subrect, strides);
+	image_lo = m.image_linear_subrect(r, subrect, strides);
 	any_left = true;
       }
 
       Rect<T::IDIM> orig_rect;
       const T& mapping;
-      Rect<T::ODIM> image;
+      Point<T::ODIM> image_lo;
       Rect<T::IDIM> subrect;
       Point<T::ODIM> strides[T::IDIM];
       bool any_left;
@@ -552,6 +606,7 @@ namespace LegionRuntime {
     class Translation {
     public:
       enum { IDIM = DIM, ODIM = DIM };
+      Translation(void) : offset(0) {}
       Translation(const Point<DIM> _offset) : offset(_offset) {}
   
       Point<ODIM> image(const Point<IDIM> p) const
@@ -564,11 +619,38 @@ namespace LegionRuntime {
         return Rect<ODIM>(r.lo + offset, r.hi + offset);
       }
   
-      bool image_is_rectangular(const Rect<IDIM> r) const
+      bool image_is_dense(const Rect<IDIM> r) const
       {
         return true;
       }
       
+      Rect<ODIM> image_dense_subrect(const Rect<IDIM> r, Rect<IDIM>& subrect) const
+      {
+	subrect = r;
+	return Rect<ODIM>(r.lo + offset, r.hi + offset);
+      }
+
+      Point<ODIM> image_linear_subrect(const Rect<IDIM> r, Rect<IDIM>& subrect, Point<ODIM> strides[IDIM]) const
+      {
+	subrect = r;
+	for(unsigned i = 0; i < DIM; i++) {
+	  // strides are unit vectors
+	  strides[i] = 0;
+	  strides[i].x[i] = 1;
+	}
+	return r.lo + offset;
+      }
+
+      Rect<IDIM> preimage(const Point<ODIM> p) const
+      {
+	return Rect<IDIM>(p - offset, p - offset);
+      }
+
+      bool preimage_is_dense(const Point<ODIM> p) const
+      {
+	return true;
+      }
+
     protected:
       Point<DIM> offset;
     };
@@ -588,7 +670,7 @@ namespace LegionRuntime {
 
       Linearization(const Point<DIM> _strides, int _offset = 0)
         : strides(_strides), offset(_offset) {}
-  
+
       Point<1> image(const Point<IDIM> p) const
       {
         return p.dot(strides) + offset;
@@ -728,6 +810,7 @@ namespace LegionRuntime {
       Point<DIM> image_linear_subrect(const Rect<DIM> r, Rect<DIM>& subrect, Point<DIM> strides[DIM]) const
       {
 	assert(0);
+        return Point<DIM>();
       }
 
       Rect<DIM> preimage(const Point<DIM> p) const

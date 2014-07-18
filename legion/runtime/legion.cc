@@ -1,4 +1,4 @@
-/* Copyright 2013 Stanford University
+/* Copyright 2014 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ namespace LegionRuntime {
       Logger::Category log_prof("legion_prof");
       ProcessorProfiler *legion_prof_table = 
         new ProcessorProfiler[MAX_NUM_PROCS + 1];
-      bool profiling_enabled = true;
+      bool profiling_enabled;
     };
 #endif
 
@@ -90,6 +90,13 @@ namespace LegionRuntime {
     {
     }
 
+    //--------------------------------------------------------------------------
+    unsigned Task::get_depth(void) const
+    //--------------------------------------------------------------------------
+    {
+      return depth;
+    }
+
     /////////////////////////////////////////////////////////////
     // Copy 
     /////////////////////////////////////////////////////////////
@@ -99,6 +106,13 @@ namespace LegionRuntime {
       : Mappable(), parent_task(NULL)
     //--------------------------------------------------------------------------
     {
+    }
+
+    //--------------------------------------------------------------------------
+    unsigned Copy::get_depth(void) const
+    //--------------------------------------------------------------------------
+    {
+      return (parent_task->depth+1);
     }
 
     /////////////////////////////////////////////////////////////
@@ -112,6 +126,13 @@ namespace LegionRuntime {
     {
     }
 
+    //--------------------------------------------------------------------------
+    unsigned Inline::get_depth(void) const
+    //--------------------------------------------------------------------------
+    {
+      return (parent_task->depth+1);
+    }
+
     /////////////////////////////////////////////////////////////
     // Acquire 
     /////////////////////////////////////////////////////////////
@@ -123,6 +144,13 @@ namespace LegionRuntime {
     {
     }
 
+    //--------------------------------------------------------------------------
+    unsigned Acquire::get_depth(void) const
+    //--------------------------------------------------------------------------
+    {
+      return (parent_task->depth+1);
+    }
+
     /////////////////////////////////////////////////////////////
     // Release 
     /////////////////////////////////////////////////////////////
@@ -132,6 +160,13 @@ namespace LegionRuntime {
       : Mappable(), parent_task(NULL)
     //--------------------------------------------------------------------------
     {
+    }
+
+    //--------------------------------------------------------------------------
+    unsigned Release::get_depth(void) const
+    //--------------------------------------------------------------------------
+    {
+      return (parent_task->depth+1);
     }
 
     /////////////////////////////////////////////////////////////
@@ -1066,6 +1101,29 @@ namespace LegionRuntime {
       }
     }
 
+#ifdef PRIVILEGE_CHECKS
+    //--------------------------------------------------------------------------
+    AccessorPrivilege RegionRequirement::get_accessor_privilege(void) const
+    //--------------------------------------------------------------------------
+    {
+      switch (privilege)
+      {
+        case NO_ACCESS:
+          return ACCESSOR_NONE;
+        case READ_ONLY:
+          return ACCESSOR_READ;
+        case READ_WRITE:
+        case WRITE_DISCARD:
+          return ACCESSOR_ALL;
+        case REDUCE:
+          return ACCESSOR_REDUCE;
+        default:
+          assert(false);
+      }
+      return ACCESSOR_NONE;
+    }
+#endif
+
     //--------------------------------------------------------------------------
     bool RegionRequirement::has_field_privilege(FieldID fid) const
     //--------------------------------------------------------------------------
@@ -1105,6 +1163,7 @@ namespace LegionRuntime {
       early_map = false;
       enable_WAR_optimization = false;
       reduction_list = false;
+      make_persistent = false;
       blocking_factor = 1;
       target_ranking.clear();
       additional_fields.clear();
@@ -1226,7 +1285,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     TaskLauncher::TaskLauncher(void)
       : task_id(0), argument(TaskArgument()), predicate(Predicate::TRUE_PRED),
-        map_id(0), tag(0)
+        map_id(0), tag(0), point(DomainPoint())
     //--------------------------------------------------------------------------
     {
     }
@@ -1235,7 +1294,8 @@ namespace LegionRuntime {
     TaskLauncher::TaskLauncher(Processor::TaskFuncID tid, TaskArgument arg,
                                Predicate pred /*= Predicate::TRUE_PRED*/,
                                MapperID mid /*=0*/, MappingTagID t /*=0*/)
-      : task_id(tid), argument(arg), predicate(pred), map_id(mid), tag(t)
+      : task_id(tid), argument(arg), predicate(pred), 
+        map_id(mid), tag(t), point(DomainPoint())
     //--------------------------------------------------------------------------
     {
     }
@@ -1255,9 +1315,9 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    IndexLauncher::IndexLauncher(Processor::TaskFuncID tid, Domain &dom,
+    IndexLauncher::IndexLauncher(Processor::TaskFuncID tid, Domain dom,
                                  TaskArgument global,
-                                 const ArgumentMap &map,
+                                 ArgumentMap map,
                                  Predicate pred /*= Predicate::TRUE_PRED*/,
                                  bool must /*=false*/, MapperID mid /*=0*/,
                                  MappingTagID t /*=0*/)
@@ -1325,6 +1385,18 @@ namespace LegionRuntime {
                                      MapperID id /*=0*/, MappingTagID t /*=0*/)
       : logical_region(reg), parent_region(par), physical_region(phy), 
         predicate(pred), map_id(id), tag(t)
+    //--------------------------------------------------------------------------
+    {
+    }
+
+    /////////////////////////////////////////////////////////////
+    // MustEpochLauncher 
+    /////////////////////////////////////////////////////////////
+
+    //--------------------------------------------------------------------------
+    MustEpochLauncher::MustEpochLauncher(MapperID id /*= 0*/,   
+                                         MappingTagID tag/*= 0*/)
+      : map_id(id), mapping_tag(tag)
     //--------------------------------------------------------------------------
     {
     }
@@ -1718,7 +1790,8 @@ namespace LegionRuntime {
     void TaskVariantCollection::add_variant(Processor::TaskFuncID low_id, 
                                             Processor::Kind kind, 
                                             bool single, bool index,
-                                            VariantID vid)
+                                            bool inner, bool leaf,
+                                            VariantID &vid)
     //--------------------------------------------------------------------------
     {
       if (vid == AUTO_GENERATE_ID)
@@ -1732,7 +1805,7 @@ namespace LegionRuntime {
           }
         }
       }
-      variants[vid] = Variant(low_id, kind, single, index, vid);
+      variants[vid] = Variant(low_id, kind, single, index, inner, leaf, vid);
     }
 
     //--------------------------------------------------------------------------
@@ -1954,6 +2027,14 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    IndexSpace HighLevelRuntime::create_index_space(Context ctx, 
+                                                const std::set<Domain> &domains)
+    //--------------------------------------------------------------------------
+    {
+      return runtime->create_index_space(ctx, domains);
+    }
+
+    //--------------------------------------------------------------------------
     void HighLevelRuntime::destroy_index_space(Context ctx, IndexSpace handle)
     //--------------------------------------------------------------------------
     {
@@ -1978,6 +2059,19 @@ namespace LegionRuntime {
                                           Domain color_space,
                                           const DomainColoring &coloring,
                                           bool disjoint, 
+                                          int part_color)
+    //--------------------------------------------------------------------------
+    {
+      return runtime->create_index_partition(ctx, parent, color_space, coloring,
+                                             disjoint, part_color);
+    }
+
+    //--------------------------------------------------------------------------
+    IndexPartition HighLevelRuntime::create_index_partition(
+                                          Context ctx, IndexSpace parent,
+                                          Domain color_space,
+                                          const MultiDomainColoring &coloring,
+                                          bool disjoint,
                                           int part_color)
     //--------------------------------------------------------------------------
     {
@@ -2037,6 +2131,23 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    void HighLevelRuntime::get_index_space_partition_colors(Context ctx, 
+                                                            IndexSpace sp,
+                                                        std::set<Color> &colors)
+    //--------------------------------------------------------------------------
+    {
+      runtime->get_index_space_partition_colors(ctx, sp, colors);
+    }
+
+    //--------------------------------------------------------------------------
+    bool HighLevelRuntime::is_index_partition_disjoint(Context ctx, 
+                                                       IndexPartition p)
+    //--------------------------------------------------------------------------
+    {
+      return runtime->is_index_partition_disjoint(ctx, p);
+    }
+
+    //--------------------------------------------------------------------------
     Color HighLevelRuntime::get_index_space_color(Context ctx, 
                                                   IndexSpace handle)
     //--------------------------------------------------------------------------
@@ -2050,6 +2161,30 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       return runtime->get_index_partition_color(ctx, handle);
+    }
+
+    //--------------------------------------------------------------------------
+    IndexSpace HighLevelRuntime::get_parent_index_space(Context ctx,
+                                                        IndexPartition handle)
+    //--------------------------------------------------------------------------
+    {
+      return runtime->get_parent_index_space(ctx, handle);
+    }
+
+    //--------------------------------------------------------------------------
+    bool HighLevelRuntime::has_parent_index_partition(Context ctx,
+                                                      IndexSpace handle)
+    //--------------------------------------------------------------------------
+    {
+      return runtime->has_parent_index_partition(ctx, handle);
+    }
+
+    //--------------------------------------------------------------------------
+    IndexPartition HighLevelRuntime::get_parent_index_partition(Context ctx,
+                                                              IndexSpace handle)
+    //--------------------------------------------------------------------------
+    {
+      return runtime->get_parent_index_partition(ctx, handle);
     }
 
     //--------------------------------------------------------------------------
@@ -2080,6 +2215,14 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       runtime->destroy_field_space(ctx, handle);
+    }
+
+    //--------------------------------------------------------------------------
+    size_t HighLevelRuntime::get_field_size(Context ctx, FieldSpace handle,
+                                            FieldID fid)
+    //--------------------------------------------------------------------------
+    {
+      return runtime->get_field_size(ctx, handle, fid);
     }
 
     //--------------------------------------------------------------------------
@@ -2169,6 +2312,30 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       return runtime->get_logical_partition_color(ctx, handle);
+    }
+
+    //--------------------------------------------------------------------------
+    LogicalRegion HighLevelRuntime::get_parent_logical_region(Context ctx,
+                                                        LogicalPartition handle)
+    //--------------------------------------------------------------------------
+    {
+      return runtime->get_parent_logical_region(ctx, handle);
+    }
+
+    //--------------------------------------------------------------------------
+    bool HighLevelRuntime::has_parent_logical_partition(Context ctx,
+                                                        LogicalRegion handle)
+    //--------------------------------------------------------------------------
+    {
+      return runtime->has_parent_logical_partition(ctx, handle);
+    }
+
+    //--------------------------------------------------------------------------
+    LogicalPartition HighLevelRuntime::get_parent_logical_partition(Context ctx,
+                                                           LogicalRegion handle)
+    //--------------------------------------------------------------------------
+    {
+      return runtime->get_parent_logical_partition(ctx, handle);
     }
 
     //--------------------------------------------------------------------------
@@ -2452,6 +2619,36 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    void HighLevelRuntime::begin_trace(Context ctx, TraceID tid)
+    //--------------------------------------------------------------------------
+    {
+      runtime->begin_trace(ctx, tid);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::end_trace(Context ctx, TraceID tid)
+    //--------------------------------------------------------------------------
+    {
+      runtime->end_trace(ctx, tid);
+    }
+
+    //--------------------------------------------------------------------------
+    FutureMap HighLevelRuntime::execute_must_epoch(Context ctx,
+                                              const MustEpochLauncher &launcher)
+    //--------------------------------------------------------------------------
+    {
+      return runtime->execute_must_epoch(ctx, launcher);
+    }
+
+    //--------------------------------------------------------------------------
+    int HighLevelRuntime::get_tunable_value(Context ctx, TunableID tid,
+                                            MapperID mid, MappingTagID tag)
+    //--------------------------------------------------------------------------
+    {
+      return runtime->get_tunable_value(ctx, tid, mid, tag);
+    }
+
+    //--------------------------------------------------------------------------
     Mapper* HighLevelRuntime::get_mapper(Context ctx, MapperID id)
     //--------------------------------------------------------------------------
     {
@@ -2642,11 +2839,35 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    /*static*/ TaskID HighLevelRuntime::update_collection_table(
+        LowLevelFnptr low_level_ptr, InlineFnptr inline_ptr, TaskID uid,
+        Processor::Kind proc_kind, bool single_task, bool index_space_task,
+        VariantID vid, size_t return_size, 
+        const TaskConfigOptions &options, const char *name,
+        const void *user_data, size_t user_data_size)
+    //--------------------------------------------------------------------------
+    {
+      return Runtime::update_collection_table(low_level_ptr,inline_ptr,
+                                                    uid,proc_kind,single_task, 
+                                                    index_space_task,vid,
+                                                    return_size,options,name,
+                                                    user_data, user_data_size);
+    }
+
+    //--------------------------------------------------------------------------
+    /*static*/ const void* HighLevelRuntime::find_user_data(TaskID tid,
+                                                            VariantID vid)
+    //--------------------------------------------------------------------------
+    {
+      return Runtime::find_user_data(tid, vid);
+    }
+
+    //--------------------------------------------------------------------------
     /*static*/ void HighLevelRuntime::enable_profiling(void)
     //--------------------------------------------------------------------------
     {
 #ifdef LEGION_PROF
-      LegionProf::profiling_enabled = true;
+      LegionProf::enable_profiling();
 #endif
     }
 
@@ -2655,8 +2876,244 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef LEGION_PROF
-      LegionProf::profiling_enabled = false;
+      LegionProf::disable_profiling();
 #endif
+    }
+
+    //--------------------------------------------------------------------------
+    /*static*/ void HighLevelRuntime::dump_profiling(void)
+    //--------------------------------------------------------------------------
+    {
+#ifdef LEGION_PROF
+      LegionProf::dump_profiling();
+#endif
+    }
+
+    /////////////////////////////////////////////////////////////
+    // Mapper 
+    /////////////////////////////////////////////////////////////
+
+    //--------------------------------------------------------------------------
+    void Mapper::send_message(Processor target, 
+                              const void *message, size_t length)
+    //--------------------------------------------------------------------------
+    {
+      runtime->runtime->handle_mapper_send_message(this, target, 
+                                                   message, length);
+    }
+
+    //--------------------------------------------------------------------------
+    IndexPartition Mapper::get_index_partition(IndexSpace parent, 
+                                               Color color) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->get_index_partition(parent, color);
+    }
+
+    //--------------------------------------------------------------------------
+    IndexSpace Mapper::get_index_subspace(IndexPartition p, Color c) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->get_index_subspace(p, c);
+    }
+
+    //--------------------------------------------------------------------------
+    Domain Mapper::get_index_space_domain(IndexSpace handle) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->get_index_space_domain(handle);
+    }
+
+    //--------------------------------------------------------------------------
+    Domain Mapper::get_index_partition_color_space(IndexPartition p) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->get_index_partition_color_space(p);
+    }
+
+    //--------------------------------------------------------------------------
+    void Mapper::get_index_space_partition_colors(IndexSpace handle,
+                                                  std::set<Color> &colors) const
+    //--------------------------------------------------------------------------
+    {
+      runtime->runtime->get_index_space_partition_colors(handle, colors);
+    }
+
+    //--------------------------------------------------------------------------
+    bool Mapper::is_index_partition_disjoint(IndexPartition p) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->is_index_partition_disjoint(p);
+    }
+
+    //--------------------------------------------------------------------------
+    Color Mapper::get_index_space_color(IndexSpace handle) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->get_index_space_color(handle);
+    }
+
+    //--------------------------------------------------------------------------
+    Color Mapper::get_index_partition_color(IndexPartition handle) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->get_index_partition_color(handle);
+    }
+
+    //--------------------------------------------------------------------------
+    IndexSpace Mapper::get_parent_index_space(IndexPartition handle) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->get_parent_index_space(handle);
+    }
+
+    //--------------------------------------------------------------------------
+    bool Mapper::has_parent_index_partition(IndexSpace handle) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->has_parent_index_partition(handle);
+    }
+
+    //--------------------------------------------------------------------------
+    IndexPartition Mapper::get_parent_index_partition(IndexSpace handle) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->get_parent_index_partition(handle);
+    }
+
+    //--------------------------------------------------------------------------
+    size_t Mapper::get_field_size(FieldSpace handle, FieldID fid) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->get_field_size(handle, fid);
+    }
+
+    //--------------------------------------------------------------------------
+    LogicalPartition Mapper::get_logical_partition(LogicalRegion parent,
+                                                   IndexPartition handle) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->get_logical_partition(parent, handle);
+    }
+
+    //--------------------------------------------------------------------------
+    LogicalPartition Mapper::get_logical_partition_by_color(LogicalRegion par,
+                                                            Color color) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->get_logical_partition_by_color(par, color);
+    }
+
+    //--------------------------------------------------------------------------
+    LogicalPartition Mapper::get_logical_partition_by_tree(IndexPartition part,
+                                     FieldSpace fspace, RegionTreeID tid) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->get_logical_partition_by_tree(part, fspace, tid);
+    }
+
+    //--------------------------------------------------------------------------
+    LogicalRegion Mapper::get_logical_subregion(LogicalPartition parent,
+                                                IndexSpace handle) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->get_logical_subregion(parent, handle);
+    }
+
+    //--------------------------------------------------------------------------
+    LogicalRegion Mapper::get_logical_subregion_by_color(LogicalPartition par,
+                                                         Color color) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->get_logical_subregion_by_color(par, color);
+    }
+
+    //--------------------------------------------------------------------------
+    LogicalRegion Mapper::get_logical_subregion_by_tree(IndexSpace handle,
+                                                        FieldSpace fspace,
+                                                        RegionTreeID tid) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->get_logical_subregion_by_tree(handle, 
+                                                             fspace, tid);
+    }
+
+    //--------------------------------------------------------------------------
+    Color Mapper::get_logical_region_color(LogicalRegion handle) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->get_logical_region_color(handle);
+    }
+
+    //--------------------------------------------------------------------------
+    Color Mapper::get_logical_partition_color(LogicalPartition handle) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->get_logical_partition_color(handle);
+    }
+
+    //--------------------------------------------------------------------------
+    LogicalRegion Mapper::get_parent_logical_region(LogicalPartition part) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->get_parent_logical_region(part);
+    }
+    
+    //--------------------------------------------------------------------------
+    bool Mapper::has_parent_logical_partition(LogicalRegion handle) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->has_parent_logical_partition(handle);
+    }
+
+    //--------------------------------------------------------------------------
+    LogicalPartition Mapper::get_parent_logical_partition(LogicalRegion r) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->get_parent_logical_partition(r);
+    }
+
+    //--------------------------------------------------------------------------
+    size_t Mapper::sample_allocated_space(Memory mem) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->sample_allocated_space(mem);
+    }
+
+    //--------------------------------------------------------------------------
+    size_t Mapper::sample_free_space(Memory mem) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->sample_free_space(mem);
+    }
+
+    //--------------------------------------------------------------------------
+    unsigned Mapper::sample_allocated_instances(Memory mem) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->sample_allocated_instances(mem);
+    }
+
+    //--------------------------------------------------------------------------
+    bool Mapper::sample_current_executing(Processor proc) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->sample_current_executing(proc);
+    }
+
+    //--------------------------------------------------------------------------
+    unsigned Mapper::sample_current_pending(Processor proc) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->sample_current_pending(proc);
+    }
+
+    //--------------------------------------------------------------------------
+    unsigned Mapper::sample_unmapped_tasks(Processor proc) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->sample_unmapped_tasks(proc, 
+                                                     const_cast<Mapper*>(this));
     }
 
   }; // namespace HighLevel

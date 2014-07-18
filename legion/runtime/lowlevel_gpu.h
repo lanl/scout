@@ -1,4 +1,4 @@
-/* Copyright 2013 Stanford University
+/* Copyright 2014 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,8 @@
 #define LOWLEVEL_GPU_H
 
 #include "lowlevel_impl.h"
-#include <cuda_runtime.h>
+#include "cuda.h"
+#include "cuda_runtime.h"
 
 #define CHECK_CUDART(cmd) do { \
   cudaError_t ret = (cmd); \
@@ -28,14 +29,28 @@
   } \
 } while(0)
 
+#define CHECK_CU(cmd) do { \
+  CUresult ret = (cmd); \
+  if(ret != CUDA_SUCCESS) { \
+    fprintf(stderr, "CU: %s = %d (%s)\n", #cmd, ret, cudaGetErrorString((cudaError_t)ret)); \
+    assert(0); \
+    exit(1); \
+  } \
+} while(0)
+
 GASNETT_THREADKEY_DECLARE(gpu_thread);
 
 namespace LegionRuntime {
   namespace LowLevel {
+
+    void start_gpu_dma_thread(void);
+
     class GPUProcessor : public Processor::Impl {
     public:
-      GPUProcessor(Processor _me, int _gpu_index, Processor _util,
-		   size_t _zcmem_size, size_t _fbmem_size, size_t _stack_size);
+      GPUProcessor(Processor _me, int _gpu_index, 
+                   int num_local_gpus, Processor _util,
+		   size_t _zcmem_size, size_t _fbmem_size, 
+                   size_t _stack_size, bool gpu_dma_thread);
 
       ~GPUProcessor(void);
 
@@ -63,6 +78,27 @@ namespace LegionRuntime {
       void copy_within_fb(off_t dst_offset, off_t src_offset,
 			  size_t bytes,
 			  Event start_event, Event finish_event);
+
+      void copy_to_fb_2d(off_t dst_offset, const void *src,
+                         off_t dst_stride, off_t src_stride,
+                         size_t bytes, size_t lines,
+                         Event start_event, Event finish_event);
+      void copy_from_fb_2d(void *dst, off_t src_offset,
+                           off_t dst_stride, off_t src_stride,
+                           size_t bytes, size_t lines,
+                           Event start_event, Event finish_event);
+      void copy_within_fb_2d(off_t dst_offset, off_t src_offset,
+                             off_t dst_stride, off_t src_stride,
+                             size_t bytes, size_t lines,
+                             Event start_event, Event finish_event);
+
+      void copy_to_peer(GPUProcessor *dst, off_t dst_offset, 
+                        off_t src_offset, size_t bytes,
+                        Event start_event, Event finish_event);
+      void copy_to_peer_2d(GPUProcessor *dst, off_t dst_offset, off_t src_offset,
+                           off_t dst_stride, off_t src_stride,
+                           size_t bytes, size_t lines,
+                           Event start_event, Event finish_event);
 
       //void copy_to_fb_generic(off_t dst_offset, 
       //			      Memory::Impl *src_mem, off_t src_offset,
@@ -95,14 +131,26 @@ namespace LegionRuntime {
       //				off_t src_offset,
       //				const ElementMask *mask, size_t elmt_size,
       //				Event start_event, Event finish_event);
-
+    public:
+      void register_host_memory(void *base, size_t size);
+      void enable_peer_access(GPUProcessor *peer);
+      bool can_access_peer(GPUProcessor *peer) const;
+      void handle_copies(void);
     public:
       // Helper method for getting a thread's processor value
       static Processor get_processor(void);
+      static void* gpu_dma_worker_loop(void *args);
+
+      static void start_gpu_dma_thread(const std::vector<GPUProcessor*> &local_gpus);
+      static void stop_gpu_dma_threads(void);
+    private:
+      static GPUProcessor **node_gpus;
+      static size_t num_node_gpus;
     public:
       class Internal;
 
       GPUProcessor::Internal *internal;
+      std::set<GPUProcessor*> peer_gpus;
     };
 
     class GPUFBMemory : public Memory::Impl {
@@ -142,17 +190,9 @@ namespace LegionRuntime {
 	free_bytes_local(offset, size);
       }
 
-      virtual void get_bytes(off_t offset, void *dst, size_t size)
-      {
-	assert(0);
-	//memcpy(dst, base+offset, size);
-      }
-
-      virtual void put_bytes(off_t offset, const void *src, size_t size)
-      {
-	assert(0);
-	//memcpy(base+offset, src, size);
-      }
+      // these work, but they are SLOW
+      virtual void get_bytes(off_t offset, void *dst, size_t size);
+      virtual void put_bytes(off_t offset, const void *src, size_t size);
 
       virtual void *get_direct_ptr(off_t offset, size_t size)
       {

@@ -1,4 +1,4 @@
-/* Copyright 2013 Stanford University
+/* Copyright 2014 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -77,6 +77,10 @@ namespace LegionRuntime {
    */
   class Logger {
   public:
+#ifdef NODE_LOGGING
+    static FILE* get_log_file(void); 
+    static void finalize(void);
+#endif
     // Use the -DORDERED_LOGGING flag whenever you need to have ordered
     // output.  The posix standard guarantees that all writes to files
     // open for appending will be atomic, which is necessary for safely
@@ -131,6 +135,9 @@ namespace LegionRuntime {
       get_logging_buffer(); // Initialize the buffer
       get_logging_location(); // Initialize the current location
       get_written_location(); // Initialize the written location
+#endif
+#ifdef NODE_LOGGING
+      get_log_file(); // Initialize the log file
 #endif
       for(std::vector<bool>::iterator it = Logger::get_log_cats_enabled().begin();
           it != Logger::get_log_cats_enabled().end();
@@ -268,6 +275,20 @@ namespace LegionRuntime {
               va_list args;
               va_start(args, fmt);
               Logger::logvprintf(LEVEL_INFO, index, fmt, args);
+              va_end(args);
+            }
+          }
+        }
+      }
+
+      inline void print(const char *fmt, ...) __attribute__((format (printf, 2, 3)))
+      {
+        if(LEVEL_PRINT >= COMPILE_TIME_MIN_LEVEL) { // static opt-out
+          if (LEVEL_PRINT >= Logger::get_log_level()) { // dynamic opt-out
+            if (Logger::get_log_cats_enabled()[index]) {
+              va_list args;
+              va_start(args, fmt);
+              Logger::logvprintf(LEVEL_PRINT, index, fmt, args);
               va_end(args);
             }
           }
@@ -470,7 +491,7 @@ namespace LegionRuntime {
       host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
       clock_get_time(cclock, &spec);
       mach_port_deallocate(mach_task_self(), cclock);
-      unsigned long long result = (((unsigned long long) spec.tv_sec) << 20) + (((unsigned long long)spec.tv_nsec) >> 10);
+      unsigned long long result = (((unsigned long long) spec.tv_sec) * 1000000) + (((unsigned long long)spec.tv_nsec) / 1000);
       return result;
     }
   private:
