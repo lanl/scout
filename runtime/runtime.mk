@@ -1,4 +1,4 @@
-# Copyright 2013 Stanford University
+# Copyright 2014 Stanford University
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,25 +15,23 @@
 
 
 # If using the general low-level runtime
-# select a GASNET conduit to use
-CONDUIT = ibv
-#CONDUIT = gemini
-#CONDUIT = mpi
-#CONDUIT = udp
-
-# If using the general low-level runtime
 # select a target GPU architecture
-GPU_ARCH = fermi
-#GPU_ARCH = kepler
-#GPU_ARCH = k20
+GPU_ARCH ?= fermi
+#GPU_ARCH ?= kepler
+#GPU_ARCH ?= k20
 
 ifndef LG_RT_DIR
 $(error LG_RT_DIR variable is not defined, aborting build)
 endif
 
+# defaults for GASNet
+CONDUIT ?= udp
+GASNET ?= $(LG_RT_DIR)/gasnet/release
+
 # Handle some of the common machines we frequent
 
 ifeq ($(shell uname -n),sapling-head)
+CC_FLAGS += -march=native
 GASNET=/usr/local/gasnet-1.20.0-openmpi
 MPI=/usr/local/openmpi-1.6.4
 CUDA=/usr/local/cuda-5.0
@@ -41,6 +39,7 @@ CONDUIT=ibv
 GPU_ARCH=fermi
 endif
 ifeq ($(shell uname -n),n0000)
+CC_FLAGS += -march=native
 GASNET=/usr/local/gasnet-1.20.0-openmpi
 MPI=/usr/local/openmpi-1.6.4
 CUDA=/usr/local/cuda-5.0
@@ -48,6 +47,7 @@ CONDUIT=ibv
 GPU_ARCH=fermi
 endif
 ifeq ($(shell uname -n),n0001)
+CC_FLAGS += -march=native
 GASNET=/usr/local/gasnet-1.20.0-openmpi
 MPI=/usr/local/openmpi-1.6.4
 CUDA=/usr/local/cuda-5.0
@@ -55,6 +55,7 @@ CONDUIT=ibv
 GPU_ARCH=fermi
 endif
 ifeq ($(shell uname -n),n0002)
+CC_FLAGS += -march=native
 GASNET=/usr/local/gasnet-1.20.0-openmpi
 MPI=/usr/local/openmpi-1.6.4
 CUDA=/usr/local/cuda-5.0
@@ -62,6 +63,7 @@ CONDUIT=ibv
 GPU_ARCH=fermi
 endif
 ifeq ($(shell uname -n),n0003)
+CC_FLAGS += -march=native
 GASNET=/usr/local/gasnet-1.20.0-openmpi
 MPI=/usr/local/openmpi-1.6.4
 CUDA=/usr/local/cuda-5.0
@@ -69,6 +71,7 @@ CONDUIT=ibv
 GPU_ARCH=fermi
 endif
 ifeq ($(findstring nics.utk.edu,$(shell uname -n)),nics.utk.edu)
+CC_FLAGS += -march=native
 GASNET=/nics/d/home/sequoia/gasnet-1.20.2-openmpi
 MPI=/sw/kfs/openmpi/1.6.1/centos6.2_intel2011_sp1.11.339
 CUDA=/sw/kfs/cuda/4.2/linux_binary
@@ -76,13 +79,15 @@ CONDUIT=ibv
 GPU_ARCH=fermi
 endif
 ifeq ($(findstring titan,$(shell uname -n)),titan)
-GASNET = /sw/xk6/gasnet/1.20.2/cle4.1_gnu4.7.2_gnumpi_fast
+GCC=CC
+CC_FLAGS += -march=bdver1 -DGASNETI_BUG1389_WORKAROUND=1
+GASNET = ${GASNET_ROOT}
 #GASNET=/ccs/home/mebauer/gasnet-1.20.2-build
-CUDA=/opt/nvidia/cudatoolkit/5.0.35.102
+CUDA=${CUDATOOLKIT_HOME}
 CONDUIT=gemini
 GPU_ARCH=k20
-LD_FLAGS += -L/opt/cray/ugni/4.0-1.0401.5928.9.5.gem/lib64/ 
-LD_FLAGS += -L/opt/cray/pmi/4.0.1-1.0000.9421.73.3.gem/lib64/
+LD_FLAGS += ${CRAY_UGNI_POST_LINK_OPTS}
+LD_FLAGS += ${CRAY_PMI_POST_LINK_OPTS}
 endif
 
 INC_FLAGS	+= -I$(LG_RT_DIR)
@@ -95,8 +100,12 @@ endif
 # Falgs for running in the general low-level runtime
 ifeq ($(strip $(SHARED_LOWLEVEL)),0)
 
-ifndef CUDA
-$(error CUDA variable is not defined, aborting build)
+# general low-level uses CUDA by default
+USE_CUDA ?= 1
+ifeq ($(strip $(USE_CUDA)),1)
+  ifndef CUDA
+    $(error CUDA variable is not defined, aborting build)
+  endif
 endif
 
 ifndef GASNET
@@ -104,6 +113,8 @@ $(error GASNET variable is not defined, aborting build)
 endif
 
 # General CUDA variables
+ifeq ($(strip $(USE_CUDA)),1)
+CC_FLAGS        += -DUSE_CUDA
 INC_FLAGS	+= -I$(CUDA)/include 
 ifeq ($(strip $(DEBUG)),1)
 NVCC_FLAGS	+= -DDEBUG_LOW_LEVEL -DDEBUG_HIGH_LEVEL -g
@@ -111,7 +122,7 @@ NVCC_FLAGS	+= -DDEBUG_LOW_LEVEL -DDEBUG_HIGH_LEVEL -g
 else
 NVCC_FLAGS	+= -O2
 endif
-LD_FLAGS	+= -L$(CUDA)/lib64 -lcudart -Xlinker -rpath=$(CUDA)/lib64
+LD_FLAGS	+= -L$(CUDA)/lib64 -lcudart -lcuda -Xlinker -rpath=$(CUDA)/lib64
 # CUDA arch variables
 ifeq ($(strip $(GPU_ARCH)),fermi)
 NVCC_FLAGS	+= -arch=compute_20 -code=sm_20
@@ -125,7 +136,8 @@ ifeq ($(strip $(GPU_ARCH)),k20)
 NVCC_FLAGS	+= -arch=compute_35 -code=sm_35
 NVCC_FLAGS	+= -DK20_ARCH
 endif
-NVCC_FLAGS	+= -Xptxas "-v -abi=no"
+NVCC_FLAGS	+= -Xptxas "-v" #-abi=no"
+endif
 
 # General GASNET variables
 INC_FLAGS	+= -I$(GASNET)/include
@@ -164,9 +176,9 @@ endif # ifeq SHARED_LOWLEVEL
 
 
 ifeq ($(strip $(DEBUG)),1)
-CC_FLAGS	+= -DDEBUG_LOW_LEVEL -DDEBUG_HIGH_LEVEL -ggdb -march=native #-ggdb -Wall
+CC_FLAGS	+= -DDEBUG_LOW_LEVEL -DDEBUG_HIGH_LEVEL -ggdb #-ggdb -Wall
 else
-CC_FLAGS	+= -O2 -march=native
+CC_FLAGS	+= -O2 #-ggdb
 endif
 
 
@@ -177,7 +189,10 @@ CC_FLAGS	+= -DCOMPILE_TIME_MIN_LEVEL=$(OUTPUT_LEVEL)
 
 # Set the source files
 ifeq ($(strip $(SHARED_LOWLEVEL)),0)
-LOW_RUNTIME_SRC	+= $(LG_RT_DIR)/lowlevel.cc $(LG_RT_DIR)/lowlevel_gpu.cc
+LOW_RUNTIME_SRC	+= $(LG_RT_DIR)/lowlevel.cc
+ifeq ($(strip $(USE_CUDA)),1)
+LOW_RUNTIME_SRC += $(LG_RT_DIR)/lowlevel_gpu.cc
+endif
 LOW_RUNTIME_SRC += $(LG_RT_DIR)/activemsg.cc $(LG_RT_DIR)/lowlevel_dma.cc
 GPU_RUNTIME_SRC +=
 else
@@ -198,6 +213,7 @@ endif
 HIGH_RUNTIME_SRC += $(LG_RT_DIR)/legion.cc \
 		    $(LG_RT_DIR)/legion_ops.cc \
 		    $(LG_RT_DIR)/legion_tasks.cc \
+		    $(LG_RT_DIR)/legion_trace.cc \
 		    $(LG_RT_DIR)/legion_spy.cc \
 		    $(LG_RT_DIR)/region_tree.cc \
 		    $(LG_RT_DIR)/runtime.cc \

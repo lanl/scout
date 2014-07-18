@@ -1,4 +1,4 @@
-/* Copyright 2013 Stanford University
+/* Copyright 2014 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -710,7 +710,8 @@ namespace LegionRuntime {
        * @param fid field ID to add
        * @param instance indicate whether to add to instance fields
        */
-      inline void add_field(FieldID fid, bool instance = true);
+      inline RegionRequirement& add_field(FieldID fid, bool instance = true);
+      inline RegionRequirement& add_fields(const std::vector<FieldID>& fids, bool instance = true);
     public:
 #ifdef PRIVILEGE_CHECKS
       AccessorPrivilege get_accessor_privilege(void) const;
@@ -753,6 +754,7 @@ namespace LegionRuntime {
       bool early_map;
       bool enable_WAR_optimization;
       bool reduction_list;
+      bool make_persistent;
       size_t blocking_factor;
       // TODO: hardness factor
       std::vector<Memory> target_ranking;
@@ -854,6 +856,7 @@ namespace LegionRuntime {
       Predicate                          predicate;
       MapperID                           map_id;
       MappingTagID                       tag;
+      DomainPoint                        point;
     };
 
     /**
@@ -868,9 +871,9 @@ namespace LegionRuntime {
     public:
       IndexLauncher(void);
       IndexLauncher(Processor::TaskFuncID tid,
-                    Domain &domain,
+                    Domain domain,
                     TaskArgument global_arg,
-                    const ArgumentMap &map,
+                    ArgumentMap map,
                     Predicate pred = Predicate::TRUE_PRED,
                     bool must = false,
                     MapperID id = 0,
@@ -929,18 +932,16 @@ namespace LegionRuntime {
      * copies between two regions including regions that are
      * not of the same region tree.  Copy operations specify
      * an arbitrary number of pairs of source and destination 
-     * region requirements.  Each region requirement must have 
-     * exactly one field with fields of a pair being the same
-     * size (unless a reduction copy is being performed).  The
-     * source region requirements must be READ_ONLY, while the
-     * destination requirements must be either READ_WRITE,
-     * WRITE_ONLY, or REDUCE with a reduction function.  While
-     * the regions in a source and a destination pair do not have
-     * to be in the same region tree, they must share an index space
-     * tree.  Furthermore, the index space of the source region
+     * region requirements.  The source region requirements 
+     * must be READ_ONLY, while the destination requirements 
+     * must be either READ_WRITE, WRITE_ONLY, or REDUCE with 
+     * a reduction function.  While the regions in a source 
+     * and a destination pair do not have to be in the same 
+     * region tree, they must share an index space tree.  
+     * Furthermore, the index space of the destination region
      * requirement will determine the data copied, and therefore
-     * the source index space must be the same or a sub-space of
-     * the index space of the destination region.
+     * the destination index space must be the same or a 
+     * sub-space of the source index space.
      * @see HighLevelRuntime
      */
     struct CopyLauncher {
@@ -1315,6 +1316,37 @@ namespace LegionRuntime {
     };
 
     //==========================================================================
+    //                        Must Parallelism Classes
+    //==========================================================================
+    
+    /**
+     * \struct MustEpochLauncher
+     * This is a meta-launcher object which contains other launchers.  The
+     * purpose of this meta-launcher is to guarantee that all of the operations
+     * specified in this launcher be guaranteed to run simultaneously.  This
+     * enables the use of synchronization mechanisms such as phase barriers
+     * and reservations between these operations without concern for deadlock.
+     * If any condition is detected that will prevent simultaneous 
+     * parallel execution of the operations the runtime will report an error.
+     * These conditions include true data dependences on regions as well
+     * as cases where mapping decisions artificially serialize operations
+     * such as two tasks being mapped to the same processor.
+     */
+    struct MustEpochLauncher {
+    public:
+      MustEpochLauncher(MapperID id = 0, MappingTagID tag = 0);
+    public:
+      inline void add_single_task(const DomainPoint &point,
+                                  const TaskLauncher &launcher);
+      inline void add_index_task(const IndexLauncher &launcher);
+    public:
+      MapperID                        map_id;
+      MappingTagID               mapping_tag;
+      std::vector<TaskLauncher> single_tasks;
+      std::vector<IndexLauncher> index_tasks;
+    };
+
+    //==========================================================================
     //                            Mapping Classes
     //==========================================================================
     
@@ -1350,6 +1382,7 @@ namespace LegionRuntime {
       virtual Acquire* as_mappable_acquire(void) const = 0;
       virtual Release* as_mappable_release(void) const = 0;
       virtual UniqueID get_unique_mappable_id(void) const = 0;
+      virtual unsigned get_depth(void) const = 0;
     };
 
     /**
@@ -1414,7 +1447,6 @@ namespace LegionRuntime {
       // Profiling information for the task
       unsigned long long                  start_time;
       unsigned long long                  stop_time;
-      unsigned long long                  complete_time;
     public:
       inline UniqueID get_unique_task_id(void) const;
     public:
@@ -1425,6 +1457,7 @@ namespace LegionRuntime {
       virtual Acquire* as_mappable_acquire(void) const = 0;
       virtual Release* as_mappable_release(void) const = 0;
       virtual UniqueID get_unique_mappable_id(void) const = 0;
+      virtual unsigned get_depth(void) const;
     };
 
     /**
@@ -1458,6 +1491,7 @@ namespace LegionRuntime {
       virtual Acquire* as_mappable_acquire(void) const = 0;
       virtual Release* as_mappable_release(void) const = 0;
       virtual UniqueID get_unique_mappable_id(void) const = 0;
+      virtual unsigned get_depth(void) const;
     };
 
     /**
@@ -1487,6 +1521,7 @@ namespace LegionRuntime {
       virtual Acquire* as_mappable_acquire(void) const = 0;
       virtual Release* as_mappable_release(void) const = 0;
       virtual UniqueID get_unique_mappable_id(void) const = 0;
+      virtual unsigned get_depth(void) const;
     };
 
     /**
@@ -1523,6 +1558,7 @@ namespace LegionRuntime {
       virtual Acquire* as_mappable_acquire(void) const = 0;
       virtual Release* as_mappable_release(void) const = 0;
       virtual UniqueID get_unique_mappable_id(void) const = 0;
+      virtual unsigned get_depth(void) const;
     };
 
     /**
@@ -1559,6 +1595,7 @@ namespace LegionRuntime {
       virtual Acquire* as_mappable_acquire(void) const = 0;
       virtual Release* as_mappable_release(void) const = 0;
       virtual UniqueID get_unique_mappable_id(void) const = 0;
+      virtual unsigned get_depth(void) const;
     };
 
     /**
@@ -1577,27 +1614,33 @@ namespace LegionRuntime {
         Processor::Kind proc_kind;
         bool single_task; /**< supports single tasks*/
         bool index_space; /**< supports index tasks*/
+        bool inner;
+        bool leaf;
         VariantID vid;
       public:
         Variant(void)
           : low_id(0) { }
         Variant(Processor::TaskFuncID id, Processor::Kind k, 
-                bool single, bool index, VariantID v)
+                bool single, bool index, 
+                bool in, bool lf,
+                VariantID v)
           : low_id(id), proc_kind(k), 
-            single_task(single), index_space(index), vid(v) { }
+            single_task(single), index_space(index), 
+            inner(in), leaf(lf), vid(v) { }
       };
     protected:
       // Only the runtime should be able to make these
       FRIEND_ALL_RUNTIME_CLASSES
       TaskVariantCollection(Processor::TaskFuncID uid, 
-                            const char *n, const bool lf,
-                            const bool in,
+                            const char *n,
                             const bool idem, size_t ret)
-        : user_id(uid), name(n), leaf(lf), inner(in), 
+        : user_id(uid), name(n), 
           idempotent(idem), return_size(ret) { }
       void add_variant(Processor::TaskFuncID low_id, 
-                       Processor::Kind kind, bool single, bool index,
-                       VariantID vid);
+                       Processor::Kind kind, 
+                       bool single, bool index,
+                       bool inner, bool leaf,
+                       VariantID &vid);
       const Variant& select_variant(bool single, bool index, 
                                     Processor::Kind kind);
     public:
@@ -1639,8 +1682,6 @@ namespace LegionRuntime {
     public:
       const Processor::TaskFuncID user_id;
       const char *name;
-      const bool leaf;
-      const bool inner;
       const bool idempotent;
       const size_t return_size;
     protected:
@@ -1690,8 +1731,32 @@ namespace LegionRuntime {
         bool stealable;
       };
     public:
-      Mapper(void) { }
+      /**
+       * \struct MappingConstraint
+       * A mapping constraint object captures constraints on
+       * two different operations which needs to be satisfied 
+       * in order for the tasks to be executed in parallel.
+       * We use these as part of the must parallelism call.
+       */
+      struct MappingConstraint {
+      public:
+        MappingConstraint(Task *one, unsigned id1,
+                          Task *two, unsigned id2,
+                          DependenceType d)
+          : t1(one), idx1(id1), t2(two), idx2(id2), dtype(d) { }
+      public:
+        Task *t1;
+        unsigned idx1;
+        Task *t2;
+        unsigned idx2;
+        DependenceType dtype;
+      };
+    public:
+      Mapper(HighLevelRuntime *rt) 
+        : runtime(rt) { }
       virtual ~Mapper(void) { }
+    protected:
+      HighLevelRuntime *const runtime;
     public:
       /**
        * ----------------------------------------------------------------------
@@ -2076,6 +2141,25 @@ namespace LegionRuntime {
 
       /**
        * ----------------------------------------------------------------------
+       *  Map Must Epoch 
+       * ----------------------------------------------------------------------
+       *  This is the mapping call for must epochs where a collection of tasks
+       *  are all being requested to run in a must-parallelism mode so that
+       *  they can synchronize.  The same mapping operations must be performed
+       *  for each of the Task objects as in 'map_task', with the additional
+       *  constraints that the mappings for the region requirements listed
+       *  in the 'constraints' vector be satisifed to ensure the tasks 
+       *  actually can run in parallel.
+       *  @param tasks the tasks to be mapped
+       *  @param constraints the constraints on the mapping
+       *  @return should the runtime notify the tasks of a successful mapping
+       */
+      virtual bool map_must_epoch(const std::vector<Task*> &tasks,
+                            const std::vector<MappingConstraint> &constraints,
+                            MappingTagID tag) = 0;
+
+      /**
+       * ----------------------------------------------------------------------
        *  Notify Mapping Result 
        * ----------------------------------------------------------------------
        * If the mapper returned true to any map request, these calls
@@ -2214,6 +2298,195 @@ namespace LegionRuntime {
        */
       virtual bool speculate_on_predicate(const Task *task,
                                           bool &spec_value) = 0;
+
+      /**
+       * ----------------------------------------------------------------------
+       *  Get Tunable Value
+       * ----------------------------------------------------------------------
+       * Ask the mapper to specify the value for a tunable variable.
+       * This operation is invoked whenever a call to 'get_tunable_value'
+       * is made by a task.  Currently all tunable variables are integers
+       * so the value returned from this method will be passed back directly
+       * as the resulting value for the tunable variable.
+       * @param task the task that is asking for the tunable variable
+       * @param tid the ID of the tunable variable (e.g. name)
+       * @param tag the context specific tag for the tunable request
+       * @return the resulting value for the tunable variable
+       */
+      virtual int get_tunable_value(const Task *task, 
+                                    TunableID tid,
+                                    MappingTagID tag) = 0;
+
+      /**
+       * ----------------------------------------------------------------------
+       *  Handle Message
+       * ----------------------------------------------------------------------
+       * Handle a message sent from one of our adjacent mappers of the same
+       * kind on a different processor.
+       * @param source the processor whose mapper sent the message
+       * @param message buffer containing the message
+       * @param length size of the message in bytes
+       */
+      virtual void handle_message(Processor source,
+                                  const void *message, size_t length) = 0;
+
+      //------------------------------------------------------------------------
+      // All methods below here are methods that are already implemented
+      // and serve as an interface for inheriting mapper classes to 
+      // introspect the Legion runtime.  They also provide interfaces
+      // for directing the runtime to perform operations like sending
+      // messages to other mappers.  We provide these methods here in
+      // order to scope who is able to access them.  We only want mapper
+      // objects to have access to them and hence they are provided here
+      // as methods that will be inherited by sub-type mappers.
+      //------------------------------------------------------------------------
+    protected:
+      //------------------------------------------------------------------------
+      // Methods for communication with other mappers
+      //------------------------------------------------------------------------
+
+      /**
+       * Send a message to our corresponding mapper for a different processor.
+       * @param target the processor whose mapper we are sending the message
+       * @param message a pointer to a buffer containing the message
+       * @param the size of the message to be sent in bytes
+       */
+      void send_message(Processor target, const void *message, size_t length);
+    protected:
+      //------------------------------------------------------------------------
+      // Methods for introspecting index space trees 
+      // For documentation see methods of the same name in HighLevelRuntime
+      //------------------------------------------------------------------------
+      IndexPartition get_index_partition(IndexSpace parent, Color color) const;
+
+      IndexSpace get_index_subspace(IndexPartition p, Color c) const;
+
+      Domain get_index_space_domain(IndexSpace handle) const;
+
+      Domain get_index_partition_color_space(IndexPartition p) const;
+
+      void get_index_space_partition_colors(IndexSpace sp, 
+                                            std::set<Color> &colors) const;
+
+      bool is_index_partition_disjoint(IndexPartition p) const;
+
+      template<unsigned DIM>
+      IndexSpace get_index_subspace(IndexPartition p, 
+                                    Arrays::Point<DIM> &color_point) const;
+
+      Color get_index_space_color(IndexSpace handle) const;
+
+      Color get_index_partition_color(IndexPartition handle) const;
+
+      IndexSpace get_parent_index_space(IndexPartition handle) const;
+
+      bool has_parent_index_partition(IndexSpace handle) const;
+      
+      IndexPartition get_parent_index_partition(IndexSpace handle) const;
+    protected:
+      //------------------------------------------------------------------------
+      // Methods for introspecting field spaces 
+      // For documentation see methods of the same name in HighLevelRuntime
+      //------------------------------------------------------------------------
+      size_t get_field_size(FieldSpace handle, FieldID fid) const;
+    protected:
+      //------------------------------------------------------------------------
+      // Methods for introspecting logical region trees
+      //------------------------------------------------------------------------
+      LogicalPartition get_logical_partition(LogicalRegion parent, 
+                                             IndexPartition handle) const;
+
+      LogicalPartition get_logical_partition_by_color(LogicalRegion parent,
+                                                      Color color) const;
+
+      LogicalPartition get_logical_partition_by_tree(IndexPartition handle,
+                                                     FieldSpace fspace,
+                                                     RegionTreeID tid) const;
+
+      LogicalRegion get_logical_subregion(LogicalPartition parent,
+                                          IndexSpace handle) const;
+
+      LogicalRegion get_logical_subregion_by_color(LogicalPartition parent,
+                                                   Color color) const;
+      
+      LogicalRegion get_logical_subregion_by_tree(IndexSpace handle,
+                                                  FieldSpace fspace,
+                                                  RegionTreeID tid) const;
+
+      Color get_logical_region_color(LogicalRegion handle) const;
+
+      Color get_logical_partition_color(LogicalPartition handle) const;
+
+      LogicalRegion get_parent_logical_region(LogicalPartition handle) const;
+
+      bool has_parent_logical_partition(LogicalRegion handle) const;
+
+      LogicalPartition get_parent_logical_partition(LogicalRegion handle) const;
+    protected:
+      //------------------------------------------------------------------------
+      // Methods for introspecting the state of machine resources
+      //------------------------------------------------------------------------
+      
+      /**
+       * Take a sample of the amount of space allocated in a
+       * specific memory. Note this is just a sample and may 
+       * return different values even in consecutive calls.
+       * Also note that this value is imprecise and is only 
+       * based on allocations known to the local address space.
+       * @param m the memory to be sampled
+       * @return size in bytes of all the instances allocated in the memory
+       */
+      size_t sample_allocated_space(Memory m) const;
+
+      /**
+       * Take a sample of the amount of free memory available
+       * in a specific memory. Note that this is just a sample
+       * and may return different values even in consecutive calls.
+       * Also note that this value is imprecise and is only based
+       * on allocations known to the local address space.
+       * @param m the memory to be sampled
+       * @return size in bytes of all the free space in the memory
+       */
+      size_t sample_free_space(Memory m) const;
+
+      /**
+       * Take a sample of the number of instances allocated in
+       * a specific memory. Note that this is just a sample and
+       * may return different values even in consecutive calls.
+       * Also note that this value is imprecise and is only based
+       * on allocations known to the local address space.
+       * @param m the memory to be sampled
+       * @return number of instances allocated in the memory
+       */
+      unsigned sample_allocated_instances(Memory m) const;
+
+      /**
+       * Test whether the specified processor is currently executing
+       * a task or not. This sample is only valid for processors in 
+       * the local address space.
+       * @param p the processor to be sampled
+       * @return true if the processor is executing a task false otherwise
+       */
+      bool sample_current_executing(Processor p) const; 
+
+      /**
+       * Take a sample of the number of tasks that are already mapped
+       * to be run on the target processor. This sample is only valid
+       * for processors in the local address space. 
+       * @param p the processor to be sampled
+       * @return the count of the tasks already mapped to the processor
+       */
+      unsigned sample_current_pending(Processor p) const;
+
+      /**
+       * Take a sample of the number of unmapped tasks which are
+       * currently assigned to the processor, but are unmapped.
+       * This sample is only valid for processors in the local
+       * address space.
+       * @param p the processor to be sampled
+       * @return the count of the tasks assigned to the processor but unmapped
+       */
+      unsigned sample_unmapped_tasks(Processor p) const;
     };
 
     //==========================================================================
@@ -2290,19 +2563,27 @@ namespace LegionRuntime {
       // Index Space Operations
       //------------------------------------------------------------------------
       /**
-       * Create a new index space
+       * Create a new unstructured index space
        * @param ctx the enclosing task context
        * @param max_num_elmts maximum number of elements in the index space
        * @return the handle for the new index space
        */
       IndexSpace create_index_space(Context ctx, size_t max_num_elmts);
       /**
-       * Create a new index space based on a domain
+       * Create a new structured index space based on a domain
        * @param ctx the enclosing task context
        * @param domain the domain for the new index space
        * @return the handle for the new index space
        */
       IndexSpace create_index_space(Context ctx, Domain domain);
+      /**
+       * Create a new structured index space based on a set of domains
+       * @param ctx the enclosing task context
+       * @param domains the set of domains
+       * @return the handle for the new index space
+       */
+      IndexSpace create_index_space(Context ctx, 
+                                    const std::set<Domain> &domains);
       /**
        * Destroy an existing index space
        * @param ctx the enclosing task context
@@ -2341,6 +2622,24 @@ namespace LegionRuntime {
 					    Domain color_space, 
                                             const DomainColoring &coloring,
 					    bool disjoint,
+                                            int part_color = -1);
+
+      /**
+       * Create an index partitiong from a domain color space and
+       * a multi-domain coloring which allows multiple domains to
+       * be associated with each color.
+       * @param ctx the enclosing task context
+       * @param parent index space being partitioned
+       * @param color_space the domain of colors
+       * @param coloring the multi-domain coloring
+       * @param disjoint whether the partitioning is disjoint or not
+       * @param part_color optional color name for the partition
+       * @return handle for the next index partition
+       */
+      IndexPartition create_index_partition(Context ctx, IndexSpace parent,
+                                            Domain color_space,
+                                            const MultiDomainColoring &coloring,
+                                            bool disjoint,
                                             int part_color = -1);
 
       /**
@@ -2427,6 +2726,26 @@ namespace LegionRuntime {
       Domain get_index_partition_color_space(Context ctx, IndexPartition p);
 
       /**
+       * Return a set that contains the colors of all
+       * the partitions of the index space.  It is unlikely
+       * the colors are numerically dense which precipitates
+       * the need for a set.
+       * @param ctx enclosing task context
+       * @param sp handle for the index space
+       * @param colors reference to the set object in which to place the colors
+       */
+      void get_index_space_partition_colors(Context ctx, IndexSpace sp,
+                                            std::set<Color> &colors);
+
+      /**
+       * Return whether a given index partition is disjoint
+       * @param ctx enclosing task context
+       * @param p index partition handle
+       * @return whether the index partition is disjoint
+       */
+      bool is_index_partition_disjoint(Context ctx, IndexPartition p);
+
+      /**
        * Get an index subspace from a partition with a given
        * color point.
        * @param ctx enclosing task context
@@ -2456,6 +2775,31 @@ namespace LegionRuntime {
        * @return the color for the index partition
        */
       Color get_index_partition_color(Context ctx, IndexPartition handle);
+
+      /**
+       * Return the index space parent for the given index partition.
+       * @param ctx enclosing task context
+       * @param handle for the index partition
+       * @return index space for the parent
+       */
+      IndexSpace get_parent_index_space(Context ctx, IndexPartition handle);
+
+      /**
+       * Returns true if the given index space has a parent partition.
+       * @param ctx enclosing task context
+       * @param handle for the index space
+       * @return true if there is a parent index partition
+       */
+      bool has_parent_index_partition(Context ctx, IndexSpace handle);
+
+      /**
+       * Returns the parent partition for the given index space.
+       * Use the previous call to check to see if a parent actually exists.
+       * @param ctx enclosing task context
+       * @param handle for the index space
+       * @return the parent index partition
+       */
+      IndexPartition get_parent_index_partition(Context ctx, IndexSpace handle);
     public:
       //------------------------------------------------------------------------
       // Safe Cast Operations
@@ -2497,6 +2841,15 @@ namespace LegionRuntime {
        * @param handle of the field space to be destroyed
        */
       void destroy_field_space(Context ctx, FieldSpace handle);
+
+      /**
+       * Get the size of a specific field within field space.
+       * @param ctx enclosing task context
+       * @param handle field space handle
+       * @param fid field ID for which to find the size
+       * @return the size of the field in bytes
+       */
+      size_t get_field_size(Context ctx, FieldSpace handle, FieldID fid);
     public:
       //------------------------------------------------------------------------
       // Logical Region Operations
@@ -2625,6 +2978,32 @@ namespace LegionRuntime {
        * @return the color for the logical partition
        */
       Color get_logical_partition_color(Context ctx, LogicalPartition handle);
+
+      /**
+       * Return the parent logical region for a given logical partition.
+       * @param ctx enclosing task context
+       * @param handle the logical partition handle for which to find a parent
+       * @return the parent logical region
+       */
+      LogicalRegion get_parent_logical_region(Context ctx, 
+                                              LogicalPartition handle);
+
+      /**
+       * Return true if the logical region has a parent logical partition.
+       * @param ctx enclosing task context
+       * @param handle for the logical region for which to check for a parent
+       * @return true if a parent exists
+       */
+      bool has_parent_logical_partition(Context ctx, LogicalRegion handle);
+
+      /**
+       * Return the parent logical partition for a logical region.
+       * @param ctx enclosing task context
+       * @param handle for the logical region for which to find a parent
+       * @return the parent logical partition
+       */
+      LogicalPartition get_parent_logical_partition(Context ctx, 
+                                                    LogicalRegion handle);
     public:
       //------------------------------------------------------------------------
       // Allocator and Argument Map Operations 
@@ -3047,6 +3426,54 @@ namespace LegionRuntime {
       void issue_execution_fence(Context ctx); 
     public:
       //------------------------------------------------------------------------
+      // Tracing Operations 
+      //------------------------------------------------------------------------
+      /**
+       * Start a new trace of legion operations. Tracing enables
+       * the runtime to memoize the dynamic logical dependence
+       * analysis for these operations.  Future executions of
+       * the trace will no longer need to perform the dynamic
+       * dependence analysis, reducing overheads and improving
+       * the parallelism available in the physical analysis.
+       * The trace ID need only be local to the enclosing context.
+       * Traces are currently not permitted to be nested.
+       */
+      void begin_trace(Context ctx, TraceID tid);
+      /**
+       * Mark the end of trace that was being performed.
+       */
+      void end_trace(Context ctx, TraceID tid);
+    public:
+      //------------------------------------------------------------------------
+      // Must Parallelism 
+      //------------------------------------------------------------------------
+      /**
+       * Launch a collection of operations that all must be guaranteed to 
+       * execute in parallel.  This construct is necessary for ensuring the
+       * correctness of tasks which use simultaneous coherence and perform
+       * synchronization between different physical instances (e.g. using
+       * phase barriers or reservations).  
+       */
+      FutureMap execute_must_epoch(Context ctx, 
+                                   const MustEpochLauncher &launcher);
+    public:
+      //------------------------------------------------------------------------
+      // Tunable Variables 
+      //------------------------------------------------------------------------
+      /**
+       * Similar to Legion's ancestral predecessor Sequoia, Legion supports
+       * tunable variables which are integers supplied by the mapper for 
+       * individual task contexts.  The idea is that there are some parameters
+       * which should be considered parameters determined by the underlying
+       * hardware.  To make these parameters explicit, we express them as
+       * tunables which are filled in at runtime by mapper objects.  Right
+       * now all tunables are integers, however, if users develop compelling
+       * cases for other types we would be interested in knowing about them.
+       */
+      int get_tunable_value(Context ctx, TunableID tid, 
+                            MapperID mapper = 0, MappingTagID tag = 0);
+    public:
+      //------------------------------------------------------------------------
       // Miscellaneous Operations
       //------------------------------------------------------------------------
       /**
@@ -3170,8 +3597,13 @@ namespace LegionRuntime {
        * ---------------------
        *  Dependence Analysis
        * ---------------------
-       * -hl:maxfilter <int> Maximum number of tasks allowed in logical
+       * -hl:filter <int> Maximum number of tasks allowed in logical
        *              or physical epochs.  Default value is 32.
+       * -hl:imprecise Enable imprecise filtering. This improves the
+       *              effectiveness of the previous flag at the cost that
+       *              it may add imprecision to the analysis and introduce
+       *              additional dependences. It is unsafe to use this flag
+       *              with applications that use phase barriers.
        * -hl:no_dyn   Disable dynamic disjointness tests when the runtime
        *              has been compiled with macro DYNAMIC_TESTS defined
        *              which enables dynamic disjointness testing.
@@ -3200,6 +3632,14 @@ namespace LegionRuntime {
        *              This is primarily useful for debugging purposes
        *              to force messages to be sent between runtime 
        *              instances on the same node.
+       * -------------
+       *  Profiling
+       * -------------
+       * -hl:prof <int> Specify the number of nodes on which to enable
+       *              profiling information to be collected.  By default
+       *              all nodes are enabled.  Zero will disable all
+       *              profiling while each number greater than zero will
+       *              profile on that number of nodes.
        *
        * @param argc the number of input arguments
        * @param argv pointer to an array of string arguments of size argc
@@ -3299,6 +3739,10 @@ namespace LegionRuntime {
        * Disable recording of profiling information.
        */
       static void disable_profiling(void);
+      /**
+       * Dump the current profiling information to file.
+       */
+      static void dump_profiling(void);
     public:
       //------------------------------------------------------------------------
       // Task Registration Operations
@@ -3306,14 +3750,14 @@ namespace LegionRuntime {
       /**
        * Register a task with a template return type for the given
        * kind of processor.
-       * @param id the ID at which to assign the task
-       * @param kind the processor kind on which the task can run
+       * @param id the ID to assign to the task
+       * @param proc_kind the processor kind on which the task can run
        * @param single whether the task can be run as a single task
        * @param index whether the task can be run as an index space task
        * @param vid the variant ID to assign to the task
        * @param options the task configuration options
        * @param task_name string name for the task
-       * @return the ID where the task was assigned
+       * @return the ID the task was assigned
        */
       template<typename T,
         T (*TASK_PTR)(const Task*, const std::vector<PhysicalRegion>&,
@@ -3326,14 +3770,14 @@ namespace LegionRuntime {
       /**
        * Register a task with a void return type for the given
        * kind of processor.
-       * @param id the ID at which to assign the task
-       * @param kind the processor kind on which the task can run
+       * @param id the ID to assign to the task 
+       * @param proc_kind the processor kind on which the task can run
        * @param single whether the task can be run as a single task
        * @param index whether the task can be run as an index space task
        * @param vid the variant ID to assign to the task
        * @param options the task configuration options
        * @param task_name string name for the task
-       * @return the ID where the task was assigned
+       * @return the ID the task was assigned
        */
       template<
         void (*TASK_PTR)(const Task*, const std::vector<PhysicalRegion>&,
@@ -3344,18 +3788,64 @@ namespace LegionRuntime {
                              TaskConfigOptions options = TaskConfigOptions(),
                                          const char *task_name = NULL);
       /**
+       * Same as the register_legion_task above, but allow for users to
+       * pass some static data that will be passed as an argument to
+       * all invocations of the function.
+       * @param id the ID at which to assign the task
+       * @param proc_kind the processor kind on which the task can run
+       * @param single whether the task can be run as a single task
+       * @param index whether the task can be run as an index space task
+       * @param user_data user data type to pass to all invocations of the task
+       * @param vid the variant ID to assign to the task
+       * @param options the task configuration options
+       * @param task_name string name for the task
+       * @return the ID the task was assigned
+       */
+      template<typename T, typename UDT,
+        T (*TASK_PTR)(const Task*, const std::vector<PhysicalRegion>&,
+                      Context, HighLevelRuntime*, const UDT&)>
+      static TaskID register_legion_task(TaskID id, Processor::Kind proc_kind,
+                                         bool single, bool index,
+                                         const UDT &user_data,
+                                         VariantID vid = AUTO_GENERATE_ID,
+                              TaskConfigOptions options = TaskConfigOptions(),
+                                         const char *task_name = NULL);
+      /**
+       * Same as the register_legion_task above, but allow for users to
+       * pass some static data that will be passed as an argument to
+       * all invocations of the function.
+       * @param id the ID at which to assign the task
+       * @param proc_kind the processor kind on which the task can run
+       * @param single whether the task can be run as a single task
+       * @param index whether the task can be run as an index space task
+       * @param user_data user data type to pass to all invocations of the task
+       * @param vid the variant ID to assign to the task
+       * @param options the task configuration options
+       * @param task_name string name for the task
+       * @return the ID the task was assigned
+       */
+      template<typename UDT,
+        void (*TASK_PTR)(const Task*,const std::vector<PhysicalRegion>&,
+                         Context, HighLevelRuntime*, const UDT&)>
+      static TaskID register_legion_task(TaskID id, Processor::Kind proc_kind,
+                                         bool single, bool index,
+                                         const UDT &user_data,
+                                         VariantID vid = AUTO_GENERATE_ID,
+                              TaskConfigOptions options = TaskConfigOptions(),
+                                         const char *task_name = NULL);
+      /**
        * @deprecated
        * Register a single task with a template return type for the given
        * task ID and the processor kind.  Optionally specify whether the
        * task is a leaf task or give it a name for debugging error messages.
        * @param id the ID at which to assign the task
-       * @param kind the processor kind on which the task can run
+       * @param proc_kind the processor kind on which the task can run
        * @param leaf whether the task is a leaf task (makes no runtime calls)
        * @param name for the task in error messages
        * @param vid the variant ID to assign to the task
        * @param inner whether the task is an inner task
        * @param idempotent whether the task is idempotent
-       * @return the ID where the task was assigned
+       * @return the ID the task was assigned
        */
       template<typename T,
         T (*TASK_PTR)(const void*,size_t,
@@ -3374,13 +3864,13 @@ namespace LegionRuntime {
        * task ID and the processor kind.  Optionally specify whether the
        * task is a leaf task or give it a name for debugging error messages.
        * @param id the ID at which to assign the task
-       * @param kind the processor kind on which the task can run
+       * @param proc_kind the processor kind on which the task can run
        * @param leaf whether the task is a leaf task (makes no runtime calls)
        * @param name for the task in error messages
        * @param vid the variant ID to assign to the task
        * @param inner whether the task is an inner task
        * @param idempotent whether the task is idempotent
-       * @return the ID where the task was assigned
+       * @return the ID the task was assigned
        */
       template<
         void (*TASK_PTR)(const void*,size_t,
@@ -3400,13 +3890,13 @@ namespace LegionRuntime {
        * whether the task is a leaf task or give it a name for 
        * debugging error messages.
        * @param id the ID at which to assign the task
-       * @param kind the processor kind on which the task can run
+       * @param proc_kind the processor kind on which the task can run
        * @param leaf whether the task is a leaf task (makes no runtime calls)
        * @param name for the task in error messages
        * @param vid the variant ID to assign to the task
        * @param inner whether the task is an inner task
        * @param idempotent whether the task is idempotent
-       * @return the ID where the task was assigned
+       * @return the ID the task was assigned
        */
       template<typename T,
         T (*TASK_PTR)(const void*,size_t,const void*,size_t,const DomainPoint&,
@@ -3426,13 +3916,13 @@ namespace LegionRuntime {
        * whether the task is a leaf task or give it a name for 
        * debugging error messages.
        * @param id the ID at which to assign the task
-       * @param kind the processor kind on which the task can run
+       * @param proc_kind the processor kind on which the task can run
        * @param leaf whether the task is a leaf task (makes no runtime calls)
        * @param name for the task in error messages
        * @param vid the variant ID to assign to the task
        * @param inner whether the task is an inner task
        * @param idempotent whether the task is idempotent
-       * @return the ID where the task was assigned
+       * @return the ID the task was assigned
        */
       template<
         void (*TASK_PTR)(const void*,size_t,const void*,size_t,
@@ -3486,8 +3976,18 @@ namespace LegionRuntime {
                       VariantID vid, size_t return_size,
                       const TaskConfigOptions &options,
                       const char *task_name);
+      static TaskID update_collection_table(
+                      LowLevelFnptr low_ptr, InlineFnptr inline_ptr,
+                      TaskID uid, Processor::Kind proc_kind, 
+                      bool single_task, bool index_space_task,
+                      VariantID vid, size_t return_size,
+                      const TaskConfigOptions &options,
+                      const char *task_name,
+                      const void *user_data, size_t user_data_size);
+      static const void* find_user_data(TaskID tid, VariantID vid);
       static LowLevel::ReductionOpTable& get_reduction_table(void);
     private:
+      friend class Mapper;
       Runtime *runtime;
     };
 
@@ -3969,13 +4469,25 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    inline void RegionRequirement::add_field(FieldID fid, 
+    inline RegionRequirement& RegionRequirement::add_field(FieldID fid, 
                                              bool instance/*= true*/)
     //--------------------------------------------------------------------------
     {
       privilege_fields.insert(fid);
       if (instance)
         instance_fields.push_back(fid);
+      return *this;
+    }
+
+    //--------------------------------------------------------------------------
+    inline RegionRequirement& RegionRequirement::add_fields(const std::vector<FieldID>& fids, 
+                                             bool instance/*= true*/)
+    //--------------------------------------------------------------------------
+    {
+      privilege_fields.insert(fids.begin(), fids.end());
+      if (instance)
+        instance_fields.insert(instance_fields.end(), fids.begin(), fids.end());
+      return *this;
     }
 
     //--------------------------------------------------------------------------
@@ -4197,6 +4709,22 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       arrive_barriers.push_back(bar);
+    }
+
+    //--------------------------------------------------------------------------
+    inline void MustEpochLauncher::add_single_task(const DomainPoint &point,
+                                                   const TaskLauncher &launcher)
+    //--------------------------------------------------------------------------
+    {
+      single_tasks.push_back(launcher);
+      single_tasks.back().point = point;
+    }
+
+    //--------------------------------------------------------------------------
+    inline void MustEpochLauncher::add_index_task(const IndexLauncher &launcher)
+    //--------------------------------------------------------------------------
+    {
+      index_tasks.push_back(launcher);
     }
 
     //--------------------------------------------------------------------------
@@ -4461,6 +4989,18 @@ namespace LegionRuntime {
       return HighLevelRuntime::register_partition_projection_function(
                                   handle, reinterpret_cast<void *>(PROJ_PTR));
     }
+
+    //--------------------------------------------------------------------------
+    template<unsigned DIM>
+    IndexSpace Mapper::get_index_subspace(IndexPartition p,
+                                          Arrays::Point<DIM> &color_point) const
+    //--------------------------------------------------------------------------
+    {
+      Arrays::Rect<DIM> color_space = 
+        get_index_partition_color_space(p).get_rect<DIM>();
+      Arrays::CArrayLinearization<DIM> color_space_lin(color_space);
+      return get_index_subspace(p, (Color)(color_space_lin.image(color_point)));
+    }
     
     //--------------------------------------------------------------------------
     // Wrapper functions for high-level tasks
@@ -4479,12 +5019,20 @@ namespace LegionRuntime {
         T (*TASK_PTR)(const Task*, const std::vector<PhysicalRegion>&,
                       Context, HighLevelRuntime*)>
       static void legion_task_wrapper(const void*, size_t, Processor);
+      template<typename T, typename UDT,
+        T (*TASK_PTR)(const Task*, const std::vector<PhysicalRegion>&,
+                      Context, HighLevelRuntime*, const UDT&)>
+      static void legion_udt_task_wrapper(const void*, size_t, Processor);
     public:
       // Void return type for new legion task types
       template<
         void (*TASK_PTR)(const Task*, const std::vector<PhysicalRegion>&,
-                      Context, HighLevelRuntime*)>
+                         Context, HighLevelRuntime*)>
       static void legion_task_wrapper(const void*, size_t, Processor);
+      template<typename UDT,
+        void (*TASK_PTR)(const Task*, const std::vector<PhysicalRegion>&,
+                         Context, HighLevelRuntime*, const UDT&)>
+      static void legion_udt_task_wrapper(const void*, size_t, Processor);
     public:
       // Non-void single task wrapper
       template<typename T,
@@ -4518,11 +5066,23 @@ namespace LegionRuntime {
       static void inline_task_wrapper(const Task*, 
           const std::vector<PhysicalRegion>&, Context, HighLevelRuntime*,
           void*&, size_t&);
+      template<typename T, typename UDT,
+        T (*TASK_PTR)(const Task*, const std::vector<PhysicalRegion>&,
+                      Context, HighLevelRuntime*, const UDT&)>
+      static void inline_udt_task_wrapper(const Task*,
+          const std::vector<PhysicalRegion>&, Context, HighLevelRuntime*,
+          void*&, size_t&);
     public:
       template<
         void (*TASK_PTR)(const Task*, const std::vector<PhysicalRegion>&,
                          Context, HighLevelRuntime*)>
       static void inline_task_wrapper(const Task*,
+          const std::vector<PhysicalRegion>&, Context, HighLevelRuntime*,
+          void*&, size_t&);
+      template<typename UDT,
+        void (*TASK_PTR)(const Task*, const std::vector<PhysicalRegion>&,
+                         Context, HighLevelRuntime*, const UDT&)>
+      static void inline_udt_task_wrapper(const Task*,
           const std::vector<PhysicalRegion>&, Context, HighLevelRuntime*,
           void*&, size_t&);
     public:
@@ -4607,6 +5167,68 @@ namespace LegionRuntime {
       const std::vector<PhysicalRegion> &regions = runtime->begin_task(ctx);
 
       (*TASK_PTR)(reinterpret_cast<Task*>(ctx), regions, ctx, runtime);
+
+      // Send an empty return value back
+      runtime->end_task(ctx, NULL, 0);
+    }
+
+    //--------------------------------------------------------------------------
+    template<typename T, typename UDT,
+      T (*TASK_PTR)(const Task*, const std::vector<PhysicalRegion>&,
+                    Context, HighLevelRuntime*, const UDT&)>
+    void LegionTaskWrapper::legion_udt_task_wrapper(const void *args,
+                                                    size_t arglen, Processor p)
+    //--------------------------------------------------------------------------
+    {
+      // Assert that we are returning Futures or FutureMaps
+      LEGION_STATIC_ASSERT((LegionTypeInequality<T,Future>::value));
+      LEGION_STATIC_ASSERT((LegionTypeInequality<T,FutureMap>::value));
+      // Assert that the return type size is within the required size
+      LEGION_STATIC_ASSERT(sizeof(T) <= MAX_RETURN_SIZE);
+      // Get the high level runtime
+      HighLevelRuntime *runtime = HighLevelRuntime::get_runtime(p);
+
+      // Read the context out of the buffer
+      Context ctx = *((const Context*)args);
+#ifdef DEBUG_HIGH_LEVEL
+      assert(arglen == sizeof(Context));
+#endif
+      Task *task = reinterpret_cast<Task*>(ctx);
+      const UDT *user_data = (const UDT *)HighLevelRuntime::find_user_data(
+                                     task->task_id, task->selected_variant);
+
+      const std::vector<PhysicalRegion> &regions = runtime->begin_task(ctx);
+
+      // Invoke the task with the given context
+      T return_value = (*TASK_PTR)(task, regions, ctx, runtime, *user_data);
+
+      // Send the return value back
+      LegionSerialization::end_task<T>(runtime, ctx, &return_value);
+    }
+
+    //--------------------------------------------------------------------------
+    template<typename UDT,
+      void (*TASK_PTR)(const Task*, const std::vector<PhysicalRegion>&,
+                       Context, HighLevelRuntime*, const UDT&)>
+    void LegionTaskWrapper::legion_udt_task_wrapper(const void *args,
+                                                    size_t arglen, Processor p)
+    //--------------------------------------------------------------------------
+    {
+      // Get the high level runtime
+      HighLevelRuntime *runtime = HighLevelRuntime::get_runtime(p);
+
+      // Read the context out of the buffer
+      Context ctx = *((const Context*)args);
+#ifdef DEBUG_HIGH_LEVEL
+      assert(arglen == sizeof(Context));
+#endif
+      Task *task = reinterpret_cast<Task*>(ctx);
+      const UDT *user_data = (const UDT *)HighLevelRuntime::find_user_data(
+                                     task->task_id, task->selected_variant);
+
+      const std::vector<PhysicalRegion> &regions = runtime->begin_task(ctx);
+
+      (*TASK_PTR)(task, regions, ctx, runtime, *user_data);
 
       // Send an empty return value back
       runtime->end_task(ctx, NULL, 0);
@@ -4779,6 +5401,52 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    template<typename T, typename UDT,
+      T (*TASK_PTR)(const Task*, const std::vector<PhysicalRegion>&,
+                    Context, HighLevelRuntime*, const UDT&)>
+    void LegionTaskWrapper::inline_udt_task_wrapper(const Task *task,
+          const std::vector<PhysicalRegion> &regions,
+          Context ctx, HighLevelRuntime *runtime,
+          void *&return_addr, size_t &return_size)
+    //--------------------------------------------------------------------------
+    {
+      // Assert that we aren't returning Futures or FutureMaps
+      LEGION_STATIC_ASSERT((LegionTypeInequality<T,Future>::value));
+      LEGION_STATIC_ASSERT((LegionTypeInequality<T,FutureMap>::value));
+      // Assert that the return type size is within the required size
+      LEGION_STATIC_ASSERT(sizeof(T) <= MAX_RETURN_SIZE);
+
+      const UDT *user_data = (const UDT *)HighLevelRuntime::find_user_data(
+                                     task->task_id, task->selected_variant);
+
+      T return_value = (*TASK_PTR)(task, regions, ctx, runtime, *user_data);
+
+      // Send the return value back, no need to pack it
+      return_size = sizeof(return_value);
+      return_addr = malloc(return_size);
+      memcpy(return_addr,&return_value,return_size);
+    }
+
+    //--------------------------------------------------------------------------
+    template<typename UDT,
+      void (*TASK_PTR)(const Task*, const std::vector<PhysicalRegion>&,
+                       Context, HighLevelRuntime*, const UDT&)>
+    void LegionTaskWrapper::inline_udt_task_wrapper(const Task *task,
+        const std::vector<PhysicalRegion> &regions,
+        Context ctx, HighLevelRuntime *runtime,
+        void *&return_addr, size_t &return_size)
+    //--------------------------------------------------------------------------
+    {
+      const UDT *user_data = (const UDT *)HighLevelRuntime::find_user_data(
+                                      task->task_id, task->selected_variant);
+
+      (*TASK_PTR)(task, regions, ctx, runtime, *user_data);
+
+      return_size = 0;
+      return_addr = 0;
+    }
+
+    //--------------------------------------------------------------------------
     template<typename T,
       T (*TASK_PTR)(const void*,size_t,const std::vector<RegionRequirement>&,
                   const std::vector<PhysicalRegion>&,Context,HighLevelRuntime*)>
@@ -4916,6 +5584,64 @@ namespace LegionRuntime {
         LegionTaskWrapper::legion_task_wrapper<TASK_PTR>, 
         LegionTaskWrapper::inline_task_wrapper<TASK_PTR>, id, proc_kind, 
                             single, index, vid, 0/*size*/, options, task_name);
+    }
+
+    //--------------------------------------------------------------------------
+    template<typename T, typename UDT,
+      T (*TASK_PTR)(const Task*, const std::vector<PhysicalRegion>&,
+                    Context, HighLevelRuntime*, const UDT&)>
+    /*static*/ TaskID HighLevelRuntime::register_legion_task(TaskID id,
+                                                    Processor::Kind proc_kind,
+                                                    bool single, bool index,
+                                                    const UDT &user_data,
+                                                    VariantID vid,
+                                                    TaskConfigOptions options,
+                                                    const char *task_name)
+    //--------------------------------------------------------------------------
+    {
+      if (task_name == NULL)
+      {
+        // Has no name, so just call it by its number
+        char *buffer = (char*)malloc(32*sizeof(char));
+        sprintf(buffer,"%d",id);
+        task_name = buffer;
+      }
+      else
+        task_name = strdup(task_name);
+      return HighLevelRuntime::update_collection_table(
+        LegionTaskWrapper::legion_udt_task_wrapper<T,UDT,TASK_PTR>,
+        LegionTaskWrapper::inline_udt_task_wrapper<T,UDT,TASK_PTR>, id, 
+                              proc_kind, single, index, vid, sizeof(T), 
+                              options, task_name, &user_data, sizeof(UDT));
+    }
+
+    //--------------------------------------------------------------------------
+    template<typename UDT,
+      void (*TASK_PTR)(const Task*, const std::vector<PhysicalRegion>&,
+                       Context, HighLevelRuntime*, const UDT&)>
+    /*static*/ TaskID HighLevelRuntime::register_legion_task(TaskID id,
+                                                    Processor::Kind proc_kind,
+                                                    bool single, bool index,
+                                                    const UDT &user_data,
+                                                    VariantID vid,
+                                                    TaskConfigOptions options,
+                                                    const char *task_name)
+    //--------------------------------------------------------------------------
+    {
+      if (task_name == NULL)
+      {
+        // Has no name, so just call it by its number
+        char *buffer = (char*)malloc(32*sizeof(char));
+        sprintf(buffer,"%d",id);
+        task_name = buffer;
+      }
+      else
+        task_name = strdup(task_name);
+      return HighLevelRuntime::update_collection_table(
+        LegionTaskWrapper::legion_udt_task_wrapper<UDT,TASK_PTR>,
+        LegionTaskWrapper::inline_udt_task_wrapper<UDT,TASK_PTR>, id, proc_kind,
+                                         single, index, vid, 0/*size*/, options, 
+                                         task_name, &user_data, sizeof(UDT));
     }
 
     //--------------------------------------------------------------------------

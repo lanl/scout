@@ -1,4 +1,4 @@
-/* Copyright 2013 Stanford University
+/* Copyright 2014 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -61,6 +61,9 @@ namespace LegionRuntime {
       virtual bool map_task(Task *task);
       virtual bool map_copy(Copy *copy);
       virtual bool map_inline(Inline *inline_operation);
+      virtual bool map_must_epoch(const std::vector<Task*> &tasks,
+                            const std::vector<MappingConstraint> &constraints,
+                            MappingTagID tag);
       virtual void notify_mapping_result(const Mappable *mappable);
       virtual void notify_mapping_failed(const Mappable *mappable);
       virtual bool rank_copy_targets(const Mappable *mappable,
@@ -79,6 +82,12 @@ namespace LegionRuntime {
       virtual void notify_profiling_info(const Task *task);
       virtual bool speculate_on_predicate(const Task *task,
                                           bool &spec_value);
+      virtual int get_tunable_value(const Task *task, 
+                                    TunableID tid,
+                                    MappingTagID tag);
+      virtual void handle_message(Processor source,
+                                  const void *message,
+                                  size_t length);
     public:
       // Helper methods for building other kinds of mappers, made static 
       // so they can be used in non-derived classes
@@ -92,7 +101,6 @@ namespace LegionRuntime {
                               unsigned splitting_factor, 
                               std::vector<Mapper::DomainSplit> &slice);
     protected:
-      HighLevelRuntime *const runtime;
       const Processor local_proc;
       const Processor::Kind local_kind;
       Machine *const machine;

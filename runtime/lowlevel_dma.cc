@@ -1,4 +1,4 @@
-/* Copyright 2013 Stanford University
+/* Copyright 2014 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +14,9 @@
  */
 
 #include "lowlevel_dma.h"
+#ifdef USE_CUDA
 #include "lowlevel_gpu.h"
+#endif
 #include "accessor.h"
 
 #include <queue>
@@ -35,6 +37,8 @@ using namespace LegionRuntime::Accessor;
 using namespace LegionRuntime::HighLevel::LegionLogging;
 #endif
 
+#include "atomics.h"
+
 namespace LegionRuntime {
   namespace LowLevel {
 
@@ -51,66 +55,310 @@ namespace LegionRuntime {
 
     class MemPairCopier;
 
-    class DmaRequest : public Event::Impl::EventWaiter {
-    public:
-      DmaRequest(const Domain& _domain,
-		 OASByInst *_oas_by_inst,
-		 ReductionOpID _redop_id, bool _red_fold,
-		 Event _before_copy,
-		 Event _after_copy,
-                 int priority);
+    class DmaRequest;
 
-      ~DmaRequest(void);
+    class DmaRequestQueue {
+    public:
+      DmaRequestQueue(void);
+
+      void enqueue_request(DmaRequest *r);
+
+      DmaRequest *dequeue_request(bool sleep = true);
+
+      void shutdown_queue(void);
+
+    protected:
+      gasnet_hsl_t queue_mutex;
+      gasnett_cond_t queue_condvar;
+      std::map<int, std::list<DmaRequest *> *> queues;
+      int queue_sleepers;
+      bool shutdown_flag;
+    };
+
+    class DmaRequest {
+    public:
+      DmaRequest(int _priority, Event _after_copy) 
+	: state(STATE_INIT), priority(_priority), after_copy(_after_copy) {}
+
+      virtual ~DmaRequest(void) {}
+
+      virtual bool check_readiness(bool just_check, DmaRequestQueue *rq) = 0;
+
+      virtual bool handler_safe(void) = 0;
+
+      virtual void perform_dma(void) = 0;
 
       enum State {
 	STATE_INIT,
 	STATE_METADATA_FETCH,
 	STATE_BEFORE_EVENT,
+	STATE_INST_LOCK,
 	STATE_READY,
 	STATE_QUEUED,
 	STATE_DONE
       };
 
-      virtual bool event_triggered(void);
-      virtual void print_info(void);
+      State state;
+      int priority;
+      Event after_copy;
 
-      bool check_readiness(bool just_check);
+      class Waiter : public Event::Impl::EventWaiter {
+      public:
+	Reservation current_lock;
+	DmaRequestQueue *queue;
+	DmaRequest *req;
+
+	void sleep_on_event(Event e, Reservation l = Reservation::NO_RESERVATION);
+
+	virtual bool event_triggered(void);
+	virtual void print_info(FILE *f);
+      };
+    };
+
+    // dma requests come in two flavors:
+    // 1) CopyRequests, which are per memory pair, and
+    // 2) ReduceRequests, which have to be handled monolithically
+
+    class CopyRequest : public DmaRequest {
+    public:
+      CopyRequest(const Domain& _domain,
+		  OASByInst *_oas_by_inst,
+		  Event _before_copy,
+		  Event _after_copy,
+		  int _priority);
+
+      CopyRequest(const void *data, size_t datalen,
+		  Event _before_copy,
+		  Event _after_copy,
+		  int _priority);
+
+      ~CopyRequest(void);
+
+      size_t serialize(void *buffer, size_t maxlen);
+
+      virtual bool check_readiness(bool just_check, DmaRequestQueue *rq);
+
+      void perform_dma_mask(MemPairCopier *mpc);
 
       template <unsigned DIM>
       void perform_dma_rect(MemPairCopier *mpc);
 
-      void perform_dma(void);
+      virtual void perform_dma(void);
 
-      bool handler_safe(void) { return(true); }
+      virtual bool handler_safe(void) { return(false); }
 
       Domain domain;
       OASByInst *oas_by_inst;
+      Event before_copy;
+      Waiter waiter; // if we need to wait on events
+    };
+
+    class ReduceRequest : public DmaRequest {
+    public:
+      ReduceRequest(const Domain& _domain,
+		    const std::vector<Domain::CopySrcDstField>& _srcs,
+		    const Domain::CopySrcDstField& _dst,
+		    bool _inst_lock_needed,
+		    ReductionOpID _redop_id,
+		    bool _red_fold,
+		    Event _before_copy,
+		    Event _after_copy,
+		    int _priority);
+
+      ReduceRequest(const void *data, size_t datalen,
+		    ReductionOpID _redop_id,
+		    bool _red_fold,
+		    Event _before_copy,
+		    Event _after_copy,
+		    int _priority);
+
+      ~ReduceRequest(void);
+
+      size_t serialize(void *buffer, size_t maxlen);
+
+      virtual bool check_readiness(bool just_check, DmaRequestQueue *rq);
+
+      void perform_dma_mask(MemPairCopier *mpc);
+
+      template <unsigned DIM>
+      void perform_dma_rect(MemPairCopier *mpc);
+
+      virtual void perform_dma(void);
+
+      virtual bool handler_safe(void) { return(false); }
+
+      Domain domain;
+      std::vector<Domain::CopySrcDstField> srcs;
+      Domain::CopySrcDstField dst;
+      bool inst_lock_needed;
+      Event inst_lock_event;
       ReductionOpID redop_id;
       bool red_fold;
       Event before_copy;
-      Event after_copy;
-      State state;
-      Reservation current_lock;
-      int priority;
+      Waiter waiter; // if we need to wait on events
     };
 
-    gasnet_hsl_t queue_mutex;
-    gasnett_cond_t queue_condvar;
-    std::list<DmaRequest *> dma_queue;
-    
-    DmaRequest::DmaRequest(const Domain& _domain,
-			   OASByInst *_oas_by_inst,
-			   ReductionOpID _redop_id, bool _red_fold,
-			   Event _before_copy,
-			   Event _after_copy,
-                           int _priority)
-      : domain(_domain), oas_by_inst(_oas_by_inst),
-	redop_id(_redop_id), red_fold(_red_fold),
-	before_copy(_before_copy), after_copy(_after_copy),
-	state(STATE_INIT), 
-        current_lock(Reservation::NO_RESERVATION), priority(_priority)
+    DmaRequestQueue::DmaRequestQueue(void)
     {
-      log_dma.info("dma request %p created - %x[%d]->%x[%d]:%d (+%zd) (%x) %x/%d %x/%d",
+      gasnet_hsl_init(&queue_mutex);
+      gasnett_cond_init(&queue_condvar);
+      queue_sleepers = 0;
+      shutdown_flag = false;
+    }
+
+    void DmaRequestQueue::shutdown_queue(void)
+    {
+      gasnet_hsl_lock(&queue_mutex);
+
+      assert(queues.empty());
+
+      // set the shutdown flag and wake up any sleepers
+      shutdown_flag = true;
+
+      gasnett_cond_broadcast(&queue_condvar);
+
+      gasnet_hsl_unlock(&queue_mutex);
+    }
+
+    void DmaRequestQueue::enqueue_request(DmaRequest *r)
+    {
+      gasnet_hsl_lock(&queue_mutex);
+
+      // there's a queue per priority level
+      // priorities are negated so that the highest logical priority comes first
+      int p = -r->priority;
+      std::map<int, std::list<DmaRequest *> *>::iterator it = queues.find(p);
+      if(it == queues.end()) {
+	// nothing at this priority level - make a new list
+	std::list<DmaRequest *> *l = new std::list<DmaRequest *>;
+	l->push_back(r);
+	queues[p] = l;
+      } else {
+	// push ourselves onto the back of the existing queue
+	it->second->push_back(r);
+      }
+
+      // if anybody was sleeping, wake them up
+      if(queue_sleepers > 0) {
+	queue_sleepers = 0;
+	gasnett_cond_broadcast(&queue_condvar);
+      }
+
+      gasnet_hsl_unlock(&queue_mutex);
+    }
+
+    DmaRequest *DmaRequestQueue::dequeue_request(bool sleep /*= true*/)
+    {
+      gasnet_hsl_lock(&queue_mutex);
+
+      // quick check - are there any requests at all?
+      while(queues.empty()) {
+	if(!sleep || shutdown_flag) {
+	  gasnet_hsl_unlock(&queue_mutex);
+	  return 0;
+	}
+
+	// sleep until there are, or until shutdown
+	queue_sleepers++;
+	gasnett_cond_wait(&queue_condvar, &queue_mutex.lock);
+      }
+
+      // grab the first request from the highest-priority queue there is
+      // priorities are negated so that the highest logical priority comes first
+      std::map<int, std::list<DmaRequest *> *>::iterator it = queues.begin();
+      assert(!it->second->empty());
+      DmaRequest *r = it->second->front();
+      it->second->pop_front();
+      // if queue is empty, delete from list
+      if(it->second->empty()) {
+	delete it->second;
+	queues.erase(it);
+      }
+
+      gasnet_hsl_unlock(&queue_mutex);
+      
+      return r;
+    }
+
+    CopyRequest::CopyRequest(const Domain& _domain,
+			     OASByInst *_oas_by_inst,
+			     Event _before_copy,
+			     Event _after_copy,
+			     int _priority)
+      : DmaRequest(_priority, _after_copy),
+	domain(_domain), oas_by_inst(_oas_by_inst),
+	before_copy(_before_copy)
+    {
+      log_dma.info("dma request %p created - " IDFMT "[%d]->" IDFMT "[%d]:%d (+%zd) (" IDFMT ") " IDFMT "/%d " IDFMT "/%d",
+		   this,
+		   oas_by_inst->begin()->first.first.id, 
+		   oas_by_inst->begin()->second[0].src_offset,
+		   oas_by_inst->begin()->first.second.id, 
+		   oas_by_inst->begin()->second[0].dst_offset,
+		   oas_by_inst->begin()->second[0].size,
+		   oas_by_inst->size() - 1,
+		   domain.is_id,
+		   before_copy.id, before_copy.gen,
+		   after_copy.id, after_copy.gen);
+
+#ifdef LEGION_LOGGING
+      log_timing_event(Processor::NO_PROC, after_copy, COPY_INIT);
+#endif
+    }
+
+    CopyRequest::CopyRequest(const void *data, size_t datalen,
+			     Event _before_copy,
+			     Event _after_copy,
+			     int _priority)
+      : DmaRequest(_priority, _after_copy),
+	oas_by_inst(0),
+	before_copy(_before_copy)
+    {
+      const IDType *idata = (const IDType *)data;
+
+      idata = domain.deserialize(idata);
+
+      oas_by_inst = new OASByInst;
+
+      int priority = 0;
+
+      while(((idata - ((const IDType *)data))*sizeof(IDType)) < datalen) {
+	RegionInstance src_inst = ID((IDType)*idata++).convert<RegionInstance>();
+	RegionInstance dst_inst = ID((IDType)*idata++).convert<RegionInstance>();
+	InstPair ip(src_inst, dst_inst);
+
+#ifdef USE_CUDA
+        // If either one of the instances is in GPU memory increase priority
+        if (priority == 0)
+        {
+          Memory::Impl::MemoryKind src_kind = src_inst.impl()->memory.impl()->kind;
+          if (src_kind == Memory::Impl::MKIND_GPUFB)
+            priority = 1;
+          else
+          {
+            Memory::Impl::MemoryKind dst_kind = dst_inst.impl()->memory.impl()->kind;
+            if (dst_kind == Memory::Impl::MKIND_GPUFB)
+              priority = 1;
+          }
+        }
+#endif
+
+	OASVec& oasvec = (*oas_by_inst)[ip];
+
+	unsigned count = *idata++;
+	for(unsigned i = 0; i < count; i++) {
+	  OffsetsAndSize oas;
+	  oas.src_offset = *idata++;
+	  oas.dst_offset = *idata++;
+	  oas.size = *idata++;
+	  oasvec.push_back(oas);
+	}
+      }
+
+      // better have consumed exactly the right amount of data
+      assert(((idata - ((const IDType *)data))*sizeof(IDType)) == datalen);
+
+      log_dma.info("dma request %p deserialized - " IDFMT "[%d]->" IDFMT "[%d]:%d (+%zd) (" IDFMT ") " IDFMT "/%d " IDFMT "/%d",
 		   this,
 		   oas_by_inst->begin()->first.first.id, 
 		   oas_by_inst->begin()->second[0].src_offset,
@@ -123,14 +371,49 @@ namespace LegionRuntime {
 		   after_copy.id, after_copy.gen);
     }
 
-    DmaRequest::~DmaRequest(void)
+    CopyRequest::~CopyRequest(void)
     {
       delete oas_by_inst;
     }
 
-    bool DmaRequest::event_triggered(void)
+    size_t CopyRequest::serialize(void *buffer, size_t maxlen)
     {
-      log_dma.info("request %p triggered in state %d (lock = %x)", this, state, current_lock.id);
+      // domain info goes first
+      IDType *msgptr = domain.serialize((IDType *)buffer);
+
+      // now OAS vectors
+      for(OASByInst::iterator it2 = oas_by_inst->begin(); it2 != oas_by_inst->end(); it2++) {
+	RegionInstance src_inst = it2->first.first;
+	RegionInstance dst_inst = it2->first.second;
+	OASVec& oasvec = it2->second;
+
+	*msgptr++ = src_inst.id;
+	*msgptr++ = dst_inst.id;
+	*msgptr++ = oasvec.size();
+	for(OASVec::iterator it3 = oasvec.begin(); it3 != oasvec.end(); it3++) {
+	  *msgptr++ = it3->src_offset;
+	  *msgptr++ = it3->dst_offset;
+	  *msgptr++ = it3->size;
+	}
+      }
+
+      size_t msglen = ((const char *)msgptr) - ((const char *)buffer);
+      assert(msglen <= maxlen); // TODO: maybe detect _before_ overrunning?
+
+      return msglen;
+    }
+
+    void DmaRequest::Waiter::sleep_on_event(Event e, 
+					    Reservation l /*= Reservation::NO_RESERVATION*/)
+    {
+      current_lock = l;
+      e.impl()->add_waiter(e, this);
+    }
+
+    bool DmaRequest::Waiter::event_triggered(void)
+    {
+      log_dma.info("request %p triggered in state %d (lock = " IDFMT ")",
+		   req, req->state, current_lock.id);
 
       if(current_lock.exists()) {
 	current_lock.release();
@@ -139,21 +422,26 @@ namespace LegionRuntime {
 
       // this'll enqueue the DMA if it can, or wait on another event if it 
       //  can't
-      check_readiness(false);
+      req->check_readiness(false, queue);
 
       // don't delete us!
       return false;
     }
 
-    void DmaRequest::print_info(void)
+    void DmaRequest::Waiter::print_info(FILE *f)
     {
-      printf("dma request %p", this);
+      fprintf(f,"dma request %p: after " IDFMT "/%d\n", 
+	      req, req->after_copy.id, req->after_copy.gen);
     }
 
-    bool DmaRequest::check_readiness(bool just_check)
+    bool CopyRequest::check_readiness(bool just_check, DmaRequestQueue *rq)
     {
       if(state == STATE_INIT)
 	state = STATE_METADATA_FETCH;
+
+      // remember which queue we're going to be assigned to if we sleep
+      waiter.req = this;
+      waiter.queue = rq;
 
       // make sure our node has all the meta data it needs, but don't take more than one lock
       //  at a time
@@ -170,12 +458,21 @@ namespace LegionRuntime {
 	      log_dma.info("request %p - index space metadata invalid - instant trigger", this);
 	      is_impl->lock.release();
 	    } else {
-	      current_lock = is_impl->lock.me;
-	      log_dma.info("request %p - index space metadata invalid - sleeping on lock %x", this, current_lock.id);
-	      e.impl()->add_waiter(e, this);
+	      log_dma.info("request %p - index space metadata invalid - sleeping on lock " IDFMT "", this, is_impl->lock.me.id);
+	      waiter.sleep_on_event(e, is_impl->lock.me);
 	      return false;
 	    }
 	  }
+
+          // we need more than just the metadata - we also need the valid mask
+          {
+            Event e = is_impl->request_valid_mask();
+            if(!e.has_triggered()) {
+              log_dma.info("request %p - valid mask needed for index space " IDFMT " - sleeping on event " IDFMT "/%d", this, domain.get_index_space().id, e.id, e.gen);
+	      waiter.sleep_on_event(e);
+              return false;
+            }
+          }
 	}
 
 	// now go through all instance pairs
@@ -184,7 +481,7 @@ namespace LegionRuntime {
 	  RegionInstance::Impl *dst_impl = it->first.second.impl();
 
 	  if(!src_impl->locked_data.valid) {
-	    log_dma.info("dma request %p - no src instance (%x) metadata yet", this, it->first.first.id);
+	    log_dma.info("dma request %p - no src instance (" IDFMT ") metadata yet", this, it->first.first.id);
 	    if(just_check) return false;
 
 	    Event e = src_impl->lock.acquire(1, false);
@@ -192,9 +489,8 @@ namespace LegionRuntime {
 	      log_dma.info("request %p - src instance metadata invalid - instant trigger", this);
 	      src_impl->lock.release();
 	    } else {
-	      current_lock = src_impl->lock.me;
-	      log_dma.info("request %p - src instance metadata invalid - sleeping on lock %x", this, current_lock.id);
-	      e.impl()->add_waiter(e, this);
+	      log_dma.info("request %p - src instance metadata invalid - sleeping on lock " IDFMT "", this, src_impl->lock.me.id);
+	      waiter.sleep_on_event(e, src_impl->lock.me);
 	      return false;
 	    }
 	  }
@@ -204,7 +500,7 @@ namespace LegionRuntime {
 	  }
 
 	  if(!dst_impl->locked_data.valid) {
-	    log_dma.info("dma request %p - no dst instance (%x) metadata yet", this, it->first.second.id);
+	    log_dma.info("dma request %p - no dst instance (" IDFMT ") metadata yet", this, it->first.second.id);
 	    if(just_check) return false;
 
 	    Event e = dst_impl->lock.acquire(1, false);
@@ -212,9 +508,8 @@ namespace LegionRuntime {
 	      log_dma.info("request %p - dst instance metadata invalid - instant trigger", this);
 	      dst_impl->lock.release();
 	    } else {
-	      current_lock = dst_impl->lock.me;
-	      log_dma.info("request %p - dst instance metadata invalid - sleeping on lock %x", this, current_lock.id);
-	      e.impl()->add_waiter(e, this);
+	      log_dma.info("request %p - dst instance metadata invalid - sleeping on lock " IDFMT "", this, dst_impl->lock.me.id);
+	      waiter.sleep_on_event(e, dst_impl->lock.me);
 	      return false;
 	    }
 	  }
@@ -239,7 +534,7 @@ namespace LegionRuntime {
 	  if(just_check) return false;
 
 	  log_dma.info("request %p - sleeping on before event", this);
-	  before_copy.impl()->add_waiter(before_copy, this);
+	  waiter.sleep_on_event(before_copy);
 	  return false;
 	}
       }
@@ -248,41 +543,18 @@ namespace LegionRuntime {
 	log_dma.info("request %p ready", this);
 	if(just_check) return true;
 
-	// enqueue ourselves for execution
-	gasnet_hsl_lock(&queue_mutex);
-        // Find the right place to insert this based on the priority
-        // Common case: if the guy on the back has our priority or higher
-        // then we can just put us on the back
-        if (dma_queue.empty() || (dma_queue.back()->priority >= this->priority))
-          dma_queue.push_back(this);
-        else
-        {
-          // Uncommon case: go through the list until we find someone
-          // who has a priority lower than ours.  We know they
-          // exist since we saw them on the back.
-          bool inserted = false;
-          for (std::list<DmaRequest*>::iterator it = dma_queue.begin();
-                it != dma_queue.end(); it++)
-          {
-            if ((*it)->priority < this->priority)
-            {
-              dma_queue.insert(it, this);
-              inserted = true;
-              break;
-            }
-          }
-          // Technically don't need this, but just to be safe
-          if (!inserted)
-            dma_queue.push_back(this);
-        }
 	state = STATE_QUEUED;
-	gasnett_cond_signal(&queue_condvar);
-	gasnet_hsl_unlock(&queue_mutex);
+	assert(rq != 0);
 	log_dma.info("request %p enqueued", this);
 
 #ifdef LEGION_LOGGING
 	log_timing_event(Processor::NO_PROC, after_copy, COPY_READY);
 #endif
+
+	// once we're enqueued, we may be deleted at any time, so no more
+	//  references
+	rq->enqueue_request(this);
+	return true;
       }
 
       if(state == STATE_QUEUED)
@@ -292,13 +564,36 @@ namespace LegionRuntime {
     }
 
     // defined in lowlevel.cc
-    extern void do_remote_write(Memory mem, off_t offset,
-				const void *data, size_t datalen,
-				Event event, bool make_copy = false);
+    extern unsigned do_remote_write(Memory mem, off_t offset,
+				    const void *data, size_t datalen,
+				    unsigned sequence_id,
+				    Event event, bool make_copy = false);
 
-    extern void do_remote_apply_red_list(int node, Memory mem, off_t offset,
-					 ReductionOpID redopid,
-					 const void *data, size_t datalen);
+    extern unsigned do_remote_write(Memory mem, off_t offset,
+				    const void *data, size_t datalen,
+				    off_t stride, size_t lines,
+				    unsigned sequence_id,
+				    Event event, bool make_copy = false);
+    
+    extern unsigned do_remote_write(Memory mem, off_t offset,
+				    const SpanList& spans, size_t datalen,
+				    unsigned sequence_id,
+				    Event event, bool make_copy = false);
+
+    extern unsigned do_remote_reduce(Memory mem, off_t offset,
+				     ReductionOpID redop_id, bool red_fold,
+				     const void *data, size_t count,
+				     off_t src_stride, off_t dst_stride,
+				     unsigned sequence_id,
+				     Event event, bool make_copy = false);				     
+
+    extern unsigned do_remote_apply_red_list(int node, Memory mem, off_t offset,
+					     ReductionOpID redopid,
+					     const void *data, size_t datalen,
+					     unsigned sequence_id,
+					     Event event);
+
+    extern void do_remote_fence(Memory mem, unsigned sequence_id, unsigned count, Event event);
 
     extern ReductionOpTable reduce_op_table;
 
@@ -479,7 +774,7 @@ namespace LegionRuntime {
 		} else {
 		  do_remote_apply_red_list(i, tgt_mem->me, tgt_offset,
 					   redopid, 
-					   entry_buffer, pos * redop->sizeof_list_entry);
+					   entry_buffer, pos * redop->sizeof_list_entry, 0, Event::NO_EVENT);
 		}
 		pos = 0;
 	      }
@@ -491,7 +786,7 @@ namespace LegionRuntime {
 	      } else {
 		do_remote_apply_red_list(i, tgt_mem->me, tgt_offset,
 					 redopid, 
-					 entry_buffer, pos * redop->sizeof_list_entry);
+					 entry_buffer, pos * redop->sizeof_list_entry, 0, Event::NO_EVENT);
 	      }
 	    }
 	  }
@@ -653,7 +948,7 @@ namespace LegionRuntime {
 	  DetailedTimer::ScopedPush sp(TIME_SYSTEM);
 	  do_remote_write(tgt_mem, tgt_offset + byte_offset,
 			  src_ptr + byte_offset, byte_count,
-			  last ? event : Event::NO_EVENT);
+			  0, last ? event : Event::NO_EVENT);
 	}
 
 	Memory tgt_mem;
@@ -671,6 +966,20 @@ namespace LegionRuntime {
     public:
       virtual void copy_field(int src_index, int dst_index, int elem_count,
                               unsigned offset_index) = 0;
+
+      virtual void copy_all_fields(int src_index, int dst_index, int elem_count) = 0;
+
+      virtual void copy_all_fields(int src_index, int dst_index, int count_per_line,
+				   int src_stride, int dst_stride, int lines)
+      {
+	// default implementation is just to iterate over lines
+	for(int i = 0; i < lines; i++) {
+	  copy_all_fields(src_index, dst_index, count_per_line);
+	  src_index += src_stride;
+	  dst_index += dst_stride;
+	}
+      }
+
       virtual void flush(void) = 0;
     };
 
@@ -726,12 +1035,19 @@ namespace LegionRuntime {
         dst_start.resize(oas_vec.size());
         src_size.resize(oas_vec.size());
         dst_size.resize(oas_vec.size());
+	partial_field.resize(oas_vec.size());
         for (unsigned idx = 0; idx < oas_vec.size(); idx++)
         {
           find_field_start(src_idata->field_sizes, oas_vec[idx].src_offset,
                             oas_vec[idx].size, src_start[idx], src_size[idx]);
           find_field_start(dst_idata->field_sizes, oas_vec[idx].dst_offset,
                             oas_vec[idx].size, dst_start[idx], dst_size[idx]);
+
+	  // mark an OASVec entry as being "partial" if src and/or dst don't fill the whole instance field
+	  partial_field[idx] = ((src_start[idx] != oas_vec[idx].src_offset) ||
+				(src_size[idx] != oas_vec[idx].size) ||
+				(dst_start[idx] != oas_vec[idx].dst_offset) ||
+				(dst_size[idx] != oas_vec[idx].size));
         }
       }
 
@@ -783,6 +1099,9 @@ namespace LegionRuntime {
 				dst_idata->block_size, dst_index + done + todo - 1) == 
 		   (dst_start + (todo - 1) * bytes));
 
+#ifdef NEW2D_DEBUG
+	    printf("ZZZ: %zd %zd %d\n", src_start, dst_start, bytes * todo);
+#endif
 	    span_copier->copy_span(src_start, dst_start, bytes * todo);
 	    //src_mem->get_bytes(src_start, buffer, bytes * todo);
 	    //dst_mem->put_bytes(dst_start, buffer, bytes * todo);
@@ -799,10 +1118,280 @@ namespace LegionRuntime {
 					   dst_field_start, dst_field_size, dst_idata->elmt_size,
 					   dst_idata->block_size, dst_index + i);
 
+#ifdef NEW2D_DEBUG
+	    printf("ZZZ: %zd %zd %d\n", src_start, dst_start, bytes);
+#endif
 	    span_copier->copy_span(src_start, dst_start, bytes);
 	    //src_mem->get_bytes(src_start, buffer, bytes);
 	    //dst_mem->put_bytes(dst_start, buffer, bytes);
 	  }
+	}
+      }
+
+      virtual void copy_all_fields(int src_index, int dst_index, int elem_count)
+      {
+	// first check - if the span we're copying straddles a block boundary
+	//  go back to old way - block size of 1 is ok only if both are
+	StaticAccess<RegionInstance::Impl> src_idata(src_inst);
+	StaticAccess<RegionInstance::Impl> dst_idata(dst_inst);
+
+	size_t src_bsize = src_idata->block_size;
+	size_t dst_bsize = dst_idata->block_size;
+
+	if(((src_bsize == 1) != (dst_bsize == 1)) ||
+	   ((src_bsize > 1) && ((src_index / src_bsize) != ((src_index + elem_count - 1) / src_bsize))) ||
+	   ((dst_bsize > 1) && ((dst_index / dst_bsize) != ((dst_index + elem_count - 1) / dst_bsize)))) {
+	  printf("copy straddles block boundaries - falling back\n");
+	  for(unsigned i = 0; i < oas_vec.size(); i++)
+	    copy_field(src_index, dst_index, elem_count, i);
+	  return;
+	}
+
+	// start with the first field, grabbing as many at a time as we can
+
+	unsigned field_idx = 0;
+
+	while(field_idx < oas_vec.size()) {
+	  // get information about the first field
+	  unsigned src_offset = oas_vec[field_idx].src_offset;
+	  unsigned dst_offset = oas_vec[field_idx].dst_offset;
+	  unsigned bytes = oas_vec[field_idx].size;
+
+	  // if src and/or dst aren't a full field, fall back to the old way for this field
+	  int src_field_start = src_start[field_idx];
+	  int src_field_size = src_size[field_idx];
+	  int dst_field_start = dst_start[field_idx];
+	  int dst_field_size = dst_size[field_idx];
+
+	  if(partial_field[field_idx]) {
+	    printf("not a full field - falling back\n");
+	    copy_field(src_index, dst_index, elem_count, field_idx);
+	    field_idx++;
+	    continue;
+	  }
+
+	  // see if we can tack on more fields
+	  unsigned field_idx2 = field_idx + 1;
+	  int src_fstride = 0;
+	  int dst_fstride = 0;
+	  unsigned total_bytes = bytes;
+	  unsigned total_lines = 1;
+	  while(field_idx2 < oas_vec.size()) {
+	    // TODO: for now, don't merge fields here because it can result in too-large copies
+	    break;
+
+	    // is this a partial field?  if so, stop
+	    if(partial_field[field_idx2])
+	      break;
+
+	    unsigned src_offset2 = oas_vec[field_idx2].src_offset;
+	    unsigned dst_offset2 = oas_vec[field_idx2].dst_offset;
+
+	    // test depends on AOS (bsize == 1) vs (hybrid)SOA (bsize > 1)
+	    if(src_bsize == 1) {
+	      // for AOS, we need this field's offset to be the next byte
+	      if((src_offset2 != (src_offset + total_bytes)) ||
+		 (dst_offset2 != (dst_offset + total_bytes)))
+		break;
+
+	      // if tests pass, add this field's size to our total and keep going
+	      total_bytes += oas_vec[field_idx2].size;
+	    } else {
+	      // in SOA, we need the field's strides to match, but non-contiguous is ok
+	      // first stride will be ok by construction
+	      int src_fstride2 = src_offset2 - src_offset;
+	      int dst_fstride2 = dst_offset2 - dst_offset;
+	      if(src_fstride == 0) src_fstride = src_fstride2;
+	      if(dst_fstride == 0) dst_fstride = dst_fstride2;
+	      if((src_fstride2 != (field_idx2 - field_idx) * src_fstride) ||
+		 (dst_fstride2 != (field_idx2 - field_idx) * dst_fstride))
+		break;
+
+	      // if tests pass, we have another line
+	      total_lines++;
+	    }
+
+	    field_idx2++;
+	  }
+
+	  // now we can copy something
+	  off_t src_start = calc_mem_loc(src_idata->alloc_offset + (src_offset - src_field_start),
+					 src_field_start, src_field_size, src_idata->elmt_size,
+					 src_idata->block_size, src_index);
+	  off_t dst_start = calc_mem_loc(dst_idata->alloc_offset + (dst_offset - dst_field_start),
+					 dst_field_start, dst_field_size, dst_idata->elmt_size,
+					 dst_idata->block_size, dst_index);
+
+	  // AOS merging doesn't work if we don't end up with the full element
+	  if((src_bsize == 1) && 
+	     ((total_bytes < src_idata->elmt_size) || (total_bytes < dst_idata->elmt_size)) &&
+	     (elem_count > 1)) {
+	    printf("help: AOS tried to merge subset of fields with multiple elements - not contiguous!\n");
+	    assert(0);
+	  }
+
+#ifdef NEW2D_DEBUG
+	  printf("AAA: %d %d %d, %d-%d -> %zd %zd %d, %zd %zd %d\n",
+		 src_index, dst_index, elem_count, field_idx, field_idx2-1,
+		 src_start, dst_start, elem_count * total_bytes,
+		 src_fstride * src_bsize,
+		 dst_fstride * dst_bsize,
+		 total_lines);
+#endif
+	  span_copier->copy_span(src_start, dst_start, elem_count * total_bytes,
+				 src_fstride * src_bsize,
+				 dst_fstride * dst_bsize,
+				 total_lines);
+
+	  // continue with the first field we couldn't take for this pass
+	  field_idx = field_idx2;
+	}
+      }
+
+      virtual void copy_all_fields(int src_index, int dst_index, int count_per_line,
+				   int src_stride, int dst_stride, int lines)
+      {
+	// first check - if the span we're copying straddles a block boundary
+	//  go back to old way - block size of 1 is ok only if both are
+	StaticAccess<RegionInstance::Impl> src_idata(src_inst);
+	StaticAccess<RegionInstance::Impl> dst_idata(dst_inst);
+
+	size_t src_bsize = src_idata->block_size;
+	size_t dst_bsize = dst_idata->block_size;
+
+	int src_last = src_index + (count_per_line - 1) + (lines - 1) * src_stride;
+	int dst_last = dst_index + (count_per_line - 1) + (lines - 1) * dst_stride;
+
+	if(((src_bsize == 1) != (dst_bsize == 1)) ||
+	   ((src_bsize > 1) && ((src_index / src_bsize) != (src_last / src_bsize))) ||
+	   ((dst_bsize > 1) && ((dst_index / dst_bsize) != (dst_last / dst_bsize)))) {
+	  printf("copy straddles block boundaries - falling back\n");
+	  for(unsigned i = 0; i < oas_vec.size(); i++)
+	    for(int l = 0; l < lines; l++)
+	      copy_field(src_index + l * src_stride, 
+			 dst_index + l * dst_stride, count_per_line, i);
+	  return;
+	}
+
+	// start with the first field, grabbing as many at a time as we can
+
+	unsigned field_idx = 0;
+
+	while(field_idx < oas_vec.size()) {
+	  // get information about the first field
+	  unsigned src_offset = oas_vec[field_idx].src_offset;
+	  unsigned dst_offset = oas_vec[field_idx].dst_offset;
+	  unsigned bytes = oas_vec[field_idx].size;
+
+	  // if src and/or dst aren't a full field, fall back to the old way for this field
+	  int src_field_start = src_start[field_idx];
+	  int src_field_size = src_size[field_idx];
+	  int dst_field_start = dst_start[field_idx];
+	  int dst_field_size = dst_size[field_idx];
+
+	  if(partial_field[field_idx]) {
+	    printf("not a full field - falling back\n");
+	    copy_field(src_index, dst_index, count_per_line, field_idx);
+	    field_idx++;
+	    continue;
+	  }
+
+	  // see if we can tack on more fields
+	  unsigned field_idx2 = field_idx + 1;
+	  int src_fstride = 0;
+	  int dst_fstride = 0;
+	  unsigned total_bytes = bytes;
+	  unsigned total_lines = 1;
+	  while(field_idx2 < oas_vec.size()) {
+	    // is this a partial field?  if so, stop
+	    if(partial_field[field_idx2])
+	      break;
+
+	    unsigned src_offset2 = oas_vec[field_idx2].src_offset;
+	    unsigned dst_offset2 = oas_vec[field_idx2].dst_offset;
+
+	    // test depends on AOS (bsize == 1) vs (hybrid)SOA (bsize > 1)
+	    if(src_bsize == 1) {
+	      // for AOS, we need this field's offset to be the next byte
+	      if((src_offset2 != (src_offset + total_bytes)) ||
+		 (dst_offset2 != (dst_offset + total_bytes)))
+		break;
+
+	      // if tests pass, add this field's size to our total and keep going
+	      total_bytes += oas_vec[field_idx2].size;
+	    } else {
+	      // in SOA, we need the field's strides to match, but non-contiguous is ok
+	      // first stride will be ok by construction
+	      int src_fstride2 = src_offset2 - src_offset;
+	      int dst_fstride2 = dst_offset2 - dst_offset;
+	      if(src_fstride == 0) src_fstride = src_fstride2;
+	      if(dst_fstride == 0) dst_fstride = dst_fstride2;
+	      if((src_fstride2 != (field_idx2 - field_idx) * src_fstride) ||
+		 (dst_fstride2 != (field_idx2 - field_idx) * dst_fstride))
+		break;
+
+	      // if tests pass, we have another line
+	      total_lines++;
+	    }
+
+	    field_idx2++;
+	  }
+
+	  // now we can copy something
+	  off_t src_start = calc_mem_loc(src_idata->alloc_offset + (src_offset - src_field_start),
+					 src_field_start, src_field_size, src_idata->elmt_size,
+					 src_idata->block_size, src_index);
+	  off_t dst_start = calc_mem_loc(dst_idata->alloc_offset + (dst_offset - dst_field_start),
+					 dst_field_start, dst_field_size, dst_idata->elmt_size,
+					 dst_idata->block_size, dst_index);
+
+	  // AOS merging doesn't work if we don't end up with the full element
+	  if((src_bsize == 1) && 
+	     ((total_bytes < src_idata->elmt_size) || (total_bytes < dst_idata->elmt_size)) &&
+	     (count_per_line > 1)) {
+	    printf("help: AOS tried to merge subset of fields with multiple elements - not contiguous!\n");
+	    assert(0);
+	  }
+
+#ifdef NEW2D_DEBUG
+	  printf("BBB: %d %d %d, %d %d %d, %d-%d -> %zd %zd %d, %zd %zd %d\n",
+		 src_index, dst_index, count_per_line,
+		 src_stride, dst_stride, lines,
+		 field_idx, field_idx2-1,
+		 src_start, dst_start, count_per_line * total_bytes,
+		 src_fstride * src_bsize,
+		 dst_fstride * dst_bsize,
+		 lines * total_lines);
+#endif
+
+	  // since we're already 2D, we need line strides to match up
+	  if(total_lines > 1) {
+	    if(0) {
+	    } else {
+	      // no?  punt on the field merging
+	      total_lines = 1;
+	      //printf("CCC: eliminating field merging\n");
+	      field_idx2 = field_idx + 1;
+	    }
+	  }
+
+#ifdef NEW2D_DEBUG
+	  printf("DDD: %d %d %d, %d %d %d, %d-%d -> %zd %zd %d, %zd %zd %d\n",
+		 src_index, dst_index, count_per_line,
+		 src_stride, dst_stride, lines,
+		 field_idx, field_idx2-1,
+		 src_start, dst_start, count_per_line * total_bytes,
+		 src_stride * bytes,
+		 dst_stride * bytes,
+		 lines);
+#endif
+	  span_copier->copy_span(src_start, dst_start, count_per_line * total_bytes,
+				 src_stride * bytes,
+				 dst_stride * bytes,
+				 lines);
+
+	  // continue with the first field we couldn't take for this pass
+	  field_idx = field_idx2;
 	}
       }
 
@@ -817,6 +1406,7 @@ namespace LegionRuntime {
       std::vector<off_t> dst_start;
       std::vector<int> src_size;
       std::vector<int> dst_size;
+      std::vector<bool> partial_field;
     };
 
     class RemoteWriteInstPairCopier : public InstPairCopier {
@@ -895,7 +1485,7 @@ namespace LegionRuntime {
 
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes)
       {
-	//printf("buffered copy of %zd bytes (%x:%zd -> %x:%zd)\n", bytes, src_mem->me.id, src_offset, dst_mem->me.id, dst_offset);
+	//printf("buffered copy of %zd bytes (" IDFMT ":%zd -> " IDFMT ":%zd)\n", bytes, src_mem->me.id, src_offset, dst_mem->me.id, dst_offset);
 	while(bytes > buffer_size) {
 	  src_mem->get_bytes(src_offset, buffer, buffer_size);
 	  dst_mem->put_bytes(dst_offset, buffer, buffer_size);
@@ -906,6 +1496,17 @@ namespace LegionRuntime {
 	if(bytes > 0) {
 	  src_mem->get_bytes(src_offset, buffer, bytes);
 	  dst_mem->put_bytes(dst_offset, buffer, bytes);
+	}
+      }
+
+      // default behavior of 2D copy is to unroll to 1D copies
+      void copy_span(off_t src_offset, off_t dst_offset, size_t bytes,
+		     off_t src_stride, off_t dst_stride, size_t lines)
+      {
+	while(lines-- > 0) {
+	  copy_span(src_offset, dst_offset, bytes);
+	  src_offset += src_stride;
+	  dst_offset += dst_stride;
 	}
       }
 
@@ -941,13 +1542,14 @@ namespace LegionRuntime {
 	memcpy(dst_base + dst_offset, src_base + src_offset, bytes);
       }
 
+      // default behavior of 2D copy is to unroll to 1D copies
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes,
-		     size_t lines, off_t src_stride, off_t dst_stride)
+		     off_t src_stride, off_t dst_stride, size_t lines)
       {
-	for(size_t i = 0; i < lines; i++) {
-	  memcpy(dst_base + dst_offset, src_base + src_offset, bytes);
-	  dst_offset += dst_stride;
+	while(lines-- > 0) {
+	  copy_span(src_offset, dst_offset, bytes);
 	  src_offset += src_stride;
+	  dst_offset += dst_stride;
 	}
       }
 
@@ -992,7 +1594,8 @@ namespace LegionRuntime {
     protected:
       std::set<Event> events;
     };
-     
+
+#ifdef USE_CUDA     
     class GPUtoFBMemPairCopier : public DelayedMemPairCopier {
     public:
       GPUtoFBMemPairCopier(Memory _src_mem, GPUProcessor *_gpu)
@@ -1019,13 +1622,13 @@ namespace LegionRuntime {
       }
 
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes,
-		     size_t lines, off_t src_stride, off_t dst_stride)
+		     off_t src_stride, off_t dst_stride, size_t lines)
       {
-	for(size_t i = 0; i < lines; i++) {
-	  copy_span(dst_offset, src_offset, bytes);
-	  dst_offset += dst_stride;
-	  src_offset += src_stride;
-	}
+        Event e = Event::Impl::create_event();
+        gpu->copy_to_fb_2d(dst_offset, src_base + src_offset,
+                           dst_stride, src_stride, bytes, lines,
+                           Event::NO_EVENT, e);
+        events.insert(e);
       }
 
     protected:
@@ -1060,13 +1663,13 @@ namespace LegionRuntime {
       }
 
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes,
-		     size_t lines, off_t src_stride, off_t dst_stride)
+		     off_t src_stride, off_t dst_stride, size_t lines)
       {
-	for(size_t i = 0; i < lines; i++) {
-	  copy_span(dst_offset, src_offset, bytes);
-	  dst_offset += dst_stride;
-	  src_offset += src_stride;
-	}
+        Event e = Event::Impl::create_event();
+        gpu->copy_from_fb_2d(dst_base + dst_offset, src_offset,
+                             dst_stride, src_stride, bytes, lines,
+                             Event::NO_EVENT, e);
+        events.insert(e);
       }
 
     protected:
@@ -1098,19 +1701,56 @@ namespace LegionRuntime {
       }
 
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes,
-		     size_t lines, off_t src_stride, off_t dst_stride)
+		     off_t src_stride, off_t dst_stride, size_t lines)
       {
-	for(size_t i = 0; i < lines; i++) {
-	  copy_span(dst_offset, src_offset, bytes);
-	  dst_offset += dst_stride;
-	  src_offset += src_stride;
-	}
+        Event e = Event::Impl::create_event();
+        gpu->copy_within_fb_2d(dst_offset, src_offset,
+                               dst_stride, src_stride, bytes, lines,
+                               Event::NO_EVENT, e);
+        events.insert(e);
       }
 
     protected:
       GPUProcessor *gpu;
     };
+
+    class GPUPeerMemPairCopier : public DelayedMemPairCopier {
+    public:
+      GPUPeerMemPairCopier(GPUProcessor *_src, GPUProcessor *_dst)
+        : src(_src), dst(_dst)
+      {
+      }
+
+      virtual InstPairCopier *inst_pair(RegionInstance src_inst, RegionInstance dst_inst,
+                                        OASVec &oas_vec)
+      {
+        return new SpanBasedInstPairCopier<GPUPeerMemPairCopier>(this, src_inst,
+                                                              dst_inst, oas_vec);
+      }
+
+      void copy_span(off_t src_offset, off_t dst_offset, size_t bytes)
+      {
+        Event e = Event::Impl::create_event();
+        src->copy_to_peer(dst, dst_offset, src_offset, bytes, Event::NO_EVENT, e);
+        events.insert(e);
+      }
+
+      void copy_span(off_t src_offset, off_t dst_offset, size_t bytes,
+                     off_t src_stride, off_t dst_stride, size_t lines)
+      {
+        Event e = Event::Impl::create_event();
+        src->copy_to_peer_2d(dst, dst_offset, src_offset,
+                             dst_stride, src_stride, bytes, lines,
+                             Event::NO_EVENT, e);
+        events.insert(e);
+      }
+    protected:
+      GPUProcessor *src, *dst;
+    };
+#endif
      
+    static unsigned rdma_sequence_no = 1;
+
     class RemoteWriteMemPairCopier : public MemPairCopier {
     public:
       RemoteWriteMemPairCopier(Memory _src_mem, Memory _dst_mem)
@@ -1120,6 +1760,12 @@ namespace LegionRuntime {
 	assert(src_base);
 
 	dst_mem = _dst_mem.impl();
+#ifdef TIME_REMOTE_WRITES
+        span_time = 0;
+        gather_time = 0;
+#endif
+	sequence_id = __sync_fetch_and_add(&rdma_sequence_no, 1);
+	num_writes = 0;
       }
 
       ~RemoteWriteMemPairCopier(void)
@@ -1136,21 +1782,27 @@ namespace LegionRuntime {
       struct PendingGather {
 	off_t dst_start;
 	off_t dst_size;
-	std::vector<std::pair<const char *, size_t> > src_spans;
+	SpanList src_spans;
       };
 
-      static const size_t TARGET_XFER_SIZE = 4096;
+      // this is no longer limited by LMB size, so try for large blocks when
+      //  possible
+      static const size_t TARGET_XFER_SIZE = 4 << 20;
 
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes)
       {
-	//printf("remote write of %zd bytes (%x:%zd -> %x:%zd)\n", bytes, src_mem->me.id, src_offset, dst_mem->me.id, dst_offset);
+	//printf("remote write of %zd bytes (" IDFMT ":%zd -> " IDFMT ":%zd)\n", bytes, src_mem->me.id, src_offset, dst_mem->me.id, dst_offset);
+#ifdef TIME_REMOTE_WRITES
+        unsigned long long start = TimeStamp::get_current_time_in_micros();
+#endif
 
 	if(bytes >= TARGET_XFER_SIZE) {
 	  // large enough that we can transfer it by itself
 #ifdef DEBUG_REMOTE_WRITES
-	  printf("remote write of %zd bytes (%x:%zd -> %x:%zd)\n", bytes, src_mem->me.id, src_offset, dst_mem->me.id, dst_offset);
+	  printf("remote write of %zd bytes (" IDFMT ":%zd -> " IDFMT ":%zd)\n", bytes, src_mem->me.id, src_offset, dst_mem->me.id, dst_offset);
 #endif
-	  do_remote_write(dst_mem->me, dst_offset, src_base + src_offset, bytes, Event::NO_EVENT, false /* no copy */);
+	  num_writes += do_remote_write(dst_mem->me, dst_offset, src_base + src_offset, bytes, 
+					sequence_id, Event::NO_EVENT, false /* no copy */);
 	} else {
 	  // see if this can be added to an existing gather
 	  PendingGather *g;
@@ -1170,8 +1822,8 @@ namespace LegionRuntime {
 
 	  // now see if this particular span is disjoint or can be tacked on to the end of the last one
 	  if(g->src_spans.size() > 0) {
-	    std::pair<const char *, size_t>& last_span = g->src_spans.back();
-	    if((last_span.first + last_span.second) == (src_base + src_offset)) {
+	    SpanListEntry& last_span = g->src_spans.back();
+	    if(((char *)(last_span.first) + last_span.second) == (src_base + src_offset)) {
 	      // append
 	      last_span.second += bytes;
 	    } else {
@@ -1193,32 +1845,98 @@ namespace LegionRuntime {
 	    gathers.insert(std::make_pair(g->dst_start + g->dst_size, g));
 	  }
 	}
+#ifdef TIME_REMOTE_WRITES
+        unsigned long long stop = TimeStamp::get_current_time_in_micros();
+        span_time += (stop - start);
+#endif
+      }
+
+      void copy_span(off_t src_offset, off_t dst_offset, size_t bytes,
+		     off_t src_stride, off_t dst_stride, size_t lines)
+      {
+	// case 1: although described as 2D, both src and dst coalesce
+	if((src_stride == bytes) && (dst_stride == bytes)) {
+	  copy_span(src_offset, dst_offset, bytes * lines);
+	  return;
+	}
+
+	// case 2: if dst coalesces, we'll let the RDMA code do the gather for us -
+	//  this won't merge with any other copies though
+	if(dst_stride == bytes) {
+#ifdef NEW2D_DEBUG
+	  printf("GATHER copy\n");
+#endif
+	  num_writes += do_remote_write(dst_mem->me, dst_offset,
+					src_base + src_offset, bytes, src_stride, lines,
+					sequence_id, Event::NO_EVENT, false /* no copy */);
+	  return;
+	}
+	
+	// default is to unroll the lines here, and let the PendingGather code try to
+	//  put things back in bigger pieces
+	while(lines-- > 0) {
+	  copy_span(src_offset, dst_offset, bytes);
+	  src_offset += src_stride;
+	  dst_offset += dst_stride;
+	}
       }
 
       void copy_gather(const PendingGather *g, Event trigger = Event::NO_EVENT)
       {
-	// build a buffer we can copy in one block to the destination
-	char *buffer = new char[g->dst_size];
-	char *pos = buffer;
-
-	// copy each of the spans
-	for(std::vector<std::pair<const char *, size_t> >::const_iterator it = g->src_spans.begin();
-	    it != g->src_spans.end();
-	    it++) {
-	  memcpy(pos, it->first, it->second);
-	  pos += it->second;
-	}
-
-#ifdef DEBUG_REMOTE_WRITES
-	printf("remote write of %zd bytes (gather -> %x:%zd)\n", g->dst_size, dst_mem->me.id, g->dst_start);
+#ifdef TIME_REMOTE_WRITES
+        unsigned long long start = TimeStamp::get_current_time_in_micros();
 #endif
-	do_remote_write(dst_mem->me, g->dst_start, buffer, g->dst_size, trigger, true /* make copy! */);
+        // special case: if there's only one source span, it's not actually
+        //   a gather (so we don't need to make a copy)
+        if(g->src_spans.size() == 1) {
+          const SpanListEntry& span = *(g->src_spans.begin());
+#ifdef DEBUG_REMOTE_WRITES
+	  printf("remote write of %zd bytes (singleton " IDFMT ":%zd -> " IDFMT ":%zd)\n", span.second, src_mem->me.id, (char *)span.first - src_base, dst_mem->me.id, g->dst_start);
+          printf("  datb[%p]: %08x %08x %08x %08x %08x %08x %08x %08x\n",
+                 span.first,
+                 ((unsigned *)(span.first))[0], ((unsigned *)(span.first))[1],
+                 ((unsigned *)(span.first))[2], ((unsigned *)(span.first))[3],
+                 ((unsigned *)(span.first))[4], ((unsigned *)(span.first))[5],
+                 ((unsigned *)(span.first))[6], ((unsigned *)(span.first))[7]);
+#endif
+	  // TODO: handle case where single write can include event trigger in message
+	  //num_writes += do_remote_write(dst_mem->me, g->dst_start, span.first, span.second, trigger, false /* no copy */);
+	  num_writes += do_remote_write(dst_mem->me, g->dst_start, span.first, span.second, 
+					sequence_id, Event::NO_EVENT, false /* no copy */);
+	  if(trigger.exists())
+	    do_remote_fence(dst_mem->me, sequence_id, num_writes, trigger);
+          return;
+        }
 
-	delete[] buffer;
+	// general case: do_remote_write knows how to take a span list now, so let it
+	//  handle the actual gathering
+#ifdef DEBUG_REMOTE_WRITES
+	printf("remote write of %zd bytes (gather -> " IDFMT ":%zd), trigger=" IDFMT "/%d\n", g->dst_size, dst_mem->me.id, g->dst_start, trigger.id, trigger.gen);
+#endif
+	// TODO: handle case where single write can include event trigger in message
+	num_writes += do_remote_write(dst_mem->me, g->dst_start, 
+				      g->src_spans, g->dst_size,
+				      sequence_id, Event::NO_EVENT, false /* no copy - data won't change til copy event triggers */);
+	if(trigger.exists())
+	  do_remote_fence(dst_mem->me, sequence_id, num_writes, trigger);
+#ifdef TIME_REMOTE_WRITES
+        unsigned long long stop = TimeStamp::get_current_time_in_micros();
+        gather_time += (stop - start);
+#endif
       }
 
       virtual void flush(Event after_copy)
       {
+#ifdef TIME_REMOTE_WRITES
+        size_t total_gathers = gathers.size();
+        size_t total_spans = 0;
+        for (std::map<off_t,PendingGather*>::const_iterator it = gathers.begin();
+              it != gathers.end(); it++)
+        {
+          total_spans += it->second->src_spans.size();
+        }
+        unsigned long long start = TimeStamp::get_current_time_in_micros();
+#endif
 	// do we have any pending gathers to push out?
 	if(gathers.size() > 0) {
 	  // push out all but the last one with events triggered
@@ -1236,24 +1954,52 @@ namespace LegionRuntime {
 	  PendingGather *g = it->second;
 	  gathers.erase(it);
 
+#define NO_SEPARATE_FENCE
+#ifndef SEPARATE_FENCE
 	  copy_gather(g, after_copy);
+#else
+	  copy_gather(g);
+#ifdef DEBUG_REMOTE_WRITES
+	  printf("remote write fence: " IDFMT "/%d\n", after_copy.id, after_copy.gen);
+#endif
+	  do_remote_write(dst_mem->me, 0, 0, 0, after_copy);
+#endif
 	  delete g;
 	} else {
 	  // didn't have any pending copies, but if we have an event to trigger, send that
 	  //  to the remote side as a zero-size copy to push the data in front of it
 	  if(after_copy.exists()) {
+            if(num_writes == 0) {
+              // an empty dma - no need to send a fence - we can trigger the
+              //  completion event here and save a message
+              after_copy.impl()->trigger(after_copy.gen, gasnet_mynode());
+            } else {
 #ifdef DEBUG_REMOTE_WRITES
-	    printf("remote write fence: %x/%d\n", after_copy.id, after_copy.gen);
+	      printf("remote write fence: " IDFMT "/%d\n", after_copy.id, after_copy.gen);
 #endif
-	    do_remote_write(dst_mem->me, 0, 0, 0, after_copy);
+	      //do_remote_write(dst_mem->me, 0, 0, 0, after_copy);
+	      do_remote_fence(dst_mem->me, sequence_id, num_writes, after_copy);
+            }
 	  }
 	}
+#ifdef TIME_REMOTE_WRITES
+        unsigned long long stop = TimeStamp::get_current_time_in_micros();
+        gather_time += (stop - start);
+        printf("Remote Write: span time: %lld  gather time %lld "
+                "total gathers %ld total spans %d\n", 
+                span_time, gather_time, total_gathers, total_spans);
+#endif
       }
 
     protected:
       Memory::Impl *src_mem, *dst_mem;
       const char *src_base;
       std::map<off_t, PendingGather *> gathers;
+#ifdef TIME_REMOTE_WRITES
+      unsigned long long span_time;
+      unsigned long long gather_time;
+#endif
+      unsigned sequence_id, num_writes;
     };
      
     MemPairCopier *MemPairCopier::create_copier(Memory src_mem, Memory dst_mem)
@@ -1264,7 +2010,7 @@ namespace LegionRuntime {
       Memory::Impl::MemoryKind src_kind = src_impl->kind;
       Memory::Impl::MemoryKind dst_kind = dst_impl->kind;
 
-      log_dma.info("copier: %x(%d) -> %x(%d)", src_mem.id, src_kind, dst_mem.id, dst_kind);
+      log_dma.info("copier: " IDFMT "(%d) -> " IDFMT "(%d)", src_mem.id, src_kind, dst_mem.id, dst_kind);
 
       // can we perform simple memcpy's?
       if(((src_kind == Memory::Impl::MKIND_SYSMEM) || (src_kind == Memory::Impl::MKIND_ZEROCOPY)) &&
@@ -1272,6 +2018,7 @@ namespace LegionRuntime {
 	return new MemcpyMemPairCopier(src_mem, dst_mem);
       }
 
+#ifdef USE_CUDA
       // copy to a framebuffer
       if(((src_kind == Memory::Impl::MKIND_SYSMEM) || (src_kind == Memory::Impl::MKIND_ZEROCOPY)) &&
 	 (dst_kind == Memory::Impl::MKIND_GPUFB)) {
@@ -1291,12 +2038,22 @@ namespace LegionRuntime {
          (dst_kind == Memory::Impl::MKIND_GPUFB)) {
 	GPUProcessor *src_gpu = ((GPUFBMemory *)src_impl)->gpu;
 	GPUProcessor *dst_gpu = ((GPUFBMemory *)dst_impl)->gpu;
-        assert(src_gpu == dst_gpu);
-	return new GPUinFBMemPairCopier(src_gpu);
+        if (src_gpu == dst_gpu)
+          return new GPUinFBMemPairCopier(src_gpu);
+        else if (src_gpu->can_access_peer(dst_gpu))
+          return new GPUPeerMemPairCopier(src_gpu, dst_gpu);
+        else
+        {
+          fprintf(stderr,"TIME FOR SEAN TO IMPLEMENT MULTI-HOP COPIES!\n");
+          assert(false);
+          return NULL;
+        }
       }
+#endif
 
       // try as many things as we can think of
-      if(dst_kind == Memory::Impl::MKIND_REMOTE) {
+      if((dst_kind == Memory::Impl::MKIND_REMOTE) ||
+	 (dst_kind == Memory::Impl::MKIND_RDMA)) {
         assert(src_kind != Memory::Impl::MKIND_REMOTE);
         return new RemoteWriteMemPairCopier(src_mem, dst_mem);
       }
@@ -1306,7 +2063,114 @@ namespace LegionRuntime {
     }
 
     template <unsigned DIM>
-    void DmaRequest::perform_dma_rect(MemPairCopier *mpc)
+    static unsigned compress_strides(const Rect<DIM> &r,
+				     const Point<1> in1[DIM], const Point<1> in2[DIM],
+				     Point<DIM>& extents,
+				     Point<1> out1[DIM], Point<1> out2[DIM])
+    {
+      // sort the dimensions by the first set of strides for maximum gathering goodness
+      unsigned stride_order[DIM];
+      for(unsigned i = 0; i < DIM; i++) stride_order[i] = i;
+      // yay, bubble sort!
+      for(unsigned i = 0; i < DIM; i++)
+	for(unsigned j = 0; j < i; j++)
+	  if(in1[stride_order[j]] > in1[stride_order[j+1]]) {
+	    int t = stride_order[j];
+	    stride_order[j] = stride_order[j+1];
+	    stride_order[j+1] = t;
+	  }
+
+      int curdim = -1;
+      unsigned exp1, exp2;
+
+      // now go through dimensions, collapsing each if it matches the expected stride for
+      //  both sets (can't collapse for first)
+      for(unsigned i = 0; i < DIM; i++) {
+	unsigned d = stride_order[i];
+	unsigned e = r.dim_size(d);
+	if(i && (exp1 == in1[d][0]) && (exp2 == in2[d][0])) {
+	  // collapse and grow extent
+	  extents.x[curdim] *= e;
+	  exp1 *= e;
+	  exp2 *= e;
+	} else {
+	  // no match - create a new dimension
+	  curdim++;
+	  extents.x[curdim] = e;
+	  exp1 = in1[d][0] * e;
+	  exp2 = in2[d][0] * e;
+	  out1[curdim] = in1[d];
+	  out2[curdim] = in2[d];
+	}
+      }
+
+      return curdim+1;
+    }
+
+    void CopyRequest::perform_dma_mask(MemPairCopier *mpc)
+    {
+      IndexSpace::Impl *ispace = domain.get_index_space().impl();
+      assert(ispace->valid_mask_complete);
+
+      // this is the SOA-friendly loop nesting
+      for(OASByInst::iterator it = oas_by_inst->begin(); it != oas_by_inst->end(); it++) {
+	RegionInstance src_inst = it->first.first;
+	RegionInstance dst_inst = it->first.second;
+	OASVec& oasvec = it->second;
+
+	InstPairCopier *ipc = mpc->inst_pair(src_inst, dst_inst, oasvec);
+
+	// index space instances use 1D linearizations for translation
+	Arrays::Mapping<1, 1> *src_linearization = src_inst.impl()->linearization.get_mapping<1>();
+	Arrays::Mapping<1, 1> *dst_linearization = dst_inst.impl()->linearization.get_mapping<1>();
+
+	// does the destination instance space's index space match what we're copying?  if so,
+	//  it's ok to copy extra elements (to decrease sparsity) because they're unused in
+	//  the destination
+	StaticAccess<RegionInstance::Impl> dst_idata(dst_inst.impl(), true /*must be valid already*/);
+	int rlen_target;
+	if(ispace->me == dst_idata->is) {
+	  rlen_target = 32768 / 4; // aim for ~32KB transfers at least
+	} else {
+	  rlen_target = 1;
+	}
+	
+	ElementMask::Enumerator *e = ispace->valid_mask->enumerate_enabled();
+	int rstart, rlen;
+	while(e->get_next(rstart, rlen)) {
+	  // do we want to copy extra elements to fill in some holes?
+	  while(rlen < rlen_target) {
+	    // see where the next valid elements are
+	    int rstart2, rlen2;
+	    // if none, stop
+	    if(!e->peek_next(rstart2, rlen2)) break;
+	    // or if they don't even start until outside the window, stop
+	    if(rstart2 > (rstart + rlen_target)) break;
+	    // ok, include the next valid element(s) and any invalid ones in between
+	    //printf("bloating from %d to %d\n", rlen, rstart2 + rlen2 - rstart);
+	    rlen = rstart2 + rlen2 - rstart;
+	    // and actually take the next range from the enumerator
+	    e->get_next(rstart2, rlen2);
+	  }
+
+	  int sstart = src_linearization->image(rstart);
+	  int dstart = dst_linearization->image(rstart);
+#ifdef DEBUG_LOW_LEVEL
+	  assert(src_linearization->image_is_dense(Rect<1>(rstart, rstart + rlen - 1)));
+	  assert(dst_linearization->image_is_dense(Rect<1>(rstart, rstart + rlen - 1)));
+#endif
+	  //printf("X: %d+%d %d %d\n", rstart, rlen, sstart, dstart);
+
+	  for (unsigned idx = 0; idx < oasvec.size(); idx++)
+	    ipc->copy_field(sstart, dstart, rlen, idx);
+	}
+
+	delete ipc;
+      }
+    }
+
+    template <unsigned DIM>
+    void CopyRequest::perform_dma_rect(MemPairCopier *mpc)
     {
       Arrays::Rect<DIM> orig_rect = domain.get_rect<DIM>();
 
@@ -1321,23 +2185,70 @@ namespace LegionRuntime {
 	Arrays::Mapping<DIM, 1> *src_linearization = src_inst.impl()->linearization.get_mapping<DIM>();
 	Arrays::Mapping<DIM, 1> *dst_linearization = dst_inst.impl()->linearization.get_mapping<DIM>();
 
-	// iterate by output rectangle first - this gives us a chance to gather data when linearizations
-	//  don't match up
-	for(Arrays::GenericDenseSubrectIterator<Arrays::Mapping<DIM, 1> > dso(orig_rect, *dst_linearization); dso; dso++) {
-	  // dense subrect in dst might not be dense in src
-	  for(Arrays::GenericDenseSubrectIterator<Arrays::Mapping<DIM, 1> > dsi(dso.subrect, *src_linearization); dsi; dsi++) {
-	    Rect<1> irect = dsi.image;
-	    // rectangle in output must be recalculated
-	    Rect<DIM> subrect_check;
-	    Rect<1> orect = dst_linearization->image_dense_subrect(dsi.subrect, subrect_check);
-	    assert(dsi.subrect == subrect_check);
+	// see what linear subrects we can get - again, iterate over destination first for gathering
+	for(typename Arrays::Mapping<DIM, 1>::LinearSubrectIterator lso(orig_rect, *dst_linearization); lso; lso++) {
+	  for(typename Arrays::Mapping<DIM, 1>::LinearSubrectIterator lsi(lso.subrect, *src_linearization); lsi; lsi++) {
+	    // see if we can compress the strides for a more efficient copy
+	    Point<1> src_cstrides[DIM], dst_cstrides[DIM];
+	    Point<DIM> extents;
+	    int cdim = compress_strides(lsi.subrect, lso.strides, lsi.strides,
+					extents, dst_cstrides, src_cstrides);
 
-	    //for(OASVec::iterator it2 = oasvec.begin(); it2 != oasvec.end(); it2++)
-            for (unsigned idx = 0; idx < oasvec.size(); idx++)
-	      ipc->copy_field(irect.lo, orect.lo, irect.hi - irect.lo + 1, idx);
-			      //it2->src_offset, it2->dst_offset, it2->size);
+#ifdef NEW2D_DEBUG
+	    printf("ORIG: (%d,%d,%d)->(%d,%d,%d)\n",
+		   orig_rect.lo[0], orig_rect.lo[1], orig_rect.lo[2],
+		   orig_rect.hi[0], orig_rect.hi[1], orig_rect.hi[2]);
+	    printf("DST:  (%d,%d,%d)->(%d,%d,%d)  %d+(%d,%d,%d)\n",
+		   lso.subrect.lo[0], lso.subrect.lo[1], lso.subrect.lo[2],
+		   lso.subrect.hi[0], lso.subrect.hi[1], lso.subrect.hi[2],
+		   lso.image_lo[0],
+		   lso.strides[0][0], lso.strides[1][0], lso.strides[2][0]);
+	    printf("SRC:  (%d,%d,%d)->(%d,%d,%d)  %d+(%d,%d,%d)\n",
+		   lsi.subrect.lo[0], lsi.subrect.lo[1], lsi.subrect.lo[2],
+		   lsi.subrect.hi[0], lsi.subrect.hi[1], lsi.subrect.hi[2],
+		   lsi.image_lo[0],
+		   lsi.strides[0][0], lsi.strides[1][0], lsi.strides[2][0]);
+	    printf("CMP:  %d (%d,%d,%d) +(%d,%d,%d) +(%d,%d,%d)\n",
+		   cdim,
+		   extents[0], extents[1], extents[2],
+		   dst_cstrides[0][0], dst_cstrides[1][0], dst_cstrides[2][0],
+		   src_cstrides[0][0], src_cstrides[1][0], src_cstrides[2][0]);
+#endif
+	    if((cdim == 1) && (dst_cstrides[0][0] == 1) && (src_cstrides[0][0] == 1)) {
+	      // all the dimension(s) collapse to a 1-D extent in both source and dest, so one big copy
+	      ipc->copy_all_fields(lsi.image_lo[0], lso.image_lo[0], extents[0]);
+	      continue;
+	    }
+
+	    if((cdim == 2) && (dst_cstrides[0][0] == 1) && (src_cstrides[0][0] == 1)) {
+	      // source and/or destination need a 2-D description
+	      ipc->copy_all_fields(lsi.image_lo[0], lso.image_lo[0], extents[0],
+				   src_cstrides[1][0], dst_cstrides[1][0], extents[1]);
+	      continue;
+	    }
+
+	    // fall through - just identify dense (sub)subrects and copy them
+
+	    // iterate by output rectangle first - this gives us a chance to gather data when linearizations
+	    //  don't match up
+	    for(Arrays::GenericDenseSubrectIterator<Arrays::Mapping<DIM, 1> > dso(lsi.subrect, *dst_linearization); dso; dso++) {
+	      // dense subrect in dst might not be dense in src
+	      for(Arrays::GenericDenseSubrectIterator<Arrays::Mapping<DIM, 1> > dsi(dso.subrect, *src_linearization); dsi; dsi++) {
+		Rect<1> irect = dsi.image;
+		// rectangle in output must be recalculated
+		Rect<DIM> subrect_check;
+		Rect<1> orect = dst_linearization->image_dense_subrect(dsi.subrect, subrect_check);
+		assert(dsi.subrect == subrect_check);
+
+		//for(OASVec::iterator it2 = oasvec.begin(); it2 != oasvec.end(); it2++)
+		for (unsigned idx = 0; idx < oasvec.size(); idx++)
+		  ipc->copy_field(irect.lo, orect.lo, irect.hi - irect.lo + 1, idx);
+		//it2->src_offset, it2->dst_offset, it2->size);
+	      }
+	    }
 	  }
 	}
+
         // Dammit Sean stop leaking things!
         delete ipc;
       }
@@ -1354,9 +2265,9 @@ namespace LegionRuntime {
 	return true;
       }
 
-      virtual void print_info(void)
+      virtual void print_info(FILE *f)
       {
-	printf("copy completion logger - %x/%d\n", event.id, event.gen);
+	fprintf(f,"copy completion logger - " IDFMT "/%d\n", event.id, event.gen);
       }
 
     protected:
@@ -1364,7 +2275,7 @@ namespace LegionRuntime {
     };
 #endif
 
-    void DmaRequest::perform_dma(void)
+    void CopyRequest::perform_dma(void)
     {
       log_dma.info("request %p executing", this);
 
@@ -1388,7 +2299,7 @@ namespace LegionRuntime {
       case 0:
 	{
 	  // iterate over valid ranges of an index space
-	  assert(0);
+	  perform_dma_mask(mpc);
 	  break;
 	}
 
@@ -1400,7 +2311,7 @@ namespace LegionRuntime {
       default: assert(0);
       };
 
-      log_dma.info("dma request %p finished - %x[%d]->%x[%d]:%d (+%zd) (%x) %x/%d %x/%d",
+      log_dma.info("dma request %p finished - " IDFMT "[%d]->" IDFMT "[%d]:%d (+%zd) (" IDFMT ") " IDFMT "/%d " IDFMT "/%d",
 		   this,
 		   oas_by_inst->begin()->first.first.id, 
 		   oas_by_inst->begin()->second[0].src_offset,
@@ -1450,7 +2361,7 @@ namespace LegionRuntime {
       //RegionMetaDataUntyped::Impl *src_reg = src_data->region.impl();
       //RegionMetaDataUntyped::Impl *tgt_reg = tgt_data->region.impl();
 
-      log_dma.info("copy: %x->%x (%x/%p)",
+      log_dma.info("copy: " IDFMT "->" IDFMT " (" IDFMT "/%p)",
 		    src.id, target.id, is.id, is_impl->valid_mask);
 
       // if we're missing the valid mask at this point, we've screwed up
@@ -1458,7 +2369,7 @@ namespace LegionRuntime {
 	assert(is_impl->valid_mask_complete);
       }
 
-      log_dma.debug("performing copy %x (%d) -> %x (%d) - %zd bytes (%zd)", src.id, src_mem->kind, target.id, tgt_mem->kind, bytes_to_copy, elmt_size);
+      log_dma.debug("performing copy " IDFMT " (%d) -> " IDFMT " (%d) - %zd bytes (%zd)", src.id, src_mem->kind, target.id, tgt_mem->kind, bytes_to_copy, elmt_size);
 
       switch(src_mem->kind) {
       case Memory::Impl::MKIND_SYSMEM:
@@ -1482,7 +2393,7 @@ namespace LegionRuntime {
 	    }
 	    break;
 
-	  case Memory::Impl::MKIND_GASNET:
+	  case Memory::Impl::MKIND_GLOBAL:
 	    {
 	      if(redop) {
 		if(red_list) {
@@ -1553,7 +2464,7 @@ namespace LegionRuntime {
 	      // from the range executor and we have to trigger it ourselves
 	      Event finish_event = rexec.finish();
 	      if(finish_event.exists()) {
-		log_dma.info("triggering event %x/%d after empty remote copy",
+		log_dma.info("triggering event " IDFMT "/%d after empty remote copy",
 			     finish_event.id, finish_event.gen);
 		assert(finish_event == after_copy);
 		finish_event.impl()->trigger(finish_event.gen, gasnet_mynode());
@@ -1568,7 +2479,7 @@ namespace LegionRuntime {
 	}
 	break;
 
-      case Memory::Impl::MKIND_GASNET:
+      case Memory::Impl::MKIND_GLOBAL:
 	{
 	  switch(tgt_mem->kind) {
 	  case Memory::Impl::MKIND_SYSMEM:
@@ -1593,7 +2504,7 @@ namespace LegionRuntime {
 	    }
 	    break;
 
-	  case Memory::Impl::MKIND_GASNET:
+	  case Memory::Impl::MKIND_GLOBAL:
 	    {
 	      assert(!redop);
 	      RangeExecutors::GasnetGetAndPut rexec(tgt_mem, tgt_data->alloc_offset,
@@ -1650,7 +2561,7 @@ namespace LegionRuntime {
 	    }
 	    break;
 
-	  case Memory::Impl::MKIND_GASNET:
+	  case Memory::Impl::MKIND_GLOBAL:
 	    {
 	      assert(!redop);
 	      // all GPU operations are deferred, so we need an event if
@@ -1697,47 +2608,543 @@ namespace LegionRuntime {
 	assert(0);
       }
 
-      log_dma.debug("finished copy %x (%d) -> %x (%d) - %zd bytes (%zd), event=%x/%d", src.id, src_mem->kind, target.id, tgt_mem->kind, bytes_to_copy, elmt_size, after_copy.id, after_copy.gen);
+      log_dma.debug("finished copy " IDFMT " (%d) -> " IDFMT " (%d) - %zd bytes (%zd), event=" IDFMT "/%d", src.id, src_mem->kind, target.id, tgt_mem->kind, bytes_to_copy, elmt_size, after_copy.id, after_copy.gen);
 #endif
     }
     
-    bool terminate_flag = false;
-    int num_threads = 0;
-    pthread_t *worker_threads = 0;
-    
-    void init_dma_handler(void)
+    ReduceRequest::ReduceRequest(const Domain& _domain,
+				 const std::vector<Domain::CopySrcDstField>& _srcs,
+				 const Domain::CopySrcDstField& _dst,
+				 bool _inst_lock_needed,
+				 ReductionOpID _redop_id,
+				 bool _red_fold,
+				 Event _before_copy,
+				 Event _after_copy,
+				 int _priority)
+      : DmaRequest(_priority, _after_copy),
+	domain(_domain),
+	dst(_dst), 
+	inst_lock_needed(_inst_lock_needed), inst_lock_event(Event::NO_EVENT),
+	redop_id(_redop_id), red_fold(_red_fold),
+	before_copy(_before_copy)
     {
-      gasnet_hsl_init(&queue_mutex);
-      gasnett_cond_init(&queue_condvar);
+      srcs.insert(srcs.end(), _srcs.begin(), _srcs.end());
+
+      log_dma.info("dma request %p created - " IDFMT "[%d]->" IDFMT "[%d]:%d (+%zd) %s %d (" IDFMT ") " IDFMT "/%d " IDFMT "/%d",
+		   this,
+		   srcs[0].inst.id, srcs[0].offset,
+		   dst.inst.id, dst.offset, dst.size,
+		   srcs.size() - 1,
+		   (red_fold ? "fold" : "apply"),
+		   redop_id,
+		   domain.is_id,
+		   before_copy.id, before_copy.gen,
+		   after_copy.id, after_copy.gen);
+
+#ifdef LEGION_LOGGING
+      log_timing_event(Processor::NO_PROC, after_copy, COPY_INIT);
+#endif
     }
 
-    static void *dma_worker_thread_loop(void *dummy)
+    ReduceRequest::ReduceRequest(const void *data, size_t datalen,
+				 ReductionOpID _redop_id,
+				 bool _red_fold,
+				 Event _before_copy,
+				 Event _after_copy,
+				 int _priority)
+      : DmaRequest(_priority, _after_copy),
+	inst_lock_event(Event::NO_EVENT),
+	redop_id(_redop_id), red_fold(_red_fold),
+	before_copy(_before_copy)
     {
-      log_dma.info("dma worker thread created");
+      const IDType *idata = (const IDType *)data;
 
-      // we spend most of this loop holding the queue mutex - we let go of it
-      //  when we have a real copy to do
-      gasnet_hsl_lock(&queue_mutex);
+      idata = domain.deserialize(idata);
 
-      while(!terminate_flag) {
-	// take the queue lock and try to pull an item off the front
-	if(dma_queue.size() > 0) {
-	  DmaRequest *req = dma_queue.front();
-	  dma_queue.pop_front();
+      priority = 0;
 
-	  gasnet_hsl_unlock(&queue_mutex);
-	  
-	  req->perform_dma();
-	  //delete req;
+      // get sources
+      int n_srcs = *idata++;
+      for(int i = 0; i < n_srcs; i++) {
+	Domain::CopySrcDstField f;
+	f.inst.id = *idata++;
+	f.offset = *idata++;
+	f.size = *idata++;
+	srcs.push_back(f);
+      }
 
-	  gasnet_hsl_lock(&queue_mutex);
+      // single dst field
+      dst.inst.id = *idata++;
+      dst.offset = *idata++;
+      dst.size = *idata++;
+
+      inst_lock_needed = *idata++;
+
+      // better have consumed exactly the right amount of data
+      assert(((idata - ((const IDType *)data))*sizeof(IDType)) == datalen);
+
+      log_dma.info("dma request %p deserialized - " IDFMT "[%d]->" IDFMT "[%d]:%d (+%zd) %s %d (" IDFMT ") " IDFMT "/%d " IDFMT "/%d",
+		   this,
+		   srcs[0].inst.id, srcs[0].offset,
+		   dst.inst.id, dst.offset, dst.size,
+		   srcs.size() - 1,
+		   (red_fold ? "fold" : "apply"),
+		   redop_id,
+		   domain.is_id,
+		   before_copy.id, before_copy.gen,
+		   after_copy.id, after_copy.gen);
+    }
+
+    ReduceRequest::~ReduceRequest(void)
+    {
+    }
+
+    size_t ReduceRequest::serialize(void *buffer, size_t maxlen)
+    {
+      // domain info goes first
+      IDType *msgptr = domain.serialize((IDType *)buffer);
+
+      // now source fields
+      *msgptr++ = srcs.size();
+      for(std::vector<Domain::CopySrcDstField>::const_iterator it = srcs.begin();
+	  it != srcs.end();
+	  it++) {
+	*msgptr++ = it->inst.id;
+	*msgptr++ = it->offset;
+	*msgptr++ = it->size;
+      }
+
+      // and the dest field
+      *msgptr++ = dst.inst.id;
+      *msgptr++ = dst.offset;
+      *msgptr++ = dst.size;
+
+      *msgptr++ = inst_lock_needed;
+
+      size_t msglen = ((const char *)msgptr) - ((const char *)buffer);
+      assert(msglen <= maxlen); // TODO: maybe detect _before_ overrunning?
+
+      return msglen;
+    }
+
+    bool ReduceRequest::check_readiness(bool just_check, DmaRequestQueue *rq)
+    {
+      if(state == STATE_INIT)
+	state = STATE_METADATA_FETCH;
+
+      // remember which queue we're going to be assigned to if we sleep
+      waiter.req = this;
+      waiter.queue = rq;
+
+      // make sure our node has all the meta data it needs, but don't take more than one lock
+      //  at a time
+      if(state == STATE_METADATA_FETCH) {
+	// index space first
+	if(domain.get_dim() == 0) {
+	  IndexSpace::Impl *is_impl = domain.get_index_space().impl();
+	  if(!is_impl->locked_data.valid) {
+	    log_dma.info("dma request %p - no index space metadata yet", this);
+	    if(just_check) return false;
+
+	    Event e = is_impl->lock.acquire(1, false);
+	    if(e.has_triggered()) {
+	      log_dma.info("request %p - index space metadata invalid - instant trigger", this);
+	      is_impl->lock.release();
+	    } else {
+	      log_dma.info("request %p - index space metadata invalid - sleeping on lock " IDFMT "", this, is_impl->lock.me.id);
+	      waiter.sleep_on_event(e, is_impl->lock.me);
+	      return false;
+	    }
+	  }
+
+          // we need more than just the metadata - we also need the valid mask
+          {
+            Event e = is_impl->request_valid_mask();
+            if(!e.has_triggered()) {
+              log_dma.info("request %p - valid mask needed for index space " IDFMT " - sleeping on event " IDFMT "/%d", this, domain.get_index_space().id, e.id, e.gen);
+	      waiter.sleep_on_event(e);
+              return false;
+            }
+          }
+	}
+
+	// now go through all source instance pairs
+	for(std::vector<Domain::CopySrcDstField>::iterator it = srcs.begin();
+	    it != srcs.end();
+	    it++) {
+	  RegionInstance::Impl *src_impl = it->inst.impl();
+
+	  if(!src_impl->locked_data.valid) {
+	    log_dma.info("dma request %p - no src instance (" IDFMT ") metadata yet", this, it->inst.id);
+	    if(just_check) return false;
+
+	    Event e = src_impl->lock.acquire(1, false);
+	    if(e.has_triggered()) {
+	      log_dma.info("request %p - src instance metadata invalid - instant trigger", this);
+	      src_impl->lock.release();
+	    } else {
+	      log_dma.info("request %p - src instance metadata invalid - sleeping on lock " IDFMT "", this, src_impl->lock.me.id);
+	      waiter.sleep_on_event(e, src_impl->lock.me);
+	      return false;
+	    }
+	  }
+	  if(!src_impl->linearization.valid()) {
+	    //printf("deserializing linearizer\n");
+	    src_impl->linearization.deserialize(src_impl->locked_data.linearization_bits);
+	  }
+	}
+
+	{
+	  RegionInstance::Impl *dst_impl = dst.inst.impl();
+
+	  if(!dst_impl->locked_data.valid) {
+	    log_dma.info("dma request %p - no dst instance (" IDFMT ") metadata yet", this, dst.inst.id);
+	    if(just_check) return false;
+
+	    Event e = dst_impl->lock.acquire(1, false);
+	    if(e.has_triggered()) {
+	      log_dma.info("request %p - dst instance metadata invalid - instant trigger", this);
+	      dst_impl->lock.release();
+	    } else {
+	      log_dma.info("request %p - dst instance metadata invalid - sleeping on lock " IDFMT "", this, dst_impl->lock.me.id);
+	      waiter.sleep_on_event(e, dst_impl->lock.me);
+	      return false;
+	    }
+	  }
+	  if(!dst_impl->linearization.valid()) {
+	    //printf("deserializing linearizer\n");
+	    dst_impl->linearization.deserialize(dst_impl->locked_data.linearization_bits);
+	  }
+	}
+
+	// if we got all the way through, we've got all the metadata we need
+	state = STATE_BEFORE_EVENT;
+      }
+
+      // make sure our functional precondition has occurred
+      if(state == STATE_BEFORE_EVENT) {
+	// has the before event triggered?  if not, wait on it
+	if(before_copy.has_triggered()) {
+	  log_dma.info("request %p - before event triggered", this);
+	  if(inst_lock_needed) {
+	    // request an exclusive lock on the instance to protect reductions
+	    inst_lock_event = dst.inst.impl()->lock.acquire(0, true /*excl*/);
+	    state = STATE_INST_LOCK;
+	    log_dma.info("request %p - instance lock acquire event " IDFMT "/%d",
+			 this, inst_lock_event.id, inst_lock_event.gen);
+	  } else {
+	    // go straight to ready
+	    state = STATE_READY;
+	  }
 	} else {
-	  // sleep until we get a signal, or until everybody is woken up
-	  //  via broadcast for termination
-	  gasnett_cond_wait(&queue_condvar, &queue_mutex.lock);
+	  log_dma.info("request %p - before event not triggered", this);
+	  if(just_check) return false;
+
+	  log_dma.info("request %p - sleeping on before event", this);
+	  waiter.sleep_on_event(before_copy);
+	  return false;
 	}
       }
-      gasnet_hsl_unlock(&queue_mutex);
+
+      if(state == STATE_INST_LOCK) {
+	if(inst_lock_event.has_triggered()) {
+	  log_dma.info("request %p - instance lock acquired", this);
+	  state = STATE_READY;
+	} else {
+	  log_dma.info("request %p - instance lock - sleeping on event " IDFMT "/%d", this, inst_lock_event.id, inst_lock_event.gen);
+	  waiter.sleep_on_event(inst_lock_event);
+	  return false;
+	}
+      }
+
+      if(state == STATE_READY) {
+	log_dma.info("request %p ready", this);
+	if(just_check) return true;
+
+	state = STATE_QUEUED;
+	assert(rq != 0);
+	log_dma.info("request %p enqueued", this);
+
+#ifdef LEGION_LOGGING
+	log_timing_event(Processor::NO_PROC, after_copy, COPY_READY);
+#endif
+
+	// once we're enqueued, we may be deleted at any time, so no more
+	//  references
+	rq->enqueue_request(this);
+	return true;
+      }
+
+      if(state == STATE_QUEUED)
+	return true;
+
+      assert(0);
+    }
+
+    void ReduceRequest::perform_dma(void)
+    {
+      log_dma.info("request %p executing", this);
+
+#ifdef LEGION_LOGGING
+      log_timing_event(Processor::NO_PROC, after_copy, COPY_BEGIN);
+
+      // the copy might not actually finish in this thread, so set up an event waiter
+      //  to log the completion
+      after_copy.impl()->add_waiter(after_copy, new CopyCompletionLogger(after_copy));
+#endif
+
+      DetailedTimer::ScopedPush sp(TIME_COPY);
+
+      // code assumes a single source field for now
+      assert(srcs.size() == 1);
+
+      Memory src_mem = srcs[0].inst.impl()->memory;
+      Memory dst_mem = dst.inst.impl()->memory;
+      Memory::Impl::MemoryKind src_kind = src_mem.impl()->kind;
+      Memory::Impl::MemoryKind dst_kind = dst_mem.impl()->kind;
+
+      //printf("kinds: " IDFMT "=%d " IDFMT "=%d\n", src_mem.id, src_mem.impl()->kind, dst_mem.id, dst_mem.impl()->kind);
+
+      // we have the same jumble of memory type and layout permutations here - again we'll
+      //  solve a few of them point-wise and then try to unify later
+      if(domain.get_dim() == 0) {
+	// index space
+	IndexSpace::Impl *ispace = domain.get_index_space().impl();
+	assert(ispace->valid_mask_complete);
+
+	if((src_kind == Memory::Impl::MKIND_SYSMEM) ||
+	   (src_kind == Memory::Impl::MKIND_ZEROCOPY) ||
+	   (src_kind == Memory::Impl::MKIND_RDMA)) {
+	  void *src_base = 0;
+	  size_t src_stride = 0;
+	  bool src_ok = srcs[0].inst.impl()->get_strided_parameters(src_base, src_stride,
+								    srcs[0].offset);
+	  assert(src_ok);
+
+	  switch(dst_kind) {
+	  case Memory::Impl::MKIND_SYSMEM:
+	  case Memory::Impl::MKIND_ZEROCOPY:
+	  case Memory::Impl::MKIND_RDMA:
+	    {
+	      void *dst_base = 0;
+	      size_t dst_stride = 0;
+	      bool dst_ok = dst.inst.impl()->get_strided_parameters(dst_base, dst_stride,
+								    dst.offset);
+	      assert(dst_ok);
+
+	      // if source and dest are ok, we can just walk the index space's spans
+	      ElementMask::Enumerator *e = ispace->valid_mask->enumerate_enabled();
+	      int rstart, rlen;
+	      const ReductionOpUntyped *redop = reduce_op_table[redop_id];
+	      while(e->get_next(rstart, rlen)) {
+		if(red_fold)
+		  redop->fold_strided(((char *)dst_base) + (rstart * dst_stride),
+				      ((const char *)src_base) + (rstart * src_stride),
+				      dst_stride, src_stride, rlen,
+				      false /*not exclusive*/);
+		else
+		  redop->apply_strided(((char *)dst_base) + (rstart * dst_stride),
+				       ((const char *)src_base) + (rstart * src_stride),
+				       dst_stride, src_stride, rlen,
+				       false /*not exclusive*/);
+	      }
+
+	      // all done - we can trigger the event locally in this case
+	      after_copy.impl()->trigger(after_copy.gen, gasnet_mynode());
+	      break;
+	    }
+
+	  case Memory::Impl::MKIND_REMOTE:
+            {
+	      // we need to figure out how to calculate offsets in the destination memory
+	      StaticAccess<RegionInstance::Impl> dst_idata(dst.inst.impl());
+	      assert(dst_idata->valid);
+
+	      off_t dst_field_start;
+	      int dst_field_size;
+	      find_field_start(dst_idata->field_sizes, dst.offset, dst.size, dst_field_start, dst_field_size);
+	      assert(dst.size == dst_field_size);
+
+	      // index space instances use 1D linearizations for translation
+	      Arrays::Mapping<1, 1> *dst_linearization = dst.inst.impl()->linearization.get_mapping<1>();
+
+	      ElementMask::Enumerator *e = ispace->valid_mask->enumerate_enabled();
+	      int rstart, rlen;
+
+	      // get an RDMA sequence number so we can have the far side trigger the event once all reductions have been
+	      //  applied
+	      unsigned sequence_id = __sync_fetch_and_add(&rdma_sequence_no, 1);
+	      unsigned rdma_count = 0;
+
+	      // for a reduction from a fold instance, it's always ok to copy unused elements, since they'll have an
+	      //  identity value stored for them
+	      int rlen_target = 32768 / dst_field_size;
+
+	      while(e->get_next(rstart, rlen)) {
+		// do we want to copy extra elements to fill in some holes?
+		while(rlen < rlen_target) {
+		  // see where the next valid elements are
+		  int rstart2, rlen2;
+		  // if none, stop
+		  if(!e->peek_next(rstart2, rlen2)) break;
+		  // or if they don't even start until outside the window, stop
+		  if(rstart2 > (rstart + rlen_target)) break;
+		  // ok, include the next valid element(s) and any invalid ones in between
+		  //printf("bloating from %d to %d\n", rlen, rstart2 + rlen2 - rstart);
+		  rlen = rstart2 + rlen2 - rstart;
+		  // and actually take the next range from the enumerator
+		  e->get_next(rstart2, rlen2);
+		}
+
+		// translate the index space point to the dst instance's linearization
+		int dstart = dst_linearization->image(rstart);
+
+		// now do an offset calculation for the destination
+		off_t dst_offset;
+		off_t dst_stride;
+		if(dst_idata->block_size > 1) {
+		  // straddling a block boundary is complicated
+		  assert((dstart / dst_idata->block_size) == ((dstart + rlen - 1) / dst_idata->block_size));
+		  dst_offset = calc_mem_loc(dst_idata->alloc_offset, dst_field_start, dst_field_size,
+					    dst_idata->elmt_size, dst_idata->block_size, dstart);
+		  dst_stride = dst_field_size;
+		} else {
+		  // easy case
+		  dst_offset = dst_idata->alloc_offset + (dstart * dst_idata->elmt_size) + dst_field_start;
+		  dst_stride = dst_idata->elmt_size;
+		}
+
+		rdma_count += do_remote_reduce(dst_mem, dst_offset, redop_id, red_fold,
+					       ((const char *)src_base) + (rstart * src_stride),
+					       rlen, src_stride, dst_stride,
+					       sequence_id, Event::NO_EVENT);
+	      }
+
+	      // if we did any actual reductions, send a fence, otherwise trigger here
+	      if(rdma_count > 0) {
+		do_remote_fence(dst_mem, sequence_id, rdma_count, after_copy);
+	      } else {
+		after_copy.impl()->trigger(after_copy.gen, gasnet_mynode());
+	      }
+	      break;
+            }
+
+	  case Memory::Impl::MKIND_GLOBAL:
+	    {
+	      // make sure we've requested a lock on the dst instance
+	      assert(inst_lock_needed);
+
+	      // we need to figure out how to calculate offsets in the destination memory
+	      RegionInstance::Impl *dst_impl = dst.inst.impl();
+	      StaticAccess<RegionInstance::Impl> dst_idata(dst_impl);
+	      assert(dst_idata->valid);
+
+	      off_t dst_field_start;
+	      int dst_field_size;
+	      find_field_start(dst_idata->field_sizes, dst.offset, dst.size, dst_field_start, dst_field_size);
+	      assert(dst.size == dst_field_size);
+
+	      // index space instances use 1D linearizations for translation
+	      Arrays::Mapping<1, 1> *dst_linearization = dst_impl->linearization.get_mapping<1>();
+
+	      // if source and dest are ok, we can just walk the index space's spans
+	      ElementMask::Enumerator *e = ispace->valid_mask->enumerate_enabled();
+	      int rstart, rlen;
+	      const ReductionOpUntyped *redop = reduce_op_table[redop_id];
+	      while(e->get_next(rstart, rlen)) {
+		// translate the index space point to the dst instance's linearization
+		int dstart = dst_linearization->image(rstart);
+
+		// now do an offset calculation for the destination
+		off_t dst_offset;
+		off_t dst_stride;
+		if(dst_idata->block_size > 1) {
+		  // straddling a block boundary is complicated
+		  assert((dstart / dst_idata->block_size) == ((dstart + rlen - 1) / dst_idata->block_size));
+		  dst_offset = calc_mem_loc(dst_idata->alloc_offset, dst_field_start, dst_field_size,
+					    dst_idata->elmt_size, dst_idata->block_size, dstart);
+		  dst_stride = dst_field_size;
+		} else {
+		  // easy case
+		  dst_offset = dst_idata->alloc_offset + (dstart * dst_idata->elmt_size) + dst_field_start;
+		  dst_stride = dst_idata->elmt_size;
+		}
+
+		// get a temporary buffer in local memory
+		// this may have extra data if stride > field_size, but that's
+		//  ok - we'll write back whatever we read
+		void *buffer = malloc(dst_stride * rlen);
+
+		dst_mem.impl()->get_bytes(dst_offset, buffer, dst_stride * rlen);
+
+		if(red_fold)
+		  redop->fold_strided(buffer,
+				      ((const char *)src_base) + (rstart * src_stride),
+				      dst_stride, src_stride, rlen,
+				      true /*exclusive*/);
+		else
+		  redop->apply_strided(buffer,
+				       ((const char *)src_base) + (rstart * src_stride),
+				       dst_stride, src_stride, rlen,
+				       true /*exclusive*/);
+
+		dst_mem.impl()->put_bytes(dst_offset, buffer, dst_stride * rlen);
+
+		// release the temp buffer
+		free(buffer);
+	      }
+
+	      // all done - we can trigger the event locally in this case
+	      after_copy.impl()->trigger(after_copy.gen, gasnet_mynode());
+
+	      // also release the instance lock
+	      dst_impl->lock.release();
+
+	      break;
+	    }
+
+	  default:
+	    assert(0);
+	  }
+	}
+      } else {
+	assert(0);
+      }
+
+      log_dma.info("dma request %p finished - " IDFMT "[%d]->" IDFMT "[%d]:%d (+%zd) %s %d (" IDFMT ") " IDFMT "/%d " IDFMT "/%d",
+		   this,
+		   srcs[0].inst.id, srcs[0].offset,
+		   dst.inst.id, dst.offset, dst.size,
+		   srcs.size() - 1,
+		   (red_fold ? "fold" : "apply"),
+		   redop_id,
+		   domain.is_id,
+		   before_copy.id, before_copy.gen,
+		   after_copy.id, after_copy.gen);
+    }
+
+    static volatile bool terminate_flag = false;
+    static int num_threads = 0;
+    static pthread_t *worker_threads = 0;
+
+    // for now we use a single queue for all (local) dmas
+    static DmaRequestQueue *dma_queue = 0;
+    
+    static void *dma_worker_thread_loop(void *arg)
+    {
+      DmaRequestQueue *rq = (DmaRequestQueue *)arg;
+
+      log_dma.info("dma worker thread created");
+
+      while(!terminate_flag) {
+	// get a request, sleeping as necessary
+	DmaRequest *r = rq->dequeue_request(true);
+
+	if(r) {
+	  r->perform_dma();
+	  delete r;
+	}
+      }
 
       log_dma.info("dma worker thread terminating");
 
@@ -1746,6 +3153,7 @@ namespace LegionRuntime {
     
     void start_dma_worker_threads(int count)
     {
+      dma_queue = new DmaRequestQueue;
       num_threads = count;
 
       worker_threads = new pthread_t[count];
@@ -1755,48 +3163,31 @@ namespace LegionRuntime {
 	if(proc_assignment)
 	  proc_assignment->bind_thread(-1, &attr, "DMA worker");
 	CHECK_PTHREAD( pthread_create(&worker_threads[i], 0, 
-				      dma_worker_thread_loop, 0) );
+				      dma_worker_thread_loop, dma_queue) );
 	CHECK_PTHREAD( pthread_attr_destroy(&attr) );
+#ifdef DEADLOCK_TRACE
+        Runtime::get_runtime()->add_thread(&worker_threads[i]);
+#endif
       }
     }
-    
-    Event enqueue_dma(const Domain& domain,
-		      OASByInst *oas_by_inst,
-		      ReductionOpID redop_id, bool red_fold,
-		      Event before_copy,
-		      Event after_copy,
-                      int priority)
+
+    void stop_dma_worker_threads(void)
     {
-      // special case - if we have everything we need, we can consider doing the
-      //   copy immediately
-      DetailedTimer::ScopedPush sp(TIME_COPY);
+      terminate_flag = true;
+      dma_queue->shutdown_queue();
 
-      DmaRequest *r = new DmaRequest(domain, oas_by_inst, redop_id, red_fold,
-				     before_copy, after_copy, priority);
-
-      bool ready = r->check_readiness(true);
-
-      log_dma.info("dma: request %p appears to be immediately ready?", r);
-      
-      // copy is all ready to go and safe to perform in a handler thread
-      if(0 && ready && r->handler_safe()) {
-	r->perform_dma();
-	//delete r;
-	return after_copy;
-      } else {
-	if(!after_copy.exists())
-	  r->after_copy = after_copy = Event::Impl::create_event();
-
-#ifdef LEGION_LOGGING
-	log_timing_event(Processor::NO_PROC, after_copy, COPY_INIT);
-#endif
-
-	// calling this with 'just_check'==false means it'll automatically
-	//  enqueue the dma if ready
-	r->check_readiness(false);
-
-	return after_copy;
+      if(worker_threads) {
+	for(int i = 0; i < num_threads; i++) {
+	  void *dummy;
+	  CHECK_PTHREAD( pthread_join(worker_threads[i], &dummy) );
+	}
+	num_threads = 0;
+	delete[] worker_threads;
       }
+
+      delete dma_queue;
+      dma_queue = 0;
+      terminate_flag = false;
     }
     
     Event Domain::copy(RegionInstance src_inst, RegionInstance dst_inst,
@@ -1816,8 +3207,8 @@ namespace LegionRuntime {
       int src_node = ID(src_mem).node();
       int dst_node = ID(dst_mem).node();
 
-      bool src_is_rdma = src_mem.impl()->kind == Memory::Impl::MKIND_GASNET;
-      bool dst_is_rdma = dst_mem.impl()->kind == Memory::Impl::MKIND_GASNET;
+      bool src_is_rdma = src_mem.impl()->kind == Memory::Impl::MKIND_GLOBAL;
+      bool dst_is_rdma = dst_mem.impl()->kind == Memory::Impl::MKIND_GLOBAL;
 
       if(src_is_rdma) {
 	if(dst_is_rdma) {
@@ -1842,72 +3233,26 @@ namespace LegionRuntime {
     {
       DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
 
-      const int *idata = (const int *)data;
+      // is this a copy or a reduction (they deserialize differently)
+      if(args.redop_id == 0) {
+	// a copy
+	CopyRequest *r = new CopyRequest(data, msglen,
+					 args.before_copy,
+					 args.after_copy,
+					 args.priority);
 
-      Domain domain;
-      idata = domain.deserialize(idata);
-
-      OASByInst *oas_by_inst = new OASByInst;
-
-      int priority = 0;
-
-      while(((idata - ((const int *)data))*sizeof(int)) < msglen) {
-	RegionInstance src_inst = ID((unsigned)*idata++).convert<RegionInstance>();
-	RegionInstance dst_inst = ID((unsigned)*idata++).convert<RegionInstance>();
-	InstPair ip(src_inst, dst_inst);
-
-        // If either one of the instances is in GPU memory increase priority
-        if (priority == 0)
-        {
-          Memory::Impl::MemoryKind src_kind = src_inst.impl()->memory.impl()->kind;
-          if (src_kind == Memory::Impl::MKIND_GPUFB)
-            priority = 1;
-          else
-          {
-            Memory::Impl::MemoryKind dst_kind = dst_inst.impl()->memory.impl()->kind;
-            if (dst_kind == Memory::Impl::MKIND_GPUFB)
-              priority = 1;
-          }
-        }
-
-	OASVec& oasvec = (*oas_by_inst)[ip];
-
-	unsigned count = *idata++;
-	for(unsigned i = 0; i < count; i++) {
-	  OffsetsAndSize oas;
-	  oas.src_offset = *idata++;
-	  oas.dst_offset = *idata++;
-	  oas.size = *idata++;
-	  oasvec.push_back(oas);
-	}
-      }
-
-      // better have consumed exactly the right amount of data
-      assert(((idata - ((const int *)data))*sizeof(int)) == msglen);
-
-      log_dma.info("received remote copy request: instpairs=%zd(%x->%x) before=%x/%d after=%x/%d",
-		   oas_by_inst->size(), oas_by_inst->begin()->first.first.id, oas_by_inst->begin()->first.second.id,
-		   args.before_copy.id, args.before_copy.gen,
-		   args.after_copy.id, args.after_copy.gen);
-
-      enqueue_dma(domain, oas_by_inst, args.redop_id, args.red_fold, args.before_copy, args.after_copy, priority);
-#if 0
-      if(args.before_copy.has_triggered()) {
-	RegionInstance::Impl::copy(args.source, args.target,
-					  args.region,
-					  args.elmt_size,
-					  args.bytes_to_copy,
-					  args.after_copy);
+	r->check_readiness(false, dma_queue);
       } else {
-	args.before_copy.impl()->add_waiter(args.before_copy,
-					    new DeferredCopy(args.source,
-							     args.target,
-							     args.region,
-							     args.elmt_size,
-							     args.bytes_to_copy,
-							     args.after_copy));
+	// a reduction
+	ReduceRequest *r = new ReduceRequest(data, msglen,
+					     args.redop_id,
+					     args.red_fold,
+					     args.before_copy,
+					     args.after_copy,
+					     args.priority);
+
+	r->check_readiness(false, dma_queue);
       }
-#endif
     }
 
     template <typename T> T min(T a, T b) { return (a < b) ? a : b; }
@@ -1917,128 +3262,177 @@ namespace LegionRuntime {
 		       Event wait_on,
 		       ReductionOpID redop_id, bool red_fold) const
     {
-      OASByMem oas_by_mem;
+      if(redop_id == 0) {
+	// not a reduction, so sort fields by src/dst mem pairs
 
-      std::vector<CopySrcDstField>::const_iterator src_it = srcs.begin();
-      std::vector<CopySrcDstField>::const_iterator dst_it = dsts.begin();
-      unsigned src_suboffset = 0;
-      unsigned dst_suboffset = 0;
-      while((src_it != srcs.end()) && (dst_it != dsts.end())) {
-	InstPair ip(src_it->inst, dst_it->inst);
-	MemPair mp(src_it->inst.impl()->memory, dst_it->inst.impl()->memory);
+	OASByMem oas_by_mem;
 
-	// printf("I:(%x/%x) M:(%x/%x) sub:(%d/%d) src=(%d/%d) dst=(%d/%d)\n",
-	//        ip.first.id, ip.second.id, mp.first.id, mp.second.id,
-	//        src_suboffset, dst_suboffset,
-	//        src_it->offset, src_it->size, 
-	//        dst_it->offset, dst_it->size);
+	std::vector<CopySrcDstField>::const_iterator src_it = srcs.begin();
+	std::vector<CopySrcDstField>::const_iterator dst_it = dsts.begin();
+	unsigned src_suboffset = 0;
+	unsigned dst_suboffset = 0;
+	while((src_it != srcs.end()) && (dst_it != dsts.end())) {
+	  InstPair ip(src_it->inst, dst_it->inst);
+	  MemPair mp(src_it->inst.impl()->memory, dst_it->inst.impl()->memory);
 
-	OASByInst *oas_by_inst;
-	OASByMem::iterator it = oas_by_mem.find(mp);
-	if(it != oas_by_mem.end()) {
-	  oas_by_inst = it->second;
-	} else {
-	  oas_by_inst = new OASByInst;
-	  oas_by_mem[mp] = oas_by_inst;
+	  // printf("I:(%x/%x) M:(%x/%x) sub:(%d/%d) src=(%d/%d) dst=(%d/%d)\n",
+	  //        ip.first.id, ip.second.id, mp.first.id, mp.second.id,
+	  //        src_suboffset, dst_suboffset,
+	  //        src_it->offset, src_it->size, 
+	  //        dst_it->offset, dst_it->size);
+
+	  OASByInst *oas_by_inst;
+	  OASByMem::iterator it = oas_by_mem.find(mp);
+	  if(it != oas_by_mem.end()) {
+	    oas_by_inst = it->second;
+	  } else {
+	    oas_by_inst = new OASByInst;
+	    oas_by_mem[mp] = oas_by_inst;
+	  }
+	  OASVec& oasvec = (*oas_by_inst)[ip];
+
+	  OffsetsAndSize oas;
+	  oas.src_offset = src_it->offset + src_suboffset;
+	  oas.dst_offset = dst_it->offset + dst_suboffset;
+	  oas.size = min(src_it->size - src_suboffset, dst_it->size - dst_suboffset);
+	  oasvec.push_back(oas);
+
+	  src_suboffset += oas.size;
+	  assert(src_suboffset <= src_it->size);
+	  if(src_suboffset == src_it->size) {
+	    src_it++;
+	    src_suboffset = 0;
+	  }
+	  dst_suboffset += oas.size;
+	  assert(dst_suboffset <= dst_it->size);
+	  if(dst_suboffset == dst_it->size) {
+	    dst_it++;
+	    dst_suboffset = 0;
+	  }
 	}
-	OASVec& oasvec = (*oas_by_inst)[ip];
+	// make sure we used up both
+	assert(src_it == srcs.end());
+	assert(dst_it == dsts.end());
 
-	OffsetsAndSize oas;
-	oas.src_offset = src_it->offset + src_suboffset;
-	oas.dst_offset = dst_it->offset + dst_suboffset;
-	oas.size = min(src_it->size - src_suboffset, dst_it->size - dst_suboffset);
-	oasvec.push_back(oas);
+	// now do a copy for each memory pair
+	std::set<Event> finish_events;
 
-	src_suboffset += oas.size;
-	assert(src_suboffset <= src_it->size);
-	if(src_suboffset == src_it->size) {
-	  src_it++;
-	  src_suboffset = 0;
-	}
-	dst_suboffset += oas.size;
-	assert(dst_suboffset <= dst_it->size);
-	if(dst_suboffset == dst_it->size) {
-	  dst_it++;
-	  dst_suboffset = 0;
-	}
-      }
-      // make sure we used up both
-      assert(src_it == srcs.end());
-      assert(dst_it == dsts.end());
+	log_dma.info("copy: %zd distinct src/dst mem pairs, is=" IDFMT "", oas_by_mem.size(), is_id);
 
-      // now do a copy for each memory pair
-      std::set<Event> finish_events;
+	for(OASByMem::const_iterator it = oas_by_mem.begin(); it != oas_by_mem.end(); it++) {
+	  Memory src_mem = it->first.first;
+	  Memory dst_mem = it->first.second;
+	  OASByInst *oas_by_inst = it->second;
 
-      log_dma.info("copy: %zd distinct src/dst mem pairs, is=%x", oas_by_mem.size(), is_id);
-      assert(redop_id == 0);
-
-      for(OASByMem::const_iterator it = oas_by_mem.begin(); it != oas_by_mem.end(); it++) {
-	Memory src_mem = it->first.first;
-	Memory dst_mem = it->first.second;
-	OASByInst *oas_by_inst = it->second;
-
-	// ask which node should perform the copy
-	int dma_node = select_dma_node(src_mem, dst_mem, redop_id, red_fold);
-	log_dma.info("copy: srcmem=%x dstmem=%x node=%d", src_mem.id, dst_mem.id, dma_node);
-
-	if(dma_node == gasnet_mynode()) {
-	  log_dma.info("performing copy on local node");
-
-          // If either one of the instances is in GPU memory increase priority
-          int priority = 0;
-          if (src_mem.impl()->kind == Memory::Impl::MKIND_GPUFB)
-            priority = 1;
-          else if (dst_mem.impl()->kind == Memory::Impl::MKIND_GPUFB)
-            priority = 1;
-
-	  Event ev = enqueue_dma(*this, oas_by_inst, redop_id, red_fold, wait_on, Event::NO_EVENT, priority);
-	  finish_events.insert(ev);
-	} else {
-	  // need to send dma to remote node for processing, so we need a completion event
 	  Event ev = Event::Impl::create_event();
 
+	  int priority = 0;
+#ifdef USE_CUDA
+	  if (src_mem.impl()->kind == Memory::Impl::MKIND_GPUFB)
+	    priority = 1;
+	  else if (dst_mem.impl()->kind == Memory::Impl::MKIND_GPUFB)
+	    priority = 1;
+#endif
+
+	  CopyRequest *r = new CopyRequest(*this, oas_by_inst, 
+					   wait_on, ev, priority);
+
+	  // ask which node should perform the copy
+	  int dma_node = select_dma_node(src_mem, dst_mem, redop_id, red_fold);
+	  log_dma.info("copy: srcmem=" IDFMT " dstmem=" IDFMT " node=%d", src_mem.id, dst_mem.id, dma_node);
+	  
+	  if(dma_node == gasnet_mynode()) {
+	    log_dma.info("performing copy on local node");
+	  
+	    r->check_readiness(false, dma_queue);
+
+	    finish_events.insert(ev);
+	  } else {
+	    RemoteCopyArgs args;
+	    args.redop_id = 0;
+	    args.red_fold = false;
+	    args.before_copy = wait_on;
+	    args.after_copy = ev;
+	    args.priority = priority;
+
+	    static const size_t MAX_MESSAGE_SIZE = 16384;
+	    int msgdata[MAX_MESSAGE_SIZE / sizeof(int)];
+
+	    size_t msglen = r->serialize(msgdata, MAX_MESSAGE_SIZE);
+
+	    log_dma.info("performing copy on remote node (%d), event=" IDFMT "/%d", dma_node, args.after_copy.id, args.after_copy.gen);
+	    RemoteCopyMessage::request(dma_node, args, msgdata, msglen, PAYLOAD_COPY);
+	  
+	    finish_events.insert(ev);
+
+	    // done with the local copy of the request
+	    delete r;
+	  }
+	}
+
+	// final event is merge of all individual copies' events
+	return Event::Impl::merge_events(finish_events);
+      } else {
+	// we're doing a reduction - the semantics require that all source fields be pulled
+	//  together and applied as a "structure" to the reduction op
+
+	// figure out where the source data is
+	int src_node = -1;
+
+	for(std::vector<CopySrcDstField>::const_iterator src_it = srcs.begin();
+	    src_it != srcs.end();
+	    src_it++)
+	{
+	  int n = ID(src_it->inst).node();
+	  if((src_node != -1) && (src_node != n)) {
+	    // for now, don't handle case where source data is split across nodes
+	    assert(0);
+	  }
+	  src_node = n;
+	}
+
+	assert(dsts.size() == 1);
+
+	// some destinations (e.g. GASNET) need a lock taken to ensure
+	//  reductions are applied atomically
+	Memory::Impl::MemoryKind dst_kind = dsts[0].inst.impl()->memory.impl()->kind;
+	bool inst_lock_needed = (dst_kind == Memory::Impl::MKIND_GLOBAL);
+
+	Event ev = Event::Impl::create_event();
+
+	ReduceRequest *r = new ReduceRequest(*this, 
+					     srcs, dsts[0],
+					     inst_lock_needed,
+					     redop_id, red_fold,
+					     wait_on, ev,
+					     0 /*priority*/);
+
+	if(src_node == gasnet_mynode()) {
+	  log_dma.info("performing reduction on local node");
+	  
+	  r->check_readiness(false, dma_queue);
+	} else {
 	  RemoteCopyArgs args;
 	  args.redop_id = redop_id;
 	  args.red_fold = red_fold;
 	  args.before_copy = wait_on;
 	  args.after_copy = ev;
+	  args.priority = 0 /*priority*/;
 
-	  static const size_t MAX_MESSAGE_SIZE = 2048;
-	  int msgdata[MAX_MESSAGE_SIZE / sizeof(int)];
+	  static const size_t MAX_MESSAGE_SIZE = 16384;
+	  IDType msgdata[MAX_MESSAGE_SIZE / sizeof(IDType)];
 
-	  // domain info goes first
-	  int *msgptr = serialize(msgdata);
+	  size_t msglen = r->serialize(msgdata, MAX_MESSAGE_SIZE);
 
-	  // now OAS vectors
-	  for(OASByInst::iterator it2 = oas_by_inst->begin(); it2 != oas_by_inst->end(); it2++) {
-	    RegionInstance src_inst = it2->first.first;
-	    RegionInstance dst_inst = it2->first.second;
-	    OASVec& oasvec = it2->second;
-
-	    *msgptr++ = src_inst.id;
-	    *msgptr++ = dst_inst.id;
-	    *msgptr++ = oasvec.size();
-	    for(OASVec::iterator it3 = oasvec.begin(); it3 != oasvec.end(); it3++) {
-	      *msgptr++ = it3->src_offset;
-	      *msgptr++ = it3->dst_offset;
-	      *msgptr++ = it3->size;
-	    }
-	  }
-
-	  // we're done with our copy of oas_by_inst now
-	  delete oas_by_inst;
-
-	  size_t msglen = ((const char *)msgptr) - ((const char *)msgdata);
-	  assert(msglen <= MAX_MESSAGE_SIZE);
-	  log_dma.info("performing copy on remote node (%d), event=%x/%d", dma_node, args.after_copy.id, args.after_copy.gen);
-	  RemoteCopyMessage::request(dma_node, args, msgdata, msglen, PAYLOAD_COPY);
-	  
-	  finish_events.insert(ev);
+	  log_dma.info("performing reduction on remote node (%d), event=" IDFMT "/%d",
+		       src_node, args.after_copy.id, args.after_copy.gen);
+	  RemoteCopyMessage::request(src_node, args, msgdata, msglen, PAYLOAD_COPY);
+	  // done with the local copy of the request
+	  delete r;
 	}
-      }
 
-      // final event is merge of all individual copies' events
-      return Event::Impl::merge_events(finish_events);
+	return ev;
+      }
     }
 
     Event Domain::copy(const std::vector<CopySrcDstField>& srcs,

@@ -1,4 +1,4 @@
-/* Copyright 2013 Stanford University and Los Alamos National Security, LLC
+/* Copyright 2014 Stanford University and Los Alamos National Security, LLC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,63 +50,97 @@ task int_to_point(i: int, ncx: int, np: int): point
 }
 
 task init_simulation(
-  owned_ispace: ispace<int>, owned: array<owned_ispace, particle>,
-  ghost_bot_ispace: ispace<int>, ghost_bot: array<ghost_bot_ispace, particle>,
-  ghost_top_ispace: ispace<int>, ghost_top: array<ghost_top_ispace, particle>,
+  owned_is: ispace<int>, owned: array<owned_is, particle>,
+  ghost_bot_is: ispace<int>, ghost_bot: array<ghost_bot_is, particle>,
+  ghost_top_is: ispace<int>, ghost_top: array<ghost_top_is, particle>,
   phase: int)
   , writes(owned, ghost_top, ghost_bot)
 {
   let zero = {x: 0.0f, y: 0.0f, z: 0.0f};
-  for i in owned_ispace {
+  for i in owned_is {
     owned[i] = {p: zero, hv: zero, v: zero, a: zero, density: 0.0f};
   }
-  for i in ghost_top_ispace {
+  for i in ghost_top_is {
     ghost_top[i] = {p: zero, hv: zero, v: zero, a: zero, density: 0.0f};
   }
-  for i in ghost_bot_ispace {
+  for i in ghost_bot_is {
     ghost_bot[i] = {p: zero, hv: zero, v: zero, a: zero, density: 0.0f};
   }
 }
 
 task init_step(
-  last_owned_ispace: ispace<int>, last_owned: array<last_owned_ispace, particle>,
-  owned_ispace: ispace<int>, owned: array<owned_ispace, particle>,
-  ghost_bot_ispace: ispace<int>, ghost_bot: array<ghost_bot_ispace, particle>,
-  ghost_top_ispace: ispace<int>, ghost_top: array<ghost_top_ispace, particle>,
+  last_owned_is: ispace<int>, last_owned: array<last_owned_is, particle>,
+  owned_is: ispace<int>, owned: array<owned_is, particle>,
+  ghost_bot_is: ispace<int>, ghost_bot: array<ghost_bot_is, particle>,
+  ghost_top_is: ispace<int>, ghost_top: array<ghost_top_is, particle>,
   phase: int)
   , reads(last_owned, ghost_top, ghost_bot)
   , writes(owned, ghost_top, ghost_bot)
 {
+  // Move particles that have wandered outside of their cells into the
+  // cells they are supposed to be. Ghost cells in this phase are used
+  // to scatter particles that need to be moved into cells owned by
+  // different parts of computation.
+
+  // Involves a stencil operation over owned cells, which means that
+  // accesses to cells have to be checked dynamically to see which
+  // region they land in (owned or ghost, and if ghost which
+  // direction).
 }
 
 task rebuild_reduce(
-  owned_ispace: ispace<int>, owned: array<owned_ispace, particle>,
-  ghost_bot_ispace: ispace<int>, ghost_bot: array<ghost_bot_ispace, particle>,
-  ghost_top_ispace: ispace<int>, ghost_top: array<ghost_top_ispace, particle>,
+  owned_is: ispace<int>, owned: array<owned_is, particle>,
+  ghost_bot_is: ispace<int>, ghost_bot: array<ghost_bot_is, particle>,
+  ghost_top_is: ispace<int>, ghost_top: array<ghost_top_is, particle>,
   phase: int)
   , reads(owned, ghost_top, ghost_bot)
   , writes(owned, ghost_top, ghost_bot)
 {
+  // Move particles that have wandered outside of their cells into the
+  // cells they are supposed to be. Ghost cells in this phase are used
+  // to gather particles that need to be moved from cells owned by
+  // different parts of the computation.
+
+  // Involves a stencil operation over owned cells, which means that
+  // accesses to cells have to be checked dynamically to see which
+  // region they land in (owned or ghost, and if ghost which
+  // direction).
 }
 
 task scatter_densities(
-  owned_ispace: ispace<int>, owned: array<owned_ispace, particle>,
-  ghost_bot_ispace: ispace<int>, ghost_bot: array<ghost_bot_ispace, particle>,
-  ghost_top_ispace: ispace<int>, ghost_top: array<ghost_top_ispace, particle>,
+  owned_is: ispace<int>, owned: array<owned_is, particle>,
+  ghost_bot_is: ispace<int>, ghost_bot: array<ghost_bot_is, particle>,
+  ghost_top_is: ispace<int>, ghost_top: array<ghost_top_is, particle>,
   phase: int)
   , reads(owned, ghost_top, ghost_bot)
   , writes(owned, ghost_top, ghost_bot)
 {
+  // Calculate density for each particle. Ghost cells in this phase
+  // are used to scatter density values from neighboring parts of the
+  // computation.
+
+  // Involves a stencil operation over owned cells, which means that
+  // accesses to cells have to be checked dynamically to see which
+  // region they land in (owned or ghost, and if ghost which
+  // direction).
 }
 
 task gather_forces(
-  owned_ispace: ispace<int>, owned: array<owned_ispace, particle>,
-  ghost_bot_ispace: ispace<int>, ghost_bot: array<ghost_bot_ispace, particle>,
-  ghost_top_ispace: ispace<int>, ghost_top: array<ghost_top_ispace, particle>,
+  owned_is: ispace<int>, owned: array<owned_is, particle>,
+  ghost_bot_is: ispace<int>, ghost_bot: array<ghost_bot_is, particle>,
+  ghost_top_is: ispace<int>, ghost_top: array<ghost_top_is, particle>,
   phase: int)
   , reads(owned, ghost_top, ghost_bot)
   , writes(owned, ghost_top, ghost_bot)
 {
+  // Calculate acceleration for each particle. Ghost cells in this
+  // phase are used to gather density values from neighboring parts of
+  // the computation.
+
+  // Involves a stencil operation over owned cells, which means that
+  // accesses to cells have to be checked dynamically to see which
+  // region they land in (owned or ghost, and if ghost which
+  // direction).
 }
 
 task owned_color(bx: int, buffer_phase: int, nbx: int): int
@@ -135,25 +169,25 @@ task ghost_color(bx: int, dir: int, buffer_phase: int, edge_phase: int, nbx: int
 
 // Colors all owned and ghost cells.
 task all_owned_ghost_coloring(
-  cells_ispace: ispace<int>,
+  cells_is: ispace<int>,
   nx: int, nbx: int, np: int, ncx: int)
-  : coloring<cells_ispace>
+  : coloring<cells_is>
 {
-  var cells_coloring = coloring<cells_ispace>();
+  var cells_coloring = coloring<cells_is>();
 
   // Colors to assign for owned and ghost cells.
   let owned = 0;
   let ghost = 1;
 
   let blocksize = nx/nbx;
-  let buffer_ispace = ispace<int>(2);
-  let block_ispace = ispace<int>(nbx);
-  let block_interior_ispace = ispace<int>(blocksize);
-  let particle_ispace = ispace<int>(np);
-  for buffer_phase in buffer_ispace {
-    for bx in block_ispace {
+  let buffer_is = ispace<int>(2);
+  let block_is = ispace<int>(nbx);
+  let block_interior_is = ispace<int>(blocksize);
+  let particle_is = ispace<int>(np);
+  for buffer_phase in buffer_is {
+    for bx in block_is {
       // Ghost cells.
-      for p in particle_ispace {
+      for p in particle_is {
         let pt = {buffer_phase: buffer_phase, x: bx*(blocksize + 2), p: p};
         cells_coloring = color(
           cells_coloring,
@@ -162,8 +196,8 @@ task all_owned_ghost_coloring(
       }
 
       // Owned cells.
-      for cx in block_interior_ispace {
-        for p in particle_ispace {
+      for cx in block_interior_is {
+        for p in particle_is {
           let pt = {buffer_phase: buffer_phase, x: bx*(blocksize + 2) + cx + 1, p: p};
           cells_coloring = color(
             cells_coloring,
@@ -173,7 +207,7 @@ task all_owned_ghost_coloring(
       }
 
       // Ghost cells.
-      for p in particle_ispace {
+      for p in particle_is {
         let pt = {buffer_phase: buffer_phase, x: (bx + 1)*(blocksize + 2) - 1, p: p};
         cells_coloring = color(
           cells_coloring,
@@ -186,20 +220,20 @@ task all_owned_ghost_coloring(
 }
 
 // Colors owned cells by block.
-task owned_blocks_coloring(cells_ispace: ispace<int>, nx: int, nbx: int, np: int, ncx: int)
-  : coloring<cells_ispace>
+task owned_blocks_coloring(cells_is: ispace<int>, nx: int, nbx: int, np: int, ncx: int)
+  : coloring<cells_is>
 {
-  var owned_coloring = coloring<cells_ispace>();
+  var owned_coloring = coloring<cells_is>();
 
   let blocksize = nx/nbx;
-  let buffer_ispace = ispace<int>(2);
-  let block_ispace = ispace<int>(nbx);
-  let block_interior_ispace = ispace<int>(blocksize);
-  let particle_ispace = ispace<int>(np);
-  for buffer_phase in buffer_ispace {
-    for bx in block_ispace {
-      for cx in block_interior_ispace {
-        for p in particle_ispace {
+  let buffer_is = ispace<int>(2);
+  let block_is = ispace<int>(nbx);
+  let block_interior_is = ispace<int>(blocksize);
+  let particle_is = ispace<int>(np);
+  for buffer_phase in buffer_is {
+    for bx in block_is {
+      for cx in block_interior_is {
+        for p in particle_is {
           let pt = {buffer_phase: buffer_phase, x: bx*(blocksize + 2) + cx + 1, p: p};
           owned_coloring = color(
             owned_coloring,
@@ -214,18 +248,18 @@ task owned_blocks_coloring(cells_ispace: ispace<int>, nx: int, nbx: int, np: int
 }
 
 // Colors ghost cells by block.
-task ghost_blocks_coloring(cells_ispace: ispace<int>, nx: int, nbx: int, np: int, ncx: int)
-  : coloring<cells_ispace>
+task ghost_blocks_coloring(cells_is: ispace<int>, nx: int, nbx: int, np: int, ncx: int)
+  : coloring<cells_is>
 {
-  var ghost_coloring = coloring<cells_ispace>();
+  var ghost_coloring = coloring<cells_is>();
 
   let blocksize = nx/nbx;
-  let buffer_ispace = ispace<int>(2);
-  let block_ispace = ispace<int>(nbx);
-  let particle_ispace = ispace<int>(np);
-  for buffer_phase in buffer_ispace {
-    for bx in block_ispace {
-      for p in particle_ispace {
+  let buffer_is = ispace<int>(2);
+  let block_is = ispace<int>(nbx);
+  let particle_is = ispace<int>(np);
+  for buffer_phase in buffer_is {
+    for bx in block_is {
+      for p in particle_is {
         let pt = {buffer_phase: buffer_phase, x: bx*(blocksize + 2), p: p};
         ghost_coloring = color(
           ghost_coloring,
@@ -233,7 +267,7 @@ task ghost_blocks_coloring(cells_ispace: ispace<int>, nx: int, nbx: int, np: int
           ghost_color(bx, -1, buffer_phase, 0, nbx));
       }
 
-      for p in particle_ispace {
+      for p in particle_is {
         let pt = {buffer_phase: buffer_phase, x: (bx + 1)*(blocksize + 2) - 1, p: p};
         ghost_coloring = color(
           ghost_coloring,
@@ -252,26 +286,26 @@ task fluid(nx: int, nbx: int, np: int, steps: int, double_buffer: bool)
   let ncx = nx + (nbx + 1)*2;
 
   // Allocate all cells.
-  let cells_ispace = ispace<int>(ncx*np*2);
-  let cells = array<cells_ispace, particle>();
+  let cells_is = ispace<int>(ncx*np*2);
+  let cells = array<cells_is, particle>();
 
   // Partition cells into owned or ghost cells.
-  let cells_coloring = all_owned_ghost_coloring(cells_ispace, nx, nbx, np, ncx);
-  let cells_part = partition<cells_ispace, disjoint>(cells_coloring);
-  let owned_ispace = cells_part[0];
-  let ghost_ispace = cells_part[1];
+  let cells_coloring = all_owned_ghost_coloring(cells_is, nx, nbx, np, ncx);
+  let cells_part = partition<cells_is, disjoint>(cells_coloring);
+  let owned_is = cells_part[0];
+  let ghost_is = cells_part[1];
 
   // Partition owned cells into blocks.
-  let owned_coloring = owned_blocks_coloring(owned_ispace, nx, nbx, np, ncx);
-  let owned_part = partition<owned_ispace, disjoint>(owned_coloring);
+  let owned_coloring = owned_blocks_coloring(owned_is, nx, nbx, np, ncx);
+  let owned_part = partition<owned_is, disjoint>(owned_coloring);
 
   // Partition ghost cells into blocks.
-  let ghost_coloring = ghost_blocks_coloring(ghost_ispace, nx, nbx, np, ncx);
-  let ghost_part = partition<ghost_ispace, disjoint>(ghost_coloring);
+  let ghost_coloring = ghost_blocks_coloring(ghost_is, nx, nbx, np, ncx);
+  let ghost_part = partition<ghost_is, disjoint>(ghost_coloring);
 
   // Initialize the simulation.
-  let block_ispace = ispace<int>(nbx);
-  for bx in block_ispace {
+  let block_is = ispace<int>(nbx);
+  for bx in block_is {
     let buffer_phase = 1;
     let edge_phase = 1;
     let owned = owned_part[owned_color(bx, buffer_phase, nbx)];
@@ -285,15 +319,15 @@ task fluid(nx: int, nbx: int, np: int, steps: int, double_buffer: bool)
   }
 
   // Simulation main loop.
-  let steps_ispace = ispace<int>(steps);
-  for step in steps_ispace {
+  let steps_is = ispace<int>(steps);
+  for step in steps_is {
     var buffer_phase = 0;
     if (double_buffer) {
       buffer_phase = step % 2;
     }
     let buffer_phase = buffer_phase;
 
-    for bx in block_ispace {
+    for bx in block_is {
       let edge_phase = 0;
       let last_owned = owned_part[owned_color(bx, 1 - buffer_phase, nbx)];
       let owned = owned_part[owned_color(bx, buffer_phase, nbx)];
@@ -306,7 +340,7 @@ task fluid(nx: int, nbx: int, np: int, steps: int, double_buffer: bool)
         ghost_top, cells[ghost_top],
         edge_phase);
     }
-    for bx in block_ispace {
+    for bx in block_is {
       let edge_phase = 0;
       let owned = owned_part[owned_color(bx, buffer_phase, nbx)];
       let ghost_bot = ghost_part[ghost_color(bx, -1, buffer_phase, edge_phase, nbx)];
@@ -317,7 +351,7 @@ task fluid(nx: int, nbx: int, np: int, steps: int, double_buffer: bool)
         ghost_top, cells[ghost_top],
         edge_phase);
     }
-    for bx in block_ispace {
+    for bx in block_is {
       let edge_phase = 1;
       let owned = owned_part[owned_color(bx, buffer_phase, nbx)];
       let ghost_bot = ghost_part[ghost_color(bx, -1, buffer_phase, edge_phase, nbx)];
@@ -328,7 +362,7 @@ task fluid(nx: int, nbx: int, np: int, steps: int, double_buffer: bool)
         ghost_top, cells[ghost_top],
         edge_phase);
     }
-    for bx in block_ispace {
+    for bx in block_is {
       let edge_phase = 0;
       let owned = owned_part[owned_color(bx, buffer_phase, nbx)];
       let ghost_bot = ghost_part[ghost_color(bx, -1, buffer_phase, edge_phase, nbx)];

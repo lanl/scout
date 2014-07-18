@@ -1,4 +1,4 @@
-/* Copyright 2013 Stanford University
+/* Copyright 2014 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,58 +32,63 @@ namespace LegionRuntime {
   namespace HighLevel {
     namespace LegionSpy {
 
+      typedef LegionRuntime::LowLevel::IDType IDType;
+
       extern Logger::Category log_spy;
 
       static int next_point_id = 0;
 
       // Logger calls for the machine architecture
-      static inline void log_utility_processor(unsigned unique_id)
+      static inline void log_utility_processor(IDType unique_id)
       {
-        log_spy(LEVEL_INFO, "Utility %u", unique_id);
+        log_spy(LEVEL_INFO, "Utility " IDFMT "", 
+                unique_id);
       }
 
-      static inline void log_processor(unsigned unique_id, unsigned util_id, 
+      static inline void log_processor(IDType unique_id, IDType util_id, 
                                        unsigned kind)
       {
-        log_spy(LEVEL_INFO, "Processor %u %u %u", unique_id, util_id, kind);
+        log_spy(LEVEL_INFO, "Processor " IDFMT " " IDFMT " %u", 
+                unique_id, util_id, kind);
       }
 
-      static inline void log_memory(unsigned unique_id, size_t capacity)
+      static inline void log_memory(IDType unique_id, size_t capacity)
       {
-        log_spy(LEVEL_INFO, "Memory %u %lu", unique_id, capacity);
+        log_spy(LEVEL_INFO, "Memory " IDFMT " %lu", 
+                unique_id, capacity);
       }
 
-      static inline void log_proc_mem_affinity(unsigned proc_id, 
-            unsigned mem_id, unsigned bandwidth, unsigned latency)
+      static inline void log_proc_mem_affinity(IDType proc_id, 
+            IDType mem_id, unsigned bandwidth, unsigned latency)
       {
-        log_spy(LEVEL_INFO, "Processor Memory %u %u %u %u", 
+        log_spy(LEVEL_INFO, "Processor Memory " IDFMT " " IDFMT " %u %u", 
                   proc_id, mem_id, bandwidth, latency);
       }
 
-      static inline void log_mem_mem_affinity(unsigned mem1, 
-          unsigned mem2, unsigned bandwidth, unsigned latency)
+      static inline void log_mem_mem_affinity(IDType mem1, 
+          IDType mem2, unsigned bandwidth, unsigned latency)
       {
-        log_spy(LEVEL_INFO, "Memory Memory %u %u %u %u", 
+        log_spy(LEVEL_INFO, "Memory Memory " IDFMT " " IDFMT " %u %u", 
                           mem1, mem2, bandwidth, latency);
       }
 
       // Logger calls for the shape of region trees
-      static inline void log_top_index_space(unsigned unique_id)
+      static inline void log_top_index_space(IDType unique_id)
       {
-        log_spy(LEVEL_INFO,"Index Space %u", unique_id);
+        log_spy(LEVEL_INFO,"Index Space " IDFMT "", unique_id);
       }
 
-      static inline void log_index_partition(unsigned parent_id, 
-                unsigned unique_id, bool disjoint, unsigned color)
+      static inline void log_index_partition(IDType parent_id, 
+                IDType unique_id, bool disjoint, unsigned color)
       {
-        log_spy(LEVEL_INFO,"Index Partition %u %u %u %u", 
+        log_spy(LEVEL_INFO,"Index Partition " IDFMT " " IDFMT " %u %u", 
                     parent_id, unique_id, disjoint, color);
       }
 
-      static inline void log_index_subspace(unsigned parent_id, 
-                              unsigned unique_id, unsigned color)
+      static inline void log_index_subspace(IDType parent_id, 
+                              IDType unique_id, unsigned color)
       {
-        log_spy(LEVEL_INFO,"Index Subspace %u %u %u", 
+        log_spy(LEVEL_INFO,"Index Subspace " IDFMT " " IDFMT " %u", 
                           parent_id, unique_id, color);
       }
 
@@ -99,10 +104,10 @@ namespace LegionRuntime {
                             unique_id, field_id);
       }
 
-      static inline void log_top_region(unsigned index_space, 
+      static inline void log_top_region(IDType index_space, 
                       unsigned field_space, unsigned tree_id)
       {
-        log_spy(LEVEL_INFO,"Region %u %u %u", 
+        log_spy(LEVEL_INFO,"Region " IDFMT " %u %u", 
               index_space, field_space, tree_id);
       }
 
@@ -147,6 +152,13 @@ namespace LegionRuntime {
             context, unique_id);
       }
 
+      static inline void log_fence_operation(UniqueID context,
+                                             UniqueID unique_id)
+      {
+        log_spy(LEVEL_INFO,"Fence Operation %llu %llu",
+            context, unique_id);
+      }
+
       static inline void log_copy_operation(UniqueID context,
                                             UniqueID unique_id)
       {
@@ -187,11 +199,11 @@ namespace LegionRuntime {
 
       // Logger calls for mapping dependence analysis 
       static inline void log_logical_requirement(UniqueID unique_id, 
-          unsigned index, bool region, unsigned index_component,
+          unsigned index, bool region, IDType index_component,
           unsigned field_component, unsigned tree_id, unsigned privilege, 
           unsigned coherence, unsigned redop)
       {
-        log_spy(LEVEL_INFO,"Logical Requirement %llu %u %u %u %u %u %u %u %u", 
+        log_spy(LEVEL_INFO,"Logical Requirement %llu %u %u " IDFMT " %u %u %u %u %u", 
             unique_id, index, region, index_component,
             field_component, tree_id, privilege, coherence, redop);
       }
@@ -227,7 +239,7 @@ namespace LegionRuntime {
       static inline void log_event_dependence(Event one, Event two)
       {
         if (one != two)
-          log_spy(LEVEL_INFO,"Event Event %u %u %u %u", 
+          log_spy(LEVEL_INFO,"Event Event " IDFMT " %u " IDFMT " %u", 
                           one.id, one.gen, two.id, two.gen);
       }
 
@@ -238,7 +250,7 @@ namespace LegionRuntime {
               it != preconditions.end(); it++)
         {
           if (*it != result)
-            log_spy(LEVEL_INFO,"Event Event %u %u %u %u", 
+            log_spy(LEVEL_INFO,"Event Event " IDFMT " %u " IDFMT " %u", 
                     it->id, it->gen, result.id, result.gen);
         }
       }
@@ -246,21 +258,21 @@ namespace LegionRuntime {
       static inline void log_implicit_dependence(Event one, Event two)
       {
         if (one != two)
-          log_spy(LEVEL_INFO,"Implicit Event %u %u %u %u",
+          log_spy(LEVEL_INFO,"Implicit Event " IDFMT " %u " IDFMT " %u",
               one.id, one.gen, two.id, two.gen);
       }
 
       static inline void log_op_events(UniqueID uid, Event start_event,
                                        Event term_event)
       {
-        log_spy(LEVEL_INFO,"Op Events %llu %u %u %u %u",
+        log_spy(LEVEL_INFO,"Op Events %llu " IDFMT " %u " IDFMT " %u",
             uid, start_event.id, start_event.gen, 
             term_event.id, term_event.gen);
       }
 
-      static inline void log_copy_operation(unsigned src_inst,
-                                            unsigned dst_inst,
-                                            unsigned index_handle,
+      static inline void log_copy_operation(IDType src_inst,
+                                            IDType dst_inst,
+                                            IDType index_handle,
                                             unsigned field_handle,
                                             unsigned tree_id,
                                             Event start_event,
@@ -268,43 +280,47 @@ namespace LegionRuntime {
                                             unsigned redop,
                                             const char *mask)
       {
-        log_spy(LEVEL_INFO,"Copy Events %u %u %u %u %u %u %u %u %u %u %s",
+        log_spy(LEVEL_INFO,"Copy Events " IDFMT " " IDFMT " " IDFMT 
+                           " %u %u " IDFMT " %u " IDFMT " %u %u %s",
             src_inst, dst_inst, index_handle, field_handle,
             tree_id, start_event.id, start_event.gen, term_event.id,
             term_event.gen, redop, mask);
       }
 
       // Logger calls for physical instances
-      static inline void log_physical_instance(unsigned inst_id, 
-                         unsigned mem_id, unsigned index_handle, 
+      static inline void log_physical_instance(IDType inst_id, 
+                         IDType mem_id, IDType index_handle, 
                          unsigned field_handle, unsigned tree_id)
       {
-        log_spy(LEVEL_INFO, "Physical Instance %u %u %u %u %u", 
+        log_spy(LEVEL_INFO, "Physical Instance " IDFMT " " IDFMT " " 
+                            IDFMT " %u %u", 
             inst_id, mem_id, index_handle, field_handle, tree_id);
       }
 
-      static inline void log_physical_reduction(unsigned inst_id, 
-          unsigned mem_id, unsigned index_handle, unsigned field_handle, 
+      static inline void log_physical_reduction(IDType inst_id, 
+          IDType mem_id, IDType index_handle, unsigned field_handle, 
           unsigned tree_id, bool fold, unsigned indirect_id = 0)
       {
-        log_spy(LEVEL_INFO, "Reduction Instance %u %u %u %u %u %u %u", 
+        log_spy(LEVEL_INFO, "Reduction Instance " IDFMT " " IDFMT " " 
+                            IDFMT " %u %u %u %u", 
                              inst_id, mem_id, index_handle, field_handle, 
                              tree_id, fold, indirect_id);
       }
 
       static inline void log_op_user(UniqueID user,
                                      unsigned idx, 
-                                     unsigned inst_id)
+                                     IDType inst_id)
       {
-        log_spy(LEVEL_INFO, "Op Instance User %llu %u %u", 
+        log_spy(LEVEL_INFO, "Op Instance User %llu %u " IDFMT "", 
                               user, idx, inst_id);
       }
     };
 
     class TreeStateLogger {
     public:
-      explicit TreeStateLogger(AddressSpaceID sid, bool verbose,
-                               bool logical_only, bool physical_only);
+      TreeStateLogger(void);
+      TreeStateLogger(AddressSpaceID sid, bool verbose,
+                      bool logical_only, bool physical_only);
       ~TreeStateLogger(void);
     public:
       void log(const char *fmt, ...);

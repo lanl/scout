@@ -1,4 +1,4 @@
-/* Copyright 2013 Stanford University
+/* Copyright 2014 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -177,6 +177,10 @@ namespace LegionRuntime {
                                       task->regions[idx].target_ranking,
                                       task->regions[idx].additional_fields,
                                     task->regions[idx].enable_WAR_optimization);
+          task->regions[idx].reduction_list = 
+            select_reduction_layout(task, task->target_proc,
+                                    task->regions[idx], idx, 
+                                    Memory::NO_MEMORY);
           notify = notify || note;
         }
       }
@@ -458,7 +462,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       log_shim(LEVEL_SPEW,"Select tasks to schedule in shim mapper for "
-                          "processor %x", local_proc.id);
+                          "processor " IDFMT "", local_proc.id);
       if (breadth_first_traversal)
       {
         // TODO: something with some feedback pressure based on profiling
@@ -503,7 +507,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       log_shim(LEVEL_SPEW,"Spawn task %s (ID %lld) in shim mapper "
-                          "for processor %x",
+                          "for processor " IDFMT "",
                            task->variants->name, 
                            task->get_unique_task_id(), local_proc.id);
       return true;
@@ -514,12 +518,9 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       log_shim(LEVEL_SPEW,"Map task %s (ID %lld) locally in shim mapper "
-                          "for processor %x",
+                          "for processor " IDFMT "",
                            task->variants->name, 
                            task->get_unique_task_id(), local_proc.id);
-      // If this is a leaf task, map it locally, otherwise map it remotely
-      if (task->variants->leaf)
-        return true;
       return false;
     }
 
@@ -528,7 +529,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       log_shim(LEVEL_SPEW,"Select target processor for task %s (ID %lld) "
-                          "in shim mapper for processor %x",
+                          "in shim mapper for processor " IDFMT "",
                           task->variants->name, 
                           task->get_unique_task_id(), local_proc.id);
       // See if the profiler has profiling results for all the different 
@@ -570,7 +571,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       log_shim(LEVEL_SPEW,"Target task steal in shim mapper for "
-                          "processor %x",local_proc.id);
+                          "processor " IDFMT "",local_proc.id);
       if (stealing_enabled)
       {
         // Choose a random processor from our group that is 
@@ -592,8 +593,8 @@ namespace LegionRuntime {
         {
           if (!index--)
           {
-            log_shim(LEVEL_SPEW,"Attempting a steal from processor %x "
-                                "on processor %x",local_proc.id,it->id);
+            log_shim(LEVEL_SPEW,"Attempting a steal from processor " IDFMT " "
+                                "on processor " IDFMT "",local_proc.id,it->id);
             return *it;
           }
         }
@@ -610,7 +611,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       log_shim(LEVEL_SPEW,"Select task variant for task %s (ID %lld) "
-                            "in shim mapper for processor %x",
+                            "in shim mapper for processor " IDFMT "",
                             task->variants->name,
                             task->get_unique_task_id(), local_proc.id);
       Processor::Kind target_kind = machine->get_processor_kind(target);
@@ -632,7 +633,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       log_shim(LEVEL_SPEW,"Map region virtually for task %s (ID %lld) "
-                          "in shim mapper for processor %x",
+                          "in shim mapper for processor " IDFMT "",
                           task->variants->name, 
                           task->get_unique_task_id(), local_proc.id);
       return false;
@@ -651,7 +652,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       log_shim(LEVEL_SPEW,"Map task region in shim mapper for region ? "
-                          "of task %s (ID %lld) for processor %x", 
+                          "of task %s (ID %lld) for processor " IDFMT "", 
                           task->variants->name, 
                           task->get_unique_task_id(), local_proc.id);
       enable_WAR_optimization = war_enabled;
@@ -689,7 +690,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       log_shim(LEVEL_SPEW,"Task %s mapped region requirement for "
-                          "index %d to memory %x",
+                          "index %d to memory " IDFMT "",
                           task->variants->name, index, result.id);
       memoizer.notify_mapping(target, task, index, result); 
     }
@@ -701,7 +702,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       log_shim(LEVEL_ERROR,"Notify failed mapping for task %s (ID %lld) "
-                           "in shim mapper for processor %x",
+                           "in shim mapper for processor " IDFMT "",
                            task->variants->name, 
                            task->get_unique_task_id(), local_proc.id);
       assert(false);
@@ -716,7 +717,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       log_shim(LEVEL_SPEW,"Select region layout for task %s (ID %lld) "
-                          "in shim mapper for processor %x",
+                          "in shim mapper for processor " IDFMT "",
                            task->variants->name, 
                            task->get_unique_task_id(), local_proc.id);
       if(!target.exists()) {
@@ -738,7 +739,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       log_shim(LEVEL_SPEW,"Select reduction layout for task %s (ID %lld) "
-                          "in shim mapper for processor %x",
+                          "in shim mapper for processor " IDFMT "",
                           task->variants->name, 
                           task->get_unique_task_id(), local_proc.id);
       // Always do foldable reduction instances if we can
@@ -757,7 +758,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       log_shim(LEVEL_SPEW,"Rank copy targets for task %s (ID %lld) in "
-                          "shim mapper for processor %x",
+                          "shim mapper for processor " IDFMT "",
                            task->variants->name, 
                            task->get_unique_task_id(), local_proc.id);
       if (current_instances.empty())
@@ -783,7 +784,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       log_shim(LEVEL_SPEW,"Select copy source in shim mapper for "
-                          "processor %x", local_proc.id);
+                          "processor " IDFMT "", local_proc.id);
       // Handle the simple case of having the destination memory 
       // in the set of instances 
       if (current_instances.find(dst) != current_instances.end())
@@ -811,7 +812,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       log_shim(LEVEL_SPEW,"Profile task execution for task %s (UID %lld) "
-                          "on processor %x",
+                          "on processor " IDFMT "",
                           task->variants->name, 
                           task->get_unique_task_id(), target.id);
       if (!profiler.profiling_complete(task))
@@ -825,7 +826,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       log_shim(LEVEL_SPEW,"Notify profiling info for task %s (UID %lld) "
-                          "on processor %x", task->variants->name, 
+                          "on processor " IDFMT "", task->variants->name, 
                           task->get_unique_task_id(), target.id);
       memoizer.commit_mapping(target, task);
       profiler.update_profiling_info(task, target, 
@@ -838,7 +839,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       log_shim(LEVEL_SPEW,"Speculate on predicate in shim mapper "
-                          "for processor %x", local_proc.id);
+                          "for processor " IDFMT "", local_proc.id);
       return false;
     }
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright 2013 Stanford University and Los Alamos National Security, LLC
+# Copyright 2014 Stanford University and Los Alamos National Security, LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -114,6 +114,12 @@ def foreign_type(node, opts):
             return types.ForeignRegion()
         if isinstance(node.points_to_type, ast.TypeLegionRuntime):
             return types.ForeignRuntime()
+
+    # arrays
+    if isinstance(node, ast.TypeArray):
+        # special Legion constructs
+        if isinstance(node.element_type, ast.TypeLegionRegion):
+            return types.ForeignRegion()
 
     # structs
     if isinstance(node, ast.TypeStruct):

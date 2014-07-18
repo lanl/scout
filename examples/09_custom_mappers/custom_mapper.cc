@@ -1,4 +1,4 @@
-/* Copyright 2013 Stanford University
+/* Copyright 2014 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,6 +45,14 @@ enum FieldIDs {
   FID_X,
   FID_Y,
   FID_Z,
+};
+
+enum {
+  SUBREGION_TUNABLE,
+};
+
+enum {
+  PARTITIONING_MAPPER_ID = 1,
 };
 
 /*
@@ -113,6 +121,16 @@ public:
   virtual void notify_mapping_result(const Mappable *mappable);
 };
 
+class PartitioningMapper : public DefaultMapper {
+public:
+  PartitioningMapper(Machine *machine,
+      HighLevelRuntime *rt, Processor local);
+public:
+  virtual int get_tunable_value(const Task *task,
+                                TunableID tid,
+                                MappingTagID tag);
+};
+
 // Mappers are created after the Legion runtime
 // starts but before the application begins 
 // executing.  To create mappers the application
@@ -157,6 +175,8 @@ void mapper_registration(Machine *machine, HighLevelRuntime *rt,
   {
     rt->replace_default_mapper(
         new AdversarialMapper(machine, rt, *it), *it);
+    rt->add_mapper(PARTITIONING_MAPPER_ID,
+        new PartitioningMapper(machine, rt, *it), *it);
   }
 }
 
@@ -246,7 +266,7 @@ AdversarialMapper::AdversarialMapper(Machine *m,
             break;
           }
         // Pinned memory on a single node
-        case Memory::PINNED_MEM:
+        case Memory::REGDMA_MEM:
           {
             printf("  Pinned Memory ID %x has %ld KB\n",
                     it->id, memory_size_in_kb);
@@ -506,27 +526,51 @@ void AdversarialMapper::notify_mapping_result(const Mappable *mappable)
   }
 }
 
+PartitioningMapper::PartitioningMapper(Machine *m,
+                                       HighLevelRuntime *rt,
+                                       Processor p)
+  : DefaultMapper(m, rt, p)
+{
+}
+
+int PartitioningMapper::get_tunable_value(const Task *task,
+                                          TunableID tid,
+                                          MappingTagID tag)
+{
+  if (tid == SUBREGION_TUNABLE)
+  {
+    const std::set<Processor> &cpu_procs = 
+      machine_interface.filter_processors(Processor::LOC_PROC);
+    return cpu_procs.size();
+  }
+  // Should never get here
+  assert(false);
+  return 0;
+}
+
 /*
  * Everything below here is the standard daxpy example
  * except for the registration of the callback function
- * for creating custom mappers which is explicitly commented.
+ * for creating custom mappers which is explicitly commented
+ * and the call to get_tunable_value to determine the number
+ * of sub-regions.
  */
 void top_level_task(const Task *task,
                     const std::vector<PhysicalRegion> &regions,
                     Context ctx, HighLevelRuntime *runtime)
 {
   int num_elements = 1024; 
-  int num_subregions = 4;
   {
     const InputArgs &command_args = HighLevelRuntime::get_input_args();
     for (int i = 1; i < command_args.argc; i++)
     {
       if (!strcmp(command_args.argv[i],"-n"))
         num_elements = atoi(command_args.argv[++i]);
-      if (!strcmp(command_args.argv[i],"-b"))
-        num_subregions = atoi(command_args.argv[++i]);
     }
   }
+  int num_subregions = runtime->get_tunable_value(ctx, SUBREGION_TUNABLE, 
+                                                  PARTITIONING_MAPPER_ID);
+
   printf("Running daxpy for %d elements...\n", num_elements);
   printf("Partitioning data into %d sub-regions...\n", num_subregions);
 
@@ -555,24 +599,18 @@ void top_level_task(const Task *task,
   IndexPartition ip;
   if ((num_elements % num_subregions) != 0)
   {
-    const int elmts_per_subregion = (num_elements + (num_subregions-1))/num_subregions;
+    const int lower_bound = num_elements/num_subregions;
+    const int upper_bound = lower_bound+1;
+    const int number_small = num_subregions - (num_elements % num_subregions);
     DomainColoring coloring;
     int index = 0;
     for (int color = 0; color < num_subregions; color++)
     {
-      if ((index+elmts_per_subregion) > num_elements)
-      {
-        // Handle the overflow case
-        Rect<1> subrect(Point<1>(index),Point<1>(num_elements-1));
-        coloring[color] = Domain::from_rect<1>(subrect);
-      }
-      else
-      {
-        // Default case
-        Rect<1> subrect(Point<1>(index),Point<1>(index+elmts_per_subregion-1));
-        coloring[color] = Domain::from_rect<1>(subrect);
-        index += elmts_per_subregion;
-      }
+      int num_elmts = color < number_small ? lower_bound : upper_bound;
+      assert((index+num_elmts) <= num_elements);
+      Rect<1> subrect(Point<1>(index),Point<1>(index+num_elmts-1));
+      coloring[color] = Domain::from_rect<1>(subrect);
+      index += num_elmts;
     }
     ip = runtime->create_index_partition(ctx, is, color_domain, 
                                       coloring, true/*disjoint*/);

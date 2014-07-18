@@ -1,4 +1,4 @@
-/* Copyright 2013 Stanford University
+/* Copyright 2014 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
 #include <set>
 #include <map>
 #include <cstdarg>
+#include <stdint.h>
 
 #include "common.h"
 #include "utilities.h"
@@ -46,9 +47,19 @@ namespace LegionRuntime {
 
     class Machine;
 
+#ifdef LEGION_IDS_ARE_64BIT
+    typedef unsigned long long IDType;
+#define IDFMT "%llx"
+#else
+    typedef unsigned IDType;
+#define IDFMT "%x"
+#endif
+
+    typedef unsigned int AddressSpace;
+
     class Event {
     public:
-      typedef unsigned id_t;
+      typedef IDType id_t;
       typedef unsigned gen_t;
 
       id_t id;
@@ -96,6 +107,8 @@ namespace LegionRuntime {
     public:
       static UserEvent create_user_event(void);
       void trigger(Event wait_on = Event::NO_EVENT) const;
+
+      static const UserEvent NO_USER_EVENT;
     };
 
     // a Barrier is similar to a UserEvent, except that it has a count of how
@@ -119,7 +132,7 @@ namespace LegionRuntime {
 
     class Reservation {
     public:
-      typedef unsigned id_t;
+      typedef IDType id_t;
       id_t id;
       bool operator<(const Reservation& rhs) const { return id < rhs.id; }
       bool operator==(const Reservation& rhs) const { return id == rhs.id; }
@@ -149,7 +162,7 @@ namespace LegionRuntime {
 
     class Processor {
     public:
-      typedef unsigned id_t;
+      typedef IDType id_t;
       id_t id;
       bool operator<(const Processor& rhs) const { return id < rhs.id; }
       bool operator==(const Processor& rhs) const { return id == rhs.id; }
@@ -178,6 +191,11 @@ namespace LegionRuntime {
       void enable_idle_task(void);
       void disable_idle_task(void);
 
+      // Return the address space for this processor
+      AddressSpace address_space(void) const;
+      // Return the local ID within the address space
+      IDType local_id(void) const;
+
       // special task IDs
       enum {
         // Save ID 0 for the force shutdown function
@@ -194,7 +212,7 @@ namespace LegionRuntime {
 
     class Memory {
     public:
-      typedef unsigned id_t;
+      typedef IDType id_t;
       id_t id;
       bool operator<(const Memory &rhs) const { return id < rhs.id; }
       bool operator==(const Memory &rhs) const { return id == rhs.id; }
@@ -207,11 +225,16 @@ namespace LegionRuntime {
 
       bool exists(void) const { return id != 0; }
 
+      // Return the address space for this memory
+      AddressSpace address_space(void) const;
+      // Return the local ID within the address space
+      IDType local_id(void) const;
+
       // Different Memory types
       enum Kind {
         GLOBAL_MEM, // Guaranteed visible to all processors on all nodes (e.g. GASNet memory, universally slow)
         SYSTEM_MEM, // Visible to all processors on a node
-        PINNED_MEM, // Visible to all processors on a node, can be a target of RDMA
+        REGDMA_MEM, // Registered memory visible to all processors on a node, can be a target of RDMA
         SOCKET_MEM, // Memory visible to all processors within a node, better performance to processors on same socket 
         Z_COPY_MEM, // Zero-Copy memory visible to all CPUs within a node and one or more GPUs 
         GPU_FB_MEM,   // Framebuffer memory for one GPU and all its SMs
@@ -226,6 +249,7 @@ namespace LegionRuntime {
       ElementMask(void);
       explicit ElementMask(int num_elements, int first_element = 0);
       ElementMask(const ElementMask &copy_from, int num_elements = -1, int first_element = 0);
+      ~ElementMask(void);
 
       void init(int _first_element, int _num_elements, Memory _memory, off_t _offset);
 
@@ -239,7 +263,15 @@ namespace LegionRuntime {
       
       bool is_set(int ptr) const;
       size_t pop_count(bool enabled = true) const;
+      bool operator!(void) const;
       // union/intersect/subtract?
+      ElementMask operator|(const ElementMask &other) const;
+      ElementMask operator&(const ElementMask &other) const;
+      ElementMask operator-(const ElementMask &other) const;
+
+      ElementMask& operator|=(const ElementMask &other);
+      ElementMask& operator&=(const ElementMask &other);
+      ElementMask& operator-=(const ElementMask &other);
 
       int first_enabled(void) const { return first_enabled_elmt; }
       int last_enabled(void) const { return last_enabled_elmt; }
@@ -251,12 +283,15 @@ namespace LegionRuntime {
       OverlapResult overlaps_with(const ElementMask& other,
 				  off_t max_effort = -1) const;
 
+      ElementMask intersect_with(const ElementMask &other);
+
       class Enumerator {
       public:
 	Enumerator(const ElementMask& _mask, int _start, int _polarity);
 	~Enumerator(void);
 
 	bool get_next(int &position, int &length);
+	bool peek_next(int &position, int &length);
 
       protected:
 	const ElementMask& mask;
@@ -286,7 +321,7 @@ namespace LegionRuntime {
 			       bool do_enabled1 = true,
 			       bool do_enabled2 = true);
 
-    protected:
+    public:
       friend class Enumerator;
       int first_element;
       int num_elements;
@@ -325,8 +360,14 @@ namespace LegionRuntime {
 
       virtual void apply(void *lhs_ptr, const void *rhs_ptr, size_t count,
 			 bool exclusive = false) const = 0;
+      virtual void apply_strided(void *lhs_ptr, const void *rhs_ptr,
+				 off_t lhs_stride, off_t rhs_stride, size_t count,
+				 bool exclusive = false) const = 0;
       virtual void fold(void *rhs1_ptr, const void *rhs2_ptr, size_t count,
 			bool exclusive = false) const = 0;
+      virtual void fold_strided(void *lhs_ptr, const void *rhs_ptr,
+				off_t lhs_stride, off_t rhs_stride, size_t count,
+				bool exclusive = false) const = 0;
       virtual void init(void *rhs_ptr, size_t count) const = 0;
 
       virtual void apply_list_entry(void *lhs_ptr, const void *entry_ptr, size_t count,
@@ -375,6 +416,29 @@ namespace LegionRuntime {
 	}
       }
 
+      virtual void apply_strided(void *lhs_ptr, const void *rhs_ptr,
+				 off_t lhs_stride, off_t rhs_stride, size_t count,
+				 bool exclusive = false) const
+      {
+	char *lhs = (char *)lhs_ptr;
+	const char *rhs = (const char *)rhs_ptr;
+	if(exclusive) {
+	  for(size_t i = 0; i < count; i++) {
+	    REDOP::template apply<true>(*(typename REDOP::LHS *)lhs,
+					*(const typename REDOP::RHS *)rhs);
+	    lhs += lhs_stride;
+	    rhs += rhs_stride;
+	  }
+	} else {
+	  for(size_t i = 0; i < count; i++) {
+	    REDOP::template apply<false>(*(typename REDOP::LHS *)lhs,
+					 *(const typename REDOP::RHS *)rhs);
+	    lhs += lhs_stride;
+	    rhs += rhs_stride;
+	  }
+	}
+      }
+
       virtual void fold(void *rhs1_ptr, const void *rhs2_ptr, size_t count,
 			bool exclusive = false) const
       {
@@ -386,6 +450,29 @@ namespace LegionRuntime {
 	} else {
 	  for(size_t i = 0; i < count; i++)
 	    REDOP::template fold<false>(rhs1[i], rhs2[i]);
+	}
+      }
+
+      virtual void fold_strided(void *lhs_ptr, const void *rhs_ptr,
+				off_t lhs_stride, off_t rhs_stride, size_t count,
+				bool exclusive = false) const
+      {
+	char *lhs = (char *)lhs_ptr;
+	const char *rhs = (const char *)rhs_ptr;
+	if(exclusive) {
+	  for(size_t i = 0; i < count; i++) {
+	    REDOP::template fold<true>(*(typename REDOP::RHS *)lhs,
+				       *(const typename REDOP::RHS *)rhs);
+	    lhs += lhs_stride;
+	    rhs += rhs_stride;
+	  }
+	} else {
+	  for(size_t i = 0; i < count; i++) {
+	    REDOP::template fold<false>(*(typename REDOP::RHS *)lhs,
+					*(const typename REDOP::RHS *)rhs);
+	    lhs += lhs_stride;
+	    rhs += rhs_stride;
+	  }
 	}
       }
 
@@ -446,7 +533,7 @@ namespace LegionRuntime {
 
     class RegionInstance {
     public:
-      typedef unsigned id_t;
+      typedef IDType id_t;
       id_t id;
       bool operator<(const RegionInstance &rhs) const { return id < rhs.id; }
       bool operator==(const RegionInstance &rhs) const { return id == rhs.id; }
@@ -459,14 +546,17 @@ namespace LegionRuntime {
 
       bool exists(void) const { return id != 0; }
 
-      void destroy(void) const;
+      void destroy(Event wait_on = Event::NO_EVENT) const;
+
+      AddressSpace address_space(void) const;
+      IDType local_id(void) const;
 
       LegionRuntime::Accessor::RegionAccessor<LegionRuntime::Accessor::AccessorType::Generic> get_accessor(void) const;
     };
 
     class IndexSpace {
     public:
-      typedef unsigned id_t;
+      typedef IDType id_t;
       id_t id;
       bool operator<(const IndexSpace &rhs) const { return id < rhs.id; }
       bool operator==(const IndexSpace &rhs) const { return id == rhs.id; }
@@ -477,9 +567,10 @@ namespace LegionRuntime {
 
       static const IndexSpace NO_SPACE;
 
-      bool exists(void) const { return id != 0; }
+      bool exists(void) const { return id != 0; } 
 
       static IndexSpace create_index_space(size_t num_elmts);
+      static IndexSpace create_index_space(const ElementMask &mask);
       static IndexSpace create_index_space(IndexSpace parent,
 					   const ElementMask &mask);
 
@@ -570,15 +661,78 @@ namespace LegionRuntime {
     class DomainLinearization {
     public:
       DomainLinearization(void) : dim(-1), lptr(0) {}
-      DomainLinearization(const DomainLinearization& other) : dim(other.dim), lptr(other.lptr) {}
+      DomainLinearization(const DomainLinearization& other) 
+        : dim(other.dim), lptr(other.lptr) 
+      {
+        add_local_reference(); 
+      }
+      ~DomainLinearization(void)
+      {
+        remove_local_reference(); 
+      }
+
+      void add_local_reference(void)
+      {
+        if (lptr != NULL)
+        {
+          switch(dim) {
+          case 1: ((Arrays::Mapping<1, 1> *)lptr)->add_reference(); break;
+          case 2: ((Arrays::Mapping<2, 1> *)lptr)->add_reference(); break;
+          case 3: ((Arrays::Mapping<3, 1> *)lptr)->add_reference(); break;
+          default: assert(0);
+          }
+        }
+      }
+
+      void remove_local_reference(void)
+      {
+        if (lptr != NULL)
+        {
+          switch(dim)
+          {
+            case 1:
+              {
+                Arrays::Mapping<1, 1> *mapping = (Arrays::Mapping<1, 1>*)lptr;
+                if (mapping->remove_reference())
+                  delete mapping;
+                break;
+              }
+            case 2:
+              {
+                Arrays::Mapping<2, 1> *mapping = (Arrays::Mapping<2, 1>*)lptr;
+                if (mapping->remove_reference())
+                  delete mapping;
+                break;
+              }
+            case 3:
+              {
+                Arrays::Mapping<3, 1> *mapping = (Arrays::Mapping<3, 1>*)lptr;
+                if (mapping->remove_reference())
+                  delete mapping;
+                break;
+              }
+            default:
+              assert(0);
+          }
+        }
+      }
 
       bool valid(void) const { return(dim >= 0); }
 
       DomainLinearization& operator=(const DomainLinearization& other)
       {
+        remove_local_reference();
 	dim = other.dim;
 	lptr = other.lptr;
+        add_local_reference();
 	return *this;
+      }
+
+      static DomainLinearization from_index_space(int first_elmt)
+      {
+        DomainLinearization l;
+        l.dim = 0;
+        return l;
       }
 
       template <int DIM>
@@ -587,6 +741,7 @@ namespace LegionRuntime {
 	DomainLinearization l;
 	l.dim = DIM;
 	l.lptr = (void *)mapping;
+        l.add_local_reference();
 	return l;
       }
 
@@ -604,6 +759,7 @@ namespace LegionRuntime {
 
       void deserialize(const int *data)
       {
+        remove_local_reference();
 	dim = data[0];
 	switch(dim) {
 	case 0: break; // nothing to serialize
@@ -612,6 +768,7 @@ namespace LegionRuntime {
 	case 3: lptr = (void *)(Arrays::Mapping<3, 1>::deserialize_mapping(data + 1)); break;
 	default: assert(0);
 	}
+        add_local_reference();
       }
 
       int get_dim(void) const { return dim; }
@@ -654,6 +811,7 @@ namespace LegionRuntime {
 	default:
 	  assert(0);
 	}
+        return 0;
       }
 
       protected:
@@ -692,6 +850,19 @@ namespace LegionRuntime {
 	return true;
       }
 
+      bool operator<(const Domain &rhs) const
+      {
+        if(is_id < rhs.is_id) return true;
+        if(is_id > rhs.is_id) return false;
+        if(dim < rhs.dim) return true;
+        if(dim > rhs.dim) return false;
+        for(int i = 0; i < 2*dim; i++) {
+          if(rect_data[i] < rhs.rect_data[i]) return true;
+          if(rect_data[i] > rhs.rect_data[i]) return false;
+        }
+        return false; // otherwise they are equal
+      }
+
       bool operator!=(const Domain &rhs) const { return !(*this == rhs); }
 
       static const Domain NO_DOMAIN;
@@ -708,7 +879,18 @@ namespace LegionRuntime {
 	return d;
       }
 
-      int *serialize(int *data) const
+      template<int DIM>
+      static Domain from_point(typename Arrays::Point<DIM> p)
+      {
+        Domain d;
+        assert(DIM <= MAX_RECT_DIM);
+        d.dim = DIM;
+        p.to_array(d.rect_data);
+        p.to_array(d.rect_data+DIM);
+        return d;
+      }
+
+      IDType *serialize(IDType *data) const
       {
 	*data++ = dim;
 	if(dim == 0) {
@@ -720,7 +902,7 @@ namespace LegionRuntime {
 	return data;
       }
 
-      const int *deserialize(const int *data)
+      const IDType *deserialize(const IDType *data)
       {
 	dim = *data++;
 	if(dim == 0) {
@@ -735,7 +917,7 @@ namespace LegionRuntime {
       LegionRuntime::LowLevel::IndexSpace get_index_space(void) const
       {
 	assert(is_id);
-	IndexSpace is = { static_cast<id_t>(is_id) };
+	IndexSpace is = { static_cast<IDType>(is_id) };
 	return is;
       }
 
@@ -956,7 +1138,7 @@ namespace LegionRuntime {
 
     protected:
     public:
-      int is_id;
+      IDType is_id;
       int dim;
       int rect_data[2 * MAX_RECT_DIM];
 

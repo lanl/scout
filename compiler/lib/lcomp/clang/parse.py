@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright 2013 Stanford University and Los Alamos National Security, LLC
+# Copyright 2014 Stanford University and Los Alamos National Security, LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -165,6 +165,9 @@ def parse_type(node):
     if node.kind == clang.cindex.TypeKind.POINTER:
         points_to_type = parse_type(node.get_pointee())
         return ast.TypePointer(points_to_type = points_to_type)
+    if node.kind == clang.cindex.TypeKind.CONSTANTARRAY:
+        element_type = parse_type(node.get_array_element_type())
+        return ast.TypeArray(element_type, node.get_array_size())
     if node.kind == clang.cindex.TypeKind.TYPEDEF:
         # Hack: In stdint.h, the fixed-size integer types (int*_t) are
         # defined via typedefs on the standard C types (signed char,

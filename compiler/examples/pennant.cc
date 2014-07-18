@@ -1,4 +1,4 @@
-/* Copyright 2013 Stanford University and Los Alamos National Security, LLC
+/* Copyright 2014 Stanford University and Los Alamos National Security, LLC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -62,11 +62,30 @@ config::config()
 {}
 
 ///
+/// Constants
+///
+
+// typedef AccessorType::AOS<0> AT;
+typedef AccessorType::SOA<0> AT;
+
+typedef AccessorType::SOA<1> AT_SOA_1;
+typedef AccessorType::SOA<4> AT_SOA_4;
+typedef AccessorType::SOA<8> AT_SOA_8;
+
+typedef AccessorType::ReductionFold<reduction_plus_double> AT_RED_PLUS;
+
+///
+/// Logging
+///
+
+LegionRuntime::Logger::Category log_mapper("mapper");
+
+///
 /// Command-line defaults
 ///
 
 const std::string default_input_filename = "pennant.tests/sedovsmall/sedovsmall.pnt";
-const intptr_t default_npieces = 2;
+const intptr_t default_npieces = 1;
 const bool default_use_foreign = true;
 
 ///
@@ -160,21 +179,42 @@ static bool get_use_foreign()
   return default_use_foreign;
 }
 
-static void extract_param(const std::map<std::string, std::vector<std::string> > &params,
-                          const std::string &key, int idx, double &var)
+static void extract_param(const std::map<std::string,
+                                         std::vector<std::string> > &params,
+                          const std::string &key, int idx, std::string &var,
+                          bool required)
+{
+  if (params.count(key)) {
+    assert(params.at(key).size() > idx);
+    var = params.at(key)[idx];
+  } else {
+    assert(!required);
+  }
+}
+
+static void extract_param(const std::map<std::string,
+                                         std::vector<std::string> > &params,
+                          const std::string &key, int idx, double &var,
+                          bool required)
 {
   if (params.count(key)) {
     assert(params.at(key).size() > idx);
     var = stod(params.at(key)[idx]);
+  } else {
+    assert(!required);
   }
 }
 
-static void extract_param(const std::map<std::string, std::vector<std::string> > params,
-                          const std::string &key, int idx, intptr_t &var)
+static void extract_param(const std::map<std::string,
+                                         std::vector<std::string> > params,
+                          const std::string &key, int idx, intptr_t &var,
+                          bool required)
 {
   if (params.count(key)) {
     assert(params.at(key).size() > idx);
     var = (intptr_t)stoll(params.at(key)[idx]);
+  } else {
+    assert(!required);
   }
 }
 
@@ -217,93 +257,432 @@ static void read_params(const std::string &pnt_filename,
   }
 }
 
-static void read_mesh(const std::string &gmv_filename,
-                      config &conf,
-                      std::vector<double> &pxx,
-                      std::vector<double> &pxy,
-                      std::vector<std::vector<intptr_t> > &mapzp)
+///
+/// Mesh Generator
+///
+
+static void init_mesh(config &conf)
 {
-  std::ifstream gmv_file(gmv_filename.c_str(), std::ios::in);
+  conf.nzx = conf.meshparams_0;
+  conf.nzy = (conf.meshparams_n >= 2 ? conf.meshparams_1 : conf.nzx);
+  if (conf.meshtype != MESH_PIE) {
+    conf.lenx = (conf.meshparams_n >= 3 ? conf.meshparams_2 : 1.0);
+  } else {
+    // convention:  x = theta, y = r
+    conf.lenx = (conf.meshparams_n >= 3 ? conf.meshparams_2 : 90.0)
+      * M_PI / 180.0;
+  }
+  conf.leny = (conf.meshparams_n >= 4 ? conf.meshparams_3 : 1.0);
 
-  intptr_t np = 0;
-  intptr_t nz = 0;
-  intptr_t ns = 0;
-  intptr_t maxznump = 0;
-
-  // Abort if file not valid.
-  if (!gmv_file) {
-    assert(0 && "input file does not exist");
+  if (conf.nzx <= 0 || conf.nzy <= 0 || conf.lenx <= 0. || conf.leny <= 0. ) {
+    assert(0 && "meshparams values must be positive");
+  }
+  if (conf.meshtype == MESH_PIE && conf.lenx >= 2. * M_PI) {
+    assert(0 && "meshparams theta must be < 360");
   }
 
-  {
-    std::string line;
-    getline(gmv_file, line);
-    assert(line == "gmvinput ascii");
+  // Calculate approximate nz, np, ns for region size upper bound.
+  conf.nz = conf.nzx * conf.nzy;
+  conf.np = (conf.nzx + 1) * (conf.nzy + 1);
+  if (conf.meshtype != MESH_HEX) {
+    conf.maxznump = 4;
+  } else {
+    conf.maxznump = 6;
   }
+  conf.ns = conf.nz * conf.maxznump;
+}
 
-  {
-    std::string token;
-    gmv_file >> token;
-    assert(token == "nodes");
-    gmv_file >> np;
-  }
+const intptr_t MULTICOLOR = -1;
 
-  for (int ip = 0; ip < np; ip++) {
-    double x;
-    gmv_file >> x;
-    pxx.push_back(x);
-  }
+static void generate_mesh_rect(config &conf,
+                               std::vector<double> &pointpos_x,
+                               std::vector<double> &pointpos_y,
+                               std::vector<intptr_t> &pointcolors,
+                               std::map<intptr_t, std::vector<intptr_t> > &pointmcolors,
+                               std::vector<intptr_t> &zonestart,
+                               std::vector<intptr_t> &zonesize,
+                               std::vector<intptr_t> &zonepoints,
+                               std::vector<intptr_t> &zonecolors,
+                               std::vector<intptr_t> &zxbounds,
+                               std::vector<intptr_t> &zybounds)
+{
+  intptr_t &nz = conf.nz;
+  intptr_t &np = conf.np;
 
-  for (int ip = 0; ip < np; ip++) {
-    double y;
-    gmv_file >> y;
-    pxy.push_back(y);
-  }
+  nz = conf.nzx * conf.nzy;
+  const int npx = conf.nzx + 1;
+  const int npy = conf.nzy + 1;
+  np = npx * npy;
 
-  for (int ip = 0; ip < np; ip++) {
-    double z;
-    gmv_file >> z;
-    // Throw away z coordinates.
-  }
-
-  {
-    std::string token;
-    gmv_file >> token;
-    assert(token == "cells");
-    gmv_file >> nz;
-  }
-
-  for (int iz = 0; iz < nz; iz++) {
-    {
-      std::string token;
-      gmv_file >> token;
-      assert(token == "general");
-      double nf;
-      gmv_file >> nf;
-      assert(nf == 1);
+  // generate point coordinates
+  pointpos_x.reserve(np);
+  pointpos_y.reserve(np);
+  double dx = conf.lenx / (double) conf.nzx;
+  double dy = conf.leny / (double) conf.nzy;
+  int pcy = 0;
+  for (int j = 0; j < npy; ++j) {
+    if (j >= zybounds[pcy+1]) pcy += 1;
+    double y = dy * (double) j;
+    int pcx = 0;
+    for (int i = 0; i < npx; ++i) {
+      if (i >= zxbounds[pcx+1]) pcx += 1;
+      double x = dx * (double) i;
+      pointpos_x.push_back(x);
+      pointpos_y.push_back(y);
+      int c = pcy * conf.numpcx + pcx;
+      if (i != zxbounds[pcx] && j != zybounds[pcy])
+        pointcolors.push_back(c);
+      else {
+        int p = pointpos_x.size() - 1;
+        pointcolors.push_back(MULTICOLOR);
+        std::vector<intptr_t> &pmc = pointmcolors[p];
+        if (i == zxbounds[pcx] && j == zybounds[pcy])
+          pmc.push_back(c - conf.numpcx - 1);
+        if (j == zybounds[pcy]) pmc.push_back(c - conf.numpcx);
+        if (i == zxbounds[pcx]) pmc.push_back(c - 1);
+        pmc.push_back(c);
+      }
     }
-
-    double znump;
-    gmv_file >> znump;
-
-    if (znump > maxznump) {
-      maxznump = znump;
-    }
-    ns += znump;
-
-    std::vector<intptr_t> points;
-    for (int zip = 0; zip < znump; zip++) {
-      intptr_t ip;
-      gmv_file >> ip;
-      points.push_back(ip - 1);
-    }
-    mapzp.push_back(points);
   }
 
-  conf.nz = nz;
-  conf.np = np;
-  conf.ns = ns;
-  conf.maxznump = maxznump;
+  // generate zone adjacency lists
+  zonestart.reserve(nz);
+  zonesize.reserve(nz);
+  zonepoints.reserve(4 * nz);
+  zonecolors.reserve(nz);
+  pcy = 0;
+  for (int j = 0; j < conf.nzy; ++j) {
+    if (j >= zybounds[pcy+1]) pcy += 1;
+    int pcx = 0;
+    for (int i = 0; i < conf.nzx; ++i) {
+      if (i >= zxbounds[pcx+1]) pcx += 1;
+      zonestart.push_back(zonepoints.size());
+      zonesize.push_back(4);
+      int p0 = j * npx + i;
+      zonepoints.push_back(p0);
+      zonepoints.push_back(p0 + 1);
+      zonepoints.push_back(p0 + npx + 1);
+      zonepoints.push_back(p0 + npx);
+      zonecolors.push_back(pcy * conf.numpcx + pcx);
+    }
+  }
+}
+
+static void generate_mesh_pie(config &conf,
+                              std::vector<double> &pointpos_x,
+                              std::vector<double> &pointpos_y,
+                              std::vector<intptr_t> &pointcolors,
+                              std::map<intptr_t, std::vector<intptr_t> > &pointmcolors,
+                              std::vector<intptr_t> &zonestart,
+                              std::vector<intptr_t> &zonesize,
+                              std::vector<intptr_t> &zonepoints,
+                              std::vector<intptr_t> &zonecolors,
+                              std::vector<intptr_t> &zxbounds,
+                              std::vector<intptr_t> &zybounds)
+{
+  intptr_t &nz = conf.nz;
+  intptr_t &np = conf.np;
+
+  nz = conf.nzx * conf.nzy;
+  const int npx = conf.nzx + 1;
+  const int npy = conf.nzy + 1;
+  np = npx * (npy - 1) + 1;
+
+  // generate point coordinates
+  pointpos_x.reserve(np);
+  pointpos_y.reserve(np);
+  double dth = conf.lenx / (double) conf.nzx;
+  double dr  = conf.leny / (double) conf.nzy;
+  int pcy = 0;
+  for (int j = 0; j < npy; ++j) {
+    if (j >= zybounds[pcy+1]) pcy += 1;
+    if (j == 0) {
+      // special case:  "row" at origin only contains
+      // one point, shared by all pieces in row
+      pointpos_x.push_back(0.);
+      pointpos_y.push_back(0.);
+      if (conf.numpcx == 1)
+        pointcolors.push_back(0);
+      else {
+        pointcolors.push_back(MULTICOLOR);
+        std::vector<intptr_t> &pmc = pointmcolors[0];
+        for (int c = 0; c < conf.numpcx; ++c)
+          pmc.push_back(c);
+      }
+      continue;
+    }
+    double r = dr * (double) j;
+    int pcx = 0;
+    for (int i = 0; i < npx; ++i) {
+      if (i >= zxbounds[pcx+1]) pcx += 1;
+      double th = dth * (double) (conf.nzx - i);
+      double x = r * cos(th);
+      double y = r * sin(th);
+      pointpos_x.push_back(x);
+      pointpos_y.push_back(y);
+      int c = pcy * conf.numpcx + pcx;
+      if (i != zxbounds[pcx] && j != zybounds[pcy])
+        pointcolors.push_back(c);
+      else {
+        int p = pointpos_x.size() - 1;
+        pointcolors.push_back(MULTICOLOR);
+        std::vector<intptr_t> &pmc = pointmcolors[p];
+        if (i == zxbounds[pcx] && j == zybounds[pcy])
+          pmc.push_back(c - conf.numpcx - 1);
+        if (j == zybounds[pcy]) pmc.push_back(c - conf.numpcx);
+        if (i == zxbounds[pcx]) pmc.push_back(c - 1);
+        pmc.push_back(c);
+      }
+    }
+  }
+
+  // generate zone adjacency lists
+  zonestart.reserve(nz);
+  zonesize.reserve(nz);
+  zonepoints.reserve(4 * nz);
+  zonecolors.reserve(nz);
+  pcy = 0;
+  for (int j = 0; j < conf.nzy; ++j) {
+    if (j >= zybounds[pcy+1]) pcy += 1;
+    int pcx = 0;
+    for (int i = 0; i < conf.nzx; ++i) {
+      if (i >= zxbounds[pcx+1]) pcx += 1;
+      zonestart.push_back(zonepoints.size());
+      int p0 = j * npx + i - (npx - 1);
+      if (j == 0) {
+        zonesize.push_back(3);
+        zonepoints.push_back(0);
+      }
+      else {
+        zonesize.push_back(4);
+        zonepoints.push_back(p0);
+        zonepoints.push_back(p0 + 1);
+      }
+      zonepoints.push_back(p0 + npx + 1);
+      zonepoints.push_back(p0 + npx);
+      zonecolors.push_back(pcy * conf.numpcx + pcx);
+    }
+  }
+}
+
+static void generate_mesh_hex(config &conf,
+                              std::vector<double> &pointpos_x,
+                              std::vector<double> &pointpos_y,
+                              std::vector<intptr_t> &pointcolors,
+                              std::map<intptr_t, std::vector<intptr_t> > &pointmcolors,
+                              std::vector<intptr_t> &zonestart,
+                              std::vector<intptr_t> &zonesize,
+                              std::vector<intptr_t> &zonepoints,
+                              std::vector<intptr_t> &zonecolors,
+                              std::vector<intptr_t> &zxbounds,
+                              std::vector<intptr_t> &zybounds)
+{
+  intptr_t &nz = conf.nz;
+  intptr_t &np = conf.np;
+
+  nz = conf.nzx * conf.nzy;
+  const int npx = conf.nzx + 1;
+  const int npy = conf.nzy + 1;
+
+  // generate point coordinates
+  pointpos_x.resize(2 * npx * npy);  // upper bound
+  pointpos_y.resize(2 * npx * npy);  // upper bound
+  double dx = conf.lenx / (double) (conf.nzx - 1);
+  double dy = conf.leny / (double) (conf.nzy - 1);
+
+  std::vector<intptr_t> pbase(npy);
+  int p = 0;
+  int pcy = 0;
+  for (int j = 0; j < npy; ++j) {
+    if (j >= zybounds[pcy+1]) pcy += 1;
+    pbase[j] = p;
+    double y = dy * ((double) j - 0.5);
+    y = std::max(0., std::min(conf.leny, y));
+    int pcx = 0;
+    for (int i = 0; i < npx; ++i) {
+      if (i >= zxbounds[pcx+1]) pcx += 1;
+      double x = dx * ((double) i - 0.5);
+      x = std::max(0., std::min(conf.lenx, x));
+      int c = pcy * conf.numpcx + pcx;
+      if (i == 0 || i == conf.nzx || j == 0 || j == conf.nzy) {
+        pointpos_x[p] = x;
+        pointpos_y[p++] = y;
+        if (i != zxbounds[pcx] && j != zybounds[pcy])
+          pointcolors.push_back(c);
+        else {
+          int p1 = p - 1;
+          pointcolors.push_back(MULTICOLOR);
+          std::vector<intptr_t> &pmc = pointmcolors[p1];
+          if (j == zybounds[pcy]) pmc.push_back(c - conf.numpcx);
+          if (i == zxbounds[pcx]) pmc.push_back(c - 1);
+          pmc.push_back(c);
+        }
+      }
+      else {
+        pointpos_x[p] = x - dx / 6.;
+        pointpos_y[p++] = y + dy / 6.;
+        pointpos_x[p] = x + dx / 6.;
+        pointpos_y[p++] = y - dy / 6.;
+        if (i != zxbounds[pcx] && j != zybounds[pcy]) {
+          pointcolors.push_back(c);
+          pointcolors.push_back(c);
+        }
+        else {
+          int p1 = p - 2;
+          int p2 = p - 1;
+          pointcolors.push_back(MULTICOLOR);
+          pointcolors.push_back(MULTICOLOR);
+          std::vector<intptr_t> &pmc1 = pointmcolors[p1];
+          std::vector<intptr_t> &pmc2 = pointmcolors[p2];
+          if (i == zxbounds[pcx] && j == zybounds[pcy]) {
+            pmc1.push_back(c - conf.numpcx - 1);
+            pmc2.push_back(c - conf.numpcx - 1);
+            pmc1.push_back(c - 1);
+            pmc2.push_back(c - conf.numpcx);
+          }
+          else if (j == zybounds[pcy]) {
+            pmc1.push_back(c - conf.numpcx);
+            pmc2.push_back(c - conf.numpcx);
+          }
+          else {  // i == zxbounds[pcx]
+            pmc1.push_back(c - 1);
+            pmc2.push_back(c - 1);
+          }
+          pmc1.push_back(c);
+          pmc2.push_back(c);
+        }
+      }
+    } // for i
+  } // for j
+  np = p;
+  pointpos_x.resize(np);
+  pointpos_y.resize(np);
+
+  // generate zone adjacency lists
+  zonestart.resize(nz);
+  zonesize.resize(nz);
+  zonepoints.reserve(6 * nz);  // upper bound
+  zonecolors.reserve(nz);
+  pcy = 0;
+  for (int j = 0; j < conf.nzy; ++j) {
+    if (j >= zybounds[pcy+1]) pcy += 1;
+    int pbasel = pbase[j];
+    int pbaseh = pbase[j+1];
+    int pcx = 0;
+    for (int i = 0; i < conf.nzx; ++i) {
+      if (i >= zxbounds[pcx+1]) pcx += 1;
+      int z = j * conf.nzx + i;
+      std::vector<intptr_t> v(6);
+      v[1] = pbasel + 2 * i;
+      v[0] = v[1] - 1;
+      v[2] = v[1] + 1;
+      v[5] = pbaseh + 2 * i;
+      v[4] = v[5] + 1;
+      v[3] = v[4] + 1;
+      if (j == 0) {
+        v[0] = pbasel + i;
+        v[2] = v[0] + 1;
+        if (i == conf.nzx - 1) v.erase(v.begin()+3);
+        v.erase(v.begin()+1);
+      } // if j
+      else if (j == conf.nzy - 1) {
+        v[5] = pbaseh + i;
+        v[3] = v[5] + 1;
+        v.erase(v.begin()+4);
+        if (i == 0) v.erase(v.begin()+0);
+      } // else if j
+      else if (i == 0)
+        v.erase(v.begin()+0);
+      else if (i == conf.nzx - 1)
+        v.erase(v.begin()+3);
+      zonestart[z] = zonepoints.size();
+      zonesize[z] = v.size();
+      zonepoints.insert(zonepoints.end(), v.begin(), v.end());
+      zonecolors.push_back(pcy * conf.numpcx + pcx);
+    } // for i
+  } // for j
+}
+
+static void calc_mesh_num_pieces(config &conf)
+{
+    // pick numpcx, numpcy such that pieces are as close to square
+    // as possible
+    // we would like:  nzx / numpcx == nzy / numpcy,
+    // where numpcx * numpcy = npieces (total number of pieces)
+    // this solves to:  numpcx = sqrt(npieces * nzx / nzy)
+    // we compute this, assuming nzx <= nzy (swap if necessary)
+    double nx = static_cast<double>(conf.nzx);
+    double ny = static_cast<double>(conf.nzy);
+    bool swapflag = (nx > ny);
+    if (swapflag) std::swap(nx, ny);
+    double n = sqrt(conf.npieces * nx / ny);
+    // need to constrain n to be an integer with npieces % n == 0
+    // try rounding n both up and down
+    int n1 = floor(n + 1.e-12);
+    n1 = std::max(n1, 1);
+    while (conf.npieces % n1 != 0) --n1;
+    int n2 = ceil(n - 1.e-12);
+    while (conf.npieces % n2 != 0) ++n2;
+    // pick whichever of n1 and n2 gives blocks closest to square,
+    // i.e. gives the shortest long side
+    double longside1 = std::max(nx / n1, ny / (conf.npieces/n1));
+    double longside2 = std::max(nx / n2, ny / (conf.npieces/n2));
+    conf.numpcx = (longside1 <= longside2 ? n1 : n2);
+    conf.numpcy = conf.npieces / conf.numpcx;
+    if (swapflag) std::swap(conf.numpcx, conf.numpcy);
+}
+
+static void generate_mesh(config &conf,
+                          std::vector<double> &pointpos_x,
+                          std::vector<double> &pointpos_y,
+                          std::vector<intptr_t> &pointcolors,
+                          std::map<intptr_t, std::vector<intptr_t> > &pointmcolors,
+                          std::vector<std::vector<intptr_t> > &mapzp,
+                          // std::vector<intptr_t> &zonestart,
+                          // std::vector<intptr_t> &zonesize,
+                          // std::vector<intptr_t> &zonepoints,
+                          std::vector<intptr_t> &zonecolors)
+{
+  // Do calculations common to all mesh types:
+  std::vector<intptr_t> zxbounds;
+  std::vector<intptr_t> zybounds;
+  calc_mesh_num_pieces(conf);
+  zxbounds.push_back(-1);
+  for (int pcx = 1; pcx < conf.numpcx; ++pcx)
+    zxbounds.push_back(pcx * conf.nzx / conf.numpcx);
+  zxbounds.push_back(conf.nzx + 1);
+  zybounds.push_back(-1);
+  for (int pcy = 1; pcy < conf.numpcy; ++pcy)
+    zybounds.push_back(pcy * conf.nzy / conf.numpcy);
+  zybounds.push_back(0x7FFFFFFF);
+
+  // Mesh type-specific calculations:
+  std::vector<intptr_t> zonestart;
+  std::vector<intptr_t> zonesize;
+  std::vector<intptr_t> zonepoints;
+  if (conf.meshtype == MESH_PIE) {
+    generate_mesh_pie(conf, pointpos_x, pointpos_y, pointcolors, pointmcolors,
+                      zonestart, zonesize, zonepoints, zonecolors,
+                      zxbounds, zybounds);
+  } else if (conf.meshtype == MESH_RECT) {
+    generate_mesh_rect(conf, pointpos_x, pointpos_y, pointcolors, pointmcolors,
+                       zonestart, zonesize, zonepoints, zonecolors,
+                       zxbounds, zybounds);
+  } else if (conf.meshtype == MESH_HEX) {
+    generate_mesh_hex(conf, pointpos_x, pointpos_y, pointcolors, pointmcolors,
+                      zonestart, zonesize, zonepoints, zonecolors,
+                      zxbounds, zybounds);
+  }
+
+  // Convert zone ajancency lists to mapzp format.
+  mapzp.resize(conf.nz);
+  for (intptr_t z = 0; z < conf.nz; z++) {
+    intptr_t p0 = zonestart[z];
+    intptr_t znump = zonesize[z];
+    for (intptr_t p = p0; p < p0 + znump; p++) {
+      mapzp[z].push_back(zonepoints[p]);
+    }
+  }
 }
 
 ///
@@ -317,23 +696,35 @@ config read_config()
 
   printf("Reading %s\n", pnt_filename.c_str());
 
-  // Hack: Read inputs twice (including mesh) because there is no
-  // (safe) way to save data between task calls.
   std::map<std::string, std::vector<std::string> > params;
   read_params(pnt_filename, params);
 
   config conf;
   {
-    std::vector<double> pxx;
-    std::vector<double> pxy;
-    std::vector<std::vector<intptr_t> > mapzp;
+    std::string meshtype;
+    extract_param(params, "meshtype", 0, meshtype, true);
+    if (meshtype == "pie") {
+      conf.meshtype = MESH_PIE;
+    } else if (meshtype == "rect") {
+      conf.meshtype = MESH_RECT;
+    } else if (meshtype == "hex") {
+      conf.meshtype = MESH_HEX;
+    } else {
+      assert(0 && "invalid meshtype");
+    }
 
-    std::string meshfile("meshfile");
-    assert(params.count(meshfile));
-    assert(params[meshfile].size() == 1);
-    std::string gmv_filename = dir + params[meshfile][0];
+    std::vector<double> meshparams;
+    for (int i = 0; i < params["meshparams"].size(); i++) {
+      meshparams.push_back(stod(params["meshparams"][i]));
+    }
 
-    read_mesh(gmv_filename, conf, pxx, pxy, mapzp);
+    extract_param(params, "meshparams", 0, conf.meshparams_0, true);
+    extract_param(params, "meshparams", 1, conf.meshparams_1, false);
+    extract_param(params, "meshparams", 2, conf.meshparams_2, false);
+    extract_param(params, "meshparams", 3, conf.meshparams_3, false);
+    conf.meshparams_n = params["meshparams"].size();
+
+    init_mesh(conf);
   }
 
   conf.npieces = get_npieces();
@@ -341,31 +732,31 @@ config read_config()
 
   printf("Using npieces %ld\n", conf.npieces);
 
-  extract_param(params, "cstop", 0, conf.cstop);
-  extract_param(params, "tstop", 0, conf.tstop);
-  extract_param(params, "meshscale", 0, conf.meshscale);
-  extract_param(params, "subregion", 0, conf.subregion_0);
-  extract_param(params, "subregion", 1, conf.subregion_1);
-  extract_param(params, "subregion", 2, conf.subregion_2);
-  extract_param(params, "subregion", 3, conf.subregion_3);
-  extract_param(params, "cfl", 0, conf.cfl);
-  extract_param(params, "cflv", 0, conf.cflv);
-  extract_param(params, "rinit", 0, conf.rinit);
-  extract_param(params, "einit", 0, conf.einit);
-  extract_param(params, "rinitsub", 0, conf.rinitsub);
-  extract_param(params, "einitsub", 0, conf.einitsub);
-  extract_param(params, "uinitradial", 0, conf.uinitradial);
-  extract_param(params, "bcx", 0, conf.bcx_0);
-  extract_param(params, "bcx", 1, conf.bcx_1);
-  extract_param(params, "bcy", 0, conf.bcy_0);
-  extract_param(params, "bcy", 1, conf.bcy_1);
+  extract_param(params, "cstop", 0, conf.cstop, false);
+  extract_param(params, "tstop", 0, conf.tstop, false);
+  extract_param(params, "meshscale", 0, conf.meshscale, false);
+  extract_param(params, "subregion", 0, conf.subregion_0, false);
+  extract_param(params, "subregion", 1, conf.subregion_1, false);
+  extract_param(params, "subregion", 2, conf.subregion_2, false);
+  extract_param(params, "subregion", 3, conf.subregion_3, false);
+  extract_param(params, "cfl", 0, conf.cfl, false);
+  extract_param(params, "cflv", 0, conf.cflv, false);
+  extract_param(params, "rinit", 0, conf.rinit, false);
+  extract_param(params, "einit", 0, conf.einit, false);
+  extract_param(params, "rinitsub", 0, conf.rinitsub, false);
+  extract_param(params, "einitsub", 0, conf.einitsub, false);
+  extract_param(params, "uinitradial", 0, conf.uinitradial, false);
+  extract_param(params, "bcx", 0, conf.bcx_0, false);
+  extract_param(params, "bcx", 1, conf.bcx_1, false);
+  extract_param(params, "bcy", 0, conf.bcy_0, false);
+  extract_param(params, "bcy", 1, conf.bcy_1, false);
   conf.bcx_n = params["bcx"].size();
   conf.bcy_n = params["bcy"].size();
-  extract_param(params, "ssmin", 0, conf.ssmin);
-  extract_param(params, "q1", 0, conf.q1);
-  extract_param(params, "q2", 0, conf.q2);
-  extract_param(params, "dtinit", 0, conf.dtinit);
-  extract_param(params, "chunksize", 0, conf.chunksize);
+  extract_param(params, "ssmin", 0, conf.ssmin, false);
+  extract_param(params, "q1", 0, conf.q1, false);
+  extract_param(params, "q2", 0, conf.q2, false);
+  extract_param(params, "dtinit", 0, conf.dtinit, false);
+  extract_param(params, "chunksize", 0, conf.chunksize, false);
 
   return conf;
 }
@@ -385,27 +776,16 @@ void foreign_read_input(HighLevelRuntime *runtime,
                         PhysicalRegion pcolors_a[1],
                         PhysicalRegion pcolor_shared_a[1])
 {
-  std::string pnt_filename = get_input_filename();
-  std::string dir = get_directory(pnt_filename);
-
   // Read mesh.
   std::vector<double> px_x;
   std::vector<double> px_y;
   std::vector<std::vector<intptr_t> > mapzp;
   {
-    // Hack: Read inputs twice (including mesh) because there is no
-    // (safe) way to save data between task calls.
-    std::map<std::string, std::vector<std::string> > params;
-    read_params(pnt_filename, params);
-
-    std::string meshfile("meshfile");
-    assert(params.count(meshfile));
-    assert(params[meshfile].size() == 1);
-    std::string gmv_filename = dir + params[meshfile][0];
-
-    config conf;
-
-    read_mesh(gmv_filename, conf, px_x, px_y, mapzp);
+    // Toss colorings and regenerate them.
+    std::vector<intptr_t> pcs;
+    std::map<intptr_t, std::vector<intptr_t> > pcm;
+    std::vector<intptr_t> zc;
+    generate_mesh(conf, px_x, px_y, pcs, pcm, mapzp, zc);
   }
 
   // Allocate mesh.
@@ -431,8 +811,8 @@ void foreign_read_input(HighLevelRuntime *runtime,
   std::vector<intptr_t> m_sstart(conf.npieces);
   std::vector<intptr_t> m_send(conf.npieces);
   {
-    RegionAccessor<AccessorType::AOS<0>, intptr_t> accessor_znump =
-      rz_all[0].get_field_accessor(FIELD_ZNUMP).typeify<intptr_t>().convert<AccessorType::AOS<0> >();
+    RegionAccessor<AT_SOA_8, intptr_t> accessor_znump =
+      rz_all[0].get_field_accessor(FIELD_ZNUMP).typeify<intptr_t>().convert<AT_SOA_8>();
 
     intptr_t zones_per_color = (conf.nz + conf.npieces - 1) / conf.npieces;
 
@@ -459,27 +839,27 @@ void foreign_read_input(HighLevelRuntime *runtime,
 
   // Initialize points.
   {
-    RegionAccessor<AccessorType::AOS<0>, double> accessor_px_x =
-      rp_all[0].get_field_accessor(FIELD_PX_X).typeify<double>().convert<AccessorType::AOS<0> >();
-    RegionAccessor<AccessorType::AOS<0>, double> accessor_px_y =
-      rp_all[0].get_field_accessor(FIELD_PX_Y).typeify<double>().convert<AccessorType::AOS<0> >();
-    RegionAccessor<AccessorType::AOS<0>, bool> accessor_has_bcx_0 =
-      rp_all[0].get_field_accessor(FIELD_HAS_BCX_0).typeify<bool>().convert<AccessorType::AOS<0> >();
-    RegionAccessor<AccessorType::AOS<0>, bool> accessor_has_bcx_1 =
-      rp_all[0].get_field_accessor(FIELD_HAS_BCX_1).typeify<bool>().convert<AccessorType::AOS<0> >();
-    RegionAccessor<AccessorType::AOS<0>, bool> accessor_has_bcy_0 =
-      rp_all[0].get_field_accessor(FIELD_HAS_BCY_0).typeify<bool>().convert<AccessorType::AOS<0> >();
-    RegionAccessor<AccessorType::AOS<0>, bool> accessor_has_bcy_1 =
-      rp_all[0].get_field_accessor(FIELD_HAS_BCY_1).typeify<bool>().convert<AccessorType::AOS<0> >();
+    RegionAccessor<AT_SOA_8, double> accessor_px_x =
+      rp_all[0].get_field_accessor(FIELD_PX_X).typeify<double>().convert<AT_SOA_8>();
+    RegionAccessor<AT_SOA_8, double> accessor_px_y =
+      rp_all[0].get_field_accessor(FIELD_PX_Y).typeify<double>().convert<AT_SOA_8>();
+    RegionAccessor<AT_SOA_1, bool> accessor_has_bcx_0 =
+      rp_all[0].get_field_accessor(FIELD_HAS_BCX_0).typeify<bool>().convert<AT_SOA_1>();
+    RegionAccessor<AT_SOA_1, bool> accessor_has_bcx_1 =
+      rp_all[0].get_field_accessor(FIELD_HAS_BCX_1).typeify<bool>().convert<AT_SOA_1>();
+    RegionAccessor<AT_SOA_1, bool> accessor_has_bcy_0 =
+      rp_all[0].get_field_accessor(FIELD_HAS_BCY_0).typeify<bool>().convert<AT_SOA_1>();
+    RegionAccessor<AT_SOA_1, bool> accessor_has_bcy_1 =
+      rp_all[0].get_field_accessor(FIELD_HAS_BCY_1).typeify<bool>().convert<AT_SOA_1>();
 
-    RegionAccessor<AccessorType::AOS<0>, intptr_t> accessor_pcolor =
-      pcolor_a[0].get_accessor().typeify<intptr_t>().convert<AccessorType::AOS<0> >();
+    RegionAccessor<AT_SOA_8, intptr_t> accessor_pcolor =
+      pcolor_a[0].get_accessor().typeify<intptr_t>().convert<AT_SOA_8>();
 
-    RegionAccessor<AccessorType::AOS<0>, uint64_t> accessor_pcolors =
-      pcolors_a[0].get_accessor().typeify<uint64_t>().convert<AccessorType::AOS<0> >();
+    RegionAccessor<AT_SOA_8, uint64_t> accessor_pcolors =
+      pcolors_a[0].get_accessor().typeify<uint64_t>().convert<AT_SOA_8>();
 
-    RegionAccessor<AccessorType::AOS<0>, intptr_t> accessor_pcolor_shared =
-      pcolor_shared_a[0].get_accessor().typeify<intptr_t>().convert<AccessorType::AOS<0> >();
+    RegionAccessor<AT_SOA_8, intptr_t> accessor_pcolor_shared =
+      pcolor_shared_a[0].get_accessor().typeify<intptr_t>().convert<AT_SOA_8>();
 
     const double eps = 1e-12;
     for (intptr_t p = 0; p < conf.np; p++) {
@@ -553,20 +933,20 @@ void foreign_read_input(HighLevelRuntime *runtime,
 
   // Initialize sides.
   {
-    RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsz =
-      rs_all[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-    RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsp1_pointer =
-      rs_all[0].get_field_accessor(FIELD_MAPSP1_POINTER).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-    RegionAccessor<AccessorType::AOS<0>, uint32_t> accessor_mapsp1_region =
-      rs_all[0].get_field_accessor(FIELD_MAPSP1_REGION).typeify<uint32_t>().convert<AccessorType::AOS<0> >();
-    RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsp2_pointer =
-      rs_all[0].get_field_accessor(FIELD_MAPSP2_POINTER).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-    RegionAccessor<AccessorType::AOS<0>, uint32_t> accessor_mapsp2_region =
-      rs_all[0].get_field_accessor(FIELD_MAPSP2_REGION).typeify<uint32_t>().convert<AccessorType::AOS<0> >();
-    RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapss3 =
-      rs_all[0].get_field_accessor(FIELD_MAPSS3).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-    RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapss4 =
-      rs_all[0].get_field_accessor(FIELD_MAPSS4).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
+    RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsz =
+      rs_all[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AT_SOA_4>();
+    RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsp1_pointer =
+      rs_all[0].get_field_accessor(FIELD_MAPSP1_POINTER).typeify<ptr_t>().convert<AT_SOA_4>();
+    RegionAccessor<AT_SOA_4, uint32_t> accessor_mapsp1_region =
+      rs_all[0].get_field_accessor(FIELD_MAPSP1_REGION).typeify<uint32_t>().convert<AT_SOA_4>();
+    RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsp2_pointer =
+      rs_all[0].get_field_accessor(FIELD_MAPSP2_POINTER).typeify<ptr_t>().convert<AT_SOA_4>();
+    RegionAccessor<AT_SOA_4, uint32_t> accessor_mapsp2_region =
+      rs_all[0].get_field_accessor(FIELD_MAPSP2_REGION).typeify<uint32_t>().convert<AT_SOA_4>();
+    RegionAccessor<AT_SOA_4, ptr_t> accessor_mapss3 =
+      rs_all[0].get_field_accessor(FIELD_MAPSS3).typeify<ptr_t>().convert<AT_SOA_4>();
+    RegionAccessor<AT_SOA_4, ptr_t> accessor_mapss4 =
+      rs_all[0].get_field_accessor(FIELD_MAPSS4).typeify<ptr_t>().convert<AT_SOA_4>();
 
     for (intptr_t m = 0; m < conf.npieces; m++) {
       intptr_t zstart = m_zstart[m], zend = m_zend[m];
@@ -598,16 +978,16 @@ void foreign_read_input(HighLevelRuntime *runtime,
 
   // Initialize mesh pieces.
   {
-    RegionAccessor<AccessorType::AOS<0>, intptr_t> accessor_mcolor =
-      rm_all[0].get_field_accessor(FIELD_MCOLOR).typeify<intptr_t>().convert<AccessorType::AOS<0> >();
-    RegionAccessor<AccessorType::AOS<0>, intptr_t> accessor_zstart =
-      rm_all[0].get_field_accessor(FIELD_ZSTART).typeify<intptr_t>().convert<AccessorType::AOS<0> >();
-    RegionAccessor<AccessorType::AOS<0>, intptr_t> accessor_zend =
-      rm_all[0].get_field_accessor(FIELD_ZEND).typeify<intptr_t>().convert<AccessorType::AOS<0> >();
-    RegionAccessor<AccessorType::AOS<0>, intptr_t> accessor_sstart =
-      rm_all[0].get_field_accessor(FIELD_SSTART).typeify<intptr_t>().convert<AccessorType::AOS<0> >();
-    RegionAccessor<AccessorType::AOS<0>, intptr_t> accessor_send =
-      rm_all[0].get_field_accessor(FIELD_SEND).typeify<intptr_t>().convert<AccessorType::AOS<0> >();
+    RegionAccessor<AT_SOA_8, intptr_t> accessor_mcolor =
+      rm_all[0].get_field_accessor(FIELD_MCOLOR).typeify<intptr_t>().convert<AT_SOA_8>();
+    RegionAccessor<AT_SOA_8, intptr_t> accessor_zstart =
+      rm_all[0].get_field_accessor(FIELD_ZSTART).typeify<intptr_t>().convert<AT_SOA_8>();
+    RegionAccessor<AT_SOA_8, intptr_t> accessor_zend =
+      rm_all[0].get_field_accessor(FIELD_ZEND).typeify<intptr_t>().convert<AT_SOA_8>();
+    RegionAccessor<AT_SOA_8, intptr_t> accessor_sstart =
+      rm_all[0].get_field_accessor(FIELD_SSTART).typeify<intptr_t>().convert<AT_SOA_8>();
+    RegionAccessor<AT_SOA_8, intptr_t> accessor_send =
+      rm_all[0].get_field_accessor(FIELD_SEND).typeify<intptr_t>().convert<AT_SOA_8>();
 
     for (intptr_t m = 0; m < conf.npieces; m++) {
       accessor_mcolor.write(m, m);
@@ -705,12 +1085,12 @@ void foreign_validate_output(HighLevelRuntime *runtime,
     }
   }
 
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zr =
-    rz_all[0].get_field_accessor(FIELD_ZR).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_ze =
-    rz_all[0].get_field_accessor(FIELD_ZE).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zp =
-    rz_all[0].get_field_accessor(FIELD_ZP).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_zr =
+    rz_all[0].get_field_accessor(FIELD_ZR).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_ze =
+    rz_all[0].get_field_accessor(FIELD_ZE).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zp =
+    rz_all[0].get_field_accessor(FIELD_ZP).typeify<double>().convert<AT_SOA_8>();
 
   double absolute_eps = 1e-12;
   double relative_eps = 1e-8;
@@ -788,10 +1168,10 @@ Coloring foreign_all_zones_coloring(HighLevelRuntime *runtime,
 {
   Coloring result;
 
-  RegionAccessor<AccessorType::AOS<0>, intptr_t> accessor_zstart =
-    rm_all[0].get_field_accessor(FIELD_ZSTART).typeify<intptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, intptr_t> accessor_zend =
-    rm_all[0].get_field_accessor(FIELD_ZEND).typeify<intptr_t>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, intptr_t> accessor_zstart =
+    rm_all[0].get_field_accessor(FIELD_ZSTART).typeify<intptr_t>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, intptr_t> accessor_zend =
+    rm_all[0].get_field_accessor(FIELD_ZEND).typeify<intptr_t>().convert<AT_SOA_8>();
 
   for (intptr_t m = 0; m < conf.npieces; m++) {
     intptr_t zstart = accessor_zstart.read(m);
@@ -813,15 +1193,35 @@ Coloring foreign_all_points_coloring(HighLevelRuntime *runtime,
   result[0];
   result[1];
 
-  RegionAccessor<AccessorType::AOS<0>, intptr_t> accessor_pcolor =
-    pcolor_a[0].get_accessor().typeify<intptr_t>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, intptr_t> accessor_pcolor =
+    pcolor_a[0].get_accessor().typeify<intptr_t>().convert<AT_SOA_8>();
 
-  for (intptr_t p = 0; p < conf.np; p++) {
+  intptr_t start_p = -1, start_c = nocolors;
+  intptr_t p;
+  for (p = 0; p < conf.np; p++) {
     intptr_t c = accessor_pcolor.read(p);
-    if (c == manycolors) {
-      result[1].points.insert(p);
+
+    if (start_p >= 0) {
+      if (start_c == c) {
+        continue;
+      }
+
+      if (start_c == manycolors) {
+        result[1].ranges.insert(std::pair<ptr_t, ptr_t>(start_p, p - 1));
+      } else {
+        result[0].ranges.insert(std::pair<ptr_t, ptr_t>(start_p, p - 1));
+      }
+    }
+
+    start_p = p;
+    start_c = c;
+  }
+
+  if (start_p >= 0) {
+    if (start_c == manycolors) {
+      result[1].ranges.insert(std::pair<ptr_t, ptr_t>(start_p, p - 1));
     } else {
-      result[0].points.insert(p);
+      result[0].ranges.insert(std::pair<ptr_t, ptr_t>(start_p, p - 1));
     }
   }
 
@@ -840,15 +1240,31 @@ Coloring foreign_private_points_coloring(HighLevelRuntime *runtime,
     result[c];
   }
 
-  RegionAccessor<AccessorType::AOS<0>, intptr_t> accessor_pcolor =
-    pcolor_a[0].get_accessor().typeify<intptr_t>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, intptr_t> accessor_pcolor =
+    pcolor_a[0].get_accessor().typeify<intptr_t>().convert<AT_SOA_8>();
 
-  for (intptr_t p = 0; p < conf.np; p++) {
+  intptr_t start_p = -1, start_c = nocolors;
+  intptr_t p;
+  for (p = 0; p < conf.np; p++) {
     intptr_t c = accessor_pcolor.read(p);
     assert(c != nocolors);
-    if (c != manycolors) {
-      result[c].points.insert(p);
+
+    if (start_p >= 0) {
+      if (start_c == c) {
+        continue;
+      }
+
+      if (start_c != manycolors) {
+        result[start_c].ranges.insert(std::pair<ptr_t, ptr_t>(start_p, p - 1));
+      }
     }
+
+    start_p = p;
+    start_c = c;
+  }
+
+  if (start_p >= 0 && start_c != manycolors) {
+    result[start_c].ranges.insert(std::pair<ptr_t, ptr_t>(start_p, p - 1));
   }
 
   return result;
@@ -867,11 +1283,11 @@ Coloring foreign_ghost_points_coloring(HighLevelRuntime *runtime,
     result[c];
   }
 
-  RegionAccessor<AccessorType::AOS<0>, intptr_t> accessor_pcolor =
-    pcolor_a[0].get_accessor().typeify<intptr_t>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, intptr_t> accessor_pcolor =
+    pcolor_a[0].get_accessor().typeify<intptr_t>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, uint64_t> accessor_pcolors =
-    pcolors_a[0].get_accessor().typeify<uint64_t>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, uint64_t> accessor_pcolors =
+    pcolors_a[0].get_accessor().typeify<uint64_t>().convert<AT_SOA_8>();
 
   intptr_t pcolors_words = (conf.npieces + pcolors_bits - 1)/pcolors_bits;
   for (intptr_t p = 0; p < conf.np; p++) {
@@ -907,8 +1323,8 @@ Coloring foreign_shared_points_coloring(HighLevelRuntime *runtime,
     result[c];
   }
 
-  RegionAccessor<AccessorType::AOS<0>, intptr_t> accessor_pcolor_shared =
-    pcolor_shared_a[0].get_accessor().typeify<intptr_t>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, intptr_t> accessor_pcolor_shared =
+    pcolor_shared_a[0].get_accessor().typeify<intptr_t>().convert<AT_SOA_8>();
 
   for (intptr_t p = 0; p < conf.np; p++) {
     intptr_t c = accessor_pcolor_shared.read(p);
@@ -928,10 +1344,10 @@ Coloring foreign_all_sides_coloring(HighLevelRuntime *runtime,
 {
   Coloring result;
 
-  RegionAccessor<AccessorType::AOS<0>, intptr_t> accessor_sstart =
-    rm_all[0].get_field_accessor(FIELD_SSTART).typeify<intptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, intptr_t> accessor_send =
-    rm_all[0].get_field_accessor(FIELD_SEND).typeify<intptr_t>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, intptr_t> accessor_sstart =
+    rm_all[0].get_field_accessor(FIELD_SSTART).typeify<intptr_t>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, intptr_t> accessor_send =
+    rm_all[0].get_field_accessor(FIELD_SEND).typeify<intptr_t>().convert<AT_SOA_8>();
 
   for (intptr_t m = 0; m < conf.npieces; m++) {
     intptr_t sstart = accessor_sstart.read(m);
@@ -946,38 +1362,57 @@ Coloring foreign_all_sides_coloring(HighLevelRuntime *runtime,
 /// Kernels
 ///
 
-void foreign_init_step_zones(HighLevelRuntime *runtime,
-                        Context ctx,
-                        intptr_t zstart,
-                        intptr_t zend,
-                        PhysicalRegion rz[2])
+double calc_global_dt(double dt, double dtfac, double dtinit,
+                      double dtmax, double dthydro,
+                      double time, double tstop, intptr_t cycle)
 {
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zvol =
-    rz[0].get_field_accessor(FIELD_ZVOL).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zxp_x =
-    rz[1].get_field_accessor(FIELD_ZXP_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zxp_y =
-    rz[1].get_field_accessor(FIELD_ZXP_Y).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zx_x =
-    rz[1].get_field_accessor(FIELD_ZX_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zx_y =
-    rz[1].get_field_accessor(FIELD_ZX_Y).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zareap =
-    rz[1].get_field_accessor(FIELD_ZAREAP).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zarea =
-    rz[1].get_field_accessor(FIELD_ZAREA).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zvol0 =
-    rz[1].get_field_accessor(FIELD_ZVOL0).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zvolp =
-    rz[1].get_field_accessor(FIELD_ZVOLP).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zdl =
-    rz[1].get_field_accessor(FIELD_ZDL).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zw =
-    rz[1].get_field_accessor(FIELD_ZW).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zuc_x =
-    rz[1].get_field_accessor(FIELD_ZUC_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zuc_y =
-    rz[1].get_field_accessor(FIELD_ZUC_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  double dtlast = dt;
+
+  dt = dtmax;
+
+  if (cycle == 0) {
+    dt = fmin(dt, dtinit);
+  } else {
+    double dtrecover = dtfac * dtlast;
+    dt = fmin(dt, dtrecover);
+  }
+
+  dt = fmin(dt, tstop - time);
+  dt = fmin(dt, dthydro);
+
+  return dt;
+}
+
+void foreign_init_step_zones(intptr_t zstart,
+                             intptr_t zend,
+                             PhysicalRegion rz[2])
+{
+  RegionAccessor<AT_SOA_8, double> accessor_zvol =
+    rz[0].get_field_accessor(FIELD_ZVOL).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zxp_x =
+    rz[1].get_field_accessor(FIELD_ZXP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zxp_y =
+    rz[1].get_field_accessor(FIELD_ZXP_Y).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zx_x =
+    rz[1].get_field_accessor(FIELD_ZX_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zx_y =
+    rz[1].get_field_accessor(FIELD_ZX_Y).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zareap =
+    rz[1].get_field_accessor(FIELD_ZAREAP).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zarea =
+    rz[1].get_field_accessor(FIELD_ZAREA).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zvol0 =
+    rz[1].get_field_accessor(FIELD_ZVOL0).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zvolp =
+    rz[1].get_field_accessor(FIELD_ZVOLP).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zdl =
+    rz[1].get_field_accessor(FIELD_ZDL).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zw =
+    rz[1].get_field_accessor(FIELD_ZW).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zuc_x =
+    rz[1].get_field_accessor(FIELD_ZUC_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zuc_y =
+    rz[1].get_field_accessor(FIELD_ZUC_Y).typeify<double>().convert<AT_SOA_8>();
 
   for (intptr_t z = zstart; z < zend; z++) {
     accessor_zxp_x.write(z, 0.0);
@@ -996,46 +1431,44 @@ void foreign_init_step_zones(HighLevelRuntime *runtime,
   }
 }
 
-void foreign_calc_centers(HighLevelRuntime *runtime,
-                          Context ctx,
-                          intptr_t sstart,
+void foreign_calc_centers(intptr_t sstart,
                           intptr_t send,
                           PhysicalRegion rz[2],
                           PhysicalRegion rpp[1],
                           PhysicalRegion rpg[1],
                           PhysicalRegion rs[2])
 {
-  RegionAccessor<AccessorType::AOS<0>, intptr_t> accessor_znump =
-    rz[0].get_field_accessor(FIELD_ZNUMP).typeify<intptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zxp_x =
-    rz[1].get_field_accessor(FIELD_ZXP_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zxp_y =
-    rz[1].get_field_accessor(FIELD_ZXP_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, intptr_t> accessor_znump =
+    rz[0].get_field_accessor(FIELD_ZNUMP).typeify<intptr_t>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zxp_x =
+    rz[1].get_field_accessor(FIELD_ZXP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zxp_y =
+    rz[1].get_field_accessor(FIELD_ZXP_Y).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpp_pxp_x =
-    rpp[0].get_field_accessor(FIELD_PXP_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpp_pxp_y =
-    rpp[0].get_field_accessor(FIELD_PXP_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pxp_x =
+    rpp[0].get_field_accessor(FIELD_PXP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pxp_y =
+    rpp[0].get_field_accessor(FIELD_PXP_Y).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpg_pxp_x =
-    rpg[0].get_field_accessor(FIELD_PXP_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpg_pxp_y =
-    rpg[0].get_field_accessor(FIELD_PXP_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pxp_x =
+    rpg[0].get_field_accessor(FIELD_PXP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pxp_y =
+    rpg[0].get_field_accessor(FIELD_PXP_Y).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsz =
-    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsp1_pointer =
-    rs[0].get_field_accessor(FIELD_MAPSP1_POINTER).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, uint32_t> accessor_mapsp1_region =
-    rs[0].get_field_accessor(FIELD_MAPSP1_REGION).typeify<uint32_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsp2_pointer =
-    rs[0].get_field_accessor(FIELD_MAPSP2_POINTER).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, uint32_t> accessor_mapsp2_region =
-    rs[0].get_field_accessor(FIELD_MAPSP2_REGION).typeify<uint32_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_exp_x =
-    rs[1].get_field_accessor(FIELD_EXP_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_exp_y =
-    rs[1].get_field_accessor(FIELD_EXP_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsz =
+    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsp1_pointer =
+    rs[0].get_field_accessor(FIELD_MAPSP1_POINTER).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, uint32_t> accessor_mapsp1_region =
+    rs[0].get_field_accessor(FIELD_MAPSP1_REGION).typeify<uint32_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsp2_pointer =
+    rs[0].get_field_accessor(FIELD_MAPSP2_POINTER).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, uint32_t> accessor_mapsp2_region =
+    rs[0].get_field_accessor(FIELD_MAPSP2_REGION).typeify<uint32_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_8, double> accessor_exp_x =
+    rs[1].get_field_accessor(FIELD_EXP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_exp_y =
+    rs[1].get_field_accessor(FIELD_EXP_Y).typeify<double>().convert<AT_SOA_8>();
 
   for (intptr_t s = sstart; s < send; s++) {
     ptr_t z = accessor_mapsz.read(s);
@@ -1078,48 +1511,46 @@ void foreign_calc_centers(HighLevelRuntime *runtime,
   }
 }
 
-void foreign_calc_volumes(HighLevelRuntime *runtime,
-                          Context ctx,
-                          intptr_t sstart,
+void foreign_calc_volumes(intptr_t sstart,
                           intptr_t send,
                           PhysicalRegion rz[2],
                           PhysicalRegion rpp[1],
                           PhysicalRegion rpg[1],
                           PhysicalRegion rs[2])
 {
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zxp_x =
-    rz[0].get_field_accessor(FIELD_ZXP_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zxp_y =
-    rz[0].get_field_accessor(FIELD_ZXP_Y).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zareap =
-    rz[1].get_field_accessor(FIELD_ZAREAP).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zvolp =
-    rz[1].get_field_accessor(FIELD_ZVOLP).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_zxp_x =
+    rz[0].get_field_accessor(FIELD_ZXP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zxp_y =
+    rz[0].get_field_accessor(FIELD_ZXP_Y).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zareap =
+    rz[1].get_field_accessor(FIELD_ZAREAP).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zvolp =
+    rz[1].get_field_accessor(FIELD_ZVOLP).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpp_pxp_x =
-    rpp[0].get_field_accessor(FIELD_PXP_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpp_pxp_y =
-    rpp[0].get_field_accessor(FIELD_PXP_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pxp_x =
+    rpp[0].get_field_accessor(FIELD_PXP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pxp_y =
+    rpp[0].get_field_accessor(FIELD_PXP_Y).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpg_pxp_x =
-    rpg[0].get_field_accessor(FIELD_PXP_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpg_pxp_y =
-    rpg[0].get_field_accessor(FIELD_PXP_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pxp_x =
+    rpg[0].get_field_accessor(FIELD_PXP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pxp_y =
+    rpg[0].get_field_accessor(FIELD_PXP_Y).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsz =
-    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsp1_pointer =
-    rs[0].get_field_accessor(FIELD_MAPSP1_POINTER).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, uint32_t> accessor_mapsp1_region =
-    rs[0].get_field_accessor(FIELD_MAPSP1_REGION).typeify<uint32_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsp2_pointer =
-    rs[0].get_field_accessor(FIELD_MAPSP2_POINTER).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, uint32_t> accessor_mapsp2_region =
-    rs[0].get_field_accessor(FIELD_MAPSP2_REGION).typeify<uint32_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_sareap =
-    rs[1].get_field_accessor(FIELD_SAREAP).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_svolp =
-    rs[1].get_field_accessor(FIELD_SVOLP).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsz =
+    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsp1_pointer =
+    rs[0].get_field_accessor(FIELD_MAPSP1_POINTER).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, uint32_t> accessor_mapsp1_region =
+    rs[0].get_field_accessor(FIELD_MAPSP1_REGION).typeify<uint32_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsp2_pointer =
+    rs[0].get_field_accessor(FIELD_MAPSP2_POINTER).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, uint32_t> accessor_mapsp2_region =
+    rs[0].get_field_accessor(FIELD_MAPSP2_REGION).typeify<uint32_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_8, double> accessor_sareap =
+    rs[1].get_field_accessor(FIELD_SAREAP).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_svolp =
+    rs[1].get_field_accessor(FIELD_SVOLP).typeify<double>().convert<AT_SOA_8>();
 
   for (intptr_t s = sstart; s < send; s++) {
     ptr_t z = accessor_mapsz.read(s);
@@ -1167,28 +1598,26 @@ void foreign_calc_volumes(HighLevelRuntime *runtime,
   }
 }
 
-void foreign_calc_surface_vecs(HighLevelRuntime *runtime,
-                               Context ctx,
-                               intptr_t sstart,
+void foreign_calc_surface_vecs(intptr_t sstart,
                                intptr_t send,
                                PhysicalRegion rz[1],
                                PhysicalRegion rs[2])
 {
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zxp_x =
-    rz[0].get_field_accessor(FIELD_ZXP_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zxp_y =
-    rz[0].get_field_accessor(FIELD_ZXP_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_zxp_x =
+    rz[0].get_field_accessor(FIELD_ZXP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zxp_y =
+    rz[0].get_field_accessor(FIELD_ZXP_Y).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsz =
-    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_exp_x =
-    rs[0].get_field_accessor(FIELD_EXP_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_exp_y =
-    rs[0].get_field_accessor(FIELD_EXP_Y).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_ssurfp_x =
-    rs[1].get_field_accessor(FIELD_SSURFP_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_ssurfp_y =
-    rs[1].get_field_accessor(FIELD_SSURFP_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsz =
+    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_8, double> accessor_exp_x =
+    rs[0].get_field_accessor(FIELD_EXP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_exp_y =
+    rs[0].get_field_accessor(FIELD_EXP_Y).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_ssurfp_x =
+    rs[1].get_field_accessor(FIELD_SSURFP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_ssurfp_y =
+    rs[1].get_field_accessor(FIELD_SSURFP_Y).typeify<double>().convert<AT_SOA_8>();
 
   for (intptr_t s = sstart; s < send; s++) {
     ptr_t z = accessor_mapsz.read(s);
@@ -1207,34 +1636,32 @@ void foreign_calc_surface_vecs(HighLevelRuntime *runtime,
   }
 }
 
-void foreign_calc_edge_len(HighLevelRuntime *runtime,
-                           Context ctx,
-                           intptr_t sstart,
+void foreign_calc_edge_len(intptr_t sstart,
                            intptr_t send,
                            PhysicalRegion rpp[1],
                            PhysicalRegion rpg[1],
                            PhysicalRegion rs[2])
 {
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpp_pxp_x =
-    rpp[0].get_field_accessor(FIELD_PXP_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpp_pxp_y =
-    rpp[0].get_field_accessor(FIELD_PXP_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pxp_x =
+    rpp[0].get_field_accessor(FIELD_PXP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pxp_y =
+    rpp[0].get_field_accessor(FIELD_PXP_Y).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpg_pxp_x =
-    rpg[0].get_field_accessor(FIELD_PXP_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpg_pxp_y =
-    rpg[0].get_field_accessor(FIELD_PXP_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pxp_x =
+    rpg[0].get_field_accessor(FIELD_PXP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pxp_y =
+    rpg[0].get_field_accessor(FIELD_PXP_Y).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsp1_pointer =
-    rs[0].get_field_accessor(FIELD_MAPSP1_POINTER).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, uint32_t> accessor_mapsp1_region =
-    rs[0].get_field_accessor(FIELD_MAPSP1_REGION).typeify<uint32_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsp2_pointer =
-    rs[0].get_field_accessor(FIELD_MAPSP2_POINTER).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, uint32_t> accessor_mapsp2_region =
-    rs[0].get_field_accessor(FIELD_MAPSP2_REGION).typeify<uint32_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_elen =
-    rs[1].get_field_accessor(FIELD_ELEN).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsp1_pointer =
+    rs[0].get_field_accessor(FIELD_MAPSP1_POINTER).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, uint32_t> accessor_mapsp1_region =
+    rs[0].get_field_accessor(FIELD_MAPSP1_REGION).typeify<uint32_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsp2_pointer =
+    rs[0].get_field_accessor(FIELD_MAPSP2_POINTER).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, uint32_t> accessor_mapsp2_region =
+    rs[0].get_field_accessor(FIELD_MAPSP2_REGION).typeify<uint32_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_8, double> accessor_elen =
+    rs[1].get_field_accessor(FIELD_ELEN).typeify<double>().convert<AT_SOA_8>();
 
   for (intptr_t s = sstart; s < send; s++) {
     ptr_t p1_pointer = accessor_mapsp1_pointer.read(s);
@@ -1272,31 +1699,29 @@ void foreign_calc_edge_len(HighLevelRuntime *runtime,
   }
 }
 
-void foreign_calc_char_len(HighLevelRuntime *runtime,
-                           Context ctx,
-                           intptr_t sstart,
+void foreign_calc_char_len(intptr_t sstart,
                            intptr_t send,
                            PhysicalRegion rz[2],
                            PhysicalRegion rs[1])
 {
-  RegionAccessor<AccessorType::AOS<0>, intptr_t> accessor_znump =
-    rz[0].get_field_accessor(FIELD_ZNUMP).typeify<intptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zdl =
-    rz[1].get_field_accessor(FIELD_ZDL).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, intptr_t> accessor_znump =
+    rz[0].get_field_accessor(FIELD_ZNUMP).typeify<intptr_t>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zdl =
+    rz[1].get_field_accessor(FIELD_ZDL).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsz =
-    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_sarea =
-    rs[0].get_field_accessor(FIELD_SAREA).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_elen =
-    rs[0].get_field_accessor(FIELD_ELEN).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsz =
+    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_8, double> accessor_sareap =
+    rs[0].get_field_accessor(FIELD_SAREAP).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_elen =
+    rs[0].get_field_accessor(FIELD_ELEN).typeify<double>().convert<AT_SOA_8>();
 
   for (intptr_t s = sstart; s < send; s++) {
     ptr_t z = accessor_mapsz.read(s);
 
     intptr_t znump = accessor_znump.read(z);
 
-    double area = accessor_sarea.read(s);
+    double area = accessor_sareap.read(s);
     double base = accessor_elen.read(s);
     double fac;
     if (znump == 3) {
@@ -1309,54 +1734,50 @@ void foreign_calc_char_len(HighLevelRuntime *runtime,
   }
 }
 
-void foreign_calc_rho_half(HighLevelRuntime *runtime,
-                           Context ctx,
-                           intptr_t zstart,
+void foreign_calc_rho_half(intptr_t zstart,
                            intptr_t zend,
                            PhysicalRegion rz[2])
 {
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zvolp =
-    rz[0].get_field_accessor(FIELD_ZVOLP).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zm =
-    rz[0].get_field_accessor(FIELD_ZM).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zrp =
-    rz[1].get_field_accessor(FIELD_ZRP).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_zvolp =
+    rz[0].get_field_accessor(FIELD_ZVOLP).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zm =
+    rz[0].get_field_accessor(FIELD_ZM).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zrp =
+    rz[1].get_field_accessor(FIELD_ZRP).typeify<double>().convert<AT_SOA_8>();
 
   for (intptr_t z = zstart; z < zend; z++) {
     accessor_zrp.write(z, accessor_zm.read(z) / accessor_zvolp.read(z));
   }
 }
 
-void foreign_sum_point_mass(HighLevelRuntime *runtime,
-                            Context ctx,
-                            intptr_t sstart,
+void foreign_sum_point_mass(intptr_t sstart,
                             intptr_t send,
                             PhysicalRegion rz[1],
                             PhysicalRegion rpp[1],
                             PhysicalRegion rpg[1],
                             PhysicalRegion rs[1])
 {
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zareap =
-    rz[0].get_field_accessor(FIELD_ZAREAP).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zrp =
-    rz[0].get_field_accessor(FIELD_ZRP).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_zareap =
+    rz[0].get_field_accessor(FIELD_ZAREAP).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zrp =
+    rz[0].get_field_accessor(FIELD_ZRP).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpp_pmaswt =
-    rpp[0].get_accessor().typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pmaswt =
+    rpp[0].get_field_accessor(FIELD_PMASWT).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpg_pmaswt =
-    rpg[0].get_accessor().typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pmaswt =
+    rpg[0].get_accessor().typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsz =
-    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsp1_pointer =
-    rs[0].get_field_accessor(FIELD_MAPSP1_POINTER).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, uint32_t> accessor_mapsp1_region =
-    rs[0].get_field_accessor(FIELD_MAPSP1_REGION).typeify<uint32_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapss3 =
-    rs[0].get_field_accessor(FIELD_MAPSS3).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_smf =
-    rs[0].get_field_accessor(FIELD_SMF).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsz =
+    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsp1_pointer =
+    rs[0].get_field_accessor(FIELD_MAPSP1_POINTER).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, uint32_t> accessor_mapsp1_region =
+    rs[0].get_field_accessor(FIELD_MAPSP1_REGION).typeify<uint32_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapss3 =
+    rs[0].get_field_accessor(FIELD_MAPSS3).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_8, double> accessor_smf =
+    rs[0].get_field_accessor(FIELD_SMF).typeify<double>().convert<AT_SOA_8>();
 
   for (intptr_t s = sstart; s < send; s++) {
     ptr_t z = accessor_mapsz.read(s);
@@ -1369,7 +1790,7 @@ void foreign_sum_point_mass(HighLevelRuntime *runtime,
 
     switch (p1_region) {
     case 1:
-      accessor_rpp_pmaswt.reduce<reduction_plus_double>(p1_pointer, m);
+      accessor_rpp_pmaswt.write(p1_pointer, accessor_rpp_pmaswt.read(p1_pointer) + m);
       break;
     case 2:
       accessor_rpg_pmaswt.reduce<reduction_plus_double>(p1_pointer, m);
@@ -1378,31 +1799,29 @@ void foreign_sum_point_mass(HighLevelRuntime *runtime,
   }
 }
 
-void foreign_calc_state_at_half(HighLevelRuntime *runtime,
-                                Context ctx,
-                                double gamma,
+void foreign_calc_state_at_half(double gamma,
                                 double ssmin,
                                 double dt,
                                 intptr_t zstart,
                                 intptr_t zend,
                                 PhysicalRegion rz[2])
 {
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zvol0 =
-    rz[0].get_field_accessor(FIELD_ZVOL0).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zvolp =
-    rz[0].get_field_accessor(FIELD_ZVOLP).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zm =
-    rz[0].get_field_accessor(FIELD_ZM).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zr =
-    rz[0].get_field_accessor(FIELD_ZR).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_ze =
-    rz[0].get_field_accessor(FIELD_ZE).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zwrate =
-    rz[0].get_field_accessor(FIELD_ZWRATE).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zp =
-    rz[1].get_field_accessor(FIELD_ZP).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zss =
-    rz[1].get_field_accessor(FIELD_ZSS).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_zvol0 =
+    rz[0].get_field_accessor(FIELD_ZVOL0).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zvolp =
+    rz[0].get_field_accessor(FIELD_ZVOLP).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zm =
+    rz[0].get_field_accessor(FIELD_ZM).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zr =
+    rz[0].get_field_accessor(FIELD_ZR).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_ze =
+    rz[0].get_field_accessor(FIELD_ZE).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zwrate =
+    rz[0].get_field_accessor(FIELD_ZWRATE).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zp =
+    rz[1].get_field_accessor(FIELD_ZP).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zss =
+    rz[1].get_field_accessor(FIELD_ZSS).typeify<double>().convert<AT_SOA_8>();
 
   double gm1 = gamma - 1.0;
   double ss2 = fmax(ssmin * ssmin, 1e-99);
@@ -1435,26 +1854,24 @@ void foreign_calc_state_at_half(HighLevelRuntime *runtime,
   }
 }
 
-void foreign_calc_force_pgas(HighLevelRuntime *runtime,
-                             Context ctx,
-                             intptr_t sstart,
+void foreign_calc_force_pgas(intptr_t sstart,
                              intptr_t send,
                              PhysicalRegion rz[1],
                              PhysicalRegion rs[2])
 {
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zp =
-    rz[0].get_field_accessor(FIELD_ZP).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_zp =
+    rz[0].get_field_accessor(FIELD_ZP).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsz =
-    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_ssurfp_x =
-    rs[0].get_field_accessor(FIELD_SSURFP_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_ssurfp_y =
-    rs[0].get_field_accessor(FIELD_SSURFP_Y).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_sfp_x =
-    rs[1].get_field_accessor(FIELD_SFP_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_sfp_y =
-    rs[1].get_field_accessor(FIELD_SFP_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsz =
+    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_8, double> accessor_ssurfp_x =
+    rs[0].get_field_accessor(FIELD_SSURFP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_ssurfp_y =
+    rs[0].get_field_accessor(FIELD_SSURFP_Y).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_sfp_x =
+    rs[1].get_field_accessor(FIELD_SFP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_sfp_y =
+    rs[1].get_field_accessor(FIELD_SFP_Y).typeify<double>().convert<AT_SOA_8>();
 
   for (intptr_t s = sstart; s < send; s++) {
     ptr_t z = accessor_mapsz.read(s);
@@ -1470,36 +1887,34 @@ void foreign_calc_force_pgas(HighLevelRuntime *runtime,
   }
 }
 
-void foreign_calc_force_tts(HighLevelRuntime *runtime,
-                            Context ctx,
-                            double alfa,
+void foreign_calc_force_tts(double alfa,
                             double ssmin,
                             intptr_t sstart,
                             intptr_t send,
                             PhysicalRegion rz[1],
                             PhysicalRegion rs[2])
 {
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zareap =
-    rz[0].get_field_accessor(FIELD_ZAREAP).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zrp =
-    rz[0].get_field_accessor(FIELD_ZRP).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zss =
-    rz[0].get_field_accessor(FIELD_ZSS).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_zareap =
+    rz[0].get_field_accessor(FIELD_ZAREAP).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zrp =
+    rz[0].get_field_accessor(FIELD_ZRP).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zss =
+    rz[0].get_field_accessor(FIELD_ZSS).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsz =
-    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_sareap =
-    rs[0].get_field_accessor(FIELD_SAREAP).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_smf =
-    rs[0].get_field_accessor(FIELD_SMF).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_ssurfp_x =
-    rs[0].get_field_accessor(FIELD_SSURFP_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_ssurfp_y =
-    rs[0].get_field_accessor(FIELD_SSURFP_Y).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_sft_x =
-    rs[1].get_field_accessor(FIELD_SFT_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_sft_y =
-    rs[1].get_field_accessor(FIELD_SFT_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsz =
+    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_8, double> accessor_sareap =
+    rs[0].get_field_accessor(FIELD_SAREAP).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_smf =
+    rs[0].get_field_accessor(FIELD_SMF).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_ssurfp_x =
+    rs[0].get_field_accessor(FIELD_SSURFP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_ssurfp_y =
+    rs[0].get_field_accessor(FIELD_SSURFP_Y).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_sft_x =
+    rs[1].get_field_accessor(FIELD_SFT_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_sft_y =
+    rs[1].get_field_accessor(FIELD_SFT_Y).typeify<double>().convert<AT_SOA_8>();
 
   for (intptr_t s = sstart; s < send; s++) {
     ptr_t z = accessor_mapsz.read(s);
@@ -1524,44 +1939,500 @@ void foreign_calc_force_tts(HighLevelRuntime *runtime,
   }
 }
 
-void foreign_sum_point_force(HighLevelRuntime *runtime,
-                             Context ctx,
-                             intptr_t sstart,
+void foreign_qcs_zone_center_velocity(intptr_t sstart,
+                                      intptr_t send,
+                                      PhysicalRegion rz[2],
+                                      PhysicalRegion rpp[1],
+                                      PhysicalRegion rpg[1],
+                                      PhysicalRegion rs[1])
+{
+  RegionAccessor<AT_SOA_8, intptr_t> accessor_znump =
+    rz[0].get_field_accessor(FIELD_ZNUMP).typeify<intptr_t>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zuc_x =
+    rz[1].get_field_accessor(FIELD_ZUC_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zuc_y =
+    rz[1].get_field_accessor(FIELD_ZUC_Y).typeify<double>().convert<AT_SOA_8>();
+
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pu_x =
+    rpp[0].get_field_accessor(FIELD_PU_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pu_y =
+    rpp[0].get_field_accessor(FIELD_PU_Y).typeify<double>().convert<AT_SOA_8>();
+
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pu_x =
+    rpg[0].get_field_accessor(FIELD_PU_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pu_y =
+    rpg[0].get_field_accessor(FIELD_PU_Y).typeify<double>().convert<AT_SOA_8>();
+
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsz =
+    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsp1_pointer =
+    rs[0].get_field_accessor(FIELD_MAPSP1_POINTER).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, uint32_t> accessor_mapsp1_region =
+    rs[0].get_field_accessor(FIELD_MAPSP1_REGION).typeify<uint32_t>().convert<AT_SOA_4>();
+
+  for (intptr_t s = sstart; s < send; s++) {
+    ptr_t z = accessor_mapsz.read(s);
+    ptr_t p1_pointer = accessor_mapsp1_pointer.read(s);
+    uint32_t p1_region = accessor_mapsp1_region.read(s);
+
+    vec2 pu;
+    switch (p1_region) {
+    case 1:
+      pu.x = accessor_rpp_pu_x.read(p1_pointer);
+      pu.y = accessor_rpp_pu_y.read(p1_pointer);
+      break;
+    case 2:
+      pu.x = accessor_rpg_pu_x.read(p1_pointer);
+      pu.y = accessor_rpg_pu_y.read(p1_pointer);
+      break;
+    }
+
+    intptr_t znump = accessor_znump.read(z);
+
+    vec2 zuc = scale(pu, 1.0 / static_cast<double>(znump));
+    accessor_zuc_x.write(z, accessor_zuc_x.read(z) + zuc.x);
+    accessor_zuc_y.write(z, accessor_zuc_y.read(z) + zuc.y);
+  }
+}
+
+void foreign_qcs_corner_divergence(intptr_t sstart,
+                                   intptr_t send,
+                                   PhysicalRegion rz[1],
+                                   PhysicalRegion rpp[1],
+                                   PhysicalRegion rpg[1],
+                                   PhysicalRegion rs[2])
+{
+  RegionAccessor<AT_SOA_8, double> accessor_zxp_x =
+    rz[0].get_field_accessor(FIELD_ZXP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zxp_y =
+    rz[0].get_field_accessor(FIELD_ZXP_Y).typeify<double>().convert<AT_SOA_8>();
+ RegionAccessor<AT_SOA_8, double> accessor_zuc_x =
+    rz[0].get_field_accessor(FIELD_ZUC_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zuc_y =
+    rz[0].get_field_accessor(FIELD_ZUC_Y).typeify<double>().convert<AT_SOA_8>();
+
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pxp_x =
+    rpp[0].get_field_accessor(FIELD_PXP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pxp_y =
+    rpp[0].get_field_accessor(FIELD_PXP_Y).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pu_x =
+    rpp[0].get_field_accessor(FIELD_PU_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pu_y =
+    rpp[0].get_field_accessor(FIELD_PU_Y).typeify<double>().convert<AT_SOA_8>();
+
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pxp_x =
+    rpg[0].get_field_accessor(FIELD_PXP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pxp_y =
+    rpg[0].get_field_accessor(FIELD_PXP_Y).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pu_x =
+    rpg[0].get_field_accessor(FIELD_PU_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pu_y =
+    rpg[0].get_field_accessor(FIELD_PU_Y).typeify<double>().convert<AT_SOA_8>();
+
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsz =
+    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsp1_pointer =
+    rs[0].get_field_accessor(FIELD_MAPSP1_POINTER).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, uint32_t> accessor_mapsp1_region =
+    rs[0].get_field_accessor(FIELD_MAPSP1_REGION).typeify<uint32_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsp2_pointer =
+    rs[0].get_field_accessor(FIELD_MAPSP2_POINTER).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, uint32_t> accessor_mapsp2_region =
+    rs[0].get_field_accessor(FIELD_MAPSP2_REGION).typeify<uint32_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapss3 =
+    rs[0].get_field_accessor(FIELD_MAPSS3).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_8, double> accessor_exp_x =
+    rs[0].get_field_accessor(FIELD_EXP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_exp_y =
+    rs[0].get_field_accessor(FIELD_EXP_Y).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_elen =
+    rs[0].get_field_accessor(FIELD_ELEN).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_carea =
+    rs[1].get_field_accessor(FIELD_CAREA).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_ccos =
+    rs[1].get_field_accessor(FIELD_CCOS).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_cdiv =
+    rs[1].get_field_accessor(FIELD_CDIV).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_cevol =
+    rs[1].get_field_accessor(FIELD_CEVOL).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_cdu =
+    rs[1].get_field_accessor(FIELD_CDU).typeify<double>().convert<AT_SOA_8>();
+
+  for (intptr_t s2 = sstart; s2 < send; s2++) {
+    // intptr_t c = s2;
+    ptr_t s = accessor_mapss3.read(s2);
+    ptr_t z = accessor_mapsz.read(s);
+    ptr_t p_pointer = accessor_mapsp2_pointer.read(s);
+    uint32_t p_region = accessor_mapsp2_region.read(s);
+    ptr_t p1_pointer = accessor_mapsp1_pointer.read(s);
+    uint32_t p1_region = accessor_mapsp1_region.read(s);
+    ptr_t p2_pointer = accessor_mapsp2_pointer.read(s2);
+    uint32_t p2_region = accessor_mapsp2_region.read(s2);
+    // ptr_t e1 = s;
+    // intptr_t e2 = s2;
+
+    vec2 p_pu, p_pxp;
+    switch (p_region) {
+    case 1:
+      p_pu.x = accessor_rpp_pu_x.read(p_pointer);
+      p_pu.y = accessor_rpp_pu_y.read(p_pointer);
+      p_pxp.x = accessor_rpp_pxp_x.read(p_pointer);
+      p_pxp.y = accessor_rpp_pxp_y.read(p_pointer);
+      break;
+    case 2:
+      p_pu.x = accessor_rpg_pu_x.read(p_pointer);
+      p_pu.y = accessor_rpg_pu_y.read(p_pointer);
+      p_pxp.x = accessor_rpg_pxp_x.read(p_pointer);
+      p_pxp.y = accessor_rpg_pxp_y.read(p_pointer);
+      break;
+    }
+
+    vec2 p1_pu;
+    switch (p1_region) {
+    case 1:
+      p1_pu.x = accessor_rpp_pu_x.read(p1_pointer);
+      p1_pu.y = accessor_rpp_pu_y.read(p1_pointer);
+      break;
+    case 2:
+      p1_pu.x = accessor_rpg_pu_x.read(p1_pointer);
+      p1_pu.y = accessor_rpg_pu_y.read(p1_pointer);
+      break;
+    }
+
+    vec2 p2_pu;
+    switch (p2_region) {
+    case 1:
+      p2_pu.x = accessor_rpp_pu_x.read(p2_pointer);
+      p2_pu.y = accessor_rpp_pu_y.read(p2_pointer);
+      break;
+    case 2:
+      p2_pu.x = accessor_rpg_pu_x.read(p2_pointer);
+      p2_pu.y = accessor_rpg_pu_y.read(p2_pointer);
+      break;
+    }
+
+    vec2 zuc;
+    zuc.x = accessor_zuc_x.read(z);
+    zuc.y = accessor_zuc_y.read(z);
+
+    vec2 zxp;
+    zxp.x = accessor_zxp_x.read(z);
+    zxp.y = accessor_zxp_y.read(z);
+
+    vec2 e1_exp;
+    e1_exp.x = accessor_exp_x.read(s);
+    e1_exp.y = accessor_exp_y.read(s);
+
+    vec2 e2_exp;
+    e2_exp.x = accessor_exp_x.read(s2);
+    e2_exp.y = accessor_exp_y.read(s2);
+
+    vec2 up0 = p_pu;
+    vec2 xp0 = p_pxp;
+    vec2 up1 = scale(add(p_pu, p2_pu), 0.5);
+    vec2 xp1 = e2_exp;
+    vec2 up2 = zuc;
+    vec2 xp2 = zxp;
+    vec2 up3 = scale(add(p1_pu, p_pu), 0.5);
+    vec2 xp3 = e1_exp;
+
+    double cvolume = 0.5 * cross(sub(xp2, xp0), sub(xp3, xp1));
+    accessor_carea.write(s2, cvolume);
+
+    double e1_elen = accessor_elen.read(s);
+    double e2_elen = accessor_elen.read(s2);
+
+    vec2 v1 = sub(xp3, xp0);
+    vec2 v2 = sub(xp1, xp0);
+    double de1 = e1_elen;
+    double de2 = e2_elen;
+    double minelen = fmin(de1, de2);
+    if (minelen < 1e-12) {
+      accessor_ccos.write(s2, 0.0);
+    } else {
+      accessor_ccos.write(s2, 4.0 * dot(v1, v2) / (de1 * de2));
+    }
+
+    double cdiv = (cross(sub(up2, up0), sub(xp3, xp1)) - cross(sub(up3, up1), sub(xp2, xp0)))/(2.0 * cvolume);
+    accessor_cdiv.write(s2, cdiv);
+
+    vec2 dxx1 = scale(sub(sub(add(xp1, xp2), xp0), xp3), 0.5);
+    vec2 dxx2 = scale(sub(sub(add(xp2, xp3), xp0), xp1), 0.5);
+    double dx1 = length(dxx1);
+    double dx2 = length(dxx2);
+
+    vec2 duav = scale(add(add(add(up0, up1), up2), up3), 0.25);
+
+    double test1 = fabs(dot(dxx1, duav) * dx2);
+    double test2 = fabs(dot(dxx2, duav) * dx1);
+    double num = 0.0;
+    double den = 0.0;
+    if (test1 > test2) {
+      num = dx1;
+      den = dx2;
+    } else {
+      num = dx2;
+      den = dx1;
+    }
+    double r = num / den;
+    double evol = fmin(sqrt(4.0 * cvolume * r), 2.0 * minelen);
+
+    double dv1 = length(sub(sub(add(up1, up2), up0), up3));
+    double dv2 = length(sub(sub(add(up2, up3), up0), up1));
+    double du = fmax(dv1, dv2);
+    if (cdiv < 0.0) {
+      accessor_cevol.write(s2, evol);
+      accessor_cdu.write(s2, du);
+    } else {
+      accessor_cevol.write(s2, 0.0);
+      accessor_cdu.write(s2, 0.0);
+    }
+  }
+}
+
+void foreign_qcs_qcn_force(double gamma,
+                           double q1,
+                           double q2,
+                           intptr_t sstart,
+                           intptr_t send,
+                           PhysicalRegion rz[1],
+                           PhysicalRegion rpp[1],
+                           PhysicalRegion rpg[1],
+                           PhysicalRegion rs[2])
+{
+  RegionAccessor<AT_SOA_8, double> accessor_zrp =
+    rz[0].get_field_accessor(FIELD_ZRP).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zss =
+    rz[0].get_field_accessor(FIELD_ZSS).typeify<double>().convert<AT_SOA_8>();
+
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pu_x =
+    rpp[0].get_field_accessor(FIELD_PU_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pu_y =
+    rpp[0].get_field_accessor(FIELD_PU_Y).typeify<double>().convert<AT_SOA_8>();
+
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pu_x =
+    rpg[0].get_field_accessor(FIELD_PU_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pu_y =
+    rpg[0].get_field_accessor(FIELD_PU_Y).typeify<double>().convert<AT_SOA_8>();
+
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsz =
+    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsp1_pointer =
+    rs[0].get_field_accessor(FIELD_MAPSP1_POINTER).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, uint32_t> accessor_mapsp1_region =
+    rs[0].get_field_accessor(FIELD_MAPSP1_REGION).typeify<uint32_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsp2_pointer =
+    rs[0].get_field_accessor(FIELD_MAPSP2_POINTER).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, uint32_t> accessor_mapsp2_region =
+    rs[0].get_field_accessor(FIELD_MAPSP2_REGION).typeify<uint32_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapss3 =
+    rs[0].get_field_accessor(FIELD_MAPSS3).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_8, double> accessor_elen =
+    rs[0].get_field_accessor(FIELD_ELEN).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_cdiv =
+    rs[0].get_field_accessor(FIELD_CDIV).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_cevol =
+    rs[0].get_field_accessor(FIELD_CEVOL).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_cdu =
+    rs[0].get_field_accessor(FIELD_CDU).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_cqe1_x =
+    rs[1].get_field_accessor(FIELD_CQE1_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_cqe1_y =
+    rs[1].get_field_accessor(FIELD_CQE1_Y).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_cqe2_x =
+    rs[1].get_field_accessor(FIELD_CQE2_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_cqe2_y =
+    rs[1].get_field_accessor(FIELD_CQE2_Y).typeify<double>().convert<AT_SOA_8>();
+
+  double gammap1 = gamma + 1.0;
+
+  for (intptr_t s4 = sstart; s4 < send; s4++) {
+    // intptr_t c = s4;
+    ptr_t z = accessor_mapsz.read(s4);
+    ptr_t s = accessor_mapss3.read(s4);
+    ptr_t p_pointer = accessor_mapsp2_pointer.read(s);
+    uint32_t p_region = accessor_mapsp2_region.read(s);
+    ptr_t p1_pointer = accessor_mapsp1_pointer.read(s);
+    uint32_t p1_region = accessor_mapsp1_region.read(s);
+    ptr_t p2_pointer = accessor_mapsp2_pointer.read(s4);
+    uint32_t p2_region = accessor_mapsp2_region.read(s4);
+    // ptr_t e1 = s;
+    // intptr_t e2 = s4;
+
+    double zrp = accessor_zrp.read(z);
+    double zss = accessor_zss.read(z);
+    double cdiv = accessor_cdiv.read(s4);
+    double cevol = accessor_cevol.read(s4);
+    double cdu = accessor_cdu.read(s4);
+    double e1_elen = accessor_elen.read(s);
+    double e2_elen = accessor_elen.read(s4);
+
+    vec2 p_pu;
+    switch (p_region) {
+    case 1:
+      p_pu.x = accessor_rpp_pu_x.read(p_pointer);
+      p_pu.y = accessor_rpp_pu_y.read(p_pointer);
+      break;
+    case 2:
+      p_pu.x = accessor_rpg_pu_x.read(p_pointer);
+      p_pu.y = accessor_rpg_pu_y.read(p_pointer);
+      break;
+    }
+
+    vec2 p1_pu;
+    switch (p1_region) {
+    case 1:
+      p1_pu.x = accessor_rpp_pu_x.read(p1_pointer);
+      p1_pu.y = accessor_rpp_pu_y.read(p1_pointer);
+      break;
+    case 2:
+      p1_pu.x = accessor_rpg_pu_x.read(p1_pointer);
+      p1_pu.y = accessor_rpg_pu_y.read(p1_pointer);
+      break;
+    }
+
+    vec2 p2_pu;
+    switch (p2_region) {
+    case 1:
+      p2_pu.x = accessor_rpp_pu_x.read(p2_pointer);
+      p2_pu.y = accessor_rpp_pu_y.read(p2_pointer);
+      break;
+    case 2:
+      p2_pu.x = accessor_rpg_pu_x.read(p2_pointer);
+      p2_pu.y = accessor_rpg_pu_y.read(p2_pointer);
+      break;
+    }
+
+    double ztmp2 = q2 * 0.25 * gammap1 * cdu;
+    double ztmp1 = q1 * zss;
+    double zkur = ztmp2 + sqrt(ztmp2 * ztmp2 + ztmp1 * ztmp1);
+    double rmu = zkur * zrp * cevol;
+    if (cdiv > 0.0) {
+      rmu = 0.0;
+    }
+
+    vec2 cqe1 = scale(sub(p_pu, p1_pu), rmu / e1_elen);
+    vec2 cqe2 = scale(sub(p2_pu, p_pu), rmu / e2_elen);
+
+    accessor_cqe1_x.write(s4, cqe1.x);
+    accessor_cqe1_y.write(s4, cqe1.y);
+    accessor_cqe2_x.write(s4, cqe2.x);
+    accessor_cqe2_y.write(s4, cqe2.y);
+  }
+}
+
+void foreign_qcs_force(intptr_t sstart,
+                       intptr_t send,
+                       PhysicalRegion rs[2])
+{
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapss4 =
+    rs[0].get_field_accessor(FIELD_MAPSS4).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_8, double> accessor_elen =
+    rs[0].get_field_accessor(FIELD_ELEN).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_carea =
+    rs[0].get_field_accessor(FIELD_CAREA).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_ccos =
+    rs[0].get_field_accessor(FIELD_CCOS).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_cqe1_x =
+    rs[0].get_field_accessor(FIELD_CQE1_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_cqe1_y =
+    rs[0].get_field_accessor(FIELD_CQE1_Y).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_cqe2_x =
+    rs[0].get_field_accessor(FIELD_CQE2_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_cqe2_y =
+    rs[0].get_field_accessor(FIELD_CQE2_Y).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_sfq_x =
+    rs[1].get_field_accessor(FIELD_SFQ_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_sfq_y =
+    rs[1].get_field_accessor(FIELD_SFQ_Y).typeify<double>().convert<AT_SOA_8>();
+
+  for (intptr_t s = sstart; s < send; s++) {
+    // intptr_t c1 = s;
+    ptr_t c2 = accessor_mapss4.read(s);
+    // intptr_t e = s;
+
+    double el = accessor_elen.read(s);
+    double c1_carea = accessor_carea.read(s);
+    double c2_carea = accessor_carea.read(c2);
+    double c1_ccos = accessor_ccos.read(s);
+    double c2_ccos = accessor_ccos.read(c2);
+
+    vec2 c1_cqe1;
+    c1_cqe1.x = accessor_cqe1_x.read(s);
+    c1_cqe1.y = accessor_cqe1_y.read(s);
+
+    vec2 c1_cqe2;
+    c1_cqe2.x = accessor_cqe2_x.read(s);
+    c1_cqe2.y = accessor_cqe2_y.read(s);
+
+    vec2 c2_cqe1;
+    c2_cqe1.x = accessor_cqe1_x.read(c2);
+    c2_cqe1.y = accessor_cqe1_y.read(c2);
+
+    vec2 c2_cqe2;
+    c2_cqe2.x = accessor_cqe2_x.read(c2);
+    c2_cqe2.y = accessor_cqe2_y.read(c2);
+
+    double c1sin2 = 1.0 - c1_ccos * c1_ccos;
+    double c1w = 0.0;
+    double c1cos = 0.0;
+    if (c1sin2 >= 1e-4) {
+      c1w = c1_carea / c1sin2;
+      c1cos = c1_ccos;
+    }
+
+    double c2sin2 = 1.0 - c2_ccos * c2_ccos;
+    double c2w = 0.0;
+    double c2cos = 0.0;
+    if (c2sin2 >= 1e-4) {
+      c2w = c2_carea / c2sin2;
+      c2cos = c2_ccos;
+    }
+
+    vec2 sfq = scale(add(scale(add(c1_cqe2, scale(c1_cqe1, c1cos)), c1w),
+                         scale(add(c2_cqe1, scale(c2_cqe2, c2cos)), c2w)),
+                     1.0 / el);
+    accessor_sfq_x.write(s, sfq.x);
+    accessor_sfq_y.write(s, sfq.y);
+  }
+}
+
+void foreign_sum_point_force(intptr_t sstart,
                              intptr_t send,
                              PhysicalRegion rpp[2],
                              PhysicalRegion rpg[2],
                              PhysicalRegion rs[1])
 {
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpp_pf_y =
-    rpp[0].get_accessor().typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpp_pf_x =
-    rpp[1].get_accessor().typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pf_y =
+    rpp[0].get_field_accessor(FIELD_PF_Y).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pf_x =
+    rpp[0].get_field_accessor(FIELD_PF_X).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpg_pf_y =
-    rpg[0].get_accessor().typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpg_pf_x =
-    rpg[1].get_accessor().typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pf_y =
+    rpg[0].get_accessor().typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pf_x =
+    rpg[1].get_accessor().typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsz =
-    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsp1_pointer =
-    rs[0].get_field_accessor(FIELD_MAPSP1_POINTER).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, uint32_t> accessor_mapsp1_region =
-    rs[0].get_field_accessor(FIELD_MAPSP1_REGION).typeify<uint32_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapss3 =
-    rs[0].get_field_accessor(FIELD_MAPSS3).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_sfp_x =
-    rs[0].get_field_accessor(FIELD_SFP_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_sfp_y =
-    rs[0].get_field_accessor(FIELD_SFP_Y).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_sfq_x =
-    rs[0].get_field_accessor(FIELD_SFQ_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_sfq_y =
-    rs[0].get_field_accessor(FIELD_SFQ_Y).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_sft_x =
-    rs[0].get_field_accessor(FIELD_SFT_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_sft_y =
-    rs[0].get_field_accessor(FIELD_SFT_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsz =
+    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsp1_pointer =
+    rs[0].get_field_accessor(FIELD_MAPSP1_POINTER).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, uint32_t> accessor_mapsp1_region =
+    rs[0].get_field_accessor(FIELD_MAPSP1_REGION).typeify<uint32_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapss3 =
+    rs[0].get_field_accessor(FIELD_MAPSS3).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_8, double> accessor_sfp_x =
+    rs[0].get_field_accessor(FIELD_SFP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_sfp_y =
+    rs[0].get_field_accessor(FIELD_SFP_Y).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_sfq_x =
+    rs[0].get_field_accessor(FIELD_SFQ_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_sfq_y =
+    rs[0].get_field_accessor(FIELD_SFQ_Y).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_sft_x =
+    rs[0].get_field_accessor(FIELD_SFT_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_sft_y =
+    rs[0].get_field_accessor(FIELD_SFT_Y).typeify<double>().convert<AT_SOA_8>();
 
   for (intptr_t s = sstart; s < send; s++) {
     ptr_t z = accessor_mapsz.read(s);
@@ -1598,8 +2469,8 @@ void foreign_sum_point_force(HighLevelRuntime *runtime,
 
     switch (p1_region) {
     case 1:
-      accessor_rpp_pf_x.reduce<reduction_plus_double>(p1_pointer, f.x);
-      accessor_rpp_pf_y.reduce<reduction_plus_double>(p1_pointer, f.y);
+      accessor_rpp_pf_x.write(p1_pointer, accessor_rpp_pf_x.read(p1_pointer) + f.x);
+      accessor_rpp_pf_y.write(p1_pointer, accessor_rpp_pf_y.read(p1_pointer) + f.y);
       break;
     case 2:
       accessor_rpg_pf_x.reduce<reduction_plus_double>(p1_pointer, f.x);
@@ -1609,46 +2480,44 @@ void foreign_sum_point_force(HighLevelRuntime *runtime,
   }
 }
 
-void foreign_calc_centers_full(HighLevelRuntime *runtime,
-                               Context ctx,
-                               intptr_t sstart,
+void foreign_calc_centers_full(intptr_t sstart,
                                intptr_t send,
                                PhysicalRegion rz[2],
                                PhysicalRegion rpp[1],
                                PhysicalRegion rpg[1],
                                PhysicalRegion rs[2])
 {
-  RegionAccessor<AccessorType::AOS<0>, intptr_t> accessor_znump =
-    rz[0].get_field_accessor(FIELD_ZNUMP).typeify<intptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zx_x =
-    rz[1].get_field_accessor(FIELD_ZX_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zx_y =
-    rz[1].get_field_accessor(FIELD_ZX_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, intptr_t> accessor_znump =
+    rz[0].get_field_accessor(FIELD_ZNUMP).typeify<intptr_t>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zx_x =
+    rz[1].get_field_accessor(FIELD_ZX_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zx_y =
+    rz[1].get_field_accessor(FIELD_ZX_Y).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpp_px_x =
-    rpp[0].get_field_accessor(FIELD_PX_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpp_px_y =
-    rpp[0].get_field_accessor(FIELD_PX_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_px_x =
+    rpp[0].get_field_accessor(FIELD_PX_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_px_y =
+    rpp[0].get_field_accessor(FIELD_PX_Y).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpg_px_x =
-    rpg[0].get_field_accessor(FIELD_PX_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpg_px_y =
-    rpg[0].get_field_accessor(FIELD_PX_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_px_x =
+    rpg[0].get_field_accessor(FIELD_PX_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_px_y =
+    rpg[0].get_field_accessor(FIELD_PX_Y).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsz =
-    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsp1_pointer =
-    rs[0].get_field_accessor(FIELD_MAPSP1_POINTER).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, uint32_t> accessor_mapsp1_region =
-    rs[0].get_field_accessor(FIELD_MAPSP1_REGION).typeify<uint32_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsp2_pointer =
-    rs[0].get_field_accessor(FIELD_MAPSP2_POINTER).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, uint32_t> accessor_mapsp2_region =
-    rs[0].get_field_accessor(FIELD_MAPSP2_REGION).typeify<uint32_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_ex_x =
-    rs[1].get_field_accessor(FIELD_EX_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_ex_y =
-    rs[1].get_field_accessor(FIELD_EX_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsz =
+    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsp1_pointer =
+    rs[0].get_field_accessor(FIELD_MAPSP1_POINTER).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, uint32_t> accessor_mapsp1_region =
+    rs[0].get_field_accessor(FIELD_MAPSP1_REGION).typeify<uint32_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsp2_pointer =
+    rs[0].get_field_accessor(FIELD_MAPSP2_POINTER).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, uint32_t> accessor_mapsp2_region =
+    rs[0].get_field_accessor(FIELD_MAPSP2_REGION).typeify<uint32_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_8, double> accessor_ex_x =
+    rs[1].get_field_accessor(FIELD_EX_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_ex_y =
+    rs[1].get_field_accessor(FIELD_EX_Y).typeify<double>().convert<AT_SOA_8>();
 
   for (intptr_t s = sstart; s < send; s++) {
     ptr_t z = accessor_mapsz.read(s);
@@ -1691,48 +2560,46 @@ void foreign_calc_centers_full(HighLevelRuntime *runtime,
   }
 }
 
-void foreign_calc_volumes_full(HighLevelRuntime *runtime,
-                               Context ctx,
-                               intptr_t sstart,
+void foreign_calc_volumes_full(intptr_t sstart,
                                intptr_t send,
                                PhysicalRegion rz[2],
                                PhysicalRegion rpp[1],
                                PhysicalRegion rpg[1],
                                PhysicalRegion rs[2])
 {
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zx_x =
-    rz[0].get_field_accessor(FIELD_ZX_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zx_y =
-    rz[0].get_field_accessor(FIELD_ZX_Y).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zarea =
-    rz[1].get_field_accessor(FIELD_ZAREA).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zvol =
-    rz[1].get_field_accessor(FIELD_ZVOL).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_zx_x =
+    rz[0].get_field_accessor(FIELD_ZX_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zx_y =
+    rz[0].get_field_accessor(FIELD_ZX_Y).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zarea =
+    rz[1].get_field_accessor(FIELD_ZAREA).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zvol =
+    rz[1].get_field_accessor(FIELD_ZVOL).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpp_px_x =
-    rpp[0].get_field_accessor(FIELD_PX_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpp_px_y =
-    rpp[0].get_field_accessor(FIELD_PX_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_px_x =
+    rpp[0].get_field_accessor(FIELD_PX_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_px_y =
+    rpp[0].get_field_accessor(FIELD_PX_Y).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpg_px_x =
-    rpg[0].get_field_accessor(FIELD_PX_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpg_px_y =
-    rpg[0].get_field_accessor(FIELD_PX_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_px_x =
+    rpg[0].get_field_accessor(FIELD_PX_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_px_y =
+    rpg[0].get_field_accessor(FIELD_PX_Y).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsz =
-    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsp1_pointer =
-    rs[0].get_field_accessor(FIELD_MAPSP1_POINTER).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, uint32_t> accessor_mapsp1_region =
-    rs[0].get_field_accessor(FIELD_MAPSP1_REGION).typeify<uint32_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsp2_pointer =
-    rs[0].get_field_accessor(FIELD_MAPSP2_POINTER).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, uint32_t> accessor_mapsp2_region =
-    rs[0].get_field_accessor(FIELD_MAPSP2_REGION).typeify<uint32_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_sarea =
-    rs[1].get_field_accessor(FIELD_SAREA).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_svol =
-    rs[1].get_field_accessor(FIELD_SVOL).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsz =
+    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsp1_pointer =
+    rs[0].get_field_accessor(FIELD_MAPSP1_POINTER).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, uint32_t> accessor_mapsp1_region =
+    rs[0].get_field_accessor(FIELD_MAPSP1_REGION).typeify<uint32_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsp2_pointer =
+    rs[0].get_field_accessor(FIELD_MAPSP2_POINTER).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, uint32_t> accessor_mapsp2_region =
+    rs[0].get_field_accessor(FIELD_MAPSP2_REGION).typeify<uint32_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_8, double> accessor_sarea =
+    rs[1].get_field_accessor(FIELD_SAREA).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_svol =
+    rs[1].get_field_accessor(FIELD_SVOL).typeify<double>().convert<AT_SOA_8>();
 
   for (intptr_t s = sstart; s < send; s++) {
     ptr_t z = accessor_mapsz.read(s);
@@ -1780,9 +2647,7 @@ void foreign_calc_volumes_full(HighLevelRuntime *runtime,
   }
 }
 
-void foreign_calc_work(HighLevelRuntime *runtime,
-                       Context ctx,
-                       double dt,
+void foreign_calc_work(double dt,
                        intptr_t sstart,
                        intptr_t send,
                        PhysicalRegion rz[1],
@@ -1790,55 +2655,55 @@ void foreign_calc_work(HighLevelRuntime *runtime,
                        PhysicalRegion rpg[1],
                        PhysicalRegion rs[1])
 {
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zw =
-    rz[0].get_field_accessor(FIELD_ZW).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_zetot =
-    rz[0].get_field_accessor(FIELD_ZETOT).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_zw =
+    rz[0].get_field_accessor(FIELD_ZW).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_zetot =
+    rz[0].get_field_accessor(FIELD_ZETOT).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpp_pxp_x =
-    rpp[0].get_field_accessor(FIELD_PXP_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpp_pxp_y =
-    rpp[0].get_field_accessor(FIELD_PXP_Y).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpp_pu0_x =
-    rpp[0].get_field_accessor(FIELD_PU0_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpp_pu0_y =
-    rpp[0].get_field_accessor(FIELD_PU0_Y).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpp_pu_x =
-    rpp[0].get_field_accessor(FIELD_PU_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpp_pu_y =
-    rpp[0].get_field_accessor(FIELD_PU_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pxp_x =
+    rpp[0].get_field_accessor(FIELD_PXP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pxp_y =
+    rpp[0].get_field_accessor(FIELD_PXP_Y).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pu0_x =
+    rpp[0].get_field_accessor(FIELD_PU0_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pu0_y =
+    rpp[0].get_field_accessor(FIELD_PU0_Y).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pu_x =
+    rpp[0].get_field_accessor(FIELD_PU_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpp_pu_y =
+    rpp[0].get_field_accessor(FIELD_PU_Y).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpg_pxp_x =
-    rpg[0].get_field_accessor(FIELD_PXP_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpg_pxp_y =
-    rpg[0].get_field_accessor(FIELD_PXP_Y).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpg_pu0_x =
-    rpg[0].get_field_accessor(FIELD_PU0_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpg_pu0_y =
-    rpg[0].get_field_accessor(FIELD_PU0_Y).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpg_pu_x =
-    rpg[0].get_field_accessor(FIELD_PU_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_rpg_pu_y =
-    rpg[0].get_field_accessor(FIELD_PU_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pxp_x =
+    rpg[0].get_field_accessor(FIELD_PXP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pxp_y =
+    rpg[0].get_field_accessor(FIELD_PXP_Y).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pu0_x =
+    rpg[0].get_field_accessor(FIELD_PU0_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pu0_y =
+    rpg[0].get_field_accessor(FIELD_PU0_Y).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pu_x =
+    rpg[0].get_field_accessor(FIELD_PU_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_rpg_pu_y =
+    rpg[0].get_field_accessor(FIELD_PU_Y).typeify<double>().convert<AT_SOA_8>();
 
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsz =
-    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsp1_pointer =
-    rs[0].get_field_accessor(FIELD_MAPSP1_POINTER).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, uint32_t> accessor_mapsp1_region =
-    rs[0].get_field_accessor(FIELD_MAPSP1_REGION).typeify<uint32_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, ptr_t> accessor_mapsp2_pointer =
-    rs[0].get_field_accessor(FIELD_MAPSP2_POINTER).typeify<ptr_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, uint32_t> accessor_mapsp2_region =
-    rs[0].get_field_accessor(FIELD_MAPSP2_REGION).typeify<uint32_t>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_sfp_x =
-    rs[0].get_field_accessor(FIELD_SFP_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_sfp_y =
-    rs[0].get_field_accessor(FIELD_SFP_Y).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_sfq_x =
-    rs[0].get_field_accessor(FIELD_SFQ_X).typeify<double>().convert<AccessorType::AOS<0> >();
-  RegionAccessor<AccessorType::AOS<0>, double> accessor_sfq_y =
-    rs[0].get_field_accessor(FIELD_SFQ_Y).typeify<double>().convert<AccessorType::AOS<0> >();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsz =
+    rs[0].get_field_accessor(FIELD_MAPSZ).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsp1_pointer =
+    rs[0].get_field_accessor(FIELD_MAPSP1_POINTER).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, uint32_t> accessor_mapsp1_region =
+    rs[0].get_field_accessor(FIELD_MAPSP1_REGION).typeify<uint32_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, ptr_t> accessor_mapsp2_pointer =
+    rs[0].get_field_accessor(FIELD_MAPSP2_POINTER).typeify<ptr_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_4, uint32_t> accessor_mapsp2_region =
+    rs[0].get_field_accessor(FIELD_MAPSP2_REGION).typeify<uint32_t>().convert<AT_SOA_4>();
+  RegionAccessor<AT_SOA_8, double> accessor_sfp_x =
+    rs[0].get_field_accessor(FIELD_SFP_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_sfp_y =
+    rs[0].get_field_accessor(FIELD_SFP_Y).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_sfq_x =
+    rs[0].get_field_accessor(FIELD_SFQ_X).typeify<double>().convert<AT_SOA_8>();
+  RegionAccessor<AT_SOA_8, double> accessor_sfq_y =
+    rs[0].get_field_accessor(FIELD_SFQ_Y).typeify<double>().convert<AT_SOA_8>();
 
   for (intptr_t s = sstart; s < send; s++) {
     ptr_t z = accessor_mapsz.read(s);
@@ -1951,6 +2816,7 @@ class PennantMapper : public DefaultMapper
 public:
   PennantMapper(Machine *machine, HighLevelRuntime *rt, Processor local);
   virtual void select_task_options(Task *task);
+  virtual void select_task_variant(Task *task);
   virtual bool map_task(Task *task);
   virtual bool map_inline(Inline *inline_operation);
   virtual void notify_mapping_failed(const Mappable *mappable);
@@ -1958,6 +2824,8 @@ private:
   Color get_task_color_by_region(Task *task, LogicalRegion region);
 private:
   std::map<Processor::Kind, std::vector<Processor> > all_processors;
+  Memory local_sysmem;
+  Memory local_regmem;
 };
 
 PennantMapper::PennantMapper(Machine *machine, HighLevelRuntime *rt, Processor local)
@@ -1968,6 +2836,14 @@ PennantMapper::PennantMapper(Machine *machine, HighLevelRuntime *rt, Processor l
        it != procs.end(); it++) {
     Processor::Kind kind = machine->get_processor_kind(*it);
     all_processors[kind].push_back(*it);
+  }
+
+  local_sysmem =
+    machine_interface.find_memory_kind(local_proc, Memory::SYSTEM_MEM);
+  local_regmem =
+    machine_interface.find_memory_kind(local_proc, Memory::REGDMA_MEM);
+  if(!local_regmem.exists()) {
+    local_regmem = local_sysmem;
   }
 }
 
@@ -2018,7 +2894,7 @@ void PennantMapper::select_task_options(Task *task)
       // Task options:
       task->inline_task = false;
       task->spawn_task = false;
-      task->map_locally = task->variants->leaf;
+      task->map_locally = false;
       task->profile_task = false;
 
       // Processor (round robin by piece of graph):
@@ -2032,9 +2908,24 @@ void PennantMapper::select_task_options(Task *task)
   }
 }
 
+void PennantMapper::select_task_variant(Task *task)
+{
+  // Use the SOA variant for all tasks.
+  task->selected_variant = VARIANT_SOA;
+
+  std::vector<RegionRequirement> &regions = task->regions;
+  for (std::vector<RegionRequirement>::iterator it = regions.begin();
+        it != regions.end(); it++) {
+    RegionRequirement &req = *it;
+
+    // Select SOA layout for all regions.
+    req.blocking_factor = req.max_blocking_factor;
+  }
+}
+
 bool PennantMapper::map_task(Task *task)
 {
-  Memory global_memory = machine_interface.find_global_memory();
+  assert(task->target_proc == local_proc);
 
   std::vector<RegionRequirement> &regions = task->regions;
   for (std::vector<RegionRequirement>::iterator it = regions.begin();
@@ -2045,10 +2936,9 @@ bool PennantMapper::map_task(Task *task)
     req.virtual_map = false;
     req.enable_WAR_optimization = false;
     req.reduction_list = false;
-    req.blocking_factor = 1;
 
-    // Place all regions in global memory.
-    req.target_ranking.push_back(global_memory);
+    // Place all regions in local system memory.
+    req.target_ranking.push_back(local_sysmem);
   }
 
   return false;
@@ -2056,34 +2946,72 @@ bool PennantMapper::map_task(Task *task)
 
 bool PennantMapper::map_inline(Inline *inline_operation)
 {
-  Memory global_memory = machine_interface.find_global_memory();
-
   RegionRequirement &req = inline_operation->requirement;
 
   // Region options:
   req.virtual_map = false;
   req.enable_WAR_optimization = false;
   req.reduction_list = false;
-  req.blocking_factor = 1;
+  req.blocking_factor = req.max_blocking_factor;
 
   // Place all regions in global memory.
-  req.target_ranking.push_back(global_memory);
+  req.target_ranking.push_back(local_sysmem);
+
+  log_mapper.debug(
+    "inline mapping region (%d,%d,%d) target ranking front %d (size %lu)",
+    req.region.get_index_space().id,
+    req.region.get_field_space().get_id(),
+    req.region.get_tree_id(),
+    req.target_ranking[0].id,
+    req.target_ranking.size());
 
   return false;
 }
 
 void PennantMapper::notify_mapping_failed(const Mappable *mappable)
 {
+  switch (mappable->get_mappable_kind()) {
+  case Mappable::TASK_MAPPABLE:
+    {
+      log_mapper.warning("mapping failed on task");
+      break;
+    }
+  case Mappable::COPY_MAPPABLE:
+    {
+      log_mapper.warning("mapping failed on copy");
+      break;
+    }
+  case Mappable::INLINE_MAPPABLE:
+    {
+      Inline *_inline = mappable->as_mappable_inline();
+      RegionRequirement &req = _inline->requirement;
+      LogicalRegion region = req.region;
+      log_mapper.warning(
+        "mapping %s on inline region (%d,%d,%d) memory %d",
+        (req.mapping_failed ? "failed" : "succeeded"),
+        region.get_index_space().id,
+        region.get_field_space().get_id(),
+        region.get_tree_id(),
+        req.selected_memory.id);
+      break;
+    }
+  case Mappable::ACQUIRE_MAPPABLE:
+    {
+      log_mapper.warning("mapping failed on acquire");
+      break;
+    }
+  case Mappable::RELEASE_MAPPABLE:
+    {
+      log_mapper.warning("mapping failed on release");
+      break;
+    }
+  }
   assert(0 && "mapping failed");
 }
 
-
 Color PennantMapper::get_task_color_by_region(Task *task, LogicalRegion region)
 {
-  Context ctx = dynamic_cast<Context>(task);
-  assert(ctx);
-
-  return runtime->get_logical_region_color(ctx, region);
+  return get_logical_region_color(region);
 }
 
 void create_mappers(Machine *machine, HighLevelRuntime *runtime, const std::set<Processor> &local_procs)
