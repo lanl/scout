@@ -21,11 +21,6 @@ using namespace llvm::bfi_detail;
 
 #define DEBUG_TYPE "block-freq"
 
-//===----------------------------------------------------------------------===//
-//
-// BlockMass implementation.
-//
-//===----------------------------------------------------------------------===//
 ScaledNumber<uint64_t> BlockMass::toScaled() const {
   if (isFull())
     return ScaledNumber<uint64_t>(1, 0);
@@ -46,11 +41,6 @@ raw_ostream &BlockMass::print(raw_ostream &OS) const {
   return OS;
 }
 
-//===----------------------------------------------------------------------===//
-//
-// BlockFrequencyInfoImpl implementation.
-//
-//===----------------------------------------------------------------------===//
 namespace {
 
 typedef BlockFrequencyInfoImplBase::BlockNode BlockNode;
@@ -87,7 +77,8 @@ struct DitheringDistributer {
 
   BlockMass takeMass(uint32_t Weight);
 };
-}
+
+} // end namespace
 
 DitheringDistributer::DitheringDistributer(Distribution &Dist,
                                            const BlockMass &Mass) {
@@ -121,11 +112,7 @@ void Distribution::add(const BlockNode &Node, uint64_t Amount,
   Total = NewTotal;
 
   // Save the weight.
-  Weight W;
-  W.TargetNode = Node;
-  W.Amount = Amount;
-  W.Type = Type;
-  Weights.push_back(W);
+  Weights.push_back(Weight(Type, Node, Amount));
 }
 
 static void combineWeight(Weight &W, const Weight &OtherW) {

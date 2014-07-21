@@ -274,6 +274,14 @@ public:
     UnknownModRefBehavior = Anywhere | ModRef
   };
 
+  /// Get the location associated with a pointer argument of a callsite.
+  /// The mask bits are set to indicate the allowed aliasing ModRef kinds.
+  /// Note that these mask bits do not necessarily account for the overall
+  /// behavior of the function, but rather only provide additional
+  /// per-argument information.
+  virtual Location getArgLocation(ImmutableCallSite CS, unsigned ArgIdx,
+                                  ModRefResult &Mask);
+
   /// getModRefBehavior - Return the behavior when calling the given call site.
   virtual ModRefBehavior getModRefBehavior(ImmutableCallSite CS);
 
@@ -596,6 +604,13 @@ bool isNoAliasArgument(const Value *V);
 ///    NoAlias returns (e.g. calls to malloc)
 ///
 bool isIdentifiedObject(const Value *V);
+
+/// isIdentifiedFunctionLocal - Return true if V is umabigously identified
+/// at the function-level. Different IdentifiedFunctionLocals can't alias.
+/// Further, an IdentifiedFunctionLocal can not alias with any function
+/// arguments other than itself, which is not necessarily true for
+/// IdentifiedObjects.
+bool isIdentifiedFunctionLocal(const Value *V);
 
 } // End llvm namespace
 

@@ -19,6 +19,7 @@
 #include "R600Defines.h"
 #include "R600InstrInfo.h"
 #include "R600MachineFunctionInfo.h"
+#include "llvm/Analysis/ValueTracking.h"
 #include "llvm/CodeGen/CallingConvLower.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
@@ -82,6 +83,8 @@ R600TargetLowering::R600TargetLowering(TargetMachine &TM) :
   setOperationAction(ISD::SETCC, MVT::i32, Expand);
   setOperationAction(ISD::SETCC, MVT::f32, Expand);
   setOperationAction(ISD::FP_TO_UINT, MVT::i1, Custom);
+  setOperationAction(ISD::FP_TO_SINT, MVT::i64, Custom);
+  setOperationAction(ISD::FP_TO_UINT, MVT::i64, Custom);
 
   setOperationAction(ISD::SELECT, MVT::i32, Expand);
   setOperationAction(ISD::SELECT, MVT::f32, Expand);
@@ -578,7 +581,14 @@ SDValue R600TargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const 
   case ISD::FSIN: return LowerTrig(Op, DAG);
   case ISD::SELECT_CC: return LowerSELECT_CC(Op, DAG);
   case ISD::STORE: return LowerSTORE(Op, DAG);
-  case ISD::LOAD: return LowerLOAD(Op, DAG);
+  case ISD::LOAD: {
+    SDValue Result = LowerLOAD(Op, DAG);
+    assert((!Result.getNode() ||
+            Result.getNode()->getNumValues() == 2) &&
+           "Load should return a value and a chain");
+    return Result;
+  }
+
   case ISD::BRCOND: return LowerBRCOND(Op, DAG);
   case ISD::GlobalAddress: return LowerGlobalAddress(MFI, Op, DAG);
   case ISD::INTRINSIC_VOID: {
@@ -832,8 +842,20 @@ void R600TargetLowering::ReplaceNodeResults(SDNode *N,
   default:
     AMDGPUTargetLowering::ReplaceNodeResults(N, Results, DAG);
     return;
-  case ISD::FP_TO_UINT: Results.push_back(LowerFPTOUINT(N->getOperand(0), DAG));
+  case ISD::FP_TO_UINT:
+    if (N->getValueType(0) == MVT::i1) {
+      Results.push_back(LowerFPTOUINT(N->getOperand(0), DAG));
+      return;
+    }
+    // Fall-through. Since we don't care about out of bounds values
+    // we can use FP_TO_SINT for uints too. The DAGLegalizer code for uint
+    // considers some extra cases which are not necessary here.
+  case ISD::FP_TO_SINT: {
+    SDValue Result;
+    if (expandFP_TO_SINT(N, Result, DAG))
+      Results.push_back(Result);
     return;
+  }
   case ISD::UDIV: {
     SDValue Op = SDValue(N, 0);
     SDLoc DL(Op);
@@ -1505,6 +1527,19 @@ SDValue R600TargetLowering::LowerLOAD(SDValue Op, SelectionDAG &DAG) const
     return DAG.getMergeValues(Ops, DL);
   }
 
+  // Lower loads constant address space global variable loads
+  if (LoadNode->getAddressSpace() == AMDGPUAS::CONSTANT_ADDRESS &&
+      isa<GlobalVariable>(
+          GetUnderlyingObject(LoadNode->getMemOperand()->getValue()))) {
+
+    SDValue Ptr = DAG.getZExtOrTrunc(LoadNode->getBasePtr(), DL,
+        getPointerTy(AMDGPUAS::PRIVATE_ADDRESS));
+    Ptr = DAG.getNode(ISD::SRL, DL, MVT::i32, Ptr,
+        DAG.getConstant(2, MVT::i32));
+    return DAG.getNode(AMDGPUISD::REGISTER_LOAD, DL, Op->getVTList(),
+                       LoadNode->getChain(), Ptr,
+                       DAG.getTargetConstant(0, MVT::i32), Op.getOperand(2));
+  }
 
   if (LoadNode->getAddressSpace() == AMDGPUAS::LOCAL_ADDRESS && VT.isVector()) {
     SDValue MergedValues[2] = {
@@ -1659,7 +1694,7 @@ SDValue R600TargetLowering::LowerFormalArguments(
   CCState CCInfo(CallConv, isVarArg, DAG.getMachineFunction(),
                  getTargetMachine(), ArgLocs, *DAG.getContext());
   MachineFunction &MF = DAG.getMachineFunction();
-  unsigned ShaderType = MF.getInfo<R600MachineFunctionInfo>()->ShaderType;
+  unsigned ShaderType = MF.getInfo<R600MachineFunctionInfo>()->getShaderType();
 
   SmallVector<ISD::InputArg, 8> LocalIns;
 

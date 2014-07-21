@@ -57,6 +57,10 @@ def SIsampleb : SDSample<"AMDGPUISD::SAMPLEB">;
 def SIsampled : SDSample<"AMDGPUISD::SAMPLED">;
 def SIsamplel : SDSample<"AMDGPUISD::SAMPLEL">;
 
+def SIconstdata_ptr : SDNode<
+  "AMDGPUISD::CONST_DATA_PTR", SDTypeProfile <1, 0, [SDTCisVT<0, i64>]>
+>;
+
 // Transformation function, extract the lower 32bit of a 64bit immediate
 def LO32 : SDNodeXForm<imm, [{
   return CurDAG->getTargetConstant(N->getZExtValue() & 0xffffffff, MVT::i32);
@@ -142,15 +146,26 @@ class SGPRImm <dag frag> : PatLeaf<frag, [{
   return false;
 }]>;
 
+//===----------------------------------------------------------------------===//
+// Custom Operands
+//===----------------------------------------------------------------------===//
+
 def FRAMEri32 : Operand<iPTR> {
   let MIOperandInfo = (ops i32:$ptr, i32imm:$index);
+}
+
+def sopp_brtarget : Operand<OtherVT> {
+  let EncoderMethod = "getSOPPBrEncoding";
+  let OperandType = "OPERAND_PCREL";
 }
 
 //===----------------------------------------------------------------------===//
 // Complex patterns
 //===----------------------------------------------------------------------===//
 
+def MUBUFAddr32 : ComplexPattern<i64, 9, "SelectMUBUFAddr32">;
 def MUBUFAddr64 : ComplexPattern<i64, 3, "SelectMUBUFAddr64">;
+def MUBUFScratch : ComplexPattern<i64, 4, "SelectMUBUFScratch">;
 
 //===----------------------------------------------------------------------===//
 // SI assembler operands
@@ -576,26 +591,28 @@ class MTBUF_Store_Helper <bits<3> op, string asm, RegisterClass regClass> : MTBU
   let mayLoad = 0;
 }
 
-multiclass MUBUF_Load_Helper <bits<7> op, string asm, RegisterClass regClass> {
+multiclass MUBUF_Load_Helper <bits<7> op, string asm, RegisterClass regClass,
+                              ValueType load_vt = i32,
+                              SDPatternOperator ld = null_frag> {
 
   let lds = 0, mayLoad = 1 in {
 
     let addr64 = 0 in {
 
-      let offen = 0, idxen = 0 in {
+      let offen = 0, idxen = 0, vaddr = 0 in {
         def _OFFSET : MUBUF <op, (outs regClass:$vdata),
-                             (ins SReg_128:$srsrc, VReg_32:$vaddr,
+                             (ins SReg_128:$srsrc,
                              u16imm:$offset, SSrc_32:$soffset, i1imm:$glc,
                              i1imm:$slc, i1imm:$tfe),
                              asm#" $vdata, $srsrc + $offset + $soffset, glc=$glc, slc=$slc, tfe=$tfe", []>;
       }
 
-      let offen = 1, idxen = 0, offset = 0 in {
+      let offen = 1, idxen = 0  in {
         def _OFFEN  : MUBUF <op, (outs regClass:$vdata),
                              (ins SReg_128:$srsrc, VReg_32:$vaddr,
-                             SSrc_32:$soffset, i1imm:$glc, i1imm:$slc,
+                             SSrc_32:$soffset, u16imm:$offset, i1imm:$glc, i1imm:$slc,
                              i1imm:$tfe),
-                             asm#" $vdata, $srsrc + $vaddr + $soffset, glc=$glc, slc=$slc, tfe=$tfe", []>;
+                             asm#" $vdata, $srsrc + $vaddr + $soffset + $offset, glc=$glc, slc=$slc, tfe=$tfe", []>;
       }
 
       let offen = 0, idxen = 1 in {
@@ -618,30 +635,47 @@ multiclass MUBUF_Load_Helper <bits<7> op, string asm, RegisterClass regClass> {
     let offen = 0, idxen = 0, addr64 = 1, glc = 0, slc = 0, tfe = 0, soffset = 128 /* ZERO */ in {
       def _ADDR64 : MUBUF <op, (outs regClass:$vdata),
                            (ins SReg_128:$srsrc, VReg_64:$vaddr, u16imm:$offset),
-                           asm#" $vdata, $srsrc + $vaddr + $offset", []>;
+                           asm#" $vdata, $srsrc + $vaddr + $offset",
+                           [(set load_vt:$vdata, (ld (MUBUFAddr64 v4i32:$srsrc,
+                                                  i64:$vaddr, u16imm:$offset)))]>;
     }
   }
 }
 
-class MUBUF_Store_Helper <bits<7> op, string name, RegisterClass vdataClass,
-                          ValueType store_vt, SDPatternOperator st> :
-    MUBUF <op, (outs), (ins vdataClass:$vdata, SReg_128:$srsrc, VReg_64:$vaddr,
-                            u16imm:$offset),
-          name#" $vdata, $srsrc + $vaddr + $offset",
-          [(st store_vt:$vdata, (MUBUFAddr64 v4i32:$srsrc, i64:$vaddr, u16imm:$offset))]> {
+multiclass MUBUF_Store_Helper <bits<7> op, string name, RegisterClass vdataClass,
+                          ValueType store_vt, SDPatternOperator st> {
 
-  let mayLoad = 0;
-  let mayStore = 1;
+  def "" : MUBUF <
+    op, (outs),
+    (ins vdataClass:$vdata, SReg_128:$srsrc, VReg_32:$vaddr, SSrc_32:$soffset,
+         u16imm:$offset, i1imm:$offen, i1imm:$idxen, i1imm:$glc, i1imm:$slc,
+         i1imm:$tfe),
+    name#" $vdata, $srsrc, $vaddr, $soffset, $offset $offen $idxen $glc $slc $tfe",
+    []
+  > {
+    let addr64 = 0;
+  }
 
-  // Encoding
-  let offen = 0;
-  let idxen = 0;
-  let glc = 0;
-  let addr64 = 1;
-  let lds = 0;
-  let slc = 0;
-  let tfe = 0;
-  let soffset = 128; // ZERO
+  def _ADDR64 : MUBUF <
+    op, (outs),
+    (ins vdataClass:$vdata, SReg_128:$srsrc, VReg_64:$vaddr, u16imm:$offset),
+    name#" $vdata, $srsrc + $vaddr + $offset",
+    [(st store_vt:$vdata,
+     (MUBUFAddr64 v4i32:$srsrc, i64:$vaddr, u16imm:$offset))]> {
+
+      let mayLoad = 0;
+      let mayStore = 1;
+
+      // Encoding
+      let offen = 0;
+      let idxen = 0;
+      let glc = 0;
+      let addr64 = 1;
+      let lds = 0;
+      let slc = 0;
+      let tfe = 0;
+      let soffset = 128; // ZERO
+   }
 }
 
 class MTBUF_Load_Helper <bits<3> op, string asm, RegisterClass regClass> : MTBUF <

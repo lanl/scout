@@ -1203,7 +1203,9 @@ bool PPCFastISel::processCallArgs(SmallVectorImpl<Value*> &Args,
   CCState CCInfo(CC, IsVarArg, *FuncInfo.MF, TM, ArgLocs, *Context);
 
   // Reserve space for the linkage area on the stack.
-  unsigned LinkageSize = PPCFrameLowering::getLinkageSize(true, false);
+  bool isELFv2ABI = PPCSubTarget->isELFv2ABI();
+  unsigned LinkageSize = PPCFrameLowering::getLinkageSize(true, false,
+                                                          isELFv2ABI);
   CCInfo.AllocateStack(LinkageSize, 8);
 
   CCInfo.AnalyzeCallOperands(ArgVTs, ArgFlags, CC_PPC64_ELF_FIS);
@@ -1232,6 +1234,7 @@ bool PPCFastISel::processCallArgs(SmallVectorImpl<Value*> &Args,
   // Because we cannot tell if this is needed on the caller side, we have to
   // conservatively assume that it is needed.  As such, make sure we have at
   // least enough stack space for the caller to store the 8 GPRs.
+  // FIXME: On ELFv2, it may be unnecessary to allocate the parameter area.
   NumBytes = std::max(NumBytes, LinkageSize + 64);
 
   // Issue CALLSEQ_START.
@@ -1497,6 +1500,10 @@ bool PPCFastISel::SelectCall(const Instruction *I) {
   // Add implicit physical register uses to the call.
   for (unsigned II = 0, IE = RegArgs.size(); II != IE; ++II)
     MIB.addReg(RegArgs[II], RegState::Implicit);
+
+  // Direct calls in the ELFv2 ABI need the TOC register live into the call.
+  if (PPCSubTarget->isELFv2ABI())
+    MIB.addReg(PPC::X2, RegState::Implicit);
 
   // Add a register mask with the call-preserved registers.  Proper
   // defs for return values will be added by setPhysRegsDeadExcept().

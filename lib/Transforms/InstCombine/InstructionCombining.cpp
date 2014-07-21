@@ -42,6 +42,7 @@
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
+#include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/GetElementPtrTypeIterator.h"
@@ -411,8 +412,8 @@ static Value *getIdentityValue(Instruction::BinaryOps OpCode, Value *V) {
 
 /// This function factors binary ops which can be combined using distributive
 /// laws. This also factor SHL as MUL e.g. SHL(X, 2) ==> MUL(X, 4).
-Instruction::BinaryOps getBinOpsForFactorization(BinaryOperator *Op,
-                                                 Value *&LHS, Value *&RHS) {
+static Instruction::BinaryOps
+getBinOpsForFactorization(BinaryOperator *Op, Value *&LHS, Value *&RHS) {
   if (!Op)
     return Instruction::BinaryOpsEnd;
 
@@ -1119,6 +1120,12 @@ Value *InstCombiner::Descale(Value *Val, APInt Scale, bool &NoSignedWrap) {
     return nullptr;
   }
 
+  // If Op is zero then Val = Op * Scale.
+  if (match(Op, m_Zero())) {
+    NoSignedWrap = true;
+    return Op;
+  }
+
   // We know that we can successfully descale, so from here on we can safely
   // modify the IR.  Op holds the descaled version of the deepest term in the
   // expression.  NoSignedWrap is 'true' if multiplying Op by Scale is known
@@ -1194,6 +1201,11 @@ static Value *CreateBinOpAsGiven(BinaryOperator &Inst, Value *LHS, Value *RHS,
 ///         null pointer if no transformation was made.
 Value *InstCombiner::SimplifyVectorOp(BinaryOperator &Inst) {
   if (!Inst.getType()->isVectorTy()) return nullptr;
+
+  // It may not be safe to reorder shuffles and things like div, urem, etc.
+  // because we may trap when executing those ops on unknown vector elements.
+  // See PR20059.
+  if (!isSafeToSpeculativelyExecute(&Inst, DL)) return nullptr;
 
   unsigned VWidth = cast<VectorType>(Inst.getType())->getNumElements();
   Value *LHS = Inst.getOperand(0), *RHS = Inst.getOperand(1);
@@ -1570,9 +1582,8 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
           Builder->CreateGEP(StrippedPtr, Idx, GEP.getName());
 
         // V and GEP are both pointer types --> BitCast
-        if (StrippedPtrTy->getAddressSpace() == GEP.getPointerAddressSpace())
-          return new BitCastInst(NewGEP, GEP.getType());
-        return new AddrSpaceCastInst(NewGEP, GEP.getType());
+        return CastInst::CreatePointerBitCastOrAddrSpaceCast(NewGEP,
+                                                             GEP.getType());
       }
 
       // Transform things like:
@@ -1604,9 +1615,8 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
               Builder->CreateGEP(StrippedPtr, NewIdx, GEP.getName());
 
             // The NewGEP must be pointer typed, so must the old one -> BitCast
-            if (StrippedPtrTy->getAddressSpace() == GEP.getPointerAddressSpace())
-              return new BitCastInst(NewGEP, GEP.getType());
-            return new AddrSpaceCastInst(NewGEP, GEP.getType());
+            return CastInst::CreatePointerBitCastOrAddrSpaceCast(NewGEP,
+                                                                 GEP.getType());
           }
         }
       }
@@ -1646,9 +1656,8 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
               Builder->CreateInBoundsGEP(StrippedPtr, Off, GEP.getName()) :
               Builder->CreateGEP(StrippedPtr, Off, GEP.getName());
             // The NewGEP must be pointer typed, so must the old one -> BitCast
-            if (StrippedPtrTy->getAddressSpace() == GEP.getPointerAddressSpace())
-              return new BitCastInst(NewGEP, GEP.getType());
-            return new AddrSpaceCastInst(NewGEP, GEP.getType());
+            return CastInst::CreatePointerBitCastOrAddrSpaceCast(NewGEP,
+                                                                 GEP.getType());
           }
         }
       }
@@ -2709,8 +2718,8 @@ bool InstCombiner::DoOneIteration(Function &F, unsigned Iteration) {
       if (UserParent != BB) {
         bool UserIsSuccessor = false;
         // See if the user is one of our successors.
-        for (succ_iterator SI = succ_begin(BB), E = succ_end(BB); SI != E; ++SI)
-          if (*SI == UserParent) {
+        for (BasicBlock *Succ : successors(BB))
+          if (Succ == UserParent) {
             UserIsSuccessor = true;
             break;
           }
@@ -2718,9 +2727,18 @@ bool InstCombiner::DoOneIteration(Function &F, unsigned Iteration) {
         // If the user is one of our immediate successors, and if that successor
         // only has us as a predecessors (we'd have to split the critical edge
         // otherwise), we can keep going.
-        if (UserIsSuccessor && UserParent->getSinglePredecessor())
+        if (UserIsSuccessor && UserParent->getSinglePredecessor()) {
           // Okay, the CFG is simple enough, try to sink this instruction.
-          MadeIRChange |= TryToSinkInstruction(I, UserParent);
+          if (TryToSinkInstruction(I, UserParent)) {
+            MadeIRChange = true;
+            // We'll add uses of the sunk instruction below, but since sinking
+            // can expose opportunities for it's *operands* add them to the
+            // worklist
+            for (Use &U : I->operands())
+              if (Instruction *OpI = dyn_cast<Instruction>(U.get()))
+                Worklist.Add(OpI);
+          }
+        }
       }
     }
 

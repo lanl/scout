@@ -380,6 +380,8 @@ void Verifier::visitGlobalValue(const GlobalValue &GV) {
           "Global is external, but doesn't have external or weak linkage!",
           &GV);
 
+  Assert1(GV.getAlignment() <= Value::MaximumAlignment,
+          "huge alignment values are unsupported", &GV);
   Assert1(!GV.hasAppendingLinkage() || isa<GlobalVariable>(GV),
           "Only global variables can have appending linkage!", &GV);
 
@@ -605,11 +607,10 @@ void Verifier::visitComdat(const Comdat &C) {
     Assert1(GV,
             "comdat selection kind requires a global value with the same name",
             &C);
-  // The Module is invalid if the GlobalValue has local linkage.  Allowing
-  // otherwise opens us up to seeing the underling global value get renamed if
-  // collisions occur.
+  // The Module is invalid if the GlobalValue has private linkage.  Entities
+  // with private linkage don't have entries in the symbol table.
   if (GV)
-    Assert1(!GV->hasLocalLinkage(), "comdat global value has local linkage",
+    Assert1(!GV->hasPrivateLinkage(), "comdat global value has private linkage",
             GV);
 }
 
@@ -1892,6 +1893,8 @@ void Verifier::visitLoadInst(LoadInst &LI) {
   Type *ElTy = PTy->getElementType();
   Assert2(ElTy == LI.getType(),
           "Load result type does not match pointer operand type!", &LI, ElTy);
+  Assert1(LI.getAlignment() <= Value::MaximumAlignment,
+          "huge alignment values are unsupported", &LI);
   if (LI.isAtomic()) {
     Assert1(LI.getOrdering() != Release && LI.getOrdering() != AcquireRelease,
             "Load cannot have Release ordering", &LI);
@@ -1967,6 +1970,8 @@ void Verifier::visitStoreInst(StoreInst &SI) {
   Assert2(ElTy == SI.getOperand(0)->getType(),
           "Stored value type does not match pointer operand type!",
           &SI, ElTy);
+  Assert1(SI.getAlignment() <= Value::MaximumAlignment,
+          "huge alignment values are unsupported", &SI);
   if (SI.isAtomic()) {
     Assert1(SI.getOrdering() != Acquire && SI.getOrdering() != AcquireRelease,
             "Store cannot have Acquire ordering", &SI);
@@ -1998,6 +2003,8 @@ void Verifier::visitAllocaInst(AllocaInst &AI) {
           &AI);
   Assert1(AI.getArraySize()->getType()->isIntegerTy(),
           "Alloca array size must have integer type", &AI);
+  Assert1(AI.getAlignment() <= Value::MaximumAlignment,
+          "huge alignment values are unsupported", &AI);
 
   visitInstruction(AI);
 }
@@ -2100,8 +2107,8 @@ void Verifier::visitLandingPadInst(LandingPadInst &LPI) {
 
   // The landingpad instruction defines its parent as a landing pad block. The
   // landing pad block may be branched to only by the unwind edge of an invoke.
-  for (pred_iterator I = pred_begin(BB), E = pred_end(BB); I != E; ++I) {
-    const InvokeInst *II = dyn_cast<InvokeInst>((*I)->getTerminator());
+  for (BasicBlock *Pred : predecessors(BB)) {
+    const InvokeInst *II = dyn_cast<InvokeInst>(Pred->getTerminator());
     Assert1(II && II->getUnwindDest() == BB && II->getNormalDest() != BB,
             "Block containing LandingPadInst must be jumped to "
             "only by the unwind edge of an invoke.", &LPI);

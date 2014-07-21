@@ -155,27 +155,6 @@ def X86cas16 : SDNode<"X86ISD::LCMPXCHG16_DAG", SDTX86caspair,
                         [SDNPHasChain, SDNPInGlue, SDNPOutGlue, SDNPMayStore,
                          SDNPMayLoad, SDNPMemOperand]>;
 
-def X86AtomAdd64 : SDNode<"X86ISD::ATOMADD64_DAG", SDTX86atomicBinary,
-                        [SDNPHasChain, SDNPMayStore,
-                         SDNPMayLoad, SDNPMemOperand]>;
-def X86AtomSub64 : SDNode<"X86ISD::ATOMSUB64_DAG", SDTX86atomicBinary,
-                        [SDNPHasChain, SDNPMayStore,
-                         SDNPMayLoad, SDNPMemOperand]>;
-def X86AtomOr64 : SDNode<"X86ISD::ATOMOR64_DAG", SDTX86atomicBinary,
-                        [SDNPHasChain, SDNPMayStore,
-                         SDNPMayLoad, SDNPMemOperand]>;
-def X86AtomXor64 : SDNode<"X86ISD::ATOMXOR64_DAG", SDTX86atomicBinary,
-                        [SDNPHasChain, SDNPMayStore,
-                         SDNPMayLoad, SDNPMemOperand]>;
-def X86AtomAnd64 : SDNode<"X86ISD::ATOMAND64_DAG", SDTX86atomicBinary,
-                        [SDNPHasChain, SDNPMayStore,
-                         SDNPMayLoad, SDNPMemOperand]>;
-def X86AtomNand64 : SDNode<"X86ISD::ATOMNAND64_DAG", SDTX86atomicBinary,
-                        [SDNPHasChain, SDNPMayStore,
-                         SDNPMayLoad, SDNPMemOperand]>;
-def X86AtomSwap64 : SDNode<"X86ISD::ATOMSWAP64_DAG", SDTX86atomicBinary,
-                        [SDNPHasChain, SDNPMayStore,
-                         SDNPMayLoad, SDNPMemOperand]>;
 def X86retflag : SDNode<"X86ISD::RET_FLAG", SDTX86Ret,
                         [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
 
@@ -740,10 +719,14 @@ def HasAVX512    : Predicate<"Subtarget->hasAVX512()">,
                      AssemblerPredicate<"FeatureAVX512", "AVX-512 ISA">;
 def UseAVX       : Predicate<"Subtarget->hasAVX() && !Subtarget->hasAVX512()">;
 def UseAVX2      : Predicate<"Subtarget->hasAVX2() && !Subtarget->hasAVX512()">;
-def NoAVX512       : Predicate<"!Subtarget->hasAVX512()">;
+def NoAVX512     : Predicate<"!Subtarget->hasAVX512()">;
 def HasCDI       : Predicate<"Subtarget->hasCDI()">;
 def HasPFI       : Predicate<"Subtarget->hasPFI()">;
 def HasERI       : Predicate<"Subtarget->hasERI()">;
+def HasDQI       : Predicate<"Subtarget->hasDQI()">;
+def HasBWI       : Predicate<"Subtarget->hasBWI()">;
+def HasVLX       : Predicate<"Subtarget->hasVLX()">,
+                     AssemblerPredicate<"FeatureVLX", "AVX-512 VLX ISA">;
 
 def HasPOPCNT    : Predicate<"Subtarget->hasPOPCNT()">;
 def HasAES       : Predicate<"Subtarget->hasAES()">;

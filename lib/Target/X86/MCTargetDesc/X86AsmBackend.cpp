@@ -73,11 +73,12 @@ public:
 };
 
 class X86AsmBackend : public MCAsmBackend {
-  StringRef CPU;
+  const StringRef CPU;
   bool HasNopl;
+  const uint64_t MaxNopLength;
 public:
   X86AsmBackend(const Target &T, StringRef _CPU)
-    : MCAsmBackend(), CPU(_CPU) {
+    : MCAsmBackend(), CPU(_CPU), MaxNopLength(_CPU == "slm" ? 7 : 15) {
     HasNopl = CPU != "generic" && CPU != "i386" && CPU != "i486" &&
               CPU != "i586" && CPU != "pentium" && CPU != "pentium-mmx" &&
               CPU != "i686" && CPU != "k6" && CPU != "k6-2" && CPU != "k6-3" &&
@@ -331,7 +332,7 @@ bool X86AsmBackend::writeNopData(uint64_t Count, MCObjectWriter *OW) const {
   // 15 is the longest single nop instruction.  Emit as many 15-byte nops as
   // needed, then emit a nop of the remaining length.
   do {
-    const uint8_t ThisNopLength = (uint8_t) std::min(Count, (uint64_t) 15);
+    const uint8_t ThisNopLength = (uint8_t) std::min(Count, MaxNopLength);
     const uint8_t Prefixes = ThisNopLength <= 10 ? 0 : ThisNopLength - 10;
     for (uint8_t i = 0; i < Prefixes; i++)
       OW->Write8(0x66);
@@ -362,6 +363,17 @@ public:
 
   MCObjectWriter *createObjectWriter(raw_ostream &OS) const override {
     return createX86ELFObjectWriter(OS, /*IsELF64*/ false, OSABI, ELF::EM_386);
+  }
+};
+
+class ELFX86_X32AsmBackend : public ELFX86AsmBackend {
+public:
+  ELFX86_X32AsmBackend(const Target &T, uint8_t OSABI, StringRef CPU)
+      : ELFX86AsmBackend(T, OSABI, CPU) {}
+
+  MCObjectWriter *createObjectWriter(raw_ostream &OS) const override {
+    return createX86ELFObjectWriter(OS, /*IsELF64*/ false, OSABI,
+                                    ELF::EM_X86_64);
   }
 };
 
@@ -823,5 +835,8 @@ MCAsmBackend *llvm::createX86_64AsmBackend(const Target &T,
     return new WindowsX86AsmBackend(T, true, CPU);
 
   uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(TheTriple.getOS());
+
+  if (TheTriple.getEnvironment() == Triple::GNUX32)
+    return new ELFX86_X32AsmBackend(T, OSABI, CPU);
   return new ELFX86_64AsmBackend(T, OSABI, CPU);
 }

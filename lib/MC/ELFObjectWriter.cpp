@@ -28,7 +28,7 @@
 #include "llvm/MC/MCObjectWriter.h"
 #include "llvm/MC/MCSectionELF.h"
 #include "llvm/MC/MCValue.h"
-#include "llvm/Object/StringTableBuilder.h"
+#include "llvm/MC/StringTableBuilder.h"
 #include "llvm/Support/Compression.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Endian.h"
@@ -782,7 +782,7 @@ bool ELFObjectWriter::shouldRelocateWithSymbol(const MCAssembler &Asm,
   if (Asm.isThumbFunc(&Sym))
     return true;
 
-  if (TargetObjectWriter->needsRelocateWithSymbol(Type))
+  if (TargetObjectWriter->needsRelocateWithSymbol(*SD, Type))
     return true;
   return false;
 }
@@ -1565,6 +1565,7 @@ void ELFObjectWriter::WriteSection(MCAssembler &Asm,
   case ELF::SHT_X86_64_UNWIND:
   case ELF::SHT_MIPS_REGINFO:
   case ELF::SHT_MIPS_OPTIONS:
+  case ELF::SHT_MIPS_ABIFLAGS:
     // Nothing to do.
     break;
 

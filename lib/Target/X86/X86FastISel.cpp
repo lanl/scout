@@ -74,6 +74,8 @@ public:
                            const LoadInst *LI) override;
 
   bool FastLowerArguments() override;
+  bool FastLowerCall(CallLoweringInfo &CLI) override;
+  bool FastLowerIntrinsicCall(const IntrinsicInst *II) override;
 
 #include "X86GenFastISel.inc"
 
@@ -123,11 +125,6 @@ private:
 
   bool X86SelectFPExt(const Instruction *I);
   bool X86SelectFPTrunc(const Instruction *I);
-
-  bool X86VisitIntrinsicCall(const IntrinsicInst &I);
-  bool X86SelectCall(const Instruction *I);
-
-  bool DoSelectCall(const Instruction *I, const char *MemIntName);
 
   const X86InstrInfo *getInstrInfo() const {
     return getTargetMachine()->getInstrInfo();
@@ -2166,8 +2163,8 @@ bool X86FastISel::TryEmitSmallMemcpy(X86AddressMode DestAM,
   return true;
 }
 
-static bool isCommutativeIntrinsic(IntrinsicInst const &I) {
-  switch (I.getIntrinsicID()) {
+static bool isCommutativeIntrinsic(IntrinsicInst const *II) {
+  switch (II->getIntrinsicID()) {
   case Intrinsic::sadd_with_overflow:
   case Intrinsic::uadd_with_overflow:
   case Intrinsic::smul_with_overflow:
@@ -2178,12 +2175,12 @@ static bool isCommutativeIntrinsic(IntrinsicInst const &I) {
   }
 }
 
-bool X86FastISel::X86VisitIntrinsicCall(const IntrinsicInst &I) {
+bool X86FastISel::FastLowerIntrinsicCall(const IntrinsicInst *II) {
   // FIXME: Handle more intrinsics.
-  switch (I.getIntrinsicID()) {
+  switch (II->getIntrinsicID()) {
   default: return false;
   case Intrinsic::frameaddress: {
-    Type *RetTy = I.getCalledFunction()->getReturnType();
+    Type *RetTy = II->getCalledFunction()->getReturnType();
 
     MVT VT;
     if (!isTypeLegal(RetTy, VT))
@@ -2223,7 +2220,7 @@ bool X86FastISel::X86VisitIntrinsicCall(const IntrinsicInst &I) {
     // movq (%rax), %rax
     // ...
     unsigned DestReg;
-    unsigned Depth = cast<ConstantInt>(I.getOperand(0))->getZExtValue();
+    unsigned Depth = cast<ConstantInt>(II->getOperand(0))->getZExtValue();
     while (Depth--) {
       DestReg = createResultReg(RC);
       addDirectMem(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
@@ -2231,23 +2228,23 @@ bool X86FastISel::X86VisitIntrinsicCall(const IntrinsicInst &I) {
       SrcReg = DestReg;
     }
 
-    UpdateValueMap(&I, SrcReg);
+    UpdateValueMap(II, SrcReg);
     return true;
   }
   case Intrinsic::memcpy: {
-    const MemCpyInst &MCI = cast<MemCpyInst>(I);
+    const MemCpyInst *MCI = cast<MemCpyInst>(II);
     // Don't handle volatile or variable length memcpys.
-    if (MCI.isVolatile())
+    if (MCI->isVolatile())
       return false;
 
-    if (isa<ConstantInt>(MCI.getLength())) {
+    if (isa<ConstantInt>(MCI->getLength())) {
       // Small memcpy's are common enough that we want to do them
       // without a call if possible.
-      uint64_t Len = cast<ConstantInt>(MCI.getLength())->getZExtValue();
+      uint64_t Len = cast<ConstantInt>(MCI->getLength())->getZExtValue();
       if (IsMemcpySmall(Len)) {
         X86AddressMode DestAM, SrcAM;
-        if (!X86SelectAddress(MCI.getRawDest(), DestAM) ||
-            !X86SelectAddress(MCI.getRawSource(), SrcAM))
+        if (!X86SelectAddress(MCI->getRawDest(), DestAM) ||
+            !X86SelectAddress(MCI->getRawSource(), SrcAM))
           return false;
         TryEmitSmallMemcpy(DestAM, SrcAM, Len);
         return true;
@@ -2255,35 +2252,35 @@ bool X86FastISel::X86VisitIntrinsicCall(const IntrinsicInst &I) {
     }
 
     unsigned SizeWidth = Subtarget->is64Bit() ? 64 : 32;
-    if (!MCI.getLength()->getType()->isIntegerTy(SizeWidth))
+    if (!MCI->getLength()->getType()->isIntegerTy(SizeWidth))
       return false;
 
-    if (MCI.getSourceAddressSpace() > 255 || MCI.getDestAddressSpace() > 255)
+    if (MCI->getSourceAddressSpace() > 255 || MCI->getDestAddressSpace() > 255)
       return false;
 
-    return DoSelectCall(&I, "memcpy");
+    return LowerCallTo(II, "memcpy", II->getNumArgOperands() - 2);
   }
   case Intrinsic::memset: {
-    const MemSetInst &MSI = cast<MemSetInst>(I);
+    const MemSetInst *MSI = cast<MemSetInst>(II);
 
-    if (MSI.isVolatile())
+    if (MSI->isVolatile())
       return false;
 
     unsigned SizeWidth = Subtarget->is64Bit() ? 64 : 32;
-    if (!MSI.getLength()->getType()->isIntegerTy(SizeWidth))
+    if (!MSI->getLength()->getType()->isIntegerTy(SizeWidth))
       return false;
 
-    if (MSI.getDestAddressSpace() > 255)
+    if (MSI->getDestAddressSpace() > 255)
       return false;
 
-    return DoSelectCall(&I, "memset");
+    return LowerCallTo(II, "memset", II->getNumArgOperands() - 2);
   }
   case Intrinsic::stackprotector: {
     // Emit code to store the stack guard onto the stack.
     EVT PtrTy = TLI.getPointerTy();
 
-    const Value *Op1 = I.getArgOperand(0); // The guard's value.
-    const AllocaInst *Slot = cast<AllocaInst>(I.getArgOperand(1));
+    const Value *Op1 = II->getArgOperand(0); // The guard's value.
+    const AllocaInst *Slot = cast<AllocaInst>(II->getArgOperand(1));
 
     MFI.setStackProtectorIndex(FuncInfo.StaticAllocaMap[Slot]);
 
@@ -2294,7 +2291,7 @@ bool X86FastISel::X86VisitIntrinsicCall(const IntrinsicInst &I) {
     return true;
   }
   case Intrinsic::dbg_declare: {
-    const DbgDeclareInst *DI = cast<DbgDeclareInst>(&I);
+    const DbgDeclareInst *DI = cast<DbgDeclareInst>(II);
     X86AddressMode AM;
     assert(DI->getAddress() && "Null address should be checked earlier!");
     if (!X86SelectAddress(DI->getAddress(), AM))
@@ -2314,7 +2311,7 @@ bool X86FastISel::X86VisitIntrinsicCall(const IntrinsicInst &I) {
     if (!Subtarget->hasSSE1())
       return false;
 
-    Type *RetTy = I.getCalledFunction()->getReturnType();
+    Type *RetTy = II->getCalledFunction()->getReturnType();
 
     MVT VT;
     if (!isTypeLegal(RetTy, VT))
@@ -2336,7 +2333,7 @@ bool X86FastISel::X86VisitIntrinsicCall(const IntrinsicInst &I) {
     case MVT::f64: Opc = SqrtOpc[1][HasAVX]; RC = &X86::FR64RegClass; break;
     }
 
-    const Value *SrcVal = I.getArgOperand(0);
+    const Value *SrcVal = II->getArgOperand(0);
     unsigned SrcReg = getRegForValue(SrcVal);
 
     if (SrcReg == 0)
@@ -2359,7 +2356,7 @@ bool X86FastISel::X86VisitIntrinsicCall(const IntrinsicInst &I) {
 
     MIB.addReg(SrcReg);
 
-    UpdateValueMap(&I, ResultReg);
+    UpdateValueMap(II, ResultReg);
     return true;
   }
   case Intrinsic::sadd_with_overflow:
@@ -2370,7 +2367,7 @@ bool X86FastISel::X86VisitIntrinsicCall(const IntrinsicInst &I) {
   case Intrinsic::umul_with_overflow: {
     // This implements the basic lowering of the xalu with overflow intrinsics
     // into add/sub/mul followed by either seto or setb.
-    const Function *Callee = I.getCalledFunction();
+    const Function *Callee = II->getCalledFunction();
     auto *Ty = cast<StructType>(Callee->getReturnType());
     Type *RetTy = Ty->getTypeAtIndex(0U);
     Type *CondTy = Ty->getTypeAtIndex(1);
@@ -2382,16 +2379,16 @@ bool X86FastISel::X86VisitIntrinsicCall(const IntrinsicInst &I) {
     if (VT < MVT::i8 || VT > MVT::i64)
       return false;
 
-    const Value *LHS = I.getArgOperand(0);
-    const Value *RHS = I.getArgOperand(1);
+    const Value *LHS = II->getArgOperand(0);
+    const Value *RHS = II->getArgOperand(1);
 
     // Canonicalize immediate to the RHS.
     if (isa<ConstantInt>(LHS) && !isa<ConstantInt>(RHS) &&
-        isCommutativeIntrinsic(I))
+        isCommutativeIntrinsic(II))
       std::swap(LHS, RHS);
 
     unsigned BaseOpc, CondOpc;
-    switch (I.getIntrinsicID()) {
+    switch (II->getIntrinsicID()) {
     default: llvm_unreachable("Unexpected intrinsic!");
     case Intrinsic::sadd_with_overflow:
       BaseOpc = ISD::ADD; CondOpc = X86::SETOr; break;
@@ -2402,7 +2399,7 @@ bool X86FastISel::X86VisitIntrinsicCall(const IntrinsicInst &I) {
     case Intrinsic::usub_with_overflow:
       BaseOpc = ISD::SUB; CondOpc = X86::SETBr; break;
     case Intrinsic::smul_with_overflow:
-      BaseOpc = ISD::MUL; CondOpc = X86::SETOr; break;
+      BaseOpc = X86ISD::SMUL; CondOpc = X86::SETOr; break;
     case Intrinsic::umul_with_overflow:
       BaseOpc = X86ISD::UMUL; CondOpc = X86::SETOr; break;
     }
@@ -2430,10 +2427,11 @@ bool X86FastISel::X86VisitIntrinsicCall(const IntrinsicInst &I) {
                               RHSIsKill);
     }
 
-    // FastISel doesn't have a pattern for X86::MUL*r. Emit it manually.
+    // FastISel doesn't have a pattern for all X86::MUL*r and X86::IMUL*r. Emit
+    // it manually.
     if (BaseOpc == X86ISD::UMUL && !ResultReg) {
       static const unsigned MULOpc[] =
-      { X86::MUL8r, X86::MUL16r, X86::MUL32r, X86::MUL64r };
+        { X86::MUL8r, X86::MUL16r, X86::MUL32r, X86::MUL64r };
       static const unsigned Reg[] = { X86::AL, X86::AX, X86::EAX, X86::RAX };
       // First copy the first operand into RAX, which is an implicit input to
       // the X86::MUL*r instruction.
@@ -2442,6 +2440,21 @@ bool X86FastISel::X86VisitIntrinsicCall(const IntrinsicInst &I) {
         .addReg(LHSReg, getKillRegState(LHSIsKill));
       ResultReg = FastEmitInst_r(MULOpc[VT.SimpleTy-MVT::i8],
                                  TLI.getRegClassFor(VT), RHSReg, RHSIsKill);
+    } else if (BaseOpc == X86ISD::SMUL && !ResultReg) {
+      static const unsigned MULOpc[] =
+        { X86::IMUL8r, X86::IMUL16rr, X86::IMUL32rr, X86::IMUL64rr };
+      if (VT == MVT::i8) {
+        // Copy the first operand into AL, which is an implicit input to the
+        // X86::IMUL8r instruction.
+        BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
+               TII.get(TargetOpcode::COPY), X86::AL)
+          .addReg(LHSReg, getKillRegState(LHSIsKill));
+        ResultReg = FastEmitInst_r(MULOpc[0], TLI.getRegClassFor(VT), RHSReg,
+                                   RHSIsKill);
+      } else
+        ResultReg = FastEmitInst_rr(MULOpc[VT.SimpleTy-MVT::i8],
+                                    TLI.getRegClassFor(VT), LHSReg, LHSIsKill,
+                                    RHSReg, RHSIsKill);
     }
 
     if (!ResultReg)
@@ -2452,7 +2465,7 @@ bool X86FastISel::X86VisitIntrinsicCall(const IntrinsicInst &I) {
     BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(CondOpc),
             ResultReg2);
 
-    UpdateValueMap(&I, ResultReg, 2);
+    UpdateValueMap(II, ResultReg, 2);
     return true;
   }
   case Intrinsic::x86_sse_cvttss2si:
@@ -2460,7 +2473,7 @@ bool X86FastISel::X86VisitIntrinsicCall(const IntrinsicInst &I) {
   case Intrinsic::x86_sse2_cvttsd2si:
   case Intrinsic::x86_sse2_cvttsd2si64: {
     bool IsInputDouble;
-    switch (I.getIntrinsicID()) {
+    switch (II->getIntrinsicID()) {
     default: llvm_unreachable("Unexpected intrinsic.");
     case Intrinsic::x86_sse_cvttss2si:
     case Intrinsic::x86_sse_cvttss2si64:
@@ -2476,7 +2489,7 @@ bool X86FastISel::X86VisitIntrinsicCall(const IntrinsicInst &I) {
       break;
     }
 
-    Type *RetTy = I.getCalledFunction()->getReturnType();
+    Type *RetTy = II->getCalledFunction()->getReturnType();
     MVT VT;
     if (!isTypeLegal(RetTy, VT))
       return false;
@@ -2496,7 +2509,7 @@ bool X86FastISel::X86VisitIntrinsicCall(const IntrinsicInst &I) {
     }
 
     // Check if we can fold insertelement instructions into the convert.
-    const Value *Op = I.getArgOperand(0);
+    const Value *Op = II->getArgOperand(0);
     while (auto *IE = dyn_cast<InsertElementInst>(Op)) {
       const Value *Index = IE->getOperand(2);
       if (!isa<ConstantInt>(Index))
@@ -2518,7 +2531,7 @@ bool X86FastISel::X86VisitIntrinsicCall(const IntrinsicInst &I) {
     BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(Opc), ResultReg)
       .addReg(Reg);
 
-    UpdateValueMap(&I, ResultReg);
+    UpdateValueMap(II, ResultReg);
     return true;
   }
   }
@@ -2619,53 +2632,52 @@ bool X86FastISel::FastLowerArguments() {
   return true;
 }
 
-bool X86FastISel::X86SelectCall(const Instruction *I) {
-  const CallInst *CI = cast<CallInst>(I);
-  const Value *Callee = CI->getCalledValue();
-
-  // Can't handle inline asm yet.
-  if (isa<InlineAsm>(Callee))
-    return false;
-
-  // Handle intrinsic calls.
-  if (const IntrinsicInst *II = dyn_cast<IntrinsicInst>(CI))
-    return X86VisitIntrinsicCall(*II);
-
-  // Allow SelectionDAG isel to handle tail calls.
-  if (cast<CallInst>(I)->isTailCall())
-    return false;
-
-  return DoSelectCall(I, nullptr);
-}
-
-static unsigned computeBytesPoppedByCallee(const X86Subtarget &Subtarget,
-                                           const ImmutableCallSite &CS) {
-  if (Subtarget.is64Bit())
+static unsigned computeBytesPoppedByCallee(const X86Subtarget *Subtarget,
+                                           CallingConv::ID CC,
+                                           ImmutableCallSite *CS) {
+  if (Subtarget->is64Bit())
     return 0;
-  if (Subtarget.getTargetTriple().isOSMSVCRT())
+  if (Subtarget->getTargetTriple().isOSMSVCRT())
     return 0;
-  CallingConv::ID CC = CS.getCallingConv();
-  if (CC == CallingConv::Fast || CC == CallingConv::GHC)
+  if (CC == CallingConv::Fast || CC == CallingConv::GHC ||
+      CC == CallingConv::HiPE)
     return 0;
-  if (!CS.paramHasAttr(1, Attribute::StructRet))
+  if (CS && !CS->paramHasAttr(1, Attribute::StructRet))
     return 0;
-  if (CS.paramHasAttr(1, Attribute::InReg))
+  if (CS && CS->paramHasAttr(1, Attribute::InReg))
     return 0;
   return 4;
 }
 
-// Select either a call, or an llvm.memcpy/memmove/memset intrinsic
-bool X86FastISel::DoSelectCall(const Instruction *I, const char *MemIntName) {
-  const CallInst *CI = cast<CallInst>(I);
-  const Value *Callee = CI->getCalledValue();
+bool X86FastISel::FastLowerCall(CallLoweringInfo &CLI) {
+  auto &OutVals       = CLI.OutVals;
+  auto &OutFlags      = CLI.OutFlags;
+  auto &OutRegs       = CLI.OutRegs;
+  auto &Ins           = CLI.Ins;
+  auto &InRegs        = CLI.InRegs;
+  CallingConv::ID CC  = CLI.CallConv;
+  bool &IsTailCall    = CLI.IsTailCall;
+  bool IsVarArg       = CLI.IsVarArg;
+  const Value *Callee = CLI.Callee;
+  const char *SymName = CLI.SymName;
 
-  // Handle only C and fastcc calling conventions for now.
-  ImmutableCallSite CS(CI);
-  CallingConv::ID CC = CS.getCallingConv();
-  bool isWin64 = Subtarget->isCallingConvWin64(CC);
-  if (CC != CallingConv::C && CC != CallingConv::Fast &&
-      CC != CallingConv::X86_FastCall && CC != CallingConv::X86_64_Win64 &&
-      CC != CallingConv::X86_64_SysV)
+  bool Is64Bit        = Subtarget->is64Bit();
+  bool IsWin64        = Subtarget->isCallingConvWin64(CC);
+
+  // Handle only C, fastcc, and webkit_js calling conventions for now.
+  switch (CC) {
+  default: return false;
+  case CallingConv::C:
+  case CallingConv::Fast:
+  case CallingConv::WebKit_JS:
+  case CallingConv::X86_FastCall:
+  case CallingConv::X86_64_Win64:
+  case CallingConv::X86_64_SysV:
+    break;
+  }
+
+  // Allow SelectionDAG isel to handle tail calls.
+  if (IsTailCall)
     return false;
 
   // fastcc with -tailcallopt is intended to provide a guaranteed
@@ -2673,150 +2685,78 @@ bool X86FastISel::DoSelectCall(const Instruction *I, const char *MemIntName) {
   if (CC == CallingConv::Fast && TM.Options.GuaranteedTailCallOpt)
     return false;
 
-  PointerType *PT = cast<PointerType>(CS.getCalledValue()->getType());
-  FunctionType *FTy = cast<FunctionType>(PT->getElementType());
-  bool isVarArg = FTy->isVarArg();
-
   // Don't know how to handle Win64 varargs yet.  Nothing special needed for
-  // x86-32.  Special handling for x86-64 is implemented.
-  if (isVarArg && isWin64)
+  // x86-32. Special handling for x86-64 is implemented.
+  if (IsVarArg && IsWin64)
     return false;
 
   // Don't know about inalloca yet.
-  if (CS.hasInAllocaArgument())
+  if (CLI.CS && CLI.CS->hasInAllocaArgument())
     return false;
 
   // Fast-isel doesn't know about callee-pop yet.
-  if (X86::isCalleePop(CC, Subtarget->is64Bit(), isVarArg,
+  if (X86::isCalleePop(CC, Subtarget->is64Bit(), IsVarArg,
                        TM.Options.GuaranteedTailCallOpt))
     return false;
 
-  // Check whether the function can return without sret-demotion.
-  SmallVector<ISD::OutputArg, 4> Outs;
-  GetReturnInfo(I->getType(), CS.getAttributes(), Outs, TLI);
-  bool CanLowerReturn = TLI.CanLowerReturn(CS.getCallingConv(),
-                                           *FuncInfo.MF, FTy->isVarArg(),
-                                           Outs, FTy->getContext());
-  if (!CanLowerReturn)
-    return false;
-
-  // Materialize callee address in a register. FIXME: GV address can be
-  // handled with a CALLpcrel32 instead.
-  X86AddressMode CalleeAM;
-  if (!X86SelectCallAddress(Callee, CalleeAM))
-    return false;
-  unsigned CalleeOp = 0;
-  const GlobalValue *GV = nullptr;
-  if (CalleeAM.GV != nullptr) {
-    GV = CalleeAM.GV;
-  } else if (CalleeAM.Base.Reg != 0) {
-    CalleeOp = CalleeAM.Base.Reg;
-  } else
-    return false;
-
-  // Deal with call operands first.
-  SmallVector<const Value *, 8> ArgVals;
-  SmallVector<unsigned, 8> Args;
-  SmallVector<MVT, 8> ArgVTs;
-  SmallVector<ISD::ArgFlagsTy, 8> ArgFlags;
-  unsigned arg_size = CS.arg_size();
-  Args.reserve(arg_size);
-  ArgVals.reserve(arg_size);
-  ArgVTs.reserve(arg_size);
-  ArgFlags.reserve(arg_size);
-  for (ImmutableCallSite::arg_iterator i = CS.arg_begin(), e = CS.arg_end();
-       i != e; ++i) {
-    // If we're lowering a mem intrinsic instead of a regular call, skip the
-    // last two arguments, which should not passed to the underlying functions.
-    if (MemIntName && e-i <= 2)
-      break;
-    Value *ArgVal = *i;
-    ISD::ArgFlagsTy Flags;
-    unsigned AttrInd = i - CS.arg_begin() + 1;
-    if (CS.paramHasAttr(AttrInd, Attribute::SExt))
-      Flags.setSExt();
-    if (CS.paramHasAttr(AttrInd, Attribute::ZExt))
-      Flags.setZExt();
-
-    if (CS.paramHasAttr(AttrInd, Attribute::ByVal)) {
-      PointerType *Ty = cast<PointerType>(ArgVal->getType());
-      Type *ElementTy = Ty->getElementType();
-      unsigned FrameSize = DL.getTypeAllocSize(ElementTy);
-      unsigned FrameAlign = CS.getParamAlignment(AttrInd);
-      if (!FrameAlign)
-        FrameAlign = TLI.getByValTypeAlignment(ElementTy);
-      Flags.setByVal();
-      Flags.setByValSize(FrameSize);
-      Flags.setByValAlign(FrameAlign);
-      if (!IsMemcpySmall(FrameSize))
-        return false;
-    }
-
-    if (CS.paramHasAttr(AttrInd, Attribute::InReg))
-      Flags.setInReg();
-    if (CS.paramHasAttr(AttrInd, Attribute::Nest))
-      Flags.setNest();
-
-    // If this is an i1/i8/i16 argument, promote to i32 to avoid an extra
-    // instruction.  This is safe because it is common to all fastisel supported
-    // calling conventions on x86.
-    if (ConstantInt *CI = dyn_cast<ConstantInt>(ArgVal)) {
-      if (CI->getBitWidth() == 1 || CI->getBitWidth() == 8 ||
-          CI->getBitWidth() == 16) {
+  // If this is a constant i1/i8/i16 argument, promote to i32 to avoid an extra
+  // instruction. This is safe because it is common to all FastISel supported
+  // calling conventions on x86.
+  for (int i = 0, e = OutVals.size(); i != e; ++i) {
+    Value *&Val = OutVals[i];
+    ISD::ArgFlagsTy Flags = OutFlags[i];
+    if (auto *CI = dyn_cast<ConstantInt>(Val)) {
+      if (CI->getBitWidth() < 32) {
         if (Flags.isSExt())
-          ArgVal = ConstantExpr::getSExt(CI,Type::getInt32Ty(CI->getContext()));
+          Val = ConstantExpr::getSExt(CI, Type::getInt32Ty(CI->getContext()));
         else
-          ArgVal = ConstantExpr::getZExt(CI,Type::getInt32Ty(CI->getContext()));
+          Val = ConstantExpr::getZExt(CI, Type::getInt32Ty(CI->getContext()));
       }
     }
 
-    unsigned ArgReg;
-
     // Passing bools around ends up doing a trunc to i1 and passing it.
     // Codegen this as an argument + "and 1".
-    if (ArgVal->getType()->isIntegerTy(1) && isa<TruncInst>(ArgVal) &&
-        cast<TruncInst>(ArgVal)->getParent() == I->getParent() &&
-        ArgVal->hasOneUse()) {
-      ArgVal = cast<TruncInst>(ArgVal)->getOperand(0);
-      ArgReg = getRegForValue(ArgVal);
-      if (ArgReg == 0) return false;
+    if (auto *TI = dyn_cast<TruncInst>(Val)) {
+      if (TI->getType()->isIntegerTy(1) && CLI.CS &&
+          (TI->getParent() == CLI.CS->getInstruction()->getParent()) &&
+          TI->hasOneUse()) {
+        Val = cast<TruncInst>(Val)->getOperand(0);
+        unsigned ResultReg = getRegForValue(Val);
 
-      MVT ArgVT;
-      if (!isTypeLegal(ArgVal->getType(), ArgVT)) return false;
+        if (!ResultReg)
+          return false;
 
-      ArgReg = FastEmit_ri(ArgVT, ArgVT, ISD::AND, ArgReg,
-                           ArgVal->hasOneUse(), 1);
-    } else {
-      ArgReg = getRegForValue(ArgVal);
+        MVT ArgVT;
+        if (!isTypeLegal(Val->getType(), ArgVT))
+          return false;
+
+        ResultReg =
+          FastEmit_ri(ArgVT, ArgVT, ISD::AND, ResultReg, Val->hasOneUse(), 1);
+
+        if (!ResultReg)
+          return false;
+        UpdateValueMap(Val, ResultReg);
+      }
     }
-
-    if (ArgReg == 0) return false;
-
-    Type *ArgTy = ArgVal->getType();
-    MVT ArgVT;
-    if (!isTypeLegal(ArgTy, ArgVT))
-      return false;
-    if (ArgVT == MVT::x86mmx)
-      return false;
-    unsigned OriginalAlignment = DL.getABITypeAlignment(ArgTy);
-    Flags.setOrigAlign(OriginalAlignment);
-
-    Args.push_back(ArgReg);
-    ArgVals.push_back(ArgVal);
-    ArgVTs.push_back(ArgVT);
-    ArgFlags.push_back(Flags);
   }
 
   // Analyze operands of the call, assigning locations to each operand.
   SmallVector<CCValAssign, 16> ArgLocs;
-  CCState CCInfo(CC, isVarArg, *FuncInfo.MF, TM, ArgLocs,
-                 I->getParent()->getContext());
+  CCState CCInfo(CC, IsVarArg, *FuncInfo.MF, TM, ArgLocs,
+                 CLI.RetTy->getContext());
 
   // Allocate shadow area for Win64
-  if (isWin64)
+  if (IsWin64)
     CCInfo.AllocateStack(32, 8);
 
-  CCInfo.AnalyzeCallOperands(ArgVTs, ArgFlags, CC_X86);
+  SmallVector<MVT, 16> OutVTs;
+  for (auto *Val : OutVals) {
+    MVT VT;
+    if (!isTypeLegal(Val->getType(), VT))
+      return false;
+    OutVTs.push_back(VT);
+  }
+  CCInfo.AnalyzeCallOperands(OutVTs, OutFlags, CC_X86);
 
   // Get a count of how many bytes are to be pushed on the stack.
   unsigned NumBytes = CCInfo.getNextStackOffset();
@@ -2826,13 +2766,20 @@ bool X86FastISel::DoSelectCall(const Instruction *I, const char *MemIntName) {
   BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(AdjStackDown))
     .addImm(NumBytes);
 
-  // Process argument: walk the register/memloc assignments, inserting
-  // copies / loads.
-  SmallVector<unsigned, 4> RegArgs;
+  // Walk the register/memloc assignments, inserting copies/loads.
+  const X86RegisterInfo *RegInfo =
+    static_cast<const X86RegisterInfo *>(TM.getRegisterInfo());
   for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
-    CCValAssign &VA = ArgLocs[i];
-    unsigned Arg = Args[VA.getValNo()];
-    EVT ArgVT = ArgVTs[VA.getValNo()];
+    CCValAssign const &VA = ArgLocs[i];
+    const Value *ArgVal = OutVals[VA.getValNo()];
+    MVT ArgVT = OutVTs[VA.getValNo()];
+
+    if (ArgVT == MVT::x86mmx)
+      return false;
+
+    unsigned ArgReg = getRegForValue(ArgVal);
+    if (!ArgReg)
+      return false;
 
     // Promote the value if needed.
     switch (VA.getLocInfo()) {
@@ -2840,8 +2787,8 @@ bool X86FastISel::DoSelectCall(const Instruction *I, const char *MemIntName) {
     case CCValAssign::SExt: {
       assert(VA.getLocVT().isInteger() && !VA.getLocVT().isVector() &&
              "Unexpected extend");
-      bool Emitted = X86FastEmitExtend(ISD::SIGN_EXTEND, VA.getLocVT(),
-                                       Arg, ArgVT, Arg);
+      bool Emitted = X86FastEmitExtend(ISD::SIGN_EXTEND, VA.getLocVT(), ArgReg,
+                                       ArgVT, ArgReg);
       assert(Emitted && "Failed to emit a sext!"); (void)Emitted;
       ArgVT = VA.getLocVT();
       break;
@@ -2849,8 +2796,8 @@ bool X86FastISel::DoSelectCall(const Instruction *I, const char *MemIntName) {
     case CCValAssign::ZExt: {
       assert(VA.getLocVT().isInteger() && !VA.getLocVT().isVector() &&
              "Unexpected extend");
-      bool Emitted = X86FastEmitExtend(ISD::ZERO_EXTEND, VA.getLocVT(),
-                                       Arg, ArgVT, Arg);
+      bool Emitted = X86FastEmitExtend(ISD::ZERO_EXTEND, VA.getLocVT(), ArgReg,
+                                       ArgVT, ArgReg);
       assert(Emitted && "Failed to emit a zext!"); (void)Emitted;
       ArgVT = VA.getLocVT();
       break;
@@ -2858,66 +2805,67 @@ bool X86FastISel::DoSelectCall(const Instruction *I, const char *MemIntName) {
     case CCValAssign::AExt: {
       assert(VA.getLocVT().isInteger() && !VA.getLocVT().isVector() &&
              "Unexpected extend");
-      bool Emitted = X86FastEmitExtend(ISD::ANY_EXTEND, VA.getLocVT(),
-                                       Arg, ArgVT, Arg);
+      bool Emitted = X86FastEmitExtend(ISD::ANY_EXTEND, VA.getLocVT(), ArgReg,
+                                       ArgVT, ArgReg);
       if (!Emitted)
-        Emitted = X86FastEmitExtend(ISD::ZERO_EXTEND, VA.getLocVT(),
-                                    Arg, ArgVT, Arg);
+        Emitted = X86FastEmitExtend(ISD::ZERO_EXTEND, VA.getLocVT(), ArgReg,
+                                    ArgVT, ArgReg);
       if (!Emitted)
-        Emitted = X86FastEmitExtend(ISD::SIGN_EXTEND, VA.getLocVT(),
-                                    Arg, ArgVT, Arg);
+        Emitted = X86FastEmitExtend(ISD::SIGN_EXTEND, VA.getLocVT(), ArgReg,
+                                    ArgVT, ArgReg);
 
       assert(Emitted && "Failed to emit a aext!"); (void)Emitted;
       ArgVT = VA.getLocVT();
       break;
     }
     case CCValAssign::BCvt: {
-      unsigned BC = FastEmit_r(ArgVT.getSimpleVT(), VA.getLocVT(),
-                               ISD::BITCAST, Arg, /*TODO: Kill=*/false);
-      assert(BC != 0 && "Failed to emit a bitcast!");
-      Arg = BC;
+      ArgReg = FastEmit_r(ArgVT, VA.getLocVT(), ISD::BITCAST, ArgReg,
+                          /*TODO: Kill=*/false);
+      assert(ArgReg && "Failed to emit a bitcast!");
       ArgVT = VA.getLocVT();
       break;
     }
-    case CCValAssign::VExt: 
+    case CCValAssign::VExt:
       // VExt has not been implemented, so this should be impossible to reach
       // for now.  However, fallback to Selection DAG isel once implemented.
       return false;
+    case CCValAssign::FPExt:
+      llvm_unreachable("Unexpected loc info!");
     case CCValAssign::Indirect:
       // FIXME: Indirect doesn't need extending, but fast-isel doesn't fully
       // support this.
       return false;
-    case CCValAssign::FPExt:
-      llvm_unreachable("Unexpected loc info!");
     }
 
     if (VA.isRegLoc()) {
       BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
-              TII.get(TargetOpcode::COPY), VA.getLocReg()).addReg(Arg);
-      RegArgs.push_back(VA.getLocReg());
+              TII.get(TargetOpcode::COPY), VA.getLocReg()).addReg(ArgReg);
+      OutRegs.push_back(VA.getLocReg());
     } else {
+      assert(VA.isMemLoc());
       unsigned LocMemOffset = VA.getLocMemOffset();
       X86AddressMode AM;
-      const X86RegisterInfo *RegInfo = static_cast<const X86RegisterInfo*>(
-          getTargetMachine()->getRegisterInfo());
       AM.Base.Reg = RegInfo->getStackRegister();
       AM.Disp = LocMemOffset;
-      const Value *ArgVal = ArgVals[VA.getValNo()];
-      ISD::ArgFlagsTy Flags = ArgFlags[VA.getValNo()];
-
+      ISD::ArgFlagsTy Flags = OutFlags[VA.getValNo()];
+      unsigned Alignment = DL.getABITypeAlignment(ArgVal->getType());
+      MachineMemOperand *MMO = FuncInfo.MF->getMachineMemOperand(
+        MachinePointerInfo::getStack(LocMemOffset), MachineMemOperand::MOStore,
+        ArgVT.getStoreSize(), Alignment);
       if (Flags.isByVal()) {
         X86AddressMode SrcAM;
-        SrcAM.Base.Reg = Arg;
-        bool Res = TryEmitSmallMemcpy(AM, SrcAM, Flags.getByValSize());
-        assert(Res && "memcpy length already checked!"); (void)Res;
+        SrcAM.Base.Reg = ArgReg;
+        if (!TryEmitSmallMemcpy(AM, SrcAM, Flags.getByValSize()))
+          return false;
       } else if (isa<ConstantInt>(ArgVal) || isa<ConstantPointerNull>(ArgVal)) {
         // If this is a really simple value, emit this with the Value* version
         // of X86FastEmitStore.  If it isn't simple, we don't want to do this,
         // as it can cause us to reevaluate the argument.
-        if (!X86FastEmitStore(ArgVT, ArgVal, AM))
+        if (!X86FastEmitStore(ArgVT, ArgVal, AM, MMO))
           return false;
       } else {
-        if (!X86FastEmitStore(ArgVT, Arg, /*ValIsKill=*/false, AM))
+        bool ValIsKill = hasTrivialKill(ArgVal);
+        if (!X86FastEmitStore(ArgVT, ArgReg, ValIsKill, AM, MMO))
           return false;
       }
     }
@@ -2931,37 +2879,53 @@ bool X86FastISel::DoSelectCall(const Instruction *I, const char *MemIntName) {
             TII.get(TargetOpcode::COPY), X86::EBX).addReg(Base);
   }
 
-  if (Subtarget->is64Bit() && isVarArg && !isWin64) {
+  if (Is64Bit && IsVarArg && !IsWin64) {
+    // From AMD64 ABI document:
+    // For calls that may call functions that use varargs or stdargs
+    // (prototype-less calls or calls to functions containing ellipsis (...) in
+    // the declaration) %al is used as hidden argument to specify the number
+    // of SSE registers used. The contents of %al do not need to match exactly
+    // the number of registers, but must be an ubound on the number of SSE
+    // registers used and is in the range 0 - 8 inclusive.
+
     // Count the number of XMM registers allocated.
     static const MCPhysReg XMMArgRegs[] = {
       X86::XMM0, X86::XMM1, X86::XMM2, X86::XMM3,
       X86::XMM4, X86::XMM5, X86::XMM6, X86::XMM7
     };
     unsigned NumXMMRegs = CCInfo.getFirstUnallocated(XMMArgRegs, 8);
+    assert((Subtarget->hasSSE1() || !NumXMMRegs)
+           && "SSE registers cannot be used when SSE is disabled");
     BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(X86::MOV8ri),
             X86::AL).addImm(NumXMMRegs);
   }
+
+  // Materialize callee address in a register. FIXME: GV address can be
+  // handled with a CALLpcrel32 instead.
+  X86AddressMode CalleeAM;
+  if (!X86SelectCallAddress(Callee, CalleeAM))
+    return false;
+
+  unsigned CalleeOp = 0;
+  const GlobalValue *GV = nullptr;
+  if (CalleeAM.GV != nullptr) {
+    GV = CalleeAM.GV;
+  } else if (CalleeAM.Base.Reg != 0) {
+    CalleeOp = CalleeAM.Base.Reg;
+  } else
+    return false;
 
   // Issue the call.
   MachineInstrBuilder MIB;
   if (CalleeOp) {
     // Register-indirect call.
-    unsigned CallOpc;
-    if (Subtarget->is64Bit())
-      CallOpc = X86::CALL64r;
-    else
-      CallOpc = X86::CALL32r;
+    unsigned CallOpc = Is64Bit ? X86::CALL64r : X86::CALL32r;
     MIB = BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(CallOpc))
       .addReg(CalleeOp);
-
   } else {
     // Direct call.
     assert(GV && "Not a direct call");
-    unsigned CallOpc;
-    if (Subtarget->is64Bit())
-      CallOpc = X86::CALL64pcrel32;
-    else
-      CallOpc = X86::CALLpcrel32;
+    unsigned CallOpc = Is64Bit ? X86::CALL64pcrel32 : X86::CALLpcrel32;
 
     // See if we need any target-specific flags on the GV operand.
     unsigned char OpFlags = 0;
@@ -2984,113 +2948,96 @@ bool X86FastISel::DoSelectCall(const Instruction *I, const char *MemIntName) {
       OpFlags = X86II::MO_DARWIN_STUB;
     }
 
-
     MIB = BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(CallOpc));
-    if (MemIntName)
-      MIB.addExternalSymbol(MemIntName, OpFlags);
+    if (SymName)
+      MIB.addExternalSymbol(SymName, OpFlags);
     else
       MIB.addGlobalAddress(GV, 0, OpFlags);
   }
 
-  // Add a register mask with the call-preserved registers.
+  // Add a register mask operand representing the call-preserved registers.
   // Proper defs for return values will be added by setPhysRegsDeadExcept().
-  MIB.addRegMask(TRI.getCallPreservedMask(CS.getCallingConv()));
+  MIB.addRegMask(TRI.getCallPreservedMask(CC));
 
   // Add an implicit use GOT pointer in EBX.
   if (Subtarget->isPICStyleGOT())
     MIB.addReg(X86::EBX, RegState::Implicit);
 
-  if (Subtarget->is64Bit() && isVarArg && !isWin64)
+  if (Is64Bit && IsVarArg && !IsWin64)
     MIB.addReg(X86::AL, RegState::Implicit);
 
   // Add implicit physical register uses to the call.
-  for (unsigned i = 0, e = RegArgs.size(); i != e; ++i)
-    MIB.addReg(RegArgs[i], RegState::Implicit);
+  for (auto Reg : OutRegs)
+    MIB.addReg(Reg, RegState::Implicit);
 
   // Issue CALLSEQ_END
+  unsigned NumBytesForCalleeToPop =
+    computeBytesPoppedByCallee(Subtarget, CC, CLI.CS);
   unsigned AdjStackUp = TII.getCallFrameDestroyOpcode();
-  const unsigned NumBytesCallee = computeBytesPoppedByCallee(*Subtarget, CS);
   BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(AdjStackUp))
-    .addImm(NumBytes).addImm(NumBytesCallee);
-
-  // Build info for return calling conv lowering code.
-  // FIXME: This is practically a copy-paste from TargetLowering::LowerCallTo.
-  SmallVector<ISD::InputArg, 32> Ins;
-  SmallVector<EVT, 4> RetTys;
-  ComputeValueVTs(TLI, I->getType(), RetTys);
-  for (unsigned i = 0, e = RetTys.size(); i != e; ++i) {
-    EVT VT = RetTys[i];
-    MVT RegisterVT = TLI.getRegisterType(I->getParent()->getContext(), VT);
-    unsigned NumRegs = TLI.getNumRegisters(I->getParent()->getContext(), VT);
-    for (unsigned j = 0; j != NumRegs; ++j) {
-      ISD::InputArg MyFlags;
-      MyFlags.VT = RegisterVT;
-      MyFlags.Used = !CS.getInstruction()->use_empty();
-      if (CS.paramHasAttr(0, Attribute::SExt))
-        MyFlags.Flags.setSExt();
-      if (CS.paramHasAttr(0, Attribute::ZExt))
-        MyFlags.Flags.setZExt();
-      if (CS.paramHasAttr(0, Attribute::InReg))
-        MyFlags.Flags.setInReg();
-      Ins.push_back(MyFlags);
-    }
-  }
+    .addImm(NumBytes).addImm(NumBytesForCalleeToPop);
 
   // Now handle call return values.
-  SmallVector<unsigned, 4> UsedRegs;
   SmallVector<CCValAssign, 16> RVLocs;
-  CCState CCRetInfo(CC, false, *FuncInfo.MF, TM, RVLocs,
-                    I->getParent()->getContext());
-  unsigned ResultReg = FuncInfo.CreateRegs(I->getType());
+  CCState CCRetInfo(CC, IsVarArg, *FuncInfo.MF, TM, RVLocs,
+                    CLI.RetTy->getContext());
   CCRetInfo.AnalyzeCallResult(Ins, RetCC_X86);
+
+  // Copy all of the result registers out of their specified physreg.
+  unsigned ResultReg = FuncInfo.CreateRegs(CLI.RetTy);
   for (unsigned i = 0; i != RVLocs.size(); ++i) {
-    EVT CopyVT = RVLocs[i].getValVT();
+    CCValAssign &VA = RVLocs[i];
+    EVT CopyVT = VA.getValVT();
     unsigned CopyReg = ResultReg + i;
 
-    // If this is a call to a function that returns an fp value on the x87 fp
-    // stack, but where we prefer to use the value in xmm registers, copy it
-    // out as F80 and use a truncate to move it from fp stack reg to xmm reg.
-    if ((RVLocs[i].getLocReg() == X86::ST0 ||
-         RVLocs[i].getLocReg() == X86::ST1)) {
-      if (isScalarFPTypeInSSEReg(RVLocs[i].getValVT())) {
+    // If this is x86-64, and we disabled SSE, we can't return FP values
+    if ((CopyVT == MVT::f32 || CopyVT == MVT::f64) &&
+        ((Is64Bit || Ins[i].Flags.isInReg()) && !Subtarget->hasSSE1())) {
+      report_fatal_error("SSE register return with SSE disabled");
+    }
+
+    // If this is a call to a function that returns an fp value on the floating
+    // point stack, we must guarantee the value is popped from the stack, so
+    // a COPY is not good enough - the copy instruction may be eliminated if the
+    // return value is not used. We use the FpPOP_RETVAL instruction instead.
+    if (VA.getLocReg() == X86::ST0 || VA.getLocReg() == X86::ST1) {
+      // If we prefer to use the value in xmm registers, copy it out as f80 and
+      // use a truncate to move it from fp stack reg to xmm reg.
+      if (isScalarFPTypeInSSEReg(VA.getValVT())) {
         CopyVT = MVT::f80;
         CopyReg = createResultReg(&X86::RFP80RegClass);
       }
       BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
               TII.get(X86::FpPOP_RETVAL), CopyReg);
+
+      // Round the f80 to the right size, which also moves it to the appropriate
+      // xmm register. This is accomplished by storing the f80 value in memory
+      // and then loading it back.
+      if (CopyVT != VA.getValVT()) {
+        EVT ResVT = VA.getValVT();
+        unsigned Opc = ResVT == MVT::f32 ? X86::ST_Fp80m32 : X86::ST_Fp80m64;
+        unsigned MemSize = ResVT.getSizeInBits()/8;
+        int FI = MFI.CreateStackObject(MemSize, MemSize, false);
+        addFrameReference(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
+                                  TII.get(Opc)), FI)
+          .addReg(CopyReg);
+        Opc = ResVT == MVT::f32 ? X86::MOVSSrm : X86::MOVSDrm;
+        addFrameReference(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
+                                  TII.get(Opc), ResultReg + i), FI);
+      }
     } else {
       BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
-              TII.get(TargetOpcode::COPY),
-              CopyReg).addReg(RVLocs[i].getLocReg());
-      UsedRegs.push_back(RVLocs[i].getLocReg());
-    }
-
-    if (CopyVT != RVLocs[i].getValVT()) {
-      // Round the F80 the right size, which also moves to the appropriate xmm
-      // register. This is accomplished by storing the F80 value in memory and
-      // then loading it back. Ewww...
-      EVT ResVT = RVLocs[i].getValVT();
-      unsigned Opc = ResVT == MVT::f32 ? X86::ST_Fp80m32 : X86::ST_Fp80m64;
-      unsigned MemSize = ResVT.getSizeInBits()/8;
-      int FI = MFI.CreateStackObject(MemSize, MemSize, false);
-      addFrameReference(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
-                                TII.get(Opc)), FI)
-        .addReg(CopyReg);
-      Opc = ResVT == MVT::f32 ? X86::MOVSSrm : X86::MOVSDrm;
-      addFrameReference(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
-                                TII.get(Opc), ResultReg + i), FI);
+              TII.get(TargetOpcode::COPY), CopyReg).addReg(VA.getLocReg());
+      InRegs.push_back(VA.getLocReg());
     }
   }
 
-  if (RVLocs.size())
-    UpdateValueMap(I, ResultReg, RVLocs.size());
-
-  // Set all unused physreg defs as dead.
-  static_cast<MachineInstr *>(MIB)->setPhysRegsDeadExcept(UsedRegs, TRI);
+  CLI.ResultReg = ResultReg;
+  CLI.NumResultRegs = RVLocs.size();
+  CLI.Call = MIB;
 
   return true;
 }
-
 
 bool
 X86FastISel::TargetSelectInstruction(const Instruction *I)  {
@@ -3109,8 +3056,6 @@ X86FastISel::TargetSelectInstruction(const Instruction *I)  {
     return X86SelectZExt(I);
   case Instruction::Br:
     return X86SelectBranch(I);
-  case Instruction::Call:
-    return X86SelectCall(I);
   case Instruction::LShr:
   case Instruction::AShr:
   case Instruction::Shl:

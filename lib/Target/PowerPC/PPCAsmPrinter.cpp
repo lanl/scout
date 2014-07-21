@@ -18,6 +18,7 @@
 
 #include "PPC.h"
 #include "InstPrinter/PPCInstPrinter.h"
+#include "PPCMachineFunctionInfo.h"
 #include "MCTargetDesc/PPCMCExpr.h"
 #include "MCTargetDesc/PPCPredicates.h"
 #include "PPCSubtarget.h"
@@ -27,10 +28,12 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/CodeGen/AsmPrinter.h"
+#include "llvm/CodeGen/MachineConstantPool.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineModuleInfoImpls.h"
+#include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DebugInfo.h"
@@ -100,9 +103,11 @@ namespace {
     }
 
     bool doFinalization(Module &M) override;
+    void EmitStartOfAsmFile(Module &M) override;
 
     void EmitFunctionEntryLabel() override;
 
+    void EmitFunctionBodyStart() override;
     void EmitFunctionBodyEnd() override;
   };
 
@@ -328,6 +333,66 @@ void PPCAsmPrinter::EmitInstruction(const MachineInstr *MI) {
     
     // Emit the label.
     OutStreamer.EmitLabel(PICBase);
+    return;
+  }
+  case PPC::GetGBRO: {
+    // Get the offset from the GOT Base Register to the GOT
+    LowerPPCMachineInstrToMCInst(MI, TmpInst, *this, Subtarget.isDarwin());
+    MCSymbol *PICOffset = MF->getInfo<PPCFunctionInfo>()->getPICOffsetSymbol();
+    TmpInst.setOpcode(PPC::LWZ);
+    const MCExpr *Exp =
+      MCSymbolRefExpr::Create(PICOffset, MCSymbolRefExpr::VK_None, OutContext);
+    const MCExpr *PB =
+      MCSymbolRefExpr::Create(MF->getPICBaseSymbol(),
+                              MCSymbolRefExpr::VK_None,
+                              OutContext);
+    const MCOperand MO = TmpInst.getOperand(1);
+    TmpInst.getOperand(1) = MCOperand::CreateExpr(MCBinaryExpr::CreateSub(Exp,
+                                                                          PB,
+                                                                          OutContext));
+    TmpInst.addOperand(MO);
+    EmitToStreamer(OutStreamer, TmpInst);
+    return;
+  }
+  case PPC::UpdateGBR: {
+    // Update the GOT Base Register to point to the GOT.  It may be possible to
+    // merge this with the PPC::GetGBRO, doing it all in one step.
+    LowerPPCMachineInstrToMCInst(MI, TmpInst, *this, Subtarget.isDarwin());
+    TmpInst.setOpcode(PPC::ADD4);
+    TmpInst.addOperand(TmpInst.getOperand(0));
+    EmitToStreamer(OutStreamer, TmpInst);
+    return;
+  }
+  case PPC::LWZtoc: {
+    // Transform %X3 = LWZtoc <ga:@min1>, %X2
+    LowerPPCMachineInstrToMCInst(MI, TmpInst, *this, Subtarget.isDarwin());
+
+    // Change the opcode to LWZ, and the global address operand to be a
+    // reference to the GOT entry we will synthesize later.
+    TmpInst.setOpcode(PPC::LWZ);
+    const MachineOperand &MO = MI->getOperand(1);
+
+    // Map symbol -> label of TOC entry
+    assert(MO.isGlobal() || MO.isCPI() || MO.isJTI());
+    MCSymbol *MOSymbol = nullptr;
+    if (MO.isGlobal())
+      MOSymbol = getSymbol(MO.getGlobal());
+    else if (MO.isCPI())
+      MOSymbol = GetCPISymbol(MO.getIndex());
+    else if (MO.isJTI())
+      MOSymbol = GetJTISymbol(MO.getIndex());
+
+    MCSymbol *TOCEntry = lookUpOrCreateTOCEntry(MOSymbol);
+
+    const MCExpr *Exp =
+      MCSymbolRefExpr::Create(TOCEntry, MCSymbolRefExpr::VK_None,
+                              OutContext);
+    const MCExpr *PB =
+      MCSymbolRefExpr::Create(OutContext.GetOrCreateSymbol(Twine(".L.TOC.")),
+                                                           OutContext);
+    Exp = MCBinaryExpr::CreateSub(Exp, PB, OutContext);
+    TmpInst.getOperand(1) = MCOperand::CreateExpr(Exp);
+    EmitToStreamer(OutStreamer, TmpInst);
     return;
   }
   case PPC::LDtocJTI:
@@ -717,10 +782,73 @@ void PPCAsmPrinter::EmitInstruction(const MachineInstr *MI) {
   EmitToStreamer(OutStreamer, TmpInst);
 }
 
+void PPCLinuxAsmPrinter::EmitStartOfAsmFile(Module &M) {
+  if (Subtarget.isELFv2ABI()) {
+    PPCTargetStreamer *TS =
+      static_cast<PPCTargetStreamer *>(OutStreamer.getTargetStreamer());
+
+    if (TS)
+      TS->emitAbiVersion(2);
+  }
+
+  if (Subtarget.isPPC64() || TM.getRelocationModel() != Reloc::PIC_)
+    return AsmPrinter::EmitStartOfAsmFile(M);
+
+  // FIXME: The use of .got2 assumes large GOT model (-fPIC), which is not
+  // optimal for some cases.  We should consider supporting small model (-fpic)
+  // as well in the future.
+  assert(TM.getCodeModel() != CodeModel::Small &&
+         "Small code model PIC is currently unsupported.");
+  OutStreamer.SwitchSection(OutContext.getELFSection(".got2",
+         ELF::SHT_PROGBITS, ELF::SHF_WRITE | ELF::SHF_ALLOC,
+         SectionKind::getReadOnly()));
+
+  MCSymbol *TOCSym = OutContext.GetOrCreateSymbol(Twine(".L.TOC."));
+  MCSymbol *CurrentPos = OutContext.CreateTempSymbol();
+
+  OutStreamer.EmitLabel(CurrentPos);
+
+  // The GOT pointer points to the middle of the GOT, in order to reference the
+  // entire 64kB range.  0x8000 is the midpoint.
+  const MCExpr *tocExpr =
+    MCBinaryExpr::CreateAdd(MCSymbolRefExpr::Create(CurrentPos, OutContext),
+                            MCConstantExpr::Create(0x8000, OutContext),
+                            OutContext);
+
+  OutStreamer.EmitAssignment(TOCSym, tocExpr);
+
+  OutStreamer.SwitchSection(getObjFileLowering().getTextSection());
+}
+
 void PPCLinuxAsmPrinter::EmitFunctionEntryLabel() {
-  if (!Subtarget.isPPC64())  // linux/ppc32 - Normal entry label.
+  // linux/ppc32 - Normal entry label.
+  if (!Subtarget.isPPC64() && TM.getRelocationModel() != Reloc::PIC_)
     return AsmPrinter::EmitFunctionEntryLabel();
-    
+
+  if (!Subtarget.isPPC64()) {
+    const PPCFunctionInfo *PPCFI = MF->getInfo<PPCFunctionInfo>();
+  	if (PPCFI->usesPICBase()) {
+      MCSymbol *RelocSymbol = PPCFI->getPICOffsetSymbol();
+      MCSymbol *PICBase = MF->getPICBaseSymbol();
+      OutStreamer.EmitLabel(RelocSymbol);
+
+      const MCExpr *OffsExpr =
+        MCBinaryExpr::CreateSub(
+          MCSymbolRefExpr::Create(OutContext.GetOrCreateSymbol(Twine(".L.TOC.")),
+                                                               OutContext),
+                                  MCSymbolRefExpr::Create(PICBase, OutContext),
+          OutContext);
+      OutStreamer.EmitValue(OffsExpr, 4);
+      OutStreamer.EmitLabel(CurrentFnSym);
+      return;
+    } else
+      return AsmPrinter::EmitFunctionEntryLabel();
+  }
+
+  // ELFv2 ABI - Normal entry label.
+  if (Subtarget.isELFv2ABI())
+    return AsmPrinter::EmitFunctionEntryLabel();
+
   // Emit an official procedure descriptor.
   MCSectionSubPair Current = OutStreamer.getCurrentSection();
   const MCSectionELF *Section = OutStreamer.getContext().getELFSection(".opd",
@@ -759,8 +887,15 @@ bool PPCLinuxAsmPrinter::doFinalization(Module &M) {
   PPCTargetStreamer &TS =
       static_cast<PPCTargetStreamer &>(*OutStreamer.getTargetStreamer());
 
-  if (isPPC64 && !TOC.empty()) {
-    const MCSectionELF *Section = OutStreamer.getContext().getELFSection(".toc",
+  if (!TOC.empty()) {
+    const MCSectionELF *Section;
+    
+    if (isPPC64)
+      Section = OutStreamer.getContext().getELFSection(".toc",
+        ELF::SHT_PROGBITS, ELF::SHF_WRITE | ELF::SHF_ALLOC,
+        SectionKind::getReadOnly());
+	else
+      Section = OutStreamer.getContext().getELFSection(".got2",
         ELF::SHT_PROGBITS, ELF::SHF_WRITE | ELF::SHF_ALLOC,
         SectionKind::getReadOnly());
     OutStreamer.SwitchSection(Section);
@@ -769,7 +904,10 @@ bool PPCLinuxAsmPrinter::doFinalization(Module &M) {
          E = TOC.end(); I != E; ++I) {
       OutStreamer.EmitLabel(I->second);
       MCSymbol *S = OutContext.GetOrCreateSymbol(I->first->getName());
-      TS.emitTCEntry(*S);
+      if (isPPC64)
+        TS.emitTCEntry(*S);
+      else
+        OutStreamer.EmitSymbolValue(S, 4);
     }
   }
 
@@ -793,6 +931,68 @@ bool PPCLinuxAsmPrinter::doFinalization(Module &M) {
   }
 
   return AsmPrinter::doFinalization(M);
+}
+
+/// EmitFunctionBodyStart - Emit a global entry point prefix for ELFv2.
+void PPCLinuxAsmPrinter::EmitFunctionBodyStart() {
+  // In the ELFv2 ABI, in functions that use the TOC register, we need to
+  // provide two entry points.  The ABI guarantees that when calling the
+  // local entry point, r2 is set up by the caller to contain the TOC base
+  // for this function, and when calling the global entry point, r12 is set
+  // up by the caller to hold the address of the global entry point.  We
+  // thus emit a prefix sequence along the following lines:
+  //
+  // func:
+  //         # global entry point
+  //         addis r2,r12,(.TOC.-func)@ha
+  //         addi  r2,r2,(.TOC.-func)@l
+  //         .localentry func, .-func
+  //         # local entry point, followed by function body
+  //
+  // This ensures we have r2 set up correctly while executing the function
+  // body, no matter which entry point is called.
+  if (Subtarget.isELFv2ABI()
+      // Only do all that if the function uses r2 in the first place.
+      && !MF->getRegInfo().use_empty(PPC::X2)) {
+
+    MCSymbol *GlobalEntryLabel = OutContext.CreateTempSymbol();
+    OutStreamer.EmitLabel(GlobalEntryLabel);
+    const MCSymbolRefExpr *GlobalEntryLabelExp =
+      MCSymbolRefExpr::Create(GlobalEntryLabel, OutContext);
+
+    MCSymbol *TOCSymbol = OutContext.GetOrCreateSymbol(StringRef(".TOC."));
+    const MCExpr *TOCDeltaExpr =
+      MCBinaryExpr::CreateSub(MCSymbolRefExpr::Create(TOCSymbol, OutContext),
+                              GlobalEntryLabelExp, OutContext);
+
+    const MCExpr *TOCDeltaHi =
+      PPCMCExpr::CreateHa(TOCDeltaExpr, false, OutContext);
+    EmitToStreamer(OutStreamer, MCInstBuilder(PPC::ADDIS)
+                                .addReg(PPC::X2)
+                                .addReg(PPC::X12)
+                                .addExpr(TOCDeltaHi));
+
+    const MCExpr *TOCDeltaLo =
+      PPCMCExpr::CreateLo(TOCDeltaExpr, false, OutContext);
+    EmitToStreamer(OutStreamer, MCInstBuilder(PPC::ADDI)
+                                .addReg(PPC::X2)
+                                .addReg(PPC::X2)
+                                .addExpr(TOCDeltaLo));
+
+    MCSymbol *LocalEntryLabel = OutContext.CreateTempSymbol();
+    OutStreamer.EmitLabel(LocalEntryLabel);
+    const MCSymbolRefExpr *LocalEntryLabelExp =
+       MCSymbolRefExpr::Create(LocalEntryLabel, OutContext);
+    const MCExpr *LocalOffsetExp =
+      MCBinaryExpr::CreateSub(LocalEntryLabelExp,
+                              GlobalEntryLabelExp, OutContext);
+
+    PPCTargetStreamer *TS =
+      static_cast<PPCTargetStreamer *>(OutStreamer.getTargetStreamer());
+
+    if (TS)
+      TS->emitLocalEntry(CurrentFnSym, LocalOffsetExp);
+  }
 }
 
 /// EmitFunctionBodyEnd - Print the traceback table before the .size

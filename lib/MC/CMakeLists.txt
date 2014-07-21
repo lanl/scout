@@ -8,7 +8,6 @@ add_llvm_library(LLVMMC
   MCAsmInfoELF.cpp
   MCAsmStreamer.cpp
   MCAssembler.cpp
-  MCAtom.cpp
   MCCodeEmitter.cpp
   MCCodeGenInfo.cpp
   MCContext.cpp
@@ -17,7 +16,6 @@ add_llvm_library(LLVMMC
   MCELF.cpp
   MCELFObjectTargetWriter.cpp
   MCELFStreamer.cpp
-  MCFunction.cpp
   MCExpr.cpp
   MCExternalSymbolizer.cpp
   MCInst.cpp
@@ -27,13 +25,9 @@ add_llvm_library(LLVMMC
   MCLinkerOptimizationHint.cpp
   MCMachOStreamer.cpp
   MCMachObjectTargetWriter.cpp
-  MCModule.cpp
-  MCModuleYAML.cpp
   MCNullStreamer.cpp
   MCObjectFileInfo.cpp
-  MCObjectDisassembler.cpp
   MCObjectStreamer.cpp
-  MCObjectSymbolizer.cpp
   MCObjectWriter.cpp
   MCRegisterInfo.cpp
   MCRelocationInfo.cpp
@@ -49,10 +43,13 @@ add_llvm_library(LLVMMC
   MCValue.cpp
   MCWin64EH.cpp
   MachObjectWriter.cpp
+  StringTableBuilder.cpp
   SubtargetFeature.cpp
   WinCOFFObjectWriter.cpp
   WinCOFFStreamer.cpp
+  YAML.cpp
   )
 
+add_subdirectory(MCAnalysis)
 add_subdirectory(MCParser)
 add_subdirectory(MCDisassembler)

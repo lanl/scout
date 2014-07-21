@@ -104,7 +104,15 @@ def FeatureCDI      : SubtargetFeature<"avx512cd", "HasCDI", "true",
 def FeaturePFI      : SubtargetFeature<"avx512pf", "HasPFI", "true",
                       "Enable AVX-512 PreFetch Instructions",
                                       [FeatureAVX512]>;
-
+def FeatureDQI     : SubtargetFeature<"avx512dq", "HasDQI", "true",
+                      "Enable AVX-512 Doubleword and Quadword Instructions",
+                                      [FeatureAVX512]>;
+def FeatureBWI     : SubtargetFeature<"avx512bw", "HasBWI", "true",
+                      "Enable AVX-512 Byte and Word Instructions",
+                                      [FeatureAVX512]>;
+def FeatureVLX     : SubtargetFeature<"avx512vl", "HasVLX", "true",
+                      "Enable AVX-512 Vector Length eXtensions",
+                                      [FeatureAVX512]>;
 def FeaturePCLMUL  : SubtargetFeature<"pclmul", "HasPCLMUL", "true",
                          "Enable packed carry-less multiplication instructions",
                                [FeatureSSE2]>;
@@ -273,7 +281,19 @@ def : ProcessorModel<"knl", HaswellModel,
                       FeatureCMPXCHG16B, FeatureFastUAMem, FeaturePOPCNT,
                       FeatureAES, FeaturePCLMUL, FeatureRDRAND, FeatureF16C,
                       FeatureFSGSBase, FeatureMOVBE, FeatureLZCNT, FeatureBMI,
-                      FeatureBMI2, FeatureFMA, FeatureRTM, FeatureHLE]>;
+                      FeatureBMI2, FeatureFMA, FeatureRTM, FeatureHLE,
+                      FeatureSlowIncDec]>;
+
+// SKX
+// FIXME: define SKX model
+def : ProcessorModel<"skx", HaswellModel,
+                     [FeatureAVX512, FeatureCDI,
+                      FeatureDQI, FeatureBWI, FeatureVLX,
+                      FeatureCMPXCHG16B, FeatureFastUAMem, FeaturePOPCNT,
+                      FeatureAES, FeaturePCLMUL, FeatureRDRAND, FeatureF16C,
+                      FeatureFSGSBase, FeatureMOVBE, FeatureLZCNT, FeatureBMI,
+                      FeatureBMI2, FeatureFMA, FeatureRTM, FeatureHLE,
+                      FeatureSlowIncDec]>;
 
 def : Proc<"k6",              [FeatureMMX]>;
 def : Proc<"k6-2",            [Feature3DNow]>;

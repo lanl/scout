@@ -47,8 +47,9 @@ MCContext::MCContext(const MCAsmInfo *mai, const MCRegisterInfo *mri,
   SecureLog = nullptr;
   SecureLogUsed = false;
 
-  if (SrcMgr && SrcMgr->getNumBuffers() > 0)
-    MainFileName = SrcMgr->getMemoryBuffer(0)->getBufferIdentifier();
+  if (SrcMgr && SrcMgr->getNumBuffers())
+    MainFileName =
+        SrcMgr->getMemoryBuffer(SrcMgr->getMainFileID())->getBufferIdentifier();
 }
 
 MCContext::~MCContext() {
@@ -290,7 +291,7 @@ const MCSectionCOFF *MCContext::getCOFFSection(StringRef Section,
   if (!IterBool.second)
     return Iter->second;
 
-  const MCSymbol *COMDATSymbol = nullptr;
+  MCSymbol *COMDATSymbol = nullptr;
   if (!COMDATSymName.empty())
     COMDATSymbol = GetOrCreateSymbol(COMDATSymName);
 

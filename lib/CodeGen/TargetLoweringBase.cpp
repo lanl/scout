@@ -220,6 +220,10 @@ static void InitLibcallNames(const char **Names, const Triple &TT) {
   Names[RTLIB::FPEXT_F32_F64] = "__extendsfdf2";
   Names[RTLIB::FPEXT_F16_F32] = "__gnu_h2f_ieee";
   Names[RTLIB::FPROUND_F32_F16] = "__gnu_f2h_ieee";
+  Names[RTLIB::FPROUND_F64_F16] = "__truncdfhf2";
+  Names[RTLIB::FPROUND_F80_F16] = "__truncxfhf2";
+  Names[RTLIB::FPROUND_F128_F16] = "__trunctfhf2";
+  Names[RTLIB::FPROUND_PPCF128_F16] = "__trunctfhf2";
   Names[RTLIB::FPROUND_F64_F32] = "__truncdfsf2";
   Names[RTLIB::FPROUND_F80_F32] = "__truncxfsf2";
   Names[RTLIB::FPROUND_F128_F32] = "__trunctfsf2";
@@ -418,7 +422,10 @@ static void InitLibcallCallingConvs(CallingConv::ID *CCs) {
 /// getFPEXT - Return the FPEXT_*_* value for the given types, or
 /// UNKNOWN_LIBCALL if there is none.
 RTLIB::Libcall RTLIB::getFPEXT(EVT OpVT, EVT RetVT) {
-  if (OpVT == MVT::f32) {
+  if (OpVT == MVT::f16) {
+    if (RetVT == MVT::f32)
+      return FPEXT_F16_F32;
+  } else if (OpVT == MVT::f32) {
     if (RetVT == MVT::f64)
       return FPEXT_F32_F64;
     if (RetVT == MVT::f128)
@@ -434,7 +441,18 @@ RTLIB::Libcall RTLIB::getFPEXT(EVT OpVT, EVT RetVT) {
 /// getFPROUND - Return the FPROUND_*_* value for the given types, or
 /// UNKNOWN_LIBCALL if there is none.
 RTLIB::Libcall RTLIB::getFPROUND(EVT OpVT, EVT RetVT) {
-  if (RetVT == MVT::f32) {
+  if (RetVT == MVT::f16) {
+    if (OpVT == MVT::f32)
+      return FPROUND_F32_F16;
+    if (OpVT == MVT::f64)
+      return FPROUND_F64_F16;
+    if (OpVT == MVT::f80)
+      return FPROUND_F80_F16;
+    if (OpVT == MVT::f128)
+      return FPROUND_F128_F16;
+    if (OpVT == MVT::ppcf128)
+      return FPROUND_PPCF128_F16;
+  } else if (RetVT == MVT::f32) {
     if (OpVT == MVT::f64)
       return FPROUND_F64_F32;
     if (OpVT == MVT::f80)
@@ -690,6 +708,7 @@ TargetLoweringBase::TargetLoweringBase(const TargetMachine &tm,
   ExceptionPointerRegister = 0;
   ExceptionSelectorRegister = 0;
   BooleanContents = UndefinedBooleanContent;
+  BooleanFloatContents = UndefinedBooleanContent;
   BooleanVectorContents = UndefinedBooleanContent;
   SchedPreferenceInfo = Sched::ILP;
   JumpBufSize = 0;
@@ -743,8 +762,15 @@ void TargetLoweringBase::initActions() {
 
     // These operations default to expand for vector types.
     if (VT >= MVT::FIRST_VECTOR_VALUETYPE &&
-        VT <= MVT::LAST_VECTOR_VALUETYPE)
+        VT <= MVT::LAST_VECTOR_VALUETYPE) {
       setOperationAction(ISD::FCOPYSIGN, (MVT::SimpleValueType)VT, Expand);
+      setOperationAction(ISD::ANY_EXTEND_VECTOR_INREG,
+                         (MVT::SimpleValueType)VT, Expand);
+      setOperationAction(ISD::SIGN_EXTEND_VECTOR_INREG,
+                         (MVT::SimpleValueType)VT, Expand);
+      setOperationAction(ISD::ZERO_EXTEND_VECTOR_INREG,
+                         (MVT::SimpleValueType)VT, Expand);
+    }
   }
 
   // Most targets ignore the @llvm.prefetch intrinsic.
@@ -1081,27 +1107,35 @@ void TargetLoweringBase::computeRegisterProperties() {
     }
   }
 
+  if (!isTypeLegal(MVT::f16)) {
+    NumRegistersForVT[MVT::f16] = NumRegistersForVT[MVT::i16];
+    RegisterTypeForVT[MVT::f16] = RegisterTypeForVT[MVT::i16];
+    TransformToType[MVT::f16] = MVT::i16;
+    ValueTypeActions.setTypeAction(MVT::f16, TypeSoftenFloat);
+  }
+
   // Loop over all of the vector value types to see which need transformations.
   for (unsigned i = MVT::FIRST_VECTOR_VALUETYPE;
        i <= (unsigned)MVT::LAST_VECTOR_VALUETYPE; ++i) {
-    MVT VT = (MVT::SimpleValueType)i;
-    if (isTypeLegal(VT)) continue;
+    MVT VT = (MVT::SimpleValueType) i;
+    if (isTypeLegal(VT))
+      continue;
 
-    // Determine if there is a legal wider type.  If so, we should promote to
-    // that wider vector type.
     MVT EltVT = VT.getVectorElementType();
     unsigned NElts = VT.getVectorNumElements();
-    if (NElts != 1 && !shouldSplitVectorType(VT)) {
-      bool IsLegalWiderType = false;
-      // First try to promote the elements of integer vectors. If no legal
-      // promotion was found, fallback to the widen-vector method.
-      for (unsigned nVT = i+1; nVT <= MVT::LAST_VECTOR_VALUETYPE; ++nVT) {
-        MVT SVT = (MVT::SimpleValueType)nVT;
+    bool IsLegalWiderType = false;
+    LegalizeTypeAction PreferredAction = getPreferredVectorAction(VT);
+    switch (PreferredAction) {
+    case TypePromoteInteger: {
+      // Try to promote the elements of integer vectors. If no legal
+      // promotion was found, fall through to the widen-vector method.
+      for (unsigned nVT = i + 1; nVT <= MVT::LAST_VECTOR_VALUETYPE; ++nVT) {
+        MVT SVT = (MVT::SimpleValueType) nVT;
         // Promote vectors of integers to vectors with the same number
         // of elements, with a wider element type.
         if (SVT.getVectorElementType().getSizeInBits() > EltVT.getSizeInBits()
-            && SVT.getVectorNumElements() == NElts &&
-            isTypeLegal(SVT) && SVT.getScalarType().isInteger()) {
+            && SVT.getVectorNumElements() == NElts && isTypeLegal(SVT)
+            && SVT.getScalarType().isInteger()) {
           TransformToType[i] = SVT;
           RegisterTypeForVT[i] = SVT;
           NumRegistersForVT[i] = 1;
@@ -1110,15 +1144,15 @@ void TargetLoweringBase::computeRegisterProperties() {
           break;
         }
       }
-
-      if (IsLegalWiderType) continue;
-
+      if (IsLegalWiderType)
+        break;
+    }
+    case TypeWidenVector: {
       // Try to widen the vector.
-      for (unsigned nVT = i+1; nVT <= MVT::LAST_VECTOR_VALUETYPE; ++nVT) {
-        MVT SVT = (MVT::SimpleValueType)nVT;
-        if (SVT.getVectorElementType() == EltVT &&
-            SVT.getVectorNumElements() > NElts &&
-            isTypeLegal(SVT)) {
+      for (unsigned nVT = i + 1; nVT <= MVT::LAST_VECTOR_VALUETYPE; ++nVT) {
+        MVT SVT = (MVT::SimpleValueType) nVT;
+        if (SVT.getVectorElementType() == EltVT
+            && SVT.getVectorNumElements() > NElts && isTypeLegal(SVT)) {
           TransformToType[i] = SVT;
           RegisterTypeForVT[i] = SVT;
           NumRegistersForVT[i] = 1;
@@ -1127,27 +1161,34 @@ void TargetLoweringBase::computeRegisterProperties() {
           break;
         }
       }
-      if (IsLegalWiderType) continue;
+      if (IsLegalWiderType)
+        break;
     }
+    case TypeSplitVector:
+    case TypeScalarizeVector: {
+      MVT IntermediateVT;
+      MVT RegisterVT;
+      unsigned NumIntermediates;
+      NumRegistersForVT[i] = getVectorTypeBreakdownMVT(VT, IntermediateVT,
+          NumIntermediates, RegisterVT, this);
+      RegisterTypeForVT[i] = RegisterVT;
 
-    MVT IntermediateVT;
-    MVT RegisterVT;
-    unsigned NumIntermediates;
-    NumRegistersForVT[i] =
-      getVectorTypeBreakdownMVT(VT, IntermediateVT, NumIntermediates,
-                                RegisterVT, this);
-    RegisterTypeForVT[i] = RegisterVT;
-
-    MVT NVT = VT.getPow2VectorType();
-    if (NVT == VT) {
-      // Type is already a power of 2.  The default action is to split.
-      TransformToType[i] = MVT::Other;
-      unsigned NumElts = VT.getVectorNumElements();
-      ValueTypeActions.setTypeAction(VT,
-            NumElts > 1 ? TypeSplitVector : TypeScalarizeVector);
-    } else {
-      TransformToType[i] = NVT;
-      ValueTypeActions.setTypeAction(VT, TypeWidenVector);
+      MVT NVT = VT.getPow2VectorType();
+      if (NVT == VT) {
+        // Type is already a power of 2.  The default action is to split.
+        TransformToType[i] = MVT::Other;
+        if (PreferredAction == TypeScalarizeVector)
+          ValueTypeActions.setTypeAction(VT, TypeScalarizeVector);
+        else
+          ValueTypeActions.setTypeAction(VT, TypeSplitVector);
+      } else {
+        TransformToType[i] = NVT;
+        ValueTypeActions.setTypeAction(VT, TypeWidenVector);
+      }
+      break;
+    }
+    default:
+      llvm_unreachable("Unknown vector legalization action!");
     }
   }
 

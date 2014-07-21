@@ -17,7 +17,6 @@
 
 #include "MCTargetDesc/MipsBaseInfo.h"
 #include "Mips.h"
-#include "MipsSubtarget.h"
 #include "llvm/CodeGen/CallingConvLower.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/IR/Function.h"
@@ -210,13 +209,16 @@ namespace llvm {
   // TargetLowering Implementation
   //===--------------------------------------------------------------------===//
   class MipsFunctionInfo;
+  class MipsSubtarget;
 
   class MipsTargetLowering : public TargetLowering  {
     bool isMicroMips;
   public:
-    explicit MipsTargetLowering(MipsTargetMachine &TM);
+    explicit MipsTargetLowering(MipsTargetMachine &TM,
+                                const MipsSubtarget &STI);
 
-    static const MipsTargetLowering *create(MipsTargetMachine &TM);
+    static const MipsTargetLowering *create(MipsTargetMachine &TM,
+                                            const MipsSubtarget &STI);
 
     /// createFastISel - This method returns a target specific FastISel object,
     /// or null if the target does not support "fast" ISel.
@@ -436,13 +438,7 @@ namespace llvm {
     SDValue lowerSTORE(SDValue Op, SelectionDAG &DAG) const;
 
     // Subtarget Info
-    const MipsSubtarget *Subtarget;
-
-    bool hasMips64() const { return Subtarget->hasMips64(); }
-    bool isGP64bit() const { return Subtarget->isGP64bit(); }
-    bool isO32() const { return Subtarget->isABI_O32(); }
-    bool isN32() const { return Subtarget->isABI_N32(); }
-    bool isN64() const { return Subtarget->isABI_N64(); }
+    const MipsSubtarget &Subtarget;
 
   private:
     // Create a TargetGlobalAddress node.
@@ -617,8 +613,10 @@ namespace llvm {
   };
 
   /// Create MipsTargetLowering objects.
-  const MipsTargetLowering *createMips16TargetLowering(MipsTargetMachine &TM);
-  const MipsTargetLowering *createMipsSETargetLowering(MipsTargetMachine &TM);
+  const MipsTargetLowering *
+  createMips16TargetLowering(MipsTargetMachine &TM, const MipsSubtarget &STI);
+  const MipsTargetLowering *
+  createMipsSETargetLowering(MipsTargetMachine &TM, const MipsSubtarget &STI);
 
   namespace Mips {
     FastISel *createFastISel(FunctionLoweringInfo &funcInfo,

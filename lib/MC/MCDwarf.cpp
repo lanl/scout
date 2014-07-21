@@ -655,13 +655,14 @@ static void EmitGenDwarfInfo(MCStreamer *MCOS,
   // The 2 byte DWARF version.
   MCOS->EmitIntValue(context.getDwarfVersion(), 2);
 
+  const MCAsmInfo &AsmInfo = *context.getAsmInfo();
   // The 4 byte offset to the debug abbrevs from the start of the .debug_abbrev,
   // it is at the start of that section so this is zero.
-  if (AbbrevSectionSymbol) {
-    MCOS->EmitSymbolValue(AbbrevSectionSymbol, 4);
-  } else {
+  if (AbbrevSectionSymbol == nullptr)
     MCOS->EmitIntValue(0, 4);
-  }
+  else
+    MCOS->EmitSymbolValue(AbbrevSectionSymbol, 4,
+                          AsmInfo.needsDwarfSectionOffsetDirective());
 
   const MCAsmInfo *asmInfo = context.getAsmInfo();
   int AddrSize = asmInfo->getPointerSize();
@@ -740,14 +741,10 @@ static void EmitGenDwarfInfo(MCStreamer *MCOS,
 
   // AT_producer, the version of the assembler tool.
   StringRef DwarfDebugProducer = context.getDwarfDebugProducer();
-  if (!DwarfDebugProducer.empty()){
+  if (!DwarfDebugProducer.empty())
     MCOS->EmitBytes(DwarfDebugProducer);
-  }
-  else {
-    MCOS->EmitBytes(StringRef("llvm-mc (based on LLVM "));
-    MCOS->EmitBytes(StringRef(PACKAGE_VERSION));
-    MCOS->EmitBytes(StringRef(")"));
-  }
+  else
+    MCOS->EmitBytes(StringRef("llvm-mc (based on LLVM " PACKAGE_VERSION ")"));
   MCOS->EmitIntValue(0, 1); // NULL byte to terminate the string.
 
   // AT_language, a 4 byte value.  We use DW_LANG_Mips_Assembler as the dwarf2
@@ -928,7 +925,7 @@ void MCGenDwarfLabelEntry::Make(MCSymbol *Symbol, MCStreamer *MCOS,
 
   // Finding the line number is the expensive part which is why we just don't
   // pass it in as for some symbols we won't create a dwarf label.
-  int CurBuffer = SrcMgr.FindBufferContainingLoc(Loc);
+  unsigned CurBuffer = SrcMgr.FindBufferContainingLoc(Loc);
   unsigned LineNumber = SrcMgr.FindLineNumber(Loc, CurBuffer);
 
   // We create a temporary symbol for use for the AT_high_pc and AT_low_pc
@@ -1574,7 +1571,7 @@ void MCDwarfFrameEmitter::Emit(MCObjectStreamer &Streamer, MCAsmBackend *MAB,
   MCContext &Context = Streamer.getContext();
   const MCObjectFileInfo *MOFI = Context.getObjectFileInfo();
   FrameEmitterImpl Emitter(IsEH);
-  ArrayRef<MCDwarfFrameInfo> FrameArray = Streamer.getFrameInfos();
+  ArrayRef<MCDwarfFrameInfo> FrameArray = Streamer.getDwarfFrameInfos();
 
   // Emit the compact unwind info if available.
   bool NeedsEHFrameSection = !MOFI->getSupportsCompactUnwindWithoutEHFrame();

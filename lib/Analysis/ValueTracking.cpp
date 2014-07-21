@@ -29,6 +29,7 @@
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/IR/PatternMatch.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
 #include <cstring>
 using namespace llvm;
@@ -415,6 +416,7 @@ void llvm::computeKnownBits(Value *V, APInt &KnownZero, APInt &KnownOne,
     break; // Can't work with floating point.
   case Instruction::PtrToInt:
   case Instruction::IntToPtr:
+  case Instruction::AddrSpaceCast: // Pointers could be different sizes.
     // We can't handle these if we don't know the pointer size.
     if (!TD) break;
     // FALL THROUGH and handle them the same as zext/trunc.
@@ -1731,7 +1733,8 @@ Value *llvm::GetPointerBaseWithConstantOffset(Value *Ptr, int64_t &Offset,
       }
 
       Ptr = GEP->getPointerOperand();
-    } else if (Operator::getOpcode(Ptr) == Instruction::BitCast) {
+    } else if (Operator::getOpcode(Ptr) == Instruction::BitCast ||
+               Operator::getOpcode(Ptr) == Instruction::AddrSpaceCast) {
       Ptr = cast<Operator>(Ptr)->getOperand(0);
     } else if (GlobalAlias *GA = dyn_cast<GlobalAlias>(Ptr)) {
       if (GA->mayBeOverridden())
@@ -1900,7 +1903,8 @@ llvm::GetUnderlyingObject(Value *V, const DataLayout *TD, unsigned MaxLookup) {
   for (unsigned Count = 0; MaxLookup == 0 || Count < MaxLookup; ++Count) {
     if (GEPOperator *GEP = dyn_cast<GEPOperator>(V)) {
       V = GEP->getPointerOperand();
-    } else if (Operator::getOpcode(V) == Instruction::BitCast) {
+    } else if (Operator::getOpcode(V) == Instruction::BitCast ||
+               Operator::getOpcode(V) == Instruction::AddrSpaceCast) {
       V = cast<Operator>(V)->getOperand(0);
     } else if (GlobalAlias *GA = dyn_cast<GlobalAlias>(V)) {
       if (GA->mayBeOverridden())
@@ -1984,7 +1988,7 @@ bool llvm::isSafeToSpeculativelyExecute(const Value *V,
     return true;
   case Instruction::UDiv:
   case Instruction::URem:
-    // x / y is undefined if y == 0, but calcuations like x / 3 are safe.
+    // x / y is undefined if y == 0, but calculations like x / 3 are safe.
     return isKnownNonZero(Inst->getOperand(1), TD);
   case Instruction::SDiv:
   case Instruction::SRem: {
@@ -2007,12 +2011,12 @@ bool llvm::isSafeToSpeculativelyExecute(const Value *V,
         // Speculative load may create a race that did not exist in the source.
         LI->getParent()->getParent()->hasFnAttribute(Attribute::SanitizeThread))
       return false;
-    return LI->getPointerOperand()->isDereferenceablePointer();
+    return LI->getPointerOperand()->isDereferenceablePointer(TD);
   }
   case Instruction::Call: {
    if (const IntrinsicInst *II = dyn_cast<IntrinsicInst>(Inst)) {
      switch (II->getIntrinsicID()) {
-       // These synthetic intrinsics have no side-effects, and just mark
+       // These synthetic intrinsics have no side-effects and just mark
        // information about their operands.
        // FIXME: There are other no-op synthetic instructions that potentially
        // should be considered at least *safe* to speculate...
@@ -2082,7 +2086,7 @@ bool llvm::isKnownNonNull(const Value *V, const TargetLibraryInfo *TLI) {
     return !GV->hasExternalWeakLinkage();
 
   if (ImmutableCallSite CS = V)
-    if (CS.paramHasAttr(0, Attribute::NonNull))
+    if (CS.isReturnNonNull())
       return true;
 
   // operator new never returns null.

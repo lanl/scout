@@ -520,13 +520,9 @@ namespace X86II {
     // EVEX_B - Set if this instruction has EVEX.B field set.
     EVEX_B      = 1U << 9,
 
-    // EVEX_CD8E - compressed disp8 form, element-size
-    EVEX_CD8EShift = VEXShift + 10,
-    EVEX_CD8EMask = 3,
-
-    // EVEX_CD8V - compressed disp8 form, vector-width
-    EVEX_CD8VShift = EVEX_CD8EShift + 2,
-    EVEX_CD8VMask = 7,
+    // The scaling factor for the AVX512's 8-bit compressed displacement.
+    CD8_Scale_Shift = VEXShift + 10,
+    CD8_Scale_Mask = 127,
 
     /// Has3DNow0F0FOpcode - This flag indicates that the instruction uses the
     /// wacky 0x0F 0x0F prefix for 3DNow! instructions.  The manual documents
@@ -534,14 +530,17 @@ namespace X86II {
     /// storing a classifier in the imm8 field.  To simplify our implementation,
     /// we handle this by storeing the classifier in the opcode field and using
     /// this flag to indicate that the encoder should do the wacky 3DNow! thing.
-    Has3DNow0F0FOpcode = 1U << 15,
+    Has3DNow0F0FOpcodeShift = CD8_Scale_Shift + 7,
+    Has3DNow0F0FOpcode = 1U << (Has3DNow0F0FOpcodeShift - VEXShift),
 
     /// MemOp4 - Used to indicate swapping of operand 3 and 4 to be encoded in
     /// ModRM or I8IMM. This is used for FMA4 and XOP instructions.
-    MemOp4 = 1U << 16,
+    MemOp4Shift = Has3DNow0F0FOpcodeShift + 1,
+    MemOp4 = 1U << (MemOp4Shift - VEXShift),
 
     /// Explicitly specified rounding control
-    EVEX_RC = 1U << 17
+    EVEX_RCShift = MemOp4Shift + 1,
+    EVEX_RC = 1U << (EVEX_RCShift - VEXShift)
   };
 
   // getBaseOpcodeFor - This function returns the "base" X86 opcode for the

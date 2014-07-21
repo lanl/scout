@@ -16,7 +16,6 @@
 //===----------------------------------------------------------------------===//
 //
 
-
 #include "AMDGPUAsmPrinter.h"
 #include "AMDGPU.h"
 #include "AMDGPUSubtarget.h"
@@ -26,6 +25,7 @@
 #include "SIDefines.h"
 #include "SIMachineFunctionInfo.h"
 #include "SIRegisterInfo.h"
+#include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCSectionELF.h"
 #include "llvm/MC/MCStreamer.h"
@@ -48,11 +48,28 @@ using namespace llvm;
 // precision, and leaves single precision to flush all and does not report
 // CL_FP_DENORM for CL_DEVICE_SINGLE_FP_CONFIG. Mesa's OpenCL currently reports
 // CL_FP_DENORM for both.
-static uint32_t getFPMode(MachineFunction &) {
+//
+// FIXME: It seems some instructions do not support single precision denormals
+// regardless of the mode (exp_*_f32, rcp_*_f32, rsq_*_f32, rsq_*f32, sqrt_f32,
+// and sin_f32, cos_f32 on most parts).
+
+// We want to use these instructions, and using fp32 denormals also causes
+// instructions to run at the double precision rate for the device so it's
+// probably best to just report no single precision denormals.
+static uint32_t getFPMode(const MachineFunction &F) {
+  const AMDGPUSubtarget& ST = F.getTarget().getSubtarget<AMDGPUSubtarget>();
+  // TODO: Is there any real use for the flush in only / flush out only modes?
+
+  uint32_t FP32Denormals =
+    ST.hasFP32Denormals() ? FP_DENORM_FLUSH_NONE : FP_DENORM_FLUSH_IN_FLUSH_OUT;
+
+  uint32_t FP64Denormals =
+    ST.hasFP64Denormals() ? FP_DENORM_FLUSH_NONE : FP_DENORM_FLUSH_IN_FLUSH_OUT;
+
   return FP_ROUND_MODE_SP(FP_ROUND_ROUND_TO_NEAREST) |
          FP_ROUND_MODE_DP(FP_ROUND_ROUND_TO_NEAREST) |
-         FP_DENORM_MODE_SP(FP_DENORM_FLUSH_NONE) |
-         FP_DENORM_MODE_DP(FP_DENORM_FLUSH_NONE);
+         FP_DENORM_MODE_SP(FP32Denormals) |
+         FP_DENORM_MODE_DP(FP64Denormals);
 }
 
 static AsmPrinter *createAMDGPUAsmPrinterPass(TargetMachine &tm,
@@ -67,6 +84,16 @@ extern "C" void LLVMInitializeR600AsmPrinter() {
 AMDGPUAsmPrinter::AMDGPUAsmPrinter(TargetMachine &TM, MCStreamer &Streamer)
     : AsmPrinter(TM, Streamer) {
   DisasmEnabled = TM.getSubtarget<AMDGPUSubtarget>().dumpCode();
+}
+
+void AMDGPUAsmPrinter::EmitEndOfAsmFile(Module &M) {
+
+  // This label is used to mark the end of the .text section.
+  const TargetLoweringObjectFile &TLOF = getObjFileLowering();
+  OutStreamer.SwitchSection(TLOF.getTextSection());
+  MCSymbol *EndOfTextLabel =
+      OutContext.GetOrCreateSymbol(StringRef(END_OF_TEXT_LABEL_NAME));
+  OutStreamer.EmitLabel(EndOfTextLabel);
 }
 
 bool AMDGPUAsmPrinter::runOnMachineFunction(MachineFunction &MF) {
@@ -115,6 +142,8 @@ bool AMDGPUAsmPrinter::runOnMachineFunction(MachineFunction &MF) {
                                  false);
       OutStreamer.emitRawComment(" IeeeMode: " + Twine(KernelInfo.IEEEMode),
                                  false);
+      OutStreamer.emitRawComment(" ScratchSize: " + Twine(KernelInfo.ScratchSize),
+                                 false);
     } else {
       R600MachineFunctionInfo *MFI = MF.getInfo<R600MachineFunctionInfo>();
       OutStreamer.emitRawComment(
@@ -145,25 +174,21 @@ bool AMDGPUAsmPrinter::runOnMachineFunction(MachineFunction &MF) {
   return false;
 }
 
-void AMDGPUAsmPrinter::EmitProgramInfoR600(MachineFunction &MF) {
+void AMDGPUAsmPrinter::EmitProgramInfoR600(const MachineFunction &MF) {
   unsigned MaxGPR = 0;
   bool killPixel = false;
-  const R600RegisterInfo * RI =
-                static_cast<const R600RegisterInfo*>(TM.getRegisterInfo());
-  R600MachineFunctionInfo *MFI = MF.getInfo<R600MachineFunctionInfo>();
+  const R600RegisterInfo *RI
+    = static_cast<const R600RegisterInfo*>(TM.getRegisterInfo());
+  const R600MachineFunctionInfo *MFI = MF.getInfo<R600MachineFunctionInfo>();
   const AMDGPUSubtarget &STM = TM.getSubtarget<AMDGPUSubtarget>();
 
-  for (MachineFunction::iterator BB = MF.begin(), BB_E = MF.end();
-                                                  BB != BB_E; ++BB) {
-    MachineBasicBlock &MBB = *BB;
-    for (MachineBasicBlock::iterator I = MBB.begin(), E = MBB.end();
-                                                    I != E; ++I) {
-      MachineInstr &MI = *I;
+  for (const MachineBasicBlock &MBB : MF) {
+    for (const MachineInstr &MI : MBB) {
       if (MI.getOpcode() == AMDGPU::KILLGT)
         killPixel = true;
       unsigned numOperands = MI.getNumOperands();
       for (unsigned op_idx = 0; op_idx < numOperands; op_idx++) {
-        MachineOperand & MO = MI.getOperand(op_idx);
+        const MachineOperand &MO = MI.getOperand(op_idx);
         if (!MO.isReg())
           continue;
         unsigned HWReg = RI->getEncodingValue(MO.getReg()) & 0xff;
@@ -179,7 +204,7 @@ void AMDGPUAsmPrinter::EmitProgramInfoR600(MachineFunction &MF) {
   unsigned RsrcReg;
   if (STM.getGeneration() >= AMDGPUSubtarget::EVERGREEN) {
     // Evergreen / Northern Islands
-    switch (MFI->ShaderType) {
+    switch (MFI->getShaderType()) {
     default: // Fall through
     case ShaderType::COMPUTE:  RsrcReg = R_0288D4_SQ_PGM_RESOURCES_LS; break;
     case ShaderType::GEOMETRY: RsrcReg = R_028878_SQ_PGM_RESOURCES_GS; break;
@@ -188,7 +213,7 @@ void AMDGPUAsmPrinter::EmitProgramInfoR600(MachineFunction &MF) {
     }
   } else {
     // R600 / R700
-    switch (MFI->ShaderType) {
+    switch (MFI->getShaderType()) {
     default: // Fall through
     case ShaderType::GEOMETRY: // Fall through
     case ShaderType::COMPUTE:  // Fall through
@@ -203,34 +228,29 @@ void AMDGPUAsmPrinter::EmitProgramInfoR600(MachineFunction &MF) {
   OutStreamer.EmitIntValue(R_02880C_DB_SHADER_CONTROL, 4);
   OutStreamer.EmitIntValue(S_02880C_KILL_ENABLE(killPixel), 4);
 
-  if (MFI->ShaderType == ShaderType::COMPUTE) {
+  if (MFI->getShaderType() == ShaderType::COMPUTE) {
     OutStreamer.EmitIntValue(R_0288E8_SQ_LDS_ALLOC, 4);
     OutStreamer.EmitIntValue(RoundUpToAlignment(MFI->LDSSize, 4) >> 2, 4);
   }
 }
 
 void AMDGPUAsmPrinter::getSIProgramInfo(SIProgramInfo &ProgInfo,
-                                        MachineFunction &MF) const {
+                                        const MachineFunction &MF) const {
   uint64_t CodeSize = 0;
   unsigned MaxSGPR = 0;
   unsigned MaxVGPR = 0;
   bool VCCUsed = false;
-  const SIRegisterInfo * RI =
-                static_cast<const SIRegisterInfo*>(TM.getRegisterInfo());
+  const SIRegisterInfo *RI
+    = static_cast<const SIRegisterInfo*>(TM.getRegisterInfo());
 
-  for (MachineFunction::iterator BB = MF.begin(), BB_E = MF.end();
-                                                  BB != BB_E; ++BB) {
-    MachineBasicBlock &MBB = *BB;
-    for (MachineBasicBlock::iterator I = MBB.begin(), E = MBB.end();
-                                                    I != E; ++I) {
-      MachineInstr &MI = *I;
-
+  for (const MachineBasicBlock &MBB : MF) {
+    for (const MachineInstr &MI : MBB) {
       // TODO: CodeSize should account for multiple functions.
       CodeSize += MI.getDesc().Size;
 
       unsigned numOperands = MI.getNumOperands();
       for (unsigned op_idx = 0; op_idx < numOperands; op_idx++) {
-        MachineOperand &MO = MI.getOperand(op_idx);
+        const MachineOperand &MO = MI.getOperand(op_idx);
         unsigned width = 0;
         bool isSGPR = false;
 
@@ -315,16 +335,19 @@ void AMDGPUAsmPrinter::getSIProgramInfo(SIProgramInfo &ProgInfo,
   // Do not clamp NAN to 0.
   ProgInfo.DX10Clamp = 0;
 
+  const MachineFrameInfo *FrameInfo = MF.getFrameInfo();
+  ProgInfo.ScratchSize = FrameInfo->estimateStackSize(MF);
+
   ProgInfo.CodeLen = CodeSize;
 }
 
-void AMDGPUAsmPrinter::EmitProgramInfoSI(MachineFunction &MF,
+void AMDGPUAsmPrinter::EmitProgramInfoSI(const MachineFunction &MF,
                                          const SIProgramInfo &KernelInfo) {
   const AMDGPUSubtarget &STM = TM.getSubtarget<AMDGPUSubtarget>();
-  SIMachineFunctionInfo *MFI = MF.getInfo<SIMachineFunctionInfo>();
+  const SIMachineFunctionInfo *MFI = MF.getInfo<SIMachineFunctionInfo>();
 
   unsigned RsrcReg;
-  switch (MFI->ShaderType) {
+  switch (MFI->getShaderType()) {
   default: // Fall through
   case ShaderType::COMPUTE:  RsrcReg = R_00B848_COMPUTE_PGM_RSRC1; break;
   case ShaderType::GEOMETRY: RsrcReg = R_00B228_SPI_SHADER_PGM_RSRC1_GS; break;
@@ -344,7 +367,16 @@ void AMDGPUAsmPrinter::EmitProgramInfoSI(MachineFunction &MF,
   unsigned LDSBlocks =
     RoundUpToAlignment(MFI->LDSSize, 1 << LDSAlignShift) >> LDSAlignShift;
 
-  if (MFI->ShaderType == ShaderType::COMPUTE) {
+  // Scratch is allocated in 256 dword blocks.
+  unsigned ScratchAlignShift = 10;
+  // We need to program the hardware with the amount of scratch memory that
+  // is used by the entire wave.  KernelInfo.ScratchSize is the amount of
+  // scratch memory used per thread.
+  unsigned ScratchBlocks =
+    RoundUpToAlignment(KernelInfo.ScratchSize * STM.getWavefrontSize(),
+                       1 << ScratchAlignShift) >> ScratchAlignShift;
+
+  if (MFI->getShaderType() == ShaderType::COMPUTE) {
     OutStreamer.EmitIntValue(R_00B848_COMPUTE_PGM_RSRC1, 4);
 
     const uint32_t ComputePGMRSrc1 =
@@ -360,14 +392,21 @@ void AMDGPUAsmPrinter::EmitProgramInfoSI(MachineFunction &MF,
     OutStreamer.EmitIntValue(ComputePGMRSrc1, 4);
 
     OutStreamer.EmitIntValue(R_00B84C_COMPUTE_PGM_RSRC2, 4);
-    OutStreamer.EmitIntValue(S_00B84C_LDS_SIZE(LDSBlocks), 4);
+    const uint32_t ComputePGMRSrc2 =
+      S_00B84C_LDS_SIZE(LDSBlocks) |
+      S_00B02C_SCRATCH_EN(ScratchBlocks > 0);
+
+    OutStreamer.EmitIntValue(ComputePGMRSrc2, 4);
+
+    OutStreamer.EmitIntValue(R_00B860_COMPUTE_TMPRING_SIZE, 4);
+    OutStreamer.EmitIntValue(S_00B860_WAVESIZE(ScratchBlocks), 4);
   } else {
     OutStreamer.EmitIntValue(RsrcReg, 4);
     OutStreamer.EmitIntValue(S_00B028_VGPRS(KernelInfo.NumVGPR / 4) |
                              S_00B028_SGPRS(KernelInfo.NumSGPR / 8), 4);
   }
 
-  if (MFI->ShaderType == ShaderType::PIXEL) {
+  if (MFI->getShaderType() == ShaderType::PIXEL) {
     OutStreamer.EmitIntValue(R_00B02C_SPI_SHADER_PGM_RSRC2_PS, 4);
     OutStreamer.EmitIntValue(S_00B02C_EXTRA_LDS_SIZE(LDSBlocks), 4);
     OutStreamer.EmitIntValue(R_0286CC_SPI_PS_INPUT_ENA, 4);

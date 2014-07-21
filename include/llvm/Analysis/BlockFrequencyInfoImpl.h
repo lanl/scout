@@ -31,14 +31,25 @@
 
 #define DEBUG_TYPE "block-freq"
 
-//===----------------------------------------------------------------------===//
-//
-// BlockMass definition.
-//
-// TODO: Make this private to BlockFrequencyInfoImpl or delete.
-//
-//===----------------------------------------------------------------------===//
 namespace llvm {
+
+class BasicBlock;
+class BranchProbabilityInfo;
+class Function;
+class Loop;
+class LoopInfo;
+class MachineBasicBlock;
+class MachineBranchProbabilityInfo;
+class MachineFunction;
+class MachineLoop;
+class MachineLoopInfo;
+
+namespace bfi_detail {
+
+struct IrreducibleGraph;
+
+// This is part of a workaround for a GCC 4.7 crash on lambdas.
+template <class BT> struct BlockEdgesAdder;
 
 /// \brief Mass of a block.
 ///
@@ -128,35 +139,11 @@ inline raw_ostream &operator<<(raw_ostream &OS, const BlockMass &X) {
   return X.print(OS);
 }
 
-template <> struct isPodLike<BlockMass> {
+} // end namespace bfi_detail
+
+template <> struct isPodLike<bfi_detail::BlockMass> {
   static const bool value = true;
 };
-}
-
-//===----------------------------------------------------------------------===//
-//
-// BlockFrequencyInfoImpl definition.
-//
-//===----------------------------------------------------------------------===//
-namespace llvm {
-
-class BasicBlock;
-class BranchProbabilityInfo;
-class Function;
-class Loop;
-class LoopInfo;
-class MachineBasicBlock;
-class MachineBranchProbabilityInfo;
-class MachineFunction;
-class MachineLoop;
-class MachineLoopInfo;
-
-namespace bfi_detail {
-struct IrreducibleGraph;
-
-// This is part of a workaround for a GCC 4.7 crash on lambdas.
-template <class BT> struct BlockEdgesAdder;
-}
 
 /// \brief Base class for BlockFrequencyInfoImpl
 ///
@@ -169,6 +156,7 @@ template <class BT> struct BlockEdgesAdder;
 class BlockFrequencyInfoImplBase {
 public:
   typedef ScaledNumber<uint64_t> Scaled64;
+  typedef bfi_detail::BlockMass BlockMass;
 
   /// \brief Representative of a block.
   ///
@@ -334,6 +322,8 @@ public:
     BlockNode TargetNode;
     uint64_t Amount;
     Weight() : Type(Local), Amount(0) {}
+    Weight(DistType Type, BlockNode TargetNode, uint64_t Amount)
+        : Type(Type), TargetNode(TargetNode), Amount(Amount) {}
   };
 
   /// \brief Distribution of unscaled probability weight.
@@ -1183,7 +1173,8 @@ raw_ostream &BlockFrequencyInfoImpl<BT>::print(raw_ostream &OS) const {
   OS << "\n";
   return OS;
 }
-}
+
+} // end namespace llvm
 
 #undef DEBUG_TYPE
 

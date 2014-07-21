@@ -407,6 +407,7 @@ static const char *getElfSectionType(unsigned Arch, unsigned Type) {
     switch (Type) {
     LLVM_READOBJ_ENUM_CASE(ELF, SHT_MIPS_REGINFO);
     LLVM_READOBJ_ENUM_CASE(ELF, SHT_MIPS_OPTIONS);
+    LLVM_READOBJ_ENUM_CASE(ELF, SHT_MIPS_ABIFLAGS);
     }
   }
 
@@ -1087,7 +1088,7 @@ void MipsGOTParser<ELFT>::parseGOT(const Elf_Shdr &GOTShdr) {
   Elf_Sym_Iter DynSymEnd = Obj->end_dynamic_symbols();
   std::size_t DynSymTotal = std::size_t(std::distance(DynSymBegin, DynSymEnd));
 
-  if (DtGotSym + 1 > DynSymTotal) {
+  if (DtGotSym > DynSymTotal) {
     W.startLine() << "MIPS_GOTSYM exceeds a number of dynamic symbols.\n";
     return;
   }

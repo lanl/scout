@@ -133,8 +133,8 @@ class MipsAsmParser : public MCTargetAsmParser {
   void expandMemInst(MCInst &Inst, SMLoc IDLoc,
                      SmallVectorImpl<MCInst> &Instructions, bool isLoad,
                      bool isImmOpnd);
-  bool reportParseError(StringRef ErrorMsg);
-  bool reportParseError(SMLoc Loc, StringRef ErrorMsg);
+  bool reportParseError(Twine ErrorMsg);
+  bool reportParseError(SMLoc Loc, Twine ErrorMsg);
 
   bool parseMemOffset(const MCExpr *&Res, bool isParenExpr);
   bool parseRelocOperand(const MCExpr *&Res);
@@ -156,38 +156,19 @@ class MipsAsmParser : public MCTargetAsmParser {
   bool parseSetReorderDirective();
   bool parseSetNoReorderDirective();
   bool parseSetNoMips16Directive();
+  bool parseSetFpDirective();
 
   bool parseSetAssignment();
 
   bool parseDataDirective(unsigned Size, SMLoc L);
   bool parseDirectiveGpWord();
   bool parseDirectiveGpDWord();
+  bool parseDirectiveModule();
+  bool parseDirectiveModuleFP();
+  bool parseFpABIValue(MipsABIFlagsSection::FpABIKind &FpABI,
+                       StringRef Directive);
 
   MCSymbolRefExpr::VariantKind getVariantKind(StringRef Symbol);
-
-  bool isGP64() const {
-    return (STI.getFeatureBits() & Mips::FeatureGP64Bit) != 0;
-  }
-
-  bool isFP64() const {
-    return (STI.getFeatureBits() & Mips::FeatureFP64Bit) != 0;
-  }
-
-  bool isN32() const { return STI.getFeatureBits() & Mips::FeatureN32; }
-  bool isN64() const { return STI.getFeatureBits() & Mips::FeatureN64; }
-
-  bool isMicroMips() const {
-    return STI.getFeatureBits() & Mips::FeatureMicroMips;
-  }
-
-  bool hasMips4() const { return STI.getFeatureBits() & Mips::FeatureMips4; }
-  bool hasMips32() const { return STI.getFeatureBits() & Mips::FeatureMips32; }
-  bool hasMips32r6() const {
-    return STI.getFeatureBits() & Mips::FeatureMips32r6;
-  }
-  bool hasMips64r6() const {
-    return STI.getFeatureBits() & Mips::FeatureMips64r6;
-  }
 
   bool eatComma(StringRef ErrorStr);
 
@@ -243,17 +224,21 @@ public:
   };
 
   MipsAsmParser(MCSubtargetInfo &sti, MCAsmParser &parser,
-                const MCInstrInfo &MII,
-                const MCTargetOptions &Options)
+                const MCInstrInfo &MII, const MCTargetOptions &Options)
       : MCTargetAsmParser(), STI(sti), Parser(parser) {
     // Initialize the set of available features.
     setAvailableFeatures(ComputeAvailableFeatures(STI.getFeatureBits()));
+
+    getTargetStreamer().updateABIInfo(*this);
 
     // Assert exactly one ABI was chosen.
     assert((((STI.getFeatureBits() & Mips::FeatureO32) != 0) +
             ((STI.getFeatureBits() & Mips::FeatureEABI) != 0) +
             ((STI.getFeatureBits() & Mips::FeatureN32) != 0) +
             ((STI.getFeatureBits() & Mips::FeatureN64) != 0)) == 1);
+
+    if (!isABI_O32() && !useOddSPReg() != 0)
+      report_fatal_error("-mno-odd-spreg requires the O32 ABI");
   }
 
   MCAsmParser &getParser() const { return Parser; }
@@ -261,6 +246,53 @@ public:
 
   /// True if all of $fcc0 - $fcc7 exist for the current ISA.
   bool hasEightFccRegisters() const { return hasMips4() || hasMips32(); }
+
+  bool isGP64bit() const { return STI.getFeatureBits() & Mips::FeatureGP64Bit; }
+  bool isFP64bit() const { return STI.getFeatureBits() & Mips::FeatureFP64Bit; }
+  bool isABI_N32() const { return STI.getFeatureBits() & Mips::FeatureN32; }
+  bool isABI_N64() const { return STI.getFeatureBits() & Mips::FeatureN64; }
+  bool isABI_O32() const { return STI.getFeatureBits() & Mips::FeatureO32; }
+  bool isABI_FPXX() const { return STI.getFeatureBits() & Mips::FeatureFPXX; }
+
+  bool useOddSPReg() const {
+    return !(STI.getFeatureBits() & Mips::FeatureNoOddSPReg);
+  }
+
+  bool inMicroMipsMode() const {
+    return STI.getFeatureBits() & Mips::FeatureMicroMips;
+  }
+  bool hasMips1() const { return STI.getFeatureBits() & Mips::FeatureMips1; }
+  bool hasMips2() const { return STI.getFeatureBits() & Mips::FeatureMips2; }
+  bool hasMips3() const { return STI.getFeatureBits() & Mips::FeatureMips3; }
+  bool hasMips4() const { return STI.getFeatureBits() & Mips::FeatureMips4; }
+  bool hasMips5() const { return STI.getFeatureBits() & Mips::FeatureMips5; }
+  bool hasMips32() const {
+    return (STI.getFeatureBits() & Mips::FeatureMips32);
+  }
+  bool hasMips64() const {
+    return (STI.getFeatureBits() & Mips::FeatureMips64);
+  }
+  bool hasMips32r2() const {
+    return (STI.getFeatureBits() & Mips::FeatureMips32r2);
+  }
+  bool hasMips64r2() const {
+    return (STI.getFeatureBits() & Mips::FeatureMips64r2);
+  }
+  bool hasMips32r6() const {
+    return (STI.getFeatureBits() & Mips::FeatureMips32r6);
+  }
+  bool hasMips64r6() const {
+    return (STI.getFeatureBits() & Mips::FeatureMips64r6);
+  }
+  bool hasDSP() const { return (STI.getFeatureBits() & Mips::FeatureDSP); }
+  bool hasDSPR2() const { return (STI.getFeatureBits() & Mips::FeatureDSPR2); }
+  bool hasMSA() const { return (STI.getFeatureBits() & Mips::FeatureMSA); }
+
+  bool inMips16Mode() const {
+    return STI.getFeatureBits() & Mips::FeatureMips16;
+  }
+  // TODO: see how can we get this info.
+  bool abiUsesSoftFloat() const { return false; }
 
   /// Warn if RegNo is the current assembler temporary.
   void WarnIfAssemblerTemporary(int RegNo, SMLoc Loc);
@@ -276,9 +308,9 @@ public:
   /// Broad categories of register classes
   /// The exact class is finalized by the render method.
   enum RegKind {
-    RegKind_GPR = 1,      /// GPR32 and GPR64 (depending on isGP64())
+    RegKind_GPR = 1,      /// GPR32 and GPR64 (depending on isGP64bit())
     RegKind_FGR = 2,      /// FGR32, FGR64, AFGR64 (depending on context and
-                          /// isFP64())
+                          /// isFP64bit())
     RegKind_FCC = 4,      /// FCC
     RegKind_MSA128 = 8,   /// MSA128[BHWD] (makes no difference which)
     RegKind_MSACtrl = 16, /// MSA control registers
@@ -539,6 +571,10 @@ public:
   void addFGR32AsmRegOperands(MCInst &Inst, unsigned N) const {
     assert(N == 1 && "Invalid number of operands!");
     Inst.addOperand(MCOperand::CreateReg(getFGR32Reg()));
+    // FIXME: We ought to do this for -integrated-as without -via-file-asm too.
+    if (!AsmParser.useOddSPReg() && RegIdx.Index & 1)
+      AsmParser.Error(StartLoc, "-mno-odd-spreg prohibits the use of odd FPU "
+                                "registers");
   }
 
   void addFGRH32AsmRegOperands(MCInst &Inst, unsigned N) const {
@@ -882,9 +918,10 @@ bool MipsAsmParser::processInstruction(MCInst &Inst, SMLoc IDLoc,
       Offset = Inst.getOperand(2);
       if (!Offset.isImm())
         break; // We'll deal with this situation later on when applying fixups.
-      if (!isIntN(isMicroMips() ? 17 : 18, Offset.getImm()))
+      if (!isIntN(inMicroMipsMode() ? 17 : 18, Offset.getImm()))
         return Error(IDLoc, "branch target out of range");
-      if (OffsetToAlignment(Offset.getImm(), 1LL << (isMicroMips() ? 1 : 2)))
+      if (OffsetToAlignment(Offset.getImm(),
+                            1LL << (inMicroMipsMode() ? 1 : 2)))
         return Error(IDLoc, "branch to misaligned address");
       break;
     case Mips::BGEZ:
@@ -907,9 +944,10 @@ bool MipsAsmParser::processInstruction(MCInst &Inst, SMLoc IDLoc,
       Offset = Inst.getOperand(1);
       if (!Offset.isImm())
         break; // We'll deal with this situation later on when applying fixups.
-      if (!isIntN(isMicroMips() ? 17 : 18, Offset.getImm()))
+      if (!isIntN(inMicroMipsMode() ? 17 : 18, Offset.getImm()))
         return Error(IDLoc, "branch target out of range");
-      if (OffsetToAlignment(Offset.getImm(), 1LL << (isMicroMips() ? 1 : 2)))
+      if (OffsetToAlignment(Offset.getImm(),
+                            1LL << (inMicroMipsMode() ? 1 : 2)))
         return Error(IDLoc, "branch to misaligned address");
       break;
     }
@@ -994,12 +1032,13 @@ bool MipsAsmParser::needsExpansion(MCInst &Inst) {
 bool MipsAsmParser::expandInstruction(MCInst &Inst, SMLoc IDLoc,
                                       SmallVectorImpl<MCInst> &Instructions) {
   switch (Inst.getOpcode()) {
-  default: assert(0 && "unimplemented expansion");
+  default:
+    assert(0 && "unimplemented expansion");
     return true;
   case Mips::LoadImm32Reg:
     return expandLoadImm(Inst, IDLoc, Instructions);
   case Mips::LoadImm64Reg:
-    if (!isGP64()) {
+    if (!isGP64bit()) {
       Error(IDLoc, "instruction requires a CPU feature not currently enabled");
       return true;
     }
@@ -1074,8 +1113,8 @@ bool MipsAsmParser::expandLoadImm(MCInst &Inst, SMLoc IDLoc,
     Instructions.push_back(tmpInst);
     createShiftOr<0, false>(ImmValue, RegOp.getReg(), IDLoc, Instructions);
   } else if ((ImmValue & (0xffffLL << 48)) == 0) {
-    if (!isGP64()) {
-      Error (IDLoc, "instruction requires a CPU feature not currently enabled");
+    if (!isGP64bit()) {
+      Error(IDLoc, "instruction requires a CPU feature not currently enabled");
       return true;
     }
 
@@ -1101,8 +1140,8 @@ bool MipsAsmParser::expandLoadImm(MCInst &Inst, SMLoc IDLoc,
     createShiftOr<16, false>(ImmValue, RegOp.getReg(), IDLoc, Instructions);
     createShiftOr<0, true>(ImmValue, RegOp.getReg(), IDLoc, Instructions);
   } else {
-    if (!isGP64()) {
-      Error (IDLoc, "instruction requires a CPU feature not currently enabled");
+    if (!isGP64bit()) {
+      Error(IDLoc, "instruction requires a CPU feature not currently enabled");
       return true;
     }
 
@@ -1274,8 +1313,8 @@ void MipsAsmParser::expandMemInst(MCInst &Inst, SMLoc IDLoc,
     // not available.
     if (!AT)
       return;
-    TmpRegNum =
-        getReg((isGP64()) ? Mips::GPR64RegClassID : Mips::GPR32RegClassID, AT);
+    TmpRegNum = getReg(
+        (isGP64bit()) ? Mips::GPR64RegClassID : Mips::GPR32RegClassID, AT);
   }
 
   TempInst.setOpcode(Mips::LUi);
@@ -1433,7 +1472,7 @@ int MipsAsmParser::matchCPURegisterName(StringRef Name) {
            .Case("t9", 25)
            .Default(-1);
 
-  if (isN32() || isN64()) {
+  if (isABI_N32() || isABI_N64()) {
     // Although SGI documentation just cuts out t0-t3 for n32/n64,
     // GNU pushes the values of t0-t3 to override the o32/o64 values for t4-t7
     // We are supporting both cases, so for t0-t3 we'll just push them to t4-t7.
@@ -1546,7 +1585,7 @@ unsigned MipsAsmParser::getReg(int RC, int RegNo) {
 }
 
 unsigned MipsAsmParser::getGPR(int RegNo) {
-  return getReg(isGP64() ? Mips::GPR64RegClassID : Mips::GPR32RegClassID,
+  return getReg(isGP64bit() ? Mips::GPR64RegClassID : Mips::GPR32RegClassID,
                 RegNo);
 }
 
@@ -1771,7 +1810,7 @@ bool MipsAsmParser::ParseRegister(unsigned &RegNo, SMLoc &StartLoc,
     // register is a parse error.
     if (Operand.isGPRAsmReg()) {
       // Resolve to GPR32 or GPR64 appropriately.
-      RegNo = isGP64() ? Operand.getGPR64Reg() : Operand.getGPR32Reg();
+      RegNo = isGP64bit() ? Operand.getGPR64Reg() : Operand.getGPR32Reg();
     }
 
     return (RegNo == (unsigned)-1);
@@ -2227,6 +2266,9 @@ bool MipsAsmParser::ParseBracketSuffix(StringRef Name,
 bool MipsAsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
                                      SMLoc NameLoc, OperandVector &Operands) {
   DEBUG(dbgs() << "ParseInstruction\n");
+  // We have reached first instruction, module directive after
+  // this is forbidden.
+  getTargetStreamer().setCanHaveModuleDir(false);
   // Check if we have valid mnemonic
   if (!mnemonicIsValid(Name, 0)) {
     Parser.eatToEndOfStatement();
@@ -2273,13 +2315,13 @@ bool MipsAsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
   return false;
 }
 
-bool MipsAsmParser::reportParseError(StringRef ErrorMsg) {
+bool MipsAsmParser::reportParseError(Twine ErrorMsg) {
   SMLoc Loc = getLexer().getLoc();
   Parser.eatToEndOfStatement();
   return Error(Loc, ErrorMsg);
 }
 
-bool MipsAsmParser::reportParseError(SMLoc Loc, StringRef ErrorMsg) {
+bool MipsAsmParser::reportParseError(SMLoc Loc, Twine ErrorMsg) {
   return Error(Loc, ErrorMsg);
 }
 
@@ -2409,6 +2451,32 @@ bool MipsAsmParser::parseSetNoMips16Directive() {
     return false;
   }
   // For now do nothing.
+  Parser.Lex(); // Consume the EndOfStatement.
+  return false;
+}
+
+bool MipsAsmParser::parseSetFpDirective() {
+  MipsABIFlagsSection::FpABIKind FpAbiVal;
+  // Line can be: .set fp=32
+  //              .set fp=xx
+  //              .set fp=64
+  Parser.Lex(); // Eat fp token
+  AsmToken Tok = Parser.getTok();
+  if (Tok.isNot(AsmToken::Equal)) {
+    reportParseError("unexpected token in statement");
+    return false;
+  }
+  Parser.Lex(); // Eat '=' token.
+  Tok = Parser.getTok();
+
+  if (!parseFpABIValue(FpAbiVal, ".set"))
+    return false;
+
+  if (getLexer().isNot(AsmToken::EndOfStatement)) {
+    reportParseError("unexpected token in statement");
+    return false;
+  }
+  getTargetStreamer().emitDirectiveSetFp(FpAbiVal);
   Parser.Lex(); // Consume the EndOfStatement.
   return false;
 }
@@ -2594,6 +2662,8 @@ bool MipsAsmParser::parseDirectiveSet() {
     return parseSetNoAtDirective();
   } else if (Tok.getString() == "at") {
     return parseSetAtDirective();
+  } else if (Tok.getString() == "fp") {
+    return parseSetFpDirective();
   } else if (Tok.getString() == "reorder") {
     return parseSetReorderDirective();
   } else if (Tok.getString() == "noreorder") {
@@ -2726,6 +2796,134 @@ bool MipsAsmParser::parseDirectiveOption() {
   return false;
 }
 
+/// parseDirectiveModule
+///  ::= .module oddspreg
+///  ::= .module nooddspreg
+///  ::= .module fp=value
+bool MipsAsmParser::parseDirectiveModule() {
+  MCAsmLexer &Lexer = getLexer();
+  SMLoc L = Lexer.getLoc();
+
+  if (!getTargetStreamer().getCanHaveModuleDir()) {
+    // TODO : get a better message.
+    reportParseError(".module directive must appear before any code");
+    return false;
+  }
+
+  if (Lexer.is(AsmToken::Identifier)) {
+    StringRef Option = Parser.getTok().getString();
+    Parser.Lex();
+
+    if (Option == "oddspreg") {
+      getTargetStreamer().emitDirectiveModuleOddSPReg(true, isABI_O32());
+      clearFeatureBits(Mips::FeatureNoOddSPReg, "nooddspreg");
+
+      if (getLexer().isNot(AsmToken::EndOfStatement)) {
+        reportParseError("Expected end of statement");
+        return false;
+      }
+
+      return false;
+    } else if (Option == "nooddspreg") {
+      if (!isABI_O32()) {
+        Error(L, "'.module nooddspreg' requires the O32 ABI");
+        return false;
+      }
+
+      getTargetStreamer().emitDirectiveModuleOddSPReg(false, isABI_O32());
+      setFeatureBits(Mips::FeatureNoOddSPReg, "nooddspreg");
+
+      if (getLexer().isNot(AsmToken::EndOfStatement)) {
+        reportParseError("Expected end of statement");
+        return false;
+      }
+
+      return false;
+    } else if (Option == "fp") {
+      return parseDirectiveModuleFP();
+    }
+
+    return Error(L, "'" + Twine(Option) + "' is not a valid .module option.");
+  }
+
+  return false;
+}
+
+/// parseDirectiveModuleFP
+///  ::= =32
+///  ::= =xx
+///  ::= =64
+bool MipsAsmParser::parseDirectiveModuleFP() {
+  MCAsmLexer &Lexer = getLexer();
+
+  if (Lexer.isNot(AsmToken::Equal)) {
+    reportParseError("unexpected token in statement");
+    return false;
+  }
+  Parser.Lex(); // Eat '=' token.
+
+  MipsABIFlagsSection::FpABIKind FpABI;
+  if (!parseFpABIValue(FpABI, ".module"))
+    return false;
+
+  if (getLexer().isNot(AsmToken::EndOfStatement)) {
+    reportParseError("unexpected token in statement");
+    return false;
+  }
+
+  // Emit appropriate flags.
+  getTargetStreamer().emitDirectiveModuleFP(FpABI, isABI_O32());
+  Parser.Lex(); // Consume the EndOfStatement.
+  return false;
+}
+
+bool MipsAsmParser::parseFpABIValue(MipsABIFlagsSection::FpABIKind &FpABI,
+                                    StringRef Directive) {
+  MCAsmLexer &Lexer = getLexer();
+
+  if (Lexer.is(AsmToken::Identifier)) {
+    StringRef Value = Parser.getTok().getString();
+    Parser.Lex();
+
+    if (Value != "xx") {
+      reportParseError("unsupported value, expected 'xx', '32' or '64'");
+      return false;
+    }
+
+    if (!isABI_O32()) {
+      reportParseError("'" + Directive + " fp=xx' requires the O32 ABI");
+      return false;
+    }
+
+    FpABI = MipsABIFlagsSection::FpABIKind::XX;
+    return true;
+  }
+
+  if (Lexer.is(AsmToken::Integer)) {
+    unsigned Value = Parser.getTok().getIntVal();
+    Parser.Lex();
+
+    if (Value != 32 && Value != 64) {
+      reportParseError("unsupported value, expected 'xx', '32' or '64'");
+      return false;
+    }
+
+    if (Value == 32) {
+      if (!isABI_O32()) {
+        reportParseError("'" + Directive + " fp=32' requires the O32 ABI");
+        return false;
+      }
+
+      FpABI = MipsABIFlagsSection::FpABIKind::S32;
+    } else
+      FpABI = MipsABIFlagsSection::FpABIKind::S64;
+
+    return true;
+  }
+
+  return false;
+}
+
 bool MipsAsmParser::ParseDirective(AsmToken DirectiveID) {
   StringRef IDVal = DirectiveID.getString();
 
@@ -2803,6 +3001,9 @@ bool MipsAsmParser::ParseDirective(AsmToken DirectiveID) {
 
   if (IDVal == ".cpsetup")
     return parseDirectiveCPSetup();
+
+  if (IDVal == ".module")
+    return parseDirectiveModule();
 
   return true;
 }

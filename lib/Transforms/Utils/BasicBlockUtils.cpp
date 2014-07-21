@@ -549,14 +549,11 @@ void llvm::SplitLandingPadPredecessors(BasicBlock *OrigBB,
 
   // Move the remaining edges from OrigBB to point to NewBB2.
   SmallVector<BasicBlock*, 8> NewBB2Preds;
-  for (pred_iterator i = pred_begin(OrigBB), e = pred_end(OrigBB);
-       i != e; ) {
-    BasicBlock *Pred = *i++;
+  for (BasicBlock *Pred : predecessors(OrigBB)) {
     if (Pred == NewBB1) continue;
     assert(!isa<IndirectBrInst>(Pred->getTerminator()) &&
            "Cannot split an edge from an IndirectBrInst");
     NewBB2Preds.push_back(Pred);
-    e = pred_end(OrigBB);
   }
 
   BasicBlock *NewBB2 = nullptr;
@@ -673,7 +670,8 @@ ReturnInst *llvm::FoldReturnIntoUncondBranch(ReturnInst *RI, BasicBlock *BB,
 TerminatorInst *llvm::SplitBlockAndInsertIfThen(Value *Cond,
                                                 Instruction *SplitBefore,
                                                 bool Unreachable,
-                                                MDNode *BranchWeights) {
+                                                MDNode *BranchWeights,
+                                                DominatorTree *DT) {
   BasicBlock *Head = SplitBefore->getParent();
   BasicBlock *Tail = Head->splitBasicBlock(SplitBefore);
   TerminatorInst *HeadOldTerm = Head->getTerminator();
@@ -690,6 +688,20 @@ TerminatorInst *llvm::SplitBlockAndInsertIfThen(Value *Cond,
   HeadNewTerm->setDebugLoc(SplitBefore->getDebugLoc());
   HeadNewTerm->setMetadata(LLVMContext::MD_prof, BranchWeights);
   ReplaceInstWithInst(HeadOldTerm, HeadNewTerm);
+
+  if (DT) {
+    if (DomTreeNode *OldNode = DT->getNode(Head)) {
+      std::vector<DomTreeNode *> Children(OldNode->begin(), OldNode->end());
+
+      DomTreeNode *NewNode = DT->addNewBlock(Tail, Head);
+      for (auto Child : Children)
+        DT->changeImmediateDominator(Child, NewNode);
+
+      // Head dominates ThenBlock.
+      DT->addNewBlock(ThenBlock, Head);
+    }
+  }
+
   return CheckTerm;
 }
 
