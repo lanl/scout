@@ -45,7 +45,7 @@
 
 #include "ObjectFileMachO.h"
 
-#if defined (__APPLE__) && (defined (__arm__) || defined (__arm64__))
+#if defined (__APPLE__) && (defined (__arm__) || defined (__arm64__) || defined (__aarch64__))
 // GetLLDBSharedCacheUUID() needs to call dlsym()
 #include <dlfcn.h>
 #endif
@@ -116,8 +116,8 @@ public:
                     case 7:
                     case 8:
                     case 9:
-                        // fancy flavors that encapsulate of the the above
-                        // falvors...
+                        // fancy flavors that encapsulate of the above
+                        // flavors...
                         break;
 
                     default:
@@ -346,8 +346,8 @@ public:
                     case 7:
                     case 8:
                     case 9:
-                        // fancy flavors that encapsulate of the the above
-                        // falvors...
+                        // fancy flavors that encapsulate of the above
+                        // flavors...
                         break;
 
                     default:
@@ -1289,9 +1289,9 @@ ObjectFileMachO::CreateSections (SectionList &unified_section_list)
                     {
                         if (load_cmd.fileoff > m_length)
                         {
-                            // We have a load command that says it extends past the end of hte file.  This is likely
+                            // We have a load command that says it extends past the end of the file.  This is likely
                             // a corrupt file.  We don't have any way to return an error condition here (this method
-                            // was likely invokved from something like ObjectFile::GetSectionList()) -- all we can do
+                            // was likely invoked from something like ObjectFile::GetSectionList()) -- all we can do
                             // is null out the SectionList vector and if a process has been set up, dump a message
                             // to stdout.  The most common case here is core file debugging with a truncated file.
                             const char *lc_segment_name = load_cmd.cmd == LC_SEGMENT_64 ? "LC_SEGMENT_64" : "LC_SEGMENT";
@@ -1307,9 +1307,9 @@ ObjectFileMachO::CreateSections (SectionList &unified_section_list)
                         
                         if (load_cmd.fileoff + load_cmd.filesize > m_length)
                         {
-                            // We have a load command that says it extends past the end of hte file.  This is likely
+                            // We have a load command that says it extends past the end of the file.  This is likely
                             // a corrupt file.  We don't have any way to return an error condition here (this method
-                            // was likely invokved from something like ObjectFile::GetSectionList()) -- all we can do
+                            // was likely invoked from something like ObjectFile::GetSectionList()) -- all we can do
                             // is null out the SectionList vector and if a process has been set up, dump a message
                             // to stdout.  The most common case here is core file debugging with a truncated file.
                             const char *lc_segment_name = load_cmd.cmd == LC_SEGMENT_64 ? "LC_SEGMENT_64" : "LC_SEGMENT";
@@ -1345,7 +1345,7 @@ ObjectFileMachO::CreateSections (SectionList &unified_section_list)
                                                           load_cmd.vmaddr,        // File VM address == addresses as they are found in the object file
                                                           load_cmd.vmsize,        // VM size in bytes of this section
                                                           load_cmd.fileoff,       // Offset to the data for this section in the file
-                                                          load_cmd.filesize,      // Size in bytes of this section as found in the the file
+                                                          load_cmd.filesize,      // Size in bytes of this section as found in the file
                                                           0,                      // Segments have no alignment information
                                                           load_cmd.flags));       // Flags for this section
 
@@ -1474,7 +1474,7 @@ ObjectFileMachO::CreateSections (SectionList &unified_section_list)
                                                                       sect64.addr,           // File VM address == addresses as they are found in the object file
                                                                       sect64.size,           // VM size in bytes of this section
                                                                       sect64.offset,         // Offset to the data for this section in the file
-                                                                      sect64.offset ? sect64.size : 0,        // Size in bytes of this section as found in the the file
+                                                                      sect64.offset ? sect64.size : 0,        // Size in bytes of this section as found in the file
                                                                       sect64.align,
                                                                       load_cmd.flags));      // Flags for this section
                                         segment_sp->SetIsFake(true);
@@ -1669,10 +1669,6 @@ ObjectFileMachO::CreateSections (SectionList &unified_section_list)
 
             offset = load_cmd_offset + load_cmd.cmdsize;
         }
-        
-//        StreamFile s(stdout, false);                    // REMOVE THIS LINE
-//        s.Printf ("Sections for %s:\n", m_file.GetPath().c_str());// REMOVE THIS LINE
-//        m_sections_ap->Dump(&s, NULL, true, UINT32_MAX);// REMOVE THIS LINE
     }
 }
 
@@ -1971,7 +1967,7 @@ ObjectFileMachO::ParseSymtab ()
                 if (path)
                 {
                     FileSpec file_spec(path, false);
-                    // Strip the path if there is @rpath, @executanble, etc so we just use the basename
+                    // Strip the path if there is @rpath, @executable, etc so we just use the basename
                     if (path[0] == '@')
                         file_spec.GetDirectory().Clear();
                     
@@ -2043,7 +2039,7 @@ ObjectFileMachO::ParseSymtab ()
 
                 bool data_was_read = false;
 
-#if defined (__APPLE__) && (defined (__arm__) || defined (__arm64__))
+#if defined (__APPLE__) && (defined (__arm__) || defined (__arm64__) || defined (__aarch64__))
                 if (m_header.flags & 0x80000000u && process->GetAddressByteSize() == sizeof (void*))
                 {
                     // This mach-o memory file is in the dyld shared cache. If this
@@ -2195,7 +2191,7 @@ ObjectFileMachO::ParseSymtab ()
 
         const bool is_arm = (m_header.cputype == llvm::MachO::CPU_TYPE_ARM);
 
-        // lldb works best if it knows the start addresss of all functions in a module.
+        // lldb works best if it knows the start address of all functions in a module.
         // Linker symbols or debug info are normally the best source of information for start addr / size but
         // they may be stripped in a released binary.
         // Two additional sources of information exist in Mach-O binaries:
@@ -2302,7 +2298,7 @@ ObjectFileMachO::ParseSymtab ()
             }
         }
 
-#if defined (__APPLE__) && (defined (__arm__) || defined (__arm64__))
+#if defined (__APPLE__) && (defined (__arm__) || defined (__arm64__) || defined (__aarch64__))
 
         // Some recent builds of the dyld_shared_cache (hereafter: DSC) have been optimized by moving LOCAL
         // symbols out of the memory mapped portion of the DSC. The symbol information has all been retained,
@@ -2961,7 +2957,6 @@ ObjectFileMachO::ParseSymtab ()
                                                                             case eSectionTypeData4:
                                                                             case eSectionTypeData8:
                                                                             case eSectionTypeData16:
-                                                                            case eSectionTypeDataPointers:
                                                                                 type = eSymbolTypeData;
                                                                                 break;
                                                                             default:
@@ -3742,7 +3737,6 @@ ObjectFileMachO::ParseSymtab ()
                                         case eSectionTypeData4:
                                         case eSectionTypeData8:
                                         case eSectionTypeData16:
-                                        case eSectionTypeDataPointers:
                                             type = eSymbolTypeData;
                                             break;
                                         default:
@@ -4402,7 +4396,7 @@ ObjectFileMachO::GetDependentModules (FileSpecList& files)
         lldb_private::Mutex::Locker locker(module_sp->GetMutex());
         struct load_command load_cmd;
         lldb::offset_t offset = MachHeaderSizeFromMagic(m_header.magic);
-        const bool resolve_path = false; // Don't resolve the dependend file paths since they may not reside on this system
+        const bool resolve_path = false; // Don't resolve the dependent file paths since they may not reside on this system
         uint32_t i;
         for (i=0; i<m_header.ncmds; ++i)
         {
@@ -4905,7 +4899,7 @@ UUID
 ObjectFileMachO::GetLLDBSharedCacheUUID ()
 {
     UUID uuid;
-#if defined (__APPLE__) && (defined (__arm__) || defined (__arm64__))
+#if defined (__APPLE__) && (defined (__arm__) || defined (__arm64__) || defined (__aarch64__))
     uint8_t *(*dyld_get_all_image_infos)(void);
     dyld_get_all_image_infos = (uint8_t*(*)()) dlsym (RTLD_DEFAULT, "_dyld_get_all_image_infos");
     if (dyld_get_all_image_infos)
@@ -5436,7 +5430,7 @@ ObjectFileMachO::SaveCore (const lldb::ProcessSP &process_sp,
                                     break;
                                 }
                                 
-                                printf ("Saving data for segment at 0x%llx\n", segment.vmaddr);
+                                printf ("Saving data for segment at 0x%" PRIx64 "\n", segment.vmaddr);
                                 addr_t bytes_left = segment.vmsize;
                                 addr_t addr = segment.vmaddr;
                                 Error memory_read_error;

@@ -19,6 +19,7 @@
 
 #ifdef _WIN32
 #include "lldb/Host/windows/win32.h"
+typedef uint32_t pid_t;
 // empty functions
 int posix_openpt(int flag) { return 0; }
 
@@ -47,7 +48,7 @@ PseudoTerminal::PseudoTerminal () :
 // Destructor
 //
 // The destructor will close the master and slave file descriptors
-// if they are valid and ownwership has not been released using the
+// if they are valid and ownership has not been released using the
 // ReleaseMasterFileDescriptor() or the ReleaseSaveFileDescriptor()
 // member functions.
 //----------------------------------------------------------------------

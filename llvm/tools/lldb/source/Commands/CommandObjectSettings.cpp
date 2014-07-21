@@ -289,8 +289,8 @@ private:
 OptionDefinition
 CommandObjectSettingsSet::CommandOptions::g_option_table[] =
 {
-    { LLDB_OPT_SET_2, false, "global", 'g', OptionParser::eNoArgument,   NULL, 0, eArgTypeNone, "Apply the new value to the global default value." },
-    { 0, false, NULL, 0, 0, NULL, 0, eArgTypeNone, NULL }
+    { LLDB_OPT_SET_2, false, "global", 'g', OptionParser::eNoArgument,   NULL, NULL, 0, eArgTypeNone, "Apply the new value to the global default value." },
+    { 0, false, NULL, 0, 0, NULL, NULL, 0, eArgTypeNone, NULL }
 };
 
 
@@ -1155,7 +1155,7 @@ protected:
 
         if (argc != 1)
         {
-            result.AppendError ("'setttings clear' takes exactly one argument");
+            result.AppendError ("'settings clear' takes exactly one argument");
             result.SetStatus (eReturnStatusFailed);
             return false;
         }

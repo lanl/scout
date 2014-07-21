@@ -3,26 +3,26 @@ Base class for gdb-remote test cases.
 """
 
 import errno
-import unittest2
-import pexpect
+import os
+import os.path
 import platform
+import random
 import re
 import sets
 import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
+import unittest2
 from lldbtest import *
 from lldbgdbserverutils import *
 import logging
-import os.path
 
 class GdbRemoteTestCaseBase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
-
-    port = 12345
 
     _TIMEOUT_SECONDS = 5
 
@@ -50,25 +50,101 @@ class GdbRemoteTestCaseBase(TestBase):
         self.logger.setLevel(self._LOGGING_LEVEL)
         self.test_sequence = GdbRemoteTestSequence(self.logger)
         self.set_inferior_startup_launch()
+        self.port = self.get_next_port()
+        self.named_pipe_path = None
+        self.named_pipe = None
+        self.named_pipe_fd = None
+        self.stub_sends_two_stop_notifications_on_kill = False
 
-        # Uncomment this code to force only a single test to run (by name).
-        #if not re.search(r"P_", self._testMethodName):
-        #    self.skipTest("focusing on one test")
+    def get_next_port(self):
+        return 12000 + random.randint(0,3999)
 
     def reset_test_sequence(self):
         self.test_sequence = GdbRemoteTestSequence(self.logger)
 
-    def init_llgs_test(self):
+    def create_named_pipe(self):
+        # Create a temp dir and name for a pipe.
+        temp_dir = tempfile.mkdtemp()
+        named_pipe_path = os.path.join(temp_dir, "stub_port_number")
+
+        # Create the named pipe.
+        os.mkfifo(named_pipe_path)
+
+        # Open the read side of the pipe in non-blocking mode.  This will return right away, ready or not.
+        named_pipe_fd = os.open(named_pipe_path, os.O_RDONLY | os.O_NONBLOCK)
+
+        # Create the file for the named pipe.  Note this will follow semantics of
+        # a non-blocking read side of a named pipe, which has different semantics
+        # than a named pipe opened for read in non-blocking mode.
+        named_pipe = os.fdopen(named_pipe_fd, "r")
+        self.assertIsNotNone(named_pipe)
+
+        def shutdown_named_pipe():
+            # Close the pipe.
+            try:
+                named_pipe.close()
+            except:
+                print "failed to close named pipe"
+                None
+
+            # Delete the pipe.
+            try:
+                os.remove(named_pipe_path)
+            except:
+                print "failed to delete named pipe: {}".format(named_pipe_path)
+                None
+
+            # Delete the temp directory.
+            try:
+                os.rmdir(temp_dir)
+            except:
+                print "failed to delete temp dir: {}, directory contents: '{}'".format(temp_dir, os.listdir(temp_dir))
+                None
+
+        # Add the shutdown hook to clean up the named pipe.
+        self.addTearDownHook(shutdown_named_pipe)
+
+        # Clear the port so the stub selects a port number.
+        self.port = 0
+
+        return (named_pipe_path, named_pipe, named_pipe_fd)
+
+    def get_stub_port_from_named_socket(self, read_timeout_seconds=5):
+        # Wait for something to read with a max timeout.
+        (ready_readers, _, _) = select.select([self.named_pipe_fd], [], [], read_timeout_seconds)
+        self.assertIsNotNone(ready_readers, "write side of pipe has not written anything - stub isn't writing to pipe.")
+        self.assertNotEqual(len(ready_readers), 0, "write side of pipe has not written anything - stub isn't writing to pipe.")
+
+        # Read the port from the named pipe.
+        stub_port_raw = self.named_pipe.read()
+        self.assertIsNotNone(stub_port_raw)
+        self.assertNotEqual(len(stub_port_raw), 0, "no content to read on pipe")
+
+        # Trim null byte, convert to int.
+        stub_port_raw = stub_port_raw[:-1]
+        stub_port = int(stub_port_raw)
+        self.assertTrue(stub_port > 0)
+
+        return stub_port
+
+    def init_llgs_test(self, use_named_pipe=True):
         self.debug_monitor_exe = get_lldb_gdbserver_exe()
         if not self.debug_monitor_exe:
             self.skipTest("lldb_gdbserver exe not found")
         self.debug_monitor_extra_args = " -c 'log enable -T -f process-{}.log lldb break process thread' -c 'log enable -T -f packets-{}.log gdb-remote packets'".format(self.id(), self.id(), self.id())
+        if use_named_pipe:
+            (self.named_pipe_path, self.named_pipe, self.named_pipe_fd) = self.create_named_pipe()
 
-    def init_debugserver_test(self):
+    def init_debugserver_test(self, use_named_pipe=True):
         self.debug_monitor_exe = get_debugserver_exe()
         if not self.debug_monitor_exe:
             self.skipTest("debugserver exe not found")
         self.debug_monitor_extra_args = " --log-file=/tmp/packets-{}.log --log-flags=0x800000".format(self._testMethodName)
+        if use_named_pipe:
+            (self.named_pipe_path, self.named_pipe, self.named_pipe_fd) = self.create_named_pipe()
+        # The debugserver stub has a race on handling the 'k' command, so it sends an X09 right away, then sends the real X notification
+        # when the process truly dies.
+        self.stub_sends_two_stop_notifications_on_kill = True
 
     def create_socket(self):
         sock = socket.socket()
@@ -89,7 +165,10 @@ class GdbRemoteTestCaseBase(TestBase):
 
         self.addTearDownHook(shutdown_socket)
 
-        sock.connect(('localhost', self.port))
+        connect_info = ("localhost", self.port)
+        # print "connecting to stub on {}:{}".format(connect_info[0], connect_info[1])
+        sock.connect(connect_info)
+
         return sock
 
     def set_inferior_startup_launch(self):
@@ -100,12 +179,22 @@ class GdbRemoteTestCaseBase(TestBase):
 
     def launch_debug_monitor(self, attach_pid=None):
         # Create the command line.
+        import pexpect
         commandline = "{}{} localhost:{}".format(self.debug_monitor_exe, self.debug_monitor_extra_args, self.port)
         if attach_pid:
             commandline += " --attach=%d" % attach_pid
+        if self.named_pipe_path:
+            commandline += " --named-pipe %s" % self.named_pipe_path
 
         # Start the server.
         server = pexpect.spawn(commandline)
+        self.assertIsNotNone(server)
+        server.expect(r"(debugserver|lldb-gdbserver)", timeout=10)
+
+        # If we're receiving the stub's listening port from the named pipe, do that here.
+        if self.named_pipe:
+            self.port = self.get_stub_port_from_named_socket()
+            # print "debug server listening on {}".format(self.port)
 
         # Turn on logging for what the child sends back.
         if self.TraceOn():
@@ -114,39 +203,71 @@ class GdbRemoteTestCaseBase(TestBase):
         return server
 
     def connect_to_debug_monitor(self, attach_pid=None):
-        server = self.launch_debug_monitor(attach_pid=attach_pid)
+        if self.named_pipe:
+            # Create the stub.
+            server = self.launch_debug_monitor(attach_pid=attach_pid)
+            self.assertIsNotNone(server)
 
-        # Wait until we receive the server ready message before continuing.
-        server.expect_exact('Listening to port {} for a connection from localhost'.format(self.port))
+            def shutdown_debug_monitor():
+                try:
+                    server.close()
+                except:
+                    logger.warning("failed to close pexpect server for debug monitor: {}; ignoring".format(sys.exc_info()[0]))
+            self.addTearDownHook(shutdown_debug_monitor)
 
-        # Schedule debug monitor to be shut down during teardown.
-        logger = self.logger
-        def shutdown_debug_monitor():
-            try:
-                server.close()
-            except:
-                logger.warning("failed to close pexpect server for debug monitor: {}; ignoring".format(sys.exc_info()[0]))
-        self.addTearDownHook(shutdown_debug_monitor)
+            # Schedule debug monitor to be shut down during teardown.
+            logger = self.logger
 
+            # Attach to the stub and return a socket opened to it.
+            self.sock = self.create_socket()
+            return server
+
+        # We're using a random port algorithm to try not to collide with other ports,
+        # and retry a max # times.
         attempts = 0
         MAX_ATTEMPTS = 20
 
         while attempts < MAX_ATTEMPTS:
-            # Create a socket to talk to the server
+            server = self.launch_debug_monitor(attach_pid=attach_pid)
+
+            # Wait until we receive the server ready message before continuing.
+            port_good = True
             try:
-                self.sock = self.create_socket()
-                return server
-            except socket.error as serr:
-                # We're only trying to handle connection refused
-                if serr.errno != errno.ECONNREFUSED:
-                    raise serr
+                server.expect_exact('Listening to port {} for a connection from localhost'.format(self.port))
+            except:
+                port_good = False
+                server.close()
 
-                # Increment attempts.
-                print("connect to debug monitor on port %d failed, attempt #%d of %d" % (self.port, attempts + 1, MAX_ATTEMPTS))
-                attempts += 1
+            if port_good:
+                # Schedule debug monitor to be shut down during teardown.
+                logger = self.logger
+                def shutdown_debug_monitor():
+                    try:
+                        server.close()
+                    except:
+                        logger.warning("failed to close pexpect server for debug monitor: {}; ignoring".format(sys.exc_info()[0]))
+                self.addTearDownHook(shutdown_debug_monitor)
 
-                # And wait a second before next attempt.
-                time.sleep(1)
+                # Create a socket to talk to the server
+                try:
+                    self.sock = self.create_socket()
+                    return server
+                except socket.error as serr:
+                    # We're only trying to handle connection refused.
+                    if serr.errno != errno.ECONNREFUSED:
+                        raise serr
+                    # We should close the server here to be safe.
+                    server.close()
+
+            # Increment attempts.
+            print("connect to debug monitor on port %d failed, attempt #%d of %d" % (self.port, attempts + 1, MAX_ATTEMPTS))
+            attempts += 1
+
+            # And wait a random length of time before next attempt, to avoid collisions.
+            time.sleep(random.randint(1,5))
+            
+            # Now grab a new port number.
+            self.port = self.get_next_port()
 
         raise Exception("failed to create a socket to the launched debug monitor after %d tries" % attempts)
 

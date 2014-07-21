@@ -96,7 +96,7 @@ RNBRemote::CreatePacketTable  ()
 {
     // Step required to add new packets:
     // 1 - Add new enumeration to RNBRemote::PacketEnum
-    // 2 - Create a the RNBRemote::HandlePacket_ function if a new function is needed
+    // 2 - Create the RNBRemote::HandlePacket_ function if a new function is needed
     // 3 - Register the Packet definition with any needed callbacks in this function
     //          - If no response is needed for a command, then use NULL for the normal callback
     //          - If the packet is not supported while the target is running, use NULL for the async callback
@@ -179,14 +179,14 @@ RNBRemote::CreatePacketTable  ()
 //  t.push_back (Packet (query_symbol_lookup,           &RNBRemote::HandlePacket_UNIMPLEMENTED, NULL, "qSymbol", "Notify that host debugger is ready to do symbol lookups"));
     t.push_back (Packet (json_query_thread_extended_info,          &RNBRemote::HandlePacket_jThreadExtendedInfo,     NULL, "jThreadExtendedInfo", "Replies with JSON data of thread extended information."));
     t.push_back (Packet (start_noack_mode,              &RNBRemote::HandlePacket_QStartNoAckMode        , NULL, "QStartNoAckMode", "Request that " DEBUGSERVER_PROGRAM_NAME " stop acking remote protocol packets"));
-    t.push_back (Packet (prefix_reg_packets_with_tid,   &RNBRemote::HandlePacket_QThreadSuffixSupported , NULL, "QThreadSuffixSupported", "Check if thread specifc packets (register packets 'g', 'G', 'p', and 'P') support having the thread ID appended to the end of the command"));
+    t.push_back (Packet (prefix_reg_packets_with_tid,   &RNBRemote::HandlePacket_QThreadSuffixSupported , NULL, "QThreadSuffixSupported", "Check if thread specific packets (register packets 'g', 'G', 'p', and 'P') support having the thread ID appended to the end of the command"));
     t.push_back (Packet (set_logging_mode,              &RNBRemote::HandlePacket_QSetLogging            , NULL, "QSetLogging:", "Check if register packets ('g', 'G', 'p', and 'P' support having the thread ID prefix"));
     t.push_back (Packet (set_max_packet_size,           &RNBRemote::HandlePacket_QSetMaxPacketSize      , NULL, "QSetMaxPacketSize:", "Tell " DEBUGSERVER_PROGRAM_NAME " the max sized packet gdb can handle"));
     t.push_back (Packet (set_max_payload_size,          &RNBRemote::HandlePacket_QSetMaxPayloadSize     , NULL, "QSetMaxPayloadSize:", "Tell " DEBUGSERVER_PROGRAM_NAME " the max sized payload gdb can handle"));
     t.push_back (Packet (set_environment_variable,      &RNBRemote::HandlePacket_QEnvironment           , NULL, "QEnvironment:", "Add an environment variable to the inferior's environment"));
     t.push_back (Packet (set_environment_variable_hex,  &RNBRemote::HandlePacket_QEnvironmentHexEncoded , NULL, "QEnvironmentHexEncoded:", "Add an environment variable to the inferior's environment"));
     t.push_back (Packet (set_launch_arch,               &RNBRemote::HandlePacket_QLaunchArch            , NULL, "QLaunchArch:", "Set the architecture to use when launching a process for hosts that can run multiple architecture slices from universal files."));
-    t.push_back (Packet (set_disable_aslr,              &RNBRemote::HandlePacket_QSetDisableASLR        , NULL, "QSetDisableASLR:", "Set wether to disable ASLR when launching the process with the set argv ('A') packet"));
+    t.push_back (Packet (set_disable_aslr,              &RNBRemote::HandlePacket_QSetDisableASLR        , NULL, "QSetDisableASLR:", "Set whether to disable ASLR when launching the process with the set argv ('A') packet"));
     t.push_back (Packet (set_stdin,                     &RNBRemote::HandlePacket_QSetSTDIO              , NULL, "QSetSTDIN:", "Set the standard input for a process to be launched with the 'A' packet"));
     t.push_back (Packet (set_stdout,                    &RNBRemote::HandlePacket_QSetSTDIO              , NULL, "QSetSTDOUT:", "Set the standard output for a process to be launched with the 'A' packet"));
     t.push_back (Packet (set_stderr,                    &RNBRemote::HandlePacket_QSetSTDIO              , NULL, "QSetSTDERR:", "Set the standard error for a process to be launched with the 'A' packet"));
@@ -798,7 +798,7 @@ RNBRemote::ThreadFunctionReadRemoteData(void *arg)
 static cpu_type_t
 best_guess_cpu_type ()
 {
-#if defined (__arm__) || defined (__arm64__)
+#if defined (__arm__) || defined (__arm64__) || defined (__aarch64__)
     if (sizeof (char *) == 8)
     {
         return CPU_TYPE_ARM64;
@@ -2123,7 +2123,7 @@ RNBRemote::HandlePacket_QEnvironmentHexEncoded (const char *p)
 
         QEnvironmentHexEncoded:VARIABLE=VALUE
 
-        The VARIABLE=VALUE part is sent hex-encoded so chracters like '#' with special
+        The VARIABLE=VALUE part is sent hex-encoded so characters like '#' with special
         meaning in the remote protocol won't break it.
     */
        
@@ -2243,7 +2243,7 @@ register_value_in_hex_fixed_width (std::ostream& ostrm,
         }
         else
         {
-            // If we fail to read a regiser value, check if it has a default
+            // If we fail to read a register value, check if it has a default
             // fail value. If it does, return this instead in case some of
             // the registers are not available on the current system.
             if (reg->nub_info.size > 0)
@@ -2349,7 +2349,7 @@ RNBRemote::SendStopReplyPacketForThread (nub_thread_t tid)
         
         // If a 'QListThreadsInStopReply' was sent to enable this feature, we
         // will send all thread IDs back in the "threads" key whose value is
-        // a listc of hex thread IDs separated by commas:
+        // a list of hex thread IDs separated by commas:
         //  "threads:10a,10b,10c;"
         // This will save the debugger from having to send a pair of qfThreadInfo
         // and qsThreadInfo packets, but it also might take a lot of room in the
@@ -4379,20 +4379,25 @@ RNBRemote::HandlePacket_qProcessInfo (const char *p)
     size_t cpusubtype_len = sizeof(cpusubtype);
     if (::sysctlbyname("hw.cpusubtype", &cpusubtype, &cpusubtype_len, NULL, 0) == 0)
     {
-        if (cputype == CPU_TYPE_X86_64 && cpusubtype == CPU_SUBTYPE_486)
+        // If a process is CPU_TYPE_X86, then ignore the cpusubtype that we detected
+        // from the host and use CPU_SUBTYPE_I386_ALL because we don't want the
+        // CPU_SUBTYPE_X86_ARCH1 or CPU_SUBTYPE_X86_64_H to be used as the cpu subtype
+        // for i386...
+        if (host_cpu_is_64bit)
         {
-            cpusubtype = CPU_SUBTYPE_X86_64_ALL;
+            if (cputype == CPU_TYPE_X86)
+            {
+                cpusubtype = 3; // CPU_SUBTYPE_I386_ALL
+            }
+            else if (cputype == CPU_TYPE_ARM)
+            {
+                // We can query a process' cputype but we cannot query a process' cpusubtype.
+                // If the process has cputype CPU_TYPE_ARM, then it is an armv7 (32-bit process) and we
+                // need to override the host cpusubtype (which is in the CPU_SUBTYPE_ARM64 subtype namespace)
+                // with a reasonable CPU_SUBTYPE_ARMV7 subtype.
+                cpusubtype = 11; // CPU_SUBTYPE_ARM_V7S
+            }
         }
-
-        // We can query a process' cputype but we cannot query a process' cpusubtype.
-        // If the process has cputype CPU_TYPE_ARM, then it is an armv7 (32-bit process) and we 
-        // need to override the host cpusubtype (which is in the CPU_SUBTYPE_ARM64 subtype namespace)
-        // with a reasonable CPU_SUBTYPE_ARMV7 subtype.
-        if (host_cpu_is_64bit && cputype == CPU_TYPE_ARM)
-        {
-            cpusubtype = 11; //CPU_SUBTYPE_ARM_V7S;
-        }
-
         rep << "cpusubtype:" << std::hex << cpusubtype << ';';
     }
 
@@ -4483,7 +4488,7 @@ RNBRemote::HandlePacket_qProcessInfo (const char *p)
     }
 #elif defined (__arm__)
     rep << "ptrsize:4;";
-#elif defined (__arm64__) && defined (ARM_UNIFIED_THREAD_STATE)
+#elif (defined (__arm64__) || defined (__aarch64__)) && defined (ARM_UNIFIED_THREAD_STATE)
     nub_thread_t thread = DNBProcessGetCurrentThreadMachPort (pid);
     kern_return_t kr;
     arm_unified_thread_state_t gp_regs;

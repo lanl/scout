@@ -174,7 +174,7 @@ public:
     void BuildNamespaceMap (const clang::NamespaceDecl *decl);
     
     //
-    // Comleters for maps
+    // Completers for maps
     //
     
     class MapCompleter 

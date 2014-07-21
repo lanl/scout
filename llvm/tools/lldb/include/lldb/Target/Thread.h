@@ -966,6 +966,17 @@ public:
     GetReturnValueObject ();
 
     //------------------------------------------------------------------
+    /// Gets the outer-most expression variable from the completed plans
+    ///
+    /// @return
+    ///     A ClangExpressionVariableSP, either empty if there is no
+    ///     plan completed an expression during the current stop
+    ///     or the expression variable that was made for the completed expression.
+    //------------------------------------------------------------------
+    lldb::ClangExpressionVariableSP
+    GetExpressionVariable ();
+
+    //------------------------------------------------------------------
     ///  Checks whether the given plan is in the completed plans for this
     ///  stop.
     ///
@@ -1296,7 +1307,7 @@ protected:
     int                 m_resume_signal;        ///< The signal that should be used when continuing this thread.
     lldb::StateType     m_resume_state;         ///< This state is used to force a thread to be suspended from outside the ThreadPlan logic.
     lldb::StateType     m_temporary_resume_state; ///< This state records what the thread was told to do by the thread plan logic for the current resume.
-                                                  /// It gets set in Thread::ShoudResume.
+                                                  /// It gets set in Thread::ShouldResume.
     std::unique_ptr<lldb_private::Unwind> m_unwinder_ap;
     bool                m_destroy_called;       // This is used internally to make sure derived Thread classes call DestroyThread.
     LazyBool            m_override_should_notify;

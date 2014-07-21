@@ -46,6 +46,7 @@ namespace {
 const char *const LLDB_NT_OWNER_FREEBSD = "FreeBSD";
 const char *const LLDB_NT_OWNER_GNU     = "GNU";
 const char *const LLDB_NT_OWNER_NETBSD  = "NetBSD";
+const char *const LLDB_NT_OWNER_CSR     = "csr";
 
 // ELF note type definitions
 const elf_word LLDB_NT_FREEBSD_ABI_TAG  = 0x01;
@@ -458,7 +459,7 @@ ObjectFileELF::CalculateELFNotesSegmentsCRC32 (const ProgramHeaderColl& program_
             if (segment_data.SetData(object_data, ph_offset, ph_size) != ph_size)
             {
                 // The ELF program header contained incorrect data,
-                // prabably corefile is incomplete or corrupted.
+                // probably corefile is incomplete or corrupted.
                 break;
             }
 
@@ -605,7 +606,7 @@ ObjectFileELF::GetModuleSpecifications (const lldb_private::FileSpec& file,
                                                               (file.GetByteSize()-file_offset)/1024);
 
                             // For core files - which usually don't happen to have a gnu_debuglink,
-                            // and are pretty bulky - calulating whole contents crc32 would be too much of luxury.
+                            // and are pretty bulky - calculating whole contents crc32 would be too much of luxury.
                             // Thus we will need to fallback to something simpler.
                             if (header.e_type == llvm::ELF::ET_CORE)
                             {
@@ -1221,6 +1222,24 @@ ObjectFileELF::RefineModuleDetailsFromNote (lldb_private::DataExtractor &data, l
             if (log)
                 log->Printf ("ObjectFileELF::%s detected NetBSD, min version constant %" PRIu32, __FUNCTION__, version_info);
         }
+        // Process CSR kalimba notes
+        else if ((note.n_type == LLDB_NT_GNU_ABI_TAG) &&
+                (note.n_name == LLDB_NT_OWNER_CSR))
+        {
+            // We'll consume the payload below.
+            processed = true;
+            arch_spec.GetTriple().setOS(llvm::Triple::OSType::UnknownOS);
+            arch_spec.GetTriple().setVendor(llvm::Triple::VendorType::CSR);
+
+            // TODO At some point the description string could be processed.
+            // It could provide a steer towards the kalimba variant which
+            // this ELF targets.
+            if(note.n_descsz)
+            {
+                const char *cstr = data.GetCStr(&offset, llvm::RoundUpToAlignment (note.n_descsz, 4));
+                (void)cstr;
+            }
+        }
 
         if (!processed)
             offset += llvm::RoundUpToAlignment(note.n_descsz, 4);
@@ -1242,18 +1261,39 @@ ObjectFileELF::GetSectionHeaderInfo(SectionHeaderColl &section_headers,
                                     uint32_t &gnu_debuglink_crc,
                                     ArchSpec &arch_spec)
 {
-    // Only intialize the arch_spec to okay defaults if they're not already set.
+    // Don't reparse the section headers if we already did that.
+    if (!section_headers.empty())
+        return section_headers.size();
+
+    // Only initialize the arch_spec to okay defaults if they're not already set.
     // We'll refine this with note data as we parse the notes.
     if (arch_spec.GetTriple ().getOS () == llvm::Triple::OSType::UnknownOS)
     {
         arch_spec.SetArchitecture (eArchTypeELF, header.e_machine, LLDB_INVALID_CPUTYPE);
-        arch_spec.GetTriple().setOSName (Host::GetOSString().GetCString());
-        arch_spec.GetTriple().setVendorName(Host::GetVendorString().GetCString());
+        switch (arch_spec.GetAddressByteSize())
+        {
+        case 4:
+            {
+                const ArchSpec host_arch32 = Host::GetArchitecture (Host::eSystemDefaultArchitecture32);
+                if (host_arch32.GetCore() == arch_spec.GetCore())
+                {
+                    arch_spec.GetTriple().setOSName (Host::GetOSString().GetCString());
+                    arch_spec.GetTriple().setVendorName(Host::GetVendorString().GetCString());
+                }
+            }
+            break;
+        case 8:
+            {
+                const ArchSpec host_arch64 = Host::GetArchitecture (Host::eSystemDefaultArchitecture64);
+                if (host_arch64.GetCore() == arch_spec.GetCore())
+                {
+                    arch_spec.GetTriple().setOSName (Host::GetOSString().GetCString());
+                    arch_spec.GetTriple().setVendorName(Host::GetVendorString().GetCString());
+                }
+            }
+            break;
+        }
     }
-
-    // We have already parsed the section headers
-    if (!section_headers.empty())
-        return section_headers.size();
 
     // If there are no section headers we are done.
     if (header.e_shnum == 0)
@@ -2569,8 +2609,11 @@ ObjectFileELF::GetArchitecture (ArchSpec &arch)
     if (!ParseHeader())
         return false;
 
-    // Allow elf notes to be parsed which may affect the detected architecture.
-    ParseSectionHeaders();
+    if (m_section_headers.empty())
+    {
+        // Allow elf notes to be parsed which may affect the detected architecture.
+        ParseSectionHeaders();
+    }
 
     arch = m_arch_spec;
     return true;
