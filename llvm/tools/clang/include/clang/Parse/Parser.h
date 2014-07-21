@@ -176,6 +176,7 @@ class Parser : public CodeCompletionHandler {
   std::unique_ptr<PragmaHandler> MSSection;
   std::unique_ptr<PragmaHandler> OptimizeHandler;
   std::unique_ptr<PragmaHandler> LoopHintHandler;
+  std::unique_ptr<PragmaHandler> UnrollHintHandler;
 
   std::unique_ptr<CommentHandler> CommentSemaHandler;
 
@@ -540,7 +541,7 @@ private:
   StmtResult HandlePragmaCaptured();
 
   /// \brief Handle the annotation token produced for
-  /// #pragma vectorize...
+  /// #pragma clang loop and #pragma unroll.
   LoopHint HandlePragmaLoopHint();
 
   /// GetLookAheadToken - This peeks ahead N tokens and returns that token
