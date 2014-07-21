@@ -11,4 +11,3 @@ Directory descriptions:
    llvm    - scout-aware versions of llvm and clang
    test    - regressions related scout programs 
    tools   - various useful tools and command line programs
-
