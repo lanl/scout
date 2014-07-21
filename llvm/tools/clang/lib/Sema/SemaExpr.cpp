@@ -226,8 +226,8 @@ static void diagnoseUseOfInternalDeclInInlineFunction(Sema &S,
   if (!DowngradeWarning && UsedFn)
     DowngradeWarning = UsedFn->isInlined() || UsedFn->hasAttr<ConstAttr>();
 
-  S.Diag(Loc, DowngradeWarning ? diag::ext_internal_in_extern_inline
-                               : diag::warn_internal_in_extern_inline)
+  S.Diag(Loc, DowngradeWarning ? diag::ext_internal_in_extern_inline_quiet
+                               : diag::ext_internal_in_extern_inline)
     << /*IsVar=*/!UsedFn << D;
 
   S.MaybeSuggestAddingStaticToDecl(Current);
@@ -2114,7 +2114,7 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
         return E;
     }
 
-    // Don't diagnose an empty lookup for inline assmebly.
+    // Don't diagnose an empty lookup for inline assembly.
     if (IsInlineAsmIdentifier)
       return ExprError();
 
@@ -5573,7 +5573,7 @@ static QualType checkConditionalPointerCompatibility(Sema &S, ExprResult &LHS,
   QualType CompositeTy = S.Context.mergeTypes(lhptee, rhptee);
 
   if (CompositeTy.isNull()) {
-    S.Diag(Loc, diag::warn_typecheck_cond_incompatible_pointers)
+    S.Diag(Loc, diag::ext_typecheck_cond_incompatible_pointers)
       << LHSTy << RHSTy << LHS.get()->getSourceRange()
       << RHS.get()->getSourceRange();
     // In this situation, we assume void* type. No especially good
@@ -5703,7 +5703,7 @@ static bool checkPointerIntegerMismatch(Sema &S, ExprResult &Int,
   Expr *Expr1 = IsIntFirstExpr ? Int.get() : PointerExpr;
   Expr *Expr2 = IsIntFirstExpr ? PointerExpr : Int.get();
 
-  S.Diag(Loc, diag::warn_typecheck_cond_pointer_integer_mismatch)
+  S.Diag(Loc, diag::ext_typecheck_cond_pointer_integer_mismatch)
     << Expr1->getType() << Expr2->getType()
     << Expr1->getSourceRange() << Expr2->getSourceRange();
   Int = S.ImpCastExprToType(Int.get(), PointerExpr->getType(),
@@ -7720,7 +7720,7 @@ static bool hasIsEqualMethod(Sema &S, const Expr *LHS, const Expr *RHS) {
   if (!Method)
     return false;
 
-  QualType T = Method->param_begin()[0]->getType();
+  QualType T = Method->parameters()[0]->getType();
   if (!T->isObjCObjectPointerType())
     return false;
 
@@ -10302,8 +10302,8 @@ ExprResult Sema::BuildBuiltinOffsetOf(SourceLocation BuiltinLoc,
     if (CXXRecordDecl *CRD = dyn_cast<CXXRecordDecl>(RD)) {
       bool IsSafe = LangOpts.CPlusPlus11? CRD->isStandardLayout() : CRD->isPOD();
       unsigned DiagID =
-        LangOpts.CPlusPlus11? diag::warn_offsetof_non_standardlayout_type
-                            : diag::warn_offsetof_non_pod_type;
+        LangOpts.CPlusPlus11? diag::ext_offsetof_non_standardlayout_type
+                            : diag::ext_offsetof_non_pod_type;
 
       if (!IsSafe && !DidWarnAboutNonPOD &&
           DiagRuntimeBehavior(BuiltinLoc, nullptr,
@@ -11471,8 +11471,6 @@ void Sema::MarkFunctionReferenced(SourceLocation Loc, FunctionDecl *Func) {
     } else if (Constructor->getInheritedConstructor()) {
       DefineInheritingConstructor(Loc, Constructor);
     }
-
-    MarkVTableUsed(Loc, Constructor->getParent());
   } else if (CXXDestructorDecl *Destructor =
                  dyn_cast<CXXDestructorDecl>(Func)) {
     Destructor = cast<CXXDestructorDecl>(Destructor->getFirstDecl());
@@ -13511,9 +13509,22 @@ ExprResult Sema::CheckPlaceholderExpr(Expr *E) {
   case BuiltinType::PseudoObject:
     return checkPseudoObjectRValue(E);
 
-  case BuiltinType::BuiltinFn:
+  case BuiltinType::BuiltinFn: {
+    // Accept __noop without parens by implicitly converting it to a call expr.
+    auto *DRE = dyn_cast<DeclRefExpr>(E->IgnoreParenImpCasts());
+    if (DRE) {
+      auto *FD = cast<FunctionDecl>(DRE->getDecl());
+      if (FD->getBuiltinID() == Builtin::BI__noop) {
+        E = ImpCastExprToType(E, Context.getPointerType(FD->getType()),
+                              CK_BuiltinFnToFnPtr).get();
+        return new (Context) CallExpr(Context, E, None, Context.IntTy,
+                                      VK_RValue, SourceLocation());
+      }
+    }
+
     Diag(E->getLocStart(), diag::err_builtin_fn_use);
     return ExprError();
+  }
 
   // Everything else should be impossible.
 #define BUILTIN_TYPE(Id, SingletonId) \

@@ -108,7 +108,8 @@ bool ContinuationIndenter::canBreak(const LineState &State) {
   //   ...
   // As they hide "DoSomething" and are generally bad for readability.
   if (Previous.opensScope() && Previous.isNot(tok::l_brace) &&
-      State.LowestLevelOnLine < State.StartOfLineLevel)
+      State.LowestLevelOnLine < State.StartOfLineLevel &&
+      State.LowestLevelOnLine < Current.NestingLevel)
     return false;
   if (Current.isMemberAccess() && State.Stack.back().ContainsUnwrappedBuilder)
     return false;
@@ -203,10 +204,12 @@ bool ContinuationIndenter::mustBreak(const LineState &State) {
       !Current.isTrailingComment())
     return true;
 
-  if ((Current.Type == TT_StartOfName || Current.is(tok::kw_operator)) &&
-      State.Line->MightBeFunctionDecl &&
-      State.Stack.back().BreakBeforeParameter && Current.NestingLevel == 0)
+  // If the return type spans multiple lines, wrap before the function name.
+  if ((Current.Type == TT_FunctionDeclarationName ||
+       Current.is(tok::kw_operator)) &&
+      State.Stack.back().BreakBeforeParameter)
     return true;
+
   if (startsSegmentOfBuilderTypeCall(Current) &&
       (State.Stack.back().CallContinuation != 0 ||
        (State.Stack.back().BreakBeforeParameter &&
@@ -518,11 +521,9 @@ unsigned ContinuationIndenter::getNewLineColumn(const LineState &State) {
     return State.Stack.back().VariablePos;
   if ((PreviousNonComment && (PreviousNonComment->ClosesTemplateDeclaration ||
                               PreviousNonComment->Type == TT_AttributeParen)) ||
-      ((NextNonComment->Type == TT_StartOfName ||
-        NextNonComment->is(tok::kw_operator)) &&
-       Current.NestingLevel == 0 &&
-       (!Style.IndentFunctionDeclarationAfterType ||
-        State.Line->StartsDefinition)))
+      (!Style.IndentWrappedFunctionNames &&
+       (NextNonComment->is(tok::kw_operator) ||
+        NextNonComment->Type == TT_FunctionDeclarationName)))
     return std::max(State.Stack.back().LastSpace, State.Stack.back().Indent);
   if (NextNonComment->Type == TT_SelectorName) {
     if (!State.Stack.back().ObjCSelectorNameFound) {

@@ -3,8 +3,8 @@ add_subdirectory(Scout)
  # +========================================================================+
 
 set(LLVM_LINK_COMPONENTS
-  MCParser
   MC
+  MCParser
   Support
   )
 
@@ -29,8 +29,8 @@ add_clang_library(clangParse
   # +===== Scout ============================================================+
   scoutParse
   # +========================================================================+
-  clangBasic
   clangAST
+  clangBasic
   clangLex
   clangSema
   )

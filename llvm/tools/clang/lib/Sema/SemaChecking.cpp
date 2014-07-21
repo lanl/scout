@@ -189,6 +189,10 @@ Sema::CheckBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
     if (SemaBuiltinPrefetch(TheCall))
       return ExprError();
     break;
+  case Builtin::BI__assume:
+    if (SemaBuiltinAssume(TheCall))
+      return ExprError();
+    break;
   case Builtin::BI__builtin_object_size:
     if (SemaBuiltinConstantArgRange(TheCall, 1, 0, 3))
       return ExprError();
@@ -500,12 +504,18 @@ bool Sema::CheckNeonBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
 bool Sema::CheckARMBuiltinExclusiveCall(unsigned BuiltinID, CallExpr *TheCall,
                                         unsigned MaxWidth) {
   assert((BuiltinID == ARM::BI__builtin_arm_ldrex ||
+          BuiltinID == ARM::BI__builtin_arm_ldaex ||
           BuiltinID == ARM::BI__builtin_arm_strex ||
+          BuiltinID == ARM::BI__builtin_arm_stlex ||
           BuiltinID == AArch64::BI__builtin_arm_ldrex ||
-          BuiltinID == AArch64::BI__builtin_arm_strex) &&
+          BuiltinID == AArch64::BI__builtin_arm_ldaex ||
+          BuiltinID == AArch64::BI__builtin_arm_strex ||
+          BuiltinID == AArch64::BI__builtin_arm_stlex) &&
          "unexpected ARM builtin");
   bool IsLdrex = BuiltinID == ARM::BI__builtin_arm_ldrex ||
-                 BuiltinID == AArch64::BI__builtin_arm_ldrex;
+                 BuiltinID == ARM::BI__builtin_arm_ldaex ||
+                 BuiltinID == AArch64::BI__builtin_arm_ldrex ||
+                 BuiltinID == AArch64::BI__builtin_arm_ldaex;
 
   DeclRefExpr *DRE =cast<DeclRefExpr>(TheCall->getCallee()->IgnoreParenCasts());
 
@@ -612,15 +622,17 @@ bool Sema::CheckARMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
   llvm::APSInt Result;
 
   if (BuiltinID == ARM::BI__builtin_arm_ldrex ||
-      BuiltinID == ARM::BI__builtin_arm_strex) {
+      BuiltinID == ARM::BI__builtin_arm_ldaex ||
+      BuiltinID == ARM::BI__builtin_arm_strex ||
+      BuiltinID == ARM::BI__builtin_arm_stlex) {
     return CheckARMBuiltinExclusiveCall(BuiltinID, TheCall, 64);
   }
 
   if (CheckNeonBuiltinFunctionCall(BuiltinID, TheCall))
     return true;
 
-  // For NEON intrinsics which take an immediate value as part of the
-  // instruction, range check them here.
+  // For intrinsics which take an immediate value as part of the instruction,
+  // range check them here.
   unsigned i = 0, l = 0, u = 0;
   switch (BuiltinID) {
   default: return false;
@@ -629,7 +641,8 @@ bool Sema::CheckARMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
   case ARM::BI__builtin_arm_vcvtr_f:
   case ARM::BI__builtin_arm_vcvtr_d: i = 1; u = 1; break;
   case ARM::BI__builtin_arm_dmb:
-  case ARM::BI__builtin_arm_dsb: l = 0; u = 15; break;
+  case ARM::BI__builtin_arm_dsb:
+  case ARM::BI__builtin_arm_isb: l = 0; u = 15; break;
   }
 
   // FIXME: VFP Intrinsics should error if VFP not present.
@@ -641,14 +654,27 @@ bool Sema::CheckAArch64BuiltinFunctionCall(unsigned BuiltinID,
   llvm::APSInt Result;
 
   if (BuiltinID == AArch64::BI__builtin_arm_ldrex ||
-      BuiltinID == AArch64::BI__builtin_arm_strex) {
+      BuiltinID == AArch64::BI__builtin_arm_ldaex ||
+      BuiltinID == AArch64::BI__builtin_arm_strex ||
+      BuiltinID == AArch64::BI__builtin_arm_stlex) {
     return CheckARMBuiltinExclusiveCall(BuiltinID, TheCall, 128);
   }
 
   if (CheckNeonBuiltinFunctionCall(BuiltinID, TheCall))
     return true;
 
-  return false;
+  // For intrinsics which take an immediate value as part of the instruction,
+  // range check them here.
+  unsigned i = 0, l = 0, u = 0;
+  switch (BuiltinID) {
+  default: return false;
+  case AArch64::BI__builtin_arm_dmb:
+  case AArch64::BI__builtin_arm_dsb:
+  case AArch64::BI__builtin_arm_isb: l = 0; u = 15; break;
+  }
+
+  // FIXME: VFP Intrinsics should error if VFP not present.
+  return SemaBuiltinConstantArgRange(TheCall, i, l, u + l);
 }
 
 bool Sema::CheckMipsBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
@@ -1941,6 +1967,20 @@ bool Sema::SemaBuiltinPrefetch(CallExpr *TheCall) {
   for (unsigned i = 1; i != NumArgs; ++i)
     if (SemaBuiltinConstantArgRange(TheCall, i, 0, i == 1 ? 1 : 3))
       return true;
+
+  return false;
+}
+
+/// SemaBuiltinAssume - Handle __assume (MS Extension).
+// __assume does not evaluate its arguments, and should warn if its argument
+// has side effects.
+bool Sema::SemaBuiltinAssume(CallExpr *TheCall) {
+  Expr *Arg = TheCall->getArg(0);
+  if (Arg->isInstantiationDependent()) return false;
+
+  if (Arg->HasSideEffects(Context))
+    return Diag(Arg->getLocStart(), diag::warn_assume_side_effects)
+      << Arg->getSourceRange();
 
   return false;
 }
@@ -3870,7 +3910,8 @@ static void emitReplacement(Sema &S, SourceLocation Loc, SourceRange Range,
   if (!EmitHeaderHint)
     return;
 
-  S.Diag(Loc, diag::note_please_include_header) << HeaderName << FunctionName;
+  S.Diag(Loc, diag::note_include_header_or_declare) << HeaderName
+                                                    << FunctionName;
 }
 
 static bool IsFunctionStdAbs(const FunctionDecl *FDecl) {
@@ -3910,8 +3951,8 @@ void Sema::CheckAbsoluteValueFunction(const CallExpr *Call,
   QualType ArgType = Call->getArg(0)->IgnoreParenImpCasts()->getType();
   QualType ParamType = Call->getArg(0)->getType();
 
-  // Unsigned types can not be negative.  Suggest to drop the absolute value
-  // function.
+  // Unsigned types cannot be negative.  Suggest removing the absolute value
+  // function call.
   if (ArgType->isUnsignedIntegerType()) {
     const char *FunctionName =
         IsStdAbs ? "std::abs" : Context.BuiltinInfo.GetName(AbsKind);
@@ -4627,7 +4668,6 @@ static Expr *EvalAddr(Expr *E, SmallVectorImpl<DeclRefExpr *> &refVars,
   case Stmt::CXXReinterpretCastExprClass: {
     Expr* SubExpr = cast<CastExpr>(E)->getSubExpr();
     switch (cast<CastExpr>(E)->getCastKind()) {
-    case CK_BitCast:
     case CK_LValueToRValue:
     case CK_NoOp:
     case CK_BaseToDerived:
@@ -4641,6 +4681,14 @@ static Expr *EvalAddr(Expr *E, SmallVectorImpl<DeclRefExpr *> &refVars,
 
     case CK_ArrayToPointerDecay:
       return EvalVal(SubExpr, refVars, ParentDecl);
+
+    case CK_BitCast:
+      if (SubExpr->getType()->isAnyPointerType() ||
+          SubExpr->getType()->isBlockPointerType() ||
+          SubExpr->getType()->isObjCQualifiedIdType())
+        return EvalAddr(SubExpr, refVars, ParentDecl);
+      else
+        return nullptr;
 
     default:
       return nullptr;

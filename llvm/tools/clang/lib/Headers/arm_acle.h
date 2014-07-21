@@ -30,8 +30,49 @@
 
 #include <stdint.h>
 
-/* Miscellaneous data-processing intrinsics */
+#if defined(__cplusplus)
+extern "C" {
+#endif
 
+/* 8 SYNCHRONIZATION, BARRIER AND HINT INTRINSICS */
+/* 8.3 Memory barriers */
+#if !defined(_MSC_VER)
+#define __dmb(i) __builtin_arm_dmb(i)
+#define __dsb(i) __builtin_arm_dsb(i)
+#define __isb(i) __builtin_arm_isb(i)
+#endif
+
+/* 8.4 Hints */
+
+#if !defined(_MSC_VER)
+static __inline__ void __attribute__((always_inline, nodebug)) __wfi(void) {
+  __builtin_arm_wfi();
+}
+
+static __inline__ void __attribute__((always_inline, nodebug)) __wfe(void) {
+  __builtin_arm_wfe();
+}
+
+static __inline__ void __attribute__((always_inline, nodebug)) __sev(void) {
+  __builtin_arm_sev();
+}
+
+static __inline__ void __attribute__((always_inline, nodebug)) __sevl(void) {
+  __builtin_arm_sevl();
+}
+
+static __inline__ void __attribute__((always_inline, nodebug)) __yield(void) {
+  __builtin_arm_yield();
+}
+#endif
+
+/* 8.7 NOP */
+static __inline__ void __attribute__((always_inline, nodebug)) __nop(void) {
+  __builtin_arm_nop();
+}
+
+/* 9 DATA-PROCESSING INTRINSICS */
+/* 9.2 Miscellaneous data-processing intrinsics */
 static __inline__ uint32_t __attribute__((always_inline, nodebug))
   __clz(uint32_t t) {
   return __builtin_clz(t);
@@ -70,17 +111,20 @@ static __inline__ uint64_t __attribute__((always_inline, nodebug))
   return __builtin_bswap64(t);
 }
 
-
 /*
- * Saturating intrinsics
+ * 9.4 Saturating intrinsics
  *
  * FIXME: Change guard to their corrosponding __ARM_FEATURE flag when Q flag
  * intrinsics are implemented and the flag is enabled.
  */
+/* 9.4.1 Width-specified saturation intrinsics */
 #if __ARM_32BIT_STATE
 #define __ssat(x, y) __builtin_arm_ssat(x, y)
 #define __usat(x, y) __builtin_arm_usat(x, y)
+#endif
 
+/* 9.4.2 Saturating addition and subtraction intrinsics */
+#if __ARM_32BIT_STATE
 static __inline__ int32_t __attribute__((always_inline, nodebug))
   __qadd(int32_t t, int32_t v) {
   return __builtin_arm_qadd(t, v);
@@ -90,9 +134,14 @@ static __inline__ int32_t __attribute__((always_inline, nodebug))
   __qsub(int32_t t, int32_t v) {
   return __builtin_arm_qsub(t, v);
 }
+
+static __inline__ int32_t __attribute__((always_inline, nodebug))
+__qdbl(int32_t t) {
+  return __builtin_arm_qadd(t, t);
+}
 #endif
 
-/* CRC32 intrinsics */
+/* 9.7 CRC32 intrinsics */
 #if __ARM_FEATURE_CRC32
 static __inline__ uint32_t __attribute__((always_inline, nodebug))
   __crc32b(uint32_t a, uint8_t b) {
@@ -132,6 +181,10 @@ static __inline__ uint32_t __attribute__((always_inline, nodebug))
 static __inline__ uint32_t __attribute__((always_inline, nodebug))
   __crc32cd(uint32_t a, uint64_t b) {
   return __builtin_arm_crc32cd(a, b);
+}
+#endif
+
+#if defined(__cplusplus)
 }
 #endif
 

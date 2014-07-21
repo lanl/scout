@@ -83,7 +83,7 @@ public:
   };
 
 private:
-  IntrusiveRefCntPtr<LangOptions>         LangOpts;
+  std::shared_ptr<LangOptions>            LangOpts;
   IntrusiveRefCntPtr<DiagnosticsEngine>   Diagnostics;
   IntrusiveRefCntPtr<FileManager>         FileMgr;
   IntrusiveRefCntPtr<SourceManager>       SourceMgr;
@@ -91,7 +91,7 @@ private:
   IntrusiveRefCntPtr<TargetInfo>          Target;
   IntrusiveRefCntPtr<Preprocessor>        PP;
   IntrusiveRefCntPtr<ASTContext>          Ctx;
-  IntrusiveRefCntPtr<TargetOptions>       TargetOpts;
+  std::shared_ptr<TargetOptions>          TargetOpts;
   IntrusiveRefCntPtr<HeaderSearchOptions> HSOpts;
   IntrusiveRefCntPtr<ASTReader> Reader;
   bool HadModuleLoaderFatalFailure;

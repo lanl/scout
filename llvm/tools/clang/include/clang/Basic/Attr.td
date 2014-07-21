@@ -855,7 +855,7 @@ def NonNull : InheritableAttr {
 
 def ReturnsNonNull : InheritableAttr {
   let Spellings = [GCC<"returns_nonnull">];
-  let Subjects = SubjectList<[ObjCMethod, HasFunctionProto], WarnDiag,
+  let Subjects = SubjectList<[ObjCMethod, Function], WarnDiag,
                              "ExpectedFunctionOrMethod">;
   let Documentation = [Undocumented];
 }
@@ -987,6 +987,13 @@ def ObjCDesignatedInitializer : Attr {
   let Subjects = SubjectList<[ObjCInterfaceDeclInitMethod], ErrorDiag,
                              "ExpectedObjCInterfaceDeclInitMethod">;
   let Documentation = [Undocumented];
+}
+
+def ObjCRuntimeName : Attr {
+  let Spellings = [GNU<"objc_runtime_name">];
+  let Subjects = SubjectList<[ObjCInterface, ObjCProtocol], ErrorDiag>;
+  let Args = [StringArgument<"MetadataName">];
+  let Documentation = [ObjCRuntimeNameDocs];
 }
 
 def OptimizeNone : InheritableAttr {

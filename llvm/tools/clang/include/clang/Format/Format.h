@@ -126,6 +126,10 @@ struct FormatStyle {
   /// Switch statement body is always indented one level more than case labels.
   bool IndentCaseLabels;
 
+  /// \brief Indent if a function definition or declaration is wrapped after the
+  /// type.
+  bool IndentWrappedFunctionNames;
+
   /// \brief Different ways to indent namespace contents.
   enum NamespaceIndentationKind {
     /// Don't indent in namespaces.
@@ -293,10 +297,6 @@ struct FormatStyle {
   /// a zero-length name is assumed.
   bool Cpp11BracedListStyle;
 
-  /// \brief If \c true, indent when breaking function declarations which
-  /// are not also definitions after the type.
-  bool IndentFunctionDeclarationAfterType;
-
   /// \brief If \c true, spaces will be inserted after '(' and before ')'.
   bool SpacesInParentheses;
 
@@ -387,8 +387,7 @@ struct FormatStyle {
            ExperimentalAutoDetectBinPacking ==
                R.ExperimentalAutoDetectBinPacking &&
            IndentCaseLabels == R.IndentCaseLabels &&
-           IndentFunctionDeclarationAfterType ==
-               R.IndentFunctionDeclarationAfterType &&
+           IndentWrappedFunctionNames == R.IndentWrappedFunctionNames &&
            IndentWidth == R.IndentWidth && Language == R.Language &&
            MaxEmptyLinesToKeep == R.MaxEmptyLinesToKeep &&
            KeepEmptyLinesAtTheStartOfBlocks ==

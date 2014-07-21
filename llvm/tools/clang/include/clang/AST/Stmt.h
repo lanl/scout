@@ -1901,22 +1901,24 @@ class SEHTryStmt : public Stmt {
   bool            IsCXXTry;
   SourceLocation  TryLoc;
   Stmt           *Children[2];
+  int             HandlerIndex;
+  int             HandlerParentIndex;
 
   enum { TRY = 0, HANDLER = 1 };
 
   SEHTryStmt(bool isCXXTry, // true if 'try' otherwise '__try'
-             SourceLocation TryLoc,
-             Stmt *TryBlock,
-             Stmt *Handler);
+             SourceLocation TryLoc, Stmt *TryBlock, Stmt *Handler,
+             int HandlerIndex, int HandlerParentIndex);
 
   friend class ASTReader;
   friend class ASTStmtReader;
   explicit SEHTryStmt(EmptyShell E) : Stmt(SEHTryStmtClass, E) { }
 
 public:
-  static SEHTryStmt* Create(const ASTContext &C, bool isCXXTry,
+  static SEHTryStmt *Create(const ASTContext &C, bool isCXXTry,
                             SourceLocation TryLoc, Stmt *TryBlock,
-                            Stmt *Handler);
+                            Stmt *Handler, int HandlerIndex,
+                            int HandlerParentIndex);
 
   SourceLocation getLocStart() const LLVM_READONLY { return getTryLoc(); }
   SourceLocation getLocEnd() const LLVM_READONLY { return getEndLoc(); }
@@ -1943,6 +1945,34 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == SEHTryStmtClass;
   }
+
+  int getHandlerIndex() const { return HandlerIndex; }
+  int getHandlerParentIndex() const { return HandlerParentIndex; }
+};
+
+/// Represents a __leave statement.
+///
+class SEHLeaveStmt : public Stmt {
+  SourceLocation LeaveLoc;
+public:
+  explicit SEHLeaveStmt(SourceLocation LL)
+      : Stmt(SEHLeaveStmtClass), LeaveLoc(LL) {}
+
+  /// \brief Build an empty __leave statement.
+  explicit SEHLeaveStmt(EmptyShell Empty) : Stmt(SEHLeaveStmtClass, Empty) { }
+
+  SourceLocation getLeaveLoc() const { return LeaveLoc; }
+  void setLeaveLoc(SourceLocation L) { LeaveLoc = L; }
+
+  SourceLocation getLocStart() const LLVM_READONLY { return LeaveLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return LeaveLoc; }
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == SEHLeaveStmtClass;
+  }
+
+  // Iterators
+  child_range children() { return child_range(); }
 };
 
 /// \brief This captures a statement into a function. For example, the following

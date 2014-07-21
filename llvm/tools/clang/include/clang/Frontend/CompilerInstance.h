@@ -399,7 +399,7 @@ public:
   }
 
   void resetAndLeakFileManager() {
-    BuryPointer(FileMgr.getPtr());
+    BuryPointer(FileMgr.get());
     FileMgr.resetWithoutRelease();
   }
 
@@ -419,7 +419,7 @@ public:
   }
 
   void resetAndLeakSourceManager() {
-    BuryPointer(SourceMgr.getPtr());
+    BuryPointer(SourceMgr.get());
     SourceMgr.resetWithoutRelease();
   }
 
@@ -439,7 +439,7 @@ public:
   }
 
   void resetAndLeakPreprocessor() {
-    BuryPointer(PP.getPtr());
+    BuryPointer(PP.get());
     PP.resetWithoutRelease();
   }
 
@@ -458,7 +458,7 @@ public:
   }
 
   void resetAndLeakASTContext() {
-    BuryPointer(Context.getPtr());
+    BuryPointer(Context.get());
     Context.resetWithoutRelease();
   }
 

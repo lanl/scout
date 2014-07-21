@@ -412,7 +412,7 @@ CodeGenFunction::EmitReferenceBindingToExpr(const Expr *E) {
   assert(LV.isSimple());
   llvm::Value *Value = LV.getAddress();
 
-  if (SanitizePerformTypeCheck && !E->getType()->isFunctionType()) {
+  if (sanitizePerformTypeCheck() && !E->getType()->isFunctionType()) {
     // C++11 [dcl.ref]p5 (as amended by core issue 453):
     //   If a glvalue to which a reference is directly bound designates neither
     //   an existing object or function of an appropriate type nor a region of
@@ -446,10 +446,15 @@ static llvm::Value *emitHash16Bytes(CGBuilderTy &Builder, llvm::Value *Low,
   return Builder.CreateMul(B1, KMul);
 }
 
+bool CodeGenFunction::sanitizePerformTypeCheck() const {
+  return SanOpts->Null | SanOpts->Alignment | SanOpts->ObjectSize |
+         SanOpts->Vptr;
+}
+
 void CodeGenFunction::EmitTypeCheck(TypeCheckKind TCK, SourceLocation Loc,
                                     llvm::Value *Address,
                                     QualType Ty, CharUnits Alignment) {
-  if (!SanitizePerformTypeCheck)
+  if (!sanitizePerformTypeCheck())
     return;
 
   // Don't check pointers outside the default address space. The null check
@@ -458,10 +463,12 @@ void CodeGenFunction::EmitTypeCheck(TypeCheckKind TCK, SourceLocation Loc,
   if (Address->getType()->getPointerAddressSpace())
     return;
 
+  SanitizerScope SanScope(this);
+
   llvm::Value *Cond = nullptr;
   llvm::BasicBlock *Done = nullptr;
 
-  if (SanOpts->Null) {
+  if (SanOpts->Null || TCK == TCK_DowncastPointer) {
     // The glvalue must not be an empty glvalue.
     Cond = Builder.CreateICmpNE(
         Address, llvm::Constant::getNullValue(Address->getType()));
@@ -544,44 +551,48 @@ void CodeGenFunction::EmitTypeCheck(TypeCheckKind TCK, SourceLocation Loc,
     llvm::raw_svector_ostream Out(MangledName);
     CGM.getCXXABI().getMangleContext().mangleCXXRTTI(Ty.getUnqualifiedType(),
                                                      Out);
-    llvm::hash_code TypeHash = hash_value(Out.str());
 
-    // Load the vptr, and compute hash_16_bytes(TypeHash, vptr).
-    llvm::Value *Low = llvm::ConstantInt::get(Int64Ty, TypeHash);
-    llvm::Type *VPtrTy = llvm::PointerType::get(IntPtrTy, 0);
-    llvm::Value *VPtrAddr = Builder.CreateBitCast(Address, VPtrTy);
-    llvm::Value *VPtrVal = Builder.CreateLoad(VPtrAddr);
-    llvm::Value *High = Builder.CreateZExt(VPtrVal, Int64Ty);
+    // Blacklist based on the mangled type.
+    if (!CGM.getSanitizerBlacklist().isBlacklistedType(Out.str())) {
+      llvm::hash_code TypeHash = hash_value(Out.str());
 
-    llvm::Value *Hash = emitHash16Bytes(Builder, Low, High);
-    Hash = Builder.CreateTrunc(Hash, IntPtrTy);
+      // Load the vptr, and compute hash_16_bytes(TypeHash, vptr).
+      llvm::Value *Low = llvm::ConstantInt::get(Int64Ty, TypeHash);
+      llvm::Type *VPtrTy = llvm::PointerType::get(IntPtrTy, 0);
+      llvm::Value *VPtrAddr = Builder.CreateBitCast(Address, VPtrTy);
+      llvm::Value *VPtrVal = Builder.CreateLoad(VPtrAddr);
+      llvm::Value *High = Builder.CreateZExt(VPtrVal, Int64Ty);
 
-    // Look the hash up in our cache.
-    const int CacheSize = 128;
-    llvm::Type *HashTable = llvm::ArrayType::get(IntPtrTy, CacheSize);
-    llvm::Value *Cache = CGM.CreateRuntimeVariable(HashTable,
-                                                   "__ubsan_vptr_type_cache");
-    llvm::Value *Slot = Builder.CreateAnd(Hash,
-                                          llvm::ConstantInt::get(IntPtrTy,
-                                                                 CacheSize-1));
-    llvm::Value *Indices[] = { Builder.getInt32(0), Slot };
-    llvm::Value *CacheVal =
-      Builder.CreateLoad(Builder.CreateInBoundsGEP(Cache, Indices));
+      llvm::Value *Hash = emitHash16Bytes(Builder, Low, High);
+      Hash = Builder.CreateTrunc(Hash, IntPtrTy);
 
-    // If the hash isn't in the cache, call a runtime handler to perform the
-    // hard work of checking whether the vptr is for an object of the right
-    // type. This will either fill in the cache and return, or produce a
-    // diagnostic.
-    llvm::Constant *StaticData[] = {
-      EmitCheckSourceLocation(Loc),
-      EmitCheckTypeDescriptor(Ty),
-      CGM.GetAddrOfRTTIDescriptor(Ty.getUnqualifiedType()),
-      llvm::ConstantInt::get(Int8Ty, TCK)
-    };
-    llvm::Value *DynamicData[] = { Address, Hash };
-    EmitCheck(Builder.CreateICmpEQ(CacheVal, Hash),
-              "dynamic_type_cache_miss", StaticData, DynamicData,
-              CRK_AlwaysRecoverable);
+      // Look the hash up in our cache.
+      const int CacheSize = 128;
+      llvm::Type *HashTable = llvm::ArrayType::get(IntPtrTy, CacheSize);
+      llvm::Value *Cache = CGM.CreateRuntimeVariable(HashTable,
+                                                     "__ubsan_vptr_type_cache");
+      llvm::Value *Slot = Builder.CreateAnd(Hash,
+                                            llvm::ConstantInt::get(IntPtrTy,
+                                                                   CacheSize-1));
+      llvm::Value *Indices[] = { Builder.getInt32(0), Slot };
+      llvm::Value *CacheVal =
+        Builder.CreateLoad(Builder.CreateInBoundsGEP(Cache, Indices));
+
+      // If the hash isn't in the cache, call a runtime handler to perform the
+      // hard work of checking whether the vptr is for an object of the right
+      // type. This will either fill in the cache and return, or produce a
+      // diagnostic.
+      llvm::Constant *StaticData[] = {
+        EmitCheckSourceLocation(Loc),
+        EmitCheckTypeDescriptor(Ty),
+        CGM.GetAddrOfRTTIDescriptor(Ty.getUnqualifiedType()),
+        llvm::ConstantInt::get(Int8Ty, TCK)
+      };
+      llvm::Value *DynamicData[] = { Address, Hash };
+      EmitCheck(Builder.CreateICmpEQ(CacheVal, Hash),
+                "dynamic_type_cache_miss", StaticData, DynamicData,
+                CRK_AlwaysRecoverable);
+    }
   }
 
   if (Done) {
@@ -650,6 +661,7 @@ void CodeGenFunction::EmitBoundsCheck(const Expr *E, const Expr *Base,
                                       bool Accessed) {
   assert(SanOpts->ArrayBounds &&
          "should not be called unless adding bounds checks");
+  SanitizerScope SanScope(this);
 
   QualType IndexedType;
   llvm::Value *Bound = getArrayIndexingBound(*this, Base, IndexedType);
@@ -1125,6 +1137,7 @@ llvm::Value *CodeGenFunction::EmitLoadOfScalar(llvm::Value *Addr, bool Volatile,
 
   if ((SanOpts->Bool && hasBooleanRepresentation(Ty)) ||
       (SanOpts->Enum && Ty->getAs<EnumType>())) {
+    SanitizerScope SanScope(this);
     llvm::APInt Min, End;
     if (getRangeForType(*this, Ty, Min, End, true)) {
       --End;
@@ -2141,6 +2154,7 @@ llvm::Constant *CodeGenFunction::EmitCheckTypeDescriptor(QualType T) {
       CGM.getModule(), Descriptor->getType(),
       /*isConstant=*/true, llvm::GlobalVariable::PrivateLinkage, Descriptor);
   GV->setUnnamedAddr(true);
+  CGM.disableSanitizerForGlobal(GV);
 
   // Remember the descriptor for this type.
   CGM.setTypeDescriptorInMap(T, GV);
@@ -2184,14 +2198,23 @@ llvm::Value *CodeGenFunction::EmitCheckValue(llvm::Value *V) {
 /// \endcode
 /// For an invalid SourceLocation, the Filename pointer is null.
 llvm::Constant *CodeGenFunction::EmitCheckSourceLocation(SourceLocation Loc) {
-  PresumedLoc PLoc = getContext().getSourceManager().getPresumedLoc(Loc);
+  llvm::Constant *Filename;
+  int Line, Column;
 
-  llvm::Constant *Data[] = {
-    PLoc.isValid() ? CGM.GetAddrOfConstantCString(PLoc.getFilename(), ".src")
-                   : llvm::Constant::getNullValue(Int8PtrTy),
-    Builder.getInt32(PLoc.isValid() ? PLoc.getLine() : 0),
-    Builder.getInt32(PLoc.isValid() ? PLoc.getColumn() : 0)
-  };
+  PresumedLoc PLoc = getContext().getSourceManager().getPresumedLoc(Loc);
+  if (PLoc.isValid()) {
+    auto FilenameGV = CGM.GetAddrOfConstantCString(PLoc.getFilename(), ".src");
+    CGM.disableSanitizerForGlobal(FilenameGV);
+    Filename = FilenameGV;
+    Line = PLoc.getLine();
+    Column = PLoc.getColumn();
+  } else {
+    Filename = llvm::Constant::getNullValue(Int8PtrTy);
+    Line = Column = 0;
+  }
+
+  llvm::Constant *Data[] = {Filename, Builder.getInt32(Line),
+                            Builder.getInt32(Column)};
 
   return llvm::ConstantStruct::getAnon(Data);
 }
@@ -2201,6 +2224,7 @@ void CodeGenFunction::EmitCheck(llvm::Value *Checked, StringRef CheckName,
                                 ArrayRef<llvm::Value *> DynamicArgs,
                                 CheckRecoverableKind RecoverKind) {
   assert(SanOpts != &SanitizerOptions::Disabled);
+  assert(IsSanitizerScope);
 
   if (CGM.getCodeGenOpts().SanitizeUndefinedTrapOnError) {
     assert (RecoverKind != CRK_AlwaysRecoverable &&
@@ -2227,6 +2251,7 @@ void CodeGenFunction::EmitCheck(llvm::Value *Checked, StringRef CheckName,
       new llvm::GlobalVariable(CGM.getModule(), Info->getType(), false,
                                llvm::GlobalVariable::PrivateLinkage, Info);
   InfoPtr->setUnnamedAddr(true);
+  CGM.disableSanitizerForGlobal(InfoPtr);
 
   SmallVector<llvm::Value *, 4> Args;
   SmallVector<llvm::Type *, 4> ArgTypes;
@@ -2935,7 +2960,7 @@ LValue CodeGenFunction::EmitCastLValue(const CastExpr *E) {
 
     // C++11 [expr.static.cast]p2: Behavior is undefined if a downcast is
     // performed and the object is not of the derived type.
-    if (SanitizePerformTypeCheck)
+    if (sanitizePerformTypeCheck())
       EmitTypeCheck(TCK_DowncastReference, E->getExprLoc(),
                     Derived, E->getType());
 
@@ -3280,6 +3305,7 @@ RValue CodeGenFunction::EmitCall(QualType CalleeType, llvm::Value *Callee,
       (!TargetDecl || !isa<FunctionDecl>(TargetDecl))) {
     if (llvm::Constant *PrefixSig =
             CGM.getTargetCodeGenInfo().getUBSanFunctionSignature(CGM)) {
+      SanitizerScope SanScope(this);
       llvm::Constant *FTRTTIConst =
           CGM.GetAddrOfRTTIDescriptor(QualType(FnType, 0), /*ForEH=*/true);
       llvm::Type *PrefixStructTyElems[] = {

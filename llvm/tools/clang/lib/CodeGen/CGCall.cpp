@@ -1113,6 +1113,8 @@ void CodeGenModule::ConstructAttributeList(const CGFunctionInfo &FI,
     }
     if (TargetDecl->hasAttr<MallocAttr>())
       RetAttrs.addAttribute(llvm::Attribute::NoAlias);
+    if (TargetDecl->hasAttr<ReturnsNonNullAttr>())
+      RetAttrs.addAttribute(llvm::Attribute::NonNull);
   }
 
   if (CodeGenOpts.OptimizeSize)
@@ -1206,8 +1208,14 @@ void CodeGenModule::ConstructAttributeList(const CGFunctionInfo &FI,
     llvm_unreachable("Invalid ABI kind for return argument");
   }
 
-  if (RetTy->isReferenceType())
-    RetAttrs.addAttribute(llvm::Attribute::NonNull);
+  if (const auto *RefTy = RetTy->getAs<ReferenceType>()) {
+    QualType PTy = RefTy->getPointeeType();
+    if (!PTy->isIncompleteType() && PTy->isConstantSizeType())
+      RetAttrs.addDereferenceableAttr(getContext().getTypeSizeInChars(PTy)
+                                        .getQuantity());
+    else if (getContext().getTargetAddressSpace(PTy) == 0)
+      RetAttrs.addAttribute(llvm::Attribute::NonNull);
+  }
 
   if (RetAttrs.hasAttributes())
     PAL.push_back(llvm::
@@ -1297,8 +1305,14 @@ void CodeGenModule::ConstructAttributeList(const CGFunctionInfo &FI,
     }
     }
 
-    if (ParamType->isReferenceType())
-      Attrs.addAttribute(llvm::Attribute::NonNull);
+    if (const auto *RefTy = ParamType->getAs<ReferenceType>()) {
+      QualType PTy = RefTy->getPointeeType();
+      if (!PTy->isIncompleteType() && PTy->isConstantSizeType())
+        Attrs.addDereferenceableAttr(getContext().getTypeSizeInChars(PTy)
+                                       .getQuantity());
+      else if (getContext().getTargetAddressSpace(PTy) == 0)
+        Attrs.addAttribute(llvm::Attribute::NonNull);
+    }
 
     if (Attrs.hasAttributes())
       PAL.push_back(llvm::AttributeSet::get(getLLVMContext(), Index, Attrs));
@@ -1388,6 +1402,10 @@ void CodeGenFunction::EmitFunctionProlog(const CGFunctionInfo &FI,
       ++AI;  // Skip the sret parameter.
   }
 
+  // Get the function-level nonnull attribute if it exists.
+  const NonNullAttr *NNAtt =
+    CurCodeDecl ? CurCodeDecl->getAttr<NonNullAttr>() : nullptr;
+
   // Track if we received the parameter as a pointer (indirect, byval, or
   // inalloca).  If already have a pointer, EmitParmDecl doesn't need to copy it
   // into a local alloca for us.
@@ -1474,6 +1492,49 @@ void CodeGenFunction::EmitFunctionProlog(const CGFunctionInfo &FI,
           ArgI.getDirectOffset() == 0) {
         assert(AI != Fn->arg_end() && "Argument mismatch!");
         llvm::Value *V = AI;
+
+        if (const ParmVarDecl *PVD = dyn_cast<ParmVarDecl>(Arg)) {
+          if ((NNAtt && NNAtt->isNonNull(PVD->getFunctionScopeIndex())) ||
+              PVD->hasAttr<NonNullAttr>())
+            AI->addAttr(llvm::AttributeSet::get(getLLVMContext(),
+                                                AI->getArgNo() + 1,
+                                                llvm::Attribute::NonNull));
+
+          QualType OTy = PVD->getOriginalType();
+          if (const auto *ArrTy =
+              getContext().getAsConstantArrayType(OTy)) {
+            // A C99 array parameter declaration with the static keyword also
+            // indicates dereferenceability, and if the size is constant we can
+            // use the dereferenceable attribute (which requires the size in
+            // bytes).
+            if (ArrTy->getSizeModifier() == ArrayType::Static) {
+              QualType ETy = ArrTy->getElementType();
+              uint64_t ArrSize = ArrTy->getSize().getZExtValue();
+              if (!ETy->isIncompleteType() && ETy->isConstantSizeType() &&
+                  ArrSize) {
+                llvm::AttrBuilder Attrs;
+                Attrs.addDereferenceableAttr(
+                  getContext().getTypeSizeInChars(ETy).getQuantity()*ArrSize);
+                AI->addAttr(llvm::AttributeSet::get(getLLVMContext(),
+                                                    AI->getArgNo() + 1, Attrs));
+              } else if (getContext().getTargetAddressSpace(ETy) == 0) {
+                AI->addAttr(llvm::AttributeSet::get(getLLVMContext(),
+                                                    AI->getArgNo() + 1,
+                                                    llvm::Attribute::NonNull));
+              }
+            }
+          } else if (const auto *ArrTy =
+                     getContext().getAsVariableArrayType(OTy)) {
+            // For C99 VLAs with the static keyword, we don't know the size so
+            // we can't use the dereferenceable attribute, but in addrspace(0)
+            // we know that it must be nonnull.
+            if (ArrTy->getSizeModifier() == VariableArrayType::Static &&
+                !getContext().getTargetAddressSpace(ArrTy->getElementType()))
+              AI->addAttr(llvm::AttributeSet::get(getLLVMContext(),
+                                                  AI->getArgNo() + 1,
+                                                  llvm::Attribute::NonNull));
+          }
+        }
 
         if (Arg->getType().isRestrictQualified())
           AI->addAttr(llvm::AttributeSet::get(getLLVMContext(),
@@ -2866,28 +2927,33 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
 
   if (ArgMemory) {
     llvm::Value *Arg = ArgMemory;
-    llvm::Type *LastParamTy =
-        IRFuncTy->getParamType(IRFuncTy->getNumParams() - 1);
-    if (Arg->getType() != LastParamTy) {
+    if (CallInfo.isVariadic()) {
+      // When passing non-POD arguments by value to variadic functions, we will
+      // end up with a variadic prototype and an inalloca call site.  In such
+      // cases, we can't do any parameter mismatch checks.  Give up and bitcast
+      // the callee.
+      unsigned CalleeAS =
+          cast<llvm::PointerType>(Callee->getType())->getAddressSpace();
+      Callee = Builder.CreateBitCast(
+          Callee, getTypes().GetFunctionType(CallInfo)->getPointerTo(CalleeAS));
+    } else {
+      llvm::Type *LastParamTy =
+          IRFuncTy->getParamType(IRFuncTy->getNumParams() - 1);
+      if (Arg->getType() != LastParamTy) {
 #ifndef NDEBUG
-      // Assert that these structs have equivalent element types.
-      llvm::StructType *FullTy = CallInfo.getArgStruct();
-      llvm::StructType *Prefix = cast<llvm::StructType>(
-          cast<llvm::PointerType>(LastParamTy)->getElementType());
-
-      // For variadic functions, the caller might supply a larger struct than
-      // the callee expects, and that's OK.
-      assert(Prefix->getNumElements() == FullTy->getNumElements() ||
-             (CallInfo.isVariadic() &&
-              Prefix->getNumElements() <= FullTy->getNumElements()));
-
-      for (llvm::StructType::element_iterator PI = Prefix->element_begin(),
-                                              PE = Prefix->element_end(),
-                                              FI = FullTy->element_begin();
-           PI != PE; ++PI, ++FI)
-        assert(*PI == *FI);
+        // Assert that these structs have equivalent element types.
+        llvm::StructType *FullTy = CallInfo.getArgStruct();
+        llvm::StructType *DeclaredTy = cast<llvm::StructType>(
+            cast<llvm::PointerType>(LastParamTy)->getElementType());
+        assert(DeclaredTy->getNumElements() == FullTy->getNumElements());
+        for (llvm::StructType::element_iterator DI = DeclaredTy->element_begin(),
+                                                DE = DeclaredTy->element_end(),
+                                                FI = FullTy->element_begin();
+             DI != DE; ++DI, ++FI)
+          assert(*DI == *FI);
 #endif
-      Arg = Builder.CreateBitCast(Arg, LastParamTy);
+        Arg = Builder.CreateBitCast(Arg, LastParamTy);
+      }
     }
     Args.push_back(Arg);
   }

@@ -4672,8 +4672,13 @@ public:
     // Can't look at 'this' when checking a potential constant expression.
     if (Info.checkingPotentialConstantExpression())
       return false;
-    if (!Info.CurrentCall->This)
-      return Error(E);
+    if (!Info.CurrentCall->This) {
+      if (Info.getLangOpts().CPlusPlus11)
+        Info.Diag(E, diag::note_constexpr_this) << E->isImplicit();
+      else
+        Info.Diag(E);
+      return false;
+    }
     Result = *Info.CurrentCall->This;
     return true;
   }
@@ -6054,7 +6059,8 @@ bool IntExprEvaluator::VisitCallExpr(const CallExpr *E) {
 
   case Builtin::BI__builtin_clz:
   case Builtin::BI__builtin_clzl:
-  case Builtin::BI__builtin_clzll: {
+  case Builtin::BI__builtin_clzll:
+  case Builtin::BI__builtin_clzs: {
     APSInt Val;
     if (!EvaluateInteger(E->getArg(0), Val, Info))
       return false;
@@ -6069,7 +6075,8 @@ bool IntExprEvaluator::VisitCallExpr(const CallExpr *E) {
 
   case Builtin::BI__builtin_ctz:
   case Builtin::BI__builtin_ctzl:
-  case Builtin::BI__builtin_ctzll: {
+  case Builtin::BI__builtin_ctzll:
+  case Builtin::BI__builtin_ctzs: {
     APSInt Val;
     if (!EvaluateInteger(E->getArg(0), Val, Info))
       return false;
@@ -7951,6 +7958,16 @@ public:
       return ExprEvaluatorBaseTy::VisitCastExpr(E);
     case CK_ToVoid:
       VisitIgnoredValue(E->getSubExpr());
+      return true;
+    }
+  }
+
+  bool VisitCallExpr(const CallExpr *E) {
+    switch (E->getBuiltinCallee()) {
+    default:
+      return ExprEvaluatorBaseTy::VisitCallExpr(E);
+    case Builtin::BI__assume:
+      // The argument is not evaluated!
       return true;
     }
   }

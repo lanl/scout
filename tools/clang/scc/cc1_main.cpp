@@ -91,13 +91,11 @@ using namespace std;
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cstdio>
-using namespace clang;
-using namespace llvm::opt;
 
 #include "ScoutASTConsumer.h"
 
-
 using namespace clang;
+using namespace llvm::opt;
 
 //===----------------------------------------------------------------------===//
 // Main driver

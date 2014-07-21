@@ -40,6 +40,7 @@ enum TokenType {
   TT_CtorInitializerComma,
   TT_DesignatedInitializerPeriod,
   TT_DictLiteral,
+  TT_FunctionDeclarationName,
   TT_FunctionLBrace,
   TT_FunctionTypeLParen,
   TT_ImplicitStringLiteral,
@@ -323,7 +324,7 @@ struct FormatToken {
 
   /// \brief Returns \c true if this is a "." or "->" accessing a member.
   bool isMemberAccess() const {
-    return isOneOf(tok::arrow, tok::period) &&
+    return isOneOf(tok::arrow, tok::period, tok::arrowstar) &&
            Type != TT_DesignatedInitializerPeriod;
   }
 

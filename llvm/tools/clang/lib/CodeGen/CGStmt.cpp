@@ -188,6 +188,9 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
   case Stmt::SEHTryStmtClass:
     EmitSEHTryStmt(cast<SEHTryStmt>(*S));
     break;
+  case Stmt::SEHLeaveStmtClass:
+    EmitSEHLeaveStmt(cast<SEHLeaveStmt>(*S));
+    break;
   case Stmt::OMPParallelDirectiveClass:
     EmitOMPParallelDirective(cast<OMPParallelDirective>(*S));
     break;
@@ -205,6 +208,33 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
     break;
   case Stmt::OMPSingleDirectiveClass:
     EmitOMPSingleDirective(cast<OMPSingleDirective>(*S));
+    break;
+  case Stmt::OMPMasterDirectiveClass:
+    EmitOMPMasterDirective(cast<OMPMasterDirective>(*S));
+    break;
+  case Stmt::OMPCriticalDirectiveClass:
+    EmitOMPCriticalDirective(cast<OMPCriticalDirective>(*S));
+    break;
+  case Stmt::OMPParallelForDirectiveClass:
+    EmitOMPParallelForDirective(cast<OMPParallelForDirective>(*S));
+    break;
+  case Stmt::OMPParallelSectionsDirectiveClass:
+    EmitOMPParallelSectionsDirective(cast<OMPParallelSectionsDirective>(*S));
+    break;
+  case Stmt::OMPTaskDirectiveClass:
+    EmitOMPTaskDirective(cast<OMPTaskDirective>(*S));
+    break;
+  case Stmt::OMPTaskyieldDirectiveClass:
+    EmitOMPTaskyieldDirective(cast<OMPTaskyieldDirective>(*S));
+    break;
+  case Stmt::OMPBarrierDirectiveClass:
+    EmitOMPBarrierDirective(cast<OMPBarrierDirective>(*S));
+    break;
+  case Stmt::OMPTaskwaitDirectiveClass:
+    EmitOMPTaskwaitDirective(cast<OMPTaskwaitDirective>(*S));
+    break;
+  case Stmt::OMPFlushDirectiveClass:
+    EmitOMPFlushDirective(cast<OMPFlushDirective>(*S));
     break;
   }
 }
@@ -530,18 +560,20 @@ void CodeGenFunction::EmitIfStmt(const IfStmt &S) {
 
   // Emit the 'else' code if present.
   if (const Stmt *Else = S.getElse()) {
-    // There is no need to emit line number for unconditional branch.
-    if (getDebugInfo())
-      Builder.SetCurrentDebugLocation(llvm::DebugLoc());
-    EmitBlock(ElseBlock);
+    {
+      // There is no need to emit line number for unconditional branch.
+      SuppressDebugLocation S(Builder);
+      EmitBlock(ElseBlock);
+    }
     {
       RunCleanupsScope ElseScope(*this);
       EmitStmt(Else);
     }
-    // There is no need to emit line number for unconditional branch.
-    if (getDebugInfo())
-      Builder.SetCurrentDebugLocation(llvm::DebugLoc());
-    EmitBranch(ContBlock);
+    {
+      // There is no need to emit line number for unconditional branch.
+      SuppressDebugLocation S(Builder);
+      EmitBranch(ContBlock);
+    }
   }
 
   // Emit the continuation block for code after the if.
@@ -2070,11 +2102,14 @@ static LValue InitCapturedStruct(CodeGenFunction &CGF, const CapturedStmt &S) {
 }
 
 static void InitVLACaptures(CodeGenFunction &CGF, const CapturedStmt &S) {
-  for (CapturedStmt::const_capture_iterator I = S.capture_begin(),
-                                            E = S.capture_end();
-       I != E; ++I) {
-    if (I->capturesVariable()) {
-      QualType QTy = I->getCapturedVar()->getType();
+  for (auto &C : S.captures()) {
+    if (C.capturesVariable()) {
+      QualType QTy;
+      auto VD = C.getCapturedVar();
+      if (const ParmVarDecl *PVD = dyn_cast<ParmVarDecl>(VD))
+        QTy = PVD->getOriginalType();
+      else
+        QTy = VD->getType();
       if (QTy->isVariablyModifiedType()) {
         CGF.EmitVariablyModifiedType(QTy);
       }

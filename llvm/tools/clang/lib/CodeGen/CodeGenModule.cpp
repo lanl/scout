@@ -99,11 +99,8 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
       NSConcreteStackBlock(nullptr), BlockObjectAssign(nullptr),
       BlockObjectDispose(nullptr), BlockDescriptorType(nullptr),
       GenericBlockLiteralType(nullptr), LifetimeStartFn(nullptr),
-      LifetimeEndFn(nullptr),
-      SanitizerBlacklist(
-          llvm::SpecialCaseList::createOrDie(CGO.SanitizerBlacklistFile)),
-      SanOpts(SanitizerBlacklist->isIn(M) ? SanitizerOptions::Disabled
-                                          : LangOpts.Sanitize) {
+      LifetimeEndFn(nullptr), SanitizerBL(llvm::SpecialCaseList::createOrDie(
+                                  CGO.SanitizerBlacklistFile)) {
 
   // Initialize the type cache.
   llvm::LLVMContext &LLVMContext = M.getContext();
@@ -138,7 +135,7 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
   // +========================================================================+
 
   // Enable TBAA unless it's suppressed. ThreadSanitizer needs TBAA even at O0.
-  if (SanOpts.Thread ||
+  if (LangOpts.Sanitize.Thread ||
       (!CodeGenOpts.RelaxedAliasing && CodeGenOpts.OptimizationLevel > 0))
     TBAA = new CodeGenTBAA(Context, VMContext, CodeGenOpts, getLangOpts(),
                            getCXXABI().getMangleContext());
@@ -424,6 +421,8 @@ void CodeGenModule::Release() {
     DebugInfo->finalize();
 
   EmitVersionIdentMetadata();
+
+  EmitTargetMetadata();
 }
 
 void CodeGenModule::UpdateCompletedType(const TagDecl *TD) {
@@ -761,17 +760,16 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
     B.addAttribute(llvm::Attribute::StackProtectReq);
 
   // Add sanitizer attributes if function is not blacklisted.
-  if (!SanitizerBlacklist->isIn(*F)) {
+  if (!SanitizerBL.isIn(*F)) {
     // When AddressSanitizer is enabled, set SanitizeAddress attribute
     // unless __attribute__((no_sanitize_address)) is used.
-    if (SanOpts.Address && !D->hasAttr<NoSanitizeAddressAttr>())
+    if (LangOpts.Sanitize.Address && !D->hasAttr<NoSanitizeAddressAttr>())
       B.addAttribute(llvm::Attribute::SanitizeAddress);
     // Same for ThreadSanitizer and __attribute__((no_sanitize_thread))
-    if (SanOpts.Thread && !D->hasAttr<NoSanitizeThreadAttr>()) {
+    if (LangOpts.Sanitize.Thread && !D->hasAttr<NoSanitizeThreadAttr>())
       B.addAttribute(llvm::Attribute::SanitizeThread);
-    }
     // Same for MemorySanitizer and __attribute__((no_sanitize_memory))
-    if (SanOpts.Memory && !D->hasAttr<NoSanitizeMemoryAttr>())
+    if (LangOpts.Sanitize.Memory && !D->hasAttr<NoSanitizeMemoryAttr>())
       B.addAttribute(llvm::Attribute::SanitizeMemory);
   }
 
@@ -1289,7 +1287,8 @@ void CodeGenModule::EmitGlobal(GlobalDecl GD) {
     const auto *VD = cast<VarDecl>(Global);
     assert(VD->isFileVarDecl() && "Cannot emit local var decl as global.");
 
-    if (VD->isThisDeclarationADefinition() != VarDecl::Definition)
+    if (VD->isThisDeclarationADefinition() != VarDecl::Definition &&
+        !Context.isMSStaticDataMemberInlineDefinition(VD))
       return;
   }
 
@@ -1565,8 +1564,6 @@ CodeGenModule::GetOrCreateLLVMFunction(StringRef MangledName,
     }
   }
 
-  getTargetCodeGenInfo().emitTargetMD(D, F, *this);
-
   // Make sure the result is of the requested type.
   if (!IsIncompleteFunction) {
     assert(F->getType()->getElementType() == Ty);
@@ -1638,18 +1635,6 @@ bool CodeGenModule::isTypeConstant(QualType Ty, bool ExcludeCtor) {
   return true;
 }
 
-static bool isVarDeclInlineInitializedStaticDataMember(const VarDecl *VD) {
-  if (!VD->isStaticDataMember())
-    return false;
-  const VarDecl *InitDecl;
-  const Expr *InitExpr = VD->getAnyInitializer(InitDecl);
-  if (!InitExpr)
-    return false;
-  if (InitDecl->isThisDeclarationADefinition())
-    return false;
-  return true;
-}
-
 /// GetOrCreateLLVMGlobal - If the specified mangled name is not in the module,
 /// create and return an llvm GlobalVariable with the specified type.  If there
 /// is something in the module with the specified name, return it potentially
@@ -1712,9 +1697,9 @@ CodeGenModule::GetOrCreateLLVMGlobal(StringRef MangledName,
 
     // If required by the ABI, treat declarations of static data members with
     // inline initializers as definitions.
-    if (getCXXABI().isInlineInitializedStaticDataMemberLinkOnce() &&
-        isVarDeclInlineInitializedStaticDataMember(D))
+    if (getContext().isMSStaticDataMemberInlineDefinition(D)) {
       EmitGlobalVarDefinition(D);
+    }
 
     // Handle XCore specific ABI requirements.
     if (getTarget().getTriple().getArch() == llvm::Triple::xcore &&
@@ -1726,8 +1711,6 @@ CodeGenModule::GetOrCreateLLVMGlobal(StringRef MangledName,
 
   if (AddrSpace != Ty->getAddressSpace())
     return llvm::ConstantExpr::getAddrSpaceCast(GV, Ty);
-
-  getTargetCodeGenInfo().emitTargetMD(D, GV, *this);
 
   return GV;
 }
@@ -2002,21 +1985,78 @@ void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D) {
   if (NeedsGlobalCtor || NeedsGlobalDtor)
     EmitCXXGlobalVarDeclInitFunc(D, GV, NeedsGlobalCtor);
 
-  // If we are compiling with ASan, add metadata indicating dynamically
-  // initialized (and not blacklisted) globals.
-  if (SanOpts.Address && NeedsGlobalCtor &&
-      !SanitizerBlacklist->isIn(*GV, "init")) {
-    llvm::NamedMDNode *DynamicInitializers = TheModule.getOrInsertNamedMetadata(
-        "llvm.asan.dynamically_initialized_globals");
-    llvm::Value *GlobalToAdd[] = { GV };
-    llvm::MDNode *ThisGlobal = llvm::MDNode::get(VMContext, GlobalToAdd);
-    DynamicInitializers->addOperand(ThisGlobal);
-  }
+  reportGlobalToASan(GV, *D, NeedsGlobalCtor);
 
   // Emit global variable debug information.
   if (CGDebugInfo *DI = getModuleDebugInfo())
     if (getCodeGenOpts().getDebugInfo() >= CodeGenOptions::LimitedDebugInfo)
       DI->EmitGlobalVariable(GV, D);
+}
+
+void CodeGenModule::reportGlobalToASan(llvm::GlobalVariable *GV,
+                                       SourceLocation Loc, StringRef Name,
+                                       bool IsDynInit, bool IsBlacklisted) {
+  if (!LangOpts.Sanitize.Address)
+    return;
+  IsDynInit &= !SanitizerBL.isIn(*GV, "init");
+  IsBlacklisted |= SanitizerBL.isIn(*GV);
+
+  llvm::GlobalVariable *LocDescr = nullptr;
+  llvm::GlobalVariable *GlobalName = nullptr;
+  if (!IsBlacklisted) {
+    // Don't generate source location and global name if it is blacklisted -
+    // it won't be instrumented anyway.
+    PresumedLoc PLoc = Context.getSourceManager().getPresumedLoc(Loc);
+    if (PLoc.isValid()) {
+      llvm::Constant *LocData[] = {
+          GetAddrOfConstantCString(PLoc.getFilename()),
+          llvm::ConstantInt::get(llvm::Type::getInt32Ty(VMContext),
+                                 PLoc.getLine()),
+          llvm::ConstantInt::get(llvm::Type::getInt32Ty(VMContext),
+                                 PLoc.getColumn()),
+      };
+      auto LocStruct = llvm::ConstantStruct::getAnon(LocData);
+      LocDescr = new llvm::GlobalVariable(TheModule, LocStruct->getType(), true,
+                                          llvm::GlobalValue::PrivateLinkage,
+                                          LocStruct, ".asan_loc_descr");
+      LocDescr->setUnnamedAddr(true);
+      // Add LocDescr to llvm.compiler.used, so that it won't be removed by
+      // the optimizer before the ASan instrumentation pass.
+      addCompilerUsedGlobal(LocDescr);
+    }
+    if (!Name.empty()) {
+      GlobalName = GetAddrOfConstantCString(Name);
+      // GlobalName shouldn't be removed by the optimizer.
+      addCompilerUsedGlobal(GlobalName);
+    }
+  }
+
+  llvm::Value *GlobalMetadata[] = {
+      GV, LocDescr, GlobalName,
+      llvm::ConstantInt::get(llvm::Type::getInt1Ty(VMContext), IsDynInit),
+      llvm::ConstantInt::get(llvm::Type::getInt1Ty(VMContext), IsBlacklisted)};
+
+  llvm::MDNode *ThisGlobal = llvm::MDNode::get(VMContext, GlobalMetadata);
+  llvm::NamedMDNode *AsanGlobals =
+      TheModule.getOrInsertNamedMetadata("llvm.asan.globals");
+  AsanGlobals->addOperand(ThisGlobal);
+}
+
+void CodeGenModule::reportGlobalToASan(llvm::GlobalVariable *GV,
+                                       const VarDecl &D, bool IsDynInit) {
+  if (!LangOpts.Sanitize.Address)
+    return;
+  std::string QualName;
+  llvm::raw_string_ostream OS(QualName);
+  D.printQualifiedName(OS);
+  reportGlobalToASan(GV, D.getLocation(), OS.str(), IsDynInit);
+}
+
+void CodeGenModule::disableSanitizerForGlobal(llvm::GlobalVariable *GV) {
+  // For now, just make sure the global is not modified by the ASan
+  // instrumentation.
+  if (LangOpts.Sanitize.Address)
+    reportGlobalToASan(GV, SourceLocation(), "", false, true);
 }
 
 static bool isVarDeclStrongDefinition(const VarDecl *D, bool NoCommon) {
@@ -2086,18 +2126,6 @@ llvm::GlobalValue::LinkageTypes CodeGenModule::getLLVMLinkageForDeclarator(
   if (Linkage == GVA_StrongODR)
     return !Context.getLangOpts().AppleKext ? llvm::Function::WeakODRLinkage
                                             : llvm::Function::ExternalLinkage;
-
-  // If required by the ABI, give definitions of static data members with inline
-  // initializers at least linkonce_odr linkage.
-  auto const VD = dyn_cast<VarDecl>(D);
-  if (getCXXABI().isInlineInitializedStaticDataMemberLinkOnce() &&
-      VD && isVarDeclInlineInitializedStaticDataMember(VD)) {
-    if (VD->hasAttr<DLLImportAttr>())
-      return llvm::GlobalValue::AvailableExternallyLinkage;
-    if (VD->hasAttr<DLLExportAttr>())
-      return llvm::GlobalValue::WeakODRLinkage;
-    return llvm::GlobalValue::LinkOnceODRLinkage;
-  }
 
   // C++ doesn't have tentative definitions and thus cannot have common
   // linkage.
@@ -2796,7 +2824,7 @@ GenerateStringLiteral(llvm::Constant *C, llvm::GlobalValue::LinkageTypes LT,
 
 /// GetAddrOfConstantStringFromLiteral - Return a pointer to a
 /// constant array for the given string literal.
-llvm::Constant *
+llvm::GlobalVariable *
 CodeGenModule::GetAddrOfConstantStringFromLiteral(const StringLiteral *S) {
   auto Alignment =
       getContext().getAlignOfGlobalVarInChars(S->getType()).getQuantity();
@@ -2818,7 +2846,7 @@ CodeGenModule::GetAddrOfConstantStringFromLiteral(const StringLiteral *S) {
   // Mangle the string literal if the ABI allows for it.  However, we cannot
   // do this if  we are compiling with ASan or -fwritable-strings because they
   // rely on strings having normal linkage.
-  if (!LangOpts.WritableStrings && !SanOpts.Address &&
+  if (!LangOpts.WritableStrings && !LangOpts.Sanitize.Address &&
       getCXXABI().getMangleContext().shouldMangleStringLiteral(S)) {
     llvm::raw_svector_ostream Out(MangledNameBuffer);
     getCXXABI().getMangleContext().mangleStringLiteral(S, Out);
@@ -2835,12 +2863,14 @@ CodeGenModule::GetAddrOfConstantStringFromLiteral(const StringLiteral *S) {
   auto GV = GenerateStringLiteral(C, LT, *this, GlobalVariableName, Alignment);
   if (Entry)
     Entry->setValue(GV);
+
+  reportGlobalToASan(GV, S->getStrTokenLoc(0), "<string literal>");
   return GV;
 }
 
 /// GetAddrOfConstantStringFromObjCEncode - Return a pointer to a constant
 /// array for the given ObjCEncodeExpr node.
-llvm::Constant *
+llvm::GlobalVariable *
 CodeGenModule::GetAddrOfConstantStringFromObjCEncode(const ObjCEncodeExpr *E) {
   std::string Str;
   getContext().getObjCEncodingForType(E->getEncodedType(), Str);
@@ -2871,9 +2901,8 @@ llvm::StringMapEntry<llvm::GlobalVariable *> *CodeGenModule::getConstantStringMa
 /// GetAddrOfConstantCString - Returns a pointer to a character array containing
 /// the literal and a terminating '\0' character.
 /// The result has pointer to array type.
-llvm::Constant *CodeGenModule::GetAddrOfConstantCString(const std::string &Str,
-                                                        const char *GlobalName,
-                                                        unsigned Alignment) {
+llvm::GlobalVariable *CodeGenModule::GetAddrOfConstantCString(
+    const std::string &Str, const char *GlobalName, unsigned Alignment) {
   StringRef StrWithNull(Str.c_str(), Str.size() + 1);
   if (Alignment == 0) {
     Alignment = getContext()
@@ -3338,11 +3367,9 @@ void CodeGenModule::EmitDeclMetadata() {
   llvm::NamedMDNode *GlobalMetadata = nullptr;
 
   // StaticLocalDeclMap
-  for (llvm::DenseMap<GlobalDecl,StringRef>::iterator
-         I = MangledDeclNames.begin(), E = MangledDeclNames.end();
-       I != E; ++I) {
-    llvm::GlobalValue *Addr = getModule().getNamedValue(I->second);
-    EmitGlobalDeclMetadata(*this, GlobalMetadata, I->first, Addr);
+  for (auto &I : MangledDeclNames) {
+    llvm::GlobalValue *Addr = getModule().getNamedValue(I.second);
+    EmitGlobalDeclMetadata(*this, GlobalMetadata, I.first, Addr);
   }
 }
 
@@ -3358,11 +3385,9 @@ void CodeGenFunction::EmitDeclMetadata() {
 
   llvm::NamedMDNode *GlobalMetadata = nullptr;
 
-  for (llvm::DenseMap<const Decl*, llvm::Value*>::iterator
-         I = LocalDeclMap.begin(), E = LocalDeclMap.end(); I != E; ++I) {
-    const Decl *D = I->first;
-    llvm::Value *Addr = I->second;
-
+  for (auto &I : LocalDeclMap) {
+    const Decl *D = I.first;
+    llvm::Value *Addr = I.second;
     if (auto *Alloca = dyn_cast<llvm::AllocaInst>(Addr)) {
       llvm::Value *DAddr = GetPointerConstant(getLLVMContext(), D);
       Alloca->setMetadata(DeclPtrKind, llvm::MDNode::get(Context, DAddr));
@@ -3383,6 +3408,14 @@ void CodeGenModule::EmitVersionIdentMetadata() {
     llvm::MDString::get(Ctx, Version)
   };
   IdentMetadata->addOperand(llvm::MDNode::get(Ctx, IdentNode));
+}
+
+void CodeGenModule::EmitTargetMetadata() {
+  for (auto &I : MangledDeclNames) {
+    const Decl *D = I.first.getDecl()->getMostRecentDecl();
+    llvm::GlobalValue *GV = GetGlobalValue(I.second);
+    getTargetCodeGenInfo().emitTargetMD(D, GV, *this);
+  }
 }
 
 void CodeGenModule::EmitCoverageFile() {
@@ -3428,3 +3461,19 @@ llvm::Constant *CodeGenModule::EmitUuidofInitializer(StringRef Uuid,
 
   return llvm::ConstantStruct::getAnon(Fields);
 }
+
+llvm::Constant *CodeGenModule::GetAddrOfRTTIDescriptor(QualType Ty,
+                                                       bool ForEH) {
+  // Return a bogus pointer if RTTI is disabled, unless it's for EH.
+  // FIXME: should we even be calling this method if RTTI is disabled
+  // and it's not for EH?
+  if (!ForEH && !getLangOpts().RTTI)
+    return llvm::Constant::getNullValue(Int8PtrTy);
+  
+  if (ForEH && Ty->isObjCObjectPointerType() &&
+      LangOpts.ObjCRuntime.isGNUFamily())
+    return ObjCRuntime->GetEHType(Ty);
+
+  return getCXXABI().getAddrOfRTTIDescriptor(Ty);
+}
+

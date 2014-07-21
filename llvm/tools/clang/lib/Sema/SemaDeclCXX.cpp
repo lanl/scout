@@ -476,7 +476,7 @@ bool Sema::MergeCXXFunctionDecl(FunctionDecl *New, FunctionDecl *Old,
                                       OldParam->getUninstantiatedDefaultArg());
           else
             NewParam->setDefaultArg(OldParam->getInit());
-          DiagDefaultParamID = diag::warn_param_default_argument_redefinition;
+          DiagDefaultParamID = diag::ext_param_default_argument_redefinition;
           Invalid = false;
         }
       }
@@ -6279,6 +6279,15 @@ QualType Sema::CheckConstructorDeclarator(Declarator &D, QualType R,
     SC = SC_None;
   }
 
+  if (unsigned TypeQuals = D.getDeclSpec().getTypeQualifiers()) {
+    diagnoseIgnoredQualifiers(
+        diag::err_constructor_return_type, TypeQuals, SourceLocation(),
+        D.getDeclSpec().getConstSpecLoc(), D.getDeclSpec().getVolatileSpecLoc(),
+        D.getDeclSpec().getRestrictSpecLoc(),
+        D.getDeclSpec().getAtomicSpecLoc());
+    D.setInvalidType();
+  }
+
   DeclaratorChunk::FunctionTypeInfo &FTI = D.getFunctionTypeInfo();
   if (FTI.TypeQuals != 0) {
     if (FTI.TypeQuals & Qualifiers::Const)
@@ -6426,7 +6435,7 @@ QualType Sema::CheckDestructorDeclarator(Declarator &D, QualType R,
     
     SC = SC_None;
   }
-  if (D.getDeclSpec().hasTypeSpecifier() && !D.isInvalidType()) {
+  if (!D.isInvalidType()) {
     // Destructors don't have return types, but the parser will
     // happily parse something like:
     //
@@ -6435,9 +6444,19 @@ QualType Sema::CheckDestructorDeclarator(Declarator &D, QualType R,
     //   };
     //
     // The return type will be eliminated later.
-    Diag(D.getIdentifierLoc(), diag::err_destructor_return_type)
-      << SourceRange(D.getDeclSpec().getTypeSpecTypeLoc())
-      << SourceRange(D.getIdentifierLoc());
+    if (D.getDeclSpec().hasTypeSpecifier())
+      Diag(D.getIdentifierLoc(), diag::err_destructor_return_type)
+        << SourceRange(D.getDeclSpec().getTypeSpecTypeLoc())
+        << SourceRange(D.getIdentifierLoc());
+    else if (unsigned TypeQuals = D.getDeclSpec().getTypeQualifiers()) {
+      diagnoseIgnoredQualifiers(diag::err_destructor_return_type, TypeQuals,
+                                SourceLocation(),
+                                D.getDeclSpec().getConstSpecLoc(),
+                                D.getDeclSpec().getVolatileSpecLoc(),
+                                D.getDeclSpec().getRestrictSpecLoc(),
+                                D.getDeclSpec().getAtomicSpecLoc());
+      D.setInvalidType();
+    }
   }
 
   DeclaratorChunk::FunctionTypeInfo &FTI = D.getFunctionTypeInfo();
@@ -10365,6 +10384,8 @@ void Sema::DefineImplicitCopyConstructor(SourceLocation CurrentLocation,
   }
 
   CopyConstructor->markUsed(Context);
+  MarkVTableUsed(CurrentLocation, ClassDecl);
+
   if (ASTMutationListener *L = getASTMutationListener()) {
     L->CompletedImplicitDefinition(CopyConstructor);
   }
@@ -10523,6 +10544,7 @@ void Sema::DefineImplicitMoveConstructor(SourceLocation CurrentLocation,
   }
 
   MoveConstructor->markUsed(Context);
+  MarkVTableUsed(CurrentLocation, ClassDecl);
 
   if (ASTMutationListener *L = getASTMutationListener()) {
     L->CompletedImplicitDefinition(MoveConstructor);
@@ -10690,6 +10712,7 @@ Sema::BuildCXXConstructExpr(SourceLocation ConstructLoc, QualType DeclInitType,
                             MultiExprArg ExprArgs,
                             bool HadMultipleCandidates,
                             bool IsListInitialization,
+                            bool IsStdInitListInitialization,
                             bool RequiresZeroInit,
                             unsigned ConstructKind,
                             SourceRange ParenRange) {
@@ -10713,7 +10736,8 @@ Sema::BuildCXXConstructExpr(SourceLocation ConstructLoc, QualType DeclInitType,
 
   return BuildCXXConstructExpr(ConstructLoc, DeclInitType, Constructor,
                                Elidable, ExprArgs, HadMultipleCandidates,
-                               IsListInitialization, RequiresZeroInit,
+                               IsListInitialization,
+                               IsStdInitListInitialization, RequiresZeroInit,
                                ConstructKind, ParenRange);
 }
 
@@ -10725,13 +10749,15 @@ Sema::BuildCXXConstructExpr(SourceLocation ConstructLoc, QualType DeclInitType,
                             MultiExprArg ExprArgs,
                             bool HadMultipleCandidates,
                             bool IsListInitialization,
+                            bool IsStdInitListInitialization,
                             bool RequiresZeroInit,
                             unsigned ConstructKind,
                             SourceRange ParenRange) {
   MarkFunctionReferenced(ConstructLoc, Constructor);
   return CXXConstructExpr::Create(
       Context, DeclInitType, ConstructLoc, Constructor, Elidable, ExprArgs,
-      HadMultipleCandidates, IsListInitialization, RequiresZeroInit,
+      HadMultipleCandidates, IsListInitialization, IsStdInitListInitialization,
+      RequiresZeroInit,
       static_cast<CXXConstructExpr::ConstructionKind>(ConstructKind),
       ParenRange);
 }
@@ -11607,11 +11633,10 @@ Decl *Sema::ActOnTemplatedFriendTag(Scope *S, SourceLocation FriendLoc,
       if (Invalid)
         return nullptr;
 
-      return CheckClassTemplate(S, TagSpec, TUK_Friend, TagLoc,
-                                SS, Name, NameLoc, Attr,
-                                TemplateParams, AS_public,
+      return CheckClassTemplate(S, TagSpec, TUK_Friend, TagLoc, SS, Name,
+                                NameLoc, Attr, TemplateParams, AS_public,
                                 /*ModulePrivateLoc=*/SourceLocation(),
-                                TempParamLists.size() - 1,
+                                FriendLoc, TempParamLists.size() - 1,
                                 TempParamLists.data()).get();
     } else {
       // The "template<>" header is extraneous.
@@ -12304,8 +12329,10 @@ bool Sema::CheckOverridingFunctionReturnType(const CXXMethodDecl *New,
   if (NewClassTy.isNull()) {
     Diag(New->getLocation(),
          diag::err_different_return_type_for_overriding_virtual_function)
-      << New->getDeclName() << NewTy << OldTy;
-    Diag(Old->getLocation(), diag::note_overridden_virtual_function);
+        << New->getDeclName() << NewTy << OldTy
+        << New->getReturnTypeSourceRange();
+    Diag(Old->getLocation(), diag::note_overridden_virtual_function)
+        << Old->getReturnTypeSourceRange();
 
     return true;
   }
@@ -12325,25 +12352,27 @@ bool Sema::CheckOverridingFunctionReturnType(const CXXMethodDecl *New,
   if (!Context.hasSameUnqualifiedType(NewClassTy, OldClassTy)) {
     // Check if the new class derives from the old class.
     if (!IsDerivedFrom(NewClassTy, OldClassTy)) {
-      Diag(New->getLocation(),
-           diag::err_covariant_return_not_derived)
-      << New->getDeclName() << NewTy << OldTy;
-      Diag(Old->getLocation(), diag::note_overridden_virtual_function);
+      Diag(New->getLocation(), diag::err_covariant_return_not_derived)
+          << New->getDeclName() << NewTy << OldTy
+          << New->getReturnTypeSourceRange();
+      Diag(Old->getLocation(), diag::note_overridden_virtual_function)
+          << Old->getReturnTypeSourceRange();
       return true;
     }
 
     // Check if we the conversion from derived to base is valid.
-    if (CheckDerivedToBaseConversion(NewClassTy, OldClassTy,
-                    diag::err_covariant_return_inaccessible_base,
-                    diag::err_covariant_return_ambiguous_derived_to_base_conv,
-                    // FIXME: Should this point to the return type?
-                    New->getLocation(), SourceRange(), New->getDeclName(),
-                    nullptr)) {
+    if (CheckDerivedToBaseConversion(
+            NewClassTy, OldClassTy,
+            diag::err_covariant_return_inaccessible_base,
+            diag::err_covariant_return_ambiguous_derived_to_base_conv,
+            New->getLocation(), New->getReturnTypeSourceRange(),
+            New->getDeclName(), nullptr)) {
       // FIXME: this note won't trigger for delayed access control
       // diagnostics, and it's impossible to get an undelayed error
       // here from access control during the original parse because
       // the ParsingDeclSpec/ParsingDeclarator are still in scope.
-      Diag(Old->getLocation(), diag::note_overridden_virtual_function);
+      Diag(Old->getLocation(), diag::note_overridden_virtual_function)
+          << Old->getReturnTypeSourceRange();
       return true;
     }
   }
@@ -12352,8 +12381,10 @@ bool Sema::CheckOverridingFunctionReturnType(const CXXMethodDecl *New,
   if (NewTy.getLocalCVRQualifiers() != OldTy.getLocalCVRQualifiers()) {
     Diag(New->getLocation(),
          diag::err_covariant_return_type_different_qualifications)
-    << New->getDeclName() << NewTy << OldTy;
-    Diag(Old->getLocation(), diag::note_overridden_virtual_function);
+        << New->getDeclName() << NewTy << OldTy
+        << New->getReturnTypeSourceRange();
+    Diag(Old->getLocation(), diag::note_overridden_virtual_function)
+        << Old->getReturnTypeSourceRange();
     return true;
   };
 
@@ -12362,8 +12393,10 @@ bool Sema::CheckOverridingFunctionReturnType(const CXXMethodDecl *New,
   if (NewClassTy.isMoreQualifiedThan(OldClassTy)) {
     Diag(New->getLocation(),
          diag::err_covariant_return_type_class_type_more_qualified)
-    << New->getDeclName() << NewTy << OldTy;
-    Diag(Old->getLocation(), diag::note_overridden_virtual_function);
+        << New->getDeclName() << NewTy << OldTy
+        << New->getReturnTypeSourceRange();
+    Diag(Old->getLocation(), diag::note_overridden_virtual_function)
+        << Old->getReturnTypeSourceRange();
     return true;
   };
 

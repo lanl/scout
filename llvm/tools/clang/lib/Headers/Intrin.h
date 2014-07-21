@@ -35,18 +35,22 @@
 #endif
 
 /* For the definition of jmp_buf. */
+#if __STDC_HOSTED__
 #include <setjmp.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+#if defined(__MMX__)
 /* And the random ones that aren't in those files. */
 __m64 _m_from_float(float);
 __m64 _m_from_int(int _l);
 void _m_prefetch(void *);
 float _m_to_float(__m64);
 int _m_to_int(__m64 _M);
+#endif
 
 /* Other assorted instruction intrinsics. */
 void __addfsbyte(unsigned long, unsigned char);
@@ -289,7 +293,9 @@ unsigned __int64 __cdecl _rotr64(unsigned __int64 _Value, int _Shift);
 static __inline__
 unsigned char _rotr8(unsigned char _Value, unsigned char _Shift);
 int _sarx_i32(int, unsigned int);
+#if __STDC_HOSTED__
 int __cdecl _setjmp(jmp_buf);
+#endif
 unsigned int _shlx_u32(unsigned int, unsigned int);
 unsigned int _shrx_u32(unsigned int, unsigned int);
 void _Store_HLERelease(long volatile *, long);
@@ -447,8 +453,9 @@ unsigned int __cdecl _readgsbase_u32(void);
 unsigned __int64 __cdecl _readgsbase_u64(void);
 unsigned __int64 _rorx_u64(unsigned __int64, const unsigned int);
 __int64 _sarx_i64(__int64, unsigned int);
-/* FIXME: Need definition for jmp_buf.
-  int __cdecl _setjmpex(jmp_buf); */
+#if __STDC_HOSTED__
+int __cdecl _setjmpex(jmp_buf);
+#endif
 unsigned __int64 _shlx_u64(unsigned __int64, unsigned int);
 unsigned __int64 shrx_u64(unsigned __int64, unsigned int);
 unsigned __int64 _tzcnt_u64(unsigned __int64);

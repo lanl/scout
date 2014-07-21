@@ -135,12 +135,18 @@ ParseLangArgs
             case IK_PreprocessedC:
             case IK_ObjC:
             case IK_PreprocessedObjC:
+	    // +===== Scout ======================= 
+	    case IK_Scout_C:
+	    // ====================================
                 LangStd = LangStandard::lang_gnu99;
                 break;
             case IK_CXX:
             case IK_PreprocessedCXX:
             case IK_ObjCXX:
             case IK_PreprocessedObjCXX:
+	    // +===== Scout ======================= 
+	    case IK_Scout_CXX:
+	    // ====================================
                 LangStd = LangStandard::lang_gnucxx98;
                 break;
         }

@@ -573,6 +573,11 @@ void StmtPrinter::VisitSEHFinallyStmt(SEHFinallyStmt *Node) {
   OS << "\n";
 }
 
+void StmtPrinter::VisitSEHLeaveStmt(SEHLeaveStmt *Node) {
+  Indent() << "__leave;";
+  if (Policy.IncludeNewlines) OS << "\n";
+}
+
 //===----------------------------------------------------------------------===//
 //  OpenMP clauses printing methods
 //===----------------------------------------------------------------------===//
@@ -594,6 +599,12 @@ public:
 
 void OMPClausePrinter::VisitOMPIfClause(OMPIfClause *Node) {
   OS << "if(";
+  Node->getCondition()->printPretty(OS, nullptr, Policy, 0);
+  OS << ")";
+}
+
+void OMPClausePrinter::VisitOMPFinalClause(OMPFinalClause *Node) {
+  OS << "final(";
   Node->getCondition()->printPretty(OS, nullptr, Policy, 0);
   OS << ")";
 }
@@ -644,6 +655,14 @@ void OMPClausePrinter::VisitOMPOrderedClause(OMPOrderedClause *) {
 
 void OMPClausePrinter::VisitOMPNowaitClause(OMPNowaitClause *) {
   OS << "nowait";
+}
+
+void OMPClausePrinter::VisitOMPUntiedClause(OMPUntiedClause *) {
+  OS << "untied";
+}
+
+void OMPClausePrinter::VisitOMPMergeableClause(OMPMergeableClause *) {
+  OS << "mergeable";
 }
 
 template<typename T>
@@ -756,6 +775,12 @@ void OMPClausePrinter::VisitOMPCopyprivateClause(OMPCopyprivateClause *Node) {
   }
 }
 
+void OMPClausePrinter::VisitOMPFlushClause(OMPFlushClause *Node) {
+  if (!Node->varlist_empty()) {
+    VisitOMPClauseList(Node, '(');
+    OS << ")";
+  }
+}
 }
 
 //===----------------------------------------------------------------------===//
@@ -772,7 +797,7 @@ void StmtPrinter::PrintOMPExecutableDirective(OMPExecutableDirective *S) {
       OS << ' ';
     }
   OS << "\n";
-  if (S->getAssociatedStmt()) {
+  if (S->hasAssociatedStmt() && S->getAssociatedStmt()) {
     assert(isa<CapturedStmt>(S->getAssociatedStmt()) &&
            "Expected captured statement!");
     Stmt *CS = cast<CapturedStmt>(S->getAssociatedStmt())->getCapturedStmt();
@@ -807,6 +832,57 @@ void StmtPrinter::VisitOMPSectionDirective(OMPSectionDirective *Node) {
 
 void StmtPrinter::VisitOMPSingleDirective(OMPSingleDirective *Node) {
   Indent() << "#pragma omp single ";
+  PrintOMPExecutableDirective(Node);
+}
+
+void StmtPrinter::VisitOMPMasterDirective(OMPMasterDirective *Node) {
+  Indent() << "#pragma omp master";
+  PrintOMPExecutableDirective(Node);
+}
+
+void StmtPrinter::VisitOMPCriticalDirective(OMPCriticalDirective *Node) {
+  Indent() << "#pragma omp critical";
+  if (Node->getDirectiveName().getName()) {
+    OS << " (";
+    Node->getDirectiveName().printName(OS);
+    OS << ")";
+  }
+  PrintOMPExecutableDirective(Node);
+}
+
+void StmtPrinter::VisitOMPParallelForDirective(OMPParallelForDirective *Node) {
+  Indent() << "#pragma omp parallel for ";
+  PrintOMPExecutableDirective(Node);
+}
+
+void StmtPrinter::VisitOMPParallelSectionsDirective(
+    OMPParallelSectionsDirective *Node) {
+  Indent() << "#pragma omp parallel sections ";
+  PrintOMPExecutableDirective(Node);
+}
+
+void StmtPrinter::VisitOMPTaskDirective(OMPTaskDirective *Node) {
+  Indent() << "#pragma omp task ";
+  PrintOMPExecutableDirective(Node);
+}
+
+void StmtPrinter::VisitOMPTaskyieldDirective(OMPTaskyieldDirective *Node) {
+  Indent() << "#pragma omp taskyield";
+  PrintOMPExecutableDirective(Node);
+}
+
+void StmtPrinter::VisitOMPBarrierDirective(OMPBarrierDirective *Node) {
+  Indent() << "#pragma omp barrier";
+  PrintOMPExecutableDirective(Node);
+}
+
+void StmtPrinter::VisitOMPTaskwaitDirective(OMPTaskwaitDirective *Node) {
+  Indent() << "#pragma omp taskwait";
+  PrintOMPExecutableDirective(Node);
+}
+
+void StmtPrinter::VisitOMPFlushDirective(OMPFlushDirective *Node) {
+  Indent() << "#pragma omp flush ";
   PrintOMPExecutableDirective(Node);
 }
 
@@ -1534,9 +1610,8 @@ void StmtPrinter::VisitUserDefinedLiteral(UserDefinedLiteral *Node) {
       cast<FunctionDecl>(DRE->getDecl())->getTemplateSpecializationArgs();
     assert(Args);
     const TemplateArgument &Pack = Args->get(0);
-    for (TemplateArgument::pack_iterator I = Pack.pack_begin(),
-                                         E = Pack.pack_end(); I != E; ++I) {
-      char C = (char)I->getAsIntegral().getZExtValue();
+    for (const auto &P : Pack.pack_elements()) {
+      char C = (char)P.getAsIntegral().getZExtValue();
       OS << C;
     }
     break;
