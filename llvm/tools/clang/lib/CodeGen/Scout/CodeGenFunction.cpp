@@ -52,6 +52,7 @@ void CodeGenFunction::EmitStencilMDBlock(const FunctionDecl *FD) {
   llvm::BasicBlock *entry = createBasicBlock("stencil.md");
   llvm::BranchInst *BI = Builder.CreateBr(entry);
   //SC_TODO: add stencil metadata
+  (void)BI;
   EmitBlock(entry);
 }
 
