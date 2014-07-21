@@ -102,7 +102,8 @@ validCategories = {
 'pyapi':'Tests related to the Python API',
 'basic_process': 'Basic process execution sniff tests.',
 'cmdline' : 'Tests related to the LLDB command-line interface',
-'dyntype' : 'Tests related to dynamic type support'
+'dyntype' : 'Tests related to dynamic type support',
+'stresstest' : 'Tests related to stressing lldb limits'
 }
 
 # The test suite.
@@ -189,7 +190,7 @@ dumpSysPath = False
 bmExecutable = None
 # The breakpoint specification of bmExecutable, as specified by the '-x' option.
 bmBreakpointSpec = None
-# The benchamrk iteration count, as specified by the '-y' option.
+# The benchmark iteration count, as specified by the '-y' option.
 bmIterationCount = -1
 
 # By default, don't exclude any directories.  Use '-X' to add one excluded directory.
@@ -275,7 +276,7 @@ def usage(parser):
         print """
 Examples:
 
-This is an example of using the -f option to pinpoint to a specfic test class
+This is an example of using the -f option to pinpoint to a specific test class
 and test method to be run:
 
 $ ./dotest.py -f ClassTypesTestCase.test_with_dsym_and_run_command
@@ -399,7 +400,10 @@ setCrashInfoHook = None
 
 def deleteCrashInfoDylib(dylib_path):
     try:
-        os.remove(dylib_path)
+        # Need to modify this to handle multiple tests running at the same time.  If we move this
+        # to the test's real dir, all should be we run sequentially within a test directory.
+        # os.remove(dylib_path)
+        None
     finally:
         pass
 
@@ -1000,17 +1004,17 @@ def setupSysPath():
         
         # If our lldb supports the -P option, use it to find the python path:
         init_in_python_dir = 'lldb/__init__.py'
-        import pexpect
         lldb_dash_p_result = None
 
         if lldbHere:
-            lldb_dash_p_result = pexpect.run("%s -P"%(lldbHere))
+            lldb_dash_p_result = subprocess.check_output([lldbHere, "-P"], stderr=subprocess.STDOUT)
         elif lldbExec:
-            lldb_dash_p_result = pexpect.run("%s -P"%(lldbExec))
+            lldb_dash_p_result = subprocess.check_output([lldbExec, "-P"], stderr=subprocess.STDOUT)
 
-        if lldb_dash_p_result and not lldb_dash_p_result.startswith(("<", "lldb: invalid option:")):
+        if lldb_dash_p_result and not lldb_dash_p_result.startswith(("<", "lldb: invalid option:")) \
+							  and not lldb_dash_p_result.startswith("Traceback"):
             lines = lldb_dash_p_result.splitlines()
-            if len(lines) == 1 and os.path.isfile(os.path.join(lines[0], init_in_python_dir)):
+            if len(lines) >= 1 and os.path.isfile(os.path.join(lines[0], init_in_python_dir)):
                 lldbPath = lines[0]
                 if "freebsd" in sys.platform or "linux" in sys.platform:
                     os.environ['LLDB_LIB_DIR'] = os.path.join(lldbPath, '..', '..')
@@ -1181,10 +1185,7 @@ def lldbLoggings():
             raise Exception('log enable failed (check GDB_REMOTE_LOG env variable)')
 
 def getMyCommandLine():
-    ps = subprocess.Popen([which('ps'), '-o', "command=CMD", str(os.getpid())], stdout=subprocess.PIPE).communicate()[0]
-    lines = ps.split('\n')
-    cmd_line = lines[1]
-    return cmd_line
+    return ' '.join(sys.argv)
 
 # ======================================== #
 #                                          #
@@ -1495,7 +1496,7 @@ for ia in range(len(archs) if iterArchs else 1):
             Overwrite addError(), addFailure(), and addExpectedFailure() methods
             to enable each test instance to track its failure/error status.  It
             is used in the LLDB test framework to emit detailed trace messages
-            to a log file for easier human inspection of test failres/errors.
+            to a log file for easier human inspection of test failures/errors.
             """
             __singleton__ = None
             __ignore_singleton__ = False

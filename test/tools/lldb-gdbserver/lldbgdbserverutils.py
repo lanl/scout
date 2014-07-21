@@ -195,7 +195,11 @@ def expect_lldb_gdbserver_replay(
                 # This is an entry to send to the remote debug monitor.
                 send_packet = sequence_entry.get_send_packet()
                 if logger:
-                    logger.info("sending packet to remote: %s" % send_packet)
+                    if len(send_packet) == 1 and send_packet[0] == chr(3):
+                        packet_desc = "^C"
+                    else:
+                        packet_desc = send_packet
+                    logger.info("sending packet to remote: {}".format(packet_desc))
                 sock.sendall(send_packet)
             else:
                 # This is an entry expecting to receive content from the remote debug monitor.
@@ -533,7 +537,7 @@ class MultiResponseGdbRemoteEntry(GdbRemoteEntryBase):
 
         save_key: required.  Specifies the key within the context where an array will be stored.
             Each packet received from the gdb remote that does not match the end_regex will get
-            appended ot the array stored within the context at that key.
+            appended to the array stored within the context at that key.
 
         runaway_response_count: optional. Defaults to 10000. If this many responses are retrieved,
             assume there is something wrong with either the response collection or the ending

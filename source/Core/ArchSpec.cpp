@@ -113,7 +113,9 @@ static const CoreDefinition g_core_definitions[ArchSpec::kNumCores] =
     { eByteOrderLittle, 4, 4, 4, llvm::Triple::hexagon , ArchSpec::eCore_hexagon_hexagonv5,  "hexagonv5" },
 
     { eByteOrderLittle, 4, 4, 4 , llvm::Triple::UnknownArch , ArchSpec::eCore_uknownMach32  , "unknown-mach-32" },
-    { eByteOrderLittle, 8, 4, 4 , llvm::Triple::UnknownArch , ArchSpec::eCore_uknownMach64  , "unknown-mach-64" }
+    { eByteOrderLittle, 8, 4, 4 , llvm::Triple::UnknownArch , ArchSpec::eCore_uknownMach64  , "unknown-mach-64" },
+
+    { eByteOrderLittle, 4, 1, 1 , llvm::Triple::kalimba , ArchSpec::eCore_kalimba  , "kalimba" }
 };
 
 struct ArchDefinitionEntry
@@ -249,7 +251,9 @@ static const ArchDefinitionEntry g_elf_arch_entries[] =
     { ArchSpec::eCore_sparc9_generic  , llvm::ELF::EM_SPARCV9, LLDB_INVALID_CPUTYPE, 0xFFFFFFFFu, 0xFFFFFFFFu }, // SPARC V9
     { ArchSpec::eCore_x86_64_x86_64   , llvm::ELF::EM_X86_64 , LLDB_INVALID_CPUTYPE, 0xFFFFFFFFu, 0xFFFFFFFFu }, // AMD64
     { ArchSpec::eCore_mips64          , llvm::ELF::EM_MIPS   , LLDB_INVALID_CPUTYPE, 0xFFFFFFFFu, 0xFFFFFFFFu }, // MIPS
-    { ArchSpec::eCore_hexagon_generic , llvm::ELF::EM_HEXAGON, LLDB_INVALID_CPUTYPE, 0xFFFFFFFFu, 0xFFFFFFFFu }  // HEXAGON
+    { ArchSpec::eCore_hexagon_generic , llvm::ELF::EM_HEXAGON, LLDB_INVALID_CPUTYPE, 0xFFFFFFFFu, 0xFFFFFFFFu }, // HEXAGON
+    { ArchSpec::eCore_kalimba ,         llvm::ELF::EM_CSR_KALIMBA, LLDB_INVALID_CPUTYPE, 0xFFFFFFFFu, 0xFFFFFFFFu }  // KALIMBA
+
 };
 
 static const ArchDefinition g_elf_arch_def = {
@@ -845,33 +849,10 @@ ArchSpec::IsEqualTo (const ArchSpec& rhs, bool exact_match) const
                     return false;
             }
             
-            bool ios_simulator_compatible = false;
-            // Check for iOS desktop simulator matches where:
-            // x86_64-apple-ios is compatible with x86_64-apple-macosx
-            // i386-apple-ios is compatible with i386-apple-macosx
-            if (lhs_triple_vendor == llvm::Triple::Apple)
-            {
-                const llvm::Triple::ArchType lhs_arch = lhs_triple.getArch();
-                if (lhs_arch == llvm::Triple::x86_64 ||
-                    lhs_arch == llvm::Triple::x86)
-                {
-                    if ((lhs_triple_os == llvm::Triple::MacOSX && rhs_triple_os == llvm::Triple::IOS    ) ||
-                        (lhs_triple_os == llvm::Triple::IOS    && rhs_triple_os == llvm::Triple::MacOSX ))
-                    {
-                        ios_simulator_compatible = true;
-                    }
-                        
-                }
-            }
-            
-            // Only fail if both os types are not unknown or if we determined the triples
-            // match for x86_64 or x86 iOS simulator
-            if (!ios_simulator_compatible)
-            {
-                if (lhs_triple_os != llvm::Triple::UnknownOS &&
-                    rhs_triple_os != llvm::Triple::UnknownOS)
-                    return false;
-            }
+            // Only fail if both os types are not unknown
+            if (lhs_triple_os != llvm::Triple::UnknownOS &&
+                rhs_triple_os != llvm::Triple::UnknownOS)
+                return false;
         }
 
         const llvm::Triple::EnvironmentType lhs_triple_env = lhs_triple.getEnvironment();
@@ -924,6 +905,10 @@ cores_match (const ArchSpec::Core core1, const ArchSpec::Core core2, bool try_in
     case ArchSpec::kCore_any:
         return true;
 
+    case ArchSpec::eCore_arm_generic:
+        if (enforce_exact_match)
+            break;
+        // Fall through to case below
     case ArchSpec::kCore_arm_any:
         if (core2 >= ArchSpec::kCore_arm_first && core2 <= ArchSpec::kCore_arm_last)
             return true;
@@ -951,6 +936,8 @@ cores_match (const ArchSpec::Core core1, const ArchSpec::Core core2, bool try_in
     case ArchSpec::eCore_arm_armv6m:
         if (!enforce_exact_match)
         {
+            if (core2 == ArchSpec::eCore_arm_generic)
+                return true;
             try_inverse = false;
             if (core2 == ArchSpec::eCore_arm_armv7)
                 return true;
@@ -968,8 +955,19 @@ cores_match (const ArchSpec::Core core1, const ArchSpec::Core core2, bool try_in
     case ArchSpec::eCore_arm_armv7s:
         if (!enforce_exact_match)
         {
-            try_inverse = false;
+            if (core2 == ArchSpec::eCore_arm_generic)
+                return true;
             if (core2 == ArchSpec::eCore_arm_armv7)
+                return true;
+            try_inverse = false;
+        }
+        break;
+            
+    case ArchSpec::eCore_x86_64_x86_64h:
+        if (!enforce_exact_match)
+        {
+            try_inverse = false;
+            if (core2 == ArchSpec::eCore_x86_64_x86_64)
                 return true;
         }
         break;

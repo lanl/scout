@@ -49,6 +49,9 @@
 #include <pthread_np.h>
 #endif
 
+// C++ includes
+#include <limits>
+
 #include "lldb/Host/Host.h"
 #include "lldb/Core/ArchSpec.h"
 #include "lldb/Core/ConstString.h"
@@ -87,6 +90,12 @@ extern "C"
 using namespace lldb;
 using namespace lldb_private;
 
+// Define maximum thread name length
+#if defined (__linux__) || defined (__FreeBSD__) || defined (__FreeBSD_kernel__) || defined (__NetBSD__)
+uint32_t const Host::MAX_THREAD_NAME_LENGTH = 16;
+#else
+uint32_t const Host::MAX_THREAD_NAME_LENGTH = std::numeric_limits<uint32_t>::max ();
+#endif
 
 #if !defined (__APPLE__) && !defined (_WIN32)
 struct MonitorInfo
@@ -344,26 +353,32 @@ Host::GetArchitecture (SystemDefaultArchitecture arch_kind)
             
             if (is_64_bit_capable)
             {
-#if defined (__i386__) || defined (__x86_64__)
-                if (cpusubtype == CPU_SUBTYPE_486)
-                    cpusubtype = CPU_SUBTYPE_I386_ALL;
-#endif
                 if (cputype & CPU_ARCH_ABI64)
                 {
                     // We have a 64 bit kernel on a 64 bit system
-                    g_host_arch_32.SetArchitecture (eArchTypeMachO, ~(CPU_ARCH_MASK) & cputype, cpusubtype);
                     g_host_arch_64.SetArchitecture (eArchTypeMachO, cputype, cpusubtype);
                 }
                 else
                 {
-                    // We have a 32 bit kernel on a 64 bit system
-                    g_host_arch_32.SetArchitecture (eArchTypeMachO, cputype, cpusubtype);
-                    cputype |= CPU_ARCH_ABI64;
-                    g_host_arch_64.SetArchitecture (eArchTypeMachO, cputype, cpusubtype);
+                    // We have a 64 bit kernel that is returning a 32 bit cputype, the
+                    // cpusubtype will be correct as if it were for a 64 bit architecture
+                    g_host_arch_64.SetArchitecture (eArchTypeMachO, cputype | CPU_ARCH_ABI64, cpusubtype);
                 }
+                
+                // Now we need modify the cpusubtype for the 32 bit slices.
+                uint32_t cpusubtype32 = cpusubtype;
+#if defined (__i386__) || defined (__x86_64__)
+                if (cpusubtype == CPU_SUBTYPE_486 || cpusubtype == CPU_SUBTYPE_X86_64_H)
+                    cpusubtype32 = CPU_SUBTYPE_I386_ALL;
+#elif defined (__arm__) || defined (__arm64__) || defined (__aarch64__)
+                if (cputype == CPU_TYPE_ARM || cputype == CPU_TYPE_ARM64)
+                    cpusubtype32 = CPU_SUBTYPE_ARM_V7S;
+#endif
+                g_host_arch_32.SetArchitecture (eArchTypeMachO, cputype & ~(CPU_ARCH_MASK), cpusubtype32);
             }
             else
             {
+                // We have a 32 bit kernel on a 32 bit system
                 g_host_arch_32.SetArchitecture (eArchTypeMachO, cputype, cpusubtype);
                 g_host_arch_64.Clear();
             }
@@ -1069,7 +1084,7 @@ Host::GetLLDBPath (PathType path_type, FileSpec &file_spec)
                     if (framework_pos)
                     {
                         framework_pos += strlen("LLDB.framework");
-#if defined (__arm__) || defined (__arm64__)
+#if defined (__arm__) || defined (__arm64__) || defined (__aarch64__)
                         // Shallow bundle
                         *framework_pos = '\0';
 #else
@@ -1137,6 +1152,10 @@ Host::GetLLDBPath (PathType path_type, FileSpec &file_spec)
                 {
                     char raw_path[PATH_MAX];
                     char resolved_path[PATH_MAX];
+#if defined(_WIN32)
+                    lldb_file_spec.AppendPathComponent("../lib/site-packages");
+                    lldb_file_spec.GetPath(raw_path, sizeof(raw_path));
+#else
                     lldb_file_spec.GetPath(raw_path, sizeof(raw_path));
 
 #if defined (__APPLE__)
@@ -1159,7 +1178,7 @@ Host::GetLLDBPath (PathType path_type, FileSpec &file_spec)
 
                         ::strncat(raw_path, python_version_dir.c_str(),
                                   sizeof(raw_path) - strlen(raw_path) - 1);
-
+#endif
 #if defined (__APPLE__)
                     }
 #endif
@@ -1443,7 +1462,8 @@ Host::GetOSKernelDescription (std::string &s)
 }
 #endif
 
-#if !defined (__APPLE__) && !defined (__FreeBSD__) && !defined (__FreeBSD_kernel__) && !defined(__linux__)
+#if !defined (__APPLE__) && !defined (__FreeBSD__) && !defined (__FreeBSD_kernel__) \
+    && !defined(__linux__) && !defined(_WIN32)
 uint32_t
 Host::FindProcesses (const ProcessInstanceInfoMatch &match_info, ProcessInstanceInfoList &process_infos)
 {
@@ -1631,7 +1651,7 @@ Host::RunShellCommand (const char *command,
         {
             error.SetErrorString("timed out waiting for shell command to complete");
 
-            // Kill the process since it didn't complete withint the timeout specified
+            // Kill the process since it didn't complete within the timeout specified
             Kill (pid, SIGKILL);
             // Wait for the monitor callback to get the message
             timeout_time = TimeValue::Now();

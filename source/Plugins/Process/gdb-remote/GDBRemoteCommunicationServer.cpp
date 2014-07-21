@@ -36,8 +36,8 @@
 #include "lldb/Target/Platform.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/NativeRegisterContext.h"
-#include "../../../Host/common/NativeProcessProtocol.h"
-#include "../../../Host/common/NativeThreadProtocol.h"
+#include "Host/common/NativeProcessProtocol.h"
+#include "Host/common/NativeThreadProtocol.h"
 
 // Project includes
 #include "Utility/StringExtractorGDBRemote.h"
@@ -883,7 +883,7 @@ GDBRemoteCommunicationServer::SendStopReplyPacketForThread (lldb::tid_t tid)
 
     // If a 'QListThreadsInStopReply' was sent to enable this feature, we
     // will send all thread IDs back in the "threads" key whose value is
-    // a listc of hex thread IDs separated by commas:
+    // a list of hex thread IDs separated by commas:
     //  "threads:10a,10b,10c;"
     // This will save the debugger from having to send a pair of qfThreadInfo
     // and qsThreadInfo packets, but it also might take a lot of room in the
@@ -1253,21 +1253,21 @@ GDBRemoteCommunicationServer::Handle_qHostInfo (StringExtractorGDBRemote &packet
     }
 #if defined(__APPLE__)
 
-#if defined(__arm__) || defined(__arm64__)
+#if defined(__arm__) || defined(__arm64__) || defined(__aarch64__)
     // For iOS devices, we are connected through a USB Mux so we never pretend
     // to actually have a hostname as far as the remote lldb that is connecting
     // to this lldb-platform is concerned
     response.PutCString ("hostname:");
     response.PutCStringAsRawHex8("127.0.0.1");
     response.PutChar(';');
-#else   // #if defined(__arm__) || defined(__arm64__)
+#else   // #if defined(__arm__) || defined(__arm64__) || defined(__aarch64__)
     if (Host::GetHostname (s))
     {
         response.PutCString ("hostname:");
         response.PutCStringAsRawHex8(s.c_str());
         response.PutChar(';');
     }
-#endif  // #if defined(__arm__) || defined(__arm64__)
+#endif  // #if defined(__arm__) || defined(__arm64__) || defined(__aarch64__)
 
 #else   // #if defined(__APPLE__)
     if (Host::GetHostname (s))
@@ -1663,7 +1663,7 @@ GDBRemoteCommunicationServer::Handle_A (StringExtractorGDBRemote &packet)
                 success = false;
             else
             {
-                // Decode the argument index. We ignore this really becuase
+                // Decode the argument index. We ignore this really because
                 // who would really send down the arguments in a random order???
                 const uint32_t arg_idx = packet.GetU32(UINT32_MAX);
                 if (arg_idx == UINT32_MAX)
@@ -1834,7 +1834,7 @@ GDBRemoteCommunicationServer::Handle_qLaunchGDBServer (StringExtractorGDBRemote 
         Error error;
         std::string hostname;
         // TODO: /tmp/ should not be hardcoded. User might want to override /tmp
-        // with the TMPDIR environnement variable
+        // with the TMPDIR environment variable
         packet.SetFilePos(::strlen ("qLaunchGDBServer;"));
         std::string name;
         std::string value;
@@ -1939,7 +1939,7 @@ GDBRemoteCommunicationServer::KillSpawnedProcess (lldb::pid_t pid)
             return true;
     }
 
-    // the launched process still lives.  Now try killling it again,
+    // the launched process still lives.  Now try killing it again,
     // this time with an unblockable signal.
     Host::Kill (pid, SIGKILL);
 
@@ -3041,12 +3041,21 @@ GDBRemoteCommunicationServer::Handle_qfThreadInfo (StringExtractorGDBRemote &pac
     if (!IsGdbServer())
         return SendUnimplementedResponse("GDBRemoteCommunicationServer::Handle_qfThreadInfo() unimplemented");
 
+    Log *log (GetLogIfAnyCategoriesSet(LIBLLDB_LOG_THREAD));
+
     // Fail if we don't have a current process.
     if (!m_debugged_process_sp || (m_debugged_process_sp->GetID () == LLDB_INVALID_PROCESS_ID))
-        return SendErrorResponse (68);
+    {
+        if (log)
+            log->Printf ("GDBRemoteCommunicationServer::%s() no process (%s), returning OK", __FUNCTION__, m_debugged_process_sp ? "invalid process id" : "null m_debugged_process_sp");
+        return SendOKResponse ();
+    }
 
     StreamGDBRemote response;
     response.PutChar ('m');
+
+    if (log)
+        log->Printf ("GDBRemoteCommunicationServer::%s() starting thread iteration", __FUNCTION__);
 
     NativeThreadProtocolSP thread_sp;
     uint32_t thread_index;
@@ -3054,10 +3063,15 @@ GDBRemoteCommunicationServer::Handle_qfThreadInfo (StringExtractorGDBRemote &pac
          thread_sp;
          ++thread_index, thread_sp = m_debugged_process_sp->GetThreadAtIndex (thread_index))
     {
+        if (log)
+            log->Printf ("GDBRemoteCommunicationServer::%s() iterated thread %" PRIu32 "(%s, tid=0x%" PRIx64 ")", __FUNCTION__, thread_index, thread_sp ? "is not null" : "null", thread_sp ? thread_sp->GetID () : LLDB_INVALID_THREAD_ID);
         if (thread_index > 0)
             response.PutChar(',');
         response.Printf ("%" PRIx64, thread_sp->GetID ());
     }
+
+    if (log)
+        log->Printf ("GDBRemoteCommunicationServer::%s() finished thread iteration", __FUNCTION__);
 
     return SendPacketNoLock(response.GetData(), response.GetSize());
 }

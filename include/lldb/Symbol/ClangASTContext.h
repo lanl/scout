@@ -71,8 +71,7 @@ public:
     clang::DiagnosticConsumer *
     getDiagnosticConsumer();
 
-    clang::TargetOptions *
-    getTargetOptions();
+    std::shared_ptr<clang::TargetOptions> &getTargetOptions();
 
     clang::TargetInfo *
     getTargetInfo();
@@ -418,7 +417,7 @@ protected:
     std::unique_ptr<clang::SourceManager>           m_source_manager_ap;
     std::unique_ptr<clang::DiagnosticsEngine>       m_diagnostics_engine_ap;
     std::unique_ptr<clang::DiagnosticConsumer>      m_diagnostic_consumer_ap;
-    llvm::IntrusiveRefCntPtr<clang::TargetOptions>  m_target_options_rp;
+    std::shared_ptr<clang::TargetOptions>           m_target_options_rp;
     std::unique_ptr<clang::TargetInfo>              m_target_info_ap;
     std::unique_ptr<clang::IdentifierTable>         m_identifier_table_ap;
     std::unique_ptr<clang::SelectorTable>           m_selector_table_ap;

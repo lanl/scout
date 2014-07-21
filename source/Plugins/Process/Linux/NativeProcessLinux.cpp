@@ -53,11 +53,25 @@
 #define DEBUG_PTRACE_MAXBYTES 20
 
 // Support ptrace extensions even when compiled without required kernel support
+#ifndef PT_GETREGS
 #ifndef PTRACE_GETREGS
-#define PTRACE_GETREGS 12
+  #define PTRACE_GETREGS 12
 #endif
+#endif
+#ifndef PT_SETREGS
 #ifndef PTRACE_SETREGS
   #define PTRACE_SETREGS 13
+#endif
+#endif
+#ifndef PT_GETFPREGS
+#ifndef PTRACE_GETFPREGS
+  #define PTRACE_GETFPREGS 14
+#endif
+#endif
+#ifndef PT_SETFPREGS
+#ifndef PTRACE_SETFPREGS
+  #define PTRACE_SETFPREGS 15
+#endif
 #endif
 #ifndef PTRACE_GETREGSET
   #define PTRACE_GETREGSET 0x4204
@@ -249,9 +263,9 @@ namespace
 
         errno = 0;
         if (req == PTRACE_GETREGSET || req == PTRACE_SETREGSET)
-            result = ptrace(static_cast<__ptrace_request>(req), static_cast<::pid_t>(pid), *(unsigned int *)addr, data);
+            result = ptrace(static_cast<__ptrace_request>(req), static_cast< ::pid_t>(pid), *(unsigned int *)addr, data);
         else
-            result = ptrace(static_cast<__ptrace_request>(req), static_cast<::pid_t>(pid), addr, data);
+            result = ptrace(static_cast<__ptrace_request>(req), static_cast< ::pid_t>(pid), addr, data);
 
         if (log)
             log->Printf("ptrace(%s, %" PRIu64 ", %p, %p, %zu)=%lX called from file %s line %d",
@@ -285,9 +299,9 @@ namespace
         long result = 0;
         errno = 0;
         if (req == PTRACE_GETREGSET || req == PTRACE_SETREGSET)
-            result = ptrace(static_cast<__ptrace_request>(req), static_cast<::pid_t>(pid), *(unsigned int *)addr, data);
+            result = ptrace(static_cast<__ptrace_request>(req), static_cast< ::pid_t>(pid), *(unsigned int *)addr, data);
         else
-            result = ptrace(static_cast<__ptrace_request>(req), static_cast<::pid_t>(pid), addr, data);
+            result = ptrace(static_cast<__ptrace_request>(req), static_cast< ::pid_t>(pid), addr, data);
         return result;
     }
 #endif
@@ -485,7 +499,7 @@ namespace
             lldb::addr_t addr,
             void *buff,
             lldb::addr_t size,
-            size_t &result) :
+            lldb::addr_t &result) :
             Operation (),
             m_addr (addr),
             m_buff (buff),
@@ -1516,7 +1530,7 @@ NativeProcessLinux::Launch(LaunchArgs *args)
 
         goto FINISH;
     }
-    assert(WIFSTOPPED(status) && (wpid == static_cast<::pid_t> (pid)) &&
+    assert(WIFSTOPPED(status) && (wpid == static_cast< ::pid_t> (pid)) &&
            "Could not sync with inferior process.");
 
     if (log)

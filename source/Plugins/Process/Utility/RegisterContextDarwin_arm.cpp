@@ -475,7 +475,7 @@ RegisterContextDarwin_arm::GetRegisterSet (size_t reg_set)
 
 
 //----------------------------------------------------------------------
-// Register information defintions for 32 bit i386.
+// Register information definitions for 32 bit i386.
 //----------------------------------------------------------------------
 int
 RegisterContextDarwin_arm::GetSetForNativeRegNum (int reg)
@@ -866,7 +866,7 @@ RegisterContextDarwin_arm::WriteAllRegisterValues (const lldb::DataBufferSP &dat
 }
 
 uint32_t
-RegisterContextDarwin_arm::ConvertRegisterKindToRegisterNumber (uint32_t kind, uint32_t reg)
+RegisterContextDarwin_arm::ConvertRegisterKindToRegisterNumber (lldb::RegisterKind kind, uint32_t reg)
 {
     if (kind == eRegisterKindGeneric)
     {

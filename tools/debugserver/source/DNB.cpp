@@ -321,7 +321,7 @@ nub_process_t
 DNBProcessLaunch (const char *path,
                   char const *argv[],
                   const char *envp[],
-                  const char *working_directory, // NULL => dont' change, non-NULL => set working directory for inferior to this
+                  const char *working_directory, // NULL => don't change, non-NULL => set working directory for inferior to this
                   const char *stdin_path,
                   const char *stdout_path,
                   const char *stderr_path,
@@ -1560,13 +1560,13 @@ DNBPrintf (nub_process_t pid, nub_thread_t tid, nub_addr_t base_addr, FILE *file
                         case 'a':    // Print the current address
                             ++f;
                             fprintf_format += "ll";
-                            fprintf_format += *f;    // actual format to show address with folows the 'a' ("%_ax")
+                            fprintf_format += *f;    // actual format to show address with follows the 'a' ("%_ax")
                             fprintf (file, fprintf_format.c_str(), addr);
                             break;
                         case 'o':    // offset from base address
                             ++f;
                             fprintf_format += "ll";
-                            fprintf_format += *f;    // actual format to show address with folows the 'a' ("%_ox")
+                            fprintf_format += *f;    // actual format to show address with follows the 'a' ("%_ox")
                             fprintf(file, fprintf_format.c_str(), addr - base_addr);
                             break;
                         default:
@@ -2309,7 +2309,7 @@ DNBInitialize()
 #if defined (__i386__) || defined (__x86_64__)
     DNBArchImplI386::Initialize();
     DNBArchImplX86_64::Initialize();
-#elif defined (__arm__) || defined (__arm64__)
+#elif defined (__arm__) || defined (__arm64__) || defined (__aarch64__)
     DNBArchMachARM::Initialize();
     DNBArchMachARM64::Initialize();
 #endif
@@ -2329,7 +2329,7 @@ DNBSetArchitecture (const char *arch)
             return DNBArchProtocol::SetArchitecture (CPU_TYPE_I386);
         else if ((strcasecmp (arch, "x86_64") == 0) || (strcasecmp (arch, "x86_64h") == 0))
             return DNBArchProtocol::SetArchitecture (CPU_TYPE_X86_64);
-        else if (strstr (arch, "arm64") == arch || strstr (arch, "armv8") == arch)
+        else if (strstr (arch, "arm64") == arch || strstr (arch, "armv8") == arch || strstr (arch, "aarch64") == arch)
             return DNBArchProtocol::SetArchitecture (CPU_TYPE_ARM64);
         else if (strstr (arch, "arm") == arch)
             return DNBArchProtocol::SetArchitecture (CPU_TYPE_ARM);

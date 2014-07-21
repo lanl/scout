@@ -99,7 +99,7 @@ public:
     virtual const Property *
     GetPropertyAtIndex (const ExecutionContext *exe_ctx, bool will_modify, uint32_t idx) const
     {
-        // When gettings the value for a key from the thread options, we will always
+        // When getting the value for a key from the thread options, we will always
         // try and grab the setting from the current thread if there is one. Else we just
         // use the one from this instance.
         if (exe_ctx)
@@ -420,7 +420,7 @@ Thread::GetStopInfo ()
     const uint32_t stop_id = process_sp ? process_sp->GetStopID() : UINT32_MAX;
     if (plan_sp && plan_sp->PlanSucceeded())
     {
-        return StopInfo::CreateStopReasonWithPlan (plan_sp, GetReturnValueObject());
+        return StopInfo::CreateStopReasonWithPlan (plan_sp, GetReturnValueObject(), GetExpressionVariable());
     }
     else
     {
@@ -1182,6 +1182,22 @@ Thread::GetReturnValueObject ()
         }
     }
     return ValueObjectSP();
+}
+
+ClangExpressionVariableSP
+Thread::GetExpressionVariable ()
+{
+    if (!m_completed_plan_stack.empty())
+    {
+        for (int i = m_completed_plan_stack.size() - 1; i >= 0; i--)
+        {
+            ClangExpressionVariableSP expression_variable_sp;
+            expression_variable_sp = m_completed_plan_stack[i]->GetExpressionVariable();
+            if (expression_variable_sp)
+            return expression_variable_sp;
+        }
+    }
+    return ClangExpressionVariableSP();
 }
 
 bool

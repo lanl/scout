@@ -63,10 +63,6 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <Foundation/Foundation.h>
 
-#if !defined(__arm__) && !defined(__arm64__)
-#include <Carbon/Carbon.h>
-#endif
-
 #ifndef _POSIX_SPAWN_DISABLE_ASLR
 #define _POSIX_SPAWN_DISABLE_ASLR       0x0100
 #endif
@@ -232,7 +228,7 @@ Host::ResolveExecutableInBundle (FileSpec &file)
 lldb::pid_t
 Host::LaunchApplication (const FileSpec &app_file_spec)
 {
-#if defined (__arm__) || defined(__arm64__)
+#if defined (__arm__) || defined(__arm64__) || defined(__aarch64__)
     return LLDB_INVALID_PROCESS_ID;
 #else
     char app_path[PATH_MAX];
@@ -325,7 +321,7 @@ WaitForProcessToSIGSTOP (const lldb::pid_t pid, const int timeout_in_seconds)
     }
     return false;
 }
-#if !defined(__arm__) && !defined(__arm64__)
+#if !defined(__arm__) && !defined(__arm64__) && !defined(__aarch64__)
 
 //static lldb::pid_t
 //LaunchInNewTerminalWithCommandFile 
@@ -565,8 +561,8 @@ LaunchInNewTerminalWithAppleScript (const char *exe_path, ProcessLaunchInfo &lau
     if (launch_info.GetFlags().Test (eLaunchFlagDisableASLR))
         command.PutCString(" --disable-aslr");
     
-    // We are launching on this host in a terminal. So compare the environemnt on the host
-    // to what is supplied in the launch_info. Any items that aren't in the host environemnt
+    // We are launching on this host in a terminal. So compare the environment on the host
+    // to what is supplied in the launch_info. Any items that aren't in the host environment
     // need to be sent to darwin-debug. If we send all environment entries, we might blow the
     // max command line length, so we only send user modified entries.
     const char **envp = launch_info.GetEnvironmentEntries().GetConstArgumentVector ();
@@ -660,7 +656,7 @@ LaunchInNewTerminalWithAppleScript (const char *exe_path, ProcessLaunchInfo &lau
         {
             pid = (intptr_t)accept_thread_result;
         
-            // Wait for process to be stopped the the entry point by watching
+            // Wait for process to be stopped at the entry point by watching
             // for the process status to be set to SSTOP which indicates it it
             // SIGSTOP'ed at the entry point
             WaitForProcessToSIGSTOP (pid, 5);
@@ -673,7 +669,7 @@ LaunchInNewTerminalWithAppleScript (const char *exe_path, ProcessLaunchInfo &lau
     return error;
 }
 
-#endif // #if !defined(__arm__)
+#endif // #if !defined(__arm__) && !defined(__arm64__) && !defined(__aarch64__)
 
 
 // On MacOSX CrashReporter will display a string for each shared library if
@@ -732,7 +728,7 @@ Host::SetCrashDescription (const char *cstr)
 bool
 Host::OpenFileInExternalEditor (const FileSpec &file_spec, uint32_t line_no)
 {
-#if defined(__arm__) || defined(__arm64__)
+#if defined(__arm__) || defined(__arm64__) || defined(__aarch64__)
     return false;
 #else
     // We attach this to an 'odoc' event to specify a particular selection
@@ -839,98 +835,9 @@ Host::OpenFileInExternalEditor (const FileSpec &file_spec, uint32_t line_no)
 
         return false;
     }
-    
-    ProcessInfoRec which_process;
-    ::memset(&which_process, 0, sizeof(which_process));
-    unsigned char ap_name[PATH_MAX];
-    which_process.processName = ap_name;
-    error = ::GetProcessInformation (&psn, &which_process);
-    
-    bool using_xcode;
-    if (error != noErr)
-    {
-        if (log)
-            log->Printf("GetProcessInformation failed, error: %ld.\n", error);
-        using_xcode = false;
-    }
-    else
-        using_xcode = strncmp((char *) ap_name+1, "Xcode", (int) ap_name[0]) == 0;
-    
-    // Xcode doesn't obey the line number in the Open Apple Event.  So I have to send
-    // it an AppleScript to focus on the right line.
-    
-    if (using_xcode)
-    {
-        static ComponentInstance osa_component = NULL;
-        static const char *as_template = "tell application \"Xcode\"\n"
-                                   "set doc to the first document whose path is \"%s\"\n"
-                                   "set the selection to paragraph %d of doc\n"
-                                   "--- set the selected paragraph range to {%d, %d} of doc\n"
-                                   "end tell\n";
-        const int chars_for_int = 32;
-        static int as_template_len = strlen (as_template);
 
-      
-        char *as_str;
-        AEDesc as_desc;
-      
-        if (osa_component == NULL)
-        {
-            osa_component = ::OpenDefaultComponent (kOSAComponentType,
-                                                    kAppleScriptSubtype);
-        }
-        
-        if (osa_component == NULL)
-        {
-            if (log)
-                log->Printf("Could not get default AppleScript component.\n");
-            return false;
-        }
-
-        uint32_t as_str_size = as_template_len + strlen (file_path) + 3 * chars_for_int + 1;     
-        as_str = (char *) malloc (as_str_size);
-        ::snprintf (as_str, 
-                    as_str_size - 1, 
-                    as_template, 
-                    file_path, 
-                    line_no, 
-                    line_no, 
-                    line_no);
-
-        error = ::AECreateDesc (typeChar, 
-                                as_str, 
-                                strlen (as_str),
-                                &as_desc);
-        
-        ::free (as_str);
-
-        if (error != noErr)
-        {
-            if (log)
-                log->Printf("Failed to create AEDesc for Xcode AppleEvent: %ld.\n", error);
-            return false;
-        }
-            
-        OSAID ret_OSAID;
-        error = ::OSACompileExecute (osa_component, 
-                                     &as_desc, 
-                                     kOSANullScript, 
-                                     kOSAModeNeverInteract, 
-                                     &ret_OSAID);
-        
-        ::OSADispose (osa_component, ret_OSAID);
-
-        ::AEDisposeDesc (&as_desc);
-
-        if (error != noErr)
-        {
-            if (log)
-                log->Printf("Sending AppleEvent to Xcode failed, error: %ld.\n", error);
-            return false;
-        }
-    }
     return true;
-#endif // #if !defined(__arm__)
+#endif // #if !defined(__arm__) && !defined(__arm64__) && !defined(__aarch64__)
 }
 
 
@@ -1010,53 +917,14 @@ Host::GetOSVersion
 
     if (g_major == 0)
     {
-        static const char *version_plist_file = "/System/Library/CoreServices/SystemVersion.plist";
-        char buffer[256];
-        const char *product_version_str = NULL;
-        
-        CFCReleaser<CFURLRef> plist_url(CFURLCreateFromFileSystemRepresentation(kCFAllocatorDefault,
-                                                                                (UInt8 *) version_plist_file,
-                                                                                strlen (version_plist_file), NO));
-        if (plist_url.get())
-        {
-            CFCReleaser<CFPropertyListRef> property_list;
-            CFCReleaser<CFStringRef>       error_string;
-            CFCReleaser<CFDataRef>         resource_data;
-            SInt32                         error_code;
-     
-            // Read the XML file.
-            if (CFURLCreateDataAndPropertiesFromResource (kCFAllocatorDefault,
-                                                          plist_url.get(),
-                                                          resource_data.ptr_address(),
-                                                          NULL,
-                                                          NULL,
-                                                          &error_code))
-            {
-                   // Reconstitute the dictionary using the XML data.
-                property_list = CFPropertyListCreateFromXMLData (kCFAllocatorDefault,
-                                                                  resource_data.get(),
-                                                                  kCFPropertyListImmutable,
-                                                                  error_string.ptr_address());
-                if (CFGetTypeID(property_list.get()) == CFDictionaryGetTypeID())
-                {
-                    CFDictionaryRef property_dict = (CFDictionaryRef) property_list.get();
-                    CFStringRef product_version_key = CFSTR("ProductVersion");
-                    CFPropertyListRef product_version_value;
-                    product_version_value = CFDictionaryGetValue(property_dict, product_version_key);
-                    if (product_version_value && CFGetTypeID(product_version_value) == CFStringGetTypeID())
-                    {
-                        CFStringRef product_version_cfstr = (CFStringRef) product_version_value;
-                        product_version_str = CFStringGetCStringPtr(product_version_cfstr, kCFStringEncodingUTF8);
-                        if (product_version_str != NULL) {
-                            if (CFStringGetCString(product_version_cfstr, buffer, 256, kCFStringEncodingUTF8))
-                                product_version_str = buffer;
-                        }
-                    }
-                }
-            }
+        @autoreleasepool {
+            NSDictionary *version_info = [NSDictionary dictionaryWithContentsOfFile:
+                                          @"/System/Library/CoreServices/SystemVersion.plist"];
+            NSString *version_value = [version_info objectForKey:@"ProductVersion"];
+            const char *version_str = [version_value UTF8String];
+            if (version_str)
+                Args::StringToVersion(version_str, g_major, g_minor, g_update);
         }
-        if (product_version_str)
-            Args::StringToVersion(product_version_str, g_major, g_minor, g_update);
     }
     
     if (g_major != 0)
@@ -1496,7 +1364,7 @@ LaunchProcessXPC (const char *exe_path, ProcessLaunchInfo &launch_info, ::pid_t 
                 return;
             } else if (event == XPC_ERROR_CONNECTION_INVALID) {
                 // The service is invalid. Either the service name supplied to xpc_connection_create() is incorrect
-                // or we (this process) have canceled the service; we can do any cleanup of appliation state at this point.
+                // or we (this process) have canceled the service; we can do any cleanup of application state at this point.
                 // printf("Service disconnected");
                 return;
             } else {
@@ -1639,10 +1507,10 @@ Host::LaunchProcess (ProcessLaunchInfo &launch_info)
     
     if (launch_info.GetFlags().Test (eLaunchFlagLaunchInTTY))
     {
-#if !defined(__arm__) && !defined(__arm64__)
+#if !defined(__arm__) && !defined(__arm64__) && !defined(__aarch64__)
         return LaunchInNewTerminalWithAppleScript (exe_path, launch_info);
 #else
-        error.SetErrorString ("launching a processs in a new terminal is not supported on iOS devices");
+        error.SetErrorString ("launching a process in a new terminal is not supported on iOS devices");
         return error;
 #endif
     }

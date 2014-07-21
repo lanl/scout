@@ -35,7 +35,7 @@ namespace lldb_private {
 /// ValueObject:
 ///
 /// This abstract class provides an interface to a particular value, be it a register, a local or global variable,
-/// that is evaluated in some particular scope.  The ValueObject also has the capibility of being the "child" of
+/// that is evaluated in some particular scope.  The ValueObject also has the capability of being the "child" of
 /// some other variable object, and in turn of having children.  
 /// If a ValueObject is a root variable object - having no parent - then it must be constructed with respect to some
 /// particular ExecutionContextScope.  If it is a child, it inherits the ExecutionContextScope from its parent.
@@ -380,7 +380,7 @@ public:
     GetTypeImpl ();
 
     //------------------------------------------------------------------
-    // Sublasses must implement the functions below.
+    // Subclasses must implement the functions below.
     //------------------------------------------------------------------
     virtual uint64_t
     GetByteSize() = 0;
@@ -389,7 +389,7 @@ public:
     GetValueType() const = 0;
 
     //------------------------------------------------------------------
-    // Sublasses can implement the functions below.
+    // Subclasses can implement the functions below.
     //------------------------------------------------------------------
     virtual ConstString
     GetTypeName();
@@ -468,7 +468,7 @@ public:
         return true;
     }
 
-    virtual off_t
+    virtual lldb::offset_t
     GetByteOffset()
     {
         return 0;
@@ -531,7 +531,7 @@ public:
     GetDeclaration (Declaration &decl);
 
     //------------------------------------------------------------------
-    // The functions below should NOT be modified by sublasses
+    // The functions below should NOT be modified by subclasses
     //------------------------------------------------------------------
     const Error &
     GetError();
@@ -715,6 +715,10 @@ public:
     {
     }
 
+    // Find the address of the C++ vtable pointer
+    virtual lldb::addr_t
+    GetCPPVTableAddress(AddressType &address_type);
+    
     virtual lldb::ValueObjectSP
     Cast (const ClangASTType &clang_ast_type);
     
@@ -1130,7 +1134,7 @@ protected:
     ClearDynamicTypeInformation ();
     
     //------------------------------------------------------------------
-    // Sublasses must implement the functions below.
+    // Subclasses must implement the functions below.
     //------------------------------------------------------------------
     
     virtual ClangASTType

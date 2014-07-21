@@ -11,7 +11,9 @@ function(add_python_test_target name test_script args comment)
     )
 endfunction()
 
-string(REGEX REPLACE ".*ccache\ +" "" LLDB_TEST_COMPILER ${CMAKE_C_COMPILER} ${CMAKE_C_COMPILER_ARG1})
+if ("${LLDB_TEST_COMPILER}" STREQUAL "")
+    string(REGEX REPLACE ".*ccache\ +" "" LLDB_TEST_COMPILER ${CMAKE_C_COMPILER} ${CMAKE_C_COMPILER_ARG1})
+endif()
 
 # Users can override LLDB_TEST_ARGS to modify the way LLDB tests are run. See help below.
 set(LLDB_TEST_ARGS
@@ -47,7 +49,7 @@ set(LLDB_DOSEP_ARGS
 # If tests crash cause LLDB to crash, or things are otherwise unstable, or if machine-parsable
 # output is desired (i.e. in continuous integration contexts) check-lldb-sep is a better target.
 add_python_test_target(check-lldb
-  ${LLDB_SOURCE_DIR}/test/dosep.ty
+  ${LLDB_SOURCE_DIR}/test/dosep.py
   "${LLDB_DOSEP_ARGS}"
   "Testing LLDB (with a separate subprocess per test)"
   )

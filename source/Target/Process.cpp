@@ -27,6 +27,7 @@
 #include "lldb/Expression/ClangUserExpression.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Host/Host.h"
+#include "lldb/Host/Pipe.h"
 #include "lldb/Host/Terminal.h"
 #include "lldb/Target/ABI.h"
 #include "lldb/Target/DynamicLoader.h"
@@ -83,7 +84,7 @@ public:
     virtual const Property *
     GetPropertyAtIndex (const ExecutionContext *exe_ctx, bool will_modify, uint32_t idx) const
     {
-        // When gettings the value for a key from the process options, we will always
+        // When getting the value for a key from the process options, we will always
         // try and grab the setting from the current process if there is one. Else we just
         // use the one from this instance.
         if (exe_ctx)
@@ -485,23 +486,23 @@ ProcessLaunchCommandOptions::SetOptionValue (uint32_t option_idx, const char *op
 OptionDefinition
 ProcessLaunchCommandOptions::g_option_table[] =
 {
-{ LLDB_OPT_SET_ALL, false, "stop-at-entry", 's', OptionParser::eNoArgument,       NULL, 0, eArgTypeNone,          "Stop at the entry point of the program when launching a process."},
-{ LLDB_OPT_SET_ALL, false, "disable-aslr",  'A', OptionParser::eNoArgument,       NULL, 0, eArgTypeNone,          "Disable address space layout randomization when launching a process."},
-{ LLDB_OPT_SET_ALL, false, "plugin",        'p', OptionParser::eRequiredArgument, NULL, 0, eArgTypePlugin,        "Name of the process plugin you want to use."},
-{ LLDB_OPT_SET_ALL, false, "working-dir",   'w', OptionParser::eRequiredArgument, NULL, 0, eArgTypeDirectoryName,          "Set the current working directory to <path> when running the inferior."},
-{ LLDB_OPT_SET_ALL, false, "arch",          'a', OptionParser::eRequiredArgument, NULL, 0, eArgTypeArchitecture,  "Set the architecture for the process to launch when ambiguous."},
-{ LLDB_OPT_SET_ALL, false, "environment",   'v', OptionParser::eRequiredArgument, NULL, 0, eArgTypeNone,          "Specify an environment variable name/value string (--environment NAME=VALUE). Can be specified multiple times for subsequent environment entries."},
-{ LLDB_OPT_SET_ALL, false, "shell",         'c', OptionParser::eOptionalArgument, NULL, 0, eArgTypeFilename,          "Run the process in a shell (not supported on all platforms)."},
+{ LLDB_OPT_SET_ALL, false, "stop-at-entry", 's', OptionParser::eNoArgument,       NULL, NULL, 0, eArgTypeNone,          "Stop at the entry point of the program when launching a process."},
+{ LLDB_OPT_SET_ALL, false, "disable-aslr",  'A', OptionParser::eNoArgument,       NULL, NULL, 0, eArgTypeNone,          "Disable address space layout randomization when launching a process."},
+{ LLDB_OPT_SET_ALL, false, "plugin",        'p', OptionParser::eRequiredArgument, NULL, NULL, 0, eArgTypePlugin,        "Name of the process plugin you want to use."},
+{ LLDB_OPT_SET_ALL, false, "working-dir",   'w', OptionParser::eRequiredArgument, NULL, NULL, 0, eArgTypeDirectoryName,          "Set the current working directory to <path> when running the inferior."},
+{ LLDB_OPT_SET_ALL, false, "arch",          'a', OptionParser::eRequiredArgument, NULL, NULL, 0, eArgTypeArchitecture,  "Set the architecture for the process to launch when ambiguous."},
+{ LLDB_OPT_SET_ALL, false, "environment",   'v', OptionParser::eRequiredArgument, NULL, NULL, 0, eArgTypeNone,          "Specify an environment variable name/value string (--environment NAME=VALUE). Can be specified multiple times for subsequent environment entries."},
+{ LLDB_OPT_SET_ALL, false, "shell",         'c', OptionParser::eOptionalArgument, NULL, NULL, 0, eArgTypeFilename,          "Run the process in a shell (not supported on all platforms)."},
 
-{ LLDB_OPT_SET_1  , false, "stdin",         'i', OptionParser::eRequiredArgument, NULL, 0, eArgTypeFilename,    "Redirect stdin for the process to <filename>."},
-{ LLDB_OPT_SET_1  , false, "stdout",        'o', OptionParser::eRequiredArgument, NULL, 0, eArgTypeFilename,    "Redirect stdout for the process to <filename>."},
-{ LLDB_OPT_SET_1  , false, "stderr",        'e', OptionParser::eRequiredArgument, NULL, 0, eArgTypeFilename,    "Redirect stderr for the process to <filename>."},
+{ LLDB_OPT_SET_1  , false, "stdin",         'i', OptionParser::eRequiredArgument, NULL, NULL, 0, eArgTypeFilename,    "Redirect stdin for the process to <filename>."},
+{ LLDB_OPT_SET_1  , false, "stdout",        'o', OptionParser::eRequiredArgument, NULL, NULL, 0, eArgTypeFilename,    "Redirect stdout for the process to <filename>."},
+{ LLDB_OPT_SET_1  , false, "stderr",        'e', OptionParser::eRequiredArgument, NULL, NULL, 0, eArgTypeFilename,    "Redirect stderr for the process to <filename>."},
 
-{ LLDB_OPT_SET_2  , false, "tty",           't', OptionParser::eNoArgument,       NULL, 0, eArgTypeNone,    "Start the process in a terminal (not supported on all platforms)."},
+{ LLDB_OPT_SET_2  , false, "tty",           't', OptionParser::eNoArgument,       NULL, NULL, 0, eArgTypeNone,    "Start the process in a terminal (not supported on all platforms)."},
 
-{ LLDB_OPT_SET_3  , false, "no-stdio",      'n', OptionParser::eNoArgument,       NULL, 0, eArgTypeNone,    "Do not set up for terminal I/O to go to running process."},
+{ LLDB_OPT_SET_3  , false, "no-stdio",      'n', OptionParser::eNoArgument,       NULL, NULL, 0, eArgTypeNone,    "Do not set up for terminal I/O to go to running process."},
 
-{ 0               , false, NULL,             0,  0,                 NULL, 0, eArgTypeNone,    NULL }
+{ 0               , false, NULL,             0,  0,                 NULL, NULL, 0, eArgTypeNone,    NULL }
 };
 
 
@@ -1174,7 +1175,7 @@ Process::SetExitStatus (int status, const char *cstr)
 }
 
 // This static callback can be used to watch for local child processes on
-// the current host. The the child process exits, the process will be
+// the current host. The child process exits, the process will be
 // found in the global target list (we want to be completely sure that the
 // lldb_private::Process doesn't go away before we can deliver the signal.
 bool
@@ -1412,6 +1413,9 @@ Process::GetPrivateState ()
 void
 Process::SetPrivateState (StateType new_state)
 {
+    if (m_finalize_called)
+        return;
+
     Log *log(lldb_private::GetLogIfAnyCategoriesSet (LIBLLDB_LOG_STATE | LIBLLDB_LOG_PROCESS));
     bool state_changed = false;
 
@@ -1520,9 +1524,27 @@ Process::LoadImage (const FileSpec &image_spec, Error &error)
                 expr_options.SetUnwindOnError(true);
                 expr_options.SetIgnoreBreakpoints(true);
                 expr_options.SetExecutionPolicy(eExecutionPolicyAlways);
+                expr_options.SetResultIsInternal(true);
+                
                 StreamString expr;
-                expr.Printf("dlopen (\"%s\", 2)", path);
-                const char *prefix = "extern \"C\" void* dlopen (const char *path, int mode);\n";
+                expr.Printf(R"(
+                               struct __lldb_dlopen_result { void *image_ptr; const char *error_str; } the_result;
+                               the_result.image_ptr = dlopen ("%s", 2);
+                               if (the_result.image_ptr == (void *) 0x0)
+                               {
+                                   the_result.error_str = dlerror();
+                               }
+                               else
+                               {
+                                   the_result.error_str = (const char *) 0x0;
+                               }
+                               the_result;
+                              )",
+                              path);
+                const char *prefix = R"(
+                                        extern "C" void* dlopen (const char *path, int mode);
+                                        extern "C" const char *dlerror (void);
+                                        )";
                 lldb::ValueObjectSP result_valobj_sp;
                 Error expr_error;
                 ClangUserExpression::Evaluate (exe_ctx,
@@ -1537,7 +1559,8 @@ Process::LoadImage (const FileSpec &image_spec, Error &error)
                     if (error.Success())
                     {
                         Scalar scalar;
-                        if (result_valobj_sp->ResolveValue (scalar))
+                        ValueObjectSP image_ptr_sp = result_valobj_sp->GetChildAtIndex(0, true);
+                        if (image_ptr_sp && image_ptr_sp->ResolveValue (scalar))
                         {
                             addr_t image_ptr = scalar.ULongLong(LLDB_INVALID_ADDRESS);
                             if (image_ptr != 0 && image_ptr != LLDB_INVALID_ADDRESS)
@@ -1545,6 +1568,23 @@ Process::LoadImage (const FileSpec &image_spec, Error &error)
                                 uint32_t image_token = m_image_tokens.size();
                                 m_image_tokens.push_back (image_ptr);
                                 return image_token;
+                            }
+                            else if (image_ptr == 0)
+                            {
+                                ValueObjectSP error_str_sp = result_valobj_sp->GetChildAtIndex(1, true);
+                                if (error_str_sp)
+                                {
+                                    if (error_str_sp->IsCStringContainer(true))
+                                    {
+                                        StreamString s;
+                                        size_t num_chars = error_str_sp->ReadPointedString (s, error);
+                                        if (error.Success() && num_chars > 0)
+                                        {
+                                            error.Clear();
+                                            error.SetErrorStringWithFormat("dlopen error: %s", s.GetData());
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -2027,7 +2067,7 @@ Process::DisableSoftwareBreakpoint (BreakpointSite *bp_site)
         const uint8_t * const break_op = bp_site->GetTrapOpcodeBytes();
         if (break_op_size > 0)
         {
-            // Clear a software breakoint instruction
+            // Clear a software breakpoint instruction
             uint8_t curr_break_op[8];
             assert (break_op_size <= sizeof(curr_break_op));
             bool break_op_found = false;
@@ -3522,7 +3562,7 @@ Process::ShouldBroadcastEvent (Event *event_ptr)
                         break;
                     default:
                         // TODO: make this work correctly. For now always report
-                        // run if we aren't running so we don't miss any runnning
+                        // run if we aren't running so we don't miss any running
                         // events. If I run the lldb/test/thread/a.out file and
                         // break at main.cpp:58, run and hit the breakpoints on
                         // multiple threads, then somehow during the stepping over
@@ -3653,11 +3693,23 @@ Process::StartPrivateStateThread (bool force)
     // Create a thread that watches our internal state and controls which
     // events make it to clients (into the DCProcess event queue).
     char thread_name[1024];
-    if (already_running)
-        snprintf(thread_name, sizeof(thread_name), "<lldb.process.internal-state-override(pid=%" PRIu64 ")>", GetID());
+
+    if (Host::MAX_THREAD_NAME_LENGTH <= 16)
+    {
+            // On platforms with abbreviated thread name lengths, choose thread names that fit within the limit.
+            if (already_running)
+                snprintf(thread_name, sizeof(thread_name), "intern-state-OV");
+            else
+                snprintf(thread_name, sizeof(thread_name), "intern-state");
+    }
     else
-        snprintf(thread_name, sizeof(thread_name), "<lldb.process.internal-state(pid=%" PRIu64 ")>", GetID());
-        
+    {
+        if (already_running)
+                snprintf(thread_name, sizeof(thread_name), "<lldb.process.internal-state-override(pid=%" PRIu64 ")>", GetID());
+        else
+                snprintf(thread_name, sizeof(thread_name), "<lldb.process.internal-state(pid=%" PRIu64 ")>", GetID());
+    }
+
     // Create the private state thread, and start it running.
     m_private_state_thread = Host::ThreadCreate (thread_name, Process::PrivateStateThread, this, NULL);
     bool success = IS_VALID_LLDB_HOST_THREAD(m_private_state_thread);
@@ -3916,7 +3968,7 @@ Process::RunPrivateStateThread ()
             {
             case eBroadcastInternalStateControlStop:
                 exit_now = true;
-                break;      // doing any internal state managment below
+                break;      // doing any internal state management below
 
             case eBroadcastInternalStateControlPause:
                 control_only = true;
@@ -4442,8 +4494,7 @@ public:
         m_process (process),
         m_read_file (),
         m_write_file (write_fd, false),
-        m_pipe_read(),
-        m_pipe_write()
+        m_pipe ()
     {
         m_read_file.SetDescriptor(GetInputFD(), false);
     }
@@ -4457,30 +4508,15 @@ public:
     bool
     OpenPipes ()
     {
-        if (m_pipe_read.IsValid() && m_pipe_write.IsValid())
+        if (m_pipe.IsValid())
             return true;
-
-        int fds[2];
-#ifdef _WIN32
-        // pipe is not supported on windows so default to a fail condition
-        int err = 1;
-#else
-        int err = pipe(fds);
-#endif
-        if (err == 0)
-        {
-            m_pipe_read.SetDescriptor(fds[0], true);
-            m_pipe_write.SetDescriptor(fds[1], true);
-            return true;
-        }
-        return false;
+        return m_pipe.Open();
     }
 
     void
     ClosePipes()
     {
-        m_pipe_read.Close();
-        m_pipe_write.Close();
+        m_pipe.Close();
     }
     
     // Each IOHandler gets to run until it is done. It should read data
@@ -4495,7 +4531,7 @@ public:
             if (OpenPipes())
             {
                 const int read_fd = m_read_file.GetDescriptor();
-                const int pipe_read_fd = m_pipe_read.GetDescriptor();
+                const int pipe_read_fd = m_pipe.GetReadFileDescriptor();
                 TerminalState terminal_state;
                 terminal_state.Save (read_fd, false);
                 Terminal terminal(read_fd);
@@ -4536,17 +4572,18 @@ public:
                         if (FD_ISSET (pipe_read_fd, &read_fdset))
                         {
                             // Consume the interrupt byte
-                            n = 1;
-                            m_pipe_read.Read (&ch, n);
-                            switch (ch)
+                            if (m_pipe.Read (&ch, 1) == 1)
                             {
-                                case 'q':
-                                    SetIsDone(true);
-                                    break;
-                                case 'i':
-                                    if (StateIsRunningState(m_process->GetState()))
-                                        m_process->Halt();
-                                    break;
+                                switch (ch)
+                                {
+                                    case 'q':
+                                        SetIsDone(true);
+                                        break;
+                                    case 'i':
+                                        if (StateIsRunningState(m_process->GetState()))
+                                            m_process->Halt();
+                                        break;
+                                }
                             }
                         }
                     }
@@ -4582,30 +4619,40 @@ public:
     virtual void
     Cancel ()
     {
-        size_t n = 1;
         char ch = 'q';  // Send 'q' for quit
-        m_pipe_write.Write (&ch, n);
+        m_pipe.Write (&ch, 1);
     }
 
     virtual bool
     Interrupt ()
     {
-#ifdef _MSC_VER
-        // Windows doesn't support pipes, so we will send an async interrupt
-        // event to stop the process
-        if (StateIsRunningState(m_process->GetState()))
-            m_process->SendAsyncInterrupt();
-#else
         // Do only things that are safe to do in an interrupt context (like in
         // a SIGINT handler), like write 1 byte to a file descriptor. This will
         // interrupt the IOHandlerProcessSTDIO::Run() and we can look at the byte
         // that was written to the pipe and then call m_process->Halt() from a
         // much safer location in code.
-        size_t n = 1;
-        char ch = 'i'; // Send 'i' for interrupt
-        m_pipe_write.Write (&ch, n);
-#endif
-        return true;
+        if (m_active)
+        {
+            char ch = 'i'; // Send 'i' for interrupt
+            return m_pipe.Write (&ch, 1) == 1;
+        }
+        else
+        {
+            // This IOHandler might be pushed on the stack, but not being run currently
+            // so do the right thing if we aren't actively watching for STDIN by sending
+            // the interrupt to the process. Otherwise the write to the pipe above would
+            // do nothing. This can happen when the command interpreter is running and
+            // gets a "expression ...". It will be on the IOHandler thread and sending
+            // the input is complete to the delegate which will cause the expression to
+            // run, which will push the process IO handler, but not run it.
+            
+            if (StateIsRunningState(m_process->GetState()))
+            {
+                m_process->SendAsyncInterrupt();
+                return true;
+            }
+        }
+        return false;
     }
     
     virtual void
@@ -4618,9 +4665,7 @@ protected:
     Process *m_process;
     File m_read_file;   // Read from this file (usually actual STDIN for LLDB
     File m_write_file;  // Write to this file (usually the master pty for getting io to debuggee)
-    File m_pipe_read;
-    File m_pipe_write;
-
+    Pipe m_pipe;
 };
 
 void
