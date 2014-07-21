@@ -234,6 +234,56 @@ void CompilerInstance::createSourceManager(FileManager &FileMgr) {
   SourceMgr = new SourceManager(getDiagnostics(), FileMgr);
 }
 
+// Initialize the remapping of files to alternative contents, e.g.,
+// those specified through other files.
+static void InitializeFileRemapping(DiagnosticsEngine &Diags,
+                                    SourceManager &SourceMgr,
+                                    FileManager &FileMgr,
+                                    const PreprocessorOptions &InitOpts) {
+  // Remap files in the source manager (with buffers).
+  for (const auto &RB : InitOpts.RemappedFileBuffers) {
+    // Create the file entry for the file that we're mapping from.
+    const FileEntry *FromFile =
+        FileMgr.getVirtualFile(RB.first, RB.second->getBufferSize(), 0);
+    if (!FromFile) {
+      Diags.Report(diag::err_fe_remap_missing_from_file) << RB.first;
+      if (!InitOpts.RetainRemappedFileBuffers)
+        delete RB.second;
+      continue;
+    }
+
+    // Override the contents of the "from" file with the contents of
+    // the "to" file.
+    SourceMgr.overrideFileContents(FromFile, RB.second,
+                                   InitOpts.RetainRemappedFileBuffers);
+  }
+
+  // Remap files in the source manager (with other files).
+  for (const auto &RF : InitOpts.RemappedFiles) {
+    // Find the file that we're mapping to.
+    const FileEntry *ToFile = FileMgr.getFile(RF.second);
+    if (!ToFile) {
+      Diags.Report(diag::err_fe_remap_missing_to_file) << RF.first << RF.second;
+      continue;
+    }
+
+    // Create the file entry for the file that we're mapping from.
+    const FileEntry *FromFile =
+        FileMgr.getVirtualFile(RF.first, ToFile->getSize(), 0);
+    if (!FromFile) {
+      Diags.Report(diag::err_fe_remap_missing_from_file) << RF.first;
+      continue;
+    }
+
+    // Override the contents of the "from" file with the contents of
+    // the "to" file.
+    SourceMgr.overrideFileContents(FromFile, ToFile);
+  }
+
+  SourceMgr.setOverridenFilesKeepOriginalName(
+      InitOpts.RemappedFilesKeepOriginalName);
+}
+
 // Preprocessor
 
 void CompilerInstance::createPreprocessor(TranslationUnitKind TUKind) {
@@ -266,7 +316,16 @@ void CompilerInstance::createPreprocessor(TranslationUnitKind TUKind) {
   if (PPOpts.DetailedRecord)
     PP->createPreprocessingRecord();
 
-  InitializePreprocessor(*PP, PPOpts, getHeaderSearchOpts(), getFrontendOpts());
+  // Apply remappings to the source manager.
+  InitializeFileRemapping(PP->getDiagnostics(), PP->getSourceManager(),
+                          PP->getFileManager(), PPOpts);
+
+  // Predefine macros and configure the preprocessor.
+  InitializePreprocessor(*PP, PPOpts, getFrontendOpts());
+
+  // Initialize the header search object.
+  ApplyHeaderSearchOptions(PP->getHeaderSearchInfo(), getHeaderSearchOpts(),
+                           PP->getLangOpts(), PP->getTargetInfo().getTriple());
 
   PP->setPreprocessedOutput(getPreprocessorOutputOpts().ShowCPP);
 
@@ -336,7 +395,7 @@ void CompilerInstance::createPCHExternalASTSource(
       AllowPCHWithCompilerErrors, getPreprocessor(), getASTContext(),
       DeserializationListener, OwnDeserializationListener, Preamble,
       getFrontendOpts().UseGlobalModuleIndex);
-  ModuleManager = static_cast<ASTReader*>(Source.getPtr());
+  ModuleManager = static_cast<ASTReader*>(Source.get());
   getASTContext().setExternalSource(Source);
 }
 
@@ -683,11 +742,14 @@ bool CompilerInstance::InitializeSourceManager(const FrontendInputFile &Input,
     SourceMgr.setMainFileID(
         SourceMgr.createFileID(File, SourceLocation(), Kind));
   } else {
-    std::unique_ptr<llvm::MemoryBuffer> SB;
-    if (std::error_code ec = llvm::MemoryBuffer::getSTDIN(SB)) {
-      Diags.Report(diag::err_fe_error_reading_stdin) << ec.message();
+    llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> SBOrErr =
+        llvm::MemoryBuffer::getSTDIN();
+    if (std::error_code EC = SBOrErr.getError()) {
+      Diags.Report(diag::err_fe_error_reading_stdin) << EC.message();
       return false;
     }
+    std::unique_ptr<llvm::MemoryBuffer> SB = std::move(SBOrErr.get());
+
     const FileEntry *File = FileMgr.getVirtualFile(SB->getBufferIdentifier(),
                                                    SB->getBufferSize(), 0);
     SourceMgr.setMainFileID(
@@ -712,7 +774,8 @@ bool CompilerInstance::ExecuteAction(FrontendAction &Act) {
   raw_ostream &OS = llvm::errs();
 
   // Create the target instance.
-  setTarget(TargetInfo::CreateTargetInfo(getDiagnostics(), &getTargetOpts()));
+  setTarget(TargetInfo::CreateTargetInfo(getDiagnostics(),
+                                         getInvocation().TargetOpts));
   if (!hasTarget())
     return false;
 
@@ -720,7 +783,7 @@ bool CompilerInstance::ExecuteAction(FrontendAction &Act) {
   //
   // FIXME: We shouldn't need to do this, the target should be immutable once
   // created. This complexity should be lifted elsewhere.
-  getTarget().setForcedLangOptions(getLangOpts());
+  getTarget().adjust(getLangOpts());
 
   // rewriter project will change target built-in bool type from its default. 
   if (getFrontendOpts().ProgramAction == frontend::RewriteObjC)
@@ -789,11 +852,12 @@ static InputKind getSourceInputKindFromOptions(const LangOptions &LangOpts) {
 }
 
 /// \brief Compile a module file for the given module, using the options 
-/// provided by the importing compiler instance.
-static void compileModuleImpl(CompilerInstance &ImportingInstance,
-                          SourceLocation ImportLoc,
-                          Module *Module,
-                          StringRef ModuleFileName) {
+/// provided by the importing compiler instance. Returns true if the module
+/// was built without errors.
+static bool compileModuleImpl(CompilerInstance &ImportingInstance,
+                              SourceLocation ImportLoc,
+                              Module *Module,
+                              StringRef ModuleFileName) {
   ModuleMap &ModMap 
     = ImportingInstance.getPreprocessor().getHeaderSearchInfo().getModuleMap();
     
@@ -916,13 +980,20 @@ static void compileModuleImpl(CompilerInstance &ImportingInstance,
   if (ImportingInstance.getFrontendOpts().GenerateGlobalModuleIndex) {
     ImportingInstance.setBuildGlobalModuleIndex(true);
   }
+
+  return !Instance.getDiagnostics().hasErrorOccurred();
 }
 
 static bool compileAndLoadModule(CompilerInstance &ImportingInstance,
                                  SourceLocation ImportLoc,
-                                 SourceLocation ModuleNameLoc,
-                                 Module *Module,
+                                 SourceLocation ModuleNameLoc, Module *Module,
                                  StringRef ModuleFileName) {
+  auto diagnoseBuildFailure = [&] {
+    ImportingInstance.getDiagnostics().Report(ModuleNameLoc,
+                                              diag::err_module_not_built)
+        << Module->Name << SourceRange(ImportLoc, ModuleNameLoc);
+  };
+
   // FIXME: have LockFileManager return an error_code so that we can
   // avoid the mkdir when the directory already exists.
   StringRef Dir = llvm::sys::path::parent_path(ModuleFileName);
@@ -937,9 +1008,11 @@ static bool compileAndLoadModule(CompilerInstance &ImportingInstance,
 
     case llvm::LockFileManager::LFS_Owned:
       // We're responsible for building the module ourselves.
-      // FIXME: if there are errors, don't attempt to load the module.
-      compileModuleImpl(ImportingInstance, ModuleNameLoc, Module,
-                        ModuleFileName);
+      if (!compileModuleImpl(ImportingInstance, ModuleNameLoc, Module,
+                             ModuleFileName)) {
+        diagnoseBuildFailure();
+        return false;
+      }
       break;
 
     case llvm::LockFileManager::LFS_Shared:
@@ -964,9 +1037,7 @@ static bool compileAndLoadModule(CompilerInstance &ImportingInstance,
       // consistent with this ImportingInstance.  Try again...
       continue;
     } else if (ReadResult == ASTReader::Missing) {
-      ImportingInstance.getDiagnostics().Report(ModuleNameLoc,
-                                                diag::err_module_not_built)
-          << Module->Name << SourceRange(ImportLoc, ModuleNameLoc);
+      diagnoseBuildFailure();
     }
     return ReadResult == ASTReader::Success;
   }

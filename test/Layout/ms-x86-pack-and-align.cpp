@@ -544,6 +544,116 @@ struct RE {
 // CHECK-X64-NEXT:      | [sizeof=1029, align=1
 // CHECK-X64-NEXT:      |  nvsize=1029, nvalign=1]
 
+struct NA {};
+struct NB {};
+#pragma pack(push, 1)
+struct NC : virtual NA, virtual NB {};
+#pragma pack(pop)
+struct ND : NC {};
+
+// CHECK: *** Dumping AST Record Layout
+// CHECK-NEXT:    0 | struct NA (empty)
+// CHECK-NEXT:      | [sizeof=1, align=1
+// CHECK-NEXT:      |  nvsize=0, nvalign=1]
+// CHECK: *** Dumping AST Record Layout
+// CHECK-NEXT:    0 | struct NB (empty)
+// CHECK-NEXT:      | [sizeof=1, align=1
+// CHECK-NEXT:      |  nvsize=0, nvalign=1]
+// CHECK: *** Dumping AST Record Layout
+// CHECK-NEXT:    0 | struct NC
+// CHECK-NEXT:    0 |   (NC vbtable pointer)
+// CHECK-NEXT:    4 |   struct NA (virtual base) (empty)
+// CHECK-NEXT:    8 |   struct NB (virtual base) (empty)
+// CHECK-NEXT:      | [sizeof=8, align=1
+// CHECK-NEXT:      |  nvsize=4, nvalign=1]
+// CHECK: *** Dumping AST Record Layout
+// CHECK-NEXT:    0 | struct ND
+// CHECK-NEXT:    0 |   struct NC (base)
+// CHECK-NEXT:    0 |     (NC vbtable pointer)
+// CHECK-NEXT:    4 |   struct NA (virtual base) (empty)
+// CHECK-NEXT:    8 |   struct NB (virtual base) (empty)
+// CHECK-NEXT:      | [sizeof=8, align=4
+// CHECK-NEXT:      |  nvsize=4, nvalign=4]
+// CHECK-X64: *** Dumping AST Record Layout
+// CHECK-X64-NEXT:    0 | struct NA (empty)
+// CHECK-X64-NEXT:      | [sizeof=1, align=1
+// CHECK-X64-NEXT:      |  nvsize=0, nvalign=1]
+// CHECK-X64: *** Dumping AST Record Layout
+// CHECK-X64-NEXT:    0 | struct NB (empty)
+// CHECK-X64-NEXT:      | [sizeof=1, align=1
+// CHECK-X64-NEXT:      |  nvsize=0, nvalign=1]
+// CHECK-X64: *** Dumping AST Record Layout
+// CHECK-X64-NEXT:    0 | struct NC
+// CHECK-X64-NEXT:    0 |   (NC vbtable pointer)
+// CHECK-X64-NEXT:    8 |   struct NA (virtual base) (empty)
+// CHECK-X64-NEXT:   12 |   struct NB (virtual base) (empty)
+// CHECK-X64-NEXT:      | [sizeof=12, align=1
+// CHECK-X64-NEXT:      |  nvsize=8, nvalign=1]
+// CHECK-X64: *** Dumping AST Record Layout
+// CHECK-X64-NEXT:    0 | struct ND
+// CHECK-X64-NEXT:    0 |   struct NC (base)
+// CHECK-X64-NEXT:    0 |     (NC vbtable pointer)
+// CHECK-X64-NEXT:    8 |   struct NA (virtual base) (empty)
+// CHECK-X64-NEXT:   12 |   struct NB (virtual base) (empty)
+// CHECK-X64-NEXT:      | [sizeof=12, align=4
+// CHECK-X64-NEXT:      |  nvsize=8, nvalign=4]
+
+struct OA {};
+struct OB {};
+struct OC : virtual OA, virtual OB {};
+#pragma pack(push, 1)
+struct OD : OC {};
+#pragma pack(pop)
+
+// CHECK: *** Dumping AST Record Layout
+// CHECK-NEXT:    0 | struct OA (empty)
+// CHECK-NEXT:      | [sizeof=1, align=1
+// CHECK-NEXT:      |  nvsize=0, nvalign=1]
+// CHECK: *** Dumping AST Record Layout
+// CHECK-NEXT:    0 | struct OB (empty)
+// CHECK-NEXT:      | [sizeof=1, align=1
+// CHECK-NEXT:      |  nvsize=0, nvalign=1]
+// CHECK: *** Dumping AST Record Layout
+// CHECK-NEXT:    0 | struct OC
+// CHECK-NEXT:    0 |   (OC vbtable pointer)
+// CHECK-NEXT:    4 |   struct OA (virtual base) (empty)
+// CHECK-NEXT:    8 |   struct OB (virtual base) (empty)
+// CHECK-NEXT:      | [sizeof=8, align=4
+// CHECK-NEXT:      |  nvsize=4, nvalign=4]
+// CHECK: *** Dumping AST Record Layout
+// CHECK-NEXT:    0 | struct OD
+// CHECK-NEXT:    0 |   struct OC (base)
+// CHECK-NEXT:    0 |     (OC vbtable pointer)
+// CHECK-NEXT:    4 |   struct OA (virtual base) (empty)
+// CHECK-NEXT:    8 |   struct OB (virtual base) (empty)
+// CHECK-NEXT:      | [sizeof=8, align=1
+// CHECK-NEXT:      |  nvsize=4, nvalign=1]
+// CHECK-X64: *** Dumping AST Record Layout
+// CHECK-X64-NEXT:    0 | struct OA (empty)
+// CHECK-X64-NEXT:      | [sizeof=1, align=1
+// CHECK-X64-NEXT:      |  nvsize=0, nvalign=1]
+// CHECK-X64: *** Dumping AST Record Layout
+// CHECK-X64-NEXT:    0 | struct OB (empty)
+// CHECK-X64-NEXT:      | [sizeof=1, align=1
+// CHECK-X64-NEXT:      |  nvsize=0, nvalign=1]
+// CHECK-X64: *** Dumping AST Record Layout
+// CHECK-X64-NEXT:    0 | struct OC
+// CHECK-X64-NEXT:    0 |   (OC vbtable pointer)
+// CHECK-X64-NEXT:    8 |   struct OA (virtual base) (empty)
+// CHECK-X64-NEXT:   12 |   struct OB (virtual base) (empty)
+// CHECK-X64-NEXT:      | [sizeof=16, align=8
+// CHECK-X64-NEXT:      |  nvsize=8, nvalign=8]
+// CHECK-X64: *** Dumping AST Record Layout
+// CHECK-X64-NEXT:    0 | struct OD
+// CHECK-X64-NEXT:    0 |   struct OC (base)
+// CHECK-X64-NEXT:    0 |     (OC vbtable pointer)
+// CHECK-X64-NEXT:    8 |   struct OA (virtual base) (empty)
+// CHECK-X64-NEXT:   12 |   struct OB (virtual base) (empty)
+// CHECK-X64-NEXT:      | [sizeof=12, align=1
+// CHECK-X64-NEXT:      |  nvsize=8, nvalign=1]
+
+
+
 int a[
 sizeof(X)+
 sizeof(Y)+
@@ -568,4 +678,6 @@ sizeof(RB2)+
 sizeof(RB3)+
 sizeof(RC)+
 sizeof(RE)+
+sizeof(ND)+
+sizeof(OD)+
 0];

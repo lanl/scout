@@ -83,7 +83,10 @@ protected:
   ///
   /// /param S Associated statement.
   ///
-  void setAssociatedStmt(Stmt *S) { *child_begin() = S; }
+  void setAssociatedStmt(Stmt *S) {
+    assert(hasAssociatedStmt() && "no associated statement.");
+    *child_begin() = S;
+  }
 
 public:
   /// \brief Iterates over a filtered subrange of clauses applied to a
@@ -150,8 +153,14 @@ public:
   ///
   OMPClause *getClause(unsigned i) const { return clauses()[i]; }
 
+  /// \brief Returns true if directive has associated statement.
+  bool hasAssociatedStmt() const { return NumChildren > 0; }
+
   /// \brief Returns statement associated with the directive.
-  Stmt *getAssociatedStmt() const { return const_cast<Stmt *>(*child_begin()); }
+  Stmt *getAssociatedStmt() const {
+    assert(hasAssociatedStmt() && "no associated statement.");
+    return const_cast<Stmt *>(*child_begin());
+  }
 
   OpenMPDirectiveKind getDirectiveKind() const { return Kind; }
 
@@ -161,6 +170,8 @@ public:
   }
 
   child_range children() {
+    if (!hasAssociatedStmt())
+      return child_range();
     Stmt **ChildStorage = reinterpret_cast<Stmt **>(getClauses().end());
     return child_range(ChildStorage, ChildStorage + NumChildren);
   }
@@ -524,6 +535,496 @@ public:
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == OMPSingleDirectiveClass;
+  }
+};
+
+/// \brief This represents '#pragma omp master' directive.
+///
+/// \code
+/// #pragma omp master
+/// \endcode
+///
+class OMPMasterDirective : public OMPExecutableDirective {
+  friend class ASTStmtReader;
+  /// \brief Build directive with the given start and end location.
+  ///
+  /// \param StartLoc Starting location of the directive kind.
+  /// \param EndLoc Ending location of the directive.
+  ///
+  OMPMasterDirective(SourceLocation StartLoc, SourceLocation EndLoc)
+      : OMPExecutableDirective(this, OMPMasterDirectiveClass, OMPD_master,
+                               StartLoc, EndLoc, 0, 1) {}
+
+  /// \brief Build an empty directive.
+  ///
+  explicit OMPMasterDirective()
+      : OMPExecutableDirective(this, OMPMasterDirectiveClass, OMPD_master,
+                               SourceLocation(), SourceLocation(), 0, 1) {}
+
+public:
+  /// \brief Creates directive.
+  ///
+  /// \param C AST context.
+  /// \param StartLoc Starting location of the directive kind.
+  /// \param EndLoc Ending Location of the directive.
+  /// \param AssociatedStmt Statement, associated with the directive.
+  ///
+  static OMPMasterDirective *Create(const ASTContext &C,
+                                    SourceLocation StartLoc,
+                                    SourceLocation EndLoc,
+                                    Stmt *AssociatedStmt);
+
+  /// \brief Creates an empty directive.
+  ///
+  /// \param C AST context.
+  ///
+  static OMPMasterDirective *CreateEmpty(const ASTContext &C, EmptyShell);
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == OMPMasterDirectiveClass;
+  }
+};
+
+/// \brief This represents '#pragma omp critical' directive.
+///
+/// \code
+/// #pragma omp critical
+/// \endcode
+///
+class OMPCriticalDirective : public OMPExecutableDirective {
+  friend class ASTStmtReader;
+  /// \brief Name of the directive.
+  DeclarationNameInfo DirName;
+  /// \brief Build directive with the given start and end location.
+  ///
+  /// \param Name Name of the directive.
+  /// \param StartLoc Starting location of the directive kind.
+  /// \param EndLoc Ending location of the directive.
+  ///
+  OMPCriticalDirective(const DeclarationNameInfo &Name, SourceLocation StartLoc,
+                       SourceLocation EndLoc)
+      : OMPExecutableDirective(this, OMPCriticalDirectiveClass, OMPD_critical,
+                               StartLoc, EndLoc, 0, 1),
+        DirName(Name) {}
+
+  /// \brief Build an empty directive.
+  ///
+  explicit OMPCriticalDirective()
+      : OMPExecutableDirective(this, OMPCriticalDirectiveClass, OMPD_critical,
+                               SourceLocation(), SourceLocation(), 0, 1),
+        DirName() {}
+
+  /// \brief Set name of the directive.
+  ///
+  /// \param Name Name of the directive.
+  ///
+  void setDirectiveName(const DeclarationNameInfo &Name) { DirName = Name; }
+
+public:
+  /// \brief Creates directive.
+  ///
+  /// \param C AST context.
+  /// \param Name Name of the directive.
+  /// \param StartLoc Starting location of the directive kind.
+  /// \param EndLoc Ending Location of the directive.
+  /// \param AssociatedStmt Statement, associated with the directive.
+  ///
+  static OMPCriticalDirective *
+  Create(const ASTContext &C, const DeclarationNameInfo &Name,
+         SourceLocation StartLoc, SourceLocation EndLoc, Stmt *AssociatedStmt);
+
+  /// \brief Creates an empty directive.
+  ///
+  /// \param C AST context.
+  ///
+  static OMPCriticalDirective *CreateEmpty(const ASTContext &C, EmptyShell);
+
+  /// \brief Return name of the directive.
+  ///
+  DeclarationNameInfo getDirectiveName() const { return DirName; }
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == OMPCriticalDirectiveClass;
+  }
+};
+
+/// \brief This represents '#pragma omp parallel for' directive.
+///
+/// \code
+/// #pragma omp parallel for private(a,b) reduction(+:c,d)
+/// \endcode
+/// In this example directive '#pragma omp parallel for' has clauses 'private'
+/// with the variables 'a' and 'b' and 'reduction' with operator '+' and
+/// variables 'c' and 'd'.
+///
+class OMPParallelForDirective : public OMPExecutableDirective {
+  friend class ASTStmtReader;
+  /// \brief Number of collapsed loops as specified by 'collapse' clause.
+  unsigned CollapsedNum;
+  /// \brief Build directive with the given start and end location.
+  ///
+  /// \param StartLoc Starting location of the directive kind.
+  /// \param EndLoc Ending location of the directive.
+  /// \param CollapsedNum Number of collapsed nested loops.
+  /// \param NumClauses Number of clauses.
+  ///
+  OMPParallelForDirective(SourceLocation StartLoc, SourceLocation EndLoc,
+                          unsigned CollapsedNum, unsigned NumClauses)
+      : OMPExecutableDirective(this, OMPParallelForDirectiveClass,
+                               OMPD_parallel_for, StartLoc, EndLoc, NumClauses,
+                               1),
+        CollapsedNum(CollapsedNum) {}
+
+  /// \brief Build an empty directive.
+  ///
+  /// \param CollapsedNum Number of collapsed nested loops.
+  /// \param NumClauses Number of clauses.
+  ///
+  explicit OMPParallelForDirective(unsigned CollapsedNum, unsigned NumClauses)
+      : OMPExecutableDirective(this, OMPParallelForDirectiveClass,
+                               OMPD_parallel_for, SourceLocation(),
+                               SourceLocation(), NumClauses, 1),
+        CollapsedNum(CollapsedNum) {}
+
+public:
+  /// \brief Creates directive with a list of \a Clauses.
+  ///
+  /// \param C AST context.
+  /// \param StartLoc Starting location of the directive kind.
+  /// \param EndLoc Ending Location of the directive.
+  /// \param CollapsedNum Number of collapsed loops.
+  /// \param Clauses List of clauses.
+  /// \param AssociatedStmt Statement, associated with the directive.
+  ///
+  static OMPParallelForDirective *
+  Create(const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
+         unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses,
+         Stmt *AssociatedStmt);
+
+  /// \brief Creates an empty directive with the place
+  /// for \a NumClauses clauses.
+  ///
+  /// \param C AST context.
+  /// \param CollapsedNum Number of collapsed nested loops.
+  /// \param NumClauses Number of clauses.
+  ///
+  static OMPParallelForDirective *CreateEmpty(const ASTContext &C,
+                                              unsigned NumClauses,
+                                              unsigned CollapsedNum,
+                                              EmptyShell);
+
+  unsigned getCollapsedNumber() const { return CollapsedNum; }
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == OMPParallelForDirectiveClass;
+  }
+};
+
+/// \brief This represents '#pragma omp parallel sections' directive.
+///
+/// \code
+/// #pragma omp parallel sections private(a,b) reduction(+:c,d)
+/// \endcode
+/// In this example directive '#pragma omp parallel sections' has clauses
+/// 'private' with the variables 'a' and 'b' and 'reduction' with operator '+'
+/// and variables 'c' and 'd'.
+///
+class OMPParallelSectionsDirective : public OMPExecutableDirective {
+  friend class ASTStmtReader;
+  /// \brief Build directive with the given start and end location.
+  ///
+  /// \param StartLoc Starting location of the directive kind.
+  /// \param EndLoc Ending location of the directive.
+  /// \param NumClauses Number of clauses.
+  ///
+  OMPParallelSectionsDirective(SourceLocation StartLoc, SourceLocation EndLoc,
+                               unsigned NumClauses)
+      : OMPExecutableDirective(this, OMPParallelSectionsDirectiveClass,
+                               OMPD_parallel_sections, StartLoc, EndLoc,
+                               NumClauses, 1) {}
+
+  /// \brief Build an empty directive.
+  ///
+  /// \param NumClauses Number of clauses.
+  ///
+  explicit OMPParallelSectionsDirective(unsigned NumClauses)
+      : OMPExecutableDirective(this, OMPParallelSectionsDirectiveClass,
+                               OMPD_parallel_sections, SourceLocation(),
+                               SourceLocation(), NumClauses, 1) {}
+
+public:
+  /// \brief Creates directive with a list of \a Clauses.
+  ///
+  /// \param C AST context.
+  /// \param StartLoc Starting location of the directive kind.
+  /// \param EndLoc Ending Location of the directive.
+  /// \param Clauses List of clauses.
+  /// \param AssociatedStmt Statement, associated with the directive.
+  ///
+  static OMPParallelSectionsDirective *
+  Create(const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
+         ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt);
+
+  /// \brief Creates an empty directive with the place for \a NumClauses
+  /// clauses.
+  ///
+  /// \param C AST context.
+  /// \param NumClauses Number of clauses.
+  ///
+  static OMPParallelSectionsDirective *
+  CreateEmpty(const ASTContext &C, unsigned NumClauses, EmptyShell);
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == OMPParallelSectionsDirectiveClass;
+  }
+};
+
+/// \brief This represents '#pragma omp task' directive.
+///
+/// \code
+/// #pragma omp task private(a,b) final(d)
+/// \endcode
+/// In this example directive '#pragma omp task' has clauses 'private' with the
+/// variables 'a' and 'b' and 'final' with condition 'd'.
+///
+class OMPTaskDirective : public OMPExecutableDirective {
+  friend class ASTStmtReader;
+  /// \brief Build directive with the given start and end location.
+  ///
+  /// \param StartLoc Starting location of the directive kind.
+  /// \param EndLoc Ending location of the directive.
+  /// \param NumClauses Number of clauses.
+  ///
+  OMPTaskDirective(SourceLocation StartLoc, SourceLocation EndLoc,
+                   unsigned NumClauses)
+      : OMPExecutableDirective(this, OMPTaskDirectiveClass, OMPD_task, StartLoc,
+                               EndLoc, NumClauses, 1) {}
+
+  /// \brief Build an empty directive.
+  ///
+  /// \param NumClauses Number of clauses.
+  ///
+  explicit OMPTaskDirective(unsigned NumClauses)
+      : OMPExecutableDirective(this, OMPTaskDirectiveClass, OMPD_task,
+                               SourceLocation(), SourceLocation(), NumClauses,
+                               1) {}
+
+public:
+  /// \brief Creates directive with a list of \a Clauses.
+  ///
+  /// \param C AST context.
+  /// \param StartLoc Starting location of the directive kind.
+  /// \param EndLoc Ending Location of the directive.
+  /// \param Clauses List of clauses.
+  /// \param AssociatedStmt Statement, associated with the directive.
+  ///
+  static OMPTaskDirective *Create(const ASTContext &C, SourceLocation StartLoc,
+                                  SourceLocation EndLoc,
+                                  ArrayRef<OMPClause *> Clauses,
+                                  Stmt *AssociatedStmt);
+
+  /// \brief Creates an empty directive with the place for \a NumClauses
+  /// clauses.
+  ///
+  /// \param C AST context.
+  /// \param NumClauses Number of clauses.
+  ///
+  static OMPTaskDirective *CreateEmpty(const ASTContext &C, unsigned NumClauses,
+                                       EmptyShell);
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == OMPTaskDirectiveClass;
+  }
+};
+
+/// \brief This represents '#pragma omp taskyield' directive.
+///
+/// \code
+/// #pragma omp taskyield
+/// \endcode
+///
+class OMPTaskyieldDirective : public OMPExecutableDirective {
+  friend class ASTStmtReader;
+  /// \brief Build directive with the given start and end location.
+  ///
+  /// \param StartLoc Starting location of the directive kind.
+  /// \param EndLoc Ending location of the directive.
+  ///
+  OMPTaskyieldDirective(SourceLocation StartLoc, SourceLocation EndLoc)
+      : OMPExecutableDirective(this, OMPTaskyieldDirectiveClass, OMPD_taskyield,
+                               StartLoc, EndLoc, 0, 0) {}
+
+  /// \brief Build an empty directive.
+  ///
+  explicit OMPTaskyieldDirective()
+      : OMPExecutableDirective(this, OMPTaskyieldDirectiveClass, OMPD_taskyield,
+                               SourceLocation(), SourceLocation(), 0, 0) {}
+
+public:
+  /// \brief Creates directive.
+  ///
+  /// \param C AST context.
+  /// \param StartLoc Starting location of the directive kind.
+  /// \param EndLoc Ending Location of the directive.
+  ///
+  static OMPTaskyieldDirective *
+  Create(const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc);
+
+  /// \brief Creates an empty directive.
+  ///
+  /// \param C AST context.
+  ///
+  static OMPTaskyieldDirective *CreateEmpty(const ASTContext &C, EmptyShell);
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == OMPTaskyieldDirectiveClass;
+  }
+};
+
+/// \brief This represents '#pragma omp barrier' directive.
+///
+/// \code
+/// #pragma omp barrier
+/// \endcode
+///
+class OMPBarrierDirective : public OMPExecutableDirective {
+  friend class ASTStmtReader;
+  /// \brief Build directive with the given start and end location.
+  ///
+  /// \param StartLoc Starting location of the directive kind.
+  /// \param EndLoc Ending location of the directive.
+  ///
+  OMPBarrierDirective(SourceLocation StartLoc, SourceLocation EndLoc)
+      : OMPExecutableDirective(this, OMPBarrierDirectiveClass, OMPD_barrier,
+                               StartLoc, EndLoc, 0, 0) {}
+
+  /// \brief Build an empty directive.
+  ///
+  explicit OMPBarrierDirective()
+      : OMPExecutableDirective(this, OMPBarrierDirectiveClass, OMPD_barrier,
+                               SourceLocation(), SourceLocation(), 0, 0) {}
+
+public:
+  /// \brief Creates directive.
+  ///
+  /// \param C AST context.
+  /// \param StartLoc Starting location of the directive kind.
+  /// \param EndLoc Ending Location of the directive.
+  ///
+  static OMPBarrierDirective *
+  Create(const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc);
+
+  /// \brief Creates an empty directive.
+  ///
+  /// \param C AST context.
+  ///
+  static OMPBarrierDirective *CreateEmpty(const ASTContext &C, EmptyShell);
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == OMPBarrierDirectiveClass;
+  }
+};
+
+/// \brief This represents '#pragma omp taskwait' directive.
+///
+/// \code
+/// #pragma omp taskwait
+/// \endcode
+///
+class OMPTaskwaitDirective : public OMPExecutableDirective {
+  friend class ASTStmtReader;
+  /// \brief Build directive with the given start and end location.
+  ///
+  /// \param StartLoc Starting location of the directive kind.
+  /// \param EndLoc Ending location of the directive.
+  ///
+  OMPTaskwaitDirective(SourceLocation StartLoc, SourceLocation EndLoc)
+      : OMPExecutableDirective(this, OMPTaskwaitDirectiveClass, OMPD_taskwait,
+                               StartLoc, EndLoc, 0, 0) {}
+
+  /// \brief Build an empty directive.
+  ///
+  explicit OMPTaskwaitDirective()
+      : OMPExecutableDirective(this, OMPTaskwaitDirectiveClass, OMPD_taskwait,
+                               SourceLocation(), SourceLocation(), 0, 0) {}
+
+public:
+  /// \brief Creates directive.
+  ///
+  /// \param C AST context.
+  /// \param StartLoc Starting location of the directive kind.
+  /// \param EndLoc Ending Location of the directive.
+  ///
+  static OMPTaskwaitDirective *
+  Create(const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc);
+
+  /// \brief Creates an empty directive.
+  ///
+  /// \param C AST context.
+  ///
+  static OMPTaskwaitDirective *CreateEmpty(const ASTContext &C, EmptyShell);
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == OMPTaskwaitDirectiveClass;
+  }
+};
+
+/// \brief This represents '#pragma omp flush' directive.
+///
+/// \code
+/// #pragma omp flush(a,b)
+/// \endcode
+/// In this example directive '#pragma omp flush' has 2 arguments- variables 'a'
+/// and 'b'.
+/// 'omp flush' directive does not have clauses but have an optional list of
+/// variables to flush. This list of variables is stored within some fake clause
+/// FlushClause.
+class OMPFlushDirective : public OMPExecutableDirective {
+  friend class ASTStmtReader;
+  /// \brief Build directive with the given start and end location.
+  ///
+  /// \param StartLoc Starting location of the directive kind.
+  /// \param EndLoc Ending location of the directive.
+  /// \param NumClauses Number of clauses.
+  ///
+  OMPFlushDirective(SourceLocation StartLoc, SourceLocation EndLoc,
+                    unsigned NumClauses)
+      : OMPExecutableDirective(this, OMPFlushDirectiveClass, OMPD_flush,
+                               StartLoc, EndLoc, NumClauses, 0) {}
+
+  /// \brief Build an empty directive.
+  ///
+  /// \param NumClauses Number of clauses.
+  ///
+  explicit OMPFlushDirective(unsigned NumClauses)
+      : OMPExecutableDirective(this, OMPFlushDirectiveClass, OMPD_flush,
+                               SourceLocation(), SourceLocation(), NumClauses,
+                               0) {}
+
+public:
+  /// \brief Creates directive with a list of \a Clauses.
+  ///
+  /// \param C AST context.
+  /// \param StartLoc Starting location of the directive kind.
+  /// \param EndLoc Ending Location of the directive.
+  /// \param Clauses List of clauses (only single OMPFlushClause clause is
+  /// allowed).
+  ///
+  static OMPFlushDirective *Create(const ASTContext &C, SourceLocation StartLoc,
+                                   SourceLocation EndLoc,
+                                   ArrayRef<OMPClause *> Clauses);
+
+  /// \brief Creates an empty directive with the place for \a NumClauses
+  /// clauses.
+  ///
+  /// \param C AST context.
+  /// \param NumClauses Number of clauses.
+  ///
+  static OMPFlushDirective *CreateEmpty(const ASTContext &C,
+                                        unsigned NumClauses, EmptyShell);
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == OMPFlushDirectiveClass;
   }
 };
 

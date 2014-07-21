@@ -430,7 +430,16 @@ void TypePrinter::printConstantArrayBefore(const ConstantArrayType *T,
 }
 void TypePrinter::printConstantArrayAfter(const ConstantArrayType *T, 
                                           raw_ostream &OS) {
-  OS << '[' << T->getSize().getZExtValue() << ']';
+  OS << '[';
+  if (T->getIndexTypeQualifiers().hasQualifiers()) {
+    AppendTypeQualList(OS, T->getIndexTypeCVRQualifiers());
+    OS << ' ';
+  }
+
+  if (T->getSizeModifier() == ArrayType::Static)
+    OS << "static ";
+
+  OS << T->getSize().getZExtValue() << ']';
   printAfter(T->getElementType(), OS);
 }
 
@@ -461,7 +470,7 @@ void TypePrinter::printVariableArrayAfter(const VariableArrayType *T,
   }
 
   if (T->getSizeModifier() == VariableArrayType::Static)
-    OS << "static";
+    OS << "static ";
   else if (T->getSizeModifier() == VariableArrayType::Star)
     OS << '*';
 

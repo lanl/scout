@@ -253,9 +253,15 @@ void Sema::DiagnoseUnusedExprResult(const Stmt *S) {
       return;
     }
     const ObjCMethodDecl *MD = ME->getMethodDecl();
-    if (MD && MD->hasAttr<WarnUnusedResultAttr>()) {
-      Diag(Loc, diag::warn_unused_result) << R1 << R2;
-      return;
+    if (MD) {
+      if (MD->hasAttr<WarnUnusedResultAttr>()) {
+        Diag(Loc, diag::warn_unused_result) << R1 << R2;
+        return;
+      }
+      if (MD->isPropertyAccessor()) {
+        Diag(Loc, diag::warn_unused_property_expr);
+        return;
+      }
     }
   } else if (const PseudoObjectExpr *POE = dyn_cast<PseudoObjectExpr>(E)) {
     const Expr *Source = POE->getSyntacticForm();
@@ -3243,16 +3249,15 @@ StmtResult Sema::ActOnCXXTryBlock(SourceLocation TryLoc, Stmt *TryBlock,
   return CXXTryStmt::Create(Context, TryLoc, TryBlock, Handlers);
 }
 
-StmtResult
-Sema::ActOnSEHTryBlock(bool IsCXXTry,
-                       SourceLocation TryLoc,
-                       Stmt *TryBlock,
-                       Stmt *Handler) {
+StmtResult Sema::ActOnSEHTryBlock(bool IsCXXTry, SourceLocation TryLoc,
+                                  Stmt *TryBlock, Stmt *Handler,
+                                  int HandlerIndex, int HandlerParentIndex) {
   assert(TryBlock && Handler);
 
   getCurFunction()->setHasBranchProtectedScope();
 
-  return SEHTryStmt::Create(Context,IsCXXTry,TryLoc,TryBlock,Handler);
+  return SEHTryStmt::Create(Context, IsCXXTry, TryLoc, TryBlock, Handler,
+                            HandlerIndex, HandlerParentIndex);
 }
 
 StmtResult
@@ -3275,6 +3280,17 @@ Sema::ActOnSEHFinallyBlock(SourceLocation Loc,
                            Stmt *Block) {
   assert(Block);
   return SEHFinallyStmt::Create(Context,Loc,Block);
+}
+
+StmtResult
+Sema::ActOnSEHLeaveStmt(SourceLocation Loc, Scope *CurScope) {
+  Scope *SEHTryParent = CurScope;
+  while (SEHTryParent && !SEHTryParent->isSEHTryScope())
+    SEHTryParent = SEHTryParent->getParent();
+  if (!SEHTryParent)
+    return StmtError(Diag(Loc, diag::err_ms___leave_not_in___try));
+
+  return new (Context) SEHLeaveStmt(Loc);
 }
 
 StmtResult Sema::BuildMSDependentExistsStmt(SourceLocation KeywordLoc,

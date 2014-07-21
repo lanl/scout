@@ -816,7 +816,7 @@ public:
   /// \brief Retrieve a pointer to the external AST source associated
   /// with this AST context, if any.
   ExternalASTSource *getExternalSource() const {
-    return ExternalSource.getPtr();
+    return ExternalSource.get();
   }
 
   /// \brief Attach an AST mutation listener to the AST context.
@@ -1372,6 +1372,10 @@ public:
   /// If \p Field is specified then record field names are also encoded.
   void getObjCEncodingForType(QualType T, std::string &S,
                               const FieldDecl *Field=nullptr) const;
+
+  /// \brief Emit the Objective-C property type encoding for the given
+  /// type \p T into \p S.
+  void getObjCEncodingForPropertyType(QualType T, std::string &S) const;
 
   void getLegacyIntegralTypeEncoding(QualType &t) const;
 
@@ -2279,6 +2283,10 @@ public:
   void getObjCEncodingForMethodParameter(Decl::ObjCDeclQualifier QT,
                                          QualType T, std::string& S,
                                          bool Extended) const;
+
+  /// \brief Returns true if this is an inline-initialized static data member
+  /// which is treated as a definition for MSVC compatibility.
+  bool isMSStaticDataMemberInlineDefinition(const VarDecl *VD) const;
   
 private:
   const ASTRecordLayout &

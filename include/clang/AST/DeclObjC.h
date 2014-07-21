@@ -956,6 +956,10 @@ public:
                                        unsigned Num,
                                        ASTContext &C);
 
+  /// Produce a name to be used for class's metadata. It comes either via
+  /// objc_runtime_name attribute or class name.
+  StringRef getObjCRuntimeNameAsString() const;
+
   /// Returns the designated initializers for the interface.
   ///
   /// If this declaration does not have methods marked as designated
@@ -1653,6 +1657,10 @@ public:
   /// \brief Starts the definition of this Objective-C protocol.
   void startDefinition();
 
+  /// Produce a name to be used for protocol's metadata. It comes either via
+  /// objc_runtime_name attribute or protocol name.
+  StringRef getObjCRuntimeNameAsString() const;
+
   SourceRange getSourceRange() const override LLVM_READONLY {
     if (isThisDeclarationADefinition())
       return ObjCContainerDecl::getSourceRange();
@@ -2100,6 +2108,10 @@ public:
   std::string getNameAsString() const {
     return getName();
   }
+    
+  /// Produce a name to be used for class's metadata. It comes either via
+  /// class's objc_runtime_name attribute or class name.
+  StringRef getObjCRuntimeNameAsString() const;
 
   const ObjCInterfaceDecl *getSuperClass() const { return SuperClass; }
   ObjCInterfaceDecl *getSuperClass() { return SuperClass; }

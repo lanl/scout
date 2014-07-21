@@ -24,6 +24,9 @@ struct External { int v; };
 #define INSTVAR(var) template int var;
 #define INST(func) template void func();
 
+// The vftable for struct W is comdat largest because we have RTTI.
+// M32-DAG: $"\01??_7W@@6B@" = comdat largest
+
 
 //===----------------------------------------------------------------------===//
 // Globals
@@ -486,7 +489,7 @@ struct S {
 
 struct __declspec(dllexport) T {
   // Copy assignment operator:
-  // M32-DAG: define weak_odr dllexport x86_thiscallcc nonnull %struct.T* @"\01??4T@@QAEAAU0@ABU0@@Z"
+  // M32-DAG: define weak_odr dllexport x86_thiscallcc dereferenceable({{[0-9]+}}) %struct.T* @"\01??4T@@QAEAAU0@ABU0@@Z"
 
   // Explicitly defaulted copy constructur:
   T(const T&) = default;
@@ -508,7 +511,7 @@ int T::c;
 template <typename T> struct __declspec(dllexport) U { void foo() {} };
 // The U<int> specialization below must cause the following to be emitted:
 // M32-DAG: define weak_odr dllexport x86_thiscallcc void @"\01?foo@?$U@H@@QAEXXZ"
-// M32-DAG: define weak_odr dllexport x86_thiscallcc nonnull %struct.U* @"\01??4?$U@H@@QAEAAU0@ABU0@@Z"
+// M32-DAG: define weak_odr dllexport x86_thiscallcc dereferenceable({{[0-9]+}}) %struct.U* @"\01??4?$U@H@@QAEAAU0@ABU0@@Z"
 struct __declspec(dllexport) V : public U<int> { };
 
 
@@ -518,7 +521,8 @@ struct __declspec(dllexport) W { virtual void foo() {} };
 // Copy ctor:
 // M32-DAG: define weak_odr dllexport x86_thiscallcc %struct.W* @"\01??0W@@QAE@ABU0@@Z"
 // vftable:
-// M32-DAG: @"\01??_7W@@6B@" = weak_odr dllexport unnamed_addr constant [1 x i8*] [i8* bitcast (void (%struct.W*)* @"\01?foo@W@@UAEXXZ" to i8*)]
+// M32-DAG: [[W_VTABLE:@.*]] = private unnamed_addr constant [2 x i8*] [i8* bitcast (%rtti.CompleteObjectLocator* @"\01??_R4W@@6B@" to i8*), i8* bitcast (void (%struct.W*)* @"\01?foo@W@@UAEXXZ" to i8*)], comdat $"\01??_7W@@6B@"
+// M32-DAG: @"\01??_7W@@6B@" = dllexport unnamed_addr alias getelementptr inbounds ([2 x i8*]* [[W_VTABLE]], i32 0, i32 1)
 // G32-DAG: @_ZTV1W = weak_odr dllexport unnamed_addr constant [3 x i8*] [i8* null, i8* bitcast ({ i8*, i8* }* @_ZTI1W to i8*), i8* bitcast (void (%struct.W*)* @_ZN1W3fooEv to i8*)]
 
 struct __declspec(dllexport) X : public virtual W {};
@@ -527,7 +531,7 @@ struct __declspec(dllexport) X : public virtual W {};
 
 struct __declspec(dllexport) Y {
   // Move assignment operator:
-  // M32-DAG: define weak_odr dllexport x86_thiscallcc nonnull %struct.Y* @"\01??4Y@@QAEAAU0@$$QAU0@@Z"
+  // M32-DAG: define weak_odr dllexport x86_thiscallcc dereferenceable({{[0-9]+}}) %struct.Y* @"\01??4Y@@QAEAAU0@$$QAU0@@Z"
 
   int x;
 };
@@ -676,7 +680,7 @@ USEMEMFUNC(ExplicitlyImportInstantiatedTemplate<int>, func)
 // MS: A dll attribute propagates through multiple levels of instantiation.
 template <typename T> struct TopClass { void func() {} };
 template <typename T> struct MiddleClass : public TopClass<T> { };
-struct __declspec(dllexport) BottomClas : public MiddleClass<int> { };
+struct __declspec(dllexport) BottomClass : public MiddleClass<int> { };
 USEMEMFUNC(TopClass<int>, func)
 // M32-DAG: define weak_odr dllexport x86_thiscallcc void @"\01?func@?$TopClass@H@@QAEXXZ"
 // G32-DAG: define linkonce_odr x86_thiscallcc void @_ZN8TopClassIiE4funcEv

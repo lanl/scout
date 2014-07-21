@@ -238,7 +238,10 @@ IdentifierLoc *Parser::ParseIdentifierLoc() {
 void Parser::ParseAttributeWithTypeArg(IdentifierInfo &AttrName,
                                        SourceLocation AttrNameLoc,
                                        ParsedAttributes &Attrs,
-                                       SourceLocation *EndLoc) {
+                                       SourceLocation *EndLoc,
+                                       IdentifierInfo *ScopeName,
+                                       SourceLocation ScopeLoc,
+                                       AttributeList::Syntax Syntax) {
   BalancedDelimiterTracker Parens(*this, tok::l_paren);
   Parens.consumeOpen();
 
@@ -255,10 +258,10 @@ void Parser::ParseAttributeWithTypeArg(IdentifierInfo &AttrName,
   if (T.isUsable())
     Attrs.addNewTypeAttr(&AttrName,
                          SourceRange(AttrNameLoc, Parens.getCloseLocation()),
-                         nullptr, AttrNameLoc, T.get(), AttributeList::AS_GNU);
+                         ScopeName, ScopeLoc, T.get(), Syntax);
   else
     Attrs.addNew(&AttrName, SourceRange(AttrNameLoc, Parens.getCloseLocation()),
-                 nullptr, AttrNameLoc, nullptr, 0, AttributeList::AS_GNU);
+                 ScopeName, ScopeLoc, nullptr, 0, Syntax);
 }
 
 unsigned Parser::ParseAttributeArgsCommon(
@@ -338,28 +341,21 @@ void Parser::ParseGNUAttributeArgs(IdentifierInfo *AttrName,
   AttributeList::Kind AttrKind =
       AttributeList::getKind(AttrName, ScopeName, Syntax);
 
-  // Availability attributes have their own grammar.
-  // FIXME: All these cases fail to pass in the syntax and scope, and might be
-  // written as C++11 gnu:: attributes.
   if (AttrKind == AttributeList::AT_Availability) {
-    ParseAvailabilityAttribute(*AttrName, AttrNameLoc, Attrs, EndLoc);
+    ParseAvailabilityAttribute(*AttrName, AttrNameLoc, Attrs, EndLoc, ScopeName,
+                               ScopeLoc, Syntax);
     return;
-  }
-
-  if (AttrKind == AttributeList::AT_ObjCBridgeRelated) {
-    ParseObjCBridgeRelatedAttribute(*AttrName, AttrNameLoc, Attrs, EndLoc);
+  } else if (AttrKind == AttributeList::AT_ObjCBridgeRelated) {
+    ParseObjCBridgeRelatedAttribute(*AttrName, AttrNameLoc, Attrs, EndLoc,
+                                    ScopeName, ScopeLoc, Syntax);
     return;
-  }
-
-  // Type safety attributes have their own grammar.
-  if (AttrKind == AttributeList::AT_TypeTagForDatatype) {
-    ParseTypeTagForDatatypeAttribute(*AttrName, AttrNameLoc, Attrs, EndLoc);
+  } else if (AttrKind == AttributeList::AT_TypeTagForDatatype) {
+    ParseTypeTagForDatatypeAttribute(*AttrName, AttrNameLoc, Attrs, EndLoc,
+                                     ScopeName, ScopeLoc, Syntax);
     return;
-  }
-
-  // Some attributes expect solely a type parameter.
-  if (attributeIsTypeArgAttr(*AttrName)) {
-    ParseAttributeWithTypeArg(*AttrName, AttrNameLoc, Attrs, EndLoc);
+  } else if (attributeIsTypeArgAttr(*AttrName)) {
+    ParseAttributeWithTypeArg(*AttrName, AttrNameLoc, Attrs, EndLoc, ScopeName,
+                              ScopeLoc, Syntax);
     return;
   }
 
@@ -763,7 +759,10 @@ VersionTuple Parser::ParseVersionTuple(SourceRange &Range) {
 void Parser::ParseAvailabilityAttribute(IdentifierInfo &Availability,
                                         SourceLocation AvailabilityLoc,
                                         ParsedAttributes &attrs,
-                                        SourceLocation *endLoc) {
+                                        SourceLocation *endLoc,
+                                        IdentifierInfo *ScopeName,
+                                        SourceLocation ScopeLoc,
+                                        AttributeList::Syntax Syntax) {
   enum { Introduced, Deprecated, Obsoleted, Unknown };
   AvailabilityChange Changes[Unknown];
   ExprResult MessageExpr;
@@ -826,13 +825,24 @@ void Parser::ParseAvailabilityAttribute(IdentifierInfo &Availability,
     }
     ConsumeToken();
     if (Keyword == Ident_message) {
-      if (Tok.isNot(tok::string_literal)) { // Also reject wide string literals.
+      if (Tok.isNot(tok::string_literal)) {
         Diag(Tok, diag::err_expected_string_literal)
           << /*Source='availability attribute'*/2;
         SkipUntil(tok::r_paren, StopAtSemi);
         return;
       }
       MessageExpr = ParseStringLiteralExpression();
+      // Also reject wide string literals.
+      if (StringLiteral *MessageStringLiteral =
+              cast_or_null<StringLiteral>(MessageExpr.get())) {
+        if (MessageStringLiteral->getCharByteWidth() != 1) {
+          Diag(MessageStringLiteral->getSourceRange().getBegin(),
+               diag::err_expected_string_literal)
+            << /*Source='availability attribute'*/ 2;
+          SkipUntil(tok::r_paren, StopAtSemi);
+          return;
+        }
+      }
       break;
     }
 
@@ -901,13 +911,13 @@ void Parser::ParseAvailabilityAttribute(IdentifierInfo &Availability,
   // Record this attribute
   attrs.addNew(&Availability,
                SourceRange(AvailabilityLoc, T.getCloseLocation()),
-               nullptr, AvailabilityLoc,
+               ScopeName, ScopeLoc,
                Platform,
                Changes[Introduced],
                Changes[Deprecated],
                Changes[Obsoleted],
                UnavailableLoc, MessageExpr.get(),
-               AttributeList::AS_GNU);
+               Syntax);
 }
 
 /// \brief Parse the contents of the "objc_bridge_related" attribute.
@@ -924,7 +934,10 @@ void Parser::ParseAvailabilityAttribute(IdentifierInfo &Availability,
 void Parser::ParseObjCBridgeRelatedAttribute(IdentifierInfo &ObjCBridgeRelated,
                                 SourceLocation ObjCBridgeRelatedLoc,
                                 ParsedAttributes &attrs,
-                                SourceLocation *endLoc) {
+                                SourceLocation *endLoc,
+                                IdentifierInfo *ScopeName,
+                                SourceLocation ScopeLoc,
+                                AttributeList::Syntax Syntax) {
   // Opening '('.
   BalancedDelimiterTracker T(*this, tok::l_paren);
   if (T.consumeOpen()) {
@@ -983,11 +996,11 @@ void Parser::ParseObjCBridgeRelatedAttribute(IdentifierInfo &ObjCBridgeRelated,
   // Record this attribute
   attrs.addNew(&ObjCBridgeRelated,
                SourceRange(ObjCBridgeRelatedLoc, T.getCloseLocation()),
-               nullptr, ObjCBridgeRelatedLoc,
+               ScopeName, ScopeLoc,
                RelatedClass,
                ClassMethod,
                InstanceMethod,
-               AttributeList::AS_GNU);
+               Syntax);
 }
 
 // Late Parsed Attributes:
@@ -1139,7 +1152,10 @@ void Parser::ParseLexedAttribute(LateParsedAttribute &LA,
 void Parser::ParseTypeTagForDatatypeAttribute(IdentifierInfo &AttrName,
                                               SourceLocation AttrNameLoc,
                                               ParsedAttributes &Attrs,
-                                              SourceLocation *EndLoc) {
+                                              SourceLocation *EndLoc,
+                                              IdentifierInfo *ScopeName,
+                                              SourceLocation ScopeLoc,
+                                              AttributeList::Syntax Syntax) {
   assert(Tok.is(tok::l_paren) && "Attribute arg list not starting with '('");
 
   BalancedDelimiterTracker T(*this, tok::l_paren);
@@ -1186,10 +1202,9 @@ void Parser::ParseTypeTagForDatatypeAttribute(IdentifierInfo &AttrName,
   }
 
   if (!T.consumeClose()) {
-    Attrs.addNewTypeTagForDatatype(&AttrName, AttrNameLoc, nullptr, AttrNameLoc,
+    Attrs.addNewTypeTagForDatatype(&AttrName, AttrNameLoc, ScopeName, ScopeLoc,
                                    ArgumentKind, MatchingCType.get(),
-                                   LayoutCompatible, MustBeNull,
-                                   AttributeList::AS_GNU);
+                                   LayoutCompatible, MustBeNull, Syntax);
   }
 
   if (EndLoc)
@@ -2715,23 +2730,22 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       // typedef-name
     case tok::kw_decltype:
     case tok::identifier: {
-      // In C++, check to see if this is a scope specifier like foo::bar::, if
-      // so handle it as such.  This is important for ctor parsing.
-      if (getLangOpts().CPlusPlus) {
-        if (TryAnnotateCXXScopeToken(EnteringContext)) {
-          if (!DS.hasTypeSpecifier())
-            DS.SetTypeSpecError();
-          goto DoneWithDeclSpec;
-        }
-        if (!Tok.is(tok::identifier))
-          continue;
-      }
-
       // This identifier can only be a typedef name if we haven't already seen
       // a type-specifier.  Without this check we misparse:
       //  typedef int X; struct Y { short X; };  as 'short int'.
       if (DS.hasTypeSpecifier())
         goto DoneWithDeclSpec;
+
+      // In C++, check to see if this is a scope specifier like foo::bar::, if
+      // so handle it as such.  This is important for ctor parsing.
+      if (getLangOpts().CPlusPlus) {
+        if (TryAnnotateCXXScopeToken(EnteringContext)) {
+          DS.SetTypeSpecError();
+          goto DoneWithDeclSpec;
+        }
+        if (!Tok.is(tok::identifier))
+          continue;
+      }
 
       // Check for need to substitute AltiVec keyword tokens.
       if (TryAltiVecToken(DS, Loc, PrevSpec, DiagID, isInvalid))
@@ -4529,7 +4543,9 @@ void Parser::ParseDeclaratorInternal(Declarator &D,
   // Member pointers get special handling, since there's no place for the
   // scope spec in the generic path below.
   if (getLangOpts().CPlusPlus &&
-      (Tok.is(tok::coloncolon) || Tok.is(tok::identifier) ||
+      (Tok.is(tok::coloncolon) ||
+       (Tok.is(tok::identifier) &&
+        (NextToken().is(tok::coloncolon) || NextToken().is(tok::less))) ||
        Tok.is(tok::annot_cxxscope))) {
     bool EnteringContext = D.getContext() == Declarator::FileContext ||
                            D.getContext() == Declarator::MemberContext;
@@ -4722,6 +4738,14 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
   DeclaratorScopeObj DeclScopeObj(*this, D.getCXXScopeSpec());
 
   if (getLangOpts().CPlusPlus && D.mayHaveIdentifier()) {
+    // Don't parse FOO:BAR as if it were a typo for FOO::BAR inside a class, in
+    // this context it is a bitfield. Also in range-based for statement colon
+    // may delimit for-range-declaration.
+    ColonProtectionRAIIObject X(*this,
+                                D.getContext() == Declarator::MemberContext ||
+                                    (D.getContext() == Declarator::ForContext &&
+                                     getLangOpts().CPlusPlus11));
+
     // ParseDeclaratorInternal might already have parsed the scope.
     if (D.getCXXScopeSpec().isEmpty()) {
       bool EnteringContext = D.getContext() == Declarator::FileContext ||

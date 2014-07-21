@@ -3060,11 +3060,9 @@ QualType ASTContext::getSubstTemplateTypeParmPackType(
                                           const TemplateTypeParmType *Parm,
                                               const TemplateArgument &ArgPack) {
 #ifndef NDEBUG
-  for (TemplateArgument::pack_iterator P = ArgPack.pack_begin(), 
-                                    PEnd = ArgPack.pack_end();
-       P != PEnd; ++P) {
-    assert(P->getKind() == TemplateArgument::Type &&"Pack contains a non-type");
-    assert(P->getAsType().isCanonical() && "Pack contains non-canonical type");
+  for (const auto &P : ArgPack.pack_elements()) {
+    assert(P.getKind() == TemplateArgument::Type &&"Pack contains a non-type");
+    assert(P.getAsType().isCanonical() && "Pack contains non-canonical type");
   }
 #endif
   
@@ -3428,7 +3426,7 @@ QualType ASTContext::getPackExpansionType(QualType Pattern,
     // contains an alias template specialization which ignores one of its
     // parameters.
     if (Canon->containsUnexpandedParameterPack()) {
-      Canon = getPackExpansionType(getCanonicalType(Pattern), NumExpansions);
+      Canon = getPackExpansionType(Canon, NumExpansions);
 
       // Find the insert position again, in case we inserted an element into
       // PackExpansionTypes and invalidated our insert position.
@@ -3439,7 +3437,7 @@ QualType ASTContext::getPackExpansionType(QualType Pattern,
   T = new (*this) PackExpansionType(Pattern, Canon, NumExpansions);
   Types.push_back(T);
   PackExpansionTypes.InsertNode(T, InsertPos);
-  return QualType(T, 0);  
+  return QualType(T, 0);
 }
 
 /// CmpProtocolNames - Comparison predicate for sorting protocols
@@ -4783,6 +4781,12 @@ CharUnits ASTContext::getObjCEncodingTypeSize(QualType type) const {
   return sz;
 }
 
+bool ASTContext::isMSStaticDataMemberInlineDefinition(const VarDecl *VD) const {
+  return getLangOpts().MSVCCompat && VD->isStaticDataMember() &&
+         VD->getType()->isIntegralOrEnumerationType() &&
+         !VD->getFirstDecl()->isOutOfLine() && VD->getFirstDecl()->hasInit();
+}
+
 static inline 
 std::string charUnitsToString(const CharUnits &CU) {
   return llvm::itostr(CU.getQuantity());
@@ -5022,9 +5026,7 @@ void ASTContext::getObjCEncodingForPropertyDecl(const ObjCPropertyDecl *PD,
   // Encode result type.
   // GCC has some special rules regarding encoding of properties which
   // closely resembles encoding of ivars.
-  getObjCEncodingForTypeImpl(PD->getType(), S, true, true, nullptr,
-                             true /* outermost type */,
-                             true /* encoding for property */);
+  getObjCEncodingForPropertyType(PD->getType(), S);
 
   if (PD->isReadOnly()) {
     S += ",R";
@@ -5095,6 +5097,16 @@ void ASTContext::getObjCEncodingForType(QualType T, std::string& S,
   // same type.
   getObjCEncodingForTypeImpl(T, S, true, true, Field,
                              true /* outermost type */);
+}
+
+void ASTContext::getObjCEncodingForPropertyType(QualType T,
+                                                std::string& S) const {
+  // Encode result type.
+  // GCC has some special rules regarding encoding of properties which
+  // closely resembles encoding of ivars.
+  getObjCEncodingForTypeImpl(T, S, true, true, nullptr,
+                             true /* outermost type */,
+                             true /* encoding property */);
 }
 
 static char getObjCEncodingForPrimitiveKind(const ASTContext *C,
@@ -7843,6 +7855,12 @@ static GVALinkage basicGVALinkageForVariable(const ASTContext &Context,
                                                : StaticLocalLinkage;
   }
 
+  // MSVC treats in-class initialized static data members as definitions.
+  // By giving them non-strong linkage, out-of-line definitions won't
+  // cause link errors.
+  if (Context.isMSStaticDataMemberInlineDefinition(VD))
+    return GVA_DiscardableODR;
+
   switch (VD->getTemplateSpecializationKind()) {
   case TSK_Undeclared:
   case TSK_ExplicitSpecialization:
@@ -7928,7 +7946,8 @@ bool ASTContext::DeclMustBeEmitted(const Decl *D) {
   const VarDecl *VD = cast<VarDecl>(D);
   assert(VD->isFileVarDecl() && "Expected file scoped var");
 
-  if (VD->isThisDeclarationADefinition() == VarDecl::DeclarationOnly)
+  if (VD->isThisDeclarationADefinition() == VarDecl::DeclarationOnly &&
+      !isMSStaticDataMemberInlineDefinition(VD))
     return false;
 
   // Variables that can be needed in other TUs are required.

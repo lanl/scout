@@ -118,9 +118,12 @@ def err_drv_emit_llvm_link : Error<
    "-emit-llvm cannot be used when linking">;
 def err_drv_optimization_remark_pattern : Error<
   "%0 in '%1'">;
+def err_drv_no_neon_modifier : Error<"[no]neon is not accepted as modifier, please use [no]simd instead">;
 
 def warn_O4_is_O3 : Warning<"-O4 is equivalent to -O3">, InGroup<Deprecated>;
-def warn_drv_optimization_value : Warning<"optimization level '%0' is unsupported; using '%1%2' instead">,
+def warn_drv_optimization_value : Warning<"optimization level '%0' is not supported; using '%1%2' instead">,
+  InGroup<InvalidCommandLineArgument>;
+def warn_ignored_gcc_optimization : Warning<"optimization flag '%0' is not supported">,
   InGroup<InvalidCommandLineArgument>;
 def warn_c_kext : Warning<
   "ignoring -fapple-kext which is valid for C++ and Objective-C++ only">;
@@ -175,8 +178,5 @@ def err_drv_modules_validate_once_requires_timestamp : Error<
   "'-fbuild-session-timestamp=<seconds since Epoch>'">;
 
 def warn_drv_invoking_fallback : Warning<"falling back to %0">,
-  InGroup<Fallback>;
-def warn_drv_rtti_fallback :
-  Warning<"cannot compile RTTI yet, falling back to %0">,
   InGroup<Fallback>;
 }

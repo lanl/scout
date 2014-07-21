@@ -1095,12 +1095,19 @@ TEST(Matcher, HasOperatorNameForOverloadedOperatorCall) {
               "bool operator&&(Y x, Y y) { return true; }; "
               "Y a; Y b; bool c = a && b;",
               OpCallLessLess));
+  StatementMatcher OpStarCall =
+      operatorCallExpr(hasOverloadedOperatorName("*"));
+  EXPECT_TRUE(matches("class Y; int operator*(Y &); void f(Y &y) { *y; }",
+              OpStarCall));
   DeclarationMatcher ClassWithOpStar =
     recordDecl(hasMethod(hasOverloadedOperatorName("*")));
   EXPECT_TRUE(matches("class Y { int operator*(); };",
                       ClassWithOpStar));
   EXPECT_TRUE(notMatches("class Y { void myOperator(); };",
               ClassWithOpStar)) ;
+  DeclarationMatcher AnyOpStar = functionDecl(hasOverloadedOperatorName("*"));
+  EXPECT_TRUE(matches("class Y; int operator*(Y &);", AnyOpStar));
+  EXPECT_TRUE(matches("class Y { int operator*(); };", AnyOpStar));
 }
 
 TEST(Matcher, NestedOverloadedOperatorCalls) {
@@ -3029,6 +3036,13 @@ TEST(UsingDeclaration, ThroughUsingDeclaration) {
   EXPECT_TRUE(notMatches(
       "namespace a { void f(); } using a::f; void g() { a::f(); }",
       declRefExpr(throughUsingDecl(anything()))));
+}
+
+TEST(UsingDirectiveDeclaration, MatchesUsingNamespace) {
+  EXPECT_TRUE(matches("namespace X { int x; } using namespace X;",
+                      usingDirectiveDecl()));
+  EXPECT_FALSE(
+      matches("namespace X { int x; } using X::x;", usingDirectiveDecl()));
 }
 
 TEST(SingleDecl, IsSingleDecl) {

@@ -669,16 +669,17 @@ public:
     SK_ConversionSequence,
     /// \brief Perform an implicit conversion sequence without narrowing.
     SK_ConversionSequenceNoNarrowing,
-    /// \brief Perform list-initialization without a constructor
+    /// \brief Perform list-initialization without a constructor.
     SK_ListInitialization,
-    /// \brief Perform list-initialization with a constructor.
-    SK_ListConstructorCall,
     /// \brief Unwrap the single-element initializer list for a reference.
     SK_UnwrapInitList,
     /// \brief Rewrap the single-element initializer list for a reference.
     SK_RewrapInitList,
     /// \brief Perform initialization via a constructor.
     SK_ConstructorInitialization,
+    /// \brief Perform initialization via a constructor, taking arguments from
+    /// a single InitListExpr.
+    SK_ConstructorInitializationFromList,
     /// \brief Zero-initialize the object
     SK_ZeroInitialization,
     /// \brief C assignment
@@ -702,6 +703,9 @@ public:
     SK_ProduceObjCObject,
     /// \brief Construct a std::initializer_list from an initializer list.
     SK_StdInitializerList,
+    /// \brief Perform initialization via a constructor taking a single
+    /// std::initializer_list argument.
+    SK_StdInitializerListConstructorCall,
     /// \brief Initialize an OpenCL sampler from an integer.
     SK_OCLSamplerInit,
     /// \brief Passing zero to a function where OpenCL event_t is expected.

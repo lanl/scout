@@ -58,8 +58,8 @@ def _SLASH_c : CLFlag<"c">, HelpText<"Compile only">, Alias<c>;
 def _SLASH_D : CLJoinedOrSeparate<"D">, HelpText<"Define macro">,
   MetaVarName<"<macro[=value]>">, Alias<D>;
 def _SLASH_E : CLFlag<"E">, HelpText<"Preprocess to stdout">, Alias<E>;
-def _SLASH_GR : CLFlag<"GR">, HelpText<"Enable RTTI">, Alias<frtti>;
-def _SLASH_GR_ : CLFlag<"GR-">, HelpText<"Disable RTTI">, Alias<fno_rtti>;
+def _SLASH_GR : CLFlag<"GR">, HelpText<"Enable emission of RTTI data">;
+def _SLASH_GR_ : CLFlag<"GR-">, HelpText<"Disable emission of RTTI data">;
 def _SLASH_GF_ : CLFlag<"GF-">, HelpText<"Disable string pooling">,
   Alias<fwritable_strings>;
 def _SLASH_Gy : CLFlag<"Gy">, HelpText<"Put each function in its own section">,
@@ -138,6 +138,9 @@ def _SLASH_Zs : CLFlag<"Zs">, HelpText<"Syntax-check only">,
 
 // Non-aliases:
 
+def _SLASH_arch : CLCompileJoined<"arch:">,
+  HelpText<"Set architecture for code generation">;
+
 def _SLASH_M_Group : OptionGroup<"</M group>">, Group<cl_compile_Group>;
 
 def _SLASH_EH : CLJoined<"EH">, HelpText<"Exception handling model">;
@@ -198,6 +201,8 @@ def _SLASH_sdl : CLIgnoredFlag<"sdl">;
 def _SLASH_sdl_ : CLIgnoredFlag<"sdl-">;
 def _SLASH_w : CLIgnoredJoined<"w">;
 def _SLASH_Zc_forScope : CLIgnoredFlag<"Zc:forScope">;
+def _SLASH_Zc_inline : CLIgnoredFlag<"Zc:inline">;
+def _SLASH_Zc_rvalueCast : CLIgnoredFlag<"Zc:rvalueCast">;
 def _SLASH_Zc_wchar_t : CLIgnoredFlag<"Zc:wchar_t">;
 def _SLASH_Zm : CLIgnoredJoined<"Zm">;
 
@@ -205,7 +210,6 @@ def _SLASH_Zm : CLIgnoredJoined<"Zm">;
 // Unsupported:
 
 def _SLASH_AI : CLJoined<"AI">;
-def _SLASH_arch : CLJoined<"arch:">;
 def _SLASH_bigobj : CLFlag<"bigobj">;
 def _SLASH_clr : CLJoined<"clr">;
 def _SLASH_d2Zi_PLUS : CLFlag<"d2Zi+">;

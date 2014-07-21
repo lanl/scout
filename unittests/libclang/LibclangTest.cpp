@@ -316,6 +316,16 @@ TEST(libclang, VirtualFileOverlay_TopLevel) {
   T.map("/foo.h", "/real/foo.h");
 }
 
+TEST(libclang, VirtualFileOverlay_Empty) {
+  const char *contents =
+      "{\n"
+      "  'version': 0,\n"
+      "  'roots': [\n"
+      "  ]\n"
+      "}\n";
+  TestVFO T(contents);
+}
+
 TEST(libclang, ModuleMapDescriptor) {
   const char *Contents =
     "framework module TestFrame {\n"
@@ -434,7 +444,9 @@ TEST_F(LibclangReparseTest, ReparseWithModule) {
   WriteFile(HeaderName, std::string(HeaderTop) + HeaderBottom);
   WriteFile(ModName, ModFile);
 
-  const char *Args[] = { "-fmodules", "-I", TestDir.c_str() };
+  std::string ModulesCache = std::string("-fmodules-cache-path=") + TestDir;
+  const char *Args[] = { "-fmodules", ModulesCache.c_str(),
+                         "-I", TestDir.c_str() };
   int NumArgs = sizeof(Args) / sizeof(Args[0]);
   ClangTU = clang_parseTranslationUnit(Index, MName.c_str(), Args, NumArgs,
                                        nullptr, 0, TUFlags);

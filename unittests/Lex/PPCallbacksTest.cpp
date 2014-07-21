@@ -116,14 +116,12 @@ public:
 class PPCallbacksTest : public ::testing::Test {
 protected:
   PPCallbacksTest()
-    : FileMgr(FileMgrOpts),
-      DiagID(new DiagnosticIDs()),
-      DiagOpts(new DiagnosticOptions()),
-      Diags(DiagID, DiagOpts.getPtr(), new IgnoringDiagConsumer()),
-      SourceMgr(Diags, FileMgr) {
-    TargetOpts = new TargetOptions();
+      : FileMgr(FileMgrOpts), DiagID(new DiagnosticIDs()),
+        DiagOpts(new DiagnosticOptions()),
+        Diags(DiagID, DiagOpts.get(), new IgnoringDiagConsumer()),
+        SourceMgr(Diags, FileMgr), TargetOpts(new TargetOptions()) {
     TargetOpts->Triple = "x86_64-apple-darwin11.1.0";
-    Target = TargetInfo::CreateTargetInfo(Diags, &*TargetOpts);
+    Target = TargetInfo::CreateTargetInfo(Diags, TargetOpts);
   }
 
   FileSystemOptions FileMgrOpts;
@@ -133,7 +131,7 @@ protected:
   DiagnosticsEngine Diags;
   SourceManager SourceMgr;
   LangOptions LangOpts;
-  IntrusiveRefCntPtr<TargetOptions> TargetOpts;
+  std::shared_ptr<TargetOptions> TargetOpts;
   IntrusiveRefCntPtr<TargetInfo> Target;
 
   // Register a header path as a known file and add its location
@@ -169,7 +167,7 @@ protected:
 
     IntrusiveRefCntPtr<HeaderSearchOptions> HSOpts = new HeaderSearchOptions();
     HeaderSearch HeaderInfo(HSOpts, SourceMgr, Diags, LangOpts,
-                            Target.getPtr());
+                            Target.get());
     AddFakeHeader(HeaderInfo, HeaderPath, SystemHeader);
 
     IntrusiveRefCntPtr<PreprocessorOptions> PPOpts = new PreprocessorOptions();
@@ -204,7 +202,7 @@ protected:
 
     VoidModuleLoader ModLoader;
     HeaderSearch HeaderInfo(new HeaderSearchOptions, SourceMgr, Diags, 
-                            OpenCLLangOpts, Target.getPtr());
+                            OpenCLLangOpts, Target.get());
 
     Preprocessor PP(new PreprocessorOptions(), Diags, OpenCLLangOpts, SourceMgr,
                     HeaderInfo, ModLoader, /*IILookup =*/nullptr,

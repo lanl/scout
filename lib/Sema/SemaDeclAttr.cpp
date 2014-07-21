@@ -85,12 +85,12 @@ static QualType getFunctionOrMethodParamType(const Decl *D, unsigned Idx) {
   if (const BlockDecl *BD = dyn_cast<BlockDecl>(D))
     return BD->getParamDecl(Idx)->getType();
 
-  return cast<ObjCMethodDecl>(D)->param_begin()[Idx]->getType();
+  return cast<ObjCMethodDecl>(D)->parameters()[Idx]->getType();
 }
 
 static QualType getFunctionOrMethodResultType(const Decl *D) {
   if (const FunctionType *FnTy = D->getFunctionType())
-    return cast<FunctionProtoType>(FnTy)->getReturnType();
+    return cast<FunctionType>(FnTy)->getReturnType();
   return cast<ObjCMethodDecl>(D)->getReturnType();
 }
 
@@ -3029,16 +3029,11 @@ static void handleOptimizeNoneAttr(Sema &S, Decl *D,
 static void handleGlobalAttr(Sema &S, Decl *D, const AttributeList &Attr) {
   FunctionDecl *FD = cast<FunctionDecl>(D);
   if (!FD->getReturnType()->isVoidType()) {
-    TypeLoc TL = FD->getTypeSourceInfo()->getTypeLoc().IgnoreParens();
-    if (FunctionTypeLoc FTL = TL.getAs<FunctionTypeLoc>()) {
-      S.Diag(FD->getTypeSpecStartLoc(), diag::err_kern_type_not_void_return)
+    SourceRange RTRange = FD->getReturnTypeSourceRange();
+    S.Diag(FD->getTypeSpecStartLoc(), diag::err_kern_type_not_void_return)
         << FD->getType()
-        << FixItHint::CreateReplacement(FTL.getReturnLoc().getSourceRange(),
-                                        "void");
-    } else {
-      S.Diag(FD->getTypeSpecStartLoc(), diag::err_kern_type_not_void_return)
-        << FD->getType();
-    }
+        << (RTRange.isValid() ? FixItHint::CreateReplacement(RTRange, "void")
+                              : FixItHint());
     return;
   }
 
@@ -3602,6 +3597,17 @@ static void handleObjCDesignatedInitializer(Sema &S, Decl *D,
                                          Attr.getAttributeSpellingListIndex()));
 }
 
+static void handleObjCRuntimeName(Sema &S, Decl *D,
+                                  const AttributeList &Attr) {
+  StringRef MetaDataName;
+  if (!S.checkStringLiteralArgumentAttr(Attr, 0, MetaDataName))
+    return;
+  D->addAttr(::new (S.Context)
+             ObjCRuntimeNameAttr(Attr.getRange(), S.Context,
+                                 MetaDataName,
+                                 Attr.getAttributeSpellingListIndex()));
+}
+
 static void handleObjCOwnershipAttr(Sema &S, Decl *D,
                                     const AttributeList &Attr) {
   if (hasDeclarator(D)) return;
@@ -3916,7 +3922,7 @@ static void handleCapabilityAttr(Sema &S, Decl *D, const AttributeList &Attr) {
   // concept, and so they use the same semantic attribute. Eventually, the
   // lockable attribute will be removed.
   //
-  // For backwards compatibility, any capability which has no specified string
+  // For backward compatibility, any capability which has no specified string
   // literal will be considered a "mutex."
   StringRef N("mutex");
   SourceLocation LiteralLoc;
@@ -4251,6 +4257,10 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
     handleObjCDesignatedInitializer(S, D, Attr);
     break;
 
+  case AttributeList::AT_ObjCRuntimeName:
+    handleObjCRuntimeName(S, D, Attr);
+    break;
+          
   case AttributeList::AT_CFAuditedTransfer:
     handleCFAuditedTransferAttr(S, D, Attr);
     break;
