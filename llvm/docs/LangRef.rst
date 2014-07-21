@@ -582,7 +582,7 @@ to over-align the global if the global has an assigned section. In this
 case, the extra alignment could be observable: for example, code could
 assume that the globals are densely packed in their section and try to
 iterate over them as an array, alignment padding would break this
-iteration.
+iteration. The maximum alignment is ``1 << 29``.
 
 Globals can also have a :ref:`DLL storage class <dllstorageclass>`.
 
@@ -891,7 +891,7 @@ Currently, only the following parameter attributes are defined:
     address of outgoing stack arguments.  An ``inalloca`` argument must
     be a pointer to stack memory produced by an ``alloca`` instruction.
     The alloca, or argument allocation, must also be tagged with the
-    inalloca keyword.  Only the past argument may have the ``inalloca``
+    inalloca keyword.  Only the last argument may have the ``inalloca``
     attribute, and that argument is guaranteed to be passed in memory.
 
     An argument allocation may be used by a call at most once because
@@ -968,6 +968,17 @@ Currently, only the following parameter attributes are defined:
     checked or enforced by LLVM, the caller must ensure that the pointer
     passed in is non-null, or the callee must ensure that the returned pointer 
     is non-null.
+
+``dereferenceable(<n>)``
+    This indicates that the parameter or return pointer is dereferenceable. This
+    attribute may only be applied to pointer typed parameters. A pointer that
+    is dereferenceable can be loaded from speculatively without a risk of
+    trapping. The number of bytes known to be dereferenceable must be provided
+    in parentheses. It is legal for the number of bytes to be less than the
+    size of the pointee type. The ``nonnull`` attribute does not imply
+    dereferenceability (consider a pointer to one element past the end of an
+    array), however ``dereferenceable(<n>)`` does imply ``nonnull`` in
+    ``addrspace(0)`` (which is the default address space).
 
 .. _gc:
 
@@ -2889,17 +2900,109 @@ constructs:
     !0 = metadata !{ metadata !0 }
     !1 = metadata !{ metadata !1 }
 
-The loop identifier metadata can be used to specify additional per-loop
-metadata. Any operands after the first operand can be treated as user-defined
-metadata. For example the ``llvm.loop.vectorize.unroll`` metadata is understood
-by the loop vectorizer to indicate how many times to unroll the loop:
+The loop identifier metadata can be used to specify additional
+per-loop metadata. Any operands after the first operand can be treated
+as user-defined metadata. For example the ``llvm.loop.unroll.count``
+suggests an unroll factor to the loop unroller:
 
 .. code-block:: llvm
 
       br i1 %exitcond, label %._crit_edge, label %.lr.ph, !llvm.loop !0
     ...
     !0 = metadata !{ metadata !0, metadata !1 }
-    !1 = metadata !{ metadata !"llvm.loop.vectorize.unroll", i32 2 }
+    !1 = metadata !{ metadata !"llvm.loop.vectorize.width", i32 4 }
+
+'``llvm.loop.vectorize``'
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Metadata prefixed with ``llvm.loop.vectorize`` is used to control
+per-loop vectorization parameters such as vectorization width and
+interleave count.  ``llvm.loop.vectorize`` metadata should be used in
+conjunction with ``llvm.loop`` loop identification metadata.  The
+``llvm.loop.vectorize`` metadata are only optimization hints and the
+vectorizer will only vectorize loops if it believes it is safe to do
+so.  The ``llvm.mem.parallel_loop_access`` metadata which contains
+information about loop-carried memory dependencies can be helpful in
+determining the safety of loop vectorization.
+
+'``llvm.loop.vectorize.unroll``' Metadata
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+This metadata suggests an interleave count to the loop vectorizer.
+The first operand is the string ``llvm.loop.vectorize.unroll`` and the
+second operand is an integer specifying the interleave count. For
+example:
+
+.. code-block:: llvm
+
+   !0 = metadata !{ metadata !"llvm.loop.vectorize.unroll", i32 4 }
+
+Note that setting ``llvm.loop.vectorize.unroll`` to 1 disables
+interleaving multiple iterations of the loop.  If
+``llvm.loop.vectorize.unroll`` is set to 0 then the interleave count
+will be determined automatically.
+
+'``llvm.loop.vectorize.width``' Metadata
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+This metadata sets the target width of the vectorizer. The first
+operand is the string ``llvm.loop.vectorize.width`` and the second
+operand is an integer specifying the width. For example:
+
+.. code-block:: llvm
+
+   !0 = metadata !{ metadata !"llvm.loop.vectorize.width", i32 4 }
+
+Note that setting ``llvm.loop.vectorize.width`` to 1 disables
+vectorization of the loop.  If ``llvm.loop.vectorize.width`` is set to
+0 or if the loop does not have this metadata the width will be
+determined automatically.
+
+'``llvm.loop.unroll``'
+^^^^^^^^^^^^^^^^^^^^^^
+
+Metadata prefixed with ``llvm.loop.unroll`` are loop unrolling
+optimization hints such as the unroll factor. ``llvm.loop.unroll``
+metadata should be used in conjunction with ``llvm.loop`` loop
+identification metadata. The ``llvm.loop.unroll`` metadata are only
+optimization hints and the unrolling will only be performed if the
+optimizer believes it is safe to do so.
+
+'``llvm.loop.unroll.enable``' Metadata
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+This metadata either disables loop unrolling or suggests that the loop
+be unrolled fully. The first operand is the string
+``llvm.loop.unroll.enable`` and the second operand is a bit.  If the
+bit operand value is 0 loop unrolling is disabled. A value of 1
+indicates that the loop should be fully unrolled. For example:
+
+.. code-block:: llvm
+
+   !0 = metadata !{ metadata !"llvm.loop.unroll.enable", i1 0 }
+   !1 = metadata !{ metadata !"llvm.loop.unroll.enable", i1 1 }
+
+'``llvm.loop.unroll.count``' Metadata
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+This metadata suggests an unroll factor to the loop unroller. The
+first operand is the string ``llvm.loop.unroll.count`` and the second
+operand is a positive integer specifying the unroll factor. For
+example:
+
+.. code-block:: llvm
+
+   !0 = metadata !{ metadata !"llvm.loop.unroll.count", i32 4 }
+
+If the trip count of the loop is less than the unroll count the loop
+will be partially unrolled.
+
+If a loop has both a ``llvm.loop.unroll.enable`` metadata and
+``llvm.loop.unroll.count`` metadata the behavior depends upon the
+value of the ``llvm.loop.unroll.enable`` operand.  If the value is 0,
+the loop will not be unrolled.  If the value is 1, the loop will be
+unrolled with a factor determined by the ``llvm.loop.unroll.count``
+operand effectively ignoring the ``llvm.loop.unroll.enable`` metadata.
 
 '``llvm.mem``'
 ^^^^^^^^^^^^^^^
@@ -2983,55 +3086,6 @@ the loop identifier metadata node directly:
    !0 = metadata !{ metadata !1, metadata !2 } ; a list of loop identifiers
    !1 = metadata !{ metadata !1 } ; an identifier for the inner loop
    !2 = metadata !{ metadata !2 } ; an identifier for the outer loop
-
-'``llvm.loop.vectorize``'
-^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Metadata prefixed with ``llvm.loop.vectorize`` is used to control per-loop
-vectorization parameters such as vectorization factor and unroll factor.
-
-``llvm.loop.vectorize`` metadata should be used in conjunction with
-``llvm.loop`` loop identification metadata.
-
-'``llvm.loop.vectorize.unroll``' Metadata
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-This metadata instructs the loop vectorizer to unroll the specified
-loop exactly ``N`` times.
-
-The first operand is the string ``llvm.loop.vectorize.unroll`` and the second
-operand is an integer specifying the unroll factor. For example:
-
-.. code-block:: llvm
-
-   !0 = metadata !{ metadata !"llvm.loop.vectorize.unroll", i32 4 }
-
-Note that setting ``llvm.loop.vectorize.unroll`` to 1 disables
-unrolling of the loop.
-
-If ``llvm.loop.vectorize.unroll`` is set to 0 then the amount of
-unrolling will be determined automatically.
-
-'``llvm.loop.vectorize.width``' Metadata
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-This metadata sets the target width of the vectorizer to ``N``. Without
-this metadata, the vectorizer will choose a width automatically.
-Regardless of this metadata, the vectorizer will only vectorize loops if
-it believes it is valid to do so.
-
-The first operand is the string ``llvm.loop.vectorize.width`` and the
-second operand is an integer specifying the width. For example:
-
-.. code-block:: llvm
-
-   !0 = metadata !{ metadata !"llvm.loop.vectorize.width", i32 4 }
-
-Note that setting ``llvm.loop.vectorize.width`` to 1 disables
-vectorization of the loop.
-
-If ``llvm.loop.vectorize.width`` is set to 0 then the width will be
-determined automatically.
 
 Module Flags Metadata
 =====================
@@ -4925,9 +4979,10 @@ bytes of memory on the runtime stack, returning a pointer of the
 appropriate type to the program. If "NumElements" is specified, it is
 the number of elements allocated, otherwise "NumElements" is defaulted
 to be one. If a constant alignment is specified, the value result of the
-allocation is guaranteed to be aligned to at least that boundary. If not
-specified, or if zero, the target can choose to align the allocation on
-any convenient boundary compatible with the type.
+allocation is guaranteed to be aligned to at least that boundary. The
+alignment may not be greater than ``1 << 29``. If not specified, or if
+zero, the target can choose to align the allocation on any convenient
+boundary compatible with the type.
 
 '``type``' may be any sized type.
 
@@ -5001,7 +5056,8 @@ or an omitted ``align`` argument means that the operation has the ABI
 alignment for the target. It is the responsibility of the code emitter
 to ensure that the alignment information is correct. Overestimating the
 alignment results in undefined behavior. Underestimating the alignment
-may produce less efficient code. An alignment of 1 is always safe.
+may produce less efficient code. An alignment of 1 is always safe. The
+maximum possible alignment is ``1 << 29``.
 
 The optional ``!nontemporal`` metadata must reference a single
 metadata name ``<index>`` corresponding to a metadata node with one
@@ -5087,7 +5143,7 @@ alignment for the target. It is the responsibility of the code emitter
 to ensure that the alignment information is correct. Overestimating the
 alignment results in undefined behavior. Underestimating the
 alignment may produce less efficient code. An alignment of 1 is always
-safe.
+safe. The maximum possible alignment is ``1 << 29``.
 
 The optional ``!nontemporal`` metadata must reference a single metadata
 name ``<index>`` corresponding to a metadata node with one ``i32`` entry of
@@ -8651,14 +8707,14 @@ Syntax:
 
 ::
 
-      declare i16 @llvm.convert.to.fp16(f32 %a)
+      declare i16 @llvm.convert.to.fp16.f32(float %a)
+      declare i16 @llvm.convert.to.fp16.f64(double %a)
 
 Overview:
 """""""""
 
-The '``llvm.convert.to.fp16``' intrinsic function performs a conversion
-from single precision floating point format to half precision floating
-point format.
+The '``llvm.convert.to.fp16``' intrinsic function performs a conversion from a
+conventional floating point type to half precision floating point format.
 
 Arguments:
 """"""""""
@@ -8669,17 +8725,16 @@ converted.
 Semantics:
 """"""""""
 
-The '``llvm.convert.to.fp16``' intrinsic function performs a conversion
-from single precision floating point format to half precision floating
-point format. The return value is an ``i16`` which contains the
-converted number.
+The '``llvm.convert.to.fp16``' intrinsic function performs a conversion from a
+conventional floating point format to half precision floating point format. The
+return value is an ``i16`` which contains the converted number.
 
 Examples:
 """""""""
 
 .. code-block:: llvm
 
-      %res = call i16 @llvm.convert.to.fp16(f32 %a)
+      %res = call i16 @llvm.convert.to.fp16.f32(float %a)
       store i16 %res, i16* @x, align 2
 
 .. _int_convert_from_fp16:
@@ -8692,7 +8747,8 @@ Syntax:
 
 ::
 
-      declare f32 @llvm.convert.from.fp16(i16 %a)
+      declare float @llvm.convert.from.fp16.f32(i16 %a)
+      declare double @llvm.convert.from.fp16.f64(i16 %a)
 
 Overview:
 """""""""
@@ -8721,7 +8777,7 @@ Examples:
 .. code-block:: llvm
 
       %a = load i16* @x, align 2
-      %res = call f32 @llvm.convert.from.fp16(i16 %a)
+      %res = call float @llvm.convert.from.fp16(i16 %a)
 
 Debugger Intrinsics
 -------------------
@@ -8842,7 +8898,7 @@ Semantics:
 """"""""""
 
 On some architectures the address of the code to be executed needs to be
-different to the address where the trampoline is actually stored. This
+different than the address where the trampoline is actually stored. This
 intrinsic returns the executable address corresponding to ``tramp``
 after performing the required machine specific adjustments. The pointer
 returned can then be :ref:`bitcast and executed <int_trampoline>`.
@@ -8850,7 +8906,7 @@ returned can then be :ref:`bitcast and executed <int_trampoline>`.
 Memory Use Markers
 ------------------
 
-This class of intrinsics exists to information about the lifetime of
+This class of intrinsics provides information about the lifetime of
 memory objects and ranges where variables are immutable.
 
 .. _int_lifestart:

@@ -12,8 +12,12 @@
 
 #include "llvm/MC/MCELFStreamer.h"
 #include "llvm/MC/MCStreamer.h"
+#include "MCTargetDesc/MipsABIFlagsSection.h"
 
 namespace llvm {
+
+struct MipsABIFlagsSection;
+
 class MipsTargetStreamer : public MCTargetStreamer {
 public:
   MipsTargetStreamer(MCStreamer &S);
@@ -50,6 +54,41 @@ public:
   virtual void emitDirectiveCpload(unsigned RegNo);
   virtual void emitDirectiveCpsetup(unsigned RegNo, int RegOrOffset,
                                     const MCSymbol &Sym, bool IsReg);
+
+  /// Emit a '.module fp=value' directive using the given values.
+  /// Updates the .MIPS.abiflags section
+  virtual void emitDirectiveModuleFP(MipsABIFlagsSection::FpABIKind Value,
+                                     bool Is32BitABI) {
+    ABIFlagsSection.setFpABI(Value, Is32BitABI);
+  }
+
+  /// Emit a '.module fp=value' directive using the current values of the
+  /// .MIPS.abiflags section.
+  void emitDirectiveModuleFP() {
+    emitDirectiveModuleFP(ABIFlagsSection.getFpABI(),
+                          ABIFlagsSection.Is32BitABI);
+  }
+
+  virtual void emitDirectiveModuleOddSPReg(bool Enabled, bool IsO32ABI);
+  virtual void emitDirectiveSetFp(MipsABIFlagsSection::FpABIKind Value){};
+  virtual void emitMipsAbiFlags(){};
+  void setCanHaveModuleDir(bool Can) { canHaveModuleDirective = Can; }
+  bool getCanHaveModuleDir() { return canHaveModuleDirective; }
+
+  // This method enables template classes to set internal abi flags
+  // structure values.
+  template <class PredicateLibrary>
+  void updateABIInfo(const PredicateLibrary &P) {
+    ABIFlagsSection.setAllFromPredicates(P);
+  }
+
+  MipsABIFlagsSection &getABIFlagsSection() { return ABIFlagsSection; }
+
+protected:
+  MipsABIFlagsSection ABIFlagsSection;
+
+private:
+  bool canHaveModuleDirective;
 };
 
 // This part is for ascii assembly output
@@ -91,6 +130,13 @@ public:
   virtual void emitDirectiveCpload(unsigned RegNo);
   void emitDirectiveCpsetup(unsigned RegNo, int RegOrOffset,
                             const MCSymbol &Sym, bool IsReg) override;
+
+  // ABI Flags
+  void emitDirectiveModuleFP(MipsABIFlagsSection::FpABIKind Value,
+                             bool Is32BitABI) override;
+  void emitDirectiveModuleOddSPReg(bool Enabled, bool IsO32ABI) override;
+  void emitDirectiveSetFp(MipsABIFlagsSection::FpABIKind Value) override;
+  void emitMipsAbiFlags() override;
 };
 
 // This part is for ELF object output
@@ -141,6 +187,10 @@ public:
   virtual void emitDirectiveCpload(unsigned RegNo);
   void emitDirectiveCpsetup(unsigned RegNo, int RegOrOffset,
                             const MCSymbol &Sym, bool IsReg) override;
+
+  // ABI Flags
+  void emitDirectiveModuleOddSPReg(bool Enabled, bool IsO32ABI) override;
+  void emitMipsAbiFlags() override;
 
 protected:
   bool isO32() const { return STI.getFeatureBits() & Mips::FeatureO32; }

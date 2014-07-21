@@ -458,6 +458,7 @@ enum {
   R_PPC_GOT16_LO              = 15,
   R_PPC_GOT16_HI              = 16,
   R_PPC_GOT16_HA              = 17,
+  R_PPC_PLTREL24              = 18,
   R_PPC_REL32                 = 26,
   R_PPC_TLS                   = 67,
   R_PPC_DTPMOD32              = 68,
@@ -494,6 +495,37 @@ enum {
   R_PPC_REL16_HI              = 251,
   R_PPC_REL16_HA              = 252
 };
+
+// Specific e_flags for PPC64
+enum {
+  // e_flags bits specifying ABI:
+  // 1 for original ABI using function descriptors,
+  // 2 for revised ABI without function descriptors,
+  // 0 for unspecified or not using any features affected by the differences.
+  EF_PPC64_ABI = 3
+};
+
+// Special values for the st_other field in the symbol table entry for PPC64.
+enum {
+  STO_PPC64_LOCAL_BIT = 5,
+  STO_PPC64_LOCAL_MASK = (7 << STO_PPC64_LOCAL_BIT)
+};
+static inline int64_t
+decodePPC64LocalEntryOffset(unsigned Other) {
+  unsigned Val = (Other & STO_PPC64_LOCAL_MASK) >> STO_PPC64_LOCAL_BIT;
+  return ((1 << Val) >> 2) << 2;
+}
+static inline unsigned
+encodePPC64LocalEntryOffset(int64_t Offset) {
+  unsigned Val = (Offset >= 4 * 4
+                  ? (Offset >= 8 * 4
+                     ? (Offset >= 16 * 4 ? 6 : 5)
+                     : 4)
+                  : (Offset >= 2 * 4
+                     ? 3
+                     : (Offset >= 1 * 4 ? 2 : 0)));
+  return Val << STO_PPC64_LOCAL_BIT;
+}
 
 // ELF Relocation types for PPC64
 enum {
@@ -1299,6 +1331,7 @@ enum : unsigned {
 
   SHT_MIPS_REGINFO        = 0x70000006, // Register usage information
   SHT_MIPS_OPTIONS        = 0x7000000d, // General options
+  SHT_MIPS_ABIFLAGS       = 0x7000002a, // ABI information.
 
   SHT_HIPROC        = 0x7fffffff, // Highest processor arch-specific type.
   SHT_LOUSER        = 0x80000000, // Lowest type reserved for applications.
@@ -1616,7 +1649,8 @@ enum {
   // MIPS program header types.
   PT_MIPS_REGINFO  = 0x70000000,  // Register usage information.
   PT_MIPS_RTPROC   = 0x70000001,  // Runtime procedure table.
-  PT_MIPS_OPTIONS  = 0x70000002   // Options segment.
+  PT_MIPS_OPTIONS  = 0x70000002,  // Options segment.
+  PT_MIPS_ABIFLAGS = 0x70000003   // Abiflags segment.
 };
 
 // Segment flag bits.

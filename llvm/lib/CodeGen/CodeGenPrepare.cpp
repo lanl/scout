@@ -453,8 +453,8 @@ void CodeGenPrepare::EliminateMostlyEmptyBlock(BasicBlock *BB) {
         for (unsigned i = 0, e = BBPN->getNumIncomingValues(); i != e; ++i)
           PN->addIncoming(InVal, BBPN->getIncomingBlock(i));
       } else {
-        for (pred_iterator PI = pred_begin(BB), E = pred_end(BB); PI != E; ++PI)
-          PN->addIncoming(InVal, *PI);
+        for (BasicBlock *Pred : predecessors(BB))
+          PN->addIncoming(InVal, Pred);
       }
     }
   }
@@ -977,11 +977,11 @@ bool CodeGenPrepare::DupRetToEnableTailCallOpts(BasicBlock *BB) {
     }
   } else {
     SmallPtrSet<BasicBlock*, 4> VisitedBBs;
-    for (pred_iterator PI = pred_begin(BB), PE = pred_end(BB); PI != PE; ++PI) {
-      if (!VisitedBBs.insert(*PI))
+    for (BasicBlock *Pred : predecessors(BB)) {
+      if (!VisitedBBs.insert(Pred))
         continue;
 
-      BasicBlock::InstListType &InstList = (*PI)->getInstList();
+      BasicBlock::InstListType &InstList = Pred->getInstList();
       BasicBlock::InstListType::reverse_iterator RI = InstList.rbegin();
       BasicBlock::InstListType::reverse_iterator RE = InstList.rend();
       do { ++RI; } while (RI != RE && isa<DbgInfoIntrinsic>(&*RI));
@@ -2036,7 +2036,8 @@ bool AddressingModeMatcher::MatchOperationAddr(User *AddrInst, unsigned Opcode,
   case Instruction::Shl: {
     // Can only handle X*C and X << C.
     ConstantInt *RHS = dyn_cast<ConstantInt>(AddrInst->getOperand(1));
-    if (!RHS) return false;
+    if (!RHS)
+      return false;
     int64_t Scale = RHS->getSExtValue();
     if (Opcode == Instruction::Shl)
       Scale = 1LL << Scale;
@@ -2130,8 +2131,11 @@ bool AddressingModeMatcher::MatchOperationAddr(User *AddrInst, unsigned Opcode,
     return true;
   }
   case Instruction::SExt: {
+    Instruction *SExt = dyn_cast<Instruction>(AddrInst);
+    if (!SExt)
+      return false;
+
     // Try to move this sext out of the way of the addressing mode.
-    Instruction *SExt = cast<Instruction>(AddrInst);
     // Ask for a method for doing so.
     TypePromotionHelper::Action TPH = TypePromotionHelper::getAction(
         SExt, InsertedTruncs, TLI, PromotedInsts);

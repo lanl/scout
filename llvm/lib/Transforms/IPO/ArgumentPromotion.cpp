@@ -39,6 +39,8 @@
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
@@ -67,21 +69,24 @@ namespace {
     bool runOnSCC(CallGraphSCC &SCC) override;
     static char ID; // Pass identification, replacement for typeid
     explicit ArgPromotion(unsigned maxElements = 3)
-        : CallGraphSCCPass(ID), maxElements(maxElements) {
+        : CallGraphSCCPass(ID), DL(nullptr), maxElements(maxElements) {
       initializeArgPromotionPass(*PassRegistry::getPassRegistry());
     }
 
     /// A vector used to hold the indices of a single GEP instruction
     typedef std::vector<uint64_t> IndicesVector;
 
+    const DataLayout *DL;
   private:
     CallGraphNode *PromoteArguments(CallGraphNode *CGN);
     bool isSafeToPromoteArgument(Argument *Arg, bool isByVal) const;
     CallGraphNode *DoPromotion(Function *F,
                                SmallPtrSet<Argument*, 8> &ArgsToPromote,
                                SmallPtrSet<Argument*, 8> &ByValArgsToTransform);
+    bool doInitialization(CallGraph &CG) override;
     /// The maximum number of elements to expand, or 0 for unlimited.
     unsigned maxElements;
+    DenseMap<const Function *, DISubprogram> FunctionDIs;
   };
 }
 
@@ -99,6 +104,9 @@ Pass *llvm::createArgumentPromotionPass(unsigned maxElements) {
 
 bool ArgPromotion::runOnSCC(CallGraphSCC &SCC) {
   bool Changed = false, LocalChange;
+
+  DataLayoutPass *DLP = getAnalysisIfAvailable<DataLayoutPass>();
+  DL = DLP ? &DLP->getDataLayout() : nullptr;
 
   do {  // Iterate until we stop promoting from this SCC.
     LocalChange = false;
@@ -215,7 +223,8 @@ CallGraphNode *ArgPromotion::PromoteArguments(CallGraphNode *CGN) {
 
 /// AllCallersPassInValidPointerForArgument - Return true if we can prove that
 /// all callees pass in a valid pointer for the specified function argument.
-static bool AllCallersPassInValidPointerForArgument(Argument *Arg) {
+static bool AllCallersPassInValidPointerForArgument(Argument *Arg,
+                                                    const DataLayout *DL) {
   Function *Callee = Arg->getParent();
 
   unsigned ArgNo = Arg->getArgNo();
@@ -226,7 +235,7 @@ static bool AllCallersPassInValidPointerForArgument(Argument *Arg) {
     CallSite CS(U);
     assert(CS && "Should only have direct calls!");
 
-    if (!CS.getArgument(ArgNo)->isDereferenceablePointer())
+    if (!CS.getArgument(ArgNo)->isDereferenceablePointer(DL))
       return false;
   }
   return true;
@@ -334,7 +343,7 @@ bool ArgPromotion::isSafeToPromoteArgument(Argument *Arg,
   GEPIndicesSet ToPromote;
 
   // If the pointer is always valid, any load with first index 0 is valid.
-  if (isByValOrInAlloca || AllCallersPassInValidPointerForArgument(Arg))
+  if (isByValOrInAlloca || AllCallersPassInValidPointerForArgument(Arg, DL))
     SafeToUnconditionallyLoad.insert(IndicesVector(1, 0));
 
   // First, iterate the entry block and mark loads of (geps of) arguments as
@@ -464,8 +473,7 @@ bool ArgPromotion::isSafeToPromoteArgument(Argument *Arg,
     // Now check every path from the entry block to the load for transparency.
     // To do this, we perform a depth first search on the inverse CFG from the
     // loading block.
-    for (pred_iterator PI = pred_begin(BB), E = pred_end(BB); PI != E; ++PI) {
-      BasicBlock *P = *PI;
+    for (BasicBlock *P : predecessors(BB)) {
       for (idf_ext_iterator<BasicBlock*, SmallPtrSet<BasicBlock*, 16> >
              I = idf_ext_begin(P, TranspBlocks),
              E = idf_ext_end(P, TranspBlocks); I != E; ++I)
@@ -604,6 +612,10 @@ CallGraphNode *ArgPromotion::DoPromotion(Function *F,
   Function *NF = Function::Create(NFTy, F->getLinkage(), F->getName());
   NF->copyAttributesFrom(F);
 
+  // Patch the pointer to LLVM function in debug info descriptor.
+  auto DI = FunctionDIs.find(F);
+  if (DI != FunctionDIs.end())
+    DI->second.replaceFunction(NF);
   
   DEBUG(dbgs() << "ARG PROMOTION:  Promoting to:" << *NF << "\n"
         << "From: " << *F);
@@ -902,4 +914,9 @@ CallGraphNode *ArgPromotion::DoPromotion(Function *F,
     F->setLinkage(Function::ExternalLinkage);
   
   return NF_CGN;
+}
+
+bool ArgPromotion::doInitialization(CallGraph &CG) {
+  FunctionDIs = makeSubprogramMap(CG.getModule());
+  return CallGraphSCCPass::doInitialization(CG);
 }

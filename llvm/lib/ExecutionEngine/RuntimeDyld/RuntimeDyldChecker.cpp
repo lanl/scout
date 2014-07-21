@@ -199,7 +199,7 @@ namespace llvm {
       StringRef Symbol;
       std::tie(Symbol, RemainingExpr) = parseSymbol(RemainingExpr);
 
-      if (!Checker.checkSymbolIsValidForLoad(Symbol))
+      if (!Checker.isSymbolValid(Symbol))
         return std::make_pair(EvalResult(("Cannot decode unknown symbol '" +
                                           Symbol + "'").str()),
                               "");
@@ -233,9 +233,13 @@ namespace llvm {
         std::string ErrMsg;
         raw_string_ostream ErrMsgStream(ErrMsg);
         ErrMsgStream << "Invalid operand index '" << format("%i", OpIdx)
-                     << " for instruction '" << Symbol
-                     << ". Instruction has only "
-                     << format("%i", Inst.getNumOperands()) << " operands.";
+                     << "' for instruction '" << Symbol
+                     << "'. Instruction has only "
+                     << format("%i", Inst.getNumOperands())
+                     << " operands.\nInstruction is:\n  ";
+        Inst.dump_pretty(ErrMsgStream,
+                         Checker.Disassembler->getContext().getAsmInfo(),
+                         Checker.InstPrinter);
         return std::make_pair(EvalResult(ErrMsgStream.str()), "");
       }
 
@@ -268,7 +272,7 @@ namespace llvm {
       StringRef Symbol;
       std::tie(Symbol, RemainingExpr) = parseSymbol(RemainingExpr);
 
-      if (!Checker.checkSymbolIsValidForLoad(Symbol))
+      if (!Checker.isSymbolValid(Symbol))
         return std::make_pair(EvalResult(("Cannot decode unknown symbol '"
                                           + Symbol + "'").str()),
                               "");
@@ -303,6 +307,17 @@ namespace llvm {
         return evalDecodeOperand(RemainingExpr);
       else if (Symbol == "next_pc")
         return evalNextPC(RemainingExpr);
+
+      if (!Checker.isSymbolValid(Symbol)) {
+        std::string ErrMsg("No known address for symbol '");
+        ErrMsg += Symbol;
+        ErrMsg += "'";
+        if (Symbol.startswith("L"))
+          ErrMsg += " (this appears to be an assembler local label - "
+                    " perhaps drop the 'L'?)";
+
+        return std::make_pair(EvalResult(ErrMsg), "");
+      }
 
       // Looks like a plain symbol reference.
       return std::make_pair(EvalResult(Checker.getSymbolAddress(Symbol)),
@@ -397,7 +412,7 @@ namespace llvm {
       StringRef Symbol;
       std::tie(Symbol, RemainingExpr) = parseSymbol(RemainingExpr);
 
-      if (!Checker.checkSymbolIsValidForLoad(Symbol))
+      if (!Checker.isSymbolValid(Symbol))
         return std::make_pair(EvalResult(("Cannot dereference unknown symbol '"
                                           + Symbol + "'").str()),
                               "");
@@ -612,7 +627,7 @@ bool RuntimeDyldChecker::checkAllRulesInBuffer(StringRef RulePrefix,
   return DidAllTestsPass && (NumRules != 0);
 }
 
-bool RuntimeDyldChecker::checkSymbolIsValidForLoad(StringRef Symbol) const {
+bool RuntimeDyldChecker::isSymbolValid(StringRef Symbol) const {
   return RTDyld.getSymbolAddress(Symbol) != nullptr;
 }
 

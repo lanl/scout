@@ -1062,23 +1062,13 @@ void AsmPrinter::EmitConstantPool() {
     const MachineConstantPoolEntry &CPE = CP[i];
     unsigned Align = CPE.getAlignment();
 
-    SectionKind Kind;
-    switch (CPE.getRelocationInfo()) {
-    default: llvm_unreachable("Unknown section kind");
-    case 2: Kind = SectionKind::getReadOnlyWithRel(); break;
-    case 1:
-      Kind = SectionKind::getReadOnlyWithRelLocal();
-      break;
-    case 0:
-    switch (TM.getDataLayout()->getTypeAllocSize(CPE.getType())) {
-    case 4:  Kind = SectionKind::getMergeableConst4(); break;
-    case 8:  Kind = SectionKind::getMergeableConst8(); break;
-    case 16: Kind = SectionKind::getMergeableConst16();break;
-    default: Kind = SectionKind::getMergeableConst(); break;
-    }
-    }
+    SectionKind Kind = CPE.getSectionKind(TM.getDataLayout());
 
-    const MCSection *S = getObjFileLowering().getSectionForConstant(Kind);
+    const Constant *C = nullptr;
+    if (!CPE.isMachineConstantPoolEntry())
+      C = CPE.Val.ConstVal;
+
+    const MCSection *S = getObjFileLowering().getSectionForConstant(Kind, C);
 
     // The number of sections are small, just do a linear search from the
     // last section to the first.
@@ -1101,13 +1091,22 @@ void AsmPrinter::EmitConstantPool() {
   }
 
   // Now print stuff into the calculated sections.
+  const MCSection *CurSection = nullptr;
+  unsigned Offset = 0;
   for (unsigned i = 0, e = CPSections.size(); i != e; ++i) {
-    OutStreamer.SwitchSection(CPSections[i].S);
-    EmitAlignment(Log2_32(CPSections[i].Alignment));
-
-    unsigned Offset = 0;
     for (unsigned j = 0, ee = CPSections[i].CPEs.size(); j != ee; ++j) {
       unsigned CPI = CPSections[i].CPEs[j];
+      MCSymbol *Sym = GetCPISymbol(CPI);
+      if (!Sym->isUndefined())
+        continue;
+
+      if (CurSection != CPSections[i].S) {
+        OutStreamer.SwitchSection(CPSections[i].S);
+        EmitAlignment(Log2_32(CPSections[i].Alignment));
+        CurSection = CPSections[i].S;
+        Offset = 0;
+      }
+
       MachineConstantPoolEntry CPE = CP[CPI];
 
       // Emit inter-object padding for alignment.
@@ -1117,8 +1116,8 @@ void AsmPrinter::EmitConstantPool() {
 
       Type *Ty = CPE.getType();
       Offset = NewOffset + TM.getDataLayout()->getTypeAllocSize(Ty);
-      OutStreamer.EmitLabel(GetCPISymbol(CPI));
 
+      OutStreamer.EmitLabel(Sym);
       if (CPE.isMachineConstantPoolEntry())
         EmitMachineConstantPoolValue(CPE.Val.MachineCPVal);
       else
@@ -1156,7 +1155,8 @@ void AsmPrinter::EmitJumpTableInfo() {
   } else {
     // Otherwise, drop it in the readonly section.
     const MCSection *ReadOnlySection =
-      getObjFileLowering().getSectionForConstant(SectionKind::getReadOnly());
+        getObjFileLowering().getSectionForConstant(SectionKind::getReadOnly(),
+                                                   /*C=*/nullptr);
     OutStreamer.SwitchSection(ReadOnlySection);
     JTInDiffSection = true;
   }
@@ -1881,7 +1881,8 @@ static void emitGlobalConstantFP(const ConstantFP *CFP, AsmPrinter &AP) {
 
   // PPC's long double has odd notions of endianness compared to how LLVM
   // handles it: p[0] goes first for *big* endian on PPC.
-  if (AP.TM.getDataLayout()->isBigEndian() != CFP->getType()->isPPC_FP128Ty()) {
+  if (AP.TM.getDataLayout()->isBigEndian() &&
+      !CFP->getType()->isPPC_FP128Ty()) {
     int Chunk = API.getNumWords() - 1;
 
     if (TrailingBytes)

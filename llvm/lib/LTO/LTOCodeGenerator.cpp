@@ -107,6 +107,7 @@ void LTOCodeGenerator::initializeLTOPasses() {
   initializeFunctionAttrsPass(R);
   initializeGlobalsModRefPass(R);
   initializeLICMPass(R);
+  initializeMergedLoadStoreMotionPass(R);
   initializeGVNPass(R);
   initializeMemCpyOptPass(R);
   initializeDCEPass(R);
@@ -114,7 +115,7 @@ void LTOCodeGenerator::initializeLTOPasses() {
 }
 
 bool LTOCodeGenerator::addModule(LTOModule* mod, std::string& errMsg) {
-  bool ret = IRLinker.linkInModule(mod->getLLVVMModule(), &errMsg);
+  bool ret = IRLinker.linkInModule(&mod->getModule(), &errMsg);
 
   const std::vector<const char*> &undefs = mod->getAsmUndefinedRefs();
   for (int i = 0, e = undefs.size(); i != e; ++i)
@@ -236,13 +237,14 @@ const void* LTOCodeGenerator::compile(size_t* length,
   delete NativeObjectFile;
 
   // read .o file into memory buffer
-  std::unique_ptr<MemoryBuffer> BuffPtr;
-  if (std::error_code ec = MemoryBuffer::getFile(name, BuffPtr, -1, false)) {
-    errMsg = ec.message();
+  ErrorOr<std::unique_ptr<MemoryBuffer>> BufferOrErr =
+      MemoryBuffer::getFile(name, -1, false);
+  if (std::error_code EC = BufferOrErr.getError()) {
+    errMsg = EC.message();
     sys::fs::remove(NativeObjectPath);
     return nullptr;
   }
-  NativeObjectFile = BuffPtr.release();
+  NativeObjectFile = BufferOrErr.get().release();
 
   // remove temp files
   sys::fs::remove(NativeObjectPath);

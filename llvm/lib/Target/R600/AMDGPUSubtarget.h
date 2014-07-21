@@ -50,8 +50,11 @@ private:
   short TexVTXClauseSize;
   Generation Gen;
   bool FP64;
+  bool FP64Denormals;
+  bool FP32Denormals;
   bool CaymanISA;
   bool EnableIRStructurizer;
+  bool EnablePromoteAlloca;
   bool EnableIfCvt;
   unsigned WavefrontSize;
   bool CFALUBug;
@@ -81,7 +84,7 @@ public:
   }
 
   short getTexVTXClauseSize() const {
-      return TexVTXClauseSize;
+    return TexVTXClauseSize;
   }
 
   Generation getGeneration() const {
@@ -94,6 +97,14 @@ public:
 
   bool hasCaymanISA() const {
     return CaymanISA;
+  }
+
+  bool hasFP32Denormals() const {
+    return FP32Denormals;
+  }
+
+  bool hasFP64Denormals() const {
+    return FP64Denormals;
   }
 
   bool hasBFE() const {
@@ -112,8 +123,10 @@ public:
     if (Size == 32)
       return (getGeneration() >= EVERGREEN);
 
-    assert(Size == 64);
-    return (getGeneration() >= SOUTHERN_ISLANDS);
+    if (Size == 64)
+      return (getGeneration() >= SOUTHERN_ISLANDS);
+
+    return false;
   }
 
   bool hasMulU24() const {
@@ -125,8 +138,20 @@ public:
             hasCaymanISA());
   }
 
+  bool hasFFBL() const {
+    return (getGeneration() >= EVERGREEN);
+  }
+
+  bool hasFFBH() const {
+    return (getGeneration() >= EVERGREEN);
+  }
+
   bool IsIRStructurizerEnabled() const {
     return EnableIRStructurizer;
+  }
+
+  bool isPromoteAllocaEnabled() const {
+    return EnablePromoteAlloca;
   }
 
   bool isIfCvtEnabled() const {

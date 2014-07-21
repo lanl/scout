@@ -28,7 +28,6 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
-#include <fstream>
 #include <list>
 #include <plugin-api.h>
 #include <system_error>
@@ -135,6 +134,12 @@ static ld_plugin_status cleanup_hook(void);
 
 extern "C" ld_plugin_status onload(ld_plugin_tv *tv);
 ld_plugin_status onload(ld_plugin_tv *tv) {
+  InitializeAllTargetInfos();
+  InitializeAllTargets();
+  InitializeAllTargetMCs();
+  InitializeAllAsmParsers();
+  InitializeAllAsmPrinters();
+
   // We're given a pointer to the first transfer vector. We read through them
   // until we find one where tv_tag == LDPT_NULL. The REGISTER_* tagged values
   // contain pointers to functions that we need to call to register our own
@@ -228,11 +233,6 @@ ld_plugin_status onload(ld_plugin_tv *tv) {
   if (!RegisteredAllSymbolsRead)
     return LDPS_OK;
 
-  InitializeAllTargetInfos();
-  InitializeAllTargets();
-  InitializeAllTargetMCs();
-  InitializeAllAsmParsers();
-  InitializeAllAsmPrinters();
   CodeGen = new LTOCodeGenerator();
 
   // Pass through extra options to the code generator.
@@ -260,12 +260,11 @@ ld_plugin_status onload(ld_plugin_tv *tv) {
   return LDPS_OK;
 }
 
-/// claim_file_hook - called by gold to see whether this file is one that
-/// our plugin can handle. We'll try to open it and register all the symbols
-/// with add_symbol if possible.
+/// Called by gold to see whether this file is one that our plugin can handle.
+/// We'll try to open it and register all the symbols with add_symbol if
+/// possible.
 static ld_plugin_status claim_file_hook(const ld_plugin_input_file *file,
                                         int *claimed) {
-  LTOModule *M;
   const void *view;
   std::unique_ptr<MemoryBuffer> buffer;
   if (get_view) {
@@ -280,11 +279,14 @@ static ld_plugin_status claim_file_hook(const ld_plugin_input_file *file,
     if (file->offset) {
       offset = file->offset;
     }
-    if (std::error_code ec = MemoryBuffer::getOpenFileSlice(
-            file->fd, file->name, buffer, file->filesize, offset)) {
-      (*message)(LDPL_ERROR, ec.message().c_str());
+    ErrorOr<std::unique_ptr<MemoryBuffer>> BufferOrErr =
+        MemoryBuffer::getOpenFileSlice(file->fd, file->name, file->filesize,
+                                       offset);
+    if (std::error_code EC = BufferOrErr.getError()) {
+      (*message)(LDPL_ERROR, EC.message().c_str());
       return LDPS_ERR;
     }
+    buffer = std::move(BufferOrErr.get());
     view = buffer->getBufferStart();
   }
 
@@ -292,7 +294,8 @@ static ld_plugin_status claim_file_hook(const ld_plugin_input_file *file,
     return LDPS_OK;
 
   std::string Error;
-  M = LTOModule::makeLTOModule(view, file->filesize, TargetOpts, Error);
+  LTOModule *M =
+      LTOModule::createFromBuffer(view, file->filesize, TargetOpts, Error);
   if (!M) {
     (*message)(LDPL_ERROR,
                "LLVM gold plugin has failed to create LTO module: %s",
@@ -406,15 +409,17 @@ static bool mustPreserve(const claimed_file &F, int i) {
 /// been overridden by a native object file. Then, perform optimization and
 /// codegen.
 static ld_plugin_status all_symbols_read_hook(void) {
-  std::ofstream api_file;
+  // FIXME: raw_fd_ostream should be able to represent an unopened file.
+  std::unique_ptr<raw_fd_ostream> api_file;
+
   assert(CodeGen);
 
   if (options::generate_api_file) {
-    api_file.open("apifile.txt", std::ofstream::out | std::ofstream::trunc);
-    if (!api_file.is_open()) {
-      (*message)(LDPL_FATAL, "Unable to open apifile.txt for writing.");
-      abort();
-    }
+    std::string Error;
+    api_file.reset(new raw_fd_ostream("apifile.txt", Error, sys::fs::F_None));
+    if (!Error.empty())
+      (*message)(LDPL_FATAL, "Unable to open apifile.txt for writing: %s",
+                 Error.c_str());
   }
 
   for (std::list<claimed_file>::iterator I = Modules.begin(),
@@ -427,13 +432,10 @@ static ld_plugin_status all_symbols_read_hook(void) {
         CodeGen->addMustPreserveSymbol(I->syms[i].name);
 
         if (options::generate_api_file)
-          api_file << I->syms[i].name << "\n";
+          (*api_file) << I->syms[i].name << "\n";
       }
     }
   }
-
-  if (options::generate_api_file)
-    api_file.close();
 
   CodeGen->setCodePICModel(output_type);
   CodeGen->setDebugInfo(LTO_DEBUG_MODEL_DWARF);

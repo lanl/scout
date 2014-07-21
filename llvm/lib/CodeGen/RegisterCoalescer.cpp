@@ -1037,6 +1037,22 @@ bool RegisterCoalescer::joinCopy(MachineInstr *CopyMI, bool &Again) {
     return false;
   }
 
+  if (CP.getNewRC()) {
+    auto SrcRC = MRI->getRegClass(CP.getSrcReg());
+    auto DstRC = MRI->getRegClass(CP.getDstReg());
+    unsigned SrcIdx = CP.getSrcIdx();
+    unsigned DstIdx = CP.getDstIdx();
+    if (CP.isFlipped()) {
+      std::swap(SrcIdx, DstIdx);
+      std::swap(SrcRC, DstRC);
+    }
+    if (!TRI->shouldCoalesce(CopyMI, SrcRC, SrcIdx, DstRC, DstIdx,
+                            CP.getNewRC())) {
+      DEBUG(dbgs() << "\tSubtarget bailed on coalescing.\n");
+      return false;
+    }
+  }
+
   // Dead code elimination. This really should be handled by MachineDCE, but
   // sometimes dead copies slip through, and we can't generate invalid live
   // ranges.

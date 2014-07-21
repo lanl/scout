@@ -660,7 +660,7 @@ bool raw_fd_ostream::has_colors() const {
 /// Use it like: outs() << "foo" << "bar";
 raw_ostream &llvm::outs() {
   // Set buffer settings to model stdout behavior.
-  // Delete the file descriptor when the program exists, forcing error
+  // Delete the file descriptor when the program exits, forcing error
   // detection. If you don't want this behavior, don't use outs().
   static raw_fd_ostream S(STDOUT_FILENO, true);
   return S;
@@ -729,24 +729,17 @@ void raw_svector_ostream::resync() {
 }
 
 void raw_svector_ostream::write_impl(const char *Ptr, size_t Size) {
-  // If we're writing bytes from the end of the buffer into the smallvector, we
-  // don't need to copy the bytes, just commit the bytes because they are
-  // already in the right place.
   if (Ptr == OS.end()) {
-    assert(OS.size() + Size <= OS.capacity() && "Invalid write_impl() call!");
-    OS.set_size(OS.size() + Size);
+    // Grow the buffer to include the scratch area without copying.
+    size_t NewSize = OS.size() + Size;
+    assert(NewSize <= OS.capacity() && "Invalid write_impl() call!");
+    OS.set_size(NewSize);
   } else {
-    assert(GetNumBytesInBuffer() == 0 &&
-           "Should be writing from buffer if some bytes in it");
-    // Otherwise, do copy the bytes.
-    OS.append(Ptr, Ptr+Size);
+    assert(!GetNumBytesInBuffer());
+    OS.append(Ptr, Ptr + Size);
   }
 
-  // Grow the vector if necessary.
-  if (OS.capacity() - OS.size() < 64)
-    OS.reserve(OS.capacity() * 2);
-
-  // Update the buffer position.
+  OS.reserve(OS.size() + 64);
   SetBuffer(OS.end(), OS.capacity() - OS.size());
 }
 

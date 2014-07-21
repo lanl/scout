@@ -201,6 +201,8 @@ static uint64_t getAttrKindEncoding(Attribute::AttrKind Kind) {
     return bitc::ATTR_KIND_NON_LAZY_BIND;
   case Attribute::NonNull:
     return bitc::ATTR_KIND_NON_NULL;
+  case Attribute::Dereferenceable:
+    return bitc::ATTR_KIND_DEREFERENCEABLE;
   case Attribute::NoRedZone:
     return bitc::ATTR_KIND_NO_RED_ZONE;
   case Attribute::NoReturn:
@@ -272,7 +274,7 @@ static void WriteAttributeGroupTable(const ValueEnumerator &VE,
         if (Attr.isEnumAttribute()) {
           Record.push_back(0);
           Record.push_back(getAttrKindEncoding(Attr.getKindAsEnum()));
-        } else if (Attr.isAlignAttribute()) {
+        } else if (Attr.isIntAttribute()) {
           Record.push_back(1);
           Record.push_back(getAttrKindEncoding(Attr.getKindAsEnum()));
           Record.push_back(Attr.getValueAsInt());
@@ -1431,13 +1433,20 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     break;
   }
 
-  case Instruction::Alloca:
+  case Instruction::Alloca: {
     Code = bitc::FUNC_CODE_INST_ALLOCA;
     Vals.push_back(VE.getTypeID(I.getType()));
     Vals.push_back(VE.getTypeID(I.getOperand(0)->getType()));
     Vals.push_back(VE.getValueID(I.getOperand(0))); // size.
-    Vals.push_back(Log2_32(cast<AllocaInst>(I).getAlignment())+1);
+    const AllocaInst &AI = cast<AllocaInst>(I);
+    unsigned AlignRecord = Log2_32(AI.getAlignment()) + 1;
+    assert(Log2_32(Value::MaximumAlignment) + 1 < 1 << 5 &&
+           "not enough bits for maximum alignment");
+    assert(AlignRecord < 1 << 5 && "alignment greater than 1 << 64");
+    AlignRecord |= AI.isUsedWithInAlloca() << 5;
+    Vals.push_back(AlignRecord);
     break;
+  }
 
   case Instruction::Load:
     if (cast<LoadInst>(I).isAtomic()) {

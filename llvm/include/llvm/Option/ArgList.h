@@ -150,6 +150,12 @@ public:
     return arg_iterator(Args.end(), *this);
   }
 
+  iterator_range<arg_iterator> filtered(OptSpecifier Id0 = 0U,
+                                        OptSpecifier Id1 = 0U,
+                                        OptSpecifier Id2 = 0U) const {
+    return make_range(filtered_begin(Id0, Id1, Id2), filtered_end());
+  }
+
   /// @}
   /// @name Arg Removal
   /// @{

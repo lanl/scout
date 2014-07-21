@@ -511,7 +511,7 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
   // The following flags disable parts of MSan instrumentation based on
   // blacklist contents and command-line options.
   bool InsertChecks;
-  bool LoadShadow;
+  bool PropagateShadow;
   bool PoisonStack;
   bool PoisonUndef;
   bool CheckReturnValue;
@@ -532,7 +532,7 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
     bool SanitizeFunction = F.getAttributes().hasAttribute(
         AttributeSet::FunctionIndex, Attribute::SanitizeMemory);
     InsertChecks = SanitizeFunction;
-    LoadShadow = SanitizeFunction;
+    PropagateShadow = SanitizeFunction;
     PoisonStack = SanitizeFunction && ClPoisonStack;
     PoisonUndef = SanitizeFunction && ClPoisonUndef;
     // FIXME: Consider using SpecialCaseList to specify a list of functions that
@@ -721,8 +721,7 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
       size_t NumValues = PN->getNumIncomingValues();
       for (size_t v = 0; v < NumValues; v++) {
         PNS->addIncoming(getShadow(PN, v), PN->getIncomingBlock(v));
-        if (PNO)
-          PNO->addIncoming(getOrigin(PN, v), PN->getIncomingBlock(v));
+        if (PNO) PNO->addIncoming(getOrigin(PN, v), PN->getIncomingBlock(v));
       }
     }
 
@@ -856,7 +855,7 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
   /// \brief Set SV to be the shadow value for V.
   void setShadow(Value *V, Value *SV) {
     assert(!ShadowMap.count(V) && "Values may only have one shadow");
-    ShadowMap[V] = SV;
+    ShadowMap[V] = PropagateShadow ? SV : getCleanShadow(V);
   }
 
   /// \brief Set Origin to be the origin value for V.
@@ -908,6 +907,7 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
   /// This function either returns the value set earlier with setShadow,
   /// or extracts if from ParamTLS (for function arguments).
   Value *getShadow(Value *V) {
+    if (!PropagateShadow) return getCleanShadow(V);
     if (Instruction *I = dyn_cast<Instruction>(V)) {
       // For instructions the shadow is already stored in the map.
       Value *Shadow = ShadowMap[V];
@@ -1075,7 +1075,7 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
     IRBuilder<> IRB(I.getNextNode());
     Type *ShadowTy = getShadowTy(&I);
     Value *Addr = I.getPointerOperand();
-    if (LoadShadow) {
+    if (PropagateShadow) {
       Value *ShadowPtr = getShadowPtr(Addr, ShadowTy, IRB);
       setShadow(&I,
                 IRB.CreateAlignedLoad(ShadowPtr, I.getAlignment(), "_msld"));
@@ -1090,7 +1090,7 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
       I.setOrdering(addAcquireOrdering(I.getOrdering()));
 
     if (MS.TrackOrigins) {
-      if (LoadShadow) {
+      if (PropagateShadow) {
         unsigned Alignment = std::max(kMinOriginAlignment, I.getAlignment());
         setOrigin(&I,
                   IRB.CreateAlignedLoad(getOriginPtr(Addr, IRB), Alignment));
@@ -1757,7 +1757,7 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
     Value *Addr = I.getArgOperand(0);
 
     Type *ShadowTy = getShadowTy(&I);
-    if (LoadShadow) {
+    if (PropagateShadow) {
       Value *ShadowPtr = getShadowPtr(Addr, ShadowTy, IRB);
       // We don't know the pointer alignment (could be unaligned SSE load!).
       // Have to assume to worst case.
@@ -1770,7 +1770,7 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
       insertShadowCheck(Addr, &I);
 
     if (MS.TrackOrigins) {
-      if (LoadShadow)
+      if (PropagateShadow)
         setOrigin(&I, IRB.CreateLoad(getOriginPtr(Addr, IRB)));
       else
         setOrigin(&I, getCleanOrigin());
@@ -2313,6 +2313,7 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
       Value *ArgShadowBase = getShadowPtrForArgument(A, IRB, ArgOffset);
       DEBUG(dbgs() << "  Arg#" << i << ": " << *A <<
             " Shadow: " << *ArgShadow << "\n");
+      bool ArgIsInitialized = false;
       if (CS.paramHasAttr(i + 1, Attribute::ByVal)) {
         assert(A->getType()->isPointerTy() &&
                "ByVal argument is not a pointer!");
@@ -2325,8 +2326,10 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
         Size = MS.DL->getTypeAllocSize(A->getType());
         Store = IRB.CreateAlignedStore(ArgShadow, ArgShadowBase,
                                        kShadowTLSAlignment);
+        Constant *Cst = dyn_cast<Constant>(ArgShadow);
+        if (Cst && Cst->isNullValue()) ArgIsInitialized = true;
       }
-      if (MS.TrackOrigins)
+      if (MS.TrackOrigins && !ArgIsInitialized)
         IRB.CreateStore(getOrigin(A),
                         getOriginPtrForArgument(A, IRB, ArgOffset));
       (void)Store;
@@ -2394,6 +2397,11 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
 
   void visitPHINode(PHINode &I) {
     IRBuilder<> IRB(&I);
+    if (!PropagateShadow) {
+      setShadow(&I, getCleanShadow(&I));
+      return;
+    }
+
     ShadowPHINodes.push_back(&I);
     setShadow(&I, IRB.CreatePHI(getShadowTy(&I), I.getNumIncomingValues(),
                                 "_msphi_s"));

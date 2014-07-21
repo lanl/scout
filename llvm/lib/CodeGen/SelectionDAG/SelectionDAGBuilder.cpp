@@ -169,7 +169,7 @@ static SDValue getCopyFromParts(SelectionDAG &DAG, SDLoc DL,
       SDValue Lo, Hi;
       Lo = DAG.getNode(ISD::BITCAST, DL, EVT(MVT::f64), Parts[0]);
       Hi = DAG.getNode(ISD::BITCAST, DL, EVT(MVT::f64), Parts[1]);
-      if (TLI.isBigEndian())
+      if (TLI.hasBigEndianPartOrdering(ValueVT))
         std::swap(Lo, Hi);
       Val = DAG.getNode(ISD::BUILD_PAIR, DL, ValueVT, Lo, Hi);
     } else {
@@ -5155,12 +5155,16 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
     return nullptr;
   }
   case Intrinsic::convert_to_fp16:
-    setValue(&I, DAG.getNode(ISD::FP32_TO_FP16, sdl,
-                             MVT::i16, getValue(I.getArgOperand(0))));
+    setValue(&I, DAG.getNode(ISD::BITCAST, sdl, MVT::i16,
+                             DAG.getNode(ISD::FP_ROUND, sdl, MVT::f16,
+                                         getValue(I.getArgOperand(0)),
+                                         DAG.getTargetConstant(0, MVT::i32))));
     return nullptr;
   case Intrinsic::convert_from_fp16:
-    setValue(&I, DAG.getNode(ISD::FP16_TO_FP32, sdl,
-                             MVT::f32, getValue(I.getArgOperand(0))));
+    setValue(&I,
+             DAG.getNode(ISD::FP_EXTEND, sdl, TLI->getValueType(I.getType()),
+                         DAG.getNode(ISD::BITCAST, sdl, MVT::f16,
+                                     getValue(I.getArgOperand(0)))));
     return nullptr;
   case Intrinsic::pcmarker: {
     SDValue Tmp = getValue(I.getArgOperand(0));
@@ -5322,7 +5326,7 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
     CLI.setDebugLoc(sdl).setChain(getRoot())
       .setCallee(CallingConv::C, I.getType(),
                  DAG.getExternalSymbol(TrapFuncName.data(), TLI->getPointerTy()),
-                 &Args, 0);
+                 std::move(Args), 0);
 
     std::pair<SDValue, SDValue> Result = TLI->LowerCallTo(CLI);
     DAG.setRoot(Result.second);
@@ -5490,12 +5494,12 @@ void SelectionDAGBuilder::LowerCallTo(ImmutableCallSite CS, SDValue Callee,
 
   // Check if target-independent constraints permit a tail call here.
   // Target-dependent constraints are checked within TLI->LowerCallTo.
-  if (isTailCall && !isInTailCallPosition(CS, DAG))
+  if (isTailCall && !isInTailCallPosition(CS, DAG.getTarget()))
     isTailCall = false;
 
   TargetLowering::CallLoweringInfo CLI(DAG);
   CLI.setDebugLoc(getCurSDLoc()).setChain(getRoot())
-    .setCallee(RetTy, FTy, Callee, &Args, CS).setTailCall(isTailCall);
+    .setCallee(RetTy, FTy, Callee, std::move(Args), CS).setTailCall(isTailCall);
 
   std::pair<SDValue,SDValue> Result = TLI->LowerCallTo(CLI);
   assert((isTailCall || Result.second.getNode()) &&
@@ -6798,7 +6802,7 @@ SelectionDAGBuilder::LowerCallOperands(const CallInst &CI, unsigned ArgIdx,
   Type *retTy = useVoidTy ? Type::getVoidTy(*DAG.getContext()) : CI.getType();
   TargetLowering::CallLoweringInfo CLI(DAG);
   CLI.setDebugLoc(getCurSDLoc()).setChain(getRoot())
-    .setCallee(CI.getCallingConv(), retTy, Callee, &Args, NumArgs)
+    .setCallee(CI.getCallingConv(), retTy, Callee, std::move(Args), NumArgs)
     .setDiscardResult(!CI.use_empty());
 
   const TargetLowering *TLI = TM.getTargetLowering();

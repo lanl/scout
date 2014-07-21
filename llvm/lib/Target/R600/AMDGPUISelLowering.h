@@ -64,21 +64,15 @@ private:
                                   SelectionDAG &DAG) const;
   SDValue LowerSIGN_EXTEND_INREG(SDValue Op, SelectionDAG &DAG) const;
 
+  SDValue performStoreCombine(SDNode *N, DAGCombinerInfo &DCI) const;
   SDValue performMulCombine(SDNode *N, DAGCombinerInfo &DCI) const;
 
 protected:
   static EVT getEquivalentMemType(LLVMContext &Context, EVT VT);
   static EVT getEquivalentLoadRegType(LLVMContext &Context, EVT VT);
 
-  /// \brief Helper function that adds Reg to the LiveIn list of the DAG's
-  /// MachineFunction.
-  ///
-  /// \returns a RegisterSDNode representing Reg.
-  virtual SDValue CreateLiveInRegister(SelectionDAG &DAG,
-                                       const TargetRegisterClass *RC,
-                                       unsigned Reg, EVT VT) const;
-  SDValue LowerGlobalAddress(AMDGPUMachineFunction *MFI, SDValue Op,
-                             SelectionDAG &DAG) const;
+  virtual SDValue LowerGlobalAddress(AMDGPUMachineFunction *MFI, SDValue Op,
+                                     SelectionDAG &DAG) const;
   /// \brief Split a vector load into multiple scalar loads.
   SDValue SplitVectorLoad(const SDValue &Op, SelectionDAG &DAG) const;
   SDValue SplitVectorStore(SDValue Op, SelectionDAG &DAG) const;
@@ -159,6 +153,14 @@ public:
     SDValue Op,
     const SelectionDAG &DAG,
     unsigned Depth = 0) const override;
+
+  /// \brief Helper function that adds Reg to the LiveIn list of the DAG's
+  /// MachineFunction.
+  ///
+  /// \returns a RegisterSDNode representing Reg.
+  virtual SDValue CreateLiveInRegister(SelectionDAG &DAG,
+                                       const TargetRegisterClass *RC,
+                                       unsigned Reg, EVT VT) const;
 };
 
 namespace AMDGPUISD {
@@ -232,6 +234,8 @@ enum {
   /// T2|v.z| | | |
   /// T3|v.w| | | |
   BUILD_VERTICAL_VECTOR,
+  /// Pointer to the start of the shader's constant data.
+  CONST_DATA_PTR,
   FIRST_MEM_OPCODE_NUMBER = ISD::FIRST_TARGET_MEMORY_OPCODE,
   STORE_MSKOR,
   LOAD_CONSTANT,

@@ -323,7 +323,7 @@ def : Pat<(AArch64LOADgot tconstpool:$addr),
 // System instructions.
 //===----------------------------------------------------------------------===//
 
-def HINT  : HintI<"hint">;
+def HINT : HintI<"hint">;
 def : InstAlias<"nop",  (HINT 0b000)>;
 def : InstAlias<"yield",(HINT 0b001)>;
 def : InstAlias<"wfe",  (HINT 0b010)>;
@@ -331,13 +331,23 @@ def : InstAlias<"wfi",  (HINT 0b011)>;
 def : InstAlias<"sev",  (HINT 0b100)>;
 def : InstAlias<"sevl", (HINT 0b101)>;
 
-  // As far as LLVM is concerned this writes to the system's exclusive monitors.
+// As far as LLVM is concerned this writes to the system's exclusive monitors.
 let mayLoad = 1, mayStore = 1 in
 def CLREX : CRmSystemI<imm0_15, 0b010, "clrex">;
 
-def DMB   : CRmSystemI<barrier_op, 0b101, "dmb">;
-def DSB   : CRmSystemI<barrier_op, 0b100, "dsb">;
-def ISB   : CRmSystemI<barrier_op, 0b110, "isb">;
+// NOTE: ideally, this would have mayStore = 0, mayLoad = 0, but we cannot
+// model patterns with sufficiently fine granularity.
+let mayLoad = ?, mayStore = ? in {
+def DMB   : CRmSystemI<barrier_op, 0b101, "dmb",
+                       [(int_aarch64_dmb (i32 imm32_0_15:$CRm))]>;
+
+def DSB   : CRmSystemI<barrier_op, 0b100, "dsb",
+                       [(int_aarch64_dsb (i32 imm32_0_15:$CRm))]>;
+
+def ISB   : CRmSystemI<barrier_op, 0b110, "isb",
+                       [(int_aarch64_isb (i32 imm32_0_15:$CRm))]>;
+}
+
 def : InstAlias<"clrex", (CLREX 0xf)>;
 def : InstAlias<"isb", (ISB 0xf)>;
 
@@ -671,10 +681,10 @@ def CRC32CXrr : BaseCRC32<1, 0b11, 1, GPR64, int_aarch64_crc32cx, "crc32cx">;
 //===----------------------------------------------------------------------===//
 
 // (immediate)
-defm ANDS : LogicalImmS<0b11, "ands", AArch64and_flag>;
-defm AND  : LogicalImm<0b00, "and", and>;
-defm EOR  : LogicalImm<0b10, "eor", xor>;
-defm ORR  : LogicalImm<0b01, "orr", or>;
+defm ANDS : LogicalImmS<0b11, "ands", AArch64and_flag, "bics">;
+defm AND  : LogicalImm<0b00, "and", and, "bic">;
+defm EOR  : LogicalImm<0b10, "eor", xor, "eon">;
+defm ORR  : LogicalImm<0b01, "orr", or, "orn">;
 
 // FIXME: these aliases *are* canonical sometimes (when movz can't be
 // used). Actually, it seems to be working right now, but putting logical_immXX
@@ -2233,14 +2243,6 @@ def : Pat<(f64 (fpimm0)), (FMOVXDr XZR)>, Requires<[NoZCZ]>;
 //===----------------------------------------------------------------------===//
 
 defm FCVT : FPConversion<"fcvt">;
-
-def : Pat<(f32_to_f16 FPR32:$Rn),
-          (i32 (COPY_TO_REGCLASS
-                   (f32 (SUBREG_TO_REG (i32 0), (FCVTHSr FPR32:$Rn), hsub)),
-                   GPR32))>;
-
-def FCVTSHpseudo : Pseudo<(outs FPR32:$Rd), (ins FPR32:$Rn),
-                          [(set (f32 FPR32:$Rd), (f16_to_f32 i32:$Rn))]>;
 
 //===----------------------------------------------------------------------===//
 // Floating point single operand instructions.

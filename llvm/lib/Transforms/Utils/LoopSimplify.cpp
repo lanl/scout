@@ -50,6 +50,7 @@
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
@@ -113,9 +114,7 @@ BasicBlock *llvm::InsertPreheaderForLoop(Loop *L, Pass *PP) {
 
   // Compute the set of predecessors of the loop that are not in the loop.
   SmallVector<BasicBlock*, 8> OutsideBlocks;
-  for (pred_iterator PI = pred_begin(Header), PE = pred_end(Header);
-       PI != PE; ++PI) {
-    BasicBlock *P = *PI;
+  for (BasicBlock *P : predecessors(Header)) {
     if (!L->contains(P)) {         // Coming in from outside the loop?
       // If the loop is branched to from an indirect branch, we won't
       // be able to fully transform the loop, because it prohibits
@@ -157,8 +156,7 @@ BasicBlock *llvm::InsertPreheaderForLoop(Loop *L, Pass *PP) {
 /// the loop.
 static BasicBlock *rewriteLoopExitBlock(Loop *L, BasicBlock *Exit, Pass *PP) {
   SmallVector<BasicBlock*, 8> LoopBlocks;
-  for (pred_iterator I = pred_begin(Exit), E = pred_end(Exit); I != E; ++I) {
-    BasicBlock *P = *I;
+  for (BasicBlock *P : predecessors(Exit)) {
     if (L->contains(P)) {
       // Don't do this if the loop is exited via an indirect branch.
       if (isa<IndirectBrInst>(P->getTerminator())) return nullptr;
@@ -198,10 +196,8 @@ static void addBlockAndPredsToSet(BasicBlock *InputBB, BasicBlock *StopBlock,
     if (Blocks.insert(BB).second && BB != StopBlock)
       // If BB is not already processed and it is not a stop block then
       // insert its predecessor in the work list
-      for (pred_iterator I = pred_begin(BB), E = pred_end(BB); I != E; ++I) {
-        BasicBlock *WBB = *I;
+      for (BasicBlock *WBB : predecessors(BB))
         Worklist.push_back(WBB);
-      }
   } while (!Worklist.empty());
 }
 
@@ -315,8 +311,7 @@ static Loop *separateNestedLoop(Loop *L, BasicBlock *Preheader,
   // Determine which blocks should stay in L and which should be moved out to
   // the Outer loop now.
   std::set<BasicBlock*> BlocksInL;
-  for (pred_iterator PI=pred_begin(Header), E = pred_end(Header); PI!=E; ++PI) {
-    BasicBlock *P = *PI;
+  for (BasicBlock *P : predecessors(Header)) {
     if (DT->dominates(Header, P))
       addBlockAndPredsToSet(P, Header, BlocksInL);
   }
@@ -370,9 +365,7 @@ static BasicBlock *insertUniqueBackedgeBlock(Loop *L, BasicBlock *Preheader,
 
   // Figure out which basic blocks contain back-edges to the loop header.
   std::vector<BasicBlock*> BackedgeBlocks;
-  for (pred_iterator I = pred_begin(Header), E = pred_end(Header); I != E; ++I){
-    BasicBlock *P = *I;
-
+  for (BasicBlock *P : predecessors(Header)) {
     // Indirectbr edges cannot be split, so we must fail if we find one.
     if (isa<IndirectBrInst>(P->getTerminator()))
       return nullptr;
@@ -473,7 +466,8 @@ static BasicBlock *insertUniqueBackedgeBlock(Loop *L, BasicBlock *Preheader,
 /// explicit if they accepted the analysis directly and then updated it.
 static bool simplifyOneLoop(Loop *L, SmallVectorImpl<Loop *> &Worklist,
                             AliasAnalysis *AA, DominatorTree *DT, LoopInfo *LI,
-                            ScalarEvolution *SE, Pass *PP) {
+                            ScalarEvolution *SE, Pass *PP,
+                            const DataLayout *DL) {
   bool Changed = false;
 ReprocessLoop:
 
@@ -486,9 +480,7 @@ ReprocessLoop:
     if (*BB == L->getHeader()) continue;
 
     SmallPtrSet<BasicBlock*, 4> BadPreds;
-    for (pred_iterator PI = pred_begin(*BB),
-         PE = pred_end(*BB); PI != PE; ++PI) {
-      BasicBlock *P = *PI;
+    for (BasicBlock *P : predecessors(*BB)) {
       if (!L->contains(P))
         BadPreds.insert(P);
     }
@@ -501,8 +493,8 @@ ReprocessLoop:
                    << (*I)->getName() << "\n");
 
       // Inform each successor of each dead pred.
-      for (succ_iterator SI = succ_begin(*I), SE = succ_end(*I); SI != SE; ++SI)
-        (*SI)->removePredecessor(*I);
+      for (BasicBlock *Succ : successors(*I))
+        Succ->removePredecessor(*I);
       // Zap the dead pred's terminator and replace it with unreachable.
       TerminatorInst *TI = (*I)->getTerminator();
        TI->replaceAllUsesWith(UndefValue::get(TI->getType()));
@@ -559,11 +551,10 @@ ReprocessLoop:
   for (SmallSetVector<BasicBlock *, 8>::iterator I = ExitBlockSet.begin(),
          E = ExitBlockSet.end(); I != E; ++I) {
     BasicBlock *ExitBlock = *I;
-    for (pred_iterator PI = pred_begin(ExitBlock), PE = pred_end(ExitBlock);
-         PI != PE; ++PI)
+    for (BasicBlock *Pred : predecessors(ExitBlock))
       // Must be exactly this loop: no subloops, parent loops, or non-loop preds
       // allowed.
-      if (!L->contains(*PI)) {
+      if (!L->contains(Pred)) {
         if (rewriteLoopExitBlock(L, ExitBlock, PP)) {
           ++NumInserted;
           Changed = true;
@@ -672,7 +663,7 @@ ReprocessLoop:
       // The block has now been cleared of all instructions except for
       // a comparison and a conditional branch. SimplifyCFG may be able
       // to fold it now.
-      if (!FoldBranchToCommonDest(BI)) continue;
+      if (!FoldBranchToCommonDest(BI, DL)) continue;
 
       // Success. The block is now dead, so remove it from the loop,
       // update the dominator tree and delete it.
@@ -709,7 +700,8 @@ ReprocessLoop:
 }
 
 bool llvm::simplifyLoop(Loop *L, DominatorTree *DT, LoopInfo *LI, Pass *PP,
-                        AliasAnalysis *AA, ScalarEvolution *SE) {
+                        AliasAnalysis *AA, ScalarEvolution *SE,
+                        const DataLayout *DL) {
   bool Changed = false;
 
   // Worklist maintains our depth-first queue of loops in this nest to process.
@@ -726,7 +718,8 @@ bool llvm::simplifyLoop(Loop *L, DominatorTree *DT, LoopInfo *LI, Pass *PP,
   }
 
   while (!Worklist.empty())
-    Changed |= simplifyOneLoop(Worklist.pop_back_val(), Worklist, AA, DT, LI, SE, PP);
+    Changed |= simplifyOneLoop(Worklist.pop_back_val(), Worklist, AA, DT, LI,
+                               SE, PP, DL);
 
   return Changed;
 }
@@ -744,6 +737,7 @@ namespace {
     DominatorTree *DT;
     LoopInfo *LI;
     ScalarEvolution *SE;
+    const DataLayout *DL;
 
     bool runOnFunction(Function &F) override;
 
@@ -787,10 +781,12 @@ bool LoopSimplify::runOnFunction(Function &F) {
   LI = &getAnalysis<LoopInfo>();
   DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
   SE = getAnalysisIfAvailable<ScalarEvolution>();
+  DataLayoutPass *DLP = getAnalysisIfAvailable<DataLayoutPass>();
+  DL = DLP ? &DLP->getDataLayout() : nullptr;
 
   // Simplify each loop nest in the function.
   for (LoopInfo::iterator I = LI->begin(), E = LI->end(); I != E; ++I)
-    Changed |= simplifyLoop(*I, DT, LI, this, AA, SE);
+    Changed |= simplifyLoop(*I, DT, LI, this, AA, SE, DL);
 
   return Changed;
 }

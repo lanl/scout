@@ -32,7 +32,7 @@ namespace {
   ///
   class FAddendCoef {
   public:
-    // The constructor has to initialize a APFloat, which is uncessary for
+    // The constructor has to initialize a APFloat, which is unnecessary for
     // most addends which have coefficient either 1 or -1. So, the constructor
     // is expensive. In order to avoid the cost of the constructor, we should
     // reuse some instances whenever possible. The pre-created instances
@@ -961,8 +961,8 @@ bool InstCombiner::WillNotOverflowUnsignedAdd(Value *LHS, Value *RHS) {
 //   ADD(XOR(OR(Z, NOT(C)), C)), 1) == NEG(AND(Z, C))
 //   ADD(XOR(AND(Z, C), C), 1) == NEG(OR(Z, ~C))
 //   XOR(AND(Z, C), (C + 1)) == NEG(OR(Z, ~C)) if C is even
-Value *checkForNegativeOperand(BinaryOperator &I,
-                               InstCombiner::BuilderTy *Builder) {
+static Value *checkForNegativeOperand(BinaryOperator &I,
+                                      InstCombiner::BuilderTy *Builder) {
   Value *LHS = I.getOperand(0), *RHS = I.getOperand(1);
 
   // This function creates 2 instructions to replace ADD, we need at least one
@@ -1553,9 +1553,9 @@ Instruction *InstCombiner::visitSub(BinaryOperator &I) {
       return BinaryOperator::CreateAnd(Op0,
                                   Builder->CreateNot(Y, Y->getName() + ".not"));
 
-    // 0 - (X sdiv C)  -> (X sdiv -C)
-    if (match(Op1, m_SDiv(m_Value(X), m_Constant(C))) &&
-        match(Op0, m_Zero()))
+    // 0 - (X sdiv C)  -> (X sdiv -C)  provided the negation doesn't overflow.
+    if (match(Op1, m_SDiv(m_Value(X), m_Constant(C))) && match(Op0, m_Zero()) &&
+        !C->isMinSignedValue())
       return BinaryOperator::CreateSDiv(X, ConstantExpr::getNeg(C));
 
     // 0 - (X << Y)  -> (-X << Y)   when X is freely negatable.

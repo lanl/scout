@@ -222,18 +222,24 @@ public:
   /// isBGQ - True if this is a BG/Q platform.
   bool isBGQ() const { return TargetTriple.getVendor() == Triple::BGQ; }
 
+  bool isTargetELF() const { return TargetTriple.isOSBinFormatELF(); }
+  bool isTargetMachO() const { return TargetTriple.isOSBinFormatMachO(); }
+
   bool isDarwinABI() const { return isDarwin(); }
   bool isSVR4ABI() const { return !isDarwin(); }
-
-  /// enablePostRAScheduler - True at 'More' optimization.
-  bool enablePostRAScheduler(CodeGenOpt::Level OptLevel,
-                             TargetSubtargetInfo::AntiDepBreakMode& Mode,
-                             RegClassVector& CriticalPathRCs) const override;
+  /// FIXME: Should use a command-line option.
+  bool isELFv2ABI() const { return isPPC64() && isSVR4ABI() &&
+                                   isLittleEndian(); }
 
   bool enableEarlyIfConversion() const override { return hasISEL(); }
 
   // Scheduling customization.
   bool enableMachineScheduler() const override;
+  // This overrides the PostRAScheduler bit in the SchedModel for each CPU.
+  bool enablePostMachineScheduler() const override;
+  AntiDepBreakMode getAntiDepBreakMode() const override;
+  void getCriticalPathRCs(RegClassVector &CriticalPathRCs) const override;
+
   void overrideSchedPolicy(MachineSchedPolicy &Policy,
                            MachineInstr *begin,
                            MachineInstr *end,

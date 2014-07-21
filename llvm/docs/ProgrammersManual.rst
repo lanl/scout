@@ -298,7 +298,9 @@ The ``function_ref``
 (`doxygen <http://llvm.org/doxygen/classllvm_1_1function_ref.html>`__) class
 template represents a reference to a callable object, templated over the type
 of the callable. This is a good choice for passing a callback to a function,
-if you don't need to hold onto the callback after the function returns.
+if you don't need to hold onto the callback after the function returns. In this
+way, ``function_ref`` is to ``std::function`` as ``StringRef`` is to
+``std::string``.
 
 ``function_ref<Ret(Param1, Param2, ...)>`` can be implicitly constructed from
 any callable object that can be called with arguments of type ``Param1``,
@@ -323,17 +325,11 @@ can be called using:
       return false;
     });
 
-Note that a ``function_ref`` object contains pointers to external memory, so
-it is not generally safe to store an instance of the class (unless you know
-that the external storage will not be freed).
-``function_ref`` is small enough that it should always be passed by value.
-
-``std::function``
-^^^^^^^^^^^^^^^^^
-
-You cannot use ``std::function`` within LLVM code, because it is not supported
-by all our target toolchains.
-
+Note that a ``function_ref`` object contains pointers to external memory, so it
+is not generally safe to store an instance of the class (unless you know that
+the external storage will not be freed). If you need this ability, consider
+using ``std::function``. ``function_ref`` is small enough that it should always
+be passed by value.
 
 .. _DEBUG:
 
@@ -1441,8 +1437,10 @@ order, making it an easy (but somewhat expensive) solution for non-deterministic
 iteration over maps of pointers.
 
 It is implemented by mapping from key to an index in a vector of key,value
-pairs.  This provides fast lookup and iteration, but has two main drawbacks: The
-key is stored twice and it doesn't support removing elements.
+pairs.  This provides fast lookup and iteration, but has two main drawbacks:
+the key is stored twice and removing elements takes linear time.  If it is
+necessary to remove elements, it's best to remove them in bulk using
+``remove_if()``.
 
 .. _dss_inteqclasses:
 
@@ -1856,12 +1854,11 @@ iterate over all predecessors of BB:
   #include "llvm/Support/CFG.h"
   BasicBlock *BB = ...;
 
-  for (pred_iterator PI = pred_begin(BB), E = pred_end(BB); PI != E; ++PI) {
-    BasicBlock *Pred = *PI;
+  for (BasicBlock *Pred : predecessors(BB)) {
     // ...
   }
 
-Similarly, to iterate over successors use ``succ_iterator/succ_begin/succ_end``.
+Similarly, to iterate over successors use ``successors``.
 
 .. _simplechanges:
 

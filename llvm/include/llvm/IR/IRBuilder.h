@@ -327,6 +327,11 @@ public:
     return Type::getIntNTy(Context, N);
   }
 
+  /// \brief Fetch the type representing a 16-bit floating point value.
+  Type *getHalfTy() {
+    return Type::getHalfTy(Context);
+  }
+
   /// \brief Fetch the type representing a 32-bit floating point value.
   Type *getFloatTy() {
     return Type::getFloatTy(Context);
@@ -1198,6 +1203,21 @@ public:
       return Insert(Folder.CreatePointerCast(VC, DestTy), Name);
     return Insert(CastInst::CreatePointerCast(V, DestTy), Name);
   }
+
+  Value *CreatePointerBitCastOrAddrSpaceCast(Value *V, Type *DestTy,
+                                             const Twine &Name = "") {
+    if (V->getType() == DestTy)
+      return V;
+
+    if (Constant *VC = dyn_cast<Constant>(V)) {
+      return Insert(Folder.CreatePointerBitCastOrAddrSpaceCast(VC, DestTy),
+                    Name);
+    }
+
+    return Insert(CastInst::CreatePointerBitCastOrAddrSpaceCast(V, DestTy),
+                  Name);
+  }
+
   Value *CreateIntCast(Value *V, Type *DestTy, bool isSigned,
                        const Twine &Name = "") {
     if (V->getType() == DestTy)

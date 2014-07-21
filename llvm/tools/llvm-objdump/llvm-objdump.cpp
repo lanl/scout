@@ -20,17 +20,17 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Triple.h"
+#include "llvm/MC/MCAnalysis/MCAtom.h"
+#include "llvm/MC/MCAnalysis/MCFunction.h"
+#include "llvm/MC/MCAnalysis/MCModule.h"
+#include "llvm/MC/MCAnalysis/MCModuleYAML.h"
 #include "llvm/MC/MCAsmInfo.h"
-#include "llvm/MC/MCAtom.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCDisassembler.h"
-#include "llvm/MC/MCFunction.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCInstPrinter.h"
 #include "llvm/MC/MCInstrAnalysis.h"
 #include "llvm/MC/MCInstrInfo.h"
-#include "llvm/MC/MCModule.h"
-#include "llvm/MC/MCModuleYAML.h"
 #include "llvm/MC/MCObjectDisassembler.h"
 #include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/MCObjectSymbolizer.h"
@@ -628,8 +628,6 @@ static void PrintSectionContents(const ObjectFile *Obj) {
     bool BSS;
     if (error(Section.getName(Name)))
       continue;
-    if (error(Section.getContents(Contents)))
-      continue;
     if (error(Section.getAddress(BaseAddr)))
       continue;
     if (error(Section.isBSS(BSS)))
@@ -637,11 +635,17 @@ static void PrintSectionContents(const ObjectFile *Obj) {
 
     outs() << "Contents of section " << Name << ":\n";
     if (BSS) {
+      uint64_t Size;
+      if (error(Section.getSize(Size)))
+        continue;
       outs() << format("<skipping contents of bss section at [%04" PRIx64
-                       ", %04" PRIx64 ")>\n", BaseAddr,
-                       BaseAddr + Contents.size());
+                       ", %04" PRIx64 ")>\n",
+                       BaseAddr, BaseAddr + Size);
       continue;
     }
+
+    if (error(Section.getContents(Contents)))
+      continue;
 
     // Dump out the content as hex and printable ascii characters.
     for (std::size_t addr = 0, end = Contents.size(); addr < end; addr += 16) {

@@ -528,13 +528,9 @@ void BranchProbabilityInfo::print(raw_ostream &OS, const Module *) const {
   // We print the probabilities from the last function the analysis ran over,
   // or the function it is currently running over.
   assert(LastF && "Cannot print prior to running over a function");
-  for (Function::const_iterator BI = LastF->begin(), BE = LastF->end();
-       BI != BE; ++BI) {
-    for (succ_const_iterator SI = succ_begin(BI), SE = succ_end(BI);
-         SI != SE; ++SI) {
-      printEdgeProbability(OS << "  ", BI, *SI);
-    }
-  }
+  for (const BasicBlock &BB : *LastF)
+    for (const BasicBlock *Succ : successors(&BB))
+      printEdgeProbability(OS << "  ", &BB, Succ);
 }
 
 uint32_t BranchProbabilityInfo::getSumForBlock(const BasicBlock *BB) const {
@@ -563,8 +559,7 @@ BasicBlock *BranchProbabilityInfo::getHotSucc(BasicBlock *BB) const {
   uint32_t MaxWeight = 0;
   BasicBlock *MaxSucc = nullptr;
 
-  for (succ_iterator I = succ_begin(BB), E = succ_end(BB); I != E; ++I) {
-    BasicBlock *Succ = *I;
+  for (BasicBlock *Succ : successors(BB)) {
     uint32_t Weight = getEdgeWeight(BB, Succ);
     uint32_t PrevSum = Sum;
 

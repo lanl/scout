@@ -11,6 +11,7 @@
 #include "MCTargetDesc/PPCFixupKinds.h"
 #include "MCTargetDesc/PPCMCExpr.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/MC/MCELF.h"
 #include "llvm/MC/MCELFObjectWriter.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCValue.h"
@@ -30,6 +31,9 @@ namespace {
                                        bool IsPCRel) const;
     unsigned GetRelocType(const MCValue &Target, const MCFixup &Fixup,
                           bool IsPCRel) const override;
+
+    bool needsRelocateWithSymbol(const MCSymbolData &SD,
+                                 unsigned Type) const override;
   };
 }
 
@@ -83,7 +87,15 @@ unsigned PPCELFObjectWriter::getRelocTypeInner(const MCValue &Target,
       llvm_unreachable("Unimplemented");
     case PPC::fixup_ppc_br24:
     case PPC::fixup_ppc_br24abs:
-      Type = ELF::R_PPC_REL24;
+      switch (Modifier) {
+      default: llvm_unreachable("Unsupported Modifier");
+      case MCSymbolRefExpr::VK_None:
+        Type = ELF::R_PPC_REL24;
+        break;
+      case MCSymbolRefExpr::VK_PLT:
+        Type = ELF::R_PPC_PLTREL24;
+        break;
+      }
       break;
     case PPC::fixup_ppc_brcond14:
     case PPC::fixup_ppc_brcond14abs:
@@ -377,6 +389,23 @@ unsigned PPCELFObjectWriter::GetRelocType(const MCValue &Target,
                                           const MCFixup &Fixup,
                                           bool IsPCRel) const {
   return getRelocTypeInner(Target, Fixup, IsPCRel);
+}
+
+bool PPCELFObjectWriter::needsRelocateWithSymbol(const MCSymbolData &SD,
+                                                 unsigned Type) const {
+  switch (Type) {
+    default:
+      return false;
+
+    case ELF::R_PPC_REL24:
+      // If the target symbol has a local entry point, we must keep the
+      // target symbol to preserve that information for the linker.
+      // The "other" values are stored in the last 6 bits of the second byte.
+      // The traditional defines for STO values assume the full byte and thus
+      // the shift to pack it.
+      unsigned Other = MCELF::getOther(SD) << 2;
+      return (Other & ELF::STO_PPC64_LOCAL_MASK) != 0;
+  }
 }
 
 MCObjectWriter *llvm::createPPCELFObjectWriter(raw_ostream &OS,

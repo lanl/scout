@@ -1012,11 +1012,12 @@ SDValue SelectionDAG::getZExtOrTrunc(SDValue Op, SDLoc DL, EVT VT) {
     getNode(ISD::TRUNCATE, DL, VT, Op);
 }
 
-SDValue SelectionDAG::getBoolExtOrTrunc(SDValue Op, SDLoc SL, EVT VT) {
+SDValue SelectionDAG::getBoolExtOrTrunc(SDValue Op, SDLoc SL, EVT VT,
+                                        EVT OpVT) {
   if (VT.bitsLE(Op.getValueType()))
     return getNode(ISD::TRUNCATE, SL, VT, Op);
 
-  TargetLowering::BooleanContent BType = TLI->getBooleanContents(VT.isVector());
+  TargetLowering::BooleanContent BType = TLI->getBooleanContents(OpVT);
   return getNode(TLI->getExtendForContent(BType), SL, VT, Op);
 }
 
@@ -1032,6 +1033,36 @@ SDValue SelectionDAG::getZeroExtendInReg(SDValue Op, SDLoc DL, EVT VT) {
                  getConstant(Imm, Op.getValueType()));
 }
 
+SDValue SelectionDAG::getAnyExtendVectorInReg(SDValue Op, SDLoc DL, EVT VT) {
+  assert(VT.isVector() && "This DAG node is restricted to vector types.");
+  assert(VT.getSizeInBits() == Op.getValueType().getSizeInBits() &&
+         "The sizes of the input and result must match in order to perform the "
+         "extend in-register.");
+  assert(VT.getVectorNumElements() < Op.getValueType().getVectorNumElements() &&
+         "The destination vector type must have fewer lanes than the input.");
+  return getNode(ISD::ANY_EXTEND_VECTOR_INREG, DL, VT, Op);
+}
+
+SDValue SelectionDAG::getSignExtendVectorInReg(SDValue Op, SDLoc DL, EVT VT) {
+  assert(VT.isVector() && "This DAG node is restricted to vector types.");
+  assert(VT.getSizeInBits() == Op.getValueType().getSizeInBits() &&
+         "The sizes of the input and result must match in order to perform the "
+         "extend in-register.");
+  assert(VT.getVectorNumElements() < Op.getValueType().getVectorNumElements() &&
+         "The destination vector type must have fewer lanes than the input.");
+  return getNode(ISD::SIGN_EXTEND_VECTOR_INREG, DL, VT, Op);
+}
+
+SDValue SelectionDAG::getZeroExtendVectorInReg(SDValue Op, SDLoc DL, EVT VT) {
+  assert(VT.isVector() && "This DAG node is restricted to vector types.");
+  assert(VT.getSizeInBits() == Op.getValueType().getSizeInBits() &&
+         "The sizes of the input and result must match in order to perform the "
+         "extend in-register.");
+  assert(VT.getVectorNumElements() < Op.getValueType().getVectorNumElements() &&
+         "The destination vector type must have fewer lanes than the input.");
+  return getNode(ISD::ZERO_EXTEND_VECTOR_INREG, DL, VT, Op);
+}
+
 /// getNOT - Create a bitwise NOT operation as (XOR Val, -1).
 ///
 SDValue SelectionDAG::getNOT(SDLoc DL, SDValue Val, EVT VT) {
@@ -1044,7 +1075,7 @@ SDValue SelectionDAG::getNOT(SDLoc DL, SDValue Val, EVT VT) {
 SDValue SelectionDAG::getLogicalNOT(SDLoc DL, SDValue Val, EVT VT) {
   EVT EltVT = VT.getScalarType();
   SDValue TrueValue;
-  switch (TLI->getBooleanContents(VT.isVector())) {
+  switch (TLI->getBooleanContents(VT)) {
     case TargetLowering::ZeroOrOneBooleanContent:
     case TargetLowering::UndefinedBooleanContent:
       TrueValue = getConstant(1, VT);
@@ -1496,6 +1527,11 @@ SDValue SelectionDAG::getVectorShuffle(EVT VT, SDLoc dl, SDValue N1,
     N1 = getUNDEF(VT);
     commuteShuffle(N1, N2, MaskVec);
   }
+  // Reset our undef status after accounting for the mask.
+  N2Undef = N2.getOpcode() == ISD::UNDEF;
+  // Re-check whether both sides ended up undef.
+  if (N1.getOpcode() == ISD::UNDEF && N2Undef)
+    return getUNDEF(VT);
 
   // If Identity shuffle return that node.
   bool Identity = true;
@@ -1506,9 +1542,36 @@ SDValue SelectionDAG::getVectorShuffle(EVT VT, SDLoc dl, SDValue N1,
     return N1;
 
   // Shuffling a constant splat doesn't change the result.
-  if (N2Undef && N1.getOpcode() == ISD::BUILD_VECTOR)
-    if (cast<BuildVectorSDNode>(N1)->getConstantSplatValue())
-      return N1;
+  if (N2Undef) {
+    SDValue V = N1;
+
+    // Look through any bitcasts. We check that these don't change the number
+    // (and size) of elements and just changes their types.
+    while (V.getOpcode() == ISD::BITCAST)
+      V = V->getOperand(0);
+
+    // A splat should always show up as a build vector node.
+    if (auto *BV = dyn_cast<BuildVectorSDNode>(V)) {
+      BitVector UndefElements;
+      SDValue Splat = BV->getSplatValue(&UndefElements);
+      // If this is a splat of an undef, shuffling it is also undef.
+      if (Splat && Splat.getOpcode() == ISD::UNDEF)
+        return getUNDEF(VT);
+
+      // We only have a splat which can skip shuffles if there is a splatted
+      // value and no undef lanes rearranged by the shuffle.
+      if (Splat && UndefElements.none()) {
+        // Splat of <x, x, ..., x>, return <x, x, ..., x>, provided that the
+        // number of elements match or the value splatted is a zero constant.
+        if (V.getValueType().getVectorNumElements() ==
+            VT.getVectorNumElements())
+          return N1;
+        if (auto *C = dyn_cast<ConstantSDNode>(Splat))
+          if (C->isNullValue())
+            return N1;
+      }
+    }
+  }
 
   FoldingSetNodeID ID;
   SDValue Ops[2] = { N1, N2 };
@@ -1533,6 +1596,27 @@ SDValue SelectionDAG::getVectorShuffle(EVT VT, SDLoc dl, SDValue N1,
   CSEMap.InsertNode(N, IP);
   AllNodes.push_back(N);
   return SDValue(N, 0);
+}
+
+SDValue SelectionDAG::getCommutedVectorShuffle(const ShuffleVectorSDNode &SV) {
+  MVT VT = SV.getSimpleValueType(0);
+  unsigned NumElems = VT.getVectorNumElements();
+  SmallVector<int, 8> MaskVec;
+
+  for (unsigned i = 0; i != NumElems; ++i) {
+    int Idx = SV.getMaskElt(i);
+    if (Idx >= 0) {
+      if (Idx < (int)NumElems)
+        Idx += NumElems;
+      else
+        Idx -= NumElems;
+    }
+    MaskVec.push_back(Idx);
+  }
+
+  SDValue Op0 = SV.getOperand(0);
+  SDValue Op1 = SV.getOperand(1);
+  return getVectorShuffle(VT, SDLoc(&SV), Op1, Op0, &MaskVec[0]);
 }
 
 SDValue SelectionDAG::getConvertRndSat(EVT VT, SDLoc dl,
@@ -1734,7 +1818,8 @@ SDValue SelectionDAG::FoldSetCC(EVT VT, SDValue N1,
   case ISD::SETTRUE:
   case ISD::SETTRUE2: {
     const TargetLowering *TLI = TM.getTargetLowering();
-    TargetLowering::BooleanContent Cnt = TLI->getBooleanContents(VT.isVector());
+    TargetLowering::BooleanContent Cnt =
+        TLI->getBooleanContents(N1->getValueType(0));
     return getConstant(
         Cnt == TargetLowering::ZeroOrNegativeOneBooleanContent ? -1ULL : 1, VT);
   }
@@ -1965,11 +2050,20 @@ void SelectionDAG::computeKnownBits(SDValue Op, APInt &KnownZero,
   case ISD::UMULO:
     if (Op.getResNo() != 1)
       break;
-    // The boolean result conforms to getBooleanContents.  Fall through.
+    // The boolean result conforms to getBooleanContents.
+    // If we know the result of a setcc has the top bits zero, use this info.
+    // We know that we have an integer-based boolean since these operations
+    // are only available for integer.
+    if (TLI->getBooleanContents(Op.getValueType().isVector(), false) ==
+            TargetLowering::ZeroOrOneBooleanContent &&
+        BitWidth > 1)
+      KnownZero |= APInt::getHighBitsSet(BitWidth, BitWidth - 1);
+    break;
   case ISD::SETCC:
     // If we know the result of a setcc has the top bits zero, use this info.
-    if (TLI->getBooleanContents(Op.getValueType().isVector()) ==
-        TargetLowering::ZeroOrOneBooleanContent && BitWidth > 1)
+    if (TLI->getBooleanContents(Op.getOperand(0).getValueType()) ==
+            TargetLowering::ZeroOrOneBooleanContent &&
+        BitWidth > 1)
       KnownZero |= APInt::getHighBitsSet(BitWidth, BitWidth - 1);
     break;
   case ISD::SHL:
@@ -2368,9 +2462,16 @@ unsigned SelectionDAG::ComputeNumSignBits(SDValue Op, unsigned Depth) const{
     if (Op.getResNo() != 1)
       break;
     // The boolean result conforms to getBooleanContents.  Fall through.
+    // If setcc returns 0/-1, all bits are sign bits.
+    // We know that we have an integer-based boolean since these operations
+    // are only available for integer.
+    if (TLI->getBooleanContents(Op.getValueType().isVector(), false) ==
+        TargetLowering::ZeroOrNegativeOneBooleanContent)
+      return VTBits;
+    break;
   case ISD::SETCC:
     // If setcc returns 0/-1, all bits are sign bits.
-    if (TLI->getBooleanContents(Op.getValueType().isVector()) ==
+    if (TLI->getBooleanContents(Op.getOperand(0).getValueType()) ==
         TargetLowering::ZeroOrNegativeOneBooleanContent)
       return VTBits;
     break;
@@ -2689,6 +2790,32 @@ SDValue SelectionDAG::getNode(unsigned Opcode, SDLoc DL,
       else if (VT == MVT::i64 && C->getValueType(0) == MVT::f64)
         return getConstant(V.bitcastToAPInt().getZExtValue(), VT);
       break;
+    }
+  }
+
+  // Constant fold unary operations with a vector integer operand.
+  if (BuildVectorSDNode *BV = dyn_cast<BuildVectorSDNode>(Operand.getNode())) {
+    APInt Val;
+    APInt DummyUndefs;
+    unsigned SplatBitSize;
+    bool DummyHasUndefs;
+    if (BV->isConstantSplat(Val, DummyUndefs, SplatBitSize, DummyHasUndefs)) {
+      switch (Opcode) {
+      default:
+        // FIXME: Entirely reasonable to perform folding of other unary
+        // operations here as the need arises.
+        break;
+      case ISD::UINT_TO_FP:
+      case ISD::SINT_TO_FP: {
+        APFloat APF(
+            EVTToAPFloatSemantics(VT.getVectorElementType()),
+            APInt::getNullValue(VT.getVectorElementType().getSizeInBits()));
+        (void)APF.convertFromAPInt(Val, Opcode == ISD::SINT_TO_FP,
+                                   APFloat::rmNearestTiesToEven);
+
+        return getConstantFP(APF, VT);
+      }
+      }
     }
   }
 
@@ -4158,7 +4285,7 @@ SDValue SelectionDAG::getMemcpy(SDValue Chain, SDLoc dl, SDValue Dst,
     .setCallee(TLI->getLibcallCallingConv(RTLIB::MEMCPY),
                Type::getVoidTy(*getContext()),
                getExternalSymbol(TLI->getLibcallName(RTLIB::MEMCPY),
-                                 TLI->getPointerTy()), &Args, 0)
+                                 TLI->getPointerTy()), std::move(Args), 0)
     .setDiscardResult();
   std::pair<SDValue,SDValue> CallResult = TLI->LowerCallTo(CLI);
 
@@ -4214,7 +4341,7 @@ SDValue SelectionDAG::getMemmove(SDValue Chain, SDLoc dl, SDValue Dst,
     .setCallee(TLI->getLibcallCallingConv(RTLIB::MEMMOVE),
                Type::getVoidTy(*getContext()),
                getExternalSymbol(TLI->getLibcallName(RTLIB::MEMMOVE),
-                                 TLI->getPointerTy()), &Args, 0)
+                                 TLI->getPointerTy()), std::move(Args), 0)
     .setDiscardResult();
   std::pair<SDValue,SDValue> CallResult = TLI->LowerCallTo(CLI);
 
@@ -4278,7 +4405,7 @@ SDValue SelectionDAG::getMemset(SDValue Chain, SDLoc dl, SDValue Dst,
     .setCallee(TLI->getLibcallCallingConv(RTLIB::MEMSET),
                Type::getVoidTy(*getContext()),
                getExternalSymbol(TLI->getLibcallName(RTLIB::MEMSET),
-                                 TLI->getPointerTy()), &Args, 0)
+                                 TLI->getPointerTy()), std::move(Args), 0)
     .setDiscardResult();
 
   std::pair<SDValue,SDValue> CallResult = TLI->LowerCallTo(CLI);
@@ -6603,16 +6730,43 @@ bool BuildVectorSDNode::isConstantSplat(APInt &SplatValue,
   return true;
 }
 
-ConstantSDNode *BuildVectorSDNode::getConstantSplatValue() const {
-  SDValue Op0 = getOperand(0);
-  if (Op0.getOpcode() != ISD::Constant)
-    return nullptr;
+SDValue BuildVectorSDNode::getSplatValue(BitVector *UndefElements) const {
+  if (UndefElements) {
+    UndefElements->clear();
+    UndefElements->resize(getNumOperands());
+  }
+  SDValue Splatted;
+  for (unsigned i = 0, e = getNumOperands(); i != e; ++i) {
+    SDValue Op = getOperand(i);
+    if (Op.getOpcode() == ISD::UNDEF) {
+      if (UndefElements)
+        (*UndefElements)[i] = true;
+    } else if (!Splatted) {
+      Splatted = Op;
+    } else if (Splatted != Op) {
+      return SDValue();
+    }
+  }
 
-  for (unsigned i = 1, e = getNumOperands(); i != e; ++i)
-    if (getOperand(i) != Op0)
-      return nullptr;
+  if (!Splatted) {
+    assert(getOperand(0).getOpcode() == ISD::UNDEF &&
+           "Can only have a splat without a constant for all undefs.");
+    return getOperand(0);
+  }
 
-  return cast<ConstantSDNode>(Op0);
+  return Splatted;
+}
+
+ConstantSDNode *
+BuildVectorSDNode::getConstantSplatNode(BitVector *UndefElements) const {
+  return dyn_cast_or_null<ConstantSDNode>(
+      getSplatValue(UndefElements).getNode());
+}
+
+ConstantFPSDNode *
+BuildVectorSDNode::getConstantFPSplatNode(BitVector *UndefElements) const {
+  return dyn_cast_or_null<ConstantFPSDNode>(
+      getSplatValue(UndefElements).getNode());
 }
 
 bool BuildVectorSDNode::isConstant() const {

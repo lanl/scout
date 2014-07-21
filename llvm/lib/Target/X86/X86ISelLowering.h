@@ -405,23 +405,8 @@ namespace llvm {
       // XTEST - Test if in transactional execution.
       XTEST,
 
-      // ATOMADD64_DAG, ATOMSUB64_DAG, ATOMOR64_DAG, ATOMAND64_DAG,
-      // ATOMXOR64_DAG, ATOMNAND64_DAG, ATOMSWAP64_DAG -
-      // Atomic 64-bit binary operations.
-      ATOMADD64_DAG = ISD::FIRST_TARGET_MEMORY_OPCODE,
-      ATOMSUB64_DAG,
-      ATOMOR64_DAG,
-      ATOMXOR64_DAG,
-      ATOMAND64_DAG,
-      ATOMNAND64_DAG,
-      ATOMMAX64_DAG,
-      ATOMMIN64_DAG,
-      ATOMUMAX64_DAG,
-      ATOMUMIN64_DAG,
-      ATOMSWAP64_DAG,
-
       // LCMPXCHG_DAG, LCMPXCHG8_DAG, LCMPXCHG16_DAG - Compare and swap.
-      LCMPXCHG_DAG,
+      LCMPXCHG_DAG = ISD::FIRST_TARGET_MEMORY_OPCODE,
       LCMPXCHG8_DAG,
       LCMPXCHG16_DAG,
 
@@ -810,6 +795,9 @@ namespace llvm {
 
     /// \brief Reset the operation actions based on target options.
     void resetOperationActions() override;
+
+    /// \brief Customize the preferred legalization strategy for certain types.
+    LegalizeTypeAction getPreferredVectorAction(EVT VT) const override;
 
   protected:
     std::pair<const TargetRegisterClass*, uint8_t>

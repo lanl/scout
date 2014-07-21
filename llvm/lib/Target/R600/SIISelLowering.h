@@ -25,9 +25,17 @@ class SITargetLowering : public AMDGPUTargetLowering {
                          SDValue Chain, unsigned Offset, bool Signed) const;
   SDValue LowerSampleIntrinsic(unsigned Opcode, const SDValue &Op,
                                SelectionDAG &DAG) const;
+  SDValue LowerGlobalAddress(AMDGPUMachineFunction *MFI, SDValue Op,
+                             SelectionDAG &DAG) const override;
+  SDValue LowerFrameIndex(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerLOAD(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerSELECT(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerFastFDIV(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerFDIV32(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerFDIV64(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerFDIV(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerSTORE(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerTrig(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerBRCOND(SDValue Op, SelectionDAG &DAG) const;
 
   bool foldImm(SDValue &Operand, int32_t &Immediate,
@@ -50,7 +58,9 @@ public:
   SITargetLowering(TargetMachine &tm);
   bool allowsUnalignedMemoryAccesses(EVT VT, unsigned AS,
                                      bool *IsFast) const override;
-  bool shouldSplitVectorType(EVT VT) const override;
+
+  TargetLoweringBase::LegalizeTypeAction
+  getPreferredVectorAction(EVT VT) const override;
 
   bool shouldConvertConstantLoadToIntImm(const APInt &Imm,
                                         Type *Ty) const override;

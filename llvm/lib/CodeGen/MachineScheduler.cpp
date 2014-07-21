@@ -478,14 +478,13 @@ void MachineSchedulerBase::print(raw_ostream &O, const Module* m) const {
   // unimplemented
 }
 
-#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
+LLVM_DUMP_METHOD
 void ReadyQueue::dump() {
   dbgs() << Name << ": ";
   for (unsigned i = 0, e = Queue.size(); i < e; ++i)
     dbgs() << Queue[i]->NodeNum << " ";
   dbgs() << "\n";
 }
-#endif
 
 //===----------------------------------------------------------------------===//
 // ScheduleDAGMI - Basic machine instruction scheduling. This is
@@ -2062,8 +2061,10 @@ SUnit *SchedBoundary::pickOnlyChoice() {
     }
   }
   for (unsigned i = 0; Available.empty(); ++i) {
-    assert(i <= (HazardRec->getMaxLookAhead() + MaxObservedStall) &&
-           "permanent hazard"); (void)i;
+//  FIXME: Re-enable assert once PR20057 is resolved.
+//    assert(i <= (HazardRec->getMaxLookAhead() + MaxObservedStall) &&
+//           "permanent hazard");
+    (void)i;
     bumpCycle(CurrCycle + 1);
     releasePending();
   }

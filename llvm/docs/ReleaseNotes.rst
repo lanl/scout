@@ -50,13 +50,18 @@ Non-comprehensive list of changes in this release
   the ``-no-integrated-as`` option,
 
 * llvm-ar now handles IR files like regular object files. In particular, a
-  regular symbol table is created for symbols defined in IR files.
+  regular symbol table is created for symbols defined in IR files, including
+  those in file scope inline assembly.
 
 * LLVM now always uses cfi directives for producing most stack
   unwinding information.
 
 * The prefix for loop vectorizer hint metadata has been changed from
   ``llvm.vectorizer`` to ``llvm.loop.vectorize``.
+
+* Some backends previously implemented Atomic NAND(x,y) as ``x & ~y``. Now 
+  all backends implement it as ``~(x & y)``, matching the semantics of GCC 4.4
+  and later.
 
 .. NOTE
    For small 1-3 sentence descriptions, just add an entry at the end of
