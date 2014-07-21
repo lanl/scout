@@ -177,13 +177,11 @@ Archive::Child::getMemoryBuffer(bool FullPath) const {
 
 ErrorOr<std::unique_ptr<Binary>>
 Archive::Child::getAsBinary(LLVMContext *Context) const {
-  std::unique_ptr<Binary> ret;
   ErrorOr<std::unique_ptr<MemoryBuffer>> BuffOrErr = getMemoryBuffer();
   if (std::error_code EC = BuffOrErr.getError())
     return EC;
 
-  std::unique_ptr<MemoryBuffer> Buff(BuffOrErr.get().release());
-  return createBinary(Buff, Context);
+  return createBinary(std::move(*BuffOrErr), Context);
 }
 
 ErrorOr<Archive *> Archive::create(std::unique_ptr<MemoryBuffer> Source) {
