@@ -12,7 +12,7 @@ set timeout 30
 spawn $path/../../build/bin/$type -g -o mesh-$type $path/mesh.$ext
 expect "1 warning"
 sleep 1
-spawn $path/../../build/bin/lldb -- ./mesh-$type
+spawn $path/../../build/bin/scdb -- ./mesh-$type
 expect "(lldb)"
 
 send "b mesh.$ext:15\n"
