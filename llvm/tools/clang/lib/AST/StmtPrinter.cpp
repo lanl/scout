@@ -886,6 +886,16 @@ void StmtPrinter::VisitOMPFlushDirective(OMPFlushDirective *Node) {
   PrintOMPExecutableDirective(Node);
 }
 
+void StmtPrinter::VisitOMPOrderedDirective(OMPOrderedDirective *Node) {
+  Indent() << "#pragma omp ordered";
+  PrintOMPExecutableDirective(Node);
+}
+
+void StmtPrinter::VisitOMPAtomicDirective(OMPAtomicDirective *Node) {
+  Indent() << "#pragma omp atomic ";
+  PrintOMPExecutableDirective(Node);
+}
+
 //===----------------------------------------------------------------------===//
 //  Expr printing methods.
 //===----------------------------------------------------------------------===//

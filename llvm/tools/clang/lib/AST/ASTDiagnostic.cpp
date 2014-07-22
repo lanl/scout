@@ -991,12 +991,35 @@ class TemplateDiff {
           if (!HasToValueDecl && ToExpr)
             ToValueDecl = GetValueDecl(ToIter, ToExpr);
           QualType ArgumentType = DefaultNTTPD->getType();
-          bool FromAddressOf = FromValueDecl &&
-                               !ArgumentType->isReferenceType() &&
-                               !FromValueDecl->getType()->isArrayType();
-          bool ToAddressOf = ToValueDecl &&
-                             !ArgumentType->isReferenceType() &&
-                             !ToValueDecl->getType()->isArrayType();
+          bool FromAddressOf = false;
+          if (FromValueDecl) {
+            if (FromExpr) {
+              if (UnaryOperator *UO =
+                      dyn_cast<UnaryOperator>(FromExpr->IgnoreParens())) {
+                if (UO->getOpcode() == UO_AddrOf)
+                  FromAddressOf = true;
+              }
+            } else {
+              if (!ArgumentType->isReferenceType()) {
+                FromAddressOf = true;
+              }
+            }
+          }
+          bool ToAddressOf = false;
+          if (ToValueDecl) {
+            if (ToExpr) {
+              if (UnaryOperator *UO =
+                      dyn_cast<UnaryOperator>(ToExpr->IgnoreParens())) {
+                if (UO->getOpcode() == UO_AddrOf) {
+                  ToAddressOf = true;
+                }
+              }
+            } else {
+              if (!ArgumentType->isReferenceType()) {
+                ToAddressOf = true;
+              }
+            }
+          }
           Tree.SetNode(FromValueDecl, ToValueDecl, FromAddressOf, ToAddressOf);
           Tree.SetSame(FromValueDecl && ToValueDecl &&
                        FromValueDecl->getCanonicalDecl() ==
@@ -1164,7 +1187,8 @@ class TemplateDiff {
       }
     DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(ArgExpr);
     if (!DRE) {
-      DRE = cast<DeclRefExpr>(cast<UnaryOperator>(ArgExpr)->getSubExpr());
+      DRE = cast<DeclRefExpr>(
+          cast<UnaryOperator>(ArgExpr->IgnoreParens())->getSubExpr());
     }
 
     return DRE->getDecl();
