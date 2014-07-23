@@ -147,7 +147,11 @@ $(build_dir)/Makefile: CMakeLists.txt
 	@(cd $(build_dir); cmake $(cmake_flags) $(src_dir))
 
 legion-rt: $(build_dir) $(build_dir)/Makefile
-	@(cd $(build_dir); make $(make_flags))
+	@ \
+	echo "*** Building Legion Runtime" && \
+	cd $(build_dir) && \
+	LG_RT_DIR=$(src_dir)/legion/runtime make -C $(src_dir)/legion/liblsci && \
+	LSCI_PREFIX=$(build_dir) make install -C $(src_dir)/legion/liblsci
 
 toolchain: $(build_dir) $(build_dir)/Makefile
 	@(cd $(build_dir); make $(make_flags))

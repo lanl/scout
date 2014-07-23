@@ -9,7 +9,7 @@ LSCI_DIRS := \
 lib \
 test
 
-.PHONY: all clean
+.PHONY: all clean install
 
 all:
 	@ \
@@ -26,3 +26,12 @@ clean:
 	    (cd $$i && make clean); \
 	    echo ""; \
 	done
+
+install: ./lib/liblsci.a ./lib/lsci.h
+ifndef LSCI_PREFIX
+	$(error LSCI_PREFIX variable is not defined... Aborting build.)
+endif
+	mkdir -p ${LSCI_PREFIX}/lib
+	install -m 0755 ./lib/liblsci.a ${LSCI_PREFIX}/lib
+	mkdir -p ${LSCI_PREFIX}/include/legion
+	install -m 0644 ./lib/lsci.h ${LSCI_PREFIX}/include/legion
