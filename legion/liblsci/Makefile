@@ -27,7 +27,7 @@ clean:
 	    echo ""; \
 	done
 
-vclean:
+vclean: clean
 	make vclean -C lib
 
 install: ./lib/liblsci.a ./lib/lsci.h
