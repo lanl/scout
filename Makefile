@@ -150,8 +150,14 @@ legion-rt: $(build_dir) $(build_dir)/Makefile
 	@ \
 	echo "*** Building Legion Runtime" && \
 	cd $(build_dir) && \
-	LG_RT_DIR=$(src_dir)/legion/runtime make -C $(src_dir)/legion/liblsci && \
+	LG_RT_DIR=$(src_dir)/legion/runtime \
+	make $(make_flags) -C $(src_dir)/legion/liblsci && \
 	LSCI_PREFIX=$(build_dir) make install -C $(src_dir)/legion/liblsci
+
+.PHONY: clean-legion-rt
+clean-legion-rt:
+	LG_RT_DIR=$(src_dir)/legion/runtime \
+	make vclean -C $(src_dir)/legion/liblsci
 
 toolchain: $(build_dir) $(build_dir)/Makefile
 	@(cd $(build_dir); make $(make_flags))
@@ -208,7 +214,7 @@ xcode:;
 	@(cd xcode; cmake -G Xcode $(src_dir))
 
 .PHONY: clean
-clean:
+clean: clean-legion-rt
 	-@/bin/rm -rf $(build_dir)
 	-@/bin/rm -rf $(docs_build_dir)
 	-@(if test -d scout-local/sandbox; then /usr/bin/find ./scout-local/sandbox -name build -exec rm -rf {} \; ;fi)

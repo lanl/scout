@@ -9,7 +9,7 @@ LSCI_DIRS := \
 lib \
 test
 
-.PHONY: all clean install
+.PHONY: all vclean clean install
 
 all:
 	@ \
@@ -26,6 +26,9 @@ clean:
 	    (cd $$i && make clean); \
 	    echo ""; \
 	done
+
+vclean:
+	make vclean -C lib
 
 install: ./lib/liblsci.a ./lib/lsci.h
 ifndef LSCI_PREFIX
