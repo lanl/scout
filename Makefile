@@ -137,7 +137,7 @@ else
   cmake_flags += -DCMAKE_CXX_FLAGS="-std=c++11"
 endif
 
-all: $(build_dir)/Makefile toolchain stdlib
+all: $(build_dir)/Makefile legion-rt toolchain stdlib
 .PHONY: all 
 
 $(build_dir)/Makefile: CMakeLists.txt
@@ -145,6 +145,9 @@ $(build_dir)/Makefile: CMakeLists.txt
 	@((test -d $(build_dir)) || (mkdir $(build_dir)))
 	@echo "*** Creating Scout build directory: $(build_dir)"
 	@(cd $(build_dir); cmake $(cmake_flags) $(src_dir))
+
+legion-rt: $(build_dir) $(build_dir)/Makefile
+	@(cd $(build_dir); make $(make_flags))
 
 toolchain: $(build_dir) $(build_dir)/Makefile
 	@(cd $(build_dir); make $(make_flags))
