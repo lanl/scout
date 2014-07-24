@@ -1,1 +1,1 @@
-liblsci - Legion's Simple C Interface
+liblsci - Legion/Scout C Interface
