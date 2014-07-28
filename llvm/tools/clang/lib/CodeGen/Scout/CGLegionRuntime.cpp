@@ -60,6 +60,18 @@ using namespace CodeGen;
 
 CGLegionRuntime::~CGLegionRuntime() {}
 
+
+void CGLegionRuntime::EmitLogicalRegion(SmallVector<llvm::Value*, 3>Fields,
+        SmallVector<llvm::Value*, 3>Dimensions) {
+  llvm::errs() << "NFields " << Fields.size() << "\n";
+
+  for (unsigned int i = 0; i < Dimensions.size(); i++) {
+   llvm::errs() << "dim[" << i << "] = ";
+   Dimensions[i]->dump();
+  }
+
+}
+
 // build a function call to a legion runtime function w/ no arguments
 // SC_TODO: could we use CreateRuntimeFunction? or GetOrCreateLLVMFunction?
 llvm::Function *CGLegionRuntime::LegionRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params ) {

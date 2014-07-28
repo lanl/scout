@@ -364,9 +364,6 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
   //Opts.ScoutAMDGPU = Args.hasArg(OPT_gpuAMD);
 
-  // Enable scout CPU multithreading support if OPT_cpuThreads is present.
-  Opts.ScoutCPUThreads = Args.hasArg(OPT_cpuThreads);
-
   // Enable scout Legion support if OPT_legionSupport is present
   Opts.ScoutLegionSupport = Args.hasArg(OPT_legionSupport);
 

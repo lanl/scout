@@ -74,6 +74,8 @@ namespace CodeGen {
   public:
     CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM) {}
     virtual ~CGLegionRuntime();
+    void EmitLogicalRegion(SmallVector<llvm::Value*, 3>Fields,
+        SmallVector<llvm::Value*, 3>Dimensions);
   };
 }
 }

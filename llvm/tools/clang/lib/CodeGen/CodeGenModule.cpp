@@ -135,6 +135,7 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
   if(isScoutLang(LangOpts)) {
     createScoutRuntime();
     if (CodeGenOpts.ScoutLegionSupport) {
+      llvm::errs() << "legion ON!\n";
       createLegionRuntime();
     }
   }

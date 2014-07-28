@@ -70,6 +70,7 @@
 #include "llvm/IR/Module.h"
 #include "clang/AST/Type.h"
 #include "Scout/CGScoutRuntime.h"
+#include "Scout/CGLegionRuntime.h"
 #include <stdio.h>
 #include <cassert>
 
@@ -365,9 +366,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     MeshDecl* MD = MT->getDecl();
 
     SmallVector<llvm::Value*, 3> Dimensions;
-
     GetMeshDimensions(MT, Dimensions);
-    //unsigned int rank = Dimensions.size();
 
     bool hasCells = false;
     bool hasVertices = false;
@@ -412,6 +411,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
 
     llvm::Type *structTy = Alloc->getType()->getContainedType(0);
 
+    llvm::SmallVector< llvm::Value *, 3 > fields;
     for(unsigned i = 0; i < nfields; ++i) {
 
       // Compute size of needed field memory in bytes
@@ -466,11 +466,17 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
       sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), MeshFieldName.str().c_str());
       llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i, IRNameStr);
       Builder.CreateStore(val, field);
+      fields.push_back(field);
     }
 
     // mesh dimensions after the fields
     // this is setup in Codegentypes.cpp ConvertScoutMeshType()
     EmitMeshParameters(Alloc, D);
+
+    if(CGM.getCodeGenOpts().ScoutLegionSupport) {
+      CGM.getLegionRuntime().EmitLogicalRegion(fields, Dimensions);
+    }
+
   } else if (Ty.getTypeClass() == Type::Window) {
     //llvm::Type *voidPtrTy = llvm::PointerType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()),0);
     //llvm::Value *voidPtr  = Builder.CreateAlloca(voidPtrTy, 0, "void.ptr");
