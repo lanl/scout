@@ -57,6 +57,7 @@
 
 // ====== Scout =========================
 #include "Scout/CGScoutRuntime.h"
+#include "Scout/CGLegionRuntime.h"
 // ======================================
 
 using namespace clang;
@@ -90,6 +91,7 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
       // ===== Scout =========================================
     ScoutABI(createScoutABI(*this)),
     ScoutRuntime(nullptr),
+    LegionRuntime(nullptr),
       // =====================================================
       OpenCLRuntime(nullptr), OpenMPRuntime(nullptr),
       CUDARuntime(nullptr), DebugInfo(nullptr), ARCData(nullptr),
@@ -130,8 +132,12 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
   if (LangOpts.CUDA)
     createCUDARuntime();
   // +===== Scout ============================================================+
-  if(isScoutLang(LangOpts))
+  if(isScoutLang(LangOpts)) {
     createScoutRuntime();
+    if (CodeGenOpts.ScoutLegionSupport) {
+      createLegionRuntime();
+    }
+  }
   // +========================================================================+
 
   // Enable TBAA unless it's suppressed. ThreadSanitizer needs TBAA even at O0.
@@ -181,6 +187,10 @@ CodeGenModule::~CodeGenModule() {
 // ===== Scout ==============================
 void CodeGenModule::createScoutRuntime() {
   ScoutRuntime = new CGScoutRuntime(*this);
+}
+
+void CodeGenModule::createLegionRuntime() {
+  LegionRuntime = new CGLegionRuntime(*this);
 }
 // ==========================================
 
