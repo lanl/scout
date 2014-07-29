@@ -61,4 +61,7 @@ void AddScoutLibArgs(const ArgList &Args,
   if (! Args.hasArg(options::OPT_noscstdlib)) {
     CmdArgs.push_back("-lscStandard");
   }
+  if (Args.hasArg(options::OPT_legionSupport)) {
+    CmdArgs.push_back("-llsci");
+  }
 }
