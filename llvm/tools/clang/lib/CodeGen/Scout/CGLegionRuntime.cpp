@@ -61,19 +61,65 @@ using namespace CodeGen;
 CGLegionRuntime::~CGLegionRuntime() {}
 
 
-void CGLegionRuntime::EmitLogicalRegion(SmallVector<llvm::Value*, 3>Fields,
-        SmallVector<llvm::Value*, 3>Dimensions) {
-  llvm::errs() << "NFields " << Fields.size() << "\n";
+llvm::Function *CGLegionRuntime::CreateSetupMeshFunction(llvm::Type *MT) {
+  std::string funcName = "__scrt_legion_setup_mesh";
+  std::vector<llvm::Type*> Params;
+  // pointer to mesh
+  Params.push_back(llvm::PointerType::get(MT,0));
 
-  for (unsigned int i = 0; i < Dimensions.size(); i++) {
-   llvm::errs() << "dim[" << i << "] = ";
-   Dimensions[i]->dump();
-  }
+  // width, height, depth
+  Params.push_back(llvm::IntegerType::get(CGM.getLLVMContext(), 64));
+  Params.push_back(llvm::IntegerType::get(CGM.getLLVMContext(), 64));
+  Params.push_back(llvm::IntegerType::get(CGM.getLLVMContext(), 64));
+
+  return LegionRuntimeFunction(funcName, Params);
+
 
 }
 
+llvm::Function *CGLegionRuntime::CreateAddFieldFunction(llvm::Type *MT) {
+  std::string funcName = "__scrt_legion_add_field";
+  std::vector<llvm::Type*> Params;
+  // pointer to mesh
+  Params.push_back(llvm::PointerType::get(MT,0));
+
+  //SC_TODO: add name here...
+
+  //type
+  Params.push_back(llvm::IntegerType::get(CGM.getModule().getContext(), 32));
+
+  return LegionRuntimeFunction(funcName, Params);
+}
+
+
+
+llvm::Function *CGLegionRuntime::Debug(SmallVector<llvm::Value*, 3>Fields,
+        SmallVector<llvm::Value*, 3>Dimensions) {
+  std::string funcName = "__scrt_legion_debug";
+  llvm::Function *Func = CGM.getModule().getFunction(funcName);
+  std::vector<llvm::Type*> Params;
+
+
+  for (unsigned int i = 0; i < Dimensions.size(); i++) {
+    llvm::errs() << "dim[" << i << "] = ";
+    Dimensions[i]->dump();
+  }
+
+
+  llvm::errs() << "NFields " << Fields.size() << "\n";
+  for (unsigned int i = 0; i < Fields.size(); i++) {
+    llvm::errs() << "Field [" << i << "] ";
+    Fields[i]->getType()->dump();
+    llvm::errs() << "\n";
+
+  }
+  return Func;
+
+}
+
+
+
 // build a function call to a legion runtime function w/ no arguments
-// SC_TODO: could we use CreateRuntimeFunction? or GetOrCreateLLVMFunction?
 llvm::Function *CGLegionRuntime::LegionRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params ) {
 
   llvm::Function *Func = CGM.getModule().getFunction(funcName);

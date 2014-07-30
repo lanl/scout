@@ -361,12 +361,27 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     //
     // SC_TODO - We are only supporting one mesh type here...
     //
+
+    llvm::Value *Mesh = Builder.CreateLoad(Alloc);
     const MeshType* MT = cast<MeshType>(T.getTypePtr());
     llvm::StringRef MeshName  = Alloc->getName();
     MeshDecl* MD = MT->getDecl();
 
     SmallVector<llvm::Value*, 3> Dimensions;
     GetMeshDimensions(MT, Dimensions);
+
+    if(CGM.getCodeGenOpts().ScoutLegionSupport) {
+      llvm::SmallVector< llvm::Value *, 4 > Args;
+      llvm::Function *F = CGM.getLegionRuntime().CreateSetupMeshFunction(Mesh->getType());
+      Args.push_back(Alloc);
+      for(unsigned int i = 0; i < Dimensions.size(); i++) {
+        Args.push_back(Dimensions[i]);
+      }
+      for(unsigned int i = Dimensions.size(); i < 3; i++) {
+        Args.push_back(Builder.getInt64(1));
+      }
+      Builder.CreateCall(F, ArrayRef<llvm::Value *>(Args));
+    }
 
     bool hasCells = false;
     bool hasVertices = false;
@@ -411,7 +426,6 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
 
     llvm::Type *structTy = Alloc->getType()->getContainedType(0);
 
-    llvm::SmallVector< llvm::Value *, 3 > fields;
     for(unsigned i = 0; i < nfields; ++i) {
 
       // Compute size of needed field memory in bytes
@@ -466,16 +480,21 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
       sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), MeshFieldName.str().c_str());
       llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i, IRNameStr);
       Builder.CreateStore(val, field);
-      fields.push_back(field);
+
+      if(CGM.getCodeGenOpts().ScoutLegionSupport) {
+        llvm::SmallVector< llvm::Value *, 3 > Args;
+        llvm::Function *F = CGM.getLegionRuntime().CreateAddFieldFunction(Mesh->getType());
+        Args.push_back(Alloc);
+        //Args.push_back(name); //SC_TODO: add name here.
+        Args.push_back(Builder.getInt32(field->getType()->getTypeID()));
+        Builder.CreateCall(F, ArrayRef<llvm::Value *>(Args));
+      }
     }
 
     // mesh dimensions after the fields
     // this is setup in Codegentypes.cpp ConvertScoutMeshType()
     EmitMeshParameters(Alloc, D);
 
-    if(CGM.getCodeGenOpts().ScoutLegionSupport) {
-      CGM.getLegionRuntime().EmitLogicalRegion(fields, Dimensions);
-    }
 
   } else if (Ty.getTypeClass() == Type::Window) {
     //llvm::Type *voidPtrTy = llvm::PointerType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()),0);
