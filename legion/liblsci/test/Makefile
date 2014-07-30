@@ -3,9 +3,10 @@
 #
 
 ALL_TESTS = \
-c-veccp
+c-veccp \
+c-unimesh
 
-all: c-veccp
+all: $(ALL_TESTS)
 
 CFLAGS = \
 -Wall -Wextra \

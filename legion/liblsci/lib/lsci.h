@@ -43,6 +43,16 @@ typedef enum lsci_coherence_property_t {
     LSCI_RELAXED      = 3
 } lsci_coherence_property_t;
 
+typedef enum {
+    LSCI_TYPE_INT32,
+    LSCI_TYPE_INT64,
+    LSCI_TYPE_FLOAT,
+    LSCI_TYPE_DOUBLE,
+    /* sentinel */
+    LSCI_TYPE_MAX
+    /* TODO -- complete list -- */
+} lsci_dt_t;
+
 typedef void* lsci_runtime_t;
 typedef void* lsci_context_t;
 typedef void* lsci_logical_region_t;
@@ -80,6 +90,7 @@ typedef struct lsci_vector_t {
     size_t subgrid_bounds_len;
     lsci_rect_1d_t subgrid_bounds;
 } lsci_vector_t;
+
 
 int
 lsci_vector_dump(lsci_vector_t *vec,
@@ -159,6 +170,41 @@ lsci_vector_partition(lsci_vector_t *vec,
                       size_t n_parts,
                       lsci_context_t context,
                       lsci_runtime_t runtime);
+
+////////////////////////////////////////////////////////////////////////////////
+// convenience mesh abstraction
+////////////////////////////////////////////////////////////////////////////////
+typedef void* lsci_unimesh_handle_t;
+typedef struct lsci_unimesh_t {
+    // points to the underlying mesh instance
+    lsci_unimesh_handle_t hndl;
+    size_t dims;
+    size_t width;
+    size_t height;
+    size_t depth;
+} lsci_unimesh_t;
+
+int
+lsci_unimesh_create(lsci_unimesh_t *mesh,
+                    size_t w,
+                    size_t h,
+                    size_t d,
+                    lsci_context_t context,
+                    lsci_runtime_t runtime);
+
+int
+lsci_unimesh_add_field(lsci_unimesh_t *mesh,
+                       lsci_dt_t type,
+                       char *field_name,
+                       lsci_context_t context,
+                       lsci_runtime_t runtime);
+
+int
+lsci_unimesh_partition(lsci_unimesh_t *mesh,
+                       size_t n_parts,
+                       lsci_context_t context,
+                       lsci_runtime_t runtime);
+
 
 /* arguments passed to tasks during their invocation */
 typedef struct lsci_task_args_t {
