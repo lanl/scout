@@ -200,7 +200,7 @@ main_task(lsci_task_args_t *task_args)
         lsci_vector_t field_b;
         lsci_unimesh_get_vec_by_name(&mesh_a, "field-a", &field_a, context, runtime);
         lsci_unimesh_get_vec_by_name(&mesh_a, "field-b", &field_b, context, runtime);
-        lsci_vector_dump(&field_a, context, runtime);
+        lsci_vector_dump(&field_a, LSCI_TYPE_DOUBLE, context, runtime);
     } while (0);
 }
 

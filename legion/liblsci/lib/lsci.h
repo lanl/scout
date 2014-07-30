@@ -95,6 +95,7 @@ typedef struct lsci_vector_t {
 
 int
 lsci_vector_dump(lsci_vector_t *vec,
+                 lsci_dt_t type,
                  lsci_context_t context,
                  lsci_runtime_t runtime);
 
@@ -166,12 +167,6 @@ lsci_vector_create(lsci_vector_t *vec,
                    lsci_dt_t type,
                    lsci_context_t context,
                    lsci_runtime_t runtime);
-
-int
-lsci_vector_double_create(lsci_vector_t *vec,
-                          size_t len,
-                          lsci_context_t context,
-                          lsci_runtime_t runtime);
 
 int
 lsci_vector_partition(lsci_vector_t *vec,

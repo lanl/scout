@@ -28,43 +28,6 @@ static size_t lsci_dt_size_tab[LSCI_TYPE_MAX + 1] = {
 ////////////////////////////////////////////////////////////////////////////////
 // vector things
 ////////////////////////////////////////////////////////////////////////////////
-// TODO add destroy and free up resources
-// add macro magic wrapper to create types
-int
-lsci_vector_double_create(lsci_vector_t *vec,
-                          size_t len,
-                          lsci_context_t context,
-                          lsci_runtime_t runtime)
-{
-    using namespace LegionRuntime::HighLevel;
-    using LegionRuntime::HighLevel::HighLevelRuntime;
-    assert(vec && len > 0 && context && runtime);
-
-    HighLevelRuntime *rtp_cxx = static_cast<HighLevelRuntime *>(runtime);
-    Context *ctxp_cxx = static_cast<Context *>(context);
-    vec->lr_len = len;
-    vec->fid = 0;
-    Rect<1> bounds = Rect<1>(Point<1>::ZEROES(), Point<1>(vec->lr_len - 1));
-    // vector domain
-    Domain dom(Domain::from_rect<1>(bounds));
-    // vec index space
-    IndexSpace *isp = new IndexSpace();
-    *isp = rtp_cxx->create_index_space(*ctxp_cxx, dom);
-    vec->index_space = static_cast<lsci_index_space_t>(isp);
-    // vec field space
-    FieldSpace fs = rtp_cxx->create_field_space(*ctxp_cxx);
-    // vec field allocator
-    FieldAllocator fa = rtp_cxx->create_field_allocator(*ctxp_cxx, fs);
-    // all elements are going to be of size T
-    fa.allocate_field(sizeof(double), vec->fid);
-    // now create the logical region
-    LogicalRegion *lr = new LogicalRegion();
-    *lr = rtp_cxx->create_logical_region(*ctxp_cxx, *isp, fs);
-    vec->logical_region = static_cast<LogicalRegion *>(lr);
-
-    return LSCI_SUCCESS;
-}
-
 int
 lsci_vector_create(lsci_vector_t *vec,
                    size_t len,
@@ -405,6 +368,7 @@ dump(const LegionRuntime::HighLevel::LogicalRegion &lr,
 
 int
 lsci_vector_dump(lsci_vector_t *vec,
+                 lsci_dt_t type,
                  lsci_context_t context,
                  lsci_runtime_t runtime)
 {
@@ -418,11 +382,35 @@ lsci_vector_dump(lsci_vector_t *vec,
     LogicalRegion *lrp_cxx = static_cast<LogicalRegion *>(vec->logical_region);
     FieldID fid_cxx = static_cast<FieldID>(vec->fid);
 
-    dump<double>(*lrp_cxx, fid_cxx,
-         Rect<1>(Point<1>::ZEROES(), Point<1>(vec->lr_len - 1)),
-         "to",
-         1,
-         *ctxp_cxx, rtp_cxx);
+    switch (type) {
+        case LSCI_TYPE_INT32: {
+            dump<int32_t>(*lrp_cxx, fid_cxx,
+                          Rect<1>(Point<1>::ZEROES(), Point<1>(vec->lr_len - 1)),
+                          "int32 dump", 1, *ctxp_cxx, rtp_cxx);
+            break;
+        }
+        case LSCI_TYPE_INT64: {
+            dump<int64_t>(*lrp_cxx, fid_cxx,
+                          Rect<1>(Point<1>::ZEROES(), Point<1>(vec->lr_len - 1)),
+                          "int64 dump", 1, *ctxp_cxx, rtp_cxx);
+            break;
+        }
+        case LSCI_TYPE_FLOAT: {
+            dump<float>(*lrp_cxx, fid_cxx,
+                         Rect<1>(Point<1>::ZEROES(), Point<1>(vec->lr_len - 1)),
+                         "float dump", 1, *ctxp_cxx, rtp_cxx);
+            break;
+        }
+        case LSCI_TYPE_DOUBLE: {
+            dump<double>(*lrp_cxx, fid_cxx,
+                         Rect<1>(Point<1>::ZEROES(), Point<1>(vec->lr_len - 1)),
+                         "double dump", 1, *ctxp_cxx, rtp_cxx);
+            break;
+        }
+        default:
+            assert(false && "invalid lsci_dt_t");
+    }
+
     return LSCI_SUCCESS;
 }
 

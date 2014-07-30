@@ -173,8 +173,8 @@ main_task(lsci_task_args_t *task_args)
     lsci_vector_t vec_from;
     lsci_vector_t vec_to;
     printf("-- %s: creating vectors\n", __func__);
-    lsci_vector_double_create(&vec_from, 8, context, runtime);
-    lsci_vector_double_create(&vec_to, 8, context, runtime);
+    lsci_vector_create(&vec_from, 8, LSCI_TYPE_DOUBLE, context, runtime);
+    lsci_vector_create(&vec_to, 8, LSCI_TYPE_DOUBLE, context, runtime);
     printf("-- %s: partitioning vectors\n", __func__);
     lsci_vector_partition(&vec_from, 4, context, runtime);
     lsci_vector_partition(&vec_to, 4, context, runtime);
@@ -182,7 +182,7 @@ main_task(lsci_task_args_t *task_args)
     init_vals(&vec_from, &vec_to, context, runtime);
     printf("-- %s: calling %s\n", __func__, "veccp");
     veccp(&vec_from, &vec_to, context, runtime);
-    lsci_vector_dump(&vec_to, context, runtime);
+    lsci_vector_dump(&vec_to, LSCI_TYPE_DOUBLE, context, runtime);
 }
 
 int

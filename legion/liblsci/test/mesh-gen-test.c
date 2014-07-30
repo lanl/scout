@@ -40,10 +40,13 @@ typedef struct mesh_task_args_t {
 // this is roughly what our current forall looks like
 void
 forall_ir(struct Mesh* m, uint32_t depth, uint32_t height, uint32_t width){
+    printf("%s: d: %lu h: %lu w: %lu\n", __func__,
+           (unsigned long)depth, (unsigned long)height, (unsigned long)width);
     size_t extent = width * height * depth;
     for (size_t i = 0; i < extent; ++i) {
-        m->a[extent] += m->b[extent];
+        m->a[i] += m->b[i];
     }
+    printf("%s: done!\n", __func__);
 }
 
 enum {
@@ -111,7 +114,7 @@ main_task(lsci_task_args_t* task_args)
     //
     lsc_add_region_requirement(
         &il, field_b.logical_partition, 0,
-        LSCI_READ_WRITE, LSCI_EXCLUSIVE, field_b.logical_region
+        LSCI_READ_ONLY, LSCI_EXCLUSIVE, field_b.logical_region
     );
     lsci_add_field(&il, idx++, field_b.fid);
     // execute the index launcher
@@ -123,6 +126,7 @@ forall_task(lsci_task_args_t* task_args)
 {
     // extract the args
     printf("%s: hi from task %d\n", __func__, task_args->task_id);
+    int rid = 0;
     mesh_task_args_t targs = *(mesh_task_args_t *)task_args->local_argsp;
     lsci_rect_1d_t field_sgb = (lsci_rect_1d_t)&targs.sgb;
     struct Mesh m = {
@@ -133,8 +137,15 @@ forall_task(lsci_task_args_t* task_args)
         .height = targs.global_height,
         .depth = targs.global_depth
     };
+    m.a = (float *)raw_rect_ptr_1d(
+              task_args->regions, LSCI_TYPE_FLOAT, rid++, 0, field_sgb
+          );
+    m.b = (float *)raw_rect_ptr_1d(
+              task_args->regions, LSCI_TYPE_FLOAT, rid++, 0, field_sgb
+          );
     // take the IR from forall_ir and stitch in here
     // launch the forall_task's
+    forall_ir(&m, m.depth, m.height, m.width);
 }
 
 int main(int argc, char** argv){
