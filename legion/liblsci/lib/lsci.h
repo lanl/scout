@@ -43,6 +43,7 @@ typedef enum lsci_coherence_property_t {
     LSCI_RELAXED      = 3
 } lsci_coherence_property_t;
 
+/* if you update this, update lsci_dt_size_tab */
 typedef enum {
     LSCI_TYPE_INT32,
     LSCI_TYPE_INT64,
@@ -160,6 +161,13 @@ lsci_execute_index_space(lsci_runtime_t runtime,
                          lsci_index_launcher_t *il);
 
 int
+lsci_vector_create(lsci_vector_t *vec,
+                   size_t len,
+                   lsci_dt_t type,
+                   lsci_context_t context,
+                   lsci_runtime_t runtime);
+
+int
 lsci_vector_double_create(lsci_vector_t *vec,
                           size_t len,
                           lsci_context_t context,
@@ -269,11 +277,12 @@ lsci_register_void_legion_task(
     lsci_reg_task_data_t reg_task_data
 );
 
-double *
-raw_rect_ptr_1d_double(lsci_physical_regions_t rgnp,
-                       size_t region_id,
-                       lsci_field_id_t fid,
-                       lsci_rect_1d_t subgrid_bounds);
+void *
+raw_rect_ptr_1d(lsci_physical_regions_t rgnp,
+                lsci_dt_t type,
+                size_t region_id,
+                lsci_field_id_t fid,
+                lsci_rect_1d_t subgrid_bounds);
 
 
 #ifdef __cplusplus
