@@ -64,8 +64,9 @@
 #cmakedefine SCOUT_ENABLE_MPI        // Provide MPI support.
 #cmakedefine SCOUT_ENABLE_GLFW       // Provide GLFW support.
 #cmakedefine SCOUT_ENABLE_PNG        // Provide PNG image support.
+#cmakedefine SCOUT_ENABLE_LEGION     // Provide Legion support.
 
-#ifdef SC_ENABLE_CUDA
+#ifdef SCOUT_ENABLE_CUDA
 #define CUDA_MAJOR_VERSION   ${CUDA_VERSION_MAJOR} // Major version number for CUDA.
 #define CUDA_MINOR_VERSION   ${CUDA_VERSION_MINOR} // Minor version number for CUDA. 
 #endif 
