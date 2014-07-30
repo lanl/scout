@@ -58,3 +58,7 @@ if (${SCOUT_ENABLE_OPENCL})
 endif()
 
 set(SCOUT_LLVM_LINK_LIBS ${SCOUT_LLVM_LINK_LIBS} scDriver)
+
+if (${SCOUT_ENABLE_LEGION})
+  set(SCOUT_LLVM_LINK_LIBS ${SCOUT_LLVM_LINK_LIBS} LLVMLegionTaskWrapper)
+endif()

@@ -40,7 +40,7 @@ target_link_libraries(clang
   clangDriver
   clangFrontend
   # +===== Scout============================================================+
-  ${SC_LLVM_LINK_LIBS}
+  ${SCOUT_LLVM_LINK_LIBS}
   # +=======================================================================+
   clangFrontendTool
   )
