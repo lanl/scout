@@ -204,6 +204,12 @@ lsci_unimesh_partition(lsci_unimesh_t *mesh,
                        size_t n_parts,
                        lsci_context_t context,
                        lsci_runtime_t runtime);
+int
+lsci_unimesh_get_vec_by_name(lsci_unimesh_t *mesh,
+                             char *name,
+                             lsci_vector_t *vec,
+                             lsci_context_t context,
+                             lsci_runtime_t runtime);
 
 
 /* arguments passed to tasks during their invocation */

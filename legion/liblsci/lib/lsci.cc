@@ -118,7 +118,7 @@ lsci_vector_partition(lsci_vector_t *vec,
     // launch domain -- one task per color
     vec->launch_domain.hndl = static_cast<lsci_domain_handle_t>(colorDom);
     vec->launch_domain.volume = colorDom->get_volume();
-    vec->subgrid_bounds_len = n_parts;
+    vec->subgrid_bounds_len = vec->lr_len / n_parts;
     vec->subgrid_bounds = static_cast<lsci_rect_1d_t>(subgrid_bnds_cxx->data());
     return LSCI_SUCCESS;
 }
@@ -440,12 +440,33 @@ struct mesh_cxx {
         vectab[name] = vec;
     }
 
+    lsci_vector_t
+    get_field(std::string name) {
+        typedef std::map<std::string, lsci_vector_t>::iterator MapI;
+        MapI fi = vectab.find(name);
+        assert(fi != vectab.end() && "field not found");
+        return fi->second;
+    }
+
+    void
+    partition(size_t n_parts,
+              lsci_context_t context,
+              lsci_runtime_t runtime) {
+        assert(n_parts && context && runtime);
+        typedef std::map<std::string, lsci_vector_t>::iterator MapI;
+        for (MapI i = vectab.begin(); i != vectab.end(); i++) {
+            std::cout << "lsci: partitioning: " << i->first <<
+                         " into " << n_parts << " piece(s)." << std::endl;
+            lsci_vector_partition(&i->second, n_parts, context, runtime);
+        }
+    }
+
 private:
     void
     set_dims(void) {
         dims = 1;
-        if (height > 0) dims++;
-        if (depth > 0) dims++;
+        if (height > 1) dims++;
+        if (depth > 1) dims++;
     }
 
     void
@@ -510,5 +531,23 @@ lsci_unimesh_partition(lsci_unimesh_t *mesh,
                        lsci_runtime_t runtime)
 {
     assert(mesh && n_parts && context && runtime);
+    mesh_cxx *mcxx = static_cast<mesh_cxx *>(mesh->hndl);
+    assert(mcxx);
+    mcxx->partition(n_parts, context, runtime);
     return LSCI_SUCCESS;
 }
+
+int
+lsci_unimesh_get_vec_by_name(lsci_unimesh_t *mesh,
+                             char *name,
+                             lsci_vector_t *vec,
+                             lsci_context_t context,
+                             lsci_runtime_t runtime)
+{
+    assert(mesh && name && vec && context && runtime);
+    mesh_cxx *mcxx = static_cast<mesh_cxx *>(mesh->hndl);
+    assert(mcxx);
+    *vec = mcxx->get_field(std::string(name));
+    return LSCI_SUCCESS;
+}
+
