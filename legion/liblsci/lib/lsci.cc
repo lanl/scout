@@ -10,6 +10,8 @@
 #include <functional>
 #include <vector>
 #include <iomanip>
+#include <string>
+#include <map>
 
 #include <stdio.h>
 
@@ -116,7 +118,7 @@ lsci_vector_partition(lsci_vector_t *vec,
     // launch domain -- one task per color
     vec->launch_domain.hndl = static_cast<lsci_domain_handle_t>(colorDom);
     vec->launch_domain.volume = colorDom->get_volume();
-    vec->subgrid_bounds_len = n_parts;
+    vec->subgrid_bounds_len = vec->lr_len / n_parts;
     vec->subgrid_bounds = static_cast<lsci_rect_1d_t>(subgrid_bnds_cxx->data());
     return LSCI_SUCCESS;
 }
@@ -400,3 +402,152 @@ raw_rect_ptr_1d_double(lsci_physical_regions_t rgnp,
     // TODO assert dense
     return fm.raw_rect_ptr<1>(*sgbp_cxx, subRect, bOff);
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// mesh things
+////////////////////////////////////////////////////////////////////////////////
+namespace {
+struct mesh_cxx {
+    // set based on w, h, and d
+    size_t dims;
+    size_t width;
+    size_t height;
+    size_t depth;
+    // total number of elements stored in mesh
+    size_t nelems;
+    std::map<std::string, lsci_vector_t> vectab;
+
+    mesh_cxx(void) {
+        dims   = 0;
+        width  = 0;
+        height = 0;
+        depth  = 0;
+        nelems = 0;
+    }
+
+    mesh_cxx(size_t width,
+             size_t height,
+             size_t depth) :
+        width(width), height(height), depth(depth) {
+        assert(width > 0);
+        set_dims();
+        set_nelemes();
+    }
+
+    void
+    add_field(std::string name, lsci_vector_t vec) {
+        assert(vectab.find(name) == vectab.end() && "duplicate field");
+        vectab[name] = vec;
+    }
+
+    lsci_vector_t
+    get_field(std::string name) {
+        typedef std::map<std::string, lsci_vector_t>::iterator MapI;
+        MapI fi = vectab.find(name);
+        assert(fi != vectab.end() && "field not found");
+        return fi->second;
+    }
+
+    void
+    partition(size_t n_parts,
+              lsci_context_t context,
+              lsci_runtime_t runtime) {
+        assert(n_parts && context && runtime);
+        typedef std::map<std::string, lsci_vector_t>::iterator MapI;
+        for (MapI i = vectab.begin(); i != vectab.end(); i++) {
+            std::cout << "lsci: partitioning: " << i->first <<
+                         " into " << n_parts << " piece(s)." << std::endl;
+            lsci_vector_partition(&i->second, n_parts, context, runtime);
+        }
+    }
+
+private:
+    void
+    set_dims(void) {
+        dims = 1;
+        if (height > 1) dims++;
+        if (depth > 1) dims++;
+    }
+
+    void
+    set_nelemes(void) {
+        nelems = width;
+        if (dims >= 2) nelems *= width;
+        if (dims >= 3) nelems *= height;
+        if (dims > 3) assert(false && "not supported");
+    }
+};
+} // end unnamed namespace for internal mesh things
+
+int
+lsci_unimesh_create(lsci_unimesh_t *mesh,
+                    size_t w,
+                    size_t h,
+                    size_t d,
+                    lsci_context_t context,
+                    lsci_runtime_t runtime)
+{
+    assert(mesh && context && runtime && w);
+    mesh_cxx *mcxx = new mesh_cxx(w, h, d);
+    mesh->hndl = static_cast<lsci_unimesh_handle_t>(mcxx);
+    assert(mesh->hndl);
+    mesh->dims = mcxx->dims;
+    return LSCI_SUCCESS;
+}
+
+int
+lsci_unimesh_add_field(lsci_unimesh_t *mesh,
+                       lsci_dt_t type,
+                       char *field_name,
+                       lsci_context_t context,
+                       lsci_runtime_t runtime)
+{
+    assert(mesh && field_name && context && runtime && type < LSCI_TYPE_MAX);
+    mesh_cxx *mcxx = static_cast<mesh_cxx *>(mesh->hndl);
+    assert(mcxx);
+    lsci_vector_t field;
+    switch (type) {
+        case LSCI_TYPE_INT32:
+            break;
+        case LSCI_TYPE_INT64:
+            break;
+        case LSCI_TYPE_FLOAT:
+            break;
+        case LSCI_TYPE_DOUBLE:
+            lsci_vector_double_create(&field, mcxx->nelems, context, runtime);
+            break;
+        default:
+            assert(false && "invalid lsci_dt_t");
+    }
+    // now add the thing to the map
+    mcxx->add_field(std::string(field_name), field);
+    return LSCI_SUCCESS;
+}
+
+int
+lsci_unimesh_partition(lsci_unimesh_t *mesh,
+                       size_t n_parts,
+                       lsci_context_t context,
+                       lsci_runtime_t runtime)
+{
+    assert(mesh && n_parts && context && runtime);
+    mesh_cxx *mcxx = static_cast<mesh_cxx *>(mesh->hndl);
+    assert(mcxx);
+    mcxx->partition(n_parts, context, runtime);
+    return LSCI_SUCCESS;
+}
+
+int
+lsci_unimesh_get_vec_by_name(lsci_unimesh_t *mesh,
+                             char *name,
+                             lsci_vector_t *vec,
+                             lsci_context_t context,
+                             lsci_runtime_t runtime)
+{
+    assert(mesh && name && vec && context && runtime);
+    mesh_cxx *mcxx = static_cast<mesh_cxx *>(mesh->hndl);
+    assert(mcxx);
+    *vec = mcxx->get_field(std::string(name));
+    return LSCI_SUCCESS;
+}
+
