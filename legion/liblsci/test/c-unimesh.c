@@ -152,13 +152,13 @@ init_vals_task(lsci_task_args_t *task_args)
     lsci_rect_1d_t field_sgb = (lsci_rect_1d_t)&targs.sgb;
     double *fieldap = raw_rect_ptr_1d_double(
                         task_args->regions, rid++, 0, field_sgb
-                    );
+                      );
     double *fieldbp = raw_rect_ptr_1d_double(
                         task_args->regions, rid++, 0, field_sgb
-                  );
+                      );
     assert(fieldap && fieldbp);
     for (size_t i = 0; i < targs.sgb_len; ++i) {
-        fieldap[i] = 1.23;
+        fieldap[i] = -1;
         fieldbp[i] = 4.56;
     }
 }
@@ -173,8 +173,8 @@ main_task(lsci_task_args_t *task_args)
     lsci_runtime_t runtime = task_args->runtime;
     lsci_unimesh_t mesh_a;
     // 2D thing
-    const size_t mesh_width = 16;
-    const size_t mesh_height = 16;
+    const size_t mesh_width = 4;
+    const size_t mesh_height = 4;
     const size_t mesh_depth = 1;
     printf("-- %s: creating meshes\n", __func__);
     assert(LSCI_SUCCESS == lsci_unimesh_create(&mesh_a, mesh_width,
@@ -194,6 +194,14 @@ main_task(lsci_task_args_t *task_args)
                                                   context, runtime));
     printf("-- %s: calling %s\n", __func__, "init_vals");
     init_vals(&mesh_a, context, runtime);
+    // sanity
+    do {
+        lsci_vector_t field_a;
+        lsci_vector_t field_b;
+        lsci_unimesh_get_vec_by_name(&mesh_a, "field-a", &field_a, context, runtime);
+        lsci_unimesh_get_vec_by_name(&mesh_a, "field-b", &field_b, context, runtime);
+        lsci_vector_dump(&field_a, context, runtime);
+    } while (0);
 }
 
 int
