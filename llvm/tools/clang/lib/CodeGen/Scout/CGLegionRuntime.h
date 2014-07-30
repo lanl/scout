@@ -66,14 +66,92 @@ namespace CodeGen {
   class CodeGenModule;
 
   class CGLegionRuntime {
+  public:
+    CGLegionRuntime(CodeGen::CodeGenModule &CGM);
+    virtual ~CGLegionRuntime();
+    
+    llvm::Type* PointerTy(llvm::Type* elementType);
+    
+    llvm::Function* SizeofCXXRect1dFunc();
+    llvm::Function* SubgridBoundsAtFunc();
+    llvm::Function* VectorDumpFunc();
+    llvm::Function* ArgumentMapCreateFunc();
+    llvm::Function* ArgumentMapSetPointFunc();
+    llvm::Function* IndexLauncherCreateFunc();
+    llvm::Function* AddRegionRequirementFunc();
+    llvm::Function* AddFieldFunc();
+    llvm::Function* ExecuteIndexSpaceFunc();
+    llvm::Function* VectorCreateFunc();
+    llvm::Function* UnimeshCreateFunc();
+    llvm::Function* UnimeshAddFieldFunc();
+    llvm::Function* UnimeshPartitionFunc();
+    llvm::Function* UnimeshGetVecByNameFunc();
+    llvm::Function* StartFunc();
+    llvm::Function* SetTopLevelTaskIdFunc();
+    llvm::Function* RegisterVoidLegionTaskFunc();
+    llvm::Function* RawRectPtr1dFunc();
+    
+    llvm::Type* VoidPtrTy;
+    llvm::Type* Int8Ty;
+    llvm::Type* Int32Ty;
+    llvm::Type* Int64Ty;
+    
+    llvm::Type* RuntimeTy;
+    llvm::Type* ContextTy;
+    llvm::Type* LogicalRegionTy;
+    llvm::Type* LogicalPartitionTy;
+    llvm::Type* IndexSpaceTy;
+    llvm::Type* DomainHandleTy;
+    llvm::Type* PhysicalRegionsTy;
+    llvm::Type* Rect1dTy;
+    llvm::Type* FieldIdTy;
+    llvm::Type* IndexLauncherHandleTy;
+    llvm::Type* TaskArgumentTy;
+    llvm::Type* ArgumentMapHandleTy;
+    llvm::Type* ProjectionIdTy;
+    llvm::Type* RegionRequirementHndlTy;
+    llvm::Type* UnimeshHandleTy;
+    llvm::Type* VariantIdTy;
+    
+    llvm::StructType* Rect1dStorageTy;
+    llvm::StructType* DomainTy;
+    llvm::StructType* VectorTy;
+    llvm::StructType* ArgumentMapTy;
+    llvm::StructType* IndexLauncherTy;
+    llvm::StructType* RegionRequirementTy;
+    llvm::StructType* UnimeshTy;
+    llvm::StructType* TaskArgsTy;
+    llvm::StructType* RegTaskDataTy;
+    
+    llvm::Value* SuccessVal;
+    llvm::Value* FailureVal;
+    llvm::Value* NoAccessVal;
+    llvm::Value* ReadOnlyVal;
+    llvm::Value* ReadWriteVal;
+    llvm::Value* WriteOnlyVal;
+    llvm::Value* WriteDiscardVal;
+    llvm::Value* ReduceVal;
+    llvm::Value* PromotedVal;
+    llvm::Value* ExclusiveVal;
+    llvm::Value* AtomicVal;
+    llvm::Value* SimultaenousVal;
+    llvm::Value* RelaxedVal;
+    llvm::Value* TypeInt32Val;
+    llvm::Value* TypeInt64Val;
+    llvm::Value* TypeFloatVal;
+    llvm::Value* TypeDoubleVal;
+    llvm::Value* TocProcVal;
+    llvm::Value* LocProcVal;
+    llvm::Value* UtilProcVal;
+    
   protected:
     CodeGen::CodeGenModule &CGM;
     llvm::Function *LegionRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params);
     llvm::Function *LegionRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params,
-        llvm::Type* retType);
-  public:
-    CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM) {}
-    virtual ~CGLegionRuntime();
+                                          llvm::Type* retType);
+    
+
+    
   };
 }
 }
