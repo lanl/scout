@@ -150,11 +150,11 @@ init_vals_task(lsci_task_args_t *task_args)
     size_t rid = 0;
     mesh_task_args_t targs = *(mesh_task_args_t *)task_args->local_argsp;
     lsci_rect_1d_t field_sgb = (lsci_rect_1d_t)&targs.sgb;
-    double *fieldap = raw_rect_ptr_1d_double(
-                        task_args->regions, rid++, 0, field_sgb
+    double *fieldap = (double *)raw_rect_ptr_1d(
+                        task_args->regions, LSCI_TYPE_DOUBLE, rid++, 0, field_sgb
                       );
-    double *fieldbp = raw_rect_ptr_1d_double(
-                        task_args->regions, rid++, 0, field_sgb
+    double *fieldbp = (double *)raw_rect_ptr_1d(
+                        task_args->regions, LSCI_TYPE_DOUBLE, rid++, 0, field_sgb
                       );
     assert(fieldap && fieldbp);
     for (size_t i = 0; i < targs.sgb_len; ++i) {
@@ -200,7 +200,7 @@ main_task(lsci_task_args_t *task_args)
         lsci_vector_t field_b;
         lsci_unimesh_get_vec_by_name(&mesh_a, "field-a", &field_a, context, runtime);
         lsci_unimesh_get_vec_by_name(&mesh_a, "field-b", &field_b, context, runtime);
-        lsci_vector_dump(&field_a, context, runtime);
+        lsci_vector_dump(&field_a, LSCI_TYPE_DOUBLE, context, runtime);
     } while (0);
 }
 

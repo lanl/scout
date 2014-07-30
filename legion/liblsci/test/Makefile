@@ -4,7 +4,8 @@
 
 ALL_TESTS = \
 c-veccp \
-c-unimesh
+c-unimesh \
+mesh-gen-test
 
 all: $(ALL_TESTS)
 

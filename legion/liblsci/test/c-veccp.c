@@ -85,11 +85,11 @@ veccp_task(lsci_task_args_t *task_args)
     lsci_rect_1d_t from_sgb = (lsci_rect_1d_t)&t_args.vec_a_sgb;
     lsci_rect_1d_t to_sgb   = (lsci_rect_1d_t)&t_args.vec_b_sgb;
     assert(t_args.vec_a_sgb_len == t_args.vec_b_sgb_len);
-    double *fromp = raw_rect_ptr_1d_double(
-                        task_args->regions, rid++, 0, from_sgb
+    double *fromp = (double *)raw_rect_ptr_1d(
+                        task_args->regions, LSCI_TYPE_DOUBLE, rid++, 0, from_sgb
                     );
-    double *top = raw_rect_ptr_1d_double(
-                        task_args->regions, rid++, 0, to_sgb
+    double *top = (double *)raw_rect_ptr_1d(
+                        task_args->regions, LSCI_TYPE_DOUBLE, rid++, 0, to_sgb
                   );
     assert(fromp && top);
     for (size_t i = 0; i < t_args.vec_a_sgb_len; ++i) {
@@ -149,11 +149,11 @@ init_vals_task(lsci_task_args_t *task_args)
     lsci_rect_1d_t from_sgb = (lsci_rect_1d_t)&t_args.vec_a_sgb;
     lsci_rect_1d_t to_sgb   = (lsci_rect_1d_t)&t_args.vec_b_sgb;
     assert(t_args.vec_a_sgb_len == t_args.vec_b_sgb_len);
-    double *fromp = raw_rect_ptr_1d_double(
-                        task_args->regions, rid++, 0, from_sgb
+    double *fromp = (double *)raw_rect_ptr_1d(
+                        task_args->regions, LSCI_TYPE_DOUBLE, rid++, 0, from_sgb
                     );
-    double *top = raw_rect_ptr_1d_double(
-                        task_args->regions, rid++, 0, to_sgb
+    double *top = (double *)raw_rect_ptr_1d(
+                      task_args->regions, LSCI_TYPE_DOUBLE, rid++, 0, to_sgb
                   );
     assert(fromp && top);
     for (size_t i = 0; i < t_args.vec_a_sgb_len; ++i) {
@@ -173,8 +173,8 @@ main_task(lsci_task_args_t *task_args)
     lsci_vector_t vec_from;
     lsci_vector_t vec_to;
     printf("-- %s: creating vectors\n", __func__);
-    lsci_vector_double_create(&vec_from, 8, context, runtime);
-    lsci_vector_double_create(&vec_to, 8, context, runtime);
+    lsci_vector_create(&vec_from, 8, LSCI_TYPE_DOUBLE, context, runtime);
+    lsci_vector_create(&vec_to, 8, LSCI_TYPE_DOUBLE, context, runtime);
     printf("-- %s: partitioning vectors\n", __func__);
     lsci_vector_partition(&vec_from, 4, context, runtime);
     lsci_vector_partition(&vec_to, 4, context, runtime);
@@ -182,7 +182,7 @@ main_task(lsci_task_args_t *task_args)
     init_vals(&vec_from, &vec_to, context, runtime);
     printf("-- %s: calling %s\n", __func__, "veccp");
     veccp(&vec_from, &vec_to, context, runtime);
-    lsci_vector_dump(&vec_to, context, runtime);
+    lsci_vector_dump(&vec_to, LSCI_TYPE_DOUBLE, context, runtime);
 }
 
 int

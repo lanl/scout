@@ -18,20 +18,26 @@
 // convenience namespace aliases
 namespace lrthl = LegionRuntime::HighLevel;
 
+static size_t lsci_dt_size_tab[LSCI_TYPE_MAX + 1] = {
+    sizeof(int32_t),
+    sizeof(int64_t),
+    sizeof(float),
+    sizeof(double)
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 // vector things
 ////////////////////////////////////////////////////////////////////////////////
-// TODO add destroy and free up resources
-// add macro magic wrapper to create types
 int
-lsci_vector_double_create(lsci_vector_t *vec,
-                          size_t len,
-                          lsci_context_t context,
-                          lsci_runtime_t runtime)
+lsci_vector_create(lsci_vector_t *vec,
+                   size_t len,
+                   lsci_dt_t type,
+                   lsci_context_t context,
+                   lsci_runtime_t runtime)
 {
     using namespace LegionRuntime::HighLevel;
     using LegionRuntime::HighLevel::HighLevelRuntime;
-    assert(vec && len > 0 && context && runtime);
+    assert(vec && len > 0 && context && runtime && type < LSCI_TYPE_MAX);
 
     HighLevelRuntime *rtp_cxx = static_cast<HighLevelRuntime *>(runtime);
     Context *ctxp_cxx = static_cast<Context *>(context);
@@ -48,8 +54,8 @@ lsci_vector_double_create(lsci_vector_t *vec,
     FieldSpace fs = rtp_cxx->create_field_space(*ctxp_cxx);
     // vec field allocator
     FieldAllocator fa = rtp_cxx->create_field_allocator(*ctxp_cxx, fs);
-    // all elements are going to be of size T
-    fa.allocate_field(sizeof(double), vec->fid);
+    // all elements are going to be of size type
+    fa.allocate_field(lsci_dt_size_tab[type], vec->fid);
     // now create the logical region
     LogicalRegion *lr = new LogicalRegion();
     *lr = rtp_cxx->create_logical_region(*ctxp_cxx, *isp, fs);
@@ -362,6 +368,7 @@ dump(const LegionRuntime::HighLevel::LogicalRegion &lr,
 
 int
 lsci_vector_dump(lsci_vector_t *vec,
+                 lsci_dt_t type,
                  lsci_context_t context,
                  lsci_runtime_t runtime)
 {
@@ -375,32 +382,90 @@ lsci_vector_dump(lsci_vector_t *vec,
     LogicalRegion *lrp_cxx = static_cast<LogicalRegion *>(vec->logical_region);
     FieldID fid_cxx = static_cast<FieldID>(vec->fid);
 
-    dump<double>(*lrp_cxx, fid_cxx,
-         Rect<1>(Point<1>::ZEROES(), Point<1>(vec->lr_len - 1)),
-         "to",
-         1,
-         *ctxp_cxx, rtp_cxx);
+    switch (type) {
+        case LSCI_TYPE_INT32: {
+            dump<int32_t>(*lrp_cxx, fid_cxx,
+                          Rect<1>(Point<1>::ZEROES(), Point<1>(vec->lr_len - 1)),
+                          "int32 dump", 1, *ctxp_cxx, rtp_cxx);
+            break;
+        }
+        case LSCI_TYPE_INT64: {
+            dump<int64_t>(*lrp_cxx, fid_cxx,
+                          Rect<1>(Point<1>::ZEROES(), Point<1>(vec->lr_len - 1)),
+                          "int64 dump", 1, *ctxp_cxx, rtp_cxx);
+            break;
+        }
+        case LSCI_TYPE_FLOAT: {
+            dump<float>(*lrp_cxx, fid_cxx,
+                         Rect<1>(Point<1>::ZEROES(), Point<1>(vec->lr_len - 1)),
+                         "float dump", 1, *ctxp_cxx, rtp_cxx);
+            break;
+        }
+        case LSCI_TYPE_DOUBLE: {
+            dump<double>(*lrp_cxx, fid_cxx,
+                         Rect<1>(Point<1>::ZEROES(), Point<1>(vec->lr_len - 1)),
+                         "double dump", 1, *ctxp_cxx, rtp_cxx);
+            break;
+        }
+        default:
+            assert(false && "invalid lsci_dt_t");
+    }
+
     return LSCI_SUCCESS;
 }
 
-double *
-raw_rect_ptr_1d_double(lsci_physical_regions_t rgnp,
-                       size_t region_id,
-                       lsci_field_id_t fid,
-                       lsci_rect_1d_t subgrid_bounds)
+void *
+raw_rect_ptr_1d(lsci_physical_regions_t rgnp,
+                lsci_dt_t type,
+                size_t region_id,
+                lsci_field_id_t fid,
+                lsci_rect_1d_t subgrid_bounds)
 {
+    // TODO assert dense
+    assert(rgnp && type < LSCI_TYPE_MAX);
     using namespace LegionRuntime::HighLevel;
     using namespace LegionRuntime::Accessor;
     assert(rgnp && region_id >= 0);
     PhysicalRegion *prgnp_cxx = static_cast<PhysicalRegion *>(rgnp);
     prgnp_cxx += region_id;
-    typedef RegionAccessor<AccessorType::Generic, double> GDRA;
-    GDRA fm = prgnp_cxx->get_field_accessor(fid).typeify<double>();
-    Rect<1> subRect;
-    ByteOffset bOff[1];
-    Rect<1> *sgbp_cxx = static_cast< Rect<1> * >(subgrid_bounds);
-    // TODO assert dense
-    return fm.raw_rect_ptr<1>(*sgbp_cxx, subRect, bOff);
+
+    switch (type) {
+        case LSCI_TYPE_INT32: {
+            typedef RegionAccessor<AccessorType::Generic, int32_t> RA;
+            RA fm = prgnp_cxx->get_field_accessor(fid).typeify<int32_t>();
+            Rect<1> subRect;
+            ByteOffset bOff[1];
+            Rect<1> *sgbp_cxx = static_cast< Rect<1> * >(subgrid_bounds);
+            return fm.raw_rect_ptr<1>(*sgbp_cxx, subRect, bOff);
+        }
+        case LSCI_TYPE_INT64: {
+            typedef RegionAccessor<AccessorType::Generic, int64_t> RA;
+            RA fm = prgnp_cxx->get_field_accessor(fid).typeify<int64_t>();
+            Rect<1> subRect;
+            ByteOffset bOff[1];
+            Rect<1> *sgbp_cxx = static_cast< Rect<1> * >(subgrid_bounds);
+            return fm.raw_rect_ptr<1>(*sgbp_cxx, subRect, bOff);
+        }
+        case LSCI_TYPE_FLOAT: {
+            typedef RegionAccessor<AccessorType::Generic, float> RA;
+            RA fm = prgnp_cxx->get_field_accessor(fid).typeify<float>();
+            Rect<1> subRect;
+            ByteOffset bOff[1];
+            Rect<1> *sgbp_cxx = static_cast< Rect<1> * >(subgrid_bounds);
+            return fm.raw_rect_ptr<1>(*sgbp_cxx, subRect, bOff);
+        }
+        case LSCI_TYPE_DOUBLE: {
+            typedef RegionAccessor<AccessorType::Generic, double> RA;
+            RA fm = prgnp_cxx->get_field_accessor(fid).typeify<double>();
+            Rect<1> subRect;
+            ByteOffset bOff[1];
+            Rect<1> *sgbp_cxx = static_cast< Rect<1> * >(subgrid_bounds);
+            return fm.raw_rect_ptr<1>(*sgbp_cxx, subRect, bOff);
+        }
+        default:
+            assert(false && "invalid lsci_dt_t");
+    }
+    return NULL;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -506,19 +571,7 @@ lsci_unimesh_add_field(lsci_unimesh_t *mesh,
     mesh_cxx *mcxx = static_cast<mesh_cxx *>(mesh->hndl);
     assert(mcxx);
     lsci_vector_t field;
-    switch (type) {
-        case LSCI_TYPE_INT32:
-            break;
-        case LSCI_TYPE_INT64:
-            break;
-        case LSCI_TYPE_FLOAT:
-            break;
-        case LSCI_TYPE_DOUBLE:
-            lsci_vector_double_create(&field, mcxx->nelems, context, runtime);
-            break;
-        default:
-            assert(false && "invalid lsci_dt_t");
-    }
+    lsci_vector_create(&field, mcxx->nelems, type, context, runtime);
     // now add the thing to the map
     mcxx->add_field(std::string(field_name), field);
     return LSCI_SUCCESS;
