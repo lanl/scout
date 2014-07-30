@@ -224,6 +224,9 @@ namespace scout {
       "-lscRuntime ${GLFW_LIBS}",
       #endif
 
+      // legion support -- make a compile variable for this as well and check that?
+      "-llsci",
+
       0 // mark end of library paths.      
     };
   }

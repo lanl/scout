@@ -52,16 +52,29 @@
  * ##### 
  */ 
 
-#include "Scout/Tools.h"
+#ifndef CLANG_CODEGEN_LEGIONRUNTIME_H
+#define CLANG_CODEGEN_LEGIONRUNTIME_H
 
-void AddScoutLibArgs(const ArgList &Args,
-                            ArgStringList &CmdArgs) {
-  CmdArgs.push_back("-lpthread");
-  CmdArgs.push_back("-lscRuntime");
-  if (! Args.hasArg(options::OPT_noscstdlib)) {
-    CmdArgs.push_back("-lscStandard");
-  }
-  if (Args.hasArg(options::OPT_legionSupport)) {
-    CmdArgs.push_back("-llsci");
-  }
+#include "CodeGenModule.h"
+
+namespace llvm {
+  class Function;
 }
+
+namespace clang {
+namespace CodeGen {
+  class CodeGenModule;
+
+  class CGLegionRuntime {
+  protected:
+    CodeGen::CodeGenModule &CGM;
+    llvm::Function *LegionRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params);
+    llvm::Function *LegionRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params,
+        llvm::Type* retType);
+  public:
+    CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM) {}
+    virtual ~CGLegionRuntime();
+  };
+}
+}
+#endif

@@ -52,16 +52,44 @@
  * ##### 
  */ 
 
-#include "Scout/Tools.h"
+#include "Scout/CGLegionRuntime.h"
+#include "CodeGenFunction.h"
 
-void AddScoutLibArgs(const ArgList &Args,
-                            ArgStringList &CmdArgs) {
-  CmdArgs.push_back("-lpthread");
-  CmdArgs.push_back("-lscRuntime");
-  if (! Args.hasArg(options::OPT_noscstdlib)) {
-    CmdArgs.push_back("-lscStandard");
+using namespace clang;
+using namespace CodeGen;
+
+CGLegionRuntime::~CGLegionRuntime() {}
+
+// build a function call to a legion runtime function w/ no arguments
+// SC_TODO: could we use CreateRuntimeFunction? or GetOrCreateLLVMFunction?
+llvm::Function *CGLegionRuntime::LegionRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params ) {
+
+  llvm::Function *Func = CGM.getModule().getFunction(funcName);
+  if(!Func){
+    llvm::FunctionType *FTy =
+        llvm::FunctionType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()),
+            Params, false);
+
+    Func = llvm::Function::Create(FTy,
+        llvm::Function::ExternalLinkage,
+        funcName,
+        &CGM.getModule());
   }
-  if (Args.hasArg(options::OPT_legionSupport)) {
-    CmdArgs.push_back("-llsci");
+  return Func;
+}
+
+llvm::Function *CGLegionRuntime::LegionRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params,
+    llvm::Type* retType) {
+
+  llvm::Function *Func = CGM.getModule().getFunction(funcName);
+  if(!Func){
+    llvm::FunctionType *FTy =
+        llvm::FunctionType::get(retType, Params, false);
+
+    Func = llvm::Function::Create(FTy,
+        llvm::Function::ExternalLinkage,
+        funcName,
+        &CGM.getModule());
   }
+  return Func;
 }

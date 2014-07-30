@@ -578,8 +578,6 @@ def emitAllDefinitions : Flag<["-"], "emit-all-definitions">,
   HelpText<"Emit all definitions regardless of it that definition was used.">;
 def cpuThreads : Flag<["-"], "mt">,
   HelpText<"Enable CPU multithreading support.">;
-def legionSupport : Flag<["-"], "legion">,
-  HelpText<"Enable support for Legion Programming Model http://legion.stanford.edu">;
 def noRewrite : Flag<["-"], "rewrite">,
   HelpText<"run the rewriter">;
 def dumpRewrite : Flag<["-"], "dump-rewrite">,
