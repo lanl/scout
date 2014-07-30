@@ -72,6 +72,7 @@ namespace scout {
       static bool   MPISupport;
       static bool   GLFWSupport;
       static bool   PNGSupport;
+      static bool   LegionSupport;
 
       static const char* CompileOptions[];
       static const char* IncludePaths[];

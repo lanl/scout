@@ -79,6 +79,7 @@ int main(int argc, char *argv[])
   cout << "\tcuda  : " << ((Configuration::CUDASupport == true)   ? "enabled" : "disabled") << endl;
   cout << "\tnuma  : " << ((Configuration::NUMASupport == true)   ? "enabled" : "disabled") << endl;
   cout << "\tmpi   : " << ((Configuration::MPISupport == true)    ? "enabled" : "disabled") << endl;      
+//  cout << "\tlegion   : " << ((Configuration::LegionSupport == true)    ? "enabled" : "disabled") << endl;      
   cout << endl;
   
   cout << "-- scc's internal include search paths:\n";

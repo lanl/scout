@@ -194,6 +194,11 @@ endif()
     set(CUDA_VERSION_MINOR 0)
   #endif()
 
+  # --- Legion support
+    message(STATUS "scout: enabling Legion by default.")
+    set(SCOUT_ENABLE_LEGION ON CACHE BOOL
+      "Enable Legion support.")
+
   # --- OpenCL support.
   #only look for OpenCL if we can't find Cuda
   if(NOT CUDA_FOUND)
