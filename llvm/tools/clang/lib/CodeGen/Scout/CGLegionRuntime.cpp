@@ -83,9 +83,10 @@ llvm::Function *CGLegionRuntime::CreateAddFieldFunction(llvm::Type *MT) {
   // pointer to mesh
   Params.push_back(llvm::PointerType::get(MT,0));
 
-  //SC_TODO: add name here...
+  // name
+  Params.push_back(llvm::PointerType::get(llvm::IntegerType::get(CGM.getLLVMContext(), 8), 0));
 
-  //type
+  // type
   Params.push_back(llvm::IntegerType::get(CGM.getModule().getContext(), 32));
 
   return LegionRuntimeFunction(funcName, Params);

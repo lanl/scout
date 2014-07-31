@@ -73,6 +73,7 @@
 #include "Scout/CGLegionRuntime.h"
 #include <stdio.h>
 #include <cassert>
+#include "legion/lsci.h"
 
 using namespace std;
 using namespace clang;
@@ -485,8 +486,24 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
         llvm::SmallVector< llvm::Value *, 3 > Args;
         llvm::Function *F = CGM.getLegionRuntime().CreateAddFieldFunction(Mesh->getType());
         Args.push_back(Alloc);
-        //Args.push_back(name); //SC_TODO: add name here.
-        Args.push_back(Builder.getInt32(field->getType()->getTypeID()));
+        Args.push_back(Builder.CreateGlobalStringPtr(MeshFieldName));
+        llvm::Value *fval = Builder.CreateLoad(Builder.CreateLoad(field));
+        llvm::Type::TypeID typeID = fval->getType()->getTypeID();
+        int lscitype;
+        switch(typeID) {
+        case llvm::Type::IntegerTyID:
+          lscitype = LSCI_TYPE_INT64;
+          break;
+        case  llvm::Type::FloatTyID:
+          lscitype = LSCI_TYPE_FLOAT;
+          break;
+        case llvm::Type::DoubleTyID:
+          lscitype = LSCI_TYPE_DOUBLE;
+          break;
+        default:
+          lscitype = LSCI_TYPE_MAX;
+        }
+        Args.push_back(Builder.getInt32(lscitype));
         Builder.CreateCall(F, ArrayRef<llvm::Value *>(Args));
       }
     }
