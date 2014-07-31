@@ -371,6 +371,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     SmallVector<llvm::Value*, 3> Dimensions;
     GetMeshDimensions(MT, Dimensions);
 
+    // call create_mesh()
     if(CGM.getCodeGenOpts().ScoutLegionSupport) {
       llvm::SmallVector< llvm::Value *, 4 > Args;
       llvm::Function *F = CGM.getLegionRuntime().CreateSetupMeshFunction(Mesh->getType());
@@ -381,6 +382,10 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
       for(unsigned int i = Dimensions.size(); i < 3; i++) {
         Args.push_back(Builder.getInt64(1));
       }
+      Args.push_back(Builder.CreateLoad(
+          CGM.getLegionRuntime().GetLegionContextGlobal(), "legionContext"));
+      Args.push_back(Builder.CreateLoad(
+          CGM.getLegionRuntime().GetLegionRuntimeGlobal(), "legionRuntime"));
       Builder.CreateCall(F, ArrayRef<llvm::Value *>(Args));
     }
 
@@ -482,6 +487,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
       llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i, IRNameStr);
       Builder.CreateStore(val, field);
 
+      // call add_field()
       if(CGM.getCodeGenOpts().ScoutLegionSupport) {
         llvm::SmallVector< llvm::Value *, 3 > Args;
         llvm::Function *F = CGM.getLegionRuntime().CreateAddFieldFunction(Mesh->getType());
@@ -504,6 +510,10 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
           lscitype = LSCI_TYPE_MAX;
         }
         Args.push_back(Builder.getInt32(lscitype));
+        Args.push_back(Builder.CreateLoad(
+            CGM.getLegionRuntime().GetLegionContextGlobal(), "legionContext"));
+        Args.push_back(Builder.CreateLoad(
+            CGM.getLegionRuntime().GetLegionRuntimeGlobal(), "legionRuntime"));
         Builder.CreateCall(F, ArrayRef<llvm::Value *>(Args));
       }
     }

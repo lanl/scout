@@ -72,6 +72,8 @@ namespace CodeGen {
     
     llvm::Type* PointerTy(llvm::Type* elementType);
     
+    llvm::Value *GetLegionRuntimeGlobal();
+    llvm::Value *GetLegionContextGlobal();
     llvm::Function *CreateSetupMeshFunction(llvm::Type *MT);
     llvm::Function *CreateAddFieldFunction(llvm::Type *MT);
     
@@ -149,6 +151,7 @@ namespace CodeGen {
     
   protected:
     CodeGen::CodeGenModule &CGM;
+    llvm::Value *GetLegionGlobal(std::string varName, llvm::Type *type);
     llvm::Function *LegionRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params);
     llvm::Function *LegionRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params,
                                           llvm::Type* retType);
