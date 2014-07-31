@@ -74,8 +74,6 @@ namespace CodeGen {
     
     llvm::Function *CreateSetupMeshFunction(llvm::Type *MT);
     llvm::Function *CreateAddFieldFunction(llvm::Type *MT);
-    llvm::Function *Debug(SmallVector<llvm::Value*, 3>Fields,
-                          SmallVector<llvm::Value*, 3>Dimensions);
     
     llvm::Function* SizeofCXXRect1dFunc();
     llvm::Function* SubgridBoundsAtFunc();
