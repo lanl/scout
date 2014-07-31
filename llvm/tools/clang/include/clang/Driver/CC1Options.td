@@ -570,6 +570,7 @@ def cl_mad_enable : Flag<["-"], "cl-mad-enable">,
 def cl_std_EQ : Joined<["-"], "cl-std=">,
   HelpText<"OpenCL language standard to compile for">;
 
+/*
 // +===== Scout =============================================================+
 // --- Disabled for now (AMD is off-version of us at present).
 //def gpuAMD : Flag<["-"], "gpu-amd">,
@@ -585,7 +586,7 @@ def dumpRewrite : Flag<["-"], "dump-rewrite">,
 def debugWait : Flag<["-"], "debug-wait">,
       HelpText<"Used to allow debugger to attach to the scc driver.">;
 // +=========================================================================+
-
+*/
 //===----------------------------------------------------------------------===//
 // CUDA Options
 //===----------------------------------------------------------------------===//

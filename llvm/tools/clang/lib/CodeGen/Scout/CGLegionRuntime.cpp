@@ -140,9 +140,68 @@ CGLegionRuntime::CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM){
 
 CGLegionRuntime::~CGLegionRuntime() {}
 
+
+llvm::Function *CGLegionRuntime::CreateSetupMeshFunction(llvm::Type *MT) {
+  std::string funcName = "__scrt_legion_setup_mesh";
+  std::vector<llvm::Type*> Params;
+  // pointer to mesh
+  Params.push_back(llvm::PointerType::get(MT,0));
+
+  // width, height, depth
+  Params.push_back(llvm::IntegerType::get(CGM.getLLVMContext(), 64));
+  Params.push_back(llvm::IntegerType::get(CGM.getLLVMContext(), 64));
+  Params.push_back(llvm::IntegerType::get(CGM.getLLVMContext(), 64));
+
+  return LegionRuntimeFunction(funcName, Params);
+
+
+}
+
+llvm::Function *CGLegionRuntime::CreateAddFieldFunction(llvm::Type *MT) {
+  std::string funcName = "__scrt_legion_add_field";
+  std::vector<llvm::Type*> Params;
+  // pointer to mesh
+  Params.push_back(llvm::PointerType::get(MT,0));
+
+  //SC_TODO: add name here...
+
+  //type
+  Params.push_back(llvm::IntegerType::get(CGM.getModule().getContext(), 32));
+
+  return LegionRuntimeFunction(funcName, Params);
+}
+
+
+
+llvm::Function *CGLegionRuntime::Debug(SmallVector<llvm::Value*, 3>Fields,
+        SmallVector<llvm::Value*, 3>Dimensions) {
+  std::string funcName = "__scrt_legion_debug";
+  llvm::Function *Func = CGM.getModule().getFunction(funcName);
+  std::vector<llvm::Type*> Params;
+
+
+  for (unsigned int i = 0; i < Dimensions.size(); i++) {
+    llvm::errs() << "dim[" << i << "] = ";
+    Dimensions[i]->dump();
+  }
+
+
+  llvm::errs() << "NFields " << Fields.size() << "\n";
+  for (unsigned int i = 0; i < Fields.size(); i++) {
+    llvm::errs() << "Field [" << i << "] ";
+    Fields[i]->getType()->dump();
+    llvm::errs() << "\n";
+
+  }
+  return Func;
+
+}
+
+
+
 // build a function call to a legion runtime function w/ no arguments
-// SC_TODO: could we use CreateRuntimeFunction? or GetOrCreateLLVMFunction?
-llvm::Function *CGLegionRuntime::LegionRuntimeFunction(string funcName, vector<llvm::Type*> Params ) {
+llvm::Function *CGLegionRuntime::LegionRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params ) {
+
   llvm::Function *Func = CGM.getModule().getFunction(funcName);
 
   if(!Func){
@@ -209,9 +268,7 @@ llvm::Function* CGLegionRuntime::SubgridBoundsAtFunc(){
     return f;
   }
   
-  vector<llvm::Type*> params;
-  params.push_back(VoidPtrTy);
-  params.push_back(Int64Ty);
+  vector<llvm::Type*> params = {VoidPtrTy, Int64Ty};
   
   llvm::FunctionType* ft = llvm::FunctionType::get(VoidPtrTy, params, false);
   
@@ -232,9 +289,7 @@ llvm::Function* CGLegionRuntime::VectorDumpFunc(){
     return f;
   }
   
-  vector<llvm::Type*> params;
-  params.push_back(VoidPtrTy);
-  params.push_back(Int64Ty);
+  vector<llvm::Type*> params = {VoidPtrTy, Int64Ty};
   
   llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
   
@@ -255,8 +310,7 @@ llvm::Function* CGLegionRuntime::ArgumentMapCreateFunc(){
     return f;
   }
   
-  vector<llvm::Type*> params;
-  params.push_back(PointerTy(ArgumentMapTy));
+  vector<llvm::Type*> params = {PointerTy(ArgumentMapTy)};
   
   llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
   
@@ -277,11 +331,7 @@ llvm::Function* CGLegionRuntime::ArgumentMapSetPointFunc(){
     return f;
   }
   
-  vector<llvm::Type*> params;
-  params.push_back(PointerTy(ArgumentMapTy));
-  params.push_back(Int64Ty);
-  params.push_back(VoidPtrTy);
-  params.push_back(Int64Ty);
+  vector<llvm::Type*> params = {PointerTy(ArgumentMapTy), Int64Ty, VoidPtrTy, Int64Ty};
 
   llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
   
@@ -302,12 +352,9 @@ llvm::Function* CGLegionRuntime::IndexLauncherCreateFunc(){
     return f;
   }
   
-  vector<llvm::Type*> params;
-  params.push_back(PointerTy(IndexLauncherTy));
-  params.push_back(Int32Ty);
-  params.push_back(PointerTy(DomainTy));
-  params.push_back(PointerTy(TaskArgumentTy));
-  params.push_back(PointerTy(ArgumentMapTy));
+  vector<llvm::Type*> params =
+  {PointerTy(IndexLauncherTy), Int32Ty, PointerTy(DomainTy),
+    PointerTy(TaskArgumentTy), PointerTy(ArgumentMapTy)};
   
   llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
   
@@ -328,13 +375,9 @@ llvm::Function* CGLegionRuntime::AddRegionRequirementFunc(){
     return f;
   }
   
-  vector<llvm::Type*> params;
-  params.push_back(PointerTy(IndexLauncherTy));
-  params.push_back(LogicalRegionTy);
-  params.push_back(ProjectionIdTy);
-  params.push_back(Int32Ty);
-  params.push_back(Int32Ty);
-  params.push_back(LogicalPartitionTy);
+  vector<llvm::Type*> params =
+  {PointerTy(IndexLauncherTy), LogicalRegionTy, ProjectionIdTy, Int32Ty,
+    Int32Ty, LogicalPartitionTy};
   
   llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
   
@@ -355,10 +398,7 @@ llvm::Function* CGLegionRuntime::AddFieldFunc(){
     return f;
   }
   
-  vector<llvm::Type*> params;
-  params.push_back(PointerTy(IndexLauncherTy));
-  params.push_back(Int32Ty);
-  params.push_back(FieldIdTy);
+  vector<llvm::Type*> params = {PointerTy(IndexLauncherTy), Int32Ty, FieldIdTy};
   
   llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
   
@@ -379,10 +419,7 @@ llvm::Function* CGLegionRuntime::ExecuteIndexSpaceFunc(){
     return f;
   }
   
-  vector<llvm::Type*> params;
-  params.push_back(RuntimeTy);
-  params.push_back(ContextTy);
-  params.push_back(PointerTy(IndexLauncherTy));
+  vector<llvm::Type*> params = {RuntimeTy, ContextTy, PointerTy(IndexLauncherTy)};
   
   llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
   
@@ -403,12 +440,7 @@ llvm::Function* CGLegionRuntime::VectorCreateFunc(){
     return f;
   }
   
-  vector<llvm::Type*> params;
-  params.push_back(PointerTy(VectorTy));
-  params.push_back(Int64Ty);
-  params.push_back(Int32Ty);
-  params.push_back(ContextTy);
-  params.push_back(RuntimeTy);
+  vector<llvm::Type*> params = {PointerTy(VectorTy), Int64Ty, Int32Ty, ContextTy, RuntimeTy};
   
   llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
   
@@ -429,13 +461,8 @@ llvm::Function* CGLegionRuntime::UnimeshCreateFunc(){
     return f;
   }
   
-  vector<llvm::Type*> params;
-  params.push_back(PointerTy(UnimeshTy));
-  params.push_back(Int64Ty);
-  params.push_back(Int64Ty);
-  params.push_back(Int64Ty);
-  params.push_back(ContextTy);
-  params.push_back(RuntimeTy);
+  vector<llvm::Type*> params =
+  {PointerTy(UnimeshTy), Int64Ty, Int64Ty, Int64Ty, ContextTy, RuntimeTy};
   
   llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
   
@@ -456,12 +483,8 @@ llvm::Function* CGLegionRuntime::UnimeshAddFieldFunc(){
     return f;
   }
   
-  vector<llvm::Type*> params;
-  params.push_back(PointerTy(UnimeshTy));
-  params.push_back(Int32Ty);
-  params.push_back(VoidPtrTy);
-  params.push_back(ContextTy);
-  params.push_back(RuntimeTy);
+  vector<llvm::Type*> params =
+  {PointerTy(UnimeshTy), Int32Ty, VoidPtrTy, ContextTy, RuntimeTy};
   
   llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
   
@@ -482,11 +505,7 @@ llvm::Function* CGLegionRuntime::UnimeshPartitionFunc(){
     return f;
   }
   
-  vector<llvm::Type*> params;
-  params.push_back(PointerTy(UnimeshTy));
-  params.push_back(Int64Ty);
-  params.push_back(ContextTy);
-  params.push_back(RuntimeTy);
+  vector<llvm::Type*> params = {PointerTy(UnimeshTy), Int64Ty, ContextTy, RuntimeTy};
   
   llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
   
@@ -507,12 +526,8 @@ llvm::Function* CGLegionRuntime::UnimeshGetVecByNameFunc(){
     return f;
   }
   
-  vector<llvm::Type*> params;
-  params.push_back(PointerTy(UnimeshTy));
-  params.push_back(VoidPtrTy);
-  params.push_back(PointerTy(VectorTy));
-  params.push_back(ContextTy);
-  params.push_back(RuntimeTy);
+  vector<llvm::Type*> params =
+  {PointerTy(UnimeshTy), VoidPtrTy, PointerTy(VectorTy), ContextTy, RuntimeTy};
   
   llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
   
@@ -533,9 +548,8 @@ llvm::Function* CGLegionRuntime::StartFunc(){
     return f;
   }
   
-  vector<llvm::Type*> params;
-  params.push_back(Int32Ty);
-  params.push_back(PointerTy(VoidPtrTy));
+  vector<llvm::Type*> params =
+  {Int32Ty, PointerTy(VoidPtrTy)};
   
   llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
   
@@ -556,9 +570,7 @@ llvm::Function* CGLegionRuntime::SetTopLevelTaskIdFunc(){
     return f;
   }
   
-  vector<llvm::Type*> params;
-  params.push_back(Int32Ty);
-  params.push_back(PointerTy(VoidPtrTy));
+  vector<llvm::Type*> params = {Int32Ty, PointerTy(VoidPtrTy)};
   
   llvm::FunctionType* ft =
   llvm::FunctionType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()), params, false);
@@ -580,15 +592,8 @@ llvm::Function* CGLegionRuntime::RegisterVoidLegionTaskFunc(){
     return f;
   }
   
-  vector<llvm::Type*> params;
-  params.push_back(Int32Ty);
-  params.push_back(Int32Ty);
-  params.push_back(Int8Ty);
-  params.push_back(Int8Ty);
-  params.push_back(Int8Ty);
-  params.push_back(VariantIdTy);
-  params.push_back(VoidPtrTy);
-  params.push_back(RegTaskDataTy);
+  vector<llvm::Type*> params =
+  {Int32Ty, Int32Ty, Int8Ty, Int8Ty, Int8Ty, VariantIdTy, VoidPtrTy, RegTaskDataTy};
   
   llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
   

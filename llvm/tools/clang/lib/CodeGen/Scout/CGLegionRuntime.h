@@ -72,6 +72,11 @@ namespace CodeGen {
     
     llvm::Type* PointerTy(llvm::Type* elementType);
     
+    llvm::Function *CreateSetupMeshFunction(llvm::Type *MT);
+    llvm::Function *CreateAddFieldFunction(llvm::Type *MT);
+    llvm::Function *Debug(SmallVector<llvm::Value*, 3>Fields,
+                          SmallVector<llvm::Value*, 3>Dimensions);
+    
     llvm::Function* SizeofCXXRect1dFunc();
     llvm::Function* SubgridBoundsAtFunc();
     llvm::Function* VectorDumpFunc();
@@ -149,9 +154,6 @@ namespace CodeGen {
     llvm::Function *LegionRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params);
     llvm::Function *LegionRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params,
                                           llvm::Type* retType);
-    
-
-    
   };
 }
 }
