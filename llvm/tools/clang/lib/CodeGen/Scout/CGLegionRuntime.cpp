@@ -147,36 +147,46 @@ llvm::Value* CGLegionRuntime::GetNull(llvm::Type* T){
   return llvm::ConstantPointerNull::get(PointerTy(T));
 }
 
+llvm::Value *CGLegionRuntime::GetLegionRuntimeGlobal() {
+  return GetLegionGlobal("__scrt_legion_runtime", VoidPtrTy);
+}
+
+llvm::Value *CGLegionRuntime::GetLegionContextGlobal() {
+  return GetLegionGlobal("__scrt_legion_context", VoidPtrTy);
+}
+
 llvm::Function *CGLegionRuntime::CreateSetupMeshFunction(llvm::Type *MT) {
   std::string funcName = "__scrt_legion_setup_mesh";
-  std::vector<llvm::Type*> Params;
-  // pointer to mesh
-  Params.push_back(llvm::PointerType::get(MT,0));
-
-  // width, height, depth
-  Params.push_back(llvm::IntegerType::get(CGM.getLLVMContext(), 64));
-  Params.push_back(llvm::IntegerType::get(CGM.getLLVMContext(), 64));
-  Params.push_back(llvm::IntegerType::get(CGM.getLLVMContext(), 64));
-
+  // SC_TODO: once we get the context/runtime setup via a pass then we can
+  // switch to using the real lsci fuction here
+  //std::string funcName = "lsci_unimesh_create";
+  std::vector<llvm::Type*> Params = {PointerTy(MT), Int64Ty, Int64Ty, Int64Ty, ContextTy, RuntimeTy};
   return LegionRuntimeFunction(funcName, Params);
 }
 
 llvm::Function *CGLegionRuntime::CreateAddFieldFunction(llvm::Type *MT) {
   std::string funcName = "__scrt_legion_add_field";
-  std::vector<llvm::Type*> Params;
-  // pointer to mesh
-  Params.push_back(llvm::PointerType::get(MT,0));
-
-  // name
-  Params.push_back(llvm::PointerType::get(llvm::IntegerType::get(CGM.getLLVMContext(), 8), 0));
-
-  // type
-  Params.push_back(llvm::IntegerType::get(CGM.getModule().getContext(), 32));
-
+  // SC_TODO: once we get the context/runtime setup via a pass then we can
+  // switch to using the real lsci fuction here
+  //std::string funcName = "lsci_unimesh_add_field";
+  std::vector<llvm::Type*> Params = {PointerTy(MT), PointerTy(Int8Ty), Int32Ty, ContextTy, RuntimeTy};
   return LegionRuntimeFunction(funcName, Params);
 }
 
-// build a function call to a legion runtime function w/ no arguments
+
+llvm::Value *CGLegionRuntime::GetLegionGlobal(std::string varName, llvm::Type *type) {
+  if (!CGM.getModule().getNamedGlobal(varName)) {
+    new llvm::GlobalVariable(CGM.getModule(),
+        type,
+        false,
+        llvm::GlobalValue::ExternalLinkage,
+        0,
+        varName);
+  }
+  return CGM.getModule().getNamedGlobal(varName);
+}
+
+// build a function call to a legion runtime function w/ void return
 llvm::Function *CGLegionRuntime::LegionRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params ) {
 
   llvm::Function *Func = CGM.getModule().getFunction(funcName);
@@ -195,6 +205,7 @@ llvm::Function *CGLegionRuntime::LegionRuntimeFunction(std::string funcName, std
   return Func;
 }
 
+// build a function call to a legion runtime function w/ return value
 llvm::Function *CGLegionRuntime::LegionRuntimeFunction(string funcName,
                                                        vector<llvm::Type*> Params, llvm::Type* retType) {
   llvm::Function *Func = CGM.getModule().getFunction(funcName);

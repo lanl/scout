@@ -48,51 +48,28 @@
 #
 ###########################################################################
 #
+project(scout_test_scc_legion)
 
-include(${CMAKE_BINARY_DIR}/CMake/Modules/Configuration.cmake)
-
-set(CMAKE_MODULE_PATH
-  ${SCOUT_CMAKE_PATH}
-  ${CMAKE_MODULE_PATH}
-)
+# Note: By default we pull in all the .sc source files in this
+# directory for inclusion into the regression checks. 
+file(GLOB SC_SRCS *.sc) 
 
 #ignore warnings about i/o in forall
-set(CMAKE_SCXX_FLAGS "${CMAKE_SCXX_FLAGS} -Wno-calling-io-function")
-#ignore specific warnings for some files
-set_source_files_properties(intrinsics-scope.scpp PROPERTIES COMPILE_FLAGS "-Wno-mesh-builtin-scope")
-set_source_files_properties(meshscope.scpp PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
+set(CMAKE_SCC_FLAGS "${CMAKE_SCC_FLAGS} -Wno-calling-io-function")
 
-project(scout_test_scxx)
-    
-  cmake_minimum_required(VERSION 2.8.9)
+set(CMAKE_SCC_FLAGS "${CMAKE_SCC_FLAGS} -sclegion")
 
-  # Note: By default we pull in all the .scpp source files in this
-  # directory for inclusion into the regression checks.  If you want do
-  # build more complex tests we suggest creating a subdirectory for the
-  # source.
-  #
-  file(GLOB SC_SRCS *.scpp) 
+# Add an executable and test entry for each source file...
+foreach (test ${SC_SRCS})
+  get_filename_component(tname ${test} NAME_WE) 
+  if (NOT tname) 
+    message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
+  else (NOT tname)
+     set(fname "scc_legion_${tname}")
+    add_executable(${fname} ${test})
+    add_test("${fname}" "${TEST_BINARY_DIR}/${fname}")
+    message(" + added runtime regression test entry: ${fname}")
+  endif(NOT tname)
+endforeach(test)
 
-  # Add an executable and test entry for each source file...
-  foreach (test ${SC_SRCS})
-    get_filename_component(tname ${test} NAME_WE) 
-    if (NOT tname) 
-      message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
-    else (NOT tname)
-      set(fname "sc++_${tname}")
-      add_executable("${fname}" ${test})
-      add_test("${fname}" "${TEST_BINARY_DIR}/${fname}")
-      message(" + added runtime regression test entry: ${fname}")
-    endif(NOT tname)
-  endforeach(test)
 
-  add_subdirectory(debug)
-  add_subdirectory(display)
-  add_subdirectory(driver)
-  if (SCOUT_ENABLE_LEGION MATCHES "ON")
-   add_subdirectory(legion)
-  endif()
-  add_subdirectory(global-multifile)
-  add_subdirectory(error)
-  add_subdirectory(inline)
-  add_subdirectory(warning)
