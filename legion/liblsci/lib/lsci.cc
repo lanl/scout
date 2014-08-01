@@ -200,12 +200,12 @@ lsci_index_launcher_create(lsci_index_launcher_t *il,
 }
 
 int
-lsc_add_region_requirement(lsci_index_launcher_t *il,
-                           lsci_logical_region_t lr,
-                           lsci_projection_id_t proj_id,
-                           lsci_privilege_mode_t priv_mode,
-                           lsci_coherence_property_t coherence_prop,
-                           lsci_logical_partition_t parent)
+lsci_add_region_requirement(lsci_index_launcher_t *il,
+                            lsci_logical_region_t lr,
+                            lsci_projection_id_t proj_id,
+                            lsci_privilege_mode_t priv_mode,
+                            lsci_coherence_property_t coherence_prop,
+                            lsci_logical_partition_t parent)
 {
     using namespace LegionRuntime::HighLevel;
     using LegionRuntime::HighLevel::HighLevelRuntime;

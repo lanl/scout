@@ -57,12 +57,12 @@ veccp(lsci_vector_t *from,
     lsci_index_launcher_create(&il, VECCP_TID,
                                &to->launch_domain,
                                NULL, &arg_map);
-    lsc_add_region_requirement(
+    lsci_add_region_requirement(
         &il, from->logical_partition, 0,
         LSCI_READ_ONLY, LSCI_EXCLUSIVE, from->logical_region
     );
     lsci_add_field(&il, idx++, from->fid);
-    lsc_add_region_requirement(
+    lsci_add_region_requirement(
         &il, to->logical_partition, 0,
         LSCI_WRITE_DISCARD, LSCI_EXCLUSIVE, to->logical_region
     );
@@ -126,12 +126,12 @@ init_vals(lsci_vector_t *from,
     lsci_index_launcher_create(&il, INIT_VALS_TID,
                                &to->launch_domain,
                                NULL, &arg_map);
-    lsc_add_region_requirement(
+    lsci_add_region_requirement(
         &il, from->logical_partition, 0,
         LSCI_WRITE_DISCARD, LSCI_EXCLUSIVE, from->logical_region
     );
     lsci_add_field(&il, idx++, from->fid);
-    lsc_add_region_requirement(
+    lsci_add_region_requirement(
         &il, to->logical_partition, 0,
         LSCI_WRITE_DISCARD, LSCI_EXCLUSIVE, to->logical_region
     );
