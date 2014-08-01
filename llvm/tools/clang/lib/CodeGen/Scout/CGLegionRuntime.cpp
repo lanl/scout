@@ -118,7 +118,7 @@ CGLegionRuntime::CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM){
     LogicalPartitionTy, DomainTy, Int64Ty, Rect1dTy};
   VectorTy = llvm::StructType::get(context, fields);
   
-  fields = {ArgumentMapTy};
+  fields = {ArgumentMapHandleTy};
   ArgumentMapTy = llvm::StructType::get(context, fields);
   
   fields = {IndexLauncherHandleTy, Int32Ty, DomainTy};
@@ -136,9 +136,16 @@ CGLegionRuntime::CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM){
 
   fields = {VoidPtrTy};
   RegTaskDataTy = llvm::StructType::get(context, fields);
+  
+  fields = {Int64Ty, Int64Ty, Int64Ty, Int64Ty, Rect1dStorageTy, Int64Ty};
+  MeshTaskArgsTy = llvm::StructType::get(context, fields);
 }
 
 CGLegionRuntime::~CGLegionRuntime() {}
+
+llvm::Value* CGLegionRuntime::GetNull(llvm::Type* T){
+  return llvm::ConstantPointerNull::get(PointerTy(T));
+}
 
 llvm::Function *CGLegionRuntime::CreateSetupMeshFunction(llvm::Type *MT) {
   std::string funcName = "__scrt_legion_setup_mesh";
@@ -204,7 +211,7 @@ llvm::Function *CGLegionRuntime::LegionRuntimeFunction(string funcName,
   return Func;
 }
 
-llvm::Type* CGLegionRuntime::PointerTy(llvm::Type* elementType){
+llvm::PointerType* CGLegionRuntime::PointerTy(llvm::Type* elementType){
   return llvm::PointerType::get(elementType, 0);
 }
 

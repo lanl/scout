@@ -70,7 +70,7 @@ namespace CodeGen {
     CGLegionRuntime(CodeGen::CodeGenModule &CGM);
     virtual ~CGLegionRuntime();
     
-    llvm::Type* PointerTy(llvm::Type* elementType);
+    llvm::PointerType* PointerTy(llvm::Type* elementType);
     
     llvm::Function *CreateSetupMeshFunction(llvm::Type *MT);
     llvm::Function *CreateAddFieldFunction(llvm::Type *MT);
@@ -94,7 +94,9 @@ namespace CodeGen {
     llvm::Function* RegisterVoidLegionTaskFunc();
     llvm::Function* RawRectPtr1dFunc();
     
-    llvm::Type* VoidPtrTy;
+    llvm::Value* GetNull(llvm::Type* T);
+    
+    llvm::PointerType* VoidPtrTy;
     llvm::Type* Int8Ty;
     llvm::Type* Int32Ty;
     llvm::Type* Int64Ty;
@@ -125,6 +127,7 @@ namespace CodeGen {
     llvm::StructType* UnimeshTy;
     llvm::StructType* TaskArgsTy;
     llvm::StructType* RegTaskDataTy;
+    llvm::StructType* MeshTaskArgsTy;
     
     llvm::Value* SuccessVal;
     llvm::Value* FailureVal;

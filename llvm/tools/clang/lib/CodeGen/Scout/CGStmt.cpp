@@ -77,6 +77,7 @@
 #include "CGBlocks.h"
 
 #include "Scout/CGScoutRuntime.h"
+#include "Scout/CGLegionRuntime.h"
 #include "Scout/ASTVisitors.h"
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 
@@ -1170,7 +1171,192 @@ void CodeGenFunction::EmitGPUPreamble(const ForallMeshStmt& S){
   GPUThreadInc = Builder.CreateMul(ntid, nctaid, "threadInc");
 }
 
+void CodeGenFunction::EmitForallTaskInit(const ForallMeshStmt &S){
+  using namespace std;
+  using namespace llvm;
+
+  typedef vector<llvm::Type*> TypeVec;
+  typedef vector<llvm::Value*> ValueVec;
+  
+  LLVMContext& context = CGM.getLLVMContext();
+  CGLegionRuntime& r = CGM.getLegionRuntime();
+  auto& B = Builder;
+  
+  TypeVec params = {r.PointerTy(r.UnimeshTy), r.ContextTy, r.RuntimeTy};
+  llvm::FunctionType* ft = llvm::FunctionType::get(VoidTy, params, false);
+  
+  Function* taskInit =
+  Function::Create(ft,
+                   Function::ExternalLinkage,
+                   "ForallTaskInitFunction",
+                   &CGM.getModule());
+
+  Function::arg_iterator aitr = taskInit->arg_begin();
+  Value* meshPtr = aitr++;
+  Value* legionContext = aitr++;
+  Value* legionRuntime = aitr;
+
+  BasicBlock* prevBlock = B.GetInsertBlock();
+  BasicBlock::iterator prevPoint = B.GetInsertPoint();
+  
+  BasicBlock* entry = BasicBlock::Create(context, "entry", taskInit);
+  B.SetInsertPoint(entry);
+  
+  MeshDecl* md = S.getMeshType()->getDecl();
+  
+  ValueVec fields;
+  ValueVec args;
+  
+  for(MeshDecl::field_iterator itr = md->field_begin(),
+      itrEnd = md->field_end(); itr != itrEnd; ++itr){
+    MeshFieldDecl* fd = *itr;
+
+    Value* field = B.CreateAlloca(r.VectorTy, 0, fd->getName() + ".ptr");
+    fields.push_back(field);
+  
+    args = {meshPtr, B.CreateGlobalStringPtr(fd->getName()),
+      field, legionContext, legionRuntime};
+    
+    B.CreateCall(r.UnimeshGetVecByNameFunc(), args);
+  }
+  
+  Value* argMap = B.CreateAlloca(r.ArgumentMapTy, 0, "argMap.ptr");
+  args = {argMap};
+  Function* f = r.ArgumentMapCreateFunc();
+  B.CreateCall(f, args);
+  
+  Value* Zero = ConstantInt::get(Int64Ty, 0);
+  Value* One = ConstantInt::get(Int64Ty, 1);
+  Value* TaskId = ConstantInt::get(Int32Ty, NextLegionTaskId++);
+  
+  Value* iPtr = B.CreateAlloca(Int64Ty, 0, "i.ptr");
+  B.CreateStore(Zero, iPtr);
+
+  Value* launchDomain =
+  B.CreateStructGEP(fields[0], 5, "launchDomain.ptr");
+
+  Value* len =
+  B.CreateLoad(B.CreateStructGEP(fields[0], 6), "len");
+  
+  Value* volume =
+  B.CreateLoad(B.CreateStructGEP(launchDomain, 1), "volume");
+  
+  Value* bounds =
+  B.CreateLoad(B.CreateStructGEP(fields[0], 7), "bounds");
+  
+  Value* rank =
+  B.CreateLoad(B.CreateStructGEP(meshPtr, 1), "rank");
+  
+  Value* width =
+  B.CreateLoad(B.CreateStructGEP(meshPtr, 2), "width");
+  
+  Value* height =
+  B.CreateLoad(B.CreateStructGEP(meshPtr, 3), "height");
+  
+  Value* depth =
+  B.CreateLoad(B.CreateStructGEP(meshPtr, 4), "depth");
+  
+  Value* meshTaskArgs =
+  B.CreateAlloca(r.MeshTaskArgsTy, 0, "meshTaskArgs.ptr");
+  
+  B.CreateStore(rank, B.CreateStructGEP(meshTaskArgs, 0));
+  B.CreateStore(width, B.CreateStructGEP(meshTaskArgs, 1));
+  B.CreateStore(height, B.CreateStructGEP(meshTaskArgs, 2));
+  B.CreateStore(depth, B.CreateStructGEP(meshTaskArgs, 3));
+  B.CreateStore(len, B.CreateStructGEP(meshTaskArgs, 5));
+  
+  BasicBlock* cond = BasicBlock::Create(context, "cond", taskInit);
+  BasicBlock* loop = BasicBlock::Create(context, "loop", taskInit);
+  BasicBlock* merge = BasicBlock::Create(context, "merge", taskInit);
+  
+  B.CreateBr(cond);
+  B.SetInsertPoint(cond);
+  Value* i = B.CreateLoad(iPtr);
+  Value* cmp = B.CreateICmpULT(i, volume);
+  B.CreateCondBr(cmp, loop, merge);
+
+  B.SetInsertPoint(loop);
+  args = {bounds, i};
+  Value* sgb = B.CreateCall(r.SubgridBoundsAtFunc(), args);
+  
+  B.CreateStore(sgb,
+        B.CreateStructGEP(B.CreateStructGEP(meshTaskArgs, 4), 0));
+  
+  args = {argMap, i, B.CreateBitCast(meshTaskArgs, r.VoidPtrTy),
+    ConstantInt::get(Int64Ty, 32)};
+  
+  B.CreateCall(r.ArgumentMapSetPointFunc(), args);
+  B.CreateStore(B.CreateAdd(i, One), iPtr);
+  B.CreateBr(cond);
+  
+  B.SetInsertPoint(merge);
+
+  Value* indexLauncher =
+  B.CreateAlloca(r.IndexLauncherTy, 0, "indexLauncher");
+  
+  args = {indexLauncher, TaskId, launchDomain,
+    r.GetNull(r.TaskArgumentTy), argMap};
+  B.CreateCall(r.IndexLauncherCreateFunc(), args);
+  
+  ForallMeshStmt *SP = const_cast<ForallMeshStmt *>(&S);
+  ForallVisitor visitor(SP);
+  visitor.Visit(SP);
+  
+  const ForallVisitor::FieldMap& LHS = visitor.getLHSmap();
+  const ForallVisitor::FieldMap& RHS = visitor.getRHSmap();
+  
+  uint32_t j = 0;
+  for(MeshDecl::field_iterator itr = md->field_begin(),
+      itrEnd = md->field_end(); itr != itrEnd; ++itr){
+  
+    MeshFieldDecl* fd = *itr;
+    Value* field = fields[j];
+
+    bool write = LHS.find(fd->getName().str()) != LHS.end();
+    bool read = RHS.find(fd->getName().str()) != RHS.end();
+    
+    Value* mode =
+    read ? (write ? r.ReadWriteVal : r.ReadOnlyVal) : r.WriteDiscardVal;
+
+    Value* fieldId =
+    B.CreateLoad(B.CreateStructGEP(field, 1), "fieldId");
+    
+    Value* logicalPartition =
+    B.CreateLoad(B.CreateStructGEP(field, 4), "logicalPartition");
+    
+    Value* logicalRegion =
+    B.CreateLoad(B.CreateStructGEP(field, 3), "logicalRegion");
+    
+    args =
+    {indexLauncher, logicalPartition, ConstantInt::get(Int32Ty, 0),
+      mode, r.ExclusiveVal, logicalRegion};
+    
+    B.CreateCall(r.AddRegionRequirementFunc(), args);
+    
+    args =
+    {indexLauncher, ConstantInt::get(Int32Ty, j), fieldId};
+    B.CreateCall(r.AddFieldFunc(), args);
+    
+    ++j;
+  }
+  
+  args = {legionRuntime, legionContext, indexLauncher};
+  B.CreateCall(r.ExecuteIndexSpaceFunc(), args);
+  
+  B.CreateRetVoid();
+  
+  B.SetInsertPoint(prevBlock, prevPoint);
+}
+
 void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
+  if(hasLegionSupport() && CurFuncDecl){
+    if(const FunctionDecl* fd = dyn_cast<const FunctionDecl>(CurFuncDecl)){
+      if(fd->isTaskSpecified()){
+        EmitForallTaskInit(S);
+      }
+    }
+  }
+  
   const VarDecl* VD = S.getMeshVarDecl();
 
   ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();

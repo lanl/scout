@@ -344,6 +344,8 @@ public:
   llvm::Value* GPUThreadInc;
   llvm::Value* GPUNumThreads;
   
+  uint32_t NextLegionTaskId = 0;
+  
   //renderall color buffer
   llvm::Value *Color;
 
@@ -357,7 +359,7 @@ public:
   bool isGPU() {
     return CGM.getCodeGenOpts().ScoutNvidiaGPU;
   }
-
+  
   bool inLLDB(){
   	return CGM.getModule().getModuleIdentifier() == "$__lldb_module";
   }
@@ -2024,6 +2026,8 @@ public:
                         llvm::SmallVector<llvm::Value*, 3> &MeshDimensions,
                         llvm::Value* MeshBaseAddr);
 
+  void EmitForallTaskInit(const ForallMeshStmt &S);
+  
   void ResetVars(void);
   void EmitForallMeshStmt(const ForallMeshStmt &S);
 
