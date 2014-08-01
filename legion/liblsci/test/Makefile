@@ -10,13 +10,21 @@ mesh-gen-test
 all: $(ALL_TESTS)
 
 CFLAGS = \
+-std=c99 \
 -Wall -Wextra \
 -I../lib \
--I$(LG_RT_DIR)
+-I$(LG_RT_DIR) \
+-L../lib
 
-LDFLAGS = \
--L../lib -llsci \
--lstdc++
+LDFLAGS = -lstdc++ -lpthread -llsci
+UNAME := $(shell uname)
+
+ifeq ($(UNAME), Linux)
+ LDFLAGS += -lrt
+endif
 
 clean:
 	rm -f $(ALL_TESTS)
+
+.c:
+	$(CC) $(CFLAGS) $@.c -o $@ $(LDFLAGS)

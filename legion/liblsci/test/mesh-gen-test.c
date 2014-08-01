@@ -106,13 +106,13 @@ main_task(lsci_task_args_t* task_args)
                                &field_a.launch_domain,
                                NULL, &arg_map);
     // add the region requirements for each of the fields
-    lsc_add_region_requirement(
+    lsci_add_region_requirement(
         &il, field_a.logical_partition, 0,
         LSCI_READ_WRITE, LSCI_EXCLUSIVE, field_a.logical_region
     );
     lsci_add_field(&il, idx++, field_a.fid);
     //
-    lsc_add_region_requirement(
+    lsci_add_region_requirement(
         &il, field_b.logical_partition, 0,
         LSCI_READ_ONLY, LSCI_EXCLUSIVE, field_b.logical_region
     );
