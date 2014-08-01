@@ -1348,15 +1348,120 @@ void CodeGenFunction::EmitForallTaskInit(const ForallMeshStmt &S){
   B.SetInsertPoint(prevBlock, prevPoint);
 }
 
-void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
-  if(hasLegionSupport() && CurFuncDecl){
-    if(const FunctionDecl* fd = dyn_cast<const FunctionDecl>(CurFuncDecl)){
-      if(fd->isTaskSpecified()){
-        EmitForallTaskInit(S);
-      }
+void CodeGenFunction::EmitForallTask(const ForallMeshStmt& S,
+                                     llvm::Function* forallFunc){
+  using namespace std;
+  using namespace llvm;
+  
+  typedef vector<llvm::Type*> TypeVec;
+  typedef vector<llvm::Value*> ValueVec;
+  
+  LLVMContext& context = CGM.getLLVMContext();
+  CGLegionRuntime& r = CGM.getLegionRuntime();
+  auto& B = Builder;
+  
+  TypeVec params = {r.PointerTy(r.TaskArgsTy)};
+  llvm::FunctionType* ft = llvm::FunctionType::get(VoidTy, params, false);
+  
+  Function* task = Function::Create(ft,
+                                    Function::ExternalLinkage,
+                                    "ForallTaskFunction",
+                                    &CGM.getModule());
+  
+  Function::arg_iterator aitr = task->arg_begin();
+  Value* taskArgs = aitr;
+  
+  aitr = forallFunc->arg_begin();
+  
+  llvm::PointerType* meshPtrType = dyn_cast<llvm::PointerType>(aitr->getType());
+  assert(meshPtrType && "Expected a mesh ptr");
+
+  llvm::StructType* meshType = dyn_cast<llvm::StructType>(meshPtrType->getElementType());
+  assert(meshType && "Expect a mesh");
+  
+  BasicBlock* prevBlock = B.GetInsertBlock();
+  BasicBlock::iterator prevPoint = B.GetInsertPoint();
+  
+  BasicBlock* entry = BasicBlock::Create(context, "entry", task);
+  B.SetInsertPoint(entry);
+  
+  Value* meshTaskArgs =
+  B.CreateBitCast(B.CreateLoad(B.CreateStructGEP(taskArgs, 4)),
+                  r.PointerTy(r.MeshTaskArgsTy));
+  
+  Value* sgb =
+  B.CreateBitCast(B.CreateStructGEP(meshTaskArgs, 4), r.Rect1dTy);
+  
+  Value* mesh = B.CreateAlloca(meshType, 0, "mesh.ptr");
+  Value* regions = B.CreateLoad(B.CreateStructGEP(taskArgs, 4), "regions");
+  
+  ValueVec args;
+  
+  uint32_t i = 0;
+  MeshDecl* md = S.getMeshType()->getDecl();
+  for(MeshDecl::field_iterator itr = md->field_begin(),
+      itrEnd = md->field_end(); itr != itrEnd; ++itr){
+
+    MeshFieldDecl* fd = *itr;
+    llvm::Type* ft = ConvertType(fd->getType());
+
+    args = {regions};
+    
+    if(ft->isFloatTy()){
+      args.push_back(r.TypeFloatVal);
     }
+    else if(ft->isDoubleTy()){
+      args.push_back(r.TypeDoubleVal);
+    }
+    else if(ft->isIntegerTy(32)){
+      args.push_back(r.TypeInt32Val);
+    }
+    else if(ft->isIntegerTy(64)){
+      args.push_back(r.TypeInt64Val);
+    }
+    else{
+      assert(false && "unhandled mesh field type");
+    }
+    
+    args.push_back(ConstantInt::get(Int64Ty, i));
+    args.push_back(ConstantInt::get(Int32Ty, 0));
+    args.push_back(sgb);
+    
+    Value* fp = B.CreateCall(r.RawRectPtr1dFunc(), args);
+    Value* cv = B.CreateBitCast(fp, meshType->getTypeAtIndex(i));
+    Value* mf = B.CreateStructGEP(mesh, i);
+    B.CreateStore(cv, mf);
+  }
+
+  SmallVector<Value*, 3> Dimensions;
+  GetMeshDimensions(S.getMeshType(), Dimensions);
+  
+  Value* depth = B.CreateAlloca(Int32Ty, 0, "depth.ptr");
+  Value* height = B.CreateAlloca(Int32Ty, 0, "height.ptr");
+  Value* width = B.CreateAlloca(Int32Ty, 0, "width.ptr");
+
+  Value* One = llvm::ConstantInt::get(Int32Ty, 1);
+  
+  while(Dimensions.size() < 3){
+    Dimensions.push_back(One);
   }
   
+  B.CreateStore(Dimensions[2], depth);
+  B.CreateStore(Dimensions[1], height);
+  B.CreateStore(Dimensions[0], width);
+
+  Value* meshAddr = B.CreateAlloca(meshPtrType, 0, "meshAddr");
+  B.CreateStore(mesh, meshAddr);
+  
+  args = {mesh, depth, height, width, meshAddr};
+  B.CreateCall(forallFunc, args);
+  
+  B.CreateRetVoid();
+  
+  B.SetInsertPoint(prevBlock, prevPoint);
+}
+
+void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   const VarDecl* VD = S.getMeshVarDecl();
 
   ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
@@ -1533,7 +1638,16 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
   // Extract Blocks to function and replace w/ call to function
   if(!inLLDB()){
-  	ExtractRegion(entry, exit, "ForallMeshFunction");
+    llvm::Function* f = ExtractRegion(entry, exit, "ForallMeshFunction");
+    
+    if(hasLegionSupport() && CurFuncDecl){
+      if(const FunctionDecl* fd = dyn_cast<const FunctionDecl>(CurFuncDecl)){
+        if(fd->isTaskSpecified()){
+          EmitForallTaskInit(S);
+          EmitForallTask(S, f);
+        }
+      }
+    }
   }
 }
 

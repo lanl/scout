@@ -592,3 +592,25 @@ llvm::Function* CGLegionRuntime::RegisterVoidLegionTaskFunc(){
   
   return f;
 }
+
+llvm::Function* CGLegionRuntime::RawRectPtr1dFunc(){
+  string name = "raw_rect_ptr_1d";
+  
+  llvm::Function* f = CGM.getModule().getFunction(name);
+  
+  if(f){
+    return f;
+  }
+  
+  vector<llvm::Type*> params =
+  {PhysicalRegionsTy, Int32Ty, Int64Ty, FieldIdTy, Rect1dTy};
+  
+  llvm::FunctionType* ft = llvm::FunctionType::get(VoidPtrTy, params, false);
+  
+  f = llvm::Function::Create(ft,
+                             llvm::Function::ExternalLinkage,
+                             name,
+                             &CGM.getModule());
+  
+  return f;
+}

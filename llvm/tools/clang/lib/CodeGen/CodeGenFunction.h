@@ -2027,6 +2027,7 @@ public:
                         llvm::Value* MeshBaseAddr);
 
   void EmitForallTaskInit(const ForallMeshStmt &S);
+  void EmitForallTask(const ForallMeshStmt &S, llvm::Function* forallFunc);
   
   void ResetVars(void);
   void EmitForallMeshStmt(const ForallMeshStmt &S);
