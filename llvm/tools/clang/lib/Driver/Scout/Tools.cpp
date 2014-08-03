@@ -63,5 +63,6 @@ void AddScoutLibArgs(const ArgList &Args,
   }
   if (Args.hasArg(options::OPT_legionSupport)) {
     CmdArgs.push_back("-llsci");
+    CmdArgs.push_back("-lstdc++");
   }
 }

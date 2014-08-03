@@ -16,7 +16,7 @@ CFLAGS = \
 -I$(LG_RT_DIR) \
 -L../lib
 
-LDFLAGS = -lstdc++ -lpthread -llsci
+LDFLAGS = -llsci -lpthread -lstdc++
 UNAME := $(shell uname)
 
 ifeq ($(UNAME), Linux)
