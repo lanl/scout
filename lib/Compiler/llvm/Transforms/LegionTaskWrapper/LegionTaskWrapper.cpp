@@ -11,6 +11,7 @@
 
 #include "llvm/Transforms/Scout/LegionTaskWrapper/LegionTaskWrapper.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Transforms/Utils/CodeExtractor.h"
 
 using namespace llvm;
 
@@ -20,34 +21,72 @@ LegionTaskWrapper::LegionTaskWrapper() : ModulePass(LegionTaskWrapper::ID) {}
 
 bool LegionTaskWrapper::runOnModule(Module &M) {
 
+  bool modifiedIR = false;
+
   // iterate through functions in module M
   for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I) {
 
     // get function
     Function& F = *I;
 
-    // figure out if f can be a legion task by checking its metadata
-    // metadata for a function is on a basic block after entry, so check through BBs
-    for (Function::iterator BBI = F.begin(), E = F.end(); BBI != E;++BBI) {
+    // Check if function is "main()" and if so, extract it and make a new function "main_prime()".
+    // Make main() call main_prime().
 
-      BasicBlock &BB = *BBI;
+    if (F.getName() == "main") {
+      //errs() << "main found: ";
+      //errs().write_escaped(F.getName()) << '\n';
 
-      // if name of basic block is task.md, it can be wrapped as a task
-      StringRef BBName = BB.getName();
-      std::string MDStr = "task.md";
-      StringRef MDName(MDStr); 
-      if (BBName.equals(MDName) ) {
-//        errs() << "Task found: ";
-//        errs().write_escaped(F.getName()) << '\n';
+      // This extractor code is mostly from clang/lib/CodeGen/CGStmt.cpp: CodeGenFunction::ExtractRegion()
+      std::vector< llvm::BasicBlock * > Blocks;
 
-        // TO DO: create legion task wrapper 
+      llvm::Function::iterator BB = F.begin();
 
+      // collect forall basic blocks up to exit
+      for( ; BB != F.end(); ++BB) {
+
+        // look for function local metadata
+        for (BasicBlock::const_iterator II = BB->begin(), IE = BB->end(); II != IE; ++II) {
+
+          for(unsigned i = 0, e = II->getNumOperands(); i!=e; ++i){
+            
+            if(MDNode *N = dyn_cast_or_null<MDNode>(II->getOperand(i))){
+
+              if (N->isFunctionLocal()) {
+
+                // just remove function local metadata
+                // see http://lists.cs.uiuc.edu/pipermail/llvmdev/2013-November/068205.html
+                N->replaceOperandWith(i, 0);
+              }
+            } 
+          }
+        }
+        Blocks.push_back(BB);
       }
-    }
-  }
 
+      //SC_TODO: should we be using a DominatorTree?
+      //llvm::DominatorTree DT;
+
+      llvm::CodeExtractor codeExtractor(Blocks, 0/*&DT*/, false);
+
+      llvm::Function *FprimeFn = codeExtractor.extractCodeRegion();
+
+      const std::string name("main_prime");
+
+      FprimeFn->setName(name);
+
+      modifiedIR = true;
+
+    }
+
+    // Generate code to do the following:
+    // set top level task ID (get MAIN_TID from metadata)
+    // register main task data
+    // register other tasks (get info from metadata)
+    // start legion
+
+  }
   // return true if modified IR
-  return false;
+  return modifiedIR;
 }
 
 ModulePass* llvm::createLegionTaskWrapperPass(){
