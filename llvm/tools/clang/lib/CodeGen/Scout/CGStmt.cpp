@@ -1171,7 +1171,23 @@ void CodeGenFunction::EmitGPUPreamble(const ForallMeshStmt& S){
   GPUThreadInc = Builder.CreateMul(ntid, nctaid, "threadInc");
 }
 
-void CodeGenFunction::EmitForallTaskInit(const ForallMeshStmt &S){
+void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
+                                     llvm::Function* taskFunc){
+  
+  assert(FD->param_size() == 1 && "expected one task argument");
+  ParmVarDecl* pd = *FD->param_begin();
+  const Type* t = pd->getType().getTypePtr();
+  assert(t->isPointerType() && "expected a mesh pointer");
+  
+  const UniformMeshType* mt = dyn_cast<UniformMeshType>(t->getPointeeType());
+  assert(mt && "expected a uniform mesh");
+  
+  EmitLegionTaskInit(FD, mt);
+  EmitLegionTaskWrapper(mt, taskFunc);
+}
+
+void CodeGenFunction::EmitLegionTaskInit(const FunctionDecl* FD,
+                                         const MeshType* mt){
   using namespace std;
   using namespace llvm;
 
@@ -1181,6 +1197,8 @@ void CodeGenFunction::EmitForallTaskInit(const ForallMeshStmt &S){
   LLVMContext& context = CGM.getLLVMContext();
   CGLegionRuntime& r = CGM.getLegionRuntime();
   auto& B = Builder;
+
+  MeshDecl* md = mt->getDecl();
   
   TypeVec params = {r.PointerTy(r.UnimeshTy), r.ContextTy, r.RuntimeTy};
   llvm::FunctionType* ft = llvm::FunctionType::get(VoidTy, params, false);
@@ -1201,8 +1219,6 @@ void CodeGenFunction::EmitForallTaskInit(const ForallMeshStmt &S){
   
   BasicBlock* entry = BasicBlock::Create(context, "entry", taskInit);
   B.SetInsertPoint(entry);
-  
-  MeshDecl* md = S.getMeshType()->getDecl();
   
   ValueVec fields;
   ValueVec args;
@@ -1298,12 +1314,11 @@ void CodeGenFunction::EmitForallTaskInit(const ForallMeshStmt &S){
     r.GetNull(r.TaskArgumentTy), argMap};
   B.CreateCall(r.IndexLauncherCreateFunc(), args);
   
-  ForallMeshStmt *SP = const_cast<ForallMeshStmt *>(&S);
-  ForallVisitor visitor(SP);
-  visitor.Visit(SP);
+  TaskVisitor visitor(FD);
+  visitor.VisitStmt(FD->getBody());
   
-  const ForallVisitor::FieldMap& LHS = visitor.getLHSmap();
-  const ForallVisitor::FieldMap& RHS = visitor.getRHSmap();
+  const TaskVisitor::FieldMap& LHS = visitor.getLHSmap();
+  const TaskVisitor::FieldMap& RHS = visitor.getRHSmap();
   
   uint32_t j = 0;
   for(MeshDecl::field_iterator itr = md->field_begin(),
@@ -1348,8 +1363,8 @@ void CodeGenFunction::EmitForallTaskInit(const ForallMeshStmt &S){
   B.SetInsertPoint(prevBlock, prevPoint);
 }
 
-void CodeGenFunction::EmitForallTask(const ForallMeshStmt& S,
-                                     llvm::Function* forallFunc){
+void CodeGenFunction::EmitLegionTaskWrapper(const MeshType* mt,
+                                            llvm::Function* taskFunc){
   using namespace std;
   using namespace llvm;
   
@@ -1359,6 +1374,8 @@ void CodeGenFunction::EmitForallTask(const ForallMeshStmt& S,
   LLVMContext& context = CGM.getLLVMContext();
   CGLegionRuntime& r = CGM.getLegionRuntime();
   auto& B = Builder;
+  
+  MeshDecl* md = mt->getDecl();
   
   TypeVec params = {r.PointerTy(r.TaskArgsTy)};
   llvm::FunctionType* ft = llvm::FunctionType::get(VoidTy, params, false);
@@ -1371,7 +1388,7 @@ void CodeGenFunction::EmitForallTask(const ForallMeshStmt& S,
   Function::arg_iterator aitr = task->arg_begin();
   Value* taskArgs = aitr;
   
-  aitr = forallFunc->arg_begin();
+  aitr = taskFunc->arg_begin();
   
   llvm::PointerType* meshPtrType = dyn_cast<llvm::PointerType>(aitr->getType());
   assert(meshPtrType && "Expected a mesh ptr");
@@ -1398,7 +1415,6 @@ void CodeGenFunction::EmitForallTask(const ForallMeshStmt& S,
   ValueVec args;
   
   uint32_t i = 0;
-  MeshDecl* md = S.getMeshType()->getDecl();
   for(MeshDecl::field_iterator itr = md->field_begin(),
       itrEnd = md->field_end(); itr != itrEnd; ++itr){
 
@@ -1434,7 +1450,7 @@ void CodeGenFunction::EmitForallTask(const ForallMeshStmt& S,
   }
 
   SmallVector<Value*, 3> Dimensions;
-  GetMeshDimensions(S.getMeshType(), Dimensions);
+  GetMeshDimensions(mt, Dimensions);
   
   Value* depth = B.CreateAlloca(Int32Ty, 0, "depth.ptr");
   Value* height = B.CreateAlloca(Int32Ty, 0, "height.ptr");
@@ -1453,8 +1469,8 @@ void CodeGenFunction::EmitForallTask(const ForallMeshStmt& S,
   Value* meshAddr = B.CreateAlloca(meshPtrType, 0, "meshAddr");
   B.CreateStore(mesh, meshAddr);
   
-  args = {mesh, depth, height, width, meshAddr};
-  B.CreateCall(forallFunc, args);
+  args = {mesh};
+  B.CreateCall(taskFunc, args);
   
   B.CreateRetVoid();
   
@@ -1639,15 +1655,6 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   // Extract Blocks to function and replace w/ call to function
   if(!inLLDB()){
     llvm::Function* f = ExtractRegion(entry, exit, "ForallMeshFunction");
-    
-    if(hasLegionSupport() && CurFuncDecl){
-      if(const FunctionDecl* fd = dyn_cast<const FunctionDecl>(CurFuncDecl)){
-        if(fd->isTaskSpecified()){
-          EmitForallTaskInit(S);
-          EmitForallTask(S, f);
-        }
-      }
-    }
   }
 }
 

@@ -2026,8 +2026,9 @@ public:
                         llvm::SmallVector<llvm::Value*, 3> &MeshDimensions,
                         llvm::Value* MeshBaseAddr);
 
-  void EmitForallTaskInit(const ForallMeshStmt &S);
-  void EmitForallTask(const ForallMeshStmt &S, llvm::Function* forallFunc);
+  void EmitLegionTask(const FunctionDecl* FD, llvm::Function* taskFunc);
+  void EmitLegionTaskInit(const FunctionDecl* FD, const MeshType* mt);
+  void EmitLegionTaskWrapper(const MeshType* mt, llvm::Function* taskFunc);
   
   void ResetVars(void);
   void EmitForallMeshStmt(const ForallMeshStmt &S);
