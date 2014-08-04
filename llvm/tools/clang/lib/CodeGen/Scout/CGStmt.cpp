@@ -1182,12 +1182,13 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   const UniformMeshType* mt = dyn_cast<UniformMeshType>(t->getPointeeType());
   assert(mt && "expected a uniform mesh");
   
-  EmitLegionTaskInit(FD, mt);
+  EmitLegionTaskInit(FD, mt, taskFunc);
   EmitLegionTaskWrapper(mt, taskFunc);
 }
 
 void CodeGenFunction::EmitLegionTaskInit(const FunctionDecl* FD,
-                                         const MeshType* mt){
+                                         const MeshType* mt,
+                                         llvm::Function* taskFunc){
   using namespace std;
   using namespace llvm;
 
@@ -1206,9 +1207,21 @@ void CodeGenFunction::EmitLegionTaskInit(const FunctionDecl* FD,
   Function* taskInit =
   Function::Create(ft,
                    Function::ExternalLinkage,
-                   "ForallTaskInitFunction",
+                   "LegionTaskInitFunction",
                    &CGM.getModule());
 
+  NamedMDNode* tasks =
+  CGM.getModule().getOrInsertNamedMetadata("scout.tasks");
+  
+  uint32_t taskId = NextLegionTaskId++;
+  
+  SmallVector<Value*, 3> taskInfo;
+  taskInfo.push_back(ConstantInt::get(Int32Ty, taskId));
+  taskInfo.push_back(taskFunc);
+  taskInfo.push_back(taskInit);
+  
+  tasks->addOperand(MDNode::get(context, taskInfo));
+  
   Function::arg_iterator aitr = taskInit->arg_begin();
   Value* meshPtr = aitr++;
   Value* legionContext = aitr++;
@@ -1243,7 +1256,7 @@ void CodeGenFunction::EmitLegionTaskInit(const FunctionDecl* FD,
   
   Value* Zero = ConstantInt::get(Int64Ty, 0);
   Value* One = ConstantInt::get(Int64Ty, 1);
-  Value* TaskId = ConstantInt::get(Int32Ty, NextLegionTaskId++);
+  Value* TaskId = ConstantInt::get(Int32Ty, taskId);
   
   Value* iPtr = B.CreateAlloca(Int64Ty, 0, "i.ptr");
   B.CreateStore(Zero, iPtr);
@@ -1382,7 +1395,7 @@ void CodeGenFunction::EmitLegionTaskWrapper(const MeshType* mt,
   
   Function* task = Function::Create(ft,
                                     Function::ExternalLinkage,
-                                    "ForallTaskFunction",
+                                    "LegionTaskFunction",
                                     &CGM.getModule());
   
   Function::arg_iterator aitr = task->arg_begin();

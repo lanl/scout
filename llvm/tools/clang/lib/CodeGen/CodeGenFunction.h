@@ -344,7 +344,7 @@ public:
   llvm::Value* GPUThreadInc;
   llvm::Value* GPUNumThreads;
   
-  uint32_t NextLegionTaskId = 0;
+  uint32_t NextLegionTaskId = 1;
   
   //renderall color buffer
   llvm::Value *Color;
@@ -2027,7 +2027,11 @@ public:
                         llvm::Value* MeshBaseAddr);
 
   void EmitLegionTask(const FunctionDecl* FD, llvm::Function* taskFunc);
-  void EmitLegionTaskInit(const FunctionDecl* FD, const MeshType* mt);
+  
+  void EmitLegionTaskInit(const FunctionDecl* FD,
+                          const MeshType* mt,
+                          llvm::Function* taskFunc);
+  
   void EmitLegionTaskWrapper(const MeshType* mt, llvm::Function* taskFunc);
   
   void ResetVars(void);
