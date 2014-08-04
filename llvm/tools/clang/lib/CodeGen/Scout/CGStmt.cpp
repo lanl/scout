@@ -1177,7 +1177,7 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   assert(FD->param_size() == 1 && "expected one task argument");
   ParmVarDecl* pd = *FD->param_begin();
   const Type* t = pd->getType().getTypePtr();
-  assert(t->isPointerType() && "expected a mesh pointer");
+  assert((t->isPointerType() || t->isReferenceType()) && "expected a mesh pointer");
   
   const UniformMeshType* mt = dyn_cast<UniformMeshType>(t->getPointeeType());
   assert(mt && "expected a uniform mesh");
