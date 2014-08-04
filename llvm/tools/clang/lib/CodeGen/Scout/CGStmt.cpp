@@ -1460,27 +1460,30 @@ void CodeGenFunction::EmitLegionTaskWrapper(const MeshType* mt,
     Value* cv = B.CreateBitCast(fp, meshType->getTypeAtIndex(i));
     Value* mf = B.CreateStructGEP(mesh, i);
     B.CreateStore(cv, mf);
+    ++i;
   }
 
   SmallVector<Value*, 3> Dimensions;
   GetMeshDimensions(mt, Dimensions);
-  
-  Value* depth = B.CreateAlloca(Int32Ty, 0, "depth.ptr");
-  Value* height = B.CreateAlloca(Int32Ty, 0, "height.ptr");
-  Value* width = B.CreateAlloca(Int32Ty, 0, "width.ptr");
 
-  Value* One = llvm::ConstantInt::get(Int32Ty, 1);
+  Value* rank = llvm::ConstantInt::get(Int32Ty, Dimensions.size());
+  Value* One = ConstantInt::get(Int32Ty, 1);
   
   while(Dimensions.size() < 3){
     Dimensions.push_back(One);
   }
-  
-  B.CreateStore(Dimensions[2], depth);
-  B.CreateStore(Dimensions[1], height);
-  B.CreateStore(Dimensions[0], width);
 
-  Value* meshAddr = B.CreateAlloca(meshPtrType, 0, "meshAddr");
-  B.CreateStore(mesh, meshAddr);
+  Value* widthPtr = B.CreateStructGEP(mesh, i++);
+  B.CreateStore(Dimensions[0], widthPtr);
+
+  Value* heightPtr = B.CreateStructGEP(mesh, i++);
+  B.CreateStore(Dimensions[1], heightPtr);
+  
+  Value* depthPtr = B.CreateStructGEP(mesh, i++);
+  B.CreateStore(Dimensions[2], depthPtr);
+  
+  Value* rankPtr = B.CreateStructGEP(mesh, i++);
+  B.CreateStore(rank, rankPtr);
   
   args = {mesh};
   B.CreateCall(taskFunc, args);
