@@ -1176,19 +1176,31 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   
   assert(FD->param_size() == 1 && "expected one task argument");
   ParmVarDecl* pd = *FD->param_begin();
+  GetLegionType(pd);
   const Type* t = pd->getType().getTypePtr();
   assert((t->isPointerType() || t->isReferenceType()) && "expected a mesh pointer");
   
   const UniformMeshType* mt = dyn_cast<UniformMeshType>(t->getPointeeType());
   assert(mt && "expected a uniform mesh");
   
-  EmitLegionTaskInit(FD, mt, taskFunc);
-  EmitLegionTaskWrapper(mt, taskFunc);
+  uint32_t taskId = EmitLegionTaskInit(FD, mt, taskFunc);
+  llvm::Function* task = EmitLegionTaskWrapper(mt, taskFunc);
+  
+  RegisterLegionTask(taskId, task);
 }
 
-void CodeGenFunction::EmitLegionTaskInit(const FunctionDecl* FD,
-                                         const MeshType* mt,
-                                         llvm::Function* taskFunc){
+llvm::Type* CodeGenFunction::GetLegionType(const VarDecl* VD){
+  //const Type* t = VD->getType().getTypePtr();
+  
+  //std::cerr << "---------- legion type" << std::endl;
+  //t->dump();
+  
+  return 0;
+}
+
+uint32_t CodeGenFunction::EmitLegionTaskInit(const FunctionDecl* FD,
+                                             const MeshType* mt,
+                                             llvm::Function* taskFunc){
   using namespace std;
   using namespace llvm;
 
@@ -1374,10 +1386,12 @@ void CodeGenFunction::EmitLegionTaskInit(const FunctionDecl* FD,
   B.CreateRetVoid();
   
   B.SetInsertPoint(prevBlock, prevPoint);
+  
+  return taskId;
 }
 
-void CodeGenFunction::EmitLegionTaskWrapper(const MeshType* mt,
-                                            llvm::Function* taskFunc){
+llvm::Function* CodeGenFunction::EmitLegionTaskWrapper(const MeshType* mt,
+                                                       llvm::Function* taskFunc){
   using namespace std;
   using namespace llvm;
   
@@ -1491,6 +1505,12 @@ void CodeGenFunction::EmitLegionTaskWrapper(const MeshType* mt,
   B.CreateRetVoid();
   
   B.SetInsertPoint(prevBlock, prevPoint);
+  
+  return task;
+}
+
+void CodeGenFunction::RegisterLegionTask(uint32_t taskId, llvm::Function* task){
+  
 }
 
 void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
