@@ -604,3 +604,100 @@ lsci_unimesh_get_vec_by_name(lsci_unimesh_t *mesh,
     return LSCI_SUCCESS;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// struct things
+////////////////////////////////////////////////////////////////////////////////
+namespace {
+struct struct_cxx {
+    std::map<std::string, lsci_vector_t> vectab;
+
+    struct_cxx(void) {
+
+    }
+
+    void
+    add_field(std::string name, lsci_vector_t vec) {
+        assert(vectab.find(name) == vectab.end() && "duplicate field");
+        vectab[name] = vec;
+    }
+
+    lsci_vector_t
+    get_field(std::string name) {
+        typedef std::map<std::string, lsci_vector_t>::iterator MapI;
+        MapI fi = vectab.find(name);
+        assert(fi != vectab.end() && "field not found");
+        return fi->second;
+    }
+
+    void
+    partition(size_t n_parts,
+              lsci_context_t context,
+              lsci_runtime_t runtime) {
+        assert(n_parts && context && runtime);
+        typedef std::map<std::string, lsci_vector_t>::iterator MapI;
+        for (MapI i = vectab.begin(); i != vectab.end(); i++) {
+            std::cout << "lsci: partitioning: " << i->first <<
+                         " into " << n_parts << " piece(s)." << std::endl;
+            lsci_vector_partition(&i->second, n_parts, context, runtime);
+        }
+    }
+};
+
+int
+lsci_struct_create(lsci_struct_t *theStruct,
+                   lsci_context_t context,
+                   lsci_runtime_t runtime)
+{
+    assert(theStruct && context && runtime);
+    struct_cxx *scxx = new struct_cxx;
+    theStruct->hndl = static_cast<lsci_struct_handle_t>(scxx);
+    assert(theStruct->hndl);
+    return LSCI_SUCCESS;
+}
+
+int
+lsci_struct_add_field(lsci_struct_t *theStruct,
+                      lsci_dt_t type,
+                      size_t length,
+                      char *field_name,
+                      lsci_context_t context,
+                      lsci_runtime_t runtime)
+{
+    assert(theStruct && field_name && context && runtime && type < LSCI_TYPE_MAX);
+    struct_cxx *scxx = static_cast<struct_cxx *>(theStruct->hndl);
+    assert(scxx);
+    lsci_vector_t field;
+    lsci_vector_create(&field, length, type, context, runtime);
+    // now add the thing to the map
+    scxx->add_field(std::string(field_name), field);
+    return LSCI_SUCCESS;
+}
+
+int
+lsci_struct_partition(lsci_struct_t *theStruct,
+                      size_t n_parts,
+                      lsci_context_t context,
+                      lsci_runtime_t runtime)
+{
+    assert(theStruct && n_parts && context && runtime);
+    struct_cxx *scxx = static_cast<struct_cxx *>(theStruct->hndl);
+    assert(scxx);
+    scxx->partition(n_parts, context, runtime);
+    return LSCI_SUCCESS;
+}
+
+int
+lsci_struct_get_vec_by_name(lsci_struct_t *theStruct,
+                            char *name,
+                            lsci_vector_t *vec,
+                            lsci_context_t context,
+                            lsci_runtime_t runtime)
+{
+    assert(theStruct && name && vec && context && runtime);
+    struct_cxx *scxx = static_cast<struct_cxx *>(theStruct->hndl);
+    assert(scxx);
+    *vec = scxx->get_field(std::string(name));
+    return LSCI_SUCCESS;
+}
+
+} // end unnamed namespace for internal things

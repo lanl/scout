@@ -81,6 +81,7 @@ CGLegionRuntime::CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM){
   ProjectionIdTy = Int32Ty;
   RegionRequirementHndlTy = VoidPtrTy;
   UnimeshHandleTy = VoidPtrTy;
+  StructHandleTy = VoidPtrTy;
   VariantIdTy = Int64Ty;
   
   SuccessVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0));
@@ -130,6 +131,9 @@ CGLegionRuntime::CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM){
 
   fields = {UnimeshHandleTy, Int64Ty, Int64Ty, Int64Ty, Int64Ty};
   UnimeshTy = llvm::StructType::get(context, fields);
+
+  fields = {StructHandleTy};
+  StructTy = llvm::StructType::get(context, fields);
   
   fields = {ContextTy, RuntimeTy, Int32Ty, Int64Ty, PhysicalRegionsTy, VoidPtrTy};
   TaskArgsTy = llvm::StructType::get(context, fields);
@@ -516,6 +520,93 @@ llvm::Function* CGLegionRuntime::UnimeshGetVecByNameFunc(){
   
   vector<llvm::Type*> params =
   {PointerTy(UnimeshTy), VoidPtrTy, PointerTy(VectorTy), ContextTy, RuntimeTy};
+  
+  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
+  
+  f = llvm::Function::Create(ft,
+                             llvm::Function::ExternalLinkage,
+                             name,
+                             &CGM.getModule());
+  
+  return f;
+}
+
+llvm::Function* CGLegionRuntime::StructCreateFunc(){
+  string name = "lsci_struct_create";
+  
+  llvm::Function* f = CGM.getModule().getFunction(name);
+  
+  if(f){
+    return f;
+  }
+  
+  vector<llvm::Type*> params =
+  {PointerTy(StructTy), ContextTy, RuntimeTy};
+  
+  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
+  
+  f = llvm::Function::Create(ft,
+                             llvm::Function::ExternalLinkage,
+                             name,
+                             &CGM.getModule());
+  
+  return f;
+}
+
+llvm::Function* CGLegionRuntime::StructAddFieldFunc(){
+  string name = "lsci_struct_add_field";
+  
+  llvm::Function* f = CGM.getModule().getFunction(name);
+  
+  if(f){
+    return f;
+  }
+  
+  vector<llvm::Type*> params =
+  {PointerTy(StructTy), Int32Ty, Int64Ty, VoidPtrTy, ContextTy, RuntimeTy};
+  
+  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
+  
+  f = llvm::Function::Create(ft,
+                             llvm::Function::ExternalLinkage,
+                             name,
+                             &CGM.getModule());
+  
+  return f;
+}
+
+llvm::Function* CGLegionRuntime::StructPartitionFunc(){
+  string name = "lsci_struct_partition";
+  
+  llvm::Function* f = CGM.getModule().getFunction(name);
+  
+  if(f){
+    return f;
+  }
+  
+  vector<llvm::Type*> params = {PointerTy(StructTy), Int64Ty, ContextTy, RuntimeTy};
+  
+  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
+  
+  f = llvm::Function::Create(ft,
+                             llvm::Function::ExternalLinkage,
+                             name,
+                             &CGM.getModule());
+  
+  return f;
+}
+
+llvm::Function* CGLegionRuntime::StructGetVecByNameFunc(){
+  string name = "lsci_struct_get_vec_by_name";
+  
+  llvm::Function* f = CGM.getModule().getFunction(name);
+  
+  if(f){
+    return f;
+  }
+  
+  vector<llvm::Type*> params =
+  {PointerTy(StructTy), VoidPtrTy, PointerTy(VectorTy), ContextTy, RuntimeTy};
   
   llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
   

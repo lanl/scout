@@ -87,10 +87,17 @@ namespace CodeGen {
     llvm::Function* AddFieldFunc();
     llvm::Function* ExecuteIndexSpaceFunc();
     llvm::Function* VectorCreateFunc();
+
     llvm::Function* UnimeshCreateFunc();
     llvm::Function* UnimeshAddFieldFunc();
     llvm::Function* UnimeshPartitionFunc();
     llvm::Function* UnimeshGetVecByNameFunc();
+
+    llvm::Function* StructCreateFunc();
+    llvm::Function* StructAddFieldFunc();
+    llvm::Function* StructPartitionFunc();
+    llvm::Function* StructGetVecByNameFunc();
+    
     llvm::Function* StartFunc();
     llvm::Function* SetTopLevelTaskIdFunc();
     llvm::Function* RegisterVoidLegionTaskFunc();
@@ -118,6 +125,7 @@ namespace CodeGen {
     llvm::Type* ProjectionIdTy;
     llvm::Type* RegionRequirementHndlTy;
     llvm::Type* UnimeshHandleTy;
+    llvm::Type* StructHandleTy;
     llvm::Type* VariantIdTy;
     
     llvm::StructType* Rect1dStorageTy;
@@ -127,6 +135,7 @@ namespace CodeGen {
     llvm::StructType* IndexLauncherTy;
     llvm::StructType* RegionRequirementTy;
     llvm::StructType* UnimeshTy;
+    llvm::StructType* StructTy;
     llvm::StructType* TaskArgsTy;
     llvm::StructType* RegTaskDataTy;
     llvm::StructType* MeshTaskArgsTy;

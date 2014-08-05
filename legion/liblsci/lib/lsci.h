@@ -214,6 +214,41 @@ lsci_unimesh_get_vec_by_name(lsci_unimesh_t *mesh,
                              lsci_context_t context,
                              lsci_runtime_t runtime);
 
+////////////////////////////////////////////////////////////////////////////////
+// convenience struct abstraction
+////////////////////////////////////////////////////////////////////////////////
+typedef void* lsci_struct_handle_t;
+typedef struct lsci_struct_t {
+    // points to the underlying struct instance
+    lsci_struct_handle_t hndl;
+} lsci_struct_t;
+
+int
+lsci_struct_create(lsci_struct_t *theStruct,
+                   lsci_context_t context,
+                   lsci_runtime_t runtime);
+
+int
+lsci_struct_add_field(lsci_struct_t *theStruct,
+                      lsci_dt_t type,
+                      size_t length,
+                      char *field_name,
+                      lsci_context_t context,
+                      lsci_runtime_t runtime);
+
+int
+lsci_struct_partition(lsci_struct_t *theStruct,
+                      size_t n_parts,
+                      lsci_context_t context,
+                      lsci_runtime_t runtime);
+
+int
+lsci_struct_get_vec_by_name(lsci_unimesh_t *theStruct,
+                            char *name,
+                            lsci_vector_t *vec,
+                            lsci_context_t context,
+                            lsci_runtime_t runtime);
+
 
 /* arguments passed to tasks during their invocation */
 typedef struct lsci_task_args_t {
