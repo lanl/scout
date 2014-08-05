@@ -49,6 +49,7 @@
 
 // +===== Scout ==============================================================+
 #include "clang/AST/Scout/MeshDecls.h"
+#include "clang/Sema/Scout/ASTVisitors.h"
 // +==========================================================================+
 
 #include <algorithm>
@@ -10239,6 +10240,7 @@ Decl *Sema::ActOnFinishFunctionBody(Decl *D, Stmt *BodyArg) {
   return ActOnFinishFunctionBody(D, BodyArg, false);
 }
 
+
 Decl *Sema::ActOnFinishFunctionBody(Decl *dcl, Stmt *Body,
                                     bool IsInstantiation) {
   FunctionDecl *FD = dcl ? dcl->getAsFunction() : nullptr;
@@ -10248,6 +10250,14 @@ Decl *Sema::ActOnFinishFunctionBody(Decl *dcl, Stmt *Body,
 
   if (FD) {
     FD->setBody(Body);
+
+    // +===== Scout ==========================================================+
+    if(FD->isTaskSpecified()) {
+      TaskVisitor v(*this, FD);
+      v.Visit(Body);
+    }
+    // +======================================================================+
+
 
     if (getLangOpts().CPlusPlus1y && !FD->isInvalidDecl() && Body &&
         !FD->isDependentContext() && FD->getReturnType()->isUndeducedType()) {

@@ -12,6 +12,7 @@
 #include "llvm/Transforms/Scout/LegionTaskWrapper/LegionTaskWrapper.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Transforms/Utils/CodeExtractor.h"
+#include "llvm/IR/IRBuilder.h" 
 
 using namespace llvm;
 
@@ -76,14 +77,52 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
 
       modifiedIR = true;
 
+      // Gen code to set top level task ID (get MAIN_TID from metadata)
+      // TO DO
+
+      // Gen code to register main task data
+      // TO DO
+
+      // Gen code to register other tasks (get info from metadata)
+      // TO DO
+
+      // Gen code to start legion before the end of main()
+
+#ifdef CMS
+      // uncomment when lsci_start() gets defined
+
+      IRBuilder<> builder(M.getContext());
+
+      // Go through and find last block in main()
+      BasicBlock &lastBlock = F.back();
+
+      errs() << "found last block of main()\n";
+
+      // Find place to insert call to lsci_start(), before last instruction in the block
+      builder.SetInsertPoint(&(lastBlock.back()));
+
+      // create call instruction
+      llvm::Function::arg_iterator arg_iter = F.arg_begin();
+      llvm::Value* argcValue = arg_iter++;
+      llvm::Value* argvValue = arg_iter++;
+
+      llvm::SmallVector< llvm::Value *, 2 > args;
+      args.push_back(argcValue);
+      args.push_back(argvValue);
+
+      // call lsci_start() 
+      llvm::Function* lsci_startFunc;
+      lsci_startFunc = M.getFunction("lsci_start"); 
+      llvm::Value* lsciCallRet = builder.CreateCall(lsci_startFunc, args);
+
+      // create ret instruction
+      builder.CreateRet(lsciCallRet);
+
+      // Now get last instruction from this block (the previous return instruction) and delete it
+      llvm::Instruction& lastInst = lastBlock.back();
+      lastInst.eraseFromParent();
+#endif
     }
-
-    // Generate code to do the following:
-    // set top level task ID (get MAIN_TID from metadata)
-    // register main task data
-    // register other tasks (get info from metadata)
-    // start legion
-
   }
   // return true if modified IR
   return modifiedIR;
