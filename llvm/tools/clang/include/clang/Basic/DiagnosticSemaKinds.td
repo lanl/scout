@@ -7313,7 +7313,10 @@ def err_mesh_builtin_nargs : Error<
 def  err_mesh_builtin_arg : Error<
  	"argument to %select{width()|height()|depth()|rank()}0 must be a mesh">;  
 def  warn_mesh_builtin_ptr : Warning<
- 	"argument to %select{width()|height()|depth()|rank()}0 must be a mesh, adding *">;  	  
+ 	"argument to %select{width()|height()|depth()|rank()}0 must be a mesh, adding *">;  
+def err_nonpure_task_fuction : Error<
+    "non-pure task function">;
+ 		  
     
 } // end Scout issue category
 
