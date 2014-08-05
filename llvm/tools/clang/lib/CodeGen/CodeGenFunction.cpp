@@ -33,6 +33,7 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Operator.h"
+
 using namespace clang;
 using namespace CodeGen;
 
@@ -850,6 +851,9 @@ void CodeGenFunction::GenerateCode(GlobalDecl GD, llvm::Function *Fn,
   // emit metadata for a task function
   if(FD->isTaskSpecified()) {
     EmitTaskMDBlock(FD);
+    if(hasLegionSupport()){
+      EmitLegionTask(FD, Fn);
+    }
   }
   // emit metadata for a stencil function
   if(FD->isStencilSpecified()) {

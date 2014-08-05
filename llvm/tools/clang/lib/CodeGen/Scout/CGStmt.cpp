@@ -1171,7 +1171,24 @@ void CodeGenFunction::EmitGPUPreamble(const ForallMeshStmt& S){
   GPUThreadInc = Builder.CreateMul(ntid, nctaid, "threadInc");
 }
 
-void CodeGenFunction::EmitForallTaskInit(const ForallMeshStmt &S){
+void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
+                                     llvm::Function* taskFunc){
+  
+  assert(FD->param_size() == 1 && "expected one task argument");
+  ParmVarDecl* pd = *FD->param_begin();
+  const Type* t = pd->getType().getTypePtr();
+  assert((t->isPointerType() || t->isReferenceType()) && "expected a mesh pointer");
+  
+  const UniformMeshType* mt = dyn_cast<UniformMeshType>(t->getPointeeType());
+  assert(mt && "expected a uniform mesh");
+  
+  EmitLegionTaskInit(FD, mt, taskFunc);
+  EmitLegionTaskWrapper(mt, taskFunc);
+}
+
+void CodeGenFunction::EmitLegionTaskInit(const FunctionDecl* FD,
+                                         const MeshType* mt,
+                                         llvm::Function* taskFunc){
   using namespace std;
   using namespace llvm;
 
@@ -1181,6 +1198,8 @@ void CodeGenFunction::EmitForallTaskInit(const ForallMeshStmt &S){
   LLVMContext& context = CGM.getLLVMContext();
   CGLegionRuntime& r = CGM.getLegionRuntime();
   auto& B = Builder;
+
+  MeshDecl* md = mt->getDecl();
   
   TypeVec params = {r.PointerTy(r.UnimeshTy), r.ContextTy, r.RuntimeTy};
   llvm::FunctionType* ft = llvm::FunctionType::get(VoidTy, params, false);
@@ -1188,9 +1207,21 @@ void CodeGenFunction::EmitForallTaskInit(const ForallMeshStmt &S){
   Function* taskInit =
   Function::Create(ft,
                    Function::ExternalLinkage,
-                   "ForallTaskInitFunction",
+                   "LegionTaskInitFunction",
                    &CGM.getModule());
 
+  NamedMDNode* tasks =
+  CGM.getModule().getOrInsertNamedMetadata("scout.tasks");
+  
+  uint32_t taskId = NextLegionTaskId++;
+  
+  SmallVector<Value*, 3> taskInfo;
+  taskInfo.push_back(ConstantInt::get(Int32Ty, taskId));
+  taskInfo.push_back(taskFunc);
+  taskInfo.push_back(taskInit);
+  
+  tasks->addOperand(MDNode::get(context, taskInfo));
+  
   Function::arg_iterator aitr = taskInit->arg_begin();
   Value* meshPtr = aitr++;
   Value* legionContext = aitr++;
@@ -1201,8 +1232,6 @@ void CodeGenFunction::EmitForallTaskInit(const ForallMeshStmt &S){
   
   BasicBlock* entry = BasicBlock::Create(context, "entry", taskInit);
   B.SetInsertPoint(entry);
-  
-  MeshDecl* md = S.getMeshType()->getDecl();
   
   ValueVec fields;
   ValueVec args;
@@ -1227,7 +1256,7 @@ void CodeGenFunction::EmitForallTaskInit(const ForallMeshStmt &S){
   
   Value* Zero = ConstantInt::get(Int64Ty, 0);
   Value* One = ConstantInt::get(Int64Ty, 1);
-  Value* TaskId = ConstantInt::get(Int32Ty, NextLegionTaskId++);
+  Value* TaskId = ConstantInt::get(Int32Ty, taskId);
   
   Value* iPtr = B.CreateAlloca(Int64Ty, 0, "i.ptr");
   B.CreateStore(Zero, iPtr);
@@ -1298,12 +1327,11 @@ void CodeGenFunction::EmitForallTaskInit(const ForallMeshStmt &S){
     r.GetNull(r.TaskArgumentTy), argMap};
   B.CreateCall(r.IndexLauncherCreateFunc(), args);
   
-  ForallMeshStmt *SP = const_cast<ForallMeshStmt *>(&S);
-  ForallVisitor visitor(SP);
-  visitor.Visit(SP);
+  TaskVisitor visitor(FD);
+  visitor.VisitStmt(FD->getBody());
   
-  const ForallVisitor::FieldMap& LHS = visitor.getLHSmap();
-  const ForallVisitor::FieldMap& RHS = visitor.getRHSmap();
+  const TaskVisitor::FieldMap& LHS = visitor.getLHSmap();
+  const TaskVisitor::FieldMap& RHS = visitor.getRHSmap();
   
   uint32_t j = 0;
   for(MeshDecl::field_iterator itr = md->field_begin(),
@@ -1348,8 +1376,8 @@ void CodeGenFunction::EmitForallTaskInit(const ForallMeshStmt &S){
   B.SetInsertPoint(prevBlock, prevPoint);
 }
 
-void CodeGenFunction::EmitForallTask(const ForallMeshStmt& S,
-                                     llvm::Function* forallFunc){
+void CodeGenFunction::EmitLegionTaskWrapper(const MeshType* mt,
+                                            llvm::Function* taskFunc){
   using namespace std;
   using namespace llvm;
   
@@ -1360,18 +1388,20 @@ void CodeGenFunction::EmitForallTask(const ForallMeshStmt& S,
   CGLegionRuntime& r = CGM.getLegionRuntime();
   auto& B = Builder;
   
+  MeshDecl* md = mt->getDecl();
+  
   TypeVec params = {r.PointerTy(r.TaskArgsTy)};
   llvm::FunctionType* ft = llvm::FunctionType::get(VoidTy, params, false);
   
   Function* task = Function::Create(ft,
                                     Function::ExternalLinkage,
-                                    "ForallTaskFunction",
+                                    "LegionTaskFunction",
                                     &CGM.getModule());
   
   Function::arg_iterator aitr = task->arg_begin();
   Value* taskArgs = aitr;
   
-  aitr = forallFunc->arg_begin();
+  aitr = taskFunc->arg_begin();
   
   llvm::PointerType* meshPtrType = dyn_cast<llvm::PointerType>(aitr->getType());
   assert(meshPtrType && "Expected a mesh ptr");
@@ -1398,7 +1428,6 @@ void CodeGenFunction::EmitForallTask(const ForallMeshStmt& S,
   ValueVec args;
   
   uint32_t i = 0;
-  MeshDecl* md = S.getMeshType()->getDecl();
   for(MeshDecl::field_iterator itr = md->field_begin(),
       itrEnd = md->field_end(); itr != itrEnd; ++itr){
 
@@ -1431,30 +1460,33 @@ void CodeGenFunction::EmitForallTask(const ForallMeshStmt& S,
     Value* cv = B.CreateBitCast(fp, meshType->getTypeAtIndex(i));
     Value* mf = B.CreateStructGEP(mesh, i);
     B.CreateStore(cv, mf);
+    ++i;
   }
 
   SmallVector<Value*, 3> Dimensions;
-  GetMeshDimensions(S.getMeshType(), Dimensions);
-  
-  Value* depth = B.CreateAlloca(Int32Ty, 0, "depth.ptr");
-  Value* height = B.CreateAlloca(Int32Ty, 0, "height.ptr");
-  Value* width = B.CreateAlloca(Int32Ty, 0, "width.ptr");
+  GetMeshDimensions(mt, Dimensions);
 
-  Value* One = llvm::ConstantInt::get(Int32Ty, 1);
+  Value* rank = llvm::ConstantInt::get(Int32Ty, Dimensions.size());
+  Value* One = ConstantInt::get(Int32Ty, 1);
   
   while(Dimensions.size() < 3){
     Dimensions.push_back(One);
   }
-  
-  B.CreateStore(Dimensions[2], depth);
-  B.CreateStore(Dimensions[1], height);
-  B.CreateStore(Dimensions[0], width);
 
-  Value* meshAddr = B.CreateAlloca(meshPtrType, 0, "meshAddr");
-  B.CreateStore(mesh, meshAddr);
+  Value* widthPtr = B.CreateStructGEP(mesh, i++);
+  B.CreateStore(Dimensions[0], widthPtr);
+
+  Value* heightPtr = B.CreateStructGEP(mesh, i++);
+  B.CreateStore(Dimensions[1], heightPtr);
   
-  args = {mesh, depth, height, width, meshAddr};
-  B.CreateCall(forallFunc, args);
+  Value* depthPtr = B.CreateStructGEP(mesh, i++);
+  B.CreateStore(Dimensions[2], depthPtr);
+  
+  Value* rankPtr = B.CreateStructGEP(mesh, i++);
+  B.CreateStore(rank, rankPtr);
+  
+  args = {mesh};
+  B.CreateCall(taskFunc, args);
   
   B.CreateRetVoid();
   
@@ -1639,15 +1671,6 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   // Extract Blocks to function and replace w/ call to function
   if(!inLLDB()){
     llvm::Function* f = ExtractRegion(entry, exit, "ForallMeshFunction");
-    
-    if(hasLegionSupport() && CurFuncDecl){
-      if(const FunctionDecl* fd = dyn_cast<const FunctionDecl>(CurFuncDecl)){
-        if(fd->isTaskSpecified()){
-          EmitForallTaskInit(S);
-          EmitForallTask(S, f);
-        }
-      }
-    }
   }
 }
 
