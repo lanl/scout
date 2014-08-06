@@ -84,7 +84,6 @@
 using namespace clang;
 using namespace CodeGen;
 
-
 static const char *DimNames[]   = { "width", "height", "depth" };
 static const char *IndexNames[] = { "x", "y", "z"};
 
@@ -1461,7 +1460,13 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
       B.CreateStore(cv, mf);
     }
     else{
-      B.CreateStore(R.GetNull(meshType->getTypeAtIndex(j)), mf);
+      llvm::PointerType* pt = dyn_cast<llvm::PointerType>(mf->getType());
+      assert(pt && "expected a pointer type");
+      
+      llvm::PointerType* et = dyn_cast<llvm::PointerType>(pt->getElementType());
+      assert(et && "expected a pointer element type");
+      
+      B.CreateStore(ConstantPointerNull::get(et), mf);
     }
     
     ++j;
