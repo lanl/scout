@@ -110,39 +110,39 @@ CGLegionRuntime::CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM){
   UtilProcVal = llvm::ConstantInt::get(context, llvm::APInt(32, 2));
   
   vector<llvm::Type*> fields = {PointerTy(Int8Ty)};
-  Rect1dStorageTy = llvm::StructType::get(context, fields);
+  Rect1dStorageTy = llvm::StructType::get(context, fields, "Rect1dStorage");
 
   fields = {DomainHandleTy, Int64Ty};
-  DomainTy = llvm::StructType::get(context, fields);
+  DomainTy = llvm::StructType::get(context, fields, "Domain");
   
   fields = {Int64Ty, FieldIdTy, IndexSpaceTy, LogicalRegionTy,
     LogicalPartitionTy, DomainTy, Int64Ty, Rect1dTy};
-  VectorTy = llvm::StructType::get(context, fields);
+  VectorTy = llvm::StructType::get(context, fields, "Vector");
   
   fields = {ArgumentMapHandleTy};
-  ArgumentMapTy = llvm::StructType::get(context, fields);
+  ArgumentMapTy = llvm::StructType::get(context, fields, "ArgumentMap");
   
   fields = {IndexLauncherHandleTy, Int32Ty, DomainTy};
-  IndexLauncherTy = llvm::StructType::get(context, fields);
+  IndexLauncherTy = llvm::StructType::get(context, fields, "IndexLauncher");
   
   fields = {RegionRequirementHndlTy, LogicalRegionTy,
     ProjectionIdTy, Int32Ty, Int32Ty, LogicalPartitionTy};
-  RegionRequirementTy = llvm::StructType::get(context, fields);
+  RegionRequirementTy = llvm::StructType::get(context, fields, "RegionRequirement");
 
   fields = {UnimeshHandleTy, Int64Ty, Int64Ty, Int64Ty, Int64Ty};
-  UnimeshTy = llvm::StructType::get(context, fields);
+  UnimeshTy = llvm::StructType::get(context, fields, "Unimesh");
 
   fields = {StructHandleTy};
-  StructTy = llvm::StructType::get(context, fields);
+  StructTy = llvm::StructType::get(context, fields, "Struct");
   
   fields = {ContextTy, RuntimeTy, Int32Ty, Int64Ty, PhysicalRegionsTy, VoidPtrTy};
-  TaskArgsTy = llvm::StructType::get(context, fields);
+  TaskArgsTy = llvm::StructType::get(context, fields, "TaskArgs");
 
   fields = {VoidPtrTy};
-  RegTaskDataTy = llvm::StructType::get(context, fields);
+  RegTaskDataTy = llvm::StructType::get(context, fields, "RegTaskData");
   
   fields = {Int64Ty, Int64Ty, Int64Ty, Int64Ty, Rect1dStorageTy, Int64Ty};
-  MeshTaskArgsTy = llvm::StructType::get(context, fields);
+  MeshTaskArgsTy = llvm::StructType::get(context, fields, "MeshTaskArgs");
 }
 
 CGLegionRuntime::~CGLegionRuntime() {}
