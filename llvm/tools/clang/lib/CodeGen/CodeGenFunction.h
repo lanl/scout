@@ -2028,14 +2028,6 @@ public:
 
   void EmitLegionTask(const FunctionDecl* FD, llvm::Function* taskFunc);
   
-  uint32_t EmitLegionTaskInit(const FunctionDecl* FD,
-                              const MeshType* mt,
-                              llvm::Function* taskFunc);
-  
-  llvm::Type* GetLegionType(const VarDecl* VD);
-  
-  llvm::Function* EmitLegionTaskWrapper(const MeshType* mt, llvm::Function* taskFunc);
-  
   void RegisterLegionTask(uint32_t taskId, llvm::Function* task);
   
   void ResetVars(void);
