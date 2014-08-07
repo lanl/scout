@@ -137,7 +137,7 @@ else
   cmake_flags += -DCMAKE_CXX_FLAGS="-std=c++11"
 endif
 
-all: $(build_dir)/Makefile legion-rt toolchain stdlib
+all: $(build_dir)/Makefile toolchain legion-rt runtime stdlib
 .PHONY: all 
 
 $(build_dir)/Makefile: CMakeLists.txt
@@ -150,6 +150,8 @@ legion-rt: $(build_dir) $(build_dir)/Makefile
 	@ \
 	echo "*** Building Legion Runtime" && \
 	cd $(build_dir) && \
+	CC=$(build_dir)/bin/clang  \
+	CXX=$(build_dir)/bin/clang++ \
 	LG_RT_DIR=$(src_dir)/legion/runtime \
 	make $(make_flags) -C $(src_dir)/legion/liblsci && \
 	LSCI_PREFIX=$(build_dir) make install -C $(src_dir)/legion/liblsci
