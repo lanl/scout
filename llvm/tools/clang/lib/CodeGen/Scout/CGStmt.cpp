@@ -1417,6 +1417,8 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   auto pitr = FD->param_begin();
   for(size_t i = 0; i < taskInit->arg_size() - 2; ++i){
     if(i == meshPos){
+      ++aitr;
+      ++pitr;
       continue;
     }
     
@@ -1440,6 +1442,7 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
           
           if(const llvm::ArrayType* at = dyn_cast<llvm::ArrayType>(et)){
             len = ConstantInt::get(Int64Ty, at->getNumElements());
+            et = at->getElementType();
           }
           else{
             len = One;
@@ -1493,16 +1496,16 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
     else{
       Value* field = B.CreateAlloca(R.VectorTy, 0, aitr->getName());
       
-      if(ft->isFloatTy()){
+      if(t->isFloatTy()){
         args = {field, One, R.TypeFloatVal, legionContext, legionRuntime};
       }
-      else if(ft->isDoubleTy()){
+      else if(t->isDoubleTy()){
         args = {field, One, R.TypeDoubleVal, legionContext, legionRuntime};
       }
-      else if(ft->isIntegerTy(32)){
+      else if(t->isIntegerTy(32)){
         args = {field, One, R.TypeInt32Val, legionContext, legionRuntime};
       }
-      else if(ft->isIntegerTy(64)){
+      else if(t->isIntegerTy(64)){
         args = {field, One, R.TypeInt64Val, legionContext, legionRuntime};
       }
       else{
@@ -1626,11 +1629,14 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   
   ValueVec origArgs;
   
+  uint32_t k = j;
   aitr = taskInit->arg_begin();
   pitr = FD->param_begin();
   for(size_t i = 0; i < taskInit->arg_size() - 2; ++i){
     if(i == meshPos){
       origArgs.push_back(mesh);
+      ++aitr;
+      ++pitr;
       continue;
     }
     
@@ -1673,13 +1679,21 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
             assert(false && "invalid task scalar param type");
           }
           
-          args.push_back(ConstantInt::get(Int64Ty, j++));
+          args.push_back(ConstantInt::get(Int64Ty, k++));
           args.push_back(ConstantInt::get(Int32Ty, 0));
           args.push_back(sgb);
   
           Value* ep = B.CreateStructGEP(arg, ei++);
           Value* fp = B.CreateCall(R.RawRectPtr1dFunc(), args);
           Value* cv = B.CreateBitCast(fp, R.PointerTy(et));
+
+          if(array){
+            ep = B.CreateBitCast(ep, R.PointerTy(R.PointerTy(et)));
+          }
+          else{
+            cv = B.CreateLoad(cv);
+          }
+          
           B.CreateStore(cv, ep);
         }
       }
@@ -1708,13 +1722,13 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
         assert(false && "invalid task scalar param type");
       }
       
-      args.push_back(ConstantInt::get(Int64Ty, j++));
+      args.push_back(ConstantInt::get(Int64Ty, k++));
       args.push_back(ConstantInt::get(Int32Ty, 0));
       args.push_back(sgb);
       
       Value* fp = B.CreateCall(R.RawRectPtr1dFunc(), args);
       Value* cv = B.CreateBitCast(fp, R.PointerTy(t));
-      B.CreateStore(cv, arg);
+      B.CreateStore(B.CreateLoad(cv), arg);
       
       origArgs.push_back(B.CreateLoad(arg));
     }
