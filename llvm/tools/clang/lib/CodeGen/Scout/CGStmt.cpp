@@ -1298,6 +1298,8 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
     }
   }
   
+  assert(firstField && "no mesh fields accessed");
+  
   Value* argMap = B.CreateAlloca(R.ArgumentMapTy, 0, "argMap.ptr");
   args = {argMap};
   Function* f = R.ArgumentMapCreateFunc();
@@ -1314,13 +1316,13 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   B.CreateStructGEP(firstField, 5, "launchDomain.ptr");
   
   Value* len =
-  B.CreateLoad(B.CreateStructGEP(fields[0], 6), "len");
+  B.CreateLoad(B.CreateStructGEP(firstField, 6), "len");
   
   Value* volume =
   B.CreateLoad(B.CreateStructGEP(launchDomain, 1), "volume");
   
   Value* bounds =
-  B.CreateLoad(B.CreateStructGEP(fields[0], 7), "bounds");
+  B.CreateLoad(B.CreateStructGEP(firstField, 7), "bounds");
   
   Value* rank =
   B.CreateLoad(B.CreateStructGEP(meshPtr, 1), "rank");
@@ -1384,8 +1386,8 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
     Value* field = fields[j];
     
     if(field){
-      bool write = LHS.find(fd->getName().str()) != LHS.end();
       bool read = RHS.find(fd->getName().str()) != RHS.end();
+      bool write = LHS.find(fd->getName().str()) != LHS.end();
       
       Value* mode =
       read ? (write ? R.ReadWriteVal : R.ReadOnlyVal) : R.WriteDiscardVal;
