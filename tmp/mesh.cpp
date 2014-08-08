@@ -1,3 +1,21 @@
+//
+// This code builds a vertex list (array of coordinates that make up
+// the mesh vertices).  In a Scout language sense these are our
+// 'vertices' too.  From there it builds an index set that points into
+// those vertices to represent the edges (vertex-to-vertex lines) and
+// then the cells -- the quads (squares in this case) that represent 
+// the mesh cells.  So, there's a reasonbly straightforward one-to-one 
+// mapping between Scout terminology and this code.  
+//
+// The key piece from a renderall perspective will be to build the
+// color array that each element above (vertex, edge, cell) is colored
+// by.  So, the renderall should fill the color array and then call
+// the renderable.
+//
+// From the command line you can compile this with:
+//
+// c++ mesh.cpp -L/usr/local/lib -framework OpengL -framework Cocoa -framework IOKit -framework CoreVideo -lglfw3 
+// 
 #include <stdio.h>
 #include <iostream>
 #include <stdlib.h>
@@ -12,15 +30,17 @@ unsigned mesh_height = 0;
 unsigned mesh_vert_width = 0;
 unsigned mesh_vert_height = 0;
 
+
 unsigned *vertices = 0;
 unsigned *edges    = 0;
 unsigned *cells    = 0;
+
 
 void init_mesh(unsigned width, unsigned height, unsigned cell_size) {
   if (vertices == 0) {
     mesh_width       = width;
     mesh_height      = height;
-    mesh_vert_width  = mesh_width + 1;
+    mesh_vert_width  = mesh_width  + 1;
     mesh_vert_height = mesh_height + 1;
     cerr << "create mesh: " << width << "x" << height << " cells.\n";
     cerr << "             " << mesh_vert_width << "x" << mesh_vert_height << " vertices.\n";
@@ -157,9 +177,6 @@ int main(int argc, char *argv[]) {
   glfwGetFramebufferSize(window, &win_width, &win_height);
   resize(window, win_width, win_height);
   
-
-
-
   while(! glfwWindowShouldClose(window)) {
     render_mesh(window);
     glfwPollEvents();
