@@ -111,44 +111,79 @@ CGLegionRuntime::CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM){
  
   // need to change all the struct types to create identified struct types if not already created
   // can't use literal struct types
-  vector<llvm::Type*> fields = {PointerTy(Int8Ty)};
-  Rect1dStorageTy = llvm::StructType::get(context, fields, "Rect1dStorage");
+  vector<llvm::Type*> fields;
+ 
+  Rect1dStorageTy = CGM.getModule().getTypeByName("struct.lsci_rect_1d_storage_t");
+  if (!Rect1dStorageTy) {
+    fields = {PointerTy(Int8Ty)};
+    Rect1dStorageTy = llvm::StructType::create(context, fields, "struct.lsci_rect_1d_storage_t");
+  }
 
-  fields = {DomainHandleTy, Int64Ty};
-  DomainTy = llvm::StructType::get(context, fields, "Domain");
+  DomainTy = CGM.getModule().getTypeByName("struct.lsci_domain_t");
+  if (!DomainTy) {
+    fields = {DomainHandleTy, Int64Ty};
+    DomainTy = llvm::StructType::create(context, fields, "struct.lsci_domain_t");
+  }
+ 
+  VectorTy = CGM.getModule().getTypeByName("struct.lsci_vector_t");
+  if (!VectorTy) {
+    fields = {Int64Ty, FieldIdTy, IndexSpaceTy, LogicalRegionTy,
+      LogicalPartitionTy, DomainTy, Int64Ty, Rect1dTy};
+    VectorTy = llvm::StructType::create(context, fields, "struct.lsci_vector_t");
+  }
   
-  fields = {Int64Ty, FieldIdTy, IndexSpaceTy, LogicalRegionTy,
-    LogicalPartitionTy, DomainTy, Int64Ty, Rect1dTy};
-  VectorTy = llvm::StructType::get(context, fields, "Vector");
-  
-  fields = {ArgumentMapHandleTy};
-  ArgumentMapTy = llvm::StructType::get(context, fields, "ArgumentMap");
-  
-  fields = {IndexLauncherHandleTy, Int32Ty, DomainTy};
-  IndexLauncherTy = llvm::StructType::get(context, fields, "IndexLauncher");
-  
-  fields = {RegionRequirementHndlTy, LogicalRegionTy,
-    ProjectionIdTy, Int32Ty, Int32Ty, LogicalPartitionTy};
-  RegionRequirementTy = llvm::StructType::get(context, fields, "RegionRequirement");
+  ArgumentMapTy = CGM.getModule().getTypeByName("struct.lsci_argument_map_t");
+  if (!ArgumentMapTy) {
+    fields = {ArgumentMapHandleTy};
+    ArgumentMapTy = llvm::StructType::create(context, fields, "struct.lsci_argument_map_t");
+  }
+ 
+  IndexLauncherTy =  CGM.getModule().getTypeByName("struct.lsci_index_launcher_t");
+  if (!IndexLauncherTy) {
+    fields = {IndexLauncherHandleTy, Int32Ty, DomainTy};
+    IndexLauncherTy = llvm::StructType::create(context, fields, "struct.lsci_index_launcher_t");
+  }
+ 
+  RegionRequirementTy =  CGM.getModule().getTypeByName("struct.lsci_region_requirement_t");
+  if (!RegionRequirementTy) {
+    fields = {RegionRequirementHndlTy, LogicalRegionTy,
+      ProjectionIdTy, Int32Ty, Int32Ty, LogicalPartitionTy};
+    RegionRequirementTy = llvm::StructType::create(context, fields, "struct.lsci_region_requirement_t");
+  }
 
-  fields = {UnimeshHandleTy, Int64Ty, Int64Ty, Int64Ty, Int64Ty};
-  UnimeshTy = llvm::StructType::get(context, fields, "Unimesh");
+  UnimeshTy =  CGM.getModule().getTypeByName("struct.lsci_unimesh_t");
+  if (!UnimeshTy) {
+    fields = {UnimeshHandleTy, Int64Ty, Int64Ty, Int64Ty, Int64Ty};
+    UnimeshTy = llvm::StructType::create(context, fields, "struct.lsci_unimesh_t");
+  }
 
-  fields = {StructHandleTy};
-  StructTy = llvm::StructType::get(context, fields, "Struct");
+  StructTy =  CGM.getModule().getTypeByName("struct.lsci_struct_t");
+  if (!StructTy) {
+    fields = {StructHandleTy};
+    StructTy = llvm::StructType::create(context, fields, "struct.lsci_struct_t");
+  }
   
-  fields = {ContextTy, RuntimeTy, Int32Ty, Int64Ty, PhysicalRegionsTy, VoidPtrTy};
-  TaskArgsTy = llvm::StructType::get(context, fields, "TaskArgs");
+  TaskArgsTy =  CGM.getModule().getTypeByName("struct.lsci_task_args_t");
+  if (!TaskArgsTy) {
+    fields = {ContextTy, RuntimeTy, Int32Ty, Int64Ty, PhysicalRegionsTy, VoidPtrTy};
+    TaskArgsTy = llvm::StructType::create(context, fields, "struct.lsci_task_args_t");
+  }
 
-  // lsci_reg_task_data_t contains a pointer to a function that takes a pointer to lsci_task_args_t and returns void
-  vector<llvm::Type*> args = {PointerTy(TaskArgsTy)};
-  llvm::FunctionType* funcType = llvm::FunctionType::get(CGM.VoidTy, args, false);
-
-  fields = {funcType};
-  RegTaskDataTy = llvm::StructType::get(context, fields, "RegTaskData");
+  RegTaskDataTy = CGM.getModule().getTypeByName("struct.lsci_reg_task_data_t");
+  if (!RegTaskDataTy) {
+    // lsci_reg_task_data_t contains a pointer to a function that takes a pointer 
+    // to lsci_task_args_t and returns void
+    vector<llvm::Type*> args = {PointerTy(TaskArgsTy)};
+    llvm::FunctionType* funcType = llvm::FunctionType::get(CGM.VoidTy, args, false);
+    fields = {funcType};
+    RegTaskDataTy = llvm::StructType::create(context, fields, "struct.lsci_reg_task_data_t");
+  }
   
-  fields = {Int64Ty, Int64Ty, Int64Ty, Int64Ty, Rect1dStorageTy, Int64Ty};
-  MeshTaskArgsTy = llvm::StructType::get(context, fields, "MeshTaskArgs");
+  MeshTaskArgsTy = CGM.getModule().getTypeByName("struct.lsci_mesh_task_args_t");
+  if (!MeshTaskArgsTy) {
+    fields = {Int64Ty, Int64Ty, Int64Ty, Int64Ty, Rect1dStorageTy, Int64Ty};
+    MeshTaskArgsTy = llvm::StructType::create(context, fields, "struct.lsci_mesh_task_args_t");
+  }
 }
 
 CGLegionRuntime::~CGLegionRuntime() {}
