@@ -77,19 +77,7 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
 
       modifiedIR = true;
 
-      // Gen code to set top level task ID (get MAIN_TID from metadata)
-      // TO DO
-
-      // Gen code to register main task data
-      // TO DO
-
-      // Gen code to register other tasks (get info from metadata)
-      // TO DO
-
-      // Gen code to start legion before the end of main()
-
-#ifdef CMS
-      // uncomment when lsci_start() gets defined
+      // make main_prime call lsci_main() at the end to do lsci startup stuff
 
       IRBuilder<> builder(M.getContext());
 
@@ -98,7 +86,7 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
 
       errs() << "found last block of main()\n";
 
-      // Find place to insert call to lsci_start(), before last instruction in the block
+      // Find place to insert call to lsci_main(), before last instruction in the block
       builder.SetInsertPoint(&(lastBlock.back()));
 
       // create call instruction
@@ -110,10 +98,10 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
       args.push_back(argcValue);
       args.push_back(argvValue);
 
-      // call lsci_start() 
-      llvm::Function* lsci_startFunc;
-      lsci_startFunc = M.getFunction("lsci_start"); 
-      llvm::Value* lsciCallRet = builder.CreateCall(lsci_startFunc, args);
+      // call lsci_main() 
+      llvm::Function* lsci_mainFunc;
+      lsci_mainFunc = M.getFunction("lsci_main"); 
+      llvm::Value* lsciCallRet = builder.CreateCall(lsci_mainFunc, args);
 
       // create ret instruction
       builder.CreateRet(lsciCallRet);
@@ -121,7 +109,6 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
       // Now get last instruction from this block (the previous return instruction) and delete it
       llvm::Instruction& lastInst = lastBlock.back();
       lastInst.eraseFromParent();
-#endif
     }
   }
   // return true if modified IR

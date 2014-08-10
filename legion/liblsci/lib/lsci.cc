@@ -330,6 +330,34 @@ lsci_register_void_legion_task(
     return LSCI_SUCCESS;
 }
 
+int
+lsci_register_void_legion_task_aux(
+    int task_id,
+    lsci_proc_kind_t p_kind,
+    bool single,
+    bool index,
+    bool leaf,
+    lsci_variant_id_t vid,
+    char *name,
+    void (*atask)(struct lsci_task_args_t *task_args))
+{
+
+  lsci_reg_task_data_t reg_task_data  = { 
+    .cbf = atask
+  };
+
+  return lsci_register_void_legion_task(
+      task_id,
+      p_kind,
+      single,
+      index,
+      leaf,
+      vid,
+      name,
+      reg_task_data);
+}
+
+
 namespace {
 template<typename T>
 void

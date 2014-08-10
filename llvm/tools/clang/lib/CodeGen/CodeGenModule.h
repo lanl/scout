@@ -540,6 +540,10 @@ public:
     assert(LegionRuntime != 0);
     return *LegionRuntime;
   }
+
+  llvm::Function *lsciMainFunction();
+  void startLsciMainFunction();
+
   // ========================================================================
 
   ARCEntrypoints &getARCEntrypoints() const {

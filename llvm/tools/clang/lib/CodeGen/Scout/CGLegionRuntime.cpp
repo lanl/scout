@@ -60,7 +60,8 @@ using namespace CodeGen;
 
 CGLegionRuntime::CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM){
   llvm::LLVMContext& context = CGM.getLLVMContext();
-  
+ 
+  Int1Ty = llvm::Type::getInt1Ty(context); 
   Int8Ty = llvm::Type::getInt8Ty(context);
   Int32Ty = llvm::Type::getInt32Ty(context);
   Int64Ty = llvm::Type::getInt64Ty(context);
@@ -86,7 +87,6 @@ CGLegionRuntime::CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM){
   
   SuccessVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0));
   FailureVal = llvm::ConstantInt::get(context, llvm::APInt(32, 1));
-  
   NoAccessVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0x00000000));
   ReadOnlyVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0x00000001));
   ReadWriteVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0x00000111));
@@ -108,7 +108,9 @@ CGLegionRuntime::CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM){
   TocProcVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0));
   LocProcVal = llvm::ConstantInt::get(context, llvm::APInt(32, 1));
   UtilProcVal = llvm::ConstantInt::get(context, llvm::APInt(32, 2));
-  
+ 
+  // need to change all the struct types to create identified struct types if not already created
+  // can't use literal struct types
   vector<llvm::Type*> fields = {PointerTy(Int8Ty)};
   Rect1dStorageTy = llvm::StructType::get(context, fields, "Rect1dStorage");
 
@@ -138,7 +140,11 @@ CGLegionRuntime::CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM){
   fields = {ContextTy, RuntimeTy, Int32Ty, Int64Ty, PhysicalRegionsTy, VoidPtrTy};
   TaskArgsTy = llvm::StructType::get(context, fields, "TaskArgs");
 
-  fields = {VoidPtrTy};
+  // lsci_reg_task_data_t contains a pointer to a function that takes a pointer to lsci_task_args_t and returns void
+  vector<llvm::Type*> args = {PointerTy(TaskArgsTy)};
+  llvm::FunctionType* funcType = llvm::FunctionType::get(CGM.VoidTy, args, false);
+
+  fields = {funcType};
   RegTaskDataTy = llvm::StructType::get(context, fields, "RegTaskData");
   
   fields = {Int64Ty, Int64Ty, Int64Ty, Int64Ty, Rect1dStorageTy, Int64Ty};
@@ -225,6 +231,7 @@ llvm::Function *CGLegionRuntime::LegionRuntimeFunction(string funcName,
   }
   return Func;
 }
+
 
 llvm::PointerType* CGLegionRuntime::PointerTy(llvm::Type* elementType){
   return llvm::PointerType::get(elementType, 0);
@@ -649,7 +656,7 @@ llvm::Function* CGLegionRuntime::SetTopLevelTaskIdFunc(){
     return f;
   }
   
-  vector<llvm::Type*> params = {Int32Ty, PointerTy(VoidPtrTy)};
+  vector<llvm::Type*> params = {Int32Ty};
   
   llvm::FunctionType* ft =
   llvm::FunctionType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()), params, false);

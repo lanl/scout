@@ -106,6 +106,7 @@ namespace CodeGen {
     llvm::Value* GetNull(llvm::Type* T);
     
     llvm::PointerType* VoidPtrTy;
+    llvm::Type* Int1Ty;
     llvm::Type* Int8Ty;
     llvm::Type* Int32Ty;
     llvm::Type* Int64Ty;

@@ -307,6 +307,18 @@ lsci_register_void_legion_task(
     lsci_reg_task_data_t reg_task_data
 );
 
+int
+lsci_register_void_legion_task_aux(
+    int task_id,
+    lsci_proc_kind_t p_kind,
+    bool single,
+    bool index,
+    bool leaf,
+    lsci_variant_id_t vid,
+    char *name,
+    void (*atask)(struct lsci_task_args_t *task_args)
+);
+
 void *
 raw_rect_ptr_1d(lsci_physical_regions_t rgnp,
                 lsci_dt_t type,
