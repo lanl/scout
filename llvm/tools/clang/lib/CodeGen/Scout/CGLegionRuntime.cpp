@@ -714,7 +714,7 @@ llvm::Function* CGLegionRuntime::RegisterVoidLegionTaskFunc(){
   }
   
   vector<llvm::Type*> params =
-  {Int32Ty, Int32Ty, Int8Ty, Int8Ty, Int8Ty, VariantIdTy, VoidPtrTy, RegTaskDataTy};
+  {Int32Ty, Int32Ty, Int1Ty, Int1Ty, Int1Ty, VariantIdTy, VoidPtrTy, RegTaskDataTy};
   
   llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
   
@@ -725,6 +725,32 @@ llvm::Function* CGLegionRuntime::RegisterVoidLegionTaskFunc(){
   
   return f;
 }
+
+llvm::Function* CGLegionRuntime::RegisterVoidLegionTaskAuxFunc(){
+  string name = "lsci_register_void_legion_task_aux";
+  
+  llvm::Function* f = CGM.getModule().getFunction(name);
+  
+  if(f){
+    return f;
+  }
+
+  vector<llvm::Type*> args = {PointerTy(TaskArgsTy)};
+  llvm::FunctionType* funcType = llvm::FunctionType::get(CGM.VoidTy, args, false);
+  
+  vector<llvm::Type*> params =
+  {Int32Ty, Int32Ty, Int1Ty, Int1Ty, Int1Ty, VariantIdTy, VoidPtrTy, llvm::PointerType::get(funcType, 0)};
+  
+  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
+
+  f = llvm::Function::Create(ft,
+                             llvm::Function::ExternalLinkage,
+                             name,
+                             &CGM.getModule());
+  
+  return f;
+}
+  
 
 llvm::Function* CGLegionRuntime::RawRectPtr1dFunc(){
   string name = "raw_rect_ptr_1d";

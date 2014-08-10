@@ -101,20 +101,7 @@ void CodeGenModule::startLsciMainFunction() {
 
   CGLegionRuntime& r = getLegionRuntime();
 
-  //fetch or create type for lsci_task_args_t
-  llvm::StructType *TaskArgsTy = TheModule.getTypeByName("struct.lsci_task_args_t");
-  if (!TaskArgsTy) {
-    std::vector<llvm::Type*> fields = {
-      r.ContextTy,
-      r.RuntimeTy,
-      r.Int32Ty,
-      r.Int64Ty,
-      r.PhysicalRegionsTy,
-      r.VoidPtrTy};
-    TaskArgsTy = llvm::StructType::create(context, fields, "struct.lsci_task_args_t");
-  }
-
-  llvm::PointerType* TaskArgsPtrTy = llvm::PointerType::get(TaskArgsTy, 0);
+  llvm::PointerType* TaskArgsPtrTy = llvm::PointerType::get(r.TaskArgsTy, 0);
 
   // use lsci_task_args_t to create main_task function type and function
   std::vector<llvm::Type*> params = {TaskArgsPtrTy};
@@ -147,21 +134,6 @@ void CodeGenModule::startLsciMainFunction() {
   std::vector<llvm::Value*> args = {mainTID};
   Builder.CreateCall(LegionRuntime->SetTopLevelTaskIdFunc(), args); 
 
-  // get lsci_register_void_legion_task function type
-  std::string name = "lsci_register_void_legion_task_aux";
-  llvm::Function* regVoidLegionTaskAuxFunc = TheModule.getFunction(name);
-  if(!regVoidLegionTaskAuxFunc){
-    std::vector<llvm::Type*> params =
-    {r.Int32Ty, r.Int32Ty, r.Int1Ty, r.Int1Ty, r.Int1Ty, r.VariantIdTy, VoidPtrTy /* ptr to Int8Ty */, llvm::PointerType::get(main_task_ft,0)};
-
-    llvm::FunctionType* regVoidLegionTaskAuxFuncTy = llvm::FunctionType::get(Int32Ty, params, false);
-
-    regVoidLegionTaskAuxFunc = llvm::Function::Create(regVoidLegionTaskAuxFuncTy,
-        llvm::Function::ExternalLinkage,
-        name,
-        &TheModule);
-  }  
-
   // make call to lsci_register_void_legion_task
   std::vector<llvm::Value*> reg_main_task_params;
 
@@ -188,7 +160,7 @@ void CodeGenModule::startLsciMainFunction() {
   reg_main_task_params.push_back(main_task);
    
   // Call lsci_register_void_legion_task()
-  Builder.CreateCall(regVoidLegionTaskAuxFunc, reg_main_task_params); 
+  Builder.CreateCall(r.RegisterVoidLegionTaskAuxFunc(), reg_main_task_params); 
 
   // start a new basic block to put the ending stuff in
   BB = llvm::BasicBlock::Create(getLLVMContext(), "end", lsciMainFunc);
@@ -200,9 +172,6 @@ void CodeGenModule::startLsciMainFunction() {
   Builder.SetInsertPoint(BB);
   finishLsciMainFunction();
 
-  // create ret instruction
-  //llvm::ConstantInt* retVal = llvm::ConstantInt::get(getLLVMContext(), llvm::APInt::APInt(32, StringRef("0"), 10));
-  //Builder.CreateRet(retVal);
 }
 
 void CodeGenModule::regTaskInLsciMainFunction(int taskID, llvm::Function* taskFunc) {
@@ -220,45 +189,6 @@ void CodeGenModule::regTaskInLsciMainFunction(int taskID, llvm::Function* taskFu
 
   // Find place to insert, before last instruction in the block
   Builder.SetInsertPoint(&(firstBlock.back()));
-
-  // get type of function of taskFunc
- llvm::FunctionType* taskFuncTy = taskFunc->getFunctionType();
- if (!taskFuncTy) {
-
-   //fetch or create type for lsci_task_args_t
-   llvm::StructType *TaskArgsTy = TheModule.getTypeByName("struct.lsci_task_args_t");
-   if (!TaskArgsTy) {
-     std::vector<llvm::Type*> fields = {
-       r.ContextTy,
-       r.RuntimeTy,
-       r.Int32Ty,
-       r.Int64Ty,
-       r.PhysicalRegionsTy,
-       r.VoidPtrTy};
-     TaskArgsTy = llvm::StructType::create(context, fields, "struct.lsci_task_args_t");
-   }
-
-   llvm::PointerType* TaskArgsPtrTy = llvm::PointerType::get(TaskArgsTy, 0);
-
-   // use lsci_task_args_t to create main_task function type and function
-   std::vector<llvm::Type*> params = {TaskArgsPtrTy};
-   taskFuncTy = llvm::FunctionType::get(VoidTy, params, false);
- }
-
-  // get lsci_register_void_legion_task function type
-  std::string name = "lsci_register_void_legion_task_aux";
-  llvm::Function* regVoidLegionTaskAuxFunc = TheModule.getFunction(name);
-  if(!regVoidLegionTaskAuxFunc){
-    std::vector<llvm::Type*> params =
-    {r.Int32Ty, r.Int32Ty, r.Int1Ty, r.Int1Ty, r.Int1Ty, r.VariantIdTy, VoidPtrTy /* ptr to Int8Ty */, llvm::PointerType::get(taskFuncTy,0)};
-
-    llvm::FunctionType* regVoidLegionTaskAuxFuncTy = llvm::FunctionType::get(Int32Ty, params, false);
-
-    regVoidLegionTaskAuxFunc = llvm::Function::Create(regVoidLegionTaskAuxFuncTy,
-        llvm::Function::ExternalLinkage,
-        name,
-        &TheModule);
-  }  
 
   // make call to lsci_register_void_legion_task
   std::vector<llvm::Value*> reg_main_task_params;
@@ -287,7 +217,7 @@ void CodeGenModule::regTaskInLsciMainFunction(int taskID, llvm::Function* taskFu
   reg_main_task_params.push_back(taskFunc);
    
   // Call lsci_register_void_legion_task()
-  Builder.CreateCall(regVoidLegionTaskAuxFunc, reg_main_task_params); 
+  Builder.CreateCall(r.RegisterVoidLegionTaskAuxFunc(), reg_main_task_params); 
 
 }
 

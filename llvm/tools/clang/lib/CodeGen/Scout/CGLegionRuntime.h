@@ -101,6 +101,7 @@ namespace CodeGen {
     llvm::Function* StartFunc();
     llvm::Function* SetTopLevelTaskIdFunc();
     llvm::Function* RegisterVoidLegionTaskFunc();
+    llvm::Function* RegisterVoidLegionTaskAuxFunc();
     llvm::Function* RawRectPtr1dFunc();
     
     llvm::Value* GetNull(llvm::Type* T);
