@@ -77,7 +77,7 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
 
       modifiedIR = true;
 
-      // make main_prime call lsci_main() at the end to do lsci startup stuff
+      // make main() call lsci_main() at the end to do lsci startup stuff
 
       IRBuilder<> builder(M.getContext());
 

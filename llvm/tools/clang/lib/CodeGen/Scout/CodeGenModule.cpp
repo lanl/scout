@@ -81,6 +81,14 @@ llvm::Function *CodeGenModule::lsciMainFunction() {
                                      llvm::Function::ExternalLinkage,
                                      funcName,
                                      &TheModule);
+
+   // name the two args argc and argv
+   llvm::Function::arg_iterator argiter = lsciMainFunc->arg_begin();
+   llvm::Value* int32_argc = argiter++;
+   int32_argc->setName("argc");
+   llvm::Value* ptr_argv = argiter++;
+   ptr_argv->setName("argv");
+
   }
   return lsciMainFunc;
 }
@@ -127,6 +135,8 @@ void CodeGenModule::startLsciMainFunction() {
   Builder.CreateRetVoid();
 
   // Fill in initial part of lsci_main(), which contains sets the top level task and registers main_task
+  // Could just call regTaskInLsciMainFunction(0, main_task);
+
   CodeGenFunction CGF(*this);
 
   // make call to lsci_set_toplevel_task_id
@@ -180,27 +190,142 @@ void CodeGenModule::startLsciMainFunction() {
   // Call lsci_register_void_legion_task()
   Builder.CreateCall(regVoidLegionTaskAuxFunc, reg_main_task_params); 
 
+  // start a new basic block to put the ending stuff in
+  BB = llvm::BasicBlock::Create(getLLVMContext(), "end", lsciMainFunc);
+  llvm::BasicBlock &firstBlock = lsciMainFunc->front();
+  Builder.SetInsertPoint(&firstBlock);
+  Builder.CreateBr(BB);
+
+  // start ending stuff
+  Builder.SetInsertPoint(BB);
+  finishLsciMainFunction();
+
   // create ret instruction
-  llvm::ConstantInt* retVal = llvm::ConstantInt::get(getLLVMContext(), llvm::APInt::APInt(32, StringRef("0"), 10));
-  Builder.CreateRet(retVal);
+  //llvm::ConstantInt* retVal = llvm::ConstantInt::get(getLLVMContext(), llvm::APInt::APInt(32, StringRef("0"), 10));
+  //Builder.CreateRet(retVal);
 }
 
-#if 0
+void CodeGenModule::regTaskInLsciMainFunction(int taskID, llvm::Function* taskFunc) {
+  CodeGenFunction CGF(*this);
+  CGLegionRuntime& r = getLegionRuntime();
+  llvm::LLVMContext& context = getLLVMContext();
+  llvm::Function* lsciMainFunc = lsciMainFunction();
+  llvm::IRBuilder<> Builder(TheModule.getContext());
 
-void CodeGenModule::addToLsciMainFunction(int taskID, string funcName) {
+  // Go through and find first block in main() 
+  llvm::BasicBlock &firstBlock = lsciMainFunc->front();
+
+  // Find place to insert, at end of this block
+  Builder.SetInsertPoint(&firstBlock);
+
+  // Find place to insert, before last instruction in the block
+  Builder.SetInsertPoint(&(firstBlock.back()));
+
+  // get type of function of taskFunc
+ llvm::FunctionType* taskFuncTy = taskFunc->getFunctionType();
+ if (!taskFuncTy) {
+
+   //fetch or create type for lsci_task_args_t
+   llvm::StructType *TaskArgsTy = TheModule.getTypeByName("struct.lsci_task_args_t");
+   if (!TaskArgsTy) {
+     std::vector<llvm::Type*> fields = {
+       r.ContextTy,
+       r.RuntimeTy,
+       r.Int32Ty,
+       r.Int64Ty,
+       r.PhysicalRegionsTy,
+       r.VoidPtrTy};
+     TaskArgsTy = llvm::StructType::create(context, fields, "struct.lsci_task_args_t");
+   }
+
+   llvm::PointerType* TaskArgsPtrTy = llvm::PointerType::get(TaskArgsTy, 0);
+
+   // use lsci_task_args_t to create main_task function type and function
+   std::vector<llvm::Type*> params = {TaskArgsPtrTy};
+   taskFuncTy = llvm::FunctionType::get(VoidTy, params, false);
+ }
+
+  // get lsci_register_void_legion_task function type
+  std::string name = "lsci_register_void_legion_task_aux";
+  llvm::Function* regVoidLegionTaskAuxFunc = TheModule.getFunction(name);
+  if(!regVoidLegionTaskAuxFunc){
+    std::vector<llvm::Type*> params =
+    {r.Int32Ty, r.Int32Ty, r.Int1Ty, r.Int1Ty, r.Int1Ty, r.VariantIdTy, VoidPtrTy /* ptr to Int8Ty */, llvm::PointerType::get(taskFuncTy,0)};
+
+    llvm::FunctionType* regVoidLegionTaskAuxFuncTy = llvm::FunctionType::get(Int32Ty, params, false);
+
+    regVoidLegionTaskAuxFunc = llvm::Function::Create(regVoidLegionTaskAuxFuncTy,
+        llvm::Function::ExternalLinkage,
+        name,
+        &TheModule);
+  }  
+
+  // make call to lsci_register_void_legion_task
+  std::vector<llvm::Value*> reg_main_task_params;
+
+  llvm::ConstantInt* task_id =  llvm::ConstantInt::get(Int32Ty, taskID);
+  reg_main_task_params.push_back(task_id);
+
+  llvm::ConstantInt* lsci_loc_proc = llvm::ConstantInt::get(Int32Ty, 1);
+  reg_main_task_params.push_back(lsci_loc_proc);
+
+  llvm::ConstantInt* true_val = llvm::ConstantInt::get(context, llvm::APInt(1, StringRef("-1"), 10));
+  reg_main_task_params.push_back(true_val);
+
+  llvm::ConstantInt* false_val = llvm::ConstantInt::get(context, llvm::APInt(1, StringRef("0"), 10));
+  reg_main_task_params.push_back(false_val);
+
+  reg_main_task_params.push_back(false_val);
+
+  // must be a better way to get umax, since will be system-dependent?
+  llvm::ConstantInt* umax = llvm::ConstantInt::get(Int64Ty, 4294967295);
+  reg_main_task_params.push_back(umax);
+
+  llvm::Value* task_name = Builder.CreateGlobalStringPtr(taskFunc->getName());
+  reg_main_task_params.push_back(task_name);
+
+  reg_main_task_params.push_back(taskFunc);
+   
+  // Call lsci_register_void_legion_task()
+  Builder.CreateCall(regVoidLegionTaskAuxFunc, reg_main_task_params); 
+
+}
+
+void CodeGenModule::finishLsciMainFunction() {
   CodeGenFunction CGF(*this);
   llvm::Function* lsciMainFunc = lsciMainFunction();
-  llvm::BasicBlock *BB = llvm::BasicBlock::Create(llvm::getGlobalContext(), "entry", lsciMainFunc);
   llvm::IRBuilder<> Builder(TheModule.getContext());
-  Builder.SetInsertPoint(BB);
+  CGLegionRuntime& r = getLegionRuntime();
 
-  // create lsci_reg_task_data_t  -- may not need this right now
-  llvm::StructType *RegTaskDataTy = TheModule.getTypeByName("struct.lsci_reg_task_data_t");
-  if (!RegTaskDataTy) {
-    std::vector<llvm::Type*> fields = {main_task_ft};
-    TaskArgsTy = llvm::StructType::create(context, fields, "struct.lsci_reg_task_data_t");
-  }
+  // Go through and find last block in main()
+  llvm::BasicBlock &lastBlock = lsciMainFunc->back();
 
+  // Find place to insert, after last block
+  Builder.SetInsertPoint(&lastBlock);
 
+  // allocate argc and argv
+  llvm::AllocaInst* ptr_argc_addr = Builder.CreateAlloca(Int32Ty, 0, "argc.addr");
+  llvm::AllocaInst* ptr_argv_addr = Builder.CreateAlloca(llvm::PointerType::get(llvm::PointerType::get(Int8Ty, 0), 0), 0, "argv.addr");
+
+  llvm::Function::arg_iterator args = lsciMainFunc->arg_begin();
+  llvm::Value* argcVal = args++;
+  llvm::Value* argvVal = args++;
+
+  // store to argc and argv
+  Builder.CreateStore(argcVal, ptr_argc_addr);
+  Builder.CreateStore(argvVal, ptr_argv_addr);
+
+  // load argc and argc
+  llvm::LoadInst* load_argc = Builder.CreateLoad(ptr_argc_addr);
+  llvm::LoadInst* load_argv = Builder.CreateLoad(ptr_argv_addr);
+
+  // call lsci_start(argc, argv)
+  std::vector<llvm::Value*> params;
+  params.push_back(load_argc);
+  params.push_back(load_argv);
+  llvm::CallInst* retVal = Builder.CreateCall(r.StartFunc(), params);
+
+  // return result of lsci_start()
+  Builder.CreateRet(retVal);
+  //Builder.CreateRet(llvm::ConstantInt::get(Int32Ty, 0));
 }
-#endif

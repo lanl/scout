@@ -80,8 +80,6 @@ static CGCXXABI *createCXXABI(CodeGenModule &CGM) {
   llvm_unreachable("invalid C++ ABI kind");
 }
 
-
-
 CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
                              llvm::Module &M, const llvm::DataLayout &TD,
                              DiagnosticsEngine &diags)
@@ -138,6 +136,10 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
     createScoutRuntime();
     if (CodeGenOpts.ScoutLegionSupport) {
       createLegionRuntime();
+      // start lsci_main() function for doing Legion task registration and Legion startup.
+      // Once this is started, each time we see a task while doing code gen, add
+      // to this function to register the legion task.
+      startLsciMainFunction();
     }
   }
   // +========================================================================+
@@ -436,16 +438,6 @@ void CodeGenModule::Release() {
 
   EmitTargetMetadata();
 
-  // ===== Scout ===============================================================
-  // start lsci_main() function for doing Legion task registration and Legion startup.
-  // Once this is started, each time we see a task while doing code gen, add
-  // to this function to register task data and the legion task.
-  if(LegionRuntime) {
-    if (CodeGenOpts.ScoutLegionSupport) {
-    startLsciMainFunction();
-    }
-  }
-  // ===========================================================================
 
 }
 

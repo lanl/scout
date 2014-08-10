@@ -2028,8 +2028,6 @@ public:
 
   void EmitLegionTask(const FunctionDecl* FD, llvm::Function* taskFunc);
   
-  void RegisterLegionTask(uint32_t taskId, llvm::Function* task);
-  
   void ResetVars(void);
   void EmitForallMeshStmt(const ForallMeshStmt &S);
 

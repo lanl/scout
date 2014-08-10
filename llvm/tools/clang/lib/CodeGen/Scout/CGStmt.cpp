@@ -1544,8 +1544,28 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   B.CreateCall(R.ExecuteIndexSpaceFunc(), args);
   
   B.CreateRetVoid();
-  
-  params = {R.PointerTy(R.TaskArgsTy)};
+ 
+   //fetch or create type for lsci_task_args_t
+   llvm::StructType *TaskArgsTy = CGM.getModule().getTypeByName("struct.lsci_task_args_t");
+   if (!TaskArgsTy) {
+     std::vector<llvm::Type*> fields = {
+       R.ContextTy,
+       R.RuntimeTy,
+       R.Int32Ty,
+       R.Int64Ty,
+       R.PhysicalRegionsTy,
+       R.VoidPtrTy};
+     TaskArgsTy = llvm::StructType::create(context, fields, "struct.lsci_task_args_t");
+   }
+
+   llvm::PointerType* TaskArgsPtrTy = llvm::PointerType::get(TaskArgsTy, 0);
+
+   // use lsci_task_args_t to create main_task function type and function
+   params = {TaskArgsPtrTy};
+
+  // This doesn't work, since the struct has to be identified by name 
+  //params = {R.PointerTy(R.TaskArgsTy)};
+
   ft = llvm::FunctionType::get(VoidTy, params, false);
   
   Function* task = Function::Create(ft,
@@ -1766,11 +1786,7 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   
   B.SetInsertPoint(prevBlock, prevPoint);
   
-  RegisterLegionTask(taskId, task);
-}
-
-void CodeGenFunction::RegisterLegionTask(uint32_t taskId, llvm::Function* task){
-  
+  CGM.regTaskInLsciMainFunction(taskId, task);
 }
 
 void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {

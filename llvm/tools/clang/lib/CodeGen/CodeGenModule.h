@@ -543,6 +543,8 @@ public:
 
   llvm::Function *lsciMainFunction();
   void startLsciMainFunction();
+  void regTaskInLsciMainFunction(int taskID, llvm::Function* task);
+  void finishLsciMainFunction();
 
   // ========================================================================
 
