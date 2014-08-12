@@ -19,6 +19,8 @@
 #include "scout/Runtime/opengl/glTexture1D.h"
 #include "scout/Runtime/opengl/glTexture2D.h"
 
+//#define WITH_VERTICES_EDGES
+
 using namespace std;
 using namespace scout;
 
@@ -92,6 +94,20 @@ void glQuadRenderableVA::glQuadRenderableVA_2D()
   _vbo->release();
   _nverts = 4;
 
+#ifdef WITH_VERTICES_EDGES
+  _mvbo = new glVertexBuffer;
+  _mvbo->bind();
+  _mvbo->alloc(sizeof(float) * 3 * 4, GL_STREAM_DRAW_ARB);
+  fill_mvbo(_min_pt.x, _min_pt.y, _max_pt.x, _max_pt.y);
+  _mvbo->release();
+
+  _evbo = new glVertexBuffer;
+  _evbo->bind();
+  _evbo->alloc(sizeof(float) * 3 * 8, GL_STREAM_DRAW_ARB);
+  fill_evbo(_min_pt.x, _min_pt.y, _max_pt.x, _max_pt.y);
+  _evbo->release();
+#endif
+
   _tcbo = new glTexCoordBuffer;
   _tcbo->bind();
   _tcbo->alloc(sizeof(float) * 8, GL_STREAM_DRAW_ARB);  // two-dimensional texture coordinates.
@@ -99,7 +115,6 @@ void glQuadRenderableVA::glQuadRenderableVA_2D()
   _tcbo->release();
 
   oglErrorCheck();
-
 }
 
 
@@ -189,6 +204,75 @@ void glQuadRenderableVA::fill_vbo(float x0,
   _vbo->unmap();
 }
 
+void glQuadRenderableVA::fill_mvbo(float x0,
+    float y0,
+    float x1,
+    float y1)
+{
+
+  float* verts = (float*)_mvbo->mapForWrite();
+
+  verts[0] = x0;
+  verts[1] = y0;
+  verts[2] = 0.0f;
+
+  verts[3] = x1;
+  verts[4] = y0;
+  verts[5] = 0.f;
+
+  verts[6] = x1;
+  verts[7] = y1;
+  verts[8] = 0.0f;
+
+  verts[9] = x0;
+  verts[10] = y1;
+  verts[11] = 0.0f;
+
+  _mvbo->unmap();
+}
+
+void glQuadRenderableVA::fill_evbo(float x0,
+    float y0,
+    float x1,
+    float y1)
+{
+
+  float* verts = (float*)_evbo->mapForWrite();
+
+  verts[0] = x0;
+  verts[1] = y0;
+  verts[2] = 0.0f;
+
+  verts[3] = x0;
+  verts[4] = y1;
+  verts[5] = 0.f;
+
+  verts[6] = x0;
+  verts[7] = y1;
+  verts[8] = 0.f;
+
+  verts[9] = x1;
+  verts[10] = y1;
+  verts[11] = 0.0f;
+
+  verts[12] = x1;
+  verts[13] = y1;
+  verts[14] = 0.0f;
+
+  verts[15] = x1;
+  verts[16] = y0;
+  verts[17] = 0.0f;
+
+  verts[18] = x1;
+  verts[19] = y0;
+  verts[20] = 0.0f;
+
+  verts[21] = x0;
+  verts[22] = y0;
+  verts[23] = 0.0f;
+
+  _evbo->unmap();
+}
 
 void glQuadRenderableVA::fill_tcbo2d(float x0,
     float y0,
@@ -280,8 +364,34 @@ void glQuadRenderableVA::draw(glCamera* camera)
   glDisableClientState(GL_VERTEX_ARRAY);
   _vbo->release();
 
-  glDisableClientState(GL_TEXTURE_COORD_ARRAY);
   _tcbo->release();
-
   _texture->disable();
+
+#ifdef WITH_VERTICES_EDGES
+  glEnableClientState(GL_VERTEX_ARRAY);
+  _evbo->bind();
+  glVertexPointer(3, GL_FLOAT, 0, 0);
+
+  oglErrorCheck();
+
+  glLineWidth(5.0);
+  glColor4f(0.7, 0.7, 0.7, 0.0);
+  glDrawArrays(GL_LINES, 0, 8);
+
+
+  glEnableClientState(GL_VERTEX_ARRAY);
+  _mvbo->bind();
+  glVertexPointer(3, GL_FLOAT, 0, 0);
+
+  oglErrorCheck();
+
+  glPointSize(5.0);
+  glColor4f(1.0, 1.0, 1.0, 0.0);
+  glDrawArrays(GL_POINTS, 0, 4);
+
+  glDisableClientState(GL_VERTEX_ARRAY);
+  _mvbo->release();
+#endif
+
+  glDisableClientState(GL_TEXTURE_COORD_ARRAY);
 }
