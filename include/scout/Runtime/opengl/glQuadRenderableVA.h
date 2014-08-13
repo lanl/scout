@@ -63,15 +63,15 @@ namespace scout
     void glQuadRenderableVA_1D();
     void glQuadRenderableVA_2D();
     void fill_vbo(float x0, float y0, float x1, float y1);
-    void fill_mvbo(float x0, float y0, float x1, float y1);
-    void fill_evbo(float x0, float y0, float x1, float y1);
+    void fill_mvbo();
+    void fill_edges();
     void fill_tcbo2d(float x0, float y0, float x1, float y1);
     void fill_tcbo1d(float start, float end);
 
    private:
       glVertexBuffer* _vbo;
       glVertexBuffer* _mvbo;
-      glVertexBuffer* _evbo;
+      unsigned* _edges;
       glTexture* _texture;
       glTextureBuffer* _pbo;
       glTexCoordBuffer* _tcbo;
@@ -80,11 +80,10 @@ namespace scout
       glfloat3 _min_pt;
       glfloat3 _max_pt;
       float _tex_coord_scale;
-
+      size_t _width;
+      size_t _height;
   };
 
 }
 
 #endif
-
-    
