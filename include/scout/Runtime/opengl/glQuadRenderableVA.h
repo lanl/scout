@@ -38,8 +38,14 @@ namespace scout
     void initialize(glCamera* camera);
     GLuint get_buffer_object_id();
     float4* map_colors();
+    float4* map_vertex_colors();
+    float4* map_edge_colors();
     void alloc_texture();
+    void alloc_vertex_texture();
+    void alloc_edge_texture();
     void unmap_colors();
+    void unmap_vertex_colors();
+    void unmap_edge_colors();
 
     void draw(glCamera* camera);
 
@@ -74,6 +80,8 @@ namespace scout
       unsigned* _edges;
       glTexture* _texture;
       glTextureBuffer* _pbo;
+      glTextureBuffer* _vpbo;
+      glTextureBuffer* _epbo;
       glTexCoordBuffer* _tcbo;
       unsigned short _ntexcoords;
       unsigned int _nverts;

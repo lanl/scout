@@ -22,7 +22,7 @@
 #include "scout/Runtime/opengl/glTexture1D.h"
 #include "scout/Runtime/opengl/glTexture2D.h"
 
-#define WITH_VERTICES_EDGES
+//#define WITH_VERTICES_EDGES
 
 using namespace std;
 using namespace scout;
@@ -99,6 +99,16 @@ void glQuadRenderableVA::glQuadRenderableVA_2D()
   _pbo->alloc(sizeof(float) * 4 * xdim * ydim, GL_STREAM_DRAW_ARB);
   _pbo->release();
 
+  _vpbo = new glTextureBuffer;
+  _vpbo->bind();
+  _vpbo->alloc(sizeof(float) * 4 * numVertices, GL_STREAM_DRAW_ARB);
+  _vpbo->release();
+
+  _epbo = new glTextureBuffer;
+  _epbo->bind();
+  _epbo->alloc(sizeof(float) * 4 * numEdges, GL_STREAM_DRAW_ARB);
+  _epbo->release();
+
   _vbo = new glVertexBuffer;
   _vbo->bind();
   _vbo->alloc(sizeof(float) * 3 * 4, GL_STREAM_DRAW_ARB);
@@ -131,11 +141,17 @@ void glQuadRenderableVA::destroy()
 {
   if (_texture != 0) delete _texture;
   if (_pbo != 0) delete _pbo;
+  if (_vpbo != 0) delete _vpbo;
+  if (_epbo != 0) delete _epbo;
   if (_vbo != 0) delete _vbo;
+  if (_mvbo != 0) delete _mvbo;
   if (_tcbo != 0) delete _tcbo;
   _texture = NULL;
   _pbo = NULL;
+  _vpbo = NULL;
+  _epbo = NULL;
   _vbo = NULL;
+  _mvbo = NULL;
   _tcbo = NULL;
 }
 
@@ -300,6 +316,19 @@ void glQuadRenderableVA::alloc_texture()
   _pbo->release();
 }
 
+void glQuadRenderableVA::alloc_vertex_texture()
+{
+  _vpbo->bind();
+  _texture->initialize(0);
+  _vpbo->release();
+}
+
+void glQuadRenderableVA::alloc_edge_texture()
+{
+  _epbo->bind();
+  _texture->initialize(0);
+  _epbo->release();
+}
 
 GLuint glQuadRenderableVA::get_buffer_object_id()
 {
@@ -312,6 +341,15 @@ float4* glQuadRenderableVA::map_colors()
   return (float4*)_pbo->mapForWrite();
 }
 
+float4* glQuadRenderableVA::map_vertex_colors()
+{
+  return (float4*)_vpbo->mapForWrite();
+}
+
+float4* glQuadRenderableVA::map_edge_colors()
+{
+  return (float4*)_epbo->mapForWrite();
+}
 
 void glQuadRenderableVA::unmap_colors()
 {
@@ -321,6 +359,21 @@ void glQuadRenderableVA::unmap_colors()
   _pbo->release();
 }
 
+void glQuadRenderableVA::unmap_vertex_colors()
+{
+  _vpbo->unmap();
+  _vpbo->bind();
+  _texture->initialize(0);
+  _vpbo->release();
+}
+
+void glQuadRenderableVA::unmap_edge_colors()
+{
+  _epbo->unmap();
+  _epbo->bind();
+  _texture->initialize(0);
+  _epbo->release();
+}
 
 void glQuadRenderableVA::draw(glCamera* camera)
 {
@@ -362,13 +415,20 @@ void glQuadRenderableVA::draw(glCamera* camera)
   glVertexPointer(3, GL_FLOAT, 0, 0); 
 
   glLineWidth(5.0);
-  glColor4f(0.7, 0.7, 0.7, 0.0);
+  _epbo->bind();
+  _texture->enable();
+  _texture->update(0);
+  _epbo->release();
+
   glDrawElements(GL_LINES, numEdges*2, GL_UNSIGNED_INT, _edges);
 
   glPointSize(5.0);
-  glColor4f(1.0, 1.0, 1.0, 0.0);
-  glDrawArrays(GL_POINTS, 0, numVertices);
+  _vpbo->bind();
+  _texture->enable();
+  _texture->update(0);
+  _vpbo->release();
 
+  glDrawArrays(GL_POINTS, 0, numVertices);
   glDisableClientState(GL_VERTEX_ARRAY);
   _mvbo->release();
 #endif
