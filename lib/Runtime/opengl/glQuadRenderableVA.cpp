@@ -103,11 +103,29 @@ void glQuadRenderableVA::glQuadRenderableVA_2D()
   _vpbo->bind();
   _vpbo->alloc(sizeof(float) * 4 * numVertices, GL_STREAM_DRAW_ARB);
   _vpbo->release();
+  
+  float4* vc = map_vertex_colors();
+  for(size_t i = 0; i < numVertices; ++i){
+    vc[i].x = 1.0;
+    vc[i].y = 0.0;
+    vc[i].z = 0.0;
+    vc[i].w = 1.0;
+  }
+  unmap_vertex_colors();
 
   _epbo = new glTextureBuffer;
   _epbo->bind();
   _epbo->alloc(sizeof(float) * 4 * numEdges, GL_STREAM_DRAW_ARB);
   _epbo->release();
+
+  float4* ec = map_edge_colors();
+  for(size_t i = 0; i < numVertices; ++i){
+    ec[i].x = 0.0;
+    ec[i].y = 0.0;
+    ec[i].z = 1.0;
+    ec[i].w = 1.0;
+  }
+  unmap_edge_colors();
 
   _vbo = new glVertexBuffer;
   _vbo->bind();

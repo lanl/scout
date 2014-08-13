@@ -71,9 +71,11 @@ __scrt_target_t __scrt_create_window(unsigned short width, unsigned short height
   return (__scrt_target_t)win;
 }
 
-extern "C"
-float* __scrt_window_quad_renderable_colors(unsigned int width, unsigned int height, unsigned int depth,
-    void* renderTarget){
+static glQuadRenderableVA*
+get_renderable(unsigned int width,
+               unsigned int height,
+               unsigned int depth,
+               void* renderTarget){
 
   glWindow* window = (glWindow*)renderTarget;
   window->makeContextCurrent();
@@ -81,7 +83,7 @@ float* __scrt_window_quad_renderable_colors(unsigned int width, unsigned int hei
   // TODO:  Check if there is already a quad renderable associated with this window 
   // and if so, try to reuse it.
 
-  glQuadRenderableVA* renderable; 
+  glQuadRenderableVA* renderable = 0; 
 
   if (window->getCurrentRenderable() != NULL) {
     // check here if right kind and size
@@ -95,9 +97,54 @@ float* __scrt_window_quad_renderable_colors(unsigned int width, unsigned int hei
     window->makeCurrentRenderable(renderable);
 
     renderable->initialize(NULL); // also does a clear
-  } 
+  }
+
+  return renderable;
+}
+
+extern "C"
+float*
+__scrt_window_quad_renderable_colors(unsigned int width,
+                                     unsigned int height,
+                                     unsigned int depth,
+                                     void* renderTarget){
+
+  glQuadRenderableVA* renderable = 
+    get_renderable(width, height, depth, renderTarget);
+
+  assert(renderable && "failed to get renderable");
 
   return (float*)renderable->map_colors();
+}
+
+extern "C"
+float*
+__scrt_window_quad_renderable_vertex_colors(unsigned int width,
+                                            unsigned int height,
+                                            unsigned int depth,
+                                            void* renderTarget){
+
+  glQuadRenderableVA* renderable = 
+    get_renderable(width, height, depth, renderTarget);
+
+  assert(renderable && "failed to get renderable");
+
+  return (float*)renderable->map_vertex_colors();
+}
+
+extern "C"
+float*
+__scrt_window_quad_renderable_edge_colors(unsigned int width,
+                                          unsigned int height,
+                                          unsigned int depth,
+                                          void* renderTarget){
+
+  glQuadRenderableVA* renderable = 
+    get_renderable(width, height, depth, renderTarget);
+
+  assert(renderable && "failed to get renderable");
+
+  return (float*)renderable->map_edge_colors();
 }
 
 extern "C"
@@ -111,3 +158,26 @@ void __scrt_window_paint(void* renderTarget) {
   window->pollEvents();
 }
 
+extern "C"
+void __scrt_window_paint_vertices(void* renderTarget) {
+  glWindow* window = (glWindow*)renderTarget;
+  // this is funky -- should be a separate function 
+  // (__scrt_window_quad_renderable_unmap_colors)
+  ((glQuadRenderableVA*)(window->getCurrentRenderable()))->
+    unmap_vertex_colors();
+  window->paint();
+  window->swapBuffers();
+  window->pollEvents();
+}
+
+extern "C"
+void __scrt_window_paint_edges(void* renderTarget) {
+  glWindow* window = (glWindow*)renderTarget;
+  // this is funky -- should be a separate function 
+  // (__scrt_window_quad_renderable_unmap_colors)
+  ((glQuadRenderableVA*)(window->getCurrentRenderable()))->
+    unmap_edge_colors();
+  window->paint();
+  window->swapBuffers();
+  window->pollEvents();
+}
