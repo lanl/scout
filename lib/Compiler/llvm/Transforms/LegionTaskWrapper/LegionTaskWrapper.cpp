@@ -13,6 +13,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Transforms/Utils/CodeExtractor.h"
 #include "llvm/IR/IRBuilder.h" 
+#include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
 
@@ -24,25 +25,25 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
 
   bool modifiedIR = false;
 
+  //M.dump();
+
   // iterate through functions in module M
   for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I) {
 
     // get function
     Function& F = *I;
 
-    // Check if function is "main()" and if so, extract it and make a new function "main_prime()".
-    // Make main() call main_prime().
-
+    // Check if function is "main()" 
     if (F.getName() == "main") {
       //errs() << "main found: ";
-      //errs().write_escaped(F.getName()) << '\n';
 
       // This extractor code is mostly from clang/lib/CodeGen/CGStmt.cpp: CodeGenFunction::ExtractRegion()
+      // Do we want to remove function local metadata?
       std::vector< llvm::BasicBlock * > Blocks;
 
       llvm::Function::iterator BB = F.begin();
 
-      // collect forall basic blocks up to exit
+      // collect basic blocks up to exit
       for( ; BB != F.end(); ++BB) {
 
         // look for function local metadata
@@ -64,31 +65,94 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
         Blocks.push_back(BB);
       }
 
-      //SC_TODO: should we be using a DominatorTree?
-      //llvm::DominatorTree DT;
-
       llvm::CodeExtractor codeExtractor(Blocks, 0/*&DT*/, false);
 
-      llvm::Function *FprimeFn = codeExtractor.extractCodeRegion();
+      // iterate through functions in module M
+      Function* mainTaskFunc = NULL;
 
-      const std::string name("main_prime");
+      for (Module::iterator I2 = M.begin(), E2 = M.end(); I2 != E2; ++I2) {
 
-      FprimeFn->setName(name);
+        // get function
+        Function &F2 = *I2;
+
+        // Check if function is "main_task()" and if so, keep a ptr to it
+
+        if (F2.getName() == "main_task") {
+            mainTaskFunc = &F2;
+            //errs() << "found main_task()\n";
+        }
+
+        // extract code from main() and put it in main_task()
+        // TODO check if we have a main_task().  If not, we have a problem.
+        if (!mainTaskFunc) {
+              //errs() << "Did not find main_task()\n";
+        }
+      }
+
+
+      codeExtractor.extractCodeRegionIntoMainTaskFunc(mainTaskFunc);
+      //errs() << "extracted code into main_task()\n";
+
+      // Remove the int return instruction at the end
+      BasicBlock &lastBlock = mainTaskFunc->back();
+      llvm::Instruction& lastInst = lastBlock.back();
+      //errs() << "erasing previous return instruction\n";
+      lastInst.eraseFromParent();
+
+      // Put in a void return instruction at the end
+      IRBuilder<> builder(M.getContext());
+      builder.SetInsertPoint(&lastBlock);
+      builder.CreateRetVoid();
 
       modifiedIR = true;
 
+      // Go through main_task() instructions and don't store argc and argv into argc.addr and argv.addr
+      // since the argc and argv are not args to main_task().
+      // TODO fix codegen to store argc and argv in task args in lsci_main(), then use
+      // liblsci interface to to allow you to get them back within main_task().
+
+      Instruction* argc_store;
+      Instruction* argv_store;
+
+      // for each basic block in main_task()
+      for(BB = mainTaskFunc->begin() ; BB != mainTaskFunc->end(); ++BB) {
+
+        // for each instruction in the basic block
+        for (BasicBlock::InstListType::iterator ii = BB->begin(); ii != BB->end(); ++ii) {
+
+          if ((*ii).getOpcode() == llvm::Instruction::Store) {
+
+            // for each operand in the instruction
+            for(unsigned i = 0, e = (*ii).getNumOperands(); i!=e; ++i){
+
+              if ((*ii).getOperand(i)->getName() ==  "argc.addr") {
+                //errs() << "found argc.addr\n";
+                argc_store = &(*ii);
+              }
+
+              if ((*ii).getOperand(i)->getName() ==  "argv.addr") {
+                //errs() << "found argv.addr\n";
+                argv_store = &(*ii);
+              }
+            } 
+          }
+        }
+      }
+      //errs() << "erasing argc.addr\n";
+      argc_store->eraseFromParent();
+      //errs() << "erasing argv.addr\n";
+      argv_store->eraseFromParent();
+
+      // TODO Go through blocks in main_task and if find call to a func that is a task,
+      // substitute with a call to LegionTaskInitFunctionX(lsci_unimesh_t*, char* , char* ).
+
+
       // make main() call lsci_main() at the end to do lsci startup stuff
 
-      IRBuilder<> builder(M.getContext());
-
-      // Go through and find last block in main()
-      BasicBlock &lastBlock = F.back();
-
-      errs() << "found last block of main()\n";
-
-      // Find place to insert call to lsci_main(), before last instruction in the block
-      builder.SetInsertPoint(&(lastBlock.back()));
-
+      Function::BasicBlockListType &blocks = F.getBasicBlockList();
+      llvm::BasicBlock *newheader = BasicBlock::Create(M.getContext(), "entry");
+      blocks.push_back(newheader);
+      
       // create call instruction
       llvm::Function::arg_iterator arg_iter = F.arg_begin();
       llvm::Value* argcValue = arg_iter++;
@@ -101,16 +165,20 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
       // call lsci_main() 
       llvm::Function* lsci_mainFunc;
       lsci_mainFunc = M.getFunction("lsci_main"); 
-      llvm::Value* lsciCallRet = builder.CreateCall(lsci_mainFunc, args);
+      CallInst* lsciCall =  CallInst::Create(lsci_mainFunc, args);
+      newheader->getInstList().push_back(lsciCall);
 
       // create ret instruction
-      builder.CreateRet(lsciCallRet);
+      ReturnInst* retInst = ReturnInst::Create(M.getContext(), lsciCall);
+      newheader->getInstList().push_back(retInst);
 
-      // Now get last instruction from this block (the previous return instruction) and delete it
-      llvm::Instruction& lastInst = lastBlock.back();
-      lastInst.eraseFromParent();
     }
   }
+
+  //errs() << "done with modifying main and main_task in the LegionTaskWRapper pass.\n";
+
+  //M.dump();
+
   // return true if modified IR
   return modifiedIR;
 }

@@ -3,7 +3,7 @@
  *                         All rights reserved.
  */
 
-#include "lsci.h"
+#include "../lib/lsci.h"
 
 #include <stdio.h>
 #include <stdlib.h>

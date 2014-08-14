@@ -109,9 +109,11 @@ void CodeGenModule::startLsciMainFunction() {
 
   llvm::Function* main_task = llvm::Function::Create(main_task_ft,
       llvm::Function::ExternalLinkage,
-      "MainTaskFunction",
+      "main_task",
       &getModule());
 
+// make it empty for now.  Will fill with main() stuff
+#if 0
   llvm::BasicBlock *BB = llvm::BasicBlock::Create(getLLVMContext(), "entry", main_task);
 
   Builder.SetInsertPoint(BB);
@@ -120,6 +122,7 @@ void CodeGenModule::startLsciMainFunction() {
   // but we don't know argc/argv?
 
   Builder.CreateRetVoid();
+#endif
 
   // Fill in initial part of lsci_main(), which contains sets the top level task and registers main_task
   // Could just call regTaskInLsciMainFunction(0, main_task);
@@ -128,7 +131,7 @@ void CodeGenModule::startLsciMainFunction() {
 
   // make call to lsci_set_toplevel_task_id
   llvm::Function* lsciMainFunc = lsciMainFunction();
-  BB = llvm::BasicBlock::Create(getLLVMContext(), "entry", lsciMainFunc);
+  llvm::BasicBlock* BB = llvm::BasicBlock::Create(getLLVMContext(), "entry", lsciMainFunc);
   Builder.SetInsertPoint(BB);
   llvm::ConstantInt* mainTID = llvm::ConstantInt::get(Int32Ty, 0);
   std::vector<llvm::Value*> args = {mainTID};
