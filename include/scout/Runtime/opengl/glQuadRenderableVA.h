@@ -22,6 +22,7 @@
 #include "scout/Runtime/opengl/glRenderable.h"
 #include "scout/Runtime/opengl/glTexture.h"
 #include "scout/Runtime/opengl/glVertexBuffer.h"
+#include "scout/Runtime/opengl/glColorBuffer.h"
 #include "scout/Runtime/opengl/glTextureBuffer.h"
 #include "scout/Runtime/opengl/glTexCoordBuffer.h"
 
@@ -80,8 +81,8 @@ namespace scout
       unsigned* _edges;
       glTexture* _texture;
       glTextureBuffer* _pbo;
-      glTextureBuffer* _vpbo;
-      glTextureBuffer* _epbo;
+      glColorBuffer* _vpbo;
+      glColorBuffer* _epbo;
       glTexCoordBuffer* _tcbo;
       unsigned short _ntexcoords;
       unsigned int _nverts;

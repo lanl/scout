@@ -27,12 +27,6 @@
 using namespace std;
 using namespace scout;
 
-namespace{
-
-  static const float CELL_SIZE = 1;
-
-} // end namespace
-
 glQuadRenderableVA::glQuadRenderableVA(const glfloat3 &min_pt, const glfloat3 &max_pt)
 {
   setMinPoint(min_pt);
@@ -99,7 +93,21 @@ void glQuadRenderableVA::glQuadRenderableVA_2D()
   _pbo->alloc(sizeof(float) * 4 * xdim * ydim, GL_STREAM_DRAW_ARB);
   _pbo->release();
 
-  _vpbo = new glTextureBuffer;
+  _vbo = new glVertexBuffer;
+  _vbo->bind();
+  _vbo->alloc(sizeof(float) * 3 * 4, GL_STREAM_DRAW_ARB);
+  fill_vbo(_min_pt.x, _min_pt.y, _max_pt.x, _max_pt.y);
+  _vbo->release();
+  _nverts = 4;
+
+  _tcbo = new glTexCoordBuffer;
+  _tcbo->bind();
+  _tcbo->alloc(sizeof(float) * 8, GL_STREAM_DRAW_ARB);  // two-dimensional texture coordinates.
+  fill_tcbo2d(0.0f, 0.0f, 1.0f, 1.0f);
+  _tcbo->release();
+
+#ifdef WITH_VERTICES_EDGES
+  _vpbo = new glColorBuffer;
   _vpbo->bind();
   _vpbo->alloc(sizeof(float) * 4 * numVertices, GL_STREAM_DRAW_ARB);
   _vpbo->release();
@@ -113,28 +121,20 @@ void glQuadRenderableVA::glQuadRenderableVA_2D()
   }
   unmap_vertex_colors();
 
-  _epbo = new glTextureBuffer;
+  _epbo = new glColorBuffer;
   _epbo->bind();
   _epbo->alloc(sizeof(float) * 4 * numEdges, GL_STREAM_DRAW_ARB);
   _epbo->release();
 
   float4* ec = map_edge_colors();
-  for(size_t i = 0; i < numVertices; ++i){
+  for(size_t i = 0; i < numEdges; ++i){
     ec[i].x = 0.0;
-    ec[i].y = 0.0;
-    ec[i].z = 1.0;
+    ec[i].y = 1.0;
+    ec[i].z = 0.0;
     ec[i].w = 1.0;
   }
   unmap_edge_colors();
 
-  _vbo = new glVertexBuffer;
-  _vbo->bind();
-  _vbo->alloc(sizeof(float) * 3 * 4, GL_STREAM_DRAW_ARB);
-  fill_vbo(_min_pt.x, _min_pt.y, _max_pt.x, _max_pt.y);
-  _vbo->release();
-  _nverts = 4;
-
-#ifdef WITH_VERTICES_EDGES
   _mvbo = new glVertexBuffer;
   _mvbo->bind();
   _mvbo->alloc(sizeof(float) * 3 * numVertices, GL_STREAM_DRAW_ARB);
@@ -142,14 +142,9 @@ void glQuadRenderableVA::glQuadRenderableVA_2D()
   _mvbo->release();
 
   _edges = (unsigned*)malloc(sizeof(unsigned) * numEdges * 2);
+
   fill_edges();
 #endif
-
-  _tcbo = new glTexCoordBuffer;
-  _tcbo->bind();
-  _tcbo->alloc(sizeof(float) * 8, GL_STREAM_DRAW_ARB);  // two-dimensional texture coordinates.
-  fill_tcbo2d(0.0f, 0.0f, 1.0f, 1.0f);
-  _tcbo->release();
 
   oglErrorCheck();
 }
@@ -395,6 +390,10 @@ void glQuadRenderableVA::unmap_edge_colors()
 
 void glQuadRenderableVA::draw(glCamera* camera)
 {
+  glEnableClientState(GL_VERTEX_ARRAY);
+
+  //glShadeModel(GL_FLAT);
+
   size_t xdim = _max_pt.x - _min_pt.x;
   size_t ydim = _max_pt.y - _min_pt.y;
   size_t xdim1 = xdim + 1;
@@ -411,16 +410,13 @@ void glQuadRenderableVA::draw(glCamera* camera)
   _tcbo->bind();
   glTexCoordPointer(_ntexcoords, GL_FLOAT, 0, 0);
 
-  glEnableClientState(GL_VERTEX_ARRAY);
   _vbo->bind();
   glVertexPointer(3, GL_FLOAT, 0, 0);
+  _vbo->release();
 
   oglErrorCheck();
 
   glDrawArrays(GL_POLYGON, 0, _nverts);
-
-  glDisableClientState(GL_VERTEX_ARRAY);
-  _vbo->release();
 
   _tcbo->release();
   _texture->disable();
@@ -428,30 +424,31 @@ void glQuadRenderableVA::draw(glCamera* camera)
   glDisableClientState(GL_TEXTURE_COORD_ARRAY);
 
 #ifdef WITH_VERTICES_EDGES
-  glEnableClientState(GL_VERTEX_ARRAY);
-  _mvbo->bind();
-  glVertexPointer(3, GL_FLOAT, 0, 0); 
+  glEnableClientState(GL_COLOR_ARRAY);
 
-  glLineWidth(5.0);
   _epbo->bind();
-  _texture->enable();
-  _texture->update(0);
+  glColorPointer(4, GL_FLOAT, 0, 0); 
   _epbo->release();
 
+  _mvbo->bind();
+  glVertexPointer(3, GL_FLOAT, 0, 0); 
+  _mvbo->release();
+
+  glLineWidth(5.0);
   glDrawElements(GL_LINES, numEdges*2, GL_UNSIGNED_INT, _edges);
 
   glPointSize(5.0);
-  _vpbo->bind();
-  _texture->enable();
-  _texture->update(0);
-  _vpbo->release();
 
-  glDrawArrays(GL_POINTS, 0, numVertices);
-  glDisableClientState(GL_VERTEX_ARRAY);
-  _mvbo->release();
-#endif
+  _vpbo->bind();
+  glColorPointer(4, GL_FLOAT, 0, 0); 
+  _vpbo->release();
   
-  oglErrorCheck();
+  glDrawArrays(GL_POINTS, 0, numVertices);
+  
+  glDisableClientState(GL_COLOR_ARRAY);
 
   sleep(1);
+#endif
+
+  oglErrorCheck();
 }
