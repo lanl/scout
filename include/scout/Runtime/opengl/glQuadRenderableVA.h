@@ -22,6 +22,7 @@
 #include "scout/Runtime/opengl/glRenderable.h"
 #include "scout/Runtime/opengl/glTexture.h"
 #include "scout/Runtime/opengl/glVertexBuffer.h"
+#include "scout/Runtime/opengl/glColorBuffer.h"
 #include "scout/Runtime/opengl/glTextureBuffer.h"
 #include "scout/Runtime/opengl/glTexCoordBuffer.h"
 
@@ -38,8 +39,14 @@ namespace scout
     void initialize(glCamera* camera);
     GLuint get_buffer_object_id();
     float4* map_colors();
+    float4* map_vertex_colors();
+    float4* map_edge_colors();
     void alloc_texture();
+    void alloc_vertex_texture();
+    void alloc_edge_texture();
     void unmap_colors();
+    void unmap_vertex_colors();
+    void unmap_edge_colors();
 
     void draw(glCamera* camera);
 
@@ -63,24 +70,29 @@ namespace scout
     void glQuadRenderableVA_1D();
     void glQuadRenderableVA_2D();
     void fill_vbo(float x0, float y0, float x1, float y1);
+    void fill_mvbo();
+    void fill_edges();
     void fill_tcbo2d(float x0, float y0, float x1, float y1);
     void fill_tcbo1d(float start, float end);
 
    private:
       glVertexBuffer* _vbo;
+      glVertexBuffer* _mvbo;
+      unsigned* _edges;
       glTexture* _texture;
       glTextureBuffer* _pbo;
+      glColorBuffer* _vpbo;
+      glColorBuffer* _epbo;
       glTexCoordBuffer* _tcbo;
       unsigned short _ntexcoords;
       unsigned int _nverts;
       glfloat3 _min_pt;
       glfloat3 _max_pt;
       float _tex_coord_scale;
-
+      size_t _width;
+      size_t _height;
   };
 
 }
 
 #endif
-
-    

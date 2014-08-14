@@ -454,7 +454,9 @@ raw_rect_ptr_1d(lsci_physical_regions_t rgnp,
     using namespace LegionRuntime::HighLevel;
     using namespace LegionRuntime::Accessor;
     assert(rgnp && region_id >= 0);
+    // get the base of the PhysicalRegion array
     PhysicalRegion *prgnp_cxx = static_cast<PhysicalRegion *>(rgnp);
+    // index into the array given the region id
     prgnp_cxx += region_id;
 
     switch (type) {
