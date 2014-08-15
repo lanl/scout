@@ -99,9 +99,9 @@ void glQuadRenderableVA::glQuadRenderableVA_2D()
 
   float4* ec = map_edge_colors();
   for(size_t i = 0; i < numEdges; ++i){
-    ec[i].x = 0.0;
+    ec[i].x = 1.0;
     ec[i].y = 1.0;
-    ec[i].z = 0.0;
+    ec[i].z = 1.0;
     ec[i].w = 1.0;
   }
   unmap_edge_colors();
@@ -280,6 +280,8 @@ void glQuadRenderableVA::draw(glCamera* camera)
   size_t numCells = xdim * ydim;
   size_t numVertices = xdim1 * ydim1;
   size_t numEdges = xdim * ydim1 + xdim1 * ydim;
+  
+  float s = 80.0/max(xdim, ydim);
 
   float* verts =(float*)_vbo->mapForRead();
   float4* colors = (float4*)_pbo->mapForRead();
@@ -319,14 +321,14 @@ void glQuadRenderableVA::draw(glCamera* camera)
   glColorPointer(4, GL_FLOAT, 0, 0); 
   _epbo->release();
 
-  glLineWidth(5.0);
+  glLineWidth(s);
   glDrawElements(GL_LINES, numEdges * 2, GL_UNSIGNED_INT, _edges);
 
   _vpbo->bind();
   glColorPointer(4, GL_FLOAT, 0, 0); 
   _vpbo->release();
 
-  glPointSize(5.0);  
+  glPointSize(s);  
   glDrawArrays(GL_POINTS, 0, numVertices);
 #endif
 
