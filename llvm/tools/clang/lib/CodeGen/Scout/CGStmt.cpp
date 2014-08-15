@@ -2372,10 +2372,40 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   //zero-initialize induction var
   Builder.CreateStore(ConstantZero, InductionVar[3]);
 
+  RenderallMeshStmt::MeshElementType ET = S.getMeshElementRef();
+
+  Value* numItems;
+  
+  SmallVector<llvm::Value*, 3> Dimensions;
+  GetMeshDimensions(S.getMeshType(), Dimensions);
+
   // make quad renderable and add to the window and return color pointer
   // use same args as for RenderallUniformBeginFunction
   // in the future, this will be a mesh renderable
-  llvm::Function *WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableColorsFunction();
+
+  llvm::Function *WinQuadRendFunc;
+  llvm::Function *WinPaintFunc;
+  
+  switch(FET){
+    case ForallMeshStmt::Cells:
+      WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableColorsFunction();
+      WinPaintFunc = CGM.getScoutRuntime().CreateWindowPaintFunction();
+      break;
+    case ForallMeshStmt::Vertices:
+      WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableVertexColorsFunction();
+      WinPaintFunc = CGM.getScoutRuntime().CreateWindowPaintVerticesFunction();
+      break;
+    case ForallMeshStmt::Edges:
+      WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableEdgeColorsFunction();
+      WinPaintFunc = CGM.getScoutRuntime().CreateWindowPaintEdgesFunction();
+      break;
+    case ForallMeshStmt::Faces:
+      WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableEdgeColorsFunction();
+      WinPaintFunc = CGM.getScoutRuntime().CreateWindowPaintEdgesFunction();
+      break;
+    default:
+      assert(false && "unrecognized renderall type");
+  }
 
   // %1 = call <4 x float>* @__scrt_window_quad_renderable_colors(i32 %HeatMeshType.width.ptr14, i32 %HeatMeshType.height.ptr16, i32 %HeatMeshType.depth.ptr18, i8* %derefwin)
   Color = Builder.CreateCall(WinQuadRendFunc, ArrayRef<llvm::Value *>(Args), "localcolor.ptr");
@@ -2390,7 +2420,6 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   // paint window (draws all renderables) (does clear beforehand, and swap buffers after)
   Args.clear();
   Args.push_back(int8PtrRTAlloc);
-  llvm::Function *WinPaintFunc = CGM.getScoutRuntime().CreateWindowPaintFunction();
   Builder.CreateCall(WinPaintFunc, ArrayRef<llvm::Value *>(Args));
 
   // reset Loopbounds, Rank, induction var
