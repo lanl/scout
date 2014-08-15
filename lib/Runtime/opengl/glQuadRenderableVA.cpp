@@ -311,6 +311,10 @@ void glQuadRenderableVA::draw(glCamera* camera)
   _pbo->unmap();
 
 #ifdef WITH_VERTICES_EDGES
+  _vbo->bind();
+  glVertexPointer(2, GL_FLOAT, 0, 0);
+  _vbo->release();
+
   _epbo->bind();
   glColorPointer(4, GL_FLOAT, 0, 0); 
   _epbo->release();
