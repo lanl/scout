@@ -2374,7 +2374,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 
   RenderallMeshStmt::MeshElementType ET = S.getMeshElementRef();
 
-  Value* numItems;
+  llvm::Value* numItems;
   
   SmallVector<llvm::Value*, 3> Dimensions;
   GetMeshDimensions(S.getMeshType(), Dimensions);
@@ -2386,7 +2386,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   llvm::Function *WinQuadRendFunc;
   llvm::Function *WinPaintFunc;
   
-  switch(FET){
+  switch(ET){
     case ForallMeshStmt::Cells:
       WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableColorsFunction();
       WinPaintFunc = CGM.getScoutRuntime().CreateWindowPaintFunction();

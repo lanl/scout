@@ -16,7 +16,7 @@
  */
 
 #include <unistd.h>
-
+#include <cstdlib>
 #include <iostream>
 #include "scout/Runtime/opengl/glQuadRenderableVA.h"
 #include "scout/Runtime/opengl/glTexture1D.h"
