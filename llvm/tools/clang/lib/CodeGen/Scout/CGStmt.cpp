@@ -2435,6 +2435,50 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   }
 }
 
+void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S){
+	llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
+	llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
+
+	llvm::BasicBlock *EntryBlock = EmitMarkerBlock("renderall.entry");
+	(void)EntryBlock; //suppress warning
+
+	InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "renderall.idx.ptr");
+	//zero-initialize induction var
+	Builder.CreateStore(Zero, InductionVar[3]);
+	InnerIndex = Builder.CreateAlloca(Int32Ty, 0, "renderall.inneridx.ptr");
+
+	SmallVector<llvm::Value*, 3> Dimensions;
+	GetMeshDimensions(S.getMeshType(), Dimensions);
+	llvm::Value* numEdges;
+
+	RenderallMeshStmt::MeshElementType ET = S.getMeshElementRef();
+
+	llvm::Function *WinQuadRendFunc;
+	llvm::Function *WinPaintFunc;
+
+	llvm::BasicBlock *LoopBlock = createBasicBlock("forall.edges.loop");
+	Builder.CreateBr(LoopBlock);
+
+	EmitBlock(LoopBlock);
+
+	EdgeIndex = InductionVar[3];
+	EmitStmt(S.getBody());
+	EdgeIndex = 0;
+
+	llvm::Value* k = Builder.CreateLoad(InductionVar[3], "forall.edges_idx");
+	k = Builder.CreateAdd(k, One);
+	Builder.CreateStore(k, InductionVar[3]);
+	k = Builder.CreateZExt(k, Int64Ty, "k");
+
+	llvm::Value* Cond = Builder.CreateICmpSLT(k, numEdges, "cond");
+
+	llvm::BasicBlock *ExitBlock = createBasicBlock("forall.edges.exit");
+	Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
+	EmitBlock(ExitBlock);
+
+	InnerIndex = 0;
+}
+
 //generate one of the nested loops
 void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned r) {
   RegionCounter Cnt = getPGORegionCounter(&S);

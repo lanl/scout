@@ -2074,6 +2074,9 @@ public:
   void EmitForallArrayLoop(const ForallArrayStmt &S,  unsigned r);
 
   void EmitRenderallStmt(const RenderallMeshStmt &S);
+
+  void EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S);
+
   void EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned r);
   //void EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S);
 
