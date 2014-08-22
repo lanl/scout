@@ -2386,10 +2386,13 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   llvm::Function *WinQuadRendFunc;
   llvm::Function *WinPaintFunc;
   
+  bool cellLoop = false;
+  
   switch(ET){
     case ForallMeshStmt::Cells:
       WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableColorsFunction();
       WinPaintFunc = CGM.getScoutRuntime().CreateWindowPaintFunction();
+      cellLoop = true;
       break;
     case ForallMeshStmt::Vertices:
       WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableVertexColorsFunction();
@@ -2414,8 +2417,13 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
   Rank = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+3, IRNameStr);
 
-  // renderall loops + body
-  EmitRenderallMeshLoop(S, 3);
+  if(cellLoop){
+    // renderall loops + body
+    EmitRenderallMeshLoop(S, 3);
+  }
+  else{
+    EmitRenderallVerticesEdgesFaces(S);
+  }
 
   // paint window (draws all renderables) (does clear beforehand, and swap buffers after)
   Args.clear();
@@ -2449,30 +2457,48 @@ void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S
 
 	SmallVector<llvm::Value*, 3> Dimensions;
 	GetMeshDimensions(S.getMeshType(), Dimensions);
-	llvm::Value* numEdges;
 
 	RenderallMeshStmt::MeshElementType ET = S.getMeshElementRef();
 
 	llvm::Function *WinQuadRendFunc;
 	llvm::Function *WinPaintFunc;
 
-	llvm::BasicBlock *LoopBlock = createBasicBlock("forall.edges.loop");
+	llvm::BasicBlock *LoopBlock = createBasicBlock("renderall.loop");
 	Builder.CreateBr(LoopBlock);
 
 	EmitBlock(LoopBlock);
 
-	EdgeIndex = InductionVar[3];
-	EmitStmt(S.getBody());
-	EdgeIndex = 0;
+  llvm::Value** IndexPtr;
 
-	llvm::Value* k = Builder.CreateLoad(InductionVar[3], "forall.edges_idx");
+  llvm::Value* numItems;
+  
+  switch(ET){
+    case ForallMeshStmt::Vertices:
+      IndexPtr = &VertexIndex;
+      GetNumMeshItems(Dimensions, 0, &numItems, 0, 0);
+      break;
+    case ForallMeshStmt::Edges:
+      IndexPtr = &EdgeIndex;
+      GetNumMeshItems(Dimensions, 0, 0, &numItems, 0);
+      break;
+    case ForallMeshStmt::Faces:
+      IndexPtr = &FaceIndex;
+      GetNumMeshItems(Dimensions, 0, 0, 0, &numItems);
+      break;
+  }
+  
+	*IndexPtr = InductionVar[3];
+	EmitStmt(S.getBody());
+	*IndexPtr = 0;
+
+	llvm::Value* k = Builder.CreateLoad(InductionVar[3], "renderall.idx");
 	k = Builder.CreateAdd(k, One);
 	Builder.CreateStore(k, InductionVar[3]);
 	k = Builder.CreateZExt(k, Int64Ty, "k");
 
-	llvm::Value* Cond = Builder.CreateICmpSLT(k, numEdges, "cond");
+	llvm::Value* Cond = Builder.CreateICmpSLT(k, numItems, "cond");
 
-	llvm::BasicBlock *ExitBlock = createBasicBlock("forall.edges.exit");
+	llvm::BasicBlock *ExitBlock = createBasicBlock("renderall.exit");
 	Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
 	EmitBlock(ExitBlock);
 
