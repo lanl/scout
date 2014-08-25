@@ -155,12 +155,23 @@ static void getDarwinDefines(MacroBuilder &Builder, const LangOptions &Opts,
     // revision numbers). So, we limit them to the maximum representable
     // version.
     assert(Maj < 100 && Min < 100 && Rev < 100 && "Invalid version!");
-    char Str[5];
-    Str[0] = '0' + (Maj / 10);
-    Str[1] = '0' + (Maj % 10);
-    Str[2] = '0' + std::min(Min, 9U);
-    Str[3] = '0' + std::min(Rev, 9U);
-    Str[4] = '\0';
+    char Str[7];
+    if (Maj < 10 || (Maj == 10 && Min < 10)) {
+      Str[0] = '0' + (Maj / 10);
+      Str[1] = '0' + (Maj % 10);
+      Str[2] = '0' + std::min(Min, 9U);
+      Str[3] = '0' + std::min(Rev, 9U);
+      Str[4] = '\0';
+    } else {
+      // Handle versions > 10.9.
+      Str[0] = '0' + (Maj / 10);
+      Str[1] = '0' + (Maj % 10);
+      Str[2] = '0' + (Min / 10);
+      Str[3] = '0' + (Min % 10);
+      Str[4] = '0' + (Rev / 10);
+      Str[5] = '0' + (Rev % 10);
+      Str[6] = '\0';
+    }
     Builder.defineMacro("__ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__", Str);
   }
 
@@ -505,27 +516,6 @@ public:
   }
 };
 
-// AuroraUX target
-template<typename Target>
-class AuroraUXTargetInfo : public OSTargetInfo<Target> {
-protected:
-  void getOSDefines(const LangOptions &Opts, const llvm::Triple &Triple,
-                    MacroBuilder &Builder) const override {
-    DefineStd(Builder, "sun", Opts);
-    DefineStd(Builder, "unix", Opts);
-    Builder.defineMacro("__ELF__");
-    Builder.defineMacro("__svr4__");
-    Builder.defineMacro("__SVR4");
-  }
-public:
-  AuroraUXTargetInfo(const llvm::Triple &Triple)
-      : OSTargetInfo<Target>(Triple) {
-    this->UserLabelPrefix = "";
-    this->WCharType = this->SignedLong;
-    // FIXME: WIntType should be SignedLong
-  }
-};
-
 // Solaris target
 template<typename Target>
 class SolarisTargetInfo : public OSTargetInfo<Target> {
@@ -682,6 +672,9 @@ class PPCTargetInfo : public TargetInfo {
   // Target cpu features.
   bool HasVSX;
 
+protected:
+  std::string ABI;
+
 public:
   PPCTargetInfo(const llvm::Triple &Triple)
       : TargetInfo(Triple), HasVSX(false) {
@@ -769,6 +762,9 @@ public:
 
     return CPUKnown;
   }
+
+
+  StringRef getABI() const override { return ABI; }
 
   void getTargetBuiltins(const Builtin::Info *&Records,
                          unsigned &NumRecords) const override {
@@ -925,7 +921,6 @@ const Builtin::Info PPCTargetInfo::BuiltinInfo[] = {
 /// configured set of features.
 bool PPCTargetInfo::handleTargetFeatures(std::vector<std::string> &Features,
                                          DiagnosticsEngine &Diags) {
-  // Remember the maximum enabled sselevel.
   for (unsigned i = 0, e = Features.size(); i !=e; ++i) {
     // Ignore disabled features.
     if (Features[i][0] == '-')
@@ -965,12 +960,17 @@ void PPCTargetInfo::getTargetDefines(const LangOptions &Opts,
   // Target properties.
   if (getTriple().getArch() == llvm::Triple::ppc64le) {
     Builder.defineMacro("_LITTLE_ENDIAN");
-    Builder.defineMacro("_CALL_ELF","2");
   } else {
     if (getTriple().getOS() != llvm::Triple::NetBSD &&
         getTriple().getOS() != llvm::Triple::OpenBSD)
       Builder.defineMacro("_BIG_ENDIAN");
   }
+
+  // ABI options.
+  if (ABI == "elfv1")
+    Builder.defineMacro("_CALL_ELF", "1");
+  if (ABI == "elfv2")
+    Builder.defineMacro("_CALL_ELF", "2");
 
   // Subtarget options.
   Builder.defineMacro("__NATURAL_ALIGNMENT__");
@@ -1121,6 +1121,9 @@ void PPCTargetInfo::getDefaultFeatures(llvm::StringMap<bool> &Features) const {
     .Default(false);
 
   Features["qpx"] = (CPU == "a2q");
+
+  if (!ABI.empty())
+    Features[ABI] = true;
 }
 
 bool PPCTargetInfo::hasFeature(StringRef Feature) const {
@@ -1283,16 +1286,26 @@ public:
     } else {
       if ((Triple.getArch() == llvm::Triple::ppc64le)) {
         DescriptionString = "e-m:e-i64:64-n32:64";
+        ABI = "elfv2";
       } else {
         DescriptionString = "E-m:e-i64:64-n32:64";
+        ABI = "elfv1";
       }
-}
+    }
 
     // PPC64 supports atomics up to 8 bytes.
     MaxAtomicPromoteWidth = MaxAtomicInlineWidth = 64;
   }
   BuiltinVaListKind getBuiltinVaListKind() const override {
     return TargetInfo::CharPtrBuiltinVaList;
+  }
+  // PPC64 Linux-specifc ABI options.
+  bool setABI(const std::string &Name) override {
+    if (Name == "elfv1" || Name == "elfv2") {
+      ABI = Name;
+      return true;
+    }
+    return false;
   }
 };
 } // end anonymous namespace.
@@ -1456,6 +1469,9 @@ static const unsigned R600AddrSpaceMap[] = {
   3     // cuda_shared
 };
 
+// If you edit the description strings, make sure you update
+// getPointerWidthV().
+
 static const char *DescriptionStringR600 =
   "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128"
   "-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64";
@@ -1493,6 +1509,20 @@ public:
     DescriptionString = DescriptionStringR600;
     AddrSpaceMap = &R600AddrSpaceMap;
     UseAddrSpaceMapMangling = true;
+  }
+
+  uint64_t getPointerWidthV(unsigned AddrSpace) const override {
+    if (GPU <= GK_CAYMAN)
+      return 32;
+
+    switch(AddrSpace) {
+      default:
+        return 64;
+      case 0:
+      case 3:
+      case 5:
+        return 32;
+    }
   }
 
   const char * getClobbers() const override {
@@ -1562,10 +1592,12 @@ public:
       .Case("pitcairn", GK_SOUTHERN_ISLANDS)
       .Case("verde",    GK_SOUTHERN_ISLANDS)
       .Case("oland",    GK_SOUTHERN_ISLANDS)
+      .Case("hainan",   GK_SOUTHERN_ISLANDS)
       .Case("bonaire",  GK_SEA_ISLANDS)
       .Case("kabini",   GK_SEA_ISLANDS)
       .Case("kaveri",   GK_SEA_ISLANDS)
       .Case("hawaii",   GK_SEA_ISLANDS)
+      .Case("mullins",  GK_SEA_ISLANDS)
       .Default(GK_NONE);
 
     if (GPU == GK_NONE) {
@@ -1666,7 +1698,7 @@ class X86TargetInfo : public TargetInfo {
   bool HasTBM;
   bool HasFMA;
   bool HasF16C;
-  bool HasAVX512CD, HasAVX512ER, HasAVX512PF;
+  bool HasAVX512CD, HasAVX512ER, HasAVX512PF, HasAVX512DQ, HasAVX512BW, HasAVX512VL;
   bool HasSHA;
   bool HasCX16;
 
@@ -1758,6 +1790,10 @@ class X86TargetInfo : public TargetInfo {
     /// Knights Landing processor.
     CK_KNL,
 
+    /// \name Skylake Server
+    /// Skylake server processor.
+    CK_SKX,
+
     /// \name K6
     /// K6 architecture processors.
     //@{
@@ -1831,7 +1867,8 @@ public:
         HasRDRND(false), HasBMI(false), HasBMI2(false), HasPOPCNT(false),
         HasRTM(false), HasPRFCHW(false), HasRDSEED(false), HasTBM(false),
         HasFMA(false), HasF16C(false), HasAVX512CD(false), HasAVX512ER(false),
-        HasAVX512PF(false), HasSHA(false), HasCX16(false), CPU(CK_Generic),
+        HasAVX512PF(false), HasAVX512DQ(false), HasAVX512BW(false), HasAVX512VL(false),
+        HasSHA(false), HasCX16(false), CPU(CK_Generic),
         FPMath(FP_Default) {
     BigEndian = false;
     LongDoubleFormat = &llvm::APFloat::x87DoubleExtended;
@@ -1925,6 +1962,7 @@ public:
       .Case("core-avx-i", CK_CoreAVXi)
       .Case("core-avx2", CK_CoreAVX2)
       .Case("knl", CK_KNL)
+      .Case("skx", CK_SKX)
       .Case("k6", CK_K6)
       .Case("k6-2", CK_K6_2)
       .Case("k6-3", CK_K6_3)
@@ -2003,6 +2041,7 @@ public:
     case CK_CoreAVXi:
     case CK_CoreAVX2:
     case CK_KNL:
+    case CK_SKX:
     case CK_Athlon64:
     case CK_Athlon64SSE3:
     case CK_AthlonFX:
@@ -2141,6 +2180,22 @@ void X86TargetInfo::getDefaultFeatures(llvm::StringMap<bool> &Features) const {
     setFeatureEnabledImpl(Features, "avx512cd", true);
     setFeatureEnabledImpl(Features, "avx512er", true);
     setFeatureEnabledImpl(Features, "avx512pf", true);
+    setFeatureEnabledImpl(Features, "aes", true);
+    setFeatureEnabledImpl(Features, "pclmul", true);
+    setFeatureEnabledImpl(Features, "lzcnt", true);
+    setFeatureEnabledImpl(Features, "rdrnd", true);
+    setFeatureEnabledImpl(Features, "f16c", true);
+    setFeatureEnabledImpl(Features, "bmi", true);
+    setFeatureEnabledImpl(Features, "bmi2", true);
+    setFeatureEnabledImpl(Features, "rtm", true);
+    setFeatureEnabledImpl(Features, "fma", true);
+    break;
+  case CK_SKX:
+    setFeatureEnabledImpl(Features, "avx512f", true);
+    setFeatureEnabledImpl(Features, "avx512cd", true);
+    setFeatureEnabledImpl(Features, "avx512dq", true);
+    setFeatureEnabledImpl(Features, "avx512bw", true);
+    setFeatureEnabledImpl(Features, "avx512vl", true);
     setFeatureEnabledImpl(Features, "aes", true);
     setFeatureEnabledImpl(Features, "pclmul", true);
     setFeatureEnabledImpl(Features, "lzcnt", true);
@@ -2292,8 +2347,8 @@ void X86TargetInfo::setSSELevel(llvm::StringMap<bool> &Features,
   case AVX2:
     Features["avx2"] = false;
   case AVX512F:
-    Features["avx512f"] = Features["avx512cd"] = Features["avx512er"] =
-      Features["avx512pf"] = false;
+    Features["avx512f"] = Features["avx512cd"] = Features["avx512er"] = Features["avx512pf"] =
+    Features["avx512dq"] = Features["avx512bw"] = Features["avx512vl"] = false;
   }
 }
 
@@ -2392,7 +2447,8 @@ void X86TargetInfo::setFeatureEnabledImpl(llvm::StringMap<bool> &Features,
     setSSELevel(Features, AVX2, Enabled);
   } else if (Name == "avx512f") {
     setSSELevel(Features, AVX512F, Enabled);
-  } else if (Name == "avx512cd" || Name == "avx512er" || Name == "avx512pf") {
+  } else if (Name == "avx512cd" || Name == "avx512er" || Name == "avx512pf"
+          || Name == "avx512dq" || Name == "avx512bw" || Name == "avx512vl") {
     if (Enabled)
       setSSELevel(Features, AVX512F, Enabled);
   } else if (Name == "fma") {
@@ -2505,6 +2561,21 @@ bool X86TargetInfo::handleTargetFeatures(std::vector<std::string> &Features,
       continue;
     }
 
+    if (Feature == "avx512dq") {
+      HasAVX512DQ = true;
+      continue;
+    }
+
+    if (Feature == "avx512bw") {
+      HasAVX512BW = true;
+      continue;
+    }
+
+    if (Feature == "avx512vl") {
+      HasAVX512VL = true;
+      continue;
+    }
+
     if (Feature == "sha") {
       HasSHA = true;
       continue;
@@ -2594,6 +2665,10 @@ void X86TargetInfo::getTargetDefines(const LangOptions &Opts,
     Builder.defineMacro("__amd64");
     Builder.defineMacro("__x86_64");
     Builder.defineMacro("__x86_64__");
+    if (getTriple().getArchName() == "x86_64h") {
+      Builder.defineMacro("__x86_64h");
+      Builder.defineMacro("__x86_64h__");
+    }
   } else {
     DefineStd(Builder, "i386", Opts);
   }
@@ -2670,6 +2745,9 @@ void X86TargetInfo::getTargetDefines(const LangOptions &Opts,
     break;
   case CK_KNL:
     defineCPUMacros(Builder, "knl");
+    break;
+  case CK_SKX:
+    defineCPUMacros(Builder, "skx");
     break;
   case CK_K6_2:
     Builder.defineMacro("__k6_2__");
@@ -2798,6 +2876,12 @@ void X86TargetInfo::getTargetDefines(const LangOptions &Opts,
     Builder.defineMacro("__AVX512ER__");
   if (HasAVX512PF)
     Builder.defineMacro("__AVX512PF__");
+  if (HasAVX512DQ)
+    Builder.defineMacro("__AVX512DQ__");
+  if (HasAVX512BW)
+    Builder.defineMacro("__AVX512BW__");
+  if (HasAVX512VL)
+    Builder.defineMacro("__AVX512VL__");
 
   if (HasSHA)
     Builder.defineMacro("__SHA__");
@@ -2881,6 +2965,9 @@ bool X86TargetInfo::hasFeature(StringRef Feature) const {
       .Case("avx512cd", HasAVX512CD)
       .Case("avx512er", HasAVX512ER)
       .Case("avx512pf", HasAVX512PF)
+      .Case("avx512dq", HasAVX512DQ)
+      .Case("avx512bw", HasAVX512BW)
+      .Case("avx512vl", HasAVX512VL)
       .Case("bmi", HasBMI)
       .Case("bmi2", HasBMI2)
       .Case("cx16", HasCX16)
@@ -3326,6 +3413,8 @@ public:
     return CC_C;
   }
 
+  // for x32 we need it here explicitly
+  bool hasInt128Type() const override { return true; }
 };
 } // end anonymous namespace
 
@@ -3519,8 +3608,8 @@ class ARMTargetInfo : public TargetInfo {
     DoubleAlign = LongLongAlign = LongDoubleAlign = SuitableAlign = 64;
     const llvm::Triple &T = getTriple();
 
-    // size_t is unsigned long on Darwin and NetBSD.
-    if (T.isOSDarwin() || T.getOS() == llvm::Triple::NetBSD)
+    // size_t is unsigned long on MachO-derived environments and NetBSD.
+    if (T.isOSBinFormatMachO() || T.getOS() == llvm::Triple::NetBSD)
       SizeType = UnsignedLong;
     else
       SizeType = UnsignedInt;
@@ -4056,8 +4145,9 @@ public:
     }
     return R;
   }
-  bool validateConstraintModifier(StringRef Constraint, const char Modifier,
-                                  unsigned Size) const override {
+  bool
+  validateConstraintModifier(StringRef Constraint, char Modifier, unsigned Size,
+                             std::string &SuggestedModifier) const override {
     bool isOutput = (Constraint[0] == '=');
     bool isInOut = (Constraint[0] == '+');
 
@@ -4501,6 +4591,37 @@ public:
       return true;
     }
     return false;
+  }
+
+  bool
+  validateConstraintModifier(StringRef Constraint, char Modifier, unsigned Size,
+                             std::string &SuggestedModifier) const override {
+    // Strip off constraint modifiers.
+    while (Constraint[0] == '=' || Constraint[0] == '+' || Constraint[0] == '&')
+      Constraint = Constraint.substr(1);
+
+    switch (Constraint[0]) {
+    default:
+      return true;
+    case 'z':
+    case 'r': {
+      switch (Modifier) {
+      case 'x':
+      case 'w':
+        // For now assume that the person knows what they're
+        // doing with the modifier.
+        return true;
+      default:
+        // By default an 'r' constraint will be in the 'x'
+        // registers.
+        if (Size == 64)
+          return true;
+
+        SuggestedModifier = "w";
+        return false;
+      }
+    }
+    }
   }
 
   virtual const char *getClobbers() const { return ""; }
@@ -4950,10 +5071,8 @@ public:
     SparcTargetInfo::getTargetDefines(Opts, Builder);
     Builder.defineMacro("__sparcv9");
     Builder.defineMacro("__arch64__");
-    // Solaris and its derivative AuroraUX don't need these variants, but the
-    // BSDs do.
-    if (getTriple().getOS() != llvm::Triple::Solaris &&
-        getTriple().getOS() != llvm::Triple::AuroraUX) {
+    // Solaris doesn't need these variants, but the BSDs do.
+    if (getTriple().getOS() != llvm::Triple::Solaris) {
       Builder.defineMacro("__sparc64__");
       Builder.defineMacro("__sparc_v9__");
       Builder.defineMacro("__sparcv9__");
@@ -4980,14 +5099,6 @@ public:
 } // end anonymous namespace.
 
 namespace {
-class AuroraUXSparcV8TargetInfo : public AuroraUXTargetInfo<SparcV8TargetInfo> {
-public:
-  AuroraUXSparcV8TargetInfo(const llvm::Triple &Triple)
-      : AuroraUXTargetInfo<SparcV8TargetInfo>(Triple) {
-    SizeType = UnsignedInt;
-    PtrDiffType = SignedInt;
-  }
-};
 class SolarisSparcV8TargetInfo : public SolarisTargetInfo<SparcV8TargetInfo> {
 public:
   SolarisSparcV8TargetInfo(const llvm::Triple &Triple)
@@ -6019,7 +6130,6 @@ static TargetInfo *AllocateTarget(const llvm::Triple &Triple) {
     return new HexagonTargetInfo(Triple);
 
   case llvm::Triple::aarch64:
-  case llvm::Triple::arm64:
     if (Triple.isOSDarwin())
       return new DarwinAArch64TargetInfo(Triple);
 
@@ -6033,7 +6143,6 @@ static TargetInfo *AllocateTarget(const llvm::Triple &Triple) {
     }
 
   case llvm::Triple::aarch64_be:
-  case llvm::Triple::arm64_be:
     switch (os) {
     case llvm::Triple::Linux:
       return new LinuxTargetInfo<AArch64beTargetInfo>(Triple);
@@ -6227,8 +6336,6 @@ static TargetInfo *AllocateTarget(const llvm::Triple &Triple) {
     switch (os) {
     case llvm::Triple::Linux:
       return new LinuxTargetInfo<SparcV8TargetInfo>(Triple);
-    case llvm::Triple::AuroraUX:
-      return new AuroraUXSparcV8TargetInfo(Triple);
     case llvm::Triple::Solaris:
       return new SolarisSparcV8TargetInfo(Triple);
     case llvm::Triple::NetBSD:
@@ -6245,8 +6352,6 @@ static TargetInfo *AllocateTarget(const llvm::Triple &Triple) {
     switch (os) {
     case llvm::Triple::Linux:
       return new LinuxTargetInfo<SparcV9TargetInfo>(Triple);
-    case llvm::Triple::AuroraUX:
-      return new AuroraUXTargetInfo<SparcV9TargetInfo>(Triple);
     case llvm::Triple::Solaris:
       return new SolarisTargetInfo<SparcV9TargetInfo>(Triple);
     case llvm::Triple::NetBSD:
@@ -6275,8 +6380,6 @@ static TargetInfo *AllocateTarget(const llvm::Triple &Triple) {
       return new DarwinI386TargetInfo(Triple);
 
     switch (os) {
-    case llvm::Triple::AuroraUX:
-      return new AuroraUXTargetInfo<X86_32TargetInfo>(Triple);
     case llvm::Triple::Linux:
       return new LinuxTargetInfo<X86_32TargetInfo>(Triple);
     case llvm::Triple::DragonFly:
@@ -6323,8 +6426,6 @@ static TargetInfo *AllocateTarget(const llvm::Triple &Triple) {
       return new DarwinX86_64TargetInfo(Triple);
 
     switch (os) {
-    case llvm::Triple::AuroraUX:
-      return new AuroraUXTargetInfo<X86_64TargetInfo>(Triple);
     case llvm::Triple::Linux:
       return new LinuxTargetInfo<X86_64TargetInfo>(Triple);
     case llvm::Triple::DragonFly:

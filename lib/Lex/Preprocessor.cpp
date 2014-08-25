@@ -27,6 +27,7 @@
 
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Basic/FileManager.h"
+#include "clang/Basic/FileSystemStatCache.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Lex/CodeCompletionHandler.h"
@@ -70,7 +71,7 @@ Preprocessor::Preprocessor(IntrusiveRefCntPtr<PreprocessorOptions> PPOpts,
       SkipMainFilePreamble(0, true), CurPPLexer(nullptr),
       CurDirLookup(nullptr), CurLexerKind(CLK_Lexer), CurSubmodule(nullptr),
       Callbacks(nullptr), MacroArgCache(nullptr), Record(nullptr),
-      MIChainHead(nullptr), MICache(nullptr), DeserialMIChainHead(nullptr) {
+      MIChainHead(nullptr), DeserialMIChainHead(nullptr) {
   OwnsHeaderSearch = OwnsHeaders;
   
   ScratchBuf = new ScratchBuffer(SourceMgr);
@@ -141,9 +142,11 @@ Preprocessor::~Preprocessor() {
 
   IncludeMacroStack.clear();
 
-  // Free any macro definitions.
-  for (MacroInfoChain *I = MIChainHead ; I ; I = I->Next)
-    I->MI.Destroy();
+  // Destroy any macro definitions.
+  while (MacroInfoChain *I = MIChainHead) {
+    MIChainHead = I->Next;
+    I->~MacroInfoChain();
+  }
 
   // Free any cached macro expanders.
   // This populates MacroArgCache, so all TokenLexers need to be destroyed
@@ -152,8 +155,10 @@ Preprocessor::~Preprocessor() {
     delete TokenLexerCache[i];
   CurTokenLexer.reset();
 
-  for (DeserializedMacroInfoChain *I = DeserialMIChainHead ; I ; I = I->Next)
-    I->MI.Destroy();
+  while (DeserializedMacroInfoChain *I = DeserialMIChainHead) {
+    DeserialMIChainHead = I->Next;
+    I->~DeserializedMacroInfoChain();
+  }
 
   // Free any cached MacroArgs.
   for (MacroArgs *ArgList = MacroArgCache; ArgList;)

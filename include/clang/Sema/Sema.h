@@ -672,12 +672,24 @@ public:
 
   /// \brief The declaration of the arrayWithObjects:count: method.
   ObjCMethodDecl *ArrayWithObjectsMethod;
+    
+  /// \brief The declaration of the initWithObjects:count: method.
+  ObjCMethodDecl *InitArrayWithObjectsMethod;
 
   /// \brief The declaration of the Objective-C NSDictionary class.
   ObjCInterfaceDecl *NSDictionaryDecl;
 
   /// \brief The declaration of the dictionaryWithObjects:forKeys:count: method.
   ObjCMethodDecl *DictionaryWithObjectsMethod;
+    
+  /// \brief The declaration of the initWithObjects:forKeys:count: method.
+  ObjCMethodDecl *InitDictionaryWithObjectsMethod;
+    
+  /// \brief The declaration for + (id) alloc method used in [NSArray alloc]
+  ObjCMethodDecl *ArrayAllocObjectsMethod;
+    
+  /// \brief The declaration for + (id) alloc method used in [NSDictionary alloc]
+  ObjCMethodDecl *DictAllocObjectsMethod;
 
   /// \brief id<NSCopying> type.
   QualType QIDNSCopying;
@@ -1181,7 +1193,7 @@ public:
   const FunctionProtoType *ResolveExceptionSpec(SourceLocation Loc,
                                                 const FunctionProtoType *FPT);
   void UpdateExceptionSpec(FunctionDecl *FD,
-                           const FunctionProtoType::ExtProtoInfo &EPI);
+                           const FunctionProtoType::ExceptionSpecInfo &ESI);
   bool CheckSpecifiedExceptionType(QualType &T, const SourceRange &Range);
   bool CheckDistantExceptionSpec(QualType T);
   bool CheckEquivalentExceptionSpec(FunctionDecl *Old, FunctionDecl *New);
@@ -2871,6 +2883,19 @@ private:
   ObjCMethodDecl *LookupMethodInGlobalPool(Selector Sel, SourceRange R,
                                            bool receiverIdOrClass,
                                            bool warn, bool instance);
+  
+  /// \brief - Returns instance or factory methods in global method pool for
+  /// given selector. If no such method or only one method found, function returns
+  /// false; otherwise, it returns true
+  bool CollectMultipleMethodsInGlobalPool(Selector Sel,
+                                          SmallVectorImpl<ObjCMethodDecl*>& Methods,
+                                          bool instance);
+    
+  /// \brief - Returns a selector which best matches given argument list or
+  /// nullptr if none could be found
+  ObjCMethodDecl *SelectBestMethod(Selector Sel, MultiExprArg Args,
+                                   bool IsInstance);
+    
 
   /// \brief Record the typo correction failure and return an empty correction.
   TypoCorrection FailedCorrection(IdentifierInfo *Typo, SourceLocation TypoLoc,
@@ -2936,11 +2961,6 @@ public:
   class FullExprArg {
   public:
     FullExprArg(Sema &actions) : E(nullptr) { }
-
-    // FIXME: The const_cast here is ugly. RValue references would make this
-    // much nicer (or we could duplicate a bunch of the move semantics
-    // emulation code from Ownership.h).
-    FullExprArg(const FullExprArg& Other) : E(Other.E) {}
 
     ExprResult release() {
       return E;
@@ -3169,9 +3189,9 @@ public:
 
   StmtResult ActOnSEHTryBlock(bool IsCXXTry, // try (true) or __try (false) ?
                               SourceLocation TryLoc, Stmt *TryBlock,
-                              Stmt *Handler, int HandlerIndex,
-                              int HandlerParentIndex);
-  StmtResult ActOnSEHExceptBlock(SourceLocation Loc, Expr *FilterExpr,
+                              Stmt *Handler);
+  StmtResult ActOnSEHExceptBlock(SourceLocation Loc,
+                                 Expr *FilterExpr,
                                  Stmt *Block);
   StmtResult ActOnSEHFinallyBlock(SourceLocation Loc, Stmt *Block);
   StmtResult ActOnSEHLeaveStmt(SourceLocation Loc, Scope *CurScope);
@@ -3934,24 +3954,20 @@ public:
 
     /// \brief Overwrite an EPI's exception specification with this
     /// computed exception specification.
-    void getEPI(FunctionProtoType::ExtProtoInfo &EPI) const {
-      EPI.ExceptionSpecType = getExceptionSpecType();
-      if (EPI.ExceptionSpecType == EST_Dynamic) {
-        EPI.NumExceptions = size();
-        EPI.Exceptions = data();
-      } else if (EPI.ExceptionSpecType == EST_None) {
+    FunctionProtoType::ExceptionSpecInfo getExceptionSpec() const {
+      FunctionProtoType::ExceptionSpecInfo ESI;
+      ESI.Type = getExceptionSpecType();
+      if (ESI.Type == EST_Dynamic) {
+        ESI.Exceptions = Exceptions;
+      } else if (ESI.Type == EST_None) {
         /// C++11 [except.spec]p14:
         ///   The exception-specification is noexcept(false) if the set of
         ///   potential exceptions of the special member function contains "any"
-        EPI.ExceptionSpecType = EST_ComputedNoexcept;
-        EPI.NoexceptExpr = Self->ActOnCXXBoolLiteral(SourceLocation(),
+        ESI.Type = EST_ComputedNoexcept;
+        ESI.NoexceptExpr = Self->ActOnCXXBoolLiteral(SourceLocation(),
                                                      tok::kw_false).get();
       }
-    }
-    FunctionProtoType::ExtProtoInfo getEPI() const {
-      FunctionProtoType::ExtProtoInfo EPI;
-      getEPI(EPI);
-      return EPI;
+      return ESI;
     }
   };
 
@@ -3998,13 +4014,13 @@ public:
   void EvaluateImplicitExceptionSpec(SourceLocation Loc, CXXMethodDecl *MD);
 
   /// \brief Check the given exception-specification and update the
-  /// extended prototype information with the results.
+  /// exception specification information with the results.
   void checkExceptionSpecification(ExceptionSpecificationType EST,
                                    ArrayRef<ParsedType> DynamicExceptions,
                                    ArrayRef<SourceRange> DynamicExceptionRanges,
                                    Expr *NoexceptExpr,
                                    SmallVectorImpl<QualType> &Exceptions,
-                                   FunctionProtoType::ExtProtoInfo &EPI);
+                                   FunctionProtoType::ExceptionSpecInfo &ESI);
 
   /// \brief Determine if a special member function should have a deleted
   /// definition when it is defaulted.
@@ -5582,6 +5598,10 @@ public:
   // C++ Variadic Templates (C++0x [temp.variadic])
   //===--------------------------------------------------------------------===//
 
+  /// Determine whether an unexpanded parameter pack might be permitted in this
+  /// location. Useful for error recovery.
+  bool isUnexpandedParameterPackPermitted();
+
   /// \brief The context in which an unexpanded parameter pack is
   /// being diagnosed.
   ///
@@ -6548,6 +6568,31 @@ public:
   /// but have not yet been performed.
   std::deque<PendingImplicitInstantiation> PendingInstantiations;
 
+  class SavePendingInstantiationsAndVTableUsesRAII {
+  public:
+    SavePendingInstantiationsAndVTableUsesRAII(Sema &S): S(S) {
+      SavedPendingInstantiations.swap(S.PendingInstantiations);
+      SavedVTableUses.swap(S.VTableUses);
+    }
+
+    ~SavePendingInstantiationsAndVTableUsesRAII() {
+      // Restore the set of pending vtables.
+      assert(S.VTableUses.empty() &&
+             "VTableUses should be empty before it is discarded.");
+      S.VTableUses.swap(SavedVTableUses);
+
+      // Restore the set of pending implicit instantiations.
+      assert(S.PendingInstantiations.empty() &&
+             "PendingInstantiations should be empty before it is discarded.");
+      S.PendingInstantiations.swap(SavedPendingInstantiations);
+    }
+
+  private:
+    Sema &S;
+    SmallVector<VTableUse, 16> SavedVTableUses;
+    std::deque<PendingImplicitInstantiation> SavedPendingInstantiations;
+  };
+
   /// \brief The queue of implicit template instantiations that are required
   /// and must be performed within the current local scope.
   ///
@@ -7482,6 +7527,21 @@ public:
   /// \brief Called on well-formed 'mergeable' clause.
   OMPClause *ActOnOpenMPMergeableClause(SourceLocation StartLoc,
                                         SourceLocation EndLoc);
+  /// \brief Called on well-formed 'read' clause.
+  OMPClause *ActOnOpenMPReadClause(SourceLocation StartLoc,
+                                   SourceLocation EndLoc);
+  /// \brief Called on well-formed 'write' clause.
+  OMPClause *ActOnOpenMPWriteClause(SourceLocation StartLoc,
+                                    SourceLocation EndLoc);
+  /// \brief Called on well-formed 'update' clause.
+  OMPClause *ActOnOpenMPUpdateClause(SourceLocation StartLoc,
+                                     SourceLocation EndLoc);
+  /// \brief Called on well-formed 'capture' clause.
+  OMPClause *ActOnOpenMPCaptureClause(SourceLocation StartLoc,
+                                      SourceLocation EndLoc);
+  /// \brief Called on well-formed 'seq_cst' clause.
+  OMPClause *ActOnOpenMPSeqCstClause(SourceLocation StartLoc,
+                                     SourceLocation EndLoc);
 
   OMPClause *
   ActOnOpenMPVarListClause(OpenMPClauseKind Kind, ArrayRef<Expr *> Vars,
@@ -7985,6 +8045,7 @@ public:
                                  ObjCMethodDecl *Method, bool isClassMessage,
                                  bool isSuperMessage,
                                  SourceLocation lbrac, SourceLocation rbrac,
+                                 SourceRange RecRange,
                                  QualType &ReturnType, ExprValueKind &VK);
 
   /// \brief Determine the result of a message send expression based on

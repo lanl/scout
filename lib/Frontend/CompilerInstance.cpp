@@ -101,14 +101,18 @@ void CompilerInstance::setSema(Sema *S) {
   TheSema.reset(S);
 }
 
-void CompilerInstance::setASTConsumer(ASTConsumer *Value) {
-  Consumer.reset(Value);
+void CompilerInstance::setASTConsumer(std::unique_ptr<ASTConsumer> Value) {
+  Consumer = std::move(Value);
 }
 
 void CompilerInstance::setCodeCompletionConsumer(CodeCompleteConsumer *Value) {
   CompletionConsumer.reset(Value);
 }
- 
+
+std::unique_ptr<Sema> CompilerInstance::takeSema() {
+  return std::move(TheSema);
+}
+
 IntrusiveRefCntPtr<ASTReader> CompilerInstance::getModuleManager() const {
   return ModuleManager;
 }
@@ -958,9 +962,10 @@ static bool compileModuleImpl(CompilerInstance &ImportingInstance,
     SourceMgr.overrideFileContents(ModuleMapFile, ModuleMapBuffer);
   }
 
-  // Construct a module-generating action. Passing through Module->ModuleMap is
+  // Construct a module-generating action. Passing through the module map is
   // safe because the FileManager is shared between the compiler instances.
-  GenerateModuleAction CreateModuleAction(Module->ModuleMap, Module->IsSystem);
+  GenerateModuleAction CreateModuleAction(
+      ModMap.getModuleMapFileForUniquing(Module), Module->IsSystem);
   
   // Execute the action to actually build the module in-place. Use a separate
   // thread so that we get a stack large enough.
@@ -1265,7 +1270,8 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
   // when both the preprocessor and parser see the same import declaration.
   if (!ImportLoc.isInvalid() && LastModuleImportLoc == ImportLoc) {
     // Make the named module visible.
-    if (LastModuleImportResult && ModuleName != getLangOpts().CurrentModule)
+    if (LastModuleImportResult && ModuleName != getLangOpts().CurrentModule &&
+        ModuleName != getLangOpts().ImplementationOfModule)
       ModuleManager->makeModuleVisible(LastModuleImportResult, Visibility,
                                        ImportLoc, /*Complain=*/false);
     return LastModuleImportResult;
@@ -1279,7 +1285,8 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
   if (Known != KnownModules.end()) {
     // Retrieve the cached top-level module.
     Module = Known->second;    
-  } else if (ModuleName == getLangOpts().CurrentModule) {
+  } else if (ModuleName == getLangOpts().CurrentModule ||
+             ModuleName == getLangOpts().ImplementationOfModule) {
     // This is the module we're building. 
     Module = PP->getHeaderSearchInfo().lookupModule(ModuleName);
     Known = KnownModules.insert(std::make_pair(Path[0].first, Module)).first;
@@ -1448,6 +1455,10 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
       Module = Sub;
     }
   }
+
+  // Don't make the module visible if we are in the implementation.
+  if (ModuleName == getLangOpts().ImplementationOfModule)
+    return ModuleLoadResult(Module, false);
   
   // Make the named module visible, if it's not already part of the module
   // we are parsing.

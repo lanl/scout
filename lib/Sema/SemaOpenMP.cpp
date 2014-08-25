@@ -226,7 +226,7 @@ DSAStackTy::DSAVarData DSAStackTy::getDSA(StackTy::reverse_iterator Iter,
     //  File-scope or namespace-scope variables referenced in called routines
     //  in the region are shared unless they appear in a threadprivate
     //  directive.
-    if (!D->isFunctionOrMethodVarDecl())
+    if (!D->isFunctionOrMethodVarDecl() && !isa<ParmVarDecl>(D))
       DVar.CKind = OMPC_shared;
 
     // OpenMP [2.9.1.2, Data-sharing Attribute Rules for Variables Referenced
@@ -393,8 +393,10 @@ DSAStackTy::DSAVarData DSAStackTy::getTopDSA(VarDecl *D, bool FromParent) {
     StartI = std::next(StartI);
   }
   if (!isParallelOrTaskRegion(Kind)) {
-    if (isOpenMPLocal(D, StartI) && D->isLocalVarDecl() &&
-        (D->getStorageClass() == SC_Auto || D->getStorageClass() == SC_None)) {
+    if (isOpenMPLocal(D, StartI) &&
+        ((D->isLocalVarDecl() && (D->getStorageClass() == SC_Auto ||
+                                  D->getStorageClass() == SC_None)) ||
+         isa<ParmVarDecl>(D))) {
       DVar.CKind = OMPC_private;
       return DVar;
     }
@@ -1639,6 +1641,8 @@ class OpenMPIterationSpaceChecker {
   SourceRange ConditionSrcRange;
   /// \brief Loop variable.
   VarDecl *Var;
+  /// \brief Reference to loop variable.
+  DeclRefExpr *VarRef;
   /// \brief Lower bound (initializer for the var).
   Expr *LB;
   /// \brief Upper bound.
@@ -1659,9 +1663,9 @@ class OpenMPIterationSpaceChecker {
 public:
   OpenMPIterationSpaceChecker(Sema &SemaRef, SourceLocation DefaultLoc)
       : SemaRef(SemaRef), DefaultLoc(DefaultLoc), ConditionLoc(DefaultLoc),
-        ConditionSrcRange(SourceRange()), Var(nullptr), LB(nullptr),
-        UB(nullptr), Step(nullptr), TestIsLessOp(false), TestIsStrictOp(false),
-        SubtractStep(false) {}
+        ConditionSrcRange(SourceRange()), Var(nullptr), VarRef(nullptr),
+        LB(nullptr), UB(nullptr), Step(nullptr), TestIsLessOp(false),
+        TestIsStrictOp(false), SubtractStep(false) {}
   /// \brief Check init-expr for canonical loop form and save loop counter
   /// variable - #Var and its initialization value - #LB.
   bool CheckInit(Stmt *S);
@@ -1673,6 +1677,8 @@ public:
   bool CheckInc(Expr *S);
   /// \brief Return the loop counter variable.
   VarDecl *GetLoopVar() const { return Var; }
+  /// \brief Return the reference expression to loop counter variable.
+  DeclRefExpr *GetLoopVarRefExpr() const { return VarRef; }
   /// \brief Return true if any expression is dependent.
   bool Dependent() const;
 
@@ -1681,7 +1687,7 @@ private:
   /// expression.
   bool CheckIncRHS(Expr *RHS);
   /// \brief Helper to set loop counter variable and its initializer.
-  bool SetVarAndLB(VarDecl *NewVar, Expr *NewLB);
+  bool SetVarAndLB(VarDecl *NewVar, DeclRefExpr *NewVarRefExpr, Expr *NewLB);
   /// \brief Helper to set upper bound.
   bool SetUB(Expr *NewUB, bool LessOp, bool StrictOp, const SourceRange &SR,
              const SourceLocation &SL);
@@ -1698,13 +1704,16 @@ bool OpenMPIterationSpaceChecker::Dependent() const {
          (UB && UB->isValueDependent()) || (Step && Step->isValueDependent());
 }
 
-bool OpenMPIterationSpaceChecker::SetVarAndLB(VarDecl *NewVar, Expr *NewLB) {
+bool OpenMPIterationSpaceChecker::SetVarAndLB(VarDecl *NewVar,
+                                              DeclRefExpr *NewVarRefExpr,
+                                              Expr *NewLB) {
   // State consistency checking to ensure correct usage.
-  assert(Var == nullptr && LB == nullptr && UB == nullptr && Step == nullptr &&
-         !TestIsLessOp && !TestIsStrictOp);
+  assert(Var == nullptr && LB == nullptr && VarRef == nullptr &&
+         UB == nullptr && Step == nullptr && !TestIsLessOp && !TestIsStrictOp);
   if (!NewVar || !NewLB)
     return true;
   Var = NewVar;
+  VarRef = NewVarRefExpr;
   LB = NewLB;
   return false;
 }
@@ -1792,7 +1801,8 @@ bool OpenMPIterationSpaceChecker::CheckInit(Stmt *S) {
   if (auto BO = dyn_cast<BinaryOperator>(S)) {
     if (BO->getOpcode() == BO_Assign)
       if (auto DRE = dyn_cast<DeclRefExpr>(BO->getLHS()->IgnoreParens()))
-        return SetVarAndLB(dyn_cast<VarDecl>(DRE->getDecl()), BO->getLHS());
+        return SetVarAndLB(dyn_cast<VarDecl>(DRE->getDecl()), DRE,
+                           BO->getLHS());
   } else if (auto DS = dyn_cast<DeclStmt>(S)) {
     if (DS->isSingleDecl()) {
       if (auto Var = dyn_cast_or_null<VarDecl>(DS->getSingleDecl())) {
@@ -1802,14 +1812,15 @@ bool OpenMPIterationSpaceChecker::CheckInit(Stmt *S) {
             SemaRef.Diag(S->getLocStart(),
                          diag::ext_omp_loop_not_canonical_init)
                 << S->getSourceRange();
-          return SetVarAndLB(Var, Var->getInit());
+          return SetVarAndLB(Var, nullptr, Var->getInit());
         }
       }
     }
   } else if (auto CE = dyn_cast<CXXOperatorCallExpr>(S))
     if (CE->getOperator() == OO_Equal)
       if (auto DRE = dyn_cast<DeclRefExpr>(CE->getArg(0)))
-        return SetVarAndLB(dyn_cast<VarDecl>(DRE->getDecl()), CE->getArg(1));
+        return SetVarAndLB(dyn_cast<VarDecl>(DRE->getDecl()), DRE,
+                           CE->getArg(1));
 
   SemaRef.Diag(S->getLocStart(), diag::err_omp_loop_not_canonical_init)
       << S->getSourceRange();
@@ -2054,6 +2065,9 @@ static bool CheckOpenMPIterationSpace(
   // The loop iteration variable(s) in the associated for-loop(s) of a for or
   // parallel for construct may be listed in a private or lastprivate clause.
   DSAStackTy::DSAVarData DVar = DSA.getTopDSA(Var, false);
+  auto LoopVarRefExpr = ISC.GetLoopVarRefExpr();
+  // If LoopVarRefExpr is nullptr it means the corresponding loop variable is
+  // declared in the loop and it is predetermined as a private.
   auto PredeterminedCKind =
       isOpenMPSimdDirective(DKind)
           ? ((NestedLoopCount == 1) ? OMPC_linear : OMPC_lastprivate)
@@ -2068,11 +2082,11 @@ static bool CheckOpenMPIterationSpace(
         << getOpenMPClauseName(PredeterminedCKind);
     ReportOriginalDSA(SemaRef, &DSA, Var, DVar, true);
     HasErrors = true;
-  } else {
+  } else if (LoopVarRefExpr != nullptr) {
     // Make the loop iteration variable private (for worksharing constructs),
     // linear (for simd directives with the only one associated loop) or
     // lastprivate (for simd directives with several collapsed loops).
-    DSA.addDSA(Var, nullptr, PredeterminedCKind);
+    DSA.addDSA(Var, LoopVarRefExpr, PredeterminedCKind);
   }
 
   assert(isOpenMPLoopDirective(DKind) && "DSA for non-loop vars");
@@ -2379,12 +2393,61 @@ StmtResult Sema::ActOnOpenMPAtomicDirective(ArrayRef<OMPClause *> Clauses,
                                             SourceLocation StartLoc,
                                             SourceLocation EndLoc) {
   assert(AStmt && isa<CapturedStmt>(AStmt) && "Captured statement expected");
+  auto CS = cast<CapturedStmt>(AStmt);
   // 1.2.2 OpenMP Language Terminology
   // Structured block - An executable statement with a single entry at the
   // top and a single exit at the bottom.
   // The point of exit cannot be a branch out of the structured block.
   // longjmp() and throw() must not violate the entry/exit criteria.
   // TODO further analysis of associated statements and clauses.
+  OpenMPClauseKind AtomicKind = OMPC_unknown;
+  SourceLocation AtomicKindLoc;
+  for (auto *C : Clauses) {
+    if (C->getClauseKind() == OMPC_read || C->getClauseKind() == OMPC_write ||
+        C->getClauseKind() == OMPC_update ||
+        C->getClauseKind() == OMPC_capture) {
+      if (AtomicKind != OMPC_unknown) {
+        Diag(C->getLocStart(), diag::err_omp_atomic_several_clauses)
+            << SourceRange(C->getLocStart(), C->getLocEnd());
+        Diag(AtomicKindLoc, diag::note_omp_atomic_previous_clause)
+            << getOpenMPClauseName(AtomicKind);
+      } else {
+        AtomicKind = C->getClauseKind();
+        AtomicKindLoc = C->getLocStart();
+      }
+    }
+  }
+  auto Body = CS->getCapturedStmt();
+  if (AtomicKind == OMPC_read) {
+    if (!isa<Expr>(Body)) {
+      Diag(Body->getLocStart(),
+           diag::err_omp_atomic_read_not_expression_statement);
+      return StmtError();
+    }
+  } else if (AtomicKind == OMPC_write) {
+    if (!isa<Expr>(Body)) {
+      Diag(Body->getLocStart(),
+           diag::err_omp_atomic_write_not_expression_statement);
+      return StmtError();
+    }
+  } else if (AtomicKind == OMPC_update || AtomicKind == OMPC_unknown) {
+    if (!isa<Expr>(Body)) {
+      Diag(Body->getLocStart(),
+           diag::err_omp_atomic_update_not_expression_statement)
+          << (AtomicKind == OMPC_update);
+      return StmtError();
+    }
+  } else if (AtomicKind == OMPC_capture) {
+    if (isa<Expr>(Body) && !isa<BinaryOperator>(Body)) {
+      Diag(Body->getLocStart(),
+           diag::err_omp_atomic_capture_not_expression_statement);
+      return StmtError();
+    } else if (!isa<Expr>(Body) && !isa<CompoundStmt>(Body)) {
+      Diag(Body->getLocStart(),
+           diag::err_omp_atomic_capture_not_compound_statement);
+      return StmtError();
+    }
+  }
 
   getCurFunction()->setHasBranchProtectedScope();
 
@@ -2430,6 +2493,11 @@ OMPClause *Sema::ActOnOpenMPSingleExprClause(OpenMPClauseKind Kind, Expr *Expr,
   case OMPC_mergeable:
   case OMPC_threadprivate:
   case OMPC_flush:
+  case OMPC_read:
+  case OMPC_write:
+  case OMPC_update:
+  case OMPC_capture:
+  case OMPC_seq_cst:
   case OMPC_unknown:
     llvm_unreachable("Clause is not allowed.");
   }
@@ -2472,7 +2540,6 @@ OMPClause *Sema::ActOnOpenMPFinalClause(Expr *Condition,
 
   return new (Context) OMPFinalClause(ValExpr, StartLoc, LParenLoc, EndLoc);
 }
-
 ExprResult Sema::PerformOpenMPImplicitIntegerConversion(SourceLocation Loc,
                                                         Expr *Op) {
   if (!Op)
@@ -2633,6 +2700,11 @@ OMPClause *Sema::ActOnOpenMPSimpleClause(
   case OMPC_mergeable:
   case OMPC_threadprivate:
   case OMPC_flush:
+  case OMPC_read:
+  case OMPC_write:
+  case OMPC_update:
+  case OMPC_capture:
+  case OMPC_seq_cst:
   case OMPC_unknown:
     llvm_unreachable("Clause is not allowed.");
   }
@@ -2748,6 +2820,11 @@ OMPClause *Sema::ActOnOpenMPSingleExprWithArgClause(
   case OMPC_mergeable:
   case OMPC_threadprivate:
   case OMPC_flush:
+  case OMPC_read:
+  case OMPC_write:
+  case OMPC_update:
+  case OMPC_capture:
+  case OMPC_seq_cst:
   case OMPC_unknown:
     llvm_unreachable("Clause is not allowed.");
   }
@@ -2827,6 +2904,21 @@ OMPClause *Sema::ActOnOpenMPClause(OpenMPClauseKind Kind,
   case OMPC_mergeable:
     Res = ActOnOpenMPMergeableClause(StartLoc, EndLoc);
     break;
+  case OMPC_read:
+    Res = ActOnOpenMPReadClause(StartLoc, EndLoc);
+    break;
+  case OMPC_write:
+    Res = ActOnOpenMPWriteClause(StartLoc, EndLoc);
+    break;
+  case OMPC_update:
+    Res = ActOnOpenMPUpdateClause(StartLoc, EndLoc);
+    break;
+  case OMPC_capture:
+    Res = ActOnOpenMPCaptureClause(StartLoc, EndLoc);
+    break;
+  case OMPC_seq_cst:
+    Res = ActOnOpenMPSeqCstClause(StartLoc, EndLoc);
+    break;
   case OMPC_if:
   case OMPC_final:
   case OMPC_num_threads:
@@ -2871,6 +2963,31 @@ OMPClause *Sema::ActOnOpenMPUntiedClause(SourceLocation StartLoc,
 OMPClause *Sema::ActOnOpenMPMergeableClause(SourceLocation StartLoc,
                                             SourceLocation EndLoc) {
   return new (Context) OMPMergeableClause(StartLoc, EndLoc);
+}
+
+OMPClause *Sema::ActOnOpenMPReadClause(SourceLocation StartLoc,
+                                       SourceLocation EndLoc) {
+  return new (Context) OMPReadClause(StartLoc, EndLoc);
+}
+
+OMPClause *Sema::ActOnOpenMPWriteClause(SourceLocation StartLoc,
+                                        SourceLocation EndLoc) {
+  return new (Context) OMPWriteClause(StartLoc, EndLoc);
+}
+
+OMPClause *Sema::ActOnOpenMPUpdateClause(SourceLocation StartLoc,
+                                         SourceLocation EndLoc) {
+  return new (Context) OMPUpdateClause(StartLoc, EndLoc);
+}
+
+OMPClause *Sema::ActOnOpenMPCaptureClause(SourceLocation StartLoc,
+                                          SourceLocation EndLoc) {
+  return new (Context) OMPCaptureClause(StartLoc, EndLoc);
+}
+
+OMPClause *Sema::ActOnOpenMPSeqCstClause(SourceLocation StartLoc,
+                                         SourceLocation EndLoc) {
+  return new (Context) OMPSeqCstClause(StartLoc, EndLoc);
 }
 
 OMPClause *Sema::ActOnOpenMPVarListClause(
@@ -2926,6 +3043,11 @@ OMPClause *Sema::ActOnOpenMPVarListClause(
   case OMPC_untied:
   case OMPC_mergeable:
   case OMPC_threadprivate:
+  case OMPC_read:
+  case OMPC_write:
+  case OMPC_update:
+  case OMPC_capture:
+  case OMPC_seq_cst:
   case OMPC_unknown:
     llvm_unreachable("Clause is not allowed.");
   }
@@ -4227,4 +4349,3 @@ OMPClause *Sema::ActOnOpenMPFlushClause(ArrayRef<Expr *> VarList,
   return OMPFlushClause::Create(Context, StartLoc, LParenLoc, EndLoc, VarList);
 }
 
-#undef DSAStack

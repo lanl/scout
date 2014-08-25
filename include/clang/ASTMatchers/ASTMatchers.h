@@ -42,8 +42,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CLANG_AST_MATCHERS_AST_MATCHERS_H
-#define LLVM_CLANG_AST_MATCHERS_AST_MATCHERS_H
+#ifndef LLVM_CLANG_ASTMATCHERS_ASTMATCHERS_H
+#define LLVM_CLANG_ASTMATCHERS_ASTMATCHERS_H
 
 #include "clang/AST/DeclFriend.h"
 #include "clang/AST/DeclTemplate.h"
@@ -1844,7 +1844,7 @@ AST_MATCHER_P(CallExpr, callee, internal::Matcher<Stmt>,
 /// Example matches y.x() (matcher = callExpr(callee(methodDecl(hasName("x")))))
 /// \code
 ///   class Y { public: void x(); };
-///   void z() { Y y; y.x();
+///   void z() { Y y; y.x(); }
 /// \endcode
 AST_MATCHER_P_OVERLOAD(CallExpr, callee, internal::Matcher<Decl>, InnerMatcher,
                        1) {
@@ -1952,6 +1952,7 @@ AST_MATCHER_P_OVERLOAD(QualType, pointsTo, internal::Matcher<Decl>,
 ///     void a(X b) {
 ///       X &x = b;
 ///       const X &y = b;
+///     }
 ///   };
 /// \endcode
 AST_MATCHER_P(QualType, references, internal::Matcher<QualType>,
@@ -2370,6 +2371,19 @@ AST_MATCHER_P(FunctionDecl, returns,
 ///   matches the declaration of f and g, but not the declaration h
 AST_MATCHER(FunctionDecl, isExternC) {
   return Node.isExternC();
+}
+
+/// \brief Matches deleted function declarations.
+///
+/// Given:
+/// \code
+///   void Func();
+///   void DeletedFunc() = delete;
+/// \endcode
+/// functionDecl(isDeleted())
+///   matches the declaration of DeletedFunc, but not Func.
+AST_MATCHER(FunctionDecl, isDeleted) {
+  return Node.isDeleted();
 }
 
 /// \brief Matches the condition expression of an if statement, for loop,
@@ -3094,6 +3108,7 @@ AST_TYPE_MATCHER(IncompleteArrayType, incompleteArrayType);
 ///     int a[] = { 2, 3 }
 ///     int b[42];
 ///     int c[a[0]];
+///   }
 /// \endcode
 /// variableArrayType()
 ///   matches "int c[a[0]]"
@@ -3643,7 +3658,32 @@ AST_MATCHER_P(CaseStmt, hasCaseConstant, internal::Matcher<Expr>,
   return InnerMatcher.matches(*Node.getLHS(), Finder, Builder);
 }
 
+/// \brief Matches declaration that has a given attribute.
+///
+/// Given
+/// \code
+///   __attribute__((device)) void f() { ... }
+/// \endcode
+/// decl(hasAttr(clang::attr::CUDADevice)) matches the function declaration of
+/// f.
+AST_MATCHER_P(Decl, hasAttr, attr::Kind, AttrKind) {
+  for (const auto *Attr : Node.attrs()) {
+    if (Attr->getKind() == AttrKind)
+      return true;
+  }
+  return false;
+}
+
+/// \brief Matches CUDA kernel call expression.
+///
+/// Example matches,
+/// \code
+///   kernel<<<i,j>>>();
+/// \endcode
+const internal::VariadicDynCastAllOfMatcher<Stmt, CUDAKernelCallExpr>
+    CUDAKernelCallExpr;
+
 } // end namespace ast_matchers
 } // end namespace clang
 
-#endif // LLVM_CLANG_AST_MATCHERS_AST_MATCHERS_H
+#endif

@@ -14,6 +14,7 @@
 #include "clang/Basic/SourceManager.h"
 #include "clang/Frontend/CompilerInvocation.h"
 #include "clang/Frontend/Utils.h"
+#include "clang/AST/ASTConsumer.h"
 #include "clang/Lex/ModuleLoader.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -443,11 +444,11 @@ public:
 
   /// takeASTConsumer - Remove the current AST consumer and give ownership to
   /// the caller.
-  ASTConsumer *takeASTConsumer() { return Consumer.release(); }
+  std::unique_ptr<ASTConsumer> takeASTConsumer() { return std::move(Consumer); }
 
   /// setASTConsumer - Replace the current AST consumer; the compiler instance
   /// takes ownership of \p Value.
-  void setASTConsumer(ASTConsumer *Value);
+  void setASTConsumer(std::unique_ptr<ASTConsumer> Value);
 
   /// }
   /// @name Semantic analysis
@@ -459,7 +460,7 @@ public:
     return *TheSema;
   }
 
-  Sema *takeSema() { return TheSema.release(); }
+  std::unique_ptr<Sema> takeSema();
   void resetAndLeakSema() { BuryPointer(TheSema.release()); }
 
   /// }
@@ -483,12 +484,6 @@ public:
     assert(CompletionConsumer &&
            "Compiler instance has no code completion consumer!");
     return *CompletionConsumer;
-  }
-
-  /// takeCodeCompletionConsumer - Remove the current code completion consumer
-  /// and give ownership to the caller.
-  CodeCompleteConsumer *takeCodeCompletionConsumer() {
-    return CompletionConsumer.release();
   }
 
   /// setCodeCompletionConsumer - Replace the current code completion consumer;

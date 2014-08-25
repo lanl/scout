@@ -14,8 +14,8 @@
 // respective lists.
 //
 //===----------------------------------------------------------------------===//
-#ifndef LLVM_CLANG_FRONTEND_PCHBITCODES_H
-#define LLVM_CLANG_FRONTEND_PCHBITCODES_H
+#ifndef LLVM_CLANG_SERIALIZATION_ASTBITCODES_H
+#define LLVM_CLANG_SERIALIZATION_ASTBITCODES_H
 
 #include "clang/AST/Type.h"
 #include "llvm/ADT/DenseMap.h"
@@ -758,9 +758,6 @@ namespace clang {
     /// Type IDs for non-predefined types will start at
     /// NUM_PREDEF_TYPE_IDs.
     const unsigned NUM_PREDEF_TYPE_IDS = 100;
-
-    /// \brief The number of allowed abbreviations in bits
-    const unsigned NUM_ALLOWED_ABBREVS_SIZE = 4;
 
     /// \brief Record codes for each kind of type.
     ///

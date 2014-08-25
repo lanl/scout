@@ -59,7 +59,7 @@ bool Sema::CanUseDecl(NamedDecl *D) {
 
     // If the function has a deduced return type, and we can't deduce it,
     // then we can't use it either.
-    if (getLangOpts().CPlusPlus1y && FD->getReturnType()->isUndeducedType() &&
+    if (getLangOpts().CPlusPlus14 && FD->getReturnType()->isUndeducedType() &&
         DeduceReturnType(FD, SourceLocation(), /*Diagnose*/ false))
       return false;
   }
@@ -302,7 +302,7 @@ bool Sema::DiagnoseUseOfDecl(NamedDecl *D, SourceLocation Loc,
 
     // If the function has a deduced return type, and we can't deduce it,
     // then we can't use it either.
-    if (getLangOpts().CPlusPlus1y && FD->getReturnType()->isUndeducedType() &&
+    if (getLangOpts().CPlusPlus14 && FD->getReturnType()->isUndeducedType() &&
         DeduceReturnType(FD, Loc))
       return true;
   }
@@ -2364,10 +2364,9 @@ Sema::LookupInObjCMethod(LookupResult &Lookup, Scope *S,
           !IvarBacksCurrentMethodAccessor(IFace, CurMethod, IV))
         Diag(Loc, diag::warn_direct_ivar_access) << IV->getDeclName();
 
-      ObjCIvarRefExpr *Result = new (Context) ObjCIvarRefExpr(IV, IV->getType(),
-                                                              Loc, IV->getLocation(),
-                                                              SelfExpr.get(),
-                                                              true, true);
+      ObjCIvarRefExpr *Result = new (Context)
+          ObjCIvarRefExpr(IV, IV->getType(), Loc, IV->getLocation(),
+                          SelfExpr.get(), true, true);
 
       if (getLangOpts().ObjCAutoRefCount) {
         if (IV->getType().getObjCLifetime() == Qualifiers::OCL_Weak) {
@@ -3117,8 +3116,8 @@ ExprResult Sema::ActOnNumericConstant(const Token &Tok, Scope *UDLScope) {
       } else {
         llvm::APInt ResultVal(Context.getTargetInfo().getLongLongWidth(), 0);
         if (Literal.GetIntegerValue(ResultVal))
-          Diag(Tok.getLocation(), diag::err_integer_too_large)
-            << ResultVal.getBitWidth();
+          Diag(Tok.getLocation(), diag::err_integer_literal_too_large)
+              << /* Unsigned */ 1;
         Lit = IntegerLiteral::Create(Context, ResultVal, CookedTy,
                                      Tok.getLocation());
       }
@@ -3211,8 +3210,8 @@ ExprResult Sema::ActOnNumericConstant(const Token &Tok, Scope *UDLScope) {
 
     if (Literal.GetIntegerValue(ResultVal)) {
       // If this value didn't fit into uintmax_t, error and force to ull.
-      Diag(Tok.getLocation(), diag::err_integer_too_large)
-          << ResultVal.getBitWidth();
+      Diag(Tok.getLocation(), diag::err_integer_literal_too_large)
+          << /* Unsigned */ 1;
       Ty = Context.UnsignedLongLongTy;
       assert(Context.getTypeSize(Ty) == ResultVal.getBitWidth() &&
              "long long is not intmax_t?");
@@ -3292,8 +3291,7 @@ ExprResult Sema::ActOnNumericConstant(const Token &Tok, Scope *UDLScope) {
       // If we still couldn't decide a type, we probably have something that
       // does not fit in a signed long long, but has no U suffix.
       if (Ty.isNull()) {
-        Diag(Tok.getLocation(), diag::ext_integer_too_large_for_signed)
-            << ResultVal.getBitWidth();
+        Diag(Tok.getLocation(), diag::ext_integer_literal_too_large_for_signed);
         Ty = Context.UnsignedLongLongTy;
         Width = Context.getTargetInfo().getLongLongWidth();
       }
@@ -6757,6 +6755,15 @@ Sema::CheckSingleAssignmentConstraints(QualType LHSType, ExprResult &RHS,
       return Incompatible;
   }
 
+  Expr *PRE = RHS.get()->IgnoreParenCasts();
+  if (ObjCProtocolExpr *OPE = dyn_cast<ObjCProtocolExpr>(PRE)) {
+    ObjCProtocolDecl *PDecl = OPE->getProtocol();
+    if (PDecl && !PDecl->hasDefinition()) {
+      Diag(PRE->getExprLoc(), diag::warn_atprotocol_protocol) << PDecl->getName();
+      Diag(PDecl->getLocation(), diag::note_entity_declared_at) << PDecl;
+    }
+  }
+  
   CastKind Kind = CK_Invalid;
   Sema::AssignConvertType result =
     CheckAssignmentConstraints(LHSType, RHS, Kind);
@@ -8757,6 +8764,7 @@ static QualType CheckCommaOperands(Sema &S, ExprResult &LHS, ExprResult &RHS,
 /// doesn't need to call UsualUnaryConversions or UsualArithmeticConversions.
 static QualType CheckIncrementDecrementOperand(Sema &S, Expr *Op,
                                                ExprValueKind &VK,
+                                               ExprObjectKind &OK,
                                                SourceLocation OpLoc,
                                                bool IsInc, bool IsPrefix) {
   if (Op->isTypeDependent())
@@ -8802,7 +8810,7 @@ static QualType CheckIncrementDecrementOperand(Sema &S, Expr *Op,
   } else if (ResType->isPlaceholderType()) {
     ExprResult PR = S.CheckPlaceholderExpr(Op);
     if (PR.isInvalid()) return QualType();
-    return CheckIncrementDecrementOperand(S, PR.get(), VK, OpLoc,
+    return CheckIncrementDecrementOperand(S, PR.get(), VK, OK, OpLoc,
                                           IsInc, IsPrefix);
   } else if (S.getLangOpts().AltiVec && ResType->isVectorType()) {
     // OK! ( C/C++ Language Extensions for CBEA(Version 2.6) 10.3 )
@@ -8823,6 +8831,7 @@ static QualType CheckIncrementDecrementOperand(Sema &S, Expr *Op,
   // operand.
   if (IsPrefix && S.getLangOpts().CPlusPlus) {
     VK = VK_LValue;
+    OK = Op->getObjectKind();
     return ResType;
   } else {
     VK = VK_RValue;
@@ -9506,7 +9515,7 @@ static void DiagnoseBitwisePrecedence(Sema &Self, BinaryOperatorKind Opc,
   StringRef OpStr = isLeftComp ? LHSBO->getOpcodeStr() : RHSBO->getOpcodeStr();
   SourceRange ParensRange = isLeftComp ?
       SourceRange(LHSBO->getRHS()->getLocStart(), RHSExpr->getLocEnd())
-    : SourceRange(LHSExpr->getLocStart(), RHSBO->getLHS()->getLocStart());
+    : SourceRange(LHSExpr->getLocStart(), RHSBO->getLHS()->getLocEnd());
 
   Self.Diag(OpLoc, diag::warn_precedence_bitwise_rel)
     << DiagRange << BinaryOperator::getOpcodeStr(Opc) << OpStr;
@@ -9811,7 +9820,8 @@ ExprResult Sema::CreateBuiltinUnaryOp(SourceLocation OpLoc,
   case UO_PreDec:
   case UO_PostInc:
   case UO_PostDec:
-    resultType = CheckIncrementDecrementOperand(*this, Input.get(), VK, OpLoc,
+    resultType = CheckIncrementDecrementOperand(*this, Input.get(), VK, OK,
+                                                OpLoc,
                                                 Opc == UO_PreInc ||
                                                 Opc == UO_PostInc,
                                                 Opc == UO_PreInc ||
@@ -12415,7 +12425,7 @@ void Sema::CleanupVarDeclMarking() {
       Var = cast<VarDecl>(ME->getMemberDecl());
       Loc = ME->getMemberLoc();
     } else {
-      llvm_unreachable("Unexpcted expression");
+      llvm_unreachable("Unexpected expression");
     }
 
     MarkVarDeclODRUsed(Var, Loc, *this,
@@ -12432,6 +12442,9 @@ static void DoMarkVarDeclReferenced(Sema &SemaRef, SourceLocation Loc,
          "Invalid Expr argument to DoMarkVarDeclReferenced");
   Var->setReferenced();
 
+  TemplateSpecializationKind TSK = Var->getTemplateSpecializationKind();
+  bool MarkODRUsed = true;
+
   // If the context is not potentially evaluated, this is not an odr-use and
   // does not trigger instantiation.
   if (!IsPotentiallyEvaluatedContext(SemaRef)) {
@@ -12446,25 +12459,29 @@ static void DoMarkVarDeclReferenced(Sema &SemaRef, SourceLocation Loc,
     // arguments, where local variables can't be used.
     const bool RefersToEnclosingScope =
         (SemaRef.CurContext != Var->getDeclContext() &&
-         Var->getDeclContext()->isFunctionOrMethod() &&
-         Var->hasLocalStorage());
-    if (!RefersToEnclosingScope)
-      return;
-
-    if (LambdaScopeInfo *const LSI = SemaRef.getCurLambda()) {
-      // If a variable could potentially be odr-used, defer marking it so
-      // until we finish analyzing the full expression for any lvalue-to-rvalue
-      // or discarded value conversions that would obviate odr-use.
-      // Add it to the list of potential captures that will be analyzed
-      // later (ActOnFinishFullExpr) for eventual capture and odr-use marking
-      // unless the variable is a reference that was initialized by a constant
-      // expression (this will never need to be captured or odr-used).
-      assert(E && "Capture variable should be used in an expression.");
-      if (!Var->getType()->isReferenceType() ||
-          !IsVariableNonDependentAndAConstantExpression(Var, SemaRef.Context))
-        LSI->addPotentialCapture(E->IgnoreParens());
+         Var->getDeclContext()->isFunctionOrMethod() && Var->hasLocalStorage());
+    if (RefersToEnclosingScope) {
+      if (LambdaScopeInfo *const LSI = SemaRef.getCurLambda()) {
+        // If a variable could potentially be odr-used, defer marking it so
+        // until we finish analyzing the full expression for any
+        // lvalue-to-rvalue
+        // or discarded value conversions that would obviate odr-use.
+        // Add it to the list of potential captures that will be analyzed
+        // later (ActOnFinishFullExpr) for eventual capture and odr-use marking
+        // unless the variable is a reference that was initialized by a constant
+        // expression (this will never need to be captured or odr-used).
+        assert(E && "Capture variable should be used in an expression.");
+        if (!Var->getType()->isReferenceType() ||
+            !IsVariableNonDependentAndAConstantExpression(Var, SemaRef.Context))
+          LSI->addPotentialCapture(E->IgnoreParens());
+      }
     }
-    return;
+
+    if (!isTemplateInstantiation(TSK))
+    	return;
+
+    // Instantiate, but do not mark as odr-used, variable templates.
+    MarkODRUsed = false;
   }
 
   VarTemplateSpecializationDecl *VarSpec =
@@ -12476,7 +12493,6 @@ static void DoMarkVarDeclReferenced(Sema &SemaRef, SourceLocation Loc,
   // templates of class templates, and variable template specializations. Delay
   // instantiations of variable templates, except for those that could be used
   // in a constant expression.
-  TemplateSpecializationKind TSK = Var->getTemplateSpecializationKind();
   if (isTemplateInstantiation(TSK)) {
     bool TryInstantiating = TSK == TSK_ImplicitInstantiation;
 
@@ -12515,6 +12531,8 @@ static void DoMarkVarDeclReferenced(Sema &SemaRef, SourceLocation Loc,
       }
     }
   }
+
+  if(!MarkODRUsed) return;
 
   // Per C++11 [basic.def.odr], a variable is odr-used "unless it satisfies
   // the requirements for appearing in a constant expression (5.19) and, if

@@ -158,6 +158,9 @@ StringRef MachO::getMachOArchName(const ArgList &Args) const {
   default:
     return getArchName();
 
+  case llvm::Triple::aarch64:
+    return "arm64";
+
   case llvm::Triple::thumb:
   case llvm::Triple::arm: {
     if (const Arg *A = Args.getLastArg(options::OPT_march_EQ))
@@ -330,7 +333,8 @@ void DarwinClang::AddLinkRuntimeLibArgs(const ArgList &Args,
   }
 
   // If we are building profile support, link that library in.
-  if (Args.hasArg(options::OPT_fprofile_arcs) ||
+  if (Args.hasFlag(options::OPT_fprofile_arcs, options::OPT_fno_profile_arcs,
+                   false) ||
       Args.hasArg(options::OPT_fprofile_generate) ||
       Args.hasArg(options::OPT_fprofile_instr_generate) ||
       Args.hasArg(options::OPT_fcreate_profile) ||
@@ -396,8 +400,7 @@ void DarwinClang::AddLinkRuntimeLibArgs(const ArgList &Args,
     // it never went into the SDK.
     // Linking against libgcc_s.1 isn't needed for iOS 5.0+
     if (isIPhoneOSVersionLT(5, 0) && !isTargetIOSSimulator() &&
-        (getTriple().getArch() != llvm::Triple::arm64 &&
-         getTriple().getArch() != llvm::Triple::aarch64))
+        getTriple().getArch() != llvm::Triple::aarch64)
       CmdArgs.push_back("-lgcc_s.1");
 
     // We currently always need a static runtime library for iOS.
@@ -516,7 +519,6 @@ void Darwin::AddDeploymentTarget(DerivedArgList &Args) const {
     // default platform.
     if (!OSXTarget.empty() && !iOSTarget.empty()) {
       if (getTriple().getArch() == llvm::Triple::arm ||
-          getTriple().getArch() == llvm::Triple::arm64 ||
           getTriple().getArch() == llvm::Triple::aarch64 ||
           getTriple().getArch() == llvm::Triple::thumb)
         OSXTarget = "";
@@ -653,7 +655,6 @@ void DarwinClang::AddCCKextLibArgs(const ArgList &Args,
 
   // Use the newer cc_kext for iOS ARM after 6.0.
   if (!isTargetIPhoneOS() || isTargetIOSSimulator() ||
-      getTriple().getArch() == llvm::Triple::arm64 ||
       getTriple().getArch() == llvm::Triple::aarch64 ||
       !isIPhoneOSVersionLT(6, 0)) {
     llvm::sys::path::append(P, "libclang_rt.cc_kext.a");
@@ -920,7 +921,6 @@ DerivedArgList *Darwin::TranslateArgs(const DerivedArgList &Args,
   // but we can't check the deployment target in the translation code until
   // it is set here.
   if (isTargetIOSBased() && !isIPhoneOSVersionLT(6, 0) &&
-      getTriple().getArch() != llvm::Triple::arm64 &&
       getTriple().getArch() != llvm::Triple::aarch64) {
     for (ArgList::iterator it = DAL->begin(), ie = DAL->end(); it != ie; ) {
       Arg *A = *it;
@@ -988,7 +988,6 @@ bool MachO::isPIEDefault() const {
 
 bool MachO::isPICDefaultForced() const {
   return (getArch() == llvm::Triple::x86_64 ||
-          getArch() == llvm::Triple::arm64 ||
           getArch() == llvm::Triple::aarch64);
 }
 
@@ -1078,8 +1077,7 @@ void Darwin::addStartObjectFileArgs(const llvm::opt::ArgList &Args,
           if (isTargetIOSSimulator()) {
             ; // iOS simulator does not need crt1.o.
           } else if (isTargetIPhoneOS()) {
-            if (getArch() == llvm::Triple::arm64 ||
-                getArch() == llvm::Triple::aarch64)
+            if (getArch() == llvm::Triple::aarch64)
               ; // iOS does not need any crt1 files for arm64
             else if (isIPhoneOSVersionLT(3, 1))
               CmdArgs.push_back("-lcrt1.o");
@@ -1222,8 +1220,8 @@ Generic_GCC::GCCInstallationDetector::init(
   // The library directories which may contain GCC installations.
   SmallVector<StringRef, 4> CandidateLibDirs, CandidateBiarchLibDirs;
   // The compatible GCC triples for this particular architecture.
-  SmallVector<StringRef, 10> CandidateTripleAliases;
-  SmallVector<StringRef, 10> CandidateBiarchTripleAliases;
+  SmallVector<StringRef, 16> CandidateTripleAliases;
+  SmallVector<StringRef, 16> CandidateBiarchTripleAliases;
   CollectLibDirsAndTriples(TargetTriple, BiarchVariantTriple, CandidateLibDirs,
                            CandidateTripleAliases, CandidateBiarchLibDirs,
                            CandidateBiarchTripleAliases);
@@ -1398,7 +1396,6 @@ bool Generic_GCC::GCCInstallationDetector::getBiarchSibling(Multilib &M) const {
   };
 
   switch (TargetTriple.getArch()) {
-  case llvm::Triple::arm64:
   case llvm::Triple::aarch64:
     LibDirs.append(AArch64LibDirs,
                    AArch64LibDirs + llvm::array_lengthof(AArch64LibDirs));
@@ -1409,7 +1406,6 @@ bool Generic_GCC::GCCInstallationDetector::getBiarchSibling(Multilib &M) const {
     BiarchTripleAliases.append(
         AArch64Triples, AArch64Triples + llvm::array_lengthof(AArch64Triples));
     break;
-  case llvm::Triple::arm64_be:
   case llvm::Triple::aarch64_be:
     LibDirs.append(AArch64beLibDirs,
                    AArch64beLibDirs + llvm::array_lengthof(AArch64beLibDirs));
@@ -1633,11 +1629,6 @@ static bool isMicroMips(const ArgList &Args) {
   return A && A->getOption().matches(options::OPT_mmicromips);
 }
 
-static bool isMipsFP64(const ArgList &Args) {
-  Arg *A = Args.getLastArg(options::OPT_mfp64, options::OPT_mfp32);
-  return A && A->getOption().matches(options::OPT_mfp64);
-}
-
 struct DetectedMultilibs {
   /// The set of multilibs that the detected installation supports.
   MultilibSet Multilibs;
@@ -1649,6 +1640,10 @@ struct DetectedMultilibs {
   /// targeting the non-default multilib. Otherwise, it is empty.
   llvm::Optional<Multilib> BiarchSibling;
 };
+
+static Multilib makeMultilib(StringRef commonSuffix) {
+  return Multilib(commonSuffix, commonSuffix, commonSuffix);
+}
 
 static bool findMIPSMultilibs(const llvm::Triple &TargetTriple, StringRef Path,
                               const llvm::opt::ArgList &Args,
@@ -1683,75 +1678,46 @@ static bool findMIPSMultilibs(const llvm::Triple &TargetTriple, StringRef Path,
   // Check for FSF toolchain multilibs
   MultilibSet FSFMipsMultilibs;
   {
-    Multilib MArchMips32 = Multilib()
-      .gccSuffix("/mips32")
-      .osSuffix("/mips32")
-      .includeSuffix("/mips32")
+    auto MArchMips32 = makeMultilib("/mips32")
       .flag("+m32").flag("-m64").flag("-mmicromips").flag("+march=mips32");
 
-    Multilib MArchMicroMips = Multilib()
-      .gccSuffix("/micromips")
-      .osSuffix("/micromips")
-      .includeSuffix("/micromips")
+    auto MArchMicroMips = makeMultilib("/micromips")
       .flag("+m32").flag("-m64").flag("+mmicromips");
 
-    Multilib MArchMips64r2 = Multilib()
-      .gccSuffix("/mips64r2")
-      .osSuffix("/mips64r2")
-      .includeSuffix("/mips64r2")
+    auto MArchMips64r2 = makeMultilib("/mips64r2")
       .flag("-m32").flag("+m64").flag("+march=mips64r2");
 
-    Multilib MArchMips64 = Multilib()
-      .gccSuffix("/mips64")
-      .osSuffix("/mips64")
-      .includeSuffix("/mips64")
+    auto MArchMips64 = makeMultilib("/mips64")
       .flag("-m32").flag("+m64").flag("-march=mips64r2");
 
-    Multilib MArchDefault = Multilib()
+    auto MArchDefault = makeMultilib("")
       .flag("+m32").flag("-m64").flag("-mmicromips").flag("+march=mips32r2");
 
-    Multilib Mips16 = Multilib()
-      .gccSuffix("/mips16")
-      .osSuffix("/mips16")
-      .includeSuffix("/mips16")
+    auto Mips16 = makeMultilib("/mips16")
       .flag("+mips16");
 
-    Multilib MAbi64 = Multilib()
-      .gccSuffix("/64")
-      .osSuffix("/64")
-      .includeSuffix("/64")
+    auto UCLibc = makeMultilib("/uclibc")
+      .flag("+muclibc");
+
+    auto MAbi64 = makeMultilib("/64")
       .flag("+mabi=n64").flag("-mabi=n32").flag("-m32");
 
-    Multilib BigEndian = Multilib()
+    auto BigEndian = makeMultilib("")
       .flag("+EB").flag("-EL");
 
-    Multilib LittleEndian = Multilib()
-      .gccSuffix("/el")
-      .osSuffix("/el")
-      .includeSuffix("/el")
+    auto LittleEndian = makeMultilib("/el")
       .flag("+EL").flag("-EB");
 
-    Multilib SoftFloat = Multilib()
-      .gccSuffix("/sof")
-      .osSuffix("/sof")
-      .includeSuffix("/sof")
+    auto SoftFloat = makeMultilib("/sof")
       .flag("+msoft-float");
 
-    Multilib FP64 = Multilib()
-      .gccSuffix("/fp64")
-      .osSuffix("/fp64")
-      .includeSuffix("/fp64")
-      .flag("+mfp64");
-
-    Multilib Nan2008 = Multilib()
-      .gccSuffix("/nan2008")
-      .osSuffix("/nan2008")
-      .includeSuffix("/nan2008")
+    auto Nan2008 = makeMultilib("/nan2008")
       .flag("+mnan=2008");
 
     FSFMipsMultilibs = MultilibSet()
       .Either(MArchMips32, MArchMicroMips, 
               MArchMips64r2, MArchMips64, MArchDefault)
+      .Maybe(UCLibc)
       .Maybe(Mips16)
       .FilterOut("/mips64/mips16")
       .FilterOut("/mips64r2/mips16")
@@ -1763,63 +1729,61 @@ static bool findMIPSMultilibs(const llvm::Triple &TargetTriple, StringRef Path,
       .FilterOut("/mips16/64")
       .Either(BigEndian, LittleEndian)
       .Maybe(SoftFloat)
-      .Maybe(FP64)
       .Maybe(Nan2008)
       .FilterOut(".*sof/nan2008")
-      .FilterOut(".*sof/fp64")
-      .FilterOut(NonExistent);
+      .FilterOut(NonExistent)
+      .setIncludeDirsCallback([](
+          StringRef InstallDir, StringRef TripleStr, const Multilib &M) {
+        std::vector<std::string> Dirs;
+        Dirs.push_back((InstallDir + "/include").str());
+        std::string SysRootInc = InstallDir.str() + "/../../../../sysroot";
+        if (StringRef(M.includeSuffix()).startswith("/uclibc"))
+          Dirs.push_back(SysRootInc + "/uclibc/usr/include");
+        else
+          Dirs.push_back(SysRootInc + "/usr/include");
+        return Dirs;
+      });
   }
 
   // Check for Code Sourcery toolchain multilibs
   MultilibSet CSMipsMultilibs;
   {
-    Multilib MArchMips16 = Multilib()
-      .gccSuffix("/mips16")
-      .osSuffix("/mips16")
-      .includeSuffix("/mips16")
+    auto MArchMips16 = makeMultilib("/mips16")
       .flag("+m32").flag("+mips16");
 
-    Multilib MArchMicroMips = Multilib()
-      .gccSuffix("/micromips")
-      .osSuffix("/micromips")
-      .includeSuffix("/micromips")
+    auto MArchMicroMips = makeMultilib("/micromips")
       .flag("+m32").flag("+mmicromips");
 
-    Multilib MArchDefault = Multilib()
+    auto MArchDefault = makeMultilib("")
       .flag("-mips16").flag("-mmicromips");
 
-    Multilib SoftFloat = Multilib()
-      .gccSuffix("/soft-float")
-      .osSuffix("/soft-float")
-      .includeSuffix("/soft-float")
+    auto UCLibc = makeMultilib("/uclibc")
+      .flag("+muclibc");
+
+    auto SoftFloat = makeMultilib("/soft-float")
       .flag("+msoft-float");
 
-    Multilib Nan2008 = Multilib()
-      .gccSuffix("/nan2008")
-      .osSuffix("/nan2008")
-      .includeSuffix("/nan2008")
+    auto Nan2008 = makeMultilib("/nan2008")
       .flag("+mnan=2008");
 
-    Multilib DefaultFloat = Multilib()
+    auto DefaultFloat = makeMultilib("")
       .flag("-msoft-float").flag("-mnan=2008");
 
-    Multilib BigEndian = Multilib()
+    auto BigEndian = makeMultilib("")
       .flag("+EB").flag("-EL");
 
-    Multilib LittleEndian = Multilib()
-      .gccSuffix("/el")
-      .osSuffix("/el")
-      .includeSuffix("/el")
+    auto LittleEndian = makeMultilib("/el")
       .flag("+EL").flag("-EB");
 
     // Note that this one's osSuffix is ""
-    Multilib MAbi64 = Multilib()
+    auto MAbi64 = makeMultilib("")
       .gccSuffix("/64")
       .includeSuffix("/64")
       .flag("+mabi=n64").flag("-mabi=n32").flag("-m32");
 
     CSMipsMultilibs = MultilibSet()
       .Either(MArchMips16, MArchMicroMips, MArchDefault)
+      .Maybe(UCLibc)
       .Either(SoftFloat, Nan2008, DefaultFloat)
       .FilterOut("/micromips/nan2008")
       .FilterOut("/mips16/nan2008")
@@ -1827,7 +1791,19 @@ static bool findMIPSMultilibs(const llvm::Triple &TargetTriple, StringRef Path,
       .Maybe(MAbi64)
       .FilterOut("/mips16.*/64")
       .FilterOut("/micromips.*/64")
-      .FilterOut(NonExistent);
+      .FilterOut(NonExistent)
+      .setIncludeDirsCallback([](
+          StringRef InstallDir, StringRef TripleStr, const Multilib &M) {
+        std::vector<std::string> Dirs;
+        Dirs.push_back((InstallDir + "/include").str());
+        std::string SysRootInc =
+            InstallDir.str() + "/../../../../" + TripleStr.str();
+        if (StringRef(M.includeSuffix()).startswith("/uclibc"))
+          Dirs.push_back(SysRootInc + "/libc/uclibc/usr/include");
+        else
+          Dirs.push_back(SysRootInc + "/libc/usr/include");
+        return Dirs;
+      });
   }
 
   MultilibSet AndroidMipsMultilibs = MultilibSet()
@@ -1856,29 +1832,27 @@ static bool findMIPSMultilibs(const llvm::Triple &TargetTriple, StringRef Path,
 
   MultilibSet ImgMultilibs;
   {
-    Multilib Mips64r6 = Multilib()
-      .gccSuffix("/mips64r6")
-      .osSuffix("/mips64r6")
-      .includeSuffix("/mips64r6")
+    auto Mips64r6 = makeMultilib("/mips64r6")
       .flag("+m64").flag("-m32");
 
-    Multilib LittleEndian = Multilib()
-      .gccSuffix("/el")
-      .osSuffix("/el")
-      .includeSuffix("/el")
+    auto LittleEndian = makeMultilib("/el")
       .flag("+EL").flag("-EB");
 
-    Multilib MAbi64 = Multilib()
-      .gccSuffix("/64")
-      .osSuffix("/64")
-      .includeSuffix("/64")
+    auto MAbi64 = makeMultilib("/64")
       .flag("+mabi=n64").flag("-mabi=n32").flag("-m32");
 
     ImgMultilibs = MultilibSet()
       .Maybe(Mips64r6)
       .Maybe(MAbi64)
       .Maybe(LittleEndian)
-      .FilterOut(NonExistent);
+      .FilterOut(NonExistent)
+      .setIncludeDirsCallback([](
+          StringRef InstallDir, StringRef TripleStr, const Multilib &M) {
+        std::vector<std::string> Dirs;
+        Dirs.push_back((InstallDir + "/include").str());
+        Dirs.push_back((InstallDir + "/../../../../sysroot/usr/include").str());
+        return Dirs;
+      });
   }
 
   StringRef CPUName;
@@ -1897,8 +1871,7 @@ static bool findMIPSMultilibs(const llvm::Triple &TargetTriple, StringRef Path,
   addMultilibFlag(CPUName == "mips64r2" || CPUName == "octeon",
                   "march=mips64r2", Flags);
   addMultilibFlag(isMicroMips(Args), "mmicromips", Flags);
-  addMultilibFlag(isMipsFP64(Args), "mfp64", Flags);
-  addMultilibFlag(!isMipsFP64(Args), "mfp32", Flags);
+  addMultilibFlag(tools::mips::isUCLibc(Args), "muclibc", Flags);
   addMultilibFlag(tools::mips::isNaN2008(Args, TargetTriple), "mnan=2008",
                   Flags);
   addMultilibFlag(ABIName == "n32", "mabi=n32", Flags);
@@ -2174,8 +2147,6 @@ bool Generic_GCC::IsIntegratedAssemblerDefault() const {
          getTriple().getArch() == llvm::Triple::x86_64 ||
          getTriple().getArch() == llvm::Triple::aarch64 ||
          getTriple().getArch() == llvm::Triple::aarch64_be ||
-         getTriple().getArch() == llvm::Triple::arm64 ||
-         getTriple().getArch() == llvm::Triple::arm64_be ||
          getTriple().getArch() == llvm::Triple::arm ||
          getTriple().getArch() == llvm::Triple::armeb ||
          getTriple().getArch() == llvm::Triple::thumb ||
@@ -2188,8 +2159,6 @@ void Generic_ELF::addClangTargetOptions(const ArgList &DriverArgs,
   bool UseInitArrayDefault =
       getTriple().getArch() == llvm::Triple::aarch64 ||
       getTriple().getArch() == llvm::Triple::aarch64_be ||
-      getTriple().getArch() == llvm::Triple::arm64 ||
-      getTriple().getArch() == llvm::Triple::arm64_be ||
       (getTriple().getOS() == llvm::Triple::Linux &&
        (!V.isOlderThan(4, 7, 0) ||
         getTriple().getEnvironment() == llvm::Triple::Android));
@@ -2638,10 +2607,12 @@ NetBSD::NetBSD(const Driver &D, const llvm::Triple& Triple, const ArgList &Args)
     case llvm::Triple::thumbeb:
       switch (Triple.getEnvironment()) {
       case llvm::Triple::EABI:
-      case llvm::Triple::EABIHF:
       case llvm::Triple::GNUEABI:
-      case llvm::Triple::GNUEABIHF:
         getFilePaths().push_back("=/usr/lib/eabi");
+        break;
+      case llvm::Triple::EABIHF:
+      case llvm::Triple::GNUEABIHF:
+        getFilePaths().push_back("=/usr/lib/eabihf");
         break;
       default:
         getFilePaths().push_back("=/usr/lib/oabi");
@@ -2654,6 +2625,9 @@ NetBSD::NetBSD(const Driver &D, const llvm::Triple& Triple, const ArgList &Args)
         getFilePaths().push_back("=/usr/lib/o32");
       else if (tools::mips::hasMipsAbiArg(Args, "64"))
         getFilePaths().push_back("=/usr/lib/64");
+      break;
+    case llvm::Triple::ppc:
+      getFilePaths().push_back("=/usr/lib/powerpc");
       break;
     case llvm::Triple::sparc:
       getFilePaths().push_back("=/usr/lib/sparc");
@@ -2689,12 +2663,16 @@ NetBSD::GetCXXStdlibType(const ArgList &Args) const {
 
   unsigned Major, Minor, Micro;
   getTriple().getOSVersion(Major, Minor, Micro);
-  if (Major >= 7 || (Major == 6 && Minor == 99 && Micro >= 40) || Major == 0) {
+  if (Major >= 7 || (Major == 6 && Minor == 99 && Micro >= 49) || Major == 0) {
     switch (getArch()) {
+    case llvm::Triple::aarch64:
     case llvm::Triple::arm:
     case llvm::Triple::armeb:
     case llvm::Triple::thumb:
     case llvm::Triple::thumbeb:
+    case llvm::Triple::ppc:
+    case llvm::Triple::ppc64:
+    case llvm::Triple::ppc64le:
     case llvm::Triple::x86:
     case llvm::Triple::x86_64:
       return ToolChain::CST_Libcxx;
@@ -2739,32 +2717,6 @@ Tool *Minix::buildAssembler() const {
 
 Tool *Minix::buildLinker() const {
   return new tools::minix::Link(*this);
-}
-
-/// AuroraUX - AuroraUX tool chain which can call as(1) and ld(1) directly.
-
-AuroraUX::AuroraUX(const Driver &D, const llvm::Triple& Triple,
-                   const ArgList &Args)
-  : Generic_GCC(D, Triple, Args) {
-
-  getProgramPaths().push_back(getDriver().getInstalledDir());
-  if (getDriver().getInstalledDir() != getDriver().Dir)
-    getProgramPaths().push_back(getDriver().Dir);
-
-  getFilePaths().push_back(getDriver().Dir + "/../lib");
-  getFilePaths().push_back("/usr/lib");
-  getFilePaths().push_back("/usr/sfw/lib");
-  getFilePaths().push_back("/opt/gcc4/lib");
-  getFilePaths().push_back("/opt/gcc4/lib/gcc/i386-pc-solaris2.11/4.2.4");
-
-}
-
-Tool *AuroraUX::buildAssembler() const {
-  return new tools::auroraux::Assemble(*this);
-}
-
-Tool *AuroraUX::buildLinker() const {
-  return new tools::auroraux::Link(*this);
 }
 
 /// Solaris - Solaris tool chain which can call as(1) and ld(1) directly.
@@ -2840,7 +2792,7 @@ static Distro DetectDistro(llvm::Triple::ArchType Arch) {
       llvm::MemoryBuffer::getFile("/etc/lsb-release");
   if (File) {
     StringRef Data = File.get()->getBuffer();
-    SmallVector<StringRef, 8> Lines;
+    SmallVector<StringRef, 16> Lines;
     Data.split(Lines, "\n");
     Distro Version = UnknownDistro;
     for (unsigned i = 0, s = Lines.size(); i != s; ++i)
@@ -2954,12 +2906,10 @@ static std::string getMultiarchTriple(const llvm::Triple &TargetTriple,
         llvm::sys::fs::exists(SysRoot + "/lib/x86_64-linux-gnu"))
       return "x86_64-linux-gnu";
     return TargetTriple.str();
-  case llvm::Triple::arm64:
   case llvm::Triple::aarch64:
     if (llvm::sys::fs::exists(SysRoot + "/lib/aarch64-linux-gnu"))
       return "aarch64-linux-gnu";
     return TargetTriple.str();
-  case llvm::Triple::arm64_be:
   case llvm::Triple::aarch64_be:
     if (llvm::sys::fs::exists(SysRoot + "/lib/aarch64_be-linux-gnu"))
       return "aarch64_be-linux-gnu";
@@ -3287,20 +3237,16 @@ void Linux::AddClangSystemIncludeArgs(const ArgList &DriverArgs,
   // Lacking those, try to detect the correct set of system includes for the
   // target triple.
 
-  // Sourcery CodeBench and modern FSF Mips toolchains put extern C
-  // system includes under three additional directories.
-  if (GCCInstallation.isValid() && isMipsArch(getTriple().getArch())) {
-    addExternCSystemIncludeIfExists(
-        DriverArgs, CC1Args, GCCInstallation.getInstallPath() + "/include");
-
-    addExternCSystemIncludeIfExists(
-        DriverArgs, CC1Args,
-        GCCInstallation.getInstallPath() + "/../../../../" +
-            GCCInstallation.getTriple().str() + "/libc/usr/include");
-
-    addExternCSystemIncludeIfExists(
-        DriverArgs, CC1Args,
-        GCCInstallation.getInstallPath() + "/../../../../sysroot/usr/include");
+  // Add include directories specific to the selected multilib set and multilib.
+  if (GCCInstallation.isValid()) {
+    auto Callback = Multilibs.includeDirsCallback();
+    if (Callback) {
+      const auto IncludePaths = Callback(GCCInstallation.getInstallPath(),
+                                         GCCInstallation.getTriple().str(),
+                                         GCCInstallation.getMultilib());
+      for (const auto &Path : IncludePaths)
+        addExternCSystemIncludeIfExists(DriverArgs, CC1Args, Path);
+    }
   }
 
   // Implement generic Debian multiarch support.
@@ -3359,9 +3305,7 @@ void Linux::AddClangSystemIncludeArgs(const ArgList &DriverArgs,
   } else if (getTriple().getArch() == llvm::Triple::x86) {
     MultiarchIncludeDirs = X86MultiarchIncludeDirs;
   } else if (getTriple().getArch() == llvm::Triple::aarch64 ||
-             getTriple().getArch() == llvm::Triple::aarch64_be ||
-             getTriple().getArch() == llvm::Triple::arm64 ||
-             getTriple().getArch() == llvm::Triple::arm64_be) {
+             getTriple().getArch() == llvm::Triple::aarch64_be) {
     MultiarchIncludeDirs = AArch64MultiarchIncludeDirs;
   } else if (getTriple().getArch() == llvm::Triple::arm) {
     if (getTriple().getEnvironment() == llvm::Triple::GNUEABIHF)
@@ -3585,7 +3529,8 @@ void XCore::addClangTargetOptions(const llvm::opt::ArgList &DriverArgs,
 void XCore::AddClangCXXStdlibIncludeArgs(const ArgList &DriverArgs,
                                          ArgStringList &CC1Args) const {
   if (DriverArgs.hasArg(options::OPT_nostdinc) ||
-      DriverArgs.hasArg(options::OPT_nostdlibinc))
+      DriverArgs.hasArg(options::OPT_nostdlibinc) ||
+      DriverArgs.hasArg(options::OPT_nostdincxx))
     return;
   if (const char *cl_include_dir = getenv("XCC_CPLUS_INCLUDE_PATH")) {
     SmallVector<StringRef, 4> Dirs;

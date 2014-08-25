@@ -1,7 +1,7 @@
-// RUN: %clang_cc1 -triple i686-win32     -fsyntax-only -verify -std=c++11 -DMS %s
-// RUN: %clang_cc1 -triple x86_64-win32   -fsyntax-only -verify -std=c++1y -DMS %s
-// RUN: %clang_cc1 -triple i686-mingw32   -fsyntax-only -verify -std=c++1y %s
-// RUN: %clang_cc1 -triple x86_64-mingw32 -fsyntax-only -verify -std=c++11 %s
+// RUN: %clang_cc1 -triple i686-win32     -fsyntax-only -verify -std=c++11 -Wunsupported-dll-base-class-template -DMS %s
+// RUN: %clang_cc1 -triple x86_64-win32   -fsyntax-only -verify -std=c++1y -Wunsupported-dll-base-class-template -DMS %s
+// RUN: %clang_cc1 -triple i686-mingw32   -fsyntax-only -verify -std=c++1y -Wunsupported-dll-base-class-template %s
+// RUN: %clang_cc1 -triple x86_64-mingw32 -fsyntax-only -verify -std=c++11 -Wunsupported-dll-base-class-template %s
 
 // Helper structs to make templates more expressive.
 struct ImplicitInst_Imported {};
@@ -242,6 +242,13 @@ __declspec(dllimport) void friend1();
                       void friend3() {} // expected-warning{{'friend3' redeclared without 'dllimport' attribute: previous 'dllimport' ignored}}
 __declspec(dllimport) void friend4(); // expected-error{{redeclaration of 'friend4' cannot add 'dllimport' attribute}}
 __declspec(dllimport) inline void friend5() {} // expected-error{{redeclaration of 'friend5' cannot add 'dllimport' attribute}}
+
+void __declspec(dllimport) friend6(); // expected-note{{previous declaration is here}} expected-note{{previous attribute is here}}
+void __declspec(dllimport) friend7();
+struct FuncFriend2 {
+  friend void friend6(); // expected-warning{{'friend6' redeclared without 'dllimport' attribute: previous 'dllimport' ignored}}
+  friend void ::friend7();
+};
 
 // Implicit declarations can be redeclared with dllimport.
 __declspec(dllimport) void* operator new(__SIZE_TYPE__ n);
@@ -974,7 +981,7 @@ class __declspec(dllimport) ImportClassWithDllMember {
 // expected-error@+4{{attribute 'dllimport' cannot be applied to member of 'dllexport' class}}
 // expected-error@+4{{attribute 'dllexport' cannot be applied to member of 'dllexport' class}}
 #endif
-class __declspec(dllexport) ExportClassWithDllMember {
+template <typename T> class __declspec(dllexport) ExportClassWithDllMember {
   void __declspec(dllimport) foo();
   void __declspec(dllexport) bar();
 };

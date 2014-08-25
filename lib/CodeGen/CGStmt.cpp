@@ -588,6 +588,7 @@ void CodeGenFunction::EmitCondBrHints(llvm::LLVMContext &Context,
       continue;
 
     LoopHintAttr::OptionType Option = LH->getOption();
+    LoopHintAttr::LoopHintState State = LH->getState();
     int ValueInt = LH->getValue();
 
     const char *MetadataName;
@@ -601,19 +602,20 @@ void CodeGenFunction::EmitCondBrHints(llvm::LLVMContext &Context,
       MetadataName = "llvm.loop.interleave.count";
       break;
     case LoopHintAttr::Unroll:
-      MetadataName = "llvm.loop.unroll.enable";
+      // With the unroll loop hint, a non-zero value indicates full unrolling.
+      MetadataName = State == LoopHintAttr::Disable ? "llvm.loop.unroll.disable"
+                                                    : "llvm.loop.unroll.full";
       break;
     case LoopHintAttr::UnrollCount:
       MetadataName = "llvm.loop.unroll.count";
       break;
     }
-
     llvm::Value *Value;
     llvm::MDString *Name;
     switch (Option) {
     case LoopHintAttr::Vectorize:
     case LoopHintAttr::Interleave:
-      if (ValueInt == 1) {
+      if (State != LoopHintAttr::Disable) {
         // FIXME: In the future I will modifiy the behavior of the metadata
         // so we can enable/disable vectorization and interleaving separately.
         Name = llvm::MDString::get(Context, "llvm.loop.vectorize.enable");
@@ -625,22 +627,20 @@ void CodeGenFunction::EmitCondBrHints(llvm::LLVMContext &Context,
       // Fallthrough.
     case LoopHintAttr::VectorizeWidth:
     case LoopHintAttr::InterleaveCount:
+    case LoopHintAttr::UnrollCount:
       Name = llvm::MDString::get(Context, MetadataName);
       Value = llvm::ConstantInt::get(Int32Ty, ValueInt);
       break;
     case LoopHintAttr::Unroll:
       Name = llvm::MDString::get(Context, MetadataName);
-      Value = (ValueInt == 0) ? Builder.getFalse() : Builder.getTrue();
-      break;
-    case LoopHintAttr::UnrollCount:
-      Name = llvm::MDString::get(Context, MetadataName);
-      Value = llvm::ConstantInt::get(Int32Ty, ValueInt);
+      Value = nullptr;
       break;
     }
 
     SmallVector<llvm::Value *, 2> OpValues;
     OpValues.push_back(Name);
-    OpValues.push_back(Value);
+    if (Value)
+      OpValues.push_back(Value);
 
     // Set or overwrite metadata indicated by Name.
     Metadata.push_back(llvm::MDNode::get(Context, OpValues));
@@ -730,6 +730,7 @@ void CodeGenFunction::EmitWhileStmt(const WhileStmt &S,
   // Immediately force cleanup.
   ConditionScope.ForceCleanup();
 
+  EmitStopPoint(&S);
   // Branch to the loop header again.
   EmitBranch(LoopHeader.getBlock());
 
@@ -809,11 +810,7 @@ void CodeGenFunction::EmitForStmt(const ForStmt &S,
                                   const ArrayRef<const Attr *> &ForAttrs) {
   JumpDest LoopExit = getJumpDestInCurrentScope("for.end");
 
-  RunCleanupsScope ForScope(*this);
-
-  CGDebugInfo *DI = getDebugInfo();
-  if (DI)
-    DI->EmitLexicalBlockStart(Builder, S.getSourceRange().getBegin());
+  LexicalScope ForScope(*this, S.getSourceRange());
 
   // Evaluate the first part before the loop.
   if (S.getInit())
@@ -841,7 +838,7 @@ void CodeGenFunction::EmitForStmt(const ForStmt &S,
   BreakContinueStack.push_back(BreakContinue(LoopExit, Continue));
 
   // Create a cleanup scope for the condition variable cleanups.
-  RunCleanupsScope ConditionScope(*this);
+  LexicalScope ConditionScope(*this, S.getSourceRange());
 
   if (S.getCond()) {
     // If the for statement has a condition scope, emit the local variable
@@ -897,12 +894,11 @@ void CodeGenFunction::EmitForStmt(const ForStmt &S,
   BreakContinueStack.pop_back();
 
   ConditionScope.ForceCleanup();
+
+  EmitStopPoint(&S);
   EmitBranch(CondBlock);
 
   ForScope.ForceCleanup();
-
-  if (DI)
-    DI->EmitLexicalBlockEnd(Builder, S.getSourceRange().getEnd());
 
   LoopStack.pop();
 
@@ -915,11 +911,7 @@ CodeGenFunction::EmitCXXForRangeStmt(const CXXForRangeStmt &S,
                                      const ArrayRef<const Attr *> &ForAttrs) {
   JumpDest LoopExit = getJumpDestInCurrentScope("for.end");
 
-  RunCleanupsScope ForScope(*this);
-
-  CGDebugInfo *DI = getDebugInfo();
-  if (DI)
-    DI->EmitLexicalBlockStart(Builder, S.getSourceRange().getBegin());
+  LexicalScope ForScope(*this, S.getSourceRange());
 
   // Evaluate the first pieces before the loop.
   EmitStmt(S.getRangeStmt());
@@ -969,11 +961,12 @@ CodeGenFunction::EmitCXXForRangeStmt(const CXXForRangeStmt &S,
 
   {
     // Create a separate cleanup scope for the loop variable and body.
-    RunCleanupsScope BodyScope(*this);
+    LexicalScope BodyScope(*this, S.getSourceRange());
     EmitStmt(S.getLoopVarStmt());
     EmitStmt(S.getBody());
   }
 
+  EmitStopPoint(&S);
   // If there is an increment, emit it next.
   EmitBlock(Continue.getBlock());
   EmitStmt(S.getInc());
@@ -983,9 +976,6 @@ CodeGenFunction::EmitCXXForRangeStmt(const CXXForRangeStmt &S,
   EmitBranch(CondBlock);
 
   ForScope.ForceCleanup();
-
-  if (DI)
-    DI->EmitLexicalBlockEnd(Builder, S.getSourceRange().getEnd());
 
   LoopStack.pop();
 
@@ -2024,10 +2014,15 @@ void CodeGenFunction::EmitAsmStmt(const AsmStmt &S) {
                        llvm::Attribute::NoUnwind);
 
   // Slap the source location of the inline asm into a !srcloc metadata on the
-  // call.  FIXME: Handle metadata for MS-style inline asms.
-  if (const GCCAsmStmt *gccAsmStmt = dyn_cast<GCCAsmStmt>(&S))
+  // call.
+  if (const GCCAsmStmt *gccAsmStmt = dyn_cast<GCCAsmStmt>(&S)) {
     Result->setMetadata("srcloc", getAsmSrcLocInfo(gccAsmStmt->getAsmString(),
                                                    *this));
+  } else {
+    // At least put the line number on MS inline asm blobs.
+    auto Loc = llvm::ConstantInt::get(Int32Ty, S.getAsmLoc().getRawEncoding());
+    Result->setMetadata("srcloc", llvm::MDNode::get(getLLVMContext(), Loc));
+  }
 
   // Extract all of the register value results from the asm.
   std::vector<llvm::Value*> RegResults;

@@ -7,6 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "CoverageMappingGen.h"
 #include "clang/CodeGen/CodeGenAction.h"
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
@@ -15,6 +16,7 @@
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
+#include "clang/Lex/Preprocessor.h"
 #include "clang/CodeGen/BackendUtil.h"
 #include "clang/CodeGen/ModuleBuilder.h"
 #include "clang/Frontend/CompilerInstance.h"
@@ -59,11 +61,13 @@ namespace clang {
                     const TargetOptions &targetopts,
                     const LangOptions &langopts, bool TimePasses,
                     const std::string &infile, llvm::Module *LinkModule,
-                    raw_ostream *OS, LLVMContext &C)
+                    raw_ostream *OS, LLVMContext &C,
+                    CoverageSourceInfo *CoverageInfo = nullptr)
         : Diags(_Diags), Action(action), CodeGenOpts(compopts),
           TargetOpts(targetopts), LangOpts(langopts), AsmOutStream(OS),
           Context(), LLVMIRGeneration("LLVM IR Generation Time"),
-          Gen(CreateLLVMCodeGen(Diags, infile, compopts, targetopts, C)),
+          Gen(CreateLLVMCodeGen(Diags, infile, compopts,
+                                targetopts, C, CoverageInfo)),
           LinkModule(LinkModule) {
       llvm::TimePassesIsEnabled = TimePasses;
     }
@@ -575,7 +579,9 @@ void CodeGenAction::EndSourceFileAction() {
   TheModule.reset(BEConsumer->takeModule());
 }
 
-llvm::Module *CodeGenAction::takeModule() { return TheModule.release(); }
+std::unique_ptr<llvm::Module> CodeGenAction::takeModule() {
+  return std::move(TheModule);
+}
 
 llvm::LLVMContext *CodeGenAction::takeLLVMContext() {
   OwnsVMContext = false;
@@ -603,8 +609,8 @@ static raw_ostream *GetOutputStream(CompilerInstance &CI,
   llvm_unreachable("Invalid action!");
 }
 
-ASTConsumer *CodeGenAction::CreateASTConsumer(CompilerInstance &CI,
-                                              StringRef InFile) {
+std::unique_ptr<ASTConsumer>
+CodeGenAction::CreateASTConsumer(CompilerInstance &CI, StringRef InFile) {
   BackendAction BA = static_cast<BackendAction>(Act);
   std::unique_ptr<raw_ostream> OS(GetOutputStream(CI, InFile, BA));
   if (BA != Backend_EmitNothing && !OS)
@@ -636,11 +642,18 @@ ASTConsumer *CodeGenAction::CreateASTConsumer(CompilerInstance &CI,
     LinkModuleToUse = ModuleOrErr.get();
   }
 
-  BEConsumer = new BackendConsumer(BA, CI.getDiagnostics(), CI.getCodeGenOpts(),
-                                   CI.getTargetOpts(), CI.getLangOpts(),
-                                   CI.getFrontendOpts().ShowTimers, InFile,
-                                   LinkModuleToUse, OS.release(), *VMContext);
-  return BEConsumer;
+  CoverageSourceInfo *CoverageInfo = nullptr;
+  // Add the preprocessor callback only when the coverage mapping is generated.
+  if (CI.getCodeGenOpts().CoverageMapping) {
+    CoverageInfo = new CoverageSourceInfo;
+    CI.getPreprocessor().addPPCallbacks(CoverageInfo);
+  }
+  std::unique_ptr<BackendConsumer> Result(new BackendConsumer(
+      BA, CI.getDiagnostics(), CI.getCodeGenOpts(), CI.getTargetOpts(),
+      CI.getLangOpts(), CI.getFrontendOpts().ShowTimers, InFile,
+      LinkModuleToUse, OS.release(), *VMContext, CoverageInfo));
+  BEConsumer = Result.get();
+  return std::move(Result);
 }
 
 void CodeGenAction::ExecuteAction() {

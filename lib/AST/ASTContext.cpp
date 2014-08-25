@@ -1413,9 +1413,9 @@ std::pair<CharUnits, CharUnits>
 ASTContext::getTypeInfoInChars(const Type *T) const {
   if (const ConstantArrayType *CAT = dyn_cast<ConstantArrayType>(T))
     return getConstantArrayInfoInChars(*this, CAT);
-  std::pair<uint64_t, unsigned> Info = getTypeInfo(T);
-  return std::make_pair(toCharUnitsFromBits(Info.first),
-                        toCharUnitsFromBits(Info.second));
+  TypeInfo Info = getTypeInfo(T);
+  return std::make_pair(toCharUnitsFromBits(Info.Width),
+                        toCharUnitsFromBits(Info.Align));
 }
 
 std::pair<CharUnits, CharUnits>
@@ -1423,14 +1423,23 @@ ASTContext::getTypeInfoInChars(QualType T) const {
   return getTypeInfoInChars(T.getTypePtr());
 }
 
-std::pair<uint64_t, unsigned> ASTContext::getTypeInfo(const Type *T) const {
-  TypeInfoMap::iterator it = MemoizedTypeInfo.find(T);
-  if (it != MemoizedTypeInfo.end())
-    return it->second;
+bool ASTContext::isAlignmentRequired(const Type *T) const {
+  return getTypeInfo(T).AlignIsRequired;
+}
 
-  std::pair<uint64_t, unsigned> Info = getTypeInfoImpl(T);
-  MemoizedTypeInfo.insert(std::make_pair(T, Info));
-  return Info;
+bool ASTContext::isAlignmentRequired(QualType T) const {
+  return isAlignmentRequired(T.getTypePtr());
+}
+
+TypeInfo ASTContext::getTypeInfo(const Type *T) const {
+  TypeInfoMap::iterator I = MemoizedTypeInfo.find(T);
+  if (I != MemoizedTypeInfo.end())
+    return I->second;
+
+  // This call can invalidate MemoizedTypeInfo[T], so we need a second lookup.
+  TypeInfo TI = getTypeInfoImpl(T);
+  MemoizedTypeInfo[T] = TI;
+  return TI;
 }
 
 /// getTypeInfoImpl - Return the size of the specified type, in bits.  This
@@ -1439,10 +1448,10 @@ std::pair<uint64_t, unsigned> ASTContext::getTypeInfo(const Type *T) const {
 /// FIXME: Pointers into different addr spaces could have different sizes and
 /// alignment requirements: getPointerInfo should take an AddrSpace, this
 /// should take a QualType, &c.
-std::pair<uint64_t, unsigned>
-ASTContext::getTypeInfoImpl(const Type *T) const {
-  uint64_t Width=0;
-  unsigned Align=8;
+TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
+  uint64_t Width = 0;
+  unsigned Align = 8;
+  bool AlignIsRequired = false;
   switch (T->getTypeClass()) {
 #define TYPE(Class, Base)
 #define ABSTRACT_TYPE(Class, Base)
@@ -1471,12 +1480,12 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
   case Type::ConstantArray: {
     const ConstantArrayType *CAT = cast<ConstantArrayType>(T);
 
-    std::pair<uint64_t, unsigned> EltInfo = getTypeInfo(CAT->getElementType());
+    TypeInfo EltInfo = getTypeInfo(CAT->getElementType());
     uint64_t Size = CAT->getSize().getZExtValue();
-    assert((Size == 0 || EltInfo.first <= (uint64_t)(-1)/Size) && 
+    assert((Size == 0 || EltInfo.Width <= (uint64_t)(-1) / Size) &&
            "Overflow in array type bit size evaluation");
-    Width = EltInfo.first*Size;
-    Align = EltInfo.second;
+    Width = EltInfo.Width * Size;
+    Align = EltInfo.Align;
     if (!getTargetInfo().getCXXABI().isMicrosoft() ||
         getTargetInfo().getPointerWidth(0) == 64)
       Width = llvm::RoundUpToAlignment(Width, Align);
@@ -1485,8 +1494,8 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
   case Type::ExtVector:
   case Type::Vector: {
     const VectorType *VT = cast<VectorType>(T);
-    std::pair<uint64_t, unsigned> EltInfo = getTypeInfo(VT->getElementType());
-    Width = EltInfo.first*VT->getNumElements();
+    TypeInfo EltInfo = getTypeInfo(VT->getElementType());
+    Width = EltInfo.Width * VT->getNumElements();
     Align = Width;
     // If the alignment is not a power of 2, round up to the next power of 2.
     // This happens for non-power-of-2 length vectors.
@@ -1638,10 +1647,9 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
   case Type::Complex: {
     // Complex types have the same alignment as their elements, but twice the
     // size.
-    std::pair<uint64_t, unsigned> EltInfo =
-      getTypeInfo(cast<ComplexType>(T)->getElementType());
-    Width = EltInfo.first*2;
-    Align = EltInfo.second;
+    TypeInfo EltInfo = getTypeInfo(cast<ComplexType>(T)->getElementType());
+    Width = EltInfo.Width * 2;
+    Align = EltInfo.Align;
     break;
   }
   case Type::ObjCObject:
@@ -1692,16 +1700,18 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
 
   case Type::Typedef: {
     const TypedefNameDecl *Typedef = cast<TypedefType>(T)->getDecl();
-    std::pair<uint64_t, unsigned> Info
-      = getTypeInfo(Typedef->getUnderlyingType().getTypePtr());
+    TypeInfo Info = getTypeInfo(Typedef->getUnderlyingType().getTypePtr());
     // If the typedef has an aligned attribute on it, it overrides any computed
     // alignment we have.  This violates the GCC documentation (which says that
     // attribute(aligned) can only round up) but matches its implementation.
-    if (unsigned AttrAlign = Typedef->getMaxAlignment())
+    if (unsigned AttrAlign = Typedef->getMaxAlignment()) {
       Align = AttrAlign;
-    else
-      Align = Info.second;
-    Width = Info.first;
+      AlignIsRequired = true;
+    } else {
+      Align = Info.Align;
+      AlignIsRequired = Info.AlignIsRequired;
+    }
+    Width = Info.Width;
     break;
   }
 
@@ -1714,10 +1724,9 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
 
   case Type::Atomic: {
     // Start with the base type information.
-    std::pair<uint64_t, unsigned> Info
-      = getTypeInfo(cast<AtomicType>(T)->getValueType());
-    Width = Info.first;
-    Align = Info.second;
+    TypeInfo Info = getTypeInfo(cast<AtomicType>(T)->getValueType());
+    Width = Info.Width;
+    Align = Info.Align;
 
     // If the size of the type doesn't exceed the platform's max
     // atomic promotion width, make the size and alignment more
@@ -1735,7 +1744,7 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
   }
 
   assert(llvm::isPowerOf2_32(Align) && "Alignment must be power of 2");
-  return std::make_pair(Width, Align);
+  return TypeInfo(Width, Align, AlignIsRequired);
 }
 
 /// toCharUnitsFromBits - Convert a size in bits to a size in characters.
@@ -1771,12 +1780,11 @@ CharUnits ASTContext::getTypeAlignInChars(const Type *T) const {
 /// alignment in cases where it is beneficial for performance to overalign
 /// a data type.
 unsigned ASTContext::getPreferredTypeAlign(const Type *T) const {
-  unsigned ABIAlign = getTypeAlign(T);
+  TypeInfo TI = getTypeInfo(T);
+  unsigned ABIAlign = TI.Align;
 
   if (Target->getTriple().getArch() == llvm::Triple::xcore)
     return ABIAlign;  // Never overalign on XCore.
-
-  const TypedefType *TT = T->getAs<TypedefType>();
 
   // Double and long long should be naturally aligned if possible.
   T = T->getBaseElementTypeUnsafe();
@@ -1787,7 +1795,7 @@ unsigned ASTContext::getPreferredTypeAlign(const Type *T) const {
       T->isSpecificBuiltinType(BuiltinType::ULongLong))
     // Don't increase the alignment if an alignment attribute was specified on a
     // typedef declaration.
-    if (!TT || !TT->getDecl()->getMaxAlignment())
+    if (!TI.AlignIsRequired)
       return std::max(ABIAlign, (unsigned)getTypeSize(T));
 
   return ABIAlign;
@@ -2840,7 +2848,7 @@ ASTContext::getFunctionType(QualType ResultTy, ArrayRef<QualType> ArgArray,
 
   // Determine whether the type being created is already canonical or not.
   bool isCanonical =
-    EPI.ExceptionSpecType == EST_None && isCanonicalResultType(ResultTy) &&
+    EPI.ExceptionSpec.Type == EST_None && isCanonicalResultType(ResultTy) &&
     !EPI.HasTrailingReturn;
   for (unsigned i = 0; i != NumArgs && isCanonical; ++i)
     if (!ArgArray[i].isCanonicalAsParam())
@@ -2857,8 +2865,7 @@ ASTContext::getFunctionType(QualType ResultTy, ArrayRef<QualType> ArgArray,
 
     FunctionProtoType::ExtProtoInfo CanonicalEPI = EPI;
     CanonicalEPI.HasTrailingReturn = false;
-    CanonicalEPI.ExceptionSpecType = EST_None;
-    CanonicalEPI.NumExceptions = 0;
+    CanonicalEPI.ExceptionSpec = FunctionProtoType::ExceptionSpecInfo();
 
     // Result types do not have ARC lifetime qualifiers.
     QualType CanResultTy = getCanonicalType(ResultTy);
@@ -2886,13 +2893,13 @@ ASTContext::getFunctionType(QualType ResultTy, ArrayRef<QualType> ArgArray,
   // specification.
   size_t Size = sizeof(FunctionProtoType) +
                 NumArgs * sizeof(QualType);
-  if (EPI.ExceptionSpecType == EST_Dynamic) {
-    Size += EPI.NumExceptions * sizeof(QualType);
-  } else if (EPI.ExceptionSpecType == EST_ComputedNoexcept) {
+  if (EPI.ExceptionSpec.Type == EST_Dynamic) {
+    Size += EPI.ExceptionSpec.Exceptions.size() * sizeof(QualType);
+  } else if (EPI.ExceptionSpec.Type == EST_ComputedNoexcept) {
     Size += sizeof(Expr*);
-  } else if (EPI.ExceptionSpecType == EST_Uninstantiated) {
+  } else if (EPI.ExceptionSpec.Type == EST_Uninstantiated) {
     Size += 2 * sizeof(FunctionDecl*);
-  } else if (EPI.ExceptionSpecType == EST_Unevaluated) {
+  } else if (EPI.ExceptionSpec.Type == EST_Unevaluated) {
     Size += sizeof(FunctionDecl*);
   }
   if (EPI.ConsumedParameters)
@@ -5090,13 +5097,15 @@ void ASTContext::getLegacyIntegralTypeEncoding (QualType &PointeeTy) const {
 }
 
 void ASTContext::getObjCEncodingForType(QualType T, std::string& S,
-                                        const FieldDecl *Field) const {
+                                        const FieldDecl *Field,
+                                        QualType *NotEncodedT) const {
   // We follow the behavior of gcc, expanding structures which are
   // directly pointed to, and expanding embedded structures. Note that
   // these rules are sufficient to prevent recursive encoding of the
   // same type.
   getObjCEncodingForTypeImpl(T, S, true, true, Field,
-                             true /* outermost type */);
+                             true /* outermost type */, false, false,
+                             false, false, false, NotEncodedT);
 }
 
 void ASTContext::getObjCEncodingForPropertyType(QualType T,
@@ -5222,7 +5231,8 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
                                             bool StructField,
                                             bool EncodeBlockParameters,
                                             bool EncodeClassNames,
-                                            bool EncodePointerToObjCTypedef) const {
+                                            bool EncodePointerToObjCTypedef,
+                                            QualType *NotEncodedT) const {
   CanQualType CT = getCanonicalType(T);
   switch (CT->getTypeClass()) {
   case Type::Builtin:
@@ -5238,16 +5248,14 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
   case Type::Complex: {
     const ComplexType *CT = T->castAs<ComplexType>();
     S += 'j';
-    getObjCEncodingForTypeImpl(CT->getElementType(), S, false, false, nullptr,
-                               false, false);
+    getObjCEncodingForTypeImpl(CT->getElementType(), S, false, false, nullptr);
     return;
   }
 
   case Type::Atomic: {
     const AtomicType *AT = T->castAs<AtomicType>();
     S += 'A';
-    getObjCEncodingForTypeImpl(AT->getValueType(), S, false, false, nullptr,
-                               false, false);
+    getObjCEncodingForTypeImpl(AT->getValueType(), S, false, false, nullptr);
     return;
   }
 
@@ -5318,7 +5326,8 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
     getLegacyIntegralTypeEncoding(PointeeTy);
 
     getObjCEncodingForTypeImpl(PointeeTy, S, false, ExpandPointedToStructures,
-                               nullptr);
+                               nullptr, false, false, false, false, false, false,
+                               NotEncodedT);
     return;
   }
 
@@ -5346,7 +5355,9 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
       }
 
       getObjCEncodingForTypeImpl(AT->getElementType(), S,
-                                 false, ExpandStructures, FD);
+                                 false, ExpandStructures, FD,
+                                 false, false, false, false, false, false,
+                                 NotEncodedT);
       S += ']';
     }
     return;
@@ -5378,7 +5389,7 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
     if (ExpandStructures) {
       S += '=';
       if (!RDecl->isUnion()) {
-        getObjCEncodingForStructureImpl(RDecl, S, FD);
+        getObjCEncodingForStructureImpl(RDecl, S, FD, true, NotEncodedT);
       } else {
         for (const auto *Field : RDecl->fields()) {
           if (FD) {
@@ -5397,7 +5408,8 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
             getObjCEncodingForTypeImpl(qt, S, false, true,
                                        FD, /*OutermostType*/false,
                                        /*EncodingProperty*/false,
-                                       /*StructField*/true);
+                                       /*StructField*/true,
+                                       false, false, false, NotEncodedT);
           }
         }
       }
@@ -5417,7 +5429,8 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
       getObjCEncodingForTypeImpl(
           FT->getReturnType(), S, ExpandPointedToStructures, ExpandStructures,
           FD, false /* OutermostType */, EncodingProperty,
-          false /* StructField */, EncodeBlockParameters, EncodeClassNames);
+          false /* StructField */, EncodeBlockParameters, EncodeClassNames, false,
+                                 NotEncodedT);
       // Block self
       S += "@?";
       // Block parameters
@@ -5426,7 +5439,8 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
           getObjCEncodingForTypeImpl(
               I, S, ExpandPointedToStructures, ExpandStructures, FD,
               false /* OutermostType */, EncodingProperty,
-              false /* StructField */, EncodeBlockParameters, EncodeClassNames);
+              false /* StructField */, EncodeBlockParameters, EncodeClassNames,
+                                     false, NotEncodedT);
       }
       S += '>';
     }
@@ -5468,7 +5482,8 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
       else
         getObjCEncodingForTypeImpl(Field->getType(), S, false, true, FD,
                                    false, false, false, false, false,
-                                   EncodePointerToObjCTypedef);
+                                   EncodePointerToObjCTypedef,
+                                   NotEncodedT);
     }
     S += '}';
     return;
@@ -5555,19 +5570,21 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
   // gcc just blithely ignores member pointers.
   // FIXME: we shoul do better than that.  'M' is available.
   case Type::MemberPointer:
-    return;
-  
+  // This matches gcc's encoding, even though technically it is insufficient.
+  //FIXME. We should do a better job than gcc.
   case Type::Vector:
   case Type::ExtVector:
-    // This matches gcc's encoding, even though technically it is
-    // insufficient.
-    // FIXME. We should do a better job than gcc.
-    return;
-
+  // Until we have a coherent encoding of these three types, issue warning.
+    { if (NotEncodedT)
+        *NotEncodedT = T;
+      return;
+    }
+      
+  // We could see an undeduced auto type here during error recovery.
+  // Just ignore it.
   case Type::Auto:
-    // We could see an undeduced auto type here during error recovery.
-    // Just ignore it.
     return;
+  
 
 #define ABSTRACT_TYPE(KIND, BASE)
 #define TYPE(KIND, BASE)
@@ -5586,7 +5603,8 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
 void ASTContext::getObjCEncodingForStructureImpl(RecordDecl *RDecl,
                                                  std::string &S,
                                                  const FieldDecl *FD,
-                                                 bool includeVBases) const {
+                                                 bool includeVBases,
+                                                 QualType *NotEncodedT) const {
   assert(RDecl && "Expected non-null RecordDecl");
   assert(!RDecl->isUnion() && "Should not be called for unions");
   if (!RDecl->getDefinition())
@@ -5610,12 +5628,11 @@ void ASTContext::getObjCEncodingForStructureImpl(RecordDecl *RDecl,
   }
   
   unsigned i = 0;
-  for (RecordDecl::field_iterator Field = RDecl->field_begin(),
-                               FieldEnd = RDecl->field_end();
-       Field != FieldEnd; ++Field, ++i) {
+  for (auto *Field : RDecl->fields()) {
     uint64_t offs = layout.getFieldOffset(i);
     FieldOrBaseOffsets.insert(FieldOrBaseOffsets.upper_bound(offs),
-                              std::make_pair(offs, *Field));
+                              std::make_pair(offs, Field));
+    ++i;
   }
 
   if (CXXRec && includeVBases) {
@@ -5691,7 +5708,8 @@ void ASTContext::getObjCEncodingForStructureImpl(RecordDecl *RDecl,
       // in the initial structure. Note that this differs from gcc which
       // expands virtual bases each time one is encountered in the hierarchy,
       // making the encoding type bigger than it really is.
-      getObjCEncodingForStructureImpl(base, S, FD, /*includeVBases*/false);
+      getObjCEncodingForStructureImpl(base, S, FD, /*includeVBases*/false,
+                                      NotEncodedT);
       assert(!base->isEmpty());
 #ifndef NDEBUG
       CurOffs += toBits(getASTRecordLayout(base).getNonVirtualSize());
@@ -5715,7 +5733,8 @@ void ASTContext::getObjCEncodingForStructureImpl(RecordDecl *RDecl,
         getObjCEncodingForTypeImpl(qt, S, false, true, FD,
                                    /*OutermostType*/false,
                                    /*EncodingProperty*/false,
-                                   /*StructField*/true);
+                                   /*StructField*/true,
+                                   false, false, false, NotEncodedT);
 #ifndef NDEBUG
         CurOffs += getTypeSize(field->getType());
 #endif
@@ -6654,11 +6673,9 @@ void getIntersectionOfProtocols(ASTContext &Context,
     llvm::SmallPtrSet<ObjCProtocolDecl *, 8> RHSInheritedProtocols;
     Context.CollectInheritedProtocols(RHS->getInterface(),
                                       RHSInheritedProtocols);
-    for (llvm::SmallPtrSet<ObjCProtocolDecl*,8>::iterator I = 
-         RHSInheritedProtocols.begin(),
-         E = RHSInheritedProtocols.end(); I != E; ++I) 
-      if (InheritedProtocolSet.count((*I)))
-        IntersectionOfProtocols.push_back((*I));
+    for (ObjCProtocolDecl *ProtDecl : RHSInheritedProtocols)
+      if (InheritedProtocolSet.count(ProtDecl))
+        IntersectionOfProtocols.push_back(ProtDecl);
   }
 }
 

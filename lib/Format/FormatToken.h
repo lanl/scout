@@ -13,8 +13,8 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CLANG_FORMAT_FORMAT_TOKEN_H
-#define LLVM_CLANG_FORMAT_FORMAT_TOKEN_H
+#ifndef LLVM_CLANG_LIB_FORMAT_FORMATTOKEN_H
+#define LLVM_CLANG_LIB_FORMAT_FORMATTOKEN_H
 
 #include "clang/Basic/OperatorPrecedence.h"
 #include "clang/Format/Format.h"
@@ -353,6 +353,26 @@ struct FormatToken {
     return is(tok::comment) && (!Next || Next->NewlinesBefore > 0);
   }
 
+  /// \brief Returns \c true if this is a keyword that can be used
+  /// like a function call (e.g. sizeof, typeid, ...).
+  bool isFunctionLikeKeyword() const {
+    switch (Tok.getKind()) {
+    case tok::kw_throw:
+    case tok::kw_typeid:
+    case tok::kw_return:
+    case tok::kw_sizeof:
+    case tok::kw_alignof:
+    case tok::kw_alignas:
+    case tok::kw_decltype:
+    case tok::kw_noexcept:
+    case tok::kw_static_assert:
+    case tok::kw___attribute:
+      return true;
+    default:
+      return false;
+    }
+  }
+
   prec::Level getPrecedence() const {
     return getBinOpPrecedence(Tok.getKind(), true, true);
   }
@@ -502,4 +522,4 @@ private:
 } // namespace format
 } // namespace clang
 
-#endif // LLVM_CLANG_FORMAT_FORMAT_TOKEN_H
+#endif

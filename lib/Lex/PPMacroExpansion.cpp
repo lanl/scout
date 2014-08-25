@@ -950,15 +950,15 @@ static bool HasFeature(const Preprocessor &PP, const IdentifierInfo *II) {
            .Case("cxx_user_literals", LangOpts.CPlusPlus11)
            .Case("cxx_variadic_templates", LangOpts.CPlusPlus11)
            // C++1y features
-           .Case("cxx_aggregate_nsdmi", LangOpts.CPlusPlus1y)
-           .Case("cxx_binary_literals", LangOpts.CPlusPlus1y)
-           .Case("cxx_contextual_conversions", LangOpts.CPlusPlus1y)
-           .Case("cxx_decltype_auto", LangOpts.CPlusPlus1y)
-           .Case("cxx_generic_lambdas", LangOpts.CPlusPlus1y)
-           .Case("cxx_init_captures", LangOpts.CPlusPlus1y)
-           .Case("cxx_relaxed_constexpr", LangOpts.CPlusPlus1y)
-           .Case("cxx_return_type_deduction", LangOpts.CPlusPlus1y)
-           .Case("cxx_variable_templates", LangOpts.CPlusPlus1y)
+           .Case("cxx_aggregate_nsdmi", LangOpts.CPlusPlus14)
+           .Case("cxx_binary_literals", LangOpts.CPlusPlus14)
+           .Case("cxx_contextual_conversions", LangOpts.CPlusPlus14)
+           .Case("cxx_decltype_auto", LangOpts.CPlusPlus14)
+           .Case("cxx_generic_lambdas", LangOpts.CPlusPlus14)
+           .Case("cxx_init_captures", LangOpts.CPlusPlus14)
+           .Case("cxx_relaxed_constexpr", LangOpts.CPlusPlus14)
+           .Case("cxx_return_type_deduction", LangOpts.CPlusPlus14)
+           .Case("cxx_variable_templates", LangOpts.CPlusPlus14)
            // C++ TSes
            //.Case("cxx_runtime_arrays", LangOpts.CPlusPlusTSArrays)
            //.Case("cxx_concepts", LangOpts.CPlusPlusTSConcepts)
@@ -1446,6 +1446,8 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
         break;
       }
 
+      // FIXME: Should we accept "-R..." flags here, or should that be handled
+      // by a separate __has_remark?
       if (WarningName.size() < 3 || WarningName[0] != '-' ||
           WarningName[1] != 'W') {
         Diag(StrStartLoc, diag::warn_has_warning_invalid_option);
@@ -1458,7 +1460,8 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
       // worth special casing.
       SmallVector<diag::kind, 10> Diags;
       Value = !getDiagnostics().getDiagnosticIDs()->
-        getDiagnosticsInGroup(WarningName.substr(2), Diags);
+        getDiagnosticsInGroup(diag::Flavor::WarningOrError,
+                              WarningName.substr(2), Diags);
     } while (false);
 
     OS << (int)Value;
