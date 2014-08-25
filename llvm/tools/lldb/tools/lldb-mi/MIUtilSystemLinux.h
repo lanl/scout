@@ -21,10 +21,7 @@
 
 #pragma once
 
-// Include compiler configuration
-#include "MICmnConfig.h"
-
-#if defined( __FreeBSD__ ) || defined( __linux )
+#if defined( __FreeBSD__ ) || defined( __linux__ )
 
 // In-house headers:
 #include "MIUtilString.h"  
@@ -57,4 +54,4 @@ public:
 
 typedef CMIUtilSystemLinux CMIUtilSystem;
 
-#endif // #if defined( __linux )
+#endif // #if defined( __linux__ )

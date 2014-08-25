@@ -35,6 +35,7 @@
 #include "lldb/DataFormatters/FormatManager.h"
 #include "lldb/DataFormatters/TypeSummary.h"
 #include "lldb/Host/DynamicLibrary.h"
+#include "lldb/Host/HostInfo.h"
 #include "lldb/Host/Terminal.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/OptionValueSInt64.h"
@@ -492,7 +493,7 @@ Debugger::InstanceInitialize ()
     const bool find_files = true;
     const bool find_other = true;
     char dir_path[PATH_MAX];
-    if (Host::GetLLDBPath (ePathTypeLLDBSystemPlugins, dir_spec))
+    if (HostInfo::GetLLDBPath(ePathTypeLLDBSystemPlugins, dir_spec))
     {
         if (dir_spec.Exists() && dir_spec.GetPath(dir_path, sizeof(dir_path)))
         {
@@ -504,8 +505,8 @@ Debugger::InstanceInitialize ()
                                           this);
         }
     }
-    
-    if (Host::GetLLDBPath (ePathTypeLLDBUserPlugins, dir_spec))
+
+    if (HostInfo::GetLLDBPath(ePathTypeLLDBUserPlugins, dir_spec))
     {
         if (dir_spec.Exists() && dir_spec.GetPath(dir_path, sizeof(dir_path)))
         {
@@ -2358,7 +2359,29 @@ FormatPromptRecurse
                                                 if (args.GetSize() > 0)
                                                 {
                                                     const char *open_paren = strchr (cstr, '(');
-                                                    const char *close_paren = NULL;
+                                                    const char *close_paren = nullptr;
+                                                    const char *generic = strchr(cstr, '<');
+                                                    // if before the arguments list begins there is a template sign
+                                                    // then scan to the end of the generic args before you try to find
+                                                    // the arguments list
+                                                    if (generic && open_paren && generic < open_paren)
+                                                    {
+                                                        int generic_depth = 1;
+                                                        ++generic;
+                                                        for (;
+                                                             *generic && generic_depth > 0;
+                                                             generic++)
+                                                        {
+                                                            if (*generic == '<')
+                                                                generic_depth++;
+                                                            if (*generic == '>')
+                                                                generic_depth--;
+                                                        }
+                                                        if (*generic)
+                                                            open_paren = strchr(generic, '(');
+                                                        else
+                                                            open_paren = nullptr;
+                                                    }
                                                     if (open_paren)
                                                     {
                                                         if (IsToken (open_paren, "(anonymous namespace)"))

@@ -40,7 +40,8 @@ public:
 
     lldb_private::FileSpecList
     LocateExecutableScriptingResources (lldb_private::Target *target,
-                                        lldb_private::Module &module);
+                                        lldb_private::Module &module,
+                                        lldb_private::Stream* feedback_stream);
     
     virtual lldb_private::Error
     GetSharedModule (const lldb_private::ModuleSpec &module_spec,
@@ -52,37 +53,6 @@ public:
     virtual size_t
     GetSoftwareBreakpointTrapOpcode (lldb_private::Target &target, 
                                      lldb_private::BreakpointSite *bp_site);
-
-    virtual bool
-    GetRemoteOSVersion ();
-
-    virtual bool
-    GetRemoteOSBuildString (std::string &s);
-    
-    virtual bool
-    GetRemoteOSKernelDescription (std::string &s);
-
-    // Remote Platform subclasses need to override this function
-    virtual lldb_private::ArchSpec
-    GetRemoteSystemArchitecture ();
-
-    virtual bool
-    IsConnected () const;
-
-    virtual lldb_private::Error
-    ConnectRemote (lldb_private::Args& args);
-
-    virtual lldb_private::Error
-    DisconnectRemote ();
-
-    virtual const char *
-    GetHostname ();
-
-    virtual const char *
-    GetUserName (uint32_t uid);
-    
-    virtual const char *
-    GetGroupName (uint32_t gid);
 
     virtual bool
     GetProcessInfo (lldb::pid_t pid, 
@@ -97,13 +67,6 @@ public:
     
     virtual lldb_private::Error
     LaunchProcess (lldb_private::ProcessLaunchInfo &launch_info);
-
-    virtual lldb::ProcessSP
-    DebugProcess (lldb_private::ProcessLaunchInfo &launch_info,
-                  lldb_private::Debugger &debugger,
-                  lldb_private::Target *target,       // Can be NULL, if NULL create a new target, else use existing one
-                  lldb_private::Listener &listener,
-                  lldb_private::Error &error);
 
     virtual lldb::ProcessSP
     Attach (lldb_private::ProcessAttachInfo &attach_info,

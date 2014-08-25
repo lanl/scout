@@ -27,6 +27,7 @@
 #include "lldb/Core/ModuleSpec.h"
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Host/Host.h"
+#include "lldb/Host/HostInfo.h"
 
 using namespace lldb;
 using namespace lldb_private;
@@ -122,7 +123,7 @@ PlatformFreeBSD::Initialize ()
 #if defined (__FreeBSD__)
     	// Force a host flag to true for the default platform object.
         PlatformSP default_platform_sp (new PlatformFreeBSD(true));
-        default_platform_sp->SetSystemArchitecture (Host::GetArchitecture());
+        default_platform_sp->SetSystemArchitecture(HostInfo::GetArchitecture());
         Platform::SetDefaultPlatform (default_platform_sp);
 #endif
         PluginManager::RegisterPlugin(PlatformFreeBSD::GetPluginNameStatic(false),
@@ -287,10 +288,17 @@ PlatformFreeBSD::ResolveExecutable (const FileSpec &exe_file,
 
             if (error.Fail() || !exe_module_sp)
             {
-                error.SetErrorStringWithFormat ("'%s' doesn't contain any '%s' platform architectures: %s",
-                                                exe_file.GetPath().c_str(),
-                                                GetPluginName().GetCString(),
-                                                arch_names.GetString().c_str());
+                if (exe_file.Readable())
+                {
+                    error.SetErrorStringWithFormat ("'%s' doesn't contain any '%s' platform architectures: %s",
+                                                    exe_file.GetPath().c_str(),
+                                                    GetPluginName().GetCString(),
+                                                    arch_names.GetString().c_str());
+                }
+                else
+                {
+                    error.SetErrorStringWithFormat("'%s' is not readable", exe_file.GetPath().c_str());
+                }
             }
         }
     }
@@ -631,19 +639,19 @@ PlatformFreeBSD::GetSupportedArchitectureAtIndex (uint32_t idx, ArchSpec &arch)
     // From macosx;s plugin code. For FreeBSD we may want to support more archs.
     if (idx == 0)
     {
-        arch = Host::GetArchitecture (Host::eSystemDefaultArchitecture);
+        arch = HostInfo::GetArchitecture(HostInfo::eArchKindDefault);
         return arch.IsValid();
     }
     else if (idx == 1)
     {
-        ArchSpec platform_arch (Host::GetArchitecture (Host::eSystemDefaultArchitecture));
-        ArchSpec platform_arch64 (Host::GetArchitecture (Host::eSystemDefaultArchitecture64));
+        ArchSpec platform_arch(HostInfo::GetArchitecture(HostInfo::eArchKindDefault));
+        ArchSpec platform_arch64(HostInfo::GetArchitecture(HostInfo::eArchKind64));
         if (platform_arch.IsExactMatch(platform_arch64))
         {
             // This freebsd platform supports both 32 and 64 bit. Since we already
             // returned the 64 bit arch for idx == 0, return the 32 bit arch
             // for idx == 1
-            arch = Host::GetArchitecture (Host::eSystemDefaultArchitecture32);
+            arch = HostInfo::GetArchitecture(HostInfo::eArchKind32);
             return arch.IsValid();
         }
     }

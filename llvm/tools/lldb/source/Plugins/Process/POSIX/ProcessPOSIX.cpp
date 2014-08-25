@@ -176,16 +176,14 @@ ProcessPOSIX::WillLaunch(Module* module)
 }
 
 const char *
-ProcessPOSIX::GetFilePath(
-    const lldb_private::ProcessLaunchInfo::FileAction *file_action,
-    const char *default_path)
+ProcessPOSIX::GetFilePath(const lldb_private::FileAction *file_action, const char *default_path)
 {
     const char *pts_name = "/dev/pts/";
     const char *path = NULL;
 
     if (file_action)
     {
-        if (file_action->GetAction () == ProcessLaunchInfo::FileAction::eFileActionOpen)
+        if (file_action->GetAction() == FileAction::eFileActionOpen)
         {
             path = file_action->GetPath();
             // By default the stdio paths passed in will be pseudo-terminal
@@ -219,7 +217,7 @@ ProcessPOSIX::DoLaunch (Module *module,
 
     SetPrivateState(eStateLaunching);
 
-    const lldb_private::ProcessLaunchInfo::FileAction *file_action;
+    const lldb_private::FileAction *file_action;
 
     // Default of NULL will mean to use existing open file descriptors
     const char *stdin_path = NULL;
@@ -243,6 +241,7 @@ ProcessPOSIX::DoLaunch (Module *module,
                                     stdout_path, 
                                     stderr_path,
                                     working_dir,
+                                    launch_info,
                                     error);
 
     m_module = module;

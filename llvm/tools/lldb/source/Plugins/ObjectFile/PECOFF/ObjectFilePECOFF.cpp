@@ -129,7 +129,10 @@ ObjectFilePECOFF::GetModuleSpecifications (const lldb_private::FileSpec& file,
             if (ParseCOFFHeader(data, &offset, coff_header))
             {
                 ArchSpec spec;
-                spec.SetArchitecture(eArchTypeCOFF, coff_header.machine, LLDB_INVALID_CPUTYPE);
+                if (coff_header.machine == MachineAmd64)
+                    spec.SetTriple("x86_64-pc-windows");
+                else if (coff_header.machine == MachineX86)
+                    spec.SetTriple("i386-pc-windows");
                 specs.Append(ModuleSpec(file, spec));
             }
         }
