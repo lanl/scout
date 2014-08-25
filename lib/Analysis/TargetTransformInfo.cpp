@@ -171,11 +171,12 @@ unsigned TargetTransformInfo::getMaximumUnrollFactor() const {
   return PrevTTI->getMaximumUnrollFactor();
 }
 
-unsigned TargetTransformInfo::getArithmeticInstrCost(unsigned Opcode,
-                                                Type *Ty,
-                                                OperandValueKind Op1Info,
-                                                OperandValueKind Op2Info) const {
-  return PrevTTI->getArithmeticInstrCost(Opcode, Ty, Op1Info, Op2Info);
+unsigned TargetTransformInfo::getArithmeticInstrCost(
+    unsigned Opcode, Type *Ty, OperandValueKind Op1Info,
+    OperandValueKind Op2Info, OperandValueProperties Opd1PropInfo,
+    OperandValueProperties Opd2PropInfo) const {
+  return PrevTTI->getArithmeticInstrCost(Opcode, Ty, Op1Info, Op2Info,
+                                         Opd1PropInfo, Opd2PropInfo);
 }
 
 unsigned TargetTransformInfo::getShuffleCost(ShuffleKind Kind, Type *Tp,
@@ -228,6 +229,11 @@ unsigned TargetTransformInfo::getAddressComputationCost(Type *Tp,
 unsigned TargetTransformInfo::getReductionCost(unsigned Opcode, Type *Ty,
                                                bool IsPairwise) const {
   return PrevTTI->getReductionCost(Opcode, Ty, IsPairwise);
+}
+
+unsigned TargetTransformInfo::getCostOfKeepingLiveOverCall(ArrayRef<Type*> Tys)
+  const {
+  return PrevTTI->getCostOfKeepingLiveOverCall(Tys);
 }
 
 namespace {
@@ -385,6 +391,7 @@ struct NoTTI final : ImmutablePass, TargetTransformInfo {
       // FIXME: This is wrong for libc intrinsics.
       return TCC_Basic;
 
+    case Intrinsic::assume:
     case Intrinsic::dbg_declare:
     case Intrinsic::dbg_value:
     case Intrinsic::invariant_start:
@@ -563,7 +570,8 @@ struct NoTTI final : ImmutablePass, TargetTransformInfo {
   }
 
   unsigned getArithmeticInstrCost(unsigned Opcode, Type *Ty, OperandValueKind,
-                                  OperandValueKind) const override {
+                                  OperandValueKind, OperandValueProperties,
+                                  OperandValueProperties) const override {
     return 1;
   }
 
@@ -612,6 +620,11 @@ struct NoTTI final : ImmutablePass, TargetTransformInfo {
   unsigned getReductionCost(unsigned, Type *, bool) const override {
     return 1;
   }
+
+  unsigned getCostOfKeepingLiveOverCall(ArrayRef<Type*> Tys) const override {
+    return 0;
+  }
+
 };
 
 } // end anonymous namespace

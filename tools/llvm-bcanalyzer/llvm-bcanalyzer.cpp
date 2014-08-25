@@ -271,7 +271,8 @@ static const char *GetCodeName(unsigned CodeID, unsigned BlockID,
   case bitc::USELIST_BLOCK_ID:
     switch(CodeID) {
     default:return nullptr;
-    case bitc::USELIST_CODE_ENTRY:   return "USELIST_CODE_ENTRY";
+    case bitc::USELIST_CODE_DEFAULT: return "USELIST_CODE_DEFAULT";
+    case bitc::USELIST_CODE_BB:      return "USELIST_CODE_BB";
     }
   }
 }
@@ -482,13 +483,13 @@ static int AnalyzeBitcode() {
       MemoryBuffer::getFileOrSTDIN(InputFilename);
   if (std::error_code EC = MemBufOrErr.getError())
     return Error("Error reading '" + InputFilename + "': " + EC.message());
-  std::unique_ptr<MemoryBuffer> MemBuf = std::move(MemBufOrErr.get());
+  MemoryBuffer &MemBuf = *MemBufOrErr.get();
 
-  if (MemBuf->getBufferSize() & 3)
+  if (MemBuf.getBufferSize() & 3)
     return Error("Bitcode stream should be a multiple of 4 bytes in length");
 
-  const unsigned char *BufPtr = (const unsigned char *)MemBuf->getBufferStart();
-  const unsigned char *EndBufPtr = BufPtr+MemBuf->getBufferSize();
+  const unsigned char *BufPtr = (const unsigned char *)MemBuf.getBufferStart();
+  const unsigned char *EndBufPtr = BufPtr+MemBuf.getBufferSize();
 
   // If we have a wrapper header, parse it and ignore the non-bc file contents.
   // The magic number is 0x0B17C0DE stored in little endian.

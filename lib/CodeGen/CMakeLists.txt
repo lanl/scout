@@ -2,7 +2,7 @@ add_llvm_library(LLVMCodeGen
   AggressiveAntiDepBreaker.cpp
   AllocationOrder.cpp
   Analysis.cpp
-  AtomicExpandLoadLinkedPass.cpp
+  AtomicExpandPass.cpp
   BasicTargetTransformInfo.cpp
   BranchFolding.cpp
   CalcSpillWeights.cpp
@@ -49,6 +49,7 @@ add_llvm_library(LLVMCodeGen
   MachineBranchProbabilityInfo.cpp
   MachineCSE.cpp
   MachineCodeEmitter.cpp
+  MachineCombiner.cpp
   MachineCopyPropagation.cpp
   MachineDominators.cpp
   MachineDominanceFrontier.cpp

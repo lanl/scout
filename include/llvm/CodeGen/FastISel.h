@@ -20,6 +20,7 @@
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/IR/CallingConv.h"
+#include "llvm/IR/IntrinsicInst.h"
 
 namespace llvm {
 
@@ -30,7 +31,6 @@ class CallInst;
 class DataLayout;
 class FunctionLoweringInfo;
 class Instruction;
-class IntrinsicInst;
 class LoadInst;
 class MVT;
 class MachineConstantPool;
@@ -533,6 +533,18 @@ protected:
   bool LowerCallTo(const CallInst *CI, const char *SymName, unsigned NumArgs);
   bool LowerCallTo(CallLoweringInfo &CLI);
 
+  bool isCommutativeIntrinsic(IntrinsicInst const *II) {
+    switch (II->getIntrinsicID()) {
+    case Intrinsic::sadd_with_overflow:
+    case Intrinsic::uadd_with_overflow:
+    case Intrinsic::smul_with_overflow:
+    case Intrinsic::umul_with_overflow:
+      return true;
+    default:
+      return false;
+    }
+  }
+
 private:
   bool SelectBinaryOp(const User *I, unsigned ISDOpcode);
 
@@ -562,6 +574,10 @@ private:
   /// result in multiple MBB's for one BB.  As such, the start of the BB might
   /// correspond to a different MBB than the end.
   bool HandlePHINodesInSuccessorBlocks(const BasicBlock *LLVMBB);
+
+  /// \brief Helper for materializeRegForValue to materialize a constant in a
+  /// target-independent way.
+  unsigned MaterializeConstant(const Value *V, MVT VT);
 
   /// Helper for getRegForVale. This function is called when the value isn't
   /// already available in a register and must be materialized with new

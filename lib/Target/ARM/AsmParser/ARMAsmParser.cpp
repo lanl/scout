@@ -267,7 +267,7 @@ class ARMAsmParser : public MCTargetAsmParser {
   }
 
   void SwitchMode() {
-    unsigned FB = ComputeAvailableFeatures(STI.ToggleFeature(ARM::ModeThumb));
+    uint64_t FB = ComputeAvailableFeatures(STI.ToggleFeature(ARM::ModeThumb));
     setAvailableFeatures(FB);
   }
   bool isMClass() const {
@@ -290,6 +290,7 @@ class ARMAsmParser : public MCTargetAsmParser {
   OperandMatchResultTy parseInstSyncBarrierOptOperand(OperandVector &);
   OperandMatchResultTy parseProcIFlagsOperand(OperandVector &);
   OperandMatchResultTy parseMSRMaskOperand(OperandVector &);
+  OperandMatchResultTy parseBankedRegOperand(OperandVector &);
   OperandMatchResultTy parsePKHImm(OperandVector &O, StringRef Op, int Low,
                                    int High);
   OperandMatchResultTy parsePKHLSLImm(OperandVector &O) {
@@ -359,7 +360,7 @@ public:
 
   bool MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
                                OperandVector &Operands, MCStreamer &Out,
-                               unsigned &ErrorInfo,
+                               uint64_t &ErrorInfo,
                                bool MatchingInlineAsm) override;
   void onLabelParsed(MCSymbol *Symbol) override;
 };
@@ -383,6 +384,7 @@ class ARMOperand : public MCParsedAsmOperand {
     k_Memory,
     k_PostIndexRegister,
     k_MSRMask,
+    k_BankedReg,
     k_ProcIFlags,
     k_VectorIndex,
     k_Register,
@@ -432,6 +434,10 @@ class ARMOperand : public MCParsedAsmOperand {
   };
 
   struct MMaskOp {
+    unsigned Val;
+  };
+
+  struct BankedRegOp {
     unsigned Val;
   };
 
@@ -517,6 +523,7 @@ class ARMOperand : public MCParsedAsmOperand {
     struct ITMaskOp ITMask;
     struct IFlagsOp IFlags;
     struct MMaskOp MMask;
+    struct BankedRegOp BankedReg;
     struct TokOp Tok;
     struct RegOp Reg;
     struct VectorListOp VectorList;
@@ -584,6 +591,9 @@ public:
       break;
     case k_MSRMask:
       MMask = o.MMask;
+      break;
+    case k_BankedReg:
+      BankedReg = o.BankedReg;
       break;
     case k_ProcIFlags:
       IFlags = o.IFlags;
@@ -677,6 +687,11 @@ public:
   unsigned getMSRMask() const {
     assert(Kind == k_MSRMask && "Invalid access!");
     return MMask.Val;
+  }
+
+  unsigned getBankedReg() const {
+    assert(Kind == k_BankedReg && "Invalid access!");
+    return BankedReg.Val;
   }
 
   bool isCoprocNum() const { return Kind == k_CoprocNum; }
@@ -1384,6 +1399,7 @@ public:
   }
 
   bool isMSRMask() const { return Kind == k_MSRMask; }
+  bool isBankedReg() const { return Kind == k_BankedReg; }
   bool isProcIFlags() const { return Kind == k_ProcIFlags; }
 
   // NEON operands.
@@ -2334,6 +2350,11 @@ public:
     Inst.addOperand(MCOperand::CreateImm(unsigned(getMSRMask())));
   }
 
+  void addBankedRegOperands(MCInst &Inst, unsigned N) const {
+    assert(N == 1 && "Invalid number of operands!");
+    Inst.addOperand(MCOperand::CreateImm(unsigned(getBankedReg())));
+  }
+
   void addProcIFlagsOperands(MCInst &Inst, unsigned N) const {
     assert(N == 1 && "Invalid number of operands!");
     Inst.addOperand(MCOperand::CreateImm(unsigned(getProcIFlags())));
@@ -2736,6 +2757,14 @@ public:
     Op->EndLoc = S;
     return Op;
   }
+
+  static std::unique_ptr<ARMOperand> CreateBankedReg(unsigned Reg, SMLoc S) {
+    auto Op = make_unique<ARMOperand>(k_BankedReg);
+    Op->BankedReg.Val = Reg;
+    Op->StartLoc = S;
+    Op->EndLoc = S;
+    return Op;
+  }
 };
 
 } // end anonymous namespace.
@@ -2768,6 +2797,9 @@ void ARMOperand::print(raw_ostream &OS) const {
     break;
   case k_MSRMask:
     OS << "<mask: " << getMSRMask() << ">";
+    break;
+  case k_BankedReg:
+    OS << "<banked reg: " << getBankedReg() << ">";
     break;
   case k_Immediate:
     getImm()->print(OS);
@@ -3118,9 +3150,10 @@ static int MatchCoprocessorOperandName(StringRef Name, char CoprocOp) {
       return -1;
     switch (Name[1]) {
     default:  return -1;
-    // p10 and p11 are invalid for coproc instructions (reserved for FP/NEON)
-    case '0': return CoprocOp == 'p'? -1: 10;
-    case '1': return CoprocOp == 'p'? -1: 11;
+    // CP10 and CP11 are VFP/NEON and so vector instructions should be used.
+    // However, old cores (v5/v6) did use them in that way.
+    case '0': return 10;
+    case '1': return 11;
     case '2': return 12;
     case '3': return 13;
     case '4': return 14;
@@ -3176,6 +3209,9 @@ ARMAsmParser::parseCoprocNumOperand(OperandVector &Operands) {
 
   int Num = MatchCoprocessorOperandName(Tok.getString(), 'p');
   if (Num == -1)
+    return MatchOperand_NoMatch;
+  // ARMv7 and v8 don't allow cp10/cp11 due to VFP/NEON specific instructions
+  if ((hasV7Ops() || hasV8Ops()) && (Num == 10 || Num == 11))
     return MatchOperand_NoMatch;
 
   Parser.Lex(); // Eat identifier token.
@@ -3995,6 +4031,62 @@ ARMAsmParser::parseMSRMaskOperand(OperandVector &Operands) {
 
   Parser.Lex(); // Eat identifier token.
   Operands.push_back(ARMOperand::CreateMSRMask(FlagsVal, S));
+  return MatchOperand_Success;
+}
+
+/// parseBankedRegOperand - Try to parse a banked register (e.g. "lr_irq") for
+/// use in the MRS/MSR instructions added to support virtualization.
+ARMAsmParser::OperandMatchResultTy
+ARMAsmParser::parseBankedRegOperand(OperandVector &Operands) {
+  SMLoc S = Parser.getTok().getLoc();
+  const AsmToken &Tok = Parser.getTok();
+  if (!Tok.is(AsmToken::Identifier))
+    return MatchOperand_NoMatch;
+  StringRef RegName = Tok.getString();
+
+  // The values here come from B9.2.3 of the ARM ARM, where bits 4-0 are SysM
+  // and bit 5 is R.
+  unsigned Encoding = StringSwitch<unsigned>(RegName.lower())
+                          .Case("r8_usr", 0x00)
+                          .Case("r9_usr", 0x01)
+                          .Case("r10_usr", 0x02)
+                          .Case("r11_usr", 0x03)
+                          .Case("r12_usr", 0x04)
+                          .Case("sp_usr", 0x05)
+                          .Case("lr_usr", 0x06)
+                          .Case("r8_fiq", 0x08)
+                          .Case("r9_fiq", 0x09)
+                          .Case("r10_fiq", 0x0a)
+                          .Case("r11_fiq", 0x0b)
+                          .Case("r12_fiq", 0x0c)
+                          .Case("sp_fiq", 0x0d)
+                          .Case("lr_fiq", 0x0e)
+                          .Case("lr_irq", 0x10)
+                          .Case("sp_irq", 0x11)
+                          .Case("lr_svc", 0x12)
+                          .Case("sp_svc", 0x13)
+                          .Case("lr_abt", 0x14)
+                          .Case("sp_abt", 0x15)
+                          .Case("lr_und", 0x16)
+                          .Case("sp_und", 0x17)
+                          .Case("lr_mon", 0x1c)
+                          .Case("sp_mon", 0x1d)
+                          .Case("elr_hyp", 0x1e)
+                          .Case("sp_hyp", 0x1f)
+                          .Case("spsr_fiq", 0x2e)
+                          .Case("spsr_irq", 0x30)
+                          .Case("spsr_svc", 0x32)
+                          .Case("spsr_abt", 0x34)
+                          .Case("spsr_und", 0x36)
+                          .Case("spsr_mon", 0x3c)
+                          .Case("spsr_hyp", 0x3e)
+                          .Default(~0U);
+
+  if (Encoding == ~0U)
+    return MatchOperand_NoMatch;
+
+  Parser.Lex(); // Eat identifier token.
+  Operands.push_back(ARMOperand::CreateBankedReg(Encoding, S));
   return MatchOperand_Success;
 }
 
@@ -5271,7 +5363,7 @@ static bool isDataTypeToken(StringRef Tok) {
 static bool doesIgnoreDataTypeSuffix(StringRef Mnemonic, StringRef DT) {
   return Mnemonic.startswith("vldm") || Mnemonic.startswith("vstm");
 }
-static void applyMnemonicAliases(StringRef &Mnemonic, unsigned Features,
+static void applyMnemonicAliases(StringRef &Mnemonic, uint64_t Features,
                                  unsigned VariantID);
 
 static bool RequiresVFPRegListValidation(StringRef Inst,
@@ -5309,7 +5401,7 @@ bool ARMAsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
   // The generic tblgen'erated code does this later, at the start of
   // MatchInstructionImpl(), but that's too late for aliases that include
   // any sort of suffix.
-  unsigned AvailableFeatures = getAvailableFeatures();
+  uint64_t AvailableFeatures = getAvailableFeatures();
   unsigned AssemblerDialect = getParser().getAssemblerDialect();
   applyMnemonicAliases(Name, AvailableFeatures, AssemblerDialect);
 
@@ -5726,6 +5818,48 @@ bool ARMAsmParser::validateInstruction(MCInst &Inst,
     if (Rt2 != Rt + 1)
       return Error(Operands[3]->getStartLoc(),
                    "source operands must be sequential");
+    return false;
+  }
+  case ARM::STR_PRE_IMM:
+  case ARM::STR_PRE_REG:
+  case ARM::STR_POST_IMM:
+  case ARM::STR_POST_REG:
+  case ARM::STRH_PRE:
+  case ARM::STRH_POST:
+  case ARM::STRB_PRE_IMM:
+  case ARM::STRB_PRE_REG:
+  case ARM::STRB_POST_IMM:
+  case ARM::STRB_POST_REG: {
+    // Rt must be different from Rn.
+    const unsigned Rt = MRI->getEncodingValue(Inst.getOperand(1).getReg());
+    const unsigned Rn = MRI->getEncodingValue(Inst.getOperand(2).getReg());
+
+    if (Rt == Rn)
+      return Error(Operands[3]->getStartLoc(),
+                   "source register and base register can't be identical");
+    return false;
+  }
+  case ARM::LDR_PRE_IMM:
+  case ARM::LDR_PRE_REG:
+  case ARM::LDR_POST_IMM:
+  case ARM::LDR_POST_REG:
+  case ARM::LDRH_PRE:
+  case ARM::LDRH_POST:
+  case ARM::LDRSH_PRE:
+  case ARM::LDRSH_POST:
+  case ARM::LDRB_PRE_IMM:
+  case ARM::LDRB_PRE_REG:
+  case ARM::LDRB_POST_IMM:
+  case ARM::LDRB_POST_REG:
+  case ARM::LDRSB_PRE:
+  case ARM::LDRSB_POST: {
+    // Rt must be different from Rn.
+    const unsigned Rt = MRI->getEncodingValue(Inst.getOperand(0).getReg());
+    const unsigned Rn = MRI->getEncodingValue(Inst.getOperand(2).getReg());
+
+    if (Rt == Rn)
+      return Error(Operands[3]->getStartLoc(),
+                   "destination register and base register can't be identical");
     return false;
   }
   case ARM::SBFX:
@@ -8028,10 +8162,10 @@ template <> inline bool IsCPSRDead<MCInst>(MCInst *Instr) {
 }
 }
 
-static const char *getSubtargetFeatureName(unsigned Val);
+static const char *getSubtargetFeatureName(uint64_t Val);
 bool ARMAsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
                                            OperandVector &Operands,
-                                           MCStreamer &Out, unsigned &ErrorInfo,
+                                           MCStreamer &Out, uint64_t &ErrorInfo,
                                            bool MatchingInlineAsm) {
   MCInst Inst;
   unsigned MatchResult;
@@ -8085,7 +8219,7 @@ bool ARMAsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
     // Special case the error message for the very common case where only
     // a single subtarget feature is missing (Thumb vs. ARM, e.g.).
     std::string Msg = "instruction requires:";
-    unsigned Mask = 1;
+    uint64_t Mask = 1;
     for (unsigned i = 0; i < (sizeof(ErrorInfo)*8-1); ++i) {
       if (ErrorInfo & Mask) {
         Msg += " ";
@@ -8097,7 +8231,7 @@ bool ARMAsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
   }
   case Match_InvalidOperand: {
     SMLoc ErrorLoc = IDLoc;
-    if (ErrorInfo != ~0U) {
+    if (ErrorInfo != ~0ULL) {
       if (ErrorInfo >= Operands.size())
         return Error(IDLoc, "too few operands for instruction");
 
@@ -8617,6 +8751,30 @@ bool ARMAsmParser::parseDirectiveCPU(SMLoc L) {
   return false;
 }
 
+// FIXME: This is duplicated in getARMFPUFeatures() in
+// tools/clang/lib/Driver/Tools.cpp
+static const struct {
+  const unsigned Fpu;
+  const uint64_t Enabled;
+  const uint64_t Disabled;
+} Fpus[] = {
+      {ARM::VFP, ARM::FeatureVFP2, ARM::FeatureNEON},
+      {ARM::VFPV2, ARM::FeatureVFP2, ARM::FeatureNEON},
+      {ARM::VFPV3, ARM::FeatureVFP3, ARM::FeatureNEON},
+      {ARM::VFPV3_D16, ARM::FeatureVFP3 | ARM::FeatureD16, ARM::FeatureNEON},
+      {ARM::VFPV4, ARM::FeatureVFP4, ARM::FeatureNEON},
+      {ARM::VFPV4_D16, ARM::FeatureVFP4 | ARM::FeatureD16, ARM::FeatureNEON},
+      {ARM::FP_ARMV8, ARM::FeatureFPARMv8,
+       ARM::FeatureNEON | ARM::FeatureCrypto},
+      {ARM::NEON, ARM::FeatureNEON, 0},
+      {ARM::NEON_VFPV4, ARM::FeatureVFP4 | ARM::FeatureNEON, 0},
+      {ARM::NEON_FP_ARMV8, ARM::FeatureFPARMv8 | ARM::FeatureNEON,
+       ARM::FeatureCrypto},
+      {ARM::CRYPTO_NEON_FP_ARMV8,
+       ARM::FeatureFPARMv8 | ARM::FeatureNEON | ARM::FeatureCrypto, 0},
+      {ARM::SOFTVFP, 0, 0},
+};
+
 /// parseDirectiveFPU
 ///  ::= .fpu str
 bool ARMAsmParser::parseDirectiveFPU(SMLoc L) {
@@ -8630,6 +8788,18 @@ bool ARMAsmParser::parseDirectiveFPU(SMLoc L) {
   if (ID == ARM::INVALID_FPU) {
     Error(L, "Unknown FPU name");
     return false;
+  }
+
+  for (const auto &Fpu : Fpus) {
+    if (Fpu.Fpu != ID)
+      continue;
+
+    // Need to toggle features that should be on but are off and that
+    // should off but are on.
+    uint64_t Toggle = (Fpu.Enabled & ~STI.getFeatureBits()) |
+                      (Fpu.Disabled & STI.getFeatureBits());
+    setAvailableFeatures(ComputeAvailableFeatures(STI.ToggleFeature(Toggle)));
+    break;
   }
 
   getTargetStreamer().emitFPU(ID);
@@ -9349,8 +9519,8 @@ extern "C" void LLVMInitializeARMAsmParser() {
 #define GET_MATCHER_IMPLEMENTATION
 #include "ARMGenAsmMatcher.inc"
 
-static const struct ExtMapEntry {
-  const char *Extension;
+static const struct {
+  const char *Name;
   const unsigned ArchCheck;
   const uint64_t Features;
 } Extensions[] = {
@@ -9387,40 +9557,39 @@ bool ARMAsmParser::parseDirectiveArchExtension(SMLoc L) {
     return false;
   }
 
-  StringRef Extension = Parser.getTok().getString();
+  StringRef Name = Parser.getTok().getString();
   SMLoc ExtLoc = Parser.getTok().getLoc();
   getLexer().Lex();
 
   bool EnableFeature = true;
-  if (Extension.startswith_lower("no")) {
+  if (Name.startswith_lower("no")) {
     EnableFeature = false;
-    Extension = Extension.substr(2);
+    Name = Name.substr(2);
   }
 
-  for (unsigned EI = 0, EE = array_lengthof(Extensions); EI != EE; ++EI) {
-    if (Extensions[EI].Extension != Extension)
+  for (const auto &Extension : Extensions) {
+    if (Extension.Name != Name)
       continue;
 
-    unsigned FB = getAvailableFeatures();
-    if ((FB & Extensions[EI].ArchCheck) != Extensions[EI].ArchCheck) {
-      Error(ExtLoc, "architectural extension '" + Extension + "' is not "
+    if (!Extension.Features)
+      report_fatal_error("unsupported architectural extension: " + Name);
+
+    if ((getAvailableFeatures() & Extension.ArchCheck) != Extension.ArchCheck) {
+      Error(ExtLoc, "architectural extension '" + Name + "' is not "
             "allowed for the current base architecture");
       return false;
     }
 
-    if (!Extensions[EI].Features)
-      report_fatal_error("unsupported architectural extension: " + Extension);
-
-    if (EnableFeature)
-      FB |= ComputeAvailableFeatures(Extensions[EI].Features);
-    else
-      FB &= ~ComputeAvailableFeatures(Extensions[EI].Features);
-
-    setAvailableFeatures(FB);
+    uint64_t ToggleFeatures = EnableFeature
+                                  ? (~STI.getFeatureBits() & Extension.Features)
+                                  : ( STI.getFeatureBits() & Extension.Features);
+    uint64_t Features =
+        ComputeAvailableFeatures(STI.ToggleFeature(ToggleFeatures));
+    setAvailableFeatures(Features);
     return false;
   }
 
-  Error(ExtLoc, "unknown architectural extension: " + Extension);
+  Error(ExtLoc, "unknown architectural extension: " + Name);
   Parser.eatToEndOfStatement();
   return false;
 }

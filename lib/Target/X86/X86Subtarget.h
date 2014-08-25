@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef X86SUBTARGET_H
-#define X86SUBTARGET_H
+#ifndef LLVM_LIB_TARGET_X86_X86SUBTARGET_H
+#define LLVM_LIB_TARGET_X86_X86SUBTARGET_H
 
 #include "X86FrameLowering.h"
 #include "X86ISelLowering.h"
@@ -139,11 +139,17 @@ protected:
   /// HasSHA - Processor has SHA instructions.
   bool HasSHA;
 
+  /// HasSGX - Processor has SGX instructions.
+  bool HasSGX;
+
   /// HasPRFCHW - Processor has PRFCHW instructions.
   bool HasPRFCHW;
 
   /// HasRDSEED - Processor has RDSEED instructions.
   bool HasRDSEED;
+
+  /// HasSMAP - Processor has SMAP instructions.
+  bool HasSMAP;
 
   /// IsBTMemSlow - True if BT (bit test) of memory instructions are slow.
   bool IsBTMemSlow;
@@ -220,6 +226,9 @@ protected:
   InstrItineraryData InstrItins;
 
 private:
+  // Calculates type size & alignment
+  const DataLayout DL;
+
   /// StackAlignOverride - Override the stack alignment.
   unsigned StackAlignOverride;
 
@@ -232,8 +241,6 @@ private:
   /// In16BitMode - True if compiling for 16-bit, false for 32-bit or 64-bit.
   bool In16BitMode;
 
-  // Calculates type size & alignment
-  const DataLayout DL;
   X86SelectionDAGInfo TSInfo;
   // Ordering here is important. X86InstrInfo initializes X86RegisterInfo which
   // X86TargetLowering needs.
@@ -250,12 +257,21 @@ public:
                const std::string &FS, X86TargetMachine &TM,
                unsigned StackAlignOverride);
 
-  const X86TargetLowering *getTargetLowering() const { return &TLInfo; }
-  const X86InstrInfo *getInstrInfo() const { return &InstrInfo; }
-  const DataLayout *getDataLayout() const { return &DL; }
-  const X86FrameLowering *getFrameLowering() const { return &FrameLowering; }
-  const X86SelectionDAGInfo *getSelectionDAGInfo() const { return &TSInfo; }
-  X86JITInfo *getJITInfo() { return &JITInfo; }
+  const X86TargetLowering *getTargetLowering() const override {
+    return &TLInfo;
+  }
+  const X86InstrInfo *getInstrInfo() const override { return &InstrInfo; }
+  const DataLayout *getDataLayout() const override { return &DL; }
+  const X86FrameLowering *getFrameLowering() const override {
+    return &FrameLowering;
+  }
+  const X86SelectionDAGInfo *getSelectionDAGInfo() const override {
+    return &TSInfo;
+  }
+  const X86RegisterInfo *getRegisterInfo() const override {
+    return &getInstrInfo()->getRegisterInfo();
+  }
+  X86JITInfo *getJITInfo() override { return &JITInfo; }
 
   /// getStackAlignment - Returns the minimum alignment known to hold of the
   /// stack frame on entry to the function and which must be maintained by every
@@ -300,7 +316,8 @@ public:
 
   /// Is this x86_64 with the LP64 programming model (standard AMD64, no x32)?
   bool isTarget64BitLP64() const {
-    return In64BitMode && (TargetTriple.getEnvironment() != Triple::GNUX32);
+    return In64BitMode && (TargetTriple.getEnvironment() != Triple::GNUX32 &&
+                           TargetTriple.getOS() != Triple::NaCl);
   }
 
   PICStyles::Style getPICStyle() const { return PICStyle; }
@@ -341,8 +358,10 @@ public:
   bool hasHLE() const { return HasHLE; }
   bool hasADX() const { return HasADX; }
   bool hasSHA() const { return HasSHA; }
+  bool hasSGX() const { return HasSGX; }
   bool hasPRFCHW() const { return HasPRFCHW; }
   bool hasRDSEED() const { return HasRDSEED; }
+  bool hasSMAP() const { return HasSMAP; }
   bool isBTMemSlow() const { return IsBTMemSlow; }
   bool isSHLDSlow() const { return IsSHLDSlow; }
   bool isUnalignedMemAccessFast() const { return IsUAMemFast; }
@@ -466,7 +485,9 @@ public:
 
   /// getInstrItins = Return the instruction itineraries based on the
   /// subtarget selection.
-  const InstrItineraryData &getInstrItineraryData() const { return InstrItins; }
+  const InstrItineraryData *getInstrItineraryData() const override {
+    return &InstrItins;
+  }
 
   AntiDepBreakMode getAntiDepBreakMode() const override {
     return TargetSubtargetInfo::ANTIDEP_CRITICAL;

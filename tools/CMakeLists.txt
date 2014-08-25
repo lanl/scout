@@ -30,6 +30,7 @@ add_llvm_tool_subdirectory(llvm-objdump)
 add_llvm_tool_subdirectory(llvm-readobj)
 add_llvm_tool_subdirectory(llvm-rtdyld)
 add_llvm_tool_subdirectory(llvm-dwarfdump)
+add_llvm_tool_subdirectory(llvm-vtabledump)
 if( LLVM_USE_INTEL_JITEVENTS )
   add_llvm_tool_subdirectory(llvm-jitlistener)
 else()
@@ -41,6 +42,8 @@ add_llvm_tool_subdirectory(bugpoint-passes)
 add_llvm_tool_subdirectory(llvm-bcanalyzer)
 add_llvm_tool_subdirectory(llvm-stress)
 add_llvm_tool_subdirectory(llvm-mcmarkup)
+
+add_llvm_tool_subdirectory(verify-uselistorder)
 
 add_llvm_tool_subdirectory(llvm-symbolizer)
 

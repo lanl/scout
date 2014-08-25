@@ -42,7 +42,9 @@ class BasicTTI final : public ImmutablePass, public TargetTransformInfo {
   /// Estimate the cost overhead of SK_Alternate shuffle.
   unsigned getAltShuffleOverhead(Type *Ty) const;
 
-  const TargetLoweringBase *getTLI() const { return TM->getTargetLowering(); }
+  const TargetLoweringBase *getTLI() const {
+    return TM->getSubtargetImpl()->getTargetLowering();
+  }
 
 public:
   BasicTTI() : ImmutablePass(ID), TM(nullptr) {
@@ -102,7 +104,8 @@ public:
   unsigned getMaximumUnrollFactor() const override;
   unsigned getRegisterBitWidth(bool Vector) const override;
   unsigned getArithmeticInstrCost(unsigned Opcode, Type *Ty, OperandValueKind,
-                                  OperandValueKind) const override;
+                                  OperandValueKind, OperandValueProperties,
+                                  OperandValueProperties) const override;
   unsigned getShuffleCost(ShuffleKind Kind, Type *Tp,
                           int Index, Type *SubTp) const override;
   unsigned getCastInstrCost(unsigned Opcode, Type *Dst,
@@ -287,8 +290,9 @@ unsigned BasicTTI::getMaximumUnrollFactor() const {
 }
 
 unsigned BasicTTI::getArithmeticInstrCost(unsigned Opcode, Type *Ty,
-                                          OperandValueKind,
-                                          OperandValueKind) const {
+                                          OperandValueKind, OperandValueKind,
+                                          OperandValueProperties,
+                                          OperandValueProperties) const {
   // Check if any of the operands are vector operands.
   const TargetLoweringBase *TLI = getTLI();
   int ISD = TLI->InstructionOpcodeToISD(Opcode);
@@ -572,6 +576,7 @@ unsigned BasicTTI::getIntrinsicInstrCost(Intrinsic::ID IID, Type *RetTy,
   case Intrinsic::pow:     ISD = ISD::FPOW;   break;
   case Intrinsic::fma:     ISD = ISD::FMA;    break;
   case Intrinsic::fmuladd: ISD = ISD::FMA;    break;
+  // FIXME: We should return 0 whenever getIntrinsicCost == TCC_Free.
   case Intrinsic::lifetime_start:
   case Intrinsic::lifetime_end:
     return 0;

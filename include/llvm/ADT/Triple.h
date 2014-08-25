@@ -48,8 +48,6 @@ public:
 
     arm,        // ARM (little endian): arm, armv.*, xscale
     armeb,      // ARM (big endian): armeb
-    arm64,      // ARM64 (little endian): arm64
-    arm64_be,   // ARM64 (big endian): arm64_be
     aarch64,    // AArch64 (little endian): aarch64
     aarch64_be, // AArch64 (big endian): aarch64_be
     hexagon,    // Hexagon: hexagon
@@ -112,8 +110,6 @@ public:
   enum OSType {
     UnknownOS,
 
-    AuroraUX,
-    Cygwin,
     Darwin,
     DragonFly,
     FreeBSD,
@@ -122,7 +118,6 @@ public:
     Linux,
     Lv2,        // PS3
     MacOSX,
-    MinGW32,    // i*86-pc-mingw32, *-w64-mingw32
     NetBSD,
     OpenBSD,
     Solaris,
@@ -380,13 +375,11 @@ public:
   }
 
   bool isWindowsCygwinEnvironment() const {
-    return getOS() == Triple::Cygwin ||
-           (getOS() == Triple::Win32 && getEnvironment() == Triple::Cygnus);
+    return getOS() == Triple::Win32 && getEnvironment() == Triple::Cygnus;
   }
 
   bool isWindowsGNUEnvironment() const {
-    return getOS() == Triple::MinGW32 ||
-           (getOS() == Triple::Win32 && getEnvironment() == Triple::GNU);
+    return getOS() == Triple::Win32 && getEnvironment() == Triple::GNU;
   }
 
   /// \brief Tests for either Cygwin or MinGW OS
@@ -474,10 +467,6 @@ public:
   /// setOSAndEnvironmentName - Set the operating system and optional
   /// environment components with a single string.
   void setOSAndEnvironmentName(StringRef Str);
-
-  /// getArchNameForAssembler - Get an architecture name that is understood by
-  /// the target assembler.
-  const char *getArchNameForAssembler();
 
   /// @}
   /// @name Helpers to build variants of a particular triple.

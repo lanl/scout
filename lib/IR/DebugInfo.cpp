@@ -19,6 +19,7 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
@@ -46,7 +47,6 @@ bool DIDescriptor::Verify() const {
           DILexicalBlockFile(DbgNode).Verify() ||
           DISubrange(DbgNode).Verify() || DIEnumerator(DbgNode).Verify() ||
           DIObjCProperty(DbgNode).Verify() ||
-          DIUnspecifiedParameter(DbgNode).Verify() ||
           DITemplateTypeParameter(DbgNode).Verify() ||
           DITemplateValueParameter(DbgNode).Verify() ||
           DIImportedEntity(DbgNode).Verify());
@@ -151,9 +151,43 @@ uint64_t DIVariable::getAddrElement(unsigned Idx) const {
 /// getInlinedAt - If this variable is inlined then return inline location.
 MDNode *DIVariable::getInlinedAt() const { return getNodeField(DbgNode, 7); }
 
+bool DIVariable::isVariablePiece() const {
+  return hasComplexAddress() && getAddrElement(0) == DIBuilder::OpPiece;
+}
+
+uint64_t DIVariable::getPieceOffset() const {
+  assert(isVariablePiece());
+  return getAddrElement(1);
+}
+
+uint64_t DIVariable::getPieceSize() const {
+  assert(isVariablePiece());
+  return getAddrElement(2);
+}
+
+/// Return the size reported by the variable's type.
+unsigned DIVariable::getSizeInBits(const DITypeIdentifierMap &Map) {
+  DIType Ty = getType().resolve(Map);
+  // Follow derived types until we reach a type that
+  // reports back a size.
+  while (Ty.isDerivedType() && !Ty.getSizeInBits()) {
+    DIDerivedType DT(&*Ty);
+    Ty = DT.getTypeDerivedFrom().resolve(Map);
+  }
+  assert(Ty.getSizeInBits() && "type with size 0");
+  return Ty.getSizeInBits();
+}
+
+
+
+
 //===----------------------------------------------------------------------===//
 // Predicates
 //===----------------------------------------------------------------------===//
+
+bool DIDescriptor::isSubroutineType() const {
+  return isCompositeType() && getTag() == dwarf::DW_TAG_subroutine_type;
+}
 
 /// isBasicType - Return true if the specified tag is legal for
 /// DIBasicType.
@@ -241,12 +275,6 @@ bool DIDescriptor::isGlobalVariable() const {
                      getTag() == dwarf::DW_TAG_constant);
 }
 
-/// isUnspecifiedParmeter - Return true if the specified tag is
-/// DW_TAG_unspecified_parameters.
-bool DIDescriptor::isUnspecifiedParameter() const {
-  return DbgNode && getTag() == dwarf::DW_TAG_unspecified_parameters;
-}
-
 /// isScope - Return true if the specified tag is one of the scope
 /// related tag.
 bool DIDescriptor::isScope() const {
@@ -298,7 +326,7 @@ bool DIDescriptor::isNameSpace() const {
 /// lexical block with an extra file.
 bool DIDescriptor::isLexicalBlockFile() const {
   return DbgNode && getTag() == dwarf::DW_TAG_lexical_block &&
-         (DbgNode->getNumOperands() == 3);
+         (DbgNode->getNumOperands() == 4);
 }
 
 /// isLexicalBlock - Return true if the specified tag is DW_TAG_lexical_block.
@@ -332,12 +360,6 @@ bool DIDescriptor::isImportedEntity() const {
 //===----------------------------------------------------------------------===//
 // Simple Descriptor Constructors and other Methods
 //===----------------------------------------------------------------------===//
-
-unsigned DIArray::getNumElements() const {
-  if (!DbgNode)
-    return 0;
-  return DbgNode->getNumOperands();
-}
 
 /// replaceAllUsesWith - Replace all uses of the MDNode used by this
 /// type with the one in the passed descriptor.
@@ -616,17 +638,12 @@ bool DISubrange::Verify() const {
 
 /// \brief Verify that the lexical block descriptor is well formed.
 bool DILexicalBlock::Verify() const {
-  return isLexicalBlock() && DbgNode->getNumOperands() == 7;
+  return isLexicalBlock() && DbgNode->getNumOperands() == 6;
 }
 
 /// \brief Verify that the file-scoped lexical block descriptor is well formed.
 bool DILexicalBlockFile::Verify() const {
-  return isLexicalBlockFile() && DbgNode->getNumOperands() == 3;
-}
-
-/// \brief Verify that an unspecified parameter descriptor is well formed.
-bool DIUnspecifiedParameter::Verify() const {
-  return isUnspecifiedParameter() && DbgNode->getNumOperands() == 1;
+  return isLexicalBlockFile() && DbgNode->getNumOperands() == 4;
 }
 
 /// \brief Verify that the template type parameter descriptor is well formed.
@@ -670,10 +687,7 @@ static void VerifySubsetOf(const MDNode *LHS, const MDNode *RHS) {
 #endif
 
 /// \brief Set the array of member DITypes.
-void DICompositeType::setTypeArray(DIArray Elements, DIArray TParams) {
-  assert((!TParams || DbgNode->getNumOperands() == 15) &&
-         "If you're setting the template parameters this should include a slot "
-         "for that!");
+void DICompositeType::setArraysHelper(MDNode *Elements, MDNode *TParams) {
   TrackingVH<MDNode> N(*this);
   if (Elements) {
 #ifndef NDEBUG
@@ -837,7 +851,7 @@ DIArray DICompileUnit::getImportedEntities() const {
 /// copyWithNewScope - Return a copy of this location, replacing the
 /// current scope with the given one.
 DILocation DILocation::copyWithNewScope(LLVMContext &Ctx,
-                                        DILexicalBlock NewScope) {
+                                        DILexicalBlockFile NewScope) {
   SmallVector<Value *, 10> Elts;
   assert(Verify());
   for (unsigned I = 0; I < DbgNode->getNumOperands(); ++I) {
@@ -919,6 +933,19 @@ DIVariable llvm::cleanseInlinedVariable(MDNode *DV, LLVMContext &VMContext) {
     i == 7 ? Elts.push_back(Constant::getNullValue(Type::getInt32Ty(VMContext)))
            : Elts.push_back(DV->getOperand(i));
   return DIVariable(MDNode::get(VMContext, Elts));
+}
+
+
+/// getEntireVariable - Remove OpPiece exprs from the variable.
+DIVariable llvm::getEntireVariable(DIVariable DV) {
+  if (!DV.isVariablePiece())
+    return DV;
+
+  SmallVector<Value *, 8> Elts;
+  for (unsigned i = 0; i < 8; ++i)
+    Elts.push_back(DV->getOperand(i));
+
+  return DIVariable(MDNode::get(DV->getContext(), Elts));
 }
 
 /// getDISubprogram - Find subprogram that is enclosing this scope.
@@ -1058,7 +1085,13 @@ void DebugInfoFinder::processType(DIType DT) {
   if (DT.isCompositeType()) {
     DICompositeType DCT(DT);
     processType(DCT.getTypeDerivedFrom().resolve(TypeIdentifierMap));
-    DIArray DA = DCT.getTypeArray();
+    if (DT.isSubroutineType()) {
+      DITypeArray DTA = DISubroutineType(DT).getTypeArray();
+      for (unsigned i = 0, e = DTA.getNumElements(); i != e; ++i)
+        processType(DTA.getElement(i).resolve(TypeIdentifierMap));
+      return;
+    }
+    DIArray DA = DCT.getElements();
     for (unsigned i = 0, e = DA.getNumElements(); i != e; ++i) {
       DIDescriptor D = DA.getElement(i);
       if (D.isType())
@@ -1341,7 +1374,7 @@ void DIDerivedType::printInternal(raw_ostream &OS) const {
 
 void DICompositeType::printInternal(raw_ostream &OS) const {
   DIType::printInternal(OS);
-  DIArray A = getTypeArray();
+  DIArray A = getElements();
   OS << " [" << A.getNumElements() << " elements]";
 }
 
@@ -1404,6 +1437,10 @@ void DIVariable::printInternal(raw_ostream &OS) const {
     OS << " [" << Res << ']';
 
   OS << " [line " << getLineNumber() << ']';
+
+  if (isVariablePiece())
+    OS << " [piece, size " << getPieceSize()
+       << ", offset " << getPieceOffset() << ']';
 }
 
 void DIObjCProperty::printInternal(raw_ostream &OS) const {

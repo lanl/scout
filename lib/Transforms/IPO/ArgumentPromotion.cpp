@@ -81,8 +81,10 @@ namespace {
     CallGraphNode *PromoteArguments(CallGraphNode *CGN);
     bool isSafeToPromoteArgument(Argument *Arg, bool isByVal) const;
     CallGraphNode *DoPromotion(Function *F,
-                               SmallPtrSet<Argument*, 8> &ArgsToPromote,
-                               SmallPtrSet<Argument*, 8> &ByValArgsToTransform);
+                              SmallPtrSetImpl<Argument*> &ArgsToPromote,
+                              SmallPtrSetImpl<Argument*> &ByValArgsToTransform);
+    
+    using llvm::Pass::doInitialization;
     bool doInitialization(CallGraph &CG) override;
     /// The maximum number of elements to expand, or 0 for unlimited.
     unsigned maxElements;
@@ -475,10 +477,8 @@ bool ArgPromotion::isSafeToPromoteArgument(Argument *Arg,
     // loading block.
     for (pred_iterator PI = pred_begin(BB), E = pred_end(BB); PI != E; ++PI) {
       BasicBlock *P = *PI;
-      for (idf_ext_iterator<BasicBlock*, SmallPtrSet<BasicBlock*, 16> >
-             I = idf_ext_begin(P, TranspBlocks),
-             E = idf_ext_end(P, TranspBlocks); I != E; ++I)
-        if (AA.canBasicBlockModify(**I, Loc))
+      for (BasicBlock *TranspBB : inverse_depth_first_ext(P, TranspBlocks))
+        if (AA.canBasicBlockModify(*TranspBB, Loc))
           return false;
     }
   }
@@ -493,8 +493,8 @@ bool ArgPromotion::isSafeToPromoteArgument(Argument *Arg,
 /// arguments, and returns the new function.  At this point, we know that it's
 /// safe to do so.
 CallGraphNode *ArgPromotion::DoPromotion(Function *F,
-                               SmallPtrSet<Argument*, 8> &ArgsToPromote,
-                              SmallPtrSet<Argument*, 8> &ByValArgsToTransform) {
+                             SmallPtrSetImpl<Argument*> &ArgsToPromote,
+                             SmallPtrSetImpl<Argument*> &ByValArgsToTransform) {
 
   // Start by computing a new prototype for the function, which is the same as
   // the old function, but has modified arguments.
@@ -615,9 +615,13 @@ CallGraphNode *ArgPromotion::DoPromotion(Function *F,
 
   // Patch the pointer to LLVM function in debug info descriptor.
   auto DI = FunctionDIs.find(F);
-  if (DI != FunctionDIs.end())
-    DI->second.replaceFunction(NF);
-  
+  if (DI != FunctionDIs.end()) {
+    DISubprogram SP = DI->second;
+    SP.replaceFunction(NF);
+    FunctionDIs.erase(DI);
+    FunctionDIs[NF] = SP;
+  }
+
   DEBUG(dbgs() << "ARG PROMOTION:  Promoting to:" << *NF << "\n"
         << "From: " << *F);
   
@@ -716,9 +720,11 @@ CallGraphNode *ArgPromotion::DoPromotion(Function *F,
           // of the previous load.
           LoadInst *newLoad = new LoadInst(V, V->getName()+".val", Call);
           newLoad->setAlignment(OrigLoad->getAlignment());
-          // Transfer the TBAA info too.
-          newLoad->setMetadata(LLVMContext::MD_tbaa,
-                               OrigLoad->getMetadata(LLVMContext::MD_tbaa));
+          // Transfer the AA info too.
+          AAMDNodes AAInfo;
+          OrigLoad->getAAMetadata(AAInfo);
+          newLoad->setAAMetadata(AAInfo);
+
           Args.push_back(newLoad);
           AA.copyValue(OrigLoad, Args.back());
         }

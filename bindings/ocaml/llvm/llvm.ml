@@ -428,6 +428,7 @@ let fold_right_uses f v init =
 
 (*--... Operations on users ................................................--*)
 external operand : llvalue -> int -> llvalue = "llvm_operand"
+external operand_use : llvalue -> int -> lluse = "llvm_operand_use"
 external set_operand : llvalue -> int -> llvalue -> unit = "llvm_set_operand"
 external num_operands : llvalue -> int = "llvm_num_operands"
 
@@ -479,6 +480,8 @@ external const_named_struct : lltype -> llvalue array -> llvalue
 external const_packed_struct : llcontext -> llvalue array -> llvalue
                              = "llvm_const_packed_struct"
 external const_vector : llvalue array -> llvalue = "llvm_const_vector"
+external string_of_const : llvalue -> string option = "llvm_string_of_const"
+external const_element : llvalue -> int -> llvalue = "llvm_const_element"
 
 (*--... Constant expressions ...............................................--*)
 external align_of : lltype -> llvalue = "LLVMAlignOf"

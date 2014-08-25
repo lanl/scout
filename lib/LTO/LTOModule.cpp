@@ -15,6 +15,7 @@
 #include "llvm/LTO/LTOModule.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Bitcode/ReaderWriter.h"
+#include "llvm/CodeGen/Analysis.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Metadata.h"
@@ -39,6 +40,7 @@
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/Target/TargetRegisterInfo.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 #include "llvm/Transforms/Utils/GlobalStatus.h"
 #include <system_error>
 using namespace llvm;
@@ -75,7 +77,8 @@ LTOModule *LTOModule::createFromFile(const char *path, TargetOptions options,
     errMsg = EC.message();
     return nullptr;
   }
-  return makeLTOModule(std::move(BufferOrErr.get()), options, errMsg);
+  std::unique_ptr<MemoryBuffer> Buffer = std::move(BufferOrErr.get());
+  return makeLTOModule(Buffer->getMemBufferRef(), options, errMsg);
 }
 
 LTOModule *LTOModule::createFromOpenFile(int fd, const char *path, size_t size,
@@ -94,23 +97,30 @@ LTOModule *LTOModule::createFromOpenFileSlice(int fd, const char *path,
     errMsg = EC.message();
     return nullptr;
   }
-  return makeLTOModule(std::move(BufferOrErr.get()), options, errMsg);
+  std::unique_ptr<MemoryBuffer> Buffer = std::move(BufferOrErr.get());
+  return makeLTOModule(Buffer->getMemBufferRef(), options, errMsg);
 }
 
 LTOModule *LTOModule::createFromBuffer(const void *mem, size_t length,
                                        TargetOptions options,
                                        std::string &errMsg, StringRef path) {
-  std::unique_ptr<MemoryBuffer> buffer(makeBuffer(mem, length, path));
-  if (!buffer)
-    return nullptr;
-  return makeLTOModule(std::move(buffer), options, errMsg);
+  StringRef Data((const char *)mem, length);
+  MemoryBufferRef Buffer(Data, path);
+  return makeLTOModule(Buffer, options, errMsg);
 }
 
-LTOModule *LTOModule::makeLTOModule(std::unique_ptr<MemoryBuffer> Buffer,
+LTOModule *LTOModule::makeLTOModule(MemoryBufferRef Buffer,
                                     TargetOptions options,
                                     std::string &errMsg) {
+  StringRef Data = Buffer.getBuffer();
+  StringRef FileName = Buffer.getBufferIdentifier();
+  std::unique_ptr<MemoryBuffer> MemBuf(
+      makeBuffer(Data.begin(), Data.size(), FileName));
+  if (!MemBuf)
+    return nullptr;
+
   ErrorOr<Module *> MOrErr =
-      getLazyBitcodeModule(Buffer.get(), getGlobalContext());
+      getLazyBitcodeModule(MemBuf.get(), getGlobalContext());
   if (std::error_code EC = MOrErr.getError()) {
     errMsg = EC.message();
     return nullptr;
@@ -138,18 +148,17 @@ LTOModule *LTOModule::makeLTOModule(std::unique_ptr<MemoryBuffer> Buffer,
       CPU = "core2";
     else if (Triple.getArch() == llvm::Triple::x86)
       CPU = "yonah";
-    else if (Triple.getArch() == llvm::Triple::arm64 ||
-             Triple.getArch() == llvm::Triple::aarch64)
+    else if (Triple.getArch() == llvm::Triple::aarch64)
       CPU = "cyclone";
   }
 
   TargetMachine *target = march->createTargetMachine(TripleStr, CPU, FeatureStr,
                                                      options);
   M->materializeAllPermanently(true);
-  M->setDataLayout(target->getDataLayout());
+  M->setDataLayout(target->getSubtargetImpl()->getDataLayout());
 
   std::unique_ptr<object::IRObjectFile> IRObj(
-      new object::IRObjectFile(std::move(Buffer), std::move(M)));
+      new object::IRObjectFile(Buffer, std::move(M)));
 
   LTOModule *Ret = new LTOModule(std::move(IRObj), target);
 
@@ -164,10 +173,11 @@ LTOModule *LTOModule::makeLTOModule(std::unique_ptr<MemoryBuffer> Buffer,
 }
 
 /// Create a MemoryBuffer from a memory range with an optional name.
-MemoryBuffer *LTOModule::makeBuffer(const void *mem, size_t length,
-                                    StringRef name) {
+std::unique_ptr<MemoryBuffer>
+LTOModule::makeBuffer(const void *mem, size_t length, StringRef name) {
   const char *startPtr = (const char*)mem;
-  return MemoryBuffer::getMemBuffer(StringRef(startPtr, length), name, false);
+  return std::unique_ptr<MemoryBuffer>(
+      MemoryBuffer::getMemBuffer(StringRef(startPtr, length), name, false));
 }
 
 /// objcClassNameFromExpression - Get string that the data pointer points to.
@@ -348,30 +358,6 @@ void LTOModule::addDefinedFunctionSymbol(const char *Name, const Function *F) {
   addDefinedSymbol(Name, F, true);
 }
 
-static bool canBeHidden(const GlobalValue *GV) {
-  // FIXME: this is duplicated with another static function in AsmPrinter.cpp
-  GlobalValue::LinkageTypes L = GV->getLinkage();
-
-  if (L != GlobalValue::LinkOnceODRLinkage)
-    return false;
-
-  if (GV->hasUnnamedAddr())
-    return true;
-
-  // If it is a non constant variable, it needs to be uniqued across shared
-  // objects.
-  if (const GlobalVariable *Var = dyn_cast<GlobalVariable>(GV)) {
-    if (!Var->isConstant())
-      return false;
-  }
-
-  GlobalStatus GS;
-  if (GlobalStatus::analyzeGlobal(GV, GS))
-    return false;
-
-  return !GS.IsCompared;
-}
-
 void LTOModule::addDefinedSymbol(const char *Name, const GlobalValue *def,
                                  bool isFunction) {
   // set alignment part log2() can have rounding errors
@@ -405,7 +391,7 @@ void LTOModule::addDefinedSymbol(const char *Name, const GlobalValue *def,
     attr |= LTO_SYMBOL_SCOPE_HIDDEN;
   else if (def->hasProtectedVisibility())
     attr |= LTO_SYMBOL_SCOPE_PROTECTED;
-  else if (canBeHidden(def))
+  else if (canBeOmittedFromSymbolTable(def))
     attr |= LTO_SYMBOL_SCOPE_DEFAULT_CAN_BE_HIDDEN;
   else
     attr |= LTO_SYMBOL_SCOPE_DEFAULT;
@@ -598,8 +584,10 @@ void LTOModule::parseMetadata() {
         MDString *MDOption = cast<MDString>(MDOptions->getOperand(ii));
         StringRef Op = _linkeropt_strings.
             GetOrCreateValue(MDOption->getString()).getKey();
-        StringRef DepLibName = _target->getTargetLowering()->
-            getObjFileLowering().getDepLibFromLinkerOpt(Op);
+        StringRef DepLibName = _target->getSubtargetImpl()
+                                   ->getTargetLowering()
+                                   ->getObjFileLowering()
+                                   .getDepLibFromLinkerOpt(Op);
         if (!DepLibName.empty())
           _deplibs.push_back(DepLibName.data());
         else if (!Op.empty())

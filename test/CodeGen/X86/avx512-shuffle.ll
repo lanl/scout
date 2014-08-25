@@ -199,12 +199,48 @@ define <16 x i32> @test15(<16 x i32> %a) {
  %b = shufflevector <16 x i32> %a, <16 x i32> undef, <16 x i32><i32 1, i32 0, i32 3, i32 2, i32 5, i32 4, i32 7, i32 6, i32 9, i32 8, i32 11, i32 10, i32 13, i32 12, i32 15, i32 14>
  ret <16 x i32> %b
 }
+
+; CHECK-LABEL: valign_test_v16f32
+; CHECK: valignd $2, %zmm0, %zmm0
+; CHECK: ret
+define <16 x float> @valign_test_v16f32(<16 x float> %a, <16 x float> %b) nounwind {
+  %c = shufflevector <16 x float> %a, <16 x float> %b, <16 x i32><i32 2, i32 3, i32 undef, i32 undef, i32 6, i32 7, i32 undef, i32 undef, i32 10, i32 11, i32 undef, i32 undef, i32 14, i32 15, i32 undef, i32 undef>
+  ret <16 x float> %c
+}
+
+; CHECK-LABEL: valign_test_v16i32
+; CHECK: valignd $2, %zmm0, %zmm0
+; CHECK: ret
+define <16 x i32> @valign_test_v16i32(<16 x i32> %a, <16 x i32> %b) nounwind {
+  %c = shufflevector <16 x i32> %a, <16 x i32> %b, <16 x i32><i32 2, i32 3, i32 undef, i32 undef, i32 6, i32 7, i32 undef, i32 undef, i32 10, i32 11, i32 undef, i32 undef, i32 14, i32 15, i32 undef, i32 undef>
+  ret <16 x i32> %c
+}
+
+
 ; CHECK-LABEL: test16
 ; CHECK: valignq $2, %zmm0, %zmm1
 ; CHECK: ret
 define <8 x double> @test16(<8 x double> %a, <8 x double> %b) nounwind {
   %c = shufflevector <8 x double> %a, <8 x double> %b, <8 x i32> <i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 8, i32 9>
   ret <8 x double> %c
+}
+
+; CHECK-LABEL: test16k
+; CHECK: valignq $2, %zmm0, %zmm1, %zmm2 {%k1} #
+define <8 x i64> @test16k(<8 x i64> %a, <8 x i64> %b, <8 x i64> %src, i8 %mask) nounwind {
+  %c = shufflevector <8 x i64> %a, <8 x i64> %b, <8 x i32> <i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 8, i32 9>
+  %m = bitcast i8 %mask to <8 x i1>
+  %res = select <8 x i1> %m, <8 x i64> %c, <8 x i64> %src
+  ret <8 x i64> %res
+}
+
+; CHECK-LABEL: test16kz
+; CHECK: valignq $2, %zmm0, %zmm1, %zmm0 {%k1} {z} ## encoding: [0x62,0xf3,0xf5,0xc9,0x03,0xc0,0x02]
+define <8 x i64> @test16kz(<8 x i64> %a, <8 x i64> %b, i8 %mask) nounwind {
+  %c = shufflevector <8 x i64> %a, <8 x i64> %b, <8 x i32> <i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 8, i32 9>
+  %m = bitcast i8 %mask to <8 x i1>
+  %res = select <8 x i1> %m, <8 x i64> %c, <8 x i64> zeroinitializer
+  ret <8 x i64> %res
 }
 
 ; CHECK-LABEL: test17
