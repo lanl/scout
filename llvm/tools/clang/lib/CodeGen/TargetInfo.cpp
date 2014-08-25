@@ -1002,6 +1002,26 @@ X86_32ABIInfo::addFieldToArgStruct(SmallVector<llvm::Type *, 6> &FrameFields,
   }
 }
 
+static bool isArgInAlloca(const ABIArgInfo &Info) {
+  // Leave ignored and inreg arguments alone.
+  switch (Info.getKind()) {
+  case ABIArgInfo::InAlloca:
+    return true;
+  case ABIArgInfo::Indirect:
+    assert(Info.getIndirectByVal());
+    return true;
+  case ABIArgInfo::Ignore:
+    return false;
+  case ABIArgInfo::Direct:
+  case ABIArgInfo::Extend:
+  case ABIArgInfo::Expand:
+    if (Info.getInReg())
+      return false;
+    return true;
+  }
+  llvm_unreachable("invalid enum");
+}
+
 void X86_32ABIInfo::rewriteWithInAlloca(CGFunctionInfo &FI) const {
   assert(IsWin32StructABI && "inalloca only supported on win32");
 
@@ -1009,9 +1029,19 @@ void X86_32ABIInfo::rewriteWithInAlloca(CGFunctionInfo &FI) const {
   SmallVector<llvm::Type *, 6> FrameFields;
 
   unsigned StackOffset = 0;
+  CGFunctionInfo::arg_iterator I = FI.arg_begin(), E = FI.arg_end();
+
+  // Put 'this' into the struct before 'sret', if necessary.
+  bool IsThisCall =
+      FI.getCallingConvention() == llvm::CallingConv::X86_ThisCall;
+  ABIArgInfo &Ret = FI.getReturnInfo();
+  if (Ret.isIndirect() && Ret.isSRetAfterThis() && !IsThisCall &&
+      isArgInAlloca(I->info)) {
+    addFieldToArgStruct(FrameFields, StackOffset, I->info, I->type);
+    ++I;
+  }
 
   // Put the sret parameter into the inalloca struct if it's in memory.
-  ABIArgInfo &Ret = FI.getReturnInfo();
   if (Ret.isIndirect() && !Ret.getInReg()) {
     CanQualType PtrTy = getContext().getPointerType(FI.getReturnType());
     addFieldToArgStruct(FrameFields, StackOffset, Ret, PtrTy);
@@ -1020,30 +1050,13 @@ void X86_32ABIInfo::rewriteWithInAlloca(CGFunctionInfo &FI) const {
   }
 
   // Skip the 'this' parameter in ecx.
-  CGFunctionInfo::arg_iterator I = FI.arg_begin(), E = FI.arg_end();
-  if (FI.getCallingConvention() == llvm::CallingConv::X86_ThisCall)
+  if (IsThisCall)
     ++I;
 
   // Put arguments passed in memory into the struct.
   for (; I != E; ++I) {
-
-    // Leave ignored and inreg arguments alone.
-    switch (I->info.getKind()) {
-    case ABIArgInfo::Indirect:
-      assert(I->info.getIndirectByVal());
-      break;
-    case ABIArgInfo::Ignore:
-      continue;
-    case ABIArgInfo::Direct:
-    case ABIArgInfo::Extend:
-      if (I->info.getInReg())
-        continue;
-      break;
-    default:
-      break;
-    }
-
-    addFieldToArgStruct(FrameFields, StackOffset, I->info, I->type);
+    if (isArgInAlloca(I->info))
+      addFieldToArgStruct(FrameFields, StackOffset, I->info, I->type);
   }
 
   FI.setArgStruct(llvm::StructType::get(getVMContext(), FrameFields,
@@ -1107,7 +1120,6 @@ bool X86_32TargetCodeGenInfo::isStructReturnInRegABI(
     return true;
 
   switch (Triple.getOS()) {
-  case llvm::Triple::AuroraUX:
   case llvm::Triple::DragonFly:
   case llvm::Triple::FreeBSD:
   case llvm::Triple::OpenBSD:
@@ -6403,26 +6415,25 @@ static bool extractFieldType(SmallVectorImpl<FieldEncoding> &FE,
                              const RecordDecl *RD,
                              const CodeGen::CodeGenModule &CGM,
                              TypeStringCache &TSC) {
-  for (RecordDecl::field_iterator I = RD->field_begin(), E = RD->field_end();
-       I != E; ++I) {
+  for (const auto *Field : RD->fields()) {
     SmallStringEnc Enc;
     Enc += "m(";
-    Enc += I->getName();
+    Enc += Field->getName();
     Enc += "){";
-    if (I->isBitField()) {
+    if (Field->isBitField()) {
       Enc += "b(";
       llvm::raw_svector_ostream OS(Enc);
       OS.resync();
-      OS << I->getBitWidthValue(CGM.getContext());
+      OS << Field->getBitWidthValue(CGM.getContext());
       OS.flush();
       Enc += ':';
     }
-    if (!appendType(Enc, I->getType(), CGM, TSC))
+    if (!appendType(Enc, Field->getType(), CGM, TSC))
       return false;
-    if (I->isBitField())
+    if (Field->isBitField())
       Enc += ')';
     Enc += '}';
-    FE.push_back(FieldEncoding(!I->getName().empty(), Enc));
+    FE.push_back(FieldEncoding(!Field->getName().empty(), Enc));
   }
   return true;
 }
@@ -6751,9 +6762,7 @@ const TargetCodeGenInfo &CodeGenModule::getTargetCodeGenInfo() {
     return *(TheTargetCodeGenInfo = new MIPSTargetCodeGenInfo(Types, false));
 
   case llvm::Triple::aarch64:
-  case llvm::Triple::aarch64_be:
-  case llvm::Triple::arm64:
-  case llvm::Triple::arm64_be: {
+  case llvm::Triple::aarch64_be: {
     AArch64ABIInfo::ABIKind Kind = AArch64ABIInfo::AAPCS;
     if (getTarget().getABI() == "darwinpcs")
       Kind = AArch64ABIInfo::DarwinPCS;
@@ -6788,16 +6797,20 @@ const TargetCodeGenInfo &CodeGenModule::getTargetCodeGenInfo() {
     return *(TheTargetCodeGenInfo = new PPC32TargetCodeGenInfo(Types));
   case llvm::Triple::ppc64:
     if (Triple.isOSBinFormatELF()) {
-      // FIXME: Should be switchable via command-line option.
       PPC64_SVR4_ABIInfo::ABIKind Kind = PPC64_SVR4_ABIInfo::ELFv1;
+      if (getTarget().getABI() == "elfv2")
+        Kind = PPC64_SVR4_ABIInfo::ELFv2;
+
       return *(TheTargetCodeGenInfo =
                new PPC64_SVR4_TargetCodeGenInfo(Types, Kind));
     } else
       return *(TheTargetCodeGenInfo = new PPC64TargetCodeGenInfo(Types));
   case llvm::Triple::ppc64le: {
     assert(Triple.isOSBinFormatELF() && "PPC64 LE non-ELF not supported!");
-    // FIXME: Should be switchable via command-line option.
     PPC64_SVR4_ABIInfo::ABIKind Kind = PPC64_SVR4_ABIInfo::ELFv2;
+    if (getTarget().getABI() == "elfv1")
+      Kind = PPC64_SVR4_ABIInfo::ELFv1;
+
     return *(TheTargetCodeGenInfo =
              new PPC64_SVR4_TargetCodeGenInfo(Types, Kind));
   }

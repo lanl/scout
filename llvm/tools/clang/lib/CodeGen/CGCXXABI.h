@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef CLANG_CODEGEN_CXXABI_H
-#define CLANG_CODEGEN_CXXABI_H
+#ifndef LLVM_CLANG_LIB_CODEGEN_CGCXXABI_H
+#define LLVM_CLANG_LIB_CODEGEN_CGCXXABI_H
 
 #include "CodeGenFunction.h"
 #include "clang/Basic/LLVM.h"
@@ -155,6 +155,11 @@ public:
   /// Return true if the given member pointer can be zero-initialized
   /// (in the C++ sense) with an LLVM zeroinitializer.
   virtual bool isZeroInitializable(const MemberPointerType *MPT);
+
+  /// Return whether or not a member pointers type is convertible to an IR type.
+  virtual bool isMemberPointerConvertible(const MemberPointerType *MPT) const {
+    return true;
+  }
 
   /// Create a null member pointer of the given type.
   virtual llvm::Constant *EmitNullMemberPointer(const MemberPointerType *MPT);

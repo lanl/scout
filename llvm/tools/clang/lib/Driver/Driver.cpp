@@ -98,6 +98,9 @@ void Driver::ParseDriverMode(ArrayRef<const char *> Args) {
     getOpts().getOption(options::OPT_driver_mode).getPrefixedName();
 
   for (size_t I = 0, E = Args.size(); I != E; ++I) {
+    // Ingore nullptrs, they are response file's EOL markers
+    if (Args[I] == nullptr)
+      continue;
     const StringRef Arg = Args[I];
     if (!Arg.startswith(OptName))
       continue;
@@ -119,7 +122,7 @@ void Driver::ParseDriverMode(ArrayRef<const char *> Args) {
   }
 }
 
-InputArgList *Driver::ParseArgStrings(ArrayRef<const char *> ArgList) {
+InputArgList *Driver::ParseArgStrings(ArrayRef<const char *> ArgStrings) {
   llvm::PrettyStackTraceString CrashInfo("Command line argument parsing");
 
   unsigned IncludedFlagsBitmask;
@@ -128,7 +131,7 @@ InputArgList *Driver::ParseArgStrings(ArrayRef<const char *> ArgList) {
     getIncludeExcludeOptionFlagMasks();
 
   unsigned MissingArgIndex, MissingArgCount;
-  InputArgList *Args = getOpts().ParseArgs(ArgList.begin(), ArgList.end(),
+  InputArgList *Args = getOpts().ParseArgs(ArgStrings.begin(), ArgStrings.end(),
                                            MissingArgIndex, MissingArgCount,
                                            IncludedFlagsBitmask,
                                            ExcludedFlagsBitmask);
@@ -570,6 +573,8 @@ void Driver::generateCompilationDiagnostics(Compilation &C,
         StringRef NewFilename = llvm::sys::path::filename(*it);
         I = StringRef(Cmd).rfind(OldFilename);
         E = I + OldFilename.size();
+        if (E + 1 < Cmd.size() && Cmd[E] == '"')
+          ++E;  // Replace a trailing quote if present.
         I = Cmd.rfind(" ", I) + 1;
         Cmd.replace(I, E - I, NewFilename.data(), NewFilename.size());
         if (!VFS.empty()) {
@@ -1924,8 +1929,6 @@ static llvm::Triple computeTargetTriple(StringRef DefaultTargetTriple,
         Target.setArch(llvm::Triple::mips64el);
       else if (Target.getArch() == llvm::Triple::aarch64_be)
         Target.setArch(llvm::Triple::aarch64);
-      else if (Target.getArch() == llvm::Triple::arm64_be)
-        Target.setArch(llvm::Triple::arm64);
     } else {
       if (Target.getArch() == llvm::Triple::mipsel)
         Target.setArch(llvm::Triple::mips);
@@ -1933,15 +1936,11 @@ static llvm::Triple computeTargetTriple(StringRef DefaultTargetTriple,
         Target.setArch(llvm::Triple::mips64);
       else if (Target.getArch() == llvm::Triple::aarch64)
         Target.setArch(llvm::Triple::aarch64_be);
-      else if (Target.getArch() == llvm::Triple::arm64)
-        Target.setArch(llvm::Triple::arm64_be);
     }
   }
 
   // Skip further flag support on OSes which don't support '-m32' or '-m64'.
-  if (Target.getArchName() == "tce" ||
-      Target.getOS() == llvm::Triple::AuroraUX ||
-      Target.getOS() == llvm::Triple::Minix)
+  if (Target.getArchName() == "tce" || Target.getOS() == llvm::Triple::Minix)
     return Target;
 
   // Handle pseudo-target flags '-m64', '-mx32', '-m32' and '-m16'.
@@ -1949,15 +1948,19 @@ static llvm::Triple computeTargetTriple(StringRef DefaultTargetTriple,
                                options::OPT_m32, options::OPT_m16)) {
     llvm::Triple::ArchType AT = llvm::Triple::UnknownArch;
 
-    if (A->getOption().matches(options::OPT_m64))
+    if (A->getOption().matches(options::OPT_m64)) {
       AT = Target.get64BitArchVariant().getArch();
-    else if (A->getOption().matches(options::OPT_mx32) &&
+      if (Target.getEnvironment() == llvm::Triple::GNUX32)
+        Target.setEnvironment(llvm::Triple::GNU);
+    } else if (A->getOption().matches(options::OPT_mx32) &&
              Target.get64BitArchVariant().getArch() == llvm::Triple::x86_64) {
       AT = llvm::Triple::x86_64;
       Target.setEnvironment(llvm::Triple::GNUX32);
-    } else if (A->getOption().matches(options::OPT_m32))
+    } else if (A->getOption().matches(options::OPT_m32)) {
       AT = Target.get32BitArchVariant().getArch();
-    else if (A->getOption().matches(options::OPT_m16) &&
+      if (Target.getEnvironment() == llvm::Triple::GNUX32)
+        Target.setEnvironment(llvm::Triple::GNU);
+    } else if (A->getOption().matches(options::OPT_m16) &&
              Target.get32BitArchVariant().getArch() == llvm::Triple::x86) {
       AT = llvm::Triple::x86;
       Target.setEnvironment(llvm::Triple::CODE16);
@@ -1978,9 +1981,6 @@ const ToolChain &Driver::getToolChain(const ArgList &Args,
   ToolChain *&TC = ToolChains[Target.str()];
   if (!TC) {
     switch (Target.getOS()) {
-    case llvm::Triple::AuroraUX:
-      TC = new toolchains::AuroraUX(*this, Target, Args);
-      break;
     case llvm::Triple::Darwin:
     case llvm::Triple::MacOSX:
     case llvm::Triple::IOS:

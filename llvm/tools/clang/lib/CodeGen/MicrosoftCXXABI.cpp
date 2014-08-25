@@ -482,6 +482,11 @@ public:
 
   bool isZeroInitializable(const MemberPointerType *MPT) override;
 
+  bool isMemberPointerConvertible(const MemberPointerType *MPT) const override {
+    const CXXRecordDecl *RD = MPT->getMostRecentCXXRecordDecl();
+    return RD->getAttr<MSInheritanceAttr>() != nullptr;
+  }
+
   llvm::Constant *EmitNullMemberPointer(const MemberPointerType *MPT) override;
 
   llvm::Constant *EmitMemberDataPointer(const MemberPointerType *MPT,
@@ -1179,7 +1184,9 @@ void MicrosoftCXXABI::emitVTableDefinitions(CodeGenVTables &CGVT,
     if (VTable->hasInitializer())
       continue;
 
-    llvm::Constant *RTTI = getMSCompleteObjectLocator(RD, Info);
+    llvm::Constant *RTTI = getContext().getLangOpts().RTTIData
+                               ? getMSCompleteObjectLocator(RD, Info)
+                               : nullptr;
 
     const VTableLayout &VTLayout =
       VFTContext.getVFTableLayout(RD, Info->FullOffsetInMDC);
@@ -1452,6 +1459,9 @@ llvm::Function *MicrosoftCXXABI::EmitVirtualMemPtrThunk(
   CGM.SetLLVMFunctionAttributes(MD, FnInfo, ThunkFn);
   CGM.SetLLVMFunctionAttributesForDefinition(MD, ThunkFn);
 
+  // These thunks can be compared, so they are not unnamed.
+  ThunkFn->setUnnamedAddr(false);
+
   // Start codegen.
   CodeGenFunction CGF(CGM);
   CGF.StartThunk(ThunkFn, MD, FnInfo);
@@ -1465,31 +1475,7 @@ llvm::Function *MicrosoftCXXABI::EmitVirtualMemPtrThunk(
       CGF.Builder.CreateConstInBoundsGEP1_64(VTable, ML.Index, "vfn");
   llvm::Value *Callee = CGF.Builder.CreateLoad(VFuncPtr);
 
-  unsigned CallingConv;
-  CodeGen::AttributeListType AttributeList;
-  CGM.ConstructAttributeList(FnInfo, MD, AttributeList, CallingConv, true);
-  llvm::AttributeSet Attrs =
-      llvm::AttributeSet::get(CGF.getLLVMContext(), AttributeList);
-
-  // Do a musttail call with perfect argument forwarding.  Any inalloca argument
-  // will be forwarded in place without any copy.
-  SmallVector<llvm::Value *, 8> Args;
-  for (llvm::Argument &A : ThunkFn->args())
-    Args.push_back(&A);
-  llvm::CallInst *Call = CGF.Builder.CreateCall(Callee, Args);
-  Call->setTailCallKind(llvm::CallInst::TCK_MustTail);
-  Call->setAttributes(Attrs);
-  Call->setCallingConv(static_cast<llvm::CallingConv::ID>(CallingConv));
-
-  if (Call->getType()->isVoidTy())
-    CGF.Builder.CreateRetVoid();
-  else
-    CGF.Builder.CreateRet(Call);
-
-  // Finish the function to maintain CodeGenFunction invariants.
-  // FIXME: Don't emit unreachable code.
-  CGF.EmitBlock(CGF.createBasicBlock());
-  CGF.FinishFunction();
+  CGF.EmitCallAndReturnForThunk(Callee, 0);
 
   return ThunkFn;
 }

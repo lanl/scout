@@ -64,10 +64,12 @@ add_clang_library(clangCodeGen
   CodeGenPGO.cpp
   CodeGenTBAA.cpp
   CodeGenTypes.cpp
+  CoverageMappingGen.cpp
   ItaniumCXXABI.cpp
   MicrosoftCXXABI.cpp
   ModuleBuilder.cpp
   SanitizerBlacklist.cpp
+  SanitizerMetadata.cpp
   TargetInfo.cpp
   
   DEPENDS
@@ -80,4 +82,5 @@ add_clang_library(clangCodeGen
   clangAST
   clangBasic
   clangFrontend
+  clangLex
   )
