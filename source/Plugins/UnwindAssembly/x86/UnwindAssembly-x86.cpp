@@ -373,6 +373,12 @@ bool AssemblyParse_x86::push_reg_p (int& regno) {
 
 //  movq %rax, -0x10(%rbp) [0x48 0x89 0x45 0xf0]
 //  movl %eax, -0xc(%ebp)  [0x89 0x45 0xf4]
+
+// The offset value returned in rbp_offset will be positive -- 
+// but it must be subtraced from the frame base register to get
+// the actual location.  The positive value returned for the offset
+// is a convention used elsewhere for CFA offsets et al.
+
 bool AssemblyParse_x86::mov_reg_to_local_stack_frame_p (int& regno, int& rbp_offset) {
     uint8_t *p = m_cur_insn_bytes;
     int src_reg_prefix_bit = 0;
@@ -633,7 +639,13 @@ AssemblyParse_x86::get_non_call_site_unwind_plan (UnwindPlan &unwind_plan)
             {
                 row->SetOffset (current_func_text_offset + insn_len);
                 UnwindPlan::Row::RegisterLocation regloc;
-                regloc.SetAtCFAPlusOffset (-row->GetCFAOffset());
+
+                // stack_offset for 'movq %r15, -80(%rbp)' will be 80.
+                // In the Row, we want to express this as the offset from the CFA.  If the frame base
+                // is rbp (like the above instruction), the CFA offset for rbp is probably 16.  So we
+                // want to say that the value is stored at the CFA address - 96.
+                regloc.SetAtCFAPlusOffset (-(stack_offset + row->GetCFAOffset()));
+
                 row->SetRegisterInfo (lldb_regno, regloc);
                 unwind_plan.AppendRow (row);
                 // Allocate a new Row, populate it with the existing Row contents.
@@ -685,17 +697,28 @@ loopnext:
     // Now look at the byte at the end of the AddressRange for a limited attempt at describing the
     // epilogue.  We're looking for the sequence
 
-    //  [ 0x5d ] mov %rbp, %rsp
+    //  [ 0x5d ] mov %rbp, %rsp  (aka pop %rbp)
+    //  [ 0xc3 ] ret
+
+    // or
+
+    //  [ 0x5d ] mov %rbp, %rsp  (aka pop %rbp)
+    //  [ 0xe9 xx xx xx xx ] jmp objc_retainAutoreleaseReturnValue  (this is sometimes the final insn in the function)
+
+    // or
+
+    //  [ 0x5d ] mov %rbp, %rsp  (aka pop %rbp)
     //  [ 0xc3 ] ret
     //  [ 0xe8 xx xx xx xx ] call __stack_chk_fail  (this is sometimes the final insn in the function)
 
     // We want to add a Row describing how to unwind when we're stopped on the 'ret' instruction where the
     // CFA is no longer defined in terms of rbp, but is now defined in terms of rsp like on function entry.
+    // (or the 'jmp' instruction in the second case)
 
     uint64_t ret_insn_offset = LLDB_INVALID_ADDRESS;
     Address end_of_fun(m_func_bounds.GetBaseAddress());
     end_of_fun.SetOffset (end_of_fun.GetOffset() + m_func_bounds.GetByteSize());
-    
+
     if (m_func_bounds.GetByteSize() > 7)
     {
         uint8_t bytebuf[7];
@@ -704,16 +727,23 @@ loopnext:
         if (target->ReadMemory (last_seven_bytes, prefer_file_cache, bytebuf, 7,
                                 error) != static_cast<size_t>(-1))
         {
-            if (bytebuf[5] == 0x5d && bytebuf[6] == 0xc3)  // mov, ret
+            if (bytebuf[5] == 0x5d && bytebuf[6] == 0xc3)  // mov & ret
             {
                 ret_insn_offset = m_func_bounds.GetByteSize() - 1;
             }
-            else if (bytebuf[0] == 0x5d && bytebuf[1] == 0xc3 && bytebuf[2] == 0xe8) // mov, ret, call
+            else if (bytebuf[1] == 0x5d && bytebuf[2] == 0xe9)  // mov & jmp
+            {
+                // When the pc is sitting on the 'jmp' instruction, we have the same
+                // unwind state as if it was sitting on a 'ret' instruction.
+                ret_insn_offset = m_func_bounds.GetByteSize() - 5;
+            }
+            else if (bytebuf[0] == 0x5d && bytebuf[1] == 0xc3 && bytebuf[2] == 0xe8) // mov & ret & call
             {
                 ret_insn_offset = m_func_bounds.GetByteSize() - 6;
             }
         }
-    } else if (m_func_bounds.GetByteSize() > 2)
+    }
+    else if (m_func_bounds.GetByteSize() > 2)
     {
         uint8_t bytebuf[2];
         Address last_two_bytes(end_of_fun);
@@ -721,7 +751,7 @@ loopnext:
         if (target->ReadMemory (last_two_bytes, prefer_file_cache, bytebuf, 2,
                                 error) != static_cast<size_t>(-1))
         {
-            if (bytebuf[0] == 0x5d && bytebuf[1] == 0xc3) // mov, ret
+            if (bytebuf[0] == 0x5d && bytebuf[1] == 0xc3) // mov & ret
             {
                 ret_insn_offset = m_func_bounds.GetByteSize() - 1;
             }

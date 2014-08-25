@@ -47,6 +47,7 @@
 #include "lldb/Core/StreamString.h"
 #include "lldb/Host/Endian.h"
 #include "lldb/Host/FileSpec.h"
+#include "lldb/Host/HostInfo.h"
 #include "lldb/Target/Platform.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Utility/CleanUp.h"
@@ -366,19 +367,19 @@ WaitForProcessToSIGSTOP (const lldb::pid_t pid, const int timeout_in_seconds)
 //        return LLDB_INVALID_PROCESS_ID;
 //    
 //    FileSpec darwin_debug_file_spec;
-//    if (!Host::GetLLDBPath (ePathTypeSupportExecutableDir, darwin_debug_file_spec))
+//    if (!HostInfo::GetLLDBPath (ePathTypeSupportExecutableDir, darwin_debug_file_spec))
 //        return LLDB_INVALID_PROCESS_ID;
 //    darwin_debug_file_spec.GetFilename().SetCString("darwin-debug");
-//        
+//
 //    if (!darwin_debug_file_spec.Exists())
 //        return LLDB_INVALID_PROCESS_ID;
-//    
+//
 //    char launcher_path[PATH_MAX];
 //    darwin_debug_file_spec.GetPath(launcher_path, sizeof(launcher_path));
 //    command_file.Printf("\"%s\" ", launcher_path);
-//    
+//
 //    command_file.Printf("--unix-socket=%s ", unix_socket_name.c_str());
-//    
+//
 //    if (arch_spec && arch_spec->IsValid())
 //    {
 //        command_file.Printf("--arch=%s ", arch_spec->GetArchitectureName());
@@ -388,7 +389,7 @@ WaitForProcessToSIGSTOP (const lldb::pid_t pid, const int timeout_in_seconds)
 //    {
 //        command_file.PutCString("--disable-aslr ");
 //    }
-//        
+//
 //    command_file.PutCString("-- ");
 //
 //    if (argv)
@@ -402,15 +403,15 @@ WaitForProcessToSIGSTOP (const lldb::pid_t pid, const int timeout_in_seconds)
 //    command_file.GetFile().Close();
 //    if (::chmod (temp_file_path, S_IRWXU | S_IRWXG) != 0)
 //        return LLDB_INVALID_PROCESS_ID;
-//            
+//
 //    CFCMutableDictionary cf_env_dict;
-//    
+//
 //    const bool can_create = true;
 //    if (envp)
 //    {
 //        for (size_t i=0; envp[i] != NULL; ++i)
 //        {
-//            const char *env_entry = envp[i];            
+//            const char *env_entry = envp[i];
 //            const char *equal_pos = strchr(env_entry, '=');
 //            if (equal_pos)
 //            {
@@ -422,20 +423,20 @@ WaitForProcessToSIGSTOP (const lldb::pid_t pid, const int timeout_in_seconds)
 //            }
 //        }
 //    }
-//    
+//
 //    LSApplicationParameters app_params;
 //    ::memset (&app_params, 0, sizeof (app_params));
 //    app_params.flags = kLSLaunchDontAddToRecents | kLSLaunchAsync;
 //    app_params.argv = NULL;
 //    app_params.environment = (CFDictionaryRef)cf_env_dict.get();
 //
-//    CFCReleaser<CFURLRef> command_file_url (::CFURLCreateFromFileSystemRepresentation (NULL, 
-//                                                                                       (const UInt8 *)temp_file_path, 
+//    CFCReleaser<CFURLRef> command_file_url (::CFURLCreateFromFileSystemRepresentation (NULL,
+//                                                                                       (const UInt8 *)temp_file_path,
 //                                                                                       strlen(temp_file_path),
 //                                                                                       false));
-//    
+//
 //    CFCMutableArray urls;
-//    
+//
 //    // Terminal.app will open the ".command" file we have created
 //    // and run our process inside it which will wait at the entry point
 //    // for us to attach.
@@ -455,7 +456,7 @@ WaitForProcessToSIGSTOP (const lldb::pid_t pid, const int timeout_in_seconds)
 //                                                       AcceptPIDFromInferior,
 //                                                       connect_url,
 //                                                       &lldb_error);
-//    
+//
 //    ProcessSerialNumber psn;
 //    error = LSOpenURLsWithRole(urls.get(), kLSRolesShell, NULL, &app_params, &psn, 1);
 //    if (error == noErr)
@@ -466,7 +467,7 @@ WaitForProcessToSIGSTOP (const lldb::pid_t pid, const int timeout_in_seconds)
 //            if (accept_thread_result)
 //            {
 //                pid = (intptr_t)accept_thread_result;
-//            
+//
 //                // Wait for process to be stopped the the entry point by watching
 //                // for the process status to be set to SSTOP which indicates it it
 //                // SIGSTOP'ed at the entry point
@@ -521,7 +522,7 @@ LaunchInNewTerminalWithAppleScript (const char *exe_path, ProcessLaunchInfo &lau
     
     StreamString command;
     FileSpec darwin_debug_file_spec;
-    if (!Host::GetLLDBPath (ePathTypeSupportExecutableDir, darwin_debug_file_spec))
+    if (!HostInfo::GetLLDBPath(ePathTypeSupportExecutableDir, darwin_debug_file_spec))
     {
         error.SetErrorString ("can't locate the 'darwin-debug' executable");
         return error;
@@ -871,72 +872,6 @@ Host::GetEnvironment (StringList &env)
         
 }
 
-
-bool
-Host::GetOSBuildString (std::string &s)
-{
-    int mib[2] = { CTL_KERN, KERN_OSVERSION };
-    char cstr[PATH_MAX];
-    size_t cstr_len = sizeof(cstr);
-    if (::sysctl (mib, 2, cstr, &cstr_len, NULL, 0) == 0)
-    {
-        s.assign (cstr, cstr_len);
-        return true;
-    }
-    
-    s.clear();
-    return false;
-}
-
-bool
-Host::GetOSKernelDescription (std::string &s)
-{
-    int mib[2] = { CTL_KERN, KERN_VERSION };
-    char cstr[PATH_MAX];
-    size_t cstr_len = sizeof(cstr);
-    if (::sysctl (mib, 2, cstr, &cstr_len, NULL, 0) == 0)
-    {
-        s.assign (cstr, cstr_len);
-        return true;
-    }
-    s.clear();
-    return false;
-}
-
-bool
-Host::GetOSVersion 
-(
-    uint32_t &major, 
-    uint32_t &minor, 
-    uint32_t &update
-)
-{
-    static uint32_t g_major = 0;
-    static uint32_t g_minor = 0;
-    static uint32_t g_update = 0;
-
-    if (g_major == 0)
-    {
-        @autoreleasepool {
-            NSDictionary *version_info = [NSDictionary dictionaryWithContentsOfFile:
-                                          @"/System/Library/CoreServices/SystemVersion.plist"];
-            NSString *version_value = [version_info objectForKey:@"ProductVersion"];
-            const char *version_str = [version_value UTF8String];
-            if (version_str)
-                Args::StringToVersion(version_str, g_major, g_minor, g_update);
-        }
-    }
-    
-    if (g_major != 0)
-    {
-        major = g_major;
-        minor = g_minor;
-        update = g_update;
-        return true;
-    }
-    return false;
-}
-
 static bool
 GetMacOSXProcessCPUType (ProcessInstanceInfo &process_info)
 {
@@ -1061,6 +996,8 @@ GetMacOSXProcessArgs (const ProcessInstanceInfoMatch *match_info_ptr,
                         {
                             if (strncmp(cstr, "SIMULATOR_UDID=", strlen("SIMULATOR_UDID=")) == 0)
                                 process_info.GetArchitecture().GetTriple().setOS(llvm::Triple::IOS);
+                            else
+                                process_info.GetArchitecture().GetTriple().setOS(llvm::Triple::MacOSX);
                         }
 
                         proc_env.AppendArgument(cstr);
@@ -1318,7 +1255,7 @@ LaunchProcessXPC (const char *exe_path, ProcessLaunchInfo &launch_info, ::pid_t 
     const char *xpc_service  = nil;
     bool send_auth = false;
     AuthorizationExternalForm extForm;
-    if ((requested_uid == UINT32_MAX) || (requested_uid == Host::GetEffectiveUserID()))
+    if ((requested_uid == UINT32_MAX) || (requested_uid == HostInfo::GetEffectiveUserID()))
     {
         xpc_service = "com.apple.lldb.launcherXPCService";
     }
@@ -1391,7 +1328,7 @@ LaunchProcessXPC (const char *exe_path, ProcessLaunchInfo &launch_info, ::pid_t 
     // Posix spawn stuff.
     xpc_dictionary_set_int64(message, LauncherXPCServiceCPUTypeKey, launch_info.GetArchitecture().GetMachOCPUType());
     xpc_dictionary_set_int64(message, LauncherXPCServicePosixspawnFlagsKey, Host::GetPosixspawnFlags(launch_info));
-    const ProcessLaunchInfo::FileAction *file_action = launch_info.GetFileActionForFD(STDIN_FILENO);
+    const FileAction *file_action = launch_info.GetFileActionForFD(STDIN_FILENO);
     if (file_action && file_action->GetPath())
     {
         xpc_dictionary_set_string(message, LauncherXPCServiceStdInPathKeyKey, file_action->GetPath());
@@ -1455,7 +1392,7 @@ ShouldLaunchUsingXPC(ProcessLaunchInfo &launch_info)
 
 #if !NO_XPC_SERVICES    
     bool launchingAsRoot = launch_info.GetUserID() == 0;
-    bool currentUserIsRoot = Host::GetEffectiveUserID() == 0;
+    bool currentUserIsRoot = HostInfo::GetEffectiveUserID() == 0;
     
     if (launchingAsRoot && !currentUserIsRoot)
     {

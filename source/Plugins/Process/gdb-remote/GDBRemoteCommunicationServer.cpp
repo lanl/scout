@@ -31,8 +31,11 @@
 #include "lldb/Host/Debug.h"
 #include "lldb/Host/Endian.h"
 #include "lldb/Host/File.h"
+#include "lldb/Host/FileSystem.h"
 #include "lldb/Host/Host.h"
+#include "lldb/Host/HostInfo.h"
 #include "lldb/Host/TimeValue.h"
+#include "lldb/Target/FileAction.h"
 #include "lldb/Target/Platform.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/NativeRegisterContext.h"
@@ -421,6 +424,10 @@ GDBRemoteCommunicationServer::GetPacketAndSendResponse (uint32_t timeout_usec,
 
         case StringExtractorGDBRemote::eServerPacketType_QRestoreRegisterState:
             packet_result = Handle_QRestoreRegisterState (packet);
+            break;
+
+        case StringExtractorGDBRemote::eServerPacketType_vAttach:
+            packet_result = Handle_vAttach (packet);
             break;
         }
     }
@@ -1181,10 +1188,10 @@ GDBRemoteCommunicationServer::Handle_qHostInfo (StringExtractorGDBRemote &packet
 
     // $cputype:16777223;cpusubtype:3;ostype:Darwin;vendor:apple;endian:little;ptrsize:8;#00
 
-    ArchSpec host_arch (Host::GetArchitecture ());
+    ArchSpec host_arch(HostInfo::GetArchitecture());
     const llvm::Triple &host_triple = host_arch.GetTriple();
     response.PutCString("triple:");
-    response.PutCStringAsRawHex8(host_triple.getTriple().c_str());
+    response.PutCString(host_triple.getTriple().c_str());
     response.Printf (";ptrsize:%u;",host_arch.GetAddressByteSize());
 
     const char* distribution_id = host_arch.GetDistributionId ().AsCString ();
@@ -1223,7 +1230,7 @@ GDBRemoteCommunicationServer::Handle_qHostInfo (StringExtractorGDBRemote &packet
     uint32_t major = UINT32_MAX;
     uint32_t minor = UINT32_MAX;
     uint32_t update = UINT32_MAX;
-    if (Host::GetOSVersion (major, minor, update))
+    if (HostInfo::GetOSVersion(major, minor, update))
     {
         if (major != UINT32_MAX)
         {
@@ -1239,18 +1246,21 @@ GDBRemoteCommunicationServer::Handle_qHostInfo (StringExtractorGDBRemote &packet
     }
 
     std::string s;
-    if (Host::GetOSBuildString (s))
+#if !defined(__linux__)
+    if (HostInfo::GetOSBuildString(s))
     {
         response.PutCString ("os_build:");
         response.PutCStringAsRawHex8(s.c_str());
         response.PutChar(';');
     }
-    if (Host::GetOSKernelDescription (s))
+    if (HostInfo::GetOSKernelDescription(s))
     {
         response.PutCString ("os_kernel:");
         response.PutCStringAsRawHex8(s.c_str());
         response.PutChar(';');
     }
+#endif
+
 #if defined(__APPLE__)
 
 #if defined(__arm__) || defined(__arm64__) || defined(__aarch64__)
@@ -1261,7 +1271,7 @@ GDBRemoteCommunicationServer::Handle_qHostInfo (StringExtractorGDBRemote &packet
     response.PutCStringAsRawHex8("127.0.0.1");
     response.PutChar(';');
 #else   // #if defined(__arm__) || defined(__arm64__) || defined(__aarch64__)
-    if (Host::GetHostname (s))
+    if (HostInfo::GetHostname(s))
     {
         response.PutCString ("hostname:");
         response.PutCStringAsRawHex8(s.c_str());
@@ -1270,7 +1280,7 @@ GDBRemoteCommunicationServer::Handle_qHostInfo (StringExtractorGDBRemote &packet
 #endif  // #if defined(__arm__) || defined(__arm64__) || defined(__aarch64__)
 
 #else   // #if defined(__APPLE__)
-    if (Host::GetHostname (s))
+    if (HostInfo::GetHostname(s))
     {
         response.PutCString ("hostname:");
         response.PutCStringAsRawHex8(s.c_str());
@@ -1299,7 +1309,7 @@ CreateProcessInfoResponse (const ProcessInstanceInfo &proc_info, StreamString &r
     {
         const llvm::Triple &proc_triple = proc_arch.GetTriple();
         response.PutCString("triple:");
-        response.PutCStringAsRawHex8(proc_triple.getTriple().c_str());
+        response.PutCString(proc_triple.getTriple().c_str());
         response.PutChar(';');
     }
 }
@@ -1338,7 +1348,7 @@ CreateProcessInfoResponse_DebugServerStyle (const ProcessInstanceInfo &proc_info
             switch (proc_triple.getArch ())
             {
                 case llvm::Triple::arm:
-                case llvm::Triple::arm64:
+                case llvm::Triple::aarch64:
                     ostype = "ios";
                     break;
                 default:
@@ -1528,19 +1538,21 @@ GDBRemoteCommunicationServer::Handle_qsProcessInfo (StringExtractorGDBRemote &pa
 GDBRemoteCommunication::PacketResult
 GDBRemoteCommunicationServer::Handle_qUserName (StringExtractorGDBRemote &packet)
 {
+#if !defined(LLDB_DISABLE_POSIX)
     // Packet format: "qUserName:%i" where %i is the uid
     packet.SetFilePos(::strlen ("qUserName:"));
     uint32_t uid = packet.GetU32 (UINT32_MAX);
     if (uid != UINT32_MAX)
     {
         std::string name;
-        if (Host::GetUserName (uid, name))
+        if (HostInfo::LookupUserName(uid, name))
         {
             StreamString response;
             response.PutCStringAsRawHex8 (name.c_str());
             return SendPacketNoLock (response.GetData(), response.GetSize());
         }
     }
+#endif
     return SendErrorResponse (5);
 
 }
@@ -1548,19 +1560,21 @@ GDBRemoteCommunicationServer::Handle_qUserName (StringExtractorGDBRemote &packet
 GDBRemoteCommunication::PacketResult
 GDBRemoteCommunicationServer::Handle_qGroupName (StringExtractorGDBRemote &packet)
 {
+#if !defined(LLDB_DISABLE_POSIX)
     // Packet format: "qGroupName:%i" where %i is the gid
     packet.SetFilePos(::strlen ("qGroupName:"));
     uint32_t gid = packet.GetU32 (UINT32_MAX);
     if (gid != UINT32_MAX)
     {
         std::string name;
-        if (Host::GetGroupName (gid, name))
+        if (HostInfo::LookupGroupName(gid, name))
         {
             StreamString response;
             response.PutCStringAsRawHex8 (name.c_str());
             return SendPacketNoLock (response.GetData(), response.GetSize());
         }
     }
+#endif
     return SendErrorResponse (6);
 }
 
@@ -1824,14 +1838,18 @@ GDBRemoteCommunicationServer::Handle_qLaunchGDBServer (StringExtractorGDBRemote 
 #ifdef _WIN32
     return SendErrorResponse(9);
 #else
+    Log *log(GetLogIfAnyCategoriesSet(LIBLLDB_LOG_PLATFORM));
+
     // Spawn a local debugserver as a platform so we can then attach or launch
     // a process...
 
     if (m_is_platform)
     {
+        if (log)
+            log->Printf ("GDBRemoteCommunicationServer::%s() called", __FUNCTION__);
+
         // Sleep and wait a bit for debugserver to start to listen...
         ConnectionFileDescriptor file_conn;
-        Error error;
         std::string hostname;
         // TODO: /tmp/ should not be hardcoded. User might want to override /tmp
         // with the TMPDIR environment variable
@@ -1852,53 +1870,57 @@ GDBRemoteCommunicationServer::Handle_qLaunchGDBServer (StringExtractorGDBRemote 
         // Spawn a new thread to accept the port that gets bound after
         // binding to port 0 (zero).
 
+        // Spawn a debugserver and try to get the port it listens to.
+        ProcessLaunchInfo debugserver_launch_info;
+        if (hostname.empty())
+            hostname = "127.0.0.1";
+        if (log)
+            log->Printf("Launching debugserver with: %s:%u...\n", hostname.c_str(), port);
+
+        debugserver_launch_info.SetMonitorProcessCallback(ReapDebugserverProcess, this, false);
+
+        Error error = StartDebugserverProcess (hostname.empty() ? NULL : hostname.c_str(),
+                                         port,
+                                         debugserver_launch_info,
+                                         port);
+
+        lldb::pid_t debugserver_pid = debugserver_launch_info.GetProcessID();
+
+
+        if (debugserver_pid != LLDB_INVALID_PROCESS_ID)
+        {
+            Mutex::Locker locker (m_spawned_pids_mutex);
+            m_spawned_pids.insert(debugserver_pid);
+            if (port > 0)
+                AssociatePortWithProcess(port, debugserver_pid);
+        }
+        else
+        {
+            if (port > 0)
+                FreePort (port);
+        }
+
         if (error.Success())
         {
-            // Spawn a debugserver and try to get the port it listens to.
-            ProcessLaunchInfo debugserver_launch_info;
-            if (hostname.empty())
-                hostname = "127.0.0.1";
-            Log *log(GetLogIfAnyCategoriesSet(LIBLLDB_LOG_PLATFORM));
             if (log)
-                log->Printf("Launching debugserver with: %s:%u...\n", hostname.c_str(), port);
+                log->Printf ("GDBRemoteCommunicationServer::%s() debugserver launched successfully as pid %" PRIu64, __FUNCTION__, debugserver_pid);
 
-            debugserver_launch_info.SetMonitorProcessCallback(ReapDebugserverProcess, this, false);
-            
-            error = StartDebugserverProcess (hostname.empty() ? NULL : hostname.c_str(),
-                                             port,
-                                             debugserver_launch_info,
-                                             port);
+            char response[256];
+            const int response_len = ::snprintf (response, sizeof(response), "pid:%" PRIu64 ";port:%u;", debugserver_pid, port + m_port_offset);
+            assert (response_len < (int)sizeof(response));
+            PacketResult packet_result = SendPacketNoLock (response, response_len);
 
-            lldb::pid_t debugserver_pid = debugserver_launch_info.GetProcessID();
-
-
-            if (debugserver_pid != LLDB_INVALID_PROCESS_ID)
+            if (packet_result != PacketResult::Success)
             {
-                Mutex::Locker locker (m_spawned_pids_mutex);
-                m_spawned_pids.insert(debugserver_pid);
-                if (port > 0)
-                    AssociatePortWithProcess(port, debugserver_pid);
+                if (debugserver_pid != LLDB_INVALID_PROCESS_ID)
+                    ::kill (debugserver_pid, SIGINT);
             }
-            else
-            {
-                if (port > 0)
-                    FreePort (port);
-            }
-
-            if (error.Success())
-            {
-                char response[256];
-                const int response_len = ::snprintf (response, sizeof(response), "pid:%" PRIu64 ";port:%u;", debugserver_pid, port + m_port_offset);
-                assert (response_len < (int)sizeof(response));
-                PacketResult packet_result = SendPacketNoLock (response, response_len);
-
-                if (packet_result != PacketResult::Success)
-                {
-                    if (debugserver_pid != LLDB_INVALID_PROCESS_ID)
-                        ::kill (debugserver_pid, SIGINT);
-                }
-                return packet_result;
-            }
+            return packet_result;
+        }
+        else
+        {
+            if (log)
+                log->Printf ("GDBRemoteCommunicationServer::%s() debugserver launch failed: %s", __FUNCTION__, error.AsCString ());
         }
     }
     return SendErrorResponse (9);
@@ -2138,7 +2160,7 @@ GDBRemoteCommunication::PacketResult
 GDBRemoteCommunicationServer::Handle_QSetSTDIN (StringExtractorGDBRemote &packet)
 {
     packet.SetFilePos(::strlen ("QSetSTDIN:"));
-    ProcessLaunchInfo::FileAction file_action;
+    FileAction file_action;
     std::string path;
     packet.GetHexByteString(path);
     const bool read = false;
@@ -2155,7 +2177,7 @@ GDBRemoteCommunication::PacketResult
 GDBRemoteCommunicationServer::Handle_QSetSTDOUT (StringExtractorGDBRemote &packet)
 {
     packet.SetFilePos(::strlen ("QSetSTDOUT:"));
-    ProcessLaunchInfo::FileAction file_action;
+    FileAction file_action;
     std::string path;
     packet.GetHexByteString(path);
     const bool read = true;
@@ -2172,7 +2194,7 @@ GDBRemoteCommunication::PacketResult
 GDBRemoteCommunicationServer::Handle_QSetSTDERR (StringExtractorGDBRemote &packet)
 {
     packet.SetFilePos(::strlen ("QSetSTDERR:"));
-    ProcessLaunchInfo::FileAction file_action;
+    FileAction file_action;
     std::string path;
     packet.GetHexByteString(path);
     const bool read = true;
@@ -2485,7 +2507,7 @@ GDBRemoteCommunicationServer::Handle_qPlatform_mkdir (StringExtractorGDBRemote &
     {
         std::string path;
         packet.GetHexByteString(path);
-        Error error = Host::MakeDirectory(path.c_str(),mode);
+        Error error = FileSystem::MakeDirectory(path.c_str(), mode);
         if (error.Success())
             return SendPacketNoLock ("OK", 2);
         else
@@ -2504,7 +2526,7 @@ GDBRemoteCommunicationServer::Handle_qPlatform_chmod (StringExtractorGDBRemote &
     {
         std::string path;
         packet.GetHexByteString(path);
-        Error error = Host::SetFilePermissions (path.c_str(), mode);
+        Error error = FileSystem::SetFilePermissions(path.c_str(), mode);
         if (error.Success())
             return SendPacketNoLock ("OK", 2);
         else
@@ -2654,7 +2676,7 @@ GDBRemoteCommunicationServer::Handle_vFile_Size (StringExtractorGDBRemote &packe
     packet.GetHexByteString(path);
     if (!path.empty())
     {
-        lldb::user_id_t retcode = Host::GetFileSize(FileSpec(path.c_str(), false));
+        lldb::user_id_t retcode = FileSystem::GetFileSize(FileSpec(path.c_str(), false));
         StreamString response;
         response.PutChar('F');
         response.PutHex64(retcode);
@@ -2695,7 +2717,7 @@ GDBRemoteCommunicationServer::Handle_vFile_Exists (StringExtractorGDBRemote &pac
     packet.GetHexByteString(path);
     if (!path.empty())
     {
-        bool retcode = Host::GetFileExists(FileSpec(path.c_str(), false));
+        bool retcode = FileSystem::GetFileExists(FileSpec(path.c_str(), false));
         StreamString response;
         response.PutChar('F');
         response.PutChar(',');
@@ -2716,7 +2738,7 @@ GDBRemoteCommunicationServer::Handle_vFile_symlink (StringExtractorGDBRemote &pa
     packet.GetHexByteStringTerminatedBy(dst, ',');
     packet.GetChar(); // Skip ',' char
     packet.GetHexByteString(src);
-    Error error = Host::Symlink(src.c_str(), dst.c_str());
+    Error error = FileSystem::Symlink(src.c_str(), dst.c_str());
     StreamString response;
     response.Printf("F%u,%u", error.GetError(), error.GetError());
     return SendPacketNoLock(response.GetData(), response.GetSize());
@@ -2728,7 +2750,7 @@ GDBRemoteCommunicationServer::Handle_vFile_unlink (StringExtractorGDBRemote &pac
     packet.SetFilePos(::strlen("vFile:unlink:"));
     std::string path;
     packet.GetHexByteString(path);
-    Error error = Host::Unlink(path.c_str());
+    Error error = FileSystem::Unlink(path.c_str());
     StreamString response;
     response.Printf("F%u,%u", error.GetError(), error.GetError());
     return SendPacketNoLock(response.GetData(), response.GetSize());
@@ -2880,7 +2902,7 @@ GDBRemoteCommunicationServer::Handle_vFile_MD5 (StringExtractorGDBRemote &packet
     {
         uint64_t a,b;
         StreamGDBRemote response;
-        if (Host::CalculateMD5(FileSpec(path.c_str(),false),a,b) == false)
+        if (FileSystem::CalculateMD5(FileSpec(path.c_str(), false), a, b) == false)
         {
             response.PutCString("F,");
             response.PutCString("x");
@@ -4101,6 +4123,44 @@ GDBRemoteCommunicationServer::Handle_QRestoreRegisterState (StringExtractorGDBRe
     }
 
     return SendOKResponse();
+}
+
+GDBRemoteCommunicationServer::PacketResult
+GDBRemoteCommunicationServer::Handle_vAttach (StringExtractorGDBRemote &packet)
+{
+    Log *log (GetLogIfAnyCategoriesSet(LIBLLDB_LOG_PROCESS));
+
+    // We don't support if we're not llgs.
+    if (!IsGdbServer())
+        return SendUnimplementedResponse ("only supported for lldb-gdbserver");
+
+    // Consume the ';' after vAttach.
+    packet.SetFilePos (strlen ("vAttach"));
+    if (!packet.GetBytesLeft () || packet.GetChar () != ';')
+        return SendIllFormedResponse (packet, "vAttach missing expected ';'");
+
+    // Grab the PID to which we will attach (assume hex encoding).
+    lldb::pid_t pid = packet.GetU32 (LLDB_INVALID_PROCESS_ID, 16);
+    if (pid == LLDB_INVALID_PROCESS_ID)
+        return SendIllFormedResponse (packet, "vAttach failed to parse the process id");
+
+    // Attempt to attach.
+    if (log)
+        log->Printf ("GDBRemoteCommunicationServer::%s attempting to attach to pid %" PRIu64, __FUNCTION__, pid);
+
+    Error error = AttachToProcess (pid);
+
+    if (error.Fail ())
+    {
+        if (log)
+            log->Printf ("GDBRemoteCommunicationServer::%s failed to attach to pid %" PRIu64 ": %s\n", __FUNCTION__, pid, error.AsCString());
+        return SendErrorResponse (0x01);
+    }
+
+    // Notify we attached by sending a stop packet.
+    return SendStopReasonForState (m_debugged_process_sp->GetState (), true);
+
+    return PacketResult::Success;
 }
 
 void

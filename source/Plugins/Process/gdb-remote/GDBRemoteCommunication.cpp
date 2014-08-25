@@ -22,14 +22,21 @@
 #include "lldb/Core/StreamFile.h"
 #include "lldb/Core/StreamString.h"
 #include "lldb/Host/FileSpec.h"
+#include "lldb/Host/FileSystem.h"
 #include "lldb/Host/Host.h"
+#include "lldb/Host/HostInfo.h"
+#include "lldb/Host/Socket.h"
 #include "lldb/Host/TimeValue.h"
 #include "lldb/Target/Process.h"
 
 // Project includes
 #include "ProcessGDBRemoteLog.h"
 
-#define DEBUGSERVER_BASENAME    "debugserver"
+#if defined(__APPLE__)
+# define DEBUGSERVER_BASENAME    "debugserver"
+#else
+# define DEBUGSERVER_BASENAME    "lldb-gdbserver"
+#endif
 
 using namespace lldb;
 using namespace lldb_private;
@@ -650,6 +657,10 @@ GDBRemoteCommunication::StartDebugserverProcess (const char *hostname,
                                                  lldb_private::ProcessLaunchInfo &launch_info,
                                                  uint16_t &out_port)
 {
+    Log *log (ProcessGDBRemoteLog::GetLogIfAllCategoriesSet (GDBR_LOG_PROCESS));
+    if (log)
+        log->Printf ("GDBRemoteCommunication::%s(hostname=%s, in_port=%" PRIu16 ", out_port=%" PRIu16, __FUNCTION__, hostname ? hostname : "<empty>", in_port, out_port);
+
     out_port = in_port;
     Error error;
     // If we locate debugserver, keep that located version around
@@ -662,24 +673,34 @@ GDBRemoteCommunication::StartDebugserverProcess (const char *hostname,
     // to the debugserver to use and use it if we do.
     const char *env_debugserver_path = getenv("LLDB_DEBUGSERVER_PATH");
     if (env_debugserver_path)
+    {
         debugserver_file_spec.SetFile (env_debugserver_path, false);
+        if (log)
+            log->Printf ("GDBRemoteCommunication::%s() gdb-remote stub exe path set from environment variable: %s", __FUNCTION__, env_debugserver_path);
+    }
     else
         debugserver_file_spec = g_debugserver_file_spec;
     bool debugserver_exists = debugserver_file_spec.Exists();
     if (!debugserver_exists)
     {
         // The debugserver binary is in the LLDB.framework/Resources
-        // directory. 
-        if (Host::GetLLDBPath (ePathTypeSupportExecutableDir, debugserver_file_spec))
+        // directory.
+        if (HostInfo::GetLLDBPath(ePathTypeSupportExecutableDir, debugserver_file_spec))
         {
-            debugserver_file_spec.GetFilename().SetCString(DEBUGSERVER_BASENAME);
+            debugserver_file_spec.AppendPathComponent (DEBUGSERVER_BASENAME);
             debugserver_exists = debugserver_file_spec.Exists();
             if (debugserver_exists)
             {
+                if (log)
+                    log->Printf ("GDBRemoteCommunication::%s() found gdb-remote stub exe '%s'", __FUNCTION__, debugserver_file_spec.GetPath ().c_str ());
+
                 g_debugserver_file_spec = debugserver_file_spec;
             }
             else
             {
+                if (log)
+                    log->Printf ("GDBRemoteCommunication::%s() could not find gdb-remote stub exe '%s'", __FUNCTION__, debugserver_file_spec.GetPath ().c_str ());
+
                 g_debugserver_file_spec.Clear();
                 debugserver_file_spec.Clear();
             }
@@ -730,9 +751,9 @@ GDBRemoteCommunication::StartDebugserverProcess (const char *hostname,
                 // Binding to port zero, we need to figure out what port it ends up
                 // using using a named pipe...
                 FileSpec tmpdir_file_spec;
-                if (Host::GetLLDBPath (ePathTypeLLDBTempSystemDir, tmpdir_file_spec))
+                if (HostInfo::GetLLDBPath(ePathTypeLLDBTempSystemDir, tmpdir_file_spec))
                 {
-                    tmpdir_file_spec.GetFilename().SetCString("debugserver-named-pipe.XXXXXX");
+                    tmpdir_file_spec.AppendPathComponent("debugserver-named-pipe.XXXXXX");
                     strncpy(named_pipe_path, tmpdir_file_spec.GetPath().c_str(), sizeof(named_pipe_path));
                 }
                 else
@@ -768,7 +789,7 @@ GDBRemoteCommunication::StartDebugserverProcess (const char *hostname,
 
             ConnectionFileDescriptor *connection = (ConnectionFileDescriptor *)GetConnection ();
             // Wait for 10 seconds to resolve the bound port
-            out_port = connection->GetBoundPort(10);
+            out_port = connection->GetListeningPort(10);
             if (out_port > 0)
             {
                 char port_cstr[32];
@@ -784,7 +805,6 @@ GDBRemoteCommunication::StartDebugserverProcess (const char *hostname,
                 return error;
             }
         }
-
         
         const char *env_debugserver_log_file = getenv("LLDB_DEBUGSERVER_LOG_FILE");
         if (env_debugserver_log_file)
@@ -825,7 +845,7 @@ GDBRemoteCommunication::StartDebugserverProcess (const char *hostname,
                     out_port = Args::StringToUInt32(port_cstr, 0);
                     name_pipe_file.Close();
                 }
-                Host::Unlink(named_pipe_path);
+                FileSystem::Unlink(named_pipe_path);
             }
             else if (listen)
             {

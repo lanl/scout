@@ -150,7 +150,6 @@ bool CMICmnStreamStdinLinux::Shutdown( void )
 //--
 bool CMICmnStreamStdinLinux::InputAvailable( bool & vwbAvail )
 {
-#ifndef _MSC_VER
 /* AD: Not used ATM but could come in handy just in case we need to do
        this, poll for input
 
@@ -174,7 +173,6 @@ bool CMICmnStreamStdinLinux::InputAvailable( bool & vwbAvail )
 
 	return MIstatus::success;
 */
-#endif // ifndef _MSC_VER
 
 	return MIstatus::success;
 }
@@ -211,3 +209,4 @@ const MIchar * CMICmnStreamStdinLinux::ReadLine( CMIUtilString & vwErrMsg )
 
 	return pText;
 }
+

@@ -79,6 +79,16 @@ using namespace lldb_private;
 using namespace llvm;
 using namespace clang;
 
+typedef llvm::DenseMap<clang::ASTContext *, ClangASTContext*> ClangASTMap;
+
+static ClangASTMap &
+GetASTMap()
+{
+    static ClangASTMap g_map;
+    return g_map;
+}
+
+
 clang::AccessSpecifier
 ClangASTContext::ConvertAccessTypeToAccessSpecifier (AccessType access)
 {
@@ -291,6 +301,11 @@ ClangASTContext::ClangASTContext (const char *target_triple) :
 //----------------------------------------------------------------------
 ClangASTContext::~ClangASTContext()
 {
+    if (m_ast_ap.get())
+    {
+        GetASTMap().erase(m_ast_ap.get());
+    }
+
     m_builtins_ap.reset();
     m_selector_table_ap.reset();
     m_identifier_table_ap.reset();
@@ -393,8 +408,17 @@ ClangASTContext::getASTContext()
         }
         
         m_ast_ap->getDiagnostics().setClient(getDiagnosticConsumer(), false);
+        
+        GetASTMap().insert(std::make_pair(m_ast_ap.get(), this));
     }
     return m_ast_ap.get();
+}
+
+ClangASTContext*
+ClangASTContext::GetASTContext (clang::ASTContext* ast)
+{
+    ClangASTContext *clang_ast = GetASTMap().lookup(ast);
+    return clang_ast;
 }
 
 Builtin::Context *
@@ -1754,12 +1778,10 @@ ClangASTContext::CreateFunctionType (ASTContext *ast,
     // TODO: Detect calling convention in DWARF?
     FunctionProtoType::ExtProtoInfo proto_info;
     proto_info.Variadic = is_variadic;
-    proto_info.ExceptionSpecType = EST_None;
+    proto_info.ExceptionSpec = EST_None;
     proto_info.TypeQuals = type_quals;
     proto_info.RefQualifier = RQ_None;
-    proto_info.NumExceptions = 0;
-    proto_info.Exceptions = nullptr;
-    
+
     return ClangASTType (ast, ast->getFunctionType (result_type.GetQualType(),
                                                     qual_type_args,
                                                     proto_info).getAsOpaquePtr());
@@ -1912,6 +1934,63 @@ ClangASTContext::CreateEnumerationType
 //  return false;
 //}
 
+ClangASTType
+ClangASTContext::GetIntTypeFromBitSize (clang::ASTContext *ast,
+                                        size_t bit_size, bool is_signed)
+{
+    if (ast)
+    {
+        if (is_signed)
+        {
+            if (bit_size == ast->getTypeSize(ast->SignedCharTy))
+                return ClangASTType(ast, ast->SignedCharTy.getAsOpaquePtr());
+            
+            if (bit_size == ast->getTypeSize(ast->ShortTy))
+                return ClangASTType(ast, ast->ShortTy.getAsOpaquePtr());
+            
+            if (bit_size == ast->getTypeSize(ast->IntTy))
+                return ClangASTType(ast, ast->IntTy.getAsOpaquePtr());
+            
+            if (bit_size == ast->getTypeSize(ast->LongTy))
+                return ClangASTType(ast, ast->LongTy.getAsOpaquePtr());
+            
+            if (bit_size == ast->getTypeSize(ast->LongLongTy))
+                return ClangASTType(ast, ast->LongLongTy.getAsOpaquePtr());
+            
+            if (bit_size == ast->getTypeSize(ast->Int128Ty))
+                return ClangASTType(ast, ast->Int128Ty.getAsOpaquePtr());
+        }
+        else
+        {
+            if (bit_size == ast->getTypeSize(ast->UnsignedCharTy))
+                return ClangASTType(ast, ast->UnsignedCharTy.getAsOpaquePtr());
+            
+            if (bit_size == ast->getTypeSize(ast->UnsignedShortTy))
+                return ClangASTType(ast, ast->UnsignedShortTy.getAsOpaquePtr());
+            
+            if (bit_size == ast->getTypeSize(ast->UnsignedIntTy))
+                return ClangASTType(ast, ast->UnsignedIntTy.getAsOpaquePtr());
+            
+            if (bit_size == ast->getTypeSize(ast->UnsignedLongTy))
+                return ClangASTType(ast, ast->UnsignedLongTy.getAsOpaquePtr());
+            
+            if (bit_size == ast->getTypeSize(ast->UnsignedLongLongTy))
+                return ClangASTType(ast, ast->UnsignedLongLongTy.getAsOpaquePtr());
+            
+            if (bit_size == ast->getTypeSize(ast->UnsignedInt128Ty))
+                return ClangASTType(ast, ast->UnsignedInt128Ty.getAsOpaquePtr());
+        }
+    }
+    return ClangASTType();
+}
+
+ClangASTType
+ClangASTContext::GetPointerSizedIntType (clang::ASTContext *ast, bool is_signed)
+{
+    if (ast)
+        return GetIntTypeFromBitSize(ast, ast->getTypeSize(ast->VoidPtrTy), is_signed);
+    return ClangASTType();
+}
 
 ClangASTType
 ClangASTContext::GetFloatTypeFromBitSize (clang::ASTContext *ast,
