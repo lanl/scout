@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef INSTCOMBINE_INSTCOMBINE_H
-#define INSTCOMBINE_INSTCOMBINE_H
+#ifndef LLVM_LIB_TRANSFORMS_INSTCOMBINE_INSTCOMBINE_H
+#define LLVM_LIB_TRANSFORMS_INSTCOMBINE_INSTCOMBINE_H
 
 #include "InstCombineWorklist.h"
 #include "llvm/Analysis/TargetFolder.h"
@@ -152,6 +152,8 @@ public:
   Value *FoldOrOfFCmps(FCmpInst *LHS, FCmpInst *RHS);
   Instruction *FoldOrWithConstants(BinaryOperator &I, Value *Op, Value *A,
                                    Value *B, Value *C);
+  Instruction *FoldXorWithConstants(BinaryOperator &I, Value *Op, Value *A,
+                                    Value *B, Value *C);
   Instruction *visitOr(BinaryOperator &I);
   Instruction *visitXor(BinaryOperator &I);
   Instruction *visitShl(BinaryOperator &I);
@@ -172,6 +174,8 @@ public:
                               ConstantInt *DivRHS);
   Instruction *FoldICmpShrCst(ICmpInst &ICI, BinaryOperator *DivI,
                               ConstantInt *DivRHS);
+  Instruction *FoldICmpCstShrCst(ICmpInst &I, Value *Op, Value *A,
+                                 ConstantInt *CI1, ConstantInt *CI2);
   Instruction *FoldICmpAddOpCst(Instruction &ICI, Value *X, ConstantInt *CI,
                                 ICmpInst::Predicate Pred);
   Instruction *FoldGEPICmp(GEPOperator *GEPLHS, Value *RHS,
@@ -248,6 +252,8 @@ private:
   Instruction *transformSExtICmp(ICmpInst *ICI, Instruction &CI);
   bool WillNotOverflowSignedAdd(Value *LHS, Value *RHS);
   bool WillNotOverflowUnsignedAdd(Value *LHS, Value *RHS);
+  bool WillNotOverflowSignedSub(Value *LHS, Value *RHS);
+  bool WillNotOverflowUnsignedSub(Value *LHS, Value *RHS);
   Value *EmitGEPOffset(User *GEP);
   Instruction *scalarizePHI(ExtractElementInst &EI, PHINode *PN);
   Value *EvaluateInDifferentElementOrder(Value *V, ArrayRef<int> Mask);

@@ -132,6 +132,7 @@ public:
   bool isScoutCompositeType() const;
   // +=====================================
 
+  bool isSubroutineType() const;
   bool isBasicType() const;
   bool isVariable() const;
   bool isSubprogram() const;
@@ -145,7 +146,6 @@ public:
   bool isSubrange() const;
   bool isEnumerator() const;
   bool isType() const;
-  bool isUnspecifiedParameter() const;
   bool isTemplateTypeParameter() const;
   bool isTemplateValueParameter() const;
   bool isObjCProperty() const;
@@ -171,16 +171,19 @@ public:
   bool Verify() const;
 };
 
-/// DIArray - This descriptor holds an array of descriptors.
-class DIArray : public DIDescriptor {
+/// DITypedArray - This descriptor holds an array of nodes with type T.
+template <typename T> class DITypedArray : public DIDescriptor {
 public:
-  explicit DIArray(const MDNode *N = nullptr) : DIDescriptor(N) {}
-
-  unsigned getNumElements() const;
-  DIDescriptor getElement(unsigned Idx) const {
-    return getDescriptorField(Idx);
+  explicit DITypedArray(const MDNode *N = nullptr) : DIDescriptor(N) {}
+  unsigned getNumElements() const {
+    return DbgNode ? DbgNode->getNumOperands() : 0;
+  }
+  T getElement(unsigned Idx) const {
+    return getFieldAs<T>(Idx);
   }
 };
+
+typedef DITypedArray<DIDescriptor> DIArray;
 
 /// DIEnumerator - A wrapper for an enumerator (e.g. X and Y in 'enum {X,Y}').
 /// FIXME: it seems strange that this doesn't have either a reference to the
@@ -200,6 +203,7 @@ public:
 template <typename T> class DIRef;
 typedef DIRef<DIScope> DIScopeRef;
 typedef DIRef<DIType> DITypeRef;
+typedef DITypedArray<DITypeRef> DITypeArray;
 
 /// DIScope - A base class for various scopes.
 ///
@@ -398,12 +402,22 @@ public:
 class DICompositeType : public DIDerivedType {
   friend class DIDescriptor;
   void printInternal(raw_ostream &OS) const;
+  void setArraysHelper(MDNode *Elements, MDNode *TParams);
 
 public:
   explicit DICompositeType(const MDNode *N = nullptr) : DIDerivedType(N) {}
 
-  DIArray getTypeArray() const { return getFieldAs<DIArray>(10); }
-  void setTypeArray(DIArray Elements, DIArray TParams = DIArray());
+  DIArray getElements() const {
+    assert(!isSubroutineType() && "no elements for DISubroutineType");
+    return getFieldAs<DIArray>(10);
+  }
+  template <typename T>
+  void setArrays(DITypedArray<T> Elements, DIArray TParams = DIArray()) {
+    assert((!TParams || DbgNode->getNumOperands() == 15) &&
+           "If you're setting the template parameters this should include a slot "
+           "for that!");
+    setArraysHelper(Elements, TParams);
+  }
   unsigned getRunTimeLang() const { return getUnsignedField(11); }
   DITypeRef getContainingType() const { return getFieldAs<DITypeRef>(12); }
   void setContainingType(DICompositeType ContainingType);
@@ -412,6 +426,14 @@ public:
 
   /// Verify - Verify that a composite type descriptor is well formed.
   bool Verify() const;
+};
+
+class DISubroutineType : public DICompositeType {
+public:
+  explicit DISubroutineType(const MDNode *N = nullptr) : DICompositeType(N) {}
+  DITypedArray<DITypeRef> getTypeArray() const {
+    return getFieldAs<DITypedArray<DITypeRef>>(10);
+  }
 };
 
 /// DIFile - This is a wrapper for a file.
@@ -467,7 +489,7 @@ public:
   StringRef getDisplayName() const { return getStringField(4); }
   StringRef getLinkageName() const { return getStringField(5); }
   unsigned getLineNumber() const { return getUnsignedField(6); }
-  DICompositeType getType() const { return getFieldAs<DICompositeType>(7); }
+  DISubroutineType getType() const { return getFieldAs<DISubroutineType>(7); }
 
   /// isLocalToUnit - Return true if this subprogram is local to the current
   /// compile unit, like 'static' in C.
@@ -543,7 +565,6 @@ public:
   DIScope getContext() const { return getFieldAs<DIScope>(2); }
   unsigned getLineNumber() const { return getUnsignedField(3); }
   unsigned getColumnNumber() const { return getUnsignedField(4); }
-  unsigned getDiscriminator() const { return getUnsignedField(5); }
   bool Verify() const;
 };
 
@@ -560,6 +581,7 @@ public:
   unsigned getLineNumber() const { return getScope().getLineNumber(); }
   unsigned getColumnNumber() const { return getScope().getColumnNumber(); }
   DILexicalBlock getScope() const { return getFieldAs<DILexicalBlock>(2); }
+  unsigned getDiscriminator() const { return getUnsignedField(3); }
   bool Verify() const;
 };
 
@@ -573,14 +595,6 @@ public:
   DIScope getContext() const { return getFieldAs<DIScope>(2); }
   StringRef getName() const { return getStringField(3); }
   unsigned getLineNumber() const { return getUnsignedField(4); }
-  bool Verify() const;
-};
-
-/// DIUnspecifiedParameter - This is a wrapper for unspecified parameters.
-class DIUnspecifiedParameter : public DIDescriptor {
-public:
-  explicit DIUnspecifiedParameter(const MDNode *N = nullptr)
-    : DIDescriptor(N) {}
   bool Verify() const;
 };
 
@@ -716,6 +730,17 @@ public:
   /// information for an inlined function arguments.
   bool isInlinedFnArgument(const Function *CurFn);
 
+  /// isVariablePiece - Return whether this is a piece of an aggregate
+  /// variable.
+  bool isVariablePiece() const;
+  /// getPieceOffset - Return the offset of this piece in bytes.
+  uint64_t getPieceOffset() const;
+  /// getPieceSize - Return the size of this piece in bytes.
+  uint64_t getPieceSize() const;
+
+  /// Return the size reported by the variable's type.
+  unsigned getSizeInBits(const DITypeIdentifierMap &Map);
+
   void printExtendedName(raw_ostream &OS) const;
 };
 
@@ -747,12 +772,12 @@ public:
     // Since discriminators are associated with lexical blocks, make
     // sure this location is a lexical block before retrieving its
     // value.
-    return getScope().isLexicalBlock()
-               ? getFieldAs<DILexicalBlock>(2).getDiscriminator()
+    return getScope().isLexicalBlockFile()
+               ? getFieldAs<DILexicalBlockFile>(2).getDiscriminator()
                : 0;
   }
   unsigned computeNewDiscriminator(LLVMContext &Ctx);
-  DILocation copyWithNewScope(LLVMContext &Ctx, DILexicalBlock NewScope);
+  DILocation copyWithNewScope(LLVMContext &Ctx, DILexicalBlockFile NewScope);
 };
 
 class DIObjCProperty : public DIDescriptor {
@@ -832,6 +857,9 @@ DIVariable createInlinedVariable(MDNode *DV, MDNode *InlinedScope,
 
 /// cleanseInlinedVariable - Remove inlined scope from the variable.
 DIVariable cleanseInlinedVariable(MDNode *DV, LLVMContext &VMContext);
+
+/// getEntireVariable - Remove OpPiece exprs from the variable.
+DIVariable getEntireVariable(DIVariable DV);
 
 /// Construct DITypeIdentifierMap by going through retained types of each CU.
 DITypeIdentifierMap generateDITypeIdentifierMap(const NamedMDNode *CU_Nodes);

@@ -14,6 +14,7 @@
 
 #include "llvm/Object/MachO.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Support/DataExtractor.h"
 #include "llvm/Support/Format.h"
@@ -221,10 +222,9 @@ static uint32_t getSectionFlags(const MachOObjectFile *O,
   return Sect.flags;
 }
 
-MachOObjectFile::MachOObjectFile(std::unique_ptr<MemoryBuffer> Object,
-                                 bool IsLittleEndian, bool Is64bits,
-                                 std::error_code &EC)
-    : ObjectFile(getMachOType(IsLittleEndian, Is64bits), std::move(Object)),
+MachOObjectFile::MachOObjectFile(MemoryBufferRef Object, bool IsLittleEndian,
+                                 bool Is64bits, std::error_code &EC)
+    : ObjectFile(getMachOType(IsLittleEndian, Is64bits), Object),
       SymtabLoadCmd(nullptr), DysymtabLoadCmd(nullptr),
       DataInCodeLoadCmd(nullptr) {
   uint32_t LoadCommandCount = this->getHeader().ncmds;
@@ -437,6 +437,9 @@ uint32_t MachOObjectFile::getSymbolFlags(DataRefImpl DRI) const {
 
   if (MachOFlags & (MachO::N_WEAK_REF | MachO::N_WEAK_DEF))
     Result |= SymbolRef::SF_Weak;
+
+  if (MachOFlags & (MachO::N_ARM_THUMB_DEF))
+    Result |= SymbolRef::SF_Thumb;
 
   if ((MachOType & MachO::N_TYPE) == MachO::N_ABS)
     Result |= SymbolRef::SF_Absolute;
@@ -755,7 +758,6 @@ MachOObjectFile::getRelocationTypeName(DataRefImpl Rel,
         res = Table[RType];
       break;
     }
-    case Triple::arm64:
     case Triple::aarch64: {
       static const char *const Table[] = {
         "ARM64_RELOC_UNSIGNED",           "ARM64_RELOC_SUBTRACTOR",
@@ -1009,16 +1011,6 @@ std::error_code MachOObjectFile::getRelocationHidden(DataRefImpl Rel,
   return object_error::success;
 }
 
-std::error_code MachOObjectFile::getLibraryNext(DataRefImpl LibData,
-                                                LibraryRef &Res) const {
-  report_fatal_error("Needed libraries unimplemented in MachOObjectFile");
-}
-
-std::error_code MachOObjectFile::getLibraryPath(DataRefImpl LibData,
-                                                StringRef &Res) const {
-  report_fatal_error("Needed libraries unimplemented in MachOObjectFile");
-}
-
 //
 // guessLibraryShortName() is passed a name of a dynamic library and returns a
 // guess on what the short name is.  Then name is returned as a substring of the
@@ -1246,16 +1238,6 @@ section_iterator MachOObjectFile::section_end() const {
   return section_iterator(SectionRef(DRI, this));
 }
 
-library_iterator MachOObjectFile::needed_library_begin() const {
-  // TODO: implement
-  report_fatal_error("Needed libraries unimplemented in MachOObjectFile");
-}
-
-library_iterator MachOObjectFile::needed_library_end() const {
-  // TODO: implement
-  report_fatal_error("Needed libraries unimplemented in MachOObjectFile");
-}
-
 uint8_t MachOObjectFile::getBytesInAddress() const {
   return is64Bit() ? 8 : 4;
 }
@@ -1303,7 +1285,7 @@ Triple::ArchType MachOObjectFile::getArch(uint32_t CPUType) {
   case llvm::MachO::CPU_TYPE_ARM:
     return Triple::arm;
   case llvm::MachO::CPU_TYPE_ARM64:
-    return Triple::arm64;
+    return Triple::aarch64;
   case llvm::MachO::CPU_TYPE_POWERPC:
     return Triple::ppc;
   case llvm::MachO::CPU_TYPE_POWERPC64:
@@ -1313,7 +1295,11 @@ Triple::ArchType MachOObjectFile::getArch(uint32_t CPUType) {
   }
 }
 
-Triple MachOObjectFile::getArch(uint32_t CPUType, uint32_t CPUSubType) {
+Triple MachOObjectFile::getArch(uint32_t CPUType, uint32_t CPUSubType,
+                                const char **McpuDefault) {
+  if (McpuDefault)
+    *McpuDefault = nullptr;
+
   switch (CPUType) {
   case MachO::CPU_TYPE_I386:
     switch (CPUSubType & ~MachO::CPU_SUBTYPE_MASK) {
@@ -1337,15 +1323,25 @@ Triple MachOObjectFile::getArch(uint32_t CPUType, uint32_t CPUSubType) {
       return Triple("armv4t-apple-darwin");
     case MachO::CPU_SUBTYPE_ARM_V5TEJ:
       return Triple("armv5e-apple-darwin");
+    case MachO::CPU_SUBTYPE_ARM_XSCALE:
+      return Triple("xscale-apple-darwin");
     case MachO::CPU_SUBTYPE_ARM_V6:
       return Triple("armv6-apple-darwin");
     case MachO::CPU_SUBTYPE_ARM_V6M:
+      if (McpuDefault)
+        *McpuDefault = "cortex-m0";
       return Triple("armv6m-apple-darwin");
+    case MachO::CPU_SUBTYPE_ARM_V7:
+      return Triple("armv7-apple-darwin");
     case MachO::CPU_SUBTYPE_ARM_V7EM:
+      if (McpuDefault)
+        *McpuDefault = "cortex-m4";
       return Triple("armv7em-apple-darwin");
     case MachO::CPU_SUBTYPE_ARM_V7K:
       return Triple("armv7k-apple-darwin");
     case MachO::CPU_SUBTYPE_ARM_V7M:
+      if (McpuDefault)
+        *McpuDefault = "cortex-m3";
       return Triple("armv7m-apple-darwin");
     case MachO::CPU_SUBTYPE_ARM_V7S:
       return Triple("armv7s-apple-darwin");
@@ -1378,50 +1374,102 @@ Triple MachOObjectFile::getArch(uint32_t CPUType, uint32_t CPUSubType) {
   }
 }
 
+Triple MachOObjectFile::getThumbArch(uint32_t CPUType, uint32_t CPUSubType,
+                                     const char **McpuDefault) {
+  if (McpuDefault)
+    *McpuDefault = nullptr;
+
+  switch (CPUType) {
+  case MachO::CPU_TYPE_ARM:
+    switch (CPUSubType & ~MachO::CPU_SUBTYPE_MASK) {
+    case MachO::CPU_SUBTYPE_ARM_V4T:
+      return Triple("thumbv4t-apple-darwin");
+    case MachO::CPU_SUBTYPE_ARM_V5TEJ:
+      return Triple("thumbv5e-apple-darwin");
+    case MachO::CPU_SUBTYPE_ARM_XSCALE:
+      return Triple("xscale-apple-darwin");
+    case MachO::CPU_SUBTYPE_ARM_V6:
+      return Triple("thumbv6-apple-darwin");
+    case MachO::CPU_SUBTYPE_ARM_V6M:
+      if (McpuDefault)
+        *McpuDefault = "cortex-m0";
+      return Triple("thumbv6m-apple-darwin");
+    case MachO::CPU_SUBTYPE_ARM_V7:
+      return Triple("thumbv7-apple-darwin");
+    case MachO::CPU_SUBTYPE_ARM_V7EM:
+      if (McpuDefault)
+        *McpuDefault = "cortex-m4";
+      return Triple("thumbv7em-apple-darwin");
+    case MachO::CPU_SUBTYPE_ARM_V7K:
+      return Triple("thumbv7k-apple-darwin");
+    case MachO::CPU_SUBTYPE_ARM_V7M:
+      if (McpuDefault)
+        *McpuDefault = "cortex-m3";
+      return Triple("thumbv7m-apple-darwin");
+    case MachO::CPU_SUBTYPE_ARM_V7S:
+      return Triple("thumbv7s-apple-darwin");
+    default:
+      return Triple();
+    }
+  default:
+    return Triple();
+  }
+}
+
+Triple MachOObjectFile::getArch(uint32_t CPUType, uint32_t CPUSubType,
+                                const char **McpuDefault,
+				Triple *ThumbTriple) {
+  Triple T = MachOObjectFile::getArch(CPUType, CPUSubType, McpuDefault);
+  *ThumbTriple = MachOObjectFile::getThumbArch(CPUType, CPUSubType,
+                                               McpuDefault);
+  return T;
+}
+
 Triple MachOObjectFile::getHostArch() {
   return Triple(sys::getDefaultTargetTriple());
 }
 
-Triple MachOObjectFile::getArch(StringRef ArchFlag) {
-  if (ArchFlag == "i386")
-    return Triple("i386-apple-darwin");
-  else if (ArchFlag == "x86_64")
-    return Triple("x86_64-apple-darwin");
-  else if (ArchFlag == "x86_64h")
-    return Triple("x86_64h-apple-darwin");
-  else if (ArchFlag == "armv4t" || ArchFlag == "arm")
-    return Triple("armv4t-apple-darwin");
-  else if (ArchFlag == "armv5e")
-    return Triple("armv5e-apple-darwin");
-  else if (ArchFlag == "armv6")
-    return Triple("armv6-apple-darwin");
-  else if (ArchFlag == "armv6m")
-    return Triple("armv6m-apple-darwin");
-  else if (ArchFlag == "armv7em")
-    return Triple("armv7em-apple-darwin");
-  else if (ArchFlag == "armv7k")
-    return Triple("armv7k-apple-darwin");
-  else if (ArchFlag == "armv7k")
-    return Triple("armv7m-apple-darwin");
-  else if (ArchFlag == "armv7s")
-    return Triple("armv7s-apple-darwin");
-  else if (ArchFlag == "arm64")
-    return Triple("arm64-apple-darwin");
-  else if (ArchFlag == "ppc")
-    return Triple("ppc-apple-darwin");
-  else if (ArchFlag == "ppc64")
-    return Triple("ppc64-apple-darwin");
-  else
-    return Triple();
+bool MachOObjectFile::isValidArch(StringRef ArchFlag) {
+  return StringSwitch<bool>(ArchFlag)
+      .Case("i386", true)
+      .Case("x86_64", true)
+      .Case("x86_64h", true)
+      .Case("armv4t", true)
+      .Case("arm", true)
+      .Case("armv5e", true)
+      .Case("armv6", true)
+      .Case("armv6m", true)
+      .Case("armv7em", true)
+      .Case("armv7k", true)
+      .Case("armv7m", true)
+      .Case("armv7s", true)
+      .Case("arm64", true)
+      .Case("ppc", true)
+      .Case("ppc64", true)
+      .Default(false);
 }
 
 unsigned MachOObjectFile::getArch() const {
   return getArch(getCPUType(this));
 }
 
-StringRef MachOObjectFile::getLoadName() const {
-  // TODO: Implement
-  report_fatal_error("get_load_name() unimplemented in MachOObjectFile");
+Triple MachOObjectFile::getArch(const char **McpuDefault,
+                                Triple *ThumbTriple) const {
+  Triple T;
+  if (is64Bit()) {
+    MachO::mach_header_64 H_64;
+    H_64 = getHeader64();
+    T = MachOObjectFile::getArch(H_64.cputype, H_64.cpusubtype, McpuDefault);
+    *ThumbTriple = MachOObjectFile::getThumbArch(H_64.cputype, H_64.cpusubtype,
+                                                 McpuDefault);
+  } else {
+    MachO::mach_header H;
+    H = getHeader();
+    T = MachOObjectFile::getArch(H.cputype, H.cpusubtype, McpuDefault);
+    *ThumbTriple = MachOObjectFile::getThumbArch(H.cputype, H.cpusubtype,
+                                                 McpuDefault);
+  }
+  return T;
 }
 
 relocation_iterator MachOObjectFile::section_rel_begin(unsigned Index) const {
@@ -1722,24 +1770,28 @@ void MachOObjectFile::ReadULEB128s(uint64_t Index,
   }
 }
 
-ErrorOr<ObjectFile *>
-ObjectFile::createMachOObjectFile(std::unique_ptr<MemoryBuffer> &Buffer) {
-  StringRef Magic = Buffer->getBuffer().slice(0, 4);
+bool MachOObjectFile::isRelocatableObject() const {
+  return getHeader().filetype == MachO::MH_OBJECT;
+}
+
+ErrorOr<std::unique_ptr<MachOObjectFile>>
+ObjectFile::createMachOObjectFile(MemoryBufferRef Buffer) {
+  StringRef Magic = Buffer.getBuffer().slice(0, 4);
   std::error_code EC;
   std::unique_ptr<MachOObjectFile> Ret;
   if (Magic == "\xFE\xED\xFA\xCE")
-    Ret.reset(new MachOObjectFile(std::move(Buffer), false, false, EC));
+    Ret.reset(new MachOObjectFile(Buffer, false, false, EC));
   else if (Magic == "\xCE\xFA\xED\xFE")
-    Ret.reset(new MachOObjectFile(std::move(Buffer), true, false, EC));
+    Ret.reset(new MachOObjectFile(Buffer, true, false, EC));
   else if (Magic == "\xFE\xED\xFA\xCF")
-    Ret.reset(new MachOObjectFile(std::move(Buffer), false, true, EC));
+    Ret.reset(new MachOObjectFile(Buffer, false, true, EC));
   else if (Magic == "\xCF\xFA\xED\xFE")
-    Ret.reset(new MachOObjectFile(std::move(Buffer), true, true, EC));
+    Ret.reset(new MachOObjectFile(Buffer, true, true, EC));
   else
     return object_error::parse_failed;
 
   if (EC)
     return EC;
-  return Ret.release();
+  return std::move(Ret);
 }
 

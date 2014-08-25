@@ -213,6 +213,7 @@ Compile unit descriptors
     metadata   ;; List of global variables
     metadata   ;; List of imported entities
     metadata   ;; Split debug filename
+    i32        ;; Debug info emission kind (1 = Full Debug Info, 2 = Line Tables Only)
   }
 
 These descriptors contain a source language ID for the file (we use the DWARF
@@ -319,7 +320,6 @@ Block descriptors
     metadata, ;; Reference to context descriptor
     i32,      ;; Line number
     i32,      ;; Column number
-    i32,      ;; DWARF path discriminator value
     i32       ;; Unique ID to identify blocks from a template function
   }
 
@@ -333,6 +333,7 @@ lexical blocks at same depth.
     i32,      ;; Tag = 11 (DW_TAG_lexical_block)
     metadata, ;; Source directory (including trailing slash) & file pair
     metadata  ;; Reference to the scope we're annotating with a file change
+    i32,      ;; DWARF path discriminator value
   }
 
 This descriptor provides a wrapper around a lexical scope to handle file
@@ -589,6 +590,12 @@ The context is either the subprogram or block where the variable is defined.
 Name the source variable name.  Context and line indicate where the variable
 was defined.  Type descriptor defines the declared type of the variable.
 
+The ``OpPiece`` operator is used for (typically larger aggregate)
+variables that are fragmented across several locations. It takes two
+i32 arguments, an offset and a size in bytes to describe which piece
+of the variable is at this location.
+
+
 .. _format_common_intrinsics:
 
 Debugger intrinsic functions
@@ -726,8 +733,7 @@ Compiled to LLVM, this function would be represented like this:
   !15 = metadata !{i32 786688, metadata !16, metadata !"Z", metadata !5, i32 5,
                    metadata !11, i32 0, i32 0} ; [ DW_TAG_auto_variable ] [Z] \
                      [line 5]
-  !16 = metadata !{i32 786443, metadata !1, metadata !4, i32 4, i32 0, i32 0,
-                   i32 0} \
+  !16 = metadata !{i32 786443, metadata !1, metadata !4, i32 4, i32 0, i32 0} \
                    ; [ DW_TAG_lexical_block ] [/private/tmp/t.c]
   !17 = metadata !{i32 5, i32 0, metadata !16, null}
   !18 = metadata !{i32 6, i32 0, metadata !16, null}
@@ -779,8 +785,7 @@ scope information for the variable ``Z``.
 
 .. code-block:: llvm
 
-  !16 = metadata !{i32 786443, metadata !1, metadata !4, i32 4, i32 0, i32 0,
-                   i32 0}
+  !16 = metadata !{i32 786443, metadata !1, metadata !4, i32 4, i32 0, i32 0} \
                    ; [ DW_TAG_lexical_block ] [/private/tmp/t.c]
   !17 = metadata !{i32 5, i32 0, metadata !16, null}
 
@@ -849,6 +854,7 @@ a C/C++ front-end would generate the following descriptors:
     metadata !2,  ;; Global variables
     metadata !2,  ;; Imported entities (declarations and namespaces)
     metadata !""  ;; Split debug filename
+    1,            ;; Full debug info
   }
 
   ;;
@@ -931,6 +937,7 @@ a C/C++ front-end would generate the following descriptors:
     metadata !3,                      ;; Global Variables
     metadata !1,                      ;; Imported entities
     "",                               ;; Split debug filename
+    1,                                ;; Full debug info
   } ; [ DW_TAG_compile_unit ]
 
   ;; The Array of Global Variables

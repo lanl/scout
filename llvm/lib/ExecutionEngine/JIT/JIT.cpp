@@ -34,6 +34,7 @@
 #include "llvm/Support/MutexGuard.h"
 #include "llvm/Target/TargetJITInfo.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 
 using namespace llvm;
 
@@ -68,10 +69,9 @@ static struct RegisterJIT {
 extern "C" void LLVMLinkInJIT() {
 }
 
-/// createJIT - This is the factory method for creating a JIT for the current
-/// machine, it does not fall back to the interpreter.  This takes ownership
-/// of the module.
-ExecutionEngine *JIT::createJIT(Module *M,
+/// This is the factory method for creating a JIT for the current machine, it
+/// does not fall back to the interpreter.
+ExecutionEngine *JIT::createJIT(std::unique_ptr<Module> M,
                                 std::string *ErrorStr,
                                 JITMemoryManager *JMM,
                                 bool GVsWithCode,
@@ -82,8 +82,8 @@ ExecutionEngine *JIT::createJIT(Module *M,
   sys::DynamicLibrary::LoadLibraryPermanently(nullptr, nullptr);
 
   // If the target supports JIT code generation, create the JIT.
-  if (TargetJITInfo *TJ = TM->getJITInfo()) {
-    return new JIT(M, *TM, *TJ, JMM, GVsWithCode);
+  if (TargetJITInfo *TJ = TM->getSubtargetImpl()->getJITInfo()) {
+    return new JIT(std::move(M), *TM, *TJ, JMM, GVsWithCode);
   } else {
     if (ErrorStr)
       *ErrorStr = "target does not support JIT code generation";
@@ -110,11 +110,9 @@ public:
     MutexGuard guard(Lock);
     assert(JITs.size() != 0 && "No Jit registered");
     //search function in every instance of JIT
-    for (SmallPtrSet<JIT*, 1>::const_iterator Jit = JITs.begin(),
-           end = JITs.end();
-         Jit != end; ++Jit) {
-      if (Function *F = (*Jit)->FindFunctionNamed(Name))
-        return (*Jit)->getPointerToFunction(F);
+    for (JIT *Jit : JITs) {
+      if (Function *F = Jit->FindFunctionNamed(Name))
+        return Jit->getPointerToFunction(F);
     }
     // The function is not available : fallback on the first created (will
     // search in symbol of the current program/library)
@@ -134,14 +132,15 @@ extern "C" {
   }
 }
 
-JIT::JIT(Module *M, TargetMachine &tm, TargetJITInfo &tji,
+JIT::JIT(std::unique_ptr<Module> M, TargetMachine &tm, TargetJITInfo &tji,
          JITMemoryManager *jmm, bool GVsWithCode)
-  : ExecutionEngine(M), TM(tm), TJI(tji),
+  : ExecutionEngine(std::move(M)), TM(tm), TJI(tji),
     JMM(jmm ? jmm : JITMemoryManager::CreateDefaultMemManager()),
     AllocateGVsWithCode(GVsWithCode), isAlreadyCodeGenerating(false) {
-  setDataLayout(TM.getDataLayout());
+  setDataLayout(TM.getSubtargetImpl()->getDataLayout());
 
-  jitstate = new JITState(M);
+  Module *Mod = Modules.back().get();
+  jitstate = new JITState(Mod);
 
   // Initialize JCE
   JCE = createEmitter(*this, JMM, TM);
@@ -152,8 +151,8 @@ JIT::JIT(Module *M, TargetMachine &tm, TargetJITInfo &tji,
   // Add target data
   MutexGuard locked(lock);
   FunctionPassManager &PM = jitstate->getPM();
-  M->setDataLayout(TM.getDataLayout());
-  PM.add(new DataLayoutPass(M));
+  Mod->setDataLayout(TM.getSubtargetImpl()->getDataLayout());
+  PM.add(new DataLayoutPass(Mod));
 
   // Turn the machine code intermediate representation into bytes in memory that
   // may be executed.
@@ -174,19 +173,19 @@ JIT::~JIT() {
   delete &TM;
 }
 
-/// addModule - Add a new Module to the JIT.  If we previously removed the last
-/// Module, we need re-initialize jitstate with a valid Module.
-void JIT::addModule(Module *M) {
+/// Add a new Module to the JIT. If we previously removed the last Module, we
+/// need re-initialize jitstate with a valid Module.
+void JIT::addModule(std::unique_ptr<Module> M) {
   MutexGuard locked(lock);
 
   if (Modules.empty()) {
     assert(!jitstate && "jitstate should be NULL if Modules vector is empty!");
 
-    jitstate = new JITState(M);
+    jitstate = new JITState(M.get());
 
     FunctionPassManager &PM = jitstate->getPM();
-    M->setDataLayout(TM.getDataLayout());
-    PM.add(new DataLayoutPass(M));
+    M->setDataLayout(TM.getSubtargetImpl()->getDataLayout());
+    PM.add(new DataLayoutPass(M.get()));
 
     // Turn the machine code intermediate representation into bytes in memory
     // that may be executed.
@@ -198,11 +197,11 @@ void JIT::addModule(Module *M) {
     PM.doInitialization();
   }
 
-  ExecutionEngine::addModule(M);
+  ExecutionEngine::addModule(std::move(M));
 }
 
-/// removeModule - If we are removing the last Module, invalidate the jitstate
-/// since the PassManager it contains references a released Module.
+///  If we are removing the last Module, invalidate the jitstate since the
+///  PassManager it contains references a released Module.
 bool JIT::removeModule(Module *M) {
   bool result = ExecutionEngine::removeModule(M);
 
@@ -214,10 +213,10 @@ bool JIT::removeModule(Module *M) {
   }
 
   if (!jitstate && !Modules.empty()) {
-    jitstate = new JITState(Modules[0]);
+    jitstate = new JITState(Modules[0].get());
 
     FunctionPassManager &PM = jitstate->getPM();
-    M->setDataLayout(TM.getDataLayout());
+    M->setDataLayout(TM.getSubtargetImpl()->getDataLayout());
     PM.add(new DataLayoutPass(M));
 
     // Turn the machine code intermediate representation into bytes in memory

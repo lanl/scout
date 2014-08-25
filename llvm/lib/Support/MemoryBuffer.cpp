@@ -141,10 +141,9 @@ MemoryBuffer *MemoryBuffer::getNewUninitMemBuffer(size_t Size,
   return new (Mem) MemoryBufferMem(StringRef(Buf, Size), true);
 }
 
-/// getNewMemBuffer - Allocate a new MemoryBuffer of the specified size that
-/// is completely initialized to zeros.  Note that the caller should
-/// initialize the memory allocated by this method.  The memory is owned by
-/// the MemoryBuffer object.
+/// getNewMemBuffer - Allocate a new zero-initialized MemoryBuffer of the
+/// specified size. Note that the caller need not initialize the memory
+/// allocated by this method.  The memory is owned by the MemoryBuffer object.
 MemoryBuffer *MemoryBuffer::getNewMemBuffer(size_t Size, StringRef BufferName) {
   MemoryBuffer *SB = getNewUninitMemBuffer(Size, BufferName);
   if (!SB) return nullptr;
@@ -305,6 +304,14 @@ static bool shouldUseMmap(int FD,
   if ((FileSize & (PageSize -1)) == 0)
     return false;
 
+#if defined(__CYGWIN__)
+  // Don't try to map files that are exactly a multiple of the physical page size
+  // if we need a null terminator.
+  // FIXME: We should reorganize again getPageSize() on Win32.
+  if ((FileSize & (4096 - 1)) == 0)
+    return false;
+#endif
+
   return true;
 }
 
@@ -408,4 +415,10 @@ ErrorOr<std::unique_ptr<MemoryBuffer>> MemoryBuffer::getSTDIN() {
   sys::ChangeStdinToBinary();
 
   return getMemoryBufferForStream(0, "<stdin>");
+}
+
+MemoryBufferRef MemoryBuffer::getMemBufferRef() const {
+  StringRef Data = getBuffer();
+  StringRef Identifier = getBufferIdentifier();
+  return MemoryBufferRef(Data, Identifier);
 }

@@ -48,6 +48,7 @@
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Target/TargetRegisterInfo.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/ObjCARC.h"
@@ -299,8 +300,7 @@ bool LTOCodeGenerator::determineTarget(std::string &errMsg) {
       MCpu = "core2";
     else if (Triple.getArch() == llvm::Triple::x86)
       MCpu = "yonah";
-    else if (Triple.getArch() == llvm::Triple::arm64 ||
-             Triple.getArch() == llvm::Triple::aarch64)
+    else if (Triple.getArch() == llvm::Triple::aarch64)
       MCpu = "cyclone";
   }
 
@@ -314,7 +314,7 @@ void LTOCodeGenerator::
 applyRestriction(GlobalValue &GV,
                  const ArrayRef<StringRef> &Libcalls,
                  std::vector<const char*> &MustPreserveList,
-                 SmallPtrSet<GlobalValue*, 8> &AsmUsed,
+                 SmallPtrSetImpl<GlobalValue*> &AsmUsed,
                  Mangler &Mangler) {
   // There are no restrictions to apply to declarations.
   if (GV.isDeclaration())
@@ -343,7 +343,7 @@ applyRestriction(GlobalValue &GV,
 }
 
 static void findUsedValues(GlobalVariable *LLVMUsed,
-                           SmallPtrSet<GlobalValue*, 8> &UsedValues) {
+                           SmallPtrSetImpl<GlobalValue*> &UsedValues) {
   if (!LLVMUsed) return;
 
   ConstantArray *Inits = cast<ConstantArray>(LLVMUsed->getInitializer());
@@ -391,12 +391,13 @@ void LTOCodeGenerator::applyScopeRestrictions() {
   passes.add(createDebugInfoVerifierPass());
 
   // mark which symbols can not be internalized
-  Mangler Mangler(TargetMach->getDataLayout());
+  Mangler Mangler(TargetMach->getSubtargetImpl()->getDataLayout());
   std::vector<const char*> MustPreserveList;
   SmallPtrSet<GlobalValue*, 8> AsmUsed;
   std::vector<StringRef> Libcalls;
   TargetLibraryInfo TLI(Triple(TargetMach->getTargetTriple()));
-  accumulateAndSortLibcalls(Libcalls, TLI, TargetMach->getTargetLowering());
+  accumulateAndSortLibcalls(
+      Libcalls, TLI, TargetMach->getSubtargetImpl()->getTargetLowering());
 
   for (Module::iterator f = mergedModule->begin(),
          e = mergedModule->end(); f != e; ++f)
@@ -457,31 +458,21 @@ bool LTOCodeGenerator::generateObjectFile(raw_ostream &out,
   // Instantiate the pass manager to organize the passes.
   PassManager passes;
 
-  // Start off with a verification pass.
-  passes.add(createVerifierPass());
-  passes.add(createDebugInfoVerifierPass());
-
   // Add an appropriate DataLayout instance for this module...
-  mergedModule->setDataLayout(TargetMach->getDataLayout());
-  passes.add(new DataLayoutPass(mergedModule));
+  mergedModule->setDataLayout(TargetMach->getSubtargetImpl()->getDataLayout());
 
-  // Add appropriate TargetLibraryInfo for this module.
-  passes.add(new TargetLibraryInfo(Triple(TargetMach->getTargetTriple())));
+  Triple TargetTriple(TargetMach->getTargetTriple());
+  PassManagerBuilder PMB;
+  PMB.DisableGVNLoadPRE = DisableGVNLoadPRE;
+  if (!DisableInline)
+    PMB.Inliner = createFunctionInliningPass();
+  PMB.LibraryInfo = new TargetLibraryInfo(TargetTriple);
+  if (DisableOpt)
+    PMB.OptLevel = 0;
+  PMB.VerifyInput = true;
+  PMB.VerifyOutput = true;
 
-  TargetMach->addAnalysisPasses(passes);
-
-  // Enabling internalize here would use its AllButMain variant. It
-  // keeps only main if it exists and does nothing for libraries. Instead
-  // we create the pass ourselves with the symbol list provided by the linker.
-  if (!DisableOpt)
-    PassManagerBuilder().populateLTOPassManager(passes,
-                                              /*Internalize=*/false,
-                                              !DisableInline,
-                                              DisableGVNLoadPRE);
-
-  // Make sure everything is still good.
-  passes.add(createVerifierPass());
-  passes.add(createDebugInfoVerifierPass());
+  PMB.populateLTOPassManager(passes, TargetMach);
 
   PassManager codeGenPasses;
 

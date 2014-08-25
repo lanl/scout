@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef JIT_H
-#define JIT_H
+#ifndef LLVM_LIB_EXECUTIONENGINE_JIT_JIT_H
+#define LLVM_LIB_EXECUTIONENGINE_JIT_JIT_H
 
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/IR/ValueHandle.h"
@@ -78,7 +78,7 @@ class JIT : public ExecutionEngine {
   BasicBlockAddressMapTy BasicBlockAddressMap;
 
 
-  JIT(Module *M, TargetMachine &tm, TargetJITInfo &tji,
+  JIT(std::unique_ptr<Module> M, TargetMachine &tm, TargetJITInfo &tji,
       JITMemoryManager *JMM, bool AllocateGVsWithCode);
 public:
   ~JIT();
@@ -91,22 +91,7 @@ public:
   ///
   TargetJITInfo &getJITInfo() const { return TJI; }
 
-  /// create - Create an return a new JIT compiler if there is one available
-  /// for the current target.  Otherwise, return null.
-  ///
-  static ExecutionEngine *create(Module *M,
-                                 std::string *Err,
-                                 JITMemoryManager *JMM,
-                                 CodeGenOpt::Level OptLevel =
-                                   CodeGenOpt::Default,
-                                 bool GVsWithCode = true,
-                                 Reloc::Model RM = Reloc::Default,
-                                 CodeModel::Model CMM = CodeModel::JITDefault) {
-    return ExecutionEngine::createJIT(M, Err, JMM, OptLevel, GVsWithCode,
-                                      RM, CMM);
-  }
-
-  void addModule(Module *M) override;
+  void addModule(std::unique_ptr<Module> M) override;
 
   /// removeModule - Remove a Module from the list of modules.  Returns true if
   /// M is found.
@@ -182,7 +167,7 @@ public:
   ///
   JITCodeEmitter *getCodeEmitter() const { return JCE; }
 
-  static ExecutionEngine *createJIT(Module *M,
+  static ExecutionEngine *createJIT(std::unique_ptr<Module> M,
                                     std::string *ErrorStr,
                                     JITMemoryManager *JMM,
                                     bool GVsWithCode,

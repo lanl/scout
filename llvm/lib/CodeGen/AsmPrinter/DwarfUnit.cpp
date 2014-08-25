@@ -30,6 +30,7 @@
 #include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetRegisterInfo.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 
 using namespace llvm;
 
@@ -491,8 +492,11 @@ void DwarfUnit::addVariableAddress(const DbgVariable &DV, DIE &Die,
 }
 
 /// addRegisterOp - Add register operand.
-void DwarfUnit::addRegisterOp(DIELoc &TheDie, unsigned Reg) {
-  const TargetRegisterInfo *RI = Asm->TM.getRegisterInfo();
+// FIXME: Ideally, this would share the implementation with
+// AsmPrinter::EmitDwarfRegOpPiece.
+void DwarfUnit::addRegisterOpPiece(DIELoc &TheDie, unsigned Reg,
+                                   unsigned SizeInBits, unsigned OffsetInBits) {
+  const TargetRegisterInfo *RI = Asm->TM.getSubtargetImpl()->getRegisterInfo();
   int DWReg = RI->getDwarfRegNum(Reg, false);
   bool isSubRegister = DWReg < 0;
 
@@ -511,7 +515,7 @@ void DwarfUnit::addRegisterOp(DIELoc &TheDie, unsigned Reg) {
     return;
   }
 
-  // Emit register
+  // Emit register.
   if (DWReg < 32)
     addUInt(TheDie, dwarf::DW_FORM_data1, dwarf::DW_OP_reg0 + DWReg);
   else {
@@ -519,18 +523,34 @@ void DwarfUnit::addRegisterOp(DIELoc &TheDie, unsigned Reg) {
     addUInt(TheDie, dwarf::DW_FORM_udata, DWReg);
   }
 
-  // Emit Mask
-  if (isSubRegister) {
-    unsigned Size = RI->getSubRegIdxSize(Idx);
-    unsigned Offset = RI->getSubRegIdxOffset(Idx);
-    if (Offset > 0) {
+  // Emit mask.
+  bool isPiece = SizeInBits > 0;
+  if (isSubRegister || isPiece) {
+    const unsigned SizeOfByte = 8;
+    unsigned RegSizeInBits = RI->getSubRegIdxSize(Idx);
+    unsigned RegOffsetInBits = RI->getSubRegIdxOffset(Idx);
+    unsigned PieceSizeInBits = std::max(SizeInBits, RegSizeInBits);
+    unsigned PieceOffsetInBits = OffsetInBits ? OffsetInBits : RegOffsetInBits;
+    assert(RegSizeInBits >= SizeInBits && "register smaller than value");
+
+    if (RegOffsetInBits != PieceOffsetInBits) {
+      // Manually shift the value into place, since the DW_OP_piece
+      // describes the part of the variable, not the position of the
+      // subregister.
+      addUInt(TheDie, dwarf::DW_FORM_data1, dwarf::DW_OP_constu);
+      addUInt(TheDie, dwarf::DW_FORM_data1, RegOffsetInBits);
+      addUInt(TheDie, dwarf::DW_FORM_data1, dwarf::DW_OP_shr);
+    }
+
+    if (PieceOffsetInBits > 0 || PieceSizeInBits % SizeOfByte) {
+      assert(PieceSizeInBits > 0 && "piece has zero size");
       addUInt(TheDie, dwarf::DW_FORM_data1, dwarf::DW_OP_bit_piece);
-      addUInt(TheDie, dwarf::DW_FORM_data1, Size);
-      addUInt(TheDie, dwarf::DW_FORM_data1, Offset);
-    } else {
-      unsigned ByteSize = Size / 8; // Assuming 8 bits per byte.
+      addUInt(TheDie, dwarf::DW_FORM_data1, PieceSizeInBits);
+      addUInt(TheDie, dwarf::DW_FORM_data1, PieceOffsetInBits);
+     } else {
+      assert(PieceSizeInBits > 0 && "piece has zero size");
       addUInt(TheDie, dwarf::DW_FORM_data1, dwarf::DW_OP_piece);
-      addUInt(TheDie, dwarf::DW_FORM_data1, ByteSize);
+      addUInt(TheDie, dwarf::DW_FORM_data1, PieceSizeInBits/SizeOfByte);
     }
   }
 }
@@ -538,9 +558,9 @@ void DwarfUnit::addRegisterOp(DIELoc &TheDie, unsigned Reg) {
 /// addRegisterOffset - Add register offset.
 void DwarfUnit::addRegisterOffset(DIELoc &TheDie, unsigned Reg,
                                   int64_t Offset) {
-  const TargetRegisterInfo *RI = Asm->TM.getRegisterInfo();
+  const TargetRegisterInfo *RI = Asm->TM.getSubtargetImpl()->getRegisterInfo();
   unsigned DWReg = RI->getDwarfRegNum(Reg, false);
-  const TargetRegisterInfo *TRI = Asm->TM.getRegisterInfo();
+  const TargetRegisterInfo *TRI = Asm->TM.getSubtargetImpl()->getRegisterInfo();
   if (Reg == TRI->getFrameRegister(*Asm->MF))
     // If variable offset is based in frame register then use fbreg.
     addUInt(TheDie, dwarf::DW_FORM_data1, dwarf::DW_OP_fbreg);
@@ -560,7 +580,7 @@ void DwarfUnit::addAddress(DIE &Die, dwarf::Attribute Attribute,
   DIELoc *Loc = new (DIEValueAllocator) DIELoc();
 
   if (Location.isReg() && !Indirect)
-    addRegisterOp(*Loc, Location.getReg());
+    addRegisterOpPiece(*Loc, Location.getReg());
   else {
     addRegisterOffset(*Loc, Location.getReg(), Location.getOffset());
     if (Indirect && !Location.isReg()) {
@@ -589,8 +609,13 @@ void DwarfUnit::addComplexAddress(const DbgVariable &DV, DIE &Die,
       // DW_OP_breg + Offset instead of DW_OP_reg + Offset.
       addRegisterOffset(*Loc, Location.getReg(), DV.getAddrElement(1));
       i = 2;
+    } else if (N >= 2 && DV.getAddrElement(0) == DIBuilder::OpDeref) {
+        addRegisterOpPiece(*Loc, Location.getReg(),
+                           DV.getVariable().getPieceSize(),
+                           DV.getVariable().getPieceOffset());
+        i = 3;
     } else
-      addRegisterOp(*Loc, Location.getReg());
+      addRegisterOpPiece(*Loc, Location.getReg());
   } else
     addRegisterOffset(*Loc, Location.getReg(), Location.getOffset());
 
@@ -599,9 +624,21 @@ void DwarfUnit::addComplexAddress(const DbgVariable &DV, DIE &Die,
     if (Element == DIBuilder::OpPlus) {
       addUInt(*Loc, dwarf::DW_FORM_data1, dwarf::DW_OP_plus_uconst);
       addUInt(*Loc, dwarf::DW_FORM_udata, DV.getAddrElement(++i));
+
     } else if (Element == DIBuilder::OpDeref) {
       if (!Location.isReg())
         addUInt(*Loc, dwarf::DW_FORM_data1, dwarf::DW_OP_deref);
+
+    } else if (Element == DIBuilder::OpPiece) {
+      const unsigned SizeOfByte = 8;
+      unsigned PieceOffsetInBits = DV.getAddrElement(++i)*SizeOfByte;
+      unsigned PieceSizeInBits = DV.getAddrElement(++i)*SizeOfByte;
+      // Emit DW_OP_bit_piece Size Offset.
+      assert(PieceSizeInBits > 0 && "piece has zero size");
+      addUInt(*Loc, dwarf::DW_FORM_data1, dwarf::DW_OP_bit_piece);
+      addUInt(*Loc, dwarf::DW_FORM_udata, PieceSizeInBits);
+      addUInt(*Loc, dwarf::DW_FORM_udata, PieceOffsetInBits);
+
     } else
       llvm_unreachable("unknown DIBuilder Opcode");
   }
@@ -690,7 +727,7 @@ void DwarfUnit::addBlockByrefAddress(const DbgVariable &DV, DIE &Die,
 
   // Find the __forwarding field and the variable field in the __Block_byref
   // struct.
-  DIArray Fields = blockStruct.getTypeArray();
+  DIArray Fields = blockStruct.getElements();
   DIDerivedType varField;
   DIDerivedType forwardingField;
 
@@ -712,7 +749,7 @@ void DwarfUnit::addBlockByrefAddress(const DbgVariable &DV, DIE &Die,
   DIELoc *Loc = new (DIEValueAllocator) DIELoc();
 
   if (Location.isReg())
-    addRegisterOp(*Loc, Location.getReg());
+    addRegisterOpPiece(*Loc, Location.getReg());
   else
     addRegisterOffset(*Loc, Location.getReg(), Location.getOffset());
 
@@ -1141,10 +1178,10 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, DIDerivedType DTy) {
 }
 
 /// constructSubprogramArguments - Construct function argument DIEs.
-void DwarfUnit::constructSubprogramArguments(DIE &Buffer, DIArray Args) {
+void DwarfUnit::constructSubprogramArguments(DIE &Buffer, DITypeArray Args) {
   for (unsigned i = 1, N = Args.getNumElements(); i < N; ++i) {
-    DIDescriptor Ty = Args.getElement(i);
-    if (Ty.isUnspecifiedParameter()) {
+    DIType Ty = resolve(Args.getElement(i));
+    if (!Ty) {
       assert(i == N-1 && "Unspecified parameter must be the last argument");
       createAndAddDIE(dwarf::DW_TAG_unspecified_parameters, Buffer);
     } else {
@@ -1173,14 +1210,14 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, DICompositeType CTy) {
     break;
   case dwarf::DW_TAG_subroutine_type: {
     // Add return type. A void return won't have a type.
-    DIArray Elements = CTy.getTypeArray();
-    DIType RTy(Elements.getElement(0));
+    DITypeArray Elements = DISubroutineType(CTy).getTypeArray();
+    DIType RTy(resolve(Elements.getElement(0)));
     if (RTy)
       addType(Buffer, RTy);
 
     bool isPrototyped = true;
     if (Elements.getNumElements() == 2 &&
-        Elements.getElement(1).isUnspecifiedParameter())
+        !Elements.getElement(1))
       isPrototyped = false;
 
     constructSubprogramArguments(Buffer, Elements);
@@ -1218,7 +1255,7 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, DICompositeType CTy) {
   case dwarf::DW_TAG_union_type:
   case dwarf::DW_TAG_class_type: {
     // Add elements to structure type.
-    DIArray Elements = CTy.getTypeArray();
+    DIArray Elements = CTy.getElements();
     for (unsigned i = 0, N = Elements.getNumElements(); i < N; ++i) {
       DIDescriptor Element = Elements.getElement(i);
       if (Element.isSubprogram())
@@ -1479,15 +1516,15 @@ void DwarfUnit::applySubprogramAttributes(DISubprogram SP, DIE &SPDie) {
        Language == dwarf::DW_LANG_ObjC))
     addFlag(SPDie, dwarf::DW_AT_prototyped);
 
-  DICompositeType SPTy = SP.getType();
+  DISubroutineType SPTy = SP.getType();
   assert(SPTy.getTag() == dwarf::DW_TAG_subroutine_type &&
          "the type of a subprogram should be a subroutine");
 
-  DIArray Args = SPTy.getTypeArray();
+  DITypeArray Args = SPTy.getTypeArray();
   // Add a return type. If this is a type like a C/C++ void type we don't add a
   // return type.
-  if (Args.getElement(0))
-    addType(SPDie, DIType(Args.getElement(0)));
+  if (resolve(Args.getElement(0)))
+    addType(SPDie, DIType(resolve(Args.getElement(0))));
 
   unsigned VK = SP.getVirtuality();
   if (VK) {
@@ -1767,7 +1804,7 @@ void DwarfUnit::constructArrayTypeDIE(DIE &Buffer, DICompositeType CTy) {
   }
 
   // Add subranges to array type.
-  DIArray Elements = CTy.getTypeArray();
+  DIArray Elements = CTy.getElements();
   for (unsigned i = 0, N = Elements.getNumElements(); i < N; ++i) {
     DIDescriptor Element = Elements.getElement(i);
     if (Element.getTag() == dwarf::DW_TAG_subrange_type)
@@ -1777,7 +1814,7 @@ void DwarfUnit::constructArrayTypeDIE(DIE &Buffer, DICompositeType CTy) {
 
 /// constructEnumTypeDIE - Construct an enum type DIE from DICompositeType.
 void DwarfUnit::constructEnumTypeDIE(DIE &Buffer, DICompositeType CTy) {
-  DIArray Elements = CTy.getTypeArray();
+  DIArray Elements = CTy.getElements();
 
   // Add enumerators to enumeration type.
   for (unsigned i = 0, N = Elements.getNumElements(); i < N; ++i) {
@@ -1868,7 +1905,8 @@ std::unique_ptr<DIE> DwarfUnit::constructVariableDIEImpl(const DbgVariable &DV,
   int FI = DV.getFrameIndex();
   if (FI != ~0) {
     unsigned FrameReg = 0;
-    const TargetFrameLowering *TFI = Asm->TM.getFrameLowering();
+    const TargetFrameLowering *TFI =
+        Asm->TM.getSubtargetImpl()->getFrameLowering();
     int Offset = TFI->getFrameIndexReference(*Asm->MF, FI, FrameReg);
     MachineLocation Location(FrameReg, Offset);
     addVariableAddress(DV, *VariableDie, Location);

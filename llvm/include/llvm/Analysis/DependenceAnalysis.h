@@ -287,9 +287,9 @@ namespace llvm {
     /// The flag PossiblyLoopIndependent should be set by the caller
     /// if it appears that control flow can reach from Src to Dst
     /// without traversing a loop back edge.
-    Dependence *depends(Instruction *Src,
-                        Instruction *Dst,
-                        bool PossiblyLoopIndependent);
+    std::unique_ptr<Dependence> depends(Instruction *Src,
+                                        Instruction *Dst,
+                                        bool PossiblyLoopIndependent);
 
     /// getSplitIteration - Give a dependence that's splittable at some
     /// particular level, return the iteration that should be used to split
@@ -331,7 +331,7 @@ namespace llvm {
     ///
     /// breaks the dependence and allows us to vectorize/parallelize
     /// both loops.
-    const SCEV *getSplitIteration(const Dependence *Dep, unsigned Level);
+    const SCEV *getSplitIteration(const Dependence &Dep, unsigned Level);
 
   private:
     AliasAnalysis *AA;
@@ -766,9 +766,10 @@ namespace llvm {
     /// collectCoefficientInfo - Walks through the subscript,
     /// collecting each coefficient, the associated loop bounds,
     /// and recording its positive and negative parts for later use.
-    CoefficientInfo *collectCoeffInfo(const SCEV *Subscript,
-                                      bool SrcFlag,
-                                      const SCEV *&Constant) const;
+    std::unique_ptr<CoefficientInfo[]>
+    collectCoeffInfo(const SCEV *Subscript,
+                     bool SrcFlag,
+                     const SCEV *&Constant) const;
 
     /// getPositivePart - X^+ = max(X, 0).
     ///

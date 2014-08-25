@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef Hexagon_SUBTARGET_H
-#define Hexagon_SUBTARGET_H
+#ifndef LLVM_LIB_TARGET_HEXAGON_HEXAGONSUBTARGET_H
+#define LLVM_LIB_TARGET_HEXAGON_HEXAGONSUBTARGET_H
 
 #include "HexagonFrameLowering.h"
 #include "HexagonInstrInfo.h"
@@ -56,10 +56,12 @@ public:
   HexagonSubtarget(StringRef TT, StringRef CPU, StringRef FS,
                    const TargetMachine &TM);
 
-  /// getInstrItins - Return the instruction itineraies based on subtarget
+  /// getInstrItins - Return the instruction itineraries based on subtarget
   /// selection.
-  const InstrItineraryData &getInstrItineraryData() const { return InstrItins; }
-  const HexagonInstrInfo *getInstrInfo() const { return &InstrInfo; }
+  const InstrItineraryData *getInstrItineraryData() const {
+    return &InstrItins;
+  }
+  const HexagonInstrInfo *getInstrInfo() const override { return &InstrInfo; }
   const HexagonRegisterInfo *getRegisterInfo() const {
     return &InstrInfo.getRegisterInfo();
   }

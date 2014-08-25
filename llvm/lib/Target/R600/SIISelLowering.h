@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef SIISELLOWERING_H
-#define SIISELLOWERING_H
+#ifndef LLVM_LIB_TARGET_R600_SIISELLOWERING_H
+#define LLVM_LIB_TARGET_R600_SIISELLOWERING_H
 
 #include "AMDGPUISelLowering.h"
 #include "SIInstrInfo.h"
@@ -27,6 +27,9 @@ class SITargetLowering : public AMDGPUTargetLowering {
                                SelectionDAG &DAG) const;
   SDValue LowerGlobalAddress(AMDGPUMachineFunction *MFI, SDValue Op,
                              SelectionDAG &DAG) const override;
+
+  SDValue LowerINTRINSIC_WO_CHAIN(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerINTRINSIC_VOID(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerFrameIndex(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerLOAD(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerSELECT(SDValue Op, SelectionDAG &DAG) const;
@@ -53,11 +56,25 @@ class SITargetLowering : public AMDGPUTargetLowering {
 
   static SDValue performUCharToFloatCombine(SDNode *N,
                                             DAGCombinerInfo &DCI);
+  SDValue performSHLPtrCombine(SDNode *N,
+                               unsigned AS,
+                               DAGCombinerInfo &DCI) const;
 
 public:
   SITargetLowering(TargetMachine &tm);
-  bool allowsUnalignedMemoryAccesses(EVT VT, unsigned AS,
-                                     bool *IsFast) const override;
+
+  bool isLegalAddressingMode(const AddrMode &AM,
+                             Type *Ty) const override;
+
+  bool allowsMisalignedMemoryAccesses(EVT VT, unsigned AS,
+                                      unsigned Align,
+                                      bool *IsFast) const override;
+
+  EVT getOptimalMemOpType(uint64_t Size, unsigned DstAlign,
+                          unsigned SrcAlign, bool IsMemset,
+                          bool ZeroMemset,
+                          bool MemcpyStrSrc,
+                          MachineFunction &MF) const override;
 
   TargetLoweringBase::LegalizeTypeAction
   getPreferredVectorAction(EVT VT) const override;
@@ -89,4 +106,4 @@ public:
 
 } // End namespace llvm
 
-#endif //SIISELLOWERING_H
+#endif

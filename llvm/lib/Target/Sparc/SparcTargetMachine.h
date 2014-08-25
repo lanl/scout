@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef SPARCTARGETMACHINE_H
-#define SPARCTARGETMACHINE_H
+#ifndef LLVM_LIB_TARGET_SPARC_SPARCTARGETMACHINE_H
+#define LLVM_LIB_TARGET_SPARC_SPARCTARGETMACHINE_H
 
 #include "SparcInstrInfo.h"
 #include "SparcSubtarget.h"
@@ -28,25 +28,10 @@ public:
                      Reloc::Model RM, CodeModel::Model CM,
                      CodeGenOpt::Level OL, bool is64bit);
 
-  const SparcInstrInfo *getInstrInfo() const override {
-    return getSubtargetImpl()->getInstrInfo();
-  }
-  const TargetFrameLowering *getFrameLowering() const override {
-    return getSubtargetImpl()->getFrameLowering();
-  }
   const SparcSubtarget *getSubtargetImpl() const override { return &Subtarget; }
-  const SparcRegisterInfo *getRegisterInfo() const override {
-    return getSubtargetImpl()->getRegisterInfo();
-  }
-  const SparcTargetLowering *getTargetLowering() const override {
-    return getSubtargetImpl()->getTargetLowering();
-  }
-  const SparcSelectionDAGInfo *getSelectionDAGInfo() const override {
-    return getSubtargetImpl()->getSelectionDAGInfo();
-  }
-  SparcJITInfo *getJITInfo() override { return Subtarget.getJITInfo(); }
-  const DataLayout *getDataLayout() const override {
-    return getSubtargetImpl()->getDataLayout();
+
+  SparcSubtarget *getSubtargetImpl() {
+    return static_cast<SparcSubtarget *>(TargetMachine::getSubtargetImpl());
   }
 
   // Pass Pipeline Configuration

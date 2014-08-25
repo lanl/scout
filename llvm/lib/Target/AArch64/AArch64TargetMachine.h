@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef AArch64TARGETMACHINE_H
-#define AArch64TARGETMACHINE_H
+#ifndef LLVM_LIB_TARGET_AARCH64_AARCH64TARGETMACHINE_H
+#define LLVM_LIB_TARGET_AARCH64_AARCH64TARGETMACHINE_H
 
 #include "AArch64InstrInfo.h"
 #include "AArch64Subtarget.h"
@@ -33,24 +33,6 @@ public:
 
   const AArch64Subtarget *getSubtargetImpl() const override {
     return &Subtarget;
-  }
-  const AArch64TargetLowering *getTargetLowering() const override {
-    return getSubtargetImpl()->getTargetLowering();
-  }
-  const DataLayout *getDataLayout() const override {
-    return getSubtargetImpl()->getDataLayout();
-  }
-  const AArch64FrameLowering *getFrameLowering() const override {
-    return getSubtargetImpl()->getFrameLowering();
-  }
-  const AArch64InstrInfo *getInstrInfo() const override {
-    return getSubtargetImpl()->getInstrInfo();
-  }
-  const AArch64RegisterInfo *getRegisterInfo() const override {
-    return &getInstrInfo()->getRegisterInfo();
-  }
-  const AArch64SelectionDAGInfo *getSelectionDAGInfo() const override {
-    return getSubtargetImpl()->getSelectionDAGInfo();
   }
 
   // Pass Pipeline Configuration
