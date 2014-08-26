@@ -16,6 +16,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/SmallVector.h"
 #include <cassert>
+#include <llvm/IR/ValueSymbolTable.h>
 
 using namespace llvm;
 
@@ -205,6 +206,7 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
           }
         }
 
+      //M.dump();
 
       // Go through blocks in main_task and if find call to a func that is a task,
       // substitute with a call to LegionTaskInitFunctionX(lsci_unimesh_t*, char* , char* ).
@@ -218,6 +220,9 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
           if ((*ii).getOpcode() == llvm::Instruction::Call) {
 
             CallInst& callInst = cast <CallInst> (*ii);
+
+            StringRef argStr = callInst.getArgOperand(0)->getName();
+            //errs() << "argStr:" << argStr << "\n";
 
             //errs() << "Found a Call instruction.\n";
 
@@ -233,7 +238,7 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
             // Metadata for scout.tasks is in the form of a small vector of 3 Value*:  taskID, taskFunc and taskInit
             for (unsigned i = 0, e = NMDN->getNumOperands(); i != e; ++i) {
 
-              // get 0th MDNode operand of the ith NamedMDNode operand
+              // get the ith MDNode operand
               MDNode *MDN = cast< MDNode >(NMDN->getOperand(i));
 
               // 1st Operand  of MDNodes is a function ptr
@@ -241,10 +246,48 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
 
               if (FN == calledFN) {
 
+                Value* lsciUnimeshVal = nullptr;
+
+                // get metadata connecting mesh alloc and lsci_unimesh_t alloc
+                NamedMDNode* lsciNMDN = M.getOrInsertNamedMetadata("scout.lscimeshmd");
+
+                for (unsigned i = 0, e = lsciNMDN->getNumOperands(); i != e; ++i) {
+
+                  // get the ith MDNode operand of the NamedMDNode 
+                  MDNode *lsciMDN = cast< MDNode >(lsciNMDN->getOperand(i));
+
+                  // 0th Operand  of MDNodes is name of mesh alloc
+                  MDString* allocMDStr = cast < MDString > (lsciMDN->getOperand(0));
+                  StringRef allocStr = allocMDStr->getString();
+                  //errs() << "allocStr:" << allocStr << "\n";
+
+                  MDString* lsciallocMDStr = cast < MDString > (lsciMDN->getOperand(1));
+                  StringRef lsciallocStr = lsciallocMDStr->getString();
+                  //errs() << "lsciallocStr:" << lsciallocStr << "\n";
+
+                  // if task argument string matches metadata string, get the value from the string
+                  // problem is here: the argStr isn't the original mesh variable name
+                  if (allocStr.equals(argStr)) {
+                    //errs() << "Found match btwn task arg str and metadata str:" << argStr << "\n";
+
+                    // 1st Operand  of MDNodes is name of lsci_unimesh_t alloc
+                    MDString* lsciUnimeshMDStr = cast < MDString > (lsciMDN->getOperand(1));
+                    StringRef lsciUnimeshStr = lsciUnimeshMDStr->getString();
+                    //errs() << "Found lsci_unimesh_t str:" << lsciUnimeshStr << "\n";
+            
+                    // lookup lsci_unimesh_t alloc name to get value
+                    lsciUnimeshVal = mainTaskFunc->getValueSymbolTable().lookup(lsciUnimeshStr);
+                    //lsciUnimeshVal = F.getValueSymbolTable().lookup(lsciUnimeshStr);
+                  }
+
+                  if (lsciUnimeshVal) break;
+                }
+                
+                //assert (lsciUnimeshVal && "no val for lsci_unimesh_t");
+
                 // add lsci_mesh, context and runtime to params to call
                 llvm::SmallVector < llvm::Value*, 3 > Args;
-                // This is not right -- needs to be the lsci_unimesh_t struct pointer
-                Args.push_back(callInst.getArgOperand(0));
+                Args.push_back(lsciUnimeshVal);
                 Args.push_back(context);
                 Args.push_back(runtime);
 

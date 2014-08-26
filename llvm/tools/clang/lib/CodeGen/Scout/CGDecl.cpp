@@ -378,9 +378,24 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
       llvm::SmallVector< llvm::Value *, 4 > Args;
 
       // need to create lsci_unimesh_t ptr 
-      lsciUnimeshAlloc = Builder.CreateAlloca(CGM.getLegionRuntime().UnimeshTy); 
+      lsciUnimeshAlloc = Builder.CreateAlloca(CGM.getLegionRuntime().UnimeshTy, nullptr, "lsci_unimesh_t.ptr"); 
+
+      // Create metadata to connect the name of the Alloc with the name of the lsciUnimeshAlloc
+      llvm::NamedMDNode *MeshMD;
+      MeshMD = CGM.getModule().getOrInsertNamedMetadata("scout.lscimeshmd");
+      SmallVector<llvm::Value*, 2> lsciMeshInfoMD;
+
+      llvm::MDString *MDMeshName = llvm::MDString::get(getLLVMContext(), MeshName);
+      lsciMeshInfoMD.push_back(MDMeshName);
+
+      llvm::MDString *MDlsciMeshName = llvm::MDString::get(getLLVMContext(), lsciUnimeshAlloc->getName());
+      lsciMeshInfoMD.push_back(MDlsciMeshName);
+
+      MeshMD->addOperand(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(lsciMeshInfoMD)));
       
+      // Start collecting args to the lsci_unimesh_create() call
       Args.push_back(lsciUnimeshAlloc);
+
       for(unsigned int i = 0; i < Dimensions.size(); i++) {
         Args.push_back(Dimensions[i]);
       }
