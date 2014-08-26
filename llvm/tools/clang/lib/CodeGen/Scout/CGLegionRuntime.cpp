@@ -201,21 +201,21 @@ llvm::Value *CGLegionRuntime::GetLegionContextGlobal() {
 }
 
 llvm::Function *CGLegionRuntime::CreateSetupMeshFunction(llvm::Type *MT) {
-  std::string funcName = "__scrt_legion_setup_mesh";
+  // std::string funcName = "__scrt_legion_setup_mesh";
   // SC_TODO: once we get the context/runtime setup via a pass then we can
-  // switch to using the real lsci fuction here
-  //std::string funcName = "lsci_unimesh_create";
-  std::vector<llvm::Type*> Params = {PointerTy(MT), Int64Ty, Int64Ty, Int64Ty, ContextTy, RuntimeTy};
-  return LegionRuntimeFunction(funcName, Params);
+  // switch to using the real lsci function here
+  std::string funcName = "lsci_unimesh_create";
+  std::vector<llvm::Type*> Params = {PointerTy(UnimeshTy), Int64Ty, Int64Ty, Int64Ty, ContextTy, RuntimeTy};
+  return LegionRuntimeFunction(funcName, Params, Int32Ty);
 }
 
 llvm::Function *CGLegionRuntime::CreateAddFieldFunction(llvm::Type *MT) {
-  std::string funcName = "__scrt_legion_add_field";
+  // std::string funcName = "__scrt_legion_add_field";
   // SC_TODO: once we get the context/runtime setup via a pass then we can
   // switch to using the real lsci fuction here
-  //std::string funcName = "lsci_unimesh_add_field";
-  std::vector<llvm::Type*> Params = {PointerTy(MT), PointerTy(Int8Ty), Int32Ty, ContextTy, RuntimeTy};
-  return LegionRuntimeFunction(funcName, Params);
+  std::string funcName = "lsci_unimesh_add_field";
+  std::vector<llvm::Type*> Params = {PointerTy(UnimeshTy), Int32Ty, PointerTy(Int8Ty), ContextTy, RuntimeTy};
+  return LegionRuntimeFunction(funcName, Params, Int32Ty);
 }
 
 

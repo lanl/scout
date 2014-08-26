@@ -371,21 +371,34 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     SmallVector<llvm::Value*, 3> Dimensions;
     GetMeshDimensions(MT, Dimensions);
 
+    llvm::AllocaInst* lsciUnimeshAlloc;
+
     // call create_mesh()
     if(CGM.getCodeGenOpts().ScoutLegionSupport) {
       llvm::SmallVector< llvm::Value *, 4 > Args;
-      llvm::Function *F = CGM.getLegionRuntime().CreateSetupMeshFunction(Mesh->getType());
-      Args.push_back(Alloc);
+
+      // need to create lsci_unimesh_t ptr 
+      lsciUnimeshAlloc = Builder.CreateAlloca(CGM.getLegionRuntime().UnimeshTy); 
+      
+      Args.push_back(lsciUnimeshAlloc);
       for(unsigned int i = 0; i < Dimensions.size(); i++) {
         Args.push_back(Dimensions[i]);
       }
+      
+      // if doesn't have 3 dims, add 1's for the dims
       for(unsigned int i = Dimensions.size(); i < 3; i++) {
         Args.push_back(Builder.getInt64(1));
       }
+
       Args.push_back(Builder.CreateLoad(
           CGM.getLegionRuntime().GetLegionContextGlobal(), "legionContext"));
       Args.push_back(Builder.CreateLoad(
           CGM.getLegionRuntime().GetLegionRuntimeGlobal(), "legionRuntime"));
+
+      CGM.getLegionRuntime().UnimeshCreateFunc();
+      llvm::Function *F = CGM.getLegionRuntime().CreateSetupMeshFunction(CGM.getLegionRuntime().UnimeshTy);
+
+
       Builder.CreateCall(F, ArrayRef<llvm::Value *>(Args));
     }
 
@@ -489,10 +502,15 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
 
       // call add_field()
       if(CGM.getCodeGenOpts().ScoutLegionSupport) {
-        llvm::SmallVector< llvm::Value *, 3 > Args;
-        llvm::Function *F = CGM.getLegionRuntime().CreateAddFieldFunction(Mesh->getType());
-        Args.push_back(Alloc);
-        Args.push_back(Builder.CreateGlobalStringPtr(MeshFieldName));
+        llvm::SmallVector< llvm::Value *, 5 > Args;
+        CGM.getLegionRuntime().UnimeshAddFieldFunc();
+        llvm::Function *F = CGM.getLegionRuntime().CreateAddFieldFunction(CGM.getLegionRuntime().UnimeshTy);
+
+        if (!lsciUnimeshAlloc) {
+        } else {
+          Args.push_back(lsciUnimeshAlloc);
+        }
+
         llvm::Value *fval = Builder.CreateLoad(Builder.CreateLoad(field));
         llvm::Type::TypeID typeID = fval->getType()->getTypeID();
         int lscitype;
@@ -510,10 +528,14 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
           lscitype = LSCI_TYPE_MAX;
         }
         Args.push_back(Builder.getInt32(lscitype));
+
+        Args.push_back(Builder.CreateGlobalStringPtr(MeshFieldName));
+
         Args.push_back(Builder.CreateLoad(
             CGM.getLegionRuntime().GetLegionContextGlobal(), "legionContext"));
         Args.push_back(Builder.CreateLoad(
             CGM.getLegionRuntime().GetLegionRuntimeGlobal(), "legionRuntime"));
+
         Builder.CreateCall(F, ArrayRef<llvm::Value *>(Args));
       }
     }
