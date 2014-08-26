@@ -112,6 +112,7 @@ stdlib_flags     :=
 runtime_dir := lib/Runtime
 runtime_build_dir := $(build_dir)/$(runtime_dir)
 runtime_flags := -DCMAKE_SCC_RUNTIME_ONLY=ON
+runtime_remove_flags := -UCMAKE_SCC_RUNTIME_ONLY
 
 test_dir := test
 test_build_dir := $(build_dir)/$(test_dir)
@@ -201,6 +202,7 @@ runtime:
 	@((test -d $(runtime_build_dir)) || (mkdir $(runtime_build_dir)))
 	@(cd $(build_dir); cmake $(cmake_flags) $(runtime_flags) $(src_dir))
 	@(cd $(runtime_build_dir); make $(make_flags) install)
+	@(cd $(build_dir); cmake $(cmake_flags) $(runtime_remove_flags) $(src_dir))
 
 .PHONY: runtimeclean
 runtimeclean:

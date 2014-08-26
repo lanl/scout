@@ -1182,7 +1182,10 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   CGLegionRuntime& R = CGM.getLegionRuntime();
   
   LLVMContext& context = CGM.getLLVMContext();
-  
+ 
+  // Create LegionTaskInitFunction(lsci_unimesh_t *mesh, lsci_context_t context, lsci_runtime_t runtime); 
+  // This will create the task launcher, add region requirements, add fields, and execute the index space.
+  // Note: context and runtime are needed for lsci_execute_index_space(runtime, context, indexLauncher).
   TypeVec params;
   
   size_t idx = 0;
@@ -1234,7 +1237,8 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   taskInfo.push_back(ConstantInt::get(Int32Ty, taskId));
   taskInfo.push_back(taskFunc);
   taskInfo.push_back(taskInit);
-  
+ 
+  // adding metadata 
   tasks->addOperand(MDNode::get(context, taskInfo));
 
   aitr = taskInit->arg_begin();
@@ -1254,7 +1258,7 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   
   BasicBlock* entry = BasicBlock::Create(context, "entry", taskInit);
   B.SetInsertPoint(entry);
-  
+ 
   ValueVec fields;
   ValueVec args;
   
@@ -1625,7 +1629,7 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
       }
       else{
         assert(false && "unhandled mesh field type");
-      }
+      
       
       args.push_back(ConstantInt::get(Int64Ty, j));
       args.push_back(ConstantInt::get(Int32Ty, 0));
@@ -1635,6 +1639,7 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
       Value* cv = B.CreateBitCast(fp, meshType->getTypeAtIndex(j));
       
       B.CreateStore(cv, mf);
+      }
     }
     else{
       llvm::PointerType* pt = dyn_cast<llvm::PointerType>(mf->getType());

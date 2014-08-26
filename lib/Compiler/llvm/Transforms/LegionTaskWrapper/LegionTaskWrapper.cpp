@@ -14,6 +14,8 @@
 #include "llvm/Transforms/Utils/CodeExtractor.h"
 #include "llvm/IR/IRBuilder.h" 
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/ADT/SmallVector.h"
+#include <cassert>
 
 using namespace llvm;
 
@@ -24,8 +26,6 @@ LegionTaskWrapper::LegionTaskWrapper() : ModulePass(LegionTaskWrapper::ID) {}
 bool LegionTaskWrapper::runOnModule(Module &M) {
 
   bool modifiedIR = false;
-
-  //M.dump();
 
   // iterate through functions in module M
   for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I) {
@@ -50,7 +50,7 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
         for (BasicBlock::const_iterator II = BB->begin(), IE = BB->end(); II != IE; ++II) {
 
           for(unsigned i = 0, e = II->getNumOperands(); i!=e; ++i){
-            
+
             if(MDNode *N = dyn_cast_or_null<MDNode>(II->getOperand(i))){
 
               if (N->isFunctionLocal()) {
@@ -78,14 +78,14 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
         // Check if function is "main_task()" and if so, keep a ptr to it
 
         if (F2.getName() == "main_task") {
-            mainTaskFunc = &F2;
-            //errs() << "found main_task()\n";
+          mainTaskFunc = &F2;
+          //errs() << "found main_task()\n";
         }
 
         // extract code from main() and put it in main_task()
         // TODO check if we have a main_task().  If not, we have a problem.
         if (!mainTaskFunc) {
-              //errs() << "Did not find main_task()\n";
+          //errs() << "Did not find main_task()\n";
         }
       }
 
@@ -122,17 +122,19 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
 
           if ((*ii).getOpcode() == llvm::Instruction::Store) {
 
-            // for each operand in the instruction
-            for(unsigned i = 0, e = (*ii).getNumOperands(); i!=e; ++i){
+            Instruction &storeInst = (*ii);
 
-              if ((*ii).getOperand(i)->getName() ==  "argc.addr") {
+            // for each operand in the instruction
+            for(unsigned i = 0, e = storeInst.getNumOperands(); i!=e; ++i){
+
+              if (storeInst.getOperand(i)->getName() ==  "argc.addr") {
                 //errs() << "found argc.addr\n";
-                argc_store = &(*ii);
+                argc_store = &storeInst;
               }
 
-              if ((*ii).getOperand(i)->getName() ==  "argv.addr") {
+              if (storeInst.getOperand(i)->getName() ==  "argv.addr") {
                 //errs() << "found argv.addr\n";
-                argv_store = &(*ii);
+                argv_store = &storeInst;
               }
             } 
           }
@@ -143,8 +145,120 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
       //errs() << "erasing argv.addr\n";
       argv_store->eraseFromParent();
 
-      // TODO Go through blocks in main_task and if find call to a func that is a task,
+      // In main_task() we need to subst a call to LegionTaskInitFunctionX(lsci_unimesh_t*, char* , char* ).
+      // instead of the original function call, but in order to do that, you need to be able to pass it the
+      // context and runtime, which we need to get first from the task_args that have been passed to main_task()
+
+      // Go to beginning of main_task and get lsci runtime and context
+      BasicBlock &firstBlock = mainTaskFunc->front();
+      llvm::Instruction& firstInst = firstBlock.front();
+      // inserts before first instruction
+      builder.SetInsertPoint(&firstInst);
+
+      // get lsci_task_args_t variable
+      Function::arg_iterator arg_iter = mainTaskFunc->arg_begin();
+      Value* ptr_task_args = arg_iter++;
+      ptr_task_args->setName("task_args");
+      StructType *StructTy_struct_lsci_task_args_t = M.getTypeByName("struct.lsci_task_args_t");
+      PointerType* PointerLsciTaskArgsTy = PointerType::get(StructTy_struct_lsci_task_args_t, 0); 
+      AllocaInst* ptr_task_args_addr = builder.CreateAlloca(PointerLsciTaskArgsTy, 0, "task_args.addr");
+      StoreInst* storeTaskArgsInst = builder.CreateAlignedStore(ptr_task_args, ptr_task_args_addr, 8);
+      LoadInst* loadTaskArgsInst = builder.CreateAlignedLoad(ptr_task_args_addr, 8, "");
+
+      // get context from task args
+      ConstantInt* const_int32_0 = ConstantInt::get(M.getContext(), APInt(32, StringRef("0"), 10));
+      SmallVector<Value*,2> Indices;
+      Indices.push_back(const_int32_0);
+      Indices.push_back(const_int32_0);
+      Value* ptr_context = builder.CreateInBoundsGEP(loadTaskArgsInst, Indices, "ptr_context");
+      LoadInst* context = builder.CreateAlignedLoad(ptr_context, 8, "context");
+
+      // get runtime from task args
+      ConstantInt* const_int32_1 = ConstantInt::get(M.getContext(), APInt(32, StringRef("1"), 10));
+      SmallVector<Value*,2> Indices2;
+      Indices2.push_back(const_int32_0);
+      Indices2.push_back(const_int32_1);
+      Value* ptr_runtime = builder.CreateInBoundsGEP(loadTaskArgsInst, Indices2, "ptr_runtime");
+      LoadInst* runtime = builder.CreateAlignedLoad(ptr_runtime, 8, "runtime");
+
+      // go through instructions in this block and look for loads of @__scrt_legion_context
+      // and replace with my context address.
+
+      // for each instruction in the basic block
+      for (BasicBlock::InstListType::iterator ii = firstBlock.begin(); ii != firstBlock.end(); ++ii) {
+
+          // if a load
+          if ((*ii).getOpcode() == llvm::Instruction::Load) {
+
+            Instruction &loadInst = *ii;
+
+            // if the address being loaded is @__scrt_legion_context, then remove the instruction
+            // and replace all uses of the result with context
+            if (loadInst.getOperand(0)->getName() == "__scrt_legion_context" ) {
+                loadInst.replaceAllUsesWith(context);
+            } 
+            // if the address being loaded is @__scrt_legion_runtime, then remove the instruction
+            // and replace all uses of the result with runtime
+            if (loadInst.getOperand(0)->getName() == "__scrt_legion_runtime" ) {
+                loadInst.replaceAllUsesWith(runtime);
+            } 
+          }
+        }
+
+
+      // Go through blocks in main_task and if find call to a func that is a task,
       // substitute with a call to LegionTaskInitFunctionX(lsci_unimesh_t*, char* , char* ).
+
+      // for each basic block in main_task()
+      for(BB = mainTaskFunc->begin() ; BB != mainTaskFunc->end(); ++BB) {
+
+        // for each instruction in the basic block
+        for (BasicBlock::InstListType::iterator ii = BB->begin(); ii != BB->end(); ++ii) {
+
+          if ((*ii).getOpcode() == llvm::Instruction::Call) {
+
+            CallInst& callInst = cast <CallInst> (*ii);
+
+            //errs() << "Found a Call instruction.\n";
+
+            // retrieve corresponding function for this call
+            llvm::Function *calledFN = cast< llvm::Function > (callInst.getCalledFunction());
+        
+            // TODO check if it is a call to a task and substitute in a call to the correct LegionTaskInit function;
+           
+            // get function name and look it up to see if it is a task. 
+            NamedMDNode* NMDN = M.getOrInsertNamedMetadata("scout.tasks");
+
+            // Go through each MDNode in the NamedMDNodes and search for metadata related to task function
+            // Metadata for scout.tasks is in the form of a small vector of 3 Value*:  taskID, taskFunc and taskInit
+            for (unsigned i = 0, e = NMDN->getNumOperands(); i != e; ++i) {
+
+              // get 0th MDNode operand of the ith NamedMDNode operand
+              MDNode *MDN = cast< MDNode >(NMDN->getOperand(i));
+
+              // 1st Operand  of MDNodes is a function ptr
+              Function *FN = cast < Function > (MDN->getOperand(1));
+
+              if (FN == calledFN) {
+
+                // add lsci_mesh, context and runtime to params to call
+                llvm::SmallVector < llvm::Value*, 3 > Args;
+                // This is not right -- needs to be the lsci_unimesh_t struct pointer
+                Args.push_back(callInst.getArgOperand(0));
+                Args.push_back(context);
+                Args.push_back(runtime);
+
+                // replace call to function with call to LegionTaskInitFunction
+                Function *legionTaskInitFN = cast < Function > (MDN->getOperand(2));
+                builder.SetInsertPoint(&callInst);
+                //builder.CreateCall(legionTaskInitFN, ArrayRef<llvm::Value*> (Args));
+                //callInst.eraseFromParent();
+
+              } 
+            }
+          }
+        }
+      }
 
 
       // make main() call lsci_main() at the end to do lsci startup stuff
@@ -152,9 +266,9 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
       Function::BasicBlockListType &blocks = F.getBasicBlockList();
       llvm::BasicBlock *newheader = BasicBlock::Create(M.getContext(), "entry");
       blocks.push_back(newheader);
-      
+
       // create call instruction
-      llvm::Function::arg_iterator arg_iter = F.arg_begin();
+      arg_iter = F.arg_begin();
       llvm::Value* argcValue = arg_iter++;
       llvm::Value* argvValue = arg_iter++;
 
@@ -175,9 +289,6 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
     }
   }
 
-  //errs() << "done with modifying main and main_task in the LegionTaskWRapper pass.\n";
-
-  //M.dump();
 
   // return true if modified IR
   return modifiedIR;
