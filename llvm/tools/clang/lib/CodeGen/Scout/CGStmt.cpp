@@ -1639,6 +1639,7 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
       Value* cv = B.CreateBitCast(fp, meshType->getTypeAtIndex(j));
       
       B.CreateStore(cv, mf);
+      }
     }
     else{
       llvm::PointerType* pt = dyn_cast<llvm::PointerType>(mf->getType());
