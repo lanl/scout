@@ -59,9 +59,9 @@ set(CMAKE_MODULE_PATH
 project(scout_test_scc C SCC SCXX )
 
   cmake_minimum_required(VERSION 2.8.9)
-
+  set(DART_TESTING_TIMEOUT "300" CACHE STRING "" FORCE)
   include(CTest)
-
+  
   include(../cmake/Modules/ScoutConfig.cmake)
 
   set(SCOUT_REGRESSION_DIR ${CMAKE_CURRENT_BINARY_DIR}/../../test)
