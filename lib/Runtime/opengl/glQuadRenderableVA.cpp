@@ -16,7 +16,7 @@
  */
 
 #include <unistd.h>
-
+#include <cstdlib>
 #include <iostream>
 #include "scout/Runtime/opengl/glQuadRenderableVA.h"
 #include "scout/Runtime/opengl/glTexture1D.h"
@@ -45,32 +45,12 @@ void glQuadRenderableVA::glQuadRenderableVA_1D()
 {
   size_t xdim = _max_pt.x - _min_pt.x;
 
-  _ntexcoords = 1;
-  _texture = new glTexture1D(xdim);
-  _texture->addParameter(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  _texture->addParameter(GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  _texture->addParameter(GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-  _pbo = new glTextureBuffer;
+  _pbo = new glColorBuffer;
   _pbo->bind();
   _pbo->alloc(sizeof(float) * 4 * xdim, GL_STREAM_DRAW_ARB);
   _pbo->release();
 
-  _vbo = new glVertexBuffer;
-  _vbo->bind();
-  _vbo->alloc(sizeof(float) * 3 * 4, GL_STREAM_DRAW_ARB);  // we use a quad for 1D meshes...
-  fill_vbo(_min_pt.x, _min_pt.x, _max_pt.x, _max_pt.x);
-  _vbo->release();
-  _nverts = 4;
-
-  _tcbo = new glTexCoordBuffer;
-  _tcbo->bind();
-  _tcbo->alloc(sizeof(float) * 4, GL_STREAM_DRAW_ARB);  // one-dimensional texture coordinates.
-  fill_tcbo1d(0.0f, 1.0f);
-  _tcbo->release();
-
   oglErrorCheck();
-
 }
 
 void glQuadRenderableVA::glQuadRenderableVA_2D()
@@ -79,32 +59,23 @@ void glQuadRenderableVA::glQuadRenderableVA_2D()
   size_t ydim = _max_pt.y - _min_pt.y;
   size_t xdim1 = xdim + 1;
   size_t ydim1 = ydim + 1;
+  size_t numCells = xdim * ydim;
   size_t numVertices = xdim1 * ydim1;
   size_t numEdges = xdim * ydim1 + xdim1 * ydim;
 
-  _ntexcoords = 2;
-  _texture = new glTexture2D(xdim, ydim);
-  _texture->addParameter(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  _texture->addParameter(GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  _texture->addParameter(GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-  _pbo = new glTextureBuffer;
+  _pbo = new glColorBuffer;
   _pbo->bind();
-  _pbo->alloc(sizeof(float) * 4 * xdim * ydim, GL_STREAM_DRAW_ARB);
+  _pbo->alloc(sizeof(float) * 4 * numCells, GL_STREAM_DRAW_ARB);
   _pbo->release();
+
+  _cells = (unsigned*)malloc(sizeof(unsigned) * numCells * 4);
+  fill_cells();
 
   _vbo = new glVertexBuffer;
   _vbo->bind();
-  _vbo->alloc(sizeof(float) * 3 * 4, GL_STREAM_DRAW_ARB);
-  fill_vbo(_min_pt.x, _min_pt.y, _max_pt.x, _max_pt.y);
+  _vbo->alloc(sizeof(float) * 2 * numVertices, GL_STREAM_DRAW_ARB);
+  fill_vbo();
   _vbo->release();
-  _nverts = 4;
-
-  _tcbo = new glTexCoordBuffer;
-  _tcbo->bind();
-  _tcbo->alloc(sizeof(float) * 8, GL_STREAM_DRAW_ARB);  // two-dimensional texture coordinates.
-  fill_tcbo2d(0.0f, 0.0f, 1.0f, 1.0f);
-  _tcbo->release();
 
 #ifdef WITH_VERTICES_EDGES
   _vpbo = new glColorBuffer;
@@ -128,18 +99,12 @@ void glQuadRenderableVA::glQuadRenderableVA_2D()
 
   float4* ec = map_edge_colors();
   for(size_t i = 0; i < numEdges; ++i){
-    ec[i].x = 0.0;
+    ec[i].x = 1.0;
     ec[i].y = 1.0;
-    ec[i].z = 0.0;
+    ec[i].z = 1.0;
     ec[i].w = 1.0;
   }
   unmap_edge_colors();
-
-  _mvbo = new glVertexBuffer;
-  _mvbo->bind();
-  _mvbo->alloc(sizeof(float) * 3 * numVertices, GL_STREAM_DRAW_ARB);
-  fill_mvbo();
-  _mvbo->release();
 
   _edges = (unsigned*)malloc(sizeof(unsigned) * numEdges * 2);
 
@@ -152,20 +117,14 @@ void glQuadRenderableVA::glQuadRenderableVA_2D()
 
 void glQuadRenderableVA::destroy()
 {
-  if (_texture != 0) delete _texture;
   if (_pbo != 0) delete _pbo;
   if (_vpbo != 0) delete _vpbo;
   if (_epbo != 0) delete _epbo;
   if (_vbo != 0) delete _vbo;
-  if (_mvbo != 0) delete _mvbo;
-  if (_tcbo != 0) delete _tcbo;
-  _texture = NULL;
   _pbo = NULL;
   _vpbo = NULL;
   _epbo = NULL;
   _vbo = NULL;
-  _mvbo = NULL;
-  _tcbo = NULL;
 }
 
 glQuadRenderableVA::~glQuadRenderableVA()
@@ -214,58 +173,29 @@ void glQuadRenderableVA::initialize(glCamera* camera)
 
 }
 
-
-void glQuadRenderableVA::fill_vbo(float x0,
-    float y0,
-    float x1,
-    float y1)
-{
-
-  float* verts = (float*)_vbo->mapForWrite();
-
-  verts[0] = x0;
-  verts[1] = y0;
-  verts[2] = 0.0f;
-
-  verts[3] = x1;
-  verts[4] = y0;
-  verts[5] = 0.f;
-
-  verts[6] = x1;
-  verts[7] = y1;
-  verts[8] = 0.0f;
-
-  verts[9] = x0;
-  verts[10] = y1;
-  verts[11] = 0.0f;
-
-  _vbo->unmap();
-}
-
-void glQuadRenderableVA::fill_mvbo()
+void glQuadRenderableVA::fill_vbo()
 {
   float xdim1 = _max_pt.x - _min_pt.x + 1;
   float ydim1 = _max_pt.y - _min_pt.y + 1;
 
-  float* verts = (float*)_mvbo->mapForWrite();
+  float* verts = (float*)_vbo->mapForWrite();
 
   size_t i = 0;
-  for(float y = 0; y < ydim1; y++) {  
+  for(float y = 0; y < ydim1; y++) {
     for(float x = 0; x < xdim1; x++) {
       verts[i++] = x;
       verts[i++] = y;
-      verts[i++] = 0.0f;
     }
   }
 
-  _mvbo->unmap();
+  _vbo->unmap();
 }
 
 void glQuadRenderableVA::fill_edges()
 {
   unsigned xdim = _max_pt.x - _min_pt.x;
   unsigned ydim = _max_pt.y - _min_pt.y;
-  unsigned xdim1 = xdim + 1.0f;
+  unsigned xdim1 = xdim + 1;
 
   size_t i = 0;
   for(unsigned y = 0; y <= ydim; ++y) {
@@ -283,64 +213,23 @@ void glQuadRenderableVA::fill_edges()
   }
 }
 
-void glQuadRenderableVA::fill_tcbo2d(float x0,
-    float y0,
-    float x1,
-    float y1)
+void glQuadRenderableVA::fill_cells()
 {
+  unsigned xdim = _max_pt.x - _min_pt.x;
+  unsigned ydim = _max_pt.y - _min_pt.y;
 
-  float* coords = (float*)_tcbo->mapForWrite();
-
-  coords[0] = x0;
-  coords[1] = y0;
-
-  coords[2] = x1;
-  coords[3] = y0;
-
-  coords[4] = x1;
-  coords[5] = y1;
-
-  coords[6] = x0;
-  coords[7] = y1;
-
-  _tcbo->unmap();
-
-}
-
-
-void glQuadRenderableVA::fill_tcbo1d(float start, float end)
-{
-
-  float* coords = (float*)_tcbo->mapForWrite();
-
-  coords[0] = start;
-  coords[1] = end;
-  coords[2] = end;
-  coords[3] = start;
-
-  _tcbo->unmap();
-}
-
-
-void glQuadRenderableVA::alloc_texture()
-{
-  _pbo->bind();
-  _texture->initialize(0);
-  _pbo->release();
-}
-
-void glQuadRenderableVA::alloc_vertex_texture()
-{
-  _vpbo->bind();
-  _texture->initialize(0);
-  _vpbo->release();
-}
-
-void glQuadRenderableVA::alloc_edge_texture()
-{
-  _epbo->bind();
-  _texture->initialize(0);
-  _epbo->release();
+  size_t i = 0;
+  for(unsigned y = 0; y < ydim; y++) {
+    for(unsigned x = 0; x < xdim; x++) {
+      unsigned i0, i1;
+      i0 = y * (xdim + 1) + x;
+      i1 = (y + 1) * (xdim + 1) + x;
+      _cells[i++] = i1;
+      _cells[i++] = i0;
+      _cells[i++] = i0 + 1;
+      _cells[i++] = i1 + 1;
+    }
+  }
 }
 
 GLuint glQuadRenderableVA::get_buffer_object_id()
@@ -367,88 +256,84 @@ float4* glQuadRenderableVA::map_edge_colors()
 void glQuadRenderableVA::unmap_colors()
 {
   _pbo->unmap();
-  _pbo->bind();
-  _texture->initialize(0);
-  _pbo->release();
 }
 
 void glQuadRenderableVA::unmap_vertex_colors()
 {
   _vpbo->unmap();
-  _vpbo->bind();
-  _texture->initialize(0);
-  _vpbo->release();
 }
 
 void glQuadRenderableVA::unmap_edge_colors()
 {
   _epbo->unmap();
-  _epbo->bind();
-  _texture->initialize(0);
-  _epbo->release();
 }
 
 void glQuadRenderableVA::draw(glCamera* camera)
 {
   glEnableClientState(GL_VERTEX_ARRAY);
-
-  //glShadeModel(GL_FLAT);
+  glEnableClientState(GL_COLOR_ARRAY);
 
   size_t xdim = _max_pt.x - _min_pt.x;
   size_t ydim = _max_pt.y - _min_pt.y;
   size_t xdim1 = xdim + 1;
   size_t ydim1 = ydim + 1;
+  size_t numCells = xdim * ydim;
   size_t numVertices = xdim1 * ydim1;
   size_t numEdges = xdim * ydim1 + xdim1 * ydim;
+  
+  float s = 80.0/max(xdim, ydim);
 
-  _pbo->bind();
-  _texture->enable();
-  _texture->update(0);
-  _pbo->release();
+  float* verts =(float*)_vbo->mapForRead();
+  float4* colors = (float4*)_pbo->mapForRead();
 
-  glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-  _tcbo->bind();
-  glTexCoordPointer(_ntexcoords, GL_FLOAT, 0, 0);
+  size_t ci = 0;
+  for(unsigned y = 0; y < ydim; y++) {
+    for(unsigned x = 0; x < xdim; x++) {
+      float4 color = colors[ci];
 
-  _vbo->bind();
-  glVertexPointer(3, GL_FLOAT, 0, 0);
-  _vbo->release();
+      glColor4f(color.x, color.y, color.z, color.w);
+      ++ci;
 
-  oglErrorCheck();
+      glBegin(GL_QUADS);
 
-  glDrawArrays(GL_POLYGON, 0, _nverts);
+      int i = (y * (xdim+1) * 2) + (x*2);
 
-  _tcbo->release();
-  _texture->disable();
+      glVertex2f(verts[i], verts[i+1]);
+      glVertex2f(verts[i+2], verts[i+3]);
 
-  glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+      i = ((y+1) * (xdim+1) * 2) + (x*2);
+      glVertex2f(verts[i+2], verts[i+3]);  
+      glVertex2f(verts[i], verts[i+1]);        
+      
+      glEnd();
+    }
+  }
+
+  _vbo->unmap();
+  _pbo->unmap();
 
 #ifdef WITH_VERTICES_EDGES
-  glEnableClientState(GL_COLOR_ARRAY);
+  _vbo->bind();
+  glVertexPointer(2, GL_FLOAT, 0, 0);
+  _vbo->release();
 
   _epbo->bind();
   glColorPointer(4, GL_FLOAT, 0, 0); 
   _epbo->release();
 
-  _mvbo->bind();
-  glVertexPointer(3, GL_FLOAT, 0, 0); 
-  _mvbo->release();
-
-  glLineWidth(5.0);
-  glDrawElements(GL_LINES, numEdges*2, GL_UNSIGNED_INT, _edges);
-
-  glPointSize(5.0);
+  glLineWidth(s);
+  glDrawElements(GL_LINES, numEdges * 2, GL_UNSIGNED_INT, _edges);
 
   _vpbo->bind();
   glColorPointer(4, GL_FLOAT, 0, 0); 
   _vpbo->release();
-  
-  glDrawArrays(GL_POINTS, 0, numVertices);
-  
-  glDisableClientState(GL_COLOR_ARRAY);
 
-  sleep(1);
+  glPointSize(s);  
+  glDrawArrays(GL_POINTS, 0, numVertices);
 #endif
+
+  glDisableClientState(GL_VERTEX_ARRAY);
+  glDisableClientState(GL_COLOR_ARRAY);
 
   oglErrorCheck();
 }

@@ -80,7 +80,11 @@ namespace CodeGen {
     llvm::Function *RenderallEndFunction();
     llvm::Function *CreateWindowFunction();
     llvm::Function *CreateWindowQuadRenderableColorsFunction();
+    llvm::Function *CreateWindowQuadRenderableVertexColorsFunction();
+    llvm::Function *CreateWindowQuadRenderableEdgeColorsFunction();
     llvm::Function *CreateWindowPaintFunction();
+    llvm::Function *CreateWindowPaintVerticesFunction();
+    llvm::Function *CreateWindowPaintEdgesFunction();
     llvm::Value    *RenderallUniformColorsGlobal(CodeGenFunction &CGF);
     llvm::Type     *convertScoutSpecificType(const Type *T);    
   };
