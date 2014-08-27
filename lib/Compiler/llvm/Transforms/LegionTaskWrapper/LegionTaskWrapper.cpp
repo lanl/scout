@@ -24,6 +24,55 @@ char LegionTaskWrapper::ID = 1;
 
 LegionTaskWrapper::LegionTaskWrapper() : ModulePass(LegionTaskWrapper::ID) {}
 
+void printInst(const Instruction* inst) {
+  errs() << inst->getOpcodeName();
+  errs() << " ";
+  for(unsigned i = 0, e = inst->getNumOperands(); i!=e; ++i){
+    errs() << inst->getOperand(i)->getName();
+    errs() << " ";
+  }
+  errs() << "\n";
+}
+  
+// return true if leafInst is a use of rootInst 
+bool isUseOf(Value* leafVal, Value* rootVal) {
+  for(Value::user_iterator i = rootVal->user_begin(), ie = rootVal->user_end(); i!=ie; ++i){
+    Instruction *vi = dyn_cast<Instruction>(*i);
+    printInst(vi);
+    if (vi != rootVal) {
+      if (vi) {
+        errs() << "use: " << vi->getName() << "\n";
+      } else {
+        errs() << "use is NULL!\n";
+      }
+      if (vi == leafVal) {
+        errs() << "Found use connection!\n";
+        return true;
+      } else if (isUseOf(leafVal, vi)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// check if one of the operands that defined this leafInst was the rootInst
+bool isDefinedFrom(Instruction* leafInst, Instruction* rootInst) {
+  for(User::op_iterator i = leafInst->op_begin(), ie = leafInst->op_end(); i!=ie; ++i){
+    Instruction *vi = dyn_cast<Instruction>(*i);
+    //printInst(vi);
+    if (vi) {
+      //errs() << "vi: " << vi->getName() << "\n";
+    } else {
+      //errs() << "vi is NULL!\n";
+    }
+    if (vi == rootInst) {
+      return true;
+    } 
+  }
+  return false;
+}
+
 bool LegionTaskWrapper::runOnModule(Module &M) {
 
   bool modifiedIR = false;
@@ -214,6 +263,8 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
       // for each basic block in main_task()
       for(BB = mainTaskFunc->begin() ; BB != mainTaskFunc->end(); ++BB) {
 
+        std::vector<Instruction*> instToErase;
+ 
         // for each instruction in the basic block
         for (BasicBlock::InstListType::iterator ii = BB->begin(); ii != BB->end(); ++ii) {
 
@@ -221,32 +272,35 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
 
             CallInst& callInst = cast <CallInst> (*ii);
 
-            StringRef argStr = callInst.getArgOperand(0)->getName();
-            //errs() << "argStr:" << argStr << "\n";
+            if (callInst.getNumOperands() == 0) break;
 
-            //errs() << "Found a Call instruction.\n";
+            Value* argVal = callInst.getArgOperand(0);
 
             // retrieve corresponding function for this call
             llvm::Function *calledFN = cast< llvm::Function > (callInst.getCalledFunction());
+            //errs() << "Looking at call of " << calledFN->getName() << "\n";
         
             // TODO check if it is a call to a task and substitute in a call to the correct LegionTaskInit function;
            
             // get function name and look it up to see if it is a task. 
             NamedMDNode* NMDN = M.getOrInsertNamedMetadata("scout.tasks");
 
+            Value* lsciUnimeshVal = nullptr;
+
             // Go through each MDNode in the NamedMDNodes and search for metadata related to task function
             // Metadata for scout.tasks is in the form of a small vector of 3 Value*:  taskID, taskFunc and taskInit
             for (unsigned i = 0, e = NMDN->getNumOperands(); i != e; ++i) {
 
+
               // get the ith MDNode operand
+              //errs() << "Looking at: " << i << " MDNode operand\n";
               MDNode *MDN = cast< MDNode >(NMDN->getOperand(i));
 
               // 1st Operand  of MDNodes is a function ptr
               Function *FN = cast < Function > (MDN->getOperand(1));
 
               if (FN == calledFN) {
-
-                Value* lsciUnimeshVal = nullptr;
+                //errs() << "This is a task\n";
 
                 // get metadata connecting mesh alloc and lsci_unimesh_t alloc
                 NamedMDNode* lsciNMDN = M.getOrInsertNamedMetadata("scout.lscimeshmd");
@@ -265,10 +319,20 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
                   StringRef lsciallocStr = lsciallocMDStr->getString();
                   //errs() << "lsciallocStr:" << lsciallocStr << "\n";
 
-                  // if task argument string matches metadata string, get the value from the string
-                  // problem is here: the argStr isn't the original mesh variable name
-                  if (allocStr.equals(argStr)) {
-                    //errs() << "Found match btwn task arg str and metadata str:" << argStr << "\n";
+                  // if task argument string is in the def-use chain of the metadata string value,
+                  // then get the lsci_unimesh_t value
+                  // if (allocStr.equals(argStr)) 
+                  Value* allocVal = mainTaskFunc->getValueSymbolTable().lookup(allocStr);
+                  Instruction* argInst = dyn_cast<Instruction>(argVal);
+                  //errs() << "argVal: " << argVal->getName() << "\n";
+                  //errs() << "argInst: " << argInst->getName() << "\n";
+                  Instruction* allocInst = dyn_cast<Instruction>(allocVal);
+                  //errs() << "allocVal: " << allocVal->getName() << "\n";
+                  //errs() << "allocInst: " << allocInst->getName() << "\n";
+
+                  //if (isUseOf(argVal, allocVal)) 
+                  if (isDefinedFrom(argInst, allocInst)) {
+                    //errs() << "Found match btwn task arg val and metadata str:" << argVal->getName() << "\n";
 
                     // 1st Operand  of MDNodes is name of lsci_unimesh_t alloc
                     MDString* lsciUnimeshMDStr = cast < MDString > (lsciMDN->getOperand(1));
@@ -283,7 +347,7 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
                   if (lsciUnimeshVal) break;
                 }
                 
-                //assert (lsciUnimeshVal && "no val for lsci_unimesh_t");
+                assert (lsciUnimeshVal && "no val for lsci_unimesh_t");
 
                 // add lsci_mesh, context and runtime to params to call
                 llvm::SmallVector < llvm::Value*, 3 > Args;
@@ -294,12 +358,18 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
                 // replace call to function with call to LegionTaskInitFunction
                 Function *legionTaskInitFN = cast < Function > (MDN->getOperand(2));
                 builder.SetInsertPoint(&callInst);
+                //errs() << "create call\n";
                 //builder.CreateCall(legionTaskInitFN, ArrayRef<llvm::Value*> (Args));
-                //callInst.eraseFromParent();
-
               } 
+              if (lsciUnimeshVal) break;
             }
           }
+        }
+
+        // now that we've iterated through the instructions in this block, remove the original task function calls
+        for (std::vector<Instruction*>::iterator iter = instToErase.begin(); iter != instToErase.end(); ++iter) {
+          Instruction* instr = *iter;
+          instr->eraseFromParent();
         }
       }
 
