@@ -308,7 +308,30 @@ const_iterator &const_iterator::operator++() {
   return *this;
 }
 
-const_iterator &const_iterator::operator--() {
+bool const_iterator::operator==(const const_iterator &RHS) const {
+  return Path.begin() == RHS.Path.begin() && Position == RHS.Position;
+}
+
+ptrdiff_t const_iterator::operator-(const const_iterator &RHS) const {
+  return Position - RHS.Position;
+}
+
+reverse_iterator rbegin(StringRef Path) {
+  reverse_iterator I;
+  I.Path = Path;
+  I.Position = Path.size();
+  return ++I;
+}
+
+reverse_iterator rend(StringRef Path) {
+  reverse_iterator I;
+  I.Path = Path;
+  I.Component = Path.substr(0, 0);
+  I.Position = 0;
+  return I;
+}
+
+reverse_iterator &reverse_iterator::operator++() {
   // If we're at the end and the previous char was a '/', return '.' unless
   // we are the root path.
   size_t root_dir_pos = root_dir_start(Path);
@@ -335,17 +358,9 @@ const_iterator &const_iterator::operator--() {
   return *this;
 }
 
-bool const_iterator::operator==(const const_iterator &RHS) const {
-  return Path.begin() == RHS.Path.begin() &&
+bool reverse_iterator::operator==(const reverse_iterator &RHS) const {
+  return Path.begin() == RHS.Path.begin() && Component == RHS.Component &&
          Position == RHS.Position;
-}
-
-bool const_iterator::operator!=(const const_iterator &RHS) const {
-  return !(*this == RHS);
-}
-
-ptrdiff_t const_iterator::operator-(const const_iterator &RHS) const {
-  return Position - RHS.Position;
 }
 
 const StringRef root_path(StringRef path) {
@@ -525,14 +540,24 @@ void native(const Twine &path, SmallVectorImpl<char> &result) {
   native(result);
 }
 
-void native(SmallVectorImpl<char> &path) {
+void native(SmallVectorImpl<char> &Path) {
 #ifdef LLVM_ON_WIN32
-  std::replace(path.begin(), path.end(), '/', '\\');
+  std::replace(Path.begin(), Path.end(), '/', '\\');
+#else
+  for (auto PI = Path.begin(), PE = Path.end(); PI < PE; ++PI) {
+    if (*PI == '\\') {
+      auto PN = PI + 1;
+      if (PN < PE && *PN == '\\')
+        ++PI; // increment once, the for loop will move over the escaped slash
+      else
+        *PI = '/';
+    }
+  }
 #endif
 }
 
 const StringRef filename(StringRef path) {
-  return *(--end(path));
+  return *rbegin(path);
 }
 
 const StringRef stem(StringRef path) {
@@ -856,7 +881,8 @@ std::error_code copy_file(const Twine &From, const Twine &To) {
   }
 
   const size_t BufSize = 4096;
-  char *Buf = new char[BufSize];
+  std::vector<char> Buffer(BufSize);
+  char *Buf = Buffer.data();
   int BytesRead = 0, BytesWritten = 0;
   for (;;) {
     BytesRead = read(ReadFD, Buf, BufSize);
@@ -873,7 +899,6 @@ std::error_code copy_file(const Twine &From, const Twine &To) {
   }
   close(ReadFD);
   close(WriteFD);
-  delete[] Buf;
 
   if (BytesRead < 0 || BytesWritten < 0)
     return std::error_code(errno, std::generic_category());

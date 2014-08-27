@@ -453,14 +453,14 @@ static void PrintFileSectionSizes(StringRef file) {
   }
 
   // Attempt to open the binary.
-  ErrorOr<Binary *> BinaryOrErr = createBinary(file);
+  ErrorOr<OwningBinary<Binary>> BinaryOrErr = createBinary(file);
   if (std::error_code EC = BinaryOrErr.getError()) {
     errs() << ToolName << ": " << file << ": " << EC.message() << ".\n";
     return;
   }
-  std::unique_ptr<Binary> binary(BinaryOrErr.get());
+  Binary &Bin = *BinaryOrErr.get().getBinary();
 
-  if (Archive *a = dyn_cast<Archive>(binary.get())) {
+  if (Archive *a = dyn_cast<Archive>(&Bin)) {
     // This is an archive. Iterate over each member and display its sizes.
     for (object::Archive::child_iterator i = a->child_begin(),
                                          e = a->child_end();
@@ -488,7 +488,7 @@ static void PrintFileSectionSizes(StringRef file) {
       }
     }
   } else if (MachOUniversalBinary *UB =
-                 dyn_cast<MachOUniversalBinary>(binary.get())) {
+                 dyn_cast<MachOUniversalBinary>(&Bin)) {
     // If we have a list of architecture flags specified dump only those.
     if (!ArchAll && ArchFlags.size() != 0) {
       // Look for a slice in the universal binary that matches each ArchFlag.
@@ -692,7 +692,7 @@ static void PrintFileSectionSizes(StringRef file) {
         }
       }
     }
-  } else if (ObjectFile *o = dyn_cast<ObjectFile>(binary.get())) {
+  } else if (ObjectFile *o = dyn_cast<ObjectFile>(&Bin)) {
     if (!checkMachOAndArchFlags(o, file))
       return;
     if (OutputFormat == sysv)
@@ -731,8 +731,7 @@ int main(int argc, char **argv) {
     if (ArchFlags[i] == "all") {
       ArchAll = true;
     } else {
-      Triple T = MachOObjectFile::getArch(ArchFlags[i]);
-      if (T.getArch() == Triple::UnknownArch) {
+      if (!MachOObjectFile::isValidArch(ArchFlags[i])) {
         outs() << ToolName << ": for the -arch option: Unknown architecture "
                << "named '" << ArchFlags[i] << "'";
         return 1;

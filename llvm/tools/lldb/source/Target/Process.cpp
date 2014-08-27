@@ -47,10 +47,6 @@
 #include "lldb/Target/ThreadPlanBase.h"
 #include "Plugins/Process/Utility/InferiorCallPOSIX.h"
 
-#ifndef LLDB_DISABLE_POSIX
-#include <spawn.h>
-#endif
-
 using namespace lldb;
 using namespace lldb_private;
 
@@ -323,8 +319,8 @@ ProcessInstanceInfo::DumpTableHeader (Stream &s, Platform *platform, bool show_a
     }
     else
     {
-        s.Printf     ("PID    PARENT USER       ARCH    %s\n", label);
-        s.PutCString ("====== ====== ========== ======= ============================\n");
+        s.Printf     ("PID    PARENT USER       TRIPLE                   %s\n", label);
+        s.PutCString ("====== ====== ========== ======================== ============================\n");
     }
 }
 
@@ -366,10 +362,9 @@ ProcessInstanceInfo::DumpAsTableRow (Stream &s, Platform *platform, bool show_ar
         }
         else
         {
-            s.Printf ("%-10s %-7d %s ", 
+            s.Printf ("%-10s %-24s ",
                       platform->GetUserName (m_euid),
-                      (int)m_arch.GetTriple().getArchName().size(),
-                      m_arch.GetTriple().getArchName().data());
+                      m_arch.IsValid() ? m_arch.GetTriple().str().c_str() : "");
         }
 
         if (verbose || show_args)
@@ -407,45 +402,44 @@ ProcessLaunchCommandOptions::SetOptionValue (uint32_t option_idx, const char *op
             break;
             
         case 'i':   // STDIN for read only
-            {   
-                ProcessLaunchInfo::FileAction action;
-                if (action.Open (STDIN_FILENO, option_arg, true, false))
-                    launch_info.AppendFileAction (action);
-            }
+        {
+            FileAction action;
+            if (action.Open (STDIN_FILENO, option_arg, true, false))
+                launch_info.AppendFileAction (action);
             break;
+        }
             
         case 'o':   // Open STDOUT for write only
-            {   
-                ProcessLaunchInfo::FileAction action;
-                if (action.Open (STDOUT_FILENO, option_arg, false, true))
-                    launch_info.AppendFileAction (action);
-            }
+        {
+            FileAction action;
+            if (action.Open (STDOUT_FILENO, option_arg, false, true))
+                launch_info.AppendFileAction (action);
             break;
+        }
 
         case 'e':   // STDERR for write only
-            {   
-                ProcessLaunchInfo::FileAction action;
-                if (action.Open (STDERR_FILENO, option_arg, false, true))
-                    launch_info.AppendFileAction (action);
-            }
+        {
+            FileAction action;
+            if (action.Open (STDERR_FILENO, option_arg, false, true))
+                launch_info.AppendFileAction (action);
             break;
-            
+        }
 
         case 'p':   // Process plug-in name
             launch_info.SetProcessPluginName (option_arg);    
             break;
             
         case 'n':   // Disable STDIO
-            {
-                ProcessLaunchInfo::FileAction action;
-                if (action.Open (STDIN_FILENO, "/dev/null", true, false))
-                    launch_info.AppendFileAction (action);
-                if (action.Open (STDOUT_FILENO, "/dev/null", false, true))
-                    launch_info.AppendFileAction (action);
-                if (action.Open (STDERR_FILENO, "/dev/null", false, true))
-                    launch_info.AppendFileAction (action);
-            }
+        {
+            FileAction action;
+            if (action.Open (STDIN_FILENO, "/dev/null", true, false))
+                launch_info.AppendFileAction (action);
+            if (action.Open (STDOUT_FILENO, "/dev/null", false, true))
+                launch_info.AppendFileAction (action);
+            if (action.Open (STDERR_FILENO, "/dev/null", false, true))
+                launch_info.AppendFileAction (action);
             break;
+        }
             
         case 'w': 
             launch_info.SetWorkingDirectory (option_arg);    
@@ -460,11 +454,18 @@ ProcessLaunchCommandOptions::SetOptionValue (uint32_t option_idx, const char *op
                 launch_info.GetArchitecture().SetTriple (option_arg);
             break;
             
-        case 'A':   
-            launch_info.GetFlags().Set (eLaunchFlagDisableASLR); 
+        case 'A':   // Disable ASLR.
+        {
+            bool success;
+            const bool disable_aslr_arg = Args::StringToBoolean (option_arg, true, &success);
+            if (success)
+                disable_aslr = disable_aslr_arg ? eLazyBoolYes : eLazyBoolNo;
+            else
+                error.SetErrorStringWithFormat ("Invalid boolean value for disable-aslr option: '%s'", option_arg ? option_arg : "<null>");
             break;
-            
-        case 'c':   
+        }
+
+        case 'c':
             if (option_arg && option_arg[0])
                 launch_info.SetShell (option_arg);
             else
@@ -478,7 +479,6 @@ ProcessLaunchCommandOptions::SetOptionValue (uint32_t option_idx, const char *op
         default:
             error.SetErrorStringWithFormat("unrecognized short option character '%c'", short_option);
             break;
-            
     }
     return error;
 }
@@ -487,7 +487,7 @@ OptionDefinition
 ProcessLaunchCommandOptions::g_option_table[] =
 {
 { LLDB_OPT_SET_ALL, false, "stop-at-entry", 's', OptionParser::eNoArgument,       NULL, NULL, 0, eArgTypeNone,          "Stop at the entry point of the program when launching a process."},
-{ LLDB_OPT_SET_ALL, false, "disable-aslr",  'A', OptionParser::eNoArgument,       NULL, NULL, 0, eArgTypeNone,          "Disable address space layout randomization when launching a process."},
+{ LLDB_OPT_SET_ALL, false, "disable-aslr",  'A', OptionParser::eRequiredArgument, NULL, NULL, 0, eArgTypeBoolean,          "Set whether to disable address space layout randomization when launching a process."},
 { LLDB_OPT_SET_ALL, false, "plugin",        'p', OptionParser::eRequiredArgument, NULL, NULL, 0, eArgTypePlugin,        "Name of the process plugin you want to use."},
 { LLDB_OPT_SET_ALL, false, "working-dir",   'w', OptionParser::eRequiredArgument, NULL, NULL, 0, eArgTypeDirectoryName,          "Set the current working directory to <path> when running the inferior."},
 { LLDB_OPT_SET_ALL, false, "arch",          'a', OptionParser::eRequiredArgument, NULL, NULL, 0, eArgTypeArchitecture,  "Set the architecture for the process to launch when ambiguous."},
@@ -691,6 +691,7 @@ Process::Process(Target &target, Listener &listener) :
     m_stderr_data (),
     m_profile_data_comm_mutex (Mutex::eMutexTypeRecursive),
     m_profile_data (),
+    m_iohandler_sync (false),
     m_memory_cache (*this),
     m_allocated_memory_cache (*this),
     m_should_detach (false),
@@ -889,6 +890,34 @@ Process::GetNextEvent (EventSP &event_sp)
     return state;
 }
 
+bool
+Process::SyncIOHandler (uint64_t timeout_msec)
+{
+    bool timed_out = false;
+
+    // don't sync (potentially context switch) in case where there is no process IO
+    if (m_process_input_reader)
+    {
+        TimeValue timeout = TimeValue::Now();
+        timeout.OffsetWithMicroSeconds(timeout_msec*1000);
+
+        m_iohandler_sync.WaitForValueEqualTo(true, &timeout, &timed_out);
+
+        Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_PROCESS));
+        if(log)
+        {
+            if(timed_out)
+                log->Printf ("Process::%s pid %" PRIu64 " (timeout=%" PRIu64 "ms): FAIL", __FUNCTION__, GetID (), timeout_msec);
+            else
+                log->Printf ("Process::%s pid %" PRIu64 ": SUCCESS", __FUNCTION__, GetID ());
+        }
+
+        // reset sync one-shot so it will be ready for next time
+        m_iohandler_sync.SetValue(false, eBroadcastNever);
+    }
+
+    return !timed_out;
+}
 
 StateType
 Process::WaitForProcessToStop (const TimeValue *timeout, lldb::EventSP *event_sp_ptr, bool wait_always, Listener *hijack_listener)
@@ -1857,7 +1886,7 @@ Process::CreateBreakpointSite (const BreakpointLocationSP &owner, bool use_hardw
                                                                symbol->GetAddress().GetLoadAddress(&m_target),
                                                                owner->GetBreakpoint().GetID(),
                                                                owner->GetID(),
-                                                               error.AsCString() ? error.AsCString() : "unkown error");
+                                                               error.AsCString() ? error.AsCString() : "unknown error");
                 return LLDB_INVALID_BREAK_ID;
             }
             Address resolved_address(load_addr);
@@ -1905,7 +1934,7 @@ Process::CreateBreakpointSite (const BreakpointLocationSP &owner, bool use_hardw
                                                                        load_addr,
                                                                        owner->GetBreakpoint().GetID(),
                                                                        owner->GetID(),
-                                                                       error.AsCString() ? error.AsCString() : "unkown error");
+                                                                       error.AsCString() ? error.AsCString() : "unknown error");
                     }
                 }
             }
@@ -2997,7 +3026,17 @@ Process::Attach (ProcessAttachInfo &attach_info)
                     {
                         match_info.GetProcessInfo().GetExecutableFile().GetPath (process_name, sizeof(process_name));    
                         if (num_matches > 1)
-                            error.SetErrorStringWithFormat ("more than one process named %s", process_name);
+                        {
+                            StreamString s;
+                            ProcessInstanceInfo::DumpTableHeader (s, platform_sp.get(), true, false);
+                            for (size_t i = 0; i < num_matches; i++)
+                            {
+                                process_infos.GetProcessInfoAtIndex(i).DumpAsTableRow(s, platform_sp.get(), true, false);
+                            }
+                            error.SetErrorStringWithFormat ("more than one process named %s:\n%s",
+                                                            process_name,
+                                                            s.GetData());
+                        }
                         else
                             error.SetErrorStringWithFormat ("could not find a process named %s", process_name);
                     }
@@ -3063,7 +3102,11 @@ Process::CompleteAttach ()
 {
     // Let the process subclass figure out at much as it can about the process
     // before we go looking for a dynamic loader plug-in.
-    DidAttach();
+    ArchSpec process_arch;
+    DidAttach(process_arch);
+    
+    if (process_arch.IsValid())
+        m_target.SetArchitecture(process_arch);
 
     // We just attached.  If we have a platform, ask it for the process architecture, and if it isn't
     // the same as the one we've already set, switch architectures.
@@ -3082,7 +3125,7 @@ Process::CompleteAttach ()
                 m_target.SetArchitecture(platform_arch);
             }
         }
-        else
+        else if (!process_arch.IsValid())
         {
             ProcessInstanceInfo process_info;
             platform_sp->GetProcessInfo (GetID(), process_info);
@@ -3243,6 +3286,7 @@ Process::Halt (bool clear_thread_plans)
     EventSP event_sp;
     Error error (WillHalt());
     
+    bool restored_process_events = false;
     if (error.Success())
     {
         
@@ -3254,6 +3298,10 @@ Process::Halt (bool clear_thread_plans)
         {
             if (m_public_state.GetValue() == eStateAttaching)
             {
+                // Don't hijack and eat the eStateExited as the code that was doing
+                // the attach will be waiting for this event...
+                RestorePrivateProcessEvents();
+                restored_process_events = true;
                 SetExitStatus(SIGKILL, "Cancelled async attach.");
                 Destroy ();
             }
@@ -3302,7 +3350,8 @@ Process::Halt (bool clear_thread_plans)
         }
     }
     // Resume our private state thread before we post the event (if any)
-    RestorePrivateProcessEvents();
+    if (!restored_process_events)
+        RestorePrivateProcessEvents();
 
     // Post any event we might have consumed. If all goes well, we will have
     // stopped the process, intercepted the event and set the interrupted
@@ -3878,9 +3927,11 @@ Process::HandlePrivateEvent (EventSP &event_sp)
             // as this means the curses GUI is in use...
             if (!GetTarget().GetDebugger().IsForwardingEvents())
                 PushProcessIOHandler ();
+            m_iohandler_sync.SetValue(true, eBroadcastAlways);
         }
         else if (StateIsStoppedState(new_state, false))
         {
+            m_iohandler_sync.SetValue(false, eBroadcastNever);
             if (!Process::ProcessEventData::GetRestartedFromEvent(event_sp.get()))
             {
                 // If the lldb_private::Debugger is handling the events, we don't

@@ -20,6 +20,7 @@
 #include "lldb/Core/Error.h"
 #include "lldb/Host/FileSpec.h"
 #include "lldb/Host/Host.h"
+#include "lldb/Host/HostInfo.h"
 #include "lldb/Host/Mutex.h"
 #include "lldb/Interpreter/OptionValueProperties.h"
 
@@ -79,6 +80,12 @@ SetPluginInfo (const FileSpec &plugin_file_spec, const PluginInfo &plugin_info)
     plugin_map[plugin_file_spec] = plugin_info;
 }
 
+template <typename FPtrTy>
+static FPtrTy
+CastToFPtr (void *VPtr)
+{
+    return reinterpret_cast<FPtrTy>(reinterpret_cast<intptr_t>(VPtr));
+}
 
 static FileSpec::EnumerateDirectoryResult 
 LoadPluginCallback 
@@ -115,7 +122,11 @@ LoadPluginCallback
             if (plugin_info.plugin_handle)
             {
                 bool success = false;
-                plugin_info.plugin_init_callback = (PluginInitCallback)Host::DynamicLibraryGetSymbol (plugin_info.plugin_handle, "LLDBPluginInitialize", error);
+                plugin_info.plugin_init_callback =
+                    CastToFPtr<PluginInitCallback>(
+                        Host::DynamicLibraryGetSymbol(plugin_info.plugin_handle,
+                                                      "LLDBPluginInitialize",
+                                                      error));
                 if (plugin_info.plugin_init_callback)
                 {
                     // Call the plug-in "bool LLDBPluginInitialize(void)" function
@@ -125,7 +136,11 @@ LoadPluginCallback
                 if (success)
                 {
                     // It is ok for the "LLDBPluginTerminate" symbol to be NULL
-                    plugin_info.plugin_term_callback = (PluginTermCallback)Host::DynamicLibraryGetSymbol (plugin_info.plugin_handle, "LLDBPluginTerminate", error);
+                    plugin_info.plugin_term_callback =
+                        CastToFPtr<PluginTermCallback>(
+                            Host::DynamicLibraryGetSymbol(
+                                plugin_info.plugin_handle, "LLDBPluginTerminate",
+                                error));
                 }
                 else 
                 {
@@ -171,7 +186,7 @@ PluginManager::Initialize ()
     const bool find_files = true;
     const bool find_other = true;
     char dir_path[PATH_MAX];
-    if (Host::GetLLDBPath (ePathTypeLLDBSystemPlugins, dir_spec))
+    if (HostInfo::GetLLDBPath(ePathTypeLLDBSystemPlugins, dir_spec))
     {
         if (dir_spec.Exists() && dir_spec.GetPath(dir_path, sizeof(dir_path)))
         {
@@ -184,7 +199,7 @@ PluginManager::Initialize ()
         }
     }
 
-    if (Host::GetLLDBPath (ePathTypeLLDBUserPlugins, dir_spec))
+    if (HostInfo::GetLLDBPath(ePathTypeLLDBUserPlugins, dir_spec))
     {
         if (dir_spec.Exists() && dir_spec.GetPath(dir_path, sizeof(dir_path)))
         {

@@ -12,12 +12,6 @@
 #include "PlatformKalimba.h"
 #include "lldb/Host/Config.h"
 
-// C Includes
-#include <stdio.h>
-#ifndef LLDB_DISABLE_POSIX
-#include <sys/utsname.h>
-#endif
-
 // C++ Includes
 // Other libraries and framework includes
 // Project includes
@@ -29,7 +23,7 @@
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Core/StreamString.h"
 #include "lldb/Host/FileSpec.h"
-#include "lldb/Host/Host.h"
+#include "lldb/Host/HostInfo.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Target/Process.h"
 
@@ -137,7 +131,7 @@ PlatformKalimba::ResolveExecutable (const FileSpec &exe_file,
                 bool is_os_specified = (module_triple.getOS() != llvm::Triple::UnknownOS);
                 if (!is_vendor_specified || !is_os_specified)
                 {
-                    const llvm::Triple &host_triple = Host::GetArchitecture (Host::eSystemDefaultArchitecture).GetTriple();
+                    const llvm::Triple &host_triple = HostInfo::GetArchitecture(HostInfo::eArchKindDefault).GetTriple();
 
                     if (!is_vendor_specified)
                         module_triple.setVendorName (host_triple.getVendorName());
@@ -190,10 +184,17 @@ PlatformKalimba::ResolveExecutable (const FileSpec &exe_file,
             
             if (error.Fail() || !exe_module_sp)
             {
-                error.SetErrorStringWithFormat ("'%s' doesn't contain any '%s' platform architectures: %s",
-                                                exe_file.GetPath().c_str(),
-                                                GetPluginName().GetCString(),
-                                                arch_names.GetString().c_str());
+                if (exe_file.Readable())
+                {
+                    error.SetErrorStringWithFormat ("'%s' doesn't contain any '%s' platform architectures: %s",
+                                                    exe_file.GetPath().c_str(),
+                                                    GetPluginName().GetCString(),
+                                                    arch_names.GetString().c_str());
+                }
+                else
+                {
+                    error.SetErrorStringWithFormat("'%s' is not readable", exe_file.GetPath().c_str());
+                }
             }
         }
     }
@@ -310,6 +311,7 @@ PlatformKalimba::Attach(ProcessAttachInfo &attach_info,
 void
 PlatformKalimba::CalculateTrapHandlerSymbolNames ()
 {   
+    // TODO Research this sometime.
 }   
 
 Error

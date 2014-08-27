@@ -141,7 +141,7 @@ TEST(Support, Path) {
     StringRef filename(temp_store.begin(), temp_store.size()), stem, ext;
     stem = path::stem(filename);
     ext  = path::extension(filename);
-    EXPECT_EQ(*(--sys::path::end(filename)), (stem + ext).str());
+    EXPECT_EQ(*sys::path::rbegin(filename), (stem + ext).str());
 
     path::native(*i, temp_store);
   }
@@ -227,7 +227,7 @@ TEST(Support, AbsolutePathIteratorEnd) {
 #endif
 
   for (StringRef Path : Paths) {
-    StringRef LastComponent = *--path::end(Path);
+    StringRef LastComponent = *path::rbegin(Path);
     EXPECT_EQ(".", LastComponent);
   }
 
@@ -239,7 +239,7 @@ TEST(Support, AbsolutePathIteratorEnd) {
 #endif
 
   for (StringRef Path : RootPaths) {
-    StringRef LastComponent = *--path::end(Path);
+    StringRef LastComponent = *path::rbegin(Path);
     EXPECT_EQ(1u, LastComponent.size());
     EXPECT_TRUE(path::is_separator(LastComponent[0]));
   }
@@ -640,22 +640,22 @@ TEST(Support, NormalizePath) {
   SmallString<64> Path5("\\a");
   SmallString<64> Path6("a\\");
 
-  ASSERT_NO_ERROR(fs::normalize_separators(Path1));
+  path::native(Path1);
   EXPECT_PATH_IS(Path1, "a", "a");
 
-  ASSERT_NO_ERROR(fs::normalize_separators(Path2));
-  EXPECT_PATH_IS(Path2, "a/b", "a/b");
+  path::native(Path2);
+  EXPECT_PATH_IS(Path2, "a\\b", "a/b");
 
-  ASSERT_NO_ERROR(fs::normalize_separators(Path3));
+  path::native(Path3);
   EXPECT_PATH_IS(Path3, "a\\b", "a/b");
 
-  ASSERT_NO_ERROR(fs::normalize_separators(Path4));
+  path::native(Path4);
   EXPECT_PATH_IS(Path4, "a\\\\b", "a\\\\b");
 
-  ASSERT_NO_ERROR(fs::normalize_separators(Path5));
+  path::native(Path5);
   EXPECT_PATH_IS(Path5, "\\a", "/a");
 
-  ASSERT_NO_ERROR(fs::normalize_separators(Path6));
+  path::native(Path6);
   EXPECT_PATH_IS(Path6, "a\\", "a/");
 
 #undef EXPECT_PATH_IS

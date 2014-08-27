@@ -31,7 +31,7 @@
 #include "lldb/Core/ConnectionFileDescriptor.h"
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/Timer.h"
-#include "lldb/Host/Host.h"
+#include "lldb/Host/HostInfo.h"
 #include "lldb/Host/Pipe.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/CommandReturnObject.h"
@@ -804,7 +804,7 @@ public:
             int num_threads = PyThreadState_SetAsyncExc(tid, PyExc_KeyboardInterrupt);
             if (log)
                 log->Printf("ScriptInterpreterPython::NonInteractiveInputReaderCallback, eInputReaderInterrupt, tid = %ld, num_threads = %d, state = %p",
-                            tid,num_threads,state);
+                            tid, num_threads, static_cast<void *>(state));
         }
         else if (log)
             log->Printf("ScriptInterpreterPython::NonInteractiveInputReaderCallback, eInputReaderInterrupt, state = NULL");
@@ -852,7 +852,7 @@ ScriptInterpreterPython::ExecuteOneLineWithReturn (const char *in_string,
 {
 
     Locker locker(this,
-                  ScriptInterpreterPython::Locker::AcquireLock | ScriptInterpreterPython::Locker::InitSession | (options.GetSetLLDBGlobals() ? ScriptInterpreterPython::Locker::InitGlobals : 0),
+                  ScriptInterpreterPython::Locker::AcquireLock | ScriptInterpreterPython::Locker::InitSession | (options.GetSetLLDBGlobals() ? ScriptInterpreterPython::Locker::InitGlobals : 0) | Locker::NoSTDIN,
                   ScriptInterpreterPython::Locker::FreeAcquiredLock | ScriptInterpreterPython::Locker::TearDownSession);
 
     PyObject *py_return = nullptr;
@@ -1016,7 +1016,7 @@ ScriptInterpreterPython::ExecuteMultipleLines (const char *in_string, const Exec
     Error error;
     
     Locker locker(this,
-                  ScriptInterpreterPython::Locker::AcquireLock      | ScriptInterpreterPython::Locker::InitSession | (options.GetSetLLDBGlobals() ? ScriptInterpreterPython::Locker::InitGlobals : 0),
+                  ScriptInterpreterPython::Locker::AcquireLock      | ScriptInterpreterPython::Locker::InitSession | (options.GetSetLLDBGlobals() ? ScriptInterpreterPython::Locker::InitGlobals : 0) | Locker::NoSTDIN,
                   ScriptInterpreterPython::Locker::FreeAcquiredLock | ScriptInterpreterPython::Locker::TearDownSession);
 
     PythonObject return_value;
@@ -1806,7 +1806,11 @@ ScriptInterpreterPython::Clear ()
     Locker locker(this,
                   ScriptInterpreterPython::Locker::AcquireLock,
                   ScriptInterpreterPython::Locker::FreeAcquiredLock);
-    PyRun_SimpleString("lldb.debugger = None; lldb.target = None; lldb.process = None; lldb.thread = None; lldb.frame = None");
+
+    // This may be called as part of Py_Finalize.  In that case the modules are destroyed in random
+    // order and we can't guarantee that we can access these.
+    if (Py_IsInitialized())
+        PyRun_SimpleString("lldb.debugger = None; lldb.target = None; lldb.process = None; lldb.thread = None; lldb.frame = None");
 }
 
 bool
@@ -2597,7 +2601,7 @@ ScriptInterpreterPython::InitializePrivate ()
 
     FileSpec file_spec;
     char python_dir_path[PATH_MAX];
-    if (Host::GetLLDBPath (ePathTypePythonDir, file_spec))
+    if (HostInfo::GetLLDBPath(ePathTypePythonDir, file_spec))
     {
         std::string python_path("sys.path.insert(0,\"");
         size_t orig_len = python_path.length();
@@ -2608,8 +2612,8 @@ ScriptInterpreterPython::InitializePrivate ()
             PyRun_SimpleString (python_path.c_str());
             python_path.resize (orig_len);
         }
-        
-        if (Host::GetLLDBPath (ePathTypeLLDBShlibDir, file_spec))
+
+        if (HostInfo::GetLLDBPath(ePathTypeLLDBShlibDir, file_spec))
         {
             if (file_spec.GetPath(python_dir_path, sizeof (python_dir_path)))
             {

@@ -28,7 +28,32 @@ namespace {
 /// \brief Numbers things which need to correspond across multiple TUs.
 /// Typically these are things like static locals, lambdas, or blocks.
 class MicrosoftNumberingContext : public MangleNumberingContext {
+  llvm::DenseMap<const Type *, unsigned> ManglingNumbers;
+  unsigned LambdaManglingNumber;
+  unsigned StaticLocalNumber;
+  
+  // +===== Scout ============================================================+
+  llvm::DenseMap<IdentifierInfo*, unsigned> MeshManglingNumbers;
+  // +========================================================================+
+
 public:
+  MicrosoftNumberingContext()
+      : MangleNumberingContext(), LambdaManglingNumber(0),
+        StaticLocalNumber(0) {}
+
+  unsigned getManglingNumber(const CXXMethodDecl *CallOperator) override {
+    return ++LambdaManglingNumber;
+  }
+
+  unsigned getManglingNumber(const BlockDecl *BD) {
+    const Type *Ty = nullptr;
+    return ++ManglingNumbers[Ty];
+  }
+
+  unsigned getStaticLocalNumber(const VarDecl *VD) override {
+    return ++StaticLocalNumber;
+  }
+
   unsigned getManglingNumber(const VarDecl *VD,
                              unsigned MSLocalManglingNumber) override {
     return MSLocalManglingNumber;
@@ -38,6 +63,12 @@ public:
                              unsigned MSLocalManglingNumber) override {
     return MSLocalManglingNumber;
   }
+  
+  // +===== Scout ============================================================+
+  virtual unsigned getManglingNumber(const MeshDecl *MD){
+    return ++MeshManglingNumbers[MD->getIdentifier()];
+  }
+  // +========================================================================+
 };
 
 class MicrosoftCXXABI : public CXXABI {

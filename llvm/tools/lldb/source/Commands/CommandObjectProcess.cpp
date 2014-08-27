@@ -205,8 +205,25 @@ protected:
         
         const char *target_settings_argv0 = target->GetArg0();
         
-        if (target->GetDisableASLR())
+        // Determine whether we will disable ASLR or leave it in the default state (i.e. enabled if the platform supports it).
+        // First check if the process launch options explicitly turn on/off disabling ASLR.  If so, use that setting;
+        // otherwise, use the 'settings target.disable-aslr' setting.
+        bool disable_aslr = false;
+        if (m_options.disable_aslr != eLazyBoolCalculate)
+        {
+            // The user specified an explicit setting on the process launch line.  Use it.
+            disable_aslr = (m_options.disable_aslr == eLazyBoolYes);
+        }
+        else
+        {
+            // The user did not explicitly specify whether to disable ASLR.  Fall back to the target.disable-aslr setting.
+            disable_aslr = target->GetDisableASLR ();
+        }
+        
+        if (disable_aslr)
             m_options.launch_info.GetFlags().Set (eLaunchFlagDisableASLR);
+        else
+            m_options.launch_info.GetFlags().Clear (eLaunchFlagDisableASLR);
         
         if (target->GetDetachOnError())
             m_options.launch_info.GetFlags().Set (eLaunchFlagDetachOnError);
@@ -536,6 +553,9 @@ protected:
 
                 if (error.Success())
                 {
+                    // Update the execution context so the current target and process are now selected
+                    // in case we interrupt
+                    m_interpreter.UpdateExecutionContext(NULL);
                     ListenerSP listener_sp (new Listener("lldb.CommandObjectProcessAttach.DoExecute.attach.hijack"));
                     m_options.attach_info.SetHijackListener(listener_sp);
                     process->HijackProcessEvents(listener_sp.get());
@@ -557,7 +577,11 @@ protected:
                         }
                         else
                         {
-                            result.AppendError ("attach failed: process did not stop (no such process or permission problem?)");
+                            const char *exit_desc = process->GetExitDescription();
+                            if (exit_desc)
+                                result.AppendErrorWithFormat ("attach failed: %s", exit_desc);
+                            else
+                                result.AppendError ("attach failed: process did not stop (no such process or permission problem?)");
                             process->Destroy();
                             result.SetStatus (eReturnStatusFailed);
                         }
@@ -766,10 +790,16 @@ protected:
                     process->GetThreadList().GetThreadAtIndex(idx)->SetResumeState (eStateRunning, override_suspend);
                 }
             }
-            
+
             Error error(process->Resume());
+
             if (error.Success())
             {
+                // There is a race condition where this thread will return up the call stack to the main command
+                // handler and show an (lldb) prompt before HandlePrivateEvent (from PrivateStateThread) has
+                // a chance to call PushProcessIOHandler().
+                process->SyncIOHandler(2000);
+
                 result.AppendMessageWithFormat ("Process %" PRIu64 " resuming\n", process->GetID());
                 if (synchronous_execution)
                 {

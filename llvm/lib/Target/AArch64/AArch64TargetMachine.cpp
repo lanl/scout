@@ -12,8 +12,8 @@
 
 #include "AArch64.h"
 #include "AArch64TargetMachine.h"
-#include "llvm/PassManager.h"
 #include "llvm/CodeGen/Passes.h"
+#include "llvm/PassManager.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Target/TargetOptions.h"
@@ -23,6 +23,10 @@ using namespace llvm;
 static cl::opt<bool>
 EnableCCMP("aarch64-ccmp", cl::desc("Enable the CCMP formation pass"),
            cl::init(true), cl::Hidden);
+
+static cl::opt<bool> EnableMCR("aarch64-mcr",
+                               cl::desc("Enable the machine combiner pass"),
+                               cl::init(true), cl::Hidden);
 
 static cl::opt<bool>
 EnableStPairSuppress("aarch64-stp-suppress", cl::desc("Suppress STP for AArch64"),
@@ -59,13 +63,17 @@ EnableAtomicTidy("aarch64-atomic-cfg-tidy", cl::Hidden,
                           " to make use of cmpxchg flow-based information"),
                  cl::init(true));
 
+static cl::opt<bool>
+EnableEarlyIfConversion("aarch64-enable-early-ifcvt", cl::Hidden,
+                        cl::desc("Run early if-conversion"),
+                        cl::init(true));
+
+
 extern "C" void LLVMInitializeAArch64Target() {
   // Register the target.
   RegisterTargetMachine<AArch64leTargetMachine> X(TheAArch64leTarget);
   RegisterTargetMachine<AArch64beTargetMachine> Y(TheAArch64beTarget);
-
-  RegisterTargetMachine<AArch64leTargetMachine> Z(TheARM64leTarget);
-  RegisterTargetMachine<AArch64beTargetMachine> W(TheARM64beTarget);
+  RegisterTargetMachine<AArch64leTargetMachine> Z(TheARM64Target);
 }
 
 /// TargetMachine ctor - Create an AArch64 architecture model.
@@ -136,7 +144,7 @@ TargetPassConfig *AArch64TargetMachine::createPassConfig(PassManagerBase &PM) {
 void AArch64PassConfig::addIRPasses() {
   // Always expand atomic operations, we don't deal with atomicrmw or cmpxchg
   // ourselves.
-  addPass(createAtomicExpandLoadLinkedPass(TM));
+  addPass(createAtomicExpandPass(TM));
 
   // Cmpxchg instructions are often used with a subsequent comparison to
   // determine whether it succeeded. We can exploit existing control-flow in
@@ -176,7 +184,10 @@ bool AArch64PassConfig::addInstSelector() {
 bool AArch64PassConfig::addILPOpts() {
   if (EnableCCMP)
     addPass(createAArch64ConditionalCompares());
-  addPass(&EarlyIfConverterID);
+  if (EnableMCR)
+    addPass(&MachineCombinerID);
+  if (EnableEarlyIfConversion)
+    addPass(&EarlyIfConverterID);
   if (EnableStPairSuppress)
     addPass(createAArch64StorePairSuppressPass());
   return true;
@@ -184,8 +195,12 @@ bool AArch64PassConfig::addILPOpts() {
 
 bool AArch64PassConfig::addPreRegAlloc() {
   // Use AdvSIMD scalar instructions whenever profitable.
-  if (TM->getOptLevel() != CodeGenOpt::None && EnableAdvSIMDScalar)
+  if (TM->getOptLevel() != CodeGenOpt::None && EnableAdvSIMDScalar) {
     addPass(createAArch64AdvSIMDScalar());
+    // The AdvSIMD pass may produce copies that can be rewritten to
+    // be register coaleascer friendly.
+    addPass(&PeepholeOptimizerID);
+  }
   return true;
 }
 
@@ -193,6 +208,10 @@ bool AArch64PassConfig::addPostRegAlloc() {
   // Change dead register definitions to refer to the zero register.
   if (TM->getOptLevel() != CodeGenOpt::None && EnableDeadRegisterElimination)
     addPass(createAArch64DeadRegisterDefinitions());
+  if (TM->getOptLevel() != CodeGenOpt::None &&
+      TM->getSubtarget<AArch64Subtarget>().isCortexA57())
+    // Improve performance for some FP/SIMD code for A57.
+    addPass(createAArch64A57FPLoadBalancing());
   return true;
 }
 

@@ -10,8 +10,11 @@
 //===----------------------------------------------------------------------===//
 
 /// CCIfSubtarget - Match if the current subtarget has a feature F.
-class CCIfSubtarget<string F, CCAction A>:
-  CCIf<!strconcat("State.getTarget().getSubtarget<MipsSubtarget>().", F), A>;
+class CCIfSubtarget<string F, CCAction A>
+    : CCIf<!strconcat("static_cast<const MipsSubtarget&>"
+			"(State.getMachineFunction().getSubtarget()).",
+                      F),
+           A>;
 
 //===----------------------------------------------------------------------===//
 // Mips O32 Calling Convention
@@ -154,13 +157,17 @@ def CC_MipsO32_FastCC : CallingConv<[
   CCIfType<[f64], CCIfSubtarget<"isNotFP64bit()",
                                 CCAssignToReg<[D0, D1, D2, D3, D4, D5, D6, D7,
                                                D8, D9]>>>,
-  CCIfType<[f64], CCIfSubtarget<"isFP64bit()",
+  CCIfType<[f64], CCIfSubtarget<"isFP64bit()", CCIfSubtarget<"useOddSPReg()",
                                 CCAssignToReg<[D0_64, D1_64, D2_64, D3_64,
                                                D4_64, D5_64, D6_64, D7_64,
                                                D8_64, D9_64, D10_64, D11_64,
                                                D12_64, D13_64, D14_64, D15_64,
                                                D16_64, D17_64, D18_64,
-                                               D19_64]>>>,
+                                               D19_64]>>>>,
+  CCIfType<[f64], CCIfSubtarget<"isFP64bit()", CCIfSubtarget<"noOddSPReg()",
+                                CCAssignToReg<[D0_64, D2_64, D4_64, D6_64,
+                                               D8_64, D10_64, D12_64, D14_64,
+                                               D16_64, D18_64]>>>>,
 
   // Stack parameter slots for f64 are 64-bit doublewords and 8-byte aligned.
   CCIfType<[f64], CCAssignToStack<8, 8>>
@@ -203,8 +210,13 @@ def CC_Mips_FastCC : CallingConv<[
       CCAssignToReg<[A0, A1, A2, A3, T0, T1, T2, T3, T4, T5, V1]>>>,
 
   // f32 arguments are passed in single-precision floating pointer registers.
-  CCIfType<[f32], CCAssignToReg<[F0, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10,
-                                 F11, F12, F13, F14, F15, F16, F17, F18, F19]>>,
+  CCIfType<[f32], CCIfSubtarget<"useOddSPReg()",
+      CCAssignToReg<[F0, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13,
+                     F14, F15, F16, F17, F18, F19]>>>,
+
+  // Don't use odd numbered single-precision registers for -mno-odd-spreg.
+  CCIfType<[f32], CCIfSubtarget<"noOddSPReg()",
+      CCAssignToReg<[F0, F2, F4, F6, F8, F10, F12, F14, F16, F18]>>>,
 
   // Stack parameter slots for i32 and f32 are 32-bit words and 4-byte aligned.
   CCIfType<[i32, f32], CCAssignToStack<4, 4>>,

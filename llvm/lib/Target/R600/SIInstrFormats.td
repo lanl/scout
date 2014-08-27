@@ -24,7 +24,10 @@ class InstSI <dag outs, dag ins, string asm, list<dag> pattern> :
   field bits<1> VOP3 = 0;
   field bits<1> VOPC = 0;
   field bits<1> SALU = 0;
+  field bits<1> MUBUF = 0;
+  field bits<1> MTBUF = 0;
 
+  // These need to be kept in sync with the enum in SIInstrFlags.
   let TSFlags{0} = VM_CNT;
   let TSFlags{1} = EXP_CNT;
   let TSFlags{2} = LGKM_CNT;
@@ -35,6 +38,8 @@ class InstSI <dag outs, dag ins, string asm, list<dag> pattern> :
   let TSFlags{7} = VOP3;
   let TSFlags{8} = VOPC;
   let TSFlags{9} = SALU;
+  let TSFlags{10} = MUBUF;
+  let TSFlags{11} = MTBUF;
 }
 
 class Enc32 {
@@ -56,9 +61,16 @@ class VOP3Common <dag outs, dag ins, string asm, list<dag> pattern> :
   let mayStore = 0;
   let hasSideEffects = 0;
   let UseNamedOperandTable = 1;
+  // Using complex patterns gives VOP3 patterns a very high complexity rating,
+  // but standalone patterns are almost always prefered, so we need to adjust the
+  // priority lower.  The goal is to use a high number to reduce complexity to
+  // zero (or less than zero).
+  let AddedComplexity = -1000;
+
   let VOP3 = 1;
 
   int Size = 8;
+  let Uses = [EXEC];
 }
 
 //===----------------------------------------------------------------------===//
@@ -185,6 +197,9 @@ class SMRD <bits<5> op, bits<1> imm, dag outs, dag ins, string asm,
 
   let LGKM_CNT = 1;
   let SMRD = 1;
+  let mayStore = 0;
+  let mayLoad = 1;
+  let UseNamedOperandTable = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -493,6 +508,7 @@ class DS <bits<8> op, dag outs, dag ins, string asm, list<dag> pattern> :
     InstSI <outs, ins, asm, pattern> , DSe<op> {
 
   let LGKM_CNT = 1;
+  let UseNamedOperandTable = 1;
 }
 
 class MUBUF <bits<7> op, dag outs, dag ins, string asm, list<dag> pattern> :
@@ -500,6 +516,7 @@ class MUBUF <bits<7> op, dag outs, dag ins, string asm, list<dag> pattern> :
 
   let VM_CNT = 1;
   let EXP_CNT = 1;
+  let MUBUF = 1;
 
   let neverHasSideEffects = 1;
   let UseNamedOperandTable = 1;
@@ -510,6 +527,7 @@ class MTBUF <bits<3> op, dag outs, dag ins, string asm, list<dag> pattern> :
 
   let VM_CNT = 1;
   let EXP_CNT = 1;
+  let MTBUF = 1;
 
   let neverHasSideEffects = 1;
 }

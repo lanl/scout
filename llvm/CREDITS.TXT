@@ -119,6 +119,10 @@ N: Hal Finkel
 E: hfinkel@anl.gov
 D: Basic-block autovectorization, PowerPC backend improvements
 
+N: Eric Fiselier
+E: eric@efcs.ca
+D: LIT patches and documentation.
+
 N: Ryan Flynn
 E: pizza@parseerror.com
 D: Miscellaneous bug fixes
@@ -456,3 +460,4 @@ D: Bunches of stuff
 N: Bob Wilson
 E: bob.wilson@acm.org
 D: Advanced SIMD (NEON) support in the ARM backend.
+

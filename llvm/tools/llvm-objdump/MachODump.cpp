@@ -30,6 +30,7 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/Endian.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/GraphWriter.h"
 #include "llvm/Support/MachO.h"
@@ -49,22 +50,36 @@ static cl::opt<bool>
 static cl::opt<std::string>
   DSYMFile("dsym", cl::desc("Use .dSYM file for debug info"));
 
-static const Target *GetTarget(const MachOObjectFile *MachOObj) {
+static std::string ThumbTripleName;
+
+static const Target *GetTarget(const MachOObjectFile *MachOObj,
+                               const char **McpuDefault,
+                               const Target **ThumbTarget) {
   // Figure out the target triple.
   if (TripleName.empty()) {
     llvm::Triple TT("unknown-unknown-unknown");
-    TT.setArch(Triple::ArchType(MachOObj->getArch()));
+    llvm::Triple ThumbTriple = Triple();
+    TT = MachOObj->getArch(McpuDefault, &ThumbTriple);
     TripleName = TT.str();
+    ThumbTripleName = ThumbTriple.str();
   }
 
   // Get the target specific parser.
   std::string Error;
   const Target *TheTarget = TargetRegistry::lookupTarget(TripleName, Error);
-  if (TheTarget)
+  if (TheTarget && ThumbTripleName.empty())
     return TheTarget;
 
-  errs() << "llvm-objdump: error: unable to get target for '" << TripleName
-         << "', see --version and --triple.\n";
+  *ThumbTarget = TargetRegistry::lookupTarget(ThumbTripleName, Error);
+  if (*ThumbTarget)
+    return TheTarget;
+
+  errs() << "llvm-objdump: error: unable to get target for '";
+  if (!TheTarget)
+    errs() << TripleName;
+  else
+    errs() << ThumbTripleName;
+  errs() << "', see --version and --triple.\n";
   return nullptr;
 }
 
@@ -195,29 +210,51 @@ static void DisassembleInputMachO2(StringRef Filename,
                                    MachOObjectFile *MachOOF);
 
 void llvm::DisassembleInputMachO(StringRef Filename) {
-  ErrorOr<std::unique_ptr<MemoryBuffer>> Buff =
+  ErrorOr<std::unique_ptr<MemoryBuffer>> BuffOrErr =
       MemoryBuffer::getFileOrSTDIN(Filename);
-  if (std::error_code EC = Buff.getError()) {
+  if (std::error_code EC = BuffOrErr.getError()) {
     errs() << "llvm-objdump: " << Filename << ": " << EC.message() << "\n";
     return;
   }
+  std::unique_ptr<MemoryBuffer> Buff = std::move(BuffOrErr.get());
 
-  std::unique_ptr<MachOObjectFile> MachOOF(static_cast<MachOObjectFile *>(
-      ObjectFile::createMachOObjectFile(Buff.get()).get()));
+  std::unique_ptr<MachOObjectFile> MachOOF = std::move(
+      ObjectFile::createMachOObjectFile(Buff.get()->getMemBufferRef()).get());
 
   DisassembleInputMachO2(Filename, MachOOF.get());
 }
 
 static void DisassembleInputMachO2(StringRef Filename,
                                    MachOObjectFile *MachOOF) {
-  const Target *TheTarget = GetTarget(MachOOF);
+  const char *McpuDefault = nullptr;
+  const Target *ThumbTarget = nullptr;
+  const Target *TheTarget = GetTarget(MachOOF, &McpuDefault, &ThumbTarget);
   if (!TheTarget) {
     // GetTarget prints out stuff.
     return;
   }
+  if (MCPU.empty() && McpuDefault)
+    MCPU = McpuDefault;
+
   std::unique_ptr<const MCInstrInfo> InstrInfo(TheTarget->createMCInstrInfo());
   std::unique_ptr<MCInstrAnalysis> InstrAnalysis(
       TheTarget->createMCInstrAnalysis(InstrInfo.get()));
+  std::unique_ptr<const MCInstrInfo> ThumbInstrInfo;
+  std::unique_ptr<MCInstrAnalysis> ThumbInstrAnalysis;
+  if (ThumbTarget) {
+    ThumbInstrInfo.reset(ThumbTarget->createMCInstrInfo());
+    ThumbInstrAnalysis.reset(
+        ThumbTarget->createMCInstrAnalysis(ThumbInstrInfo.get()));
+  }
+
+  // Package up features to be passed to target/subtarget
+  std::string FeaturesStr;
+  if (MAttrs.size()) {
+    SubtargetFeatures Features;
+    for (unsigned i = 0; i != MAttrs.size(); ++i)
+      Features.AddFeature(MAttrs[i]);
+    FeaturesStr = Features.getString();
+  }
 
   // Set up disassembler.
   std::unique_ptr<const MCRegisterInfo> MRI(
@@ -225,10 +262,10 @@ static void DisassembleInputMachO2(StringRef Filename,
   std::unique_ptr<const MCAsmInfo> AsmInfo(
       TheTarget->createMCAsmInfo(*MRI, TripleName));
   std::unique_ptr<const MCSubtargetInfo> STI(
-      TheTarget->createMCSubtargetInfo(TripleName, "", ""));
+      TheTarget->createMCSubtargetInfo(TripleName, MCPU, FeaturesStr));
   MCContext Ctx(AsmInfo.get(), MRI.get(), nullptr);
   std::unique_ptr<const MCDisassembler> DisAsm(
-    TheTarget->createMCDisassembler(*STI, Ctx));
+      TheTarget->createMCDisassembler(*STI, Ctx));
   int AsmPrinterVariant = AsmInfo->getAssemblerDialect();
   std::unique_ptr<MCInstPrinter> IP(TheTarget->createMCInstPrinter(
       AsmPrinterVariant, *AsmInfo, *InstrInfo, *MRI, *STI));
@@ -236,6 +273,34 @@ static void DisassembleInputMachO2(StringRef Filename,
   if (!InstrAnalysis || !AsmInfo || !STI || !DisAsm || !IP) {
     errs() << "error: couldn't initialize disassembler for target "
            << TripleName << '\n';
+    return;
+  }
+
+  // Set up thumb disassembler.
+  std::unique_ptr<const MCRegisterInfo> ThumbMRI;
+  std::unique_ptr<const MCAsmInfo> ThumbAsmInfo;
+  std::unique_ptr<const MCSubtargetInfo> ThumbSTI;
+  std::unique_ptr<const MCDisassembler> ThumbDisAsm;
+  std::unique_ptr<MCInstPrinter> ThumbIP;
+  std::unique_ptr<MCContext> ThumbCtx;
+  if (ThumbTarget) {
+    ThumbMRI.reset(ThumbTarget->createMCRegInfo(ThumbTripleName));
+    ThumbAsmInfo.reset(
+        ThumbTarget->createMCAsmInfo(*ThumbMRI, ThumbTripleName));
+    ThumbSTI.reset(
+        ThumbTarget->createMCSubtargetInfo(ThumbTripleName, MCPU, FeaturesStr));
+    ThumbCtx.reset(new MCContext(ThumbAsmInfo.get(), ThumbMRI.get(), nullptr));
+    ThumbDisAsm.reset(ThumbTarget->createMCDisassembler(*ThumbSTI, *ThumbCtx));
+    int ThumbAsmPrinterVariant = ThumbAsmInfo->getAssemblerDialect();
+    ThumbIP.reset(ThumbTarget->createMCInstPrinter(
+        ThumbAsmPrinterVariant, *ThumbAsmInfo, *ThumbInstrInfo, *ThumbMRI,
+        *ThumbSTI));
+  }
+
+  if (ThumbTarget && (!ThumbInstrAnalysis || !ThumbAsmInfo || !ThumbSTI ||
+                      !ThumbDisAsm || !ThumbIP)) {
+    errs() << "error: couldn't initialize disassembler for target "
+           << ThumbTripleName << '\n';
     return;
   }
 
@@ -288,17 +353,20 @@ static void DisassembleInputMachO2(StringRef Filename,
     // A separate DSym file path was specified, parse it as a macho file,
     // get the sections and supply it to the section name parsing machinery.
     if (!DSYMFile.empty()) {
-      ErrorOr<std::unique_ptr<MemoryBuffer>> Buf =
+      ErrorOr<std::unique_ptr<MemoryBuffer>> BufOrErr =
           MemoryBuffer::getFileOrSTDIN(DSYMFile);
-      if (std::error_code EC = Buf.getError()) {
+      if (std::error_code EC = BufOrErr.getError()) {
         errs() << "llvm-objdump: " << Filename << ": " << EC.message() << '\n';
         return;
       }
-      DbgObj = ObjectFile::createMachOObjectFile(Buf.get()).get();
+      DbgObj =
+          ObjectFile::createMachOObjectFile(BufOrErr.get()->getMemBufferRef())
+              .get()
+              .release();
     }
 
     // Setup the DIContext
-    diContext.reset(DIContext::getDWARFContext(DbgObj));
+    diContext.reset(DIContext::getDWARFContext(*DbgObj));
   }
 
   for (unsigned SectIdx = 0; SectIdx != Sections.size(); SectIdx++) {
@@ -386,6 +454,10 @@ static void DisassembleInputMachO2(StringRef Filename,
 
       symbolTableWorked = true;
 
+      DataRefImpl Symb = Symbols[SymIdx].getRawDataRefImpl();
+      bool isThumb =
+          (MachOOF->getSymbolFlags(Symb) & SymbolRef::SF_Thumb) && ThumbTarget;
+
       outs() << SymName << ":\n";
       DILineInfo lastLine;
       for (uint64_t Index = Start; Index < End; Index += Size) {
@@ -412,10 +484,19 @@ static void DisassembleInputMachO2(StringRef Filename,
           continue;
         }
 
-        if (DisAsm->getInstruction(Inst, Size, memoryObject, Index,
-                                   DebugOut, nulls())) {
+        bool gotInst;
+        if (isThumb)
+          gotInst = ThumbDisAsm->getInstruction(Inst, Size, memoryObject, Index,
+                                     DebugOut, nulls());
+        else
+          gotInst = DisAsm->getInstruction(Inst, Size, memoryObject, Index,
+                                     DebugOut, nulls());
+        if (gotInst) {
           DumpBytes(StringRef(Bytes.data() + Index, Size));
-          IP->printInst(&Inst, outs(), "");
+          if (isThumb)
+            ThumbIP->printInst(&Inst, outs(), "");
+          else
+            IP->printInst(&Inst, outs(), "");
 
           // Print debug info.
           if (diContext) {
@@ -459,4 +540,754 @@ static void DisassembleInputMachO2(StringRef Filename,
       }
     }
   }
+}
+
+
+//===----------------------------------------------------------------------===//
+// __compact_unwind section dumping
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+template <typename T> static uint64_t readNext(const char *&Buf) {
+    using llvm::support::little;
+    using llvm::support::unaligned;
+
+    uint64_t Val = support::endian::read<T, little, unaligned>(Buf);
+    Buf += sizeof(T);
+    return Val;
+  }
+
+struct CompactUnwindEntry {
+  uint32_t OffsetInSection;
+
+  uint64_t FunctionAddr;
+  uint32_t Length;
+  uint32_t CompactEncoding;
+  uint64_t PersonalityAddr;
+  uint64_t LSDAAddr;
+
+  RelocationRef FunctionReloc;
+  RelocationRef PersonalityReloc;
+  RelocationRef LSDAReloc;
+
+  CompactUnwindEntry(StringRef Contents, unsigned Offset, bool Is64)
+    : OffsetInSection(Offset) {
+    if (Is64)
+      read<uint64_t>(Contents.data() + Offset);
+    else
+      read<uint32_t>(Contents.data() + Offset);
+  }
+
+private:
+  template<typename UIntPtr>
+  void read(const char *Buf) {
+    FunctionAddr = readNext<UIntPtr>(Buf);
+    Length = readNext<uint32_t>(Buf);
+    CompactEncoding = readNext<uint32_t>(Buf);
+    PersonalityAddr = readNext<UIntPtr>(Buf);
+    LSDAAddr = readNext<UIntPtr>(Buf);
+  }
+};
+}
+
+/// Given a relocation from __compact_unwind, consisting of the RelocationRef
+/// and data being relocated, determine the best base Name and Addend to use for
+/// display purposes.
+///
+/// 1. An Extern relocation will directly reference a symbol (and the data is
+///    then already an addend), so use that.
+/// 2. Otherwise the data is an offset in the object file's layout; try to find
+//     a symbol before it in the same section, and use the offset from there.
+/// 3. Finally, if all that fails, fall back to an offset from the start of the
+///    referenced section.
+static void findUnwindRelocNameAddend(const MachOObjectFile *Obj,
+                                      std::map<uint64_t, SymbolRef> &Symbols,
+                                      const RelocationRef &Reloc,
+                                      uint64_t Addr,
+                                      StringRef &Name, uint64_t &Addend) {
+  if (Reloc.getSymbol() != Obj->symbol_end()) {
+    Reloc.getSymbol()->getName(Name);
+    Addend = Addr;
+    return;
+  }
+
+  auto RE = Obj->getRelocation(Reloc.getRawDataRefImpl());
+  SectionRef RelocSection = Obj->getRelocationSection(RE);
+
+  uint64_t SectionAddr;
+  RelocSection.getAddress(SectionAddr);
+
+  auto Sym = Symbols.upper_bound(Addr);
+  if (Sym == Symbols.begin()) {
+    // The first symbol in the object is after this reference, the best we can
+    // do is section-relative notation.
+    RelocSection.getName(Name);
+    Addend = Addr - SectionAddr;
+    return;
+  }
+
+  // Go back one so that SymbolAddress <= Addr.
+  --Sym;
+
+  section_iterator SymSection = Obj->section_end();
+  Sym->second.getSection(SymSection);
+  if (RelocSection == *SymSection) {
+    // There's a valid symbol in the same section before this reference.
+    Sym->second.getName(Name);
+    Addend = Addr - Sym->first;
+    return;
+  }
+
+  // There is a symbol before this reference, but it's in a different
+  // section. Probably not helpful to mention it, so use the section name.
+  RelocSection.getName(Name);
+  Addend = Addr - SectionAddr;
+}
+
+static void printUnwindRelocDest(const MachOObjectFile *Obj,
+                                 std::map<uint64_t, SymbolRef> &Symbols,
+                                 const RelocationRef &Reloc,
+                                 uint64_t Addr) {
+  StringRef Name;
+  uint64_t Addend;
+
+  findUnwindRelocNameAddend(Obj, Symbols, Reloc, Addr, Name, Addend);
+
+  outs() << Name;
+  if (Addend)
+    outs() << " + " << format("0x%" PRIx64, Addend);
+}
+
+static void
+printMachOCompactUnwindSection(const MachOObjectFile *Obj,
+                               std::map<uint64_t, SymbolRef> &Symbols,
+                               const SectionRef &CompactUnwind) {
+
+  assert(Obj->isLittleEndian() &&
+         "There should not be a big-endian .o with __compact_unwind");
+
+  bool Is64 = Obj->is64Bit();
+  uint32_t PointerSize = Is64 ? sizeof(uint64_t) : sizeof(uint32_t);
+  uint32_t EntrySize = 3 * PointerSize + 2 * sizeof(uint32_t);
+
+  StringRef Contents;
+  CompactUnwind.getContents(Contents);
+
+  SmallVector<CompactUnwindEntry, 4> CompactUnwinds;
+
+  // First populate the initial raw offsets, encodings and so on from the entry.
+  for (unsigned Offset = 0; Offset < Contents.size(); Offset += EntrySize) {
+    CompactUnwindEntry Entry(Contents.data(), Offset, Is64);
+    CompactUnwinds.push_back(Entry);
+  }
+
+  // Next we need to look at the relocations to find out what objects are
+  // actually being referred to.
+  for (const RelocationRef &Reloc : CompactUnwind.relocations()) {
+    uint64_t RelocAddress;
+    Reloc.getOffset(RelocAddress);
+
+    uint32_t EntryIdx = RelocAddress / EntrySize;
+    uint32_t OffsetInEntry = RelocAddress - EntryIdx * EntrySize;
+    CompactUnwindEntry &Entry = CompactUnwinds[EntryIdx];
+
+    if (OffsetInEntry == 0)
+      Entry.FunctionReloc = Reloc;
+    else if (OffsetInEntry == PointerSize + 2 * sizeof(uint32_t))
+      Entry.PersonalityReloc = Reloc;
+    else if (OffsetInEntry == 2 * PointerSize + 2 * sizeof(uint32_t))
+      Entry.LSDAReloc = Reloc;
+    else
+      llvm_unreachable("Unexpected relocation in __compact_unwind section");
+  }
+
+  // Finally, we're ready to print the data we've gathered.
+  outs() << "Contents of __compact_unwind section:\n";
+  for (auto &Entry : CompactUnwinds) {
+    outs() << "  Entry at offset "
+           << format("0x%" PRIx32, Entry.OffsetInSection) << ":\n";
+
+    // 1. Start of the region this entry applies to.
+    outs() << "    start:                "
+           << format("0x%" PRIx64, Entry.FunctionAddr) << ' ';
+    printUnwindRelocDest(Obj, Symbols, Entry.FunctionReloc,
+                         Entry.FunctionAddr);
+    outs() << '\n';
+
+    // 2. Length of the region this entry applies to.
+    outs() << "    length:               "
+           << format("0x%" PRIx32, Entry.Length) << '\n';
+    // 3. The 32-bit compact encoding.
+    outs() << "    compact encoding:     "
+           << format("0x%08" PRIx32, Entry.CompactEncoding) << '\n';
+
+    // 4. The personality function, if present.
+    if (Entry.PersonalityReloc.getObjectFile()) {
+      outs() << "    personality function: "
+             << format("0x%" PRIx64, Entry.PersonalityAddr) << ' ';
+      printUnwindRelocDest(Obj, Symbols, Entry.PersonalityReloc,
+                           Entry.PersonalityAddr);
+      outs() << '\n';
+    }
+
+    // 5. This entry's language-specific data area.
+    if (Entry.LSDAReloc.getObjectFile()) {
+      outs() << "    LSDA:                 "
+             << format("0x%" PRIx64, Entry.LSDAAddr) << ' ';
+      printUnwindRelocDest(Obj, Symbols, Entry.LSDAReloc, Entry.LSDAAddr);
+      outs() << '\n';
+    }
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// __unwind_info section dumping
+//===----------------------------------------------------------------------===//
+
+static void printRegularSecondLevelUnwindPage(const char *PageStart) {
+  const char *Pos = PageStart;
+  uint32_t Kind = readNext<uint32_t>(Pos);
+  (void)Kind;
+  assert(Kind == 2 && "kind for a regular 2nd level index should be 2");
+
+  uint16_t EntriesStart = readNext<uint16_t>(Pos);
+  uint16_t NumEntries = readNext<uint16_t>(Pos);
+
+  Pos = PageStart + EntriesStart;
+  for (unsigned i = 0; i < NumEntries; ++i) {
+    uint32_t FunctionOffset = readNext<uint32_t>(Pos);
+    uint32_t Encoding = readNext<uint32_t>(Pos);
+
+    outs() << "      [" << i << "]: "
+           << "function offset="
+           << format("0x%08" PRIx32, FunctionOffset) << ", "
+           << "encoding="
+           << format("0x%08" PRIx32, Encoding)
+           << '\n';
+  }
+}
+
+static void printCompressedSecondLevelUnwindPage(
+    const char *PageStart, uint32_t FunctionBase,
+    const SmallVectorImpl<uint32_t> &CommonEncodings) {
+  const char *Pos = PageStart;
+  uint32_t Kind = readNext<uint32_t>(Pos);
+  (void)Kind;
+  assert(Kind == 3 && "kind for a compressed 2nd level index should be 3");
+
+  uint16_t EntriesStart = readNext<uint16_t>(Pos);
+  uint16_t NumEntries = readNext<uint16_t>(Pos);
+
+  uint16_t EncodingsStart = readNext<uint16_t>(Pos);
+  readNext<uint16_t>(Pos);
+  const auto *PageEncodings = reinterpret_cast<const support::ulittle32_t *>(
+      PageStart + EncodingsStart);
+
+  Pos = PageStart + EntriesStart;
+  for (unsigned i = 0; i < NumEntries; ++i) {
+    uint32_t Entry = readNext<uint32_t>(Pos);
+    uint32_t FunctionOffset = FunctionBase + (Entry & 0xffffff);
+    uint32_t EncodingIdx = Entry >> 24;
+
+    uint32_t Encoding;
+    if (EncodingIdx < CommonEncodings.size())
+      Encoding = CommonEncodings[EncodingIdx];
+    else
+      Encoding = PageEncodings[EncodingIdx - CommonEncodings.size()];
+
+    outs() << "      [" << i << "]: "
+           << "function offset="
+           << format("0x%08" PRIx32, FunctionOffset) << ", "
+           << "encoding[" << EncodingIdx << "]="
+           << format("0x%08" PRIx32, Encoding)
+           << '\n';
+  }
+}
+
+static void
+printMachOUnwindInfoSection(const MachOObjectFile *Obj,
+                            std::map<uint64_t, SymbolRef> &Symbols,
+                            const SectionRef &UnwindInfo) {
+
+  assert(Obj->isLittleEndian() &&
+         "There should not be a big-endian .o with __unwind_info");
+
+  outs() << "Contents of __unwind_info section:\n";
+
+  StringRef Contents;
+  UnwindInfo.getContents(Contents);
+  const char *Pos = Contents.data();
+
+  //===----------------------------------
+  // Section header
+  //===----------------------------------
+
+  uint32_t Version = readNext<uint32_t>(Pos);
+  outs() << "  Version:                                   "
+         << format("0x%" PRIx32, Version) << '\n';
+  assert(Version == 1 && "only understand version 1");
+
+  uint32_t CommonEncodingsStart = readNext<uint32_t>(Pos);
+  outs() << "  Common encodings array section offset:     "
+         << format("0x%" PRIx32, CommonEncodingsStart) << '\n';
+  uint32_t NumCommonEncodings = readNext<uint32_t>(Pos);
+  outs() << "  Number of common encodings in array:       "
+         << format("0x%" PRIx32, NumCommonEncodings) << '\n';
+
+  uint32_t PersonalitiesStart = readNext<uint32_t>(Pos);
+  outs() << "  Personality function array section offset: "
+         << format("0x%" PRIx32, PersonalitiesStart) << '\n';
+  uint32_t NumPersonalities = readNext<uint32_t>(Pos);
+  outs() << "  Number of personality functions in array:  "
+         << format("0x%" PRIx32, NumPersonalities) << '\n';
+
+  uint32_t IndicesStart = readNext<uint32_t>(Pos);
+  outs() << "  Index array section offset:                "
+         << format("0x%" PRIx32, IndicesStart) << '\n';
+  uint32_t NumIndices = readNext<uint32_t>(Pos);
+  outs() << "  Number of indices in array:                "
+         << format("0x%" PRIx32, NumIndices) << '\n';
+
+  //===----------------------------------
+  // A shared list of common encodings
+  //===----------------------------------
+
+  // These occupy indices in the range [0, N] whenever an encoding is referenced
+  // from a compressed 2nd level index table. In practice the linker only
+  // creates ~128 of these, so that indices are available to embed encodings in
+  // the 2nd level index.
+
+  SmallVector<uint32_t, 64> CommonEncodings;
+  outs() << "  Common encodings: (count = " << NumCommonEncodings << ")\n";
+  Pos = Contents.data() + CommonEncodingsStart;
+  for (unsigned i = 0; i < NumCommonEncodings; ++i) {
+    uint32_t Encoding = readNext<uint32_t>(Pos);
+    CommonEncodings.push_back(Encoding);
+
+    outs() << "    encoding[" << i << "]: " << format("0x%08" PRIx32, Encoding)
+           << '\n';
+  }
+
+
+  //===----------------------------------
+  // Personality functions used in this executable
+  //===----------------------------------
+
+  // There should be only a handful of these (one per source language,
+  // roughly). Particularly since they only get 2 bits in the compact encoding.
+
+  outs() << "  Personality functions: (count = " << NumPersonalities << ")\n";
+  Pos = Contents.data() + PersonalitiesStart;
+  for (unsigned i = 0; i < NumPersonalities; ++i) {
+    uint32_t PersonalityFn = readNext<uint32_t>(Pos);
+    outs() << "    personality[" << i + 1
+           << "]: " << format("0x%08" PRIx32, PersonalityFn) << '\n';
+  }
+
+  //===----------------------------------
+  // The level 1 index entries
+  //===----------------------------------
+
+  // These specify an approximate place to start searching for the more detailed
+  // information, sorted by PC.
+
+  struct IndexEntry {
+    uint32_t FunctionOffset;
+    uint32_t SecondLevelPageStart;
+    uint32_t LSDAStart;
+  };
+
+  SmallVector<IndexEntry, 4> IndexEntries;
+
+  outs() << "  Top level indices: (count = " << NumIndices << ")\n";
+  Pos = Contents.data() + IndicesStart;
+  for (unsigned i = 0; i < NumIndices; ++i) {
+    IndexEntry Entry;
+
+    Entry.FunctionOffset = readNext<uint32_t>(Pos);
+    Entry.SecondLevelPageStart = readNext<uint32_t>(Pos);
+    Entry.LSDAStart = readNext<uint32_t>(Pos);
+    IndexEntries.push_back(Entry);
+
+    outs() << "    [" << i << "]: "
+           << "function offset="
+           << format("0x%08" PRIx32, Entry.FunctionOffset) << ", "
+           << "2nd level page offset="
+           << format("0x%08" PRIx32, Entry.SecondLevelPageStart) << ", "
+           << "LSDA offset="
+           << format("0x%08" PRIx32, Entry.LSDAStart) << '\n';
+  }
+
+
+  //===----------------------------------
+  // Next come the LSDA tables
+  //===----------------------------------
+
+  // The LSDA layout is rather implicit: it's a contiguous array of entries from
+  // the first top-level index's LSDAOffset to the last (sentinel).
+
+  outs() << "  LSDA descriptors:\n";
+  Pos = Contents.data() + IndexEntries[0].LSDAStart;
+  int NumLSDAs = (IndexEntries.back().LSDAStart - IndexEntries[0].LSDAStart) /
+                 (2 * sizeof(uint32_t));
+  for (int i = 0; i < NumLSDAs; ++i) {
+    uint32_t FunctionOffset = readNext<uint32_t>(Pos);
+    uint32_t LSDAOffset = readNext<uint32_t>(Pos);
+    outs() << "    [" << i << "]: "
+           << "function offset="
+           << format("0x%08" PRIx32, FunctionOffset) << ", "
+           << "LSDA offset="
+           << format("0x%08" PRIx32, LSDAOffset) << '\n';
+  }
+
+  //===----------------------------------
+  // Finally, the 2nd level indices
+  //===----------------------------------
+
+  // Generally these are 4K in size, and have 2 possible forms:
+  //   + Regular stores up to 511 entries with disparate encodings
+  //   + Compressed stores up to 1021 entries if few enough compact encoding
+  //     values are used.
+  outs() << "  Second level indices:\n";
+  for (unsigned i = 0; i < IndexEntries.size() - 1; ++i) {
+    // The final sentinel top-level index has no associated 2nd level page
+    if (IndexEntries[i].SecondLevelPageStart == 0)
+      break;
+
+    outs() << "    Second level index[" << i << "]: "
+           << "offset in section="
+           << format("0x%08" PRIx32, IndexEntries[i].SecondLevelPageStart)
+           << ", "
+           << "base function offset="
+           << format("0x%08" PRIx32, IndexEntries[i].FunctionOffset) << '\n';
+
+    Pos = Contents.data() + IndexEntries[i].SecondLevelPageStart;
+    uint32_t Kind = *reinterpret_cast<const support::ulittle32_t *>(Pos);
+    if (Kind == 2)
+      printRegularSecondLevelUnwindPage(Pos);
+    else if (Kind == 3)
+      printCompressedSecondLevelUnwindPage(Pos, IndexEntries[i].FunctionOffset,
+                                           CommonEncodings);
+    else
+      llvm_unreachable("Do not know how to print this kind of 2nd level page");
+
+  }
+}
+
+void llvm::printMachOUnwindInfo(const MachOObjectFile *Obj) {
+  std::map<uint64_t, SymbolRef> Symbols;
+  for (const SymbolRef &SymRef : Obj->symbols()) {
+    // Discard any undefined or absolute symbols. They're not going to take part
+    // in the convenience lookup for unwind info and just take up resources.
+    section_iterator Section = Obj->section_end();
+    SymRef.getSection(Section);
+    if (Section == Obj->section_end())
+      continue;
+
+    uint64_t Addr;
+    SymRef.getAddress(Addr);
+    Symbols.insert(std::make_pair(Addr, SymRef));
+  }
+
+  for (const SectionRef &Section : Obj->sections()) {
+    StringRef SectName;
+    Section.getName(SectName);
+    if (SectName == "__compact_unwind")
+      printMachOCompactUnwindSection(Obj, Symbols, Section);
+    else if (SectName == "__unwind_info")
+      printMachOUnwindInfoSection(Obj, Symbols, Section);
+    else if (SectName == "__eh_frame")
+      outs() << "llvm-objdump: warning: unhandled __eh_frame section\n";
+
+  }
+}
+
+static void PrintMachHeader(uint32_t magic, uint32_t cputype,
+                            uint32_t cpusubtype, uint32_t filetype,
+                            uint32_t ncmds, uint32_t sizeofcmds, uint32_t flags,
+                            bool verbose) {
+  outs() << "Mach header\n";
+  outs() << "      magic cputype cpusubtype  caps    filetype ncmds "
+            "sizeofcmds      flags\n";
+  if (verbose) {
+    if (magic == MachO::MH_MAGIC)
+      outs() << "   MH_MAGIC";
+    else if (magic == MachO::MH_MAGIC_64)
+      outs() << "MH_MAGIC_64";
+    else
+      outs() << format(" 0x%08" PRIx32, magic);
+    switch (cputype) {
+    case MachO::CPU_TYPE_I386:
+      outs() << "    I386";
+      switch (cpusubtype & ~MachO::CPU_SUBTYPE_MASK) {
+      case MachO::CPU_SUBTYPE_I386_ALL:
+        outs() << "        ALL";
+        break;
+      default:
+        outs() << format(" %10d", cpusubtype & ~MachO::CPU_SUBTYPE_MASK);
+        break;
+      }
+      break;
+    case MachO::CPU_TYPE_X86_64:
+      outs() << "  X86_64";
+    case MachO::CPU_SUBTYPE_X86_64_ALL:
+      outs() << "        ALL";
+      break;
+    case MachO::CPU_SUBTYPE_X86_64_H:
+      outs() << "    Haswell";
+      outs() << format(" %10d", cpusubtype & ~MachO::CPU_SUBTYPE_MASK);
+      break;
+    case MachO::CPU_TYPE_ARM:
+      outs() << "     ARM";
+      switch (cpusubtype & ~MachO::CPU_SUBTYPE_MASK) {
+      case MachO::CPU_SUBTYPE_ARM_ALL:
+        outs() << "        ALL";
+        break;
+      case MachO::CPU_SUBTYPE_ARM_V4T:
+        outs() << "        V4T";
+        break;
+      case MachO::CPU_SUBTYPE_ARM_V5TEJ:
+        outs() << "      V5TEJ";
+        break;
+      case MachO::CPU_SUBTYPE_ARM_XSCALE:
+        outs() << "     XSCALE";
+        break;
+      case MachO::CPU_SUBTYPE_ARM_V6:
+        outs() << "         V6";
+        break;
+      case MachO::CPU_SUBTYPE_ARM_V6M:
+        outs() << "        V6M";
+        break;
+      case MachO::CPU_SUBTYPE_ARM_V7:
+        outs() << "         V7";
+        break;
+      case MachO::CPU_SUBTYPE_ARM_V7EM:
+        outs() << "       V7EM";
+        break;
+      case MachO::CPU_SUBTYPE_ARM_V7K:
+        outs() << "        V7K";
+        break;
+      case MachO::CPU_SUBTYPE_ARM_V7M:
+        outs() << "        V7M";
+        break;
+      case MachO::CPU_SUBTYPE_ARM_V7S:
+        outs() << "        V7S";
+        break;
+      default:
+        outs() << format(" %10d", cpusubtype & ~MachO::CPU_SUBTYPE_MASK);
+        break;
+      }
+      break;
+    case MachO::CPU_TYPE_ARM64:
+      outs() << "   ARM64";
+      switch (cpusubtype & ~MachO::CPU_SUBTYPE_MASK) {
+      case MachO::CPU_SUBTYPE_ARM64_ALL:
+        outs() << "        ALL";
+        break;
+      default:
+        outs() << format(" %10d", cpusubtype & ~MachO::CPU_SUBTYPE_MASK);
+        break;
+      }
+      break;
+    case MachO::CPU_TYPE_POWERPC:
+      outs() << "     PPC";
+      switch (cpusubtype & ~MachO::CPU_SUBTYPE_MASK) {
+      case MachO::CPU_SUBTYPE_POWERPC_ALL:
+        outs() << "        ALL";
+        break;
+      default:
+        outs() << format(" %10d", cpusubtype & ~MachO::CPU_SUBTYPE_MASK);
+        break;
+      }
+      break;
+    case MachO::CPU_TYPE_POWERPC64:
+      outs() << "   PPC64";
+      switch (cpusubtype & ~MachO::CPU_SUBTYPE_MASK) {
+      case MachO::CPU_SUBTYPE_POWERPC_ALL:
+        outs() << "        ALL";
+        break;
+      default:
+        outs() << format(" %10d", cpusubtype & ~MachO::CPU_SUBTYPE_MASK);
+        break;
+      }
+      break;
+    }
+    if ((cpusubtype & MachO::CPU_SUBTYPE_MASK) == MachO::CPU_SUBTYPE_LIB64) {
+      outs() << " LIB64 ";
+    } else {
+      outs() << format("  0x%02" PRIx32,
+                       (cpusubtype & MachO::CPU_SUBTYPE_MASK) >> 24);
+    }
+    switch (filetype) {
+    case MachO::MH_OBJECT:
+      outs() << "      OBJECT";
+      break;
+    case MachO::MH_EXECUTE:
+      outs() << "     EXECUTE";
+      break;
+    case MachO::MH_FVMLIB:
+      outs() << "      FVMLIB";
+      break;
+    case MachO::MH_CORE:
+      outs() << "        CORE";
+      break;
+    case MachO::MH_PRELOAD:
+      outs() << "     PRELOAD";
+      break;
+    case MachO::MH_DYLIB:
+      outs() << "       DYLIB";
+      break;
+    case MachO::MH_DYLIB_STUB:
+      outs() << "  DYLIB_STUB";
+      break;
+    case MachO::MH_DYLINKER:
+      outs() << "    DYLINKER";
+      break;
+    case MachO::MH_BUNDLE:
+      outs() << "      BUNDLE";
+      break;
+    case MachO::MH_DSYM:
+      outs() << "        DSYM";
+      break;
+    case MachO::MH_KEXT_BUNDLE:
+      outs() << "  KEXTBUNDLE";
+      break;
+    default:
+      outs() << format("  %10u", filetype);
+      break;
+    }
+    outs() << format(" %5u", ncmds);
+    outs() << format(" %10u", sizeofcmds);
+    uint32_t f = flags;
+    if (f & MachO::MH_NOUNDEFS) {
+      outs() << "   NOUNDEFS";
+      f &= ~MachO::MH_NOUNDEFS;
+    }
+    if (f & MachO::MH_INCRLINK) {
+      outs() << " INCRLINK";
+      f &= ~MachO::MH_INCRLINK;
+    }
+    if (f & MachO::MH_DYLDLINK) {
+      outs() << " DYLDLINK";
+      f &= ~MachO::MH_DYLDLINK;
+    }
+    if (f & MachO::MH_BINDATLOAD) {
+      outs() << " BINDATLOAD";
+      f &= ~MachO::MH_BINDATLOAD;
+    }
+    if (f & MachO::MH_PREBOUND) {
+      outs() << " PREBOUND";
+      f &= ~MachO::MH_PREBOUND;
+    }
+    if (f & MachO::MH_SPLIT_SEGS) {
+      outs() << " SPLIT_SEGS";
+      f &= ~MachO::MH_SPLIT_SEGS;
+    }
+    if (f & MachO::MH_LAZY_INIT) {
+      outs() << " LAZY_INIT";
+      f &= ~MachO::MH_LAZY_INIT;
+    }
+    if (f & MachO::MH_TWOLEVEL) {
+      outs() << " TWOLEVEL";
+      f &= ~MachO::MH_TWOLEVEL;
+    }
+    if (f & MachO::MH_FORCE_FLAT) {
+      outs() << " FORCE_FLAT";
+      f &= ~MachO::MH_FORCE_FLAT;
+    }
+    if (f & MachO::MH_NOMULTIDEFS) {
+      outs() << " NOMULTIDEFS";
+      f &= ~MachO::MH_NOMULTIDEFS;
+    }
+    if (f & MachO::MH_NOFIXPREBINDING) {
+      outs() << " NOFIXPREBINDING";
+      f &= ~MachO::MH_NOFIXPREBINDING;
+    }
+    if (f & MachO::MH_PREBINDABLE) {
+      outs() << " PREBINDABLE";
+      f &= ~MachO::MH_PREBINDABLE;
+    }
+    if (f & MachO::MH_ALLMODSBOUND) {
+      outs() << " ALLMODSBOUND";
+      f &= ~MachO::MH_ALLMODSBOUND;
+    }
+    if (f & MachO::MH_SUBSECTIONS_VIA_SYMBOLS) {
+      outs() << " SUBSECTIONS_VIA_SYMBOLS";
+      f &= ~MachO::MH_SUBSECTIONS_VIA_SYMBOLS;
+    }
+    if (f & MachO::MH_CANONICAL) {
+      outs() << " CANONICAL";
+      f &= ~MachO::MH_CANONICAL;
+    }
+    if (f & MachO::MH_WEAK_DEFINES) {
+      outs() << " WEAK_DEFINES";
+      f &= ~MachO::MH_WEAK_DEFINES;
+    }
+    if (f & MachO::MH_BINDS_TO_WEAK) {
+      outs() << " BINDS_TO_WEAK";
+      f &= ~MachO::MH_BINDS_TO_WEAK;
+    }
+    if (f & MachO::MH_ALLOW_STACK_EXECUTION) {
+      outs() << " ALLOW_STACK_EXECUTION";
+      f &= ~MachO::MH_ALLOW_STACK_EXECUTION;
+    }
+    if (f & MachO::MH_DEAD_STRIPPABLE_DYLIB) {
+      outs() << " DEAD_STRIPPABLE_DYLIB";
+      f &= ~MachO::MH_DEAD_STRIPPABLE_DYLIB;
+    }
+    if (f & MachO::MH_PIE) {
+      outs() << " PIE";
+      f &= ~MachO::MH_PIE;
+    }
+    if (f & MachO::MH_NO_REEXPORTED_DYLIBS) {
+      outs() << " NO_REEXPORTED_DYLIBS";
+      f &= ~MachO::MH_NO_REEXPORTED_DYLIBS;
+    }
+    if (f & MachO::MH_HAS_TLV_DESCRIPTORS) {
+      outs() << " MH_HAS_TLV_DESCRIPTORS";
+      f &= ~MachO::MH_HAS_TLV_DESCRIPTORS;
+    }
+    if (f & MachO::MH_NO_HEAP_EXECUTION) {
+      outs() << " MH_NO_HEAP_EXECUTION";
+      f &= ~MachO::MH_NO_HEAP_EXECUTION;
+    }
+    if (f & MachO::MH_APP_EXTENSION_SAFE) {
+      outs() << " APP_EXTENSION_SAFE";
+      f &= ~MachO::MH_APP_EXTENSION_SAFE;
+    }
+    if (f != 0 || flags == 0)
+      outs() << format(" 0x%08" PRIx32, f);
+  } else {
+    outs() << format(" 0x%08" PRIx32, magic);
+    outs() << format(" %7d", cputype);
+    outs() << format(" %10d", cpusubtype & ~MachO::CPU_SUBTYPE_MASK);
+    outs() << format("  0x%02" PRIx32,
+                     (cpusubtype & MachO::CPU_SUBTYPE_MASK) >> 24);
+    outs() << format("  %10u", filetype);
+    outs() << format(" %5u", ncmds);
+    outs() << format(" %10u", sizeofcmds);
+    outs() << format(" 0x%08" PRIx32, flags);
+  }
+  outs() << "\n";
+}
+
+static void getAndPrintMachHeader(const MachOObjectFile *Obj, bool verbose) {
+  if (Obj->is64Bit()) {
+    MachO::mach_header_64 H_64;
+    H_64 = Obj->getHeader64();
+    PrintMachHeader(H_64.magic, H_64.cputype, H_64.cpusubtype, H_64.filetype,
+                    H_64.ncmds, H_64.sizeofcmds, H_64.flags, verbose);
+  } else {
+    MachO::mach_header H;
+    H = Obj->getHeader();
+    PrintMachHeader(H.magic, H.cputype, H.cpusubtype, H.filetype, H.ncmds,
+                    H.sizeofcmds, H.flags, verbose);
+  }
+}
+
+void llvm::printMachOFileHeader(const object::ObjectFile *Obj) {
+  const MachOObjectFile *file = dyn_cast<const MachOObjectFile>(Obj);
+  getAndPrintMachHeader(file, true);
+  // TODO: next get and print the load commands.
 }
