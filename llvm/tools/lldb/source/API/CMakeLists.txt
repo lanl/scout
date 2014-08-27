@@ -55,7 +55,4 @@ add_lldb_library(lldbAPI
   SBValueList.cpp
   SBWatchpoint.cpp
   SBUnixSignals.cpp
-# ===== Scout =========
-  SBScout.cpp
-# =====================
   )

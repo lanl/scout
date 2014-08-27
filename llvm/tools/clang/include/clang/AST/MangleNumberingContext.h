@@ -35,10 +35,6 @@ class MeshDecl;
 /// literals within a particular context.
 class MangleNumberingContext : public RefCountedBase<MangleNumberingContext> {
 
-// +===== Scout ============================================================+
-  llvm::DenseMap<IdentifierInfo*, unsigned> MeshManglingNumbers;
-// +========================================================================+
-
 public:
   virtual ~MangleNumberingContext() {}
 
@@ -66,7 +62,7 @@ public:
   // +===== Scout ============================================================+
   // \brief Retrieve the mangling number of a static local variable within
   // this context.
-  unsigned getManglingNumber(const MeshDecl *MD);
+  virtual unsigned getManglingNumber(const MeshDecl *MD) = 0;
   // +========================================================================+
 };
 

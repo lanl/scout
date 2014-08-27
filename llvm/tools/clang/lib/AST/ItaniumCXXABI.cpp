@@ -35,6 +35,11 @@ class ItaniumNumberingContext : public MangleNumberingContext {
   llvm::DenseMap<const Type *, unsigned> ManglingNumbers;
   llvm::DenseMap<IdentifierInfo *, unsigned> VarManglingNumbers;
   llvm::DenseMap<IdentifierInfo *, unsigned> TagManglingNumbers;
+  
+  // +===== Scout ============================================================+
+  llvm::DenseMap<IdentifierInfo*, unsigned> MeshManglingNumbers;
+  // +========================================================================+
+
 
 public:
   unsigned getManglingNumber(const CXXMethodDecl *CallOperator) override {
@@ -66,6 +71,12 @@ public:
   unsigned getManglingNumber(const TagDecl *TD, unsigned) override {
     return ++TagManglingNumbers[TD->getIdentifier()];
   }
+  
+  // +===== Scout ============================================================+
+  virtual unsigned getManglingNumber(const MeshDecl *MD){
+    return ++MeshManglingNumbers[MD->getIdentifier()];
+  }
+  // +========================================================================+
 };
 
 class ItaniumCXXABI : public CXXABI {

@@ -123,9 +123,11 @@ void initializePollyPasses(llvm::PassRegistry &Registry);
 }
 #endif
 
-int cc1_main(const char **ArgBegin, const char **ArgEnd,
-             const char *Argv0, void *MainAddr,
-             bool Rewrite, bool DumpRewrite) {
+int cc1_main(ArrayRef<const char *> Argv,
+             const char *Argv0,
+             void *MainAddr,
+             bool Rewrite,
+             bool DumpRewrite) {
 
   std::unique_ptr<CompilerInstance> Clang(new CompilerInstance());
   IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());

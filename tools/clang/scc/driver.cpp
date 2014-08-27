@@ -209,7 +209,7 @@ static void ApplyQAOverride(SmallVectorImpl<const char*> &Args,
 }
 
 extern int cc1_main(ArrayRef<const char *> Argv, const char *Argv0,
-                    void *MainAddr);
+                    void *MainAddr, bool Rewrite, bool DumpRewrite);
 extern int cc1as_main(ArrayRef<const char *> Argv, const char *Argv0,
                       void *MainAddr);
 
@@ -391,10 +391,14 @@ static void SetInstallDir(SmallVectorImpl<const char *> &argv,
     TheDriver.setInstalledDir(InstalledPath);
 }
 
-static int ExecuteCC1Tool(ArrayRef<const char *> argv, StringRef Tool) {
+static int ExecuteCC1Tool(ArrayRef<const char *> argv,
+                          StringRef Tool,
+                          bool Rewrite,
+                          bool DumpRewrite) {
   void *GetExecutablePathVP = (void *)(intptr_t) GetExecutablePath;
   if (Tool == "")
-    return cc1_main(argv.slice(2), argv[0], GetExecutablePathVP);
+    return cc1_main(argv.slice(2), argv[0], GetExecutablePathVP,
+                    Rewrite, DumpRewrite);
   if (Tool == "as")
     return cc1as_main(argv.slice(2), argv[0], GetExecutablePathVP);
 
@@ -522,14 +526,34 @@ int main(int argc_, const char **argv_) {
 
   std::set<std::string> SavedStrings;
   StringSetSaver Saver(SavedStrings);
-
+  
   // Determines whether we want nullptr markers in argv to indicate response
   // files end-of-lines. We only use this for the /LINK driver argument.
   bool MarkEOLs = true;
-  if (argv.size() > 1 && StringRef(argv[1]).startswith("-cc1"))
+  if (argv.size() > 1 && StringRef(argv[1]).startswith("-cc1")){
     MarkEOLs = false;
+
+    //-debug flag
+    for (int i = 2, size = argv.size(); i < size; ++i) {
+      if (StringRef(argv[i]) == "-debug") {
+        size_t pid = getpid();
+
+        std::cerr << "PID: " << pid << std::endl;
+        std::cerr << "<press any key after attaching debugger, then 'continue' in debugger>" << std::endl;
+        std::string str;
+        std::getline(std::cin, str);
+      }
+    }  
+  }
+
   llvm::cl::ExpandResponseFiles(Saver, llvm::cl::TokenizeGNUCommandLine, argv,
                                 MarkEOLs);
+
+  bool Rewrite = false;
+  Rewrite = scCheckForFlag("-rewrite", argv);
+
+  bool DumpRewrite = false;
+  DumpRewrite = scCheckForFlag("-dump-rewrite", argv);
 
   // Handle -cc1 integrated tools, even if -cc1 was expanded from a response
   // file.
@@ -541,14 +565,8 @@ int main(int argc_, const char **argv_) {
       auto newEnd = std::remove(argv.begin(), argv.end(), nullptr);
       argv.resize(newEnd - argv.begin());
     }
-    return ExecuteCC1Tool(argv, argv[1] + 4);
+    return ExecuteCC1Tool(argv, argv[1] + 4, Rewrite, DumpRewrite);
   }
-
-  bool Rewrite = false;
-  Rewrite = scCheckForFlag("-rewrite", argv);
-
-  bool DumpRewrite = false;
-  DumpRewrite = scCheckForFlag("-dump-rewrite", argv);
 
   bool CanonicalPrefixes = true;
   for (int i = 1, size = argv.size(); i < size; ++i) {
@@ -589,6 +607,8 @@ int main(int argc_, const char **argv_) {
   ParseProgName(argv, SavedStrings, TheDriver);
 
   SetBackdoorDriverOutputsFromEnvVars(TheDriver);
+
+  scAddFlags(TheDriver, argv, SavedStrings);
 
   std::unique_ptr<Compilation> C(TheDriver.BuildCompilation(argv));
   int Res = 0;

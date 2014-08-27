@@ -50,6 +50,7 @@ else()
     include_directories(SYSTEM ${LIBXML2_INCLUDE_DIR})
     add_host_subdirectory(macosx
       macosx/Host.mm
+      macosx/HostInfoMacOSX.mm
       macosx/Symbols.cpp
       macosx/cfcpp/CFCBundle.cpp
       macosx/cfcpp/CFCData.cpp

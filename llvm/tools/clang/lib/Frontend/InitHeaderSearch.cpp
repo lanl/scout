@@ -311,10 +311,6 @@ void InitHeaderSearch::AddDefaultCIncludePaths(const LangOptions &Lang,
               break;
           }
         }
-
-        case llvm::Triple::Cygwin:
-        case llvm::Triple::AuroraUX:
-        case llvm::Triple::UnknownOS:
         default:
           break;
       }

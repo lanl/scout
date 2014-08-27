@@ -457,8 +457,6 @@ int main(int argc_, const char **argv_) {
 
   SetBackdoorDriverOutputsFromEnvVars(TheDriver);
   
-  scAddFlags(TheDriver, argv, SavedStrings);
-
   std::unique_ptr<Compilation> C(TheDriver.BuildCompilation(argv));
   int Res = 0;
   SmallVector<std::pair<int, const Command *>, 4> FailingCommands;

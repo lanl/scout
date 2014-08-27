@@ -39,10 +39,6 @@
 #include "lldb/API/SBThread.h"
 #include "lldb/API/SBProcess.h"
 
-// ===== Scout =======================
-#include "lldb/API/SBScout.h"
-// ===================================
-
 using namespace lldb;
 
 static void reset_stdin_termios ();
@@ -490,10 +486,16 @@ Driver::GetScriptLanguage() const
 
 // ===== Scout ================================
 void Driver::ExecuteScoutInitialCommands(){
-	std::string cmd = "settings set target.expr-prefix " + SBScout::GetScoutPrefixPath();
+  /*
+  SBFileSpec fs = SBHostOS::GetProgramFileSpec();
+  std::string dir = fs.GetDirectory();
+  std::string prefixPath = dir + "/lldb-prefix.h";
 
-	SBCommandReturnObject result;
-	m_debugger.GetCommandInterpreter().HandleCommand(cmd.c_str(), result, false);
+  std::string cmd = "settings set target.expr-prefix " + prefixPath;
+
+  SBCommandReturnObject result;
+  m_debugger.GetCommandInterpreter().HandleCommand(cmd.c_str(), result, false);
+  */
 }
 // ============================================
 
