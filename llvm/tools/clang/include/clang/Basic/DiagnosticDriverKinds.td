@@ -124,7 +124,7 @@ def warn_O4_is_O3 : Warning<"-O4 is equivalent to -O3">, InGroup<Deprecated>;
 def warn_drv_optimization_value : Warning<"optimization level '%0' is not supported; using '%1%2' instead">,
   InGroup<InvalidCommandLineArgument>;
 def warn_ignored_gcc_optimization : Warning<"optimization flag '%0' is not supported">,
-  InGroup<InvalidCommandLineArgument>;
+  InGroup<IgnoredOptimizationArgument>;
 def warn_c_kext : Warning<
   "ignoring -fapple-kext which is valid for C++ and Objective-C++ only">;
 def warn_drv_input_file_unused : Warning<
@@ -181,7 +181,7 @@ def err_analyzer_config_multiple_values : Error<
 
 def err_drv_modules_validate_once_requires_timestamp : Error<
   "option '-fmodules-validate-once-per-build-session' requires "
-  "'-fbuild-session-timestamp=<seconds since Epoch>'">;
+  "'-fbuild-session-timestamp=<seconds since Epoch>' or '-fbuild-session-file=<file>'">;
 
 def warn_drv_invoking_fallback : Warning<"falling back to %0">,
   InGroup<Fallback>;

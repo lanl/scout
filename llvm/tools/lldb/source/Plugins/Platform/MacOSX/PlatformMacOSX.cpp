@@ -10,12 +10,6 @@
 #include "PlatformMacOSX.h"
 #include "lldb/Host/Config.h"
 
-// C Includes
-#ifndef LLDB_DISABLE_POSIX
-#include <sys/stat.h>
-#include <sys/sysctl.h>
-#endif
-
 // C++ Includes
 
 #include <sstream>
@@ -31,7 +25,9 @@
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Core/StreamString.h"
 #include "lldb/Host/FileSpec.h"
+#include "lldb/Host/FileSystem.h"
 #include "lldb/Host/Host.h"
+#include "lldb/Host/HostInfo.h"
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Target.h"
@@ -48,7 +44,7 @@ PlatformMacOSX::Initialize ()
     {
 #if defined (__APPLE__)
         PlatformSP default_platform_sp (new PlatformMacOSX(true));
-        default_platform_sp->SetSystemArchitecture (Host::GetArchitecture());
+        default_platform_sp->SetSystemArchitecture(HostInfo::GetArchitecture());
         Platform::SetDefaultPlatform (default_platform_sp);
 #endif        
         PluginManager::RegisterPlugin (PlatformMacOSX::GetPluginNameStatic(false),
@@ -182,7 +178,7 @@ PlatformMacOSX::GetSDKDirectory (lldb_private::Target &target)
             uint32_t versions[2];
             if (objfile->GetSDKVersion(versions, sizeof(versions)))
             {
-                if (Host::GetLLDBPath (ePathTypeLLDBShlibDir, fspec))
+                if (HostInfo::GetLLDBPath(ePathTypeLLDBShlibDir, fspec))
                 {
                     std::string path;
                     xcode_contents_path = fspec.GetPath();
@@ -266,7 +262,9 @@ PlatformMacOSX::GetFileWithUUID (const lldb_private::FileSpec &platform_file,
     if (IsRemote() && m_remote_platform_sp)
     {
         std::string local_os_build;
-        Host::GetOSBuildString(local_os_build);
+#if !defined(__linux__)
+        HostInfo::GetOSBuildString(local_os_build);
+#endif
         std::string remote_os_build;
         m_remote_platform_sp->GetOSBuildString(remote_os_build);
         if (local_os_build.compare(remote_os_build) == 0)
@@ -290,7 +288,8 @@ PlatformMacOSX::GetFileWithUUID (const lldb_private::FileSpec &platform_file,
             // bring in the remote module file
             FileSpec module_cache_folder = module_cache_spec.CopyByRemovingLastPathComponent();
             // try to make the local directory first
-            Error err = Host::MakeDirectory(module_cache_folder.GetPath().c_str(), eFilePermissionsDirectoryDefault);
+            Error err =
+                FileSystem::MakeDirectory(module_cache_folder.GetPath().c_str(), eFilePermissionsDirectoryDefault);
             if (err.Fail())
                 return err;
             err = GetFile(platform_file, module_cache_spec);

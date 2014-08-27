@@ -51,6 +51,13 @@ public:
         eFileTypeOther
     } FileType;
 
+    enum PathSyntax
+    {
+        ePathSyntaxPosix,
+        ePathSyntaxWindows,
+        ePathSyntaxHostNative
+    };
+
     FileSpec();
 
     //------------------------------------------------------------------
@@ -69,7 +76,7 @@ public:
     ///
     /// @see FileSpec::SetFile (const char *path, bool resolve)
     //------------------------------------------------------------------
-    explicit FileSpec (const char *path, bool resolve_path);
+    explicit FileSpec (const char *path, bool resolve_path, PathSyntax syntax = ePathSyntaxHostNative);
 
     //------------------------------------------------------------------
     /// Copy constructor
@@ -263,6 +270,15 @@ public:
     bool
     Exists () const;
 
+    //------------------------------------------------------------------
+    /// Check if a file is readable by the current user
+    ///
+    /// @return
+    ///     \b true if the file exists on disk and is readable, \b false
+    ///     otherwise.
+    //------------------------------------------------------------------
+    bool
+    Readable () const;
      
     //------------------------------------------------------------------
     /// Expanded existence test.
@@ -290,6 +306,9 @@ public:
 
     uint64_t
     GetByteSize() const;
+
+    PathSyntax
+    GetPathSyntax() const;
 
     //------------------------------------------------------------------
     /// Directory string get accessor.
@@ -375,7 +394,7 @@ public:
     ///     still NULL terminated).
     //------------------------------------------------------------------
     size_t
-    GetPath (char *path, size_t max_path_length) const;
+    GetPath (char *path, size_t max_path_length, bool denormalize = true) const;
 
     //------------------------------------------------------------------
     /// Extract the full path to the file.
@@ -387,7 +406,7 @@ public:
     ///     concatenated.
     //------------------------------------------------------------------
     std::string
-    GetPath () const;
+    GetPath (bool denormalize = true) const;
 
     //------------------------------------------------------------------
     /// Extract the extension of the file.
@@ -559,6 +578,10 @@ public:
     //------------------------------------------------------------------
     lldb::DataBufferSP
     ReadFileContentsAsCString(Error *error_ptr = NULL);
+
+    static void Normalize(llvm::SmallVectorImpl<char> &path, PathSyntax syntax = ePathSyntaxHostNative);
+    static void DeNormalize(llvm::SmallVectorImpl<char> &path, PathSyntax syntax = ePathSyntaxHostNative);
+
     //------------------------------------------------------------------
     /// Change the file specified with a new path.
     ///
@@ -574,7 +597,7 @@ public:
     ///     the static FileSpec::Resolve.
     //------------------------------------------------------------------
     void
-    SetFile (const char *path, bool resolve_path);
+    SetFile (const char *path, bool resolve_path, PathSyntax syntax = ePathSyntaxHostNative);
 
     bool
     IsResolved () const
@@ -617,27 +640,14 @@ public:
     ReadFileLines (STLStringArray &lines);
 
     //------------------------------------------------------------------
-    /// Resolves user name and links in \a src_path, and writes the output
-    /// to \a dst_path.  Note if the path pointed to by \a src_path does not
-    /// exist, the contents of \a src_path will be copied to \a dst_path 
-    /// unchanged.
+    /// Resolves user name and links in \a path, and overwrites the input
+    /// argument with the resolved path.
     ///
-    /// @param[in] src_path
-    ///     Input path to be resolved.
-    ///
-    /// @param[in] dst_path
-    ///     Buffer to store the resolved path.
-    ///
-    /// @param[in] dst_len 
-    ///     Size of the buffer pointed to by dst_path.
-    ///
-    /// @result 
-    ///     The number of characters required to write the resolved path.  If the
-    ///     resolved path doesn't fit in dst_len, dst_len-1 characters will
-    ///     be written to \a dst_path, but the actual required length will still be returned.
+    /// @param[in] path
+    ///     Input path to be resolved, in the form of a llvm::SmallString or similar.
     //------------------------------------------------------------------
-    static size_t
-    Resolve (const char *src_path, char *dst_path, size_t dst_len);
+    static void
+    Resolve (llvm::SmallVectorImpl<char> &path);
 
     FileSpec
     CopyByAppendingPathComponent (const char *new_path) const;
@@ -665,18 +675,9 @@ public:
     ///
     /// @param[in] dst_path
     ///     Buffer to store the resolved path.
-    ///
-    /// @param[in] dst_len 
-    ///     Size of the buffer pointed to by dst_path.
-    ///
-    /// @result 
-    ///     The number of characters required to write the resolved path, or 0 if
-    ///     the user name could not be found.  If the
-    ///     resolved path doesn't fit in dst_len, dst_len-1 characters will
-    ///     be written to \a dst_path, but the actual required length will still be returned.
     //------------------------------------------------------------------
-    static size_t
-    ResolveUsername (const char *src_path, char *dst_path, size_t dst_len);
+    static void
+    ResolveUsername (llvm::SmallVectorImpl<char> &path);
     
     static size_t
     ResolvePartialUsername (const char *partial_name, StringList &matches);
@@ -709,6 +710,7 @@ protected:
     ConstString m_directory;    ///< The uniqued directory path
     ConstString m_filename;     ///< The uniqued filename path
     mutable bool m_is_resolved; ///< True if this path has been resolved.
+    PathSyntax m_syntax;        ///< The syntax that this path uses (e.g. Windows / Posix)
 };
 
 //----------------------------------------------------------------------

@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_RUNTIME_DYLD_MACHO_H
-#define LLVM_RUNTIME_DYLD_MACHO_H
+#ifndef LLVM_LIB_EXECUTIONENGINE_RUNTIMEDYLD_RUNTIMEDYLDMACHO_H
+#define LLVM_LIB_EXECUTIONENGINE_RUNTIMEDYLD_RUNTIMEDYLDMACHO_H
 
 #include "ObjectImageCommon.h"
 #include "RuntimeDyldImpl.h"
@@ -37,6 +37,7 @@ protected:
         : EHFrameSID(RTDYLD_INVALID_SECTION_ID),
           TextSID(RTDYLD_INVALID_SECTION_ID),
           ExceptTabSID(RTDYLD_INVALID_SECTION_ID) {}
+
     EHFrameRelatedSections(SID EH, SID T, SID Ex)
         : EHFrameSID(EH), TextSID(T), ExceptTabSID(Ex) {}
     SID EHFrameSID;
@@ -51,9 +52,31 @@ protected:
 
   RuntimeDyldMachO(RTDyldMemoryManager *mm) : RuntimeDyldImpl(mm) {}
 
-  /// Extract the addend encoded in the instruction.
-  uint64_t decodeAddend(uint8_t *LocalAddress, unsigned NumBytes,
-                        uint32_t RelType) const;
+  /// This convenience method uses memcpy to extract a contiguous addend (the
+  /// addend size and offset are taken from the corresponding fields of the RE).
+  int64_t memcpyAddend(const RelocationEntry &RE) const;
+
+  /// Given a relocation_iterator for a non-scattered relocation, construct a
+  /// RelocationEntry and fill in the common fields. The 'Addend' field is *not*
+  /// filled in, since immediate encodings are highly target/opcode specific.
+  /// For targets/opcodes with simple, contiguous immediates (e.g. X86) the
+  /// memcpyAddend method can be used to read the immediate.
+  RelocationEntry getRelocationEntry(unsigned SectionID, ObjectImage &ObjImg,
+                                     const relocation_iterator &RI) const {
+    const MachOObjectFile &Obj =
+      static_cast<const MachOObjectFile &>(*ObjImg.getObjectFile());
+    MachO::any_relocation_info RelInfo =
+      Obj.getRelocation(RI->getRawDataRefImpl());
+
+    bool IsPCRel = Obj.getAnyRelocationPCRel(RelInfo);
+    unsigned Size = Obj.getAnyRelocationLength(RelInfo);
+    uint64_t Offset;
+    RI->getOffset(Offset);
+    MachO::RelocationInfoType RelType =
+      static_cast<MachO::RelocationInfoType>(Obj.getAnyRelocationType(RelInfo));
+
+    return RelocationEntry(SectionID, Offset, RelType, 0, IsPCRel, Size);
+  }
 
   /// Construct a RelocationValueRef representing the relocation target.
   /// For Symbols in known sections, this will return a RelocationValueRef
@@ -72,7 +95,8 @@ protected:
 
   /// Make the RelocationValueRef addend PC-relative.
   void makeValueAddendPCRel(RelocationValueRef &Value, ObjectImage &ObjImg,
-                            const relocation_iterator &RI);
+                            const relocation_iterator &RI,
+                            unsigned OffsetToNextPC);
 
   /// Dump information about the relocation entry (RE) and resolved value.
   void dumpRelocationToResolve(const RelocationEntry &RE, uint64_t Value) const;
@@ -95,7 +119,7 @@ public:
 
   /// Write the least significant 'Size' bytes in 'Value' out at the address
   /// pointed to by Addr. Check for overflow.
-  bool writeBytesUnaligned(uint8_t *Addr, uint64_t Value, unsigned Size);
+  bool writeBytesUnaligned(uint8_t *Dst, uint64_t Value, unsigned Size);
 
   SectionEntry &getSection(unsigned SectionID) { return Sections[SectionID]; }
 
@@ -116,32 +140,6 @@ class RuntimeDyldMachOCRTPBase : public RuntimeDyldMachO {
 private:
   Impl &impl() { return static_cast<Impl &>(*this); }
   const Impl &impl() const { return static_cast<const Impl &>(*this); }
-
-protected:
-
-  /// Parse the given relocation, which must be a non-scattered, and
-  /// return a RelocationEntry representing the information. The 'Addend' field
-  /// will contain the unmodified instruction immediate.
-  RelocationEntry getBasicRelocationEntry(unsigned SectionID,
-                                          ObjectImage &ObjImg,
-                                          const relocation_iterator &RI) const {
-    const MachOObjectFile &Obj =
-      static_cast<const MachOObjectFile &>(*ObjImg.getObjectFile());
-    MachO::any_relocation_info RelInfo =
-      Obj.getRelocation(RI->getRawDataRefImpl());
-
-    const SectionEntry &Section = Sections[SectionID];
-    bool IsPCRel = Obj.getAnyRelocationPCRel(RelInfo);
-    unsigned Size = Obj.getAnyRelocationLength(RelInfo);
-    uint64_t Offset;
-    RI->getOffset(Offset);
-    uint8_t *LocalAddress = Section.Address + Offset;
-    unsigned NumBytes = 1 << Size;
-    uint32_t RelType = Obj.getAnyRelocationType(RelInfo);
-    uint64_t Addend = impl().decodeAddend(LocalAddress, NumBytes, RelType);
-
-    return RelocationEntry(SectionID, Offset, RelType, Addend, IsPCRel, Size);
-  }
 
 public:
   RuntimeDyldMachOCRTPBase(RTDyldMemoryManager *mm) : RuntimeDyldMachO(mm) {}

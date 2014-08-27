@@ -1351,14 +1351,15 @@ class BaseMulAccum<bit isSub, bits<3> opc, RegisterClass multype,
 }
 
 multiclass MulAccum<bit isSub, string asm, SDNode AccNode> {
+  // MADD/MSUB generation is decided by MachineCombiner.cpp
   def Wrrr : BaseMulAccum<isSub, 0b000, GPR32, GPR32, asm,
-      [(set GPR32:$Rd, (AccNode GPR32:$Ra, (mul GPR32:$Rn, GPR32:$Rm)))]>,
+      [/*(set GPR32:$Rd, (AccNode GPR32:$Ra, (mul GPR32:$Rn, GPR32:$Rm)))*/]>,
       Sched<[WriteIM32, ReadIM, ReadIM, ReadIMA]> {
     let Inst{31} = 0;
   }
 
   def Xrrr : BaseMulAccum<isSub, 0b000, GPR64, GPR64, asm,
-      [(set GPR64:$Rd, (AccNode GPR64:$Ra, (mul GPR64:$Rn, GPR64:$Rm)))]>,
+      [/*(set GPR64:$Rd, (AccNode GPR64:$Ra, (mul GPR64:$Rn, GPR64:$Rm)))*/]>,
       Sched<[WriteIM64, ReadIM, ReadIM, ReadIMA]> {
     let Inst{31} = 1;
   }
@@ -1636,7 +1637,7 @@ class AddSubRegAlias<string asm, Instruction inst, RegisterClass dstRegtype,
 
 multiclass AddSub<bit isSub, string mnemonic,
                   SDPatternOperator OpNode = null_frag> {
-  let hasSideEffects = 0 in {
+  let hasSideEffects = 0, isReMaterializable = 1, isAsCheapAsAMove = 1 in {
   // Add/Subtract immediate
   def Wri  : BaseAddSubImm<isSub, 0, GPR32sp, GPR32sp, addsub_shifted_imm32,
                            mnemonic, OpNode> {
@@ -1961,14 +1962,14 @@ class LogicalRegAlias<string asm, Instruction inst, RegisterClass regtype>
 
 multiclass LogicalImm<bits<2> opc, string mnemonic, SDNode OpNode,
                       string Alias> {
-  let AddedComplexity = 6 in
+  let AddedComplexity = 6, isReMaterializable = 1, isAsCheapAsAMove = 1 in
   def Wri : BaseLogicalImm<opc, GPR32sp, GPR32, logical_imm32, mnemonic,
                            [(set GPR32sp:$Rd, (OpNode GPR32:$Rn,
                                                logical_imm32:$imm))]> {
     let Inst{31} = 0;
     let Inst{22} = 0; // 64-bit version has an additional bit of immediate.
   }
-  let AddedComplexity = 6 in
+  let AddedComplexity = 6, isReMaterializable = 1, isAsCheapAsAMove = 1 in
   def Xri : BaseLogicalImm<opc, GPR64sp, GPR64, logical_imm64, mnemonic,
                            [(set GPR64sp:$Rd, (OpNode GPR64:$Rn,
                                                logical_imm64:$imm))]> {
@@ -2013,8 +2014,10 @@ class BaseLogicalRegPseudo<RegisterClass regtype, SDPatternOperator OpNode>
 // Split from LogicalImm as not all instructions have both.
 multiclass LogicalReg<bits<2> opc, bit N, string mnemonic,
                       SDPatternOperator OpNode> {
+  let isReMaterializable = 1, isAsCheapAsAMove = 1 in {
   def Wrr : BaseLogicalRegPseudo<GPR32, OpNode>;
   def Xrr : BaseLogicalRegPseudo<GPR64, OpNode>;
+  }
 
   def Wrs : BaseLogicalSReg<opc, N, GPR32, logical_shifted_reg32, mnemonic,
                             [(set GPR32:$Rd, (OpNode GPR32:$Rn,
@@ -2995,7 +2998,7 @@ class LoadPreIdx<bits<2> sz, bit V, bits<2> opc, RegisterClass regtype,
     : BaseLoadStorePreIdx<sz, V, opc,
                      (outs GPR64sp:$wback, regtype:$Rt),
                      (ins GPR64sp:$Rn, simm9:$offset), asm,
-                     "$Rn = $wback", []>,
+                     "$Rn = $wback,@earlyclobber $wback", []>,
       Sched<[WriteLD, WriteAdr]>;
 
 let mayStore = 1, mayLoad = 0 in
@@ -3004,7 +3007,7 @@ class StorePreIdx<bits<2> sz, bit V, bits<2> opc, RegisterClass regtype,
     : BaseLoadStorePreIdx<sz, V, opc,
                       (outs GPR64sp:$wback),
                       (ins regtype:$Rt, GPR64sp:$Rn, simm9:$offset),
-                      asm, "$Rn = $wback",
+                      asm, "$Rn = $wback,@earlyclobber $wback",
       [(set GPR64sp:$wback,
             (storeop (Ty regtype:$Rt), GPR64sp:$Rn, simm9:$offset))]>,
       Sched<[WriteAdr, WriteST]>;
@@ -3014,7 +3017,6 @@ class StorePreIdx<bits<2> sz, bit V, bits<2> opc, RegisterClass regtype,
 // Load/store post-indexed
 //---
 
-// (pre-index) load/stores.
 class BaseLoadStorePostIdx<bits<2> sz, bit V, bits<2> opc, dag oops, dag iops,
                           string asm, string cstr, list<dag> pat>
     : I<oops, iops, asm, "\t$Rt, [$Rn], $offset", cstr, pat> {
@@ -3042,7 +3044,7 @@ class LoadPostIdx<bits<2> sz, bit V, bits<2> opc, RegisterClass regtype,
     : BaseLoadStorePostIdx<sz, V, opc,
                       (outs GPR64sp:$wback, regtype:$Rt),
                       (ins GPR64sp:$Rn, simm9:$offset),
-                      asm, "$Rn = $wback", []>,
+                      asm, "$Rn = $wback,@earlyclobber $wback", []>,
       Sched<[WriteLD, WriteI]>;
 
 let mayStore = 1, mayLoad = 0 in
@@ -3051,7 +3053,7 @@ class StorePostIdx<bits<2> sz, bit V, bits<2> opc, RegisterClass regtype,
     : BaseLoadStorePostIdx<sz, V, opc,
                       (outs GPR64sp:$wback),
                       (ins regtype:$Rt, GPR64sp:$Rn, simm9:$offset),
-                       asm, "$Rn = $wback",
+                       asm, "$Rn = $wback,@earlyclobber $wback",
       [(set GPR64sp:$wback,
             (storeop (Ty regtype:$Rt), GPR64sp:$Rn, simm9:$offset))]>,
     Sched<[WriteAdr, WriteST, ReadAdrBase]>;
@@ -3115,7 +3117,7 @@ multiclass StorePairOffset<bits<2> opc, bit V, RegisterClass regtype,
 // (pre-indexed)
 class BaseLoadStorePairPreIdx<bits<2> opc, bit V, bit L, dag oops, dag iops,
                               string asm>
-    : I<oops, iops, asm, "\t$Rt, $Rt2, [$Rn, $offset]!", "$Rn = $wback", []> {
+    : I<oops, iops, asm, "\t$Rt, $Rt2, [$Rn, $offset]!", "$Rn = $wback,@earlyclobber $wback", []> {
   bits<5> Rt;
   bits<5> Rt2;
   bits<5> Rn;
@@ -3156,7 +3158,7 @@ class StorePairPreIdx<bits<2> opc, bit V, RegisterClass regtype,
 
 class BaseLoadStorePairPostIdx<bits<2> opc, bit V, bit L, dag oops, dag iops,
                               string asm>
-    : I<oops, iops, asm, "\t$Rt, $Rt2, [$Rn], $offset", "$Rn = $wback", []> {
+    : I<oops, iops, asm, "\t$Rt, $Rt2, [$Rn], $offset", "$Rn = $wback,@earlyclobber $wback", []> {
   bits<5> Rt;
   bits<5> Rt2;
   bits<5> Rn;

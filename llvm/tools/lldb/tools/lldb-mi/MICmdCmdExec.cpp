@@ -17,7 +17,7 @@
 //				CMICmdCmdExecNextInstruction	implementation.
 //				CMICmdCmdExecStepInstruction	implementation.
 //				CMICmdCmdExecFinish				implementation.
-//				CMICmdCmdExecInterupt			implementation.
+//				CMICmdCmdExecInterrupt			implementation.
 //
 // Environment:	Compilers:	Visual C++ 12.
 //							gcc (Ubuntu/Linaro 4.8.1-10ubuntu9) 4.8.1
@@ -28,16 +28,17 @@
 
 // Third Party Headers:
 #include <lldb/API/SBCommandInterpreter.h>
+#include <lldb/API/SBProcess.h>
+#include <lldb/API/SBStream.h>
+#include "lldb/lldb-enumerations.h"
 
 // In-house headers:
-#include "MICmnConfig.h"
 #include "MICmdCmdExec.h"
 #include "MICmnMIResultRecord.h"
 #include "MICmnMIValueConst.h"
 #include "MICmnLLDBDebugger.h"
 #include "MICmnLLDBDebugSessionInfo.h"
 #include "MIDriver.h"
-#include "MICmdArgContext.h"
 #include "MICmdArgValNumber.h"
 #include "MICmdArgValString.h"
 #include "MICmdArgValThreadGrp.h"
@@ -85,20 +86,29 @@ CMICmdCmdExecRun::~CMICmdCmdExecRun( void )
 //--
 bool CMICmdCmdExecRun::Execute( void )
 {
-    const MIchar * pCmd = "run";
     CMICmnLLDBDebugSessionInfo & rSessionInfo( CMICmnLLDBDebugSessionInfo::Instance() );
-    const lldb::ReturnStatus rtn = rSessionInfo.m_rLldbDebugger.GetCommandInterpreter().HandleCommand( pCmd, m_lldbResult ); MIunused( rtn );
-	
-	if( m_lldbResult.GetErrorSize() == 0 )
+    lldb::SBError error;
+    lldb::SBStream errMsg;
+    uint32_t launch_flags = lldb::LaunchFlags::eLaunchFlagDebug;
+    lldb::SBProcess process = rSessionInfo.m_lldbTarget.Launch (rSessionInfo.m_rLlldbListener,
+                nullptr, nullptr, nullptr, nullptr, nullptr,
+                nullptr, launch_flags, false, error);
+
+	if( (!process.IsValid()) || (error.Fail()) )
 	{
-		if( !CMIDriver::Instance().SetDriverStateRunningDebugging() )
-		{
-			const CMIUtilString & rErrMsg( CMIDriver::Instance().GetErrorDescription() );
-			SetError( CMIUtilString::Format( MIRSRC( IDS_CMD_ERR_SET_NEW_DRIVER_STATE ), m_cmdData.strMiCmd.c_str(), rErrMsg.c_str() ) );
-			return MIstatus::failure;
-		}
+		SetError( CMIUtilString::Format( MIRSRC( IDS_CMD_ERR_INVALID_PROCESS ), m_cmdData.strMiCmd.c_str(), errMsg.GetData() ) );
+		return MIstatus::failure;
 	}
 
+	// Save the process in the session info
+	rSessionInfo.m_lldbProcess = process;
+
+	if( !CMIDriver::Instance().SetDriverStateRunningDebugging() )
+	{
+		const CMIUtilString & rErrMsg( CMIDriver::Instance().GetErrorDescription() );
+		SetError( CMIUtilString::Format( MIRSRC( IDS_CMD_ERR_SET_NEW_DRIVER_STATE ), m_cmdData.strMiCmd.c_str(), rErrMsg.c_str() ) );
+		return MIstatus::failure;
+	}
 	 return MIstatus::success;
 }
 
@@ -124,6 +134,19 @@ bool CMICmdCmdExecRun::Acknowledge( void )
     {
         const CMICmnMIResultRecord miRecordResult( m_cmdData.strMiCmdToken, CMICmnMIResultRecord::eResultClass_Running );
         m_miResultRecord = miRecordResult;
+
+    	CMICmnLLDBDebugSessionInfo & rSessionInfo( CMICmnLLDBDebugSessionInfo::Instance() );
+    	lldb::pid_t pid = rSessionInfo.m_lldbProcess.GetProcessID();
+    	// Give the client '=thread-group-started,id="i1" pid="xyz"'
+    	m_bHasResultRecordExtra = true;
+    	const CMICmnMIValueConst miValueConst2( "i1" );
+    	const CMICmnMIValueResult miValueResult2( "id", miValueConst2 );
+    	const CMIUtilString strPid( CMIUtilString::Format( "%lld", pid ) );
+    	const CMICmnMIValueConst miValueConst( strPid );
+    	const CMICmnMIValueResult miValueResult( "pid", miValueConst );
+    	CMICmnMIOutOfBandRecord miOutOfBand( CMICmnMIOutOfBandRecord::eOutOfBand_ThreadGroupStarted, miValueResult2 );
+    	miOutOfBand.Add( miValueResult );
+    	m_miResultRecordExtra = miOutOfBand.GetString();
     }
 	
 	return MIstatus::success;
@@ -300,14 +323,7 @@ bool CMICmdCmdExecNext::ParseArgs( void )
 {
 	bool bOk = m_setCmdArgs.Add( *(new CMICmdArgValOptionLong( m_constStrArgThread, true, true, CMICmdArgValListBase::eArgValType_Number, 1 ) ) );
 	bOk = bOk && m_setCmdArgs.Add( *(new CMICmdArgValNumber( m_constStrArgNumber, false, false ) ) );
-	CMICmdArgContext argCntxt( m_cmdData.strMiCmdOption );
-	if( bOk && !m_setCmdArgs.Validate( m_cmdData.strMiCmd, argCntxt ) )
-	{
-		SetError( CMIUtilString::Format( MIRSRC( IDS_CMD_ERR_ARGS ), m_cmdData.strMiCmd.c_str(), m_setCmdArgs.GetErrorDescription().c_str() ) );
-		return MIstatus::failure;
-	}
-
-	return bOk;
+	return (bOk && ParseValidateCmdOptions() );
 }
 
 //++ ------------------------------------------------------------------------------------
@@ -428,14 +444,7 @@ bool CMICmdCmdExecStep::ParseArgs( void )
 {
 	bool bOk = m_setCmdArgs.Add( *(new CMICmdArgValOptionLong( m_constStrArgThread, true, true, CMICmdArgValListBase::eArgValType_Number, 1 ) ) );
 	bOk = bOk && m_setCmdArgs.Add( *(new CMICmdArgValNumber( m_constStrArgNumber, false, false ) ) );
-	CMICmdArgContext argCntxt( m_cmdData.strMiCmdOption );
-	if( bOk && !m_setCmdArgs.Validate( m_cmdData.strMiCmd, argCntxt ) )
-	{
-		SetError( CMIUtilString::Format( MIRSRC( IDS_CMD_ERR_ARGS ), m_cmdData.strMiCmd.c_str(), m_setCmdArgs.GetErrorDescription().c_str() ) );
-		return MIstatus::failure;
-	}
-
-	return bOk;
+	return (bOk && ParseValidateCmdOptions() );
 }
 
 //++ ------------------------------------------------------------------------------------
@@ -556,14 +565,7 @@ bool CMICmdCmdExecNextInstruction::ParseArgs( void )
 {
 	bool bOk = m_setCmdArgs.Add( *(new CMICmdArgValOptionLong( m_constStrArgThread, true, true, CMICmdArgValListBase::eArgValType_Number, 1 ) ) );
 	bOk = bOk && m_setCmdArgs.Add( *(new CMICmdArgValNumber( m_constStrArgNumber, false, false ) ) );
-	CMICmdArgContext argCntxt( m_cmdData.strMiCmdOption );
-	if( bOk && !m_setCmdArgs.Validate( m_cmdData.strMiCmd, argCntxt ) )
-	{
-		SetError( CMIUtilString::Format( MIRSRC( IDS_CMD_ERR_ARGS ), m_cmdData.strMiCmd.c_str(), m_setCmdArgs.GetErrorDescription().c_str() ) );
-		return MIstatus::failure;
-	}
-
-	return bOk;
+	return (bOk && ParseValidateCmdOptions() );
 }
 
 //++ ------------------------------------------------------------------------------------
@@ -684,14 +686,7 @@ bool CMICmdCmdExecStepInstruction::ParseArgs( void )
 {
 	bool bOk = m_setCmdArgs.Add( *(new CMICmdArgValOptionLong( m_constStrArgThread, true, true, CMICmdArgValListBase::eArgValType_Number, 1 ) ) );
 	bOk = bOk && m_setCmdArgs.Add( *(new CMICmdArgValNumber( m_constStrArgNumber, false, false ) ) );
-	CMICmdArgContext argCntxt( m_cmdData.strMiCmdOption );
-	if( bOk && !m_setCmdArgs.Validate( m_cmdData.strMiCmd, argCntxt ) )
-	{
-		SetError( CMIUtilString::Format( MIRSRC( IDS_CMD_ERR_ARGS ), m_cmdData.strMiCmd.c_str(), m_setCmdArgs.GetErrorDescription().c_str() ) );
-		return MIstatus::failure;
-	}
-
-	return bOk;
+	return (bOk && ParseValidateCmdOptions() );
 }
 
 //++ ------------------------------------------------------------------------------------
@@ -812,14 +807,7 @@ bool CMICmdCmdExecFinish::ParseArgs( void )
 {
 	bool bOk = m_setCmdArgs.Add( *(new CMICmdArgValOptionLong( m_constStrArgThread, true, true, CMICmdArgValListBase::eArgValType_Number, 1 ) ) );
 	bOk = bOk && m_setCmdArgs.Add( *(new CMICmdArgValOptionLong( m_constStrArgFrame, false, false, CMICmdArgValListBase::eArgValType_Number, 1 ) ) );
-	CMICmdArgContext argCntxt( m_cmdData.strMiCmdOption );
-	if( bOk && !m_setCmdArgs.Validate( m_cmdData.strMiCmd, argCntxt ) )
-	{
-		SetError( CMIUtilString::Format( MIRSRC( IDS_CMD_ERR_ARGS ), m_cmdData.strMiCmd.c_str(), m_setCmdArgs.GetErrorDescription().c_str() ) );
-		return MIstatus::failure;
-	}
-
-	return bOk;
+	return (bOk && ParseValidateCmdOptions() );
 }
 
 //++ ------------------------------------------------------------------------------------

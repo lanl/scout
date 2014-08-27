@@ -80,12 +80,6 @@ public:
 /// \brief Helper class for storing information about an active macro
 /// instantiation.
 struct MacroInstantiation {
-  /// The macro being instantiated.
-  const MCAsmMacro *TheMacro;
-
-  /// The macro instantiation with substitutions.
-  MemoryBuffer *Instantiation;
-
   /// The location of the instantiation.
   SMLoc InstantiationLoc;
 
@@ -95,9 +89,12 @@ struct MacroInstantiation {
   /// The location where parsing should resume upon instantiation completion.
   SMLoc ExitLoc;
 
+  /// The depth of TheCondStack at the start of the instantiation.
+  size_t CondStackDepth;
+
 public:
-  MacroInstantiation(const MCAsmMacro *M, SMLoc IL, int EB, SMLoc EL,
-                     MemoryBuffer *I);
+  MacroInstantiation(SMLoc IL, int EB, SMLoc EL, StringRef I,
+                     size_t CondStackDepth);
 };
 
 struct ParseStatementInfo {
@@ -355,9 +352,10 @@ private:
     DK_CFI_REMEMBER_STATE, DK_CFI_RESTORE_STATE, DK_CFI_SAME_VALUE,
     DK_CFI_RESTORE, DK_CFI_ESCAPE, DK_CFI_SIGNAL_FRAME, DK_CFI_UNDEFINED,
     DK_CFI_REGISTER, DK_CFI_WINDOW_SAVE,
-    DK_MACROS_ON, DK_MACROS_OFF, DK_MACRO, DK_ENDM, DK_ENDMACRO, DK_PURGEM,
+    DK_MACROS_ON, DK_MACROS_OFF,
+    DK_MACRO, DK_EXITM, DK_ENDM, DK_ENDMACRO, DK_PURGEM,
     DK_SLEB128, DK_ULEB128,
-    DK_ERR, DK_ERROR,
+    DK_ERR, DK_ERROR, DK_WARNING,
     DK_END
   };
 
@@ -407,6 +405,7 @@ private:
 
   // macro directives
   bool parseDirectivePurgeMacro(SMLoc DirectiveLoc);
+  bool parseDirectiveExitMacro(StringRef Directive);
   bool parseDirectiveEndMacro(StringRef Directive);
   bool parseDirectiveMacro(SMLoc DirectiveLoc);
   bool parseDirectiveMacrosOnOff(StringRef Directive);
@@ -473,6 +472,9 @@ private:
 
   // ".err" or ".error"
   bool parseDirectiveError(SMLoc DirectiveLoc, bool WithMessage);
+
+  // ".warning"
+  bool parseDirectiveWarning(SMLoc DirectiveLoc);
 
   void initializeDirectiveKindMap();
 };
@@ -1542,6 +1544,8 @@ bool AsmParser::parseStatement(ParseStatementInfo &Info) {
       return parseDirectiveMacrosOnOff(IDVal);
     case DK_MACRO:
       return parseDirectiveMacro(IDLoc);
+    case DK_EXITM:
+      return parseDirectiveExitMacro(IDVal);
     case DK_ENDM:
     case DK_ENDMACRO:
       return parseDirectiveEndMacro(IDVal);
@@ -1553,6 +1557,8 @@ bool AsmParser::parseStatement(ParseStatementInfo &Info) {
       return parseDirectiveError(IDLoc, false);
     case DK_ERROR:
       return parseDirectiveError(IDLoc, true);
+    case DK_WARNING:
+      return parseDirectiveWarning(IDLoc);
     }
 
     return Error(IDLoc, "unknown directive");
@@ -1630,7 +1636,7 @@ bool AsmParser::parseStatement(ParseStatementInfo &Info) {
 
   // If parsing succeeded, match the instruction.
   if (!HadError) {
-    unsigned ErrorInfo;
+    uint64_t ErrorInfo;
     getTargetParser().MatchAndEmitInstruction(IDLoc, Info.Opcode,
                                               Info.ParsedOperands, Out,
                                               ErrorInfo, ParsingInlineAsm);
@@ -1856,10 +1862,10 @@ bool AsmParser::expandMacro(raw_svector_ostream &OS, StringRef Body,
   return false;
 }
 
-MacroInstantiation::MacroInstantiation(const MCAsmMacro *M, SMLoc IL, int EB,
-                                       SMLoc EL, MemoryBuffer *I)
-    : TheMacro(M), Instantiation(I), InstantiationLoc(IL), ExitBuffer(EB),
-      ExitLoc(EL) {}
+MacroInstantiation::MacroInstantiation(SMLoc IL, int EB, SMLoc EL,
+                                       StringRef I, size_t CondStackDepth)
+    : InstantiationLoc(IL), ExitBuffer(EB), ExitLoc(EL),
+      CondStackDepth(CondStackDepth) {}
 
 static bool isOperator(AsmToken::TokenKind kind) {
   switch (kind) {
@@ -2117,17 +2123,18 @@ bool AsmParser::handleMacroEntry(const MCAsmMacro *M, SMLoc NameLoc) {
   // instantiation.
   OS << ".endmacro\n";
 
-  MemoryBuffer *Instantiation =
-      MemoryBuffer::getMemBufferCopy(OS.str(), "<instantiation>");
+  std::unique_ptr<MemoryBuffer> Instantiation(
+      MemoryBuffer::getMemBufferCopy(OS.str(), "<instantiation>"));
 
   // Create the macro instantiation object and add to the current macro
   // instantiation stack.
-  MacroInstantiation *MI = new MacroInstantiation(
-      M, NameLoc, CurBuffer, getTok().getLoc(), Instantiation);
+  MacroInstantiation *MI =
+      new MacroInstantiation(NameLoc, CurBuffer, getTok().getLoc(),
+                             Instantiation->getBuffer(), TheCondStack.size());
   ActiveMacros.push_back(MI);
 
   // Jump to the macro instantiation and prime the lexer.
-  CurBuffer = SrcMgr.AddNewSourceBuffer(MI->Instantiation, SMLoc());
+  CurBuffer = SrcMgr.AddNewSourceBuffer(std::move(Instantiation), SMLoc());
   Lexer.setBuffer(SrcMgr.getMemoryBuffer(CurBuffer)->getBuffer());
   Lex();
 
@@ -2605,7 +2612,8 @@ bool AsmParser::parseDirectiveFill() {
 
   for (uint64_t i = 0, e = NumValues; i != e; ++i) {
     getStreamer().EmitIntValue(FillExpr, NonZeroFillSize);
-    getStreamer().EmitIntValue(0, FillSize - NonZeroFillSize);
+    if (NonZeroFillSize < FillSize)
+      getStreamer().EmitIntValue(0, FillSize - NonZeroFillSize);
   }
 
   return false;
@@ -3292,7 +3300,7 @@ bool AsmParser::parseDirectiveMacro(SMLoc DirectiveLoc) {
 
       if (Qualifier == "req")
         Parameter.Required = true;
-      else if (Qualifier == "vararg" && !IsDarwin)
+      else if (Qualifier == "vararg")
         Parameter.Vararg = true;
       else
         return Error(QualLoc, Qualifier + " is not a valid parameter qualifier "
@@ -3469,6 +3477,26 @@ void AsmParser::checkForBadMacro(SMLoc DirectiveLoc, StringRef Name,
     Warning(DirectiveLoc, "macro defined with named parameters which are not "
                           "used in macro body, possible positional parameter "
                           "found in body which will have no effect");
+}
+
+/// parseDirectiveExitMacro
+/// ::= .exitm
+bool AsmParser::parseDirectiveExitMacro(StringRef Directive) {
+  if (getLexer().isNot(AsmToken::EndOfStatement))
+    return TokError("unexpected token in '" + Directive + "' directive");
+
+  if (!isInsideMacroInstantiation())
+    return TokError("unexpected '" + Directive + "' in file, "
+                                                 "no current macro definition");
+
+  // Exit all conditionals that are active in the current macro.
+  while (TheCondStack.size() != ActiveMacros.back()->CondStackDepth) {
+    TheCondState = TheCondStack.back();
+    TheCondStack.pop_back();
+  }
+
+  handleMacroExit();
+  return false;
 }
 
 /// parseDirectiveEndMacro
@@ -4073,6 +4101,32 @@ bool AsmParser::parseDirectiveError(SMLoc L, bool WithMessage) {
   return true;
 }
 
+/// parseDirectiveWarning
+///   ::= .warning [string]
+bool AsmParser::parseDirectiveWarning(SMLoc L) {
+  if (!TheCondStack.empty()) {
+    if (TheCondStack.back().Ignore) {
+      eatToEndOfStatement();
+      return false;
+    }
+  }
+
+  StringRef Message = ".warning directive invoked in source file";
+  if (Lexer.isNot(AsmToken::EndOfStatement)) {
+    if (Lexer.isNot(AsmToken::String)) {
+      TokError(".warning argument must be a string");
+      eatToEndOfStatement();
+      return true;
+    }
+
+    Message = getTok().getStringContents();
+    Lex();
+  }
+
+  Warning(L, Message);
+  return false;
+}
+
 /// parseDirectiveEndIf
 /// ::= .endif
 bool AsmParser::parseDirectiveEndIf(SMLoc DirectiveLoc) {
@@ -4200,11 +4254,13 @@ void AsmParser::initializeDirectiveKindMap() {
   DirectiveKindMap[".macros_on"] = DK_MACROS_ON;
   DirectiveKindMap[".macros_off"] = DK_MACROS_OFF;
   DirectiveKindMap[".macro"] = DK_MACRO;
+  DirectiveKindMap[".exitm"] = DK_EXITM;
   DirectiveKindMap[".endm"] = DK_ENDM;
   DirectiveKindMap[".endmacro"] = DK_ENDMACRO;
   DirectiveKindMap[".purgem"] = DK_PURGEM;
   DirectiveKindMap[".err"] = DK_ERR;
   DirectiveKindMap[".error"] = DK_ERROR;
+  DirectiveKindMap[".warning"] = DK_WARNING;
 }
 
 MCAsmMacro *AsmParser::parseMacroLikeBody(SMLoc DirectiveLoc) {
@@ -4254,17 +4310,18 @@ void AsmParser::instantiateMacroLikeBody(MCAsmMacro *M, SMLoc DirectiveLoc,
                                          raw_svector_ostream &OS) {
   OS << ".endr\n";
 
-  MemoryBuffer *Instantiation =
-      MemoryBuffer::getMemBufferCopy(OS.str(), "<instantiation>");
+  std::unique_ptr<MemoryBuffer> Instantiation(
+      MemoryBuffer::getMemBufferCopy(OS.str(), "<instantiation>"));
 
   // Create the macro instantiation object and add to the current macro
   // instantiation stack.
-  MacroInstantiation *MI = new MacroInstantiation(
-      M, DirectiveLoc, CurBuffer, getTok().getLoc(), Instantiation);
+  MacroInstantiation *MI =
+      new MacroInstantiation(DirectiveLoc, CurBuffer, getTok().getLoc(),
+                             Instantiation->getBuffer(), TheCondStack.size());
   ActiveMacros.push_back(MI);
 
   // Jump to the macro instantiation and prime the lexer.
-  CurBuffer = SrcMgr.AddNewSourceBuffer(MI->Instantiation, SMLoc());
+  CurBuffer = SrcMgr.AddNewSourceBuffer(std::move(Instantiation), SMLoc());
   Lexer.setBuffer(SrcMgr.getMemoryBuffer(CurBuffer)->getBuffer());
   Lex();
 }

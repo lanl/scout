@@ -32,10 +32,37 @@ namespace {
 /// \brief Keeps track of the mangled names of lambda expressions and block
 /// literals within a particular context.
 class ItaniumNumberingContext : public MangleNumberingContext {
-  llvm::DenseMap<IdentifierInfo*, unsigned> VarManglingNumbers;
-  llvm::DenseMap<IdentifierInfo*, unsigned> TagManglingNumbers;
+  llvm::DenseMap<const Type *, unsigned> ManglingNumbers;
+  llvm::DenseMap<IdentifierInfo *, unsigned> VarManglingNumbers;
+  llvm::DenseMap<IdentifierInfo *, unsigned> TagManglingNumbers;
+  
+  // +===== Scout ============================================================+
+  llvm::DenseMap<IdentifierInfo*, unsigned> MeshManglingNumbers;
+  // +========================================================================+
+
 
 public:
+  unsigned getManglingNumber(const CXXMethodDecl *CallOperator) override {
+    const FunctionProtoType *Proto =
+        CallOperator->getType()->getAs<FunctionProtoType>();
+    ASTContext &Context = CallOperator->getASTContext();
+
+    QualType Key =
+        Context.getFunctionType(Context.VoidTy, Proto->getParamTypes(),
+                                FunctionProtoType::ExtProtoInfo());
+    Key = Context.getCanonicalType(Key);
+    return ++ManglingNumbers[Key->castAs<FunctionProtoType>()];
+  }
+
+  unsigned getManglingNumber(const BlockDecl *BD) {
+    const Type *Ty = nullptr;
+    return ++ManglingNumbers[Ty];
+  }
+
+  unsigned getStaticLocalNumber(const VarDecl *VD) override {
+    return 0;
+  }
+
   /// Variable decls are numbered by identifier.
   unsigned getManglingNumber(const VarDecl *VD, unsigned) override {
     return ++VarManglingNumbers[VD->getIdentifier()];
@@ -44,6 +71,12 @@ public:
   unsigned getManglingNumber(const TagDecl *TD, unsigned) override {
     return ++TagManglingNumbers[TD->getIdentifier()];
   }
+  
+  // +===== Scout ============================================================+
+  virtual unsigned getManglingNumber(const MeshDecl *MD){
+    return ++MeshManglingNumbers[MD->getIdentifier()];
+  }
+  // +========================================================================+
 };
 
 class ItaniumCXXABI : public CXXABI {

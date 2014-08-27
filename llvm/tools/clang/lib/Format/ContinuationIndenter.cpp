@@ -150,7 +150,8 @@ bool ContinuationIndenter::mustBreak(const LineState &State) {
       Previous.Type != TT_InlineASMColon &&
       Previous.Type != TT_ConditionalExpr && nextIsMultilineString(State))
     return true;
-  if (((Previous.Type == TT_DictLiteral && Previous.is(tok::l_brace)) ||
+  if (Style.Language != FormatStyle::LK_Proto &&
+      ((Previous.Type == TT_DictLiteral && Previous.is(tok::l_brace)) ||
        Previous.Type == TT_ArrayInitializerLSquare) &&
       Style.ColumnLimit > 0 &&
       getLengthToMatchingParen(Previous) + State.Column > getColumnLimit(State))
@@ -560,6 +561,9 @@ unsigned ContinuationIndenter::getNewLineColumn(const LineState &State) {
     return State.FirstIndent + Style.ConstructorInitializerIndentWidth;
   if (NextNonComment->Type == TT_CtorInitializerComma)
     return State.Stack.back().Indent;
+  if (Previous.is(tok::r_paren) && !Current.isBinaryOperator() &&
+      Current.isNot(tok::colon))
+    return ContinuationIndent;
   if (State.Stack.back().Indent == State.FirstIndent && PreviousNonComment &&
       PreviousNonComment->isNot(tok::r_brace))
     // Ensure that we fall back to the continuation indent width instead of
@@ -850,9 +854,10 @@ void ContinuationIndenter::moveStatePastScopeOpener(LineState &State,
             getColumnLimit(State))
       BreakBeforeParameter = true;
   }
-  bool NoLineBreak = State.Stack.back().NoLineBreak ||
-                     (Current.Type == TT_TemplateOpener &&
-                      State.Stack.back().ContainsUnwrappedBuilder);
+  bool NoLineBreak =
+      State.Stack.back().NoLineBreak ||
+      ((Current.NestingLevel != 0 || Current.Type == TT_TemplateOpener) &&
+       State.Stack.back().ContainsUnwrappedBuilder);
   State.Stack.push_back(ParenState(NewIndent, NewIndentLevel,
                                    State.Stack.back().LastSpace,
                                    AvoidBinPacking, NoLineBreak));

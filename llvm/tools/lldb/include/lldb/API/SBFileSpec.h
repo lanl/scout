@@ -77,10 +77,6 @@ private:
     friend class SBThread;
     friend class SBTarget;
 
-    // ===== Scout =================
-    friend class SBScout;
-    // =============================
-
     SBFileSpec (const lldb_private::FileSpec& fspec);
 
     void

@@ -1366,6 +1366,28 @@ RValue CodeGenFunction::EmitLoadOfExtVectorElementLValue(LValue LV) {
   return RValue::get(Vec);
 }
 
+/// @brief Generates lvalue for partial ext_vector access.
+llvm::Value *CodeGenFunction::EmitExtVectorElementLValue(LValue LV) {
+  llvm::Value *VectorAddress = LV.getExtVectorAddr();
+  const VectorType *ExprVT = LV.getType()->getAs<VectorType>();
+  QualType EQT = ExprVT->getElementType();
+  llvm::Type *VectorElementTy = CGM.getTypes().ConvertType(EQT);
+  llvm::Type *VectorElementPtrToTy = VectorElementTy->getPointerTo();
+  
+  llvm::Value *CastToPointerElement =
+    Builder.CreateBitCast(VectorAddress,
+                          VectorElementPtrToTy, "conv.ptr.element");
+  
+  const llvm::Constant *Elts = LV.getExtVectorElts();
+  unsigned ix = getAccessedFieldNo(0, Elts);
+  
+  llvm::Value *VectorBasePtrPlusIx =
+    Builder.CreateInBoundsGEP(CastToPointerElement,
+                              llvm::ConstantInt::get(SizeTy, ix), "add.ptr");
+  
+  return VectorBasePtrPlusIx;
+}
+
 /// @brief Load of global gamed gegisters are always calls to intrinsics.
 RValue CodeGenFunction::EmitLoadOfGlobalRegLValue(LValue LV) {
   assert((LV.getType()->isIntegerType() || LV.getType()->isPointerType()) &&
@@ -2154,7 +2176,7 @@ llvm::Constant *CodeGenFunction::EmitCheckTypeDescriptor(QualType T) {
       CGM.getModule(), Descriptor->getType(),
       /*isConstant=*/true, llvm::GlobalVariable::PrivateLinkage, Descriptor);
   GV->setUnnamedAddr(true);
-  CGM.disableSanitizerForGlobal(GV);
+  CGM.getSanitizerMetadata()->disableSanitizerForGlobal(GV);
 
   // Remember the descriptor for this type.
   CGM.setTypeDescriptorInMap(T, GV);
@@ -2204,7 +2226,7 @@ llvm::Constant *CodeGenFunction::EmitCheckSourceLocation(SourceLocation Loc) {
   PresumedLoc PLoc = getContext().getSourceManager().getPresumedLoc(Loc);
   if (PLoc.isValid()) {
     auto FilenameGV = CGM.GetAddrOfConstantCString(PLoc.getFilename(), ".src");
-    CGM.disableSanitizerForGlobal(FilenameGV);
+    CGM.getSanitizerMetadata()->disableSanitizerForGlobal(FilenameGV);
     Filename = FilenameGV;
     Line = PLoc.getLine();
     Column = PLoc.getColumn();
@@ -2251,7 +2273,7 @@ void CodeGenFunction::EmitCheck(llvm::Value *Checked, StringRef CheckName,
       new llvm::GlobalVariable(CGM.getModule(), Info->getType(), false,
                                llvm::GlobalVariable::PrivateLinkage, Info);
   InfoPtr->setUnnamedAddr(true);
-  CGM.disableSanitizerForGlobal(InfoPtr);
+  CGM.getSanitizerMetadata()->disableSanitizerForGlobal(InfoPtr);
 
   SmallVector<llvm::Value *, 4> Args;
   SmallVector<llvm::Type *, 4> ArgTypes;
@@ -2350,7 +2372,8 @@ LValue CodeGenFunction::EmitArraySubscriptExpr(const ArraySubscriptExpr *E,
 
   // If the base is a vector type, then we are forming a vector element lvalue
   // with this subscript.
-  if (E->getBase()->getType()->isVectorType()) {
+  if (E->getBase()->getType()->isVectorType() &&
+      !isa<ExtVectorElementExpr>(E->getBase())) {
     // Emit the vector as an lvalue to get its address.
     LValue LHS = EmitLValue(E->getBase());
     assert(LHS.isSimple() && "Can only subscript lvalue vectors here!");
@@ -2366,8 +2389,17 @@ LValue CodeGenFunction::EmitArraySubscriptExpr(const ArraySubscriptExpr *E,
   // size is a VLA or Objective-C interface.
   llvm::Value *Address = nullptr;
   CharUnits ArrayAlignment;
-  if (const VariableArrayType *vla =
-        getContext().getAsVariableArrayType(E->getType())) {
+  if (isa<ExtVectorElementExpr>(E->getBase())) {
+    LValue LV = EmitLValue(E->getBase());
+    Address = EmitExtVectorElementLValue(LV);
+    Address = Builder.CreateInBoundsGEP(Address, Idx, "arrayidx");
+    const VectorType *ExprVT = LV.getType()->getAs<VectorType>();
+    QualType EQT = ExprVT->getElementType();
+    return MakeAddrLValue(Address, EQT,
+                          getContext().getTypeAlignInChars(EQT));
+  }
+  else if (const VariableArrayType *vla =
+           getContext().getAsVariableArrayType(E->getType())) {
     // The base must be a pointer, which is not an aggregate.  Emit
     // it.  It needs to be emitted first in case it's what captures
     // the VLA bounds.
@@ -3104,8 +3136,8 @@ RValue CodeGenFunction::EmitCallExpr(const CallExpr *E,
   }
 
   llvm::Value *Callee = EmitScalarExpr(E->getCallee());
-  return EmitCall(E->getCallee()->getType(), Callee, E->getLocStart(),
-                  ReturnValue, E->arg_begin(), E->arg_end(), TargetDecl);
+  return EmitCall(E->getCallee()->getType(), Callee, E, ReturnValue,
+                  TargetDecl);
 }
 
 LValue CodeGenFunction::EmitBinaryOperatorLValue(const BinaryOperator *E) {
@@ -3276,10 +3308,7 @@ LValue CodeGenFunction::EmitStmtExprLValue(const StmtExpr *E) {
 }
 
 RValue CodeGenFunction::EmitCall(QualType CalleeType, llvm::Value *Callee,
-                                 SourceLocation CallLoc,
-                                 ReturnValueSlot ReturnValue,
-                                 CallExpr::const_arg_iterator ArgBeg,
-                                 CallExpr::const_arg_iterator ArgEnd,
+                                 const CallExpr *E, ReturnValueSlot ReturnValue,
                                  const Decl *TargetDecl) {
   // Get the actual function type. The callee type will always be a pointer to
   // function type or a block pointer type.
@@ -3333,7 +3362,7 @@ RValue CodeGenFunction::EmitCall(QualType CalleeType, llvm::Value *Callee,
       llvm::Value *CalleeRTTIMatch =
           Builder.CreateICmpEQ(CalleeRTTI, FTRTTIConst);
       llvm::Constant *StaticData[] = {
-        EmitCheckSourceLocation(CallLoc),
+        EmitCheckSourceLocation(E->getLocStart()),
         EmitCheckTypeDescriptor(CalleeType)
       };
       EmitCheck(CalleeRTTIMatch,
@@ -3365,8 +3394,8 @@ RValue CodeGenFunction::EmitCall(QualType CalleeType, llvm::Value *Callee,
   }
   // +==========================================================================+
 
-  EmitCallArgs(Args, dyn_cast<FunctionProtoType>(FnType), ArgBeg, ArgEnd,
-               ForceColumnInfo);
+  EmitCallArgs(Args, dyn_cast<FunctionProtoType>(FnType), E->arg_begin(),
+               E->arg_end(), ForceColumnInfo);
 
   const CGFunctionInfo &FnInfo =
     CGM.getTypes().arrangeFreeFunctionCall(Args, FnType);

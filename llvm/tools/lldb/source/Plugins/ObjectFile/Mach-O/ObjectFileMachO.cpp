@@ -1249,6 +1249,8 @@ ObjectFileMachO::CreateSections (SectionList &unified_section_list)
             offset = load_cmd_offset + encryption_cmd.cmdsize;
         }
 
+        bool section_file_addresses_changed = false;
+
         offset = MachHeaderSizeFromMagic(m_header.magic);
 
         struct segment_command_64 load_cmd;
@@ -1377,6 +1379,10 @@ ObjectFileMachO::CreateSections (SectionList &unified_section_list)
                                     // where this code path will be taken will not have eh_frame sections.
 
                                     unified_section_sp->SetFileAddress(load_cmd.vmaddr);
+
+                                    // Notify the module that the section addresses have been changed once
+                                    // we're done so any file-address caches can be updated.
+                                    section_file_addresses_changed = true;
                                 }
                             }
                             m_sections_ap->AddSection(unified_section_sp);
@@ -1668,6 +1674,12 @@ ObjectFileMachO::CreateSections (SectionList &unified_section_list)
             }
 
             offset = load_cmd_offset + load_cmd.cmdsize;
+        }
+
+
+        if (section_file_addresses_changed && module_sp.get())
+        {
+            module_sp->SectionFileAddressesChanged();
         }
     }
 }
@@ -2243,7 +2255,9 @@ ObjectFileMachO::ParseSymtab ()
 
         const size_t function_starts_count = function_starts.GetSize();
 
-        const user_id_t TEXT_eh_frame_sectID = eh_frame_section_sp.get() ? eh_frame_section_sp->GetID() : NO_SECT;
+        const user_id_t TEXT_eh_frame_sectID =
+            eh_frame_section_sp.get() ? eh_frame_section_sp->GetID()
+                                      : static_cast<user_id_t>(NO_SECT);
 
         lldb::offset_t nlist_data_offset = 0;
 
@@ -4363,10 +4377,14 @@ ObjectFileMachO::GetArchitecture (const llvm::MachO::mach_header &header,
                 offset = cmd_offset + load_cmd.cmdsize;
             }
             
+            // Only set the OS to iOS for ARM, we don't want to set it for x86 and x86_64.
+            // We do this because we now have MacOSX or iOS as the OS value for x86 and
+            // x86_64 for normal desktop (MacOSX) and simulator (iOS) binaries. And if
+            // we compare a "x86_64-apple-ios" to a "x86_64-apple-" triple, it will say
+            // it is compatible (because the OS is unspecified in the second one and will
+            // match anything in the first
             if (header.cputype == CPU_TYPE_ARM || header.cputype == CPU_TYPE_ARM64)
                 triple.setOS (llvm::Triple::IOS);
-            else
-                triple.setOS (llvm::Triple::MacOSX);
         }
     }
     return arch.IsValid();
@@ -5424,7 +5442,7 @@ ObjectFileMachO::SaveCore (const lldb::ProcessSP &process_sp,
                             // Now write the file data for all memory segments in the process
                             for (const auto &segment : segment_load_commands)
                             {
-                                if (segment.fileoff != core_file.SeekFromStart(segment.fileoff))
+                                if (core_file.SeekFromStart(segment.fileoff) == -1)
                                 {
                                     error.SetErrorStringWithFormat("unable to seek to offset 0x%" PRIx64 " in '%s'", segment.fileoff, core_file_path.c_str());
                                     break;

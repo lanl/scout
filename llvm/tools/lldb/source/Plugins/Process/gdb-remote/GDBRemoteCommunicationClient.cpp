@@ -27,6 +27,7 @@
 #include "lldb/Core/StreamString.h"
 #include "lldb/Host/Endian.h"
 #include "lldb/Host/Host.h"
+#include "lldb/Host/HostInfo.h"
 #include "lldb/Host/TimeValue.h"
 #include "lldb/Target/Target.h"
 
@@ -227,8 +228,18 @@ GDBRemoteCommunicationClient::QueryNoAckModeSupported ()
         m_send_acks = true;
         m_supports_not_sending_acks = eLazyBoolNo;
 
+        // This is the first real packet that we'll send in a debug session and it may take a little
+        // longer than normal to receive a reply.  Wait at least 6 seconds for a reply to this packet.
+
+        const uint32_t minimum_timeout = 6;
+        uint32_t old_timeout = GetPacketTimeoutInMicroSeconds() / lldb_private::TimeValue::MicroSecPerSec;
+        SetPacketTimeout (std::max (old_timeout, minimum_timeout));
+
         StringExtractorGDBRemote response;
-        if (SendPacketAndWaitForResponse("QStartNoAckMode", response, false) == PacketResult::Success)
+        PacketResult packet_send_result = SendPacketAndWaitForResponse("QStartNoAckMode", response, false);
+        SetPacketTimeout (old_timeout);
+
+        if (packet_send_result == PacketResult::Success)
         {
             if (response.IsOKResponse())
             {
@@ -1632,10 +1643,7 @@ GDBRemoteCommunicationClient::GetHostInfo (bool force)
                     }
                     else if (name.compare("triple") == 0)
                     {
-                        // The triple comes as ASCII hex bytes since it contains '-' chars
-                        extractor.GetStringRef().swap(value);
-                        extractor.SetFilePos(0);
-                        extractor.GetHexByteString (triple);
+                        triple.swap(value);
                         ++num_keys_decoded;
                     }
                     else if (name.compare ("distribution_id") == 0)
@@ -1748,7 +1756,7 @@ GDBRemoteCommunicationClient::GetHostInfo (bool force)
                             {
                                 switch (m_host_arch.GetMachine())
                                 {
-                                case llvm::Triple::arm64:
+                                case llvm::Triple::aarch64:
                                 case llvm::Triple::arm:
                                 case llvm::Triple::thumb:
                                     os_name = "ios";
@@ -1789,7 +1797,7 @@ GDBRemoteCommunicationClient::GetHostInfo (bool force)
                         {
                             switch (m_host_arch.GetMachine())
                             {
-                                case llvm::Triple::arm64:
+                                case llvm::Triple::aarch64:
                                 case llvm::Triple::arm:
                                 case llvm::Triple::thumb:
                                     host_triple.setOS(llvm::Triple::IOS);
@@ -2323,10 +2331,6 @@ GDBRemoteCommunicationClient::DecodeProcessInfoResponse (StringExtractorGDBRemot
             }
             else if (name.compare("triple") == 0)
             {
-                // The triple comes as ASCII hex bytes since it contains '-' chars
-                extractor.GetStringRef().swap(value);
-                extractor.SetFilePos(0);
-                extractor.GetHexByteString (value);
                 process_info.GetArchitecture ().SetTriple (value.c_str());
             }
             else if (name.compare("name") == 0)
@@ -2570,7 +2574,7 @@ GDBRemoteCommunicationClient::FindProcesses (const ProcessInstanceInfoMatch &mat
                 const ArchSpec &match_arch = match_info.GetProcessInfo().GetArchitecture();
                 const llvm::Triple &triple = match_arch.GetTriple();
                 packet.PutCString("triple:");
-                packet.PutCStringAsRawHex8(triple.getTriple().c_str());
+                packet.PutCString(triple.getTriple().c_str());
                 packet.PutChar (';');
             }
         }
@@ -2776,7 +2780,7 @@ GDBRemoteCommunicationClient::LaunchGDBserverAndGetPort (lldb::pid_t &pid, const
         hostname = remote_accept_hostname;
     else
     {
-        if (Host::GetHostname (hostname))
+        if (HostInfo::GetHostname(hostname))
         {
             // Make the GDB server we launch only accept connections from this host
             stream.Printf("host:%s;", hostname.c_str());
@@ -3466,7 +3470,7 @@ GDBRemoteCommunicationClient::AvoidGPackets (ProcessGDBRemote *process)
             if (arch.IsValid()
                 && arch.GetTriple().getVendor() == llvm::Triple::Apple
                 && arch.GetTriple().getOS() == llvm::Triple::IOS
-                && arch.GetTriple().getArch() == llvm::Triple::arm64)
+                && arch.GetTriple().getArch() == llvm::Triple::aarch64)
             {
                 m_avoid_g_packets = eLazyBoolYes;
                 uint32_t gdb_server_version = GetGDBServerProgramVersion();

@@ -16,9 +16,9 @@
 #include "llvm/MC/MCAnalysis/MCAtom.h"
 #include "llvm/MC/MCAnalysis/MCFunction.h"
 #include "llvm/MC/MCAnalysis/MCModule.h"
+#include "llvm/MC/MCAnalysis/MCObjectSymbolizer.h"
 #include "llvm/MC/MCDisassembler.h"
 #include "llvm/MC/MCInstrAnalysis.h"
-#include "llvm/MC/MCObjectSymbolizer.h"
 #include "llvm/Object/MachO.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Debug.h"
@@ -450,7 +450,7 @@ MCBasicBlock *MCObjectDisassembler::getBBAt(MCModule *Module, MCFunction *MCFN,
     RemoveDupsFromAddressVector(BBI->SuccAddrs);
     for (AddressSetTy::const_iterator SI = BBI->SuccAddrs.begin(),
          SE = BBI->SuccAddrs.end();
-         SE != SE; ++SI) {
+         SI != SE; ++SI) {
       MCBasicBlock *Succ = BBInfos[*SI].BB;
       BB->addSuccessor(Succ);
       Succ->addPredecessor(BB);

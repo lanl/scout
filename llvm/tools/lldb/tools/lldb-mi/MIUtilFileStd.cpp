@@ -19,9 +19,6 @@
 // Copyright:	None.
 //--
 
-// Include compiler configuration
-#include "MICmnConfig.h"
-
 // Third party headers
 #include <stdio.h>
 #include <assert.h>
@@ -144,7 +141,7 @@ bool CMIUtilFileStd::Write( const CMIUtilString & vData )
 		return MIstatus::success;
 	}
 	
-	// Not all of the data has been transfered
+	// Not all of the data has been transferred
 	m_bFileError = true;
 	SetErrorDescriptionn( MIRSRC( IDE_UTIL_FILE_ERR_WRITING_FILE ), m_fileNamePath.c_str() );
 	return MIstatus::failure;
@@ -181,7 +178,7 @@ bool CMIUtilFileStd::Write( const MIchar * vpData, const MIuint vCharCnt )
 		return MIstatus::success;
 	}
 
-	// Not all of the data has been transfered
+	// Not all of the data has been transferred
 	m_bFileError = true;
 	SetErrorDescriptionn( MIRSRC( IDE_UTIL_FILE_ERR_WRITING_FILE ), m_fileNamePath.c_str() );
 	return MIstatus::failure;

@@ -179,6 +179,8 @@ def coverage_version_EQ : Joined<["-"], "coverage-version=">,
   HelpText<"Four-byte version string for gcov files.">;
 def test_coverage : Flag<["-"], "test-coverage">,
   HelpText<"Do not generate coverage files or remove coverage changes from IR">;
+def dump_coverage_mapping : Flag<["-"], "dump-coverage-mapping">,
+  HelpText<"Dump the coverage mapping records, for testing">;
 def fuse_register_sized_bitfield_access: Flag<["-"], "fuse-register-sized-bitfield-access">,
   HelpText<"Use register sized accesses to bit-fields, when possible.">;
 def relaxed_aliasing : Flag<["-"], "relaxed-aliasing">,
@@ -321,12 +323,13 @@ def ast_dump_filter : Separate<["-"], "ast-dump-filter">,
   HelpText<"Use with -ast-dump or -ast-print to dump/print only AST declaration"
            " nodes having a certain substring in a qualified name. Use"
            " -ast-list to list all filterable declaration node names.">;
-def ast_dump_lookups : Flag<["-"], "ast-dump-lookups">,
-  HelpText<"Include name lookup table dumps in AST dumps">;
 def fno_modules_global_index : Flag<["-"], "fno-modules-global-index">,
   HelpText<"Do not automatically generate or update the global module index">;
 def fno_modules_error_recovery : Flag<["-"], "fno-modules-error-recovery">,
   HelpText<"Do not automatically import modules for error recovery">;
+def fmodule_implementation_of : Separate<["-"], "fmodule-implementation-of">,
+  MetaVarName<"<name>">,
+  HelpText<"Specify the name of the module whose implementation file this is">;
 
 let Group = Action_Group in {
 
@@ -355,6 +358,8 @@ def ast_list : Flag<["-"], "ast-list">,
   HelpText<"Build ASTs and print the list of declaration node qualified names">;
 def ast_dump : Flag<["-"], "ast-dump">,
   HelpText<"Build ASTs and then debug dump them">;
+def ast_dump_lookups : Flag<["-"], "ast-dump-lookups">,
+  HelpText<"Build ASTs and then debug dump their name lookup tables">;
 def ast_view : Flag<["-"], "ast-view">,
   HelpText<"Build ASTs and view them with GraphViz">;
 def print_decl_contexts : Flag<["-"], "print-decl-contexts">,
@@ -497,7 +502,7 @@ def fdeprecated_macro : Flag<["-"], "fdeprecated-macro">,
 def fno_deprecated_macro : Flag<["-"], "fno-deprecated-macro">,
   HelpText<"Undefines the __DEPRECATED macro">;
 def fsized_deallocation : Flag<["-"], "fsized-deallocation">,
-  HelpText<"Enable C++1y sized global deallocation functions">;
+  HelpText<"Enable C++14 sized global deallocation functions">;
 def fobjc_subscripting_legacy_runtime : Flag<["-"], "fobjc-subscripting-legacy-runtime">,
   HelpText<"Allow Objective-C array and dictionary subscripting in legacy runtime">;
 def vtordisp_mode_EQ : Joined<["-"], "vtordisp-mode=">,
@@ -569,6 +574,8 @@ def cl_mad_enable : Flag<["-"], "cl-mad-enable">,
   HelpText<"OpenCL only. Enable less precise MAD instructions to be generated.">;
 def cl_std_EQ : Joined<["-"], "cl-std=">,
   HelpText<"OpenCL language standard to compile for">;
+def cl_denorms_are_zero : Flag<["-"], "cl-denorms-are-zero">,
+  HelpText<"OpenCL only. Allow denormals to be flushed to zero">;
 
 /*
 // +===== Scout =============================================================+

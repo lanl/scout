@@ -163,16 +163,15 @@ void dumpExampleDependence(raw_ostream &OS, Function *F,
            DstI != DstE; ++DstI) {
         if (isa<StoreInst>(*DstI) || isa<LoadInst>(*DstI)) {
           OS << "da analyze - ";
-          if (Dependence *D = DA->depends(&*SrcI, &*DstI, true)) {
+          if (auto D = DA->depends(&*SrcI, &*DstI, true)) {
             D->dump(OS);
             for (unsigned Level = 1; Level <= D->getLevels(); Level++) {
               if (D->isSplitable(Level)) {
                 OS << "da analyze - split level = " << Level;
-                OS << ", iteration = " << *DA->getSplitIteration(D, Level);
+                OS << ", iteration = " << *DA->getSplitIteration(*D, Level);
                 OS << "!\n";
               }
             }
-            delete D;
           }
           else
             OS << "none!\n";
@@ -2438,11 +2437,14 @@ bool DependenceAnalysis::banerjeeMIVtest(const SCEV *Src,
   ++BanerjeeApplications;
   DEBUG(dbgs() << "    Src = " << *Src << '\n');
   const SCEV *A0;
-  CoefficientInfo *A = collectCoeffInfo(Src, true, A0);
+  auto AOwner = collectCoeffInfo(Src, true, A0);
+  auto A = AOwner.get();
   DEBUG(dbgs() << "    Dst = " << *Dst << '\n');
   const SCEV *B0;
-  CoefficientInfo *B = collectCoeffInfo(Dst, false, B0);
-  BoundInfo *Bound = new BoundInfo[MaxLevels + 1];
+  auto BOwner = collectCoeffInfo(Dst, false, B0);
+  auto B = BOwner.get();
+  auto BoundOwner = make_unique<BoundInfo[]>(MaxLevels + 1);
+  auto Bound = BoundOwner.get();
   const SCEV *Delta = SE->getMinusSCEV(B0, A0);
   DEBUG(dbgs() << "\tDelta = " << *Delta << '\n');
 
@@ -2499,9 +2501,6 @@ bool DependenceAnalysis::banerjeeMIVtest(const SCEV *Src,
     ++BanerjeeIndependence;
     Disproved = true;
   }
-  delete [] Bound;
-  delete [] A;
-  delete [] B;
   return Disproved;
 }
 
@@ -2819,12 +2818,12 @@ const SCEV *DependenceAnalysis::getNegativePart(const SCEV *X) const {
 // Walks through the subscript,
 // collecting each coefficient, the associated loop bounds,
 // and recording its positive and negative parts for later use.
-DependenceAnalysis::CoefficientInfo *
+std::unique_ptr<DependenceAnalysis::CoefficientInfo[]>
 DependenceAnalysis::collectCoeffInfo(const SCEV *Subscript,
                                      bool SrcFlag,
                                      const SCEV *&Constant) const {
   const SCEV *Zero = SE->getConstant(Subscript->getType(), 0);
-  CoefficientInfo *CI = new CoefficientInfo[MaxLevels + 1];
+  auto CI = make_unique<CoefficientInfo[]>(MaxLevels + 1);
   for (unsigned K = 1; K <= MaxLevels; ++K) {
     CI[K].Coeff = Zero;
     CI[K].PosPart = Zero;
@@ -3277,9 +3276,9 @@ static void dumpSmallBitVector(SmallBitVector &BV) {
 //
 // Care is required to keep the routine below, getSplitIteration(),
 // up to date with respect to this routine.
-Dependence *DependenceAnalysis::depends(Instruction *Src,
-                                        Instruction *Dst,
-                                        bool PossiblyLoopIndependent) {
+std::unique_ptr<Dependence>
+DependenceAnalysis::depends(Instruction *Src, Instruction *Dst,
+                            bool PossiblyLoopIndependent) {
   if (Src == Dst)
     PossiblyLoopIndependent = false;
 
@@ -3291,7 +3290,7 @@ Dependence *DependenceAnalysis::depends(Instruction *Src,
   if (!isLoadOrStore(Src) || !isLoadOrStore(Dst)) {
     // can only analyze simple loads and stores, i.e., no calls, invokes, etc.
     DEBUG(dbgs() << "can only handle simple loads and stores\n");
-    return new Dependence(Src, Dst);
+    return make_unique<Dependence>(Src, Dst);
   }
 
   Value *SrcPtr = getPointerOperand(Src);
@@ -3302,7 +3301,7 @@ Dependence *DependenceAnalysis::depends(Instruction *Src,
   case AliasAnalysis::PartialAlias:
     // cannot analyse objects if we don't understand their aliasing.
     DEBUG(dbgs() << "can't analyze may or partial alias\n");
-    return new Dependence(Src, Dst);
+    return make_unique<Dependence>(Src, Dst);
   case AliasAnalysis::NoAlias:
     // If the objects noalias, they are distinct, accesses are independent.
     DEBUG(dbgs() << "no alias\n");
@@ -3675,7 +3674,8 @@ Dependence *DependenceAnalysis::depends(Instruction *Src,
       return nullptr;
   }
 
-  FullDependence *Final = new FullDependence(Result);
+  std::unique_ptr<Dependence> Final;
+  Final.reset(new FullDependence(Result));
   Result.DV = nullptr;
   return Final;
 }
@@ -3729,13 +3729,12 @@ Dependence *DependenceAnalysis::depends(Instruction *Src,
 //
 // breaks the dependence and allows us to vectorize/parallelize
 // both loops.
-const  SCEV *DependenceAnalysis::getSplitIteration(const Dependence *Dep,
+const  SCEV *DependenceAnalysis::getSplitIteration(const Dependence &Dep,
                                                    unsigned SplitLevel) {
-  assert(Dep && "expected a pointer to a Dependence");
-  assert(Dep->isSplitable(SplitLevel) &&
+  assert(Dep.isSplitable(SplitLevel) &&
          "Dep should be splitable at SplitLevel");
-  Instruction *Src = Dep->getSrc();
-  Instruction *Dst = Dep->getDst();
+  Instruction *Src = Dep.getSrc();
+  Instruction *Dst = Dep.getDst();
   assert(Src->mayReadFromMemory() || Src->mayWriteToMemory());
   assert(Dst->mayReadFromMemory() || Dst->mayWriteToMemory());
   assert(isLoadOrStore(Src));

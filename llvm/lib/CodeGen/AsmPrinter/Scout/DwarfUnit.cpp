@@ -152,7 +152,7 @@ void DwarfUnit::constructScoutTypeDIE(DIE &Buffer, DIScoutCompositeType CTy) {
   case dwarf::DW_TAG_SCOUT_rectilinear_mesh_type:
   case dwarf::DW_TAG_SCOUT_unstructured_mesh_type: {
     // Add elements to mesh type.
-    DIArray Elements = CTy.getTypeArray();
+    DIArray Elements = CTy.getElements();
     for (unsigned i = 0, N = Elements.getNumElements(); i < N; ++i) {
       DIDescriptor Element = Elements.getElement(i);
       DIScoutDerivedType DSDTy(Element);

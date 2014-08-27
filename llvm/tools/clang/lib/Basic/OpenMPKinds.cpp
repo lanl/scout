@@ -46,6 +46,10 @@ const char *clang::getOpenMPDirectiveName(OpenMPDirectiveKind Kind) {
 }
 
 OpenMPClauseKind clang::getOpenMPClauseKind(StringRef Str) {
+  // 'flush' clause cannot be specified explicitly, because this is an implicit
+  // clause for 'flush' directive. If the 'flush' clause is explicitly specified
+  // the Parser should generate a warning about extra tokens at the end of the
+  // directive.
   if (Str == "flush")
     return OMPC_unknown;
   return llvm::StringSwitch<OpenMPClauseKind>(Str)
@@ -108,6 +112,11 @@ unsigned clang::getOpenMPSimpleClauseType(OpenMPClauseKind Kind,
   case OMPC_untied:
   case OMPC_mergeable:
   case OMPC_flush:
+  case OMPC_read:
+  case OMPC_write:
+  case OMPC_update:
+  case OMPC_capture:
+  case OMPC_seq_cst:
     break;
   }
   llvm_unreachable("Invalid OpenMP simple clause kind");
@@ -167,6 +176,11 @@ const char *clang::getOpenMPSimpleClauseTypeName(OpenMPClauseKind Kind,
   case OMPC_untied:
   case OMPC_mergeable:
   case OMPC_flush:
+  case OMPC_read:
+  case OMPC_write:
+  case OMPC_update:
+  case OMPC_capture:
+  case OMPC_seq_cst:
     break;
   }
   llvm_unreachable("Invalid OpenMP simple clause kind");

@@ -43,6 +43,9 @@ public:
     ClangASTContext (const char *triple = NULL);
 
     ~ClangASTContext();
+    
+    static ClangASTContext*
+    GetASTContext (clang::ASTContext* ast_ctx);
 
     clang::ASTContext *
     getASTContext();
@@ -433,6 +436,29 @@ public:
                            clang::DeclContext *decl_ctx, 
                            const Declaration &decl, 
                            const ClangASTType &integer_qual_type);
+    
+    //------------------------------------------------------------------
+    // Integer type functions
+    //------------------------------------------------------------------
+    
+    ClangASTType
+    GetIntTypeFromBitSize (size_t bit_size, bool is_signed)
+    {
+        return GetIntTypeFromBitSize (getASTContext(), bit_size, is_signed);
+    }
+    
+    static ClangASTType
+    GetIntTypeFromBitSize (clang::ASTContext *ast,
+                           size_t bit_size, bool is_signed);
+    
+    ClangASTType
+    GetPointerSizedIntType (bool is_signed)
+    {
+        return GetPointerSizedIntType (getASTContext(), is_signed);
+    }
+    
+    static ClangASTType
+    GetPointerSizedIntType (clang::ASTContext *ast, bool is_signed);
     
     //------------------------------------------------------------------
     // Floating point functions

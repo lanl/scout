@@ -739,8 +739,7 @@ static bool LookupDirect(Sema &S, LookupResult &R, const DeclContext *DC) {
     // FIXME: Calling convention!
     FunctionProtoType::ExtProtoInfo EPI = ConvProto->getExtProtoInfo();
     EPI.ExtInfo = EPI.ExtInfo.withCallingConv(CC_C);
-    EPI.ExceptionSpecType = EST_None;
-    EPI.NumExceptions = 0;
+    EPI.ExceptionSpec = EST_None;
     QualType ExpectedType
       = R.getSema().Context.getFunctionType(R.getLookupName().getCXXNameType(),
                                             None, EPI);
@@ -4056,6 +4055,13 @@ static void AddKeywordsToConsumer(Sema &SemaRef,
 
     if (SemaRef.getLangOpts().GNUMode)
       Consumer.addKeywordResult("typeof");
+  } else if (CCC.WantFunctionLikeCasts) {
+    static const char *const CastableTypeSpecs[] = {
+      "char", "double", "float", "int", "long", "short",
+      "signed", "unsigned", "void"
+    };
+    for (auto *kw : CastableTypeSpecs)
+      Consumer.addKeywordResult(kw);
   }
 
   if (CCC.WantCXXNamedCasts && SemaRef.getLangOpts().CPlusPlus) {
@@ -4545,7 +4551,8 @@ FunctionCallFilterCCC::FunctionCallFilterCCC(Sema &SemaRef, unsigned NumArgs,
                                              MemberExpr *ME)
     : NumArgs(NumArgs), HasExplicitTemplateArgs(HasExplicitTemplateArgs),
       CurContext(SemaRef.CurContext), MemberFn(ME) {
-  WantTypeSpecifiers = SemaRef.getLangOpts().CPlusPlus;
+  WantTypeSpecifiers = false;
+  WantFunctionLikeCasts = SemaRef.getLangOpts().CPlusPlus && NumArgs == 1;
   WantRemainingKeywords = false;
 }
 

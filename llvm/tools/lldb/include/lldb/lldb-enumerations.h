@@ -157,13 +157,16 @@ namespace lldb {
 
     //----------------------------------------------------------------------
     // Register numbering types
+    // See RegisterContext::ConvertRegisterKindToRegisterNumber to convert
+    // any of these to the lldb internal register numbering scheme 
+    // (eRegisterKindLLDB).
     //----------------------------------------------------------------------
     typedef enum RegisterKind
     {
         eRegisterKindGCC = 0,    // the register numbers seen in eh_frame
         eRegisterKindDWARF,      // the register numbers seen DWARF
         eRegisterKindGeneric,    // insn ptr reg, stack ptr reg, etc not specific to any particular target
-        eRegisterKindGDB,        // the register numbers gdb uses (matches stabs numbers?)
+        eRegisterKindGDB,        // the register numbers gdb uses (matches stabs numbers)
         eRegisterKindLLDB,       // lldb's internal register numbers
         kNumRegisterKinds
     } RegisterKind;
@@ -237,7 +240,8 @@ namespace lldb {
         eErrorTypeGeneric,      ///< Generic errors that can be any value.
         eErrorTypeMachKernel,   ///< Mach kernel error codes.
         eErrorTypePOSIX,        ///< POSIX error codes.
-        eErrorTypeExpression    ///< These are from the ExpressionResults enum.
+        eErrorTypeExpression,   ///< These are from the ExpressionResults enum.
+        eErrorTypeWin32         ///< Standard Win32 error codes.
     } ErrorType;
 
 
@@ -687,14 +691,22 @@ namespace lldb {
     } TypeOptions;
 
    //----------------------------------------------------------------------
-   // This is the return value for frame comparisons.  When frame A pushes
-   // frame B onto the stack, frame A is OLDER than frame B.
+   // This is the return value for frame comparisons.  If you are comparing frame A to frame B
+   // the following cases arise:
+   // 1) When frame A pushes frame B (or a frame that ends up pushing B) A is Older than B.
+   // 2) When frame A pushed frame B (or if frame A is on the stack but B is not) A is Younger than B
+   // 3) When frame A and frame B have the same StackID, they are Equal.
+   // 4) When frame A and frame B have the same immediate parent frame, but are not equal, the comparision yields
+   //    SameParent.
+   // 5) If the two frames are on different threads or processes the comparision is Invalid
+   // 6) If for some reason we can't figure out what went on, we return Unknown.
    //----------------------------------------------------------------------
    typedef enum FrameComparison
    {
        eFrameCompareInvalid,
        eFrameCompareUnknown,
        eFrameCompareEqual,
+       eFrameCompareSameParent,
        eFrameCompareYounger,
        eFrameCompareOlder
    } FrameComparison;
@@ -822,6 +834,23 @@ namespace lldb {
         eGdbSignalSoftware       = 0x95,
         eGdbSignalBreakpoint     = 0x96
     } GdbRemoteSignal;
+
+    //----------------------------------------------------------------------
+    // Used with SBHost::GetPath (lldb::PathType) to find files that are
+    // related to LLDB on the current host machine. Most files are relative
+    // to LLDB or are in known locations.
+    //----------------------------------------------------------------------
+    typedef enum PathType
+    {
+        ePathTypeLLDBShlibDir,          // The directory where the lldb.so (unix) or LLDB mach-o file in LLDB.framework (MacOSX) exists
+        ePathTypeSupportExecutableDir,  // Find LLDB support executable directory (debugserver, etc)
+        ePathTypeHeaderDir,             // Find LLDB header file directory
+        ePathTypePythonDir,             // Find Python modules (PYTHONPATH) directory
+        ePathTypeLLDBSystemPlugins,     // System plug-ins directory
+        ePathTypeLLDBUserPlugins,       // User plug-ins directory
+        ePathTypeLLDBTempSystemDir      // The LLDB temp directory for this system that will be cleaned up on exit
+        
+    } PathType;
 
 } // namespace lldb
 

@@ -38,6 +38,7 @@ void llvm::initializeScalarOpts(PassRegistry &Registry) {
   initializeDSEPass(Registry);
   initializeGVNPass(Registry);
   initializeEarlyCSEPass(Registry);
+  initializeFlattenCFGPassPass(Registry);
   initializeIndVarSimplifyPass(Registry);
   initializeJumpThreadingPass(Registry);
   initializeLICMPass(Registry);
@@ -201,6 +202,10 @@ void LLVMAddEarlyCSEPass(LLVMPassManagerRef PM) {
 
 void LLVMAddTypeBasedAliasAnalysisPass(LLVMPassManagerRef PM) {
   unwrap(PM)->add(createTypeBasedAliasAnalysisPass());
+}
+
+void LLVMAddScopedNoAliasAAPass(LLVMPassManagerRef PM) {
+  unwrap(PM)->add(createScopedNoAliasAAPass());
 }
 
 void LLVMAddBasicAliasAnalysisPass(LLVMPassManagerRef PM) {

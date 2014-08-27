@@ -1734,24 +1734,6 @@ static void ExpandAnonymousFieldDesignator(Sema &SemaRef,
                         &Replacements[0] + Replacements.size());
 }
 
-/// \brief Given an implicit anonymous field, search the IndirectField that
-///  corresponds to FieldName.
-static IndirectFieldDecl *FindIndirectFieldDesignator(FieldDecl *AnonField,
-                                                 IdentifierInfo *FieldName) {
-  if (!FieldName)
-    return nullptr;
-
-  assert(AnonField->isAnonymousStructOrUnion());
-  Decl *NextDecl = AnonField->getNextDeclInContext();
-  while (IndirectFieldDecl *IF = 
-          dyn_cast_or_null<IndirectFieldDecl>(NextDecl)) {
-    if (FieldName == IF->getAnonField()->getIdentifier())
-      return IF;
-    NextDecl = NextDecl->getNextDeclInContext();
-  }
-  return nullptr;
-}
-
 static DesignatedInitExpr *CloneDesignatedInitExpr(Sema &SemaRef,
                                                    DesignatedInitExpr *DIE) {
   unsigned NumIndexExprs = DIE->getNumSubExprs() - 1;
@@ -1892,102 +1874,75 @@ InitListChecker::CheckDesignatedInitializer(const InitializedEntity &Entity,
       return true;
     }
 
-    // Note: we perform a linear search of the fields here, despite
-    // the fact that we have a faster lookup method, because we always
-    // need to compute the field's index.
     FieldDecl *KnownField = D->getField();
-    IdentifierInfo *FieldName = D->getFieldName();
-    unsigned FieldIndex = 0;
-    RecordDecl::field_iterator
-      Field = RT->getDecl()->field_begin(),
-      FieldEnd = RT->getDecl()->field_end();
-    for (; Field != FieldEnd; ++Field) {
-      if (Field->isUnnamedBitfield())
-        continue;
-
-      // If we find a field representing an anonymous field, look in the
-      // IndirectFieldDecl that follow for the designated initializer.
-      if (!KnownField && Field->isAnonymousStructOrUnion()) {
-        if (IndirectFieldDecl *IF =
-            FindIndirectFieldDesignator(*Field, FieldName)) {
+    if (!KnownField) {
+      IdentifierInfo *FieldName = D->getFieldName();
+      DeclContext::lookup_result Lookup = RT->getDecl()->lookup(FieldName);
+      for (NamedDecl *ND : Lookup) {
+        if (auto *FD = dyn_cast<FieldDecl>(ND)) {
+          KnownField = FD;
+          break;
+        }
+        if (auto *IFD = dyn_cast<IndirectFieldDecl>(ND)) {
           // In verify mode, don't modify the original.
           if (VerifyOnly)
             DIE = CloneDesignatedInitExpr(SemaRef, DIE);
-          ExpandAnonymousFieldDesignator(SemaRef, DIE, DesigIdx, IF);
+          ExpandAnonymousFieldDesignator(SemaRef, DIE, DesigIdx, IFD);
           D = DIE->getDesignator(DesigIdx);
+          KnownField = cast<FieldDecl>(*IFD->chain_begin());
           break;
         }
       }
-      if (KnownField && KnownField == *Field)
-        break;
-      if (FieldName && FieldName == Field->getIdentifier())
-        break;
+      if (!KnownField) {
+        if (VerifyOnly) {
+          ++Index;
+          return true;  // No typo correction when just trying this out.
+        }
 
-      ++FieldIndex;
-    }
+        // Name lookup found something, but it wasn't a field.
+        if (!Lookup.empty()) {
+          SemaRef.Diag(D->getFieldLoc(), diag::err_field_designator_nonfield)
+            << FieldName;
+          SemaRef.Diag(Lookup.front()->getLocation(),
+                       diag::note_field_designator_found);
+          ++Index;
+          return true;
+        }
 
-    if (Field == FieldEnd) {
-      if (VerifyOnly) {
-        ++Index;
-        return true; // No typo correction when just trying this out.
-      }
-
-      // There was no normal field in the struct with the designated
-      // name. Perform another lookup for this name, which may find
-      // something that we can't designate (e.g., a member function),
-      // may find nothing, or may find a member of an anonymous
-      // struct/union.
-      DeclContext::lookup_result Lookup = RT->getDecl()->lookup(FieldName);
-      FieldDecl *ReplacementField = nullptr;
-      if (Lookup.empty()) {
-        // Name lookup didn't find anything. Determine whether this
-        // was a typo for another field name.
+        // Name lookup didn't find anything.
+        // Determine whether this was a typo for another field name.
         FieldInitializerValidatorCCC Validator(RT->getDecl());
         if (TypoCorrection Corrected = SemaRef.CorrectTypo(
                 DeclarationNameInfo(FieldName, D->getFieldLoc()),
-                Sema::LookupMemberName, /*Scope=*/ nullptr, /*SS=*/ nullptr,
+                Sema::LookupMemberName, /*Scope=*/nullptr, /*SS=*/nullptr,
                 Validator, Sema::CTK_ErrorRecovery, RT->getDecl())) {
           SemaRef.diagnoseTypo(
               Corrected,
               SemaRef.PDiag(diag::err_field_designator_unknown_suggest)
-                  << FieldName << CurrentObjectType);
-          ReplacementField = Corrected.getCorrectionDeclAs<FieldDecl>();
+                << FieldName << CurrentObjectType);
+          KnownField = Corrected.getCorrectionDeclAs<FieldDecl>();
           hadError = true;
         } else {
+          // Typo correction didn't find anything.
           SemaRef.Diag(D->getFieldLoc(), diag::err_field_designator_unknown)
             << FieldName << CurrentObjectType;
           ++Index;
           return true;
         }
       }
-
-      if (!ReplacementField) {
-        // Name lookup found something, but it wasn't a field.
-        SemaRef.Diag(D->getFieldLoc(), diag::err_field_designator_nonfield)
-          << FieldName;
-        SemaRef.Diag(Lookup.front()->getLocation(),
-                      diag::note_field_designator_found);
-        ++Index;
-        return true;
-      }
-
-      if (!KnownField) {
-        // The replacement field comes from typo correction; find it
-        // in the list of fields.
-        FieldIndex = 0;
-        Field = RT->getDecl()->field_begin();
-        for (; Field != FieldEnd; ++Field) {
-          if (Field->isUnnamedBitfield())
-            continue;
-
-          if (ReplacementField == *Field ||
-              Field->getIdentifier() == ReplacementField->getIdentifier())
-            break;
-
-          ++FieldIndex;
-        }
-      }
     }
+
+    unsigned FieldIndex = 0;
+    for (auto *FI : RT->getDecl()->fields()) {
+      if (FI->isUnnamedBitfield())
+        continue;
+      if (KnownField == FI)
+        break;
+      ++FieldIndex;
+    }
+
+    RecordDecl::field_iterator Field =
+        RecordDecl::field_iterator(DeclContext::decl_iterator(KnownField));
 
     // All of the fields of a union are located at the same place in
     // the initializer list.
@@ -2767,6 +2722,7 @@ void InitializationSequence::Step::Destroy() {
   case SK_QualificationConversionRValue:
   case SK_QualificationConversionXValue:
   case SK_QualificationConversionLValue:
+  case SK_AtomicConversion:
   case SK_LValueToRValue:
   case SK_ListInitialization:
   case SK_UnwrapInitList:
@@ -2915,6 +2871,13 @@ void InitializationSequence::AddQualificationConversionStep(QualType Ty,
     S.Kind = SK_QualificationConversionLValue;
     break;
   }
+  S.Type = Ty;
+  Steps.push_back(S);
+}
+
+void InitializationSequence::AddAtomicConversionStep(QualType Ty) {
+  Step S;
+  S.Kind = SK_AtomicConversion;
   S.Type = Ty;
   Steps.push_back(S);
 }
@@ -4174,12 +4137,11 @@ static void TryDefaultInitialization(Sema &S,
 /// which enumerates all conversion functions and performs overload resolution
 /// to select the best.
 static void TryUserDefinedConversion(Sema &S,
-                                     const InitializedEntity &Entity,
+                                     QualType DestType,
                                      const InitializationKind &Kind,
                                      Expr *Initializer,
                                      InitializationSequence &Sequence,
                                      bool TopLevelOfInitList) {
-  QualType DestType = Entity.getType();
   assert(!DestType->isReferenceType() && "References are handled elsewhere");
   QualType SourceType = Initializer->getType();
   assert((DestType->isRecordType() || SourceType->isRecordType()) &&
@@ -4596,7 +4558,6 @@ void InitializationSequence::InitializeFrom(Sema &S,
                                               Initializer) ||
           S.ConversionToObjCStringLiteralCheck(DestType, Initializer))
         Args[0] = Initializer;
-        
     }
     if (!isa<InitListExpr>(Initializer))
       SourceType = Initializer->getType();
@@ -4741,7 +4702,7 @@ void InitializationSequence::InitializeFrom(Sema &S,
          (Context.hasSameUnqualifiedType(SourceType, DestType) ||
           S.IsDerivedFrom(SourceType, DestType))))
       TryConstructorInitialization(S, Entity, Kind, Args,
-                                   Entity.getType(), *this);
+                                   DestType, *this);
     //     - Otherwise (i.e., for the remaining copy-initialization cases),
     //       user-defined conversion sequences that can convert from the source
     //       type to the destination type or (when a conversion function is
@@ -4749,7 +4710,7 @@ void InitializationSequence::InitializeFrom(Sema &S,
     //       13.3.1.4, and the best one is chosen through overload resolution
     //       (13.3).
     else
-      TryUserDefinedConversion(S, Entity, Kind, Initializer, *this,
+      TryUserDefinedConversion(S, DestType, Kind, Initializer, *this,
                                TopLevelOfInitList);
     return;
   }
@@ -4763,9 +4724,22 @@ void InitializationSequence::InitializeFrom(Sema &S,
   //    - Otherwise, if the source type is a (possibly cv-qualified) class
   //      type, conversion functions are considered.
   if (!SourceType.isNull() && SourceType->isRecordType()) {
-    TryUserDefinedConversion(S, Entity, Kind, Initializer, *this,
+    // For a conversion to _Atomic(T) from either T or a class type derived
+    // from T, initialize the T object then convert to _Atomic type.
+    bool NeedAtomicConversion = false;
+    if (const AtomicType *Atomic = DestType->getAs<AtomicType>()) {
+      if (Context.hasSameUnqualifiedType(SourceType, Atomic->getValueType()) ||
+          S.IsDerivedFrom(SourceType, Atomic->getValueType())) {
+        DestType = Atomic->getValueType();
+        NeedAtomicConversion = true;
+      }
+    }
+
+    TryUserDefinedConversion(S, DestType, Kind, Initializer, *this,
                              TopLevelOfInitList);
     MaybeProduceObjCObject(S, *this, Entity);
+    if (!Failed() && NeedAtomicConversion)
+      AddAtomicConversionStep(Entity.getType());
     return;
   }
 
@@ -4774,16 +4748,16 @@ void InitializationSequence::InitializeFrom(Sema &S,
   //      conversions (Clause 4) will be used, if necessary, to convert the
   //      initializer expression to the cv-unqualified version of the
   //      destination type; no user-defined conversions are considered.
-      
+
   ImplicitConversionSequence ICS
-    = S.TryImplicitConversion(Initializer, Entity.getType(),
+    = S.TryImplicitConversion(Initializer, DestType,
                               /*SuppressUserConversions*/true,
                               /*AllowExplicitConversions*/ false,
                               /*InOverloadResolution*/ false,
                               /*CStyle=*/Kind.isCStyleOrFunctionalCast(),
                               allowObjCWritebackConversion);
-      
-  if (ICS.isStandard() && 
+
+  if (ICS.isStandard() &&
       ICS.Standard.Second == ICK_Writeback_Conversion) {
     // Objective-C ARC writeback conversion.
     
@@ -4804,7 +4778,7 @@ void InitializationSequence::InitializeFrom(Sema &S,
       AddConversionSequenceStep(LvalueICS, ICS.Standard.getToType(0));
     }
     
-    AddPassByIndirectCopyRestoreStep(Entity.getType(), ShouldCopy);
+    AddPassByIndirectCopyRestoreStep(DestType, ShouldCopy);
   } else if (ICS.isBad()) {
     DeclAccessPair dap;
     if (isLibstdcxxPointerReturnFalseHack(S, Entity, Initializer)) {
@@ -4816,7 +4790,7 @@ void InitializationSequence::InitializeFrom(Sema &S,
     else
       SetFailed(InitializationSequence::FK_ConversionFailed);
   } else {
-    AddConversionSequenceStep(ICS, Entity.getType(), TopLevelOfInitList);
+    AddConversionSequenceStep(ICS, DestType, TopLevelOfInitList);
 
     MaybeProduceObjCObject(S, *this, Entity);
   }
@@ -5772,6 +5746,7 @@ InitializationSequence::Perform(Sema &S,
   case SK_QualificationConversionLValue:
   case SK_QualificationConversionXValue:
   case SK_QualificationConversionRValue:
+  case SK_AtomicConversion:
   case SK_LValueToRValue:
   case SK_ConversionSequence:
   case SK_ConversionSequenceNoNarrowing:
@@ -6059,6 +6034,13 @@ InitializationSequence::Perform(Sema &S,
                    VK_XValue :
                    VK_RValue);
       CurInit = S.ImpCastExprToType(CurInit.get(), Step->Type, CK_NoOp, VK);
+      break;
+    }
+
+    case SK_AtomicConversion: {
+      assert(CurInit.get()->isRValue() && "cannot convert glvalue to atomic");
+      CurInit = S.ImpCastExprToType(CurInit.get(), Step->Type,
+                                    CK_NonAtomicToAtomic, VK_RValue);
       break;
     }
 
@@ -6455,6 +6437,26 @@ static void diagnoseListInit(Sema &S, const InitializedEntity &Entity,
          "Inconsistent init list check result.");
 }
 
+/// Prints a fixit for adding a null initializer for |Entity|. Call this only
+/// right after emitting a diagnostic.
+static void maybeEmitZeroInitializationFixit(Sema &S,
+                                             InitializationSequence &Sequence,
+                                             const InitializedEntity &Entity) {
+  if (Entity.getKind() != InitializedEntity::EK_Variable)
+    return;
+
+  VarDecl *VD = cast<VarDecl>(Entity.getDecl());
+  if (VD->getInit() || VD->getLocEnd().isMacroID())
+    return;
+
+  QualType VariableTy = VD->getType().getCanonicalType();
+  SourceLocation Loc = S.getLocForEndOfToken(VD->getLocEnd());
+  std::string Init = S.getFixItZeroInitializerForType(VariableTy, Loc);
+
+  S.Diag(Loc, diag::note_add_initializer)
+      << VD << FixItHint::CreateInsertion(Loc, Init);
+}
+
 bool InitializationSequence::Diagnose(Sema &S,
                                       const InitializedEntity &Entity,
                                       const InitializationKind &Kind,
@@ -6785,7 +6787,8 @@ bool InitializationSequence::Diagnose(Sema &S,
         << Entity.getName();
     } else {
       S.Diag(Kind.getLocation(), diag::err_default_init_const)
-        << DestType << (bool)DestType->getAs<RecordType>();
+          << DestType << (bool)DestType->getAs<RecordType>();
+      maybeEmitZeroInitializationFixit(S, *this, Entity);
     }
     break;
 
@@ -7010,6 +7013,10 @@ void InitializationSequence::dump(raw_ostream &OS) const {
 
     case SK_QualificationConversionLValue:
       OS << "qualification conversion (lvalue)";
+      break;
+
+    case SK_AtomicConversion:
+      OS << "non-atomic-to-atomic conversion";
       break;
 
     case SK_LValueToRValue:

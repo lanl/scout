@@ -34,6 +34,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 #include <algorithm>
 using namespace llvm;
 
@@ -1071,8 +1072,8 @@ bool RAFast::runOnMachineFunction(MachineFunction &Fn) {
   MF = &Fn;
   MRI = &MF->getRegInfo();
   TM = &Fn.getTarget();
-  TRI = TM->getRegisterInfo();
-  TII = TM->getInstrInfo();
+  TRI = TM->getSubtargetImpl()->getRegisterInfo();
+  TII = TM->getSubtargetImpl()->getInstrInfo();
   MRI->freezeReservedRegs(Fn);
   RegClassInfo.runOnMachineFunction(Fn);
   UsedInInstr.clear();
@@ -1093,9 +1094,8 @@ bool RAFast::runOnMachineFunction(MachineFunction &Fn) {
   }
 
   // Add the clobber lists for all the instructions we skipped earlier.
-  for (SmallPtrSet<const MCInstrDesc*, 4>::const_iterator
-       I = SkippedInstrs.begin(), E = SkippedInstrs.end(); I != E; ++I)
-    if (const uint16_t *Defs = (*I)->getImplicitDefs())
+  for (const MCInstrDesc *Desc : SkippedInstrs)
+    if (const uint16_t *Defs = Desc->getImplicitDefs())
       while (*Defs)
         MRI->setPhysRegUsed(*Defs++);
 

@@ -11,12 +11,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef CLANG_CODEGEN_CODEGENMODULE_H
-#define CLANG_CODEGEN_CODEGENMODULE_H
+#ifndef LLVM_CLANG_LIB_CODEGEN_CODEGENMODULE_H
+#define LLVM_CLANG_LIB_CODEGEN_CODEGENMODULE_H
 
 #include "CGVTables.h"
 #include "CodeGenTypes.h"
 #include "SanitizerBlacklist.h"
+#include "SanitizerMetadata.h"
 #include "clang/AST/Attr.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
@@ -72,6 +73,7 @@ class DiagnosticsEngine;
 class AnnotateAttr;
 class CXXDestructorDecl;
 class Module;
+class CoverageSourceInfo;
 
 namespace CodeGen {
 
@@ -91,6 +93,7 @@ class CGOpenMPRuntime;
 class CGCUDARuntime;
 class BlockFieldFlags;
 class FunctionArgList;
+class CoverageMappingModuleGen;
 
 struct OrderGlobalInits {
   unsigned int priority;
@@ -371,9 +374,7 @@ class CodeGenModule : public CodeGenTypeCache {
 
   llvm::StringMap<llvm::Constant*> CFConstantStringMap;
 
-  llvm::StringMap<llvm::GlobalVariable *> Constant1ByteStringMap;
-  llvm::StringMap<llvm::GlobalVariable *> Constant2ByteStringMap;
-  llvm::StringMap<llvm::GlobalVariable *> Constant4ByteStringMap;
+  llvm::DenseMap<llvm::Constant *, llvm::GlobalVariable *> ConstantStringMap;
   llvm::DenseMap<const Decl*, llvm::Constant *> StaticLocalDeclMap;
   llvm::DenseMap<const Decl*, llvm::GlobalVariable*> StaticLocalDeclGuardMap;
   llvm::DenseMap<const Expr*, llvm::Constant *> MaterializedGlobalTemporaryMap;
@@ -488,11 +489,18 @@ class CodeGenModule : public CodeGenTypeCache {
 
   SanitizerBlacklist SanitizerBL;
 
+  std::unique_ptr<SanitizerMetadata> SanitizerMD;
+
   /// @}
+
+  llvm::DenseMap<const Decl *, bool> DeferredEmptyCoverageMappingDecls;
+
+  std::unique_ptr<CoverageMappingModuleGen> CoverageMapping;
 public:
   CodeGenModule(ASTContext &C, const CodeGenOptions &CodeGenOpts,
                 llvm::Module &M, const llvm::DataLayout &TD,
-                DiagnosticsEngine &Diags);
+                DiagnosticsEngine &Diags,
+                CoverageSourceInfo *CoverageInfo = nullptr);
 
   ~CodeGenModule();
 
@@ -560,6 +568,10 @@ public:
 
   InstrProfStats &getPGOStats() { return PGOStats; }
   llvm::IndexedInstrProfReader *getPGOReader() const { return PGOReader.get(); }
+
+  CoverageMappingModuleGen *getCoverageMapping() const {
+    return CoverageMapping.get();
+  }
 
   llvm::Constant *getStaticLocalDeclAddress(const VarDecl *D) {
     return StaticLocalDeclMap[D];
@@ -850,6 +862,18 @@ public:
   /// Emit code for a single top level declaration.
   void EmitTopLevelDecl(Decl *D);
 
+  /// \brief Stored a deferred empty coverage mapping for an unused
+  /// and thus uninstrumented top level declaration.
+  void AddDeferredUnusedCoverageMapping(Decl *D);
+
+  /// \brief Remove the deferred empty coverage mapping as this
+  /// declaration is actually instrumented.
+  void ClearUnusedCoverageMapping(const Decl *D);
+
+  /// \brief Emit all the deferred coverage mappings
+  /// for the uninstrumented functions.
+  void EmitDeferredUnusedCoverageMappings();
+
   /// Tell the consumer that this variable has been instantiated.
   void HandleCXXStaticMemberVarInstantiation(VarDecl *VD);
 
@@ -952,7 +976,7 @@ public:
                                  llvm::Function *F);
 
   /// Set the LLVM function attributes which only apply to a function
-  /// definintion.
+  /// definition.
   void SetLLVMFunctionAttributesForDefinition(const Decl *D, llvm::Function *F);
 
   /// Return true iff the given type uses 'sret' when used as a return type.
@@ -1055,14 +1079,9 @@ public:
     return SanitizerBL;
   }
 
-  void reportGlobalToASan(llvm::GlobalVariable *GV, const VarDecl &D,
-                          bool IsDynInit = false);
-  void reportGlobalToASan(llvm::GlobalVariable *GV, SourceLocation Loc,
-                          StringRef Name, bool IsDynInit = false,
-                          bool IsBlacklisted = false);
-
-  /// Disable sanitizer instrumentation for this global.
-  void disableSanitizerForGlobal(llvm::GlobalVariable *GV);
+  SanitizerMetadata *getSanitizerMetadata() {
+    return SanitizerMD.get();
+  }
 
   void addDeferredVTable(const CXXRecordDecl *RD) {
     DeferredVTables.push_back(RD);
@@ -1083,9 +1102,6 @@ private:
   llvm::Constant *GetOrCreateLLVMGlobal(StringRef MangledName,
                                         llvm::PointerType *PTy,
                                         const VarDecl *D);
-
-  llvm::StringMapEntry<llvm::GlobalVariable *> *
-  getConstantStringMapEntry(StringRef Str, int CharByteWidth);
 
   /// Set attributes which are common to any form of a global definition (alias,
   /// Objective-C method, function, global variable).

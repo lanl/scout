@@ -24,6 +24,7 @@
 #include "llvm/MC/MCAnalysis/MCFunction.h"
 #include "llvm/MC/MCAnalysis/MCModule.h"
 #include "llvm/MC/MCAnalysis/MCModuleYAML.h"
+#include "llvm/MC/MCAnalysis/MCObjectSymbolizer.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCDisassembler.h"
@@ -33,7 +34,6 @@
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCObjectDisassembler.h"
 #include "llvm/MC/MCObjectFileInfo.h"
-#include "llvm/MC/MCObjectSymbolizer.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCRelocationInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
@@ -94,6 +94,12 @@ llvm::TripleName("triple", cl::desc("Target triple to disassemble for, "
                                     "see -version for available targets"));
 
 cl::opt<std::string>
+llvm::MCPU("mcpu",
+     cl::desc("Target a specific cpu type (-mcpu=help for details)"),
+     cl::value_desc("cpu-name"),
+     cl::init(""));
+
+cl::opt<std::string>
 llvm::ArchName("arch", cl::desc("Target arch to disassemble for, "
                                 "see -version for available targets"));
 
@@ -107,8 +113,8 @@ static cl::alias
 SectionHeadersShorter("h", cl::desc("Alias for --section-headers"),
                       cl::aliasopt(SectionHeaders));
 
-static cl::list<std::string>
-MAttrs("mattr",
+cl::list<std::string>
+llvm::MAttrs("mattr",
   cl::CommaSeparated,
   cl::desc("Target specific attributes"),
   cl::value_desc("a1,+a2,-a3,..."));
@@ -303,7 +309,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   }
 
   std::unique_ptr<const MCSubtargetInfo> STI(
-      TheTarget->createMCSubtargetInfo(TripleName, "", FeaturesStr));
+      TheTarget->createMCSubtargetInfo(TripleName, MCPU, FeaturesStr));
   if (!STI) {
     errs() << "error: no subtarget info for target " << TripleName << "\n";
     return;
@@ -488,17 +494,12 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     std::vector<RelocationRef>::const_iterator rel_end = Rels.end();
     // Disassemble symbol by symbol.
     for (unsigned si = 0, se = Symbols.size(); si != se; ++si) {
+
       uint64_t Start = Symbols[si].first;
-      uint64_t End;
-      // The end is either the size of the section or the beginning of the next
-      // symbol.
-      if (si == se - 1)
-        End = SectSize;
-      // Make sure this symbol takes up space.
-      else if (Symbols[si + 1].first != Start)
-        End = Symbols[si + 1].first - 1;
-      else
-        // This symbol has the same address as the next symbol. Skip it.
+      // The end is either the section end or the beginning of the next symbol.
+      uint64_t End = (si == se - 1) ? SectSize : Symbols[si + 1].first;
+      // If this symbol has the same address as the next symbol, then skip it.
+      if (Start == End)
         continue;
 
       outs() << '\n' << Symbols[si].second << ":\n";
@@ -561,6 +562,11 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 static void PrintRelocations(const ObjectFile *Obj) {
   StringRef Fmt = Obj->getBytesInAddress() > 4 ? "%016" PRIx64 :
                                                  "%08" PRIx64;
+  // Regular objdump doesn't print relocations in non-relocatable object
+  // files.
+  if (!Obj->isRelocatableObject())
+    return;
+
   for (const SectionRef &Section : Obj->sections()) {
     if (Section.relocation_begin() == Section.relocation_end())
       continue;
@@ -813,10 +819,12 @@ static void PrintUnwindInfo(const ObjectFile *o) {
 
   if (const COFFObjectFile *coff = dyn_cast<COFFObjectFile>(o)) {
     printCOFFUnwindInfo(coff);
-  } else {
+  } else if (const MachOObjectFile *MachO = dyn_cast<MachOObjectFile>(o))
+    printMachOUnwindInfo(MachO);
+  else {
     // TODO: Extract DWARF dump tool to objdump.
     errs() << "This operation is only currently supported "
-              "for COFF object files.\n";
+              "for COFF and MachO object files.\n";
     return;
   }
 }
@@ -826,6 +834,8 @@ static void printPrivateFileHeader(const ObjectFile *o) {
     printELFFileHeader(o);
   } else if (o->isCOFF()) {
     printCOFFFileHeader(o);
+  } else if (o->isMachO()) {
+    printMachOFileHeader(o);
   }
 }
 
@@ -884,16 +894,16 @@ static void DumpInput(StringRef file) {
   }
 
   // Attempt to open the binary.
-  ErrorOr<Binary *> BinaryOrErr = createBinary(file);
+  ErrorOr<OwningBinary<Binary>> BinaryOrErr = createBinary(file);
   if (std::error_code EC = BinaryOrErr.getError()) {
     errs() << ToolName << ": '" << file << "': " << EC.message() << ".\n";
     return;
   }
-  std::unique_ptr<Binary> binary(BinaryOrErr.get());
+  Binary &Binary = *BinaryOrErr.get().getBinary();
 
-  if (Archive *a = dyn_cast<Archive>(binary.get()))
+  if (Archive *a = dyn_cast<Archive>(&Binary))
     DumpArchive(a);
-  else if (ObjectFile *o = dyn_cast<ObjectFile>(binary.get()))
+  else if (ObjectFile *o = dyn_cast<ObjectFile>(&Binary))
     DumpObject(o);
   else
     errs() << ToolName << ": '" << file << "': " << "Unrecognized file type.\n";

@@ -310,6 +310,16 @@ void OMPClauseProfiler::VisitOMPUntiedClause(const OMPUntiedClause *) {}
 
 void OMPClauseProfiler::VisitOMPMergeableClause(const OMPMergeableClause *) {}
 
+void OMPClauseProfiler::VisitOMPReadClause(const OMPReadClause *) {}
+
+void OMPClauseProfiler::VisitOMPWriteClause(const OMPWriteClause *) {}
+
+void OMPClauseProfiler::VisitOMPUpdateClause(const OMPUpdateClause *) {}
+
+void OMPClauseProfiler::VisitOMPCaptureClause(const OMPCaptureClause *) {}
+
+void OMPClauseProfiler::VisitOMPSeqCstClause(const OMPSeqCstClause *) {}
+
 template<typename T>
 void OMPClauseProfiler::VisitOMPClauseList(T *Node) {
   for (auto *I : Node->varlists())
@@ -368,16 +378,20 @@ StmtProfiler::VisitOMPExecutableDirective(const OMPExecutableDirective *S) {
       P.Visit(*I);
 }
 
+void StmtProfiler::VisitOMPLoopDirective(const OMPLoopDirective *S) {
+  VisitOMPExecutableDirective(S);
+}
+
 void StmtProfiler::VisitOMPParallelDirective(const OMPParallelDirective *S) {
   VisitOMPExecutableDirective(S);
 }
 
 void StmtProfiler::VisitOMPSimdDirective(const OMPSimdDirective *S) {
-  VisitOMPExecutableDirective(S);
+  VisitOMPLoopDirective(S);
 }
 
 void StmtProfiler::VisitOMPForDirective(const OMPForDirective *S) {
-  VisitOMPExecutableDirective(S);
+  VisitOMPLoopDirective(S);
 }
 
 void StmtProfiler::VisitOMPSectionsDirective(const OMPSectionsDirective *S) {
@@ -403,7 +417,7 @@ void StmtProfiler::VisitOMPCriticalDirective(const OMPCriticalDirective *S) {
 
 void
 StmtProfiler::VisitOMPParallelForDirective(const OMPParallelForDirective *S) {
-  VisitOMPExecutableDirective(S);
+  VisitOMPLoopDirective(S);
 }
 
 void StmtProfiler::VisitOMPParallelSectionsDirective(

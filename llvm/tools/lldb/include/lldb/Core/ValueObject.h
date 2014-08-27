@@ -430,6 +430,9 @@ public:
         return false;
     }
     
+    bool
+    IsBaseClass (uint32_t& depth);
+    
     virtual bool
     IsDereferenceOfParent ()
     {
@@ -968,7 +971,7 @@ protected:
         void
         SetChildrenCount (size_t count)
         {
-            m_children_count = count;
+            Clear(count);
         }
         
         size_t
@@ -978,10 +981,10 @@ protected:
         }
         
         void
-        Clear()
+        Clear(size_t new_count = 0)
         {
-            m_children_count = 0;
             Mutex::Locker locker(m_mutex);
+            m_children_count = new_count;
             m_children.clear();
         }
         

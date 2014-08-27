@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef CODEGEN_ASMPRINTER_DWARFDEBUG_H__
-#define CODEGEN_ASMPRINTER_DWARFDEBUG_H__
+#ifndef LLVM_LIB_CODEGEN_ASMPRINTER_DWARFDEBUG_H
+#define LLVM_LIB_CODEGEN_ASMPRINTER_DWARFDEBUG_H
 
 #include "DwarfFile.h"
 #include "AsmPrinterHandler.h"
@@ -258,6 +258,7 @@ class DwarfDebug : public AsmPrinterHandler {
   MCSymbol *DwarfDebugLocSectionSym, *DwarfLineSectionSym, *DwarfAddrSectionSym;
   MCSymbol *FunctionBeginSym, *FunctionEndSym;
   MCSymbol *DwarfInfoDWOSectionSym, *DwarfAbbrevDWOSectionSym;
+  MCSymbol *DwarfTypesDWOSectionSym;
   MCSymbol *DwarfStrDWOSectionSym;
   MCSymbol *DwarfGnuPubNamesSectionSym, *DwarfGnuPubTypesSectionSym;
 
@@ -329,6 +330,8 @@ class DwarfDebug : public AsmPrinterHandler {
   DwarfAccelTable AccelObjC;
   DwarfAccelTable AccelNamespace;
   DwarfAccelTable AccelTypes;
+
+  DenseMap<const Function *, DISubprogram> FunctionDIs;
 
   MCDwarfDwoLineTable *getDwoLineTable(const DwarfCompileUnit &);
 
@@ -530,11 +533,16 @@ class DwarfDebug : public AsmPrinterHandler {
   bool addCurrentFnArgument(DbgVariable *Var, LexicalScope *Scope);
 
   /// \brief Populate LexicalScope entries with variables' info.
-  void collectVariableInfo(SmallPtrSet<const MDNode *, 16> &ProcessedVars);
+  void collectVariableInfo(SmallPtrSetImpl<const MDNode *> &ProcessedVars);
+
+  /// \brief Build the location list for all DBG_VALUEs in the
+  /// function that describe the same variable.
+  void buildLocationList(SmallVectorImpl<DebugLocEntry> &DebugLoc,
+                         const DbgValueHistoryMap::InstrRanges &Ranges);
 
   /// \brief Collect variable information from the side table maintained
   /// by MMI.
-  void collectVariableInfoFromMMITable(SmallPtrSet<const MDNode *, 16> &P);
+  void collectVariableInfoFromMMITable(SmallPtrSetImpl<const MDNode *> &P);
 
   /// \brief Ensure that a label will be emitted before MI.
   void requestLabelBeforeInsn(const MachineInstr *MI) {
@@ -639,6 +647,13 @@ public:
   /// \brief Emit an entry for the debug loc section. This can be used to
   /// handle an entry that's going to be emitted into the debug loc section.
   void emitDebugLocEntry(ByteStreamer &Streamer, const DebugLocEntry &Entry);
+  /// \brief emit a single value for the debug loc section.
+  void emitDebugLocValue(ByteStreamer &Streamer,
+                         const DebugLocEntry::Value &Value);
+  /// Emits an optimal (=sorted) sequence of DW_OP_pieces.
+  void emitLocPieces(ByteStreamer &Streamer,
+                     const DITypeIdentifierMap &Map,
+                     ArrayRef<DebugLocEntry::Value> Values);
 
   /// Emit the location for a debug loc entry, including the size header.
   void emitDebugLocEntryLocation(const DebugLocEntry &Entry);

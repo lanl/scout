@@ -233,7 +233,7 @@ class recording(StringIO.StringIO):
 
 # From 2.7's subprocess.check_output() convenience function.
 # Return a tuple (stdoutdata, stderrdata).
-def system(*popenargs, **kwargs):
+def system(commands, **kwargs):
     r"""Run an os command with arguments and return its output as a byte string.
 
     If the exit code was non-zero it raises a CalledProcessError.  The
@@ -257,20 +257,30 @@ def system(*popenargs, **kwargs):
     # Assign the sender object to variable 'test' and remove it from kwargs.
     test = kwargs.pop('sender', None)
 
+    separator = None
+    separator = " && " if os.name == "nt" else "; "
+    # [['make', 'clean', 'foo'], ['make', 'foo']] -> ['make clean foo', 'make foo']
+    commandList = [' '.join(x) for x in commands]
+    # ['make clean foo', 'make foo'] -> 'make clean foo; make foo'
+    shellCommand = separator.join(commandList)
+
     if 'stdout' in kwargs:
         raise ValueError('stdout argument not allowed, it will be overridden.')
-    process = Popen(stdout=PIPE, stderr=PIPE, *popenargs, **kwargs)
+    if 'shell' in kwargs and kwargs['shell']==False:
+        raise ValueError('shell=False not allowed')
+    process = Popen(shellCommand, stdout=PIPE, stderr=PIPE, shell=True, **kwargs)
     pid = process.pid
     output, error = process.communicate()
     retcode = process.poll()
 
-    with recording(test, traceAlways) as sbuf:
-        if isinstance(popenargs, types.StringTypes):
-            args = [popenargs]
-        else:
-            args = list(popenargs)
+    # Enable trace on failure return while tracking down FreeBSD buildbot issues
+    trace = traceAlways
+    if not trace and retcode and sys.platform.startswith("freebsd"):
+        trace = True
+
+    with recording(test, trace) as sbuf:
         print >> sbuf
-        print >> sbuf, "os command:", args
+        print >> sbuf, "os command:", shellCommand
         print >> sbuf, "with pid:", pid
         print >> sbuf, "stdout:", output
         print >> sbuf, "stderr:", error
@@ -280,7 +290,7 @@ def system(*popenargs, **kwargs):
     if retcode:
         cmd = kwargs.get("args")
         if cmd is None:
-            cmd = popenargs[0]
+            cmd = shellCommand
         raise CalledProcessError(retcode, cmd)
     return (output, error)
 
@@ -540,6 +550,21 @@ def skipIfLinux(func):
         platform = sys.platform
         if "linux" in platform:
             self.skipTest("skip on linux")
+        else:
+            func(*args, **kwargs)
+    return wrapper
+
+def skipIfWindows(func):
+    """Decorate the item to skip tests that should be skipped on Windows."""
+    if isinstance(func, type) and issubclass(func, unittest2.TestCase):
+        raise Exception("@skipIfWindows can only be used to decorate a test method")
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        from unittest2 import case
+        self = args[0]
+        platform = sys.platform
+        if "win32" in platform:
+            self.skipTest("skip on Windows")
         else:
             func(*args, **kwargs)
     return wrapper
@@ -963,8 +988,8 @@ class Base(unittest2.TestCase):
 
         # This is for the case of directly spawning 'lldb' and interacting with it
         # using pexpect.
-        import pexpect
         if self.child and self.child.isalive():
+            import pexpect
             with recording(self, traceAlways) as sbuf:
                 print >> sbuf, "tearing down the child process...."
             try:
@@ -1103,9 +1128,6 @@ class Base(unittest2.TestCase):
         else:
             benchmarks = False
 
-        # This records the compiler version used for the test.
-        system([self.getCompiler(), "-v"], sender=self)
-
         dname = os.path.join(os.environ["LLDB_TEST"],
                              os.environ["LLDB_SESSION_DIRNAME"])
         if not os.path.isdir(dname):
@@ -1144,7 +1166,7 @@ class Base(unittest2.TestCase):
         version = 'unknown'
 
         compiler = self.getCompiler()
-        version_output = system([which(compiler), "-v"])[1]
+        version_output = system([[which(compiler), "-v"]])[1]
         for line in version_output.split(os.linesep):
             m = re.search('version ([0-9\.]+)', line)
             if m:

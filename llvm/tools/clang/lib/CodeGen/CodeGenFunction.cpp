@@ -42,16 +42,16 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
       Builder(cgm.getModule().getContext(), llvm::ConstantFolder(),
               CGBuilderInserterTy(this)),
       CapturedStmtInfo(nullptr), SanOpts(&CGM.getLangOpts().Sanitize),
-      IsSanitizerScope(false), AutoreleaseResult(false), BlockInfo(nullptr),
-      BlockPointer(nullptr), LambdaThisCaptureField(nullptr),
-      NormalCleanupDest(nullptr), NextCleanupDestIndex(1),
-      FirstBlockInfo(nullptr), EHResumeBlock(nullptr), ExceptionSlot(nullptr),
-      EHSelectorSlot(nullptr), DebugInfo(CGM.getModuleDebugInfo()),
-      DisableDebugInfo(false), DidCallStackSave(false), IndirectBranch(nullptr),
-      PGO(cgm), SwitchInsn(nullptr), SwitchWeights(nullptr),
-      CaseRangeBlock(nullptr), UnreachableBlock(nullptr), NumReturnExprs(0),
-      NumSimpleReturnExprs(0), CXXABIThisDecl(nullptr),
-      CXXABIThisValue(nullptr), CXXThisValue(nullptr),
+      IsSanitizerScope(false), CurFuncIsThunk(false), AutoreleaseResult(false),
+      BlockInfo(nullptr), BlockPointer(nullptr),
+      LambdaThisCaptureField(nullptr), NormalCleanupDest(nullptr),
+      NextCleanupDestIndex(1), FirstBlockInfo(nullptr), EHResumeBlock(nullptr),
+      ExceptionSlot(nullptr), EHSelectorSlot(nullptr),
+      DebugInfo(CGM.getModuleDebugInfo()), DisableDebugInfo(false),
+      DidCallStackSave(false), IndirectBranch(nullptr), PGO(cgm),
+      SwitchInsn(nullptr), SwitchWeights(nullptr), CaseRangeBlock(nullptr),
+      UnreachableBlock(nullptr), NumReturnExprs(0), NumSimpleReturnExprs(0),
+      CXXABIThisDecl(nullptr), CXXABIThisValue(nullptr), CXXThisValue(nullptr),
       CXXDefaultInitExprThis(nullptr), CXXStructorImplicitParamDecl(nullptr),
       CXXStructorImplicitParamValue(nullptr), OutermostConditional(nullptr),
       CurLexicalScope(nullptr), TerminateLandingPad(nullptr),
@@ -398,6 +398,11 @@ static void GenOpenCLArgMetadata(const FunctionDecl *FD, llvm::Function *Fn,
   SmallVector<llvm::Value*, 8> argTypeNames;
   argTypeNames.push_back(llvm::MDString::get(Context, "kernel_arg_type"));
 
+  // MDNode for the kernel argument base type names.
+  SmallVector<llvm::Value*, 8> argBaseTypeNames;
+  argBaseTypeNames.push_back(
+      llvm::MDString::get(Context, "kernel_arg_base_type"));
+
   // MDNode for the kernel argument type qualifiers.
   SmallVector<llvm::Value*, 8> argTypeQuals;
   argTypeQuals.push_back(llvm::MDString::get(Context, "kernel_arg_type_qual"));
@@ -424,10 +429,22 @@ static void GenOpenCLArgMetadata(const FunctionDecl *FD, llvm::Function *Fn,
 
       // Turn "unsigned type" to "utype"
       std::string::size_type pos = typeName.find("unsigned");
-      if (pos != std::string::npos)
+      if (pointeeTy.isCanonical() && pos != std::string::npos)
         typeName.erase(pos+1, 8);
 
       argTypeNames.push_back(llvm::MDString::get(Context, typeName));
+
+      std::string baseTypeName =
+          pointeeTy.getUnqualifiedType().getCanonicalType().getAsString(
+              Policy) +
+          "*";
+
+      // Turn "unsigned type" to "utype"
+      pos = baseTypeName.find("unsigned");
+      if (pos != std::string::npos)
+        baseTypeName.erase(pos+1, 8);
+
+      argBaseTypeNames.push_back(llvm::MDString::get(Context, baseTypeName));
 
       // Get argument type qualifiers:
       if (ty.isRestrictQualified())
@@ -450,10 +467,20 @@ static void GenOpenCLArgMetadata(const FunctionDecl *FD, llvm::Function *Fn,
 
       // Turn "unsigned type" to "utype"
       std::string::size_type pos = typeName.find("unsigned");
-      if (pos != std::string::npos)
+      if (ty.isCanonical() && pos != std::string::npos)
         typeName.erase(pos+1, 8);
 
       argTypeNames.push_back(llvm::MDString::get(Context, typeName));
+
+      std::string baseTypeName =
+          ty.getUnqualifiedType().getCanonicalType().getAsString(Policy);
+
+      // Turn "unsigned type" to "utype"
+      pos = baseTypeName.find("unsigned");
+      if (pos != std::string::npos)
+        baseTypeName.erase(pos+1, 8);
+
+      argBaseTypeNames.push_back(llvm::MDString::get(Context, baseTypeName));
 
       // Get argument type qualifiers:
       if (ty.isConstQualified())
@@ -482,6 +509,7 @@ static void GenOpenCLArgMetadata(const FunctionDecl *FD, llvm::Function *Fn,
   kernelMDArgs.push_back(llvm::MDNode::get(Context, addressQuals));
   kernelMDArgs.push_back(llvm::MDNode::get(Context, accessQuals));
   kernelMDArgs.push_back(llvm::MDNode::get(Context, argTypeNames));
+  kernelMDArgs.push_back(llvm::MDNode::get(Context, argBaseTypeNames));
   kernelMDArgs.push_back(llvm::MDNode::get(Context, argTypeQuals));
   kernelMDArgs.push_back(llvm::MDNode::get(Context, argNames));
 }
@@ -813,9 +841,8 @@ void CodeGenFunction::GenerateCode(GlobalDecl GD, llvm::Function *Fn,
       ResTy = MD->getThisType(getContext());
     CGM.getCXXABI().buildThisParam(*this, Args);
   }
-
-  for (unsigned i = 0, e = FD->getNumParams(); i != e; ++i)
-    Args.push_back(FD->getParamDecl(i));
+  
+  Args.append(FD->param_begin(), FD->param_end());
 
   if (MD && (isa<CXXConstructorDecl>(MD) || isa<CXXDestructorDecl>(MD)))
     CGM.getCXXABI().addImplicitStructorParams(*this, ResTy, Args);
@@ -862,6 +889,7 @@ void CodeGenFunction::GenerateCode(GlobalDecl GD, llvm::Function *Fn,
   // +======================================================================+
 
   // Generate the body of the function.
+  PGO.checkGlobalDecl(GD);
   PGO.assignRegionCounters(GD.getDecl(), CurFn);
   if (isa<CXXDestructorDecl>(FD))
     EmitDestructorBody(Args);

@@ -35,7 +35,7 @@ set( LLDB_USED_LIBS
   lldbBreakpoint
   lldbCommands
   lldbDataFormatters
-  lldbHostCommon
+  lldbHost
   lldbCore
   lldbExpression
   lldbInterpreter
@@ -97,7 +97,7 @@ endif ()
 # Windows-only libraries
 if ( CMAKE_SYSTEM_NAME MATCHES "Windows" )
   list(APPEND LLDB_USED_LIBS
-    lldbHostWindows
+    lldbPluginProcessWindows
     lldbPluginProcessElfCore
     lldbPluginJITLoaderGDB
     Ws2_32
@@ -107,7 +107,6 @@ endif ()
 # Linux-only libraries
 if ( CMAKE_SYSTEM_NAME MATCHES "Linux" )
   list(APPEND LLDB_USED_LIBS
-    lldbHostLinux
     lldbPluginProcessLinux
     lldbPluginProcessPOSIX
     lldbPluginProcessElfCore
@@ -118,7 +117,6 @@ endif ()
 # FreeBSD-only libraries
 if ( CMAKE_SYSTEM_NAME MATCHES "FreeBSD" )
   list(APPEND LLDB_USED_LIBS
-    lldbHostFreeBSD
     lldbPluginProcessFreeBSD
     lldbPluginProcessPOSIX
     lldbPluginProcessElfCore
@@ -136,7 +134,6 @@ if ( CMAKE_SYSTEM_NAME MATCHES "Darwin" )
 
   set_source_files_properties(${LLDB_VERS_GENERATED_FILE} PROPERTIES GENERATED 1)
   list(APPEND LLDB_USED_LIBS
-    lldbHostMacOSX
     lldbPluginDynamicLoaderDarwinKernel
     lldbPluginProcessMacOSXKernel
     lldbPluginSymbolVendorMacOSX
@@ -302,11 +299,7 @@ set_target_properties(liblldb
 endif()
 
 if (LLDB_WRAP_PYTHON OR LLDB_VERS_GENERATED_FILE)
-  add_dependencies(liblldb
-    swig_wrapper
-    ${LLDB_WRAP_PYTHON}
-    ${LLDB_VERS_GENERATED_FILE}
-    )
+  add_dependencies(liblldb swig_wrapper)
 endif()
 target_link_libraries(liblldb ${cmake_2_8_12_PRIVATE} ${LLDB_SYSTEM_LIBS})
 

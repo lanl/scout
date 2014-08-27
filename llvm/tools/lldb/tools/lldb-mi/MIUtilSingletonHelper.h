@@ -92,3 +92,4 @@ bool ModuleShutdown( const MIint vErrorResrcId, bool & vwrbOk, CMIUtilString & v
 }
 
 } // namespace MI
+

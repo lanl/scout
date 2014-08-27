@@ -392,6 +392,7 @@ public:
     OptionParsingStarting ()
     {
         launch_info.Clear();
+        disable_aslr = eLazyBoolCalculate;
     }
     
     const OptionDefinition*
@@ -407,6 +408,7 @@ public:
     // Instance variables to hold the values for command options.
     
     ProcessLaunchInfo launch_info;
+    lldb_private::LazyBool disable_aslr;
 };
 
 //----------------------------------------------------------------------
@@ -1027,10 +1029,6 @@ public:
     ///
     /// Launch a new process by spawning a new process using the
     /// target object's executable module's file as the file to launch.
-    /// Arguments are given in \a argv, and the environment variables
-    /// are in \a envp. Standard input and output files can be
-    /// optionally re-directed to \a stdin_path, \a stdout_path, and
-    /// \a stderr_path.
     ///
     /// This function is not meant to be overridden by Process
     /// subclasses. It will first call Process::WillLaunch (Module *)
@@ -1040,32 +1038,9 @@ public:
     /// DoLaunch returns \b true, then Process::DidLaunch() will be
     /// called.
     ///
-    /// @param[in] argv
-    ///     The argument array.
-    ///
-    /// @param[in] envp
-    ///     The environment array.
-    ///
-    /// @param[in] launch_flags
-    ///     Flags to modify the launch (@see lldb::LaunchFlags)
-    ///
-    /// @param[in] stdin_path
-    ///     The path to use when re-directing the STDIN of the new
-    ///     process. If all stdXX_path arguments are NULL, a pseudo
-    ///     terminal will be used.
-    ///
-    /// @param[in] stdout_path
-    ///     The path to use when re-directing the STDOUT of the new
-    ///     process. If all stdXX_path arguments are NULL, a pseudo
-    ///     terminal will be used.
-    ///
-    /// @param[in] stderr_path
-    ///     The path to use when re-directing the STDERR of the new
-    ///     process. If all stdXX_path arguments are NULL, a pseudo
-    ///     terminal will be used.
-    ///
-    /// @param[in] working_directory
-    ///     The working directory to have the child process run in
+    /// @param[in] launch_info
+    ///     Details regarding the environment, STDIN/STDOUT/STDERR
+    ///     redirection, working path, etc. related to the requested launch.
     ///
     /// @return
     ///     An error object. Call GetID() to get the process ID if
@@ -1473,11 +1448,17 @@ public:
     //------------------------------------------------------------------
     /// Called after attaching a process.
     ///
+    /// @param[in] process_arch
+    ///     If you can figure out the process architecture after attach, fill it in here.
+    ///
     /// Allow Process plug-ins to execute some code after attaching to
     /// a process.
     //------------------------------------------------------------------
     virtual void
-    DidAttach () {}
+    DidAttach (ArchSpec &process_arch)
+    {
+        process_arch.Clear();
+    }
 
 
     //------------------------------------------------------------------
@@ -1519,46 +1500,21 @@ public:
     //------------------------------------------------------------------
     /// Launch a new process.
     ///
-    /// Launch a new process by spawning a new process using \a module's
-    /// file as the file to launch. Arguments are given in \a argv,
-    /// and the environment variables are in \a envp. Standard input
-    /// and output files can be optionally re-directed to \a stdin_path,
-    /// \a stdout_path, and \a stderr_path.
+    /// Launch a new process by spawning a new process using
+    /// \a exe_module's file as the file to launch. Launch details are
+    /// provided in \a launch_info.
     ///
-    /// @param[in] module
+    /// @param[in] exe_module
     ///     The module from which to extract the file specification and
     ///     launch.
     ///
-    /// @param[in] argv
-    ///     The argument array.
-    ///
-    /// @param[in] envp
-    ///     The environment array.
-    ///
-    /// @param[in] launch_flags
-    ///     Flags to modify the launch (@see lldb::LaunchFlags)
-    ///
-    /// @param[in] stdin_path
-    ///     The path to use when re-directing the STDIN of the new
-    ///     process. If all stdXX_path arguments are NULL, a pseudo
-    ///     terminal will be used.
-    ///
-    /// @param[in] stdout_path
-    ///     The path to use when re-directing the STDOUT of the new
-    ///     process. If all stdXX_path arguments are NULL, a pseudo
-    ///     terminal will be used.
-    ///
-    /// @param[in] stderr_path
-    ///     The path to use when re-directing the STDERR of the new
-    ///     process. If all stdXX_path arguments are NULL, a pseudo
-    ///     terminal will be used.
-    ///
-    /// @param[in] working_directory
-    ///     The working directory to have the child process run in
+    /// @param[in] launch_info
+    ///     Details (e.g. arguments, stdio redirection, etc.) for the
+    ///     requested launch.
     ///
     /// @return
-    ///     A new valid process ID, or LLDB_INVALID_PROCESS_ID if
-    ///     launching fails.
+    ///     An Error instance indicating success or failure of the
+    ///     operation.
     //------------------------------------------------------------------
     virtual Error
     DoLaunch (Module *exe_module,
@@ -2706,6 +2662,25 @@ public:
                           bool wait_always = true,
                           Listener *hijack_listener = NULL);
 
+
+    //--------------------------------------------------------------------------------------
+    /// Waits for the process state to be running within a given msec timeout.
+    ///
+    /// The main purpose of this is to implement an interlock waiting for HandlePrivateEvent
+    /// to push an IOHandler.
+    ///
+    /// @param[in] timeout_msec
+    ///     The maximum time length to wait for the process to transition to the
+    ///     eStateRunning state, specified in milliseconds.
+    ///
+    /// @return
+    ///     true if successfully signalled that process started and IOHandler pushes, false
+    ///     if it timed out.
+    //--------------------------------------------------------------------------------------
+    bool
+    SyncIOHandler (uint64_t timeout_msec);
+
+
     lldb::StateType
     WaitForStateChangedEvents (const TimeValue *timeout,
                                lldb::EventSP &event_sp,
@@ -3083,6 +3058,7 @@ protected:
     std::string                 m_stderr_data;
     Mutex                       m_profile_data_comm_mutex;
     std::vector<std::string>    m_profile_data;
+    Predicate<bool>             m_iohandler_sync;
     MemoryCache                 m_memory_cache;
     AllocatedMemoryCache        m_allocated_memory_cache;
     bool                        m_should_detach;   /// Should we detach if the process object goes away with an explicit call to Kill or Detach?

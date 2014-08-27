@@ -325,9 +325,9 @@ void MeshLayoutBuilder::LayoutBitField(const MeshFieldDecl *D) {
   uint64_t FieldOffset = UnpaddedFieldOffset;
   uint64_t FieldSize = D->getBitWidthValue(Context);
 
-  std::pair<uint64_t, unsigned> FieldInfo = Context.getTypeInfo(D->getType());
-  uint64_t TypeSize = FieldInfo.first;
-  unsigned FieldAlign = FieldInfo.second;
+  TypeInfo FieldInfo = Context.getTypeInfo(D->getType());
+  uint64_t TypeSize = FieldInfo.Width;
+  unsigned FieldAlign = FieldInfo.Align;
 
   // This check is needed for 'long long' in -m32 mode.
   if (ZeroLengthBitfield) {

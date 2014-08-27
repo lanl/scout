@@ -4376,7 +4376,7 @@ defm VMLSLslu : N3VLMulOpSL_HS<1, 0b0110, "vmlsl", "u", NEONvmullu, sub>;
 //   VQDMLSL  : Vector Saturating Doubling Multiply Subtract Long (Q -= D * D)
 defm VQDMLSL  : N3VLInt3_HS<0, 1, 0b1011, 0, IIC_VMACi16D, IIC_VMACi32D,
                             "vqdmlsl", "s", null_frag>;
-defm VQDMLSLsl: N3VLInt3SL_HS<0, 0b111, "vqdmlsl", "s", null_frag>;
+defm VQDMLSLsl: N3VLInt3SL_HS<0, 0b0111, "vqdmlsl", "s", null_frag>;
 
 def : Pat<(v4i32 (int_arm_neon_vqsubs (v4i32 QPR:$src1),
                      (v4i32 (int_arm_neon_vqdmull (v4i16 DPR:$Vn),
@@ -5499,6 +5499,9 @@ def VSETLNi32 : NVSetLane<{1,1,1,0,0,0,?,0}, 0b1011, 0b00, (outs DPR:$V),
                           [(set DPR:$V, (insertelt (v2i32 DPR:$src1),
                                            GPR:$R, imm:$lane))]> {
   let Inst{21} = lane{0};
+  // This instruction is equivalent as
+  // $V = INSERT_SUBREG $src1, $R, translateImmToSubIdx($imm)
+  let isInsertSubreg = 1;
 }
 }
 def : Pat<(vector_insert (v16i8 QPR:$src1), GPR:$src2, imm:$lane),

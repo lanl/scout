@@ -849,6 +849,11 @@ ObjCMethodFamily ObjCMethodDecl::getMethodFamily() const {
       family = OMF_None;
     break;
       
+  case OMF_initialize:
+    if (isInstanceMethod() || !getReturnType()->isVoidType())
+      family = OMF_None;
+    break;
+      
   case OMF_performSelector:
     if (!isInstanceMethod() || !getReturnType()->isObjCIdType())
       family = OMF_None;
@@ -950,6 +955,13 @@ ObjCInterfaceDecl *ObjCMethodDecl::getClassInterface() {
   if (isa<ObjCProtocolDecl>(getDeclContext()))
     return nullptr;
   llvm_unreachable("unknown method context");
+}
+
+SourceRange ObjCMethodDecl::getReturnTypeSourceRange() const {
+  const auto *TSI = getReturnTypeSourceInfo();
+  if (TSI)
+    return TSI->getTypeLoc().getSourceRange();
+  return SourceRange();
 }
 
 static void CollectOverriddenMethodsRecurse(const ObjCContainerDecl *Container,

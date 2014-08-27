@@ -118,7 +118,6 @@ namespace {
   public:
     // Ctor.
     HexagonPacketizerList(MachineFunction &MF, MachineLoopInfo &MLI,
-                          MachineDominatorTree &MDT,
                           const MachineBranchProbabilityInfo *MBPI);
 
     // initPacketizerState - initialize some internal flags.
@@ -184,20 +183,19 @@ INITIALIZE_PASS_END(HexagonPacketizer, "packets", "Hexagon Packetizer",
 
 // HexagonPacketizerList Ctor.
 HexagonPacketizerList::HexagonPacketizerList(
-  MachineFunction &MF, MachineLoopInfo &MLI,MachineDominatorTree &MDT,
-  const MachineBranchProbabilityInfo *MBPI)
-  : VLIWPacketizerList(MF, MLI, MDT, true){
+    MachineFunction &MF, MachineLoopInfo &MLI,
+    const MachineBranchProbabilityInfo *MBPI)
+    : VLIWPacketizerList(MF, MLI, true) {
   this->MBPI = MBPI;
 }
 
 bool HexagonPacketizer::runOnMachineFunction(MachineFunction &Fn) {
-  const TargetInstrInfo *TII = Fn.getTarget().getInstrInfo();
+  const TargetInstrInfo *TII = Fn.getSubtarget().getInstrInfo();
   MachineLoopInfo &MLI = getAnalysis<MachineLoopInfo>();
-  MachineDominatorTree &MDT = getAnalysis<MachineDominatorTree>();
   const MachineBranchProbabilityInfo *MBPI =
     &getAnalysis<MachineBranchProbabilityInfo>();
   // Instantiate the packetizer.
-  HexagonPacketizerList Packetizer(Fn, MLI, MDT, MBPI);
+  HexagonPacketizerList Packetizer(Fn, MLI, MBPI);
 
   // DFA state table should not be empty.
   assert(Packetizer.getResourceTracker() && "Empty DFA table!");
@@ -324,8 +322,8 @@ bool HexagonPacketizerList::IsCallDependent(MachineInstr* MI,
                                           unsigned DepReg) {
 
   const HexagonInstrInfo *QII = (const HexagonInstrInfo *) TII;
-  const HexagonRegisterInfo* QRI =
-              (const HexagonRegisterInfo *) TM.getRegisterInfo();
+  const HexagonRegisterInfo *QRI =
+      (const HexagonRegisterInfo *)TM.getSubtargetImpl()->getRegisterInfo();
 
   // Check for lr dependence
   if (DepReg == QRI->getRARegister()) {
@@ -549,8 +547,8 @@ bool HexagonPacketizerList::CanPromoteToNewValueStore( MachineInstr *MI,
       GetStoreValueOperand(MI).getReg() != DepReg)
     return false;
 
-  const HexagonRegisterInfo* QRI =
-                            (const HexagonRegisterInfo *) TM.getRegisterInfo();
+  const HexagonRegisterInfo *QRI =
+      (const HexagonRegisterInfo *)TM.getSubtargetImpl()->getRegisterInfo();
   const MCInstrDesc& MCID = PacketMI->getDesc();
   // first operand is always the result
 
@@ -724,8 +722,8 @@ bool HexagonPacketizerList::CanPromoteToNewValue( MachineInstr *MI,
 {
 
   const HexagonInstrInfo *QII = (const HexagonInstrInfo *) TII;
-  const HexagonRegisterInfo* QRI =
-                            (const HexagonRegisterInfo *) TM.getRegisterInfo();
+  const HexagonRegisterInfo *QRI =
+      (const HexagonRegisterInfo *)TM.getSubtargetImpl()->getRegisterInfo();
   if (!QRI->Subtarget.hasV4TOps() ||
       !QII->mayBeNewStore(MI))
     return false;
@@ -1007,8 +1005,8 @@ bool HexagonPacketizerList::isLegalToPacketizeTogether(SUnit *SUI, SUnit *SUJ) {
   MachineBasicBlock::iterator II = I;
 
   const unsigned FrameSize = MF.getFrameInfo()->getStackSize();
-  const HexagonRegisterInfo* QRI =
-                      (const HexagonRegisterInfo *) TM.getRegisterInfo();
+  const HexagonRegisterInfo *QRI =
+      (const HexagonRegisterInfo *)TM.getSubtargetImpl()->getRegisterInfo();
   const HexagonInstrInfo *QII = (const HexagonInstrInfo *) TII;
 
   // Inline asm cannot go in the packet.
