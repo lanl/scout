@@ -166,8 +166,10 @@ void clang::ParseAST(Sema &S, bool PrintStats, bool SkipFunctionBodies) {
   }
 
   // ===== Scout ========================
-  for(size_t i = 0; i < funcDecls.size(); ++i){
-    LastRenderall::Run(S, funcDecls[i]);
+  if(isScoutLang(S.getLangOpts())){
+    for(size_t i = 0; i < funcDecls.size(); ++i){
+      LastRenderall::Run(S, funcDecls[i]);
+    }
   }
   // ====================================
   

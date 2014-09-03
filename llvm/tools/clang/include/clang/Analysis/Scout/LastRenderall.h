@@ -85,8 +85,12 @@ namespace clang {
       for(auto itr = block.begin(), itrEnd = block.end();
           itr != itrEnd; ++itr){
         
-        CFGStmt s = itr->castAs<CFGStmt>();
-        const Stmt* stmt = s.getStmt();
+        auto o = itr->getAs<CFGStmt>();
+        if(!o.hasValue()){
+          continue;
+        }
+        
+        const Stmt* stmt = o.getValue().getStmt();
         
         const RenderallMeshStmt* rs = dyn_cast<RenderallMeshStmt>(stmt);
         if(rs){
