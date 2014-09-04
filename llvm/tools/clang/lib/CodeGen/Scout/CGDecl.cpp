@@ -363,7 +363,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     // SC_TODO - We are only supporting one mesh type here...
     //
 
-    llvm::Value *Mesh = Builder.CreateLoad(Alloc);
+    //llvm::Value *Mesh = Builder.CreateLoad(Alloc);
     const MeshType* MT = cast<MeshType>(T.getTypePtr());
     llvm::StringRef MeshName  = Alloc->getName();
     MeshDecl* MD = MT->getDecl();

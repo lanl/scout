@@ -51,11 +51,11 @@
 
 project(lsci)
 
-# Build w/ clang 
+# Build w/ clang ignoring any delete-non-virtual-dtor warnings
 set(CMAKE_C_COMPILER ${SCOUT_BUILD_DIR}/bin/clang)
-set(CMAKE_C_FLAGS "-DSHARED_LOWLEVEL")
+set(CMAKE_C_FLAGS "-DSHARED_LOWLEVEL -Wno-delete-non-virtual-dtor")
 set(CMAKE_CXX_COMPILER ${SCOUT_BUILD_DIR}/bin/clang++)
-set(CMAKE_CXX_FLAGS "-DSHARED_LOWLEVEL")
+set(CMAKE_CXX_FLAGS "-DSHARED_LOWLEVEL -Wno-delete-non-virtual-dtor")
 
 set(LG_RT_DIR ${SCOUT_SRC_DIR}/legion/runtime)
 
