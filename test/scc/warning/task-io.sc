@@ -50,102 +50,41 @@
  * Notes
  *
  * ##### 
- */ 
+ */
+#include <assert.h> 
+#include <stdio.h>
 
-#ifndef CLANG_SEMA_SCOUT_ASTVISTORS_H
-#define CLANG_SEMA_SCOUT_ASTVISTORS_H
-
-#include "clang/Sema/Sema.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/Stmt.h"
-#include "clang/AST/DeclVisitor.h"
-#include "clang/AST/StmtVisitor.h"
-
-using namespace clang;
-
-// make sure task functions are pure
-class TaskStmtVisitor : public StmtVisitor<TaskStmtVisitor> {
-public:
-
-  TaskStmtVisitor(Sema& sema, Stmt* S)
-  : S_(S), sema_(sema) {
-  }
-
-  void VisitStmt(Stmt* S) {
-    VisitChildren(S);
-  }
-
-
-  void VisitCallExpr(CallExpr* E) {
-
-    FunctionDecl* fd = E->getDirectCallee();
-
-    if (fd) {
-      std::string name = fd->getName();
-      if (name == "printf" || name == "fprintf") {
-        // SC_TODO -- for now we'll warn that you're calling a print
-        // function inside a task
-        sema_.Diag(E->getExprLoc(), diag::warn_task_calling_io_func);
-      }
-    }
-
-    VisitChildren(E);
-  }
-
-
-
-  void VisitChildren(Stmt* S) {
-    if(S) {
-      for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
-        if (Stmt* child = *I) {
-          if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(child)) {
-            if(VarDecl *VD = dyn_cast<VarDecl>(dr->getDecl())) {
-              if(VD->hasGlobalStorage() && !VD->getType().isConstQualified()) {
-                sema_.Diag(S->getLocStart(), diag::err_nonpure_task_fuction);
-              }
-            }
-          }
-          Visit(child);
-        }
-      }
-    }
-  }
-
-  void VisitDeclStmt(DeclStmt* S) {
-    VisitChildren(S);
-  }
-
-
-private:
-  Stmt *S_;
-  Sema& sema_;
+uniform mesh MyMesh {
+ cells:
+  float a;
+  float b;
+  int i;
+  double d;
 };
 
-
-class TaskVisitor : public DeclVisitor<TaskVisitor> {
-public:
-
-  TaskVisitor(Sema& sema, FunctionDecl *FD)
-  : FD_(FD), sema_(sema) {
+task void MyTask(MyMesh *m) {
+  
+  forall cells c in *m {
+    a = 0;
+    b = 1;
   }
 
-  void Visit(Stmt* S) {
-    if(FD_->isTaskSpecified()) {
-      if(S) {
-        for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
-          if (Stmt* child = *I) {
-            TaskStmtVisitor v(sema_, child);
-            v.Visit(child);
-          }
-        }
-      }
+  forall cells c in *m {
+    a += b;
+  }
+  printf("not allowed\n");
+}
+
+int main(int argc, char** argv) {
+  MyMesh m[512];
+
+  MyTask(&m);
+
+  forall cells c in m {
+    if ((a-b)*(a-b) > 1e-10) {
+      printf("bad val %f\n", a);
+      assert(false);
     }
   }
-
-private:
-  FunctionDecl *FD_;
-  Sema& sema_;
-
-};
-
-#endif
+  return 0;
+}
