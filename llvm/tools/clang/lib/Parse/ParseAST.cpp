@@ -155,9 +155,11 @@ void clang::ParseAST(Sema &S, bool PrintStats, bool SkipFunctionBodies) {
       DeclGroupRef dr = ADecl.get();
       if(dr.isSingleDecl()){
         Decl* d = dr.getSingleDecl();
-        FunctionDecl* fd = dyn_cast<FunctionDecl>(d);
-        if(fd && fd->hasBody() && S.SourceMgr.isInMainFile(fd->getLocStart())){
-          funcDecls.push_back(fd);
+        if(d){
+          FunctionDecl* fd = dyn_cast<FunctionDecl>(d);
+          if(fd && fd->hasBody() && S.SourceMgr.isInMainFile(fd->getLocStart())){
+            funcDecls.push_back(fd);
+          }
         }
       }
       // ====================================
