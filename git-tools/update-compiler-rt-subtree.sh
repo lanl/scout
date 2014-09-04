@@ -7,9 +7,13 @@
 
 . scout-local/utils/update-subtree-funcs.sh 
 
+# Make sure we're not on the master branch -- at "home" we lock this
+# down so people can't muck with the master branch (as getting there
+# means you pass compile and regression checks).  However, we'll leave
+# this as a sanity check...
 branch=$(active_git_branch)
-if [ "$branch" != "devel" ]; then 
-    echo "This script must be run with the 'devel' branch checked out..."
+if [ $branch == 'master' ]; then
+    echo "This script must not be run with the 'master' branch checked out..."
     exit 1;
 fi
 
