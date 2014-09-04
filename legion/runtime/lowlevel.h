@@ -264,6 +264,8 @@ namespace LegionRuntime {
       bool is_set(int ptr) const;
       size_t pop_count(bool enabled = true) const;
       bool operator!(void) const;
+      bool operator==(const ElementMask &other) const;
+      bool operator!=(const ElementMask &other) const;
       // union/intersect/subtract?
       ElementMask operator|(const ElementMask &other) const;
       ElementMask operator&(const ElementMask &other) const;
@@ -979,7 +981,7 @@ namespace LegionRuntime {
         switch (dim)
         {
           case 0:
-            return get_index_space().get_valid_mask().get_num_elmts();
+            return get_index_space().get_valid_mask().pop_count();
           case 1:
             {
               Arrays::Rect<1> r1 = get_rect<1>();
@@ -1014,7 +1016,7 @@ namespace LegionRuntime {
 	    {
 	      const ElementMask *mask = &(d.get_index_space().get_valid_mask());
 	      iterator = (void *)mask;
-	      int index = mask->first_enabled();
+              int index = mask->find_enabled();
 	      p.point_data[0] = index;
 	      any_left = (index >= 0);
 	    }
