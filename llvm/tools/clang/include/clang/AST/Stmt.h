@@ -2722,7 +2722,7 @@ public:
     return true;
   }
 
-  bool setLast(bool flag) const{
+  void setLast(bool flag) const{
     Last = flag;
   }
   
