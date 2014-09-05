@@ -116,9 +116,11 @@ public:
   }
 
   void VisitChildren(Stmt* S) {
-    for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
-      if (Stmt* child = *I) {
-        Visit(child);
+    if(S) {
+      for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
+        if (Stmt* child = *I) {
+          Visit(child);
+        }
       }
     }
   }
@@ -210,29 +212,31 @@ public:
   }
 
   void VisitChildren(Stmt* S) {
-    for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
-      if (Stmt* child = *I) {
-        if(ForallMeshStmt *FAMS = dyn_cast<ForallMeshStmt>(child)) {
-          std::string MeshName = FAMS->getMeshVarDecl()->getName().str();
-          std::string MeshTypeName =  FAMS->getMeshType()->getName().str();
-          MNM_.insert(make_pair(MeshName, MeshTypeName));
+    if(S) {
+      for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
+        if (Stmt* child = *I) {
+          if(ForallMeshStmt *FAMS = dyn_cast<ForallMeshStmt>(child)) {
+            std::string MeshName = FAMS->getMeshVarDecl()->getName().str();
+            std::string MeshTypeName =  FAMS->getMeshType()->getName().str();
+            MNM_.insert(make_pair(MeshName, MeshTypeName));
 
-          ForallVisitor v(FAMS);
-          v.Visit(FAMS);
+            ForallVisitor v(FAMS);
+            v.Visit(FAMS);
 
-          FieldMap lhs = v.getLHSmap();
-          LHS_.insert(lhs.begin(), lhs.end());
-          FieldMap rhs = v.getRHSmap();
-          RHS_.insert(rhs.begin(), rhs.end());
-        }
-        // look for function calls in task function
-        if(CallExpr *CE = dyn_cast<CallExpr>(child)) {
-          TaskVisitor v(CE->getDirectCallee());
-          v.VisitStmt(CE->getDirectCallee()->getBody());
-          FieldMap subLHS = v.getLHSmap();
-          LHS_.insert(subLHS.begin(), subLHS.end());
-          FieldMap subRHS = v.getRHSmap();
-          RHS_.insert(subRHS.begin(), subRHS.end());
+            FieldMap lhs = v.getLHSmap();
+            LHS_.insert(lhs.begin(), lhs.end());
+            FieldMap rhs = v.getRHSmap();
+            RHS_.insert(rhs.begin(), rhs.end());
+          }
+          // look for function calls in task function
+          if(CallExpr *CE = dyn_cast<CallExpr>(child)) {
+            TaskVisitor v(CE->getDirectCallee());
+            v.VisitStmt(CE->getDirectCallee()->getBody());
+            FieldMap subLHS = v.getLHSmap();
+            LHS_.insert(subLHS.begin(), subLHS.end());
+            FieldMap subRHS = v.getRHSmap();
+            RHS_.insert(subRHS.begin(), subRHS.end());
+          }
         }
       }
     }

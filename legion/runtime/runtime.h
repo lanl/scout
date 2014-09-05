@@ -24,7 +24,7 @@
 
 namespace LegionRuntime {
   namespace HighLevel {
-    
+
     /**
      * \class ArgumentMap::Impl
      * An argument map implementation that provides
@@ -99,7 +99,7 @@ namespace LegionRuntime {
      */
     class Future::Impl : public DistributedCollectable {
     public:
-      Impl(Runtime *rt, DistributedID did,
+      Impl(Runtime *rt, bool register_future, DistributedID did, 
            AddressSpaceID owner_space, AddressSpaceID local_space,
            TaskOp *task = NULL);
       Impl(const Future::Impl &rhs);
@@ -110,6 +110,7 @@ namespace LegionRuntime {
       void get_void_result(void);
       void* get_untyped_result(void);
       bool is_empty(bool block);
+      size_t get_untyped_size(void);
       Event get_ready_event(void) const { return ready_event; }
     public:
       // This will simply save the value of the future
@@ -134,15 +135,16 @@ namespace LegionRuntime {
       void mark_sampled(void);
       void broadcast_result(void);
       bool send_future(AddressSpaceID sid);
+      void register_waiter(AddressSpaceID sid);
     public:
       static void handle_future_send(Deserializer &derez, Runtime *rt, 
                                      AddressSpaceID source);
       static void handle_future_result(Deserializer &derez, Runtime *rt);
+      static void handle_future_subscription(Deserializer &derez, Runtime *rt);
     public:
       // These three fields are only valid on the owner node
       TaskOp *const task;
       const GenerationID task_gen;
-      const bool predicated;
     private:
       FRIEND_ALL_RUNTIME_CLASSES
       UserEvent ready_event;
@@ -150,6 +152,8 @@ namespace LegionRuntime {
       size_t result_size;
       volatile bool empty;
       volatile bool sampled;
+      // On the owner node, keep track of the registered waiters
+      std::set<AddressSpaceID> registered_waiters;
     };
 
     /**
@@ -177,11 +181,15 @@ namespace LegionRuntime {
       void wait_all_results(void);
       void complete_all_futures(void);
       bool reset_all_futures(void);
+#ifdef DEBUG_HIGH_LEVEL
+    public:
+      void add_valid_domain(const Domain &d);
+      void add_valid_point(const DomainPoint &dp);
+#endif
     public:
       SingleTask *const context;
       TaskOp *const task;
       const GenerationID task_gen;
-      const bool predicated;
       const bool valid;
       Runtime *const runtime;
     private:
@@ -190,6 +198,11 @@ namespace LegionRuntime {
       // Unlike futures, the future map is never used remotely
       // so it can create and destroy its own lock.
       Reservation lock;
+#ifdef DEBUG_HIGH_LEVEL
+    private:
+      std::vector<Domain> valid_domains;
+      std::set<DomainPoint,DomainPoint::STLComparator> valid_points;
+#endif
     };
 
     /**
@@ -322,13 +335,20 @@ namespace LegionRuntime {
      */
     class ProcessorManager {
     public:
+      struct DeferredTriggerArgs {
+      public:
+        HLRTaskID hlr_id;
+        Operation *op;
+      };
       struct TriggerOpArgs {
       public:
+        HLRTaskID hlr_id;
         Operation *op;
         ProcessorManager *manager;
       };
       struct TriggerTaskArgs {
       public:
+        HLRTaskID hlr_id;
         TaskOp *op;
         ProcessorManager *manager;
       };
@@ -376,7 +396,7 @@ namespace LegionRuntime {
                                       std::vector<Mapper::DomainSplit> &splits);
       bool invoke_mapper_map_inline(Inline *op);
       bool invoke_mapper_map_copy(Copy *op);
-      bool invoke_mapper_speculate(TaskOp *op, bool &value); 
+      bool invoke_mapper_speculate(Mappable *op, bool &value); 
       bool invoke_mapper_rank_copy_targets(Mappable *mappable,
                                            LogicalRegion handle, 
                                            const std::set<Memory> &memories,
@@ -613,13 +633,15 @@ namespace LegionRuntime {
         HIERARCHICAL_REMOVE_RESOURCE,
         HIERARCHICAL_REMOVE_REMOTE,
         SEND_BACK_USER,
-        SEND_USER,
         SEND_SUBSCRIBER,
         SEND_MATERIALIZED_VIEW,
+        SEND_MATERIALIZED_UPDATE,
         SEND_BACK_MATERIALIZED_VIEW,
         SEND_COMPOSITE_VIEW,
         SEND_BACK_COMPOSITE_VIEW,
+        SEND_COMPOSITE_UPDATE,
         SEND_REDUCTION_VIEW,
+        SEND_REDUCTION_UPDATE,
         SEND_BACK_REDUCTION_VIEW,
         SEND_INSTANCE_MANAGER,
         SEND_REDUCTION_MANAGER,
@@ -634,6 +656,7 @@ namespace LegionRuntime {
         SEND_SLICE_RETURN,
         SEND_FUTURE,
         SEND_FUTURE_RESULT,
+        SEND_FUTURE_SUBSCRIPTION,
         SEND_MAKE_PERSISTENT,
         SEND_MAPPER_MESSAGE,
       };
@@ -682,13 +705,15 @@ namespace LegionRuntime {
       void send_remove_hierarchical_resource(Serializer &rez, bool flush);
       void send_remove_hierarchical_remote(Serializer &rez, bool flush);
       void send_back_user(Serializer &rez, bool flush);
-      void send_user(Serializer &rez, bool flush);
       void send_subscriber(Serializer &rez, bool flush);
       void send_materialized_view(Serializer &rez, bool flush);
       void send_back_materialized_view(Serializer &rez, bool flush);
+      void send_materialized_update(Serializer &rez, bool flush);
       void send_composite_view(Serializer &rez, bool flush);
+      void send_composite_update(Serializer &rez, bool flush);
       void send_back_composite_view(Serializer &rez, bool flush);
       void send_reduction_view(Serializer &rez, bool flush);
+      void send_reduction_update(Serializer &rez, bool flush);
       void send_back_reduction_view(Serializer &rez, bool flush);
       void send_instance_manager(Serializer &rez, bool flush);
       void send_reduction_manager(Serializer &rez, bool flush);
@@ -703,6 +728,7 @@ namespace LegionRuntime {
       void send_slice_return(Serializer &rez, bool flush);
       void send_future(Serializer &rez, bool flush);
       void send_future_result(Serializer &rez, bool flush);
+      void send_future_subscription(Serializer &rez, bool flush);
       void send_make_persistent(Serializer &rez, bool flush);
       void send_mapper_message(Serializer &rez, bool flush);
     public:
@@ -775,6 +801,25 @@ namespace LegionRuntime {
      */
     class Runtime {
     public:
+      struct DeferredRecycleArgs {
+      public:
+        HLRTaskID hlr_id;
+        DistributedID did;
+      };
+      struct DeferredFutureSetArgs {
+        HLRTaskID hlr_id;
+        Future::Impl *target;
+        Future::Impl *result;
+        TaskOp *task_op;
+      };
+      struct DeferredFutureMapSetArgs {
+        HLRTaskID hlr_id;
+        FutureMap::Impl *future_map;
+        Future::Impl *result;
+        Domain domain;
+        TaskOp *task_op;
+      };
+    public:
       Runtime(Machine *m, AddressSpaceID space_id,
               const std::set<Processor> &local_procs,
               const std::set<AddressSpaceID> &address_spaces,
@@ -823,8 +868,14 @@ namespace LegionRuntime {
       IndexSpace get_index_subspace(Context ctx, IndexPartition p, 
                                     Color color); 
       IndexSpace get_index_subspace(IndexPartition p, Color c);
+      bool has_multiple_domains(Context ctx, IndexSpace handle);
+      bool has_multiple_domains(IndexSpace handle);
       Domain get_index_space_domain(Context ctx, IndexSpace handle);
       Domain get_index_space_domain(IndexSpace handle);
+      void get_index_space_domains(Context ctx, IndexSpace handle,
+                                   std::vector<Domain> &domains);
+      void get_index_space_domains(IndexSpace handle,
+                                   std::vector<Domain> &domains);
       Domain get_index_partition_color_space(Context ctx, IndexPartition p);
       Domain get_index_partition_color_space(IndexPartition p);
       void get_index_space_partition_colors(Context ctx, IndexSpace handle,
@@ -993,7 +1044,7 @@ namespace LegionRuntime {
       int get_tunable_value(Context ctx, TunableID tid, 
                             MapperID mid, MappingTagID tag);
     public:
-      Mapper* get_mapper(Context ctx, MapperID id);
+      Mapper* get_mapper(Context ctx, MapperID id, Processor target);
       Processor get_executing_processor(Context ctx);
       void raise_region_exception(Context ctx, PhysicalRegion region, 
                                   bool nuclear);
@@ -1087,13 +1138,15 @@ namespace LegionRuntime {
       void send_remove_hierarchical_remote(AddressSpaceID target, 
                                            Serializer &rez);
       void send_back_user(AddressSpaceID target, Serializer &rez);
-      void send_user(AddressSpaceID target, Serializer &rez);
       void send_subscriber(AddressSpaceID target, Serializer &rez);
       void send_materialized_view(AddressSpaceID target, Serializer &rez);
+      void send_materialized_update(AddressSpaceID target, Serializer &rez);
       void send_back_materialized_view(AddressSpaceID target, Serializer &rez);
       void send_composite_view(AddressSpaceID target, Serializer &rez);
+      void send_composite_update(AddressSpaceID target, Serializer &rez);
       void send_back_composite_view(AddressSpaceID target, Serializer &rez);
       void send_reduction_view(AddressSpaceID target, Serializer &rez);
+      void send_reduction_update(AddressSpaceID target, Serializer &rez);
       void send_back_reduction_view(AddressSpaceID target, Serializer &rez);
       void send_instance_manager(AddressSpaceID target, Serializer &rez);
       void send_reduction_manager(AddressSpaceID target, Serializer &rez);
@@ -1108,6 +1161,7 @@ namespace LegionRuntime {
       void send_slice_return(AddressSpaceID target, Serializer &rez);
       void send_future(AddressSpaceID target, Serializer &rez);
       void send_future_result(AddressSpaceID target, Serializer &rez);
+      void send_future_subscription(AddressSpaceID target, Serializer &rez);
       void send_make_persistent(AddressSpaceID target, Serializer &rez);
       void send_mapper_message(AddressSpaceID target, Serializer &rez);
     public:
@@ -1146,18 +1200,23 @@ namespace LegionRuntime {
       void handle_hierarchical_remove_resource(Deserializer &derez);
       void handle_hierarchical_remove_remote(Deserializer &derez);
       void handle_send_back_user(Deserializer &derez, AddressSpaceID source);
-      void handle_send_user(Deserializer &derez, AddressSpaceID source);
       void handle_send_subscriber(Deserializer &derez, AddressSpaceID source);
       void handle_send_materialized_view(Deserializer &derez, 
                                          AddressSpaceID source);
+      void handle_send_materialized_update(Deserializer &derez,
+                                           AddressSpaceID source);
       void handle_send_back_materialized_view(Deserializer &derez,
                                               AddressSpaceID source);
       void handle_send_composite_view(Deserializer &derez,
                                       AddressSpaceID source);
+      void handle_send_composite_update(Deserializer &derez,
+                                        AddressSpaceID source);
       void handle_send_back_composite_view(Deserializer &derez,
                                            AddressSpaceID source);
       void handle_send_reduction_view(Deserializer &derez,
                                       AddressSpaceID source);
+      void handle_send_reduction_update(Deserializer &derez,
+                                        AddressSpaceID source);
       void handle_send_back_reduction_view(Deserializer &derez,
                                            AddressSpaceID source);
       void handle_send_instance_manager(Deserializer &derez,
@@ -1179,6 +1238,7 @@ namespace LegionRuntime {
       void handle_slice_return(Deserializer &derez);
       void handle_future_send(Deserializer &derez, AddressSpaceID source);
       void handle_future_result(Deserializer &derez);
+      void handle_future_subscription(Deserializer &derez);
       void handle_make_persistent(Deserializer &derez, AddressSpaceID source);
       void handle_mapper_message(Deserializer &derez);
     public:
@@ -1224,7 +1284,8 @@ namespace LegionRuntime {
                                       std::vector<Mapper::DomainSplit> &splits);
       bool invoke_mapper_map_inline(Processor target, Inline *op);
       bool invoke_mapper_map_copy(Processor target, Copy *op);
-      bool invoke_mapper_speculate(Processor target, TaskOp *task, bool &value);
+      bool invoke_mapper_speculate(Processor target, 
+                                   Mappable *mappable, bool &value);
       bool invoke_mapper_rank_copy_targets(Processor target, Mappable *mappable,
                                            LogicalRegion handle, 
                                            const std::set<Memory> &memories,
@@ -1271,9 +1332,11 @@ namespace LegionRuntime {
       void unregister_future(DistributedID did);
       bool has_future(DistributedID did);
       Future::Impl* find_future(DistributedID did);
+      Future::Impl* find_or_create_future(DistributedID did,
+                                          AddressSpaceID owner_space);
     public:
       Event find_gc_epoch_event(Processor gc_proc);
-      void notify_pending_shutdown(void);
+      void initiate_runtime_shutdown(void);
     public:
       IndividualTask*  get_available_individual_task(void);
       PointTask*       get_available_point_task(void);
@@ -1347,17 +1410,7 @@ namespace LegionRuntime {
                           const void *args, size_t arglen, Processor p);
       static void schedule_runtime(
                           const void *args, size_t arglen, Processor p);
-      static void message_task(
-                          const void *args, size_t arglen, Processor p);
-      static void post_end_task(
-                          const void *args, size_t arglen, Processor p);
-      static void deferred_complete_task(
-                          const void *args, size_t arglen, Processor p);
-      static void reclaim_local_field_task(
-                          const void *args, size_t arglen, Processor p);
-      static void deferred_collect_task(
-                          const void *args, size_t arglen, Processor p);
-      static void trigger_dependence_task(
+      static void high_level_runtime_task(
                           const void *args, size_t arglen, Processor p);
       static void trigger_op_task(
                           const void *args, size_t arglen, Processor p);

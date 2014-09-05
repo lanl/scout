@@ -3163,11 +3163,11 @@ namespace LegionRuntime {
       assert(lhs);
 
       if(red_fold)
-	redop->fold_strided(lhs, data, count,
-			    args.stride, redop->sizeof_rhs, false /*not exclusive*/);
+	redop->fold_strided(lhs, data,
+			    args.stride, redop->sizeof_rhs, count, false /*not exclusive*/);
       else
-	redop->apply_strided(lhs, data, count,
-			     args.stride, redop->sizeof_rhs, false /*not exclusive*/);
+	redop->apply_strided(lhs, data, 
+			     args.stride, redop->sizeof_rhs, count, false /*not exclusive*/);
 
       // track the sequence ID to know when the full RDMA is done
       if(args.sequence_id > 0) {
@@ -3914,6 +3914,18 @@ namespace LegionRuntime {
 	size_t zero = 0;
 	put_bytes(count_offset, &zero, sizeof(zero));
       }
+      else if (redopid > 0)
+      {
+        assert(field_sizes.size() == 1);
+        // Otherwise if this is a fold reduction instance then
+        // we need to initialize the memory with the identity
+        const ReductionOpUntyped *redop = reduce_op_table[redopid];
+        assert(redop->has_identity);
+        assert(element_size == redop->sizeof_rhs);
+        void *ptr = get_direct_ptr(inst_offset, bytes_needed); 
+        size_t num_elements = bytes_needed/element_size;
+        redop->init(ptr, num_elements);
+      }
 
       // SJT: think about this more to see if there are any race conditions
       //  with an allocator temporarily having the wrong ID
@@ -3921,6 +3933,7 @@ namespace LegionRuntime {
 				   ID(me).node(),
 				   ID(me).index_h(),
 				   0).convert<RegionInstance>();
+
 
       //RegionMetaDataImpl *r_impl = Runtime::runtime->get_metadata_impl(r);
       DomainLinearization linear;
@@ -3973,8 +3986,8 @@ namespace LegionRuntime {
       ReductionOpID redopid;
       int linearization_bits[RegionInstance::Impl::MAX_LINEARIZATION_LEN];
       size_t num_fields; // as long as it needs to be
-      const size_t &field_size(int idx) const { return *((&num_fields)+idx); }
-      size_t &field_size(int idx) { return *((&num_fields)+idx); }
+      const size_t &field_size(int idx) const { return *((&num_fields)+idx+1); }
+      size_t &field_size(int idx) { return *((&num_fields)+idx+1); }
     };
 
     struct CreateInstanceResp : public BaseReply {
@@ -5215,6 +5228,37 @@ namespace LegionRuntime {
         Event::Impl *impl = Runtime::get_runtime()->get_event_impl(wait_for);
         
         while(!impl->has_triggered(wait_for.gen)) {
+          if (!block) {
+            gasnet_hsl_lock(&proc->mutex);
+            if (proc->tasks.size() > 0) {
+              UtilityTask *task = proc->tasks.front();
+              proc->tasks.pop_front();
+              gasnet_hsl_unlock(&proc->mutex);
+              log_util.info("running task %p (%d) in utility thread", task, task->func_id);
+              task->run();
+              log_util.info("done with task %p (%d) in utility thread", task, task->func_id);
+              delete task;
+              // Continue since we no longer hold the lock
+              continue;
+            }
+#ifdef SHARED_UTILITY_QUEUE
+            if (proc->shared_queue) {
+              if (!proc->shared_queue->empty()) {
+                UtilityTask *task = proc->shared_queue->pop();
+                if (task) {
+                  gasnet_hsl_unlock(&proc->mutex);
+                  log_util.info("running shared task %p (%d) in utility thread", task, task->func_id);
+                  task->run();
+                  log_util.info("done with shared task %p (%d) in utility thread", task, task->func_id);
+                  delete task;
+                  // Continue since we no longer hold the lock
+                  continue;
+                }
+              }
+            }
+#endif
+            gasnet_hsl_unlock(&proc->mutex);
+          }
 #ifdef __SSE2__
           _mm_pause();
 #endif
@@ -6228,6 +6272,8 @@ namespace LegionRuntime {
       first_enabled_elmt = rhs.first_enabled_elmt;
       last_enabled_elmt = rhs.last_enabled_elmt;
       size_t bytes_needed = rhs.raw_size();
+      if (raw_data)
+        free(raw_data);
       raw_data = calloc(1, bytes_needed);
       if (rhs.raw_data)
         memcpy(raw_data, rhs.raw_data, bytes_needed);
@@ -6442,6 +6488,36 @@ namespace LegionRuntime {
         assert(0);
       }
       return true;
+    }
+
+    bool ElementMask::operator==(const ElementMask &other) const
+    {
+      if (num_elements != other.num_elements)
+        return false;
+      if (raw_data != 0) {
+        ElementMaskImpl *impl = (ElementMaskImpl *)raw_data;
+        if (other.raw_data != 0) {
+          ElementMaskImpl *other_impl = (ElementMaskImpl *)other.raw_data;
+          const int max_full = ((num_elements+63) >> 6);
+          for (int index = 0; index < max_full; index++)
+          {
+            if (impl->bits[index] != other_impl->bits[index])
+              return false;
+          }
+        } else {
+          // TODO: Implement this
+          assert(false);
+        }
+      } else {
+        // TODO: Implement this
+        assert(false);
+      }
+      return true;
+    }
+
+    bool ElementMask::operator!=(const ElementMask &other) const
+    {
+      return !((*this) == other);
     }
 
     ElementMask ElementMask::operator|(const ElementMask &other) const
@@ -8354,7 +8430,10 @@ namespace LegionRuntime {
       //gasnet_seginfo_t seginfos = new gasnet_seginfo_t[num_nodes];
       //CHECK_GASNET( gasnet_getSegmentInfo(seginfos, num_nodes) );
 
-      r->global_memory = new GASNetMemory(ID(ID::ID_MEMORY, 0, ID::ID_GLOBAL_MEM, 0).convert<Memory>(), gasnet_mem_size_in_mb << 20);
+      if(gasnet_mem_size_in_mb > 0)
+	r->global_memory = new GASNetMemory(ID(ID::ID_MEMORY, 0, ID::ID_GLOBAL_MEM, 0).convert<Memory>(), gasnet_mem_size_in_mb << 20);
+      else
+	r->global_memory = 0;
 
       Node *n = &r->nodes[gasnet_mynode()];
 
@@ -8551,11 +8630,13 @@ namespace LegionRuntime {
 	  adata[apos++] = 5;    // "small" latency
 	}
 
-	adata[apos++] = NODE_ANNOUNCE_PMA;
-	adata[apos++] = (*it)->me.id;
-	adata[apos++] = r->global_memory->me.id;
-	adata[apos++] = 10;  // "lower" bandwidth
-	adata[apos++] = 50;    // "higher" latency
+	if(r->global_memory) {
+	  adata[apos++] = NODE_ANNOUNCE_PMA;
+	  adata[apos++] = (*it)->me.id;
+	  adata[apos++] = r->global_memory->me.id;
+	  adata[apos++] = 10;  // "lower" bandwidth
+	  adata[apos++] = 50;    // "higher" latency
+	}
       }
 
       // list affinities between local CPUs / memories
@@ -8578,14 +8659,16 @@ namespace LegionRuntime {
 	  adata[apos++] = 5;    // "small" latency
 	}
 
-	adata[apos++] = NODE_ANNOUNCE_PMA;
-	adata[apos++] = (*it)->me.id;
-	adata[apos++] = r->global_memory->me.id;
-	adata[apos++] = 10;  // "lower" bandwidth
-	adata[apos++] = 50;    // "higher" latency
+	if(r->global_memory) {
+	  adata[apos++] = NODE_ANNOUNCE_PMA;
+	  adata[apos++] = (*it)->me.id;
+	  adata[apos++] = r->global_memory->me.id;
+	  adata[apos++] = 10;  // "lower" bandwidth
+	  adata[apos++] = 50;    // "higher" latency
+	}
       }
 
-      if(cpu_mem_size_in_mb > 0) {
+      if((cpu_mem_size_in_mb > 0) && r->global_memory) {
 	adata[apos++] = NODE_ANNOUNCE_MMA;
 	adata[apos++] = cpumem->me.id;
 	adata[apos++] = r->global_memory->me.id;

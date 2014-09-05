@@ -1972,6 +1972,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   // Extract Blocks to function and replace w/ call to function
   if(!inLLDB()){
     llvm::Function* f = ExtractRegion(entry, exit, "ForallMeshFunction");
+    (void)f; //suppress warning
   }
 }
 
@@ -2379,7 +2380,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 
   RenderallMeshStmt::MeshElementType ET = S.getMeshElementRef();
 
-  llvm::Value* numItems;
+  //llvm::Value* numItems;
   
   SmallVector<llvm::Value*, 3> Dimensions;
   GetMeshDimensions(S.getMeshType(), Dimensions);
@@ -2463,8 +2464,8 @@ void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S
 
 	RenderallMeshStmt::MeshElementType ET = S.getMeshElementRef();
 
-	llvm::Function *WinQuadRendFunc;
-	llvm::Function *WinPaintFunc;
+	//llvm::Function *WinQuadRendFunc;
+	//llvm::Function *WinPaintFunc;
 
 	llvm::BasicBlock *LoopBlock = createBasicBlock("renderall.loop");
 	Builder.CreateBr(LoopBlock);
@@ -2487,6 +2488,9 @@ void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S
     case ForallMeshStmt::Faces:
       IndexPtr = &FaceIndex;
       GetNumMeshItems(Dimensions, 0, 0, 0, &numItems);
+      break;
+    case ForallMeshStmt::Cells:
+    case ForallMeshStmt::Undefined:
       break;
   }
   

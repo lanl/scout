@@ -213,6 +213,7 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
       PointerType* PointerLsciTaskArgsTy = PointerType::get(StructTy_struct_lsci_task_args_t, 0); 
       AllocaInst* ptr_task_args_addr = builder.CreateAlloca(PointerLsciTaskArgsTy, 0, "task_args.addr");
       StoreInst* storeTaskArgsInst = builder.CreateAlignedStore(ptr_task_args, ptr_task_args_addr, 8);
+      (void)storeTaskArgsInst; //suppress warning
       LoadInst* loadTaskArgsInst = builder.CreateAlignedLoad(ptr_task_args_addr, 8, "");
 
       // get context from task args
@@ -315,8 +316,8 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
                   StringRef allocStr = allocMDStr->getString();
                   //errs() << "allocStr:" << allocStr << "\n";
 
-                  MDString* lsciallocMDStr = cast < MDString > (lsciMDN->getOperand(1));
-                  StringRef lsciallocStr = lsciallocMDStr->getString();
+                  //MDString* lsciallocMDStr = cast < MDString > (lsciMDN->getOperand(1));
+                  //StringRef lsciallocStr = lsciallocMDStr->getString();
                   //errs() << "lsciallocStr:" << lsciallocStr << "\n";
 
                   // if task argument string is in the def-use chain of the metadata string value,
@@ -360,6 +361,7 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
                 builder.SetInsertPoint(&callInst);
                 //errs() << "create call\n";
                 //builder.CreateCall(legionTaskInitFN, ArrayRef<llvm::Value*> (Args));
+                (void)legionTaskInitFN; //suppress warning
               } 
               if (lsciUnimeshVal) break;
             }
