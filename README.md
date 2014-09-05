@@ -1,4 +1,4 @@
-# The Scout Programming Language 
+# The Scout Programming Language   
 
 Scout is open-source software.  Los Alamos National Security, LLC (LANS) owns the copyright to Scout.  
 The license is BSD-like with a "modifications must be indicated" clause. See the 
