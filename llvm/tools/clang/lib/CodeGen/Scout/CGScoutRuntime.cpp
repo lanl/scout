@@ -250,30 +250,6 @@ llvm::Function *CGScoutRuntime::CreateWindowPaintFunction() {
   return ScoutRuntimeFunction(funcName, Params);
 }
 
-// build function call to do window paint
-llvm::Function *CGScoutRuntime::CreateWindowPaintVerticesFunction() {
-  std::string funcName = "__scrt_window_paint_vertices";
-  
-  std::vector<llvm::Type*> Params;
-  
-  // param for pointer to window
-  Params.push_back(llvm::PointerType::get(llvm::IntegerType::get(CGM.getModule().getContext(), 8), 0));
-  
-  return ScoutRuntimeFunction(funcName, Params);
-}
-
-// build function call to do window paint
-llvm::Function *CGScoutRuntime::CreateWindowPaintEdgesFunction() {
-  std::string funcName = "__scrt_window_paint_edges";
-  
-  std::vector<llvm::Type*> Params;
-  
-  // param for pointer to window
-  Params.push_back(llvm::PointerType::get(llvm::IntegerType::get(CGM.getModule().getContext(), 8), 0));
-  
-  return ScoutRuntimeFunction(funcName, Params);
-}
-
 // build function to set all colors to red
 //llvm::Function *CGcoutRuntime::SetColorsRedFunction() { }
 

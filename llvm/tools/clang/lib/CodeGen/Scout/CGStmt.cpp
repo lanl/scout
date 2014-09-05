@@ -2389,27 +2389,23 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   // in the future, this will be a mesh renderable
 
   llvm::Function *WinQuadRendFunc;
-  llvm::Function *WinPaintFunc;
+  llvm::Function *WinPaintFunc = CGM.getScoutRuntime().CreateWindowPaintFunction();
   
   bool cellLoop = false;
   
   switch(ET){
     case ForallMeshStmt::Cells:
       WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableColorsFunction();
-      WinPaintFunc = CGM.getScoutRuntime().CreateWindowPaintFunction();
       cellLoop = true;
       break;
     case ForallMeshStmt::Vertices:
       WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableVertexColorsFunction();
-      WinPaintFunc = CGM.getScoutRuntime().CreateWindowPaintVerticesFunction();
       break;
     case ForallMeshStmt::Edges:
       WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableEdgeColorsFunction();
-      WinPaintFunc = CGM.getScoutRuntime().CreateWindowPaintEdgesFunction();
       break;
     case ForallMeshStmt::Faces:
       WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableEdgeColorsFunction();
-      WinPaintFunc = CGM.getScoutRuntime().CreateWindowPaintEdgesFunction();
       break;
     default:
       assert(false && "unrecognized renderall type");
@@ -2431,9 +2427,11 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   }
 
   // paint window (draws all renderables) (does clear beforehand, and swap buffers after)
-  Args.clear();
-  Args.push_back(int8PtrRTAlloc);
-  Builder.CreateCall(WinPaintFunc, ArrayRef<llvm::Value *>(Args));
+  if(S.isLast()){
+    Args.clear();
+    Args.push_back(int8PtrRTAlloc);
+    Builder.CreateCall(WinPaintFunc, ArrayRef<llvm::Value *>(Args));
+  }
 
   // reset Loopbounds, Rank, induction var
   // so width/height etc can't be called after renderall

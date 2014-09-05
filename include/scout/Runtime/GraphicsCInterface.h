@@ -98,10 +98,6 @@ extern "C" {
 
   void __scrt_window_paint(void* renderTarget);
 
-  void __scrt_window_paint_vertices(void* renderTarget);
-
-  void __scrt_window_paint_edges(void* renderTarget);
-
 #if defined(__cplusplus)
 }
 #endif
