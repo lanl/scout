@@ -1,11 +1,9 @@
 /*
- *
  * ###########################################################################
- *
- * Copyright (c) 2013, Los Alamos National Security, LLC.
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  *
- *  Copyright 2013. Los Alamos National Security, LLC. This software was
+ *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
  *  National Security, LLC for the U.S. Department of Energy. The
@@ -47,60 +45,78 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
+ * ###########################################################################
  *
+ * Notes: See the various mesh types in AST/Types.h for some
+ * -----  more details on Scout's mesh types.  It is important
+ *        to keep a connection between the various Decls in this
+ *        file and those types.
+ *
+ * #####
  */
 
-#ifndef __SCOUT_GRAPHICS_H__ 
-#define __SCOUT_GRAPHICS_H__
+#include "clang/Analysis/CFG.h"
 
-#if defined(__cplusplus)
-extern "C" {
-#endif
+#include <unordered_set>
 
-  // These interface calls were prototyped by Pat McCormick in NewRuntime.
+namespace clang {
 
-  // This call initializes the underlying graphics system.  It should
-  // be called prior to any graphics operations -- in our case we hook
-  // it into being run before the user's main() function is executed. 
-  // 
-  // CMS:  I made this return void.  Should make it return bool?  What would we do if it fails?
-  void __scrt_init_graphics();
+  class LastRenderall{
+  public:
+    typedef std::unordered_set<CFGBlock*> BlockSet;
+    
+    static void Run(Sema& S, FunctionDecl* fd){
+      CFG* cfg =
+      CFG::buildCFG(fd, fd->getBody(), &S.Context, CFG::BuildOptions());
 
-  // This is our sole opaque type for dealing with render targets
-  // within the runtime.  Note that we also maintain a C-compatible
-  // calling interface so we can support both Scout C and Scout C++
-  // without multiple libraries.  That said, we use C++ under the hood
-  // and thus C programs have to link with C++ (which we handle within
-  // 'scc' so it should hopefully be transparent to the programmer).
-  typedef void* __scrt_target_t;
-
-  /// Create an on screen (window-based) rendering target of the given
-  /// width and height in pixels.
-  __scrt_target_t __scrt_create_window(unsigned short width, unsigned short height);
-
-  float*
-  __scrt_window_quad_renderable_colors(unsigned int width,
-                                       unsigned int height, 
-                                       unsigned int depth,
-                                       void* renderTarget);
+      BlockSet vs;
+      Visit(cfg, vs, cfg->getEntry());
+      
+      delete cfg;
+    }
+    
+    static void Visit(CFG* cfg,
+                      BlockSet& vs,
+                      CFGBlock& block,
+                      const RenderallMeshStmt* last=0){
+      
+      vs.insert(&block);
+      
+      for(auto itr = block.begin(), itrEnd = block.end();
+          itr != itrEnd; ++itr){
+        
+        auto o = itr->getAs<CFGStmt>();
+        if(!o.hasValue()){
+          continue;
+        }
+        
+        const Stmt* stmt = o.getValue().getStmt();
+        
+        const RenderallMeshStmt* rs = dyn_cast<RenderallMeshStmt>(stmt);
+        if(rs){
+          last = rs;
+        }
+      }
+      
+      if(block.succ_empty()){
+        if(last){
+          last->setLast(true);
+        }
+        
+        return;
+      }
+      
+      for(auto itr = block.succ_begin(), itrEnd = block.succ_end();
+          itr != itrEnd; ++itr){
+        CFGBlock::AdjacentBlock b = *itr;
+        
+        CFGBlock* block = b.getReachableBlock();
+        
+        if(block && vs.find(block) == vs.end()){
+          Visit(cfg, vs, *block, last);
+        }
+      }
+    }
+  };
   
-  float*
-  __scrt_window_quad_renderable_vertex_colors(unsigned int width,
-                                              unsigned int height, 
-                                              unsigned int depth,
-                                              void* renderTarget);
-
-  float*
-  __scrt_window_quad_renderable_edge_colors(unsigned int width,
-                                            unsigned int height, 
-                                            unsigned int depth,
-                                            void* renderTarget);
-
-  void __scrt_window_paint(void* renderTarget);
-
-#if defined(__cplusplus)
-}
-#endif
-
-#endif
-
+} // end namespace clang

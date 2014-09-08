@@ -32,6 +32,7 @@ using namespace LegionRuntime::Accessor;
 #include <map>
 #include <set>
 #include <list>
+#include <deque>
 #include <vector>
 
 #include <pthread.h>
@@ -45,7 +46,8 @@ using namespace LegionRuntime::Accessor;
 
 // The number of threads for this version
 #define NUM_PROCS	4
-#define NUM_UTIL_PROCS  0
+#define NUM_UTIL_PROCS  1
+#define NUM_DMA_THREADS 1
 // Maximum memory in global
 #define GLOBAL_MEM      4096   // (MB)	
 #define LOCAL_MEM       16384  // (KB)
@@ -127,12 +129,15 @@ namespace LegionRuntime {
     class ReservationImpl;
     class MemoryImpl;
     class ProcessorImpl;
+    class DMAQueue;
+    class CopyOperation;
 
     class Runtime {
     public:
       Runtime(Machine *m, const ReductionOpTable &table);
     public:
       static Runtime* get_runtime(void) { return runtime; } 
+      static DMAQueue *get_dma_queue(void) { return dma_queue; }
 
       EventImpl*           get_event_impl(Event e);
       ReservationImpl*     get_reservation_impl(Reservation r);
@@ -163,6 +168,7 @@ namespace LegionRuntime {
       void print_event_waiters(void);
     protected:
       static Runtime *runtime;
+      static DMAQueue *dma_queue;
     protected:
       friend class Machine;
       ReductionOpTable redop_table;
@@ -191,6 +197,27 @@ namespace LegionRuntime {
 
     /* static */
     Runtime *Runtime::runtime = NULL;
+    DMAQueue *Runtime::dma_queue = NULL;
+
+    class DMAQueue {
+    public:
+      DMAQueue(unsigned num_threads);
+    public:
+      void start(void);
+      void shutdown(void);
+      void run_dma_loop(void);
+      void enqueue_dma(CopyOperation *copy);
+    public:
+      static void* start_dma_thread(void *args);
+    public:
+      const unsigned num_dma_threads;
+    protected:
+      bool dma_shutdown;
+      pthread_mutex_t dma_lock;
+      pthread_cond_t dma_cond;
+      std::vector<pthread_t> dma_threads;
+      std::deque<CopyOperation*> ready_copies;
+    };
     
     struct TimerStackEntry {
     public:
@@ -2199,6 +2226,8 @@ namespace LegionRuntime {
       first_enabled_elmt = rhs.first_enabled_elmt;
       last_enabled_elmt = rhs.last_enabled_elmt;
       size_t bytes_needed = rhs.raw_size();
+      if (raw_data)
+        free(raw_data);
       raw_data = calloc(1, bytes_needed);
       if (rhs.raw_data)
       {
@@ -2334,6 +2363,31 @@ namespace LegionRuntime {
         assert(false);
       }
       return true;
+    }
+
+    bool ElementMask::operator==(const ElementMask &other) const
+    {
+      if (num_elements != other.num_elements)
+        return false;
+      if (raw_data != 0) {
+        ElementMaskImpl *impl = (ElementMaskImpl *)raw_data;
+        assert(other.raw_data != 0);
+        ElementMaskImpl *other_impl = (ElementMaskImpl *)other.raw_data;
+        const int max_full = ((num_elements+31) >> 5);
+        for (int index = 0; index < max_full; index++)
+        {
+          if (impl->bits[index] != other_impl->bits[index])
+            return false;
+        }
+      } else {
+        assert(false);
+      }
+      return true;
+    }
+
+    bool ElementMask::operator!=(const ElementMask &other) const
+    {
+      return !((*this) == other);
     }
 
     ElementMask ElementMask::operator|(const ElementMask &other) const
@@ -2544,6 +2598,48 @@ namespace LegionRuntime {
       }
     }
 
+    ////////////////////////////////////////////////////////
+    // CopyOperation (Declaration Only) 
+    ////////////////////////////////////////////////////////
+
+    class CopyOperation : public Triggerable {
+    public:
+      CopyOperation(const std::vector<Domain::CopySrcDstField>& _srcs,
+                    const std::vector<Domain::CopySrcDstField>& _dsts,
+                    const Domain _domain,
+                    ReductionOpID _redop_id, bool _red_fold,
+                    EventImpl *_done_event)
+        : srcs(_srcs), dsts(_dsts), 
+          domain(_domain),
+          redop_id(_redop_id), red_fold(_red_fold),
+          done_event(_done_event) 
+      {
+        PTHREAD_SAFE_CALL(pthread_mutex_init(&mutex,NULL));    
+        // If we don't have a done event, make one
+        if (!done_event)
+          done_event = Runtime::get_runtime()->get_free_event();
+      }
+
+      ~CopyOperation(void)
+      {
+        PTHREAD_SAFE_CALL(pthread_mutex_destroy(&mutex));
+      }
+
+      void perform_copy_operation(void);
+
+      virtual void trigger(unsigned count = 1, TriggerHandle handle = 0);
+
+      Event register_copy(Event wait_on);
+
+    protected:
+      std::vector<Domain::CopySrcDstField> srcs;
+      std::vector<Domain::CopySrcDstField> dsts;
+      Domain domain;
+      ReductionOpID redop_id;
+      bool red_fold;
+      EventImpl *done_event;
+      pthread_mutex_t mutex;
+    };
 
     ////////////////////////////////////////////////////////
     // IndexSpace::Impl (Declaration Only) 
@@ -2619,104 +2715,7 @@ namespace LegionRuntime {
 		   Event wait_on,
 		   ReductionOpID redop_id = 0, bool red_fold = false);
 
-        class CopyOperation : public Triggerable {
-	public:
-	  CopyOperation(const std::vector<Domain::CopySrcDstField>& _srcs,
-			const std::vector<Domain::CopySrcDstField>& _dsts,
-			const Domain _domain,
-			ReductionOpID _redop_id, bool _red_fold,
-			EventImpl *_done_event)
-	    : srcs(_srcs), dsts(_dsts), 
-	      domain(_domain),
-	      redop_id(_redop_id), red_fold(_red_fold),
-	      done_event(_done_event) 
-          {
-            PTHREAD_SAFE_CALL(pthread_mutex_init(&mutex,NULL));    
-          }
-
-          ~CopyOperation(void)
-          {
-            PTHREAD_SAFE_CALL(pthread_mutex_destroy(&mutex));
-          }
-
-	  virtual void trigger(unsigned count = 1, TriggerHandle handle = 0)
-	  {
-#ifdef LEGION_LOGGING
-            LegionRuntime::HighLevel::LegionLogging::log_timing_event(
-                                          Machine::get_executing_processor(),
-                                          done_event->get_event(), COPY_READY);
-#endif
-	    perform_copy_operation();
-            // Trigger the done event if it exists when we're done
-            // Hold the lock when reading done event since we need to make
-            // sure it has been set if it needs to be set
-            PTHREAD_SAFE_CALL(pthread_mutex_lock(&mutex));
-            EventImpl *done_clone = done_event;
-            PTHREAD_SAFE_CALL(pthread_mutex_unlock(&mutex));
-            if (done_clone)
-              done_clone->trigger();
-	    delete this;
-	  }
-
-	  // registers the copy event with the before_event - returns true if successful, false if not
-	  //  (in which case the copy is performed immediately)
-	  Event register_copy(Event wait_on)
-	  {
-            Event result = Event::NO_EVENT;
-            EventImpl *done_clone = NULL;
-	    if (wait_on.exists()) {
-	      // Try registering this as a triggerable with the event	
-	      EventImpl *event_impl = Runtime::get_runtime()->get_event_impl(wait_on);
-              // Need to hold the mutex here in case we have to set the done_event
-              // to make sure it gets set before trigger is called
-              PTHREAD_SAFE_CALL(pthread_mutex_lock(&mutex));
-	      if (event_impl->register_dependent(this, wait_on.gen, 0)) {
-		// make sure we have a completion event
-		if (!done_event)
-		  done_event = Runtime::get_runtime()->get_free_event();
-                result = done_event->get_event();
-                PTHREAD_SAFE_CALL(pthread_mutex_unlock(&mutex));
-                return result;
-	      }
-              done_clone = done_event;
-              PTHREAD_SAFE_CALL(pthread_mutex_unlock(&mutex));
-	    }
-#ifdef LEGION_LOGGING
-            else
-            {
-              assert(done_event != NULL);
-              done_clone = done_event;
-            }
-            LegionRuntime::HighLevel::LegionLogging::log_timing_event(
-                                          Machine::get_executing_processor(),
-                                          done_event->get_event(), COPY_INIT);
-#endif
-
-	    // either there was no wait event or it has already fired
-	    perform_copy_operation();
-            if (done_clone)
-            {
-#ifdef LEGION_LOGGING
-              if (!result.exists())
-                result = done_clone->get_event();
-#endif
-              done_clone->trigger();
-            }
-            // We're done, so we can free ourselves
-            delete this;
-            return result;
-	  }
-
-	protected:
-	  void perform_copy_operation(void);
-	  std::vector<Domain::CopySrcDstField> srcs;
-	  std::vector<Domain::CopySrcDstField> dsts;
-	  Domain domain;
-	  ReductionOpID redop_id;
-	  bool red_fold;
-	  EventImpl *done_event;
-          pthread_mutex_t mutex;
-	};
+        
 
     public:
         // Traverse up the tree to the parent region that owns the master allocator
@@ -4275,12 +4274,47 @@ namespace LegionRuntime {
       };
     };
 
-    void IndexSpace::Impl::CopyOperation::perform_copy_operation(void)
+    void CopyOperation::trigger(unsigned count, TriggerHandle handle)
+    {
+#ifdef LEGION_LOGGING
+      LegionRuntime::HighLevel::LegionLogging::log_timing_event(
+                                    Machine::get_executing_processor(),
+                                    done_event->get_event(), COPY_READY);
+#endif
+      // Register this with the DMAQueue
+      Runtime::get_dma_queue()->enqueue_dma(this);
+    }
+
+    Event CopyOperation::register_copy(Event wait_on)
+    {
+#ifdef LEGION_LOGGING
+      LegionRuntime::HighLevel::LegionLogging::log_timing_event(
+                                    Machine::get_executing_processor(),
+                                    done_event->get_event(), COPY_INIT);
+#endif
+      Event result = done_event->get_event();
+      bool enqueue = true;
+      if (wait_on.exists())
+      {
+        EventImpl *event_impl = Runtime::get_runtime()->get_event_impl(wait_on);
+        // Need to hold the mutex here in case we have to set the done_event
+        // to make sure it gets set before trigger is called
+        PTHREAD_SAFE_CALL(pthread_mutex_lock(&mutex));
+        if (event_impl->register_dependent(this, wait_on.gen, 0)) 
+          enqueue = false;
+        PTHREAD_SAFE_CALL(pthread_mutex_unlock(&mutex));
+      }
+      if (enqueue)
+        Runtime::get_dma_queue()->enqueue_dma(this);
+      return result;
+    }
+
+    void CopyOperation::perform_copy_operation(void)
     {
       DetailedTimer::ScopedPush sp(TIME_COPY); 
 #ifdef LEGION_LOGGING
       LegionRuntime::HighLevel::LegionLogging::log_timing_event(
-                                    Machine::get_executing_processor(),
+                                    Processor::NO_PROC,
                                     done_event->get_event(), COPY_BEGIN);
 #endif
 
@@ -4327,9 +4361,11 @@ namespace LegionRuntime {
       }
 #ifdef LEGION_LOGGING
       LegionRuntime::HighLevel::LegionLogging::log_timing_event(
-                                      Machine::get_executing_processor(),
+                                      Processor::NO_PROC,
                                       done_event->get_event(), COPY_END);
 #endif
+      // Trigger the event indicating that we are done
+      done_event->trigger();
     }
 
     Event IndexSpace::Impl::copy(RegionInstance src_inst, RegionInstance dst_inst, size_t elem_size,
@@ -4363,19 +4399,102 @@ namespace LegionRuntime {
       return co->register_copy(wait_on);
     }
 
-#if 0
-    Event IndexSpace::Impl::copy(const std::vector<Domain::CopySrcDstField>& srcs,
-				 const std::vector<Domain::CopySrcDstField>& dsts,
-				 const ElementMask& mask, Event wait_on,
-				 ReductionOpID redop_id, bool red_fold)
+    ////////////////////////////////////////////////////////
+    // DMA Queue 
+    ////////////////////////////////////////////////////////
+
+    DMAQueue::DMAQueue(unsigned num_threads)
+      : num_dma_threads(num_threads), dma_shutdown(false)
     {
-      CopyOperation *co = new CopyOperation(srcs, dsts, 
-					    get_element_mask(), mask,
-					    redop_id, red_fold,
-					    0);
-      return co->register_copy(wait_on);
+      PTHREAD_SAFE_CALL(pthread_mutex_init(&dma_lock,NULL));
+      PTHREAD_SAFE_CALL(pthread_cond_init(&dma_cond,NULL));
+      dma_threads.resize(num_dma_threads);
     }
-#endif
+
+    void DMAQueue::start(void)
+    {
+      pthread_attr_t attr;
+      PTHREAD_SAFE_CALL(pthread_attr_init(&attr));
+      for (unsigned idx = 0; idx < num_dma_threads; idx++)
+      {
+        PTHREAD_SAFE_CALL(pthread_create(&dma_threads[idx], &attr,
+                                         DMAQueue::start_dma_thread, (void*)this));
+      }
+      PTHREAD_SAFE_CALL(pthread_attr_destroy(&attr));
+    }
+
+    void DMAQueue::shutdown(void)
+    {
+      PTHREAD_SAFE_CALL(pthread_mutex_lock(&dma_lock));
+      dma_shutdown = true;
+      PTHREAD_SAFE_CALL(pthread_cond_broadcast(&dma_cond));
+      PTHREAD_SAFE_CALL(pthread_mutex_unlock(&dma_lock));
+      // Now join on all the threads
+      for (unsigned idx = 0; idx < num_dma_threads; idx++)
+      {
+        void *result;
+        PTHREAD_SAFE_CALL(pthread_join(dma_threads[idx],&result));
+      }
+    }
+
+    void DMAQueue::run_dma_loop(void)
+    {
+      while (true)
+      {
+        CopyOperation *copy = NULL;
+        PTHREAD_SAFE_CALL(pthread_mutex_lock(&dma_lock));
+        if (ready_copies.empty() && !dma_shutdown)
+        {
+          // Go to sleep
+          PTHREAD_SAFE_CALL(pthread_cond_wait(&dma_cond, &dma_lock));
+        }
+        // When we wake up see if there is anything
+        // to do or see if we are done
+        if (!ready_copies.empty())
+        {
+          copy = ready_copies.front();
+          ready_copies.pop_front();
+        }
+        else if (dma_shutdown)
+        {
+          PTHREAD_SAFE_CALL(pthread_mutex_unlock(&dma_lock));
+          // Break out of the loop
+          break;
+        }
+        // Release our lock
+        PTHREAD_SAFE_CALL(pthread_mutex_unlock(&dma_lock));
+        // If we have a copy perform it and then delete it
+        if (copy != NULL)
+        {
+          copy->perform_copy_operation();
+          delete copy;
+        }
+      }
+    }
+
+    void DMAQueue::enqueue_dma(CopyOperation *copy)
+    {
+      if (num_dma_threads > 0)
+      {
+        PTHREAD_SAFE_CALL(pthread_mutex_lock(&dma_lock));
+        ready_copies.push_back(copy);
+        PTHREAD_SAFE_CALL(pthread_cond_signal(&dma_cond));
+        PTHREAD_SAFE_CALL(pthread_mutex_unlock(&dma_lock));
+      }
+      else
+      {
+        // If we don't have any dma threads, just do the copy now
+        copy->perform_copy_operation();
+        delete copy;
+      }
+    }
+
+    /*static*/ void* DMAQueue::start_dma_thread(void *args)
+    {
+      DMAQueue *dma_queue = (DMAQueue*)args;
+      dma_queue->run_dma_loop();
+      pthread_exit(NULL);
+    }
 
     ////////////////////////////////////////////////////////
     // Machine 
@@ -4397,6 +4516,7 @@ namespace LegionRuntime {
 
         unsigned num_cpus = NUM_PROCS;
         unsigned num_utility_cpus = NUM_UTIL_PROCS;
+        unsigned num_dma_threads = NUM_DMA_THREADS;
         size_t cpu_mem_size_in_mb = GLOBAL_MEM;
         size_t cpu_l1_size_in_kb = LOCAL_MEM;
         size_t cpu_stack_size = STACK_SIZE;
@@ -4419,7 +4539,8 @@ namespace LegionRuntime {
           INT_ARG("-ll:csize", cpu_mem_size_in_mb);
           INT_ARG("-ll:l1size", cpu_l1_size_in_kb);
           INT_ARG("-ll:cpu", num_cpus);
-          INT_ARG("-ll:util",num_utility_cpus);
+          INT_ARG("-ll:util", num_utility_cpus);
+          INT_ARG("-ll:dma", num_dma_threads);
           INT_ARG("-ll:stack",cpu_stack_size);
 #undef INT_ARG
         }
@@ -4434,6 +4555,7 @@ namespace LegionRuntime {
 
 	// Create the runtime and initialize with this machine
 	Runtime::runtime = new Runtime(this, redop_table);
+        Runtime::dma_queue = new DMAQueue(num_dma_threads);
 
         // Initialize the logger
         Logger::init(*argc, (const char**)*argv);
@@ -4706,6 +4828,7 @@ namespace LegionRuntime {
               ProcessorImpl *impl = Runtime::runtime->processors[id];
               PTHREAD_SAFE_CALL(pthread_create(&(other_threads[id]), &(impl->attr), ProcessorImpl::start, (void*)impl));
       }
+      Runtime::dma_queue->start();
 
       // Now run the scheduler
       ProcessorImpl *impl = Runtime::runtime->processors[1];
@@ -4716,6 +4839,7 @@ namespace LegionRuntime {
           void *result;
           PTHREAD_SAFE_CALL(pthread_join(other_threads[id],&result));
       }
+      Runtime::dma_queue->shutdown();
 #ifdef ORDERED_LOGGING 
       Logger::finalize();
 #endif
@@ -4731,6 +4855,7 @@ namespace LegionRuntime {
 	// Kill pill
 	it->spawn(0, NULL, 0);
       }
+      Runtime::dma_queue->shutdown();
     }
 
     void Machine::wait_for_shutdown(void)
@@ -5485,22 +5610,6 @@ namespace LegionRuntime {
       return false;
     }
 
-#ifdef POINTER_CHECKS
-    void AccessorType::verify_access(void *impl_ptr, unsigned ptr) 
-    {
-      assert(impl_ptr != NULL);
-      RegionInstance::Impl *impl = (RegionInstance::Impl *) impl_ptr;
-      impl->verify_access(ptr);
-    }
-
-    void AccessorType::verify_access(void *impl_ptr, const LowLevel::DomainPoint& dp)
-    {
-        assert(impl_ptr != NULL);
-        RegionInstance::Impl *impl = (RegionInstance::Impl *) impl_ptr;
-	int index = impl->get_linearization().get_image(dp);
-	impl->verify_access(index);
-    }
-#endif
   };
 
   namespace Arrays {

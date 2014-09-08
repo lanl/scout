@@ -1,8 +1,8 @@
 #
 ###########################################################################
-# Copyright (c) 2010, Los Alamos National Security, LLC.
+# Copyright (c) 2014, Los Alamos National Security, LLC.
 # All rights reserved.
-# 
+#
 #  Copyright 2010. Los Alamos National Security, LLC. This software was
 #  produced under U.S. Government contract DE-AC52-06NA25396 for Los
 #  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -23,8 +23,8 @@
 #
 #    * Redistributions in binary form must reproduce the above
 #      copyright notice, this list of conditions and the following
-#      disclaimer in the documentation and/or other materials provided 
-#      with the distribution.  
+#      disclaimer in the documentation and/or other materials provided
+#      with the distribution.
 #
 #    * Neither the name of Los Alamos National Security, LLC, Los
 #      Alamos National Laboratory, LANL, the U.S. Government, nor the
@@ -49,48 +49,43 @@
 ###########################################################################
 #
 
-project(scout_test_scxx_warning)
+project(lsci)
 
-set(SRC_PATH ${CMAKE_SOURCE_DIR}/sc++/warning)
+# Build w/ clang ignoring any delete-non-virtual-dtor warnings
+set(CMAKE_C_COMPILER ${SCOUT_BUILD_DIR}/bin/clang)
+set(CMAKE_C_FLAGS "-DSHARED_LOWLEVEL -Wno-delete-non-virtual-dtor")
+set(CMAKE_CXX_COMPILER ${SCOUT_BUILD_DIR}/bin/clang++)
+set(CMAKE_CXX_FLAGS "-DSHARED_LOWLEVEL -Wno-delete-non-virtual-dtor")
 
-set(name empty-mesh)
-set(tname sc++_warning_${name})
-add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
-set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
-    "warning: mesh definition with no fields")
-set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+set(LG_RT_DIR ${SCOUT_SRC_DIR}/legion/runtime)
 
-set(name forall-mesh-shadow)
-set(tname sc++_warning_${name})
-add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
-set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
-    "warning: forall loop variable 'c' shadows an existing identifier")
+list(APPEND low_level_src ${LG_RT_DIR}/shared_lowlevel.cc)
 
-set(name forall-array-shadow)
-set(tname sc++_warning_${name})
-add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
-set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
-    "warning: forall loop variable 'i' shadows an existing identifier")
+list(APPEND mapper_src 
+  ${LG_RT_DIR}/default_mapper.cc 
+  ${LG_RT_DIR}/shim_mapper.cc 
+  ${LG_RT_DIR}/mapping_utilities.cc
+)
 
-set(name dup)
-set(tname sc++_warning_${name})
-add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
-set_property(TEST ${tname} PROPERTY FAIL_REGULAR_EXPRESSION "2 warnings generated")
+list(APPEND high_level_src 
+  ${LG_RT_DIR}/legion.cc 
+  ${LG_RT_DIR}/legion_ops.cc 
+  ${LG_RT_DIR}/legion_tasks.cc 
+  ${LG_RT_DIR}/legion_trace.cc 
+  ${LG_RT_DIR}/legion_spy.cc 
+  ${LG_RT_DIR}/region_tree.cc 
+  ${LG_RT_DIR}/runtime.cc
+  ${LG_RT_DIR}/garbage_collection.cc
+)
 
-set(name intrinsics-scope)
-set(tname sc++_warning_${name})
-add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
-set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
-    "warning: builtin mesh intrinsics called outside of mesh construct")
+list(APPEND lsci_src ${SCOUT_SRC_DIR}/legion/liblsci/lib/lsci.cc)
 
-set(name intrinsics-scope2)
-set(tname sc++_warning_${name})
-add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
-set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
-    "warning: builtin mesh intrinsics called outside of mesh construct")
+include_directories(
+  liblsci/lib/
+  runtime
+)
 
-set(name task-io)
-set(tname sc++_warning_${name})
-add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
-set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
-    "warning: I/O function called within task body")
+add_library(lsci STATIC ${low_level_src} ${mapper_src} ${high_level_src} ${lsci_src})
+add_dependencies(lsci scc)
+install(TARGETS lsci DESTINATION lib)
+

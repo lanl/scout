@@ -153,30 +153,13 @@ void __scrt_window_paint(void* renderTarget) {
   // this is funky -- should be a separate function 
   // (__scrt_window_quad_renderable_unmap_colors)
   ((glQuadRenderableVA*)(window->getCurrentRenderable()))->unmap_colors();
-  window->paint();
-  window->swapBuffers();
-  window->pollEvents();
-}
 
-extern "C"
-void __scrt_window_paint_vertices(void* renderTarget) {
-  glWindow* window = (glWindow*)renderTarget;
-  // this is funky -- should be a separate function 
-  // (__scrt_window_quad_renderable_unmap_colors)
   ((glQuadRenderableVA*)(window->getCurrentRenderable()))->
     unmap_vertex_colors();
-  window->paint();
-  window->swapBuffers();
-  window->pollEvents();
-}
 
-extern "C"
-void __scrt_window_paint_edges(void* renderTarget) {
-  glWindow* window = (glWindow*)renderTarget;
-  // this is funky -- should be a separate function 
-  // (__scrt_window_quad_renderable_unmap_colors)
   ((glQuadRenderableVA*)(window->getCurrentRenderable()))->
     unmap_edge_colors();
+
   window->paint();
   window->swapBuffers();
   window->pollEvents();

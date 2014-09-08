@@ -23,6 +23,7 @@
 #include "legion_logging.h"
 #include "legion_profiling.h"
 #include "interval_tree.h"
+#include "rectangle_set.h"
 
 namespace LegionRuntime {
   namespace HighLevel {
@@ -314,11 +315,34 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    bool RegionTreeForest::has_multiple_domains(IndexSpace handle)
+    //--------------------------------------------------------------------------
+    {
+      IndexSpaceNode *node = get_node(handle);
+      return node->has_component_domains();
+    }
+
+    //--------------------------------------------------------------------------
     Domain RegionTreeForest::get_index_space_domain(IndexSpace handle)
     //--------------------------------------------------------------------------
     {
       IndexSpaceNode *node = get_node(handle);
       return node->domain;
+    }
+
+    //--------------------------------------------------------------------------
+    void RegionTreeForest::get_index_space_domains(IndexSpace handle,
+                                                   std::vector<Domain> &domains)
+    //--------------------------------------------------------------------------
+    {
+      IndexSpaceNode *node = get_node(handle);
+      if (node->has_component_domains())
+      {
+        const std::set<Domain> &comp_domains = node->get_component_domains();
+        domains.insert(domains.end(), comp_domains.begin(), comp_domains.end());
+      }
+      else
+        domains.push_back(node->domain);
     }
 
     //--------------------------------------------------------------------------
@@ -412,7 +436,14 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       IndexSpaceNode *node = get_node(handle);
-      return node->domain.get_volume();
+      if (node->domain.get_dim() == 0)
+      {
+        const LowLevel::ElementMask &mask = 
+          node->domain.get_index_space().get_valid_mask();
+        return mask.get_num_elmts();
+      }
+      else
+        return node->domain.get_volume();
     }
 
     //--------------------------------------------------------------------------
@@ -703,7 +734,15 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       RegionNode *node = get_node(handle);
-      return node->get_domain().get_volume();
+      Domain d = node->get_domain();
+      if (d.get_dim() == 0)
+      {
+        const LowLevel::ElementMask &mask = 
+          d.get_index_space().get_valid_mask();
+        return mask.get_num_elmts();
+      }
+      else
+        return d.get_volume();
     }
 
     //--------------------------------------------------------------------------
@@ -1438,8 +1477,8 @@ namespace LegionRuntime {
                                                const RegionRequirement &req,
                                                UniqueID unique_id,
                                                AddressSpaceID target,
-                                           std::set<LogicalView*> &needed_views,
-                                   std::set<PhysicalManager*> &needed_managers)
+                                 std::map<LogicalView*,FieldMask> &needed_views,
+                                 std::set<PhysicalManager*> &needed_managers)
     //--------------------------------------------------------------------------
     {
       RegionTreeNode *top_node;
@@ -1640,7 +1679,7 @@ namespace LegionRuntime {
 
     //--------------------------------------------------------------------------
     void RegionTreeForest::send_remote_references(
-                                     const std::set<LogicalView*> &needed_views,
+                           const std::map<LogicalView*,FieldMask> &needed_views,
        const std::set<PhysicalManager*> &needed_managers, AddressSpaceID target)
     //--------------------------------------------------------------------------
     {
@@ -1659,10 +1698,10 @@ namespace LegionRuntime {
         {
           RezCheck z(rez);
           rez.serialize(needed_views.size());
-          for (std::set<LogicalView*>::const_iterator it = 
+          for (std::map<LogicalView*,FieldMask>::const_iterator it = 
                 needed_views.begin(); it != needed_views.end(); it++)
           {
-            rez.serialize((*it)->find_distributed_id(target));
+            rez.serialize(it->first->find_distributed_id(target));
           }
           rez.serialize(send_ids.size());
           for (unsigned idx = 0; idx < send_ids.size(); idx++)
@@ -2333,6 +2372,38 @@ namespace LegionRuntime {
       // Otherwise they are not in the same tree
       // and therefore by definition disjoint
       return true;
+    }
+
+    //--------------------------------------------------------------------------
+    bool RegionTreeForest::are_compatible(IndexSpace left, IndexSpace right)
+    //--------------------------------------------------------------------------
+    {
+      IndexSpaceNode *left_node = get_node(left);
+      IndexSpaceNode *right_node = get_node(right);
+      if (left_node->domain.get_dim() != right_node->domain.get_dim())
+        return false;
+      else if (left_node->domain.get_dim() == 0)
+      {
+        const LowLevel::ElementMask &left_mask = 
+          left_node->handle.get_valid_mask();
+        const LowLevel::ElementMask &right_mask = 
+          right_node->handle.get_valid_mask();
+        return (left_mask.get_num_elmts() == right_mask.get_num_elmts());
+      }
+      return true;
+    }
+
+    //--------------------------------------------------------------------------
+    bool RegionTreeForest::is_dominated(IndexSpace src, IndexSpace dst)
+    //--------------------------------------------------------------------------
+    {
+      // Check to see if dst is dominated by source
+#ifdef DEBUG_HIGH_LEVEL
+      assert(are_compatible(src, dst));
+#endif
+      IndexSpaceNode *src_node = get_node(src);
+      IndexSpaceNode *dst_node = get_node(dst);
+      return src_node->dominates(dst_node);
     }
 
     //--------------------------------------------------------------------------
@@ -3546,19 +3617,19 @@ namespace LegionRuntime {
               // Construct an interval tree for the left set
               // and then check to see if all the intervals within
               // the right set are dominated by an interval in the tree
-              IntervalTree<int> intervals;
+              IntervalTree<int,true/*discrete*/> intervals;
               for (std::set<Domain>::const_iterator it = left_set.begin();
                     it != left_set.end(); it++)
               {
                 Rect<1> left_rect = it->get_rect<1>();
-                intervals.insert(left_rect.lo[0], left_rect.hi[0]+1);
+                intervals.insert(left_rect.lo[0], left_rect.hi[0]);
               }
               dominates = true;
               for (std::set<Domain>::const_iterator it = right_set.begin();
                     it != right_set.end(); it++)
               {
                 Rect<1> right_rect = it->get_rect<1>();
-                if (!intervals.dominates(right_rect.lo[0], right_rect.hi[0]+1))
+                if (!intervals.dominates(right_rect.lo[0], right_rect.hi[0]))
                 {
                   dominates = false;
                   break;
@@ -3568,25 +3639,21 @@ namespace LegionRuntime {
             }
           case 2:
             {
-              // TODO: Improve this terrible approximation
-              dominates = true;
-              for (std::set<Domain>::const_iterator rit = right_set.begin();
-                    (rit != right_set.end()) && dominates; rit++)
+              RectangleSet<int,true/*discrete*/> rectangles;
+              for (std::set<Domain>::const_iterator it = left_set.begin();
+                    it != left_set.end(); it++)
               {
-                Rect<2> right_rect = rit->get_rect<2>();
-                bool has_dominator = false;
-                // See if any of the rectangles on the left dominate it
-                for (std::set<Domain>::const_iterator lit = left_set.begin();
-                      lit != left_set.end(); lit++)
-                {
-                  Rect<2> left_rect = lit->get_rect<2>();
-                  if (right_rect.intersection(left_rect) == right_rect)
-                  {
-                    has_dominator = true;
-                    break;
-                  }
-                }
-                if (!has_dominator)
+                Rect<2> left_rect = it->get_rect<2>();
+                rectangles.add_rectangle(left_rect.lo[0], left_rect.lo[1],
+                                         left_rect.hi[0], left_rect.hi[1]);
+              }
+              dominates = true;
+              for (std::set<Domain>::const_iterator it = right_set.begin();
+                    it != right_set.end(); it++)
+              {
+                Rect<2> right_rect = it->get_rect<2>();
+                if (!rectangles.covers(right_rect.lo[0], right_rect.lo[1],
+                                       right_rect.hi[0], right_rect.hi[1]))
                 {
                   dominates = false;
                   break;
@@ -3806,7 +3873,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       AutoLock n_lock(node_lock);
-      creation_set.insert(source);
+      creation_set.set_bit(source);
     }
 
     //--------------------------------------------------------------------------
@@ -3816,7 +3883,7 @@ namespace LegionRuntime {
       if (parent != NULL)
         parent->remove_child(color);
       AutoLock n_lock(node_lock);
-      destruction_set.insert(source);
+      destruction_set.set_bit(source);
       for (std::set<RegionNode*>::const_iterator it = logical_nodes.begin();
             it != logical_nodes.end(); it++)
       {
@@ -3892,8 +3959,14 @@ namespace LegionRuntime {
       }
       AutoLock n_lock(node_lock);
       if (result)
-        intersections[other] = IntersectInfo(true/*has intersects*/,
-                                             own_results, intersect);
+      {
+        // Check to make sure we didn't lose the race
+        if (intersections.find(other) == intersections.end())
+        {
+          intersections[other] = IntersectInfo(true/*has intersects*/,
+                                               own_results, intersect);
+        }
+      }
       else
         intersections[other] = IntersectInfo(false/*has intersects*/, 
                                              false/*own*/);
@@ -3937,8 +4010,14 @@ namespace LegionRuntime {
       }
       AutoLock n_lock(node_lock);
       if (result)
-        intersections[other] = IntersectInfo(true/*has intersects*/,
-                                             own_results, intersect);
+      {
+        // Check to make sure we didn't lose the race
+        if (intersections.find(other) == intersections.end())
+        {
+          intersections[other] = IntersectInfo(true/*has intersects*/,
+                                               own_results, intersect);
+        }
+      }
       else
         intersections[other] = IntersectInfo(false/*has intersects*/,
                                              false/*own*/);
@@ -3993,8 +4072,14 @@ namespace LegionRuntime {
       }
       AutoLock n_lock(node_lock);
       if (result)
-        intersections[other] = IntersectInfo(true/*has intersects*/,
-                                             own_results, intersect);
+      {
+        // Check again to make sure we didn't lose the race
+        if (intersections.find(other) == intersections.end())
+        {
+          intersections[other] = IntersectInfo(true/*has intersects*/,
+                                               own_results, intersect);
+        }
+      }
       else
         intersections[other] = IntersectInfo(false/*has intersects*/, 
                                              false/*own*/);
@@ -4039,8 +4124,14 @@ namespace LegionRuntime {
       }
       AutoLock n_lock(node_lock);
       if (result)
-        intersections[other] = IntersectInfo(true/*has intersects*/,
-                                             own_results, intersect);
+      {
+        // Check again to make sure we didn't lose the race
+        if (intersections.find(other) == intersections.end())
+        {
+          intersections[other] = IntersectInfo(true/*has intersects*/,
+                                               own_results, intersect);
+        }
+      }
       else
         intersections[other] = IntersectInfo(false/*has intersects*/,
                                              false/*own*/);
@@ -4147,7 +4238,7 @@ namespace LegionRuntime {
       std::map<Color,IndexPartNode*> valid_copy;
       {
         AutoLock n_lock(node_lock);
-        if (creation_set.find(target) == creation_set.end())
+        if (!creation_set.is_set(target))
         {
           Serializer rez;
           {
@@ -4167,14 +4258,13 @@ namespace LegionRuntime {
             }
           }
           context->runtime->send_index_space_node(target, rez); 
-          creation_set.insert(target);
+          creation_set.set_bit(target);
         }
-        if (!destruction_set.empty() && 
-            (destruction_set.find(target) == destruction_set.end()))
+        if (!destruction_set.is_set(target))
         {
           // Now we need to send a destruction
           context->runtime->send_index_space_destruction(handle, target);
-          destruction_set.insert(target);
+          destruction_set.set_bit(target);
         }
         // If we need to go down, make a copy of the valid children
         if (down)
@@ -4440,7 +4530,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       AutoLock n_lock(node_lock);
-      creation_set.insert(source);
+      creation_set.set_bit(source);
     }
 
     //--------------------------------------------------------------------------
@@ -4450,7 +4540,7 @@ namespace LegionRuntime {
       if (parent != NULL)
         parent->remove_child(color);
       AutoLock n_lock(node_lock);
-      destruction_set.insert(source);
+      destruction_set.set_bit(source);
       for (std::set<PartitionNode*>::const_iterator it = logical_nodes.begin();
              it != logical_nodes.end(); it++)
       {
@@ -4709,7 +4799,7 @@ namespace LegionRuntime {
       std::map<Color,IndexSpaceNode*> valid_copy;
       {
         AutoLock n_lock(node_lock);
-        if (creation_set.find(target) == creation_set.end())
+        if (!creation_set.is_set(target))
         {
           Serializer rez;
           {
@@ -4721,14 +4811,13 @@ namespace LegionRuntime {
             rez.serialize(disjoint);
           }
           context->runtime->send_index_partition_node(target, rez);
-          creation_set.insert(target);
+          creation_set.set_bit(target);
         }
-        if (!destruction_set.empty() && 
-            (destruction_set.find(target) == destruction_set.end()))
+        if (!destruction_set.is_set(target))
         {
           // Send the deletion notification
           context->runtime->send_index_partition_destruction(handle, target);
-          destruction_set.insert(target);
+          destruction_set.set_bit(target);
         }
         if (down)
           valid_copy = valid_map;
@@ -4799,6 +4888,14 @@ namespace LegionRuntime {
     {
       node_lock.destroy_reservation();
       node_lock = Reservation::NO_RESERVATION;
+      for (std::map<FIELD_TYPE,std::deque<LayoutDescription*> >::iterator it =
+            layouts.begin(); it != layouts.end(); it++)
+      {
+        std::deque<LayoutDescription*> &descs = it->second;
+        for (unsigned idx = 0; idx < descs.size(); idx++)
+          delete descs[idx];
+      }
+      layouts.clear();
     }
 
     //--------------------------------------------------------------------------
@@ -4830,13 +4927,14 @@ namespace LegionRuntime {
       fields[fid] = FieldInfo(size, index, local);
       // Send messages to all our subscribers telling them about the allocation
       // as long as it is not local.  Local fields get sent by the task contexts
-      if (!local)
+      if (!local && !!creation_set)
       {
-        for (std::set<AddressSpaceID>::const_iterator it = creation_set.begin();
-              it != creation_set.end(); it++)
+        for (unsigned idx = 0; idx < MAX_NUM_NODES; idx++)
         {
-          context->runtime->send_field_allocation(handle, fid, size, 
-                                                  index, *it);
+          if (!creation_set.is_set(idx))
+            continue;
+          context->runtime->send_field_allocation(handle, fid, size,
+                                                  index, idx);
         }
       }
     }
@@ -4867,11 +4965,15 @@ namespace LegionRuntime {
         // all our subscribers telling them where we allocated the field
         // Note this includes sending it back to the source which sent
         // us the allocation in the first place
-        for (std::set<AddressSpaceID>::const_iterator it = 
-              creation_set.begin(); it != creation_set.end(); it++)
+        if (!!creation_set)
         {
-          context->runtime->send_field_allocation(handle, fid, size, 
-                                                  our_index, *it);
+          for (unsigned idx = 0; idx < MAX_NUM_NODES; idx++)
+          {
+            if (!creation_set.is_set(idx))
+              continue;
+            context->runtime->send_field_allocation(handle, fid, size,
+                                                    our_index, idx);
+          }
         }
       }
       else
@@ -4908,12 +5010,16 @@ namespace LegionRuntime {
       if (finder->second.destroyed)
         return;
       // Tell all our subscribers that we've destroyed the field
-      for (std::set<AddressSpaceID>::const_iterator it = 
-            creation_set.begin(); it != creation_set.end(); it++)
+      if (!!creation_set)
       {
-        if (source == (*it))
-          continue;
-        context->runtime->send_field_destruction(handle, fid, *it);
+        for (unsigned idx = 0; idx < MAX_NUM_NODES; idx++)
+        {
+          if (idx == source)
+            continue;
+          if (!creation_set.is_set(idx))
+            continue;
+          context->runtime->send_field_destruction(handle, fid, idx);
+        }
       }
       // Free the index
       free_index(finder->second.idx);
@@ -4966,7 +5072,7 @@ namespace LegionRuntime {
       for (std::set<RegionNode*>::const_iterator it = logical_nodes.begin();
             it != logical_nodes.end(); it++)
       {
-        if ((*it)->destruction_set.empty())
+        if (!(*it)->destruction_set)
           regions.insert((*it)->handle);
       }
     }
@@ -5001,7 +5107,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       AutoLock n_lock(node_lock);
-      creation_set.insert(source);
+      creation_set.set_bit(source);
     }
 
     //--------------------------------------------------------------------------
@@ -5009,7 +5115,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       AutoLock n_lock(node_lock);
-      destruction_set.insert(source);
+      destruction_set.set_bit(source);
       for (std::set<RegionNode*>::const_iterator it = logical_nodes.begin();
             it != logical_nodes.end(); it++)
       {
@@ -5059,6 +5165,18 @@ namespace LegionRuntime {
       }
 #endif
       return result;
+    }
+
+    //--------------------------------------------------------------------------
+    unsigned FieldSpaceNode::get_field_index(FieldID fid) const
+    //--------------------------------------------------------------------------
+    {
+      AutoLock n_lock(node_lock,1,false/*exclusive*/);
+      std::map<FieldID,FieldInfo>::const_iterator finder = fields.find(fid);
+#ifdef DEBUG_HIGH_LEVEL
+      assert(finder != fields.end());
+#endif
+      return finder->second.idx;
     }
 
     //--------------------------------------------------------------------------
@@ -5118,19 +5236,31 @@ namespace LegionRuntime {
           inst = domain.create_instance(location, field_size);
         if (inst.exists())
         {
-          std::map<FieldID,Domain::CopySrcDstField> field_infos;
-          field_infos[fid] = Domain::CopySrcDstField(inst, 0, field_size);
-          std::map<unsigned,FieldID> field_indexes;
-          field_indexes[field_index] = fid;
-          DistributedID did = context->runtime->get_available_distributed_id();
           FieldMask inst_mask = get_field_mask(create_fields);
+          // See if we can find a layout description object
+          LayoutDescription *layout = 
+            find_layout_description(inst_mask, domain, blocking_factor);
+          if (layout == NULL)
+          {
+            // Now we need to make a layout
+            std::vector<size_t> field_sizes(1);
+            std::vector<unsigned> indexes(1);
+            field_sizes[0] = field_size;
+            indexes[0] = field_index;
+            layout = create_layout_description(inst_mask, domain,
+                                               blocking_factor, 
+                                               create_fields,
+                                               field_sizes,
+                                               indexes);
+          }
+#ifdef DEBUG_HIGH_LEVEL
+          assert(layout != NULL);
+#endif
+          DistributedID did = context->runtime->get_available_distributed_id();
           result = new InstanceManager(context, did, 
                                        context->runtime->address_space,
                                        context->runtime->address_space,
-                                       location,
-                                       inst, node, inst_mask, 
-                                       blocking_factor, 
-                                       field_infos, field_indexes, 
+                                       location, inst, node, layout, 
                                        use_event, depth);
 #ifdef DEBUG_HIGH_LEVEL
           assert(result != NULL);
@@ -5150,7 +5280,7 @@ namespace LegionRuntime {
       else
       {
         std::vector<size_t> field_sizes(create_fields.size());
-        std::map<unsigned,FieldID> field_indexes;
+        std::vector<unsigned> indexes(create_fields.size());
         // Figure out the size of each element
         {
           // Need to hold the lock when accessing field infos
@@ -5164,7 +5294,7 @@ namespace LegionRuntime {
             assert(finder != fields.end());
 #endif
             field_sizes[idx] = finder->second.field_size;
-            field_indexes[finder->second.idx] = *it;
+            indexes[idx] = finder->second.idx;
           }
         }
         // First see if we can recycle a physical instance
@@ -5176,28 +5306,26 @@ namespace LegionRuntime {
           inst = domain.create_instance(location, field_sizes, blocking_factor);
         if (inst.exists())
         {
-          std::map<FieldID,Domain::CopySrcDstField> field_infos;
-          size_t accum_offset = 0;
-#ifdef DEBUG_HIGH_LEVEL
-          assert(field_sizes.size() == create_fields.size());
-#endif
-          unsigned idx = 0;
-          for (std::set<FieldID>::const_iterator it = 
-                create_fields.begin(); it != create_fields.end(); it++,idx++)
-          {
-            field_infos[*it] = 
-              Domain::CopySrcDstField(inst, accum_offset, field_sizes[idx]);
-            accum_offset += field_sizes[idx];
-          }
-          DistributedID did = context->runtime->get_available_distributed_id();
           FieldMask inst_mask = get_field_mask(create_fields);
+          LayoutDescription *layout = 
+            find_layout_description(inst_mask, domain, blocking_factor);
+          if (layout == NULL)
+          {
+            // We couldn't find one so make one
+            layout = create_layout_description(inst_mask, domain,
+                                               blocking_factor,
+                                               create_fields,
+                                               field_sizes,
+                                               indexes);
+          }
+#ifdef DEBUG_HIGH_LEVEL
+          assert(layout != NULL);
+#endif
+          DistributedID did = context->runtime->get_available_distributed_id();
           result = new InstanceManager(context, did,
                                        context->runtime->address_space,
                                        context->runtime->address_space,
-                                       location,
-                                       inst, node, inst_mask, 
-                                       blocking_factor, 
-                                       field_infos, field_indexes, 
+                                       location, inst, node, layout, 
                                        use_event, depth);
 #ifdef DEBUG_HIGH_LEVEL
           assert(result != NULL);
@@ -5313,12 +5441,85 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    LayoutDescription* FieldSpaceNode::find_layout_description(
+        const FieldMask &mask, const Domain &domain, size_t blocking_factor)
+    //--------------------------------------------------------------------------
+    {
+      uint64_t hash_key = mask.get_hash_key();
+      AutoLock n_lock(node_lock,1,false/*exclusive*/);
+      std::map<FIELD_TYPE,std::deque<LayoutDescription*> >::const_iterator
+        finder = layouts.find(hash_key);
+      if (finder == layouts.end())
+        return NULL;
+      // First go through the existing descriptions and see if we find
+      // one that matches the existing layout
+      for (std::deque<LayoutDescription*>::const_iterator it = 
+            finder->second.begin(); it != finder->second.end(); it++)
+      {
+        if ((*it)->match_layout(mask, domain, blocking_factor))
+          return (*it);
+      }
+      return NULL;
+    }
+
+    //--------------------------------------------------------------------------
+    LayoutDescription* FieldSpaceNode::create_layout_description(
+        const FieldMask &mask, const Domain &domain, size_t blocking_factor,
+                                     const std::set<FieldID> &create_fields,
+                                     const std::vector<size_t> &field_sizes, 
+                                     const std::vector<unsigned> &indexes)
+    //--------------------------------------------------------------------------
+    {
+      // Make the new field description and then register it
+      LayoutDescription *result = new LayoutDescription(mask, domain,
+                                                        blocking_factor, this);
+      unsigned idx = 0;
+      size_t accum_offset = 0;
+      for (std::set<FieldID>::const_iterator it = create_fields.begin();
+            it != create_fields.end(); it++, idx++)
+      {
+        result->add_field_info((*it), indexes[idx],
+                               accum_offset, field_sizes[idx]);
+        accum_offset += field_sizes[idx];
+      }
+      // Now we can register it
+      return register_layout_description(result);
+    }
+
+    //--------------------------------------------------------------------------
+    LayoutDescription* FieldSpaceNode::register_layout_description(
+                                                      LayoutDescription *layout)
+    //--------------------------------------------------------------------------
+    {
+      uint64_t hash_key = layout->allocated_fields.get_hash_key();
+      AutoLock n_lock(node_lock);
+      std::deque<LayoutDescription*> &descs = layouts[hash_key];
+      if (!descs.empty())
+      {
+        for (std::deque<LayoutDescription*>::const_iterator it = 
+              descs.begin(); it != descs.end(); it++)
+        {
+          if (layout->match_layout(*it))
+          {
+            // Delete the layout we are trying to register
+            // and return the matching one
+            delete layout;
+            return (*it);
+          }
+        }
+      }
+      // Otherwise we successfully registered it
+      descs.push_back(layout);
+      return layout;
+    }
+
+    //--------------------------------------------------------------------------
     void FieldSpaceNode::send_node(AddressSpaceID target)
     //--------------------------------------------------------------------------
     {
       // See if this is in our creation set, if not, send it and all the fields
       AutoLock n_lock(node_lock);
-      if (creation_set.find(target) == creation_set.end())
+      if (!creation_set.is_set(target))
       {
         // First send the node info and then send all the fields
         Serializer rez;
@@ -5339,14 +5540,13 @@ namespace LegionRuntime {
           }
         }
         // Finally add it to the creation set
-        creation_set.insert(target);
+        creation_set.set_bit(target);
       }
       // Send any deletions if necessary
-      if (!destruction_set.empty() && 
-          (destruction_set.find(target) == destruction_set.end()))
+      if (!destruction_set.is_set(target))
       {
         context->runtime->send_field_space_destruction(handle, target);
-        destruction_set.insert(target);
+        destruction_set.set_bit(target);
       }
     }
 
@@ -6587,7 +6787,14 @@ namespace LegionRuntime {
         }
         // Also set the maximum blocking factor for this region
         Domain node_domain = node->get_domain();
-        info->req.max_blocking_factor = node_domain.get_volume();
+        if (node_domain.get_dim() == 0)
+        {
+          const LowLevel::ElementMask &mask = 
+            node_domain.get_index_space().get_valid_mask();
+          info->req.max_blocking_factor = mask.get_num_elmts();
+        }
+        else
+          info->req.max_blocking_factor = node_domain.get_volume();
       }
       // Release the state
       node->release_physical_state(state);
@@ -7053,7 +7260,7 @@ namespace LegionRuntime {
 
     //--------------------------------------------------------------------------
     StateSender::StateSender(ContextID c, UniqueID id, AddressSpaceID t,
-                             std::set<LogicalView*> &views,
+                             std::map<LogicalView*,FieldMask> &views,
                              std::set<PhysicalManager*> &managers,
                              const FieldMask &mask, bool inv)
       : ctx(c), uid(id), target(t), needed_views(views),
@@ -7975,7 +8182,10 @@ namespace LegionRuntime {
       if (finder != reduction_views.end())
         finder->second |= valid_fields;
       else
+      {
         reduction_views[view] = valid_fields;
+        view->add_valid_reference();
+      }
     }
 
     //--------------------------------------------------------------------------
@@ -7988,7 +8198,8 @@ namespace LegionRuntime {
       DistributedID did = 
                         node->context->runtime->get_available_distributed_id();
       CompositeView *composite_view = new CompositeView(node->context, did,
-                                node->context->runtime->address_space, node);
+                                        node->context->runtime->address_space, 
+                                        node, did, closed_mask);
       // Set the root value
       composite_view->add_root(root, closed_mask);
       // Update the reduction views for this level
@@ -7997,8 +8208,15 @@ namespace LegionRuntime {
       {
         composite_view->update_reduction_views(it->first, it->second);
       }
-      // Now update the state fo the node
+      // Now update the state of the node
       node->update_valid_views(state,closed_mask,true/*dirty*/,composite_view);
+      // Now we can remove the valid references that we hold on the reductions
+      for (std::map<ReductionView*,FieldMask>::const_iterator it = 
+            reduction_views.begin(); it != reduction_views.end(); it++)
+      {
+        if (it->first->remove_valid_reference())
+          delete it->first;
+      }
     }
 
     //--------------------------------------------------------------------------
@@ -10289,7 +10507,7 @@ namespace LegionRuntime {
       // don't have complete data for below.
       FieldMask capture_mask = closing_mask - complete_below;
       if (!!capture_mask)
-        node->capture_physical_state(this, state, closing_mask - complete_below,
+        node->capture_physical_state(this, state, capture_mask,
                                      closer, dirty_mask, complete_mask);
       dirty_mask |= dirty_below;
       complete_mask |= complete_below;
@@ -10733,23 +10951,13 @@ namespace LegionRuntime {
       // If we still have fields that need to be updated and there
       // are composite instances then we need to issue updates copies
       // for those fields from the composite instances
-      if (!composite_instances.empty() && !!copy_mask)
+      if (!composite_instances.empty())
       {
         for (std::map<CompositeView*,FieldMask>::const_iterator it = 
               composite_instances.begin(); it !=
               composite_instances.end(); it++)
         {
-          FieldMask overlap = copy_mask & it->second; 
-          if (!!overlap)
-          {
-            // Now issue the update copies
-            it->first->issue_composite_copies(info, dst, overlap);
-            // Finally update the copy mask
-            copy_mask -= it->second;
-            // If we have updated all the fields, then we are done
-            if (!copy_mask)
-              break;
-          }
+          it->first->issue_composite_copies(info, dst, it->second);
         }
       }
     }
@@ -11277,7 +11485,7 @@ namespace LegionRuntime {
       assert(state.node == this);
       if (!new_view->is_composite_view())
         assert(!(valid_mask - 
-                new_view->as_materialized_view()->manager->allocated_fields));
+          new_view->as_materialized_view()->manager->layout->allocated_fields));
       assert(new_view->logical_node == this);
 #endif
       // Add our reference first in case the new view is also currently in
@@ -11358,7 +11566,7 @@ namespace LegionRuntime {
         finder = state.valid_views.find(*it);
         if (!(*it)->is_composite_view())
         assert(!(finder->second - 
-                (*it)->as_materialized_view()->manager->allocated_fields));
+            (*it)->as_materialized_view()->manager->layout->allocated_fields));
 #endif
       }
     }
@@ -11412,7 +11620,7 @@ namespace LegionRuntime {
         }
 #ifdef DEBUG_HIGH_LEVEL
         finder = state.valid_views.find(*it);
-        assert(!(finder->second - (*it)->manager->allocated_fields));
+        assert(!(finder->second - (*it)->manager->layout->allocated_fields));
 #endif
       }
     }
@@ -11628,7 +11836,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     bool RegionTreeNode::pack_send_state(ContextID ctx, Serializer &rez,
                              AddressSpaceID target, const FieldMask &send_mask,
-                             std::set<LogicalView*> &needed_views,
+                             std::map<LogicalView*,FieldMask> &needed_views,
                              std::set<PhysicalManager*> &needed_managers)
     //--------------------------------------------------------------------------
     {
@@ -11654,8 +11862,8 @@ namespace LegionRuntime {
         rez.serialize(overlap);
         if (!!overlap)
         {
-          DistributedID did = it->first->send_state(target, needed_views,
-                                                    needed_managers);
+          DistributedID did = it->first->send_state(target, overlap, 
+                                                needed_views, needed_managers);
           rez.serialize(did);
         }
         else
@@ -11673,8 +11881,8 @@ namespace LegionRuntime {
         rez.serialize(overlap);
         if (!!overlap)
         {
-          DistributedID did = it->first->send_state(target, needed_views,
-                                                    needed_managers);
+          DistributedID did = it->first->send_state(target, overlap,
+                                                needed_views, needed_managers);
           rez.serialize(did);
         }
         else
@@ -11721,7 +11929,7 @@ namespace LegionRuntime {
         if (!!overlap)
         {
           DistributedID did = 
-            it->first->send_back_state(target, needed_managers);
+            it->first->send_back_state(target, overlap, needed_managers);
           rez.serialize(did);
         }
         else
@@ -11740,7 +11948,7 @@ namespace LegionRuntime {
         if (!!overlap)
         {
           DistributedID did = 
-            it->first->send_back_state(target, needed_managers);
+            it->first->send_back_state(target, overlap, needed_managers);
           rez.serialize(did);
         }
         else
@@ -12215,7 +12423,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       AutoLock n_lock(node_lock);
-      creation_set.insert(source);
+      creation_set.set_bit(source);
     }
 
     //--------------------------------------------------------------------------
@@ -12225,7 +12433,7 @@ namespace LegionRuntime {
       if (parent != NULL)
         parent->remove_child(row_source->color);
       AutoLock n_lock(node_lock);
-      destruction_set.insert(source);
+      destruction_set.set_bit(source);
     }
 
     //--------------------------------------------------------------------------
@@ -12478,16 +12686,15 @@ namespace LegionRuntime {
       bool send_deletion = false;
       {
         AutoLock n_lock(node_lock); 
-        if (creation_set.find(target) == creation_set.end())
+        if (!creation_set.is_set(target))
         {
           continue_up = true;
-          creation_set.insert(target);
+          creation_set.set_bit(target);
         }
-        if (!destruction_set.empty() && 
-            (destruction_set.find(target) == destruction_set.end()))
+        if (!destruction_set.is_set(target))
         {
           send_deletion = true;
-          destruction_set.insert(target);
+          destruction_set.set_bit(target);
         }
       }
       if (continue_up)
@@ -12844,7 +13051,7 @@ namespace LegionRuntime {
     bool RegionNode::send_state(ContextID ctx, UniqueID uid, 
                                 AddressSpaceID target,
                                 const FieldMask &send_mask, bool invalidate,
-                                std::set<LogicalView*> &needed_views,
+                                std::map<LogicalView*,FieldMask> &needed_views,
                                 std::set<PhysicalManager*> &needed_managers)
     //--------------------------------------------------------------------------
     {
@@ -13303,7 +13510,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       AutoLock n_lock(node_lock);
-      creation_set.insert(source);
+      creation_set.set_bit(source);
     }
 
     //--------------------------------------------------------------------------
@@ -13313,7 +13520,7 @@ namespace LegionRuntime {
       if (parent != NULL)
         parent->remove_child(row_source->color);
       AutoLock n_lock(node_lock);
-      destruction_set.insert(source);
+      destruction_set.set_bit(source);
     }
 
     //--------------------------------------------------------------------------
@@ -13540,16 +13747,15 @@ namespace LegionRuntime {
       bool send_deletion = false;
       {
         AutoLock n_lock(node_lock); 
-        if (creation_set.find(target) == creation_set.end())
+        if (!creation_set.is_set(target))
         {
           continue_up = true;
-          creation_set.insert(target);
+          creation_set.set_bit(target);
         }
-        if (!destruction_set.empty() && 
-            (destruction_set.find(target) == destruction_set.end()))
+        if (!destruction_set.is_set(target))
         {
           send_deletion = true;
-          destruction_set.insert(target);
+          destruction_set.set_bit(target);
         }
       }
       if (continue_up)
@@ -13569,8 +13775,8 @@ namespace LegionRuntime {
     bool PartitionNode::send_state(ContextID ctx, UniqueID uid,
                                    AddressSpaceID target,
                                    const FieldMask &send_mask, bool invalidate,
-                                   std::set<LogicalView*> &needed_views,
-                                   std::set<PhysicalManager*> &needed_managers)
+                                 std::map<LogicalView*,FieldMask> &needed_views,
+                                 std::set<PhysicalManager*> &needed_managers)
     //--------------------------------------------------------------------------
     {
       bool continue_traversal;
@@ -14069,6 +14275,397 @@ namespace LegionRuntime {
     }
 
     /////////////////////////////////////////////////////////////
+    // Layout Description 
+    /////////////////////////////////////////////////////////////
+
+    //--------------------------------------------------------------------------
+    LayoutDescription::LayoutDescription(const FieldMask &mask, const Domain &d,
+                                         size_t bf, FieldSpaceNode *own)
+      : allocated_fields(mask), blocking_factor(bf), 
+        volume(compute_layout_volume(d)), owner(own)
+    //--------------------------------------------------------------------------
+    {
+      offset_lock = Reservation::create_reservation();
+    }
+
+    //--------------------------------------------------------------------------
+    LayoutDescription::LayoutDescription(const LayoutDescription &rhs)
+      : allocated_fields(rhs.allocated_fields), 
+        blocking_factor(rhs.blocking_factor), 
+        volume(rhs.volume), owner(rhs.owner)
+    //--------------------------------------------------------------------------
+    {
+      // should never be called
+      assert(false);
+    }
+
+    //--------------------------------------------------------------------------
+    LayoutDescription::~LayoutDescription(void)
+    //--------------------------------------------------------------------------
+    {
+      memoized_offsets.clear();
+      offset_lock.destroy_reservation();
+      offset_lock = Reservation::NO_RESERVATION;
+    }
+
+    //--------------------------------------------------------------------------
+    LayoutDescription& LayoutDescription::operator=(
+                                                   const LayoutDescription &rhs)
+    //--------------------------------------------------------------------------
+    {
+      // should never be called
+      assert(false);
+      return *this;
+    }
+
+    //--------------------------------------------------------------------------
+    void LayoutDescription::compute_copy_offsets(const FieldMask &copy_mask,
+                                                 PhysicalInstance instance,
+                                   std::vector<Domain::CopySrcDstField> &fields)
+    //--------------------------------------------------------------------------
+    {
+      uint64_t hash_key = copy_mask.get_hash_key();
+      size_t added_offset_count = 0;
+      bool found_in_cache = false;
+      // First check to see if we've memoized this result 
+      {
+        AutoLock o_lock(offset_lock,1,false/*exclusive*/);
+        std::map<FIELD_TYPE,std::vector<OffsetEntry> >::const_iterator
+          finder = memoized_offsets.find(hash_key);
+        if (finder != memoized_offsets.end())
+        {
+          for (std::vector<OffsetEntry>::const_iterator it = 
+                finder->second.begin(); it != finder->second.end(); it++)
+          {
+            if (it->offset_mask == copy_mask)
+            {
+              fields.insert(fields.end(),it->offsets.begin(),it->offsets.end());
+              found_in_cache = true;
+              added_offset_count = it->offsets.size();
+              break;
+            }
+          }
+        }
+      }
+      if (found_in_cache)
+      {
+#ifdef DEBUG_HIGH_LEVEL
+        assert(added_offset_count <= fields.size());
+#endif
+        // Go through and fill in all the annonymous instances
+        for (unsigned idx = fields.size() - added_offset_count;
+              idx < fields.size(); idx++)
+        {
+          fields[idx].inst = instance;
+        }
+        // Now we're done
+        return;
+      }
+      // It is absolutely imperative that these infos be added in
+      // the order in which they appear in the field mask so that 
+      // they line up in the same order with the source/destination infos
+      // (depending on the calling context of this function)
+#ifdef DEBUG_HIGH_LEVEL
+      int pop_count = 0;
+#endif
+      std::vector<Domain::CopySrcDstField> local;
+      for (std::map<unsigned,FieldID>::const_iterator it = 
+            field_indexes.begin(); it != field_indexes.end(); it++)
+      {
+        if (copy_mask.is_set(it->first))
+        {
+          std::map<FieldID,Domain::CopySrcDstField>::const_iterator finder = 
+            field_infos.find(it->second);
+#ifdef DEBUG_HIGH_LEVEL
+          assert(finder != field_infos.end());
+          pop_count++;
+#endif
+          fields.push_back(finder->second);
+          // Because instances are annonymous in layout descriptions
+          // we have to fill them in as we add them to fields
+          fields.back().inst = instance;
+          local.push_back(finder->second);
+        }
+      }
+#ifdef DEBUG_HIGH_LEVEL
+      // Make sure that we added exactly the number of infos as
+      // there were fields set in the bit mask
+      assert(pop_count == FieldMask::pop_count(copy_mask));
+#endif
+      // Add this to the results
+      AutoLock o_lock(offset_lock);
+      std::map<FIELD_TYPE,std::vector<OffsetEntry> >::iterator
+        finder = memoized_offsets.find(hash_key);
+      if (finder == memoized_offsets.end())
+        memoized_offsets[hash_key].push_back(OffsetEntry(copy_mask,local));
+      else
+        finder->second.push_back(OffsetEntry(copy_mask,local));
+    }
+
+    //--------------------------------------------------------------------------
+    void LayoutDescription::compute_copy_offsets(
+                                   const std::vector<FieldID> &copy_fields, 
+                                   PhysicalInstance instance,
+                                   std::vector<Domain::CopySrcDstField> &fields)
+    //--------------------------------------------------------------------------
+    {
+      for (std::vector<FieldID>::const_iterator it = copy_fields.begin();
+            it != copy_fields.end(); it++)
+      {
+        std::map<FieldID,Domain::CopySrcDstField>::const_iterator
+          finder = field_infos.find(*it);
+#ifdef DEBUG_HIGH_LEVEL
+        assert(finder != field_infos.end());
+#endif
+        fields.push_back(finder->second);
+        // Since instances are annonymous in layout descriptions we
+        // have to fill them in when we add the field info
+        fields.back().inst = instance;
+      }
+    }
+
+    //--------------------------------------------------------------------------
+    void LayoutDescription::add_field_info(FieldID fid, unsigned index,
+                                           size_t offset, size_t field_size)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(field_infos.find(fid) == field_infos.end());
+      assert(field_indexes.find(index) == field_indexes.end());
+#endif
+      // Use annonymous instances when creating these field infos since
+      // we specifying layouts independently of any one instance
+      field_infos[fid] = Domain::CopySrcDstField(PhysicalInstance::NO_INST,
+                                                 offset, field_size);
+      field_indexes[index] = fid;
+    }
+
+    //--------------------------------------------------------------------------
+    const Domain::CopySrcDstField& LayoutDescription::find_field_info(
+                                                              FieldID fid) const
+    //--------------------------------------------------------------------------
+    {
+      std::map<FieldID,Domain::CopySrcDstField>::const_iterator finder = 
+        field_infos.find(fid);
+#ifdef DEBUG_HIGH_LEVEL
+      assert(finder != field_infos.end());
+#endif
+      return finder->second;
+    }
+
+    //--------------------------------------------------------------------------
+    size_t LayoutDescription::get_layout_size(void) const
+    //--------------------------------------------------------------------------
+    {
+      size_t result = 0;
+      // Add up all the field sizes
+      for (std::map<FieldID,Domain::CopySrcDstField>::const_iterator it = 
+            field_infos.begin(); it != field_infos.end(); it++)
+      {
+        result += (it->second.size);
+      }
+      result *= volume;
+      return result;
+    }
+
+    //--------------------------------------------------------------------------
+    bool LayoutDescription::match_shape(const size_t field_size) const
+    //--------------------------------------------------------------------------
+    {
+      if (field_infos.size() != 1)
+        return false;
+      if (field_infos.begin()->second.size != field_size)
+        return false;
+      return true;
+    }
+
+    //--------------------------------------------------------------------------
+    bool LayoutDescription::match_shape(const std::vector<size_t> &field_sizes,
+                                        const size_t bf) const
+    //--------------------------------------------------------------------------
+    {
+      if (field_sizes.size() != field_infos.size())
+        return false;
+      if (blocking_factor != bf)
+        return false;
+      for (std::map<FieldID,Domain::CopySrcDstField>::const_iterator it = 
+            field_infos.begin(); it != field_infos.end(); it++)
+      {
+        unsigned offset = 0;
+        bool found = false;
+        for (unsigned idx = 0; idx < field_sizes.size(); idx++)
+        {
+          if ((offset == it->second.offset) &&
+              (field_sizes[idx] == it->second.size))
+          {
+            found = true;
+            break;
+          }
+          offset += field_sizes[idx];
+        }
+        if (!found)
+          return false;
+      }
+      return true;
+    }
+
+    //--------------------------------------------------------------------------
+    bool LayoutDescription::match_layout(const FieldMask &mask,
+                                         const size_t vl, const size_t bf) const
+    //--------------------------------------------------------------------------
+    {
+      if (blocking_factor != bf)
+        return false;
+      if (volume != vl)
+        return false;
+      if (allocated_fields != mask)
+        return false;
+      return true;
+    }
+
+    //--------------------------------------------------------------------------
+    bool LayoutDescription::match_layout(const FieldMask &mask, const Domain &d,
+                                         const size_t bf) const
+    //--------------------------------------------------------------------------
+    {
+      return match_layout(mask, compute_layout_volume(d), bf);
+    }
+
+    //--------------------------------------------------------------------------
+    bool LayoutDescription::match_layout(LayoutDescription *rhs) const
+    //--------------------------------------------------------------------------
+    {
+      return match_layout(rhs->allocated_fields, rhs->volume, 
+                          rhs->blocking_factor);
+    }
+
+    //--------------------------------------------------------------------------
+    void LayoutDescription::pack_layout_description(Serializer &rez,
+                                                    AddressSpaceID target)
+    //--------------------------------------------------------------------------
+    {
+      RezCheck z(rez);
+      // Do a quick check to see if the target already has the layout
+      // We don't need to hold a lock here since if we lose the race
+      // we will just send the layout twice and everything will be
+      // resolved on the far side
+      if (known_nodes.is_set(target))
+      {
+        rez.serialize<bool>(true);
+        // If it is already on the remote node, then we only
+        // need to the necessary information to identify it
+        rez.serialize(allocated_fields);
+        rez.serialize(blocking_factor);
+      }
+      else
+      {
+        rez.serialize<bool>(false);
+        rez.serialize(allocated_fields);
+        rez.serialize(blocking_factor);
+        rez.serialize<size_t>(field_infos.size());
+#ifdef DEBUG_HIGH_LEVEL
+        assert(field_infos.size() == field_indexes.size());
+#endif
+        for (std::map<unsigned,FieldID>::const_iterator it = 
+              field_indexes.begin(); it != field_indexes.end(); it++)
+        {
+          std::map<FieldID,Domain::CopySrcDstField>::const_iterator finder = 
+            field_infos.find(it->second);
+#ifdef DEBUG_HIGH_LEVEL
+          assert(finder != field_infos.end());
+#endif
+          rez.serialize(it->second);
+          rez.serialize(finder->second.offset);
+          rez.serialize(finder->second.size);
+        }
+      }
+    }
+
+    //--------------------------------------------------------------------------
+    void LayoutDescription::unpack_layout_description(Deserializer &derez)
+    //--------------------------------------------------------------------------
+    {
+      size_t num_fields;
+      derez.deserialize(num_fields);
+      for (unsigned idx = 0; idx < num_fields; idx++)
+      {
+        FieldID fid;
+        derez.deserialize(fid);
+        unsigned index = owner->get_field_index(fid);
+        field_indexes[index] = fid;
+        unsigned offset, size;
+        derez.deserialize(offset);
+        derez.deserialize(size);
+        field_infos[fid] = 
+          Domain::CopySrcDstField(PhysicalInstance::NO_INST, offset, size);
+      }
+    }
+
+    //--------------------------------------------------------------------------
+    void LayoutDescription::update_known_nodes(AddressSpaceID target)
+    //--------------------------------------------------------------------------
+    {
+      // No need to hold the lock here since races are alright
+      known_nodes.set_bit(target);
+    }
+
+    //--------------------------------------------------------------------------
+    /*static*/ LayoutDescription* LayoutDescription::
+      handle_unpack_layout_description(Deserializer &derez,
+                                 AddressSpaceID source, RegionNode *region_node)
+    //--------------------------------------------------------------------------
+    {
+      DerezCheck z(derez);
+      bool has_local;
+      derez.deserialize(has_local);
+      FieldSpaceNode *field_space_node = region_node->column_source;
+      LayoutDescription *result = NULL;
+      FieldMask mask;
+      derez.deserialize(mask);
+      field_space_node->transform_field_mask(mask, source);
+      size_t blocking_factor;
+      derez.deserialize(blocking_factor);
+      if (has_local)
+      {
+        // If we have a local layout, then we should be able to find it
+        result = field_space_node->find_layout_description(mask,  
+                                              region_node->get_domain(),
+                                              blocking_factor);
+      }
+      else
+      {
+        // Otherwise create a new layout description, 
+        // unpack it, and then try registering it with
+        // the field space node
+        result = new LayoutDescription(mask, region_node->get_domain(),
+                                       blocking_factor, field_space_node);
+        result->unpack_layout_description(derez);
+        result = field_space_node->register_layout_description(result);
+      }
+#ifdef DEBUG_HIGH_LEVEL
+      assert(result != NULL);
+#endif
+      // Record that the sender already has this layout
+      // Only do this after we've registered the instance
+      result->update_known_nodes(source);
+      return result;
+    }
+
+    //--------------------------------------------------------------------------
+    /*static*/ size_t LayoutDescription::compute_layout_volume(const Domain &d)
+    //--------------------------------------------------------------------------
+    {
+      if (d.get_dim() == 0)
+      {
+        const LowLevel::ElementMask &mask = 
+          d.get_index_space().get_valid_mask();
+        return mask.get_num_elmts();
+      }
+      else
+        return d.get_volume();
+    }
+
+    /////////////////////////////////////////////////////////////
     // PhysicalManager 
     /////////////////////////////////////////////////////////////
 
@@ -14134,15 +14731,11 @@ namespace LegionRuntime {
                                      AddressSpaceID local_space,
                                      Memory mem, PhysicalInstance inst,
                                      RegionNode *node, 
-                                     const FieldMask &mask, size_t bf,
-                         const std::map<FieldID,Domain::CopySrcDstField> &infos,
-                         const std::map<unsigned,FieldID> &indexes,
-                         Event u_event, unsigned dep, bool persist)
+                                     LayoutDescription *desc, Event u_event, 
+                                     unsigned dep, bool persist)
       : PhysicalManager(ctx, did, owner_space, local_space, mem, inst), 
-        region_node(node), allocated_fields(mask), blocking_factor(bf), 
-        use_event(u_event), field_infos(infos), field_indexes(indexes), 
-        depth(dep), recycled(false), persistent(persist),
-        offset_lock(Reservation::create_reservation())
+        region_node(node), layout(desc), use_event(u_event), 
+        depth(dep), recycled(false), persistent(persist)
     //--------------------------------------------------------------------------
     {
       // Tell the runtime so it can update the per memory data structures
@@ -14152,9 +14745,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     InstanceManager::InstanceManager(const InstanceManager &rhs)
       : PhysicalManager(NULL, 0, 0, 0, Memory::NO_MEMORY,
-                        PhysicalInstance::NO_INST), region_node(NULL),
-        allocated_fields(FieldMask()), blocking_factor(0), 
-        use_event(Event::NO_EVENT), depth(0)
+                        PhysicalInstance::NO_INST), 
+        region_node(NULL), layout(NULL), use_event(Event::NO_EVENT), depth(0)
     //--------------------------------------------------------------------------
     {
       // should never be called
@@ -14170,8 +14762,6 @@ namespace LegionRuntime {
       // garbage collected the physical instance
       if (!owner)
         context->runtime->free_physical_instance(this);
-      offset_lock.destroy_reservation();
-      offset_lock = Reservation::NO_RESERVATION;
     }
 
     //--------------------------------------------------------------------------
@@ -14199,16 +14789,14 @@ namespace LegionRuntime {
       InstanceManager::get_field_accessor(FieldID fid) const
     //--------------------------------------------------------------------------
     {
-      std::map<FieldID,Domain::CopySrcDstField>::const_iterator finder = 
-        field_infos.find(fid);
 #ifdef DEBUG_HIGH_LEVEL
       assert(instance.exists());
-      assert(finder != field_infos.end());
+      assert(layout != NULL);
 #endif
+      const Domain::CopySrcDstField &info = layout->find_field_info(fid);
       Accessor::RegionAccessor<Accessor::AccessorType::Generic> temp = 
         instance.get_accessor();
-      return temp.get_untyped_field_accessor(finder->second.offset, 
-                                             finder->second.size);
+      return temp.get_untyped_field_accessor(info.offset, info.size);
     }
 
     //--------------------------------------------------------------------------
@@ -14236,16 +14824,10 @@ namespace LegionRuntime {
     size_t InstanceManager::get_instance_size(void) const
     //--------------------------------------------------------------------------
     {
-      size_t result = 0; 
-      // Add up all the field sizes
-      for (std::map<FieldID,Domain::CopySrcDstField>::const_iterator it = 
-            field_infos.begin(); it != field_infos.end(); it++)
-      {
-        result += (it->second.size); 
-      }
-      // Now multiply by the number of elements
-      result *= region_node->row_source->domain.get_volume();
-      return result;
+#ifdef DEBUG_HIGH_LEVEL
+      assert(layout != NULL);
+#endif
+      return layout->get_layout_size();
     }
 
     //--------------------------------------------------------------------------
@@ -14396,61 +14978,11 @@ namespace LegionRuntime {
                                   std::vector<Domain::CopySrcDstField> &fields)
     //--------------------------------------------------------------------------
     {
-      uint64_t hash_key = copy_mask.get_hash_key();
-      // First check to see if we've memoized this result 
-      {
-        AutoLock o_lock(offset_lock,1,false/*exclusive*/);
-        std::map<FIELD_TYPE,std::vector<OffsetEntry> >::const_iterator
-          finder = memoized_offsets.find(hash_key);
-        if (finder != memoized_offsets.end())
-        {
-          for (std::vector<OffsetEntry>::const_iterator it = 
-                finder->second.begin(); it != finder->second.end(); it++)
-          {
-            if (it->offset_mask == copy_mask)
-            {
-              fields.insert(fields.end(),it->offsets.begin(),it->offsets.end());
-              return;
-            }
-          }
-        }
-      }
-      // It is absolutely imperative that these infos be added in
-      // the order in which they appear in the field mask so that 
-      // they line up in the same order with the source/destination infos
-      // (depending on the calling context of this function)
 #ifdef DEBUG_HIGH_LEVEL
-      int pop_count = 0;
+      assert(layout != NULL);
 #endif
-      std::vector<Domain::CopySrcDstField> local;
-      for (std::map<unsigned,FieldID>::const_iterator it = 
-            field_indexes.begin(); it != field_indexes.end(); it++)
-      {
-        if (copy_mask.is_set(it->first))
-        {
-          std::map<FieldID,Domain::CopySrcDstField>::const_iterator finder = 
-            field_infos.find(it->second);
-#ifdef DEBUG_HIGH_LEVEL
-          assert(finder != field_infos.end());
-          pop_count++;
-#endif
-          fields.push_back(finder->second);
-          local.push_back(finder->second);
-        }
-      }
-#ifdef DEBUG_HIGH_LEVEL
-      // Make sure that we added exactly the number of infos as
-      // there were fields set in the bit mask
-      assert(pop_count == FieldMask::pop_count(copy_mask));
-#endif
-      // Add this to the results
-      AutoLock o_lock(offset_lock);
-      std::map<FIELD_TYPE,std::vector<OffsetEntry> >::iterator
-        finder = memoized_offsets.find(hash_key);
-      if (finder == memoized_offsets.end())
-        memoized_offsets[hash_key].push_back(OffsetEntry(copy_mask,local));
-      else
-        finder->second.push_back(OffsetEntry(copy_mask,local));
+      // Pass in our physical instance so the layout knows how to specialize
+      layout->compute_copy_offsets(copy_mask, instance, fields);
     }
 
     //--------------------------------------------------------------------------
@@ -14459,16 +14991,11 @@ namespace LegionRuntime {
                                   std::vector<Domain::CopySrcDstField> &fields)
     //--------------------------------------------------------------------------
     {
-      for (std::vector<FieldID>::const_iterator it = copy_fields.begin();
-            it != copy_fields.end(); it++)
-      {
-        std::map<FieldID,Domain::CopySrcDstField>::const_iterator
-          finder = field_infos.find(*it);
 #ifdef DEBUG_HIGH_LEVEL
-        assert(finder != field_infos.end());
+      assert(layout != NULL);
 #endif
-        fields.push_back(finder->second);
-      }
+      // Pass in our physical instance so the layout knows how to specialize
+      layout->compute_copy_offsets(copy_fields, instance, fields);
     }
 
     //--------------------------------------------------------------------------
@@ -14497,10 +15024,14 @@ namespace LegionRuntime {
         {
           RezCheck z(rez);
           rez.serialize(did);
-          pack_manager(rez);
+          pack_manager(rez, target);
         }
         // Now send the message
         context->runtime->send_instance_manager(target, rez);
+        // Finally we can update our known nodes
+        // It's only safe to do this after the message
+        // has been sent
+        layout->update_known_nodes(target);
       }
       // Otherwise there is nothing to do since we
       // have already been sent
@@ -14523,19 +15054,20 @@ namespace LegionRuntime {
 #ifdef DEBUG_HIGH_LEVEL
         // If we're in debug mode do the unpack anyway to 
         // keep the deserializer happy
-        InstanceManager::unpack_manager(derez, context, did, false/*make*/);
+        InstanceManager::unpack_manager(derez, context, did, 
+                                        source, false/*make*/);
 #endif
       }
       else
       {
         InstanceManager *result = InstanceManager::unpack_manager(derez,
-                                                            context, did);
+                                                          context, did, source);
         result->update_remote_spaces(source);
       }
     }
 
     //--------------------------------------------------------------------------
-    void InstanceManager::pack_manager(Serializer &rez)
+    void InstanceManager::pack_manager(Serializer &rez, AddressSpaceID target)
     //--------------------------------------------------------------------------
     {
       RezCheck z(rez);
@@ -14543,23 +15075,16 @@ namespace LegionRuntime {
       rez.serialize(memory);
       rez.serialize(instance);
       rez.serialize(region_node->handle);
-      rez.serialize(blocking_factor);
       rez.serialize(use_event);
       rez.serialize(depth);
-      rez.serialize(field_infos.size());
-      for (std::map<FieldID,Domain::CopySrcDstField>::const_iterator it = 
-            field_infos.begin(); it != field_infos.end(); it++)
-      {
-        rez.serialize(it->first);
-        rez.serialize(it->second);
-      }
       rez.serialize(persistent);
+      layout->pack_layout_description(rez, target);
     }
 
     //--------------------------------------------------------------------------
     /*static*/ InstanceManager* InstanceManager::unpack_manager(
         Deserializer &derez, RegionTreeForest *context, 
-        DistributedID did, bool make /*=true*/)
+        DistributedID did, AddressSpaceID source, bool make /*=true*/)
     //--------------------------------------------------------------------------
     {
       DerezCheck z(derez);
@@ -14571,34 +15096,23 @@ namespace LegionRuntime {
       derez.deserialize(inst);
       LogicalRegion handle;
       derez.deserialize(handle);
-      size_t blocking_factor;
-      derez.deserialize(blocking_factor);
       Event use_event;
       derez.deserialize(use_event);
       unsigned depth;
       derez.deserialize(depth);
-      size_t num_infos;
-      derez.deserialize(num_infos);
-      std::map<FieldID,Domain::CopySrcDstField> field_infos;
-      std::set<FieldID> fields;
-      for (unsigned idx = 0; idx < num_infos; idx++)
-      {
-        FieldID fid;
-        derez.deserialize(fid);
-        fields.insert(fid);
-        derez.deserialize(field_infos[fid]);
-      }
       bool persistent;
       derez.deserialize(persistent);
       RegionNode *node = context->get_node(handle);
-      FieldMask mask = node->column_source->get_field_mask(fields);
-      std::map<unsigned,FieldID> field_indexes;
-      node->column_source->get_field_indexes(fields, field_indexes);
+      LayoutDescription *layout = 
+        LayoutDescription::handle_unpack_layout_description(derez, 
+                                                            source, node);
+#ifdef DEBUG_HIGH_LEVEL
+      assert(layout != NULL);
+#endif
       if (make)
         return new InstanceManager(context, did, owner_space,
                                    context->runtime->address_space,
-                                   mem, inst, node, mask, blocking_factor,
-                                   field_infos, field_indexes, 
+                                   mem, inst, node, layout,
                                    use_event, depth, persistent);
       else
         return NULL;
@@ -14640,16 +15154,13 @@ namespace LegionRuntime {
                                          const Domain &dom) const
     //--------------------------------------------------------------------------
     {
-      // For right now, we require that instances be an exact match
-      // This avoids segmentation problems and wasted memory
-      // No need to hold a lock since all these fields are const
-      if (field_infos.size() != 1)
+#ifdef DEBUG_HIGH_LEVEL
+      assert(layout != NULL);
+#endif
+      // First check to see if the domains are the same
+      if (region_node->get_domain() != dom)
         return false;
-      if (region_node->row_source->domain != dom)
-        return false;
-      if (field_infos.begin()->second.size != field_size)
-        return false;
-      return true;
+      return layout->match_shape(field_size);
     }
 
     //--------------------------------------------------------------------------
@@ -14658,34 +15169,13 @@ namespace LegionRuntime {
                                          const size_t bf) const
     //--------------------------------------------------------------------------
     {
-      // For right now we require that instances be an exact match
-      // This avoid segmentation problems and wasted memory
-      // No need to hold a lock since all these fields are const
-      if (field_sizes.size() != field_infos.size())
+#ifdef DEBUG_HIGH_LEVEL
+      assert(layout != NULL);
+#endif
+      // First check to see if the domains are the same
+      if (region_node->get_domain() != dom)
         return false;
-      if (blocking_factor != bf)
-        return false;
-      if (region_node->row_source->domain != dom)
-        return false;
-      for (std::map<FieldID,Domain::CopySrcDstField>::const_iterator it = 
-            field_infos.begin(); it != field_infos.end(); it++)
-      {
-        unsigned offset = 0;
-        bool found = false;
-        for (unsigned idx = 0; idx < field_sizes.size(); idx++)
-        {
-          if ((offset == it->second.offset) &&
-              (field_sizes[idx] == it->second.size))
-          {
-            found = true;
-            break;
-          }
-          offset += field_sizes[idx];
-        }
-        if (!found)
-          return false;
-      }
-      return true;
+      return layout->match_shape(field_sizes, bf);
     }
 
     //--------------------------------------------------------------------------
@@ -15044,7 +15534,14 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       size_t result = op->sizeof_rhs;
-      result *= ptr_space.get_volume();
+      if (ptr_space.get_dim() == 0)
+      {
+        const LowLevel::ElementMask &mask = 
+          ptr_space.get_index_space().get_valid_mask();
+        result *= mask.get_num_elmts();
+      }
+      else
+        result *= ptr_space.get_volume();
       return result;
     }
     
@@ -15060,6 +15557,9 @@ namespace LegionRuntime {
                                   std::vector<Domain::CopySrcDstField> &fields)
     //--------------------------------------------------------------------------
     {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(instance.exists());
+#endif
       // Assume that it's all the fields for right now
       // but offset by the pointer size
       fields.push_back(
@@ -15073,6 +15573,9 @@ namespace LegionRuntime {
         Domain space, Event precondition, bool reduction_fold, bool precise)
     //--------------------------------------------------------------------------
     {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(instance.exists());
+#endif
       if (precise)
       {
         Domain::CopySrcDstField idx_field(instance, 0/*offset*/, sizeof(ptr_t));
@@ -15171,7 +15674,15 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       size_t result = op->sizeof_rhs;
-      result *= region_node->row_source->domain.get_volume();
+      const Domain &d = region_node->row_source->domain;
+      if (d.get_dim() == 0)
+      {
+        const LowLevel::ElementMask &mask = 
+          d.get_index_space().get_valid_mask();
+        result *= mask.get_num_elmts();
+      }
+      else
+        result *= d.get_volume();
       return result;
     }
     
@@ -15187,6 +15698,9 @@ namespace LegionRuntime {
                                   std::vector<Domain::CopySrcDstField> &fields)
     //--------------------------------------------------------------------------
     {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(instance.exists());
+#endif
       // Assume that its all the fields for now
       // until we find a different way to do reductions on a subset of fields
       fields.push_back(
@@ -15200,6 +15714,9 @@ namespace LegionRuntime {
         Domain space, Event precondition, bool reduction_fold, bool precise)
     //--------------------------------------------------------------------------
     {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(instance.exists());
+#endif
       // Doesn't matter if this one is precise or not
       return space.copy(src_fields, dst_fields, precondition, 
                         redop, reduction_fold);
@@ -15246,6 +15763,8 @@ namespace LegionRuntime {
       PerfTracer tracer(context, DEFER_COLLECT_USER_CALL);
 #endif
       Serializer rez;
+      // Do this before the check since it gets pulled off first
+      rez.serialize<HLRTaskID>(HLR_DEFERRED_COLLECT_ID);
       // Indicate that this is the first deferred collect pass.
       // Garbage collection gets deferred twice: once until the
       // termination event has triggered and then again until
@@ -15272,8 +15791,8 @@ namespace LegionRuntime {
       Processor util_proc = p.get_utility_processor();
 #endif
       // Now launch the task on the runtime's utility processor
-      util_proc.spawn(DEFERRED_COLLECT_ID,
-                      rez.get_buffer(), rez.get_used_bytes(), term_event);
+      util_proc.spawn(HLR_TASK_ID, rez.get_buffer(), 
+                      rez.get_used_bytes(), term_event);
     }
 
     //--------------------------------------------------------------------------
@@ -15299,6 +15818,8 @@ namespace LegionRuntime {
         // receive back an event to use for doing the second deferral
         Event defer_event = context->runtime->find_gc_epoch_event(gc_proc);
         Serializer rez;
+        // Do this before the check since it gets pulled off first
+        rez.serialize<HLRTaskID>(HLR_DEFERRED_COLLECT_ID);
         {
           RezCheck z(rez);
           rez.serialize<bool>(false); // no longer the first pass
@@ -15307,8 +15828,8 @@ namespace LegionRuntime {
           rez.serialize(term_mask);
         }
         Processor util_proc = gc_proc.get_utility_processor();
-        util_proc.spawn(DEFERRED_COLLECT_ID,
-                        rez.get_buffer(), rez.get_used_bytes(), defer_event);
+        util_proc.spawn(HLR_TASK_ID, rez.get_buffer(), 
+                        rez.get_used_bytes(), defer_event);
       }
       else
       {
@@ -15371,43 +15892,6 @@ namespace LegionRuntime {
       target_view->process_send_back_user(source, user);
     }
 
-    //--------------------------------------------------------------------------
-    void LogicalView::send_user(AddressSpaceID target, 
-                                DistributedID target_did,
-                                const PhysicalUser &user)
-    //--------------------------------------------------------------------------
-    {
-      Serializer rez;
-      {
-        RezCheck z(rez);
-        rez.serialize(target_did);
-        rez.serialize(user.usage);
-        rez.serialize(user.field_mask);
-        rez.serialize(user.term_event);
-        rez.serialize(user.child);
-      }
-      context->runtime->send_user(target, rez);
-    }
-
-    //--------------------------------------------------------------------------
-    /*static*/ void LogicalView::handle_send_user(RegionTreeForest *context,
-                                                  Deserializer &derez,
-                                                  AddressSpaceID source)
-    //--------------------------------------------------------------------------
-    {
-      DerezCheck z(derez);
-      DistributedID did;
-      derez.deserialize(did);
-      PhysicalUser user;
-      derez.deserialize(user.usage);
-      derez.deserialize(user.field_mask);
-      derez.deserialize(user.term_event);
-      derez.deserialize(user.child);
-
-      LogicalView *target_view = context->find_view(did); 
-      target_view->process_send_user(source, user);
-    }
-
     /////////////////////////////////////////////////////////////
     // InstanceView 
     /////////////////////////////////////////////////////////////
@@ -15425,6 +15909,13 @@ namespace LegionRuntime {
     InstanceView::~InstanceView(void)
     //--------------------------------------------------------------------------
     {
+      // Release any aliased distributed IDs we have 
+      for (std::set<DistributedID>::const_iterator it = aliases.begin();
+            it != aliases.end(); it++)
+      {
+        context->unregister_logical_view(*it);
+        context->runtime->unregister_hierarchical_collectable(*it);
+      }
     }
 
     //--------------------------------------------------------------------------
@@ -15446,6 +15937,52 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       return NULL;
+    }
+
+    //--------------------------------------------------------------------------
+    void InstanceView::add_alias_did(DistributedID alias)
+    //--------------------------------------------------------------------------
+    {
+      context->runtime->register_hierarchical_collectable(alias, this); 
+      context->register_logical_view(alias, this);
+      AutoLock v_lock(view_lock);
+#ifdef DEBUG_HIGH_LEVEL
+      assert(aliases.find(alias) == aliases.end());
+#endif
+      aliases.insert(alias);
+    }
+
+    //--------------------------------------------------------------------------
+    /*static*/ void InstanceView::handle_send_subscriber(
+                                RegionTreeForest *context, Deserializer &derez,
+                                AddressSpaceID source)
+    //--------------------------------------------------------------------------
+    {
+      DerezCheck z(derez);
+      DistributedID parent_did;
+      derez.deserialize(parent_did);
+      Color child_color;
+      derez.deserialize(child_color);
+      DistributedID did;
+      derez.deserialize(did);
+      DistributedID remote_did;
+      derez.deserialize(remote_did);
+      // First get the subview on this node
+      InstanceView *parent_view = 
+        context->find_view(parent_did)->as_instance_view();
+#ifdef DEBUG_HIGH_LEVEL
+      assert(parent_view != NULL);
+#endif
+      InstanceView *child_view = parent_view->get_subview(child_color);
+#ifdef DEBUG_HIGH_LEVEL
+      assert(child_view != NULL);
+#endif
+      // Add the alias first for anyone who is coming later
+      child_view->add_alias_did(did);
+      // Then add the remote subscriber
+      child_view->add_subscriber(source, remote_did);
+      // Add a remote reference held by the view that sent this back
+      child_view->add_remote_reference();
     }
 
     /////////////////////////////////////////////////////////////
@@ -15502,14 +16039,7 @@ namespace LegionRuntime {
     {
       if (parent == NULL && (owner_did == did))
         inst_lock.destroy_reservation();
-      inst_lock = Reservation::NO_RESERVATION;
-      // Release any aliased distributed IDs we have as well
-      for (std::set<DistributedID>::const_iterator it = aliases.begin();
-            it != aliases.end(); it++)
-      {
-        context->unregister_logical_view(*it);
-        context->runtime->unregister_hierarchical_collectable(*it);
-      }
+      inst_lock = Reservation::NO_RESERVATION; 
       // Remove our references to the manager
       if (manager->remove_resource_reference())
         delete manager;
@@ -15546,27 +16076,14 @@ namespace LegionRuntime {
     size_t MaterializedView::get_blocking_factor(void) const
     //--------------------------------------------------------------------------
     {
-      return manager->blocking_factor;
-    }
-
-    //--------------------------------------------------------------------------
-    void MaterializedView::add_alias_did(DistributedID alias)
-    //--------------------------------------------------------------------------
-    {
-      context->runtime->register_hierarchical_collectable(alias, this); 
-      context->register_logical_view(alias, this);
-      AutoLock v_lock(view_lock);
-#ifdef DEBUG_HIGH_LEVEL
-      assert(aliases.find(alias) == aliases.end());
-#endif
-      aliases.insert(alias);
-    }
+      return manager->layout->blocking_factor;
+    } 
 
     //--------------------------------------------------------------------------
     const FieldMask& MaterializedView::get_physical_mask(void) const
     //--------------------------------------------------------------------------
     {
-      return manager->allocated_fields;
+      return manager->layout->allocated_fields;
     }
 
     //--------------------------------------------------------------------------
@@ -15817,7 +16334,6 @@ namespace LegionRuntime {
       // Launch the garbage collection task
       defer_collect_user(user.term_event, copy_mask, exec_proc);
       // Have to do this part holding the view lock
-      std::set<AddressSpaceID> notified;
       AutoLock v_lock(view_lock);
       // Add ourselves to the list of current epoch users, this
       // is safe to do because we previously filtered the 
@@ -15831,8 +16347,6 @@ namespace LegionRuntime {
       // If we're remote, send back the user to the owner 
       if (owner_did != did)
         send_back_user(user);
-      // Notify any subscribers
-      notify_subscribers(notified, user);
     }
 
     //--------------------------------------------------------------------------
@@ -15864,10 +16378,6 @@ namespace LegionRuntime {
         // If we're remote, send back the user to the owner
         if (owner_did != did)
           send_back_user(user);
-        // Notify all our subscribers and then have
-        // our parent's do the same thing
-        std::set<AddressSpaceID> notified;
-        notify_subscribers(notified, user);
       }
       // At this point tasks shouldn't be allowed to wait on themselves
 #ifdef DEBUG_HIGH_LEVEL
@@ -15979,10 +16489,7 @@ namespace LegionRuntime {
       // Notify any subscribers except the source that
       // sent us the user in the first place
       {
-        std::set<AddressSpaceID> notified;
-        notified.insert(source);
         AutoLock v_lock(view_lock,1,false/*exclusive*/);
-        notify_subscribers(notified, user);
         // If we have an owner keep sending it back
         if (owner_did != did)
           send_back_user(user);
@@ -15995,32 +16502,6 @@ namespace LegionRuntime {
       defer_collect_user(user.term_event, user.field_mask, 
                          Machine::get_executing_processor());
     }
-
-    //--------------------------------------------------------------------------
-    void MaterializedView::process_send_user(AddressSpaceID source, 
-                                             PhysicalUser &user)
-    //--------------------------------------------------------------------------
-    {
-      // First transform the field mask for the user
-      manager->region_node->column_source->transform_field_mask(
-                                                    user.field_mask, source);
-#ifdef DEBUG_HIGH_LEVEL
-      assert(owner_did != did);
-#endif
-      // Send the user to any subscribers that we have
-      {
-        std::set<AddressSpaceID> notified;
-        AutoLock v_lock(view_lock,1,false/*exclusive*/);
-        notify_subscribers(notified, user);
-      }
-      std::set<Event> dummy_wait_on;
-      // Only need to add this user locally, if there is a
-      // parent it will have sent the user back independently
-      add_local_user<true>(dummy_wait_on, user);
-      // Then launch the garbage collection task
-      defer_collect_user(user.term_event, user.field_mask,
-                         Machine::get_executing_processor());
-    } 
 
     //--------------------------------------------------------------------------
     void MaterializedView::add_user_above(std::set<Event> &wait_on,
@@ -16040,11 +16521,9 @@ namespace LegionRuntime {
         user.child = local_child;
       }
       add_local_user<true>(wait_on, user);
-      std::set<AddressSpaceID> notified;
       AutoLock v_lock(view_lock,1,false/*exclusive*/);
       if (owner_did != did)
         send_back_user(user);
-      notify_subscribers(notified, user);
     }
 
     //--------------------------------------------------------------------------
@@ -16060,7 +16539,6 @@ namespace LegionRuntime {
         // Restore the child
         user.child = local_child;
       }
-      std::set<AddressSpaceID> notified;
       AutoLock v_lock(view_lock);
       // Add this to the list of current epoch users,
       // this is safe to do because we previously filtered
@@ -16073,8 +16551,6 @@ namespace LegionRuntime {
 #endif
       if (owner_did != did)
         send_back_user(user);
-      // Notify any subscribers
-      notify_subscribers(notified, user);
     }
  
     //--------------------------------------------------------------------------
@@ -16281,9 +16757,9 @@ namespace LegionRuntime {
       if (Runtime::max_filter_size > 0)
       {
         if (prev_epoch_users.size() >= Runtime::max_filter_size)
-          condense_user_list(prev_epoch_users);
+          condense_user_list(prev_epoch_users, true/*previous*/);
         if (curr_epoch_users.size() >= Runtime::max_filter_size)
-          condense_user_list(curr_epoch_users);
+          condense_user_list(curr_epoch_users, false/*previous*/);
       }
 #endif
 #else
@@ -16543,9 +17019,9 @@ namespace LegionRuntime {
       if (Runtime::max_filter_size > 0)
       {
         if (prev_epoch_users.size() >= Runtime::max_filter_size)
-          condense_user_list(prev_epoch_users);
+          condense_user_list(prev_epoch_users, true/*previous*/);
         if (curr_epoch_users.size() >= Runtime::max_filter_size)
-          condense_user_list(curr_epoch_users);
+          condense_user_list(curr_epoch_users, false/*previous*/);
       }
 #endif
 #else // PHYSICAL_FIELD_TREE
@@ -16885,26 +17361,8 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void MaterializedView::notify_subscribers(
-                   std::set<AddressSpaceID> &notified, const PhysicalUser &user)
-    //--------------------------------------------------------------------------
-    {
-      AutoLock gc(gc_lock,1,false/*exclusive*/);
-      for (std::map<AddressSpaceID,DistributedID>::const_iterator it = 
-            subscribers.begin(); it != subscribers.end(); it++)
-      {
-        // Only notify processors that haven't already been notified
-        if (notified.find(it->first) == notified.end())
-        {
-          send_user(it->first, it->second, user);
-          notified.insert(it->first);
-        }
-      }
-      // Don't need to go up because parent is sent back independently
-    }
-
-    //--------------------------------------------------------------------------
-    void MaterializedView::condense_user_list(std::list<PhysicalUser> &users)
+    void MaterializedView::condense_user_list(std::list<PhysicalUser> &users,
+                                              bool previous)
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_PERF
@@ -16914,6 +17372,7 @@ namespace LegionRuntime {
       // and privleges whose user masks have been split up for various reasons.
       // Also while scanning over the list, do a quick check for events
       // which have already triggered but haven't been collected yet.
+      if (previous)
       {
         // Note storing pointers requires using an STL
         // list where nodes don't move
@@ -16961,6 +17420,18 @@ namespace LegionRuntime {
             else
               it = users.erase(it);
           }
+        }
+      }
+      else
+      {
+        // If this isn't previous, just do the check for triggered events
+        for (std::list<PhysicalUser>::iterator it = users.begin();
+              it != users.end(); /*nothing*/)
+        {
+          if (it->term_event.has_triggered())
+            it = users.erase(it);
+          else
+            it++;
         }
       }
 
@@ -17067,81 +17538,132 @@ namespace LegionRuntime {
 
     //--------------------------------------------------------------------------
     DistributedID MaterializedView::send_state(AddressSpaceID target,
-                                           std::set<LogicalView*> &needed_views,
-                                    std::set<PhysicalManager*> &needed_managers)
+                                               const FieldMask &send_mask,
+                                 std::map<LogicalView*,FieldMask> &needed_views,
+                                 std::set<PhysicalManager*> &needed_managers)
     //--------------------------------------------------------------------------
     {
       // If we've already packed this view then we are done with it
       // and everything above it
-      if (needed_views.find(this) == needed_views.end())
+      std::map<LogicalView*,FieldMask>::iterator needed_finder = 
+        needed_views.find(this);
+      if (needed_finder == needed_views.end())
       {
         // Add ourselves to the needed views
-        needed_views.insert(this);
+        needed_views[this] = send_mask;
         // Always add a remote reference
         add_remote_reference();
         DistributedID parent_did = did;
         if (parent != NULL)
-          parent_did = parent->send_state(target,needed_views,needed_managers);
+          parent_did = parent->send_state(target, send_mask, 
+                                          needed_views,needed_managers);
         // Send the manager if it hasn't been sent and get it's ID
         DistributedID manager_did = 
           manager->send_manager(target, needed_managers);
         // Now see if we need to send ourselves
+        DistributedID result = did;
         {
           AutoLock gc(gc_lock,1,false/*exclusive*/);
           std::map<AddressSpaceID,DistributedID>::const_iterator finder = 
             subscribers.find(target);
           // If we already have a remote view, we're done
           if (finder != subscribers.end())
-            return finder->second;
+            result = finder->second;
+        }
+        if (result != did)
+        {
+          // We already have a remote view so send the update
+          send_updates(result, target, send_mask);
+          return result;
         }
         // Otherwise if we make it here, we need to pack ourselves up
         // and send outselves to another node
         Serializer rez;
-        DistributedID result = context->runtime->get_available_distributed_id();
+        DistributedID remote_did = 
+          context->runtime->get_available_distributed_id();
         // If we don't have a parent save our did 
         // as the parent did which will tell the unpack
         // task that there is no parent
         if (parent == NULL)
-          parent_did = result;
+          parent_did = remote_did;
         // Now pack up all the data, this has to be done
         // atomically to make sure that no one can add any
         // users while we are doing it, or tries to send
         // users to subscribers before we've actually sent
         // the subscriber.
-        AutoLock v_lock(view_lock);
+        bool lost_race = false;
         {
-          RezCheck z(rez);
-          rez.serialize(result);
-          // Our processor and did as the owner
-          rez.serialize(context->runtime->address_space);
-          rez.serialize(did);
-          rez.serialize(parent_did);
-          rez.serialize(manager_did);
-          rez.serialize(logical_node->get_color());
-          rez.serialize(depth);
-          pack_materialized_view(rez);
+          AutoLock v_lock(view_lock);
+          // Check again to make sure we didn't lose the race
+          {
+            AutoLock gc(gc_lock,1,false/*exclusive*/);
+            std::map<AddressSpaceID,DistributedID>::const_iterator finder = 
+              subscribers.find(target);
+            if (finder != subscribers.end())
+            {
+              lost_race = true;
+              result = finder->second;
+            }
+            else
+              result = remote_did;
+          }
+          if (!lost_race)
+          {
+            {
+              RezCheck z(rez);
+              rez.serialize(remote_did);
+              // Our processor and did as the owner
+              rez.serialize(context->runtime->address_space);
+              rez.serialize(did);
+              rez.serialize(parent_did);
+              rez.serialize(manager_did);
+              rez.serialize(logical_node->get_color());
+              rez.serialize(depth);
+              pack_materialized_view(rez);
+            }
+            // Before sending the message, update the subscribers
+            add_subscriber(target, result);
+            // Now send the message
+            context->runtime->send_materialized_view(target, rez);
+          }
         }
-        // Before sending the message, update the subscribers
-        add_subscriber(target, result);
-        // Now send the message
-        context->runtime->send_materialized_view(target, rez);
+        if (lost_race)
+        {
+          // Return the distributed ID
+          context->runtime->free_distributed_id(remote_did);
+          // Send the message
+          send_updates(result, target, send_mask);
+        }
         return result;
       }
       else
       {
         // Return the distributed ID of the view on the remote node
-        AutoLock gc(gc_lock,1,false/*exclusive*/);
-        std::map<AddressSpaceID,DistributedID>::const_iterator finder = 
-          subscribers.find(target);
+        DistributedID result;
+        {
+          AutoLock gc(gc_lock,1,false/*exclusive*/);
+          std::map<AddressSpaceID,DistributedID>::const_iterator finder = 
+            subscribers.find(target);
 #ifdef DEBUG_HIGH_LEVEL
-        assert(finder != subscribers.end());
+          assert(finder != subscribers.end());
 #endif
-        return finder->second;
+          result = finder->second;
+        }
+        // See if we need to send an update
+        FieldMask diff_mask = send_mask - needed_finder->second;
+        if (!!diff_mask)
+        {
+          send_updates(result, target, diff_mask);
+          // Update the mask with the fields we've sent
+          needed_finder->second |= diff_mask;
+        }
+        return result;
       }
     }
 
     //--------------------------------------------------------------------------
     DistributedID MaterializedView::send_back_state(AddressSpaceID target,
+                                                    const FieldMask &send_mask,
                                     std::set<PhysicalManager*> &needed_managers)
     //--------------------------------------------------------------------------
     {
@@ -17154,7 +17676,8 @@ namespace LegionRuntime {
 #endif
         DistributedID parent_did = did;
         if (parent != NULL)
-          parent_did = parent->send_back_state(target, needed_managers);
+          parent_did = parent->send_back_state(target, send_mask, 
+                                               needed_managers);
         DistributedID manager_did = 
           manager->send_manager(target, needed_managers);
         DistributedID new_owner_did = 
@@ -17200,14 +17723,6 @@ namespace LegionRuntime {
         if (return_new_did)
           context->runtime->free_distributed_id(new_owner_did);
       }
-#ifdef DEBUG_HIGH_LEVEL
-      else 
-      {
-        // We better be holding some remote references
-        // to guarantee that the owner is still there.
-        assert(held_remote_references > 0);
-      }
-#endif
       // Otherwise we're already remote from the target and therefore
       // all of our parents are also already remote so we are done
       return owner_did;
@@ -17268,9 +17783,15 @@ namespace LegionRuntime {
 
     //--------------------------------------------------------------------------
     void MaterializedView::unpack_materialized_view(Deserializer &derez, 
-                                                    AddressSpaceID source)
+                                                    AddressSpaceID source,
+                                                    bool need_lock)
     //--------------------------------------------------------------------------
     {
+      if (need_lock)
+      {
+        Event lock_event = view_lock.acquire(0, true/*exclusive*/);
+        lock_event.wait(true/*block*/);
+      }
       DerezCheck z(derez);
       derez.deserialize(inst_lock);
       FieldSpaceNode *field_node = manager->region_node->column_source;
@@ -17331,6 +17852,9 @@ namespace LegionRuntime {
         field_node->transform_field_mask(version_mask, source);
         current_versions[vid] = version_mask;
       }
+      // Now we can do the unlock
+      if (need_lock)
+        view_lock.release();
       // Now launch the waiting deferred events.  We wait until
       // here to do it so we don't need to hold the lock while unpacking
       Processor gc_proc = Machine::get_executing_processor();
@@ -17338,6 +17862,124 @@ namespace LegionRuntime {
             deferred_events.begin(); it != deferred_events.end(); it++)
       {
         defer_collect_user(it->first, it->second, gc_proc);
+      }
+    }
+
+    //--------------------------------------------------------------------------
+    void MaterializedView::send_updates(DistributedID remote_did,
+                                        AddressSpaceID target,
+                                        const FieldMask &update_mask)
+    //--------------------------------------------------------------------------
+    {
+      Serializer rez;
+      {
+        RezCheck z(rez);
+        rez.serialize(remote_did);
+        rez.serialize(update_mask);
+        std::deque<PhysicalUser> update_curr, update_prev;
+        // Hold the view lock while iterating these data structures
+        {
+          AutoLock v_lock(view_lock,1,false/*exclusive*/);
+          for (std::list<PhysicalUser>::const_iterator it = 
+                curr_epoch_users.begin(); it != curr_epoch_users.end(); it++)
+          {
+            FieldMask overlap = it->field_mask & update_mask;
+            if (!overlap)
+              continue;
+            update_curr.push_back(*it);
+            update_curr.back().field_mask = overlap;
+          }
+          for (std::list<PhysicalUser>::const_iterator it = 
+                prev_epoch_users.begin(); it != prev_epoch_users.end(); it++)
+          {
+            FieldMask overlap = it->field_mask & update_mask;
+            if (!overlap)
+              continue;
+            update_prev.push_back(*it);
+            update_prev.back().field_mask = overlap;
+          }
+        }
+        rez.serialize<size_t>(update_curr.size());
+        for (std::deque<PhysicalUser>::const_iterator it = 
+              update_curr.begin(); it != update_curr.end(); it++)
+        {
+          rez.serialize(it->usage);
+          rez.serialize(it->field_mask);
+          rez.serialize(it->term_event);
+          rez.serialize(it->child);
+        }
+        rez.serialize<size_t>(update_prev.size());
+        for (std::deque<PhysicalUser>::const_iterator it = 
+              update_prev.begin(); it != update_prev.end(); it++)
+        {
+          rez.serialize(it->usage);
+          rez.serialize(it->field_mask);
+          rez.serialize(it->term_event);
+          rez.serialize(it->child);
+        }
+      }
+      runtime->send_materialized_update(target, rez);
+    }
+
+    //--------------------------------------------------------------------------
+    void MaterializedView::process_updates(Deserializer &derez,
+                                           AddressSpaceID source)
+    //--------------------------------------------------------------------------
+    {
+      FieldSpaceNode *field_node = logical_node->column_source;
+      FieldMask update_mask;
+      derez.deserialize(update_mask);
+      field_node->transform_field_mask(update_mask, source);
+      // First do our unpacking
+      size_t curr_updates_size;
+      derez.deserialize(curr_updates_size);
+      std::vector<PhysicalUser> curr_updates(curr_updates_size);
+      for (unsigned idx = 0; idx < curr_updates_size; idx++)
+      {
+        PhysicalUser &user = curr_updates[idx];
+        derez.deserialize(user.usage);
+        derez.deserialize(user.field_mask);
+        derez.deserialize(user.term_event);
+        derez.deserialize(user.child);
+        field_node->transform_field_mask(user.field_mask, source);
+      }
+      size_t prev_updates_size;
+      derez.deserialize(prev_updates_size);
+      std::vector<PhysicalUser> prev_updates(prev_updates_size);
+      for (unsigned idx = 0; idx < prev_updates_size; idx++)
+      {
+        PhysicalUser &user = prev_updates[idx];
+        derez.deserialize(user.usage);
+        derez.deserialize(user.field_mask);
+        derez.deserialize(user.term_event);
+        derez.deserialize(user.child);
+        field_node->transform_field_mask(user.field_mask, source);
+      }
+      {
+        // This must be done atomically in order to be correct
+        // because of the possibility of multiple updates to
+        // the same fields being sent at the same time
+        AutoLock v_lock(view_lock);
+        // Go through and filter out any update fields from the
+        // current and previous epoch users
+        filter_list(curr_epoch_users, update_mask);
+        curr_epoch_users.insert(curr_epoch_users.end(),
+                                curr_updates.begin(), curr_updates.end());
+        filter_list(prev_epoch_users, update_mask);
+        prev_epoch_users.insert(prev_epoch_users.end(),
+                                prev_updates.begin(), prev_updates.end());
+      }
+      // Now we can add the new users to our set
+      Processor curr_proc = Machine::get_executing_processor();
+      for (std::vector<PhysicalUser>::const_iterator it =
+            curr_updates.begin(); it != curr_updates.end(); it++)
+      {
+        defer_collect_user(it->term_event, it->field_mask, curr_proc);
+      }
+      for (std::vector<PhysicalUser>::const_iterator it = 
+            prev_updates.begin(); it != prev_updates.end(); it++)
+      {
+        defer_collect_user(it->term_event, it->field_mask, curr_proc);
       }
     }
 
@@ -17381,6 +18023,7 @@ namespace LegionRuntime {
       }
       // Make the new instance and unpack it
       MaterializedView *result;
+      bool need_lock = false;
       if (parent != NULL)
       {
         // We can use the parent to find the logical node for this view
@@ -17390,9 +18033,11 @@ namespace LegionRuntime {
         if (!parent->add_subview(result, view_color))
         {
           // The view already existed so add an alias
+          result->set_no_free_did();
           delete result;
           result = parent->get_materialized_subview(view_color);
           result->add_alias_did(did);
+          need_lock = true;
         }
       }
       else
@@ -17405,7 +18050,7 @@ namespace LegionRuntime {
 #ifdef DEBUG_HIGH_LEVEL
       assert(result != NULL);
 #endif
-      result->unpack_materialized_view(derez, source);
+      result->unpack_materialized_view(derez, source, need_lock);
     }
 
     //--------------------------------------------------------------------------
@@ -17448,6 +18093,7 @@ namespace LegionRuntime {
       }
       // Make the new instance and unpack it
       MaterializedView *result;
+      bool need_lock = false;
       if (parent != NULL)
       {
         RegionTreeNode *node = 
@@ -17463,6 +18109,7 @@ namespace LegionRuntime {
           delete result;
           result = parent->get_materialized_subview(view_color);
           result->add_alias_did(did);
+          need_lock = true;
         }
       }
       else
@@ -17477,41 +18124,45 @@ namespace LegionRuntime {
       // Add a remote reference held by the view that sent this back
       result->add_remote_reference();
       // Unpack the rest of the state
-      result->unpack_materialized_view(derez, source);
-    }
+      result->unpack_materialized_view(derez, source, need_lock);
+    } 
 
     //--------------------------------------------------------------------------
-    /*static*/ void MaterializedView::handle_send_subscriber(
-                                RegionTreeForest *context, Deserializer &derez,
-                                AddressSpaceID source)
+    /*static*/ void MaterializedView::handle_send_updates(
+          RegionTreeForest *context, Deserializer &derez, AddressSpaceID source)
     //--------------------------------------------------------------------------
     {
       DerezCheck z(derez);
-      DistributedID parent_did;
-      derez.deserialize(parent_did);
-      Color child_color;
-      derez.deserialize(child_color);
       DistributedID did;
       derez.deserialize(did);
-      DistributedID remote_did;
-      derez.deserialize(remote_did);
-      // First get the subview on this node
-      MaterializedView *parent_view = context->find_view(parent_did)->
-                                    as_instance_view()->as_materialized_view();
+      LogicalView *log_view = context->find_view(did);
 #ifdef DEBUG_HIGH_LEVEL
-      assert(parent_view != NULL);
+      assert(log_view != NULL);
+      assert(!log_view->is_reduction_view());
 #endif
-      MaterializedView *child_view = 
-                            parent_view->get_materialized_subview(child_color);
+      InstanceView *inst_view = log_view->as_instance_view();
 #ifdef DEBUG_HIGH_LEVEL
-      assert(child_view != NULL);
+      assert(!inst_view->is_composite_view());
 #endif
-      // Add the alias first for anyone who is coming later
-      child_view->add_alias_did(did);
-      // Then add the remote subscriber
-      child_view->add_subscriber(source, remote_did);
-      // Add a remote reference held by the view that sent this back
-      child_view->add_remote_reference();
+      MaterializedView *view = inst_view->as_materialized_view();
+      // In order to be done properly, this needs to be done atomically
+      view->process_updates(derez, source);
+    }
+
+    //--------------------------------------------------------------------------
+    /*static*/ void MaterializedView::filter_list(
+               std::list<PhysicalUser> &user_list, const FieldMask &filter_mask)
+    //--------------------------------------------------------------------------
+    {
+      for (std::list<PhysicalUser>::iterator it = user_list.begin();
+            it != user_list.end(); /*nothing*/)
+      {
+        it->field_mask -= filter_mask;
+        if (!it->field_mask)
+          it = user_list.erase(it);
+        else
+          it++;
+      }
     }
 
     /////////////////////////////////////////////////////////////
@@ -17521,8 +18172,10 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     CompositeView::CompositeView(RegionTreeForest *ctx, DistributedID did,
                               AddressSpaceID owner_proc, RegionTreeNode *node,
+                              DistributedID owner_did, const FieldMask &mask,
                               CompositeView *par/*= NULL*/)
-      : InstanceView(ctx, did, owner_proc, did, node), parent(par)
+      : InstanceView(ctx, did, owner_proc, owner_did, node), 
+        parent(par), valid_mask(mask)
     //--------------------------------------------------------------------------
     {
     }
@@ -17540,25 +18193,6 @@ namespace LegionRuntime {
     CompositeView::~CompositeView(void)
     //--------------------------------------------------------------------------
     {
-      // clean up any index spaces that we own
-      for (std::map<ReductionView*,ReduceInfo>::const_iterator vit = 
-            valid_reductions.begin(); vit != valid_reductions.end(); vit++)
-      {
-        if (vit->second.own_intersections)
-        {
-          for (std::set<Domain>::const_iterator it = 
-                vit->second.intersections.begin(); it !=
-                vit->second.intersections.end(); it++)
-          {
-            IndexSpace is = it->get_index_space();
-#ifdef DEBUG_HIGH_LEVEL
-            assert(is.exists());
-#endif
-            is.destroy();
-          }
-        }
-      }
-      valid_reductions.clear();
       // Remove any resource references that we hold on child views
       for (std::map<Color,CompositeView*>::const_iterator it = 
             children.begin(); it != children.end(); it++)
@@ -17746,15 +18380,6 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void CompositeView::process_send_user(AddressSpaceID source,
-                                          PhysicalUser &user)
-    //--------------------------------------------------------------------------
-    {
-      // This should never be called
-      assert(false);
-    }
-
-    //--------------------------------------------------------------------------
     bool CompositeView::is_composite_view(void) const
     //--------------------------------------------------------------------------
     {
@@ -17793,6 +18418,15 @@ namespace LegionRuntime {
     void CompositeView::add_root(CompositeNode *root, const FieldMask &valid)
     //--------------------------------------------------------------------------
     {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(!(valid - valid_mask));
+      // There should always be at most one root for each field
+      for (std::map<CompositeNode*,FieldMask>::const_iterator it = 
+            roots.begin(); it != roots.end(); it++)
+      {
+        assert(it->second * valid);
+      }
+#endif
       std::map<CompositeNode*,FieldMask>::iterator finder = roots.find(root);
       if (finder == roots.end())
       {
@@ -17806,11 +18440,12 @@ namespace LegionRuntime {
 
     //--------------------------------------------------------------------------
     void CompositeView::update_reduction_views(ReductionView *view,
-                                               const FieldMask &valid_mask)
+                                               const FieldMask &valid)
     //--------------------------------------------------------------------------
     {
-      // Always update the reduction mask
-      reduction_mask |= valid_mask;
+#ifdef DEBUG_HIGH_LEVEL
+      assert(!(valid - valid_mask));
+#endif
       // Handle a special case that occurs when flushing reductions
       if (logical_node == view->logical_node)
       {
@@ -17819,15 +18454,18 @@ namespace LegionRuntime {
         if (finder == valid_reductions.end())
         {
           view->add_resource_reference();
+          view->add_valid_reference();
           if (logical_node->has_component_domains())
-            valid_reductions[view] = ReduceInfo(valid_mask, false/*own*/,
+            valid_reductions[view] = ReduceInfo(valid, 
                                          logical_node->get_component_domains());
           else
-            valid_reductions[view] = ReduceInfo(valid_mask, false/*own*/,
+            valid_reductions[view] = ReduceInfo(valid, 
                                                     logical_node->get_domain());
         }
         else
-          finder->second.valid_fields |= valid_mask;
+          finder->second.valid_fields |= valid;
+        // Always update the reduction mask
+        reduction_mask |= valid;
         return;
       }
       // See if we have an intersection with the reduction and if so save it 
@@ -17838,11 +18476,14 @@ namespace LegionRuntime {
         if (finder == valid_reductions.end())
         {
           view->add_resource_reference();
-          valid_reductions[view] = ReduceInfo(valid_mask, true/*own*/,
+          view->add_valid_reference();
+          valid_reductions[view] = ReduceInfo(valid, 
                     logical_node->get_intersection_domains(view->logical_node));
         }
         else
-          finder->second.valid_fields |= valid_mask;
+          finder->second.valid_fields |= valid;
+        // Always update the reduction mask
+        reduction_mask |= valid;
       }
     }
 
@@ -17859,9 +18500,13 @@ namespace LegionRuntime {
       }
       DistributedID child_did =
         context->runtime->get_available_distributed_id();
+      DistributedID child_own_did = child_did;
+      if (did != owner_did)
+        child_own_did = context->runtime->get_available_distributed_id();
       RegionTreeNode *child_node = logical_node->get_tree_child(c); 
       CompositeView *child_view = new CompositeView(context, child_did, 
                                                     owner_addr, child_node, 
+                                                    child_own_did, valid_mask,
                                                     this);
       for (std::map<CompositeNode*,FieldMask>::const_iterator it = 
             roots.begin(); it != roots.end(); it++)
@@ -17889,7 +18534,47 @@ namespace LegionRuntime {
         }
         children[c] = child_view;
       }
+      if (child_did != child_own_did)
+      {
+        Serializer rez;
+        {
+          RezCheck z(rez);
+          rez.serialize(owner_did);
+          rez.serialize(c);
+          rez.serialize(child_own_did);
+          rez.serialize(child_did);
+        }
+        // Add a held remote reference
+        child_view->add_held_remote_reference();
+        // Now notify the owner that it has a remote subscriber
+        context->runtime->send_subscriber(owner_addr, rez);
+      }
       return child_view;
+    }
+
+    //--------------------------------------------------------------------------
+    bool CompositeView::add_subview(CompositeView *view, Color c)
+    //--------------------------------------------------------------------------
+    {
+      bool added = true;
+      {
+        AutoLock v_lock(view_lock);
+        if (children.find(c) == children.end())
+          children[c] = view;
+        else
+          added = false;
+      }
+      if (added)
+        view->add_resource_reference();
+      return added;
+    }
+
+    //--------------------------------------------------------------------------
+    void CompositeView::update_valid_mask(const FieldMask &mask)
+    //--------------------------------------------------------------------------
+    {
+      AutoLock v_lock(view_lock);
+      valid_mask |= mask;
     }
 
     //--------------------------------------------------------------------------
@@ -17922,77 +18607,152 @@ namespace LegionRuntime {
 
     //--------------------------------------------------------------------------
     DistributedID CompositeView::send_state(AddressSpaceID target,
-                                           std::set<LogicalView*> &needed_views,
-                                    std::set<PhysicalManager*> &needed_managers)
+                                            const FieldMask &send_mask,
+                                 std::map<LogicalView*,FieldMask> &needed_views,
+                                 std::set<PhysicalManager*> &needed_managers)
     //--------------------------------------------------------------------------
     {
-      if (needed_views.find(this) == needed_views.end())
+#ifdef DEBUG_HIGH_LEVEL
+      assert(!(send_mask - valid_mask));
+#endif
+      std::map<LogicalView*,FieldMask>::iterator needed_finder = 
+        needed_views.find(this);
+      if (needed_finder == needed_views.end())
       {
-        needed_views.insert(this); 
+        needed_views[this] = send_mask;
         // Always add a remote reference
         add_remote_reference();
+        DistributedID parent_did = did;
+        if (parent != NULL)
+        {
+          // We never need to actually send any state here
+          FieldMask empty_mask;
+          parent_did = parent->send_state(target, empty_mask,
+                                          needed_views, needed_managers);
+        }
         // Now see if we need to send ourselves
+        DistributedID result = did;
         {
           AutoLock gc(gc_lock,1,false/*exclusive*/);
           std::map<AddressSpaceID,DistributedID>::const_iterator finder = 
             subscribers.find(target);
           if (finder != subscribers.end())
-            return finder->second;
+            result = finder->second;
+        }
+        // If we already have a remote version, send any updates
+        // and then we are done
+        if (result != did)
+        {
+          send_updates(result, target, send_mask, 
+                       needed_views, needed_managers); 
+          return result;
         }
         // Otherwise if we make it here, we need to pack ourselves up
         // and send ourselves to another node
         Serializer rez;
-        DistributedID result = context->runtime->get_available_distributed_id();
+        DistributedID remote_did = 
+          context->runtime->get_available_distributed_id();
+        // If we don't have a parent save our did as the
+        // parent did which will tell the unpack task
+        // that there is no parent
+        if (parent == NULL)
+          parent_did = remote_did;
         // Now pack up all the data, this has to be done
         // atomically to make sure that no one can add any
         // users while we are doing it, or tries to send
         // users to subscribers before we've actually sent
         // the subscriber.
-        AutoLock v_lock(view_lock);
+        bool lost_race = false;
         {
-          RezCheck z(rez);
-          rez.serialize(result);
-          // Our processor as the owner
-          rez.serialize(context->runtime->address_space);
-          if (logical_node->is_region())
+          AutoLock v_lock(view_lock);
           {
-            rez.serialize<bool>(true);
-            RegionNode *reg_node = logical_node->as_region_node();
-            rez.serialize(reg_node->handle);
+            AutoLock gc(gc_lock,1,false/*exclusive*/);
+            std::map<AddressSpaceID,DistributedID>::const_iterator finder = 
+              subscribers.find(target);
+            if (finder != subscribers.end())
+            {
+              result = finder->second;
+              lost_race = true;
+            }
+            else
+              result = remote_did;
           }
-          else
+          if (!lost_race)
           {
-            rez.serialize<bool>(false);
-            PartitionNode *part_node = logical_node->as_partition_node();
-            rez.serialize(part_node->handle);
+            {
+              RezCheck z(rez);
+              rez.serialize(remote_did);
+              rez.serialize(did);
+              rez.serialize(parent_did);
+              // Our processor as the owner
+              rez.serialize(context->runtime->address_space);
+              rez.serialize(send_mask);
+              if (logical_node->is_region())
+              {
+                rez.serialize<bool>(true);
+                RegionNode *reg_node = logical_node->as_region_node();
+                rez.serialize(reg_node->handle);
+              }
+              else
+              {
+                rez.serialize<bool>(false);
+                PartitionNode *part_node = logical_node->as_partition_node();
+                rez.serialize(part_node->handle);
+              }
+              pack_composite_view(rez, false/*send back*/, target, send_mask,
+                                  needed_views, needed_managers);
+            }
+            // Before sending the message, update the subscribers
+            add_subscriber(target, result);
+            // Also record the state that we sent
+            remote_state[target] = send_mask;
+            // Now send the message
+            context->runtime->send_composite_view(target, rez);
           }
-          pack_composite_view(rez, false/*send back*/, target,
-                              needed_views, needed_managers);
         }
-        // Before sending the message, update the subscribers
-        add_subscriber(target, result);
-        // Now send the message
-        context->runtime->send_composite_view(target, rez);
+        if (lost_race)
+        {
+          // Free the distributed ID
+          context->runtime->free_distributed_id(remote_did);
+          // Sen the update
+          send_updates(result, target, send_mask, 
+                       needed_views, needed_managers); 
+        }
         return result;
       }
       else
       {
+        DistributedID result;
         // Return the distributed ID of the view on the remote node
-        AutoLock gc(gc_lock,1,false/*exclusive*/);
-        std::map<AddressSpaceID,DistributedID>::const_iterator finder = 
-          subscribers.find(target);
+        {
+          AutoLock gc(gc_lock,1,false/*exclusive*/);
+          std::map<AddressSpaceID,DistributedID>::const_iterator finder = 
+            subscribers.find(target);
 #ifdef DEBUG_HIGH_LEVEL
-        assert(finder != subscribers.end());
+          assert(finder != subscribers.end());
 #endif
-        return finder->second;
+          result = finder->second;
+        }
+        FieldMask diff_mask = send_mask - needed_finder->second;
+        if (!!diff_mask)
+        {
+          send_updates(result, target, diff_mask, 
+                       needed_views, needed_managers);
+          needed_finder->second |= diff_mask;
+        }
+        return result;
       }
     }
 
     //--------------------------------------------------------------------------
     DistributedID CompositeView::send_back_state(AddressSpaceID target,
+                                                 const FieldMask &send_mask,
                                     std::set<PhysicalManager*> &needed_managers)
     //--------------------------------------------------------------------------
     {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(!(send_mask - valid_mask));
+#endif
       if (owner_addr != target)
       {
 #ifdef DEBUG_HIGH_LEVEL
@@ -18000,6 +18760,10 @@ namespace LegionRuntime {
         // then we better be the owner
         assert(owner_did == did);
 #endif
+        DistributedID parent_did = did;
+        if (parent != NULL)
+          parent_did = parent->send_back_state(target, send_mask, 
+                                               needed_managers);
         DistributedID new_owner_did = 
           context->runtime->get_available_distributed_id();
         // Need to hold the view lock when doing this so we
@@ -18020,7 +18784,9 @@ namespace LegionRuntime {
               rez.serialize(new_owner_did);
               // Save our information so we can be added as a subscriber
               rez.serialize(did);
+              rez.serialize(parent_did);
               rez.serialize(owner_addr);
+              rez.serialize(send_mask);
               if (logical_node->is_region())
               {
                 rez.serialize<bool>(true);
@@ -18033,8 +18799,8 @@ namespace LegionRuntime {
                 PartitionNode *part_node = logical_node->as_partition_node();
                 rez.serialize(part_node->handle);
               }
-              std::set<LogicalView*> dummy_views;
-              pack_composite_view(rez, true/*send back*/, target,
+              std::map<LogicalView*,FieldMask> dummy_views;
+              pack_composite_view(rez, true/*send back*/, target, send_mask,
                                   dummy_views, needed_managers);
             }
             // Before sending the message add resource reference
@@ -18060,12 +18826,18 @@ namespace LegionRuntime {
                                                const FieldMask &copy_mask)
     //--------------------------------------------------------------------------
     {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(!(copy_mask - valid_mask));
+#endif
       std::map<Event,FieldMask> preconditions;
       dst->find_copy_preconditions(0/*redop*/, false/*reading*/,
                                    copy_mask, preconditions);
       // Iterate over all the roots and issue copies to update the 
       // target instance from this particular view
       std::map<Event,FieldMask> postconditions;
+#ifdef DEBUG_HIGH_LEVEL
+      FieldMask accumulate_mask;
+#endif
       for (std::map<CompositeNode*,FieldMask>::const_iterator it = 
             roots.begin(); it != roots.end(); it++)
       {
@@ -18074,6 +18846,10 @@ namespace LegionRuntime {
           continue;
         it->first->issue_update_copies(info, dst, overlap, overlap,
                                        preconditions, postconditions);
+#ifdef DEBUG_HIGH_LEVEL
+        assert(overlap * accumulate_mask);
+        accumulate_mask |= overlap;
+#endif
       }
       // Fun trick here, use the precondition set routine to get the
       // sets of fields which all have the same precondition events
@@ -18089,10 +18865,15 @@ namespace LegionRuntime {
       {
         PreconditionSet &post_set = *pit;
         // Go through and issue any reductions for this set
-        if (!valid_reductions.empty() &&
-            !(reduction_mask * post_set.pre_mask))
-          flush_reductions(info, dst, post_set.pre_mask, 
-                           preconditions, post_set.preconditions);
+        if (!valid_reductions.empty())
+        {
+          FieldMask reduce_overlap = reduction_mask & post_set.pre_mask;
+          if (!!reduce_overlap)
+          {
+            flush_reductions(info, dst, reduce_overlap,
+                             preconditions, post_set.preconditions);
+          }
+        }
         // If the set is empty, then we can skip it
         if (post_set.preconditions.empty())
           continue;
@@ -18112,7 +18893,13 @@ namespace LegionRuntime {
                                       std::map<Event,FieldMask> &postconditions)
     //--------------------------------------------------------------------------
     {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(!(copy_mask - valid_mask));
+#endif
       std::map<Event,FieldMask> local_postconditions;
+#ifdef DEBUG_HIGH_LEVEL
+      FieldMask accumulate_mask;
+#endif
       for (std::map<CompositeNode*,FieldMask>::const_iterator it = 
             roots.begin(); it != roots.end(); it++)
       {
@@ -18121,6 +18908,10 @@ namespace LegionRuntime {
           continue;
         it->first->issue_update_copies(info, dst, overlap, overlap,
                                        preconditions, local_postconditions);
+#ifdef DEBUG_HIGH_LEVEL
+        assert(overlap * accumulate_mask);
+        accumulate_mask |= overlap;
+#endif
       }
       // Fun trick here, use the precondition set routine to get the
       // sets of fields which all have the same precondition events
@@ -18136,10 +18927,15 @@ namespace LegionRuntime {
       {
         PreconditionSet &post_set = *pit;
         // Go through and issue any reductions for this set
-        if (!valid_reductions.empty() &&
-            !(reduction_mask * post_set.pre_mask))
-          flush_reductions(info, dst, post_set.pre_mask, 
-                           preconditions, post_set.preconditions);
+        if (!valid_reductions.empty())
+        {
+          FieldMask reduce_overlap = reduction_mask & post_set.pre_mask;
+          if (!!reduce_overlap)
+          {
+            flush_reductions(info, dst, reduce_overlap,
+                             preconditions, post_set.preconditions);
+          }
+        }
         // If the set is empty, then we can skip it
         if (post_set.preconditions.empty())
           continue;
@@ -18163,6 +18959,9 @@ namespace LegionRuntime {
                                          std::set<Event> &event_set)
     //--------------------------------------------------------------------------
     {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(!(event_mask - valid_mask));
+#endif
       // Get the set of reductions that need to be issued for the
       // fields in this precondition set
       std::map<ReductionView*,FieldMask> overlap_reductions;
@@ -18179,6 +18978,9 @@ namespace LegionRuntime {
       if (!overlap_reductions.empty())
       {
         // Compute the preconditions for these fields
+        // Make sure that all the events in the event_set are
+        // included in the reduction preconditions because they
+        // are copies are also writing to the fields.
         std::set<Event> reduce_preconditions = event_set;
         for (std::map<Event,FieldMask>::const_iterator it = 
               preconditions.begin(); it != preconditions.end(); it++)
@@ -18211,15 +19013,28 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     void CompositeView::pack_composite_view(Serializer &rez, bool send_back,
                                             AddressSpaceID target,
-                                           std::set<LogicalView*> &needed_views,
-                                    std::set<PhysicalManager*> &needed_managers)
+                                            const FieldMask &pack_mask,
+                                 std::map<LogicalView*,FieldMask> &needed_views,
+                                 std::set<PhysicalManager*> &needed_managers)
     //--------------------------------------------------------------------------
     {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(!(pack_mask - valid_mask));
+#endif
       RezCheck z(rez);
-      // First pack up all of our roots
-      rez.serialize<size_t>(roots.size());
+      // First pack up all of our roots necessary roots
+      std::map<CompositeNode*,FieldMask> send_roots;
       for (std::map<CompositeNode*,FieldMask>::const_iterator it = 
             roots.begin(); it != roots.end(); it++)
+      {
+        FieldMask overlap = it->second & pack_mask;
+        if (!overlap)
+          continue;
+        send_roots[it->first] = overlap;
+      }
+      rez.serialize<size_t>(send_roots.size());
+      for (std::map<CompositeNode*,FieldMask>::const_iterator it = 
+            send_roots.begin(); it != send_roots.end(); it++)
       {
         // Before we can pack the composite node, we first need to 
         // makes sure we have the necessary region tree shape in
@@ -18241,32 +19056,42 @@ namespace LegionRuntime {
           rez.serialize(part_node->handle);
         }
         // Now pack the name of the node
-        it->first->pack_composite_node(rez, target, send_back,
+        it->first->pack_composite_node(rez, send_back, target, it->second,
                                        needed_views, needed_managers);
         rez.serialize(it->second);
       }
       // Now send any reduction views
-      rez.serialize<size_t>(valid_reductions.size());
-      if (!valid_reductions.empty())
+      std::map<ReductionView*,FieldMask> send_reductions;
+      for (std::map<ReductionView*,ReduceInfo>::const_iterator it = 
+            valid_reductions.begin(); it != valid_reductions.end(); it++)
       {
-        rez.serialize(reduction_mask);
-        for (std::map<ReductionView*,ReduceInfo>::iterator it = 
-              valid_reductions.begin(); it != valid_reductions.end(); it++)
+        FieldMask overlap = it->second.valid_fields & pack_mask;
+        if (!overlap)
+          continue;
+        send_reductions[it->first] = overlap;
+      }
+      rez.serialize<size_t>(send_reductions.size());
+      if (!send_reductions.empty())
+      {
+        FieldMask send_reduction_mask = reduction_mask & pack_mask;
+        rez.serialize(send_reduction_mask);
+        for (std::map<ReductionView*,FieldMask>::iterator it = 
+              send_reductions.begin(); it != send_reductions.end(); it++)
         {
+          std::map<ReductionView*,ReduceInfo>::iterator finder = 
+            valid_reductions.find(it->first);
           DistributedID red_did = 
-            it->first->send_state(target, needed_views, needed_managers);
+            it->first->send_state(target, it->second,
+                                  needed_views, needed_managers);
           rez.serialize(red_did);
-          rez.serialize(it->second.valid_fields);
-          rez.serialize<size_t>(it->second.intersections.size());
+          rez.serialize(it->second);
+          rez.serialize<size_t>(finder->second.intersections.size());
           for (std::set<Domain>::const_iterator dit = 
-                it->second.intersections.begin(); dit !=
-                it->second.intersections.end(); dit++)
+                finder->second.intersections.begin(); dit !=
+                finder->second.intersections.end(); dit++)
           {
             rez.serialize(*dit);
           }
-          // If we're sending these back, mark that we no longer own them
-          if (send_back)
-            it->second.own_intersections = false;
         }
       }
     }
@@ -18274,9 +19099,14 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     void CompositeView::unpack_composite_view(Deserializer &derez,
                                               AddressSpaceID source,
-                                              bool send_back)
+                                              bool send_back, bool need_lock)
     //--------------------------------------------------------------------------
     {
+      if (need_lock)
+      {
+        Event lock_event = view_lock.acquire(0, true/*exclusive*/);
+        lock_event.wait(true/*block*/);
+      }
       DerezCheck z(derez);
       size_t num_roots;
       derez.deserialize(num_roots);
@@ -18300,6 +19130,7 @@ namespace LegionRuntime {
         }
         CompositeNode *new_root = new CompositeNode(region_tree_node,
                                                     NULL/*parent*/);
+        new_root->add_reference();
         new_root->unpack_composite_node(derez, source);
         FieldMask &root_mask = roots[new_root];
         derez.deserialize(root_mask);
@@ -18309,8 +19140,10 @@ namespace LegionRuntime {
       derez.deserialize(num_reductions);
       if (num_reductions > 0)
       {
-        derez.deserialize(reduction_mask);
-        field_node->transform_field_mask(reduction_mask, source);
+        FieldMask reduction_update;
+        derez.deserialize(reduction_update);
+        field_node->transform_field_mask(reduction_update, source);
+        reduction_mask |= reduction_update;
         for (unsigned idx = 0; idx < num_reductions; idx++)
         {
           DistributedID red_did;
@@ -18322,8 +19155,10 @@ namespace LegionRuntime {
 #endif
           ReductionView *red_view = log_view->as_reduction_view();
           ReduceInfo &red_info = valid_reductions[red_view];
-          derez.deserialize(red_info.valid_fields);
-          field_node->transform_field_mask(red_info.valid_fields, source);
+          FieldMask red_update;
+          derez.deserialize(red_update);
+          field_node->transform_field_mask(red_update, source);
+          red_info.valid_fields |= red_update;
           size_t num_domains;
           derez.deserialize(num_domains);
           for (unsigned i = 0; i < num_domains; i++)
@@ -18332,11 +19167,42 @@ namespace LegionRuntime {
             derez.deserialize(dom);
             red_info.intersections.insert(dom);
           }
-          if (send_back)
-            red_info.own_intersections = true;
-          else
-            red_info.own_intersections = false;
         }
+      }
+      if (need_lock)
+        view_lock.release();
+    }
+
+    //--------------------------------------------------------------------------
+    void CompositeView::send_updates(DistributedID remote_did, 
+                                     AddressSpaceID target, FieldMask send_mask,
+                                 std::map<LogicalView*,FieldMask> &needed_views,
+                                 std::set<PhysicalManager*> &needed_managers)
+    //--------------------------------------------------------------------------
+    {
+      AutoLock v_lock(view_lock);
+      std::map<AddressSpaceID,FieldMask>::iterator finder = 
+        remote_state.find(target);
+      // Update our send mask and then mark that we sent any needed fields
+      if (finder != remote_state.end())
+      {
+        send_mask -= finder->second;
+        finder->second |= send_mask;
+      }
+      else
+        remote_state[target] = send_mask;
+      // If we have any field data to send, do that now
+      if (!!send_mask)
+      {
+        Serializer rez;
+        {
+          RezCheck z(rez);
+          rez.serialize(remote_did);
+          rez.serialize(send_mask);
+          pack_composite_view(rez, false/*send back*/, target, send_mask,
+                              needed_views, needed_managers);
+        }
+        context->runtime->send_composite_update(target, rez);
       }
     }
 
@@ -18348,8 +19214,15 @@ namespace LegionRuntime {
       DerezCheck z(derez); 
       DistributedID did;
       derez.deserialize(did);
+      DistributedID owner_did;
+      derez.deserialize(owner_did);
+      DistributedID parent_did;
+      derez.deserialize(parent_did);
       AddressSpaceID owner_addr;
       derez.deserialize(owner_addr);
+      FieldMask valid_mask;
+      derez.deserialize(valid_mask);
+      // Transform below
       bool is_region;
       derez.deserialize<bool>(is_region);
       RegionTreeNode *logical_node;
@@ -18365,13 +19238,45 @@ namespace LegionRuntime {
         derez.deserialize(handle);
         logical_node = context->get_node(handle);
       }
-      // Note we don't ever give a parent because we don't need to
-      CompositeView *result = new CompositeView(context, did, 
-                                                owner_addr, logical_node);
+      FieldSpaceNode *field_node = logical_node->column_source;
+      field_node->transform_field_mask(valid_mask, source);
+      CompositeView *parent = NULL;
+      if (parent_did != did)
+      {
+        InstanceView *temp = context->find_view(parent_did)->as_instance_view();
+#ifdef DEBUG_HIGH_LEVEL
+        assert(temp != NULL);
+        assert(temp->is_composite_view());
+#endif
+        parent = temp->as_composite_view();
+      }
+      CompositeView *result;
+      bool need_lock = false;
+      if (parent != NULL)
+      {
+        Color view_color = logical_node->get_color();
+        result = new CompositeView(context, did, owner_addr,
+                                   logical_node, owner_did, valid_mask, parent);
+        if (!parent->add_subview(result, view_color))
+        {
+          result->set_no_free_did();
+          delete result;
+          result = parent->get_subview(view_color)->as_composite_view();
+          result->add_alias_did(did);
+          result->update_valid_mask(valid_mask);
+          need_lock = true;
+        }
+      }
+      else
+      {
+        result = new CompositeView(context, did, owner_addr, 
+                                   logical_node, owner_did, valid_mask);
+      }
 #ifdef DEBUG_HIGH_LEVEL
       assert(result != NULL);
 #endif
-      result->unpack_composite_view(derez, source, false/*send back*/);
+      result->unpack_composite_view(derez, source, 
+                                    false/*send back*/, need_lock);
     }
 
     //--------------------------------------------------------------------------
@@ -18384,8 +19289,13 @@ namespace LegionRuntime {
       derez.deserialize(did);
       DistributedID sender_did;
       derez.deserialize(sender_did);
+      DistributedID parent_did;
+      derez.deserialize(parent_did);
       AddressSpaceID sender_addr;
       derez.deserialize(sender_addr);
+      FieldMask valid_mask;
+      derez.deserialize(valid_mask);
+      // Transform below
       bool is_region;
       derez.deserialize<bool>(is_region);
       RegionTreeNode *logical_node;
@@ -18401,10 +19311,44 @@ namespace LegionRuntime {
         derez.deserialize(handle);
         logical_node = context->get_node(handle);
       }
-      // Note we don't ever give a parent because we don't need to
-      CompositeView *result = new CompositeView(context, did,
-                                                context->runtime->address_space,
-                                                logical_node);
+      FieldSpaceNode *field_node = logical_node->column_source;
+      field_node->transform_field_mask(valid_mask, source);
+      CompositeView *parent = NULL;
+      if (parent_did != did)
+      {
+        InstanceView *temp = context->find_view(parent_did)->as_instance_view();
+#ifdef DEBUG_HIGH_LEVEL
+        assert(temp != NULL);
+        assert(temp->is_composite_view());
+#endif
+        parent = temp->as_composite_view();
+      }
+      CompositeView *result;
+      bool need_lock = false;
+      if (parent != NULL)
+      {
+        Color view_color = logical_node->get_color();
+        result = new CompositeView(context, did,
+                                   context->runtime->address_space,
+                                   logical_node, did, valid_mask, parent);
+        if (!parent->add_subview(result, view_color))
+        {
+          // The view already existed so create an alias
+          result->set_no_free_did();
+          delete result;
+          result = parent->get_subview(view_color)->as_composite_view();
+          result->add_alias_did(did);
+          result->update_valid_mask(valid_mask);
+          need_lock = true;
+        }
+      }
+      else
+      {
+        // Note we don't ever give a parent because we don't need to
+        result = new CompositeView(context, did,
+                                   context->runtime->address_space,
+                                   logical_node, did, valid_mask);
+      }
 #ifdef DEBUG_HIGH_LEVEL
       assert(result != NULL);
 #endif
@@ -18413,7 +19357,35 @@ namespace LegionRuntime {
       // Add a remote reference held by the view that sent this back
       result->add_remote_reference();
       // Unpack the rest of the state
-      result->unpack_composite_view(derez, source, true/*send back*/);
+      result->unpack_composite_view(derez, source, 
+                                    true/*send back*/, need_lock);
+    }
+
+    //--------------------------------------------------------------------------
+    /*static*/ void CompositeView::handle_send_composite_update(
+          RegionTreeForest *context, Deserializer &derez, AddressSpaceID source)
+    //--------------------------------------------------------------------------
+    {
+      DerezCheck z(derez);
+      DistributedID did;
+      derez.deserialize(did);
+      FieldMask valid_mask;
+      derez.deserialize(valid_mask);
+      // Transform below
+      LogicalView *log_view = context->find_view(did);
+#ifdef DEBUG_HIGH_LEVEL
+      assert(!log_view->is_reduction_view());
+#endif
+      InstanceView *inst_view = log_view->as_instance_view();
+#ifdef DEBUG_HIGH_LEVEL
+      assert(inst_view->is_composite_view());
+#endif
+      CompositeView *view = inst_view->as_composite_view();
+      FieldSpaceNode *field_node = view->logical_node->column_source;
+      field_node->transform_field_mask(valid_mask, source);
+      view->update_valid_mask(valid_mask);
+      view->unpack_composite_view(derez, source, 
+                                  false/*send back*/, true/*need lock*/);
     }
 
     /////////////////////////////////////////////////////////////
@@ -18657,41 +19629,32 @@ namespace LegionRuntime {
                                     update_postconditions.end());
             }
           }
-          // Now if we still // have fields which aren't filled
+          // Now if we still have fields which aren't
           // updated then we need to see if we have composite
           // views for those fields
-          if (!composite_instances.empty() && !!incomplete_mask)
+          if (!composite_instances.empty())
           {
             for (std::map<CompositeView*,FieldMask>::const_iterator it = 
                   composite_instances.begin(); it !=
                   composite_instances.end(); it++)
             {
-              FieldMask overlap = incomplete_mask & it->second;
-              if (!!overlap)
+              std::map<Event,FieldMask> postconds;
+              it->first->issue_composite_copies(info, dst, it->second,
+                                                preconds, postconds);
+              if (!postconds.empty())
               {
-                std::map<Event,FieldMask> postconds;
-                it->first->issue_composite_copies(info, dst, overlap,
-                                                  preconds, postconds);
-                if (!postconds.empty())
-                {
 #ifdef DEBUG_HIGH_LEVEL
-                  for (std::map<Event,FieldMask>::const_iterator it = 
-                        postconds.begin(); it != postconds.end(); it++)
-                  {
-                    assert(dst_preconditions.find(it->first) ==
-                           dst_preconditions.end());
-                    assert(postconditions.find(it->first) ==
-                           postconditions.end());
-                  }
-#endif
-                  dst_preconditions.insert(postconds.begin(), postconds.end());
-                  postconditions.insert(postconds.begin(), postconds.end());
+                for (std::map<Event,FieldMask>::const_iterator it = 
+                      postconds.begin(); it != postconds.end(); it++)
+                {
+                  assert(dst_preconditions.find(it->first) ==
+                         dst_preconditions.end());
+                  assert(postconditions.find(it->first) ==
+                         postconditions.end());
                 }
-                // Update the incomplete mask
-                incomplete_mask -= it->second;
-                // If the mask is empty then we are done
-                if (!incomplete_mask)
-                  break;
+#endif
+                dst_preconditions.insert(postconds.begin(), postconds.end());
+                postconditions.insert(postconds.begin(), postconds.end());
               }
             }
           }
@@ -18736,15 +19699,21 @@ namespace LegionRuntime {
     {
       // See if we can fields with exactly one child that dominates
       FieldMask single, multi;
+      std::map<CompositeNode*,FieldMask> dominators;
       for (std::map<CompositeNode*,ChildInfo>::const_iterator it = 
             open_children.begin(); it != open_children.end(); it++)
       {
         FieldMask overlap = it->second.open_fields & bounding_mask;
         if (!overlap)
           continue;
-        if (!it->second.complete && 
-            !it->first->dominates(target->logical_node))
+        if (!it->first->dominates(target->logical_node))
           continue;
+        std::map<CompositeNode*,FieldMask>::iterator finder = 
+          dominators.find(it->first);
+        if (finder == dominators.end())
+          dominators[it->first] = overlap;
+        else
+          finder->second |= overlap;
         // Update the multi mask first 
         multi |= (single & overlap);
         // Now update the single mask
@@ -18756,10 +19725,10 @@ namespace LegionRuntime {
       // If we still have any single fields then go and issue them
       if (!!single)
       {
-        for (std::map<CompositeNode*,ChildInfo>::const_iterator it = 
-              open_children.begin(); it != open_children.end(); it++)
+        for (std::map<CompositeNode*,FieldMask>::const_iterator it = 
+              dominators.begin(); it != dominators.end(); it++)
         {
-          FieldMask overlap = single & it->second.open_fields;
+          FieldMask overlap = single & it->second;
           if (!overlap)
             continue;
           it->first->find_bounding_roots(target, overlap);
@@ -18852,21 +19821,32 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     void CompositeNode::pack_composite_node(Serializer &rez, bool send_back, 
                                             AddressSpaceID target,
-                                           std::set<LogicalView*> &needed_views,
-                                    std::set<PhysicalManager*> &needed_managers)
+                                            const FieldMask &pack_mask,
+                                 std::map<LogicalView*,FieldMask> &needed_views,
+                                 std::set<PhysicalManager*> &needed_managers)
     //--------------------------------------------------------------------------
     {
       RezCheck z(rez);
-      rez.serialize(dirty_mask);
+      FieldMask dirty_overlap = pack_mask & dirty_mask;
+      rez.serialize(dirty_overlap);
       // Pack up all of our instances
-      rez.serialize<size_t>(valid_views.size());
+      std::map<InstanceView*,FieldMask> send_valid;
+      for (std::map<InstanceView*,FieldMask>::const_iterator it = 
+            valid_views.begin(); it != valid_views.end(); it++)
+      {
+        FieldMask overlap = it->second & pack_mask;
+        if (!overlap)
+          continue;
+        send_valid[it->first] = overlap;
+      }
+      rez.serialize<size_t>(send_valid.size());
       if (send_back)
       {
         for (std::map<InstanceView*,FieldMask>::const_iterator it = 
-              valid_views.begin(); it != valid_views.end(); it++)
+              send_valid.begin(); it != send_valid.end(); it++)
         {
-          DistributedID view_did = 
-                          it->first->send_back_state(target, needed_managers);
+          DistributedID view_did = it->first->send_back_state(target, 
+                                                  it->second, needed_managers);
           rez.serialize(view_did);
           rez.serialize(it->second);
         }
@@ -18874,19 +19854,31 @@ namespace LegionRuntime {
       else
       {
         for (std::map<InstanceView*,FieldMask>::const_iterator it = 
-              valid_views.begin(); it != valid_views.end(); it++)
+              send_valid.begin(); it != send_valid.end(); it++)
         {
           DistributedID view_did = 
-                  it->first->send_state(target, needed_views, needed_managers);
+                  it->first->send_state(target, it->second,
+                                        needed_views, needed_managers);
           rez.serialize(view_did);
           rez.serialize(it->second);
         }
       }
       // Then send all of our children
-      rez.serialize<size_t>(open_children.size());
+      std::map<CompositeNode*,FieldMask> send_children;
       for (std::map<CompositeNode*,ChildInfo>::const_iterator it = 
             open_children.begin(); it != open_children.end(); it++)
       {
+        FieldMask overlap = it->second.open_fields & pack_mask;
+        if (!overlap)
+          continue;
+        send_children[it->first] = overlap;
+      }
+      rez.serialize<size_t>(send_children.size());
+      for (std::map<CompositeNode*,FieldMask>::const_iterator it = 
+            send_children.begin(); it != send_children.end(); it++)
+      {
+        std::map<CompositeNode*,ChildInfo>::const_iterator finder = 
+          open_children.find(it->first);
         bool is_region = it->first->logical_node->is_region();
         rez.serialize<bool>(is_region);
         if (is_region)
@@ -18900,10 +19892,10 @@ namespace LegionRuntime {
                               it->first->logical_node->as_partition_node();
           rez.serialize(part_node->handle);
         }
-        it->first->pack_composite_node(rez, send_back, target,
+        it->first->pack_composite_node(rez, send_back, target, it->second,
                                        needed_views, needed_managers);
-        rez.serialize<bool>(it->second.complete);
-        rez.serialize(it->second.open_fields);
+        rez.serialize<bool>(finder->second.complete);
+        rez.serialize(it->second);
       }
     }
 
@@ -18914,8 +19906,10 @@ namespace LegionRuntime {
     {
       DerezCheck z(derez);
       FieldSpaceNode *field_node = logical_node->get_column_source();
-      derez.deserialize(dirty_mask);
-      field_node->transform_field_mask(dirty_mask, source);
+      FieldMask dirty_update;
+      derez.deserialize(dirty_update);
+      field_node->transform_field_mask(dirty_update, source);
+      dirty_mask |= dirty_update;
       size_t num_views;
       derez.deserialize(num_views);
       for (unsigned idx = 0; idx < num_views; idx++)
@@ -18929,8 +19923,10 @@ namespace LegionRuntime {
 #endif
         InstanceView *inst_view = log_view->as_instance_view();
         FieldMask &valid_mask = valid_views[inst_view];
-        derez.deserialize(valid_mask);
-        field_node->transform_field_mask(valid_mask, source);
+        FieldMask update_mask;
+        derez.deserialize(update_mask);
+        field_node->transform_field_mask(update_mask, source);
+        valid_mask |= update_mask;
       }
       size_t num_children;
       derez.deserialize(num_children);
@@ -18952,6 +19948,7 @@ namespace LegionRuntime {
           region_tree_node = context->get_node(handle);
         }
         CompositeNode *new_node = new CompositeNode(region_tree_node, this);
+        new_node->add_reference();
         new_node->unpack_composite_node(derez, source); 
         ChildInfo &info = open_children[new_node];
         derez.deserialize<bool>(info.complete);
@@ -19075,10 +20072,6 @@ namespace LegionRuntime {
         reduce_index_space = domain.get_index_space();
 #endif
       }
-      target->add_copy_user(manager->redop, reduce_post,
-                            reduce_mask, false/*reading*/, local_proc);
-      this->add_copy_user(manager->redop, reduce_post,
-                          reduce_mask, true/*reading*/, local_proc);
 #if defined(LEGION_SPY) || defined(LEGION_LOGGING)
       if (!reduce_post.exists())
       {
@@ -19087,6 +20080,10 @@ namespace LegionRuntime {
         reduce_post = new_reduce_post;
       }
 #endif
+      target->add_copy_user(manager->redop, reduce_post,
+                            reduce_mask, false/*reading*/, local_proc);
+      this->add_copy_user(manager->redop, reduce_post,
+                          reduce_mask, true/*reading*/, local_proc);
 #ifdef LEGION_LOGGING
       {
         std::set<FieldID> reduce_fields;
@@ -19293,8 +20290,6 @@ namespace LegionRuntime {
         reading_users.push_back(user);
         if (owner_did != did)
           send_back_user(user);
-        // Notify any subscribers
-        notify_subscribers(user);
       }
       else
       { 
@@ -19302,7 +20297,6 @@ namespace LegionRuntime {
         reduction_users.push_back(user);
         if (owner_did != did)
           send_back_user(user);
-        notify_subscribers(user);
       }
       // Update the reference users
       event_references.insert(copy_term);
@@ -19336,7 +20330,6 @@ namespace LegionRuntime {
       defer_collect_user(user.term_event, user.field_mask, exec_proc);
       if (owner_did != did)
         send_back_user(user);
-      notify_subscribers(user);
       // Return our result
       Event result = Event::merge_events(wait_on);
 #if defined(LEGION_LOGGING) || defined(LEGION_SPY)
@@ -19372,13 +20365,6 @@ namespace LegionRuntime {
 #endif
       // Get the destination fields for this copy
       manager->find_field_offsets(reduce_mask, dst_fields);
-      //AutoLock v_lock(view_lock,1,false/*exclusive*/);
-      // Register dependences on any readers
-      //for (std::list<PhysicalUser>::const_iterator it = reading_users.begin();
-      //      it != reading_users.end(); it++)
-      //{
-      //  preconditions.insert(it->term_event);
-      //}
       return manager->is_foldable();
     }
     
@@ -19395,30 +20381,6 @@ namespace LegionRuntime {
       assert(redop == manager->redop);
 #endif
       manager->find_field_offsets(reduce_mask, src_fields);
-      //AutoLock v_lock(view_lock,1,false/*exclusive*/);
-      // Register dependences on any reducers
-      //for (std::list<PhysicalUser>::const_iterator it = reduction_users.begin();
-      //      it != reduction_users.end(); it++)
-      //{
-      //  preconditions.insert(it->term_event);
-      //}
-    }
-
-    //--------------------------------------------------------------------------
-    void ReductionView::notify_subscribers(const PhysicalUser &user,
-                                           int skip /*= -1*/)
-    //--------------------------------------------------------------------------
-    {
-      // view_lock held by callers
-      // Send it out to any subscribers that aren't the source
-      AutoLock gc(gc_lock,1,false/*exclusive*/);
-      for (std::map<AddressSpaceID,DistributedID>::const_iterator it = 
-            subscribers.begin(); it != subscribers.end(); it++)
-      {
-        if ((skip >= 0) && (it->first == unsigned(skip)))
-          continue;
-        send_user(it->first, it->second, user);
-      }
     }
 
     //--------------------------------------------------------------------------
@@ -19493,7 +20455,6 @@ namespace LegionRuntime {
                                                       user.field_mask, source);
       // Notify our subscribers and our owner if necessary
       AutoLock v_lock(view_lock);
-      notify_subscribers(user, source); 
       if (owner_did != did)
         send_back_user(user);
       if (IS_REDUCE(user.usage))
@@ -19515,47 +20476,22 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void ReductionView::process_send_user(AddressSpaceID source, 
-                                          PhysicalUser &user)
-    //--------------------------------------------------------------------------
-    {
-      // First transform the user's field mask
-      manager->region_node->column_source->transform_field_mask(
-                                                      user.field_mask, source);
-      // Notify any of our subscribers
-      AutoLock v_lock(view_lock);
-      notify_subscribers(user);
-      if (IS_REDUCE(user.usage))
-      {
-        reduction_users.push_back(user);
-      }
-      else
-      {
-#ifdef DEBUG_HIGH_LEVEL
-        assert(IS_READ_ONLY(user.usage));
-#endif
-        reading_users.push_back(user);
-      }
-      // Update the reference users
-      event_references.insert(user.term_event);
-      // Launch the garbage collection task
-      defer_collect_user(user.term_event, user.field_mask,
-                         Machine::get_executing_processor());
-    }
-
-    //--------------------------------------------------------------------------
     DistributedID ReductionView::send_state(AddressSpaceID target,
-                                   std::set<LogicalView*> &needed_views,
-                                   std::set<PhysicalManager*> &needed_managers)
+                                            const FieldMask &send_mask,
+                                 std::map<LogicalView*,FieldMask> &needed_views,
+                                 std::set<PhysicalManager*> &needed_managers)
     //--------------------------------------------------------------------------
     {
-      if (needed_views.find(this) == needed_views.end())
+      std::map<LogicalView*,FieldMask>::iterator needed_finder = 
+        needed_views.find(this);
+      if (needed_finder == needed_views.end())
       {
-        needed_views.insert(this);
+        needed_views[this] = send_mask;
         // always add a remote reference
         add_remote_reference();
         DistributedID manager_did = 
           manager->send_manager(target, needed_managers);
+        DistributedID result = did;
         // Now see if we need to send ourselves
         {
           AutoLock gc(gc_lock,1,false/*exclusive*/);
@@ -19563,42 +20499,85 @@ namespace LegionRuntime {
             subscribers.find(target);
           // If we already have a remote subscriber, then we are done
           if (finder != subscribers.end())
-            return finder->second;
+            result = finder->second;
+        }
+        if (result != did)
+        {
+          // We already have a remote view so send the update
+          send_updates(result, target, send_mask);
         }
         // Otherwise we need to send a copy remotely
         Serializer rez;
-        DistributedID result = context->runtime->get_available_distributed_id();
-        AutoLock v_lock(view_lock);
+        DistributedID remote_did = 
+          context->runtime->get_available_distributed_id();
+        bool lost_race = false;
         {
-          RezCheck z(rez);
-          rez.serialize(result);
-          // Our processor and did as the owner
-          rez.serialize(context->runtime->address_space);
-          rez.serialize(did);
-          rez.serialize(manager_did);
-          pack_reduction_view(rez);
+          AutoLock v_lock(view_lock);
+          // Check again to see if we lost the race
+          {
+            AutoLock gc(gc_lock,1,false/*exclusive*/);
+            std::map<AddressSpaceID,DistributedID>::const_iterator finder = 
+              subscribers.find(target);
+            if (finder != subscribers.end())
+            {
+              result = finder->second;
+              lost_race = true;
+            }
+            else
+              result = remote_did;
+          }
+          if (!lost_race)
+          {
+            {
+              RezCheck z(rez);
+              rez.serialize(result);
+              // Our processor and did as the owner
+              rez.serialize(context->runtime->address_space);
+              rez.serialize(did);
+              rez.serialize(manager_did);
+              pack_reduction_view(rez);
+            }
+            // Before sending the message update the subscribers
+            add_subscriber(target, result);
+            context->runtime->send_reduction_view(target, rez);
+          }
         }
-        // Before sending the message update the subscribers
-        add_subscriber(target, result);
-        context->runtime->send_reduction_view(target, rez);
+        if (lost_race)
+        {
+          // Return the distributed id
+          context->runtime->free_distributed_id(remote_did);
+          // Send the update
+          send_updates(result, target, send_mask);
+        }
         return result;
       }
       else
       {
         // Otherwise there is nothing to do since we've already
         // been registered
-        AutoLock gc(gc_lock,1,false/*exclusive*/);
-        std::map<AddressSpaceID,DistributedID>::const_iterator finder = 
-          subscribers.find(target);
+        DistributedID result;
+        {
+          AutoLock gc(gc_lock,1,false/*exclusive*/);
+          std::map<AddressSpaceID,DistributedID>::const_iterator finder = 
+            subscribers.find(target);
 #ifdef DEBUG_HIGH_LEVEL
-        assert(finder != subscribers.end());
+          assert(finder != subscribers.end());
 #endif
-        return finder->second;
+          result = finder->second;
+        }
+        FieldMask diff_mask = send_mask - needed_finder->second;
+        if (!!diff_mask)
+        {
+          send_updates(result, target, diff_mask);
+          needed_finder->second |= diff_mask;
+        }
+        return result;
       }
     }
 
     //--------------------------------------------------------------------------
     DistributedID ReductionView::send_back_state(AddressSpaceID target,
+                                                 const FieldMask &send_mask,
                                     std::set<PhysicalManager*> &needed_managers)
     //--------------------------------------------------------------------------
     {
@@ -19722,6 +20701,113 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    void ReductionView::send_updates(DistributedID remote_did, 
+                                     AddressSpaceID target,
+                                     const FieldMask &update_mask)
+    //--------------------------------------------------------------------------
+    {
+      Serializer rez;
+      {
+        RezCheck z(rez);
+        std::deque<PhysicalUser> read_users, red_users;
+        {
+          AutoLock v_lock(view_lock,1,false/*exclusive*/);
+          for (std::list<PhysicalUser>::const_iterator it = 
+                reduction_users.begin(); it != reduction_users.end(); it++)
+          {
+            FieldMask overlap = it->field_mask & update_mask;
+            if (!overlap)
+              continue;
+            red_users.push_back(*it);
+            red_users.back().field_mask = overlap;
+          }
+          for (std::list<PhysicalUser>::const_iterator it = 
+                reading_users.begin(); it != reading_users.end(); it++)
+          {
+            FieldMask overlap = it->field_mask & update_mask;
+            if (!overlap)
+              continue;
+            read_users.push_back(*it);
+            read_users.back().field_mask = overlap;
+          }
+        }
+        rez.serialize(remote_did);
+        rez.serialize<size_t>(red_users.size());
+        for (std::deque<PhysicalUser>::const_iterator it = red_users.begin();
+              it != red_users.end(); it++)
+        {
+          rez.serialize(it->usage);
+          rez.serialize(it->field_mask);
+          rez.serialize(it->term_event);
+          rez.serialize(it->child);
+        }
+        rez.serialize<size_t>(read_users.size());
+        for (std::deque<PhysicalUser>::const_iterator it = read_users.begin();
+              it != read_users.end(); it++)
+        {
+          rez.serialize(it->usage);
+          rez.serialize(it->field_mask);
+          rez.serialize(it->term_event);
+          rez.serialize(it->child);
+        }
+      }
+      runtime->send_reduction_update(target, rez);
+    }
+
+    //--------------------------------------------------------------------------
+    void ReductionView::process_updates(Deserializer &derez,
+                                        AddressSpaceID source)
+    //--------------------------------------------------------------------------
+    {
+      FieldSpaceNode *field_node = logical_node->column_source;
+      // First unpack everything
+      size_t num_red_users;
+      derez.deserialize(num_red_users);
+      std::vector<PhysicalUser> red_users(num_red_users);
+      for (unsigned idx = 0; idx < num_red_users; idx++)
+      {
+        PhysicalUser &user = red_users[idx];
+        derez.deserialize(user.usage);
+        derez.deserialize(user.field_mask);
+        derez.deserialize(user.term_event);
+        derez.deserialize(user.child);
+        field_node->transform_field_mask(user.field_mask, source);
+      }
+      size_t num_read_users;
+      derez.deserialize(num_read_users);
+      std::vector<PhysicalUser> read_users(num_read_users);
+      for (unsigned idx = 0; idx < num_read_users; idx++)
+      {
+        PhysicalUser &user = read_users[idx];
+        derez.deserialize(user.usage);
+        derez.deserialize(user.field_mask);
+        derez.deserialize(user.term_event);
+        derez.deserialize(user.child);
+        field_node->transform_field_mask(user.field_mask, source);
+      }
+      // Now we can apply the updates
+      {
+        AutoLock v_lock(view_lock);
+        reduction_users.insert(reduction_users.end(),
+                               red_users.begin(), red_users.end());
+        reading_users.insert(reading_users.end(),
+                             read_users.begin(), read_users.end());
+      }
+      // Finally record that we are 
+      Processor curr_proc = Machine::get_executing_processor();
+      for (std::vector<PhysicalUser>::const_iterator it = 
+            red_users.begin(); it != red_users.end(); it++)
+      {
+        defer_collect_user(it->term_event, it->field_mask, curr_proc);
+      }
+      for (std::vector<PhysicalUser>::const_iterator it = 
+            read_users.begin(); it != read_users.end(); it++)
+      {
+        defer_collect_user(it->term_event, it->field_mask, curr_proc);
+      }
+    }
+
+    //--------------------------------------------------------------------------
     /*static*/ void ReductionView::handle_send_reduction_view(
         RegionTreeForest *context, Deserializer &derez, AddressSpaceID source)
     //--------------------------------------------------------------------------
@@ -19781,6 +20867,24 @@ namespace LegionRuntime {
       result->add_remote_reference();
       // Now upack the view
       result->unpack_reduction_view(derez, source);
+    }
+
+    //--------------------------------------------------------------------------
+    /*static*/ void ReductionView::handle_send_update(RegionTreeForest *context,
+                                                      Deserializer &derez,
+                                                      AddressSpaceID source)
+    //--------------------------------------------------------------------------
+    {
+      DerezCheck z(derez);
+      DistributedID did;
+      derez.deserialize(did);
+      LogicalView *log_view = context->find_view(did);
+#ifdef DEBUG_HIGH_LEVEL
+      assert(log_view != NULL);
+      assert(log_view->is_reduction_view());
+#endif
+      ReductionView *view = log_view->as_reduction_view();
+      view->process_updates(derez, source);
     }
 
     //--------------------------------------------------------------------------

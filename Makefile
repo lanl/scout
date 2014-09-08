@@ -138,7 +138,7 @@ else
   cmake_flags += -DCMAKE_CXX_FLAGS="-std=c++11"
 endif
 
-all: $(build_dir)/Makefile toolchain legion-rt runtime stdlib
+all: $(build_dir)/Makefile toolchain stdlib
 .PHONY: all 
 
 $(build_dir)/Makefile: CMakeLists.txt
@@ -218,7 +218,7 @@ xcode:;
 	@(cd xcode; cmake -G Xcode $(src_dir))
 
 .PHONY: clean
-clean: clean-legion-rt
+clean: 
 	-@/bin/rm -rf $(build_dir)
 	-@/bin/rm -rf $(docs_build_dir)
 	-@(if test -d scout-local/sandbox; then /usr/bin/find ./scout-local/sandbox -name build -exec rm -rf {} \; ;fi)

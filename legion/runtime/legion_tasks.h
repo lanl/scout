@@ -69,6 +69,7 @@ namespace LegionRuntime {
                                 Processor::TaskFuncID tid);
       void initialize_physical_contexts(void);
       void check_empty_field_requirements(void);
+      size_t check_future_size(Future::Impl *impl);
     public:
       virtual void activate(void) = 0;
       virtual void deactivate(void) = 0;
@@ -77,7 +78,9 @@ namespace LegionRuntime {
       virtual void trigger_dependence_analysis(void) = 0;
       virtual void trigger_complete(void);
       virtual void trigger_commit(void);
-      virtual void continue_mapping(void);
+      virtual void resolve_true(void);
+      virtual void resolve_false(void) = 0;
+      virtual bool speculate(bool &value);
     public:
       virtual bool premap_task(void) = 0;
       virtual bool prepare_steal(void) = 0;
@@ -235,6 +238,11 @@ namespace LegionRuntime {
         size_t     field_size;
         Event      reclaim_event;
       };
+      struct PostEndArgs {
+      public:
+        HLRTaskID hlr_id;
+        SingleTask *proxy_this;
+      };
     public:
       SingleTask(Runtime *rt);
       virtual ~SingleTask(void);
@@ -276,7 +284,6 @@ namespace LegionRuntime {
       virtual void register_child_complete(Operation *op);
       virtual void register_child_commit(Operation *op); 
       virtual void unregister_child_operation(Operation *op);
-      virtual void register_reclaim_operation(Operation *op);
       virtual void register_fence_dependence(Operation *op);
     public:
       bool has_executing_operation(Operation *op);
@@ -344,6 +351,13 @@ namespace LegionRuntime {
       bool has_created_region(LogicalRegion handle) const;
       bool has_created_field(FieldSpace handle, FieldID fid) const;
     public:
+      void check_index_subspace(IndexSpace handle, const char *caller);
+      void check_index_subpartition(IndexPartition handle, const char *caller);
+      void check_field_space(FieldSpace handle, const char *caller);
+      void check_logical_subregion(LogicalRegion handle, const char *caller);
+      void check_logical_subpartition(LogicalPartition handle,
+                                      const char *caller);
+    public:
       void unmap_all_regions(void);
     protected:
       bool map_all_regions(Processor target, Event user_event, 
@@ -377,6 +391,7 @@ namespace LegionRuntime {
       virtual void activate(void) = 0;
       virtual void deactivate(void) = 0;
     public:
+      virtual void resolve_false(void) = 0;
       virtual void launch_task(void);
       virtual bool premap_task(void) = 0;
       virtual bool prepare_steal(void) = 0;
@@ -436,7 +451,6 @@ namespace LegionRuntime {
       std::set<Operation*> executing_children;
       std::set<Operation*> executed_children;
       std::set<Operation*> complete_children;
-      std::set<Operation*> reclaim_children;
       // Traces for this task's execution
       std::map<TraceID,LegionTrace*> traces;
       LegionTrace *current_trace;
@@ -486,6 +500,7 @@ namespace LegionRuntime {
     public:
       bool is_sliced(void) const;
       bool slice_index_space(void);
+      bool trigger_slices(void);
       void clone_multi_from(MultiTask *task, const Domain &d, Processor p,
                             bool recurse, bool stealable);
     public:
@@ -494,6 +509,7 @@ namespace LegionRuntime {
     public:
       virtual void trigger_dependence_analysis(void) = 0;
     public:
+      virtual void resolve_false(void) = 0;
       virtual bool premap_task(void) = 0;
       virtual bool prepare_steal(void) = 0;
       virtual bool defer_mapping(void) = 0;
@@ -533,8 +549,9 @@ namespace LegionRuntime {
                            AddressSpaceID target);
       void unpack_multi_task(Deserializer &derez, bool unpack_args);
     public:
+      void initialize_reduction_state(void);
       void fold_reduction_future(const void *result, size_t result_size,
-                                 bool owner);
+                                 bool owner, bool exclusive);
     protected:
       bool sliced;
       Barrier must_barrier; // for must parallelism
@@ -579,7 +596,9 @@ namespace LegionRuntime {
       void initialize_paths(void);
     public:
       virtual void trigger_dependence_analysis(void);
+      virtual void report_aliased_requirements(unsigned idx1, unsigned idx2);
     public:
+      virtual void resolve_false(void);
       virtual bool premap_task(void);
       virtual bool prepare_steal(void);
       virtual bool defer_mapping(void);
@@ -635,6 +654,10 @@ namespace LegionRuntime {
       RegionTreeContext remote_outermost_context;
       std::deque<RegionTreeContext> remote_contexts;
     protected:
+      Future predicate_false_future;
+      void *predicate_false_result;
+      size_t predicate_false_size;
+    protected:
       bool sent_remotely;
     protected:
       friend class Runtime;
@@ -661,6 +684,7 @@ namespace LegionRuntime {
     public:
       virtual void trigger_dependence_analysis(void);
     public:
+      virtual void resolve_false(void);
       virtual bool premap_task(void);
       virtual bool prepare_steal(void);
       virtual bool defer_mapping(void);
@@ -721,6 +745,7 @@ namespace LegionRuntime {
     public:
       virtual void trigger_dependence_analysis(void);
     public:
+      virtual void resolve_false(void);
       virtual bool premap_task(void);
       virtual bool prepare_steal(void);
       virtual bool defer_mapping(void);
@@ -831,7 +856,6 @@ namespace LegionRuntime {
       virtual void register_child_complete(Operation *op);
       virtual void register_child_commit(Operation *op); 
       virtual void unregister_child_operation(Operation *op);
-      virtual void register_reclaim_operation(Operation *op);
       virtual void register_fence_dependence(Operation *op);
     public:
       virtual void update_current_fence(FenceOp *op);
@@ -889,6 +913,8 @@ namespace LegionRuntime {
             bool must_parallelism,
             MapperID id, MappingTagID tag,
             bool check_privileges);
+      void initialize_predicate(const Future &pred_future,
+                                const TaskArgument &pred_arg);
       void initialize_paths(void);
       void annotate_early_mapped_regions(void);
     public:
@@ -896,7 +922,9 @@ namespace LegionRuntime {
       virtual void deactivate(void);
     public:
       virtual void trigger_dependence_analysis(void);
+      virtual void report_aliased_requirements(unsigned idx1, unsigned idx2);
     public:
+      virtual void resolve_false(void);
       virtual bool premap_task(void);
       virtual bool prepare_steal(void);
       virtual bool defer_mapping(void);
@@ -954,6 +982,10 @@ namespace LegionRuntime {
       bool complete_received;
       bool commit_received;
     protected:
+      Future predicate_false_future;
+      void *predicate_false_result;
+      size_t predicate_false_size;
+    protected:
       std::vector<RegionTreePath> privilege_paths;
     };
 
@@ -977,6 +1009,7 @@ namespace LegionRuntime {
     public:
       virtual void trigger_dependence_analysis(void);
     public:
+      virtual void resolve_false(void);
       virtual bool premap_task(void);
       virtual bool prepare_steal(void);
       virtual bool defer_mapping(void);
@@ -1042,6 +1075,36 @@ namespace LegionRuntime {
       // Temporary storage for future results
       std::map<DomainPoint,std::pair<void*,size_t>,
                 DomainPoint::STLComparator> temporary_futures;
+    };
+
+    /**
+     * \class DeferredSlicer
+     * A class for helping with parallelizing the triggering
+     * of slice tasks from within MultiTasks
+     */
+    class DeferredSlicer {
+    public:
+      struct DeferredSliceArgs {
+      public:
+        HLRTaskID hlr_id;
+        DeferredSlicer *slicer;
+        SliceTask *slice;
+      };
+    public:
+      DeferredSlicer(MultiTask *owner);
+      DeferredSlicer(const DeferredSlicer &rhs);
+      ~DeferredSlicer(void);
+    public:
+      DeferredSlicer& operator=(const DeferredSlicer &rhs);
+    public:
+      bool trigger_slices(std::list<SliceTask*> &slices);
+      void perform_slice(SliceTask *slice);
+    public:
+      static void handle_slice(const void *args);
+    private:
+      Reservation slice_lock;
+      MultiTask *const owner;
+      std::set<SliceTask*> failed_slices;
     };
 
   }; // namespace HighLevel
