@@ -359,13 +359,8 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
                 Function *legionTaskInitFN = cast < Function > (MDN->getOperand(2));
                 builder.SetInsertPoint(&callInst);
                 //errs() << "create call\n";
-<<<<<<< HEAD
                 builder.CreateCall(legionTaskInitFN, ArrayRef<llvm::Value*> (Args));
                 instToErase.push_back(&callInst);
-=======
-                //builder.CreateCall(legionTaskInitFN, ArrayRef<llvm::Value*> (Args));
-                (void)legionTaskInitFN; //suppress warning
->>>>>>> e57a2a14cc609aea23a0040d41fbe1cad3e7d278
               } 
               if (lsciUnimeshVal) break;
             }
