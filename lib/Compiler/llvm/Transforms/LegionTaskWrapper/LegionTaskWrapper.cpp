@@ -232,7 +232,7 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
       LoadInst* runtime = builder.CreateAlignedLoad(ptr_runtime, 8, "runtime");
 
       // go through instructions in this block and look for loads of @__scrt_legion_context
-      // and replace with my context address.
+      // and replace with my context address.  Same with runtime.
 
       // for each instruction in the basic block
       for (BasicBlock::InstListType::iterator ii = firstBlock.begin(); ii != firstBlock.end(); ++ii) {
@@ -359,7 +359,8 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
                 Function *legionTaskInitFN = cast < Function > (MDN->getOperand(2));
                 builder.SetInsertPoint(&callInst);
                 //errs() << "create call\n";
-                //builder.CreateCall(legionTaskInitFN, ArrayRef<llvm::Value*> (Args));
+                builder.CreateCall(legionTaskInitFN, ArrayRef<llvm::Value*> (Args));
+                instToErase.push_back(&callInst);
               } 
               if (lsciUnimeshVal) break;
             }

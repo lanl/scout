@@ -125,6 +125,7 @@ lsci_vector_partition(lsci_vector_t *vec,
     vec->launch_domain.hndl = static_cast<lsci_domain_handle_t>(colorDom);
     vec->launch_domain.volume = colorDom->get_volume();
     vec->subgrid_bounds_len = vec->lr_len / n_parts;
+    //printf("subgrid_bounds_len set: %lu\n", vec->subgrid_bounds_len);
     vec->subgrid_bounds = static_cast<lsci_rect_1d_t>(subgrid_bnds_cxx->data());
     return LSCI_SUCCESS;
 }
@@ -342,9 +343,8 @@ lsci_register_void_legion_task_aux(
     void (*atask)(struct lsci_task_args_t *task_args))
 {
 
-  lsci_reg_task_data_t reg_task_data  = { 
-    .cbf = atask
-  };
+  lsci_reg_task_data_t* reg_task_data_ptr = new lsci_reg_task_data_t;
+  reg_task_data_ptr->cbf = atask;
 
   return lsci_register_void_legion_task(
       task_id,
@@ -354,7 +354,7 @@ lsci_register_void_legion_task_aux(
       leaf,
       vid,
       name,
-      reg_task_data);
+      *reg_task_data_ptr);
 }
 
 
@@ -587,6 +587,9 @@ lsci_unimesh_create(lsci_unimesh_t *mesh,
     mesh->hndl = static_cast<lsci_unimesh_handle_t>(mcxx);
     assert(mesh->hndl);
     mesh->dims = mcxx->dims;
+    mesh->width = w;
+    mesh->height = h;
+    mesh->depth = d;
     return LSCI_SUCCESS;
 }
 
@@ -731,3 +734,25 @@ lsci_struct_get_vec_by_name(lsci_struct_t *theStruct,
 }
 
 } // end unnamed namespace for internal things
+
+
+void lsci_print_mesh_task_args(lsci_mesh_task_args_t* mtargs) {
+  printf("lsci_mesh_task_args: \n");
+  printf("\trank: %lu\n", mtargs->rank);
+  printf("\twidth: %lu\n", mtargs->width);
+  printf("\theight: %lu\n", mtargs->height);
+  printf("\tdepth: %lu\n", mtargs->depth);
+  printf("\tlen: %lu\n", mtargs->len);
+}
+
+void lsci_print_task_args_local_argsp(lsci_task_args_t* targs) {
+  printf("lsci_mesh_task_args->local_argsp: \n");
+  lsci_mesh_task_args_t* mtargs = (lsci_mesh_task_args_t*)targs->local_argsp;
+  printf("\trank: %lu\n", mtargs->rank);
+  printf("\twidth: %lu\n", mtargs->width);
+  printf("\theight: %lu\n", mtargs->height);
+  printf("\tdepth: %lu\n", mtargs->depth);
+  printf("\tlen: %lu\n", mtargs->len);
+}
+
+

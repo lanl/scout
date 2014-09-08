@@ -363,7 +363,6 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     // SC_TODO - We are only supporting one mesh type here...
     //
 
-    llvm::Value *Mesh = Builder.CreateLoad(Alloc);
     const MeshType* MT = cast<MeshType>(T.getTypePtr());
     llvm::StringRef MeshName  = Alloc->getName();
     MeshDecl* MD = MT->getDecl();
@@ -373,12 +372,13 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
 
     llvm::AllocaInst* lsciUnimeshAlloc;
 
-    // call create_mesh()
+    // call lsci_unimesh_create()
     if(CGM.getCodeGenOpts().ScoutLegionSupport) {
       llvm::SmallVector< llvm::Value *, 4 > Args;
 
       // need to create lsci_unimesh_t ptr 
       lsciUnimeshAlloc = Builder.CreateAlloca(CGM.getLegionRuntime().UnimeshTy, nullptr, "lsci_unimesh_t.ptr"); 
+      lsciUnimeshAlloc->setAlignment(8);
 
       // Create metadata to connect the name of the Alloc with the name of the lsciUnimeshAlloc
       llvm::NamedMDNode *MeshMD;
@@ -504,28 +504,29 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
 
       fieldTotalBytes = Builder.CreateNUWMul(numElements, fieldTyBytesValue);
 
-      // Dynamically allocate memory.
-      llvm::SmallVector< llvm::Value *, 3 > Args;
-      Args.push_back(fieldTotalBytes);
-      llvm::Function *MallocFunc = CGM.getScoutRuntime().MemAllocFunction();
-      llvm::Value *val = Builder.CreateCall(MallocFunc, ArrayRef<llvm::Value *>(Args));
-      val = Builder.CreateBitCast(val, structTy->getContainedType(i));
+      if(!(CGM.getCodeGenOpts().ScoutLegionSupport)) {
+        // Dynamically allocate memory.
+        llvm::SmallVector< llvm::Value *, 3 > Args;
+        Args.push_back(fieldTotalBytes);
+        llvm::Function *MallocFunc = CGM.getScoutRuntime().MemAllocFunction();
+        llvm::Value *val = Builder.CreateCall(MallocFunc, ArrayRef<llvm::Value *>(Args));
+        val = Builder.CreateBitCast(val, structTy->getContainedType(i));
 
-      sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), MeshFieldName.str().c_str());
-      llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i, IRNameStr);
-      Builder.CreateStore(val, field);
-
-      // call add_field()
+        sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), MeshFieldName.str().c_str());
+        llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i, IRNameStr);
+        Builder.CreateStore(val, field);
+      }
+      
+      // call lsci_unimesh_add_field()
       if(CGM.getCodeGenOpts().ScoutLegionSupport) {
         llvm::SmallVector< llvm::Value *, 5 > Args;
-        CGM.getLegionRuntime().UnimeshAddFieldFunc();
         llvm::Function *F = CGM.getLegionRuntime().CreateAddFieldFunction(CGM.getLegionRuntime().UnimeshTy);
 
-        if (!lsciUnimeshAlloc) {
-        } else {
-          Args.push_back(lsciUnimeshAlloc);
-        }
+        assert(lsciUnimeshAlloc && "should have allocated this struct earlier");
 
+        Args.push_back(lsciUnimeshAlloc);
+
+        llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i, IRNameStr);
         llvm::Value *fval = Builder.CreateLoad(Builder.CreateLoad(field));
         llvm::Type::TypeID typeID = fval->getType()->getTypeID();
         int lscitype;
@@ -555,8 +556,36 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
       }
     }
 
+    // emit call to lsci_unimesh_partition()
+    if(CGM.getCodeGenOpts().ScoutLegionSupport) {
+
+      llvm::SmallVector< llvm::Value *, 4 > Args;
+
+      // lsci_unimesh_t
+      assert(lsciUnimeshAlloc && "should have allocated this struct earlier");
+      Args.push_back(lsciUnimeshAlloc);
+
+      // n_parts (number of pieces to break it up into)
+      // TODO do something other than default to 1?
+      llvm::Value *ConstantOne = llvm::ConstantInt::get(Int64Ty, 1);
+      Args.push_back(ConstantOne);
+ 
+      // context and runtime 
+      Args.push_back(Builder.CreateLoad(
+          CGM.getLegionRuntime().GetLegionContextGlobal(), "legionContext"));
+      Args.push_back(Builder.CreateLoad(
+          CGM.getLegionRuntime().GetLegionRuntimeGlobal(), "legionRuntime"));
+
+      llvm::Function *F = CGM.getLegionRuntime().UnimeshPartitionFunc();
+      Builder.CreateCall(F, ArrayRef<llvm::Value *>(Args));
+
+    }
+    
     // mesh dimensions after the fields
     // this is setup in Codegentypes.cpp ConvertScoutMeshType()
+
+    // Should we still do this if using Legion?  The declared mesh doesn't really get used here. 
+    // The mesh really used by forall gets made later.
     EmitMeshParameters(Alloc, D);
 
 
