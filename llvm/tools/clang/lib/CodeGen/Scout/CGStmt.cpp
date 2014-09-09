@@ -2426,7 +2426,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   else{
     EmitRenderallVerticesEdgesFaces(S);
   }
-
+  
   // paint window (draws all renderables) (does clear beforehand, and swap buffers after)
   if(S.isLast()){
     Args.clear();

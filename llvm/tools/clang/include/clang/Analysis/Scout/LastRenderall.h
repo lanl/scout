@@ -98,13 +98,7 @@ namespace clang {
         }
       }
       
-      if(block.succ_empty()){
-        if(last){
-          last->setLast(true);
-        }
-        
-        return;
-      }
+      bool found = false;
       
       for(auto itr = block.succ_begin(), itrEnd = block.succ_end();
           itr != itrEnd; ++itr){
@@ -114,6 +108,13 @@ namespace clang {
         
         if(block && vs.find(block) == vs.end()){
           Visit(cfg, vs, *block, last);
+          found = true;
+        }
+      }
+      
+      if(!found){
+        if(last){
+          last->setLast(true);
         }
       }
     }
