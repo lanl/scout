@@ -29,10 +29,10 @@ enum {
 typedef enum lsci_privilege_mode_t {
     LSCI_NO_ACCESS       = 0x00000000,
     LSCI_READ_ONLY       = 0x00000001,
-    LSCI_READ_WRITE      = 0x00000111,
-    LSCI_WRITE_ONLY      = 0x00000010,
-    LSCI_WRITE_DISCARD   = 0x00000010,
-    LSCI_REDUCE          = 0x00000100,
+    LSCI_READ_WRITE      = 0x00000007,
+    LSCI_WRITE_ONLY      = 0x00000002,
+    LSCI_WRITE_DISCARD   = 0x00000002,
+    LSCI_REDUCE          = 0x00000004,
     LSCI_PROMOTED        = 0x00001000
 } lsci_privilege_mode_t;
 
