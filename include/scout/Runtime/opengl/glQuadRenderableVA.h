@@ -34,7 +34,6 @@ namespace scout
     ~glQuadRenderableVA();
     
     void initialize(glCamera* camera);
-    GLuint get_buffer_object_id();
     
     float4* map_colors();
     float4* map_vertex_colors();
@@ -60,7 +59,7 @@ namespace scout
     
     void fill_vbo();
     void fill_cvbo();
-    void fill_edge_indices();
+    void fill_evbo();
     
   private:
     glfloat3 _min_pt;
@@ -74,10 +73,9 @@ namespace scout
     size_t _numVertices;
     size_t _numEdges;
     
-    unsigned* _edgeIndices;
-    
     glVertexBuffer* _vbo;
     glVertexBuffer* _cvbo;
+    glVertexBuffer* _evbo;
     
     glColorBuffer* _pbo;
     glColorBuffer* _vpbo;

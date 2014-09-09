@@ -42,6 +42,10 @@ glQuadRenderableVA::glQuadRenderableVA(const glfloat3 &min_pt,
 
 void glQuadRenderableVA::glQuadRenderableVA_1D()
 {
+  _drawCells = false;
+  _drawVertices = false;
+  _drawEdges = false;
+  
   _xdim = _max_pt.x - _min_pt.x;
 
   _pbo = new glColorBuffer;
@@ -66,38 +70,21 @@ void glQuadRenderableVA::glQuadRenderableVA_2D()
   _numVertices = _xdim1 * _ydim1;
   _numEdges = _xdim * _ydim1 + _xdim1 * _ydim;
 
+  _cellColors = (float4*)malloc(sizeof(float4) * _numCells);
+  
   _pbo = new glColorBuffer;
   _pbo->bind();
   _pbo->alloc(sizeof(float) * 4 * _numCells * 4, GL_STREAM_DRAW_ARB);
   _pbo->release();
 
-  _cellColors = (float4*)malloc(sizeof(float4) * _numCells);
-  
-  _vbo = new glVertexBuffer;
-  _vbo->bind();
-  _vbo->alloc(sizeof(float) * 3 * _numVertices, GL_STREAM_DRAW_ARB);
-  fill_vbo();
-  _vbo->release();
-  
   _cvbo = new glVertexBuffer;
   _cvbo->bind();
   _cvbo->alloc(sizeof(float) * 3 * _numCells * 4, GL_STREAM_DRAW_ARB);
   fill_cvbo();
   _cvbo->release();
+  
+  
 
-  _vpbo = new glColorBuffer;
-  _vpbo->bind();
-  _vpbo->alloc(sizeof(float) * 4 * _numVertices, GL_STREAM_DRAW_ARB);
-  _vpbo->release();
-
-  float4* vc = (float4*)_vpbo->mapForWrite();
-  for(size_t i = 0; i < _numVertices; ++i){
-    vc[i].x = 1.0;
-    vc[i].y = 0.0;
-    vc[i].z = 0.0;
-    vc[i].w = 1.0;
-  }
-  _vpbo->unmap();
   
   _edgeColors = (float4*)malloc(sizeof(float4) * _numEdges);
   
@@ -105,24 +92,27 @@ void glQuadRenderableVA::glQuadRenderableVA_2D()
   _epbo->bind();
   _epbo->alloc(sizeof(float) * 4 * _numEdges * 2, GL_STREAM_DRAW_ARB);
   _epbo->release();
-
-  float4* ec = (float4*)_epbo->mapForWrite();
-  for(size_t i = 0; i < _numEdges * 2; i += 2){
-    ec[i].x = 1.0;
-    ec[i].y = 1.0;
-    ec[i].z = 1.0;
-    ec[i].w = 1.0;
-    
-    ec[i+1].x = 1.0;
-    ec[i+1].y = 1.0;
-    ec[i+1].z = 1.0;
-    ec[i+1].w = 1.0;
-  }
-  _epbo->unmap();
   
-  _edgeIndices = (unsigned*)malloc(sizeof(unsigned) * _numEdges * 2);
-  fill_edge_indices();
+  _evbo = new glVertexBuffer;
+  _evbo->bind();
+  _evbo->alloc(sizeof(float) * 3 * _numEdges * 2, GL_STREAM_DRAW_ARB);
+  fill_evbo();
+  _evbo->release();
 
+  
+  
+  
+  _vbo = new glVertexBuffer;
+  _vbo->bind();
+  _vbo->alloc(sizeof(float) * 3 * _numVertices, GL_STREAM_DRAW_ARB);
+  fill_vbo();
+  _vbo->release();
+
+  _vpbo = new glColorBuffer;
+  _vpbo->bind();
+  _vpbo->alloc(sizeof(float) * 4 * _numVertices, GL_STREAM_DRAW_ARB);
+  _vpbo->release();
+  
   oglErrorCheck();
 }
 
@@ -131,17 +121,21 @@ void glQuadRenderableVA::destroy()
 {
   if (_vbo) delete _vbo;
   if (_cvbo) delete _cvbo;
+  if (_evbo) delete _evbo;
   if (_pbo) delete _pbo;
   if (_vpbo) delete _vpbo;
   if (_epbo) delete _epbo;
+  if (_cellColors) free(_cellColors);
   if (_edgeColors) free(_edgeColors);
 
   _vbo = NULL;
   _cvbo = NULL;
+  _evbo = NULL;
   _pbo = NULL;
   _vpbo = NULL;
   _epbo = NULL;
   _edgeColors = NULL;
+  _cellColors = NULL;
 }
 
 glQuadRenderableVA::~glQuadRenderableVA()
@@ -227,29 +221,37 @@ void glQuadRenderableVA::fill_cvbo()
   _cvbo->unmap();
 }
 
-void glQuadRenderableVA::fill_edge_indices()
+void glQuadRenderableVA::fill_evbo()
 {
+  float* edges = (float*)_evbo->mapForWrite();
+  
   size_t i = 0;
-  for(unsigned y = 0; y <= _ydim; ++y) {
-    for(unsigned x = 0; x < _xdim; ++x) {
-      _edgeIndices[i++] = y * _xdim1 + x;
-      _edgeIndices[i++] = y * _xdim1 + x + 1;
+  for(float y = 0; y <= _ydim; ++y) {
+    for(float x = 0; x < _xdim; ++x) {
+      edges[i++] = x;
+      edges[i++] = y;
+      edges[i++] = 0.0f;
+      
+      edges[i++] = x + 1.0f;
+      edges[i++] = y;
+      edges[i++] = 0.0f;
     }
   }
 
-  for(unsigned x = 0; x <= _xdim; ++x) {
-    for(unsigned y = 0; y < _ydim; ++y) {
-      _edgeIndices[i++] = y * _xdim1 + x;
-      _edgeIndices[i++] = (y + 1) * _xdim1 + x;
+  for(float x = 0; x <= _xdim; ++x) {
+    for(float y = 0; y < _ydim; ++y) {
+      edges[i++] = x;
+      edges[i++] = y;
+      edges[i++] = 0.0f;
+      
+      edges[i++] = x;
+      edges[i++] = y + 1.0f;
+      edges[i++] = 0.0f;
     }
   }
+  
+  _evbo->unmap();
 }
-
-GLuint glQuadRenderableVA::get_buffer_object_id()
-{
-  return _pbo->id();
-}
-
 
 float4* glQuadRenderableVA::map_colors()
 {
@@ -307,8 +309,8 @@ void glQuadRenderableVA::unmap_edge_colors()
   
   size_t j = 0;
   for(size_t i = 0; i < _numEdges; ++i){
-    eb[j] = _edgeColors[i];
-    eb[++j] = _edgeColors[i];
+    eb[j++] = _edgeColors[i];
+    eb[j++] = _edgeColors[i];
   }
   
   _epbo->unmap();
@@ -321,33 +323,44 @@ void glQuadRenderableVA::draw(glCamera* camera)
   
   float s = 80.0/max(_xdim, _ydim);
 
-  _cvbo->bind();
-  glVertexPointer(3, GL_FLOAT, 0, 0);
-  _cvbo->release();
+  if(_drawCells){
+    _cvbo->bind();
+    glVertexPointer(3, GL_FLOAT, 0, 0);
+    _cvbo->release();
+    
+    _pbo->bind();
+    glColorPointer(4, GL_FLOAT, 0, 0);
+    _pbo->release();
+    
+    glDrawArrays(GL_QUADS, 0, _numCells * 4);
+  }
+ 
+  if(_drawEdges){
+    _evbo->bind();
+    glVertexPointer(3, GL_FLOAT, 0, 0);
+    _evbo->release();
+    
+    _epbo->bind();
+    glColorPointer(4, GL_FLOAT, 0, 0);
+    _epbo->release();
+    
+    glLineWidth(s);
+    glDrawArrays(GL_LINES, 0, _numEdges * 2);
+  }
+
+  if(_drawVertices){
+    _vbo->bind();
+    glVertexPointer(3, GL_FLOAT, 0, 0);
+    _vbo->release();
+    
+    _vpbo->bind();
+    glColorPointer(4, GL_FLOAT, 0, 0);
+    _vpbo->release();
+    
+    glPointSize(s/2.0f);
+    glDrawArrays(GL_POINTS, 0, _numVertices);
+  }
   
-  _pbo->bind();
-  glColorPointer(4, GL_FLOAT, 0, 0);
-  _pbo->release();
-  
-  glDrawArrays(GL_QUADS, 0, _numCells * 4);
-  
-  //glDrawElements(GL_QUADS, _numCells * 4, GL_UNSIGNED_INT, 0);
-  
-  /*
-  _epbo->bind();
-  glColorPointer(4, GL_FLOAT, 0, 0);
-  _epbo->release();
-  
-  glDrawElements(GL_LINES, numEdges*2, GL_UNSIGNED_INT, _edgeIndices);
-  
-  _vpbo->bind();
-  glColorPointer(4, GL_FLOAT, 0, 0);
-  _vpbo->release();
-  
-  glPointSize(s);  
-  glDrawArrays(GL_POINTS, 0, _numVertices);
-  */
-   
   glDisableClientState(GL_VERTEX_ARRAY);
   glDisableClientState(GL_COLOR_ARRAY);
   
