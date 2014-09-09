@@ -261,6 +261,16 @@ typedef struct lsci_task_args_t {
     void *local_argsp;
 } lsci_task_args_t;
 
+typedef struct lsci_mesh_task_args_t {
+  size_t rank;
+  size_t width;
+  size_t height;
+  size_t depth;
+  lsci_rect_1d_t rect;
+  size_t len;
+} lsci_mesh_task_args_t;
+
+
 // TODO add macro magic to create different ret type sigs
 #define LSCI_FUNP_SIG(ret_type) \
     ret_type (*cbf)(struct lsci_task_args_t *task_args)
@@ -326,6 +336,12 @@ raw_rect_ptr_1d(lsci_physical_regions_t rgnp,
                 lsci_field_id_t fid,
                 lsci_rect_1d_t subgrid_bounds);
 
+/**
+ * Print functions for debugging IR
+ */
+
+void lsci_print_mesh_task_args(lsci_mesh_task_args_t* mtargs);
+void lsci_print_task_args_local_argsp(lsci_task_args_t* targs);
 
 #ifdef __cplusplus
 }

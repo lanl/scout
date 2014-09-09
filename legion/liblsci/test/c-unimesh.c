@@ -146,11 +146,8 @@ main(int argc,
     /* let legion know what the first task will be invoked */
     lsci_set_top_level_task_id(MAIN_TID);
 
-    lsci_reg_task_data_t main_task_data = {
-        .cbf = main_task
-    };
     /* register legion tasks */
-    lsci_register_void_legion_task(
+    lsci_register_void_legion_task_aux(
         MAIN_TID,
         LSCI_LOC_PROC,
         true,
@@ -158,7 +155,7 @@ main(int argc,
         false,
         LSCI_AUTO_GENERATE_ID,
         "main-task",
-        main_task_data
+        main_task
     );
     lsci_reg_task_data_t init_vals_task_data = {
         .cbf = init_vals_task

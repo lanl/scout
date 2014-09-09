@@ -212,8 +212,7 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
       StructType *StructTy_struct_lsci_task_args_t = M.getTypeByName("struct.lsci_task_args_t");
       PointerType* PointerLsciTaskArgsTy = PointerType::get(StructTy_struct_lsci_task_args_t, 0); 
       AllocaInst* ptr_task_args_addr = builder.CreateAlloca(PointerLsciTaskArgsTy, 0, "task_args.addr");
-      StoreInst* storeTaskArgsInst = builder.CreateAlignedStore(ptr_task_args, ptr_task_args_addr, 8);
-      (void)storeTaskArgsInst; //suppress warning
+      builder.CreateAlignedStore(ptr_task_args, ptr_task_args_addr, 8);
       LoadInst* loadTaskArgsInst = builder.CreateAlignedLoad(ptr_task_args_addr, 8, "");
 
       // get context from task args
@@ -233,7 +232,7 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
       LoadInst* runtime = builder.CreateAlignedLoad(ptr_runtime, 8, "runtime");
 
       // go through instructions in this block and look for loads of @__scrt_legion_context
-      // and replace with my context address.
+      // and replace with my context address.  Same with runtime.
 
       // for each instruction in the basic block
       for (BasicBlock::InstListType::iterator ii = firstBlock.begin(); ii != firstBlock.end(); ++ii) {
@@ -360,8 +359,8 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
                 Function *legionTaskInitFN = cast < Function > (MDN->getOperand(2));
                 builder.SetInsertPoint(&callInst);
                 //errs() << "create call\n";
-                //builder.CreateCall(legionTaskInitFN, ArrayRef<llvm::Value*> (Args));
-                (void)legionTaskInitFN; //suppress warning
+                builder.CreateCall(legionTaskInitFN, ArrayRef<llvm::Value*> (Args));
+                instToErase.push_back(&callInst);
               } 
               if (lsciUnimeshVal) break;
             }

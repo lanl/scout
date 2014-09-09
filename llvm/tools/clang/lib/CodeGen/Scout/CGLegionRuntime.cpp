@@ -773,3 +773,47 @@ llvm::Function* CGLegionRuntime::RawRectPtr1dFunc(){
   
   return f;
 }
+
+llvm::Function* CGLegionRuntime::PrintMeshTaskArgsFunc() {
+  string name = "lsci_print_mesh_task_args";
+  
+  llvm::Function* f = CGM.getModule().getFunction(name);
+  
+  if(f){
+    return f;
+  }
+  
+  vector<llvm::Type*> params =
+  {PointerTy(MeshTaskArgsTy)};
+  
+  llvm::FunctionType* ft = llvm::FunctionType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()), params, false);
+  
+  f = llvm::Function::Create(ft,
+                             llvm::Function::ExternalLinkage,
+                             name,
+                             &CGM.getModule());
+  
+  return f;
+}
+
+llvm::Function* CGLegionRuntime::PrintTaskArgsLocalArgspFunc() {
+  string name = "lsci_print_task_args_local_argsp";
+  
+  llvm::Function* f = CGM.getModule().getFunction(name);
+  
+  if(f){
+    return f;
+  }
+  
+  vector<llvm::Type*> params =
+  {PointerTy(TaskArgsTy)};
+  
+  llvm::FunctionType* ft = llvm::FunctionType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()), params, false);
+  
+  f = llvm::Function::Create(ft,
+                             llvm::Function::ExternalLinkage,
+                             name,
+                             &CGM.getModule());
+  
+  return f;
+}

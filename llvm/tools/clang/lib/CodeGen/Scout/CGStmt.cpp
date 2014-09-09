@@ -1280,11 +1280,15 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
     MeshFieldDecl* fd = *itr;
 
     string fieldName = meshName + "." + fd->getName().str();
-    
-    bool read = RHS.find(fieldName) != RHS.end();
-    bool write = LHS.find(fieldName) != LHS.end();
+   
+    // FIX ME:  somehow read and write are not being set correctly
+    // so they are not used at the moment 
 
-    if(read || write){
+    //bool read = RHS.find(fieldName) != RHS.end();
+    //bool write = LHS.find(fieldName) != LHS.end();
+
+    if(1){
+    //if(read || write)
       Value* field = B.CreateAlloca(R.VectorTy, 0, fd->getName() + ".ptr");
       fields.push_back(field);
       
@@ -1342,13 +1346,16 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   
   Value* meshTaskArgs =
   B.CreateAlloca(R.MeshTaskArgsTy, 0, "meshTaskArgs.ptr");
-  
+
   B.CreateStore(rank, B.CreateStructGEP(meshTaskArgs, 0));
   B.CreateStore(width, B.CreateStructGEP(meshTaskArgs, 1));
   B.CreateStore(height, B.CreateStructGEP(meshTaskArgs, 2));
   B.CreateStore(depth, B.CreateStructGEP(meshTaskArgs, 3));
   B.CreateStore(len, B.CreateStructGEP(meshTaskArgs, 5));
-  
+ 
+  args = {meshTaskArgs};
+  B.CreateCall(R.PrintMeshTaskArgsFunc(), args);
+ 
   BasicBlock* cond = BasicBlock::Create(context, "cond", taskInit);
   BasicBlock* loop = BasicBlock::Create(context, "loop", taskInit);
   BasicBlock* merge = BasicBlock::Create(context, "merge", taskInit);
@@ -1365,6 +1372,9 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   
   B.CreateStore(sgb,
                 B.CreateStructGEP(B.CreateStructGEP(meshTaskArgs, 4), 0));
+
+  args = {meshTaskArgs};
+  B.CreateCall(R.PrintMeshTaskArgsFunc(), args);
   
   args = {argMap, i, B.CreateBitCast(meshTaskArgs, R.VoidPtrTy),
     ConstantInt::get(Int64Ty, 32)};
@@ -1390,11 +1400,13 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
     Value* field = fields[j];
     
     if(field){
-      bool read = RHS.find(fd->getName().str()) != RHS.end();
-      bool write = LHS.find(fd->getName().str()) != LHS.end();
-      
-      Value* mode =
-      read ? (write ? R.ReadWriteVal : R.ReadOnlyVal) : R.WriteDiscardVal;
+      // FIX ME: default to ReadWriteVal, since read and write are not set correctly
+
+      // bool read = RHS.find(fd->getName().str()) != RHS.end();
+      // bool write = LHS.find(fd->getName().str()) != LHS.end();
+     
+      //read ? (write ? R.ReadWriteVal : R.ReadOnlyVal) : R.WriteDiscardVal;
+      Value* mode = R.ReadWriteVal;
       
       Value* fieldId =
       B.CreateLoad(B.CreateStructGEP(field, 1), "fieldId");
@@ -1579,7 +1591,8 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   
   aitr = task->arg_begin();
   Value* taskArgs = aitr;
-  
+  taskArgs->setName("task_args_ptr");
+
   aitr = taskFunc->arg_begin();
   
   llvm::PointerType* meshPtrType = dyn_cast<llvm::PointerType>(aitr->getType());
@@ -1590,11 +1603,31 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   
   entry = BasicBlock::Create(context, "entry", task);
   B.SetInsertPoint(entry);
-  
-  meshTaskArgs =
-  B.CreateBitCast(B.CreateLoad(B.CreateStructGEP(taskArgs, 4)),
-                  R.PointerTy(R.MeshTaskArgsTy));
-  
+
+  args = {taskArgs};
+  B.CreateCall(R.PrintTaskArgsLocalArgspFunc(), args);
+
+  // load the taskArgs pointer
+  Value* taskArgsAddr = B.CreateAlloca(R.PointerTy(R.TaskArgsTy), 0, "task_args.addr");
+  B.CreateAlignedStore(taskArgs, taskArgsAddr, 8);
+  LoadInst* loadTaskArgsPtr = B.CreateAlignedLoad(taskArgsAddr, 8, "task_args_loaded.ptr");
+
+  args = {loadTaskArgsPtr};
+  B.CreateCall(R.PrintTaskArgsLocalArgspFunc(), args);
+
+  // load the mesh task args ptr from taskArgs local_argsp field
+  Value* meshTaskArgsAddr = B.CreateAlloca(R.PointerTy(R.MeshTaskArgsTy), 0, "mtargs.addr");
+  Value* localArgsp = B.CreateStructGEP(loadTaskArgsPtr, 5); 
+  LoadInst* loadedLocalArgsp = B.CreateAlignedLoad(localArgsp, 8, "local_argsp.loaded"); 
+
+  // must cast to a lsci_mesh_task_args_t* , since it is a void*
+  Value* loadedMtargsp = B.CreateBitCast(loadedLocalArgsp, R.PointerTy(R.MeshTaskArgsTy), "mtargsp.loaded"); 
+  B.CreateAlignedStore(loadedMtargsp, meshTaskArgsAddr, 8); 
+  meshTaskArgs = B.CreateAlignedLoad(meshTaskArgsAddr, 8, "mesh_task_args.ptr"); 
+
+  args = {meshTaskArgs};
+  B.CreateCall(R.PrintMeshTaskArgsFunc(), args);
+
   sgb =
   B.CreateBitCast(B.CreateStructGEP(meshTaskArgs, 4), R.Rect1dTy);
   
@@ -1629,7 +1662,7 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
       }
       else{
         assert(false && "unhandled mesh field type");
-      
+      }
       
       args.push_back(ConstantInt::get(Int64Ty, j));
       args.push_back(ConstantInt::get(Int32Ty, 0));
@@ -1639,7 +1672,6 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
       Value* cv = B.CreateBitCast(fp, meshType->getTypeAtIndex(j));
       
       B.CreateStore(cv, mf);
-      }
     }
     else{
       llvm::PointerType* pt = dyn_cast<llvm::PointerType>(mf->getType());
@@ -1763,30 +1795,41 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
     ++aitr;
     ++pitr;
   }
-  
-  SmallVector<Value*, 3> Dimensions;
-  GetMeshDimensions(mt, Dimensions);
-  
-  rank = llvm::ConstantInt::get(Int32Ty, Dimensions.size());
-  
-  while(Dimensions.size() < 3){
-    Dimensions.push_back(ConstantInt::get(Int32Ty, 1));
-  }
-  
+
+  args = {meshTaskArgs};
+  B.CreateCall(R.PrintMeshTaskArgsFunc(), args);
+
+  // Must get dims and rank from mesh_task_args_t, since we
+  // are parsing this function before the mesh has
+  // been instantiated, so we don't know dimensions.
+
+  SmallVector<Value*,2> Indices;
+  Indices.push_back(ConstantInt::get(Int32Ty,0));
+  Indices.push_back(ConstantInt::get(Int32Ty,1));
+
+  Value* TAwidthPtr = B.CreateInBoundsGEP(meshTaskArgs, Indices);
+  Value* TAwidth = B.CreateAlignedLoad(TAwidthPtr, 8, "task_arg_width");
+  Value* TAwidthTrunc = B.CreateTrunc(TAwidth, R.Int32Ty, "task_arg_width.trunc");
   Value* widthPtr = B.CreateStructGEP(mesh, j++);
-  B.CreateStore(Dimensions[0], widthPtr);
-  
+  B.CreateAlignedStore(TAwidthTrunc, widthPtr, 4);
+
+  Value* TAheightPtr = B.CreateBitCast(B.CreateStructGEP(meshTaskArgs, 2), R.PointerTy(R.Int32Ty));
+  Value* TAheight = B.CreateAlignedLoad(TAheightPtr, 8, "task_arg_height");
   Value* heightPtr = B.CreateStructGEP(mesh, j++);
-  B.CreateStore(Dimensions[1], heightPtr);
-  
+  B.CreateAlignedStore(TAheight, heightPtr, 4);
+
+  Value* TAdepthPtr = B.CreateBitCast(B.CreateStructGEP(meshTaskArgs, 3), R.PointerTy(R.Int32Ty));
+  Value* TAdepth = B.CreateAlignedLoad(TAdepthPtr, 8, "task_arg_depth");
   Value* depthPtr = B.CreateStructGEP(mesh, j++);
-  B.CreateStore(Dimensions[2], depthPtr);
-  
+  B.CreateAlignedStore(TAdepth, depthPtr, 4);
+
+  Value* TArankPtr = B.CreateBitCast(B.CreateStructGEP(meshTaskArgs, 0), R.PointerTy(R.Int32Ty));
+  Value* TArank = B.CreateAlignedLoad(TArankPtr, 8, "task_arg_rank");
   Value* rankPtr = B.CreateStructGEP(mesh, j);
-  B.CreateStore(rank, rankPtr);
-  
+  B.CreateAlignedStore(TArank, rankPtr, 4);
+
   B.CreateCall(taskFunc, origArgs);
-  
+
   B.CreateRetVoid();
   
   B.SetInsertPoint(prevBlock, prevPoint);
@@ -1971,8 +2014,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
   // Extract Blocks to function and replace w/ call to function
   if(!inLLDB()){
-    llvm::Function* f = ExtractRegion(entry, exit, "ForallMeshFunction");
-    (void)f; //suppress warning
+    ExtractRegion(entry, exit, "ForallMeshFunction");
   }
 }
 
@@ -2380,8 +2422,6 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 
   RenderallMeshStmt::MeshElementType ET = S.getMeshElementRef();
 
-  //llvm::Value* numItems;
-  
   SmallVector<llvm::Value*, 3> Dimensions;
   GetMeshDimensions(S.getMeshType(), Dimensions);
 
