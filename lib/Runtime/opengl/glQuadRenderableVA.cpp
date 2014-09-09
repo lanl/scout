@@ -321,7 +321,7 @@ void glQuadRenderableVA::draw(glCamera* camera)
   glEnableClientState(GL_VERTEX_ARRAY);
   glEnableClientState(GL_COLOR_ARRAY);
   
-  float s = 80.0/max(_xdim, _ydim);
+  float s = 100.0/max(_xdim, _ydim);
 
   if(_drawCells){
     _cvbo->bind();
@@ -357,7 +357,7 @@ void glQuadRenderableVA::draw(glCamera* camera)
     glColorPointer(4, GL_FLOAT, 0, 0);
     _vpbo->release();
     
-    glPointSize(s/2.0f);
+    glPointSize(s);
     glDrawArrays(GL_POINTS, 0, _numVertices);
   }
   
