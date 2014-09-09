@@ -514,6 +514,7 @@ public:
 
   TaskStmtVisitor(Sema& sema, Stmt* S)
 : S_(S), sema_(sema) {
+    (void)S_;
   }
 
   void VisitStmt(Stmt* S) {
@@ -546,6 +547,9 @@ public:
           if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(child)) {
             if(VarDecl *VD = dyn_cast<VarDecl>(dr->getDecl())) {
               if(VD->hasGlobalStorage() && !VD->getType().isConstQualified()) {
+                sema_.Diag(S->getLocStart(), diag::err_nonpure_task_fuction);
+              }
+              if(VD->isStaticDataMember()) {
                 sema_.Diag(S->getLocStart(), diag::err_nonpure_task_fuction);
               }
             }
