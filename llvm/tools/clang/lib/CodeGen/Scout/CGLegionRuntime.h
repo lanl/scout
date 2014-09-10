@@ -79,6 +79,7 @@ namespace CodeGen {
     
     llvm::Function* SizeofCXXRect1dFunc();
     llvm::Function* SubgridBoundsAtFunc();
+    llvm::Function* SubgridBoundsAtSetFunc();
     llvm::Function* VectorDumpFunc();
     llvm::Function* ArgumentMapCreateFunc();
     llvm::Function* ArgumentMapSetPointFunc();

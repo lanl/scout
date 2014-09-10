@@ -150,6 +150,17 @@ lsci_subgrid_bounds_at(lsci_rect_1d_t rect_1d_array_basep,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+void
+lsci_subgrid_bounds_at_set(lsci_rect_1d_t rect_1d_array_basep,
+                       size_t index, lsci_rect_1d_storage_t* dest)
+{
+    assert(rect_1d_array_basep && index >= 0);
+    Rect<1> *pos = static_cast<Rect<1> *>(rect_1d_array_basep);
+    pos += index; 
+    *dest = *((lsci_rect_1d_storage_t*)pos);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 int
 lsci_argument_map_create(lsci_argument_map_t *arg_map)
 {
@@ -739,20 +750,20 @@ lsci_struct_get_vec_by_name(lsci_struct_t *theStruct,
 void lsci_print_mesh_task_args(lsci_mesh_task_args_t* mtargs) {
   printf("lsci_mesh_task_args: \n");
   printf("\trank: %lu\n", mtargs->rank);
-  printf("\twidth: %lu\n", mtargs->width);
-  printf("\theight: %lu\n", mtargs->height);
-  printf("\tdepth: %lu\n", mtargs->depth);
-  printf("\tlen: %lu\n", mtargs->len);
+  printf("\twidth: %lu\n", mtargs->global_width);
+  printf("\theight: %lu\n", mtargs->global_height);
+  printf("\tdepth: %lu\n", mtargs->global_depth);
+  printf("\tlen: %lu\n", mtargs->sgb_len);
 }
 
 void lsci_print_task_args_local_argsp(lsci_task_args_t* targs) {
   printf("lsci_mesh_task_args->local_argsp: \n");
   lsci_mesh_task_args_t* mtargs = (lsci_mesh_task_args_t*)targs->local_argsp;
   printf("\trank: %lu\n", mtargs->rank);
-  printf("\twidth: %lu\n", mtargs->width);
-  printf("\theight: %lu\n", mtargs->height);
-  printf("\tdepth: %lu\n", mtargs->depth);
-  printf("\tlen: %lu\n", mtargs->len);
+  printf("\twidth: %lu\n", mtargs->global_width);
+  printf("\theight: %lu\n", mtargs->global_height);
+  printf("\tdepth: %lu\n", mtargs->global_depth);
+  printf("\tlen: %lu\n", mtargs->sgb_len);
 }
 
 

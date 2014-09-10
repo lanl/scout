@@ -7,24 +7,11 @@
 struct Mesh {
     float *a;
     float *b;
-    uint32_t rank;
     uint32_t width;
     uint32_t height;
     uint32_t depth;
-};
-
-typedef struct mesh_task_args_t {
-    // common mesh info (global)
     uint32_t rank;
-    uint32_t global_width;
-    uint32_t global_height;
-    uint32_t global_depth;
-    // mesh sub-grid bounds (per task). we only need one because all the sgb
-    // should be the same across all fields.
-    lsci_rect_1d_storage_t sgb;
-    // length of sgb
-    size_t sgb_len;
-} mesh_task_args_t;
+};
 
 // at compile-time, we know:
 //
@@ -45,6 +32,7 @@ forall_ir(struct Mesh* m, uint32_t depth, uint32_t height, uint32_t width){
     size_t extent = width * height * depth;
     for (size_t i = 0; i < extent; ++i) {
         m->a[i] += m->b[i];
+        printf("in forall\n");
     }
     printf("%s: done!\n", __func__);
 }
@@ -90,15 +78,17 @@ main_task(lsci_task_args_t* task_args)
     lsci_argument_map_t arg_map;
     lsci_argument_map_create(&arg_map);
     for (size_t i = 0; i < field_a.launch_domain.volume; ++i) {
-        mesh_task_args_t targs;
-        targs.global_width = m->width;
-        targs.global_height = m->height;
-        targs.global_depth = m->depth;
-        targs.rank = m->rank;
-        targs.sgb = *(lsci_rect_1d_storage_t *)
-            lsci_subgrid_bounds_at(field_a.subgrid_bounds, i);
-        targs.sgb_len = field_a.subgrid_bounds_len;
-        lsci_argument_map_set_point(&arg_map, i, &targs, sizeof(targs));
+        lsci_mesh_task_args_t mtargs;
+        mtargs.global_width = m->width;
+        mtargs.global_height = m->height;
+        mtargs.global_depth = m->depth;
+        mtargs.rank = m->rank;
+        lsci_subgrid_bounds_at_set(field_a.subgrid_bounds, i, &(mtargs.sgb));
+        //mtargs.sgb = *(lsci_rect_1d_storage_t *)
+        //    lsci_subgrid_bounds_at(field_a.subgrid_bounds, i);
+        mtargs.sgb_len = field_a.subgrid_bounds_len;
+        //printf("main_task:subgrid_bounds_len: %lu\n", mtargs.sgb_len);
+        lsci_argument_map_set_point(&arg_map, i, &mtargs, sizeof(mtargs));
     }
     // create an index launcher
     lsci_index_launcher_t il;
@@ -127,15 +117,16 @@ forall_task(lsci_task_args_t* task_args)
     // extract the args
     printf("%s: hi from task %d\n", __func__, task_args->task_id);
     int rid = 0;
-    mesh_task_args_t targs = *(mesh_task_args_t *)task_args->local_argsp;
-    lsci_rect_1d_t field_sgb = (lsci_rect_1d_t)&targs.sgb;
+    lsci_mesh_task_args_t* mtargs = (lsci_mesh_task_args_t *)task_args->local_argsp;
+    //printf("subgrid_bounds_len: %lu\n", mtargs->sgb_len);
+    lsci_rect_1d_t field_sgb = (lsci_rect_1d_t)&(mtargs->sgb);
     struct Mesh m = {
         .a = NULL,
         .b = NULL,
-        .rank = targs.rank,
-        .width = targs.global_width,
-        .height = targs.global_height,
-        .depth = targs.global_depth
+        .rank = mtargs->rank,
+        .width = mtargs->global_width,
+        .height = mtargs->global_height,
+        .depth = mtargs->global_depth
     };
     m.a = (float *)raw_rect_ptr_1d(
               task_args->regions, LSCI_TYPE_FLOAT, rid++, 0, field_sgb
@@ -151,31 +142,23 @@ forall_task(lsci_task_args_t* task_args)
 int main(int argc, char** argv){
     lsci_set_top_level_task_id(MAIN_TID);
 
-    lsci_reg_task_data_t main_task_data = {
-        .cbf = main_task
-    };
-
-    lsci_register_void_legion_task(MAIN_TID,
+    lsci_register_void_legion_task_aux(MAIN_TID,
             LSCI_LOC_PROC,
             true,
             false,
             false,
             LSCI_AUTO_GENERATE_ID,
             "main-task",
-            main_task_data);
+            main_task);
 
-    lsci_reg_task_data_t forall_task_data = {
-        .cbf = forall_task
-    };
-
-    lsci_register_void_legion_task(FORALL_TID,
+    lsci_register_void_legion_task_aux(FORALL_TID,
             LSCI_LOC_PROC,
             false,
             true,
             true,
             LSCI_AUTO_GENERATE_ID,
             "forall-task",
-            forall_task_data);
+            forall_task);
 
     return lsci_start(argc, argv);
 }

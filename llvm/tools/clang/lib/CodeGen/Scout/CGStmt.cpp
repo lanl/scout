@@ -1367,12 +1367,10 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   B.CreateCondBr(cmp, loop, merge);
   
   B.SetInsertPoint(loop);
-  args = {bounds, i};
-  Value* sgb = B.CreateCall(R.SubgridBoundsAtFunc(), args);
+  Value* rect1dStoragePtr = B.CreateStructGEP(meshTaskArgs, 4);
+  args = {bounds, i, rect1dStoragePtr};
+  Value* sgb = B.CreateCall(R.SubgridBoundsAtSetFunc(), args);
   
-  B.CreateStore(sgb,
-                B.CreateStructGEP(B.CreateStructGEP(meshTaskArgs, 4), 0));
-
   args = {meshTaskArgs};
   B.CreateCall(R.PrintMeshTaskArgsFunc(), args);
   
@@ -1628,6 +1626,7 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   args = {meshTaskArgs};
   B.CreateCall(R.PrintMeshTaskArgsFunc(), args);
 
+  // cast the *lsci_rect_1d_storage_t to lsci_rect_1d (which is a void pointer)
   sgb =
   B.CreateBitCast(B.CreateStructGEP(meshTaskArgs, 4), R.Rect1dTy);
   

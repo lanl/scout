@@ -17,19 +17,6 @@ enum {
     VECCP_TID
 };
 
-typedef struct mesh_task_args_t {
-    // common mesh info (global)
-    uint32_t rank;
-    uint32_t global_width;
-    uint32_t global_height;
-    uint32_t global_depth;
-    // mesh sub-grid bounds (per task). we only need one because all the sgb
-    // should be the same across all fields.
-    lsci_rect_1d_storage_t sgb;
-    // length of sgb
-    size_t sgb_len;
-} mesh_task_args_t;
-
 void
 init_vals(lsci_unimesh_t *mesh,
           lsci_context_t context,
@@ -47,7 +34,7 @@ init_vals(lsci_unimesh_t *mesh,
     lsci_argument_map_t arg_map;
     lsci_argument_map_create(&arg_map);
     for (size_t i = 0; i < field_a.launch_domain.volume; ++i) {
-        mesh_task_args_t targs;
+        lsci_mesh_task_args_t targs;
         targs.global_width = mesh->width;
         targs.global_height = mesh->height;
         targs.global_depth = mesh->depth;
@@ -81,7 +68,7 @@ init_vals_task(lsci_task_args_t *task_args)
     assert(task_args && task_args->runtime && task_args->context);
     assert(task_args->regions);
     size_t rid = 0;
-    mesh_task_args_t targs = *(mesh_task_args_t *)task_args->local_argsp;
+    lsci_mesh_task_args_t targs = *(lsci_mesh_task_args_t *)task_args->local_argsp;
     lsci_rect_1d_t field_sgb = (lsci_rect_1d_t)&targs.sgb;
     double *fieldap = (double *)raw_rect_ptr_1d(
                         task_args->regions, LSCI_TYPE_DOUBLE, rid++, 0, field_sgb
@@ -106,8 +93,8 @@ main_task(lsci_task_args_t *task_args)
     lsci_runtime_t runtime = task_args->runtime;
     lsci_unimesh_t mesh_a;
     // 2D thing
-    const size_t mesh_width = 4;
-    const size_t mesh_height = 4;
+    const size_t mesh_width = 512;
+    const size_t mesh_height = 512;
     const size_t mesh_depth = 1;
     printf("-- %s: creating meshes\n", __func__);
     assert(LSCI_SUCCESS == lsci_unimesh_create(&mesh_a, mesh_width,

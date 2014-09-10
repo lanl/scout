@@ -115,7 +115,8 @@ CGLegionRuntime::CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM){
  
   Rect1dStorageTy = CGM.getModule().getTypeByName("struct.lsci_rect_1d_storage_t");
   if (!Rect1dStorageTy) {
-    fields = {PointerTy(Int8Ty)};
+    llvm::ArrayType* ArrayTy = llvm::ArrayType::get(llvm::IntegerType::get(context, 8), 8);
+    fields = {ArrayTy};
     Rect1dStorageTy = llvm::StructType::create(context, fields, "struct.lsci_rect_1d_storage_t");
   }
 
@@ -313,6 +314,28 @@ llvm::Function* CGLegionRuntime::SubgridBoundsAtFunc(){
   
   return f;
 }
+
+llvm::Function* CGLegionRuntime::SubgridBoundsAtSetFunc(){
+  string name = "lsci_subgrid_bounds_at_set";
+  
+  llvm::Function* f = CGM.getModule().getFunction(name);
+  
+  if(f){
+    return f;
+  }
+  
+  vector<llvm::Type*> params = {VoidPtrTy, Int64Ty, PointerTy(Rect1dStorageTy)};
+  
+  llvm::FunctionType* ft = llvm::FunctionType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()), params, false);
+  
+  f = llvm::Function::Create(ft,
+                             llvm::Function::ExternalLinkage,
+                             name,
+                             &CGM.getModule());
+  
+  return f;
+}
+
 
 llvm::Function* CGLegionRuntime::VectorDumpFunc(){
   string name = "lsci_vector_dump";

@@ -70,6 +70,9 @@ lsci_sizeof_cxx_rect_1d(void);
 lsci_rect_1d_t
 lsci_subgrid_bounds_at(lsci_rect_1d_t rect_1d_array_basep,
                        size_t index);
+void
+lsci_subgrid_bounds_at_set(lsci_rect_1d_t rect_1d_array_basep,
+                       size_t index, lsci_rect_1d_storage_t* dest);
 
 typedef struct lsci_domain_t {
     // points to the Domain instance
@@ -263,11 +266,11 @@ typedef struct lsci_task_args_t {
 
 typedef struct lsci_mesh_task_args_t {
   size_t rank;
-  size_t width;
-  size_t height;
-  size_t depth;
-  lsci_rect_1d_t rect;
-  size_t len;
+  size_t global_width;
+  size_t global_height;
+  size_t global_depth;
+  lsci_rect_1d_storage_t sgb;
+  size_t sgb_len;
 } lsci_mesh_task_args_t;
 
 
