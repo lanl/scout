@@ -554,6 +554,7 @@ public:
   void regTaskInLsciMainFunction(int taskID, llvm::Function* task);
   void finishLsciMainFunction();
 
+  uint32_t NextLegionTaskId = 1;
   // ========================================================================
 
   ARCEntrypoints &getARCEntrypoints() const {

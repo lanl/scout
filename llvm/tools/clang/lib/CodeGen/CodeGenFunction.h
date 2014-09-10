@@ -348,8 +348,6 @@ public:
   llvm::Value* GPUThreadInc;
   llvm::Value* GPUNumThreads;
   
-  uint32_t NextLegionTaskId = 1;
-  
   //renderall color buffer
   llvm::Value *Color;
 

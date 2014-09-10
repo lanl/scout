@@ -1231,7 +1231,7 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   NamedMDNode* tasks =
   CGM.getModule().getOrInsertNamedMetadata("scout.tasks");
   
-  uint32_t taskId = NextLegionTaskId++;
+  uint32_t taskId = CGM.NextLegionTaskId++;
   
   SmallVector<Value*, 3> taskInfo;
   taskInfo.push_back(ConstantInt::get(Int32Ty, taskId));
