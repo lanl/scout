@@ -147,6 +147,31 @@ bool CheckShift(unsigned id, CallExpr *E, Sema &S) {
   return error;
 }
 
+// look for foralls outside of tasks
+class NonTaskForallVisitor : public StmtVisitor<NonTaskForallVisitor> {
+public:
+  NonTaskForallVisitor(Sema& sema) :sema_(sema) {
+  }
+
+  void VisitStmt(Stmt* S) {
+     VisitChildren(S);
+   }
+
+  void VisitChildren(Stmt* S) {
+      for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
+        if (Stmt* child = *I) {
+           if(isa<ForallMeshStmt>(child)) {
+             sema_.Diag(S->getLocStart(), diag::err_forall_non_task);
+           }
+           Visit(child);
+        }
+      }
+    }
+
+private:
+  Sema& sema_;
+};
+
 
 // ForAllVisitor class to check that LHS mesh field assignment
 // operators do not appear as subsequent RHS values, and various other
