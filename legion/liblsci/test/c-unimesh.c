@@ -144,11 +144,8 @@ main(int argc,
         "main-task",
         main_task
     );
-    lsci_reg_task_data_t init_vals_task_data = {
-        .cbf = init_vals_task
-    };
     /* register legion tasks */
-    lsci_register_void_legion_task(
+    lsci_register_void_legion_task_aux(
         INIT_VALS_TID,
         LSCI_LOC_PROC,
         false,
@@ -156,7 +153,7 @@ main(int argc,
         true,
         LSCI_AUTO_GENERATE_ID,
         "init-vals-task",
-        init_vals_task_data
+        init_vals_task
     );
     /* and go! */
     return lsci_start(argc, argv);

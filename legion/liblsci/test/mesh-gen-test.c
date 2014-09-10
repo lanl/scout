@@ -32,7 +32,6 @@ forall_ir(struct Mesh* m, uint32_t depth, uint32_t height, uint32_t width){
     size_t extent = width * height * depth;
     for (size_t i = 0; i < extent; ++i) {
         m->a[i] += m->b[i];
-        printf("in forall\n");
     }
     printf("%s: done!\n", __func__);
 }

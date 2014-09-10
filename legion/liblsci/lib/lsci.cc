@@ -757,7 +757,7 @@ void lsci_print_mesh_task_args(lsci_mesh_task_args_t* mtargs) {
 }
 
 void lsci_print_task_args_local_argsp(lsci_task_args_t* targs) {
-  printf("lsci_mesh_task_args->local_argsp: \n");
+  printf("lsci_task_args->local_argsp: \n");
   lsci_mesh_task_args_t* mtargs = (lsci_mesh_task_args_t*)targs->local_argsp;
   printf("\trank: %lu\n", mtargs->rank);
   printf("\twidth: %lu\n", mtargs->global_width);
