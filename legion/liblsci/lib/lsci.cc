@@ -578,8 +578,8 @@ private:
     void
     set_nelemes(void) {
         nelems = width;
-        if (dims >= 2) nelems *= width;
-        if (dims >= 3) nelems *= height;
+        if (dims >= 2) nelems *= height;
+        if (dims >= 3) nelems *= depth;
         if (dims > 3) assert(false && "not supported");
     }
 };
