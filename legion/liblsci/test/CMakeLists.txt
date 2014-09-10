@@ -57,10 +57,17 @@ include_directories(
   ${SCOUT_INSTALL_INCLUDE_DIR}/legion
 )
 
+if(APPLE)
+  set(RT_LIB "")
+else()
+  set(RT_LIB "rt")
+endif()
+
 set(LIBS
   lsci
   pthread
   stdc++
+  ${RT_LIB}
 )
 
 file(GLOB RT_LIBLSCI_SRCS *.c)
