@@ -7294,6 +7294,8 @@ def warn_renderall_calling_io_func:Warning<
 def warn_task_calling_io_func:Warning<
     "I/O function called within task body">,
      InGroup<CallingIOFunction>;     
+def err_forall_non_task:Error<
+	"Forall outside of task in legion mode not allowed">;     
 def err_forall_non_cell_field:Error<
     "Mesh field is not cell located.">;
 def err_forall_non_edge_field:Error<

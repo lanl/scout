@@ -10331,6 +10331,12 @@ Decl *Sema::ActOnFinishFunctionBody(Decl *dcl, Stmt *Body,
     if(FD->isTaskSpecified()) {
       TaskVisitor v(*this, FD);
       v.Visit(Body);
+    } else {
+      //for now don't allow foralls outside of tasks in legion mode.
+      if(getLangOpts().ScoutLegionSupport) {
+        NonTaskForallVisitor v(*this);
+        v.VisitStmt(Body);
+      }
     }
     // +======================================================================+
 
