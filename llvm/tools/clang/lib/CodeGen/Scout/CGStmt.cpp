@@ -1280,15 +1280,11 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
     MeshFieldDecl* fd = *itr;
 
     string fieldName = meshName + "." + fd->getName().str();
-   
-    // FIX ME:  somehow read and write are not being set correctly
-    // so they are not used at the moment 
 
-    //bool read = RHS.find(fieldName) != RHS.end();
-    //bool write = LHS.find(fieldName) != LHS.end();
+    bool read = RHS.find(fieldName) != RHS.end();
+    bool write = LHS.find(fieldName) != LHS.end();
 
-    if(1){
-    //if(read || write)
+    if(read || write) {
       Value* field = B.CreateAlloca(R.VectorTy, 0, fd->getName() + ".ptr");
       fields.push_back(field);
       
@@ -1397,14 +1393,13 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
     MeshFieldDecl* fd = *itr;
     Value* field = fields[j];
     
-    if(field){
-      // FIX ME: default to ReadWriteVal, since read and write are not set correctly
+    if(field) {
 
-      // bool read = RHS.find(fd->getName().str()) != RHS.end();
-      // bool write = LHS.find(fd->getName().str()) != LHS.end();
+      string fieldName = meshName + "." + fd->getName().str();
+      bool read = RHS.find(fieldName) != RHS.end();
+      bool write = LHS.find(fieldName) != LHS.end();
      
-      //read ? (write ? R.ReadWriteVal : R.ReadOnlyVal) : R.WriteDiscardVal;
-      Value* mode = R.ReadWriteVal;
+      Value* mode = read ? (write ? R.ReadWriteVal : R.ReadOnlyVal) : R.WriteDiscardVal;
       
       Value* fieldId =
       B.CreateLoad(B.CreateStructGEP(field, 1), "fieldId");
@@ -1616,12 +1611,12 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   // load the mesh task args ptr from taskArgs local_argsp field
   Value* meshTaskArgsAddr = B.CreateAlloca(R.PointerTy(R.MeshTaskArgsTy), 0, "mtargs.addr");
   Value* localArgsp = B.CreateStructGEP(loadTaskArgsPtr, 5); 
-  LoadInst* loadedLocalArgsp = B.CreateAlignedLoad(localArgsp, 8, "local_argsp.loaded"); 
+  LoadInst* loadedLocalArgsp = B.CreateAlignedLoad(localArgsp, 8, "local_argsp.loaded");
 
   // must cast to a lsci_mesh_task_args_t* , since it is a void*
   Value* loadedMtargsp = B.CreateBitCast(loadedLocalArgsp, R.PointerTy(R.MeshTaskArgsTy), "mtargsp.loaded"); 
-  B.CreateAlignedStore(loadedMtargsp, meshTaskArgsAddr, 8); 
-  meshTaskArgs = B.CreateAlignedLoad(meshTaskArgsAddr, 8, "mesh_task_args.ptr"); 
+  B.CreateAlignedStore(loadedMtargsp, meshTaskArgsAddr, 8);
+  meshTaskArgs = B.CreateAlignedLoad(meshTaskArgsAddr, 8, "mesh_task_args.ptr");
 
   args = {meshTaskArgs};
   B.CreateCall(R.PrintMeshTaskArgsFunc(), args);
