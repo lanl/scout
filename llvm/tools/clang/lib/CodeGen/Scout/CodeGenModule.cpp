@@ -146,12 +146,12 @@ void CodeGenModule::startLsciMainFunction() {
   reg_main_task_params.push_back(lsci_loc_proc);
 
   llvm::ConstantInt* true_val = llvm::ConstantInt::get(context, llvm::APInt(1, StringRef("-1"), 10));
-  reg_main_task_params.push_back(true_val);
+  reg_main_task_params.push_back(true_val); // is single
 
   llvm::ConstantInt* false_val = llvm::ConstantInt::get(context, llvm::APInt(1, StringRef("0"), 10));
-  reg_main_task_params.push_back(false_val);
+  reg_main_task_params.push_back(false_val); // is not index
 
-  reg_main_task_params.push_back(false_val);
+  reg_main_task_params.push_back(false_val); // is not leaf
 
   // must be a better way to get umax
   llvm::ConstantInt* umax = llvm::ConstantInt::get(Int64Ty, 4294967295);
@@ -202,13 +202,13 @@ void CodeGenModule::regTaskInLsciMainFunction(int taskID, llvm::Function* taskFu
   llvm::ConstantInt* lsci_loc_proc = llvm::ConstantInt::get(Int32Ty, 1);
   reg_main_task_params.push_back(lsci_loc_proc);
 
-  llvm::ConstantInt* true_val = llvm::ConstantInt::get(context, llvm::APInt(1, StringRef("-1"), 10));
-  reg_main_task_params.push_back(true_val);
-
   llvm::ConstantInt* false_val = llvm::ConstantInt::get(context, llvm::APInt(1, StringRef("0"), 10));
-  reg_main_task_params.push_back(false_val);
+  llvm::ConstantInt* true_val = llvm::ConstantInt::get(context, llvm::APInt(1, StringRef("-1"), 10));
+  reg_main_task_params.push_back(false_val); //is not single
 
-  reg_main_task_params.push_back(false_val);
+  reg_main_task_params.push_back(true_val); // is index
+
+  reg_main_task_params.push_back(true_val); // is leaf
 
   // must be a better way to get umax, since will be system-dependent?
   llvm::ConstantInt* umax = llvm::ConstantInt::get(Int64Ty, 4294967295);
