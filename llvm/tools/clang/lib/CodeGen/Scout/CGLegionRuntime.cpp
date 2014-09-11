@@ -87,12 +87,13 @@ CGLegionRuntime::CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM){
   
   SuccessVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0));
   FailureVal = llvm::ConstantInt::get(context, llvm::APInt(32, 1));
+  //SC_TODO: these values are in 3 places. here, lsci.h and in legion_types.h we should pick one.
   NoAccessVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0x00000000));
   ReadOnlyVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0x00000001));
-  ReadWriteVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0x00000111));
-  WriteOnlyVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0x00000010));
-  WriteDiscardVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0x00000010));
-  ReduceVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0x00000100));
+  ReadWriteVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0x00000007));
+  WriteOnlyVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0x00000002));
+  WriteDiscardVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0x00000002));
+  ReduceVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0x00000004));
   PromotedVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0x00001000));
   
   ExclusiveVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0));
