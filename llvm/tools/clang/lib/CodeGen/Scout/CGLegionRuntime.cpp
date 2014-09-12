@@ -54,6 +54,7 @@
 
 #include "Scout/CGLegionRuntime.h"
 #include "CodeGenFunction.h"
+#include "legion/lsci.h"
 
 using namespace std;
 using namespace CodeGen;
@@ -85,26 +86,26 @@ CGLegionRuntime::CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM){
   StructHandleTy = VoidPtrTy;
   VariantIdTy = Int64Ty;
   
-  SuccessVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0));
-  FailureVal = llvm::ConstantInt::get(context, llvm::APInt(32, 1));
-  //SC_TODO: these values are in 3 places. here, lsci.h and in legion_types.h we should pick one.
-  NoAccessVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0x00000000));
-  ReadOnlyVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0x00000001));
-  ReadWriteVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0x00000007));
-  WriteOnlyVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0x00000002));
-  WriteDiscardVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0x00000002));
-  ReduceVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0x00000004));
-  PromotedVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0x00001000));
+  SuccessVal = llvm::ConstantInt::get(context, llvm::APInt(32,  LSCI_SUCCESS));
+  FailureVal = llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_FAILURE));
+
+  NoAccessVal = llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_NO_ACCESS));
+  ReadOnlyVal = llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_READ_ONLY));
+  ReadWriteVal = llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_READ_WRITE));
+  WriteOnlyVal = llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_WRITE_ONLY));
+  WriteDiscardVal = llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_WRITE_DISCARD));
+  ReduceVal = llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_REDUCE));
+  PromotedVal = llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_PROMOTED));
   
-  ExclusiveVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0));
-  AtomicVal = llvm::ConstantInt::get(context, llvm::APInt(32, 1));
-  SimultaenousVal = llvm::ConstantInt::get(context, llvm::APInt(32, 2));
-  RelaxedVal = llvm::ConstantInt::get(context, llvm::APInt(32, 3));
+  ExclusiveVal = llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_EXCLUSIVE));
+  AtomicVal = llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_ATOMIC));
+  SimultaenousVal = llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_SIMULTANEOUS));
+  RelaxedVal = llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_RELAXED));
   
-  TypeInt32Val = llvm::ConstantInt::get(context, llvm::APInt(32, 0));
-  TypeInt64Val = llvm::ConstantInt::get(context, llvm::APInt(32, 1));
-  TypeFloatVal = llvm::ConstantInt::get(context, llvm::APInt(32, 2));
-  TypeDoubleVal = llvm::ConstantInt::get(context, llvm::APInt(32, 3));
+  TypeInt32Val = llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_TYPE_INT32));
+  TypeInt64Val = llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_TYPE_INT64));
+  TypeFloatVal = llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_TYPE_FLOAT));
+  TypeDoubleVal = llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_TYPE_DOUBLE));
   
   TocProcVal = llvm::ConstantInt::get(context, llvm::APInt(32, 0));
   LocProcVal = llvm::ConstantInt::get(context, llvm::APInt(32, 1));

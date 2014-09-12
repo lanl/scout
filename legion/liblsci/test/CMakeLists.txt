@@ -55,6 +55,7 @@ project(scout_rt_test_liblsci)
 include_directories(
   ${SCOUT_INSTALL_INCLUDE_DIR}
   ${SCOUT_INSTALL_INCLUDE_DIR}/legion
+  ../../runtime
 )
 
 if(APPLE)
@@ -89,3 +90,10 @@ foreach (test ${RT_LIBLSCI_SRCS})
   endif(NOT tname)
 endforeach(test)
 
+set(CMAKE_CXX_COMPILER "${SCOUT_BUILD_DIR}/../bin/clang")
+set(CMAKE_CXX_FLAGS "-Wno-enum-compare")
+add_executable(runtime_liblsci_enums enums.cpp)
+add_test(runtime_liblsci_enums ${TEST_BINARY_DIR}/runtime_liblsci_enums)
+message(" + added runtime regression test entry: runtime_liblsci_enums")
+target_link_libraries(runtime_liblsci_enums ${LIBS})
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -L${SCOUT_INSTALL_LIB_DIR}")
