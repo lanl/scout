@@ -117,7 +117,7 @@ CGLegionRuntime::CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM){
  
   Rect1dStorageTy = CGM.getModule().getTypeByName("struct.lsci_rect_1d_storage_t");
   if (!Rect1dStorageTy) {
-    llvm::ArrayType* ArrayTy = llvm::ArrayType::get(llvm::IntegerType::get(context, 8), 8);
+    llvm::ArrayType* ArrayTy = llvm::ArrayType::get(llvm::IntegerType::get(context, 8), LSCI_RECT_1D_CXX_SIZE);
     fields = {ArrayTy};
     Rect1dStorageTy = llvm::StructType::create(context, fields, "struct.lsci_rect_1d_storage_t");
   }

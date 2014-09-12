@@ -81,6 +81,8 @@
 #include "Scout/ASTVisitors.h"
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 
+#include "legion/lsci.h"
+
 using namespace clang;
 using namespace CodeGen;
 
@@ -1371,7 +1373,7 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   B.CreateCall(R.PrintMeshTaskArgsFunc(), args);
   
   args = {argMap, i, B.CreateBitCast(meshTaskArgs, R.VoidPtrTy),
-    ConstantInt::get(Int64Ty, 32)};
+    ConstantInt::get(Int64Ty, sizeof(lsci_mesh_task_args_t))};
   
   B.CreateCall(R.ArgumentMapSetPointFunc(), args);
   B.CreateStore(B.CreateAdd(i, One), iPtr);
