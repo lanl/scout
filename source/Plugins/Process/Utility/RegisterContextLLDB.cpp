@@ -406,6 +406,13 @@ RegisterContextLLDB::InitializeNonZerothFrame()
                 return;
             }
 
+            if (CheckIfLoopingStack ())
+            {
+                UnwindLogMsg ("same CFA address as next frame, assuming the unwind is looping - stopping");
+                m_frame_type = eNotAValidFrame;
+                return;
+            }
+
             UnwindLogMsg ("initialized frame cfa is 0x%" PRIx64, (uint64_t) m_cfa);
             return;
         }
@@ -574,6 +581,20 @@ RegisterContextLLDB::InitializeNonZerothFrame()
         return;
     }
 
+    if (CheckIfLoopingStack ())
+    {
+        UnwindLogMsg ("same CFA address as next frame, assuming the unwind is looping - stopping");
+        m_frame_type = eNotAValidFrame;
+        return;
+    }
+
+    UnwindLogMsg ("initialized frame current pc is 0x%" PRIx64 " cfa is 0x%" PRIx64,
+            (uint64_t) m_current_pc.GetLoadAddress (exe_ctx.GetTargetPtr()), (uint64_t) m_cfa);
+}
+
+bool
+RegisterContextLLDB::CheckIfLoopingStack ()
+{
     // If we have a bad stack setup, we can get the same CFA value multiple times -- or even
     // more devious, we can actually oscillate between two CFA values.  Detect that here and
     // break out to avoid a possible infinite loop in lldb trying to unwind the stack.
@@ -581,29 +602,19 @@ RegisterContextLLDB::InitializeNonZerothFrame()
     addr_t next_next_frame_cfa = LLDB_INVALID_ADDRESS;
     if (GetNextFrame().get() && GetNextFrame()->GetCFA(next_frame_cfa))
     {
-        bool repeating_frames = false;
         if (next_frame_cfa == m_cfa)
         {
-            repeating_frames = true;
+            // We have a loop in the stack unwind
+            return true;
         }
-        else
+        if (GetNextFrame()->GetNextFrame().get() && GetNextFrame()->GetNextFrame()->GetCFA(next_next_frame_cfa)
+            && next_next_frame_cfa == m_cfa)
         {
-            if (GetNextFrame()->GetNextFrame() && GetNextFrame()->GetNextFrame()->GetCFA(next_next_frame_cfa)
-                && next_next_frame_cfa == m_cfa)
-            {
-                repeating_frames = true;
-            }
-        }
-        if (repeating_frames && abi && abi->FunctionCallsChangeCFA())
-        {
-            UnwindLogMsg ("same CFA address as next frame, assuming the unwind is looping - stopping");
-            m_frame_type = eNotAValidFrame;
-            return;
+            // We have a loop in the stack unwind
+            return true; 
         }
     }
-
-    UnwindLogMsg ("initialized frame current pc is 0x%" PRIx64 " cfa is 0x%" PRIx64,
-            (uint64_t) m_current_pc.GetLoadAddress (exe_ctx.GetTargetPtr()), (uint64_t) m_cfa);
+    return false;
 }
 
 
@@ -794,7 +805,7 @@ RegisterContextLLDB::GetFullUnwindPlanForFrame ()
     // Typically the NonCallSite UnwindPlan is the unwind created by inspecting the assembly language instructions
     if (behaves_like_zeroth_frame)
     {
-        unwind_plan_sp = func_unwinders_sp->GetUnwindPlanAtNonCallSite (m_thread);
+        unwind_plan_sp = func_unwinders_sp->GetUnwindPlanAtNonCallSite (process->GetTarget(), m_thread, m_current_offset_backed_up_one);
         if (unwind_plan_sp && unwind_plan_sp->PlanValidAtAddress (m_current_pc))
         {
             if (unwind_plan_sp->GetSourcedFromCompiler() == eLazyBoolNo)
@@ -822,7 +833,7 @@ RegisterContextLLDB::GetFullUnwindPlanForFrame ()
 
     // We'd prefer to use an UnwindPlan intended for call sites when we're at a call site but if we've
     // struck out on that, fall back to using the non-call-site assembly inspection UnwindPlan if possible.
-    unwind_plan_sp = func_unwinders_sp->GetUnwindPlanAtNonCallSite (m_thread);
+    unwind_plan_sp = func_unwinders_sp->GetUnwindPlanAtNonCallSite (process->GetTarget(), m_thread, m_current_offset_backed_up_one);
     if (unwind_plan_sp && unwind_plan_sp->GetSourcedFromCompiler() == eLazyBoolNo)
     {
         // We probably have an UnwindPlan created by inspecting assembly instructions, and we probably

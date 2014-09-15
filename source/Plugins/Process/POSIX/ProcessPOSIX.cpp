@@ -70,8 +70,8 @@ ProcessPOSIX::Initialize()
 //------------------------------------------------------------------------------
 // Constructors and destructors.
 
-ProcessPOSIX::ProcessPOSIX(Target& target, Listener &listener)
-    : Process(target, listener),
+ProcessPOSIX::ProcessPOSIX(Target& target, Listener &listener, UnixSignalsSP &unix_signals_sp)
+    : Process(target, listener, unix_signals_sp),
       m_byte_order(lldb::endian::InlHostByteOrder()),
       m_monitor(NULL),
       m_module(NULL),
@@ -176,9 +176,9 @@ ProcessPOSIX::WillLaunch(Module* module)
 }
 
 const char *
-ProcessPOSIX::GetFilePath(const lldb_private::FileAction *file_action, const char *default_path)
+ProcessPOSIX::GetFilePath(const lldb_private::FileAction *file_action, const char *default_path,
+                          const char *dbg_pts_path)
 {
-    const char *pts_name = "/dev/pts/";
     const char *path = NULL;
 
     if (file_action)
@@ -190,11 +190,11 @@ ProcessPOSIX::GetFilePath(const lldb_private::FileAction *file_action, const cha
             // (/dev/pts). If so, convert to using a different default path
             // instead to redirect I/O to the debugger console. This should
             //  also handle user overrides to /dev/null or a different file.
-            if (!path || ::strncmp(path, pts_name, ::strlen(pts_name)) == 0)
+            if (!path || (dbg_pts_path &&
+                          ::strncmp(path, dbg_pts_path, ::strlen(dbg_pts_path)) == 0))
                 path = default_path;
         }
     }
-
     return path;
 }
 
@@ -224,14 +224,16 @@ ProcessPOSIX::DoLaunch (Module *module,
     const char *stdout_path = NULL;
     const char *stderr_path = NULL;
 
+    const char * dbg_pts_path = launch_info.GetPTY().GetSlaveName(NULL,0);
+
     file_action = launch_info.GetFileActionForFD (STDIN_FILENO);
-    stdin_path = GetFilePath(file_action, stdin_path);
+    stdin_path = GetFilePath(file_action, stdin_path, dbg_pts_path);
 
     file_action = launch_info.GetFileActionForFD (STDOUT_FILENO);
-    stdout_path = GetFilePath(file_action, stdout_path);
+    stdout_path = GetFilePath(file_action, stdout_path, dbg_pts_path);
 
     file_action = launch_info.GetFileActionForFD (STDERR_FILENO);
-    stderr_path = GetFilePath(file_action, stderr_path);
+    stderr_path = GetFilePath(file_action, stderr_path, dbg_pts_path);
 
     m_monitor = new ProcessMonitor (this, 
                                     module,
@@ -642,6 +644,7 @@ ProcessPOSIX::DoDeallocateMemory(lldb::addr_t addr)
 size_t
 ProcessPOSIX::GetSoftwareBreakpointTrapOpcode(BreakpointSite* bp_site)
 {
+    static const uint8_t g_aarch64_opcode[] = { 0x00, 0x00, 0x20, 0xD4 };
     static const uint8_t g_i386_opcode[] = { 0xCC };
 
     ArchSpec arch = GetTarget().GetArchitecture();
@@ -652,6 +655,11 @@ ProcessPOSIX::GetSoftwareBreakpointTrapOpcode(BreakpointSite* bp_site)
     {
     default:
         assert(false && "CPU type not supported!");
+        break;
+
+    case llvm::Triple::aarch64:
+        opcode = g_aarch64_opcode;
+        opcode_size = sizeof(g_aarch64_opcode);
         break;
 
     case llvm::Triple::x86:
@@ -870,12 +878,6 @@ ProcessPOSIX::PutSTDIN(const char *buf, size_t len, Error &error)
         return 0;
     }
     return status;
-}
-
-UnixSignals &
-ProcessPOSIX::GetUnixSignals()
-{
-    return m_signals;
 }
 
 //------------------------------------------------------------------------------

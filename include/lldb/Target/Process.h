@@ -38,6 +38,7 @@
 #include "lldb/Expression/IRDynamicChecks.h"
 #include "lldb/Host/FileSpec.h"
 #include "lldb/Host/Host.h"
+#include "lldb/Host/HostThread.h"
 #include "lldb/Host/ProcessRunLock.h"
 #include "lldb/Interpreter/Args.h"
 #include "lldb/Interpreter/Options.h"
@@ -67,6 +68,9 @@ public:
     
     bool
     GetDisableMemoryCache() const;
+
+    uint64_t
+    GetMemoryCacheLineSize () const;
 
     Args
     GetExtraStartupCommands () const;
@@ -895,8 +899,15 @@ public:
 
     //------------------------------------------------------------------
     /// Construct with a shared pointer to a target, and the Process listener.
+    /// Uses the Host UnixSignalsSP by default.
     //------------------------------------------------------------------
     Process(Target &target, Listener &listener);
+
+    //------------------------------------------------------------------
+    /// Construct with a shared pointer to a target, the Process listener,
+    /// and the appropriate UnixSignalsSP for the process.
+    //------------------------------------------------------------------
+    Process(Target &target, Listener &listener, const UnixSignalsSP &unix_signals_sp);
 
     //------------------------------------------------------------------
     /// Destructor.
@@ -1321,10 +1332,18 @@ public:
     Error
     Signal (int signal);
 
-    virtual UnixSignals &
+    void
+    SetUnixSignals (const UnixSignalsSP &signals_sp)
+    {
+        assert (signals_sp && "null signals_sp");
+        m_unix_signals_sp = signals_sp;
+    }
+
+    UnixSignals &
     GetUnixSignals ()
     {
-        return m_unix_signals;
+        assert (m_unix_signals_sp && "null m_unix_signals_sp");
+        return *m_unix_signals_sp;
     }
 
     //==================================================================
@@ -2891,7 +2910,7 @@ public:
     ProcessRunLock &
     GetRunLock ()
     {
-        if (Host::GetCurrentThread() == m_private_state_thread)
+        if (m_private_state_thread.EqualsThread(Host::GetCurrentThread()))
             return m_private_run_lock;
         else
             return m_public_run_lock;
@@ -2904,6 +2923,9 @@ public:
         Error return_error ("Sending an event is not supported for this process.");
         return return_error;
     }
+    
+    lldb::ThreadCollectionSP
+    GetHistoryThreads(lldb::addr_t addr);
 
 protected:
 
@@ -2962,13 +2984,9 @@ protected:
     class AttachCompletionHandler : public NextEventAction
     {
     public:
-        AttachCompletionHandler (Process *process, uint32_t exec_count) :
-            NextEventAction (process),
-            m_exec_count (exec_count)
-        {
-        }
+        AttachCompletionHandler (Process *process, uint32_t exec_count);
 
-        virtual 
+        virtual
         ~AttachCompletionHandler() 
         {
         }
@@ -2990,7 +3008,7 @@ protected:
     bool
     PrivateStateThreadIsValid () const
     {
-        return IS_VALID_LLDB_HOST_THREAD(m_private_state_thread);
+        return m_private_state_thread.GetState() != eThreadStateInvalid;
     }
     
     void
@@ -3025,7 +3043,7 @@ protected:
     Broadcaster                 m_private_state_control_broadcaster; // This is the control broadcaster, used to pause, resume & stop the private state thread.
     Listener                    m_private_state_listener;     // This is the listener for the private state thread.
     Predicate<bool>             m_private_state_control_wait; /// This Predicate is used to signal that a control operation is complete.
-    lldb::thread_t              m_private_state_thread;  // Thread ID for the thread that watches internal state events
+    HostThread m_private_state_thread;                        // Thread ID for the thread that watches internal state events
     ProcessModID                m_mod_id;               ///< Tracks the state of the process over stops and other alterations.
     uint32_t                    m_process_unique_id;    ///< Each lldb_private::Process class that is created gets a unique integer ID that increments with each new instance
     uint32_t                    m_thread_index_id;      ///< Each thread is created with a 1 based index that won't get re-used.
@@ -3049,7 +3067,7 @@ protected:
     std::unique_ptr<DynamicCheckerFunctions> m_dynamic_checkers_ap; ///< The functions used by the expression parser to validate data that expressions use.
     std::unique_ptr<OperatingSystem> m_os_ap;
     std::unique_ptr<SystemRuntime> m_system_runtime_ap;
-    UnixSignals                 m_unix_signals;         /// This is the current signal set for this process.
+    UnixSignalsSP               m_unix_signals_sp;         /// This is the current signal set for this process.
     lldb::ABISP                 m_abi_sp;
     lldb::IOHandlerSP           m_process_input_reader;
     Communication               m_stdio_communication;

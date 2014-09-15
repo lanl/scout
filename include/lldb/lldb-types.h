@@ -49,9 +49,10 @@ namespace lldb
     typedef void*               mutex_t;
     typedef void*               condition_t;
     typedef void*               rwlock_t;
-    typedef uintptr_t           thread_t;                   // Host thread type
+    typedef void*               process_t;                  // Process type is HANDLE
+    typedef void*               thread_t;                   // Host thread type
     typedef uint32_t            thread_key_t;
-    typedef void *              thread_arg_t;               // Host thread argument type
+    typedef void*               thread_arg_t;               // Host thread argument type
     typedef unsigned            thread_result_t;            // Host thread result type
     typedef thread_result_t     (*thread_func_t)(void *);   // Host thread function type
 }
@@ -68,6 +69,7 @@ namespace lldb
     typedef ::pthread_mutex_t   mutex_t;
     typedef pthread_cond_t      condition_t;
     typedef pthread_rwlock_t    rwlock_t;
+    typedef uint64_t            process_t;                  // Process type is just a pid.
     typedef pthread_t           thread_t;                   // Host thread type
     typedef pthread_key_t       thread_key_t;
     typedef void *              thread_arg_t;               // Host thread argument type

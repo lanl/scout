@@ -94,6 +94,12 @@ HostInfoBase::GetNumberCPUS()
     return g_fields->m_number_cpus;
 }
 
+uint32_t
+HostInfoBase::GetMaxThreadNameLength()
+{
+    return 0;
+}
+
 llvm::StringRef
 HostInfoBase::GetVendorString()
 {
@@ -228,7 +234,7 @@ HostInfoBase::ComputeSharedLibraryDirectory(FileSpec &file_spec)
         Host::GetModuleFileSpecForHostAddress(reinterpret_cast<void *>(reinterpret_cast<intptr_t>(HostInfoBase::GetLLDBPath))));
 
     // Remove the filename so that this FileSpec only represents the directory.
-    file_spec.SetFile(lldb_file_spec.GetDirectory().AsCString(), true);
+    file_spec.GetDirectory() = lldb_file_spec.GetDirectory();
 
     return (bool)file_spec.GetDirectory();
 }
@@ -264,7 +270,7 @@ HostInfoBase::ComputeTempFileDirectory(FileSpec &file_spec)
     // Make an atexit handler to clean up the process specify LLDB temp dir
     // and all of its contents.
     ::atexit(CleanupProcessSpecificLLDBTempDir);
-    file_spec.SetFile(pid_tmpdir.GetString().c_str(), false);
+    file_spec.GetDirectory().SetCStringWithLength(pid_tmpdir.GetString().c_str(), pid_tmpdir.GetString().size());
     return true;
 }
 
@@ -308,6 +314,7 @@ HostInfoBase::ComputeHostArchitectureSupport(ArchSpec &arch_32, ArchSpec &arch_6
             arch_32.SetTriple(triple.get32BitArchVariant());
             break;
 
+        case llvm::Triple::aarch64:
         case llvm::Triple::mips64:
         case llvm::Triple::sparcv9:
         case llvm::Triple::ppc64:
