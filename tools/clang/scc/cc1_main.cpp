@@ -237,7 +237,7 @@ int cc1_main(ArrayRef<const char *> Argv,
   if (Clang->getFrontendOpts().DisableFree) {
     if (llvm::AreStatisticsEnabled() || Clang->getFrontendOpts().ShowStats)
       llvm::PrintStatistics();
-    BuryPointer(Clang.release());
+    BuryPointer(std::move(Clang));
     return !Success;
   }
 
