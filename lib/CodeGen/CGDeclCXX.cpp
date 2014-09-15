@@ -96,7 +96,7 @@ static void EmitDeclDestroy(CodeGenFunction &CGF, const VarDecl &D,
     assert(!record->hasTrivialDestructor());
     CXXDestructorDecl *dtor = record->getDestructor();
 
-    function = CGM.GetAddrOfCXXDestructor(dtor, Dtor_Complete);
+    function = CGM.getAddrOfCXXStructor(dtor, StructorType::Complete);
     argument = llvm::ConstantExpr::getBitCast(
         addr, CGF.getTypes().ConvertType(type)->getPointerTo());
 
@@ -332,6 +332,11 @@ CodeGenModule::EmitCXXGlobalVarDeclInitFunc(const VarDecl *D,
     // COMDAT key is required for correctness.
     AddGlobalCtor(Fn, 65535, Addr);
     DelayedCXXInitPosition.erase(D);
+  } else if (D->hasAttr<SelectAnyAttr>()) {
+    // SelectAny globals will be comdat-folded. Put the initializer into a COMDAT
+    // group associated with the global, so the initializers get folded too.
+    AddGlobalCtor(Fn, 65535, Addr);
+    DelayedCXXInitPosition.erase(D);
   } else {
     llvm::DenseMap<const Decl *, unsigned>::iterator I =
       DelayedCXXInitPosition.find(D);
@@ -409,19 +414,25 @@ CodeGenModule::EmitCXXGlobalInitFunc() {
       AddGlobalCtor(Fn, Priority);
     }
   }
-  
-  // Include the filename in the symbol name. Including "sub_" matches gcc and
-  // makes sure these symbols appear lexicographically behind the symbols with
-  // priority emitted above.
+
+  SmallString<128> FileName;
   SourceManager &SM = Context.getSourceManager();
-  SmallString<128> FileName(llvm::sys::path::filename(
-      SM.getFileEntryForID(SM.getMainFileID())->getName()));
+  if (const FileEntry *MainFile = SM.getFileEntryForID(SM.getMainFileID())) {
+    // Include the filename in the symbol name. Including "sub_" matches gcc and
+    // makes sure these symbols appear lexicographically behind the symbols with
+    // priority emitted above.
+    FileName = llvm::sys::path::filename(MainFile->getName());
+  } else {
+    FileName = SmallString<128>("<null>");
+  }
+
   for (size_t i = 0; i < FileName.size(); ++i) {
     // Replace everything that's not [a-zA-Z0-9._] with a _. This set happens
     // to be the set of C preprocessing numbers.
     if (!isPreprocessingNumberBody(FileName[i]))
       FileName[i] = '_';
   }
+
   llvm::Function *Fn = CreateGlobalInitOrDestructFunction(
       *this, FTy, llvm::Twine("_GLOBAL__sub_I_", FileName));
 

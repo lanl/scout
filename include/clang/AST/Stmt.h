@@ -846,7 +846,7 @@ public:
 
   SourceLocation getAttrLoc() const { return AttrLoc; }
   ArrayRef<const Attr*> getAttrs() const {
-    return ArrayRef<const Attr*>(getAttrArrayPtr(), NumAttrs);
+    return llvm::makeArrayRef(getAttrArrayPtr(), NumAttrs);
   }
   Stmt *getSubStmt() { return SubStmt; }
   const Stmt *getSubStmt() const { return SubStmt; }
@@ -1785,14 +1785,14 @@ public:
   //===--- Other ---===//
 
   ArrayRef<StringRef> getAllConstraints() const {
-    return ArrayRef<StringRef>(Constraints, NumInputs + NumOutputs);
+    return llvm::makeArrayRef(Constraints, NumInputs + NumOutputs);
   }
   ArrayRef<StringRef> getClobbers() const {
-    return ArrayRef<StringRef>(Clobbers, NumClobbers);
+    return llvm::makeArrayRef(Clobbers, NumClobbers);
   }
   ArrayRef<Expr*> getAllExprs() const {
-    return ArrayRef<Expr*>(reinterpret_cast<Expr**>(Exprs),
-                           NumInputs + NumOutputs);
+    return llvm::makeArrayRef(reinterpret_cast<Expr**>(Exprs),
+                              NumInputs + NumOutputs);
   }
 
   StringRef getClobber(unsigned i) const { return getClobbers()[i]; }

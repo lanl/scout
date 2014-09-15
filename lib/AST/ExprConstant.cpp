@@ -3986,7 +3986,7 @@ public:
 
     const FunctionDecl *FD = nullptr;
     LValue *This = nullptr, ThisVal;
-    ArrayRef<const Expr *> Args(E->getArgs(), E->getNumArgs());
+    auto Args = llvm::makeArrayRef(E->getArgs(), E->getNumArgs());
     bool HasQualifier = false;
 
     // Extract function decl and 'this' pointer from the callee.
@@ -5167,7 +5167,7 @@ bool RecordExprEvaluator::VisitCXXConstructExpr(const CXXConstructExpr *E) {
   if (ZeroInit && !ZeroInitialization(E))
     return false;
 
-  ArrayRef<const Expr *> Args(E->getArgs(), E->getNumArgs());
+  auto Args = llvm::makeArrayRef(E->getArgs(), E->getNumArgs());
   return HandleConstructorCall(E->getExprLoc(), This, Args,
                                cast<CXXConstructorDecl>(Definition), Info,
                                Result);
@@ -5646,7 +5646,7 @@ bool ArrayExprEvaluator::VisitCXXConstructExpr(const CXXConstructExpr *E,
       return false;
   }
 
-  ArrayRef<const Expr *> Args(E->getArgs(), E->getNumArgs());
+  auto Args = llvm::makeArrayRef(E->getArgs(), E->getNumArgs());
   return HandleConstructorCall(E->getExprLoc(), Subobject, Args,
                                cast<CXXConstructorDecl>(Definition),
                                Info, *Value);
@@ -6092,6 +6092,7 @@ bool IntExprEvaluator::VisitCallExpr(const CallExpr *E) {
     return Success(Operand, E);
   }
 
+  case Builtin::BI__builtin_assume_aligned:
   case Builtin::BI__builtin_expect:
     return Visit(E->getArg(0));
 
@@ -7967,6 +7968,7 @@ public:
     default:
       return ExprEvaluatorBaseTy::VisitCallExpr(E);
     case Builtin::BI__assume:
+    case Builtin::BI__builtin_assume:
       // The argument is not evaluated!
       return true;
     }

@@ -265,6 +265,10 @@ public:
   /// In ARC, whether we should autorelease the return value.
   bool AutoreleaseResult;
 
+  /// Whether we processed a Microsoft-style asm block during CodeGen. These can
+  /// potentially set the return value.
+  bool SawAsmBlock;
+
   const CodeGen::CGBlockInfo *BlockInfo;
   llvm::Value *BlockPointer;
 
@@ -1653,8 +1657,7 @@ public:
 
   void EmitSynthesizedCXXCopyCtorCall(const CXXConstructorDecl *D,
                               llvm::Value *This, llvm::Value *Src,
-                              CallExpr::const_arg_iterator ArgBeg,
-                              CallExpr::const_arg_iterator ArgEnd);
+                              const CXXConstructExpr *E);
 
   void EmitCXXAggrConstructorCall(const CXXConstructorDecl *D,
                                   const ConstantArrayType *ArrayTy,
@@ -1740,6 +1743,10 @@ public:
                                        bool isInc, bool isPre);
   ComplexPairTy EmitComplexPrePostIncDec(const UnaryOperator *E, LValue LV,
                                          bool isInc, bool isPre);
+
+  void EmitAlignmentAssumption(llvm::Value *PtrValue, unsigned Alignment,
+                               llvm::Value *OffsetValue = nullptr);
+
   //===--------------------------------------------------------------------===//
   //                            Declaration Emission
   //===--------------------------------------------------------------------===//
@@ -1894,12 +1901,12 @@ public:
   void EmitIfStmt(const IfStmt &S);
 
   void EmitCondBrHints(llvm::LLVMContext &Context, llvm::BranchInst *CondBr,
-                       const ArrayRef<const Attr *> &Attrs);
+                       ArrayRef<const Attr *> Attrs);
   void EmitWhileStmt(const WhileStmt &S,
-                     const ArrayRef<const Attr *> &Attrs = None);
-  void EmitDoStmt(const DoStmt &S, const ArrayRef<const Attr *> &Attrs = None);
+                     ArrayRef<const Attr *> Attrs = None);
+  void EmitDoStmt(const DoStmt &S, ArrayRef<const Attr *> Attrs = None);
   void EmitForStmt(const ForStmt &S,
-                   const ArrayRef<const Attr *> &Attrs = None);
+                   ArrayRef<const Attr *> Attrs = None);
   void EmitReturnStmt(const ReturnStmt &S);
   void EmitDeclStmt(const DeclStmt &S);
   void EmitBreakStmt(const BreakStmt &S);
@@ -1923,7 +1930,7 @@ public:
   void EmitSEHTryStmt(const SEHTryStmt &S);
   void EmitSEHLeaveStmt(const SEHLeaveStmt &S);
   void EmitCXXForRangeStmt(const CXXForRangeStmt &S,
-                           const ArrayRef<const Attr *> &Attrs = None);
+                           ArrayRef<const Attr *> Attrs = None);
 
   llvm::Function *EmitCapturedStmt(const CapturedStmt &S, CapturedRegionKind K);
   llvm::Function *GenerateCapturedStmtFunction(const CapturedStmt &S);
@@ -2216,15 +2223,11 @@ public:
                                                    CXXDtorType Type, 
                                                    const CXXRecordDecl *RD);
 
-  RValue EmitCXXMemberCall(const CXXMethodDecl *MD,
-                           SourceLocation CallLoc,
-                           llvm::Value *Callee,
-                           ReturnValueSlot ReturnValue,
-                           llvm::Value *This,
-                           llvm::Value *ImplicitParam,
-                           QualType ImplicitParamTy,
-                           CallExpr::const_arg_iterator ArgBeg,
-                           CallExpr::const_arg_iterator ArgEnd);
+  RValue
+  EmitCXXMemberOrOperatorCall(const CXXMethodDecl *MD, llvm::Value *Callee,
+                              ReturnValueSlot ReturnValue, llvm::Value *This,
+                              llvm::Value *ImplicitParam,
+                              QualType ImplicitParamTy, const CallExpr *E);
   RValue EmitCXXMemberCallExpr(const CXXMemberCallExpr *E,
                                ReturnValueSlot ReturnValue);
   RValue EmitCXXMemberPointerCallExpr(const CXXMemberCallExpr *E,
@@ -2622,74 +2625,64 @@ public:
   void EmitCallArgs(CallArgList &Args, const T *CallArgTypeInfo,
                     CallExpr::const_arg_iterator ArgBeg,
                     CallExpr::const_arg_iterator ArgEnd,
-                    bool ForceColumnInfo = false) {
-    if (CallArgTypeInfo) {
-      EmitCallArgs(Args, CallArgTypeInfo->isVariadic(),
-                   CallArgTypeInfo->param_type_begin(),
-                   CallArgTypeInfo->param_type_end(), ArgBeg, ArgEnd,
-                   ForceColumnInfo);
-    } else {
-      // T::param_type_iterator might not have a default ctor.
-      const QualType *NoIter = nullptr;
-      EmitCallArgs(Args, /*AllowExtraArguments=*/true, NoIter, NoIter, ArgBeg,
-                   ArgEnd, ForceColumnInfo);
-    }
-  }
-
-  template<typename ArgTypeIterator>
-  void EmitCallArgs(CallArgList& Args,
-                    bool AllowExtraArguments,
-                    ArgTypeIterator ArgTypeBeg,
-                    ArgTypeIterator ArgTypeEnd,
-                    CallExpr::const_arg_iterator ArgBeg,
-                    CallExpr::const_arg_iterator ArgEnd,
-                    bool ForceColumnInfo = false) {
+                    const FunctionDecl *CalleeDecl = nullptr,
+                    unsigned ParamsToSkip = 0, bool ForceColumnInfo = false) {
     SmallVector<QualType, 16> ArgTypes;
     CallExpr::const_arg_iterator Arg = ArgBeg;
 
-    // First, use the argument types that the type info knows about
-    for (ArgTypeIterator I = ArgTypeBeg, E = ArgTypeEnd; I != E; ++I, ++Arg) {
-      assert(Arg != ArgEnd && "Running over edge of argument list!");
+    assert((ParamsToSkip == 0 || CallArgTypeInfo) &&
+           "Can't skip parameters if type info is not provided");
+    if (CallArgTypeInfo) {
+      // First, use the argument types that the type info knows about
+      for (auto I = CallArgTypeInfo->param_type_begin() + ParamsToSkip,
+                E = CallArgTypeInfo->param_type_end();
+           I != E; ++I, ++Arg) {
+        assert(Arg != ArgEnd && "Running over edge of argument list!");
 #ifndef NDEBUG
-      QualType ArgType = *I;
-      QualType ActualArgType = Arg->getType();
-      if (ArgType->isPointerType() && ActualArgType->isPointerType()) {
-        QualType ActualBaseType =
-            ActualArgType->getAs<PointerType>()->getPointeeType();
-        QualType ArgBaseType =
-            ArgType->getAs<PointerType>()->getPointeeType();
-        if (ArgBaseType->isVariableArrayType()) {
-          if (const VariableArrayType *VAT =
-              getContext().getAsVariableArrayType(ActualBaseType)) {
-            if (!VAT->getSizeExpr())
-              ActualArgType = ArgType;
+        QualType ArgType = *I;
+        QualType ActualArgType = Arg->getType();
+        if (ArgType->isPointerType() && ActualArgType->isPointerType()) {
+          QualType ActualBaseType =
+              ActualArgType->getAs<PointerType>()->getPointeeType();
+          QualType ArgBaseType =
+              ArgType->getAs<PointerType>()->getPointeeType();
+          if (ArgBaseType->isVariableArrayType()) {
+            if (const VariableArrayType *VAT =
+                    getContext().getAsVariableArrayType(ActualBaseType)) {
+              if (!VAT->getSizeExpr())
+                ActualArgType = ArgType;
+            }
           }
         }
-      }
-      assert(getContext().getCanonicalType(ArgType.getNonReferenceType()).
-             getTypePtr() ==
-             getContext().getCanonicalType(ActualArgType).getTypePtr() &&
-             "type mismatch in call argument!");
+        assert(getContext()
+                       .getCanonicalType(ArgType.getNonReferenceType())
+                       .getTypePtr() ==
+                   getContext().getCanonicalType(ActualArgType).getTypePtr() &&
+               "type mismatch in call argument!");
 #endif
-      ArgTypes.push_back(*I);
+        ArgTypes.push_back(*I);
+      }
     }
 
     // Either we've emitted all the call args, or we have a call to variadic
-    // function or some other call that allows extra arguments.
-    assert((Arg == ArgEnd || AllowExtraArguments) &&
-           "Extra arguments in non-variadic function!");
+    // function.
+    assert(
+        (Arg == ArgEnd || !CallArgTypeInfo || CallArgTypeInfo->isVariadic()) &&
+        "Extra arguments in non-variadic function!");
 
     // If we still have any arguments, emit them using the type of the argument.
     for (; Arg != ArgEnd; ++Arg)
       ArgTypes.push_back(Arg->getType());
 
-    EmitCallArgs(Args, ArgTypes, ArgBeg, ArgEnd, ForceColumnInfo);
+    EmitCallArgs(Args, ArgTypes, ArgBeg, ArgEnd, CalleeDecl, ParamsToSkip,
+                 ForceColumnInfo);
   }
 
   void EmitCallArgs(CallArgList &Args, ArrayRef<QualType> ArgTypes,
                     CallExpr::const_arg_iterator ArgBeg,
                     CallExpr::const_arg_iterator ArgEnd,
-                    bool ForceColumnInfo = false);
+                    const FunctionDecl *CalleeDecl = nullptr,
+                    unsigned ParamsToSkip = 0, bool ForceColumnInfo = false);
 
 private:
   const TargetCodeGenInfo &getTargetHooks() const {
