@@ -53,6 +53,9 @@
  */ 
 
 #include "CodeGenModule.h"
+
+#include <limits>
+
 #include "clang/AST/Scout/MeshDecl.h"
 #include "Scout/CGLegionRuntime.h"
 #include "CodeGenFunction.h"
@@ -153,8 +156,7 @@ void CodeGenModule::startLsciMainFunction() {
 
   reg_main_task_params.push_back(false_val); // is not leaf
 
-  // must be a better way to get umax
-  llvm::ConstantInt* umax = llvm::ConstantInt::get(Int64Ty, 4294967295);
+  llvm::ConstantInt* umax = llvm::ConstantInt::get(Int64Ty, std::numeric_limits<uint32_t>::max());
   reg_main_task_params.push_back(umax);
 
   llvm::Value* main_task_name = Builder.CreateGlobalStringPtr("main_task");

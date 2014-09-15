@@ -386,8 +386,7 @@ static void SetInstallDir(SmallVectorImpl<const char *> &argv,
   }
   llvm::sys::fs::make_absolute(InstalledPath);
   InstalledPath = llvm::sys::path::parent_path(InstalledPath);
-  bool exists;
-  if (!llvm::sys::fs::exists(InstalledPath.str(), exists) && exists)
+  if (llvm::sys::fs::exists(InstalledPath.c_str()))
     TheDriver.setInstalledDir(InstalledPath);
 }
 
@@ -518,7 +517,7 @@ int main(int argc_, const char **argv_) {
   SmallVector<const char *, 256> argv;
   llvm::SpecificBumpPtrAllocator<char> ArgAllocator;
   std::error_code EC = llvm::sys::Process::GetArgumentVector(
-      argv, ArrayRef<const char *>(argv_, argc_), ArgAllocator);
+      argv, llvm::makeArrayRef(argv_, argc_), ArgAllocator);
   if (EC) {
     llvm::errs() << "error: couldn't get arguments: " << EC.message() << '\n';
     return 1;
@@ -526,28 +525,26 @@ int main(int argc_, const char **argv_) {
 
   std::set<std::string> SavedStrings;
   StringSetSaver Saver(SavedStrings);
-  
+
   // Determines whether we want nullptr markers in argv to indicate response
   // files end-of-lines. We only use this for the /LINK driver argument.
   bool MarkEOLs = true;
-  if (argv.size() > 1 && StringRef(argv[1]).startswith("-cc1")){
+  if (argv.size() > 1 && StringRef(argv[1]).startswith("-cc1"))
     MarkEOLs = false;
-
-    //-debug flag
-    for (int i = 2, size = argv.size(); i < size; ++i) {
-      if (StringRef(argv[i]) == "-debug") {
-        size_t pid = getpid();
-
-        std::cerr << "PID: " << pid << std::endl;
-        std::cerr << "<press any key after attaching debugger, then 'continue' in debugger>" << std::endl;
-        std::string str;
-        std::getline(std::cin, str);
-      }
-    }  
-  }
-
   llvm::cl::ExpandResponseFiles(Saver, llvm::cl::TokenizeGNUCommandLine, argv,
                                 MarkEOLs);
+
+  //-debug flag
+  for (int i = 2, size = argv.size(); i < size; ++i) {
+    if (StringRef(argv[i]) == "-debug") {
+      size_t pid = getpid();
+      
+      std::cerr << "PID: " << pid << std::endl;
+      std::cerr << "<press any key after attaching debugger, then 'continue' in debugger>" << std::endl;
+      std::string str;
+      std::getline(std::cin, str);
+    }
+  }
 
   bool Rewrite = false;
   Rewrite = scCheckForFlag("-rewrite", argv);

@@ -77,6 +77,7 @@ ValueObject::ValueObject (ValueObject &parent) :
     m_location_str (),
     m_summary_str (),
     m_object_desc_str (),
+    m_validation_result(),
     m_manager(parent.GetManager()),
     m_children (),
     m_synthetic_children (),
@@ -89,6 +90,7 @@ ValueObject::ValueObject (ValueObject &parent) :
     m_type_summary_sp(),
     m_type_format_sp(),
     m_synthetic_children_sp(),
+    m_type_validator_sp(),
     m_user_id_of_forced_summary(),
     m_address_type_of_ptr_or_ref_children(eAddressTypeInvalid),
     m_value_is_valid (false),
@@ -123,6 +125,7 @@ ValueObject::ValueObject (ExecutionContextScope *exe_scope,
     m_location_str (),
     m_summary_str (),
     m_object_desc_str (),
+    m_validation_result(),
     m_manager(),
     m_children (),
     m_synthetic_children (),
@@ -135,6 +138,7 @@ ValueObject::ValueObject (ExecutionContextScope *exe_scope,
     m_type_summary_sp(),
     m_type_format_sp(),
     m_synthetic_children_sp(),
+    m_type_validator_sp(),
     m_user_id_of_forced_summary(),
     m_address_type_of_ptr_or_ref_children(child_ptr_or_ref_addr_type),
     m_value_is_valid (false),
@@ -253,6 +257,7 @@ ValueObject::UpdateFormatsIfNeeded()
 #ifndef LLDB_DISABLE_PYTHON
         SetSyntheticChildren(DataVisualization::GetSyntheticChildren (*this, GetDynamicValueType()));
 #endif
+        SetValidator(DataVisualization::GetValidator(*this, GetDynamicValueType()));
     }
 
     return any_change;
@@ -1341,6 +1346,23 @@ ValueObject::ReadPointedString (Stream& s,
     return total_bytes_read;
 }
 
+std::pair<TypeValidatorResult, std::string>
+ValueObject::GetValidationStatus ()
+{
+    if (!UpdateValueIfNeeded(true))
+        return {TypeValidatorResult::Success,""}; // not the validator's job to discuss update problems
+    
+    if (m_validation_result.hasValue())
+        return m_validation_result.getValue();
+    
+    if (!m_type_validator_sp)
+        return {TypeValidatorResult::Success,""}; // no validator no failure
+    
+    auto outcome = m_type_validator_sp->FormatObject(this);
+    
+    return (m_validation_result = {outcome.m_result,outcome.m_message}).getValue();
+}
+
 const char *
 ValueObject::GetObjectDescription ()
 {
@@ -2214,6 +2236,47 @@ ValueObject::GetSyntheticChildAtOffset(uint32_t offset, const ClangASTType& type
     }
     return synthetic_child_sp;
 }
+
+ValueObjectSP
+ValueObject::GetSyntheticBase (uint32_t offset, const ClangASTType& type, bool can_create)
+{
+    ValueObjectSP synthetic_child_sp;
+    
+    char name_str[64];
+    snprintf(name_str, sizeof(name_str), "%s", type.GetTypeName().AsCString("<unknown>"));
+    ConstString name_const_str(name_str);
+    
+    // Check if we have already created a synthetic array member in this
+    // valid object. If we have we will re-use it.
+    synthetic_child_sp = GetSyntheticChild (name_const_str);
+    
+    if (synthetic_child_sp.get())
+        return synthetic_child_sp;
+    
+    if (!can_create)
+        return ValueObjectSP();
+    
+    const bool is_base_class = true;
+    
+    ValueObjectChild *synthetic_child = new ValueObjectChild(*this,
+                                                             type,
+                                                             name_const_str,
+                                                             type.GetByteSize(),
+                                                             offset,
+                                                             0,
+                                                             0,
+                                                             is_base_class,
+                                                             false,
+                                                             eAddressTypeInvalid);
+    if (synthetic_child)
+    {
+        AddSyntheticChild(name_const_str, synthetic_child);
+        synthetic_child_sp = synthetic_child->GetSP();
+        synthetic_child_sp->SetName(name_const_str);
+    }
+    return synthetic_child_sp;
+}
+
 
 // your expression path needs to have a leading . or ->
 // (unless it somehow "looks like" an array, in which case it has
@@ -3859,9 +3922,7 @@ ValueObject::ClearUserVisibleData(uint32_t clear_mask)
         m_location_str.clear();
     
     if ((clear_mask & eClearUserVisibleDataItemsSummary) == eClearUserVisibleDataItemsSummary)
-    {
         m_summary_str.clear();
-    }
     
     if ((clear_mask & eClearUserVisibleDataItemsDescription) == eClearUserVisibleDataItemsDescription)
         m_object_desc_str.clear();
@@ -3871,6 +3932,9 @@ ValueObject::ClearUserVisibleData(uint32_t clear_mask)
             if (m_synthetic_value)
                 m_synthetic_value = NULL;
     }
+    
+    if ((clear_mask & eClearUserVisibleDataItemsValidator) == eClearUserVisibleDataItemsValidator)
+        m_validation_result.reset();
 }
 
 SymbolContextScope *

@@ -129,6 +129,7 @@ public:
         eClearUserVisibleDataItemsLocation = 1u << 3,
         eClearUserVisibleDataItemsDescription = 1u << 4,
         eClearUserVisibleDataItemsSyntheticChildren = 1u << 5,
+        eClearUserVisibleDataItemsValidator = 1u << 6,
         eClearUserVisibleDataItemsAllStrings = eClearUserVisibleDataItemsValue | eClearUserVisibleDataItemsSummary | eClearUserVisibleDataItemsLocation | eClearUserVisibleDataItemsDescription,
         eClearUserVisibleDataItemsAll = 0xFFFF
     };
@@ -607,6 +608,9 @@ public:
     GetSummaryAsCString (TypeSummaryImpl* summary_ptr,
                          std::string& destination);
     
+    std::pair<TypeValidatorResult, std::string>
+    GetValidationStatus ();
+    
     const char *
     GetObjectDescription ();
     
@@ -676,6 +680,9 @@ public:
     virtual lldb::ValueObjectSP
     GetSyntheticChildAtOffset(uint32_t offset, const ClangASTType& type, bool can_create);
     
+    virtual lldb::ValueObjectSP
+    GetSyntheticBase (uint32_t offset, const ClangASTType& type, bool can_create);
+
     virtual lldb::ValueObjectSP
     GetDynamicValue (lldb::DynamicValueType valueType);
     
@@ -843,6 +850,20 @@ public:
     {
         m_type_summary_sp = format;
         ClearUserVisibleData(eClearUserVisibleDataItemsSummary);
+    }
+    
+    lldb::TypeValidatorImplSP
+    GetValidator()
+    {
+        UpdateFormatsIfNeeded();
+        return m_type_validator_sp;
+    }
+    
+    void
+    SetValidator(lldb::TypeValidatorImplSP format)
+    {
+        m_type_validator_sp = format;
+        ClearUserVisibleData(eClearUserVisibleDataItemsValidator);
     }
     
     void
@@ -1015,7 +1036,9 @@ protected:
     std::string         m_summary_str;  // Cached summary string that will get cleared if/when the value is updated.
     std::string         m_object_desc_str; // Cached result of the "object printer".  This differs from the summary
                                               // in that the summary is consed up by us, the object_desc_string is builtin.
-
+    
+    llvm::Optional<std::pair<TypeValidatorResult, std::string>> m_validation_result;
+    
     ClangASTType        m_override_type;// If the type of the value object should be overridden, the type to impose.
     
     ValueObjectManager *m_manager;      // This object is managed by the root object (any ValueObject that gets created
@@ -1040,6 +1063,7 @@ protected:
     lldb::TypeSummaryImplSP     m_type_summary_sp;
     lldb::TypeFormatImplSP      m_type_format_sp;
     lldb::SyntheticChildrenSP   m_synthetic_children_sp;
+    lldb::TypeValidatorImplSP   m_type_validator_sp;
     ProcessModID                m_user_id_of_forced_summary;
     AddressType                 m_address_type_of_ptr_or_ref_children;
     

@@ -149,7 +149,7 @@ HostInfoMacOSX::ComputeSupportExeDirectory(FileSpec &file_spec)
         ::strncpy(framework_pos, "/Resources", PATH_MAX - (framework_pos - raw_path));
 #endif
     }
-    file_spec.SetFile(raw_path, true);
+    file_spec.GetDirectory().SetCString(raw_path);
     return (bool)file_spec.GetDirectory();
 }
 
@@ -169,13 +169,14 @@ HostInfoMacOSX::ComputeHeaderDirectory(FileSpec &file_spec)
         framework_pos += strlen("LLDB.framework");
         ::strncpy(framework_pos, "/Headers", PATH_MAX - (framework_pos - raw_path));
     }
-    file_spec.SetFile(raw_path, true);
+    file_spec.GetDirectory().SetCString(raw_path);
     return true;
 }
 
 bool
 HostInfoMacOSX::ComputePythonDirectory(FileSpec &file_spec)
 {
+#ifndef LLDB_DISABLE_PYTHON
     FileSpec lldb_file_spec;
     if (!GetLLDBPath(lldb::ePathTypeLLDBShlibDir, lldb_file_spec))
         return false;
@@ -199,8 +200,11 @@ HostInfoMacOSX::ComputePythonDirectory(FileSpec &file_spec)
         // We may get our string truncated. Should we protect this with an assert?
         ::strncat(raw_path, python_version_dir.c_str(), sizeof(raw_path) - strlen(raw_path) - 1);
     }
-    file_spec.SetFile(raw_path, true);
+    file_spec.GetDirectory().SetCString(raw_path);
     return true;
+#else
+    return false;
+#endif
 }
 
 bool
@@ -218,14 +222,15 @@ HostInfoMacOSX::ComputeSystemPluginsDirectory(FileSpec &file_spec)
 
     framework_pos += strlen("LLDB.framework");
     ::strncpy(framework_pos, "/Resources/PlugIns", PATH_MAX - (framework_pos - raw_path));
-    file_spec.SetFile(raw_path, true);
+    file_spec.GetDirectory().SetCString(raw_path);
     return true;
 }
 
 bool
 HostInfoMacOSX::ComputeUserPluginsDirectory(FileSpec &file_spec)
 {
-    file_spec.SetFile("~/Library/Application Support/LLDB/PlugIns", true);
+    FileSpec temp_file("~/Library/Application Support/LLDB/PlugIns", true);
+    file_spec.GetDirectory().SetCString(temp_file.GetPath().c_str());
     return true;
 }
 

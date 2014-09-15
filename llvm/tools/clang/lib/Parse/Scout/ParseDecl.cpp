@@ -68,7 +68,7 @@
 using namespace clang;
 
 void Parser::ParseMeshDeclaration(ParsingDeclSpec &DS,
-                                  FieldCallback &Fields) {
+  llvm::function_ref<void(ParsingFieldDeclarator &)> FieldsCallback) {
   
   ParseSpecifierQualifierList(DS);
 
@@ -88,7 +88,7 @@ void Parser::ParseMeshDeclaration(ParsingDeclSpec &DS,
     MaybeParseGNUAttributes(DeclaratorInfo.D);
 
     // We're done with this declarator;  invoke the callback.
-    Fields.invoke(DeclaratorInfo);
+    FieldsCallback(DeclaratorInfo);
 
     // If we don't have a comma, it is either the end of the list (a ';')
     // or an error, bail out.

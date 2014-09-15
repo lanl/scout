@@ -26,6 +26,7 @@
 #include "lldb/Host/Host.h"
 #include "lldb/Host/HostInfo.h"
 #include "lldb/Host/Socket.h"
+#include "lldb/Host/ThreadLauncher.h"
 #include "lldb/Host/TimeValue.h"
 #include "lldb/Target/Process.h"
 
@@ -153,7 +154,6 @@ GDBRemoteCommunication::GDBRemoteCommunication(const char *comm_name,
     m_history (512),
     m_send_acks (true),
     m_is_platform (is_platform),
-    m_listen_thread (LLDB_INVALID_HOST_THREAD),
     m_listen_url ()
 {
 }
@@ -606,7 +606,7 @@ Error
 GDBRemoteCommunication::StartListenThread (const char *hostname, uint16_t port)
 {
     Error error;
-    if (IS_VALID_LLDB_HOST_THREAD(m_listen_thread))
+    if (m_listen_thread.GetState() == eThreadStateRunning)
     {
         error.SetErrorString("listen thread already running");
     }
@@ -619,7 +619,7 @@ GDBRemoteCommunication::StartListenThread (const char *hostname, uint16_t port)
             snprintf(listen_url, sizeof(listen_url), "listen://%i", port);
         m_listen_url = listen_url;
         SetConnection(new ConnectionFileDescriptor());
-        m_listen_thread = Host::ThreadCreate (listen_url, GDBRemoteCommunication::ListenThread, this, &error);
+        m_listen_thread = ThreadLauncher::LaunchThread(listen_url, GDBRemoteCommunication::ListenThread, this, &error);
     }
     return error;
 }
@@ -627,10 +627,10 @@ GDBRemoteCommunication::StartListenThread (const char *hostname, uint16_t port)
 bool
 GDBRemoteCommunication::JoinListenThread ()
 {
-    if (IS_VALID_LLDB_HOST_THREAD(m_listen_thread))
+    if (m_listen_thread.GetState() == eThreadStateRunning)
     {
-        Host::ThreadJoin(m_listen_thread, NULL, NULL);
-        m_listen_thread = LLDB_INVALID_HOST_THREAD;
+        m_listen_thread.Join(nullptr);
+        m_listen_thread.Reset();
     }
     return true;
 }
@@ -819,7 +819,25 @@ GDBRemoteCommunication::StartDebugserverProcess (const char *hostname,
             ::snprintf (arg_cstr, sizeof(arg_cstr), "--log-flags=%s", env_debugserver_log_flags);
             debugserver_args.AppendArgument(arg_cstr);
         }
-        
+
+        // Add additional args, starting with LLDB_DEBUGSERVER_EXTRA_ARG_1 until an env var doesn't come back.
+        uint32_t env_var_index = 1;
+        bool has_env_var;
+        do
+        {
+            char env_var_name[64];
+            snprintf (env_var_name, sizeof (env_var_name), "LLDB_DEBUGSERVER_EXTRA_ARG_%" PRIu32, env_var_index++);
+            const char *extra_arg = getenv(env_var_name);
+            has_env_var = extra_arg != nullptr;
+
+            if (has_env_var)
+            {
+                debugserver_args.AppendArgument (extra_arg);
+                if (log)
+                    log->Printf ("GDBRemoteCommunication::%s adding env var %s contents to stub command line (%s)", __FUNCTION__, env_var_name, extra_arg);
+            }
+        } while (has_env_var);
+
         // Close STDIN, STDOUT and STDERR. We might need to redirect them
         // to "/dev/null" if we run into any problems.
         launch_info.AppendCloseFileAction (STDIN_FILENO);
