@@ -264,20 +264,16 @@ basic_symbol_iterator IRObjectFile::symbol_end_impl() const {
   return basic_symbol_iterator(BasicSymbolRef(Ret, this));
 }
 
-ErrorOr<IRObjectFile *>
+ErrorOr<std::unique_ptr<IRObjectFile>>
 llvm::object::IRObjectFile::createIRObjectFile(MemoryBufferRef Object,
                                                LLVMContext &Context) {
 
-  StringRef Data = Object.getBuffer();
-  StringRef FileName = Object.getBufferIdentifier();
-  std::unique_ptr<MemoryBuffer> Buff(
-      MemoryBuffer::getMemBuffer(Data, FileName, false));
+  std::unique_ptr<MemoryBuffer> Buff(MemoryBuffer::getMemBuffer(Object, false));
 
-  ErrorOr<Module *> MOrErr = getLazyBitcodeModule(Buff.get(), Context);
+  ErrorOr<Module *> MOrErr = getLazyBitcodeModule(std::move(Buff), Context);
   if (std::error_code EC = MOrErr.getError())
     return EC;
-  Buff.release();
 
   std::unique_ptr<Module> M(MOrErr.get());
-  return new IRObjectFile(Object, std::move(M));
+  return llvm::make_unique<IRObjectFile>(Object, std::move(M));
 }

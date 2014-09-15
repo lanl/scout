@@ -392,15 +392,15 @@ private:
   DenseMap<const Value*, int> sn_mapL, sn_mapR;
 };
 
-class FunctionPtr {
+class FunctionNode {
   AssertingVH<Function> F;
   const DataLayout *DL;
 
 public:
-  FunctionPtr(Function *F, const DataLayout *DL) : F(F), DL(DL) {}
+  FunctionNode(Function *F, const DataLayout *DL) : F(F), DL(DL) {}
   Function *getFunc() const { return F; }
   void release() { F = 0; }
-  bool operator<(const FunctionPtr &RHS) const {
+  bool operator<(const FunctionNode &RHS) const {
     return (FunctionComparator(DL, F, RHS.getFunc()).compare()) == -1;
   }
 };
@@ -1077,7 +1077,7 @@ public:
   bool runOnModule(Module &M) override;
 
 private:
-  typedef std::set<FunctionPtr> FnTreeType;
+  typedef std::set<FunctionNode> FnTreeType;
 
   /// A work queue of functions that may have been modified and should be
   /// analyzed again.
@@ -1300,11 +1300,11 @@ static Value *createCast(IRBuilder<false> &Builder, Value *V, Type *DestTy) {
     Value *Result = UndefValue::get(DestTy);
     for (unsigned int I = 0, E = SrcTy->getStructNumElements(); I < E; ++I) {
       Value *Element = createCast(
-          Builder, Builder.CreateExtractValue(V, ArrayRef<unsigned int>(I)),
+          Builder, Builder.CreateExtractValue(V, makeArrayRef(I)),
           DestTy->getStructElementType(I));
 
       Result =
-          Builder.CreateInsertValue(Result, Element, ArrayRef<unsigned int>(I));
+          Builder.CreateInsertValue(Result, Element, makeArrayRef(I));
     }
     return Result;
   }
@@ -1420,14 +1420,14 @@ void MergeFunctions::mergeTwoFunctions(Function *F, Function *G) {
 // that was already inserted.
 bool MergeFunctions::insert(Function *NewFunction) {
   std::pair<FnTreeType::iterator, bool> Result =
-      FnTree.insert(FunctionPtr(NewFunction, DL));
+      FnTree.insert(FunctionNode(NewFunction, DL));
 
   if (Result.second) {
     DEBUG(dbgs() << "Inserting as unique: " << NewFunction->getName() << '\n');
     return false;
   }
 
-  const FunctionPtr &OldF = *Result.first;
+  const FunctionNode &OldF = *Result.first;
 
   // Don't merge tiny functions, since it can just end up making the function
   // larger.
@@ -1457,7 +1457,7 @@ bool MergeFunctions::insert(Function *NewFunction) {
 void MergeFunctions::remove(Function *F) {
   // We need to make sure we remove F, not a function "equal" to F per the
   // function equality comparator.
-  FnTreeType::iterator found = FnTree.find(FunctionPtr(F, DL));
+  FnTreeType::iterator found = FnTree.find(FunctionNode(F, DL));
   size_t Erased = 0;
   if (found != FnTree.end() && found->getFunc() == F) {
     Erased = 1;
