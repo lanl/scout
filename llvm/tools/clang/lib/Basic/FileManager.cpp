@@ -270,6 +270,19 @@ const FileEntry *FileManager::getFile(StringRef Filename, bool openFile,
   FileEntry &UFE = UniqueRealFiles[Data.UniqueID];
 
   NamedFileEnt.setValue(&UFE);
+
+  // If the name returned by getStatValue is different than Filename, re-intern
+  // the name.
+  if (Data.Name != Filename) {
+    auto &NamedFileEnt = SeenFileEntries.GetOrCreateValue(Data.Name);
+    if (!NamedFileEnt.getValue())
+      NamedFileEnt.setValue(&UFE);
+    else
+      assert(NamedFileEnt.getValue() == &UFE &&
+             "filename from getStatValue() refers to wrong file");
+    InterndFileName = NamedFileEnt.getKeyData();
+  }
+
   if (UFE.isValid()) { // Already have an entry with this inode, return it.
 
     // FIXME: this hack ensures that if we look up a file by a virtual path in
@@ -286,13 +299,13 @@ const FileEntry *FileManager::getFile(StringRef Filename, bool openFile,
     // to switch towards a design where we return a FileName object that
     // encapsulates both the name by which the file was accessed and the
     // corresponding FileEntry.
-    UFE.Name = Data.Name;
+    UFE.Name = InterndFileName;
 
     return &UFE;
   }
 
   // Otherwise, we don't have this file yet, add it.
-  UFE.Name    = Data.Name;
+  UFE.Name    = InterndFileName;
   UFE.Size = Data.Size;
   UFE.ModTime = Data.ModTime;
   UFE.Dir     = DirInfo;
@@ -386,9 +399,9 @@ void FileManager::FixupRelativePath(SmallVectorImpl<char> &path) const {
   path = NewPath;
 }
 
-llvm::MemoryBuffer *FileManager::
-getBufferForFile(const FileEntry *Entry, std::string *ErrorStr,
-                 bool isVolatile, bool ShouldCloseOpenFile) {
+std::unique_ptr<llvm::MemoryBuffer>
+FileManager::getBufferForFile(const FileEntry *Entry, std::string *ErrorStr,
+                              bool isVolatile, bool ShouldCloseOpenFile) {
   std::unique_ptr<llvm::MemoryBuffer> Result;
   std::error_code ec;
 
@@ -409,7 +422,7 @@ getBufferForFile(const FileEntry *Entry, std::string *ErrorStr,
     // FileEntry is open or not.
     if (ShouldCloseOpenFile)
       Entry->closeFile();
-    return Result.release();
+    return Result;
   }
 
   // Otherwise, open the file.
@@ -419,7 +432,7 @@ getBufferForFile(const FileEntry *Entry, std::string *ErrorStr,
                               /*RequiresNullTerminator=*/true, isVolatile);
     if (ec && ErrorStr)
       *ErrorStr = ec.message();
-    return Result.release();
+    return Result;
   }
 
   SmallString<128> FilePath(Entry->getName());
@@ -428,18 +441,18 @@ getBufferForFile(const FileEntry *Entry, std::string *ErrorStr,
                             /*RequiresNullTerminator=*/true, isVolatile);
   if (ec && ErrorStr)
     *ErrorStr = ec.message();
-  return Result.release();
+  return Result;
 }
 
-llvm::MemoryBuffer *FileManager::
-getBufferForFile(StringRef Filename, std::string *ErrorStr) {
+std::unique_ptr<llvm::MemoryBuffer>
+FileManager::getBufferForFile(StringRef Filename, std::string *ErrorStr) {
   std::unique_ptr<llvm::MemoryBuffer> Result;
   std::error_code ec;
   if (FileSystemOpts.WorkingDir.empty()) {
     ec = FS->getBufferForFile(Filename, Result);
     if (ec && ErrorStr)
       *ErrorStr = ec.message();
-    return Result.release();
+    return Result;
   }
 
   SmallString<128> FilePath(Filename);
@@ -447,7 +460,7 @@ getBufferForFile(StringRef Filename, std::string *ErrorStr) {
   ec = FS->getBufferForFile(FilePath.c_str(), Result);
   if (ec && ErrorStr)
     *ErrorStr = ec.message();
-  return Result.release();
+  return Result;
 }
 
 /// getStatValue - Get the 'stat' information for the specified path,

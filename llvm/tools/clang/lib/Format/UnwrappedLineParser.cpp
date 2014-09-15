@@ -658,6 +658,20 @@ void UnwrappedLineParser::parseStructuralElement() {
       break;
     }
     break;
+  case tok::kw_asm:
+    FormatTok->Finalized = true;
+    nextToken();
+    if (FormatTok->is(tok::l_brace)) {
+      while (FormatTok && FormatTok->isNot(tok::eof)) {
+        FormatTok->Finalized = true;
+        if (FormatTok->is(tok::r_brace)) {
+          nextToken();
+          break;
+        }
+        nextToken();
+      }
+    }
+    break;
   case tok::kw_namespace:
     parseNamespace();
     return;
@@ -671,7 +685,10 @@ void UnwrappedLineParser::parseStructuralElement() {
   case tok::kw_public:
   case tok::kw_protected:
   case tok::kw_private:
-    parseAccessSpecifier();
+    if (Style.Language == FormatStyle::LK_Java)
+      nextToken();
+    else
+      parseAccessSpecifier();
     return;
   case tok::kw_if:
     parseIfThenElse();
@@ -1026,6 +1043,13 @@ void UnwrappedLineParser::parseParens() {
       nextToken();
       if (FormatTok->Tok.is(tok::l_brace))
         parseBracedList();
+      break;
+    case tok::identifier:
+      if (Style.Language == FormatStyle::LK_JavaScript &&
+          FormatTok->TokenText == "function")
+        tryToParseJSFunction();
+      else
+        nextToken();
       break;
     default:
       nextToken();
@@ -1384,6 +1408,9 @@ void UnwrappedLineParser::parseRecord() {
   // We fall through to parsing a structural element afterwards, so
   // class A {} n, m;
   // will end up in one unwrapped line.
+  // This does not apply for Java.
+  if (Style.Language == FormatStyle::LK_Java)
+    addUnwrappedLine();
 }
 
 void UnwrappedLineParser::parseObjCProtocolList() {

@@ -74,7 +74,7 @@ private:
   PassManager *getCodeGenPasses() const {
     if (!CodeGenPasses) {
       CodeGenPasses = new PassManager();
-      CodeGenPasses->add(new DataLayoutPass(TheModule));
+      CodeGenPasses->add(new DataLayoutPass());
       if (TM)
         TM->addAnalysisPasses(*CodeGenPasses);
     }
@@ -84,7 +84,7 @@ private:
   PassManager *getPerModulePasses() const {
     if (!PerModulePasses) {
       PerModulePasses = new PassManager();
-      PerModulePasses->add(new DataLayoutPass(TheModule));
+      PerModulePasses->add(new DataLayoutPass());
       if (TM)
         TM->addAnalysisPasses(*PerModulePasses);
     }
@@ -94,7 +94,7 @@ private:
   FunctionPassManager *getPerFunctionPasses() const {
     if (!PerFunctionPasses) {
       PerFunctionPasses = new FunctionPassManager(TheModule);
-      PerFunctionPasses->add(new DataLayoutPass(TheModule));
+      PerFunctionPasses->add(new DataLayoutPass());
       if (TM)
         TM->addAnalysisPasses(*PerFunctionPasses);
     }
@@ -139,7 +139,7 @@ public:
     delete PerModulePasses;
     delete PerFunctionPasses;
     if (CodeGenOpts.DisableFree)
-      BuryPointer(TM.release());
+      BuryPointer(std::move(TM));
   }
 
   std::unique_ptr<TargetMachine> TM;
@@ -527,6 +527,7 @@ TargetMachine *EmitAssemblyHelper::CreateTargetMachine(bool MustCreateTM) {
   Options.MCOptions.MCSaveTempLabels = CodeGenOpts.SaveTempLabels;
   Options.MCOptions.MCUseDwarfDirectory = !CodeGenOpts.NoDwarfDirectoryAsm;
   Options.MCOptions.MCNoExecStack = CodeGenOpts.NoExecStack;
+  Options.MCOptions.MCFatalWarnings = CodeGenOpts.FatalWarnings;
   Options.MCOptions.AsmVerbose = CodeGenOpts.AsmVerbose;
 
   TargetMachine *TM = TheTarget->createTargetMachine(Triple, TargetOpts.CPU,
