@@ -813,7 +813,6 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
         return true;
       break;
 
->>>>>>> ff56bf61d49384d9a6d91b4406728cf072bb7d6a
     case DeclaratorChunk::MemberPointer:
       if (Chunk.Mem.Scope().getScopeRep() &&
           Chunk.Mem.Scope().getScopeRep()->containsUnexpandedParameterPack())

@@ -2861,7 +2861,7 @@ public:
     if (CallArgTypeInfo) {
       // First, use the argument types that the type info knows about
       for (auto I = CallArgTypeInfo->param_type_begin() + ParamsToSkip,
-                E = CallArgTypeInfo->param_type_end();
+           E = CallArgTypeInfo->param_type_end();
            I != E; ++I, ++Arg) {
         assert(Arg != ArgEnd && "Running over edge of argument list!");
 #ifndef NDEBUG
@@ -2869,29 +2869,27 @@ public:
         QualType ActualArgType = Arg->getType();
         if (ArgType->isPointerType() && ActualArgType->isPointerType()) {
           QualType ActualBaseType =
-              ActualArgType->getAs<PointerType>()->getPointeeType();
+          ActualArgType->getAs<PointerType>()->getPointeeType();
           QualType ArgBaseType =
-              ArgType->getAs<PointerType>()->getPointeeType();
+          ArgType->getAs<PointerType>()->getPointeeType();
           if (ArgBaseType->isVariableArrayType()) {
             if (const VariableArrayType *VAT =
-                    getContext().getAsVariableArrayType(ActualBaseType)) {
+                getContext().getAsVariableArrayType(ActualBaseType)) {
               if (!VAT->getSizeExpr())
                 ActualArgType = ArgType;
             }
           }
         }
-      }
-      // +==== Scout =======================================================+
-      if(isScoutLang(getLangOpts()) && !CheckMeshPtrTypes(ArgType, ActualArgType)) {
-      // +==================================================================+
-        assert(getContext()
-                       .getCanonicalType(ArgType.getNonReferenceType())
-                       .getTypePtr() ==
-                   getContext().getCanonicalType(ActualArgType).getTypePtr() &&
-               "type mismatch in call argument!");
-      // +==== Scout =======================================================+
-      }
-      // +==================================================================+
+        // +==== Scout =======================================================+
+        if(isScoutLang(getLangOpts()) && !CheckMeshPtrTypes(ArgType, ActualArgType)) {
+          // +==================================================================+
+          assert(getContext().getCanonicalType(ArgType.getNonReferenceType()).
+                 getTypePtr() ==
+                 getContext().getCanonicalType(ActualArgType).getTypePtr() &&
+                 "type mismatch in call argument!");
+          // +==== Scout =======================================================+
+        }
+        // +==================================================================+
 #endif
         ArgTypes.push_back(*I);
       }

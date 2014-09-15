@@ -2533,7 +2533,7 @@ private:
   bool ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec);
 
   void ParseMeshDeclaration(ParsingDeclSpec &DS,
-                            FieldCallback &Fields);
+         llvm::function_ref<void(ParsingFieldDeclarator &)> FieldsCallback);
 
   const RenderTargetType* LookupRenderTargetType(IdentifierInfo *TargetInfo,
                                                  SourceLocation TargetLoc);  

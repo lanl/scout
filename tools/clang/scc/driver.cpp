@@ -531,22 +531,20 @@ int main(int argc_, const char **argv_) {
   bool MarkEOLs = true;
   if (argv.size() > 1 && StringRef(argv[1]).startswith("-cc1"))
     MarkEOLs = false;
-
-    //-debug flag
-    for (int i = 2, size = argv.size(); i < size; ++i) {
-      if (StringRef(argv[i]) == "-debug") {
-        size_t pid = getpid();
-
-        std::cerr << "PID: " << pid << std::endl;
-        std::cerr << "<press any key after attaching debugger, then 'continue' in debugger>" << std::endl;
-        std::string str;
-        std::getline(std::cin, str);
-      }
-    }  
-  }
-
   llvm::cl::ExpandResponseFiles(Saver, llvm::cl::TokenizeGNUCommandLine, argv,
                                 MarkEOLs);
+
+  //-debug flag
+  for (int i = 2, size = argv.size(); i < size; ++i) {
+    if (StringRef(argv[i]) == "-debug") {
+      size_t pid = getpid();
+      
+      std::cerr << "PID: " << pid << std::endl;
+      std::cerr << "<press any key after attaching debugger, then 'continue' in debugger>" << std::endl;
+      std::string str;
+      std::getline(std::cin, str);
+    }
+  }
 
   bool Rewrite = false;
   Rewrite = scCheckForFlag("-rewrite", argv);

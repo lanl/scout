@@ -205,10 +205,10 @@ int cc1_main(ArrayRef<const char *> Argv,
       //name needs to end in .sc
       std::string tmp = std::string(rewriteBuffer->begin(), rewriteBuffer->end());
       StringRef rwBufferString(tmp);
-      llvm::MemoryBuffer *rwBuffer = llvm::MemoryBuffer::getMemBufferCopy(rwBufferString,
+      std::unique_ptr<llvm::MemoryBuffer> rwBuffer = llvm::MemoryBuffer::getMemBufferCopy(rwBufferString,
                                                                           rwString);
       const FileEntry *fileEntry = sourceMgr.getFileEntryForID(sourceMgr.getMainFileID());
-      sourceMgr.overrideFileContents(fileEntry, rwBuffer);
+      sourceMgr.overrideFileContents(fileEntry, rwBuffer.get(), false);
     }
     
     // Disable Rewriter and associated ASTConsumer
