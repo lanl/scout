@@ -2404,6 +2404,8 @@ GDBRemoteCommunicationClient::GetProcessInfo (lldb::pid_t pid, ProcessInstanceIn
 bool
 GDBRemoteCommunicationClient::GetCurrentProcessInfo ()
 {
+    Log *log (ProcessGDBRemoteLog::GetLogIfAnyCategoryIsSet (GDBR_LOG_PROCESS | GDBR_LOG_PACKETS));
+
     if (m_qProcessInfo_is_valid == eLazyBoolYes)
         return true;
     if (m_qProcessInfo_is_valid == eLazyBoolNo)
@@ -2426,6 +2428,7 @@ GDBRemoteCommunicationClient::GetCurrentProcessInfo ()
             std::string triple;
             uint32_t pointer_byte_size = 0;
             StringExtractor extractor;
+            ByteOrder byte_order = eByteOrderInvalid;
             uint32_t num_keys_decoded = 0;
             lldb::pid_t pid = LLDB_INVALID_PROCESS_ID;
             while (response.GetNameColonValue(name, value))
@@ -2442,6 +2445,11 @@ GDBRemoteCommunicationClient::GetCurrentProcessInfo ()
                     if (sub != 0)
                         ++num_keys_decoded;
                 }
+                else if (name.compare("triple") == 0)
+                {
+                    triple = value;
+                    ++num_keys_decoded;
+                }
                 else if (name.compare("ostype") == 0)
                 {
                     os_name.swap (value);
@@ -2454,10 +2462,15 @@ GDBRemoteCommunicationClient::GetCurrentProcessInfo ()
                 }
                 else if (name.compare("endian") == 0)
                 {
-                    if (value.compare("little") == 0 ||
-                        value.compare("big") == 0 ||
-                        value.compare("pdp") == 0)
-                        ++num_keys_decoded;
+                    ++num_keys_decoded;
+                    if (value.compare("little") == 0)
+                        byte_order = eByteOrderLittle;
+                    else if (value.compare("big") == 0)
+                        byte_order = eByteOrderBig;
+                    else if (value.compare("pdp") == 0)
+                        byte_order = eByteOrderPDP;
+                    else
+                        --num_keys_decoded;
                 }
                 else if (name.compare("ptrsize") == 0)
                 {
@@ -2479,13 +2492,46 @@ GDBRemoteCommunicationClient::GetCurrentProcessInfo ()
                 m_curr_pid_is_valid = eLazyBoolYes;
                 m_curr_pid = pid;
             }
-            if (cpu != LLDB_INVALID_CPUTYPE && !os_name.empty() && !vendor_name.empty())
+
+            // Set the ArchSpec from the triple if we have it.
+            if (!triple.empty ())
             {
-                m_process_arch.SetArchitecture (eArchTypeMachO, cpu, sub);
+                m_process_arch.SetTriple (triple.c_str ());
                 if (pointer_byte_size)
                 {
                     assert (pointer_byte_size == m_process_arch.GetAddressByteSize());
                 }
+            }
+            else if (cpu != LLDB_INVALID_CPUTYPE && !os_name.empty() && !vendor_name.empty())
+            {
+                llvm::Triple triple(llvm::Twine("-") + vendor_name + "-" + os_name);
+
+                assert(triple.getObjectFormat() != llvm::Triple::UnknownObjectFormat);
+                switch (triple.getObjectFormat()) {
+                    case llvm::Triple::MachO:
+                        m_process_arch.SetArchitecture (eArchTypeMachO, cpu, sub);
+                        break;
+                    case llvm::Triple::ELF:
+                        m_process_arch.SetArchitecture (eArchTypeELF, cpu, sub);
+                        break;
+                    case llvm::Triple::COFF:
+                        m_process_arch.SetArchitecture (eArchTypeCOFF, cpu, sub);
+                        break;
+                    case llvm::Triple::UnknownObjectFormat:
+                        if (log)
+                            log->Printf("error: failed to determine target architecture");
+                        return false;
+                }
+
+                if (pointer_byte_size)
+                {
+                    assert (pointer_byte_size == m_process_arch.GetAddressByteSize());
+                }
+                if (byte_order != eByteOrderInvalid)
+                {
+                    assert (byte_order == m_process_arch.GetByteOrder());
+                }
+                m_process_arch.GetTriple().setVendorName (llvm::StringRef (vendor_name));
                 m_process_arch.GetTriple().setOSName(llvm::StringRef (os_name));
                 m_host_arch.GetTriple().setVendorName (llvm::StringRef (vendor_name));
                 m_host_arch.GetTriple().setOSName (llvm::StringRef (os_name));
