@@ -41,4 +41,16 @@ typedef WithExplicitSpecialization<int> WithExplicitSpecializationUse;
 
 template<typename T> struct WithImplicitSpecialMembers { int n; };
 
+template<typename T> struct WithAliasTemplate {
+  template<typename> using X = T;
+};
+
+template<typename T> struct WithAnonymousDecls {
+  struct { bool k; };
+  union { int a, b; };
+  struct { int c, d; } s;
+  enum { e = 123 };
+  typedef int X;
+};
+
 #include "cxx-templates-textual.h"

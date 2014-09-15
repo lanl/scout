@@ -25,6 +25,7 @@
 #include "SIInstrInfo.h"
 #include "SIMachineFunctionInfo.h"
 #include "SIRegisterInfo.h"
+#include "llvm/ADT/BitVector.h"
 #include "llvm/CodeGen/CallingConvLower.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
@@ -225,6 +226,7 @@ SITargetLowering::SITargetLowering(TargetMachine &TM) :
 
   setOperationAction(ISD::FDIV, MVT::f32, Custom);
 
+  setTargetDAGCombine(ISD::FSUB);
   setTargetDAGCombine(ISD::SELECT_CC);
   setTargetDAGCombine(ISD::SETCC);
 
@@ -411,7 +413,7 @@ SDValue SITargetLowering::LowerFormalArguments(
   assert(CallConv == CallingConv::C);
 
   SmallVector<ISD::InputArg, 16> Splits;
-  uint32_t Skipped = 0;
+  BitVector Skipped(Ins.size());
 
   for (unsigned i = 0, e = Ins.size(), PSInputNum = 0; i != e; ++i) {
     const ISD::InputArg &Arg = Ins[i];
@@ -424,7 +426,7 @@ SDValue SITargetLowering::LowerFormalArguments(
 
       if (!Arg.Used) {
         // We can savely skip PS inputs
-        Skipped |= 1 << i;
+        Skipped.set(i);
         ++PSInputNum;
         continue;
       }
@@ -488,7 +490,7 @@ SDValue SITargetLowering::LowerFormalArguments(
   for (unsigned i = 0, e = Ins.size(), ArgIdx = 0; i != e; ++i) {
 
     const ISD::InputArg &Arg = Ins[i];
-    if (Skipped & (1 << i)) {
+    if (Skipped[i]) {
       InVals.push_back(DAG.getUNDEF(Arg.VT));
       continue;
     }
@@ -1385,6 +1387,42 @@ SDValue SITargetLowering::PerformDAGCombine(SDNode *N,
 
   case ISD::UINT_TO_FP: {
     return performUCharToFloatCombine(N, DCI);
+
+  case ISD::FSUB: {
+    if (DCI.getDAGCombineLevel() < AfterLegalizeDAG)
+      break;
+
+    EVT VT = N->getValueType(0);
+
+    // Try to get the fneg to fold into the source modifier. This undoes generic
+    // DAG combines and folds them into the mad.
+    if (VT == MVT::f32) {
+      SDValue LHS = N->getOperand(0);
+      SDValue RHS = N->getOperand(1);
+
+      if (LHS.getOpcode() == ISD::FMUL) {
+        // (fsub (fmul a, b), c) -> mad a, b, (fneg c)
+
+        SDValue A = LHS.getOperand(0);
+        SDValue B = LHS.getOperand(1);
+        SDValue C = DAG.getNode(ISD::FNEG, DL, VT, RHS);
+
+        return DAG.getNode(AMDGPUISD::MAD, DL, VT, A, B, C);
+      }
+
+      if (RHS.getOpcode() == ISD::FMUL) {
+        // (fsub c, (fmul a, b)) -> mad (fneg a), b, c
+
+        SDValue A = DAG.getNode(ISD::FNEG, DL, VT, RHS.getOperand(0));
+        SDValue B = RHS.getOperand(1);
+        SDValue C = LHS;
+
+        return DAG.getNode(AMDGPUISD::MAD, DL, VT, A, B, C);
+      }
+    }
+
+    break;
+  }
   }
   case ISD::LOAD:
   case ISD::STORE:
@@ -1603,7 +1641,8 @@ void SITargetLowering::ensureSRegLimit(SelectionDAG &DAG, SDValue &Operand,
 
   SDNode *Node;
   // We can't use COPY_TO_REGCLASS with FrameIndex arguments.
-  if (isa<FrameIndexSDNode>(Operand)) {
+  if (isa<FrameIndexSDNode>(Operand) ||
+      isa<GlobalAddressSDNode>(Operand)) {
     unsigned Opcode = Operand.getValueType() == MVT::i32 ?
                       AMDGPU::S_MOV_B32 : AMDGPU::S_MOV_B64;
     Node = DAG.getMachineNode(Opcode, SDLoc(), Operand.getValueType(),
@@ -1905,27 +1944,39 @@ void SITargetLowering::AdjustInstrPostInstrSelection(MachineInstr *MI,
                                                      SDNode *Node) const {
   const SIInstrInfo *TII = static_cast<const SIInstrInfo *>(
       getTargetMachine().getSubtargetImpl()->getInstrInfo());
-  if (!TII->isMIMG(MI->getOpcode()))
+
+  if (TII->isMIMG(MI->getOpcode())) {
+    unsigned VReg = MI->getOperand(0).getReg();
+    unsigned Writemask = MI->getOperand(1).getImm();
+    unsigned BitsSet = 0;
+    for (unsigned i = 0; i < 4; ++i)
+      BitsSet += Writemask & (1 << i) ? 1 : 0;
+
+    const TargetRegisterClass *RC;
+    switch (BitsSet) {
+    default: return;
+    case 1:  RC = &AMDGPU::VReg_32RegClass; break;
+    case 2:  RC = &AMDGPU::VReg_64RegClass; break;
+    case 3:  RC = &AMDGPU::VReg_96RegClass; break;
+    }
+
+    unsigned NewOpcode = TII->getMaskedMIMGOp(MI->getOpcode(), BitsSet);
+    MI->setDesc(TII->get(NewOpcode));
+    MachineRegisterInfo &MRI = MI->getParent()->getParent()->getRegInfo();
+    MRI.setRegClass(VReg, RC);
     return;
-
-  unsigned VReg = MI->getOperand(0).getReg();
-  unsigned Writemask = MI->getOperand(1).getImm();
-  unsigned BitsSet = 0;
-  for (unsigned i = 0; i < 4; ++i)
-    BitsSet += Writemask & (1 << i) ? 1 : 0;
-
-  const TargetRegisterClass *RC;
-  switch (BitsSet) {
-  default: return;
-  case 1:  RC = &AMDGPU::VReg_32RegClass; break;
-  case 2:  RC = &AMDGPU::VReg_64RegClass; break;
-  case 3:  RC = &AMDGPU::VReg_96RegClass; break;
   }
 
-  unsigned NewOpcode = TII->getMaskedMIMGOp(MI->getOpcode(), BitsSet);
-  MI->setDesc(TII->get(NewOpcode));
-  MachineRegisterInfo &MRI = MI->getParent()->getParent()->getRegInfo();
-  MRI.setRegClass(VReg, RC);
+  // Replace unused atomics with the no return version.
+  int NoRetAtomicOp = AMDGPU::getAtomicNoRetOp(MI->getOpcode());
+  if (NoRetAtomicOp != -1) {
+    if (!Node->hasAnyUseOfValue(0)) {
+      MI->setDesc(TII->get(NoRetAtomicOp));
+      MI->RemoveOperand(0);
+    }
+
+    return;
+  }
 }
 
 MachineSDNode *SITargetLowering::AdjustRegClass(MachineSDNode *N,
@@ -1953,12 +2004,20 @@ MachineSDNode *SITargetLowering::AdjustRegClass(MachineSDNode *N,
       return N;
     }
     ConstantSDNode *Offset = cast<ConstantSDNode>(N->getOperand(1));
-    SDValue Ops[] = {
-      SDValue(DAG.getMachineNode(AMDGPU::SI_ADDR64_RSRC, DL, MVT::i128,
-                                 DAG.getConstant(0, MVT::i64)), 0),
-      N->getOperand(0),
-      DAG.getConstant(Offset->getSExtValue() << 2, MVT::i32)
-    };
+    MachineSDNode *RSrc = DAG.getMachineNode(AMDGPU::SI_ADDR64_RSRC, DL,
+                                             MVT::i128,
+                                             DAG.getConstant(0, MVT::i64));
+
+    SmallVector<SDValue, 8> Ops;
+    Ops.push_back(SDValue(RSrc, 0));
+    Ops.push_back(N->getOperand(0));
+    Ops.push_back(DAG.getConstant(Offset->getSExtValue() << 2, MVT::i32));
+
+    // Copy remaining operands so we keep any chain and glue nodes that follow
+    // the normal operands.
+    for (unsigned I = 2, E = N->getNumOperands(); I != E; ++I)
+      Ops.push_back(N->getOperand(I));
+
     return DAG.getMachineNode(NewOpcode, DL, N->getVTList(), Ops);
   }
   }

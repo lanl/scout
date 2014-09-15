@@ -18,8 +18,13 @@
 #include "lldb/Core/State.h"
 #include "lldb/Host/Host.h"
 #include "lldb/Host/HostInfo.h"
+#include "lldb/Host/HostNativeThread.h"
 #include "lldb/lldb-enumerations.h"
 #include "lldb/lldb-private-log.h"
+
+#include "llvm/ADT/SmallString.h"
+
+#include "Plugins/Process/Utility/RegisterContextLinux_arm64.h"
 #include "Plugins/Process/Utility/RegisterContextLinux_i386.h"
 #include "Plugins/Process/Utility/RegisterContextLinux_x86_64.h"
 #include "Plugins/Process/Utility/RegisterInfoInterface.h"
@@ -34,13 +39,16 @@ namespace
         switch (stop_info.reason)
         {
             case eStopReasonSignal:
-                log.Printf ("%s: %s: signal 0x%" PRIx32, __FUNCTION__, header, stop_info.details.signal.signo);
+                log.Printf ("%s: %s signal 0x%" PRIx32, __FUNCTION__, header, stop_info.details.signal.signo);
                 return;
             case eStopReasonException:
-                log.Printf ("%s: %s: exception type 0x%" PRIx64, __FUNCTION__, header, stop_info.details.exception.type);
+                log.Printf ("%s: %s exception type 0x%" PRIx64, __FUNCTION__, header, stop_info.details.exception.type);
+                return;
+            case eStopReasonExec:
+                log.Printf ("%s: %s exec, stopping signal 0x%" PRIx32, __FUNCTION__, header, stop_info.details.signal.signo);
                 return;
             default:
-                log.Printf ("%s: %s: invalid stop reason %" PRIu32, __FUNCTION__, header, static_cast<uint32_t> (stop_info.reason));
+                log.Printf ("%s: %s invalid stop reason %" PRIu32, __FUNCTION__, header, static_cast<uint32_t> (stop_info.reason));
         }
     }
 }
@@ -53,7 +61,7 @@ NativeThreadLinux::NativeThreadLinux (NativeProcessLinux *process, lldb::tid_t t
 {
 }
 
-const char *
+std::string
 NativeThreadLinux::GetName()
 {
     NativeProcessProtocolSP process_sp = m_process_wp.lock ();
@@ -61,7 +69,9 @@ NativeThreadLinux::GetName()
         return "<unknown: no process>";
 
     // const NativeProcessLinux *const process = reinterpret_cast<NativeProcessLinux*> (process_sp->get ());
-    return Host::GetThreadName (process_sp->GetID (), GetID ()).c_str ();
+    llvm::SmallString<32> thread_name;
+    HostNativeThread::GetName(GetID(), thread_name);
+    return thread_name.c_str();
 }
 
 lldb::StateType
@@ -83,10 +93,10 @@ NativeThreadLinux::GetStopReason (ThreadStopInfo &stop_info)
     case eStateSuspended:
     case eStateUnloaded:
         if (log)
-            LogThreadStopInfo (*log, m_stop_info, "m_stop_info in thread: ");
+            LogThreadStopInfo (*log, m_stop_info, "m_stop_info in thread:");
         stop_info = m_stop_info;
         if (log)
-            LogThreadStopInfo (*log, stop_info, "returned stop_info: ");
+            LogThreadStopInfo (*log, stop_info, "returned stop_info:");
         return true;
 
     case eStateInvalid:
@@ -96,7 +106,6 @@ NativeThreadLinux::GetStopReason (ThreadStopInfo &stop_info)
     case eStateRunning:
     case eStateStepping:
     case eStateDetached:
-    default:
         if (log)
         {
             log->Printf ("NativeThreadLinux::%s tid %" PRIu64 " in state %s cannot answer stop reason",
@@ -128,6 +137,10 @@ NativeThreadLinux::GetRegisterContext ()
         case llvm::Triple::Linux:
             switch (target_arch.GetMachine())
             {
+            case llvm::Triple::aarch64:
+                assert((HostInfo::GetArchitecture ().GetAddressByteSize() == 8) && "Register setting path assumes this is a 64-bit host");
+                reg_interface = static_cast<RegisterInfoInterface*>(new RegisterContextLinux_arm64(target_arch));
+                break;
             case llvm::Triple::x86:
             case llvm::Triple::x86_64:
                 if (HostInfo::GetArchitecture().GetAddressByteSize() == 4)
@@ -246,6 +259,40 @@ NativeThreadLinux::SetStoppedBySignal (uint32_t signo)
     m_stop_info.details.signal.signo = signo;
 }
 
+bool
+NativeThreadLinux::IsStopped (int *signo)
+{
+    if (!StateIsStoppedState (m_state, false))
+        return false;
+
+    // If we are stopped by a signal, return the signo.
+    if (signo &&
+        m_state == StateType::eStateStopped &&
+        m_stop_info.reason == StopReason::eStopReasonSignal)
+    {
+        *signo = m_stop_info.details.signal.signo;
+    }
+
+    // Regardless, we are stopped.
+    return true;
+}
+
+
+void
+NativeThreadLinux::SetStoppedByExec ()
+{
+    Log *log (GetLogIfAllCategoriesSet (LIBLLDB_LOG_THREAD));
+    if (log)
+        log->Printf ("NativeThreadLinux::%s()", __FUNCTION__);
+
+    const StateType new_state = StateType::eStateStopped;
+    MaybeLogStateChange (new_state);
+    m_state = new_state;
+
+    m_stop_info.reason = StopReason::eStopReasonExec;
+    m_stop_info.details.signal.signo = SIGSTOP;
+}
+
 void
 NativeThreadLinux::SetStoppedByBreakpoint ()
 {
@@ -324,39 +371,28 @@ NativeThreadLinux::MaybeLogStateChange (lldb::StateType new_state)
     log->Printf ("NativeThreadLinux: thread (pid=%" PRIu64 ", tid=%" PRIu64 ") changing from state %s to %s", pid, GetID (), StateAsCString (old_state), StateAsCString (new_state));
 }
 
-static
-uint32_t MaybeTranslateHostSignoToGdbSigno (uint32_t host_signo)
-{
-    switch (host_signo)
-    {
-        case SIGSEGV: return eGdbSignalBadAccess;
-        case SIGILL:  return eGdbSignalBadInstruction;
-        case SIGFPE:  return eGdbSignalArithmetic;
-        // NOTE: debugserver sends SIGTRAP through unmodified.  Do the same here.
-        // case SIGTRAP: return eGdbSignalBreakpoint;
-
-        // Nothing for eGdbSignalSoftware (0x95).
-        // Nothing for eGdbSignalEmulation (0x94).
-
-        default:
-            // No translations.
-            return host_signo;
-    }
-}
-
 uint32_t
 NativeThreadLinux::TranslateStopInfoToGdbSignal (const ThreadStopInfo &stop_info) const
 {
     switch (stop_info.reason)
     {
         case eStopReasonSignal:
-            return MaybeTranslateHostSignoToGdbSigno (stop_info.details.signal.signo);
-            break;
+            // No translation.
+            return stop_info.details.signal.signo;
 
         case eStopReasonException:
-            // FIXME verify how we handle exception type.
-            return MaybeTranslateHostSignoToGdbSigno (static_cast<uint32_t> (stop_info.details.exception.type));
-            break;
+            {
+                Log *log (GetLogIfAllCategoriesSet (LIBLLDB_LOG_THREAD));
+                // FIXME I think the eStopReasonException is a xnu/Mach exception, which we
+                // shouldn't see on Linux.
+                // No translation.
+                if (log)
+                    log->Printf ("NativeThreadLinux::%s saw an exception stop type (signo %"
+                                 PRIu64 "), not expecting to see exceptions on Linux",
+                                 __FUNCTION__,
+                                 stop_info.details.exception.type);
+                return static_cast<uint32_t> (stop_info.details.exception.type);
+            }
 
         default:
             assert (0 && "unexpected stop_info.reason found");

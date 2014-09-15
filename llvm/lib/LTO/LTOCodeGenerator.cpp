@@ -67,15 +67,13 @@ LTOCodeGenerator::LTOCodeGenerator()
     : Context(getGlobalContext()), IRLinker(new Module("ld-temp.o", Context)),
       TargetMach(nullptr), EmitDwarfDebugInfo(false),
       ScopeRestrictionsDone(false), CodeModel(LTO_CODEGEN_PIC_MODEL_DEFAULT),
-      NativeObjectFile(nullptr), DiagHandler(nullptr), DiagContext(nullptr) {
+      DiagHandler(nullptr), DiagContext(nullptr) {
   initializeLTOPasses();
 }
 
 LTOCodeGenerator::~LTOCodeGenerator() {
   delete TargetMach;
-  delete NativeObjectFile;
   TargetMach = nullptr;
-  NativeObjectFile = nullptr;
 
   IRLinker.deleteModule();
 
@@ -163,9 +161,9 @@ bool LTOCodeGenerator::writeMergedModules(const char *path,
   applyScopeRestrictions();
 
   // create output file
-  std::string ErrInfo;
-  tool_output_file Out(path, ErrInfo, sys::fs::F_None);
-  if (!ErrInfo.empty()) {
+  std::error_code EC;
+  tool_output_file Out(path, EC, sys::fs::F_None);
+  if (EC) {
     errMsg = "could not open bitcode file for writing: ";
     errMsg += path;
     return false;
@@ -234,9 +232,6 @@ const void* LTOCodeGenerator::compile(size_t* length,
                        errMsg))
     return nullptr;
 
-  // remove old buffer if compile() called twice
-  delete NativeObjectFile;
-
   // read .o file into memory buffer
   ErrorOr<std::unique_ptr<MemoryBuffer>> BufferOrErr =
       MemoryBuffer::getFile(name, -1, false);
@@ -245,7 +240,7 @@ const void* LTOCodeGenerator::compile(size_t* length,
     sys::fs::remove(NativeObjectPath);
     return nullptr;
   }
-  NativeObjectFile = BufferOrErr.get().release();
+  NativeObjectFile = std::move(*BufferOrErr);
 
   // remove temp files
   sys::fs::remove(NativeObjectPath);
@@ -312,7 +307,7 @@ bool LTOCodeGenerator::determineTarget(std::string &errMsg) {
 
 void LTOCodeGenerator::
 applyRestriction(GlobalValue &GV,
-                 const ArrayRef<StringRef> &Libcalls,
+                 ArrayRef<StringRef> Libcalls,
                  std::vector<const char*> &MustPreserveList,
                  SmallPtrSetImpl<GlobalValue*> &AsmUsed,
                  Mangler &Mangler) {
@@ -476,7 +471,7 @@ bool LTOCodeGenerator::generateObjectFile(raw_ostream &out,
 
   PassManager codeGenPasses;
 
-  codeGenPasses.add(new DataLayoutPass(mergedModule));
+  codeGenPasses.add(new DataLayoutPass());
 
   formatted_raw_ostream Out(out);
 

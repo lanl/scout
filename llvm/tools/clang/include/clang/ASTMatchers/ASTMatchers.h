@@ -156,6 +156,17 @@ anything() {
 /// \endcode
 const internal::VariadicAllOfMatcher<Decl> decl;
 
+/// \brief Matches a declaration of a linkage specification.
+///
+/// Given
+/// \code
+///   extern "C" {}
+/// \endcode
+/// linkageSpecDecl()
+///   matches "extern "C" {}"
+const internal::VariadicDynCastAllOfMatcher<Decl, LinkageSpecDecl>
+    linkageSpecDecl;
+
 /// \brief Matches a declaration of anything that could have a name.
 ///
 /// Example matches \c X, \c S, the anonymous union type, \c i, and \c U;
@@ -1570,7 +1581,7 @@ AST_MATCHER_P(NamedDecl, matchesName, std::string, RegExp) {
 inline internal::PolymorphicMatcherWithParam1<
     internal::HasOverloadedOperatorNameMatcher, StringRef,
     AST_POLYMORPHIC_SUPPORTED_TYPES_2(CXXOperatorCallExpr, FunctionDecl)>
-hasOverloadedOperatorName(const StringRef Name) {
+hasOverloadedOperatorName(StringRef Name) {
   return internal::PolymorphicMatcherWithParam1<
       internal::HasOverloadedOperatorNameMatcher, StringRef,
       AST_POLYMORPHIC_SUPPORTED_TYPES_2(CXXOperatorCallExpr, FunctionDecl)>(
@@ -2297,7 +2308,7 @@ AST_POLYMORPHIC_MATCHER_P(hasAnyArgument, AST_POLYMORPHIC_SUPPORTED_TYPES_2(
     BoundNodesTreeBuilder Result(*Builder);
     if (InnerMatcher.matches(*Node.getArg(I)->IgnoreParenImpCasts(), Finder,
                              &Result)) {
-      *Builder = Result;
+      *Builder = std::move(Result);
       return true;
     }
   }
@@ -2979,6 +2990,46 @@ AST_POLYMORPHIC_MATCHER(
           TSK_ExplicitInstantiationDefinition);
 }
 
+/// \brief Matches declarations that are template instantiations or are inside
+/// template instantiations.
+///
+/// Given
+/// \code
+///   template<typename T> void A(T t) { T i; }
+///   A(0);
+///   A(0U);
+/// \endcode
+/// functionDecl(isInstantiated())
+///   matches 'A(int) {...};' and 'A(unsigned) {...}'.
+AST_MATCHER(Decl, isInstantiated) {
+  auto IsInstantiation = decl(anyOf(recordDecl(isTemplateInstantiation()),
+                                    functionDecl(isTemplateInstantiation())));
+  auto InnerMatcher =
+      decl(anyOf(IsInstantiation, hasAncestor(IsInstantiation)));
+  return InnerMatcher.matches(Node, Finder, Builder);
+}
+
+/// \brief Matches statements inside of a template instantiation.
+///
+/// Given
+/// \code
+///   int j;
+///   template<typename T> void A(T t) { T i; j += 42;}
+///   A(0);
+///   A(0U);
+/// \endcode
+/// declStmt(isInTemplateInstantiation())
+///   matches 'int i;' and 'unsigned i'.
+/// unless(stmt(isInTemplateInstantiation()))
+///   will NOT match j += 42; as it's shared between the template definition and
+///   instantiation.
+AST_MATCHER(Stmt, isInTemplateInstantiation) {
+  auto InnerMatcher =
+      stmt(hasAncestor(decl(anyOf(recordDecl(isTemplateInstantiation()),
+                                  functionDecl(isTemplateInstantiation())))));
+  return InnerMatcher.matches(Node, Finder, Builder);
+}
+
 /// \brief Matches explicit template specializations of function, class, or
 /// static member variable template instantiations.
 ///
@@ -3626,7 +3677,7 @@ AST_MATCHER_P(SwitchStmt, forEachSwitchCase, internal::Matcher<SwitchCase>,
       Result.addMatch(CaseBuilder);
     }
   }
-  *Builder = Result;
+  *Builder = std::move(Result);
   return Matched;
 }
 
@@ -3649,7 +3700,7 @@ AST_MATCHER_P(CXXConstructorDecl, forEachConstructorInitializer,
       Result.addMatch(InitBuilder);
     }
   }
-  *Builder = Result;
+  *Builder = std::move(Result);
   return Matched;
 }
 

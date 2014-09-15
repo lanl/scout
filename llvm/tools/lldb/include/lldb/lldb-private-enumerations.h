@@ -163,7 +163,9 @@ typedef enum FormatCategoryItem
     eFormatCategoryItemSynth =           0x0010,
     eFormatCategoryItemRegexSynth =      0x0020,
     eFormatCategoryItemValue =           0x0040,
-    eFormatCategoryItemRegexValue =      0x0080
+    eFormatCategoryItemRegexValue =      0x0080,
+    eFormatCategoryItemValidator =       0x0100,
+    eFormatCategoryItemRegexValidator =  0x0200
 } FormatCategoryItem;
 
 //------------------------------------------------------------------
@@ -238,6 +240,26 @@ typedef enum ExitType {
     eExitTypeStop,    // The exit status represents the stop signal that caused the program to exit (i.e. WIFSTOPPED() was true)
 } ExitType;
 
+//----------------------------------------------------------------------
+// State for running threads
+//----------------------------------------------------------------------
+enum ThreadState
+{
+    eThreadStateInvalid,    // The thread does not represent a current or past thread.
+    eThreadStateRunning,    // The thread is currently running.
+    eThreadStateExited,     // The thread's start routine returned normally.
+    eThreadStateCancelling, // The thread has been sent a cancellation request.
+    eThreadStateCancelled   // The thread was cancelled before completing normally.
+};
+
+//----------------------------------------------------------------------
+// Boolean result of running a Type Validator
+//----------------------------------------------------------------------
+enum class TypeValidatorResult : bool {
+    Success = true,
+    Failure = false
+};
+    
 } // namespace lldb_private
 
 

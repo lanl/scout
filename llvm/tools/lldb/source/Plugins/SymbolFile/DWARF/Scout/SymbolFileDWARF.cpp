@@ -123,7 +123,7 @@ SymbolFileDWARF::ParseMeshChildMembers
 
   size_t count = 0;
   const DWARFDebugInfoEntry *die;
-  const uint8_t *fixed_form_sizes = DWARFFormValue::GetFixedFormSizesForAddressSize (dwarf_cu->GetAddressByteSize());
+  const uint8_t *fixed_form_sizes = DWARFFormValue::GetFixedFormSizesForAddressSize (dwarf_cu->GetAddressByteSize(), dwarf_cu->IsDWARF64());
   uint32_t member_idx = 0;
   BitfieldInfo last_field_info;
   ModuleSP module = GetObjectFile()->GetModule();

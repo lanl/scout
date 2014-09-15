@@ -545,9 +545,16 @@ protected:
                 }
                 else
                 {
-                    result.AppendErrorWithFormat ("index %u is out of range, valid target indexes are 0 - %u\n", 
-                                                  target_idx,
-                                                  num_targets - 1);
+                    if (num_targets > 0)
+                    {
+                        result.AppendErrorWithFormat ("index %u is out of range, valid target indexes are 0 - %u\n",
+                                                      target_idx,
+                                                      num_targets - 1);
+                    } else
+                    {
+                        result.AppendErrorWithFormat ("index %u is out of range since there are no active targets\n",
+                                                      target_idx);
+                    }
                     result.SetStatus (eReturnStatusFailed);
                 }
             }
@@ -3724,7 +3731,7 @@ protected:
                 result.GetOutputStream().Printf ("\n");
             }
 
-            UnwindPlanSP non_callsite_unwind_plan = func_unwinders_sp->GetUnwindPlanAtNonCallSite(*thread.get());
+            UnwindPlanSP non_callsite_unwind_plan = func_unwinders_sp->GetUnwindPlanAtNonCallSite(*target, *thread.get(), -1);
             if (non_callsite_unwind_plan.get())
             {
                 result.GetOutputStream().Printf("Asynchronous (not restricted to call-sites) UnwindPlan for %s`%s (start addr 0x%" PRIx64 "):\n", sc.module_sp->GetPlatformFileSpec().GetFilename().AsCString(), funcname.AsCString(), start_addr);

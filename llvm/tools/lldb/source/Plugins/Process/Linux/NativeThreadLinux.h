@@ -27,7 +27,7 @@ namespace lldb_private
         // ---------------------------------------------------------------------
         // NativeThreadProtocol Interface
         // ---------------------------------------------------------------------
-        const char *
+        std::string
         GetName() override;
 
         lldb::StateType
@@ -63,6 +63,15 @@ namespace lldb_private
 
         void
         SetStoppedBySignal (uint32_t signo);
+
+        /// Return true if the thread is stopped.
+        /// If stopped by a signal, indicate the signo in the signo argument.
+        /// Otherwise, return LLDB_INVALID_SIGNAL_NUMBER.
+        bool
+        IsStopped (int *signo);
+
+        void
+        SetStoppedByExec ();
 
         void
         SetStoppedByBreakpoint ();

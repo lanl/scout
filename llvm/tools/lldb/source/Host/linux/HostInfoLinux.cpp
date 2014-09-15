@@ -47,6 +47,12 @@ HostInfoLinux::Initialize()
     g_fields = new HostInfoLinuxFields();
 }
 
+uint32_t
+HostInfoLinux::GetMaxThreadNameLength()
+{
+    return 16;
+}
+
 bool
 HostInfoLinux::GetOSVersion(uint32_t &major, uint32_t &minor, uint32_t &update)
 {
@@ -194,7 +200,8 @@ HostInfoLinux::GetProgramFileSpec()
 bool
 HostInfoLinux::ComputeSystemPluginsDirectory(FileSpec &file_spec)
 {
-    file_spec.SetFile("/usr/lib/lldb", true);
+    FileSpec temp_file("/usr/lib/lldb", true);
+    file_spec.GetDirectory().SetCString(temp_file.GetPath().c_str());
     return true;
 }
 
@@ -204,17 +211,15 @@ HostInfoLinux::ComputeUserPluginsDirectory(FileSpec &file_spec)
     // XDG Base Directory Specification
     // http://standards.freedesktop.org/basedir-spec/basedir-spec-latest.html
     // If XDG_DATA_HOME exists, use that, otherwise use ~/.local/share/lldb.
-    FileSpec lldb_file_spec;
     const char *xdg_data_home = getenv("XDG_DATA_HOME");
     if (xdg_data_home && xdg_data_home[0])
     {
         std::string user_plugin_dir(xdg_data_home);
         user_plugin_dir += "/lldb";
-        lldb_file_spec.SetFile(user_plugin_dir.c_str(), true);
+        file_spec.GetDirectory().SetCString(user_plugin_dir.c_str());
     }
     else
-        lldb_file_spec.SetFile("~/.local/share/lldb", true);
-
+        file_spec.GetDirectory().SetCString("~/.local/share/lldb");
     return true;
 }
 
