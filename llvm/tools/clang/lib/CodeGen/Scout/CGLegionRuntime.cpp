@@ -277,568 +277,177 @@ llvm::PointerType* CGLegionRuntime::PointerTy(llvm::Type* elementType){
 
 llvm::Function* CGLegionRuntime::SizeofCXXRect1dFunc(){
   string name = "lsci_sizeof_cxx_rect_1d";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params;
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(Int64Ty, params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+  return LegionRuntimeFunction(name, params, Int64Ty);
 }
 
 llvm::Function* CGLegionRuntime::SubgridBoundsAtFunc(){
   string name = "lsci_subgrid_bounds_at";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params = {VoidPtrTy, Int64Ty};
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(VoidPtrTy, params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+  return LegionRuntimeFunction(name, params, VoidPtrTy);
 }
 
 llvm::Function* CGLegionRuntime::SubgridBoundsAtSetFunc(){
   string name = "lsci_subgrid_bounds_at_set";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params = {VoidPtrTy, Int64Ty, PointerTy(Rect1dStorageTy)};
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()), params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+  return LegionRuntimeFunction(name, params);
 }
 
 
 llvm::Function* CGLegionRuntime::VectorDumpFunc(){
   string name = "lsci_vector_dump";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params = {VoidPtrTy, Int64Ty};
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+  return LegionRuntimeFunction(name, params, Int32Ty);
 }
 
 llvm::Function* CGLegionRuntime::ArgumentMapCreateFunc(){
   string name = "lsci_argument_map_create";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params = {PointerTy(ArgumentMapTy)};
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+  return LegionRuntimeFunction(name, params, Int32Ty);
 }
 
 llvm::Function* CGLegionRuntime::ArgumentMapSetPointFunc(){
   string name = "lsci_argument_map_set_point";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params = {PointerTy(ArgumentMapTy), Int64Ty, VoidPtrTy, Int64Ty};
-
-  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+  return LegionRuntimeFunction(name, params, Int32Ty);
 }
 
 llvm::Function* CGLegionRuntime::IndexLauncherCreateFunc(){
   string name = "lsci_index_launcher_create";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params =
-  {PointerTy(IndexLauncherTy), Int32Ty, PointerTy(DomainTy),
-    PointerTy(TaskArgumentTy), PointerTy(ArgumentMapTy)};
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+   {PointerTy(IndexLauncherTy), Int32Ty, PointerTy(DomainTy),
+     PointerTy(TaskArgumentTy), PointerTy(ArgumentMapTy)};
+  return LegionRuntimeFunction(name, params, Int32Ty);
 }
 
 llvm::Function* CGLegionRuntime::AddRegionRequirementFunc(){
   string name = "lsci_add_region_requirement";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params =
-  {PointerTy(IndexLauncherTy), LogicalRegionTy, ProjectionIdTy, Int32Ty,
-    Int32Ty, LogicalPartitionTy};
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+    {PointerTy(IndexLauncherTy), LogicalRegionTy, ProjectionIdTy, Int32Ty,
+      Int32Ty, LogicalPartitionTy};
+  return LegionRuntimeFunction(name, params, Int32Ty);
 }
 
 llvm::Function* CGLegionRuntime::AddFieldFunc(){
   string name = "lsci_add_field";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params = {PointerTy(IndexLauncherTy), Int32Ty, FieldIdTy};
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+  return LegionRuntimeFunction(name, params, Int32Ty);
 }
 
 llvm::Function* CGLegionRuntime::ExecuteIndexSpaceFunc(){
   string name = "lsci_execute_index_space";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params = {RuntimeTy, ContextTy, PointerTy(IndexLauncherTy)};
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+  return LegionRuntimeFunction(name, params, Int32Ty);
 }
 
 llvm::Function* CGLegionRuntime::VectorCreateFunc(){
   string name = "lsci_vector_create";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params = {PointerTy(VectorTy), Int64Ty, Int32Ty, ContextTy, RuntimeTy};
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+  return LegionRuntimeFunction(name, params, Int32Ty);
 }
 
 llvm::Function* CGLegionRuntime::UnimeshCreateFunc(){
   string name = "lsci_unimesh_create";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params =
-  {PointerTy(UnimeshTy), Int64Ty, Int64Ty, Int64Ty, ContextTy, RuntimeTy};
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+    {PointerTy(UnimeshTy), Int64Ty, Int64Ty, Int64Ty, ContextTy, RuntimeTy};
+  return LegionRuntimeFunction(name, params, Int32Ty);
 }
 
 llvm::Function* CGLegionRuntime::UnimeshAddFieldFunc(){
   string name = "lsci_unimesh_add_field";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params =
-  {PointerTy(UnimeshTy), Int32Ty, VoidPtrTy, ContextTy, RuntimeTy};
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+    {PointerTy(UnimeshTy), Int32Ty, VoidPtrTy, ContextTy, RuntimeTy};
+  return LegionRuntimeFunction(name, params, Int32Ty);
 }
 
 llvm::Function* CGLegionRuntime::UnimeshPartitionFunc(){
   string name = "lsci_unimesh_partition";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params = {PointerTy(UnimeshTy), Int64Ty, ContextTy, RuntimeTy};
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+  return LegionRuntimeFunction(name, params, Int32Ty);
 }
 
 llvm::Function* CGLegionRuntime::UnimeshGetVecByNameFunc(){
   string name = "lsci_unimesh_get_vec_by_name";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params =
-  {PointerTy(UnimeshTy), VoidPtrTy, PointerTy(VectorTy), ContextTy, RuntimeTy};
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+   {PointerTy(UnimeshTy), VoidPtrTy, PointerTy(VectorTy), ContextTy, RuntimeTy};
+  return LegionRuntimeFunction(name, params, Int32Ty);
 }
 
 llvm::Function* CGLegionRuntime::StructCreateFunc(){
   string name = "lsci_struct_create";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params =
-  {PointerTy(StructTy), ContextTy, RuntimeTy};
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+    {PointerTy(StructTy), ContextTy, RuntimeTy};
+  return LegionRuntimeFunction(name, params, Int32Ty);
 }
 
 llvm::Function* CGLegionRuntime::StructAddFieldFunc(){
   string name = "lsci_struct_add_field";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params =
-  {PointerTy(StructTy), Int32Ty, Int64Ty, VoidPtrTy, ContextTy, RuntimeTy};
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+    {PointerTy(StructTy), Int32Ty, Int64Ty, VoidPtrTy, ContextTy, RuntimeTy};
+  return LegionRuntimeFunction(name, params, Int32Ty);
 }
 
 llvm::Function* CGLegionRuntime::StructPartitionFunc(){
   string name = "lsci_struct_partition";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params = {PointerTy(StructTy), Int64Ty, ContextTy, RuntimeTy};
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+  return LegionRuntimeFunction(name, params, Int32Ty);
 }
 
 llvm::Function* CGLegionRuntime::StructGetVecByNameFunc(){
   string name = "lsci_struct_get_vec_by_name";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params =
-  {PointerTy(StructTy), VoidPtrTy, PointerTy(VectorTy), ContextTy, RuntimeTy};
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+   {PointerTy(StructTy), VoidPtrTy, PointerTy(VectorTy), ContextTy, RuntimeTy};
+  return LegionRuntimeFunction(name, params, Int32Ty);
 }
 
 llvm::Function* CGLegionRuntime::StartFunc(){
   string name = "lsci_start";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params =
-  {Int32Ty, PointerTy(VoidPtrTy)};
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+   {Int32Ty, PointerTy(VoidPtrTy)};
+  return LegionRuntimeFunction(name, params, Int32Ty);
 }
 
 llvm::Function* CGLegionRuntime::SetTopLevelTaskIdFunc(){
   string name = "lsci_set_top_level_task_id";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params = {Int32Ty};
-  
-  llvm::FunctionType* ft =
-  llvm::FunctionType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()), params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+  return LegionRuntimeFunction(name, params);
 }
 
 llvm::Function* CGLegionRuntime::RegisterVoidLegionTaskFunc(){
   string name = "lsci_register_void_legion_task";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params =
-  {Int32Ty, Int32Ty, Int1Ty, Int1Ty, Int1Ty, VariantIdTy, VoidPtrTy, RegTaskDataTy};
+    {Int32Ty, Int32Ty, Int1Ty, Int1Ty, Int1Ty, VariantIdTy, VoidPtrTy, RegTaskDataTy};
+  return LegionRuntimeFunction(name, params, Int32Ty);
   
-  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
 }
 
 llvm::Function* CGLegionRuntime::RegisterVoidLegionTaskAuxFunc(){
   string name = "lsci_register_void_legion_task_aux";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-
   vector<llvm::Type*> args = {PointerTy(TaskArgsTy)};
   llvm::FunctionType* funcType = llvm::FunctionType::get(CGM.VoidTy, args, false);
-  
   vector<llvm::Type*> params =
-  {Int32Ty, Int32Ty, Int1Ty, Int1Ty, Int1Ty, VariantIdTy, VoidPtrTy, llvm::PointerType::get(funcType, 0)};
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(Int32Ty, params, false);
-
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+    {Int32Ty, Int32Ty, Int1Ty, Int1Ty, Int1Ty, VariantIdTy, VoidPtrTy, llvm::PointerType::get(funcType, 0)};
+  return LegionRuntimeFunction(name, params, Int32Ty);
 }
   
 
 llvm::Function* CGLegionRuntime::RawRectPtr1dFunc(){
   string name = "raw_rect_ptr_1d";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params =
-  {PhysicalRegionsTy, Int32Ty, Int64Ty, FieldIdTy, Rect1dTy};
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(VoidPtrTy, params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+   {PhysicalRegionsTy, Int32Ty, Int64Ty, FieldIdTy, Rect1dTy};
+  return LegionRuntimeFunction(name, params, VoidPtrTy);
 }
 
 llvm::Function* CGLegionRuntime::PrintMeshTaskArgsFunc() {
   string name = "lsci_print_mesh_task_args";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params =
-  {PointerTy(MeshTaskArgsTy)};
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()), params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+   {PointerTy(MeshTaskArgsTy)};
+  return LegionRuntimeFunction(name, params);
 }
 
 llvm::Function* CGLegionRuntime::PrintTaskArgsLocalArgspFunc() {
   string name = "lsci_print_task_args_local_argsp";
-  
-  llvm::Function* f = CGM.getModule().getFunction(name);
-  
-  if(f){
-    return f;
-  }
-  
   vector<llvm::Type*> params =
-  {PointerTy(TaskArgsTy)};
-  
-  llvm::FunctionType* ft = llvm::FunctionType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()), params, false);
-  
-  f = llvm::Function::Create(ft,
-                             llvm::Function::ExternalLinkage,
-                             name,
-                             &CGM.getModule());
-  
-  return f;
+   {PointerTy(TaskArgsTy)};
+  return LegionRuntimeFunction(name, params);
 }
