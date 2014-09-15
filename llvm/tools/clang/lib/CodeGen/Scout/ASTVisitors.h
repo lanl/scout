@@ -139,10 +139,8 @@ public:
 
           if (nodeType_ == NodeLHS) {
             LHS_.insert(make_pair(ref, true));
-            //llvm::errs() << "LHS " << ref << "\n";
           } else if (nodeType_ == NodeRHS) {
             RHS_.insert(make_pair(ref, true));
-            //llvm::errs() << "RHS " << ref << "\n";
           }
         }
       }

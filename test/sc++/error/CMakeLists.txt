@@ -208,6 +208,20 @@ set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION
     "error: Forall outside of task in legion mode not allowed")
 set_property(TEST ${tname} PROPERTY WILL_FAIL)
 
+set(name task-io)
+set(tname sc++_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} -sclegion ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: I/O function called within task body")
+set_property(TEST ${tname} PROPERTY WILL_FAIL)
+
+set(name no-mesh-access)
+set(tname sc++_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} -sclegion ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: no mesh access in task function")
+set_property(TEST ${tname} PROPERTY WILL_FAIL)
+
 # disable for now, as Jamal needs this
 #set(name cshift-expr)
 #set(tname sc++_error_${name})
