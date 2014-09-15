@@ -58,32 +58,31 @@ uniform mesh MyMesh {
  cells:
   float a;
   float b;
-  int i;
-  double d;
 };
 
-task void MyTask(MyMesh &m) {
+task void MyTask(MyMesh *m) {
   
-  forall cells c in m {
+  forall cells c in *m {
     a = 0;
-    b = 1;
+    b = 17;
   }
 
-  forall cells c in m {
+  forall cells c in *m {
     a += b;
   }
+  
+  forall cells c in *m {
+    if ((a-b)*(a-b) > 1e-10) {
+      assert(false && "bad val");
+    }
+  }
+
 }
 
 int main(int argc, char** argv) {
-  MyMesh m[512];
+  MyMesh m[128];
 
-  MyTask(m);
+  MyTask(&m);
 
-  forall cells c in m {
-    if ((a-b)*(a-b) > 1e-10) {
-      printf("bad val %f\n", a);
-      assert(false);
-    }
-  }
   return 0;
 }
