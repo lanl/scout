@@ -17,6 +17,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include <cassert>
 #include <llvm/IR/ValueSymbolTable.h>
+#include "legion/lsci.h"
 
 using namespace llvm;
 
