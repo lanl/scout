@@ -114,12 +114,17 @@ public:
   bool isParsingInlineAsm () { return ParsingInlineAsm; }
   void setParsingInlineAsm (bool Value) { ParsingInlineAsm = Value; }
 
+  MCTargetOptions getTargetOptions() const { return MCOptions; }
+
   void setSemaCallback(MCAsmParserSemaCallback *Callback) {
     SemaCallback = Callback;
   }
 
   virtual bool ParseRegister(unsigned &RegNo, SMLoc &StartLoc,
                              SMLoc &EndLoc) = 0;
+
+  /// Sets frame register corresponding to the current MachineFunction.
+  virtual void SetFrameRegister(unsigned RegNo) {}
 
   /// ParseInstruction - Parse one assembly instruction.
   ///

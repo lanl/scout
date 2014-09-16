@@ -42,7 +42,9 @@
 #include "lldb/Core/StreamString.h"
 #include "lldb/Core/Timer.h"
 #include "lldb/Core/Value.h"
+#include "lldb/Host/HostThread.h"
 #include "lldb/Host/Symbols.h"
+#include "lldb/Host/ThreadLauncher.h"
 #include "lldb/Host/TimeValue.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/CommandObject.h"
@@ -272,8 +274,6 @@ ProcessGDBRemote::ProcessGDBRemote(Target& target, Listener &listener) :
     m_last_stop_packet_mutex (Mutex::eMutexTypeNormal),
     m_register_info (),
     m_async_broadcaster (NULL, "lldb.process.gdb-remote.async-broadcaster"),
-    m_async_thread (LLDB_INVALID_HOST_THREAD),
-    m_async_thread_state(eAsyncThreadNotStarted),
     m_async_thread_state_mutex(Mutex::eMutexTypeRecursive),
     m_thread_ids (),
     m_continue_c_tids (),
@@ -287,8 +287,7 @@ ProcessGDBRemote::ProcessGDBRemote(Target& target, Listener &listener) :
     m_waiting_for_attach (false),
     m_destroy_tried_resuming (false),
     m_command_sp (),
-    m_breakpoint_pc_offset (0),
-    m_unix_signals_sp (new UnixSignals ())
+    m_breakpoint_pc_offset (0)
 {
     m_async_broadcaster.SetEventName (eBroadcastBitAsyncThreadShouldExit,   "async thread should exit");
     m_async_broadcaster.SetEventName (eBroadcastBitAsyncContinue,           "async thread continue");
@@ -713,19 +712,19 @@ ProcessGDBRemote::DoConnectRemote (Stream *strm, const char *remote_url)
             switch (arch_spec.GetTriple ().getOS ())
             {
             case llvm::Triple::Linux:
-                m_unix_signals_sp.reset (new process_linux::LinuxSignals ());
+                SetUnixSignals (UnixSignalsSP (new process_linux::LinuxSignals ()));
                 if (log)
                     log->Printf ("ProcessGDBRemote::%s using Linux unix signals type for pid %" PRIu64, __FUNCTION__, GetID ());
                 break;
             case llvm::Triple::OpenBSD:
             case llvm::Triple::FreeBSD:
             case llvm::Triple::NetBSD:
-                m_unix_signals_sp.reset (new FreeBSDSignals ());
+                SetUnixSignals (UnixSignalsSP (new FreeBSDSignals ()));
                 if (log)
                     log->Printf ("ProcessGDBRemote::%s using *BSD unix signals type for pid %" PRIu64, __FUNCTION__, GetID ());
                 break;
             default:
-                m_unix_signals_sp.reset (new UnixSignals ());
+                SetUnixSignals (UnixSignalsSP (new UnixSignals ()));
                 if (log)
                     log->Printf ("ProcessGDBRemote::%s using generic unix signals type for pid %" PRIu64, __FUNCTION__, GetID ());
                 break;
@@ -1086,13 +1085,6 @@ ProcessGDBRemote::DidLaunch ()
     DidLaunchOrAttach (process_arch);
 }
 
-UnixSignals&
-ProcessGDBRemote::GetUnixSignals ()
-{
-    assert (m_unix_signals_sp && "m_unix_signals_sp is null");
-    return *m_unix_signals_sp;
-}
-
 Error
 ProcessGDBRemote::DoAttachToProcessWithID (lldb::pid_t attach_pid)
 {
@@ -1440,7 +1432,7 @@ ProcessGDBRemote::DoResume ()
             TimeValue timeout;
             timeout = TimeValue::Now();
             timeout.OffsetWithSeconds (5);
-            if (!IS_VALID_LLDB_HOST_THREAD(m_async_thread))
+            if (m_async_thread.GetState() != eThreadStateRunning)
             {
                 error.SetErrorString ("Trying to resume but the async thread is dead.");
                 if (log)
@@ -2899,30 +2891,22 @@ ProcessGDBRemote::StartAsyncThread ()
         log->Printf ("ProcessGDBRemote::%s ()", __FUNCTION__);
     
     Mutex::Locker start_locker(m_async_thread_state_mutex);
-    if (m_async_thread_state == eAsyncThreadNotStarted)
+    if (m_async_thread.GetState() != eThreadStateRunning)
     {
         // Create a thread that watches our internal state and controls which
         // events make it to clients (into the DCProcess event queue).
-        m_async_thread = Host::ThreadCreate ("<lldb.process.gdb-remote.async>", ProcessGDBRemote::AsyncThread, this, NULL);
-        if (IS_VALID_LLDB_HOST_THREAD(m_async_thread))
-        {
-            m_async_thread_state = eAsyncThreadRunning;
-            return true;
-        }
-        else
-            return false;
+
+        m_async_thread = ThreadLauncher::LaunchThread("<lldb.process.gdb-remote.async>", ProcessGDBRemote::AsyncThread, this, NULL);
     }
     else
     {
         // Somebody tried to start the async thread while it was either being started or stopped.  If the former, and
         // it started up successfully, then say all's well.  Otherwise it is an error, since we aren't going to restart it.
         if (log)
-            log->Printf ("ProcessGDBRemote::%s () - Called when Async thread was in state: %d.", __FUNCTION__, m_async_thread_state);
-        if (m_async_thread_state == eAsyncThreadRunning)
-            return true;
-        else
-            return false;
+            log->Printf("ProcessGDBRemote::%s () - Called when Async thread was in state: %d.", __FUNCTION__, m_async_thread.GetState());
     }
+
+    return (m_async_thread.GetState() == eThreadStateRunning);
 }
 
 void
@@ -2934,7 +2918,7 @@ ProcessGDBRemote::StopAsyncThread ()
         log->Printf ("ProcessGDBRemote::%s ()", __FUNCTION__);
 
     Mutex::Locker start_locker(m_async_thread_state_mutex);
-    if (m_async_thread_state == eAsyncThreadRunning)
+    if (m_async_thread.GetState() == eThreadStateRunning)
     {
         m_async_broadcaster.BroadcastEvent (eBroadcastBitAsyncThreadShouldExit);
         
@@ -2942,16 +2926,12 @@ ProcessGDBRemote::StopAsyncThread ()
         m_gdb_comm.Disconnect();    // Disconnect from the debug server.
 
         // Stop the stdio thread
-        if (IS_VALID_LLDB_HOST_THREAD(m_async_thread))
-        {
-            Host::ThreadJoin (m_async_thread, NULL, NULL);
-        }
-        m_async_thread_state = eAsyncThreadDone;
+        m_async_thread.Join(nullptr);
     }
     else
     {
         if (log)
-            log->Printf ("ProcessGDBRemote::%s () - Called when Async thread was in state: %d.", __FUNCTION__, m_async_thread_state);
+            log->Printf("ProcessGDBRemote::%s () - Called when Async thread was in state: %d.", __FUNCTION__, m_async_thread.GetState());
     }
 }
 
@@ -3094,7 +3074,7 @@ ProcessGDBRemote::AsyncThread (void *arg)
     if (log)
         log->Printf ("ProcessGDBRemote::%s (arg = %p, pid = %" PRIu64 ") thread exiting...", __FUNCTION__, arg, process->GetID());
 
-    process->m_async_thread = LLDB_INVALID_HOST_THREAD;
+    process->m_async_thread.Reset();
     return NULL;
 }
 

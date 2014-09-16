@@ -74,6 +74,7 @@ void
 lsci_subgrid_bounds_at_set(lsci_rect_1d_t rect_1d_array_basep,
                        size_t index, lsci_rect_1d_storage_t* dest);
 
+// update lsci_domain_member_t if updating this
 typedef struct lsci_domain_t {
     // points to the Domain instance
     lsci_domain_handle_t hndl;
@@ -81,9 +82,18 @@ typedef struct lsci_domain_t {
     size_t volume;
 } lsci_domain_t;
 
+// update this if updating lsci_domain_t
+typedef enum lsci_domain_member_t {
+  LSCI_DOMAIN_HANDLE = 0,
+  LSCI_DOMAIN_VOLUME = 1
+} lsci_domain_member_t;
+
+
 ////////////////////////////////////////////////////////////////////////////////
 // convenience vector abstraction
 ////////////////////////////////////////////////////////////////////////////////
+
+// update lsci_vector_member_t if updating this
 typedef struct lsci_vector_t {
     size_t lr_len;
     lsci_field_id_t fid;
@@ -95,7 +105,18 @@ typedef struct lsci_vector_t {
     lsci_rect_1d_t subgrid_bounds;
 } lsci_vector_t;
 
-
+// update this if updating lsci_vector_t
+typedef enum lsci_vector_member_t {
+  LSCI_VECTOR_LR_LEN = 0,
+  LSCI_VECTOR_FID = 1,
+  LSCI_VECTOR_INDEX_SPACE = 2,
+  LSCI_VECTOR_LOGICAL_REGION = 3,
+  LSCI_VECTOR_LOGICAL_PARTITION = 4,
+  LSCI_VECTOR_LAUNCH_DOMAIN = 5,
+  LSCI_VECTOR_SUBGRID_BOUNDS_LEN = 6,
+  LSCI_VECTOR_SUBGRID_BOUNDS = 7
+} lsci_vector_member_t;
+  
 int
 lsci_vector_dump(lsci_vector_t *vec,
                  lsci_dt_t type,
@@ -180,7 +201,10 @@ lsci_vector_partition(lsci_vector_t *vec,
 ////////////////////////////////////////////////////////////////////////////////
 // convenience mesh abstraction
 ////////////////////////////////////////////////////////////////////////////////
+
 typedef void* lsci_unimesh_handle_t;
+
+// update lsci_unimesh_member_t if updating this
 typedef struct lsci_unimesh_t {
     // points to the underlying mesh instance
     lsci_unimesh_handle_t hndl;
@@ -189,6 +213,15 @@ typedef struct lsci_unimesh_t {
     size_t height;
     size_t depth;
 } lsci_unimesh_t;
+
+// update this if updating lsci_unimesh_t
+typedef enum lsci_unimesh_member_t {
+  LSCI_UNIMESH_HNDL = 0,
+  LSCI_UNIMESH_DIMS = 1,
+  LSCI_UNIMESH_WIDTH = 2,
+  LSCI_UNIMESH_HEIGHT = 3,
+  LSCI_UNIMESH_DEPTH = 4
+} lsci_unimesh_member_t;
 
 int
 lsci_unimesh_create(lsci_unimesh_t *mesh,
@@ -254,6 +287,8 @@ lsci_struct_get_vec_by_name(lsci_unimesh_t *theStruct,
 
 
 /* arguments passed to tasks during their invocation */
+
+// update lsci_task_args_member_t if updating this
 typedef struct lsci_task_args_t {
     lsci_context_t context;
     lsci_runtime_t runtime;
@@ -264,6 +299,17 @@ typedef struct lsci_task_args_t {
     void *local_argsp;
 } lsci_task_args_t;
 
+// update this if updating lsci_task_args_t
+typedef enum lsci_task_args_member_t {
+  LSCI_TARGS_CONTEXT = 0,
+  LSCI_TARGS_RUNTIME = 1,
+  LSCI_TARGS_TASK_ID = 2,
+  LSCI_TARGS_N_REGIONS = 3,
+  LSCI_TARGS_REGIONS = 4,
+  LSCI_TARGS_LOCAL_ARGSP = 5
+} lsci_task_args_member_t;
+
+// update lsci_mesh_task_args_member_t if updating this
 typedef struct lsci_mesh_task_args_t {
   size_t rank;
   size_t global_width;
@@ -272,6 +318,16 @@ typedef struct lsci_mesh_task_args_t {
   lsci_rect_1d_storage_t sgb;
   size_t sgb_len;
 } lsci_mesh_task_args_t;
+
+// update this if updating lsci_mesh_task_args_t
+typedef enum lsci_mesh_task_args_member_t {
+  LSCI_MTARGS_RANK = 0,
+  LSCI_MTARGS_GLOBAL_WIDTH = 1,
+  LSCI_MTARGS_GLOBAL_HEIGHT = 2,
+  LSCI_MTARGS_GLOBAL_DEPTH = 3,
+  LSCI_MTARGS_SUBGRID_BOUNDS = 4,
+  LSCI_MTARGS_SUBGRID_LEN = 5
+} lsci_mesh_task_args_member_t;
 
 
 // TODO add macro magic to create different ret type sigs

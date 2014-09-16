@@ -188,6 +188,7 @@ public:
   ForallVisitor(Sema& sema, ForallMeshStmt* fs)
   : sema_(sema),
     fs_(fs),
+    meshAccess_(false),
     error_(false),
     nodeType_(NodeNone) {
     (void)fs_; //suppress warning
@@ -239,8 +240,10 @@ public:
 
         if (nodeType_ == NodeLHS) {
           refMap_.insert(make_pair(ref, true));
+          meshAccess_ = true;
         } else if (nodeType_ == NodeRHS) {
           RefMap_::iterator itr = refMap_.find(ref);
+          meshAccess_ = true;
           if (itr != refMap_.end()) {
             sema_.Diag(E->getMemberLoc(), diag::err_rhs_after_lhs_forall);
             error_ = true;
@@ -302,6 +305,10 @@ public:
     nodeType_ = NodeNone;
   }
 
+  bool getMeshAccess() {
+    return meshAccess_;
+  }
+
   bool error(){
     return error_;
   }
@@ -312,6 +319,7 @@ private:
   typedef std::map<std::string, bool> RefMap_;
   RefMap_ refMap_;
   RefMap_ localMap_;
+  bool meshAccess_;
   bool error_;
   NodeType nodeType_;
 };
@@ -554,9 +562,14 @@ public:
     if (fd) {
       std::string name = fd->getName();
       if (name == "printf" || name == "fprintf") {
-        // SC_TODO -- for now we'll warn that you're calling a print
-        // function inside a task
-        sema_.Diag(E->getExprLoc(), diag::warn_task_calling_io_func);
+
+        if(sema_.getLangOpts().ScoutLegionSupport) {
+          // in legion mode printf in task is error
+          sema_.Diag(E->getExprLoc(), diag::err_task_calling_io_func);
+        } else {
+          //  warn that you're calling a print function inside a task
+          sema_.Diag(E->getExprLoc(), diag::warn_task_calling_io_func);
+        }
       }
     }
 
@@ -604,13 +617,24 @@ public:
   }
 
   void Visit(Stmt* S) {
+    bool meshAccess =false;
     if(FD_->isTaskSpecified()) {
       if(S) {
         for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
           if (Stmt* child = *I) {
             TaskStmtVisitor v(sema_, child);
             v.Visit(child);
+            if(ForallMeshStmt *FAMS = dyn_cast<ForallMeshStmt>(child)) {
+              ForallVisitor v(sema_, FAMS);
+              v.Visit(FAMS);
+              if(v.getMeshAccess()) meshAccess = true;
+
+            }
           }
+        }
+        // don't allow tasks w/ no mesh access in legion mode
+        if(sema_.getLangOpts().ScoutLegionSupport && !meshAccess) {
+          sema_.Diag(S->getLocStart(), diag::err_nomesh_task_fuction);
         }
       }
     }

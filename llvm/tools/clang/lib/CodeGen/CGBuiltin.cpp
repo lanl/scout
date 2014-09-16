@@ -144,26 +144,12 @@ static RValue EmitBinaryAtomicPost(CodeGenFunction &CGF,
   return RValue::get(Result);
 }
 
-/// EmitFAbs - Emit a call to fabs/fabsf/fabsl, depending on the type of ValTy,
-/// which must be a scalar floating point type.
+/// EmitFAbs - Emit a call to @llvm.fabs().
 static Value *EmitFAbs(CodeGenFunction &CGF, Value *V, QualType ValTy) {
-  const BuiltinType *ValTyP = ValTy->getAs<BuiltinType>();
-  assert(ValTyP && "isn't scalar fp type!");
-
-  StringRef FnName;
-  switch (ValTyP->getKind()) {
-  default: llvm_unreachable("Isn't a scalar fp type!");
-  case BuiltinType::Float:      FnName = "fabsf"; break;
-  case BuiltinType::Double:     FnName = "fabs"; break;
-  case BuiltinType::LongDouble: FnName = "fabsl"; break;
-  }
-
-  // The prototype is something that takes and returns whatever V's type is.
-  llvm::FunctionType *FT = llvm::FunctionType::get(V->getType(), V->getType(),
-                                                   false);
-  llvm::Value *Fn = CGF.CGM.CreateRuntimeFunction(FT, FnName);
-
-  return CGF.EmitNounwindRuntimeCall(Fn, V, "abs");
+  Value *F = CGF.CGM.getIntrinsic(Intrinsic::fabs, V->getType());
+  llvm::CallInst *Call = CGF.Builder.CreateCall(F, V);
+  Call->setDoesNotAccessMemory();
+  return Call;
 }
 
 static RValue emitLibraryCall(CodeGenFunction &CGF, const FunctionDecl *Fn,
@@ -397,6 +383,27 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
                                         "expval");
     return RValue::get(Result);
   }
+  case Builtin::BI__builtin_assume_aligned: {
+    Value *PtrValue = EmitScalarExpr(E->getArg(0));
+    Value *OffsetValue =
+      (E->getNumArgs() > 2) ? EmitScalarExpr(E->getArg(2)) : nullptr;
+
+    Value *AlignmentValue = EmitScalarExpr(E->getArg(1));
+    ConstantInt *AlignmentCI = cast<ConstantInt>(AlignmentValue);
+    unsigned Alignment = (unsigned) AlignmentCI->getZExtValue();
+
+    EmitAlignmentAssumption(PtrValue, Alignment, OffsetValue);
+    return RValue::get(PtrValue);
+  }
+  case Builtin::BI__assume:
+  case Builtin::BI__builtin_assume: {
+    if (E->getArg(0)->HasSideEffects(getContext()))
+      return RValue::get(nullptr);
+
+    Value *ArgValue = EmitScalarExpr(E->getArg(0));
+    Value *FnAssume = CGM.getIntrinsic(Intrinsic::assume);
+    return RValue::get(Builder.CreateCall(FnAssume, ArgValue));
+  }
   case Builtin::BI__builtin_bswap16:
   case Builtin::BI__builtin_bswap32:
   case Builtin::BI__builtin_bswap64: {
@@ -460,7 +467,7 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
       SanitizerScope SanScope(this);
       EmitCheck(Builder.getFalse(), "builtin_unreachable",
                 EmitCheckSourceLocation(E->getExprLoc()),
-                ArrayRef<llvm::Value *>(), CRK_Unrecoverable);
+                None, CRK_Unrecoverable);
     } else
       Builder.CreateUnreachable();
 
@@ -1533,9 +1540,6 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
   case Builtin::BI__noop:
     // __noop always evaluates to an integer literal zero.
     return RValue::get(ConstantInt::get(IntTy, 0));
-  case Builtin::BI__assume:
-    // Until LLVM supports assumptions at the IR level, this becomes nothing.
-    return RValue::get(nullptr);
   case Builtin::BI_InterlockedExchange:
   case Builtin::BI_InterlockedExchangePointer:
     return EmitBinaryAtomic(*this, llvm::AtomicRMWInst::Xchg, E);
@@ -2018,8 +2022,12 @@ static NeonIntrinsicInfo ARMSIMDIntrinsicMap [] = {
   NEONMAP1(vld4q_lane_v, arm_neon_vld4lane, 0),
   NEONMAP1(vld4q_v, arm_neon_vld4, 0),
   NEONMAP2(vmax_v, arm_neon_vmaxu, arm_neon_vmaxs, Add1ArgType | UnsignedAlts),
+  NEONMAP1(vmaxnm_v, arm_neon_vmaxnm, Add1ArgType),
+  NEONMAP1(vmaxnmq_v, arm_neon_vmaxnm, Add1ArgType),
   NEONMAP2(vmaxq_v, arm_neon_vmaxu, arm_neon_vmaxs, Add1ArgType | UnsignedAlts),
   NEONMAP2(vmin_v, arm_neon_vminu, arm_neon_vmins, Add1ArgType | UnsignedAlts),
+  NEONMAP1(vminnm_v, arm_neon_vminnm, Add1ArgType),
+  NEONMAP1(vminnmq_v, arm_neon_vminnm, Add1ArgType),
   NEONMAP2(vminq_v, arm_neon_vminu, arm_neon_vmins, Add1ArgType | UnsignedAlts),
   NEONMAP0(vmovl_v),
   NEONMAP0(vmovn_v),
@@ -2066,6 +2074,18 @@ static NeonIntrinsicInfo ARMSIMDIntrinsicMap [] = {
   NEONMAP1(vrecpsq_v, arm_neon_vrecps, Add1ArgType),
   NEONMAP2(vrhadd_v, arm_neon_vrhaddu, arm_neon_vrhadds, Add1ArgType | UnsignedAlts),
   NEONMAP2(vrhaddq_v, arm_neon_vrhaddu, arm_neon_vrhadds, Add1ArgType | UnsignedAlts),
+  NEONMAP1(vrnd_v, arm_neon_vrintz, Add1ArgType),
+  NEONMAP1(vrnda_v, arm_neon_vrinta, Add1ArgType),
+  NEONMAP1(vrndaq_v, arm_neon_vrinta, Add1ArgType),
+  NEONMAP1(vrndm_v, arm_neon_vrintm, Add1ArgType),
+  NEONMAP1(vrndmq_v, arm_neon_vrintm, Add1ArgType),
+  NEONMAP1(vrndn_v, arm_neon_vrintn, Add1ArgType),
+  NEONMAP1(vrndnq_v, arm_neon_vrintn, Add1ArgType),
+  NEONMAP1(vrndp_v, arm_neon_vrintp, Add1ArgType),
+  NEONMAP1(vrndpq_v, arm_neon_vrintp, Add1ArgType),
+  NEONMAP1(vrndq_v, arm_neon_vrintz, Add1ArgType),
+  NEONMAP1(vrndx_v, arm_neon_vrintx, Add1ArgType),
+  NEONMAP1(vrndxq_v, arm_neon_vrintx, Add1ArgType),
   NEONMAP2(vrshl_v, arm_neon_vrshiftu, arm_neon_vrshifts, Add1ArgType | UnsignedAlts),
   NEONMAP2(vrshlq_v, arm_neon_vrshiftu, arm_neon_vrshifts, Add1ArgType | UnsignedAlts),
   NEONMAP2(vrshr_n_v, arm_neon_vrshiftu, arm_neon_vrshifts, UnsignedAlts),
@@ -3103,6 +3123,11 @@ Value *CodeGenFunction::EmitARMBuiltinExpr(unsigned BuiltinID,
     return Builder.CreateCall(F, llvm::ConstantInt::get(Int32Ty, HintID));
   }
 
+  if (BuiltinID == ARM::BI__builtin_arm_dbg) {
+    Value *Option = EmitScalarExpr(E->getArg(0));
+    return Builder.CreateCall(CGM.getIntrinsic(Intrinsic::arm_dbg), Option);
+  }
+
   if (BuiltinID == ARM::BI__builtin_arm_prefetch) {
     Value *Address = EmitScalarExpr(E->getArg(0));
     Value *RW      = EmitScalarExpr(E->getArg(1));
@@ -3434,7 +3459,7 @@ Value *CodeGenFunction::EmitARMBuiltinExpr(unsigned BuiltinID,
 
   // Many NEON builtins have identical semantics and uses in ARM and
   // AArch64. Emit these in a single function.
-  ArrayRef<NeonIntrinsicInfo> IntrinsicMap(ARMSIMDIntrinsicMap);
+  auto IntrinsicMap = makeArrayRef(ARMSIMDIntrinsicMap);
   const NeonIntrinsicInfo *Builtin = findNeonIntrinsicInMap(
       IntrinsicMap, BuiltinID, NEONSIMDIntrinsicsProvenSorted);
   if (Builtin)
@@ -4050,7 +4075,7 @@ Value *CodeGenFunction::EmitAArch64BuiltinExpr(unsigned BuiltinID,
   for (unsigned i = 0, e = E->getNumArgs() - 1; i != e; i++)
     Ops.push_back(EmitScalarExpr(E->getArg(i)));
 
-  ArrayRef<NeonIntrinsicInfo> SISDMap(AArch64SISDIntrinsicMap);
+  auto SISDMap = makeArrayRef(AArch64SISDIntrinsicMap);
   const NeonIntrinsicInfo *Builtin = findNeonIntrinsicInMap(
       SISDMap, BuiltinID, AArch64SISDIntrinsicsProvenSorted);
 
@@ -5472,8 +5497,7 @@ Value *CodeGenFunction::EmitAArch64BuiltinExpr(unsigned BuiltinID,
     Ops[2] = Builder.CreateBitCast(Ops[2], Ty);
     Ops[3] = Builder.CreateZExt(Ops[3],
                 llvm::IntegerType::get(getLLVMContext(), 64));
-    Ops[1] = Builder.CreateCall(F,
-                ArrayRef<Value*>(Ops).slice(1), "vld2_lane");
+    Ops[1] = Builder.CreateCall(F, makeArrayRef(Ops).slice(1), "vld2_lane");
     Ty = llvm::PointerType::getUnqual(Ops[1]->getType());
     Ops[0] = Builder.CreateBitCast(Ops[0], Ty);
     return Builder.CreateStore(Ops[1], Ops[0]);
@@ -5489,8 +5513,7 @@ Value *CodeGenFunction::EmitAArch64BuiltinExpr(unsigned BuiltinID,
     Ops[3] = Builder.CreateBitCast(Ops[3], Ty);
     Ops[4] = Builder.CreateZExt(Ops[4],
                 llvm::IntegerType::get(getLLVMContext(), 64));
-    Ops[1] = Builder.CreateCall(F,
-                ArrayRef<Value*>(Ops).slice(1), "vld3_lane");
+    Ops[1] = Builder.CreateCall(F, makeArrayRef(Ops).slice(1), "vld3_lane");
     Ty = llvm::PointerType::getUnqual(Ops[1]->getType());
     Ops[0] = Builder.CreateBitCast(Ops[0], Ty);
     return Builder.CreateStore(Ops[1], Ops[0]);
@@ -5507,8 +5530,7 @@ Value *CodeGenFunction::EmitAArch64BuiltinExpr(unsigned BuiltinID,
     Ops[4] = Builder.CreateBitCast(Ops[4], Ty);
     Ops[5] = Builder.CreateZExt(Ops[5],
                 llvm::IntegerType::get(getLLVMContext(), 64));
-    Ops[1] = Builder.CreateCall(F,
-                ArrayRef<Value*>(Ops).slice(1), "vld4_lane");
+    Ops[1] = Builder.CreateCall(F, makeArrayRef(Ops).slice(1), "vld4_lane");
     Ty = llvm::PointerType::getUnqual(Ops[1]->getType());
     Ops[0] = Builder.CreateBitCast(Ops[0], Ty);
     return Builder.CreateStore(Ops[1], Ops[0]);
@@ -5794,7 +5816,7 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
 
       // create i32 constant
       llvm::Function *F = CGM.getIntrinsic(Intrinsic::x86_mmx_psrl_q);
-      return Builder.CreateCall(F, makeArrayRef(&Ops[0], 2), "palignr");
+      return Builder.CreateCall(F, makeArrayRef(Ops.data(), 2), "palignr");
     }
 
     // If palignr is shifting the pair of vectors more than 16 bytes, emit zero.
@@ -5824,7 +5846,7 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
 
       // create i32 constant
       llvm::Function *F = CGM.getIntrinsic(Intrinsic::x86_sse2_psrl_dq);
-      return Builder.CreateCall(F, makeArrayRef(&Ops[0], 2), "palignr");
+      return Builder.CreateCall(F, makeArrayRef(Ops.data(), 2), "palignr");
     }
 
     // If palignr is shifting the pair of vectors more than 32 bytes, emit zero.
@@ -5862,7 +5884,7 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
 
       // create i32 constant
       llvm::Function *F = CGM.getIntrinsic(Intrinsic::x86_avx2_psrl_dq);
-      return Builder.CreateCall(F, makeArrayRef(&Ops[0], 2), "palignr");
+      return Builder.CreateCall(F, makeArrayRef(Ops.data(), 2), "palignr");
     }
 
     // If palignr is shifting the pair of vectors more than 32 bytes, emit zero.

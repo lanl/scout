@@ -182,8 +182,16 @@ public:
     /// Appends the two values, which are required to be metadata
     /// nodes. However, duplicate entries in the second list are dropped
     /// during the append operation.
-    AppendUnique = 6
+    AppendUnique = 6,
+
+    // Markers:
+    ModFlagBehaviorFirstVal = Error,
+    ModFlagBehaviorLastVal = AppendUnique
   };
+
+  /// Checks if Value represents a valid ModFlagBehavior, and stores the
+  /// converted result in MFB.
+  static bool isValidModFlagBehavior(Value *V, ModFlagBehavior &MFB);
 
   struct ModuleFlagEntry {
     ModFlagBehavior Behavior;
@@ -483,7 +491,7 @@ public:
   /// Make sure all GlobalValues in this Module are fully read and clear the
   /// Materializer. If the module is corrupt, this DOES NOT clear the old
   /// Materializer.
-  std::error_code materializeAllPermanently(bool ReleaseBuffer = false);
+  std::error_code materializeAllPermanently();
 
 /// @}
 /// @name Direct access to the globals list, functions list, and symbol table
