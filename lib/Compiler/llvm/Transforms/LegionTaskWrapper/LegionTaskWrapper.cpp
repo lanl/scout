@@ -217,11 +217,11 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
       LoadInst* loadTaskArgsInst = builder.CreateAlignedLoad(ptr_task_args_addr, 8, "");
 
       // get context from task args
-      Value* ptr_context = builder.CreateStructGEP(loadTaskArgsInst, 0, "ptr_context");
+      Value* ptr_context = builder.CreateStructGEP(loadTaskArgsInst, LSCI_TARGS_CONTEXT, "ptr_context");
       LoadInst* context = builder.CreateAlignedLoad(ptr_context, 8, "context");
 
       // get runtime from task args
-      Value* ptr_runtime = builder.CreateStructGEP(loadTaskArgsInst, 1, "ptr_runtime");
+      Value* ptr_runtime = builder.CreateStructGEP(loadTaskArgsInst, LSCI_TARGS_RUNTIME, "ptr_runtime");
       LoadInst* runtime = builder.CreateAlignedLoad(ptr_runtime, 8, "runtime");
 
       // go through instructions in this block and look for loads of @__scrt_legion_context
