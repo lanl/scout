@@ -1319,40 +1319,37 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   B.CreateStore(Zero, iPtr);
   
   Value* launchDomain =
-  B.CreateStructGEP(firstField, 5, "launchDomain.ptr");
+  B.CreateStructGEP(firstField, LSCI_VECTOR_LAUNCH_DOMAIN, "launchDomain.ptr");
   
   Value* len =
-  B.CreateLoad(B.CreateStructGEP(firstField, 6), "len");
+  B.CreateLoad(B.CreateStructGEP(firstField, LSCI_VECTOR_SUBGRID_BOUNDS_LEN), "len");
   
   Value* volume =
-  B.CreateLoad(B.CreateStructGEP(launchDomain, 1), "volume");
+  B.CreateLoad(B.CreateStructGEP(launchDomain, LSCI_DOMAIN_VOLUME), "volume");
   
   Value* bounds =
-  B.CreateLoad(B.CreateStructGEP(firstField, 7), "bounds");
+  B.CreateLoad(B.CreateStructGEP(firstField, LSCI_VECTOR_SUBGRID_BOUNDS), "bounds");
   
   Value* rank =
-  B.CreateLoad(B.CreateStructGEP(meshPtr, 1), "rank");
+  B.CreateLoad(B.CreateStructGEP(meshPtr, LSCI_UNIMESH_DIMS), "rank");
   
   Value* width =
-  B.CreateLoad(B.CreateStructGEP(meshPtr, 2), "width");
+  B.CreateLoad(B.CreateStructGEP(meshPtr, LSCI_UNIMESH_WIDTH), "width");
   
   Value* height =
-  B.CreateLoad(B.CreateStructGEP(meshPtr, 3), "height");
+  B.CreateLoad(B.CreateStructGEP(meshPtr, LSCI_UNIMESH_HEIGHT), "height");
   
   Value* depth =
-  B.CreateLoad(B.CreateStructGEP(meshPtr, 4), "depth");
+  B.CreateLoad(B.CreateStructGEP(meshPtr, LSCI_UNIMESH_DEPTH), "depth");
   
   Value* meshTaskArgs =
   B.CreateAlloca(R.MeshTaskArgsTy, 0, "meshTaskArgs.ptr");
 
-  B.CreateStore(rank, B.CreateStructGEP(meshTaskArgs, 0));
-  B.CreateStore(width, B.CreateStructGEP(meshTaskArgs, 1));
-  B.CreateStore(height, B.CreateStructGEP(meshTaskArgs, 2));
-  B.CreateStore(depth, B.CreateStructGEP(meshTaskArgs, 3));
-  B.CreateStore(len, B.CreateStructGEP(meshTaskArgs, 5));
- 
-  args = {meshTaskArgs};
-  B.CreateCall(R.PrintMeshTaskArgsFunc(), args);
+  B.CreateStore(rank, B.CreateStructGEP(meshTaskArgs, LSCI_MTARGS_RANK));
+  B.CreateStore(width, B.CreateStructGEP(meshTaskArgs, LSCI_MTARGS_GLOBAL_WIDTH));
+  B.CreateStore(height, B.CreateStructGEP(meshTaskArgs, LSCI_MTARGS_GLOBAL_HEIGHT));
+  B.CreateStore(depth, B.CreateStructGEP(meshTaskArgs, LSCI_MTARGS_GLOBAL_DEPTH));
+  B.CreateStore(len, B.CreateStructGEP(meshTaskArgs, LSCI_MTARGS_SUBGRID_LEN));
  
   BasicBlock* cond = BasicBlock::Create(context, "cond", taskInit);
   BasicBlock* loop = BasicBlock::Create(context, "loop", taskInit);
@@ -1365,12 +1362,9 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   B.CreateCondBr(cmp, loop, merge);
   
   B.SetInsertPoint(loop);
-  Value* rect1dStoragePtr = B.CreateStructGEP(meshTaskArgs, 4);
+  Value* rect1dStoragePtr = B.CreateStructGEP(meshTaskArgs, LSCI_MTARGS_SUBGRID_BOUNDS);
   args = {bounds, i, rect1dStoragePtr};
   Value* sgb = B.CreateCall(R.SubgridBoundsAtSetFunc(), args);
-  
-  args = {meshTaskArgs};
-  B.CreateCall(R.PrintMeshTaskArgsFunc(), args);
   
   args = {argMap, i, B.CreateBitCast(meshTaskArgs, R.VoidPtrTy),
     ConstantInt::get(Int64Ty, sizeof(lsci_mesh_task_args_t))};
@@ -1404,13 +1398,13 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
       Value* mode = read ? (write ? R.ReadWriteVal : R.ReadOnlyVal) : R.WriteDiscardVal;
       
       Value* fieldId =
-      B.CreateLoad(B.CreateStructGEP(field, 1), "fieldId");
+      B.CreateLoad(B.CreateStructGEP(field, LSCI_VECTOR_FID), "fieldId");
       
       Value* logicalPartition =
-      B.CreateLoad(B.CreateStructGEP(field, 4), "logicalPartition");
+      B.CreateLoad(B.CreateStructGEP(field, LSCI_VECTOR_LOGICAL_PARTITION), "logicalPartition");
       
       Value* logicalRegion =
-      B.CreateLoad(B.CreateStructGEP(field, 3), "logicalRegion");
+      B.CreateLoad(B.CreateStructGEP(field, LSCI_VECTOR_LOGICAL_REGION), "logicalRegion");
       
       args =
       {indexLauncher, logicalPartition, ConstantInt::get(Int32Ty, 0),
@@ -1482,13 +1476,13 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
           B.CreateCall(R.VectorCreateFunc(), args);
           
           Value* fieldId =
-          B.CreateLoad(B.CreateStructGEP(field, 1), "fieldId");
+          B.CreateLoad(B.CreateStructGEP(field, LSCI_VECTOR_FID), "fieldId");
           
           Value* logicalPartition =
-          B.CreateLoad(B.CreateStructGEP(field, 4), "logicalPartition");
+          B.CreateLoad(B.CreateStructGEP(field, LSCI_VECTOR_LOGICAL_PARTITION), "logicalPartition");
           
           Value* logicalRegion =
-          B.CreateLoad(B.CreateStructGEP(field, 3), "logicalRegion");
+          B.CreateLoad(B.CreateStructGEP(field, LSCI_VECTOR_LOGICAL_REGION), "logicalRegion");
           
           args =
           {indexLauncher, logicalPartition, ConstantInt::get(Int32Ty, 0),
@@ -1528,13 +1522,13 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
       B.CreateCall(R.VectorCreateFunc(), args);
       
       Value* fieldId =
-      B.CreateLoad(B.CreateStructGEP(field, 1), "fieldId");
+      B.CreateLoad(B.CreateStructGEP(field, LSCI_VECTOR_FID), "fieldId");
       
       Value* logicalPartition =
-      B.CreateLoad(B.CreateStructGEP(field, 4), "logicalPartition");
+      B.CreateLoad(B.CreateStructGEP(field, LSCI_VECTOR_LOGICAL_PARTITION), "logicalPartition");
       
       Value* logicalRegion =
-      B.CreateLoad(B.CreateStructGEP(field, 3), "logicalRegion");
+      B.CreateLoad(B.CreateStructGEP(field, LSCI_VECTOR_LOGICAL_REGION), "logicalRegion");
       
       args =
       {indexLauncher, logicalPartition, ConstantInt::get(Int32Ty, 0),
@@ -1599,20 +1593,14 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   entry = BasicBlock::Create(context, "entry", task);
   B.SetInsertPoint(entry);
 
-  args = {taskArgs};
-  B.CreateCall(R.PrintTaskArgsLocalArgspFunc(), args);
-
   // load the taskArgs pointer
   Value* taskArgsAddr = B.CreateAlloca(R.PointerTy(R.TaskArgsTy), 0, "task_args.addr");
   B.CreateAlignedStore(taskArgs, taskArgsAddr, 8);
   LoadInst* loadTaskArgsPtr = B.CreateAlignedLoad(taskArgsAddr, 8, "task_args_loaded.ptr");
 
-  args = {loadTaskArgsPtr};
-  B.CreateCall(R.PrintTaskArgsLocalArgspFunc(), args);
-
   // load the mesh task args ptr from taskArgs local_argsp field
   Value* meshTaskArgsAddr = B.CreateAlloca(R.PointerTy(R.MeshTaskArgsTy), 0, "mtargs.addr");
-  Value* localArgsp = B.CreateStructGEP(loadTaskArgsPtr, 5); 
+  Value* localArgsp = B.CreateStructGEP(loadTaskArgsPtr, LSCI_TARGS_LOCAL_ARGSP); 
   LoadInst* loadedLocalArgsp = B.CreateAlignedLoad(localArgsp, 8, "local_argsp.loaded");
 
   // must cast to a lsci_mesh_task_args_t* , since it is a void*
@@ -1620,15 +1608,12 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   B.CreateAlignedStore(loadedMtargsp, meshTaskArgsAddr, 8);
   meshTaskArgs = B.CreateAlignedLoad(meshTaskArgsAddr, 8, "mesh_task_args.ptr");
 
-  args = {meshTaskArgs};
-  B.CreateCall(R.PrintMeshTaskArgsFunc(), args);
-
   // cast the *lsci_rect_1d_storage_t to lsci_rect_1d (which is a void pointer)
   sgb =
-  B.CreateBitCast(B.CreateStructGEP(meshTaskArgs, 4), R.Rect1dTy);
+  B.CreateBitCast(B.CreateStructGEP(meshTaskArgs, LSCI_MTARGS_SUBGRID_BOUNDS), R.Rect1dTy);
   
   Value* mesh = B.CreateAlloca(meshType, 0, "mesh.ptr");
-  Value* regions = B.CreateLoad(B.CreateStructGEP(taskArgs, 4), "regions");
+  Value* regions = B.CreateLoad(B.CreateStructGEP(taskArgs, LSCI_TARGS_REGIONS), "regions");
   
   j = 0;
   for(MeshDecl::field_iterator itr = md->field_begin(),
@@ -1792,34 +1777,32 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
     ++pitr;
   }
 
-  args = {meshTaskArgs};
-  B.CreateCall(R.PrintMeshTaskArgsFunc(), args);
-
   // Must get dims and rank from mesh_task_args_t, since we
   // are parsing this function before the mesh has
   // been instantiated, so we don't know dimensions.
+  // The "mesh" struct has pointers to the data for fields first, 
+  //then width, height, depth, rank stored after the fields.
 
-  SmallVector<Value*,2> Indices;
-  Indices.push_back(ConstantInt::get(Int32Ty,0));
-  Indices.push_back(ConstantInt::get(Int32Ty,1));
-
-  Value* TAwidthPtr = B.CreateInBoundsGEP(meshTaskArgs, Indices);
+  Value* TAwidthPtr = 
+      B.CreateBitCast(B.CreateStructGEP(meshTaskArgs, LSCI_MTARGS_GLOBAL_WIDTH), R.PointerTy(R.Int32Ty));
   Value* TAwidth = B.CreateAlignedLoad(TAwidthPtr, 8, "task_arg_width");
-  Value* TAwidthTrunc = B.CreateTrunc(TAwidth, R.Int32Ty, "task_arg_width.trunc");
   Value* widthPtr = B.CreateStructGEP(mesh, j++);
-  B.CreateAlignedStore(TAwidthTrunc, widthPtr, 4);
+  B.CreateAlignedStore(TAwidth, widthPtr, 4);
 
-  Value* TAheightPtr = B.CreateBitCast(B.CreateStructGEP(meshTaskArgs, 2), R.PointerTy(R.Int32Ty));
+  Value* TAheightPtr = 
+      B.CreateBitCast(B.CreateStructGEP(meshTaskArgs, LSCI_MTARGS_GLOBAL_HEIGHT), R.PointerTy(R.Int32Ty));
   Value* TAheight = B.CreateAlignedLoad(TAheightPtr, 8, "task_arg_height");
   Value* heightPtr = B.CreateStructGEP(mesh, j++);
   B.CreateAlignedStore(TAheight, heightPtr, 4);
 
-  Value* TAdepthPtr = B.CreateBitCast(B.CreateStructGEP(meshTaskArgs, 3), R.PointerTy(R.Int32Ty));
+  Value* TAdepthPtr = 
+      B.CreateBitCast(B.CreateStructGEP(meshTaskArgs, LSCI_MTARGS_GLOBAL_DEPTH), R.PointerTy(R.Int32Ty));
   Value* TAdepth = B.CreateAlignedLoad(TAdepthPtr, 8, "task_arg_depth");
   Value* depthPtr = B.CreateStructGEP(mesh, j++);
   B.CreateAlignedStore(TAdepth, depthPtr, 4);
 
-  Value* TArankPtr = B.CreateBitCast(B.CreateStructGEP(meshTaskArgs, 0), R.PointerTy(R.Int32Ty));
+  Value* TArankPtr = 
+      B.CreateBitCast(B.CreateStructGEP(meshTaskArgs, LSCI_MTARGS_RANK), R.PointerTy(R.Int32Ty));
   Value* TArank = B.CreateAlignedLoad(TArankPtr, 8, "task_arg_rank");
   Value* rankPtr = B.CreateStructGEP(mesh, j);
   B.CreateAlignedStore(TArank, rankPtr, 4);
