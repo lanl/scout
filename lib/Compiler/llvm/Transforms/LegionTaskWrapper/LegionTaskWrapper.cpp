@@ -217,19 +217,11 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
       LoadInst* loadTaskArgsInst = builder.CreateAlignedLoad(ptr_task_args_addr, 8, "");
 
       // get context from task args
-      ConstantInt* const_int32_0 = ConstantInt::get(M.getContext(), APInt(32, StringRef("0"), 10));
-      SmallVector<Value*,2> Indices;
-      Indices.push_back(const_int32_0);
-      Indices.push_back(const_int32_0);
-      Value* ptr_context = builder.CreateInBoundsGEP(loadTaskArgsInst, Indices, "ptr_context");
+      Value* ptr_context = builder.CreateStructGEP(loadTaskArgsInst, 0, "ptr_context");
       LoadInst* context = builder.CreateAlignedLoad(ptr_context, 8, "context");
 
       // get runtime from task args
-      ConstantInt* const_int32_1 = ConstantInt::get(M.getContext(), APInt(32, StringRef("1"), 10));
-      SmallVector<Value*,2> Indices2;
-      Indices2.push_back(const_int32_0);
-      Indices2.push_back(const_int32_1);
-      Value* ptr_runtime = builder.CreateInBoundsGEP(loadTaskArgsInst, Indices2, "ptr_runtime");
+      Value* ptr_runtime = builder.CreateStructGEP(loadTaskArgsInst, 1, "ptr_runtime");
       LoadInst* runtime = builder.CreateAlignedLoad(ptr_runtime, 8, "runtime");
 
       // go through instructions in this block and look for loads of @__scrt_legion_context
@@ -374,7 +366,6 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
           instr->eraseFromParent();
         }
       }
-
 
       // make main() call lsci_main() at the end to do lsci startup stuff
 
