@@ -156,7 +156,6 @@ typedef struct lsci_index_launcher_t {
     lsci_index_launcher_handle_t hndl;
     int task_id;
     lsci_domain_t domain;
-    // TODO add task args and argmap
 } lsci_index_launcher_t;
 
 typedef unsigned int lsci_projection_id_t;
@@ -314,34 +313,34 @@ typedef struct lsci_task_args_t {
 
 // update this if updating lsci_task_args_t
 typedef enum lsci_task_args_member_t {
-  LSCI_TARGS_CONTEXT,
-  LSCI_TARGS_RUNTIME,
-  LSCI_TARGS_TASK,
-  LSCI_TARGS_TASK_ID,
-  LSCI_TARGS_N_REGIONS,
-  LSCI_TARGS_REGIONS,
-  LSCI_TARGS_ARGSP,
-  LSCI_TARGS_LOCAL_ARGSP
+    LSCI_TARGS_CONTEXT     = 0,
+    LSCI_TARGS_RUNTIME     = 1,
+    LSCI_TARGS_TASK        = 2,
+    LSCI_TARGS_TASK_ID     = 3,
+    LSCI_TARGS_N_REGIONS   = 4,
+    LSCI_TARGS_REGIONS     = 5,
+    LSCI_TARGS_ARGSP       = 6,
+    LSCI_TARGS_LOCAL_ARGSP = 7
 } lsci_task_args_member_t;
 
 // update lsci_mesh_task_args_member_t if updating this
 typedef struct lsci_mesh_task_args_t {
-  size_t rank;
-  size_t global_width;
-  size_t global_height;
-  size_t global_depth;
-  lsci_rect_1d_storage_t sgb;
-  size_t sgb_len;
+    size_t rank;
+    size_t global_width;
+    size_t global_height;
+    size_t global_depth;
+    lsci_rect_1d_storage_t sgb;
+    size_t sgb_len;
 } lsci_mesh_task_args_t;
 
 // update this if updating lsci_mesh_task_args_t
 typedef enum lsci_mesh_task_args_member_t {
-  LSCI_MTARGS_RANK = 0,
-  LSCI_MTARGS_GLOBAL_WIDTH = 1,
-  LSCI_MTARGS_GLOBAL_HEIGHT = 2,
-  LSCI_MTARGS_GLOBAL_DEPTH = 3,
-  LSCI_MTARGS_SUBGRID_BOUNDS = 4,
-  LSCI_MTARGS_SUBGRID_LEN = 5
+    LSCI_MTARGS_RANK = 0,
+    LSCI_MTARGS_GLOBAL_WIDTH = 1,
+    LSCI_MTARGS_GLOBAL_HEIGHT = 2,
+    LSCI_MTARGS_GLOBAL_DEPTH = 3,
+    LSCI_MTARGS_SUBGRID_BOUNDS = 4,
+    LSCI_MTARGS_SUBGRID_LEN = 5
 } lsci_mesh_task_args_member_t;
 
 
@@ -403,7 +402,6 @@ lsci_register_void_legion_task_aux(
     void (*atask)(struct lsci_task_args_t *task_args)
 );
 
-// FIXME name
 void *
 lsci_raw_rect_ptr_1d(lsci_physical_regions_t rgnp,
                      lsci_dt_t type,

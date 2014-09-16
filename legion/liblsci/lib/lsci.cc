@@ -298,6 +298,25 @@ reg_void_legion_task_cxx(
     return LSCI_SUCCESS;
 }
 
+template <unsigned DIM, typename T>
+bool
+offsetsAreDense(const Rect<DIM> &bounds,
+                const LegionRuntime::Accessor::ByteOffset *offset)
+{
+    off_t exp_offset = sizeof(T);
+    for (unsigned i = 0; i < DIM; i++) {
+        bool found = false;
+        for (unsigned j = 0; j < DIM; j++)
+            if (offset[j].offset == exp_offset) {
+                found = true;
+                exp_offset *= (bounds.hi[j] - bounds.lo[j] + 1);
+                break;
+            }
+        if (!found) return false;
+    }
+    return true;
+}
+
 } // end namespace
 
 int
@@ -460,7 +479,6 @@ lsci_vector_dump(lsci_vector_t *vec,
     return LSCI_SUCCESS;
 }
 
-// TODO assert dense
 void *
 lsci_raw_rect_ptr_1d(lsci_physical_regions_t rgnp,
                      lsci_dt_t type,
@@ -489,34 +507,50 @@ lsci_raw_rect_ptr_1d(lsci_physical_regions_t rgnp,
                      );
     Rect<1> sgb_cxx = dom_cxx.get_rect<1>();
 
+    void *resultp = NULL;
+    Rect<1> subRect;
+    ByteOffset bOff[1];
+
     switch (type) {
         case LSCI_TYPE_INT32: {
             typedef RegionAccessor<AccessorType::Generic, int32_t> RA;
             RA fm = prgnp_cxx->get_field_accessor(fid).typeify<int32_t>();
-            Rect<1> subRect;
-            ByteOffset bOff[1];
-            return fm.raw_rect_ptr<1>(sgb_cxx, subRect, bOff);
+            resultp = fm.raw_rect_ptr<1>(sgb_cxx, subRect, bOff);
+            if (!resultp || (subRect != sgb_cxx) ||
+                !offsetsAreDense<1, int32_t>(sgb_cxx, bOff)) {
+                assert(false && "Cannot continue >:-|");
+            }
+            return resultp;
         }
         case LSCI_TYPE_INT64: {
             typedef RegionAccessor<AccessorType::Generic, int64_t> RA;
             RA fm = prgnp_cxx->get_field_accessor(fid).typeify<int64_t>();
-            Rect<1> subRect;
-            ByteOffset bOff[1];
-            return fm.raw_rect_ptr<1>(sgb_cxx, subRect, bOff);
+            resultp = fm.raw_rect_ptr<1>(sgb_cxx, subRect, bOff);
+            if (!resultp || (subRect != sgb_cxx) ||
+                !offsetsAreDense<1, int64_t>(sgb_cxx, bOff)) {
+                assert(false && "Cannot continue >:-|");
+            }
+            return resultp;
         }
         case LSCI_TYPE_FLOAT: {
             typedef RegionAccessor<AccessorType::Generic, float> RA;
             RA fm = prgnp_cxx->get_field_accessor(fid).typeify<float>();
-            Rect<1> subRect;
-            ByteOffset bOff[1];
-            return fm.raw_rect_ptr<1>(sgb_cxx, subRect, bOff);
+            resultp = fm.raw_rect_ptr<1>(sgb_cxx, subRect, bOff);
+            if (!resultp || (subRect != sgb_cxx) ||
+                !offsetsAreDense<1, float>(sgb_cxx, bOff)) {
+                assert(false && "Cannot continue >:-|");
+            }
+            return resultp;
         }
         case LSCI_TYPE_DOUBLE: {
             typedef RegionAccessor<AccessorType::Generic, double> RA;
             RA fm = prgnp_cxx->get_field_accessor(fid).typeify<double>();
-            Rect<1> subRect;
-            ByteOffset bOff[1];
-            return fm.raw_rect_ptr<1>(sgb_cxx, subRect, bOff);
+            resultp = fm.raw_rect_ptr<1>(sgb_cxx, subRect, bOff);
+            if (!resultp || (subRect != sgb_cxx) ||
+                !offsetsAreDense<1, double>(sgb_cxx, bOff)) {
+                assert(false && "Cannot continue >:-|");
+            }
+            return resultp;
         }
         default:
             assert(false && "invalid lsci_dt_t");
@@ -598,6 +632,7 @@ private:
         if (dims > 3) assert(false && "not supported");
     }
 };
+
 } // end unnamed namespace for internal mesh things
 
 int
